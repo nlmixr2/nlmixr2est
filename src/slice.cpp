@@ -22,9 +22,14 @@
 #include <math.h>
 #include <stdlib.h>
 #include <Rcpp.h>
+#include <rxode2ptr.h>
 
-//#define genunf(a,b) Rcpp::runif(1, (a), (b))[0]
-#define genunf(a,b) (a) + ((b) - (a))*R::unif_rand()
+// rxUnifEng() already returns a draw scaled to [low, hi); this file has no
+// callers (no [[Rcpp::export]]/registration) but is still compiled, so keep
+// it off R's own RNG like every reachable draw in this package -- a
+// threefry-engine draw is thread-safe and reproducible under a fit's seed,
+// R::unif_rand() is neither.
+#define genunf(a,b) rxUnifEng((a), (b))
 
 double rexp(double beta)
 {

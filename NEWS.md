@@ -13,6 +13,18 @@
   `rxode2::.iniHandleFixOrUnfix()` alias for it.  They are the same
   function; this was the last caller of the old name anywhere in the
   ecosystem, so rxode2 can now drop it (nlmixr2/rxode2#1250).
+
+- `est="npb"`'s Gibbs sampler (support-point/stick-breaking/mixture-proportion
+  draws) and the shared `npbSampleMixProbs()` mixture Dirichlet step now draw
+  from rxode2's per-thread threefry engine instead of R's own RNG
+  (`R::rnorm`/`R::unif_rand`/`R::rbeta`/`R::rgamma`, seeded via an R-level
+  `set.seed()` call). A distribution the engine does not cover directly
+  (Beta, Gamma) is drawn by inverse-CDF from a threefry uniform, the same
+  technique already used for `est="impmap"`'s chi-square proposal scale. This
+  is the convention every other estimation method already follows, and it
+  means `npbControl(seed=)` reproducibility no longer depends on R's ambient
+  RNG state; a fit's exact draws (and so its reported values, given the same
+  seed) change as a result.
 ## New features
 
 - A pure-linear `matExp()` model now solves natively through rxode2's
@@ -91,6 +103,24 @@
 
 ## Bug fixes
 
+- `est="saem"` scored a censored (M2/M3/M4) observation with the wrong sign,
+  the wrong scale, and the untransformed DV, so a censored row's contribution
+  to the chain's acceptance could drive the fit away from, rather than
+  toward, the true parameters (#876). The residual-error M-step also still
+  counted a censored row's recorded LOQ/limit as if it had been measured,
+  biasing the residual SD low relative to `focei` on the same data (#916).
+  Both are fixed: the E-step now scores a censored row the way `focei`'s
+  inner likelihood does, and the M-step now simulates each censored row's
+  value from the truncated normal implied by the current fit (data
+  augmentation, Samson/Lavielle/Mentre 2006) before building the residual
+  sum of squares. The truncated-normal draw itself uses the same Botev
+  (2015) minimax-tilting algorithm CWRES's censored-observation simulation
+  already relies on (`censResid.h`'s `truncnorm()`, via rxode2's `rxRmvn`),
+  ported to the seeded per-thread engine this file already uses everywhere
+  else, rather than a plain inverse-CDF draw -- which loses precision once
+  the truncation bounds are a few SDs from the mean, the regime a BQL row's
+  bound often sits in.
+
 - `foceiControl(fast=TRUE)` could converge to a different fit than `fast=FALSE`
   when a transform-both-sides (`lnorm`/`boxCox`) endpoint's untransformed
   prediction was non-positive at some observation -- for example a depot model's
@@ -102,6 +132,7 @@
   now detected and replaced with the same per-subject finite difference already
   used for a failed augmented solve, which differences the objective rxode2
   actually evaluates.
+
 - `est="saem"` scored a censored (M2/M3/M4) row on an `ar()` endpoint against
   the marginal normal distribution instead of the AR(1) conditional one that
   its uncensored neighbors already used (#918). `arDYFhyp` whitened a

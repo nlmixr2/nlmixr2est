@@ -67,6 +67,75 @@ nmTest({
     expect_no_match(as.character(f.saem2$censInformation), "\\((laplace|gauss)\\)")
   })
 
+  test_that("saem M3/M4 residual SD matches focei (#916)", {
+    # #916: the SAEM M-step's residual SSR counted a censored (M3/M4) row's
+    # recorded LOQ/limit as if it had been measured, biasing the residual SD
+    # low vs focei.  Data augmentation (simulate the censored DV from the
+    # truncated normal implied by the current fit each E-step) fixes this --
+    # pin BOTH tvK and prop.sd against focei instead of only bounding prop.sd
+    # from above.
+    datL <- rbind(dat[, names(dat) != "Y"], data.frame(ID = 1:10, Time = 1.5, DV = 3))
+    datL$cens <- ifelse(datL$Time == 1.5, 1, 0)
+    datL <- datL[order(datL$ID, datL$Time), ]
+
+    f.foceiL <- suppressMessages(suppressWarnings(nlmixr(f, datL, "focei")))
+    f.saemL <- suppressMessages(suppressWarnings(nlmixr(f, datL, "saem")))
+    ct(f.saemL, "M3 censoring")
+    expect_equal(as.numeric(f.saemL$theta[["tvK"]]), as.numeric(f.foceiL$theta[["tvK"]]),
+                 tolerance = 0.1)
+    expect_equal(as.numeric(f.saemL$theta[["prop.sd"]]), as.numeric(f.foceiL$theta[["prop.sd"]]),
+                 tolerance = 0.15)
+
+    datL4 <- datL
+    datL4$limit <- 0
+    f.foceiL4 <- suppressMessages(suppressWarnings(nlmixr(f, datL4, "focei")))
+    f.saemL4 <- suppressMessages(suppressWarnings(nlmixr(f, datL4, "saem")))
+    ct(f.saemL4, "M2 and M4 censoring")
+    expect_equal(as.numeric(f.saemL4$theta[["tvK"]]), as.numeric(f.foceiL4$theta[["tvK"]]),
+                 tolerance = 0.1)
+    expect_equal(as.numeric(f.saemL4$theta[["prop.sd"]]), as.numeric(f.foceiL4$theta[["prop.sd"]]),
+                 tolerance = 0.15)
+  })
+
+  test_that("saem mixture model with censored data fits (#916 coverage)", {
+    # augmentCensY()/applyCensLoss() are also threaded through the nMix>1
+    # ("parallel"/soft-EM) mixture branch (cens_mix/limit_mix), a different
+    # vector-slicing path from the plain (non-mixture) case above -- fit a
+    # small 2-component mixture on the same M3 data and check it converges to
+    # a sane (finite, reproducible) answer instead of pinning exact values,
+    # since mixture fits are prone to label-switching.
+    datL <- rbind(dat[, names(dat) != "Y"], data.frame(ID = 1:10, Time = 1.5, DV = 3))
+    datL$cens <- ifelse(datL$Time == 1.5, 1, 0)
+    datL <- datL[order(datL$ID, datL$Time), ]
+
+    fMix <- function() {
+      ini({
+        tvK1 <- 0.3
+        tvK2 <- 0.8
+        p1 <- 0.5
+        bsvK ~ 0.04
+        prop.sd <- sqrt(0.1)
+      })
+      model({
+        ke <- mix(tvK1, p1, tvK2) * exp(bsvK)
+        v <- 1
+        ipre <- 10 * exp(-ke * t)
+        ipre ~ prop(prop.sd)
+      })
+    }
+
+    f.mix <- suppressMessages(suppressWarnings(
+      nlmixr(fMix, datL, "saem",
+             control = saemControl(nBurn = 10, nEm = 10, calcTables = FALSE, print = 0))
+    ))
+    expect_true(is.finite(f.mix$objf))
+    expect_true(all(is.finite(unlist(f.mix$theta))))
+    expect_true(all(as.numeric(f.mix$theta[c("tvK1", "tvK2")]) > 0.05 &
+                       as.numeric(f.mix$theta[c("tvK1", "tvK2")]) < 3))
+    expect_true(as.numeric(f.mix$theta[["prop.sd"]]) > 0.01 &&
+                  as.numeric(f.mix$theta[["prop.sd"]]) < 2)
+  })
+
 
   test_that("Limit affects values", {
 
@@ -206,6 +275,21 @@ nmTest({
     # distribution is being evaluated, so pre-fix code returns a completely
     # different value (verified by hand: 4.5103307107 marginal vs
     # -7.2012761860 conditional) rather than one within a few % of this one.
+    #
+    # -7.2012761860 was pinned against a SAEM build that was missing the
+    # (separate) #876 fix -- doCensNormal1's sign/scale/transform were still
+    # wrong there too, just combined with the AR(1)-conditional (ft, g)
+    # instead of the marginal one.  Once #876 is also applied the value moves
+    # again, to -5.5500188187 (verified by hand: temporarily short-circuiting
+    # augmentCensY() to a no-op isolates this from #916's data augmentation
+    # below).  #916's data augmentation (simulating each censored row's value
+    # from the truncated normal before the M-step SSR) moves it a third time,
+    # to -6.0715626710 -- expected, since burn-in iterations run the same
+    # augmentation this test's data triggers (cens=1 rows present).  Swapping
+    # augmentCensY's truncated-normal draw from a plain inverse-CDF to
+    # rxTruncNorm() (truncNorm.h, Botev 2015 -- the same algorithm censResid.h's
+    # truncnorm() uses for CWRES) moves it a fourth and final time, to the
+    # value pinned below.
     .m <- function() {
       ini({
         tka <- log(1.2); tcl <- log(0.2); tv <- log(5)
@@ -254,7 +338,7 @@ nmTest({
              control = saemControl(nBurn = 50, nEm = 0, print = 0, seed = 42))
     ))
     ct(f.saemAr, "M3 censoring")
-    expect_equal(f.saemAr$objf, -7.2012761860, tolerance = 1e-4)
+    expect_equal(f.saemAr$objf, -5.7632568844, tolerance = 1e-4)
   })
 
 })

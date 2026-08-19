@@ -13,6 +13,7 @@
 #include "nearPD.h"
 #include "inner.h"
 #include "solveWarnHelper.h"
+#include "truncNorm.h"
 
 #define _(String) (String)
 
@@ -630,6 +631,59 @@ static inline void _saemSeedDoMcmc(uint32_t baseSeed, int kiter, int method, int
   nmSetSeedEng1(s);
 }
 
+// Iteration-indexed threefry stream seed for the censored-DV data-augmentation
+// draw (see simCensDv()/augmentCensY() below), independent of the do_mcmc
+// proposal streams above.  Keyed by (kiter, chain k, endpoint b, mixIdx) so
+// every (iteration, chain, endpoint, component) combination gets its own
+// stream; a fit is reproducible given saemControl(seed=).
+static inline void _saemSeedCensAug(uint32_t baseSeed, int kiter, int k, int b,
+                                    int mixIdx) {
+  setRxThreadId(0);
+  uint32_t s = baseSeed;
+  s = s * 2654435761u + 0x63656E73u;   // "cens" namespace tag
+  s = s * 2654435761u + (uint32_t)kiter;
+  s = s * 2654435761u + (uint32_t)k;
+  s = s * 2654435761u + (uint32_t)b;
+  // per-component stream offset (mixIdx can be -1); multiply-folded like every
+  // other field above -- a bare `+=` here collides whenever b and mixIdx+1
+  // sum to the same value (e.g. b=0,mixIdx=1 vs b=1,mixIdx=0).
+  s = s * 2654435761u + (uint32_t)(mixIdx + 1);
+  nmSetSeedEng1(s);
+}
+
+// Simulate the "true" value of a censored (M3/M4) observation from the
+// truncated normal implied by the current transformed prediction/residual SD
+// -- data augmentation (Samson, Lavielle & Mentre 2006) so the M-step
+// residual SSR sees a draw from the censored region instead of the recorded
+// LOQ/limit.  M2 rows carry a real measurement and are returned unchanged.
+// cens/limDv/lim follow the doCensNormal1() convention (all on the
+// transformed scale here); sd is the endpoint's current residual SD.  The
+// draw itself is rxTruncNorm() (truncNorm.h) -- the same Botev (2015)
+// algorithm CWRES's censored-observation simulation uses (censResid.h's
+// truncnorm(), via rxode2's rxRmvn) -- rather than a plain inverse-CDF draw,
+// which loses precision once the truncation bounds are a few SDs from the
+// mean (the regime a BQL row's bound often sits in).
+static inline double simCensDv(double cens, double limDv, double lim, double f,
+                               double sd) {
+  if (!(cens == 1.0 || cens == -1.0)) return limDv;
+  double lo = R_NegInf, hi = R_PosInf;
+  if (R_FINITE(lim) && !ISNA(lim)) {
+    // M4: truncation interval is between limDv (the LOQ) and lim (the other,
+    // informative bound); cens picks which side is which.
+    if (cens > 0) { lo = lim;   hi = limDv; } else { lo = limDv; hi = lim; }
+  } else if (cens > 0) {
+    // M3, left-censored: y <= limDv
+    hi = limDv;
+  } else {
+    // M3, right-censored: y >= limDv
+    lo = limDv;
+  }
+  double zl = R_FINITE(lo) ? (lo - f) / sd : R_NegInf;
+  double zu = R_FINITE(hi) ? (hi - f) / sd : R_PosInf;
+  if (!(zu > zl)) return limDv;        // degenerate/inverted bound: keep the historical value
+  return f + sd * rxTruncNorm(zl, zu);
+}
+
 // class def starts
 class SAEM {
   typedef mat (*user_funct) (const mat&, const mat&, const List&);
@@ -1095,6 +1149,25 @@ public:
     return 0.5*(e/gg)%(e/gg) + log(gg);
   }
 
+  // Replace the normal per-observation loss in `DYFm` with the censored one
+  // (#876).  doCensNormal1 speaks the FOCEi inner's language -- it takes and
+  // returns a LOG-LIKELIHOOD, wants the VARIANCE, and reads the DV on the
+  // TRANSFORMED scale -- while the SAEM chain carries the NEGATED
+  // log-likelihood (a loss), the residual SD `g`, and the untransformed y.
+  // Translating in both directions is what makes a censored row score the
+  // same here as in likInner0: without it an M3/M4 row's censored term
+  // arrives with its sign flipped (a log-likelihood stored back as a loss)
+  // and its scale wrong (SD passed where a variance is wanted). An
+  // uncensored row comes back untouched.
+  inline void applyCensLoss(mat &DYFm, const uvec &indioK, const vec &censk,
+                            const vec &ytk, const vec &limT, const vec &ft,
+                            const vec &g) const {
+    for (int j = ntotal; j--;) {
+      DYFm(indioK(j)) = -doCensNormal1(censk[j], ytk[j], limT[j],
+                                       -DYFm(indioK(j)), ft[j], g[j]*g[j], 0);
+    }
+  }
+
   // Final per-endpoint estimated AR(1) correlation (0 for non-AR endpoints).
   vec get_arCor() { return arCor; }
 
@@ -1201,6 +1274,55 @@ public:
       }
     }
     return resk;
+  }
+
+  // Data augmentation for the M-step residual SSR (see #916): return a copy of
+  // this chain/endpoint's transformed observation vector with every censored
+  // (M3/M4) row replaced by a draw from the truncated normal implied by this
+  // chain's prediction (simCensDv()), so arResk()/the direct SSR see a value
+  // consistent with the censoring instead of the recorded LOQ/limit.
+  // cens_cur/limit_cur are RAW (untransformed), same length/order as y_cur/
+  // f_cur (chain-sliced, ix_sorting-applied, endpoint span).
+  //
+  // y_cur is on whatever scale the caller's hasFixedObsTransform branch put
+  // it on (ysTrans, i.e. already transformed, when the TBS transform is
+  // fixed; the raw ys when it is estimated -- see arResk()'s own read of
+  // y_cur a few lines below every call site).  simCensDv() itself works
+  // entirely on the TRANSFORMED scale (that is what f/sd/the truncation
+  // bounds are in), so both the limDv fed to it and the value it returns are
+  // converted between that scale and y_cur's ambient one via _powerD()/
+  // _powerDi() -- a no-op when hasFixedObsTransform is true.  This keeps a
+  // censored row's simulated replacement on the SAME scale as its
+  // uncensored neighbors in the returned vector; it does not touch the
+  // separate, pre-existing mismatch between y_cur and f_cur that arResk()
+  // itself has for EVERY row (censored or not) when the transform is
+  // estimated, which traces to #914 (the saem lambda member never actually
+  // updates from its initial value) and is out of scope here.
+  vec augmentCensY(int b, const vec &f_cur, const vec &y_cur,
+                    const vec &cens_cur, const vec &limit_cur,
+                    int kiter, int k, int mixIdx) {
+    if (!arma::any(cens_cur != 0.0)) return y_cur;
+    vec y_aug = y_cur;
+    _saemSeedCensAug((uint32_t)saemSeed, kiter, k, b, mixIdx);
+    const double double_xmin = 1.0e-200, xmax = 1e300;
+    for (unsigned int i = 0; i < y_aug.n_elem; i++) {
+      if (cens_cur[i] == 0.0) continue;
+      double fci = f_cur[i];
+      double ft = _powerD(fci, lambda(b), yj(b), low(b), hi(b));
+      double ftT = handleF(propT(b), ft, fci, false, true);
+      double sd = ares(b) + bres(b) * std::fabs(ftT);
+      if (sd == 0.0) sd = 1.0;
+      else if (sd < double_xmin) sd = double_xmin;
+      else if (sd > xmax) sd = xmax;
+      double limT = _powerD(limit_cur[i], lambda(b), yj(b), low(b), hi(b));
+      double limDvT = hasFixedObsTransform ? y_cur[i] :
+        _powerD(y_cur[i], lambda(b), yj(b), low(b), hi(b));
+      double simT = simCensDv(cens_cur[i], limDvT, limT, ft, sd);
+      y_aug[i] = hasFixedObsTransform ? simT :
+        _powerDi(simT, lambda(b), yj(b), low(b), hi(b));
+    }
+    setRxThreadId(-1);
+    return y_aug;
   }
 
   // Fill this chain's per-endpoint residual log-sigma2 score/Hessian entries
@@ -1909,6 +2031,8 @@ public:
         // E-step: posterior responsibility gamma_{i,m} (softmax, see mixWeights below) from
         // the one simulated phi, plus per-hypothesis predictions for the residual term below.
         field<vec> fsave_hyp(nMix);
+        field<vec> cens_hyp(nMix);
+        field<vec> limit_hyp(nMix);
         mat Ly(N, nMix, fill::zeros);
         for (int mHyp = 0; mHyp < nMix; mHyp++) {
           current_saem_state->_saemMixest = mHyp + 1;
@@ -1917,6 +2041,8 @@ public:
           vec fHyp = hypMat.col(0);
           vec censHyp = hypMat.col(1);
           vec limitHyp = hypMat.col(2);
+          cens_hyp(mHyp) = censHyp;
+          limit_hyp(mHyp) = limitHyp;
           mat DYFhyp = zeros<mat>(mlen, nM);
           if (distribution == 1) {
             vec yt = hasFixedObsTransform ? yTrans : y;
@@ -1946,10 +2072,8 @@ public:
               _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
               _scratch_indio = indio + (arma::uword)k * stride;
               DYFhyp(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
-              for (int j = ntotal; j--;) {
-                DYFhyp(_scratch_indio(j)) = doCensNormal1(censk[j], y[j], _scratch_limitT[j],
-                                                       DYFhyp(_scratch_indio(j)), _scratch_ftAr[j], _scratch_gAr[j], 0);
-              }
+              applyCensLoss(DYFhyp, _scratch_indio, censk, yt, _scratch_limitT,
+                            _scratch_ftAr, _scratch_gAr);
             }
           } else if (distribution == 2) {
             for (int k = 0; k < nmc; k++) {
@@ -2061,6 +2185,16 @@ public:
               } else {
                 y_cur = ys(span(y_offset(b), y_offset(b+1)-1));
               }
+              vec censK = cens_hyp(mHyp).subvec(k * ntotal, (k + 1) * ntotal - 1);
+              censK = censK(ix_sorting);
+              vec limitK = limit_hyp(mHyp).subvec(k * ntotal, (k + 1) * ntotal - 1);
+              limitK = limitK(ix_sorting);
+              // #916: data augmentation -- replace censored (M3/M4) rows with a
+              // simulated draw before building the residual SSR below.
+              y_cur = augmentCensY(b, f_cur, y_cur,
+                                    censK(span(y_offset(b), y_offset(b+1)-1)),
+                                    limitK(span(y_offset(b), y_offset(b+1)-1)),
+                                    (int)kiter, k, mHyp);
               resk += arResk(b, f_cur, y_cur, mHyp);
             }
             statr[b] += resk;
@@ -2145,10 +2279,8 @@ public:
               _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
               _scratch_indio = indio + (arma::uword)k * stride;
               cur_DYF(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
-              for (int j = ntotal; j--;) {
-                cur_DYF(_scratch_indio(j)) = doCensNormal1(censk[j], y[j], _scratch_limitT[j],
-                                                       cur_DYF(_scratch_indio(j)), _scratch_ftAr[j], _scratch_gAr[j], 0);
-              }
+              applyCensLoss(cur_DYF, _scratch_indio, censk, yt, _scratch_limitT,
+                            _scratch_ftAr, _scratch_gAr);
             }
           } else if (distribution == 2) {
             for (int k = 0; k < nmc; k++) {
@@ -2345,6 +2477,16 @@ public:
               } else {
                 y_cur = ys(span(y_offset(b), y_offset(b+1)-1));
               }
+              vec censK = cens_mix(jMix).subvec(k * ntotal, (k + 1) * ntotal - 1);
+              censK = censK(ix_sorting);
+              vec limitK = limit_mix(jMix).subvec(k * ntotal, (k + 1) * ntotal - 1);
+              limitK = limitK(ix_sorting);
+              // #916: data augmentation -- replace censored (M3/M4) rows with a
+              // simulated draw before building the residual SSR below.
+              y_cur = augmentCensY(b, f_cur, y_cur,
+                                    censK(span(y_offset(b), y_offset(b+1)-1)),
+                                    limitK(span(y_offset(b), y_offset(b+1)-1)),
+                                    (int)kiter, k, jMix);
               resk += arResk(b, f_cur, y_cur, jMix);
             }
             statr[b] += resk;
@@ -2420,10 +2562,8 @@ public:
             _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
             _scratch_indio = indio + (arma::uword)k * stride;
             DYF(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
-            for (int j = ntotal; j--;) {
-              DYF(_scratch_indio(j)) = doCensNormal1(censk[j], y[j], _scratch_limitT[j],
-                                                     DYF(_scratch_indio(j)), _scratch_ftAr[j], _scratch_gAr[j], 0);
-            }
+            applyCensLoss(DYF, _scratch_indio, censk, yt, _scratch_limitT,
+                          _scratch_ftAr, _scratch_gAr);
           }
         } else if (distribution == 2){
           for (int k = 0; k < nmc; k++) {
@@ -2491,6 +2631,10 @@ public:
           fk = fk(ix_sorting);    //sorted by endpnt
           fsM = join_cols(fsM, fk);
           // vec resid_all(ys.size());// = ys - fk;
+          vec censK = cens.subvec(k*ntotal, (k+1)*ntotal-1);
+          censK = censK(ix_sorting);
+          vec limitK = limit.subvec(k*ntotal, (k+1)*ntotal-1);
+          limitK = limitK(ix_sorting);
           vec gk, y_cur, f_cur;
           double ft, fa;
           //loop thru endpoints here
@@ -2505,6 +2649,12 @@ public:
               y_cur = ys(span(y_offset(b), y_offset(b+1)-1));
             }
             f_cur = fk(span(y_offset(b), y_offset(b+1)-1));
+            // #916: data augmentation -- replace censored (M3/M4) rows with a
+            // simulated draw before building the residual SSR below.
+            y_cur = augmentCensY(b, f_cur, y_cur,
+                                  censK(span(y_offset(b), y_offset(b+1)-1)),
+                                  limitK(span(y_offset(b), y_offset(b+1)-1)),
+                                  (int)kiter, k, -1);
             vec resid(y_cur.size());
             for (int i = y_cur.size(); i--;){
               resid(i) = y_cur[i];
@@ -3853,12 +4003,6 @@ private:
     mphi1.mprior_phiM = repmat(mprior_phi1,nmc,1);
   }
 
-  static inline void doCens(mat &DYF, vec &cens, vec &limit, vec &fc, vec &r, const vec &dv) {
-    for (int j = (int)cens.size(); j--;) {
-      DYF(j) = doCensNormal1(cens[j], dv[j], limit[j], DYF(j), fc[j], r[j], 0);
-    }
-  }
-
   void do_mcmc(const int method,
                const int nu,
                const mcmcaux &mx,
@@ -3945,10 +4089,8 @@ private:
               _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
               _scratch_indio = mx.indio + (arma::uword)k * stride;
               DYF(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
-              for (int j = ntotal; j--;) {
-                DYF(_scratch_indio(j)) = doCensNormal1(censk[j], mx.y[j], _scratch_limitT[j],
-                                                       DYF(_scratch_indio(j)), _scratch_ftAr[j], _scratch_gAr[j], 0);
-              }
+              applyCensLoss(DYF, _scratch_indio, censk, yt, _scratch_limitT,
+                            _scratch_ftAr, _scratch_gAr);
             }
           }
           break;
@@ -4056,10 +4198,8 @@ private:
             _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
             _scratch_indio = mx.indio + (arma::uword)k * stride;
             DYFm(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
-            for (int j = ntotal; j--;) {
-              DYFm(_scratch_indio(j)) = doCensNormal1(censk[j], mx.y[j], _scratch_limitT[j],
-                                                     DYFm(_scratch_indio(j)), _scratch_ftAr[j], _scratch_gAr[j], 0);
-            }
+            applyCensLoss(DYFm, _scratch_indio, censk, yt, _scratch_limitT,
+                          _scratch_ftAr, _scratch_gAr);
           }
         }
         break;
@@ -4169,10 +4309,8 @@ private:
           _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
           _scratch_indio = indio + (arma::uword)k * stride;
           DYFhyp(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
-          for (int j = ntotal; j--;) {
-            DYFhyp(_scratch_indio(j)) = doCensNormal1(censk[j], y[j], _scratch_limitT[j],
-                                                   DYFhyp(_scratch_indio(j)), _scratch_ftAr[j], _scratch_gAr[j], 0);
-          }
+          applyCensLoss(DYFhyp, _scratch_indio, censk, yt, _scratch_limitT,
+                        _scratch_ftAr, _scratch_gAr);
         }
       } else if (distribution == 2) {
         for (int k = 0; k < nmc; k++) {
