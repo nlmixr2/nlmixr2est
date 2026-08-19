@@ -1851,16 +1851,16 @@ BEGIN_RCPP
 END_RCPP
 }
 // saemFormGTest
-SEXP saemFormGTest(SEXP inA, SEXP inB, SEXP inFtAbs, SEXP inAddProp);
-RcppExport SEXP _nlmixr2est_saemFormGTest(SEXP inASEXP, SEXP inBSEXP, SEXP inFtAbsSEXP, SEXP inAddPropSEXP) {
+SEXP saemFormGTest(SEXP inA, SEXP inB, SEXP inFt, SEXP inAddProp);
+RcppExport SEXP _nlmixr2est_saemFormGTest(SEXP inASEXP, SEXP inBSEXP, SEXP inFtSEXP, SEXP inAddPropSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< SEXP >::type inA(inASEXP);
     Rcpp::traits::input_parameter< SEXP >::type inB(inBSEXP);
-    Rcpp::traits::input_parameter< SEXP >::type inFtAbs(inFtAbsSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type inFt(inFtSEXP);
     Rcpp::traits::input_parameter< SEXP >::type inAddProp(inAddPropSEXP);
-    rcpp_result_gen = Rcpp::wrap(saemFormGTest(inA, inB, inFtAbs, inAddProp));
+    rcpp_result_gen = Rcpp::wrap(saemFormGTest(inA, inB, inFt, inAddProp));
     return rcpp_result_gen;
 END_RCPP
 }

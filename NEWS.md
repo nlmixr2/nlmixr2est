@@ -122,6 +122,14 @@
   additive and a proportional/power term move; `combined1` fits are bit-for-bit
   unchanged since that branch's formula did not change.
 
+- `est="saem"`'s M-step objective for a plain `add()+pow()` endpoint (no
+  `boxCox()`/`yeoJohnson()`) formed the `combined2` residual SD as
+  `a^2+b^2*f^(2*pw)` and used it directly in place of the SD, missing the
+  `sqrt()` every sibling combined objective (`add()+prop()`, and
+  `add()+pow()+boxCox()`/`yeoJohnson()`) applies. Found while auditing the
+  `addProp` branches for the E-step fix above; only a plain `add()+pow()`
+  endpoint under the default `addProp="combined2"` was affected.
+
 ## New features
 
 - `est="saem"` gained controls for the cost of the `nonMuTheta="regress"`

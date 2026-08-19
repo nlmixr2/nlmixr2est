@@ -768,8 +768,8 @@ saem_fit <- function(xSEXP) {
     .Call(`_nlmixr2est_saem_fit`, xSEXP)
 }
 
-saemFormGTest <- function(inA, inB, inFtAbs, inAddProp) {
-    .Call(`_nlmixr2est_saemFormGTest`, inA, inB, inFtAbs, inAddProp)
+saemFormGTest <- function(inA, inB, inFt, inAddProp) {
+    .Call(`_nlmixr2est_saemFormGTest`, inA, inB, inFt, inAddProp)
 }
 
 nlmixr2Parameters <- function(theta, eta) {
