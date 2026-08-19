@@ -62,14 +62,33 @@
   can opt in as it gains support:
 
   ```r
-  attr(nlmixr2Est.myMethod, "nlmixr2Priors") <- "normal"
+  attr(nlmixr2Est.myMethod, "nlmixr2Priors") <- "theta"
   ```
 
   The levels are `"none"` (the default when the attribute is absent),
-  `"normal"`, `"nwpri"` (normal priors plus omega degrees of freedom) and
-  `"all"`.  Because the check happens in the generic, methods registered
-  by other packages -- `babelmixr2`'s `nonmem`, `monolix`, `saemix` and
-  the rest -- are covered without any change of their own.
+  `"theta"` (population parameters only), `"general"`, `"nwpri"` (NONMEM's
+  own `$PRIOR NWPRI` omega convention) and `"tnpri"` (Monolix's/NONMEM's
+  own-estimation joint-normal convention, including a normal prior
+  directly on an omega element) -- see `?nlmixr2Est` for what each accepts
+  -- and `"all"`.  Because the check happens in the generic, methods
+  registered by other packages -- `babelmixr2`'s `nonmem`, `monolix`,
+  `saemix` and the rest -- are covered without any change of their own.
+
+- `est="focei"` and every method in its family (`foce`, `focep`, `fo`,
+  `foi`, the mu-referenced `mfoce*`/IRLS `ifoce*` variants, `laplace`,
+  `agq` and their quadrature/`*f` fast-path siblings) now honours a
+  prior on a population parameter, added to the objective as
+  `-2*log p(theta)` (nlmixr2/rxode2#1270, issue #929, issue #931) --
+  declared `nlmixr2Priors = "theta"`.  A prior that references an omega
+  element is still refused: FOCEi optimizes `chol(Omega^-1)`, not Omega
+  itself, and that gradient chain-rule is not wired in yet.
+
+  `foceiControl(fast=TRUE)` and `covMethod="analytic"` are silently
+  downgraded to their finite-difference equivalents whenever a model
+  carries a prior, since neither the analytic outer gradient nor the
+  analytic covariance has a `d/dtheta log p(theta)` term yet -- a
+  finite difference of the (now prior-inclusive) objective picks the
+  prior term up automatically; a stale analytic one would not.
 
 ## Changed defaults
 
