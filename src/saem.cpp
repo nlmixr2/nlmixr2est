@@ -625,7 +625,10 @@ static inline void _saemSeedCensAug(uint32_t baseSeed, int kiter, int k, int b,
   s = s * 2654435761u + (uint32_t)kiter;
   s = s * 2654435761u + (uint32_t)k;
   s = s * 2654435761u + (uint32_t)b;
-  s += (uint32_t)(mixIdx + 1);         // per-component stream offset (mixIdx can be -1)
+  // per-component stream offset (mixIdx can be -1); multiply-folded like every
+  // other field above -- a bare `+=` here collides whenever b and mixIdx+1
+  // sum to the same value (e.g. b=0,mixIdx=1 vs b=1,mixIdx=0).
+  s = s * 2654435761u + (uint32_t)(mixIdx + 1);
   nmSetSeedEng1(s);
 }
 
@@ -1257,6 +1260,18 @@ public:
   // cens_cur/limit_cur are RAW (untransformed), same length/order as y_cur/
   // f_cur (chain-sliced, ix_sorting-applied, endpoint span); limit_cur is
   // transformed here with this endpoint's TBS parameters to match y_cur.
+  //
+  // y_cur itself is on whatever scale the caller's hasFixedObsTransform
+  // branch already put it on (ysTrans, i.e. transformed, when the TBS
+  // transform is fixed; the raw ys otherwise) -- this mirrors arResk()'s own
+  // assumption a few lines below every call site, so a censored row's
+  // simulated replacement stays on the SAME scale as its uncensored
+  // neighbors in the same vector.  When the transform is instead ESTIMATED
+  // (hasFixedObsTransform==false), that shared assumption is already wrong
+  // (y_cur is raw while f_cur is power-transformed before the residual is
+  // taken) for EVERY row, not just censored ones -- a pre-existing gap, not
+  // introduced here, that traces to #914 (the saem lambda member never
+  // actually updates from its initial value).
   vec augmentCensY(int b, const vec &f_cur, const vec &y_cur,
                     const vec &cens_cur, const vec &limit_cur,
                     int kiter, int k, int mixIdx) {

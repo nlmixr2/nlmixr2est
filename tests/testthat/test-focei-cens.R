@@ -97,6 +97,45 @@ nmTest({
                  tolerance = 0.15)
   })
 
+  test_that("saem mixture model with censored data fits (#916 coverage)", {
+    # augmentCensY()/applyCensLoss() are also threaded through the nMix>1
+    # ("parallel"/soft-EM) mixture branch (cens_mix/limit_mix), a different
+    # vector-slicing path from the plain (non-mixture) case above -- fit a
+    # small 2-component mixture on the same M3 data and check it converges to
+    # a sane (finite, reproducible) answer instead of pinning exact values,
+    # since mixture fits are prone to label-switching.
+    datL <- rbind(dat[, names(dat) != "Y"], data.frame(ID = 1:10, Time = 1.5, DV = 3))
+    datL$cens <- ifelse(datL$Time == 1.5, 1, 0)
+    datL <- datL[order(datL$ID, datL$Time), ]
+
+    fMix <- function() {
+      ini({
+        tvK1 <- 0.3
+        tvK2 <- 0.8
+        p1 <- 0.5
+        bsvK ~ 0.04
+        prop.sd <- sqrt(0.1)
+      })
+      model({
+        ke <- mix(tvK1, p1, tvK2) * exp(bsvK)
+        v <- 1
+        ipre <- 10 * exp(-ke * t)
+        ipre ~ prop(prop.sd)
+      })
+    }
+
+    f.mix <- suppressMessages(suppressWarnings(
+      nlmixr(fMix, datL, "saem",
+             control = saemControl(nBurn = 10, nEm = 10, calcTables = FALSE, print = 0))
+    ))
+    expect_true(is.finite(f.mix$objf))
+    expect_true(all(is.finite(unlist(f.mix$theta))))
+    expect_true(all(as.numeric(f.mix$theta[c("tvK1", "tvK2")]) > 0.05 &
+                       as.numeric(f.mix$theta[c("tvK1", "tvK2")]) < 3))
+    expect_true(as.numeric(f.mix$theta[["prop.sd"]]) > 0.01 &&
+                  as.numeric(f.mix$theta[["prop.sd"]]) < 2)
+  })
+
 
   test_that("Limit affects values", {
 
