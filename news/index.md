@@ -21,6 +21,15 @@
   anywhere in the ecosystem, so rxode2 can now drop it
   (nlmixr2/rxode2#1250). \## New features
 
+- A pure-linear `matExp()` model now solves natively through rxode2’s
+  matrix-exponential driver (`rxControl(method="indLin")`) under SAEM
+  instead of being flattened to an equivalent `d/dt()` ODE first. SAEM
+  has no analytic-sensitivity consumer of the state derivatives, so
+  native solving is all that changes; `focei`/`nlm`/`nls` are
+  unaffected, and a model with an `indLin()` forcing term
+  (e.g. Michaelis-Menten) still flattens (issue
+  [\#859](https://github.com/nlmixr2/nlmixr2est/issues/859)).
+
 - A modeled `alag()` or `f()` on a `linCmt()` compartment now gets an
   exact FOCEi/FOCE eta gradient instead of a silently incomplete one.
   The structural `linCmt()` Jacobian only covers `p1`/`v1`/`ka`/…; the
