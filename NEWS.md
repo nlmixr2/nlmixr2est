@@ -83,6 +83,14 @@
 
 ## Bug fixes
 
+- `est="saem"` scored a censored (M2/M3/M4) row on an `ar()` endpoint against
+  the marginal normal distribution instead of the AR(1) conditional one that
+  its uncensored neighbors already used (#918). `arDYFhyp` whitened a
+  discarded copy of the prediction/SD to build the uncensored loss, then
+  handed the censored-loss calculation the original marginal values. The
+  whitened prediction/SD are now kept and passed through, so a BQL row after
+  an AR-active observation is scored consistently with the rest of its chain.
+
 - Post-estimation machinery no longer refuses a model whose `ini({})` declares
   prior distributions (#938).  Two parts:
 
@@ -129,6 +137,11 @@
   `add()+pow()+boxCox()`/`yeoJohnson()`) applies. Found while auditing the
   `addProp` branches for the E-step fix above; only a plain `add()+pow()`
   endpoint under the default `addProp="combined2"` was affected.
+- `"indLin"` is no longer excluded from the ODE-method fallback candidates a
+  post-fit table/residual solve tries when the fit's own ODE method is
+  neither `"dop853"`, `"liblsoda"`, nor `"lsoda"` (#858). rxode2/#1183-#1185
+  restored `indLin()`/matrix-exponential correctness, which was the reason
+  for the exclusion.
 
 ## New features
 
