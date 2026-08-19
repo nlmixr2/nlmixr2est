@@ -82,6 +82,19 @@ nmTest({
                 control = foceiControl(maxOuterIterations = 0L, print = 0L)))),
       "omega")
     expect_false(isTRUE(nlmixr2global$nlmixr2PriorGateBypass))
+
+    # posthoc/output declare nlmixr2Priors = "all", which skips the
+    # per-level restriction on purpose (#938) -- but they still route
+    # through FOCEi's shared C++ objective, which has no live Omega to
+    # read an omega-touching term against for any method but est="fo"
+    # (op_focei.omega is populated only when op_focei.fo==1).  Before a
+    # fix, this reached rxPriorLogDensityEval() with a default-constructed
+    # (0x0, NULL memptr()) omega and segfaulted the R session outright;
+    # .foceiFamilyControl() now refuses it with a normal R error instead.
+    expect_error(
+      suppressWarnings(suppressMessages(
+        nlmixr2(one.compartment.omega.prior, nlmixr2data::theo_sd, est = "posthoc"))),
+      "omega")
   })
 
   test_that("addCwres() works on a prior-carrying fit (#938)", {

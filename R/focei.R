@@ -2920,6 +2920,21 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   # calling family accepted.
   .control["priorSpec"] <- list(.nlmixr2BuildPriorSpec(.ui))
   if (!is.null(.control$priorSpec)) {
+    # FOCEi's shared C++ kernel does not evaluate an omega-referencing prior
+    # term yet (#931 scope is theta-only) -- true for every caller of THIS
+    # function, not just the methods that declare nlmixr2Priors = "theta".
+    # "all"-level pseudo-methods (output/posthoc, #938) skip the gate's
+    # per-level restriction on PURPOSE (there is no prior they could
+    # silently ignore), but they still route through the same op_focei
+    # objective, which has no live Omega to read for anything but est="fo"
+    # (op_focei.omega is only ever populated when op_focei.fo==1) -- so an
+    # omega-touching term reaching it there is not a policy question, it is
+    # a capability gap, and must be refused here rather than left to crash
+    # or silently misread stale/unallocated memory in C++.
+    if (any(!is.na(rxode2::rxUiPriors(.ui)$neta1))) {
+      stop("a prior on an omega element is not usable by this estimation method yet",
+           call.=FALSE)
+    }
     # Neither the analytic outer gradient nor the analytic covariance/Hessian
     # has a d/dtheta log p(theta) term yet (#931 scope is the objective only);
     # an FD gradient/Hessian of foceiOfv0() picks the prior up for free

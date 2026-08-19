@@ -4633,6 +4633,28 @@ static inline double foceiLik0(double *theta) {
 // d/dtheta log p(theta) term yet, so .foceiFamilyControl() (R/focei.R)
 // forces fast=FALSE whenever a prior is present rather than risk a
 // gradient that silently disagrees with this objective.
+// True if any term in the spec references an omega element (etaIdx[k] != 0
+// for some member).  FOCEi's shared C++ objective has no live Omega to read
+// this against for any method but est="fo" (op_focei.omega is populated only
+// when op_focei.fo==1, see foceiOmegaFromTheta()); the R-side gate refuses
+// this for every "theta"-declared method already, but "all"-level
+// pseudo-methods (output/posthoc, #938) skip that per-level check on
+// purpose, and .foceiFamilyControl() (R/focei.R) refuses it there too -- this
+// is the same check repeated in C++ as a hard backstop, since the
+// alternative on a caller that ever slips past both R-side checks is
+// reading op_focei.omega's default-constructed (0x0, NULL memptr()) matrix,
+// a guaranteed segfault rather than a clean error.
+static bool priorSpecHasOmegaTerm(const rx_prior_spec_t *spec) {
+  if (spec == NULL) return false;
+  for (int t = 0; t < spec->nTerms; ++t) {
+    const rx_prior_term_t &term = spec->terms[t];
+    for (int k = 0; k < term.n; ++k) {
+      if (term.etaIdx[k] != 0) return true;
+    }
+  }
+  return false;
+}
+
 static inline double foceiPriorObjTerm() {
   if (op_focei.priorSpec == NULL) return 0.0;
   std::vector<double> gTheta((size_t)op_focei.ntheta, 0.0);
@@ -6502,6 +6524,9 @@ NumericVector foceiSetup_(const RObject &obj,
     if (TYPEOF(priorSpecS) == EXTPTRSXP) {
       op_focei.priorSpec = (const rx_prior_spec_t *) R_ExternalPtrAddr(priorSpecS);
     }
+  }
+  if (priorSpecHasOmegaTerm(op_focei.priorSpec)) {
+    stop("a prior on an omega element is not usable by this estimation method yet");
   }
   if (foceiO.containsElementNamed("est") && TYPEOF(foceiO["est"]) == STRSXP) {
     std::string estStr = as<std::string>(foceiO["est"]);
