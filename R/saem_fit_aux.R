@@ -1,5 +1,3 @@
-## FIXME: g by endpoint
-
 #' Per-observation mask of general log-likelihood (`ll()`) rows
 #'
 #' `res.mod == 0` marks an `ll()` endpoint and `ix_endpnt` maps each observation
@@ -528,6 +526,7 @@ calc.COV <- function(fit0) {
   .ui <- if (is.environment(.env)) .env$ui else NULL
   .covFull <- !is.null(.ui) && isTRUE(rxode2::rxGetControl(.ui, "covFull", TRUE))
   .omPairs <- NULL; .omNames <- character(0); .resNames <- character(0); .resType <- integer(0)
+  .resEndpnt <- integer(0)
   if (.covFull) {
     .idf <- .ui$iniDf
     .etaN <- tryCatch(.foceiEtaThetaMap(.ui)$etaNames, error = function(e) NULL)
@@ -541,6 +540,15 @@ calc.COV <- function(fit0) {
     if (nrow(.ri) > 0L) {
       .resNames <- .ri$name
       .resType  <- ifelse(grepl("prop|pow", .ri$err), 2L, 1L)   # 1 = additive (a), 2 = proportional (b)
+      # dVi/d(residual param) is only nonzero on its OWN endpoint's rows (#904); match
+      # each residual parameter's condition to predDf's row order, which is what
+      # ix_endpnt numbers against.  Fail rather than guess a wrong endpoint (#856).
+      .resEndpnt <- match(as.character(.ri$condition), as.character(.ui$predDf$cond))
+      if (anyNA(.resEndpnt)) {
+        warning("saem covFull: residual parameter endpoint unknown; variance block dropped",
+                call. = FALSE)
+        .resNames <- character(0); .resType <- integer(0); .resEndpnt <- integer(0)
+      }
     }
   }
   .nom <- if (is.null(.omPairs)) 0L else nrow(.omPairs)
@@ -581,12 +589,13 @@ calc.COV <- function(fit0) {
     .b <- NULL
     if (.doVar) {
       invVi <- crossprod(invVi.5)                            # Vi^{-1}
-      .gix <- g[ix]; .fix <- .absF0[ix]
+      .gix <- g[ix]; .fix <- .absF0[ix]; .eix <- ix_endpnt[ix]
       # A_k = Vi^{-1} dVi/d(param_k) for each variance parameter
       .A <- vector("list", .nvar); .k <- 0L
       for (r in seq_along(.resNames)) {
         .k <- .k + 1L
         .dv <- if (.resType[r] == 1L) 2 * .gix else 2 * .gix * .fix   # dVi/da = 2 diag(g); dVi/db = 2 diag(g|f|)
+        .dv[.eix != .resEndpnt[r]] <- 0                       # mask to the owning endpoint (#904)
         .A[[.k]] <- sweep(invVi, 2L, .dv, "*")               # Vi^{-1} diag(.dv)
       }
       if (.nom > 0L) for (pp in seq_len(.nom)) {
