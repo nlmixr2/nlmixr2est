@@ -207,6 +207,12 @@ nmTest({
     # residual error to anchor it); linFim is what gets reported
     expect_equal(.f$covMethod, "linFim")
 
+    # nb_param (#893): the C++ kernel still accumulates Ha/HaSa every fit
+    # regardless of the reported covMethod -- for a general-likelihood model
+    # (distribution==4) it must carry NO residual slot at all (theta + eta
+    # only), not a spurious always-zero one
+    expect_equal(nrow(.f$saem$Ha), 1L + 1L)
+
     .tlam <- fixef(.f)[["tlam"]]
     .om <- .f$omega[1, 1]
     # exact marginal -2LL and its observed information, by quadrature over the eta
