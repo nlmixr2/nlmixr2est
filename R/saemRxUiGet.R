@@ -393,6 +393,17 @@ rxUiGet.saemResMod <- function(x, ...) {
 attr(rxUiGet.saemResMod, "rstudio") <- c(1L, 2L)
 
 #' @export
+rxUiGet.saemDistEp <- function(x, ...) {
+  # Per-endpoint distribution id, matching the C++ `distribution` codes: 1 normal,
+  # 4 general log-likelihood.  The scalar `distribution` cannot describe a model
+  # that has both, so the kernel reads this to decide the observation loss per
+  # observation (via ix_endpnt) rather than per fit.
+  .ui <- x[[1]]
+  ifelse(.ui$predDf$distribution == "LL", 4L, 1L)
+}
+attr(rxUiGet.saemDistEp, "rstudio") <- c(1L, 4L)
+
+#' @export
 rxUiGet.saemArActive <- function(x, ...) {
   .ui <- x[[1]]
   .predDf <- .ui$predDf
@@ -812,6 +823,7 @@ rxUiGet.saemModelList <- function(x, ...) {
     .mod$covars <- .covars
   }
   .mod$res.mod <- rxUiGet.saemResMod(x, ...)
+  .mod$distEp <- rxUiGet.saemDistEp(x, ...)
   .mod$arActive <- rxUiGet.saemArActive(x, ...)
   .mod$arCor <- rxUiGet.saemArCor(x, ...)
   .mod$log.eta <- rxUiGet.saemLogEta(x, ...)

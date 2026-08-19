@@ -27,6 +27,48 @@
   seed) change as a result.
 ## New features
 
+- `est="saem"` now fits a model that mixes a normal endpoint with a general
+  log-likelihood (`ll()`) one.  The observation loss is chosen per endpoint
+  rather than per fit, so the normal endpoint keeps its residual error model
+  while the `ll()` endpoint contributes `-ll`.  Previously such a model was
+  rejected outright, and the scalar it would have been given treats every
+  endpoint as a log-likelihood.  Note that an SD written inside an `ll()` is an
+  ordinary parameter with no positivity constraint, so carry it on the log
+  scale.
+
+- `est = "fsaem"` (equivalently `saemControl(fast = TRUE)`) is back.  It is the
+  fast SAEM of Karimi, Lavielle and Moulines (2020): the MCMC simulation step
+  proposes each subject's random effects from an independent Metropolis-Hastings
+  kernel centered at that subject's conditional MAP, with the FOCEi inner
+  information as the proposal covariance -- the linearization form (paper Eq 17)
+  for continuous endpoints and the Laplace/Hessian form (Eq 13) for a general
+  log-likelihood (`ll()`) endpoint, selected by `saemControl(fastCov=)`.
+  `fastKernel` chooses the schedule (`"firstN"` for the first `fastIter`
+  iterations, `"throughout"`, or `"additive"`), and `fastLik` chooses which
+  FOCEi-family inner likelihood builds the proposal.  Standard SAEM is unchanged
+  and remains the default.
+
+  Four opt-in refinements are available, all leaving the default behavior
+  unchanged: `saemControl(nu=)` accepts a fourth element giving the IMH sweeps
+  per iteration (default 5); `fastFallback = "prior"` proposes from the prior
+  `N(centre, Omega)` for a subject whose own proposal covariance is unusable
+  instead of holding it still; `fastMode = "chainMean"` centres the proposal on
+  the subject's mean over the chains rather than its conditional mode; and
+  `fastHRefresh = k` recomputes the mode and proposal covariance every `k`
+  iterations rather than every one, saving an inner optimization per subject in
+  between.  The last three trade acceptance for work or robustness, never
+  correctness -- an independent Metropolis-Hastings proposal need not match the
+  target, and the acceptance ratio is computed from the proposal actually used.
+
+  The fast kernel now also covers models with more than one endpoint -- any mix
+  of `add`/`prop` normal endpoints and `ll()` ones -- which previously degraded
+  to standard SAEM with a message.
+
+- `est="saem"` fits now carry `fit$saemDiag`, the per-kernel Metropolis proposal
+  and acceptance counts; `est="fsaem"` fits also carry `fit$fsaemDiag` with the
+  fast kernel's own step, proposal, acceptance and failure counts, plus
+  `lastTheta`, the inner `THETA` the last fast step was built with (the counts
+  show the kernel fired; only `lastTheta` shows what it was fired at).
 - A pure-linear `matExp()` model now solves natively through rxode2's
   matrix-exponential driver (`rxControl(method="indLin")`) under SAEM instead
   of being flattened to an equivalent `d/dt()` ODE first.  SAEM has no
@@ -351,6 +393,92 @@
 
 ### Estimation
 
+- Fixed `est="saem"`'s handling of a **general log-likelihood (`ll()`)
+  endpoint**, which was wrong in its objective, its standard errors, and its
+  residual bookkeeping:
+
+  - An `ll()` row was scored as a Gaussian observation.  Such an endpoint
+    estimates no residual error, so the residual step never runs and the
+    placeholder it starts from survived: every log-density was scored as a normal
+    mean with standard deviation `10 + |ll|`, leaving the reported
+    `objf`/`logLik`/`AIC`/`BIC` and every standard error meaningless on the
+    default path.  An `ll()` row now contributes its own log-density to the
+    objective, with the `log(2*pi)` normalizer applied only to normally
+    distributed rows, and the observed information of that log-density to the
+    covariance.  On an exponential time-to-event model with a closed-form
+    marginal likelihood the reported -2LL goes from 1124 to within 1e-3 of the
+    exact 1392; against the Gaussian twin of a one-compartment model (an `ll()`
+    written as the exact normal log-density versus the equivalent `add()` model)
+    the standard error ratios go from 4.0-80.5 to 0.99-1.02, and the two
+    objective function values now agree outright rather than up to a constant.
+
+  - The residual M-step and both mixture AE-steps now skip an `ll()` endpoint per
+    endpoint, instead of only when the whole model is `ll()`.  A model mixing a
+    normal and an `ll()` endpoint stored `sigma2 = 0` for the `ll()` one, and a
+    mixture model accumulated a meaningless residual sum of squares there, which
+    then also perturbed the stochastic-approximation FIM.
+
+  With the FIM's per-endpoint residual slot fixed separately (#893, above), a
+  model mixing a normal and an `ll()` endpoint now also gets the right residual
+  standard error regardless of which endpoint carries it: with the `ll()`
+  endpoint on the lower compartment it previously came back roughly 1.7 times
+  too large under `covMethod="sa"`/`"fim"` (#872).  `covMethod="linFim"` (the
+  default) was unaffected throughout; its `calc.COV()` linearization was always
+  per-endpoint.
+
+- `est="saem"` and `est="fsaem"` now score a **censored** observation the way the
+  rest of the package does.  The simulation step handed the shared censoring
+  likelihood the per-observation loss where it takes a log-likelihood, the
+  residual standard deviation where it takes a variance, and the untransformed
+  `DV`, then stored the log-likelihood it returned back as a loss.  M2 hid this,
+  since a limit well below the prediction leaves its tail probability at
+  essentially 1, but under M3/M4 the censored term arrived with its sign flipped
+  and the chain drove censored predictions to the wrong side of the limit: a
+  one-compartment M3 fit that FOCEi puts at `ke = 0.76` came back at `ke = -23`
+  with a proportional residual standard deviation in the thousands.  Censored
+  rows now score identically in the chain and in the FOCEi inner behind
+  `est="fsaem"`'s Metropolis-Hastings acceptance, so censored data stays on the
+  fast kernel rather than needing a gate.  An uncensored fit is bit-identical
+  (#876).
+
+- `est="fsaem"`'s Metropolis-Hastings proposal is now built against the residual
+  variance the SAEM chain actually uses.  The FOCEi inner behind the proposal was
+  built with the fit's `addProp`, whose default is `"combined2"`, while the SAEM
+  simulation step's residual standard deviation is unconditionally `"combined1"`
+  (`ares + bres*|f|`); on an `add()` + `prop()` model the kernel was therefore
+  preconditioned against a different variance than the chain it guides, costing
+  acceptance.  The inner is now always `"combined1"`, and a model that *declares*
+  `combined2()` on such an endpoint -- which the control cannot override --
+  degrades to standard SAEM instead (#874).
+
+- `est="fsaem"` now builds its Metropolis-Hastings proposal at the fit's own
+  population parameters when the model has a parameter the SAEM phi vector does
+  not line up with positionally.  The fast kernel filled the FOCEi inner's
+  `THETA` by walking the structural thetas and the phi columns in parallel, and
+  that pairing breaks three ways: a non-mu eta (every **IOV** eta is one) appends
+  a phi column with no theta, a `fix()`ed theta keeps its phi column but leaves
+  the structural list, and a theta with no eta shifts every later index.  The
+  inner was then handed some other parameter's value -- an IOV model got
+  `iov sd = 0`, an IOV model with a no-eta theta got `V = 1`, and a `fix()`ed
+  `tcl` gave `tv` tcl's fixed value -- which costs acceptance and moves the
+  target without erroring.  Each structural theta is now matched to its own phi
+  column by name; on an IOV model with a no-eta theta the acceptance rate goes
+  from 0.50 to 0.89 (#875).
+
+- `est="fsaem"` on a model with **both a mu-referenced covariate and an IOV**
+  (or any other non-mu) eta ran the standard SAEM kernel instead of aborting the
+  fit.  The covariate proposal's inner absorbs each mu-referenced intercept into
+  a per-subject data column and is sized from those, so an eta with no such
+  column left it short and the fit died with "etaMat must have the same number
+  of ETAs (cols) as the model" (#875).
+
+- `est="fsaem"` no longer replaces the fit's own control while installing its
+  fast kernel.  The FOCEi inner behind the proposal was set up on the fit's `ui`
+  rather than a copy, so the `foceiControl` it installs there *became* the fit's
+  control: everything read from the control after that point saw the inner's
+  settings.  The visible consequence was that the teardown of the inner problem
+  is gated on `fast`, which the inner's control reports as `FALSE`, so the FOCEi
+  inner state was left standing after every fast fit instead of being freed.
 - `est="saem"` no longer prints `solve(): system is singular; attempting approx
   solution` **on every iteration of the second half of the fit** when the model
   has more than one population theta without a random effect.  The
@@ -386,24 +514,6 @@
   any tolerance, so compare candidate models within one estimation method rather
   than across `focei` and `foceif`.
 
-- Fixed `est="saem"` scoring a **general log-likelihood endpoint (`ll()`) as a
-  Gaussian observation** in both its objective function and its standard errors.
-  Such an endpoint estimates no residual error, so the residual step never runs
-  and the placeholder values it starts from survive: every log-density was scored
-  as a normal mean with standard deviation `10 + |ll|`.  The reported
-  `objf`/`logLik`/`AIC`/`BIC` and every standard error were meaningless, on the
-  default path -- `covMethod="sa"` cannot be computed for these models and
-  already fell back to the linearized Fisher information, which is where the
-  defect lives.  An `ll()` row now contributes its own log-density to the
-  objective, with the `log(2*pi)` normalizer applied only to normally-distributed
-  rows, and contributes the observed information of that log-density to the
-  covariance.  On an exponential time-to-event model with a closed-form marginal
-  likelihood the reported -2LL goes from 1124 to within 1e-3 of the exact 1392;
-  against the Gaussian twin of a one-compartment model (an `ll()` written as the
-  exact normal log-density versus the equivalent `add()` model) the standard
-  error ratios go from 4.0-80.5 to 0.99-1.02, and the two objective function
-  values now agree outright rather than up to a constant.
-
 - Fixed `est="saem"` applying the **transform-both-sides log-Jacobian with the
   wrong sign** in its Gaussian-quadrature likelihood, so the reported
   `objf`/`logLik`/`AIC`/`BIC` for an `lnorm()`, `boxCox()`, `yeoJohnson()`,
@@ -423,12 +533,6 @@
 - `saemControl(nsdGq=)` is now honored when the likelihood is calculated with
   the fit; it was read under a name the control never stored, so any value other
   than the default was silently ignored.
-
-- `saemControl(covMethod=)` `"sa"` and `"fim"` now say plainly that they do not
-  apply to a general log-likelihood endpoint and use the linearized Fisher
-  information, instead of reporting that the covariance "could not be computed".
-  The stochastic-approximation covariance phase is also skipped for such a model
-  rather than run and discarded.
 
 - `saem`'s uninformative-eta detection
   (`saemControl(handleUninformativeEtas=TRUE)`, the default) could freeze an eta

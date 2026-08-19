@@ -366,6 +366,38 @@ adviOptimize_ <- function(args) {
     .Call(`_nlmixr2est_adviOptimize_`, args)
 }
 
+#' Set the f-SAEM fast-kernel tunables for this fit.
+#' @param opts list with any of nsweep, fallback, mode, hRefresh
+#' @return NULL, called for side effects
+#' @noRd
+fsaemSetOpts_ <- function(opts) {
+    .Call(`_nlmixr2est_fsaemSetOpts_`, opts)
+}
+
+fsaemDiagReset_ <- function() {
+    .Call(`_nlmixr2est_fsaemDiagReset_`)
+}
+
+fsaemDiag_ <- function() {
+    .Call(`_nlmixr2est_fsaemDiag_`)
+}
+
+fsaemInnerMap_ <- function(cores) {
+    .Call(`_nlmixr2est_fsaemInnerMap_`, cores)
+}
+
+fsaemImhKernel_ <- function(etaCur, etaHat, cholGamma, nchain, cores, mprior, lower, upper, nbd, streamBase, nRetry) {
+    .Call(`_nlmixr2est_fsaemImhKernel_`, etaCur, etaHat, cholGamma, nchain, cores, mprior, lower, upper, nbd, streamBase, nRetry)
+}
+
+fsaemStepCpp_ <- function(env, theta, omega, mprior, etaCur, nchain, nsweep, cores, lower, upper, nbd, seed, nRetry, kiter) {
+    .Call(`_nlmixr2est_fsaemStepCpp_`, env, theta, omega, mprior, etaCur, nchain, nsweep, cores, lower, upper, nbd, seed, nRetry, kiter)
+}
+
+fsaemMapImhCpp_ <- function(mprior, etaCur, nchain, nsweep, cores, lower, upper, nbd, seed, nRetry, kiter) {
+    .Call(`_nlmixr2est_fsaemMapImhCpp_`, mprior, etaCur, nchain, nsweep, cores, lower, upper, nbd, seed, nRetry, kiter)
+}
+
 vaeInnerFree_ <- function() {
     .Call(`_nlmixr2est_vaeInnerFree_`)
 }
@@ -758,6 +790,14 @@ augPredTrans <- function(pred, ipred, lambda, yjIn, low, hi) {
 #' @export
 rxode2stateOde <- function(inp) {
     .Call(`_nlmixr2est_rxode2stateOde`, inp)
+}
+
+saemDiagReset_ <- function() {
+    .Call(`_nlmixr2est_saemDiagReset_`)
+}
+
+saemDiag_ <- function() {
+    .Call(`_nlmixr2est_saemDiag_`)
 }
 
 saem_do_pred <- function(in_phi, in_evt, in_opt) {

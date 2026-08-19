@@ -193,7 +193,12 @@
                        mixProbPriorN = 20,
                        mixSampleMethod = c("parallel", "msaem"),
                        omegaShare = integer(0),
-                       omegaShareSubpop = integer(0)) {
+                       omegaShareSubpop = integer(0),
+                       fast = FALSE,
+                       fastIter = 20L,
+                       fastKernel = "firstN",
+                       fastCov = "auto",
+                       fastLik = "focei") {
   if (is.null(fixedOmega)) stop("requires fixedOmega", call.=FALSE)
   if (is.null(fixedOmegaValues)) stop("requires fixedOmegaValues", call.=FALSE)
   if (is.null(parHistThetaKeep)) stop("requires parHistThetaKeep", call.=FALSE)
@@ -211,6 +216,8 @@
   # All of saem's RNG now draws from the rxode2 threefry engine (the do_mcmc
   # proposals via setSeedEng1 streams, the phiM init via rxnorm), which the
   # rxWithSeed() wrapper in .saemFitModel seeds and restores -- no set.seed needed.
+  # "general" (=4) = general log-likelihood endpoint (ll() ~ expr): the model
+  # returns the per-observation loglik and -ll is the observation loss.
   distribution.idx <- c("normal" = 1, "poisson" = 2, "binomial" = 3, "general" = 4)
   distribution <- match.arg(distribution)
   distribution <- distribution.idx[distribution]
@@ -239,6 +246,9 @@
   }
   if (is.null(model$res.mod)) {
     model$res.mod <- rep(1, model$nendpnt)
+  }
+  if (is.null(model$distEp)) {
+    model$distEp <- rep(as.integer(distribution), model$nendpnt)
   }
   if (is.null(inits$omega)) {
     inits$omega <- rep(1, model$N.eta) * 4
@@ -696,6 +706,7 @@
     statphi02 = statphi02,
     statphi12 = statphi12,
     res.mod = model$res.mod,
+    distEp = as.integer(model$distEp),
     ares = inits$ares,
     bres = inits$bres,
     cres = inits$cres,
@@ -712,7 +723,12 @@
     ilambda1 = as.integer(ilambda1),
     ilambda0 = as.integer(ilambda0),
     nobs = .nobs,
-    resFixed=resFixed)
+    resFixed=resFixed,
+    fast=as.integer(isTRUE(fast)),
+    fastIter=as.integer(fastIter),
+    fastKernel=as.character(fastKernel),
+    fastCov=as.character(fastCov),
+    fastLik=as.character(fastLik))
 
   ## CHECKME
   s <- cfg$evt[cfg$evt[, "EVID"] == 0, "CMT"]

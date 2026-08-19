@@ -349,6 +349,56 @@ nmTest({
     expect_equal(.saemLlObsMask(list(opt = list()), .ix), rep(FALSE, 4))
   })
 
+  test_that("the FIM residual slot uses ITS endpoint's variance and count (#872)", {
+    # A mixed normal + ll() model whose ll() endpoint has the LOWER cmt still has
+    # exactly one estimated residual, so the FIM's single residual slot IS filled
+    # -- but it describes endpoint 2.  The kernel used to divide that residual by
+    # sigma2[0] (the ll() endpoint's, which the M-step never touches) over ntotal
+    # (every observation in the fit), and .saemFimToCov took resMat[1, 1] for the
+    # delta-method SD.  est="fsaem" shares this kernel, so one fit pins both.
+    .d <- mkPkpdTwoEndpointData(n = 20L)
+    .mixed <- function() {
+      ini({
+        tcl <- -3.2; tv <- -1; tec50 <- 0.5
+        eta.cl ~ 0.09; eta.v ~ 0.09
+        lpk <- log(0.4)
+        pd.sd <- 4
+      })
+      model({
+        ka <- exp(0.5); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        e0 <- 100; ec50 <- exp(tec50)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        eff <- e0 * (1 - cp / (ec50 + cp))
+        s1 <- exp(lpk)
+        ll(cp) ~ -0.5 * log(2 * pi) - lpk - 0.5 * ((DV - cp) / s1)^2
+        eff ~ add(pd.sd) | eff
+      })
+    }
+    .f <- .nlmixr(.mixed, .d, est = "saem",
+                  control = saemControl(nBurn = 150, nEm = 200, seed = 1L, print = 0L,
+                                        covMethod = "sa", nSaCov = 300,
+                                        calcTables = FALSE))
+    # the slot really was filled by the SA FIM -- not a silent fall back to linFim
+    expect_equal(.f$covMethod, "sa")
+    .ep <- rxUiGet.saemDistEp(list(rxode2::rxUiDecompress(.f$ui)))
+    expect_equal(.ep, c(4L, 1L))
+    # resMat follows predDf order, so the residual is row 2; row 1 is the ll()
+    # endpoint's init, which the M-step correctly leaves alone
+    .ares <- .f$saem$resMat[2, 1]
+    .nb <- sum(.d$evid == 0 & .d$dvid == "eff")
+    # an additive residual's slot carries information n_b/2 in log-sigma2 coords,
+    # so SE(sd) = 0.5*sd*sqrt(2/n_b) -- endpoint 2's OWN count, not ntotal
+    .want <- 0.5 * .ares * sqrt(2 / .nb)
+    expect_equal(unname(.f$parFixedDf["pd.sd", "SE"]), .want, tolerance = 0.05)
+    # and it is not built from row 1 (the pre-fix R-side read); pre-fix the kernel
+    # returned ~1.7x .want here
+    expect_false(isTRUE(all.equal(unname(.f$parFixedDf["pd.sd", "SE"]),
+                                  0.5 * .f$saem$resMat[1, 1] * sqrt(2 / .nb),
+                                  tolerance = 0.05)))
+  })
+
   test_that(".saemResEndpointIdx matches a residual parameter to its ix_endpnt endpoint (#904)", {
     # predDf$cond is in ix_endpnt (endpoint) order; a residual parameter's condition
     # is matched positionally against it, not assumed to line up with .ri's row order

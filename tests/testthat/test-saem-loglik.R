@@ -1,7 +1,8 @@
 nmTest({
-  # General log-likelihood endpoints (ll() ~ expr) are supported by saem the saemix
-  # way: the model returns the per-observation log-likelihood as its prediction, the
-  # observation loss is -ll, and the standard MCMC kernels run unchanged.
+  # General log-likelihood endpoints (ll() ~ expr) are supported by BOTH saem and
+  # fsaem the saemix way: the model returns the per-observation log-likelihood as
+  # its prediction, the observation loss is -ll, and the standard MCMC kernels run
+  # unchanged (fsaem adds the IMH accelerator on top).
 
   # exponential time-to-event data with a subject random effect on the mean
   .mkTte <- function(seed = 1L, n = 150L, meanT = 40) {
@@ -20,6 +21,28 @@ nmTest({
     })
   }
 
+  # [pkpd.two.endpoint()] with the PD endpoint written as its own log-likelihood
+  # instead of add(pd.sd), so the model mixes a normal and an ll() endpoint
+  mixedNormLl <- function() {
+    ini({
+      tcl <- -3.2; tv <- -1; tec50 <- 0.5
+      eta.cl ~ 0.09; eta.v ~ 0.09
+      pk.sd <- 0.4; pd.sd <- 4
+    })
+    model({
+      ka <- exp(0.5)
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv + eta.v)
+      e0 <- 100; ec50 <- exp(tec50)
+      d/dt(depot) <- -ka * depot
+      d/dt(center) <- ka * depot - cl / v * center
+      cp <- center / v
+      eff <- e0 * (1 - cp / (ec50 + cp))
+      cp ~ add(pk.sd) | cp
+      ll(eff) ~ -log(pd.sd) - 0.5*log(2*pi) - 0.5*((DV - eff)/pd.sd)^2
+    })
+  }
+
   test_that("saem fits a general log-likelihood (exponential TTE) endpoint", {
     .d <- .mkTte(1L)
     .f <- suppressMessages(nlmixr2(expTte, .d, est = "saem",
@@ -29,6 +52,25 @@ nmTest({
     expect_equal(exp(fixef(.f)[["tlam"]]), 40, tolerance = 0.2)
     # a random-effect variance was estimated
     expect_gt(.f$omega[1, 1], 0)
+  })
+
+  test_that("fsaem fits the same general log-likelihood endpoint", {
+    .d <- .mkTte(1L)
+    .f <- suppressMessages(nlmixr2(expTte, .d, est = "fsaem",
+      control = saemControl(nBurn = 150, nEm = 80, nmc = 3, seed = 1, print = 0L,
+                            calcTables = FALSE)))
+    expect_true(.f$saemControl$fast)
+    expect_equal(exp(fixef(.f)[["tlam"]]), 40, tolerance = 0.2)
+  })
+
+  test_that("saem and fsaem agree on a general log-likelihood endpoint", {
+    .d <- .mkTte(2L)
+    .ctl <- saemControl(nBurn = 200, nEm = 100, nmc = 3, seed = 3, print = 0L,
+                        calcTables = FALSE)
+    .ss <- suppressMessages(nlmixr2(expTte, .d, est = "saem",  control = .ctl))
+    .fs <- suppressMessages(nlmixr2(expTte, .d, est = "fsaem", control = .ctl))
+    # both land at the same MLE (the observation likelihood is identical)
+    expect_lt(abs(fixef(.ss)[["tlam"]] - fixef(.fs)[["tlam"]]), 0.08)
   })
 
   test_that("a Gaussian twin agrees with the equivalent add() model (#871)", {
@@ -94,5 +136,33 @@ nmTest({
     expect_equal(.ui$saemModNumEst, 0L)
     # and the saem solve model emits the log-likelihood as rx_pred_ (rx_yj_ ~ 152)
     expect_true(any(grepl("rx_yj_", as.character(.ui$saemModel0))))
+  })
+
+  test_that("the residual M-step skips an ll() endpoint of a mixed model (#873)", {
+    # A mixed norm + ll() model carries the scalar distribution==1, so the
+    # `if (distribution != 4)` guard on the residual M-step does not fire and the
+    # loop used to run over the ll() endpoint as well.  Nothing accumulates into
+    # statrese for that endpoint, so it stored sigma2 = 0 -- the value the FIM's
+    # residual slot then divides by.
+    .fitOn <- function(.d) {
+      .f <- suppressMessages(nlmixr2(mixedNormLl, .d, est = "saem",
+        control = saemControl(nBurn = 10, nEm = 5, nmc = 3, seed = 1, print = 0L,
+                              calcTables = FALSE, covMethod = 0L)))
+      .f$saem$res_info
+    }
+    .r1 <- .fitOn(mkPkpdTwoEndpointData(n = 12L))
+    .r2 <- .fitOn(mkPkpdTwoEndpointData(n = 12L, seed = 7L))
+    # endpoint 1 is the additive normal one, endpoint 2 the ll()
+    expect_equal(as.integer(.r1$res_mod), c(1L, 0L))
+    # the mechanism, without pinning saem's sigma2 initialization constant: the
+    # ll() endpoint's slot is untouched by the M-step, so it cannot depend on the
+    # data, while the normal endpoint's does.  The bug drove the ll() slot to
+    # exactly 0 -- also data-independent, hence the second assertion.
+    expect_equal(as.numeric(.r1$sigma2)[2], as.numeric(.r2$sigma2)[2])
+    expect_gt(as.numeric(.r1$sigma2)[2], 0)
+    expect_false(isTRUE(all.equal(as.numeric(.r1$sigma2)[1], as.numeric(.r2$sigma2)[1])))
+    # and the normal endpoint is still estimated
+    expect_true(is.finite(as.numeric(.r1$sigma2)[1]))
+    expect_gt(as.numeric(.r1$sigma2)[1], 0)
   })
 })

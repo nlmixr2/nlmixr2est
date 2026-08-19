@@ -615,6 +615,55 @@ nmTest({
     expect_true(clMuLinear[1] < 2)
     expect_true(clMuLinear[2] > 4)
   })
+
+  test_that("the mixture AE-step skips an ll() endpoint's residual SSR (#873)", {
+    # The two mixture AE loops accumulated statr[b] over EVERY endpoint, so for an
+    # ll() endpoint they summed (y - _powerD(loglik))^2 -- a quantity with no
+    # meaning -- and carried it into statrese[b] and then sigma2[b].  The
+    # non-mixture branch already skipped per endpoint.
+    .d <- mkPkpdTwoEndpointData(n = 12L)
+    twoPopMixedLl <- function() {
+      ini({
+        tcl1 <- -3.2; tcl2 <- -2.2; tv <- -1; tec50 <- 0.5
+        p1 <- 0.5
+        eta.cl ~ 0.09; eta.v ~ 0.09
+        pk.sd <- 0.4; pd.sd <- 4
+      })
+      model({
+        ka <- exp(0.5)
+        cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl))
+        v <- exp(tv + eta.v)
+        e0 <- 100; ec50 <- exp(tec50)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        eff <- e0 * (1 - cp / (ec50 + cp))
+        cp ~ add(pk.sd) | cp
+        ll(eff) ~ -log(pd.sd) - 0.5*log(2*pi) - 0.5*((DV - eff)/pd.sd)^2
+      })
+    }
+    # "parallel" and "msaem" have their own AE loop, and both were missing the skip
+    .r <- lapply(c("parallel", "msaem"), function(.m) {
+      .f <- suppressMessages(.nlmixr(twoPopMixedLl, .d, est = "saem",
+                                     saemControl(print = 0, seed = 1, nBurn = 10, nEm = 5,
+                                                 nmc = 3, calcTables = FALSE, covMethod = 0L,
+                                                 mixSampleMethod = .m)))
+      .f$saem$res_info
+    })
+    for (.i in seq_along(.r)) {
+      expect_equal(as.integer(.r[[.i]]$res_mod), c(1L, 0L))
+      expect_gt(as.numeric(.r[[.i]]$sigma2)[2], 0)
+      expect_true(is.finite(as.numeric(.r[[.i]]$sigma2)[1]))
+      expect_gt(as.numeric(.r[[.i]]$sigma2)[1], 0)
+    }
+    # The mechanism, without pinning saem's sigma2 initialization constant: the two
+    # sampling methods run different chains, so the normal endpoint's residual
+    # differs between them while the ll() endpoint's slot -- never written -- is
+    # identical.  Accumulating the ll() SSR made it chain-dependent too.
+    expect_equal(as.numeric(.r[[1]]$sigma2)[2], as.numeric(.r[[2]]$sigma2)[2])
+    expect_false(isTRUE(all.equal(as.numeric(.r[[1]]$sigma2)[1],
+                                  as.numeric(.r[[2]]$sigma2)[1])))
+  })
 })
 
 

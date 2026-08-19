@@ -401,3 +401,164 @@ Scope = the *general* FOCEi likelihood surface (any inner-supported endpoint) no
 TTE-only, since the inner handles them uniformly; Weibull TTE is the validation
 gate. Endpoints whose inner likelihood needs the Hessian proposal use
 `fastCov` auto -> hessian (already validated on continuous).
+
+## Phase R -- restoration (issue #845, 2026-08-05)
+
+`est="fsaem"` was removed in 76a539b8f because it showed no early-convergence
+advantage over plain SAEM.  Issue #845 asks for it back now that the shared ODE
+pool (`odeSwap`) is in place.  Worktree `~/src/nlmixr2est-fsaem`, branch
+`feat/fsaem-restore`.
+
+- **R1 (revert)**: revert 76a539b8f onto main.  `.saemGeneralLik` keeps its
+  post-removal name and home -- plain saem fits `ll()` endpoints now, so the
+  detector is shared rather than duplicated.  NEWS goes under 7.0.3 (7.0.2 is the
+  in-flight CRAN submission).
+- **R2 (odeSwap audit)**: the pool itself is INERT for fsaem -- `.odeSwapInfo()`
+  after a fit shows one registered slot (`inner`), `overrideNeeded=FALSE`,
+  `scratchNlhs=0`, `lhsWidthMismatchN=0`, `activeOverride` all -1.  What IS
+  shared and was wrong is the event-sensitivity ("jump") shape: setting up the
+  FOCEi inner points rxode2's globals at the inner, and the SAEM model -- which
+  has none -- was solved under it.  Fixed with `odeSwapEsOff()` at every SAEM
+  solve setup/restore plus an explicit `OdeSwapEsBatch(odeSlotInner)` around the
+  MAP+IMH step.  Only reachable for a model with modeled dosing (lag/f/rate);
+  a plain bolus model has `eventSensInfo` NULL, which is why every existing
+  fsaem test was blind to it.
+- **R3 (stale chain likelihood)**: only the general-likelihood branch rescored
+  the chain after the IMH move.  For a normal endpoint the kernel is additive and
+  the random walks still run, so `do_mcmc` was scoring proposals against the
+  PRE-IMH `U_y`/`DYF`/`fsave`.  The DYF rebuild is now a lambda re-run after the
+  move for every distribution.
+- **R4 (diagnostics)**: `fsaemDiag_()`/`fsaemDiagReset_()` expose steps,
+  proposals, acceptances, MAP failures and non-PD proposal covariances -- the
+  only evidence a test has that the kernel fired rather than silently degrading.
+- **R5 (benchmark)**: the removal benchmark (theo_sd 1-cmt) cannot discriminate.
+  It is well identified, 20 burn-in iterations already reach the MLE, and the
+  f-SAEM paper itself reports "no regression" (i.e. no gain) there -- both
+  methods sit at SAEM's Monte-Carlo noise floor (RMSE ~0.01).  On the collinear
+  2-cmt N=60 model issue #845 cites, fsaem is clearly ahead at reduced
+  iterations.  The "converges faster" unit test is rewritten accordingly.
+
+## Phase S -- issue #845 options + verifying the over-acceptance fix (2026-08-05)
+
+Continues Phase R on the same branch (`feat/fsaem-restore`, PR #852).
+
+- **S1 (acceptance instrumentation)**: `do_mcmc` carried NO acceptance signal --
+  `rmcmc` is a fixed 0.5 and nothing adapts from a measured rate -- so the stale
+  `U_y` defect had nothing that could have caught it.  Adds per-kernel
+  proposal/acceptance counters, plus `nRescore`/`uYStaleMax` on the post-IMH
+  rescore, exposed as `fit$saemDiag`; `fit$fsaemDiag` moves onto the fit env too
+  (the impmap `odeSwapInfo` pattern) instead of a `:::` global a later fit
+  overwrites.
+
+  **The predicted symptom was wrong.**  Omitting the rescore does NOT inflate the
+  acceptance rate: `do_mcmc` writes `U_y(ind)=Uc_y(ind)` on every acceptance, so
+  a stale entry self-heals the first time that subject accepts anything and the
+  damage is diluted to noise (method-2 acceptance 0.2369 without the rescore
+  against 0.2344 for plain saem, with the kernel firing on 40 of 45 iterations).
+  The real symptom is a shifted answer -- tka 0.4362 against 0.4620.  So the
+  regression test asserts `nRescore == nStep` and `uYStaleMax > 0` (~22 nats),
+  NOT an acceptance bound.
+- **S2 (options carrier)**: `fsaemMapImh` is reached through two registered entry
+  points with hand-maintained arities in `src/init.c`, so one `fsaemSetOpts_()`
+  setter carries all four new tunables as file statics -- one `init.c` row
+  instead of four rounds of `compileAttributes` + `init.c` edits.  Reset per fit
+  alongside the counters.
+- **S3 (`nu[4]`)**: the sweep count, previously hardcoded 5 in four places.
+  Sweep count ONLY -- the kernel is still switched on by `fast=TRUE`.  Relaxes
+  the three `len=3` assertions, and fixes the `mcmc=` passthrough branch, which
+  validated `mcmc$nu` but never assigned it.  The covariate path could not honor
+  a sweep count at all before this (it returns before `cfg$fsaemNsweep` is
+  attached and its closure is called with 8 arguments).
+- **S4 (`fastFallback`)**: `"prior"` proposes from `N(centre, Omega)` for a
+  subject with no usable Gamma.  Omega comes from the inner's own omega inverse,
+  so no entry point widens.  Also counts a fourth failure mode that was
+  invisible: a finite Cholesky that will not itself invert.
+
+  **Not covered end to end**: `H = J' Sigma^-1 J + Omega^-1` is PD by
+  construction, so no healthy fit produces a bad Gamma -- measured 0 on the
+  exponential-TTE general likelihood, on 2-obs-per-subject theo_sd, and on the
+  same with `fastCov="hessian"`.  Driving the prior term to zero fails earlier in
+  SAEM's own nearPD.  The test asserts the option is INERT.
+- **S5/S6 (`fastMode`, `fastHRefresh`)**: chain-mean centring, and reusing the
+  MAP + Gamma between refreshes.  Both are safe because an independent MH
+  proposal need not equal the target; they cost acceptance, not correctness.
+  `fastHRefresh` must NOT skip the per-iteration re-parameterization -- likInner0
+  has to score at the current theta/omega -- and does not.  Measured (theo_sd, 20
+  fast iterations, all the same MLE): default accRate 0.882 / reuse 0;
+  chainMean 0.594; hRefresh=5 0.671 / reuse 16; both 0.458 / reuse 16.
+
+## Phase M -- multiple endpoints (2026-08-09)
+
+Lifts the single-endpoint gate.  Supported: any number of `add`/`prop` normal
+endpoints, any number of `ll()` ones, and any mix of the two.  Mixtures, a
+declared off-diagonal omega, and residual kinds outside `add`/`prop` still
+degrade to standard SAEM.
+
+- **M1 (nothing in the numerics changed).**  `likInner0` reads each observation's
+  own transform and variance (`src/inner.cpp:2052-2059`, the #838 fix), so the
+  FOCEi inner information `H = Gamma_i^-1` is already the sum over that subject's
+  observations whatever endpoints they belong to; `fsaemInnerMap_`,
+  `fsaemImhKernel_` and `fsaemBuildCholGamma` are pure eta-space.  The SAEM chain
+  has always carried per-endpoint `ares/bres/yj/lambda` indexed by `ix_endpnt`,
+  and `fsaemBuildInnerTheta` already indexed `ares(ep)` via `fsaemResidEp`.
+  What was single-endpoint was the `.fsaemSupported` gate and the COVARIATE
+  path, which rebuilt the inner THETA with `ares[1]`/`bres[1]` for every
+  residual.  `.fsaemSupported` also now degrades when `predDf` is not in
+  compartment order: per-endpoint quantities are built in predDf ROW order but
+  indexed by `ix_endpnt = as.factor(CMT)`, so an out-of-order `predDf` would pair
+  an endpoint with another endpoint's residual.
+
+- **M2 (per-endpoint `distribution`).**  `distribution` is ONE scalar in
+  `src/saem.cpp`, and `R/saem.R` used to set it to `"general"` when ANY endpoint
+  was `ll()` -- which would have scored a normal endpoint's prediction as a log
+  density.  It now picks the DEFAULT loss (`"normal"` unless every endpoint is
+  `ll()`) and `cfg$distEp` (new, `rxUiGet.saemDistEp`) names each endpoint's
+  distribution.  `applyLLObsLoss()` overrides the `ll()` observations' rows after
+  the normal block at every DYF site (`rebuildDYF`, `do_mcmc`, `mixObsLoss`, the
+  MSAEM E-step, `mixNaiveClassify`); it is a no-op unless the model actually
+  mixes the two, so an unmixed fit stays bit-identical.  The residual M-step, the
+  residual warm start and `phi0NormalSSR` skip `ll()` endpoints per endpoint
+  instead of per fit.  `assertRxUiTransformNormal` is whole-UI and would reject a
+  mixed model, so `.saemAssertEndpointDist()` applies it only when there is no
+  `ll()` endpoint.
+
+  **Dead end recorded**: `skipStochPhi0` and `localTrust` were first extended
+  with `&& !distMixed`, on the reasoning that an `ll()` parameter is not a
+  `nonMuTheta="regress"` regressor.  That is backwards.  Both guards are what
+  keeps a phi0 in range, and turning them off let the `ll()` endpoint's SD reach
+  360 for a truth of 4 while the stochastic update fought the optimizer.  Leave
+  them keyed on `distribution` alone.
+
+- **M3 (fsaem envelope).**  `.saemAnyGeneralLik()` (new) is what forces
+  `fastKernel="throughout"` and the phi1 proposal bounds; `.saemGeneralLik()`
+  keeps its all-`ll()` meaning and is what still decides `imhReplacesRwm`, so a
+  mixed model keeps the IMH kernel ADDITIVE (the phi1 random walks still run) --
+  replacing the walk is only justified when the IMH is the sole phi1 kernel.
+
+- **M4 (the FIM's single residual slot).**  `nb_param = nphi1 + nlambda + 1`, so
+  the SAEM information matrix has exactly ONE residual slot, and
+  `d1_logsigma2 = 0.5*resy/sigma2 - 0.5*ntotal` mixes endpoint 0's variance with
+  whichever endpoint `resy` last held while counting EVERY observation.  It only
+  describes a single additive residual.  `fimSigma2Ok` now gates the three FIM
+  sites on exactly that (one endpoint with a residual, `res_mod == rmAdd`), and
+  `.saemFimToCov()` drops a zero trailing row BEFORE inverting -- leaving it in
+  makes the matrix singular and loses `covMethod="fim"`/`"sa"` altogether, which
+  is what happened to every `ll()` model.
+
+  MEASURED, so the change is not oversold: on a 2-endpoint PK/PD model the
+  bogus row moved the second endpoint's theta SE by ~4% (0.0561 -> 0.0539).  The
+  remaining 2x gap against `linFim` (0.106) is NOT this -- it is a genuine
+  difference between the stochastic-approximation FIM and the linearization on a
+  weakly-identified phi0 parameter, and a single-endpoint additive model shows
+  the same kind of gap on its residual (0.0478 vs 0.0354).  The dropped-row SEs
+  are conditional on the residual rather than marginal over it; the two blocks
+  are near-orthogonal here, and `calc.COV` (the default `linFim`) was always
+  per-endpoint and is untouched.
+
+- **What the tests can and cannot pin.**  A wrong IMH proposal costs acceptance,
+  not correctness -- an independent Metropolis-Hastings proposal need not match
+  the target -- so the `ares[1]` bug is invisible at fit level (measured
+  acceptance 0.95 against 0.96).  `test-fsaem-multi.R` therefore pins the inner
+  THETA directly, and checks `H` against a `numDeriv` Eq-17 with a BLOCK-diagonal
+  Sigma; the two endpoints' residual SDs differ by 10x, so one used for both is
+  off by ~100x.  The mixed model's reference is its own Gaussian twin.

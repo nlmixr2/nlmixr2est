@@ -67,6 +67,54 @@ nmTest({
     expect_no_match(as.character(f.saem2$censInformation), "\\((laplace|gauss)\\)")
   })
 
+  # M3 for the SAEM family (#876).  The chain scores a censored row with
+  # doCensNormal1 and so does the FOCEi inner that f-SAEM's IMH acceptance uses,
+  # so the two agree and fsaem needs no censoring gate -- these fits are what
+  # says so.  M2 alone would not: with limit=0 the M2 tail probability is ~1, so
+  # its term is ~0 and a wrong SIGN or SCALE on it does not show.  M3 has no such
+  # cover, and when the chain fed doCensNormal1 the loss (not the
+  # log-likelihood), the SD (not the variance), and the raw DV, these fits came
+  # back at ke = -23 with a residual SD in the thousands.
+  .m3 <- rbind(dat[, names(dat) != "Y"],
+               data.frame(ID = 1:10, Time = 1.5, DV = 3))
+  .m3$cens <- ifelse(.m3$Time == 1.5, 1, 0)
+  .m3 <- .m3[order(.m3$ID, .m3$Time), ]
+  .m3ctl <- saemControl(print = 0, nBurn = 200, nEm = 200, seed = 42)
+
+  test_that("M3 censoring - saem estimates stay on the model", {
+    f.saemM3 <- suppressWarnings(suppressMessages(nlmixr(f, .m3, "saem", control = .m3ctl)))
+    f.foceiM3 <- suppressWarnings(suppressMessages(nlmixr(f, .m3, "focei")))
+    ct(f.saemM3, "M3 censoring")
+    # both fit the same model to the same data, so the elimination rate agrees to
+    # well within 20%; the flipped-sign loss put it on the wrong side of zero
+    expect_equal(fixef(f.saemM3)[["tvK"]], fixef(f.foceiM3)[["tvK"]], tolerance = 0.2)
+    # a proportional residual SD is a fraction, not a count
+    expect_lt(fixef(f.saemM3)[["prop.sd"]], 1)
+    expect_lt(f.saemM3$omega[1, 1], 1)
+
+    # M4 is its own branch (a limit turns the tail into a difference of two), so
+    # it needs its own case
+    .m4 <- .m3
+    .m4$limit <- ifelse(.m4$cens == 1, 0, NA)
+    f.saemM4 <- suppressWarnings(suppressMessages(nlmixr(f, .m4, "saem", control = .m3ctl)))
+    f.foceiM4 <- suppressWarnings(suppressMessages(nlmixr(f, .m4, "focei")))
+    ct(f.saemM4, "M4 censoring")
+    expect_equal(fixef(f.saemM4)[["tvK"]], fixef(f.foceiM4)[["tvK"]], tolerance = 0.2)
+    expect_lt(fixef(f.saemM4)[["prop.sd"]], 1)
+  })
+
+  test_that("M3 censoring - fsaem lands where saem does", {
+    f.saemM3 <- suppressWarnings(suppressMessages(nlmixr(f, .m3, "saem", control = .m3ctl)))
+    f.fsaemM3 <- suppressWarnings(suppressMessages(nlmixr(f, .m3, "fsaem", control = .m3ctl)))
+    ct(f.fsaemM3, "M3 censoring")
+    # the fast kernel really ran on the censored data (not degraded to saem)
+    expect_gt(f.fsaemM3$fsaemDiag$nStep, 0)
+    expect_gt(f.fsaemM3$fsaemDiag$nAcc, 0)
+    # the IMH acceptance scores a censored row the way the chain does, so
+    # preconditioning the chain with it must not move where the fit lands
+    expect_equal(fixef(f.fsaemM3), fixef(f.saemM3), tolerance = 0.05)
+    expect_equal(f.fsaemM3$omega[1, 1], f.saemM3$omega[1, 1], tolerance = 0.5)
+  })
   test_that("saem M3/M4 residual SD matches focei (#916)", {
     # #916: the SAEM M-step's residual SSR counted a censored (M3/M4) row's
     # recorded LOQ/limit as if it had been measured, biasing the residual SD

@@ -57,8 +57,9 @@
   # nmc number of mc interations
   checkmate::assertIntegerish(cfg$nmc, lower=0, len=1, .var.name="saem.cfg$nmc")
   .nmc <- cfg$nmc
-  # nu is the number of selection for each probability type.
-  checkmate::assertIntegerish(cfg$nu, lower=0, len=3, .var.name="saem.cfg$nu")
+  # nu is the number of selection for each probability type; an optional 4th
+  # element is the f-SAEM IMH sweep count (read in R, not by the SAEM C++ loop).
+  checkmate::assertIntegerish(cfg$nu, lower=0, min.len=3, max.len=4, .var.name="saem.cfg$nu")
   # Overall number of iterations
   checkmate::assertIntegerish(cfg$niter, lower=0,  len=1, .var.name="saem.cfg$niter")
   # Number of iterations where the correlation is ignored
@@ -157,6 +158,8 @@
   checkmate::assertIntegerish(cfg$y_offset, .var.name="saem.cfg$y_offset")
   # The should match the number of endpoints
   checkmate::assertIntegerish(cfg$res.mod, len=.nendpnt, .var.name="saem.cfg$res.mod")
+  checkmate::assertIntegerish(cfg$distEp, len=.nendpnt, lower=1, upper=4,
+                              .var.name="saem.cfg$distEp")
   checkmate::assertNumeric(cfg$ares, len=.nendpnt, .var.name="saem.cfg$ares")
   checkmate::assertNumeric(cfg$bres, len=.nendpnt, .var.name="saem.cfg$bres")
   checkmate::assertNumeric(cfg$cres, len=.nendpnt, .var.name="saem.cfg$cres")
@@ -237,7 +240,13 @@
                                                   list(niter = c(200, 300),
                                                        nmc = 3, nu = c(2, 2, 2))),
                         rxControl=.rxControl,
-                        distribution=if (any(ui$predDf$distribution == "LL")) "general" else "normal",
+                        # The scalar picks the DEFAULT observation loss; a model
+                        # that mixes a normal endpoint with an ll() one stays on
+                        # the normal path and the kernel overrides the ll()
+                        # observations from cfg$distEp.  Using "general" for a
+                        # mixed model would score the normal endpoint's
+                        # prediction as if it were a log-likelihood.
+                        distribution=if (.saemGeneralLik(ui)) "general" else "normal",
                         fixedOmega=ui$saemModelOmegaFixed,
                         fixedOmegaValues=ui$saemModelOmegaFixedValues,
                         parHistThetaKeep=ui$saemParHistThetaKeep,
@@ -279,7 +288,15 @@
                         mixProbPriorN=rxode2::rxGetControl(ui, "mixProbPriorN", 20),
                         mixSampleMethod=rxode2::rxGetControl(ui, "mixSampleMethod", "parallel"),
                         omegaShare=ui$saemOmegaShare,
-                        omegaShareSubpop=ui$saemOmegaShareSubpop)
+                        omegaShareSubpop=ui$saemOmegaShareSubpop,
+                        fast=rxode2::rxGetControl(ui, "fast", FALSE),
+                        fastIter=rxode2::rxGetControl(ui, "fastIter", 20L),
+                        # a general log-likelihood endpoint has no normal do_mcmc
+                        # fallback, so the fast kernel must run every iteration
+                        fastKernel=if (.saemAnyGeneralLik(ui)) "throughout"
+                                   else rxode2::rxGetControl(ui, "fastKernel", "firstN"),
+                        fastCov=rxode2::rxGetControl(ui, "fastCov", "auto"),
+                        fastLik=rxode2::rxGetControl(ui, "fastLik", "focei"))
     .cfg$nonMuTheta <- rxode2::rxGetControl(ui, "nonMuTheta", "regress")
     # integer gate the SAEM C++ reads: when 1, non-mu (phi0) thetas are
     # estimated by the bounded direct optimizer (bounds from phi0Lower/Upper)
@@ -332,12 +349,31 @@
       .cfg$phi0Lower <- ifelse(is.na(.lo), -Inf, .lo)
       .cfg$phi0Upper <- ifelse(is.na(.hi), Inf, .hi)
     }
+    # Metropolis acceptance counters for THIS fit; snapshotted onto the fit env in
+    # .saemFamilyFit.  They are the only signal that would catch a kernel scoring
+    # its proposals against a stale chain state.
+    saemDiagReset_()
+    if (isTRUE(rxode2::rxGetControl(ui, "fast", FALSE))) {
+      fsaemDiagReset_()
+      .cfg <- .fsaemInstallStep(ui, data, .rxControl, .cfg)
+    } else if (length(.cfg$nu) >= 4L) {
+      .minfo("nu[4] sets the f-SAEM sweeps; needs est=\"fsaem\" or fast=TRUE")
+    }
     .saemCheckCfg(.cfg)
     .cfg
   })
   .saemRes <- nlmixrWithTiming("saem", {
     .model$saem_mod(.cfg)
   })
+  # f-SAEM sets up the FOCEi inner (op_focei globals + a shared solve); tear it
+  # down so it does not leak into a later fit's solve state (reproducibility).
+  # The kernel counters (fsaemDiag_(), reset above) survive the teardown and are
+  # the only evidence that the fast kernel fired rather than silently degrading
+  # to plain SAEM.
+  if (isTRUE(rxode2::rxGetControl(ui, "fast", FALSE))) {
+    try(vaeInnerFree_(), silent = TRUE)
+  }
+
   .saemRes
   })
 }
@@ -661,7 +697,11 @@
   # theta+Omega-diag block -- d(sd)/d(log sigma2) = 0.5 sd.  Only a PURE additive
   # endpoint (a single iniDf residual row with err=="add") has a real slot; any
   # other endpoint's slot was dropped above (all-zero row) and simply has no
-  # surviving column to select here.
+  # surviving column to select here.  Looping per endpoint (rather than assuming
+  # the single estimated residual belongs to endpoint 1) is what makes this
+  # correct for a mixed normal+ll() model too: the ll() endpoint's row is
+  # skipped automatically (it has no err row), so whichever position the
+  # additive endpoint sits at gets its own slot (#872, #893).
   .predDf <- .ui$predDf
   .nEp <- length(.predDf$cond)
   if (.nEp > 0L && .np >= .nth + .nEta + .nEp) {
@@ -1293,6 +1333,17 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   })
 
   .ret$saem <- .saemFitModel(.ui, .ret$dataSav, timeVaryingCovariates=.tv)
+  # Snapshot THIS fit's kernel counters before anything else can run.  They are
+  # process globals reset at the top of .saemFitModel, so a later fit would
+  # overwrite them; stashing them on the fit env makes them `fit$saemDiag` /
+  # `fit$fsaemDiag` through nmObjGet.default.  Same reasoning as impmap's
+  # odeSwapInfo (R/impmap.R).
+  tryCatch({
+    assign("saemDiag", saemDiag_(), envir=.ret)
+    if (isTRUE(.control$fast)) {
+      assign("fsaemDiag", fsaemDiag_(), envir=.ret)
+    }
+  }, error=function(e) NULL)
   # Re-stage the mu-ref time-varying split for the post-processing: the theta
   # table and parameter history are named from saemParamsToEstimate/
   # saemParHistNames, which only put a time-varying covariate in the correct
@@ -1376,10 +1427,8 @@ nlmixr2Est.saem <- function(env, ...) {
   .ui <- env$ui
   # saem supports a general log-likelihood endpoint (ll() ~ expr) the saemix way
   # (the model returns the per-obs loglik; the RWM kernels use -ll as the
-  # observation loss); only require normality for the ordinary case.
-  if (!.saemGeneralLik(.ui)) {
-    rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'saem'", .var.name=.ui$modelName)
-  }
+  # observation loss), including alongside normal endpoints.
+  .saemAssertEndpointDist(.ui, "saem")
   rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'saem'",
                              .var.name=.ui$modelName)
   rxode2::assertRxUiMixedOnly(.ui, .noRandomEffectMsg("saem"), .var.name=.ui$modelName)

@@ -29,6 +29,12 @@
 #'     The third value represents the number of bootstrap/reshuffling or
 #'     uni-dimensional random samples are taken.
 #'
+#'     An optional fourth value is the number of f-SAEM independent
+#'     Metropolis-Hastings sweeps run per iteration (default 5).  It is only
+#'     consulted when the fast kernel is on (`fast=TRUE` or `est="fsaem"`); it
+#'     does not switch the kernel on by itself, and unlike the first three it is
+#'     not multiplied by 20 on the first iteration.
+#'
 #' @inheritParams iterPrintParams
 #'
 #' @param trace An integer indicating if you want to trace(1) the
@@ -305,6 +311,93 @@
 #'   the stochastic step a better starting residual scale.  Set `FALSE` to start
 #'   from the `ini`-block residual values instead.
 #'
+#' @param fast Boolean enabling the fast-SAEM (f-SAEM) simulation step
+#'   (Karimi, Lavielle and Moulines 2020).  When `TRUE`, the MCMC
+#'   simulation of the individual random effects uses an independent
+#'   Metropolis-Hastings proposal centered at each subject's conditional
+#'   MAP estimate with a Laplace/linearization covariance, which converges
+#'   in far fewer SAEM iterations than the default random-walk Metropolis.
+#'   The `est="fsaem"` method is sugar for `saemControl(fast=TRUE)`.  By
+#'   default this is `FALSE` (standard SAEM).  The `fast*` options below are
+#'   only consulted when `fast=TRUE`.
+#'
+#'   The fast kernel covers any number of endpoints, each either `add`/`prop`
+#'   normal or a general log-likelihood (`ll()`).  A mixture model, a declared
+#'   off-diagonal `omega` block, or any other residual kind degrades to standard
+#'   SAEM with a message.
+#'
+#' @param fastKernel Schedule for the f-SAEM independent Metropolis-Hastings
+#'   (IMH) kernel:
+#'
+#'   * `"firstN"` (default): use the IMH kernel for the first `fastIter`
+#'     iterations, then revert to the standard random-walk kernels.  This is
+#'     the recipe used in the f-SAEM paper -- the early iterations only need
+#'     an approximate posterior, so the fast kernel accelerates the initial
+#'     convergence and the steady-state behavior is unchanged.
+#'
+#'   * `"throughout"`: use the IMH kernel on every iteration for the whole
+#'     run.  Simpler, but recomputing the MAP/covariance every iteration is
+#'     costlier and unnecessary near convergence.
+#'
+#'   * `"additive"`: append the IMH kernel alongside the standard random-walk
+#'     kernels on every iteration.  Most mixing, most cost.
+#'
+#' @param fastCov Covariance used for the IMH Gaussian proposal:
+#'
+#'   * `"auto"` (default): Jacobian linearization for continuous-data
+#'     endpoints, Hessian (Laplace) for non-continuous endpoints.
+#'
+#'   * `"jacobian"`: `Gamma_i = (J' Sigma^-1 J + Omega^-1)^-1` from the
+#'     structural-model Jacobian at the MAP (continuous data only).
+#'
+#'   * `"hessian"`: `Gamma_i = (-H + Omega^-1)^-1` from the Hessian of the
+#'     individual log-likelihood at the MAP (any data type).
+#'
+#' @param fastIter Integer number of initial iterations to run the IMH kernel
+#'   when `fastKernel="firstN"` (default 20).  Ignored by the other
+#'   schedules.
+#'
+#' @param fastLik Which FOCEI-family individual likelihood is reused to build
+#'   the f-SAEM proposal, one of `"focei"` (default), `"foce"` or `"focep"`.
+#'   `"foce"` and `"focep"` are no-interaction likelihoods, so they imply the
+#'   linearization form of the proposal covariance and override
+#'   `fastCov = "hessian"`; `"focep"` additionally evaluates the residual
+#'   variance the `foce = "foce+"` way rather than NONMEM's.
+#'
+#' @param fastFallback What the f-SAEM kernel does with a subject whose
+#'   proposal covariance is unusable (its information matrix will not invert, or
+#'   the result is not positive definite):
+#'
+#'   * `"skip"` (default): the subject keeps its current value for that
+#'     iteration.  For a continuous endpoint the standard random-walk kernels
+#'     still move it; for a general log-likelihood, where the IMH replaces the
+#'     walk, it does not move.
+#'
+#'   * `"prior"`: propose from the prior `N(centre, Omega)` instead, which is
+#'     always positive definite, so the subject keeps moving.
+#'
+#' @param fastMode Where the f-SAEM independent Metropolis-Hastings proposal is
+#'   centered:
+#'
+#'   * `"map"` (default): each subject's conditional MAP, from the FOCEi inner
+#'     optimizer.
+#'
+#'   * `"chainMean"`: that subject's mean over the `nmc` chains.  The proposal
+#'     covariance still comes from the MAP's information matrix; only the center
+#'     changes.  Can mix better when the posterior mode is a poor summary.
+#'
+#' @param fastHRefresh Integer (default `1L`).  How often the f-SAEM kernel
+#'   recomputes the per-subject MAP and proposal covariance, in active
+#'   iterations: `1` recomputes every iteration, `k` reuses the previous ones for
+#'   `k - 1` iterations in between.  A reused proposal is still a valid
+#'   independent Metropolis-Hastings kernel -- it costs acceptance, not
+#'   correctness -- and saves one inner optimization per subject per skipped
+#'   iteration.
+#'
+#' @param nRetry Integer number of times a bounded log-likelihood parameter's
+#'   f-SAEM IMH proposal is re-drawn when it lands outside the parameter's
+#'   bounds before being clamped to the violated boundary.  Default 10.
+#'
 #' @param ... Other arguments to control SAEM.
 #'
 #' @inheritParams rxode2::rxSolve
@@ -378,6 +471,15 @@ saemControl <- function(seed = 99,
                         nonMuThetaEvery = 1L,
                         residWarmStart = TRUE,
                         censOption = c("gauss", "laplace"),
+                        fast = FALSE,
+                        fastKernel = c("firstN", "throughout", "additive"),
+                        fastCov = c("auto", "jacobian", "hessian"),
+                        fastIter = 20L,
+                        fastLik = c("focei", "foce", "focep"),
+                        fastFallback = c("skip", "prior"),
+                        fastMode = c("map", "chainMean"),
+                        fastHRefresh = 1L,
+                        nRetry = 10L,
                         ...) {
   .xtra <- list(...)
   .bad <- names(.xtra)
@@ -398,12 +500,16 @@ saemControl <- function(seed = 99,
     nEm   <- .xtra$mcmc$niter[2]
     checkmate::assertIntegerish(.xtra$mcmc$nmc, len=1, lower=1, any.missing=FALSE, .var.name="mcmc$nmc")
     nmc <- .xtra$mcmc$nmc
-    checkmate::assertIntegerish(.xtra$mcmc$nu, len=3, lower=1, any.missing=FALSE, .var.name="mcmc$nu")
+    checkmate::assertIntegerish(.xtra$mcmc$nu, min.len=3, max.len=4, lower=1,
+                                any.missing=FALSE, .var.name="mcmc$nu")
+    # this branch validated mcmc$nu but never used it, unlike niter/nmc above
+    nu <- .xtra$mcmc$nu
   }
   checkmate::assertIntegerish(nBurn, any.missing=FALSE, len=1, lower=0)
   checkmate::assertIntegerish(nEm, any.missing=FALSE, len=1, lower=0)
   checkmate::assertIntegerish(nmc, any.missing=FALSE, len=1, lower=1)
-  checkmate::assertIntegerish(nu, any.missing=FALSE, len=3, lower=1)
+  # a 4th element is the f-SAEM IMH sweep count; the three RWM kernels ignore it
+  checkmate::assertIntegerish(nu, any.missing=FALSE, min.len=3, max.len=4, lower=1)
   # `print` can be either a scalar print-frequency or a pre-built
   # iterPrintControl object; .absorbIterPrintControl validates either form
   # and returns the canonical iterPrintControl list.  list(...)$iterPrintControl
@@ -456,6 +562,15 @@ saemControl <- function(seed = 99,
   checkmate::assertIntegerish(nonMuThetaEvery, any.missing=FALSE, len=1, lower=1)
   checkmate::assertLogical(residWarmStart, any.missing=FALSE, len=1)
 
+  checkmate::assertLogical(fast, any.missing=FALSE, len=1)
+  fastKernel <- match.arg(fastKernel)
+  fastCov <- match.arg(fastCov)
+  checkmate::assertIntegerish(fastIter, any.missing=FALSE, len=1, lower=1)
+  fastLik <- match.arg(fastLik)
+  fastFallback <- match.arg(fastFallback)
+  fastMode <- match.arg(fastMode)
+  checkmate::assertIntegerish(fastHRefresh, any.missing=FALSE, len=1, lower=1)
+  checkmate::assertIntegerish(nRetry, lower=0, len=1, any.missing=FALSE)
 
   type <- match.arg(type)
   if (inherits(addProp, "numeric")) {
@@ -579,7 +694,16 @@ saemControl <- function(seed = 99,
     nonMuThetaMaxEval=as.integer(nonMuThetaMaxEval),
     nonMuThetaTol=nonMuThetaTol,
     nonMuThetaEvery=as.integer(nonMuThetaEvery),
-    residWarmStart=residWarmStart
+    residWarmStart=residWarmStart,
+    fast=fast,
+    fastKernel=fastKernel,
+    fastCov=fastCov,
+    fastIter=as.integer(fastIter),
+    fastLik=fastLik,
+    fastFallback=fastFallback,
+    fastMode=fastMode,
+    fastHRefresh=as.integer(fastHRefresh),
+    nRetry=as.integer(nRetry)
   )
   class(.ret) <- "saemControl"
   .ret
