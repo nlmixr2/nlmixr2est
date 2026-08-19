@@ -765,6 +765,7 @@
   # switch for that res.mod never assigns it (src/saem.cpp), so an unzeroed
   # bres/ares corrupts g = ares + bres*|ft| with a spurious component (#914).
   cfg$ares[cfg$res.mod == 2] <- 0  # prop
+  cfg$ares[cfg$res.mod == 3] <- 0  # pow
   cfg$ares[cfg$res.mod == 7] <- 0  # prop + lambda
   cfg$ares[cfg$res.mod == 8] <- 0  # pow + lambda
   cfg$bres[cfg$res.mod == 1] <- 0  # add

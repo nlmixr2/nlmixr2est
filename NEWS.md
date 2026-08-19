@@ -123,7 +123,10 @@
   default and corrupting the residual SD `g = ares + bres*|f|`. Together
   these biased theta, BSV, and the residual SD (the BSV would collapse and
   the residual SD would inflate to absorb the untransformed data), matching
-  neither the declared model nor FOCEi's fit of the same data.
+  neither the declared model nor FOCEi's fit of the same data. The unzeroed
+  component defect also affected the plain (non-`boxCox`/`yeoJohnson`) pure
+  power error model `pow()` with no `add()`/`prop()` term, which shares the
+  same fix.
 
 ## New features
 
