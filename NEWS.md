@@ -13,6 +13,18 @@
   `rxode2::.iniHandleFixOrUnfix()` alias for it.  They are the same
   function; this was the last caller of the old name anywhere in the
   ecosystem, so rxode2 can now drop it (nlmixr2/rxode2#1250).
+
+- `est="npb"`'s Gibbs sampler (support-point/stick-breaking/mixture-proportion
+  draws) and the shared `npbSampleMixProbs()` mixture Dirichlet step now draw
+  from rxode2's per-thread threefry engine instead of R's own RNG
+  (`R::rnorm`/`R::unif_rand`/`R::rbeta`/`R::rgamma`, seeded via an R-level
+  `set.seed()` call). A distribution the engine does not cover directly
+  (Beta, Gamma) is drawn by inverse-CDF from a threefry uniform, the same
+  technique already used for `est="impmap"`'s chi-square proposal scale. This
+  is the convention every other estimation method already follows, and it
+  means `npbControl(seed=)` reproducibility no longer depends on R's ambient
+  RNG state; a fit's exact draws (and so its reported values, given the same
+  seed) change as a result.
 ## New features
 
 - A pure-linear `matExp()` model now solves natively through rxode2's

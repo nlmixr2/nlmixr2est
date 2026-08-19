@@ -10,6 +10,7 @@
 #include "shi21.h"
 #include "foceiGrad.h"
 #include "inner.h"
+#include "nmMcmcRng.h"
 #include <cfloat>
 #include <cstring>
 #include "odeSwap.h"
@@ -16590,9 +16591,11 @@ void npMixEMUpdate(const arma::mat& etaPoints, const arma::vec& lam, int cores) 
 // eta (subEta, nsub x neta), sample its mix() component from the posterior
 // responsibility mixProb_m * p(y_i | eta_i, component m), then draw the proportions
 // from Dirichlet(alpha0 + component counts) and install them via impSetMixThetas.
-// Mirrors npMixEMUpdate but SAMPLES (Bayes) rather than taking the mean.  Must run
-// inside a Get/PutRNGstate scope (npbOuter provides it).  No-op for a non-mixture.
-void npbSampleMixProbs(const arma::mat& subEta, double alpha0) {
+// Mirrors npMixEMUpdate but SAMPLES (Bayes) rather than taking the mean.  `seed`
+// (from npb.cpp's npbSeedEng) reseeds the thread-0 threefry engine right before
+// the serial draws below, undoing whatever the parallel solve above did to that
+// slot -- see npb.cpp's npbSeedEng comment.  No-op for a non-mixture.
+void npbSampleMixProbs(const arma::mat& subEta, double alpha0, uint32_t seed) {
   int nMix = impNmix();
   if (nMix <= 1 || op_focei.mixIdxN == 0) return;
   int nsub = (int)subEta.n_rows;
@@ -16632,23 +16635,36 @@ void npbSampleMixProbs(const arma::mat& subEta, double alpha0) {
 #endif
   }
   }
-  // Serial categorical draw per subject (unchanged RNG order), then Dirichlet.
+  // Serial categorical draw per subject (unchanged draw order), then Dirichlet.
+  // Reseed thread-0's engine now: the parallel solve above may have touched that
+  // slot via its own per-subject mid-solve reseeding, and every draw below must
+  // come from the fresh, caller-supplied stream regardless of what happened there.
+  setRxThreadId(0);
+  nmSetSeedEng1(seed);
   std::vector<double> counts(nMix, alpha0);       // Dirichlet prior concentration
   for (int i = 0; i < nsub; ++i) {
     int mi = 0;
     if (std::isfinite(gmaxv[i])) {
       std::vector<double> g(nMix); double gsum = 0.0;
       for (int m = 0; m < nMix; ++m) { g[m] = std::exp(G(i, m) - gmaxv[i]); gsum += g[m]; }
-      double u = R::unif_rand() * gsum, c = 0.0;
+      double u = rxUnifEng(0.0, 1.0) * gsum, c = 0.0;
       for (int m = 0; m < nMix; ++m) { c += g[m]; mi = m; if (u <= c) break; }
     } else {
-      mi = (int)(R::unif_rand() * nMix); if (mi >= nMix) mi = nMix - 1;
+      mi = (int)(rxUnifEng(0.0, 1.0) * nMix); if (mi >= nMix) mi = nMix - 1;
     }
     counts[mi] += 1.0;
   }
-  // Dirichlet(counts) draw = normalized independent Gamma(counts_m, 1)
+  // Dirichlet(counts) draw = normalized independent Gamma(counts_m, 1), via
+  // inverse-CDF from a threefry uniform (only rxNormEng/rxUnifEng are on the
+  // thread-safe engine -- same technique as imp.cpp's impChisqQuantile()).
   arma::vec p(nMix); double psum = 0.0;
-  for (int m = 0; m < nMix; ++m) { p[m] = R::rgamma(counts[m], 1.0); psum += p[m]; }
+  for (int m = 0; m < nMix; ++m) {
+    double u = rxUnifEng(0.0, 1.0);
+    if (u <= 0.0) u = 1e-12;
+    if (u >= 1.0) u = 1.0 - 1e-12;
+    p[m] = R::qgamma(u, counts[m], 1.0, 1, 0);
+    psum += p[m];
+  }
   for (int m = 0; m < nMix; ++m) p[m] = std::max(1e-4, p[m] / std::max(1e-300, psum));
   p /= arma::accu(p);
   Environment rxode2 = Environment::namespace_env("rxode2");
