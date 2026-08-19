@@ -206,10 +206,16 @@
   ## and yields a non-finite covariance linearization.  Mirror rxode2::rxSolve()'s
   ## hasDelay enforcement here so the SAEM solve and the covariance dopred both use
   ## the dense dop853 path.
-  if (isTRUE(rxode2::rxModelVars(attr(.model$saem_mod, "rx"))$flags[["hasDelay"]] == 1L)) {
+  .saemMv <- rxode2::rxModelVars(attr(.model$saem_mod, "rx"))
+  if (isTRUE(.saemMv$flags[["hasDelay"]] == 1L)) {
     .rxControl$method <- 0L  # dop853 (dense; no analytic Jacobian required)
     .rxControl$stiff2 <- 0L
     .rxControl$dense <- TRUE # record dense history for delay() interpolation
+  } else if (is.list(.saemMv$indLin) && length(.saemMv$indLin) == 4L) {
+    ## matExp()/indLin(): rxUiGet.saemModel() emits the native (unflattened)
+    ## matExp()/indLin() text (#859), which has no d/dt() at all -- it only
+    ## solves through rxode2's matrix-exponential driver.
+    .rxControl$method <- 3L  # indLin
   }
   .ue <- .uninformativeEtas(ui,
                             handleUninformativeEtas=rxode2::rxGetControl(ui, "handleUninformativeEtas", TRUE),
@@ -380,7 +386,7 @@
     .x <- paste(.predDf$cond[i])
     .tmp <- .iniDf[which(.iniDf$condition == .x), ]
     .w <- which(vapply(.tmp$err,
-                       function(x) any(x == c("prop", "propT", "pow", "powT")),
+                       function(x) any(x == c("prop", "propT", "propF", "pow", "powT", "powF")),
                        logical(1),
                        USE.NAMES=FALSE))
     if (length(.w) == 1) {
@@ -396,7 +402,7 @@
       }
     }
     .w <- which(vapply(.tmp$err,
-                       function(x) any(x == c("pow2", "powT2")),
+                       function(x) any(x == c("pow2", "powF2", "powT2")),
                        logical(1),
                        USE.NAMES=FALSE))
     if (length(.w) == 1) {
@@ -407,7 +413,7 @@
                          .x <- .tmp$err[x]
                          if (any(.x == c(
                            "add", "norm", "dnorm", "lnorm", "dlnorm",
-                           "dlogn", "logn"))) {
+                           "dlogn", "logn", "logitNorm", "probitNorm"))) {
                            if (!is.na(.tmp$est[x])) {
                              return(TRUE)
                            }
@@ -616,10 +622,21 @@
   .saem <- env$saem
   if (is.null(.H) || !is.matrix(.H) || nrow(.H) == 0L ||
         !all(is.finite(.H)) || all(.H == 0)) return(NULL)
+  .np <- nrow(.H)  # original nb_param layout; residual slot positions are keyed to this
+  # src/saem.cpp gives a non-additive endpoint's residual slot (and a
+  # general-log-likelihood endpoint) an exactly-zero row/col in every entry --
+  # solving the full matrix would be singular.  Drop any all-zero row (its
+  # column is zero too: Ha/HaSa is symmetric and d2logk/D11 never write a
+  # cross term into an excluded slot) and remember which original column each
+  # surviving row/col came from, since the indexing below is keyed to the
+  # ORIGINAL (nb_param) layout.
+  .keep <- which(apply(.H, 1L, function(.r) any(.r != 0)))
+  if (length(.keep) == 0L) return(NULL)
   # covariance = inverse of the FIM, in (theta, log-Omega-variance, log-sigma2) coords
-  .C <- suppressWarnings(tryCatch(solve(.H), error = function(e) NULL))
+  .C <- suppressWarnings(tryCatch(solve(.H[.keep, .keep, drop = FALSE]), error = function(e) NULL))
   if (is.null(.C) || !all(is.finite(.C))) return(NULL)
-  .np <- nrow(.C)
+  .orig2sub <- rep(NA_integer_, .np)
+  .orig2sub[.keep] <- seq_along(.keep)
   .tn <- .ui$saemParamsToEstimate[!.ui$saemFixed]
   .nth <- length(.tn)
   if (.nth == 0L || .np < .nth) return(NULL)
@@ -639,14 +656,31 @@
     .nm <- c(.nm, paste0("om.", .etaN))
     .jac <- c(.jac, .omVar[seq_len(.nEta)])
   }
-  # single additive residual: log-sigma2 -> reported SD, d(sd)/d(log sigma2) = 0.5 sd
-  .ri <- .idf[!is.na(.idf$err) & !.idf$fix, , drop = FALSE]
-  if (nrow(.ri) == 1L && .np == .nth + .nEta + 1L && !grepl("prop|pow", .ri$err)) {
-    .ares <- tryCatch(.saem$resMat[1, 1], error = function(e) NA_real_)
-    if (is.finite(.ares) && .ares > 0) {
-      .idx <- c(.idx, .np); .nm <- c(.nm, .ri$name); .jac <- c(.jac, 0.5 * .ares)
+  # per-endpoint additive residual: src/saem.cpp lays out one log-sigma2 slot per
+  # endpoint (in .predDf$cond order, matching resMat's rows), right after the
+  # theta+Omega-diag block -- d(sd)/d(log sigma2) = 0.5 sd.  Only a PURE additive
+  # endpoint (a single iniDf residual row with err=="add") has a real slot; any
+  # other endpoint's slot was dropped above (all-zero row) and simply has no
+  # surviving column to select here.
+  .predDf <- .ui$predDf
+  .nEp <- length(.predDf$cond)
+  if (.nEp > 0L && .np >= .nth + .nEta + .nEp) {
+    .base <- .nth + .nEta
+    for (.i in seq_len(.nEp)) {
+      .sub <- .orig2sub[.base + .i]
+      if (is.na(.sub)) next
+      .cond <- paste(.predDf$cond[.i])
+      .rows <- .idf[which(.idf$condition == .cond & !is.na(.idf$err)), , drop = FALSE]
+      if (nrow(.rows) != 1L || !identical(.rows$err, "add")) next
+      .ares <- tryCatch(.saem$resMat[.i, 1], error = function(e) NA_real_)
+      if (is.finite(.ares) && .ares > 0) {
+        .idx <- c(.idx, .base + .i); .nm <- c(.nm, .rows$name); .jac <- c(.jac, 0.5 * .ares)
+      }
     }
   }
+  .sub <- .orig2sub[.idx]
+  .have <- !is.na(.sub)
+  .idx <- .sub[.have]; .nm <- .nm[.have]; .jac <- .jac[.have]
   .cov <- outer(.jac, .jac) * .C[.idx, .idx, drop = FALSE]   # delta method to reported scale
   dimnames(.cov) <- list(.nm, .nm)
   # require a valid (finite, PD) covariance; otherwise let the caller fall back
