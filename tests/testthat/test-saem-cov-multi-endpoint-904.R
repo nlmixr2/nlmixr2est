@@ -9,6 +9,11 @@
 nmTest({
   test_that("saem covFull residual variance is masked to its own endpoint (#904)", {
     skip_on_cran()
+    # pin threads: the simulated data and the fits themselves must be
+    # reproducible regardless of the runner's core count
+    .oldThreads <- rxode2::getRxThreads()
+    on.exit(rxode2::setRxThreads(.oldThreads), add = TRUE)
+    rxode2::setRxThreads(1L)
 
     twoEp <- function() {
       ini({
@@ -17,7 +22,7 @@ nmTest({
         add.sd <- 0.7
         tbio <- 5
         eta.bio ~ 0.25
-        pdadd.sd <- 0.3
+        pdadd.sd <- 0.15
       })
       model({
         ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
@@ -26,7 +31,13 @@ nmTest({
         cp <- center / v
         bio <- tbio + eta.bio                # unrelated endpoint: no shared theta/eta with cp
         cp ~ add(add.sd)
-        bio ~ add(pdadd.sd) | bio
+        # deliberately a DIFFERENT residual type (proportional, not additive) than cp's:
+        # with matching types the unmasked pre-fix dVi/da columns for both parameters
+        # were numerically identical, making the old code's blocB exactly singular and
+        # solve() fail -- so the fix only showed up as a missing row, not a wrong value.
+        # A mismatched type makes the pre-fix result wrong-but-present, so this test
+        # actually exercises the SE comparison below rather than an earlier NULL guard.
+        bio ~ prop(pdadd.sd) | bio
       })
     }
     cpOnly <- function() {
@@ -44,8 +55,8 @@ nmTest({
       })
     }
     bioOnly <- function() {
-      ini({ tbio <- 5; eta.bio ~ 0.25; pdadd.sd <- 0.3 })
-      model({ bio <- tbio + eta.bio; bio ~ add(pdadd.sd) })
+      ini({ tbio <- 5; eta.bio ~ 0.25; pdadd.sd <- 0.15 })
+      model({ bio <- tbio + eta.bio; bio ~ prop(pdadd.sd) })
     }
 
     .testSeed(2); rxode2::rxSetSeed(2)
@@ -89,10 +100,14 @@ nmTest({
 
     # the mechanism: masked to its own endpoint, each residual parameter's SE from
     # the joint fit reproduces the single-endpoint reference (tight tolerance --
-    # nothing about the OTHER endpoint should be able to move this at all)
-    expect_equal(sqrt(.vcJoint["add.sd", "add.sd"]), sqrt(.vcCp["add.sd", "add.sd"]),
-                 tolerance = 0.1)
-    expect_equal(sqrt(.vcJoint["pdadd.sd", "pdadd.sd"]), sqrt(.vcBio["pdadd.sd", "pdadd.sd"]),
-                 tolerance = 0.1)
+    # nothing about the OTHER endpoint should be able to move this at all).  These
+    # SEs are ~0.01 in magnitude, well under a naive absolute tolerance -- compare
+    # the RATIO to 1 so the check is genuinely relative (expect_equal(x, y, tolerance=)
+    # falls back to an absolute difference once both values are small, which would
+    # make a tolerance chosen for O(1) numbers pass almost regardless of x vs y).
+    expect_equal(sqrt(.vcJoint["add.sd", "add.sd"]) / sqrt(.vcCp["add.sd", "add.sd"]),
+                 1, tolerance = 0.15)
+    expect_equal(sqrt(.vcJoint["pdadd.sd", "pdadd.sd"]) / sqrt(.vcBio["pdadd.sd", "pdadd.sd"]),
+                 1, tolerance = 0.15)
   })
 })

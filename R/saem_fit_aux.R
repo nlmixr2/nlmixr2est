@@ -561,9 +561,15 @@ calc.COV <- function(fit0) {
       # Fail rather than guess a wrong endpoint (#856).
       .resEndpnt <- .saemResEndpointIdx(.ri$condition, .ui$predDf$cond)
       if (anyNA(.resEndpnt)) {
+        # drop the WHOLE variance block, not just the residual rows: leaving
+        # .omPairs in place would still invert an Omega-only blocB submatrix,
+        # silently discarding its (generally nonzero) correlation with the
+        # residual parameters this cfg cannot place -- an unflagged, degraded
+        # Omega covariance is worse than reporting no variance block at all.
         warning("saem covFull: residual parameter endpoint unknown; variance block dropped",
                 call. = FALSE)
         .resNames <- character(0); .resType <- integer(0); .resEndpnt <- integer(0)
+        .omPairs <- NULL; .omNames <- character(0)
       }
     }
   }
