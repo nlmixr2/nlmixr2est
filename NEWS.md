@@ -139,6 +139,21 @@
   halving then doubling compounded into a 4x inflated covariance. Point
   estimates, the objective value, and the log-likelihood were unaffected.
 
+- `est="saem"` on a `boxCox()`/`yeoJohnson()` model (estimated or `fixed()`)
+  fit at the identity transform instead of the declared one (#914). Two
+  compounding defects: the kernel's working `lambda` was never refreshed from
+  the M-step's `lres`, so every `_powerD()` call used the transform's initial
+  value (1) all fit long, and `transMat` reported that same wrong value
+  instead of the fitted/fixed lambda; and the pure additive-plus-lambda and
+  proportional/power-plus-lambda residual models never zeroed the error
+  component they do not use (`bres`/`ares`), leaving it at its nonzero
+  default and corrupting the residual SD `g = ares + bres*|f|`. Together
+  these biased theta, BSV, and the residual SD (the BSV would collapse and
+  the residual SD would inflate to absorb the untransformed data), matching
+  neither the declared model nor FOCEi's fit of the same data. The unzeroed
+  component defect also affected the plain (non-`boxCox`/`yeoJohnson`) pure
+  power error model `pow()` with no `add()`/`prop()` term, which shares the
+  same fix.
 - SAEM's analytic Fisher information (`covMethod="fim"`/`"sa"`) had exactly one
   residual slot no matter how many endpoints a model declared, so a
   multi-endpoint fit's residual score/Hessian always came from whichever
