@@ -407,7 +407,7 @@
                          .x <- .tmp$err[x]
                          if (any(.x == c(
                            "add", "norm", "dnorm", "lnorm", "dlnorm",
-                           "dlogn", "logn"))) {
+                           "dlogn", "logn", "logitNorm", "probitNorm"))) {
                            if (!is.na(.tmp$est[x])) {
                              return(TRUE)
                            }
