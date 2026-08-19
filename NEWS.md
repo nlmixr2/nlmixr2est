@@ -120,6 +120,13 @@
   halving then doubling compounded into a 4x inflated covariance. Point
   estimates, the objective value, and the log-likelihood were unaffected.
 
+- `calc.COV()`'s `covFull` residual-variance block (`saemix` `func_FIM.R`
+  `blocB`) is now masked to the endpoint each residual parameter belongs to
+  (#904). For a multi-endpoint SAEM model with separate residuals per
+  endpoint, every residual parameter's `dVi/d(param)` previously spanned all
+  endpoints' observation rows instead of only its own, so the reported
+  residual standard errors were wrong. Single-endpoint models, including
+  combined `add()+prop()`, were unaffected.
 - `est="saem"`'s E-step (the simulated chain and mixture responsibilities) now
   honors `saemControl(addProp=)` instead of always forming the combined-error
   SD as `a + b*|f|` (`combined1`) (#912). The M-step objective already branched
