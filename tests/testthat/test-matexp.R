@@ -264,4 +264,46 @@ nmTest({
     expect_equal(.fM$objf, .fO$objf, tolerance = 1e-3)
     expect_equal(unname(fixef(.fM)), unname(fixef(.fO)), tolerance = 1e-3)
   })
+
+  test_that("matExp()/indLin() table and residual generation (#858)", {
+    # General regression check (issue #858's stated test) that table/residual
+    # generation for a matExp()/indLin() fit works. This does NOT exercise the
+    # setdiff() removal in R/resid.R itself -- see
+    # test-resid-ode-fallback.R for that (the default ODE methods used here
+    # never reach the branch the removal changed).
+    matLin <- function() {
+      ini({ tka <- 0.45; tcl <- 1.0; tv <- 3.45; eta.ka ~ 0.09; add.sd <- 0.7 })
+      model({
+        matExp()
+        k_depot_central <- exp(tka + eta.ka)
+        k_central_output <- exp(tcl) / exp(tv)
+        cp <- central / exp(tv)
+        cp ~ add(add.sd)
+      })
+    }
+    matMM <- function() {
+      ini({ tka <- 0.45; tvmax <- log(60); tkm <- log(40); tv <- 3.45; eta.ka ~ 0.09; add.sd <- 0.7 })
+      model({
+        matExp()
+        k_depot_central <- exp(tka + eta.ka)
+        indLin(central) <- -exp(tvmax) * central / (exp(tkm) + central)
+        cp <- central / exp(tv)
+        cp ~ add(add.sd)
+      })
+    }
+    .datLin <- .mkData(matLin, c(tka = 0.6, tcl = 1.1, tv = 3.6))
+    .datMM <- .mkData(matMM, c(tka = 0.6, tvmax = log(70), tkm = log(45), tv = 3.6))
+
+    .fLin <- .nlmixr(matLin, .datLin, est = "focei", control = foceiControl(print = 0))
+    expect_true(all(c("PRED", "IPRED") %in% names(.fLin)))
+    expect_false(any(is.na(.fLin$IPRED)))
+    suppressMessages(expect_error(addCwres(.fLin), NA))
+    suppressMessages(expect_error(addNpde(.fLin), NA))
+
+    .fMM <- .nlmixr(matMM, .datMM, est = "focei", control = foceiControl(print = 0, sigdig = 6))
+    expect_true(all(c("PRED", "IPRED") %in% names(.fMM)))
+    expect_false(any(is.na(.fMM$IPRED)))
+    suppressMessages(expect_error(addCwres(.fMM), NA))
+    suppressMessages(expect_error(addNpde(.fMM), NA))
+  })
 })
