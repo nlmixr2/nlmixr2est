@@ -19,7 +19,21 @@
   rather than the `rxode2::.iniHandleFixOrUnfix()` alias for it. They
   are the same function; this was the last caller of the old name
   anywhere in the ecosystem, so rxode2 can now drop it
-  (nlmixr2/rxode2#1250). \## New features
+  (nlmixr2/rxode2#1250).
+
+- `est="npb"`’s Gibbs sampler
+  (support-point/stick-breaking/mixture-proportion draws) and the shared
+  `npbSampleMixProbs()` mixture Dirichlet step now draw from rxode2’s
+  per-thread threefry engine instead of R’s own RNG
+  (`R::rnorm`/`R::unif_rand`/`R::rbeta`/`R::rgamma`, seeded via an
+  R-level [`set.seed()`](https://rdrr.io/r/base/Random.html) call). A
+  distribution the engine does not cover directly (Beta, Gamma) is drawn
+  by inverse-CDF from a threefry uniform, the same technique already
+  used for `est="impmap"`’s chi-square proposal scale. This is the
+  convention every other estimation method already follows, and it means
+  `npbControl(seed=)` reproducibility no longer depends on R’s ambient
+  RNG state; a fit’s exact draws (and so its reported values, given the
+  same seed) change as a result. \## New features
 
 - A pure-linear `matExp()` model now solves natively through rxode2’s
   matrix-exponential driver (`rxControl(method="indLin")`) under SAEM
@@ -107,6 +121,44 @@
 
 ### Bug fixes
 
+- `est="saem"` scored a censored (M2/M3/M4) observation with the wrong
+  sign, the wrong scale, and the untransformed DV, so a censored row’s
+  contribution to the chain’s acceptance could drive the fit away from,
+  rather than toward, the true parameters
+  ([\#876](https://github.com/nlmixr2/nlmixr2est/issues/876)). The
+  residual-error M-step also still counted a censored row’s recorded
+  LOQ/limit as if it had been measured, biasing the residual SD low
+  relative to `focei` on the same data
+  ([\#916](https://github.com/nlmixr2/nlmixr2est/issues/916)). Both are
+  fixed: the E-step now scores a censored row the way `focei`’s inner
+  likelihood does, and the M-step now simulates each censored row’s
+  value from the truncated normal implied by the current fit (data
+  augmentation, Samson/Lavielle/Mentre 2006) before building the
+  residual sum of squares. The truncated-normal draw itself uses the
+  same Botev
+
+  2015. minimax-tilting algorithm CWRES’s censored-observation
+        simulation already relies on (`censResid.h`’s `truncnorm()`, via
+        rxode2’s `rxRmvn`), ported to the seeded per-thread engine this
+        file already uses everywhere else, rather than a plain
+        inverse-CDF draw – which loses precision once the truncation
+        bounds are a few SDs from the mean, the regime a BQL row’s bound
+        often sits in.
+
+- `foceiControl(fast=TRUE)` could converge to a different fit than
+  `fast=FALSE` when a transform-both-sides (`lnorm`/`boxCox`) endpoint’s
+  untransformed prediction was non-positive at some observation – for
+  example a depot model’s `TIME==0` row, where the central compartment
+  is exactly zero
+  ([\#867](https://github.com/nlmixr2/nlmixr2est/issues/867)). rxode2
+  floors such a row’s transformed prediction at a constant, so the
+  objective is locally flat there, but the analytic (“fast”) outer
+  gradient kept differentiating the unclamped expression – not the
+  gradient of the objective actually being minimized. Such a subject’s
+  analytic gradient contribution is now detected and replaced with the
+  same per-subject finite difference already used for a failed augmented
+  solve, which differences the objective rxode2 actually evaluates.
+
 - `est="saem"` scored a censored (M2/M3/M4) row on an
   [`ar()`](https://rdrr.io/r/stats/ar.html) endpoint against the
   marginal normal distribution instead of the AR(1) conditional one that
@@ -154,6 +206,26 @@
   so their Hessian already is the observed information; halving then
   doubling compounded into a 4x inflated covariance. Point estimates,
   the objective value, and the log-likelihood were unaffected.
+
+- `est="saem"` on a
+  [`boxCox()`](https://nlmixr2.github.io/nlmixr2est/reference/boxCox.md)/[`yeoJohnson()`](https://nlmixr2.github.io/nlmixr2est/reference/boxCox.md)
+  model (estimated or `fixed()`) fit at the identity transform instead
+  of the declared one
+  ([\#914](https://github.com/nlmixr2/nlmixr2est/issues/914)). Two
+  compounding defects: the kernel’s working `lambda` was never refreshed
+  from the M-step’s `lres`, so every `_powerD()` call used the
+  transform’s initial value (1) all fit long, and `transMat` reported
+  that same wrong value instead of the fitted/fixed lambda; and the pure
+  additive-plus-lambda and proportional/power-plus-lambda residual
+  models never zeroed the error component they do not use
+  (`bres`/`ares`), leaving it at its nonzero default and corrupting the
+  residual SD `g = ares + bres*|f|`. Together these biased theta, BSV,
+  and the residual SD (the BSV would collapse and the residual SD would
+  inflate to absorb the untransformed data), matching neither the
+  declared model nor FOCEi’s fit of the same data. The unzeroed
+  component defect also affected the plain (non-`boxCox`/`yeoJohnson`)
+  pure power error model `pow()` with no `add()`/`prop()` term, which
+  shares the same fix.
 
 - SAEM’s analytic Fisher information (`covMethod="fim"`/`"sa"`) had
   exactly one residual slot no matter how many endpoints a model

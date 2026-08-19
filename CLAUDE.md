@@ -155,6 +155,64 @@ solve itself, deliberately not at any R-facing wrapper, because counting
 the wrapper meant the counter tracked the R fallback rather than the
 pooled route.
 
+### Random draws – threefry only, never R’s own RNG
+
+Every C++-level random draw goes through rxode2’s per-thread, seeded
+threefry engine (`rxNormEng(mean, sd)` / `rxUnifEng(low, hi)`, from
+`rxode2ptr.h`), NEVER through R’s own RNG (`R::rnorm`, `R::runif`,
+`R::rbeta`, `R::rgamma`, `unif_rand()`, `norm_rand()`,
+`GetRNGstate()`/`PutRNGstate()`, or an R-level
+[`set.seed()`](https://rdrr.io/r/base/Random.html) call to seed a
+subsequent `R::r*` draw). This is what makes a fit reproducible given a
+control `seed=`, independent of OpenMP thread scheduling and of R’s own
+ambient/global RNG state, and safe to draw from inside an
+OpenMP-parallel region – R’s RNG API is not safe to call from a non-main
+thread.
+
+- Only `rxNormEng`/`rxUnifEng` exist as per-thread draws; a distribution
+  the engine does not cover directly (Beta, Gamma, chi-square, a
+  truncated normal, …) is built by inverse-CDF – feed one
+  `rxUnifEng(0.0, 1.0)` draw into the matching DETERMINISTIC `R::q*`
+  quantile function (`R::qbeta`, `R::qgamma`, `R::qnorm`, …).
+  `R::p*`/`R::q*` (CDF/quantile, no RNG state touched) are fine
+  everywhere, including inside OpenMP regions – only `R::r*` (draws) and
+  `GetRNGstate()`/`PutRNGstate()` are banned. See `imp.cpp`’s
+  `impChisqQuantile()` and `npb.cpp`’s `npbRbeta()` for the pattern.
+- Seed a fresh, iteration/chain/group-mixed value (`setRxThreadId(0)` +
+  `nmSetSeedEng1(seed)`, `nmMcmcRng.h`) before every SERIAL batch of
+  draws, rather than letting one engine stream free-run across a whole
+  fit. A subject solve reseeds the SAME shared engine mid-solve
+  (`setSeedEng1(getRxSeed1()+id)` per subject – `nmMcmcRng.h`’s own top
+  comment) whenever it runs between two draw batches, so unconditionally
+  reseeding before every batch means no batch’s draws depend on what a
+  solve did to the engine in between, without having to track/restore
+  state. See `saem.cpp`’s `_saemSeedDoMcmc`/`_saemSeedCensAug` and
+  `npb.cpp`’s `npbSeedEng` for the seed-mixing convention –
+  multiplicatively fold EVERY index that identifies the batch (a bare
+  `+=` between two indices collides whenever they sum to the same value;
+  this has caused a real bug, see `_saemSeedCensAug`’s history).
+  `nmMcmcRng.h`’s `nmRngGuard()`/`nmRestoreMcmcSeed()` are the
+  alternative when a stream must survive ACROSS an inner-likelihood call
+  rather than being freshly reseeded after it (e.g. `do_mcmc`’s
+  proposal + acceptance-uniform draws, drawn before the candidate is
+  solved).
+
+**Truncated-normal draws – `src/truncNorm.h`.** A truncated-normal draw
+(SAEM’s censored-DV data augmentation, `saem.cpp`’s `simCensDv()`;
+CWRES’s censored-observation simulation, `censResid.h`’s `truncnorm()`)
+should use `rxTruncNorm(l, u)` (`src/truncNorm.h`), NOT a plain
+inverse-CDF draw (`qnorm(pnorm(l) + u*(pnorm(u)-pnorm(l)))`) – the
+inverse-CDF form loses precision catastrophically once `l`/`u` are more
+than a few SDs from 0, which is exactly the regime a censored (BQL)
+observation’s bound often sits in. `rxTruncNorm()` ports rxode2’s
+`rxRmvn` machinery (`rxthreefry.cpp`’s `ntail`/`tn`/`trandn`, Botev
+(2015) minimax tilting – the same algorithm that backs `censResid.h`’s
+`truncnorm()` for CWRES) onto this package’s own `rxNormEng`/`rxUnifEng`
+engine instead of a raw `sitmo::threefry&` reference this package has no
+access to, so it stays thread-safe and reproducible under a fit’s seed
+without a round-trip through R’s SEXP/PROTECT machinery (unsafe to call
+from a non-main thread) that `rxRmvn`’s R-facing entry point requires.
+
 ### Analytic outer gradient (`foceiControl(fast=TRUE)`)
 
 Computed entirely in C++: `analyticOuterGrad` -\>
