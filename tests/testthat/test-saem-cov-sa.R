@@ -348,4 +348,13 @@ nmTest({
     # no distribution at all (an old cfg) must not error
     expect_equal(.saemLlObsMask(list(opt = list()), .ix), rep(FALSE, 4))
   })
+
+  test_that(".saemResEndpointIdx matches a residual parameter to its ix_endpnt endpoint (#904)", {
+    # predDf$cond is in ix_endpnt (endpoint) order; a residual parameter's condition
+    # is matched positionally against it, not assumed to line up with .ri's row order
+    expect_equal(.saemResEndpointIdx(c("cp", "effect", "cp"), c("cp", "effect")), c(1L, 2L, 1L))
+    # a condition naming no endpoint fails rather than being silently attributed
+    # to the wrong (or first) one
+    expect_equal(.saemResEndpointIdx(c("cp", "bogus"), c("cp", "effect")), c(1L, NA_integer_))
+  })
 })

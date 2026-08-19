@@ -83,6 +83,14 @@
 
 ## Bug fixes
 
+- `est="saem"` scored a censored (M2/M3/M4) row on an `ar()` endpoint against
+  the marginal normal distribution instead of the AR(1) conditional one that
+  its uncensored neighbors already used (#918). `arDYFhyp` whitened a
+  discarded copy of the prediction/SD to build the uncensored loss, then
+  handed the censored-loss calculation the original marginal values. The
+  whitened prediction/SD are now kept and passed through, so a BQL row after
+  an AR-active observation is scored consistently with the rest of its chain.
+
 - Post-estimation machinery no longer refuses a model whose `ini({})` declares
   prior distributions (#938).  Two parts:
 
@@ -124,6 +132,35 @@
   endpoint gets a real entry, and any other endpoint's slot is held at exactly
   zero and dropped before the matrix is inverted, falling back to the
   linearized FIM for that endpoint's residual SE as before.
+- `calc.COV()`'s `covFull` residual-variance block (`saemix` `func_FIM.R`
+  `blocB`) is now masked to the endpoint each residual parameter belongs to
+  (#904). For a multi-endpoint SAEM model with separate residuals per
+  endpoint, every residual parameter's `dVi/d(param)` previously spanned all
+  endpoints' observation rows instead of only its own, so the reported
+  residual standard errors were wrong. Single-endpoint models, including
+  combined `add()+prop()`, were unaffected.
+- `est="saem"`'s E-step (the simulated chain and mixture responsibilities) now
+  honors `saemControl(addProp=)` instead of always forming the combined-error
+  SD as `a + b*|f|` (`combined1`) (#912). The M-step objective already branched
+  on `addProp`, so a `combined2` endpoint (`a + b*f` combined as
+  `sqrt(a^2+b^2*f^2)`, the default) was simulated under the wrong SD: the chain
+  targeted a different posterior than the one being estimated. Only
+  `addProp="combined2"` (or model-declared `combined2()`) fits with both an
+  additive and a proportional/power term move; `combined1` fits are bit-for-bit
+  unchanged since that branch's formula did not change.
+
+- `est="saem"`'s M-step objective for a plain `add()+pow()` endpoint (no
+  `boxCox()`/`yeoJohnson()`) formed the `combined2` residual SD as
+  `a^2+b^2*f^(2*pw)` and used it directly in place of the SD, missing the
+  `sqrt()` every sibling combined objective (`add()+prop()`, and
+  `add()+pow()+boxCox()`/`yeoJohnson()`) applies. Found while auditing the
+  `addProp` branches for the E-step fix above; only a plain `add()+pow()`
+  endpoint under the default `addProp="combined2"` was affected.
+- `"indLin"` is no longer excluded from the ODE-method fallback candidates a
+  post-fit table/residual solve tries when the fit's own ODE method is
+  neither `"dop853"`, `"liblsoda"`, nor `"lsoda"` (#858). rxode2/#1183-#1185
+  restored `indLin()`/matrix-exponential correctness, which was the reason
+  for the exclusion.
 
 ## New features
 
