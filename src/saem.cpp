@@ -1258,20 +1258,22 @@ public:
   // chain's prediction (simCensDv()), so arResk()/the direct SSR see a value
   // consistent with the censoring instead of the recorded LOQ/limit.
   // cens_cur/limit_cur are RAW (untransformed), same length/order as y_cur/
-  // f_cur (chain-sliced, ix_sorting-applied, endpoint span); limit_cur is
-  // transformed here with this endpoint's TBS parameters to match y_cur.
+  // f_cur (chain-sliced, ix_sorting-applied, endpoint span).
   //
-  // y_cur itself is on whatever scale the caller's hasFixedObsTransform
-  // branch already put it on (ysTrans, i.e. transformed, when the TBS
-  // transform is fixed; the raw ys otherwise) -- this mirrors arResk()'s own
-  // assumption a few lines below every call site, so a censored row's
-  // simulated replacement stays on the SAME scale as its uncensored
-  // neighbors in the same vector.  When the transform is instead ESTIMATED
-  // (hasFixedObsTransform==false), that shared assumption is already wrong
-  // (y_cur is raw while f_cur is power-transformed before the residual is
-  // taken) for EVERY row, not just censored ones -- a pre-existing gap, not
-  // introduced here, that traces to #914 (the saem lambda member never
-  // actually updates from its initial value).
+  // y_cur is on whatever scale the caller's hasFixedObsTransform branch put
+  // it on (ysTrans, i.e. already transformed, when the TBS transform is
+  // fixed; the raw ys when it is estimated -- see arResk()'s own read of
+  // y_cur a few lines below every call site).  simCensDv() itself works
+  // entirely on the TRANSFORMED scale (that is what f/sd/the truncation
+  // bounds are in), so both the limDv fed to it and the value it returns are
+  // converted between that scale and y_cur's ambient one via _powerD()/
+  // _powerDi() -- a no-op when hasFixedObsTransform is true.  This keeps a
+  // censored row's simulated replacement on the SAME scale as its
+  // uncensored neighbors in the returned vector; it does not touch the
+  // separate, pre-existing mismatch between y_cur and f_cur that arResk()
+  // itself has for EVERY row (censored or not) when the transform is
+  // estimated, which traces to #914 (the saem lambda member never actually
+  // updates from its initial value) and is out of scope here.
   vec augmentCensY(int b, const vec &f_cur, const vec &y_cur,
                     const vec &cens_cur, const vec &limit_cur,
                     int kiter, int k, int mixIdx) {
@@ -1289,7 +1291,11 @@ public:
       else if (sd < double_xmin) sd = double_xmin;
       else if (sd > xmax) sd = xmax;
       double limT = _powerD(limit_cur[i], lambda(b), yj(b), low(b), hi(b));
-      y_aug[i] = simCensDv(cens_cur[i], y_cur[i], limT, ft, sd);
+      double limDvT = hasFixedObsTransform ? y_cur[i] :
+        _powerD(y_cur[i], lambda(b), yj(b), low(b), hi(b));
+      double simT = simCensDv(cens_cur[i], limDvT, limT, ft, sd);
+      y_aug[i] = hasFixedObsTransform ? simT :
+        _powerDi(simT, lambda(b), yj(b), low(b), hi(b));
     }
     setRxThreadId(-1);
     return y_aug;
