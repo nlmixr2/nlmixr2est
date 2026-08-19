@@ -83,6 +83,18 @@
 
 ## Bug fixes
 
+- `foceiControl(fast=TRUE)` could converge to a different fit than `fast=FALSE`
+  when a transform-both-sides (`lnorm`/`boxCox`) endpoint's untransformed
+  prediction was non-positive at some observation -- for example a depot model's
+  `TIME==0` row, where the central compartment is exactly zero (#867). rxode2
+  floors such a row's transformed prediction at a constant, so the objective is
+  locally flat there, but the analytic ("fast") outer gradient kept
+  differentiating the unclamped expression -- not the gradient of the objective
+  actually being minimized. Such a subject's analytic gradient contribution is
+  now detected and replaced with the same per-subject finite difference already
+  used for a failed augmented solve, which differences the objective rxode2
+  actually evaluates.
+
 - Post-estimation machinery no longer refuses a model whose `ini({})` declares
   prior distributions (#938).  Two parts:
 

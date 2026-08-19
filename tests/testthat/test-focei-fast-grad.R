@@ -199,6 +199,52 @@ nmTest({
     expect_equal(unname(g[names(base)]), unname(fd), tolerance = 0.01)
   })
 
+  test_that("a domain-clamped lnorm prediction falls back to per-subject FD (#867)", {
+    skip_on_cran()
+    skip_if_not_installed("nlmixr2data")
+    # theo_sd ships an EVID==0, TIME==0 observation for every subject; a depot model
+    # predicts center == 0 there, so a log/lnorm transform-both-sides endpoint's
+    # untransformed prediction is non-positive at that row.  rxode2 floors the
+    # transformed prediction at a constant there, so the OBJECTIVE is locally
+    # constant, but the augmented outer model keeps differentiating the unclamped
+    # expression -- the analytic gradient stopped being the gradient of the
+    # objective actually minimized (nlmixr2/nlmixr2est#867).
+    mLnorm <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; prop.sd <- 0.7
+            eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+              d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center
+              cp <- center / v; cp ~ lnorm(prop.sd) })
+    }
+    d <- nlmixr2data::theo_sd
+    ph <- suppressMessages(nlmixr2(mLnorm, d, "focei",
+          foceiControl(print = 0L, covMethod = "", fast = TRUE, sigdig = 4,
+                       maxOuterIterations = 0L, maxInnerIterations = 300L)))
+    g <- .foceiGradDirect(ph)
+    expect_false(is.null(g))
+    # every one of the 12 subjects carries a TIME==0 row here, so every subject's
+    # analytic column is declined in favor of the per-subject finite difference --
+    # a fit that silently kept the (wrong) analytic column would also "look done",
+    # so assert the fallback was actually taken.
+    expect_gt(as.integer(ph$env$nOuterFdInd), 0L)
+    base <- fixef(ph)
+    ofvAt <- function(nm, val) {
+      ui2 <- do.call(rxode2::ini, c(list(ph$finalUi), setNames(list(val), nm)))
+      suppressMessages(suppressWarnings(nlmixr2(ui2, d, "focei",
+        foceiControl(print = 0L, covMethod = "", sigdig = 4, maxOuterIterations = 0L,
+                     maxInnerIterations = 300L))))$objf
+    }
+    h <- 1e-3
+    ## cached: the reference is a property of the model/data/theta, not of the
+    ## gradient implementation -- see helper-gradref.R.  This objective has a real
+    ## kink at the domain boundary (all 12 subjects clamp at TIME==0), so agreement
+    ## here is looser than the smooth-objective tests above -- before the fix tv's
+    ## analytic/FD ratio was sign-flipped (-6.07), not merely noisy.
+    fd <- .gradRef("lnorm-domain-clamp-867", function()
+      vapply(names(base), function(nm) (ofvAt(nm, base[nm] + h) - ofvAt(nm, base[nm] - h)) / (2 * h), numeric(1)))
+    expect_equal(unname(g[names(base)]), unname(fd), tolerance = 0.2)
+  })
+
   test_that("fast=TRUE fit matches the finite-difference fit", {
     skip_on_cran()
     skip_if_not_installed("nlmixr2data")
