@@ -372,11 +372,24 @@ is.latex <- function() {
 #' `d/dt()` for their sensitivity machinery.
 #'
 #' Deliberately bails (returns `FALSE`, leaving `s$..ddt` untouched) on a
-#' model with an `indLin()` forcing term (Michaelis-Menten etc.): that needs
-#' rxode2's true inductive-linearization iteration (`doIndLin` 3/4), which
-#' does not yet converge reliably under SAEM's per-iteration parameter draws
-#' (diverges from the ODE reference fit rather than merely differing in
-#' precision).  Those models keep flattening via `.rxInjectMatExpDdt()`.
+#' model with an `indLin()` forcing term, state-dependent (Michaelis-Menten
+#' etc, flagged by a non-empty `wIndLin`) OR state-free (a forcing that
+#' does not reference any state, flagged by a non-NULL `indLin$f` with an
+#' empty `wIndLin` -- e.g. `indLin(central) <- 5`): even the state-free case
+#' needs rxode2's `IndF()` forcing evaluation (`doIndLin` 2), which this
+#' path does not emit, and state-dependent forcing needs the true
+#' inductive-linearization iteration (`doIndLin` 3/4), which does not yet
+#' converge reliably under SAEM's per-iteration parameter draws (diverges
+#' from the ODE reference fit rather than merely differing in precision).
+#' Those models keep flattening via `.rxInjectMatExpDdt()`, which appends
+#' the forcing term to the materialized `d/dt()`.
+#'
+#' Also bails when the model has a `delay()` (`flags[["hasDelay"]]`):
+#' `.saemFitModel()` (R/saem.R) forces the dense `dop853` solver for a delay
+#' model, which would take precedence over this function's `method="indLin"`
+#' request and try to integrate the emitted `"matExp()"` text -- which has
+#' no `d/dt()` for it to integrate -- as a plain ODE.  Flattening keeps the
+#' `d/dt()` that `dop853` needs.
 #'
 #' @param s symengine-pruned model environment
 #' @return `TRUE`/invisibly `FALSE`; sets `s$..ddt` to `"matExp()"` on success
@@ -386,7 +399,10 @@ is.latex <- function() {
   if (!is.list(.mv$indLin) || length(.mv$indLin) != 4L) {
     return(invisible(FALSE))
   }
-  if (length(.mv$indLin$wIndLin) > 0L) {
+  if (!is.null(.mv$indLin$f)) {
+    return(invisible(FALSE))
+  }
+  if (isTRUE(.mv$flags[["hasDelay"]] == 1L)) {
     return(invisible(FALSE))
   }
   .states <- .rxode2stateOdeNoOutput(s)
