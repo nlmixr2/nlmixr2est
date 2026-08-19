@@ -188,4 +188,44 @@ nmTest({
 
   })
 
+  test_that("ar() + M3 censoring scores the AR(1) conditional distribution (#918)", {
+    # Plain est="saem" only -- an ar() endpoint always fails .fsaemSupported, so
+    # fsaem degrades to standard SAEM and this exercises arDYFhyp/doCensNormal1
+    # directly.  With 2 obs/subject only the 2nd (Time=1) record has a previous
+    # same-subject record to whiten against; censoring it below the LLOQ is
+    # exactly the "censored row following an uncensored previous record" case
+    # from #918.  Per the issue's caveat, e_prev accuracy for a RUN of censored
+    # records is still approximate (#916 fixes that), so this only checks the
+    # fit runs sanely -- not a tight comparison against an uncensored/focei fit.
+    datAr <- dat
+    datAr$cens <- 0L
+    loqIds <- c(1, 3, 4)
+    datAr$cens[datAr$ID %in% loqIds & datAr$Time == 1] <- 1L
+    datAr$DV[datAr$ID %in% loqIds & datAr$Time == 1] <- 6
+
+    fAr <- function() {
+      ini({
+        tvK <- 0.5
+        bsvK ~ 0.04
+        prop.sd <- sqrt(0.1)
+        ar1.cor <- 0.3
+      })
+      model({
+        ke <- tvK * exp(bsvK)
+        v <- 1
+        ipre <- 10 * exp(-ke * t)
+        ipre ~ prop(prop.sd) + ar(ar1.cor)
+      })
+    }
+
+    f.saemAr <- suppressWarnings(suppressMessages(
+      nlmixr(fAr, datAr, "saem", control = saemControl(print = 0, seed = 42))
+    ))
+    expect_true(is.finite(f.saemAr$objf))
+    ct(f.saemAr, "M3 censoring")
+
+    .corAr <- unname(f.saemAr$parFixedDf["ar1.cor", "Estimate"])
+    expect_true(is.finite(.corAr) && .corAr >= 0 && .corAr < 1)
+  })
+
 })
