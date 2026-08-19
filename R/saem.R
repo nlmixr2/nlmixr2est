@@ -380,7 +380,7 @@
     .x <- paste(.predDf$cond[i])
     .tmp <- .iniDf[which(.iniDf$condition == .x), ]
     .w <- which(vapply(.tmp$err,
-                       function(x) any(x == c("prop", "propT", "pow", "powT")),
+                       function(x) any(x == c("prop", "propT", "propF", "pow", "powT", "powF")),
                        logical(1),
                        USE.NAMES=FALSE))
     if (length(.w) == 1) {
@@ -396,7 +396,7 @@
       }
     }
     .w <- which(vapply(.tmp$err,
-                       function(x) any(x == c("pow2", "powT2")),
+                       function(x) any(x == c("pow2", "powF2", "powT2")),
                        logical(1),
                        USE.NAMES=FALSE))
     if (length(.w) == 1) {
@@ -407,7 +407,7 @@
                          .x <- .tmp$err[x]
                          if (any(.x == c(
                            "add", "norm", "dnorm", "lnorm", "dlnorm",
-                           "dlogn", "logn"))) {
+                           "dlogn", "logn", "logitNorm", "probitNorm"))) {
                            if (!is.na(.tmp$est[x])) {
                              return(TRUE)
                            }

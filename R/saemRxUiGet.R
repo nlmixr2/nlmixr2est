@@ -704,7 +704,8 @@ rxUiGet.saemAres <- function(x, ...) {
       x %in% c(
         "add", "norm", "dnorm", "dpois",
         "pois", "dbinom", "binom", "dbern", "bern",
-        "lnorm", "dlnorm", "logn", "dlogn")
+        "lnorm", "dlnorm", "logn", "dlogn",
+        "logitNorm", "probitNorm")
     }, logical(1), USE.NAMES=FALSE))
     if (length(.w) == 1) {
       return(.tmp$est[.w])
@@ -725,13 +726,13 @@ rxUiGet.saemBres <- function(x, ...) {
   return(vapply(.predDf$cond, function(x) {
     .tmp <- .ini[which(.ini$condition == x), ]
     .w <- which(vapply(.tmp$err,
-                       function(x) (any(x == "prop") || any(x == "propT")),
+                       function(x) (any(x == "prop") || any(x == "propT") || any(x == "propF")),
                        logical(1), USE.NAMES=FALSE))
     if (length(.w) == 1) {
       return(.tmp$est[.w])
     } else {
       .w <- which(vapply(.tmp$err,
-                         function(x) (any(x == "pow") || any(x == "powT")),
+                         function(x) (any(x == "pow") || any(x == "powT") || any(x == "powF")),
                          logical(1), USE.NAMES=FALSE))
       if (length(.w) == 1) {
         return(.tmp$est[.w])
@@ -752,7 +753,7 @@ rxUiGet.saemCres <- function(x, ...) {
   .ini <- .ini[!is.na(.ini$err), ]
   return(vapply(.predDf$cond, function(x) {
     .tmp <- .ini[which(.ini$condition == x), ]
-    .w <- which(vapply(.tmp$err, function(x) (any(x == "pow2") || any(x == "powT2")),
+    .w <- which(vapply(.tmp$err, function(x) (any(x == "pow2") || any(x == "powT2") || any(x == "powF2")),
                        logical(1), USE.NAMES=FALSE))
     if (length(.w) == 1) {
       return(.tmp$est[.w])

@@ -375,6 +375,21 @@
   the tolerance.  On a warfarin fit started from `k=1/h` (true value near `0.02/h`)
   this froze the volume eta for 19 of 32 subjects, biasing the population
   estimates and shrinking that eta's variance about fourfold.
+
+- Fixed `est="saem"` erroring with `missing value where TRUE/FALSE needed`
+  while finalizing a fit with an unfixed `logitNorm()`, `probitNorm()`,
+  `propF()`, `powF()` or `powF2()` residual sd (#915).  `.getSaemTheta()`
+  copied the saem-estimated residual sd back into `ui$iniDf$est` for the
+  `add()`/`lnorm()`/`prop()`/`pow()`/`pow2()`-family endpoints but not for
+  these, so the value stayed `NA` and the FOCEi scaleC setup that reenters
+  to build the fit table hit it during an `if()` test.
+
+  A second, independent gap in the same error types was found alongside it:
+  `rxUiGet.saemAres`/`saemBres`/`saemCres` also never matched
+  `logitNorm()`/`probitNorm()`/`propF()`/`powF()`/`powF2()`, so the SAEM
+  kernel silently *started* every such fit from the hardcoded fallback
+  (`10`/`1`) instead of the residual sd given in `ini()`.
+
 - Fixed `foceiControl(fast=TRUE)` FOCE fits (`est="foce"`, `"mfoce"`, `"ifoce"`)
   discarding a usable analytic outer gradient and paying for a full
   finite-difference gradient instead.  FOCE freezes the residual variance, so its
