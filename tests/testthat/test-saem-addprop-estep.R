@@ -10,15 +10,15 @@ nmTest({
     f <- c(2, -3, 0)
 
     # combined1: g = a + b*|f|
-    g1 <- as.vector(nlmixr2est:::saemFormGTest(a, b, f, c(1L, 1L, 1L)))
+    g1 <- as.vector(saemFormGTest(a, b, f, c(1L, 1L, 1L)))
     expect_equal(g1, a + b * abs(f))
 
     # combined2: g = sqrt(a^2 + b^2*f^2)
-    g2 <- as.vector(nlmixr2est:::saemFormGTest(a, b, f, c(2L, 2L, 2L)))
+    g2 <- as.vector(saemFormGTest(a, b, f, c(2L, 2L, 2L)))
     expect_equal(g2, sqrt(a^2 + b^2 * f^2))
 
     # a multi-endpoint fit mixes both per observation in one call
-    gm <- as.vector(nlmixr2est:::saemFormGTest(a, b, f, c(1L, 2L, 1L)))
+    gm <- as.vector(saemFormGTest(a, b, f, c(1L, 2L, 1L)))
     expect_equal(gm, c(g1[1], g2[2], g1[3]))
 
     # the two formulas must actually disagree when both terms are present,
