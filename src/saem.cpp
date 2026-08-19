@@ -123,10 +123,15 @@ static inline void saemFormG(vec &g, const vec &a, const vec &b, const vec &ft, 
   const arma::uword n = ft.n_elem;
   for (arma::uword i = 0; i < n; ++i) {
     double fa = std::fabs(ft[i]);
+    // c[i]==1 is every non-pow() endpoint (the overwhelming common case) --
+    // skip pow() there so g is bit-identical to the pre-#972 formula instead
+    // of merely numerically equal (SAEM's MCMC acceptance is sensitive
+    // enough to a ULP-level g difference that it is not a no-op in practice).
+    double fac = (c[i] == 1.0) ? fa : std::pow(fa, c[i]);
     if (addPropVec[i] == 1) {
-      g[i] = a[i] + b[i]*std::pow(fa, c[i]);
+      g[i] = a[i] + b[i]*fac;
     } else {
-      g[i] = std::sqrt(a[i]*a[i] + b[i]*b[i]*std::pow(fa, 2.0*c[i]));
+      g[i] = std::sqrt(a[i]*a[i] + b[i]*b[i]*fac*fac);
     }
   }
 }
