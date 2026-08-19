@@ -112,6 +112,14 @@
   halving then doubling compounded into a 4x inflated covariance. Point
   estimates, the objective value, and the log-likelihood were unaffected.
 
+- `est="saem"` now applies a `pow()` residual exponent in the S-step MCMC
+  acceptance, not only in the M-step that estimates it (#972). The two
+  previously disagreed about the model: every proposal was scored as if the
+  exponent were fixed at 1, which created a destructive feedback loop for an
+  *estimated* exponent -- it collapsed toward 0 while the proportional SD
+  inflated to compensate. A `pow()` exponent `fixed()` at its true value was
+  largely unaffected.
+
 ## New features
 
 - `est="saem"` gained controls for the cost of the `nonMuTheta="regress"`

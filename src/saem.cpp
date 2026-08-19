@@ -1873,7 +1873,7 @@ public:
                 _scratch_ft(i) = _powerD(fk(i), lambda(cur), yj(cur), low(cur), hi(cur));
                 _scratch_ftT(i) = handleF(propT(cur), _scratch_ft(i), fk(i), false, true);
               }
-              _scratch_g = vecares + vecbres % abs(_scratch_ftT);
+              _scratch_g = calcScratchG(_scratch_ftT);
               _scratch_g.elem(find(_scratch_g == 0.0)).fill(1.0);
               _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
               _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
@@ -2073,7 +2073,7 @@ public:
                 _scratch_ft(i) = _powerD(fk(i), lambda(cur), yj(cur), low(cur), hi(cur));
                 _scratch_ftT(i) = handleF(propT(cur), _scratch_ft(i), fk(i), false, true);
               }
-              _scratch_g = vecares + vecbres % abs(_scratch_ftT);
+              _scratch_g = calcScratchG(_scratch_ftT);
               _scratch_g.elem(find(_scratch_g == 0.0)).fill(1.0);
               _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
               _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
@@ -2349,7 +2349,7 @@ public:
               _scratch_ft(i) = _powerD(fk(i), lambda(cur), yj(cur), low(cur), hi(cur));
               _scratch_ftT(i) = handleF(propT(cur), _scratch_ft(i), fk(i), false, true);
             }
-            _scratch_g = vecares + vecbres % abs(_scratch_ftT);
+            _scratch_g = calcScratchG(_scratch_ftT);
             _scratch_g.elem(find(_scratch_g == 0.0)).fill(1.0);
             _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
             _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
@@ -3367,6 +3367,7 @@ public:
       }
       vecares = ares(ix_endpnt);
       vecbres = bres(ix_endpnt);
+      veccres = cres(ix_endpnt);
       if (DEBUG>0) Rcout << "par update successful\n";
 
       //    Fisher information
@@ -3738,6 +3739,45 @@ private:
     ysb = arma::repmat(ys(idx), (arma::uword)nmc, 1);
   }
 
+  // Per-observation S-step residual SD, mirroring the M-step objective's g
+  // formula (obj/objC/objD/objF/objG/objH/objI in this file) so a pow()
+  // exponent is not invisible to MCMC acceptance (#972) -- vecares/vecbres/
+  // veccres were previously combined as a plain vecares + vecbres*|ftT|
+  // regardless of res_mod, which is only correct for res_mod without a pow
+  // component.
+  vec calcScratchG(const vec &ftT) const {
+    vec g(ftT.n_elem);
+    for (arma::uword i = 0; i < ftT.n_elem; i++) {
+      int cur = (int)ix_endpnt(i);
+      int rm = (int)res_mod(cur);
+      double fa = std::fabs(ftT(i));
+      double a = vecares(i), b = vecbres(i), c = veccres(i);
+      switch (rm) {
+      case rmPow:
+      case rmPowLam:
+        g(i) = b*std::pow(fa, c);
+        break;
+      case rmAddPow:
+        // matches objC: the combined2 (addProp==0) branch there sums the
+        // squared components without a final sqrt() -- reproduced as-is so
+        // the S-step and M-step keep evaluating the same model; tracked
+        // separately from #972.
+        g(i) = (addProp(cur) == 1) ? a + b*std::pow(fa, c)
+          : a*a + b*b*std::pow(fa, 2.0*c);
+        break;
+      case rmAddPowLam:
+        // matches objI, which does take the sqrt() in its addProp==0 branch.
+        g(i) = (addProp(cur) == 1) ? a + b*std::pow(fa, c)
+          : std::sqrt(a*a + b*b*std::pow(fa, 2.0*c));
+        break;
+      default:
+        g(i) = a + b*fa;
+        break;
+      }
+    }
+    return g;
+  }
+
   // Invert a symmetric covariance (omega) matrix.  If it is not positive
   // definite, project it to the nearest positive-definite matrix (in place, so
   // downstream chol()/set_mcmcphi() see the corrected matrix), warn the user
@@ -3861,7 +3901,7 @@ private:
                 _scratch_ft(i) = _powerD(fsk(i), lambda(cur), yj(cur), low(cur), hi(cur));
                 _scratch_ftT(i) = handleF(propT(cur), _scratch_ft(i), fsk(i), false, true);
               }
-              _scratch_g = vecares + vecbres % abs(_scratch_ftT);
+              _scratch_g = calcScratchG(_scratch_ftT);
               _scratch_g.elem(find(_scratch_g == 0.0)).fill(1);
               _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
               _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
@@ -3972,7 +4012,7 @@ private:
               _scratch_ft(i) = _powerD(fsk(i), lambda(cur), yj(cur), low(cur), hi(cur));
               _scratch_ftT(i) = handleF(propT(cur), fsk(i), _scratch_ft(i), false, true);
             }
-            _scratch_g = vecares + vecbres % abs(_scratch_ftT);
+            _scratch_g = calcScratchG(_scratch_ftT);
             _scratch_g.elem(find(_scratch_g == 0.0)).fill(1);
             _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
             _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
@@ -4085,7 +4125,7 @@ private:
             _scratch_ft(i) = _powerD(fk(i), lambda(cur), yj(cur), low(cur), hi(cur));
             _scratch_ftT(i) = handleF(propT(cur), fk(i), _scratch_ft(i), false, true);
           }
-          _scratch_g = vecares + vecbres % abs(_scratch_ftT);
+          _scratch_g = calcScratchG(_scratch_ftT);
           _scratch_g.elem(find(_scratch_g == 0.0)).fill(1.0);
           _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
           _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
