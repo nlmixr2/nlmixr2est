@@ -206,10 +206,16 @@
   ## and yields a non-finite covariance linearization.  Mirror rxode2::rxSolve()'s
   ## hasDelay enforcement here so the SAEM solve and the covariance dopred both use
   ## the dense dop853 path.
-  if (isTRUE(rxode2::rxModelVars(attr(.model$saem_mod, "rx"))$flags[["hasDelay"]] == 1L)) {
+  .saemMv <- rxode2::rxModelVars(attr(.model$saem_mod, "rx"))
+  if (isTRUE(.saemMv$flags[["hasDelay"]] == 1L)) {
     .rxControl$method <- 0L  # dop853 (dense; no analytic Jacobian required)
     .rxControl$stiff2 <- 0L
     .rxControl$dense <- TRUE # record dense history for delay() interpolation
+  } else if (is.list(.saemMv$indLin) && length(.saemMv$indLin) == 4L) {
+    ## matExp()/indLin(): rxUiGet.saemModel() emits the native (unflattened)
+    ## matExp()/indLin() text (#859), which has no d/dt() at all -- it only
+    ## solves through rxode2's matrix-exponential driver.
+    .rxControl$method <- 3L  # indLin
   }
   .ue <- .uninformativeEtas(ui,
                             handleUninformativeEtas=rxode2::rxGetControl(ui, "handleUninformativeEtas", TRUE),

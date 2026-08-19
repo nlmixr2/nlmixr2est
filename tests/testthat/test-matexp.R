@@ -263,6 +263,96 @@ nmTest({
     .fM <- .nlmixr(matS, nlmixr2data::theo_sd, est = "saem", control = .ctl)
     expect_equal(.fM$objf, .fO$objf, tolerance = 1e-3)
     expect_equal(unname(fixef(.fM)), unname(fixef(.fO)), tolerance = 1e-3)
+    # mechanism check (#859): a pure-linear matExp() model must solve
+    # natively (a literal "matExp()" line, no materialized d/dt()), not via
+    # the ODE-flattening path -- matching numbers alone would not catch a
+    # regression back to flattening.
+    .saemModelTxt <- strsplit(utils::getFromNamespace("rxUiGet.saemModel", "nlmixr2est")(list(matS())), "\n")[[1]]
+    expect_true(any(grepl("^matExp\\(\\)$", .saemModelTxt)))
+    expect_false(any(grepl("d/dt(", .saemModelTxt, fixed = TRUE)))
+  })
+
+  test_that("matExp()/indLin() Michaelis-Menten (saem) falls back to the ODE flatten", {
+    # rxode2's true inductive-linearization iteration (doIndLin 3/4) does not
+    # yet converge reliably under SAEM's per-iteration parameter draws (a
+    # native attempt diverged from the ODE reference: objf -174 vs 321,
+    # unrelated fixed effects; tracked separately as #977), so
+    # .rxKeepMatExpNative() bails on an indLin() forcing term and
+    # rxUiGet.saemModel() keeps materializing d/dt() via
+    # .rxInjectMatExpDdt(), same as before #859.
+    odeMM <- function() {
+      ini({ tka <- 0.45; tvmax <- log(60); tkm <- log(40); tv <- 3.45; eta.ka ~ 0.09; add.sd <- 0.7 })
+      model({
+        ka <- exp(tka + eta.ka); vmax <- exp(tvmax); km <- exp(tkm); v <- exp(tv)
+        d/dt(depot) <- -ka * depot
+        d/dt(central) <- ka * depot - vmax * central / (km + central)
+        cp <- central / v
+        cp ~ add(add.sd)
+      })
+    }
+    matMM <- function() {
+      ini({ tka <- 0.45; tvmax <- log(60); tkm <- log(40); tv <- 3.45; eta.ka ~ 0.09; add.sd <- 0.7 })
+      model({
+        matExp()
+        k_depot_central <- exp(tka + eta.ka)
+        indLin(central) <- -exp(tvmax) * central / (exp(tkm) + central)
+        cp <- central / exp(tv)
+        cp ~ add(add.sd)
+      })
+    }
+    .saemModelTxt <- strsplit(utils::getFromNamespace("rxUiGet.saemModel", "nlmixr2est")(list(matMM())), "\n")[[1]]
+    expect_true(any(grepl("d/dt(", .saemModelTxt, fixed = TRUE)))
+    expect_false(any(grepl("^matExp\\(\\)$", .saemModelTxt)))
+    expect_false(any(grepl("^indLin\\(", .saemModelTxt)))
+
+    .dat <- .mkData(odeMM, c(tka = 0.6, tvmax = log(70), tkm = log(45), tv = 3.6), nid = 8, seed = 4321)
+    .ctl <- saemControl(print = 0, nBurn = 100, nEm = 100, seed = 42)
+    .fO <- .nlmixr(odeMM, .dat, est = "saem", control = .ctl)
+    .fM <- .nlmixr(matMM, .dat, est = "saem", control = .ctl)
+    expect_equal(.fM$objf, .fO$objf, tolerance = 1e-3)
+    expect_equal(unname(fixef(.fM)), unname(fixef(.fO)), tolerance = 1e-3)
+  })
+
+  test_that("matExp() with a state-free indLin() forcing (saem) falls back to the ODE flatten", {
+    # A forcing that does not reference any state (e.g. indLin(central) <- 5)
+    # leaves wIndLin empty, same as a pure-linear model with no forcing at
+    # all -- so the native-routing decision cannot key on wIndLin alone (it
+    # would silently drop the forcing term, since the native path emits no
+    # indLin() text). .rxKeepMatExpNative() instead bails whenever
+    # indLin$f is non-NULL (any forcing, state-free or not).
+    matSF <- function() {
+      ini({ tka <- 0.45; tv <- 3.45; add.sd <- 0.7 })
+      model({
+        matExp()
+        k_depot_central <- exp(tka)
+        indLin(central) <- 5
+        cp <- central / exp(tv)
+        cp ~ add(add.sd)
+      })
+    }
+    .saemModelTxt <- strsplit(utils::getFromNamespace("rxUiGet.saemModel", "nlmixr2est")(list(matSF())), "\n")[[1]]
+    expect_true(any(grepl("d/dt(central)=", .saemModelTxt, fixed = TRUE)))
+    expect_true(any(grepl("\\(5\\)", .saemModelTxt)))
+    expect_false(any(grepl("^matExp\\(\\)$", .saemModelTxt)))
+  })
+
+  test_that("matExp() with delay() (saem) falls back to the ODE flatten", {
+    # .saemFitModel() (R/saem.R) forces the dense dop853 solver for a delay
+    # model (hasDelay), which takes precedence over method="indLin" -- so a
+    # native "matExp()" emission (no d/dt() for dop853 to integrate) would
+    # silently solve to all-zero states. .rxKeepMatExpNative() bails on
+    # flags[["hasDelay"]] to keep this combination flattened.
+    matD <- function() {
+      ini({ tka <- 0.45; tv <- 3.45; add.sd <- 0.7 })
+      model({
+        matExp()
+        k_depot_central <- exp(tka)
+        cp <- delay(central, 5) / exp(tv)
+        cp ~ add(add.sd)
+      })
+    }
+    .s <- utils::getFromNamespace("rxUiGet.loadPruneSaem", "nlmixr2est")(list(matD()))
+    expect_false(isTRUE(utils::getFromNamespace(".rxKeepMatExpNative", "nlmixr2est")(.s)))
   })
 
   test_that("matExp()/indLin() table and residual generation (#858)", {
