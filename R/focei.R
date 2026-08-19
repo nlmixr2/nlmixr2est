@@ -2910,6 +2910,33 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     .minfo("linCmt() model: the analytic 'fast' gradient does not apply -- using fast = FALSE")
     .control$fast <- FALSE
   }
+  # Prior spec (nlmixr2/nlmixr2est#929): built once here, from whatever this ui
+  # declares in ini({}); a thin no-op (NULL) for a model with none.  Assigned
+  # with `[<-`, not `$<-`/`[[<-`, so a NULL spec still occupies the "priorSpec"
+  # slot instead of being dropped -- the C++ setup reads the element by name and
+  # must not see a missing key.  The gate (.nlmixr2AssertPriors(), R/priors.R)
+  # has already refused anything the dispatched est= method cannot use before
+  # .foceiFamilyControl() runs, so every term reaching this build is one the
+  # calling family accepted.
+  .control["priorSpec"] <- list(.nlmixr2BuildPriorSpec(.ui))
+  if (!is.null(.control$priorSpec)) {
+    # Neither the analytic outer gradient nor the analytic covariance/Hessian
+    # has a d/dtheta log p(theta) term yet (#931 scope is the objective only);
+    # an FD gradient/Hessian of foceiOfv0() picks the prior up for free
+    # because it re-evaluates the (now prior-inclusive) objective at each
+    # perturbed point, so downgrading to FD here keeps the fit's gradient and
+    # covariance consistent with the objective it is actually reporting,
+    # rather than silently describing a different function.
+    if (isTRUE(.control$fast)) {
+      .minfo("prior distribution(s): the analytic 'fast' gradient does not apply yet -- using fast = FALSE")
+      .control$fast <- FALSE
+    }
+    if (identical(.control$covType, "analytic")) {
+      .minfo("prior distribution(s): analytic covariance does not apply yet -- using covMethod = \"r,s\"")
+      .control$covType <- "fd"
+      .control$covMethod <- 1L
+    }
+  }
   assign("control", .control, envir=.ui)
 }
 
@@ -3348,6 +3375,7 @@ nlmixr2Est.focei <- function(env, ...) {
   .ret <- .foceiFamilyReturn(env, .ui, ..., est="focei")
   .ret
 }
+attr(nlmixr2Est.focei, "nlmixr2Priors") <- "theta"
 attr(nlmixr2Est.focei, "covPresent") <- TRUE
 attr(nlmixr2Est.focei, "unbounded") <- .foUnbounded
 attr(nlmixr2Est.focei, "iov") <- TRUE

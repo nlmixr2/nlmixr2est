@@ -22,7 +22,12 @@
                            "foceiConstCovs",
                            # TRUE when the outer optimizer was defaulted (not user
                            # specified); lets *f wrappers re-default under fast=TRUE
-                           "outerOptDefault")
+                           "outerOptDefault",
+                           # the built rx_prior_spec_t* external pointer
+                           # (.nlmixr2BuildPriorSpec(), R/priors.R); not a formal
+                           # argument, not deparseable/comparable, and rebuilt fresh
+                           # every fit -- internal so a built control round-trips.
+                           "priorSpec")
 
 #' Control Options for FOCEi
 #'

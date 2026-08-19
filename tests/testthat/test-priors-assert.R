@@ -31,10 +31,14 @@ nmTest({
   }
 
   test_that("a method declares what priors it supports", {
-    ## an ordinary method has no declaration, which means none
-    expect_equal(.nlmixr2PriorSupport(.env("focei", NULL)), "none")
+    ## an ordinary method with no declaration means none; saem does not
+    ## declare nlmixr2Priors (focei's family does, as of #931, so it is no
+    ## longer a representative "undeclared" example)
+    expect_equal(.nlmixr2PriorSupport(.env("saem", NULL)), "none")
     ## and so does a class with no method at all
     expect_equal(.nlmixr2PriorSupport(.env("notAMethod", NULL)), "none")
+    ## focei's family declares "theta" support (#931)
+    expect_equal(.nlmixr2PriorSupport(.env("focei", NULL)), "theta")
   })
 
   test_that("an unknown support level is an error", {
@@ -57,10 +61,12 @@ nmTest({
     .ui <- .mod("prior(tka) ~ dnorm(0, 10)")
 
     ## the message names the parameter and the method, so the user can
-    ## see which prior and which est
-    expect_error(.nlmixr2AssertPriors(.env("focei", .ui)), "tka")
-    expect_error(.nlmixr2AssertPriors(.env("focei", .ui)), "focei")
+    ## see which prior and which est.  saem declares no support (still
+    ## "none"); focei's family now honours a theta prior (#931), so an
+    ## omega prior is what still demonstrates a refusal for it.
+    expect_error(.nlmixr2AssertPriors(.env("saem", .ui)), "tka")
     expect_error(.nlmixr2AssertPriors(.env("saem", .ui)), "saem")
+    expect_error(.nlmixr2AssertPriors(.env("focei", .mod("om.eta.ka ~ 0.01"))), "omega")
 
     ## a method registered by another package gets the same treatment,
     ## which is the point of checking in the generic
@@ -79,19 +85,25 @@ nmTest({
     expect_error(.nlmixr2AssertPriors(.env("fakeAll", .ui)), NA)
   })
 
-  test_that("a normal-only method takes a normal prior but not others", {
+  test_that("a tnpri method takes a normal prior (incl. on omega) but not others", {
     skip_if_not(.hasPriors())
     skip_if_not(.hasRxAsserts())
 
-    nlmixr2Est.fakeNormal <- function(env, ...) TRUE
-    attr(nlmixr2Est.fakeNormal, "nlmixr2Priors") <- "normal"
-    registerS3method("nlmixr2Est", "fakeNormal", nlmixr2Est.fakeNormal,
+    nlmixr2Est.fakeTnpri <- function(env, ...) TRUE
+    attr(nlmixr2Est.fakeTnpri, "nlmixr2Priors") <- "tnpri"
+    registerS3method("nlmixr2Est", "fakeTnpri", nlmixr2Est.fakeTnpri,
                      envir=globalenv())
 
     expect_error(.nlmixr2AssertPriors(
-      .env("fakeNormal", .mod("prior(tka) ~ dnorm(0, 10)"))), NA)
+      .env("fakeTnpri", .mod("prior(tka) ~ dnorm(0, 10)"))), NA)
+    ## a normal prior directly on omega is exactly what tnpri is for
     expect_error(.nlmixr2AssertPriors(
-      .env("fakeNormal", .mod("prior(tka) ~ dgamma(2, 1)"))))
+      .env("fakeTnpri", .mod("om.eta.ka ~ 0.01"))), NA)
+    expect_error(.nlmixr2AssertPriors(
+      .env("fakeTnpri", .mod("prior(tka) ~ dgamma(2, 1)"))))
+    ## nwpri's own mechanism (omega degrees of freedom) is refused
+    expect_error(.nlmixr2AssertPriors(
+      .env("fakeTnpri", .mod("prior(eta.ka) ~ invWishart(2)"))))
   })
 
   test_that("an nwpri method takes omega degrees of freedom", {
@@ -109,6 +121,68 @@ nmTest({
     ## a normal prior on the omega values is TNPRI, which it does not do
     expect_error(.nlmixr2AssertPriors(
       .env("fakeNwpri", .mod("om.eta.ka ~ 0.01"))))
+  })
+
+  test_that("a theta-only method takes a theta prior but not one on omega", {
+    skip_if_not(.hasPriors())
+
+    nlmixr2Est.fakeTheta <- function(env, ...) TRUE
+    attr(nlmixr2Est.fakeTheta, "nlmixr2Priors") <- "theta"
+    registerS3method("nlmixr2Est", "fakeTheta", nlmixr2Est.fakeTheta,
+                     envir=globalenv())
+
+    ## a Cauchy is fine too -- "theta" restricts WHERE the prior can sit
+    ## (never on omega), not the distribution family
+    expect_error(.nlmixr2AssertPriors(
+      .env("fakeTheta", .mod("prior(tka) ~ dnorm(0, 10)"))), NA)
+    expect_error(.nlmixr2AssertPriors(
+      .env("fakeTheta", .mod("prior(tka) ~ dcauchy(0, 5)"))), NA)
+    expect_error(.nlmixr2AssertPriors(
+      .env("fakeTheta", .mod("om.eta.ka ~ 0.01"))), "omega")
+    expect_error(.nlmixr2AssertPriors(
+      .env("fakeTheta", .mod("prior(eta.ka) ~ invWishart(2)"))), "omega")
+  })
+
+  test_that("a general method takes anything the kernel supports", {
+    skip_if_not(.hasPriors())
+
+    nlmixr2Est.fakeGeneral <- function(env, ...) TRUE
+    attr(nlmixr2Est.fakeGeneral, "nlmixr2Priors") <- "general"
+    registerS3method("nlmixr2Est", "fakeGeneral", nlmixr2Est.fakeGeneral,
+                     envir=globalenv())
+
+    expect_error(.nlmixr2AssertPriors(
+      .env("fakeGeneral", .mod("prior(tka) ~ dcauchy(0, 5)"))), NA)
+    expect_error(.nlmixr2AssertPriors(
+      .env("fakeGeneral", .mod("om.eta.ka ~ 0.01"))), NA)
+    expect_error(.nlmixr2AssertPriors(
+      .env("fakeGeneral", .mod("prior(eta.ka) ~ invWishart(2)"))), NA)
+  })
+
+  test_that(".nlmixr2PriorMethod() reads the omega convention off the ini() syntax", {
+    skip_if_not(.hasPriors())
+
+    ## no omega-referencing prior at all: the three methods agree, so this
+    ## is a harmless default
+    expect_equal(.nlmixr2PriorMethod(.mod("prior(tka) ~ dnorm(0, 10)")), "general")
+    ## a normal directly on omega only makes sense as tnpri
+    expect_equal(.nlmixr2PriorMethod(.mod("om.eta.ka ~ 0.01")), "tnpri")
+    ## omega degrees of freedom only makes sense as nwpri
+    expect_equal(.nlmixr2PriorMethod(.mod("prior(eta.ka) ~ invWishart(2)")), "nwpri")
+    ## neither nwpri nor tnpri has a Cauchy analogue
+    expect_equal(.nlmixr2PriorMethod(.mod("prior(tka) ~ dcauchy(0, 5)")), "general")
+  })
+
+  test_that(".nlmixr2BuildPriorSpec() is a no-op for a model with no priors", {
+    expect_null(.nlmixr2BuildPriorSpec(.mod()))
+  })
+
+  test_that(".nlmixr2BuildPriorSpec() returns a usable external pointer", {
+    skip_if_not(.hasPriors())
+    skip_if_not(exists("rxPriorBuildSpec", envir=asNamespace("rxode2"), inherits=FALSE))
+
+    .spec <- .nlmixr2BuildPriorSpec(.mod("prior(tka) ~ dnorm(0, 10)"))
+    expect_true(is(.spec, "externalptr"))
   })
 
 })

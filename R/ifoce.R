@@ -17,6 +17,7 @@ nlmixr2Est.ifoce <- function(env, ...) {
   .ui <- env$ui
   .foceiFamilyReturn(env, .ui, ..., est="ifoce")
 }
+attr(nlmixr2Est.ifoce, "nlmixr2Priors") <- "theta"
 attr(nlmixr2Est.ifoce, "iov") <- TRUE
 attr(nlmixr2Est.ifoce, "covPresent") <- TRUE
 attr(nlmixr2Est.ifoce, "unbounded") <- .foUnbounded

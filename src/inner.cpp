@@ -500,6 +500,16 @@ struct focei_options {
   mat omega;
   mat omegaInv;
   mat cholOmegaInv;
+  // ini({}) prior spec (nlmixr2/rxode2#1270, nlmixr2/nlmixr2est#929/#931):
+  // built once by .nlmixr2BuildPriorSpec() (R/priors.R), NULL for a model
+  // with no prior.  Owned by the R external pointer object living at
+  // foceiO["priorSpec"] for the duration of THIS foceiFitCpp_() call -- this
+  // is a non-owning view, valid only while that R object is reachable from
+  // the calling R frame (see the read site in foceiSetup_ for why that's
+  // always true here). The gate (.nlmixr2AssertPriors()) has already
+  // restricted every term this can point to a theta-only "general" spec
+  // (#931's scope); no term here ever references an omega index.
+  const rx_prior_spec_t *priorSpec = NULL;
   mat etaM;
   mat etaS;
   // 1/SD of the eta distribution; standardizes an INDIVIDUAL eta (etaInBound(),
@@ -4607,6 +4617,40 @@ static inline double foceiLik0(double *theta) {
 }
 
 
+// -2*log p(theta), the ini({}) prior penalty (nlmixr2/rxode2#1270,
+// nlmixr2/nlmixr2est#929/#931).  0.0 when the model has no prior
+// (op_focei.priorSpec == NULL, the common case).  Reads op_focei.fullTheta/
+// op_focei.omega, which updateTheta() (called inside foceiLik0(), always
+// immediately before this at every call site) has already refreshed for
+// the current theta -- so this must only ever be called right after
+// foceiLik0().  The gate (.nlmixr2AssertPriors(), R/priors.R) refuses any
+// prior that touches an omega element before a FOCEI-family fit ever
+// reaches here, so no term in the spec references op_focei.omega's
+// contents; it is passed only so the C API's gradOmega buffer has a
+// validly-sized (if unused) home. gradTheta/gradOmega are discarded here:
+// numericGrad() finite-differences THIS function (via foceiObjFromLik0()),
+// so it picks the prior up for free; the analytic outer gradient has no
+// d/dtheta log p(theta) term yet, so .foceiFamilyControl() (R/focei.R)
+// forces fast=FALSE whenever a prior is present rather than risk a
+// gradient that silently disagrees with this objective.
+static inline double foceiPriorObjTerm() {
+  if (op_focei.priorSpec == NULL) return 0.0;
+  std::vector<double> gTheta((size_t)op_focei.ntheta, 0.0);
+  int omegaDim = (int)op_focei.omega.n_rows;
+  std::vector<double> gOmega((size_t)omegaDim * (size_t)omegaDim, 0.0);
+  double lp = rxPriorLogDensityEval(op_focei.priorSpec, op_focei.fullTheta, (int)op_focei.ntheta,
+                                     op_focei.omega.memptr(), omegaDim,
+                                     gTheta.data(), gOmega.data());
+  return -2.0 * lp;
+}
+
+// -2*log-likelihood at theta, PLUS the ini({}) prior penalty when one is
+// present.  Every caller that wants "the objective" (not just the data
+// likelihood) should call this, not -2*foceiLik0(theta) directly.
+static inline double foceiObjFromLik0(double *theta) {
+  return -2*foceiLik0(theta) + foceiPriorObjTerm();
+}
+
 static inline double foceiOfv0(double *theta){
   if (op_focei.objfRecalN != 0 && !op_focei.calcGrad) {
     op_focei.stickyRecalcN1++;
@@ -4630,7 +4674,7 @@ static inline double foceiOfv0(double *theta){
       }
     }
   }
-  double ret = -2*foceiLik0(theta);
+  double ret = foceiObjFromLik0(theta);
   rx_solving_options *_op0 = getSolvingOptions(rx);
   while (!op_focei.calcGrad && op_focei.stickyRecalcN1 <= op_focei.stickyRecalcN &&
          (std::isnan(ret) || std::isinf(ret)) &&
@@ -4656,7 +4700,7 @@ static inline double foceiOfv0(double *theta){
         setIndTolFactor(_indI, getIndTolFactor(_indI) * op_focei.odeRecalcFactor);
       }
     }
-    ret = -2*foceiLik0(theta);
+    ret = foceiObjFromLik0(theta);
     op_focei.objfRecalN++;
   }
   if (!op_focei.initObj){
@@ -6445,6 +6489,20 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.mixIdxN = (unsigned int)mixIdx.size();
   op_focei.adjLik = as<bool>(foceiO["adjLik"]);
   op_focei.badSolveObjfAdj=fabs(as<double>(foceiO["badSolveObjfAdj"]));
+  // ini({}) prior spec (#929/#931): .nlmixr2BuildPriorSpec() (R/priors.R)
+  // stores NULL (no prior) or an rx_prior_spec_t* R external pointer at
+  // foceiO["priorSpec"]; `control` (hence `foceiO`) is a live argument of
+  // THIS call, so R cannot GC the owning external pointer object while
+  // foceiSetup_ (or anything foceiFitCpp_ calls afterward, in the same
+  // .Call) is still running -- op_focei.priorSpec stays valid for the
+  // whole fit.
+  op_focei.priorSpec = NULL;
+  if (foceiO.containsElementNamed("priorSpec")) {
+    SEXP priorSpecS = foceiO["priorSpec"];
+    if (TYPEOF(priorSpecS) == EXTPTRSXP) {
+      op_focei.priorSpec = (const rx_prior_spec_t *) R_ExternalPtrAddr(priorSpecS);
+    }
+  }
   if (foceiO.containsElementNamed("est") && TYPEOF(foceiO["est"]) == STRSXP) {
     std::string estStr = as<std::string>(foceiO["est"]);
     op_focei.isSaem = (estStr == "saem");

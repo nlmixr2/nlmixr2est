@@ -7,9 +7,11 @@ nmTest({
       class(.env) <- c(.cls, "nlmixr2Est")
       expect_identical(.nlmixr2PriorSupport(.env), "all")
     }
-    # a method without the attribute still defaults to "none"
+    # a method without the attribute still defaults to "none" (focei's
+    # family declares "theta" as of #931, so it is no longer a
+    # representative "undeclared" example -- saem is)
     .env <- new.env(parent = emptyenv())
-    class(.env) <- c("focei", "nlmixr2Est")
+    class(.env) <- c("saem", "nlmixr2Est")
     expect_identical(.nlmixr2PriorSupport(.env), "none")
   })
 
@@ -49,12 +51,36 @@ nmTest({
     # the priors survive onto the finished fit
     .pri <- rxode2::rxUiPriors(.fit$ui)
     expect_true(all(c("tka", "add.sd") %in% .pri$name))
+    # est="focei" now honours a theta-only prior itself (#931), so this
+    # particular model (normal on tka, Cauchy on add.sd -- both population
+    # parameters) no longer exercises "the bypass is scoped": that needs a
+    # prior focei's own "theta" gate refuses regardless of the bypass, ie one
+    # that touches omega.
+    one.compartment.omega.prior <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        add.sd <- c(0, 0.7)
+        eta.ka ~ 0.6
+        prior(eta.ka) ~ dnorm(0, 0.3)
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl)
+        v <- exp(tv)
+        d / dt(depot) <- -ka * depot
+        d / dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd)
+      })
+    }
     # the bypass is scoped: the gate still refuses a user-initiated focei
     expect_error(
       suppressWarnings(suppressMessages(
-        nlmixr2(one.compartment, nlmixr2data::theo_sd, est = "focei",
+        nlmixr2(one.compartment.omega.prior, nlmixr2data::theo_sd, est = "focei",
                 control = foceiControl(maxOuterIterations = 0L, print = 0L)))),
-      "prior")
+      "omega")
     expect_false(isTRUE(nlmixr2global$nlmixr2PriorGateBypass))
   })
 
