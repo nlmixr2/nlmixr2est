@@ -1400,7 +1400,8 @@ public:
       double fci = f_cur[i];
       double ft = _powerD(fci, lambda(b), yj(b), low(b), hi(b));
       double ftT = handleF(propT(b), ft, fci, false, true);
-      double sd = ares(b) + bres(b) * std::fabs(ftT);
+      double sd = (addProp(b) == 1) ? (ares(b) + bres(b) * std::fabs(ftT)) :
+        std::sqrt(ares(b) * ares(b) + bres(b) * bres(b) * ftT * ftT);
       if (sd == 0.0) sd = 1.0;
       else if (sd < double_xmin) sd = double_xmin;
       else if (sd > xmax) sd = xmax;
@@ -2761,7 +2762,7 @@ public:
                 _scratch_ft(i) = _powerD(fk(i), lambda(cur), yj(cur), low(cur), hi(cur));
                 _scratch_ftT(i) = handleF(propT(cur), _scratch_ft(i), fk(i), false, true);
               }
-              _scratch_g = vecares + vecbres % abs(_scratch_ftT);
+              saemFormG(_scratch_g, vecares, vecbres, _scratch_ftT, vecaddProp);
               _scratch_g.elem(find(_scratch_g == 0.0)).fill(1.0);
               _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
               _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
