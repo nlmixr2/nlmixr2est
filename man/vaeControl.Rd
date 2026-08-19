@@ -88,7 +88,10 @@ weight) before the main EM phase.}
 ramped from a small value to 1 (prevents posterior collapse).}
 
 \item{gammaIter}{Number of main iterations before the EMA-smoothing phase of
-the population-parameter update begins.}
+the population-parameter update begins. Before it, the EMA gain is exactly
+1, so anything gated on the EMA (`covSelectSmooth`, `omegaUpdate =
+"suffStat"`) is indistinguishable from its non-smoothed counterpart; both
+only diverge over the closing `iters - gammaIter` iterations.}
 
 \item{iters}{Total number of main-loop iterations (after burn-in).}
 
@@ -195,13 +198,23 @@ penalize covariate entry more heavily early in training; `1` disables the
 ramp.}
 
 \item{covSelectSmooth}{When `TRUE` (default) the covariate selection regresses
-the SAEM sufficient statistic -- an exponential moving average of the
-posterior means, updated with the same gain as the M-step -- rather than the
-current posterior means.  This matches the reference implementation
-(Rohleff et al. 2025), which is the reason for the default.  In practice it
-changes little: `gamma` is exactly 1 until `gammaIter`, so the statistic
-equals the posterior mean for most of a run and is averaged only over the
-closing tail.  `FALSE` regresses the current posterior means.}
+  the SAEM sufficient statistic -- an exponential moving average of the
+  posterior means, updated with the same gain as the M-step -- rather than the
+  current posterior means.  This matches the reference implementation
+  (Rohleff et al. 2025), which is the reason for the default.  In practice it
+  changes little: `gamma` is exactly 1 until `gammaIter`, so the statistic
+  equals the posterior mean for most of a run and is averaged only over the
+  closing tail -- with the defaults (`gammaIter = 250`, `iters = 300`), the
+  final 50 of 300 iterations.  `FALSE` regresses the current posterior means.
+
+  This is not a truncated schedule; it is the reference's own schedule.
+  Rohleff et al. (2025) Figure 2 marks the identical split on their
+  theophylline case study (100-iteration burn-in, 300 main iterations, the
+  "smoothing phase of the maximization step" beginning at 250) -- the same
+  `itersBurnIn`/`iters`/`gammaIter` defaults used here. A late, short
+  smoothing tail is therefore the intended behavior of the method being
+  reproduced, not an artifact of this implementation (#969). See `gammaIter`
+  and `omegaUpdate`, which share the same gain and the same tail.}
 
 \item{gammaSeries}{Decaying step-size series used once the smoothing phase
   starts (after `gammaIter`); the gain is 1 throughout the EM phase either way.

@@ -83,6 +83,15 @@
 
 ## Bug fixes
 
+- `vaeControl(covSelectSmooth=)` and `vaeControl(omegaUpdate="suffStat")` are
+  documented more explicitly as only diverging from their non-smoothed
+  counterparts over the closing `iters - gammaIter` iterations (50 of 300 at
+  the defaults), since the EMA gain is exactly 1 before `gammaIter`. This
+  matches the reference implementation's own schedule -- Rohleff et al. (2025)
+  Figure 2 marks the identical burn-in/`iters`/`gammaIter` split on their
+  worked example -- so it is the method being reproduced, not an artifact of
+  this implementation (#969).
+
 - Post-estimation machinery no longer refuses a model whose `ini({})` declares
   prior distributions (#938).  Two parts:
 
