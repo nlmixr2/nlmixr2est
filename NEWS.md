@@ -83,6 +83,18 @@
 
 ## Bug fixes
 
+- `est="saem"` scored a censored (M2/M3/M4) observation with the wrong sign,
+  the wrong scale, and the untransformed DV, so a censored row's contribution
+  to the chain's acceptance could drive the fit away from, rather than
+  toward, the true parameters (#876). The residual-error M-step also still
+  counted a censored row's recorded LOQ/limit as if it had been measured,
+  biasing the residual SD low relative to `focei` on the same data (#916).
+  Both are fixed: the E-step now scores a censored row the way `focei`'s
+  inner likelihood does, and the M-step now simulates each censored row's
+  value from the truncated normal implied by the current fit (data
+  augmentation, Samson/Lavielle/Mentre 2006) before building the residual
+  sum of squares.
+
 - Post-estimation machinery no longer refuses a model whose `ini({})` declares
   prior distributions (#938).  Two parts:
 

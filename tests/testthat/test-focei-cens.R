@@ -67,6 +67,36 @@ nmTest({
     expect_no_match(as.character(f.saem2$censInformation), "\\((laplace|gauss)\\)")
   })
 
+  test_that("saem M3/M4 residual SD matches focei (#916)", {
+    # #916: the SAEM M-step's residual SSR counted a censored (M3/M4) row's
+    # recorded LOQ/limit as if it had been measured, biasing the residual SD
+    # low vs focei.  Data augmentation (simulate the censored DV from the
+    # truncated normal implied by the current fit each E-step) fixes this --
+    # pin BOTH tvK and prop.sd against focei instead of only bounding prop.sd
+    # from above.
+    datL <- rbind(dat[, names(dat) != "Y"], data.frame(ID = 1:10, Time = 1.5, DV = 3))
+    datL$cens <- ifelse(datL$Time == 1.5, 1, 0)
+    datL <- datL[order(datL$ID, datL$Time), ]
+
+    f.foceiL <- suppressMessages(suppressWarnings(nlmixr(f, datL, "focei")))
+    f.saemL <- suppressMessages(suppressWarnings(nlmixr(f, datL, "saem")))
+    ct(f.saemL, "M3 censoring")
+    expect_equal(as.numeric(f.saemL$theta[["tvK"]]), as.numeric(f.foceiL$theta[["tvK"]]),
+                 tolerance = 0.1)
+    expect_equal(as.numeric(f.saemL$theta[["prop.sd"]]), as.numeric(f.foceiL$theta[["prop.sd"]]),
+                 tolerance = 0.15)
+
+    datL4 <- datL
+    datL4$limit <- 0
+    f.foceiL4 <- suppressMessages(suppressWarnings(nlmixr(f, datL4, "focei")))
+    f.saemL4 <- suppressMessages(suppressWarnings(nlmixr(f, datL4, "saem")))
+    ct(f.saemL4, "M2 and M4 censoring")
+    expect_equal(as.numeric(f.saemL4$theta[["tvK"]]), as.numeric(f.foceiL4$theta[["tvK"]]),
+                 tolerance = 0.1)
+    expect_equal(as.numeric(f.saemL4$theta[["prop.sd"]]), as.numeric(f.foceiL4$theta[["prop.sd"]]),
+                 tolerance = 0.15)
+  })
+
 
   test_that("Limit affects values", {
 
