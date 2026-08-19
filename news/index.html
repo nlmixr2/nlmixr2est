@@ -65,7 +65,8 @@
 </ul></div>
 <div class="section level3">
 <h3 id="bug-fixes-7-0-3">Bug fixes<a class="anchor" aria-label="anchor" href="#bug-fixes-7-0-3"></a></h3>
-<ul><li>
+<ul><li><p><code>est="saem"</code> scored a censored (M2/M3/M4) row on an <code><a href="https://rdrr.io/r/stats/ar.html" class="external-link">ar()</a></code> endpoint against the marginal normal distribution instead of the AR(1) conditional one that its uncensored neighbors already used (<a href="https://github.com/nlmixr2/nlmixr2est/issues/918" class="external-link">#918</a>). <code>arDYFhyp</code> whitened a discarded copy of the prediction/SD to build the uncensored loss, then handed the censored-loss calculation the original marginal values. The whitened prediction/SD are now kept and passed through, so a BQL row after an AR-active observation is scored consistently with the rest of its chain.</p></li>
+<li>
 <p>Post-estimation machinery no longer refuses a model whose <code>ini({})</code> declares prior distributions (<a href="https://github.com/nlmixr2/nlmixr2est/issues/938" class="external-link">#938</a>). Two parts:</p>
 <ul><li><p>The <code>"output"</code> and <code>"posthoc"</code> pseudo-methods now declare <code>nlmixr2Priors = "all"</code>. Neither estimates anything – they evaluate an already-specified model and build its tables – so there is no prior they could silently ignore.</p></li>
 <li><p>The internal zero-iteration <code>est="focei"</code> re-entries behind <code><a href="../reference/setOfv.html">setOfv()</a></code>, <code><a href="../reference/addCwres.html">addCwres()</a></code> and the impmap objective recompute now run with the prior gate bypassed (scoped, restored on exit). By the time they run, the priors were already accepted or refused by the estimation method that produced the fit; refusing again only broke post-processing. A user-initiated <code>est="focei"</code> on a prior-carrying model is still refused.</p></li>

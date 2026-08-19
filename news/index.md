@@ -98,6 +98,17 @@
 
 ### Bug fixes
 
+- `est="saem"` scored a censored (M2/M3/M4) row on an
+  [`ar()`](https://rdrr.io/r/stats/ar.html) endpoint against the
+  marginal normal distribution instead of the AR(1) conditional one that
+  its uncensored neighbors already used
+  ([\#918](https://github.com/nlmixr2/nlmixr2est/issues/918)).
+  `arDYFhyp` whitened a discarded copy of the prediction/SD to build the
+  uncensored loss, then handed the censored-loss calculation the
+  original marginal values. The whitened prediction/SD are now kept and
+  passed through, so a BQL row after an AR-active observation is scored
+  consistently with the rest of its chain.
+
 - Post-estimation machinery no longer refuses a model whose `ini({})`
   declares prior distributions
   ([\#938](https://github.com/nlmixr2/nlmixr2est/issues/938)). Two
