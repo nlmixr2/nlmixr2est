@@ -760,8 +760,15 @@
   cfg$lambda <- rep(1.0, cfg$nendpnt)
   cfg$low <- rep(0.0, cfg$nendpnt)
   cfg$hi <- rep(1.0, cfg$nendpnt)
-  cfg$ares[cfg$res.mod == 2] <- 0
-  cfg$bres[cfg$res.mod == 1] <- 0
+  # res.mod codes without an additive/proportional component leave that
+  # component's cfg value at its nonzero default (10/1) forever: the M-step
+  # switch for that res.mod never assigns it (src/saem.cpp), so an unzeroed
+  # bres/ares corrupts g = ares + bres*|ft| with a spurious component (#914).
+  cfg$ares[cfg$res.mod == 2] <- 0  # prop
+  cfg$ares[cfg$res.mod == 7] <- 0  # prop + lambda
+  cfg$ares[cfg$res.mod == 8] <- 0  # pow + lambda
+  cfg$bres[cfg$res.mod == 1] <- 0  # add
+  cfg$bres[cfg$res.mod == 6] <- 0  # add + lambda
   cfg$res_offset <- cumsum(c(0L, nres))
   nMix <- max(1L, length(mixProb))
   cfg$nMix <- nMix

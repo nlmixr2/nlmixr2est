@@ -1427,7 +1427,10 @@ public:
     lres = as<vec>(x["lres"]);
     yj = as<uvec>(x["yj"]);
     propT=as<uvec>(x["propT"]);
-    lambda = as<vec>(x["lambda"]);
+    // lambda mirrors lres (the M-step's working boxCox/yeoJohnson estimate);
+    // seed it from lres, not x["lambda"] (which the R side always ships as 1),
+    // and keep it synced wherever lres is updated below (#914).
+    lambda = lres;
     low = as<vec>(x["low"]);
     hi = as<vec>(x["hi"]);
 
@@ -3054,6 +3057,7 @@ public:
               ares(b) = ares(b) + pas(kiter)*(pxmin[0]*pxmin[0] - ares(b));    //force are & bres to be positive
               lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[1]) - lres(b));   //force are & bres to be positive
             }
+            lambda(b) = lres(b);
           }
           break;
         case rmPropLam:
@@ -3117,6 +3121,7 @@ public:
               bres(b) = bres(b) + pas(kiter)*(pxmin[0]*pxmin[0] - bres(b));    //force are & bres to be positive
               lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[1]) - lres(b));            //force are & bres to be positive
             }
+            lambda(b) = lres(b);
           }
           break;
         case rmPowLam:
@@ -3193,6 +3198,7 @@ public:
               cres(b) = cres(b) + pas(kiter)*(toPow(pxmin[1]) - cres(b));    //force are & bres to be positive
               lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[2]) - lres(b));            //force are & bres to be positive
             }
+            lambda(b) = lres(b);
           }
           break;
         case rmAddPropLam:
@@ -3269,6 +3275,7 @@ public:
               bres(b) = bres(b) + pas(kiter)*(pxmin[1]*pxmin[1] - bres(b));    //force are & bres to be positive
               lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[2]) - lres(b));            //force are & bres to be positive
             }
+            lambda(b) = lres(b);
           }
           break;
         case rmAddPowLam:
@@ -3358,6 +3365,7 @@ public:
               cres(b) = cres(b) + pas(kiter)*(toPow(pxmin[2]) - cres(b));    //force are & bres to be positive
               lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[3]) - lres(b));            //force are & bres to be positive
             }
+            lambda(b) = lres(b);
           }
           break;
         }
@@ -3517,6 +3525,7 @@ public:
       Gamma2_phi1Report = _savGamma2_phi1Report; mprior_phi1 = _savMprior_phi1;
       mprior_phi0 = _savMprior_phi0; ares = _savAres; bres = _savBres; cres = _savCres;
       lres = _savLres; vcsig2 = _savVcsig2; phiM = _savPhiM; Ha = _savHa;
+      lambda = lres;
       if (nMix > 1) { mixProb = _savMixProb; mixWeights = _savMixWeights; }
     }
     phiFile.close();
