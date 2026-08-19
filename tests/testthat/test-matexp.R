@@ -266,11 +266,11 @@ nmTest({
   })
 
   test_that("matExp()/indLin() table and residual generation (#858)", {
-    # R/resid.R excluded "indLin" from the ODE-method fallback list used by
-    # post-fit table/residual solves; nlmixr2/nlmixr2est#858 removed that
-    # exclusion once rxode2/#1183-#1185 restored indLin() correctness.  This
-    # is a plain regression check that table/residual generation for a
-    # matExp()/indLin() fit still works with the exclusion gone.
+    # General regression check (issue #858's stated test) that table/residual
+    # generation for a matExp()/indLin() fit works. This does NOT exercise the
+    # setdiff() removal in R/resid.R itself -- see
+    # test-resid-ode-fallback.R for that (the default ODE methods used here
+    # never reach the branch the removal changed).
     matLin <- function() {
       ini({ tka <- 0.45; tcl <- 1.0; tv <- 3.45; eta.ka ~ 0.09; add.sd <- 0.7 })
       model({

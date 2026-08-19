@@ -63,6 +63,28 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
 }
 
 
+#' Build the ODE-method fallback list for a post-fit table/residual solve
+#'
+#' @param currentOdeMethod character ODE method the fit itself used
+#'   (`fit$methodOde`, coerced to a name)
+#' @return list of candidate `method=` values to try in order,
+#'   `currentOdeMethod` first
+#' @author Matthew Fidler
+#' @noRd
+.residOdeFallbackMethods <- function(currentOdeMethod) {
+  allOdeMethods <- eval(formals(rxode2::rxSolve)$method)
+  # Fallback ODE methods, see nlmixr2/nlmixr2est#254
+  if (currentOdeMethod %in% "dop853") {
+    allOdeMethods <- "liblsoda"
+  } else if (currentOdeMethod %in% c("liblsoda", "lsoda")) {
+    allOdeMethods <- "dop853"
+  } # otherwise, use all the methods (nlmixr2/nlmixr2est#858 stopped excluding "indLin" here)
+  append(
+    list(currentOdeMethod),
+    as.list(setdiff(allOdeMethods, currentOdeMethod))
+  )
+}
+
 #' Solve for pred/ipred types of calculations (including residuals)
 #'
 #' @param fit focei style fit
@@ -89,18 +111,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
     attr(cur, "class") <- "factor"
     currentOdeMethod <- as.character(cur)
   }
-  allOdeMethods <- eval(formals(rxode2::rxSolve)$method)
-  # Fallback ODE methods, see nlmixr2/nlmixr2est#254
-  if (currentOdeMethod %in% "dop853") {
-    allOdeMethods <- "liblsoda"
-  } else if (currentOdeMethod %in% c("liblsoda", "lsoda")) {
-    allOdeMethods <- "dop853"
-  } # otherwise, use all the methods
-  odeMethods <-
-    append(
-      list(currentOdeMethod),
-      as.list(setdiff(allOdeMethods, currentOdeMethod))
-    )
+  odeMethods <- .residOdeFallbackMethods(currentOdeMethod)
   failedMethods <- character()
   isFirstFit <- TRUE
   recalc <- TRUE
