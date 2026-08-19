@@ -263,5 +263,52 @@ nmTest({
     .fM <- .nlmixr(matS, nlmixr2data::theo_sd, est = "saem", control = .ctl)
     expect_equal(.fM$objf, .fO$objf, tolerance = 1e-3)
     expect_equal(unname(fixef(.fM)), unname(fixef(.fO)), tolerance = 1e-3)
+    # mechanism check (#859): a pure-linear matExp() model must solve
+    # natively (a literal "matExp()" line, no materialized d/dt()), not via
+    # the ODE-flattening path -- matching numbers alone would not catch a
+    # regression back to flattening.
+    .saemModelTxt <- strsplit(nlmixr2est:::rxUiGet.saemModel(list(matS())), "\n")[[1]]
+    expect_true(any(grepl("^matExp\\(\\)$", .saemModelTxt)))
+    expect_false(any(grepl("d/dt(", .saemModelTxt, fixed = TRUE)))
+  })
+
+  test_that("matExp()/indLin() Michaelis-Menten (saem) falls back to the ODE flatten", {
+    # rxode2's true inductive-linearization iteration (doIndLin 3/4) does not
+    # yet converge reliably under SAEM's per-iteration parameter draws (a
+    # native attempt diverged from the ODE reference: objf -174 vs 321,
+    # unrelated fixed effects), so .rxKeepMatExpNative() bails on an
+    # indLin() forcing term and rxUiGet.saemModel() keeps materializing
+    # d/dt() via .rxInjectMatExpDdt(), same as before #859.
+    odeMM <- function() {
+      ini({ tka <- 0.45; tvmax <- log(60); tkm <- log(40); tv <- 3.45; eta.ka ~ 0.09; add.sd <- 0.7 })
+      model({
+        ka <- exp(tka + eta.ka); vmax <- exp(tvmax); km <- exp(tkm); v <- exp(tv)
+        d/dt(depot) <- -ka * depot
+        d/dt(central) <- ka * depot - vmax * central / (km + central)
+        cp <- central / v
+        cp ~ add(add.sd)
+      })
+    }
+    matMM <- function() {
+      ini({ tka <- 0.45; tvmax <- log(60); tkm <- log(40); tv <- 3.45; eta.ka ~ 0.09; add.sd <- 0.7 })
+      model({
+        matExp()
+        k_depot_central <- exp(tka + eta.ka)
+        indLin(central) <- -exp(tvmax) * central / (exp(tkm) + central)
+        cp <- central / exp(tv)
+        cp ~ add(add.sd)
+      })
+    }
+    .saemModelTxt <- strsplit(nlmixr2est:::rxUiGet.saemModel(list(matMM())), "\n")[[1]]
+    expect_true(any(grepl("d/dt(", .saemModelTxt, fixed = TRUE)))
+    expect_false(any(grepl("^matExp\\(\\)$", .saemModelTxt)))
+    expect_false(any(grepl("^indLin\\(", .saemModelTxt)))
+
+    .dat <- .mkData(odeMM, c(tka = 0.6, tvmax = log(70), tkm = log(45), tv = 3.6), nid = 8, seed = 4321)
+    .ctl <- saemControl(print = 0, nBurn = 100, nEm = 100, seed = 42)
+    .fO <- .nlmixr(odeMM, .dat, est = "saem", control = .ctl)
+    .fM <- .nlmixr(matMM, .dat, est = "saem", control = .ctl)
+    expect_equal(.fM$objf, .fO$objf, tolerance = 1e-3)
+    expect_equal(unname(fixef(.fM)), unname(fixef(.fO)), tolerance = 1e-3)
   })
 })
