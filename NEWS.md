@@ -334,6 +334,12 @@
   these, so the value stayed `NA` and the FOCEi scaleC setup that reenters
   to build the fit table hit it during an `if()` test.
 
+  A second, independent gap in the same error types was found alongside it:
+  `rxUiGet.saemAres`/`saemBres`/`saemCres` also never matched
+  `logitNorm()`/`probitNorm()`/`propF()`/`powF()`/`powF2()`, so the SAEM
+  kernel silently *started* every such fit from the hardcoded fallback
+  (`10`/`1`) instead of the residual sd given in `ini()`.
+
 - Fixed `foceiControl(fast=TRUE)` FOCE fits (`est="foce"`, `"mfoce"`, `"ifoce"`)
   discarding a usable analytic outer gradient and paying for a full
   finite-difference gradient instead.  FOCE freezes the residual variance, so its
