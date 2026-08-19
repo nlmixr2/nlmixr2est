@@ -380,7 +380,8 @@ is.latex <- function() {
 #' path does not emit, and state-dependent forcing needs the true
 #' inductive-linearization iteration (`doIndLin` 3/4), which does not yet
 #' converge reliably under SAEM's per-iteration parameter draws (diverges
-#' from the ODE reference fit rather than merely differing in precision).
+#' from the ODE reference fit rather than merely differing in precision;
+#' see #977 for the investigation and suspected contributing factors).
 #' Those models keep flattening via `.rxInjectMatExpDdt()`, which appends
 #' the forcing term to the materialized `d/dt()`.
 #'

@@ -276,9 +276,10 @@ nmTest({
     # rxode2's true inductive-linearization iteration (doIndLin 3/4) does not
     # yet converge reliably under SAEM's per-iteration parameter draws (a
     # native attempt diverged from the ODE reference: objf -174 vs 321,
-    # unrelated fixed effects), so .rxKeepMatExpNative() bails on an
-    # indLin() forcing term and rxUiGet.saemModel() keeps materializing
-    # d/dt() via .rxInjectMatExpDdt(), same as before #859.
+    # unrelated fixed effects; tracked separately as #977), so
+    # .rxKeepMatExpNative() bails on an indLin() forcing term and
+    # rxUiGet.saemModel() keeps materializing d/dt() via
+    # .rxInjectMatExpDdt(), same as before #859.
     odeMM <- function() {
       ini({ tka <- 0.45; tvmax <- log(60); tkm <- log(40); tv <- 3.45; eta.ka ~ 0.09; add.sd <- 0.7 })
       model({
