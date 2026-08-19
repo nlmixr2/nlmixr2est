@@ -112,6 +112,11 @@
   halving then doubling compounded into a 4x inflated covariance. Point
   estimates, the objective value, and the log-likelihood were unaffected.
 
+- `method="indLin"` is no longer excluded from the ODE-method fallback list
+  used by post-fit table/residual solves (#858). rxode2/#1183-#1185 restored
+  `indLin()`/matrix-exponential correctness, which was the reason for the
+  exclusion.
+
 ## New features
 
 - `est="saem"` gained controls for the cost of the `nonMuTheta="regress"`

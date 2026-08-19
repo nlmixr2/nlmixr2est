@@ -89,12 +89,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
     attr(cur, "class") <- "factor"
     currentOdeMethod <- as.character(cur)
   }
-  allOdeMethods <-
-    setdiff(
-      eval(formals(rxode2::rxSolve)$method),
-      # ignore indLin for now
-      "indLin"
-    )
+  allOdeMethods <- eval(formals(rxode2::rxSolve)$method)
   # Fallback ODE methods, see nlmixr2/nlmixr2est#254
   if (currentOdeMethod %in% "dop853") {
     allOdeMethods <- "liblsoda"

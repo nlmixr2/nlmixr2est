@@ -264,4 +264,46 @@ nmTest({
     expect_equal(.fM$objf, .fO$objf, tolerance = 1e-3)
     expect_equal(unname(fixef(.fM)), unname(fixef(.fO)), tolerance = 1e-3)
   })
+
+  test_that("matExp()/indLin() table and residual generation (#858)", {
+    # R/resid.R excluded "indLin" from the ODE-method fallback list used by
+    # post-fit table/residual solves; nlmixr2/nlmixr2est#858 removed that
+    # exclusion once rxode2/#1183-#1185 restored indLin() correctness.  This
+    # is a plain regression check that table/residual generation for a
+    # matExp()/indLin() fit still works with the exclusion gone.
+    matLin <- function() {
+      ini({ tka <- 0.45; tcl <- 1.0; tv <- 3.45; eta.ka ~ 0.09; add.sd <- 0.7 })
+      model({
+        matExp()
+        k_depot_central <- exp(tka + eta.ka)
+        k_central_output <- exp(tcl) / exp(tv)
+        cp <- central / exp(tv)
+        cp ~ add(add.sd)
+      })
+    }
+    matMM <- function() {
+      ini({ tka <- 0.45; tvmax <- log(60); tkm <- log(40); tv <- 3.45; eta.ka ~ 0.09; add.sd <- 0.7 })
+      model({
+        matExp()
+        k_depot_central <- exp(tka + eta.ka)
+        indLin(central) <- -exp(tvmax) * central / (exp(tkm) + central)
+        cp <- central / exp(tv)
+        cp ~ add(add.sd)
+      })
+    }
+    .datLin <- .mkData(matLin, c(tka = 0.6, tcl = 1.1, tv = 3.6))
+    .datMM <- .mkData(matMM, c(tka = 0.6, tvmax = log(70), tkm = log(45), tv = 3.6))
+
+    .fLin <- .nlmixr(matLin, .datLin, est = "focei", control = foceiControl(print = 0))
+    expect_true(all(c("PRED", "IPRED") %in% names(.fLin)))
+    expect_false(any(is.na(.fLin$IPRED)))
+    suppressMessages(expect_error(addCwres(.fLin), NA))
+    suppressMessages(expect_error(addNpde(.fLin), NA))
+
+    .fMM <- .nlmixr(matMM, .datMM, est = "focei", control = foceiControl(print = 0, sigdig = 6))
+    expect_true(all(c("PRED", "IPRED") %in% names(.fMM)))
+    expect_false(any(is.na(.fMM$IPRED)))
+    suppressMessages(expect_error(addCwres(.fMM), NA))
+    suppressMessages(expect_error(addNpde(.fMM), NA))
+  })
 })
