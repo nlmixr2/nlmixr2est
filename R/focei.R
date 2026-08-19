@@ -361,6 +361,42 @@ is.latex <- function() {
   invisible(TRUE)
 }
 
+#' Keep a matExp()/indLin() model in native (unflattened) form
+#'
+#' Unlike [.rxInjectMatExpDdt()], this does not materialize `d/dt()` -- it
+#' emits the literal `matExp()` keyword (plus any `indLin()` forcing lines)
+#' so the model solves through rxode2's matrix-exponential driver
+#' (`rxControl(method="indLin")`) instead of an ODE solver.  SAEM has no
+#' analytic-sensitivity consumer of the state derivatives, so it is the only
+#' estimation method that uses this path (#859); focei/nlm/nls still need
+#' `.rxInjectMatExpDdt()`'s explicit `d/dt()` for their sensitivity machinery.
+#'
+#' @param s symengine-pruned model environment
+#' @return `TRUE`/invisibly `FALSE`; sets `s$..ddt` to the native matExp()
+#'   lines on success
+#' @noRd
+.rxKeepMatExpNative <- function(s) {
+  .mv <- rxode2::rxModelVars(s)
+  if (!is.list(.mv$indLin) || length(.mv$indLin) != 4L) {
+    return(invisible(FALSE))
+  }
+  .states <- .rxode2stateOdeNoOutput(s)
+  if (length(.states) == 0L) {
+    return(invisible(FALSE))
+  }
+  .indLin <- character(0)
+  for (.st in .states) {
+    .forceName <- base::paste0("rx__indLinForce_", .st, "__")
+    if (base::exists(.forceName, envir = s, inherits = FALSE)) {
+      .force <- base::get(.forceName, envir = s, inherits = FALSE)
+      .indLin <- c(.indLin, base::paste0("indLin(", .st, ") <- ",
+                                         rxode2::rxFromSE(.force)))
+    }
+  }
+  s$..ddt <- c("matExp()", .indLin)
+  invisible(TRUE)
+}
+
 #' Get the THETA/ETA lines from rxode2 UI
 #'
 #' @param rxui This is the rxode2 ui object

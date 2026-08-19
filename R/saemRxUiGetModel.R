@@ -341,9 +341,12 @@ attr(rxUiGet.saemParams, "rstudio") <- "params(tka)"
 rxUiGet.saemModel <- function(x, ...) {
   .s <- rxUiGet.loadPruneSaem(x, ...)
 
-  # matExp() has no d/dt(): materialize it from the k_from_to constants and
-  # emit the defining LHS first, suppressed ('~') so it adds no output column
-  .isMatExp <- isTRUE(.rxInjectMatExpDdt(.s))
+  # matExp()/indLin(): SAEM has no analytic-sensitivity consumer of the state
+  # derivatives (src/saem.cpp has no state-sensitivity machinery), so unlike
+  # focei/nlm/nls it solves the model natively through rxode2's
+  # matrix-exponential driver instead of materializing an equivalent d/dt()
+  # ODE (#859).  .saemFitModel() forces rxControl(method="indLin") to match.
+  .isMatExp <- isTRUE(.rxKeepMatExpNative(.s))
 
   .prd <- get("rx_pred_", envir = .s)
   .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.prd))
