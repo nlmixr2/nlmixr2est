@@ -101,7 +101,13 @@
   inner likelihood does, and the M-step now simulates each censored row's
   value from the truncated normal implied by the current fit (data
   augmentation, Samson/Lavielle/Mentre 2006) before building the residual
-  sum of squares.
+  sum of squares. The truncated-normal draw itself uses the same Botev
+  (2015) minimax-tilting algorithm CWRES's censored-observation simulation
+  already relies on (`censResid.h`'s `truncnorm()`, via rxode2's `rxRmvn`),
+  ported to the seeded per-thread engine this file already uses everywhere
+  else, rather than a plain inverse-CDF draw -- which loses precision once
+  the truncation bounds are a few SDs from the mean, the regime a BQL row's
+  bound often sits in.
 
 - `est="saem"` scored a censored (M2/M3/M4) row on an `ar()` endpoint against
   the marginal normal distribution instead of the AR(1) conditional one that

@@ -13,6 +13,7 @@
 #include "nearPD.h"
 #include "inner.h"
 #include "solveWarnHelper.h"
+#include "truncNorm.h"
 
 #define _(String) (String)
 
@@ -656,31 +657,31 @@ static inline void _saemSeedCensAug(uint32_t baseSeed, int kiter, int k, int b,
 // residual SSR sees a draw from the censored region instead of the recorded
 // LOQ/limit.  M2 rows carry a real measurement and are returned unchanged.
 // cens/limDv/lim follow the doCensNormal1() convention (all on the
-// transformed scale here); sd is the endpoint's current residual SD.
+// transformed scale here); sd is the endpoint's current residual SD.  The
+// draw itself is rxTruncNorm() (truncNorm.h) -- the same Botev (2015)
+// algorithm CWRES's censored-observation simulation uses (censResid.h's
+// truncnorm(), via rxode2's rxRmvn) -- rather than a plain inverse-CDF draw,
+// which loses precision once the truncation bounds are a few SDs from the
+// mean (the regime a BQL row's bound often sits in).
 static inline double simCensDv(double cens, double limDv, double lim, double f,
                                double sd) {
   if (!(cens == 1.0 || cens == -1.0)) return limDv;
-  double lo = 0.0, hi = 0.0;
-  bool loFinite, hiFinite;
+  double lo = R_NegInf, hi = R_PosInf;
   if (R_FINITE(lim) && !ISNA(lim)) {
     // M4: truncation interval is between limDv (the LOQ) and lim (the other,
     // informative bound); cens picks which side is which.
     if (cens > 0) { lo = lim;   hi = limDv; } else { lo = limDv; hi = lim; }
-    loFinite = hiFinite = true;
   } else if (cens > 0) {
     // M3, left-censored: y <= limDv
-    hi = limDv; hiFinite = true; loFinite = false;
+    hi = limDv;
   } else {
     // M3, right-censored: y >= limDv
-    lo = limDv; loFinite = true; hiFinite = false;
+    lo = limDv;
   }
-  double plo = loFinite ? R::pnorm5((lo - f) / sd, 0.0, 1.0, 1, 0) : 0.0;
-  double phi = hiFinite ? R::pnorm5((hi - f) / sd, 0.0, 1.0, 1, 0) : 1.0;
-  if (!(phi > plo)) return limDv;      // degenerate tail: keep the historical value
-  double u = plo + (phi - plo) * rxUnifEng(0.0, 1.0);
-  if (u < 1e-12) u = 1e-12;
-  if (u > 1.0 - 1e-12) u = 1.0 - 1e-12;
-  return f + sd * R::qnorm5(u, 0.0, 1.0, 1, 0);
+  double zl = R_FINITE(lo) ? (lo - f) / sd : R_NegInf;
+  double zu = R_FINITE(hi) ? (hi - f) / sd : R_PosInf;
+  if (!(zu > zl)) return limDv;        // degenerate/inverted bound: keep the historical value
+  return f + sd * rxTruncNorm(zl, zu);
 }
 
 // class def starts
