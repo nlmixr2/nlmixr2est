@@ -112,6 +112,19 @@
   halving then doubling compounded into a 4x inflated covariance. Point
   estimates, the objective value, and the log-likelihood were unaffected.
 
+- SAEM's analytic Fisher information (`covMethod="fim"`/`"sa"`) had exactly one
+  residual slot no matter how many endpoints a model declared, so a
+  multi-endpoint fit's residual score/Hessian always came from whichever
+  endpoint the internal loop happened to process last, divided by the *first*
+  endpoint's residual variance (#893). Because that slot is coupled to the
+  fixed-effect/BSV block through the full Fisher information matrix, this
+  corrupted the reported theta and Omega standard errors for any multi-endpoint
+  `fim`/`sa` fit, not just the (previously unreported) residual SE. The
+  analytic FIM now carries one residual slot per endpoint; a pure additive
+  endpoint gets a real entry, and any other endpoint's slot is held at exactly
+  zero and dropped before the matrix is inverted, falling back to the
+  linearized FIM for that endpoint's residual SE as before.
+
 ## New features
 
 - `est="saem"` gained controls for the cost of the `nonMuTheta="regress"`
