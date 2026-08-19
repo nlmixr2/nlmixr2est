@@ -31,6 +31,23 @@
   rep(TRUE, length(ixEndpnt))
 }
 
+#' 1-based endpoint index of a residual parameter, aligned to `ix_endpnt`
+#'
+#' `ares`/`bres`/... (and so `ix_endpnt`) are built in `predDf` row order
+#' (`saemRxUiGet.R`); match a residual parameter's `iniDf$condition` to
+#' `predDf$cond` the same way rather than assuming row order lines up with
+#' `.ri`, so a residual parameter's `dVi/d(param)` can be masked to only its
+#' own endpoint's observations (#904).
+#'
+#' @param condition character vector, the `condition` of each residual `iniDf` row
+#' @param cond character vector, `predDf$cond` in endpoint (`ix_endpnt`) order
+#' @return integer vector, one 1-based endpoint index per `condition` entry;
+#'   `NA_integer_` where no endpoint matches
+#' @noRd
+.saemResEndpointIdx <- function(condition, cond) {
+  match(as.character(condition), as.character(cond))
+}
+
 #' Elementwise log(exp(a) + exp(b)) without overflowing
 #'
 #' @param a,b numeric vectors of the same length
@@ -540,10 +557,9 @@ calc.COV <- function(fit0) {
     if (nrow(.ri) > 0L) {
       .resNames <- .ri$name
       .resType  <- ifelse(grepl("prop|pow", .ri$err), 2L, 1L)   # 1 = additive (a), 2 = proportional (b)
-      # dVi/d(residual param) is only nonzero on its OWN endpoint's rows (#904); match
-      # each residual parameter's condition to predDf's row order, which is what
-      # ix_endpnt numbers against.  Fail rather than guess a wrong endpoint (#856).
-      .resEndpnt <- match(as.character(.ri$condition), as.character(.ui$predDf$cond))
+      # dVi/d(residual param) is only nonzero on its OWN endpoint's rows (#904).
+      # Fail rather than guess a wrong endpoint (#856).
+      .resEndpnt <- .saemResEndpointIdx(.ri$condition, .ui$predDf$cond)
       if (anyNA(.resEndpnt)) {
         warning("saem covFull: residual parameter endpoint unknown; variance block dropped",
                 call. = FALSE)
