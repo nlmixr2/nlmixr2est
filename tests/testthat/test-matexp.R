@@ -311,4 +311,46 @@ nmTest({
     expect_equal(.fM$objf, .fO$objf, tolerance = 1e-3)
     expect_equal(unname(fixef(.fM)), unname(fixef(.fO)), tolerance = 1e-3)
   })
+
+  test_that("matExp() with a state-free indLin() forcing (saem) falls back to the ODE flatten", {
+    # A forcing that does not reference any state (e.g. indLin(central) <- 5)
+    # leaves wIndLin empty, same as a pure-linear model with no forcing at
+    # all -- so the native-routing decision cannot key on wIndLin alone (it
+    # would silently drop the forcing term, since the native path emits no
+    # indLin() text). .rxKeepMatExpNative() instead bails whenever
+    # indLin$f is non-NULL (any forcing, state-free or not).
+    matSF <- function() {
+      ini({ tka <- 0.45; tv <- 3.45; add.sd <- 0.7 })
+      model({
+        matExp()
+        k_depot_central <- exp(tka)
+        indLin(central) <- 5
+        cp <- central / exp(tv)
+        cp ~ add(add.sd)
+      })
+    }
+    .saemModelTxt <- strsplit(nlmixr2est:::rxUiGet.saemModel(list(matSF())), "\n")[[1]]
+    expect_true(any(grepl("d/dt(central)=", .saemModelTxt, fixed = TRUE)))
+    expect_true(any(grepl("\\(5\\)", .saemModelTxt)))
+    expect_false(any(grepl("^matExp\\(\\)$", .saemModelTxt)))
+  })
+
+  test_that("matExp() with delay() (saem) falls back to the ODE flatten", {
+    # .saemFitModel() (R/saem.R) forces the dense dop853 solver for a delay
+    # model (hasDelay), which takes precedence over method="indLin" -- so a
+    # native "matExp()" emission (no d/dt() for dop853 to integrate) would
+    # silently solve to all-zero states. .rxKeepMatExpNative() bails on
+    # flags[["hasDelay"]] to keep this combination flattened.
+    matD <- function() {
+      ini({ tka <- 0.45; tv <- 3.45; add.sd <- 0.7 })
+      model({
+        matExp()
+        k_depot_central <- exp(tka)
+        cp <- delay(central, 5) / exp(tv)
+        cp ~ add(add.sd)
+      })
+    }
+    .s <- nlmixr2est:::rxUiGet.loadPruneSaem(list(matD()))
+    expect_false(isTRUE(nlmixr2est:::.rxKeepMatExpNative(.s)))
+  })
 })
