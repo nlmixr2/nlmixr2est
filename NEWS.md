@@ -327,10 +327,11 @@
   estimates and shrinking that eta's variance about fourfold.
 
 - Fixed `est="saem"` erroring with `missing value where TRUE/FALSE needed`
-  while finalizing a fit with an unfixed `logitNorm()` or `probitNorm()`
-  residual sd (#915).  `.getSaemTheta()` copied the saem-estimated residual sd
-  back into `ui$iniDf$est` for `add()`/`lnorm()`-family endpoints but not for
-  these two, so the value stayed `NA` and the FOCEi scaleC setup that reenters
+  while finalizing a fit with an unfixed `logitNorm()`, `probitNorm()`,
+  `propF()`, `powF()` or `powF2()` residual sd (#915).  `.getSaemTheta()`
+  copied the saem-estimated residual sd back into `ui$iniDf$est` for the
+  `add()`/`lnorm()`/`prop()`/`pow()`/`pow2()`-family endpoints but not for
+  these, so the value stayed `NA` and the FOCEi scaleC setup that reenters
   to build the fit table hit it during an `if()` test.
 
 - Fixed `foceiControl(fast=TRUE)` FOCE fits (`est="foce"`, `"mfoce"`, `"ifoce"`)
