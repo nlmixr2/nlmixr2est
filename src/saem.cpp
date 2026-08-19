@@ -1064,11 +1064,16 @@ public:
   }
 
   // Per-observation Gaussian -LL contribution with the AR(1) whitening applied
-  // (reduces to the independent 0.5*((yt-ft)/g)^2 + log(g) when no AR).
+  // (reduces to the independent 0.5*((yt-ft)/g)^2 + log(g) when no AR).  Also
+  // writes the whitened (conditional) prediction/SD into _scratch_ftAr/_scratch_gAr
+  // so a censored row on the SAME chain can be scored against the AR(1)
+  // conditional distribution, not the marginal (ft, g) -- see #918.
   vec arDYFhyp(const vec &yt, const vec &ft, const vec &g) {
     vec e = yt - ft;
     vec gg = g;
     arWhiten(e, gg);
+    _scratch_ftAr = yt - e;
+    _scratch_gAr = gg;
     return 0.5*(e/gg)%(e/gg) + log(gg);
   }
 
@@ -1472,6 +1477,8 @@ public:
     _scratch_limitT.set_size(ntotal);
     _scratch_ftT.set_size(ntotal);
     _scratch_g.set_size(ntotal);
+    _scratch_ftAr.set_size(ntotal);
+    _scratch_gAr.set_size(ntotal);
     _scratch_indio = indio;  // same length as indio, initialise from it
     _arRorig.set_size(ntotal);
     for (int b=0; b<nendpnt; ++b) {
@@ -1881,7 +1888,7 @@ public:
               DYFhyp(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
               for (int j = ntotal; j--;) {
                 DYFhyp(_scratch_indio(j)) = doCensNormal1(censk[j], y[j], _scratch_limitT[j],
-                                                       DYFhyp(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
+                                                       DYFhyp(_scratch_indio(j)), _scratch_ftAr[j], _scratch_gAr[j], 0);
               }
             }
           } else if (distribution == 2) {
@@ -2081,7 +2088,7 @@ public:
               cur_DYF(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
               for (int j = ntotal; j--;) {
                 cur_DYF(_scratch_indio(j)) = doCensNormal1(censk[j], y[j], _scratch_limitT[j],
-                                                       cur_DYF(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
+                                                       cur_DYF(_scratch_indio(j)), _scratch_ftAr[j], _scratch_gAr[j], 0);
               }
             }
           } else if (distribution == 2) {
@@ -2357,7 +2364,7 @@ public:
             DYF(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
             for (int j = ntotal; j--;) {
               DYF(_scratch_indio(j)) = doCensNormal1(censk[j], y[j], _scratch_limitT[j],
-                                                     DYF(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
+                                                     DYF(_scratch_indio(j)), _scratch_ftAr[j], _scratch_gAr[j], 0);
             }
           }
         } else if (distribution == 2){
@@ -3700,6 +3707,8 @@ private:
   vec _scratch_ftT;     // handleF output per chain (replaces ftTk/fcTk)
   vec _scratch_g;       // residual SD per chain (replaces gk/gck)
   uvec _scratch_indio;  // DYF row indices per chain (replaces indio_k)
+  vec _scratch_ftAr;    // AR(1)-conditional prediction, filled by arDYFhyp()
+  vec _scratch_gAr;     // AR(1)-conditional SD, filled by arDYFhyp()
 
   uvec obs_subject;
 
@@ -3869,7 +3878,7 @@ private:
               DYF(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
               for (int j = ntotal; j--;) {
                 DYF(_scratch_indio(j)) = doCensNormal1(censk[j], mx.y[j], _scratch_limitT[j],
-                                                       DYF(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
+                                                       DYF(_scratch_indio(j)), _scratch_ftAr[j], _scratch_gAr[j], 0);
               }
             }
           }
@@ -3980,7 +3989,7 @@ private:
             DYFm(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
             for (int j = ntotal; j--;) {
               DYFm(_scratch_indio(j)) = doCensNormal1(censk[j], mx.y[j], _scratch_limitT[j],
-                                                     DYFm(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
+                                                     DYFm(_scratch_indio(j)), _scratch_ftAr[j], _scratch_gAr[j], 0);
             }
           }
         }
@@ -4093,7 +4102,7 @@ private:
           DYFhyp(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
           for (int j = ntotal; j--;) {
             DYFhyp(_scratch_indio(j)) = doCensNormal1(censk[j], y[j], _scratch_limitT[j],
-                                                   DYFhyp(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
+                                                   DYFhyp(_scratch_indio(j)), _scratch_ftAr[j], _scratch_gAr[j], 0);
           }
         }
       } else if (distribution == 2) {

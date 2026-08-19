@@ -188,4 +188,73 @@ nmTest({
 
   })
 
+  test_that("ar() + M3 censoring scores the AR(1) conditional distribution (#918)", {
+    # Plain est="saem" only -- an ar() endpoint always fails .fsaemSupported, so
+    # fsaem degrades to standard SAEM and this exercises arDYFhyp/doCensNormal1
+    # directly.
+    #
+    # Every population parameter is fix()ed (no outer optimization), so the
+    # reported objf is a deterministic function of (fixed params, data) via
+    # the final Gaussian-quadrature -2LL step -- not confounded by SAEM's
+    # stochastic parameter search.  3 of 8 subjects have their LAST (of 4)
+    # observations M3-censored, each with a real, uncensored previous record
+    # to whiten against -- the "censored row following an uncensored previous
+    # record" case from #918.
+    #
+    # This objf is a REGRESSION PIN, not a tolerance check: a marginal-vs-
+    # conditional scoring bug does not merely perturb it, it changes which
+    # distribution is being evaluated, so pre-fix code returns a completely
+    # different value (verified by hand: 4.5103307107 marginal vs
+    # -7.2012761860 conditional) rather than one within a few % of this one.
+    .m <- function() {
+      ini({
+        tka <- log(1.2); tcl <- log(0.2); tv <- log(5)
+        eta.cl ~ 0.09; add.sd <- 0.4; ar1.cor <- 0.6
+      })
+      model({
+        ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+        d/dt(depot) <- -ka * depot
+        d/dt(central) <- ka * depot - cl / v * central
+        cp <- central / v
+        cp ~ add(add.sd) + ar(ar1.cor)
+      })
+    }
+    .ev <- rxode2::et(rxode2::et(amt = 100), c(0.5, 1.5, 2.5, 3.5))
+    .sim <- rxode2::rxWithSeed(2026, rxode2::rxSolve(.m, .ev, nSub = 8,
+                                     returnType = "data.frame", addDosing = TRUE))
+    .idc <- if ("sim.id" %in% names(.sim)) "sim.id" else "id"
+    datAr <- data.frame(ID = .sim[[.idc]], TIME = .sim$time,
+                       EVID = ifelse(is.na(.sim$evid), 0, .sim$evid),
+                       AMT = ifelse(is.na(.sim$amt), 0, .sim$amt),
+                       DV = ifelse(is.na(.sim$evid) | .sim$evid == 0, .sim$sim, NA))
+    datAr$EVID[datAr$AMT > 0] <- 1
+
+    .obs <- which(datAr$EVID == 0)
+    datAr$cens <- 0L
+    .w <- .obs[datAr$ID[.obs] %in% c(1, 2, 3) & datAr$TIME[.obs] == 3.5]
+    datAr$DV[.w] <- min(datAr$DV[.w]) + 1
+    datAr$cens[.w] <- 1L
+
+    .mFix <- function() {
+      ini({
+        tka <- fix(log(1.2)); tcl <- fix(log(0.2)); tv <- fix(log(5))
+        eta.cl ~ 0.09
+        add.sd <- fix(0.4); ar1.cor <- fix(0.6)
+      })
+      model({
+        ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+        d/dt(depot) <- -ka * depot
+        d/dt(central) <- ka * depot - cl / v * central
+        cp <- central / v
+        cp ~ add(add.sd) + ar(ar1.cor)
+      })
+    }
+    f.saemAr <- suppressWarnings(suppressMessages(
+      nlmixr(.mFix, datAr, "saem",
+             control = saemControl(nBurn = 50, nEm = 0, print = 0, seed = 42))
+    ))
+    ct(f.saemAr, "M3 censoring")
+    expect_equal(f.saemAr$objf, -7.2012761860, tolerance = 1e-4)
+  })
+
 })
