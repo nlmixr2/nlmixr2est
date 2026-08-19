@@ -607,6 +607,15 @@
 #' to the reported scale via a delta-method Jacobian.  The result is required to be
 #' positive definite (a noisy/indefinite FIM returns `NULL` so the caller can fall
 #' back to the linearized FIM).
+#'
+#' The kernel orders the leading structural-theta block `[phi1 mu][phi0 mu]`
+#' (mu-referenced thetas first, then thetas with no eta), not
+#' `saemParamsToEstimate` order, so the theta block is reordered from
+#' `saem.cfg$i1`/`i0` (#906 defect 2).  A phi0 theta's mu information is
+#' `1/gamma2_phi0`, a pseudo-variance the M-step decays toward 0 (a fixed effect
+#' carried as a degenerate random effect); its rows/cols are dropped before
+#' inverting rather than reported (#906 defect 1) -- the caller splices a real
+#' SE in from the linearized FIM (`.saemSplicePhi0Theta`).
 #' @param .H Fisher information matrix (nb_param x nb_param)
 #' @param env saem fit environment
 #' @return named full covariance matrix `c(theta, om.<eta>, residual)`, or `NULL`
@@ -616,11 +625,37 @@
   .saem <- env$saem
   if (is.null(.H) || !is.matrix(.H) || nrow(.H) == 0L ||
         !all(is.finite(.H)) || all(.H == 0)) return(NULL)
-  # covariance = inverse of the FIM, in (theta, log-Omega-variance, log-sigma2) coords
-  .C <- suppressWarnings(tryCatch(solve(.H), error = function(e) NULL))
+  .np <- nrow(.H)
+  .pars <- .ui$saemParamsToEstimate
+  .fixed <- .ui$saemFixed
+  .saemCfg <- attr(.saem, "saem.cfg")
+  .i1 <- .saemCfg$i1; .i0 <- .saemCfg$i0   # 0-based model-order phi indices
+  .nStruct <- length(.i1) + length(.i0)
+  .ordered <- !is.null(.i1) && .nStruct > 0L &&
+    .nStruct == (length(.pars) - length(.ui$nonMuEtas))
+  if (.ordered) {
+    .ord <- c(.i1, .i0) + 1L
+    .tn <- .pars[.ord]; .fx <- .fixed[.ord]
+    .phi0Nm <- .pars[.i0 + 1L]
+  } else {
+    .tn <- .pars; .fx <- .fixed
+    .phi0Nm <- character(0)
+  }
+  .tn <- .tn[!.fx]
+  .phi0Nm <- .phi0Nm[.phi0Nm %in% .tn]
+  if (length(.tn) == 0L || .np < length(.tn)) return(NULL)
+  # drop the degenerate phi0 mu rows/cols before inverting (#906 defect 1); as
+  # gamma2_phi0 -> 0 the marginal covariance of the surviving parameters
+  # (Schur complement of the full inverse) converges to this reduced inverse
+  # anyway, since the correction term vanishes with 1/gamma2_phi0 -> Inf
+  .drop <- match(.phi0Nm, .tn)
+  .keep <- if (length(.drop) > 0L) seq_len(.np)[-.drop] else seq_len(.np)
+  .tn <- .tn[!(.tn %in% .phi0Nm)]
+  # covariance = inverse of the (phi0-reduced) FIM, in (theta, log-Omega-variance,
+  # log-sigma2) coords
+  .C <- suppressWarnings(tryCatch(solve(.H[.keep, .keep, drop = FALSE]), error = function(e) NULL))
   if (is.null(.C) || !all(is.finite(.C))) return(NULL)
   .np <- nrow(.C)
-  .tn <- .ui$saemParamsToEstimate[!.ui$saemFixed]
   .nth <- length(.tn)
   if (.nth == 0L || .np < .nth) return(NULL)
   .idf <- .ui$iniDf
@@ -655,6 +690,42 @@
                                          only.values = TRUE)$values, error = function(e) NA_real_))
   if (any(!is.finite(.ev)) || min(.ev) <= 0) return(NULL)
   .cov
+}
+#' Splice linFim structural-theta SEs for phi0 (non-mu-referenced) parameters
+#'
+#' `.saemFimToCov` drops phi0 (no-eta) theta rows before inverting because their mu
+#' information (`1/gamma2_phi0`) is decayed toward 0 and blows up their SE (#906
+#' defect 1).  This recovers a real SE for those parameters from the linearized FIM
+#' (`calc.COV`, which linearizes every structural theta directly, mu-referenced or
+#' not) and splices it in block-diagonally, matching the existing variance-block
+#' splice (`.saemSpliceLinFimVar`).  If there are no phi0 thetas this is a no-op.
+#' @param .cov analytic fim/sa covariance (phi1 theta + whatever else it covers)
+#' @param env saem fit environment
+#' @return covariance with phi0 theta SEs spliced in, or `NULL` if a required
+#'   splice could not be completed (the caller falls back to the linearized FIM)
+#' @noRd
+.saemSplicePhi0Theta <- function(.cov, env) {
+  .ui <- env$ui
+  .idf <- .ui$iniDf
+  .allTheta <- .idf[is.na(.idf$err) & !is.na(.idf$ntheta) & !.idf$fix, "name"]
+  if (length(.ui$mixProbs) > 0) .allTheta <- .allTheta[!(.allTheta %in% .ui$mixProbs)]
+  .rn <- rownames(.cov)
+  .miss <- .allTheta[!(.allTheta %in% .rn)]
+  if (length(.miss) == 0L) return(.cov)
+  .saem <- env$saem
+  attr(.saem, "env") <- env
+  .cm <- suppressWarnings(tryCatch(calc.COV(.saem), error = function(e) NULL))
+  if (is.null(.cm) || inherits(.cm, "try-error")) return(NULL)
+  .tn <- .ui$saemParamsToEstimate[!.ui$saemFixed]
+  if (!identical(dim(.cm), c(length(.tn), length(.tn)))) return(NULL)
+  dimnames(.cm) <- list(.tn, .tn)
+  .miss <- .miss[.miss %in% .tn]
+  if (length(.miss) == 0L) return(.cov)
+  .fn <- c(.rn, .miss)
+  .full <- matrix(0, length(.fn), length(.fn), dimnames = list(.fn, .fn))
+  .full[.rn, .rn] <- .cov
+  .full[.miss, .miss] <- .cm[.miss, .miss, drop = FALSE]
+  .full
 }
 #' Splice the linearized-FIM variance block into a fim/sa covariance
 #'
@@ -724,6 +795,9 @@
     .cov <- NULL
     nlmixrWithTiming("covariance", {
       .cov <- .saemFimToCov(.H, env)
+      # phi0 (non-mu-referenced) thetas were dropped in .saemFimToCov (their mu
+      # information is degenerate); splice a real SE in from the linearized FIM.
+      if (!is.null(.cov)) .cov <- .saemSplicePhi0Theta(.cov, env)
       # off-diagonal Omega / proportional-combined residuals are not reliably in the
       # analytic FIM; splice those from linFim's variance block (blocB).
       if (!is.null(.cov)) .cov <- .saemSpliceLinFimVar(.cov, env)

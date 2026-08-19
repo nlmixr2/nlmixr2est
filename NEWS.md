@@ -112,6 +112,19 @@
   halving then doubling compounded into a 4x inflated covariance. Point
   estimates, the objective value, and the log-likelihood were unaffected.
 
+- `est="saem"` with `covMethod="sa"`/`"fim"` reported a nonsense (~1e-6) SE for a
+  theta with no random effect (a "phi0" parameter, e.g. a covariate-free
+  structural parameter), and on a model mixing mu-referenced and
+  non-mu-referenced thetas could attribute the Fisher information rows to the
+  wrong parameter names entirely (#906). The stochastic-approximation kernel
+  orders its Fisher information `[mu-referenced thetas][non-mu-referenced
+  thetas]`, not `iniDf`/model order, and a non-mu-referenced theta's mu
+  information is a pseudo-variance the algorithm decays toward 0 (it is a fixed
+  effect carried as a degenerate random effect), which blows up to a
+  near-zero SE when inverted in place. The Fisher information block is now
+  read out in its actual order, and non-mu-referenced theta rows are dropped
+  before inverting and their SE spliced in from the linearized FIM instead.
+
 ## New features
 
 - `est="saem"` gained controls for the cost of the `nonMuTheta="regress"`

@@ -3213,7 +3213,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       .saemCfg2 <- list()
       # res.mod is kept because calc.2LL()/calc.COV() need it to tell an ll()
       # observation from a normally-distributed one
-      for (.v in c("i1", "nphi1", "nphi0", "N", "ntotal", "ix_endpnt", "y", "nmc", "niter", "opt", "inits", "Mcovariables", "res.mod")) {
+      for (.v in c("i1", "i0", "nphi1", "nphi0", "N", "ntotal", "ix_endpnt", "y", "nmc", "niter", "opt", "inits", "Mcovariables", "res.mod")) {
         .saemCfg2[[.v]] <- .saemCfg[[.v]]
       }
       attr(.saem, "saem.cfg") <- .saemCfg2
