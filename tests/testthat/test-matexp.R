@@ -267,7 +267,7 @@ nmTest({
     # natively (a literal "matExp()" line, no materialized d/dt()), not via
     # the ODE-flattening path -- matching numbers alone would not catch a
     # regression back to flattening.
-    .saemModelTxt <- strsplit(nlmixr2est:::rxUiGet.saemModel(list(matS())), "\n")[[1]]
+    .saemModelTxt <- strsplit(utils::getFromNamespace("rxUiGet.saemModel", "nlmixr2est")(list(matS())), "\n")[[1]]
     expect_true(any(grepl("^matExp\\(\\)$", .saemModelTxt)))
     expect_false(any(grepl("d/dt(", .saemModelTxt, fixed = TRUE)))
   })
@@ -299,7 +299,7 @@ nmTest({
         cp ~ add(add.sd)
       })
     }
-    .saemModelTxt <- strsplit(nlmixr2est:::rxUiGet.saemModel(list(matMM())), "\n")[[1]]
+    .saemModelTxt <- strsplit(utils::getFromNamespace("rxUiGet.saemModel", "nlmixr2est")(list(matMM())), "\n")[[1]]
     expect_true(any(grepl("d/dt(", .saemModelTxt, fixed = TRUE)))
     expect_false(any(grepl("^matExp\\(\\)$", .saemModelTxt)))
     expect_false(any(grepl("^indLin\\(", .saemModelTxt)))
@@ -329,7 +329,7 @@ nmTest({
         cp ~ add(add.sd)
       })
     }
-    .saemModelTxt <- strsplit(nlmixr2est:::rxUiGet.saemModel(list(matSF())), "\n")[[1]]
+    .saemModelTxt <- strsplit(utils::getFromNamespace("rxUiGet.saemModel", "nlmixr2est")(list(matSF())), "\n")[[1]]
     expect_true(any(grepl("d/dt(central)=", .saemModelTxt, fixed = TRUE)))
     expect_true(any(grepl("\\(5\\)", .saemModelTxt)))
     expect_false(any(grepl("^matExp\\(\\)$", .saemModelTxt)))
@@ -350,7 +350,7 @@ nmTest({
         cp ~ add(add.sd)
       })
     }
-    .s <- nlmixr2est:::rxUiGet.loadPruneSaem(list(matD()))
-    expect_false(isTRUE(nlmixr2est:::.rxKeepMatExpNative(.s)))
+    .s <- utils::getFromNamespace("rxUiGet.loadPruneSaem", "nlmixr2est")(list(matD()))
+    expect_false(isTRUE(utils::getFromNamespace(".rxKeepMatExpNative", "nlmixr2est")(.s)))
   })
 })
