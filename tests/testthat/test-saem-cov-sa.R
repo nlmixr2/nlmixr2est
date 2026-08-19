@@ -207,6 +207,12 @@ nmTest({
     # residual error to anchor it); linFim is what gets reported
     expect_equal(.f$covMethod, "linFim")
 
+    # nb_param (#893): the C++ kernel still accumulates Ha/HaSa every fit
+    # regardless of the reported covMethod -- for a general-likelihood model
+    # (distribution==4) it must carry NO residual slot at all (theta + eta
+    # only), not a spurious always-zero one
+    expect_equal(nrow(.f$saem$Ha), 1L + 1L)
+
     .tlam <- fixef(.f)[["tlam"]]
     .om <- .f$omega[1, 1]
     # exact marginal -2LL and its observed information, by quadrature over the eta
@@ -240,6 +246,87 @@ nmTest({
                                          print = 0L, calcTables = FALSE,
                                          covMethod = "fim"))
     expect_equal(.ff$covMethod, "linFim")
+  })
+
+  test_that("multi-endpoint fim/sa: one residual FIM slot per endpoint (#893)", {
+    # Before the fix, src/saem.cpp had exactly ONE log-sigma2 slot no matter how
+    # many endpoints the model declared, so a multi-endpoint fit's residual score
+    # always came from whichever endpoint the per-chain loop processed last,
+    # divided by endpoint 0's sigma2 -- and because that slot couples to theta/
+    # Omega through the full Fisher information matrix, R's .saemFimToCov() never
+    # even surfaced a residual SE for a multi-endpoint model (nrow(.ri) > 1
+    # always skipped the residual block entirely).  A pure-additive two-endpoint
+    # model must now get a REAL, separate SE for each endpoint's residual.
+    pkpd <- function() {
+      ini({
+        tka <- 0.45; tcl <- 1; tv <- 3.45; tslope <- 1
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        add.sd <- 0.7; add2.sd <- 5
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v  <- exp(tv + eta.v)
+        slope <- exp(tslope)
+        cp <- linCmt()
+        pca <- slope * cp
+        cp ~ add(add.sd)
+        pca ~ add(add2.sd)
+      })
+    }
+    ctl <- saemControl(nBurn = 150, nEm = 200, print = 0, seed = 1L,
+                       covMethod = "sa", nSaCov = 500)
+    f <- .nlmixr(pkpd, warfarin, est = "saem", control = ctl)
+    skip_if_not(identical(f$covMethod, "sa"))   # near-singular fits legitimately fall back
+
+    # nb_param carries one slot per endpoint: theta(4) + eta(3) + residual(2)
+    expect_equal(nrow(f$saem$Ha), 4L + 3L + 2L)
+
+    # both endpoints' additive residual SEs are real (not dropped/NA)
+    expect_true(all(c("add.sd", "add2.sd") %in% rownames(f$cov)))
+    expect_true(is.finite(f$parFixedDf["add.sd", "SE"]) && f$parFixedDf["add.sd", "SE"] > 0)
+    expect_true(is.finite(f$parFixedDf["add2.sd", "SE"]) && f$parFixedDf["add2.sd", "SE"] > 0)
+
+    # a mixed add+prop / add model: the pure-additive endpoint still gets a real
+    # analytic slot, the combined endpoint's slot is an exact-zero row dropped
+    # before solve() (its SE instead comes from the linFim splice)
+    pkpd2 <- function() {
+      ini({
+        tka <- 0.45; tcl <- 1; tv <- 3.45; tslope <- 1
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        add.sd <- 0.7; prop.sd <- 0.1; add2.sd <- 5
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v  <- exp(tv + eta.v)
+        slope <- exp(tslope)
+        cp <- linCmt()
+        pca <- slope * cp
+        cp ~ add(add.sd) + prop(prop.sd)
+        pca ~ add(add2.sd)
+      })
+    }
+    f2 <- .nlmixr(pkpd2, warfarin, est = "saem",
+                  control = saemControl(nBurn = 150, nEm = 200, print = 0, seed = 1L,
+                                        covMethod = "sa", nSaCov = 500))
+    .Ha <- f2$saem$HaSa
+    expect_equal(nrow(.Ha), 4L + 3L + 2L)
+    # the combined endpoint's slot (cp, first endpoint) is exactly zero;
+    # the pure-additive endpoint's slot (pca, second) is not
+    .zeroRow <- apply(.Ha, 1L, function(r) all(r == 0))
+    expect_equal(unname(.zeroRow[8]), TRUE)
+    expect_equal(unname(.zeroRow[9]), FALSE)
+    if (identical(f2$covMethod, "sa")) {
+      expect_true("add2.sd" %in% rownames(f2$cov))
+      expect_false("add.sd" %in% rownames(f2$cov))
+      expect_false("prop.sd" %in% rownames(f2$cov))
+    }
+    # the pure-additive endpoint's SE is real regardless (its slot was never
+    # dropped); the combined endpoint's SE depends on the linFim splice
+    # succeeding, which is a convergence question unrelated to this fix and
+    # already covered by the "fim/sa splice" test above
+    expect_true(is.finite(f2$parFixedDf["add2.sd", "SE"]) && f2$parFixedDf["add2.sd", "SE"] > 0)
   })
 
   test_that(".saemLlObsMask refuses to guess rather than mis-score (#871)", {

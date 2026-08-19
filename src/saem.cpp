@@ -1203,6 +1203,29 @@ public:
     return resk;
   }
 
+  // Fill this chain's per-endpoint residual log-sigma2 score/Hessian entries
+  // from resy(b,k) (endpoint b's residual SSR for MCMC chain k).  Only a pure
+  // additive endpoint (res_mod==rmAdd) has a valid single-parameter
+  // log-sigma2 score; every other endpoint's slot is held at exactly 0 (see
+  // the nb_param comment in inits()).  d1_logsigma2 must already be sized
+  // nResidEp; d2logk is nb_param x nb_param.
+  void fillResidLogSigma2(int k, const mat &resy, vec &d1_logsigma2, mat &d2logk) {
+    int resBase = nlambda + nphi1;
+    for (int b = 0; b < nendpnt; b++) {
+      int idx = residEpIdx[b];
+      if (idx < 0) continue;
+      int col = resBase + idx;
+      if (res_mod(b) == rmAdd) {
+        double nb = (double)(y_offset(b + 1) - y_offset(b));
+        d1_logsigma2[idx] = 0.5 * resy(b, k) / sigma2[b] - 0.5 * nb;
+        d2logk(col, col) = -0.5 * resy(b, k) / sigma2[b];
+      } else {
+        d1_logsigma2[idx] = 0.0;
+        d2logk(col, col) = 0.0;
+      }
+    }
+  }
+
   mat get_resMat() {
     mat m(nendpnt,4);
     m.col(0) = ares;
@@ -1429,7 +1452,6 @@ public:
     nlambda1 = as<int>(x["nlambda1"]);
     nlambda0 = as<int>(x["nlambda0"]);
     nlambda = nlambda1 + nlambda0;
-    nb_param = nphi1 + nlambda + 1;
     nphi = nphi1+nphi0;
     Plambda.zeros(nlambda);
     ilambda1 = as<uvec>(x["ilambda1"]);
@@ -1440,6 +1462,23 @@ public:
 
     //FIXME
     nendpnt=as<int>(x["nendpnt"]);
+    distribution=as<int>(x["distribution"]);
+    // One FIM residual slot per endpoint that carries a residual parameter --
+    // none when the whole model is a general log-likelihood (distribution==4;
+    // "any LL endpoint" forces the WHOLE model to distribution==4, so no
+    // endpoint has a real residual in that case).  Sizing to nendpnt (not
+    // nres, the total residual PARAMETER count) is deliberate: the analytic
+    // Louis FIM only ever tracks a single log-sigma2 score/Hessian per
+    // endpoint, valid only for a pure additive residual (res_mod==rmAdd);
+    // any other endpoint's slot exists (so nb_param has a fixed layout) but
+    // its d1_logsigma2/d2logk entries are held at exactly 0 in every
+    // iteration, so its row/col of Ha/HaSa stays exactly 0 and
+    // .saemFimToCov (R/saem.R) can drop it and fall back to the linFim
+    // splice for that endpoint's residual SE.
+    nResidEp = (distribution == 4) ? 0 : nendpnt;
+    for (int b = 0; b < MAXENDPNT; ++b) residEpIdx[b] = -1;
+    for (int b = 0; b < nResidEp; ++b) residEpIdx[b] = b;
+    nb_param = nphi1 + nlambda + nResidEp;
     ix_sorting=as<uvec>(x["ix_sorting"]);
     ys = y(ix_sorting);    //ys: obs sorted by endpnt
     y_offset=as<uvec>(x["y_offset"]);
@@ -1573,7 +1612,6 @@ public:
     mx.evtM   = evt;
     mx.optM   = optM;
 
-    distribution=as<int>(x["distribution"]);
     nonMuThetaRegress = x.containsElementNamed("nonMuThetaRegress") ?
       as<int>(x["nonMuThetaRegress"]) : 0;
     nonMuThetaOptType = x.containsElementNamed("nonMuThetaOptType") ?
@@ -1838,7 +1876,7 @@ public:
       mat D11 = zeros<mat>(nb_param, nb_param);
       mat D2 = zeros<mat>(nb_param, nb_param);
       mat d2logk = zeros<mat>(nb_param, nb_param);
-      vec resy(nmc);
+      mat resy(nendpnt, nmc);  // resy(b, k): endpoint b's residual SSR for chain k
       vec fsM;
       fsM.set_size(0);
 
@@ -2023,7 +2061,7 @@ public:
               resk += arResk(b, f_cur, y_cur, mHyp);
             }
             statr[b] += resk;
-            resy(k) = resk;
+            resy(b, k) = resk;
           }
 
           mat dphi1k = phi1k - mprior_phi1;
@@ -2034,8 +2072,8 @@ public:
           vec d1_mu_phi1 = Md1(ind_cov1);
           vec d1_mu_phi0 = Md0(ind_cov0);
           vec d1_loggamma2_phi1 = 0.5 * sdg1 - 0.5 * N;
-          vec d1_logsigma2(1);
-          d1_logsigma2[0] = 0.5 * resy(k) / sigma2[0] - 0.5 * ntotal;
+          vec d1_logsigma2(nResidEp);
+          fillResidLogSigma2(k, resy, d1_logsigma2, d2logk);
           vec d1logk = join_cols(d1_mu_phi1, join_cols(d1_mu_phi0, join_cols(d1_loggamma2_phi1, d1_logsigma2)));
           D1 = D1 + d1logk;
           D11 = D11 + d1logk * d1logk.t();
@@ -2050,7 +2088,6 @@ public:
             }
             d2logk(nlambda + j, nlambda + j) = w2phi(j);
           }
-          d2logk(nb_param - 1, nb_param - 1) = -0.5 * resy(k) / sigma2[0];
           D2 = D2 + d2logk;
         }
       } else if (nMix > 1) {
@@ -2308,7 +2345,7 @@ public:
               resk += arResk(b, f_cur, y_cur, jMix);
             }
             statr[b] += resk;
-            resy(k) = resk;
+            resy(b, k) = resk;
           }
 
           vec sdg1 = sdg1_w / gamma2_phi1;
@@ -2317,8 +2354,8 @@ public:
           vec d1_mu_phi1 = Md1(ind_cov1);
           vec d1_mu_phi0 = Md0(ind_cov0);
           vec d1_loggamma2_phi1 = 0.5 * sdg1 - 0.5 * N;
-          vec d1_logsigma2(1);
-          d1_logsigma2[0] = 0.5 * resy(k) / sigma2[0] - 0.5 * ntotal;
+          vec d1_logsigma2(nResidEp);
+          fillResidLogSigma2(k, resy, d1_logsigma2, d2logk);
           vec d1logk = join_cols(d1_mu_phi1, join_cols(d1_mu_phi0, join_cols(d1_loggamma2_phi1, d1_logsigma2)));
           D1 = D1 + d1logk;
           D11 = D11 + d1logk * d1logk.t();
@@ -2333,7 +2370,6 @@ public:
             }
             d2logk(nlambda + j, nlambda + j) = w2phi(j);
           }
-          d2logk(nb_param - 1, nb_param - 1) = -0.5 * resy(k) / sigma2[0];
           D2 = D2 + d2logk;
         }
         for (int k = 0; k < nmc; k++) {
@@ -2499,7 +2535,7 @@ public:
             }
 
             statr[b]=statr[b]+resk;
-            resy(k) = resk;                                          //FIXME: resy(b,k)?
+            resy(b, k) = resk;
           }
           if (DEBUG>1) Rcout << "star[] successful\n";
 
@@ -2511,9 +2547,10 @@ public:
           vec d1_mu_phi1=Md1(ind_cov1);                              //CHK!! vec or mat
           vec d1_mu_phi0=Md0(ind_cov0);                              //CHK!! vec or mat
           vec d1_loggamma2_phi1=0.5*sdg1-0.5*N;
-          vec d1_logsigma2(1);
-          // general log-likelihood: no residual param, so its FIM row is 0
-          d1_logsigma2[0] = (distribution == 4) ? 0.0 : 0.5*resy(k)/sigma2[0]-0.5*ntotal; //FIXME: sigma2[0], sigma2[b] instead?
+          // general log-likelihood (distribution==4): no residual param, so
+          // nResidEp==0 and this block is empty
+          vec d1_logsigma2(nResidEp);
+          if (distribution != 4) fillResidLogSigma2(k, resy, d1_logsigma2, d2logk);
           vec d1logk=join_cols(d1_mu_phi1, join_cols(d1_mu_phi0, join_cols(d1_loggamma2_phi1, d1_logsigma2)));
           D1 = D1+d1logk;
           D11= D11+d1logk*d1logk.t();
@@ -2528,7 +2565,6 @@ public:
             }
             d2logk(nlambda+j,nlambda+j)=w2phi(j);
           }
-          d2logk(nb_param-1,nb_param-1)=(distribution == 4) ? 0.0 : -0.5*resy(k)/sigma2[0];      //FIXME: sigma2[0], sigma2[b] instead?
           D2=D2+d2logk;
         }
       }//k
@@ -3612,6 +3648,11 @@ private:
 
   int nlambda1, nlambda0, nlambda, nb_param;
   uvec ilambda1, ilambda0;
+  // one FIM residual slot per endpoint (see the nb_param comment in inits());
+  // residEpIdx[b] is that endpoint's compacted slot, or -1 when the whole
+  // model is a general log-likelihood (nResidEp==0)
+  int nResidEp;
+  int residEpIdx[MAXENDPNT];
 
   mat statphi01, statphi02, statphi11, statphi12;
   // Per-component, unblended sufficient statistic (never mixed across components); used to fix
