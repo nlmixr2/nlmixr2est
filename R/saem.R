@@ -730,12 +730,7 @@
   attr(.saem, "env") <- env
   .cm <- suppressWarnings(tryCatch(calc.COV(.saem), error = function(e) NULL))
   if (is.null(.cm) || inherits(.cm, "try-error")) return(NULL)
-  # calc.COV()'s theta covariance covers only the phi/lambda block (nphi columns
-  # of saem.cfg$inits$theta); a nonMuEta is estimated through a different
-  # mechanism entirely and is never one of those columns, so it must be
-  # excluded here too or the dimension check below always fails
   .tn <- .ui$saemParamsToEstimate[!.ui$saemFixed]
-  .tn <- .tn[!(.tn %in% .ui$nonMuEtas)]
   if (!identical(dim(.cm), c(length(.tn), length(.tn)))) return(NULL)
   dimnames(.cm) <- list(.tn, .tn)
   .miss <- .miss[.miss %in% .tn]
