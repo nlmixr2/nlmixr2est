@@ -1,6 +1,6 @@
 nmTest({
   test_that("foceiControl(innerOpt=) trust mapping", {
-    expect_equal(foceiControl()$innerOpt, 1L)
+    expect_equal(foceiControl()$innerOpt, 3L)
     expect_equal(foceiControl(innerOpt = "n1qn1")$innerOpt, 1L)
     expect_equal(foceiControl(innerOpt = "BFGS")$innerOpt, 2L)
     expect_equal(foceiControl(innerOpt = "trust")$innerOpt, 3L)
