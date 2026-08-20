@@ -834,6 +834,16 @@ vcov.nlmixr2FitCoreSilent <- vcov.nlmixr2FitCore
     .iniDf2 <- as.data.frame(.omega)
     .iniDf2 <- .iniDf2[!is.na(.iniDf2$neta1), ]
     .iniDf2$err <- NA_character_
+    # as.data.frame(.omega) rebuilds the omega rows from the raw matrix,
+    # which has no way to carry the `prior` column lotri itself does not
+    # know about (nlmixr2/nlmixr2est#929/#931) -- restore it from the
+    # pre-rebuild iniDf, matched by name, so a prior on an omega element
+    # does not silently vanish the first time a fit is piped/re-entered
+    # (eg .setOfvFo()'s re-dispatch through nlmixr2(fit, ...)).
+    if ("prior" %in% names(.iniDf) && "prior" %in% names(.iniDf2)) {
+      .w <- match(.iniDf2$name, .iniDf$name)
+      .iniDf2$prior[!is.na(.w)] <- .iniDf$prior[.w[!is.na(.w)]]
+    }
     .names <- names(.iniDf)
     .iniDf <- rbind(.iniDf1, .iniDf2)
     .iniDf <- .iniDf[, .names]
