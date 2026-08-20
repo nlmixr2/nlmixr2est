@@ -31,6 +31,7 @@ foceiControl(
   covSolveTol = NULL,
   covFull = TRUE,
   fast = FALSE,
+  priorMethod = c("auto", "general", "nwpri", "tnpri"),
   fdOutlierZ = 3.5,
   fdOutlierScale = TRUE,
   fdRefine = c("chartrand", "lanczos", "richardson"),
@@ -361,6 +362,26 @@ foceiControl(
   (vs `"bobyqa"` for `fast=FALSE`); pairing `fast=TRUE` with a
   derivative-free `outerOpt` reverts to `fast=FALSE`. The `*f` methods
   (e.g. `foceif`) default this to `TRUE`.
+
+- priorMethod:
+
+  Which of the shared prior kernel's three omega conventions
+  (nlmixr2/rxode2#1270) to evaluate an `ini({})` `prior()` under –
+  `"general"` (textbook Bayesian), `"nwpri"` (NONMEM's own
+  `$PRIOR NWPRI`), or `"tnpri"` (the Monolix/NONMEM-own-estimation
+  joint-normal convention on omega). The default, `"auto"`, reads the
+  convention off what the model's own `ini({})` actually wrote (an
+  `invWishart()` degrees-of- freedom prior on an omega block means
+  `"nwpri"`; a normal prior directly on an omega element means
+  `"tnpri"`; anything else, including a
+  [`dcauchy()`](https://rdrr.io/r/stats/Cauchy.html) prior, means
+  `"general"`) – deliberately never a fixed default, since the identical
+  `invWishart(nu)` syntax means a different number under `"general"` and
+  `"nwpri"`. Setting this explicitly forces that convention regardless
+  of what auto-detection would have picked, and errors before any
+  estimation starts if the model's priors are not representable under it
+  (e.g. `priorMethod="tnpri"` on a model with an `invWishart()` prior).
+  Ignored when the model has no prior at all.
 
 - fdOutlierZ:
 

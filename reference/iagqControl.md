@@ -150,6 +150,9 @@ iagqControl()
 #> $fast
 #> [1] FALSE
 #> 
+#> $priorMethod
+#> [1] "auto"
+#> 
 #> $fdOutlierZ
 #> [1] 3.5
 #> 
@@ -306,7 +309,7 @@ iagqControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x559484a89cd8>
+#> <bytecode: 0x55b91fae61e8>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
