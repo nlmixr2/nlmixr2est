@@ -306,6 +306,15 @@ struct focei_options {
   // d(r)/d(eta) columns follow rx_pred_ contiguously; located by name at setup.
   int predOffset;
   int predNoLhsOffset; // same, for the predNoLhs model used in the FD fallback
+  // t()/cauchy() M2/M3/M4 censoring (#979): rx_pred_f_/rx_r_/rx_nu_ indices in
+  // the inner lhs for a llik-forced endpoint (rx_pred_ itself holds the full
+  // llikT()/llikCauchy() log-density there, not a mean).  -1 when absent (no
+  // t()/cauchy() endpoint in this model).  Located by name, independently of
+  // predOffset -- unlike rx_pred_f_/rx_r_'s NORMAL-branch columns (comment
+  // above), these are not assumed contiguous with rx_pred_.
+  int predFOffset = -1;
+  int predROffset = -1;
+  int predNuOffset = -1;
   // fast=TRUE log-likelihood/generalized endpoint: a SEPARATE compiled model (rxHess2)
   // carries the exact second-order eta expansion rx__d2pred_i_j__ = d2(logLik)/deta_i deta_j
   // (upper triangle i<=j, j-outer/i-inner order).  This offset is the lhs index of its first
@@ -2310,6 +2319,52 @@ static inline double likInner0Contrib(int id, int k, int dist, int cens,
   return llAdd;
 }
 
+// M2/M3/M4 censored log-likelihood VALUE for a t()/cauchy() observation
+// (#979).  `llVal` is the already-computed llikT()/llikCauchy() log-density
+// (what every `dist != rxDistributionNorm` branch uses verbatim today).
+// Reads RAW (untransformed) dv/limit against RAW rx_pred_f_ -- the same
+// convention nlm.cpp's doCensT1 call uses -- since rx_pred_f_ is
+// `.rxGetPredictionF()` (pre-transform), unlike the tbs()-transformed
+// dv/limit locals likInner0 computes for the NORMAL branch.
+//
+// KNOWN GAP (two layers, #979):
+//  1. This function currently NEVER fires for FOCEi/FOCE/AGQ/Laplace:
+//     predNuOffset stays -1 there (see its setup comment above, in the
+//     alloc block) because the R side only emits rx_nu_/a real rx_r_ for
+//     nlm-family.  nlm-family (src/nlm.cpp) IS fully corrected -- value
+//     AND gradient, since nlm has no etas to worry about.
+//  2. Once FOCEi's R-side gap closes, only the VALUE would be corrected
+//     here.  The eta-gradient (`lp`, via the analytic d(llikT)/d(eta)
+//     sensitivity column already read into `fpm`/`a(k,i)`) and the inner-
+//     Hessian curvature (`cHff`/`cHfr`/`cHrr`, Gauss-Newton fallback) would
+//     still score a censored t()/cauchy() row as if uncensored -- closing
+//     THAT requires a d(rx_pred_f_)/d(eta) sensitivity column rxode2 does
+//     not currently emit.
+// This function is exercised and validated end-to-end today only via
+// nlm-family's identical doCensT1 call; it is deliberately-ready, currently
+// inert infrastructure for FOCEi, not dead code.
+static inline double focei_tCensLl(rx_solving_options_ind *ind, int kk,
+                                   int dist, int cens, double llVal,
+                                   double *lhs) {
+  if ((dist != rxDistributionT && dist != rxDistributionCauchy) ||
+      op_focei.predFOffset < 0 || op_focei.predROffset < 0 ||
+      op_focei.predNuOffset < 0) {
+    return llVal;
+  }
+  double limit = R_NegInf;
+  if (hasRxLimit(rx)) {
+    limit = getIndLimit(ind, kk);
+    if (ISNA(limit)) limit = R_NegInf;
+  }
+  bool isCensObs = (cens != 0) || (R_FINITE(limit) && !ISNA(limit));
+  if (!isCensObs) return llVal;
+  double dv = getIndDv(ind, kk);
+  double f = lhs[op_focei.predFOffset];
+  double r = lhs[op_focei.predROffset];
+  double nu = lhs[op_focei.predNuOffset];
+  return doCensT1((double)cens, dv, limit, llVal, f, r, nu);
+}
+
 double likInner0(double *eta, int id) {
   rx = getRxSolve_();
   rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
@@ -2722,8 +2777,9 @@ double likInner0(double *eta, int id) {
               fInd->llik += ll;
               fInd->nObs++;
             } else {
-              llikObs[kk] = f;
-              fInd->llik += f;
+              double llT = focei_tCensLl(ind, kk, dist, cens, f, lhs);
+              llikObs[kk] = llT;
+              fInd->llik += llT;
               fInd->nNonNormal++;
               fInd->nObs++;
             }
@@ -2819,8 +2875,9 @@ double likInner0(double *eta, int id) {
                  fInd->llik +=  ll;
                  fInd->nObs++;
                } else {
-                 llikObs[kk] = f;
-                 fInd->llik += f;
+                 double llT = focei_tCensLl(ind, kk, dist, cens, f, lhs);
+                 llikObs[kk] = llT;
+                 fInd->llik += llT;
                  fInd->nNonNormal++;
                  fInd->nObs++;
                }
@@ -2847,8 +2904,9 @@ double likInner0(double *eta, int id) {
                 fInd->llik +=  ll;
                 fInd->nObs++;
               } else {
-                llikObs[kk] = f;
-                fInd->llik += f;
+                double llT = focei_tCensLl(ind, kk, dist, cens, f, lhs);
+                llikObs[kk] = llT;
+                fInd->llik += llT;
                 fInd->nNonNormal++;
                 fInd->nObs++;
               }
@@ -6357,6 +6415,19 @@ static inline void foceiSetupTheta_(List mvi,
     // Locate rx_pred_ in the inner lhs (AR(1) lag defs may precede it).
     int _ipi = odeSwapLhsIndex(odeSlotInner, "rx_pred_");
     op_focei.predOffset = (_ipi < 0) ? 0 : _ipi;
+    op_focei.predFOffset = odeSwapLhsIndex(odeSlotInner, "rx_pred_f_");
+    op_focei.predROffset = odeSwapLhsIndex(odeSlotInner, "rx_r_");
+    // predNuOffset is currently ALWAYS -1 for FOCEi/FOCE/AGQ/Laplace: the R
+    // side (.fixCensRNuLine, R/focei.R) only emits rx_nu_ for nlm-family
+    // (nlmixr2global$rxCensNuFix), because doing so for FOCEi's llik-forced
+    // t()/cauchy() endpoint crashes rxode2's eta-sensitivity generation once
+    // real etas are present ("user function 'get' requires 5 arguments";
+    // reproduces with plain cauchy(), no censoring at all).  focei_tCensLl()
+    // below is written and validated against a real fit already (nlm-family
+    // uses the identical doCensT1 path), so this is deliberately-inert,
+    // ready infrastructure -- KNOWN GAP pending a fix to that rxode2-side
+    // interaction, not a TODO in this file (#979).
+    op_focei.predNuOffset = odeSwapLhsIndex(odeSlotInner, "rx_nu_");
     // The exact-Hessian rx__d2pred_ columns live in the SEPARATE 2nd-order model (rxHess2),
     // located in foceiFitCpp_ after this setup; predHess2Offset is set there, not here.
   } else if (!op_focei.alloc){
@@ -16831,6 +16902,42 @@ static inline void npAccumMoment(arma::mat &mom, int e, double f, double dv) {
   mom(e, 2) += 1.0;
 }
 
+// Fold one subject's observation rows into mom, on the way accumulating the
+// additive/proportional moment for whichever endpoint each row belongs to.
+// obsIdx indexes obsEndpoint across ALL subjects, so it must advance even on a
+// skipped subject (skipMoments true) or every later subject's rows land in the
+// wrong endpoint. See npResidMoments for what skipMoments/cl/fr/nEnd mean and
+// why an M3/M4 (censored) row is counted into column 3 rather than folded into
+// the additive/proportional sum-of-squares (issue #978).
+static inline void npResidMomentsSubject(rx_solving_options_ind *ind, int n,
+                                          const arma::mat &fr, bool skipMoments,
+                                          double cl, const arma::ivec &obsEndpoint,
+                                          int nEnd, int &obsIdx, arma::mat &mom) {
+  int ko = 0;
+  for (int j = 0; j < n && (skipMoments || ko < (int)fr.n_rows); ++j) {
+    setIndIdx(ind, j);
+    int kk = getIndIx(ind, j);
+    if (getIndEvid(ind, kk) != 0) continue;
+    // No map at all means no per-observation endpoint was supplied; running off the
+    // end of one means the map does not describe this solve.  Either way the row is
+    // dropped (-1) rather than filed under endpoint 0 (issue #856).  It is NOT safe
+    // to read nEnd == 1 as "single endpoint, so 0 is right": nEnd comes from the
+    // ESTIMATED residual parameters, and a multi-endpoint model with one estimated
+    // scale (the rest fixed) also gives 1.
+    int e = (obsIdx < (int)obsEndpoint.n_elem) ? obsEndpoint[obsIdx] : -1;
+    obsIdx++;
+    if (skipMoments) continue;
+    double dv = tbs(getIndDv(ind, kk));
+    double f = fr(ko, 0);
+    ko++;
+    if (e < 0 || e >= nEnd) continue;
+    if (!std::isfinite(cl) || !std::isfinite(f)) continue;
+    double cens = hasRxCens(rx) ? getIndCens(ind, kk) : 0.0;
+    if (cens != 0.0) { mom(e, 3) += 1.0; continue; }
+    npAccumMoment(mom, e, f, dv);
+  }
+}
+
 // Empirical (moment) residual estimate at fixed per-subject etas, per endpoint.
 // obsEndpoint (length = number of observations, in the C++ subject-major getIndIx
 // order) gives each observation's 0-based endpoint; nEnd is the endpoint count.  For
@@ -16838,13 +16945,23 @@ static inline void npAccumMoment(arma::mat &mom, int e, double f, double dv) {
 // sum(err^2) and the proportional moment sum((err/f)^2) with the observation count, so
 // the caller can set an additive SD to sqrt(mean(err^2)) and a proportional SD to
 // sqrt(mean((err/f)^2)) -- the saem-style estimate, used to warm start (and, for a
-// single scale per endpoint, to set) the residual optimization.  Returns an
-// nEnd x 3 matrix [sumAdd, sumProp, n].
+// single scale per endpoint, to set) the residual optimization.  An M3/M4 row's DV is
+// the LOQ/limit rather than a real measurement (censEst.h's isM3orM4(cens); M2 is NOT
+// excluded -- isM2 requires cens==0, so its DV is still a defined observation), so it
+// is dropped from the moment entirely (like the whole-endpoint skipMoments guard
+// below) rather than folded in as if observed -- issue #978. A moment built only from
+// the UNcensored rows is still a biased (too small) estimate of the true residual
+// variance whenever the model is genuinely censored -- dropping a row does not put its
+// information back, it just stops it from being wrong in the worst way. Column 3
+// counts how many rows were dropped this way per endpoint, so the caller can refuse to
+// treat the moment as final (see npOptimizeResid's allSimpleScale gate) and route
+// through the optimizer's censoring-aware objective instead whenever that count is
+// nonzero. Returns an nEnd x 4 matrix [sumAdd, sumProp, n, nCensDropped].
 arma::mat npResidMoments(const arma::mat& postEta, const arma::ivec& obsEndpoint, int nEnd) {
   rx = getRxSolve_();
   int nsub = (int)getRxNsub(rx);
   int neta = op_focei.neta;
-  arma::mat mom(std::max(nEnd, 1), 3, arma::fill::zeros);
+  arma::mat mom(std::max(nEnd, 1), 4, arma::fill::zeros);
   std::vector<double> eta(neta);
   int obsIdx = 0;
   for (int i = 0; i < nsub; ++i) {
@@ -16862,30 +16979,8 @@ arma::mat npResidMoments(const arma::mat& postEta, const arma::ivec& obsEndpoint
     rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(i));
     arma::mat fr;
     if (!skipMoments) fr = grabRFmatFromInner(i, false);
-    int ko = 0;
     int n = getIndNallTimes(ind);
-    for (int j = 0; j < n && (skipMoments || ko < (int)fr.n_rows); ++j) {
-      setIndIdx(ind, j);
-      int kk = getIndIx(ind, j);
-      if (getIndEvid(ind, kk) != 0) continue;
-      // obsIdx indexes obsEndpoint across ALL subjects, so it must advance even on a
-      // skipped subject or every later subject's rows land in the wrong endpoint.
-      // No map at all means no per-observation endpoint was supplied; running off the
-      // end of one means the map does not describe this solve.  Either way the row is
-      // dropped (-1) rather than filed under endpoint 0 (issue #856).  It is NOT safe
-      // to read nEnd == 1 as "single endpoint, so 0 is right": nEnd comes from the
-      // ESTIMATED residual parameters, and a multi-endpoint model with one estimated
-      // scale (the rest fixed) also gives 1.
-      int e = (obsIdx < (int)obsEndpoint.n_elem) ? obsEndpoint[obsIdx] : -1;
-      obsIdx++;
-      if (skipMoments) continue;
-      double dv = tbs(getIndDv(ind, kk));
-      double f = fr(ko, 0);
-      ko++;
-      if (e < 0 || e >= nEnd) continue;
-      if (!std::isfinite(cl) || !std::isfinite(f)) continue;
-      npAccumMoment(mom, e, f, dv);
-    }
+    npResidMomentsSubject(ind, n, fr, skipMoments, cl, obsEndpoint, nEnd, obsIdx, mom);
   }
   return mom;
 }

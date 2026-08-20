@@ -112,7 +112,7 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
   # in the push/PR subset) and run weekly only.
   c("npag-psi", "npag-cycle", "npag-fit", "npb-fit", "npag-bimodal", "npag-fixed",
     "npag-error-models", "npag-mixture", "npag-general-lik", "npag-muexpand",
-    "npag-golden", "lik-contrib-methods")
+    "npag-golden", "lik-contrib-methods", "npag-npb-cens-978")
 )
 .slowAll <- unlist(.slowBatches)
 
