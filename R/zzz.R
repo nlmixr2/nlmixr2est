@@ -66,7 +66,7 @@
 
 .iniRcppTrustPtr <- function() {
   .Call(`_nlmixr2est_iniRcppTrustPtrs`,
-        RcppTrust:::.RcppTrustPtr(),
+        RcppTrust::.RcppTrustPtr(),
         PACKAGE = "nlmixr2est")
 }
 
