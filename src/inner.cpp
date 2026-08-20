@@ -37,6 +37,12 @@
 #include <memory>
 #include <deque>
 #include <queue>
+// Boost.Math quantile functions -- stateless (no static/global mutable data),
+// so unlike relying on Rmath's own thread-safety story for every R::q* entry
+// point, these are safe by construction from any thread. Matches imp.cpp's
+// own boost::math::chi_squared_distribution usage (impChisqQuantile()).
+#include <boost/math/distributions/chi_squared.hpp>
+#include <boost/math/distributions/fisher_f.hpp>
 
 // Set while inside the parallel inner optimization region: R-API calls and
 // running-mean accumulation are deferred to the post-parallel phase. Atomic
@@ -3775,6 +3781,19 @@ static inline int innerOpt1(int id, int likId) {
       }
     }
   } else if (trustInner) {
+    // The whole branch is wrapped in try/catch: any C++ exception escaping
+    // this #pragma omp parallel for loop body (up through innerOptId() ->
+    // innerOpt()'s caller) is uncatchable across the OpenMP thread boundary
+    // and calls std::terminate, crashing the whole R session -- the same
+    // class of bug already found here once (an uncaught Armadillo
+    // Mat::operator() bounds exception, see the parscale guard below).
+    // trust_solve_c() itself already catches std::bad_alloc internally and
+    // returns a clean tres.error==-4 (RcppTrust's src/trust_core.cpp), but
+    // an allocation failure in THIS code around it (parscale, or anything
+    // inside likInner0/calcEtaHessian's Armadillo temporaries) is not
+    // protected by that boundary. Treat any escape as this subject's solve
+    // failing, same as any other unrecoverable inner-solve error.
+    try {
     fInd->badSolve = 0;
     // Per-eta scale: sqrt(diag(Omega)) -- the eta-level analogue of bobyqa's
     // theta scaling; conditions RcppTrust's trust-region metric via parscale.
@@ -3794,16 +3813,92 @@ static inline int innerOpt1(int id, int likId) {
         (arma::uword)npar == op_focei.omega.n_cols) {
       for (int j = 0; j < npar; j++) {
         double v = op_focei.omega(j, j);
+        // A normal/multiNormal prior directly on THIS omega diagonal element
+        // (rx_prior_term_t.type==0 or 2 -- both are on the RAW omega value,
+        // per R/priors.R/rxPriorBuildSpec(); a prior on an off-diagonal omega
+        // element is refused upstream, so every omega-touching member here
+        // IS a diagonal element) can imply a LARGER plausible variance than
+        // the current running estimate -- e.g. early in a fit, or whenever
+        // the point estimate undershoots what the prior itself allows for.
+        // Using only the current (possibly too-small) estimate would then
+        // understate how far this eta may need to move -- the same
+        // understated-trust-region failure the invWishart-nu widening above
+        // targets for the other omega-prior convention.
+        //
+        // The prior's MEAN is not by itself "the prior's omega value": these
+        // priors are commonly centered at 0 as a pure shrinkage penalty
+        // (e.g. `prior(eta.cl) ~ dnorm(0, 0.05)`, test-focei-prior.R), where
+        // 0 is meaningless as a variance magnitude but the prior still
+        // considers values out to about its own SPREAD plausible. Using
+        // |mu| + SD (mean plus one prior standard deviation -- a roughly
+        // 84th-percentile plausible value, the same kind of one-SD-out
+        // heuristic parscale itself already applies to Omega via
+        // sqrt(diag(Omega))) captures that; it reduces to the earlier
+        // "prior mean" reading whenever the prior is tight (SD -> 0) and
+        // widens it whenever the prior's spread, not just its center, says a
+        // larger variance is plausible. Take whichever of that or the
+        // current estimate is larger.
+        if (op_focei.priorSpec != NULL) {
+          for (int _t = 0; _t < op_focei.priorSpec->nTerms; ++_t) {
+            const rx_prior_term_t &_term = op_focei.priorSpec->terms[_t];
+            if (_term.type != 0 && _term.type != 1 && _term.type != 2) continue;
+            for (int _k = 0; _k < _term.n; ++_k) {
+              if (_term.etaIdx[_k] != j + 1) continue;
+              double _mu = (_term.mu != NULL) ? _term.mu[_k] : 0.0;
+              double _sd = 0.0;
+              if (_term.scale != NULL) {
+                if (_term.type == 2) {
+                  double _var = _term.scale[_k * _term.n + _k];
+                  _sd = (_var > 0) ? std::sqrt(_var) : 0.0;
+                } else {
+                  _sd = _term.scale[0]; // normal sd / cauchy scale, length 1
+                }
+              }
+              double _cand = std::fabs(_mu) + _sd;
+              if (_cand > v) v = _cand;
+            }
+          }
+        }
         parscale[j] = (v > 0) ? std::sqrt(v) : 1.0;
       }
     }
-    trust_options_t topts = trust_options_default(op_focei.trustRinit, op_focei.trustRmax);
+    double curRmax = op_focei.trustRmax;
+    trust_options_t topts = trust_options_default(op_focei.trustRinit, curRmax);
     topts.has_parscale = 1;
     topts.parscale = parscale.data();
     topts.iterlim = maxInnerIterations;
     topts.fterm = epsilon;
     topts.mterm = epsilon;
 
+    // Stationarity check via the Newton STEP length, not the raw gradient:
+    // trust_solve_c() can report converged==true off its own internal
+    // step-size (fterm/mterm) tolerance while a curvature-BLIND look at the
+    // gradient alone would misjudge whether that's actually right, in
+    // either direction -- a raw |g| includes no information about how much
+    // curvature is already pulling the objective flat around that point (a
+    // legitimately converged point in a STEEP well can have a large-looking
+    // raw gradient a small distance out from it), while a fixed radius or a
+    // poor-fit local quadratic model can ALSO produce a falsely-converged
+    // point with a small raw gradient. The unconstrained Newton step,
+    // ||H^-1 g|| in the same parscale-scaled units the trust radius uses, is
+    // exactly the scale-invariant, curvature-aware criterion Newton's method
+    // itself stops on (the "Newton decrement") -- small precisely when the
+    // CURRENT local model has nowhere better nearby to offer, regardless of
+    // how steep or flat that model is. H is symmetric (exact Hessian of a
+    // scalar objective, freshly evaluated by trustInnerObjfun every call --
+    // not a stale quadratic-model artifact), so the row-major vs.
+    // column-major layout of tres.hessian is immaterial here. arma::solve
+    // (no_approx) fails cleanly on a singular/indefinite H rather than
+    // silently returning a pseudo-inverse result -- an unusable estimate
+    // then leaves trust_solve_c()'s own converged flag as the only signal.
+    double pushTol = std::sqrt(epsilon);
+    // When the Newton step turns out large (pushDist > curRmax), that is
+    // this problem's genuine trust-region-radius-collapse signal -- the
+    // literal "amount eta is being pushed" past what the current radius
+    // allows, a measured distance rather than a guessed multiplier, used
+    // below to decide whether a wider-radius retry is worth attempting at
+    // all before falling back to relocating the start point via nudges.
+    double pushDist = -1.0; // -1: not computed / not usable this call
     auto trustSolveAt = [&](bool fill, double startVal) {
       if (fill) std::fill_n(fInd->x, npar, startVal);
       // Reset per attempt (mirrors n1qn1's cascade, which clears this before
@@ -3814,6 +3909,8 @@ static inline int innerOpt1(int id, int likId) {
       // cascade, making the retries a no-op for exactly the cases that need
       // them.
       fInd->badSolve = 0;
+      pushDist = -1.0;
+      topts.rmax = curRmax;
       trust_result_t tres;
       trust_solve_c_ptr(npar, fInd->x, trustInnerObjfun, (void*)(&id), &topts, &tres);
       op_focei.nTrustInner.fetch_add(1, std::memory_order_relaxed);
@@ -3825,6 +3922,27 @@ static inline int innerOpt1(int id, int likId) {
         if (R_FINITE(f) && !ISNA(f)) {
           keepBest();
           if (tres.gradient != NULL) std::copy(tres.gradient, tres.gradient + npar, fInd->g);
+          if (tres.gradient != NULL && tres.hessian != NULL) {
+            arma::mat H(tres.hessian, npar, npar);
+            arma::vec g(tres.gradient, npar);
+            arma::vec step;
+            if (arma::solve(step, H, -g, arma::solve_opts::no_approx) &&
+                arma::dot(g, step) < 0) {
+              // step is in raw eta units; theta_try = theta + ptry/parscale
+              // inside trust_core.h means the SCALED step (comparable to r)
+              // is ptry = step_raw * parscale component-wise.
+              double d2 = 0.0;
+              for (int i = 0; i < npar; i++) {
+                double si = step[i] * parscale[i];
+                d2 += si * si;
+              }
+              pushDist = std::sqrt(d2);
+              if (conv && pushDist > pushTol) conv = false;
+            }
+            // Newton estimate unusable (singular/indefinite H, or not a
+            // descent direction): leave conv at trust_solve_c()'s own flag
+            // rather than fabricate a verdict from an untrustworthy estimate.
+          }
         }
       } else {
         // Hard error (e.g. tres.error==-3: the nudged starting point itself
@@ -3842,6 +3960,19 @@ static inline int innerOpt1(int id, int likId) {
     };
 
     bool converged = trustSolveAt(false, 0.0);
+    if (!converged && pushDist > curRmax) {
+      // Radius-escalation retry from the point just found (already the best
+      // seen so far, via keepBest() above) before falling back to eta nudges.
+      // Target = the measured Newton-step distance (with a 20% margin so the
+      // re-solve lands on an INTERIOR point, not again exactly on the new
+      // boundary), floored at a plain doubling to match trust_core.h's own
+      // internal growth rule (`r = std::min(2.0*r, rmax)` on a very
+      // successful step) and ceiled at 8x -- three such doublings -- so one
+      // poorly-conditioned subject can't blow the radius up without bound.
+      double target = std::max(curRmax * 2.0, pushDist * 1.2);
+      curRmax = std::min(target, op_focei.trustRmax * 8.0);
+      converged = trustSolveAt(false, 0.0);
+    }
     // Restart cascade on non-convergence, same nudge magnitudes n1qn1 uses; the
     // monotone keepBest()/restoreBest() (shared below) guarantees a later
     // restart can only improve on an earlier one.
@@ -3854,6 +3985,15 @@ static inline int innerOpt1(int id, int likId) {
       }
     }
     if (!haveBest) return 0;
+    } catch (const std::bad_alloc &) {
+      // System out of memory mid-solve -- see the branch-level comment above.
+      if (!haveBest) return 0;
+    } catch (...) {
+      // Defense in depth, matching trust_solve_c()'s own catch(...) fallback:
+      // any other C++ exception escaping this branch is equally fatal if it
+      // crosses the OpenMP boundary uncaught.
+      if (!haveBest) return 0;
+    }
   } else {
     int fail=0, fncount=0, grcount=0;
     char msg[100];
@@ -7350,11 +7490,60 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.trustConf = foceiO.containsElementNamed("trustConf") ? as<double>(foceiO["trustConf"]) : 0.975;
   {
     // rmax: radius (in sqrt(diag(Omega))-scaled units) of the trustConf-level eta
-    // confidence region -- eta ~ N(0, Omega) makes eta'Omega^-1 eta chi-square(df=neta).
-    // neta is fixed for the whole fit, so this is a one-time, single-threaded
-    // computation (R::qchisq is a deterministic quantile fn, safe anywhere -- CLAUDE.md).
+    // confidence region. Plain case: eta ~ N(0, Omega) makes eta'Omega^-1 eta
+    // chi-square(df=neta) -- the textbook confidence-ellipsoid radius, valid
+    // when Omega itself is treated as known.
+    //
+    // When the model ALSO puts a textbook inverse-Wishart prior on (a block
+    // of) Omega (rx_prior_term_t.type==3, the "general" prior method's own
+    // invWishart(nu) -- R/priors.R), Omega is not known, and using the plain
+    // chi-square radius anyway (as if the current Omega estimate were exact)
+    // understates how far eta may legitimately need to move -- especially
+    // with a low-nu (weak/uncertain) prior, or early in a fit before Omega
+    // has settled. Standard Normal-Inverse-Wishart theory: if
+    // Sigma ~ InvWishart(Psi, nu) and x | Sigma ~ N(0, Sigma), the MARGINAL
+    // distribution of x (Sigma integrated out) is multivariate-t with
+    // df_t = nu - d + 1 (d = the prior block's own dimension) and scale
+    // Psi/df_t. A multivariate-t's trustConf-level confidence-ellipsoid
+    // radius is sqrt(d * qf(trustConf, d, df_t)) (Johnson & Wichern,
+    // "Applied Multivariate Statistical Analysis") -- and as
+    // df_t -> Inf (nu -> Inf, Omega effectively known), F_{d,df_t}/1 ->
+    // chisq_d/d, recovering the plain chi-square formula exactly. So this is
+    // a strict generalization, not a different formula, and reduces to
+    // today's behavior whenever there is no omega-block prior.
+    //
+    // A joint per-subject eta solve moves every eta together under ONE
+    // scalar radius, so with several omega-block priors in play (or a prior
+    // covering only part of a larger joint eta vector) this uses the
+    // SMALLEST nu found (the most uncertain block) applied to the FULL
+    // neta-dimensional ellipsoid -- conservative, since over-widening for a
+    // well-determined direction costs a few extra trust-region iterations,
+    // never correctness, while under-widening is exactly the bug this fixes
+    // (test-focei-prior.R's omega-prior case).
     double _df = (double) op_focei.neta;
-    double _rmaxDefault = (_df > 0) ? std::sqrt(R::qchisq(op_focei.trustConf, _df, 1, 0)) : 1.0;
+    double _nuMin = R_PosInf, _nuMinBlockDim = 0.0;
+    if (op_focei.priorSpec != NULL) {
+      for (int _t = 0; _t < op_focei.priorSpec->nTerms; ++_t) {
+        const rx_prior_term_t &_term = op_focei.priorSpec->terms[_t];
+        if (_term.type == 3 && _term.nu < _nuMin) {
+          _nuMin = _term.nu;
+          _nuMinBlockDim = (double) _term.n;
+        }
+      }
+    }
+    double _rmaxDefault;
+    if (_df > 0 && R_FINITE(_nuMin) && _nuMin > _nuMinBlockDim - 1.0) {
+      double _dfT = _nuMin - _nuMinBlockDim + 1.0;
+      _rmaxDefault = std::sqrt(_df * boost::math::quantile(
+        boost::math::fisher_f_distribution<double>(_df, _dfT), op_focei.trustConf));
+    } else {
+      // No omega-block prior (the common case), or one whose nu is not
+      // large enough for a proper marginal-t (nu <= blockDim-1) -- fall back
+      // to the plain known-Omega chi-square radius rather than a
+      // nonsensical/negative df_t.
+      _rmaxDefault = (_df > 0) ? std::sqrt(boost::math::quantile(
+        boost::math::chi_squared_distribution<double>(_df), op_focei.trustConf)) : 1.0;
+    }
     SEXP _trustRmaxS = foceiO.containsElementNamed("trustRmax") ? (SEXP)foceiO["trustRmax"] : R_NilValue;
     op_focei.trustRmax = Rf_isNull(_trustRmaxS) ? _rmaxDefault : as<double>(_trustRmaxS);
     SEXP _trustRinitS = foceiO.containsElementNamed("trustRinit") ? (SEXP)foceiO["trustRinit"] : R_NilValue;
