@@ -27,6 +27,7 @@
 #endif
 #include "scale.h"
 #include <n1qn1c.h>
+#include <RcppTrust.h>
 #include <Rinternals.h>
 #ifdef _OPENMP
   #include <omp.h>
@@ -176,6 +177,8 @@ extern "C" {
   iniRxode2ptr
 #define iniN1qn1cPtrs _nlmixr2est_iniN1qn1cPtrs
   iniN1qn1c
+#define iniRcppTrustPtrs _nlmixr2est_iniRcppTrustPtrs
+  iniRcppTrust
 }
 
 #define _(String) (String)

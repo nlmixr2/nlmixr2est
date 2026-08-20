@@ -193,6 +193,8 @@ SEXP _nlmixr2est_iniN1qn1cPtrs(SEXP ptr);
 
 SEXP _nlmixr2est_iniLbfgsb3ptr(SEXP ptr);
 
+SEXP _nlmixr2est_iniRcppTrustPtrs(SEXP ptr);
+
 SEXP _rxode2version4(SEXP);
 SEXP _nlmixr2est_rxode2stateOde(SEXP);
 SEXP _nlmixr2est_npIpmBurke(SEXP);
@@ -281,6 +283,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_rxode2stateOde", (DL_FUNC) &_nlmixr2est_rxode2stateOde, 1},
   {"_nlmixr2est_iniLbfgsb3ptr", (DL_FUNC) &_nlmixr2est_iniLbfgsb3ptr, 1},
   {"_nlmixr2est_iniN1qn1cPtrs", (DL_FUNC) &_nlmixr2est_iniN1qn1cPtrs, 1},
+  {"_nlmixr2est_iniRcppTrustPtrs", (DL_FUNC) &_nlmixr2est_iniRcppTrustPtrs, 1},
   {"_nlmixr2est_iniRxodePtrs", (DL_FUNC) &_nlmixr2est_iniRxodePtrs, 1},
   {"_nlmixr2est_iniLotriPtr", (DL_FUNC) &_nlmixr2est_iniLotriPtr, 1},
   {"_nlmixr2est_uninformativeEta", (DL_FUNC) &_nlmixr2est_uninformativeEta, 1},
