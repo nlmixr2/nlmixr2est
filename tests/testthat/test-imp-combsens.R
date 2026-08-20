@@ -133,4 +133,68 @@ nmTest({
     expect_equal(.harvestN(), .n0)
   })
 
+  test_that("mixture (Nmix>1): harvested and solve-based M-steps agree on the expanded pseudo-subject mapping", {
+    # impEStep/impOuter index a mixture's expanded pseudo-subjects as
+    # id = i + j*nsub (j = 0-based component).  outSens is sized/filled by
+    # that SAME id, so a wrong offset here would misalign a component's
+    # samples against another component's zk weights -- this model has THREE
+    # non-mu thetas that are not eta-linked (tka, p1, add.sd all lack a `+eta`
+    # term), so d(f)/d(theta) actually differs across the two mixture
+    # components' branches, not just a shared constant.
+    .mkg <- function(cl0, ids) {
+      ka <- 1.5; v <- 8
+      do.call(rbind, lapply(ids, function(id) {
+        cli <- cl0 * exp(stats::rnorm(1, 0, 0.2))
+        tt <- c(0.5, 2, 6, 12)
+        cp <- (100 * ka / (v * (ka - cli / v))) * (exp(-cli / v * tt) - exp(-ka * tt))
+        cp <- pmax(cp, 1e-3) * exp(stats::rnorm(length(tt), 0, 0.1))
+        rbind(data.frame(id = id, time = 0, dv = NA_real_, amt = 100, evid = 1, cmt = "depot"),
+              data.frame(id = id, time = tt, dv = cp, amt = 0, evid = 0, cmt = "cen"))
+      }))
+    }
+    .testSeed(11); rxode2::rxSetSeed(11)
+    .d <- rbind(.mkg(3.0, 1:6), .mkg(9.0, 7:12))
+    .d <- .d[order(.d$id, .d$time, -.d$evid), ]
+    mmix <- function() {
+      ini({
+        tka <- log(1.5); tcl1 <- log(2.5); tcl2 <- log(8); tv <- log(8)
+        p1 <- 0.5
+        eta.cl ~ 0.2
+        add.sd <- 0.3
+      })
+      model({
+        ka <- exp(tka)
+        cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl))
+        v <- exp(tv)
+        d/dt(depot) <- -ka * depot
+        d/dt(cen) <- ka * depot - cl / v * cen
+        cp <- cen / v
+        cp ~ add(add.sd)
+      })
+    }
+    .n0 <- .harvestN()
+    rxode2::rxSetSeed(42)
+    .fh <- suppressWarnings(
+      nlmixr2(mmix, .d, "impmap",
+              impmapControl(print = 0L, nIter = 8L, isample = 40L, combSens = TRUE)))
+    expect_true(inherits(.fh, "nlmixr2FitCore"))
+    expect_true(all(is.finite(fixef(.fh))))
+    expect_true(.harvestN() > .n0)
+
+    rxode2::rxSetSeed(42)
+    .fs <- suppressWarnings(
+      nlmixr2(mmix, .d, "impmap",
+              impmapControl(print = 0L, nIter = 8L, isample = 40L, combSens = FALSE)))
+    expect_true(inherits(.fs, "nlmixr2FitCore"))
+    # A misaligned i+j*nsub mapping would scramble which component's samples
+    # feed which component's Newton step -- the two components' clearances
+    # (tcl1 low, tcl2 high) would no longer track between the harvested and
+    # solve-based runs even though both start from the same seed/data.  Not
+    # bit-identical (combSens changes the ODE integrator's path, see above);
+    # a loose tolerance is enough to catch a scrambled mapping, which would
+    # miss by an order of magnitude or swap the two components.
+    expect_equal(unname(fixef(.fh)[c("tcl1", "tcl2", "p1")]),
+                unname(fixef(.fs)[c("tcl1", "tcl2", "p1")]), tolerance = 0.15)
+  })
+
 })

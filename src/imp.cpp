@@ -474,11 +474,20 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
         // than triggering impThetaSensCollect's own solve-with-retry path --
         // that path is R-API-unsafe from a bare OpenMP region (it is only
         // ever run under the M-step's explicit impInnerParallelOn() guard),
-        // which this loop does not set.  The M-step's weighted accumulation
-        // (impThetaAccumOne) already skips sampleOk==0 samples cleanly.
+        // which this loop does not set.  doFD alone is not enough: it is a
+        // STICKY per-subject flag (only flips permanently, inside the inner
+        // Newton optimizer's own convergence handling) and does not track
+        // whether THIS ARBITRARY sampled eta's solve produced a usable
+        // result, so a bad solve at doFD==0 (e.g. an extreme early-EM
+        // proposal draw) would otherwise still reach impThetaSensCollect,
+        // which falls back to impThetaSensFD()'s finite-difference re-solves
+        // -- the same R-API-unsafe path.  qk is -impEvalJointLik(eta, id) +
+        // <finite kernel term>, so its own finiteness is direct evidence this
+        // exact eta's inner solve succeeded (impEvalJointLik/likInner0 return
+        // a non-finite value on a bad solve); require both.
         if (harvestSens) {
           impThetaSensData &_acc = outSens[id];
-          bool _reuse = impLastInnerSolveUsable(id);
+          bool _reuse = impLastInnerSolveUsable(id) && R_finite(qk);
           if (_reuse) {
             arma::mat _srow(1, neta); _srow.row(0) = eta.t();
             impThetaSensData _c;
