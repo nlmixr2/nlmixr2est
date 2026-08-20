@@ -16,6 +16,14 @@ nmTest({
     .ctl <- trustControl(rinit = 0.1, rmax = 1)
     expect_equal(do.call(trustControl, .ctl)$rinit, 0.1)
     expect_equal(do.call(trustControl, .ctl)$rmax, 1)
+
+    expect_equal(trustControl()$hessianMethod, 3L)
+    expect_equal(trustControl(hessianMethod = "fd")$hessianMethod, 1L)
+    expect_equal(trustControl(hessianMethod = "bfgs")$hessianMethod, 2L)
+    expect_equal(trustControl(hessianMethod = "sr1")$hessianMethod, 3L)
+    expect_equal(trustControl(hessianMethod = "bofill")$hessianMethod, 4L)
+    expect_equal(trustControl(hessianMethod = 3L)$hessianMethod, 3L)
+    expect_error(trustControl(hessianMethod = "not-a-method"))
   })
 
   test_that("trust registers in the nlm-family method listing", {
@@ -59,6 +67,38 @@ nmTest({
     # the numbers happen to agree (mirrors test-focei-trust-inner.R's own
     # .nTrustInner() convention for the same reason).
     expect_true(.nT > 0L)
+  })
+
+  test_that("est='trust' converges close to bobyqa for every hessianMethod", {
+    skip_on_cran()
+    .fB <- .nlmixr(.oneCmt, nlmixr2data::theo_sd, est = "bobyqa",
+                   control = bobyqaControl(print = 0L, calcTables = FALSE))
+    for (.hm in c("fd", "bfgs", "sr1", "bofill")) {
+      .fT <- .nlmixr(.oneCmt, nlmixr2data::theo_sd, est = "trust",
+                     control = trustControl(print = 0L, calcTables = FALSE,
+                                            hessianMethod = .hm))
+      expect_true(is.finite(.fT$objective), info = .hm)
+      expect_equal(.fT$objective, .fB$objective, tolerance = 1e-2, info = .hm)
+      expect_equal(unname(.fT$theta), unname(.fB$theta), tolerance = 1e-2, info = .hm)
+      expect_true(.nTrustOuter() > 0L, info = .hm)
+    }
+  })
+
+  test_that("hessianMethod actually changes the Hessian construction", {
+    skip_on_cran()
+    # A quasi-Newton update (bfgs/sr1/bofill) builds a genuinely different
+    # matrix than the fresh finite-difference-of-gradient every call -- this
+    # is positive evidence hessianMethod is wired through to nlmTrustFit(),
+    # not just that the objective/theta happen to still agree (a well-posed
+    # problem can converge to the same point from several different Hessian
+    # approximations).
+    .rFd <- .nlmixr(.oneCmt, nlmixr2data::theo_sd, est = "trust",
+                    control = trustControl(print = 0L, calcTables = FALSE,
+                                           returnTrust = TRUE, hessianMethod = "fd"))
+    .rSr1 <- .nlmixr(.oneCmt, nlmixr2data::theo_sd, est = "trust",
+                     control = trustControl(print = 0L, calcTables = FALSE,
+                                            returnTrust = TRUE, hessianMethod = "sr1"))
+    expect_true(max(abs(.rFd$hessian - .rSr1$hessian)) > 1)
   })
 
   test_that("est='trust' returnTrust=TRUE gives the raw trust_solve_c() output", {

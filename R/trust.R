@@ -50,6 +50,29 @@
 #'   Shi (2021) step-size search. `NULL` (default) uses
 #'   `(.Machine$double.eps)^(1/3)`, the same fallback `.nlmSetupEnv()` itself
 #'   applies for every nlm-family method.
+#' @param hessianMethod How the per-iteration outer Hessian is built.
+#'   `"sr1"` (default) is the Symmetric Rank-1 quasi-Newton update (Nocedal &
+#'   Wright, *Numerical Optimization*, 2nd ed., 2006, Eq. 6.24; Murtagh &
+#'   Sargent, *Comput. J.* 13, 1970), built from consecutive outer
+#'   iterations' gradients (already computed regardless of `hessianMethod`,
+#'   so this adds no extra evaluations) -- Nocedal & Wright's own
+#'   recommendation for trust-region methods specifically, since (unlike
+#'   BFGS) it is not forced positive definite, so it can represent
+#'   indefinite curvature. `"fd"` instead recomputes the Hessian from
+#'   scratch every outer iteration via `nlmCalcHessian()`'s Shi (2021)
+#'   finite-difference-of-the-gradient (the `optimHessType`/`shi21maxHess`/
+#'   `hessErr` parameters above only apply to this method). `"bfgs"` is the
+#'   damped BFGS update (Nocedal & Wright Procedure 18.2), always positive
+#'   definite. `"bofill"` is Bofill's SR1/PSB blend (*J. Comput. Chem.* 15,
+#'   1-11, 1994), the standard Berny/transition-state-search Hessian update.
+#'   Every method seeds from one `"fd"`-style Hessian on the first outer
+#'   iteration. Across a benchmark of this package's own nlm-family test
+#'   models (`inst/benchmarks/benchmark-trust-outer.R`), `"sr1"`/`"bofill"`
+#'   ran roughly 1.7x faster than `"fd"` with the same or slightly better
+#'   accuracy, while `"bfgs"` occasionally converged to a distinctly worse
+#'   local optimum on the same problem than `"fd"`/`"sr1"`/`"bofill"` did --
+#'   which is why `"sr1"`, not `"bfgs"`, is the default despite `"bfgs"`
+#'   being the positive-definite option.
 #' @param returnTrust return the raw `nlmTrustFit()` output list instead of
 #'   the nlmixr2 fit.
 #' @param covMethod Method for calculating the covariance. `"r"` (the
@@ -93,6 +116,7 @@
 trustControl <- function(rinit=NULL, rmax=NULL, iterlim=1000L,
                          fterm=NULL, mterm=NULL,
                          optimHessType=1L, shi21maxHess=20L, hessErr=NULL,
+                         hessianMethod=c("sr1", "fd", "bfgs", "bofill"),
 
                          returnTrust=FALSE,
                          stickyRecalcN=4,
@@ -153,6 +177,13 @@ trustControl <- function(rinit=NULL, rmax=NULL, iterlim=1000L,
   checkmate::assertNumeric(hessErr, len=1, any.missing=FALSE, lower=0)
   checkmate::assertIntegerish(optimHessType, len=1, any.missing=FALSE, lower=1, upper=2)
   checkmate::assertIntegerish(shi21maxHess, len=1, any.missing=FALSE, lower=1)
+
+  .hessianMethodIdx <- c("fd" = 1L, "bfgs" = 2L, "sr1" = 3L, "bofill" = 4L)
+  if (checkmate::testIntegerish(hessianMethod, len=1, lower=1, upper=4, any.missing=FALSE)) {
+    hessianMethod <- as.integer(hessianMethod)
+  } else {
+    hessianMethod <- setNames(.hessianMethodIdx[match.arg(hessianMethod)], NULL)
+  }
 
   checkmate::assertLogical(returnTrust, len=1, any.missing=FALSE)
   checkmate::assertLogical(optExpression, len=1, any.missing=FALSE)
@@ -240,6 +271,7 @@ trustControl <- function(rinit=NULL, rmax=NULL, iterlim=1000L,
     optimHessType=as.integer(optimHessType),
     shi21maxHess=as.integer(shi21maxHess),
     hessErr=hessErr,
+    hessianMethod=hessianMethod,
 
     returnTrust=returnTrust,
     covMethod=match.arg(covMethod),
@@ -395,7 +427,8 @@ getValidNlmixrCtl.trust <- function(control) {
   if (is.null(.rmax)) .rmax <- 8 * .rinit
 
   .tctl <- list(rinit=.rinit, rmax=.rmax, iterlim=.ctl$iterlim,
-               fterm=.ctl$fterm, mterm=.ctl$mterm)
+               fterm=.ctl$fterm, mterm=.ctl$mterm,
+               hessianMethod=.ctl$hessianMethod)
   .tres <- nlmTrustFit(.env$par.ini, .tctl)
   .trustWarnUnderConverged(.tres)
   if (isTRUE(.ctl$returnTrust)) return(.tres)

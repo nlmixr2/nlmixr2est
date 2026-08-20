@@ -55,11 +55,19 @@
   C++ call -- `RcppTrust` needs no R API, so there is no per-iteration R
   round-trip. It optimizes in the same scaled-parameter space every
   nlm-family method (`bobyqa` included) already uses, and supplies a full
-  gradient and a full finite-difference-of-the-gradient Hessian every
-  iteration (there is no analytic outer-theta Hessian in this package, so
-  this costs roughly `ntheta` extra full population-gradient solves per
-  outer iteration -- the price of true Newton-trust behavior). `trust` is
-  unbounded, like `n1qn1`/`nlm`.
+  gradient and a full Hessian every iteration. By default
+  (`trustControl(hessianMethod="fd")`) this Hessian is a fresh
+  finite-difference-of-the-gradient every outer iteration (there is no
+  analytic outer-theta Hessian in this package, so this costs roughly
+  `ntheta` extra full population-gradient solves per outer iteration -- the
+  price of true Newton-trust behavior). `hessianMethod` can instead build the
+  Hessian as a quasi-Newton update from consecutive outer iterations'
+  gradients (already computed regardless of `hessianMethod`, so these add no
+  extra evaluations): `"bfgs"` (damped BFGS, always positive definite),
+  `"sr1"` (Symmetric Rank-1, not forced positive definite), or `"bofill"`
+  (Bofill's SR1/Powell-Symmetric-Broyden blend, the standard
+  Berny/transition-state-search Hessian update) -- see `?trustControl` for
+  full references. `trust` is unbounded, like `n1qn1`/`nlm`.
 
 - A pure-linear `matExp()` model now solves natively through rxode2's
   matrix-exponential driver (`rxControl(method="indLin")`) under SAEM instead
