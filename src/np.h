@@ -30,9 +30,10 @@ void npResidFreezeClear();
 
 // Per-endpoint moment residual sums at fixed per-subject etas: for each 0-based
 // endpoint (obsEndpoint gives the endpoint of each observation in subject-major
-// getIndIx order), the additive sum(err^2), the proportional sum((err/f)^2), and the
-// observation count (nEnd x 3).  The saem-style estimate for warm-starting the
-// residual optimization.
+// getIndIx order), the additive sum(err^2), the proportional sum((err/f)^2), the
+// observation count, and the number of censored (M3/M4) rows dropped from the
+// moment (nEnd x 4).  The saem-style estimate for warm-starting the residual
+// optimization.
 arma::mat npResidMoments(const arma::mat& postEta, const arma::ivec& obsEndpoint, int nEnd);
 
 // 0-based endpoint of one observation's cmt within endpointCmt (per-endpoint cmt
