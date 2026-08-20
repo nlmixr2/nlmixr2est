@@ -129,6 +129,19 @@ void impInnerParallelOff();
 // Number of non-mu structural thetas (the length of impThetaSensIdx).
 int impThetaSensN();
 
+// Whether the combined eta+theta sensitivity build (#958) is loaded -- the
+// INNER model carries the theta columns, so impEStep's harvest path applies.
+bool impCombSensEnabled();
+
+// Whether subject id's last impEvalJointLik() call solved the INNER model
+// itself (TRUE) rather than falling back to the pred-model FD path (FALSE, in
+// which case ind->solve does not hold the inner model's trajectory and a
+// combSens harvest must not reuse it).
+bool impLastInnerSolveUsable(int id);
+
+// Count a successful impEStep harvest read (odeSwapInfo_()$impThetaSensHarvestN).
+void impThetaSensHarvestTick();
+
 // 0-based eta indices whose Omega diagonal is fixed (held across the EM update).
 void impGetOmegaFixedEta(std::vector<int>& idx);
 
