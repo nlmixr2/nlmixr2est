@@ -1,0 +1,86 @@
+"source","model","n1qn1_ok","n1qn1_time","n1qn1_objf","n1qn1_error","trust_ok","trust_time","trust_objf","trust_error","dObjf","speedup","maxParDiff"
+"discussion-924","d924-theo-1cmt",TRUE,4.783,116.804069013785,NA,TRUE,0.626,116.834006351757,NA,0.029937337971333,7.6405750798722,0.00865905097494923
+"discussion-924","d924-theo-block-omega",TRUE,3.228,106.610940597683,NA,TRUE,0.587,108.469107696058,NA,1.85816709837492,5.49914821124362,0.0154140929472977
+"discussion-924","d924-oral-2cmt",TRUE,3.585,113.14086031805,NA,TRUE,0.918000000000001,113.159376204347,NA,0.0185158862969388,3.90522875816993,0.0232860118225791
+"discussion-924","d924-oral-1cmt-mm",TRUE,4.66,117.35178115428,NA,TRUE,1.19,118.583837145487,NA,1.23205599120685,3.91596638655463,0.955980312929906
+"discussion-924","d924-pheno-sparse",TRUE,4.234,725.83977689213,NA,TRUE,1.375,726.215509130785,NA,0.375732238654791,3.07927272727273,0.0372478139872026
+"vignette:addingCovariances","(whole file)",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA
+"vignette:babelmixr2-external-engines","vignette:babelmixr2-external-engines#1",TRUE,3.938,116.812706419382,NA,TRUE,0.769999999999996,116.823415785997,NA,0.0107093666150178,5.11428571428574,0.00814208926566684
+"vignette:imp-impmap-qrpem","vignette:imp-impmap-qrpem#1",TRUE,1.387,116.812706419382,NA,TRUE,0.739000000000004,116.823415785997,NA,0.0107093666150178,1.87686062246278,0.00814208926566684
+"vignette:linearized-quadrature-ladder","vignette:linearized-quadrature-ladder#1",TRUE,1.113,116.812706419382,NA,TRUE,0.949999999999989,116.823415785997,NA,0.0107093666150178,1.17157894736843,0.00814208926566684
+"vignette:mixture-models","(whole file)",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA
+"vignette:nlm-family-optimizers","(whole file)",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA
+"vignette:nlmixr2-hooks","(whole file)",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA
+"vignette:nlmixr2-team-and-advisory-committee","(whole file)",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA
+"vignette:nonparametric-npag-npb","(whole file)",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA
+"vignette:saem","vignette:saem#1",TRUE,0.977000000000032,116.812706419382,NA,TRUE,0.740999999999985,116.823415785997,NA,0.0107093666150178,1.31848852901491,0.00814208926566684
+"vignette:simulate-titrated-dosing","(whole file)",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA
+"vignette:vaeNeonatal","(whole file)",NA,NA,NA,"source() failed -- see log",NA,NA,NA,"source() failed -- see log",NA,NA,NA
+"vignette:variational-inference","vignette:variational-inference#1",TRUE,3.81500000000005,130.295012944997,NA,TRUE,0.836000000000013,130.289863877226,NA,-0.00514906777092961,4.5633971291866,0.0030282536816022
+"vignette:broom","vignette:broom#1",TRUE,3.36699999999996,1255.20263772882,NA,TRUE,7.00999999999999,1175.85726332954,NA,-79.3453743992773,0.480313837375173,3.68535757332367
+"vignette:censoring","(whole file)",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA
+"vignette:citations","(whole file)",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA
+"vignette:delays","(whole file)",NA,NA,NA,"source() failed -- see log",NA,NA,NA,"source() failed -- see log",NA,NA,NA
+"vignette:mavoglurant","vignette:mavoglurant#1",TRUE,12.5129999999999,1957.38710597338,NA,TRUE,6.10100000000011,1957.34904173706,NA,-0.0380642363113566,2.05097524995897,0.0161836177874315
+"vignette:mavoglurant","vignette:mavoglurant#2",TRUE,12.4409999999998,1963.33945987088,NA,TRUE,4.80099999999993,1963.43287478987,NA,0.0934149189849904,2.59133513851281,0.0276302624972891
+"vignette:modelPiping","vignette:modelPiping#1",TRUE,4.60000000000014,116.812706419382,NA,TRUE,1.25900000000001,116.823415785997,NA,0.0107093666150178,3.65369340746631,0.00814208926566684
+"vignette:modelPiping","vignette:modelPiping#2",TRUE,6.09999999999991,116.843789965956,NA,TRUE,1.03200000000015,116.843447428277,NA,-0.000342537678989174,5.91085271317733,2.22044604925031e-15
+"vignette:modelPiping","vignette:modelPiping#3",TRUE,6.27299999999991,116.80968415777,NA,TRUE,1.04099999999994,116.809850071515,NA,0.000165913744879731,6.02593659942389,0.00164190266604136
+"vignette:modelPiping","vignette:modelPiping#4",TRUE,2.00299999999993,116.822569411676,NA,TRUE,1.08799999999997,116.833070616413,NA,0.0105012047371673,1.84099264705882,0.00329785665456728
+"vignette:modelPiping","vignette:modelPiping#5",TRUE,5.95999999999981,176.597530462768,NA,TRUE,1.09899999999993,176.596464333306,NA,-0.00106612946228779,5.42311191992736,0.00181761542913073
+"vignette:modelPiping","vignette:modelPiping#6",TRUE,6.88900000000012,116.831975566324,NA,TRUE,1.49800000000005,116.844845807886,NA,0.0128702415621689,4.59879839786376,0.0236767085080929
+"vignette:modelPiping","vignette:modelPiping#7",TRUE,6.79700000000003,116.170356372348,NA,TRUE,1.21299999999997,116.173255208628,NA,0.00289883628045118,5.60346248969515,0.00109461749457407
+"vignette:modelPiping","vignette:modelPiping#8",TRUE,7.85900000000015,104.476622928529,NA,TRUE,1.49299999999994,104.43781607317,NA,-0.0388068553587999,5.26389819156094,0.00840893327461645
+"vignette:multiple-endpoints","vignette:multiple-endpoints#1",TRUE,55.4299999999998,2267.14189267906,NA,TRUE,23.4939999999997,1332.59821338032,NA,-934.543679298734,2.35932578530691,5.92268921451616
+"vignette:nimo","(whole file)",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA
+"vignette:precompute-articles","(whole file)",NA,NA,NA,"source() failed -- see log",NA,NA,NA,"source() failed -- see log",NA,NA,NA
+"vignette:residualErrors","(whole file)",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA
+"vignette:running_nlmixr","(whole file)",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA
+"vignette:wbc","(whole file)",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA
+"vignette:xgxr-nlmixr-ggpmx","(whole file)",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA
+"test:test-focei-1","(whole file)",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA
+"test:test-focei-cens","test:test-focei-cens#1",TRUE,0.422000000000025,80.2809109584584,NA,TRUE,0.37099999999964,80.0717502215849,NA,-0.209160736873486,1.1374663072788,0.00100124054414852
+"test:test-focei-char","(whole file)",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA
+"test:test-focei-cores-fresh-rx","(whole file)",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA
+"test:test-focei-eta-only","(whole file)",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA
+"test:test-focei-eta-reset-path-dependence","(whole file)",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA
+"test:test-focei-factr-control","(whole file)",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA
+"test:test-focei-factr-fit","test:test-focei-factr-fit#1",TRUE,15.1990000000001,19592.6295304166,NA,TRUE,6.78999999999996,19592.8819227425,NA,0.252392325892288,2.23843888070694,0.0431482483632277
+"test:test-focei-factr-fit","test:test-focei-factr-fit#2",TRUE,50.4610000000002,19592.5335383736,NA,TRUE,19.5080000000003,19592.441876588,NA,-0.0916617856091761,2.58668238671312,0.00574982072555374
+"test:test-focei-family-control","(whole file)",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA
+"test:test-focei-fast-grad","test:test-focei-fast-grad#1",TRUE,6.3779999999997,154.559481040759,NA,TRUE,0.432999999999993,154.5611171996,NA,0.00163615884099499,14.7297921478056,0
+"test:test-focei-fast-grad","test:test-focei-fast-grad#2",TRUE,13.0509999999999,76.9915633104353,NA,TRUE,0.445000000000164,76.9930817708762,NA,0.00151846044094839,29.3280898876295,0
+"test:test-focei-fast-grad","test:test-focei-fast-grad#3",TRUE,19.7219999999998,53695.5644047144,NA,TRUE,0.595000000000255,53695.5646114507,NA,0.000206736294785514,33.1462184873804,0
+"test:test-focei-fast-grad","test:test-focei-fast-grad#4",TRUE,10.047,13407.8299949019,NA,TRUE,1.53500000000031,13407.5413751834,NA,-0.288619718550763,6.54527687296287,0
+"test:test-focei-fast-grad","test:test-focei-fast-grad#5",TRUE,10.9069999999997,161.890059140287,NA,TRUE,0.512000000000171,161.88881082141,NA,-0.00124831887654864,21.3027343749923,0
+"test:test-focei-fast-grad","test:test-focei-fast-grad#6",TRUE,3.05799999999999,187.287967971291,NA,TRUE,0.442000000000007,248.123944412527,NA,60.8359764412359,6.91855203619896,0.379287414984343
+"test:test-focei-fast-methods-fit","test:test-focei-fast-methods-fit#1",TRUE,0.677000000000135,116.807586815404,NA,TRUE,0.617999999999938,116.814788126147,NA,0.00720131074244534,1.09546925566376,0.00406758337672963
+"test:test-focei-fast-methods-fit","test:test-focei-fast-methods-fit#2",TRUE,0.701000000000022,116.807586815404,NA,TRUE,0.634999999999764,116.814788126147,NA,0.00720131074244534,1.10393700787446,0.00406758337672963
+"test:test-focei-fast-methods-fit","test:test-focei-fast-methods-fit#3",TRUE,8.16699999999992,116.819811203098,NA,TRUE,0.805000000000291,116.821920398996,NA,0.00210919589795822,10.1453416149031,0.00105447790515489
+"test:test-focei-fast-methods","(whole file)",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA
+"test:test-focei-fd-fallbacks","test:test-focei-fd-fallbacks#1",TRUE,0.704000000000178,119.247248560088,NA,TRUE,1.1550000000002,120.389430314465,NA,1.14218175437654,0.609523809523858,0.045902970750805
+"test:test-focei-fd-fallbacks","test:test-focei-fd-fallbacks#2",TRUE,0.626999999999953,118.231119928773,NA,TRUE,1.01399999999967,118.381875148112,NA,0.150755219338876,0.618343195266427,0.0788476387287005
+"test:test-focei-foce-plus","(whole file)",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA
+"test:test-focei-inner","(whole file)",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA
+"test:test-focei-lincmt-alag-sens","(whole file)",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA
+"test:test-focei-ll-fast-grad-fit","test:test-focei-ll-fast-grad-fit#1",TRUE,48.8020000000001,53697.5283874507,NA,TRUE,0.55600000000004,53697.5283976357,NA,1.01850600913167e-05,87.773381294958,0
+"test:test-focei-ll-fast-grad-fit","test:test-focei-ll-fast-grad-fit#2",TRUE,0.541000000000167,53695.5644047144,NA,TRUE,0.415999999999713,53695.5646114507,NA,0.000206736294785514,1.30048076923207,0
+"test:test-focei-ll-fast-grad-fit","test:test-focei-ll-fast-grad-fit#3",TRUE,0.631000000000313,53697.5283874507,NA,TRUE,0.623999999999796,53697.5283976357,NA,1.01850600913167e-05,1.01121794871878,0
+"test:test-focei-ll-fast-grad","(whole file)",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA
+"test:test-focei-llik","(whole file)",NA,NA,NA,"source() failed -- see log",NA,NA,NA,"source() failed -- see log",NA,NA,NA
+"test:test-focei-mceta-empty-cube","test:test-focei-mceta-empty-cube#1",TRUE,1.30000000000018,219.210297197545,NA,TRUE,1.29999999999973,219.210297197545,NA,0,1.00000000000035,0
+"test:test-focei-outer-fd-fallback","test:test-focei-outer-fd-fallback#1",TRUE,0.465000000000146,123.580620687697,NA,TRUE,0.456000000000131,123.575025041775,NA,-0.00559564592244044,1.01973684210529,0.00075028440364111
+"test:test-focei-outer-fd-fallback","test:test-focei-outer-fd-fallback#2",TRUE,0.715000000000146,123.596542266584,NA,TRUE,0.599999999999909,123.581912588015,NA,-0.0146296785693778,1.19166666666709,0.000852361737356144
+"test:test-focei-outer-fd-fallback","test:test-focei-outer-fd-fallback#3",TRUE,1.04199999999992,133.374694601297,NA,TRUE,1.02100000000019,133.486426966491,NA,0.111732365194428,1.02056807051883,0.0671081474339151
+"test:test-focei-outer-fd-fallback","test:test-focei-outer-fd-fallback#4",TRUE,7.95899999999983,117.5506103548,NA,TRUE,0.592000000000098,117.549977224022,NA,-0.000633130777998758,13.4442567567542,0.000666391861079307
+"test:test-focei-parallel","(whole file)",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA
+"test:test-focei-pooled-solve-args","(whole file)",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA
+"test:test-focei-preprocess","(whole file)",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA
+"test:test-focei-ptrs","(whole file)",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA
+"test:test-focei-shi21-bounds","test:test-focei-shi21-bounds#1",TRUE,1.15200000000004,117.265157149537,NA,TRUE,0.542000000000371,137.587316719591,NA,20.3221595700543,2.12546125461117,0.18558178121259
+"test:test-focei-shi21-bounds","test:test-focei-shi21-bounds#2",TRUE,1.02100000000019,134.020590194743,NA,TRUE,0.58199999999988,137.592487136085,NA,3.57189694134172,1.75429553264673,0.175168230900414
+"test:test-focei-theta-reset-bounds","test:test-focei-theta-reset-bounds#1",TRUE,3.46099999999979,2400,NA,FALSE,NA,NA,"could not rebuild foceiControl for this innerOpt",NA,NA,NA
+"test:test-focei-warm","test:test-focei-warm#1",TRUE,0.489000000000033,133.575105362723,NA,TRUE,0.407999999999902,133.58672585022,NA,0.0116204874969981,1.19852941176507,0
+"test:test-focei-warm","test:test-focei-warm#2",TRUE,0.465999999999894,133.575119258867,NA,TRUE,0.382000000000062,133.58672585022,NA,0.0116065913525176,1.21989528795764,0
+"test:test-focei-zero-init-scale","(whole file)",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA
+"test:test-focei-zero-theta","(whole file)",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA,"sourced cleanly but no focei fit was intercepted",NA,NA,NA
