@@ -45,6 +45,22 @@
   usually faster and comparably accurate. Pin `foceiControl(innerOpt="n1qn1")`
   to keep exact bit-for-bit reproducibility with prior releases.
 
+- New nlm-family estimation method, `est="trust"` (`trustControl()`), a
+  trust-region Newton optimizer for the population theta vector backed by
+  the `RcppTrust` package -- unrelated to `foceiControl(innerOpt="trust")`
+  above, which optimizes per-subject eta instead. Unlike every other
+  nlm-family method (`nlm`/`nlminb`/`bobyqa`/`newuoa`/`uobyqa`/`n1qn1`/
+  `lbfgsb3c`/`optim`), whose optimization loop lives in R and calls back
+  into C++ once per iteration, `trust`'s entire loop runs inside a single
+  C++ call -- `RcppTrust` needs no R API, so there is no per-iteration R
+  round-trip. It optimizes in the same scaled-parameter space every
+  nlm-family method (`bobyqa` included) already uses, and supplies a full
+  gradient and a full finite-difference-of-the-gradient Hessian every
+  iteration (there is no analytic outer-theta Hessian in this package, so
+  this costs roughly `ntheta` extra full population-gradient solves per
+  outer iteration -- the price of true Newton-trust behavior). `trust` is
+  unbounded, like `n1qn1`/`nlm`.
+
 - A pure-linear `matExp()` model now solves natively through rxode2's
   matrix-exponential driver (`rxControl(method="indLin")`) under SAEM instead
   of being flattened to an equivalent `d/dt()` ODE first.  SAEM has no

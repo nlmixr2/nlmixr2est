@@ -1043,15 +1043,19 @@ extern "C" int nlmTrustObjfun(int n, const double *par, double *value,
     // same reasoning already used at the per-subject eta trust call site.
     std::copy(H.begin(), H.end(), hessian);
     nlmOp.nTrustOuter.fetch_add(1, std::memory_order_relaxed);
-    // Iteration print / parHistData recording at the control's print cadence,
-    // same idiom as nlmixr2NlmEval -- a C++-resident loop still needs to
-    // produce a normal iteration history since R never sees an intermediate
-    // iterate.
-    if (nlmOp.scale.every > 0 && (_nlmEvalPrintCn++) % nlmOp.scale.every == 0) {
-      NumericVector gradR = wrap(gr0);
-      scalePrintFun(&(nlmOp.scale), &theta[0], ll);
-      scalePrintGrad(&(nlmOp.scale), &gradR[0], iterTypeSens);
-    }
+    // Unconditional, matching nlmSolveGradHess()/nlmSolveGradR()/optimFunC()'s
+    // own convention: scalePrintFun()/scalePrintGrad() record every call into
+    // the resident parHistData buffer regardless of print cadence (the print
+    // *display* itself is gated internally by nlmOp.scale.every) -- a
+    // C++-resident loop still needs a normal iteration history since R never
+    // sees an intermediate iterate. nlmixr2NlmEval's EXTERNALLY-gated variant
+    // is specific to that entry point's very-high-frequency sampler use (it
+    // deliberately skips recording most of ~1e5 evaluations); a normal
+    // optimization fit has few enough iterations that no such gate belongs
+    // here.
+    NumericVector gradR = wrap(gr0);
+    scalePrintFun(&(nlmOp.scale), &theta[0], ll);
+    scalePrintGrad(&(nlmOp.scale), &gradR[0], iterTypeSens);
     return 0;
   } catch (...) {
     return -4;
