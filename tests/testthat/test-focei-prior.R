@@ -160,7 +160,7 @@ nmTest({
     # the analytic gradient at convergence should be small for every
     # parameter, INCLUDING the estimation-scale omega ("om.chol.*") entries
     # foceiPriorOmegaGradAdd() folds the omega-prior gradient into
-    g <- nlmixr2est:::.foceiGradDirect(.fit)
+    g <- .foceiGradDirect(.fit)
     expect_false(is.null(g))
     expect_true(any(grepl("^om\\.chol\\.", names(g))))
     expect_true(all(abs(g) < 1))
@@ -228,7 +228,7 @@ nmTest({
         "  ka <- exp(tka + eta.ka)\n  cl <- exp(tcl + eta.cl)\n  v <- exp(tv + eta.v)\n",
         "  linCmt() ~ add(add.sd)\n})\n}")))
       ui <- rxode2::rxode2(.mod)
-      .method <- nlmixr2est:::.nlmixr2PriorMethod(ui)
+      .method <- .nlmixr2PriorMethod(ui)
 
       fAt <- function(th) {
         om <- omegaAt(th)

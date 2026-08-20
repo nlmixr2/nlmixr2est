@@ -15994,6 +15994,30 @@ static void gradDirectStoreEtaP(const FoceiGradPooledSetup &G, const arma::cube 
   op_focei.etaPValid = 1;
 }
 
+// FD-fold, then the two ini({}) prior fold-ins, then record the
+// firstDirectGrad snapshot -- pulled out of analyticOuterGradDirect() as its
+// own step (a pure refactor, CodeFactor complexity) since it is one cohesive
+// "finish assembling gp" phase, run in this fixed order every time.
+static bool gradDirectFinalize(int npars, arma::vec &gp, const arma::mat &Oi,
+                               const arma::cube &dOiEst) {
+  if (!gradDirectFoldFd(npars, gp)) return false;
+  // ini({}) prior (#929/#931): -2*d(log p(theta))/dtheta[j], folded in before
+  // firstDirectGrad is recorded and before the rescale, same as the FD-fold
+  // above -- 0.0 when the model has no prior.
+  foceiPriorGradAdd(npars, gp);
+  // -2*d(log p(omega))/d(theta_k), reusing the SAME Oi/dOiEst
+  // gradDirectOmega() already fetched for the ordinary (non-prior) omega
+  // gradient -- 0.0 when the prior has no omega-referencing term.
+  foceiPriorOmegaGradAdd(npars, gp, Oi, dOiEst);
+  if (!op_focei.firstDirectGradSet) {
+    op_focei.firstDirectGrad.assign(gp.begin(), gp.end());
+    op_focei.firstDirectTheta.assign(&op_focei.fullTheta[0],
+                                     &op_focei.fullTheta[0] + op_focei.ntheta);
+    op_focei.firstDirectGradSet = 1;
+  }
+  return true;
+}
+
 static bool analyticOuterGradDirect(double *theta, double *g) {
   const FoceiGradPooledSetup &G = _gradPooled;
   if (!G.ok) return declineHere(101);
@@ -16026,21 +16050,7 @@ static bool analyticOuterGradDirect(double *theta, double *g) {
   if (!gradDirectKernel(G, thv, ebes, Oi, dOiEst, tr28, cores, nKer, gv, etaP)) return false;
   arma::vec gp;
   if (!gradDirectGather(G, gv, nKer, npars, gp)) return false;
-  if (!gradDirectFoldFd(npars, gp)) return false;
-  // ini({}) prior (#929/#931): -2*d(log p(theta))/dtheta[j], folded in before
-  // firstDirectGrad is recorded and before the rescale, same as the FD-fold
-  // above -- 0.0 when the model has no prior.
-  foceiPriorGradAdd(npars, gp);
-  // -2*d(log p(omega))/d(theta_k), reusing the SAME Oi/dOiEst
-  // gradDirectOmega() already fetched above for the ordinary (non-prior)
-  // omega gradient -- 0.0 when the prior has no omega-referencing term.
-  foceiPriorOmegaGradAdd(npars, gp, Oi, dOiEst);
-  if (!op_focei.firstDirectGradSet) {
-    op_focei.firstDirectGrad.assign(gp.begin(), gp.end());
-    op_focei.firstDirectTheta.assign(&op_focei.fullTheta[0],
-                                     &op_focei.fullTheta[0] + op_focei.ntheta);
-    op_focei.firstDirectGradSet = 1;
-  }
+  if (!gradDirectFinalize(npars, gp, Oi, dOiEst)) return false;
   for (int i = 0; i < npars; ++i) g[i] = gp[i] * dUnscaleParDx(i);
   gradDirectStoreEtaP(G, etaP, theta, nsub, neta, npars, nKer);
   return true;
