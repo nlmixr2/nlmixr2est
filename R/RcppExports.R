@@ -571,6 +571,14 @@ nlmSolveGradHess <- function(theta) {
     .Call(`_nlmixr2est_nlmSolveGradHess`, theta)
 }
 
+nlmTrustFit <- function(theta, control) {
+    .Call(`_nlmixr2est_nlmTrustFit`, theta, control)
+}
+
+.nTrustOuter <- function() {
+    .Call(`_nlmixr2est_nTrustOuterGet`)
+}
+
 nlmSolveSwitch <- function(theta) {
     .Call(`_nlmixr2est_nlmSolveSwitch`, theta)
 }
