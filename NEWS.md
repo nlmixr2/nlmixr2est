@@ -132,6 +132,18 @@
   the truncation bounds are a few SDs from the mean, the regime a BQL row's
   bound often sits in.
 
+- `est="npag"`/`est="npb"`'s residual-error moment (`npResidMoments()`) counted
+  a censored (M3/M4) observation's recorded LOQ/limit as if it had been
+  measured, the same bug shape as #916 but in the nonparametric methods
+  (#978). For the common configuration -- one `add()`/`prop()` scale per
+  endpoint, no regressor theta -- that biased moment is installed as the
+  final residual-error estimate with no further optimizer correction, so a
+  censored row could badly distort it (an extreme recorded LOQ was measured
+  to inflate `est="npag"`'s proportional SD ~200x, and collapse
+  `est="npb"`'s to exactly 0). A censored row's DV is now excluded from the
+  moment entirely, matching how the function already excludes an endpoint
+  with no defined prediction to take a moment of.
+
 - `foceiControl(fast=TRUE)` could converge to a different fit than `fast=FALSE`
   when a transform-both-sides (`lnorm`/`boxCox`) endpoint's untransformed
   prediction was non-positive at some observation -- for example a depot model's

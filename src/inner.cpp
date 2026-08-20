@@ -16396,8 +16396,12 @@ static inline void npAccumMoment(arma::mat &mom, int e, double f, double dv) {
 // sum(err^2) and the proportional moment sum((err/f)^2) with the observation count, so
 // the caller can set an additive SD to sqrt(mean(err^2)) and a proportional SD to
 // sqrt(mean((err/f)^2)) -- the saem-style estimate, used to warm start (and, for a
-// single scale per endpoint, to set) the residual optimization.  Returns an
-// nEnd x 3 matrix [sumAdd, sumProp, n].
+// single scale per endpoint, to set) the residual optimization.  An M3/M4 row's DV is
+// the LOQ/limit rather than a real measurement (censEst.h's isM3orM4(cens); M2 is NOT
+// excluded -- isM2 requires cens==0, so its DV is still a defined observation), so it
+// is dropped from the moment entirely (like the whole-endpoint skipMoments guard
+// below) rather than folded in as if observed -- issue #978. Returns an nEnd x 3
+// matrix [sumAdd, sumProp, n].
 arma::mat npResidMoments(const arma::mat& postEta, const arma::ivec& obsEndpoint, int nEnd) {
   rx = getRxSolve_();
   int nsub = (int)getRxNsub(rx);
@@ -16442,6 +16446,12 @@ arma::mat npResidMoments(const arma::mat& postEta, const arma::ivec& obsEndpoint
       ko++;
       if (e < 0 || e >= nEnd) continue;
       if (!std::isfinite(cl) || !std::isfinite(f)) continue;
+      // M3/M4 (cens != 0; see isM3orM4() in censEst.h): dv above is the LOQ/limit,
+      // not a real measurement, so it must not be folded into the additive/
+      // proportional sum-of-squares as if observed (issue #978).  M2 (cens == 0,
+      // finite limit) keeps its real observed dv and is NOT excluded here.
+      double cens = hasRxCens(rx) ? getIndCens(ind, kk) : 0.0;
+      if (cens != 0.0) continue;
       npAccumMoment(mom, e, f, dv);
     }
   }
