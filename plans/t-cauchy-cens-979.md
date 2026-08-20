@@ -72,5 +72,14 @@ function serves both.
    t()+nlm does not, message-length check). Both essential-tier (small,
    fast fits) -- not added to `.slowBatches`.
 7. [x] NEWS.md bullet under `## Bug fixes`, referencing #979.
-8. [ ] Antigravity review until clean.
-9. [ ] Push, open PR closing #979.
+8. [x] Antigravity review until clean. Two rounds: the first (full diff)
+   found (1) `.rxFinalizeInner`'s unconditional `rx_pred_f_` splice risked
+   shifting FOCEi's inner-model lhs column layout for EVERY endpoint type,
+   not just t()/cauchy() -- reverted entirely, since `predNuOffset` is
+   always -1 for FOCEi anyway so it was pointless besides; (2) the
+   `rxCensNuFix`/`rxPredLlik` `on.exit()` registration happened after the
+   flag mutation, leaving an interrupt-safety gap -- reordered so
+   `on.exit()` registers first; (3) missing M2/M4 test coverage for
+   `doCensT1` -- added. A second, targeted review of those three fixes
+   found nothing further.
+9. [x] Push, open PR closing #979.
