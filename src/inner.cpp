@@ -4474,13 +4474,13 @@ void innerOpt() {
     foceiOmegaEnvSyncFromTail(); // fast omega path leaves the env theta stale
     op_focei.omegaInv=getOmegaInv();
     op_focei.logDetOmegaInv5 = getOmegaDet();
-    if (op_focei.innerOpt == 3) {
-      // trust-region parscale needs Omega (not just its inverse) refreshed on the
-      // same cadence as omegaInv -- op_focei.omega is otherwise only kept current
-      // for est="fo" (foceiOmegaFromTheta only refreshes it on that branch).
-      arma::mat _trustOmega;
-      if (arma::inv_sympd(_trustOmega, op_focei.omegaInv)) op_focei.omega = _trustOmega;
-    }
+    // The non-inverted Omega was previously only kept current for est="fo"
+    // (foceiOmegaFromTheta's own om==1 branch) -- any OTHER inner-loop reader
+    // of op_focei.omega saw whatever theta last set it at, stale across outer
+    // iterations. Refresh it here unconditionally, on the same cadence as
+    // omegaInv, so the trust-region parscale below (and any future consumer)
+    // can't silently read a stale value. See PR #988.
+    op_focei.omega = getOmegaMat();
   }
   // Pre-draw per-subject ETA samples serially before the parallel for-loop so
   // workers only do memory access (no R API calls), making mceta safe under cores > 1.
