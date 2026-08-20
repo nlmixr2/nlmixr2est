@@ -30,6 +30,7 @@ foceiControl(
   covSolveTol = NULL,
   covFull = TRUE,
   fast = FALSE,
+  priorMethod = c("auto", "general", "nwpri", "tnpri"),
   fdOutlierZ = 3.5,
   fdOutlierScale = TRUE,
   fdRefine = c("chartrand", "lanczos", "richardson"),
@@ -319,6 +320,25 @@ the outer optimizer defaults to \code{"lbfgsb3c"} (vs \code{"bobyqa"} for
 \code{fast=FALSE}); pairing \code{fast=TRUE} with a derivative-free
 \code{outerOpt} reverts to \code{fast=FALSE}.  The \code{*f} methods (e.g.
 \code{foceif}) default this to \code{TRUE}.}
+
+\item{priorMethod}{Which of the shared prior kernel's three omega
+conventions (nlmixr2/rxode2#1270) to evaluate an \code{ini({})}
+\code{prior()} under -- \code{"general"} (textbook Bayesian),
+\code{"nwpri"} (NONMEM's own \verb{$PRIOR NWPRI}), or \code{"tnpri"}
+(the Monolix/NONMEM-own-estimation joint-normal convention on omega).
+The default, \code{"auto"}, reads the convention off what the model's
+own \code{ini({})} actually wrote (an \code{invWishart()} degrees-of-
+freedom prior on an omega block means \code{"nwpri"}; a normal prior
+directly on an omega element means \code{"tnpri"}; anything else,
+including a \code{dcauchy()} prior, means \code{"general"}) --
+deliberately never a fixed default, since the identical
+\code{invWishart(nu)} syntax means a different number under
+\code{"general"} and \code{"nwpri"}.  Setting this explicitly forces
+that convention regardless of what auto-detection would have picked,
+and errors before any estimation starts if the model's priors are not
+representable under it (e.g. \code{priorMethod="tnpri"} on a model
+with an \code{invWishart()} prior).  Ignored when the model has no
+prior at all.}
 
 \item{fdOutlierZ}{Cut of the Iglewicz-Hoaglin modified z-score that decides
 whether a finite-differenced subject's slope is an outlier against the exact

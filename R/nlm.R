@@ -404,6 +404,47 @@ getValidNlmixrCtl.nlm <- function(control) {
   })
 }
 
+#' Restore a real `rx_r_` variance for nlm's llik-forced normal endpoints
+#'
+#' `est="nlm"` forces every `norm` endpoint through the log-likelihood
+#' (`dnorm`) path so a single scalar objective can be emitted
+#' (`rxUiGet.nlmModel0`).  That path always sets `rx_r_ ~ 0` (a full
+#' log-density has no separate variance to report), but `src/nlm.cpp`'s
+#' M2/M3/M4 censoring correction (`doCensNormal1()`) reads `rx_r_` as a real
+#' variance -- a hardcoded 0 corrupts every censored normal endpoint,
+#' independent of `ar()` (#976).  `rx_rll_` (the standard deviation actually
+#' fed into `llikNorm()`/`llikT()`/`llikCauchy()`) is emitted immediately
+#' before `rx_r_` in the same branch, so square it back into `rx_r_` instead
+#' of leaving the hardcoded 0.
+#'
+#' @param lines A single endpoint's list of quoted model lines, as returned
+#'   by `rxGetDistributionFoceiLines()` for one `predDf` row.
+#' @return The same list, with `rx_r_ ~ 0` replaced by `rx_r_ ~ rx_rll_^2`
+#'   when `rx_rll_` was emitted; otherwise unchanged.
+#' @author Matthew L. Fidler
+#' @noRd
+.nlmFixCensRLine <- function(lines) {
+  if (!is.list(lines)) return(lines)
+  .rll <- NULL
+  for (.l in lines) {
+    if (is.call(.l) && identical(.l[[1]], quote(`~`)) &&
+        identical(.l[[2]], quote(rx_rll_))) {
+      .rll <- .l[[3]]
+      break
+    }
+  }
+  if (is.null(.rll)) return(lines)
+  lapply(lines, function(.l) {
+    if (is.call(.l) && identical(.l[[1]], quote(`~`)) &&
+        identical(.l[[2]], quote(rx_r_)) &&
+        identical(.l[[3]], 0)) {
+      bquote(rx_r_ ~ .(.rll)^2)
+    } else {
+      .l
+    }
+  })
+}
+
 #'@export
 rxUiGet.nlmModel0 <- function(x, ...) {
   .ui <- rxode2::rxUiDecompress(x[[1]])
@@ -415,7 +456,8 @@ rxUiGet.nlmModel0 <- function(x, ...) {
   assign(".predDfFocei", .predDf, envir=.ui)
   #assign("predDf", .predDf, envir=.ui)
   on.exit(assign("predDf", .save, envir=.ui))
-  .ret <- rxode2::rxCombineErrorLines(.ui, errLines=rxGetDistributionFoceiLines(.ui),
+  .errLines <- lapply(rxGetDistributionFoceiLines(.ui), .nlmFixCensRLine)
+  .ret <- rxode2::rxCombineErrorLines(.ui, errLines=.errLines,
                               prefixLines=.uiGetThetaDropFixed(.ui),
                               paramsLine=NA, #.uiGetThetaEtaParams(.f),
                               modelVars=TRUE,

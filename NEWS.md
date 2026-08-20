@@ -71,14 +71,62 @@
   can opt in as it gains support:
 
   ```r
-  attr(nlmixr2Est.myMethod, "nlmixr2Priors") <- "normal"
+  attr(nlmixr2Est.myMethod, "nlmixr2Priors") <- "general"
   ```
 
   The levels are `"none"` (the default when the attribute is absent),
-  `"normal"`, `"nwpri"` (normal priors plus omega degrees of freedom) and
-  `"all"`.  Because the check happens in the generic, methods registered
-  by other packages -- `babelmixr2`'s `nonmem`, `monolix`, `saemix` and
-  the rest -- are covered without any change of their own.
+  `"theta"` (population parameters only), `"general"` (everything the
+  shared kernel supports, including a prior on an omega element under
+  any convention), `"nwpri"` (NONMEM's own `$PRIOR NWPRI` omega
+  convention) and `"tnpri"` (Monolix's/NONMEM's own-estimation
+  joint-normal convention, including a normal prior directly on an omega
+  element) -- see `?nlmixr2Est` for what each accepts -- and `"all"`.
+  Because the check happens in the generic, methods registered by other
+  packages -- `babelmixr2`'s `nonmem`, `monolix`, `saemix` and the rest
+  -- are covered without any change of their own.
+
+- `est="focei"` and every method in its family (`foce`, `focep`, `fo`,
+  `foi`, the mu-referenced `mfoce*`/IRLS `ifoce*` variants, `laplace`,
+  `agq` and their quadrature/`*f` fast-path siblings) now honours a
+  prior on a population parameter AND on an omega element -- under any
+  of the kernel's three conventions (`"general"`, NONMEM's `"nwpri"`,
+  Monolix's/NONMEM's-own-estimation `"tnpri"`), auto-detected from what
+  the model's own `ini({})` actually wrote -- added to the objective as
+  `-2*log p(theta, omega)` (nlmixr2/rxode2#1270, issue #929, issue #931)
+  -- declared `nlmixr2Priors = "general"`.
+
+  The convention is auto-detected by default (`foceiControl(priorMethod=
+  "auto")`), but can be forced with `foceiControl(priorMethod="general"/
+  "nwpri"/"tnpri")`. Forcing a convention the model's priors are not
+  representable under (e.g. `priorMethod="tnpri"` on an `invWishart()`
+  prior) errors before any estimation starts, naming the parameter and
+  which method it needs instead.
+
+  `foceiControl(fast=TRUE)`'s analytic outer gradient has a real
+  `d/dtheta log p(theta)` term (a straight fold into the same
+  natural-scale accumulator the outer FD substitution already uses) and
+  a real `d/d(chol(Omega^-1)) log p(omega)` term (chain-ruled through the
+  SAME estimation-scale derivative data -- `d.omegaInv`/`tr.28` from the
+  model's `rxSymInvCholEnv` handle -- FOCEi's own, non-prior omega
+  gradient already relies on), so a prior no longer downgrades it: this
+  package uses symbolic/analytic derivatives throughout, not finite
+  differences, wherever one is available. (A prior referencing a theta a
+  mu-referenced family profiles out of the outer problem entirely is the
+  one case that first term cannot attribute; that specific fit declines
+  to finite differences instead of silently under-counting, detected
+  once at setup, not per evaluation.) `covMethod="analytic"` is still
+  downgraded to a finite-difference covariance, since the analytic
+  Hessian has no prior term yet -- a finite difference of the (now
+  prior-inclusive) objective picks the prior term up automatically.
+
+  Fixed along the way: `.nlmixr2FitUpdateParams()` rebuilt a fit's omega
+  rows of `iniDf` from the raw Omega matrix whenever an mixed-effects
+  model estimate was pinned back onto the model (piping, `.setOfvFo()`'s
+  post-fit re-entry for `setOfv()`/`addCwres()`), and that rebuild had no
+  way to carry the `prior` column lotri itself does not know about -- a
+  prior on an omega element silently vanished the first time a
+  prior-carrying fit was re-entered, which is every fit's own finalize
+  step. `rxUiPriors(fit$ui)` now still reports it afterward.
 
 ## Changed defaults
 
@@ -111,6 +159,18 @@
   fit, so removing them changes no result.
 
 ## Bug fixes
+
+- Every NLM-family method (`nlm`, `bobyqa`, `newuoa`, `uobyqa`, `n1qn1`,
+  `lbfgsb3c`, `optim`, `nlminb`) silently mis-scored any M2/M3/M4-censored
+  normal endpoint, whether or not `ar()` was present (#976). NLM forces every
+  normal endpoint through a log-likelihood (`dnorm`) path so a single scalar
+  objective can be emitted; that path always set `rx_r_ ~ 0` (a full
+  log-density has no separate variance to report), but the censoring
+  correction reads `rx_r_` as a real variance, so a hardcoded zero corrupted
+  the correction for every censored observation. `rx_rll_` (the standard
+  deviation actually used to build the log-density) is emitted immediately
+  beforehand in the same branch, so it is now squared back into `rx_r_`
+  instead of being discarded.
 
 - `est="saem"` with a `pow()` residual error model (`rmPow`/`rmAddPow`/
   `rmPowLam`/`rmAddPowLam`) never applied the estimated power exponent in the
