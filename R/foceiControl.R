@@ -404,10 +404,11 @@
 #' @param outerOpt optimization method for the outer problem
 #'
 #' @param innerOpt optimization method for the inner (per-subject eta)
-#'     problem: `"n1qn1"` (default, quasi-Newton) or `"trust"` (RcppTrust
-#'     trust-region Newton, using an exact Gauss-Newton+Omega^-1 Hessian
-#'     every iteration). `"BFGS"` is accepted but not implemented -- it
-#'     silently falls back to `"n1qn1"`.
+#'     problem: `"trust"` (default, RcppTrust trust-region Newton, using an
+#'     exact Gauss-Newton+Omega^-1 Hessian every iteration) or `"n1qn1"`
+#'     (quasi-Newton, gets a Hessian only once as a warm-start seed).
+#'     `"BFGS"` is accepted but not implemented -- it silently falls back to
+#'     `"n1qn1"`.
 #'
 #' @param trustConf confidence level defining the `innerOpt="trust"`
 #'     trust-region radius: since eta ~ N(0, Omega), the radius (in
@@ -942,7 +943,7 @@ foceiControl <- function(sigdig = 3, #
                                       "slsqp",
                                       "uobyqa",
                                       "newuoa"), #
-                         innerOpt = c("n1qn1", "BFGS", "trust"), #
+                         innerOpt = c("trust", "n1qn1", "BFGS"), #
                          ## trust-region inner optimizer (RcppTrust)
                          trustConf = 0.975, # confidence level defining the trust-region radius
                          trustRinit = NULL, # NULL -> derived from trustConf/neta

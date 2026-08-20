@@ -80,7 +80,7 @@ foceiControl(
   covTryHarder = FALSE,
   outerOpt = c("bobyqa", "nlminb", "lbfgsb3c", "L-BFGS-B", "mma", "lbfgsbLG", "slsqp",
     "uobyqa", "newuoa"),
-  innerOpt = c("n1qn1", "BFGS", "trust"),
+  innerOpt = c("trust", "n1qn1", "BFGS"),
   trustConf = 0.975,
   trustRinit = NULL,
   trustRmax = NULL,
@@ -603,10 +603,11 @@ the Hessian on the unscaled parameter space.}
 \item{outerOpt}{optimization method for the outer problem}
 
 \item{innerOpt}{optimization method for the inner (per-subject eta)
-problem: `"n1qn1"` (default, quasi-Newton) or `"trust"` (RcppTrust
-trust-region Newton, using an exact Gauss-Newton+Omega^-1 Hessian
-every iteration). `"BFGS"` is accepted but not implemented -- it
-silently falls back to `"n1qn1"`.}
+problem: `"trust"` (default, RcppTrust trust-region Newton, using an
+exact Gauss-Newton+Omega^-1 Hessian every iteration) or `"n1qn1"`
+(quasi-Newton, gets a Hessian only once as a warm-start seed).
+`"BFGS"` is accepted but not implemented -- it silently falls back to
+`"n1qn1"`.}
 
 \item{trustConf}{confidence level defining the `innerOpt="trust"`
 trust-region radius: since eta ~ N(0, Omega), the radius (in

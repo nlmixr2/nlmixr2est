@@ -27,14 +27,23 @@
   seed) change as a result.
 ## New features
 
-- `foceiControl(innerOpt="trust")` adds a trust-region Newton inner (per-subject
-  eta) optimizer backed by the `RcppTrust` package, alongside the existing
-  `n1qn1` default. Unlike `n1qn1`, which gets an approximate Hessian only once
-  as a warm-start seed, the trust-region step is supplied a fresh exact
-  Gauss-Newton+Omega^-1 Hessian every iteration. Each eta is scaled by
-  `sqrt(diag(Omega))`, with the trust-region radius derived from the eta
-  confidence region (`foceiControl(trustConf=)`, default 0.975); `trustRinit`/
-  `trustRmax` override the derived radius directly.
+- `foceiControl(innerOpt=)` adds a trust-region Newton inner (per-subject eta)
+  optimizer backed by the `RcppTrust` package, `"trust"`, and **it is now the
+  default** for every FOCEi-family method (`focei`/`foce`/`foi`/`fo`, and
+  `impmap`'s MAP inner problem) -- `n1qn1` remains available via
+  `foceiControl(innerOpt="n1qn1")`. Unlike `n1qn1`, which gets an approximate
+  Hessian only once as a warm-start seed, the trust-region step is supplied a
+  fresh exact Gauss-Newton+Omega^-1 Hessian every iteration. Each eta is
+  scaled by `sqrt(diag(Omega))`, with the trust-region radius derived from
+  the eta confidence region (`foceiControl(trustConf=)`, default 0.975);
+  `trustRinit`/`trustRmax` override the derived radius directly. `est="vae"`
+  does not use `foceiControl()`'s inner loop and is unaffected.
+
+  This changes the exact numeric result of every FOCEi-family fit that does
+  not pin `innerOpt=` explicitly (typically by a few objf units at most; see
+  `inst/benchmarks/results/` for a broad benchmark against `n1qn1`), though
+  usually faster and comparably accurate. Pin `foceiControl(innerOpt="n1qn1")`
+  to keep exact bit-for-bit reproducibility with prior releases.
 
 - A pure-linear `matExp()` model now solves natively through rxode2's
   matrix-exponential driver (`rxControl(method="indLin")`) under SAEM instead
