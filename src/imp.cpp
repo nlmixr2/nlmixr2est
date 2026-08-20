@@ -272,7 +272,8 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
                      arma::vec& XiExpOut, arma::vec& KhatExpOut,
                      std::vector<arma::mat>& outS, std::vector<arma::vec>& outZk,
                      arma::mat& aMat, Environment* eStash,
-                     uint32_t qrPinSeed) {
+                     uint32_t qrPinSeed, bool harvestSens,
+                     std::vector<impThetaSensData>& outSens) {
   int Nm = impNmix();
   int nExp = nsub * Nm; // expanded pseudo-subjects: component j (1-based) is i + (j-1)*nsub
 
@@ -354,6 +355,7 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
   std::vector<char> okExp(nExp, 0);
   outS.assign(nExp, arma::mat());
   outZk.assign(nExp, arma::vec());
+  if (harvestSens) outSens.assign(nExp, impThetaSensData());
   // The engine array is allocated + seeded by rxWithSeed() at the fit start
   // (impmap.R), so we don't call seedEng() here.
   // Base the per-subject stream on the control's impSeed, NOT the ambient
@@ -456,6 +458,52 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
         arma::vec d = eta - modes[id];
         double qk = -impEvalJointLik(eta, id) +
           impLogKernelRecip(arma::as_scalar(d.t() * Hs[id] * d), gammaId, dfId, neta);
+        // #958 combined build: impEvalJointLik() just solved this subject's
+        // INNER model at this exact (theta, eta) -- when combSens is loaded,
+        // that solve already carries the M-step's d(f)/d(theta)/d(V)/d(theta)
+        // columns, so harvest them here (impThetaSensCollect's reuseSolve path,
+        // a pure read -- no ODE solve, no R API call, safe under this
+        // function's own parallel E-step region) instead of letting the
+        // M-step re-solve every sample from scratch.  Skipped whenever the
+        // caller disabled harvesting (SIR resampling only needs a subset of
+        // the E-step's samples, so eagerly harvesting all of them there would
+        // be wasted work -- see impOuter's harvestSens gate).  A sample whose
+        // solve fell back to the pred-model FD path (impLastInnerSolveUsable
+        // == false) leaves ind->solve holding the PRED model's trajectory, not
+        // the inner model's, so it is left unharvested (sampleOk=0) rather
+        // than triggering impThetaSensCollect's own solve-with-retry path --
+        // that path is R-API-unsafe from a bare OpenMP region (it is only
+        // ever run under the M-step's explicit impInnerParallelOn() guard),
+        // which this loop does not set.  The M-step's weighted accumulation
+        // (impThetaAccumOne) already skips sampleOk==0 samples cleanly.
+        if (harvestSens) {
+          impThetaSensData &_acc = outSens[id];
+          bool _reuse = impLastInnerSolveUsable(id);
+          if (_reuse) {
+            arma::mat _srow(1, neta); _srow.row(0) = eta.t();
+            impThetaSensData _c;
+            impThetaSensCollect(id, _srow, _c, /*reuseSolve=*/true);
+            if (_c.nobs > 0) {
+              _acc.nobs = _c.nobs;
+              _acc.dvv = _c.dvv; _acc.limv = _c.limv;
+              _acc.censv = _c.censv; _acc.distv = _c.distv;
+              _acc.ddvmat = _c.ddvmat; _acc.dlimmat = _c.dlimmat;
+            }
+            bool _ok = _c.nobs > 0 && !_c.sampleOk.empty() && _c.sampleOk[0] != 0;
+            _acc.fvec.push_back(_ok ? _c.fvec[0] : arma::vec());
+            _acc.Vvec.push_back(_ok ? _c.Vvec[0] : arma::vec());
+            _acc.dfmat.push_back(_ok ? _c.dfmat[0] : arma::mat());
+            _acc.dVmat.push_back(_ok ? _c.dVmat[0] : arma::mat());
+            _acc.sampleOk.push_back(_ok ? 1 : 0);
+            if (_ok) impThetaSensHarvestTick();
+          } else {
+            _acc.fvec.push_back(arma::vec());
+            _acc.Vvec.push_back(arma::vec());
+            _acc.dfmat.push_back(arma::mat());
+            _acc.dVmat.push_back(arma::mat());
+            _acc.sampleOk.push_back(0);
+          }
+        }
         // A proposal sample whose inner solve fails (NA/NaN, even after the
         // FOCEI tolerance-relaxation retry) is dropped from the weighted mean by
         // giving it -Inf log-weight (weight 0).
@@ -1054,6 +1102,15 @@ void impOuter(Environment e) {
   bool sir = impSirEnabled();
   int sirN = impSirN();
   uint32_t sirSeed = (uint32_t)impBaseSeed() + 0x7F4A7C15u;
+  // #958 combined build: harvest the M-step's theta-sensitivity columns
+  // straight off the E-step's own per-sample inner solve (impEStep) instead
+  // of the M-step re-solving every sample -- see impEStep's harvest block.
+  // Off under SIR: the M-step there only needs a resampled SUBSET of the
+  // E-step's samples (sirN < isample), so eagerly harvesting every sample in
+  // the E-step would do MORE solving, not less; that case keeps the existing
+  // (unfused) M-step path unchanged.
+  bool harvestSens = impCombSensEnabled() && (nSens > 0) && !sir;
+  std::vector<impThetaSensData> outSens;
 
   // Omega structure mask: only the elements estimated in the model (nonzero in
   // the starting Omega) are updated; the rest stay zero so the parameterization
@@ -1089,7 +1146,8 @@ void impOuter(Environment e) {
     gammaUsed = gammaVec;
     gammaScalarUsed = gamma;
     impEStep(nsub, neta, isampleVec, gammaVec, dfVec, cores, iter, impLogDetOmegaInv5(), isImp,
-             condMean, condVar, Li, Neff, Xi, XiExp, KhatExp, sampS, sampZk, aMat, &e, qrPinSeed);
+             condMean, condVar, Li, Neff, Xi, XiExp, KhatExp, sampS, sampZk, aMat, &e, qrPinSeed,
+             harvestSens, outSens);
     obj = 0.0;
     for (int id = 0; id < nsub; ++id) if (R_finite(Li[id])) obj += 2.0 * Li[id];
     // Mean effective-sample fraction (importance-sampling "acceptance ratio").
@@ -1337,6 +1395,27 @@ void impOuter(Environment e) {
       // Each subject's samples (SIR-resampled if enabled) and collected sensitivity
       // outputs are stashed per subject, then accumulated in eid order below.  cores
       // already carries the mixture / pool-sizing serial guard (forced to 1 above).
+      if (harvestSens) {
+        // #958 fused build: outSens[eid] was already filled sample-by-sample
+        // during THIS iteration's E-step (impEStep), off the same inner solve
+        // impEvalJointLik used for the importance weights -- no M-step solve
+        // at all for a subject that harvested cleanly.  A subject every one of
+        // whose samples fell back to the pred-model FD path in the E-step
+        // (outSens[eid].nobs == 0, impEStep leaves it unharvested rather than
+        // re-solving from an OpenMP region -- see impEStep) falls back here to
+        // the ordinary (serial-safe) solve-based read, so no subject's M-step
+        // contribution is silently dropped.
+        for (int eid = 0; eid < nExp; ++eid) {
+          if (sampS[eid].n_rows == 0) continue;
+          if (outSens[eid].nobs > 0) {
+            impThetaAccumOne(outSens[eid], sampZk[eid], g, H);
+          } else {
+            impThetaSensData c;
+            impThetaSensCollect(eid, sampS[eid], c);
+            impThetaAccumOne(c, sampZk[eid], g, H);
+          }
+        }
+      } else {
       std::vector<impThetaSensData> coll(nExp);
       // Only zksub is retained per subject (the serial accumulation needs it); the
       // sample matrix is passed straight into impThetaSensCollect (sampS[eid] as-is,
@@ -1394,6 +1473,7 @@ void impOuter(Environment e) {
       // Serial accumulation in eid order -- bit-identical to the serial theta score.
       for (int eid = 0; eid < nExp; ++eid) {
         if (useSub[eid]) impThetaAccumOne(coll[eid], zksub[eid], g, H);
+      }
       }
       g /= (double)nsub;
       H /= (double)nsub;

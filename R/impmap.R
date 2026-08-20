@@ -19,7 +19,11 @@
                            # not foceiControl() arguments, so they must be dropped
                            # when down-converting (e.g. .setOfvFo's do.call(foceiControl))
                            "impMuThetaIdx", "impMuEtaIdx", "impThetaSensIdx",
-                           "impOmegaFixedEta")
+                           "impOmegaFixedEta",
+                           # combined eta+theta sensitivity build (#958): an
+                           # impmap-internal request for the fused inner model;
+                           # not a foceiControl() argument either.
+                           "combSens")
 
 #' Control options for the impmap (importance-sampling EM) estimation method
 #'
@@ -290,6 +294,19 @@
 #'   `isample` weighted samples.
 #' @param sirSample Number of SIR resampled points per subject; `NULL` uses
 #'   `max(25, ceiling(isample/10))`.  Must be at most `isample`.
+#' @param combSens When `TRUE` and there are non-mu (structural or
+#'   residual-error) thetas to estimate, carry their sensitivity columns on
+#'   the INNER model itself (the combined eta+theta sensitivity build, #958)
+#'   instead of compiling and solving a separate, dedicated model for them.
+#'   With `sir=FALSE` (the default) the E-step's own per-sample inner solve
+#'   then supplies the M-step's Newton step directly, with no second solve --
+#'   roughly halving the ODE solving the theta-sensitivity Newton step costs.
+#'   `FALSE` by default: the fused build changes the ODE integrator's
+#'   adaptive step-size path (more sensitivity states solved together), so
+#'   results move by a small amount relative to the two-model default -- not
+#'   a correctness issue, but enough to occasionally move a diagnostic (e.g. a
+#'   borderline Pareto k-hat) across a threshold, so it does not change any
+#'   existing fit's numbers unless requested.
 #' @return impmapControl object
 #' @export
 #' @author Matthew L. Fidler
@@ -320,7 +337,9 @@ impmapControl <- function(sigdig=3,
                           qrRefresh=TRUE,
                           sir=FALSE,
                           sirSample=NULL,
-                          muModel=c("lin", "none")) {
+                          muModel=c("lin", "none"),
+                          combSens=FALSE) {
+  checkmate::assertLogical(combSens, len=1, any.missing=FALSE)
   muModel <- match.arg(muModel)
   gammaMethod <- match.arg(gammaMethod)
   gammaRule <- match.arg(gammaRule)
@@ -435,6 +454,7 @@ impmapControl <- function(sigdig=3,
   .control$qrRefresh <- qrRefresh
   .control$sir <- sir
   .control$sirSample <- .sirSample
+  .control$combSens <- combSens
   class(.control) <- "impmapControl"
   .control
 }
@@ -682,6 +702,24 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   # error) with sensitivity outputs in the sensitivity model; the M-step Newton
   # update maps its output columns back to these thetas.
   .control$impThetaSensIdx <- as.integer(.impmapEstTheta(ui)$all - 1L)
+  # Combined eta+theta sensitivity build (#958), opt-in (impmapControl(combSens=)):
+  # when requested AND there is anything to differentiate, carry the theta
+  # columns on the INNER model itself instead of compiling+solving a separate
+  # rxThetaSens peer.  This is what lets the E-step's own per-sample inner
+  # solve (impEvalJointLik) also harvest the M-step's d(f)/d(theta)/d(V)/d(theta)
+  # columns for free (impThetaSensCollect / impEStep's harvest path in
+  # inner.cpp), instead of the M-step re-solving every sample from scratch in
+  # a second, dedicated model -- roughly halving the ODE solving the M-step
+  # Newton step costs (sir=FALSE, the default).  Off by default: folding the
+  # theta-sensitivity states into the SAME coupled ODE system as the eta
+  # sensitivities changes the integrator's adaptive step-size path, so results
+  # move by a few floating-point ULPs' worth relative to the two-model path --
+  # not a correctness issue (the M5/M6 FOCEI-convergence tests in
+  # test-impmap.R pass either way), but enough to occasionally cross a
+  # diagnostic threshold (e.g. a borderline Pareto k-hat), so it does not
+  # default on for existing fits.
+  .control$combSens <- isTRUE(.control$combSens) &&
+    length(.control$impThetaSensIdx) > 0L
   # 0-based eta indices whose Omega diagonal is FIXED; the EM Omega update
   # restores their rows/columns to the starting value so fix()ed variances hold.
   .etaOrd <- .etaRows[order(.etaRows$neta1), ]

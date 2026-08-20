@@ -1017,5 +1017,6 @@ List odeSwapInfo_() {
     _["pooledSolveN"] = (double)odeSwapPooledSolveN(),
     _["pooledSolveCores"] = odeSwapPooledSolveCores(),
     _["pinCalledN"] = (double)odeSwapPinCalledN(),
-    _["pinDeny"] = (double)odeSwapPinDeny());
+    _["pinDeny"] = (double)odeSwapPinDeny(),
+    _["impThetaSensHarvestN"] = (double)impThetaSensHarvestN());
 }

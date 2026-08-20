@@ -27,6 +27,17 @@
   seed) change as a result.
 ## New features
 
+- `impmapControl()`/`impControl()` gain `combSens` (default `FALSE`): when
+  `est="impmap"`/`"imp"`/`"qrpem"` has non-mu (structural or residual-error)
+  thetas to estimate, `combSens=TRUE` carries their sensitivity columns on the
+  INNER model itself instead of a second, dedicated model, and the E-step's
+  own per-sample inner solve now supplies the M-step's Newton step directly
+  (no second solve) whenever `sir=FALSE` (the default) -- roughly halving the
+  ODE solving the M-step's theta gradient costs. Opt-in rather than the
+  default: folding the theta-sensitivity states into the eta-sensitivity ODE
+  system changes the integrator's adaptive step-size path, so results move by
+  a small amount relative to the existing two-model default.
+
 - A pure-linear `matExp()` model now solves natively through rxode2's
   matrix-exponential driver (`rxControl(method="indLin")`) under SAEM instead
   of being flattened to an equivalent `d/dt()` ODE first.  SAEM has no
