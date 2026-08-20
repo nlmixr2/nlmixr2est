@@ -206,10 +206,16 @@
   ## and yields a non-finite covariance linearization.  Mirror rxode2::rxSolve()'s
   ## hasDelay enforcement here so the SAEM solve and the covariance dopred both use
   ## the dense dop853 path.
-  if (isTRUE(rxode2::rxModelVars(attr(.model$saem_mod, "rx"))$flags[["hasDelay"]] == 1L)) {
+  .saemMv <- rxode2::rxModelVars(attr(.model$saem_mod, "rx"))
+  if (isTRUE(.saemMv$flags[["hasDelay"]] == 1L)) {
     .rxControl$method <- 0L  # dop853 (dense; no analytic Jacobian required)
     .rxControl$stiff2 <- 0L
     .rxControl$dense <- TRUE # record dense history for delay() interpolation
+  } else if (is.list(.saemMv$indLin) && length(.saemMv$indLin) == 4L) {
+    ## matExp()/indLin(): rxUiGet.saemModel() emits the native (unflattened)
+    ## matExp()/indLin() text (#859), which has no d/dt() at all -- it only
+    ## solves through rxode2's matrix-exponential driver.
+    .rxControl$method <- 3L  # indLin
   }
   .ue <- .uninformativeEtas(ui,
                             handleUninformativeEtas=rxode2::rxGetControl(ui, "handleUninformativeEtas", TRUE),
@@ -380,7 +386,7 @@
     .x <- paste(.predDf$cond[i])
     .tmp <- .iniDf[which(.iniDf$condition == .x), ]
     .w <- which(vapply(.tmp$err,
-                       function(x) any(x == c("prop", "propT", "pow", "powT")),
+                       function(x) any(x == c("prop", "propT", "propF", "pow", "powT", "powF")),
                        logical(1),
                        USE.NAMES=FALSE))
     if (length(.w) == 1) {
@@ -396,7 +402,7 @@
       }
     }
     .w <- which(vapply(.tmp$err,
-                       function(x) any(x == c("pow2", "powT2")),
+                       function(x) any(x == c("pow2", "powF2", "powT2")),
                        logical(1),
                        USE.NAMES=FALSE))
     if (length(.w) == 1) {
@@ -407,7 +413,7 @@
                          .x <- .tmp$err[x]
                          if (any(.x == c(
                            "add", "norm", "dnorm", "lnorm", "dlnorm",
-                           "dlogn", "logn"))) {
+                           "dlogn", "logn", "logitNorm", "probitNorm"))) {
                            if (!is.na(.tmp$est[x])) {
                              return(TRUE)
                            }
@@ -625,7 +631,7 @@
   .saem <- env$saem
   if (is.null(.H) || !is.matrix(.H) || nrow(.H) == 0L ||
         !all(is.finite(.H)) || all(.H == 0)) return(NULL)
-  .np <- nrow(.H)
+  .np <- nrow(.H)  # original nb_param layout; every position below is keyed to this
   .pars <- .ui$saemParamsToEstimate
   .fixed <- .ui$saemFixed
   .saemCfg <- attr(.saem, "saem.cfg")
@@ -650,28 +656,41 @@
     .tn <- .pars; .fx <- .fixed
     .phi0Nm <- character(0)
   }
-  if (length(.tn) == 0L || .np < length(.tn)) return(NULL)
-  # .tn is in the SAME raw row order as .H's leading structural block -- the
-  # kernel keeps a row for a fix()ed theta too (nb_param in src/saem.cpp does
-  # not subtract fixed thetas), so drop positions must be computed against
-  # this UNFILTERED order, not a fixed-filtered one (a fixed theta ahead of a
-  # kept one would otherwise shift every later position and drop the wrong
-  # row).  Drop the degenerate phi0 mu rows/cols before inverting (#906
-  # defect 1; as gamma2_phi0 -> 0 the marginal covariance of the surviving
-  # parameters -- the Schur complement of the full inverse -- converges to
-  # this reduced inverse anyway, since the correction term vanishes with
-  # 1/gamma2_phi0 -> Inf) along with the fixed rows (nothing to report --
-  # known, not estimated).
-  .drop <- union(which(.fx), match(.phi0Nm, .tn))
-  .keep <- if (length(.drop) > 0L) seq_len(.np)[-.drop] else seq_len(.np)
-  .tn <- if (length(.drop) > 0L) .tn[-.drop] else .tn
-  # covariance = inverse of the reduced FIM, in (theta, log-Omega-variance,
-  # log-sigma2) coords
-  .C <- suppressWarnings(tryCatch(solve(.H[.keep, .keep, drop = FALSE]), error = function(e) NULL))
-  if (is.null(.C) || !all(is.finite(.C))) return(NULL)
-  .np <- nrow(.C)
   .nth <- length(.tn)
   if (.nth == 0L || .np < .nth) return(NULL)
+  # .tn is in the SAME raw row order as .H's leading structural block -- the
+  # kernel keeps a row for a fix()ed theta too (nb_param in src/saem.cpp does
+  # not subtract fixed thetas), so it stays UNFILTERED here (a fixed-filtered
+  # .tn would misalign every later position with .H's actual rows); .idx
+  # below is built from .ini, which already excludes fixed names, so a fixed
+  # name's raw position in .tn is never selected on its own.
+  #
+  # Drop three kinds of row/col before inverting, all keyed to this ORIGINAL
+  # (nb_param) layout, translated to the reduced matrix only at the very end
+  # via .orig2sub:
+  #  - the degenerate phi0 mu rows (#906 defect 1): a phi0 theta's mu
+  #    information is 1/gamma2_phi0, a pseudo-variance the M-step decays
+  #    toward 0 (a fixed effect carried as a degenerate random effect); as
+  #    gamma2_phi0 -> 0 the marginal covariance of the surviving parameters
+  #    (the Schur complement of the full inverse) converges to this reduced
+  #    inverse anyway, since the correction term vanishes with
+  #    1/gamma2_phi0 -> Inf.  The caller splices a real SE in from the
+  #    linearized FIM (.saemSplicePhi0Theta).
+  #  - the fixed theta rows: nothing to report for a known, not estimated,
+  #    value.
+  #  - any all-zero row: src/saem.cpp gives a non-additive endpoint's
+  #    residual slot (and a general-log-likelihood endpoint) an exactly-zero
+  #    row/col in every entry, which would make the full matrix singular
+  #    (its column is zero too: Ha/HaSa is symmetric and d2logk/D11 never
+  #    write a cross term into an excluded slot).
+  .zeroRows <- which(apply(.H, 1L, function(.r) all(.r == 0)))
+  .drop <- Reduce(union, list(which(.fx), match(.phi0Nm, .tn), .zeroRows))
+  .keep <- if (length(.drop) > 0L) seq_len(.np)[-.drop] else seq_len(.np)
+  if (length(.keep) == 0L) return(NULL)
+  .C <- suppressWarnings(tryCatch(solve(.H[.keep, .keep, drop = FALSE]), error = function(e) NULL))
+  if (is.null(.C) || !all(is.finite(.C))) return(NULL)
+  .orig2sub <- rep(NA_integer_, .np)
+  .orig2sub[.keep] <- seq_along(.keep)
   .idf <- .ui$iniDf
   # structural theta block (natural scale; H[1:nth] rows are .tn)
   .ini <- .idf[is.na(.idf$err) & !is.na(.idf$ntheta) & !.idf$fix, "name"]
@@ -688,14 +707,31 @@
     .nm <- c(.nm, paste0("om.", .etaN))
     .jac <- c(.jac, .omVar[seq_len(.nEta)])
   }
-  # single additive residual: log-sigma2 -> reported SD, d(sd)/d(log sigma2) = 0.5 sd
-  .ri <- .idf[!is.na(.idf$err) & !.idf$fix, , drop = FALSE]
-  if (nrow(.ri) == 1L && .np == .nth + .nEta + 1L && !grepl("prop|pow", .ri$err)) {
-    .ares <- tryCatch(.saem$resMat[1, 1], error = function(e) NA_real_)
-    if (is.finite(.ares) && .ares > 0) {
-      .idx <- c(.idx, .np); .nm <- c(.nm, .ri$name); .jac <- c(.jac, 0.5 * .ares)
+  # per-endpoint additive residual: src/saem.cpp lays out one log-sigma2 slot per
+  # endpoint (in .predDf$cond order, matching resMat's rows), right after the
+  # theta+Omega-diag block -- d(sd)/d(log sigma2) = 0.5 sd.  Only a PURE additive
+  # endpoint (a single iniDf residual row with err=="add") has a real slot; any
+  # other endpoint's slot was dropped above (all-zero row) and simply has no
+  # surviving column to select here.
+  .predDf <- .ui$predDf
+  .nEp <- length(.predDf$cond)
+  if (.nEp > 0L && .np >= .nth + .nEta + .nEp) {
+    .base <- .nth + .nEta
+    for (.i in seq_len(.nEp)) {
+      .sub <- .orig2sub[.base + .i]
+      if (is.na(.sub)) next
+      .cond <- paste(.predDf$cond[.i])
+      .rows <- .idf[which(.idf$condition == .cond & !is.na(.idf$err)), , drop = FALSE]
+      if (nrow(.rows) != 1L || !identical(.rows$err, "add")) next
+      .ares <- tryCatch(.saem$resMat[.i, 1], error = function(e) NA_real_)
+      if (is.finite(.ares) && .ares > 0) {
+        .idx <- c(.idx, .base + .i); .nm <- c(.nm, .rows$name); .jac <- c(.jac, 0.5 * .ares)
+      }
     }
   }
+  .sub <- .orig2sub[.idx]
+  .have <- !is.na(.sub)
+  .idx <- .sub[.have]; .nm <- .nm[.have]; .jac <- .jac[.have]
   .cov <- outer(.jac, .jac) * .C[.idx, .idx, drop = FALSE]   # delta method to reported scale
   dimnames(.cov) <- list(.nm, .nm)
   # require a valid (finite, PD) covariance; otherwise let the caller fall back

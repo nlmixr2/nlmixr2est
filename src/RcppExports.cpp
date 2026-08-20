@@ -1850,6 +1850,21 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// saemFormGTest
+SEXP saemFormGTest(SEXP inA, SEXP inB, SEXP inFt, SEXP inC, SEXP inAddProp);
+RcppExport SEXP _nlmixr2est_saemFormGTest(SEXP inASEXP, SEXP inBSEXP, SEXP inFtSEXP, SEXP inCSEXP, SEXP inAddPropSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type inA(inASEXP);
+    Rcpp::traits::input_parameter< SEXP >::type inB(inBSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type inFt(inFtSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type inC(inCSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type inAddProp(inAddPropSEXP);
+    rcpp_result_gen = Rcpp::wrap(saemFormGTest(inA, inB, inFt, inC, inAddProp));
+    return rcpp_result_gen;
+END_RCPP
+}
 // nlmixr2Parameters
 List nlmixr2Parameters(NumericVector theta, DataFrame eta);
 RcppExport SEXP _nlmixr2est_nlmixr2Parameters(SEXP thetaSEXP, SEXP etaSEXP) {

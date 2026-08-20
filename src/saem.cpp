@@ -13,6 +13,7 @@
 #include "nearPD.h"
 #include "inner.h"
 #include "solveWarnHelper.h"
+#include "truncNorm.h"
 
 #define _(String) (String)
 
@@ -106,6 +107,33 @@ static inline double handleF(int powt, double &ft, double &f, bool trunc, bool a
     else if (fa > xmax) fa = xmax;
   }
   return fa;
+}
+
+// Per-observation combined-error SD for the E-step/simulation, matching the
+// per-endpoint combined1/combined2 branch the M-step objective functions use
+// (objC()/objD(): combined1 g = a + b*|f|^c, combined2 g = sqrt(a^2+b^2*f^(2c))).
+// c (cres) defaults to 1 for every non-pow() residual model (rmAdd/rmProp/
+// rmAddProp and their lambda siblings), so this reduces to the pre-#972
+// formula there; only rmPow/rmAddPow/rmPowLam/rmAddPowLam actually estimate
+// c != 1 (#972).
+// Fills g in place (a scalar loop, no temporaries) so it can run inside the
+// pre-allocated per-chain E-step scratch buffers (_scratch_g) without
+// defeating their point.
+static inline void saemFormG(vec &g, const vec &a, const vec &b, const vec &ft, const vec &c, const uvec &addPropVec) {
+  const arma::uword n = ft.n_elem;
+  for (arma::uword i = 0; i < n; ++i) {
+    double fa = std::fabs(ft[i]);
+    // c[i]==1 is every non-pow() endpoint (the overwhelming common case) --
+    // skip pow() there so g is bit-identical to the pre-#972 formula instead
+    // of merely numerically equal (SAEM's MCMC acceptance is sensitive
+    // enough to a ULP-level g difference that it is not a no-op in practice).
+    double fac = (c[i] == 1.0) ? fa : std::pow(fa, c[i]);
+    if (addPropVec[i] == 1) {
+      g[i] = a[i] + b[i]*fac;
+    } else {
+      g[i] = std::sqrt(a[i]*a[i] + b[i]*b[i]*fac*fac);
+    }
+  }
 }
 
 static inline void ensureSaemFixedTransformCache() {
@@ -219,7 +247,7 @@ void objC(double *ab, double *fx) {
     } else {
       double ab0 = ab02*ab02;
       double ab1 = ab12*ab12;
-      g = ab0*ab0 + ab1*ab1*pow(fa, 2*pw);
+      g = sqrt(ab0*ab0 + ab1*ab1*pow(fa, 2*pw));
     }
     if (g < xmin) g = xmin;
     if (g > xmax) g = xmax;
@@ -610,6 +638,59 @@ static inline void _saemSeedDoMcmc(uint32_t baseSeed, int kiter, int method, int
   s = s * 2654435761u + (uint32_t)k1;
   s += (uint32_t)mixIdx;               // per-component stream offset
   nmSetSeedEng1(s);
+}
+
+// Iteration-indexed threefry stream seed for the censored-DV data-augmentation
+// draw (see simCensDv()/augmentCensY() below), independent of the do_mcmc
+// proposal streams above.  Keyed by (kiter, chain k, endpoint b, mixIdx) so
+// every (iteration, chain, endpoint, component) combination gets its own
+// stream; a fit is reproducible given saemControl(seed=).
+static inline void _saemSeedCensAug(uint32_t baseSeed, int kiter, int k, int b,
+                                    int mixIdx) {
+  setRxThreadId(0);
+  uint32_t s = baseSeed;
+  s = s * 2654435761u + 0x63656E73u;   // "cens" namespace tag
+  s = s * 2654435761u + (uint32_t)kiter;
+  s = s * 2654435761u + (uint32_t)k;
+  s = s * 2654435761u + (uint32_t)b;
+  // per-component stream offset (mixIdx can be -1); multiply-folded like every
+  // other field above -- a bare `+=` here collides whenever b and mixIdx+1
+  // sum to the same value (e.g. b=0,mixIdx=1 vs b=1,mixIdx=0).
+  s = s * 2654435761u + (uint32_t)(mixIdx + 1);
+  nmSetSeedEng1(s);
+}
+
+// Simulate the "true" value of a censored (M3/M4) observation from the
+// truncated normal implied by the current transformed prediction/residual SD
+// -- data augmentation (Samson, Lavielle & Mentre 2006) so the M-step
+// residual SSR sees a draw from the censored region instead of the recorded
+// LOQ/limit.  M2 rows carry a real measurement and are returned unchanged.
+// cens/limDv/lim follow the doCensNormal1() convention (all on the
+// transformed scale here); sd is the endpoint's current residual SD.  The
+// draw itself is rxTruncNorm() (truncNorm.h) -- the same Botev (2015)
+// algorithm CWRES's censored-observation simulation uses (censResid.h's
+// truncnorm(), via rxode2's rxRmvn) -- rather than a plain inverse-CDF draw,
+// which loses precision once the truncation bounds are a few SDs from the
+// mean (the regime a BQL row's bound often sits in).
+static inline double simCensDv(double cens, double limDv, double lim, double f,
+                               double sd) {
+  if (!(cens == 1.0 || cens == -1.0)) return limDv;
+  double lo = R_NegInf, hi = R_PosInf;
+  if (R_FINITE(lim) && !ISNA(lim)) {
+    // M4: truncation interval is between limDv (the LOQ) and lim (the other,
+    // informative bound); cens picks which side is which.
+    if (cens > 0) { lo = lim;   hi = limDv; } else { lo = limDv; hi = lim; }
+  } else if (cens > 0) {
+    // M3, left-censored: y <= limDv
+    hi = limDv;
+  } else {
+    // M3, right-censored: y >= limDv
+    lo = limDv;
+  }
+  double zl = R_FINITE(lo) ? (lo - f) / sd : R_NegInf;
+  double zu = R_FINITE(hi) ? (hi - f) / sd : R_PosInf;
+  if (!(zu > zl)) return limDv;        // degenerate/inverted bound: keep the historical value
+  return f + sd * rxTruncNorm(zl, zu);
 }
 
 // class def starts
@@ -1064,12 +1145,36 @@ public:
   }
 
   // Per-observation Gaussian -LL contribution with the AR(1) whitening applied
-  // (reduces to the independent 0.5*((yt-ft)/g)^2 + log(g) when no AR).
+  // (reduces to the independent 0.5*((yt-ft)/g)^2 + log(g) when no AR).  Also
+  // writes the whitened (conditional) prediction/SD into _scratch_ftAr/_scratch_gAr
+  // so a censored row on the SAME chain can be scored against the AR(1)
+  // conditional distribution, not the marginal (ft, g) -- see #918.
   vec arDYFhyp(const vec &yt, const vec &ft, const vec &g) {
     vec e = yt - ft;
     vec gg = g;
     arWhiten(e, gg);
+    _scratch_ftAr = yt - e;
+    _scratch_gAr = gg;
     return 0.5*(e/gg)%(e/gg) + log(gg);
+  }
+
+  // Replace the normal per-observation loss in `DYFm` with the censored one
+  // (#876).  doCensNormal1 speaks the FOCEi inner's language -- it takes and
+  // returns a LOG-LIKELIHOOD, wants the VARIANCE, and reads the DV on the
+  // TRANSFORMED scale -- while the SAEM chain carries the NEGATED
+  // log-likelihood (a loss), the residual SD `g`, and the untransformed y.
+  // Translating in both directions is what makes a censored row score the
+  // same here as in likInner0: without it an M3/M4 row's censored term
+  // arrives with its sign flipped (a log-likelihood stored back as a loss)
+  // and its scale wrong (SD passed where a variance is wanted). An
+  // uncensored row comes back untouched.
+  inline void applyCensLoss(mat &DYFm, const uvec &indioK, const vec &censk,
+                            const vec &ytk, const vec &limT, const vec &ft,
+                            const vec &g) const {
+    for (int j = ntotal; j--;) {
+      DYFm(indioK(j)) = -doCensNormal1(censk[j], ytk[j], limT[j],
+                                       -DYFm(indioK(j)), ft[j], g[j]*g[j], 0);
+    }
   }
 
   // Final per-endpoint estimated AR(1) correlation (0 for non-AR endpoints).
@@ -1178,6 +1283,78 @@ public:
       }
     }
     return resk;
+  }
+
+  // Data augmentation for the M-step residual SSR (see #916): return a copy of
+  // this chain/endpoint's transformed observation vector with every censored
+  // (M3/M4) row replaced by a draw from the truncated normal implied by this
+  // chain's prediction (simCensDv()), so arResk()/the direct SSR see a value
+  // consistent with the censoring instead of the recorded LOQ/limit.
+  // cens_cur/limit_cur are RAW (untransformed), same length/order as y_cur/
+  // f_cur (chain-sliced, ix_sorting-applied, endpoint span).
+  //
+  // y_cur is on whatever scale the caller's hasFixedObsTransform branch put
+  // it on (ysTrans, i.e. already transformed, when the TBS transform is
+  // fixed; the raw ys when it is estimated -- see arResk()'s own read of
+  // y_cur a few lines below every call site).  simCensDv() itself works
+  // entirely on the TRANSFORMED scale (that is what f/sd/the truncation
+  // bounds are in), so both the limDv fed to it and the value it returns are
+  // converted between that scale and y_cur's ambient one via _powerD()/
+  // _powerDi() -- a no-op when hasFixedObsTransform is true.  This keeps a
+  // censored row's simulated replacement on the SAME scale as its
+  // uncensored neighbors in the returned vector; it does not touch the
+  // separate, pre-existing mismatch between y_cur and f_cur that arResk()
+  // itself has for EVERY row (censored or not) when the transform is
+  // estimated, which traces to #914 (the saem lambda member never actually
+  // updates from its initial value) and is out of scope here.
+  vec augmentCensY(int b, const vec &f_cur, const vec &y_cur,
+                    const vec &cens_cur, const vec &limit_cur,
+                    int kiter, int k, int mixIdx) {
+    if (!arma::any(cens_cur != 0.0)) return y_cur;
+    vec y_aug = y_cur;
+    _saemSeedCensAug((uint32_t)saemSeed, kiter, k, b, mixIdx);
+    const double double_xmin = 1.0e-200, xmax = 1e300;
+    for (unsigned int i = 0; i < y_aug.n_elem; i++) {
+      if (cens_cur[i] == 0.0) continue;
+      double fci = f_cur[i];
+      double ft = _powerD(fci, lambda(b), yj(b), low(b), hi(b));
+      double ftT = handleF(propT(b), ft, fci, false, true);
+      double sd = ares(b) + bres(b) * std::fabs(ftT);
+      if (sd == 0.0) sd = 1.0;
+      else if (sd < double_xmin) sd = double_xmin;
+      else if (sd > xmax) sd = xmax;
+      double limT = _powerD(limit_cur[i], lambda(b), yj(b), low(b), hi(b));
+      double limDvT = hasFixedObsTransform ? y_cur[i] :
+        _powerD(y_cur[i], lambda(b), yj(b), low(b), hi(b));
+      double simT = simCensDv(cens_cur[i], limDvT, limT, ft, sd);
+      y_aug[i] = hasFixedObsTransform ? simT :
+        _powerDi(simT, lambda(b), yj(b), low(b), hi(b));
+    }
+    setRxThreadId(-1);
+    return y_aug;
+  }
+
+  // Fill this chain's per-endpoint residual log-sigma2 score/Hessian entries
+  // from resy(b,k) (endpoint b's residual SSR for MCMC chain k).  Only a pure
+  // additive endpoint (res_mod==rmAdd) has a valid single-parameter
+  // log-sigma2 score; every other endpoint's slot is held at exactly 0 (see
+  // the nb_param comment in inits()).  d1_logsigma2 must already be sized
+  // nResidEp; d2logk is nb_param x nb_param.
+  void fillResidLogSigma2(int k, const mat &resy, vec &d1_logsigma2, mat &d2logk) {
+    int resBase = nlambda + nphi1;
+    for (int b = 0; b < nendpnt; b++) {
+      int idx = residEpIdx[b];
+      if (idx < 0) continue;
+      int col = resBase + idx;
+      if (res_mod(b) == rmAdd) {
+        double nb = (double)(y_offset(b + 1) - y_offset(b));
+        d1_logsigma2[idx] = 0.5 * resy(b, k) / sigma2[b] - 0.5 * nb;
+        d2logk(col, col) = -0.5 * resy(b, k) / sigma2[b];
+      } else {
+        d1_logsigma2[idx] = 0.0;
+        d2logk(col, col) = 0.0;
+      }
+    }
   }
 
   mat get_resMat() {
@@ -1406,7 +1583,6 @@ public:
     nlambda1 = as<int>(x["nlambda1"]);
     nlambda0 = as<int>(x["nlambda0"]);
     nlambda = nlambda1 + nlambda0;
-    nb_param = nphi1 + nlambda + 1;
     nphi = nphi1+nphi0;
     Plambda.zeros(nlambda);
     ilambda1 = as<uvec>(x["ilambda1"]);
@@ -1417,6 +1593,23 @@ public:
 
     //FIXME
     nendpnt=as<int>(x["nendpnt"]);
+    distribution=as<int>(x["distribution"]);
+    // One FIM residual slot per endpoint that carries a residual parameter --
+    // none when the whole model is a general log-likelihood (distribution==4;
+    // "any LL endpoint" forces the WHOLE model to distribution==4, so no
+    // endpoint has a real residual in that case).  Sizing to nendpnt (not
+    // nres, the total residual PARAMETER count) is deliberate: the analytic
+    // Louis FIM only ever tracks a single log-sigma2 score/Hessian per
+    // endpoint, valid only for a pure additive residual (res_mod==rmAdd);
+    // any other endpoint's slot exists (so nb_param has a fixed layout) but
+    // its d1_logsigma2/d2logk entries are held at exactly 0 in every
+    // iteration, so its row/col of Ha/HaSa stays exactly 0 and
+    // .saemFimToCov (R/saem.R) can drop it and fall back to the linFim
+    // splice for that endpoint's residual SE.
+    nResidEp = (distribution == 4) ? 0 : nendpnt;
+    for (int b = 0; b < MAXENDPNT; ++b) residEpIdx[b] = -1;
+    for (int b = 0; b < nResidEp; ++b) residEpIdx[b] = b;
+    nb_param = nphi1 + nlambda + nResidEp;
     ix_sorting=as<uvec>(x["ix_sorting"]);
     ys = y(ix_sorting);    //ys: obs sorted by endpnt
     y_offset=as<uvec>(x["y_offset"]);
@@ -1427,7 +1620,10 @@ public:
     lres = as<vec>(x["lres"]);
     yj = as<uvec>(x["yj"]);
     propT=as<uvec>(x["propT"]);
-    lambda = as<vec>(x["lambda"]);
+    // lambda mirrors lres (the M-step's working boxCox/yeoJohnson estimate);
+    // seed it from lres, not x["lambda"] (which the R side always ships as 1),
+    // and keep it synced wherever lres is updated below (#914).
+    lambda = lres;
     low = as<vec>(x["low"]);
     hi = as<vec>(x["hi"]);
 
@@ -1467,11 +1663,14 @@ public:
     vecbres = bres(ix_endpnt);
     veccres = cres(ix_endpnt);
     veclres = lres(ix_endpnt);
+    vecaddProp = addProp(ix_endpnt);
     // Pre-allocate per-chain scratch buffers for the distribution==1 hot loops
     _scratch_ft.set_size(ntotal);
     _scratch_limitT.set_size(ntotal);
     _scratch_ftT.set_size(ntotal);
     _scratch_g.set_size(ntotal);
+    _scratch_ftAr.set_size(ntotal);
+    _scratch_gAr.set_size(ntotal);
     _scratch_indio = indio;  // same length as indio, initialise from it
     _arRorig.set_size(ntotal);
     for (int b=0; b<nendpnt; ++b) {
@@ -1547,7 +1746,6 @@ public:
     mx.evtM   = evt;
     mx.optM   = optM;
 
-    distribution=as<int>(x["distribution"]);
     nonMuThetaRegress = x.containsElementNamed("nonMuThetaRegress") ?
       as<int>(x["nonMuThetaRegress"]) : 0;
     nonMuThetaOptType = x.containsElementNamed("nonMuThetaOptType") ?
@@ -1812,7 +2010,7 @@ public:
       mat D11 = zeros<mat>(nb_param, nb_param);
       mat D2 = zeros<mat>(nb_param, nb_param);
       mat d2logk = zeros<mat>(nb_param, nb_param);
-      vec resy(nmc);
+      mat resy(nendpnt, nmc);  // resy(b, k): endpoint b's residual SSR for chain k
       vec fsM;
       fsM.set_size(0);
 
@@ -1842,6 +2040,8 @@ public:
         // E-step: posterior responsibility gamma_{i,m} (softmax, see mixWeights below) from
         // the one simulated phi, plus per-hypothesis predictions for the residual term below.
         field<vec> fsave_hyp(nMix);
+        field<vec> cens_hyp(nMix);
+        field<vec> limit_hyp(nMix);
         mat Ly(N, nMix, fill::zeros);
         for (int mHyp = 0; mHyp < nMix; mHyp++) {
           current_saem_state->_saemMixest = mHyp + 1;
@@ -1850,6 +2050,8 @@ public:
           vec fHyp = hypMat.col(0);
           vec censHyp = hypMat.col(1);
           vec limitHyp = hypMat.col(2);
+          cens_hyp(mHyp) = censHyp;
+          limit_hyp(mHyp) = limitHyp;
           mat DYFhyp = zeros<mat>(mlen, nM);
           if (distribution == 1) {
             vec yt = hasFixedObsTransform ? yTrans : y;
@@ -1873,16 +2075,14 @@ public:
                 _scratch_ft(i) = _powerD(fk(i), lambda(cur), yj(cur), low(cur), hi(cur));
                 _scratch_ftT(i) = handleF(propT(cur), _scratch_ft(i), fk(i), false, true);
               }
-              _scratch_g = vecares + vecbres % abs(_scratch_ftT);
+              saemFormG(_scratch_g, vecares, vecbres, _scratch_ftT, veccres, vecaddProp);
               _scratch_g.elem(find(_scratch_g == 0.0)).fill(1.0);
               _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
               _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
               _scratch_indio = indio + (arma::uword)k * stride;
               DYFhyp(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
-              for (int j = ntotal; j--;) {
-                DYFhyp(_scratch_indio(j)) = doCensNormal1(censk[j], y[j], _scratch_limitT[j],
-                                                       DYFhyp(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
-              }
+              applyCensLoss(DYFhyp, _scratch_indio, censk, yt, _scratch_limitT,
+                            _scratch_ftAr, _scratch_gAr);
             }
           } else if (distribution == 2) {
             for (int k = 0; k < nmc; k++) {
@@ -1994,10 +2194,20 @@ public:
               } else {
                 y_cur = ys(span(y_offset(b), y_offset(b+1)-1));
               }
+              vec censK = cens_hyp(mHyp).subvec(k * ntotal, (k + 1) * ntotal - 1);
+              censK = censK(ix_sorting);
+              vec limitK = limit_hyp(mHyp).subvec(k * ntotal, (k + 1) * ntotal - 1);
+              limitK = limitK(ix_sorting);
+              // #916: data augmentation -- replace censored (M3/M4) rows with a
+              // simulated draw before building the residual SSR below.
+              y_cur = augmentCensY(b, f_cur, y_cur,
+                                    censK(span(y_offset(b), y_offset(b+1)-1)),
+                                    limitK(span(y_offset(b), y_offset(b+1)-1)),
+                                    (int)kiter, k, mHyp);
               resk += arResk(b, f_cur, y_cur, mHyp);
             }
             statr[b] += resk;
-            resy(k) = resk;
+            resy(b, k) = resk;
           }
 
           mat dphi1k = phi1k - mprior_phi1;
@@ -2008,8 +2218,8 @@ public:
           vec d1_mu_phi1 = Md1(ind_cov1);
           vec d1_mu_phi0 = Md0(ind_cov0);
           vec d1_loggamma2_phi1 = 0.5 * sdg1 - 0.5 * N;
-          vec d1_logsigma2(1);
-          d1_logsigma2[0] = 0.5 * resy(k) / sigma2[0] - 0.5 * ntotal;
+          vec d1_logsigma2(nResidEp);
+          fillResidLogSigma2(k, resy, d1_logsigma2, d2logk);
           vec d1logk = join_cols(d1_mu_phi1, join_cols(d1_mu_phi0, join_cols(d1_loggamma2_phi1, d1_logsigma2)));
           D1 = D1 + d1logk;
           D11 = D11 + d1logk * d1logk.t();
@@ -2024,7 +2234,6 @@ public:
             }
             d2logk(nlambda + j, nlambda + j) = w2phi(j);
           }
-          d2logk(nb_param - 1, nb_param - 1) = -0.5 * resy(k) / sigma2[0];
           D2 = D2 + d2logk;
         }
       } else if (nMix > 1) {
@@ -2073,16 +2282,14 @@ public:
                 _scratch_ft(i) = _powerD(fk(i), lambda(cur), yj(cur), low(cur), hi(cur));
                 _scratch_ftT(i) = handleF(propT(cur), _scratch_ft(i), fk(i), false, true);
               }
-              _scratch_g = vecares + vecbres % abs(_scratch_ftT);
+              saemFormG(_scratch_g, vecares, vecbres, _scratch_ftT, veccres, vecaddProp);
               _scratch_g.elem(find(_scratch_g == 0.0)).fill(1.0);
               _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
               _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
               _scratch_indio = indio + (arma::uword)k * stride;
               cur_DYF(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
-              for (int j = ntotal; j--;) {
-                cur_DYF(_scratch_indio(j)) = doCensNormal1(censk[j], y[j], _scratch_limitT[j],
-                                                       cur_DYF(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
-              }
+              applyCensLoss(cur_DYF, _scratch_indio, censk, yt, _scratch_limitT,
+                            _scratch_ftAr, _scratch_gAr);
             }
           } else if (distribution == 2) {
             for (int k = 0; k < nmc; k++) {
@@ -2279,10 +2486,20 @@ public:
               } else {
                 y_cur = ys(span(y_offset(b), y_offset(b+1)-1));
               }
+              vec censK = cens_mix(jMix).subvec(k * ntotal, (k + 1) * ntotal - 1);
+              censK = censK(ix_sorting);
+              vec limitK = limit_mix(jMix).subvec(k * ntotal, (k + 1) * ntotal - 1);
+              limitK = limitK(ix_sorting);
+              // #916: data augmentation -- replace censored (M3/M4) rows with a
+              // simulated draw before building the residual SSR below.
+              y_cur = augmentCensY(b, f_cur, y_cur,
+                                    censK(span(y_offset(b), y_offset(b+1)-1)),
+                                    limitK(span(y_offset(b), y_offset(b+1)-1)),
+                                    (int)kiter, k, jMix);
               resk += arResk(b, f_cur, y_cur, jMix);
             }
             statr[b] += resk;
-            resy(k) = resk;
+            resy(b, k) = resk;
           }
 
           vec sdg1 = sdg1_w / gamma2_phi1;
@@ -2291,8 +2508,8 @@ public:
           vec d1_mu_phi1 = Md1(ind_cov1);
           vec d1_mu_phi0 = Md0(ind_cov0);
           vec d1_loggamma2_phi1 = 0.5 * sdg1 - 0.5 * N;
-          vec d1_logsigma2(1);
-          d1_logsigma2[0] = 0.5 * resy(k) / sigma2[0] - 0.5 * ntotal;
+          vec d1_logsigma2(nResidEp);
+          fillResidLogSigma2(k, resy, d1_logsigma2, d2logk);
           vec d1logk = join_cols(d1_mu_phi1, join_cols(d1_mu_phi0, join_cols(d1_loggamma2_phi1, d1_logsigma2)));
           D1 = D1 + d1logk;
           D11 = D11 + d1logk * d1logk.t();
@@ -2307,7 +2524,6 @@ public:
             }
             d2logk(nlambda + j, nlambda + j) = w2phi(j);
           }
-          d2logk(nb_param - 1, nb_param - 1) = -0.5 * resy(k) / sigma2[0];
           D2 = D2 + d2logk;
         }
         for (int k = 0; k < nmc; k++) {
@@ -2349,16 +2565,14 @@ public:
               _scratch_ft(i) = _powerD(fk(i), lambda(cur), yj(cur), low(cur), hi(cur));
               _scratch_ftT(i) = handleF(propT(cur), _scratch_ft(i), fk(i), false, true);
             }
-            _scratch_g = vecares + vecbres % abs(_scratch_ftT);
+            saemFormG(_scratch_g, vecares, vecbres, _scratch_ftT, veccres, vecaddProp);
             _scratch_g.elem(find(_scratch_g == 0.0)).fill(1.0);
             _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
             _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
             _scratch_indio = indio + (arma::uword)k * stride;
             DYF(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
-            for (int j = ntotal; j--;) {
-              DYF(_scratch_indio(j)) = doCensNormal1(censk[j], y[j], _scratch_limitT[j],
-                                                     DYF(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
-            }
+            applyCensLoss(DYF, _scratch_indio, censk, yt, _scratch_limitT,
+                          _scratch_ftAr, _scratch_gAr);
           }
         } else if (distribution == 2){
           for (int k = 0; k < nmc; k++) {
@@ -2426,6 +2640,10 @@ public:
           fk = fk(ix_sorting);    //sorted by endpnt
           fsM = join_cols(fsM, fk);
           // vec resid_all(ys.size());// = ys - fk;
+          vec censK = cens.subvec(k*ntotal, (k+1)*ntotal-1);
+          censK = censK(ix_sorting);
+          vec limitK = limit.subvec(k*ntotal, (k+1)*ntotal-1);
+          limitK = limitK(ix_sorting);
           vec gk, y_cur, f_cur;
           double ft, fa;
           //loop thru endpoints here
@@ -2440,6 +2658,12 @@ public:
               y_cur = ys(span(y_offset(b), y_offset(b+1)-1));
             }
             f_cur = fk(span(y_offset(b), y_offset(b+1)-1));
+            // #916: data augmentation -- replace censored (M3/M4) rows with a
+            // simulated draw before building the residual SSR below.
+            y_cur = augmentCensY(b, f_cur, y_cur,
+                                  censK(span(y_offset(b), y_offset(b+1)-1)),
+                                  limitK(span(y_offset(b), y_offset(b+1)-1)),
+                                  (int)kiter, k, -1);
             vec resid(y_cur.size());
             for (int i = y_cur.size(); i--;){
               resid(i) = y_cur[i];
@@ -2473,7 +2697,7 @@ public:
             }
 
             statr[b]=statr[b]+resk;
-            resy(k) = resk;                                          //FIXME: resy(b,k)?
+            resy(b, k) = resk;
           }
           if (DEBUG>1) Rcout << "star[] successful\n";
 
@@ -2485,9 +2709,10 @@ public:
           vec d1_mu_phi1=Md1(ind_cov1);                              //CHK!! vec or mat
           vec d1_mu_phi0=Md0(ind_cov0);                              //CHK!! vec or mat
           vec d1_loggamma2_phi1=0.5*sdg1-0.5*N;
-          vec d1_logsigma2(1);
-          // general log-likelihood: no residual param, so its FIM row is 0
-          d1_logsigma2[0] = (distribution == 4) ? 0.0 : 0.5*resy(k)/sigma2[0]-0.5*ntotal; //FIXME: sigma2[0], sigma2[b] instead?
+          // general log-likelihood (distribution==4): no residual param, so
+          // nResidEp==0 and this block is empty
+          vec d1_logsigma2(nResidEp);
+          if (distribution != 4) fillResidLogSigma2(k, resy, d1_logsigma2, d2logk);
           vec d1logk=join_cols(d1_mu_phi1, join_cols(d1_mu_phi0, join_cols(d1_loggamma2_phi1, d1_logsigma2)));
           D1 = D1+d1logk;
           D11= D11+d1logk*d1logk.t();
@@ -2502,7 +2727,6 @@ public:
             }
             d2logk(nlambda+j,nlambda+j)=w2phi(j);
           }
-          d2logk(nb_param-1,nb_param-1)=(distribution == 4) ? 0.0 : -0.5*resy(k)/sigma2[0];      //FIXME: sigma2[0], sigma2[b] instead?
           D2=D2+d2logk;
         }
       }//k
@@ -3054,6 +3278,7 @@ public:
               ares(b) = ares(b) + pas(kiter)*(pxmin[0]*pxmin[0] - ares(b));    //force are & bres to be positive
               lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[1]) - lres(b));   //force are & bres to be positive
             }
+            lambda(b) = lres(b);
           }
           break;
         case rmPropLam:
@@ -3117,6 +3342,7 @@ public:
               bres(b) = bres(b) + pas(kiter)*(pxmin[0]*pxmin[0] - bres(b));    //force are & bres to be positive
               lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[1]) - lres(b));            //force are & bres to be positive
             }
+            lambda(b) = lres(b);
           }
           break;
         case rmPowLam:
@@ -3193,6 +3419,7 @@ public:
               cres(b) = cres(b) + pas(kiter)*(toPow(pxmin[1]) - cres(b));    //force are & bres to be positive
               lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[2]) - lres(b));            //force are & bres to be positive
             }
+            lambda(b) = lres(b);
           }
           break;
         case rmAddPropLam:
@@ -3269,6 +3496,7 @@ public:
               bres(b) = bres(b) + pas(kiter)*(pxmin[1]*pxmin[1] - bres(b));    //force are & bres to be positive
               lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[2]) - lres(b));            //force are & bres to be positive
             }
+            lambda(b) = lres(b);
           }
           break;
         case rmAddPowLam:
@@ -3358,6 +3586,7 @@ public:
               cres(b) = cres(b) + pas(kiter)*(toPow(pxmin[2]) - cres(b));    //force are & bres to be positive
               lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[3]) - lres(b));            //force are & bres to be positive
             }
+            lambda(b) = lres(b);
           }
           break;
         }
@@ -3367,6 +3596,7 @@ public:
       }
       vecares = ares(ix_endpnt);
       vecbres = bres(ix_endpnt);
+      veccres = cres(ix_endpnt);
       if (DEBUG>0) Rcout << "par update successful\n";
 
       //    Fisher information
@@ -3517,6 +3747,7 @@ public:
       Gamma2_phi1Report = _savGamma2_phi1Report; mprior_phi1 = _savMprior_phi1;
       mprior_phi0 = _savMprior_phi0; ares = _savAres; bres = _savBres; cres = _savCres;
       lres = _savLres; vcsig2 = _savVcsig2; phiM = _savPhiM; Ha = _savHa;
+      lambda = lres;
       if (nMix > 1) { mixProb = _savMixProb; mixWeights = _savMixWeights; }
     }
     phiFile.close();
@@ -3586,6 +3817,11 @@ private:
 
   int nlambda1, nlambda0, nlambda, nb_param;
   uvec ilambda1, ilambda0;
+  // one FIM residual slot per endpoint (see the nb_param comment in inits());
+  // residEpIdx[b] is that endpoint's compacted slot, or -1 when the whole
+  // model is a general log-likelihood (nResidEp==0)
+  int nResidEp;
+  int residEpIdx[MAXENDPNT];
 
   mat statphi01, statphi02, statphi11, statphi12;
   // Per-component, unblended sufficient statistic (never mixed across components); used to fix
@@ -3595,7 +3831,7 @@ private:
   double sigma2[MAXENDPNT];
   vec ares, bres, cres, lres, lambda, low, hi;
   vec vecares, vecbres, veccres, veclres;
-  uvec res_mod, yj, propT, addProp;
+  uvec res_mod, yj, propT, addProp, vecaddProp;
 
   mat DYF;
   cube phi;
@@ -3700,6 +3936,8 @@ private:
   vec _scratch_ftT;     // handleF output per chain (replaces ftTk/fcTk)
   vec _scratch_g;       // residual SD per chain (replaces gk/gck)
   uvec _scratch_indio;  // DYF row indices per chain (replaces indio_k)
+  vec _scratch_ftAr;    // AR(1)-conditional prediction, filled by arDYFhyp()
+  vec _scratch_gAr;     // AR(1)-conditional SD, filled by arDYFhyp()
 
   uvec obs_subject;
 
@@ -3773,12 +4011,6 @@ private:
     mphi1.Gdiag_phi.zeros(nphi1, nphi1);
     mphi1.Gdiag_phi.diag() = sqrt(Gamma2_phi1.diag())*rmcmc;
     mphi1.mprior_phiM = repmat(mprior_phi1,nmc,1);
-  }
-
-  static inline void doCens(mat &DYF, vec &cens, vec &limit, vec &fc, vec &r, const vec &dv) {
-    for (int j = (int)cens.size(); j--;) {
-      DYF(j) = doCensNormal1(cens[j], dv[j], limit[j], DYF(j), fc[j], r[j], 0);
-    }
   }
 
   void do_mcmc(const int method,
@@ -3861,16 +4093,14 @@ private:
                 _scratch_ft(i) = _powerD(fsk(i), lambda(cur), yj(cur), low(cur), hi(cur));
                 _scratch_ftT(i) = handleF(propT(cur), _scratch_ft(i), fsk(i), false, true);
               }
-              _scratch_g = vecares + vecbres % abs(_scratch_ftT);
+              saemFormG(_scratch_g, vecares, vecbres, _scratch_ftT, veccres, vecaddProp);
               _scratch_g.elem(find(_scratch_g == 0.0)).fill(1);
               _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
               _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
               _scratch_indio = mx.indio + (arma::uword)k * stride;
               DYF(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
-              for (int j = ntotal; j--;) {
-                DYF(_scratch_indio(j)) = doCensNormal1(censk[j], mx.y[j], _scratch_limitT[j],
-                                                       DYF(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
-              }
+              applyCensLoss(DYF, _scratch_indio, censk, yt, _scratch_limitT,
+                            _scratch_ftAr, _scratch_gAr);
             }
           }
           break;
@@ -3972,16 +4202,14 @@ private:
               _scratch_ft(i) = _powerD(fsk(i), lambda(cur), yj(cur), low(cur), hi(cur));
               _scratch_ftT(i) = handleF(propT(cur), fsk(i), _scratch_ft(i), false, true);
             }
-            _scratch_g = vecares + vecbres % abs(_scratch_ftT);
+            saemFormG(_scratch_g, vecares, vecbres, _scratch_ftT, veccres, vecaddProp);
             _scratch_g.elem(find(_scratch_g == 0.0)).fill(1);
             _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
             _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
             _scratch_indio = mx.indio + (arma::uword)k * stride;
             DYFm(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
-            for (int j = ntotal; j--;) {
-              DYFm(_scratch_indio(j)) = doCensNormal1(censk[j], mx.y[j], _scratch_limitT[j],
-                                                     DYFm(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
-            }
+            applyCensLoss(DYFm, _scratch_indio, censk, yt, _scratch_limitT,
+                          _scratch_ftAr, _scratch_gAr);
           }
         }
         break;
@@ -4085,16 +4313,14 @@ private:
             _scratch_ft(i) = _powerD(fk(i), lambda(cur), yj(cur), low(cur), hi(cur));
             _scratch_ftT(i) = handleF(propT(cur), fk(i), _scratch_ft(i), false, true);
           }
-          _scratch_g = vecares + vecbres % abs(_scratch_ftT);
+          saemFormG(_scratch_g, vecares, vecbres, _scratch_ftT, veccres, vecaddProp);
           _scratch_g.elem(find(_scratch_g == 0.0)).fill(1.0);
           _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
           _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
           _scratch_indio = indio + (arma::uword)k * stride;
           DYFhyp(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
-          for (int j = ntotal; j--;) {
-            DYFhyp(_scratch_indio(j)) = doCensNormal1(censk[j], y[j], _scratch_limitT[j],
-                                                   DYFhyp(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
-          }
+          applyCensLoss(DYFhyp, _scratch_indio, censk, yt, _scratch_limitT,
+                        _scratch_ftAr, _scratch_gAr);
         }
       } else if (distribution == 2) {
         for (int k = 0; k < nmc; k++) {
@@ -4507,4 +4733,19 @@ SEXP saem_fit(SEXP xSEXP) {
   out.attr("saem.cfg") = x;
   out.attr("class") = "saemFit";
   return out;
+}
+
+// Test-only wrapper: exposes the E-step's per-observation combined-error SD
+// (saemFormG(), used at every _scratch_g site) so it can be pinned against
+// the M-step's combined1/combined2 formulas without running a full fit.
+//[[Rcpp::export]]
+SEXP saemFormGTest(SEXP inA, SEXP inB, SEXP inFt, SEXP inC, SEXP inAddProp) {
+  vec a = as<vec>(inA);
+  vec b = as<vec>(inB);
+  vec ft = as<vec>(inFt);
+  vec c = as<vec>(inC);
+  uvec addPropVec = as<uvec>(inAddProp);
+  vec g(a.n_elem);
+  saemFormG(g, a, b, ft, c, addPropVec);
+  return wrap(g);
 }
