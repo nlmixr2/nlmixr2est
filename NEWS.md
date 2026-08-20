@@ -241,6 +241,25 @@
   halving then doubling compounded into a 4x inflated covariance. Point
   estimates, the objective value, and the log-likelihood were unaffected.
 
+- `est="saem"` with `covMethod="sa"`/`"fim"` reported a nonsense (~1e-6) SE for a
+  theta with no random effect (a "phi0" parameter, e.g. a covariate-free
+  structural parameter), and on a model mixing mu-referenced and
+  non-mu-referenced thetas could attribute the Fisher information rows to the
+  wrong parameter names entirely (#906). The stochastic-approximation kernel
+  orders its Fisher information `[mu-referenced thetas][non-mu-referenced
+  thetas]`, not `iniDf`/model order, and a non-mu-referenced theta's mu
+  information is a pseudo-variance the algorithm decays toward 0 (it is a fixed
+  effect carried as a degenerate random effect), which blows up to a
+  near-zero SE when inverted in place. The Fisher information block is now
+  read out in its actual order, and non-mu-referenced theta rows are dropped
+  before inverting and their SE spliced in from the linearized FIM instead.
+  The kernel keeps a Fisher information row for a `fix()`ed theta too, so that
+  drop is computed against the FIM's raw row order rather than a
+  fixed-filtered one (a fixed theta ahead of the dropped row previously
+  shifted every later position and dropped the wrong one); a model whose
+  Fisher information order cannot be verified (a mu-referencing covariate, or
+  an old cached fit) now refuses `"sa"`/`"fim"` and falls back to the
+  linearized FIM instead of reporting from an unverified order.
 - `est="saem"` on a `boxCox()`/`yeoJohnson()` model (estimated or `fixed()`)
   fit at the identity transform instead of the declared one (#914). Two
   compounding defects: the kernel's working `lambda` was never refreshed from
