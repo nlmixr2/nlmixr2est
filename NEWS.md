@@ -172,6 +172,19 @@
   (Pareto k-hat) as healthy rather than repairing it. `odeSwapSolveInd()` now
   restores each peer's own `ndiff` before every solve.
 
+- `est="saem"` with `saemControl(nMix > 1)` (mixture SAEM) inverted the
+  `propT()`/`powT()` (transformed-basis) vs. plain `prop()`/`pow()`
+  (raw-basis) proportional/power error term in the two MSAEM-only E-step
+  helpers, `mixObsLoss()` (softmax mixture-component responsibility weights)
+  and `mixNaiveClassify()` (chain-init classification) (#982). Every other
+  E-step call site picks the boxCox/yeoJohnson-transformed prediction when
+  `propT()`/`powT()` is used and the raw prediction otherwise; these two
+  passed the pair in the opposite order, so a `propT()`/`powT()` model was
+  scored against the raw prediction and a plain `prop()`/`pow()` model
+  against the transformed one, biasing mixture-component assignment for any
+  `nMix > 1` fit with a transformed residual model. `nMix == 1` fits are
+  unaffected.
+
 - Every NLM-family method (`nlm`, `bobyqa`, `newuoa`, `uobyqa`, `n1qn1`,
   `lbfgsb3c`, `optim`, `nlminb`) silently mis-scored any M2/M3/M4-censored
   normal endpoint, whether or not `ar()` was present (#976). NLM forces every
@@ -183,6 +196,15 @@
   deviation actually used to build the log-density) is emitted immediately
   beforehand in the same branch, so it is now squared back into `rx_r_`
   instead of being discarded.
+
+- Every NLM-family method also silently ignored M2/M3/M4 censoring on a
+  `t()`/`cauchy()` endpoint entirely -- a censored row was scored with its
+  ordinary (uncensored) density (#979). Added a Student-t/Cauchy CDF-based
+  correction (`doCensT1()`; cauchy is Student-t with `nu=1`, so one function
+  covers both) alongside the existing normal one. FOCEi/FOCE/AGQ/Laplace and
+  every other generalized-likelihood distribution (`pois`, `binom`, `beta`,
+  and so on) still silently ignore censoring for now, but a fit now warns
+  when that combination is used instead of staying silent.
 
 - `est="saem"` with a `pow()` residual error model (`rmPow`/`rmAddPow`/
   `rmPowLam`/`rmAddPowLam`) never applied the estimated power exponent in the
@@ -212,6 +234,24 @@
   else, rather than a plain inverse-CDF draw -- which loses precision once
   the truncation bounds are a few SDs from the mean, the regime a BQL row's
   bound often sits in.
+
+- `est="npag"`/`est="npb"`'s residual-error moment (`npResidMoments()`) counted
+  a censored (M3/M4) observation's recorded LOQ/limit as if it had been
+  measured, the same bug shape as #916 but in the nonparametric methods
+  (#978). For the common configuration -- one `add()`/`prop()` scale per
+  endpoint, no regressor theta -- that biased moment is installed as the
+  final residual-error estimate with no further optimizer correction, so a
+  censored row could badly distort it (an extreme recorded LOQ was measured
+  to inflate `est="npag"`'s proportional SD from 0.03 to 14.7, and
+  `est="npb"`'s from 0.03 to 8.1). A censored row's DV is now excluded from
+  the moment entirely, matching how the function already excludes an
+  endpoint with no defined prediction to take a moment of. Excluding the row
+  still leaves the moment a biased-low estimate of the true residual
+  variance whenever the data really is censored (the variance of a
+  truncated normal is always less than the untruncated one), so an endpoint
+  that had any row excluded this way no longer takes the direct-install
+  fast path either -- it is refined against the already censoring-aware ELS
+  objective instead, the same way a regressor theta already was.
 
 - `foceiControl(fast=TRUE)` could converge to a different fit than `fast=FALSE`
   when a transform-both-sides (`lnorm`/`boxCox`) endpoint's untransformed
