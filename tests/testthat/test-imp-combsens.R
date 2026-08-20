@@ -251,11 +251,18 @@ nmTest({
     expect_equal(rF$maxK, rT$maxK, tolerance = 1e-3)
     expect_equal(rF$nAbove, rT$nAbove)
     # the registry actually recorded a real (nonzero) ndiff for the inner
-    # slot -- proof the fix has something to restore, not a vacuously-passing
-    # comparison on a model where ndiff was 0 for everyone anyway
+    # slot, AND a DIFFERENT (zero) one for the pred peer -- proof the fix has
+    # something to restore between, not a vacuously-passing comparison on a
+    # model where every registered slot needed the same ndiff anyway.  pred
+    # is the doFD fallback slot (fInd->doFD, likInner0) -- a subject that
+    # falls back to it mid-fit is exactly the scenario that used to leave
+    # rx->ndiff on the wrong peer's value for whichever slot solved next.
     .info <- nlmixr2est:::.odeSwapInfo()
     .inner <- .info$models[.info$models$name %in% "inner", ]
+    .pred <- .info$models[.info$models$name %in% "pred", ]
     expect_true(nrow(.inner) == 1L && isTRUE(.inner$ndiffSet) && .inner$ndiff > 0L)
+    expect_true(nrow(.pred) == 1L && isTRUE(.pred$ndiffSet))
+    expect_false(isTRUE(.pred$ndiff == .inner$ndiff))
   })
 
 })

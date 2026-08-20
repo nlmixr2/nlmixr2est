@@ -20,6 +20,7 @@
 #include <ctime>
 #include "nmMcmcRng.h"
 #include "imp.h"
+#include "odeSwap.h" // odeSwapAnyNdiffSet()
 #include "utilc.h"   // RSprintf (covariance-step progress header)
 #ifdef _OPENMP
 #include <omp.h>
@@ -328,7 +329,26 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
       arma::mat H(neta, neta, arma::fill::zeros);
       impGetMode(id, mode);
       modes[id] = mode;
-      if (impGetHessian(id, H)) {
+      // impGetHessian() solves through odeSwapSolveInd(), which writes
+      // rx->ndiff -- a field on the single shared rx_solve struct -- right
+      // before every solve of a slot that needs it (see odeSwap.cpp).  A
+      // subject that falls back to the doFD/pred path (fInd->doFD, set
+      // per-subject) can pick a DIFFERENT slot -- and so a different
+      // ndiff -- than a subject still on the plain inner path, and both can
+      // run concurrently in THIS loop.  Unguarded, one subject's solve can
+      // read the ndiff another subject's concurrent solve just wrote.  Only
+      // a linCmt()-with-non-mu-structural-theta model ever has a slot with
+      // ndiffSet=true, so gate the lock on that and pay nothing otherwise.
+      bool _gotH;
+      if (odeSwapAnyNdiffSet()) {
+#ifdef _OPENMP
+#pragma omp critical (odeSwapNdiffHessian)
+#endif
+        { _gotH = impGetHessian(id, H); }
+      } else {
+        _gotH = impGetHessian(id, H);
+      }
+      if (_gotH) {
         arma::mat Sigma;
         double ldv, lds;
         if (arma::inv_sympd(Sigma, H) && arma::log_det(ldv, lds, H) && lds > 0) {

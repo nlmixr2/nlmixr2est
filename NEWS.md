@@ -170,7 +170,13 @@
   Jacobian built for a DIFFERENT peer's structural-parameter set. The
   resulting proposal was artificially wide, which masked a real heavy tail
   (Pareto k-hat) as healthy rather than repairing it. `odeSwapSolveInd()` now
-  restores each peer's own `ndiff` before every solve.
+  restores each peer's own `ndiff` before every solve. That restore is itself
+  a write to a field on the single shared solve struct, so `impGetHessian`'s
+  parallel per-subject loop (a subject that falls back to the doFD/pred path
+  can pick a different peer, and so a different `ndiff`, than a subject still
+  on the plain inner path, concurrently) now serializes that write-then-solve
+  window whenever the fit has a peer that needs it, rather than risk one
+  subject's solve reading another's in-flight `ndiff`.
 
 - `est="saem"` with `saemControl(nMix > 1)` (mixture SAEM) inverted the
   `propT()`/`powT()` (transformed-basis) vs. plain `prop()`/`pow()`

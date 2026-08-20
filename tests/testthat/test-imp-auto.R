@@ -155,6 +155,7 @@ nmTest({
     .off <- .fitAuto(FALSE, model = .pkHealthy, est = "imp")
     .on <- .fitAuto(TRUE, model = .pkHealthy, est = "imp")
     expect_equal(sum(.off$env$impPsisK > 0.7), 0L)      # premise: converged fit healthy
+    expect_gt(sum(.on$env$impDfInd == 0), 0L)           # escalation stays selective
     expect_equal(.on$objf, .off$objf, tolerance = 0.5)  # and does not move the answer
   })
 
@@ -176,6 +177,9 @@ nmTest({
     expect_gt(sum(.on$env$impDfInd == 0), 0L)
     expect_lt(max(.on$env$impPsisK), max(.k0))
     expect_lt(sum(.on$env$impPsisK > 0.7), sum(.k0 > 0.7))
+    # and the repair is a proposal-shape fix, not a different fit: the escalated
+    # subject's tail improves without the objective moving to a different basin
+    expect_equal(.on$objf, .off$objf, tolerance = 0.5)
   })
 
   test_that("the nobs < neta trigger is gated, and autoNonmemSparse restores it", {

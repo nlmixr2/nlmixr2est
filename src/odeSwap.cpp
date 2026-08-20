@@ -324,6 +324,35 @@ int  odeSwapNSens(int slot)  { return odeSwapLoaded(slot) ? _odeReg[slot].nSens 
 int  odeSwapCmtPar(int slot) { return odeSwapLoaded(slot) ? _odeReg[slot].cmtPar : -1; }
 int  odeSwapNdiff(int slot)  { return odeSwapLoaded(slot) ? _odeReg[slot].ndiff : 0; }
 
+// True if ANY registered slot declared an ndiff (i.e. this fit has a linCmt()
+// peer whose cached Jacobian depends on rx->ndiff).  odeSwapSolveInd() writes
+// rx->ndiff -- a field on the single shared rx_solve struct -- immediately
+// before every such slot's solve; a caller that solves different slots for
+// different subjects CONCURRENTLY (e.g. one subject on the plain inner path,
+// another that fell back to doFD/pred, in the same omp loop) must serialize
+// around that write-then-solve-then-Jacobian-read window using this as the
+// gate, or two subjects' solves can race and one reads the other's ndiff.
+// Cheap to call per-subject: odeSlotN is a handful of entries.
+//
+// KNOWN GAP: only imp.cpp's impGetHessian() loop (the impmap proposal build)
+// is guarded this way -- that is the call site a linCmtB()-Jacobian read
+// (calcEtaHessian) is reachable from under a per-subject doFD branch that can
+// pick a different slot per thread.  The other odeSwapSolveInd() call sites
+// under a parallel region (impEStep's per-sample loop in imp.cpp; the various
+// omp loops in inner.cpp -- shi21ThetaGeneral, the M-step theta-sensitivity
+// collection, nlm.cpp's thetaGrad path) were not audited for the same mixed-
+// slot-concurrently pattern. Most look safe by construction (a fixed slot per
+// call, e.g. impThetaSensCollect's tsSlot does not vary within its own loop),
+// but that was not proven exhaustively.  If a future model shape or caller
+// mixes ndiffSet-true slots inside one of those loops, it needs the same
+// odeSwapAnyNdiffSet()-gated critical section this one got.
+bool odeSwapAnyNdiffSet() {
+  for (int s = 0; s < odeSlotN; ++s) {
+    if (_odeReg[s].loaded && _odeReg[s].ndiffSet) return true;
+  }
+  return false;
+}
+
 // How much to subtract from the pooled table's raw CMT before `slot`'s calc_lhs
 // reads it.  See the OdeModelReg comment: rxode2 bakes `- nSens` into each
 // model's own _CMT macro, but the translated event table belongs to whichever
