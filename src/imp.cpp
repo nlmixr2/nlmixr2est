@@ -1443,6 +1443,12 @@ void impOuter(Environment e) {
       Omega += r * r.t() + condVar[id];
     }
     Omega /= (double)nsub;
+    // MAP correction: fold in the ini({}) prior's omega term(s), if any (no-op
+    // otherwise) -- see impPriorOmegaCorrect().  Runs BEFORE the structure
+    // mask/fixed-restore below, since a generic (non-invWishart) term's
+    // correction can otherwise leak weight outside the declared structure or
+    // a fix()ed row.
+    impPriorOmegaCorrect(Omega, nsub);
     Omega %= omMask;
     // Restore fix()ed Omega rows/columns to their starting values.
     for (size_t k = 0; k < omFixedEta.size(); ++k) {

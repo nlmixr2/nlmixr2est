@@ -4950,6 +4950,92 @@ static inline double foceiObjFromLik0(double *theta) {
   return -2*foceiLik0(theta) + foceiPriorObjTerm();
 }
 
+// MAP correction for imp/impmap/qrpem's Omega EM moment-average update
+// (src/imp.cpp: Omega = mean_i(eta_i*eta_i' + condVar_i), called on the
+// SUM before dividing by nsub -- i.e. Omega on entry is the plain ML moment
+// average -- and BEFORE the caller's structure mask/fixed-row restore and
+// impSetOmega()).  No-op when there is no prior or no omega-touching term.
+//
+// Two paths, matching the two shapes the shared kernel's omega terms take:
+//
+//  - invWishart (type 3/4): CONJUGATE to the EM complete-data objective in
+//    Omega, so the term's own block gets the EXACT joint posterior mode
+//    rather than a one-step approximation.  Derivation: the EM complete-
+//    data objective in Omega is Q(Omega) = -0.5*nsub*log|Omega| -
+//    0.5*tr(Omega^-1*S) (S = nsub*Omega_ML, the pre-division moment sum).
+//    Adding each kernel term's own log-density (rxode2's
+//    invWishartGeneralValueGrad()/invWishartNwpriValueGrad(),
+//    src/priorDensity.cpp) and re-collecting Q+logdensity into the same
+//    -0.5*a*log|Omega| - 0.5*tr(Omega^-1*B) form, whose stationary point is
+//    exactly Omega=B/a (differentiate, multiply through by Omega on both
+//    sides), gives:
+//      general (type 3): a = nsub + nu + p + 1, B = S + Psi
+//      nwpri   (type 4, term.nu holds NONMEM's rho): a = nsub + rho,
+//               B = S + rho*Psi
+//    (NOT the same formula with nu/Psi substituted -- type 4's own density
+//    is NONMEM's modal convention, not a textbook inverse-Wishart with
+//    d_W=rho+p+1 plugged in; see rxode2prior.h's term-type comment.)
+//
+//  - anything else (a plain normal/dnorm() directly on an omega element --
+//    "tnpri" -- or a multiNormal block mixing omega with theta): one
+//    Fisher-scoring (One-Step-Late, Green 1990, "The EM Algorithm and MAP
+//    Bayesian Regularization") step at Omega_ML, Omega += (2/nsub)*Omega*
+//    Gsym*Omega -- reusing the EXACT Abar=-Omega*Gsym*Omega construction
+//    foceiPriorOmegaGradAdd() already computes for FOCEI's own chain rule,
+//    used forward here instead of chain-ruled into Cholesky space.  Falls
+//    out of the same complete-data Fisher information (nsub/2 * Omega^-1
+//    (x) Omega^-1, the standard Gaussian-covariance Fisher tensor) that
+//    makes the invWishart case conjugate -- verified by hand against a
+//    direct scalar (p=1) Newton derivation.
+//
+// The caller re-applies its own omega-structure mask and fixed-row restore
+// AFTER this call -- a generic-term correction can otherwise leak weight
+// outside the declared structure/fixed rows.
+void impPriorOmegaCorrect(arma::mat &Omega, int nsub) {
+  if (op_focei.priorSpec == NULL || !op_focei.priorSpecOmegaTerm || nsub <= 0) return;
+  const rx_prior_spec_t *spec = op_focei.priorSpec;
+  bool anyGeneric = false;
+  for (int t = 0; t < spec->nTerms; ++t) {
+    const rx_prior_term_t &term = spec->terms[t];
+    bool touchesOmega = false;
+    for (int k = 0; k < term.n; ++k) if (term.etaIdx[k] != 0) touchesOmega = true;
+    if (!touchesOmega) continue;
+    if (term.type == 3 || term.type == 4) {
+      int p = term.n;
+      arma::uvec rows((arma::uword)p);
+      bool ok = true;
+      for (int k = 0; k < p; ++k) {
+        int e = term.etaIdx[k];
+        if (e <= 0 || e > (int)Omega.n_rows) { ok = false; break; }
+        rows[(arma::uword)k] = (arma::uword)(e - 1);
+      }
+      if (!ok) continue;
+      arma::mat Sblk = (double)nsub * Omega.submat(rows, rows);
+      // term.scale is row-major, but a scale/covariance matrix is symmetric,
+      // so reading it as column-major (Armadillo's default) is exactly its
+      // transpose -- identical for a symmetric matrix.
+      arma::mat Psi(term.scale, (arma::uword)p, (arma::uword)p);
+      double denom = (term.type == 3) ? ((double)nsub + term.nu + (double)p + 1.0)
+                                       : ((double)nsub + term.nu);
+      if (!(denom > 0.0)) continue;
+      arma::mat num = (term.type == 3) ? arma::mat(Sblk + Psi) : arma::mat(Sblk + term.nu * Psi);
+      Omega.submat(rows, rows) = num / denom;
+    } else {
+      anyGeneric = true;
+    }
+  }
+  if (anyGeneric) {
+    const int omegaDim = (int)Omega.n_rows;
+    std::vector<double> gradTheta((size_t)op_focei.ntheta, 0.0);
+    std::vector<double> gradOmegaFlat((size_t)omegaDim * (size_t)omegaDim, 0.0);
+    rxPriorLogDensityEval(spec, op_focei.fullTheta, (int)op_focei.ntheta,
+                          Omega.memptr(), omegaDim, gradTheta.data(), gradOmegaFlat.data());
+    arma::mat gradOmegaRaw(gradOmegaFlat.data(), (arma::uword)omegaDim, (arma::uword)omegaDim);
+    arma::mat Gsym = 0.5 * (gradOmegaRaw + gradOmegaRaw.t());
+    Omega += (2.0 / (double)nsub) * (Omega * Gsym * Omega);
+  }
+}
+
 // One-step MAP (Newton/Fisher-scoring) correction for imp/impmap/qrpem's
 // non-mu structural-theta M-step (src/imp.cpp's Newton step on
 // impThetaSensIdx): folds the prior's own score and (finite-differenced)

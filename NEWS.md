@@ -120,19 +120,27 @@
   step. `rxUiPriors(fit$ui)` now still reports it afterward.
 
 - `est="imp"`, `est="impmap"` and `est="qrpem"` now honour a prior on a
-  population parameter, declared `nlmixr2Priors = "theta"` individually on
-  each of the three (issue #932). Their shared M-step is an
-  importance-sampling EM, not FOCEi's outer optimizer, so the objective
-  already picking up the prior (via #931's plumbing) was not enough on its
-  own -- the estimates it reported would otherwise still be the maximum-
-  likelihood ones. Each of the three M-step updates now folds in the
-  prior's own score and (finite-differenced) curvature before taking its
-  step: the non-mu structural/residual-error Newton step, the mu-referenced
-  covariate regression (`updateMuGroups()`), and the plain mu-intercept
-  mean-shift -- exact for a Gaussian prior, a one-step Newton correction
-  otherwise. A prior touching an omega element is refused for now (the
-  `"theta"` level); the EM's own Omega moment-average update is not yet
-  MAP-corrected.
+  population parameter AND on an omega element, declared
+  `nlmixr2Priors = "general"` individually on each of the three (issue
+  #932). Their shared M-step is an importance-sampling EM, not FOCEi's
+  outer optimizer, so the objective already picking up the prior (via
+  #931's plumbing) was not enough on its own -- the estimates it reported
+  would otherwise still be the maximum-likelihood ones. Each M-step update
+  now folds in the prior's own score/curvature before taking its step:
+
+  - the non-mu structural/residual-error Newton step, the mu-referenced
+    covariate regression (`updateMuGroups()`), and the plain mu-intercept
+    mean-shift each fold in an FD-Hessian one-step Newton correction --
+    exact for a Gaussian prior (a quadratic log-density has no Taylor
+    truncation error), a reasonable one-step approximation otherwise
+    (Cauchy, `multiNormal()`).
+  - the Omega EM moment-average update gets the EXACT joint posterior mode
+    for a conjugate `invWishart()` term (NONMEM's own `"nwpri"` convention
+    or the textbook `"general"` one), and a one-step Fisher-scoring
+    (One-Step-Late) correction, reusing the same `Abar` construction
+    FOCEi's own omega-prior gradient already computes, for a normal prior
+    directly on an omega element (`"tnpri"`) or a `multiNormal()` block
+    mixing omega with theta.
 
 ## Changed defaults
 

@@ -2,13 +2,18 @@ nmTest({
   skip_if_not(exists("rxPriorBuildSpec", envir = asNamespace("rxode2"), inherits = FALSE),
               "rxode2 without the shared prior kernel (nlmixr2/rxode2#1270)")
 
-  test_that("imp/impmap/qrpem declare 'theta'-level prior support individually (#932)", {
-    expect_identical(attr(nlmixr2Est.imp, "nlmixr2Priors"), "theta")
-    expect_identical(attr(nlmixr2Est.impmap, "nlmixr2Priors"), "theta")
-    expect_identical(attr(nlmixr2Est.qrpem, "nlmixr2Priors"), "theta")
+  test_that("imp/impmap/qrpem declare 'general'-level prior support individually (#932)", {
+    expect_identical(attr(nlmixr2Est.imp, "nlmixr2Priors"), "general")
+    expect_identical(attr(nlmixr2Est.impmap, "nlmixr2Priors"), "general")
+    expect_identical(attr(nlmixr2Est.qrpem, "nlmixr2Priors"), "general")
   })
 
-  test_that("impmap refuses a prior touching omega at the 'theta' level (#932)", {
+  test_that("impmap accepts a prior that touches omega (#932)", {
+    # the "theta"-level gate (a prior on omega is refused) is covered
+    # generically for any method declaring that level in test-priors-assert.R;
+    # impmap's own declared level is "general", so this just confirms the
+    # fit runs and the prior survives onto the finished fit, mirroring
+    # test-focei-prior.R's analogous check for FOCEi's family (#931).
     m <- function() {
       ini({
         tka <- 0.45; tcl <- 1; tv <- 3.45
@@ -21,11 +26,11 @@ nmTest({
         linCmt() ~ add(add.sd)
       })
     }
-    expect_error(
-      suppressWarnings(suppressMessages(
-        nlmixr2(m, nlmixr2data::theo_sd, est = "impmap",
-                control = impmapControl(print = 0L, nIter = 1L)))),
-      "eta.cl")
+    .fi <- suppressWarnings(suppressMessages(
+      nlmixr2(m, nlmixr2data::theo_sd, est = "impmap",
+              control = impmapControl(print = 0L, nIter = 1L))))
+    expect_true(inherits(.fi, "nlmixr2FitCore"))
+    expect_true("eta.cl" %in% rxode2::rxUiPriors(.fi$ui)$name)
   })
 
   test_that("a strong prior on a non-mu structural theta pulls the M-step Newton estimate toward it (#932)", {
@@ -104,5 +109,60 @@ nmTest({
     expect_true(inherits(.fi, "nlmixr2FitCore"))
     expect_true(.fi$env$impMuGroupN >= 1L)
     expect_equal(unname(fixef(.fi)["cl.wt"]), 0, tolerance = 0.05)
+  })
+
+  test_that("a strong invWishart prior pulls the Omega EM update toward its scale matrix (#932)", {
+    # eta.cl's invWishart() term is CONJUGATE to the EM moment-average update
+    # (impPriorOmegaCorrect()'s exact closed-form path, not the generic
+    # Fisher-scoring one) -- rho=1000 dominates the data's own information
+    # (12 subjects), so the converged variance should land close to the
+    # term's own scale (the ini()-declared 0.3), not near the unconstrained
+    # data-driven value.
+    m <- function() {
+      ini({
+        tka <- 0.45; tcl <- 1; tv <- 3.45
+        eta.ka ~ 0.6; eta.cl ~ 0.3
+        add.sd <- 0.7
+        prior(eta.cl) ~ invWishart(1000)
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .fi <- suppressWarnings(suppressMessages(
+      nlmixr2(m, nlmixr2data::theo_sd, est = "impmap",
+              control = impmapControl(print = 0L, nIter = 30L, isample = 300L))))
+    expect_true(inherits(.fi, "nlmixr2FitCore"))
+    expect_equal(unname(.fi$omega["eta.cl", "eta.cl"]), 0.3, tolerance = 0.1)
+  })
+
+  test_that("a strong normal prior directly on omega pulls the EM update toward it (generic/tnpri path) (#932)", {
+    # prior(eta.cl) ~ dnorm() on the raw omega value (not invWishart()) takes
+    # impPriorOmegaCorrect()'s generic one-step Fisher-scoring branch, not the
+    # invWishart conjugate closed form -- distinct code path from the test
+    # above.  Starts from a much larger initial variance (0.6) than the
+    # tight prior (0.05) it should be pulled toward.
+    m <- function() {
+      ini({
+        tka <- 0.45; tcl <- 1; tv <- 3.45
+        eta.ka ~ 0.1; eta.cl ~ 0.6
+        add.sd <- 0.7
+        prior(eta.cl) ~ dnorm(0, 0.05)
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .fi <- suppressWarnings(suppressMessages(
+      nlmixr2(m, nlmixr2data::theo_sd, est = "impmap",
+              control = impmapControl(print = 0L, nIter = 30L, isample = 300L))))
+    expect_true(inherits(.fi, "nlmixr2FitCore"))
+    expect_equal(unname(.fi$omega["eta.cl", "eta.cl"]), 0.05, tolerance = 0.15)
+    # Omega stays a valid (symmetric positive-definite) covariance under the
+    # correction -- impSetOmega()'s PD floor/symmetrize guard degrades this
+    # the same way an ordinary bad EM iterate would rather than producing NaN.
+    expect_true(all(eigen(.fi$omega, symmetric = TRUE, only.values = TRUE)$values > 0))
   })
 })

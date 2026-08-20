@@ -136,6 +136,14 @@ int impThetaSensN();
 // prior.  See src/inner.cpp for the sign convention and derivation.
 void impPriorStructThetaCorrect(int nsub, arma::vec& g, arma::mat& H);
 
+// MAP correction for the Omega EM moment-average update: `Omega` on entry
+// is the plain ML moment average (mean_i(eta_i*eta_i' + condVar_i), BEFORE
+// the caller's structure mask/fixed-row restore); corrected toward the
+// prior in place (exact conjugate update for an invWishart term, a one-step
+// Fisher-scoring correction otherwise).  No-op when there is no prior
+// touching omega.  See src/inner.cpp for the derivation.
+void impPriorOmegaCorrect(arma::mat& Omega, int nsub);
+
 // 0-based eta indices whose Omega diagonal is fixed (held across the EM update).
 void impGetOmegaFixedEta(std::vector<int>& idx);
 

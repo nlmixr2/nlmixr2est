@@ -76,4 +76,4 @@ attr(nlmixr2Est.imp, "iov") <- TRUE
 attr(nlmixr2Est.imp, "mu") <- function(control) {
   isTRUE(!identical(control$muModel, "none")) && isTRUE(control$muRefCovAlg)
 }
-attr(nlmixr2Est.imp, "nlmixr2Priors") <- "theta"
+attr(nlmixr2Est.imp, "nlmixr2Priors") <- "general"
