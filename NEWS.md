@@ -163,6 +163,15 @@
   beforehand in the same branch, so it is now squared back into `rx_r_`
   instead of being discarded.
 
+- Every NLM-family method also silently ignored M2/M3/M4 censoring on a
+  `t()`/`cauchy()` endpoint entirely -- a censored row was scored with its
+  ordinary (uncensored) density (#979). Added a Student-t/Cauchy CDF-based
+  correction (`doCensT1()`; cauchy is Student-t with `nu=1`, so one function
+  covers both) alongside the existing normal one. FOCEi/FOCE/AGQ/Laplace and
+  every other generalized-likelihood distribution (`pois`, `binom`, `beta`,
+  and so on) still silently ignore censoring for now, but a fit now warns
+  when that combination is used instead of staying silent.
+
 - `est="saem"` with a `pow()` residual error model (`rmPow`/`rmAddPow`/
   `rmPowLam`/`rmAddPowLam`) never applied the estimated power exponent in the
   E-step's MCMC-acceptance likelihood -- it always scored proposals as if the

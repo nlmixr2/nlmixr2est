@@ -547,6 +547,87 @@ rxGetDistributionFoceiLines <- function(line) {
   isTRUE(nlmixr2global$rxArNorm)
 }
 
+#' Restore a real `rx_r_` variance, and expose `rx_nu_`, for llik-forced
+#' norm/dnorm/t/cauchy endpoints
+#'
+#' `.handleSingleErrTypeNormOrTFoceiBase(rxPredLlik=TRUE)` (rxode2) forces
+#' every `norm`/`dnorm`/`t`/`cauchy` endpoint through its log-likelihood
+#' form so a single scalar can be emitted as `rx_pred_`.  That path always
+#' sets `rx_r_ ~ 0` (a full log-density has no separate variance to
+#' report) and never exposes the Student-t degrees of freedom -- but
+#' `censEst.h`'s `doCensNormal1()`/`doCensT1()` M2/M3/M4 correction needs
+#' both as real values (nlmixr2est/nlmixr2est#979, following the same
+#' `rx_r_` fix nlm.R's `.nlmFixCensRLine` made for the population model).
+#' `rx_rll_` (the standard deviation actually fed into
+#' `llikNorm()`/`llikT()`/`llikCauchy()`) is emitted immediately before
+#' `rx_r_` in the same branch, so square it back into `rx_r_` instead of
+#' leaving the hardcoded 0.  `llikT()`/`llikXT()`'s own `nu` argument is
+#' captured into a new `rx_nu_` line; cauchy is Student-t with `nu=1`
+#' (nlmixr2est/nlmixr2est#979), so `llikCauchy()`/`llikXCauchy()` get
+#' `rx_nu_ ~ 1`.  `dnorm` (no `nu` argument at all) and any other
+#' distribution with no `rx_rll_` line are left alone -- `rx_nu_` is only
+#' added when a Student-t/Cauchy call is found.
+#'
+#' @param lines A single endpoint's list of quoted model lines, as
+#'   returned by `rxGetDistributionFoceiLines()` for one `predDf` row.
+#' @return The same list, with `rx_r_ ~ 0` replaced by
+#'   `rx_r_ ~ rx_rll_^2` when `rx_rll_` was emitted (otherwise unchanged),
+#'   plus an appended `rx_nu_ ~ <nu>` line for a t()/cauchy() endpoint.
+#' @author Matthew L. Fidler
+#' @noRd
+.fixCensRNuLine <- function(lines) {
+  # nlm-family (population-only, neta=0) ONLY for now: giving a llik-forced
+  # endpoint a real (nonzero) rx_r_ is exactly what FOCEi's eta-sensitivity
+  # generation does not expect once real etas are present -- turning it on
+  # unconditionally crashes symengine's eta-derivative pass ("user function
+  # 'get' requires 5 arguments") for ANY t()/cauchy()+eta FOCEi/FOCE fit,
+  # censored or not (measured: reproduces with plain cauchy(), no CENS data
+  # at all, and disappears when this function is a no-op).  nlm has no etas
+  # and is unaffected, so gate on the flag only `rxUiGet.nlmModel0` sets;
+  # FOCEi/FOCE/AGQ/Laplace keep today's (silent-ignore, now warned) behavior
+  # until a follow-up sorts out the rxode2-side interaction (#979).
+  if (!isTRUE(nlmixr2global$rxCensNuFix)) return(lines)
+  if (!is.list(lines)) return(lines)
+  .rll <- NULL
+  for (.l in lines) {
+    if (is.call(.l) && identical(.l[[1]], quote(`~`)) &&
+        identical(.l[[2]], quote(rx_rll_))) {
+      .rll <- .l[[3]]
+      break
+    }
+  }
+  if (is.null(.rll)) return(lines)
+  .nu <- NULL
+  for (.l in lines) {
+    if (is.call(.l) && identical(.l[[1]], quote(`~`)) &&
+        identical(.l[[2]], quote(rx_pred_)) && is.call(.l[[3]])) {
+      .fn <- as.character(.l[[3]][[1]])
+      if (.fn == "llikT") {
+        .nu <- .l[[3]][[3]]
+      } else if (.fn == "llikXT") {
+        .nu <- .l[[3]][[4]]
+      } else if (.fn %in% c("llikCauchy", "llikXCauchy")) {
+        .nu <- 1
+      }
+    }
+  }
+  .out <- vector("list", 0)
+  for (.l in lines) {
+    if (is.call(.l) && identical(.l[[1]], quote(`~`)) &&
+        identical(.l[[2]], quote(rx_r_)) &&
+        identical(.l[[3]], 0)) {
+      .out[[length(.out) + 1]] <- bquote(rx_r_ ~ .(.rll)^2)
+    } else {
+      .out[[length(.out) + 1]] <- .l
+      if (!is.null(.nu) && is.call(.l) && identical(.l[[1]], quote(`~`)) &&
+          identical(.l[[2]], quote(rx_rll_))) {
+        .out[[length(.out) + 1]] <- bquote(rx_nu_ ~ .(.nu))
+      }
+    }
+  }
+  .out
+}
+
 #' @export
 rxGetDistributionFoceiLines.norm <- function(line) {
   env <- line[[1]]
@@ -567,8 +648,9 @@ rxGetDistributionFoceiLines.t <- function(line) {
     env <- line[[1]]
     pred1 <- line[[2]]
     .errNum <- line[[3]]
-    rxode2::.handleSingleErrTypeNormOrTFoceiBase(env, pred1, .errNum,
-                                                 rxPredLlik=.getRxPredLlikOption())
+    .fixCensRNuLine(
+      rxode2::.handleSingleErrTypeNormOrTFoceiBase(env, pred1, .errNum,
+                                                   rxPredLlik=.getRxPredLlikOption()))
   } else {
     stop("t is not supported", call.=FALSE)
   }
@@ -580,8 +662,9 @@ rxGetDistributionFoceiLines.cauchy <- function(line) {
     env <- line[[1]]
     pred1 <- line[[2]]
     .errNum <- line[[3]]
-    rxode2::.handleSingleErrTypeNormOrTFoceiBase(env, pred1, .errNum,
-                                                 rxPredLlik=.getRxPredLlikOption())
+    .fixCensRNuLine(
+      rxode2::.handleSingleErrTypeNormOrTFoceiBase(env, pred1, .errNum,
+                                                   rxPredLlik=.getRxPredLlikOption()))
   } else {
     stop("t is not supported", call.=FALSE)
   }
@@ -593,8 +676,9 @@ rxGetDistributionFoceiLines.default  <- function(line) {
     env <- line[[1]]
     pred1 <- line[[2]]
     .errNum <- line[[3]]
-    rxode2::.handleSingleErrTypeNormOrTFoceiBase(env, pred1, .errNum,
-                                                 rxPredLlik=.getRxPredLlikOption())
+    .fixCensRNuLine(
+      rxode2::.handleSingleErrTypeNormOrTFoceiBase(env, pred1, .errNum,
+                                                   rxPredLlik=.getRxPredLlikOption()))
   } else {
     stop("unknown distribution", call.=FALSE)
   }
@@ -999,6 +1083,21 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
   .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.prd))
   .r <- get("rx_r_", envir = .s)
   .r <- paste0("rx_r_=", rxode2::rxFromSE(.r))
+  # rx_pred_f_/rx_nu_ for the llik-forced t()/cauchy() M2/M3/M4 correction
+  # (#979): like rx_r_ above, pulled straight out of the symengine
+  # environment and re-spliced -- a plain `rx_pred_f_=<expr>`/`rx_nu_=<expr>`
+  # in the assembled model text does not survive rxOptExpr's dead-code
+  # elimination on its own (nothing else in the inner model reads either
+  # back), the same reason nlm.R's rxUiGet.nlmRxModel does this for its own
+  # population objective (.nlmGetFRLines).  rx_nu_ exists only for a
+  # t()/cauchy() endpoint (.fixCensRNuLine, above); absent otherwise.
+  .predF <- get("rx_pred_f_", envir = .s)
+  .predF <- paste0("rx_pred_f_=", rxode2::rxFromSE(.predF))
+  .nuLine <- if (exists("rx_nu_", envir = .s, inherits = FALSE)) {
+    paste0("rx_nu_=", rxode2::rxFromSE(get("rx_nu_", envir = .s)))
+  } else {
+    character(0)
+  }
   .yj <- paste(get("rx_yj_", envir = .s))
   .yj <- paste0("rx_yj_~", rxode2::rxFromSE(.yj))
   .lambda <- paste(get("rx_lambda_", envir = .s))
@@ -1087,6 +1186,8 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
     .prd,
     .s$..HdEta,
     .r,
+    .predF,
+    .nuLine,
     .s$..REta,
     .combTheta,
     .adjLhs,
