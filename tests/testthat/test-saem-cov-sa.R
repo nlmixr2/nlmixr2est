@@ -248,6 +248,153 @@ nmTest({
     expect_equal(.ff$covMethod, "linFim")
   })
 
+  test_that("covMethod='fim' orders the Fisher information by [phi1][phi0], not model order (#906)", {
+    # Two models where the SAME two thetas mu-reference (get an eta) and the SAME
+    # one does not (phi0) -- only the phi0 theta's *position* in the model changes.
+    # Before the fix: (1) the phi0 mu information decays to ~0, so its reported SE
+    # collapsed to a nonsense ~1e-6 (defect 1); and (2) the kernel orders its Fisher
+    # information [phi1 mu][phi0 mu], not saemParamsToEstimate/iniDf order, so
+    # whichever theta actually sits at that phi0 row got its SE silently attributed
+    # to a DIFFERENT parameter name whenever phi0 was not already last (defect 2).
+    lastPhi0 <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- 0.7
+            eta.ka ~ 0.6; eta.cl ~ 0.3 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+              linCmt() ~ add(add.sd) })
+    }
+    firstPhi0 <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- 0.7
+            eta.cl ~ 0.3; eta.v ~ 0.1 })
+      model({ ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+              linCmt() ~ add(add.sd) })
+    }
+
+    ctlFim <- saemControl(nBurn = 150, nEm = 200, print = 0, seed = 1L, covMethod = "fim")
+
+    for (.mod in list(list(fn = lastPhi0, phi0 = "tv"), list(fn = firstPhi0, phi0 = "tka"))) {
+      fFim <- .nlmixr(.mod$fn, theo_sd, est = "saem", control = ctlFim)
+      skip_if_not(identical(fFim$covMethod, "fim"))
+
+      # reference: the linearized FIM on the SAME converged fit (exact-match target
+      # for the phi0 splice; every structural theta is linearized directly here, so
+      # this is unaffected by defects 1/2 and safe to compare row-by-row against)
+      .saem <- fFim$saem
+      attr(.saem, "env") <- fFim$env
+      .cm <- suppressWarnings(calc.COV(.saem))
+      .tn <- fFim$ui$saemParamsToEstimate[!fFim$ui$saemFixed]
+      dimnames(.cm) <- list(.tn, .tn)
+      seLin <- sqrt(diag(.cm))       # theta-only (calc.COV's return has no variance block)
+      seFim <- sqrt(diag(fFim$cov))
+      .cmn <- c("tka", "tcl", "tv", "add.sd")
+      expect_true(all(c("tka", "tcl", "tv") %in% names(seLin)))
+      expect_true(all(.cmn %in% names(seFim)))
+
+      # defect 1: no SE has collapsed toward 0 -- in particular the phi0 theta's,
+      # which is spliced in from this exact linearized FIM and so must match it
+      expect_true(all(seFim[.cmn] > 1e-3))
+      expect_equal(unname(seFim[[.mod$phi0]]), unname(seLin[[.mod$phi0]]), tolerance = 1e-8)
+
+      # defect 2: every structural theta's SE is closer to its OWN linearized
+      # reference than to any other theta's -- catches a silent row permutation
+      # that #906 could not (add.sd is excluded: it is never part of the reordered
+      # phi block, so cross-checking it here is unrelated to ordering)
+      .thn <- c("tka", "tcl", "tv")
+      for (.nm in .thn) {
+        .own <- abs(seFim[[.nm]] - seLin[[.nm]])
+        .other <- min(abs(seFim[[.nm]] - seLin[setdiff(.thn, .nm)]))
+        expect_true(.own < .other,
+                    info = sprintf("%s (model with phi0=%s): own diff %.4g not < nearest other %.4g",
+                                   .nm, .mod$phi0, .own, .other))
+      }
+    }
+  })
+
+  test_that("covMethod='sa' also splices a real phi0 SE and keeps names in order (#906)", {
+    firstPhi0 <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- 0.7
+            eta.cl ~ 0.3; eta.v ~ 0.1 })
+      model({ ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+              linCmt() ~ add(add.sd) })
+    }
+    ctlSa <- saemControl(nBurn = 150, nEm = 200, print = 0, seed = 1L, covMethod = "sa",
+                         nSaCov = 300)
+    fSa <- .nlmixr(firstPhi0, theo_sd, est = "saem", control = ctlSa)
+    skip_if_not(identical(fSa$covMethod, "sa"))
+
+    .saem <- fSa$saem
+    attr(.saem, "env") <- fSa$env
+    .cm <- suppressWarnings(calc.COV(.saem))
+    .tn <- fSa$ui$saemParamsToEstimate[!fSa$ui$saemFixed]
+    dimnames(.cm) <- list(.tn, .tn)
+    seLin <- sqrt(diag(.cm)); seSa <- sqrt(diag(fSa$cov))
+
+    expect_true(all(seSa[c("tka", "tcl", "tv", "add.sd")] > 1e-3))
+    expect_equal(unname(seSa[["tka"]]), unname(seLin[["tka"]]), tolerance = 1e-8)
+    # tcl must not have picked up tv's (pre-fix, mislabeled) value or vice versa
+    expect_true(abs(seSa[["tcl"]] - seLin[["tcl"]]) < abs(seSa[["tcl"]] - seLin[["tv"]]))
+    expect_true(abs(seSa[["tv"]] - seLin[["tv"]]) < abs(seSa[["tv"]] - seLin[["tcl"]]))
+  })
+
+  test_that("covMethod='fim' drops phi0/fixed rows by raw FIM position, not fixed-filtered position (#906 review)", {
+    # Antigravity review of #906 caught a follow-on bug in the fix itself: the
+    # kernel's FIM keeps a row for a fix()ed theta (nb_param in src/saem.cpp
+    # does not subtract fixed thetas), so computing the phi0 drop position
+    # against a fixed-FILTERED name vector silently drops the wrong row
+    # whenever a fixed phi1 theta sits ahead of the (correctly identified)
+    # phi0 theta in kernel order.  Here tcl (phi1, mu-referenced) is fixed and
+    # sits before tka (phi0) in kernel order ([phi1 mu][phi0 mu] = tcl,tv,tka).
+    m <- function() {
+      ini({ tka <- 0.45; tcl <- fix(1); tv <- 3.45; add.sd <- 0.7
+            eta.cl ~ 0.3; eta.v ~ 0.1 })
+      model({ ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+              linCmt() ~ add(add.sd) })
+    }
+    ctlFim <- saemControl(nBurn = 150, nEm = 200, print = 0, seed = 1L, covMethod = "fim")
+    fFim <- .nlmixr(m, theo_sd, est = "saem", control = ctlFim)
+    skip_if_not(identical(fFim$covMethod, "fim"))
+
+    # tcl is fixed -- no row reported for it at all
+    expect_false("tcl" %in% rownames(fFim$cov))
+    # tka (phi0) and tv (phi1) must each carry a real, correctly-labeled SE,
+    # not a near-zero one (the wrong-row-dropped failure mode kept the
+    # degenerate phi0 row in the inverted block instead of removing it)
+    .se <- sqrt(diag(fFim$cov))
+    expect_true(all(c("tka", "tv") %in% names(.se)))
+    expect_true(all(.se[c("tka", "tv")] > 1e-3))
+
+    .saem <- fFim$saem
+    attr(.saem, "env") <- fFim$env
+    .cm <- suppressWarnings(calc.COV(.saem))
+    .tn <- fFim$ui$saemParamsToEstimate[!fFim$ui$saemFixed]
+    dimnames(.cm) <- list(.tn, .tn)
+    seLin <- sqrt(diag(.cm))
+    expect_equal(unname(.se[["tka"]]), unname(seLin[["tka"]]), tolerance = 1e-8)
+    expect_true(abs(.se[["tv"]] - seLin[["tv"]]) < abs(.se[["tv"]] - seLin[["tka"]]))
+  })
+
+  test_that("covMethod='fim'/'sa' refuses (falls back to linFim) rather than mislabel a phi0 covariate model (#906 review)", {
+    # A mu-ref covariate makes saemParamsToEstimate interleave covariate
+    # coefficient names with the plain thetas, so it no longer lines up 1:1
+    # with the kernel's phi block -- there is no known-good FIM row order for
+    # a model with BOTH a covariate and a phi0 theta.  Silently reporting from
+    # raw model order would reintroduce #906; the safe behavior is to refuse
+    # and fall back, the same way a general likelihood is refused.
+    m <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- 0.7
+            wt.cl <- 0.1
+            eta.cl ~ 0.3; eta.v ~ 0.1 })
+      model({
+        ka <- exp(tka)   # phi0
+        cl <- exp(tcl + eta.cl + wt.cl * WT)
+        v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    ctlFim <- saemControl(nBurn = 100, nEm = 100, print = 0, seed = 1L, covMethod = "fim")
+    fFim <- .nlmixr(m, theo_sd, est = "saem", control = ctlFim)
+    expect_equal(fFim$covMethod, "linFim")
+  })
+
   test_that("multi-endpoint fim/sa: one residual FIM slot per endpoint (#893)", {
     # Before the fix, src/saem.cpp had exactly ONE log-sigma2 slot no matter how
     # many endpoints the model declared, so a multi-endpoint fit's residual score
