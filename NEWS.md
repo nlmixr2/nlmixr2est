@@ -144,6 +144,17 @@
 
 ## Bug fixes
 
+- `est="saem"` with a `pow()` residual error model (`rmPow`/`rmAddPow`/
+  `rmPowLam`/`rmAddPowLam`) never applied the estimated power exponent in the
+  E-step's MCMC-acceptance likelihood -- it always scored proposals as if the
+  exponent were 1, no matter what the M-step estimated (#972). The M-step's
+  own objective did use the exponent, so the two steps disagreed about what
+  model they were fitting: the power estimate collapsed toward 0 while the
+  proportional-SD estimate inflated to compensate. The per-observation
+  combined-error-SD builder now applies the current power exponent (refreshed
+  from the M-step every iteration, not just read once at setup), matching the
+  M-step's `combined1`/`combined2` formulas.
+
 - `est="saem"` scored a censored (M2/M3/M4) observation with the wrong sign,
   the wrong scale, and the untransformed DV, so a censored row's contribution
   to the chain's acceptance could drive the fit away from, rather than
