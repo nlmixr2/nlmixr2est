@@ -313,7 +313,7 @@ fit2 <- nlmixr(mod, dsn, est="newuoa")
 #> ℹ Need to run with the source intact to parse comments
 #> → pruning branches (`if`/`else`) of population log-likelihood model...
 #> ✔ done
-#> → loading llik model into symengine environment...
+#> → loading into symengine environment...
 #> → finding duplicate expressions in population log-likelihood model...
 #> → optimizing duplicate expressions in population log-likelihood model...
 #> ✔ done
@@ -341,10 +341,10 @@ print(fit2)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>            setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.411293 0.4563249  6.943e-06      0.052       0.007 0.026    0.001
-#>             other
-#> elapsed 0.1103752
+#>             setup  optimize covariance preprocess postprocess table compress
+#> elapsed 0.3608615 0.4177645  6.509e-06      0.045       0.006 0.024        0
+#>              other
+#> elapsed 0.08436745
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
