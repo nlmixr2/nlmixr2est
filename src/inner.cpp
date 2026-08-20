@@ -3788,6 +3788,16 @@ static inline int innerOpt1(int id, int likId) {
           keepBest();
           if (tres.gradient != NULL) std::copy(tres.gradient, tres.gradient + npar, fInd->g);
         }
+      } else {
+        // Hard error (e.g. tres.error==-3: the nudged starting point itself
+        // was infeasible) -- fInd->x was already overwritten with the raw
+        // nudge fill above, but f is left untouched here otherwise. If a
+        // PRIOR attempt succeeded, f still equals fBest, so the shared
+        // restoreBest() guard below (`fBest < f`) would silently skip
+        // restoring: the reported objective would say fBest while fInd->x
+        // actually held this failed nudge point. Force f to +Inf so that
+        // guard always fires when this attempt didn't produce a usable eta.
+        f = std::numeric_limits<double>::infinity();
       }
       trust_result_free_ptr(&tres);
       return conv;

@@ -82,13 +82,16 @@ nmTest({
   test_that("innerOpt='trust' restart cascade completes when the inner solve doesn't converge", {
     skip_on_cran()
     # A tiny maxInnerIterations forces trust_solve_c() to hit iterlim before
-    # converging, exercising the !converged nudge-restart cascade in the
-    # trustInner branch of innerOpt1() (src/inner.cpp). Regression coverage
-    # for a bug an outside review caught: trustSolveAt() must reset
-    # fInd->badSolve per attempt (n1qn1's cascade already does this on every
-    # restart) -- without that reset, an NA during the first attempt
-    # permanently poisons every later nudge via trustInnerObjfun's own
-    # badSolve guard, silently turning the whole cascade into a no-op.
+    # converging (converged=FALSE, no NA involved), exercising the !converged
+    # nudge-restart cascade in the trustInner branch of innerOpt1()
+    # (src/inner.cpp) end to end: this only proves the cascade runs and still
+    # returns a usable fit, NOT specifically that fInd->badSolve is reset per
+    # attempt (an outside review caught that trustSolveAt() must do this --
+    # without it, an NA during the FIRST attempt permanently poisons every
+    # later nudge via trustInnerObjfun's own badSolve guard). Forcing a real
+    # NA reliably and portably (vs. this iterlim path) would need a
+    # deliberately pathological model; the badSolve reset itself is a
+    # one-line, easily re-verified-by-reading fix instead.
     .fit <- suppressWarnings(suppressMessages(
       nlmixr2(.oneCmt, nlmixr2data::theo_sd, est = "focei",
               control = foceiControl(innerOpt = "trust", maxOuterIterations = 5,
