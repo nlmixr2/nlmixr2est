@@ -1083,21 +1083,6 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
   .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.prd))
   .r <- get("rx_r_", envir = .s)
   .r <- paste0("rx_r_=", rxode2::rxFromSE(.r))
-  # rx_pred_f_/rx_nu_ for the llik-forced t()/cauchy() M2/M3/M4 correction
-  # (#979): like rx_r_ above, pulled straight out of the symengine
-  # environment and re-spliced -- a plain `rx_pred_f_=<expr>`/`rx_nu_=<expr>`
-  # in the assembled model text does not survive rxOptExpr's dead-code
-  # elimination on its own (nothing else in the inner model reads either
-  # back), the same reason nlm.R's rxUiGet.nlmRxModel does this for its own
-  # population objective (.nlmGetFRLines).  rx_nu_ exists only for a
-  # t()/cauchy() endpoint (.fixCensRNuLine, above); absent otherwise.
-  .predF <- get("rx_pred_f_", envir = .s)
-  .predF <- paste0("rx_pred_f_=", rxode2::rxFromSE(.predF))
-  .nuLine <- if (exists("rx_nu_", envir = .s, inherits = FALSE)) {
-    paste0("rx_nu_=", rxode2::rxFromSE(get("rx_nu_", envir = .s)))
-  } else {
-    character(0)
-  }
   .yj <- paste(get("rx_yj_", envir = .s))
   .yj <- paste0("rx_yj_~", rxode2::rxFromSE(.yj))
   .lambda <- paste(get("rx_lambda_", envir = .s))
@@ -1186,8 +1171,6 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
     .prd,
     .s$..HdEta,
     .r,
-    .predF,
-    .nuLine,
     .s$..REta,
     .combTheta,
     .adjLhs,
