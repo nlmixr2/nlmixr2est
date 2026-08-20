@@ -151,6 +151,19 @@
 
 ## Bug fixes
 
+- `est="saem"` with `saemControl(nMix > 1)` (mixture SAEM) inverted the
+  `propT()`/`powT()` (transformed-basis) vs. plain `prop()`/`pow()`
+  (raw-basis) proportional/power error term in the two MSAEM-only E-step
+  helpers, `mixObsLoss()` (softmax mixture-component responsibility weights)
+  and `mixNaiveClassify()` (chain-init classification) (#982). Every other
+  E-step call site picks the boxCox/yeoJohnson-transformed prediction when
+  `propT()`/`powT()` is used and the raw prediction otherwise; these two
+  passed the pair in the opposite order, so a `propT()`/`powT()` model was
+  scored against the raw prediction and a plain `prop()`/`pow()` model
+  against the transformed one, biasing mixture-component assignment for any
+  `nMix > 1` fit with a transformed residual model. `nMix == 1` fits are
+  unaffected.
+
 - Every NLM-family method (`nlm`, `bobyqa`, `newuoa`, `uobyqa`, `n1qn1`,
   `lbfgsb3c`, `optim`, `nlminb`) silently mis-scored any M2/M3/M4-censored
   normal endpoint, whether or not `ar()` was present (#976). NLM forces every
