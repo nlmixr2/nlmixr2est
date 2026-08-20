@@ -74,6 +74,37 @@ nmTest({
   .datNaive <- .datM3
   .datNaive$CENS <- 0L
 
+  # M2 censoring: CENS=0 everywhere, with a finite LIMIT (interval lower
+  # bound) on every observation.
+  .datM2 <- .dat
+  .datM2$CENS <- 0L
+  .datM2$LIMIT <- 0
+
+  # M4 censoring: M3's CENS=1 rows PLUS a LIMIT on every row -- the
+  # uncensored (CENS=0) rows are M2, the censored (CENS=1) rows are M4.
+  .datM4 <- .datM3
+  .datM4$LIMIT <- 0
+
+  test_that("nlm t() endpoint honors M2 censoring (#979)", {
+    fitCens <- suppressMessages(suppressWarnings(
+      .nlmixr(one.cmt.t, .datM2, est = "nlm", list(print = 0))))
+    expect_equal(as.character(fitCens$censInformation), "M2 censoring")
+
+    fitNaive <- suppressMessages(suppressWarnings(
+      .nlmixr(one.cmt.t, .dat, est = "nlm", list(print = 0))))
+    expect_true(abs(fitCens$objf - fitNaive$objf) > 1e-6)
+  })
+
+  test_that("nlm t() endpoint honors M4 censoring (#979)", {
+    fitCens <- suppressMessages(suppressWarnings(
+      .nlmixr(one.cmt.t, .datM4, est = "nlm", list(print = 0))))
+    expect_equal(as.character(fitCens$censInformation), "M2 and M4 censoring")
+
+    fitNaive <- suppressMessages(suppressWarnings(
+      .nlmixr(one.cmt.t, .datNaive, est = "nlm", list(print = 0))))
+    expect_true(abs(fitCens$objf - fitNaive$objf) > 1e-6)
+  })
+
   test_that("nlm t() endpoint honors M3 censoring (#979)", {
     fitCens <- suppressMessages(suppressWarnings(
       .nlmixr(one.cmt.t, .datM3, est = "nlm", list(print = 0))))

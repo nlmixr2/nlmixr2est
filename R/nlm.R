@@ -407,13 +407,17 @@ getValidNlmixrCtl.nlm <- function(control) {
 #'@export
 rxUiGet.nlmModel0 <- function(x, ...) {
   .ui <- rxode2::rxUiDecompress(x[[1]])
-  nlmixr2global$rxPredLlik <- TRUE
-  # nlm is population-only (no etas), so .fixCensRNuLine's real (nonzero)
-  # rx_r_/rx_nu_ for a llik-forced endpoint is safe here -- see the guard's
-  # own comment for why it must stay OFF for FOCEi/FOCE (#979).
-  nlmixr2global$rxCensNuFix <- TRUE
+  # on.exit() registered BEFORE mutating either flag: an interrupt landing
+  # between setting a flag and registering its reset would otherwise leak
+  # it TRUE for the rest of the R session -- for rxCensNuFix specifically,
+  # that would crash a later FOCEi t()/cauchy()+eta fit (see the guard's
+  # own comment for why it must stay OFF for FOCEi/FOCE, #979).
   on.exit(nlmixr2global$rxCensNuFix <- FALSE, add = TRUE)
   on.exit(nlmixr2global$rxPredLlik <- FALSE, add = TRUE)
+  nlmixr2global$rxPredLlik <- TRUE
+  # nlm is population-only (no etas), so .fixCensRNuLine's real (nonzero)
+  # rx_r_/rx_nu_ for a llik-forced endpoint is safe here.
+  nlmixr2global$rxCensNuFix <- TRUE
   .predDf <- .ui$predDf
   .save <- .predDf
   .predDf[.predDf$distribution == "norm", "distribution"] <- "dnorm"
