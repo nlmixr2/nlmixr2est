@@ -111,18 +111,27 @@ static inline double handleF(int powt, double &ft, double &f, bool trunc, bool a
 
 // Per-observation combined-error SD for the E-step/simulation, matching the
 // per-endpoint combined1/combined2 branch the M-step objective functions use
-// (obj()/objH()/objI(): combined1 g = a + b*|f|, combined2 g = sqrt(a^2+b^2*f^2)).
+// (objC()/objD(): combined1 g = a + b*|f|^c, combined2 g = sqrt(a^2+b^2*f^(2c))).
+// c (cres) defaults to 1 for every non-pow() residual model (rmAdd/rmProp/
+// rmAddProp and their lambda siblings), so this reduces to the pre-#972
+// formula there; only rmPow/rmAddPow/rmPowLam/rmAddPowLam actually estimate
+// c != 1 (#972).
 // Fills g in place (a scalar loop, no temporaries) so it can run inside the
 // pre-allocated per-chain E-step scratch buffers (_scratch_g) without
 // defeating their point.
-static inline void saemFormG(vec &g, const vec &a, const vec &b, const vec &ft, const uvec &addPropVec) {
+static inline void saemFormG(vec &g, const vec &a, const vec &b, const vec &ft, const vec &c, const uvec &addPropVec) {
   const arma::uword n = ft.n_elem;
   for (arma::uword i = 0; i < n; ++i) {
     double fa = std::fabs(ft[i]);
+    // c[i]==1 is every non-pow() endpoint (the overwhelming common case) --
+    // skip pow() there so g is bit-identical to the pre-#972 formula instead
+    // of merely numerically equal (SAEM's MCMC acceptance is sensitive
+    // enough to a ULP-level g difference that it is not a no-op in practice).
+    double fac = (c[i] == 1.0) ? fa : std::pow(fa, c[i]);
     if (addPropVec[i] == 1) {
-      g[i] = a[i] + b[i]*fa;
+      g[i] = a[i] + b[i]*fac;
     } else {
-      g[i] = std::sqrt(a[i]*a[i] + b[i]*b[i]*fa*fa);
+      g[i] = std::sqrt(a[i]*a[i] + b[i]*b[i]*fac*fac);
     }
   }
 }
@@ -2066,7 +2075,7 @@ public:
                 _scratch_ft(i) = _powerD(fk(i), lambda(cur), yj(cur), low(cur), hi(cur));
                 _scratch_ftT(i) = handleF(propT(cur), _scratch_ft(i), fk(i), false, true);
               }
-              saemFormG(_scratch_g, vecares, vecbres, _scratch_ftT, vecaddProp);
+              saemFormG(_scratch_g, vecares, vecbres, _scratch_ftT, veccres, vecaddProp);
               _scratch_g.elem(find(_scratch_g == 0.0)).fill(1.0);
               _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
               _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
@@ -2273,7 +2282,7 @@ public:
                 _scratch_ft(i) = _powerD(fk(i), lambda(cur), yj(cur), low(cur), hi(cur));
                 _scratch_ftT(i) = handleF(propT(cur), _scratch_ft(i), fk(i), false, true);
               }
-              saemFormG(_scratch_g, vecares, vecbres, _scratch_ftT, vecaddProp);
+              saemFormG(_scratch_g, vecares, vecbres, _scratch_ftT, veccres, vecaddProp);
               _scratch_g.elem(find(_scratch_g == 0.0)).fill(1.0);
               _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
               _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
@@ -2556,7 +2565,7 @@ public:
               _scratch_ft(i) = _powerD(fk(i), lambda(cur), yj(cur), low(cur), hi(cur));
               _scratch_ftT(i) = handleF(propT(cur), _scratch_ft(i), fk(i), false, true);
             }
-            saemFormG(_scratch_g, vecares, vecbres, _scratch_ftT, vecaddProp);
+            saemFormG(_scratch_g, vecares, vecbres, _scratch_ftT, veccres, vecaddProp);
             _scratch_g.elem(find(_scratch_g == 0.0)).fill(1.0);
             _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
             _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
@@ -3587,6 +3596,7 @@ public:
       }
       vecares = ares(ix_endpnt);
       vecbres = bres(ix_endpnt);
+      veccres = cres(ix_endpnt);
       if (DEBUG>0) Rcout << "par update successful\n";
 
       //    Fisher information
@@ -4083,7 +4093,7 @@ private:
                 _scratch_ft(i) = _powerD(fsk(i), lambda(cur), yj(cur), low(cur), hi(cur));
                 _scratch_ftT(i) = handleF(propT(cur), _scratch_ft(i), fsk(i), false, true);
               }
-              saemFormG(_scratch_g, vecares, vecbres, _scratch_ftT, vecaddProp);
+              saemFormG(_scratch_g, vecares, vecbres, _scratch_ftT, veccres, vecaddProp);
               _scratch_g.elem(find(_scratch_g == 0.0)).fill(1);
               _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
               _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
@@ -4192,7 +4202,7 @@ private:
               _scratch_ft(i) = _powerD(fsk(i), lambda(cur), yj(cur), low(cur), hi(cur));
               _scratch_ftT(i) = handleF(propT(cur), fsk(i), _scratch_ft(i), false, true);
             }
-            saemFormG(_scratch_g, vecares, vecbres, _scratch_ftT, vecaddProp);
+            saemFormG(_scratch_g, vecares, vecbres, _scratch_ftT, veccres, vecaddProp);
             _scratch_g.elem(find(_scratch_g == 0.0)).fill(1);
             _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
             _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
@@ -4303,7 +4313,7 @@ private:
             _scratch_ft(i) = _powerD(fk(i), lambda(cur), yj(cur), low(cur), hi(cur));
             _scratch_ftT(i) = handleF(propT(cur), fk(i), _scratch_ft(i), false, true);
           }
-          saemFormG(_scratch_g, vecares, vecbres, _scratch_ftT, vecaddProp);
+          saemFormG(_scratch_g, vecares, vecbres, _scratch_ftT, veccres, vecaddProp);
           _scratch_g.elem(find(_scratch_g == 0.0)).fill(1.0);
           _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
           _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
@@ -4729,12 +4739,13 @@ SEXP saem_fit(SEXP xSEXP) {
 // (saemFormG(), used at every _scratch_g site) so it can be pinned against
 // the M-step's combined1/combined2 formulas without running a full fit.
 //[[Rcpp::export]]
-SEXP saemFormGTest(SEXP inA, SEXP inB, SEXP inFt, SEXP inAddProp) {
+SEXP saemFormGTest(SEXP inA, SEXP inB, SEXP inFt, SEXP inC, SEXP inAddProp) {
   vec a = as<vec>(inA);
   vec b = as<vec>(inB);
   vec ft = as<vec>(inFt);
+  vec c = as<vec>(inC);
   uvec addPropVec = as<uvec>(inAddProp);
   vec g(a.n_elem);
-  saemFormG(g, a, b, ft, addPropVec);
+  saemFormG(g, a, b, ft, c, addPropVec);
   return wrap(g);
 }
