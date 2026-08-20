@@ -139,10 +139,16 @@
   endpoint, no regressor theta -- that biased moment is installed as the
   final residual-error estimate with no further optimizer correction, so a
   censored row could badly distort it (an extreme recorded LOQ was measured
-  to inflate `est="npag"`'s proportional SD ~200x, and collapse
-  `est="npb"`'s to exactly 0). A censored row's DV is now excluded from the
-  moment entirely, matching how the function already excludes an endpoint
-  with no defined prediction to take a moment of.
+  to inflate `est="npag"`'s proportional SD from 0.03 to 14.7, and
+  `est="npb"`'s from 0.03 to 8.1). A censored row's DV is now excluded from
+  the moment entirely, matching how the function already excludes an
+  endpoint with no defined prediction to take a moment of. Excluding the row
+  still leaves the moment a biased-low estimate of the true residual
+  variance whenever the data really is censored (the variance of a
+  truncated normal is always less than the untruncated one), so an endpoint
+  that had any row excluded this way no longer takes the direct-install
+  fast path either -- it is refined against the already censoring-aware ELS
+  objective instead, the same way a regressor theta already was.
 
 - `foceiControl(fast=TRUE)` could converge to a different fit than `fast=FALSE`
   when a transform-both-sides (`lnorm`/`boxCox`) endpoint's untransformed

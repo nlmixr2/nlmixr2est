@@ -16400,13 +16400,19 @@ static inline void npAccumMoment(arma::mat &mom, int e, double f, double dv) {
 // the LOQ/limit rather than a real measurement (censEst.h's isM3orM4(cens); M2 is NOT
 // excluded -- isM2 requires cens==0, so its DV is still a defined observation), so it
 // is dropped from the moment entirely (like the whole-endpoint skipMoments guard
-// below) rather than folded in as if observed -- issue #978. Returns an nEnd x 3
-// matrix [sumAdd, sumProp, n].
+// below) rather than folded in as if observed -- issue #978. A moment built only from
+// the UNcensored rows is still a biased (too small) estimate of the true residual
+// variance whenever the model is genuinely censored -- dropping a row does not put its
+// information back, it just stops it from being wrong in the worst way. Column 3
+// counts how many rows were dropped this way per endpoint, so the caller can refuse to
+// treat the moment as final (see npOptimizeResid's allSimpleScale gate) and route
+// through the optimizer's censoring-aware objective instead whenever that count is
+// nonzero. Returns an nEnd x 4 matrix [sumAdd, sumProp, n, nCensDropped].
 arma::mat npResidMoments(const arma::mat& postEta, const arma::ivec& obsEndpoint, int nEnd) {
   rx = getRxSolve_();
   int nsub = (int)getRxNsub(rx);
   int neta = op_focei.neta;
-  arma::mat mom(std::max(nEnd, 1), 3, arma::fill::zeros);
+  arma::mat mom(std::max(nEnd, 1), 4, arma::fill::zeros);
   std::vector<double> eta(neta);
   int obsIdx = 0;
   for (int i = 0; i < nsub; ++i) {
@@ -16451,7 +16457,7 @@ arma::mat npResidMoments(const arma::mat& postEta, const arma::ivec& obsEndpoint
       // proportional sum-of-squares as if observed (issue #978).  M2 (cens == 0,
       // finite limit) keeps its real observed dv and is NOT excluded here.
       double cens = hasRxCens(rx) ? getIndCens(ind, kk) : 0.0;
-      if (cens != 0.0) continue;
+      if (cens != 0.0) { mom(e, 3) += 1.0; continue; }
       npAccumMoment(mom, e, f, dv);
     }
   }
