@@ -506,10 +506,24 @@ struct focei_options {
   // foceiO["priorSpec"] for the duration of THIS foceiFitCpp_() call -- this
   // is a non-owning view, valid only while that R object is reachable from
   // the calling R frame (see the read site in foceiSetup_ for why that's
-  // always true here). The gate (.nlmixr2AssertPriors()) has already
-  // restricted every term this can point to a theta-only "general" spec
-  // (#931's scope); no term here ever references an omega index.
+  // always true here).
   const rx_prior_spec_t *priorSpec = NULL;
+  // Cached at setup (priorSpecHasOmegaTerm()): does any term reference an
+  // omega element?  Gates whether foceiPriorEval()/foceiPriorOmegaGradAdd()
+  // bother computing a live Omega at all (cheap either way -- neta is
+  // small -- but the common case is a theta-only prior).
+  bool priorSpecOmegaTerm = false;
+  // Set once at setup (priorSpecThetaReachable(), after foceiSetupTheta_()
+  // has populated fixedTrans/npars/ntheta): true unless the prior spec
+  // references a theta that a mu-referenced family profiles out of the
+  // outer problem entirely (no optimizer-parameter index maps to it via
+  // fixedTrans).  analyticOuterGradDirect() declines rather than silently
+  // under-count when this is false; the objective (foceiPriorObjTerm(),
+  // hence the FD gradient too) is unaffected either way.  Omega elements
+  // are never profiled out this way, so this only ever gates the theta
+  // fold-in (foceiPriorGradAdd()), not the omega one
+  // (foceiPriorOmegaGradAdd()).
+  bool priorGradAnalyticSafe = true;
   mat etaM;
   mat etaS;
   // 1/SD of the eta distribution; standardizes an INDIVIDUAL eta (etaInBound(),
@@ -4617,33 +4631,14 @@ static inline double foceiLik0(double *theta) {
 }
 
 
-// -2*log p(theta), the ini({}) prior penalty (nlmixr2/rxode2#1270,
-// nlmixr2/nlmixr2est#929/#931).  0.0 when the model has no prior
-// (op_focei.priorSpec == NULL, the common case).  Reads op_focei.fullTheta/
-// op_focei.omega, which updateTheta() (called inside foceiLik0(), always
-// immediately before this at every call site) has already refreshed for
-// the current theta -- so this must only ever be called right after
-// foceiLik0().  The gate (.nlmixr2AssertPriors(), R/priors.R) refuses any
-// prior that touches an omega element before a FOCEI-family fit ever
-// reaches here, so no term in the spec references op_focei.omega's
-// contents; it is passed only so the C API's gradOmega buffer has a
-// validly-sized (if unused) home. gradTheta/gradOmega are discarded here:
-// numericGrad() finite-differences THIS function (via foceiObjFromLik0()),
-// so it picks the prior up for free; the analytic outer gradient has no
-// d/dtheta log p(theta) term yet, so .foceiFamilyControl() (R/focei.R)
-// forces fast=FALSE whenever a prior is present rather than risk a
-// gradient that silently disagrees with this objective.
 // True if any term in the spec references an omega element (etaIdx[k] != 0
 // for some member).  FOCEi's shared C++ objective has no live Omega to read
 // this against for any method but est="fo" (op_focei.omega is populated only
-// when op_focei.fo==1, see foceiOmegaFromTheta()); the R-side gate refuses
-// this for every "theta"-declared method already, but "all"-level
-// pseudo-methods (output/posthoc, #938) skip that per-level check on
-// purpose, and .foceiFamilyControl() (R/focei.R) refuses it there too -- this
-// is the same check repeated in C++ as a hard backstop, since the
-// alternative on a caller that ever slips past both R-side checks is
-// reading op_focei.omega's default-constructed (0x0, NULL memptr()) matrix,
-// a guaranteed segfault rather than a clean error.
+// when op_focei.fo==1, see foceiOmegaFromTheta()) -- foceiCurrentOmega()
+// below is what makes the VALUE side work for every method regardless;
+// cached at setup into op_focei.priorSpecOmegaTerm so the (cheap, but not
+// free) live-Omega computation is skipped entirely for the common
+// theta-only-prior case.
 static bool priorSpecHasOmegaTerm(const rx_prior_spec_t *spec) {
   if (spec == NULL) return false;
   for (int t = 0; t < spec->nTerms; ++t) {
@@ -4655,15 +4650,168 @@ static bool priorSpecHasOmegaTerm(const rx_prior_spec_t *spec) {
   return false;
 }
 
+// Every theta index (0-based) a prior term references directly (thetaIdx[k]
+// is rxUiPriors()'s 1-based ntheta, 0 when member k is an omega element).
+// True if EVERY referenced theta is reachable through op_focei.fixedTrans --
+// the same map updateTheta() uses to write an optimizer parameter into its
+// fullTheta slot (fixedTrans[i] for optimizer index i in [0, npars)).  A
+// theta a mu-referenced family profiles out of the outer problem entirely
+// (computed by an internal regression step, not a free npars-space
+// parameter) has no such i, so analyticOuterGradDirect()'s fold-in
+// (foceiPriorGradAdd()) -- which walks the SAME fixedTrans map -- would
+// silently drop that theta's contribution.  Omega elements are never
+// profiled out this way (see foceiPriorOmegaGradAdd()), so this only ever
+// needs to check thetaIdx.  Computed once, at setup (foceiSetup_ sets
+// op_focei.priorGradAnalyticSafe from this), not per evaluation.
+static bool priorSpecThetaReachable(const rx_prior_spec_t *spec, const int *fixedTrans, int npars,
+                                    int ntheta) {
+  if (spec == NULL) return true;
+  std::vector<bool> reachable((size_t)ntheta, false);
+  for (int i = 0; i < npars; ++i) {
+    int j = fixedTrans[i];
+    if (j >= 0 && j < ntheta) reachable[(size_t)j] = true;
+  }
+  for (int t = 0; t < spec->nTerms; ++t) {
+    const rx_prior_term_t &term = spec->terms[t];
+    for (int k = 0; k < term.n; ++k) {
+      int th = term.thetaIdx[k];  // 1-based; 0 means member k is an omega element
+      if (th != 0 && !reachable[(size_t)(th - 1)]) return false;
+    }
+  }
+  return true;
+}
+
+// The CURRENT natural-scale Omega, valid for every FOCEI-family method, not
+// just est="fo".  op_focei.omega itself is only ever assigned when
+// op_focei.fo==1 (foceiOmegaFromTheta()); every other method instead keeps
+// op_focei.omegaInv/cholOmegaInv current (the parameterization FOCEI/FOCE
+// actually optimize), so Omega has to be recovered from that by inversion --
+// cheap, since neta is always small.  Empty (0x0) when there is no omega at
+// all (a population-only model), matching op_focei.omega's own convention.
+static arma::mat foceiCurrentOmega() {
+  if (op_focei.fo == 1) return op_focei.omega;
+  if (op_focei.omegaInv.n_rows == 0) return op_focei.omega;
+  return arma::inv_sympd(op_focei.omegaInv);
+}
+
+// Value and (natural-scale, per-theta) gradient of the ini({}) prior at the
+// CURRENT op_focei.fullTheta/omega -- fullTheta must already be current
+// (updateTheta() has run) before this is called.  0.0 / all-zero when the
+// model has no prior (op_focei.priorSpec == NULL, the common case), so a
+// caller can invoke this unconditionally.  gradTheta is sized ntheta and
+// resized/zeroed by this call.  The omega-touching gradient
+// (rxPriorLogDensityEval()'s gradOmega output) is intentionally discarded
+// here -- it is needed only by the analytic outer gradient
+// (foceiPriorOmegaGradAdd(), which recomputes it against the SAME
+// omegaInv/dOiEst analyticOuterGradDirect() already has in hand, avoiding a
+// second live-Omega computation on that path); the FD gradient picks up an
+// omega-touching prior's effect for free the same way it does theta's, by
+// re-evaluating this value at a perturbed omega.
+static double foceiPriorEval(std::vector<double> &gradTheta) {
+  gradTheta.assign((size_t)op_focei.ntheta, 0.0);
+  if (op_focei.priorSpec == NULL) return 0.0;
+  arma::mat Omega = op_focei.priorSpecOmegaTerm ? foceiCurrentOmega() : arma::mat();
+  int omegaDim = (int)Omega.n_rows;
+  std::vector<double> gradOmega((size_t)omegaDim * (size_t)omegaDim, 0.0);
+  return rxPriorLogDensityEval(op_focei.priorSpec, op_focei.fullTheta, (int)op_focei.ntheta,
+                               Omega.memptr(), omegaDim,
+                               gradTheta.data(), gradOmega.data());
+}
+
+// -2*log p(theta) at the current theta; 0.0 when there is no prior.
+// numericGrad()'s finite-difference gradient re-evaluates THIS (via
+// foceiObjFromLik0()) at perturbed points, so it picks the prior up for
+// free -- no separate FD-specific code path is needed.
 static inline double foceiPriorObjTerm() {
   if (op_focei.priorSpec == NULL) return 0.0;
-  std::vector<double> gTheta((size_t)op_focei.ntheta, 0.0);
-  int omegaDim = (int)op_focei.omega.n_rows;
-  std::vector<double> gOmega((size_t)omegaDim * (size_t)omegaDim, 0.0);
-  double lp = rxPriorLogDensityEval(op_focei.priorSpec, op_focei.fullTheta, (int)op_focei.ntheta,
-                                     op_focei.omega.memptr(), omegaDim,
-                                     gTheta.data(), gOmega.data());
-  return -2.0 * lp;
+  std::vector<double> gradTheta;
+  return -2.0 * foceiPriorEval(gradTheta);
+}
+
+// -2*d(log p(theta))/dtheta[j], folded into gp -- the analytic outer
+// gradient's optimizer-parameter-indexed, NATURAL-scale accumulator, the
+// same convention gradDirectFdAdd()'s fdg uses ("fdg is d(-2LL_i)/
+// d(fullTheta_j) on the NATURAL scale, which is exactly what gp holds").
+// Uses op_focei.fixedTrans, the SAME map updateTheta() uses the other
+// direction (optimizer parameter -> fullTheta slot), so this needs no
+// dependency on the kernel's own (nth, nsg, nom) slot layout (G.gMap/
+// G.thPos) at all -- correct regardless of how a mu-referenced family's
+// kernel groups theta directions, as long as every prior-referenced theta
+// is itself a free optimizer parameter (op_focei.priorGradAnalyticSafe,
+// set at setup by priorSpecThetaReachable(); analyticOuterGradDirect()
+// declines rather than call this when it is false).
+static void foceiPriorGradAdd(int npars, arma::vec &gp) {
+  if (op_focei.priorSpec == NULL) return;
+  std::vector<double> gradTheta;
+  foceiPriorEval(gradTheta);
+  const int ntheta = (int)op_focei.ntheta;
+  for (int i = 0; i < npars; ++i) {
+    int j = op_focei.fixedTrans[i];
+    if (j >= 0 && j < ntheta) gp[i] += -2.0 * gradTheta[(size_t)j];
+  }
+}
+
+// -2*d(log p(theta))/d(theta_k), theta_k the k-th ESTIMATION-SCALE omega
+// parameter (fullTheta[ntheta+k], the same "chol theta" _rxInv's own
+// d.omegaInv/tr.28 are indexed by -- see the getDOmegaInvL()/getTr28V()
+// comment above), folded into gp the same way foceiPriorGradAdd() folds in
+// the theta portion.  Oi/dOiEst are analyticOuterGradDirect()'s own
+// omegaInv/d(Omega^-1)/d(theta_k) (gradDirectOmega()) -- reused rather than
+// refetched, since they are exactly what this needs too.
+//
+// Derivation: with A = Omega^-1 (what Oi/dOiEst parameterize) and
+// Omega = A^-1, d(Omega)/d(theta_k) = -Omega * dOiEst[k] * Omega (standard
+// matrix-inverse VJP).  For f = log p(theta, Omega),
+// df/d(theta_k) = <df/dOmega, dOmega/d(theta_k)>_F = tr(Gsym * dOmega/d(theta_k))
+// (Gsym = the symmetric part of df/dOmega -- dOmega/d(theta_k) is symmetric,
+// since Omega=A^-1 is, so only Gsym contracts against it; the antisymmetric
+// part of rxPriorLogDensityEval()'s gradOmega, if any, drops out exactly the
+// way rxPriorOmegaToCholOmegaInvGrad() drops it for its own, differently-
+// parameterized use of the identical Abar intermediate) = tr(Abar * dOiEst[k])
+// with Abar = -Omega*Gsym*Omega -- the SAME Abar
+// rxPriorOmegaToCholOmegaInvGrad() computes en route to a per-Cholesky-entry
+// gradient; this reaches theta_k directly instead, using the derivative data
+// FOCEI's own (non-prior) omega gradient already relies on, so it needs no
+// block/position bookkeeping of its own for a prior term spanning only part
+// of a larger omega matrix -- Abar and dOiEst[k] are both already sized for
+// the FULL omega, and a block prior's nonzero entries are already exactly
+// zero everywhere outside their block in Gsym (rxPriorLogDensityEval()
+// scatters each term's members into gradOmega positionally).  Verified
+// against central-difference gradients of the full Omega(theta) pipeline in
+// tests/testthat/test-focei-prior.R.
+static void foceiPriorOmegaGradAdd(int npars, arma::vec &gp, const arma::mat &Oi,
+                                   const arma::cube &dOiEst) {
+  if (op_focei.priorSpec == NULL || !op_focei.priorSpecOmegaTerm) return;
+  const int omegaDim = (int)Oi.n_rows;
+  if (omegaDim == 0 || (int)dOiEst.n_rows != omegaDim || (int)dOiEst.n_cols != omegaDim) return;
+  arma::mat Omega;
+  try {
+    Omega = arma::inv_sympd(Oi);
+  } catch (...) {
+    return;  // non-PD live Omega: contribute nothing, matching
+             // rxPriorLogDensityEval()'s own -Inf/0-gradient convention
+             // for an indefinite covariance rather than throwing mid-fit.
+  }
+  std::vector<double> gradTheta((size_t)op_focei.ntheta, 0.0);
+  std::vector<double> gradOmegaFlat((size_t)omegaDim * (size_t)omegaDim, 0.0);
+  rxPriorLogDensityEval(op_focei.priorSpec, op_focei.fullTheta, (int)op_focei.ntheta,
+                        Omega.memptr(), omegaDim, gradTheta.data(), gradOmegaFlat.data());
+  // Row-major vs column-major is irrelevant once symmetrized (Gsym(M) ==
+  // Gsym(M^T)), so this may read the flat buffer either way.
+  arma::mat gradOmegaRaw(gradOmegaFlat.data(), (arma::uword)omegaDim, (arma::uword)omegaDim);
+  arma::mat Gsym = 0.5 * (gradOmegaRaw + gradOmegaRaw.t());
+  arma::mat Abar = -(Omega * Gsym * Omega);
+  const int nom = (int)dOiEst.n_slices;
+  std::vector<double> dThetaK((size_t)nom, 0.0);
+  for (int k = 0; k < nom; ++k) {
+    dThetaK[(size_t)k] = arma::accu(Abar % dOiEst.slice((arma::uword)k));
+  }
+  const int ntheta = (int)op_focei.ntheta;
+  for (int i = 0; i < npars; ++i) {
+    int j = op_focei.fixedTrans[i];
+    int k = j - ntheta;
+    if (k >= 0 && k < nom) gp[i] += -2.0 * dThetaK[(size_t)k];
+  }
 }
 
 // -2*log-likelihood at theta, PLUS the ini({}) prior penalty when one is
@@ -6525,9 +6673,7 @@ NumericVector foceiSetup_(const RObject &obj,
       op_focei.priorSpec = (const rx_prior_spec_t *) R_ExternalPtrAddr(priorSpecS);
     }
   }
-  if (priorSpecHasOmegaTerm(op_focei.priorSpec)) {
-    stop("a prior on an omega element is not usable by this estimation method yet");
-  }
+  op_focei.priorSpecOmegaTerm = priorSpecHasOmegaTerm(op_focei.priorSpec);
   if (foceiO.containsElementNamed("est") && TYPEOF(foceiO["est"]) == STRSXP) {
     std::string estStr = as<std::string>(foceiO["est"]);
     op_focei.isSaem = (estStr == "saem");
@@ -6844,6 +6990,11 @@ NumericVector foceiSetup_(const RObject &obj,
       op_focei.scaleObjective=1;
     }
   }
+  // fixedTrans/npars/ntheta are only valid from here on (foceiSetupTheta_()
+  // just above populates them) -- priorSpecThetaReachable() needs all three.
+  op_focei.priorGradAnalyticSafe =
+    priorSpecThetaReachable(op_focei.priorSpec, op_focei.fixedTrans,
+                            (int)op_focei.npars, (int)op_focei.ntheta);
   if (tempMixIdx != NULL) {
     R_Free(tempMixIdx);
     op_focei.mixIdx = NULL;
@@ -15838,6 +15989,11 @@ static bool analyticOuterGradDirect(double *theta, double *g) {
   // is double-listed or a mu family profiles thetas out).
   if (neta != op_focei.neta || (int)G.gMap.size() != npars) return declineHere(103);
   if (inds_focei == NULL) return declineHere(104);
+  // A prior referencing a theta a mu-referenced family profiles out of the
+  // outer problem has no d/dtheta term this fold-in (foceiPriorGradAdd(),
+  // via op_focei.fixedTrans) can attribute -- decline to FD rather than
+  // silently under-count.  Set once at setup; see priorSpecThetaReachable().
+  if (op_focei.priorSpec != NULL && !op_focei.priorGradAnalyticSafe) return declineHere(118);
   // theta, in the augmented model's positional order
   std::vector<double> thv((size_t)op_focei.ntheta);
   for (int t = 0; t < (int)op_focei.ntheta; ++t) thv[(size_t)t] = op_focei.fullTheta[t];
@@ -15854,6 +16010,14 @@ static bool analyticOuterGradDirect(double *theta, double *g) {
   arma::vec gp;
   if (!gradDirectGather(G, gv, nKer, npars, gp)) return false;
   if (!gradDirectFoldFd(npars, gp)) return false;
+  // ini({}) prior (#929/#931): -2*d(log p(theta))/dtheta[j], folded in before
+  // firstDirectGrad is recorded and before the rescale, same as the FD-fold
+  // above -- 0.0 when the model has no prior.
+  foceiPriorGradAdd(npars, gp);
+  // -2*d(log p(omega))/d(theta_k), reusing the SAME Oi/dOiEst
+  // gradDirectOmega() already fetched above for the ordinary (non-prior)
+  // omega gradient -- 0.0 when the prior has no omega-referencing term.
+  foceiPriorOmegaGradAdd(npars, gp, Oi, dOiEst);
   if (!op_focei.firstDirectGradSet) {
     op_focei.firstDirectGrad.assign(gp.begin(), gp.end());
     op_focei.firstDirectTheta.assign(&op_focei.fullTheta[0],

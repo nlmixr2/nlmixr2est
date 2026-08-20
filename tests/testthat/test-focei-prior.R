@@ -58,12 +58,62 @@ nmTest({
     })
   }
 
-  test_that("FOCEi's family refuses a prior that touches omega", {
-    expect_error(
-      suppressWarnings(suppressMessages(
-        nlmixr2(.oneCmtOmegaPrior, nlmixr2data::theo_sd, est = "focei",
-                control = foceiControl(maxOuterIterations = 0L, print = 0L)))),
-      "omega")
+  # ODE-based (not linCmt()) so fast=TRUE's analytic path is actually in
+  # scope -- a linCmt() model always downgrades to FD regardless of any
+  # prior (no symbolic state sensitivities for the augmented outer model).
+  .odeOmegaPrior <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      eta.ka ~ 0.6
+      eta.cl ~ 0.3
+      eta.v ~ 0.1
+      add.sd <- 0.7
+      prior(eta.cl) ~ dnorm(0, 0.05)
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv + eta.v)
+      d / dt(depot) <- -ka * depot
+      d / dt(center) <- ka * depot - cl / v * center
+      cp <- center / v
+      cp ~ add(add.sd)
+    })
+  }
+  .odeThetaPrior <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      eta.ka ~ 0.6
+      eta.cl ~ 0.3
+      eta.v ~ 0.1
+      add.sd <- 0.7
+      prior(tcl) ~ dnorm(1, 0.05)
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv + eta.v)
+      d / dt(depot) <- -ka * depot
+      d / dt(center) <- ka * depot - cl / v * center
+      cp <- center / v
+      cp ~ add(add.sd)
+    })
+  }
+
+  test_that("FOCEi's family accepts a prior that touches omega (#931)", {
+    skip_on_cran()
+    .fit <- suppressWarnings(suppressMessages(
+      nlmixr2(.oneCmtOmegaPrior, nlmixr2data::theo_sd, est = "focei",
+              control = foceiControl(maxOuterIterations = 0L, print = 0L))))
+    expect_true(inherits(.fit, "nlmixr2FitData"))
+    # the prior survives onto the finished fit (nlmixr2/nlmixr2est#929 --
+    # .nlmixr2FitUpdateParams() used to rebuild the omega rows of iniDf from
+    # the raw matrix, which silently dropped the `prior` column)
+    expect_true("eta.cl" %in% rxode2::rxUiPriors(.fit$ui)$name)
   })
 
   test_that("the objective shifts by exactly -2*log p(theta) (#931)", {
@@ -79,12 +129,41 @@ nmTest({
     expect_equal(.fit1$objective - .fit0$objective, .expected, tolerance = 1e-6)
   })
 
-  test_that("a prior downgrades fast=TRUE (no analytic d/dtheta log p(theta) term yet)", {
+  test_that("the objective shifts by exactly -2*log p(omega) (#931)", {
+    skip_on_cran()
+    .fit0 <- suppressWarnings(suppressMessages(
+      nlmixr2(.oneCmt, nlmixr2data::theo_sd, est = "posthoc")))
+    .fit1 <- suppressWarnings(suppressMessages(
+      nlmixr2(.oneCmtOmegaPrior, nlmixr2data::theo_sd, est = "posthoc")))
+    # eta.cl's initial variance is 0.3 (also unmoved at maxOuterIterations=0),
+    # so the only difference is the prior evaluated there: dnorm(0.3, 0, 0.3).
+    .expected <- -2 * dnorm(0.3, 0, 0.3, log = TRUE)
+    expect_equal(.fit1$objective - .fit0$objective, .expected, tolerance = 1e-6)
+  })
+
+  test_that("a theta prior does not disable fast=TRUE's analytic gradient (#931)", {
     skip_on_cran()
     .fit <- suppressWarnings(suppressMessages(
-      nlmixr2(.oneCmtPrior, nlmixr2data::theo_sd, est = "foceif",
+      nlmixr2(.odeThetaPrior, nlmixr2data::theo_sd, est = "foceif",
               control = foceiControl(print = 0L))))
-    expect_false(isTRUE(.fit$foceiControl$fast))
+    expect_true(isTRUE(.fit$foceiControl$fast))
+    expect_true(.fit$env$nAnalyticGradDirect > 0)
+  })
+
+  test_that("an omega prior does not disable fast=TRUE's analytic gradient (#931)", {
+    skip_on_cran()
+    .fit <- suppressWarnings(suppressMessages(
+      nlmixr2(.odeOmegaPrior, nlmixr2data::theo_sd, est = "foceif",
+              control = foceiControl(print = 0L))))
+    expect_true(isTRUE(.fit$foceiControl$fast))
+    expect_true(.fit$env$nAnalyticGradDirect > 0)
+    # the analytic gradient at convergence should be small for every
+    # parameter, INCLUDING the estimation-scale omega ("om.chol.*") entries
+    # foceiPriorOmegaGradAdd() folds the omega-prior gradient into
+    g <- nlmixr2est:::.foceiGradDirect(.fit)
+    expect_false(is.null(g))
+    expect_true(any(grepl("^om\\.chol\\.", names(g))))
+    expect_true(all(abs(g) < 1))
   })
 
   test_that("a prior downgrades covType='analytic' to a finite-difference covariance", {
@@ -96,7 +175,7 @@ nmTest({
     expect_false(identical(.fit$foceiControl$covType, "analytic"))
   })
 
-  test_that("a strong prior pulls the estimate toward the prior mean (#931)", {
+  test_that("a strong theta prior pulls the estimate toward the prior mean (#931)", {
     skip_on_cran()
     .fit <- suppressWarnings(suppressMessages(
       nlmixr2(.oneCmtPrior, nlmixr2data::theo_sd, est = "focei",
@@ -105,5 +184,74 @@ nmTest({
     # information about tcl -- the converged estimate should land close to
     # the prior mean, not at the (much larger) unconstrained MLE.
     expect_equal(unname(.fit$theta["tcl"]), 1, tolerance = 0.05)
+  })
+
+  test_that("a strong omega prior pulls the estimate toward the prior variance (#931)", {
+    skip_on_cran()
+    .fit <- suppressWarnings(suppressMessages(
+      nlmixr2(.odeOmegaPrior, nlmixr2data::theo_sd, est = "foceif",
+              control = foceiControl(print = 0L))))
+    # eta.cl's prior is dnorm(0, 0.05) on the raw variance, starting from an
+    # initial 0.3 -- the converged variance should land close to 0.05
+    # (testthat's tolerance is relative; a few % off 0.05 is still "pulled
+    # to the prior", not "unmoved from 0.3").
+    expect_equal(unname(.fit$omega["eta.cl", "eta.cl"]), 0.05, tolerance = 0.1)
+  })
+
+  test_that("the omega-prior gradient formula matches central differences (#931)", {
+    # Standalone verification of foceiPriorOmegaGradAdd()'s math
+    # (d(log p(theta_k))/d(theta_k) = tr(Abar * dOiEst[k]), Abar =
+    # -Omega*Gsym*Omega), independent of any fit -- see src/inner.cpp's
+    # foceiPriorOmegaGradAdd() for the derivation.  Exercises "general",
+    # "nwpri" and "tnpri" (the omega gradient chain-rule is the same
+    # regardless of which method built the term).
+    skip_if_not(exists("rxSymInvCholCreate", envir = asNamespace("rxode2"), inherits = FALSE))
+    ns <- asNamespace("rxode2")
+    nms <- c("eta.ka", "eta.cl", "eta.v")
+    Omega0 <- diag(c(0.6, 0.3, 0.1))
+    dimnames(Omega0) <- list(nms, nms)
+    rxInv <- ns$rxSymInvCholCreate(mat = Omega0, diag.xform = "log")
+    theta0 <- ns$rxSymInvCholEnvCalculate(rxInv, "theta")
+    omegaAt <- function(th) {
+      ns$rxSymInvCholEnvCalculate(rxInv, "theta", th)
+      om <- ns$rxSymInvCholEnvCalculate(rxInv, "omega")
+      dimnames(om) <- list(nms, nms)
+      om
+    }
+    thetaPop <- c(tka = 0.45, tcl = 1, tv = 3.45, add.sd = 0.7)
+
+    for (.priorSpec in c("prior(eta.cl) ~ dnorm(0, 0.3)", "prior(eta.cl) ~ invWishart(4)")) {
+      .mod <- eval(str2lang(paste0(
+        "function() {\n ini({\n  tka <- 0.45\n  tcl <- 1\n  tv <- 3.45\n",
+        "  eta.ka ~ 0.6\n  eta.cl ~ 0.3\n  eta.v ~ 0.1\n  add.sd <- 0.7\n  ",
+        .priorSpec, "\n})\n model({\n",
+        "  ka <- exp(tka + eta.ka)\n  cl <- exp(tcl + eta.cl)\n  v <- exp(tv + eta.v)\n",
+        "  linCmt() ~ add(add.sd)\n})\n}")))
+      ui <- rxode2::rxode2(.mod)
+      .method <- nlmixr2est:::.nlmixr2PriorMethod(ui)
+
+      fAt <- function(th) {
+        om <- omegaAt(th)
+        rxode2::rxPriorLogDensity(ui, theta = thetaPop, omega = om, method = .method)$value
+      }
+      h <- 1e-5
+      fdGrad <- vapply(seq_along(theta0), function(k) {
+        tp <- theta0; tp[k] <- tp[k] + h
+        tm <- theta0; tm[k] <- tm[k] - h
+        (fAt(tp) - fAt(tm)) / (2 * h)
+      }, numeric(1))
+
+      omegaAt(theta0)
+      Omega <- ns$rxSymInvCholEnvCalculate(rxInv, "omega")
+      dimnames(Omega) <- list(nms, nms)
+      dOiL <- ns$rxSymInvCholEnvCalculate(rxInv, "d.omegaInv")
+      r <- rxode2::rxPriorLogDensity(ui, theta = thetaPop, omega = Omega, method = .method)
+      Gsym <- 0.5 * (r$gradOmega + t(r$gradOmega))
+      Abar <- -(Omega %*% Gsym %*% Omega)
+      myGrad <- vapply(dOiL, function(dk) sum(Abar * dk), numeric(1))
+
+      expect_equal(myGrad, fdGrad, tolerance = 1e-4,
+                   label = paste0("Abar formula (", .method, ")"))
+    }
   })
 })

@@ -37,8 +37,13 @@ nmTest({
     expect_equal(.nlmixr2PriorSupport(.env("saem", NULL)), "none")
     ## and so does a class with no method at all
     expect_equal(.nlmixr2PriorSupport(.env("notAMethod", NULL)), "none")
-    ## focei's family declares "theta" support (#931)
-    expect_equal(.nlmixr2PriorSupport(.env("focei", NULL)), "theta")
+    ## focei's family declares "general" support (#931): a prior on a
+    ## population parameter AND on an omega element, either directly
+    ## (the "tnpri" convention) or via invWishart() degrees of freedom
+    ## (the "nwpri" convention) -- foceiPriorOmegaGradAdd()'s chain-rule
+    ## into op_focei.cholOmegaInv (src/inner.cpp) is the same regardless
+    ## of which convention built the term.
+    expect_equal(.nlmixr2PriorSupport(.env("focei", NULL)), "general")
   })
 
   test_that("an unknown support level is an error", {
@@ -61,16 +66,24 @@ nmTest({
     .ui <- .mod("prior(tka) ~ dnorm(0, 10)")
 
     ## the message names the parameter and the method, so the user can
-    ## see which prior and which est.  saem declares no support (still
-    ## "none"); focei's family now honours a theta prior (#931), so an
-    ## omega prior is what still demonstrates a refusal for it.
+    ## see which prior and which est.  saem declares no support at all
+    ## (still "none"); focei's family now declares "general" (#931), so a
+    ## refusal for it needs something outside even that: a joint block
+    ## with no om.<eta> member reachable is model-shape refused elsewhere,
+    ## so saem alone demonstrates this.
     expect_error(.nlmixr2AssertPriors(.env("saem", .ui)), "tka")
     expect_error(.nlmixr2AssertPriors(.env("saem", .ui)), "saem")
-    expect_error(.nlmixr2AssertPriors(.env("focei", .mod("om.eta.ka ~ 0.01"))), "omega")
 
     ## a method registered by another package gets the same treatment,
     ## which is the point of checking in the generic
     expect_error(.nlmixr2AssertPriors(.env("nonmem", .ui)), "nonmem")
+  })
+
+  test_that("focei's family accepts a prior on omega too (#931)", {
+    skip_if_not(.hasPriors())
+    expect_error(.nlmixr2AssertPriors(.env("focei", .mod("om.eta.ka ~ 0.01"))), NA)
+    expect_error(.nlmixr2AssertPriors(
+      .env("focei", .mod("prior(eta.ka) ~ invWishart(2)"))), NA)
   })
 
   test_that("a method that declares support is not blocked", {

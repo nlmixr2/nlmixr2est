@@ -31,17 +31,19 @@
 #' A method says what it supports with an attribute on itself:
 #'
 #' ```
-#' attr(nlmixr2Est.myMethod, "nlmixr2Priors") <- "theta"
+#' attr(nlmixr2Est.myMethod, "nlmixr2Priors") <- "general"
 #' ```
 #'
 #' - `"none"`, which is also what an absent attribute means -- the
 #'   method cannot use priors at all
 #' - `"theta"` -- priors on population parameters only (`dnorm()`,
 #'   `dcauchy()`, `stdNormal()` and the `multiNormal()` family among
-#'   thetas); anything referencing an omega element is refused
+#'   thetas); anything referencing an omega element is refused.  No
+#'   FOCEi-family method uses this level -- they declare `"general"`.
 #' - `"general"` -- everything the shared kernel's `"general"` method
 #'   covers: the above, plus a normal prior directly on an omega element
-#'   and a textbook inverse-Wishart on an omega block
+#'   and a textbook inverse-Wishart on an omega block.  This is what
+#'   `est="focei"` and the rest of its family declare.
 #' - `"nwpri"` -- normal priors and degrees of freedom on an omega block
 #'   (`invWishart(4)`), evaluated the way a NONMEM NWPRI model works; a
 #'   normal prior on the omega values themselves is refused

@@ -18,7 +18,7 @@
 ##
 ## A method says what it supports with an attribute on itself:
 ##
-##   attr(nlmixr2Est.myMethod, "nlmixr2Priors") <- "theta"
+##   attr(nlmixr2Est.myMethod, "nlmixr2Priors") <- "general"
 ##
 ## The levels are
 ##
@@ -27,15 +27,19 @@
 ## - `"theta"` -- priors on population parameters only (`dnorm()`,
 ##   `dcauchy()`, `stdNormal()`, the `multiNormal()` family the lotri
 ##   shorthand produces among thetas); anything that touches an omega
-##   element is refused.  This is what FOCEi's family can honour today
-##   (#931) -- an omega-referencing term needs the natural-scale gradient
-##   chain-ruled through `op_focei.cholOmegaInv`
-##   (`rxPriorOmegaToCholOmegaInvGrad()`), not yet wired in.
+##   element is refused.  No FOCEi-family method uses this level (see
+##   `"general"` below); it exists for a future method whose omega
+##   optimization cannot yet honour a prior on it at all.
 ## - `"general"` -- everything the kernel's `"general"` method covers:
 ##   the above, plus a normal prior directly on an omega element and a
 ##   textbook inverse-Wishart on an omega block.  No further check here;
 ##   `rxPriorBuildSpec()` itself is the validator (nothing beyond what
-##   `rxUiPriors()` reports can reach it).
+##   `rxUiPriors()` reports can reach it).  This is what FOCEi's family
+##   declares (#931): the natural-scale omega gradient is chain-ruled into
+##   `op_focei.cholOmegaInv`'s own estimation-scale parameterization via
+##   the SAME derivative data (`d.omegaInv`/`tr.28`, from the model's
+##   `_rxInv` handle) FOCEi's own (non-prior) omega gradient already
+##   relies on (`foceiPriorOmegaGradAdd()`, `src/inner.cpp`).
 ## - `"nwpri"` -- normal priors, and degrees of freedom on an omega
 ##   block (`invWishart(4)`), evaluated with NONMEM's own `$PRIOR NWPRI`
 ##   convention rather than the textbook one; a normal prior on the
@@ -140,11 +144,12 @@
 
 #' Refuse a prior that references an omega element
 #'
-#' Used for the `"theta"` level: FOCEi's family can honour a prior on a
-#' population parameter today, but not yet one on an omega element -- that
-#' needs the natural-scale gradient chain-ruled through
-#' `op_focei.cholOmegaInv` (`rxPriorOmegaToCholOmegaInvGrad()`), not yet
-#' wired into the objective/gradient (#931).
+#' Used for the `"theta"` level, for a method that can honour a prior on a
+#' population parameter but not yet one on an omega element -- FOCEi's
+#' family declares `"general"` instead (#931), since it does wire that
+#' natural-scale gradient through `op_focei.cholOmegaInv`
+#' (`foceiPriorOmegaGradAdd()`, `src/inner.cpp`); no FOCEi-family method
+#' uses this level.
 #'
 #' @param ui rxode2 ui
 #' @param extra text appended to the error

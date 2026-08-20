@@ -159,6 +159,6 @@ nlmixr2Est.fo <- function(env, ...) {
   .addObjDfToReturn(.ret, .objDf)
   .ret
 }
-attr(nlmixr2Est.fo, "nlmixr2Priors") <- "theta"
+attr(nlmixr2Est.fo, "nlmixr2Priors") <- "general"
 attr(nlmixr2Est.fo, "covPresent") <- TRUE
 attr(nlmixr2Est.fo, "unbounded") <- .foUnbounded

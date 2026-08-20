@@ -15,7 +15,7 @@ nlmixr2Est.mfocei <- function(env, ...) {
   .ui <- env$ui
   .foceiFamilyReturn(env, .ui, ..., est="mfocei")
 }
-attr(nlmixr2Est.mfocei, "nlmixr2Priors") <- "theta"
+attr(nlmixr2Est.mfocei, "nlmixr2Priors") <- "general"
 attr(nlmixr2Est.mfocei, "covPresent") <- TRUE
 attr(nlmixr2Est.mfocei, "unbounded") <- .foUnbounded
 # Activates the mu2/mu3/mu4 covariate-rewriting hook (.uiApplyMu2hook,

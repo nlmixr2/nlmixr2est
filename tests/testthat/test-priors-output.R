@@ -51,11 +51,44 @@ nmTest({
     # the priors survive onto the finished fit
     .pri <- rxode2::rxUiPriors(.fit$ui)
     expect_true(all(c("tka", "add.sd") %in% .pri$name))
-    # est="focei" now honours a theta-only prior itself (#931), so this
-    # particular model (normal on tka, Cauchy on add.sd -- both population
-    # parameters) no longer exercises "the bypass is scoped": that needs a
-    # prior focei's own "theta" gate refuses regardless of the bypass, ie one
-    # that touches omega.
+
+    # est="focei" now declares nlmixr2Priors = "general" (#931): it honours
+    # a prior on a population parameter AND on an omega element, so this is
+    # no longer a case that demonstrates "the bypass is scoped" -- saem
+    # (which declares no prior support at all) is.
+    saem.prior <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        add.sd <- c(0, 0.7)
+        eta.ka ~ 0.6
+        prior(tka) ~ dnorm(0, 10)
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl)
+        v <- exp(tv)
+        d / dt(depot) <- -ka * depot
+        d / dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd)
+      })
+    }
+    # the bypass is scoped: the gate still refuses a user-initiated saem
+    expect_error(
+      suppressWarnings(suppressMessages(
+        nlmixr2(saem.prior, nlmixr2data::theo_sd, est = "saem"))),
+      "prior")
+    expect_false(isTRUE(nlmixr2global$nlmixr2PriorGateBypass))
+
+    # posthoc/output declare nlmixr2Priors = "all" (#938); est="focei" now
+    # also fully supports an omega-touching prior (#931) -- both correctly
+    # evaluate one (a previous version of this fix left a segfault
+    # reachable here: op_focei.omega is populated only for est="fo", so
+    # reading it unconditionally read a default-constructed (0x0, NULL
+    # memptr()) matrix for every other method; foceiCurrentOmega()
+    # recovers a live Omega from op_focei.omegaInv instead).
     one.compartment.omega.prior <- function() {
       ini({
         tka <- 0.45
@@ -75,26 +108,10 @@ nmTest({
         cp ~ add(add.sd)
       })
     }
-    # the bypass is scoped: the gate still refuses a user-initiated focei
-    expect_error(
-      suppressWarnings(suppressMessages(
-        nlmixr2(one.compartment.omega.prior, nlmixr2data::theo_sd, est = "focei",
-                control = foceiControl(maxOuterIterations = 0L, print = 0L)))),
-      "omega")
-    expect_false(isTRUE(nlmixr2global$nlmixr2PriorGateBypass))
-
-    # posthoc/output declare nlmixr2Priors = "all", which skips the
-    # per-level restriction on purpose (#938) -- but they still route
-    # through FOCEi's shared C++ objective, which has no live Omega to
-    # read an omega-touching term against for any method but est="fo"
-    # (op_focei.omega is populated only when op_focei.fo==1).  Before a
-    # fix, this reached rxPriorLogDensityEval() with a default-constructed
-    # (0x0, NULL memptr()) omega and segfaulted the R session outright;
-    # .foceiFamilyControl() now refuses it with a normal R error instead.
-    expect_error(
-      suppressWarnings(suppressMessages(
-        nlmixr2(one.compartment.omega.prior, nlmixr2data::theo_sd, est = "posthoc"))),
-      "omega")
+    .fitOmega <- suppressWarnings(suppressMessages(
+      nlmixr2(one.compartment.omega.prior, nlmixr2data::theo_sd, est = "posthoc")))
+    expect_true(inherits(.fitOmega, "nlmixr2FitData"))
+    expect_true("eta.ka" %in% rxode2::rxUiPriors(.fitOmega$ui)$name)
   })
 
   test_that("addCwres() works on a prior-carrying fit (#938)", {

@@ -2920,32 +2920,33 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   # calling family accepted.
   .control["priorSpec"] <- list(.nlmixr2BuildPriorSpec(.ui))
   if (!is.null(.control$priorSpec)) {
-    # FOCEi's shared C++ kernel does not evaluate an omega-referencing prior
-    # term yet (#931 scope is theta-only) -- true for every caller of THIS
-    # function, not just the methods that declare nlmixr2Priors = "theta".
-    # "all"-level pseudo-methods (output/posthoc, #938) skip the gate's
-    # per-level restriction on PURPOSE (there is no prior they could
-    # silently ignore), but they still route through the same op_focei
-    # objective, which has no live Omega to read for anything but est="fo"
-    # (op_focei.omega is only ever populated when op_focei.fo==1) -- so an
-    # omega-touching term reaching it there is not a policy question, it is
-    # a capability gap, and must be refused here rather than left to crash
-    # or silently misread stale/unallocated memory in C++.
-    if (any(!is.na(rxode2::rxUiPriors(.ui)$neta1))) {
-      stop("a prior on an omega element is not usable by this estimation method yet",
-           call.=FALSE)
-    }
-    # Neither the analytic outer gradient nor the analytic covariance/Hessian
-    # has a d/dtheta log p(theta) term yet (#931 scope is the objective only);
-    # an FD gradient/Hessian of foceiOfv0() picks the prior up for free
-    # because it re-evaluates the (now prior-inclusive) objective at each
-    # perturbed point, so downgrading to FD here keeps the fit's gradient and
-    # covariance consistent with the objective it is actually reporting,
-    # rather than silently describing a different function.
-    if (isTRUE(.control$fast)) {
-      .minfo("prior distribution(s): the analytic 'fast' gradient does not apply yet -- using fast = FALSE")
-      .control$fast <- FALSE
-    }
+    # FOCEi's shared C++ kernel evaluates a prior on a population parameter
+    # AND on an omega element (any of the "general"/"nwpri"/"tnpri"
+    # conventions -- foceiPriorEval()/foceiCurrentOmega(), src/inner.cpp;
+    # the latter recovers a live Omega from op_focei.omegaInv for every
+    # method, not just est="fo", where op_focei.omega itself is populated).
+    #
+    # fast=TRUE's analytic outer gradient has both a d/dtheta log p(theta)
+    # term (foceiPriorGradAdd()) and a d/d(omega theta_k) log p(omega) term
+    # (foceiPriorOmegaGradAdd(), reusing the SAME estimation-scale
+    # derivatives -- d.omegaInv/tr.28 from the model's _rxInv handle --
+    # FOCEi's own (non-prior) omega gradient already relies on) -- so it
+    # needs no downgrade here, consistent with the rest of this package's
+    # FOCEi family using symbolic/analytic derivatives throughout, not
+    # finite differences, wherever one is available. (A prior referencing a
+    # theta a mu-referenced family profiles out of the outer problem is the
+    # one case the theta term cannot attribute; src/inner.cpp's
+    # priorSpecThetaReachable() detects that at setup and declines to FD
+    # for just that fit, so it is never silently wrong -- but it is not
+    # something to special-case here. Omega elements are never profiled out
+    # this way.)
+    #
+    # The analytic covariance/Hessian has no prior term yet, so it still
+    # needs the FD downgrade: an FD Hessian of foceiOfv0() picks the prior
+    # up for free by re-evaluating the (now prior-inclusive) objective at
+    # each perturbed point, keeping the covariance consistent with the
+    # objective the fit actually reports rather than silently describing a
+    # different function.
     if (identical(.control$covType, "analytic")) {
       .minfo("prior distribution(s): analytic covariance does not apply yet -- using covMethod = \"r,s\"")
       .control$covType <- "fd"
@@ -3390,7 +3391,7 @@ nlmixr2Est.focei <- function(env, ...) {
   .ret <- .foceiFamilyReturn(env, .ui, ..., est="focei")
   .ret
 }
-attr(nlmixr2Est.focei, "nlmixr2Priors") <- "theta"
+attr(nlmixr2Est.focei, "nlmixr2Priors") <- "general"
 attr(nlmixr2Est.focei, "covPresent") <- TRUE
 attr(nlmixr2Est.focei, "unbounded") <- .foUnbounded
 attr(nlmixr2Est.focei, "iov") <- TRUE
