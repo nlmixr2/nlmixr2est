@@ -270,19 +270,28 @@
 #' A thin no-op (`NULL`) for a model with no priors, or when the installed
 #' rxode2 predates `rxPriorBuildSpec()` (nlmixr2/rxode2#1270) -- so a
 #' caller can invoke this unconditionally rather than needing its own
-#' "does this model have a prior" branch first.  See
-#' `.nlmixr2PriorMethod()` for how the omega convention is chosen; the
-#' gate (`.nlmixr2AssertPriors()`) has already run before dispatch, so
-#' every term reaching this build is one the calling method accepted.
+#' "does this model have a prior" branch first.  The gate
+#' (`.nlmixr2AssertPriors()`) has already run before dispatch, so every
+#' term reaching this build is one the calling method accepted -- but
+#' accepting a level (e.g. `"general"`) does not mean every kernel method
+#' can represent it; `rxPriorBuildSpec()` itself is what actually errors
+#' (before any estimation starts) for a term the requested `method` cannot
+#' express, e.g. `method="tnpri"` on a model with an `invWishart()` prior.
 #'
 #' @param ui rxode2 ui
+#' @param method one of `"auto"` (default -- see `.nlmixr2PriorMethod()`
+#'   for how the omega convention is read off the model), `"general"`,
+#'   `"nwpri"`, `"tnpri"`.  Typically `foceiControl(priorMethod=)`, passed
+#'   straight through by the caller.
 #' @return an R external pointer (`rx_prior_spec_t*`) for
 #'   `foceiControl(priorSpec=)` to carry into `op_focei`, or `NULL`
 #' @noRd
 #' @author Matthew L. Fidler
-.nlmixr2BuildPriorSpec <- function(ui) {
+.nlmixr2BuildPriorSpec <- function(ui, method=c("auto", "general", "nwpri", "tnpri")) {
+  method <- match.arg(method)
   if (length(rxode2::rxUiPriors(ui)$name) == 0L) return(NULL)
   .build <- .nlmixr2RxAssert("rxPriorBuildSpec")
   if (is.null(.build)) return(NULL)
-  .build(ui, method=.nlmixr2PriorMethod(ui))
+  if (identical(method, "auto")) method <- .nlmixr2PriorMethod(ui)
+  .build(ui, method=method)
 }

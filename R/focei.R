@@ -2918,7 +2918,17 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   # has already refused anything the dispatched est= method cannot use before
   # .foceiFamilyControl() runs, so every term reaching this build is one the
   # calling family accepted.
-  .control["priorSpec"] <- list(.nlmixr2BuildPriorSpec(.ui))
+  #
+  # foceiControl(priorMethod=) defaults to "auto" (.nlmixr2PriorMethod()'s
+  # read of the ini({}) syntax); every family control constructor forwards
+  # it to foceiControl() through its own "..." (agqControl(), focepControl(),
+  # ...), so this is the one place that needs to read it.  An explicit,
+  # non-"auto" choice that the model's priors cannot express under it (e.g.
+  # priorMethod="tnpri" on an invWishart() prior) errors out of
+  # rxPriorBuildSpec() itself, here, before any estimation starts.
+  .priorMethod <- .control$priorMethod
+  if (is.null(.priorMethod)) .priorMethod <- "auto"
+  .control["priorSpec"] <- list(.nlmixr2BuildPriorSpec(.ui, method=.priorMethod))
   if (!is.null(.control$priorSpec)) {
     # FOCEi's shared C++ kernel evaluates a prior on a population parameter
     # AND on an omega element (any of the "general"/"nwpri"/"tnpri"

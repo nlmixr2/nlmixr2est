@@ -86,6 +86,13 @@
   `-2*log p(theta, omega)` (nlmixr2/rxode2#1270, issue #929, issue #931)
   -- declared `nlmixr2Priors = "general"`.
 
+  The convention is auto-detected by default (`foceiControl(priorMethod=
+  "auto")`), but can be forced with `foceiControl(priorMethod="general"/
+  "nwpri"/"tnpri")`. Forcing a convention the model's priors are not
+  representable under (e.g. `priorMethod="tnpri"` on an `invWishart()`
+  prior) errors before any estimation starts, naming the parameter and
+  which method it needs instead.
+
   `foceiControl(fast=TRUE)`'s analytic outer gradient has a real
   `d/dtheta log p(theta)` term (a straight fold into the same
   natural-scale accumulator the outer FD substitution already uses) and

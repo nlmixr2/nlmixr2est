@@ -104,6 +104,47 @@ nmTest({
     })
   }
 
+  .oneCmtNwpriPrior <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      eta.ka ~ 0.6
+      eta.cl ~ 0.3
+      eta.v ~ 0.1
+      add.sd <- 0.7
+      prior(eta.cl) ~ invWishart(4)
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv + eta.v)
+      linCmt() ~ add(add.sd)
+    })
+  }
+
+  test_that("foceiControl(priorMethod=) defaults to auto-detection", {
+    skip_on_cran()
+    .fitAuto <- suppressWarnings(suppressMessages(
+      nlmixr2(.oneCmtNwpriPrior, nlmixr2data::theo_sd, est = "focei",
+              control = foceiControl(maxOuterIterations = 0L, print = 0L))))
+    .fitExplicit <- suppressWarnings(suppressMessages(
+      nlmixr2(.oneCmtNwpriPrior, nlmixr2data::theo_sd, est = "focei",
+              control = foceiControl(priorMethod = "nwpri", maxOuterIterations = 0L,
+                                     print = 0L))))
+    expect_equal(.fitAuto$objective, .fitExplicit$objective)
+  })
+
+  test_that("foceiControl(priorMethod=) errors before estimation when the model's priors are not representable under it", {
+    skip_on_cran()
+    expect_error(
+      suppressWarnings(suppressMessages(
+        nlmixr2(.oneCmtNwpriPrior, nlmixr2data::theo_sd, est = "focei",
+                control = foceiControl(priorMethod = "tnpri", maxOuterIterations = 0L,
+                                       print = 0L)))),
+      "TNPRI")
+  })
+
   test_that("FOCEi's family accepts a prior that touches omega (#931)", {
     skip_on_cran()
     .fit <- suppressWarnings(suppressMessages(
