@@ -121,4 +121,13 @@ nmTest({
     expect_lt(fit$parFixedDf["prop.sd", "Estimate"], 0.5)
   })
 
+  # #972 (E-step ignored the pow() exponent when estimated): the "rmPow
+  # recovers truth" test above fixes pw at 1, which happens to match the old
+  # bug's hardcoded assumption, so it can't catch this. An estimated-pw
+  # end-to-end fit does reproduce the pre-fix collapse, but that reproducer is
+  # too numerically marginal for a stable CI assertion (its outcome varies
+  # with OpenMP thread count, unrelated to this fix). See
+  # test-saem-addprop-estep.R's saemFormGTest() tests for the deterministic
+  # regression coverage instead.
+
 })
