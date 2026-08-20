@@ -4422,8 +4422,29 @@ static inline double updateMuGroups() {
               idx[k] = colTheta[freePos[k]];
               beta0[k] = op_focei.fullTheta[idx[k]];
             }
+            // A joint prior (e.g. multiNormal()) can span both a free column
+            // and one already pinned at its bound this pass -- yAdj above
+            // already conditions the DATA term on the pinned column's
+            // CURRENT (clamped) beta(p), not its stale pre-M-step fullTheta
+            // value, so the prior gradient needs the same conditioning point
+            // for consistency.  Temporarily substitute the clamped values,
+            // evaluate, then restore -- priorGradHessFor()/foceiPriorEval()
+            // touch no R API and cannot throw, so the restore is guaranteed
+            // to run before the (possibly-throwing) arma::solve() below.
+            std::vector<int> pinnedTh; std::vector<double> pinnedSave;
+            for (int p = 0; p <= nFree; p++) {
+              if (pinned[p]) {
+                int th = colTheta[p];
+                pinnedTh.push_back(th);
+                pinnedSave.push_back(op_focei.fullTheta[th]);
+                op_focei.fullTheta[th] = beta(p);
+              }
+            }
             arma::vec grad0; arma::mat Hp;
             priorGradHessFor(idx, grad0, Hp);
+            for (size_t k = 0; k < pinnedTh.size(); k++) {
+              op_focei.fullTheta[pinnedTh[k]] = pinnedSave[k];
+            }
             A -= Hp;
             b += grad0 - Hp * beta0;
             bf = arma::solve(A, b);
