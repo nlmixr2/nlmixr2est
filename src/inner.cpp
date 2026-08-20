@@ -16734,6 +16734,42 @@ static inline void npAccumMoment(arma::mat &mom, int e, double f, double dv) {
   mom(e, 2) += 1.0;
 }
 
+// Fold one subject's observation rows into mom, on the way accumulating the
+// additive/proportional moment for whichever endpoint each row belongs to.
+// obsIdx indexes obsEndpoint across ALL subjects, so it must advance even on a
+// skipped subject (skipMoments true) or every later subject's rows land in the
+// wrong endpoint. See npResidMoments for what skipMoments/cl/fr/nEnd mean and
+// why an M3/M4 (censored) row is counted into column 3 rather than folded into
+// the additive/proportional sum-of-squares (issue #978).
+static inline void npResidMomentsSubject(rx_solving_options_ind *ind, int n,
+                                          const arma::mat &fr, bool skipMoments,
+                                          double cl, const arma::ivec &obsEndpoint,
+                                          int nEnd, int &obsIdx, arma::mat &mom) {
+  int ko = 0;
+  for (int j = 0; j < n && (skipMoments || ko < (int)fr.n_rows); ++j) {
+    setIndIdx(ind, j);
+    int kk = getIndIx(ind, j);
+    if (getIndEvid(ind, kk) != 0) continue;
+    // No map at all means no per-observation endpoint was supplied; running off the
+    // end of one means the map does not describe this solve.  Either way the row is
+    // dropped (-1) rather than filed under endpoint 0 (issue #856).  It is NOT safe
+    // to read nEnd == 1 as "single endpoint, so 0 is right": nEnd comes from the
+    // ESTIMATED residual parameters, and a multi-endpoint model with one estimated
+    // scale (the rest fixed) also gives 1.
+    int e = (obsIdx < (int)obsEndpoint.n_elem) ? obsEndpoint[obsIdx] : -1;
+    obsIdx++;
+    if (skipMoments) continue;
+    double dv = tbs(getIndDv(ind, kk));
+    double f = fr(ko, 0);
+    ko++;
+    if (e < 0 || e >= nEnd) continue;
+    if (!std::isfinite(cl) || !std::isfinite(f)) continue;
+    double cens = hasRxCens(rx) ? getIndCens(ind, kk) : 0.0;
+    if (cens != 0.0) { mom(e, 3) += 1.0; continue; }
+    npAccumMoment(mom, e, f, dv);
+  }
+}
+
 // Empirical (moment) residual estimate at fixed per-subject etas, per endpoint.
 // obsEndpoint (length = number of observations, in the C++ subject-major getIndIx
 // order) gives each observation's 0-based endpoint; nEnd is the endpoint count.  For
@@ -16741,13 +16777,23 @@ static inline void npAccumMoment(arma::mat &mom, int e, double f, double dv) {
 // sum(err^2) and the proportional moment sum((err/f)^2) with the observation count, so
 // the caller can set an additive SD to sqrt(mean(err^2)) and a proportional SD to
 // sqrt(mean((err/f)^2)) -- the saem-style estimate, used to warm start (and, for a
-// single scale per endpoint, to set) the residual optimization.  Returns an
-// nEnd x 3 matrix [sumAdd, sumProp, n].
+// single scale per endpoint, to set) the residual optimization.  An M3/M4 row's DV is
+// the LOQ/limit rather than a real measurement (censEst.h's isM3orM4(cens); M2 is NOT
+// excluded -- isM2 requires cens==0, so its DV is still a defined observation), so it
+// is dropped from the moment entirely (like the whole-endpoint skipMoments guard
+// below) rather than folded in as if observed -- issue #978. A moment built only from
+// the UNcensored rows is still a biased (too small) estimate of the true residual
+// variance whenever the model is genuinely censored -- dropping a row does not put its
+// information back, it just stops it from being wrong in the worst way. Column 3
+// counts how many rows were dropped this way per endpoint, so the caller can refuse to
+// treat the moment as final (see npOptimizeResid's allSimpleScale gate) and route
+// through the optimizer's censoring-aware objective instead whenever that count is
+// nonzero. Returns an nEnd x 4 matrix [sumAdd, sumProp, n, nCensDropped].
 arma::mat npResidMoments(const arma::mat& postEta, const arma::ivec& obsEndpoint, int nEnd) {
   rx = getRxSolve_();
   int nsub = (int)getRxNsub(rx);
   int neta = op_focei.neta;
-  arma::mat mom(std::max(nEnd, 1), 3, arma::fill::zeros);
+  arma::mat mom(std::max(nEnd, 1), 4, arma::fill::zeros);
   std::vector<double> eta(neta);
   int obsIdx = 0;
   for (int i = 0; i < nsub; ++i) {
@@ -16765,30 +16811,8 @@ arma::mat npResidMoments(const arma::mat& postEta, const arma::ivec& obsEndpoint
     rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(i));
     arma::mat fr;
     if (!skipMoments) fr = grabRFmatFromInner(i, false);
-    int ko = 0;
     int n = getIndNallTimes(ind);
-    for (int j = 0; j < n && (skipMoments || ko < (int)fr.n_rows); ++j) {
-      setIndIdx(ind, j);
-      int kk = getIndIx(ind, j);
-      if (getIndEvid(ind, kk) != 0) continue;
-      // obsIdx indexes obsEndpoint across ALL subjects, so it must advance even on a
-      // skipped subject or every later subject's rows land in the wrong endpoint.
-      // No map at all means no per-observation endpoint was supplied; running off the
-      // end of one means the map does not describe this solve.  Either way the row is
-      // dropped (-1) rather than filed under endpoint 0 (issue #856).  It is NOT safe
-      // to read nEnd == 1 as "single endpoint, so 0 is right": nEnd comes from the
-      // ESTIMATED residual parameters, and a multi-endpoint model with one estimated
-      // scale (the rest fixed) also gives 1.
-      int e = (obsIdx < (int)obsEndpoint.n_elem) ? obsEndpoint[obsIdx] : -1;
-      obsIdx++;
-      if (skipMoments) continue;
-      double dv = tbs(getIndDv(ind, kk));
-      double f = fr(ko, 0);
-      ko++;
-      if (e < 0 || e >= nEnd) continue;
-      if (!std::isfinite(cl) || !std::isfinite(f)) continue;
-      npAccumMoment(mom, e, f, dv);
-    }
+    npResidMomentsSubject(ind, n, fr, skipMoments, cl, obsEndpoint, nEnd, obsIdx, mom);
   }
   return mom;
 }
