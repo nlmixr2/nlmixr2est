@@ -27,16 +27,14 @@
   seed) change as a result.
 ## New features
 
-- `impmapControl()`/`impControl()` gain `combSens` (default `FALSE`): when
+- `impmapControl()`/`impControl()` gain `combSens` (default `TRUE`): when
   `est="impmap"`/`"imp"`/`"qrpem"` has non-mu (structural or residual-error)
   thetas to estimate, `combSens=TRUE` carries their sensitivity columns on the
   INNER model itself instead of a second, dedicated model, and the E-step's
   own per-sample inner solve now supplies the M-step's Newton step directly
   (no second solve) whenever `sir=FALSE` (the default) -- roughly halving the
-  ODE solving the M-step's theta gradient costs. Opt-in rather than the
-  default: folding the theta-sensitivity states into the eta-sensitivity ODE
-  system changes the integrator's adaptive step-size path, so results move by
-  a small amount relative to the existing two-model default.
+  ODE solving the M-step's theta gradient costs. Pass `combSens=FALSE` for the
+  previous two-model behavior.
 
 - A pure-linear `matExp()` model now solves natively through rxode2's
   matrix-exponential driver (`rxControl(method="indLin")`) under SAEM instead
@@ -161,6 +159,18 @@
   fit, so removing them changes no result.
 
 ## Bug fixes
+
+- `est="impmap"`'s inner Hessian (`impGetHessian`), which builds the
+  importance-sampling proposal, could read a stale cached `linCmtB()`
+  Jacobian on a `linCmt()` model with a non-mu structural theta (a theta with
+  no random effect, e.g. `ka` fixed but `V` estimated on log scale). Several
+  compiled peer models share one solve pool (`odeSwap`); `linCmtB()` caches
+  its Jacobian in a field gated by `rx->ndiff`, a process-global that
+  `odeSwapSolveInd()` never restored per peer, so a solve could read a
+  Jacobian built for a DIFFERENT peer's structural-parameter set. The
+  resulting proposal was artificially wide, which masked a real heavy tail
+  (Pareto k-hat) as healthy rather than repairing it. `odeSwapSolveInd()` now
+  restores each peer's own `ndiff` before every solve.
 
 - Every NLM-family method (`nlm`, `bobyqa`, `newuoa`, `uobyqa`, `n1qn1`,
   `lbfgsb3c`, `optim`, `nlminb`) silently mis-scored any M2/M3/M4-censored

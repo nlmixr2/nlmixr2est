@@ -139,6 +139,7 @@ int  odeSwapNlhs(int slot);      // 0 when unloaded
 int  odeSwapNpars(int slot);     // 0 when unloaded; the model's own parameter count
 int  odeSwapNSens(int slot);     // length($sens): sensitivity compartments
 int  odeSwapCmtPar(int slot);    // index of "CMT" in $params, -1 when absent
+int  odeSwapNdiff(int slot);     // $flags["ndiff"] (linCmtB Jacobian-cache selector); 0 when unloaded or unset
 
 // Endpoint (CMT) rebasing for a pooled solve.
 //

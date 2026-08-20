@@ -36,6 +36,18 @@ struct OdeModelReg {
   // here so that can be done without going back to R.
   int nSens = 0;      // length(rxModelVars(obj)$sens)
   int cmtPar = -1;    // index of "CMT" in $params, or -1 if the model has none
+  // rxModelVars(obj)$flags["ndiff"]: which linCmtB() structural-parameter
+  // derivatives THIS model's calc_lhs actually calls linCmtB(which1=-2, ...)
+  // for (a bitmask; 0 = none declared).  linCmtB() caches its Jacobian
+  // (J/Jg, see stan::math::linCmtStan) on rx->ndiff, a single field on the
+  // shared rx_solve struct -- NOT swapped per peer the way neq/nlhs/cmt-basis
+  // are.  odeSwapSolveInd() restores it from here before every solve so a
+  // peer whose OWN calc_lhs needs a Jg column does not read a stale Jacobian
+  // left by whichever OTHER registered model last solved (nlmixr2est#1013-ish:
+  // a linCmt() model differentiated by only ONE structural parameter read a
+  // near-zero, iteration-old d(pred)/d(eta) from a sibling peer's cache).
+  int ndiff = 0;
+  bool ndiffSet = false;  // false if $flags carries no "ndiff" element (older rxode2)
   // event-sensitivity shape (see OdeSwapEsBatch); esActive == 0 for a model
   // with no jump sensitivities, e.g. rxPred
   int esActive = 0;   // does this model carry event ("jump") sensitivities?
@@ -83,6 +95,26 @@ bool odeSwapDeclare(int slot, const char *name, SEXP obj) {
   // CMT rebasing inputs (see the struct comment and odeSwapCmtRebase)
   m.nSens = mv.containsElementNamed("sens") ?
     as<CharacterVector>(mv["sens"]).size() : 0;
+  // linCmtB() Jacobian-cache flag (see the struct comment).  named lookup
+  // ("ndiff", not a positional RxMvFlag_ndiff index) so this tracks whatever
+  // rxode2 calls the element; absent entirely on an older rxode2 or a model
+  // with no linCmtB() calls, in which case odeSwapSolveInd() leaves rx->ndiff
+  // untouched for this slot rather than stomping it to 0.
+  m.ndiff = 0;
+  m.ndiffSet = false;
+  if (mv.containsElementNamed("flags")) {
+    IntegerVector _flags = as<IntegerVector>(mv["flags"]);
+    CharacterVector _fn = _flags.names();
+    if (!_fn.isNULL()) {
+      for (int i = 0; i < _fn.size(); ++i) {
+        if (as<std::string>(_fn[i]) == "ndiff") {
+          m.ndiff = _flags[i];
+          m.ndiffSet = true;
+          break;
+        }
+      }
+    }
+  }
   m.cmtPar = -1;
   m.npars = 0;
   m.parNames.clear();
@@ -270,7 +302,7 @@ void odeSwapClear(int slot) {
   OdeModelReg &m = _odeReg[slot];
   if (m.fns != NULL) rxClearFuns(m.fns);
   m.fns = NULL; m.name = NULL; m.neq = 0; m.nlhs = 0; m.loaded = false;
-  m.nSens = 0; m.cmtPar = -1; m.npars = 0;
+  m.nSens = 0; m.cmtPar = -1; m.npars = 0; m.ndiff = 0; m.ndiffSet = false;
   m.lhsNames.clear();
   m.parNames.clear();
   if (_odeModels != R_NilValue) SET_VECTOR_ELT(_odeModels, slot, R_NilValue);
@@ -290,6 +322,7 @@ void odeSwapClearAll() {
 bool odeSwapLoaded(int slot) { return odeSlotOk(slot) && _odeReg[slot].loaded; }
 int  odeSwapNSens(int slot)  { return odeSwapLoaded(slot) ? _odeReg[slot].nSens : 0; }
 int  odeSwapCmtPar(int slot) { return odeSwapLoaded(slot) ? _odeReg[slot].cmtPar : -1; }
+int  odeSwapNdiff(int slot)  { return odeSwapLoaded(slot) ? _odeReg[slot].ndiff : 0; }
 
 // How much to subtract from the pooled table's raw CMT before `slot`'s calc_lhs
 // reads it.  See the OdeModelReg comment: rxode2 bakes `- nSens` into each
@@ -456,7 +489,24 @@ rxSolveF *odeSwapFns(int slot) {
 void odeSwapSolveInd(int slot, int rxId) {
   rxSolveF *f = odeSwapFns(slot);
   if (f == NULL || f->dydt == NULL) return;
-  ind_solve(getRxSolve_(), rxId, f->dydt_liblsoda, f->dydt_lsoda_dum,
+  rx_solve *rxl = getRxSolve_();
+  // rx->ndiff selects which structural-parameter derivative(s) linCmtB()
+  // computes THIS call and, critically, whether it refreshes its cached
+  // Jacobian (J/Jg) at all -- rx->ndiff==0 skips the refresh entirely
+  // (linCmt.cpp's fHCalcJac fast path), leaving J/Jg holding whatever the
+  // PREVIOUSLY-SOLVED registered slot last wrote.  rx->ndiff is a single
+  // field on the shared rx_solve struct (set once, in rxSolve_(), from
+  // whichever model was passed to it), not something the pool's neq/nlhs/
+  // cmt-basis rebasing already restores per peer -- so a slot solved after
+  // a peer with a DIFFERENT (or absent) ndiff need can silently read a
+  // stale, iteration-old d(pred)/d(eta) here.  Restore this slot's own
+  // declared value immediately before every solve; leave rx->ndiff alone
+  // when this slot's flags never reported one (older rxode2, or a model
+  // with no linCmtB() calls at all -- nothing here needs its Jacobian).
+  if (odeSwapLoaded(slot) && _odeReg[slot].ndiffSet) {
+    rxl->ndiff = _odeReg[slot].ndiff;
+  }
+  ind_solve(rxl, rxId, f->dydt_liblsoda, f->dydt_lsoda_dum,
             f->jdum_lsoda, f->dydt, f->update_inis, f->global_jt);
 }
 
@@ -951,8 +1001,9 @@ List odeSwapInfo_() {
   const OdePoolPlan &p = odeSwapPlan();
   CharacterVector nm(odeSlotN);
   IntegerVector neq(odeSlotN), nlhs(odeSlotN), npars(odeSlotN), deny(odeSlotN),
-    esActive(odeSlotN);
-  LogicalVector loaded(odeSlotN), sizesPool(odeSlotN), parLayoutOk(odeSlotN);
+    esActive(odeSlotN), ndiff(odeSlotN);
+  LogicalVector loaded(odeSlotN), sizesPool(odeSlotN), parLayoutOk(odeSlotN),
+    ndiffSet(odeSlotN);
   rx_solve *_rxl = getRxSolve_();
   for (int s = 0; s < odeSlotN; ++s) {
     nm[s] = _odeReg[s].name == NULL ? NA_STRING : Rf_mkChar(_odeReg[s].name);
@@ -964,22 +1015,27 @@ List odeSwapInfo_() {
     deny[s] = odeSwapCanPool(s);
     parLayoutOk[s] = _odeReg[s].loaded ? odeSwapParLayoutOk(s, _rxl) : NA_LOGICAL;
     esActive[s] = _odeReg[s].esActive;
+    ndiff[s] = _odeReg[s].ndiff;
+    ndiffSet[s] = _odeReg[s].ndiffSet;
   }
   List models = List::create(_["slot"] = seq_len(odeSlotN) - 1, _["name"] = nm,
                              _["neq"] = neq, _["nlhs"] = nlhs, _["npars"] = npars,
                              _["loaded"] = loaded, _["sizesPool"] = sizesPool,
                              _["parLayoutOk"] = parLayoutOk,
-                             _["deny"] = deny, _["esActive"] = esActive);
+                             _["deny"] = deny, _["esActive"] = esActive,
+                             _["ndiff"] = ndiff, _["ndiffSet"] = ndiffSet);
   models.attr("class") = "data.frame";
   models.attr("row.names") = IntegerVector::create(NA_INTEGER, -odeSlotN);
   // op->neq / op->nlhs are only meaningful once a solve pool exists.
-  int opNeq = NA_INTEGER, opNlhs = NA_INTEGER, rxNpars = NA_INTEGER;
+  int opNeq = NA_INTEGER, opNlhs = NA_INTEGER, rxNpars = NA_INTEGER,
+    rxNdiff = NA_INTEGER;
   rx_solve *rxl = _rxl;
   IntegerVector activeOv(0);
   if (rxl != NULL) {
     rx_solving_options *op = getSolvingOptions(rxl);
     if (op != NULL) { opNeq = getOpNeq(op); opNlhs = getOpNlhs(op); }
     rxNpars = getRxNpars(rxl);
+    rxNdiff = rxl->ndiff;
     int nsub = (int)getRxNsub(rxl);
     if (nsub > 0) {
       activeOv = IntegerVector(nsub);
@@ -1001,6 +1057,7 @@ List odeSwapInfo_() {
     _["overrideNeeded"] = p.overrideNeeded,
     _["nLoaded"] = p.nLoaded,
     _["opNeq"] = opNeq, _["opNlhs"] = opNlhs, _["rxNpars"] = rxNpars,
+    _["rxNdiff"] = rxNdiff,
     _["pinned"] = odeSwapPinned(),
     _["pinnedSlot"] = odeSwapPinnedSlot(),
     // -1 per subject means "no override in force"; a non -1 left behind after a
