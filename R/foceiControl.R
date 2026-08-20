@@ -1398,8 +1398,17 @@ foceiControl <- function(sigdig = 3, #
     # this has to be checked separately.
     stop("'trustConf' must be strictly between 0 and 1", call.=FALSE)
   }
+  # lower=0 is inclusive (checkmate has no strict-bound form); trustRinit/
+  # trustRmax==0 is a zero-radius trust region that can never step, the same
+  # degenerate case trustConf==0 is rejected for above.
   checkmate::assertNumeric(trustRinit, lower=0, finite=TRUE, null.ok=TRUE, len=1)
+  if (!is.null(trustRinit) && trustRinit <= 0) {
+    stop("'trustRinit' must be > 0", call.=FALSE)
+  }
   checkmate::assertNumeric(trustRmax, lower=0, finite=TRUE, null.ok=TRUE, len=1)
+  if (!is.null(trustRmax) && trustRmax <= 0) {
+    stop("'trustRmax' must be > 0", call.=FALSE)
+  }
   if (!is.null(trustRinit) && !is.null(trustRmax) && trustRinit > trustRmax) {
     stop("'trustRinit' cannot be larger than 'trustRmax'", call.=FALSE)
   }

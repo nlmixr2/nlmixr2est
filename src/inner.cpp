@@ -7094,6 +7094,13 @@ NumericVector foceiSetup_(const RObject &obj,
     op_focei.trustRmax = Rf_isNull(_trustRmaxS) ? _rmaxDefault : as<double>(_trustRmaxS);
     SEXP _trustRinitS = foceiO.containsElementNamed("trustRinit") ? (SEXP)foceiO["trustRinit"] : R_NilValue;
     op_focei.trustRinit = Rf_isNull(_trustRinitS) ? (op_focei.trustRmax / 2.0) : as<double>(_trustRinitS);
+    // R only rejects trustRinit > trustRmax when BOTH are given explicitly --
+    // it can't know trustRmax's derived default (needs neta, not resolved
+    // until here). An explicit trustRinit paired with a smaller *derived*
+    // trustRmax would otherwise start the trust region already past its own
+    // cap; clamp rather than error since this is just as easy to reach by an
+    // ordinary trustConf choice as by a deliberate override.
+    if (op_focei.trustRinit > op_focei.trustRmax) op_focei.trustRinit = op_focei.trustRmax;
   }
   op_focei.nTrustInner.store(0, std::memory_order_relaxed);
   op_focei.nsim=as<int>(foceiO["n1qn1nsim"]);

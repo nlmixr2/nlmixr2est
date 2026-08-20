@@ -20,6 +20,11 @@ nmTest({
     expect_error(foceiControl(trustConf = 1))
     expect_error(foceiControl(trustConf = 0))
 
+    # trustRinit/trustRmax==0 is the same degenerate case (a zero-radius trust
+    # region that can never step).
+    expect_error(foceiControl(trustRinit = 0))
+    expect_error(foceiControl(trustRmax = 0))
+
     .ctl <- foceiControl(innerOpt = "trust", trustConf = 0.9)
     expect_equal(do.call(foceiControl, .ctl)$innerOpt, 3L)
     expect_equal(do.call(foceiControl, .ctl)$trustConf, 0.9)
@@ -68,6 +73,23 @@ nmTest({
     # would not catch that).
     expect_equal(.n1, 0L)
     expect_true(.n2 > 0L)
+  })
+
+  test_that("innerOpt='trust' clamps trustRinit to a smaller derived trustRmax", {
+    skip_on_cran()
+    # trustRmax's default depends on neta (only known in C++), so R can only
+    # reject trustRinit > trustRmax when BOTH are given explicitly. Leaving
+    # trustRmax NULL with a large explicit trustRinit reaches that same
+    # geometry violation (trustRinit > trustRmax) via the DERIVED default
+    # instead -- the C++ side clamps trustRinit down rather than starting the
+    # trust region already past its own cap. This just has to not error/hang.
+    .fit <- suppressWarnings(suppressMessages(
+      nlmixr2(.oneCmt, nlmixr2data::theo_sd, est = "focei",
+              control = foceiControl(innerOpt = "trust", trustRinit = 100,
+                                      maxOuterIterations = 20,
+                                      covMethod = "", calcTables = FALSE, print = 0))
+    ))
+    expect_true(is.finite(.fit$objf))
   })
 
   test_that("innerOpt='BFGS' actually falls back to n1qn1 (not just the R-level mapping)", {
