@@ -4688,10 +4688,21 @@ static bool priorSpecThetaReachable(const rx_prior_spec_t *spec, const int *fixe
 // actually optimize), so Omega has to be recovered from that by inversion --
 // cheap, since neta is always small.  Empty (0x0) when there is no omega at
 // all (a population-only model), matching op_focei.omega's own convention.
-static arma::mat foceiCurrentOmega() {
-  if (op_focei.fo == 1) return op_focei.omega;
-  if (op_focei.omegaInv.n_rows == 0) return op_focei.omega;
-  return arma::inv_sympd(op_focei.omegaInv);
+// Returns false (Omega untouched) if omegaInv is not currently positive
+// definite -- reachable at a trial point mid-optimization, before the outer
+// optimizer's own bounds/line-search would reject it -- so the caller can
+// degrade the same way rxPriorLogDensityEval() itself does for an
+// indefinite covariance (-INFINITY value) rather than let arma::inv_sympd's
+// exception propagate uncaught out of an objective/gradient evaluation.
+static bool foceiCurrentOmega(arma::mat &Omega) {
+  if (op_focei.fo == 1) { Omega = op_focei.omega; return true; }
+  if (op_focei.omegaInv.n_rows == 0) { Omega = op_focei.omega; return true; }
+  try {
+    Omega = arma::inv_sympd(op_focei.omegaInv);
+  } catch (...) {
+    return false;
+  }
+  return true;
 }
 
 // Value and (natural-scale, per-theta) gradient of the ini({}) prior at the
@@ -4699,10 +4710,15 @@ static arma::mat foceiCurrentOmega() {
 // (updateTheta() has run) before this is called.  0.0 / all-zero when the
 // model has no prior (op_focei.priorSpec == NULL, the common case), so a
 // caller can invoke this unconditionally.  gradTheta is sized ntheta and
-// resized/zeroed by this call.  The omega-touching gradient
-// (rxPriorLogDensityEval()'s gradOmega output) is intentionally discarded
-// here -- it is needed only by the analytic outer gradient
-// (foceiPriorOmegaGradAdd(), which recomputes it against the SAME
+// resized/zeroed by this call.  -INFINITY (gradTheta left at 0) if the prior
+// touches omega and the live Omega is not currently recoverable
+// (foceiCurrentOmega() returned false) -- the same convention
+// rxPriorLogDensityEval() itself uses for an indefinite covariance, letting
+// foceiOfv0()'s existing isnan/isinf recovery loop treat this exactly like
+// any other bad trial point instead of throwing out of the objective. The
+// omega-touching gradient (rxPriorLogDensityEval()'s gradOmega output) is
+// intentionally discarded here -- it is needed only by the analytic outer
+// gradient (foceiPriorOmegaGradAdd(), which recomputes it against the SAME
 // omegaInv/dOiEst analyticOuterGradDirect() already has in hand, avoiding a
 // second live-Omega computation on that path); the FD gradient picks up an
 // omega-touching prior's effect for free the same way it does theta's, by
@@ -4710,7 +4726,8 @@ static arma::mat foceiCurrentOmega() {
 static double foceiPriorEval(std::vector<double> &gradTheta) {
   gradTheta.assign((size_t)op_focei.ntheta, 0.0);
   if (op_focei.priorSpec == NULL) return 0.0;
-  arma::mat Omega = op_focei.priorSpecOmegaTerm ? foceiCurrentOmega() : arma::mat();
+  arma::mat Omega;
+  if (op_focei.priorSpecOmegaTerm && !foceiCurrentOmega(Omega)) return -R_PosInf;
   int omegaDim = (int)Omega.n_rows;
   std::vector<double> gradOmega((size_t)omegaDim * (size_t)omegaDim, 0.0);
   return rxPriorLogDensityEval(op_focei.priorSpec, op_focei.fullTheta, (int)op_focei.ntheta,
