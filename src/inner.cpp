@@ -3778,10 +3778,24 @@ static inline int innerOpt1(int id, int likId) {
     fInd->badSolve = 0;
     // Per-eta scale: sqrt(diag(Omega)) -- the eta-level analogue of bobyqa's
     // theta scaling; conditions RcppTrust's trust-region metric via parscale.
-    std::vector<double> parscale((size_t)npar);
-    for (int j = 0; j < npar; j++) {
-      double v = op_focei.omega(j, j);
-      parscale[j] = (v > 0) ? std::sqrt(v) : 1.0;
+    // op_focei.omega is NOT refreshed here when covFdDirect is set (the FD-full
+    // covariance step owns Omega directly then, see innerOpt()) or when this
+    // subject's inner solve runs from a context where the size/outer-gradient
+    // FD-fallback path leaves it stale/mismatched -- indexing it unconditionally
+    // is exactly the "gate that can crash" this file's own odeSwap notes warn
+    // against (an Armadillo operator() bounds-check throw from inside this
+    // OpenMP loop is uncatchable across threads and aborts the whole process,
+    // #issue found via test-focei-outer-fd-fallback.R crashing with
+    // "Mat::operator(): index out of bounds" once trust became reachable from
+    // more code paths). Check the size before indexing; anything unexpected
+    // falls back to no scaling (1.0) for every eta rather than risking OOB.
+    std::vector<double> parscale((size_t)npar, 1.0);
+    if ((arma::uword)npar == op_focei.omega.n_rows &&
+        (arma::uword)npar == op_focei.omega.n_cols) {
+      for (int j = 0; j < npar; j++) {
+        double v = op_focei.omega(j, j);
+        parscale[j] = (v > 0) ? std::sqrt(v) : 1.0;
+      }
     }
     trust_options_t topts = trust_options_default(op_focei.trustRinit, op_focei.trustRmax);
     topts.has_parscale = 1;
