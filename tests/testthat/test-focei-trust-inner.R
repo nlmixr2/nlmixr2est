@@ -48,9 +48,9 @@ nmTest({
   test_that("innerOpt='trust' converges close to n1qn1", {
     skip_on_cran()
     .f1 <- .fitTrustCmp("n1qn1")
-    .n1 <- nlmixr2est:::.nTrustInner()
+    .n1 <- .nTrustInner()
     .f2 <- .fitTrustCmp("trust")
-    .n2 <- nlmixr2est:::.nTrustInner()
+    .n2 <- .nTrustInner()
 
     expect_true(is.finite(.f1$objf))
     expect_true(is.finite(.f2$objf))
