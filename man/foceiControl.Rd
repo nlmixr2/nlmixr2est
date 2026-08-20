@@ -79,7 +79,10 @@ foceiControl(
   covTryHarder = FALSE,
   outerOpt = c("bobyqa", "nlminb", "lbfgsb3c", "L-BFGS-B", "mma", "lbfgsbLG", "slsqp",
     "uobyqa", "newuoa"),
-  innerOpt = c("n1qn1", "BFGS"),
+  innerOpt = c("n1qn1", "BFGS", "trust"),
+  trustConf = 0.975,
+  trustRinit = NULL,
+  trustRmax = NULL,
   rhobeg = 0.2,
   rhoend = NULL,
   npt = NULL,
@@ -579,8 +582,23 @@ the Hessian on the unscaled parameter space.}
 
 \item{outerOpt}{optimization method for the outer problem}
 
-\item{innerOpt}{optimization method for the inner problem (not
-implemented yet.)}
+\item{innerOpt}{optimization method for the inner (per-subject eta)
+problem: `"n1qn1"` (default, quasi-Newton) or `"trust"` (RcppTrust
+trust-region Newton, using an exact Gauss-Newton+Omega^-1 Hessian
+every iteration). `"BFGS"` is accepted but not implemented -- it
+silently falls back to `"n1qn1"`.}
+
+\item{trustConf}{confidence level defining the `innerOpt="trust"`
+trust-region radius: since eta ~ N(0, Omega), the radius (in
+sqrt(diag(Omega))-scaled units) is `sqrt(qchisq(trustConf, df=neta))`,
+the boundary of the `trustConf`-level eta confidence region. Default
+0.975.}
+
+\item{trustRinit}{initial `innerOpt="trust"` trust-region radius. `NULL`
+(default) derives it from `trustConf`.}
+
+\item{trustRmax}{maximum `innerOpt="trust"` trust-region radius. `NULL`
+(default) derives it from `trustConf`.}
 
 \item{rhobeg}{Initial trust region radius for the bobyqa outer optimizer
 (with `rhoend`, must satisfy `0 < rhoend < rhobeg`). Default `0.2`

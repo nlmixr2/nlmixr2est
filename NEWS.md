@@ -27,6 +27,15 @@
   seed) change as a result.
 ## New features
 
+- `foceiControl(innerOpt="trust")` adds a trust-region Newton inner (per-subject
+  eta) optimizer backed by the `RcppTrust` package, alongside the existing
+  `n1qn1` default. Unlike `n1qn1`, which gets an approximate Hessian only once
+  as a warm-start seed, the trust-region step is supplied a fresh exact
+  Gauss-Newton+Omega^-1 Hessian every iteration. Each eta is scaled by
+  `sqrt(diag(Omega))`, with the trust-region radius derived from the eta
+  confidence region (`foceiControl(trustConf=)`, default 0.975); `trustRinit`/
+  `trustRmax` override the derived radius directly.
+
 - A pure-linear `matExp()` model now solves natively through rxode2's
   matrix-exponential driver (`rxControl(method="indLin")`) under SAEM instead
   of being flattened to an equivalent `d/dt()` ODE first.  SAEM has no
