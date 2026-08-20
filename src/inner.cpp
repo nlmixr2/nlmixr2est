@@ -3768,6 +3768,14 @@ static inline int innerOpt1(int id, int likId) {
 
     auto trustSolveAt = [&](bool fill, double startVal) {
       if (fill) std::fill_n(fInd->x, npar, startVal);
+      // Reset per attempt (mirrors n1qn1's cascade, which clears this before
+      // every restart): a mid-solve NA from trustInnerObjfun latches
+      // fInd->badSolve, and trustInnerObjfun's own guard then short-circuits
+      // every later call to it -- without resetting here, one NA during the
+      // FIRST trust_solve_c run would silently poison the entire nudge
+      // cascade, making the retries a no-op for exactly the cases that need
+      // them.
+      fInd->badSolve = 0;
       trust_result_t tres;
       trust_solve_c_ptr(npar, fInd->x, trustInnerObjfun, (void*)(&id), &topts, &tres);
       op_focei.nTrustInner.fetch_add(1, std::memory_order_relaxed);

@@ -79,6 +79,26 @@ nmTest({
     expect_equal(.nB, 0L)
   })
 
+  test_that("innerOpt='trust' restart cascade completes when the inner solve doesn't converge", {
+    skip_on_cran()
+    # A tiny maxInnerIterations forces trust_solve_c() to hit iterlim before
+    # converging, exercising the !converged nudge-restart cascade in the
+    # trustInner branch of innerOpt1() (src/inner.cpp). Regression coverage
+    # for a bug an outside review caught: trustSolveAt() must reset
+    # fInd->badSolve per attempt (n1qn1's cascade already does this on every
+    # restart) -- without that reset, an NA during the first attempt
+    # permanently poisons every later nudge via trustInnerObjfun's own
+    # badSolve guard, silently turning the whole cascade into a no-op.
+    .fit <- suppressWarnings(suppressMessages(
+      nlmixr2(.oneCmt, nlmixr2data::theo_sd, est = "focei",
+              control = foceiControl(innerOpt = "trust", maxOuterIterations = 5,
+                                      maxInnerIterations = 2,
+                                      covMethod = "", calcTables = FALSE, print = 0))
+    ))
+    expect_true(is.finite(.fit$objf))
+    expect_true(.nTrustInner() > 0L)
+  })
+
   test_that("innerOpt='trust' is thread-safe (cores>=2 matches serial)", {
     skip_on_cran()
     .old <- rxode2::getRxThreads()
