@@ -119,6 +119,21 @@
   prior-carrying fit was re-entered, which is every fit's own finalize
   step. `rxUiPriors(fit$ui)` now still reports it afterward.
 
+- `est="imp"`, `est="impmap"` and `est="qrpem"` now honour a prior on a
+  population parameter, declared `nlmixr2Priors = "theta"` individually on
+  each of the three (issue #932). Their shared M-step is an
+  importance-sampling EM, not FOCEi's outer optimizer, so the objective
+  already picking up the prior (via #931's plumbing) was not enough on its
+  own -- the estimates it reported would otherwise still be the maximum-
+  likelihood ones. Each of the three M-step updates now folds in the
+  prior's own score and (finite-differenced) curvature before taking its
+  step: the non-mu structural/residual-error Newton step, the mu-referenced
+  covariate regression (`updateMuGroups()`), and the plain mu-intercept
+  mean-shift -- exact for a Gaussian prior, a one-step Newton correction
+  otherwise. A prior touching an omega element is refused for now (the
+  `"theta"` level); the EM's own Omega moment-average update is not yet
+  MAP-corrected.
+
 ## Changed defaults
 
 - `est="saem"` now refines a population theta that carries no random effect with

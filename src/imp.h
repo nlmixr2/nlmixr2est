@@ -129,6 +129,13 @@ void impInnerParallelOff();
 // Number of non-mu structural thetas (the length of impThetaSensIdx).
 int impThetaSensN();
 
+// One-step MAP (Newton/Fisher-scoring) correction: folds the ini({}) prior's
+// score/curvature for the non-mu structural thetas into the data-only score
+// `g`/information `H` impThetaAccumOne() already accumulated (post-/nsub),
+// before the caller's arma::solve(step, H, g).  No-op when there is no
+// prior.  See src/inner.cpp for the sign convention and derivation.
+void impPriorStructThetaCorrect(int nsub, arma::vec& g, arma::mat& H);
+
 // 0-based eta indices whose Omega diagonal is fixed (held across the EM update).
 void impGetOmegaFixedEta(std::vector<int>& idx);
 

@@ -4217,6 +4217,12 @@ static inline void innerOptId(int id) {
 
 
 
+// Forward declarations: the ini({}) prior MAP-correction helpers used below
+// are defined later in this file (near foceiPriorGradAdd()), alongside the
+// rest of the prior machinery they share (foceiPriorEval() etc.).
+static bool priorSpecReferencesTheta(int th);
+static void priorGradHessFor(const std::vector<int> &idx, arma::vec &grad, arma::mat &Hp);
+
 // mfocei/ifocei regression update, called once per outer iteration after
 // every subject's eta is finalized. Per group: build phi_i = fullTheta[popIdx]
 // + covariate_effect_i + eta_i, regress on the free covariates (OLS "lin" or
@@ -4227,6 +4233,19 @@ static inline void innerOptId(int id) {
 // parameter's muGroupClamped flag (reported once by R at finalize).
 // Returns the max absolute theta change, used by innerOpt() to decide whether
 // another {re-optimize etas, regress} cycle is needed (muGroupMaxCycles/Tol).
+//
+// ini({}) prior MAP correction (imp/impmap/qrpem only -- FOCEI's own outer
+// optimizer never calls this function): when any of this group's thetas
+// (popIdx or a free covariate coefficient) is prior-referenced, the normal
+// equations solved below are the exact score-stationarity condition of a
+// (locally-weighted) Gaussian log-likelihood in beta -- A*beta = b, with
+// A = X'WX, b = X'Wy -- so a one-step Newton correction folding in the
+// prior's own score/curvature at the CURRENT beta (before this update),
+// (A - Hp)*beta = b + grad_prior(beta0) - Hp*beta0, is exact whenever the
+// prior itself is Gaussian (Hp is then beta-independent, so there is no
+// Taylor truncation at all) and a reasonable one-step approximation
+// otherwise (Cauchy, multiNormal).  See impPriorStructThetaCorrect() above
+// for the identical FD-Hessian machinery and its cost justification.
 static inline double updateMuGroups() {
   if (op_focei.muModel == 0 || op_focei.muGroupN == 0) return 0.0;
   rx = getRxSolve_();
@@ -4295,6 +4314,17 @@ static inline double updateMuGroups() {
       clampIdx[c + 1] = op_focei.muGroupN + freeCovCols[c];
     }
 
+    // fullTheta index of each design column (0 = intercept/popIdx, c+1 = the
+    // c-th free covariate coefficient) -- used only by the prior MAP
+    // correction below.
+    std::vector<int> colTheta(nFree + 1);
+    colTheta[0] = popIdx;
+    for (int c = 0; c < nFree; c++) colTheta[c + 1] = freeCovTheta[c];
+    bool hasPrior = false;
+    for (int p = 0; p <= nFree && !hasPrior; p++) {
+      hasPrior = priorSpecReferencesTheta(colTheta[p]);
+    }
+
     // Active-set clamped (weighted) least squares: solve on the unpinned
     // columns, pin any bound violators, re-solve; at the retry cap project
     // the remaining violators onto their bounds (clamped-feasible).
@@ -4315,7 +4345,31 @@ static inline double updateMuGroups() {
         arma::mat Xf = X.cols(arma::uvec(freePos));
         arma::vec bf;
         try {
-          if (op_focei.muModel == 2) {
+          if (hasPrior) {
+            // Always route through explicit normal equations when a prior
+            // is present (the QR fast path below has nothing to augment).
+            arma::mat A;
+            arma::vec b;
+            if (op_focei.muModel == 2) {
+              arma::mat Wd = arma::diagmat(w);
+              A = Xf.t() * Wd * Xf;
+              b = Xf.t() * Wd * yAdj;
+            } else {
+              A = Xf.t() * Xf;
+              b = Xf.t() * yAdj;
+            }
+            std::vector<int> idx(freePos.size());
+            arma::vec beta0(freePos.size());
+            for (size_t k = 0; k < freePos.size(); k++) {
+              idx[k] = colTheta[freePos[k]];
+              beta0[k] = op_focei.fullTheta[idx[k]];
+            }
+            arma::vec grad0; arma::mat Hp;
+            priorGradHessFor(idx, grad0, Hp);
+            A -= Hp;
+            b += grad0 - Hp * beta0;
+            bf = arma::solve(A, b);
+          } else if (op_focei.muModel == 2) {
             arma::mat Wd = arma::diagmat(w);
             bf = arma::solve(Xf.t() * Wd * Xf, Xf.t() * Wd * yAdj);
           } else {
@@ -4836,6 +4890,102 @@ static void foceiPriorOmegaGradAdd(int npars, arma::vec &gp, const arma::mat &Oi
 // likelihood) should call this, not -2*foceiLik0(theta) directly.
 static inline double foceiObjFromLik0(double *theta) {
   return -2*foceiLik0(theta) + foceiPriorObjTerm();
+}
+
+// One-step MAP (Newton/Fisher-scoring) correction for imp/impmap/qrpem's
+// non-mu structural-theta M-step (src/imp.cpp's Newton step on
+// impThetaSensIdx): folds the prior's own score and (finite-differenced)
+// curvature into the data-only score `g`/information `H` that
+// impThetaAccumOne() has already accumulated (and the caller has already
+// divided by nsub), BEFORE arma::solve(step, H, g).  No-op when there is no
+// prior or no structural theta (the common case).
+//
+// Sign convention: `g`/`H` here are d(loglik)/dtheta and its (PSD)
+// Gauss-Newton/Fisher information -- step = solve(H, g) is a Newton ASCENT
+// step on the log-likelihood -- the OPPOSITE convention from
+// foceiPriorGradAdd()'s -2* objective-scale fold-in, which feeds an
+// objective-MINIMIZING outer optimizer instead.  So the prior's raw
+// gradient (not -2*) is added to `g`, and its raw (generally negative, for a
+// proper prior) Hessian is SUBTRACTED from `H` -- e.g. for a Gaussian prior
+// of sd s, the FD Hessian is -1/s^2, so `H -= Hp` adds +1/s^2 of curvature,
+// the expected ridge-like tightening.
+//
+// foceiPriorEval() touches only op_focei.fullTheta/omegaInv -- no ODE solve
+// -- so nSens (always small) extra evaluations to finite-difference its
+// gradient cost nothing next to an actual re-solve.  The FD Hessian is exact
+// for a Gaussian prior (dnorm() on a structural/sigma theta, the common
+// case: a quadratic log-density has no Taylor truncation error at any
+// expansion point) and a reasonable one-step Newton correction otherwise
+// (Cauchy, multiNormal).
+void impPriorStructThetaCorrect(int nsub, arma::vec &g, arma::mat &H) {
+  if (op_focei.priorSpec == NULL) return;
+  IntegerVector &idx = op_focei.impThetaSensIdx;
+  int nSens = idx.size();
+  if (nSens == 0 || nsub <= 0) return;
+  std::vector<double> grad0;
+  foceiPriorEval(grad0);
+  for (int s = 0; s < nSens; ++s) g[s] += grad0[(size_t)idx[s]] / (double)nsub;
+  const double h = 1e-4;
+  arma::mat Hp(nSens, nSens, arma::fill::zeros);
+  for (int sp = 0; sp < nSens; ++sp) {
+    int j = idx[sp];
+    double save = op_focei.fullTheta[j];
+    op_focei.fullTheta[j] = save + h;
+    std::vector<double> gp; foceiPriorEval(gp);
+    op_focei.fullTheta[j] = save - h;
+    std::vector<double> gm; foceiPriorEval(gm);
+    op_focei.fullTheta[j] = save;
+    for (int s = 0; s < nSens; ++s) {
+      Hp(s, sp) = (gp[(size_t)idx[s]] - gm[(size_t)idx[s]]) / (2.0 * h);
+    }
+  }
+  Hp = 0.5 * (Hp + Hp.t());
+  H -= Hp / (double)nsub;
+}
+
+// Whether ANY prior term references theta index `th` (0-based fullTheta
+// index) directly.  Used by the mu-referenced M-step (updateMuGroups(),
+// impMuInterceptStep()) to skip the MAP correction entirely for the
+// (overwhelmingly common) no-prior-on-this-theta case -- both are hot paths
+// and must not slow down or change results for a group/theta with no prior.
+static bool priorSpecReferencesTheta(int th) {
+  const rx_prior_spec_t *spec = op_focei.priorSpec;
+  if (spec == NULL) return false;
+  for (int t = 0; t < spec->nTerms; ++t) {
+    const rx_prior_term_t &term = spec->terms[t];
+    for (int k = 0; k < term.n; ++k) {
+      if (term.thetaIdx[k] - 1 == th) return true;
+    }
+  }
+  return false;
+}
+
+// FD Hessian (and gradient) of the prior's log-density restricted to a small
+// set of theta indices `idx` (0-based), evaluated at the CURRENT fullTheta.
+// `grad`/`Hp` are resized to idx.size(); Hp is symmetrized.  Shared by
+// impPriorStructThetaCorrect()'s sibling mu-referenced-theta callers
+// (updateMuGroups(), impMuInterceptStep()) so the FD-perturbation logic
+// lives in one place.
+static void priorGradHessFor(const std::vector<int> &idx, arma::vec &grad, arma::mat &Hp) {
+  int n = (int)idx.size();
+  grad.set_size(n); grad.zeros();
+  Hp.set_size(n, n); Hp.zeros();
+  if (op_focei.priorSpec == NULL || n == 0) return;
+  std::vector<double> grad0;
+  foceiPriorEval(grad0);
+  for (int s = 0; s < n; ++s) grad[s] = grad0[(size_t)idx[s]];
+  const double h = 1e-4;
+  for (int sp = 0; sp < n; ++sp) {
+    int j = idx[sp];
+    double save = op_focei.fullTheta[j];
+    op_focei.fullTheta[j] = save + h;
+    std::vector<double> gp; foceiPriorEval(gp);
+    op_focei.fullTheta[j] = save - h;
+    std::vector<double> gm; foceiPriorEval(gm);
+    op_focei.fullTheta[j] = save;
+    for (int s = 0; s < n; ++s) Hp(s, sp) = (gp[(size_t)idx[s]] - gm[(size_t)idx[s]]) / (2.0 * h);
+  }
+  Hp = 0.5 * (Hp + Hp.t());
 }
 
 static inline double foceiOfv0(double *theta){
@@ -11006,7 +11156,25 @@ void impMuInterceptStep() {
     int th = thIdx[g], et = etIdx[g];
     double s = 0.0;
     for (int id = 0; id < nsub; ++id) s += inds_focei[id].eta[et];
-    double delta = s / (double)nsub;
+    // s - nsub*delta is the score of the (unnormalized) Gaussian log-lik
+    // "sum_i(eta_i - delta)" in delta; delta=s/nsub is its zero.  When th is
+    // prior-referenced, fold in the prior's own score/curvature (evaluated
+    // at the current th, i.e. delta=0 -- new_theta = th_old + delta, so the
+    // prior's gradient/Hessian w.r.t. delta at delta=0 is identical to its
+    // gradient/Hessian w.r.t. theta at th_old, no extra chain rule needed):
+    // joint stationarity (s - nsub*delta) + grad0 + Hp*delta = 0.  Exact for
+    // a Gaussian prior (Hp then delta-independent); a one-step Newton
+    // correction otherwise -- see updateMuGroups()'s identical derivation.
+    double delta;
+    if (priorSpecReferencesTheta(th)) {
+      std::vector<int> idx(1, th);
+      arma::vec grad0; arma::mat Hp;
+      priorGradHessFor(idx, grad0, Hp);
+      double denom = (double)nsub - Hp(0, 0);
+      delta = (std::fabs(denom) > 1e-8) ? (s + grad0[0]) / denom : s / (double)nsub;
+    } else {
+      delta = s / (double)nsub;
+    }
     op_focei.fullTheta[th] += delta;
     for (int id = 0; id < nsub; ++id) {
       rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));

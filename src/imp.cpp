@@ -1397,6 +1397,9 @@ void impOuter(Environment e) {
       }
       g /= (double)nsub;
       H /= (double)nsub;
+      // MAP correction: fold in the ini({}) prior's score/curvature for these
+      // thetas, if any (no-op otherwise) -- see impPriorStructThetaCorrect().
+      impPriorStructThetaCorrect(nsub, g, H);
       arma::vec step;
       if (arma::solve(step, H, g) && step.is_finite()) impUpdateStructThetas(step);
     }

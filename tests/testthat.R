@@ -84,7 +84,7 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
   # focei-wang2007-* file is kept in a separate batch -- one is ~10 error models
   # x 6 fits (ODE and solved-form) and dominates whatever batch it lands in.
   # batch 4
-  c("impmap", "matexp", "mfocei", "focei-wang2007-yeojohnson",
+  c("impmap", "imp-prior", "matexp", "mfocei", "focei-wang2007-yeojohnson",
     "nlme", "focei-fast-grad", "lincmt-ode-fit"),
   # batch 5
   c("focei-wang2007-boxcox-lnorm", "nlme-cov", "agq-fast-grad",
