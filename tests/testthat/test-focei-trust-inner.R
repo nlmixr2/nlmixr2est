@@ -64,6 +64,21 @@ nmTest({
     expect_true(.n2 > 0L)
   })
 
+  test_that("innerOpt='BFGS' actually falls back to n1qn1 (not just the R-level mapping)", {
+    skip_on_cran()
+    # #927: innerOpt="BFGS" is accepted but unimplemented in C++ (lbfgsb3C is not
+    # reentrant under this OpenMP loop, see src/inner.cpp). Run a real fit, not just
+    # check foceiControl()$innerOpt, so a future C++ change that actually wires
+    # innerOpt==2 into the trust/lbfgsb3C path gets caught here too.
+    .f1 <- .fitTrustCmp("n1qn1")
+    .fB <- .fitTrustCmp("BFGS")
+    .nB <- .nTrustInner()
+
+    expect_equal(.fB$objf, .f1$objf, tolerance = 1e-8)
+    expect_equal(as.data.frame(.fB$eta), as.data.frame(.f1$eta), tolerance = 1e-8)
+    expect_equal(.nB, 0L)
+  })
+
   test_that("innerOpt='trust' is thread-safe (cores>=2 matches serial)", {
     skip_on_cran()
     .old <- rxode2::getRxThreads()
