@@ -325,27 +325,39 @@ int  odeSwapCmtPar(int slot) { return odeSwapLoaded(slot) ? _odeReg[slot].cmtPar
 int  odeSwapNdiff(int slot)  { return odeSwapLoaded(slot) ? _odeReg[slot].ndiff : 0; }
 
 // True if ANY registered slot declared an ndiff (i.e. this fit has a linCmt()
-// peer whose cached Jacobian depends on rx->ndiff).  odeSwapSolveInd() writes
-// rx->ndiff -- a field on the single shared rx_solve struct -- immediately
-// before every such slot's solve; a caller that solves different slots for
-// different subjects CONCURRENTLY (e.g. one subject on the plain inner path,
-// another that fell back to doFD/pred, in the same omp loop) must serialize
-// around that write-then-solve-then-Jacobian-read window using this as the
-// gate, or two subjects' solves can race and one reads the other's ndiff.
-// Cheap to call per-subject: odeSlotN is a handful of entries.
+// peer whose cached Jacobian depends on rx->ndiff).  Used to gate the extra
+// cost of imp.cpp's impGetHessian() critical section (see below) so it is
+// zero for the vast majority of models, which never register such a peer.
 //
-// KNOWN GAP: only imp.cpp's impGetHessian() loop (the impmap proposal build)
-// is guarded this way -- that is the call site a linCmtB()-Jacobian read
-// (calcEtaHessian) is reachable from under a per-subject doFD branch that can
-// pick a different slot per thread.  The other odeSwapSolveInd() call sites
-// under a parallel region (impEStep's per-sample loop in imp.cpp; the various
-// omp loops in inner.cpp -- shi21ThetaGeneral, the M-step theta-sensitivity
-// collection, nlm.cpp's thetaGrad path) were not audited for the same mixed-
-// slot-concurrently pattern. Most look safe by construction (a fixed slot per
-// call, e.g. impThetaSensCollect's tsSlot does not vary within its own loop),
-// but that was not proven exhaustively.  If a future model shape or caller
-// mixes ndiffSet-true slots inside one of those loops, it needs the same
-// odeSwapAnyNdiffSet()-gated critical section this one got.
+// The PRIMARY fix for the concurrent-solve race, though, lives in
+// odeSwapSolveInd() itself: a slot whose own declared ndiff is 0 (e.g.
+// odeSlotPred -- "rxPred implements no sensitivities") now skips the write
+// entirely instead of stomping rx->ndiff with 0. That makes the CONFIRMED
+// exposure -- a subject on the plain inner path (needs a nonzero ndiff)
+// running concurrently, in the same omp loop, with a subject that fell back
+// to doFD/pred (needs nothing) -- benign without any lock: only slots that
+// actually need a derivative ever write here, and they all write their own
+// fixed, slot-intrinsic value, so concurrent writers of the SAME slot agree.
+// This is what makes impEStep's per-sample loop (imp.cpp) safe as-is; it was
+// NOT additionally wrapped in a critical section, because doing so would
+// serialize the E-step's actual ODE-solving work for exactly the model class
+// (linCmt() + non-mu structural theta) combSens exists to speed up.
+//
+// impGetHessian()'s loop (imp.cpp) keeps its odeSwapAnyNdiffSet()-gated
+// critical section anyway, as defense-in-depth: it is comparatively cheap
+// (one Hessian per subject per EM iteration, not per sample), and covers a
+// case the "skip zero writes" fix alone does not -- two DIFFERENT peers that
+// both need a NONZERO but DIFFERING ndiff, running concurrently. That case
+// is not the one this bug's own affected model class (linCmt() with a single
+// non-mu structural theta; odeSlotPred is always 0 there) can trigger, and
+// was not otherwise observed, but was not exhaustively ruled out either.
+//
+// KNOWN GAP: the other odeSwapSolveInd() call sites under a parallel region
+// (the various omp loops in inner.cpp -- shi21ThetaGeneral, the M-step
+// theta-sensitivity collection, nlm.cpp's thetaGrad path) were not audited
+// for the two-different-nonzero-ndiff-peers pattern either. Most look safe
+// by construction (a fixed slot per call, e.g. impThetaSensCollect's tsSlot
+// does not vary within its own loop), but that was not proven exhaustively.
 bool odeSwapAnyNdiffSet() {
   for (int s = 0; s < odeSlotN; ++s) {
     if (_odeReg[s].loaded && _odeReg[s].ndiffSet) return true;
@@ -532,7 +544,22 @@ void odeSwapSolveInd(int slot, int rxId) {
   // declared value immediately before every solve; leave rx->ndiff alone
   // when this slot's flags never reported one (older rxode2, or a model
   // with no linCmtB() calls at all -- nothing here needs its Jacobian).
-  if (odeSwapLoaded(slot) && _odeReg[slot].ndiffSet) {
+  //
+  // Only write when THIS slot's own need is nonzero.  A slot whose declared
+  // ndiff is 0 (e.g. odeSlotPred -- "rxPred implements no sensitivities")
+  // never reads rx->ndiff itself, so skip the write rather than stomp
+  // whatever a DIFFERENT, concurrently-solving peer that DOES need a
+  // nonzero value (e.g. odeSlotInner, solved by another thread for another
+  // subject in the same omp loop -- impGetHessian's and impEStep's
+  // per-subject loops both mix odeSlotInner/odeSlotPred within one parallel
+  // region via the per-subject doFD fallback) just set it to.  This is what
+  // makes those loops safe without a lock in the common case: every slot
+  // that actually writes here writes its own fixed, slot-intrinsic value,
+  // so concurrent writers of the SAME slot agree, and a slot that needs
+  // nothing never participates.  A genuine mix of two DIFFERENT nonzero-
+  // ndiff peers running concurrently is not covered by this alone -- see
+  // odeSwapAnyNdiffSet()'s KNOWN GAP note.
+  if (odeSwapLoaded(slot) && _odeReg[slot].ndiffSet && _odeReg[slot].ndiff != 0) {
     rxl->ndiff = _odeReg[slot].ndiff;
   }
   ind_solve(rxl, rxId, f->dydt_liblsoda, f->dydt_lsoda_dum,

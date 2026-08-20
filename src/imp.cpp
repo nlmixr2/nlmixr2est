@@ -331,14 +331,17 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
       modes[id] = mode;
       // impGetHessian() solves through odeSwapSolveInd(), which writes
       // rx->ndiff -- a field on the single shared rx_solve struct -- right
-      // before every solve of a slot that needs it (see odeSwap.cpp).  A
-      // subject that falls back to the doFD/pred path (fInd->doFD, set
-      // per-subject) can pick a DIFFERENT slot -- and so a different
-      // ndiff -- than a subject still on the plain inner path, and both can
-      // run concurrently in THIS loop.  Unguarded, one subject's solve can
-      // read the ndiff another subject's concurrent solve just wrote.  Only
-      // a linCmt()-with-non-mu-structural-theta model ever has a slot with
-      // ndiffSet=true, so gate the lock on that and pay nothing otherwise.
+      // before every solve of a slot whose OWN need is nonzero (see
+      // odeSwap.cpp).  A subject that falls back to the doFD/pred path
+      // (fInd->doFD, set per-subject) solves a DIFFERENT slot than a subject
+      // still on the plain inner path, concurrently in THIS loop -- but
+      // odeSwapSolveInd() already makes that pairing benign (pred needs no
+      // derivative, so it never writes).  This lock is defense-in-depth for
+      // the case that alone does not cover: two DIFFERENT slots that both
+      // need a NONZERO but DIFFERING ndiff, concurrently.  Only a
+      // linCmt()-with-non-mu-structural-theta model ever has a slot with
+      // ndiffSet=true at all, so gate the lock on that and pay nothing
+      // otherwise.
       bool _gotH;
       if (odeSwapAnyNdiffSet()) {
 #ifdef _OPENMP
@@ -1138,6 +1141,18 @@ void impOuter(Environment e) {
   // E-step's samples (sirN < isample), so eagerly harvesting every sample in
   // the E-step would do MORE solving, not less; that case keeps the existing
   // (unfused) M-step path unchanged.
+  //
+  // This loop is `#pragma omp parallel for` over subjects, and a subject
+  // whose inner solve fell back to doFD/pred solves a DIFFERENT registered
+  // slot than a subject still on the plain inner path -- concurrently, in
+  // the same loop.  That used to be able to race on rx->ndiff (a field on
+  // the single shared rx_solve struct); it no longer can, because
+  // odeSwapSolveInd() now skips writing rx->ndiff entirely for a slot whose
+  // own declared need is 0 (odeSlotPred never needs a Jacobian derivative --
+  // "rxPred implements no sensitivities" -- so it never touches the shared
+  // field), leaving only same-value writes from concurrent inner solves,
+  // which is benign.  See odeSwap.cpp's odeSwapSolveInd for the fix and its
+  // KNOWN GAP note.
   bool harvestSens = impCombSensEnabled() && (nSens > 0) && !sir;
   std::vector<impThetaSensData> outSens;
 
