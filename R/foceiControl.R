@@ -1391,6 +1391,13 @@ foceiControl <- function(sigdig = 3, #
     innerOpt <- setNames(.innerOptFun[match.arg(innerOpt)], NULL)
   }
   checkmate::assertNumeric(trustConf, lower=0, upper=1, finite=TRUE, any.missing=FALSE, len=1)
+  if (trustConf <= 0 || trustConf >= 1) {
+    # qchisq(0, df)==0 (zero trust-region radius, no step ever taken) and
+    # qchisq(1, df)==Inf (unbounded radius, no trust-region constraint at all)
+    # are both degenerate -- checkmate's lower/upper bounds are inclusive, so
+    # this has to be checked separately.
+    stop("'trustConf' must be strictly between 0 and 1", call.=FALSE)
+  }
   checkmate::assertNumeric(trustRinit, lower=0, finite=TRUE, null.ok=TRUE, len=1)
   checkmate::assertNumeric(trustRmax, lower=0, finite=TRUE, null.ok=TRUE, len=1)
   if (!is.null(trustRinit) && !is.null(trustRmax) && trustRinit > trustRmax) {

@@ -14,6 +14,12 @@ nmTest({
     expect_equal(foceiControl(trustRmax = 2)$trustRmax, 2)
     expect_error(foceiControl(trustRinit = 5, trustRmax = 1))
 
+    # trustConf must be strictly inside (0, 1): qchisq(0, df)==0 (zero
+    # trust-region radius) and qchisq(1, df)==Inf (unbounded radius) are both
+    # degenerate.
+    expect_error(foceiControl(trustConf = 1))
+    expect_error(foceiControl(trustConf = 0))
+
     .ctl <- foceiControl(innerOpt = "trust", trustConf = 0.9)
     expect_equal(do.call(foceiControl, .ctl)$innerOpt, 3L)
     expect_equal(do.call(foceiControl, .ctl)$trustConf, 0.9)
