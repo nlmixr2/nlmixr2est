@@ -151,6 +151,18 @@
 
 ## Bug fixes
 
+- Every NLM-family method (`nlm`, `bobyqa`, `newuoa`, `uobyqa`, `n1qn1`,
+  `lbfgsb3c`, `optim`, `nlminb`) silently mis-scored any M2/M3/M4-censored
+  normal endpoint, whether or not `ar()` was present (#976). NLM forces every
+  normal endpoint through a log-likelihood (`dnorm`) path so a single scalar
+  objective can be emitted; that path always set `rx_r_ ~ 0` (a full
+  log-density has no separate variance to report), but the censoring
+  correction reads `rx_r_` as a real variance, so a hardcoded zero corrupted
+  the correction for every censored observation. `rx_rll_` (the standard
+  deviation actually used to build the log-density) is emitted immediately
+  beforehand in the same branch, so it is now squared back into `rx_r_`
+  instead of being discarded.
+
 - `est="saem"` with a `pow()` residual error model (`rmPow`/`rmAddPow`/
   `rmPowLam`/`rmAddPowLam`) never applied the estimated power exponent in the
   E-step's MCMC-acceptance likelihood -- it always scored proposals as if the
