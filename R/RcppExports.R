@@ -87,6 +87,10 @@ likInner <- function(eta, id = 1L) {
     .Call(`_nlmixr2est_likInner`, eta, id)
 }
 
+.nTrustInner <- function() {
+    .Call(`_nlmixr2est_nTrustInnerGet`)
+}
+
 foceiLik <- function(theta) {
     .Call(`_nlmixr2est_foceiLik`, theta)
 }

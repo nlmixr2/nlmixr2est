@@ -496,6 +496,15 @@ struct focei_options {
   unsigned int nzm;
   int warm; // 1 = seed zm from calculated eta Hessian, 0 = classic behavior
 
+  // innerOpt: 1 = n1qn1 (default), 2 = BFGS (unimplemented -- see #927, falls
+  // back to n1qn1: lbfgsb3C's C++ wrapper keeps shared mutable Rcpp state, not
+  // reentrant under the per-subject OpenMP loop), 3 = trust (RcppTrust)
+  int innerOpt;
+  double trustConf; // confidence level defining the trust-region radius
+  double trustRinit;
+  double trustRmax;
+  std::atomic<int> nTrustInner{0}; // per-fit count of trust_solve_c calls (test evidence)
+
   int imp;
   // int printInner;
 
@@ -3333,6 +3342,44 @@ void innerCost(int *ind, int *n, double *x, double *f, double *g, int *ti, float
   }
 }
 
+// RcppTrust objfun: value+gradient+Hessian every call (a true trust-region
+// Newton step wants a fresh Hessian each iteration, unlike n1qn1's one-time
+// warm-start seed). calcEtaHessian() is cheap since neta is small, and is
+// already proven safe inside this OpenMP per-subject loop (warmZm calls it
+// the same way). No R API calls -- matches innerCost/likInner0's discipline.
+extern "C" int trustInnerObjfun(int n, const double *par, double *value,
+                                 double *gradient, double *hessian, void *userdata) {
+  int id = *((int*)userdata);
+  focei_ind *fInd = &(inds_focei[id]);
+  if (fInd->badSolve == 1) { *value = std::numeric_limits<double>::infinity(); return 1; }
+  std::copy(par, par + n, fInd->x);
+  double f = likInner0(fInd->x, id);
+  if (ISNA(f)) {
+    fInd->badSolve = 1;
+    *value = std::numeric_limits<double>::infinity();
+    return 1;
+  }
+  fInd->nInnerF++;
+  lpInner(fInd->x, gradient, id);
+  fInd->nInnerG++;
+  rx = getRxSolve_();
+  rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
+  mat H((arma::uword)n, (arma::uword)n, fill::zeros), H0((arma::uword)n, (arma::uword)n, fill::zeros);
+  if (!calcEtaHessian(fInd->x, 0, id, fInd, ind, H, H0)) {
+    fInd->badSolve = 1;
+    *value = std::numeric_limits<double>::infinity();
+    return 1;
+  }
+  std::copy(H.begin(), H.end(), hessian);
+  *value = f;
+  return 0;
+}
+
+//[[Rcpp::export(".nTrustInner")]]
+int nTrustInnerGet() {
+  return op_focei.nTrustInner.load(std::memory_order_relaxed);
+}
+
 static inline int innerEval(int id){
   focei_ind *fInd = &(inds_focei[id]);
   // Use eta
@@ -3373,7 +3420,12 @@ static inline int innerOpt1(int id, int likId) {
       fInd->setup = 0;
     }
   }
-  bool n1qn1Inner = true;
+  // innerOpt==2 ("BFGS") is intentionally left mapped to n1qn1: lbfgsb3C's C++
+  // wrapper (lbfgsb3x.cpp) writes a file-scope global Rcpp::List on every call,
+  // which is not reentrant under this per-subject OpenMP loop (#927) -- do not
+  // route it there without first fixing that.
+  bool trustInner = (op_focei.innerOpt == 3);
+  bool n1qn1Inner = !trustInner;
   // Use eta
   // Convert Zm to Hessian, if applicable.
   mat etaMat(fop->neta, 1, fill::zeros);
@@ -3698,6 +3750,54 @@ static inline int innerOpt1(int id, int likId) {
         }
       }
     }
+  } else if (trustInner) {
+    fInd->badSolve = 0;
+    // Per-eta scale: sqrt(diag(Omega)) -- the eta-level analogue of bobyqa's
+    // theta scaling; conditions RcppTrust's trust-region metric via parscale.
+    std::vector<double> parscale((size_t)npar);
+    for (int j = 0; j < npar; j++) {
+      double v = op_focei.omega(j, j);
+      parscale[j] = (v > 0) ? std::sqrt(v) : 1.0;
+    }
+    trust_options_t topts = trust_options_default(op_focei.trustRinit, op_focei.trustRmax);
+    topts.has_parscale = 1;
+    topts.parscale = parscale.data();
+    topts.iterlim = maxInnerIterations;
+    topts.fterm = epsilon;
+    topts.mterm = epsilon;
+
+    auto trustSolveAt = [&](bool fill, double startVal) {
+      if (fill) std::fill_n(fInd->x, npar, startVal);
+      trust_result_t tres;
+      trust_solve_c_ptr(npar, fInd->x, trustInnerObjfun, (void*)(&id), &topts, &tres);
+      op_focei.nTrustInner.fetch_add(1, std::memory_order_relaxed);
+      bool conv = false;
+      if (tres.error >= 0 && tres.argument != NULL) {
+        std::copy(tres.argument, tres.argument + npar, fInd->x);
+        f = tres.value;
+        conv = (bool)tres.converged;
+        if (R_FINITE(f) && !ISNA(f)) {
+          keepBest();
+          if (tres.gradient != NULL) std::copy(tres.gradient, tres.gradient + npar, fInd->g);
+        }
+      }
+      trust_result_free_ptr(&tres);
+      return conv;
+    };
+
+    bool converged = trustSolveAt(false, 0.0);
+    // Restart cascade on non-convergence, same nudge magnitudes n1qn1 uses; the
+    // monotone keepBest()/restoreBest() (shared below) guarantees a later
+    // restart can only improve on an earlier one.
+    if (!converged && fInd->doEtaNudge == 1 && op_focei.etaNudge != 0.0) {
+      op_focei.didEtaNudge.store(1, std::memory_order_relaxed);
+      double nudges[4] = {op_focei.etaNudge, -op_focei.etaNudge,
+                           -op_focei.etaNudge2, op_focei.etaNudge2};
+      for (int _n = 0; _n < 4 && !converged; _n++) {
+        converged = trustSolveAt(true, nudges[_n]);
+      }
+    }
+    if (!haveBest) return 0;
   } else {
     int fail=0, fncount=0, grcount=0;
     char msg[100];
@@ -4374,6 +4474,13 @@ void innerOpt() {
     foceiOmegaEnvSyncFromTail(); // fast omega path leaves the env theta stale
     op_focei.omegaInv=getOmegaInv();
     op_focei.logDetOmegaInv5 = getOmegaDet();
+    if (op_focei.innerOpt == 3) {
+      // trust-region parscale needs Omega (not just its inverse) refreshed on the
+      // same cadence as omegaInv -- op_focei.omega is otherwise only kept current
+      // for est="fo" (foceiOmegaFromTheta only refreshes it on that branch).
+      arma::mat _trustOmega;
+      if (arma::inv_sympd(_trustOmega, op_focei.omegaInv)) op_focei.omega = _trustOmega;
+    }
   }
   // Pre-draw per-subject ETA samples serially before the parallel for-loop so
   // workers only do memory access (no R API calls), making mceta safe under cores > 1.
@@ -6953,6 +7060,21 @@ NumericVector foceiSetup_(const RObject &obj,
     else foceiSetupEta_(etaMat0);
   }
   op_focei.epsilon=as<double>(foceiO["epsilon"]);
+  op_focei.innerOpt = foceiO.containsElementNamed("innerOpt") ? as<int>(foceiO["innerOpt"]) : 1;
+  op_focei.trustConf = foceiO.containsElementNamed("trustConf") ? as<double>(foceiO["trustConf"]) : 0.975;
+  {
+    // rmax: radius (in sqrt(diag(Omega))-scaled units) of the trustConf-level eta
+    // confidence region -- eta ~ N(0, Omega) makes eta'Omega^-1 eta chi-square(df=neta).
+    // neta is fixed for the whole fit, so this is a one-time, single-threaded
+    // computation (R::qchisq is a deterministic quantile fn, safe anywhere -- CLAUDE.md).
+    double _df = (double) op_focei.neta;
+    double _rmaxDefault = (_df > 0) ? std::sqrt(R::qchisq(op_focei.trustConf, _df, 1, 0)) : 1.0;
+    SEXP _trustRmaxS = foceiO.containsElementNamed("trustRmax") ? (SEXP)foceiO["trustRmax"] : R_NilValue;
+    op_focei.trustRmax = Rf_isNull(_trustRmaxS) ? _rmaxDefault : as<double>(_trustRmaxS);
+    SEXP _trustRinitS = foceiO.containsElementNamed("trustRinit") ? (SEXP)foceiO["trustRinit"] : R_NilValue;
+    op_focei.trustRinit = Rf_isNull(_trustRinitS) ? (op_focei.trustRmax / 2.0) : as<double>(_trustRinitS);
+  }
+  op_focei.nTrustInner.store(0, std::memory_order_relaxed);
   op_focei.nsim=as<int>(foceiO["n1qn1nsim"]);
   op_focei.imp=0;
   op_focei.resetThetaSize = std::numeric_limits<double>::infinity();
