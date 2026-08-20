@@ -16389,6 +16389,42 @@ static inline void npAccumMoment(arma::mat &mom, int e, double f, double dv) {
   mom(e, 2) += 1.0;
 }
 
+// Fold one subject's observation rows into mom, on the way accumulating the
+// additive/proportional moment for whichever endpoint each row belongs to.
+// obsIdx indexes obsEndpoint across ALL subjects, so it must advance even on a
+// skipped subject (skipMoments true) or every later subject's rows land in the
+// wrong endpoint. See npResidMoments for what skipMoments/cl/fr/nEnd mean and
+// why an M3/M4 (censored) row is counted into column 3 rather than folded into
+// the additive/proportional sum-of-squares (issue #978).
+static inline void npResidMomentsSubject(rx_solving_options_ind *ind, int n,
+                                          const arma::mat &fr, bool skipMoments,
+                                          double cl, const arma::ivec &obsEndpoint,
+                                          int nEnd, int &obsIdx, arma::mat &mom) {
+  int ko = 0;
+  for (int j = 0; j < n && (skipMoments || ko < (int)fr.n_rows); ++j) {
+    setIndIdx(ind, j);
+    int kk = getIndIx(ind, j);
+    if (getIndEvid(ind, kk) != 0) continue;
+    // No map at all means no per-observation endpoint was supplied; running off the
+    // end of one means the map does not describe this solve.  Either way the row is
+    // dropped (-1) rather than filed under endpoint 0 (issue #856).  It is NOT safe
+    // to read nEnd == 1 as "single endpoint, so 0 is right": nEnd comes from the
+    // ESTIMATED residual parameters, and a multi-endpoint model with one estimated
+    // scale (the rest fixed) also gives 1.
+    int e = (obsIdx < (int)obsEndpoint.n_elem) ? obsEndpoint[obsIdx] : -1;
+    obsIdx++;
+    if (skipMoments) continue;
+    double dv = tbs(getIndDv(ind, kk));
+    double f = fr(ko, 0);
+    ko++;
+    if (e < 0 || e >= nEnd) continue;
+    if (!std::isfinite(cl) || !std::isfinite(f)) continue;
+    double cens = hasRxCens(rx) ? getIndCens(ind, kk) : 0.0;
+    if (cens != 0.0) { mom(e, 3) += 1.0; continue; }
+    npAccumMoment(mom, e, f, dv);
+  }
+}
+
 // Empirical (moment) residual estimate at fixed per-subject etas, per endpoint.
 // obsEndpoint (length = number of observations, in the C++ subject-major getIndIx
 // order) gives each observation's 0-based endpoint; nEnd is the endpoint count.  For
@@ -16430,36 +16466,8 @@ arma::mat npResidMoments(const arma::mat& postEta, const arma::ivec& obsEndpoint
     rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(i));
     arma::mat fr;
     if (!skipMoments) fr = grabRFmatFromInner(i, false);
-    int ko = 0;
     int n = getIndNallTimes(ind);
-    for (int j = 0; j < n && (skipMoments || ko < (int)fr.n_rows); ++j) {
-      setIndIdx(ind, j);
-      int kk = getIndIx(ind, j);
-      if (getIndEvid(ind, kk) != 0) continue;
-      // obsIdx indexes obsEndpoint across ALL subjects, so it must advance even on a
-      // skipped subject or every later subject's rows land in the wrong endpoint.
-      // No map at all means no per-observation endpoint was supplied; running off the
-      // end of one means the map does not describe this solve.  Either way the row is
-      // dropped (-1) rather than filed under endpoint 0 (issue #856).  It is NOT safe
-      // to read nEnd == 1 as "single endpoint, so 0 is right": nEnd comes from the
-      // ESTIMATED residual parameters, and a multi-endpoint model with one estimated
-      // scale (the rest fixed) also gives 1.
-      int e = (obsIdx < (int)obsEndpoint.n_elem) ? obsEndpoint[obsIdx] : -1;
-      obsIdx++;
-      if (skipMoments) continue;
-      double dv = tbs(getIndDv(ind, kk));
-      double f = fr(ko, 0);
-      ko++;
-      if (e < 0 || e >= nEnd) continue;
-      if (!std::isfinite(cl) || !std::isfinite(f)) continue;
-      // M3/M4 (cens != 0; see isM3orM4() in censEst.h): dv above is the LOQ/limit,
-      // not a real measurement, so it must not be folded into the additive/
-      // proportional sum-of-squares as if observed (issue #978).  M2 (cens == 0,
-      // finite limit) keeps its real observed dv and is NOT excluded here.
-      double cens = hasRxCens(rx) ? getIndCens(ind, kk) : 0.0;
-      if (cens != 0.0) { mom(e, 3) += 1.0; continue; }
-      npAccumMoment(mom, e, f, dv);
-    }
+    npResidMomentsSubject(ind, n, fr, skipMoments, cl, obsEndpoint, nEnd, obsIdx, mom);
   }
   return mom;
 }
