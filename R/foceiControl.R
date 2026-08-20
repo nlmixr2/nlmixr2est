@@ -380,8 +380,23 @@
 #'
 #' @param outerOpt optimization method for the outer problem
 #'
-#' @param innerOpt optimization method for the inner problem (not
-#'     implemented yet.)
+#' @param innerOpt optimization method for the inner (per-subject eta)
+#'     problem: `"n1qn1"` (default, quasi-Newton) or `"trust"` (RcppTrust
+#'     trust-region Newton, using an exact Gauss-Newton+Omega^-1 Hessian
+#'     every iteration). `"BFGS"` is accepted but not implemented -- it
+#'     silently falls back to `"n1qn1"`.
+#'
+#' @param trustConf confidence level defining the `innerOpt="trust"`
+#'     trust-region radius: since eta ~ N(0, Omega), the radius (in
+#'     sqrt(diag(Omega))-scaled units) is `sqrt(qchisq(trustConf, df=neta))`,
+#'     the boundary of the `trustConf`-level eta confidence region. Default
+#'     0.975.
+#'
+#' @param trustRinit initial `innerOpt="trust"` trust-region radius. `NULL`
+#'     (default) derives it from `trustConf`.
+#'
+#' @param trustRmax maximum `innerOpt="trust"` trust-region radius. `NULL`
+#'     (default) derives it from `trustConf`.
 #'
 #' @param stateTrim Trim state amounts/concentrations to this value.
 #'
@@ -903,7 +918,11 @@ foceiControl <- function(sigdig = 3, #
                                       "slsqp",
                                       "uobyqa",
                                       "newuoa"), #
-                         innerOpt = c("n1qn1", "BFGS"), #
+                         innerOpt = c("n1qn1", "BFGS", "trust"), #
+                         ## trust-region inner optimizer (RcppTrust)
+                         trustConf = 0.975, # confidence level defining the trust-region radius
+                         trustRinit = NULL, # NULL -> derived from trustConf/neta
+                         trustRmax = NULL, # NULL -> derived from trustConf/neta
                          ##
                          rhobeg = .2, #
                          rhoend = NULL, #
@@ -1365,11 +1384,17 @@ foceiControl <- function(sigdig = 3, #
             call.=FALSE)
     fast <- FALSE
   }
-  if (checkmate::testIntegerish(innerOpt, lower=1, upper=2, len=1)) {
+  if (checkmate::testIntegerish(innerOpt, lower=1, upper=3, len=1)) {
     innerOpt <- as.integer(innerOpt)
   } else {
-    .innerOptFun <- c("n1qn1" = 1L, "BFGS" = 2L)
+    .innerOptFun <- c("n1qn1" = 1L, "BFGS" = 2L, "trust" = 3L)
     innerOpt <- setNames(.innerOptFun[match.arg(innerOpt)], NULL)
+  }
+  checkmate::assertNumeric(trustConf, lower=0, upper=1, finite=TRUE, any.missing=FALSE, len=1)
+  checkmate::assertNumeric(trustRinit, lower=0, finite=TRUE, null.ok=TRUE, len=1)
+  checkmate::assertNumeric(trustRmax, lower=0, finite=TRUE, null.ok=TRUE, len=1)
+  if (!is.null(trustRinit) && !is.null(trustRmax) && trustRinit > trustRmax) {
+    stop("'trustRinit' cannot be larger than 'trustRmax'", call.=FALSE)
   }
   if (checkmate::testIntegerish(warm, lower=0, upper=1, len=1, any.missing=FALSE)) {
     warm <- as.integer(warm)
@@ -1598,6 +1623,10 @@ foceiControl <- function(sigdig = 3, #
     eval.max = eval.max,
     iter.max = iter.max,
     innerOpt = innerOpt,
+    ## trust-region inner optimizer (RcppTrust)
+    trustConf = as.double(trustConf),
+    trustRinit = trustRinit,
+    trustRmax = trustRmax,
     ## BFGS
     abstol = abstol,
     reltol = reltol,
@@ -1746,7 +1775,7 @@ foceiControl <- function(sigdig = 3, #
       return(.val)
     }
     if (x == "innerOpt") {
-      .innerOptFun <- c("n1qn1" = 1L, "BFGS" = 2L)
+      .innerOptFun <- c("n1qn1" = 1L, "BFGS" = 2L, "trust" = 3L)
       paste0("innerOpt = ", deparse1(names(.innerOptFun[which(object[[x]] == .innerOptFun)])))
     } else if (x == "warm") {
       .warmIdx <- c("calc" = 1L, "save" = 0L)
