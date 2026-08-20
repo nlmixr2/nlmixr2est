@@ -347,6 +347,58 @@
 #'   single shape this is a plain candidate count; two shape families of one
 #'   covariate cost `log2(3)`, keeping the exact search's worst-case node budget
 #'   the same either way.  `Inf` forces the exact branch-and-bound everywhere.
+#' @param covSelectColinear When `TRUE` (default) the covariate M-step is
+#'   correlation-aware: near-interchangeable covariates are grouped into
+#'   colinearity clusters, a selection is not displaced within a cluster by a
+#'   challenger that does not clearly beat it, and near-tied cluster mates are
+#'   reported.  `FALSE` reproduces the previous behavior exactly and is the only
+#'   supported way to do so.
+#' @param covSelectColinearCut `abs(cor)` at or above which two covariates form a
+#'   colinearity cluster (default `0.9`).  Compared only across covariates:
+#'   alternate shapes of one covariate are already arbitrated by the
+#'   mutual-exclusion groups and never cluster with each other.  The default is
+#'   measured rather than conventional -- see `tools/vaeColinearPreflight.R`,
+#'   where the most correlated design in the package reaches `0.775`.
+#' @param covSelectHysteresis Margin, in units of the per-covariate selection
+#'   penalty (`log(N)`), by which a colinearity-cluster mate must beat the
+#'   covariate selected on the previous iteration before it is allowed to
+#'   displace it (default `0.25`).  Colinear covariates score within noise of one
+#'   another, so the winner otherwise flips from iteration to iteration; this
+#'   makes the answer settle.  `0` disables the hold.  Expressed in penalty units
+#'   rather than as a fraction of the objective because the objective grows with
+#'   the number of subjects while the decision scale does not.
+#' @param covSelectAltTol Score window, in the same penalty units, within which a
+#'   cluster mate of a selected covariate is reported as a near-tied alternative
+#'   (default `0.75`).  These are the choices the data could not really
+#'   distinguish; they are listed in `$vae$colinear$alternates`, whose `delta`
+#'   column is in these same units.  `0` disables the report.  The default is
+#'   measured: on a simulated pair correlated at `0.99` the selected covariate
+#'   changes from run to run, and the gap between the two averages about `0.39`
+#'   penalty units.  A much tighter window stays silent in exactly the case the
+#'   report exists for: at `0.1` only a fifth of those fits report anything,
+#'   against four fifths at `0.75`, while a design whose covariates are
+#'   separable (correlation `0.5`) reports nothing at any window tried.
+#' @param covSelectPhiCor Which quantity the correlation between latent
+#'   dimensions is computed from when grouping them for the cross-parameter
+#'   covariate refinement: `"suffStat"` (default, the smoothed EMA sufficient
+#'   statistic the selection itself regresses), `"mu"` (the raw posterior means)
+#'   or `"resid"` (the posterior means less the fitted covariate centers).
+#'   `"resid"` runs systematically higher than the other two, so raise
+#'   `covSelectPhiJoin` if you select it.
+#' @param covSelectPhiJoin,covSelectPhiLeave `abs(cor)` at which two latent
+#'   dimensions join a correlated group, and the lower value at which one leaves
+#'   again (defaults `0.9` and `0.8`).  Membership is re-evaluated every
+#'   iteration; the gap between the two stops a pair whose correlation wanders
+#'   around the threshold from joining and leaving repeatedly.
+#'   `covSelectPhiLeave` must not exceed `covSelectPhiJoin`.  The default is
+#'   measured rather than conventional: an ordinary one-compartment model shows
+#'   about `0.82` between its clearance and volume dimensions, so `0.8` would
+#'   group a well-identified fit -- see `tools/vaeColinearPreflight.R`.
+#' @param covSelectPhiMaxDim Largest correlated group the cross-parameter
+#'   refinement will attempt (default `4`).  A larger group is skipped rather
+#'   than split: a latent space that entangled is not something per-covariate
+#'   moves should be arbitrating, and splitting it would need an arbitrary
+#'   tie-break on a near-tied graph.
 #' @param bnbStrategy Frontier discipline for the exact branch-and-bound covariate
 #'   selection: `"lifo"` (default, last-in-first-out depth-first search),
 #'   `"fifo"` (first-in-first-out) or `"lc"` (least cost / best-first).  The
@@ -435,6 +487,14 @@ vaeControl <- function(seed = 42L,
                        inputScale = c("reference", "observed"),
                        covSelectMethod = c("auto", "bnb", "l0learn"),
                        covSelectMaxExact = 17L,
+                       covSelectColinear = TRUE,
+                       covSelectColinearCut = .vaeColinearCut,
+                       covSelectHysteresis = 0.25,
+                       covSelectAltTol = 0.75,
+                       covSelectPhiCor = c("suffStat", "mu", "resid"),
+                       covSelectPhiJoin = 0.9,
+                       covSelectPhiLeave = 0.8,
+                       covSelectPhiMaxDim = 4L,
                        bnbStrategy = c("lifo", "fifo", "lc"),
                        parEncoderBackward = !isTRUE(getOption("nlmixr2.identical", FALSE)),
                        nonMuTheta = c("regress", "grad", "eta", "fix", "none"),
@@ -531,6 +591,26 @@ vaeControl <- function(seed = 42L,
     checkmate::assertIntegerish(covSelectMaxExact, lower = 1, len = 1, any.missing = FALSE)
     covSelectMaxExact <- as.integer(covSelectMaxExact)
   }
+  checkmate::assertLogical(covSelectColinear, len = 1, any.missing = FALSE)
+  checkmate::assertNumeric(covSelectColinearCut, lower = 0, upper = 1, len = 1,
+                           any.missing = FALSE)
+  checkmate::assertNumeric(covSelectHysteresis, lower = 0, finite = TRUE, len = 1,
+                           any.missing = FALSE)
+  checkmate::assertNumeric(covSelectAltTol, lower = 0, finite = TRUE, len = 1,
+                           any.missing = FALSE)
+  covSelectPhiCor <- match.arg(covSelectPhiCor)
+  checkmate::assertNumeric(covSelectPhiJoin, lower = 0, upper = 1, len = 1,
+                           any.missing = FALSE)
+  checkmate::assertNumeric(covSelectPhiLeave, lower = 0, upper = 1, len = 1,
+                           any.missing = FALSE)
+  ## leaving above joining is not a schedule, it is a pair that joins and leaves
+  ## on alternate iterations
+  if (covSelectPhiLeave > covSelectPhiJoin) {
+    stop("'covSelectPhiLeave' must be <= 'covSelectPhiJoin'", call. = FALSE)
+  }
+  checkmate::assertIntegerish(covSelectPhiMaxDim, lower = 2, len = 1,
+                              any.missing = FALSE)
+  covSelectPhiMaxDim <- as.integer(covSelectPhiMaxDim)
   bnbStrategy <- match.arg(bnbStrategy)
   checkmate::assertLogical(parEncoderBackward, len = 1, any.missing = FALSE)
   nonMuTheta <- match.arg(nonMuTheta)
@@ -652,6 +732,14 @@ vaeControl <- function(seed = 42L,
                inputScale = inputScale,
                covSelectMethod = covSelectMethod,
                covSelectMaxExact = covSelectMaxExact,
+               covSelectColinear = covSelectColinear,
+               covSelectColinearCut = covSelectColinearCut,
+               covSelectHysteresis = covSelectHysteresis,
+               covSelectAltTol = covSelectAltTol,
+               covSelectPhiCor = covSelectPhiCor,
+               covSelectPhiJoin = covSelectPhiJoin,
+               covSelectPhiLeave = covSelectPhiLeave,
+               covSelectPhiMaxDim = covSelectPhiMaxDim,
                bnbStrategy = bnbStrategy,
                parEncoderBackward = parEncoderBackward,
                nonMuTheta = nonMuTheta,

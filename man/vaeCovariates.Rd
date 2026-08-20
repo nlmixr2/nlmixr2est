@@ -10,7 +10,8 @@ vaeCovariates(
   shapes = c("power", "lin", "log", "identity", "center", "hockey"),
   covCenterType = c("median", "mean"),
   covCenter = NULL,
-  catCutoff = 0.05
+  catCutoff = 0.05,
+  colinearCut = .vaeColinearCut
 )
 }
 \arguments{
@@ -22,14 +23,18 @@ from the search; when `FALSE` exclude them silently}
 
 \item{shapes, covCenterType, covCenter, catCutoff}{as in [vaeControl()]; control
 which shapes are explored and how covariates are centered}
+
+\item{colinearCut}{as `covSelectColinearCut` in [vaeControl()]; `abs(cor)` at
+or above which two covariates form a colinearity cluster}
 }
 \value{
 a data frame with one row per candidate search column and columns
   `covariate` (the column name), `raw` (upper-cased data column it comes
   from), `shape`, `level` (for categorical indicators), `group` (mutual
   exclusion group), `block` (columns selected all-or-none, i.e. the two arms
-  of a `"hockey"` relationship), `type` and `center`; zero rows when nothing
-  qualifies
+  of a `"hockey"` relationship), `cluster` (near-interchangeable covariates;
+  always a coarsening of `group`, so two shapes of one covariate never
+  cluster together), `type` and `center`; zero rows when nothing qualifies
 }
 \description{
 Returns the candidate columns that `nlmixr2(..., est = "vae")` would explore

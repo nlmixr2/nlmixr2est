@@ -420,12 +420,15 @@
 #'   from the search; when `FALSE` exclude them silently
 #' @param shapes,covCenterType,covCenter,catCutoff as in [vaeControl()]; control
 #'   which shapes are explored and how covariates are centered
+#' @param colinearCut as `covSelectColinearCut` in [vaeControl()]; `abs(cor)` at
+#'   or above which two covariates form a colinearity cluster
 #' @return a data frame with one row per candidate search column and columns
 #'   `covariate` (the column name), `raw` (upper-cased data column it comes
 #'   from), `shape`, `level` (for categorical indicators), `group` (mutual
 #'   exclusion group), `block` (columns selected all-or-none, i.e. the two arms
-#'   of a `"hockey"` relationship), `type` and `center`; zero rows when nothing
-#'   qualifies
+#'   of a `"hockey"` relationship), `cluster` (near-interchangeable covariates;
+#'   always a coarsening of `group`, so two shapes of one covariate never
+#'   cluster together), `type` and `center`; zero rows when nothing qualifies
 #' @export
 #' @author Matthew L. Fidler
 #' @examples
@@ -439,8 +442,11 @@
 vaeCovariates <- function(data, warn = TRUE,
                           shapes = c("power", "lin", "log", "identity", "center", "hockey"),
                           covCenterType = c("median", "mean"),
-                          covCenter = NULL, catCutoff = 0.05) {
+                          covCenter = NULL, catCutoff = 0.05,
+                          colinearCut = .vaeColinearCut) {
   checkmate::assertLogical(warn, len = 1, any.missing = FALSE)
+  checkmate::assertNumeric(colinearCut, lower = 0, upper = 1, len = 1,
+                           any.missing = FALSE)
   d <- as.data.frame(data)
   names(d) <- toupper(names(d))
   if (is.null(d$ID)) {
@@ -462,7 +468,9 @@ vaeCovariates <- function(data, warn = TRUE,
   }
   data.frame(covariate = .cov$covNames, raw = .cov$covRaw, shape = .cov$covShape,
              level = .cov$covLevel, group = .cov$covGroup,
-             block = .cov$covBlock, type = .cov$covType,
+             block = .cov$covBlock,
+             cluster = .vaeCovCluster(.cov$covMat, .cov$covGroup, colinearCut),
+             type = .cov$covType,
              center = .cov$covPop, row.names = NULL)
 }
 
@@ -1277,6 +1285,12 @@ vaeCovariates <- function(data, warn = TRUE,
        covPop = .cov$covPop, covRaw = .cov$covRaw, covShape = .cov$covShape,
        covFamily = .cov$covFamily, covLevel = .cov$covLevel,
        covGroup = .cov$covGroup, covBlock = .cov$covBlock,
+       ## computed here, after any pin-time covMat rebuild above, so the
+       ## clusters describe the design actually searched
+       covCluster = .vaeCovCluster(.cov$covMat, .cov$covGroup,
+                                   if (is.null(control$covSelectColinearCut))
+                                     .vaeColinearCut else
+                                     control$covSelectColinearCut),
        covExpr = .cov$covExpr,
        covCanon = .cov$covCanon, shapeRules = .resolvedShapes$rules,
        pinActive = .pinActive, pinPairs = .pinPairs, covAllow = .covAllow,

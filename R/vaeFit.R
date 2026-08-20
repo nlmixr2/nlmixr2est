@@ -241,6 +241,15 @@
   if (!is.null(prep$covBlock) && anyDuplicated(prep$covBlock) > 0L) {
     prepC$covBlock <- as.integer(prep$covBlock)
   }
+  ## Colinearity clusters.  NOT gated on anyDuplicated() like the two above: a
+  ## cluster id repeats on every multi-shape covariate even with no
+  ## cross-covariate colinearity at all, so that test would ship the vector on
+  ## ordinary designs.  Only a cluster that MERGES TWO GROUPS has anything to say.
+  prepC$covCluster <- NULL
+  if (isTRUE(control$covSelectColinear) &&
+        .vaeClusterBinds(prep$covCluster, prep$covGroup)) {
+    prepC$covCluster <- as.integer(prep$covCluster)
+  }
 
   ## covSelectMethod: pick the search per latent dimension from the number of
   ## candidates that dimension actually has (after any pinCovariates trimming),
@@ -279,11 +288,17 @@
   for (.m in .modes$msg) warning(.m, call. = FALSE)
   prepC$covSelectMode <- .modes$mode
   prepC$l0Fn <- NULL
+  ## counts latent dimensions whose L0Learn proposals failed; the closure is
+  ## called once per training iteration from C++, so the tally has to live
+  ## outside it
+  .l0Fail <- new.env(parent = emptyenv())
+  .l0Fail$n <- 0L
   if (any(.modes$mode == 1L)) {
     .covMat <- prep$covMat
     .mode <- .modes$mode
     .allow <- .allowed
-    prepC$l0Fn <- function(y) .vaeL0Candidates(y, .covMat, .mode, .allow)
+    .fenv <- .l0Fail
+    prepC$l0Fn <- function(y) .vaeL0Candidates(y, .covMat, .mode, .allow, .fenv)
   }
 
   .cores <- tryCatch({
@@ -316,7 +331,33 @@
                        .cores, .row0, names(.row0), control$iterPrintControl,
                        parInfo$xform, as.integer(parInfo$structIdx) - 1L)
 
+  ## a dimension whose L0Learn proposals failed searched from the intercept-only
+  ## model, which looks like an ordinary selection unless it says so
+  for (.m in .vaeL0FailMsg(.l0Fail$n)) warning(.m, call. = FALSE)
+
   .selected <- matrix(as.logical(.fit$selected), zDim, ncol(prep$covMat))
+  .cd <- .fit$covDiag
+  .colinear <- list(cluster = prep$covCluster,
+                    nColinTest = as.integer(.cd$nColinTest),
+                    nColinHold = as.integer(.cd$nColinHold),
+                    nPhiPair = as.integer(.cd$nPhiPair),
+                    nPhiTest = as.integer(.cd$nPhiTest),
+                    nPhiMove = as.integer(.cd$nPhiMove),
+                    nPhiSkipBig = as.integer(.cd$nPhiSkipBig),
+                    nPhiSkipDiag = as.integer(.cd$nPhiSkipDiag),
+                    ## sticky adjacency as the run left it: a pair still ON
+                    ## whose correlation has since fallen below covSelectPhiJoin
+                    ## stayed only because membership is sticky
+                    phiPairOn = .cd$phiPairOn,
+                    nPhiClamp = as.integer(.cd$nPhiClamp),
+                    omOff = as.logical(.cd$omOff),
+                    alternates = .vaeColinearAlt(.cd, .selected,
+                                                 prep$covCluster, prep$etaNames,
+                                                 prep$covNames))
+  for (.m in .vaeColinearMsg(nrow(.colinear$alternates))) warning(.m, call. = FALSE)
+  for (.m in .vaePhiDiagMsg(.colinear$nPhiPair, .colinear$omOff, any(.selected))) {
+    warning(.m, call. = FALSE)
+  }
   .omMat <- .fit$omegaMat
   dimnames(.omMat) <- list(prep$etaNames, prep$etaNames)
   list(params = .fit$params, zPop = as.numeric(.fit$zPop), omega = as.numeric(.fit$omega),
@@ -328,7 +369,8 @@
        regressTheta = setNames(as.numeric(.fit$regressTheta), prep$regressNames),
        nRegGrad = as.integer(.fit$nRegGrad), nRegFallback = as.integer(.fit$nRegFallback),
        nStage2 = as.integer(.fit$nStage2),
-       covSelectMethodUsed = .modes$used,
+       covSelectMethodUsed = .modes$used, nL0Fail = .l0Fail$n,
+       colinear = .colinear,
        nMix = nMix, mixProb = mixProb, mixnum = as.integer(.fit$mixnum))
 }
 
