@@ -836,10 +836,19 @@ attr(rxUiGet.loadPrune, "rstudio") <- emptyenv()
 #' Rename whole-token occurrences of `natural` names to `canonical` names in model text
 #'
 #' Longest names are substituted first so one natural name that is a prefix
-#' of another (`eta.k`/`eta.ka`) cannot corrupt the longer one.  Matches are
-#' bounded by "not alphanumeric/dot" on both sides -- NOT underscore, since
-#' rxode2's `rx__sens_<state>_BY_<name>__` compartment-naming convention
-#' wraps the name in underscores and still needs to match there.
+#' of another (`eta.k`/`eta.ka`) cannot corrupt the longer one.  Two passes
+#' per name, since rxode2's `rx__sens_<state>_BY_<name>__` (and chained
+#' `_BY_<name>_BY_<name2>__` for higher order) compartment-naming convention
+#' needs the name to match wrapped in underscores, but a PLAIN arithmetic/
+#' declaration use must not: `_` is a legal identifier character in
+#' rxode2/R, so treating it as a token boundary corrupts an unrelated
+#' identifier that merely shares a natural name as an underscore-delimited
+#' prefix/suffix (`CL` boundary-matching inside `CL_int` or `eta_CL`).
+#'
+#'   1. `_BY_<name>__`/`_BY_<name>_BY_` -- rxSensMatExp()'s own naming
+#'      convention specifically, matched only in that exact context.
+#'   2. Everywhere else: a real word boundary (`_` included as an
+#'      identifier character, so excluded from what may border the match).
 #'
 #' @param text character vector of model text lines
 #' @param natural character vector of natural names to replace
@@ -851,7 +860,8 @@ attr(rxUiGet.loadPrune, "rstudio") <- emptyenv()
   .ord <- order(nchar(natural), decreasing = TRUE)
   for (.i in .ord) {
     .esc <- gsub(".", "\\.", natural[.i], fixed = TRUE)
-    .pat <- paste0("(?<![A-Za-z0-9.])", .esc, "(?![A-Za-z0-9.])")
+    text <- gsub(paste0("(?<=_BY_)", .esc, "(?=__|_BY_)"), canonical[.i], text, perl = TRUE)
+    .pat <- paste0("(?<![A-Za-z0-9_.])", .esc, "(?![A-Za-z0-9_.])")
     text <- gsub(.pat, canonical[.i], text, perl = TRUE)
   }
   text

@@ -165,6 +165,70 @@ nmTest({
     )
   })
 
+  test_that(".rxRenameTokens() does not corrupt an unrelated identifier sharing a natural name as an underscore-delimited prefix/suffix", {
+    # Regression: the renamer's word-boundary regex originally excluded only
+    # alphanumeric/dot from what may border a match (needed so it still
+    # matches rxSensMatExp()'s own "_BY_<name>__" compartment-naming
+    # convention) -- but "_" is a legal identifier character in rxode2/R, so
+    # that let a natural name like "CL" also match inside an unrelated
+    # "CL_int" or "eta_CL" identifier and corrupt it.
+    .renamed <- nlmixr2est:::.rxRenameTokens(
+      c("CL_int <- 2.0", "k_central_output <- exp(CL + eta_CL) / exp(V)"),
+      "CL", "THETA_1_"
+    )
+    expect_equal(.renamed, c("CL_int <- 2.0", "k_central_output <- exp(THETA_1_ + eta_CL) / exp(V)"))
+    # the rxSensMatExp() compartment-naming convention (the reason the
+    # underscore exception exists at all) must still match
+    expect_equal(
+      nlmixr2est:::.rxRenameTokens("cmt(rx__sens_central_BY_eta.ka__)", "eta.ka", "ETA_1_"),
+      "cmt(rx__sens_central_BY_ETA_1___)"
+    )
+  })
+
+  test_that("matExp() linear model fit actually downgrades foceiControl(fast=TRUE)", {
+    # .foceiFamilyControl()'s matExp() fast-downgrade (#860) is exercised
+    # numerically by the analytic-gradient test below via objf/cov matching,
+    # but a regression there could still pass by luck (e.g. if the augmented
+    # ..outer model happened to agree by coincidence) -- assert the flag
+    # directly too.
+    matLin <- function() {
+      ini({ tka <- 0.45; tcl <- 1.0; tv <- 3.45; eta.ka ~ 0.09; add.sd <- 0.7 })
+      model({
+        matExp()
+        k_depot_central <- exp(tka + eta.ka)
+        k_central_output <- exp(tcl) / exp(tv)
+        cp <- central / exp(tv)
+        cp ~ add(add.sd)
+      })
+    }
+    .dat <- .mkData(matLin, c(tka = 0.6, tcl = 1.1, tv = 3.6))
+    .fM <- .nlmixr(matLin, .dat, est = "focei",
+                   control = foceiControl(print = 0, fast = TRUE, maxOuterIterations = 0))
+    expect_false(isTRUE(.fM$env$control$fast))
+  })
+
+  test_that(".sensMatExpNative() reorders cmt() declarations source-first for default (compartment-1) dosing", {
+    # Regression: rxSensMatExp() orders its own cmt() declarations for the
+    # ORIGINAL states however its internal state matrix happens to enumerate
+    # them (e.g. by which one carries the indLin() forcing) -- not source
+    # order.  A mismatch here misassigns default (undeclared cmt -> 1st
+    # declared compartment) dosing to the wrong state.
+    matMM <- function() {
+      ini({ tka <- 0.45; tvmax <- log(60); tkm <- log(40); tv <- 3.45; eta.ka ~ 0.09; add.sd <- 0.7 })
+      model({
+        matExp()
+        k_depot_central <- exp(tka + eta.ka)
+        indLin(central) <- -exp(tvmax) * central / (exp(tkm) + central)
+        cp <- central / exp(tv)
+        cp ~ add(add.sd)
+      })
+    }
+    .s <- suppressMessages(nlmixr2est:::rxUiGet.foceEnv(list(matMM())))
+    expect_true(isTRUE(.s$..matExpNative))
+    .cmtLines <- grep("^cmt\\(", strsplit(.s$..inner, "\n")[[1]], value = TRUE)
+    expect_equal(.cmtLines[1:2], c("cmt(depot)", "cmt(central)"))
+  })
+
   test_that("matExp() population model estimates identically to the ODE (nlm)", {
     odeMM <- function() {
       ini({ tka <- 0.45; tvmax <- log(60); tkm <- log(40); tv <- 3.45; add.sd <- 0.7 })
