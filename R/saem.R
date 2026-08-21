@@ -204,9 +204,13 @@
   # them as odeSwap peers of SAEM's own model for the phi1 theta step.
   if (.saemGeneralLik(ui)) {
     .p1 <- nlmixrWithTiming("configure", ui$saemPhi1Inner)
-    if (!is.null(.p1)) {
+    if (!is.null(.p1) && isTRUE(.p1$ok)) {
       .model$saemPhi1Hess2 <- .p1$innerHess2
       .model$saemPhi1Pred  <- .p1$predNoLhs
+      .model$saemPhi1ThetaKind <- as.integer(.p1$thetaKind)
+      .model$saemPhi1ThetaCol <- as.integer(.p1$thetaCol)
+      .model$saemPhi1ThetaFixedVal <- as.numeric(.p1$thetaFixedVal)
+      .model$saemPhi1EtaCol <- as.integer(.p1$etaCol)
     }
   }
   .inits <- ui$saemInit

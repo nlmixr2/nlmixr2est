@@ -408,6 +408,10 @@
   if (distribution == 4L) {
     opt$saemPhi1Hess2 <- model$saemPhi1Hess2
     opt$saemPhi1Pred  <- model$saemPhi1Pred
+    opt$saemPhi1ThetaKind <- model$saemPhi1ThetaKind
+    opt$saemPhi1ThetaCol <- model$saemPhi1ThetaCol
+    opt$saemPhi1ThetaFixedVal <- model$saemPhi1ThetaFixedVal
+    opt$saemPhi1EtaCol <- model$saemPhi1EtaCol
   }
   ## opt$.dat <- dat;
   # normally drop 'dv' by name (the kernel gets observations separately as 'y').
