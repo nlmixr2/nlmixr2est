@@ -3217,6 +3217,13 @@ bool calcEtaHessian(double *eta, int likId, int id,
           eta[k] += h;
           continue;
         }
+        // Both forward and backward evaluations were non-finite: H.col(k) is
+        // left at its zero-initialized default (no usable column), but eta[k]
+        // is currently x-h (from the "x - h" step above) and was never
+        // restored by any of the branches above -- do so here, or it stays
+        // permanently shifted for the rest of the fit (eta is the caller's
+        // persistent per-subject buffer, not a local copy).
+        eta[k] += h;
       }
     }
     // symmetrize
@@ -4124,11 +4131,17 @@ static inline int innerOpt1(int id, int likId) {
     if (!haveBest) return 0;
     } catch (const std::bad_alloc &) {
       // System out of memory mid-solve -- see the branch-level comment above.
+      // Every other exit from this branch marks a failed attempt via
+      // fInd->badSolve (checked by trustInnerObjfun/etc. on the NEXT call to
+      // this subject) -- match that here even though the caller's own
+      // innerOpt1() return value already signals the failure on its own.
+      fInd->badSolve = 1;
       if (!haveBest) return 0;
     } catch (...) {
       // Defense in depth, matching trust_solve_c()'s own catch(...) fallback:
       // any other C++ exception escaping this branch is equally fatal if it
       // crosses the OpenMP boundary uncaught.
+      fInd->badSolve = 1;
       if (!haveBest) return 0;
     }
   } else {

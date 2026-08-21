@@ -74,12 +74,14 @@ static inline void trustHessianUpdate(int method, arma::mat &H,
     double ss = arma::dot(s, s), rr = arma::dot(r, r), sr = arma::dot(s, r);
     if (ss <= 0 || rr <= 0) return; // skip
     double phi = (sr * sr) / (ss * rr);
-    arma::mat Hms = H + (r * r.t()) / sr;
     arma::mat Hpsb = H + (r * s.t() + s * r.t()) / ss - (sr * (s * s.t())) / (ss * ss);
     if (std::fabs(sr) < 1e-8 * std::sqrt(ss) * std::sqrt(rr)) {
-      // SR1 term undefined (sr ~ 0) -- fall back to pure PSB.
+      // SR1 term undefined (sr ~ 0) -- fall back to pure PSB. Computing the
+      // SR1 term's (r*r.t())/sr here would divide by ~0; skip it entirely
+      // rather than compute-then-discard it.
       H = Hpsb;
     } else {
+      arma::mat Hms = H + (r * r.t()) / sr;
       H = phi * Hms + (1.0 - phi) * Hpsb;
     }
   }
