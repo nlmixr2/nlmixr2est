@@ -780,6 +780,20 @@
   `optExpression=FALSE` is the workaround for a delay-differential model whose
   `past()` duration is an expression.
 
+- Every nlm-family method's default `scaleType="nlmixr2"` scale constant no
+  longer explodes to its `scaleCmax` ceiling for a parameter whose starting
+  gradient happens to be genuinely near zero -- for example a bounded/
+  `upper_exp`-transformed theta whose sensitivity is tiny at the model's
+  default initial estimate (issue #994).  The derivative-based formula
+  `scaleC[i] = |gradTo/gradient_i|` had no guard analogous to FOCEi's own
+  `scaleCtheta`/`.guardScaleC()` safeguard, so a near-zero denominator was
+  clamped to a scale constant up to 100000x too large, permanently
+  distorting every later scaled gradient/Hessian entry for that dimension
+  and derailing `est="trust"`'s Newton-based step decisions in particular.
+  Each element is now guarded with the same `.guardScaleC()` band FOCEi
+  already uses, falling back to the transform-aware `ui$scaleCtheta` value
+  when out of band.
+
 ### Crashes and stability
 
 - An over-parameterized `est="saem"` fit no longer dies with "nearest PD
