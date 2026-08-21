@@ -237,7 +237,7 @@
                                                   list(niter = c(200, 300),
                                                        nmc = 3, nu = c(2, 2, 2))),
                         rxControl=.rxControl,
-                        distribution=if (any(ui$predDf$distribution == "LL")) "general" else "normal",
+                        distribution=if (.saemGeneralLik(ui)) "general" else "normal",
                         fixedOmega=ui$saemModelOmegaFixed,
                         fixedOmegaValues=ui$saemModelOmegaFixedValues,
                         parHistThetaKeep=ui$saemParHistThetaKeep,

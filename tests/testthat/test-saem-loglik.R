@@ -95,4 +95,64 @@ nmTest({
     # and the saem solve model emits the log-likelihood as rx_pred_ (rx_yj_ ~ 152)
     expect_true(any(grepl("rx_yj_", as.character(.ui$saemModel0))))
   })
+
+  # t()/cauchy() are not literal ll() syntax, but rxode2's own FOCEi line
+  # generator reduces them to the same shape (rx_pred_ ~ an explicit
+  # log-density, rx_r_ ~ 0) as ll() -- so saem should treat them the same way
+  # rather than erroring ("t isn't supported yet" / "Distribution not
+  # supported").  This does not assert convergence quality; that is covered
+  # separately (see test-saem-loglik-focei.R).
+  mT <- function() {
+    ini({
+      tka <- 0.45; tcl <- 1; tv <- 3.45
+      add.sd <- 0.7
+      nu <- fixed(8)
+      eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+    })
+    model({
+      ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+      cp <- linCmt()
+      cp ~ add(add.sd) + dt(nu)
+    })
+  }
+
+  mCauchy <- function() {
+    ini({
+      tka <- 0.45; tcl <- 1; tv <- 3.45
+      add.sd <- 0.7
+      eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+    })
+    model({
+      ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+      cp <- linCmt()
+      cp ~ add(add.sd) + cauchy()
+    })
+  }
+
+  test_that("t()/cauchy() endpoints dispatch as general-likelihood in saem (#Phase0)", {
+    .uiT <- rxode2::rxUiDecompress(rxode2::rxode2(mT))
+    expect_equal(.uiT$saemResMod, 0L)
+    expect_equal(.uiT$saemModNumEst, 0L)
+    .m0T <- as.character(.uiT$saemModel0)
+    expect_true(any(grepl("llikT", .m0T)))
+    expect_true(any(grepl("rx_r_ ~ 0", .m0T)))
+
+    .uiC <- rxode2::rxUiDecompress(rxode2::rxode2(mCauchy))
+    expect_equal(.uiC$saemResMod, 0L)
+    expect_equal(.uiC$saemModNumEst, 0L)
+    .m0C <- as.character(.uiC$saemModel0)
+    expect_true(any(grepl("llikCauchy", .m0C)))
+    expect_true(any(grepl("rx_r_ ~ 0", .m0C)))
+  })
+
+  test_that("t()/cauchy() endpoints fit without erroring in saem (#Phase0)", {
+    ctl <- saemControl(nBurn = 20, nEm = 20, print = 0L, calcTables = FALSE)
+    fT <- suppressWarnings(.nlmixr(mT, theo_sd, est = "saem", control = ctl))
+    expect_equal(fT$ui$saemResMod, 0L)
+    expect_true(is.finite(fT$objf))
+
+    fC <- suppressWarnings(.nlmixr(mCauchy, theo_sd, est = "saem", control = ctl))
+    expect_equal(fC$ui$saemResMod, 0L)
+    expect_true(is.finite(fC$objf))
+  })
 })

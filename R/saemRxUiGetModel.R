@@ -150,35 +150,41 @@ nmGetDistributionSaemLines.norm <- function(line) {
 }
 #' @rdname nmGetDistributionSaemLines
 #' @export
-nmGetDistributionSaemLines.t <- function(line) {
-  stop("t isn't supported yet")
-}
-
-#' @rdname nmGetDistributionSaemLines
-#' @export
 nmGetDistributionSaemLines.LL <- function(line) {
-  # General log-likelihood endpoint (ll(name) ~ expr).  Reuse the FOCEi inner's
-  # line generator so the saem solve model emits rx_pred_ ~ <ll> (rx_yj_ ~ 152)
-  # instead of a Gaussian mean.  saem sums the per-observation loglik the saemix
-  # way: the standard RWM kernels (do_mcmc, distribution=4) use -ll as the
-  # observation loss.
+  # General log-likelihood endpoint (ll(name) ~ expr, or any non-normal
+  # distribution() family -- t(), cauchy(), dnorm(), ordinal(), etc.).  Reuse
+  # the FOCEi inner's line generator so the saem solve model emits
+  # rx_pred_ ~ <ll> (rx_r_ ~ 0) instead of a Gaussian mean.  saem sums the
+  # per-observation loglik the saemix way: the standard RWM kernels (do_mcmc,
+  # distribution=4) use -ll as the observation loss.  This is also the
+  # fallback for every non-"norm" distribution class (see .default below) --
+  # rxGetDistributionFoceiLines() re-dispatches on the actual distribution
+  # internally, so one forwarding body covers all of them.
   .ui <- line[[1]]
   .errNum <- line[[3]]
   rxGetDistributionFoceiLines(.createFoceiLineObject(.ui, .errNum))
 }
 
+#' @rdname nmGetDistributionSaemLines
 #' @export
-nmGetDistributionSaemLines.default  <- function(line) {
-  stop("Distribution not supported")
-}
+nmGetDistributionSaemLines.default <- nmGetDistributionSaemLines.LL
 
 #' TRUE when the fit uses a general log-likelihood endpoint (distribution=4 path)
+#'
+#' Any distribution family other than "norm" reduces, in FOCEi's own line
+#' generator, to `rx_pred_` being an explicit log-density with `rx_r_ ~ 0`
+#' (ll(), t(), cauchy(), dnorm(), ordinal(), ...) -- see
+#' `rxode2::.handleSingleErrTypeNormOrTFoceiBase()`.  SAEM's own quasi-
+#' likelihood Poisson/binomial support (dpois()/dbinom()/dbern()) stays on
+#' `distribution == "norm"` with a variance-formula err type, so it is
+#' unaffected by this check.
+#'
 #' @param ui rxode2 ui
 #' @return logical
 #' @noRd
 .saemGeneralLik <- function(ui) {
   .pred <- ui$predDf
-  !is.null(.pred) && length(.pred$cond) == 1L && .pred$distribution == "LL"
+  !is.null(.pred) && length(.pred$cond) == 1L && .pred$distribution != "norm"
 }
 
 #' @export
@@ -194,6 +200,18 @@ attr(rxUiGet.saemParamsLine, "rstudio") <- quote(param(tcl))
 #' @export
 rxUiGet.saemModel0 <- function(x, ...) {
   .f <- x[[1]]
+  # t()/cauchy()/dnorm() endpoints only emit their explicit log-density form
+  # (rx_pred_ ~ llikT(...)/llikCauchy(...)/llikNorm(...), rx_r_ ~ 0) when
+  # nlmixr2global$rxPredLlik is TRUE (see rxGetDistributionFoceiLines.t/
+  # .cauchy/.default -> rxode2::.handleSingleErrTypeNormOrTFoceiBase());
+  # otherwise they fall back to the closed-form Gaussian mean/variance shape
+  # FOCEi's inner Newton solve uses.  SAEM's do_mcmc general-likelihood path
+  # has no such inner-Newton shortcut -- it always needs the true log-density
+  # -- so force it on here, mirroring rxUiGet.foceiModel0ll.
+  if (.saemGeneralLik(.f)) {
+    nlmixr2global$rxPredLlik <- TRUE
+    on.exit(nlmixr2global$rxPredLlik <- FALSE, add=TRUE)
+  }
   rxode2::rxCombineErrorLines(.f, errLines=nmGetDistributionSaemLines(.f),
                               paramsLine=NA,
                               modelVars=TRUE,
@@ -207,6 +225,12 @@ attr(rxUiGet.saemModel0, "rstudio") <- quote(rxModelVars({}))
 #'@export
 rxUiGet.saemModelPred0 <- function(x, ...) {
   .f <- x[[1]]
+  # see rxUiGet.saemModel0's comment -- same reasoning applies to the
+  # FOCEi-style predOnly model used for residuals/covariance.
+  if (.saemGeneralLik(.f)) {
+    nlmixr2global$rxPredLlik <- TRUE
+    on.exit(nlmixr2global$rxPredLlik <- FALSE, add=TRUE)
+  }
   rxode2::rxCombineErrorLines(.f, errLines=rxGetDistributionFoceiLines(.f),
                               paramsLine=NA, #.uiGetThetaEtaParams(.f),
                               modelVars=TRUE,
