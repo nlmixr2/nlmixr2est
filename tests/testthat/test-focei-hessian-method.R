@@ -1,6 +1,6 @@
 nmTest({
   test_that("foceiControl() hessianMethod validation", {
-    expect_equal(foceiControl()$hessianMethod, 1L)
+    expect_equal(foceiControl()$hessianMethod, 3L)
     expect_equal(foceiControl(hessianMethod = "fd")$hessianMethod, 1L)
     expect_equal(foceiControl(hessianMethod = "bfgs")$hessianMethod, 2L)
     expect_equal(foceiControl(hessianMethod = "sr1")$hessianMethod, 3L)
@@ -73,6 +73,20 @@ nmTest({
     expect_true(is.finite(.fN$objf))
     # The Gauss-Newton inner Hessian is used unconditionally for a normal
     # endpoint -- the quasi-Newton mechanism should never engage here.
+    expect_equal(.nHessianQN(), 0L)
+  })
+
+  test_that("hessianMethod is inert unless innerOpt='trust' (calcEtaHessian() is also reached from warmZm()/LikInner2() for other inner optimizers, where the per-attempt reset does not apply)", {
+    skip_on_cran()
+    .fN1qn1 <- .nlmixr(.poisMod, .poisData, est = "focei",
+                       control = foceiControl(print = 0L, innerOpt = "n1qn1",
+                                              hessianMethod = "sr1"))
+    expect_true(is.finite(.fN1qn1$objf))
+    # The quasi-Newton mechanism must never engage for a non-trust inner
+    # optimizer, regardless of hessianMethod -- calcEtaHessian() is reached
+    # from warmZm()'s one-time n1qn1 warm-start seed and from the final
+    # objective recompute, neither of which is the repeated, reset-per-attempt
+    # Newton-step loop the quasi-Newton state assumes.
     expect_equal(.nHessianQN(), 0L)
   })
 })

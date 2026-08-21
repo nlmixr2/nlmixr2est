@@ -74,19 +74,19 @@
   distribution other than `norm`), the per-subject inner Hessian has no
   Gaussian Gauss-Newton shortcut and falls back to a finite difference of
   the gradient every `innerOpt="trust"` Newton step (`calcEtaHessian()`).
-  `"fd"` (default, unchanged behavior) keeps that finite difference;
-  `"bfgs"`, `"sr1"`, and `"bofill"` build the Hessian as a quasi-Newton
-  update from consecutive Newton steps' already-computed gradients instead
-  (no extra evaluations) -- the same three update formulas `trustControl()`
-  above uses. Since this loop runs per subject, per Newton step, per outer
-  iteration, avoiding a fresh finite difference at every one compounds into
-  a much larger speedup than the outer-theta case: `bfgs`/`sr1`/`bofill` ran
+  `"sr1"` (default, matching `trustControl()`'s own default for the
+  analogous outer-theta option) builds the Hessian as a quasi-Newton update
+  from consecutive Newton steps' already-computed gradients instead of a
+  fresh finite difference (no extra evaluations) -- the same three update
+  formulas `trustControl()` above uses (`"fd"` keeps the original finite
+  difference; `"bfgs"`/`"bofill"` are the other two quasi-Newton options).
+  Since this loop runs per subject, per Newton step, per outer iteration,
+  avoiding a fresh finite difference at every one compounds into a much
+  larger speedup than the outer-theta case: `bfgs`/`sr1`/`bofill` ran
   roughly 3-14x faster than `"fd"` on this package's own benchmark (a
   Poisson and a general `ll()` model,
   `inst/benchmarks/benchmark-focei-hessian-method.R`) with objectives
-  matching to within about 0.1 units. `"fd"` remains the default here
-  (this benchmark is smaller than `trustControl()`'s own 23-model sweep, so
-  the case for flipping the default is weaker). Has no effect on
+  matching to within about 0.1 units. Has no effect on
   normal-endpoint models. Only
   meaningful with `innerOpt="trust"`.
 

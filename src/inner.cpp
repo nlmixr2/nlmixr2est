@@ -3113,14 +3113,30 @@ bool calcEtaHessian(double *eta, int likId, int id,
     arma::vec gr0(op_focei.neta, fill::zeros);
     std::copy(&fInd->lp[0], &fInd->lp[0] + op_focei.neta, &gr0[0]);
 
-    // hessianMethod= (default "fd", trustHessianUpdate.h): a non-fd method
+    // hessianMethod= (default "sr1", trustHessianUpdate.h): a non-fd method
     // builds this inner Hessian from consecutive Newton-step (eta, gradient)
     // pairs instead of a fresh finite difference every call. The FIRST call
     // for this subject still seeds from one FD pass below (matching every
     // other calcEtaHessian() consumer's one-time, not-per-iteration, cost);
     // every later call updates the running fInd->etaHessQN instead.
-    bool useQN = (op_focei.hessianMethod != trustHessFd) && fInd->etaHasPrevQN;
-    bool seedQN = (op_focei.hessianMethod != trustHessFd) && !fInd->etaHasPrevQN;
+    //
+    // Gated on innerOpt=="trust" (3) in addition to hessianMethod!=fd:
+    // calcEtaHessian() is also called from warmZm() (n1qn1's own Hessian
+    // warm-start seed, at n1qn1's STARTING eta) and from LikInner2()/the
+    // importance-sampling joint-lik path (the final-objective recompute, at
+    // whatever eta that OTHER inner optimizer converged to) -- neither of
+    // those is the repeated, same-attempt per-Newton-step loop
+    // fInd->etaHasPrevQN's reset (innerOpt1()'s trustSolveAt lambda) assumes.
+    // Without this gate, a non-trust fit's warmZm seed call would leave
+    // etaHasPrevQN=1 with a stale (eta, gradient) pair, and a LATER call at a
+    // very different (converged) eta would then feed a bogus, non-Newton-step
+    // secant pair into the quasi-Newton update -- corrupting exactly the
+    // Hessian this option was meant to make MORE accurate. Confined to trust,
+    // where every calcEtaHessian() call for a subject happens inside that
+    // same reset-per-attempt loop, this is a non-issue.
+    bool hessianQNEligible = (op_focei.hessianMethod != trustHessFd) && (op_focei.innerOpt == 3);
+    bool useQN = hessianQNEligible && fInd->etaHasPrevQN;
+    bool seedQN = hessianQNEligible && !fInd->etaHasPrevQN;
 
     if (useQN) {
       arma::mat Hqn(fInd->etaHessQN, op_focei.neta, op_focei.neta, false, true);
