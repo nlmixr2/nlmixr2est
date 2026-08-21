@@ -84,6 +84,41 @@ nmTest({
     }
   })
 
+  .oneCmtBounded <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- log(c(0, 2.7, 100))
+      tv <- 3.45
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka)
+      cl <- exp(tcl)
+      v <- exp(tv)
+      linCmt() ~ add(add.sd)
+    })
+  }
+
+  test_that("est='trust' converges close to bobyqa on a bounded/upper_exp-transformed theta (#994)", {
+    skip_on_cran()
+    # tcl's internal coordinate has a near-zero starting gradient at this
+    # model's default initial estimate, which used to make
+    # nlmGetScaleC()'s unguarded derivative-based scaleC formula blow up to
+    # scaleCmax (src/nlm.cpp) and permanently corrupt every later scaled
+    # gradient/Hessian entry for that dimension -- .nlmSetupEnv() now runs
+    # the same .guardScaleC() safety net FOCEi already uses (R/nlmShared.R).
+    .fB <- .nlmixr(.oneCmtBounded, nlmixr2data::theo_sd, est = "bobyqa",
+                   control = bobyqaControl(print = 0L, calcTables = FALSE))
+    for (.hm in c("fd", "bfgs", "sr1", "bofill")) {
+      .fT <- .nlmixr(.oneCmtBounded, nlmixr2data::theo_sd, est = "trust",
+                     control = trustControl(print = 0L, calcTables = FALSE,
+                                            hessianMethod = .hm))
+      expect_true(is.finite(.fT$objective), info = .hm)
+      expect_equal(.fT$objective, .fB$objective, tolerance = 1e-2, info = .hm)
+      expect_equal(unname(.fT$theta), unname(.fB$theta), tolerance = 1e-2, info = .hm)
+    }
+  })
+
   test_that("hessianMethod actually changes the Hessian construction", {
     skip_on_cran()
     # A quasi-Newton update (bfgs/sr1/bofill) builds a genuinely different
