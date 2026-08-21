@@ -298,6 +298,20 @@
 #'   `nonMuThetaEvery` iterations instead of every iteration (default 1).  In
 #'   between, `phi0` keeps its last refined value.
 #'
+#' @param phi1ThetaMaxEval Objective-evaluation budget (bobyqa's `maxfun`) of
+#'   one general-likelihood phi1 (mu-referenced theta) refinement (default
+#'   50). Applies only when the fit has a general-likelihood (`ll()`/`t()`/
+#'   `cauchy()`) endpoint; ignored otherwise. Each evaluation solves the
+#'   FOCEi-style phi1-inner sensitivity model across every chain-replicated
+#'   row, so it is the dominant per-iteration cost while this refinement is
+#'   active -- larger than `nonMuThetaMaxEval`'s default because the
+#'   objective is also more expensive per call.
+#'
+#' @param phi1ThetaEvery Run the general-likelihood phi1 refinement every
+#'   `phi1ThetaEvery` iterations instead of every iteration (default 1).  In
+#'   between, phi1's mu keeps its last refined value (mirrors
+#'   `nonMuThetaEvery`).
+#'
 #' @param residWarmStart Boolean (default `TRUE`); warm-start the residual-error
 #'   parameters from the observed per-endpoint moments at the initial predictions
 #'   (additive SD from `sqrt(mean(err^2))`, proportional SD from
@@ -376,6 +390,8 @@ saemControl <- function(seed = 99,
                         nonMuThetaMaxEval = 25L,
                         nonMuThetaTol = .Machine$double.eps^0.25,
                         nonMuThetaEvery = 1L,
+                        phi1ThetaMaxEval = 50L,
+                        phi1ThetaEvery = 1L,
                         residWarmStart = TRUE,
                         censOption = c("gauss", "laplace"),
                         ...) {
@@ -454,6 +470,8 @@ saemControl <- function(seed = 99,
   checkmate::assertIntegerish(nonMuThetaMaxEval, any.missing=FALSE, len=1, lower=0)
   checkmate::assertNumeric(nonMuThetaTol, any.missing=FALSE, len=1, lower=0, finite=TRUE)
   checkmate::assertIntegerish(nonMuThetaEvery, any.missing=FALSE, len=1, lower=1)
+  checkmate::assertIntegerish(phi1ThetaMaxEval, any.missing=FALSE, len=1, lower=0)
+  checkmate::assertIntegerish(phi1ThetaEvery, any.missing=FALSE, len=1, lower=1)
   checkmate::assertLogical(residWarmStart, any.missing=FALSE, len=1)
 
 
@@ -579,6 +597,8 @@ saemControl <- function(seed = 99,
     nonMuThetaMaxEval=as.integer(nonMuThetaMaxEval),
     nonMuThetaTol=nonMuThetaTol,
     nonMuThetaEvery=as.integer(nonMuThetaEvery),
+    phi1ThetaMaxEval=as.integer(phi1ThetaMaxEval),
+    phi1ThetaEvery=as.integer(phi1ThetaEvery),
     residWarmStart=residWarmStart
   )
   class(.ret) <- "saemControl"
