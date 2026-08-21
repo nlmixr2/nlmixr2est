@@ -804,6 +804,19 @@
   it. 5 of 7 population thetas had an exactly-zero starting gradient as a
   result. `"trust"` is now included in that list.
 
+- `nlmControl(normType=)`/`trustControl(normType=)`/etc.'s `"mean"`, `"std"`,
+  and `"len"` normalizations (with the default `scaleType="nlmixr2"`) now
+  compute their mean/standard-deviation/length constants from *every*
+  estimated parameter instead of silently dropping the last one (issue #995).
+  `scaleSetup()`'s (`src/scale.h`) per-normType setup loop used
+  `for (unsigned int k = scale->npars-1; k--;)`, which tests the
+  pre-decrement `k` for truthiness before the body runs, so the body itself
+  never executed with `k=npars-1` -- the top-indexed parameter's value was
+  excluded from the running mean/variance/sum-of-squares, and its scale
+  constant was never reset for recomputation. `"rescale"`/`"rescale2"`
+  (the default) were unaffected (their min/max accumulator is separately
+  seeded with the top parameter before the loop runs).
+
 ### Crashes and stability
 
 - An over-parameterized `est="saem"` fit no longer dies with "nearest PD
