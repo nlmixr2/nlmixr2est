@@ -383,6 +383,13 @@
   }
   .hasVariance <- any(names(.predDf) == "variance")
   for (i in seq_along(.predDf$cond)) {
+    # A general-likelihood endpoint (distribution != "norm") has no residual
+    # M-step (res.mod == 0, .resMat/.saem$arCor are not populated for it) --
+    # its err-tagged theta (e.g. add.sd inside dt()/cauchy()'s rx_rll_, or a
+    # plain ll() theta) was already correctly read from .thetaSaem (Plambda)
+    # above.  Overwriting it from .resMat here would replace that correct,
+    # kernel-tracked value with stale/uninitialized residual-M-step output.
+    if (.predDf$distribution[i] != "norm") next
     .x <- paste(.predDf$cond[i])
     .tmp <- .iniDf[which(.iniDf$condition == .x), ]
     .w <- which(vapply(.tmp$err,

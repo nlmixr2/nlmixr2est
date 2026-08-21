@@ -187,10 +187,31 @@ nmGetDistributionSaemLines.default <- nmGetDistributionSaemLines.LL
   !is.null(.pred) && length(.pred$cond) == 1L && .pred$distribution != "norm"
 }
 
+#' Which `iniDf` rows are "estimable saem thetas" -- structural thetas, plus
+#' (only for a general-likelihood endpoint) its err-tagged residual-family
+#' theta(s) (e.g. `add.sd`/`nu` from `add(add.sd) + dt(nu)`).
+#'
+#' A normal endpoint's err-tagged thetas (add.sd, prop.sd, ...) are handled by
+#' the closed-form ares/bres residual M-step instead, so they are excluded
+#' there -- but a general-likelihood endpoint has no residual bookkeeping
+#' (`res.mod == 0`); its err-tagged theta(s) are referenced directly inside
+#' the compiled log-density (e.g. `rx_rll_ ~ sqrt((add.sd)^2)`), so they must
+#' be included here or they are silently absent from `params()`, the theta
+#' init vector, and the fixed-parameter mask.
+#'
+#' @param ui rxode2 ui
+#' @param iniDf iniDf to filter (usually `ui$iniDf`; passed separately since
+#'   some callers already have a filtered copy)
+#' @return logical vector, same length as `nrow(iniDf)`
+#' @noRd
+.saemIsEstimableThetaRow <- function(ui, iniDf) {
+  !is.na(iniDf$ntheta) & (is.na(iniDf$err) | .saemGeneralLik(ui))
+}
+
 #' @export
 rxUiGet.saemParamsLine <- function(x, ...) {
   .x <- x[[1]]
-  .names <- .x$iniDf[!is.na(.x$iniDf$ntheta) & is.na(.x$iniDf$err), "name"]
+  .names <- .x$iniDf[.saemIsEstimableThetaRow(.x, .x$iniDf), "name"]
   .cov <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
   .names <- .names[!(.names %in% .cov$covariateParameter)]
   str2lang(paste0("param(", paste(.names, collapse=", "), ")"))
@@ -313,7 +334,7 @@ attr(rxUiGet.loadPruneSaemPred, "rstudio") <- emptyenv()
 rxUiGet.saemParamsToEstimate <- function(x, ...) {
   .ui <- x[[1]]
   .iniDf <- .ui$iniDf
-  .ret <- c(.iniDf$name[!is.na(.iniDf$ntheta) & is.na(.iniDf$err)])
+  .ret <- c(.iniDf$name[.saemIsEstimableThetaRow(.ui, .iniDf)])
   if (length(.ui$mixProbs) > 0) {
     .ret <- .ret[!(.ret %in% .ui$mixProbs)]
   }

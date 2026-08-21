@@ -135,7 +135,7 @@ rxUiGet.saemFixed <- function(x, ...) {
   .df <- .ui$iniDf
   .dft <- .df[!is.na(.df$ntheta), ]
   .fixError <- .dft[!is.na(.dft$err), ]
-  .dft <- .dft[is.na(.dft$err), ]
+  .dft <- .dft[.saemIsEstimableThetaRow(.ui, .dft), ]
   if (length(.ui$mixProbs) > 0) {
     .dft <- .dft[!(.dft$name %in%.ui$mixProbs), ]
   }
@@ -829,8 +829,8 @@ rxUiGet.saemInitTheta <- function(x, ...) {
   .names <- names(.logEta)
   .ui <- x[[1]]
   .iniDf <- .ui$iniDf
-  .est <- setNames(.iniDf[!is.na(.iniDf$ntheta) & is.na(.iniDf$err), "est"],
-                   .iniDf[!is.na(.iniDf$ntheta) & is.na(.iniDf$err), "name"])
+  .w <- .saemIsEstimableThetaRow(.ui, .iniDf)
+  .est <- setNames(.iniDf[.w, "est"], .iniDf[.w, "name"])
   .cov <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
   .est <- .est[!(names(.est) %in% .cov$covariateParameter)]
   if (length(.ui$mixProbs) > 0) {

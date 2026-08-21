@@ -150,9 +150,39 @@ nmTest({
     fT <- suppressWarnings(.nlmixr(mT, theo_sd, est = "saem", control = ctl))
     expect_equal(fT$ui$saemResMod, 0L)
     expect_true(is.finite(fT$objf))
+    # regression guard: t()/cauchy()'s residual-family theta (add.sd, nu) used
+    # to be completely undeclared for a general-likelihood endpoint (absent
+    # from params()/init/fixed bookkeeping), and separately, a FIXED one was
+    # reported back from a stale residual-M-step slot (.resMat) instead of the
+    # kernel's own tracked value -- a fixed theta must come back EXACTLY fixed.
+    expect_equal(unname(fixef(fT)[["nu"]]), 8)
 
     fC <- suppressWarnings(.nlmixr(mCauchy, theo_sd, est = "saem", control = ctl))
     expect_equal(fC$ui$saemResMod, 0L)
     expect_true(is.finite(fC$objf))
+  })
+
+  test_that("a fixed general-likelihood residual-family theta reports its true kernel value (#Phase0)", {
+    # dt(nu)'s add.sd is also fixed here (isolating this test from any
+    # phi1/eta convergence noise) -- fixef() must match the kernel's own
+    # Plambda, not a stale value from the (unused, res.mod==0) residual M-step.
+    mTFixed <- function() {
+      ini({
+        tka <- 0.45; tcl <- 1; tv <- 3.45
+        add.sd <- fixed(0.7)
+        nu <- fixed(8)
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        cp <- linCmt()
+        cp ~ add(add.sd) + dt(nu)
+      })
+    }
+    ctl <- saemControl(nBurn = 20, nEm = 20, seed = 1L, print = 0L, calcTables = FALSE)
+    fT <- suppressWarnings(.nlmixr(mTFixed, theo_sd, est = "saem", control = ctl))
+    expect_equal(unname(fixef(fT)[["add.sd"]]), 0.7)
+    expect_equal(unname(fixef(fT)[["nu"]]), 8)
+    expect_equal(unname(fixef(fT)[["add.sd"]]), unname(fT$saem$Plambda[4, 1]))
   })
 })
