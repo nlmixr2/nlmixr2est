@@ -49,8 +49,16 @@
 #' @return `NULL` if not a general-likelihood endpoint. Otherwise a list
 #'   with `inner` (the eta-sensitivity log-density model, always non-NULL),
 #'   `innerHess2` (the exact eta-Hessian model, or `NULL` when out of scope
-#'   for this model shape), and `predNoLhs` (the bare, no-sensitivity
-#'   prediction-only FD-fallback model, always non-NULL).
+#'   for this model shape), `predNoLhs` (the bare, no-sensitivity
+#'   prediction-only FD-fallback model, always non-NULL), and `ok` plus the
+#'   `THETA[k]`/`ETA[k]` -> SAEM phi-column maps `thetaKind`/`thetaCol`/
+#'   `thetaFixedVal`/`etaCol` (see `.saemPhi1TargetMap`) that Phase 4's C++
+#'   theta step needs to drive `innerHess2`/`predNoLhs` from SAEM's own
+#'   phi/theta state without any R call in its hot loop. `ok=FALSE` means the
+#'   maps could not be built for this fit (a covariate on a phi0/phi1 theta,
+#'   a non-mu-referenced eta, or a raw model covariate in the Hess2/pred
+#'   model are all out of v1 scope) -- Phase 4 falls back to the historic
+#'   SA-recursion for such fits rather than guessing.
 #' @author Matthew L. Fidler
 #' @noRd
 #' @export
@@ -71,6 +79,101 @@ rxUiGet.saemPhi1Inner <- function(x, ...) {
   .inner <- if (!is.null(.fm$innerLlik)) .fm$innerLlik else .fm$inner
   if (is.null(.inner)) return(NULL)
   .predNoLhs <- if (!is.null(.fm$predNoLhsLlik)) .fm$predNoLhsLlik else .fm$predNoLhs
-  list(inner = .inner, innerHess2 = .fm$innerHess2, predNoLhs = .predNoLhs)
+  .map <- .saemPhi1TargetMap(.ui, .fm$innerHess2, .predNoLhs)
+  c(list(inner = .inner, innerHess2 = .fm$innerHess2, predNoLhs = .predNoLhs),
+    if (is.null(.map)) list(ok = FALSE) else .map)
 }
 attr(rxUiGet.saemPhi1Inner, "rstudio") <- emptyenv()
+
+#' Build the THETA\[k\]/ETA\[k\] -> SAEM phi-column maps for the phi1 Laplace step
+#'
+#' `innerHess2`/`predNoLhs` are compiled by FOCEi's own codegen, so their
+#' parameter vector is `THETA[k]`/`ETA[k]` (plus `DV`, a general-likelihood
+#' model's own event-table covariate -- already supplied the same way SAEM's
+#' own model gets it, so it needs no per-row handling here). SAEM's C++ theta
+#' step needs, resolved ONCE and consumed as plain integer arrays (no R call
+#' in the hot per-bobyqa-evaluation loop): for each `THETA[k]`, whether it is
+#' a phi1 (mu-referenced, actively optimized) column, a phi0 (fixed-effect)
+#' column read from SAEM's current state, or a genuinely FIXED value; and for
+#' each `ETA[k]`, which phi1 column it pairs with.
+#'
+#' Deliberately conservative for v1: returns `NULL` (the caller falls back to
+#' the historic SA-recursion) whenever a shape this map cannot represent
+#' shows up -- a covariate on a phi0/phi1 theta, a non-mu-referenced
+#' (`ui$nonMuEtas`) estimated eta, an eta not paired to a phi1 theta by
+#' mu-referencing, a raw model covariate (anything in the compiled model's
+#' parameter vector besides `THETA[.]`/`ETA[.]`/`DV`), or `innerHess2` and
+#' `predNoLhs` disagreeing on THETA/ETA parameter order (they are compiled
+#' from the same theta/eta declarations, so a mismatch means something else
+#' is wrong and this must not guess).
+#'
+#' @param ui rxode2 ui object
+#' @param hess2Mod the (possibly `NULL`) `innerHess2` model
+#' @param predMod the `predNoLhs` model (`NULL` only if `hess2Mod` is also `NULL`)
+#' @return `NULL`, or a list with `ok=TRUE`, `thetaKind` (integer vector,
+#'   length = number of `THETA[k]` slots; -1 fixed, 0 phi0, 1 phi1),
+#'   `thetaCol` (0-based column within that kind's own subset),
+#'   `thetaFixedVal` (the fixed value when `thetaKind==-1`, ignored
+#'   otherwise), and `etaCol` (integer vector, length = number of `ETA[k]`
+#'   slots; the 0-based phi1 column each eta pairs with).
+#' @author Matthew L. Fidler
+#' @noRd
+.saemPhi1TargetMap <- function(ui, hess2Mod, predMod) {
+  .refMod <- if (!is.null(hess2Mod)) hess2Mod else predMod
+  if (is.null(.refMod)) return(NULL)
+  .parsH2 <- rxode2::rxParam(.refMod)
+  if (!is.null(hess2Mod) && !is.null(predMod)) {
+    .thEtH2 <- .parsH2[grepl("^(THETA|ETA)\\[", .parsH2)]
+    .thEtPred <- rxode2::rxParam(predMod)
+    .thEtPred <- .thEtPred[grepl("^(THETA|ETA)\\[", .thEtPred)]
+    if (!identical(.thEtH2, .thEtPred)) return(NULL)
+  }
+  .other <- .parsH2[!(grepl("^(THETA|ETA)\\[", .parsH2) | .parsH2 == "DV")]
+  if (length(.other) > 0) return(NULL)
+  if (length(ui$nonMuEtas) > 0) return(NULL)
+  .cov <- rxUiGet.saemMuRefCovariateDataFrame(list(ui))
+  if (length(.cov$covariateParameter) > 0) return(NULL)
+
+  .iniDf <- ui$iniDf
+  .parsAll <- rxUiGet.saemParamsToEstimateCov(list(ui))
+  .muRef <- ui$muRefDataFrame
+  .isPhi1 <- .parsAll %in% .muRef$theta
+  .phi1Names <- .parsAll[.isPhi1]
+  .phi0Names <- .parsAll[!.isPhi1]
+
+  .nTheta <- length(grep("^THETA\\[", .parsH2))
+  .thetaKind <- integer(.nTheta)
+  .thetaCol <- integer(.nTheta)
+  .thetaFixedVal <- numeric(.nTheta)
+  for (.k in seq_len(.nTheta)) {
+    .nm <- .iniDf$name[!is.na(.iniDf$ntheta) & .iniDf$ntheta == .k]
+    if (length(.nm) != 1L) return(NULL)
+    if (.nm %in% .phi1Names) {
+      .thetaKind[.k] <- 1L
+      .thetaCol[.k] <- match(.nm, .phi1Names) - 1L
+    } else if (.nm %in% .phi0Names) {
+      .thetaKind[.k] <- 0L
+      .thetaCol[.k] <- match(.nm, .phi0Names) - 1L
+    } else {
+      .thetaKind[.k] <- -1L
+      .est <- .iniDf$est[.iniDf$name == .nm]
+      if (length(.est) != 1L || is.na(.est)) return(NULL)
+      .thetaFixedVal[.k] <- .est
+    }
+  }
+
+  .nEta <- length(grep("^ETA\\[", .parsH2))
+  .etaCol <- integer(.nEta)
+  .etaDiag <- !is.na(.iniDf$neta1) &
+    (is.na(.iniDf$neta2) | .iniDf$neta1 == .iniDf$neta2)
+  for (.k in seq_len(.nEta)) {
+    .nm <- .iniDf$name[.etaDiag & .iniDf$neta1 == .k]
+    if (length(.nm) != 1L) return(NULL)
+    .thNm <- .muRef$theta[.muRef$eta == .nm]
+    if (length(.thNm) != 1L || !(.thNm %in% .phi1Names)) return(NULL)
+    .etaCol[.k] <- match(.thNm, .phi1Names) - 1L
+  }
+
+  list(ok = TRUE, thetaKind = .thetaKind, thetaCol = .thetaCol,
+       thetaFixedVal = .thetaFixedVal, etaCol = .etaCol)
+}

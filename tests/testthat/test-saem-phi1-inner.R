@@ -122,4 +122,40 @@ nmTest({
     .mv <- paste(rxode2::rxModelVars(.res$inner)$model, collapse = "\n")
     expect_true(grepl("llikT", .mv))
   })
+
+  test_that("saemPhi1TargetMap resolves THETA[k]/ETA[k] -> phi column (#Phase4)", {
+    .ui <- rxode2::rxUiDecompress(rxode2::rxode2(mLl))
+    .res <- .ui$saemPhi1Inner
+    expect_true(isTRUE(.res$ok))
+    # tka, tcl, tv are mu-referenced (phi1, in declaration order); lsd is
+    # fixed() but still a phi0 column (SAEM's own fixedIx0 pins its value,
+    # matching refinePhi0Lik's own fixed-theta handling -- it is not dropped
+    # from the theta vector, so it must not be dropped from this map either)
+    expect_equal(.res$thetaKind, c(1L, 1L, 1L, 0L))
+    expect_equal(.res$thetaCol, c(0L, 1L, 2L, 0L))
+    expect_equal(.res$etaCol, c(0L, 1L, 2L))
+  })
+
+  test_that("saemPhi1TargetMap declines a covariate on a mu-ref theta (#Phase4)", {
+    mCov <- function() {
+      ini({
+        tka <- 0.45; tcl <- 1; tv <- 3.45
+        tka.wt <- 0.1
+        lsd <- fixed(log(0.7))
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+      })
+      model({
+        ka <- exp(tka + tka.wt * WT + eta.ka)
+        cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        d / dt(depot) <- -ka * depot
+        d / dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        sd <- exp(lsd)
+        ll(err) ~ -lsd - 0.5 * log(2 * pi) - 0.5 * ((DV - cp) / sd)^2
+      })
+    }
+    .ui <- rxode2::rxUiDecompress(rxode2::rxode2(mCov))
+    .res <- .ui$saemPhi1Inner
+    expect_false(isTRUE(.res$ok))
+  })
 })
