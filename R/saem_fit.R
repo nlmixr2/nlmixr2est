@@ -397,6 +397,18 @@
   .pars <- .pars[!(names(.pars) %in% inPars)]
   opt$.rx <- .rx
   opt$.pars <- .pars
+  # Phase 4 (SAEM general-likelihood theta plan): the phi1-inner exact-Hessian
+  # model and its pred-only FD-fallback peer, when this is a general-lik fit --
+  # setupRx (src/saem.cpp) registers them as odeSwap peers of SAEM's own model
+  # (opt$.rx) so the phi1 theta step can read a Laplace-corrected objective
+  # without a separate FOCEi setup/solve.  NULL for a non-general-lik fit
+  # (nothing attached model$saemPhi1Hess2/Pred), and innerHess2 may itself be
+  # NULL for some model shapes (e.g. linCmt()) -- setupRx treats a NULL the
+  # same as "not present".
+  if (distribution == 4L) {
+    opt$saemPhi1Hess2 <- model$saemPhi1Hess2
+    opt$saemPhi1Pred  <- model$saemPhi1Pred
+  }
   ## opt$.dat <- dat;
   # normally drop 'dv' by name (the kernel gets observations separately as 'y').
   # A general log-likelihood model, though, references DV in its rx_pred_ (the ll

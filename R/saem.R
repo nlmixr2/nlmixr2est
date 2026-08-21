@@ -198,6 +198,17 @@
   .model <- nlmixrWithTiming("configure", {
     ui$saemModelList
   })
+  # Phase 4 (SAEM general-likelihood theta plan): attach the phi1-inner
+  # exact-Hessian model and its pred-only FD-fallback peer so .configsaem can
+  # thread them into opt$saemPhi1Hess2/opt$saemPhi1Pred -- setupRx registers
+  # them as odeSwap peers of SAEM's own model for the phi1 theta step.
+  if (.saemGeneralLik(ui)) {
+    .p1 <- nlmixrWithTiming("configure", ui$saemPhi1Inner)
+    if (!is.null(.p1)) {
+      .model$saemPhi1Hess2 <- .p1$innerHess2
+      .model$saemPhi1Pred  <- .p1$predNoLhs
+    }
+  }
   .inits <- ui$saemInit
   .rxControl <- rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())
   ## Delay differential equation models need a dense-output solver so delay()
