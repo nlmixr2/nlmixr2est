@@ -151,10 +151,10 @@ nmTest({
         cp ~ add(add.sd)
       })
     }
-    .s <- suppressMessages(nlmixr2est:::rxUiGet.foceiEnv(list(matLin2())))
+    .s <- suppressMessages(rxUiGet.foceiEnv(list(matLin2())))
     expect_true(isTRUE(.s$..matExpNative))
-    .cmtPre <- nlmixr2est:::rxUiGet.foceiCmtPreModel(list(matLin2()))
-    .paramsPre <- nlmixr2est:::.uiGetThetaEtaParams(matLin2(), TRUE)
+    .cmtPre <- rxUiGet.foceiCmtPreModel(list(matLin2()))
+    .paramsPre <- .uiGetThetaEtaParams(matLin2(), TRUE)
     .mod <- suppressMessages(rxode2::rxode2(paste(.paramsPre, .cmtPre, .s$..inner, sep = "\n")))
     expect_equal(
       rxode2::rxModelVars(.mod)$lhs,
@@ -173,9 +173,9 @@ nmTest({
     # guarded but the theta-only branch was missed (found by antigravity
     # review of the #860 matExp-native-sensitivities change).
     .etaOnly <- list(iniDf = data.frame(name = "eta.ka", ntheta = NA_integer_, neta1 = 1L, neta2 = 1L))
-    expect_equal(nlmixr2est:::.rxNaturalThetaEtaMap(.etaOnly), c(ETA_1_ = "eta.ka"))
+    expect_equal(.rxNaturalThetaEtaMap(.etaOnly), c(ETA_1_ = "eta.ka"))
     .thetaOnly <- list(iniDf = data.frame(name = "tka", ntheta = 1L, neta1 = NA_integer_, neta2 = NA_integer_))
-    expect_equal(nlmixr2est:::.rxNaturalThetaEtaMap(.thetaOnly), c(THETA_1_ = "tka"))
+    expect_equal(.rxNaturalThetaEtaMap(.thetaOnly), c(THETA_1_ = "tka"))
   })
 
   test_that(".rxRenameTokens() does not corrupt an unrelated identifier sharing a natural name as an underscore-delimited prefix/suffix", {
@@ -185,7 +185,7 @@ nmTest({
     # convention) -- but "_" is a legal identifier character in rxode2/R, so
     # that let a natural name like "CL" also match inside an unrelated
     # "CL_int" or "eta_CL" identifier and corrupt it.
-    .renamed <- nlmixr2est:::.rxRenameTokens(
+    .renamed <- .rxRenameTokens(
       c("CL_int <- 2.0", "k_central_output <- exp(CL + eta_CL) / exp(V)"),
       "CL", "THETA_1_"
     )
@@ -193,7 +193,7 @@ nmTest({
     # the rxSensMatExp() compartment-naming convention (the reason the
     # underscore exception exists at all) must still match
     expect_equal(
-      nlmixr2est:::.rxRenameTokens("cmt(rx__sens_central_BY_eta.ka__)", "eta.ka", "ETA_1_"),
+      .rxRenameTokens("cmt(rx__sens_central_BY_eta.ka__)", "eta.ka", "ETA_1_"),
       "cmt(rx__sens_central_BY_ETA_1___)"
     )
   })
@@ -236,7 +236,7 @@ nmTest({
         cp ~ add(add.sd)
       })
     }
-    .s <- suppressMessages(nlmixr2est:::rxUiGet.foceEnv(list(matMM())))
+    .s <- suppressMessages(rxUiGet.foceEnv(list(matMM())))
     expect_true(isTRUE(.s$..matExpNative))
     .cmtLines <- grep("^cmt\\(", strsplit(.s$..inner, "\n")[[1]], value = TRUE)
     expect_equal(.cmtLines[1:2], c("cmt(depot)", "cmt(central)"))
