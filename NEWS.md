@@ -77,14 +77,62 @@
   can opt in as it gains support:
 
   ```r
-  attr(nlmixr2Est.myMethod, "nlmixr2Priors") <- "normal"
+  attr(nlmixr2Est.myMethod, "nlmixr2Priors") <- "general"
   ```
 
   The levels are `"none"` (the default when the attribute is absent),
-  `"normal"`, `"nwpri"` (normal priors plus omega degrees of freedom) and
-  `"all"`.  Because the check happens in the generic, methods registered
-  by other packages -- `babelmixr2`'s `nonmem`, `monolix`, `saemix` and
-  the rest -- are covered without any change of their own.
+  `"theta"` (population parameters only), `"general"` (everything the
+  shared kernel supports, including a prior on an omega element under
+  any convention), `"nwpri"` (NONMEM's own `$PRIOR NWPRI` omega
+  convention) and `"tnpri"` (Monolix's/NONMEM's own-estimation
+  joint-normal convention, including a normal prior directly on an omega
+  element) -- see `?nlmixr2Est` for what each accepts -- and `"all"`.
+  Because the check happens in the generic, methods registered by other
+  packages -- `babelmixr2`'s `nonmem`, `monolix`, `saemix` and the rest
+  -- are covered without any change of their own.
+
+- `est="focei"` and every method in its family (`foce`, `focep`, `fo`,
+  `foi`, the mu-referenced `mfoce*`/IRLS `ifoce*` variants, `laplace`,
+  `agq` and their quadrature/`*f` fast-path siblings) now honours a
+  prior on a population parameter AND on an omega element -- under any
+  of the kernel's three conventions (`"general"`, NONMEM's `"nwpri"`,
+  Monolix's/NONMEM's-own-estimation `"tnpri"`), auto-detected from what
+  the model's own `ini({})` actually wrote -- added to the objective as
+  `-2*log p(theta, omega)` (nlmixr2/rxode2#1270, issue #929, issue #931)
+  -- declared `nlmixr2Priors = "general"`.
+
+  The convention is auto-detected by default (`foceiControl(priorMethod=
+  "auto")`), but can be forced with `foceiControl(priorMethod="general"/
+  "nwpri"/"tnpri")`. Forcing a convention the model's priors are not
+  representable under (e.g. `priorMethod="tnpri"` on an `invWishart()`
+  prior) errors before any estimation starts, naming the parameter and
+  which method it needs instead.
+
+  `foceiControl(fast=TRUE)`'s analytic outer gradient has a real
+  `d/dtheta log p(theta)` term (a straight fold into the same
+  natural-scale accumulator the outer FD substitution already uses) and
+  a real `d/d(chol(Omega^-1)) log p(omega)` term (chain-ruled through the
+  SAME estimation-scale derivative data -- `d.omegaInv`/`tr.28` from the
+  model's `rxSymInvCholEnv` handle -- FOCEi's own, non-prior omega
+  gradient already relies on), so a prior no longer downgrades it: this
+  package uses symbolic/analytic derivatives throughout, not finite
+  differences, wherever one is available. (A prior referencing a theta a
+  mu-referenced family profiles out of the outer problem entirely is the
+  one case that first term cannot attribute; that specific fit declines
+  to finite differences instead of silently under-counting, detected
+  once at setup, not per evaluation.) `covMethod="analytic"` is still
+  downgraded to a finite-difference covariance, since the analytic
+  Hessian has no prior term yet -- a finite difference of the (now
+  prior-inclusive) objective picks the prior term up automatically.
+
+  Fixed along the way: `.nlmixr2FitUpdateParams()` rebuilt a fit's omega
+  rows of `iniDf` from the raw Omega matrix whenever an mixed-effects
+  model estimate was pinned back onto the model (piping, `.setOfvFo()`'s
+  post-fit re-entry for `setOfv()`/`addCwres()`), and that rebuild had no
+  way to carry the `prior` column lotri itself does not know about -- a
+  prior on an omega element silently vanished the first time a
+  prior-carrying fit was re-entered, which is every fit's own finalize
+  step. `rxUiPriors(fit$ui)` now still reports it afterward.
 
 ## Changed defaults
 
@@ -118,6 +166,51 @@
 
 ## Bug fixes
 
+- `est="saem"` with `saemControl(nMix > 1)` (mixture SAEM) inverted the
+  `propT()`/`powT()` (transformed-basis) vs. plain `prop()`/`pow()`
+  (raw-basis) proportional/power error term in the two MSAEM-only E-step
+  helpers, `mixObsLoss()` (softmax mixture-component responsibility weights)
+  and `mixNaiveClassify()` (chain-init classification) (#982). Every other
+  E-step call site picks the boxCox/yeoJohnson-transformed prediction when
+  `propT()`/`powT()` is used and the raw prediction otherwise; these two
+  passed the pair in the opposite order, so a `propT()`/`powT()` model was
+  scored against the raw prediction and a plain `prop()`/`pow()` model
+  against the transformed one, biasing mixture-component assignment for any
+  `nMix > 1` fit with a transformed residual model. `nMix == 1` fits are
+  unaffected.
+
+- Every NLM-family method (`nlm`, `bobyqa`, `newuoa`, `uobyqa`, `n1qn1`,
+  `lbfgsb3c`, `optim`, `nlminb`) silently mis-scored any M2/M3/M4-censored
+  normal endpoint, whether or not `ar()` was present (#976). NLM forces every
+  normal endpoint through a log-likelihood (`dnorm`) path so a single scalar
+  objective can be emitted; that path always set `rx_r_ ~ 0` (a full
+  log-density has no separate variance to report), but the censoring
+  correction reads `rx_r_` as a real variance, so a hardcoded zero corrupted
+  the correction for every censored observation. `rx_rll_` (the standard
+  deviation actually used to build the log-density) is emitted immediately
+  beforehand in the same branch, so it is now squared back into `rx_r_`
+  instead of being discarded.
+
+- Every NLM-family method also silently ignored M2/M3/M4 censoring on a
+  `t()`/`cauchy()` endpoint entirely -- a censored row was scored with its
+  ordinary (uncensored) density (#979). Added a Student-t/Cauchy CDF-based
+  correction (`doCensT1()`; cauchy is Student-t with `nu=1`, so one function
+  covers both) alongside the existing normal one. FOCEi/FOCE/AGQ/Laplace and
+  every other generalized-likelihood distribution (`pois`, `binom`, `beta`,
+  and so on) still silently ignore censoring for now, but a fit now warns
+  when that combination is used instead of staying silent.
+
+- `est="saem"` with a `pow()` residual error model (`rmPow`/`rmAddPow`/
+  `rmPowLam`/`rmAddPowLam`) never applied the estimated power exponent in the
+  E-step's MCMC-acceptance likelihood -- it always scored proposals as if the
+  exponent were 1, no matter what the M-step estimated (#972). The M-step's
+  own objective did use the exponent, so the two steps disagreed about what
+  model they were fitting: the power estimate collapsed toward 0 while the
+  proportional-SD estimate inflated to compensate. The per-observation
+  combined-error-SD builder now applies the current power exponent (refreshed
+  from the M-step every iteration, not just read once at setup), matching the
+  M-step's `combined1`/`combined2` formulas.
+
 - `est="saem"` scored a censored (M2/M3/M4) observation with the wrong sign,
   the wrong scale, and the untransformed DV, so a censored row's contribution
   to the chain's acceptance could drive the fit away from, rather than
@@ -135,6 +228,24 @@
   else, rather than a plain inverse-CDF draw -- which loses precision once
   the truncation bounds are a few SDs from the mean, the regime a BQL row's
   bound often sits in.
+
+- `est="npag"`/`est="npb"`'s residual-error moment (`npResidMoments()`) counted
+  a censored (M3/M4) observation's recorded LOQ/limit as if it had been
+  measured, the same bug shape as #916 but in the nonparametric methods
+  (#978). For the common configuration -- one `add()`/`prop()` scale per
+  endpoint, no regressor theta -- that biased moment is installed as the
+  final residual-error estimate with no further optimizer correction, so a
+  censored row could badly distort it (an extreme recorded LOQ was measured
+  to inflate `est="npag"`'s proportional SD from 0.03 to 14.7, and
+  `est="npb"`'s from 0.03 to 8.1). A censored row's DV is now excluded from
+  the moment entirely, matching how the function already excludes an
+  endpoint with no defined prediction to take a moment of. Excluding the row
+  still leaves the moment a biased-low estimate of the true residual
+  variance whenever the data really is censored (the variance of a
+  truncated normal is always less than the untruncated one), so an endpoint
+  that had any row excluded this way no longer takes the direct-install
+  fast path either -- it is refined against the already censoring-aware ELS
+  objective instead, the same way a regressor theta already was.
 
 - `foceiControl(fast=TRUE)` could converge to a different fit than `fast=FALSE`
   when a transform-both-sides (`lnorm`/`boxCox`) endpoint's untransformed
@@ -185,6 +296,25 @@
   halving then doubling compounded into a 4x inflated covariance. Point
   estimates, the objective value, and the log-likelihood were unaffected.
 
+- `est="saem"` with `covMethod="sa"`/`"fim"` reported a nonsense (~1e-6) SE for a
+  theta with no random effect (a "phi0" parameter, e.g. a covariate-free
+  structural parameter), and on a model mixing mu-referenced and
+  non-mu-referenced thetas could attribute the Fisher information rows to the
+  wrong parameter names entirely (#906). The stochastic-approximation kernel
+  orders its Fisher information `[mu-referenced thetas][non-mu-referenced
+  thetas]`, not `iniDf`/model order, and a non-mu-referenced theta's mu
+  information is a pseudo-variance the algorithm decays toward 0 (it is a fixed
+  effect carried as a degenerate random effect), which blows up to a
+  near-zero SE when inverted in place. The Fisher information block is now
+  read out in its actual order, and non-mu-referenced theta rows are dropped
+  before inverting and their SE spliced in from the linearized FIM instead.
+  The kernel keeps a Fisher information row for a `fix()`ed theta too, so that
+  drop is computed against the FIM's raw row order rather than a
+  fixed-filtered one (a fixed theta ahead of the dropped row previously
+  shifted every later position and dropped the wrong one); a model whose
+  Fisher information order cannot be verified (a mu-referencing covariate, or
+  an old cached fit) now refuses `"sa"`/`"fim"` and falls back to the
+  linearized FIM instead of reporting from an unverified order.
 - `est="saem"` on a `boxCox()`/`yeoJohnson()` model (estimated or `fixed()`)
   fit at the identity transform instead of the declared one (#914). Two
   compounding defects: the kernel's working `lambda` was never refreshed from

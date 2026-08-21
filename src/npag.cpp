@@ -104,7 +104,17 @@ namespace {
 // extended-least-squares objective.  Warm-starts every variance-scale theta from the
 // saem-style per-endpoint moment (additive: sqrt(mean err^2); proportional:
 // sqrt(mean (err/f)^2)); when the optimized set is exactly one such scale per
-// endpoint, the moment IS the ELS optimum, so it is used directly (no bobyqa).
+// endpoint, the moment IS the ELS optimum, so it is used directly (no bobyqa) --
+// EXCEPT when the endpoint actually had a censored (M3/M4) row dropped from its
+// moment (npResidMoments()'s 4th column, issue #978): the variance of a truncated
+// normal is always less than the untruncated one (a standard result -- see e.g. the
+// inverse Mills ratio identity), so a moment built only from the surviving
+// (uncensored) rows is a biased-low estimate of the true residual variance whenever
+// the model is genuinely censored.  That case is now treated the same as a
+// regressor -- disqualified from the fast path and refined against npResidELS,
+// which correctly routes a censored row through doCensNormal1 instead of dropping
+// it.  The (now merely biased, not catastrophic) moment is still used as bobyqa's
+// starting point.
 // optEnd[j]/optProp[j] describe idx[j]: optEnd 0-based endpoint (or -1 if not a
 // variance scale), optProp 1 for proportional else 0.  obsEndpoint gives each
 // observation's endpoint (subject-major getIndIx order) for the moment estimate.
@@ -143,6 +153,9 @@ double npOptimizeResid(const arma::mat& support, const arma::vec& weights,
       if (e < 0 || kind[j] != 1 || endCount[e] > 1) { allSimpleScale = false; continue; }
       double nn = mom(e, 2);
       if (nn <= 0.0) { allSimpleScale = false; continue; }
+      // a censored row was dropped from this endpoint's moment -- it is a biased
+      // warm start now, not the ELS optimum, so route through the optimizer (#978)
+      if (mom(e, 3) > 0.0) allSimpleScale = false;
       double v = std::sqrt(mom(e, (optProp[j] == 1) ? 1 : 0) / nn);
       if (j < (int)lower.size() && std::isfinite(lower[j])) v = std::max(v, lower[j]);
       if (j < (int)upper.size() && std::isfinite(upper[j])) v = std::min(v, upper[j]);

@@ -17,6 +17,7 @@ nlmixr2Est.mlaplace <- function(env, ...) {
   .ui <- env$ui
   .foceiFamilyReturn(env, .ui, ..., est="mlaplace")
 }
+attr(nlmixr2Est.mlaplace, "nlmixr2Priors") <- "general"
 attr(nlmixr2Est.mlaplace, "iov") <- TRUE
 attr(nlmixr2Est.mlaplace, "covPresent") <- TRUE
 attr(nlmixr2Est.mlaplace, "unbounded") <- .foUnbounded

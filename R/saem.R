@@ -613,6 +613,15 @@
 #' to the reported scale via a delta-method Jacobian.  The result is required to be
 #' positive definite (a noisy/indefinite FIM returns `NULL` so the caller can fall
 #' back to the linearized FIM).
+#'
+#' The kernel orders the leading structural-theta block `[phi1 mu][phi0 mu]`
+#' (mu-referenced thetas first, then thetas with no eta), not
+#' `saemParamsToEstimate` order, so the theta block is reordered from
+#' `saem.cfg$i1`/`i0` (#906 defect 2).  A phi0 theta's mu information is
+#' `1/gamma2_phi0`, a pseudo-variance the M-step decays toward 0 (a fixed effect
+#' carried as a degenerate random effect); its rows/cols are dropped before
+#' inverting rather than reported (#906 defect 1) -- the caller splices a real
+#' SE in from the linearized FIM (`.saemSplicePhi0Theta`).
 #' @param .H Fisher information matrix (nb_param x nb_param)
 #' @param env saem fit environment
 #' @return named full covariance matrix `c(theta, om.<eta>, residual)`, or `NULL`
@@ -622,24 +631,66 @@
   .saem <- env$saem
   if (is.null(.H) || !is.matrix(.H) || nrow(.H) == 0L ||
         !all(is.finite(.H)) || all(.H == 0)) return(NULL)
-  .np <- nrow(.H)  # original nb_param layout; residual slot positions are keyed to this
-  # src/saem.cpp gives a non-additive endpoint's residual slot (and a
-  # general-log-likelihood endpoint) an exactly-zero row/col in every entry --
-  # solving the full matrix would be singular.  Drop any all-zero row (its
-  # column is zero too: Ha/HaSa is symmetric and d2logk/D11 never write a
-  # cross term into an excluded slot) and remember which original column each
-  # surviving row/col came from, since the indexing below is keyed to the
-  # ORIGINAL (nb_param) layout.
-  .keep <- which(apply(.H, 1L, function(.r) any(.r != 0)))
+  .np <- nrow(.H)  # original nb_param layout; every position below is keyed to this
+  .pars <- .ui$saemParamsToEstimate
+  .fixed <- .ui$saemFixed
+  .saemCfg <- attr(.saem, "saem.cfg")
+  .i1 <- .saemCfg$i1; .i0 <- .saemCfg$i0   # 0-based model-order phi indices
+  .nStruct <- length(.i1) + length(.i0)
+  .ordered <- !is.null(.i1) && .nStruct > 0L &&
+    .nStruct == (length(.pars) - length(.ui$nonMuEtas))
+  if (.ordered) {
+    .ord <- c(.i1, .i0) + 1L
+    .tn <- .pars[.ord]; .fx <- .fixed[.ord]
+    .phi0Nm <- .pars[.i0 + 1L]
+  } else if (isTRUE(.saemCfg$nphi0 > 0L)) {
+    # Without a verified i1/i0 partition (an old cached fit that predates
+    # saving them, or a mu-ref covariate that makes saemParamsToEstimate
+    # interleave covariate coefficients so it no longer lines up 1:1 with the
+    # phi block) there is no safe way to tell which FIM rows are phi0 --
+    # reporting from raw model order risks exactly the silent mislabeling
+    # this function exists to fix (#906).  Only safe to proceed unordered
+    # when there is no phi0 row to get wrong.
+    return(NULL)
+  } else {
+    .tn <- .pars; .fx <- .fixed
+    .phi0Nm <- character(0)
+  }
+  .nth <- length(.tn)
+  if (.nth == 0L || .np < .nth) return(NULL)
+  # .tn is in the SAME raw row order as .H's leading structural block -- the
+  # kernel keeps a row for a fix()ed theta too (nb_param in src/saem.cpp does
+  # not subtract fixed thetas), so it stays UNFILTERED here (a fixed-filtered
+  # .tn would misalign every later position with .H's actual rows); .idx
+  # below is built from .ini, which already excludes fixed names, so a fixed
+  # name's raw position in .tn is never selected on its own.
+  #
+  # Drop three kinds of row/col before inverting, all keyed to this ORIGINAL
+  # (nb_param) layout, translated to the reduced matrix only at the very end
+  # via .orig2sub:
+  #  - the degenerate phi0 mu rows (#906 defect 1): a phi0 theta's mu
+  #    information is 1/gamma2_phi0, a pseudo-variance the M-step decays
+  #    toward 0 (a fixed effect carried as a degenerate random effect); as
+  #    gamma2_phi0 -> 0 the marginal covariance of the surviving parameters
+  #    (the Schur complement of the full inverse) converges to this reduced
+  #    inverse anyway, since the correction term vanishes with
+  #    1/gamma2_phi0 -> Inf.  The caller splices a real SE in from the
+  #    linearized FIM (.saemSplicePhi0Theta).
+  #  - the fixed theta rows: nothing to report for a known, not estimated,
+  #    value.
+  #  - any all-zero row: src/saem.cpp gives a non-additive endpoint's
+  #    residual slot (and a general-log-likelihood endpoint) an exactly-zero
+  #    row/col in every entry, which would make the full matrix singular
+  #    (its column is zero too: Ha/HaSa is symmetric and d2logk/D11 never
+  #    write a cross term into an excluded slot).
+  .zeroRows <- which(apply(.H, 1L, function(.r) all(.r == 0)))
+  .drop <- Reduce(union, list(which(.fx), match(.phi0Nm, .tn), .zeroRows))
+  .keep <- if (length(.drop) > 0L) seq_len(.np)[-.drop] else seq_len(.np)
   if (length(.keep) == 0L) return(NULL)
-  # covariance = inverse of the FIM, in (theta, log-Omega-variance, log-sigma2) coords
   .C <- suppressWarnings(tryCatch(solve(.H[.keep, .keep, drop = FALSE]), error = function(e) NULL))
   if (is.null(.C) || !all(is.finite(.C))) return(NULL)
   .orig2sub <- rep(NA_integer_, .np)
   .orig2sub[.keep] <- seq_along(.keep)
-  .tn <- .ui$saemParamsToEstimate[!.ui$saemFixed]
-  .nth <- length(.tn)
-  if (.nth == 0L || .np < .nth) return(NULL)
   .idf <- .ui$iniDf
   # structural theta block (natural scale; H[1:nth] rows are .tn)
   .ini <- .idf[is.na(.idf$err) & !is.na(.idf$ntheta) & !.idf$fix, "name"]
@@ -689,6 +740,42 @@
                                          only.values = TRUE)$values, error = function(e) NA_real_))
   if (any(!is.finite(.ev)) || min(.ev) <= 0) return(NULL)
   .cov
+}
+#' Splice linFim structural-theta SEs for phi0 (non-mu-referenced) parameters
+#'
+#' `.saemFimToCov` drops phi0 (no-eta) theta rows before inverting because their mu
+#' information (`1/gamma2_phi0`) is decayed toward 0 and blows up their SE (#906
+#' defect 1).  This recovers a real SE for those parameters from the linearized FIM
+#' (`calc.COV`, which linearizes every structural theta directly, mu-referenced or
+#' not) and splices it in block-diagonally, matching the existing variance-block
+#' splice (`.saemSpliceLinFimVar`).  If there are no phi0 thetas this is a no-op.
+#' @param .cov analytic fim/sa covariance (phi1 theta + whatever else it covers)
+#' @param env saem fit environment
+#' @return covariance with phi0 theta SEs spliced in, or `NULL` if a required
+#'   splice could not be completed (the caller falls back to the linearized FIM)
+#' @noRd
+.saemSplicePhi0Theta <- function(.cov, env) {
+  .ui <- env$ui
+  .idf <- .ui$iniDf
+  .allTheta <- .idf[is.na(.idf$err) & !is.na(.idf$ntheta) & !.idf$fix, "name"]
+  if (length(.ui$mixProbs) > 0) .allTheta <- .allTheta[!(.allTheta %in% .ui$mixProbs)]
+  .rn <- rownames(.cov)
+  .miss <- .allTheta[!(.allTheta %in% .rn)]
+  if (length(.miss) == 0L) return(.cov)
+  .saem <- env$saem
+  attr(.saem, "env") <- env
+  .cm <- suppressWarnings(tryCatch(calc.COV(.saem), error = function(e) NULL))
+  if (is.null(.cm) || inherits(.cm, "try-error")) return(NULL)
+  .tn <- .ui$saemParamsToEstimate[!.ui$saemFixed]
+  if (!identical(dim(.cm), c(length(.tn), length(.tn)))) return(NULL)
+  dimnames(.cm) <- list(.tn, .tn)
+  .miss <- .miss[.miss %in% .tn]
+  if (length(.miss) == 0L) return(.cov)
+  .fn <- c(.rn, .miss)
+  .full <- matrix(0, length(.fn), length(.fn), dimnames = list(.fn, .fn))
+  .full[.rn, .rn] <- .cov
+  .full[.miss, .miss] <- .cm[.miss, .miss, drop = FALSE]
+  .full
 }
 #' Splice the linearized-FIM variance block into a fim/sa covariance
 #'
@@ -758,11 +845,23 @@
     .cov <- NULL
     nlmixrWithTiming("covariance", {
       .cov <- .saemFimToCov(.H, env)
+      # phi0 (non-mu-referenced) thetas were dropped in .saemFimToCov (their mu
+      # information is degenerate); splice a real SE in from the linearized FIM.
+      if (!is.null(.cov)) .cov <- .saemSplicePhi0Theta(.cov, env)
       # off-diagonal Omega / proportional-combined residuals are not reliably in the
       # analytic FIM; splice those from linFim's variance block (blocB).
       if (!is.null(.cov)) .cov <- .saemSpliceLinFimVar(.cov, env)
     })
     if (!is.null(.cov)) {
+      # the kernel's Fisher information (and so .saemFimToCov's row order) is
+      # [phi1 mu][phi0 mu], not iniDf/model order -- reorder the reported theta
+      # block back to iniDf order so it does not depend on which parameters
+      # happen to be mu-referenced (names carry identity everywhere this cov
+      # is consumed, but a predictable row order is still worth keeping)
+      .thOrd <- .ui$iniDf$name[!is.na(.ui$iniDf$ntheta) & is.na(.ui$iniDf$err)]
+      .thOrd <- .thOrd[.thOrd %in% rownames(.cov)]
+      .rest <- rownames(.cov)[!(rownames(.cov) %in% .thOrd)]
+      .cov <- .cov[c(.thOrd, .rest), c(.thOrd, .rest), drop = FALSE]
       # finalization needs a structural-theta cov; stash the full matrix and install
       # it after the fit is built (.saemInstallFullCov).  The control covMethod is reset
       # to its default during finalization, so record the intended label separately.

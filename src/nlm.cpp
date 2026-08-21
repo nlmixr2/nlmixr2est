@@ -77,6 +77,12 @@ struct nlmOptions {
   // stay correct regardless of how many intermediates precede rx_pred_.
   int predOffset=0; // rx_pred_ index in the predOnly model (rxPred)
   int gradOffset=0; // rx_pred_ index in the thetaGrad model (rxInner)
+  // rx_nu_ (Student-t degrees of freedom; cauchy's rx_nu_ is a constant 1) index,
+  // or -1 when the endpoint has none (norm/dnorm, or no llik-forced endpoint at
+  // all).  Looked up by name like predOffset/gradOffset rather than assumed
+  // contiguous with rx_pred_f_/rx_r_ -- see #979.
+  int predNuOffset=-1;
+  int gradNuOffset=-1;
   scaling scale;
   bool loaded=false;
 };
@@ -128,6 +134,7 @@ RObject nlmSetup(Environment e) {
                  odeSwapLhsIndex(odeSlotPred, "rx_r_") >= 0) ? 1 : 0;
   int _ip = odeSwapLhsIndex(odeSlotPred, "rx_pred_");
   nlmOp.predOffset = (_ip < 0) ? 0 : _ip;
+  nlmOp.predNuOffset = odeSwapLhsIndex(odeSlotPred, "rx_nu_");
   resetCensFlag();
 
   nlmOp.solveType = as<int>(control["solveType"]);
@@ -145,11 +152,13 @@ RObject nlmSetup(Environment e) {
     // rx_pred_f_/rx_r_ follow contiguously).
     int _ig = odeSwapLhsIndex(odeSlotInner, "rx_pred_");
     nlmOp.gradOffset = (_ig < 0) ? 0 : _ig;
+    nlmOp.gradNuOffset = odeSwapLhsIndex(odeSlotInner, "rx_nu_");
   } else {
     if (nlmOp.solveType != solveType_nls_pred) {
       nlmOp.solveType = solveType_pred;
     }
     model = pred;
+    nlmOp.gradNuOffset = -1;
   }
 
   List rxControl = as<List>(e["rxControl"]);
@@ -463,7 +472,9 @@ void nlmSolveFid(double *retD, int nobs, arma::vec &theta, int id) {
       if (nlmOp.hasFR && (hasRxCens(rx) || hasRxLimit(rx))) {
         int yj = getIndYj(ind), dist = 0, yj0 = 0;
         _splitYj(&yj, &dist, &yj0);
-        if (dist == rxDistributionDnorm || dist == rxDistributionNorm) {
+        if (dist == rxDistributionDnorm || dist == rxDistributionNorm ||
+            ((dist == rxDistributionT || dist == rxDistributionCauchy) &&
+             nlmOp.predNuOffset >= 0)) {
           int censi = 0;
           if (hasRxCens(rx)) censi = getIndCens(ind, kk);
           double dvi = getIndDv(ind, kk);
@@ -475,7 +486,15 @@ void nlmSolveFid(double *retD, int nobs, arma::vec &theta, int id) {
           if (censi != 0 || (R_FINITE(limiti) && !ISNA(limiti))) {
             double f = lhs[po + 1]; // rx_pred_f_
             double r = lhs[po + 2]; // rx_r_
-            double ll = doCensNormal1((double)censi, dvi, limiti, -val, f, r, 0);
+            double ll;
+            if (dist == rxDistributionT || dist == rxDistributionCauchy) {
+              // cauchy is Student-t with nu=1 (#979); .fixCensRNuLine (R/focei.R)
+              // already emits rx_nu_ ~ 1 for cauchy, so this always reads a real nu.
+              double nu = lhs[nlmOp.predNuOffset];
+              ll = doCensT1((double)censi, dvi, limiti, -val, f, r, nu);
+            } else {
+              ll = doCensNormal1((double)censi, dvi, limiti, -val, f, r, 0);
+            }
             val = -ll;
           }
         }
@@ -561,8 +580,10 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
       rxInner.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
       // Save outer kk (time index) for censoring data access before inner kk loop shadows it
       int kkOuter = kk;
-      // Determine censoring status for this observation (only for normal distributions)
+      // Determine censoring status for this observation (normal/dnorm and,
+      // via doCensT1(), t()/cauchy() -- see #979)
       bool hasCensObs = false;
+      bool isTDist = false;
       int censi = 0;
       double dvi = 0.0, limiti = R_NegInf;
       if (nlmOp.hasFR && (hasRxCens(rx) || hasRxLimit(rx))) {
@@ -576,6 +597,16 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
             if (ISNA(limiti)) limiti = R_NegInf;
           }
           hasCensObs = (censi != 0) || (R_FINITE(limiti) && !ISNA(limiti));
+        } else if ((dist == rxDistributionT || dist == rxDistributionCauchy) &&
+                   nlmOp.gradNuOffset >= 0) {
+          if (hasRxCens(rx)) censi = getIndCens(ind, kkOuter);
+          dvi = getIndDv(ind, kkOuter);
+          if (hasRxLimit(rx)) {
+            limiti = getIndLimit(ind, kkOuter);
+            if (ISNA(limiti)) limiti = R_NegInf;
+          }
+          hasCensObs = (censi != 0) || (R_FINITE(limiti) && !ISNA(limiti));
+          isTDist = true;
         }
       }
       // rx_pred_ is at lhs[gradOffset]; the ntheta sensitivity columns follow
@@ -593,7 +624,13 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
             double f = lhs[go + nlmOp.ntheta + 1]; // rx_pred_f_
             double r = lhs[go + nlmOp.ntheta + 2]; // rx_r_
             if (!ISNA(f) && !ISNA(r)) {
-              double ll = doCensNormal1((double)censi, dvi, limiti, -val, f, r, 0);
+              double ll;
+              if (isTDist) {
+                double nu = lhs[nlmOp.gradNuOffset];
+                ll = doCensT1((double)censi, dvi, limiti, -val, f, r, nu);
+              } else {
+                ll = doCensNormal1((double)censi, dvi, limiti, -val, f, r, 0);
+              }
               val = -ll;
             }
           }

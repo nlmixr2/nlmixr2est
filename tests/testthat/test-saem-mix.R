@@ -615,6 +615,84 @@ nmTest({
     expect_true(clMuLinear[1] < 2)
     expect_true(clMuLinear[2] > 4)
   })
+
+  test_that("MSAEM mixture separates under propT()+boxCox() (#982)", {
+    # #982: mixObsLoss()/mixNaiveClassify() (the nMix>1-only E-step loss and
+    # chain-init classification helpers) passed the transformed/raw prediction
+    # pair to handleF() in the opposite order from every other call site, so
+    # propT()'s "use the boxCox-transformed prediction" basis silently used
+    # the raw prediction instead (and vice versa for plain prop()). With
+    # lambda=1 (no transform) transformed==raw and the bug is invisible, so
+    # this pins a fixed lambda far from 1 and simulates the noise on the
+    # boxCox-transformed scale (propT() semantics) to make the two bases
+    # diverge. Under the pre-fix argument order this reliably collapses the
+    # mixture to one component (min(mixTab) == 1); the fix restores a real
+    # split matching the true two-population design.
+    rxode2::rxWithSeed(42, {
+    n_subj <- 30
+    sub_pop <- rbinom(n_subj, 1, 0.6) + 1 # 1 or 2
+    cl_sim <- ifelse(sub_pop == 1, 1.2, 6.0)
+    lambda <- 0.3
+
+    sim_data <- do.call(rbind, lapply(1:n_subj, function(i) {
+      subj_cl <- cl_sim[i]
+      times <- c(0.5, 1, 2, 4, 8, 12, 24)
+      ka_val <- 1.5
+      v_val <- 24.0
+      k_val <- subj_cl / v_val
+      cp <- 100 * ka_val / (v_val * (ka_val - k_val)) * (exp(-k_val * times) - exp(-ka_val * times))
+      # boxCox-transformed-scale proportional noise -- this is what propT()
+      # (transformed-basis prop) assumes the observation noise follows.
+      ft <- (cp^lambda - 1) / lambda
+      ftNoisy <- ft * (1 + rnorm(length(times), 0, 0.10))
+      cpNoisy <- (lambda * ftNoisy + 1)^(1 / lambda)
+      cpNoisy[!is.finite(cpNoisy) | cpNoisy < 0] <- 0
+      data.frame(
+        ID = i,
+        TIME = c(0, times),
+        AMT = c(100, rep(0, length(times))),
+        EVID = c(1, rep(0, length(times))),
+        DV = c(0, cpNoisy),
+        CMT = c(1, rep(2, length(times)))
+      )
+    }))
+    })
+
+    one.compartment.mix.propT <- function() {
+      ini({
+        tka <- log(1.5)
+        tcl1 <- log(1.0)
+        tcl2 <- log(5.0)
+        tv <- log(20)
+        p1 <- 0.5
+        eta.cl ~ 0.01
+        eta.v ~ 0.01
+        eta.ka ~ 0.01
+        prop.sd <- 0.10
+        lm <- fixed(0.3)
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl))
+        v <- exp(tv + eta.v)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ propT(prop.sd) + boxCox(lm)
+      })
+    }
+
+    fit <- .nlmixr(one.compartment.mix.propT, sim_data, est = "saem",
+                   saemControl(print = 0, seed = 1234, nBurn = 200, nEm = 300,
+                               calcTables = TRUE, covMethod = 0L))
+
+    mixTab <- table(fit$mixNum$mixnum)
+    expect_true(length(mixTab) > 1)
+    expect_true(min(mixTab) >= 2)
+
+    agree <- mean(fit$mixNum$mixnum[order(fit$mixNum$ID)] == sub_pop)
+    expect_true(agree > 0.6 || (1 - agree) > 0.6) # allow for label swap
+  })
 })
 
 

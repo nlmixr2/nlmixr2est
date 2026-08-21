@@ -31,16 +31,25 @@
 #' A method says what it supports with an attribute on itself:
 #'
 #' ```
-#' attr(nlmixr2Est.myMethod, "nlmixr2Priors") <- "normal"
+#' attr(nlmixr2Est.myMethod, "nlmixr2Priors") <- "general"
 #' ```
 #'
 #' - `"none"`, which is also what an absent attribute means -- the
 #'   method cannot use priors at all
-#' - `"normal"` -- normal priors only (`dnorm()`, `stdNormal()` and the
-#'   `multiNormal()` family)
+#' - `"theta"` -- priors on population parameters only (`dnorm()`,
+#'   `dcauchy()`, `stdNormal()` and the `multiNormal()` family among
+#'   thetas); anything referencing an omega element is refused.  No
+#'   FOCEi-family method uses this level -- they declare `"general"`.
+#' - `"general"` -- everything the shared kernel's `"general"` method
+#'   covers: the above, plus a normal prior directly on an omega element
+#'   and a textbook inverse-Wishart on an omega block.  This is what
+#'   `est="focei"` and the rest of its family declare.
 #' - `"nwpri"` -- normal priors and degrees of freedom on an omega block
-#'   (`invWishart(4)`), as a NONMEM NWPRI model works; a normal prior on
-#'   the omega values themselves is refused
+#'   (`invWishart(4)`), evaluated the way a NONMEM NWPRI model works; a
+#'   normal prior on the omega values themselves is refused
+#' - `"tnpri"` -- normal priors including directly on omega elements
+#'   (Monolix's/NONMEM's own-estimation joint-normal assumption);
+#'   `dcauchy()` and `invWishart()` are refused
 #' - `"all"` -- the method handles everything, so nothing is checked
 #'
 #' @export

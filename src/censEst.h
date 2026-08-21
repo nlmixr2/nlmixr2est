@@ -233,6 +233,90 @@ rxOptExpr(x)
   return dll;
 }
 
+// M2/M3/M4 censored log-likelihood correction for a location-scale Student-t
+// endpoint (`t(nu)`).  Cauchy is Student-t with nu=1 (armahead.h's
+// rxDistributionT/rxDistributionCauchy both route here; cauchy call sites
+// just pass nu=1.0) -- see #979.  f/r follow doCensNormal1's convention
+// (r is the VARIANCE, sd=sqrt(r) is the scale fed to llikT()/llikCauchy()).
+// `ll` is the full, already-normalized llikT()/llikCauchy() log-density
+// (rxode2ll, Stan-backed autodiff) -- unlike doCensNormal1 there is no
+// adjLik term to remove.
+//
+// @noRd
+static inline double doCensT1(double cens, double limDv, double lim, double ll,
+                              double f, double r, double nu) {
+  double sd = _safe_sqrt(r);
+  if (isM2(cens, lim)) {
+    // M2 adds likelihood even when the observation is defined; see
+    // doCensNormal1 for the derivation this mirrors.
+    updateCensFlag(censFlagM2);
+    double z = ((lim<f)*2.0 - 1.0)*(lim - f)/sd;
+    return ll - finite_log_prob(R::pt(z, nu, 0, 1));
+  } else if (isM3orM4(cens)) {
+    if (hasFiniteLimit(lim)) {
+      // M4 method
+      double logCum1 = R::pt(cens*(limDv-f)/sd, nu, 1, 1);
+      double logCum2 = R::pt(cens*(lim - f)/sd, nu, 1, 1);
+      double logTail = R::pt(cens*(lim - f)/sd, nu, 0, 1);
+      updateCensFlag(censFlagM4);
+      return finite_log_prob(logspace_sub(logCum1, logCum2)) -
+        finite_log_prob(logTail);
+    } else {
+      // M3 method
+      updateCensFlag(censFlagM3);
+      return finite_log_prob(R::pt(cens*(limDv-f)/sd, nu, 1, 1));
+    }
+  }
+  return ll;
+}
+
+// First derivative (w.r.t. eta, via the df/dr chain rule) of doCensT1's
+// correction.  Like dCensNormal1: M2 ADDS to dll (the observation is still
+// scored by its ordinary density); M3/M4 REPLACE dll entirely (the whole
+// contribution comes from the tail probability).  nu has no derivative
+// term here -- it is a fixed/estimated THETA, not eta-dependent; its outer
+// gradient is handled separately (nlm.cpp forces finite differences for
+// ANY censored observation's theta columns, independent of distribution).
+//
+// @noRd
+static inline double dCensT1(double cens, double limDv, double lim,
+                             double dll, double f, double r, double nu,
+                             double df, double dr) {
+  double sd = _safe_sqrt(r);
+  double dsd = dr/_safe_zero(2.0*sd);
+  double sd2 = _safe_zero(sd*sd);
+  auto dz = [&](double x, double sgn) {
+    return sgn*(-df*sd - (x - f)*dsd)/sd2;
+  };
+  if (isM2(cens, lim)) {
+    double sgn = (lim<f)*2.0 - 1.0;
+    double z = sgn*(lim - f)/sd;
+    double dzv = dz(lim, sgn);
+    double upper = R::pt(z, nu, 0, 0);
+    return dll + R::dt(z, nu, 0)*dzv/_safe_zero(upper);
+  } else if (isM3orM4(cens)) {
+    if (hasFiniteLimit(lim)) {
+      double z1 = cens*(limDv - f)/sd;
+      double z2 = cens*(lim - f)/sd;
+      double dz1 = dz(limDv, cens);
+      double dz2 = dz(lim, cens);
+      double t1 = R::pt(z1, nu, 1, 0);
+      double t2 = R::pt(z2, nu, 1, 0);
+      double upper2 = R::pt(z2, nu, 0, 0);
+      double pdf1 = R::dt(z1, nu, 0);
+      double pdf2 = R::dt(z2, nu, 0);
+      return (pdf1*dz1 - pdf2*dz2)/_safe_zero(t1 - t2) +
+        pdf2*dz2/_safe_zero(upper2);
+    } else {
+      double z = cens*(limDv - f)/sd;
+      double dzv = dz(limDv, cens);
+      double tcdf = R::pt(z, nu, 1, 0);
+      return R::dt(z, nu, 0)*dzv/_safe_zero(tcdf);
+    }
+  }
+  return dll;
+}
+
 // Analytic partials of the censored normal objective rho = -logLik-per-obs (kernel
 // orientation, transformed scale) w.r.t. the prediction f and variance r, for M2/M3/M4.
 // out[0..8] = rho_f, rho_r, rho_ff, rho_fr, rho_rr, rho_fff, rho_ffr, rho_frr, rho_rrr

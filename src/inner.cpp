@@ -306,6 +306,15 @@ struct focei_options {
   // d(r)/d(eta) columns follow rx_pred_ contiguously; located by name at setup.
   int predOffset;
   int predNoLhsOffset; // same, for the predNoLhs model used in the FD fallback
+  // t()/cauchy() M2/M3/M4 censoring (#979): rx_pred_f_/rx_r_/rx_nu_ indices in
+  // the inner lhs for a llik-forced endpoint (rx_pred_ itself holds the full
+  // llikT()/llikCauchy() log-density there, not a mean).  -1 when absent (no
+  // t()/cauchy() endpoint in this model).  Located by name, independently of
+  // predOffset -- unlike rx_pred_f_/rx_r_'s NORMAL-branch columns (comment
+  // above), these are not assumed contiguous with rx_pred_.
+  int predFOffset = -1;
+  int predROffset = -1;
+  int predNuOffset = -1;
   // fast=TRUE log-likelihood/generalized endpoint: a SEPARATE compiled model (rxHess2)
   // carries the exact second-order eta expansion rx__d2pred_i_j__ = d2(logLik)/deta_i deta_j
   // (upper triangle i<=j, j-outer/i-inner order).  This offset is the lhs index of its first
@@ -500,6 +509,30 @@ struct focei_options {
   mat omega;
   mat omegaInv;
   mat cholOmegaInv;
+  // ini({}) prior spec (nlmixr2/rxode2#1270, nlmixr2/nlmixr2est#929/#931):
+  // built once by .nlmixr2BuildPriorSpec() (R/priors.R), NULL for a model
+  // with no prior.  Owned by the R external pointer object living at
+  // foceiO["priorSpec"] for the duration of THIS foceiFitCpp_() call -- this
+  // is a non-owning view, valid only while that R object is reachable from
+  // the calling R frame (see the read site in foceiSetup_ for why that's
+  // always true here).
+  const rx_prior_spec_t *priorSpec = NULL;
+  // Cached at setup (priorSpecHasOmegaTerm()): does any term reference an
+  // omega element?  Gates whether foceiPriorEval()/foceiPriorOmegaGradAdd()
+  // bother computing a live Omega at all (cheap either way -- neta is
+  // small -- but the common case is a theta-only prior).
+  bool priorSpecOmegaTerm = false;
+  // Set once at setup (priorSpecThetaReachable(), after foceiSetupTheta_()
+  // has populated fixedTrans/npars/ntheta): true unless the prior spec
+  // references a theta that a mu-referenced family profiles out of the
+  // outer problem entirely (no optimizer-parameter index maps to it via
+  // fixedTrans).  analyticOuterGradDirect() declines rather than silently
+  // under-count when this is false; the objective (foceiPriorObjTerm(),
+  // hence the FD gradient too) is unaffected either way.  Omega elements
+  // are never profiled out this way, so this only ever gates the theta
+  // fold-in (foceiPriorGradAdd()), not the omega one
+  // (foceiPriorOmegaGradAdd()).
+  bool priorGradAnalyticSafe = true;
   mat etaM;
   mat etaS;
   // 1/SD of the eta distribution; standardizes an INDIVIDUAL eta (etaInBound(),
@@ -2286,6 +2319,52 @@ static inline double likInner0Contrib(int id, int k, int dist, int cens,
   return llAdd;
 }
 
+// M2/M3/M4 censored log-likelihood VALUE for a t()/cauchy() observation
+// (#979).  `llVal` is the already-computed llikT()/llikCauchy() log-density
+// (what every `dist != rxDistributionNorm` branch uses verbatim today).
+// Reads RAW (untransformed) dv/limit against RAW rx_pred_f_ -- the same
+// convention nlm.cpp's doCensT1 call uses -- since rx_pred_f_ is
+// `.rxGetPredictionF()` (pre-transform), unlike the tbs()-transformed
+// dv/limit locals likInner0 computes for the NORMAL branch.
+//
+// KNOWN GAP (two layers, #979):
+//  1. This function currently NEVER fires for FOCEi/FOCE/AGQ/Laplace:
+//     predNuOffset stays -1 there (see its setup comment above, in the
+//     alloc block) because the R side only emits rx_nu_/a real rx_r_ for
+//     nlm-family.  nlm-family (src/nlm.cpp) IS fully corrected -- value
+//     AND gradient, since nlm has no etas to worry about.
+//  2. Once FOCEi's R-side gap closes, only the VALUE would be corrected
+//     here.  The eta-gradient (`lp`, via the analytic d(llikT)/d(eta)
+//     sensitivity column already read into `fpm`/`a(k,i)`) and the inner-
+//     Hessian curvature (`cHff`/`cHfr`/`cHrr`, Gauss-Newton fallback) would
+//     still score a censored t()/cauchy() row as if uncensored -- closing
+//     THAT requires a d(rx_pred_f_)/d(eta) sensitivity column rxode2 does
+//     not currently emit.
+// This function is exercised and validated end-to-end today only via
+// nlm-family's identical doCensT1 call; it is deliberately-ready, currently
+// inert infrastructure for FOCEi, not dead code.
+static inline double focei_tCensLl(rx_solving_options_ind *ind, int kk,
+                                   int dist, int cens, double llVal,
+                                   double *lhs) {
+  if ((dist != rxDistributionT && dist != rxDistributionCauchy) ||
+      op_focei.predFOffset < 0 || op_focei.predROffset < 0 ||
+      op_focei.predNuOffset < 0) {
+    return llVal;
+  }
+  double limit = R_NegInf;
+  if (hasRxLimit(rx)) {
+    limit = getIndLimit(ind, kk);
+    if (ISNA(limit)) limit = R_NegInf;
+  }
+  bool isCensObs = (cens != 0) || (R_FINITE(limit) && !ISNA(limit));
+  if (!isCensObs) return llVal;
+  double dv = getIndDv(ind, kk);
+  double f = lhs[op_focei.predFOffset];
+  double r = lhs[op_focei.predROffset];
+  double nu = lhs[op_focei.predNuOffset];
+  return doCensT1((double)cens, dv, limit, llVal, f, r, nu);
+}
+
 double likInner0(double *eta, int id) {
   rx = getRxSolve_();
   rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
@@ -2698,8 +2777,9 @@ double likInner0(double *eta, int id) {
               fInd->llik += ll;
               fInd->nObs++;
             } else {
-              llikObs[kk] = f;
-              fInd->llik += f;
+              double llT = focei_tCensLl(ind, kk, dist, cens, f, lhs);
+              llikObs[kk] = llT;
+              fInd->llik += llT;
               fInd->nNonNormal++;
               fInd->nObs++;
             }
@@ -2795,8 +2875,9 @@ double likInner0(double *eta, int id) {
                  fInd->llik +=  ll;
                  fInd->nObs++;
                } else {
-                 llikObs[kk] = f;
-                 fInd->llik += f;
+                 double llT = focei_tCensLl(ind, kk, dist, cens, f, lhs);
+                 llikObs[kk] = llT;
+                 fInd->llik += llT;
                  fInd->nNonNormal++;
                  fInd->nObs++;
                }
@@ -2823,8 +2904,9 @@ double likInner0(double *eta, int id) {
                 fInd->llik +=  ll;
                 fInd->nObs++;
               } else {
-                llikObs[kk] = f;
-                fInd->llik += f;
+                double llT = focei_tCensLl(ind, kk, dist, cens, f, lhs);
+                llikObs[kk] = llT;
+                fInd->llik += llT;
                 fInd->nNonNormal++;
                 fInd->nObs++;
               }
@@ -4607,6 +4689,213 @@ static inline double foceiLik0(double *theta) {
 }
 
 
+// True if any term in the spec references an omega element (etaIdx[k] != 0
+// for some member).  FOCEi's shared C++ objective has no live Omega to read
+// this against for any method but est="fo" (op_focei.omega is populated only
+// when op_focei.fo==1, see foceiOmegaFromTheta()) -- foceiCurrentOmega()
+// below is what makes the VALUE side work for every method regardless;
+// cached at setup into op_focei.priorSpecOmegaTerm so the (cheap, but not
+// free) live-Omega computation is skipped entirely for the common
+// theta-only-prior case.
+static bool priorSpecHasOmegaTerm(const rx_prior_spec_t *spec) {
+  if (spec == NULL) return false;
+  for (int t = 0; t < spec->nTerms; ++t) {
+    const rx_prior_term_t &term = spec->terms[t];
+    for (int k = 0; k < term.n; ++k) {
+      if (term.etaIdx[k] != 0) return true;
+    }
+  }
+  return false;
+}
+
+// Every theta index (0-based) a prior term references directly (thetaIdx[k]
+// is rxUiPriors()'s 1-based ntheta, 0 when member k is an omega element).
+// True if EVERY referenced theta is reachable through op_focei.fixedTrans --
+// the same map updateTheta() uses to write an optimizer parameter into its
+// fullTheta slot (fixedTrans[i] for optimizer index i in [0, npars)).  A
+// theta a mu-referenced family profiles out of the outer problem entirely
+// (computed by an internal regression step, not a free npars-space
+// parameter) has no such i, so analyticOuterGradDirect()'s fold-in
+// (foceiPriorGradAdd()) -- which walks the SAME fixedTrans map -- would
+// silently drop that theta's contribution.  Omega elements are never
+// profiled out this way (see foceiPriorOmegaGradAdd()), so this only ever
+// needs to check thetaIdx.  Computed once, at setup (foceiSetup_ sets
+// op_focei.priorGradAnalyticSafe from this), not per evaluation.
+static bool priorSpecThetaReachable(const rx_prior_spec_t *spec, const int *fixedTrans, int npars,
+                                    int ntheta) {
+  if (spec == NULL) return true;
+  std::vector<bool> reachable((size_t)ntheta, false);
+  for (int i = 0; i < npars; ++i) {
+    int j = fixedTrans[i];
+    if (j >= 0 && j < ntheta) reachable[(size_t)j] = true;
+  }
+  for (int t = 0; t < spec->nTerms; ++t) {
+    const rx_prior_term_t &term = spec->terms[t];
+    for (int k = 0; k < term.n; ++k) {
+      int th = term.thetaIdx[k];  // 1-based; 0 means member k is an omega element
+      if (th != 0 && !reachable[(size_t)(th - 1)]) return false;
+    }
+  }
+  return true;
+}
+
+// The CURRENT natural-scale Omega, valid for every FOCEI-family method, not
+// just est="fo".  op_focei.omega itself is only ever assigned when
+// op_focei.fo==1 (foceiOmegaFromTheta()); every other method instead keeps
+// op_focei.omegaInv/cholOmegaInv current (the parameterization FOCEI/FOCE
+// actually optimize), so Omega has to be recovered from that by inversion --
+// cheap, since neta is always small.  Empty (0x0) when there is no omega at
+// all (a population-only model), matching op_focei.omega's own convention.
+// Returns false (Omega untouched) if omegaInv is not currently positive
+// definite -- reachable at a trial point mid-optimization, before the outer
+// optimizer's own bounds/line-search would reject it -- so the caller can
+// degrade the same way rxPriorLogDensityEval() itself does for an
+// indefinite covariance (-INFINITY value) rather than let arma::inv_sympd's
+// exception propagate uncaught out of an objective/gradient evaluation.
+static bool foceiCurrentOmega(arma::mat &Omega) {
+  if (op_focei.fo == 1) { Omega = op_focei.omega; return true; }
+  if (op_focei.omegaInv.n_rows == 0) { Omega = op_focei.omega; return true; }
+  try {
+    Omega = arma::inv_sympd(op_focei.omegaInv);
+  } catch (...) {
+    return false;
+  }
+  return true;
+}
+
+// Value and (natural-scale, per-theta) gradient of the ini({}) prior at the
+// CURRENT op_focei.fullTheta/omega -- fullTheta must already be current
+// (updateTheta() has run) before this is called.  0.0 / all-zero when the
+// model has no prior (op_focei.priorSpec == NULL, the common case), so a
+// caller can invoke this unconditionally.  gradTheta is sized ntheta and
+// resized/zeroed by this call.  -INFINITY (gradTheta left at 0) if the prior
+// touches omega and the live Omega is not currently recoverable
+// (foceiCurrentOmega() returned false) -- the same convention
+// rxPriorLogDensityEval() itself uses for an indefinite covariance, letting
+// foceiOfv0()'s existing isnan/isinf recovery loop treat this exactly like
+// any other bad trial point instead of throwing out of the objective. The
+// omega-touching gradient (rxPriorLogDensityEval()'s gradOmega output) is
+// intentionally discarded here -- it is needed only by the analytic outer
+// gradient (foceiPriorOmegaGradAdd(), which recomputes it against the SAME
+// omegaInv/dOiEst analyticOuterGradDirect() already has in hand, avoiding a
+// second live-Omega computation on that path); the FD gradient picks up an
+// omega-touching prior's effect for free the same way it does theta's, by
+// re-evaluating this value at a perturbed omega.
+static double foceiPriorEval(std::vector<double> &gradTheta) {
+  gradTheta.assign((size_t)op_focei.ntheta, 0.0);
+  if (op_focei.priorSpec == NULL) return 0.0;
+  arma::mat Omega;
+  if (op_focei.priorSpecOmegaTerm && !foceiCurrentOmega(Omega)) return -R_PosInf;
+  int omegaDim = (int)Omega.n_rows;
+  std::vector<double> gradOmega((size_t)omegaDim * (size_t)omegaDim, 0.0);
+  return rxPriorLogDensityEval(op_focei.priorSpec, op_focei.fullTheta, (int)op_focei.ntheta,
+                               Omega.memptr(), omegaDim,
+                               gradTheta.data(), gradOmega.data());
+}
+
+// -2*log p(theta) at the current theta; 0.0 when there is no prior.
+// numericGrad()'s finite-difference gradient re-evaluates THIS (via
+// foceiObjFromLik0()) at perturbed points, so it picks the prior up for
+// free -- no separate FD-specific code path is needed.
+static inline double foceiPriorObjTerm() {
+  if (op_focei.priorSpec == NULL) return 0.0;
+  std::vector<double> gradTheta;
+  return -2.0 * foceiPriorEval(gradTheta);
+}
+
+// -2*d(log p(theta))/dtheta[j], folded into gp -- the analytic outer
+// gradient's optimizer-parameter-indexed, NATURAL-scale accumulator, the
+// same convention gradDirectFdAdd()'s fdg uses ("fdg is d(-2LL_i)/
+// d(fullTheta_j) on the NATURAL scale, which is exactly what gp holds").
+// Uses op_focei.fixedTrans, the SAME map updateTheta() uses the other
+// direction (optimizer parameter -> fullTheta slot), so this needs no
+// dependency on the kernel's own (nth, nsg, nom) slot layout (G.gMap/
+// G.thPos) at all -- correct regardless of how a mu-referenced family's
+// kernel groups theta directions, as long as every prior-referenced theta
+// is itself a free optimizer parameter (op_focei.priorGradAnalyticSafe,
+// set at setup by priorSpecThetaReachable(); analyticOuterGradDirect()
+// declines rather than call this when it is false).
+static void foceiPriorGradAdd(int npars, arma::vec &gp) {
+  if (op_focei.priorSpec == NULL) return;
+  std::vector<double> gradTheta;
+  foceiPriorEval(gradTheta);
+  const int ntheta = (int)op_focei.ntheta;
+  for (int i = 0; i < npars; ++i) {
+    int j = op_focei.fixedTrans[i];
+    if (j >= 0 && j < ntheta) gp[i] += -2.0 * gradTheta[(size_t)j];
+  }
+}
+
+// -2*d(log p(theta))/d(theta_k), theta_k the k-th ESTIMATION-SCALE omega
+// parameter (fullTheta[ntheta+k], the same "chol theta" _rxInv's own
+// d.omegaInv/tr.28 are indexed by -- see the getDOmegaInvL()/getTr28V()
+// comment above), folded into gp the same way foceiPriorGradAdd() folds in
+// the theta portion.  Oi/dOiEst are analyticOuterGradDirect()'s own
+// omegaInv/d(Omega^-1)/d(theta_k) (gradDirectOmega()) -- reused rather than
+// refetched, since they are exactly what this needs too.
+//
+// Derivation: with A = Omega^-1 (what Oi/dOiEst parameterize) and
+// Omega = A^-1, d(Omega)/d(theta_k) = -Omega * dOiEst[k] * Omega (standard
+// matrix-inverse VJP).  For f = log p(theta, Omega),
+// df/d(theta_k) = <df/dOmega, dOmega/d(theta_k)>_F = tr(Gsym * dOmega/d(theta_k))
+// (Gsym = the symmetric part of df/dOmega -- dOmega/d(theta_k) is symmetric,
+// since Omega=A^-1 is, so only Gsym contracts against it; the antisymmetric
+// part of rxPriorLogDensityEval()'s gradOmega, if any, drops out exactly the
+// way rxPriorOmegaToCholOmegaInvGrad() drops it for its own, differently-
+// parameterized use of the identical Abar intermediate) = tr(Abar * dOiEst[k])
+// with Abar = -Omega*Gsym*Omega -- the SAME Abar
+// rxPriorOmegaToCholOmegaInvGrad() computes en route to a per-Cholesky-entry
+// gradient; this reaches theta_k directly instead, using the derivative data
+// FOCEI's own (non-prior) omega gradient already relies on, so it needs no
+// block/position bookkeeping of its own for a prior term spanning only part
+// of a larger omega matrix -- Abar and dOiEst[k] are both already sized for
+// the FULL omega, and a block prior's nonzero entries are already exactly
+// zero everywhere outside their block in Gsym (rxPriorLogDensityEval()
+// scatters each term's members into gradOmega positionally).  Verified
+// against central-difference gradients of the full Omega(theta) pipeline in
+// tests/testthat/test-focei-prior.R.
+static void foceiPriorOmegaGradAdd(int npars, arma::vec &gp, const arma::mat &Oi,
+                                   const arma::cube &dOiEst) {
+  if (op_focei.priorSpec == NULL || !op_focei.priorSpecOmegaTerm) return;
+  const int omegaDim = (int)Oi.n_rows;
+  if (omegaDim == 0 || (int)dOiEst.n_rows != omegaDim || (int)dOiEst.n_cols != omegaDim) return;
+  arma::mat Omega;
+  try {
+    Omega = arma::inv_sympd(Oi);
+  } catch (...) {
+    return;  // non-PD live Omega: contribute nothing, matching
+             // rxPriorLogDensityEval()'s own -Inf/0-gradient convention
+             // for an indefinite covariance rather than throwing mid-fit.
+  }
+  std::vector<double> gradTheta((size_t)op_focei.ntheta, 0.0);
+  std::vector<double> gradOmegaFlat((size_t)omegaDim * (size_t)omegaDim, 0.0);
+  rxPriorLogDensityEval(op_focei.priorSpec, op_focei.fullTheta, (int)op_focei.ntheta,
+                        Omega.memptr(), omegaDim, gradTheta.data(), gradOmegaFlat.data());
+  // Row-major vs column-major is irrelevant once symmetrized (Gsym(M) ==
+  // Gsym(M^T)), so this may read the flat buffer either way.
+  arma::mat gradOmegaRaw(gradOmegaFlat.data(), (arma::uword)omegaDim, (arma::uword)omegaDim);
+  arma::mat Gsym = 0.5 * (gradOmegaRaw + gradOmegaRaw.t());
+  arma::mat Abar = -(Omega * Gsym * Omega);
+  const int nom = (int)dOiEst.n_slices;
+  std::vector<double> dThetaK((size_t)nom, 0.0);
+  for (int k = 0; k < nom; ++k) {
+    dThetaK[(size_t)k] = arma::accu(Abar % dOiEst.slice((arma::uword)k));
+  }
+  const int ntheta = (int)op_focei.ntheta;
+  for (int i = 0; i < npars; ++i) {
+    int j = op_focei.fixedTrans[i];
+    int k = j - ntheta;
+    if (k >= 0 && k < nom) gp[i] += -2.0 * dThetaK[(size_t)k];
+  }
+}
+
+// -2*log-likelihood at theta, PLUS the ini({}) prior penalty when one is
+// present.  Every caller that wants "the objective" (not just the data
+// likelihood) should call this, not -2*foceiLik0(theta) directly.
+static inline double foceiObjFromLik0(double *theta) {
+  return -2*foceiLik0(theta) + foceiPriorObjTerm();
+}
+
 static inline double foceiOfv0(double *theta){
   if (op_focei.objfRecalN != 0 && !op_focei.calcGrad) {
     op_focei.stickyRecalcN1++;
@@ -4630,7 +4919,7 @@ static inline double foceiOfv0(double *theta){
       }
     }
   }
-  double ret = -2*foceiLik0(theta);
+  double ret = foceiObjFromLik0(theta);
   rx_solving_options *_op0 = getSolvingOptions(rx);
   while (!op_focei.calcGrad && op_focei.stickyRecalcN1 <= op_focei.stickyRecalcN &&
          (std::isnan(ret) || std::isinf(ret)) &&
@@ -4656,7 +4945,7 @@ static inline double foceiOfv0(double *theta){
         setIndTolFactor(_indI, getIndTolFactor(_indI) * op_focei.odeRecalcFactor);
       }
     }
-    ret = -2*foceiLik0(theta);
+    ret = foceiObjFromLik0(theta);
     op_focei.objfRecalN++;
   }
   if (!op_focei.initObj){
@@ -5976,6 +6265,19 @@ static inline void foceiSetupTheta_(List mvi,
     // Locate rx_pred_ in the inner lhs (AR(1) lag defs may precede it).
     int _ipi = odeSwapLhsIndex(odeSlotInner, "rx_pred_");
     op_focei.predOffset = (_ipi < 0) ? 0 : _ipi;
+    op_focei.predFOffset = odeSwapLhsIndex(odeSlotInner, "rx_pred_f_");
+    op_focei.predROffset = odeSwapLhsIndex(odeSlotInner, "rx_r_");
+    // predNuOffset is currently ALWAYS -1 for FOCEi/FOCE/AGQ/Laplace: the R
+    // side (.fixCensRNuLine, R/focei.R) only emits rx_nu_ for nlm-family
+    // (nlmixr2global$rxCensNuFix), because doing so for FOCEi's llik-forced
+    // t()/cauchy() endpoint crashes rxode2's eta-sensitivity generation once
+    // real etas are present ("user function 'get' requires 5 arguments";
+    // reproduces with plain cauchy(), no censoring at all).  focei_tCensLl()
+    // below is written and validated against a real fit already (nlm-family
+    // uses the identical doCensT1 path), so this is deliberately-inert,
+    // ready infrastructure -- KNOWN GAP pending a fix to that rxode2-side
+    // interaction, not a TODO in this file (#979).
+    op_focei.predNuOffset = odeSwapLhsIndex(odeSlotInner, "rx_nu_");
     // The exact-Hessian rx__d2pred_ columns live in the SEPARATE 2nd-order model (rxHess2),
     // located in foceiFitCpp_ after this setup; predHess2Offset is set there, not here.
   } else if (!op_focei.alloc){
@@ -6445,6 +6747,21 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.mixIdxN = (unsigned int)mixIdx.size();
   op_focei.adjLik = as<bool>(foceiO["adjLik"]);
   op_focei.badSolveObjfAdj=fabs(as<double>(foceiO["badSolveObjfAdj"]));
+  // ini({}) prior spec (#929/#931): .nlmixr2BuildPriorSpec() (R/priors.R)
+  // stores NULL (no prior) or an rx_prior_spec_t* R external pointer at
+  // foceiO["priorSpec"]; `control` (hence `foceiO`) is a live argument of
+  // THIS call, so R cannot GC the owning external pointer object while
+  // foceiSetup_ (or anything foceiFitCpp_ calls afterward, in the same
+  // .Call) is still running -- op_focei.priorSpec stays valid for the
+  // whole fit.
+  op_focei.priorSpec = NULL;
+  if (foceiO.containsElementNamed("priorSpec")) {
+    SEXP priorSpecS = foceiO["priorSpec"];
+    if (TYPEOF(priorSpecS) == EXTPTRSXP) {
+      op_focei.priorSpec = (const rx_prior_spec_t *) R_ExternalPtrAddr(priorSpecS);
+    }
+  }
+  op_focei.priorSpecOmegaTerm = priorSpecHasOmegaTerm(op_focei.priorSpec);
   if (foceiO.containsElementNamed("est") && TYPEOF(foceiO["est"]) == STRSXP) {
     std::string estStr = as<std::string>(foceiO["est"]);
     op_focei.isSaem = (estStr == "saem");
@@ -6761,6 +7078,11 @@ NumericVector foceiSetup_(const RObject &obj,
       op_focei.scaleObjective=1;
     }
   }
+  // fixedTrans/npars/ntheta are only valid from here on (foceiSetupTheta_()
+  // just above populates them) -- priorSpecThetaReachable() needs all three.
+  op_focei.priorGradAnalyticSafe =
+    priorSpecThetaReachable(op_focei.priorSpec, op_focei.fixedTrans,
+                            (int)op_focei.npars, (int)op_focei.ntheta);
   if (tempMixIdx != NULL) {
     R_Free(tempMixIdx);
     op_focei.mixIdx = NULL;
@@ -15743,6 +16065,30 @@ static void gradDirectStoreEtaP(const FoceiGradPooledSetup &G, const arma::cube 
   op_focei.etaPValid = 1;
 }
 
+// FD-fold, then the two ini({}) prior fold-ins, then record the
+// firstDirectGrad snapshot -- pulled out of analyticOuterGradDirect() as its
+// own step (a pure refactor, CodeFactor complexity) since it is one cohesive
+// "finish assembling gp" phase, run in this fixed order every time.
+static bool gradDirectFinalize(int npars, arma::vec &gp, const arma::mat &Oi,
+                               const arma::cube &dOiEst) {
+  if (!gradDirectFoldFd(npars, gp)) return false;
+  // ini({}) prior (#929/#931): -2*d(log p(theta))/dtheta[j], folded in before
+  // firstDirectGrad is recorded and before the rescale, same as the FD-fold
+  // above -- 0.0 when the model has no prior.
+  foceiPriorGradAdd(npars, gp);
+  // -2*d(log p(omega))/d(theta_k), reusing the SAME Oi/dOiEst
+  // gradDirectOmega() already fetched for the ordinary (non-prior) omega
+  // gradient -- 0.0 when the prior has no omega-referencing term.
+  foceiPriorOmegaGradAdd(npars, gp, Oi, dOiEst);
+  if (!op_focei.firstDirectGradSet) {
+    op_focei.firstDirectGrad.assign(gp.begin(), gp.end());
+    op_focei.firstDirectTheta.assign(&op_focei.fullTheta[0],
+                                     &op_focei.fullTheta[0] + op_focei.ntheta);
+    op_focei.firstDirectGradSet = 1;
+  }
+  return true;
+}
+
 static bool analyticOuterGradDirect(double *theta, double *g) {
   const FoceiGradPooledSetup &G = _gradPooled;
   if (!G.ok) return declineHere(101);
@@ -15755,6 +16101,11 @@ static bool analyticOuterGradDirect(double *theta, double *g) {
   // is double-listed or a mu family profiles thetas out).
   if (neta != op_focei.neta || (int)G.gMap.size() != npars) return declineHere(103);
   if (inds_focei == NULL) return declineHere(104);
+  // A prior referencing a theta a mu-referenced family profiles out of the
+  // outer problem has no d/dtheta term this fold-in (foceiPriorGradAdd(),
+  // via op_focei.fixedTrans) can attribute -- decline to FD rather than
+  // silently under-count.  Set once at setup; see priorSpecThetaReachable().
+  if (op_focei.priorSpec != NULL && !op_focei.priorGradAnalyticSafe) return declineHere(118);
   // theta, in the augmented model's positional order
   std::vector<double> thv((size_t)op_focei.ntheta);
   for (int t = 0; t < (int)op_focei.ntheta; ++t) thv[(size_t)t] = op_focei.fullTheta[t];
@@ -15770,13 +16121,7 @@ static bool analyticOuterGradDirect(double *theta, double *g) {
   if (!gradDirectKernel(G, thv, ebes, Oi, dOiEst, tr28, cores, nKer, gv, etaP)) return false;
   arma::vec gp;
   if (!gradDirectGather(G, gv, nKer, npars, gp)) return false;
-  if (!gradDirectFoldFd(npars, gp)) return false;
-  if (!op_focei.firstDirectGradSet) {
-    op_focei.firstDirectGrad.assign(gp.begin(), gp.end());
-    op_focei.firstDirectTheta.assign(&op_focei.fullTheta[0],
-                                     &op_focei.fullTheta[0] + op_focei.ntheta);
-    op_focei.firstDirectGradSet = 1;
-  }
+  if (!gradDirectFinalize(npars, gp, Oi, dOiEst)) return false;
   for (int i = 0; i < npars; ++i) g[i] = gp[i] * dUnscaleParDx(i);
   gradDirectStoreEtaP(G, etaP, theta, nsub, neta, npars, nKer);
   return true;
@@ -16389,6 +16734,42 @@ static inline void npAccumMoment(arma::mat &mom, int e, double f, double dv) {
   mom(e, 2) += 1.0;
 }
 
+// Fold one subject's observation rows into mom, on the way accumulating the
+// additive/proportional moment for whichever endpoint each row belongs to.
+// obsIdx indexes obsEndpoint across ALL subjects, so it must advance even on a
+// skipped subject (skipMoments true) or every later subject's rows land in the
+// wrong endpoint. See npResidMoments for what skipMoments/cl/fr/nEnd mean and
+// why an M3/M4 (censored) row is counted into column 3 rather than folded into
+// the additive/proportional sum-of-squares (issue #978).
+static inline void npResidMomentsSubject(rx_solving_options_ind *ind, int n,
+                                          const arma::mat &fr, bool skipMoments,
+                                          double cl, const arma::ivec &obsEndpoint,
+                                          int nEnd, int &obsIdx, arma::mat &mom) {
+  int ko = 0;
+  for (int j = 0; j < n && (skipMoments || ko < (int)fr.n_rows); ++j) {
+    setIndIdx(ind, j);
+    int kk = getIndIx(ind, j);
+    if (getIndEvid(ind, kk) != 0) continue;
+    // No map at all means no per-observation endpoint was supplied; running off the
+    // end of one means the map does not describe this solve.  Either way the row is
+    // dropped (-1) rather than filed under endpoint 0 (issue #856).  It is NOT safe
+    // to read nEnd == 1 as "single endpoint, so 0 is right": nEnd comes from the
+    // ESTIMATED residual parameters, and a multi-endpoint model with one estimated
+    // scale (the rest fixed) also gives 1.
+    int e = (obsIdx < (int)obsEndpoint.n_elem) ? obsEndpoint[obsIdx] : -1;
+    obsIdx++;
+    if (skipMoments) continue;
+    double dv = tbs(getIndDv(ind, kk));
+    double f = fr(ko, 0);
+    ko++;
+    if (e < 0 || e >= nEnd) continue;
+    if (!std::isfinite(cl) || !std::isfinite(f)) continue;
+    double cens = hasRxCens(rx) ? getIndCens(ind, kk) : 0.0;
+    if (cens != 0.0) { mom(e, 3) += 1.0; continue; }
+    npAccumMoment(mom, e, f, dv);
+  }
+}
+
 // Empirical (moment) residual estimate at fixed per-subject etas, per endpoint.
 // obsEndpoint (length = number of observations, in the C++ subject-major getIndIx
 // order) gives each observation's 0-based endpoint; nEnd is the endpoint count.  For
@@ -16396,13 +16777,23 @@ static inline void npAccumMoment(arma::mat &mom, int e, double f, double dv) {
 // sum(err^2) and the proportional moment sum((err/f)^2) with the observation count, so
 // the caller can set an additive SD to sqrt(mean(err^2)) and a proportional SD to
 // sqrt(mean((err/f)^2)) -- the saem-style estimate, used to warm start (and, for a
-// single scale per endpoint, to set) the residual optimization.  Returns an
-// nEnd x 3 matrix [sumAdd, sumProp, n].
+// single scale per endpoint, to set) the residual optimization.  An M3/M4 row's DV is
+// the LOQ/limit rather than a real measurement (censEst.h's isM3orM4(cens); M2 is NOT
+// excluded -- isM2 requires cens==0, so its DV is still a defined observation), so it
+// is dropped from the moment entirely (like the whole-endpoint skipMoments guard
+// below) rather than folded in as if observed -- issue #978. A moment built only from
+// the UNcensored rows is still a biased (too small) estimate of the true residual
+// variance whenever the model is genuinely censored -- dropping a row does not put its
+// information back, it just stops it from being wrong in the worst way. Column 3
+// counts how many rows were dropped this way per endpoint, so the caller can refuse to
+// treat the moment as final (see npOptimizeResid's allSimpleScale gate) and route
+// through the optimizer's censoring-aware objective instead whenever that count is
+// nonzero. Returns an nEnd x 4 matrix [sumAdd, sumProp, n, nCensDropped].
 arma::mat npResidMoments(const arma::mat& postEta, const arma::ivec& obsEndpoint, int nEnd) {
   rx = getRxSolve_();
   int nsub = (int)getRxNsub(rx);
   int neta = op_focei.neta;
-  arma::mat mom(std::max(nEnd, 1), 3, arma::fill::zeros);
+  arma::mat mom(std::max(nEnd, 1), 4, arma::fill::zeros);
   std::vector<double> eta(neta);
   int obsIdx = 0;
   for (int i = 0; i < nsub; ++i) {
@@ -16420,30 +16811,8 @@ arma::mat npResidMoments(const arma::mat& postEta, const arma::ivec& obsEndpoint
     rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(i));
     arma::mat fr;
     if (!skipMoments) fr = grabRFmatFromInner(i, false);
-    int ko = 0;
     int n = getIndNallTimes(ind);
-    for (int j = 0; j < n && (skipMoments || ko < (int)fr.n_rows); ++j) {
-      setIndIdx(ind, j);
-      int kk = getIndIx(ind, j);
-      if (getIndEvid(ind, kk) != 0) continue;
-      // obsIdx indexes obsEndpoint across ALL subjects, so it must advance even on a
-      // skipped subject or every later subject's rows land in the wrong endpoint.
-      // No map at all means no per-observation endpoint was supplied; running off the
-      // end of one means the map does not describe this solve.  Either way the row is
-      // dropped (-1) rather than filed under endpoint 0 (issue #856).  It is NOT safe
-      // to read nEnd == 1 as "single endpoint, so 0 is right": nEnd comes from the
-      // ESTIMATED residual parameters, and a multi-endpoint model with one estimated
-      // scale (the rest fixed) also gives 1.
-      int e = (obsIdx < (int)obsEndpoint.n_elem) ? obsEndpoint[obsIdx] : -1;
-      obsIdx++;
-      if (skipMoments) continue;
-      double dv = tbs(getIndDv(ind, kk));
-      double f = fr(ko, 0);
-      ko++;
-      if (e < 0 || e >= nEnd) continue;
-      if (!std::isfinite(cl) || !std::isfinite(f)) continue;
-      npAccumMoment(mom, e, f, dv);
-    }
+    npResidMomentsSubject(ind, n, fr, skipMoments, cl, obsEndpoint, nEnd, obsIdx, mom);
   }
   return mom;
 }

@@ -407,15 +407,27 @@ getValidNlmixrCtl.nlm <- function(control) {
 #'@export
 rxUiGet.nlmModel0 <- function(x, ...) {
   .ui <- rxode2::rxUiDecompress(x[[1]])
+  # on.exit() registered BEFORE mutating either flag: an interrupt landing
+  # between setting a flag and registering its reset would otherwise leak
+  # it TRUE for the rest of the R session -- for rxCensNuFix specifically,
+  # that would crash a later FOCEi t()/cauchy()+eta fit (see the guard's
+  # own comment for why it must stay OFF for FOCEi/FOCE, #979).
+  on.exit(nlmixr2global$rxCensNuFix <- FALSE, add = TRUE)
+  on.exit(nlmixr2global$rxPredLlik <- FALSE, add = TRUE)
   nlmixr2global$rxPredLlik <- TRUE
-  on.exit(nlmixr2global$rxPredLlik <- FALSE)
+  # nlm is population-only (no etas), so .fixCensRNuLine's real (nonzero)
+  # rx_r_/rx_nu_ for a llik-forced endpoint is safe here.
+  nlmixr2global$rxCensNuFix <- TRUE
   .predDf <- .ui$predDf
   .save <- .predDf
   .predDf[.predDf$distribution == "norm", "distribution"] <- "dnorm"
   assign(".predDfFocei", .predDf, envir=.ui)
   #assign("predDf", .predDf, envir=.ui)
-  on.exit(assign("predDf", .save, envir=.ui))
-  .ret <- rxode2::rxCombineErrorLines(.ui, errLines=rxGetDistributionFoceiLines(.ui),
+  on.exit(assign("predDf", .save, envir=.ui), add = TRUE)
+  # rx_r_/rx_nu_ for the llik-forced norm/dnorm/t/cauchy path are already
+  # fixed at the source (.fixCensRNuLine, R/focei.R) -- see #979.
+  .errLines <- rxGetDistributionFoceiLines(.ui)
+  .ret <- rxode2::rxCombineErrorLines(.ui, errLines=.errLines,
                               prefixLines=.uiGetThetaDropFixed(.ui),
                               paramsLine=NA, #.uiGetThetaEtaParams(.f),
                               modelVars=TRUE,
@@ -487,14 +499,23 @@ rxUiGet.nlmParams <- function(x, ...) {
 }
 attr(rxUiGet.nlmParams, "rstudio") <- "params()"
 
-#' Extract rx_pred_f_ and rx_r_ model lines from symengine environment
+#' Extract rx_pred_f_, rx_r_ and rx_nu_ model lines from symengine environment
+#'
+#' Like `rx_pred_f_`/`rx_r_`, a plain `rx_nu_ ~ nu` (or `=`) line does not
+#' survive `rxOptExpr`/symengine's own dead-code elimination -- nothing else
+#' in the compiled model reads it back, so it is pruned along with any other
+#' truly-unused intermediate before `rxCombineErrorLines`'s caller ever gets
+#' to see it. It has to be pulled straight out of the symengine environment
+#' (which still has the full unpruned variable set) and re-spliced into the
+#' final text, exactly like `rx_pred_f_`/`rx_r_` already are (#979).
 #'
 #' @param .s symengine environment
-#' @return named list with `f_line` and `r_line` character strings
+#' @return named list with `f_line`, `r_line` and `nu_line` character strings
 #' @noRd
 .nlmGetFRLines <- function(.s) {
   .f_line <- ""
   .r_line <- ""
+  .nu_line <- ""
   if (exists("rx_pred_f_", envir = .s, inherits = FALSE)) {
     .f <- get("rx_pred_f_", envir = .s)
     .f_line <- paste0("rx_pred_f_=", rxode2::rxFromSE(.f))
@@ -503,7 +524,11 @@ attr(rxUiGet.nlmParams, "rstudio") <- "params()"
     .r <- get("rx_r_", envir = .s)
     .r_line <- paste0("rx_r_=", rxode2::rxFromSE(.r))
   }
-  list(f_line = .f_line, r_line = .r_line)
+  if (exists("rx_nu_", envir = .s, inherits = FALSE)) {
+    .nu <- get("rx_nu_", envir = .s)
+    .nu_line <- paste0("rx_nu_=", rxode2::rxFromSE(.nu))
+  }
+  list(f_line = .f_line, r_line = .r_line, nu_line = .nu_line)
 }
 
 #' @export
@@ -546,6 +571,7 @@ rxUiGet.nlmRxModel <- function(x, ...) {
     .prd,
     .fr$f_line,
     .fr$r_line,
+    .fr$nu_line,
     #.s$..stateInfo["statef"],
     #.s$..stateInfo["dvid"],
     ""
@@ -709,6 +735,7 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
     .s$..HdTheta,
     .fr$f_line,
     .fr$r_line,
+    .fr$nu_line,
     .s$..stateInfo["statef"],
     .s$..stateInfo["dvid"],
     ""
@@ -732,6 +759,7 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
     .prd,
     .fr$f_line,
     .fr$r_line,
+    .fr$nu_line,
     .s$..stateInfo["statef"],
     .s$..stateInfo["dvid"],
     ""

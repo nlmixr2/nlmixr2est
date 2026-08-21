@@ -160,5 +160,6 @@ nlmixr2Est.foi <- function(env, ...) {
   .addObjDfToReturn(.ret, .objDf)
   .ret
 }
+attr(nlmixr2Est.foi, "nlmixr2Priors") <- "general"
 attr(nlmixr2Est.foi, "covPresent") <- TRUE
 attr(nlmixr2Est.foi, "unbounded") <- .foUnbounded
