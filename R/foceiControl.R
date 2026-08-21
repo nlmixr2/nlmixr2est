@@ -403,8 +403,63 @@
 #'
 #' @param outerOpt optimization method for the outer problem
 #'
-#' @param innerOpt optimization method for the inner problem (not
-#'     implemented yet.)
+#' @param innerOpt optimization method for the inner (per-subject eta)
+#'     problem: `"trust"` (default, RcppTrust trust-region Newton, using an
+#'     exact Gauss-Newton+Omega^-1 Hessian every iteration) or `"n1qn1"`
+#'     (quasi-Newton, gets a Hessian only once as a warm-start seed).
+#'     `"BFGS"` is accepted but not implemented -- it silently falls back to
+#'     `"n1qn1"`.
+#'
+#' @param trustConf confidence level defining the `innerOpt="trust"`
+#'     trust-region radius: since eta ~ N(0, Omega), the radius (in
+#'     sqrt(diag(Omega))-scaled units) is `sqrt(qchisq(trustConf, df=neta))`,
+#'     the boundary of the `trustConf`-level eta confidence region. Default
+#'     0.975.
+#'
+#' @param trustRinit initial `innerOpt="trust"` trust-region radius. `NULL`
+#'     (default) derives it from `trustConf`.
+#'
+#' @param trustRmax maximum `innerOpt="trust"` trust-region radius. `NULL`
+#'     (default) derives it from `trustConf`.
+#'
+#' @param hessianMethod For a non-normal-endpoint model (any distribution
+#'     other than \code{norm}), the per-subject inner Hessian has no
+#'     Gaussian Gauss-Newton shortcut and falls back to a finite difference
+#'     of the gradient every `innerOpt="trust"` Newton step
+#'     (`calcEtaHessian()`, `src/inner.cpp`). `"fd"` (default) recomputes
+#'     this Hessian from scratch every Newton step via finite difference.
+#'     `"bfgs"` is the damped BFGS update (Nocedal & Wright, *Numerical
+#'     Optimization*, 2nd ed., 2006, Procedure 18.2), always positive
+#'     definite; `"sr1"` is the Symmetric Rank-1 update (Nocedal & Wright;
+#'     Murtagh & Sargent, *Comput. J.* 13, 1970), not forced positive
+#'     definite; `"bofill"` is Bofill's (1994, *J. Comput. Chem.* 15, 1-11)
+#'     SR1/Powell-Symmetric-Broyden blend. All three are built from
+#'     consecutive Newton steps' already-computed gradients (no extra
+#'     evaluations), seeded from one `"fd"`-style Hessian on the first
+#'     Newton step of each inner solve.
+#'
+#'     Unlike `trustControl(hessianMethod=)`'s analogous OUTER-theta option
+#'     (where `"sr1"` is the default), this inner Hessian is not just a
+#'     step-direction aid: `LikInner2()` (`src/inner.cpp`) adds this
+#'     Hessian's log-determinant directly into the reported Laplace
+#'     objective, which the OUTER optimizer then searches over. A
+#'     quasi-Newton estimate built from the handful of Newton steps one
+#'     subject's inner solve takes is accurate enough to guide the step but
+#'     not accurate enough to serve as that objective term -- confirmed on
+#'     a real one-compartment IV model fit as a general \code{ll()}/`dnorm()`
+#'     endpoint: `"bfgs"`/`"sr1"`/`"bofill"` all converged to the same
+#'     wrong `Vc` (about 90 against a simulated 70 and a plain (non-`ll()`)
+#'     `focei` fit's 67, with a *worse* reported objective than `"fd"`'s
+#'     correct answer) -- the biased log-determinant misleads the outer
+#'     search into a worse point it reports as better. `"fd"`'s fresh
+#'     finite difference has no such bias, so it stays the default here even
+#'     though `"bfgs"`/`"sr1"`/`"bofill"` remain available (and are
+#'     genuinely faster, per this package's own small benchmark,
+#'     `inst/benchmarks/benchmark-focei-hessian-method.R`) for a caller who
+#'     has verified their model does not depend on this Hessian's precision.
+#'     Has no effect for normal-endpoint models (the Gauss-Newton inner
+#'     Hessian is used unconditionally there). Only meaningful with
+#'     `innerOpt="trust"`.
 #'
 #' @param stateTrim Trim state amounts/concentrations to this value.
 #'
@@ -927,7 +982,12 @@ foceiControl <- function(sigdig = 3, #
                                       "slsqp",
                                       "uobyqa",
                                       "newuoa"), #
-                         innerOpt = c("n1qn1", "BFGS"), #
+                         innerOpt = c("trust", "n1qn1", "BFGS"), #
+                         hessianMethod = c("fd", "bfgs", "sr1", "bofill"), #
+                         ## trust-region inner optimizer (RcppTrust)
+                         trustConf = 0.975, # confidence level defining the trust-region radius
+                         trustRinit = NULL, # NULL -> derived from trustConf/neta
+                         trustRmax = NULL, # NULL -> derived from trustConf/neta
                          ##
                          rhobeg = .2, #
                          rhoend = NULL, #
@@ -1390,11 +1450,39 @@ foceiControl <- function(sigdig = 3, #
             call.=FALSE)
     fast <- FALSE
   }
-  if (checkmate::testIntegerish(innerOpt, lower=1, upper=2, len=1)) {
+  if (checkmate::testIntegerish(innerOpt, lower=1, upper=3, len=1)) {
     innerOpt <- as.integer(innerOpt)
   } else {
-    .innerOptFun <- c("n1qn1" = 1L, "BFGS" = 2L)
+    .innerOptFun <- c("n1qn1" = 1L, "BFGS" = 2L, "trust" = 3L)
     innerOpt <- setNames(.innerOptFun[match.arg(innerOpt)], NULL)
+  }
+  .hessianMethodIdx <- c("fd" = 1L, "bfgs" = 2L, "sr1" = 3L, "bofill" = 4L)
+  if (checkmate::testIntegerish(hessianMethod, len=1, lower=1, upper=4, any.missing=FALSE)) {
+    hessianMethod <- as.integer(hessianMethod)
+  } else {
+    hessianMethod <- setNames(.hessianMethodIdx[match.arg(hessianMethod)], NULL)
+  }
+  checkmate::assertNumeric(trustConf, lower=0, upper=1, finite=TRUE, any.missing=FALSE, len=1)
+  if (trustConf <= 0 || trustConf >= 1) {
+    # qchisq(0, df)==0 (zero trust-region radius, no step ever taken) and
+    # qchisq(1, df)==Inf (unbounded radius, no trust-region constraint at all)
+    # are both degenerate -- checkmate's lower/upper bounds are inclusive, so
+    # this has to be checked separately.
+    stop("'trustConf' must be strictly between 0 and 1", call.=FALSE)
+  }
+  # lower=0 is inclusive (checkmate has no strict-bound form); trustRinit/
+  # trustRmax==0 is a zero-radius trust region that can never step, the same
+  # degenerate case trustConf==0 is rejected for above.
+  checkmate::assertNumeric(trustRinit, lower=0, finite=TRUE, null.ok=TRUE, len=1)
+  if (!is.null(trustRinit) && trustRinit <= 0) {
+    stop("'trustRinit' must be > 0", call.=FALSE)
+  }
+  checkmate::assertNumeric(trustRmax, lower=0, finite=TRUE, null.ok=TRUE, len=1)
+  if (!is.null(trustRmax) && trustRmax <= 0) {
+    stop("'trustRmax' must be > 0", call.=FALSE)
+  }
+  if (!is.null(trustRinit) && !is.null(trustRmax) && trustRinit > trustRmax) {
+    stop("'trustRinit' cannot be larger than 'trustRmax'", call.=FALSE)
   }
   if (checkmate::testIntegerish(warm, lower=0, upper=1, len=1, any.missing=FALSE)) {
     warm <- as.integer(warm)
@@ -1624,6 +1712,11 @@ foceiControl <- function(sigdig = 3, #
     eval.max = eval.max,
     iter.max = iter.max,
     innerOpt = innerOpt,
+    hessianMethod = hessianMethod,
+    ## trust-region inner optimizer (RcppTrust)
+    trustConf = as.double(trustConf),
+    trustRinit = trustRinit,
+    trustRmax = trustRmax,
     ## BFGS
     abstol = abstol,
     reltol = reltol,
@@ -1772,7 +1865,7 @@ foceiControl <- function(sigdig = 3, #
       return(.val)
     }
     if (x == "innerOpt") {
-      .innerOptFun <- c("n1qn1" = 1L, "BFGS" = 2L)
+      .innerOptFun <- c("n1qn1" = 1L, "BFGS" = 2L, "trust" = 3L)
       paste0("innerOpt = ", deparse1(names(.innerOptFun[which(object[[x]] == .innerOptFun)])))
     } else if (x == "warm") {
       .warmIdx <- c("calc" = 1L, "save" = 0L)
@@ -1783,6 +1876,9 @@ foceiControl <- function(sigdig = 3, #
     } else if (x == "eventType") {
       .methodIdx <- c("central" = 2L, "forward" = 3L)
       paste0(x, " = ", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
+    } else if (x == "hessianMethod") {
+      .hessianMethodIdx <- c("fd" = 1L, "bfgs" = 2L, "sr1" = 3L, "bofill" = 4L)
+      paste0(x, " = ", deparse1(names(.hessianMethodIdx[which(object[[x]] == .hessianMethodIdx)])))
     } else if (x %in% c("derivMethod", "covDerivMethod")) {
       .methodIdx <- c("forward" = 0L, "central" = 1L, "switch" = 3L)
       paste0(x, " = ", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))

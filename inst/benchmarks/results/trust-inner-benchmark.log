@@ -1,0 +1,102 @@
+2026-08-20 08:57:17 === benchmark-trust-inner.R starting === 
+2026-08-20 08:57:17 --- (a) discussion #924 models --- 
+2026-08-20 08:57:22 [discussion-924] d924-theo-1cmt: n1qn1 ok=TRUE time=4.35s objf=116.8041 | trust ok=TRUE time=0.53s objf=116.8335 | dObjf=0.02942797 maxParDiff=0.008659051 
+2026-08-20 08:57:26 [discussion-924] d924-theo-block-omega: n1qn1 ok=TRUE time=3.24s objf=106.6109 | trust ok=TRUE time=0.56s objf=108.4687 | dObjf=1.857736 maxParDiff=0.01501075 
+2026-08-20 08:57:29 [discussion-924] d924-oral-2cmt: n1qn1 ok=TRUE time=2.87s objf=113.1409 | trust ok=TRUE time=0.89s objf=113.5058 | dObjf=0.36492 maxParDiff=0.4433785 
+2026-08-20 08:57:35 [discussion-924] d924-oral-1cmt-mm: n1qn1 ok=TRUE time=4.40s objf=117.3518 | trust ok=TRUE time=1.61s objf=117.2997 | dObjf=-0.05212468 maxParDiff=0.08702107 
+2026-08-20 08:57:41 [discussion-924] d924-pheno-sparse: n1qn1 ok=TRUE time=4.03s objf=725.8398 | trust ok=TRUE time=1.42s objf=726.5347 | dObjf=0.6949065 maxParDiff=0.08495316 
+2026-08-20 08:57:41 --- (b) nlmixr2 vignettes (/home/matt-fidler/src/nlmixr2/vignettes) --- 
+2026-08-20 08:57:41 found 26 vignette .Rmd files under /home/matt-fidler/src/nlmixr2/vignettes 
+2026-08-20 08:58:06 [vignette:addingCovariances] (whole file): SKIPPED -- sourced cleanly but no focei fit was intercepted 
+2026-08-20 08:58:07 [vignette:babelmixr2-external-engines] source() failed: lotri syntax errors above 
+2026-08-20 08:58:07 [vignette:babelmixr2-external-engines] (whole file): SKIPPED -- source() failed -- see log 
+2026-08-20 08:58:07 [vignette:imp-impmap-qrpem] source() failed: lotri syntax errors above 
+2026-08-20 08:58:07 [vignette:imp-impmap-qrpem] (whole file): SKIPPED -- source() failed -- see log 
+2026-08-20 08:58:08 [vignette:linearized-quadrature-ladder] source() failed: lotri syntax errors above 
+2026-08-20 08:58:08 [vignette:linearized-quadrature-ladder] (whole file): SKIPPED -- source() failed -- see log 
+2026-08-20 08:58:09 [vignette:mixture-models] (whole file): SKIPPED -- sourced cleanly but no focei fit was intercepted 
+2026-08-20 08:58:11 [vignette:nlm-family-optimizers] (whole file): SKIPPED -- sourced cleanly but no focei fit was intercepted 
+2026-08-20 08:58:11 [vignette:nlmixr2-hooks] (whole file): SKIPPED -- sourced cleanly but no focei fit was intercepted 
+2026-08-20 08:58:11 [vignette:nlmixr2-team-and-advisory-committee] (whole file): SKIPPED -- sourced cleanly but no focei fit was intercepted 
+2026-08-20 08:58:11 [vignette:nonparametric-npag-npb] source() failed: lotri syntax errors above 
+2026-08-20 08:58:11 [vignette:nonparametric-npag-npb] (whole file): SKIPPED -- source() failed -- see log 
+2026-08-20 08:58:11 [vignette:saem] source() failed: lotri syntax errors above 
+2026-08-20 08:58:11 [vignette:saem] (whole file): SKIPPED -- source() failed -- see log 
+2026-08-20 08:58:15 [vignette:simulate-titrated-dosing] (whole file): SKIPPED -- sourced cleanly but no focei fit was intercepted 
+2026-08-20 08:58:15 [vignette:vaeNeonatal] source() failed: lotri syntax errors above 
+2026-08-20 08:58:15 [vignette:vaeNeonatal] (whole file): SKIPPED -- source() failed -- see log 
+2026-08-20 08:58:15 [vignette:variational-inference] source() failed: lotri syntax errors above 
+2026-08-20 08:58:15 [vignette:variational-inference] (whole file): SKIPPED -- source() failed -- see log 
+2026-08-20 08:58:35 [vignette:broom] vignette:broom#1: n1qn1 ok=TRUE time=2.96s objf=1255.203 | trust ok=TRUE time=2.69s objf=688.9636 | dObjf=-566.239 maxParDiff=4.52051 
+2026-08-20 08:58:36 [vignette:censoring] (whole file): SKIPPED -- sourced cleanly but no focei fit was intercepted 
+2026-08-20 08:58:36 [vignette:citations] (whole file): SKIPPED -- sourced cleanly but no focei fit was intercepted 
+2026-08-20 09:00:40 [vignette:delays] source() failed: no applicable method for 'fixef' applied to an object of class "c('simpleError', 'error', 'condition')" 
+2026-08-20 09:00:40 [vignette:delays] (whole file): SKIPPED -- source() failed -- see log 
+2026-08-20 09:11:16 [vignette:mavoglurant] vignette:mavoglurant#1: n1qn1 ok=TRUE time=12.26s objf=1957.342 | trust ok=TRUE time=5.90s objf=1957.4 | dObjf=0.05750313 maxParDiff=0.128241 
+2026-08-20 09:11:46 [vignette:mavoglurant] vignette:mavoglurant#2: n1qn1 ok=TRUE time=10.56s objf=1965.677 | trust ok=TRUE time=4.96s objf=1962.971 | dObjf=-2.705454 maxParDiff=0.2373275 
+2026-08-20 09:17:03 [vignette:modelPiping] vignette:modelPiping#1: n1qn1 ok=TRUE time=4.65s objf=116.8127 | trust ok=TRUE time=0.77s objf=116.8234 | dObjf=0.01070936 maxParDiff=0.008142084 
+2026-08-20 09:17:09 [vignette:modelPiping] vignette:modelPiping#2: n1qn1 ok=TRUE time=4.49s objf=116.8438 | trust ok=TRUE time=0.71s objf=116.8434 | dObjf=-0.0003425376 maxParDiff=2.220446e-15 
+2026-08-20 09:17:14 [vignette:modelPiping] vignette:modelPiping#3: n1qn1 ok=TRUE time=4.50s objf=116.8097 | trust ok=TRUE time=0.63s objf=116.8099 | dObjf=0.0001659066 maxParDiff=0.00164191 
+2026-08-20 09:17:16 [vignette:modelPiping] vignette:modelPiping#4: n1qn1 ok=TRUE time=1.25s objf=116.8226 | trust ok=TRUE time=0.78s objf=116.834 | dObjf=0.01145704 maxParDiff=0.003213825 
+2026-08-20 09:17:22 [vignette:modelPiping] vignette:modelPiping#5: n1qn1 ok=TRUE time=4.48s objf=176.5975 | trust ok=TRUE time=0.70s objf=176.5965 | dObjf=-0.001028291 maxParDiff=0.001063984 
+2026-08-20 09:17:28 [vignette:modelPiping] vignette:modelPiping#6: n1qn1 ok=TRUE time=4.85s objf=116.832 | trust ok=TRUE time=0.99s objf=116.8333 | dObjf=0.001318554 maxParDiff=0.01918816 
+2026-08-20 09:17:34 [vignette:modelPiping] vignette:modelPiping#7: n1qn1 ok=TRUE time=4.90s objf=116.1704 | trust ok=TRUE time=0.83s objf=116.1732 | dObjf=0.002889219 maxParDiff=0.001094615 
+2026-08-20 09:17:41 [vignette:modelPiping] vignette:modelPiping#8: n1qn1 ok=TRUE time=5.62s objf=104.4766 | trust ok=TRUE time=1.09s objf=104.4378 | dObjf=-0.03882549 maxParDiff=0.008404756 
+2026-08-20 09:20:33 [vignette:multiple-endpoints] vignette:multiple-endpoints#1: n1qn1 ok=TRUE time=43.96s objf=2267.523 | trust ok=TRUE time=20.55s objf=1333.794 | dObjf=-933.7295 maxParDiff=5.153331 
+2026-08-20 09:26:22 [vignette:nimo] (whole file): SKIPPED -- sourced cleanly but no focei fit was intercepted 
+2026-08-20 09:26:22 [vignette:precompute-articles] source() failed: lotri syntax errors above 
+2026-08-20 09:26:22 [vignette:precompute-articles] (whole file): SKIPPED -- source() failed -- see log 
+2026-08-20 09:26:22 [vignette:residualErrors] (whole file): SKIPPED -- sourced cleanly but no focei fit was intercepted 
+2026-08-20 09:26:22 [vignette:running_nlmixr] (whole file): SKIPPED -- sourced cleanly but no focei fit was intercepted 
+2026-08-20 09:26:22 [vignette:wbc] (whole file): SKIPPED -- sourced cleanly but no focei fit was intercepted 
+2026-08-20 09:26:22 [vignette:xgxr-nlmixr-ggpmx] (whole file): SKIPPED -- sourced cleanly but no focei fit was intercepted 
+2026-08-20 09:26:22 --- (c) non-wang2007 test-focei-*.R --- 
+2026-08-20 09:26:22 found 30 non-wang2007 test-focei-*.R files under tests/testthat 
+2026-08-20 09:26:22 [test:test-focei-1] (whole file): SKIPPED -- sourced cleanly but no focei fit was intercepted 
+2026-08-20 09:26:32 [test:test-focei-cens] test:test-focei-cens#1: n1qn1 ok=TRUE time=0.29s objf=80.28091 | trust ok=TRUE time=0.27s objf=80.07175 | dObjf=-0.2091607 maxParDiff=0.001001241 
+2026-08-20 09:26:42 [test:test-focei-char] (whole file): SKIPPED -- sourced cleanly but no focei fit was intercepted 
+2026-08-20 09:26:47 [test:test-focei-cores-fresh-rx] (whole file): SKIPPED -- sourced cleanly but no focei fit was intercepted 
+2026-08-20 09:26:47 [test:test-focei-eta-only] (whole file): SKIPPED -- sourced cleanly but no focei fit was intercepted 
+2026-08-20 09:26:48 [test:test-focei-eta-reset-path-dependence] (whole file): SKIPPED -- sourced cleanly but no focei fit was intercepted 
+2026-08-20 09:26:48 [test:test-focei-factr-control] (whole file): SKIPPED -- sourced cleanly but no focei fit was intercepted 
+2026-08-20 09:27:08 [test:test-focei-factr-fit] test:test-focei-factr-fit#1: n1qn1 ok=TRUE time=14.49s objf=19592.63 | trust ok=TRUE time=6.11s objf=19592.75 | dObjf=0.1166556 maxParDiff=0.01340993 
+2026-08-20 09:28:11 [test:test-focei-factr-fit] test:test-focei-factr-fit#2: n1qn1 ok=TRUE time=45.15s objf=19592.53 | trust ok=TRUE time=17.09s objf=19592.65 | dObjf=0.1163041 maxParDiff=0.004281016 
+2026-08-20 09:28:11 [test:test-focei-family-control] (whole file): SKIPPED -- sourced cleanly but no focei fit was intercepted 
+2026-08-20 09:28:17 [test:test-focei-fast-grad] test:test-focei-fast-grad#1: n1qn1 ok=TRUE time=5.53s objf=154.5595 | trust ok=TRUE time=0.40s objf=154.5611 | dObjf=0.001636159 maxParDiff=0 
+2026-08-20 09:28:28 [test:test-focei-fast-grad] test:test-focei-fast-grad#2: n1qn1 ok=TRUE time=11.37s objf=76.99156 | trust ok=TRUE time=0.35s objf=76.99308 | dObjf=0.00151846 maxParDiff=0 
+2026-08-20 09:28:46 [test:test-focei-fast-grad] test:test-focei-fast-grad#3: n1qn1 ok=TRUE time=17.36s objf=53695.56 | trust ok=TRUE time=0.30s objf=53695.56 | dObjf=0.0002067363 maxParDiff=0 
+2026-08-20 09:28:57 [test:test-focei-fast-grad] test:test-focei-fast-grad#4: n1qn1 ok=TRUE time=9.76s objf=13407.83 | trust ok=TRUE time=1.25s objf=13407.54 | dObjf=-0.2886197 maxParDiff=0 
+2026-08-20 09:29:08 [test:test-focei-fast-grad] test:test-focei-fast-grad#5: n1qn1 ok=TRUE time=10.00s objf=161.8901 | trust ok=TRUE time=0.48s objf=161.8888 | dObjf=-0.001248319 maxParDiff=0 
+2026-08-20 09:29:11 [test:test-focei-fast-grad] test:test-focei-fast-grad#6: n1qn1 ok=TRUE time=2.82s objf=187.288 | trust ok=TRUE time=0.34s objf=248.1239 | dObjf=60.83598 maxParDiff=0.3792874 
+2026-08-20 09:29:19 [test:test-focei-fast-methods-fit] test:test-focei-fast-methods-fit#1: n1qn1 ok=TRUE time=0.64s objf=116.8076 | trust ok=TRUE time=0.60s objf=116.8148 | dObjf=0.007201299 maxParDiff=0.004067578 
+2026-08-20 09:29:20 [test:test-focei-fast-methods-fit] test:test-focei-fast-methods-fit#2: n1qn1 ok=TRUE time=0.60s objf=116.8076 | trust ok=TRUE time=0.51s objf=116.8148 | dObjf=0.007201299 maxParDiff=0.004067578 
+2026-08-20 09:29:29 [test:test-focei-fast-methods-fit] test:test-focei-fast-methods-fit#3: n1qn1 ok=TRUE time=8.26s objf=116.8198 | trust ok=TRUE time=0.68s objf=116.8219 | dObjf=0.002109177 maxParDiff=0.001054489 
+2026-08-20 09:29:29 [test:test-focei-fast-methods] (whole file): SKIPPED -- sourced cleanly but no focei fit was intercepted 
+2026-08-20 09:29:30 [test:test-focei-fd-fallbacks] test:test-focei-fd-fallbacks#1: n1qn1 ok=TRUE time=0.48s objf=119.2472 | trust ok=TRUE time=0.74s objf=123.6053 | dObjf=4.358045 maxParDiff=0.02722319 
+2026-08-20 09:29:31 [test:test-focei-fd-fallbacks] test:test-focei-fd-fallbacks#2: n1qn1 ok=TRUE time=0.52s objf=118.2311 | trust ok=TRUE time=0.78s objf=122.8792 | dObjf=4.648035 maxParDiff=0.01893422 
+2026-08-20 09:29:41 [test:test-focei-foce-plus] (whole file): SKIPPED -- sourced cleanly but no focei fit was intercepted 
+2026-08-20 09:29:41 [test:test-focei-inner] (whole file): SKIPPED -- sourced cleanly but no focei fit was intercepted 
+2026-08-20 09:29:48 [test:test-focei-lincmt-alag-sens] (whole file): SKIPPED -- sourced cleanly but no focei fit was intercepted 
+2026-08-20 09:30:33 [test:test-focei-ll-fast-grad-fit] test:test-focei-ll-fast-grad-fit#1: n1qn1 ok=TRUE time=44.33s objf=53697.53 | trust ok=TRUE time=0.46s objf=53697.53 | dObjf=1.018506e-05 maxParDiff=0 
+2026-08-20 09:30:33 [test:test-focei-ll-fast-grad-fit] test:test-focei-ll-fast-grad-fit#2: n1qn1 ok=TRUE time=0.34s objf=53695.56 | trust ok=TRUE time=0.30s objf=53695.56 | dObjf=0.0002067363 maxParDiff=0 
+2026-08-20 09:30:34 [test:test-focei-ll-fast-grad-fit] test:test-focei-ll-fast-grad-fit#3: n1qn1 ok=TRUE time=0.44s objf=53697.53 | trust ok=TRUE time=0.43s objf=53697.53 | dObjf=1.018506e-05 maxParDiff=0 
+2026-08-20 09:30:35 [test:test-focei-ll-fast-grad] (whole file): SKIPPED -- sourced cleanly but no focei fit was intercepted 
+2026-08-20 09:30:35 [test:test-focei-llik] source() failed: could not find function "rxode2hasLlik" 
+2026-08-20 09:30:35 [test:test-focei-llik] (whole file): SKIPPED -- source() failed -- see log 
+2026-08-20 09:30:37 [test:test-focei-mceta-empty-cube] test:test-focei-mceta-empty-cube#1: n1qn1 ok=TRUE time=1.14s objf=219.2103 | trust ok=TRUE time=1.10s objf=219.2103 | dObjf=0 maxParDiff=0 
+2026-08-20 09:30:37 [test:test-focei-outer-fd-fallback] test:test-focei-outer-fd-fallback#1: n1qn1 ok=TRUE time=0.33s objf=123.5806 | trust ok=TRUE time=0.35s objf=123.575 | dObjf=-0.005595604 maxParDiff=0.0007502843 
+2026-08-20 09:30:39 [test:test-focei-outer-fd-fallback] test:test-focei-outer-fd-fallback#2: n1qn1 ok=TRUE time=0.52s objf=123.5965 | trust ok=TRUE time=0.52s objf=123.5819 | dObjf=-0.01462961 maxParDiff=0.0008523612 
+2026-08-20 09:30:40 [test:test-focei-outer-fd-fallback] test:test-focei-outer-fd-fallback#3: n1qn1 ok=TRUE time=0.55s objf=133.3747 | trust ok=TRUE time=1.11s objf=133.5397 | dObjf=0.1650066 maxParDiff=0.06702624 
+2026-08-20 09:30:48 [test:test-focei-outer-fd-fallback] test:test-focei-outer-fd-fallback#4: n1qn1 ok=TRUE time=7.14s objf=117.5506 | trust ok=TRUE time=0.45s objf=117.55 | dObjf=-0.0006330954 maxParDiff=0.000666393 
+2026-08-20 09:30:56 [test:test-focei-parallel] (whole file): SKIPPED -- sourced cleanly but no focei fit was intercepted 
+2026-08-20 09:30:56 [test:test-focei-pooled-solve-args] (whole file): SKIPPED -- sourced cleanly but no focei fit was intercepted 
+2026-08-20 09:30:56 [test:test-focei-preprocess] (whole file): SKIPPED -- sourced cleanly but no focei fit was intercepted 
+2026-08-20 09:30:58 [test:test-focei-ptrs] (whole file): SKIPPED -- sourced cleanly but no focei fit was intercepted 
+2026-08-20 09:30:59 [test:test-focei-shi21-bounds] test:test-focei-shi21-bounds#1: n1qn1 ok=TRUE time=0.78s objf=117.2652 | trust ok=TRUE time=0.39s objf=137.5873 | dObjf=20.32216 maxParDiff=0.1855818 
+2026-08-20 09:31:00 [test:test-focei-shi21-bounds] test:test-focei-shi21-bounds#2: n1qn1 ok=TRUE time=0.82s objf=134.0206 | trust ok=TRUE time=0.48s objf=137.5925 | dObjf=3.571901 maxParDiff=0.1751682 
+2026-08-20 09:31:03 [test:test-focei-theta-reset-bounds] test:test-focei-theta-reset-bounds#1: n1qn1 ok=TRUE time=3.04s objf=2400 | trust ok=FALSE time=NAs objf=NA | dObjf=NA maxParDiff=NA 
+2026-08-20 09:31:04 [test:test-focei-warm] test:test-focei-warm#1: n1qn1 ok=TRUE time=0.32s objf=133.5751 | trust ok=TRUE time=0.33s objf=133.5867 | dObjf=0.01162049 maxParDiff=0 
+2026-08-20 09:31:05 [test:test-focei-warm] test:test-focei-warm#2: n1qn1 ok=TRUE time=0.27s objf=133.5751 | trust ok=TRUE time=0.27s objf=133.5867 | dObjf=0.01160659 maxParDiff=0 
+2026-08-20 09:31:05 [test:test-focei-zero-init-scale] (whole file): SKIPPED -- sourced cleanly but no focei fit was intercepted 
+2026-08-20 09:31:05 [test:test-focei-zero-theta] (whole file): SKIPPED -- sourced cleanly but no focei fit was intercepted 
+2026-08-20 09:31:05 wrote inst/benchmarks/results/trust-inner-benchmark.csv and inst/benchmarks/results/trust-inner-benchmark.md 

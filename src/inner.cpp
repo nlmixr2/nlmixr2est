@@ -8,6 +8,7 @@
 #include "censEst.h"
 #include "nearPD.h"
 #include "shi21.h"
+#include "trustHessianUpdate.h"
 #include "foceiGrad.h"
 #include "inner.h"
 #include "nmMcmcRng.h"
@@ -27,6 +28,7 @@
 #endif
 #include "scale.h"
 #include <n1qn1c.h>
+#include <RcppTrust.h>
 #include <Rinternals.h>
 #ifdef _OPENMP
   #include <omp.h>
@@ -36,6 +38,12 @@
 #include <memory>
 #include <deque>
 #include <queue>
+// Boost.Math quantile functions -- stateless (no static/global mutable data),
+// so unlike relying on Rmath's own thread-safety story for every R::q* entry
+// point, these are safe by construction from any thread. Matches imp.cpp's
+// own boost::math::chi_squared_distribution usage (impChisqQuantile()).
+#include <boost/math/distributions/chi_squared.hpp>
+#include <boost/math/distributions/fisher_f.hpp>
 
 // Set while inside the parallel inner optimization region: R-API calls and
 // running-mean accumulation are deferred to the post-parallel phase. Atomic
@@ -176,6 +184,8 @@ extern "C" {
   iniRxode2ptr
 #define iniN1qn1cPtrs _nlmixr2est_iniN1qn1cPtrs
   iniN1qn1c
+#define iniRcppTrustPtrs _nlmixr2est_iniRcppTrustPtrs
+  iniRcppTrust
 }
 
 #define _(String) (String)
@@ -286,6 +296,12 @@ struct focei_options {
   double *gcHrr = NULL;
   double *gH = NULL;
   double *gVid = NULL;
+  // hessianMethod= (see trustHessianUpdate.h) pooled per-subject state for
+  // calcEtaHessian()'s non-normal-endpoint (needOptimHess) branch.
+  double *getaHessQN = NULL;     // [neta*neta*nsub_mix]
+  double *getaGradPrevQN = NULL; // [neta*nsub_mix]
+  double *getaPrevQN = NULL;     // [neta*nsub_mix]
+  int hessianMethod = trustHessFd;
 
   double *likSav = NULL;
   double *llikObsFull = NULL;
@@ -501,6 +517,19 @@ struct focei_options {
   int nsim;
   unsigned int nzm;
   int warm; // 1 = seed zm from calculated eta Hessian, 0 = classic behavior
+
+  // innerOpt: 1 = n1qn1 (default), 2 = BFGS (unimplemented -- see #927, falls
+  // back to n1qn1: lbfgsb3C's C++ wrapper keeps shared mutable Rcpp state, not
+  // reentrant under the per-subject OpenMP loop), 3 = trust (RcppTrust)
+  int innerOpt;
+  double trustConf; // confidence level defining the trust-region radius
+  double trustRinit;
+  double trustRmax;
+  std::atomic<int> nTrustInner{0}; // per-fit count of trust_solve_c calls (test evidence)
+  // per-fit count of calcEtaHessian() calls that used the hessianMethod=
+  // quasi-Newton update (as opposed to a fresh FD pass) -- test evidence the
+  // mechanism actually ran, not just that the numbers happen to agree.
+  std::atomic<int> nHessianQN{0};
 
   int imp;
   // int printInner;
@@ -893,6 +922,15 @@ struct focei_ind {
   double *etahf;
   double *etahr;
   double *etahh;
+  // hessianMethod= (op_focei.hessianMethod) quasi-Newton state for the
+  // needOptimHess (non-normal-endpoint) inner Hessian -- see calcEtaHessian().
+  // Per-subject (this struct is R_Calloc'd, so no C++ constructors run --
+  // these are plain POD raw-pointer slices into a pooled buffer, matching
+  // etahh's own convention, NOT arma::mat/arma::vec members).
+  double *etaHessQN;     // [neta*neta]
+  double *etaGradPrevQN; // [neta]
+  double *etaPrevQN;     // [neta]
+  int etaHasPrevQN;      // 0/1: reset once per trust_solve_c() attempt
   double *thetaGrad; // Theta gradient; Calculated on the individual level for S matrix calculation
   double thVal[2]; // thVal[0] = lower; thVal[2] = upper
   //
@@ -3075,77 +3113,132 @@ bool calcEtaHessian(double *eta, int likId, int id,
     arma::vec gr0(op_focei.neta, fill::zeros);
     std::copy(&fInd->lp[0], &fInd->lp[0] + op_focei.neta, &gr0[0]);
 
-    arma::vec grPH(op_focei.neta, fill::zeros);
-    arma::vec grMH(op_focei.neta, fill::zeros);
+    // hessianMethod= (default "sr1", trustHessianUpdate.h): a non-fd method
+    // builds this inner Hessian from consecutive Newton-step (eta, gradient)
+    // pairs instead of a fresh finite difference every call. The FIRST call
+    // for this subject still seeds from one FD pass below (matching every
+    // other calcEtaHessian() consumer's one-time, not-per-iteration, cost);
+    // every later call updates the running fInd->etaHessQN instead.
+    //
+    // Gated on innerOpt=="trust" (3) in addition to hessianMethod!=fd:
+    // calcEtaHessian() is also called from warmZm() (n1qn1's own Hessian
+    // warm-start seed, at n1qn1's STARTING eta) and from LikInner2()/the
+    // importance-sampling joint-lik path (the final-objective recompute, at
+    // whatever eta that OTHER inner optimizer converged to) -- neither of
+    // those is the repeated, same-attempt per-Newton-step loop
+    // fInd->etaHasPrevQN's reset (innerOpt1()'s trustSolveAt lambda) assumes.
+    // Without this gate, a non-trust fit's warmZm seed call would leave
+    // etaHasPrevQN=1 with a stale (eta, gradient) pair, and a LATER call at a
+    // very different (converged) eta would then feed a bogus, non-Newton-step
+    // secant pair into the quasi-Newton update -- corrupting exactly the
+    // Hessian this option was meant to make MORE accurate. Confined to trust,
+    // where every calcEtaHessian() call for a subject happens inside that
+    // same reset-per-attempt loop, this is a non-issue.
+    bool hessianQNEligible = (op_focei.hessianMethod != trustHessFd) && (op_focei.innerOpt == 3);
+    bool useQN = hessianQNEligible && fInd->etaHasPrevQN;
+    bool seedQN = hessianQNEligible && !fInd->etaHasPrevQN;
 
-    double h = 0;
+    if (useQN) {
+      arma::mat Hqn(fInd->etaHessQN, op_focei.neta, op_focei.neta, false, true);
+      arma::vec etaPrev(fInd->etaPrevQN, op_focei.neta, false, true);
+      arma::vec gradPrev(fInd->etaGradPrevQN, op_focei.neta, false, true);
+      arma::vec etaV(eta, op_focei.neta);
+      arma::vec s = etaV - etaPrev;
+      arma::vec y = gr0 - gradPrev;
+      trustHessianUpdate(op_focei.hessianMethod, Hqn, s, y);
+      etaPrev = etaV;
+      gradPrev = gr0;
+      H = Hqn;
+      op_focei.nHessianQN.fetch_add(1, std::memory_order_relaxed);
+    } else {
+      arma::vec grPH(op_focei.neta, fill::zeros);
+      arma::vec grMH(op_focei.neta, fill::zeros);
 
-    for (k = op_focei.neta; k--;) {
-      h = fInd->etahh[k];
-      if (op_focei.optimHessType == 3 && h <= 0) {
-        arma::vec t(eta, op_focei.neta);
-        fInd->etahh[k] = shi21Forward(getGradForOptimHess, t, h,
-                                      gr0, grPH, id, k,
-                                      op_focei.hessEpsInner, //double ef = 7e-7,
-                                      1.5,  //double rl = 1.5,
-                                      6.0,  //double ru = 6.0);;
-                                      op_focei.shi21maxInner,  //maxiter=15
-                                      op_focei.shi21hMax, op_focei.shi21hMin);
-        H.col(k) = grPH;
-        continue;
-      }
-      if (op_focei.optimHessType == 1 && h <= 0) {
-        // Central
-        arma::vec t(eta, op_focei.neta);
-        fInd->etahh[k] = shi21Central(getGradForOptimHess, t, h,
-                                      gr0, grPH, id, k,
-                                      op_focei.hessEpsInner, // ef,
-                                      1.5,//double rl = 1.5,
-                                      4.5,//double ru = 4.5,
-                                      3.0,//double nu = 8.0);
-                                      op_focei.shi21maxInner, // maxiter
-                                      op_focei.shi21hMax, op_focei.shi21hMin);
-        H.col(k) = grPH;
-        continue;
-      }
-      // x + h
-      eta[k] += h;
-      lpInner(eta, &grPH[0], id);
-      bool forwardFinite =  grPH.is_finite();
-      if (op_focei.optimHessType == 3 && forwardFinite) { // forward
-        H.col(k) = (grPH-gr0)/h;
-        eta[k] -= h;
-        continue;
-      }
+      double h = 0;
 
-      // x - h
-      eta[k] -= 2*h;
-      lpInner(eta, &grMH[0], id);
-      bool backwardFinite = grMH.is_finite();
-      if (op_focei.optimHessType == 1 &&
-          forwardFinite && backwardFinite) {
-        // central
+      for (k = op_focei.neta; k--;) {
+        h = fInd->etahh[k];
+        if (op_focei.optimHessType == 3 && h <= 0) {
+          arma::vec t(eta, op_focei.neta);
+          fInd->etahh[k] = shi21Forward(getGradForOptimHess, t, h,
+                                        gr0, grPH, id, k,
+                                        op_focei.hessEpsInner, //double ef = 7e-7,
+                                        1.5,  //double rl = 1.5,
+                                        6.0,  //double ru = 6.0);;
+                                        op_focei.shi21maxInner,  //maxiter=15
+                                        op_focei.shi21hMax, op_focei.shi21hMin);
+          H.col(k) = grPH;
+          continue;
+        }
+        if (op_focei.optimHessType == 1 && h <= 0) {
+          // Central
+          arma::vec t(eta, op_focei.neta);
+          fInd->etahh[k] = shi21Central(getGradForOptimHess, t, h,
+                                        gr0, grPH, id, k,
+                                        op_focei.hessEpsInner, // ef,
+                                        1.5,//double rl = 1.5,
+                                        4.5,//double ru = 4.5,
+                                        3.0,//double nu = 8.0);
+                                        op_focei.shi21maxInner, // maxiter
+                                        op_focei.shi21hMax, op_focei.shi21hMin);
+          H.col(k) = grPH;
+          continue;
+        }
+        // x + h
         eta[k] += h;
-        H.col(k) = (grPH-grMH)/(2.0*h);
-        continue;
-      }
-      if (forwardFinite && !backwardFinite) {
-        // forward difference
-        H.col(k) = (grPH-gr0)/h;
+        lpInner(eta, &grPH[0], id);
+        bool forwardFinite =  grPH.is_finite();
+        if (op_focei.optimHessType == 3 && forwardFinite) { // forward
+          H.col(k) = (grPH-gr0)/h;
+          eta[k] -= h;
+          continue;
+        }
+
+        // x - h
+        eta[k] -= 2*h;
+        lpInner(eta, &grMH[0], id);
+        bool backwardFinite = grMH.is_finite();
+        if (op_focei.optimHessType == 1 &&
+            forwardFinite && backwardFinite) {
+          // central
+          eta[k] += h;
+          H.col(k) = (grPH-grMH)/(2.0*h);
+          continue;
+        }
+        if (forwardFinite && !backwardFinite) {
+          // forward difference
+          H.col(k) = (grPH-gr0)/h;
+          eta[k] += h;
+          continue;
+        }
+        if (!forwardFinite && backwardFinite) {
+          // backward difference
+          H.col(k) = (gr0-grMH)/h;
+          eta[k] += h;
+          continue;
+        }
+        // Both forward and backward evaluations were non-finite: H.col(k) is
+        // left at its zero-initialized default (no usable column), but eta[k]
+        // is currently x-h (from the "x - h" step above) and was never
+        // restored by any of the branches above -- do so here, or it stays
+        // permanently shifted for the rest of the fit (eta is the caller's
+        // persistent per-subject buffer, not a local copy).
         eta[k] += h;
-        continue;
-      }
-      if (!forwardFinite && backwardFinite) {
-        // backward difference
-        H.col(k) = (gr0-grMH)/h;
-        eta[k] += h;
-        continue;
       }
     }
     // symmetrize
     H = 0.5*(H + H.t());
     // Note that since the gradient includes omegaInv*etam,
     // op_focei.omegaInv(k, l) shouldn't be added.
+    if (seedQN) {
+      arma::mat Hqn(fInd->etaHessQN, op_focei.neta, op_focei.neta, false, true);
+      arma::vec etaPrev(fInd->etaPrevQN, op_focei.neta, false, true);
+      arma::vec gradPrev(fInd->etaGradPrevQN, op_focei.neta, false, true);
+      Hqn = H;
+      etaPrev = arma::vec(eta, op_focei.neta);
+      gradPrev = gr0;
+      fInd->etaHasPrevQN = 1;
+    }
   } else if (op_focei.interaction) {
     int nO = getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind);
     arma::mat a(fInd->a, nO, op_focei.neta, false, true);
@@ -3412,6 +3505,49 @@ void innerCost(int *ind, int *n, double *x, double *f, double *g, int *ti, float
   }
 }
 
+// RcppTrust objfun: value+gradient+Hessian every call (a true trust-region
+// Newton step wants a fresh Hessian each iteration, unlike n1qn1's one-time
+// warm-start seed). calcEtaHessian() is cheap since neta is small, and is
+// already proven safe inside this OpenMP per-subject loop (warmZm calls it
+// the same way). No R API calls -- matches innerCost/likInner0's discipline.
+extern "C" int trustInnerObjfun(int n, const double *par, double *value,
+                                 double *gradient, double *hessian, void *userdata) {
+  int id = *((int*)userdata);
+  focei_ind *fInd = &(inds_focei[id]);
+  if (fInd->badSolve == 1) { *value = std::numeric_limits<double>::infinity(); return 1; }
+  std::copy(par, par + n, fInd->x);
+  double f = likInner0(fInd->x, id);
+  if (ISNA(f)) {
+    fInd->badSolve = 1;
+    *value = std::numeric_limits<double>::infinity();
+    return 1;
+  }
+  fInd->nInnerF++;
+  lpInner(fInd->x, gradient, id);
+  fInd->nInnerG++;
+  rx = getRxSolve_();
+  rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
+  mat H((arma::uword)n, (arma::uword)n, fill::zeros), H0((arma::uword)n, (arma::uword)n, fill::zeros);
+  if (!calcEtaHessian(fInd->x, 0, id, fInd, ind, H, H0)) {
+    fInd->badSolve = 1;
+    *value = std::numeric_limits<double>::infinity();
+    return 1;
+  }
+  std::copy(H.begin(), H.end(), hessian);
+  *value = f;
+  return 0;
+}
+
+//[[Rcpp::export(".nTrustInner")]]
+int nTrustInnerGet() {
+  return op_focei.nTrustInner.load(std::memory_order_relaxed);
+}
+
+//[[Rcpp::export(".nHessianQN")]]
+int nHessianQNGet() {
+  return op_focei.nHessianQN.load(std::memory_order_relaxed);
+}
+
 static inline int innerEval(int id){
   focei_ind *fInd = &(inds_focei[id]);
   // Use eta
@@ -3452,7 +3588,12 @@ static inline int innerOpt1(int id, int likId) {
       fInd->setup = 0;
     }
   }
-  bool n1qn1Inner = true;
+  // innerOpt==2 ("BFGS") is intentionally left mapped to n1qn1: lbfgsb3C's C++
+  // wrapper (lbfgsb3x.cpp) writes a file-scope global Rcpp::List on every call,
+  // which is not reentrant under this per-subject OpenMP loop (#927) -- do not
+  // route it there without first fixing that.
+  bool trustInner = (op_focei.innerOpt == 3);
+  bool n1qn1Inner = !trustInner;
   // Use eta
   // Convert Zm to Hessian, if applicable.
   mat etaMat(fop->neta, 1, fill::zeros);
@@ -3776,6 +3917,232 @@ static inline int innerOpt1(int id, int likId) {
           }
         }
       }
+    }
+  } else if (trustInner) {
+    // The whole branch is wrapped in try/catch: any C++ exception escaping
+    // this #pragma omp parallel for loop body (up through innerOptId() ->
+    // innerOpt()'s caller) is uncatchable across the OpenMP thread boundary
+    // and calls std::terminate, crashing the whole R session -- the same
+    // class of bug already found here once (an uncaught Armadillo
+    // Mat::operator() bounds exception, see the parscale guard below).
+    // trust_solve_c() itself already catches std::bad_alloc internally and
+    // returns a clean tres.error==-4 (RcppTrust's src/trust_core.cpp), but
+    // an allocation failure in THIS code around it (parscale, or anything
+    // inside likInner0/calcEtaHessian's Armadillo temporaries) is not
+    // protected by that boundary. Treat any escape as this subject's solve
+    // failing, same as any other unrecoverable inner-solve error.
+    try {
+    fInd->badSolve = 0;
+    // Per-eta scale: sqrt(diag(Omega)) -- the eta-level analogue of bobyqa's
+    // theta scaling; conditions RcppTrust's trust-region metric via parscale.
+    // op_focei.omega is NOT refreshed here when covFdDirect is set (the FD-full
+    // covariance step owns Omega directly then, see innerOpt()) or when this
+    // subject's inner solve runs from a context where the size/outer-gradient
+    // FD-fallback path leaves it stale/mismatched -- indexing it unconditionally
+    // is exactly the "gate that can crash" this file's own odeSwap notes warn
+    // against (an Armadillo operator() bounds-check throw from inside this
+    // OpenMP loop is uncatchable across threads and aborts the whole process,
+    // #issue found via test-focei-outer-fd-fallback.R crashing with
+    // "Mat::operator(): index out of bounds" once trust became reachable from
+    // more code paths). Check the size before indexing; anything unexpected
+    // falls back to no scaling (1.0) for every eta rather than risking OOB.
+    std::vector<double> parscale((size_t)npar, 1.0);
+    if ((arma::uword)npar == op_focei.omega.n_rows &&
+        (arma::uword)npar == op_focei.omega.n_cols) {
+      for (int j = 0; j < npar; j++) {
+        double v = op_focei.omega(j, j);
+        // A normal/multiNormal prior directly on THIS omega diagonal element
+        // (rx_prior_term_t.type==0 or 2 -- both are on the RAW omega value,
+        // per R/priors.R/rxPriorBuildSpec(); a prior on an off-diagonal omega
+        // element is refused upstream, so every omega-touching member here
+        // IS a diagonal element) can imply a LARGER plausible variance than
+        // the current running estimate -- e.g. early in a fit, or whenever
+        // the point estimate undershoots what the prior itself allows for.
+        // Using only the current (possibly too-small) estimate would then
+        // understate how far this eta may need to move -- the same
+        // understated-trust-region failure the invWishart-nu widening above
+        // targets for the other omega-prior convention.
+        //
+        // The prior's MEAN is not by itself "the prior's omega value": these
+        // priors are commonly centered at 0 as a pure shrinkage penalty
+        // (e.g. `prior(eta.cl) ~ dnorm(0, 0.05)`, test-focei-prior.R), where
+        // 0 is meaningless as a variance magnitude but the prior still
+        // considers values out to about its own SPREAD plausible. Using
+        // |mu| + SD (mean plus one prior standard deviation -- a roughly
+        // 84th-percentile plausible value, the same kind of one-SD-out
+        // heuristic parscale itself already applies to Omega via
+        // sqrt(diag(Omega))) captures that; it reduces to the earlier
+        // "prior mean" reading whenever the prior is tight (SD -> 0) and
+        // widens it whenever the prior's spread, not just its center, says a
+        // larger variance is plausible. Take whichever of that or the
+        // current estimate is larger.
+        if (op_focei.priorSpec != NULL) {
+          for (int _t = 0; _t < op_focei.priorSpec->nTerms; ++_t) {
+            const rx_prior_term_t &_term = op_focei.priorSpec->terms[_t];
+            if (_term.type != 0 && _term.type != 1 && _term.type != 2) continue;
+            for (int _k = 0; _k < _term.n; ++_k) {
+              if (_term.etaIdx[_k] != j + 1) continue;
+              double _mu = (_term.mu != NULL) ? _term.mu[_k] : 0.0;
+              double _sd = 0.0;
+              if (_term.scale != NULL) {
+                if (_term.type == 2) {
+                  double _var = _term.scale[_k * _term.n + _k];
+                  _sd = (_var > 0) ? std::sqrt(_var) : 0.0;
+                } else {
+                  _sd = _term.scale[0]; // normal sd / cauchy scale, length 1
+                }
+              }
+              double _cand = std::fabs(_mu) + _sd;
+              if (_cand > v) v = _cand;
+            }
+          }
+        }
+        parscale[j] = (v > 0) ? std::sqrt(v) : 1.0;
+      }
+    }
+    double curRmax = op_focei.trustRmax;
+    trust_options_t topts = trust_options_default(op_focei.trustRinit, curRmax);
+    topts.has_parscale = 1;
+    topts.parscale = parscale.data();
+    topts.iterlim = maxInnerIterations;
+    topts.fterm = epsilon;
+    topts.mterm = epsilon;
+
+    // Stationarity check via the Newton STEP length, not the raw gradient:
+    // trust_solve_c() can report converged==true off its own internal
+    // step-size (fterm/mterm) tolerance while a curvature-BLIND look at the
+    // gradient alone would misjudge whether that's actually right, in
+    // either direction -- a raw |g| includes no information about how much
+    // curvature is already pulling the objective flat around that point (a
+    // legitimately converged point in a STEEP well can have a large-looking
+    // raw gradient a small distance out from it), while a fixed radius or a
+    // poor-fit local quadratic model can ALSO produce a falsely-converged
+    // point with a small raw gradient. The unconstrained Newton step,
+    // ||H^-1 g|| in the same parscale-scaled units the trust radius uses, is
+    // exactly the scale-invariant, curvature-aware criterion Newton's method
+    // itself stops on (the "Newton decrement") -- small precisely when the
+    // CURRENT local model has nowhere better nearby to offer, regardless of
+    // how steep or flat that model is. H is symmetric (exact Hessian of a
+    // scalar objective, freshly evaluated by trustInnerObjfun every call --
+    // not a stale quadratic-model artifact), so the row-major vs.
+    // column-major layout of tres.hessian is immaterial here. arma::solve
+    // (no_approx) fails cleanly on a singular/indefinite H rather than
+    // silently returning a pseudo-inverse result -- an unusable estimate
+    // then leaves trust_solve_c()'s own converged flag as the only signal.
+    double pushTol = std::sqrt(epsilon);
+    // When the Newton step turns out large (pushDist > curRmax), that is
+    // this problem's genuine trust-region-radius-collapse signal -- the
+    // literal "amount eta is being pushed" past what the current radius
+    // allows, a measured distance rather than a guessed multiplier, used
+    // below to decide whether a wider-radius retry is worth attempting at
+    // all before falling back to relocating the start point via nudges.
+    double pushDist = -1.0; // -1: not computed / not usable this call
+    auto trustSolveAt = [&](bool fill, double startVal) {
+      if (fill) std::fill_n(fInd->x, npar, startVal);
+      // Reset per attempt (mirrors n1qn1's cascade, which clears this before
+      // every restart): a mid-solve NA from trustInnerObjfun latches
+      // fInd->badSolve, and trustInnerObjfun's own guard then short-circuits
+      // every later call to it -- without resetting here, one NA during the
+      // FIRST trust_solve_c run would silently poison the entire nudge
+      // cascade, making the retries a no-op for exactly the cases that need
+      // them.
+      fInd->badSolve = 0;
+      // hessianMethod= quasi-Newton state (calcEtaHessian()) is only valid
+      // WITHIN one trust_solve_c() attempt -- a retry (radius escalation or
+      // an eta nudge) starts from a different point, so its running Hessian
+      // must reseed from a fresh FD pass rather than update from the PRIOR
+      // attempt's last (eta, gradient), same reasoning as badSolve above.
+      fInd->etaHasPrevQN = 0;
+      pushDist = -1.0;
+      topts.rmax = curRmax;
+      trust_result_t tres;
+      trust_solve_c_ptr(npar, fInd->x, trustInnerObjfun, (void*)(&id), &topts, &tres);
+      op_focei.nTrustInner.fetch_add(1, std::memory_order_relaxed);
+      bool conv = false;
+      if (tres.error >= 0 && tres.argument != NULL) {
+        std::copy(tres.argument, tres.argument + npar, fInd->x);
+        f = tres.value;
+        conv = (bool)tres.converged;
+        if (R_FINITE(f) && !ISNA(f)) {
+          keepBest();
+          if (tres.gradient != NULL) std::copy(tres.gradient, tres.gradient + npar, fInd->g);
+          if (tres.gradient != NULL && tres.hessian != NULL) {
+            arma::mat H(tres.hessian, npar, npar);
+            arma::vec g(tres.gradient, npar);
+            arma::vec step;
+            if (arma::solve(step, H, -g, arma::solve_opts::no_approx) &&
+                arma::dot(g, step) < 0) {
+              // step is in raw eta units; theta_try = theta + ptry/parscale
+              // inside trust_core.h means the SCALED step (comparable to r)
+              // is ptry = step_raw * parscale component-wise.
+              double d2 = 0.0;
+              for (int i = 0; i < npar; i++) {
+                double si = step[i] * parscale[i];
+                d2 += si * si;
+              }
+              pushDist = std::sqrt(d2);
+              if (conv && pushDist > pushTol) conv = false;
+            }
+            // Newton estimate unusable (singular/indefinite H, or not a
+            // descent direction): leave conv at trust_solve_c()'s own flag
+            // rather than fabricate a verdict from an untrustworthy estimate.
+          }
+        }
+      } else {
+        // Hard error (e.g. tres.error==-3: the nudged starting point itself
+        // was infeasible) -- fInd->x was already overwritten with the raw
+        // nudge fill above, but f is left untouched here otherwise. If a
+        // PRIOR attempt succeeded, f still equals fBest, so the shared
+        // restoreBest() guard below (`fBest < f`) would silently skip
+        // restoring: the reported objective would say fBest while fInd->x
+        // actually held this failed nudge point. Force f to +Inf so that
+        // guard always fires when this attempt didn't produce a usable eta.
+        f = std::numeric_limits<double>::infinity();
+      }
+      trust_result_free_ptr(&tres);
+      return conv;
+    };
+
+    bool converged = trustSolveAt(false, 0.0);
+    if (!converged && pushDist > curRmax) {
+      // Radius-escalation retry from the point just found (already the best
+      // seen so far, via keepBest() above) before falling back to eta nudges.
+      // Target = the measured Newton-step distance (with a 20% margin so the
+      // re-solve lands on an INTERIOR point, not again exactly on the new
+      // boundary), floored at a plain doubling to match trust_core.h's own
+      // internal growth rule (`r = std::min(2.0*r, rmax)` on a very
+      // successful step) and ceiled at 8x -- three such doublings -- so one
+      // poorly-conditioned subject can't blow the radius up without bound.
+      double target = std::max(curRmax * 2.0, pushDist * 1.2);
+      curRmax = std::min(target, op_focei.trustRmax * 8.0);
+      converged = trustSolveAt(false, 0.0);
+    }
+    // Restart cascade on non-convergence, same nudge magnitudes n1qn1 uses; the
+    // monotone keepBest()/restoreBest() (shared below) guarantees a later
+    // restart can only improve on an earlier one.
+    if (!converged && fInd->doEtaNudge == 1 && op_focei.etaNudge != 0.0) {
+      op_focei.didEtaNudge.store(1, std::memory_order_relaxed);
+      double nudges[4] = {op_focei.etaNudge, -op_focei.etaNudge,
+                           -op_focei.etaNudge2, op_focei.etaNudge2};
+      for (int _n = 0; _n < 4 && !converged; _n++) {
+        converged = trustSolveAt(true, nudges[_n]);
+      }
+    }
+    if (!haveBest) return 0;
+    } catch (const std::bad_alloc &) {
+      // System out of memory mid-solve -- see the branch-level comment above.
+      // Every other exit from this branch marks a failed attempt via
+      // fInd->badSolve (checked by trustInnerObjfun/etc. on the NEXT call to
+      // this subject) -- match that here even though the caller's own
+      // innerOpt1() return value already signals the failure on its own.
+      fInd->badSolve = 1;
+      if (!haveBest) return 0;
+    } catch (...) {
+      // Defense in depth, matching trust_solve_c()'s own catch(...) fallback:
+      // any other C++ exception escaping this branch is equally fatal if it
+      // crosses the OpenMP boundary uncaught.
+      fInd->badSolve = 1;
+      if (!haveBest) return 0;
     }
   } else {
     int fail=0, fncount=0, grcount=0;
@@ -4453,6 +4820,16 @@ void innerOpt() {
     foceiOmegaEnvSyncFromTail(); // fast omega path leaves the env theta stale
     op_focei.omegaInv=getOmegaInv();
     op_focei.logDetOmegaInv5 = getOmegaDet();
+    if (op_focei.innerOpt == 3) {
+      // trust-region parscale needs Omega (not just its inverse) refreshed on
+      // the same cadence as omegaInv -- op_focei.omega is otherwise only kept
+      // current for est="fo" (foceiOmegaFromTheta only refreshes it on that
+      // branch). getOmegaMat() is a real computation, not free, so this stays
+      // gated: unconditionally refreshing it every outer iteration for EVERY
+      // fit (including the n1qn1 default) would pay that cost on the hot path
+      // for every innerOpt/est combination that never reads op_focei.omega.
+      op_focei.omega = getOmegaMat();
+    }
   }
   // Pre-draw per-subject ETA samples serially before the parallel for-loop so
   // workers only do memory access (no R API calls), making mceta safe under cores > 1.
@@ -6434,7 +6811,11 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
       2 * op_focei.neta * op_focei.neta * nsub_mix +
       nall_mix +
       // per-obs censored inner-Hessian coefficients gcHff/gcHfr/gcHrr
-      3 * nall_mix,
+      3 * nall_mix +
+      // hessianMethod= quasi-Newton state: etaHessQN [neta*neta] +
+      // etaGradPrevQN/etaPrevQN [neta] each, per subject
+      op_focei.neta * op_focei.neta * nsub_mix +
+      2 * op_focei.neta * nsub_mix,
       double);
   }
   op_focei.etaLower =  op_focei.etaUpper + op_focei.neta;
@@ -6463,6 +6844,11 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
   op_focei.gcHff    = op_focei.gVid + (size_t)getRxNallAndMix(rx)*getRxNallAndMix(rx); //[nall_mix]
   op_focei.gcHfr    = op_focei.gcHff + getRxNallAndMix(rx); //[nall_mix]
   op_focei.gcHrr    = op_focei.gcHfr + getRxNallAndMix(rx); //[nall_mix]
+  op_focei.getaHessQN     = op_focei.gcHrr + getRxNallAndMix(rx); //[neta*neta*nsub_mix]
+  op_focei.getaGradPrevQN = op_focei.getaHessQN +
+    op_focei.neta*op_focei.neta*getRxNsubAndMix(rx); //[neta*nsub_mix]
+  op_focei.getaPrevQN     = op_focei.getaGradPrevQN +
+    op_focei.neta*getRxNsubAndMix(rx); //[neta*nsub_mix]
   // Could use .zeros() but since I used Calloc, they are already zero.
   // Yet not doing it causes the theta reset error.
   op_focei.etaM     = mat(op_focei.neta, 1, arma::fill::zeros);
@@ -6507,6 +6893,15 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
     fInd->etahf = &op_focei.getahf[j];
     fInd->etahr = &op_focei.getahr[j];
     fInd->etahh = &op_focei.getahh[j];
+    // hessianMethod= quasi-Newton state -- direct i*neta(*neta) indexing
+    // (matching op_focei.gH's own convention, e.g. src/inner.cpp's
+    // `op_focei.gH + id*op_focei.neta*op_focei.neta`), not the +1-padded
+    // gEtaGTransN blocks the eta vectors above use (no subject-id sentinel
+    // slot is needed here).
+    fInd->etaHessQN = &op_focei.getaHessQN[i * op_focei.neta * op_focei.neta];
+    fInd->etaGradPrevQN = &op_focei.getaGradPrevQN[i * op_focei.neta];
+    fInd->etaPrevQN = &op_focei.getaPrevQN[i * op_focei.neta];
+    fInd->etaHasPrevQN = 0;
     fInd->oldEta = &op_focei.goldEta[j];
     fInd->tryEta = &op_focei.gtryEta[j];
     fInd->saveEta = &op_focei.gsaveEta[j];
@@ -7272,6 +7667,78 @@ NumericVector foceiSetup_(const RObject &obj,
     else foceiSetupEta_(etaMat0);
   }
   op_focei.epsilon=as<double>(foceiO["epsilon"]);
+  op_focei.innerOpt = foceiO.containsElementNamed("innerOpt") ? as<int>(foceiO["innerOpt"]) : 1;
+  op_focei.trustConf = foceiO.containsElementNamed("trustConf") ? as<double>(foceiO["trustConf"]) : 0.975;
+  {
+    // rmax: radius (in sqrt(diag(Omega))-scaled units) of the trustConf-level eta
+    // confidence region. Plain case: eta ~ N(0, Omega) makes eta'Omega^-1 eta
+    // chi-square(df=neta) -- the textbook confidence-ellipsoid radius, valid
+    // when Omega itself is treated as known.
+    //
+    // When the model ALSO puts a textbook inverse-Wishart prior on (a block
+    // of) Omega (rx_prior_term_t.type==3, the "general" prior method's own
+    // invWishart(nu) -- R/priors.R), Omega is not known, and using the plain
+    // chi-square radius anyway (as if the current Omega estimate were exact)
+    // understates how far eta may legitimately need to move -- especially
+    // with a low-nu (weak/uncertain) prior, or early in a fit before Omega
+    // has settled. Standard Normal-Inverse-Wishart theory: if
+    // Sigma ~ InvWishart(Psi, nu) and x | Sigma ~ N(0, Sigma), the MARGINAL
+    // distribution of x (Sigma integrated out) is multivariate-t with
+    // df_t = nu - d + 1 (d = the prior block's own dimension) and scale
+    // Psi/df_t. A multivariate-t's trustConf-level confidence-ellipsoid
+    // radius is sqrt(d * qf(trustConf, d, df_t)) (Johnson & Wichern,
+    // "Applied Multivariate Statistical Analysis") -- and as
+    // df_t -> Inf (nu -> Inf, Omega effectively known), F_{d,df_t}/1 ->
+    // chisq_d/d, recovering the plain chi-square formula exactly. So this is
+    // a strict generalization, not a different formula, and reduces to
+    // today's behavior whenever there is no omega-block prior.
+    //
+    // A joint per-subject eta solve moves every eta together under ONE
+    // scalar radius, so with several omega-block priors in play (or a prior
+    // covering only part of a larger joint eta vector) this uses the
+    // SMALLEST nu found (the most uncertain block) applied to the FULL
+    // neta-dimensional ellipsoid -- conservative, since over-widening for a
+    // well-determined direction costs a few extra trust-region iterations,
+    // never correctness, while under-widening is exactly the bug this fixes
+    // (test-focei-prior.R's omega-prior case).
+    double _df = (double) op_focei.neta;
+    double _nuMin = R_PosInf, _nuMinBlockDim = 0.0;
+    if (op_focei.priorSpec != NULL) {
+      for (int _t = 0; _t < op_focei.priorSpec->nTerms; ++_t) {
+        const rx_prior_term_t &_term = op_focei.priorSpec->terms[_t];
+        if (_term.type == 3 && _term.nu < _nuMin) {
+          _nuMin = _term.nu;
+          _nuMinBlockDim = (double) _term.n;
+        }
+      }
+    }
+    double _rmaxDefault;
+    if (_df > 0 && R_FINITE(_nuMin) && _nuMin > _nuMinBlockDim - 1.0) {
+      double _dfT = _nuMin - _nuMinBlockDim + 1.0;
+      _rmaxDefault = std::sqrt(_df * boost::math::quantile(
+        boost::math::fisher_f_distribution<double>(_df, _dfT), op_focei.trustConf));
+    } else {
+      // No omega-block prior (the common case), or one whose nu is not
+      // large enough for a proper marginal-t (nu <= blockDim-1) -- fall back
+      // to the plain known-Omega chi-square radius rather than a
+      // nonsensical/negative df_t.
+      _rmaxDefault = (_df > 0) ? std::sqrt(boost::math::quantile(
+        boost::math::chi_squared_distribution<double>(_df), op_focei.trustConf)) : 1.0;
+    }
+    SEXP _trustRmaxS = foceiO.containsElementNamed("trustRmax") ? (SEXP)foceiO["trustRmax"] : R_NilValue;
+    op_focei.trustRmax = Rf_isNull(_trustRmaxS) ? _rmaxDefault : as<double>(_trustRmaxS);
+    SEXP _trustRinitS = foceiO.containsElementNamed("trustRinit") ? (SEXP)foceiO["trustRinit"] : R_NilValue;
+    op_focei.trustRinit = Rf_isNull(_trustRinitS) ? (op_focei.trustRmax / 2.0) : as<double>(_trustRinitS);
+    // R only rejects trustRinit > trustRmax when BOTH are given explicitly --
+    // it can't know trustRmax's derived default (needs neta, not resolved
+    // until here). An explicit trustRinit paired with a smaller *derived*
+    // trustRmax would otherwise start the trust region already past its own
+    // cap; clamp rather than error since this is just as easy to reach by an
+    // ordinary trustConf choice as by a deliberate override.
+    if (op_focei.trustRinit > op_focei.trustRmax) op_focei.trustRinit = op_focei.trustRmax;
+  }
+  op_focei.nTrustInner.store(0, std::memory_order_relaxed);
+  op_focei.nHessianQN.store(0, std::memory_order_relaxed);
   op_focei.nsim=as<int>(foceiO["n1qn1nsim"]);
   op_focei.imp=0;
   op_focei.resetThetaSize = std::numeric_limits<double>::infinity();
@@ -7516,6 +7983,11 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.resetThetaSize=as<double>(foceiO["resetThetaSize"]);
   op_focei.resetThetaFinalSize = as<double>(foceiO["resetThetaFinalSize"]);
   op_focei.needOptimHess = as<bool>(foceiO["needOptimHess"]);
+  // hessianMethod= (foceiControl()): only meaningful when needOptimHess is
+  // TRUE (non-normal-endpoint models); tolerate an older control missing the
+  // field (-> "fd", the historic behavior).
+  op_focei.hessianMethod = foceiO.containsElementNamed("hessianMethod") ?
+    as<int>(foceiO["hessianMethod"]) : trustHessFd;
 
   op_focei.cholSEOpt=as<double>(foceiO["cholSEOpt"]);
   op_focei.cholSECov=as<double>(foceiO["cholSECov"]);

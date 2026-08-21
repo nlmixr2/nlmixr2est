@@ -27,6 +27,71 @@
   seed) change as a result.
 ## New features
 
+- `foceiControl(innerOpt=)` adds a trust-region Newton inner (per-subject eta)
+  optimizer backed by the `RcppTrust` package, `"trust"`, and **it is now the
+  default** for every FOCEi-family method (`focei`/`foce`/`foi`/`fo`, and
+  `impmap`'s MAP inner problem) -- `n1qn1` remains available via
+  `foceiControl(innerOpt="n1qn1")`. Unlike `n1qn1`, which gets an approximate
+  Hessian only once as a warm-start seed, the trust-region step is supplied a
+  fresh exact Gauss-Newton+Omega^-1 Hessian every iteration. Each eta is
+  scaled by `sqrt(diag(Omega))`, with the trust-region radius derived from
+  the eta confidence region (`foceiControl(trustConf=)`, default 0.975);
+  `trustRinit`/`trustRmax` override the derived radius directly. `est="vae"`
+  does not use `foceiControl()`'s inner loop and is unaffected.
+
+  This changes the exact numeric result of every FOCEi-family fit that does
+  not pin `innerOpt=` explicitly (typically by a few objf units at most; see
+  `inst/benchmarks/results/` for a broad benchmark against `n1qn1`), though
+  usually faster and comparably accurate. Pin `foceiControl(innerOpt="n1qn1")`
+  to keep exact bit-for-bit reproducibility with prior releases.
+
+- New nlm-family estimation method, `est="trust"` (`trustControl()`), a
+  trust-region Newton optimizer for the population theta vector backed by
+  the `RcppTrust` package -- unrelated to `foceiControl(innerOpt="trust")`
+  above, which optimizes per-subject eta instead. Unlike every other
+  nlm-family method (`nlm`/`nlminb`/`bobyqa`/`newuoa`/`uobyqa`/`n1qn1`/
+  `lbfgsb3c`/`optim`), whose optimization loop lives in R and calls back
+  into C++ once per iteration, `trust`'s entire loop runs inside a single
+  C++ call -- `RcppTrust` needs no R API, so there is no per-iteration R
+  round-trip. It optimizes in the same scaled-parameter space every
+  nlm-family method (`bobyqa` included) already uses, and supplies a full
+  gradient and a full Hessian every iteration. By default
+  (`trustControl(hessianMethod="fd")`) this Hessian is a fresh
+  finite-difference-of-the-gradient every outer iteration (there is no
+  analytic outer-theta Hessian in this package, so this costs roughly
+  `ntheta` extra full population-gradient solves per outer iteration -- the
+  price of true Newton-trust behavior). `hessianMethod` can instead build the
+  Hessian as a quasi-Newton update from consecutive outer iterations'
+  gradients (already computed regardless of `hessianMethod`, so these add no
+  extra evaluations): `"bfgs"` (damped BFGS, always positive definite),
+  `"sr1"` (Symmetric Rank-1, not forced positive definite), or `"bofill"`
+  (Bofill's SR1/Powell-Symmetric-Broyden blend, the standard
+  Berny/transition-state-search Hessian update) -- see `?trustControl` for
+  full references. `trust` is unbounded, like `n1qn1`/`nlm`.
+
+- `foceiControl(hessianMethod=)` extends the same idea to FOCEi's INNER
+  (per-subject eta) problem: for a non-normal-endpoint model (any
+  distribution other than `norm`), the per-subject inner Hessian has no
+  Gaussian Gauss-Newton shortcut and falls back to a finite difference of
+  the gradient every `innerOpt="trust"` Newton step (`calcEtaHessian()`).
+  `"fd"` (default) keeps this original finite difference; `"bfgs"`/`"sr1"`/
+  `"bofill"` build the Hessian instead as a quasi-Newton update from
+  consecutive Newton steps' already-computed gradients (no extra
+  evaluations) -- the same three update formulas `trustControl()` above
+  uses. Since this loop runs per subject, per Newton step, per outer
+  iteration, avoiding a fresh finite difference at every one compounds into
+  a much larger speedup than the outer-theta case: `bfgs`/`sr1`/`bofill` ran
+  roughly 3-14x faster than `"fd"` on this package's own small benchmark (a
+  Poisson and a general `ll()` model,
+  `inst/benchmarks/benchmark-focei-hessian-method.R`). `"fd"` stays the
+  default: unlike the outer-theta case, this inner Hessian's log-determinant
+  is added directly into the reported objective (`LikInner2()`), and on a
+  real one-compartment PK model fit as a general `ll()` endpoint every
+  quasi-Newton option converged to the same wrong parameter estimate with a
+  *worse* reported objective than `"fd"`'s correct answer -- see the Bug
+  fixes section below. Has no effect on normal-endpoint models. Only
+  meaningful with `innerOpt="trust"`.
+
 - A pure-linear `matExp()` model now solves natively through rxode2's
   matrix-exponential driver (`rxControl(method="indLin")`) under SAEM instead
   of being flattened to an equivalent `d/dt()` ODE first.  SAEM has no
@@ -716,6 +781,73 @@
   build read the defaults instead (issue #864).  This matters because
   `optExpression=FALSE` is the workaround for a delay-differential model whose
   `past()` duration is an expression.
+
+- Every nlm-family method's default `scaleType="nlmixr2"` scale constant no
+  longer explodes to its `scaleCmax` ceiling for a parameter whose starting
+  gradient happens to be genuinely near zero -- for example a bounded/
+  `upper_exp`-transformed theta whose sensitivity is tiny at the model's
+  default initial estimate (issue #994).  The derivative-based formula
+  `scaleC[i] = |gradTo/gradient_i|` had no guard analogous to FOCEi's own
+  `scaleCtheta`/`.guardScaleC()` safeguard, so a near-zero denominator was
+  clamped to a scale constant up to 100000x too large, permanently
+  distorting every later scaled gradient/Hessian entry for that dimension
+  and derailing `est="trust"`'s Newton-based step decisions in particular.
+  Each element is now guarded with the same `.guardScaleC()` band FOCEi
+  already uses, falling back to the transform-aware `ui$scaleCtheta` value
+  when out of band.
+
+- `est="trust"` on a model mixing `linCmt()` with an ODE (e.g. an effect
+  compartment) no longer converges to a badly wrong objective (issue #996).
+  `trust` was left out of `.linCmtOdeEstFamily` (`R/preProcessLinCmtOde.R`)
+  when it was added, so the `linCmt()`-to-ODE translation this list exists to
+  trigger -- needed because the extra theta-sensitivity states this family
+  adds push `linCmt()`'s compartments past the numbers the data was
+  translated against, the same problem #286 fixed for FOCEi -- never ran for
+  it. 5 of 7 population thetas had an exactly-zero starting gradient as a
+  result. `"trust"` is now included in that list.
+
+- `nlmControl(normType=)`/`trustControl(normType=)`/etc.'s `"mean"`, `"std"`,
+  and `"len"` normalizations (with the default `scaleType="nlmixr2"`) now
+  compute their mean/standard-deviation/length constants from *every*
+  estimated parameter instead of silently dropping the last one (issue #995).
+  `scaleSetup()`'s (`src/scale.h`) per-normType setup loop used
+  `for (unsigned int k = scale->npars-1; k--;)`, which tests the
+  pre-decrement `k` for truthiness before the body runs, so the body itself
+  never executed with `k=npars-1` -- the top-indexed parameter's value was
+  excluded from the running mean/variance/sum-of-squares, and its scale
+  constant was never reset for recomputation. `"rescale"`/`"rescale2"`
+  (the default) were unaffected (their min/max accumulator is separately
+  seeded with the top parameter before the loop runs).
+
+- `foceiControl(hessianMethod=)`'s default is `"fd"` again (reverting a
+  mid-development flip to `"sr1"` made for consistency with
+  `trustControl()`'s own outer-theta default). A quasi-Newton inner Hessian
+  feeds its log-determinant directly into the reported per-subject Laplace
+  objective (`LikInner2()`), unlike the outer-theta case where the Hessian
+  only affects the step; on a real one-compartment IV bolus PK model fit as
+  a general `ll()`/`dnorm()` endpoint, `"bfgs"`/`"sr1"`/`"bofill"` all
+  converged to the same wrong `Vc` (about 90 against a simulated 70 and a
+  plain `focei` fit's ~67-68) with a *worse* reported objective than
+  `"fd"`'s correct answer -- the inaccurate Hessian misled the outer search
+  into a worse point it reported as better.
+
+  `trustControl(hessianMethod=)`'s own outer-theta default was briefly
+  reverted to `"fd"` too pending confirmation, since that option's earlier
+  benchmark (showing `"sr1"` about as accurate and faster) predates the
+  fixes for issues #994 and #996 above, both of which distorted several of
+  its benchmark models' results identically regardless of `hessianMethod`
+  (a wrong raw gradient upstream of Hessian construction, in both cases).
+  Re-run after both fixes, `"sr1"`/`"bofill"` track `"fd"` closely (median
+  |objective diff| vs `bobyqa`, across the same 23-model corpus: 1.53/1.55
+  vs `"fd"`'s 1.55) and `"bfgs"` if anything tracks it slightly better
+  (0.43) -- confirming the earlier small accuracy gap was at least partly
+  noise from those bugs, not a genuine Hessian-construction difference for
+  this outer problem, which does not have the inner problem's specific
+  failure mode (`nlmTrustObjfun()`'s reported value is the plain
+  log-likelihood, set before the Hessian is touched, so a less-accurate
+  `hessianMethod` here can only cost step quality, not bias the reported
+  number). `trustControl()`'s default is therefore `"sr1"` again -- faster,
+  with no demonstrated accuracy cost for this problem.
 
 ### Crashes and stability
 
