@@ -829,26 +829,25 @@
   converged to the same wrong `Vc` (about 90 against a simulated 70 and a
   plain `focei` fit's ~67-68) with a *worse* reported objective than
   `"fd"`'s correct answer -- the inaccurate Hessian misled the outer search
-  into a worse point it reported as better. `trustControl(hessianMethod=)`'s
-  own outer-theta default is also reverted to `"fd"`: that option's earlier
+  into a worse point it reported as better.
+
+  `trustControl(hessianMethod=)`'s own outer-theta default was briefly
+  reverted to `"fd"` too pending confirmation, since that option's earlier
   benchmark (showing `"sr1"` about as accurate and faster) predates the
   fixes for issues #994 and #996 above, both of which distorted several of
   its benchmark models' results identically regardless of `hessianMethod`
-  (a wrong raw gradient upstream of Hessian construction, in both cases) --
-  the small accuracy gap that benchmark measured was at least partly noise
-  from those bugs, not a clean signal that `"sr1"` matches `"fd"`'s accuracy
-  once they are fixed. Re-run after both fixes, `"sr1"`/`"bofill"` do track
-  `"fd"` closely (median |objective diff| vs `bobyqa`, across the same
-  23-model corpus: 1.53/1.55 vs `"fd"`'s 1.55) and `"bfgs"` if anything
-  tracks it slightly better (0.43) -- the outer-theta case genuinely does
-  not have the inner problem's specific failure mode (`nlmTrustObjfun()`'s
-  reported value is the plain log-likelihood, set before the Hessian is
-  touched), so a less-accurate Hessian there can only cost step quality,
-  not bias the reported number. `"fd"` is still the default for both,
-  matching the inner-problem choice for consistency, but for the
-  outer-theta case that is a cautious choice rather than one driven by a
-  demonstrated bias. `"bfgs"`/`"sr1"`/`"bofill"` remain available and
-  faster.
+  (a wrong raw gradient upstream of Hessian construction, in both cases).
+  Re-run after both fixes, `"sr1"`/`"bofill"` track `"fd"` closely (median
+  |objective diff| vs `bobyqa`, across the same 23-model corpus: 1.53/1.55
+  vs `"fd"`'s 1.55) and `"bfgs"` if anything tracks it slightly better
+  (0.43) -- confirming the earlier small accuracy gap was at least partly
+  noise from those bugs, not a genuine Hessian-construction difference for
+  this outer problem, which does not have the inner problem's specific
+  failure mode (`nlmTrustObjfun()`'s reported value is the plain
+  log-likelihood, set before the Hessian is touched, so a less-accurate
+  `hessianMethod` here can only cost step quality, not bias the reported
+  number). `trustControl()`'s default is therefore `"sr1"` again -- faster,
+  with no demonstrated accuracy cost for this problem.
 
 ### Crashes and stability
 

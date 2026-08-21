@@ -17,7 +17,7 @@ nmTest({
     expect_equal(do.call(trustControl, .ctl)$rinit, 0.1)
     expect_equal(do.call(trustControl, .ctl)$rmax, 1)
 
-    expect_equal(trustControl()$hessianMethod, 1L)
+    expect_equal(trustControl()$hessianMethod, 3L)
     expect_equal(trustControl(hessianMethod = "fd")$hessianMethod, 1L)
     expect_equal(trustControl(hessianMethod = "bfgs")$hessianMethod, 2L)
     expect_equal(trustControl(hessianMethod = "sr1")$hessianMethod, 3L)
