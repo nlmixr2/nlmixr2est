@@ -1143,6 +1143,8 @@ rxSolveF rxHess2;     // fast=TRUE ll(): 2nd-order model d2(logLik)/deta2 (peer 
 rxSolveF rxOuterNode; // analytic gradient: order-1 augmented model for AGQ nodes
 rxSolveF rxOuterCov;  // analytic covariance: augmented model over the cov direction set
 rxSolveF rxVaeOuter;  // est="vae" nonMuTheta="grad": augmented outer-gradient model
+rxSolveF rxSaem;       // est="saem" general-lik: SAEM's own flattened phi-space model
+                       // (peer of rxHess2/rxPred for the phi1 theta step)
                       // (peer of rxInner/rxPred/rxThetaSens).  Sizes the shared solve
                       // pool -- it is the LARGEST structure -- and the inner MAP then
                       // runs under ind->neqOverride, exactly like the impmap pool.

@@ -165,6 +165,9 @@ int odeSwapEsModelForSlot(int slot) {
   case odeSlotOuter:
   case odeSlotOuterNode:
   case odeSlotOuterCov:  return odeEsOuter;
+  // SAEM's own model carries no event sensitivities of its own (same role as
+  // the pred model) -- it never installs a shape, so it shares odeEsPred.
+  case odeSlotSaem:      return odeEsPred;
   default:               return odeEsUnknown;
   }
 }
