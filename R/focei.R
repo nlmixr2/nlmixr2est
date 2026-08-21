@@ -716,17 +716,232 @@ rxUiGet.loadPrune <- function(x, ...) {
 #attr(rxUiGet.loadPrune, "desc") <- "load sensitivity without linCmt() promoted"
 attr(rxUiGet.loadPrune, "rstudio") <- emptyenv()
 
+#' Map every model theta/eta to its canonical `THETA_#_`/`ETA_#_` sensitivity token
+#'
+#' `rxode2::rxSensMatExp()` differentiates a model written with the ORIGINAL
+#' (natural) parameter names (`tka`, `eta.ka`, ...) -- calling it on a model
+#' already substituted to `THETA[#]`/`ETA[#]` form corrupts its internal
+#' text round-trip (`rxIndLin_()` renders those as bracket-indexed display
+#' text, which is not something `eval(parse(text=...))` can resolve inside a
+#' symengine environment; with an `indLin()` forcing term present it segfaults
+#' rather than erroring).  This builds the natural-name <-> canonical-token
+#' map (keyed by canonical token) so callers can invoke `rxSensMatExp()` on
+#' the untouched natural-name model text and rename the result afterward.
+#'
+#' @param rxui rxode2 UI object
+#' @return named character vector: names are `THETA_#_`/`ETA_#_` tokens,
+#'   values are the corresponding natural model parameter names
+#' @author Matthew L. Fidler
+#' @noRd
+.rxNaturalThetaEtaMap <- function(rxui) {
+  .iniDf <- rxui$iniDf
+  .thetaW <- which(!is.na(.iniDf$ntheta))
+  .etaW <- which(!is.na(.iniDf$neta1) & .iniDf$neta1 == .iniDf$neta2)
+  # paste0() recycles a zero-length index to "" (R >= 4.0), which would
+  # fabricate a malformed "ETA__" entry for a theta-only (no-eta) model --
+  # same trap documented at rxUiGet.foceiEtaS's combSens .extra build.
+  .canon <- paste0("THETA_", .iniDf$ntheta[.thetaW], "_")
+  .nat <- .iniDf$name[.thetaW]
+  if (length(.etaW) > 0L) {
+    .canon <- c(.canon, paste0("ETA_", .iniDf$neta1[.etaW], "_"))
+    .nat <- c(.nat, .iniDf$name[.etaW])
+  }
+  stats::setNames(.nat, .canon)
+}
+
+#' Rename whole-token occurrences of `natural` names to `canonical` names in model text
+#'
+#' Longest names are substituted first so one natural name that is a prefix
+#' of another (`eta.k`/`eta.ka`) cannot corrupt the longer one.  Matches are
+#' bounded by "not alphanumeric/dot" on both sides -- NOT underscore, since
+#' rxode2's `rx__sens_<state>_BY_<name>__` compartment-naming convention
+#' wraps the name in underscores and still needs to match there.
+#'
+#' @param text character vector of model text lines
+#' @param natural character vector of natural names to replace
+#' @param canonical character vector of replacement tokens, same length/order as `natural`
+#' @return `text` with every whole-token `natural[i]` replaced by `canonical[i]`
+#' @author Matthew L. Fidler
+#' @noRd
+.rxRenameTokens <- function(text, natural, canonical) {
+  .ord <- order(nchar(natural), decreasing = TRUE)
+  for (.i in .ord) {
+    .esc <- gsub(".", "\\.", natural[.i], fixed = TRUE)
+    .pat <- paste0("(?<![A-Za-z0-9.])", .esc, "(?![A-Za-z0-9.])")
+    text <- gsub(.pat, canonical[.i], text, perl = TRUE)
+  }
+  text
+}
+
+#' Build matExp()-native sensitivities (#860) via `rxode2::rxSensMatExp()`
+#'
+#' Populates `s$..ddt` with the matrix-exponential sensitivity block (states +
+#' `rx__sens_<state>_BY_<param>__` compartments + `k_*`/`indLin()`/`df()/dy()`
+#' lines) instead of the ordinary variational-ODE `d/dt()` form, so a matExp()
+#' model keeps solving through rxode2's matrix-exponential driver end to end.
+#'
+#' `rxSensMatExp()` must be called on the RAW natural-name model text (see
+#' `.rxNaturalThetaEtaMap()`) -- calling it against `s` (already `THETA[#]`/
+#' `ETA[#]`-substituted) is unsafe.  The result is then: (1) renamed from
+#' natural names to `THETA_#_`/`ETA_#_` tokens so the sensitivity-compartment
+#' names match the `.rxSens()` ODE-path convention downstream code
+#' (`rxExpandFEta_` and friends) expects, and (2) filtered to drop anything
+#' already supplied elsewhere in the assembled inner model: the original
+#' states' `cmt()` declarations (`rxUiGet.foceiCmtPreModel`, emitted outside
+#' `s$..inner`) and any line whose name already exists in `s$..lhs` (emitted
+#' suppressed via `.preLhs` in `.rxFinalizeInner`/`.rxFinalizePred` --
+#' re-emitting it here too would be a duplicate variable definition).
+#'
+#' @param s symengine environment (from `.loadSymengine()`), already
+#'   THETA[#]/ETA[#]-substituted
+#' @param rxui rxode2 UI object backing `s`, for the raw natural-name model
+#'   text and the natural<->canonical parameter name map
+#' @param etaVars character vector of canonical `THETA_#_`/`ETA_#_` tokens to
+#'   differentiate by
+#' @param stateVars character vector of the model's ORIGINAL ODE state names
+#' @return `s`, with `..ddt` set to the matExp-native sensitivity block,
+#'   `..sens` cleared (the sensitivity dynamics live in `..ddt` now, not as
+#'   separate `d/dt()` lines), `rx__sens_<state>_BY_<param>__` bound as bare
+#'   symengine symbols, and `..matExpNative` set so `.rxFinalizeInner`/
+#'   `.rxFinalizePred`/`.rxFinalizeNlm` do not re-flatten over it
+#' @author Matthew L. Fidler
+#' @noRd
+.sensMatExpNative <- function(s, rxui, etaVars, stateVars) {
+  .map <- .rxNaturalThetaEtaMap(rxui)
+  .nat <- .map[etaVars]
+  if (any(is.na(.nat))) {
+    stop("cannot map matExp() sensitivity parameter(s) to a model theta/eta",
+         call. = FALSE)
+  }
+  .rawTxt <- rxode2::rxModelVars(rxui)$model["normModel"]
+  .code0 <- rxode2::rxSensMatExp(model = .rawTxt, calcSens = unname(.nat))
+  .code1 <- .rxRenameTokens(.code0, unname(.nat), etaVars)
+  .lines <- strsplit(.code1, "\n")[[1]]
+  .knownLhs <- character(0)
+  if (!is.null(s$..lhs)) {
+    .knownLhs <- sub("^([^=~]+)[=~].*", "\\1", s$..lhs)
+  }
+  # The k_from_to/k_from_output rate constants for the ORIGINAL states gate
+  # which compartments matExp() recognizes as active states in THIS block --
+  # rxSensMatExp() re-derives them itself, and they must stay INSIDE the
+  # matExp() block (not as a suppressed pre-line from .preLhs/.lhs, outside
+  # it) or the df()/dy() lines below error with "needs to be defined before
+  # using a Jacobian for this state".  So, unlike every other already-known
+  # name (tka, cp, ...), do NOT drop them here -- instead mark them for the
+  # CALLER to drop from .preLhs/.lhs, so each name is defined exactly once.
+  .kRe <- "^k[_.]([^_.]+)[_.]([^_.]+)$"
+  .isOrigRateConst <- function(.nm) {
+    .m <- regmatches(.nm, regexec(.kRe, .nm))[[1]]
+    length(.m) == 3L && .m[2] %in% stateVars && (.m[3] %in% stateVars || .m[3] == "output")
+  }
+  .dropFromPreLhs <- .knownLhs[vapply(.knownLhs, .isOrigRateConst, logical(1))]
+  .dedupNames <- setdiff(.knownLhs, .dropFromPreLhs)
+  .specialNames <- c("rx_pred_", "rx_pred_f_", "rx_r_", "rx_yj_", "rx_lambda_",
+                     "rx_hi_", "rx_low_")
+  .keep <- vapply(.lines, function(.ln) {
+    # cmt() declarations are kept for ALL states, including the original ones
+    # (also declared via toRxParam/rxUiGet.foceiCmtPreModel): a state's
+    # df()/dy() Jacobian entry only resolves against a cmt() declared inside
+    # the SAME matExp() block, not one declared earlier in the model text.
+    .m <- regmatches(.ln, regexec("^([A-Za-z_.][A-Za-z0-9_.]*)\\s*[=~]", .ln))[[1]]
+    if (length(.m) < 2L) return(TRUE) # matExp()/cmt()/df()/dy()/indLin() declarations
+    !(.m[2] %in% c(.dedupNames, .specialNames))
+  }, logical(1))
+  .lines <- .lines[.keep]
+  # Suppress every kept "name=expr" line ('~' not '=') -- an extra REAL output
+  # column here (k_*, the new sens-compartment rate constants, ...) shifts the
+  # LHS layout src/inner.cpp reads at fixed offsets from rx_pred_/rx_r_
+  # (predOffset+i+1 etc), the same hazard .preLhs already guards against.
+  # df()/dy()/indLin()/cmt()/matExp() are declarations, not assignments -- the
+  # regex below only matches (and only needs to convert) plain "name=expr".
+  .lines <- sub("^([A-Za-z_.][A-Za-z0-9_.]*)\\s*=", "\\1~", .lines)
+  # rxSensMatExp() orders its own cmt() declarations for the ORIGINAL states
+  # however its internal state matrix happens to enumerate them (e.g. by
+  # which one carries the indLin() forcing) -- and .rxode2stateOdeNoOutput()
+  # (stateVars' own source) is NOT source-first either for such a model.
+  # matExp()'s dosing default (undeclared cmt -> compartment 1) and event
+  # rebasing key off the FIRST cmt() declaration seen for each state, so
+  # re-emit them source-first via the same k_from_to topological sort
+  # rxUiGet.foceiCmtPreModel's toRxParam declarations already use, right
+  # after the matExp() keyword -- a mismatch here is exactly the "indLin()
+  # forcing state parses as compartment 1" hazard the analytic-gradient MM
+  # test's comment documents.
+  # .rxMatExpStateOrder() matches k_from_to entries by NAME (regex anchored
+  # end-to-end) -- it needs the bare names .knownLhs already extracted, not
+  # s$..lhs's "name=expr" text (which never matches, silently leaving the
+  # order unchanged).
+  .origCmt <- paste0("cmt(", .rxMatExpStateOrder(stateVars, .knownLhs), ")")
+  .lines <- .lines[!(.lines %in% .origCmt)]
+  .matExpAt <- which(.lines == "matExp()")
+  if (length(.matExpAt) == 1L) {
+    .lines <- append(.lines, .origCmt, after = .matExpAt)
+  }
+  # The renamed ETA_#_/THETA_#_ tokens are free symbols until mapped back to
+  # the real indexed input -- .preLhs already binds the NATURAL name (e.g.
+  # "eta.ka~ETA[1]"), but nothing binds the bare "ETA_1_" token substituted
+  # in above, so it would otherwise reach the solver as an undefined free
+  # parameter ("required for solving: ETA_1_").
+  .bracketDefs <- vapply(etaVars, function(.tok) {
+    .m <- regmatches(.tok, regexec("^(THETA|ETA)_([0-9]+)_$", .tok))[[1]]
+    paste0(.tok, "~", .m[2], "[", .m[3], "]")
+  }, character(1), USE.NAMES = FALSE)
+  s$..ddt <- paste(c(.bracketDefs, .lines), collapse = "\n")
+  s$..sens <- character(0)
+  for (.st in stateVars) {
+    for (.p in etaVars) {
+      .nm <- paste0("rx__sens_", .st, "_BY_", .p, "__")
+      if (!exists(.nm, envir = s, inherits = FALSE)) {
+        assign(.nm, symengine::Symbol(.nm), envir = s)
+      }
+    }
+  }
+  s$..matExpNative <- TRUE
+  s$..matExpNativeDropLhs <- .dropFromPreLhs
+  s
+}
+
+#' Drop names from a `.lhs`-style vector that a matExp-native `..ddt` (#860)
+#' already supplies inside its own `matExp()` block
+#'
+#' @param lhs character vector of `"name=expr"`/`"name~expr"` lines
+#' @param s symengine environment; a no-op unless `s$..matExpNative` is set
+#' @return `lhs` with any name in `s$..matExpNativeDropLhs` removed
+#' @author Matthew L. Fidler
+#' @noRd
+.rxDropMatExpNativeLhs <- function(lhs, s) {
+  if (!isTRUE(s$..matExpNative) || length(s$..matExpNativeDropLhs) == 0L ||
+        length(lhs) == 0L) {
+    return(lhs)
+  }
+  .nm <- sub("^([^=~]+)[=~].*", "\\1", lhs)
+  lhs[!(.nm %in% s$..matExpNativeDropLhs)]
+}
+
 #' Calculate d(state)/d(eta) or d(state)/d(theta) sensitivities
 #'
 #' @param s symengine environment (from `.loadSymengine()`)
 #' @param theta when `TRUE` calculate the sensitivities with respect to
 #'   `THETA[#]`; otherwise with respect to `ETA[#]`
+#' @param rxui rxode2 UI object backing `s`; only needed for a matExp() model
+#'   (`.sensMatExpNative()` needs the raw natural-name model text), `NULL`
+#'   otherwise
+#' @param matExpForcing when `FALSE`, a matExp() model with an `indLin()`
+#'   forcing term (Michaelis-Menten) falls back to the ordinary
+#'   variational-ODE flatten instead of `.sensMatExpNative()`, even when
+#'   `rxui` is supplied.  nlm's population log-likelihood gradient
+#'   (`rxUiGet.nlmHdTheta`) does not yet agree with a finite-difference
+#'   reference for a forcing model's explicit (non-state-mediated) theta
+#'   sensitivity -- FOCEi's EBE gradient is unaffected and keeps the native
+#'   path (issue #860; the nlm gap is tracked separately, matching how
+#'   `.rxKeepMatExpNative()` already excludes SAEM from forcing models for
+#'   its own reason).
 #' @return the symengine environment `s` augmented with the sensitivity
 #'   equations (`..sens`, `..ddt`, `..stateInfo`, ...)
 #' @author Matthew L. Fidler
 #' @export
 #' @keywords internal
-.sensEtaOrTheta <- function(s, theta=FALSE, extraThetaVars=NULL) {
+.sensEtaOrTheta <- function(s, theta=FALSE, extraThetaVars=NULL, rxui=NULL,
+                            matExpForcing=TRUE) {
   .etaVars <- NULL
   if (theta && exists("..maxTheta", s)) {
     .etaVars <- paste0("THETA_", seq(1, s$..maxTheta), "_")
@@ -742,14 +957,52 @@ attr(rxUiGet.loadPrune, "rstudio") <- emptyenv()
   # theta-sens states append after them
   .etaVars <- c(.etaVars, extraThetaVars)
   .stateVars <- .rxode2stateOdeNoOutput(s)
-  # matExp() models are handled transparently here: rxode2::.rxJacobian calls
-  # .rxInjectMatExpOdes(), which materializes the implied d/dt() from the
-  # k_from_to rate constants so the standard ODE Jacobian/sensitivity machinery
-  # applies.  The original-state d/dt() lines are emitted later by
-  # .rxInjectMatExpDdt() in the .rxFinalize* functions.
+  # matExp() models: native matrix-exponential sensitivities (#860), instead of
+  # flattening to an ordinary variational ODE via .rxInjectMatExpDdt().
+  .mv <- rxode2::rxModelVars(s)
+  if (is.list(.mv$indLin) && length(.mv$indLin) == 4L && !is.null(rxui) &&
+        (matExpForcing || is.null(.mv$indLin$f))) {
+    return(.sensMatExpNative(s, rxui, .etaVars, .stateVars))
+  }
   rxode2::.rxJacobian(s, c(.stateVars, .etaVars))
   rxode2::.rxSens(s, .etaVars)
   s
+}
+
+#' Is this build the mu-referenced-FOCEI-family regression/IRLS path?
+#'
+#' @param rxui rxode2 UI object
+#' @return `TRUE` when `muModel` is active (`mfocei`/`ifocei`/`mfoce`/`ifoce`
+#'   and friends), matching the same `muModel`/`muRefCovAlg` gate the
+#'   `nlmixr2Est.mfocei`/`nlmixr2Est.ifocei` "mu" attribute uses
+#' @author Matthew L. Fidler
+#' @noRd
+.foceiIsMuModel <- function(rxui) {
+  isTRUE(!identical(rxode2::rxGetControl(rxui, "muModel", "none"), "none")) &&
+    isTRUE(rxode2::rxGetControl(rxui, "muRefCovAlg", TRUE))
+}
+
+#' Should a matExp() + indLin() forcing (Michaelis-Menten) model use the
+#' native matrix-exponential sensitivity path (#860), or fall back to the
+#' ODE flatten?
+#'
+#' `TRUE` (native) everywhere except: (1) the mu-referenced/IRLS family
+#' (`mfocei`/`ifocei`/`mfoce`/`ifoce`), whose covariance-recompute machinery
+#' is not yet compatible with a forcing model's native sensitivities, and
+#' (2) a non-interaction (`interaction=FALSE`, i.e. `foce`) fit, whose
+#' truncated Sheiner-Beal gradient construction is not yet either -- both
+#' tracked separately (#861/#862, the same analytic gradient/cov scope the
+#' `foceiControl(fast=TRUE)` downgrade in `.foceiFamilyControl()` covers).
+#' A pure-linear matExp() model (no forcing) is unaffected either way -- it
+#' always takes the native path (see `.sensEtaOrTheta()`'s `matExpForcing`).
+#'
+#' @param rxui rxode2 UI object
+#' @return logical
+#' @author Matthew L. Fidler
+#' @noRd
+.foceiMatExpForcingOk <- function(rxui) {
+  !.foceiIsMuModel(rxui) &&
+    isTRUE(rxode2::rxGetControl(rxui, "interaction", TRUE))
 }
 
 #' @export
@@ -771,7 +1024,11 @@ rxUiGet.foceiEtaS <- function(x, ..., theta=FALSE) {
       assign("..combThetaIdx", .idx$all, envir = .s)
     }
   }
-  .sensEtaOrTheta(.s, extraThetaVars = .extra)
+  # see .foceiMatExpForcingOk(): mu-referenced/IRLS and non-interaction
+  # (foce) fits fall back to the ODE flatten for a forcing (indLin()) matExp
+  # model, same pattern as nlm's matExpForcing=FALSE.
+  .sensEtaOrTheta(.s, extraThetaVars = .extra, rxui = x[[1]],
+                  matExpForcing = .foceiMatExpForcingOk(x[[1]]))
 }
 #attr(rxUiGet.foceiEtaS, "desc") <- "Get symengine environment with eta sensitivities"
 attr(rxUiGet.foceiEtaS, "rstudio") <- emptyenv()
@@ -780,7 +1037,9 @@ attr(rxUiGet.foceiEtaS, "rstudio") <- emptyenv()
 #' @export
 rxUiGet.foceiThetaS <- function(x, ..., theta=FALSE) {
   .s <- rxUiGet.loadPruneSens(x, ...)
-  .sensEtaOrTheta(.s, theta=TRUE)
+  # see rxUiGet.foceiEtaS()
+  .sensEtaOrTheta(.s, theta=TRUE, rxui = x[[1]],
+                  matExpForcing = .foceiMatExpForcingOk(x[[1]]))
 }
 #attr(rxUiGet.foceiEtaS, "desc") <- "Get symengine environment with eta sensitivities"
 attr(rxUiGet.foceiThetaS, "rstudio") <- emptyenv()
@@ -994,7 +1253,21 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
 #' @noRd
 .rxFinalizeInner <- function(.s, sum.prod = FALSE,
                              optExpression = TRUE, cores = 0L) {
-  .isMatExp <- isTRUE(.rxInjectMatExpDdt(.s))
+  # .sensEtaOrTheta() already built the matExp-native sensitivity block
+  # (#860, ..matExpNative) -- .rxInjectMatExpDdt() would flatten it to an
+  # ordinary d/dt() over just the ORIGINAL states, silently dropping the
+  # sensitivity compartments already in .s$..ddt.
+  .isMatExp <- isTRUE(.s$..matExpNative) || isTRUE(.rxInjectMatExpDdt(.s))
+  if (isTRUE(.s$..matExpNative)) {
+    # rxSumProdModel()/rxOptExpr() do not know the "indLin(state) <- expr"
+    # syntax (a Michaelis-Menten-style matExp() forcing term); both error
+    # with "unsupported lhs in optimize expression: indLin(...)".  Neither
+    # is needed for correctness (round-off stabilization / CSE are
+    # performance optimizations only), so skip them for a matExp-native
+    # sensitivity block regardless of the caller's request.
+    sum.prod <- FALSE
+    optExpression <- FALSE
+  }
   .prd <- get("rx_pred_", envir = .s)
   .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.prd))
   .r <- get("rx_r_", envir = .s)
@@ -1011,6 +1284,10 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
   if (is.null(.ddt)) .ddt <- character(0)
   .lhs <- .s$..lhs
   if (is.null(.lhs)) .lhs <- character(0)
+  # matExp-native sensitivities (#860): the original k_from_to/k_from_output
+  # rate constants now live INSIDE ..ddt's matExp() block instead; keeping
+  # them here too would define them twice.
+  .lhs <- .rxDropMatExpNativeLhs(.lhs, .s)
   .sens <- .s$..sens
   if (is.null(.sens)) .sens <- character(0)
   .adjLhs <- character(0)
@@ -1327,7 +1604,14 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
 
 .rxFinalizePred <- function(.s, sum.prod = FALSE,
                             optExpression = TRUE, cores = 0L) {
-  .isMatExp <- isTRUE(.rxInjectMatExpDdt(.s))
+  # see .rxFinalizeInner(): do not re-flatten a matExp-native ..ddt (#860)
+  .isMatExp <- isTRUE(.s$..matExpNative) || isTRUE(.rxInjectMatExpDdt(.s))
+  if (isTRUE(.s$..matExpNative)) {
+    # see .rxFinalizeInner(): rxSumProdModel()/rxOptExpr() do not support
+    # "indLin(state) <- expr" (Michaelis-Menten forcing)
+    sum.prod <- FALSE
+    optExpression <- FALSE
+  }
   .prd <- get("rx_pred_", envir = .s)
   .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.prd))
   .r <- get("rx_r_", envir = .s)
@@ -1344,6 +1628,8 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
   if (is.null(.lhs0)) .lhs0 <- ""
   .lhs <- .s$..lhs
   if (is.null(.lhs)) .lhs <- ""
+  # matExp-native sensitivities (#860): see .rxFinalizeInner()
+  .lhs <- .rxDropMatExpNativeLhs(.lhs, .s)
   .ddt <- .s$..ddt
   if (is.null(.ddt)) .ddt <- ""
   # For matExp() models the model LHS defines the k_from_to rate constants that
@@ -1477,6 +1763,13 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
   innerOeta <- s$..innerOeta
   .sumProd <- rxode2::rxGetControl(ui, "sumProd", FALSE)
   .optExpression <- rxode2::rxGetControl(ui, "optExpression", TRUE)
+  if (isTRUE(s$..matExpNative)) {
+    # see .rxFinalizeInner(): rxSumProdModel()/rxOptExpr() do not support
+    # "indLin(state) <- expr" (Michaelis-Menten forcing), and s$..pred.nolhs
+    # carries the same matExp-native ..ddt block
+    .sumProd <- FALSE
+    .optExpression <- FALSE
+  }
   .predMinusDv <- rxode2::rxGetControl(ui, "predMinusDv", TRUE)
   if (!is.null(inner)) {
     if (.sumProd) {
@@ -1833,6 +2126,24 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
       .rxControl2$stiff2 <- 13L
       .rxControl2$dense <- TRUE
       rxode2::rxAssignControlValue(ui, "rxControl", .rxControl2)
+    }
+  }
+  # matExp-native sensitivities (#860): foceiFitCpp_ solves through
+  # rxode2::rxSolve_() directly, which -- unlike rxSolve.default()'s S3
+  # dispatch -- does NOT auto-detect a matExp()/indLin() model and switch
+  # method="indLin" for it.  Left at the ordinary-ODE default, a matExp
+  # inner model's dydt() is a no-op stub (the primal system is solved by
+  # matrix-exponential propagation, not RHS integration): every pooled
+  # solve silently free-runs a zero derivative, states never advance past
+  # their post-dose values, and the EBE inner Newton optimizer reads a
+  # frozen (zero) gradient and never moves eta.
+  if (!is.null(env$model$inner) &&
+      is.list(rxode2::rxModelVars(env$model$inner)$indLin) &&
+      length(rxode2::rxModelVars(env$model$inner)$indLin) == 4L) {
+    .rxControl3 <- rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())
+    if (!isTRUE(unname(.rxControl3$method) == 3L)) {
+      .rxControl3$method <- 3L
+      rxode2::rxAssignControlValue(ui, "rxControl", .rxControl3)
     }
   }
 }
@@ -2909,6 +3220,35 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   if (isTRUE(.control$fast) && isTRUE(any(.ui$predDfFocei$linCmt))) {
     .minfo("linCmt() model: the analytic 'fast' gradient does not apply -- using fast = FALSE")
     .control$fast <- FALSE
+  }
+  # matExp() models: the inner model now solves natively via rxode2's
+  # matrix-exponential driver (#860, .sensMatExpNative()), which forces the
+  # whole fit's shared pooled-solve method to method="indLin" (see
+  # .foceiOptEnvAssignTol()).  foceiCovAnalytic.R's augmented `..outer`
+  # gradient model is a SEPARATE, still ODE-flattened build (out of #860's
+  # scope, tracked in #861/#862) that shares the same pool -- solving it
+  # under method="indLin" reads it as matExp() text it is not, giving a
+  # zero/garbage analytic gradient.  Downgrade fast once here, same pattern
+  # as the linCmt()/mixture/log-likelihood cases above.
+  #
+  # EXCEPT a mu-referenced/IRLS or non-interaction (foce) fit with an
+  # indLin() forcing term (matMM-style Michaelis-Menten): .sensEtaOrTheta()
+  # itself falls back to the ODE flatten for those combinations (see
+  # rxUiGet.foceiEtaS()/.foceiMatExpForcingOk()), so the inner model there
+  # is NOT matExp-native and needs no downgrade -- matching this check to
+  # that decision exactly, rather than to "matExp() appears in the model
+  # text", avoids downgrading fast=TRUE for a case that never needed it.
+  if (isTRUE(.control$fast)) {
+    .mv0 <- rxode2::rxModelVars(.ui)
+    if (is.list(.mv0$indLin) && length(.mv0$indLin) == 4L) {
+      .isForcingFlattened <- !is.null(.mv0$indLin$f) &&
+        (isTRUE(!identical(.control$muModel, "none") && isTRUE(.control$muRefCovAlg)) ||
+           !isTRUE(if (is.null(.control$interaction)) TRUE else .control$interaction))
+      if (!.isForcingFlattened) {
+        .minfo("matExp() model: the analytic 'fast' gradient does not apply -- using fast = FALSE")
+        .control$fast <- FALSE
+      }
+    }
   }
   assign("control", .control, envir=.ui)
 }

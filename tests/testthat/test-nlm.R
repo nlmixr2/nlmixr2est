@@ -168,8 +168,12 @@ nmTest({
       })
     }
 
+    # A pure-linear matExp() model takes the native matrix-exponential
+    # sensitivity path (#860, .sensMatExpNative()) instead of the ODE
+    # flatten -- see the matching comment in test-focei-1.R.
     s <- rxUiGet.nlmThetaS(list(rxode2::rxode2(mod)))
-    expect_true(exists("..jacobian", envir = s, inherits = FALSE))
+    expect_true(isTRUE(s$..matExpNative))
+    expect_false(exists("..jacobian", envir = s, inherits = FALSE))
     expect_true(exists("..sens", envir = s, inherits = FALSE))
   })
 

@@ -601,7 +601,7 @@ attr(rxUiGet.loadPruneNlmSens, "rstudio") <- emptyenv()
 #' @export
 rxUiGet.nlmThetaS <- function(x, ...) {
   .s <- rxUiGet.loadPruneNlmSens(x, ...)
-  .sensEtaOrTheta(.s, theta=TRUE)
+  .sensEtaOrTheta(.s, theta=TRUE, rxui = x[[1]], matExpForcing = FALSE)
 }
 attr(rxUiGet.nlmThetaS, "rstudio") <- emptyenv()
 
@@ -663,7 +663,14 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
                            optExpression = TRUE, cores = 0L,
                            interpLines = "") {
   interpLines <- interpLines[interpLines != ""]
-  .rxInjectMatExpDdt(.s)
+  # see focei.R's .rxFinalizeInner(): do not re-flatten a matExp-native ..ddt (#860)
+  if (!isTRUE(.s$..matExpNative)) .rxInjectMatExpDdt(.s)
+  if (isTRUE(.s$..matExpNative)) {
+    # see focei.R's .rxFinalizeInner(): rxSumProdModel()/rxOptExpr() do not
+    # support "indLin(state) <- expr" (Michaelis-Menten forcing)
+    sum.prod <- FALSE
+    optExpression <- FALSE
+  }
   .prd <- get("rx_pred_", envir = .s)
   .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.prd))
   .yj <- paste(get("rx_yj_", envir = .s))
@@ -678,6 +685,8 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
   if (is.null(.ddt)) .ddt <- character(0)
   .lhs <- .s$..lhs
   if (is.null(.lhs)) .lhs <- character(0)
+  # matExp-native sensitivities (#860): see focei.R's .rxFinalizeInner()
+  .lhs <- .rxDropMatExpNativeLhs(.lhs, .s)
   .sens <- .s$..sens
   if (is.null(.sens)) .sens <- character(0)
   # Extract rx_pred_f_ and rx_r_ for censoring support
