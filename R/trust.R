@@ -51,28 +51,45 @@
 #'   `(.Machine$double.eps)^(1/3)`, the same fallback `.nlmSetupEnv()` itself
 #'   applies for every nlm-family method.
 #' @param hessianMethod How the per-iteration outer Hessian is built.
-#'   `"sr1"` (default) is the Symmetric Rank-1 quasi-Newton update (Nocedal &
-#'   Wright, *Numerical Optimization*, 2nd ed., 2006, Eq. 6.24; Murtagh &
-#'   Sargent, *Comput. J.* 13, 1970), built from consecutive outer
-#'   iterations' gradients (already computed regardless of `hessianMethod`,
-#'   so this adds no extra evaluations) -- Nocedal & Wright's own
-#'   recommendation for trust-region methods specifically, since (unlike
-#'   BFGS) it is not forced positive definite, so it can represent
-#'   indefinite curvature. `"fd"` instead recomputes the Hessian from
-#'   scratch every outer iteration via `nlmCalcHessian()`'s Shi (2021)
-#'   finite-difference-of-the-gradient (the `optimHessType`/`shi21maxHess`/
-#'   `hessErr` parameters above only apply to this method). `"bfgs"` is the
-#'   damped BFGS update (Nocedal & Wright Procedure 18.2), always positive
-#'   definite. `"bofill"` is Bofill's SR1/PSB blend (*J. Comput. Chem.* 15,
-#'   1-11, 1994), the standard Berny/transition-state-search Hessian update.
-#'   Every method seeds from one `"fd"`-style Hessian on the first outer
-#'   iteration. Across a benchmark of this package's own nlm-family test
-#'   models (`inst/benchmarks/benchmark-trust-outer.R`), `"sr1"`/`"bofill"`
-#'   ran roughly 1.7x faster than `"fd"` with the same or slightly better
-#'   accuracy, while `"bfgs"` occasionally converged to a distinctly worse
-#'   local optimum on the same problem than `"fd"`/`"sr1"`/`"bofill"` did --
-#'   which is why `"sr1"`, not `"bfgs"`, is the default despite `"bfgs"`
-#'   being the positive-definite option.
+#'   `"fd"` (default) recomputes the Hessian from scratch every outer
+#'   iteration via `nlmCalcHessian()`'s Shi (2021) finite-difference-of-the-
+#'   gradient (the `optimHessType`/`shi21maxHess`/`hessErr` parameters above
+#'   only apply to this method). `"bfgs"` is the damped BFGS update (Nocedal
+#'   & Wright, *Numerical Optimization*, 2nd ed., 2006, Procedure 18.2),
+#'   always positive definite. `"sr1"` is the Symmetric Rank-1 update
+#'   (Nocedal & Wright Eq. 6.24; Murtagh & Sargent, *Comput. J.* 13, 1970),
+#'   not forced positive definite. `"bofill"` is Bofill's SR1/PSB blend
+#'   (*J. Comput. Chem.* 15, 1-11, 1994). All three are built from
+#'   consecutive outer iterations' gradients (already computed regardless of
+#'   `hessianMethod`, so no extra evaluations), seeded from one `"fd"`-style
+#'   Hessian on the first outer iteration.
+#'
+#'   `"sr1"` was previously the default based on a benchmark
+#'   (`inst/benchmarks/benchmark-trust-outer.R`) showing it ran faster with
+#'   the same or slightly better accuracy than `"fd"`. That benchmark
+#'   predated fixes for two real correctness bugs (issues #994 and #996)
+#'   that independently distorted several of its models' results for EVERY
+#'   `hessianMethod` value alike, both upstream of Hessian construction (a
+#'   `scaleC` blowup for a near-zero starting gradient; `est="trust"`
+#'   missing the `linCmt()`-to-ODE translation another nlm-family method
+#'   needs). Re-run after both fixes, `"sr1"`/`"bofill"` track `"fd"`
+#'   closely (median |objective diff| vs `bobyqa` 1.53/1.55 vs `"fd"`'s
+#'   1.55 across the corpus) and `"bfgs"` if anything tracks it slightly
+#'   better (0.43) -- confirming the earlier small `"sr1"`-vs-`"fd"`
+#'   accuracy gap was, at least in part, noise from those two bugs, not a
+#'   genuine difference between Hessian constructions for this OUTER
+#'   problem. That is a real, structural difference from the analogous
+#'   inner-problem option (`foceiControl(hessianMethod=)`, defaults to
+#'   `"fd"`): a quasi-Newton Hessian there feeds directly into the reported
+#'   per-subject objective (not just the step) and was shown to bias it on
+#'   a real PK model, whereas `nlmTrustObjfun()`'s reported value
+#'   (`src/nlm.cpp`) is the plain log-likelihood, set before the Hessian is
+#'   even touched, so a less-accurate `hessianMethod` here can only cost
+#'   step quality/convergence speed, not silently bias the reported number.
+#'   `"fd"` is still the default here (matching the inner-problem choice
+#'   for consistency, and as the one option with no Hessian-accuracy
+#'   dependence at all), but unlike the inner case this is a cautious
+#'   choice rather than one driven by a demonstrated bias.
 #' @param returnTrust return the raw `nlmTrustFit()` output list instead of
 #'   the nlmixr2 fit.
 #' @param covMethod Method for calculating the covariance. `"r"` (the
@@ -116,7 +133,7 @@
 trustControl <- function(rinit=NULL, rmax=NULL, iterlim=1000L,
                          fterm=NULL, mterm=NULL,
                          optimHessType=1L, shi21maxHess=20L, hessErr=NULL,
-                         hessianMethod=c("sr1", "fd", "bfgs", "bofill"),
+                         hessianMethod=c("fd", "bfgs", "sr1", "bofill"),
 
                          returnTrust=FALSE,
                          stickyRecalcN=4,

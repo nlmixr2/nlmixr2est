@@ -81,7 +81,7 @@ foceiControl(
   outerOpt = c("bobyqa", "nlminb", "lbfgsb3c", "L-BFGS-B", "mma", "lbfgsbLG", "slsqp",
     "uobyqa", "newuoa"),
   innerOpt = c("trust", "n1qn1", "BFGS"),
-  hessianMethod = c("sr1", "fd", "bfgs", "bofill"),
+  hessianMethod = c("fd", "bfgs", "sr1", "bofill"),
   trustConf = 0.975,
   trustRinit = NULL,
   trustRmax = NULL,
@@ -611,36 +611,43 @@ exact Gauss-Newton+Omega^-1 Hessian every iteration) or `"n1qn1"`
 `"n1qn1"`.}
 
 \item{hessianMethod}{For a non-normal-endpoint model (any distribution
-other than \code{norm}), the per-subject inner Hessian has no
-Gaussian Gauss-Newton shortcut and falls back to a finite difference
-of the gradient every `innerOpt="trust"` Newton step
-(`calcEtaHessian()`, `src/inner.cpp`). `"sr1"` (default, matching
-`trustControl()`'s own default for the analogous outer-theta option)
-is the Symmetric Rank-1 quasi-Newton update (Nocedal & Wright,
-*Numerical Optimization*, 2nd ed., 2006; Murtagh & Sargent, *Comput.
-J.* 13, 1970), built from consecutive Newton steps' already-computed
-gradients (no extra evaluations) -- not forced positive definite,
-Nocedal & Wright's own recommendation for trust-region methods.
-`"fd"` instead recomputes the Hessian from scratch every Newton step
-via the finite difference this option replaces. `"bfgs"` is the
-damped BFGS update (Nocedal & Wright Procedure 18.2), always positive
-definite. `"bofill"` is Bofill's (1994, *J. Comput. Chem.* 15, 1-11)
-SR1/Powell-Symmetric-Broyden blend. Every method seeds from one
-`"fd"`-style Hessian on the first Newton step of each inner solve; a
-possibly-indefinite result from `"sr1"`/`"bofill"` is no additional
-risk here -- this Hessian's log-determinant already goes through a
-Schnabel & Eskow (1990/1991) modified Cholesky (`cholSE__()`) that
-handles a non-positive-definite input regardless of `hessianMethod`.
-Has no effect for normal-endpoint models (the Gauss-Newton inner
-Hessian is used unconditionally there). Only meaningful with
-`innerOpt="trust"`. Because this loop runs per subject, per Newton
-step, per outer iteration, avoiding a fresh finite difference at
-every one compounds into a much larger speedup than the analogous
-`trustControl(hessianMethod=)` option for the outer theta problem:
-on this package's own small benchmark
-(`inst/benchmarks/benchmark-focei-hessian-method.R`, a Poisson and a
-general `ll()` model), `"bfgs"`/`"sr1"`/`"bofill"` ran roughly 3-14x
-faster than `"fd"` with objectives matching to within about 0.1 units.}
+    other than \code{norm}), the per-subject inner Hessian has no
+    Gaussian Gauss-Newton shortcut and falls back to a finite difference
+    of the gradient every `innerOpt="trust"` Newton step
+    (`calcEtaHessian()`, `src/inner.cpp`). `"fd"` (default) recomputes
+    this Hessian from scratch every Newton step via finite difference.
+    `"bfgs"` is the damped BFGS update (Nocedal & Wright, *Numerical
+    Optimization*, 2nd ed., 2006, Procedure 18.2), always positive
+    definite; `"sr1"` is the Symmetric Rank-1 update (Nocedal & Wright;
+    Murtagh & Sargent, *Comput. J.* 13, 1970), not forced positive
+    definite; `"bofill"` is Bofill's (1994, *J. Comput. Chem.* 15, 1-11)
+    SR1/Powell-Symmetric-Broyden blend. All three are built from
+    consecutive Newton steps' already-computed gradients (no extra
+    evaluations), seeded from one `"fd"`-style Hessian on the first
+    Newton step of each inner solve.
+
+    Unlike `trustControl(hessianMethod=)`'s analogous OUTER-theta option
+    (where `"sr1"` is the default), this inner Hessian is not just a
+    step-direction aid: `LikInner2()` (`src/inner.cpp`) adds this
+    Hessian's log-determinant directly into the reported Laplace
+    objective, which the OUTER optimizer then searches over. A
+    quasi-Newton estimate built from the handful of Newton steps one
+    subject's inner solve takes is accurate enough to guide the step but
+    not accurate enough to serve as that objective term -- confirmed on
+    a real one-compartment IV model fit as a general \code{ll()}/`dnorm()`
+    endpoint: `"bfgs"`/`"sr1"`/`"bofill"` all converged to the same
+    wrong `Vc` (about 90 against a simulated 70 and a plain (non-`ll()`)
+    `focei` fit's 67, with a *worse* reported objective than `"fd"`'s
+    correct answer) -- the biased log-determinant misleads the outer
+    search into a worse point it reports as better. `"fd"`'s fresh
+    finite difference has no such bias, so it stays the default here even
+    though `"bfgs"`/`"sr1"`/`"bofill"` remain available (and are
+    genuinely faster, per this package's own small benchmark,
+    `inst/benchmarks/benchmark-focei-hessian-method.R`) for a caller who
+    has verified their model does not depend on this Hessian's precision.
+    Has no effect for normal-endpoint models (the Gauss-Newton inner
+    Hessian is used unconditionally there). Only meaningful with
+    `innerOpt="trust"`.}
 
 \item{trustConf}{confidence level defining the `innerOpt="trust"`
 trust-region radius: since eta ~ N(0, Omega), the radius (in

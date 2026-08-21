@@ -1,6 +1,6 @@
 nmTest({
   test_that("foceiControl() hessianMethod validation", {
-    expect_equal(foceiControl()$hessianMethod, 3L)
+    expect_equal(foceiControl()$hessianMethod, 1L)
     expect_equal(foceiControl(hessianMethod = "fd")$hessianMethod, 1L)
     expect_equal(foceiControl(hessianMethod = "bfgs")$hessianMethod, 2L)
     expect_equal(foceiControl(hessianMethod = "sr1")$hessianMethod, 3L)
@@ -45,6 +45,77 @@ nmTest({
       # Positive evidence the quasi-Newton mechanism actually ran (mirrors
       # test-focei-trust-inner.R's own .nTrustInner() convention).
       expect_true(.nHessianQN() > 0L, info = .hm)
+    }
+  })
+
+  # Regression test for a real correctness bug (not just a Poisson-toy-model
+  # difference): on a one-compartment IV bolus PK model fit as a general
+  # ll()/dnorm() endpoint (needOptimHess), hessianMethod="bfgs"/"sr1"/"bofill"
+  # all converged to the SAME wrong Vc (~90, vs a simulated 70 and a plain
+  # (non-ll()) focei fit's ~67-68) with a WORSE reported objective than
+  # "fd"'s correct answer. Unlike trustControl()'s outer-theta Hessian, this
+  # inner Hessian's log-determinant is added directly into the reported
+  # Laplace objective (LikInner2(), src/inner.cpp) -- a quasi-Newton estimate
+  # accurate enough to guide the per-subject Newton step is not accurate
+  # enough to serve as that objective term, and the outer optimizer chases
+  # the resulting bias to a worse point. This is why "fd" stays the default
+  # (see hessianMethod= roxygen); this test guards against a future default
+  # flip silently reintroducing the bias.
+  .ivBolus <- function() {
+    ini({
+      lCl <- log(4)
+      lVc <- log(70)
+      prop.err <- c(0, 0.1, 1)
+      eta.Vc ~ 0.1
+      eta.Cl ~ 0.1
+    })
+    model({
+      Vc <- exp(lVc + eta.Vc)
+      Cl <- exp(lCl + eta.Cl)
+      d / dt(centr) <- -(Cl / Vc) * centr
+      cp <- centr / Vc
+      cp ~ prop(prop.err)
+    })
+  }
+
+  test_that("default hessianMethod (fd) avoids the QN inner-Hessian log-det bias on a real PK ll() fit", {
+    skip_on_cran()
+    .testSeed(1104)
+    .simMod <- rxode2::rxode2({
+      Vc <- exp(lVc + eta.Vc)
+      Cl <- exp(lCl + eta.Cl)
+      d / dt(centr) <- -(Cl / Vc) * centr
+      cp <- centr / Vc
+    })
+    .th <- c(lCl = log(4), lVc = log(70))
+    .ev <- rxode2::et(amt = 60000, cmt = "centr")
+    .ev <- rxode2::et(.ev, seq(0.25, 24, by = 2))
+    .ev <- rxode2::et(.ev, id = seq_len(30))
+    .sim <- rxode2::rxSolve(.simMod, .th, .ev,
+                            omega = lotri::lotri(eta.Vc ~ 0.1, eta.Cl ~ 0.1),
+                            addDosing = FALSE, returnType = "data.frame")
+    .obs <- data.frame(ID = .sim$id, TIME = .sim$time,
+                       DV = .sim$cp * (1 + 0.1 * stats::rnorm(nrow(.sim))),
+                       AMT = NA_real_, EVID = 0)
+    .dose <- data.frame(ID = seq_len(30), TIME = 0, DV = NA_real_,
+                        AMT = 60000, EVID = 1)
+    .dat <- rbind(.dose, .obs)
+    .ivBolusLL <- .ivBolus %>% model(cp ~ prop(prop.err) + dnorm())
+    .fPlain <- suppressWarnings(nlmixr2(.ivBolus, .dat, est = "focei",
+                                        control = foceiControl(print = 0L)))
+    .fLLFd <- suppressWarnings(nlmixr2(.ivBolusLL, .dat, est = "focei",
+                                       control = foceiControl(print = 0L)))
+    expect_true(is.finite(.fPlain$objf))
+    expect_true(is.finite(.fLLFd$objf))
+    # fd (the default) should track the plain (Gauss-Newton) focei fit closely
+    expect_equal(unname(.fLLFd$theta), unname(.fPlain$theta), tolerance = 0.05)
+    for (.hm in c("bfgs", "sr1", "bofill")) {
+      .fLLQn <- suppressWarnings(nlmixr2(.ivBolusLL, .dat, est = "focei",
+                                         control = foceiControl(print = 0L, hessianMethod = .hm)))
+      # A QN method drifting off is the known, not-yet-fixed bias -- assert
+      # only that a caller who explicitly opts into it still gets a finite
+      # result, not that it matches (it currently does not).
+      expect_true(is.finite(.fLLQn$objf), info = .hm)
     }
   })
 

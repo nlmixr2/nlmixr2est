@@ -74,20 +74,22 @@
   distribution other than `norm`), the per-subject inner Hessian has no
   Gaussian Gauss-Newton shortcut and falls back to a finite difference of
   the gradient every `innerOpt="trust"` Newton step (`calcEtaHessian()`).
-  `"sr1"` (default, matching `trustControl()`'s own default for the
-  analogous outer-theta option) builds the Hessian as a quasi-Newton update
-  from consecutive Newton steps' already-computed gradients instead of a
-  fresh finite difference (no extra evaluations) -- the same three update
-  formulas `trustControl()` above uses (`"fd"` keeps the original finite
-  difference; `"bfgs"`/`"bofill"` are the other two quasi-Newton options).
-  Since this loop runs per subject, per Newton step, per outer iteration,
-  avoiding a fresh finite difference at every one compounds into a much
-  larger speedup than the outer-theta case: `bfgs`/`sr1`/`bofill` ran
-  roughly 3-14x faster than `"fd"` on this package's own benchmark (a
+  `"fd"` (default) keeps this original finite difference; `"bfgs"`/`"sr1"`/
+  `"bofill"` build the Hessian instead as a quasi-Newton update from
+  consecutive Newton steps' already-computed gradients (no extra
+  evaluations) -- the same three update formulas `trustControl()` above
+  uses. Since this loop runs per subject, per Newton step, per outer
+  iteration, avoiding a fresh finite difference at every one compounds into
+  a much larger speedup than the outer-theta case: `bfgs`/`sr1`/`bofill` ran
+  roughly 3-14x faster than `"fd"` on this package's own small benchmark (a
   Poisson and a general `ll()` model,
-  `inst/benchmarks/benchmark-focei-hessian-method.R`) with objectives
-  matching to within about 0.1 units. Has no effect on
-  normal-endpoint models. Only
+  `inst/benchmarks/benchmark-focei-hessian-method.R`). `"fd"` stays the
+  default: unlike the outer-theta case, this inner Hessian's log-determinant
+  is added directly into the reported objective (`LikInner2()`), and on a
+  real one-compartment PK model fit as a general `ll()` endpoint every
+  quasi-Newton option converged to the same wrong parameter estimate with a
+  *worse* reported objective than `"fd"`'s correct answer -- see the Bug
+  fixes section below. Has no effect on normal-endpoint models. Only
   meaningful with `innerOpt="trust"`.
 
 - A pure-linear `matExp()` model now solves natively through rxode2's
@@ -816,6 +818,37 @@
   constant was never reset for recomputation. `"rescale"`/`"rescale2"`
   (the default) were unaffected (their min/max accumulator is separately
   seeded with the top parameter before the loop runs).
+
+- `foceiControl(hessianMethod=)`'s default is `"fd"` again (reverting a
+  mid-development flip to `"sr1"` made for consistency with
+  `trustControl()`'s own outer-theta default). A quasi-Newton inner Hessian
+  feeds its log-determinant directly into the reported per-subject Laplace
+  objective (`LikInner2()`), unlike the outer-theta case where the Hessian
+  only affects the step; on a real one-compartment IV bolus PK model fit as
+  a general `ll()`/`dnorm()` endpoint, `"bfgs"`/`"sr1"`/`"bofill"` all
+  converged to the same wrong `Vc` (about 90 against a simulated 70 and a
+  plain `focei` fit's ~67-68) with a *worse* reported objective than
+  `"fd"`'s correct answer -- the inaccurate Hessian misled the outer search
+  into a worse point it reported as better. `trustControl(hessianMethod=)`'s
+  own outer-theta default is also reverted to `"fd"`: that option's earlier
+  benchmark (showing `"sr1"` about as accurate and faster) predates the
+  fixes for issues #994 and #996 above, both of which distorted several of
+  its benchmark models' results identically regardless of `hessianMethod`
+  (a wrong raw gradient upstream of Hessian construction, in both cases) --
+  the small accuracy gap that benchmark measured was at least partly noise
+  from those bugs, not a clean signal that `"sr1"` matches `"fd"`'s accuracy
+  once they are fixed. Re-run after both fixes, `"sr1"`/`"bofill"` do track
+  `"fd"` closely (median |objective diff| vs `bobyqa`, across the same
+  23-model corpus: 1.53/1.55 vs `"fd"`'s 1.55) and `"bfgs"` if anything
+  tracks it slightly better (0.43) -- the outer-theta case genuinely does
+  not have the inner problem's specific failure mode (`nlmTrustObjfun()`'s
+  reported value is the plain log-likelihood, set before the Hessian is
+  touched), so a less-accurate Hessian there can only cost step quality,
+  not bias the reported number. `"fd"` is still the default for both,
+  matching the inner-problem choice for consistency, but for the
+  outer-theta case that is a cautious choice rather than one driven by a
+  demonstrated bias. `"bfgs"`/`"sr1"`/`"bofill"` remain available and
+  faster.
 
 ### Crashes and stability
 
