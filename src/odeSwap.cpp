@@ -281,6 +281,7 @@ void odeSwapClear(int slot) {
 }
 
 void odeSwapClearAll() {
+  odeSwapCmtUnshiftAll();  // a fit that errored before its own UnshiftAll must not leak guards
   for (int s = 0; s < odeSlotN; ++s) odeSwapClear(s);
   if (_odeModels != R_NilValue) {
     R_ReleaseObject(_odeModels);
@@ -384,6 +385,26 @@ OdeSwapCmtScope::~OdeSwapCmtScope() {
   if (_delta == 0) return;
   unshift();                      // back to the pool basis for the next reader
   _delta = 0;
+}
+
+// See odeSwap.h.  Reuses OdeSwapCmtScope's own shift/unshift (constructor/
+// destructor) rather than duplicating the logic; the guards just outlive a
+// single solve instead of being stack-scoped.
+static std::vector<OdeSwapCmtScope*> _cmtShiftAllGuards;
+
+void odeSwapCmtShiftAll(int slot, rx_solve *rx, int nInd) {
+  if (odeSwapCmtDelta(slot) == 0 || rx == NULL || nInd <= 0) return;
+  rx_solving_options *op = getSolvingOptions(rx);
+  _cmtShiftAllGuards.reserve(_cmtShiftAllGuards.size() + (size_t)nInd);
+  for (int i = 0; i < nInd; ++i) {
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, i);
+    _cmtShiftAllGuards.push_back(new OdeSwapCmtScope(slot, op, ind));
+  }
+}
+
+void odeSwapCmtUnshiftAll() {
+  for (size_t i = 0; i < _cmtShiftAllGuards.size(); ++i) delete _cmtShiftAllGuards[i];
+  _cmtShiftAllGuards.clear();
 }
 
 int  odeSwapNeq(int slot)    { return odeSwapLoaded(slot) ? _odeReg[slot].neq  : 0; }
