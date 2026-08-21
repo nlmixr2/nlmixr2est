@@ -950,6 +950,13 @@ rxUiGet.foceiHdEta <- function(x, ...) {
   # is not misreported as "does not depend on ETA".
   .linCmtEtaVars <- paste0("ETA_", seq_len(.s$..maxEta), "_")
   .linCmtExtraPred <- .rxFoceiLinCmtEventPredExtra(x, .s, .linCmtEtaVars)
+  # linCmt() sensitivity carry (time-varying covariate on a linCmt()
+  # parameter, phase 3b.3): for a carry-eligible (slot, eta) pair the naive
+  # symengine line below is replaced wholesale by the carry block; all other
+  # rows (and every model with no eligible pair) are byte-identical to
+  # before.  See foceiLinCmtCarry.R.
+  .carryPairs <- .rxFoceiLinCmtCarryPairsForBuild(x, .s, .linCmtEtaVars,
+                                                  .linCmtExtraPred)
   .ret <- apply(.grd, 1, function(x) {
     .l <- x["calc"]
     .l <- eval(parse(text = .l))
@@ -961,6 +968,13 @@ rxUiGet.foceiHdEta <- function(x, ...) {
       }
     }
     .ret <- paste0(x["dfe"], "=", rxode2::rxFromSE(.l))
+    if (!is.null(.carryPairs)) {
+      .p <- sub("^.*_BY_(ETA_[0-9]+)___$", "\\1_", x["dfe"])
+      .w <- which(.carryPairs$eta == .p)
+      if (length(.w) == 1L) {
+        .ret <- .rxFoceiLinCmtCarryEmit(.carryPairs, .w, .s, x["dfe"])
+      }
+    }
     .zErr <- suppressWarnings(try(as.numeric(get(x["dfe"], .s)), silent = TRUE))
     if (identical(.zErr, 0)) {
       .any.zero <<- TRUE
@@ -990,6 +1004,7 @@ rxUiGet.foceiHdEta <- function(x, ...) {
   .s$..HdEta <- .ret
   .s$..linCmtEtaVars <- .linCmtEtaVars
   .s$..linCmtExtraPred <- .linCmtExtraPred
+  .s$..linCmtCarryPairs <- .carryPairs
   .s$..pred.minus.dv <- .predMinusDv
   rxode2::rxProgressStop()
   .progressStopped <- TRUE
@@ -1057,6 +1072,10 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
 #' (interaction=1) and FOCE (interaction=0 -- the `ll()`/generalized path) inner builders.
 #' @noRd
 .foceiMaybeAddHdEta2 <- function(x, .s) {
+  # linCmt() sensitivity carry (3b.3): no second-order carry exists, so a
+  # model with a carry-eligible pair keeps the Shi21 finite-difference
+  # inner Hessian (which differentiates the carry-corrected gradient).
+  if (!is.null(.s$..linCmtCarryPairs)) return(.s)
   if (isTRUE(as.logical(rxode2::rxGetControl(x[[1]], "fast", FALSE))) &&
         .foceiLLGradInScope(x[[1]])) {
     .malert("calculate d2(f)/d(eta) for the analytic log-likelihood inner Hessian")
@@ -1281,6 +1300,28 @@ rxUiGet.foceiEnv <- function(x, ...) {
   # 0 arguments" when rendering the cached extra terms.
   .linCmtExtraR <- .rxFoceiLinCmtEventChain(
     get("rx_r_", envir = .s), get("rx_pred_", envir = .s), .s$..linCmtExtraPred)
+  # linCmt() sensitivity carry (3b.3): rx_r_ embeds rx_pred_'s linCmtB()
+  # call by value, so its naive d(rx_r_)/d(eta) rows inherit the same
+  # uncarried terms.  For a carry-eligible eta whose ONLY path into rx_r_
+  # is through the prediction, the row is rebuilt as
+  # d(rx_r_)/d(pred) * rx__sens_rx_pred__BY_<eta>___ (the already-corrected
+  # pred sensitivity emitted above -- ..HdEta lines precede ..REta lines in
+  # the assembled model).  Basic-level work here; rendering happens inside
+  # the loop (same rxFromSE poisoning hazard documented above).
+  .carryR <- NULL
+  .carrySubR <- NULL
+  if (!is.null(.s$..linCmtCarryPairs)) {
+    .carryPh <- symengine::S("rx__linCmtCarryPh__")
+    .carrySubR <- symengine::subs(get("rx_r_", envir = .s),
+                                  get("rx_pred_", envir = .s), .carryPh)
+    .carryR <- symengine::D(.carrySubR, .carryPh)
+    if (paste(.carryR) %in% c("0", "0.0")) {
+      .carryR <- NULL
+    } else {
+      .carryR <- symengine::subs(.carryR, .carryPh,
+                                 get("rx_pred_", envir = .s))
+    }
+  }
   rxode2::rxProgress(dim(.grd)[1])
   on.exit({
     rxode2::rxProgressAbort()
@@ -1293,6 +1334,18 @@ rxUiGet.foceiEnv <- function(x, ...) {
       if (!is.null(.linCmtExtraR[[.p]])) .l <- .l + .linCmtExtraR[[.p]]
     }
     .ret <- paste0(x["dfe"], "=", rxode2::rxFromSE(.l))
+    if (!is.null(.carryR)) {
+      .p <- sub("^.*_BY_(ETA_[0-9]+)___$", "\\1_", x["dfe"])
+      .w <- which(.s$..linCmtCarryPairs$eta == .p)
+      # substitute only when the eta's ONLY route into rx_r_ is through the
+      # prediction (a direct eta dependence, pred held fixed, keeps the
+      # status quo row -- bias to false)
+      if (length(.w) == 1L &&
+            paste(symengine::D(.carrySubR, symengine::S(.p))) %in% c("0", "0.0")) {
+        .ret <- paste0(x["dfe"], "=(", rxode2::rxFromSE(.carryR),
+                       ")*rx__sens_rx_pred__BY_", .p, "__")
+      }
+    }
     rxode2::rxTick()
     .ret
   })
@@ -1811,7 +1864,12 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
   .constCovs <- paste(sort(rxode2::rxGetControl(.ui, "foceiConstCovs", NULL)), collapse=",")
   ## combined eta+theta sensitivity build (#958) changes the inner model text
   .combSens <- isTRUE(rxode2::rxGetControl(.ui, "combSens", FALSE))
-  digest::digest(c(all(is.na(.iniDf$neta1)), .combSens,
+  ## linCmt() sensitivity-carry substitution (3b.3) changes the inner model
+  ## text; it depends on both the control and whether the loaded rxode2 has
+  ## the carry sentinels, so both key the cache.
+  .linCmtCarry <- paste0(rxode2::rxGetControl(.ui, "linCmtSensCarry", "auto"),
+                         ",", .rxFoceiLinCmtCarryCapable())
+  digest::digest(c(all(is.na(.iniDf$neta1)), .combSens, .linCmtCarry,
                    rxode2::rxGetControl(.ui, "interaction", 1L),
                    .iniDf$name,
                    .sumProd, .optExpression, .predMinusDv,

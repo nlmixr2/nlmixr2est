@@ -87,7 +87,8 @@
 #'   eligible
 #' @noRd
 .rxFoceiLinCmtCarryEligible <- function(x, s, etaVars, data = NULL,
-                                        interpolation = c("locf", "nocb", "midpoint", "linear")) {
+                                        interpolation = c("locf", "nocb", "midpoint", "linear"),
+                                        render = TRUE) {
   interpolation <- match.arg(interpolation)
   .ui <- x[[1]]
   .empty <- .rxFoceiCarryEmpty()
@@ -149,6 +150,16 @@
            "interpolation; 'linear' cannot be represented by the linCmt() solution",
            call. = FALSE)
     }
+    # rxFromSE() is substitute()-based: it deparses a non-character
+    # argument's EXPRESSION, so it must always be handed the repr STRING
+    # (paste(<Basic>)), never a Basic-yielding call.  render=FALSE keeps
+    # the raw symengine repr for callers that render later themselves.
+    .fTxt <- paste(.expr)
+    .dTxt <- paste(.d)
+    if (render) {
+      .fTxt <- rxode2::rxFromSE(.fTxt)
+      .dTxt <- rxode2::rxFromSE(.dTxt)
+    }
     .ret <- rbind(.ret,
                   data.frame(slot = .k,
                              slotName = .rxFoceiLinCmtCarrySlotNames[.k],
@@ -156,8 +167,8 @@
                              etaName = .etaDf$name[.wEta],
                              covs = paste(.covs, collapse = ","),
                              shape = .shape,
-                             formula = rxode2::rxFromSE(.expr),
-                             dEtaFormula = rxode2::rxFromSE(.d),
+                             formula = .fTxt,
+                             dEtaFormula = .dTxt,
                              varying = .varying,
                              stringsAsFactors = FALSE))
   }
