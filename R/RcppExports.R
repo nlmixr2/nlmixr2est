@@ -386,6 +386,10 @@ foceiLikEval_ <- function(etaMat, cores, retType) {
     .Call(`_nlmixr2est_foceiLikEval_`, etaMat, cores, retType)
 }
 
+foceiLikInnerObjective_ <- function(theta) {
+    .Call(`_nlmixr2est_foceiLikInnerObjective_`, theta)
+}
+
 foceiLikIterPrintStart_ <- function(every, initPar, names, iterPrintControl = NULL, xform = NULL) {
     .Call(`_nlmixr2est_foceiLikIterPrintStart_`, every, initPar, names, iterPrintControl, xform)
 }
