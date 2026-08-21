@@ -25,7 +25,7 @@
   "ifoceif", "ifocef", "ifocepf",
   # nlm family -- .nlmSetupEnv()
   "nlm", "nlminb", "bobyqa", "newuoa", "uobyqa", "n1qn1", "lbfgsb3c",
-  "optim", "nls"
+  "optim", "nls", "trust"
 )
 
 #' Does this model mix `linCmt()` with ODE states?
