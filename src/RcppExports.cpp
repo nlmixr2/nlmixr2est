@@ -508,6 +508,16 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// nHessianQNGet
+int nHessianQNGet();
+RcppExport SEXP _nlmixr2est_nHessianQNGet() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(nHessianQNGet());
+    return rcpp_result_gen;
+END_RCPP
+}
 // foceiLik
 double foceiLik(NumericVector theta);
 RcppExport SEXP _nlmixr2est_foceiLik(SEXP thetaSEXP) {

@@ -1,0 +1,4 @@
+2026-08-20 20:18:31 === benchmark-focei-hessian-method.R starting === 
+2026-08-20 20:18:33 [poisson-e0] fd: ok=TRUE time=2.28s objf=318.3235 nHessianQN=0 | bfgs: ok=TRUE time=0.29s objf=318.3635 nHessianQN=6861 | sr1: ok=TRUE time=0.16s objf=318.3635 nHessianQN=6861 | bofill: ok=TRUE time=0.16s objf=318.3635 nHessianQN=6861 
+2026-08-20 20:18:41 [ll-gaussian-equivalent] fd: ok=TRUE time=4.22s objf=130.9893 nHessianQN=0 | bfgs: ok=TRUE time=0.90s objf=130.9771 nHessianQN=15279 | sr1: ok=TRUE time=1.73s objf=131.0844 nHessianQN=17200 | bofill: ok=TRUE time=0.85s objf=131.1064 nHessianQN=15615 
+2026-08-20 20:18:41 wrote inst/benchmarks/results/focei-hessian-method-benchmark.csv and inst/benchmarks/results/focei-hessian-method-benchmark.md 

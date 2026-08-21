@@ -91,6 +91,10 @@ likInner <- function(eta, id = 1L) {
     .Call(`_nlmixr2est_nTrustInnerGet`)
 }
 
+.nHessianQN <- function() {
+    .Call(`_nlmixr2est_nHessianQNGet`)
+}
+
 foceiLik <- function(theta) {
     .Call(`_nlmixr2est_foceiLik`, theta)
 }

@@ -81,6 +81,7 @@ foceiControl(
   outerOpt = c("bobyqa", "nlminb", "lbfgsb3c", "L-BFGS-B", "mma", "lbfgsbLG", "slsqp",
     "uobyqa", "newuoa"),
   innerOpt = c("trust", "n1qn1", "BFGS"),
+  hessianMethod = c("fd", "bfgs", "sr1", "bofill"),
   trustConf = 0.975,
   trustRinit = NULL,
   trustRmax = NULL,
@@ -608,6 +609,38 @@ exact Gauss-Newton+Omega^-1 Hessian every iteration) or `"n1qn1"`
 (quasi-Newton, gets a Hessian only once as a warm-start seed).
 `"BFGS"` is accepted but not implemented -- it silently falls back to
 `"n1qn1"`.}
+
+\item{hessianMethod}{For a non-normal-endpoint model (any distribution
+other than \code{norm}), the per-subject inner Hessian has no
+Gaussian Gauss-Newton shortcut and falls back to a finite difference
+of the gradient every `innerOpt="trust"` Newton step
+(`calcEtaHessian()`, `src/inner.cpp`). `"fd"` (default) keeps that
+behavior. `"bfgs"`, `"sr1"`, and `"bofill"` instead build the Hessian
+as a quasi-Newton update from consecutive Newton steps' already-
+computed gradients (no extra evaluations): `"bfgs"` is the damped
+BFGS update (Nocedal & Wright, *Numerical Optimization*, 2nd ed.,
+2006), always positive definite; `"sr1"` is the Symmetric Rank-1
+update (Nocedal & Wright; Murtagh & Sargent, *Comput. J.* 13, 1970),
+not forced positive definite (Nocedal & Wright's own recommendation
+for trust-region methods); `"bofill"` is Bofill's (1994, *J. Comput.
+Chem.* 15, 1-11) SR1/Powell-Symmetric-Broyden blend. Every method
+seeds from one `"fd"`-style Hessian on the first Newton step of each
+inner solve; a possibly-indefinite result from `"sr1"`/`"bofill"` is
+no additional risk here -- this Hessian's log-determinant already
+goes through a Schnabel & Eskow (1990/1991) modified Cholesky
+(`cholSE__()`) that handles a non-positive-definite input regardless
+of `hessianMethod`. Has no effect for normal-endpoint models (the
+Gauss-Newton inner Hessian is used unconditionally there). Only
+meaningful with `innerOpt="trust"`. Because this loop runs per
+subject, per Newton step, per outer iteration, avoiding a fresh
+finite difference at every one compounds into a much larger speedup
+than the analogous `trustControl(hessianMethod=)` option for the
+outer theta problem: on this package's own small benchmark
+(`inst/benchmarks/benchmark-focei-hessian-method.R`, a Poisson and a
+general `ll()` model), `"bfgs"`/`"sr1"`/`"bofill"` ran roughly 3-14x
+faster than `"fd"` with objectives matching to within about 0.1 units.
+`"fd"` remains the default here (unlike `trustControl()`'s own
+default of `"sr1"`) since this benchmark is smaller than that one.}
 
 \item{trustConf}{confidence level defining the `innerOpt="trust"`
 trust-region radius: since eta ~ N(0, Omega), the radius (in

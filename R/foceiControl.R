@@ -422,6 +422,38 @@
 #' @param trustRmax maximum `innerOpt="trust"` trust-region radius. `NULL`
 #'     (default) derives it from `trustConf`.
 #'
+#' @param hessianMethod For a non-normal-endpoint model (any distribution
+#'     other than \code{norm}), the per-subject inner Hessian has no
+#'     Gaussian Gauss-Newton shortcut and falls back to a finite difference
+#'     of the gradient every `innerOpt="trust"` Newton step
+#'     (`calcEtaHessian()`, `src/inner.cpp`). `"fd"` (default) keeps that
+#'     behavior. `"bfgs"`, `"sr1"`, and `"bofill"` instead build the Hessian
+#'     as a quasi-Newton update from consecutive Newton steps' already-
+#'     computed gradients (no extra evaluations): `"bfgs"` is the damped
+#'     BFGS update (Nocedal & Wright, *Numerical Optimization*, 2nd ed.,
+#'     2006), always positive definite; `"sr1"` is the Symmetric Rank-1
+#'     update (Nocedal & Wright; Murtagh & Sargent, *Comput. J.* 13, 1970),
+#'     not forced positive definite (Nocedal & Wright's own recommendation
+#'     for trust-region methods); `"bofill"` is Bofill's (1994, *J. Comput.
+#'     Chem.* 15, 1-11) SR1/Powell-Symmetric-Broyden blend. Every method
+#'     seeds from one `"fd"`-style Hessian on the first Newton step of each
+#'     inner solve; a possibly-indefinite result from `"sr1"`/`"bofill"` is
+#'     no additional risk here -- this Hessian's log-determinant already
+#'     goes through a Schnabel & Eskow (1990/1991) modified Cholesky
+#'     (`cholSE__()`) that handles a non-positive-definite input regardless
+#'     of `hessianMethod`. Has no effect for normal-endpoint models (the
+#'     Gauss-Newton inner Hessian is used unconditionally there). Only
+#'     meaningful with `innerOpt="trust"`. Because this loop runs per
+#'     subject, per Newton step, per outer iteration, avoiding a fresh
+#'     finite difference at every one compounds into a much larger speedup
+#'     than the analogous `trustControl(hessianMethod=)` option for the
+#'     outer theta problem: on this package's own small benchmark
+#'     (`inst/benchmarks/benchmark-focei-hessian-method.R`, a Poisson and a
+#'     general `ll()` model), `"bfgs"`/`"sr1"`/`"bofill"` ran roughly 3-14x
+#'     faster than `"fd"` with objectives matching to within about 0.1 units.
+#'     `"fd"` remains the default here (unlike `trustControl()`'s own
+#'     default of `"sr1"`) since this benchmark is smaller than that one.
+#'
 #' @param stateTrim Trim state amounts/concentrations to this value.
 #'
 #' @param resetEtaP P-value for resetting an individual ETA to 0 during
@@ -944,6 +976,7 @@ foceiControl <- function(sigdig = 3, #
                                       "uobyqa",
                                       "newuoa"), #
                          innerOpt = c("trust", "n1qn1", "BFGS"), #
+                         hessianMethod = c("fd", "bfgs", "sr1", "bofill"), #
                          ## trust-region inner optimizer (RcppTrust)
                          trustConf = 0.975, # confidence level defining the trust-region radius
                          trustRinit = NULL, # NULL -> derived from trustConf/neta
@@ -1416,6 +1449,12 @@ foceiControl <- function(sigdig = 3, #
     .innerOptFun <- c("n1qn1" = 1L, "BFGS" = 2L, "trust" = 3L)
     innerOpt <- setNames(.innerOptFun[match.arg(innerOpt)], NULL)
   }
+  .hessianMethodIdx <- c("fd" = 1L, "bfgs" = 2L, "sr1" = 3L, "bofill" = 4L)
+  if (checkmate::testIntegerish(hessianMethod, len=1, lower=1, upper=4, any.missing=FALSE)) {
+    hessianMethod <- as.integer(hessianMethod)
+  } else {
+    hessianMethod <- setNames(.hessianMethodIdx[match.arg(hessianMethod)], NULL)
+  }
   checkmate::assertNumeric(trustConf, lower=0, upper=1, finite=TRUE, any.missing=FALSE, len=1)
   if (trustConf <= 0 || trustConf >= 1) {
     # qchisq(0, df)==0 (zero trust-region radius, no step ever taken) and
@@ -1666,6 +1705,7 @@ foceiControl <- function(sigdig = 3, #
     eval.max = eval.max,
     iter.max = iter.max,
     innerOpt = innerOpt,
+    hessianMethod = hessianMethod,
     ## trust-region inner optimizer (RcppTrust)
     trustConf = as.double(trustConf),
     trustRinit = trustRinit,
@@ -1829,6 +1869,9 @@ foceiControl <- function(sigdig = 3, #
     } else if (x == "eventType") {
       .methodIdx <- c("central" = 2L, "forward" = 3L)
       paste0(x, " = ", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
+    } else if (x == "hessianMethod") {
+      .hessianMethodIdx <- c("fd" = 1L, "bfgs" = 2L, "sr1" = 3L, "bofill" = 4L)
+      paste0(x, " = ", deparse1(names(.hessianMethodIdx[which(object[[x]] == .hessianMethodIdx)])))
     } else if (x %in% c("derivMethod", "covDerivMethod")) {
       .methodIdx <- c("forward" = 0L, "central" = 1L, "switch" = 3L)
       paste0(x, " = ", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
