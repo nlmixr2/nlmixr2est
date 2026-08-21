@@ -794,6 +794,16 @@
   already uses, falling back to the transform-aware `ui$scaleCtheta` value
   when out of band.
 
+- `est="trust"` on a model mixing `linCmt()` with an ODE (e.g. an effect
+  compartment) no longer converges to a badly wrong objective (issue #996).
+  `trust` was left out of `.linCmtOdeEstFamily` (`R/preProcessLinCmtOde.R`)
+  when it was added, so the `linCmt()`-to-ODE translation this list exists to
+  trigger -- needed because the extra theta-sensitivity states this family
+  adds push `linCmt()`'s compartments past the numbers the data was
+  translated against, the same problem #286 fixed for FOCEi -- never ran for
+  it. 5 of 7 population thetas had an exactly-zero starting gradient as a
+  result. `"trust"` is now included in that list.
+
 ### Crashes and stability
 
 - An over-parameterized `est="saem"` fit no longer dies with "nearest PD
