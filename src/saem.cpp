@@ -12,6 +12,9 @@
 #include "censEst.h"
 #include "nearPD.h"
 #include "inner.h"
+#include "odeSwap.h"
+#include "rxomp.h"
+#include <memory>
 #include "solveWarnHelper.h"
 #include "truncNorm.h"
 
@@ -4480,6 +4483,15 @@ using namespace Rcpp;
 t_calc_lhs saem_lhs = NULL;
 t_update_inis saem_inis = NULL;
 
+// Phase 4 (SAEM general-likelihood theta plan): true when setupRx registered
+// SAEM's own model as the odeSlotSaem odeSwap peer (alongside odeSlotHess2/
+// odeSlotPred for the phi1 Laplace theta step) instead of the historic direct
+// rxUpdateFuns(..., &rxInner) bind -- i.e. this fit is a general-likelihood
+// fit whose saemPhi1TargetMap resolved (see R/saemPhi1Inner.R). false for
+// EVERY normal/poisson/binomial fit and for a general-lik fit whose map did
+// not resolve (covariate on a phi0/phi1 theta, unpaired eta, ...) -- both
+// keep the original single-model rxInner path, byte-identically.
+static bool _saemPhi1PoolActive = false;
 
 rx_solve* _rx = NULL;
 
@@ -4490,6 +4502,34 @@ RObject mat2NumMat(const mat &m) {
 }
 
 CharacterVector parNames;
+
+// Phase 4 (SAEM general-likelihood theta plan): solve every individual through
+// the odeSlotSaem odeSwap peer, one at a time, instead of the bulk
+// par_solve(_rx) call -- par_solve is itself just this same per-individual
+// ind_solve loop with rxode2's own bookkeeping around it, so replacing it here
+// changes nothing except giving each individual's solve an OdeSwapScope/
+// OdeSwapCmtScope: the pool is sized for the larger odeSlotHess2 peer once the
+// phi1 map resolves, so SAEM's own (smaller, zero-sensitivity) model needs the
+// CMT rebase for every solve (OdeSwapCmtScope has no whole-fit "pin" the way
+// the neq override does via odeSwapPinAll in setupRx -- see odeSwap.h).
+// Parallelized the same way inner.cpp's own per-subject loops are.
+static void saemSolveIndividualsPooled(int nInd) {
+  rx_solving_options *op = getSolvingOptions(_rx);
+  int cores = getOpCores(op);
+  bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
+#endif
+  for (int i = 0; i < nInd; ++i) {
+#ifdef _OPENMP
+    if (doParallel) setRxThreadId(omp_get_thread_num());
+#endif
+    rx_solving_options_ind *ind = getSolvingOptionsInd(_rx, i);
+    OdeSwapScope neqGuard(odeSlotSaem, ind, op);
+    OdeSwapCmtScope cmtGuard(odeSlotSaem, op, ind);
+    odeSwapSolveInd(odeSlotSaem, i);
+  }
+}
 
 mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
   // yp has all the observations in the dataset
@@ -4533,7 +4573,14 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
   // is recomputed below -- skip the (costly) re-integration entirely.
   if (!_saemFreezeOde) {
   resetRxBadSolve(_rx);
-  par_solve(_rx); // Solve the complete system (possibly in parallel)
+  // Phase 4: a general-lik fit whose phi1 map resolved routes SAEM's own
+  // solve through the odeSlotSaem odeSwap peer (see setupRx) instead of the
+  // bulk par_solve -- every other fit is byte-identical to before.
+  if (_saemPhi1PoolActive) {
+    saemSolveIndividualsPooled(_Nnlmixr2);
+  } else {
+    par_solve(_rx); // Solve the complete system (possibly in parallel)
+  }
   int j=0;
   while (hasRxBadSolve(_rx) && j < current_saem_state->_saemMaxOdeRecalc){
     current_saem_state->_saemIncreaseTol=1;
@@ -4562,7 +4609,11 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
       }
     }
     resetRxBadSolve(_rx);
-    par_solve(_rx);
+    if (_saemPhi1PoolActive) {
+      saemSolveIndividualsPooled(_Nnlmixr2);
+    } else {
+      par_solve(_rx);
+    }
     j++;
   }
   if (!current_saem_state->_saemIndTolRelax && j != 0) {
@@ -4578,12 +4629,24 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
   bool hasNan = false;
   for (int id = 0; id < _Nnlmixr2; ++id) {
     ind = getSolvingOptionsInd(_rx, id);
+    // Phase 4: re-guard the read the same way the solve above was guarded --
+    // a SEPARATE scope from saemSolveIndividualsPooled's is fine (nothing in
+    // between changes ind->neqOverride/the CMT basis for this individual),
+    // but the guard must span BOTH getOpIndSolve's stride and calc_lhs's
+    // write width, not just the solve. A no-op (guards never constructed) for
+    // every fit that did not register odeSlotSaem.
+    std::unique_ptr<OdeSwapScope> neqGuard;
+    std::unique_ptr<OdeSwapCmtScope> cmtGuard;
+    if (_saemPhi1PoolActive) {
+      neqGuard.reset(new OdeSwapScope(odeSlotSaem, ind, op));
+      cmtGuard.reset(new OdeSwapCmtScope(odeSlotSaem, op, ind));
+    }
     iniSubjectE(getOpNeq(op), 1, ind, op, _rx, saem_inis);
     for (int j = 0; j < getIndNallTimes(ind); ++j) {
       setIndIdx(ind, j);
       int kk = getIndIx(ind, getIndIdx(ind));
       double curT = getTime(kk, ind);
-      double *lhs = getIndLhs(ind);
+      double *lhs = neqGuard ? neqGuard->lhs() : getIndLhs(ind);
       if (isDose(getIndEvid(ind, kk))) {
         // Need to calculate for advan sensitivities
         saem_lhs((int)id, curT,
@@ -4632,9 +4695,62 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
 void setupRx(List &opt, SEXP evt, int nmc, int N) {
   RObject obj = opt[".rx"];
   List mv = _rxode2_rxModelVars_(obj);
-  rxUpdateFuns(mv["trans"], &rxInner);
   parNames = mv[RxMv_params];
 
+  // Phase 4 (SAEM general-likelihood theta plan): a general-lik fit whose
+  // saemPhi1TargetMap resolved (R/saemPhi1Inner.R) attaches saemPhi1Pred
+  // (always) and saemPhi1Hess2 (NULL for some model shapes, e.g. linCmt()) --
+  // route SAEM's own model through the shared odeSwap pool as a peer of
+  // those two instead of the historic direct rxUpdateFuns bind, so the phi1
+  // theta step can solve them without a separate FOCEi setup/rxSolve_ that
+  // would rebuild this pool out from under SAEM's own live solve state.
+  // EVERY other fit (normal/poisson/binomial, or a general-lik fit whose map
+  // did not resolve) takes the unchanged rxUpdateFuns(..., &rxInner) path.
+  _saemPhi1PoolActive = opt.containsElementNamed("saemPhi1Pred") &&
+    !Rf_isNull(opt["saemPhi1Pred"]);
+  if (_saemPhi1PoolActive) {
+    odeSwapClearAll();
+    odeSwapDeclare(odeSlotSaem, "saem", obj);
+    bool haveHess2 = opt.containsElementNamed("saemPhi1Hess2") &&
+      !Rf_isNull(opt["saemPhi1Hess2"]);
+    if (haveHess2) odeSwapDeclare(odeSlotHess2, "hess2", opt["saemPhi1Hess2"]);
+    odeSwapDeclare(odeSlotPred, "pred", opt["saemPhi1Pred"]);
+    if (!Rf_isNull(obj)) {
+      RObject pars0 = opt[".pars"];
+      List odeO = opt["rxControl"];
+      if (Rf_isNull(pars0)) {
+        stop("params must be non-nil");
+      }
+      NumericVector parsV = as<NumericVector>(pars0);
+      int npars = parsV.size();
+      int nrows = N * nmc;
+      NumericMatrix parsM(nrows, npars);
+      CharacterVector parsNames = parsV.names();
+      for (int k = 0; k < nrows; k++) {
+        for (int j = 0; j < npars; j++) parsM(k, j) = parsV[j];
+      }
+      parsM.attr("dimnames") = List::create(R_NilValue, parsNames);
+      rxode2::rxSolve_(obj, odeO,
+                       R_NilValue, R_NilValue,
+                       parsM, evt, R_NilValue, 1);
+    } else {
+      stop("cannot find rxode2 model");
+    }
+    // Register AFTER rxSolve_ has sized/built the pool -- registering (which
+    // rxDynLoad's) before it exists rebinds rxode2's event-sensitivity
+    // globals and corrupts the solve (see odeSwap.h).
+    odeSwapRegister(odeSlotSaem, "saem", obj, &rxSaem);
+    if (haveHess2) odeSwapRegister(odeSlotHess2, "hess2", opt["saemPhi1Hess2"], &rxHess2);
+    odeSwapRegister(odeSlotPred, "pred", opt["saemPhi1Pred"], &rxPred);
+    // SAEM's own model never sizes the pool once Hess2 (eta-sensitivity
+    // states) is registered -- pin every subject's effective neq to it for
+    // the life of the fit; OdeSwapScope temporarily overrides this per
+    // individual while phi1Objective solves the Hess2/Pred peer.
+    odeSwapPinAll(odeSlotSaem);
+    return;
+  }
+
+  rxUpdateFuns(mv["trans"], &rxInner);
   if (!Rf_isNull(obj)){
     RObject pars0 = opt[".pars"];
     List odeO = opt["rxControl"];
@@ -4658,13 +4774,23 @@ void setupRx(List &opt, SEXP evt, int nmc, int N) {
   }
 }
 
+// setupRx sets _saemPhi1PoolActive; call AFTER it returns.
+static inline void saemSetLhsInis() {
+  if (_saemPhi1PoolActive) {
+    saem_lhs = rxSaem.calc_lhs;
+    saem_inis = rxSaem.update_inis;
+  } else {
+    saem_lhs = rxInner.calc_lhs;
+    saem_inis = rxInner.update_inis;
+  }
+}
+
 //[[Rcpp::export]]
 SEXP saem_do_pred(SEXP in_phi, SEXP in_evt, SEXP in_opt) {
   List opt = List(in_opt);
   mat phi = as<mat>(in_phi);
   setupRx(opt, in_evt, 1, (int)phi.n_rows);
-  saem_lhs = rxInner.calc_lhs;
-  saem_inis = rxInner.update_inis;
+  saemSetLhsInis();
   _rx=getRxSolve_();
   mat evt = as<mat>(in_evt);
   saem_state_t dummy_st;
@@ -4687,8 +4813,7 @@ SEXP saem_fit(SEXP xSEXP) {
   setupRx(opt, x["evt"], as<int>(x["nmc"]), as<int>(x["N"]));
 
   // if (rxSingleSolve == NULL) rxSingleSolve = (rxSingleSolve_t) R_GetCCallable("rxode2","rxSingleSolve");
-  saem_lhs = rxInner.calc_lhs;
-  saem_inis = rxInner.update_inis;
+  saemSetLhsInis();
   _rx=getRxSolve_();
 
   saem_state_t dummy_st;

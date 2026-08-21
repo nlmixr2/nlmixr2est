@@ -201,17 +201,6 @@ private:
   void unshift();                                  // restore what shift() overwrote
   std::vector<std::pair<int,int> > _saved;         // (row, pool-basis CMT) shift() wrote
 };
-// Persistent CMT rebasing for EVERY individual in `rx`, for a caller whose
-// solve is BULK (one call over all individuals, e.g. SAEM's par_solve) rather
-// than per-individual -- OdeSwapCmtScope's RAII cannot span that, so this
-// holds `nInd` such scopes open until odeSwapCmtUnshiftAll() is called.
-// Mirrors odeSwapPinAll/odeSwapUnpinAll's role for the neq override; a no-op
-// (same guard as OdeSwapCmtScope) unless a larger peer sized the pool. Must
-// be balanced by odeSwapCmtUnshiftAll() -- idempotent, safe to call even when
-// nothing is shifted.
-void odeSwapCmtShiftAll(int slot, rx_solve *rx, int nInd);
-void odeSwapCmtUnshiftAll();
-
 const char *odeSwapName(int slot);
 SEXP odeSwapModelSEXP(int slot); // R_NilValue when unloaded
 
