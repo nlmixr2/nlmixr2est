@@ -31,7 +31,10 @@
 #' build declines there too, per `.foceiMaybeAddHdEta2`'s own
 #' `tryCatch(..., error = function(e) .s)` fallback). A caller must treat a
 #' `NULL` `innerHess2` as "fall back to a finite-difference eta-Hessian for
-#' this fit," not an error -- exactly FOCEi's own behavior.
+#' this fit," not an error -- exactly FOCEi's own behavior; that fallback
+#' uses `predNoLhs` (below), a bare no-sensitivity prediction-only model, the
+#' same one `calcEtaHessian`'s own Shi(2021) finite-difference branch uses
+#' (`odeSlotPred`).
 #'
 #' The correct log-density model is `$inner` for a literal `ll()` endpoint
 #' (its `rx_pred_` is unconditionally the user's own log-density expression),
@@ -44,9 +47,10 @@
 #' @param x rxUiGet-style single-element list holding the ui
 #' @param ... unused
 #' @return `NULL` if not a general-likelihood endpoint. Otherwise a list
-#'   with `inner` (the eta-sensitivity log-density model, always non-NULL)
-#'   and `innerHess2` (the exact eta-Hessian model, or `NULL` when out of
-#'   scope for this model shape).
+#'   with `inner` (the eta-sensitivity log-density model, always non-NULL),
+#'   `innerHess2` (the exact eta-Hessian model, or `NULL` when out of scope
+#'   for this model shape), and `predNoLhs` (the bare, no-sensitivity
+#'   prediction-only FD-fallback model, always non-NULL).
 #' @author Matthew L. Fidler
 #' @noRd
 #' @export
@@ -66,6 +70,7 @@ rxUiGet.saemPhi1Inner <- function(x, ...) {
   if (is.null(.fm)) return(NULL)
   .inner <- if (!is.null(.fm$innerLlik)) .fm$innerLlik else .fm$inner
   if (is.null(.inner)) return(NULL)
-  list(inner = .inner, innerHess2 = .fm$innerHess2)
+  .predNoLhs <- if (!is.null(.fm$predNoLhsLlik)) .fm$predNoLhsLlik else .fm$predNoLhs
+  list(inner = .inner, innerHess2 = .fm$innerHess2, predNoLhs = .predNoLhs)
 }
 attr(rxUiGet.saemPhi1Inner, "rstudio") <- emptyenv()

@@ -54,6 +54,7 @@ nmTest({
     expect_false(is.null(.res))
     expect_s3_class(.res$inner, "rxode2")
     expect_s3_class(.res$innerHess2, "rxode2")
+    expect_s3_class(.res$predNoLhs, "rxode2")
     # the accessor must leave the ui's ORIGINAL control installed, not the
     # temporary foceiControl(fast=TRUE) it needs internally to build innerHess2
     # (saemControl() packs nBurn/nEm into $mcmc$niter, not a top-level field)
