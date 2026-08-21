@@ -47,9 +47,25 @@ nmTest({
     expect_null(.ui$saemPhi1Inner)
   })
 
-  test_that("saemPhi1Inner builds and preserves the ui's saemControl (#Phase2)", {
+  test_that("saemPhi1Inner does not build innerHess2 by default (phi1Hessian=FALSE)", {
+    # saemControl(phi1Hessian=FALSE) is the default -- an ablation check
+    # found the Laplace log|H| correction was not what fixed a diverging
+    # Gaussian twin, and it can dominate/diverge for a heavy-tailed
+    # t()/cauchy() endpoint (nlmixr2/nlmixr2est#999), so building the
+    # (expensive, foceiControl(fast=TRUE)-only) innerHess2 model is wasted
+    # work unless a caller opts in.
     .ui <- rxode2::rxUiDecompress(rxode2::rxode2(mLl))
     assign("control", saemControl(nBurn = 5, nEm = 5), envir = .ui)
+    .res <- .ui$saemPhi1Inner
+    expect_false(is.null(.res))
+    expect_s3_class(.res$inner, "rxode2")
+    expect_null(.res$innerHess2)
+    expect_s3_class(.res$predNoLhs, "rxode2")
+  })
+
+  test_that("saemPhi1Inner builds innerHess2 and preserves the ui's saemControl when phi1Hessian=TRUE (#Phase2)", {
+    .ui <- rxode2::rxUiDecompress(rxode2::rxode2(mLl))
+    assign("control", saemControl(nBurn = 5, nEm = 5, phi1Hessian = TRUE), envir = .ui)
     .res <- .ui$saemPhi1Inner
     expect_false(is.null(.res))
     expect_s3_class(.res$inner, "rxode2")
@@ -64,6 +80,7 @@ nmTest({
 
   test_that("saemPhi1Inner's eta gradient/Hessian match finite differences (#Phase2)", {
     .ui <- rxode2::rxUiDecompress(rxode2::rxode2(mLl))
+    assign("control", saemControl(phi1Hessian = TRUE), envir = .ui)
     .res <- .ui$saemPhi1Inner
     .inner <- .res$inner
     .innerHess2 <- .res$innerHess2

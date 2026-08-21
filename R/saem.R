@@ -316,6 +316,7 @@
     # saemControl()'s own docs for phi1ThetaEvery/phi1ThetaMaxEval.
     .cfg$phi1ThetaEvery <- as.integer(rxode2::rxGetControl(ui, "phi1ThetaEvery", 1L))
     .cfg$phi1ThetaMaxEval <- as.integer(rxode2::rxGetControl(ui, "phi1ThetaMaxEval", 50L))
+    .cfg$phi1Hessian <- as.integer(isTRUE(rxode2::rxGetControl(ui, "phi1Hessian", FALSE)))
     # warm-start residual params from observed per-endpoint moments (npag-style)
     .cfg$residWarmStart <- as.integer(rxode2::rxGetControl(ui, "residWarmStart", TRUE))
     # mixProbMethod="regress": fix per-subject mixture membership (hard classify

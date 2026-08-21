@@ -728,6 +728,7 @@ extern arma::ivec _saemPhi1H2ThetaKind;
 extern arma::ivec _saemPhi1H2ThetaCol;
 extern arma::vec _saemPhi1H2ThetaFixedVal;
 extern arma::ivec _saemPhi1H2EtaCol;
+extern bool _saemPhi1WantHessian;
 extern int _saemPhi1PredOffset;
 extern int _saemPhi1H2PredOffset;
 extern int _saemPhi1H2HessOffset;
@@ -1244,7 +1245,11 @@ public:
       bool bad = false;
       double rowPred = 0.0;
       arma::mat H(nphi1, nphi1, arma::fill::zeros);
-      if (_saemPhi1UseAnalyticHess) {
+      if (!_saemPhi1WantHessian) {
+        // saemControl(phi1Hessian=FALSE), the default: plain -2*loglik, no
+        // Hessian/Omega-prior term at all -- see the field's own docs.
+        rowPred = phi1PredAt(i, ind, op, neqGuard, nH2Theta, eta0, bad);
+      } else if (_saemPhi1UseAnalyticHess) {
         for (int k = 0; k < nEta; ++k) setIndParPtr(ind, nH2Theta + k, eta0(k));
         setIndSolve(ind, -1);
         resetOpBadSolve(op);
@@ -1304,6 +1309,11 @@ public:
         // peer/solve buffer, so no further restore is needed here.
       }
       if (bad) { rowBad[i] = 1; continue; }
+      if (!_saemPhi1WantHessian) {
+        if (!R_finite(rowPred)) { rowBad[i] = 1; continue; }
+        rowScore[i] = -2.0 * rowPred;
+        continue;
+      }
       for (int jc = 0; jc < nphi1; ++jc)
         for (int ic = 0; ic <= jc; ++ic) {
           H(ic, jc) += IGamma2_phi1(ic, jc);
@@ -2068,6 +2078,8 @@ public:
     // gPhi1ObjR, confirmed via valgrind's backtrace).
     _saemPhi1PoolReady = false;
     _saemPhi1UseAnalyticHess = false;
+    _saemPhi1WantHessian = x.containsElementNamed("phi1Hessian") &&
+      as<int>(x["phi1Hessian"]) != 0;
     if (opt.containsElementNamed("saemPhi1ThetaKind")) {
       _saemPhi1H2ThetaKind = as<ivec>(opt["saemPhi1ThetaKind"]);
       _saemPhi1H2ThetaCol = as<ivec>(opt["saemPhi1ThetaCol"]);
@@ -4861,6 +4873,13 @@ arma::ivec _saemPhi1H2ThetaKind;
 arma::ivec _saemPhi1H2ThetaCol;
 arma::vec _saemPhi1H2ThetaFixedVal;
 arma::ivec _saemPhi1H2EtaCol;
+// saemControl(phi1Hessian=FALSE) is the default -- see its own docs (an
+// ablation check found the Laplace log|H| correction was not what fixed a
+// diverging Gaussian twin, and it can dominate/diverge for a heavy-tailed
+// t()/cauchy() endpoint, nlmixr2/nlmixr2est#999).  When false, phi1Objective
+// scores plain -2*loglik with no Hessian term at all (not even Omega^-1) --
+// solving only odeSlotPred, never odeSlotHess2/the FD-Hessian fallback.
+bool _saemPhi1WantHessian = false;
 int _saemPhi1PredOffset = -1;
 int _saemPhi1H2PredOffset = -1;
 int _saemPhi1H2HessOffset = -1;

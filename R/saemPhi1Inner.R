@@ -19,12 +19,18 @@
 #' needed -- only, for each theta bobyqa proposes, the inner (eta-only)
 #' value/gradient/Hessian used to find the conditional mode and score it.
 #'
-#' `ui$focei$innerHess2` (the exact 2nd-order eta-Hessian model) requires
-#' `foceiControl(fast=TRUE)` and `.foceiLLGradInScope(ui)`; this accessor
-#' temporarily installs `foceiControl(fast=TRUE)` on the ui if it is not
-#' already FOCEi-shaped (SAEM's own control has no `fast=` field), builds
-#' `ui$focei` under that control, then restores the ui's original control --
-#' `ui$focei` is a cached accessor, so the built model list persists.
+#' `ui$focei$innerHess2` (the exact 2nd-order eta-Hessian model) is only built
+#' when the ui's `saemControl(phi1Hessian=TRUE)` -- the default is `FALSE`
+#' (an ablation check found the Laplace `log|H|` correction it feeds is not
+#' load-bearing for convergence and can dominate/diverge for a heavy-tailed
+#' `t()`/`cauchy()` endpoint, nlmixr2/nlmixr2est#999), so building it is
+#' skipped by default to avoid the extra `foceiControl(fast=TRUE)` compile.
+#' When requested, it requires `foceiControl(fast=TRUE)` and
+#' `.foceiLLGradInScope(ui)`; this accessor temporarily installs
+#' `foceiControl(fast=TRUE)` on the ui if it is not already FOCEi-shaped
+#' (SAEM's own control has no `fast=` field), builds `ui$focei` under that
+#' control, then restores the ui's original control -- `ui$focei` is a
+#' cached accessor, so the built model list persists.
 #'
 #' `innerHess2` legitimately comes back `NULL` for some model shapes (a
 #' `linCmt()` prediction is the known case -- FOCEi's own analytic-Hessian
@@ -65,8 +71,19 @@
 rxUiGet.saemPhi1Inner <- function(x, ...) {
   .ui <- x[[1]]
   if (!.saemGeneralLik(.ui)) return(NULL)
+  # saemControl(phi1Hessian=FALSE) is the default (see its own docs -- an
+  # ablation check found the Laplace log|H| correction was not what fixed a
+  # diverging Gaussian twin, and it can instead dominate/diverge for a
+  # heavy-tailed t()/cauchy() endpoint). innerHess2 needs foceiControl(fast
+  # =TRUE) to build at all, which is otherwise wasted compile time -- only
+  # force it, and only ask .saemPhi1TargetMap to resolve a Hessian-capable
+  # map, when the Hessian correction is actually wanted.
+  .wantHessian <- isTRUE(tryCatch(
+    as.logical(rxode2::rxGetControl(.ui, "phi1Hessian", FALSE)),
+    error = function(e) FALSE))
   .origControl <- .ui$control
-  if (!isTRUE(tryCatch(as.logical(rxode2::rxGetControl(.ui, "fast", FALSE)), error = function(e) FALSE))) {
+  if (.wantHessian &&
+        !isTRUE(tryCatch(as.logical(rxode2::rxGetControl(.ui, "fast", FALSE)), error = function(e) FALSE))) {
     assign("control", foceiControl(fast = TRUE), envir = .ui)
   }
   .fm <- tryCatch(.ui$focei, error = function(e) NULL)
@@ -79,8 +96,9 @@ rxUiGet.saemPhi1Inner <- function(x, ...) {
   .inner <- if (!is.null(.fm$innerLlik)) .fm$innerLlik else .fm$inner
   if (is.null(.inner)) return(NULL)
   .predNoLhs <- if (!is.null(.fm$predNoLhsLlik)) .fm$predNoLhsLlik else .fm$predNoLhs
-  .map <- .saemPhi1TargetMap(.ui, .fm$innerHess2, .predNoLhs)
-  c(list(inner = .inner, innerHess2 = .fm$innerHess2, predNoLhs = .predNoLhs),
+  .innerHess2 <- if (.wantHessian) .fm$innerHess2 else NULL
+  .map <- .saemPhi1TargetMap(.ui, .innerHess2, .predNoLhs)
+  c(list(inner = .inner, innerHess2 = .innerHess2, predNoLhs = .predNoLhs),
     if (is.null(.map)) list(ok = FALSE) else .map)
 }
 attr(rxUiGet.saemPhi1Inner, "rstudio") <- emptyenv()
