@@ -311,6 +311,11 @@
     .cfg$nonMuThetaTol <- as.numeric(rxode2::rxGetControl(ui, "nonMuThetaTol",
                                                           .Machine$double.eps^0.25))
     .cfg$nonMuThetaEvery <- as.integer(rxode2::rxGetControl(ui, "nonMuThetaEvery", 1L))
+    # Phase 4 (SAEM general-likelihood theta plan): cadence/budget for the
+    # phi1 (mu-referenced theta) Laplace-corrected refinement -- see
+    # saemControl()'s own docs for phi1ThetaEvery/phi1ThetaMaxEval.
+    .cfg$phi1ThetaEvery <- as.integer(rxode2::rxGetControl(ui, "phi1ThetaEvery", 1L))
+    .cfg$phi1ThetaMaxEval <- as.integer(rxode2::rxGetControl(ui, "phi1ThetaMaxEval", 50L))
     # warm-start residual params from observed per-endpoint moments (npag-style)
     .cfg$residWarmStart <- as.integer(rxode2::rxGetControl(ui, "residWarmStart", TRUE))
     # mixProbMethod="regress": fix per-subject mixture membership (hard classify

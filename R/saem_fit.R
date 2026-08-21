@@ -628,6 +628,13 @@
 
   i1 <- i1 - 1
   i0 <- i0 - 1
+  # Phase 4 (SAEM general-likelihood theta plan): setupRx (src/saem.cpp)
+  # reads i0/i1 directly from opt (not the top-level cfg) to route the
+  # pooled per-row solve's phi1/phi0 column lookups -- only meaningful when
+  # opt$saemPhi1* was attached above (distribution==4, map resolved), but
+  # harmless to always carry.
+  opt$i0 <- as.integer(i0)
+  opt$i1 <- as.integer(i1)
   opt$distribution <- distribution
   opt$paramUpdate <- attr(model$saem_mod, "paramUpdate")
   optM$paramUpdate <- attr(model$saem_mod, "paramUpdate")

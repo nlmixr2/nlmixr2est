@@ -45,9 +45,6 @@ enum OdeSwapSlot {
   odeSlotOuter,       // rxVaeOuter:     augmented outer-gradient model (order 2)
   odeSlotOuterNode,   // rxOuterNode:    same directions at order 1, for AGQ nodes
   odeSlotOuterCov,    // rxOuterCov:     covariance model over its own direction set
-  odeSlotSaem,        // rxSaem:      SAEM's own flattened phi-space model, peer of
-                      //              odeSlotHess2/odeSlotPred for the general-lik phi1
-                      //              theta step (est="saem", distribution==4 only)
   odeSlotN
 };
 

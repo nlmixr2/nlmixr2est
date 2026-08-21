@@ -1837,6 +1837,16 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// saemPhi1RefineN_
+long saemPhi1RefineN_();
+RcppExport SEXP _nlmixr2est_saemPhi1RefineN_() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(saemPhi1RefineN_());
+    return rcpp_result_gen;
+END_RCPP
+}
 // saem_do_pred
 SEXP saem_do_pred(SEXP in_phi, SEXP in_evt, SEXP in_opt);
 RcppExport SEXP _nlmixr2est_saem_do_pred(SEXP in_phiSEXP, SEXP in_evtSEXP, SEXP in_optSEXP) {

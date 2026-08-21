@@ -30,7 +30,6 @@ extern rxSolveF rxHess2;
 extern rxSolveF rxVaeOuter;
 extern rxSolveF rxOuterNode;
 extern rxSolveF rxOuterCov;
-extern rxSolveF rxSaem;
 extern void rxUpdateFuns(SEXP trans, rxSolveF *inner);
 extern void rxClearFuns(rxSolveF *inner);
 extern rx_solve *rx;
