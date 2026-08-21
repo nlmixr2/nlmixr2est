@@ -822,10 +822,16 @@ attr(rxUiGet.loadPrune, "rstudio") <- emptyenv()
   .thetaW <- which(!is.na(.iniDf$ntheta))
   .etaW <- which(!is.na(.iniDf$neta1) & .iniDf$neta1 == .iniDf$neta2)
   # paste0() recycles a zero-length index to "" (R >= 4.0), which would
-  # fabricate a malformed "ETA__" entry for a theta-only (no-eta) model --
-  # same trap documented at rxUiGet.foceiEtaS's combSens .extra build.
-  .canon <- paste0("THETA_", .iniDf$ntheta[.thetaW], "_")
-  .nat <- .iniDf$name[.thetaW]
+  # fabricate a malformed "THETA__"/"ETA__" entry (length-mismatched
+  # against .nat, so setNames() below errors) for an eta-only (no-theta) or
+  # theta-only (no-eta) model -- same trap documented at rxUiGet.foceiEtaS's
+  # combSens .extra build.  Guard BOTH branches, not just one.
+  .canon <- character(0)
+  .nat <- character(0)
+  if (length(.thetaW) > 0L) {
+    .canon <- c(.canon, paste0("THETA_", .iniDf$ntheta[.thetaW], "_"))
+    .nat <- c(.nat, .iniDf$name[.thetaW])
+  }
   if (length(.etaW) > 0L) {
     .canon <- c(.canon, paste0("ETA_", .iniDf$neta1[.etaW], "_"))
     .nat <- c(.nat, .iniDf$name[.etaW])

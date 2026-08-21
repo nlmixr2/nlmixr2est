@@ -165,6 +165,19 @@ nmTest({
     )
   })
 
+  test_that(".rxNaturalThetaEtaMap() does not crash on a theta-only or eta-only model", {
+    # Regression: paste0() recycles a zero-length index to "" (R >= 4.0),
+    # fabricating a spurious length-1 "THETA__"/"ETA__" entry when the OTHER
+    # kind is absent -- length-mismatched against the companion natural-name
+    # vector, so stats::setNames() below it errors.  The eta-only branch was
+    # guarded but the theta-only branch was missed (found by antigravity
+    # review of the #860 matExp-native-sensitivities change).
+    .etaOnly <- list(iniDf = data.frame(name = "eta.ka", ntheta = NA_integer_, neta1 = 1L, neta2 = 1L))
+    expect_equal(nlmixr2est:::.rxNaturalThetaEtaMap(.etaOnly), c(ETA_1_ = "eta.ka"))
+    .thetaOnly <- list(iniDf = data.frame(name = "tka", ntheta = 1L, neta1 = NA_integer_, neta2 = NA_integer_))
+    expect_equal(nlmixr2est:::.rxNaturalThetaEtaMap(.thetaOnly), c(THETA_1_ = "tka"))
+  })
+
   test_that(".rxRenameTokens() does not corrupt an unrelated identifier sharing a natural name as an underscore-delimited prefix/suffix", {
     # Regression: the renamer's word-boundary regex originally excluded only
     # alphanumeric/dot from what may border a match (needed so it still
