@@ -415,7 +415,12 @@ getValidNlmixrCtl.nlm <- function(control) {
 #' independent of `ar()` (#976).  `rx_rll_` (the standard deviation actually
 #' fed into `llikNorm()`/`llikT()`/`llikCauchy()`) is emitted immediately
 #' before `rx_r_` in the same branch, so square it back into `rx_r_` instead
-#' of leaving the hardcoded 0.
+#' of leaving the hardcoded 0.  Reference the `rx_rll_` VARIABLE, not its
+#' defining expression: for a transformed prop()/pow() error model (e.g.
+#' `propT()`), that expression contains the symbol `rx_pred_`, which is
+#' overwritten with the scalar log-likelihood between the `rx_rll_` and
+#' `rx_r_` lines -- re-inlining it would silently read the log-likelihood
+#' value back in as the mean.
 #'
 #' @param lines A single endpoint's list of quoted model lines, as returned
 #'   by `rxGetDistributionFoceiLines()` for one `predDf` row.
@@ -425,20 +430,16 @@ getValidNlmixrCtl.nlm <- function(control) {
 #' @noRd
 .nlmFixCensRLine <- function(lines) {
   if (!is.list(lines)) return(lines)
-  .rll <- NULL
-  for (.l in lines) {
-    if (is.call(.l) && identical(.l[[1]], quote(`~`)) &&
-        identical(.l[[2]], quote(rx_rll_))) {
-      .rll <- .l[[3]]
-      break
-    }
-  }
-  if (is.null(.rll)) return(lines)
+  .hasRll <- any(vapply(lines, function(.l) {
+    is.call(.l) && identical(.l[[1]], quote(`~`)) &&
+      identical(.l[[2]], quote(rx_rll_))
+  }, logical(1)))
+  if (!.hasRll) return(lines)
   lapply(lines, function(.l) {
     if (is.call(.l) && identical(.l[[1]], quote(`~`)) &&
         identical(.l[[2]], quote(rx_r_)) &&
         identical(.l[[3]], 0)) {
-      bquote(rx_r_ ~ .(.rll)^2)
+      quote(rx_r_ ~ rx_rll_^2)
     } else {
       .l
     }

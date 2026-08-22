@@ -235,4 +235,45 @@ nmTest({
     }
   })
 
+  test_that("nlm-family M3-censored propT() parameter estimates match focei (#976)", {
+    # #976 follow-up (antigravity review): .nlmFixCensRLine originally
+    # rebuilt rx_r_ by re-inlining rx_rll_'s defining EXPRESSION (e.g.
+    # sqrt((b*rx_pred_)^2) for propT()/powT(), whose F is the TRANSFORMED
+    # prediction, i.e. the symbol rx_pred_ itself -- see
+    # .rxGetVarianceForErrorPropOrPowF()).  That expression is placed at the
+    # rx_r_ ~ 0 line's position, which comes AFTER rx_pred_ has already been
+    # overwritten with the scalar log-likelihood (rx_pred_ <- llikNorm(dv,
+    # rx_pred_, rx_rll_)).  Re-evaluating the AST there silently fed the
+    # log-likelihood value back in as the propT() mean, corrupting rx_r_ for
+    # any transformed prop()/pow() error model.  The fix instead references
+    # the already-computed rx_rll_ VARIABLE (rx_r_ ~ rx_rll_^2), which still
+    # holds its original value at that point.  A plain add()/prop() (F =
+    # rx_pred_f_, a column untouched by the llik overwrite) would not have
+    # caught this -- propT() is required to exercise the bug.
+    one.cmt.propT <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- log(c(0, 2.7, 100))
+        tv <- 3.45
+        prop.sd <- c(0, 0.3)
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl)
+        v <- exp(tv)
+        linCmt() ~ propT(prop.sd)
+      })
+    }
+    f.focei <- .nlmixr(one.cmt.propT, .datM3, est = "focei", control = foceiControl(print = 0))
+    fit <- .nlmixr(one.cmt.propT, .datM3, est = "bobyqa", control = nlmControl(print = 0))
+    expect_equal(as.numeric(fit$theta[["tka"]]), as.numeric(f.focei$theta[["tka"]]),
+                 tolerance = 0.15)
+    expect_equal(as.numeric(fit$theta[["tcl"]]), as.numeric(f.focei$theta[["tcl"]]),
+                 tolerance = 0.15)
+    expect_equal(as.numeric(fit$theta[["tv"]]), as.numeric(f.focei$theta[["tv"]]),
+                 tolerance = 0.15)
+    expect_equal(as.numeric(fit$theta[["prop.sd"]]), as.numeric(f.focei$theta[["prop.sd"]]),
+                 tolerance = 0.15)
+  })
+
 })

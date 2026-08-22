@@ -113,7 +113,10 @@
   the correction for every censored observation. `rx_rll_` (the standard
   deviation actually used to build the log-density) is emitted immediately
   beforehand in the same branch, so it is now squared back into `rx_r_`
-  instead of being discarded.
+  instead of being discarded. For an `ar()` endpoint this restores a sane,
+  self-consistent (marginal) censoring correction rather than a corrupted
+  one; getting the exact AR(1)-conditional correction is a larger, separate
+  change tracked in #1001.
 
 - `est="saem"` with a `pow()` residual error model (`rmPow`/`rmAddPow`/
   `rmPowLam`/`rmAddPowLam`) never applied the estimated power exponent in the
