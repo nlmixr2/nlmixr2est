@@ -477,6 +477,13 @@
   it has not settled, and the second verdict can freeze an eta for the rest of
   the fit.
 
+- `est="saem"` now recognizes `t()`/`cauchy()` residual-error endpoints as
+  general-likelihood models, the same way a literal `ll()` endpoint already
+  was, instead of erroring (`"t isn't supported yet"` / `"Distribution not
+  supported"`).  rxode2's own FOCEi line generator already reduces these to
+  the same shape (`rx_pred_` an explicit log-density, `rx_r_ ~ 0`), so
+  `saem` now dispatches through the same path.
+
 ## Bug fixes
 
 ### Estimation
@@ -533,6 +540,19 @@
   exact normal log-density versus the equivalent `add()` model) the standard
   error ratios go from 4.0-80.5 to 0.99-1.02, and the two objective function
   values now agree outright rather than up to a constant.
+
+- `est="saem"`'s mu-referenced (population, eta-carrying) theta update for a
+  general-likelihood (`ll()`) endpoint is no longer a plain
+  stochastic-approximation recursion over the MCMC-sampled phi, which carried
+  no curvature information and could converge to the wrong basin.  A direct
+  `bobyqa` optimization of the exact joint log-likelihood (mirroring the
+  existing `nonMuTheta="regress"` mechanism) now drives these thetas, sharing
+  FOCEi's own inner (eta-sensitivity) model through the shared ODE solve
+  pool.  `saemControl(phi1Hessian=)` (default `FALSE`) optionally adds a
+  Laplace `log|H|` correction on top; measured to not be what fixes
+  convergence for a Gaussian or exponential-TTE `ll()` model, so it stays
+  opt-in.  A near-Gaussian `t()`/`cauchy()` endpoint can still diverge under
+  this step (nlmixr2/nlmixr2est#999); tracked separately.
 
 - Fixed `est="saem"` applying the **transform-both-sides log-Jacobian with the
   wrong sign** in its Gaussian-quadrature likelihood, so the reported
