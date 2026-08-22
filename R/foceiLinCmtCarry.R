@@ -91,9 +91,15 @@
   # render=FALSE: no rxFromSE may run before rxUiGet.foceiHdEta's own
   # D(rx_pred_, ETA_n_) evaluations (shared-symengine-state corruption);
   # the emission renders in-loop via rxFromSE(S(<repr>)) instead
+  # a detection failure keeps the status quo gradient, but says so in
+  # $runInfo rather than hiding the failure
   .pairs <- tryCatch(.rxFoceiLinCmtCarryEligible(x, s, etaVars, data = NULL,
                                                  render = FALSE),
-                     error = function(e) NULL)
+                     error = function(e) {
+                       warning("linCmt() carry detection failed; standard gradient used",
+                               call. = FALSE)
+                       NULL
+                     })
   if (is.null(.pairs) || nrow(.pairs) == 0L) return(NULL)
   .pred <- get("rx_pred_", envir = s, inherits = FALSE)
   .predArgs <- symengine::get_args(.pred)

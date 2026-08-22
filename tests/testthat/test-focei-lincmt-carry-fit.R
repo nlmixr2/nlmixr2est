@@ -331,3 +331,28 @@ test_that("linear covariate interpolation on a varying eligible covariate is an 
   expect_true(inherits(fit, "nlmixr2FitCore"))
   expect_false(grepl("rx_lcCarry", paste(rxode2::rxNorm(fit$env$innerModel), collapse = "\n")))
 })
+
+test_that("evid=2 rows fall back to the standard gradient with a runInfo note", {
+  skip_on_cran()
+  skip_if_not(nlmixr2est:::.rxFoceiLinCmtCarryCapable())
+  f <- function() {
+    ini({tcl <- log(2); tv <- log(20); eta.cl ~ 0.1; add.sd <- 0.5})
+    model({
+      cl <- exp(tcl) * (wt/70)^0.75 * exp(eta.cl)
+      v <- exp(tv)
+      cp <- linCmt()
+      cp ~ add(add.sd)
+    })
+  }
+  d <- data.frame(id = 1, time = c(0, 3, 5, 7, 15, 24, 30),
+                  amt = c(100, 0, 0, 100, 0, 100, 0),
+                  evid = c(1, 0, 2, 1, 0, 1, 0), cmt = 1)
+  d$wt <- ifelse(d$time < 20, 70, 85)
+  d$dv <- c(0, 3.2, 0, 0, 2.5, 0, 2.2)
+  fit <- suppressWarnings(suppressMessages(
+    nlmixr2est::nlmixr2(f, d, est = "focei",
+                        control = .carryFitCtl("auto"))))
+  expect_identical(fit$foceiControl$linCmtSensCarry, "none")
+  expect_true(any(grepl("carry gradient off", unlist(fit$runInfo))))
+  expect_false(grepl("rx_lcCarry", paste(rxode2::rxNorm(fit$env$innerModel), collapse = "\n")))
+})
