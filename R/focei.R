@@ -3269,6 +3269,32 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       }
     }
   })
+  # linCmt() sensitivity carry (3b): the carry recurrence steps once per
+  # dose/observation row and does not model the steady-state fixed-point
+  # reset, and likInner0's lhs walk skips evid=2 rows (unlike the solve),
+  # so ss or evid=2 data would silently desync the carry.  Data-aware
+  # fallback to the standard gradient, stashed before the model build.
+  local({
+    if (!identical(rxode2::rxGetControl(ui, "linCmtSensCarry", "auto"), "auto")) {
+      return(invisible(NULL))
+    }
+    if (!.rxFoceiLinCmtCarryCapable()) return(invisible(NULL))
+    .rd <- tryCatch(as.data.frame(env$data), error = function(e) NULL)
+    if (is.null(.rd)) return(invisible(NULL))
+    names(.rd) <- toupper(names(.rd))
+    .bad <- (!is.null(.rd$SS) && any(.rd$SS > 0, na.rm = TRUE)) ||
+      (!is.null(.rd$EVID) && any(.rd$EVID == 2L, na.rm = TRUE))
+    if (!.bad) return(invisible(NULL))
+    # only warn when the model would actually have used the carry
+    .hasPairs <- tryCatch(
+      nrow(.foceiLinCmtCarryPairs(ui)) > 0L,
+      error = function(e) FALSE)
+    if (isTRUE(.hasPairs)) {
+      rxode2::rxAssignControlValue(ui, "linCmtSensCarry", "none")
+      warning("ss/evid=2 rows: linCmt() carry gradient off for this fit",
+              call. = FALSE)
+    }
+  })
   # Building the optimization environment (`ui$foceiOptEnv`) is where the
   # symengine translation, sensitivity generation, and rxode2 compilation
   # happen -- the bulk of setup cost.  It is timed as "setup" (matching the
