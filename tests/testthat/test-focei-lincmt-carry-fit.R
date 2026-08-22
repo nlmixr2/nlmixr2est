@@ -197,3 +197,99 @@ test_that("ss dose rows fall back to the standard gradient with a runInfo note",
   expect_identical(fit$foceiControl$linCmtSensCarry, "none")
   expect_true(any(grepl("carry gradient off", unlist(fit$runInfo))))
 })
+
+test_that("runtime constant-theta fast path engages per subject and is equivalent", {
+  skip_on_cran()
+  skip_if_not(nlmixr2est:::.rxFoceiLinCmtCarryCapable())
+  skip_if_not(exists("linCmtCarryFastStats", envir = asNamespace("rxode2"),
+                     inherits = FALSE))
+  .stats <- function(reset = FALSE) rxode2:::linCmtCarryFastStats(reset)
+  .setFast <- function(x) rxode2:::linCmtCarrySetFast(x)
+  on.exit(.setFast(TRUE), add = TRUE)
+  f <- function() {
+    ini({tcl <- log(2); tv <- log(20); eta.cl ~ 0.1; add.sd <- 0.5})
+    model({
+      cl <- exp(tcl) * (wt/70)^0.75 * exp(eta.cl)
+      v <- exp(tv)
+      cp <- linCmt()
+      cp ~ add(add.sd)
+    })
+  }
+  ui <- suppressMessages(nlmixr2est::nlmixr2(f))
+  u <- rxode2::.copyUi(ui)
+  assign("control", .carryFitCtl("auto"), envir = u)
+  s <- suppressMessages(u$foceiEnv)
+  expect_true(grepl("rx_lcCarryAdv_", s$..inner))
+  m <- suppressWarnings(rxode2::rxode2(s$..inner))
+  pars <- c(`THETA[1]` = log(2), `THETA[2]` = log(20), `THETA[3]` = 0.5,
+            `ETA[1]` = 0.3)
+  mkEv <- function(wt) {
+    d <- data.frame(id = 1, time = c(0, 3, 7, 15, 24, 30, 41, 50),
+                    amt = c(100, 0, 100, 0, 100, 0, 100, 0),
+                    evid = c(1, 0, 1, 0, 1, 0, 1, 0), cmt = 1)
+    d$wt <- wt
+    d
+  }
+  evConst <- mkEv(70)
+  evVary <- mkEv(ifelse(c(0, 3, 7, 15, 24, 30, 41, 50) < 20, 70, 85))
+  .sens <- "rx__sens_rx_pred__BY_ETA_1___"
+  runOne <- function(ev, fastOn) {
+    .setFast(fastOn)
+    invisible(.stats(TRUE))
+    r <- rxode2::rxSolve(m, params = pars, events = ev,
+                         returnType = "data.frame")
+    list(r = r, s = .stats(FALSE))
+  }
+  # constant-covariate subject: every advance skips; results identical to slow
+  kOn <- runOne(evConst, TRUE)
+  kOff <- runOne(evConst, FALSE)
+  expect_gt(kOn$s[["advCalls"]], 0)
+  expect_equal(kOn$s[["advFast"]], kOn$s[["advCalls"]])
+  expect_equal(kOff$s[["advFast"]], 0)
+  expect_equal(kOn$r[[.sens]], kOff$r[[.sens]], tolerance = 1e-12)
+  # varying subject: constant prefix skips, then permanently slow
+  vOn <- runOne(evVary, TRUE)
+  vOff <- runOne(evVary, FALSE)
+  expect_gt(vOn$s[["advFast"]], 0)
+  expect_lt(vOn$s[["advFast"]], vOn$s[["advCalls"]])
+  expect_equal(vOn$r[[.sens]], vOff$r[[.sens]], tolerance = 1e-12)
+})
+
+test_that("CWRES consumes the carried gradient through the shared inner env", {
+  skip_on_cran()
+  skip_if_not(nlmixr2est:::.rxFoceiLinCmtCarryCapable())
+  f <- function() {
+    ini({tcl <- log(2); tv <- log(20); eta.cl ~ 0.1; add.sd <- 0.5})
+    model({
+      cl <- exp(tcl) * (wt/70)^0.75 * exp(eta.cl)
+      v <- exp(tv)
+      cp <- linCmt()
+      cp ~ add(add.sd)
+    })
+  }
+  d <- .carryFitDat(3L)
+  obs <- d$evid == 0
+  d$dv <- 0
+  d$dv[obs] <- 2 + 0.1 * seq_len(sum(obs))
+  # calcTables on (default) so CWRES is computed through the shared inner env
+  fitOne <- function(carry) {
+    ctl <- nlmixr2est::foceiControl(print = 0, maxOuterIterations = 0L,
+                                    covMethod = "", sigdig = 8,
+                                    etaNudge = 0, etaNudge2 = 0,
+                                    rxControl = rxode2::rxControl(covsInterpolation = "nocb"),
+                                    linCmtSensCarry = carry)
+    suppressWarnings(suppressMessages(
+      nlmixr2est::nlmixr2(f, d, est = "focei", control = ctl)))
+  }
+  fC <- fitOne("auto")
+  fN <- fitOne("none")
+  # mechanism observable: CWRES reuses the fit's own inner env (R/resid.R
+  # .foceiEnv attr), and only the carry fit's inner model is carry-substituted
+  innerTxt <- function(ft) paste(rxode2::rxNorm(ft$env$innerModel), collapse = "\n")
+  expect_true(grepl("rx_lcCarryAdv_", innerTxt(fC)))
+  expect_false(grepl("rx_lcCarryAdv_", innerTxt(fN)))
+  expect_true(all(is.finite(fC$CWRES)))
+  # the eta gradient feeds CWRES's linearization; the carried (correct) and
+  # naive (conflated) gradients must produce different CWRES on varying-wt data
+  expect_gt(max(abs(fC$CWRES - fN$CWRES)), 1e-4)
+})
