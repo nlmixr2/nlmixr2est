@@ -1219,13 +1219,15 @@ public:
     const double fdH = 1e-4;
     std::vector<double> rowScore((size_t)nM, 0.0);
     std::vector<int> rowBad((size_t)nM, 0);
-    // odeSlotHess2 carries its OWN event-sensitivity shape (odeEsHess2, distinct
-    // from odeSlotPred's "no event sensitivities of its own"), and that shape is
-    // a process global -- installing it must happen OUTSIDE the OpenMP region
-    // below (see src/odeSwap.h's own OdeSwapEsBatch doc, and inner.cpp:15386's
-    // identical `useHess2` batch).  odeSlotPred needs no batch at all.
-    std::unique_ptr<OdeSwapEsBatch> phi1EsBatch;
-    if (_saemPhi1UseAnalyticHess) phi1EsBatch.reset(new OdeSwapEsBatch(odeSlotHess2));
+    // The event-sensitivity shape is a process global, installed/cleared only by
+    // OdeSwapEsBatch, which MUST run OUTSIDE the OpenMP region below.  odeSlotHess2
+    // carries its OWN shape (odeEsHess2); odeSlotPred carries none, but per
+    // OdeSwapEsBatch's own contract (src/odeSwap.cpp) a "no ES" slot STILL needs a
+    // batch constructed for it, so a shape left installed by some earlier solve
+    // (this session's own odeSlotHess2 call, or a prior FOCEi fit's fit-wide inner
+    // load) gets explicitly deactivated rather than silently reused with the wrong
+    // dimensions on this solve's dosing events.  Always construct one, for `slot`.
+    std::unique_ptr<OdeSwapEsBatch> phi1EsBatch(new OdeSwapEsBatch(slot));
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
 #endif
@@ -4940,6 +4942,15 @@ static void saemSolveIndividualsPooled(int nInd) {
   rx_solving_options *op = getSolvingOptions(_rx);
   int cores = getOpCores(op);
   bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
+  // odeSlotPred carries no event sensitivities of its own, but the ES shape is
+  // still a process global: without a batch here, a shape some earlier solve
+  // left installed (this fit's own odeSlotHess2 call, or a prior FOCEi fit's
+  // fit-wide inner load) stays live and handle_evid injects jumps sized for
+  // that OTHER model into this (smaller, compacted) solve's dosing events.
+  // OdeSwapEsBatch's own constructor is what deactivates it for a "no ES" slot
+  // -- see its contract in src/odeSwap.cpp.  Must be constructed outside the
+  // OpenMP region below, matching every other peer solve's own batch.
+  OdeSwapEsBatch predEsBatch(odeSlotPred);
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
 #endif

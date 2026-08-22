@@ -37,4 +37,59 @@ nmTest({
                    3.456526558949254, 0.701092895255751),
                  tolerance = 1e-8)
   })
+
+  test_that("general-lik SAEM's odeSlotPred solve survives a prior FOCEi alag() fit's leftover ES shape (#Phase7)", {
+    # A second antigravity review round found saemSolveIndividualsPooled and
+    # phi1Objective's non-Hessian paths solving odeSlotPred (no event
+    # sensitivities of its own) with NO OdeSwapEsBatch constructed for it.
+    # OdeSwapEsBatch's own contract (src/odeSwap.cpp) says a "no ES" slot
+    # still needs a batch -- to explicitly DEACTIVATE whatever shape a prior
+    # solve (a FOCEi fit's fit-wide alag()/f() event-sensitivity load is the
+    # named example in odeSwap.cpp's own comments) left installed as a
+    # process global, rather than solving under it. Both call sites now
+    # construct one; this pins the sequence that would exercise a leftover
+    # shape, in one R session, ahead of a later regression.
+    rxode2::setRxThreads(2)
+    mAlag <- function() {
+      ini({
+        tka <- 0.45; tcl <- 1; tv <- 3.45
+        talag <- log(0.3)
+        add.sd <- 0.7
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        alag(depot) <- exp(talag)
+        d / dt(depot) <- -ka * depot
+        d / dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd)
+      })
+    }
+    fF <- suppressWarnings(.nlmixr(mAlag, nlmixr2data::theo_sd, est = "focei",
+      control = foceiControl(print = 0, maxOuterIterations = 3,
+                             maxInnerIterations = 10, covMethod = "")))
+    expect_true(is.finite(fF$objf))
+
+    mLl <- function() {
+      ini({
+        tka <- 0.45; tcl <- 1; tv <- 3.45
+        lsd <- fixed(log(0.7))
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        d / dt(depot) <- -ka * depot
+        d / dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        sd <- exp(lsd)
+        ll(err) ~ -lsd - 0.5 * log(2 * pi) - 0.5 * ((DV - cp) / sd)^2
+      })
+    }
+    ctl <- saemControl(nBurn = 30, nEm = 30, nmc = 3, seed = 1L, print = 0L,
+                       covMethod = "", calcTables = FALSE)
+    fL <- suppressWarnings(.nlmixr(mLl, nlmixr2data::theo_sd, est = "saem", control = ctl))
+    expect_true(is.finite(fL$objf))
+    expect_equal(unname(fixef(fL)[["tka"]]), 0.45, tolerance = 0.2)
+  })
 })
