@@ -1867,8 +1867,12 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
   ## linCmt() sensitivity-carry substitution (3b.3) changes the inner model
   ## text; it depends on both the control and whether the loaded rxode2 has
   ## the carry sentinels, so both key the cache.
+  ## covsInterpolation gates the substitution ("linear" skips it), so it must
+  ## key the cache too, else a locf build would be reused for a linear fit
   .linCmtCarry <- paste0(rxode2::rxGetControl(.ui, "linCmtSensCarry", "auto"),
-                         ",", .rxFoceiLinCmtCarryCapable())
+                         ",", .rxFoceiLinCmtCarryCapable(), ",",
+                         paste(rxode2::rxGetControl(.ui, "rxControl", NULL)$covsInterpolation,
+                               collapse = ","))
   digest::digest(c(all(is.na(.iniDf$neta1)), .combSens, .linCmtCarry,
                    rxode2::rxGetControl(.ui, "interaction", 1L),
                    .iniDf$name,
@@ -3281,9 +3285,22 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     if (!.rxFoceiLinCmtCarryCapable()) return(invisible(NULL))
     .rd <- tryCatch(as.data.frame(env$data), error = function(e) NULL)
     if (is.null(.rd)) return(invisible(NULL))
-    names(.rd) <- toupper(names(.rd))
-    .bad <- (!is.null(.rd$SS) && any(.rd$SS > 0, na.rm = TRUE)) ||
-      (!is.null(.rd$EVID) && any(.rd$EVID == 2L, na.rm = TRUE))
+    # "linear" covariate interpolation cannot be represented by linCmt()'s
+    # one-sample-per-row evaluation: with a data-confirmed time-varying
+    # covariate on an eligible pair this is an error, not a silent skip
+    .interp <- rxode2::rxGetControl(ui, "rxControl", NULL)$covsInterpolation
+    if (identical(as.integer(.interp), 0L) || identical(.interp, "linear")) {
+      .s <- ui$foceiEtaS
+      .rxFoceiLinCmtCarryEligible(list(ui), .s,
+                                  paste0("ETA_", seq_len(.s$..maxEta), "_"),
+                                  data = .rd, interpolation = "linear",
+                                  render = FALSE)
+      return(invisible(NULL))
+    }
+    .rdUp <- .rd
+    names(.rdUp) <- toupper(names(.rdUp))
+    .bad <- ("SS" %in% names(.rdUp) && any(.rdUp[["SS"]] > 0, na.rm = TRUE)) ||
+      ("EVID" %in% names(.rdUp) && any(.rdUp[["EVID"]] == 2L, na.rm = TRUE))
     if (!.bad) return(invisible(NULL))
     # only warn when the model would actually have used the carry
     .hasPairs <- tryCatch(

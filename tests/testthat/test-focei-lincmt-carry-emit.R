@@ -197,3 +197,18 @@ test_that("a model with no eligible pair generates identical text with carry on 
   expect_identical(.tA, .tN)
   expect_false(grepl("rx_lcCarry", .tA))
 })
+
+test_that("the model cache digest keys covsInterpolation (linear skips the carry)", {
+  # runs regardless of rxode2 capability: a locf build must never be reused
+  # for a linear fit of the same model, or vice versa
+  .mk <- function(interp) {
+    .ui <- rxode2::.copyUi(.carryUiCov())
+    .ctl <- nlmixr2est::foceiControl(
+      rxControl = rxode2::rxControl(covsInterpolation = interp))
+    assign("control", .ctl, envir = .ui)
+    .ui
+  }
+  expect_false(identical(.mk("locf")$foceiModelDigest,
+                         .mk("linear")$foceiModelDigest))
+  expect_identical(.mk("locf")$foceiModelDigest, .mk("locf")$foceiModelDigest)
+})

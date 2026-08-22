@@ -37,8 +37,9 @@
 #   model can still be wrong -- same build-time-cannot-see-data class as
 #   rxode2#1236/#1237; foceiControl(linCmtSensCarry="none") is the opt-out.
 # - covsInterpolation="linear": cannot be represented by linCmt()'s
-#   one-sample-per-row evaluation; substitution is skipped (status quo).
-#   The data-aware hard error lands with the fit-time wiring (3b.5+).
+#   one-sample-per-row evaluation; the build skips substitution, and the
+#   fit path (.foceiFamilyReturn) errors when the data confirms the
+#   covariate actually varies within a subject.
 # - An eta that also drives a modeled alag()/f() correction (#920) keeps
 #   the status quo path (the substitution would drop that extra term).
 # - The analytic 2nd-order inner Hessian (fast=TRUE ll()) has no

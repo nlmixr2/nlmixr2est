@@ -302,3 +302,32 @@ test_that("CWRES consumes the carried gradient through the shared inner env", {
   # naive (conflated) gradients must produce different CWRES on varying-wt data
   expect_gt(max(abs(fC$CWRES - fN$CWRES)), 1e-4)
 })
+
+test_that("linear covariate interpolation on a varying eligible covariate is an error", {
+  skip_on_cran()
+  skip_if_not(nlmixr2est:::.rxFoceiLinCmtCarryCapable())
+  f <- function() {
+    ini({tcl <- log(2); tv <- log(20); eta.cl ~ 0.1; add.sd <- 0.5})
+    model({
+      cl <- exp(tcl) * (wt/70)^0.75 * exp(eta.cl)
+      v <- exp(tv)
+      cp <- linCmt()
+      cp ~ add(add.sd)
+    })
+  }
+  d <- .carryFitDat(2L)
+  d$dv <- ifelse(d$evid == 0, 3, 0)
+  ctlLin <- nlmixr2est::foceiControl(
+    print = 0, maxOuterIterations = 0L, covMethod = "", calcTables = FALSE,
+    rxControl = rxode2::rxControl(covsInterpolation = "linear"))
+  expect_error(suppressWarnings(suppressMessages(
+    nlmixr2est::nlmixr2(f, d, est = "focei", control = ctlLin))),
+    "linear")
+  # a covariate that is constant within every subject is fine under linear
+  dc <- d
+  dc$wt <- 70
+  fit <- suppressWarnings(suppressMessages(
+    nlmixr2est::nlmixr2(f, dc, est = "focei", control = ctlLin)))
+  expect_true(inherits(fit, "nlmixr2FitCore"))
+  expect_false(grepl("rx_lcCarry", paste(rxode2::rxNorm(fit$env$innerModel), collapse = "\n")))
+})
