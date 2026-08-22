@@ -356,3 +356,27 @@ test_that("evid=2 rows fall back to the standard gradient with a runInfo note", 
   expect_true(any(grepl("carry gradient off", unlist(fit$runInfo))))
   expect_false(grepl("rx_lcCarry", paste(rxode2::rxNorm(fit$env$innerModel), collapse = "\n")))
 })
+
+test_that("a carry-eligible fit survives foceiControl(fast=TRUE)", {
+  skip_on_cran()
+  skip_if_not(nlmixr2est:::.rxFoceiLinCmtCarryCapable())
+  f <- function() {
+    ini({tcl <- log(2); tv <- log(20); eta.cl ~ 0.1; add.sd <- 0.5})
+    model({
+      cl <- exp(tcl) * (wt/70)^0.75 * exp(eta.cl)
+      v <- exp(tv)
+      cp <- linCmt()
+      cp ~ add(add.sd)
+    })
+  }
+  d <- .carryFitDat(2L)
+  d$dv <- ifelse(d$evid == 0, 3, 0)
+  ctl <- nlmixr2est::foceiControl(print = 0, maxOuterIterations = 2L,
+                                  covMethod = "", calcTables = FALSE, fast = TRUE,
+                                  rxControl = rxode2::rxControl(covsInterpolation = "nocb"))
+  fit <- suppressWarnings(suppressMessages(
+    nlmixr2est::nlmixr2(f, d, est = "focei", control = ctl)))
+  expect_true(inherits(fit, "nlmixr2FitCore"))
+  expect_true(is.finite(fit$objf))
+  expect_true(grepl("rx_lcCarry", paste(rxode2::rxNorm(fit$env$innerModel), collapse = "\n")))
+})

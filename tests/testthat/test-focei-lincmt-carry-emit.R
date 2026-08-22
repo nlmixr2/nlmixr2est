@@ -212,3 +212,62 @@ test_that("the model cache digest keys covsInterpolation (linear skips the carry
                          .mk("linear")$foceiModelDigest))
   expect_identical(.mk("locf")$foceiModelDigest, .mk("locf")$foceiModelDigest)
 })
+
+test_that("more than four carry-eligible pairs fails loudly at model build", {
+  skip_if_not(nlmixr2est:::.rxFoceiLinCmtCarryCapable())
+  five <- function() {
+    ini({
+      tcl <- log(2); tv <- log(20); tq <- log(1); tv2 <- log(30)
+      tq2 <- log(0.5); tv3 <- log(40); tka <- log(1)
+      eta.cl ~ 0.1; eta.v ~ 0.1; eta.q ~ 0.1; eta.v2 ~ 0.1; eta.ka ~ 0.1
+      add.sd <- 0.5
+    })
+    model({
+      cl <- exp(tcl) * (wt / 70)^0.75 * exp(eta.cl)
+      v <- exp(tv) * (wt / 70) * exp(eta.v)
+      q <- exp(tq) * (wt / 70)^0.75 * exp(eta.q)
+      v2 <- exp(tv2) * (wt / 70) * exp(eta.v2)
+      q2 <- exp(tq2)
+      v3 <- exp(tv3)
+      ka <- exp(tka) * (wt / 70) * exp(eta.ka)
+      cp <- linCmt()
+      cp ~ add(add.sd)
+    })
+  }
+  ui <- .carrySetControl(nlmixr2est::nlmixr2(five), "auto")
+  expect_equal(nrow(nlmixr2est:::.foceiLinCmtCarryPairs(ui)), 5L)
+  s <- ui$foceiEtaS
+  expect_error(nlmixr2est:::.rxFoceiLinCmtCarryPairsForBuild(
+    list(ui), s, paste0("ETA_", seq_len(s$..maxEta), "_")), "more than 4")
+  # (inside the HdEta build the error is re-raised by the progress abort as
+  # "Aborted calculation", which escapes expect_error -- the direct call
+  # above is what pins the message)
+})
+
+test_that("an eta that also drives a modeled alag() keeps the #920 path, not the carry", {
+  skip_if_not(nlmixr2est:::.rxFoceiLinCmtCarryCapable())
+  lagged <- function() {
+    ini({
+      tka <- log(1); tcl <- log(2); tv <- log(20); tlag <- log(0.2)
+      eta.cl ~ 0.1; eta.v ~ 0.1
+      add.sd <- 0.5
+    })
+    model({
+      ka <- exp(tka)
+      cl <- exp(tcl) * (wt / 70)^0.75 * exp(eta.cl)
+      v <- exp(tv) * (wt / 70) * exp(eta.v)
+      alag(depot) <- exp(tlag + eta.cl)
+      cp <- linCmt()
+      cp ~ add(add.sd)
+    })
+  }
+  ui <- .carrySetControl(nlmixr2est::nlmixr2(lagged), "auto")
+  h <- ui$foceiHdEta$..HdEta
+  l1 <- h[grepl("BY_ETA_1___=", h, fixed = TRUE)]
+  l2 <- h[grepl("BY_ETA_2___=", h, fixed = TRUE)]
+  # eta.cl (ETA_1_) drives the lag: #920 correction (-3), no carry
+  expect_true(any(grepl("-3", l1, fixed = TRUE)))
+  expect_false(any(grepl("rx_lcCarry", l1)))
+  # eta.v (ETA_2_) is still carried
+  expect_true(any(grepl("rx_lcCarry", l2)))
+})
