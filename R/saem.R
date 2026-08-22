@@ -347,7 +347,15 @@
     # iniDf so the optimization stays in a valid region.
     if (!is.null(.cfg$nphi0) && .cfg$nphi0 > 0L) {
       .pars <- ui$saemParamsToEstimate
-      .phi0Names <- .pars[.cfg$i0]
+      # .cfg$i0 is 0-based (converted for C++'s own use, R/saem_fit.R's
+      # `i0 <- i0 - 1`), so it must be shifted back to R's 1-based indexing
+      # here.  Left un-shifted, this silently looked up the WRONG parameter's
+      # name (off by one) -- e.g. a general-likelihood endpoint's bounded
+      # residual theta (prop.err) resolved to whichever theta sits one
+      # position earlier, which typically has no declared bound, so
+      # phi0Lower/Upper fell back to -Inf/Inf and refinePhi0Lik's bounded
+      # bobyqa ran completely unconstrained for it.
+      .phi0Names <- .pars[.cfg$i0 + 1L]
       .lo <- ui$iniDf$lower[match(.phi0Names, ui$iniDf$name)]
       .hi <- ui$iniDf$upper[match(.phi0Names, ui$iniDf$name)]
       .cfg$phi0Lower <- ifelse(is.na(.lo), -Inf, .lo)
