@@ -93,6 +93,10 @@
   .ui <- x[[1]]
   .empty <- .rxFoceiCarryEmpty()
   if (rxode2::.rxLinNcmt(.ui)["numLin"] <= 0L) return(.empty)
+  # mixed ODE + linCmt() models evaluate linCmtB() inside the integrator as
+  # well as in the lhs pass; the once-per-row carry stepping is only
+  # validated for pure linCmt() models
+  if (length(.rxode2stateOdeNoOutput(s)) > 0L) return(.empty)
   if (!exists("rx_pred_", envir = s, inherits = FALSE)) return(.empty)
   .pred <- get("rx_pred_", envir = s, inherits = FALSE)
   if (!identical(tryCatch(symengine::get_name(.pred), error = function(e) ""),

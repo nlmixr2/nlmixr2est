@@ -203,3 +203,26 @@ test_that("linCmt carry eligibility detection", {
     expect_equal(nrow(.p), 0L)
   }
 })
+
+test_that("a mixed ODE + linCmt() model is never carry-eligible", {
+  mixed <- function() {
+    ini({
+      tcl <- log(2)
+      tv <- log(20)
+      tkin <- log(0.5)
+      eta.cl ~ 0.1
+      eta.kin ~ 0.1
+      add.sd <- 0.5
+    })
+    model({
+      cl <- exp(tcl) * (wt / 70)^0.75 * exp(eta.cl)
+      v <- exp(tv)
+      kin <- exp(tkin) * exp(eta.kin)
+      cp <- linCmt()
+      d/dt(eff) <- kin * cp - 0.5 * eff
+      cp ~ add(add.sd)
+    })
+  }
+  ui <- nlmixr2est::nlmixr2(mixed)
+  expect_equal(nrow(nlmixr2est:::.foceiLinCmtCarryPairs(ui)), 0L)
+})
