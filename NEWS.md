@@ -35,6 +35,24 @@
   an `indLin()` forcing term (e.g. Michaelis-Menten) still flattens (issue
   #859).
 
+- A `linCmt()` parameter driven by both an eta and a time-varying covariate
+  (for example `cl <- tcl*(wt/70)^0.75*exp(eta.cl)` with `wt` changing over a
+  subject's records) now gets an exact FOCEi-family eta gradient.  The
+  analytic `linCmt()` sensitivity reconstructs each row's carried state as if
+  the parameter had been constant over the subject, so a covariate that
+  changes it between rows silently conflated the interval sensitivities
+  (objective-function and converged-eta differences against the equivalent
+  ODE model).  The generated inner model now carries the exact sensitivity
+  across rows through rxode2's `linCmtB()` carry sentinels for every eligible
+  (parameter, eta) pair; models without such a pair generate identical code.
+  `foceiControl(linCmtSensCarry=)` opts out (`"none"`).  Data with
+  steady-state (`ss > 0`) or `evid = 2` records fall back to the previous
+  gradient with a note in `$runInfo`, and `"linear"` covariate interpolation
+  on such a covariate is an error (a `linCmt()` model evaluates each interval
+  at its row-end covariate value, so only a piecewise-constant interpolation
+  is representable).  Requires an rxode2 with the carry sentinels; older
+  versions keep the previous behavior.
+
 - A modeled `alag()` or `f()` on a `linCmt()` compartment now gets an exact
   FOCEi/FOCE eta gradient instead of a silently incomplete one.  The
   structural `linCmt()` Jacobian only covers `p1`/`v1`/`ka`/...; the
