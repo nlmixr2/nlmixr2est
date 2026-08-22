@@ -1219,6 +1219,13 @@ public:
     const double fdH = 1e-4;
     std::vector<double> rowScore((size_t)nM, 0.0);
     std::vector<int> rowBad((size_t)nM, 0);
+    // odeSlotHess2 carries its OWN event-sensitivity shape (odeEsHess2, distinct
+    // from odeSlotPred's "no event sensitivities of its own"), and that shape is
+    // a process global -- installing it must happen OUTSIDE the OpenMP region
+    // below (see src/odeSwap.h's own OdeSwapEsBatch doc, and inner.cpp:15386's
+    // identical `useHess2` batch).  odeSlotPred needs no batch at all.
+    std::unique_ptr<OdeSwapEsBatch> phi1EsBatch;
+    if (_saemPhi1UseAnalyticHess) phi1EsBatch.reset(new OdeSwapEsBatch(odeSlotHess2));
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
 #endif

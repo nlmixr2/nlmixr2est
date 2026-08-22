@@ -87,6 +87,41 @@ nmTest({
                  tolerance = 0.05)
   })
 
+  test_that("saemControl(phi1Hessian=TRUE) fits end-to-end on an ODE model (#Phase4)", {
+    # An ODE (non-linCmt()) general-likelihood endpoint takes the ANALYTIC
+    # Hessian path (odeSlotHess2, which carries its own event-sensitivity
+    # shape distinct from odeSlotPred's "none") -- this is the only test that
+    # exercises phi1Hessian=TRUE through an actual fit rather than a
+    # standalone model build (test-saem-phi1-inner.R), which is what let a
+    # real bug (odeSlotHess2 solved under phi1Objective's OpenMP region with
+    # no OdeSwapEsBatch installed outside it, corrupting handle_evid's
+    # scratch) ship undetected.
+    mLl2 <- function() {
+      ini({
+        tka <- 0.45; tcl <- 1; tv <- 3.45
+        lsd <- fixed(log(0.7))
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        d / dt(depot) <- -ka * depot
+        d / dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        sd <- exp(lsd)
+        ll(err) ~ -lsd - 0.5 * log(2 * pi) - 0.5 * ((DV - cp) / sd)^2
+      })
+    }
+    .n0 <- nlmixr2est:::saemPhi1RefineN_()
+    ctl <- saemControl(nBurn = 40, nEm = 40, nmc = 3, seed = 42L, print = 0L,
+                       covMethod = "", calcTables = FALSE, phi1Hessian = TRUE)
+    f <- suppressWarnings(.nlmixr(mLl2, theo_sd, est = "saem", control = ctl))
+    expect_true(is.finite(f$objf))
+    expect_equal(unname(fixef(f)[["tka"]]), 0.45, tolerance = 0.2)
+    # confirms the analytic-Hessian path actually ran, not just that the fit
+    # returned something
+    expect_gt(nlmixr2est:::saemPhi1RefineN_(), .n0)
+  })
+
   test_that("a covariate-on-a-mu-ref-theta Gaussian twin still agrees with add() (#Phase6)", {
     # .saemPhi1TargetMap declines a covariate on a mu-referenced theta (v1
     # scope, see test-saem-phi1-inner.R), so this twin's phi1 step falls all
