@@ -211,6 +211,8 @@
       .model$saemPhi1ThetaCol <- as.integer(.p1$thetaCol)
       .model$saemPhi1ThetaFixedVal <- as.numeric(.p1$thetaFixedVal)
       .model$saemPhi1EtaCol <- as.integer(.p1$etaCol)
+      .model$saemPhi1DvCol <- as.integer(.p1$dvCol)
+      .model$saemPhi1DvColHess2 <- as.integer(.p1$dvColHess2)
     }
   }
   .inits <- ui$saemInit

@@ -107,13 +107,20 @@ attr(rxUiGet.saemPhi1Inner, "rstudio") <- emptyenv()
 #'
 #' `innerHess2`/`predNoLhs` are compiled by FOCEi's own codegen, so their
 #' parameter vector is `THETA[k]`/`ETA[k]` (plus `DV`, a general-likelihood
-#' model's own event-table covariate -- already supplied the same way SAEM's
-#' own model gets it, so it needs no per-row handling here). SAEM's C++ theta
-#' step needs, resolved ONCE and consumed as plain integer arrays (no R call
-#' in the hot per-bobyqa-evaluation loop): for each `THETA[k]`, whether it is
-#' a phi1 (mu-referenced, actively optimized) column, a phi0 (fixed-effect)
-#' column read from SAEM's current state, or a genuinely FIXED value; and for
-#' each `ETA[k]`, which phi1 column it pairs with.
+#' model's own observed-value input). Unlike an ordinary covariate, `DV`
+#' is NOT supplied by rxode2's usual event-table covariate matching --
+#' `etTran.cpp` explicitly excludes any column named `dv`/`DV`/`Dv` from
+#' covariate detection (it is consumed once into rxode2's own reserved
+#' `dv`/`getIndDv()` slot instead), regardless of the model's own `param()`
+#' declarations. So the C++ theta step must read `getIndDv(ind, kk)` per
+#' observation and write it into the model's own `DV` parameter slot itself;
+#' this accessor resolves that slot's 0-based column position (by name, once)
+#' so the hot loop needs no R call to find it. SAEM's C++ theta step also
+#' needs, resolved ONCE and consumed as plain integer arrays (no R call in the
+#' hot per-bobyqa-evaluation loop): for each `THETA[k]`, whether it is a phi1
+#' (mu-referenced, actively optimized) column, a phi0 (fixed-effect) column
+#' read from SAEM's current state, or a genuinely FIXED value; and for each
+#' `ETA[k]`, which phi1 column it pairs with.
 #'
 #' Deliberately conservative for v1: returns `NULL` (the caller falls back to
 #' the historic SA-recursion) whenever a shape this map cannot represent
@@ -132,22 +139,38 @@ attr(rxUiGet.saemPhi1Inner, "rstudio") <- emptyenv()
 #'   length = number of `THETA[k]` slots; -1 fixed, 0 phi0, 1 phi1),
 #'   `thetaCol` (0-based column within that kind's own subset),
 #'   `thetaFixedVal` (the fixed value when `thetaKind==-1`, ignored
-#'   otherwise), and `etaCol` (integer vector, length = number of `ETA[k]`
-#'   slots; the 0-based phi1 column each eta pairs with).
+#'   otherwise), `etaCol` (integer vector, length = number of `ETA[k]`
+#'   slots; the 0-based phi1 column each eta pairs with), `dvCol` (0-based
+#'   `DV` parameter-slot position in `predMod`), and `dvColHess2` (the same,
+#'   in `hess2Mod`; `NA_integer_` when `hess2Mod` is `NULL`).
 #' @author Matthew L. Fidler
 #' @noRd
 .saemPhi1TargetMap <- function(ui, hess2Mod, predMod) {
   .refMod <- if (!is.null(hess2Mod)) hess2Mod else predMod
   if (is.null(.refMod)) return(NULL)
   .parsH2 <- rxode2::rxParam(.refMod)
+  .parsPred <- rxode2::rxParam(predMod)
   if (!is.null(hess2Mod) && !is.null(predMod)) {
     .thEtH2 <- .parsH2[grepl("^(THETA|ETA)\\[", .parsH2)]
-    .thEtPred <- rxode2::rxParam(predMod)
-    .thEtPred <- .thEtPred[grepl("^(THETA|ETA)\\[", .thEtPred)]
+    .thEtPred <- .parsPred[grepl("^(THETA|ETA)\\[", .parsPred)]
     if (!identical(.thEtH2, .thEtPred)) return(NULL)
   }
   .other <- .parsH2[!(grepl("^(THETA|ETA)\\[", .parsH2) | .parsH2 == "DV")]
   if (length(.other) > 0) return(NULL)
+  .otherPred <- .parsPred[!(grepl("^(THETA|ETA)\\[", .parsPred) | .parsPred == "DV")]
+  if (length(.otherPred) > 0) return(NULL)
+  # DV is not an ordinary covariate rxode2's evt-matching supplies (see this
+  # function's own docs above) -- the C++ theta step writes it into the
+  # model's own DV parameter slot itself, so it must know that slot's
+  # position in EACH model actually solved (predMod always; hess2Mod only
+  # when it built) rather than assume the two agree.
+  .dvCol <- match("DV", .parsPred) - 1L
+  if (is.na(.dvCol)) return(NULL)
+  .dvColHess2 <- if (is.null(hess2Mod)) NA_integer_ else {
+    .v <- match("DV", .parsH2) - 1L
+    if (is.na(.v)) return(NULL)
+    .v
+  }
   if (length(ui$nonMuEtas) > 0) return(NULL)
   .cov <- rxUiGet.saemMuRefCovariateDataFrame(list(ui))
   if (length(.cov$covariateParameter) > 0) return(NULL)
@@ -193,5 +216,6 @@ attr(rxUiGet.saemPhi1Inner, "rstudio") <- emptyenv()
   }
 
   list(ok = TRUE, thetaKind = .thetaKind, thetaCol = .thetaCol,
-       thetaFixedVal = .thetaFixedVal, etaCol = .etaCol)
+       thetaFixedVal = .thetaFixedVal, etaCol = .etaCol,
+       dvCol = .dvCol, dvColHess2 = .dvColHess2)
 }

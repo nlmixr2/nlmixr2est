@@ -412,6 +412,8 @@
     opt$saemPhi1ThetaCol <- model$saemPhi1ThetaCol
     opt$saemPhi1ThetaFixedVal <- model$saemPhi1ThetaFixedVal
     opt$saemPhi1EtaCol <- model$saemPhi1EtaCol
+    opt$saemPhi1DvCol <- model$saemPhi1DvCol
+    opt$saemPhi1DvColHess2 <- model$saemPhi1DvColHess2
   }
   ## opt$.dat <- dat;
   # normally drop 'dv' by name (the kernel gets observations separately as 'y').

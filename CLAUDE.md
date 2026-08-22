@@ -294,3 +294,22 @@ models in `R/focei.R`):
   keyed by name, but pinning order keeps the input layout stable across builds).
   Covariates are supplied from the event data at solve time but must still be
   declared in `param(...)`.
+- **`DV` is never supplied this way, even when declared with `param(DV)`.**
+  rxode2's `etTran.cpp` (`if (tmpS != "dv") { ... }` around its covariate-match
+  loop, literally commented `// Covariate found; dv not considered covariate`)
+  unconditionally excludes any column named `dv`/`DV`/`Dv` from covariate
+  detection -- it is consumed once into rxode2's own reserved slot
+  (`_globals.gdv`, read back via `getIndDv(ind, kk)`) instead, regardless of
+  the model's own `param()` declarations. So a general-likelihood model whose
+  formula references `DV` (dnorm()/t()/cauchy() sugar, or a literal `ll()`
+  expression) gets `_PP[k]=DV`'s slot filled with `_update_par_ptr`'s default
+  (reads as `0`), never the real observed value, unless the C++ caller writes
+  it explicitly: `setIndParPtr(ind, dvCol, getIndDv(ind, kk))` per observation,
+  where `dvCol` is `DV`'s 0-based position in the model's own param vector
+  (look it up by name once, e.g. via `rxode2::rxParam(mod)`, since it is not
+  guaranteed to sit at any fixed offset). Silently wrong (a plausible-looking
+  but incorrect log-density), not a crash or a "parameter required" error, so
+  it does not show up until someone checks the actual numeric value fed to the
+  likelihood -- see `saemSetRowsPooled`/`saemSolveIndividualsPooled`/
+  `saemReadRowsPooled`/`phi1PredAt`/`phi1Objective` in `src/saem.cpp` for the
+  fixed pattern (SAEM's Phase 4 general-likelihood theta step hit this).

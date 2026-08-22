@@ -730,6 +730,13 @@ extern arma::vec _saemPhi1H2ThetaFixedVal;
 extern arma::ivec _saemPhi1H2EtaCol;
 extern bool _saemPhi1WantHessian;
 extern int _saemPhi1PredOffset;
+// 0-based DV parameter-slot position: DV is not an ordinary covariate --
+// rxode2's etTran.cpp explicitly excludes any "dv"-named column from
+// covariate detection, consuming it into its own reserved getIndDv() slot
+// instead -- so it is never populated by _update_par_ptr and must be written
+// here per observation, mirroring THETA[k]/ETA[k]. -1 when not resolved.
+extern int _saemPhi1DvCol;
+extern int _saemPhi1DvColHess2;
 extern int _saemPhi1H2PredOffset;
 extern int _saemPhi1H2HessOffset;
 extern arma::uvec _saemPhi1I0;
@@ -1199,6 +1206,10 @@ public:
       int kk = getIndIx(ind, j);
       if (getIndEvid(ind, kk) != 0) continue;
       double curT = getTime(kk, ind);
+      // DV is not an ordinary covariate -- rxode2 never supplies it via
+      // _update_par_ptr (see _saemPhi1DvCol's own doc comment) -- so it must
+      // be written into the model's own DV slot here, per observation.
+      setIndParPtr(ind, _saemPhi1DvCol, getIndDv(ind, kk));
       rxPred.calc_lhs(i, curT, getOpIndSolve(op, ind, j), lhs);
       pred += lhs[_saemPhi1PredOffset];
     }
@@ -1273,6 +1284,7 @@ public:
           int kk = getIndIx(ind, j);
           if (getIndEvid(ind, kk) != 0) continue;
           double curT = getTime(kk, ind);
+          setIndParPtr(ind, _saemPhi1DvColHess2, getIndDv(ind, kk));
           rxHess2.calc_lhs(i, curT, getOpIndSolve(op, ind, j), lhs);
           rowPred += lhs[_saemPhi1H2PredOffset];
           int r = 0;
@@ -2094,12 +2106,17 @@ public:
       _saemPhi1H2ThetaCol = as<ivec>(opt["saemPhi1ThetaCol"]);
       _saemPhi1H2ThetaFixedVal = as<vec>(opt["saemPhi1ThetaFixedVal"]);
       _saemPhi1H2EtaCol = as<ivec>(opt["saemPhi1EtaCol"]);
+      _saemPhi1DvCol = opt.containsElementNamed("saemPhi1DvCol") ?
+        as<int>(opt["saemPhi1DvCol"]) : -1;
+      _saemPhi1DvColHess2 = opt.containsElementNamed("saemPhi1DvColHess2") ?
+        as<int>(opt["saemPhi1DvColHess2"]) : -1;
       _saemPhi1PredOffset = odeSwapLhsIndex(odeSlotPred, "rx_pred_");
       bool haveHess2 = odeSwapLoaded(odeSlotHess2);
       _saemPhi1H2PredOffset = haveHess2 ? odeSwapLhsIndex(odeSlotHess2, "rx_pred_") : -1;
       _saemPhi1H2HessOffset = haveHess2 ? odeSwapLhsIndex(odeSlotHess2, "rx__d2pred_1_1__") : -1;
-      _saemPhi1UseAnalyticHess = haveHess2 && _saemPhi1H2PredOffset >= 0 && _saemPhi1H2HessOffset >= 0;
-      _saemPhi1PoolReady = _saemPhi1PredOffset >= 0 &&
+      _saemPhi1UseAnalyticHess = haveHess2 && _saemPhi1H2PredOffset >= 0 &&
+        _saemPhi1H2HessOffset >= 0 && _saemPhi1DvColHess2 >= 0;
+      _saemPhi1PoolReady = _saemPhi1PredOffset >= 0 && _saemPhi1DvCol >= 0 &&
         _saemPhi1H2EtaCol.n_elem == (unsigned int)nphi1 &&
         (_saemPhi1UseAnalyticHess || odeSwapLoaded(odeSlotPred));
       // user_function (a free function) needs i0/i1 too, to map
@@ -4892,6 +4909,8 @@ bool _saemPhi1WantHessian = false;
 int _saemPhi1PredOffset = -1;
 int _saemPhi1H2PredOffset = -1;
 int _saemPhi1H2HessOffset = -1;
+int _saemPhi1DvCol = -1;
+int _saemPhi1DvColHess2 = -1;
 arma::uvec _saemPhi1I0;
 arma::uvec _saemPhi1I1;
 
@@ -5009,6 +5028,10 @@ static void saemReadRowsPooled(mat &g, int &elt, bool &hasNan, int nInd) {
       int kk = getIndIx(ind, j);
       if (getIndEvid(ind, kk) != 0) continue;
       double curT = getTime(kk, ind);
+      // DV is not an ordinary covariate -- rxode2 never supplies it via
+      // _update_par_ptr (see _saemPhi1DvCol's own doc comment) -- so it must
+      // be written into the model's own DV slot here, per observation.
+      setIndParPtr(ind, _saemPhi1DvCol, getIndDv(ind, kk));
       rxPred.calc_lhs(i, curT, getOpIndSolve(op, ind, j), lhs);
       double cur = lhs[_saemPhi1PredOffset];
       if (std::isnan(cur)) { cur = 1.0e99; rowNan[i] = 1; }
