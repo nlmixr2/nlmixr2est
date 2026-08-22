@@ -6,8 +6,17 @@
 #
 # The ODE reference is generated semantics-matched: linCmt() evaluates each
 # inter-row interval at the row-END covariate value (nocb), so the matched
-# d/dt() reference must integrate under covsInterpolation="nocb" (verified:
-# predictions agree to ~3e-12 under nocb, differ ~2.5% under locf).
+# d/dt() reference must integrate under covsInterpolation="nocb" (verified
+# against a real integrator, useLinCmt=FALSE at atol/rtol=1e-12: predictions
+# agree to ~1e-11 under nocb, differ ~2.5% under locf).
+#
+# Independence of the reference: rxSolve() on a UI auto-routes a linear
+# d/dt() system back through linCmt() (useLinCmt=TRUE default), but the fit's
+# inner model carries rx__sens_ states so that detection never fires (verified:
+# the reference inner model has no linCmt() call, and options(rxode2.useLinCmt
+# = FALSE) leaves its objective bit-identical). The DV simulation below uses a
+# compiled rxode2 object (rxSolve.default, no detection) and passes
+# useLinCmt=FALSE explicitly anyway.
 
 .carryFitDat <- function(nid = 6L) {
   do.call(rbind, lapply(seq_len(nid), function(i) {
@@ -55,7 +64,7 @@ cp = central/v")
     rxode2::rxSolve(m, params = c(tcl = log(2), tv = log(20),
                                   eta_cl = etaTrue[i]),
                     events = dat[dat$id == i, ], returnType = "data.frame",
-                    covsInterpolation = "nocb")$cp
+                    covsInterpolation = "nocb", useLinCmt = FALSE)$cp
   }))
   obs <- dat$evid == 0
   dat$dv <- 0
