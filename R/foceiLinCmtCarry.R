@@ -80,7 +80,11 @@
   if (identical(rxode2::rxGetControl(.ui, "linCmtSensCarry", "auto"), "none")) {
     return(NULL)
   }
-  if (identical(rxode2::rxGetControl(.ui, "covsInterpolation", "locf"), "linear")) {
+  # covsInterpolation rides inside control$rxControl (0=linear, 1=locf,
+  # 2=nocb, 3=midpoint); a bare rxGetControl() lookup never sees it
+  .rxCtl <- rxode2::rxGetControl(.ui, "rxControl", NULL)
+  .interp <- .rxCtl$covsInterpolation
+  if (identical(as.integer(.interp), 0L) || identical(.interp, "linear")) {
     return(NULL)
   }
   # render=FALSE: no rxFromSE may run before rxUiGet.foceiHdEta's own
