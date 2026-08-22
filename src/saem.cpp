@@ -2958,8 +2958,19 @@ public:
           // the observation loss is simply -ll and the standard RWM kernels run
           // unchanged.  Reachable for est="saem" when .saemGeneralLik(ui) is true
           // (the transform-normal assertion is skipped for such a model).
+          // This computes U_y, the CURRENT state's reference likelihood every
+          // do_mcmc call below is scored against -- it needs the identical
+          // sentinel-inversion/ceiling clamp do_mcmc's own case 4 applies (see
+          // its comment), or a bad/NaN solve at the CURRENT phi (e.g. right at
+          // kiter=0, before any exploration has adapted the state) makes U_y
+          // itself an artificially huge NEGATIVE ("great") reference, which
+          // either traps the chain there or makes every subsequent acceptance
+          // test's deltu meaningless (both sides dominated by the same
+          // ~-1e99 sentinel).
           for (int k = 0; k < nmc; k++) {
             vec fk = f.subvec(k * ntotal, (k + 1) * ntotal - 1);
+            fk.elem(find(fk >= 1.0e99)).fill(_saemGenLikBadSolvePenalty);
+            fk.elem(find(fk > _saemGenLikCeiling)).fill(_saemGenLikCeiling);
             uvec indio_k = indio + (arma::uword)k * (arma::uword)(N * mlen);
             DYF(indio_k) = -fk;
           }
@@ -4404,6 +4415,18 @@ private:
     mphi1.mprior_phiM = repmat(mprior_phi1,nmc,1);
   }
 
+  // do_mcmc's distribution==4 (general-likelihood) branch clamps: a legitimate
+  // per-observation log-likelihood is capped at _saemGenLikCeiling (mirroring
+  // case 1's own clamp of its scale g to [double_xmin, xmax] -- a genuine
+  // log-density is unbounded above as the effective residual scale collapses
+  // toward zero), and the shared +1e99 bad/NaN-solve sentinel is inverted to
+  // _saemGenLikBadSolvePenalty (a strongly NEGATIVE value) rather than left
+  // as +1e99, which DYF=-fck would otherwise reward as an almost-certain MCMC
+  // accept.  Values, not derived constants: large enough to swamp any
+  // realistic per-observation contribution in either direction.
+  static constexpr double _saemGenLikCeiling = 700.0;
+  static constexpr double _saemGenLikBadSolvePenalty = -1.0e10;
+
   void do_mcmc(const int method,
                const int nu,
                const mcmcaux &mx,
@@ -4519,8 +4542,34 @@ private:
           {
             // general log-likelihood: model prediction is the per-obs loglik
             const arma::uword stride = (arma::uword)N * (arma::uword)mlen;
+            // Case 1 (closed-form normal/etc.) clamps its own scale (g) to
+            // [double_xmin, xmax] before scoring, specifically so a candidate
+            // that collapses the residual scale toward zero cannot blow up
+            // that observation's contribution -- log N(x;mu,sigma) -> +Inf as
+            // sigma -> 0.  A general-likelihood fck IS the log-likelihood
+            // already (no separate scale to clamp), so it needs the same kind
+            // of finite ceiling directly, or a scale-collapsing candidate
+            // (e.g. driving Vc, and hence cp=centr/Vc, toward 0 in a
+            // proportional-error MM model) gets an unboundedly large reward
+            // and the acceptance test (deltu < -log(accU)) takes it almost
+            // unconditionally.  (Checked directly for the U009 MM corpus
+            // model's own divergence: this clamp never actually fires there,
+            // so it is not what drives that specific case -- it is still a
+            // real, principled gap for models where a candidate genuinely
+            // does collapse the residual scale, and mirrors case 1's own
+            // clamp on structural grounds, not as an attempted fix for U009.)
+            // saemReadRowsPooled also flags a failed/NaN solve with the
+            // shared +1e99 sentinel (see its own comment): for every OTHER
+            // distribution fc is a predicted VALUE compared against data, so
+            // a huge fc naturally penalizes a bad solve via the residual --
+            // here fc IS the log-likelihood, so left unrecognized the
+            // sentinel flows into DYF=-fck as an unboundedly NEGATIVE (i.e.
+            // rewarded) contribution, exactly backwards. Detect and invert it
+            // to a strongly penalized value before applying the ceiling.
             for (int k = 0; k < nmc; k++) {
               vec fck = fc.subvec(k * ntotal, (k + 1) * ntotal - 1);
+              fck.elem(find(fck >= 1.0e99)).fill(_saemGenLikBadSolvePenalty);
+              fck.elem(find(fck > _saemGenLikCeiling)).fill(_saemGenLikCeiling);
               _scratch_indio = mx.indio + (arma::uword)k * stride;
               DYF(_scratch_indio) = -fck;
             }
