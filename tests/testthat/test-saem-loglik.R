@@ -87,6 +87,55 @@ nmTest({
                  tolerance = 0.05)
   })
 
+  test_that("a covariate-on-a-mu-ref-theta Gaussian twin still agrees with add() (#Phase6)", {
+    # .saemPhi1TargetMap declines a covariate on a mu-referenced theta (v1
+    # scope, see test-saem-phi1-inner.R), so this twin's phi1 step falls all
+    # the way back to the historic Robbins-Monro SA-recursion for every
+    # theta -- exercising that the decline-and-fallback path (not Phase 4's
+    # new step) still lands on the right answer for a general-likelihood
+    # endpoint, broadening the #871 twin beyond the etas-only case.
+    mAdd <- function() {
+      ini({
+        tka <- 0.45; tcl <- 1; tv <- 3.45; tka.wt <- 0.01
+        add.sd <- fixed(0.7)
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+      })
+      model({
+        ka <- exp(tka + tka.wt * WT + eta.ka)
+        cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    mLl <- function() {
+      ini({
+        tka <- 0.45; tcl <- 1; tv <- 3.45; tka.wt <- 0.01
+        lsd <- fixed(log(0.7))
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+      })
+      model({
+        ka <- exp(tka + tka.wt * WT + eta.ka)
+        cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        sd <- exp(lsd)
+        cp <- linCmt()
+        ll(err) ~ -lsd - 0.5 * log(2 * pi) - 0.5 * ((DV - cp) / sd)^2
+      })
+    }
+    ctl <- saemControl(nBurn = 300, nEm = 400, seed = 42L, print = 0L,
+                       covMethod = "", calcTables = FALSE)
+    fA <- .nlmixr(mAdd, theo_sd, est = "saem", control = ctl)
+    fL <- .nlmixr(mLl,  theo_sd, est = "saem", control = ctl)
+
+    # this twin really does decline the new phi1 step (confirms the premise
+    # of this test, not just its conclusion)
+    expect_false(isTRUE(fL$ui$saemPhi1Inner$ok))
+
+    expect_equal(unname(fixef(fL)[c("tka", "tcl", "tv", "tka.wt")]),
+                 unname(fixef(fA)[c("tka", "tcl", "tv", "tka.wt")]),
+                 tolerance = 0.05)
+    expect_equal(unname(diag(fL$omega)), unname(diag(fA$omega)), tolerance = 0.1)
+    expect_equal(fL$objf, fA$objf, tolerance = 0.02)
+  })
+
   test_that("a general log-likelihood endpoint uses distribution=4 (no residual)", {
     .ui <- rxode2::rxUiDecompress(rxode2::rxode2(expTte))
     # LL endpoint carries no residual bookkeeping
