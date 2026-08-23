@@ -35,6 +35,21 @@
   an `indLin()` forcing term (e.g. Michaelis-Menten) still flattens (issue
   #859).
 
+- `focei`/`foce`/`agq`/`laplace`/`nlm` now compute a `matExp()` model's eta/
+  theta sensitivities natively via `rxode2::rxSensMatExp()`, instead of
+  flattening the model to an equivalent `d/dt()` ODE first and differentiating
+  that.  A pure-linear `matExp()` model always takes this path; a model with
+  an `indLin()` forcing term (e.g. Michaelis-Menten) takes it under `focei`
+  and `focep`, and falls back to the ODE flatten (unchanged prior behavior)
+  under `foce` (non-interaction), the mu-referenced/IRLS family (`mfocei`/
+  `ifocei`/`mfoce`/`ifoce`), and `nlm` -- those combinations' gradient/
+  covariance machinery is not yet compatible with the native forcing
+  sensitivities and is tracked separately (issue #860; follow-up work in
+  #861/#862).  `foceiControl(fast=TRUE)` is automatically downgraded to
+  `fast=FALSE` for a `matExp()` model taking the native path, since the
+  analytic outer-gradient/covariance model (`foceiCovAnalytic.R`) is still
+  ODE-flattened.
+
 - A modeled `alag()` or `f()` on a `linCmt()` compartment now gets an exact
   FOCEi/FOCE eta gradient instead of a silently incomplete one.  The
   structural `linCmt()` Jacobian only covers `p1`/`v1`/`ka`/...; the
@@ -184,6 +199,20 @@
   every other generalized-likelihood distribution (`pois`, `binom`, `beta`,
   and so on) still silently ignore censoring for now, but a fit now warns
   when that combination is used instead of staying silent.
+
+- The `rx_r_` fix above (`.fixCensRNuLine()`, `R/focei.R`) rebuilt `rx_r_`
+  by re-inlining `rx_rll_`'s defining expression, which for a transformed
+  `propT()`/`powT()` error model contains the symbol `rx_pred_` -- a symbol
+  already overwritten with the scalar log-likelihood by that point in the
+  same branch, silently corrupting the variance for any censored
+  `propT()`/`powT()` endpoint (found by an independent Antigravity review).
+  Fixed by referencing the already-computed `rx_rll_` variable instead of
+  its expression.
+
+- An `ar()` endpoint's censoring correction now uses a self-consistent
+  marginal (not the exact AR(1)-conditional) mean/variance for M2/M3/M4
+  scoring -- a real improvement over the previous corrupted state, but
+  still an approximation for `ar()` specifically; tracked as #1001.
 
 - `est="saem"` with a `pow()` residual error model (`rmPow`/`rmAddPow`/
   `rmPowLam`/`rmAddPowLam`) never applied the estimated power exponent in the
