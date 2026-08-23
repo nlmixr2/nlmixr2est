@@ -25,7 +25,7 @@
 # something.
 nmTest({
 
-  .harvestN <- function() nlmixr2est:::.odeSwapInfo()$impThetaSensHarvestN
+  .harvestN <- function() .odeSwapInfo()$impThetaSensHarvestN
 
   # tv is a non-mu STRUCTURAL theta (an ODE-state sensitivity, not just an
   # algebraic one); add.sd is a non-mu SIGMA theta.  Both get d(f)/d(theta) /
@@ -54,7 +54,7 @@ nmTest({
     expect_true(inherits(.f, "nlmixr2FitCore"))
     # fused build requested by default -> the harvest mechanism ran
     expect_true(.harvestN() > .n0)
-    .info <- nlmixr2est:::.odeSwapInfo()
+    .info <- .odeSwapInfo()
     expect_false("thetaSens" %in% .info$models$name)
   })
 
@@ -70,7 +70,7 @@ nmTest({
     # the mechanism actually ran (not just "results look fine")
     expect_true(.harvestN() > .n0)
     # combSens builds ONE fused model -- no separate thetaSens peer registered
-    .info <- nlmixr2est:::.odeSwapInfo()
+    .info <- .odeSwapInfo()
     expect_false("thetaSens" %in% .info$models$name)
     # the structural theta (tv) and sigma theta (add.sd) went through the
     # harvested M-step gradient and converged near FOCEI
@@ -257,7 +257,7 @@ nmTest({
     # is the doFD fallback slot (fInd->doFD, likInner0) -- a subject that
     # falls back to it mid-fit is exactly the scenario that used to leave
     # rx->ndiff on the wrong peer's value for whichever slot solved next.
-    .info <- nlmixr2est:::.odeSwapInfo()
+    .info <- .odeSwapInfo()
     .inner <- .info$models[.info$models$name %in% "inner", ]
     .pred <- .info$models[.info$models$name %in% "pred", ]
     expect_true(nrow(.inner) == 1L && isTRUE(.inner$ndiffSet) && .inner$ndiff > 0L)
