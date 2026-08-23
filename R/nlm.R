@@ -29,6 +29,10 @@
 #'   before optimizing.  This only works with
 #'   scaleType="nlmixr2".
 #'
+#' @param linCmtSensCarry use the linCmt() sensitivity carry for a theta on
+#'   a covariate-driven linCmt() parameter ("auto", the default) or keep the
+#'   standard gradient ("none"); see `foceiControl()`'s argument of the same
+#'   name.
 #' @param sensMethod Method used to compute the ODE parameter sensitivities.
 #'   `"forward"` uses the classic variational (forward) sensitivity ODEs;
 #'   `"default"` is the same thing.
@@ -92,6 +96,8 @@ nlmControl <- function(typsize = NULL,
                        censOption=c("gauss", "laplace"),
 
                        eventSens=c("jump", "fd"),
+
+                       linCmtSensCarry=c("auto", "none"),
 
                        sensMethod=c("default", "forward"),
 
@@ -307,6 +313,7 @@ nlmControl <- function(typsize = NULL,
                calcTables=calcTables,
                compress=compress,
                solveType=solveType,
+               linCmtSensCarry=match.arg(linCmtSensCarry),
                ci=ci, sigdig=sigdig, sigdigTable=sigdigTable,
                genRxControl=.genRxControl,
                boundedTransform=boundedTransform)
@@ -651,10 +658,21 @@ rxUiGet.nlmHdTheta <- function(x, ...) {
   })
   .any.zero <- FALSE
   .all.zero <- TRUE
+  # linCmt() sensitivity carry for a theta on a covariate-driven linCmt()
+  # parameter (#1003): the naive line for a carry-eligible theta is replaced
+  # wholesale; everything else is byte-identical (foceiLinCmtCarryTheta.R)
+  .thetaVars <- paste0("THETA_", seq_len(.s$..maxTheta), "_")
+  .carry <- .rxCarryThetaPairsForBuild(x, .s, .thetaVars) # nolint: object_usage_linter.
   .ret <- apply(.grd, 1, function(x) {
     .l <- x["calc"]
     .l <- eval(parse(text = .l))
     .ret <- paste0(x["dfe"], "=", rxode2::rxFromSE(.l))
+    if (!is.null(.carry)) {
+      .w <- which(.carry$pairs$eta == sub("^.*_BY_(THETA_[0-9]+)___$", "\\1_", x["dfe"]))
+      if (length(.w) == 1L) {
+        .ret <- .rxCarryThetaEmit(.carry$pairs, .w, .s, x["dfe"], .carry$fp, .predMinusDv) # nolint: object_usage_linter.
+      }
+    }
     .zErr <- suppressWarnings(try(as.numeric(get(x["dfe"], .s)), silent = TRUE))
     if (identical(.zErr, 0)) {
       .any.zero <<- TRUE
@@ -671,6 +689,7 @@ rxUiGet.nlmHdTheta <- function(x, ...) {
     warning("some of the predictions do not depend on 'THETA'", call. = FALSE)
   }
   .s$..HdTheta <- .ret
+  .s$..linCmtCarryThetaPairs <- if (is.null(.carry)) NULL else .carry$pairs
   .s$..pred.minus.dv <- .predMinusDv
   rxode2::rxProgressStop()
   .s

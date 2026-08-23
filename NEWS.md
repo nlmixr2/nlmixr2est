@@ -63,9 +63,16 @@
   larger expression) is carried too: the concentration is read back once as
   `rx_lcConc_`, the carry supplies its eta sensitivity and symengine the
   outer chain rule, including any eta dependence the likelihood has with
-  the concentration held fixed (#1004).  Requires an rxode2 with the carry
-  sentinels (the event channels need its `which1 = -8` pin); older versions
-  keep the previous behavior.
+  the concentration held fixed (#1004).  The same carry also serves the
+  population methods' theta gradients (#1003): a theta on a
+  covariate-driven `linCmt()` parameter gets the carried score in the
+  `nlm` family and `nls`
+  (`nlmControl(linCmtSensCarry=)` / `nlsControl(linCmtSensCarry=)`),
+  with the concentration factored out of the wrapped log-likelihood;
+  SAEM's linearized FIM needs no change (it perturbs `phi` and
+  re-solves values, which is exact under a time-varying covariate).
+  Requires an rxode2 with the carry sentinels (the event channels need its
+  `which1 = -8` pin); older versions keep the previous behavior.
 
 - A modeled `alag()` or `f()` on a `linCmt()` compartment now gets an exact
   FOCEi/FOCE eta gradient instead of a silently incomplete one.  The
