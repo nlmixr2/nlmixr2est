@@ -730,11 +730,11 @@ extern arma::vec _saemPhi1H2ThetaFixedVal;
 extern arma::ivec _saemPhi1H2EtaCol;
 extern bool _saemPhi1WantHessian;
 extern int _saemPhi1PredOffset;
-// 0-based DV parameter-slot position: DV is not an ordinary covariate --
-// rxode2's etTran.cpp explicitly excludes any "dv"-named column from
-// covariate detection, consuming it into its own reserved getIndDv() slot
-// instead -- so it is never populated by _update_par_ptr and must be written
-// here per observation, mirroring THETA[k]/ETA[k]. -1 when not resolved.
+// 0-based DV parameter-slot position, resolved by .saemPhi1TargetMap
+// (R/saemPhi1Inner.R) purely as a readiness check -- confirms the compiled
+// general-likelihood model actually declares a DV parameter. DV itself is
+// supplied by the ordinary solve setup (see rxUiGet.saemInParsAndMuRefCovariates,
+// R/saemRxUiGet.R), not written here. -1 when not resolved.
 extern int _saemPhi1DvCol;
 extern int _saemPhi1DvColHess2;
 extern int _saemPhi1H2PredOffset;
@@ -1206,10 +1206,6 @@ public:
       int kk = getIndIx(ind, j);
       if (getIndEvid(ind, kk) != 0) continue;
       double curT = getTime(kk, ind);
-      // DV is not an ordinary covariate -- rxode2 never supplies it via
-      // _update_par_ptr (see _saemPhi1DvCol's own doc comment) -- so it must
-      // be written into the model's own DV slot here, per observation.
-      setIndParPtr(ind, _saemPhi1DvCol, getIndDv(ind, kk));
       rxPred.calc_lhs(i, curT, getOpIndSolve(op, ind, j), lhs);
       pred += lhs[_saemPhi1PredOffset];
     }
@@ -1284,7 +1280,6 @@ public:
           int kk = getIndIx(ind, j);
           if (getIndEvid(ind, kk) != 0) continue;
           double curT = getTime(kk, ind);
-          setIndParPtr(ind, _saemPhi1DvColHess2, getIndDv(ind, kk));
           rxHess2.calc_lhs(i, curT, getOpIndSolve(op, ind, j), lhs);
           rowPred += lhs[_saemPhi1H2PredOffset];
           int r = 0;
@@ -5077,10 +5072,6 @@ static void saemReadRowsPooled(mat &g, int &elt, bool &hasNan, int nInd) {
       int kk = getIndIx(ind, j);
       if (getIndEvid(ind, kk) != 0) continue;
       double curT = getTime(kk, ind);
-      // DV is not an ordinary covariate -- rxode2 never supplies it via
-      // _update_par_ptr (see _saemPhi1DvCol's own doc comment) -- so it must
-      // be written into the model's own DV slot here, per observation.
-      setIndParPtr(ind, _saemPhi1DvCol, getIndDv(ind, kk));
       rxPred.calc_lhs(i, curT, getOpIndSolve(op, ind, j), lhs);
       double cur = lhs[_saemPhi1PredOffset];
       if (std::isnan(cur)) { cur = 1.0e99; rowNan[i] = 1; }
