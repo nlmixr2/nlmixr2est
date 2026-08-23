@@ -40,7 +40,7 @@
 
 test_that("carry fit matches the nocb linToOde ODE reference; naive does not", {
   skip_on_cran()
-  skip_if_not(nlmixr2est:::.rxFoceiLinCmtCarryCapable())
+  skip_if_not(.rxFoceiLinCmtCarryCapable())
   fLin <- function() {
     ini({tcl <- log(2); tv <- log(20); eta.cl ~ 0.1; add.sd <- 0.5})
     model({
@@ -96,7 +96,7 @@ cp = central/v")
 
 test_that("carry gradient matches FD across compartment configs; naive fails all", {
   skip_on_cran()
-  skip_if_not(nlmixr2est:::.rxFoceiLinCmtCarryCapable())
+  skip_if_not(.rxFoceiLinCmtCarryCapable())
   mkEv <- function(dur = 0) {
     ev <- data.frame(id = 1, time = c(0, 3, 7, 15, 24, 30, 41, 50),
                      amt = c(100, 0, 100, 0, 100, 0, 100, 0),
@@ -184,7 +184,7 @@ test_that("carry gradient matches FD across compartment configs; naive fails all
 
 test_that("ss dose rows fall back to the standard gradient with a runInfo note", {
   skip_on_cran()
-  skip_if_not(nlmixr2est:::.rxFoceiLinCmtCarryCapable())
+  skip_if_not(.rxFoceiLinCmtCarryCapable())
   f <- function() {
     ini({tcl <- log(2); tv <- log(20); eta.cl ~ 0.1; add.sd <- 0.5})
     model({
@@ -209,11 +209,11 @@ test_that("ss dose rows fall back to the standard gradient with a runInfo note",
 
 test_that("runtime constant-theta fast path engages per subject and is equivalent", {
   skip_on_cran()
-  skip_if_not(nlmixr2est:::.rxFoceiLinCmtCarryCapable())
+  skip_if_not(.rxFoceiLinCmtCarryCapable())
   skip_if_not(exists("linCmtCarryFastStats", envir = asNamespace("rxode2"),
                      inherits = FALSE))
-  .stats <- function(reset = FALSE) rxode2:::linCmtCarryFastStats(reset)
-  .setFast <- function(x) rxode2:::linCmtCarrySetFast(x)
+  .stats <- function(reset = FALSE) utils::getFromNamespace("linCmtCarryFastStats", "rxode2")(reset)
+  .setFast <- function(x) utils::getFromNamespace("linCmtCarrySetFast", "rxode2")(x)
   on.exit(.setFast(TRUE), add = TRUE)
   f <- function() {
     ini({tcl <- log(2); tv <- log(20); eta.cl ~ 0.1; add.sd <- 0.5})
@@ -266,7 +266,7 @@ test_that("runtime constant-theta fast path engages per subject and is equivalen
 
 test_that("CWRES consumes the carried gradient through the shared inner env", {
   skip_on_cran()
-  skip_if_not(nlmixr2est:::.rxFoceiLinCmtCarryCapable())
+  skip_if_not(.rxFoceiLinCmtCarryCapable())
   f <- function() {
     ini({tcl <- log(2); tv <- log(20); eta.cl ~ 0.1; add.sd <- 0.5})
     model({
@@ -305,7 +305,7 @@ test_that("CWRES consumes the carried gradient through the shared inner env", {
 
 test_that("linear covariate interpolation on a varying eligible covariate is an error", {
   skip_on_cran()
-  skip_if_not(nlmixr2est:::.rxFoceiLinCmtCarryCapable())
+  skip_if_not(.rxFoceiLinCmtCarryCapable())
   f <- function() {
     ini({tcl <- log(2); tv <- log(20); eta.cl ~ 0.1; add.sd <- 0.5})
     model({
@@ -334,7 +334,7 @@ test_that("linear covariate interpolation on a varying eligible covariate is an 
 
 test_that("evid=2 rows fall back to the standard gradient with a runInfo note", {
   skip_on_cran()
-  skip_if_not(nlmixr2est:::.rxFoceiLinCmtCarryCapable())
+  skip_if_not(.rxFoceiLinCmtCarryCapable())
   f <- function() {
     ini({tcl <- log(2); tv <- log(20); eta.cl ~ 0.1; add.sd <- 0.5})
     model({
@@ -359,7 +359,7 @@ test_that("evid=2 rows fall back to the standard gradient with a runInfo note", 
 
 test_that("a carry-eligible fit survives foceiControl(fast=TRUE)", {
   skip_on_cran()
-  skip_if_not(nlmixr2est:::.rxFoceiLinCmtCarryCapable())
+  skip_if_not(.rxFoceiLinCmtCarryCapable())
   f <- function() {
     ini({tcl <- log(2); tv <- log(20); eta.cl ~ 0.1; add.sd <- 0.5})
     model({

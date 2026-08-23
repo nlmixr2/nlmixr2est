@@ -224,7 +224,7 @@ test_that("a mixed ODE + linCmt() model is never carry-eligible", {
     })
   }
   ui <- nlmixr2est::nlmixr2(mixed)
-  expect_equal(nrow(nlmixr2est:::.foceiLinCmtCarryPairs(ui)), 0L)
+  expect_equal(nrow(.foceiLinCmtCarryPairs(ui)), 0L)
 })
 
 test_that("direct time dependence in the slot is never carry-eligible", {
@@ -243,7 +243,7 @@ test_that("direct time dependence in the slot is never carry-eligible", {
     })
   }
   ui <- nlmixr2est::nlmixr2(timeDep)
-  expect_equal(nrow(nlmixr2est:::.foceiLinCmtCarryPairs(ui)), 0L)
+  expect_equal(nrow(.foceiLinCmtCarryPairs(ui)), 0L)
 })
 
 test_that("a prediction that is not a bare linCmt() value is never carry-eligible", {
@@ -262,5 +262,5 @@ test_that("a prediction that is not a bare linCmt() value is never carry-eligibl
     })
   }
   ui <- nlmixr2est::nlmixr2(scaled)
-  expect_equal(nrow(nlmixr2est:::.foceiLinCmtCarryPairs(ui)), 0L)
+  expect_equal(nrow(.foceiLinCmtCarryPairs(ui)), 0L)
 })

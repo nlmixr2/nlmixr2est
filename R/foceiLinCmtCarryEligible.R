@@ -92,19 +92,8 @@
   interpolation <- match.arg(interpolation)
   .ui <- x[[1]]
   .empty <- .rxFoceiCarryEmpty()
-  if (rxode2::.rxLinNcmt(.ui)["numLin"] <= 0L) return(.empty)
-  # mixed ODE + linCmt() models evaluate linCmtB() inside the integrator as
-  # well as in the lhs pass; the once-per-row carry stepping is only
-  # validated for pure linCmt() models
-  if (length(.rxode2stateOdeNoOutput(s)) > 0L) return(.empty)
-  if (!exists("rx_pred_", envir = s, inherits = FALSE)) return(.empty)
-  .pred <- get("rx_pred_", envir = s, inherits = FALSE)
-  if (!identical(tryCatch(symengine::get_name(.pred), error = function(e) ""),
-                 "linCmtB")) {
-    return(.empty)
-  }
-  .predArgs <- symengine::get_args(.pred)
-  if (length(.predArgs) != 15L) return(.empty)
+  .predArgs <- .rxFoceiCarryPredArgs(.ui, s)
+  if (is.null(.predArgs)) return(.empty)
   .allCovs <- .ui$allCovs
   if (length(.allCovs) == 0L) return(.empty)
   .iniDf <- .ui$iniDf
@@ -114,69 +103,110 @@
   .slotFree <- lapply(.slotExpr, .rxFoceiCarryFreeSyms)
   .ret <- .empty
   for (.e in seq_along(etaVars)) {
-    .eta <- etaVars[.e]
-    .inSlot <- which(vapply(.slotFree, function(f) .eta %in% f, logical(1)))
-    # eta must live in exactly one slot; multi-slot substitution is unvalidated
-    if (length(.inSlot) != 1L) next
-    .k <- .inSlot
-    .free <- .slotFree[[.k]]
-    # exactly one eta in that slot
-    if (sum(etaVars %in% .free) != 1L) next
-    # no direct time dependence
-    if ("t" %in% .free) next
-    # IOV/occasion etas carry per-occasion values; unvalidated
-    .wEta <- which(.etaDf$neta1 == .e)
-    if (length(.wEta) != 1L) next
-    .cond <- .etaDf$condition[.wEta]
-    if (!is.na(.cond) && !identical(.cond, "id")) next
-    .covs <- intersect(.free, .allCovs)
-    if (length(.covs) == 0L) next
-    .expr <- .slotExpr[[.k]]
-    .d <- tryCatch(symengine::D(.expr, symengine::S(.eta)),
-                   error = function(err) NULL)
-    if (is.null(.d) || .rxFoceiCarryIsZero(.d)) next
-    .dFree <- .rxFoceiCarryFreeSyms(.d)
-    .shape <- NULL
-    if (.rxFoceiCarryIsZero(symengine::expand(.d - .expr))) {
-      .shape <- "mult"
-    } else if (length(intersect(.dFree, c(.allCovs, etaVars, "t"))) == 0L) {
-      .shape <- "add"
-    }
-    if (is.null(.shape)) next
-    .varying <- NA
-    if (!is.null(data)) {
-      .v <- vapply(.covs, function(cv) .rxFoceiCarryCovVaries(data, cv), logical(1))
-      .varying <- if (all(is.na(.v))) NA else isTRUE(any(.v, na.rm = TRUE))
-    }
-    if (identical(interpolation, "linear") && isTRUE(.varying)) {
-      stop("time-varying covariate '", paste(.covs, collapse = "', '"),
-           "' on a linCmt() parameter needs 'locf', 'nocb' or 'midpoint' ",
-           "interpolation; 'linear' cannot be represented by the linCmt() solution",
-           call. = FALSE)
-    }
-    # rxFromSE() is substitute()-based: it deparses a non-character
-    # argument's EXPRESSION, so it must always be handed the repr STRING
-    # (paste(<Basic>)), never a Basic-yielding call.  render=FALSE keeps
-    # the raw symengine repr for callers that render later themselves.
-    .fTxt <- paste(.expr)
-    .dTxt <- paste(.d)
-    if (render) {
-      .fTxt <- rxode2::rxFromSE(.fTxt)
-      .dTxt <- rxode2::rxFromSE(.dTxt)
-    }
-    .ret <- rbind(.ret,
-                  data.frame(slot = .k,
-                             slotName = .rxFoceiLinCmtCarrySlotNames[.k],
-                             eta = .eta,
-                             etaName = .etaDf$name[.wEta],
-                             covs = paste(.covs, collapse = ","),
-                             shape = .shape,
-                             formula = .fTxt,
-                             dEtaFormula = .dTxt,
-                             varying = .varying,
-                             stringsAsFactors = FALSE))
+    .row <- .rxFoceiCarryEligibleEta(.e, etaVars, .etaDf, .allCovs, .slotExpr,
+                                      .slotFree, data, interpolation, render)
+    if (!is.null(.row)) .ret <- rbind(.ret, .row)
   }
   .ret
+}
+
+#' The 15 `linCmtB()` arguments of `rx_pred_`, or NULL when the model is not
+#' a pure linCmt() model with a bare linCmtB() prediction
+#' @noRd
+.rxFoceiCarryPredArgs <- function(ui, s) {
+  if (rxode2::.rxLinNcmt(ui)["numLin"] <= 0L) return(NULL)
+  # mixed ODE + linCmt() models evaluate linCmtB() inside the integrator as
+  # well as in the lhs pass; the once-per-row carry stepping is only
+  # validated for pure linCmt() models
+  if (length(.rxode2stateOdeNoOutput(s)) > 0L) return(NULL)
+  if (!exists("rx_pred_", envir = s, inherits = FALSE)) return(NULL)
+  .pred <- get("rx_pred_", envir = s, inherits = FALSE)
+  if (!identical(tryCatch(symengine::get_name(.pred), error = function(e) ""),
+                 "linCmtB")) {
+    return(NULL)
+  }
+  .predArgs <- symengine::get_args(.pred)
+  if (length(.predArgs) != 15L) return(NULL)
+  .predArgs
+}
+
+#' Slot index the eta occupies when it qualifies structurally, else NULL
+#' @noRd
+.rxFoceiCarryEtaSlot <- function(e, etaVars, etaDf, slotFree) {
+  .eta <- etaVars[e]
+  .inSlot <- which(vapply(slotFree, function(f) .eta %in% f, logical(1)))
+  # eta must live in exactly one slot; multi-slot substitution is unvalidated
+  if (length(.inSlot) != 1L) return(NULL)
+  .free <- slotFree[[.inSlot]]
+  # exactly one eta in that slot, no direct time dependence
+  if (sum(etaVars %in% .free) != 1L || "t" %in% .free) return(NULL)
+  # IOV/occasion etas carry per-occasion values; unvalidated
+  .wEta <- which(etaDf$neta1 == e)
+  if (length(.wEta) != 1L) return(NULL)
+  .cond <- etaDf$condition[.wEta]
+  if (!is.na(.cond) && !identical(.cond, "id")) return(NULL)
+  .inSlot
+}
+
+#' "mult" / "add" when the eta enters separably, else NULL
+#' @noRd
+.rxFoceiCarryShape <- function(expr, d, allCovs, etaVars) {
+  if (.rxFoceiCarryIsZero(symengine::expand(d - expr))) return("mult")
+  .dFree <- .rxFoceiCarryFreeSyms(d)
+  if (length(intersect(.dFree, c(allCovs, etaVars, "t"))) == 0L) return("add")
+  NULL
+}
+
+#' NA without data, else whether any of the covariates varies within a subject
+#' @noRd
+.rxFoceiCarryVarying <- function(covs, data) {
+  if (is.null(data)) return(NA)
+  .v <- vapply(covs, function(cv) .rxFoceiCarryCovVaries(data, cv), logical(1))
+  if (all(is.na(.v))) NA else isTRUE(any(.v, na.rm = TRUE))
+}
+
+#' One eligibility row for eta `e`, or NULL
+#' @noRd
+.rxFoceiCarryEligibleEta <- function(e, etaVars, etaDf, allCovs, slotExpr,
+                                     slotFree, data, interpolation, render) {
+  .k <- .rxFoceiCarryEtaSlot(e, etaVars, etaDf, slotFree)
+  if (is.null(.k)) return(NULL)
+  .covs <- intersect(slotFree[[.k]], allCovs)
+  if (length(.covs) == 0L) return(NULL)
+  .eta <- etaVars[e]
+  .expr <- slotExpr[[.k]]
+  .d <- tryCatch(symengine::D(.expr, symengine::S(.eta)),
+                 error = function(err) NULL)
+  if (is.null(.d) || .rxFoceiCarryIsZero(.d)) return(NULL)
+  .shape <- .rxFoceiCarryShape(.expr, .d, allCovs, etaVars)
+  if (is.null(.shape)) return(NULL)
+  .varying <- .rxFoceiCarryVarying(.covs, data)
+  if (identical(interpolation, "linear") && isTRUE(.varying)) {
+    stop("time-varying covariate '", paste(.covs, collapse = "', '"),
+         "' on a linCmt() parameter needs 'locf', 'nocb' or 'midpoint' ",
+         "interpolation; 'linear' cannot be represented by the linCmt() solution",
+         call. = FALSE)
+  }
+  # rxFromSE() is substitute()-based: it deparses a non-character
+  # argument's EXPRESSION, so it must always be handed the repr STRING
+  # (paste(<Basic>)), never a Basic-yielding call.  render=FALSE keeps
+  # the raw symengine repr for callers that render later themselves.
+  .fTxt <- paste(.expr)
+  .dTxt <- paste(.d)
+  if (render) {
+    .fTxt <- rxode2::rxFromSE(.fTxt)
+    .dTxt <- rxode2::rxFromSE(.dTxt)
+  }
+  data.frame(slot = .k,
+             slotName = .rxFoceiLinCmtCarrySlotNames[.k],
+             eta = .eta,
+             etaName = etaDf$name[which(etaDf$neta1 == e)],
+             covs = paste(.covs, collapse = ","),
+             shape = .shape,
+             formula = .fTxt,
+             dEtaFormula = .dTxt,
+             varying = .varying,
+             stringsAsFactors = FALSE)
 }
 
 #' Carry-eligible pairs straight from a model UI (test/entry convenience)

@@ -82,7 +82,7 @@
 }
 
 test_that("carry-eligible model generates the substituted carry block", {
-  skip_if_not(nlmixr2est:::.rxFoceiLinCmtCarryCapable())
+  skip_if_not(.rxFoceiLinCmtCarryCapable())
   .ui <- .carryUiCov()
   .s <- .ui$foceiEnv
   .inner <- .s$..inner
@@ -95,7 +95,7 @@ test_that("carry-eligible model generates the substituted carry block", {
 })
 
 test_that("substituted gradient matches FD-on-eta; naive build shows the bug", {
-  skip_if_not(nlmixr2est:::.rxFoceiLinCmtCarryCapable())
+  skip_if_not(.rxFoceiLinCmtCarryCapable())
   .ev <- .carryEv()
   .pars <- c(`THETA[1]` = log(2), `THETA[2]` = log(20), `THETA[3]` = 0.5,
              `ETA[1]` = 0.3)
@@ -125,7 +125,7 @@ test_that("substituted gradient matches FD-on-eta; naive build shows the bug", {
 })
 
 test_that("two simultaneous pairs (cl and v slots) both match FD", {
-  skip_if_not(nlmixr2est:::.rxFoceiLinCmtCarryCapable())
+  skip_if_not(.rxFoceiLinCmtCarryCapable())
   .ev <- .carryEv()
   .pars <- c(`THETA[1]` = log(2), `THETA[2]` = log(20), `THETA[3]` = 0.5,
              `ETA[1]` = 0.3, `ETA[2]` = -0.2)
@@ -154,7 +154,7 @@ test_that("two simultaneous pairs (cl and v slots) both match FD", {
 })
 
 test_that("proportional error chains d(rx_r_)/d(eta) through the carried sensitivity", {
-  skip_if_not(nlmixr2est:::.rxFoceiLinCmtCarryCapable())
+  skip_if_not(.rxFoceiLinCmtCarryCapable())
   prop.mod <- function() {
     ini({
       tcl <- log(2)
@@ -214,7 +214,7 @@ test_that("the model cache digest keys covsInterpolation (linear skips the carry
 })
 
 test_that("more than four carry-eligible pairs fails loudly at model build", {
-  skip_if_not(nlmixr2est:::.rxFoceiLinCmtCarryCapable())
+  skip_if_not(.rxFoceiLinCmtCarryCapable())
   five <- function() {
     ini({
       tcl <- log(2); tv <- log(20); tq <- log(1); tv2 <- log(30)
@@ -235,9 +235,9 @@ test_that("more than four carry-eligible pairs fails loudly at model build", {
     })
   }
   ui <- .carrySetControl(nlmixr2est::nlmixr2(five), "auto")
-  expect_equal(nrow(nlmixr2est:::.foceiLinCmtCarryPairs(ui)), 5L)
+  expect_equal(nrow(.foceiLinCmtCarryPairs(ui)), 5L)
   s <- ui$foceiEtaS
-  expect_error(nlmixr2est:::.rxFoceiLinCmtCarryPairsForBuild(
+  expect_error(.rxFoceiLinCmtCarryPairsForBuild(
     list(ui), s, paste0("ETA_", seq_len(s$..maxEta), "_")), "more than 4")
   # (inside the HdEta build the error is re-raised by the progress abort as
   # "Aborted calculation", which escapes expect_error -- the direct call
@@ -245,7 +245,7 @@ test_that("more than four carry-eligible pairs fails loudly at model build", {
 })
 
 test_that("an eta that also drives a modeled alag() keeps the #920 path, not the carry", {
-  skip_if_not(nlmixr2est:::.rxFoceiLinCmtCarryCapable())
+  skip_if_not(.rxFoceiLinCmtCarryCapable())
   lagged <- function() {
     ini({
       tka <- log(1); tcl <- log(2); tv <- log(20); tlag <- log(0.2)

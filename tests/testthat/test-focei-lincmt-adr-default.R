@@ -6,7 +6,7 @@ test_that("a linCmt() FOCEi fit uses rxode2's reverse-mode AD default", {
   skip_on_cran()
   skip_if_not(exists("linCmtBSensTypesSeen", envir = asNamespace("rxode2")),
               "rxode2 without linCmtBSensTypesSeen()")
-  seen <- function() rxode2:::linCmtBSensTypesSeen(TRUE)
+  seen <- function() utils::getFromNamespace("linCmtBSensTypesSeen", "rxode2")(TRUE)
   one.cmt <- function() {
     ini({
       tka <- 0.45; tcl <- log(c(0, 2.7, 100)); tv <- 3.45

@@ -76,46 +76,64 @@
 #' @return eligibility data.frame (zero rows -> NULL), or NULL
 #' @noRd
 .rxFoceiLinCmtCarryPairsForBuild <- function(x, s, etaVars, extraPred = NULL) {
-  if (!.rxFoceiLinCmtCarryCapable()) return(NULL)
-  .ui <- x[[1]]
-  if (identical(rxode2::rxGetControl(.ui, "linCmtSensCarry", "auto"), "none")) {
-    return(NULL)
-  }
-  # covsInterpolation rides inside control$rxControl (0=linear, 1=locf,
-  # 2=nocb, 3=midpoint); a bare rxGetControl() lookup never sees it
-  .rxCtl <- rxode2::rxGetControl(.ui, "rxControl", NULL)
-  .interp <- .rxCtl$covsInterpolation
-  if (identical(as.integer(.interp), 0L) || identical(.interp, "linear")) {
-    return(NULL)
-  }
-  # render=FALSE: no rxFromSE may run before rxUiGet.foceiHdEta's own
-  # D(rx_pred_, ETA_n_) evaluations (shared-symengine-state corruption);
-  # the emission renders in-loop via rxFromSE(S(<repr>)) instead
-  # a detection failure keeps the status quo gradient, but says so in
-  # $runInfo rather than hiding the failure
-  .pairs <- tryCatch(.rxFoceiLinCmtCarryEligible(x, s, etaVars, data = NULL,
-                                                 render = FALSE),
-                     error = function(e) {
-                       warning("linCmt() carry detection failed; standard gradient used",
-                               call. = FALSE)
-                       NULL
-                     })
+  if (!.rxFoceiLinCmtCarryBuildEnabled(x[[1]])) return(NULL)
+  .pairs <- .rxFoceiLinCmtCarryDetect(x, s, etaVars)
   if (is.null(.pairs) || nrow(.pairs) == 0L) return(NULL)
-  .pred <- get("rx_pred_", envir = s, inherits = FALSE)
-  .predArgs <- symengine::get_args(.pred)
-  .trans <- suppressWarnings(as.numeric(paste(.predArgs[[8]])))
-  if (!isTRUE(.trans %in% c(1, 2))) return(NULL)
+  if (!.rxFoceiLinCmtCarryTransOk(s)) return(NULL)
   if (!is.null(extraPred)) {
     .pairs <- .pairs[!(.pairs$eta %in% names(extraPred)), , drop = FALSE]
     if (nrow(.pairs) == 0L) return(NULL)
   }
+  .rxFoceiLinCmtCarryCheckCap(.pairs)
+  .pairs
+}
+
+#' Is the carry switched on for this build (capability, control, interpolation)?
+#' @noRd
+.rxFoceiLinCmtCarryBuildEnabled <- function(ui) {
+  if (!.rxFoceiLinCmtCarryCapable()) return(FALSE)
+  if (identical(rxode2::rxGetControl(ui, "linCmtSensCarry", "auto"), "none")) {
+    return(FALSE)
+  }
+  # covsInterpolation rides inside control$rxControl (0=linear, 1=locf,
+  # 2=nocb, 3=midpoint); a bare rxGetControl() lookup never sees it
+  .interp <- rxode2::rxGetControl(ui, "rxControl", NULL)$covsInterpolation
+  !(identical(as.integer(.interp), 0L) || identical(.interp, "linear"))
+}
+
+#' Run the eligibility detection without rendering; a failure warns and
+#' keeps the status quo gradient
+#' @noRd
+.rxFoceiLinCmtCarryDetect <- function(x, s, etaVars) {
+  # render=FALSE: no rxFromSE may run before rxUiGet.foceiHdEta's own
+  # D(rx_pred_, ETA_n_) evaluations (shared-symengine-state corruption);
+  # the emission renders in-loop via rxFromSE(S(<repr>)) instead
+  tryCatch(.rxFoceiLinCmtCarryEligible(x, s, etaVars, data = NULL,
+                                       render = FALSE),
+           error = function(e) {
+             warning("linCmt() carry detection failed; standard gradient used",
+                     call. = FALSE)
+             NULL
+           })
+}
+
+#' The v1 direct term is only derived for trans 1/2
+#' @noRd
+.rxFoceiLinCmtCarryTransOk <- function(s) {
+  .pred <- get("rx_pred_", envir = s, inherits = FALSE)
+  .trans <- suppressWarnings(as.numeric(paste(symengine::get_args(.pred)[[8]])))
+  isTRUE(.trans %in% c(1, 2))
+}
+
+#' @noRd
+.rxFoceiLinCmtCarryCheckCap <- function(pairs) {
   .max <- 4L # two carry columns per pair; RX_LINCMT_CARRY_MAXPAIRS = 8
-  if (nrow(.pairs) > .max) {
+  if (nrow(pairs) > .max) {
     stop("more than ", .max, " carry-eligible (linCmt parameter, eta) pairs (",
-         nrow(.pairs), "); reduce the model or use foceiControl(linCmtSensCarry=\"none\")",
+         nrow(pairs), "); reduce the model or use foceiControl(linCmtSensCarry=\"none\")",
          call. = FALSE)
   }
-  .pairs
+  invisible(TRUE)
 }
 
 #' Render one linCmtB() model-text call for the carry lines
