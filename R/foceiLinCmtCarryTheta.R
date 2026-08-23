@@ -114,33 +114,47 @@
 #' @return NULL, or list(pairs, fp) for `.rxCarryThetaEmit()`
 #' @noRd
 .rxCarryThetaPairsForBuild <- function(x, s, thetaVars) {
-  .ui <- x[[1]]
-  if (!.rxFoceiLinCmtCarryBuildEnabled(.ui)) return(NULL) # nolint: object_usage_linter.
-  if (rxode2::.rxLinNcmt(.ui)["numLin"] <= 0L) return(NULL)
+  .fp <- .rxCarryThetaModelOk(x[[1]], s)
+  if (is.null(.fp)) return(NULL)
+  .pairs <- .rxCarryThetaDetect(x, s, thetaVars, .fp)
+  if (is.null(.pairs)) return(NULL)
+  .rxFoceiLinCmtCarryCheckCap(.pairs) # nolint: object_usage_linter.
+  list(pairs = .pairs, fp = .fp)
+}
+
+#' The factored call when the model/control can carry at all, else NULL
+#' @noRd
+.rxCarryThetaModelOk <- function(ui, s) {
+  if (!.rxFoceiLinCmtCarryBuildEnabled(ui)) return(NULL) # nolint: object_usage_linter.
+  if (rxode2::.rxLinNcmt(ui)["numLin"] <= 0L) return(NULL)
   # the once-per-row stepping is only validated for pure linCmt() models
   if (length(.rxode2stateOdeNoOutput(s)) > 0L) return(NULL)
   .fp <- .rxCarryFactorPred(s)
   if (is.null(.fp)) return(NULL)
-  .pairs <- tryCatch(.rxCarryThetaEligible(x, s, thetaVars, .fp, render = FALSE),
+  .sh <- .rxCarryCallShape(.fp)
+  if (any(is.na(unlist(.sh))) ||
+        is.null(.rxFoceiCarryMicro(.sh$ncmt, .sh$oral0, .sh$trans))) { # nolint: object_usage_linter.
+    return(NULL)
+  }
+  .fp
+}
+
+#' Detected theta pairs, slot channels only; NULL when none qualify
+#' @noRd
+.rxCarryThetaDetect <- function(x, s, thetaVars, fp) {
+  .pairs <- tryCatch(.rxCarryThetaEligible(x, s, thetaVars, fp, render = FALSE),
                      error = function(e) {
                        warning("linCmt() theta carry detection failed; standard gradient used",
                                call. = FALSE)
                        NULL
                      })
   if (is.null(.pairs) || nrow(.pairs) == 0L) return(NULL)
-  .sh <- .rxCarryCallShape(.fp)
-  if (any(is.na(unlist(.sh))) ||
-        is.null(.rxFoceiCarryMicro(.sh$ncmt, .sh$oral0, .sh$trans))) { # nolint: object_usage_linter.
-    return(NULL)
-  }
   # slot channels only: a theta on f()/alag() is a dosing parameter the nlm
   # family already routes through its own eventSens machinery
   # (rxUiGet.nlmEnv's eventTheta), and that interaction is unvalidated
-  .jump <- !is.na(.pairs$fD) | !is.na(.pairs$lagD)
-  .pairs <- .pairs[!.jump, , drop = FALSE]
+  .pairs <- .pairs[is.na(.pairs$fD) & is.na(.pairs$lagD), , drop = FALSE]
   if (nrow(.pairs) == 0L) return(NULL)
-  .rxFoceiLinCmtCarryCheckCap(.pairs) # nolint: object_usage_linter.
-  list(pairs = .pairs, fp = .fp)
+  .pairs
 }
 
 #' Substituted d(rx_pred_)/d(THETA_k_) lines for one theta pair
