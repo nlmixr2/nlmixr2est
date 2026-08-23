@@ -38,6 +38,17 @@ rxUiGet.saemInParsAndMuRefCovariates <- function(x, ...) {
   if (length(.ui$predDf$cond) > 1) {
     .cov <- unique(c("CMT", .cov))
   }
+  # A general-likelihood endpoint's own saem_mod formula references DV
+  # directly (rx_pred_=llikNorm(DV, ...) or a literal ll() expression), the
+  # same way predNoLhs/innerHess2 do -- but DV is never part of .ui$covariates
+  # (rxode2's etTran.cpp deliberately excludes any "dv"-named column from
+  # covariate detection, see CLAUDE.md), so it would otherwise never appear
+  # here. .configsaem's own DV-append step (R/saem_fit.R) only re-appends DV
+  # to the solve data when inPars already lists it -- omitting it here means
+  # DV silently never reaches saem_mod's par_ptr for a general-lik fit.
+  if (.saemGeneralLik(.ui)) {
+    .cov <- unique(c(.cov, "DV"))
+  }
   list(inPars=.cov, covars=.muCov)
 }
 #attr(rxUiGet.saemInParsAndMuRefCovariates, "desc") <- "Get inPars and covars for saem"
