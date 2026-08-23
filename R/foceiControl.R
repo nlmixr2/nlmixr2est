@@ -422,6 +422,21 @@
 #' @param trustRmax maximum `innerOpt="trust"` trust-region radius. `NULL`
 #'     (default) derives it from `trustConf`.
 #'
+#' @param trustFterm,trustMterm `innerOpt="trust"`'s own function-value and
+#'     predicted-decrease convergence tolerances for the per-subject Newton
+#'     solve. `NULL` (default) uses the plain `10^(-sigdig)`, the same
+#'     formula every other tolerance in this control uses. Deliberately NOT
+#'     derived from `epsilon` (`"n1qn1"`'s own, unrelated "precision of
+#'     estimate" tolerance) -- tying `"trust"`'s stopping criterion to a
+#'     value picked for a different optimizer is exactly the coupling these
+#'     parameters exist to remove, so they can be tuned independently of
+#'     `"n1qn1"`. A 2026-08-23 investigation into a stuck-at-start FOCEi fit
+#'     initially suspected this tolerance and tested tightening it to
+#'     `10^-(sigdig+2)`; that turned out to be a red herring -- the actual
+#'     cause was the OUTER `bobyqa` optimizer's own `rhobeg` (see
+#'     `.bobyqa()`'s stuck-search retry), reproducible with `trustFterm`/
+#'     `trustMterm` at either value. Has no effect unless `innerOpt="trust"`.
+#'
 #' @param hessianMethod For a non-normal-endpoint model (any distribution
 #'     other than \code{norm}), the per-subject inner Hessian has no
 #'     Gaussian Gauss-Newton shortcut and falls back to a finite difference
@@ -988,6 +1003,8 @@ foceiControl <- function(sigdig = 3, #
                          trustConf = 0.975, # confidence level defining the trust-region radius
                          trustRinit = NULL, # NULL -> derived from trustConf/neta
                          trustRmax = NULL, # NULL -> derived from trustConf/neta
+                         trustFterm = NULL, # NULL -> 10^(-sigdig), NOT epsilon
+                         trustMterm = NULL, # NULL -> 10^(-sigdig), NOT epsilon
                          ##
                          rhobeg = .2, #
                          rhoend = NULL, #
@@ -1103,6 +1120,24 @@ foceiControl <- function(sigdig = 3, #
       # stopping rule at all.  Reached at sigdig >= 14 here (>= 16 before the
       # two-order tightening).
       lbfgsFactr <- max(10^(-sigdig - 2) / .Machine$double.eps, 1)
+    }
+    if (is.null(trustFterm)) {
+      # Plain 10^-sigdig, matching every other tolerance in this control
+      # (epsilon, abstol, reltol, rhoend, ...) -- NOT tied to epsilon itself.
+      # A 2026-08-23 investigation into a stuck-at-start FOCEi fit (a 2-cmt IV
+      # infusion steady-state model) initially suspected this tolerance and
+      # tested tightening it (10^-(sigdig+2)); that turned out to be a red
+      # herring -- the actual cause was the OUTER bobyqa's own `rhobeg`
+      # (see .bobyqa()'s stuck-search retry in R/focei.R), reproducible with
+      # this trustFterm/trustMterm at EITHER 10^-sigdig or 10^-(sigdig+2).
+      # Kept at the plain formula since no evidence supports tightening it;
+      # independence from epsilon (n1qn1's own, unrelated "precision of
+      # estimate" tolerance) is the point of having these as their own
+      # parameters, not the numeric default.
+      trustFterm <- 10^(-sigdig)
+    }
+    if (is.null(trustMterm)) {
+      trustMterm <- 10^(-sigdig)
     }
     if (is.null(rel.tol)) {
       rel.tol <- 10^(-sigdig)
@@ -1484,6 +1519,17 @@ foceiControl <- function(sigdig = 3, #
   if (!is.null(trustRinit) && !is.null(trustRmax) && trustRinit > trustRmax) {
     stop("'trustRinit' cannot be larger than 'trustRmax'", call.=FALSE)
   }
+  # Resolved above (like epsilon) whenever sigdig is non-NULL; stays NULL (and
+  # errors here, matching epsilon's own strictness) only if the caller also
+  # passed sigdig=NULL without supplying trustFterm/trustMterm directly.
+  checkmate::assertNumeric(trustFterm, lower=0, finite=TRUE, any.missing=FALSE, len=1)
+  if (trustFterm <= 0) {
+    stop("'trustFterm' must be > 0", call.=FALSE)
+  }
+  checkmate::assertNumeric(trustMterm, lower=0, finite=TRUE, any.missing=FALSE, len=1)
+  if (trustMterm <= 0) {
+    stop("'trustMterm' must be > 0", call.=FALSE)
+  }
   if (checkmate::testIntegerish(warm, lower=0, upper=1, len=1, any.missing=FALSE)) {
     warm <- as.integer(warm)
   } else {
@@ -1717,6 +1763,8 @@ foceiControl <- function(sigdig = 3, #
     trustConf = as.double(trustConf),
     trustRinit = trustRinit,
     trustRmax = trustRmax,
+    trustFterm = trustFterm,
+    trustMterm = trustMterm,
     ## BFGS
     abstol = abstol,
     reltol = reltol,

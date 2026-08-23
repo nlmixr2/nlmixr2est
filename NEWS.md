@@ -849,6 +849,28 @@
   number). `trustControl()`'s default is therefore `"sr1"` again -- faster,
   with no demonstrated accuracy cost for this problem.
 
+- `foceiControl()` gains `trustFterm`/`trustMterm`: `innerOpt="trust"`'s own
+  function-value and predicted-decrease convergence tolerances, independent
+  of `epsilon` (which is also `"n1qn1"`'s unrelated "precision of estimate"
+  tolerance -- tightening `epsilon` to tune one inner optimizer used to
+  tighten the other too, even on a fit that never uses it). Default
+  `10^(-sigdig)`, the same formula every other tolerance in this control
+  uses.
+
+- `est="focei"` with the default `innerOpt="trust"` no longer silently
+  returns a fit whose outer `bobyqa` search never actually explored. On a
+  real 2-compartment IV infusion steady-state model, the default outer
+  `rhobeg=0.2` made `bobyqa`'s initial quadratic model collapse: `bobyqa`
+  reported normal convergence, but 4 of 5 population parameters never moved
+  from their starting values at all. `rhobeg=0.25` or larger escaped it and
+  matched a SAEM reference fit closely (root cause not understood --
+  `n1qn1`, FOCEi's other inner optimizer, was never stuck at the same
+  `rhobeg` on the same model). `.bobyqa()` now detects this directly (the
+  final point never left its own starting exploration radius) and retries
+  with a wider `rhobeg`, capped at `0.3`, with a `$runInfo` warning when it
+  engages -- a pragmatic safeguard against the specific symptom rather than
+  a fix for whatever makes `bobyqa`'s model collapse at that one radius.
+
 ### Crashes and stability
 
 - An over-parameterized `est="saem"` fit no longer dies with "nearest PD

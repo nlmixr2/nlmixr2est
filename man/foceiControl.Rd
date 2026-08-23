@@ -85,6 +85,8 @@ foceiControl(
   trustConf = 0.975,
   trustRinit = NULL,
   trustRmax = NULL,
+  trustFterm = NULL,
+  trustMterm = NULL,
   rhobeg = 0.2,
   rhoend = NULL,
   npt = NULL,
@@ -660,6 +662,21 @@ the boundary of the `trustConf`-level eta confidence region. Default
 
 \item{trustRmax}{maximum `innerOpt="trust"` trust-region radius. `NULL`
 (default) derives it from `trustConf`.}
+
+\item{trustFterm, trustMterm}{`innerOpt="trust"`'s own function-value and
+predicted-decrease convergence tolerances for the per-subject Newton
+solve. `NULL` (default) uses the plain `10^(-sigdig)`, the same
+formula every other tolerance in this control uses. Deliberately NOT
+derived from `epsilon` (`"n1qn1"`'s own, unrelated "precision of
+estimate" tolerance) -- tying `"trust"`'s stopping criterion to a
+value picked for a different optimizer is exactly the coupling these
+parameters exist to remove, so they can be tuned independently of
+`"n1qn1"`. A 2026-08-23 investigation into a stuck-at-start FOCEi fit
+initially suspected this tolerance and tested tightening it to
+`10^-(sigdig+2)`; that turned out to be a red herring -- the actual
+cause was the OUTER `bobyqa` optimizer's own `rhobeg` (see
+`.bobyqa()`'s stuck-search retry), reproducible with `trustFterm`/
+`trustMterm` at either value. Has no effect unless `innerOpt="trust"`.}
 
 \item{rhobeg}{Initial trust region radius for the bobyqa outer optimizer
 (with `rhoend`, must satisfy `0 < rhoend < rhobeg`). Default `0.2`

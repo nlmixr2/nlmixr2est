@@ -525,6 +525,11 @@ struct focei_options {
   double trustConf; // confidence level defining the trust-region radius
   double trustRinit;
   double trustRmax;
+  // innerOpt="trust"'s own function-value/predicted-decrease convergence
+  // tolerances -- independently settable, NOT tied to epsilon (which is
+  // shared with n1qn1's unrelated "precision of estimate" criterion).
+  double trustFterm;
+  double trustMterm;
   std::atomic<int> nTrustInner{0}; // per-fit count of trust_solve_c calls (test evidence)
   // per-fit count of calcEtaHessian() calls that used the hessianMethod=
   // quasi-Newton update (as opposed to a fresh FD pass) -- test evidence the
@@ -4005,8 +4010,8 @@ static inline int innerOpt1(int id, int likId) {
     topts.has_parscale = 1;
     topts.parscale = parscale.data();
     topts.iterlim = maxInnerIterations;
-    topts.fterm = epsilon;
-    topts.mterm = epsilon;
+    topts.fterm = op_focei.trustFterm;
+    topts.mterm = op_focei.trustMterm;
 
     // Stationarity check via the Newton STEP length, not the raw gradient:
     // trust_solve_c() can report converged==true off its own internal
@@ -4029,7 +4034,15 @@ static inline int innerOpt1(int id, int likId) {
     // (no_approx) fails cleanly on a singular/indefinite H rather than
     // silently returning a pseudo-inverse result -- an unusable estimate
     // then leaves trust_solve_c()'s own converged flag as the only signal.
-    double pushTol = std::sqrt(epsilon);
+    // Tied to trustFterm (not the shared epsilon local above): this is
+    // trust's OWN stationarity gate, not n1qn1's unrelated tolerance, so it
+    // belongs with the rest of trust's own criteria rather than epsilon.
+    // NOTE: a 2026-08-23 investigation into a stuck-at-start FOCEi fit
+    // initially suspected this gate (and topts.fterm/mterm) as the cause --
+    // that was a red herring; tightening neither this nor trustFterm/
+    // trustMterm fixed the actual fit. The real cause was the OUTER bobyqa
+    // optimizer's own rhobeg (see .bobyqa()'s stuck-search retry, R/focei.R).
+    double pushTol = std::sqrt(op_focei.trustFterm);
     // When the Newton step turns out large (pushDist > curRmax), that is
     // this problem's genuine trust-region-radius-collapse signal -- the
     // literal "amount eta is being pushed" past what the current radius
@@ -7736,6 +7749,13 @@ NumericVector foceiSetup_(const RObject &obj,
     // cap; clamp rather than error since this is just as easy to reach by an
     // ordinary trustConf choice as by a deliberate override.
     if (op_focei.trustRinit > op_focei.trustRmax) op_focei.trustRinit = op_focei.trustRmax;
+    // trustFterm/trustMterm: innerOpt="trust"'s own convergence tolerances,
+    // independent of epsilon (n1qn1's unrelated "precision of estimate"
+    // tolerance). Resolved to a concrete number on the R side (foceiControl.R,
+    // 10^-(sigdig+2) by default -- NOT derived from epsilon) the same way
+    // epsilon itself is, so no NULL fallback is needed here.
+    op_focei.trustFterm = as<double>(foceiO["trustFterm"]);
+    op_focei.trustMterm = as<double>(foceiO["trustMterm"]);
   }
   op_focei.nTrustInner.store(0, std::memory_order_relaxed);
   op_focei.nHessianQN.store(0, std::memory_order_relaxed);
