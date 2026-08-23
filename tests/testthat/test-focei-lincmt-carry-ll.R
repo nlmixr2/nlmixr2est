@@ -4,17 +4,8 @@
 # supplies d(rx_lcConc_)/d(eta) exactly as for a bare prediction and lets
 # symengine compose the outer chain rule (and any eta dependence the
 # likelihood has with the concentration held fixed).  Shared fixtures in
-# helper-lincmt-carry.R; fit-level checks in test-focei-lincmt-carry-ll-fit.R.
-
-.carryLlEv <- function() {
-  ev <- .carryEv()
-  ev$dv <- 0
-  ev$dv[ev$evid == 0] <- c(3, 2.5, 2, 1.5)
-  ev
-}
-
-.carryLlPars <- c(`THETA[1]` = log(2), `THETA[2]` = log(20), `THETA[3]` = 0.5,
-                  `ETA[1]` = 0.3)
+# helper-lincmt-carry-ll.R; fit-level checks in
+# test-focei-lincmt-carry-ll-fit.R.
 
 test_that("an explicit normal ll() endpoint is carried; the naive build is not", {
   skip_if_not(.rxFoceiLinCmtCarryCapable())
