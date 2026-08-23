@@ -557,8 +557,8 @@ rxGetDistributionFoceiLines <- function(line) {
 #' report) and never exposes the Student-t degrees of freedom -- but
 #' `censEst.h`'s `doCensNormal1()`/`doCensT1()` M2/M3/M4 correction needs
 #' both as real values (nlmixr2est/nlmixr2est#979, following the same
-#' `rx_r_` fix nlm.R's `.nlmFixCensRLine` made for the population model).
-#' `rx_rll_` (the standard deviation actually fed into
+#' `rx_r_` fix originally made in nlm.R's `.nlmFixCensRLine()` for the
+#' population model, #976).  `rx_rll_` (the standard deviation actually fed into
 #' `llikNorm()`/`llikT()`/`llikCauchy()`) is emitted immediately before
 #' `rx_r_` in the same branch, so square it back into `rx_r_` instead of
 #' leaving the hardcoded 0.  `llikT()`/`llikXT()`'s own `nu` argument is
@@ -588,15 +588,11 @@ rxGetDistributionFoceiLines <- function(line) {
   # until a follow-up sorts out the rxode2-side interaction (#979).
   if (!isTRUE(nlmixr2global$rxCensNuFix)) return(lines)
   if (!is.list(lines)) return(lines)
-  .rll <- NULL
-  for (.l in lines) {
-    if (is.call(.l) && identical(.l[[1]], quote(`~`)) &&
-        identical(.l[[2]], quote(rx_rll_))) {
-      .rll <- .l[[3]]
-      break
-    }
-  }
-  if (is.null(.rll)) return(lines)
+  .hasRll <- any(vapply(lines, function(.l) {
+    is.call(.l) && identical(.l[[1]], quote(`~`)) &&
+      identical(.l[[2]], quote(rx_rll_))
+  }, logical(1)))
+  if (!.hasRll) return(lines)
   .nu <- NULL
   for (.l in lines) {
     if (is.call(.l) && identical(.l[[1]], quote(`~`)) &&
@@ -616,7 +612,13 @@ rxGetDistributionFoceiLines <- function(line) {
     if (is.call(.l) && identical(.l[[1]], quote(`~`)) &&
         identical(.l[[2]], quote(rx_r_)) &&
         identical(.l[[3]], 0)) {
-      .out[[length(.out) + 1]] <- bquote(rx_r_ ~ .(.rll)^2)
+      # Reference the rx_rll_ VARIABLE, not its defining expression: for a
+      # transformed prop()/pow() error model (propT()/powT()), that
+      # expression contains the symbol rx_pred_, which is overwritten with
+      # the scalar log-likelihood between the rx_rll_ and rx_r_ lines --
+      # re-inlining it here would silently read the log-likelihood value
+      # back in as the mean (nlmixr2est/nlmixr2est#976 follow-up).
+      .out[[length(.out) + 1]] <- quote(rx_r_ ~ rx_rll_^2)
     } else {
       .out[[length(.out) + 1]] <- .l
       if (!is.null(.nu) && is.call(.l) && identical(.l[[1]], quote(`~`)) &&
