@@ -1,29 +1,24 @@
 nmTest({
-  # Phase 1 diagnostic (see the SAEM general-likelihood theta plan): SAEM's
-  # general-likelihood theta step (do_mcmc's distribution==4 path, followed by
-  # the plain stochastic-approximation SA-recursion for mu-referenced/phi1
-  # thetas) does not minimize successfully, even on a small, well-identified
-  # model.  This file pins the failure with a "twin" pair -- one endpoint
-  # written as the closed-form add() residual, one written with the exact
-  # same likelihood via a general-likelihood family (dt() with a large,
-  # near-Gaussian degrees of freedom) -- so any divergence between the twins
-  # is attributable to the general-likelihood theta machinery, not to a
-  # genuinely different optimum.
+  # This file pins a "twin" pair -- one endpoint written as the closed-form
+  # add() residual, one written with the exact same likelihood via a
+  # general-likelihood family (dt() with a large, near-Gaussian degrees of
+  # freedom) -- so any divergence between the twins is attributable to the
+  # general-likelihood theta machinery, not to a genuinely different optimum.
   #
-  # Root-cause checkpoint (measured, not assumed): a t(df=30) endpoint is
-  # statistically indistinguishable from add() (df=30 is nearly Gaussian), so
-  # if the twins land on different estimates, the estimation MACHINERY is at
-  # fault, not the model's own likelihood shape.  A separate iteration-count
-  # sweep (200/300 up to 1000/1500 burn-in/EM) at this file's authoring time
-  # showed the t()-twin's tka estimate does NOT converge toward the add()
-  # twin's value as iterations increase -- it stays in the wrong basin (and
-  # drifts slightly further from truth), ruling out "just needs more
-  # iterations" as the explanation.  The residual-family theta (add.sd) and
-  # the degrees of freedom (nu) are both FIXED in the t() twin, isolating this
-  # from the separate, already-fixed err-tagged-theta declaration/reporting
-  # bug (see test-saem-loglik.R's "(#Phase0)" tests) -- what's left free here
-  # is exactly the mu-referenced (phi1) structural thetas the wider plan's
-  # Hessian-corrected theta step targets.
+  # FIXED (nlmixr2/nlmixr2est#999): the t(df=30) twin used to diverge from its
+  # add() twin.  Root cause was DV never reaching a general-likelihood SAEM
+  # model's solve at all: rxUiGet.saemInParsAndMuRefCovariates
+  # (R/saemRxUiGet.R) built inPars purely from ui$covariates, which never
+  # includes DV (rxode2's etTran.cpp deliberately excludes any "dv"-named
+  # column from covariate detection), so .configsaem's own DV-append step
+  # (R/saem_fit.R, gated on "DV" already being listed in inPars) silently
+  # never fired -- DV read as a constant 0 for the life of the fit, for EVERY
+  # general-likelihood distribution (dnorm()/dt()/dcauchy()/literal ll()),
+  # not just t().  Fixing inPars to include DV for a general-lik model fixed
+  # this twin (and the SAEM general-likelihood MM-elimination corpus
+  # divergence this was investigated alongside) without touching the
+  # phi1Hessian/do_mcmc machinery at all -- confirming that machinery was
+  # never the problem for this twin.
   mAdd <- function() {
     ini({
       tka <- 0.45; tcl <- 1; tv <- 3.45
@@ -50,7 +45,7 @@ nmTest({
     })
   }
 
-  test_that("KNOWN FAILURE (nlmixr2/nlmixr2est#999): a near-Gaussian t() twin diverges from its add() twin (SAEM general-lik phi1)", {
+  test_that("near-Gaussian t() twin matches its add() twin (SAEM general-lik phi1, #999)", {
     ctl <- saemControl(nBurn = 200, nEm = 300, seed = 42L, print = 0L,
                        covMethod = "", calcTables = FALSE)
     fA <- suppressWarnings(.nlmixr(mAdd, theo_sd, est = "saem", control = ctl))
@@ -59,19 +54,10 @@ nmTest({
     # the add() twin recovers the known-good estimate (matches #871's twin)
     expect_equal(unname(fixef(fA)[["tka"]]), 0.45, tolerance = 0.1)
 
-    # KNOWN FAILURE, tracked as nlmixr2/nlmixr2est#999 (confirmed independent
-    # of the phi1Hessian log|H| term -- Phase 4's ablation reproduced this
-    # identically with the Hessian correction off, so the root cause is
-    # elsewhere and out of scope for this plan): the t(df=30) twin,
-    # mathematically equivalent to add() here, should land within the same
-    # tolerance band -- it instead lands nowhere near it.  Wrapped in
-    # expect_failure() so this stays a documented, checked-in diagnostic
-    # WITHOUT permanently failing the essential push/PR suite; if #999 is
-    # ever fixed this expect_failure() itself will start failing, which is
-    # the signal to delete the wrapper, tighten the tolerance to match fA's,
-    # and promote this to a real regression guard.
+    # the t(df=30) twin, mathematically equivalent to add() here, lands
+    # within the same tolerance band -- confirms #999 stays fixed.
     .tkaT <- unname(fixef(fT)[["tka"]])
     .tkaA <- unname(fixef(fA)[["tka"]])
-    expect_failure(expect_equal(.tkaT, .tkaA, tolerance = 0.1))
+    expect_equal(.tkaT, .tkaA, tolerance = 0.1)
   })
 })
