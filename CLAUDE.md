@@ -310,6 +310,15 @@ When adding tests for an estimation method, split them by cost:
 
 ## Key conventions
 
+- **Never use `:::` in a test file.** testthat sources test files inside
+  the package’s own namespace, so both exported and non-exported
+  (`.foo`) internal functions are directly callable by name –
+  `nlmixr2est:::rxUiGet.foceiEnv(...)` should just be
+  `rxUiGet.foceiEnv(...)`, and `nlmixr2est:::.someInternalFn(...)`
+  should just be `.someInternalFn(...)`. `:::` is unnecessary and
+  CodeFactor’s `lintr-undesirable_operator_linter` flags it on every PR
+  that introduces one. See `b04d89c78` and PR \#998 for prior fixes of
+  this exact pattern.
 - `mu2` referencing (`R/mu2.R`) detects and validates mu-referenced
   parameters; violations produce warnings, not errors, for SAEM
 - IOV (inter-occasion variability) support is in `R/iov.R` with special

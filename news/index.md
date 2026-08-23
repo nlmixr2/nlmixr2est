@@ -44,6 +44,26 @@
   (e.g. Michaelis-Menten) still flattens (issue
   [\#859](https://github.com/nlmixr2/nlmixr2est/issues/859)).
 
+- `focei`/`foce`/`agq`/`laplace`/`nlm` now compute a `matExp()` model’s
+  eta/ theta sensitivities natively via
+  [`rxode2::rxSensMatExp()`](https://nlmixr2.github.io/rxode2/reference/rxSensMatExp.html),
+  instead of flattening the model to an equivalent `d/dt()` ODE first
+  and differentiating that. A pure-linear `matExp()` model always takes
+  this path; a model with an `indLin()` forcing term
+  (e.g. Michaelis-Menten) takes it under `focei` and `focep`, and falls
+  back to the ODE flatten (unchanged prior behavior) under `foce`
+  (non-interaction), the mu-referenced/IRLS family (`mfocei`/
+  `ifocei`/`mfoce`/`ifoce`), and `nlm` – those combinations’ gradient/
+  covariance machinery is not yet compatible with the native forcing
+  sensitivities and is tracked separately (issue
+  [\#860](https://github.com/nlmixr2/nlmixr2est/issues/860); follow-up
+  work in
+  [\#861](https://github.com/nlmixr2/nlmixr2est/issues/861)/#862).
+  `foceiControl(fast=TRUE)` is automatically downgraded to `fast=FALSE`
+  for a `matExp()` model taking the native path, since the analytic
+  outer-gradient/covariance model (`foceiCovAnalytic.R`) is still
+  ODE-flattened.
+
 - A modeled `alag()` or `f()` on a `linCmt()` compartment now gets an
   exact FOCEi/FOCE eta gradient instead of a silently incomplete one.
   The structural `linCmt()` Jacobian only covers `p1`/`v1`/`ka`/…; the

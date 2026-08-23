@@ -135,6 +135,8 @@
 <div class="section level2">
 <h2 id="key-conventions">Key conventions<a class="anchor" aria-label="anchor" href="#key-conventions"></a></h2>
 <ul><li>
+<strong>Never use <code>:::</code> in a test file.</strong> testthat sources test files inside the package’s own namespace, so both exported and non-exported (<code>.foo</code>) internal functions are directly callable by name – <code>nlmixr2est:::rxUiGet.foceiEnv(...)</code> should just be <code>rxUiGet.foceiEnv(...)</code>, and <code>nlmixr2est:::.someInternalFn(...)</code> should just be <code>.someInternalFn(...)</code>. <code>:::</code> is unnecessary and CodeFactor’s <code>lintr-undesirable_operator_linter</code> flags it on every PR that introduces one. See <code>b04d89c78</code> and PR #998 for prior fixes of this exact pattern.</li>
+<li>
 <code>mu2</code> referencing (<code>R/mu2.R</code>) detects and validates mu-referenced parameters; violations produce warnings, not errors, for SAEM</li>
 <li>IOV (inter-occasion variability) support is in <code>R/iov.R</code> with special handling in the mu-referencing hooks</li>
 <li>The <code>sharedControl()</code> function (<code>R/sharedControl.R</code>) defines options common across all estimation methods</li>
