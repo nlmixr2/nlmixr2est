@@ -58,7 +58,15 @@
   (`trans`) is handled, with the observation-scaling term taken from
   rxode2's own micro-constant translation.  Data whose doses enter another
   compartment than the modified one, or an infusion with an `alag()` /
-  covariate `f()` channel, fall back like `ss` records do.  Requires an
+  covariate `f()` channel, fall back like `ss` records do.  The same
+  carry also serves the population methods' theta gradients (#1003): a
+  theta on a covariate-driven `linCmt()` parameter gets the carried
+  score in the `nlm` family and `nls`
+  (`nlmControl(linCmtSensCarry=)` / `nlsControl(linCmtSensCarry=)`),
+  with the concentration factored out of the wrapped log-likelihood;
+  SAEM's linearized FIM needs no change (it perturbs `phi` and
+  re-solves values, which is exact under a time-varying covariate).
+  Requires an
   rxode2 with the carry sentinels (the event channels need its `which1 = -8`
   pin); older versions keep the previous behavior.
 

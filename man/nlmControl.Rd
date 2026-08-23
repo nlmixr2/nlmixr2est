@@ -28,6 +28,7 @@ nlmControl(
   shi21maxHess = 20L,
   censOption = c("gauss", "laplace"),
   eventSens = c("jump", "fd"),
+  linCmtSensCarry = c("auto", "none"),
   sensMethod = c("default", "forward"),
   useColor = NULL,
   printNcol = NULL,
@@ -161,6 +162,11 @@ lagged/scaled compartment (rxode2/rxode2#1236), or if the regimen also
 doses an *unlagged/unscaled* compartment alongside the lagged/scaled one
 -- a common design for estimating `f()` from paired IV+oral data
 (rxode2/rxode2#1237).}
+
+\item{linCmtSensCarry}{use the linCmt() sensitivity carry for a theta on
+a covariate-driven linCmt() parameter ("auto", the default) or keep the
+standard gradient ("none"); see `foceiControl()`'s argument of the same
+name.}
 
 \item{sensMethod}{Method used to compute the ODE parameter sensitivities.
 `"forward"` uses the classic variational (forward) sensitivity ODEs;

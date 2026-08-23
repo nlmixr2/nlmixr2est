@@ -29,6 +29,10 @@
 #'   before optimizing.  This only works with
 #'   scaleType="nlmixr2".
 #'
+#' @param linCmtSensCarry use the linCmt() sensitivity carry for a theta on
+#'   a covariate-driven linCmt() parameter ("auto", the default) or keep the
+#'   standard gradient ("none"); see `foceiControl()`'s argument of the same
+#'   name.
 #' @param sensMethod Method used to compute the ODE parameter sensitivities.
 #'   `"forward"` uses the classic variational (forward) sensitivity ODEs;
 #'   `"default"` is the same thing.
@@ -92,6 +96,8 @@ nlmControl <- function(typsize = NULL,
                        censOption=c("gauss", "laplace"),
 
                        eventSens=c("jump", "fd"),
+
+                       linCmtSensCarry=c("auto", "none"),
 
                        sensMethod=c("default", "forward"),
 
@@ -307,6 +313,7 @@ nlmControl <- function(typsize = NULL,
                calcTables=calcTables,
                compress=compress,
                solveType=solveType,
+               linCmtSensCarry=match.arg(linCmtSensCarry),
                ci=ci, sigdig=sigdig, sigdigTable=sigdigTable,
                genRxControl=.genRxControl,
                boundedTransform=boundedTransform)
