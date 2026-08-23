@@ -3283,7 +3283,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     if (!identical(rxode2::rxGetControl(ui, "linCmtSensCarry", "auto"), "auto")) {
       return(invisible(NULL))
     }
-    if (!.rxFoceiLinCmtCarryCapable()) return(invisible(NULL))
+    if (!.rxFoceiLinCmtCarryCapable()) return(invisible(NULL)) # nolint: object_usage_linter.
     .rd <- tryCatch(as.data.frame(env$data), error = function(e) NULL)
     if (is.null(.rd)) return(invisible(NULL))
     # "linear" covariate interpolation cannot be represented by linCmt()'s
@@ -3292,7 +3292,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     .interp <- rxode2::rxGetControl(ui, "rxControl", NULL)$covsInterpolation
     if (identical(as.integer(.interp), 0L) || identical(.interp, "linear")) {
       .s <- ui$foceiEtaS
-      .rxFoceiLinCmtCarryEligible(list(ui), .s,
+      .rxFoceiLinCmtCarryEligible(list(ui), .s, # nolint: object_usage_linter.
                                   paste0("ETA_", seq_len(.s$..maxEta), "_"),
                                   data = .rd, interpolation = "linear",
                                   render = FALSE)
@@ -3302,14 +3302,19 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     names(.rdUp) <- toupper(names(.rdUp))
     .bad <- ("SS" %in% names(.rdUp) && any(.rdUp[["SS"]] > 0, na.rm = TRUE)) ||
       ("EVID" %in% names(.rdUp) && any(.rdUp[["EVID"]] == 2L, na.rm = TRUE))
-    if (!.bad) return(invisible(NULL))
     # only warn when the model would actually have used the carry
-    .hasPairs <- tryCatch(
-      nrow(.foceiLinCmtCarryPairs(ui)) > 0L,
-      error = function(e) FALSE)
-    if (isTRUE(.hasPairs)) {
+    .pairs <- tryCatch(.foceiLinCmtCarryPairs(ui), error = function(e) NULL) # nolint: object_usage_linter.
+    if (is.null(.pairs) || nrow(.pairs) == 0L) return(invisible(NULL))
+    .why <- if (.bad) "ss/evid=2 rows" else NULL
+    if (is.null(.why)) {
+      # a jump (f()/alag()) channel needs every dose in the modified
+      # compartment and, for alag()/covariate f(), a bolus-only regimen
+      .oral0 <- .rxFoceiLinCmtCarryShape(ui$foceiEtaS)$oral0 # nolint: object_usage_linter.
+      .why <- .rxFoceiCarryJumpDataProblem(.pairs, .rd, .oral0) # nolint: object_usage_linter.
+    }
+    if (!is.null(.why)) {
       rxode2::rxAssignControlValue(ui, "linCmtSensCarry", "none")
-      warning("ss/evid=2 rows: linCmt() carry gradient off for this fit",
+      warning(.why, ": linCmt() carry gradient off for this fit",
               call. = FALSE)
     }
   })

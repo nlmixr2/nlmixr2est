@@ -50,8 +50,17 @@
   gradient with a note in `$runInfo`, and `"linear"` covariate interpolation
   on such a covariate is an error (a `linCmt()` model evaluates each interval
   at its row-end covariate value, so only a piecewise-constant interpolation
-  is representable).  Requires an rxode2 with the carry sentinels; older
-  versions keep the previous behavior.
+  is representable).  The carry also covers the two ways an eta reaches the
+  state through an event: a modeled `f()` whose `d(ln F)/d(eta)` depends on
+  a covariate and a modeled `alag()` on a time-varying kernel each get a
+  per-row jump contribution (`#920`'s row-local terms are exact only while
+  the parameters are constant), and every `linCmt()` parameterization
+  (`trans`) is handled, with the observation-scaling term taken from
+  rxode2's own micro-constant translation.  Data whose doses enter another
+  compartment than the modified one, or an infusion with an `alag()` /
+  covariate `f()` channel, fall back like `ss` records do.  Requires an
+  rxode2 with the carry sentinels (the event channels need its `which1 = -8`
+  pin); older versions keep the previous behavior.
 
 - A modeled `alag()` or `f()` on a `linCmt()` compartment now gets an exact
   FOCEi/FOCE eta gradient instead of a silently incomplete one.  The

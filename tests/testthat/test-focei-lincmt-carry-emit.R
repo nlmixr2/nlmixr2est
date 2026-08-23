@@ -84,14 +84,14 @@ test_that("more than four carry-eligible pairs fails loudly at model build", {
   expect_equal(nrow(.foceiLinCmtCarryPairs(ui)), 5L)
   s <- ui$foceiEtaS
   expect_error(.rxFoceiLinCmtCarryPairsForBuild(
-    list(ui), s, paste0("ETA_", seq_len(s$..maxEta), "_")), "more than 4")
+    list(ui), s, paste0("ETA_", seq_len(s$..maxEta), "_")), "carry columns")
   # (inside the HdEta build the error is re-raised by the progress abort as
   # "Aborted calculation", which escapes expect_error -- the direct call
   # above is what pins the message)
 })
 
-test_that("an eta that also drives a modeled alag() keeps the #920 path, not the carry", {
-  skip_if_not(.rxFoceiLinCmtCarryCapable())
+test_that("an eta that also drives a modeled alag() is carried with a lag channel", {
+  skip_if_not(.rxFoceiLinCmtCarryCapable() && .rxFoceiLinCmtCarryJumpCapable())
   lagged <- function() {
     ini({
       tka <- log(1); tcl <- log(2); tv <- log(20); tlag <- log(0.2)
@@ -111,9 +111,12 @@ test_that("an eta that also drives a modeled alag() keeps the #920 path, not the
   h <- ui$foceiHdEta$..HdEta
   l1 <- h[grepl("BY_ETA_1___=", h, fixed = TRUE)]
   l2 <- h[grepl("BY_ETA_2___=", h, fixed = TRUE)]
-  # eta.cl (ETA_1_) drives the lag: #920 correction (-3), no carry
-  expect_true(any(grepl("-3", l1, fixed = TRUE)))
-  expect_false(any(grepl("rx_lcCarry", l1)))
-  # eta.v (ETA_2_) is still carried
+  # eta.cl (ETA_1_) drives the slot AND the lag: the #920 -3 term is gone,
+  # the pair carries both channels (lag tracker + pin emitted)
+  expect_false(any(grepl("-3, -3", l1, fixed = TRUE)))
+  expect_true(any(grepl("rx_lcCarryLg0_", l1, fixed = TRUE)))
+  expect_true(any(grepl("rx_lcCarryPin_", l1, fixed = TRUE)))
+  expect_true(any(grepl("rx__sens_rx_pred__BY_ETA_1___=rx_lcCarryS0r1_/", l1)))
+  # eta.v (ETA_2_) is carried as before
   expect_true(any(grepl("rx_lcCarry", l2)))
 })

@@ -13,31 +13,43 @@
          inherits = FALSE)
 }
 
+#' Does the loaded rxode2 have the fast-path pin (which1=-8) an event jump
+#' needs?  Detected via linCmtCarrySentinelMax(), added with it.
+#' @noRd
+.rxFoceiLinCmtCarryJumpCapable <- function() {
+  .ns <- asNamespace("rxode2")
+  if (!exists("linCmtCarrySentinelMax", envir = .ns, inherits = FALSE)) return(FALSE)
+  isTRUE(get("linCmtCarrySentinelMax", envir = .ns)() >= 8L)
+}
+
 #' Carry-eligible pairs, gated for actual codegen substitution
 #'
 #' Applies every build-time gate on top of `.rxFoceiLinCmtCarryEligible()`:
-#' rxode2 capability, the `linCmtSensCarry` control ("auto"/"none"),
-#' interpolation, trans (the final composition needs `conc = A_central/v1`,
-#' verified for trans 1 and 2), the #920 alag/f interaction, and the
-#' two-columns-per-pair cap.  Detection is data-independent (candidate
-#' based) so the compiled-model cache stays coherent across datasets; a
+#' rxode2 capability (the jump pin for pairs with an f()/alag() channel),
+#' the `linCmtSensCarry` control ("auto"/"none"), interpolation, the
+#' parameterization (rxode2's own linToOde micro-constant builder must know
+#' the trans, which is where the volume and system matrix come from), and
+#' the carry-column cap.  Detection is data-independent (candidate based)
+#' so the compiled-model cache stays coherent across datasets; a
 #' constant-in-data covariate still produces a correct (identical) gradient
 #' through the carry, just at extra cost (the 3b.4 runtime fast path is the
-#' planned optimization).
+#' optimization for that).
 #'
 #' @param x list(rxUi)
 #' @param s FOCEi symengine env holding `rx_pred_`
 #' @param etaVars ETA_i_ names in gradient-column order
-#' @param extraPred `.rxFoceiLinCmtEventPredExtra()` result (or NULL)
+#' @param extraPred unused (kept for the call site); a pair's own f()/alag()
+#'   channel replaces the #920 row-local term for that eta
 #' @return eligibility data.frame (zero rows -> NULL), or NULL
 #' @noRd
 .rxFoceiLinCmtCarryPairsForBuild <- function(x, s, etaVars, extraPred = NULL) {
   if (!.rxFoceiLinCmtCarryBuildEnabled(x[[1]])) return(NULL)
   .pairs <- .rxFoceiLinCmtCarryDetect(x, s, etaVars)
   if (is.null(.pairs) || nrow(.pairs) == 0L) return(NULL)
-  if (!.rxFoceiLinCmtCarryTransOk(s)) return(NULL)
-  if (!is.null(extraPred)) {
-    .pairs <- .pairs[!(.pairs$eta %in% names(extraPred)), , drop = FALSE]
+  if (!.rxFoceiLinCmtCarryModelOk(s)) return(NULL)
+  .jump <- !is.na(.pairs$fD) | !is.na(.pairs$lagD)
+  if (any(.jump) && !.rxFoceiLinCmtCarryJumpCapable()) {
+    .pairs <- .pairs[!.jump, , drop = FALSE]
     if (nrow(.pairs) == 0L) return(NULL)
   }
   .rxFoceiLinCmtCarryCheckCap(.pairs)
@@ -74,20 +86,36 @@
            })
 }
 
-#' The v1 direct term is only derived for trans 1/2
+#' ncmt / oral0 / trans of the structural linCmtB() call in `rx_pred_`
 #' @noRd
-.rxFoceiLinCmtCarryTransOk <- function(s) {
+.rxFoceiLinCmtCarryShape <- function(s) {
   .pred <- get("rx_pred_", envir = s, inherits = FALSE)
-  .trans <- suppressWarnings(as.numeric(paste(symengine::get_args(.pred)[[8]])))
-  isTRUE(.trans %in% c(1, 2))
+  .a <- symengine::get_args(.pred)
+  .num <- function(i) suppressWarnings(as.numeric(paste(.a[[i]])))
+  list(ncmt = as.integer(.num(4)), oral0 = as.integer(.num(5)), trans = .num(8))
+}
+
+#' The parameterization must be one rxode2's own linToOde translation knows
+#' (that is where Vc and the system matrix come from)
+#' @noRd
+.rxFoceiLinCmtCarryModelOk <- function(s) {
+  .sh <- .rxFoceiLinCmtCarryShape(s)
+  if (any(is.na(unlist(.sh)))) return(FALSE)
+  !is.null(.rxFoceiCarryMicro(.sh$ncmt, .sh$oral0, .sh$trans)) # nolint: object_usage_linter.
 }
 
 #' @noRd
 .rxFoceiLinCmtCarryCheckCap <- function(pairs) {
-  .max <- 4L # two carry columns per pair; RX_LINCMT_CARRY_MAXPAIRS = 8
-  if (nrow(pairs) > .max) {
-    stop("more than ", .max, " carry-eligible (linCmt parameter, eta) pairs (",
-         nrow(pairs), "); reduce the model or use foceiControl(linCmtSensCarry=\"none\")",
+  # two carry columns per pair (carry + tracker), plus one shared amounts
+  # tracker when any pair has a jump channel and one shared lag tracker when
+  # any pair has an alag() channel; RX_LINCMT_CARRY_MAXPAIRS = 8 columns
+  .need <- 2L * nrow(pairs) +
+    as.integer(any(!is.na(pairs$fD) | !is.na(pairs$lagD))) +
+    as.integer(any(!is.na(pairs$lagD)))
+  if (.need > 8L) {
+    stop("the carry-eligible (linCmt parameter, eta) pairs need ", .need,
+         " carry columns (8 available); reduce the model or use ",
+         "foceiControl(linCmtSensCarry=\"none\")",
          call. = FALSE)
   }
   invisible(TRUE)

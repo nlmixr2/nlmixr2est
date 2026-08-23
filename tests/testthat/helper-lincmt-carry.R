@@ -52,6 +52,32 @@
   })
 }
 
+# Jump channels: eta.cl on a covariate-driven slot, eta.f on a bioavailability
+# whose dlnF depends on wt (logit-additive), eta.lag on a modeled lag over a
+# time-varying kernel
+.carryModJump <- function() {
+  ini({
+    tcl <- log(2)
+    tv <- log(20)
+    tka <- log(1.2)
+    tf <- -0.5
+    tlag <- log(0.5)
+    eta.cl ~ 0.1
+    eta.f ~ 0.1
+    eta.lag ~ 0.1
+    add.sd <- 0.5
+  })
+  model({
+    cl <- exp(tcl) * (wt / 70)^0.75 * exp(eta.cl)
+    v <- exp(tv)
+    ka <- exp(tka)
+    f(depot) <- expit(tf + eta.f + (wt - 70) / 70)
+    alag(depot) <- exp(tlag + eta.lag)
+    cp <- linCmt()
+    cp ~ add(add.sd)
+  })
+}
+
 .carryModProp <- function() {
   ini({
     tcl <- log(2)
@@ -71,6 +97,7 @@
 .carryUiCov <- function() nlmixr2est::nlmixr2(.carryModCov)
 .carryUiTwoPair <- function() nlmixr2est::nlmixr2(.carryModTwoPair)
 .carryUiNoCov <- function() nlmixr2est::nlmixr2(.carryModNoCov)
+.carryUiJump <- function() suppressMessages(nlmixr2est::nlmixr2(.carryModJump))
 
 .carrySetControl <- function(ui, value) {
   .ui <- rxode2::.copyUi(ui)
@@ -111,4 +138,35 @@
                            sigdig = 8, etaNudge = 0, etaNudge2 = 0,
                            rxControl = rxode2::rxControl(covsInterpolation = "nocb"),
                            linCmtSensCarry = carry)
+}
+
+# Jump-channel fixtures shared by test-focei-lincmt-carry-jump.R and
+# test-focei-lincmt-carry-trans.R
+.carryJumpPars <- c(`THETA[1]` = log(2), `THETA[2]` = log(20), `THETA[3]` = log(1.2),
+                    `THETA[4]` = -0.5, `THETA[5]` = log(0.5), `THETA[6]` = 0.5,
+                    `ETA[1]` = 0.3, `ETA[2]` = -0.2, `ETA[3]` = 0.1)
+
+# max relative error of every eta's substituted gradient vs central FD
+.carryJumpFd <- function(mod, pars, ev, carry = "auto", interp = "nocb") { # nolint: object_usage_linter.
+  ui <- suppressMessages(nlmixr2est::nlmixr2(mod))
+  u <- rxode2::.copyUi(ui)
+  assign("control", nlmixr2est::foceiControl(linCmtSensCarry = carry), envir = u)
+  txt <- suppressMessages(u$foceiEnv)$..inner
+  m <- suppressWarnings(rxode2::rxode2(txt))
+  slv <- function(q) {
+    rxode2::rxSolve(m, params = q, events = ev, returnType = "data.frame",
+                    covsInterpolation = interp)
+  }
+  r0 <- slv(pars)
+  h <- 1e-5
+  neta <- sum(grepl("^ETA", names(pars)))
+  err <- vapply(seq_len(neta), function(k) {
+    en <- paste0("ETA[", k, "]")
+    a <- pars; a[en] <- a[en] + h
+    b <- pars; b[en] <- b[en] - h
+    fd <- (slv(a)$rx_pred_ - slv(b)$rx_pred_) / (2 * h)
+    got <- r0[[paste0("rx__sens_rx_pred__BY_ETA_", k, "___")]]
+    max(abs(got - fd) / (abs(fd) + 1e-8))
+  }, numeric(1))
+  list(err = err, txt = txt)
 }
