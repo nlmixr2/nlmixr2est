@@ -89,8 +89,7 @@
 #' ncmt / oral0 / trans of the structural linCmtB() call in `rx_pred_`
 #' @noRd
 .rxFoceiLinCmtCarryShape <- function(s) {
-  .pred <- get("rx_pred_", envir = s, inherits = FALSE)
-  .a <- symengine::get_args(.pred)
+  .a <- .rxFoceiCarryPredCall(s)$args # nolint: object_usage_linter.
   .num <- function(i) suppressWarnings(as.numeric(paste(.a[[i]])))
   list(ncmt = as.integer(.num(4)), oral0 = as.integer(.num(5)), trans = .num(8))
 }

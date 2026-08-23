@@ -58,9 +58,14 @@
   (`trans`) is handled, with the observation-scaling term taken from
   rxode2's own micro-constant translation.  Data whose doses enter another
   compartment than the modified one, or an infusion with an `alag()` /
-  covariate `f()` channel, fall back like `ss` records do.  Requires an
-  rxode2 with the carry sentinels (the event channels need its `which1 = -8`
-  pin); older versions keep the previous behavior.
+  covariate `f()` channel, fall back like `ss` records do.  A generalized
+  `ll()` endpoint (or any prediction that wraps the `linCmt()` value in a
+  larger expression) is carried too: the concentration is read back once as
+  `rx_lcConc_`, the carry supplies its eta sensitivity and symengine the
+  outer chain rule, including any eta dependence the likelihood has with
+  the concentration held fixed (#1004).  Requires an rxode2 with the carry
+  sentinels (the event channels need its `which1 = -8` pin); older versions
+  keep the previous behavior.
 
 - A modeled `alag()` or `f()` on a `linCmt()` compartment now gets an exact
   FOCEi/FOCE eta gradient instead of a silently incomplete one.  The

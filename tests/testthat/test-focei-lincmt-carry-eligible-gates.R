@@ -89,7 +89,9 @@ test_that("direct time dependence in the slot is never carry-eligible", {
   expect_equal(nrow(.foceiLinCmtCarryPairs(ui)), 0L)
 })
 
-test_that("a prediction that is not a bare linCmt() value is never carry-eligible", {
+test_that("a prediction wrapping the linCmt() value is carried through the outer chain rule", {
+  # #1004: the structural call is factored out as rx_lcConc_ and symengine
+  # supplies d(pred)/d(rx_lcConc_); the carry needs the call to be unique
   scaled <- function() {
     ini({
       tcl <- log(2)
@@ -105,5 +107,11 @@ test_that("a prediction that is not a bare linCmt() value is never carry-eligibl
     })
   }
   ui <- nlmixr2est::nlmixr2(scaled)
-  expect_equal(nrow(.foceiLinCmtCarryPairs(ui)), 0L)
+  expect_equal(nrow(.foceiLinCmtCarryPairs(ui)), 1L)
+  skip_if_not(.rxFoceiLinCmtCarryCapable())
+  pars <- c(`THETA[1]` = log(2), `THETA[2]` = log(20), `THETA[3]` = 0.5,
+            `ETA[1]` = 0.3)
+  r <- suppressWarnings(.carryJumpFd(scaled, pars, .carryEv(), "auto"))
+  expect_lt(r$err, 1e-6)
+  expect_true(grepl("rx_lcConc_~linCmtB(", r$txt, fixed = TRUE))
 })

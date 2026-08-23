@@ -67,14 +67,15 @@
 #' row; cheap)
 #' @noRd
 .rxFoceiLinCmtCarryCtx <- function(pairs, s) {
-  .pred <- get("rx_pred_", envir = s, inherits = FALSE)
-  .a <- symengine::get_args(.pred)
+  .pc <- .rxFoceiCarryPredCall(s) # nolint: object_usage_linter.
+  .a <- .pc$args
   # rxFromSE() deparses a non-character argument's expression
   # (substitute()-based), so hand it the repr string
   .txt <- vapply(seq_along(.a), function(i) {
     .r <- paste(.a[[i]])
     rxode2::rxFromSE(.r)
   }, character(1))
+  .callRepr <- paste(.pc$call)
   .ncmt <- as.integer(as.numeric(.txt[4]))
   .oral0 <- as.integer(as.numeric(.txt[5]))
   .nP <- nrow(pairs)
@@ -87,7 +88,14 @@
        anyJump = .anyJump, anyLag = .anyLag,
        aCol = 2L * .nP, lCol = 2L * .nP + 1L,
        slotExpr = lapply(1:7, function(k) .a[[k + 8L]]),
-       rows = seq_len(.m) - 1L)
+       rows = seq_len(.m) - 1L,
+       # an ll() endpoint embeds the concentration call in a larger
+       # expression (#1004): the carry differentiates the concentration,
+       # read back as rx_lcConc_, and symengine supplies the outer chain rule
+       bare = .pc$bare, predSym = .pc$predSym,
+       conc = if (.pc$bare) "rx_pred_" else "rx_lcConc_",
+       concLine = if (.pc$bare) character(0) else
+         paste0("rx_lcConc_~", rxode2::rxFromSE(.callRepr)))
 }
 
 #' One pair's per-row lines: g, the per-compartment J/tracker reads, the
@@ -161,13 +169,24 @@
                          cx$slotExpr)
   .vcRepr <- paste(.vc$vc)
   .vcTxt <- paste0("(", rxode2::rxFromSE(.vcRepr), ")")
-  .fin <- paste0(dfe, "=", .sC, "/", .vcTxt)
+  .conc <- paste0(.sC, "/", .vcTxt)
   if (!is.null(.vc$dVc)) {
     .dRepr <- paste(.vc$dVc)
     .dTxt <- rxode2::rxFromSE(.dRepr)
     # lead with the symbol: rxode2's expression optimizer folds "-(1)*x"
     # to "-x", and "-" + "-x" would read as a C decrement
-    .fin <- paste0(.fin, "-rx_lcCarryG", .p, "_*(", .dTxt, ")*rx_pred_/", .vcTxt)
+    .conc <- paste0(.conc, "-rx_lcCarryG", .p, "_*(", .dTxt, ")*", cx$conc, "/", .vcTxt)
+  }
+  if (cx$bare) return(paste0(dfe, "=", .conc))
+  # ll() endpoint: d(pred)/d(eta) = d(pred)/d(conc) * d(conc)/d(eta) plus
+  # whatever eta dependence the expression has with the concentration held
+  # fixed (symengine sees rx_lcConc_ as a free symbol for that)
+  .outer <- paste(symengine::D(cx$predSym, symengine::S("rx_lcConc_")))
+  .direct <- symengine::D(cx$predSym, symengine::S(pairs$eta[w]))
+  .fin <- paste0(dfe, "=(", rxode2::rxFromSE(.outer), ")*(", .conc, ")")
+  if (!.rxFoceiCarryIsZero(.direct)) { # nolint: object_usage_linter.
+    .directRepr <- paste(.direct)
+    .fin <- paste0(.fin, "+(", rxode2::rxFromSE(.directRepr), ")")
   }
   .fin
 }
@@ -188,7 +207,7 @@
 .rxFoceiLinCmtCarryEmit <- function(pairs, w, s, dfe) {
   .cx <- .rxFoceiLinCmtCarryCtx(pairs, s)
   .l <- character(0)
-  if (w == 1L) .l <- c(.l, .rxFoceiLinCmtCarryPrelude(.cx)) # nolint: object_usage_linter.
+  if (w == 1L) .l <- c(.l, .rxFoceiLinCmtCarryPrelude(.cx), .cx$concLine) # nolint: object_usage_linter.
   .l <- c(.l, .rxFoceiLinCmtCarryPairLines(.cx, pairs, w))
   if (w == .cx$nP) .l <- c(.l, .rxFoceiLinCmtCarryEpilogue(.cx)) # nolint: object_usage_linter.
   paste(c(.l, .rxFoceiLinCmtCarryFinal(.cx, pairs, w, dfe)), collapse = "\n")
