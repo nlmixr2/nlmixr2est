@@ -954,8 +954,9 @@ rxUiGet.foceiHdEta <- function(x, ...) {
   # parameter, phase 3b.3): for a carry-eligible (slot, eta) pair the naive
   # symengine line below is replaced wholesale by the carry block; all other
   # rows (and every model with no eligible pair) are byte-identical to
-  # before.  See foceiLinCmtCarry.R.
-  .carryPairs <- .rxFoceiLinCmtCarryPairsForBuild(x, .s, .linCmtEtaVars,
+  # before.  See foceiLinCmtCarry.R.  (nolint: lintr resolves cross-file
+  # helpers against the installed package, not this source tree)
+  .carryPairs <- .rxFoceiLinCmtCarryPairsForBuild(x, .s, .linCmtEtaVars, # nolint: object_usage_linter.
                                                   .linCmtExtraPred)
   .ret <- apply(.grd, 1, function(x) {
     .l <- x["calc"]
@@ -972,7 +973,7 @@ rxUiGet.foceiHdEta <- function(x, ...) {
       .p <- sub("^.*_BY_(ETA_[0-9]+)___$", "\\1_", x["dfe"])
       .w <- which(.carryPairs$eta == .p)
       if (length(.w) == 1L) {
-        .ret <- .rxFoceiLinCmtCarryEmit(.carryPairs, .w, .s, x["dfe"])
+        .ret <- .rxFoceiLinCmtCarryEmit(.carryPairs, .w, .s, x["dfe"]) # nolint: object_usage_linter.
       }
     }
     .zErr <- suppressWarnings(try(as.numeric(get(x["dfe"], .s)), silent = TRUE))
