@@ -5120,26 +5120,16 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
   // saemSetRowsPooled), reparameterizing the SAME combined phi value rather
   // than using SAEM's own native paramUpdate/doParam positions -- every
   // other fit takes the unchanged path below.
-  if (_saemPhi1PoolActive) {
-    saemSetRowsPooled(_phi);
-    for (int _i = 0; _i < _Nnlmixr2; ++_i) {
-      ind = getSolvingOptionsInd(_rx, _i);
-      setIndSolve(ind, -1);
-      if (current_saem_state != nullptr && current_saem_state->_saemMixest != 0) {
-        setIndMixest(ind, current_saem_state->_saemMixest);
-      } else if (indMixest != nullptr) {
-        setIndMixest(ind, indMixest[_i]);
-      }
+  if (_saemPhi1PoolActive) saemSetRowsPooled(_phi);
+  for (int _i = 0; _i < _Nnlmixr2; ++_i) {
+    ind = getSolvingOptionsInd(_rx, _i);
+    setIndSolve(ind, -1);
+    if (current_saem_state != nullptr && current_saem_state->_saemMixest != 0) {
+      setIndMixest(ind, current_saem_state->_saemMixest);
+    } else if (indMixest != nullptr) {
+      setIndMixest(ind, indMixest[_i]);
     }
-  } else {
-    for (int _i = 0; _i < _Nnlmixr2; ++_i) {
-      ind = getSolvingOptionsInd(_rx, _i);
-      setIndSolve(ind, -1);
-      if (current_saem_state != nullptr && current_saem_state->_saemMixest != 0) {
-        setIndMixest(ind, current_saem_state->_saemMixest);
-      } else if (indMixest != nullptr) {
-        setIndMixest(ind, indMixest[_i]);
-      }
+    if (!_saemPhi1PoolActive) {
       int k=0;
       for (int _j = 0; _j < nPar; _j++){
         if (doParam[_j] == 1) {
