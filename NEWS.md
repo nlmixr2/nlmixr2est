@@ -513,6 +513,16 @@
   the same shape (`rx_pred_` an explicit log-density, `rx_r_ ~ 0`), so
   `saem` now dispatches through the same path.
 
+- `est="saem"` now recognizes a general-likelihood model with **any number of
+  endpoints**, including a genuine **mix of `norm` and general-likelihood
+  endpoints in the same fit** (e.g. one `add()` condition alongside a `t()`,
+  `cauchy()`, or literal `ll()` condition), instead of silently scoring the
+  whole fit as if every endpoint were normally distributed.  A `norm`
+  condition mixed with a general-likelihood one is transparently expressed as
+  the equivalent `llikNorm()` general likelihood (the same normal log-density,
+  sharing the same variance-formula machinery), mirroring how FOCEi already
+  handles this mix -- no `distribution()`-family limitation remains.
+
 ## Bug fixes
 
 ### Estimation
