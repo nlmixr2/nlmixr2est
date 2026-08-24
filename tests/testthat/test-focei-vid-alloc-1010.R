@@ -77,6 +77,45 @@ nmTest({
     expect_true(all(is.finite(as.numeric(fit$eta.cl))))
   })
 
+  test_that("a no-eta (neta == 0) focei fit gives thetaGrad its own block", {
+    # foceiSetupNoEta_ sized the gthetaGrad block with gEtaGTransN, which is
+    # neta * nsub -- and this path only runs when neta == 0, so the block was
+    # empty and llikObsFull started at the same address.  The per-subject
+    # thetaGrad writes (npars per subject) then ran past the allocation
+    # whenever npars * nsub exceeded nall.
+    d <- do.call(rbind, lapply(1:12, function(id) {
+      rbind(data.frame(ID = id, TIME = 0, DV = NA, AMT = 320, EVID = 1, CMT = 1),
+            data.frame(ID = id, TIME = 2 + id / 12, DV = 6 + id / 10, AMT = 0,
+                       EVID = 0, CMT = 1))
+    }))
+
+    noEta <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl)
+        v <- exp(tv)
+        linCmt() ~ add(add.sd)
+      })
+    }
+
+    fit <- suppressMessages(suppressWarnings(
+      nlmixr(noEta(), d, "focei",
+             control = foceiControl(covMethod = "", print = 0))))
+    # the setup really is in the regime the old sizing overflowed: npars per
+    # subject over 12 subjects is more than the whole event table
+    expect_gt(length(fit$theta) * 12, nrow(fit$dataSav))
+    expect_true(is.finite(fit$objf))
+    # llikObsFull shared storage with gthetaGrad before the fix; the per-record
+    # log-likelihoods must still add up to the objective
+    expect_equal(-2 * sum(fit$llikObs, na.rm = TRUE), fit$objf)
+  })
+
   test_that("gVid scales with the mixture replicate count", {
     # gVid is sized (mixIdxN + 1) * sum(nobs_i^2) and the setup loop walks it
     # once per mixture replicate.  With mixIdxN == 0 the multiplier is 1, so a

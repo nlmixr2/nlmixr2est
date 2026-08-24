@@ -6381,12 +6381,18 @@ static inline void foceiSetupNoEta_(){
   op_focei.gEtaGTransN=(op_focei.neta)*getRxNsub(rx);
 
   if (op_focei.gthetaGrad != NULL && op_focei.mGthetaGrad) R_Free(op_focei.gthetaGrad);
-  op_focei.gthetaGrad = R_Calloc((size_t)op_focei.gEtaGTransN + (size_t)getRxNall(rx), double);
-  op_focei.llikObsFull = op_focei.gthetaGrad + op_focei.gEtaGTransN; // [getRxNall(rx)]
+  // The thetaGrad block is npars per subject, not gEtaGTransN: this path is
+  // only taken when neta == 0, so gEtaGTransN is 0 and sizing it that way gave
+  // thetaGrad no storage at all and started llikObsFull at the same address.
+  size_t _gThetaGradN = foceiSzMul(op_focei.npars, (size_t)getRxNsub(rx),
+                                   "thetaGrad");
+  op_focei.gthetaGrad = R_Calloc(foceiSzAdd(_gThetaGradN, (size_t)getRxNall(rx),
+                                            "llikObs"), double);
+  op_focei.llikObsFull = op_focei.gthetaGrad + _gThetaGradN; // [getRxNall(rx)]
   std::fill_n(op_focei.llikObsFull, getRxNall(rx), NA_REAL);
   op_focei.mGthetaGrad = true;
   focei_ind *fInd;
-  int jj = 0, iLO=0;
+  size_t jj = 0, iLO=0;
   for (int i = getRxNsub(rx); i--;){
     fInd = &(inds_focei[i]);
     rx_solving_options_ind *ind = getSolvingOptionsInd(rx, i);

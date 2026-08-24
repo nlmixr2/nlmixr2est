@@ -189,6 +189,13 @@
   belonging to `gtryEta` (the trial eta of the eta-reset/nudge path).  Both
   arrays now get their own block.
 
+- A FOCEi fit of a model with no random effects (`neta == 0`) sized its
+  per-subject `thetaGrad` block with `neta * nsub`, which is zero on exactly
+  that path, so the block had no storage and the per-record log-likelihood
+  array started at the same address.  The gradient writes ran past the
+  allocation whenever the parameter count times the subject count exceeded the
+  event-record count.
+
 - `est="saem"` with `saemControl(nMix > 1)` (mixture SAEM) inverted the
   `propT()`/`powT()` (transformed-basis) vs. plain `prop()`/`pow()`
   (raw-basis) proportional/power error term in the two MSAEM-only E-step
