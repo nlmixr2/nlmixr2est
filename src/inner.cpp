@@ -13,6 +13,7 @@
 #include "nmMcmcRng.h"
 #include <cfloat>
 #include <cstring>
+#include <cstdint>
 #include "odeSwap.h"
 #include "imp.h"
 #include "np.h"
@@ -866,8 +867,55 @@ static inline size_t getRxNallAndMix(rx_solve* rx) {
   return (size_t)getRxNall(rx) * (op_focei.mixIdxN + 1);
 }
 
+// Overflow-checked size_t helpers for the FOCEi setup allocation.  The block
+// sizes are products/sums of data-derived counts; on a 32-bit size_t platform
+// a wrapped total makes R_Calloc quietly hand back a short buffer, which the
+// setup then strides past.  Refuse instead.
+static inline size_t foceiSzMul(size_t a, size_t b, const char *what) {
+  if (a != 0 && b > SIZE_MAX / a) { // nocov
+    stop("focei: dataset too large -- the %s allocation overflows", what); // nocov
+  } // nocov
+  return a * b;
+}
+
+static inline size_t foceiSzAdd(size_t a, size_t b, const char *what) {
+  if (b > SIZE_MAX - a) { // nocov
+    stop("focei: dataset too large -- the %s allocation overflows", what); // nocov
+  } // nocov
+  return a + b;
+}
+
+// Size of the gVid block.  Each subject holds its own nobs_i x nobs_i
+// residual variance matrix, so the block is sum(nobs_i^2) -- NOT nall^2:
+// nall counts dose (and evid=2) records too, and (sum x)^2 only equals
+// sum(x^2) when a single subject holds every observation (#1010).
+static inline size_t getRxNobsSqAndMix(rx_solve* rx) {
+  size_t tot = 0;
+  for (int i = getRxNsub(rx); i--;) {
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, i);
+    size_t nobs = (size_t)(getIndNallTimes(ind) - getIndNdoses(ind) -
+                           getIndNevid2(ind));
+    tot = foceiSzAdd(tot, foceiSzMul(nobs, nobs, "gVid"), "gVid");
+  }
+  return foceiSzMul(tot, (size_t)(op_focei.mixIdxN + 1), "gVid");
+}
+
 static inline int getRxId(int id) {
   return id % getRxNsub(rx);
+}
+
+// Per-subject offsets into llikObsFull.  Unlike the other per-subject blocks,
+// llikObsFull is handed to R as one contiguous block in record order, so its
+// offsets must follow the subject order rather than the (backwards) order the
+// setup loops assign them in.
+static inline std::vector<size_t> foceiLlikObsOffsets(rx_solve* rx, size_t n) {
+  std::vector<size_t> off(n, 0);
+  size_t cur = 0;
+  for (size_t s = 0; s < n; ++s) {
+    off[s] = cur;
+    cur += (size_t)getIndNallTimes(getSolvingOptionsInd(rx, getRxId((int)s)));
+  }
+  return off;
 }
 
 // Is eta j excluded from the eta-drift zero-reset / mu-ref theta soft-shift
@@ -6604,12 +6652,22 @@ static inline void foceiSetupNoEta_(){
   op_focei.gEtaGTransN=(op_focei.neta)*getRxNsub(rx);
 
   if (op_focei.gthetaGrad != NULL && op_focei.mGthetaGrad) R_Free(op_focei.gthetaGrad);
-  op_focei.gthetaGrad = R_Calloc((size_t)op_focei.gEtaGTransN + (size_t)getRxNall(rx), double);
-  op_focei.llikObsFull = op_focei.gthetaGrad + op_focei.gEtaGTransN; // [getRxNall(rx)]
+  // The thetaGrad block is npars per subject, not gEtaGTransN: this path is
+  // only taken when neta == 0, so gEtaGTransN is 0 and sizing it that way gave
+  // thetaGrad no storage at all and started llikObsFull at the same address.
+  size_t _gThetaGradN = foceiSzMul(op_focei.npars, (size_t)getRxNsub(rx),
+                                   "thetaGrad");
+  op_focei.gthetaGrad = R_Calloc(foceiSzAdd(_gThetaGradN, (size_t)getRxNall(rx),
+                                            "llikObs"), double);
+  op_focei.llikObsFull = op_focei.gthetaGrad + _gThetaGradN; // [getRxNall(rx)]
   std::fill_n(op_focei.llikObsFull, getRxNall(rx), NA_REAL);
   op_focei.mGthetaGrad = true;
+  // llikObsFull is copied out to R as one contiguous block in RECORD order, so
+  // a subject's slot is its own cumulative offset -- not the running total of a
+  // loop that walks the subjects backwards, which handed subject 0 the tail.
+  std::vector<size_t> llikOff = foceiLlikObsOffsets(rx, getRxNsub(rx));
   focei_ind *fInd;
-  int jj = 0, iLO=0;
+  size_t jj = 0;
   for (int i = getRxNsub(rx); i--;){
     fInd = &(inds_focei[i]);
     rx_solving_options_ind *ind = getSolvingOptionsInd(rx, i);
@@ -6635,26 +6693,13 @@ static inline void foceiSetupNoEta_(){
     fInd->uzm = 1;
     fInd->doEtaNudge=0;
     // llikObs
-    fInd->llikObs = &op_focei.llikObsFull[iLO];
-    iLO += getIndNallTimes(ind);
+    fInd->llikObs = &op_focei.llikObsFull[llikOff[i]];
   }
   op_focei.alloc=true;
 }
 
 static inline void foceiSetupEta_(NumericMatrix etaMat0){
   rx = getRxSolve_();
-  // Guard: nall_mix^2 is used in the etaUpper allocation below. When
-  // nall_mix > 65535 the squared term exceeds the range of a 32-bit integer,
-  // and on 32-bit size_t platforms the product would overflow.
-  {
-    size_t nall_mix_chk = getRxNallAndMix(rx);
-    if (nall_mix_chk > 65535) { // nocov
-      stop("focei: dataset too large for this mixture model configuration " // nocov
-               "(getRxNall * (mixIdxN+1) = %zu would produce an infeasibly large " // nocov
-               "allocation). Reduce the number of observations or mixture components.", // nocov
-               nall_mix_chk); // nocov
-    } // nocov
-  }
 
   if (inds_focei != NULL) R_Free(inds_focei);
   inds_focei = R_Calloc(getRxNsubAndMix(rx), focei_ind);
@@ -6667,36 +6712,47 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
   RObject etaMat0s = transpose(etaMat0);
   double *etaMat0d = REAL(etaMat0s);
   {
-    size_t _gEtaGTransN = (op_focei.neta + 1) * getRxNsubAndMix(rx);
+    size_t _gEtaGTransN = foceiSzMul((size_t)op_focei.neta + 1,
+                                     getRxNsubAndMix(rx), "eta");
     if (_gEtaGTransN > UINT_MAX) { // nocov
       stop("focei: neta * nsub_mix too large for gEtaGTransN"); // nocov
     } // nocov
     op_focei.gEtaGTransN = (unsigned int)_gEtaGTransN;
   }
-  size_t nz = ((op_focei.neta+1)*(op_focei.neta+2)/2 + 6*(op_focei.neta+1) + 1) *
-               getRxNsubAndMix(rx);
+  size_t nz = foceiSzMul((size_t)((op_focei.neta+1)*(op_focei.neta+2)/2 +
+                                  6*(op_focei.neta+1) + 1),
+                         getRxNsubAndMix(rx), "zm");
 
   if (op_focei.etaUpper != NULL) R_Free(op_focei.etaUpper);
 
   {
     size_t nall_mix = getRxNallAndMix(rx);
     size_t nsub_mix = getRxNsubAndMix(rx);
-    op_focei.etaUpper = R_Calloc(
-      (size_t)op_focei.gEtaGTransN * 10 +
-      op_focei.npars * (nsub_mix + 1) + nz +
-      2 * op_focei.neta * nall_mix +
-      nall_mix +
-      nall_mix * nall_mix +
-      op_focei.neta * 6 +
-      2 * op_focei.neta * op_focei.neta * nsub_mix +
-      nall_mix +
-      // per-obs censored inner-Hessian coefficients gcHff/gcHfr/gcHrr
-      3 * nall_mix,
-      double);
+    size_t neta = op_focei.neta;
+    // Every term is data-derived, so add/multiply through the checked helpers:
+    // a wrapped total would make R_Calloc return a short buffer that the setup
+    // below then strides past.
+    // 11 per-subject eta blocks: geta, gtryEta, goldEta, getahf, getahr,
+    // getahh, gsaveEta, gG, gVar, gX, glp.
+    size_t tot = foceiSzMul((size_t)op_focei.gEtaGTransN, 11, "eta");
+    tot = foceiSzAdd(tot, foceiSzMul(op_focei.npars, nsub_mix + 1, "thetaGrad"), "thetaGrad");
+    tot = foceiSzAdd(tot, nz, "zm");
+    tot = foceiSzAdd(tot, foceiSzMul(2 * neta, nall_mix, "ga/gc"), "ga/gc");
+    tot = foceiSzAdd(tot, nall_mix, "gB");                            // gB
+    tot = foceiSzAdd(tot, getRxNobsSqAndMix(rx), "gVid");             // gVid; sum(nobs_i^2)
+    tot = foceiSzAdd(tot, neta * 6, "eta bounds");
+    tot = foceiSzAdd(tot, foceiSzMul(2 * neta * neta, nsub_mix, "gH"), "gH");
+    tot = foceiSzAdd(tot, nall_mix, "llikObs");                       // llikObsFull
+    // per-obs censored inner-Hessian coefficients gcHff/gcHfr/gcHrr
+    tot = foceiSzAdd(tot, foceiSzMul(3, nall_mix, "cHff"), "cHff");
+    op_focei.etaUpper = R_Calloc(tot, double);
   }
   op_focei.etaLower =  op_focei.etaUpper + op_focei.neta;
   op_focei.geta     = op_focei.etaLower + op_focei.neta;
-  op_focei.gtryEta  = op_focei.geta + op_focei.neta;
+  // geta is a PER-SUBJECT array (fInd->eta = &geta[j], j advancing by neta+1
+  // over every subject), so it needs a full gEtaGTransN block like the ten
+  // that follow it -- it used to be handed only neta and aliased gtryEta.
+  op_focei.gtryEta  = op_focei.geta + op_focei.gEtaGTransN;
   op_focei.goldEta  = op_focei.gtryEta + op_focei.gEtaGTransN;
   op_focei.getahf   = op_focei.goldEta + op_focei.gEtaGTransN;
   op_focei.getahr   = op_focei.getahf + op_focei.gEtaGTransN;
@@ -6717,7 +6773,7 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
   op_focei.gH       = op_focei.gB + getRxNallAndMix(rx); //[op_focei.neta*op_focei.neta*getRxNsub(rx)]
   op_focei.llikObsFull = op_focei.gH + op_focei.neta*op_focei.neta*getRxNsubAndMix(rx); // [getRxNall(rx)]
   op_focei.gVid     = op_focei.llikObsFull + getRxNallAndMix(rx);
-  op_focei.gcHff    = op_focei.gVid + (size_t)getRxNallAndMix(rx)*getRxNallAndMix(rx); //[nall_mix]
+  op_focei.gcHff    = op_focei.gVid + getRxNobsSqAndMix(rx); //[nall_mix]
   op_focei.gcHfr    = op_focei.gcHff + getRxNallAndMix(rx); //[nall_mix]
   op_focei.gcHrr    = op_focei.gcHfr + getRxNallAndMix(rx); //[nall_mix]
   // Could use .zeros() but since I used Calloc, they are already zero.
@@ -6733,7 +6789,15 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
   std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, -42.0); // All etas = -42;  Unlikely if normal
 
 
-  unsigned int i, j = 0, k = 0, ii=0, jj = 0, iA=0, iB=0, iH=0, iVid=0, iLO=0;
+  // The offset accumulators are size_t, not unsigned int: iVid advances by
+  // nobs_i^2, which overflows a 32-bit accumulator (and, unless the product is
+  // taken in size_t, a 32-bit int) on data the old nall > 65535 guard used to
+  // exclude.  A wrapped offset silently aliases another subject's block.
+  unsigned int i;
+  size_t j = 0, k = 0, ii=0, jj = 0, iA=0, iB=0, iH=0, iVid=0;
+  // See foceiSetupNoEta_: llikObsFull leaves in record order, so it is indexed
+  // by the subject's own cumulative offset rather than by loop order.
+  std::vector<size_t> llikOff = foceiLlikObsOffsets(rx, getRxNsubAndMix(rx));
   focei_ind *fInd;
   for (i = getRxNsubAndMix(rx); i--;){
     fInd = &(inds_focei[i]);
@@ -6772,15 +6836,13 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
     fInd->var = &op_focei.gVar[j];
     fInd->lp = &op_focei.glp[j];
     fInd->Vid = &op_focei.gVid[iVid];
-    iH += op_focei.neta*op_focei.neta;
-    iVid += (getIndNallTimes(ind) -
-             getIndNdoses(ind) -
-             getIndNevid2(ind)
-             )*(getIndNallTimes(ind) -
-                getIndNdoses(ind) -
-                getIndNevid2(ind));
-    fInd->llikObs = &op_focei.llikObsFull[iLO];
-    iLO += getIndNallTimes(ind);
+    iH += (size_t)op_focei.neta*op_focei.neta;
+    {
+      size_t nobs = (size_t)(getIndNallTimes(ind) - getIndNdoses(ind) -
+                             getIndNevid2(ind));
+      iVid += nobs * nobs;
+    }
+    fInd->llikObs = &op_focei.llikObsFull[llikOff[i]];
 
     // Copy in etaMat0 to the inital eta stored (0 if unspecified)
     // std::copy(&etaMat0[i*op_focei.neta], &etaMat0[(i+1)*op_focei.neta], &fInd->saveEta[0]);
@@ -6802,9 +6864,9 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
 
     fInd->a = &op_focei.ga[iA];
     fInd->c = &op_focei.gc[iA];
-    iA += op_focei.neta * (getIndNallTimes(ind) -
-                           getIndNdoses(ind) -
-                           getIndNevid2(ind));
+    iA += (size_t)op_focei.neta * (size_t)(getIndNallTimes(ind) -
+                                          getIndNdoses(ind) -
+                                          getIndNevid2(ind));
 
     fInd->B = &op_focei.gB[iB];
     fInd->cHff = &op_focei.gcHff[iB];
@@ -11364,6 +11426,29 @@ void impMuInterceptStep() {
 }
 
 int impThetaSensN() { return op_focei.impThetaSensIdx.size(); }
+
+// Whether the combined eta+theta sensitivity build (#958) is loaded: the INNER
+// model itself carries the theta columns, so impOuter's E-step can harvest
+// them from its own per-sample inner solve instead of the M-step re-solving
+// (see impEStep's harvest path in imp.cpp).
+bool impCombSensEnabled() { return op_focei.combSens; }
+
+// Whether subject id's most recent likInner0 call (impEvalJointLik) solved the
+// INNER model itself, as opposed to falling back to the pred-model FD path.
+// On an FD fallback, ind->solve holds the PRED model's trajectory, not the
+// INNER model's, so a combSens theta-sensitivity read against odeSlotInner
+// must NOT reuse it -- mirrors nnOuterUsable()'s doFD check and
+// foceiCondBatchThetaGradOne's usedFD gate (both above).
+bool impLastInnerSolveUsable(int id) { return inds_focei[id].doFD == 0; }
+
+// #958: how many impEStep per-sample theta-sensitivity reads reused the
+// E-step's own inner solve (see inner.h).  Incremented from imp.cpp's
+// parallel E-step loop, so atomic.
+static std::atomic<int> _impThetaSensHarvestN(0);
+void impThetaSensHarvestTick() {
+  _impThetaSensHarvestN.fetch_add(1, std::memory_order_relaxed);
+}
+int impThetaSensHarvestN() { return _impThetaSensHarvestN.load(std::memory_order_relaxed); }
 
 // 0-based eta indices whose Omega diagonal is fixed (the EM Omega update restores
 // their rows/columns to the starting Omega so fix()ed variances are held).
@@ -19319,6 +19404,28 @@ NumericVector foceiLikEval_(NumericMatrix etaMat, int cores, int retType) {
     sortIds(rx, 0);
   }
   return out;
+}
+
+// The Laplace-corrected FOCEi inner objective (foceiObjFromLik0: innerOpt1's
+// EBE Newton search per subject, LikInner2's -2*loglik + log|H| Laplace
+// determinant, summed, plus any ini({}) prior term) at a caller-supplied
+// theta, over a foceiLikLoad()-ed problem.  Unlike foceiLikEval_ (a pure
+// value read at a caller-SUPPLIED eta, no optimization), this actually finds
+// each subject's conditional mode at theta -- the same objective a live
+// FOCEi fit's outer optimizer minimizes, exposed standalone.  Deliberately
+// calls foceiObjFromLik0() directly rather than foceiOfv0(): foceiOfv0 carries
+// FOCEi's own outer-optimizer-fit-specific state (objective rescaling relative
+// to the fit's first evaluation, sticky ODE-tolerance relaxation on repeated
+// NaN) that has no meaning for a standalone caller.
+//[[Rcpp::export]]
+double foceiLikInnerObjective_(NumericVector theta) {
+  if (!foceiLikLoaded) stop("no general likelihood system loaded; call foceiLikLoad() first");
+  if ((int)theta.size() != (int)op_focei.npars)
+    stop("theta length %d != number of estimated parameters %d",
+         (int)theta.size(), (int)op_focei.npars);
+  std::vector<double> par(theta.begin(), theta.end());
+  rx = getRxSolve_();
+  return foceiObjFromLik0(par.data());
 }
 
 // ===========================================================================

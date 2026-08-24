@@ -20,6 +20,7 @@
 #include <ctime>
 #include "nmMcmcRng.h"
 #include "imp.h"
+#include "odeSwap.h" // odeSwapAnyNdiffSet()
 #include "utilc.h"   // RSprintf (covariance-step progress header)
 #ifdef _OPENMP
 #include <omp.h>
@@ -248,6 +249,27 @@ NumericMatrix impQrPoints_(int isample, int neta, Nullable<NumericVector> shift)
   return wrap(impQrZ(U0, nullptr));
 }
 
+// impGetHessian() solves through odeSwapSolveInd(), which writes rx->ndiff -- a
+// field on the single shared rx_solve struct -- right before every solve of a
+// slot whose OWN need is nonzero (see odeSwap.cpp).  A subject that falls back
+// to the doFD/pred path (fInd->doFD, set per-subject) solves a DIFFERENT slot
+// than a subject still on the plain inner path, concurrently in the E-step's
+// parallel loop -- but odeSwapSolveInd() already makes that pairing benign
+// (pred needs no derivative, so it never writes).  This lock is
+// defense-in-depth for the case that alone does not cover: two DIFFERENT slots
+// that both need a NONZERO but DIFFERING ndiff, concurrently.  Only a
+// linCmt()-with-non-mu-structural-theta model ever has a slot with
+// ndiffSet=true at all, so gate the lock on that and pay nothing otherwise.
+static bool impGetHessianNdiffSafe(int id, arma::mat& H) {
+  if (!odeSwapAnyNdiffSet()) return impGetHessian(id, H);
+  bool gotH;
+#ifdef _OPENMP
+#pragma omp critical (odeSwapNdiffHessian)
+#endif
+  { gotH = impGetHessian(id, H); }
+  return gotH;
+}
+
 // One importance-sampling E-step at the current conditional modes: draw
 // proposal samples, form importance weights, and return each subject's
 // conditional mean, variance, objective contribution, and effective sample
@@ -272,7 +294,8 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
                      arma::vec& XiExpOut, arma::vec& KhatExpOut,
                      std::vector<arma::mat>& outS, std::vector<arma::vec>& outZk,
                      arma::mat& aMat, Environment* eStash,
-                     uint32_t qrPinSeed) {
+                     uint32_t qrPinSeed, bool harvestSens,
+                     std::vector<impThetaSensData>& outSens) {
   int Nm = impNmix();
   int nExp = nsub * Nm; // expanded pseudo-subjects: component j (1-based) is i + (j-1)*nsub
 
@@ -327,7 +350,7 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
       arma::mat H(neta, neta, arma::fill::zeros);
       impGetMode(id, mode);
       modes[id] = mode;
-      if (impGetHessian(id, H)) {
+      if (impGetHessianNdiffSafe(id, H)) {
         arma::mat Sigma;
         double ldv, lds;
         if (arma::inv_sympd(Sigma, H) && arma::log_det(ldv, lds, H) && lds > 0) {
@@ -354,6 +377,7 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
   std::vector<char> okExp(nExp, 0);
   outS.assign(nExp, arma::mat());
   outZk.assign(nExp, arma::vec());
+  if (harvestSens) outSens.assign(nExp, impThetaSensData());
   // The engine array is allocated + seeded by rxWithSeed() at the fit start
   // (impmap.R), so we don't call seedEng() here.
   // Base the per-subject stream on the control's impSeed, NOT the ambient
@@ -456,6 +480,57 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
         arma::vec d = eta - modes[id];
         double qk = -impEvalJointLik(eta, id) +
           impLogKernelRecip(arma::as_scalar(d.t() * Hs[id] * d), gammaId, dfId, neta);
+        // #958 combined build: impEvalJointLik() just solved this subject's
+        // INNER model at this exact (theta, eta) -- when combSens is loaded,
+        // that solve already carries the M-step's d(f)/d(theta)/d(V)/d(theta)
+        // columns, so harvest them here (impThetaSensCollect's reuseSolve path,
+        // a pure read -- no ODE solve, no R API call, safe under this
+        // function's own parallel E-step region) instead of letting the
+        // M-step re-solve every sample from scratch.  Skipped whenever the
+        // caller disabled harvesting (SIR resampling only needs a subset of
+        // the E-step's samples, so eagerly harvesting all of them there would
+        // be wasted work -- see impOuter's harvestSens gate).  A sample whose
+        // solve fell back to the pred-model FD path (impLastInnerSolveUsable
+        // == false) leaves ind->solve holding the PRED model's trajectory, not
+        // the inner model's, so it is left unharvested (sampleOk=0) rather
+        // than triggering impThetaSensCollect's own solve-with-retry path --
+        // that path is R-API-unsafe from a bare OpenMP region (it is only
+        // ever run under the M-step's explicit impInnerParallelOn() guard),
+        // which this loop does not set.  doFD alone is not enough: it is a
+        // STICKY per-subject flag (only flips permanently, inside the inner
+        // Newton optimizer's own convergence handling) and does not track
+        // whether THIS ARBITRARY sampled eta's solve produced a usable
+        // result, so a bad solve at doFD==0 (e.g. an extreme early-EM
+        // proposal draw) would otherwise still reach impThetaSensCollect,
+        // which falls back to impThetaSensFD()'s finite-difference re-solves
+        // -- the same R-API-unsafe path.  qk is -impEvalJointLik(eta, id) +
+        // <finite kernel term>, so its own finiteness is direct evidence this
+        // exact eta's inner solve succeeded (impEvalJointLik/likInner0 return
+        // a non-finite value on a bad solve); require both.
+        if (harvestSens) {
+          impThetaSensData &_acc = outSens[id];
+          // Every sample appends exactly one slot; an unharvested one appends an
+          // empty placeholder with sampleOk=0 so the per-sample indexing lines up.
+          impThetaSensData _c;
+          bool _ok = false;
+          if (impLastInnerSolveUsable(id) && R_finite(qk)) {
+            arma::mat _srow(1, neta); _srow.row(0) = eta.t();
+            impThetaSensCollect(id, _srow, _c, /*reuseSolve=*/true);
+            if (_c.nobs > 0) {
+              _acc.nobs = _c.nobs;
+              _acc.dvv = _c.dvv; _acc.limv = _c.limv;
+              _acc.censv = _c.censv; _acc.distv = _c.distv;
+              _acc.ddvmat = _c.ddvmat; _acc.dlimmat = _c.dlimmat;
+            }
+            _ok = _c.nobs > 0 && !_c.sampleOk.empty() && _c.sampleOk[0] != 0;
+          }
+          _acc.fvec.push_back(_ok ? _c.fvec[0] : arma::vec());
+          _acc.Vvec.push_back(_ok ? _c.Vvec[0] : arma::vec());
+          _acc.dfmat.push_back(_ok ? _c.dfmat[0] : arma::mat());
+          _acc.dVmat.push_back(_ok ? _c.dVmat[0] : arma::mat());
+          _acc.sampleOk.push_back(_ok ? 1 : 0);
+          if (_ok) impThetaSensHarvestTick();
+        }
         // A proposal sample whose inner solve fails (NA/NaN, even after the
         // FOCEI tolerance-relaxation retry) is dropped from the weighted mean by
         // giving it -Inf log-weight (weight 0).
@@ -1054,6 +1129,27 @@ void impOuter(Environment e) {
   bool sir = impSirEnabled();
   int sirN = impSirN();
   uint32_t sirSeed = (uint32_t)impBaseSeed() + 0x7F4A7C15u;
+  // #958 combined build: harvest the M-step's theta-sensitivity columns
+  // straight off the E-step's own per-sample inner solve (impEStep) instead
+  // of the M-step re-solving every sample -- see impEStep's harvest block.
+  // Off under SIR: the M-step there only needs a resampled SUBSET of the
+  // E-step's samples (sirN < isample), so eagerly harvesting every sample in
+  // the E-step would do MORE solving, not less; that case keeps the existing
+  // (unfused) M-step path unchanged.
+  //
+  // This loop is `#pragma omp parallel for` over subjects, and a subject
+  // whose inner solve fell back to doFD/pred solves a DIFFERENT registered
+  // slot than a subject still on the plain inner path -- concurrently, in
+  // the same loop.  That used to be able to race on rx->ndiff (a field on
+  // the single shared rx_solve struct); it no longer can, because
+  // odeSwapSolveInd() now skips writing rx->ndiff entirely for a slot whose
+  // own declared need is 0 (odeSlotPred never needs a Jacobian derivative --
+  // "rxPred implements no sensitivities" -- so it never touches the shared
+  // field), leaving only same-value writes from concurrent inner solves,
+  // which is benign.  See odeSwap.cpp's odeSwapSolveInd for the fix and its
+  // KNOWN GAP note.
+  bool harvestSens = impCombSensEnabled() && (nSens > 0) && !sir;
+  std::vector<impThetaSensData> outSens;
 
   // Omega structure mask: only the elements estimated in the model (nonzero in
   // the starting Omega) are updated; the rest stay zero so the parameterization
@@ -1089,7 +1185,8 @@ void impOuter(Environment e) {
     gammaUsed = gammaVec;
     gammaScalarUsed = gamma;
     impEStep(nsub, neta, isampleVec, gammaVec, dfVec, cores, iter, impLogDetOmegaInv5(), isImp,
-             condMean, condVar, Li, Neff, Xi, XiExp, KhatExp, sampS, sampZk, aMat, &e, qrPinSeed);
+             condMean, condVar, Li, Neff, Xi, XiExp, KhatExp, sampS, sampZk, aMat, &e, qrPinSeed,
+             harvestSens, outSens);
     obj = 0.0;
     for (int id = 0; id < nsub; ++id) if (R_finite(Li[id])) obj += 2.0 * Li[id];
     // Mean effective-sample fraction (importance-sampling "acceptance ratio").
@@ -1337,63 +1434,85 @@ void impOuter(Environment e) {
       // Each subject's samples (SIR-resampled if enabled) and collected sensitivity
       // outputs are stashed per subject, then accumulated in eid order below.  cores
       // already carries the mixture / pool-sizing serial guard (forced to 1 above).
-      std::vector<impThetaSensData> coll(nExp);
-      // Only zksub is retained per subject (the serial accumulation needs it); the
-      // sample matrix is passed straight into impThetaSensCollect (sampS[eid] as-is,
-      // or a local SIR resample), so there is no per-subject copy of the full sample.
-      std::vector<arma::vec> zksub(nExp);
-      std::vector<char> useSub(nExp, 0);
-      // Parallelize the theta-sensitivity solves over subjects; each subject writes
-      // only its own slot (coll[eid]) and the score/Hessian accumulation below stays
-      // serial in eid order, so the result is bit-identical to the serial M-step.
-      // Only engage when the solve method is thread-safe (liblsoda); the
-      // inner-parallel flag (impInnerParallelOn/Off) defers worker-thread R-API
-      // warnings.  impThetaSensCollect reads calc_lhs into a thread-local buffer and
-      // loosens tolerance per-subject, so no shared solve state is touched.  cores
-      // already carries the mixture / pool-sizing serial guard (forced to 1).
-      bool doParM = (cores > 1) && impMStepParallelOk();
-      if (doParM) impInnerParallelOn();
+      if (harvestSens) {
+        // #958 fused build: outSens[eid] was already filled sample-by-sample
+        // during THIS iteration's E-step (impEStep), off the same inner solve
+        // impEvalJointLik used for the importance weights -- no M-step solve
+        // at all for a subject that harvested cleanly.  A subject every one of
+        // whose samples fell back to the pred-model FD path in the E-step
+        // (outSens[eid].nobs == 0, impEStep leaves it unharvested rather than
+        // re-solving from an OpenMP region -- see impEStep) falls back here to
+        // the ordinary (serial-safe) solve-based read, so no subject's M-step
+        // contribution is silently dropped.
+        for (int eid = 0; eid < nExp; ++eid) {
+          if (sampS[eid].n_rows == 0) continue;
+          if (outSens[eid].nobs > 0) {
+            impThetaAccumOne(outSens[eid], sampZk[eid], g, H);
+          } else {
+            impThetaSensData c;
+            impThetaSensCollect(eid, sampS[eid], c);
+            impThetaAccumOne(c, sampZk[eid], g, H);
+          }
+        }
+      } else {
+        std::vector<impThetaSensData> coll(nExp);
+        // Only zksub is retained per subject (the serial accumulation needs it); the
+        // sample matrix is passed straight into impThetaSensCollect (sampS[eid] as-is,
+        // or a local SIR resample), so there is no per-subject copy of the full sample.
+        std::vector<arma::vec> zksub(nExp);
+        std::vector<char> useSub(nExp, 0);
+        // Parallelize the theta-sensitivity solves over subjects; each subject writes
+        // only its own slot (coll[eid]) and the score/Hessian accumulation below stays
+        // serial in eid order, so the result is bit-identical to the serial M-step.
+        // Only engage when the solve method is thread-safe (liblsoda); the
+        // inner-parallel flag (impInnerParallelOn/Off) defers worker-thread R-API
+        // warnings.  impThetaSensCollect reads calc_lhs into a thread-local buffer and
+        // loosens tolerance per-subject, so no shared solve state is touched.  cores
+        // already carries the mixture / pool-sizing serial guard (forced to 1).
+        bool doParM = (cores > 1) && impMStepParallelOk();
+        if (doParM) impInnerParallelOn();
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(cores) schedule(static) if(doParM)
 #endif
-      for (int eid = 0; eid < nExp; ++eid) {
+        for (int eid = 0; eid < nExp; ++eid) {
 #ifdef _OPENMP
-        if (doParM) setRxThreadId(omp_get_thread_num());
+          if (doParM) setRxThreadId(omp_get_thread_num());
 #endif
-        if (sampS[eid].n_rows != 0) {
-          if (sir && sirN < (int)sampS[eid].n_rows) {
-            // SIR acceleration: an equal-weight systematic resample stands in
-            // for the full weighted sample, cutting the theta-sens solves from
-            // isample to sirN per subject.  For a mixture, zk sums to the
-            // component responsibility a_ij (folded in by impEStep), so the
-            // equal weights carry a_ij/sirN to preserve the component mass.
-            double aij = arma::accu(sampZk[eid]);
-            if (aij > 0.0 && R_finite(aij)) {
-              // Seed this subject's stream on the current thread; the drawn u0 is
-              // a pure function of the (iter, eid) seed, so it is thread-count
-              // invariant.
-              nmSetSeedEng1(sirSeed + (uint32_t)((iter * nExp + eid) * 2));
-              double u0 = rxUnifEng(0.0, 1.0);
-              arma::uvec ridx = impSirIndex(sampZk[eid], sirN, u0);
-              arma::mat Ssir = sampS[eid].rows(ridx);
-              zksub[eid].set_size(sirN); zksub[eid].fill(aij / (double)sirN);
-              impThetaSensCollect(eid, Ssir, coll[eid]);
+          if (sampS[eid].n_rows != 0) {
+            if (sir && sirN < (int)sampS[eid].n_rows) {
+              // SIR acceleration: an equal-weight systematic resample stands in
+              // for the full weighted sample, cutting the theta-sens solves from
+              // isample to sirN per subject.  For a mixture, zk sums to the
+              // component responsibility a_ij (folded in by impEStep), so the
+              // equal weights carry a_ij/sirN to preserve the component mass.
+              double aij = arma::accu(sampZk[eid]);
+              if (aij > 0.0 && R_finite(aij)) {
+                // Seed this subject's stream on the current thread; the drawn u0 is
+                // a pure function of the (iter, eid) seed, so it is thread-count
+                // invariant.
+                nmSetSeedEng1(sirSeed + (uint32_t)((iter * nExp + eid) * 2));
+                double u0 = rxUnifEng(0.0, 1.0);
+                arma::uvec ridx = impSirIndex(sampZk[eid], sirN, u0);
+                arma::mat Ssir = sampS[eid].rows(ridx);
+                zksub[eid].set_size(sirN); zksub[eid].fill(aij / (double)sirN);
+                impThetaSensCollect(eid, Ssir, coll[eid]);
+                useSub[eid] = 1;
+              }
+            } else {
+              zksub[eid] = sampZk[eid];
+              impThetaSensCollect(eid, sampS[eid], coll[eid]);
               useSub[eid] = 1;
             }
-          } else {
-            zksub[eid] = sampZk[eid];
-            impThetaSensCollect(eid, sampS[eid], coll[eid]);
-            useSub[eid] = 1;
           }
-        }
 #ifdef _OPENMP
-        if (doParM) setRxThreadId(-1);
+          if (doParM) setRxThreadId(-1);
 #endif
-      }
-      if (doParM) impInnerParallelOff();
-      // Serial accumulation in eid order -- bit-identical to the serial theta score.
-      for (int eid = 0; eid < nExp; ++eid) {
-        if (useSub[eid]) impThetaAccumOne(coll[eid], zksub[eid], g, H);
+        }
+        if (doParM) impInnerParallelOff();
+        // Serial accumulation in eid order -- bit-identical to the serial theta score.
+        for (int eid = 0; eid < nExp; ++eid) {
+          if (useSub[eid]) impThetaAccumOne(coll[eid], zksub[eid], g, H);
+        }
       }
       g /= (double)nsub;
       H /= (double)nsub;

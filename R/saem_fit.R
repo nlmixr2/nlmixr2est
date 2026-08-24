@@ -397,6 +397,24 @@
   .pars <- .pars[!(names(.pars) %in% inPars)]
   opt$.rx <- .rx
   opt$.pars <- .pars
+  # Phase 4 (SAEM general-likelihood theta plan): the phi1-inner exact-Hessian
+  # model and its pred-only FD-fallback peer, when this is a general-lik fit --
+  # setupRx (src/saem.cpp) registers them as odeSwap peers of SAEM's own model
+  # (opt$.rx) so the phi1 theta step can read a Laplace-corrected objective
+  # without a separate FOCEi setup/solve.  NULL for a non-general-lik fit
+  # (nothing attached model$saemPhi1Hess2/Pred), and innerHess2 may itself be
+  # NULL for some model shapes (e.g. linCmt()) -- setupRx treats a NULL the
+  # same as "not present".
+  if (distribution == 4L) {
+    opt$saemPhi1Hess2 <- model$saemPhi1Hess2
+    opt$saemPhi1Pred  <- model$saemPhi1Pred
+    opt$saemPhi1ThetaKind <- model$saemPhi1ThetaKind
+    opt$saemPhi1ThetaCol <- model$saemPhi1ThetaCol
+    opt$saemPhi1ThetaFixedVal <- model$saemPhi1ThetaFixedVal
+    opt$saemPhi1EtaCol <- model$saemPhi1EtaCol
+    opt$saemPhi1DvCol <- model$saemPhi1DvCol
+    opt$saemPhi1DvColHess2 <- model$saemPhi1DvColHess2
+  }
   ## opt$.dat <- dat;
   # normally drop 'dv' by name (the kernel gets observations separately as 'y').
   # A general log-likelihood model, though, references DV in its rx_pred_ (the ll
@@ -612,6 +630,13 @@
 
   i1 <- i1 - 1
   i0 <- i0 - 1
+  # Phase 4 (SAEM general-likelihood theta plan): setupRx (src/saem.cpp)
+  # reads i0/i1 directly from opt (not the top-level cfg) to route the
+  # pooled per-row solve's phi1/phi0 column lookups -- only meaningful when
+  # opt$saemPhi1* was attached above (distribution==4, map resolved), but
+  # harmless to always carry.
+  opt$i0 <- as.integer(i0)
+  opt$i1 <- as.integer(i1)
   opt$distribution <- distribution
   opt$paramUpdate <- attr(model$saem_mod, "paramUpdate")
   optM$paramUpdate <- attr(model$saem_mod, "paramUpdate")

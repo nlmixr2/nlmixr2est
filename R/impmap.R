@@ -19,7 +19,11 @@
                            # not foceiControl() arguments, so they must be dropped
                            # when down-converting (e.g. .setOfvFo's do.call(foceiControl))
                            "impMuThetaIdx", "impMuEtaIdx", "impThetaSensIdx",
-                           "impOmegaFixedEta")
+                           "impOmegaFixedEta",
+                           # combined eta+theta sensitivity build (#958): an
+                           # impmap-internal request for the fused inner model;
+                           # not a foceiControl() argument either.
+                           "combSens")
 
 #' Control options for the impmap (importance-sampling EM) estimation method
 #'
@@ -290,6 +294,19 @@
 #'   `isample` weighted samples.
 #' @param sirSample Number of SIR resampled points per subject; `NULL` uses
 #'   `max(25, ceiling(isample/10))`.  Must be at most `isample`.
+#' @param combSens When `TRUE` (the default) and there are non-mu (structural
+#'   or residual-error) thetas to estimate, carry their sensitivity columns on
+#'   the INNER model itself (the combined eta+theta sensitivity build, #958)
+#'   instead of compiling and solving a separate, dedicated model for them.
+#'   With `sir=FALSE` (the default) the E-step's own per-sample inner solve
+#'   then supplies the M-step's Newton step directly, with no second solve --
+#'   roughly halving the ODE solving the theta-sensitivity Newton step costs.
+#'   Set `FALSE` to use the older two-model path instead. (Earlier versions
+#'   shipped `FALSE` as the default: on a `linCmt()` model with a single
+#'   non-mu structural theta, `combSens=TRUE`/`FALSE` measurably disagreed --
+#'   not `combSens` moving the answer, but an unrelated pre-existing bug in
+#'   how the shared solve pool swapped between peer models, since fixed. The
+#'   two now agree on every fixture measured, so `TRUE` is the default.)
 #' @return impmapControl object
 #' @export
 #' @author Matthew L. Fidler
@@ -320,7 +337,9 @@ impmapControl <- function(sigdig=3,
                           qrRefresh=TRUE,
                           sir=FALSE,
                           sirSample=NULL,
-                          muModel=c("lin", "none")) {
+                          muModel=c("lin", "none"),
+                          combSens=TRUE) {
+  checkmate::assertLogical(combSens, len=1, any.missing=FALSE)
   muModel <- match.arg(muModel)
   gammaMethod <- match.arg(gammaMethod)
   gammaRule <- match.arg(gammaRule)
@@ -435,6 +454,7 @@ impmapControl <- function(sigdig=3,
   .control$qrRefresh <- qrRefresh
   .control$sir <- sir
   .control$sirSample <- .sirSample
+  .control$combSens <- combSens
   class(.control) <- "impmapControl"
   .control
 }
@@ -682,6 +702,34 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   # error) with sensitivity outputs in the sensitivity model; the M-step Newton
   # update maps its output columns back to these thetas.
   .control$impThetaSensIdx <- as.integer(.impmapEstTheta(ui)$all - 1L)
+  # Combined eta+theta sensitivity build (#958), on by default when there is
+  # anything to differentiate (impmapControl(combSens=FALSE) opts back out):
+  # carries the theta columns on the INNER model itself instead of
+  # compiling+solving a separate rxThetaSens peer.  This is what lets the
+  # E-step's own per-sample inner solve (impEvalJointLik) also harvest the
+  # M-step's d(f)/d(theta)/d(V)/d(theta) columns for free (impThetaSensCollect
+  # / impEStep's harvest path in inner.cpp), instead of the M-step re-solving
+  # every sample from scratch in a second, dedicated model -- roughly halving
+  # the ODE solving the M-step Newton step costs (sir=FALSE, the default).
+  #
+  # This was shipped opt-in at first: on a linCmt() model with a single
+  # non-mu structural theta, combSens=TRUE and combSens=FALSE measurably
+  # disagreed (a Pareto k-hat healthy under one and > 2 under the other).
+  # That was NOT combSens moving the answer -- it uncovered a pre-existing,
+  # independent bug (src/odeSwap.cpp's odeSwapSolveInd(), fixed alongside
+  # this default flip): rx->ndiff (which linCmtB() structural-parameter
+  # derivative(s) to compute, and whether to refresh its cached Jacobian at
+  # all) is one field on the shared rx_solve struct, set once from whichever
+  # model first called rxSolve_() -- odeSwap's peer-swapping never restored
+  # it per slot the way neq/nlhs/cmt-basis already are, so a linCmt() peer
+  # solved after a sibling with a DIFFERENT (or absent) ndiff need could read
+  # a stale, iteration-old d(pred)/d(eta) left by that sibling.  Once
+  # odeSwapSolveInd() restores each slot's own ndiff before every solve,
+  # combSens=TRUE and combSens=FALSE agree exactly (to floating-point noise)
+  # on every fixture measured, including the one that first exposed the gap
+  # -- so there is no longer a reason to keep this off by default.
+  .control$combSens <- isTRUE(.control$combSens) &&
+    length(.control$impThetaSensIdx) > 0L
   # 0-based eta indices whose Omega diagonal is FIXED; the EM Omega update
   # restores their rows/columns to the starting value so fix()ed variances hold.
   .etaOrd <- .etaRows[order(.etaRows$neta1), ]
