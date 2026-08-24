@@ -409,14 +409,13 @@ rxUiGet.nlmModel0 <- function(x, ...) {
   .ui <- rxode2::rxUiDecompress(x[[1]])
   # on.exit() registered BEFORE mutating either flag: an interrupt landing
   # between setting a flag and registering its reset would otherwise leak
-  # it TRUE for the rest of the R session -- for rxCensNuFix specifically,
-  # that would crash a later FOCEi t()/cauchy()+eta fit (see the guard's
-  # own comment for why it must stay OFF for FOCEi/FOCE, #979).
+  # it TRUE for the rest of the R session, changing how a later fit's model
+  # is generated.
   on.exit(nlmixr2global$rxCensNuFix <- FALSE, add = TRUE)
   on.exit(nlmixr2global$rxPredLlik <- FALSE, add = TRUE)
   nlmixr2global$rxPredLlik <- TRUE
-  # nlm is population-only (no etas), so .fixCensRNuLine's real (nonzero)
-  # rx_r_/rx_nu_ for a llik-forced endpoint is safe here.
+  # expose the censoring inputs (a real rx_r_, plus rx_nu_) for the
+  # llik-forced endpoint (.fixCensRNuLine, R/focei.R)
   nlmixr2global$rxCensNuFix <- TRUE
   .predDf <- .ui$predDf
   .save <- .predDf

@@ -1,15 +1,14 @@
 #' Warn when CENS/LIMIT data meets a distribution with no M2/M3/M4 support
 #'
 #' `censEst.h`'s M2/M3/M4 correction only understands normal (`add`/`prop`/
-#' `pow`/combined, `lnorm`/`logitNorm`/`probitNorm` transforms, `dnorm`) and,
-#' for nlm-family only, `t()`/`cauchy()` (`doCensT1()`, #979).  Every other
-#' generalized-likelihood distribution (`pois`, `binom`, `beta`, `chisq`,
-#' `dexp`, `f`, `geom`, `unif`, `weibull`, `dgamma`, `ordinal`, a general
-#' `ll()`) -- and, for now, `t()`/`cauchy()` under FOCEi/FOCE/AGQ/Laplace --
-#' silently scores a censored row with its ordinary (uncensored) density
-#' instead of erroring or refusing (unlike `est="nls"`, which hard-stops).
-#' This warns instead of leaving that silent, so it is at least visible in
-#' the fit's `$runInfo`.
+#' `pow`/combined, `lnorm`/`logitNorm`/`probitNorm` transforms, `dnorm`) and
+#' `t()`/`cauchy()` (`doCensT1()`, #979/#992).  Every other generalized-
+#' likelihood distribution (`pois`, `binom`, `beta`, `chisq`, `dexp`, `f`,
+#' `geom`, `unif`, `weibull`, `dgamma`, `ordinal`, a general `ll()`) silently
+#' scores a censored row with its ordinary (uncensored) density instead of
+#' erroring or refusing (unlike `est="nls"`, which hard-stops).  This warns
+#' instead of leaving that silent, so it is at least visible in the fit's
+#' `$runInfo`.
 #'
 #' @param ui rxode2 ui
 #' @inheritParams nlmixr2
@@ -17,13 +16,19 @@
 #' @noRd
 .preProcessCensDistWarn <- function(ui, est, data, control) {
   if (identical(est, "nls")) return(list(ui = ui))
-  # Methods sharing src/nlm.cpp's population-only kernel: t()/cauchy() are
-  # safe there (doCensT1(), no etas to worry about).  Every other method
-  # (FOCEi/FOCE/AGQ/Laplace/SAEM/imp/...) keeps t()/cauchy() in the unsafe
-  # set until the FOCEi-side gap (src/inner.cpp's KNOWN GAP comment) closes.
+  # t()/cauchy() M2/M3/M4 is wired for two kernels: src/nlm.cpp's
+  # population-only one (#979) and src/inner.cpp's likInner0 (#992, which also
+  # supplies the eta gradient).  Methods built on some OTHER kernel -- SAEM,
+  # the importance-sampling family (imp/impmap/qrpem), nlme, the nonparametric
+  # engines -- keep t()/cauchy() in the unsafe set.
   .nlmFamily <- c("nlm", "bobyqa", "lbfgsb3c", "n1qn1", "newuoa", "nlminb",
                   "optim", "uobyqa")
-  .safe <- if (isTRUE(est %in% .nlmFamily)) {
+  # `fo`/`foi` are deliberately absent: they hard-stop on censoring rather
+  # than ignoring it.
+  .foceiFamily <- c("focei", "foce", "focep", "laplace", "agq", "posthoc",
+                    "ifocei", "ifoce", "ifocep", "ilaplace", "iagq",
+                    "mfocei", "mfoce", "mfocep", "mlaplace", "magq")
+  .safe <- if (isTRUE(est %in% c(.nlmFamily, .foceiFamily))) {
     c("norm", "dnorm", "t", "cauchy")
   } else {
     c("norm", "dnorm")

@@ -1394,6 +1394,35 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
 }
 
 
+#' `rx_pred_f_`/`rx_nu_` output lines for a llik-forced censored endpoint
+#'
+#' A llik-forced `t()`/`cauchy()`/`dnorm()` endpoint collapses to a scalar
+#' log-density in `rx_pred_`, hiding the location and degrees of freedom
+#' `censEst.h`'s M2/M3/M4 correction needs (`rx_r_` is already an output
+#' column).  Both are suppressed (`~`) intermediates in the generated error
+#' lines, so they have to be pulled out of the symengine environment and
+#' re-emitted as real lhs -- the same thing `.nlmGetFRLines()` does for
+#' nlm-family (#979, #992).  Empty unless `.fixCensRNuLine()` was active for
+#' this build.
+#'
+#' @param .s symengine environment
+#' @return character vector of `=` assignment lines (possibly empty)
+#' @noRd
+#' @author Matthew L. Fidler
+.foceiCensLlikCols <- function(.s) {
+  if (!isTRUE(nlmixr2global$rxCensNuFix) || !.getRxPredLlikOption() ||
+        !exists("rx_pred_f_", envir = .s)) {
+    return(character(0))
+  }
+  .predF <- get("rx_pred_f_", envir = .s)
+  .ret <- paste0("rx_pred_f_=", rxode2::rxFromSE(.predF))
+  if (exists("rx_nu_", envir = .s)) {
+    .nuSym <- get("rx_nu_", envir = .s)
+    .ret <- c(.ret, paste0("rx_nu_=", rxode2::rxFromSE(.nuSym)))
+  }
+  .ret
+}
+
 #' Finalize inner rxode2 based on symengine saved info
 #'
 #' @param .s Symengine/rxode2 object
@@ -1503,19 +1532,7 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
   # rx_pred_f_, rx_nu_ and d(rx_pred_f_)/d(eta) are added -- APPENDED AFTER the
   # block (like .combTheta) because likInner0 reads predOffset+k arithmetically
   # through rx__sens_rx_r__BY_ETA_<neta>___; inner.cpp resolves these by name.
-  .censCols <- character(0)
-  if (isTRUE(nlmixr2global$rxCensNuFix) && .getRxPredLlikOption() &&
-        exists("rx_pred_f_", envir = .s)) {
-    .predF <- get("rx_pred_f_", envir = .s)
-    .censCols <- paste0("rx_pred_f_=", rxode2::rxFromSE(.predF))
-    if (exists("rx_nu_", envir = .s)) {
-      .nuSym <- get("rx_nu_", envir = .s)
-      .censCols <- c(.censCols, paste0("rx_nu_=", rxode2::rxFromSE(.nuSym)))
-    }
-    if (length(.s$..predFEtaSens) > 0L) {
-      .censCols <- c(.censCols, .s$..predFEtaSens)
-    }
-  }
+  .censCols <- c(.foceiCensLlikCols(.s), .s$..predFEtaSens)
   .s$..inner <- paste(c(
     .preLhs,
     .ddt,
@@ -1819,6 +1836,13 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
   }
   .preLhs <- if (.isMatExp) sub("^([^=]+)=", "\\1~", .lhs) else .lagDefs
   .postLhs <- if (.isMatExp) character(0) else .restLhs
+  # M2/M3/M4 censoring inputs for a llik-forced endpoint (#992), same as
+  # .rxFinalizeInner()'s.  This is the model a POPULATION-ONLY (neta == 0)
+  # FOCEi fit registers as its inner model (predOnlyLlik), so without them a
+  # no-random-effect t()/cauchy() fit would silently skip the correction.
+  # Only the Llik variant is touched -- the plain predOnly model backs the
+  # output tables and must keep its column set.
+  .censCols <- .foceiCensLlikCols(.s)
   .s$..pred <- paste(c(
     .s$..stateInfo["state"],
     .lhs0,
@@ -1832,6 +1856,7 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
     .low,
     .prd,
     .r,
+    .censCols,
     .postLhs,
     .s$..stateInfo["statef"],
     .s$..stateInfo["dvid"],

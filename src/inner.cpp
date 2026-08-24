@@ -316,6 +316,12 @@ struct focei_options {
   int predFOffset = -1;
   int predROffset = -1;
   int predNuOffset = -1;
+  // First d(rx_pred_f_)/d(eta) column (rx__sens_rx_pred_f__BY_ETA_1___); the
+  // remaining etas follow contiguously.  -1 unless the whole eta block was
+  // found (setup verifies the last eta's column sits where contiguity says it
+  // should, so a reordered model disarms the gradient correction instead of
+  // reading the wrong column).
+  int predFEtaOffset = -1;
   // fast=TRUE log-likelihood/generalized endpoint: a SEPARATE compiled model (rxHess2)
   // carries the exact second-order eta expansion rx__d2pred_i_j__ = d2(logLik)/deta_i deta_j
   // (upper triangle i<=j, j-outer/i-inner order).  This offset is the lhs index of its first
@@ -2367,50 +2373,71 @@ static inline double likInner0Contrib(int id, int k, int dist, int cens,
   return llAdd;
 }
 
-// M2/M3/M4 censored log-likelihood VALUE for a t()/cauchy() observation
-// (#979).  `llVal` is the already-computed llikT()/llikCauchy() log-density
-// (what every `dist != rxDistributionNorm` branch uses verbatim today).
-// Reads RAW (untransformed) dv/limit against RAW rx_pred_f_ -- the same
-// convention nlm.cpp's doCensT1 call uses -- since rx_pred_f_ is
-// `.rxGetPredictionF()` (pre-transform), unlike the tbs()-transformed
-// dv/limit locals likInner0 computes for the NORMAL branch.
+// M2/M3/M4 censored log-likelihood VALUE for a llik-forced endpoint (#979,
+// #992).  `llVal` is the already-computed llikT()/llikCauchy()/llikNorm()
+// log-density (what every `dist != rxDistributionNorm` branch uses verbatim
+// today) and `fT` is the TRANSFORMED structural prediction -- rx_pred_f_ run
+// through the endpoint's tbs() -- so it lines up with the transformed
+// dv/limit likInner0 already computed for the NORMAL branch.
 //
-// KNOWN GAP (two layers, #979):
-//  1. This function currently NEVER fires for FOCEi/FOCE/AGQ/Laplace:
-//     predNuOffset stays -1 there (see its setup comment above, in the
-//     alloc block) because the R side only emits rx_nu_/a real rx_r_ for
-//     nlm-family.  nlm-family (src/nlm.cpp) IS fully corrected -- value
-//     AND gradient, since nlm has no etas to worry about.
-//  2. Once FOCEi's R-side gap closes, only the VALUE would be corrected
-//     here.  The eta-gradient (`lp`, via the analytic d(llikT)/d(eta)
-//     sensitivity column already read into `fpm`/`a(k,i)`) and the inner-
-//     Hessian curvature (`cHff`/`cHfr`/`cHrr`, Gauss-Newton fallback) would
-//     still score a censored t()/cauchy() row as if uncensored -- closing
-//     THAT requires a d(rx_pred_f_)/d(eta) sensitivity column rxode2 does
-//     not currently emit.
-// This function is exercised and validated end-to-end today only via
-// nlm-family's identical doCensT1 call; it is deliberately-ready, currently
-// inert infrastructure for FOCEi, not dead code.
-static inline double focei_tCensLl(rx_solving_options_ind *ind, int kk,
-                                   int dist, int cens, double llVal,
-                                   double *lhs) {
-  if ((dist != rxDistributionT && dist != rxDistributionCauchy) ||
+// The scalar log-density in rx_pred_ hides the location/scale the correction
+// needs, so both come from the extra lhs columns .rxFinalizeInner() appends
+// for this path (rx_pred_f_/rx_r_/rx_nu_).  When any of them is missing the
+// endpoint is scored uncensored, exactly as before.
+static inline double focei_tCensLl(int dist, int cens, double dv, double limit,
+                                   double llVal, double fT, double *lhs) {
+  bool isT = (dist == rxDistributionT || dist == rxDistributionCauchy);
+  bool isDnorm = (dist == rxDistributionDnorm);
+  if ((!isT && !isDnorm) ||
       op_focei.predFOffset < 0 || op_focei.predROffset < 0 ||
-      op_focei.predNuOffset < 0) {
+      (isT && op_focei.predNuOffset < 0)) {
     return llVal;
-  }
-  double limit = R_NegInf;
-  if (hasRxLimit(rx)) {
-    limit = getIndLimit(ind, kk);
-    if (ISNA(limit)) limit = R_NegInf;
   }
   bool isCensObs = (cens != 0) || (R_FINITE(limit) && !ISNA(limit));
   if (!isCensObs) return llVal;
-  double dv = getIndDv(ind, kk);
-  double f = lhs[op_focei.predFOffset];
   double r = lhs[op_focei.predROffset];
-  double nu = lhs[op_focei.predNuOffset];
-  return doCensT1((double)cens, dv, limit, llVal, f, r, nu);
+  if (isT) {
+    double nu = lhs[op_focei.predNuOffset];
+    return doCensT1((double)cens, dv, limit, llVal, fT, r, nu);
+  }
+  // dnorm(): the llik-forced Gaussian.  adjLik is already folded into the
+  // llikNorm() density, so pass 0 (doCensNormal1's adjLik only re-adds the
+  // -log(sqrt(2*pi)) the FOCEi -0.5*(err^2/r + log r) kernel drops).
+  return doCensNormal1((double)cens, dv, limit, llVal, fT, r, 0);
+}
+
+// M2/M3/M4 eta-gradient counterpart of focei_tCensLl().  `dll` is the
+// uncensored d(logLik)/d(eta_i) (the rx__sens_rx_pred__BY_ETA_ column); the
+// returned value replaces it.  d(f)/d(eta_i) comes from the appended
+// rx__sens_rx_pred_f__BY_ETA_ block and d(R)/d(eta_i) from the FOCEi block
+// (zero for FOCE, which does not differentiate R).
+//
+// KNOWN GAP (#992): the transformed prediction's eta sensitivity is taken as
+// d(rx_pred_f_)/d(eta) -- exact for an identity transform, which is the only
+// case doCensT1()/doCensNormal1() themselves are set up for here.  A
+// transform-both-sides censored t()/cauchy() row therefore gets the correct
+// VALUE (fT is transformed) with a chain-rule factor missing from its
+// gradient; the inner Hessian follows the gradient by finite difference.
+static inline double focei_tCensDll(int dist, int cens, double dv, double limit,
+                                    double dll, double fT, double *lhs,
+                                    int etaIdx, double dr) {
+  bool isT = (dist == rxDistributionT || dist == rxDistributionCauchy);
+  bool isDnorm = (dist == rxDistributionDnorm);
+  if ((!isT && !isDnorm) ||
+      op_focei.predFOffset < 0 || op_focei.predROffset < 0 ||
+      op_focei.predFEtaOffset < 0 ||
+      (isT && op_focei.predNuOffset < 0)) {
+    return dll;
+  }
+  bool isCensObs = (cens != 0) || (R_FINITE(limit) && !ISNA(limit));
+  if (!isCensObs) return dll;
+  double r = lhs[op_focei.predROffset];
+  double df = lhs[op_focei.predFEtaOffset + etaIdx];
+  if (isT) {
+    double nu = lhs[op_focei.predNuOffset];
+    return dCensT1((double)cens, dv, limit, dll, fT, r, nu, df, dr);
+  }
+  return dCensNormal1((double)cens, dv, limit, dll, fT, r, df, dr);
 }
 
 double likInner0(double *eta, int id) {
@@ -2787,6 +2814,13 @@ double likInner0(double *eta, int id) {
           cens = 0;
           if (hasRxCens(rx)) cens = getIndCens(ind, kk);
           if (cens != 0) anyCens = 1;
+          // Transformed structural prediction for a llik-forced endpoint's
+          // censoring correction (#992).  rx_pred_ is the scalar log-density
+          // there, so the location has to come from the appended rx_pred_f_
+          // column -- which is the RAW prediction, hence the tbs() to put it on
+          // the same scale as dv/limit above.
+          double fCensT = 0.0;
+          if (op_focei.predFOffset >= 0) fCensT = tbs(lhs[op_focei.predFOffset]);
           tbsJac = tbsL(dv0);
           fInd->tbsLik+=tbsJac;
           // fInd->err(k, 0) = lhs[0] - getIndDv(ind, k); // pred-dv
@@ -2825,7 +2859,7 @@ double likInner0(double *eta, int id) {
               fInd->llik += ll;
               fInd->nObs++;
             } else {
-              double llT = focei_tCensLl(ind, kk, dist, cens, f, lhs);
+              double llT = focei_tCensLl(dist, cens, dv, limit, f, fCensT, lhs);
               llikObs[kk] = llT;
               fInd->llik += llT;
               fInd->nNonNormal++;
@@ -2907,8 +2941,15 @@ double likInner0(double *eta, int id) {
                   double lpCur = 0.25 * err * err * B(k, 0) * c(k, i) -
                     0.5 * c(k, i) - 0.5 * err * fpm * B(k, 0);
                   lp(i, 0) += dCensNormal1((double)cens, dv, limit, lpCur, f, r, fpm, rp);
-                } else {
+                } else if (predSolve || op_focei.etaFD[i] == 1) {
+                  // finite-difference eta: no d(rx_pred_f_)/d(eta) column to
+                  // chain the censoring correction through, so this eta keeps
+                  // the uncensored d(logLik)/d(eta) (#992).
                   lp(i, 0) += fpm;
+                } else {
+                  double drCens = lhs[op_focei.predOffset + i + op_focei.neta + 2];
+                  lp(i, 0) += focei_tCensDll(dist, cens, dv, limit, fpm,
+                                             fCensT, lhs, i, drCens);
                 }
               }
               // Eq #10
@@ -2923,7 +2964,7 @@ double likInner0(double *eta, int id) {
                  fInd->llik +=  ll;
                  fInd->nObs++;
                } else {
-                 double llT = focei_tCensLl(ind, kk, dist, cens, f, lhs);
+                 double llT = focei_tCensLl(dist, cens, dv, limit, f, fCensT, lhs);
                  llikObs[kk] = llT;
                  fInd->llik += llT;
                  fInd->nNonNormal++;
@@ -2939,8 +2980,14 @@ double likInner0(double *eta, int id) {
                 if (dist == rxDistributionNorm) {
                   double lpCur = -0.5 * err * fpm * B(k, 0);
                   lp(i, 0) += dCensNormal1((double)cens, dv, limit, lpCur, f, r, fpm, rp);
-                } else {
+                } else if (predSolve || op_focei.etaFD[i] == 1) {
                   lp(i, 0) += fpm;
+                } else {
+                  // interaction=0 (FOCE): rx_r_ carries no eta sensitivities in
+                  // this model, so d(R)/d(eta)=0 -- consistent with FOCE itself
+                  // not differentiating R.
+                  lp(i, 0) += focei_tCensDll(dist, cens, dv, limit, fpm,
+                                             fCensT, lhs, i, 0.0);
                 }
               }
               // Eq #10
@@ -2952,7 +2999,7 @@ double likInner0(double *eta, int id) {
                 fInd->llik +=  ll;
                 fInd->nObs++;
               } else {
-                double llT = focei_tCensLl(ind, kk, dist, cens, f, lhs);
+                double llT = focei_tCensLl(dist, cens, dv, limit, f, fCensT, lhs);
                 llikObs[kk] = llT;
                 fInd->llik += llT;
                 fInd->nNonNormal++;
@@ -6315,17 +6362,27 @@ static inline void foceiSetupTheta_(List mvi,
     op_focei.predOffset = (_ipi < 0) ? 0 : _ipi;
     op_focei.predFOffset = odeSwapLhsIndex(odeSlotInner, "rx_pred_f_");
     op_focei.predROffset = odeSwapLhsIndex(odeSlotInner, "rx_r_");
-    // predNuOffset is currently ALWAYS -1 for FOCEi/FOCE/AGQ/Laplace: the R
-    // side (.fixCensRNuLine, R/focei.R) only emits rx_nu_ for nlm-family
-    // (nlmixr2global$rxCensNuFix), because doing so for FOCEi's llik-forced
-    // t()/cauchy() endpoint crashes rxode2's eta-sensitivity generation once
-    // real etas are present ("user function 'get' requires 5 arguments";
-    // reproduces with plain cauchy(), no censoring at all).  focei_tCensLl()
-    // below is written and validated against a real fit already (nlm-family
-    // uses the identical doCensT1 path), so this is deliberately-inert,
-    // ready infrastructure -- KNOWN GAP pending a fix to that rxode2-side
-    // interaction, not a TODO in this file (#979).
+    // rx_nu_ only exists for a llik-forced t()/cauchy() endpoint whose R-side
+    // censoring inputs were emitted (.fixCensRNuLine, R/focei.R); -1 otherwise,
+    // which leaves focei_tCensLl() inert (#992).
     op_focei.predNuOffset = odeSwapLhsIndex(odeSlotInner, "rx_nu_");
+    // d(rx_pred_f_)/d(eta) block for the censored eta-gradient.  Arm it only
+    // when the whole block is where contiguity says it is; the columns are
+    // appended after the FOCEi eta block by .rxFinalizeInner() in eta order,
+    // but a model built some other way must disarm rather than misread.
+    op_focei.predFEtaOffset = -1;
+    if (op_focei.neta > 0) {
+      int _ife = odeSwapLhsIndex(odeSlotInner, "rx__sens_rx_pred_f__BY_ETA_1___");
+      if (_ife >= 0) {
+        char _nm[64];
+        snprintf(_nm, sizeof(_nm), "rx__sens_rx_pred_f__BY_ETA_%d___",
+                 (int)op_focei.neta);
+        int _ifeLast = odeSwapLhsIndex(odeSlotInner, _nm);
+        if (_ifeLast == _ife + (int)op_focei.neta - 1) {
+          op_focei.predFEtaOffset = _ife;
+        }
+      }
+    }
     // The exact-Hessian rx__d2pred_ columns live in the SEPARATE 2nd-order model (rxHess2),
     // located in foceiFitCpp_ after this setup; predHess2Offset is set there, not here.
   } else if (!op_focei.alloc){
