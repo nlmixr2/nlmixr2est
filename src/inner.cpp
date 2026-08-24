@@ -2390,11 +2390,12 @@ static inline double likInner0Contrib(int id, int k, int dist, int cens,
 // needs, so both come from the extra lhs columns .rxFinalizeInner() appends
 // for this path (rx_pred_f_/rx_r_/rx_nu_).  When any of them is missing the
 // endpoint is scored uncensored, exactly as before.
-static inline double focei_tCensLl(int dist, int cens, double dv, double limit,
-                                   double llVal, double fT, double *lhs) {
+static inline double focei_tCensLl(bool lhsOk, int dist, int cens, double dv,
+                                   double limit, double llVal, double fT,
+                                   double *lhs) {
   bool isT = (dist == rxDistributionT || dist == rxDistributionCauchy);
   bool isDnorm = (dist == rxDistributionDnorm);
-  if ((!isT && !isDnorm) ||
+  if (!lhsOk || (!isT && !isDnorm) ||
       op_focei.predFOffset < 0 || op_focei.predROffset < 0 ||
       (isT && op_focei.predNuOffset < 0)) {
     return llVal;
@@ -2426,12 +2427,12 @@ static inline double focei_tCensLl(int dist, int cens, double dv, double limit,
 // transform-both-sides censored t()/cauchy() row therefore gets the correct
 // VALUE (fT is transformed) with a chain-rule factor missing from its
 // gradient; the inner Hessian follows the gradient by finite difference.
-static inline double focei_tCensDll(int dist, int cens, double dv, double limit,
-                                    double dll, double fT, double *lhs,
-                                    int etaIdx) {
+static inline double focei_tCensDll(bool lhsOk, int dist, int cens, double dv,
+                                    double limit, double dll, double fT,
+                                    double *lhs, int etaIdx) {
   bool isT = (dist == rxDistributionT || dist == rxDistributionCauchy);
   bool isDnorm = (dist == rxDistributionDnorm);
-  if ((!isT && !isDnorm) ||
+  if (!lhsOk || (!isT && !isDnorm) ||
       op_focei.predFOffset < 0 || op_focei.predROffset < 0 ||
       op_focei.predFEtaOffset < 0 || op_focei.predREtaOffset < 0 ||
       (isT && op_focei.predNuOffset < 0)) {
@@ -2828,8 +2829,14 @@ double likInner0(double *eta, int id) {
           // there, so the location has to come from the appended rx_pred_f_
           // column -- which is the RAW prediction, hence the tbs() to put it on
           // the same scale as dv/limit above.
-          double fCensT = 0.0;
-          if (op_focei.predFOffset >= 0) fCensT = tbs(lhs[op_focei.predFOffset]);
+          //
+          // KNOWN GAP: the pred (finite-difference) fallback solves predNoLhs
+          // and normalizes ONLY rx_pred_/rx_r_ into the inner layout above, so
+          // none of the censoring columns are present in `lhs` -- reading them
+          // there would return another model's values.  Such a subject scores
+          // its censored rows uncensored, exactly as it did before #992.
+          bool censLhsOk = !predSolve && op_focei.predFOffset >= 0;
+          double fCensT = censLhsOk ? tbs(lhs[op_focei.predFOffset]) : 0.0;
           tbsJac = tbsL(dv0);
           fInd->tbsLik+=tbsJac;
           // fInd->err(k, 0) = lhs[0] - getIndDv(ind, k); // pred-dv
@@ -2868,7 +2875,7 @@ double likInner0(double *eta, int id) {
               fInd->llik += ll;
               fInd->nObs++;
             } else {
-              double llT = focei_tCensLl(dist, cens, dv, limit, f, fCensT, lhs);
+              double llT = focei_tCensLl(censLhsOk, dist, cens, dv, limit, f, fCensT, lhs);
               llikObs[kk] = llT;
               fInd->llik += llT;
               fInd->nNonNormal++;
@@ -2956,7 +2963,7 @@ double likInner0(double *eta, int id) {
                   // the uncensored d(logLik)/d(eta) (#992).
                   lp(i, 0) += fpm;
                 } else {
-                  lp(i, 0) += focei_tCensDll(dist, cens, dv, limit, fpm,
+                  lp(i, 0) += focei_tCensDll(censLhsOk, dist, cens, dv, limit, fpm,
                                              fCensT, lhs, i);
                 }
               }
@@ -2972,7 +2979,7 @@ double likInner0(double *eta, int id) {
                  fInd->llik +=  ll;
                  fInd->nObs++;
                } else {
-                 double llT = focei_tCensLl(dist, cens, dv, limit, f, fCensT, lhs);
+                 double llT = focei_tCensLl(censLhsOk, dist, cens, dv, limit, f, fCensT, lhs);
                  llikObs[kk] = llT;
                  fInd->llik += llT;
                  fInd->nNonNormal++;
@@ -2991,7 +2998,7 @@ double likInner0(double *eta, int id) {
                 } else if (predSolve || op_focei.etaFD[i] == 1) {
                   lp(i, 0) += fpm;
                 } else {
-                  lp(i, 0) += focei_tCensDll(dist, cens, dv, limit, fpm,
+                  lp(i, 0) += focei_tCensDll(censLhsOk, dist, cens, dv, limit, fpm,
                                              fCensT, lhs, i);
                 }
               }
@@ -3004,7 +3011,7 @@ double likInner0(double *eta, int id) {
                 fInd->llik +=  ll;
                 fInd->nObs++;
               } else {
-                double llT = focei_tCensLl(dist, cens, dv, limit, f, fCensT, lhs);
+                double llT = focei_tCensLl(censLhsOk, dist, cens, dv, limit, f, fCensT, lhs);
                 llikObs[kk] = llT;
                 fInd->llik += llT;
                 fInd->nNonNormal++;
