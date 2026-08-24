@@ -76,10 +76,10 @@
   interpolation <- match.arg(interpolation)
   .ui <- x[[1]]
   .empty <- .rxFoceiCarryEmpty() # nolint: object_usage_linter.
-  .predArgs <- .rxFoceiCarryPredArgs(.ui, s) # nolint: object_usage_linter.
-  if (is.null(.predArgs)) return(.empty)
   .allCovs <- .ui$allCovs
   if (length(.allCovs) == 0L) return(.empty)
+  .predArgs <- .rxFoceiCarryPredArgs(.ui, s) # nolint: object_usage_linter.
+  if (is.null(.predArgs)) return(.empty)
   .iniDf <- .ui$iniDf
   .etaDf <- .iniDf[!is.na(.iniDf$neta1) & .iniDf$neta1 == .iniDf$neta2, , drop = FALSE]
   # per-slot free symbols (slots 9-15 of the linCmtB call are p1..ka)

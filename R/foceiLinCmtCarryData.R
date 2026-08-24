@@ -51,6 +51,11 @@
 .foceiLinCmtCarryPairs <- function(ui, data = NULL,
                                    interpolation = c("locf", "nocb", "midpoint", "linear")) {
   .ui <- rxode2::assertRxUi(ui)
+  # cheap UI-level exits before ui$foceiEtaS builds a full symengine
+  # environment (~0.25 s per call): no linCmt() or no covariate means no
+  # pair can exist, and the empty result is identical
+  if (rxode2::.rxLinNcmt(.ui)["numLin"] <= 0L) return(.rxFoceiCarryEmpty())
+  if (length(.ui$allCovs) == 0L) return(.rxFoceiCarryEmpty())
   .s <- .ui$foceiEtaS
   .etaVars <- paste0("ETA_", seq_len(.s$..maxEta), "_")
   .rxFoceiLinCmtCarryEligible(list(.ui), .s, .etaVars, data = data, # nolint: object_usage_linter.
