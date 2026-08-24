@@ -241,7 +241,7 @@ nmTest({
   # $censInformation.
   test_that("the censored inner eta-gradient matches central differences (#992)", {
     skip_on_cran(); skip_if_not_installed("nlmixr2data")
-    .m <- function() {
+    .addM <- function() {
       ini({tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- c(0, 0.7)
         eta.ka ~ 0.2; eta.cl ~ 0.1})
       model({
@@ -252,7 +252,20 @@ nmTest({
         cp ~ add(add.sd) + cauchy()
       })
     }
-    .ui <- rxode2::assertRxUi(.m)
+    # a prop() error makes R itself eta-dependent, so this one only agrees
+    # with central differences if d(R)/d(eta) reaches dCensT1 -- FOCE's inner
+    # model has no such column in the FOCEi position, so it is appended
+    .propM <- function() {
+      ini({tka <- 0.45; tcl <- 1; tv <- 3.45; prop.sd <- c(0, 0.3)
+        eta.ka ~ 0.2; eta.cl ~ 0.1})
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ prop(prop.sd) + cauchy()
+      })
+    }
     .d <- .censTheo()
     .N <- length(unique(.d$ID))
     .testSeed(11)
@@ -264,15 +277,18 @@ nmTest({
         (likInner(.ep, id) - likInner(.em, id)) / (2 * h)
       }, numeric(1))
     }
-    for (.mode in c("m3", "m4", "m2")) {
-      .dat <- .censDat(.d, .mode, limit = if (.mode == "m2") 0.25 else 0.5)
-      suppressWarnings(.vaeInnerSetup(.ui, .dat, .etaMat, vaeControl()))
-      for (.id in seq_len(.N)) {
-        expect_equal(as.numeric(foceiInnerLp(.etaMat[.id, ], .id)),
-                     .fdLp(.etaMat[.id, ], .id), tolerance = 1e-3,
-                     info = paste(.mode, "id", .id))
+    for (.err in c("add", "prop")) {
+      .ui <- rxode2::assertRxUi(if (.err == "add") .addM else .propM)
+      for (.mode in c("m3", "m4", "m2")) {
+        .dat <- .censDat(.d, .mode, limit = if (.mode == "m2") 0.25 else 0.5)
+        suppressWarnings(.vaeInnerSetup(.ui, .dat, .etaMat, vaeControl()))
+        for (.id in seq_len(.N)) {
+          expect_equal(as.numeric(foceiInnerLp(.etaMat[.id, ], .id)),
+                       .fdLp(.etaMat[.id, ], .id), tolerance = 1e-3,
+                       info = paste(.err, .mode, "id", .id))
+        }
+        .vaeInnerFree()
       }
-      .vaeInnerFree()
     }
   })
 

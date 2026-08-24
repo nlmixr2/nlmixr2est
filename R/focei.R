@@ -1215,8 +1215,7 @@ attr(rxUiGet.foceiThetaS, "rstudio") <- emptyenv()
 .foceiPredFEtaSens <- function(.s, .grd) {
   # An AR(1) endpoint already emits these exact names (..arEtaSens, real lhs
   # ahead of rx_pred_), so never emit them twice.
-  if (!isTRUE(nlmixr2global$rxCensNuFix) || !.getRxPredLlikOption() ||
-        !is.null(.s$..arEtaSens) || !exists("rx_pred_f_", envir = .s)) {
+  if (!.foceiCensLlikOn(.s) || !is.null(.s$..arEtaSens)) {
     return(character(0))
   }
   .nms <- character(nrow(.grd))
@@ -1391,6 +1390,21 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
 }
 
 
+#' Is this build emitting the llik-forced endpoint's censoring inputs?
+#'
+#' True only while `.fixCensRNuLine()` is active for the build in progress:
+#' `rxUiGet.nlmModel0` (nlm-family) and `rxUiGet.focei`/`.foce`/`.ebe` set the
+#' flag, everything else leaves it off (#992).
+#'
+#' @param .s symengine environment
+#' @return logical
+#' @noRd
+#' @author Matthew L. Fidler
+.foceiCensLlikOn <- function(.s) {
+  isTRUE(nlmixr2global$rxCensNuFix) && .getRxPredLlikOption() &&
+    exists("rx_pred_f_", envir = .s)
+}
+
 #' `rx_pred_f_`/`rx_nu_` output lines for a llik-forced censored endpoint
 #'
 #' A llik-forced `t()`/`cauchy()`/`dnorm()` endpoint collapses to a scalar
@@ -1399,18 +1413,14 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
 #' column).  Both are suppressed (`~`) intermediates in the generated error
 #' lines, so they have to be pulled out of the symengine environment and
 #' re-emitted as real lhs -- the same thing `.nlmGetFRLines()` does for
-#' nlm-family (#979, #992).  Empty unless `.fixCensRNuLine()` was active for
-#' this build.
+#' nlm-family (#979, #992).
 #'
 #' @param .s symengine environment
 #' @return character vector of `=` assignment lines (possibly empty)
 #' @noRd
 #' @author Matthew L. Fidler
 .foceiCensLlikCols <- function(.s) {
-  if (!isTRUE(nlmixr2global$rxCensNuFix) || !.getRxPredLlikOption() ||
-        !exists("rx_pred_f_", envir = .s)) {
-    return(character(0))
-  }
+  if (!.foceiCensLlikOn(.s)) return(character(0))
   .predF <- get("rx_pred_f_", envir = .s)
   .ret <- paste0("rx_pred_f_=", rxode2::rxFromSE(.predF))
   if (exists("rx_nu_", envir = .s)) {
@@ -1529,7 +1539,7 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
   # rx_pred_f_, rx_nu_ and d(rx_pred_f_)/d(eta) are added -- APPENDED AFTER the
   # block (like .combTheta) because likInner0 reads predOffset+k arithmetically
   # through rx__sens_rx_r__BY_ETA_<neta>___; inner.cpp resolves these by name.
-  .censCols <- c(.foceiCensLlikCols(.s), .s$..predFEtaSens)
+  .censCols <- c(.foceiCensLlikCols(.s), .s$..predFEtaSens, .s$..censREta)
   .s$..inner <- paste(c(
     .preLhs,
     .ddt,
@@ -1636,8 +1646,20 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
 }
 
 #' @export
-rxUiGet.foceiEnv <- function(x, ...) {
-  .s <- rxUiGet.foceiHdEta(x, ...)
+#' Generate the `rx__sens_rx_r__BY_ETA_n___` (d(R)/d(eta)) model lines
+#'
+#' The FOCEi eta-epsilon interaction term needs these; FOCE does not (it does
+#' not differentiate R), but a censored llik-forced endpoint does either way --
+#' `dCensT1()`/`dCensNormal1()` take both d(f)/d(eta) and d(R)/d(eta), and for a
+#' `prop()`/`pow()` error R moves with eta.  Shared so the FOCE build can emit
+#' them (appended after its block, located by name) without duplicating the
+#' linCmt() moving-boundary correction below.
+#'
+#' @param .s symengine environment carrying the eta sensitivities
+#' @return character vector of `rx__sens_rx_r__BY_ETA_n___=` lines
+#' @noRd
+#' @author Matthew L. Fidler
+.foceiREtaLines <- function(.s) {
   .stateVars <- .rxode2stateOdeNoOutput(.s)
   .grd <- rxode2::rxExpandFEta_(.stateVars, .s$..maxEta, FALSE)
   if (rxode2::.useUtf()) {
@@ -1659,8 +1681,9 @@ rxUiGet.foceiEnv <- function(x, ...) {
   .linCmtExtraR <- .rxFoceiLinCmtEventChain(
     get("rx_r_", envir = .s), get("rx_pred_", envir = .s), .s$..linCmtExtraPred)
   rxode2::rxProgress(dim(.grd)[1])
+  .stopped <- FALSE
   on.exit({
-    rxode2::rxProgressAbort()
+    if (!.stopped) rxode2::rxProgressAbort()
   })
   .ret <- apply(.grd, 1, function(x) {
     .l <- x["calc"]
@@ -1673,9 +1696,15 @@ rxUiGet.foceiEnv <- function(x, ...) {
     rxode2::rxTick()
     .ret
   })
-
-  .s$..REta <- .ret
   rxode2::rxProgressStop()
+  .stopped <- TRUE
+  .ret
+}
+
+#' @export
+rxUiGet.foceiEnv <- function(x, ...) {
+  .s <- rxUiGet.foceiHdEta(x, ...)
+  .s$..REta <- .foceiREtaLines(.s)
   # fast=TRUE generalized (ll()) endpoint: add the second-order eta expansion.  The exact
   # d2(logLik)/deta2 (rx__d2pred_i_j__) is compiled into a SEPARATE model (..innerHess2),
   # which calcEtaHessian re-solves per subject at eta* to assemble the EXACT inner Hessian
@@ -1698,6 +1727,15 @@ attr(rxUiGet.foceiEnv, "rstudio") <- emptyenv()
 rxUiGet.foceEnv <- function(x, ...) {
   .s <- rxUiGet.foceiHdEta(x, ...)
   .s$..REta <- NULL
+  # A censored llik-forced endpoint still needs d(R)/d(eta) -- for a
+  # prop()/pow() error R moves with eta, and dCensT1()/dCensNormal1() take it
+  # (#992).  Emitted at the END of the inner model (.rxFinalizeInner) and read
+  # by name, so FOCE's own column layout is untouched.
+  .s$..censREta <- if (.foceiCensLlikOn(.s)) {
+    .foceiREtaLines(.s)
+  } else {
+    character(0)
+  }
   .s <- .foceiMaybeAddHdEta2(x, .s)   # ll()/generalized (interaction=0) fast fits route through foce
   ## FOCE leaves rx_r_ untouched (a clean single-linCmt inner model with correct
   ## d(f)/d(eta)) for both `foce` modes; the choice of R happens at runtime in C++

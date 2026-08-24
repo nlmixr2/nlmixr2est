@@ -322,6 +322,12 @@ struct focei_options {
   // should, so a reordered model disarms the gradient correction instead of
   // reading the wrong column).
   int predFEtaOffset = -1;
+  // Same, for d(rx_r_)/d(eta) (rx__sens_rx_r__BY_ETA_1___).  Resolved by NAME
+  // rather than from predOffset arithmetic because FOCE's inner model has no
+  // such block in the FOCEi position -- .rxFinalizeInner() appends one at the
+  // end for a censored llik-forced endpoint (#992), and R does move with eta
+  // for a prop()/pow() error.
+  int predREtaOffset = -1;
   // fast=TRUE log-likelihood/generalized endpoint: a SEPARATE compiled model (rxHess2)
   // carries the exact second-order eta expansion rx__d2pred_i_j__ = d2(logLik)/deta_i deta_j
   // (upper triangle i<=j, j-outer/i-inner order).  This offset is the lhs index of its first
@@ -2408,9 +2414,11 @@ static inline double focei_tCensLl(int dist, int cens, double dv, double limit,
 
 // M2/M3/M4 eta-gradient counterpart of focei_tCensLl().  `dll` is the
 // uncensored d(logLik)/d(eta_i) (the rx__sens_rx_pred__BY_ETA_ column); the
-// returned value replaces it.  d(f)/d(eta_i) comes from the appended
-// rx__sens_rx_pred_f__BY_ETA_ block and d(R)/d(eta_i) from the FOCEi block
-// (zero for FOCE, which does not differentiate R).
+// returned value replaces it.  d(f)/d(eta_i) and d(R)/d(eta_i) come from the
+// rx__sens_rx_pred_f__BY_ETA_ / rx__sens_rx_r__BY_ETA_ blocks, both located by
+// name -- FOCE has no R block in the FOCEi position, so .rxFinalizeInner()
+// appends one for this path (R moves with eta for a prop()/pow() error, so
+// dropping it made the gradient disagree with the objective by a few percent).
 //
 // KNOWN GAP (#992): the transformed prediction's eta sensitivity is taken as
 // d(rx_pred_f_)/d(eta) -- exact for an identity transform, which is the only
@@ -2420,12 +2428,12 @@ static inline double focei_tCensLl(int dist, int cens, double dv, double limit,
 // gradient; the inner Hessian follows the gradient by finite difference.
 static inline double focei_tCensDll(int dist, int cens, double dv, double limit,
                                     double dll, double fT, double *lhs,
-                                    int etaIdx, double dr) {
+                                    int etaIdx) {
   bool isT = (dist == rxDistributionT || dist == rxDistributionCauchy);
   bool isDnorm = (dist == rxDistributionDnorm);
   if ((!isT && !isDnorm) ||
       op_focei.predFOffset < 0 || op_focei.predROffset < 0 ||
-      op_focei.predFEtaOffset < 0 ||
+      op_focei.predFEtaOffset < 0 || op_focei.predREtaOffset < 0 ||
       (isT && op_focei.predNuOffset < 0)) {
     return dll;
   }
@@ -2433,6 +2441,7 @@ static inline double focei_tCensDll(int dist, int cens, double dv, double limit,
   if (!isCensObs) return dll;
   double r = lhs[op_focei.predROffset];
   double df = lhs[op_focei.predFEtaOffset + etaIdx];
+  double dr = lhs[op_focei.predREtaOffset + etaIdx];
   if (isT) {
     double nu = lhs[op_focei.predNuOffset];
     return dCensT1((double)cens, dv, limit, dll, fT, r, nu, df, dr);
@@ -2947,9 +2956,8 @@ double likInner0(double *eta, int id) {
                   // the uncensored d(logLik)/d(eta) (#992).
                   lp(i, 0) += fpm;
                 } else {
-                  double drCens = lhs[op_focei.predOffset + i + op_focei.neta + 2];
                   lp(i, 0) += focei_tCensDll(dist, cens, dv, limit, fpm,
-                                             fCensT, lhs, i, drCens);
+                                             fCensT, lhs, i);
                 }
               }
               // Eq #10
@@ -2983,11 +2991,8 @@ double likInner0(double *eta, int id) {
                 } else if (predSolve || op_focei.etaFD[i] == 1) {
                   lp(i, 0) += fpm;
                 } else {
-                  // interaction=0 (FOCE): rx_r_ carries no eta sensitivities in
-                  // this model, so d(R)/d(eta)=0 -- consistent with FOCE itself
-                  // not differentiating R.
                   lp(i, 0) += focei_tCensDll(dist, cens, dv, limit, fpm,
-                                             fCensT, lhs, i, 0.0);
+                                             fCensT, lhs, i);
                 }
               }
               // Eq #10
@@ -6371,17 +6376,21 @@ static inline void foceiSetupTheta_(List mvi,
     // appended after the FOCEi eta block by .rxFinalizeInner() in eta order,
     // but a model built some other way must disarm rather than misread.
     op_focei.predFEtaOffset = -1;
+    op_focei.predREtaOffset = -1;
     if (op_focei.neta > 0) {
-      int _ife = odeSwapLhsIndex(odeSlotInner, "rx__sens_rx_pred_f__BY_ETA_1___");
-      if (_ife >= 0) {
-        char _nm[64];
-        snprintf(_nm, sizeof(_nm), "rx__sens_rx_pred_f__BY_ETA_%d___",
-                 (int)op_focei.neta);
-        int _ifeLast = odeSwapLhsIndex(odeSlotInner, _nm);
-        if (_ifeLast == _ife + (int)op_focei.neta - 1) {
-          op_focei.predFEtaOffset = _ife;
-        }
-      }
+      // both blocks are emitted one line per eta, in eta order, so only the
+      // first index is needed once the last one confirms the block is intact
+      auto contiguousEtaBlock = [](const char *fmt) -> int {
+        char nm[64];
+        snprintf(nm, sizeof(nm), fmt, 1);
+        int first = odeSwapLhsIndex(odeSlotInner, nm);
+        if (first < 0) return -1;
+        snprintf(nm, sizeof(nm), fmt, (int)op_focei.neta);
+        int last = odeSwapLhsIndex(odeSlotInner, nm);
+        return (last == first + (int)op_focei.neta - 1) ? first : -1;
+      };
+      op_focei.predFEtaOffset = contiguousEtaBlock("rx__sens_rx_pred_f__BY_ETA_%d___");
+      op_focei.predREtaOffset = contiguousEtaBlock("rx__sens_rx_r__BY_ETA_%d___");
     }
     // The exact-Hessian rx__d2pred_ columns live in the SEPARATE 2nd-order model (rxHess2),
     // located in foceiFitCpp_ after this setup; predHess2Offset is set there, not here.
