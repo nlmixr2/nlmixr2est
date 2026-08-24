@@ -576,18 +576,23 @@ rxGetDistributionFoceiLines <- function(line) {
 #' @author Matthew L. Fidler
 #' @noRd
 .fixCensRNuLine <- function(lines) {
-  # nlm-family (population-only, neta=0) ONLY for now: giving a llik-forced
-  # endpoint a real (nonzero) rx_r_ is exactly what FOCEi's eta-sensitivity
-  # generation does not expect once real etas are present -- turning it on
-  # unconditionally crashes symengine's eta-derivative pass ("user function
-  # 'get' requires 5 arguments") for ANY t()/cauchy()+eta FOCEi/FOCE fit,
-  # censored or not (measured: reproduces with plain cauchy(), no CENS data
-  # at all, and disappears when this function is a no-op).  nlm has no etas
-  # and is unaffected, so gate on the flag only `rxUiGet.nlmModel0` sets;
-  # FOCEi/FOCE/AGQ/Laplace keep today's (silent-ignore, now warned) behavior
-  # until a follow-up sorts out the rxode2-side interaction (#979).
+  # Set by `rxUiGet.nlmModel0` (nlm-family) and by the FOCEi/FOCE/EBE llik
+  # bundle builders (`rxUiGet.focei`/`.foce`/`.ebe`); off everywhere else, so
+  # simulation and the saem/nls llik lines keep the plain `rx_r_ ~ 0`.
   if (!isTRUE(nlmixr2global$rxCensNuFix)) return(lines)
   if (!is.list(lines)) return(lines)
+  # AR(1) (`ar()`) endpoint: `rx_rll_` is the MARGINAL sd -- the conditional
+  # scale actually handed to llikT()/llikCauchy() is `rx_rll_*sqrt(1-phi^2)`
+  # (.rxArEstLlikLines, rxode2) -- so squaring rx_rll_ back into rx_r_ would
+  # hand the censoring correction the wrong scale (and rx_pred_f_ the marginal,
+  # not conditional, location).  Leave the AR lines alone; censoring stays
+  # uncorrected (and warned, .preProcessCensDistWarn) for those endpoints.
+  if (any(vapply(lines, function(.l) {
+    is.call(.l) && length(.l) == 3L && is.name(.l[[2]]) &&
+      grepl("^rx_arPhi_", as.character(.l[[2]]))
+  }, logical(1)))) {
+    return(lines)
+  }
   .hasRll <- any(vapply(lines, function(.l) {
     is.call(.l) && identical(.l[[1]], quote(`~`)) &&
       identical(.l[[2]], quote(rx_rll_))
@@ -1189,6 +1194,37 @@ attr(rxUiGet.foceiThetaS, "rstudio") <- emptyenv()
   paste0("-(", .phi, ")*lag0(", .snNames, ",1)")
 }
 
+#' Structural-prediction eta sensitivities for the censored llik endpoint
+#'
+#' A llik-forced `t()`/`cauchy()`/`dnorm()` endpoint replaces `rx_pred_` with
+#' the scalar log-density, so `rx__sens_rx_pred__BY_ETA_n___` is
+#' d(logLik)/d(eta), not d(f)/d(eta).  `censEst.h`'s `dCensT1()`/
+#' `dCensNormal1()` M2/M3/M4 gradient correction needs the STRUCTURAL
+#' d(f)/d(eta), so emit it separately as `rx__sens_rx_pred_f__BY_ETA_n___`
+#' (the same names, and the same chain rule, `.rxFoceiArEtaCorrect()` already
+#' uses for the AR(1) correction).  Stored on `..predFEtaSens`; appended after
+#' the FOCEi eta block by `.rxFinalizeInner()` and located by name in C++
+#' (#992).
+#'
+#' @param .s symengine environment
+#' @param .grd `rxExpandFEta_()` grid (one row per eta)
+#' @return character vector of `rx__sens_rx_pred_f__BY_ETA_n___=` lines, or
+#'   `character(0)` when the model has no `rx_pred_f_`
+#' @noRd
+#' @author Matthew L. Fidler
+.foceiPredFEtaSens <- function(.s, .grd) {
+  if (!exists("rx_pred_f_", envir = .s)) return(character(0))
+  .nms <- character(nrow(.grd))
+  .txt <- character(nrow(.grd))
+  for (.n in seq_len(nrow(.grd))) {
+    .calc <- gsub("rx_pred_", "rx_pred_f_", .grd[.n, "calc"], fixed = TRUE)
+    .basic <- eval(parse(text = .calc))
+    .nms[.n] <- gsub("rx_pred_", "rx_pred_f_", .grd[.n, "dfe"], fixed = TRUE)
+    .txt[.n] <- rxode2::rxFromSE(.basic)
+  }
+  paste0(.nms, "=", .txt)
+}
+
 #' @export
 rxUiGet.foceiHdEta <- function(x, ...) {
   .s <- rxUiGet.foceiEtaS(x)
@@ -1210,6 +1246,17 @@ rxUiGet.foceiHdEta <- function(x, ...) {
   .arCorr <- NULL
   if (isTRUE(rxode2::rxHasAr(x[[1]]))) {
     .arCorr <- .rxFoceiArEtaCorrect(.s, .grd)
+  }
+  # M2/M3/M4 censoring for a llik-forced endpoint (#992) needs the STRUCTURAL
+  # d(f)/d(eta) as well.  Computed here, with the same pre-apply ordering the
+  # AR(1) correction uses.  An AR endpoint already emits these exact names
+  # (..arEtaSens, real lhs ahead of rx_pred_), so never emit them twice.
+  .s$..predFEtaSens <- if (isTRUE(nlmixr2global$rxCensNuFix) &&
+                             .getRxPredLlikOption() &&
+                             is.null(.s$..arEtaSens)) {
+    .foceiPredFEtaSens(.s, .grd)
+  } else {
+    character(0)
   }
   rxode2::rxProgress(dim(.grd)[1])
   # Guard the abort so a clean rxProgressStop() below prevents the generic
@@ -1449,6 +1496,26 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
     }
     .combTheta <- c(.combDf, .combDv, .combDl)
   }
+  # M2/M3/M4 censoring inputs for a llik-forced t()/cauchy()/dnorm() endpoint
+  # (#992).  rx_pred_ is the scalar log-density, so the location/scale/degrees
+  # of freedom censEst.h needs are invisible; expose them as real lhs.  rx_r_
+  # (and its eta sensitivities) are already part of the FOCEi block, so only
+  # rx_pred_f_, rx_nu_ and d(rx_pred_f_)/d(eta) are added -- APPENDED AFTER the
+  # block (like .combTheta) because likInner0 reads predOffset+k arithmetically
+  # through rx__sens_rx_r__BY_ETA_<neta>___; inner.cpp resolves these by name.
+  .censCols <- character(0)
+  if (isTRUE(nlmixr2global$rxCensNuFix) && .getRxPredLlikOption() &&
+        exists("rx_pred_f_", envir = .s)) {
+    .predF <- get("rx_pred_f_", envir = .s)
+    .censCols <- paste0("rx_pred_f_=", rxode2::rxFromSE(.predF))
+    if (exists("rx_nu_", envir = .s)) {
+      .nuSym <- get("rx_nu_", envir = .s)
+      .censCols <- c(.censCols, paste0("rx_nu_=", rxode2::rxFromSE(.nuSym)))
+    }
+    if (length(.s$..predFEtaSens) > 0L) {
+      .censCols <- c(.censCols, .s$..predFEtaSens)
+    }
+  }
   .s$..inner <- paste(c(
     .preLhs,
     .ddt,
@@ -1468,6 +1535,7 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
     .r,
     .s$..REta,
     .combTheta,
+    .censCols,
     .adjLhs,
     .s$..stateInfo["statef"],
     .s$..stateInfo["dvid"],
@@ -2025,13 +2093,18 @@ rxUiGet.focei <- function(x, ...) {
   # ar() endpoints emit the whitened residual in Gaussian norm (mean/variance)
   # form so the exact eta-Hessian is used (not the llik path).
   nlmixr2global$rxArNorm <- TRUE
-  on.exit({nlmixr2global$rxPredLlik <- FALSE; nlmixr2global$rxArNorm <- FALSE})
+  on.exit({nlmixr2global$rxPredLlik <- FALSE; nlmixr2global$rxArNorm <- FALSE
+    nlmixr2global$rxCensNuFix <- FALSE})
   .s <- rxUiGet.foceiEnv(x, ...)
   .ret <-  .innerInternal(.ui, .s)
   .predDf <- .ui$predDfFocei
   if (any(.predDf$distribution %in% c("t", "cauchy", "dnorm"))) {
     nlmixr2global$rxPredLlik <- TRUE
     nlmixr2global$rxArNorm <- FALSE
+    # expose the censoring inputs (a real rx_r_, plus rx_nu_) that the
+    # llik-forced endpoint otherwise hides inside its scalar log-density
+    # (.fixCensRNuLine, #992)
+    nlmixr2global$rxCensNuFix <- TRUE
     .s <- rxUiGet.foceiEnv(x, ...)
     .s2 <- .innerInternal(.ui, .s)
     .w <- vapply(seq_along(.s2),
@@ -2053,13 +2126,18 @@ rxUiGet.foce <- function(x, ...) {
   .ui <- x[[1]]
   nlmixr2global$rxPredLlik <- FALSE
   nlmixr2global$rxArNorm <- TRUE
-  on.exit({nlmixr2global$rxPredLlik <- FALSE; nlmixr2global$rxArNorm <- FALSE})
+  on.exit({nlmixr2global$rxPredLlik <- FALSE; nlmixr2global$rxArNorm <- FALSE
+    nlmixr2global$rxCensNuFix <- FALSE})
   .s <- rxUiGet.foceEnv(x, ...)
   .ret <- .innerInternal(.ui, .s)
   .predDf <- .ui$predDfFocei
   if (any(.predDf$distribution %in% c("t", "cauchy", "dnorm"))) {
     nlmixr2global$rxPredLlik <- TRUE
     nlmixr2global$rxArNorm <- FALSE
+    # expose the censoring inputs (a real rx_r_, plus rx_nu_) that the
+    # llik-forced endpoint otherwise hides inside its scalar log-density
+    # (.fixCensRNuLine, #992)
+    nlmixr2global$rxCensNuFix <- TRUE
     .s <- rxUiGet.foceEnv(x, ...)
     .s2 <- .innerInternal(.ui, .s)
     .w <- vapply(seq_along(.s2),
@@ -2082,13 +2160,18 @@ rxUiGet.ebe <- function(x, ...) {
   .ui <-x[[1]]
   nlmixr2global$rxPredLlik <- FALSE
   nlmixr2global$rxArNorm <- TRUE
-  on.exit({nlmixr2global$rxPredLlik <- FALSE; nlmixr2global$rxArNorm <- FALSE})
+  on.exit({nlmixr2global$rxPredLlik <- FALSE; nlmixr2global$rxArNorm <- FALSE
+    nlmixr2global$rxCensNuFix <- FALSE})
   .s <- rxUiGet.getEBEEnv(x, ...)
   .ret <- .innerInternal(.ui, .s)
   .predDf <- .ui$predDfFocei
   if (any(.predDf$distribution %in% c("t", "cauchy", "dnorm"))) {
     nlmixr2global$rxPredLlik <- TRUE
     nlmixr2global$rxArNorm <- FALSE
+    # expose the censoring inputs (a real rx_r_, plus rx_nu_) that the
+    # llik-forced endpoint otherwise hides inside its scalar log-density
+    # (.fixCensRNuLine, #992)
+    nlmixr2global$rxCensNuFix <- TRUE
     .s <- rxUiGet.getEBEEnv(x, ...)
     .s2 <- .innerInternal(.ui, .s)
     .w <- vapply(seq_along(.s2),
