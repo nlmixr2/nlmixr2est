@@ -175,6 +175,19 @@
 
 ## Bug fixes
 
+- The FOCEi family (`focei`, `foce`, `focep`, `laplace`, `agq`, `posthoc`, and
+  their `i`/`m` prefixed variants) now applies the M2/M3/M4 censoring
+  correction to a `t()`, `cauchy()` or `dnorm()` endpoint instead of silently
+  scoring a censored row with its ordinary, uncensored density (#992,
+  completing #979 which covered the nlm family only).  Such an endpoint is
+  compiled to a scalar log-density, which hid the location, scale and degrees
+  of freedom the correction needs; the inner model now carries them (together
+  with `d(f)/d(eta)`, so the inner eta gradient is corrected as well, not just
+  the objective).  A censored `t()`/`cauchy()` fit under these methods changes
+  its objective and its parameter estimates, and no longer emits the
+  "censoring ignored" note in `$runInfo`.  An `ar()` endpoint is excluded: its
+  reported scale is the marginal, not the conditional, one.
+
 - `est="impmap"`'s inner Hessian (`impGetHessian`), which builds the
   importance-sampling proposal, could read a stale cached `linCmtB()`
   Jacobian on a `linCmt()` model with a non-mu structural theta (a theta with
