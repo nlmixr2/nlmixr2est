@@ -76,4 +76,49 @@ nmTest({
     expect_true(all(is.finite(fit$IPRED)))
     expect_true(all(is.finite(as.numeric(fit$eta.cl))))
   })
+
+  test_that("gVid scales with the mixture replicate count", {
+    # gVid is sized (mixIdxN + 1) * sum(nobs_i^2) and the setup loop walks it
+    # once per mixture replicate.  With mixIdxN == 0 the multiplier is 1, so a
+    # dropped factor would be invisible; a mix() model with unequal
+    # per-subject observation counts is what actually exercises it.
+    d <- nlmixr2data::theo_sd
+    # thin each subject's observations to a different count (theo_sd has 11
+    # observations for every subject, which would hide a per-subject stride)
+    .keep <- unlist(lapply(split(seq_len(nrow(d)), d$ID), function(w) {
+      .obs <- w[d$EVID[w] == 0]
+      c(w[d$EVID[w] != 0], utils::head(.obs, 2 + (as.integer(d$ID[w[1]]) %% 8)))
+    }))
+    d <- d[sort(.keep), ]
+    nobsI <- tapply(d$EVID == 0, d$ID, sum)
+    expect_gt(length(unique(as.integer(nobsI))), 1)
+
+    mixMod <- function() {
+      ini({
+        tka <- 0.45
+        tcl1 <- log(c(0, 2.7, 100))
+        tcl2 <- log(c(0, 0.1, 120))
+        tv <- 3.45
+        p1 <- 0.3
+        eta.cl ~ 0.3
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka)
+        cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl))
+        v <- exp(tv)
+        linCmt() ~ add(add.sd)
+      })
+    }
+
+    fit <- suppressMessages(suppressWarnings(
+      nlmixr(mixMod(), d, "focei",
+             control = foceiControl(maxOuterIterations = 0, covMethod = "",
+                                    print = 0))))
+    expect_equal(length(fit$mixList), 2L)
+    expect_equal(nrow(fit), sum(as.integer(nobsI)))
+    expect_true(is.finite(fit$objf))
+    expect_true(all(is.finite(fit$CWRES)))
+    expect_true(all(fit$mixNum$mixnum %in% c(1L, 2L)))
+  })
 })

@@ -867,6 +867,24 @@ static inline size_t getRxNallAndMix(rx_solve* rx) {
   return (size_t)getRxNall(rx) * (op_focei.mixIdxN + 1);
 }
 
+// Overflow-checked size_t helpers for the FOCEi setup allocation.  The block
+// sizes are products/sums of data-derived counts; on a 32-bit size_t platform
+// a wrapped total makes R_Calloc quietly hand back a short buffer, which the
+// setup then strides past.  Refuse instead.
+static inline size_t foceiSzMul(size_t a, size_t b, const char *what) {
+  if (a != 0 && b > SIZE_MAX / a) { // nocov
+    stop("focei: dataset too large -- the %s allocation overflows", what); // nocov
+  } // nocov
+  return a * b;
+}
+
+static inline size_t foceiSzAdd(size_t a, size_t b, const char *what) {
+  if (b > SIZE_MAX - a) { // nocov
+    stop("focei: dataset too large -- the %s allocation overflows", what); // nocov
+  } // nocov
+  return a + b;
+}
+
 // Size of the gVid block.  Each subject holds its own nobs_i x nobs_i
 // residual variance matrix, so the block is sum(nobs_i^2) -- NOT nall^2:
 // nall counts dose (and evid=2) records too, and (sum x)^2 only equals
@@ -877,13 +895,9 @@ static inline size_t getRxNobsSqAndMix(rx_solve* rx) {
     rx_solving_options_ind *ind = getSolvingOptionsInd(rx, i);
     size_t nobs = (size_t)(getIndNallTimes(ind) - getIndNdoses(ind) -
                            getIndNevid2(ind));
-    if (nobs != 0 && nobs > SIZE_MAX / nobs) { // nocov
-      stop("focei: subject %d has too many observations (%zu) for the " // nocov
-           "residual variance allocation", i + 1, nobs); // nocov
-    } // nocov
-    tot += nobs * nobs;
+    tot = foceiSzAdd(tot, foceiSzMul(nobs, nobs, "gVid"), "gVid");
   }
-  return tot * (size_t)(op_focei.mixIdxN + 1);
+  return foceiSzMul(tot, (size_t)(op_focei.mixIdxN + 1), "gVid");
 }
 
 static inline int getRxId(int id) {
@@ -6432,18 +6446,22 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
   {
     size_t nall_mix = getRxNallAndMix(rx);
     size_t nsub_mix = getRxNsubAndMix(rx);
-    op_focei.etaUpper = R_Calloc(
-      (size_t)op_focei.gEtaGTransN * 10 +
-      op_focei.npars * (nsub_mix + 1) + nz +
-      2 * op_focei.neta * nall_mix +
-      nall_mix +
-      getRxNobsSqAndMix(rx) + // gVid; sum(nobs_i^2), see getRxNobsSqAndMix
-      op_focei.neta * 6 +
-      2 * op_focei.neta * op_focei.neta * nsub_mix +
-      nall_mix +
-      // per-obs censored inner-Hessian coefficients gcHff/gcHfr/gcHrr
-      3 * nall_mix,
-      double);
+    size_t neta = op_focei.neta;
+    // Every term is data-derived, so add/multiply through the checked helpers:
+    // a wrapped total would make R_Calloc return a short buffer that the setup
+    // below then strides past.
+    size_t tot = foceiSzMul((size_t)op_focei.gEtaGTransN, 10, "eta");
+    tot = foceiSzAdd(tot, foceiSzMul(op_focei.npars, nsub_mix + 1, "thetaGrad"), "thetaGrad");
+    tot = foceiSzAdd(tot, nz, "zm");
+    tot = foceiSzAdd(tot, foceiSzMul(2 * neta, nall_mix, "ga/gc"), "ga/gc");
+    tot = foceiSzAdd(tot, nall_mix, "gB");                            // gB
+    tot = foceiSzAdd(tot, getRxNobsSqAndMix(rx), "gVid");             // gVid; sum(nobs_i^2)
+    tot = foceiSzAdd(tot, neta * 6, "eta bounds");
+    tot = foceiSzAdd(tot, foceiSzMul(2 * neta * neta, nsub_mix, "gH"), "gH");
+    tot = foceiSzAdd(tot, nall_mix, "llikObs");                       // llikObsFull
+    // per-obs censored inner-Hessian coefficients gcHff/gcHfr/gcHrr
+    tot = foceiSzAdd(tot, foceiSzMul(3, nall_mix, "cHff"), "cHff");
+    op_focei.etaUpper = R_Calloc(tot, double);
   }
   op_focei.etaLower =  op_focei.etaUpper + op_focei.neta;
   op_focei.geta     = op_focei.etaLower + op_focei.neta;
@@ -6484,7 +6502,12 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
   std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, -42.0); // All etas = -42;  Unlikely if normal
 
 
-  unsigned int i, j = 0, k = 0, ii=0, jj = 0, iA=0, iB=0, iH=0, iVid=0, iLO=0;
+  // The offset accumulators are size_t, not unsigned int: iVid advances by
+  // nobs_i^2, which overflows a 32-bit accumulator (and, unless the product is
+  // taken in size_t, a 32-bit int) on data the old nall > 65535 guard used to
+  // exclude.  A wrapped offset silently aliases another subject's block.
+  unsigned int i;
+  size_t j = 0, k = 0, ii=0, jj = 0, iA=0, iB=0, iH=0, iVid=0, iLO=0;
   focei_ind *fInd;
   for (i = getRxNsubAndMix(rx); i--;){
     fInd = &(inds_focei[i]);
@@ -6523,13 +6546,12 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
     fInd->var = &op_focei.gVar[j];
     fInd->lp = &op_focei.glp[j];
     fInd->Vid = &op_focei.gVid[iVid];
-    iH += op_focei.neta*op_focei.neta;
-    iVid += (getIndNallTimes(ind) -
-             getIndNdoses(ind) -
-             getIndNevid2(ind)
-             )*(getIndNallTimes(ind) -
-                getIndNdoses(ind) -
-                getIndNevid2(ind));
+    iH += (size_t)op_focei.neta*op_focei.neta;
+    {
+      size_t nobs = (size_t)(getIndNallTimes(ind) - getIndNdoses(ind) -
+                             getIndNevid2(ind));
+      iVid += nobs * nobs;
+    }
     fInd->llikObs = &op_focei.llikObsFull[iLO];
     iLO += getIndNallTimes(ind);
 
@@ -6553,9 +6575,9 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
 
     fInd->a = &op_focei.ga[iA];
     fInd->c = &op_focei.gc[iA];
-    iA += op_focei.neta * (getIndNallTimes(ind) -
-                           getIndNdoses(ind) -
-                           getIndNevid2(ind));
+    iA += (size_t)op_focei.neta * (size_t)(getIndNallTimes(ind) -
+                                          getIndNdoses(ind) -
+                                          getIndNevid2(ind));
 
     fInd->B = &op_focei.gB[iB];
     fInd->cHff = &op_focei.gcHff[iB];

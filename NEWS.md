@@ -177,7 +177,10 @@
   magnitude; the `> 65535` guard added to turn the resulting 32-bit overflow
   into a clean error was therefore rejecting fits that need well under a
   megabyte.  The block is now sized from the observation counts it is
-  actually indexed by and the guard is gone.
+  actually indexed by, and the guard is replaced by an overflow check on the
+  allocation the setup really makes.  The per-subject offset accumulators in
+  that setup are now `size_t` as well, so a subject with more than 46,340
+  observations no longer wraps its own `nobs_i^2` stride.
 
 - `est="saem"` with `saemControl(nMix > 1)` (mixture SAEM) inverted the
   `propT()`/`powT()` (transformed-basis) vs. plain `prop()`/`pow()`
