@@ -147,6 +147,47 @@ nmTest({
     expect_true(.nTrustInner() > 0L)
   })
 
+  # A non-normal general-ll() endpoint: calcEtaHessian()'s needOptimHess
+  # branch is a genuinely different code path from the normal-endpoint
+  # analytic Gauss-Newton branch the rest of this file's models exercise
+  # (see calcEtaHessian(), src/inner.cpp) -- innerOpt="trust" must not be
+  # implicitly Gaussian-family-only.
+  .poisMod <- function() {
+    ini({
+      te0 <- log(5)
+      eta.e0 ~ 0.3
+    })
+    model({
+      e0 <- exp(te0 + eta.e0)
+      effect <- e0
+      effect ~ dpois(effect)
+    })
+  }
+  .poisData <- data.frame(ID = rep(1:20, each = 3), TIME = rep(c(0, 1, 2), 20))
+  .poisData$DV <- c(5L, 4L, 6L, 3L, 5L, 4L, 6L, 5L, 7L, 4L, 5L, 5L,
+                     6L, 6L, 5L, 4L, 3L, 5L, 5L, 6L, 4L, 7L, 5L, 6L,
+                     4L, 5L, 5L, 3L, 4L, 6L, 6L, 5L, 4L, 5L, 6L, 5L,
+                     4L, 4L, 6L, 5L, 7L, 5L, 6L, 5L, 4L, 3L, 5L, 6L,
+                     5L, 5L, 6L, 4L, 6L, 5L, 5L, 4L, 5L, 6L, 4L, 5L)
+
+  test_that("innerOpt='trust' converges close to n1qn1 on a non-normal (dpois) endpoint", {
+    skip_on_cran()
+    .f1 <- .nlmixr(.poisMod, .poisData, est = "focei",
+                   control = foceiControl(innerOpt = "n1qn1", print = 0L))
+    .n1 <- .nTrustInner()
+    .f2 <- .nlmixr(.poisMod, .poisData, est = "focei",
+                   control = foceiControl(innerOpt = "trust", print = 0L))
+    .n2 <- .nTrustInner()
+
+    expect_true(is.finite(.f1$objf))
+    expect_true(is.finite(.f2$objf))
+    expect_equal(.f2$objf, .f1$objf, tolerance = 1e-1)
+    expect_equal(unname(.f1$theta), unname(.f2$theta), tolerance = 5e-2)
+
+    expect_equal(.n1, 0L)
+    expect_true(.n2 > 0L)
+  })
+
   test_that("innerOpt='trust' is thread-safe (cores>=2 matches serial)", {
     skip_on_cran()
     .old <- rxode2::getRxThreads()
