@@ -97,6 +97,9 @@
 <span>  nonMuThetaMaxEval <span class="op">=</span> <span class="fl">25L</span>,</span>
 <span>  nonMuThetaTol <span class="op">=</span> <span class="va">.Machine</span><span class="op">$</span><span class="va">double.eps</span><span class="op">^</span><span class="fl">0.25</span>,</span>
 <span>  nonMuThetaEvery <span class="op">=</span> <span class="fl">1L</span>,</span>
+<span>  phi1ThetaMaxEval <span class="op">=</span> <span class="fl">50L</span>,</span>
+<span>  phi1ThetaEvery <span class="op">=</span> <span class="fl">1L</span>,</span>
+<span>  phi1Hessian <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  residWarmStart <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  censOption <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"gauss"</span>, <span class="st">"laplace"</span><span class="op">)</span>,</span>
 <span>  <span class="va">...</span></span>
@@ -587,6 +590,41 @@ tolerance, or the `optimize()` `tol`).</p></dd>
 <dd><p>Run the `nonMuTheta="regress"` refinement every
 `nonMuThetaEvery` iterations instead of every iteration (default 1).  In
 between, `phi0` keeps its last refined value.</p></dd>
+
+
+<dt id="arg-phi-thetamaxeval">phi1ThetaMaxEval<a class="anchor" aria-label="anchor" href="#arg-phi-thetamaxeval"></a></dt>
+<dd><p>Objective-evaluation budget (bobyqa's `maxfun`) of
+one general-likelihood phi1 (mu-referenced theta) refinement (default
+50). Applies only when the fit has a general-likelihood (`ll()`/`t()`/
+`cauchy()`) endpoint; ignored otherwise. Each evaluation solves the
+FOCEi-style phi1-inner sensitivity model across every chain-replicated
+row, so it is the dominant per-iteration cost while this refinement is
+active – larger than `nonMuThetaMaxEval`'s default because the
+objective is also more expensive per call.</p></dd>
+
+
+<dt id="arg-phi-thetaevery">phi1ThetaEvery<a class="anchor" aria-label="anchor" href="#arg-phi-thetaevery"></a></dt>
+<dd><p>Run the general-likelihood phi1 refinement every
+`phi1ThetaEvery` iterations instead of every iteration (default 1).  In
+between, phi1's mu keeps its last refined value (mirrors
+`nonMuThetaEvery`).</p></dd>
+
+
+<dt id="arg-phi-hessian">phi1Hessian<a class="anchor" aria-label="anchor" href="#arg-phi-hessian"></a></dt>
+<dd><p>Boolean (default `FALSE`); include the Laplace
+`log|H|` eta-Hessian correction in the general-likelihood phi1
+refinement's objective (`-2*loglik + log|H|` instead of plain
+`-2*loglik`). Opt-in: an ablation check found the correction was not
+what fixed a diverging Gaussian general-likelihood twin – the direct
+bobyqa optimization of the exact joint log-likelihood was already
+sufficient on its own, replacing the historic noisy Robbins-Monro
+stochastic-approximation recursion over MCMC-sampled phi. For a
+heavy-tailed endpoint (`t()`/`cauchy()`), `log|H|` can instead dominate
+the objective and cause divergence (its own curvature decays far from
+the data, unlike a normal's), so it defaults off. Set `TRUE` only to
+experiment with the Hessian-corrected form; when it builds, the exact
+analytic eta-Hessian is used, else a finite-difference one (e.g. for
+`linCmt()`).</p></dd>
 
 
 <dt id="arg-residwarmstart">residWarmStart<a class="anchor" aria-label="anchor" href="#arg-residwarmstart"></a></dt>

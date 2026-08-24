@@ -14,10 +14,10 @@ nmGetDistributionSaemLines(line)
 # S3 method for class 'norm'
 nmGetDistributionSaemLines(line)
 
-# S3 method for class 't'
+# S3 method for class 'LL'
 nmGetDistributionSaemLines(line)
 
-# S3 method for class 'LL'
+# Default S3 method
 nmGetDistributionSaemLines(line)
 ```
 

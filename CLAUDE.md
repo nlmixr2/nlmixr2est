@@ -394,4 +394,13 @@ or the inner/pred models in `R/focei.R`):
   with `param(...)`** so the solve parameter order is fixed and
   positional (values are keyed by name, but pinning order keeps the
   input layout stable across builds). Covariates are supplied from the
-  event data at solve time but must still be declared in `param(...)`.
+  event data at solve time but must still be declared in `param(...)`. A
+  general-likelihood formula referencing `DV` (dnorm()/t()/cauchy()
+  sugar, or a literal `ll()` expression) needs `DV` itself declared here
+  too – and needs the model-BUILDING side (not the solve-consuming side)
+  to actually supply it: `DV` must be listed in `.configsaem`’s `inPars`
+  (see `rxUiGet.saemInParsAndMuRefCovariates`, `R/saemRxUiGet.R`) so its
+  DV-append step fires, and must land in the model’s first (and only
+  effective) `param()` statement, not a second one appended later
+  (rxode2 silently ignores a second `param()` statement in one model –
+  nlmixr2/rxode2#1279).
