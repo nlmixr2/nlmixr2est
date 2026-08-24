@@ -38,6 +38,17 @@ rxUiGet.saemInParsAndMuRefCovariates <- function(x, ...) {
   if (length(.ui$predDf$cond) > 1) {
     .cov <- unique(c("CMT", .cov))
   }
+  # A general-likelihood endpoint's own saem_mod formula references DV
+  # directly (rx_pred_=llikNorm(DV, ...) or a literal ll() expression), the
+  # same way predNoLhs/innerHess2 do -- but DV is never part of .ui$covariates
+  # (rxode2's etTran.cpp deliberately excludes any "dv"-named column from
+  # covariate detection, see CLAUDE.md), so it would otherwise never appear
+  # here. .configsaem's own DV-append step (R/saem_fit.R) only re-appends DV
+  # to the solve data when inPars already lists it -- omitting it here means
+  # DV silently never reaches saem_mod's par_ptr for a general-lik fit.
+  if (.saemGeneralLik(.ui)) {
+    .cov <- unique(c(.cov, "DV"))
+  }
   list(inPars=.cov, covars=.muCov)
 }
 #attr(rxUiGet.saemInParsAndMuRefCovariates, "desc") <- "Get inPars and covars for saem"
@@ -135,7 +146,7 @@ rxUiGet.saemFixed <- function(x, ...) {
   .df <- .ui$iniDf
   .dft <- .df[!is.na(.df$ntheta), ]
   .fixError <- .dft[!is.na(.dft$err), ]
-  .dft <- .dft[is.na(.dft$err), ]
+  .dft <- .dft[.saemIsEstimableThetaRow(.ui, .dft), ]
   if (length(.ui$mixProbs) > 0) {
     .dft <- .dft[!(.dft$name %in%.ui$mixProbs), ]
   }
@@ -371,11 +382,19 @@ attr(rxUiGet.saemYj, "rstudio") <- 1L
 rxUiGet.saemResMod <- function(x, ...) {
   .ui <- x[[1]]
   .predDf <- .ui$predDf
+  # A "norm" condition mixed with a genuine general-likelihood condition is
+  # promoted to "dnorm" at model-generation time (.createSaemLineObject,
+  # R/saemRxUiGetModel.R) and compiled with rx_r_ ~ 0 like every other
+  # general-likelihood endpoint -- so once the WHOLE fit is general-lik
+  # (.saemGeneralLik(.ui)), every condition has no residual error parameter,
+  # not just the ones whose own raw distribution already said so.
+  .genLik <- .saemGeneralLik(.ui)
   vapply(seq_along(.predDf$errType),
          function(i) {
-           # general log-likelihood endpoint (ll() ~ expr): no residual error
-           # parameter -- the inner supplies the likelihood (distribution=4 path)
-           if (.predDf$distribution[i] == "LL") return(0L)
+           # general log-likelihood endpoint (ll() ~ expr, or any non-normal
+           # distribution() family): no residual error parameter -- the inner
+           # supplies the likelihood (distribution=4 path)
+           if (.genLik || .predDf$distribution[i] != "norm") return(0L)
            .errType <- as.integer(.predDf$errType[i])
            .hasLambda <- .predDf$transform[i] %in% c("boxCox", "yeoJohnson",
                                                      "logit + yeoJohnson",
@@ -828,8 +847,8 @@ rxUiGet.saemInitTheta <- function(x, ...) {
   .names <- names(.logEta)
   .ui <- x[[1]]
   .iniDf <- .ui$iniDf
-  .est <- setNames(.iniDf[!is.na(.iniDf$ntheta) & is.na(.iniDf$err), "est"],
-                   .iniDf[!is.na(.iniDf$ntheta) & is.na(.iniDf$err), "name"])
+  .w <- .saemIsEstimableThetaRow(.ui, .iniDf)
+  .est <- setNames(.iniDf[.w, "est"], .iniDf[.w, "name"])
   .cov <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
   .est <- .est[!(names(.est) %in% .cov$covariateParameter)]
   if (length(.ui$mixProbs) > 0) {

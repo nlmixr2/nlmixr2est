@@ -1808,8 +1808,25 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
   if (.interp != "") {
     .cmt <-paste0(.cmt, "\n", .interp)
   }
+  .paramStr <- .uiGetThetaEtaParams(ui, TRUE)
+  if (.getRxPredLlikOption()) {
+    # DV is not an ordinary covariate (rxode2's etTran.cpp excludes any
+    # "dv"-named column from covariate matching -- see CLAUDE.md), and a
+    # general-likelihood pred expression references it directly (e.g.
+    # llikNorm(DV, ...)).  It must be part of THIS param() statement: rxode2
+    # only honors the first param() statement in a model
+    # (nlmixr2/rxode2#1279) -- a second, later param(...,DV) statement
+    # emitted for the pred expression's own DV reference is silently
+    # ignored, leaving DV unset (reads as 0) for the entire life of the
+    # compiled model.
+    .paramStr <- if (grepl("\\(\\s*\\)$", .paramStr)) {
+      sub("\\(\\s*\\)$", "(DV)", .paramStr)
+    } else {
+      sub("\\)$", ", DV)", .paramStr)
+    }
+  }
   nlmixr2global$toRxParam <-
-    paste0(.uiGetThetaEtaParams(ui, TRUE), "\n",
+    paste0(.paramStr, "\n",
            .cmt, "\n")
   nlmixr2global$toRxDvidCmt <- .foceiToCmtLinesAndDvid(ui)
   if (exists("..maxTheta", s)) {

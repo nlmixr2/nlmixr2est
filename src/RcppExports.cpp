@@ -1125,6 +1125,17 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// foceiLikInnerObjective_
+double foceiLikInnerObjective_(NumericVector theta);
+RcppExport SEXP _nlmixr2est_foceiLikInnerObjective_(SEXP thetaSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type theta(thetaSEXP);
+    rcpp_result_gen = Rcpp::wrap(foceiLikInnerObjective_(theta));
+    return rcpp_result_gen;
+END_RCPP
+}
 // foceiLikIterPrintStart_
 RObject foceiLikIterPrintStart_(int every, NumericVector initPar, CharacterVector names, RObject iterPrintControl, RObject xform);
 RcppExport SEXP _nlmixr2est_foceiLikIterPrintStart_(SEXP everySEXP, SEXP initParSEXP, SEXP namesSEXP, SEXP iterPrintControlSEXP, SEXP xformSEXP) {
@@ -1823,6 +1834,16 @@ BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< SEXP >::type inp(inpSEXP);
     rcpp_result_gen = Rcpp::wrap(rxode2stateOde(inp));
+    return rcpp_result_gen;
+END_RCPP
+}
+// saemPhi1RefineN_
+long saemPhi1RefineN_();
+RcppExport SEXP _nlmixr2est_saemPhi1RefineN_() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(saemPhi1RefineN_());
     return rcpp_result_gen;
 END_RCPP
 }

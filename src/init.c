@@ -53,6 +53,7 @@ extern SEXP _nlmixr2est_foceiLikLoad_(SEXP);
 extern SEXP _nlmixr2est_foceiLikUnload_(void);
 extern SEXP _nlmixr2est_foceiLikSetTheta_(SEXP);
 extern SEXP _nlmixr2est_foceiLikEval_(SEXP, SEXP, SEXP);
+extern SEXP _nlmixr2est_foceiLikInnerObjective_(SEXP);
 extern SEXP _nlmixr2est_foceiLikCondGrad_(SEXP, SEXP);
 extern SEXP _nlmixr2est_foceiLikCondThetaGrad_(SEXP, SEXP);
 extern SEXP _nlmixr2est_foceiLikCondBatchThetaGrad_(SEXP, SEXP);
@@ -130,6 +131,7 @@ SEXP _nlmixr2est_nlmixr2Unscaled_(SEXP, SEXP);
 
 SEXP _nlmixr2est_saem_fit(SEXP);
 SEXP _nlmixr2est_saem_do_pred(SEXP, SEXP, SEXP);
+SEXP _nlmixr2est_saemPhi1RefineN_(void);
 SEXP _nlmixr2est_saemFormGTest(SEXP, SEXP, SEXP, SEXP, SEXP);
 
 SEXP _nlmixr2est_augPredTrans(SEXP, SEXP, SEXP, SEXP, SEXP,
@@ -250,6 +252,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_foceiLikUnload_", (DL_FUNC) &_nlmixr2est_foceiLikUnload_, 0},
   {"_nlmixr2est_foceiLikSetTheta_", (DL_FUNC) &_nlmixr2est_foceiLikSetTheta_, 1},
   {"_nlmixr2est_foceiLikEval_", (DL_FUNC) &_nlmixr2est_foceiLikEval_, 3},
+  {"_nlmixr2est_foceiLikInnerObjective_", (DL_FUNC) &_nlmixr2est_foceiLikInnerObjective_, 1},
   {"_nlmixr2est_foceiLikCondGrad_", (DL_FUNC) &_nlmixr2est_foceiLikCondGrad_, 2},
   {"_nlmixr2est_foceiLikCondThetaGrad_", (DL_FUNC) &_nlmixr2est_foceiLikCondThetaGrad_, 2},
   {"_nlmixr2est_foceiLikCondBatchThetaGrad_", (DL_FUNC) &_nlmixr2est_foceiLikCondBatchThetaGrad_, 2},
@@ -349,6 +352,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_setSilentErr", (DL_FUNC) &_nlmixr2est_setSilentErr, 1},
   {"_nlmixr2est_saem_fit", (DL_FUNC) &_nlmixr2est_saem_fit, 1},
   {"_nlmixr2est_saem_do_pred", (DL_FUNC) &_nlmixr2est_saem_do_pred, 3},
+  {"_nlmixr2est_saemPhi1RefineN_", (DL_FUNC) &_nlmixr2est_saemPhi1RefineN_, 0},
   {"_nlmixr2est_saemFormGTest", (DL_FUNC) &_nlmixr2est_saemFormGTest, 5},
   {"_nlmixr2est_powerD", (DL_FUNC) &_nlmixr2est_powerD, 5},
   {"_nlmixr2est_powerDLambda", (DL_FUNC) &_nlmixr2est_powerDLambda, 5},

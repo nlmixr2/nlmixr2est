@@ -12,6 +12,9 @@
 #include "censEst.h"
 #include "nearPD.h"
 #include "inner.h"
+#include "odeSwap.h"
+#include "rxomp.h"
+#include <memory>
 #include "solveWarnHelper.h"
 #include "truncNorm.h"
 
@@ -607,6 +610,19 @@ static double gPhi0RefObj(const double *p);
 static void gPhi0NmFn(double *p, double *fx);
 static double gPhi0RefObjR(Rcpp::NumericVector p);
 
+// phi1 objective for the general-likelihood Laplace-corrected direct
+// optimization (Phase 4, SAEM general-likelihood theta plan) -- the phi1
+// sibling of gPhi0Self/gPhi0ObjR above, same bounded-bobyqa/.boundedResidOpt
+// wiring.  Defined after the class body.
+static SAEM* gPhi1Self = nullptr;
+static double gPhi1ObjR(Rcpp::NumericVector p);
+static arma::vec gPhi1Full;
+static std::vector<int> gPhi1FreeIx;
+// Diagnostic: how many times refinePhi1Lik actually ran, so a test can prove
+// the mechanism executed rather than infer it from matching estimates alone
+// (evaluation criterion #2 in the plan).
+static long _saemPhi1RefineN = 0;
+
 // Fill an armadillo mat/vec from rxode2's threefry engine (the current seeded
 // stream).  Used for the MCMC proposals; the saem ODE solve does not draw from
 // the engine, so these do not interfere with user_fn.
@@ -692,6 +708,39 @@ static inline double simCensDv(double cens, double limDv, double lim, double f,
   if (!(zu > zl)) return limDv;        // degenerate/inverted bound: keep the historical value
   return f + sd * rxTruncNorm(zl, zu);
 }
+
+// Phase 4 (SAEM general-likelihood theta plan): phi1Objective (a class
+// method, below) solves the odeSlotHess2 peer directly, so it needs the
+// process rx_solve* -- defined further down in this same translation unit
+// (after the class body), forward-declared here so the class can reference
+// it. Every field/function this pulls in (rxHess2, OdeSwapScope/CmtScope,
+// odeSwapSolveInd, ...) already comes from inner.h/odeSwap.h, included above.
+extern rx_solve* _rx;
+
+// Phase 4: THETA[k]/ETA[k] -> phi column maps and pool-readiness state,
+// shared between phi1Objective (a method, uses odeSlotHess2/odeSlotPred) and
+// user_function (a free function, uses odeSlotPred for its own per-row
+// solve) -- see the fuller doc comment and real definitions after the class
+// body, alongside _saemPhi1PoolActive.
+extern bool _saemPhi1PoolReady;
+extern bool _saemPhi1UseAnalyticHess;
+extern arma::ivec _saemPhi1H2ThetaKind;
+extern arma::ivec _saemPhi1H2ThetaCol;
+extern arma::vec _saemPhi1H2ThetaFixedVal;
+extern arma::ivec _saemPhi1H2EtaCol;
+extern bool _saemPhi1WantHessian;
+extern int _saemPhi1PredOffset;
+// 0-based DV parameter-slot position, resolved by .saemPhi1TargetMap
+// (R/saemPhi1Inner.R) purely as a readiness check -- confirms the compiled
+// general-likelihood model actually declares a DV parameter. DV itself is
+// supplied by the ordinary solve setup (see rxUiGet.saemInParsAndMuRefCovariates,
+// R/saemRxUiGet.R), not written here. -1 when not resolved.
+extern int _saemPhi1DvCol;
+extern int _saemPhi1DvColHess2;
+extern int _saemPhi1H2PredOffset;
+extern int _saemPhi1H2HessOffset;
+extern arma::uvec _saemPhi1I0;
+extern arma::uvec _saemPhi1I1;
 
 // class def starts
 class SAEM {
@@ -1116,6 +1165,306 @@ public:
       }
     }
     if (fixedIx0.n_elem > 0) MCOV0(jcov0(fixedIx0)) = mcov0Fixed;
+  }
+
+  // Phase 4 (SAEM general-likelihood theta plan): Laplace-corrected objective
+  // for the phi1 (mu-referenced theta) direct optimization -- the phi1
+  // sibling of phi0Objective.  No EBE mode-search: for candidate theta p
+  // (nphi1 free coordinates, intercept-only -- guaranteed by _saemPhi1PoolReady/
+  // .saemPhi1TargetMap, which declines any phi1 covariate), every one of the
+  // nM=N*nmc chain-replicated rows is scored by solving innerHess2
+  // (odeSlotHess2) at phi_i_NEW = mu_i(p) + eta_i, where
+  // eta_i = phiM(i, i1) - mprior_phi1(subject, .) is that row's CURRENT,
+  // UNCHANGED deviation from whatever mu was active when phiM was last
+  // sampled by do_mcmc.  Reads back rx_pred_ (the log-density) and
+  // rx__d2pred_i_j__ (the exact 2nd-order eta-Hessian AT THAT SUPPLIED
+  // POINT, not a re-optimized mode) and scores -2*rx_pred_ + log|H|, with
+  // H = -d2pred + Omega^-1 (matching calcEtaHessian's own sign convention,
+  // src/inner.cpp).  Summed over every row -- no division by nmc, since this
+  // only ever feeds an argmin (matching phi0Objective's own convention).  A
+  // row whose solve fails or whose H is not positive-definite makes the
+  // whole candidate return phi0Objective's own 1e300 sentinel.  Parallelized
+  // the same way inner.cpp's own per-subject loops are.
+  // One row's rx_pred_ (summed over its observations) at a supplied eta
+  // vector, for the FD-fallback path -- solves odeSlotPred (no sensitivities)
+  // fresh at etaVec, under a scope the caller already has open for this row.
+  // Sets `bad` on solve failure.
+  double phi1PredAt(int i, rx_solving_options_ind *ind, rx_solving_options *op,
+                     OdeSwapScope &neqGuard, int nH2Theta,
+                     const arma::vec &etaVec, bool &bad) {
+    int nEta = (int)etaVec.n_elem;
+    for (int k = 0; k < nEta; ++k) setIndParPtr(ind, nH2Theta + k, etaVec(k));
+    setIndSolve(ind, -1);
+    resetOpBadSolve(op);  // courtesy only; racy under cores>1, not relied on below
+    odeSwapSolveInd(odeSlotPred, i);
+    if (odeSwapIndBadSolveSlot(op, ind, odeSlotPred)) { bad = true; return 0.0; }
+    iniSubjectE(i, 1, ind, op, _rx, rxPred.update_inis);
+    double *lhs = neqGuard.lhs();
+    double pred = 0.0;
+    for (int j = 0; j < getIndNallTimes(ind); ++j) {
+      setIndIdx(ind, j);
+      int kk = getIndIx(ind, j);
+      if (getIndEvid(ind, kk) != 0) continue;
+      double curT = getTime(kk, ind);
+      rxPred.calc_lhs(i, curT, getOpIndSolve(op, ind, j), lhs);
+      pred += lhs[_saemPhi1PredOffset];
+    }
+    return pred;
+  }
+
+  // Solve odeSlotHess2 (the exact analytic eta-Hessian model) at eta0 for row
+  // i, accumulating rx_pred_ into rowPred and the packed lower-triangular
+  // d2pred into H.  Returns false (row is bad) on solve failure, matching the
+  // inline `rowBad[i] = 1; continue;` this replaced.
+  bool phi1AnalyticHessAt(int i, rx_solving_options_ind *ind, rx_solving_options *op,
+                          OdeSwapScope &neqGuard, int nH2Theta,
+                          const arma::vec &eta0, double &rowPred, arma::mat &H) {
+    int nEta = (int)eta0.n_elem;
+    for (int k = 0; k < nEta; ++k) setIndParPtr(ind, nH2Theta + k, eta0(k));
+    setIndSolve(ind, -1);
+    resetOpBadSolve(op);
+    odeSwapSolveInd(odeSlotHess2, i);
+    if (odeSwapIndBadSolveSlot(op, ind, odeSlotHess2)) return false;
+    iniSubjectE(i, 1, ind, op, _rx, rxHess2.update_inis);
+    double *lhs = neqGuard.lhs();
+    for (int j = 0; j < getIndNallTimes(ind); ++j) {
+      setIndIdx(ind, j);
+      int kk = getIndIx(ind, j);
+      if (getIndEvid(ind, kk) != 0) continue;
+      double curT = getTime(kk, ind);
+      rxHess2.calc_lhs(i, curT, getOpIndSolve(op, ind, j), lhs);
+      rowPred += lhs[_saemPhi1H2PredOffset];
+      int r = 0;
+      for (int jc = 0; jc < nphi1; ++jc)
+        for (int ic = 0; ic <= jc; ++ic) {
+          H(ic, jc) += -lhs[_saemPhi1H2HessOffset + r];
+          ++r;
+        }
+    }
+    return true;
+  }
+
+  // Finite-difference eta-Hessian fallback at eta0 for row i, re-solving
+  // odeSlotPred (via phi1PredAt) at small perturbations of eta0 -- the same
+  // Shi(2021)-style fallback discipline calcEtaHessian uses, simplified to a
+  // fixed step (see phi1Objective's own docs on fdH).  Sets `bad` on any
+  // perturbed solve's failure; H accumulates in place.
+  void phi1FDHessAt(int i, rx_solving_options_ind *ind, rx_solving_options *op,
+                     OdeSwapScope &neqGuard, int nH2Theta, double fdH,
+                     const arma::vec &eta0, double rowPred, arma::mat &H, bool &bad) {
+    int nEta = (int)eta0.n_elem;
+    for (int k = 0; k < nEta && !bad; ++k) {
+      arma::vec ep = eta0, em = eta0;
+      ep(k) += fdH; em(k) -= fdH;
+      double fp = phi1PredAt(i, ind, op, neqGuard, nH2Theta, ep, bad);
+      double fm = bad ? 0.0 : phi1PredAt(i, ind, op, neqGuard, nH2Theta, em, bad);
+      if (!bad) H(k, k) += -(fp - 2.0 * rowPred + fm) / (fdH * fdH);
+    }
+    for (int jc = 1; jc < nEta && !bad; ++jc) {
+      for (int ic = 0; ic < jc && !bad; ++ic) {
+        arma::vec epp = eta0, epm = eta0, emp = eta0, emm = eta0;
+        epp(ic) += fdH; epp(jc) += fdH;
+        epm(ic) += fdH; epm(jc) -= fdH;
+        emp(ic) -= fdH; emp(jc) += fdH;
+        emm(ic) -= fdH; emm(jc) -= fdH;
+        double fpp = phi1PredAt(i, ind, op, neqGuard, nH2Theta, epp, bad);
+        double fpm = bad ? 0.0 : phi1PredAt(i, ind, op, neqGuard, nH2Theta, epm, bad);
+        double fmp = bad ? 0.0 : phi1PredAt(i, ind, op, neqGuard, nH2Theta, emp, bad);
+        double fmm = bad ? 0.0 : phi1PredAt(i, ind, op, neqGuard, nH2Theta, emm, bad);
+        if (!bad) {
+          double hij = -(fpp - fpm - fmp + fmm) / (4.0 * fdH * fdH);
+          H(ic, jc) += hij;
+          H(jc, ic) += hij;
+        }
+      }
+    }
+  }
+
+  // Score row i's Laplace objective from its rowPred (log-density, already
+  // accumulated by phi1AnalyticHessAt/phi1FDHessAt) and eta-Hessian H
+  // (accumulated in place, not yet including the Omega prior): adds the
+  // Omega^-1 (IGamma2_phi1) prior term, mirrors it into the lower triangle,
+  // computes log|H|, and validates it (finite, positive-definite -- H must
+  // be a valid precision matrix for -2*loglik + log|H| to be a real Laplace
+  // score). Returns false (row is bad) on any failure.
+  bool phi1LaplaceScore(double rowPred, arma::mat &H, double &score) {
+    for (int jc = 0; jc < nphi1; ++jc)
+      for (int ic = 0; ic <= jc; ++ic) {
+        H(ic, jc) += IGamma2_phi1(ic, jc);
+        H(jc, ic) = H(ic, jc);
+      }
+    double logdetH, sgnH;
+    if (!arma::log_det(logdetH, sgnH, H) || !(sgnH > 0) || !R_finite(logdetH)) return false;
+    score = -2.0 * rowPred + logdetH;
+    return true;
+  }
+
+  double phi1Objective(double *p) {
+    rx_solving_options *op = getSolvingOptions(_rx);
+    int cores = getOpCores(op);
+    bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
+    int nH2Theta = (int)_saemPhi1H2ThetaKind.n_elem;
+    int nEta = (int)_saemPhi1H2EtaCol.n_elem;
+    int slot = _saemPhi1UseAnalyticHess ? odeSlotHess2 : odeSlotPred;
+    // A fixed relative-or-absolute step for the FD Hessian fallback -- a
+    // simpler, deliberately non-adaptive alternative to calcEtaHessian's own
+    // Shi(2021) stepping (src/shi21.h); see R/saemPhi1Inner.R's own docs on
+    // this being a documented v1 simplification, not a load-bearing choice.
+    const double fdH = 1e-4;
+    std::vector<double> rowScore((size_t)nM, 0.0);
+    std::vector<int> rowBad((size_t)nM, 0);
+    // The event-sensitivity shape is a process global, installed/cleared only by
+    // OdeSwapEsBatch, which MUST run OUTSIDE the OpenMP region below.  odeSlotHess2
+    // carries its OWN shape (odeEsHess2); odeSlotPred carries none, but per
+    // OdeSwapEsBatch's own contract (src/odeSwap.cpp) a "no ES" slot STILL needs a
+    // batch constructed for it, so a shape left installed by some earlier solve
+    // (this session's own odeSlotHess2 call, or a prior FOCEi fit's fit-wide inner
+    // load) gets explicitly deactivated rather than silently reused with the wrong
+    // dimensions on this solve's dosing events.  Always construct one, for `slot`.
+    std::unique_ptr<OdeSwapEsBatch> phi1EsBatch(new OdeSwapEsBatch(slot));
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
+#endif
+    for (int i = 0; i < nM; ++i) {
+#ifdef _OPENMP
+      if (doParallel) setRxThreadId(omp_get_thread_num());
+#endif
+      int subj = i % N;
+      rx_solving_options_ind *ind = getSolvingOptionsInd(_rx, i);
+      OdeSwapScope neqGuard(slot, ind, op);
+      OdeSwapCmtScope cmtGuard(slot, op, ind);
+      for (int k = 0; k < nH2Theta; ++k) {
+        int kind = _saemPhi1H2ThetaKind(k);
+        int col = _saemPhi1H2ThetaCol(k);
+        double val = (kind == 1) ? p[col] :
+          ((kind == 0) ? mprior_phi0(0, col) : _saemPhi1H2ThetaFixedVal(k));
+        setIndParPtr(ind, k, val);
+      }
+      arma::vec eta0(nEta);
+      for (int k = 0; k < nEta; ++k) {
+        int col = _saemPhi1H2EtaCol(k);
+        eta0(k) = phiM(i, i1(col)) - mprior_phi1(subj, col);
+      }
+      bool bad = false;
+      double rowPred = 0.0;
+      arma::mat H(nphi1, nphi1, arma::fill::zeros);
+      if (!_saemPhi1WantHessian) {
+        // saemControl(phi1Hessian=FALSE), the default: plain -2*loglik, no
+        // Hessian/Omega-prior term at all -- see the field's own docs.
+        rowPred = phi1PredAt(i, ind, op, neqGuard, nH2Theta, eta0, bad);
+      } else if (_saemPhi1UseAnalyticHess) {
+        if (!phi1AnalyticHessAt(i, ind, op, neqGuard, nH2Theta, eta0, rowPred, H)) {
+          rowBad[i] = 1; continue;
+        }
+      } else {
+        rowPred = phi1PredAt(i, ind, op, neqGuard, nH2Theta, eta0, bad);
+        // restore of the row's solve/lhs state to eta0 is unnecessary --
+        // calcEtaHessian's own FD fallback leaves the last perturbation's
+        // solve behind too (its caller re-solves before any further read),
+        // but SAEM's OWN model (odeSlotSaem) is what user_function reads
+        // next, an independent peer/solve buffer.
+        if (!bad) phi1FDHessAt(i, ind, op, neqGuard, nH2Theta, fdH, eta0, rowPred, H, bad);
+      }
+      if (bad) { rowBad[i] = 1; continue; }
+      if (!_saemPhi1WantHessian) {
+        if (!R_finite(rowPred)) { rowBad[i] = 1; continue; }
+        rowScore[i] = -2.0 * rowPred;
+        continue;
+      }
+      if (!phi1LaplaceScore(rowPred, H, rowScore[i])) { rowBad[i] = 1; continue; }
+    }
+    double total = 0.0;
+    for (int i = 0; i < nM; ++i) {
+      if (rowBad[i]) return 1e300;
+      total += rowScore[i];
+    }
+    if (!std::isfinite(total)) return 1e300;
+    return total;
+  }
+
+  // Phase 4: bobyqa-driven refinement of phi1's mu (mirrors refinePhi0Lik's
+  // own .boundedResidOpt/minqa::bobyqa wiring exactly -- see the user's own
+  // direction that the optimizer is bobyqa and the objective evaluation is
+  // pure C++, no R calls). Intercept-only (no phi1 covariate, guaranteed by
+  // _saemPhi1PoolReady): each free phi1 column's current mu (mprior_phi1(0,c),
+  // identical across all N subjects) seeds bobyqa, unbounded (the Laplace
+  // objective is well-behaved -- no ini() bounds apply to a mu-ref theta the
+  // way phi0Lower/phi0Upper do to fixed-effect-only ones). The result is
+  // damped by the SA step pas(kiter) exactly like refinePhi0Lik's own
+  // mprior_phi0 update, and MCOV1 is back-solved so next iteration's
+  // mprior_phi1=COV1*MCOV1 reproduces it -- the row-level phiM/eta values
+  // do_mcmc already holds are left completely untouched.
+  // Back-solve MCOV1's per-column covariate loadings against mprior_phi1,
+  // restricted to each phi1 column's own LCOV1 design columns -- mirrors
+  // phi0Objective's own MCOV0 back-solve (src/saem.cpp) for the identical
+  // rank-deficiency reason: a single least-squares against all of COV1 is
+  // rank deficient whenever nphi1 > 1 with no phi1 covariate (every column
+  // of COV1 is then the same intercept column).
+  void phi1BackSolveMCOV() {
+    for (int c = 0; c < nphi1; ++c) {
+      uvec li = arma::find(LCOV1.col(c) == 1);
+      if (li.n_elem == 0) continue;
+      mat Xc = COV1.cols(li);
+      vec bc;
+      if (arma::solve(bc, Xc.t() * Xc, Xc.t() * mprior_phi1.col(c))) {
+        for (unsigned int j = 0; j < li.n_elem; ++j) MCOV1(li(j), c) = bc(j);
+      }
+    }
+  }
+
+  void refinePhi1Lik(unsigned int kiter, const vec &pas) {
+    if (!_saemPhi1PoolReady || nphi1 <= 0) return;
+    std::vector<bool> phi1Fix((size_t)nphi1, false);
+    for (unsigned int j = 0; j < fixedIx1.n_elem; ++j) {
+      if (fixedIx1(j) < (unsigned int)nphi1) phi1Fix[(size_t)fixedIx1(j)] = true;
+    }
+    gPhi1FreeIx.clear();
+    for (int c = 0; c < nphi1; ++c) {
+      if (!phi1Fix[(size_t)c]) gPhi1FreeIx.push_back(c);
+    }
+    if (gPhi1FreeIx.empty()) return;
+
+    gPhi1Self = this;
+    Rcpp::NumericVector par0(nphi1);
+    for (int c = 0; c < nphi1; ++c) par0[c] = mprior_phi1(0, c);
+    gPhi1Full.set_size(nphi1);
+    for (int c = 0; c < nphi1; ++c) gPhi1Full[c] = par0[c];
+
+    // Bounded local trust region around the current mu (mirrors
+    // refinePhi0Lik's own localTrust clamp, src/saem.cpp) -- an UNBOUNDED
+    // search lets bobyqa wander toward a point where the eta-Hessian
+    // degenerates (log|H| -> -Inf reads as a spuriously low objective,
+    // "rewarding" the wander), which then destabilizes the EM's own
+    // Gamma2_phi1 update on the resulting garbage mprior_phi1 (measured:
+    // an unbounded search on a single-eta TTE model eventually hit
+    // "problem with matrix inverse" after enough burn-in iterations).
+    const double trust = 0.75;
+    int nFree = (int)gPhi1FreeIx.size();
+    Rcpp::NumericVector parFree(nFree), loFree(nFree), hiFree(nFree);
+    for (int fi = 0; fi < nFree; fi++) {
+      int c = gPhi1FreeIx[(size_t)fi];
+      parFree[fi] = par0[c];
+      loFree[fi] = par0[c] - trust;
+      hiFree[fi] = par0[c] + trust;
+    }
+    Rcpp::Environment nlmixr2 = Rcpp::Environment::namespace_env("nlmixr2est");
+    Rcpp::Function boundedOpt = nlmixr2[".boundedResidOpt"];
+    Rcpp::InternalFunction fn(&gPhi1ObjR);
+    Rcpp::List ctl = Rcpp::List::create(Rcpp::_["maxfun"] = phi1ThetaMaxEval);
+    Rcpp::List ret = boundedOpt(Rcpp::_["par"] = parFree, Rcpp::_["fn"] = fn,
+                                Rcpp::_["lower"] = loFree, Rcpp::_["upper"] = hiFree,
+                                Rcpp::_["control"] = ctl);
+    Rcpp::NumericVector rxOpt = ret["x"];
+    Rcpp::NumericVector xmin(nphi1);
+    for (int c = 0; c < nphi1; ++c) xmin[c] = par0[c];
+    for (int fi = 0; fi < nFree; ++fi) xmin[gPhi1FreeIx[(size_t)fi]] = rxOpt[fi];
+
+    for (int c = 0; c < nphi1; ++c) {
+      double cur = mprior_phi1(0, c);
+      mprior_phi1.col(c).fill(cur + pas(kiter) * (xmin[c] - cur));
+    }
+    phi1BackSolveMCOV();
+    _saemPhi1RefineN++;
   }
 
   void set_fn(user_funct f) {
@@ -1759,6 +2108,59 @@ public:
     if (nonMuThetaEvery < 1) nonMuThetaEvery = 1;
     nonMuThetaTol = x.containsElementNamed("nonMuThetaTol") ?
       as<double>(x["nonMuThetaTol"]) : 1.0e-4;
+    phi1ThetaEvery = x.containsElementNamed("phi1ThetaEvery") ?
+      as<int>(x["phi1ThetaEvery"]) : 1;
+    if (phi1ThetaEvery < 1) phi1ThetaEvery = 1;
+    phi1ThetaMaxEval = x.containsElementNamed("phi1ThetaMaxEval") ?
+      as<int>(x["phi1ThetaMaxEval"]) : 50;
+    // Phase 4 (SAEM general-likelihood theta plan): THETA[k]/ETA[k] -> phi
+    // column maps, present only for a general-lik fit whose
+    // saemPhi1TargetMap resolved (R/saemPhi1Inner.R).  Two-tier fallback
+    // discipline, matching calcEtaHessian's own (src/inner.cpp): the exact
+    // analytic Hessian (innerHess2/odeSlotHess2) when it built, else a
+    // finite-difference Hessian over the bare predNoLhs/odeSlotPred model
+    // (e.g. linCmt(), where innerHess2 is always NULL) -- _saemPhi1UseAnalyticHess
+    // picks which.  _saemPhi1PoolReady requires only the pred offset (always
+    // present); a fit whose map did not resolve at all keeps the historic
+    // SA-recursion for phi1, unchanged.
+    //
+    // _saemPhi1PoolReady/_saemPhi1UseAnalyticHess are process-wide globals
+    // that outlive a fit (mirrors why _saemPhi1PoolActive/odeSwapClearAll
+    // needed the same discipline in setupRx): a LATER fit whose own map did
+    // NOT resolve (or is not general-lik at all) never enters the branch
+    // below, so without this reset it silently inherits a PRIOR pooled
+    // fit's _saemPhi1PoolReady=true and stale THETA/ETA maps sized for a
+    // DIFFERENT model -- refinePhi1Lik/phi1Objective then run for a plain
+    // normal fit using garbage offsets (measured: segfaulted inside
+    // gPhi1ObjR, confirmed via valgrind's backtrace).
+    _saemPhi1PoolReady = false;
+    _saemPhi1UseAnalyticHess = false;
+    _saemPhi1WantHessian = x.containsElementNamed("phi1Hessian") &&
+      as<int>(x["phi1Hessian"]) != 0;
+    if (opt.containsElementNamed("saemPhi1ThetaKind")) {
+      _saemPhi1H2ThetaKind = as<ivec>(opt["saemPhi1ThetaKind"]);
+      _saemPhi1H2ThetaCol = as<ivec>(opt["saemPhi1ThetaCol"]);
+      _saemPhi1H2ThetaFixedVal = as<vec>(opt["saemPhi1ThetaFixedVal"]);
+      _saemPhi1H2EtaCol = as<ivec>(opt["saemPhi1EtaCol"]);
+      _saemPhi1DvCol = opt.containsElementNamed("saemPhi1DvCol") ?
+        as<int>(opt["saemPhi1DvCol"]) : -1;
+      _saemPhi1DvColHess2 = opt.containsElementNamed("saemPhi1DvColHess2") ?
+        as<int>(opt["saemPhi1DvColHess2"]) : -1;
+      _saemPhi1PredOffset = odeSwapLhsIndex(odeSlotPred, "rx_pred_");
+      bool haveHess2 = odeSwapLoaded(odeSlotHess2);
+      _saemPhi1H2PredOffset = haveHess2 ? odeSwapLhsIndex(odeSlotHess2, "rx_pred_") : -1;
+      _saemPhi1H2HessOffset = haveHess2 ? odeSwapLhsIndex(odeSlotHess2, "rx__d2pred_1_1__") : -1;
+      _saemPhi1UseAnalyticHess = haveHess2 && _saemPhi1H2PredOffset >= 0 &&
+        _saemPhi1H2HessOffset >= 0 && _saemPhi1DvColHess2 >= 0;
+      _saemPhi1PoolReady = _saemPhi1PredOffset >= 0 && _saemPhi1DvCol >= 0 &&
+        _saemPhi1H2EtaCol.n_elem == (unsigned int)nphi1 &&
+        (_saemPhi1UseAnalyticHess || odeSwapLoaded(odeSlotPred));
+      // user_function (a free function) needs i0/i1 too, to map
+      // _saemPhi1H2ThetaCol/_saemPhi1H2EtaCol (0-based within phi0's/phi1's
+      // own subset) into _phi's nphi-wide column space.
+      _saemPhi1I0 = i0;
+      _saemPhi1I1 = i1;
+    }
     residWarmStart = x.containsElementNamed("residWarmStart") ?
       as<int>(x["residWarmStart"]) : 1;
     mixProbRegress = x.containsElementNamed("mixProbRegress") ?
@@ -2592,8 +2994,19 @@ public:
           // the observation loss is simply -ll and the standard RWM kernels run
           // unchanged.  Reachable for est="saem" when .saemGeneralLik(ui) is true
           // (the transform-normal assertion is skipped for such a model).
+          // This computes U_y, the CURRENT state's reference likelihood every
+          // do_mcmc call below is scored against -- it needs the identical
+          // sentinel-inversion/ceiling clamp do_mcmc's own case 4 applies (see
+          // its comment), or a bad/NaN solve at the CURRENT phi (e.g. right at
+          // kiter=0, before any exploration has adapted the state) makes U_y
+          // itself an artificially huge NEGATIVE ("great") reference, which
+          // either traps the chain there or makes every subsequent acceptance
+          // test's deltu meaningless (both sides dominated by the same
+          // ~-1e99 sentinel).
           for (int k = 0; k < nmc; k++) {
             vec fk = f.subvec(k * ntotal, (k + 1) * ntotal - 1);
+            fk.elem(find(fk >= 1.0e99)).fill(_saemGenLikBadSolvePenalty);
+            fk.elem(find(fk > _saemGenLikCeiling)).fill(_saemGenLikCeiling);
             uvec indio_k = indio + (arma::uword)k * (arma::uword)(N * mlen);
             DYF(indio_k) = -fk;
           }
@@ -2810,7 +3223,18 @@ public:
         }
         MCOV0(jcov0)=Plambda0;
       }
-      mprior_phi1=COV1*MCOV1;
+      // Phase 4 (SAEM general-likelihood theta plan): once the direct phi1
+      // Laplace optimizer owns phi1 (kiter>=niter_phi0 -- the same
+      // past-burn-in threshold phi0's own regress mode uses), do NOT
+      // overwrite mprior_phi1 with the stochastic sampled-mean update --
+      // mirrors skipStochPhi0 exactly.  Only for a general-lik fit whose
+      // phi1 map resolved AND innerHess2 built (_saemPhi1PoolReady); every other
+      // fit's mprior_phi1 update is completely unchanged.  Row-level
+      // phiM/eta values do_mcmc already holds are untouched either way.
+      bool skipStochPhi1 = _saemPhi1PoolReady && (kiter >= (unsigned int)niter_phi0);
+      if (!skipStochPhi1) {
+        mprior_phi1=COV1*MCOV1;
+      }
       // nonMuTheta="regress": once the direct phi0 optimizer owns phi0
       // (kiter>=niter_phi0), do NOT overwrite mprior_phi0 with the stochastic
       // sampled-mean update -- that fights the optimizer and lets phi0 drift.
@@ -2819,6 +3243,10 @@ public:
         (kiter >= (unsigned int)niter_phi0);
       if (!skipStochPhi0) {
         mprior_phi0=COV0*MCOV0;
+      }
+      if (_saemPhi1PoolReady && kiter >= (unsigned int)niter_phi0 &&
+          (kiter - (unsigned int)niter_phi0) % (unsigned int)phi1ThetaEvery == 0) {
+        refinePhi1Lik(kiter, pas);
       }
       // The sampled-mean update above only weakly informs fixed-effect-only
       // (phi0) parameters, so once the SA/variance-shrinkage phase has begun,
@@ -3892,6 +4320,16 @@ private:
   // 0 no (residual/likelihood only -> freeze the ODE during the phi0 opt like
   // npag), 1 yes (structural, e.g. ka/V -> keep the ODE live).
   int _phi0OdeSensitive = -1;
+  // Phase 4 (SAEM general-likelihood theta plan): the THETA[k]/ETA[k] -> phi
+  // column maps, pool-readiness flags, and lhs offsets (_saemPhi1H2ThetaKind,
+  // _saemPhi1H2ThetaCol, _saemPhi1H2ThetaFixedVal, _saemPhi1H2EtaCol, _saemPhi1PredOffset,
+  // _saemPhi1H2PredOffset, _saemPhi1H2HessOffset, _saemPhi1PoolReady, _saemPhi1UseAnalyticHess)
+  // are FILE-SCOPE GLOBALS, not members -- user_function (a free function,
+  // set via set_fn/user_fn, not a class method) needs them too, and setupRx
+  // (also free) is what populates them from opt.  See their definitions
+  // and doc comment near _saemPhi1PoolActive, after this class body.
+  int phi1ThetaEvery = 1;
+  int phi1ThetaMaxEval = 50;
   // Warm-start residual params from observed per-endpoint moments (npag-style).
   int residWarmStart;
   // mixProbMethod="regress": fix per-subject mixture membership (hard classify
@@ -4013,6 +4451,18 @@ private:
     mphi1.mprior_phiM = repmat(mprior_phi1,nmc,1);
   }
 
+  // do_mcmc's distribution==4 (general-likelihood) branch clamps: a legitimate
+  // per-observation log-likelihood is capped at _saemGenLikCeiling (mirroring
+  // case 1's own clamp of its scale g to [double_xmin, xmax] -- a genuine
+  // log-density is unbounded above as the effective residual scale collapses
+  // toward zero), and the shared +1e99 bad/NaN-solve sentinel is inverted to
+  // _saemGenLikBadSolvePenalty (a strongly NEGATIVE value) rather than left
+  // as +1e99, which DYF=-fck would otherwise reward as an almost-certain MCMC
+  // accept.  Values, not derived constants: large enough to swamp any
+  // realistic per-observation contribution in either direction.
+  static constexpr double _saemGenLikCeiling = 700.0;
+  static constexpr double _saemGenLikBadSolvePenalty = -1.0e10;
+
   void do_mcmc(const int method,
                const int nu,
                const mcmcaux &mx,
@@ -4128,8 +4578,34 @@ private:
           {
             // general log-likelihood: model prediction is the per-obs loglik
             const arma::uword stride = (arma::uword)N * (arma::uword)mlen;
+            // Case 1 (closed-form normal/etc.) clamps its own scale (g) to
+            // [double_xmin, xmax] before scoring, specifically so a candidate
+            // that collapses the residual scale toward zero cannot blow up
+            // that observation's contribution -- log N(x;mu,sigma) -> +Inf as
+            // sigma -> 0.  A general-likelihood fck IS the log-likelihood
+            // already (no separate scale to clamp), so it needs the same kind
+            // of finite ceiling directly, or a scale-collapsing candidate
+            // (e.g. driving Vc, and hence cp=centr/Vc, toward 0 in a
+            // proportional-error MM model) gets an unboundedly large reward
+            // and the acceptance test (deltu < -log(accU)) takes it almost
+            // unconditionally.  (Checked directly for the U009 MM corpus
+            // model's own divergence: this clamp never actually fires there,
+            // so it is not what drives that specific case -- it is still a
+            // real, principled gap for models where a candidate genuinely
+            // does collapse the residual scale, and mirrors case 1's own
+            // clamp on structural grounds, not as an attempted fix for U009.)
+            // saemReadRowsPooled also flags a failed/NaN solve with the
+            // shared +1e99 sentinel (see its own comment): for every OTHER
+            // distribution fc is a predicted VALUE compared against data, so
+            // a huge fc naturally penalizes a bad solve via the residual --
+            // here fc IS the log-likelihood, so left unrecognized the
+            // sentinel flows into DYF=-fck as an unboundedly NEGATIVE (i.e.
+            // rewarded) contribution, exactly backwards. Detect and invert it
+            // to a strongly penalized value before applying the ceiling.
             for (int k = 0; k < nmc; k++) {
               vec fck = fc.subvec(k * ntotal, (k + 1) * ntotal - 1);
+              fck.elem(find(fck >= 1.0e99)).fill(_saemGenLikBadSolvePenalty);
+              fck.elem(find(fck > _saemGenLikCeiling)).fill(_saemGenLikCeiling);
               _scratch_indio = mx.indio + (arma::uword)k * stride;
               DYF(_scratch_indio) = -fck;
             }
@@ -4434,6 +4910,16 @@ static double gPhi0ObjR(Rcpp::NumericVector p) {
   return gPhi0Self->phi0Objective(gPhi0Full.memptr());
 }
 
+static double gPhi1ObjR(Rcpp::NumericVector p) {
+  for (size_t i = 0; i < gPhi1FreeIx.size(); ++i) {
+    gPhi1Full[gPhi1FreeIx[i]] = p[i];
+  }
+  return gPhi1Self->phi1Objective(gPhi1Full.memptr());
+}
+
+//[[Rcpp::export]]
+long saemPhi1RefineN_() { return _saemPhi1RefineN; }
+
 static double gPhi0Obj1DR(double x) {
   gPhi0Work[gPhi0Coord] = x;
   return gPhi0Self->phi0Objective(gPhi0Work.memptr());
@@ -4480,6 +4966,38 @@ using namespace Rcpp;
 t_calc_lhs saem_lhs = NULL;
 t_update_inis saem_inis = NULL;
 
+// Phase 4 (SAEM general-likelihood theta plan): true when setupRx registered
+// predNoLhs/innerHess2 (odeSlotPred/odeSlotHess2) instead of the historic
+// direct rxUpdateFuns(..., &rxInner) bind -- i.e. this fit is a general-
+// likelihood fit whose saemPhi1TargetMap resolved (see R/saemPhi1Inner.R).
+// SAEM's own per-iteration likelihood read is then reparameterized through
+// predNoLhs/innerHess2 too (user_function's own phi1RowSolve), rather than
+// pooling a separately-parameterized "SAEM's own model" peer -- see
+// setupRx's own comment for why. false for EVERY normal/poisson/binomial
+// fit and for a general-lik fit whose map did not resolve (covariate on a
+// phi0/phi1 theta, unpaired eta, ...) -- both keep the original
+// single-model rxInner path, byte-identically.
+static bool _saemPhi1PoolActive = false;
+bool _saemPhi1PoolReady = false;
+bool _saemPhi1UseAnalyticHess = false;
+arma::ivec _saemPhi1H2ThetaKind;
+arma::ivec _saemPhi1H2ThetaCol;
+arma::vec _saemPhi1H2ThetaFixedVal;
+arma::ivec _saemPhi1H2EtaCol;
+// saemControl(phi1Hessian=FALSE) is the default -- see its own docs (an
+// ablation check found the Laplace log|H| correction was not what fixed a
+// diverging Gaussian twin, and it can dominate/diverge for a heavy-tailed
+// t()/cauchy() endpoint, nlmixr2/nlmixr2est#999).  When false, phi1Objective
+// scores plain -2*loglik with no Hessian term at all (not even Omega^-1) --
+// solving only odeSlotPred, never odeSlotHess2/the FD-Hessian fallback.
+bool _saemPhi1WantHessian = false;
+int _saemPhi1PredOffset = -1;
+int _saemPhi1H2PredOffset = -1;
+int _saemPhi1H2HessOffset = -1;
+int _saemPhi1DvCol = -1;
+int _saemPhi1DvColHess2 = -1;
+arma::uvec _saemPhi1I0;
+arma::uvec _saemPhi1I1;
 
 rx_solve* _rx = NULL;
 
@@ -4490,6 +5008,132 @@ RObject mat2NumMat(const mat &m) {
 }
 
 CharacterVector parNames;
+
+// Phase 4 (SAEM general-likelihood theta plan): set every row's THETA[k]/
+// ETA[k] for the odeSlotPred solve, from _phi (already mu+eta summed) --
+// THETA[k]=this row's phi value, ETA[k]=0, so THETA[k]+ETA[k] reproduces the
+// combined phi exactly (see setupRx's own comment).  Called ONCE, mirroring
+// the original "fill in subject parameter information" loop's own timing --
+// parameters do not change across the bad-solve retry loop, only tolerance
+// does, so this must not be re-run per retry.
+static void saemSetRowsPooled(const mat &_phi) {
+  int nInd = (int)_phi.n_rows;
+  int nH2Theta = (int)_saemPhi1H2ThetaKind.n_elem;
+  int nEta = (int)_saemPhi1H2EtaCol.n_elem;
+  for (int i = 0; i < nInd; ++i) {
+    rx_solving_options_ind *ind = getSolvingOptionsInd(_rx, i);
+    for (int k = 0; k < nH2Theta; ++k) {
+      int kind = _saemPhi1H2ThetaKind(k);
+      int col = _saemPhi1H2ThetaCol(k);
+      double val = (kind == 1) ? _phi(i, _saemPhi1I1(col)) :
+        ((kind == 0) ? _phi(i, _saemPhi1I0(col)) : _saemPhi1H2ThetaFixedVal(k));
+      setIndParPtr(ind, k, val);
+    }
+    for (int k = 0; k < nEta; ++k) setIndParPtr(ind, nH2Theta + k, 0.0);
+  }
+}
+
+// Phase 4: solve odeSlotPred (cheap, no sensitivities -- a Hessian is never
+// needed for a plain likelihood read) for every row, under an
+// OdeSwapScope/OdeSwapCmtScope (the pool is sized for the larger
+// odeSlotHess2 peer when it exists).  par_solve is itself just this same
+// per-individual ind_solve loop with rxode2's own bookkeeping around it, so
+// this changes nothing structurally except the guards and the model solved.
+// Parallelized the same way inner.cpp's own per-subject loops are; called
+// once per (re)solve, same as the original par_solve(_rx) call it replaces
+// (including from inside the bad-solve retry loop).
+static void saemSolveIndividualsPooled(int nInd) {
+  rx_solving_options *op = getSolvingOptions(_rx);
+  int cores = getOpCores(op);
+  bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
+  // odeSlotPred carries no event sensitivities of its own, but the ES shape is
+  // still a process global: without a batch here, a shape some earlier solve
+  // left installed (this fit's own odeSlotHess2 call, or a prior FOCEi fit's
+  // fit-wide inner load) stays live and handle_evid injects jumps sized for
+  // that OTHER model into this (smaller, compacted) solve's dosing events.
+  // OdeSwapEsBatch's own constructor is what deactivates it for a "no ES" slot
+  // -- see its contract in src/odeSwap.cpp.  Must be constructed outside the
+  // OpenMP region below, matching every other peer solve's own batch.
+  OdeSwapEsBatch predEsBatch(odeSlotPred);
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
+#endif
+  for (int i = 0; i < nInd; ++i) {
+#ifdef _OPENMP
+    if (doParallel) setRxThreadId(omp_get_thread_num());
+#endif
+    rx_solving_options_ind *ind = getSolvingOptionsInd(_rx, i);
+    OdeSwapScope neqGuard(odeSlotPred, ind, op);
+    OdeSwapCmtScope cmtGuard(odeSlotPred, op, ind);
+    setIndSolve(ind, -1);
+    odeSwapSolveInd(odeSlotPred, i);
+  }
+}
+
+// Phase 4: read rx_pred_ back from the odeSlotPred solve above, ONE g row
+// per evid==0 observation (rx_pred_ is a PER-OBSERVATION value, summed by
+// the CALLER -- e.g. phi0Objective's accu() -- not pre-summed here),
+// matching the original per-timepoint saem_lhs loop exactly.  Called once,
+// after the bad-solve retry loop finishes, mirroring where the original
+// read loop sits.  Parallelized the same way inner.cpp's own per-subject
+// loops are; the sequential second pass only copies already-computed
+// per-observation values into g, so elt's running count stays deterministic
+// regardless of thread scheduling.
+static void saemReadRowsPooled(mat &g, int &elt, bool &hasNan, int nInd) {
+  rx_solving_options *op = getSolvingOptions(_rx);
+  int cores = getOpCores(op);
+  bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
+  bool hasCens = hasRxCens(_rx), hasLimit = hasRxLimit(_rx);
+  std::vector<std::vector<double> > rowObs((size_t)nInd);
+  std::vector<int> rowNan((size_t)nInd, 0);
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
+#endif
+  for (int i = 0; i < nInd; ++i) {
+#ifdef _OPENMP
+    if (doParallel) setRxThreadId(omp_get_thread_num());
+#endif
+    rx_solving_options_ind *ind = getSolvingOptionsInd(_rx, i);
+    OdeSwapScope neqGuard(odeSlotPred, ind, op);
+    OdeSwapCmtScope cmtGuard(odeSlotPred, op, ind);
+    int nAll = getIndNallTimes(ind);
+    std::vector<double> &obs = rowObs[(size_t)i];
+    obs.reserve((size_t)nAll);
+    if (odeSwapIndBadSolveSlot(op, ind, odeSlotPred)) {
+      for (int j = 0; j < nAll; ++j) {
+        if (getIndEvid(ind, getIndIx(ind, j)) == 0) obs.push_back(1.0e99);
+      }
+      rowNan[i] = 1;
+      continue;
+    }
+    iniSubjectE(i, 1, ind, op, _rx, rxPred.update_inis);
+    double *lhs = neqGuard.lhs();
+    for (int j = 0; j < nAll; ++j) {
+      setIndIdx(ind, j);
+      int kk = getIndIx(ind, j);
+      if (getIndEvid(ind, kk) != 0) continue;
+      double curT = getTime(kk, ind);
+      rxPred.calc_lhs(i, curT, getOpIndSolve(op, ind, j), lhs);
+      double cur = lhs[_saemPhi1PredOffset];
+      if (std::isnan(cur)) { cur = 1.0e99; rowNan[i] = 1; }
+      obs.push_back(cur);
+    }
+  }
+  for (int i = 0; i < nInd; ++i) {
+    rx_solving_options_ind *ind = getSolvingOptionsInd(_rx, i);
+    const std::vector<double> &obs = rowObs[(size_t)i];
+    size_t oi = 0;
+    for (int j = 0; j < getIndNallTimes(ind); ++j) {
+      int kk = getIndIx(ind, j);
+      if (getIndEvid(ind, kk) != 0) continue;
+      g(elt, 0) = obs[oi++];
+      g(elt, 1) = hasCens ? getIndCens(ind, kk) : 0.0;
+      g(elt, 2) = hasLimit ? getIndLimit(ind, kk) : R_NegInf;
+      elt++;
+    }
+    if (rowNan[i]) hasNan = true;
+  }
+}
 
 mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
   // yp has all the observations in the dataset
@@ -4512,7 +5156,12 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
   }
 
 
-  // Fill in subject parameter information
+  // Fill in subject parameter information.  Phase 4 (SAEM general-lik theta
+  // plan): a fit whose phi1 map resolved sets THETA[k]/ETA[k] instead (see
+  // saemSetRowsPooled), reparameterizing the SAME combined phi value rather
+  // than using SAEM's own native paramUpdate/doParam positions -- every
+  // other fit takes the unchanged path below.
+  if (_saemPhi1PoolActive) saemSetRowsPooled(_phi);
   for (int _i = 0; _i < _Nnlmixr2; ++_i) {
     ind = getSolvingOptionsInd(_rx, _i);
     setIndSolve(ind, -1);
@@ -4521,10 +5170,12 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
     } else if (indMixest != nullptr) {
       setIndMixest(ind, indMixest[_i]);
     }
-    int k=0;
-    for (int _j = 0; _j < nPar; _j++){
-      if (doParam[_j] == 1) {
-        setIndParPtr(ind, _j, _phi(_i, k++));
+    if (!_saemPhi1PoolActive) {
+      int k=0;
+      for (int _j = 0; _j < nPar; _j++){
+        if (doParam[_j] == 1) {
+          setIndParPtr(ind, _j, _phi(_i, k++));
+        }
       }
     }
   }
@@ -4533,7 +5184,14 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
   // is recomputed below -- skip the (costly) re-integration entirely.
   if (!_saemFreezeOde) {
   resetRxBadSolve(_rx);
-  par_solve(_rx); // Solve the complete system (possibly in parallel)
+  // Phase 4: a general-lik fit whose phi1 map resolved routes SAEM's own
+  // solve through odeSlotPred (see setupRx) instead of the bulk par_solve --
+  // every other fit is byte-identical to before.
+  if (_saemPhi1PoolActive) {
+    saemSolveIndividualsPooled(_Nnlmixr2);
+  } else {
+    par_solve(_rx); // Solve the complete system (possibly in parallel)
+  }
   int j=0;
   while (hasRxBadSolve(_rx) && j < current_saem_state->_saemMaxOdeRecalc){
     current_saem_state->_saemIncreaseTol=1;
@@ -4562,7 +5220,11 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
       }
     }
     resetRxBadSolve(_rx);
-    par_solve(_rx);
+    if (_saemPhi1PoolActive) {
+      saemSolveIndividualsPooled(_Nnlmixr2);
+    } else {
+      par_solve(_rx);
+    }
     j++;
   }
   if (!current_saem_state->_saemIndTolRelax && j != 0) {
@@ -4576,14 +5238,17 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
   mat g(getRxNsim(_rx) * getRxNobs2(_rx), 3); // nobs across all chains
   int elt=0;
   bool hasNan = false;
+  if (_saemPhi1PoolActive) {
+    saemReadRowsPooled(g, elt, hasNan, _Nnlmixr2);
+  } else {
   for (int id = 0; id < _Nnlmixr2; ++id) {
     ind = getSolvingOptionsInd(_rx, id);
+    double *lhs = getIndLhs(ind);
     iniSubjectE(getOpNeq(op), 1, ind, op, _rx, saem_inis);
     for (int j = 0; j < getIndNallTimes(ind); ++j) {
       setIndIdx(ind, j);
       int kk = getIndIx(ind, getIndIdx(ind));
       double curT = getTime(kk, ind);
-      double *lhs = getIndLhs(ind);
       if (isDose(getIndEvid(ind, kk))) {
         // Need to calculate for advan sensitivities
         saem_lhs((int)id, curT,
@@ -4611,6 +5276,7 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
       } // evid=2 does not need to be calculated
     }
   }
+  }
   if (solveMethodThreadSafe(op)) { // liblsoda
     // Order by the overall solve time
     // Should it be done every time? Every x times?
@@ -4632,9 +5298,70 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
 void setupRx(List &opt, SEXP evt, int nmc, int N) {
   RObject obj = opt[".rx"];
   List mv = _rxode2_rxModelVars_(obj);
-  rxUpdateFuns(mv["trans"], &rxInner);
   parNames = mv[RxMv_params];
 
+  // Phase 4 (SAEM general-likelihood theta plan): a general-lik fit whose
+  // saemPhi1TargetMap resolved (R/saemPhi1Inner.R) attaches saemPhi1Pred
+  // (always) and saemPhi1Hess2 (NULL for some model shapes, e.g. linCmt()).
+  // Rather than pooling SAEM's own (differently-parameterized, native-name)
+  // model alongside these, solve EVERYTHING -- SAEM's own per-iteration
+  // likelihood read AND the phi1 theta step's Laplace objective -- through
+  // predNoLhs/innerHess2 directly: rx_pred_ there IS the same log-density
+  // SAEM's own flattened model computes, just parameterized as THETA[k]
+  // (mu) + ETA[k] (deviation) instead of one pre-summed phi value. Setting
+  // THETA[k]=phi_value, ETA[k]=0 reproduces the combined phi exactly, so no
+  // separate "SAEM's own model" peer/parameter-order reconciliation is
+  // needed at all -- there is only ONE parameterization in play, matching
+  // predNoLhs's/innerHess2's own (see phi1RowSolve, user_function). EVERY
+  // other fit (normal/poisson/binomial, or a general-lik fit whose map did
+  // not resolve) takes the unchanged rxUpdateFuns(..., &rxInner) path below.
+  // The odeSwap registry is a global that outlives a fit (mirrors
+  // foceiFitCpp_'s own "start every fit from empty" comment, src/inner.cpp)
+  // -- otherwise a LATER non-pooled fit's own rxSolve_(obj,...) call still
+  // sees a PRIOR pooled fit's declared Hess2/Pred peers in the registry,
+  // corrupting its own pool sizing even though _saemPhi1PoolActive is false
+  // for it (measured: a normal-model fit run after a general-lik pooled fit
+  // in the same R session segfaulted from exactly this).
+  odeSwapClearAll();
+  _saemPhi1PoolActive = opt.containsElementNamed("saemPhi1Pred") &&
+    !Rf_isNull(opt["saemPhi1Pred"]);
+  if (_saemPhi1PoolActive) {
+    bool haveHess2 = opt.containsElementNamed("saemPhi1Hess2") &&
+      !Rf_isNull(opt["saemPhi1Hess2"]);
+    if (haveHess2) odeSwapDeclare(odeSlotHess2, "hess2", opt["saemPhi1Hess2"]);
+    odeSwapDeclare(odeSlotPred, "pred", opt["saemPhi1Pred"]);
+    // rxSolve_ on whichever peer has the most states (innerHess2's extra
+    // eta-sensitivity states when it built, else predNoLhs) -- matches the
+    // number-of-ODEs sizing rule odeSwap already uses for neq; both share
+    // the identical THETA[]/ETA[]/DV parameter declaration (verified by
+    // .saemPhi1TargetMap), so either works as the params-matrix source.
+    RObject widePar = haveHess2 ? opt["saemPhi1Hess2"] : opt["saemPhi1Pred"];
+    List odeO = opt["rxControl"];
+    List wideMv = _rxode2_rxModelVars_(widePar);
+    CharacterVector wideParNames = wideMv[RxMv_params];
+    int npars = wideParNames.size();
+    int nrows = N * nmc;
+    NumericMatrix parsM(nrows, npars);
+    // Placeholder only -- every real THETA[k]/ETA[k] value is written fresh
+    // by phi1RowSolve before every solve; DV is a per-observation covariate
+    // the shared event table supplies (rxSolve_ still requires a params-
+    // matrix entry for every declared parameter before it can match evt's
+    // own covariate columns).
+    for (int k = 0; k < nrows; k++)
+      for (int j = 0; j < npars; j++) parsM(k, j) = 1.1;
+    parsM.attr("dimnames") = List::create(R_NilValue, wideParNames);
+    rxode2::rxSolve_(widePar, odeO,
+                     R_NilValue, R_NilValue,
+                     parsM, evt, R_NilValue, 1);
+    // Register AFTER rxSolve_ has sized/built the pool -- registering (which
+    // rxDynLoad's) before it exists rebinds rxode2's event-sensitivity
+    // globals and corrupts the solve (see odeSwap.h).
+    if (haveHess2) odeSwapRegister(odeSlotHess2, "hess2", opt["saemPhi1Hess2"], &rxHess2);
+    odeSwapRegister(odeSlotPred, "pred", opt["saemPhi1Pred"], &rxPred);
+    return;
+  }
+
+  rxUpdateFuns(mv["trans"], &rxInner);
   if (!Rf_isNull(obj)){
     RObject pars0 = opt[".pars"];
     List odeO = opt["rxControl"];
@@ -4658,13 +5385,20 @@ void setupRx(List &opt, SEXP evt, int nmc, int N) {
   }
 }
 
+// Unused when _saemPhi1PoolActive (user_function's own phi1RowSolve reads
+// predNoLhs/innerHess2 directly instead) -- harmless to still point these at
+// rxInner, which every fit's setupRx (this function) populates regardless.
+static inline void saemSetLhsInis() {
+  saem_lhs = rxInner.calc_lhs;
+  saem_inis = rxInner.update_inis;
+}
+
 //[[Rcpp::export]]
 SEXP saem_do_pred(SEXP in_phi, SEXP in_evt, SEXP in_opt) {
   List opt = List(in_opt);
   mat phi = as<mat>(in_phi);
   setupRx(opt, in_evt, 1, (int)phi.n_rows);
-  saem_lhs = rxInner.calc_lhs;
-  saem_inis = rxInner.update_inis;
+  saemSetLhsInis();
   _rx=getRxSolve_();
   mat evt = as<mat>(in_evt);
   saem_state_t dummy_st;
@@ -4687,8 +5421,7 @@ SEXP saem_fit(SEXP xSEXP) {
   setupRx(opt, x["evt"], as<int>(x["nmc"]), as<int>(x["N"]));
 
   // if (rxSingleSolve == NULL) rxSingleSolve = (rxSingleSolve_t) R_GetCCallable("rxode2","rxSingleSolve");
-  saem_lhs = rxInner.calc_lhs;
-  saem_inis = rxInner.update_inis;
+  saemSetLhsInis();
   _rx=getRxSolve_();
 
   saem_state_t dummy_st;
