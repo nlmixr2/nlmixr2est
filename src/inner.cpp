@@ -2426,15 +2426,13 @@ static inline double focei_tCensLl(bool lhsOk, int dist, int cens, double dv,
 // appends one for this path (R moves with eta for a prop()/pow() error, so
 // dropping it made the gradient disagree with the objective by a few percent).
 //
-// KNOWN GAP (#992): the transformed prediction's eta sensitivity is taken as
-// d(rx_pred_f_)/d(eta) -- exact for an identity transform, which is the only
-// case doCensT1()/doCensNormal1() themselves are set up for here.  A
-// transform-both-sides censored t()/cauchy() row therefore gets the correct
-// VALUE (fT is transformed) with a chain-rule factor missing from its
-// gradient; the inner Hessian follows the gradient by finite difference.
+// rx_pred_f_ is the RAW prediction, so its eta sensitivity needs the
+// transform's own Jacobian to become d(fT)/d(eta) -- `fJac` = d(tbs)/d(f),
+// 1 for an identity transform.  rx_r_ is already on the transformed scale
+// (it is the variance the llik itself uses), so its sensitivity needs none.
 static inline double focei_tCensDll(bool lhsOk, int dist, int cens, double dv,
                                     double limit, double dll, double fT,
-                                    double *lhs, int etaIdx) {
+                                    double fJac, double *lhs, int etaIdx) {
   bool isT = (dist == rxDistributionT || dist == rxDistributionCauchy);
   bool isDnorm = (dist == rxDistributionDnorm);
   if (!lhsOk || (!isT && !isDnorm) ||
@@ -2447,7 +2445,7 @@ static inline double focei_tCensDll(bool lhsOk, int dist, int cens, double dv,
   if (!isCensObs) return dll;
   double r = lhs[op_focei.predROffset];
   if (!R_FINITE(r) || r <= 0.0) return dll;   // see focei_tCensLl()
-  double df = lhs[op_focei.predFEtaOffset + etaIdx];
+  double df = fJac * lhs[op_focei.predFEtaOffset + etaIdx];
   double dr = lhs[op_focei.predREtaOffset + etaIdx];
   if (isT) {
     double nu = lhs[op_focei.predNuOffset];
@@ -2842,7 +2840,12 @@ double likInner0(double *eta, int id) {
           // there would return another model's values.  Such a subject scores
           // its censored rows uncensored, exactly as it did before #992.
           bool censLhsOk = !predSolve && op_focei.predFOffset >= 0;
-          double fCensT = censLhsOk ? tbs(lhs[op_focei.predFOffset]) : 0.0;
+          double fCensT = 0.0, fCensJac = 1.0;
+          if (censLhsOk) {
+            double _fRaw = lhs[op_focei.predFOffset];
+            fCensT = tbs(_fRaw);
+            fCensJac = tbsD(_fRaw);   // chain d(rx_pred_f_)/d(eta) onto fCensT
+          }
           tbsJac = tbsL(dv0);
           fInd->tbsLik+=tbsJac;
           // fInd->err(k, 0) = lhs[0] - getIndDv(ind, k); // pred-dv
@@ -2970,7 +2973,7 @@ double likInner0(double *eta, int id) {
                   lp(i, 0) += fpm;
                 } else {
                   lp(i, 0) += focei_tCensDll(censLhsOk, dist, cens, dv, limit, fpm,
-                                             fCensT, lhs, i);
+                                             fCensT, fCensJac, lhs, i);
                 }
               }
               // Eq #10
@@ -3005,7 +3008,7 @@ double likInner0(double *eta, int id) {
                   lp(i, 0) += fpm;
                 } else {
                   lp(i, 0) += focei_tCensDll(censLhsOk, dist, cens, dv, limit, fpm,
-                                             fCensT, lhs, i);
+                                             fCensT, fCensJac, lhs, i);
                 }
               }
               // Eq #10

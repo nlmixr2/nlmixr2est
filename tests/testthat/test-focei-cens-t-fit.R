@@ -356,6 +356,28 @@ nmTest({
         cp ~ prop(prop.sd) + cauchy()
       })
     }
+    # a transform-both-sides endpoint: rx_pred_f_ is the RAW prediction, so its
+    # eta sensitivity only matches d(fT)/d(eta) once the transform's own
+    # Jacobian is chained on
+    .lnormM <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        add.sd <- c(0, 0.7)
+        eta.ka ~ 0.2
+        eta.cl ~ 0.1
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ lnorm(add.sd) + cauchy()
+      })
+    }
     .d <- .censTheo()
     .N <- length(unique(.d$ID))
     .testSeed(11)
@@ -369,8 +391,9 @@ nmTest({
         (likInner(.ep, id) - likInner(.em, id)) / (2 * h)
       }, numeric(1))
     }
-    for (.err in c("add", "prop")) {
-      .ui <- rxode2::assertRxUi(if (.err == "add") .addM else .propM)
+    .models <- list(add = .addM, prop = .propM, lnorm = .lnormM)
+    for (.err in names(.models)) {
+      .ui <- rxode2::assertRxUi(.models[[.err]])
       for (.mode in c("m3", "m4", "m2")) {
         .dat <- .censDat(.d, .mode, limit = if (.mode == "m2") 0.25 else 0.5)
         suppressWarnings(.vaeInnerSetup(.ui, .dat, .etaMat, vaeControl()))

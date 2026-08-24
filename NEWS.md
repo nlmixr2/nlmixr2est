@@ -182,8 +182,8 @@
   completing #979 which covered the nlm family only).  Such an endpoint is
   compiled to a scalar log-density, which hid the location, scale and degrees
   of freedom the correction needs; the inner model now carries them (together
-  with `d(f)/d(eta)`, so the inner eta gradient is corrected as well, not just
-  the objective).  A censored `t()`/`cauchy()` fit under these methods changes
+  with `d(f)/d(eta)` and `d(R)/d(eta)`, so the inner eta gradient is corrected as
+  well, not just the objective).  A censored `t()`/`cauchy()` fit under these methods changes
   its objective and its parameter estimates, and no longer emits the
   "censoring ignored" note in `$runInfo`.  An `ar()` endpoint is excluded: its
   reported scale is the marginal, not the conditional, one.
