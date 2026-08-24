@@ -3484,7 +3484,16 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     # cannot supply the gradient and the fit uses finite
     # differences.  (linCmt() passes the scope gate but its unsupported 2nd-order
     # expansion makes it fall back to finite differences at build time.)
-    if (isTRUE(.control$fast) && !.foceiLLGradInScope(.ui)) {
+    # Censoring is one of the out-of-scope cases, but `.foceiLLGradInScope()`
+    # only sees the model.  A censored row's contribution is REPLACED by
+    # doCensT1()/doCensNormal1() (#992), so neither the augmented outer-gradient
+    # model nor the exact 2nd-order inner Hessian -- both built from the
+    # UNCENSORED log-density -- describes it.  gradPooledCoreLL refuses such a
+    # fit at run time already; downgrading here takes the inner Hessian down
+    # with it and says why.
+    if (isTRUE(.control$fast) &&
+          (!.foceiLLGradInScope(.ui) ||
+             .nlmixrDataHasCens(env$data))) {
       .minfo("log-likelihood endpoint: the analytic 'fast' gradient does not apply -- using fast = FALSE")
       .control$fast <- FALSE
     }

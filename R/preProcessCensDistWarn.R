@@ -14,6 +14,26 @@
 #' @inheritParams nlmixr2
 #' @return list with the ui (unmodified; this hook only warns)
 #' @noRd
+NULL
+
+#' Does this dataset carry any censoring information?
+#'
+#' A non-zero `CENS` (M3/M4) or a finite `LIMIT` (M2) on any row.  Shared with
+#' `.foceiFamilyControl()`, which downgrades `fast = TRUE` for a censored
+#' log-likelihood endpoint (#992).
+#'
+#' @inheritParams nlmixr2
+#' @return logical
+#' @noRd
+.nlmixrDataHasCens <- function(data) {
+  if (!is.data.frame(data)) return(FALSE)
+  .nms <- tolower(names(data))
+  .w <- which(.nms == "cens")
+  if (length(.w) == 1L && isTRUE(any(data[[.w]] != 0, na.rm = TRUE))) return(TRUE)
+  .w <- which(.nms == "limit")
+  length(.w) == 1L && isTRUE(any(is.finite(data[[.w]]), na.rm = TRUE))
+}
+
 .preProcessCensDistWarn <- function(ui, est, data, control) {
   if (identical(est, "nls")) return(list(ui = ui))
   # t()/cauchy() M2/M3/M4 is wired for two kernels: src/nlm.cpp's
@@ -37,17 +57,7 @@
   if (is.null(.predDf) || nrow(.predDf) == 0) return(list(ui = ui))
   .unsafeDist <- unique(.predDf$distribution[!(.predDf$distribution %in% .safe)])
   if (length(.unsafeDist) == 0) return(list(ui = ui))
-  .nms <- tolower(names(data))
-  .hasCens <- FALSE
-  .wCens <- which(.nms == "cens")
-  if (length(.wCens) == 1L) {
-    .hasCens <- isTRUE(any(data[[.wCens]] != 0, na.rm = TRUE))
-  }
-  .wLimit <- which(.nms == "limit")
-  if (!.hasCens && length(.wLimit) == 1L) {
-    .hasCens <- isTRUE(any(is.finite(data[[.wLimit]]), na.rm = TRUE))
-  }
-  if (!.hasCens) return(list(ui = ui))
+  if (!.nlmixrDataHasCens(data)) return(list(ui = ui))
   for (.d in .unsafeDist) {
     warning(paste0("censoring ignored for '", .d, "' endpoint(s)"), call. = FALSE)
   }

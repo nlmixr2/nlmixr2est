@@ -74,10 +74,17 @@ nmTest({
 
   ## ---------------------------------------------------------------- 1. value
   .popT <- function() {
-    ini({tka <- fix(0.45); tcl <- fix(1); tv <- fix(3.45); add.sd <- 0.7
-      nu <- fix(5)})
+    ini({
+      tka <- fix(0.45)
+      tcl <- fix(1)
+      tv <- fix(3.45)
+      add.sd <- 0.7
+      nu <- fix(5)
+    })
     model({
-      ka <- exp(tka); cl <- exp(tcl); v <- exp(tv)
+      ka <- exp(tka)
+      cl <- exp(tcl)
+      v <- exp(tv)
       d/dt(depot) <- -ka * depot
       d/dt(center) <- ka * depot - cl / v * center
       cp <- center / v
@@ -86,7 +93,8 @@ nmTest({
   }
 
   test_that("population-only FOCEi t() censoring matches the closed form (#992)", {
-    skip_on_cran(); skip_if_not_installed("nlmixr2data")
+    skip_on_cran()
+    skip_if_not_installed("nlmixr2data")
     .d <- .censTheo()
     .lo <- .censRows(.d)
     # -2*(sum ll - nObs*log(sqrt(2*pi))) IS the neta == 0 objective, with the
@@ -112,9 +120,17 @@ nmTest({
 
   ## ------------------------------------------------- 2. value, with etas
   .etaCauchy <- function() {
-    ini({tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- c(0, 0.7); eta.ka ~ 0.2})
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      add.sd <- c(0, 0.7)
+      eta.ka ~ 0.2
+    })
     model({
-      ka <- exp(tka + eta.ka); cl <- exp(tcl); v <- exp(tv)
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl)
+      v <- exp(tv)
       d/dt(depot) <- -ka * depot
       d/dt(center) <- ka * depot - cl / v * center
       cp <- center / v
@@ -124,26 +140,44 @@ nmTest({
   # pcauchy(q, loc, scale) = 0.5 + atan((q-loc)/scale)/pi -- so the censored
   # cauchy likelihood is writable as a plain general ll() endpoint
   .manM3 <- function() {
-    ini({tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- c(0, 0.7); eta.ka ~ 0.2})
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      add.sd <- c(0, 0.7)
+      eta.ka ~ 0.2
+    })
     model({
-      ka <- exp(tka + eta.ka); cl <- exp(tcl); v <- exp(tv)
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl)
+      v <- exp(tv)
       d/dt(depot) <- -ka * depot
       d/dt(center) <- ka * depot - cl / v * center
       cp <- center / v
-      sdv <- abs(add.sd); zz <- (DV - cp) / sdv
+      sdv <- abs(add.sd)
+      zz <- (DV - cp) / sdv
       lcens <- log(0.5 + atan((LOQ - cp) / sdv) / pi)
       lunc <- -log(pi * sdv) - log(1 + zz * zz)
       ll(err) ~ CENSF * lcens + (1 - CENSF) * lunc
     })
   }
   .manM4 <- function() {
-    ini({tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- c(0, 0.7); eta.ka ~ 0.2})
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      add.sd <- c(0, 0.7)
+      eta.ka ~ 0.2
+    })
     model({
-      ka <- exp(tka + eta.ka); cl <- exp(tcl); v <- exp(tv)
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl)
+      v <- exp(tv)
       d/dt(depot) <- -ka * depot
       d/dt(center) <- ka * depot - cl / v * center
       cp <- center / v
-      sdv <- abs(add.sd); zz <- (DV - cp) / sdv
+      sdv <- abs(add.sd)
+      zz <- (DV - cp) / sdv
       pHi <- 0.5 + atan((LOQ - cp) / sdv) / pi
       pLo <- 0.5 + atan((LIM - cp) / sdv) / pi
       lcens <- log(pHi - pLo) - log(1 - pLo)
@@ -152,20 +186,30 @@ nmTest({
     })
   }
   .manM2 <- function() {
-    ini({tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- c(0, 0.7); eta.ka ~ 0.2})
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      add.sd <- c(0, 0.7)
+      eta.ka ~ 0.2
+    })
     model({
-      ka <- exp(tka + eta.ka); cl <- exp(tcl); v <- exp(tv)
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl)
+      v <- exp(tv)
       d/dt(depot) <- -ka * depot
       d/dt(center) <- ka * depot - cl / v * center
       cp <- center / v
-      sdv <- abs(add.sd); zz <- (DV - cp) / sdv
+      sdv <- abs(add.sd)
+      zz <- (DV - cp) / sdv
       zl <- (2 * (LIM < cp) - 1) * (LIM - cp) / sdv
       ll(err) ~ -log(pi * sdv) - log(1 + zz * zz) - log(0.5 - atan(zl) / pi)
     })
   }
 
   test_that("FOCEi t()/cauchy() censoring matches a hand-written ll() (#992)", {
-    skip_on_cran(); skip_if_not_installed("nlmixr2data")
+    skip_on_cran()
+    skip_if_not_installed("nlmixr2data")
     .d <- .censTheo()
     .ctl <- foceiControl(print = 0L, covMethod = "", calcTables = FALSE,
                          maxOuterIterations = 0L)
@@ -190,12 +234,14 @@ nmTest({
 
   ## ------------------------------------------------ mechanism-used evidence
   test_that("FOCEi reports the censoring method it applied (#992)", {
-    skip_on_cran(); skip_if_not_installed("nlmixr2data")
+    skip_on_cran()
+    skip_if_not_installed("nlmixr2data")
     .d <- .censTheo(2L)
     .ctl <- foceiControl(print = 0L, covMethod = "", calcTables = FALSE,
                          maxOuterIterations = 0L)
     .m3 <- .censDat(.d, "m3", lloq = 3)
-    .naive <- .m3; .naive$CENS <- 0L
+    .naive <- .m3
+    .naive$CENS <- 0L
     .fitCens <- .nlmixr(.etaCauchy, .m3, est = "focei", .ctl)
     .fitNaive <- .nlmixr(.etaCauchy, .naive, est = "focei", .ctl)
     # the FOCEi family appends the inner-Hessian censoring treatment
@@ -209,14 +255,23 @@ nmTest({
   })
 
   test_that("a llik-forced dnorm() endpoint honors censoring too (#992)", {
-    skip_on_cran(); skip_if_not_installed("nlmixr2data")
+    skip_on_cran()
+    skip_if_not_installed("nlmixr2data")
     # dnorm() takes the same llik-forced path as t()/cauchy() (rx_pred_ is the
     # log-density), so it needs the same rx_pred_f_/rx_r_ columns -- routed
     # through doCensNormal1() rather than doCensT1().
     .dn <- function() {
-      ini({tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- c(0, 0.7); eta.ka ~ 0.2})
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        add.sd <- c(0, 0.7)
+        eta.ka ~ 0.2
+      })
       model({
-        ka <- exp(tka + eta.ka); cl <- exp(tcl); v <- exp(tv)
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl)
+        v <- exp(tv)
         d/dt(depot) <- -ka * depot
         d/dt(center) <- ka * depot - cl / v * center
         cp <- center / v
@@ -224,13 +279,22 @@ nmTest({
       })
     }
     .manDn <- function() {
-      ini({tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- c(0, 0.7); eta.ka ~ 0.2})
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        add.sd <- c(0, 0.7)
+        eta.ka ~ 0.2
+      })
       model({
-        ka <- exp(tka + eta.ka); cl <- exp(tcl); v <- exp(tv)
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl)
+        v <- exp(tv)
         d/dt(depot) <- -ka * depot
         d/dt(center) <- ka * depot - cl / v * center
         cp <- center / v
-        sdv <- abs(add.sd); zz <- (DV - cp) / sdv
+        sdv <- abs(add.sd)
+        zz <- (DV - cp) / sdv
         lcens <- log(pnorm((LOQ - cp) / sdv))
         lunc <- -0.5 * log(2 * pi) - log(sdv) - 0.5 * zz * zz
         ll(err) ~ CENSF * lcens + (1 - CENSF) * lunc
@@ -249,12 +313,21 @@ nmTest({
   # this before a fit-based test would leak M2/M3/M4 into that fit's
   # $censInformation.
   test_that("the censored inner eta-gradient matches central differences (#992)", {
-    skip_on_cran(); skip_if_not_installed("nlmixr2data")
+    skip_on_cran()
+    skip_if_not_installed("nlmixr2data")
     .addM <- function() {
-      ini({tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- c(0, 0.7)
-        eta.ka ~ 0.2; eta.cl ~ 0.1})
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        add.sd <- c(0, 0.7)
+        eta.ka ~ 0.2
+        eta.cl ~ 0.1
+      })
       model({
-        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv)
         d/dt(depot) <- -ka * depot
         d/dt(center) <- ka * depot - cl / v * center
         cp <- center / v
@@ -265,10 +338,18 @@ nmTest({
     # with central differences if d(R)/d(eta) reaches dCensT1 -- FOCE's inner
     # model has no such column in the FOCEi position, so it is appended
     .propM <- function() {
-      ini({tka <- 0.45; tcl <- 1; tv <- 3.45; prop.sd <- c(0, 0.3)
-        eta.ka ~ 0.2; eta.cl ~ 0.1})
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        prop.sd <- c(0, 0.3)
+        eta.ka ~ 0.2
+        eta.cl ~ 0.1
+      })
       model({
-        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv)
         d/dt(depot) <- -ka * depot
         d/dt(center) <- ka * depot - cl / v * center
         cp <- center / v
@@ -281,8 +362,10 @@ nmTest({
     .etaMat <- matrix(stats::rnorm(.N * 2, 0, 0.1), .N, 2)
     .fdLp <- function(eta, id, h = 1e-5) {
       vapply(seq_along(eta), function(j) {
-        .ep <- eta; .ep[j] <- .ep[j] + h
-        .em <- eta; .em[j] <- .em[j] - h
+        .ep <- eta
+        .ep[j] <- .ep[j] + h
+        .em <- eta
+        .em[j] <- .em[j] - h
         (likInner(.ep, id) - likInner(.em, id)) / (2 * h)
       }, numeric(1))
     }

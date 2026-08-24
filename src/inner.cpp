@@ -12154,6 +12154,18 @@ Environment foceiFitCpp_(Environment e){
           op_focei.hess2Neq = odeSwapNeq(odeSlotHess2);
           op_focei.hess2Nlhs = odeSwapNlhs(odeSlotHess2);
           op_focei.predHess2Offset = odeSwapLhsIndex(odeSlotHess2, "rx__d2pred_1_1__");
+          // rx__d2pred_ is the second derivative of the UNCENSORED log-density, and
+          // doCensT1()/doCensNormal1() REPLACE a censored row's contribution -- so once
+          // the M2/M3/M4 correction is armed (predFOffset >= 0, #992) that curvature is
+          // stale for those rows.  Disarm the exact-Hessian branch and let
+          // calcEtaHessian fall back to the Shi21 finite difference of the inner
+          // gradient, which does carry the correction.  (gradPooledCoreLL already
+          // refuses a censored fit outright, so the analytic outer gradient is
+          // unaffected.)
+          if (op_focei.predFOffset >= 0 &&
+              (hasRxCens(getRxSolve_()) || hasRxLimit(getRxSolve_()))) {
+            op_focei.predHess2Offset = -1;
+          }
           // pin the 1st-order inner Newton solves to innerNeq (pool sized for rxHess2)
           if (op_focei.predHess2Offset >= 0 && op_focei.innerNeq > 0) {
             impSetInnerNeqOverride();

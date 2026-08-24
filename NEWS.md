@@ -188,6 +188,13 @@
   "censoring ignored" note in `$runInfo`.  An `ar()` endpoint is excluded: its
   reported scale is the marginal, not the conditional, one.
 
+- `foceiControl(fast=TRUE)` now downgrades to `fast=FALSE` for a CENSORED
+  log-likelihood endpoint, as the documentation already said it did.  Both the
+  augmented outer-gradient model and the exact second-order inner Hessian
+  differentiate the uncensored log-density, which the M2/M3/M4 correction
+  replaces for a censored row; the outer gradient already refused such a fit at
+  run time, but the inner Hessian did not.
+
 - The persisted FOCEi model cache (`rxUiGet.foceiModelCache()`) now keys on the
   `nlmixr2est` version.  That cache lives in rxode2's user cache directory when
   `rxode2::rxCreateCache()` has been run, so it survives an upgrade: any release

@@ -79,10 +79,18 @@ nmTest({
 
   .cauchyUi <- function() {
     .f <- function() {
-      ini({tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- c(0, 0.7)
-        eta.ka ~ 0.2; eta.cl ~ 0.1})
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        add.sd <- c(0, 0.7)
+        eta.ka ~ 0.2
+        eta.cl ~ 0.1
+      })
       model({
-        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv)
         d/dt(depot) <- -ka * depot
         d/dt(center) <- ka * depot - cl / v * center
         cp <- center / v
@@ -158,10 +166,18 @@ nmTest({
 
   .arDnormUi <- function() {
     .f <- function() {
-      ini({tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- c(0, 0.7)
-        phi <- c(0, 0.5, 1); eta.ka ~ 0.2})
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        add.sd <- c(0, 0.7)
+        phi <- c(0, 0.5, 1)
+        eta.ka ~ 0.2
+      })
       model({
-        ka <- exp(tka + eta.ka); cl <- exp(tcl); v <- exp(tv)
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl)
+        v <- exp(tv)
         d/dt(depot) <- -ka * depot
         d/dt(center) <- ka * depot - cl / v * center
         cp <- center / v
@@ -204,11 +220,63 @@ nmTest({
     expect_false(identical(rxUiGet.foceiModelDigest(list(.ui, TRUE)), .d0))
   })
 
+  test_that("fast=TRUE downgrades for a CENSORED llik endpoint (#992)", {
+    # the exact 2nd-order inner Hessian (rx__d2pred_) and the augmented
+    # outer-gradient model both differentiate the UNCENSORED log-density, which
+    # doCensT1() replaces for a censored row
+    .f <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        add.sd <- c(0, 0.7)
+        eta.ka ~ 0.2
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl)
+        v <- exp(tv)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd) + cauchy()
+      })
+    }
+    .d <- nlmixr2data::theo_sd
+    .d <- .d[.d$ID <= 2, ]
+    .fastOf <- function(dat) {
+      .env <- new.env(parent = emptyenv())
+      .env$ui <- rxode2::rxUiDecompress(rxode2::rxode2(.f))
+      .env$data <- dat
+      .env$est <- "focei"
+      .env$control <- foceiControl(print = 0L, fast = TRUE)
+      # .foceiFamilyControl() writes the resolved control back onto the ui
+      suppressMessages(.foceiFamilyControl(.env))
+      isTRUE(rxode2::rxGetControl(.env$ui, "fast", FALSE))
+    }
+    expect_true(.fastOf(.d))
+    .m3 <- .d
+    .m3$CENS <- ifelse(.m3$EVID == 0 & .m3$DV < 3, 1L, 0L)
+    expect_false(.fastOf(.m3))
+    # M2 (LIMIT only, nothing flagged censored) counts too
+    .m2 <- .d
+    .m2$LIMIT <- ifelse(.m2$EVID == 0, 0.25, NA_real_)
+    expect_false(.fastOf(.m2))
+  })
+
   test_that("censoring is no longer reported as ignored for focei t()/cauchy()", {
     .f <- function() {
-      ini({tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- c(0, 0.7); eta.ka ~ 0.2})
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        add.sd <- c(0, 0.7)
+        eta.ka ~ 0.2
+      })
       model({
-        ka <- exp(tka + eta.ka); cl <- exp(tcl); v <- exp(tv)
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl)
+        v <- exp(tv)
         d/dt(depot) <- -ka * depot
         d/dt(center) <- ka * depot - cl / v * center
         cp <- center / v
