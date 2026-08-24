@@ -100,7 +100,7 @@ nmTest({
     .dose <- data.frame(ID = seq_len(30), TIME = 0, DV = NA_real_,
                         AMT = 60000, EVID = 1)
     .dat <- rbind(.dose, .obs)
-    .ivBolusLL <- .ivBolus %>% model(cp ~ prop(prop.err) + dnorm())
+    .ivBolusLL <- .ivBolus |> model(cp ~ prop(prop.err) + dnorm())
     .fPlain <- suppressWarnings(nlmixr2(.ivBolus, .dat, est = "focei",
                                         control = foceiControl(print = 0L)))
     .fLLFd <- suppressWarnings(nlmixr2(.ivBolusLL, .dat, est = "focei",
