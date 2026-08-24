@@ -25,9 +25,26 @@ nmTest({
     expect_error(foceiControl(trustRinit = 0))
     expect_error(foceiControl(trustRmax = 0))
 
-    .ctl <- foceiControl(innerOpt = "trust", trustConf = 0.9)
+    # trustFterm/trustMterm default to the plain 10^(-sigdig), independent of
+    # epsilon (n1qn1's own, unrelated tolerance) even though both happen to
+    # share the same formula/value by default.
+    expect_equal(foceiControl(sigdig = 3)$trustFterm, 0.001)
+    expect_equal(foceiControl(sigdig = 3)$trustMterm, 0.001)
+    expect_equal(foceiControl(sigdig = 3, epsilon = 1e-2)$trustFterm, 0.001)
+    expect_equal(foceiControl(sigdig = 3, epsilon = 1e-2)$trustMterm, 0.001)
+    expect_equal(foceiControl(trustFterm = 0.5)$trustFterm, 0.5)
+    expect_equal(foceiControl(trustMterm = 0.25)$trustMterm, 0.25)
+    expect_error(foceiControl(trustFterm = 0))
+    expect_error(foceiControl(trustMterm = 0))
+    expect_error(foceiControl(trustFterm = -1))
+    expect_error(foceiControl(trustMterm = -1))
+
+    .ctl <- foceiControl(innerOpt = "trust", trustConf = 0.9,
+                         trustFterm = 0.5, trustMterm = 0.25)
     expect_equal(do.call(foceiControl, .ctl)$innerOpt, 3L)
     expect_equal(do.call(foceiControl, .ctl)$trustConf, 0.9)
+    expect_equal(do.call(foceiControl, .ctl)$trustFterm, 0.5)
+    expect_equal(do.call(foceiControl, .ctl)$trustMterm, 0.25)
   })
 
   .oneCmt <- function() {

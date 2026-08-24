@@ -423,9 +423,8 @@ getValidNlmixrCtl.trust <- function(control) {
 #' @noRd
 .trustWarnUnderConverged <- function(tres) {
   if (isTRUE(tres$underConverged)) {
-    warning("trust exited without a verified stationary point (the Newton step ",
-            "at the reported optimum still exceeds tolerance); consider a ",
-            "larger 'rmax'/'iterlim', or est=\"bobyqa\"/\"nlm\"", call.=FALSE)
+    warning("exited without a verified stationary point; try larger rmax/iterlim",
+            call.=FALSE)
   }
   invisible(NULL)
 }
