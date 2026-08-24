@@ -151,3 +151,42 @@ test_that("data-independent candidate pairs are memoized by the model digest", {
   .st5 <- .foceiLinCmtCarryMemoStats()
   expect_equal(.st5[["misses"]], 3L)
 })
+
+test_that("candidate pairs persist through the rxode2 cache-directory sidecar", {
+  .foceiLinCmtCarryMemoClear()
+  .foceiLinCmtCarryMemoStats(reset = TRUE)
+  .ui <- .carryUiCov()
+  .p1 <- .foceiLinCmtCarryPairs(.ui)          # compute + write the sidecar
+  .key <- rxUiGet.foceiModelDigest(list(rxode2::assertRxUi(.ui)))
+  .f <- .foceiLinCmtCarryCacheFile(.key)
+  expect_true(file.exists(.f))
+  # a "fresh session": empty session env, warm cache directory -- the next
+  # call must be served from the sidecar (mechanism: fileHits moves,
+  # misses does not)
+  .foceiLinCmtCarryMemoClear(files = FALSE)
+  .foceiLinCmtCarryMemoStats(reset = TRUE)
+  .p2 <- .foceiLinCmtCarryPairs(.carryUiCov())
+  .st <- .foceiLinCmtCarryMemoStats()
+  expect_equal(.st[["fileHits"]], 1L)
+  expect_equal(.st[["misses"]], 0L)
+  expect_identical(.p1, .p2)
+  # a sidecar from a different nlmixr2est build is stale: recompute + rewrite
+  saveRDS(list(md5 = "not-this-build", pairs = .p1), .f)
+  .foceiLinCmtCarryMemoClear(files = FALSE)
+  .foceiLinCmtCarryMemoStats(reset = TRUE)
+  .foceiLinCmtCarryPairs(.carryUiCov())
+  .st2 <- .foceiLinCmtCarryMemoStats()
+  expect_equal(.st2[["fileHits"]], 0L)
+  expect_equal(.st2[["misses"]], 1L)
+  expect_identical(readRDS(.f)$md5, nlmixr2.md5)
+  # the opt-out bypasses the sidecar entirely
+  withr::with_envvar(c(NLMIXR2EST_CARRY_MEMO = "off"), {
+    .foceiLinCmtCarryMemoClear(files = FALSE)
+    .foceiLinCmtCarryMemoStats(reset = TRUE)
+    .foceiLinCmtCarryPairs(.carryUiCov())
+    .st3 <- .foceiLinCmtCarryMemoStats()
+    expect_equal(.st3[["fileHits"]], 0L)
+    expect_equal(.st3[["misses"]], 0L)
+  })
+  .foceiLinCmtCarryMemoClear()
+})

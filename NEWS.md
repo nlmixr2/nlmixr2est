@@ -72,7 +72,15 @@
   SAEM's linearized FIM needs no change (it perturbs `phi` and
   re-solves values, which is exact under a time-varying covariate).
   Requires an rxode2 with the carry sentinels (the event channels need its
-  `which1 = -8` pin); older versions keep the previous behavior.
+  `which1 = -8` pin); older versions keep the previous behavior.  The
+  candidate detection itself is memoized by the focei model digest and
+  persisted as a sidecar in rxode2's cache directory (`rxCreateCache()`),
+  so repeated fits -- and, with a persistent cache, fresh sessions -- skip
+  the symbolic pass.  The focei model-cache bundle itself now stores each
+  generated model as its `rxode2::rxNorm()` text instead of a serialized
+  model object (about 1 kb instead of 1 Mb; rebuilding from the text hits
+  rxode2's compiled-model cache); bundles written by an earlier version
+  still load.
 
 - A modeled `alag()` or `f()` on a `linCmt()` compartment now gets an exact
   FOCEi/FOCE eta gradient instead of a silently incomplete one.  The

@@ -1894,30 +1894,53 @@ rxUiGet.foceiModelCache <- function(x, ...) {
 #attr(rxUiGet.foceiModelCache, "desc") <- "Get the focei cache file for a model"
 attr(rxUiGet.foceiModelCache, "rstudio") <- "file"
 
+#' Cached-model bundle element -> storable form: an rxode2 model is stored
+#' as its normalized model TEXT (rxode2::rxNorm()), not a serialized model
+#' object -- the text is small and rebuilding from it hits rxode2's own
+#' compiled-model cache, so rehydration loads the cached dll rather than
+#' compiling
+#' @noRd
+.foceiModelCacheDeflate <- function(el) {
+  if (inherits(el, "rxode2")) {
+    return(structure(list(norm = rxode2::rxNorm(el)),
+                     class = "nlmixr2estFoceiNorm"))
+  }
+  el
+}
+
+#' Storable form -> live model (old-format entries hold rxode2 objects;
+#' keep loading those so an existing cache file still works)
+#' @noRd
+.foceiModelCacheInflate <- function(el) {
+  if (inherits(el, "nlmixr2estFoceiNorm")) {
+    return(suppressMessages(suppressWarnings(rxode2::rxode2(el$norm))))
+  }
+  if (inherits(el, "rxode2")) {
+    return(rxode2::rxLoad(el))
+  }
+  el
+}
+
 #' @export
 rxUiGet.foceiModel <- function(x, ...) {
   .cacheFile <- rxUiGet.foceiModelCache(x, ...)
   if (file.exists(.cacheFile)) {
     .ret <- readRDS(.cacheFile)
-    lapply(seq_along(.ret), function(i) {
-      if (inherits(.ret[[i]], "rxode2")) {
-        rxode2::rxLoad(.ret[[i]])
-      }
-    })
+    .ret[] <- lapply(.ret, .foceiModelCacheInflate)
     return(.ret)
   }
   .ui <- x[[1]]
   .iniDf <- get("iniDf", .ui)
-  if (all(is.na(.iniDf$neta1))) {
-    .ret <- rxUiGet.ebe(x, ...)
+  .ret <- if (all(is.na(.iniDf$neta1))) {
+    rxUiGet.ebe(x, ...)
+  } else if (rxode2::rxGetControl(.ui, "interaction", 1L)) {
+    rxUiGet.focei(x, ...)
   } else {
-    if (rxode2::rxGetControl(.ui, "interaction", 1L)) {
-      .ret <- rxUiGet.focei(x, ...)
-    } else {
-      .ret <- rxUiGet.foce(x, ...)
-    }
+    rxUiGet.foce(x, ...)
   }
-  saveRDS(.ret, .cacheFile)
+  .store <- .ret
+  .store[] <- lapply(.store, .foceiModelCacheDeflate)
+  saveRDS(.store, .cacheFile)
   .ret
 }
 # attr(rxUiGet.foceiModel, "desc") <- "Get focei model object"
@@ -3309,7 +3332,12 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     if (is.null(.why)) {
       # a jump (f()/alag()) channel needs every dose in the modified
       # compartment and, for alag()/covariate f(), a bolus-only regimen
-      .oral0 <- .rxFoceiLinCmtCarryShape(ui$foceiEtaS)$oral0 # nolint: object_usage_linter.
+      # oral0 rides on the cached pairs so a warm cache never rebuilds the
+      # symengine environment just for the dose-compartment check
+      .oral0 <- attr(.pairs, "oral0")
+      if (is.null(.oral0)) {
+        .oral0 <- .rxFoceiLinCmtCarryShape(ui$foceiEtaS)$oral0 # nolint: object_usage_linter.
+      }
       .why <- .rxFoceiCarryJumpDataProblem(.pairs, .rd, .oral0) # nolint: object_usage_linter.
     }
     if (!is.null(.why)) {

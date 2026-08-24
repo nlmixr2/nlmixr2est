@@ -42,34 +42,6 @@
              stringsAsFactors = FALSE)
 }
 
-#' Session memo for the data-independent candidate pairs, keyed by the
-#' focei model digest (which already covers the model text, iniDf,
-#' linCmtSensCarry, the rxode2 carry capability and covsInterpolation --
-#' everything the symbolic detection depends on).  Only the `data = NULL`
-#' candidate result is memoized; every data-dependent conclusion (varying,
-#' ss/evid, jump-regimen checks) is re-derived per fit.
-#' @noRd
-.carryPairsMemo <- new.env(parent = emptyenv())
-
-#' Drop every memoized entry (tests; a session never needs this itself)
-#' @noRd
-.foceiLinCmtCarryMemoClear <- function() {
-  rm(list = ls(envir = .carryPairsMemo, all.names = FALSE), envir = .carryPairsMemo)
-  invisible(NULL)
-}
-
-#' Memo hit/miss counters (mechanism observable for tests)
-#' @noRd
-.foceiLinCmtCarryMemoStats <- function(reset = FALSE) {
-  .st <- c(hits = get0("hits", envir = .carryPairsMemo, ifnotfound = 0L),
-           misses = get0("misses", envir = .carryPairsMemo, ifnotfound = 0L))
-  if (reset) {
-    assign("hits", 0L, envir = .carryPairsMemo)
-    assign("misses", 0L, envir = .carryPairsMemo)
-  }
-  .st
-}
-
 #' Carry-eligible pairs straight from a model UI (test/entry convenience)
 #'
 #' @param ui rxode2 UI model
@@ -88,27 +60,21 @@
   # the data-independent candidate result is a pure function of the model
   # digest; skip the foceiEtaS symengine build on a repeat fit of the same
   # model.  Data-dependent checks never reach this memo (data = NULL only).
-  .key <- if (is.null(data) &&
+  .key <- if (is.null(data) && # nolint: object_usage_linter.
               !identical(Sys.getenv("NLMIXR2EST_CARRY_MEMO"), "off")) {
     tryCatch(rxUiGet.foceiModelDigest(list(.ui)), error = function(e) NULL)
   }
-  if (!is.null(.key) && exists(.key, envir = .carryPairsMemo, inherits = FALSE)) {
-    assign("hits", .foceiLinCmtCarryMemoStats()[["hits"]] + 1L, envir = .carryPairsMemo)
-    return(get(.key, envir = .carryPairsMemo, inherits = FALSE))
-  }
+  .cached <- .foceiLinCmtCarryMemoGet(.key) # nolint: object_usage_linter.
+  if (!is.null(.cached)) return(.cached)
   .s <- .ui$foceiEtaS
   .etaVars <- paste0("ETA_", seq_len(.s$..maxEta), "_")
   .ret <- .rxFoceiLinCmtCarryEligible(list(.ui), .s, .etaVars, data = data, # nolint: object_usage_linter.
                                       interpolation = interpolation)
-  if (!is.null(.key)) {
-    assign("misses", .foceiLinCmtCarryMemoStats()[["misses"]] + 1L, envir = .carryPairsMemo)
-    # bound the memo (a session rarely fits more than a handful of models)
-    .keys <- setdiff(ls(envir = .carryPairsMemo, all.names = FALSE), c("hits", "misses"))
-    if (length(.keys) >= 64L) {
-      rm(list = .keys, envir = .carryPairsMemo)
-    }
-    assign(.key, .ret, envir = .carryPairsMemo)
-  }
+  # the final shape rides with the result so consumers (the fit-time
+  # jump-data check) never rebuild the symengine environment for it
+  attr(.ret, "oral0") <- tryCatch(.rxFoceiLinCmtCarryShape(.s)$oral0, # nolint: object_usage_linter.
+                                  error = function(e) NULL)
+  .foceiLinCmtCarryMemoPut(.key, .ret) # nolint: object_usage_linter.
   .ret
 }
 
