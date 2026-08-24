@@ -11090,6 +11090,29 @@ void impMuInterceptStep() {
 
 int impThetaSensN() { return op_focei.impThetaSensIdx.size(); }
 
+// Whether the combined eta+theta sensitivity build (#958) is loaded: the INNER
+// model itself carries the theta columns, so impOuter's E-step can harvest
+// them from its own per-sample inner solve instead of the M-step re-solving
+// (see impEStep's harvest path in imp.cpp).
+bool impCombSensEnabled() { return op_focei.combSens; }
+
+// Whether subject id's most recent likInner0 call (impEvalJointLik) solved the
+// INNER model itself, as opposed to falling back to the pred-model FD path.
+// On an FD fallback, ind->solve holds the PRED model's trajectory, not the
+// INNER model's, so a combSens theta-sensitivity read against odeSlotInner
+// must NOT reuse it -- mirrors nnOuterUsable()'s doFD check and
+// foceiCondBatchThetaGradOne's usedFD gate (both above).
+bool impLastInnerSolveUsable(int id) { return inds_focei[id].doFD == 0; }
+
+// #958: how many impEStep per-sample theta-sensitivity reads reused the
+// E-step's own inner solve (see inner.h).  Incremented from imp.cpp's
+// parallel E-step loop, so atomic.
+static std::atomic<int> _impThetaSensHarvestN(0);
+void impThetaSensHarvestTick() {
+  _impThetaSensHarvestN.fetch_add(1, std::memory_order_relaxed);
+}
+int impThetaSensHarvestN() { return _impThetaSensHarvestN.load(std::memory_order_relaxed); }
+
 // 0-based eta indices whose Omega diagonal is fixed (the EM Omega update restores
 // their rows/columns to the starting Omega so fix()ed variances are held).
 void impGetOmegaFixedEta(std::vector<int>& idx) {
