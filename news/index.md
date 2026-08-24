@@ -236,6 +236,23 @@
   on) still silently ignore censoring for now, but a fit now warns when
   that combination is used instead of staying silent.
 
+- The `rx_r_` fix above (`.fixCensRNuLine()`, `R/focei.R`) rebuilt
+  `rx_r_` by re-inlining `rx_rll_`’s defining expression, which for a
+  transformed `propT()`/`powT()` error model contains the symbol
+  `rx_pred_` – a symbol already overwritten with the scalar
+  log-likelihood by that point in the same branch, silently corrupting
+  the variance for any censored `propT()`/`powT()` endpoint (found by an
+  independent Antigravity review). Fixed by referencing the
+  already-computed `rx_rll_` variable instead of its expression.
+
+- An [`ar()`](https://rdrr.io/r/stats/ar.html) endpoint’s censoring
+  correction now uses a self-consistent marginal (not the exact
+  AR(1)-conditional) mean/variance for M2/M3/M4 scoring – a real
+  improvement over the previous corrupted state, but still an
+  approximation for [`ar()`](https://rdrr.io/r/stats/ar.html)
+  specifically; tracked as
+  [\#1001](https://github.com/nlmixr2/nlmixr2est/issues/1001).
+
 - `est="saem"` with a `pow()` residual error model (`rmPow`/`rmAddPow`/
   `rmPowLam`/`rmAddPowLam`) never applied the estimated power exponent
   in the E-step’s MCMC-acceptance likelihood – it always scored
