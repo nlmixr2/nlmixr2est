@@ -116,6 +116,51 @@ nmTest({
     expect_equal(-2 * sum(fit$llikObs, na.rm = TRUE), fit$objf)
   })
 
+  test_that("llikObs comes back in record order, not reversed by subject", {
+    # llikObsFull is the one per-subject block handed to R as a contiguous
+    # array, so its per-subject offsets have to follow the subject order.  They
+    # used to be a running total taken in the setup loop's BACKWARDS order, so
+    # subject 1 was given the tail of the buffer and the exported per-record
+    # log-likelihoods came back reversed by subject.
+    d <- data.frame(ID = rep(1:3, each = 2), TIME = rep(c(0, 1), 3),
+                    DV = c(NA, 1, NA, 100, NA, 20), AMT = c(320, 0, 320, 0, 320, 0),
+                    EVID = c(1, 0, 1, 0, 1, 0), CMT = 1)
+
+    # subject-order-dependent by construction: the three residuals are wildly
+    # different, so a reversal is unmistakable
+    .check <- function(fit) {
+      ll <- fit$llikObs
+      ll <- ll[!is.na(ll)]                     # drop the dose records
+      sd <- fit$theta[["add.sd"]]
+      expect_equal(ll, -log(sd) - 0.5 * ((fit$DV - fit$IPRED) / sd)^2)
+    }
+
+    # neta == 0 -> foceiSetupNoEta_
+    noEta <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- 0.7 })
+      model({ ka <- exp(tka); cl <- exp(tcl); v <- exp(tv)
+              linCmt() ~ add(add.sd) })
+    }
+    .fitNoEta <- suppressMessages(suppressWarnings(
+      nlmixr(noEta(), d, "focei",
+             control = foceiControl(maxOuterIterations = 0, covMethod = "",
+                                    print = 0))))
+    .check(.fitNoEta)
+    # with no etas the objective IS -2 * the per-record log-likelihood
+    expect_equal(-2 * sum(.fitNoEta$llikObs, na.rm = TRUE), .fitNoEta$objf)
+
+    # neta > 0 -> foceiSetupEta_
+    wEta <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; eta.cl ~ 0.1; add.sd <- 0.7 })
+      model({ ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+              linCmt() ~ add(add.sd) })
+    }
+    .check(suppressMessages(suppressWarnings(
+      nlmixr(wEta(), d, "focei",
+             control = foceiControl(maxOuterIterations = 0, covMethod = "",
+                                    print = 0)))))
+  })
+
   test_that("gVid scales with the mixture replicate count", {
     # gVid is sized (mixIdxN + 1) * sum(nobs_i^2) and the setup loop walks it
     # once per mixture replicate.  With mixIdxN == 0 the multiplier is 1, so a

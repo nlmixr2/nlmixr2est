@@ -196,6 +196,13 @@
   allocation whenever the parameter count times the subject count exceeded the
   event-record count.
 
+- A fit's per-record `llikObs` came back reversed by subject.  Its per-subject
+  offsets were a running total taken in the FOCEi setup loop's backwards
+  order, while the array is handed to R as one contiguous block in record
+  order, so the first subject was given the tail of the buffer.  With unequal
+  observation counts the subject boundaries did not line up either.  The
+  offsets now follow the subject order.
+
 - `est="saem"` with `saemControl(nMix > 1)` (mixture SAEM) inverted the
   `propT()`/`powT()` (transformed-basis) vs. plain `prop()`/`pow()`
   (raw-basis) proportional/power error term in the two MSAEM-only E-step

@@ -904,6 +904,20 @@ static inline int getRxId(int id) {
   return id % getRxNsub(rx);
 }
 
+// Per-subject offsets into llikObsFull.  Unlike the other per-subject blocks,
+// llikObsFull is handed to R as one contiguous block in record order, so its
+// offsets must follow the subject order rather than the (backwards) order the
+// setup loops assign them in.
+static inline std::vector<size_t> foceiLlikObsOffsets(rx_solve* rx, size_t n) {
+  std::vector<size_t> off(n, 0);
+  size_t cur = 0;
+  for (size_t s = 0; s < n; ++s) {
+    off[s] = cur;
+    cur += (size_t)getIndNallTimes(getSolvingOptionsInd(rx, getRxId((int)s)));
+  }
+  return off;
+}
+
 // Is eta j excluded from the eta-drift zero-reset / mu-ref theta soft-shift
 // because it's driven by the mfocei/ifocei restart-loop's linear-model
 // step instead? False when NULL/unset (muModel="none").
@@ -6391,8 +6405,12 @@ static inline void foceiSetupNoEta_(){
   op_focei.llikObsFull = op_focei.gthetaGrad + _gThetaGradN; // [getRxNall(rx)]
   std::fill_n(op_focei.llikObsFull, getRxNall(rx), NA_REAL);
   op_focei.mGthetaGrad = true;
+  // llikObsFull is copied out to R as one contiguous block in RECORD order, so
+  // a subject's slot is its own cumulative offset -- not the running total of a
+  // loop that walks the subjects backwards, which handed subject 0 the tail.
+  std::vector<size_t> llikOff = foceiLlikObsOffsets(rx, getRxNsub(rx));
   focei_ind *fInd;
-  size_t jj = 0, iLO=0;
+  size_t jj = 0;
   for (int i = getRxNsub(rx); i--;){
     fInd = &(inds_focei[i]);
     rx_solving_options_ind *ind = getSolvingOptionsInd(rx, i);
@@ -6418,8 +6436,7 @@ static inline void foceiSetupNoEta_(){
     fInd->uzm = 1;
     fInd->doEtaNudge=0;
     // llikObs
-    fInd->llikObs = &op_focei.llikObsFull[iLO];
-    iLO += getIndNallTimes(ind);
+    fInd->llikObs = &op_focei.llikObsFull[llikOff[i]];
   }
   op_focei.alloc=true;
 }
@@ -6520,7 +6537,10 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
   // taken in size_t, a 32-bit int) on data the old nall > 65535 guard used to
   // exclude.  A wrapped offset silently aliases another subject's block.
   unsigned int i;
-  size_t j = 0, k = 0, ii=0, jj = 0, iA=0, iB=0, iH=0, iVid=0, iLO=0;
+  size_t j = 0, k = 0, ii=0, jj = 0, iA=0, iB=0, iH=0, iVid=0;
+  // See foceiSetupNoEta_: llikObsFull leaves in record order, so it is indexed
+  // by the subject's own cumulative offset rather than by loop order.
+  std::vector<size_t> llikOff = foceiLlikObsOffsets(rx, getRxNsubAndMix(rx));
   focei_ind *fInd;
   for (i = getRxNsubAndMix(rx); i--;){
     fInd = &(inds_focei[i]);
@@ -6565,8 +6585,7 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
                              getIndNevid2(ind));
       iVid += nobs * nobs;
     }
-    fInd->llikObs = &op_focei.llikObsFull[iLO];
-    iLO += getIndNallTimes(ind);
+    fInd->llikObs = &op_focei.llikObsFull[llikOff[i]];
 
     // Copy in etaMat0 to the inital eta stored (0 if unspecified)
     // std::copy(&etaMat0[i*op_focei.neta], &etaMat0[(i+1)*op_focei.neta], &fInd->saveEta[0]);
