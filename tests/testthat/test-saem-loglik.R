@@ -111,7 +111,7 @@ nmTest({
         ll(err) ~ -lsd - 0.5 * log(2 * pi) - 0.5 * ((DV - cp) / sd)^2
       })
     }
-    .n0 <- nlmixr2est:::saemPhi1RefineN_()
+    .n0 <- saemPhi1RefineN_()
     ctl <- saemControl(nBurn = 40, nEm = 40, nmc = 3, seed = 42L, print = 0L,
                        covMethod = "", calcTables = FALSE, phi1Hessian = TRUE)
     f <- suppressWarnings(.nlmixr(mLl2, theo_sd, est = "saem", control = ctl))
@@ -119,7 +119,7 @@ nmTest({
     expect_equal(unname(fixef(f)[["tka"]]), 0.45, tolerance = 0.2)
     # confirms the analytic-Hessian path actually ran, not just that the fit
     # returned something
-    expect_gt(nlmixr2est:::saemPhi1RefineN_(), .n0)
+    expect_gt(saemPhi1RefineN_(), .n0)
   })
 
   test_that("a covariate-on-a-mu-ref-theta Gaussian twin still agrees with add() (#Phase6)", {

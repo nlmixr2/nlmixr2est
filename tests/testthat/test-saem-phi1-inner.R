@@ -85,7 +85,7 @@ nmTest({
     .inner <- .res$inner
     .innerHess2 <- .res$innerHess2
 
-    .ev <- rxode2::et(amt = 320, time = 0) %>% rxode2::et(seq(0.5, 24, by = 4))
+    .ev <- rxode2::et(amt = 320, time = 0) |> rxode2::et(seq(0.5, 24, by = 4))
     .ev$DV <- 5
     .pars <- c("THETA[1]" = 0.45, "THETA[2]" = 1, "THETA[3]" = 3.45,
               "THETA[4]" = log(0.7), "ETA[1]" = 0.1, "ETA[2]" = -0.05, "ETA[3]" = 0.02)

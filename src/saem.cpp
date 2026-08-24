@@ -1212,6 +1212,74 @@ public:
     return pred;
   }
 
+  // Solve odeSlotHess2 (the exact analytic eta-Hessian model) at eta0 for row
+  // i, accumulating rx_pred_ into rowPred and the packed lower-triangular
+  // d2pred into H.  Returns false (row is bad) on solve failure, matching the
+  // inline `rowBad[i] = 1; continue;` this replaced.
+  bool phi1AnalyticHessAt(int i, rx_solving_options_ind *ind, rx_solving_options *op,
+                          OdeSwapScope &neqGuard, int nH2Theta,
+                          const arma::vec &eta0, double &rowPred, arma::mat &H) {
+    int nEta = (int)eta0.n_elem;
+    for (int k = 0; k < nEta; ++k) setIndParPtr(ind, nH2Theta + k, eta0(k));
+    setIndSolve(ind, -1);
+    resetOpBadSolve(op);
+    odeSwapSolveInd(odeSlotHess2, i);
+    if (odeSwapIndBadSolveSlot(op, ind, odeSlotHess2)) return false;
+    iniSubjectE(i, 1, ind, op, _rx, rxHess2.update_inis);
+    double *lhs = neqGuard.lhs();
+    for (int j = 0; j < getIndNallTimes(ind); ++j) {
+      setIndIdx(ind, j);
+      int kk = getIndIx(ind, j);
+      if (getIndEvid(ind, kk) != 0) continue;
+      double curT = getTime(kk, ind);
+      rxHess2.calc_lhs(i, curT, getOpIndSolve(op, ind, j), lhs);
+      rowPred += lhs[_saemPhi1H2PredOffset];
+      int r = 0;
+      for (int jc = 0; jc < nphi1; ++jc)
+        for (int ic = 0; ic <= jc; ++ic) {
+          H(ic, jc) += -lhs[_saemPhi1H2HessOffset + r];
+          ++r;
+        }
+    }
+    return true;
+  }
+
+  // Finite-difference eta-Hessian fallback at eta0 for row i, re-solving
+  // odeSlotPred (via phi1PredAt) at small perturbations of eta0 -- the same
+  // Shi(2021)-style fallback discipline calcEtaHessian uses, simplified to a
+  // fixed step (see phi1Objective's own docs on fdH).  Sets `bad` on any
+  // perturbed solve's failure; H accumulates in place.
+  void phi1FDHessAt(int i, rx_solving_options_ind *ind, rx_solving_options *op,
+                     OdeSwapScope &neqGuard, int nH2Theta, double fdH,
+                     const arma::vec &eta0, double rowPred, arma::mat &H, bool &bad) {
+    int nEta = (int)eta0.n_elem;
+    for (int k = 0; k < nEta && !bad; ++k) {
+      arma::vec ep = eta0, em = eta0;
+      ep(k) += fdH; em(k) -= fdH;
+      double fp = phi1PredAt(i, ind, op, neqGuard, nH2Theta, ep, bad);
+      double fm = bad ? 0.0 : phi1PredAt(i, ind, op, neqGuard, nH2Theta, em, bad);
+      if (!bad) H(k, k) += -(fp - 2.0 * rowPred + fm) / (fdH * fdH);
+    }
+    for (int jc = 1; jc < nEta && !bad; ++jc) {
+      for (int ic = 0; ic < jc && !bad; ++ic) {
+        arma::vec epp = eta0, epm = eta0, emp = eta0, emm = eta0;
+        epp(ic) += fdH; epp(jc) += fdH;
+        epm(ic) += fdH; epm(jc) -= fdH;
+        emp(ic) -= fdH; emp(jc) += fdH;
+        emm(ic) -= fdH; emm(jc) -= fdH;
+        double fpp = phi1PredAt(i, ind, op, neqGuard, nH2Theta, epp, bad);
+        double fpm = bad ? 0.0 : phi1PredAt(i, ind, op, neqGuard, nH2Theta, epm, bad);
+        double fmp = bad ? 0.0 : phi1PredAt(i, ind, op, neqGuard, nH2Theta, emp, bad);
+        double fmm = bad ? 0.0 : phi1PredAt(i, ind, op, neqGuard, nH2Theta, emm, bad);
+        if (!bad) {
+          double hij = -(fpp - fpm - fmp + fmm) / (4.0 * fdH * fdH);
+          H(ic, jc) += hij;
+          H(jc, ic) += hij;
+        }
+      }
+    }
+  }
+
   double phi1Objective(double *p) {
     rx_solving_options *op = getSolvingOptions(_rx);
     int cores = getOpCores(op);
@@ -1266,63 +1334,17 @@ public:
         // Hessian/Omega-prior term at all -- see the field's own docs.
         rowPred = phi1PredAt(i, ind, op, neqGuard, nH2Theta, eta0, bad);
       } else if (_saemPhi1UseAnalyticHess) {
-        for (int k = 0; k < nEta; ++k) setIndParPtr(ind, nH2Theta + k, eta0(k));
-        setIndSolve(ind, -1);
-        resetOpBadSolve(op);
-        odeSwapSolveInd(odeSlotHess2, i);
-        if (odeSwapIndBadSolveSlot(op, ind, odeSlotHess2)) {
+        if (!phi1AnalyticHessAt(i, ind, op, neqGuard, nH2Theta, eta0, rowPred, H)) {
           rowBad[i] = 1; continue;
-        }
-        iniSubjectE(i, 1, ind, op, _rx, rxHess2.update_inis);
-        double *lhs = neqGuard.lhs();
-        for (int j = 0; j < getIndNallTimes(ind); ++j) {
-          setIndIdx(ind, j);
-          int kk = getIndIx(ind, j);
-          if (getIndEvid(ind, kk) != 0) continue;
-          double curT = getTime(kk, ind);
-          rxHess2.calc_lhs(i, curT, getOpIndSolve(op, ind, j), lhs);
-          rowPred += lhs[_saemPhi1H2PredOffset];
-          int r = 0;
-          for (int jc = 0; jc < nphi1; ++jc)
-            for (int ic = 0; ic <= jc; ++ic) {
-              H(ic, jc) += -lhs[_saemPhi1H2HessOffset + r];
-              ++r;
-            }
         }
       } else {
         rowPred = phi1PredAt(i, ind, op, neqGuard, nH2Theta, eta0, bad);
-        if (!bad) {
-          for (int k = 0; k < nEta && !bad; ++k) {
-            arma::vec ep = eta0, em = eta0;
-            ep(k) += fdH; em(k) -= fdH;
-            double fp = phi1PredAt(i, ind, op, neqGuard, nH2Theta, ep, bad);
-            double fm = bad ? 0.0 : phi1PredAt(i, ind, op, neqGuard, nH2Theta, em, bad);
-            if (!bad) H(k, k) += -(fp - 2.0 * rowPred + fm) / (fdH * fdH);
-          }
-          for (int jc = 1; jc < nEta && !bad; ++jc) {
-            for (int ic = 0; ic < jc && !bad; ++ic) {
-              arma::vec epp = eta0, epm = eta0, emp = eta0, emm = eta0;
-              epp(ic) += fdH; epp(jc) += fdH;
-              epm(ic) += fdH; epm(jc) -= fdH;
-              emp(ic) -= fdH; emp(jc) += fdH;
-              emm(ic) -= fdH; emm(jc) -= fdH;
-              double fpp = phi1PredAt(i, ind, op, neqGuard, nH2Theta, epp, bad);
-              double fpm = bad ? 0.0 : phi1PredAt(i, ind, op, neqGuard, nH2Theta, epm, bad);
-              double fmp = bad ? 0.0 : phi1PredAt(i, ind, op, neqGuard, nH2Theta, emp, bad);
-              double fmm = bad ? 0.0 : phi1PredAt(i, ind, op, neqGuard, nH2Theta, emm, bad);
-              if (!bad) {
-                double hij = -(fpp - fpm - fmp + fmm) / (4.0 * fdH * fdH);
-                H(ic, jc) += hij;
-                H(jc, ic) += hij;
-              }
-            }
-          }
-        }
-        // restore the row's solve/lhs state to eta0 -- calcEtaHessian's own
-        // FD fallback leaves the last perturbation's solve behind too (its
-        // caller re-solves before any further read), but SAEM's OWN model
-        // (odeSlotSaem) is what user_function reads next, an independent
-        // peer/solve buffer, so no further restore is needed here.
+        // restore of the row's solve/lhs state to eta0 is unnecessary --
+        // calcEtaHessian's own FD fallback leaves the last perturbation's
+        // solve behind too (its caller re-solves before any further read),
+        // but SAEM's OWN model (odeSlotSaem) is what user_function reads
+        // next, an independent peer/solve buffer.
+        if (!bad) phi1FDHessAt(i, ind, op, neqGuard, nH2Theta, fdH, eta0, rowPred, H, bad);
       }
       if (bad) { rowBad[i] = 1; continue; }
       if (!_saemPhi1WantHessian) {
@@ -1363,6 +1385,24 @@ public:
   // mprior_phi0 update, and MCOV1 is back-solved so next iteration's
   // mprior_phi1=COV1*MCOV1 reproduces it -- the row-level phiM/eta values
   // do_mcmc already holds are left completely untouched.
+  // Back-solve MCOV1's per-column covariate loadings against mprior_phi1,
+  // restricted to each phi1 column's own LCOV1 design columns -- mirrors
+  // phi0Objective's own MCOV0 back-solve (src/saem.cpp) for the identical
+  // rank-deficiency reason: a single least-squares against all of COV1 is
+  // rank deficient whenever nphi1 > 1 with no phi1 covariate (every column
+  // of COV1 is then the same intercept column).
+  void phi1BackSolveMCOV() {
+    for (int c = 0; c < nphi1; ++c) {
+      uvec li = arma::find(LCOV1.col(c) == 1);
+      if (li.n_elem == 0) continue;
+      mat Xc = COV1.cols(li);
+      vec bc;
+      if (arma::solve(bc, Xc.t() * Xc, Xc.t() * mprior_phi1.col(c))) {
+        for (unsigned int j = 0; j < li.n_elem; ++j) MCOV1(li(j), c) = bc(j);
+      }
+    }
+  }
+
   void refinePhi1Lik(unsigned int kiter, const vec &pas) {
     if (!_saemPhi1PoolReady || nphi1 <= 0) return;
     std::vector<bool> phi1Fix((size_t)nphi1, false);
@@ -1414,15 +1454,7 @@ public:
       double cur = mprior_phi1(0, c);
       mprior_phi1.col(c).fill(cur + pas(kiter) * (xmin[c] - cur));
     }
-    for (int c = 0; c < nphi1; ++c) {
-      uvec li = arma::find(LCOV1.col(c) == 1);
-      if (li.n_elem == 0) continue;
-      mat Xc = COV1.cols(li);
-      vec bc;
-      if (arma::solve(bc, Xc.t() * Xc, Xc.t() * mprior_phi1.col(c))) {
-        for (unsigned int j = 0; j < li.n_elem; ++j) MCOV1(li(j), c) = bc(j);
-      }
-    }
+    phi1BackSolveMCOV();
     _saemPhi1RefineN++;
   }
 
