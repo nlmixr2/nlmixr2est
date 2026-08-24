@@ -173,6 +173,15 @@ nmTest({
 
     expect_equal(.run(.etaCauchy, .censDat(.d, "m3")),
                  .run(.manM3, .manDat(.d, "m3")), tolerance = 1e-6)
+    # est="foce" reaches the same place by a different route -- it is the
+    # explicit form of the interaction=0 build .foceiFitInternal picks anyway
+    .runFoce <- function(m, dat) {
+      as.numeric(.nlmixr(m, dat, est = "foce", foceiControl(
+        print = 0L, covMethod = "", calcTables = FALSE,
+        maxOuterIterations = 0L))$objf)
+    }
+    expect_equal(.runFoce(.etaCauchy, .censDat(.d, "m3")),
+                 .runFoce(.manM3, .manDat(.d, "m3")), tolerance = 1e-6)
     expect_equal(.run(.etaCauchy, .censDat(.d, "m4")),
                  .run(.manM4, .manDat(.d, "m4")), tolerance = 1e-5)
     expect_equal(.run(.etaCauchy, .censDat(.d, "m2", limit = 0.25)),

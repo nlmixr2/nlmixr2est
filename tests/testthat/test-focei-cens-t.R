@@ -122,6 +122,33 @@ nmTest({
               regexpr("rx_pred_f_=", .on, fixed = TRUE))
   })
 
+  test_that("the FOCE llik inner model gets its own d(R)/d(eta) block (#992)", {
+    # rxUiGet.foceEnv drops ..REta entirely (FOCE does not differentiate R), so
+    # the censored gradient's d(R)/d(eta) has to be patched back in as
+    # ..censREta -- appended at the end and found by name.  Every non-normal
+    # endpoint runs here, because .foceiFitInternal forces interaction = 0 for
+    # one, and rxUiGet.foceiModel then picks the FOCE builder.
+    .old <- nlmixr2global$rxCensNuFix
+    .oldLlik <- nlmixr2global$rxPredLlik
+    on.exit({
+      nlmixr2global$rxCensNuFix <- .old
+      nlmixr2global$rxPredLlik <- .oldLlik
+    })
+    nlmixr2global$rxCensNuFix <- TRUE
+    nlmixr2global$rxPredLlik <- TRUE
+    .s <- suppressMessages(rxUiGet.foceEnv(list(.cauchyUi(), TRUE)))
+    expect_null(.s$..REta)
+    expect_length(.s$..censREta, 2L)   # one line per eta
+    .inner <- .s$..inner
+    expect_match(.inner, "rx__sens_rx_r__BY_ETA_1___=", fixed = TRUE)
+    expect_match(.inner, "rx__sens_rx_r__BY_ETA_2___=", fixed = TRUE)
+    expect_match(.inner, "rx_pred_f_=", fixed = TRUE)
+    expect_match(.inner, "rx_nu_=", fixed = TRUE)
+    # appended AFTER rx_r_, so the FOCE column layout ahead of it is untouched
+    expect_lt(regexpr("rx_r_=", .inner, fixed = TRUE),
+              regexpr("rx__sens_rx_r__BY_ETA_1___=", .inner, fixed = TRUE))
+  })
+
   test_that("without the flag the llik inner model is unchanged (#992)", {
     .off <- suppressMessages(.innerText(FALSE))
     expect_true(any(strsplit(.off, "\n")[[1]] == "rx_r_=0"))
