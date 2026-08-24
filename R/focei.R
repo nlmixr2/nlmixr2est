@@ -2161,8 +2161,11 @@ rxUiGet.focei <- function(x, ...) {
   # ar() endpoints emit the whitened residual in Gaussian norm (mean/variance)
   # form so the exact eta-Hessian is used (not the llik path).
   nlmixr2global$rxArNorm <- TRUE
-  on.exit({nlmixr2global$rxPredLlik <- FALSE; nlmixr2global$rxArNorm <- FALSE
-    nlmixr2global$rxCensNuFix <- FALSE})
+  on.exit({
+    nlmixr2global$rxPredLlik <- FALSE
+    nlmixr2global$rxArNorm <- FALSE
+    nlmixr2global$rxCensNuFix <- FALSE
+  })
   .s <- rxUiGet.foceiEnv(x, ...)
   .ret <-  .innerInternal(.ui, .s)
   .predDf <- .ui$predDfFocei
@@ -2194,8 +2197,11 @@ rxUiGet.foce <- function(x, ...) {
   .ui <- x[[1]]
   nlmixr2global$rxPredLlik <- FALSE
   nlmixr2global$rxArNorm <- TRUE
-  on.exit({nlmixr2global$rxPredLlik <- FALSE; nlmixr2global$rxArNorm <- FALSE
-    nlmixr2global$rxCensNuFix <- FALSE})
+  on.exit({
+    nlmixr2global$rxPredLlik <- FALSE
+    nlmixr2global$rxArNorm <- FALSE
+    nlmixr2global$rxCensNuFix <- FALSE
+  })
   .s <- rxUiGet.foceEnv(x, ...)
   .ret <- .innerInternal(.ui, .s)
   .predDf <- .ui$predDfFocei
@@ -2228,8 +2234,11 @@ rxUiGet.ebe <- function(x, ...) {
   .ui <-x[[1]]
   nlmixr2global$rxPredLlik <- FALSE
   nlmixr2global$rxArNorm <- TRUE
-  on.exit({nlmixr2global$rxPredLlik <- FALSE; nlmixr2global$rxArNorm <- FALSE
-    nlmixr2global$rxCensNuFix <- FALSE})
+  on.exit({
+    nlmixr2global$rxPredLlik <- FALSE
+    nlmixr2global$rxArNorm <- FALSE
+    nlmixr2global$rxCensNuFix <- FALSE
+  })
   .s <- rxUiGet.getEBEEnv(x, ...)
   .ret <- .innerInternal(.ui, .s)
   .predDf <- .ui$predDfFocei
