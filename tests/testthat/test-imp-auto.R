@@ -25,6 +25,16 @@ nmTest({
   # structural model with three etas reads max k-hat 1.13 with 3 of 12 subjects
   # failing.  .pk is kept for the "auto changes nothing" checks; .pk3 is the
   # fixture for anything asserting escalation.
+  #
+  # .pk's tka/tv are non-mu structural thetas (no eta): they used to trigger a
+  # pre-existing, unrelated bug (rx->ndiff not restored per odeSwap peer,
+  # since fixed -- see test-imp-combsens.R) that made impmap's inner Hessian
+  # read a stale, artificially near-singular d(pred)/d(eta.cl), which widened
+  # the proposal enough to LOOK tail-healthy (k-hat ~ -1.46) while actually
+  # masking a real one (k-hat ~ 2.9 once the Hessian is correct). .pk is
+  # therefore NOT a valid "no tail failure" fixture and must not be used as
+  # one -- see .pkHealthy below, which has no non-mu structural theta at all
+  # (tka/tv are fix()ed rather than merely eta-free) and is genuinely clean.
   .pk <- function() {
     ini({tka <- 0.45; tcl <- 1; tv <- 3.45; eta.cl ~ 0.1; add.sd <- 0.7})
     model({ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv)
@@ -34,6 +44,14 @@ nmTest({
     ini({tka <- 0.45; tcl <- 1; tv <- 3.45
          eta.ka ~ 0.3; eta.cl ~ 0.1; eta.v ~ 0.1; add.sd <- 0.7})
     model({ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+           linCmt() ~ add(add.sd)})
+  }
+  # Genuinely healthy 1-eta reference: tka/tv are fix()ed constants (not
+  # estimated at all), so there is no non-mu structural theta and nothing for
+  # the (fixed) rx->ndiff bug above to have ever touched.
+  .pkHealthy <- function() {
+    ini({tka <- fix(0.45); tcl <- 1; tv <- fix(3.45); eta.cl ~ 0.1; add.sd <- 0.7})
+    model({ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv)
            linCmt() ~ add(add.sd)})
   }
   # nobs < neta: the tutorial's documented sparse trigger.  Two observations per
@@ -49,10 +67,11 @@ nmTest({
     }))
   })
   .fitAuto <- function(auto, nIter = 12L, model = .pk, data = nlmixr2data::theo_sd,
-                       ...) {
-    suppressWarnings(nlmixr2(model, data, "impmap",
-                             impmapControl(print = 0L, nIter = nIter, isample = 300L,
-                                           covMethod = "", auto = auto, ..., gammaRule = "floor")))
+                       est = "impmap", ...) {
+    .ctlFun <- if (est == "imp") impControl else impmapControl
+    suppressWarnings(nlmixr2(model, data, est,
+                             .ctlFun(print = 0L, nIter = nIter, isample = 300L,
+                                     covMethod = "", auto = auto, ..., gammaRule = "floor")))
   }
 
   test_that("auto control round-trips and defaults off", {
@@ -117,19 +136,50 @@ nmTest({
     # previous fixture's vacuous premise destroyed -- it went green while testing
     # nothing.
     #
+    # est="imp", not "impmap".  impmap's proposal comes from calcEtaHessian
+    # (gamma * H^-1 at the MAP), which is a property of the SUBJECT's posterior
+    # geometry, not of which thetas are estimated -- fixing tka/tv in
+    # .pkHealthy does not change subject 1's conditional likelihood for
+    # eta.cl at all, so impmap reads the SAME genuinely heavy tail (k-hat
+    # about 2.9) that .pk exposed once the rx->ndiff fix stopped masking it.
+    # imp's proposal is gamma * (running conditional variance) instead, which
+    # never touches calcEtaHessian, so it is a real "no tail failure" case
+    # (max k-hat about 0.26, verified below) and the intended target for this
+    # guard.
+    #
     # Note what is NOT asserted: that nothing escalates.  impDfInd is the df of
     # the LAST E-step, but escalation is driven by the per-iteration k-hat, and
     # the early EM iterations run against a poorer proposal than the converged
-    # one.  So a model that is healthy AT CONVERGENCE (max k-hat about -1.5,
-    # nothing above 0.7) can still have escalated subjects on the transient.
-    # Measured, that costs about 5% objective RMSE -- which is the claim worth
-    # pinning, not a zero-escalation count that does not hold.
+    # one.
     skip_on_cran()
-    .off <- .fitAuto(FALSE)
-    .on <- .fitAuto(TRUE)
+    .off <- .fitAuto(FALSE, model = .pkHealthy, est = "imp")
+    .on <- .fitAuto(TRUE, model = .pkHealthy, est = "imp")
     expect_equal(sum(.off$env$impPsisK > 0.7), 0L)      # premise: converged fit healthy
     expect_gt(sum(.on$env$impDfInd == 0), 0L)           # escalation stays selective
     expect_equal(.on$objf, .off$objf, tolerance = 0.5)  # and does not move the answer
+  })
+
+  test_that("auto repairs the genuine tail failure the rx->ndiff fix revealed on .pk", {
+    # .pk (tka/tv non-mu, no eta) turned out to have a REAL tail issue once
+    # impGetHessian's inner Hessian stopped reading a stale d(pred)/d(eta.cl)
+    # (see the .pk comment above and test-imp-combsens.R's odeSwapSolveInd
+    # regression test) -- one subject's k-hat reads well above 0.7 with
+    # auto=FALSE.  This is exactly the case AUTO exists for: assert it is
+    # selective (escalates the failing subject, leaves the rest alone) and
+    # clears the tail, mirroring the .pk3 escalation test above.
+    skip_on_cran()
+    .off <- .fitAuto(FALSE)
+    .k0 <- .off$env$impPsisK
+    expect_gt(sum(.k0 > 0.7), 0L,
+              label = "pk subjects with k-hat > 0.7 (rx->ndiff-fix premise)")
+    .on <- .fitAuto(TRUE)
+    expect_gt(sum(.on$env$impDfInd > 0), 0L)
+    expect_gt(sum(.on$env$impDfInd == 0), 0L)
+    expect_lt(max(.on$env$impPsisK), max(.k0))
+    expect_lt(sum(.on$env$impPsisK > 0.7), sum(.k0 > 0.7))
+    # and the repair is a proposal-shape fix, not a different fit: the escalated
+    # subject's tail improves without the objective moving to a different basin
+    expect_equal(.on$objf, .off$objf, tolerance = 0.5)
   })
 
   test_that("the nobs < neta trigger is gated, and autoNonmemSparse restores it", {

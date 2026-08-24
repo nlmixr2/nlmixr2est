@@ -27,6 +27,15 @@
   seed) change as a result.
 ## New features
 
+- `impmapControl()`/`impControl()` gain `combSens` (default `TRUE`): when
+  `est="impmap"`/`"imp"`/`"qrpem"` has non-mu (structural or residual-error)
+  thetas to estimate, `combSens=TRUE` carries their sensitivity columns on the
+  INNER model itself instead of a second, dedicated model, and the E-step's
+  own per-sample inner solve now supplies the M-step's Newton step directly
+  (no second solve) whenever `sir=FALSE` (the default) -- roughly halving the
+  ODE solving the M-step's theta gradient costs. Pass `combSens=FALSE` for the
+  previous two-model behavior.
+
 - A pure-linear `matExp()` model now solves natively through rxode2's
   matrix-exponential driver (`rxControl(method="indLin")`) under SAEM instead
   of being flattened to an equivalent `d/dt()` ODE first.  SAEM has no
@@ -165,6 +174,24 @@
   fit, so removing them changes no result.
 
 ## Bug fixes
+
+- `est="impmap"`'s inner Hessian (`impGetHessian`), which builds the
+  importance-sampling proposal, could read a stale cached `linCmtB()`
+  Jacobian on a `linCmt()` model with a non-mu structural theta (a theta with
+  no random effect, e.g. `ka` fixed but `V` estimated on log scale). Several
+  compiled peer models share one solve pool (`odeSwap`); `linCmtB()` caches
+  its Jacobian in a field gated by `rx->ndiff`, a process-global that
+  `odeSwapSolveInd()` never restored per peer, so a solve could read a
+  Jacobian built for a DIFFERENT peer's structural-parameter set. The
+  resulting proposal was artificially wide, which masked a real heavy tail
+  (Pareto k-hat) as healthy rather than repairing it. `odeSwapSolveInd()` now
+  restores each peer's own `ndiff` before every solve. That restore is itself
+  a write to a field on the single shared solve struct, so `impGetHessian`'s
+  parallel per-subject loop (a subject that falls back to the doFD/pred path
+  can pick a different peer, and so a different `ndiff`, than a subject still
+  on the plain inner path, concurrently) now serializes that write-then-solve
+  window whenever the fit has a peer that needs it, rather than risk one
+  subject's solve reading another's in-flight `ndiff`.
 
 - The FOCEi family (`focei`, `foce`, `foi`, `fo`, `posthoc`, `agq`,
   `laplace`) no longer refuses an ordinary population dataset with
