@@ -85,7 +85,8 @@ score and Gauss-Newton information built from the analytic `d(f)/d(theta)` and
 <span>  qrRefresh <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  sir <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  sirSample <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  muModel <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"lin"</span>, <span class="st">"none"</span><span class="op">)</span></span>
+<span>  muModel <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"lin"</span>, <span class="st">"none"</span><span class="op">)</span>,</span>
+<span>  combSens <span class="op">=</span> <span class="cn">TRUE</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -405,6 +406,22 @@ uses `sirSample` equal-weight resampled points per subject instead of all
 <dd><p>Mu-referencing variant for the MAP inner problem; for
 `impmapControl()` this is always `"lin"` and cannot be changed.</p></dd>
 
+
+<dt id="arg-combsens">combSens<a class="anchor" aria-label="anchor" href="#arg-combsens"></a></dt>
+<dd><p>When `TRUE` (the default) and there are non-mu (structural
+or residual-error) thetas to estimate, carry their sensitivity columns on
+the INNER model itself (the combined eta+theta sensitivity build, #958)
+instead of compiling and solving a separate, dedicated model for them.
+With `sir=FALSE` (the default) the E-step's own per-sample inner solve
+then supplies the M-step's Newton step directly, with no second solve –
+roughly halving the ODE solving the theta-sensitivity Newton step costs.
+Set `FALSE` to use the older two-model path instead. (Earlier versions
+shipped `FALSE` as the default: on a `linCmt()` model with a single
+non-mu structural theta, `combSens=TRUE`/`FALSE` measurably disagreed –
+not `combSens` moving the answer, but an unrelated pre-existing bug in
+how the shared solve pool swapped between peer models, since fixed. The
+two now agree on every fixture measured, so `TRUE` is the default.)</p></dd>
+
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
@@ -648,7 +665,7 @@ uses `sirSample` equal-weight resampled points per subject instead of all
 <span class="r-out co"><span class="r-pr">#&gt;</span>     .ret$value &lt;- .ret$fval</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>     .ret</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> }</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;bytecode: 0x5646f8e09d98&gt;</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;bytecode: 0x55af82f5c800&gt;</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> &lt;environment: namespace:nlmixr2est&gt;</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $rhobeg</span>
@@ -1425,6 +1442,9 @@ uses `sirSample` equal-weight resampled points per subject instead of all
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $sirSample</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 30</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $combSens</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] TRUE</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> attr(,"class")</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] "impmapControl"</span>
