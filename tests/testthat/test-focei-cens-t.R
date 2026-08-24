@@ -129,6 +129,54 @@ nmTest({
     expect_false(grepl("rx__sens_rx_pred_f__BY_ETA_1___=", .off, fixed = TRUE))
   })
 
+  .arDnormUi <- function() {
+    .f <- function() {
+      ini({tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- c(0, 0.7)
+        phi <- c(0, 0.5, 1); eta.ka ~ 0.2})
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl); v <- exp(tv)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd) + ar(phi) + dnorm()
+      })
+    }
+    rxode2::rxUiDecompress(rxode2::rxode2(.f))
+  }
+
+  test_that("an ar() endpoint keeps the censoring correction disarmed (#992)", {
+    # .fixCensRNuLine() declines an ar() endpoint (rx_rll_ is the marginal, not
+    # the conditional, scale), so rx_r_ stays rxode2's hardcoded 0.  Emitting
+    # rx_pred_f_ anyway would ARM focei_tCensLl for a dnorm() endpoint -- which
+    # has no rx_nu_ to disarm it -- and hand doCensNormal1() a zero variance.
+    .old <- nlmixr2global$rxCensNuFix
+    .oldLlik <- nlmixr2global$rxPredLlik
+    on.exit({
+      nlmixr2global$rxCensNuFix <- .old
+      nlmixr2global$rxPredLlik <- .oldLlik
+    })
+    nlmixr2global$rxCensNuFix <- TRUE
+    nlmixr2global$rxPredLlik <- TRUE
+    .s <- suppressMessages(rxUiGet.foceiEnv(list(.arDnormUi(), TRUE)))
+    expect_true(any(strsplit(.s$..inner, "\n")[[1]] == "rx_r_=0"))
+    expect_false(grepl("rx_pred_f_=", .s$..inner, fixed = TRUE))
+    expect_false(grepl("rx_nu_=", .s$..inner, fixed = TRUE))
+    # the generator itself declines on a zero rx_r_, whatever produced it
+    expect_identical(.foceiCensLlikCols(.s), character(0))
+  })
+
+  test_that("the persisted model cache keys on the package version (#992)", {
+    # the cache lives in rxode2's user cache directory, so it outlives an
+    # upgrade; a release that changes the generated model text must not be
+    # silently ignored for a model already cached there
+    .ui <- .cauchyUi()
+    .d0 <- rxUiGet.foceiModelDigest(list(.ui, TRUE))
+    testthat::local_mocked_bindings(
+      packageVersion = function(...) package_version("99.9.9"),
+      .package = "utils")
+    expect_false(identical(rxUiGet.foceiModelDigest(list(.ui, TRUE)), .d0))
+  })
+
   test_that("censoring is no longer reported as ignored for focei t()/cauchy()", {
     .f <- function() {
       ini({tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- c(0, 0.7); eta.ka ~ 0.2})

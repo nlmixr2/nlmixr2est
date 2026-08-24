@@ -1421,6 +1421,14 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
 #' @author Matthew L. Fidler
 .foceiCensLlikCols <- function(.s) {
   if (!.foceiCensLlikOn(.s)) return(character(0))
+  # `.fixCensRNuLine()` declines some endpoints -- an `ar()` one, whose
+  # `rx_rll_` is the marginal rather than the conditional scale -- and leaves
+  # rxode2's hardcoded `rx_r_ ~ 0` in place.  Emitting rx_pred_f_ anyway would
+  # ARM the C++ side (predFOffset/predROffset both resolve) and hand
+  # doCensNormal1() a zero variance for a `dnorm()` endpoint, which has no
+  # rx_nu_ to disarm it.  A zero rx_r_ IS the "declined" signal, so honor it.
+  .rSym <- get("rx_r_", envir = .s)
+  if (paste(.rSym) %in% c("0", "0.0", "-0")) return(character(0))
   .predF <- get("rx_pred_f_", envir = .s)
   .ret <- paste0("rx_pred_f_=", rxode2::rxFromSE(.predF))
   if (exists("rx_nu_", envir = .s)) {

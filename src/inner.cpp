@@ -2403,6 +2403,11 @@ static inline double focei_tCensLl(bool lhsOk, int dist, int cens, double dv,
   bool isCensObs = (cens != 0) || (R_FINITE(limit) && !ISNA(limit));
   if (!isCensObs) return llVal;
   double r = lhs[op_focei.predROffset];
+  // A zero/non-finite rx_r_ means the R side left rxode2's hardcoded
+  // `rx_r_ ~ 0` for this row (a multi-endpoint model can do that per endpoint),
+  // so there is no scale to correct against -- score the row uncensored rather
+  // than hand doCensT1()/doCensNormal1() a floored variance.
+  if (!R_FINITE(r) || r <= 0.0) return llVal;
   if (isT) {
     double nu = lhs[op_focei.predNuOffset];
     return doCensT1((double)cens, dv, limit, llVal, fT, r, nu);
@@ -2441,6 +2446,7 @@ static inline double focei_tCensDll(bool lhsOk, int dist, int cens, double dv,
   bool isCensObs = (cens != 0) || (R_FINITE(limit) && !ISNA(limit));
   if (!isCensObs) return dll;
   double r = lhs[op_focei.predROffset];
+  if (!R_FINITE(r) || r <= 0.0) return dll;   // see focei_tCensLl()
   double df = lhs[op_focei.predFEtaOffset + etaIdx];
   double dr = lhs[op_focei.predREtaOffset + etaIdx];
   if (isT) {
