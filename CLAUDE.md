@@ -236,6 +236,13 @@ When adding tests for an estimation method, split them by cost:
 
 ## Key conventions
 
+- **Never use `:::` in a test file.** testthat sources test files inside the package's
+  own namespace, so both exported and non-exported (`.foo`) internal functions are
+  directly callable by name -- `nlmixr2est:::rxUiGet.foceiEnv(...)` should just be
+  `rxUiGet.foceiEnv(...)`, and `nlmixr2est:::.someInternalFn(...)` should just be
+  `.someInternalFn(...)`. `:::` is unnecessary and CodeFactor's
+  `lintr-undesirable_operator_linter` flags it on every PR that introduces one. See
+  `b04d89c78` and PR #998 for prior fixes of this exact pattern.
 - `mu2` referencing (`R/mu2.R`) detects and validates mu-referenced parameters; violations produce warnings, not errors, for SAEM
 - IOV (inter-occasion variability) support is in `R/iov.R` with special handling in the mu-referencing hooks
 - The `sharedControl()` function (`R/sharedControl.R`) defines options common across all estimation methods
@@ -293,4 +300,11 @@ models in `R/focei.R`):
   `param(...)`** so the solve parameter order is fixed and positional (values are
   keyed by name, but pinning order keeps the input layout stable across builds).
   Covariates are supplied from the event data at solve time but must still be
-  declared in `param(...)`.
+  declared in `param(...)`. A general-likelihood formula referencing `DV`
+  (dnorm()/t()/cauchy() sugar, or a literal `ll()` expression) needs `DV` itself
+  declared here too -- and needs the model-BUILDING side (not the solve-consuming
+  side) to actually supply it: `DV` must be listed in `.configsaem`'s `inPars` (see
+  `rxUiGet.saemInParsAndMuRefCovariates`, `R/saemRxUiGet.R`) so its DV-append step
+  fires, and must land in the model's first (and only effective) `param()`
+  statement, not a second one appended later (rxode2 silently ignores a second
+  `param()` statement in one model -- nlmixr2/rxode2#1279).

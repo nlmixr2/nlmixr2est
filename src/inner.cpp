@@ -19538,6 +19538,28 @@ NumericVector foceiLikEval_(NumericMatrix etaMat, int cores, int retType) {
   return out;
 }
 
+// The Laplace-corrected FOCEi inner objective (foceiObjFromLik0: innerOpt1's
+// EBE Newton search per subject, LikInner2's -2*loglik + log|H| Laplace
+// determinant, summed, plus any ini({}) prior term) at a caller-supplied
+// theta, over a foceiLikLoad()-ed problem.  Unlike foceiLikEval_ (a pure
+// value read at a caller-SUPPLIED eta, no optimization), this actually finds
+// each subject's conditional mode at theta -- the same objective a live
+// FOCEi fit's outer optimizer minimizes, exposed standalone.  Deliberately
+// calls foceiObjFromLik0() directly rather than foceiOfv0(): foceiOfv0 carries
+// FOCEi's own outer-optimizer-fit-specific state (objective rescaling relative
+// to the fit's first evaluation, sticky ODE-tolerance relaxation on repeated
+// NaN) that has no meaning for a standalone caller.
+//[[Rcpp::export]]
+double foceiLikInnerObjective_(NumericVector theta) {
+  if (!foceiLikLoaded) stop("no general likelihood system loaded; call foceiLikLoad() first");
+  if ((int)theta.size() != (int)op_focei.npars)
+    stop("theta length %d != number of estimated parameters %d",
+         (int)theta.size(), (int)op_focei.npars);
+  std::vector<double> par(theta.begin(), theta.end());
+  rx = getRxSolve_();
+  return foceiObjFromLik0(par.data());
+}
+
 // ===========================================================================
 // FOCEi conditional-likelihood C API (#937): plain-C, non-throwing,
 // gradient-returning entry points over the foceiLikLoad()-ed problem,

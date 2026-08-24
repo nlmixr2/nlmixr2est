@@ -121,8 +121,21 @@ nmGetDistributionSaemLines <- function(line) {
     return(NULL)
   }
   .predLine <- .predDf[line, ]
+  # A "norm" condition MIXED with at least one genuine general-likelihood
+  # condition dispatches as "dnorm" instead -- mirrors FOCEi's own
+  # rxUiGet.predDfFocei() (R/focei.R) promotion.  llikNorm() is the exact same
+  # normal log-density, just expressed as a proper general likelihood, which
+  # is what lets do_mcmc's distribution==4 branch (one scalar for the whole
+  # fit, not per-observation) score every endpoint uniformly instead of
+  # needing per-observation dispatch.  A pure-normal model (every condition
+  # "norm") is untouched -- it still takes the closed-form
+  # nmGetDistributionSaemLines.norm path under distribution=1.
+  .dist <- paste(.predLine$distribution)
+  if (.dist == "norm" && !all(.predDf$distribution == "norm")) {
+    .dist <- "dnorm"
+  }
   .ret <- list(x, .predLine, line)
-  class(.ret) <- c(paste(.predLine$distribution), "nmGetDistributionSaemLines")
+  class(.ret) <- c(.dist, "nmGetDistributionSaemLines")
   .ret
 }
 
@@ -150,41 +163,82 @@ nmGetDistributionSaemLines.norm <- function(line) {
 }
 #' @rdname nmGetDistributionSaemLines
 #' @export
-nmGetDistributionSaemLines.t <- function(line) {
-  stop("t isn't supported yet")
-}
-
-#' @rdname nmGetDistributionSaemLines
-#' @export
 nmGetDistributionSaemLines.LL <- function(line) {
-  # General log-likelihood endpoint (ll(name) ~ expr).  Reuse the FOCEi inner's
-  # line generator so the saem solve model emits rx_pred_ ~ <ll> (rx_yj_ ~ 152)
-  # instead of a Gaussian mean.  saem sums the per-observation loglik the saemix
-  # way: the standard RWM kernels (do_mcmc, distribution=4) use -ll as the
-  # observation loss.
+  # General log-likelihood endpoint (ll(name) ~ expr, or any non-normal
+  # distribution() family -- t(), cauchy(), dnorm(), ordinal(), etc.).  Reuse
+  # the FOCEi inner's line generator so the saem solve model emits
+  # rx_pred_ ~ <ll> (rx_r_ ~ 0) instead of a Gaussian mean.  saem sums the
+  # per-observation loglik the saemix way: the standard RWM kernels (do_mcmc,
+  # distribution=4) use -ll as the observation loss.  This is also the
+  # fallback for every non-"norm" distribution class (see .default below) --
+  # rxGetDistributionFoceiLines() re-dispatches on the actual distribution
+  # internally, so one forwarding body covers all of them.
   .ui <- line[[1]]
   .errNum <- line[[3]]
   rxGetDistributionFoceiLines(.createFoceiLineObject(.ui, .errNum))
 }
 
+#' @rdname nmGetDistributionSaemLines
 #' @export
-nmGetDistributionSaemLines.default  <- function(line) {
-  stop("Distribution not supported")
-}
+nmGetDistributionSaemLines.default <- nmGetDistributionSaemLines.LL
 
 #' TRUE when the fit uses a general log-likelihood endpoint (distribution=4 path)
+#'
+#' Any distribution family other than "norm" reduces, in FOCEi's own line
+#' generator, to `rx_pred_` being an explicit log-density with `rx_r_ ~ 0`
+#' (ll(), t(), cauchy(), dnorm(), ordinal(), ...) -- see
+#' `rxode2::.handleSingleErrTypeNormOrTFoceiBase()`.  SAEM's own quasi-
+#' likelihood Poisson/binomial support (dpois()/dbinom()/dbern()) stays on
+#' `distribution == "norm"` with a variance-formula err type, so it is
+#' unaffected by this check.
+#'
+#' Any number of endpoints qualifies, as long as AT LEAST ONE of them is a
+#' general likelihood -- `do_mcmc`'s `distribution==4` branch (src/saem.cpp)
+#' treats each observation row's `rx_pred_` as `-loglik` directly, regardless
+#' of which endpoint condition produced it, so a model with several general-
+#' likelihood endpoints (e.g. two `ll()` conditions, or a `t()`+`cauchy()`
+#' mix) needs no per-endpoint dispatch to score correctly. A genuinely MIXED
+#' fit (some endpoints "norm", some not) is ALSO covered: `.createSaemLineObject`
+#' (this file) promotes every "norm" condition to "dnorm" whenever it is mixed
+#' with a genuine general-likelihood condition, mirroring FOCEi's own
+#' `rxUiGet.predDfFocei()` (R/focei.R) -- `llikNorm()` is the exact same normal
+#' log-density, just expressed as a proper general likelihood, so the whole
+#' fit can go through `do_mcmc`'s single `distribution` scalar uniformly
+#' instead of needing a per-observation switch.
+#'
 #' @param ui rxode2 ui
 #' @return logical
 #' @noRd
 .saemGeneralLik <- function(ui) {
   .pred <- ui$predDf
-  !is.null(.pred) && length(.pred$cond) == 1L && .pred$distribution == "LL"
+  !is.null(.pred) && length(.pred$cond) >= 1L && any(.pred$distribution != "norm")
+}
+
+#' Which `iniDf` rows are "estimable saem thetas" -- structural thetas, plus
+#' (only for a general-likelihood endpoint) its err-tagged residual-family
+#' theta(s) (e.g. `add.sd`/`nu` from `add(add.sd) + dt(nu)`).
+#'
+#' A normal endpoint's err-tagged thetas (add.sd, prop.sd, ...) are handled by
+#' the closed-form ares/bres residual M-step instead, so they are excluded
+#' there -- but a general-likelihood endpoint has no residual bookkeeping
+#' (`res.mod == 0`); its err-tagged theta(s) are referenced directly inside
+#' the compiled log-density (e.g. `rx_rll_ ~ sqrt((add.sd)^2)`), so they must
+#' be included here or they are silently absent from `params()`, the theta
+#' init vector, and the fixed-parameter mask.
+#'
+#' @param ui rxode2 ui
+#' @param iniDf iniDf to filter (usually `ui$iniDf`; passed separately since
+#'   some callers already have a filtered copy)
+#' @return logical vector, same length as `nrow(iniDf)`
+#' @noRd
+.saemIsEstimableThetaRow <- function(ui, iniDf) {
+  !is.na(iniDf$ntheta) & (is.na(iniDf$err) | .saemGeneralLik(ui))
 }
 
 #' @export
 rxUiGet.saemParamsLine <- function(x, ...) {
   .x <- x[[1]]
-  .names <- .x$iniDf[!is.na(.x$iniDf$ntheta) & is.na(.x$iniDf$err), "name"]
+  .names <- .x$iniDf[.saemIsEstimableThetaRow(.x, .x$iniDf), "name"]
   .cov <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
   .names <- .names[!(.names %in% .cov$covariateParameter)]
   str2lang(paste0("param(", paste(.names, collapse=", "), ")"))
@@ -194,6 +248,18 @@ attr(rxUiGet.saemParamsLine, "rstudio") <- quote(param(tcl))
 #' @export
 rxUiGet.saemModel0 <- function(x, ...) {
   .f <- x[[1]]
+  # t()/cauchy()/dnorm() endpoints only emit their explicit log-density form
+  # (rx_pred_ ~ llikT(...)/llikCauchy(...)/llikNorm(...), rx_r_ ~ 0) when
+  # nlmixr2global$rxPredLlik is TRUE (see rxGetDistributionFoceiLines.t/
+  # .cauchy/.default -> rxode2::.handleSingleErrTypeNormOrTFoceiBase());
+  # otherwise they fall back to the closed-form Gaussian mean/variance shape
+  # FOCEi's inner Newton solve uses.  SAEM's do_mcmc general-likelihood path
+  # has no such inner-Newton shortcut -- it always needs the true log-density
+  # -- so force it on here, mirroring rxUiGet.foceiModel0ll.
+  if (.saemGeneralLik(.f)) {
+    nlmixr2global$rxPredLlik <- TRUE
+    on.exit(nlmixr2global$rxPredLlik <- FALSE, add=TRUE)
+  }
   rxode2::rxCombineErrorLines(.f, errLines=nmGetDistributionSaemLines(.f),
                               paramsLine=NA,
                               modelVars=TRUE,
@@ -207,6 +273,12 @@ attr(rxUiGet.saemModel0, "rstudio") <- quote(rxModelVars({}))
 #'@export
 rxUiGet.saemModelPred0 <- function(x, ...) {
   .f <- x[[1]]
+  # see rxUiGet.saemModel0's comment -- same reasoning applies to the
+  # FOCEi-style predOnly model used for residuals/covariance.
+  if (.saemGeneralLik(.f)) {
+    nlmixr2global$rxPredLlik <- TRUE
+    on.exit(nlmixr2global$rxPredLlik <- FALSE, add=TRUE)
+  }
   rxode2::rxCombineErrorLines(.f, errLines=rxGetDistributionFoceiLines(.f),
                               paramsLine=NA, #.uiGetThetaEtaParams(.f),
                               modelVars=TRUE,
@@ -289,7 +361,7 @@ attr(rxUiGet.loadPruneSaemPred, "rstudio") <- emptyenv()
 rxUiGet.saemParamsToEstimate <- function(x, ...) {
   .ui <- x[[1]]
   .iniDf <- .ui$iniDf
-  .ret <- c(.iniDf$name[!is.na(.iniDf$ntheta) & is.na(.iniDf$err)])
+  .ret <- c(.iniDf$name[.saemIsEstimableThetaRow(.ui, .iniDf)])
   if (length(.ui$mixProbs) > 0) {
     .ret <- .ret[!(.ret %in% .ui$mixProbs)]
   }

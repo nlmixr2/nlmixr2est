@@ -97,6 +97,17 @@
       .env$rxControl$stiff2 <- 0L
     }
   }
+  # matExp-native sensitivities (#860): same reasoning as the hasDelay guard
+  # above -- nlm.cpp calls rxSolve_() directly, bypassing rxSolve.default()'s
+  # S3-dispatched matExp()/indLin() auto-detection that would otherwise force
+  # method="indLin".  Left at the ordinary-ODE default, a matExp model's
+  # dydt() is a no-op stub and every solve silently free-runs a zero
+  # derivative (states frozen at their post-dose values).
+  .mv <- rxode2::rxModelVars(nlmixr2global$nlmEnv$model)
+  if (is.list(.mv$indLin) && length(.mv$indLin) == 4L &&
+        !isTRUE(unname(.env$rxControl$method) == 3L)) {
+    .env$rxControl$method <- 3L
+  }
   .env$param <- setNames(par, sprintf("THETA[%d]", seq_along(par)))
   .nlmFitDataSetup(data)
   .env$needFD <- .f$eventTheta

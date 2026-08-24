@@ -100,6 +100,21 @@
   an `indLin()` forcing term (e.g. Michaelis-Menten) still flattens (issue
   #859).
 
+- `focei`/`foce`/`agq`/`laplace`/`nlm` now compute a `matExp()` model's eta/
+  theta sensitivities natively via `rxode2::rxSensMatExp()`, instead of
+  flattening the model to an equivalent `d/dt()` ODE first and differentiating
+  that.  A pure-linear `matExp()` model always takes this path; a model with
+  an `indLin()` forcing term (e.g. Michaelis-Menten) takes it under `focei`
+  and `focep`, and falls back to the ODE flatten (unchanged prior behavior)
+  under `foce` (non-interaction), the mu-referenced/IRLS family (`mfocei`/
+  `ifocei`/`mfoce`/`ifoce`), and `nlm` -- those combinations' gradient/
+  covariance machinery is not yet compatible with the native forcing
+  sensitivities and is tracked separately (issue #860; follow-up work in
+  #861/#862).  `foceiControl(fast=TRUE)` is automatically downgraded to
+  `fast=FALSE` for a `matExp()` model taking the native path, since the
+  analytic outer-gradient/covariance model (`foceiCovAnalytic.R`) is still
+  ODE-flattened.
+
 - A modeled `alag()` or `f()` on a `linCmt()` compartment now gets an exact
   FOCEi/FOCE eta gradient instead of a silently incomplete one.  The
   structural `linCmt()` Jacobian only covers `p1`/`v1`/`ka`/...; the
@@ -249,6 +264,20 @@
   every other generalized-likelihood distribution (`pois`, `binom`, `beta`,
   and so on) still silently ignore censoring for now, but a fit now warns
   when that combination is used instead of staying silent.
+
+- The `rx_r_` fix above (`.fixCensRNuLine()`, `R/focei.R`) rebuilt `rx_r_`
+  by re-inlining `rx_rll_`'s defining expression, which for a transformed
+  `propT()`/`powT()` error model contains the symbol `rx_pred_` -- a symbol
+  already overwritten with the scalar log-likelihood by that point in the
+  same branch, silently corrupting the variance for any censored
+  `propT()`/`powT()` endpoint (found by an independent Antigravity review).
+  Fixed by referencing the already-computed `rx_rll_` variable instead of
+  its expression.
+
+- An `ar()` endpoint's censoring correction now uses a self-consistent
+  marginal (not the exact AR(1)-conditional) mean/variance for M2/M3/M4
+  scoring -- a real improvement over the previous corrupted state, but
+  still an approximation for `ar()` specifically; tracked as #1001.
 
 - `est="saem"` with a `pow()` residual error model (`rmPow`/`rmAddPow`/
   `rmPowLam`/`rmAddPowLam`) never applied the estimated power exponent in the
@@ -542,6 +571,23 @@
   it has not settled, and the second verdict can freeze an eta for the rest of
   the fit.
 
+- `est="saem"` now recognizes `t()`/`cauchy()` residual-error endpoints as
+  general-likelihood models, the same way a literal `ll()` endpoint already
+  was, instead of erroring (`"t isn't supported yet"` / `"Distribution not
+  supported"`).  rxode2's own FOCEi line generator already reduces these to
+  the same shape (`rx_pred_` an explicit log-density, `rx_r_ ~ 0`), so
+  `saem` now dispatches through the same path.
+
+- `est="saem"` now recognizes a general-likelihood model with **any number of
+  endpoints**, including a genuine **mix of `norm` and general-likelihood
+  endpoints in the same fit** (e.g. one `add()` condition alongside a `t()`,
+  `cauchy()`, or literal `ll()` condition), instead of silently scoring the
+  whole fit as if every endpoint were normally distributed.  A `norm`
+  condition mixed with a general-likelihood one is transparently expressed as
+  the equivalent `llikNorm()` general likelihood (the same normal log-density,
+  sharing the same variance-formula machinery), mirroring how FOCEi already
+  handles this mix -- no `distribution()`-family limitation remains.
+
 ## Bug fixes
 
 ### Estimation
@@ -598,6 +644,19 @@
   exact normal log-density versus the equivalent `add()` model) the standard
   error ratios go from 4.0-80.5 to 0.99-1.02, and the two objective function
   values now agree outright rather than up to a constant.
+
+- `est="saem"`'s mu-referenced (population, eta-carrying) theta update for a
+  general-likelihood (`ll()`) endpoint is no longer a plain
+  stochastic-approximation recursion over the MCMC-sampled phi, which carried
+  no curvature information and could converge to the wrong basin.  A direct
+  `bobyqa` optimization of the exact joint log-likelihood (mirroring the
+  existing `nonMuTheta="regress"` mechanism) now drives these thetas, sharing
+  FOCEi's own inner (eta-sensitivity) model through the shared ODE solve
+  pool.  `saemControl(phi1Hessian=)` (default `FALSE`) optionally adds a
+  Laplace `log|H|` correction on top; measured to not be what fixes
+  convergence for a Gaussian or exponential-TTE `ll()` model, so it stays
+  opt-in.  A near-Gaussian `t()`/`cauchy()` endpoint can still diverge under
+  this step (nlmixr2/nlmixr2est#999); tracked separately.
 
 - Fixed `est="saem"` applying the **transform-both-sides log-Jacobian with the
   wrong sign** in its Gaussian-quadrature likelihood, so the reported

@@ -394,6 +394,10 @@ foceiLikEval_ <- function(etaMat, cores, retType) {
     .Call(`_nlmixr2est_foceiLikEval_`, etaMat, cores, retType)
 }
 
+foceiLikInnerObjective_ <- function(theta) {
+    .Call(`_nlmixr2est_foceiLikInnerObjective_`, theta)
+}
+
 foceiLikIterPrintStart_ <- function(every, initPar, names, iterPrintControl = NULL, xform = NULL) {
     .Call(`_nlmixr2est_foceiLikIterPrintStart_`, every, initPar, names, iterPrintControl, xform)
 }
@@ -774,6 +778,10 @@ augPredTrans <- function(pred, ipred, lambda, yjIn, low, hi) {
 #' @export
 rxode2stateOde <- function(inp) {
     .Call(`_nlmixr2est_rxode2stateOde`, inp)
+}
+
+saemPhi1RefineN_ <- function() {
+    .Call(`_nlmixr2est_saemPhi1RefineN_`)
 }
 
 saem_do_pred <- function(in_phi, in_evt, in_opt) {

@@ -198,6 +198,23 @@
   .model <- nlmixrWithTiming("configure", {
     ui$saemModelList
   })
+  # Phase 4 (SAEM general-likelihood theta plan): attach the phi1-inner
+  # exact-Hessian model and its pred-only FD-fallback peer so .configsaem can
+  # thread them into opt$saemPhi1Hess2/opt$saemPhi1Pred -- setupRx registers
+  # them as odeSwap peers of SAEM's own model for the phi1 theta step.
+  if (.saemGeneralLik(ui)) {
+    .p1 <- nlmixrWithTiming("configure", ui$saemPhi1Inner)
+    if (!is.null(.p1) && isTRUE(.p1$ok)) {
+      .model$saemPhi1Hess2 <- .p1$innerHess2
+      .model$saemPhi1Pred  <- .p1$predNoLhs
+      .model$saemPhi1ThetaKind <- as.integer(.p1$thetaKind)
+      .model$saemPhi1ThetaCol <- as.integer(.p1$thetaCol)
+      .model$saemPhi1ThetaFixedVal <- as.numeric(.p1$thetaFixedVal)
+      .model$saemPhi1EtaCol <- as.integer(.p1$etaCol)
+      .model$saemPhi1DvCol <- as.integer(.p1$dvCol)
+      .model$saemPhi1DvColHess2 <- as.integer(.p1$dvColHess2)
+    }
+  }
   .inits <- ui$saemInit
   .rxControl <- rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())
   ## Delay differential equation models need a dense-output solver so delay()
@@ -237,7 +254,7 @@
                                                   list(niter = c(200, 300),
                                                        nmc = 3, nu = c(2, 2, 2))),
                         rxControl=.rxControl,
-                        distribution=if (any(ui$predDf$distribution == "LL")) "general" else "normal",
+                        distribution=if (.saemGeneralLik(ui)) "general" else "normal",
                         fixedOmega=ui$saemModelOmegaFixed,
                         fixedOmegaValues=ui$saemModelOmegaFixedValues,
                         parHistThetaKeep=ui$saemParHistThetaKeep,
@@ -296,6 +313,12 @@
     .cfg$nonMuThetaTol <- as.numeric(rxode2::rxGetControl(ui, "nonMuThetaTol",
                                                           .Machine$double.eps^0.25))
     .cfg$nonMuThetaEvery <- as.integer(rxode2::rxGetControl(ui, "nonMuThetaEvery", 1L))
+    # Phase 4 (SAEM general-likelihood theta plan): cadence/budget for the
+    # phi1 (mu-referenced theta) Laplace-corrected refinement -- see
+    # saemControl()'s own docs for phi1ThetaEvery/phi1ThetaMaxEval.
+    .cfg$phi1ThetaEvery <- as.integer(rxode2::rxGetControl(ui, "phi1ThetaEvery", 1L))
+    .cfg$phi1ThetaMaxEval <- as.integer(rxode2::rxGetControl(ui, "phi1ThetaMaxEval", 50L))
+    .cfg$phi1Hessian <- as.integer(isTRUE(rxode2::rxGetControl(ui, "phi1Hessian", FALSE)))
     # warm-start residual params from observed per-endpoint moments (npag-style)
     .cfg$residWarmStart <- as.integer(rxode2::rxGetControl(ui, "residWarmStart", TRUE))
     # mixProbMethod="regress": fix per-subject mixture membership (hard classify
@@ -326,7 +349,15 @@
     # iniDf so the optimization stays in a valid region.
     if (!is.null(.cfg$nphi0) && .cfg$nphi0 > 0L) {
       .pars <- ui$saemParamsToEstimate
-      .phi0Names <- .pars[.cfg$i0]
+      # .cfg$i0 is 0-based (converted for C++'s own use, R/saem_fit.R's
+      # `i0 <- i0 - 1`), so it must be shifted back to R's 1-based indexing
+      # here.  Left un-shifted, this silently looked up the WRONG parameter's
+      # name (off by one) -- e.g. a general-likelihood endpoint's bounded
+      # residual theta (prop.err) resolved to whichever theta sits one
+      # position earlier, which typically has no declared bound, so
+      # phi0Lower/Upper fell back to -Inf/Inf and refinePhi0Lik's bounded
+      # bobyqa ran completely unconstrained for it.
+      .phi0Names <- .pars[.cfg$i0 + 1L]
       .lo <- ui$iniDf$lower[match(.phi0Names, ui$iniDf$name)]
       .hi <- ui$iniDf$upper[match(.phi0Names, ui$iniDf$name)]
       .cfg$phi0Lower <- ifelse(is.na(.lo), -Inf, .lo)
@@ -382,7 +413,20 @@
     }
   }
   .hasVariance <- any(names(.predDf) == "variance")
+  # Whole-fit flag, not per-condition: a "norm" condition mixed with a genuine
+  # general-likelihood condition is promoted to "dnorm" at model-generation
+  # time (.createSaemLineObject, R/saemRxUiGetModel.R), so once the fit as a
+  # whole is general-lik its res.mod is 0 for EVERY condition, not just the
+  # ones whose own raw distribution already said so.
+  .genLik <- .saemGeneralLik(.ui)
   for (i in seq_along(.predDf$cond)) {
+    # A general-likelihood endpoint has no residual M-step (res.mod == 0,
+    # .resMat/.saem$arCor are not populated for it) -- its err-tagged theta
+    # (e.g. add.sd inside dt()/cauchy()'s rx_rll_, or a plain ll() theta) was
+    # already correctly read from .thetaSaem (Plambda) above. Overwriting it
+    # from .resMat here would replace that correct, kernel-tracked value with
+    # stale/uninitialized residual-M-step output.
+    if (.genLik || .predDf$distribution[i] != "norm") next
     .x <- paste(.predDf$cond[i])
     .tmp <- .iniDf[which(.iniDf$condition == .x), ]
     .w <- which(vapply(.tmp$err,
