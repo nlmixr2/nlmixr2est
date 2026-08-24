@@ -7752,7 +7752,7 @@ NumericVector foceiSetup_(const RObject &obj,
     // trustFterm/trustMterm: innerOpt="trust"'s own convergence tolerances,
     // independent of epsilon (n1qn1's unrelated "precision of estimate"
     // tolerance). Resolved to a concrete number on the R side (foceiControl.R,
-    // 10^-(sigdig+2) by default -- NOT derived from epsilon) the same way
+    // plain 10^-sigdig by default -- NOT derived from epsilon) the same way
     // epsilon itself is, so no NULL fallback is needed here.
     op_focei.trustFterm = as<double>(foceiO["trustFterm"]);
     op_focei.trustMterm = as<double>(foceiO["trustMterm"]);
