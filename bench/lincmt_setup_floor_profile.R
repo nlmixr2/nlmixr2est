@@ -17,6 +17,12 @@ suppressMessages({
 rxode2::setRxThreads(1L)
 nRep <- as.integer(Sys.getenv("REPS", "3"))
 
+# COV=1 switches to a weight-covariate model (constant per subject in the
+# data -- the carry candidate detection still runs its full symengine pass
+# per fit unless memoized, which is exactly what this mode measures).
+useCov <- identical(Sys.getenv("COV", "0"), "1")
+
+
 ## ---- one-compartment oral model + data (same shape as the vs-ode bench) --
 set.seed(1002003)
 simTimes <- c(0.25, 0.75, 1.5, 3, 5.5, 8, 12.5, 17, 24, 32)
@@ -38,6 +44,9 @@ doseRows <- data.frame(ID = seq_len(nSub), TIME = 0, DV = NA_real_,
                        AMT = 100, EVID = 1, CMT = "depot")
 dat <- rbind(doseRows, simDat)
 dat <- dat[order(dat$ID, dat$TIME, -dat$EVID), ]
+if (useCov) {
+  dat$wt <- 60 + 20 * (dat$ID %% 3L) / 2  # constant within subject
+}
 
 # nolint start: object_usage_linter. (rxode2 ini/model DSL assignments)
 uiLin <- function() {
@@ -54,7 +63,25 @@ uiLin <- function() {
     cp ~ prop(prop.sd)
   })
 }
+uiLinCov <- function() {
+  ini({
+    lka <- log(1.44); lcl <- log(4.8); lv <- log(36)
+    eta.ka ~ 0.1; eta.cl ~ 0.1; eta.v ~ 0.1
+    prop.sd <- 0.2
+  })
+  model({
+    ka <- exp(lka) * exp(eta.ka)
+    cl <- exp(lcl) * (wt / 70)^0.75 * exp(eta.cl)
+    v <- exp(lv) * exp(eta.v)
+    cp <- linCmt()
+    cp ~ prop(prop.sd)
+  })
+}
 # nolint end
+if (useCov) {
+  uiLin <- uiLinCov
+  cat("covariate model (COV=1)\n")
+}
 
 ctlPost <- nlmixr2est::foceiControl(
   calcTables = FALSE, print = 0L, covMethod = "", maxOuterIterations = 0L,

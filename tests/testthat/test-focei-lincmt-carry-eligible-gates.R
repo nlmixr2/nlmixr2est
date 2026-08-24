@@ -115,3 +115,39 @@ test_that("a prediction wrapping the linCmt() value is carried through the outer
   expect_lt(r$err, 1e-6)
   expect_true(grepl("rx_lcConc_~linCmtB(", r$txt, fixed = TRUE))
 })
+
+test_that("data-independent candidate pairs are memoized by the model digest", {
+  .foceiLinCmtCarryMemoClear()
+  .foceiLinCmtCarryMemoStats(reset = TRUE)
+  .ui <- .carryUiCov()
+  .p1 <- .foceiLinCmtCarryPairs(.ui)
+  .st1 <- .foceiLinCmtCarryMemoStats()
+  expect_equal(.st1[["misses"]], 1L)
+  expect_equal(.st1[["hits"]], 0L)
+  .p2 <- .foceiLinCmtCarryPairs(.ui)
+  .st2 <- .foceiLinCmtCarryMemoStats()
+  # mechanism: the second identical-model call is served from the memo
+  expect_equal(.st2[["hits"]], 1L)
+  expect_equal(.st2[["misses"]], 1L)
+  expect_identical(.p1, .p2)
+  # a different model gets its own digest, so a fresh detection
+  .p3 <- .foceiLinCmtCarryPairs(.carryUiTwoPair())
+  .st3 <- .foceiLinCmtCarryMemoStats()
+  expect_equal(.st3[["misses"]], 2L)
+  expect_false(identical(.p1, .p3))
+  # a data-dependent call bypasses the memo entirely (no counter movement)
+  .dat <- data.frame(id = rep(1:2, each = 3), time = rep(c(0, 12, 24), 2),
+                     amt = rep(c(100, 0, 0), 2), evid = rep(c(1, 0, 0), 2),
+                     dv = rep(c(0, 1, 2), 2), wt = rep(c(70, 90, 90), 2))
+  .p4 <- .foceiLinCmtCarryPairs(.ui, data = .dat)
+  .st4 <- .foceiLinCmtCarryMemoStats()
+  expect_equal(.st4, .st3)
+  expect_true(isTRUE(.p4$varying[1]))
+  # a control that keys the digest (covsInterpolation) invalidates the entry
+  .ui2 <- .carryUiCov()
+  rxode2::rxAssignControlValue(.ui2, "rxControl",
+                               rxode2::rxControl(covsInterpolation = "nocb"))
+  .foceiLinCmtCarryPairs(.ui2)
+  .st5 <- .foceiLinCmtCarryMemoStats()
+  expect_equal(.st5[["misses"]], 3L)
+})
