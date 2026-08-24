@@ -1213,7 +1213,12 @@ attr(rxUiGet.foceiThetaS, "rstudio") <- emptyenv()
 #' @noRd
 #' @author Matthew L. Fidler
 .foceiPredFEtaSens <- function(.s, .grd) {
-  if (!exists("rx_pred_f_", envir = .s)) return(character(0))
+  # An AR(1) endpoint already emits these exact names (..arEtaSens, real lhs
+  # ahead of rx_pred_), so never emit them twice.
+  if (!isTRUE(nlmixr2global$rxCensNuFix) || !.getRxPredLlikOption() ||
+        !is.null(.s$..arEtaSens) || !exists("rx_pred_f_", envir = .s)) {
+    return(character(0))
+  }
   .nms <- character(nrow(.grd))
   .txt <- character(nrow(.grd))
   for (.n in seq_len(nrow(.grd))) {
@@ -1248,16 +1253,8 @@ rxUiGet.foceiHdEta <- function(x, ...) {
     .arCorr <- .rxFoceiArEtaCorrect(.s, .grd)
   }
   # M2/M3/M4 censoring for a llik-forced endpoint (#992) needs the STRUCTURAL
-  # d(f)/d(eta) as well.  Computed here, with the same pre-apply ordering the
-  # AR(1) correction uses.  An AR endpoint already emits these exact names
-  # (..arEtaSens, real lhs ahead of rx_pred_), so never emit them twice.
-  .s$..predFEtaSens <- if (isTRUE(nlmixr2global$rxCensNuFix) &&
-                             .getRxPredLlikOption() &&
-                             is.null(.s$..arEtaSens)) {
-    .foceiPredFEtaSens(.s, .grd)
-  } else {
-    character(0)
-  }
+  # d(f)/d(eta) as well; same pre-apply ordering as the AR(1) correction.
+  .s$..predFEtaSens <- .foceiPredFEtaSens(.s, .grd)
   rxode2::rxProgress(dim(.grd)[1])
   # Guard the abort so a clean rxProgressStop() below prevents the generic
   # "Aborted calculation" from masking the informative error we raise here
