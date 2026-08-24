@@ -182,6 +182,13 @@
   that setup are now `size_t` as well, so a subject with more than 46,340
   observations no longer wraps its own `nobs_i^2` stride.
 
+- FOCEi's `geta` block (the per-subject current eta vector) was allocated
+  `neta` doubles inside the same setup, but it is indexed once per subject --
+  it needs `(neta + 1) * nsub` like the ten per-subject eta arrays that follow
+  it.  Every subject past the first therefore wrote its eta through storage
+  belonging to `gtryEta` (the trial eta of the eta-reset/nudge path).  Both
+  arrays now get their own block.
+
 - `est="saem"` with `saemControl(nMix > 1)` (mixture SAEM) inverted the
   `propT()`/`powT()` (transformed-basis) vs. plain `prop()`/`pow()`
   (raw-basis) proportional/power error term in the two MSAEM-only E-step

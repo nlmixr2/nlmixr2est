@@ -6432,14 +6432,16 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
   RObject etaMat0s = transpose(etaMat0);
   double *etaMat0d = REAL(etaMat0s);
   {
-    size_t _gEtaGTransN = (op_focei.neta + 1) * getRxNsubAndMix(rx);
+    size_t _gEtaGTransN = foceiSzMul((size_t)op_focei.neta + 1,
+                                     getRxNsubAndMix(rx), "eta");
     if (_gEtaGTransN > UINT_MAX) { // nocov
       stop("focei: neta * nsub_mix too large for gEtaGTransN"); // nocov
     } // nocov
     op_focei.gEtaGTransN = (unsigned int)_gEtaGTransN;
   }
-  size_t nz = ((op_focei.neta+1)*(op_focei.neta+2)/2 + 6*(op_focei.neta+1) + 1) *
-               getRxNsubAndMix(rx);
+  size_t nz = foceiSzMul((size_t)((op_focei.neta+1)*(op_focei.neta+2)/2 +
+                                  6*(op_focei.neta+1) + 1),
+                         getRxNsubAndMix(rx), "zm");
 
   if (op_focei.etaUpper != NULL) R_Free(op_focei.etaUpper);
 
@@ -6450,7 +6452,9 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
     // Every term is data-derived, so add/multiply through the checked helpers:
     // a wrapped total would make R_Calloc return a short buffer that the setup
     // below then strides past.
-    size_t tot = foceiSzMul((size_t)op_focei.gEtaGTransN, 10, "eta");
+    // 11 per-subject eta blocks: geta, gtryEta, goldEta, getahf, getahr,
+    // getahh, gsaveEta, gG, gVar, gX, glp.
+    size_t tot = foceiSzMul((size_t)op_focei.gEtaGTransN, 11, "eta");
     tot = foceiSzAdd(tot, foceiSzMul(op_focei.npars, nsub_mix + 1, "thetaGrad"), "thetaGrad");
     tot = foceiSzAdd(tot, nz, "zm");
     tot = foceiSzAdd(tot, foceiSzMul(2 * neta, nall_mix, "ga/gc"), "ga/gc");
@@ -6465,7 +6469,10 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
   }
   op_focei.etaLower =  op_focei.etaUpper + op_focei.neta;
   op_focei.geta     = op_focei.etaLower + op_focei.neta;
-  op_focei.gtryEta  = op_focei.geta + op_focei.neta;
+  // geta is a PER-SUBJECT array (fInd->eta = &geta[j], j advancing by neta+1
+  // over every subject), so it needs a full gEtaGTransN block like the ten
+  // that follow it -- it used to be handed only neta and aliased gtryEta.
+  op_focei.gtryEta  = op_focei.geta + op_focei.gEtaGTransN;
   op_focei.goldEta  = op_focei.gtryEta + op_focei.gEtaGTransN;
   op_focei.getahf   = op_focei.goldEta + op_focei.gEtaGTransN;
   op_focei.getahr   = op_focei.getahf + op_focei.gEtaGTransN;
