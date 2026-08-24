@@ -121,8 +121,21 @@ nmGetDistributionSaemLines <- function(line) {
     return(NULL)
   }
   .predLine <- .predDf[line, ]
+  # A "norm" condition MIXED with at least one genuine general-likelihood
+  # condition dispatches as "dnorm" instead -- mirrors FOCEi's own
+  # rxUiGet.predDfFocei() (R/focei.R) promotion.  llikNorm() is the exact same
+  # normal log-density, just expressed as a proper general likelihood, which
+  # is what lets do_mcmc's distribution==4 branch (one scalar for the whole
+  # fit, not per-observation) score every endpoint uniformly instead of
+  # needing per-observation dispatch.  A pure-normal model (every condition
+  # "norm") is untouched -- it still takes the closed-form
+  # nmGetDistributionSaemLines.norm path under distribution=1.
+  .dist <- paste(.predLine$distribution)
+  if (.dist == "norm" && !all(.predDf$distribution == "norm")) {
+    .dist <- "dnorm"
+  }
   .ret <- list(x, .predLine, line)
-  class(.ret) <- c(paste(.predLine$distribution), "nmGetDistributionSaemLines")
+  class(.ret) <- c(.dist, "nmGetDistributionSaemLines")
   .ret
 }
 
@@ -179,12 +192,26 @@ nmGetDistributionSaemLines.default <- nmGetDistributionSaemLines.LL
 #' `distribution == "norm"` with a variance-formula err type, so it is
 #' unaffected by this check.
 #'
+#' Any number of endpoints qualifies, as long as AT LEAST ONE of them is a
+#' general likelihood -- `do_mcmc`'s `distribution==4` branch (src/saem.cpp)
+#' treats each observation row's `rx_pred_` as `-loglik` directly, regardless
+#' of which endpoint condition produced it, so a model with several general-
+#' likelihood endpoints (e.g. two `ll()` conditions, or a `t()`+`cauchy()`
+#' mix) needs no per-endpoint dispatch to score correctly. A genuinely MIXED
+#' fit (some endpoints "norm", some not) is ALSO covered: `.createSaemLineObject`
+#' (this file) promotes every "norm" condition to "dnorm" whenever it is mixed
+#' with a genuine general-likelihood condition, mirroring FOCEi's own
+#' `rxUiGet.predDfFocei()` (R/focei.R) -- `llikNorm()` is the exact same normal
+#' log-density, just expressed as a proper general likelihood, so the whole
+#' fit can go through `do_mcmc`'s single `distribution` scalar uniformly
+#' instead of needing a per-observation switch.
+#'
 #' @param ui rxode2 ui
 #' @return logical
 #' @noRd
 .saemGeneralLik <- function(ui) {
   .pred <- ui$predDf
-  !is.null(.pred) && length(.pred$cond) == 1L && .pred$distribution != "norm"
+  !is.null(.pred) && length(.pred$cond) >= 1L && any(.pred$distribution != "norm")
 }
 
 #' Which `iniDf` rows are "estimable saem thetas" -- structural thetas, plus

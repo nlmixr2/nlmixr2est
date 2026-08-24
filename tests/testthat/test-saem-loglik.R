@@ -171,6 +171,119 @@ nmTest({
     expect_equal(fL$objf, fA$objf, tolerance = 0.02)
   })
 
+  # Shared 2-endpoint data for the multi-endpoint general-likelihood twins
+  # below: "cp" and a second, independently-noised observation "cp2" of the
+  # same underlying concentration (deterministically offset so it is a
+  # distinct condition, not literally the same numbers).
+  .mkTwoEp <- function(seed = 1L, nSub = 20L) {
+    .testSeed(seed)
+    simMod <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45
+            eta.ka ~ 0.1; eta.cl ~ 0.1; eta.v ~ 0.05 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+              d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center
+              cp <- center / v
+              cp ~ add(0.3) })
+    }
+    simUi <- rxode2::rxUiDecompress(rxode2::rxode2(simMod))
+    ev <- rxode2::et(amt = 320, time = 0) |> rxode2::et(seq(0.5, 24, by = 2))
+    sim <- rxode2::rxSolve(simUi, ev, params = c(tka = 0.45, tcl = 1, tv = 3.45), nSub = nSub,
+                            omega = lotri::lotri(eta.ka ~ 0.1, eta.cl ~ 0.1, eta.v ~ 0.05))
+    df <- as.data.frame(sim); names(df)[names(df) == "sim.id"] <- "id"
+    d1 <- data.frame(id = df$id, time = df$time, amt = NA_real_, evid = 0,
+                      dv = pmax(df$cp + rnorm(nrow(df), 0, 0.3), 0.01), cmt = "cp")
+    d2 <- data.frame(id = df$id, time = df$time, amt = NA_real_, evid = 0,
+                      dv = pmax(df$cp * 1.3 + rnorm(nrow(df), 0, 0.4), 0.01), cmt = "cp2")
+    dose <- data.frame(id = sort(unique(df$id)), time = 0, amt = 320, evid = 101,
+                        dv = NA_real_, cmt = "depot")
+    dat <- rbind(dose, d1, d2); dat[order(dat$id, dat$time), ]
+  }
+  .twoEpCtl <- saemControl(nBurn = 100, nEm = 100, nmc = 3, seed = 42, print = 0L,
+                           covMethod = "", calcTables = FALSE)
+  .twoEpGauss <- function() {
+    ini({ tka <- 0.45; tcl <- 1; tv <- 3.45
+          add.pk1 <- 0.3; add.pk2 <- 0.4
+          eta.ka ~ 0.1; eta.cl ~ 0.1; eta.v ~ 0.05 })
+    model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+            d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center
+            cp <- center / v; cp2 <- cp * 1.3
+            cp  ~ add(add.pk1) | cp
+            cp2 ~ add(add.pk2) | cp2 })
+  }
+
+  test_that("a multi-endpoint Gaussian twin agrees with all-ll() endpoints", {
+    # .saemGeneralLik() used to require exactly one prediction endpoint
+    # (length(predDf$cond) == 1L), so a model with SEVERAL general-likelihood
+    # endpoints (every condition non-"norm") was silently misclassified as
+    # distribution="normal" instead of "general" -- do_mcmc's distribution==4
+    # branch treats each row's rx_pred_ as -loglik directly regardless of
+    # which endpoint condition produced it, so this needed no per-endpoint
+    # C++ change, only widening the R-side gate to length(cond) >= 1L with
+    # any(distribution != "norm").
+    dat <- .mkTwoEp(1L)
+    pkLl <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45
+            lsd1 <- log(0.3); lsd2 <- log(0.4)
+            eta.ka ~ 0.1; eta.cl ~ 0.1; eta.v ~ 0.05 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+              d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center
+              cp <- center / v; cp2 <- cp * 1.3
+              sd1 <- exp(lsd1); sd2 <- exp(lsd2)
+              ll(cp)  ~ -0.5 * log(2 * pi) - lsd1 - 0.5 * ((DV - cp) / sd1)^2
+              ll(cp2) ~ -0.5 * log(2 * pi) - lsd2 - 0.5 * ((DV - cp2) / sd2)^2 })
+    }
+    fA <- .nlmixr(.twoEpGauss, dat, est = "saem", control = .twoEpCtl)
+    fL <- .nlmixr(pkLl,        dat, est = "saem", control = .twoEpCtl)
+
+    # the ll() twin really did take the general (distribution=4) path, over
+    # every endpoint -- confirms the premise, not just the conclusion
+    expect_true(.saemGeneralLik(fL$ui))
+    expect_equal(length(fL$ui$predDf$cond), 2L)
+
+    expect_equal(unname(fixef(fL)[c("tka", "tcl", "tv")]),
+                 unname(fixef(fA)[c("tka", "tcl", "tv")]),
+                 tolerance = 0.02)
+  })
+
+  test_that("a mixed norm+ll() multi-endpoint twin agrees with its Gaussian equivalent", {
+    # A "norm" condition mixed with a genuine general-likelihood condition
+    # (some endpoints "norm", some not) used to fall all the way back to
+    # distribution="normal" for the WHOLE fit, silently mis-scoring the
+    # general-likelihood endpoint's rx_pred_ (a log-density) as if it were a
+    # plain prediction.  Fixed by promoting every "norm" condition to
+    # "dnorm" for dispatch purposes whenever it is mixed with a genuine
+    # general-likelihood condition (.createSaemLineObject,
+    # R/saemRxUiGetModel.R) -- llikNorm() is the exact same normal
+    # log-density, just expressed as a proper general likelihood, mirroring
+    # FOCEi's own rxUiGet.predDfFocei() promotion (R/focei.R). This needed no
+    # C++ change: do_mcmc's distribution==4 branch was already
+    # endpoint-agnostic.
+    dat <- .mkTwoEp(1L)
+    pkMix <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45
+            add.pk1 <- 0.3; lsd2 <- log(0.4)
+            eta.ka ~ 0.1; eta.cl ~ 0.1; eta.v ~ 0.05 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+              d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center
+              cp <- center / v; cp2 <- cp * 1.3
+              sd2 <- exp(lsd2)
+              cp ~ add(add.pk1) | cp
+              ll(cp2) ~ -0.5 * log(2 * pi) - lsd2 - 0.5 * ((DV - cp2) / sd2)^2 })
+    }
+    fA <- .nlmixr(.twoEpGauss, dat, est = "saem", control = .twoEpCtl)
+    fM <- .nlmixr(pkMix,       dat, est = "saem", control = .twoEpCtl)
+
+    # the mixed fit really did take the general (distribution=4) path, and
+    # its "norm" condition's residual bookkeeping was correctly suppressed
+    # (promoted to dnorm, not left on the closed-form M-step)
+    expect_true(.saemGeneralLik(fM$ui))
+    expect_equal(unname(fM$ui$saemResMod), c(0L, 0L))
+
+    expect_equal(unname(fixef(fM)[c("tka", "tcl", "tv")]),
+                 unname(fixef(fA)[c("tka", "tcl", "tv")]),
+                 tolerance = 0.02)
+  })
+
   test_that("a general log-likelihood endpoint uses distribution=4 (no residual)", {
     .ui <- rxode2::rxUiDecompress(rxode2::rxode2(expTte))
     # LL endpoint carries no residual bookkeeping

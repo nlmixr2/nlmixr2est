@@ -382,12 +382,19 @@ attr(rxUiGet.saemYj, "rstudio") <- 1L
 rxUiGet.saemResMod <- function(x, ...) {
   .ui <- x[[1]]
   .predDf <- .ui$predDf
+  # A "norm" condition mixed with a genuine general-likelihood condition is
+  # promoted to "dnorm" at model-generation time (.createSaemLineObject,
+  # R/saemRxUiGetModel.R) and compiled with rx_r_ ~ 0 like every other
+  # general-likelihood endpoint -- so once the WHOLE fit is general-lik
+  # (.saemGeneralLik(.ui)), every condition has no residual error parameter,
+  # not just the ones whose own raw distribution already said so.
+  .genLik <- .saemGeneralLik(.ui)
   vapply(seq_along(.predDf$errType),
          function(i) {
            # general log-likelihood endpoint (ll() ~ expr, or any non-normal
            # distribution() family): no residual error parameter -- the inner
            # supplies the likelihood (distribution=4 path)
-           if (.predDf$distribution[i] != "norm") return(0L)
+           if (.genLik || .predDf$distribution[i] != "norm") return(0L)
            .errType <- as.integer(.predDf$errType[i])
            .hasLambda <- .predDf$transform[i] %in% c("boxCox", "yeoJohnson",
                                                      "logit + yeoJohnson",
