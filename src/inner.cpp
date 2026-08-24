@@ -13,6 +13,7 @@
 #include "nmMcmcRng.h"
 #include <cfloat>
 #include <cstring>
+#include <cstdint>
 #include "odeSwap.h"
 #include "imp.h"
 #include "np.h"
@@ -864,6 +865,25 @@ static inline size_t getRxNsubAndMix(rx_solve* rx) {
 
 static inline size_t getRxNallAndMix(rx_solve* rx) {
   return (size_t)getRxNall(rx) * (op_focei.mixIdxN + 1);
+}
+
+// Size of the gVid block.  Each subject holds its own nobs_i x nobs_i
+// residual variance matrix, so the block is sum(nobs_i^2) -- NOT nall^2:
+// nall counts dose (and evid=2) records too, and (sum x)^2 only equals
+// sum(x^2) when a single subject holds every observation (#1010).
+static inline size_t getRxNobsSqAndMix(rx_solve* rx) {
+  size_t tot = 0;
+  for (int i = getRxNsub(rx); i--;) {
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, i);
+    size_t nobs = (size_t)(getIndNallTimes(ind) - getIndNdoses(ind) -
+                           getIndNevid2(ind));
+    if (nobs != 0 && nobs > SIZE_MAX / nobs) { // nocov
+      stop("focei: subject %d has too many observations (%zu) for the " // nocov
+           "residual variance allocation", i + 1, nobs); // nocov
+    } // nocov
+    tot += nobs * nobs;
+  }
+  return tot * (size_t)(op_focei.mixIdxN + 1);
 }
 
 static inline int getRxId(int id) {
@@ -6386,18 +6406,6 @@ static inline void foceiSetupNoEta_(){
 
 static inline void foceiSetupEta_(NumericMatrix etaMat0){
   rx = getRxSolve_();
-  // Guard: nall_mix^2 is used in the etaUpper allocation below. When
-  // nall_mix > 65535 the squared term exceeds the range of a 32-bit integer,
-  // and on 32-bit size_t platforms the product would overflow.
-  {
-    size_t nall_mix_chk = getRxNallAndMix(rx);
-    if (nall_mix_chk > 65535) { // nocov
-      stop("focei: dataset too large for this mixture model configuration " // nocov
-               "(getRxNall * (mixIdxN+1) = %zu would produce an infeasibly large " // nocov
-               "allocation). Reduce the number of observations or mixture components.", // nocov
-               nall_mix_chk); // nocov
-    } // nocov
-  }
 
   if (inds_focei != NULL) R_Free(inds_focei);
   inds_focei = R_Calloc(getRxNsubAndMix(rx), focei_ind);
@@ -6429,7 +6437,7 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
       op_focei.npars * (nsub_mix + 1) + nz +
       2 * op_focei.neta * nall_mix +
       nall_mix +
-      nall_mix * nall_mix +
+      getRxNobsSqAndMix(rx) + // gVid; sum(nobs_i^2), see getRxNobsSqAndMix
       op_focei.neta * 6 +
       2 * op_focei.neta * op_focei.neta * nsub_mix +
       nall_mix +
@@ -6460,7 +6468,7 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
   op_focei.gH       = op_focei.gB + getRxNallAndMix(rx); //[op_focei.neta*op_focei.neta*getRxNsub(rx)]
   op_focei.llikObsFull = op_focei.gH + op_focei.neta*op_focei.neta*getRxNsubAndMix(rx); // [getRxNall(rx)]
   op_focei.gVid     = op_focei.llikObsFull + getRxNallAndMix(rx);
-  op_focei.gcHff    = op_focei.gVid + (size_t)getRxNallAndMix(rx)*getRxNallAndMix(rx); //[nall_mix]
+  op_focei.gcHff    = op_focei.gVid + getRxNobsSqAndMix(rx); //[nall_mix]
   op_focei.gcHfr    = op_focei.gcHff + getRxNallAndMix(rx); //[nall_mix]
   op_focei.gcHrr    = op_focei.gcHfr + getRxNallAndMix(rx); //[nall_mix]
   // Could use .zeros() but since I used Calloc, they are already zero.

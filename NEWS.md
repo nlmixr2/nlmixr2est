@@ -166,6 +166,19 @@
 
 ## Bug fixes
 
+- The FOCEi family (`focei`, `foce`, `foi`, `fo`, `posthoc`, `agq`,
+  `laplace`) no longer refuses an ordinary population dataset with
+  "dataset too large for this mixture model configuration" (#1010).  The
+  per-subject residual variance block `gVid` was sized as
+  `nall * (nMix + 1)` squared, but it holds one `nobs_i x nobs_i` matrix per
+  subject, so it only needs `sum(nobs_i^2)`.  `nall` counts dose (and
+  `evid=2`) records as well, and `(sum x)^2` exceeds `sum(x^2)` by roughly
+  the number of subjects, so the request was inflated by several orders of
+  magnitude; the `> 65535` guard added to turn the resulting 32-bit overflow
+  into a clean error was therefore rejecting fits that need well under a
+  megabyte.  The block is now sized from the observation counts it is
+  actually indexed by and the guard is gone.
+
 - `est="saem"` with `saemControl(nMix > 1)` (mixture SAEM) inverted the
   `propT()`/`powT()` (transformed-basis) vs. plain `prop()`/`pow()`
   (raw-basis) proportional/power error term in the two MSAEM-only E-step
