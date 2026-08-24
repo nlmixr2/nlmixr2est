@@ -1280,6 +1280,25 @@ public:
     }
   }
 
+  // Score row i's Laplace objective from its rowPred (log-density, already
+  // accumulated by phi1AnalyticHessAt/phi1FDHessAt) and eta-Hessian H
+  // (accumulated in place, not yet including the Omega prior): adds the
+  // Omega^-1 (IGamma2_phi1) prior term, mirrors it into the lower triangle,
+  // computes log|H|, and validates it (finite, positive-definite -- H must
+  // be a valid precision matrix for -2*loglik + log|H| to be a real Laplace
+  // score). Returns false (row is bad) on any failure.
+  bool phi1LaplaceScore(double rowPred, arma::mat &H, double &score) {
+    for (int jc = 0; jc < nphi1; ++jc)
+      for (int ic = 0; ic <= jc; ++ic) {
+        H(ic, jc) += IGamma2_phi1(ic, jc);
+        H(jc, ic) = H(ic, jc);
+      }
+    double logdetH, sgnH;
+    if (!arma::log_det(logdetH, sgnH, H) || !(sgnH > 0) || !R_finite(logdetH)) return false;
+    score = -2.0 * rowPred + logdetH;
+    return true;
+  }
+
   double phi1Objective(double *p) {
     rx_solving_options *op = getSolvingOptions(_rx);
     int cores = getOpCores(op);
@@ -1352,17 +1371,7 @@ public:
         rowScore[i] = -2.0 * rowPred;
         continue;
       }
-      for (int jc = 0; jc < nphi1; ++jc)
-        for (int ic = 0; ic <= jc; ++ic) {
-          H(ic, jc) += IGamma2_phi1(ic, jc);
-          H(jc, ic) = H(ic, jc);
-        }
-      double logdetH, sgnH;
-      if (!arma::log_det(logdetH, sgnH, H) || !(sgnH > 0) || !R_finite(logdetH)) {
-        rowBad[i] = 1;
-        continue;
-      }
-      rowScore[i] = -2.0 * rowPred + logdetH;
+      if (!phi1LaplaceScore(rowPred, H, rowScore[i])) { rowBad[i] = 1; continue; }
     }
     double total = 0.0;
     for (int i = 0; i < nM; ++i) {
