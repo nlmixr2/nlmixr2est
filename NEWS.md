@@ -92,6 +92,15 @@
   fixes section below. Has no effect on normal-endpoint models. Only
   meaningful with `innerOpt="trust"`.
 
+- `impmapControl()`/`impControl()` gain `combSens` (default `TRUE`): when
+  `est="impmap"`/`"imp"`/`"qrpem"` has non-mu (structural or residual-error)
+  thetas to estimate, `combSens=TRUE` carries their sensitivity columns on the
+  INNER model itself instead of a second, dedicated model, and the E-step's
+  own per-sample inner solve now supplies the M-step's Newton step directly
+  (no second solve) whenever `sir=FALSE` (the default) -- roughly halving the
+  ODE solving the M-step's theta gradient costs. Pass `combSens=FALSE` for the
+  previous two-model behavior.
+
 - A pure-linear `matExp()` model now solves natively through rxode2's
   matrix-exponential driver (`rxControl(method="indLin")`) under SAEM instead
   of being flattened to an equivalent `d/dt()` ODE first.  SAEM has no
@@ -230,6 +239,61 @@
   fit, so removing them changes no result.
 
 ## Bug fixes
+
+- `est="impmap"`'s inner Hessian (`impGetHessian`), which builds the
+  importance-sampling proposal, could read a stale cached `linCmtB()`
+  Jacobian on a `linCmt()` model with a non-mu structural theta (a theta with
+  no random effect, e.g. `ka` fixed but `V` estimated on log scale). Several
+  compiled peer models share one solve pool (`odeSwap`); `linCmtB()` caches
+  its Jacobian in a field gated by `rx->ndiff`, a process-global that
+  `odeSwapSolveInd()` never restored per peer, so a solve could read a
+  Jacobian built for a DIFFERENT peer's structural-parameter set. The
+  resulting proposal was artificially wide, which masked a real heavy tail
+  (Pareto k-hat) as healthy rather than repairing it. `odeSwapSolveInd()` now
+  restores each peer's own `ndiff` before every solve. That restore is itself
+  a write to a field on the single shared solve struct, so `impGetHessian`'s
+  parallel per-subject loop (a subject that falls back to the doFD/pred path
+  can pick a different peer, and so a different `ndiff`, than a subject still
+  on the plain inner path, concurrently) now serializes that write-then-solve
+  window whenever the fit has a peer that needs it, rather than risk one
+  subject's solve reading another's in-flight `ndiff`.
+
+- The FOCEi family (`focei`, `foce`, `foi`, `fo`, `posthoc`, `agq`,
+  `laplace`) no longer refuses an ordinary population dataset with
+  "dataset too large for this mixture model configuration" (#1010).  The
+  per-subject residual variance block `gVid` was sized as
+  `nall * (nMix + 1)` squared, but it holds one `nobs_i x nobs_i` matrix per
+  subject, so it only needs `sum(nobs_i^2)`.  `nall` counts dose (and
+  `evid=2`) records as well, and `(sum x)^2` exceeds `sum(x^2)` by roughly
+  the number of subjects, so the request was inflated by several orders of
+  magnitude; the `> 65535` guard added to turn the resulting 32-bit overflow
+  into a clean error was therefore rejecting fits that need well under a
+  megabyte.  The block is now sized from the observation counts it is
+  actually indexed by, and the guard is replaced by an overflow check on the
+  allocation the setup really makes.  The per-subject offset accumulators in
+  that setup are now `size_t` as well, so a subject with more than 46,340
+  observations no longer wraps its own `nobs_i^2` stride.
+
+- FOCEi's `geta` block (the per-subject current eta vector) was allocated
+  `neta` doubles inside the same setup, but it is indexed once per subject --
+  it needs `(neta + 1) * nsub` like the ten per-subject eta arrays that follow
+  it.  Every subject past the first therefore wrote its eta through storage
+  belonging to `gtryEta` (the trial eta of the eta-reset/nudge path).  Both
+  arrays now get their own block.
+
+- A FOCEi fit of a model with no random effects (`neta == 0`) sized its
+  per-subject `thetaGrad` block with `neta * nsub`, which is zero on exactly
+  that path, so the block had no storage and the per-record log-likelihood
+  array started at the same address.  The gradient writes ran past the
+  allocation whenever the parameter count times the subject count exceeded the
+  event-record count.
+
+- A fit's per-record `llikObs` came back reversed by subject.  Its per-subject
+  offsets were a running total taken in the FOCEi setup loop's backwards
+  order, while the array is handed to R as one contiguous block in record
+  order, so the first subject was given the tail of the buffer.  With unequal
+  observation counts the subject boundaries did not line up either.  The
+  offsets now follow the subject order.
 
 - `est="saem"` with `saemControl(nMix > 1)` (mixture SAEM) inverted the
   `propT()`/`powT()` (transformed-basis) vs. plain `prop()`/`pow()`
