@@ -142,6 +142,21 @@
     directly on an omega element (`"tnpri"`) or a `multiNormal()` block
     mixing omega with theta.
 
+- A prior may now be placed directly on a single omega COVARIANCE
+  (off-diagonal) element -- `prior(eta.cl, eta.v) ~ dnorm(0, 0.1)` on a
+  model with a correlated BSV block -- a marginal, independent prior on
+  that one cell, distinct from a whole-block `invWishart()`/
+  `multiNormal()` prior. NONMEM has no direct mechanism for this specific
+  marginal form; it fills the same ergonomic gap this package's `om.<eta>`
+  shorthand already fills for one individual variance. This is entirely a
+  new capability in the shared upstream kernel (rxode2/lotri, see their
+  own NEWS) -- FOCEi's `foceiPriorOmegaGradAdd()` and imp/impmap/qrpem's
+  `impPriorOmegaCorrect()` already operated on the full `gradOmega`/`Omega`
+  matrices generically, so both pick this up with no nlmixr2est source
+  changes at all, confirmed by new tests in `test-focei-prior.R` and
+  `test-imp-prior.R` that pass unmodified against the upgraded
+  dependencies.
+
 ## Changed defaults
 
 - `est="saem"` now refines a population theta that carries no random effect with

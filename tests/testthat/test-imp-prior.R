@@ -165,4 +165,31 @@ nmTest({
     # the same way an ordinary bad EM iterate would rather than producing NaN.
     expect_true(all(eigen(.fi$omega, symmetric = TRUE, only.values = TRUE)$values > 0))
   })
+
+  test_that("a strong prior on an omega COVARIANCE (off-diagonal) element pulls the EM update toward it (generic path)", {
+    # nlmixr2/rxode2#1270-followup: prior(eta.cl, eta.v) ~ dnorm(...) on a
+    # correlated BSV block. impPriorOmegaCorrect()'s generic (non-invWishart)
+    # branch operates on the full Omega/Gsym matrices already -- this
+    # exercises that same code path, unmodified, for a covariance cell
+    # rather than a diagonal one.
+    skip_if_not(exists("rxPriorBuildSpec", envir = asNamespace("rxode2"), inherits = FALSE))
+    m <- function() {
+      ini({
+        tka <- 0.45; tcl <- 1; tv <- 3.45
+        eta.cl + eta.v ~ c(0.3, 0.05, 0.2)
+        add.sd <- 0.7
+        prior(eta.cl, eta.v) ~ dnorm(0, 0.01)
+      })
+      model({
+        ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .fi <- suppressWarnings(suppressMessages(
+      nlmixr2(m, nlmixr2data::theo_sd, est = "impmap",
+              control = impmapControl(print = 0L, nIter = 30L, isample = 300L))))
+    expect_true(inherits(.fi, "nlmixr2FitCore"))
+    expect_equal(unname(.fi$omega["eta.cl", "eta.v"]), 0, tolerance = 0.02)
+    expect_true(all(eigen(.fi$omega, symmetric = TRUE, only.values = TRUE)$values > 0))
+  })
 })
