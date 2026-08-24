@@ -188,6 +188,12 @@
   "censoring ignored" note in `$runInfo`.  An `ar()` endpoint is excluded: its
   reported scale is the marginal, not the conditional, one.
 
+- The persisted FOCEi model cache (`rxUiGet.foceiModelCache()`) now keys on the
+  `nlmixr2est` version.  That cache lives in rxode2's user cache directory when
+  `rxode2::rxCreateCache()` has been run, so it survives an upgrade: any release
+  that changes the generated inner-model text (the censoring columns above, for
+  one) was silently ignored for a model already cached there.
+
 - `est="impmap"`'s inner Hessian (`impGetHessian`), which builds the
   importance-sampling proposal, could read a stale cached `linCmtB()`
   Jacobian on a `linCmt()` model with a non-mu structural theta (a theta with

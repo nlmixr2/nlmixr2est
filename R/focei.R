@@ -2244,7 +2244,15 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
   .constCovs <- paste(sort(rxode2::rxGetControl(.ui, "foceiConstCovs", NULL)), collapse=",")
   ## combined eta+theta sensitivity build (#958) changes the inner model text
   .combSens <- isTRUE(rxode2::rxGetControl(.ui, "combSens", FALSE))
-  digest::digest(c(all(is.na(.iniDf$neta1)), .combSens,
+  ## The persisted cache lives in rxode2's user cache directory, so it OUTLIVES
+  ## the session (and the installed package) whenever `rxCreateCache()` has been
+  ## run.  Any release that changes the generated model text -- #992 gave the
+  ## llik-forced t()/cauchy()/dnorm() inner model its rx_pred_f_/rx_nu_
+  ## censoring columns, for one -- would otherwise be silently ignored for a
+  ## model already in that cache, with no error to show for it.  Key on the
+  ## package version so an upgrade rebuilds instead.
+  .pkgVersion <- as.character(utils::packageVersion("nlmixr2est"))
+  digest::digest(c(all(is.na(.iniDf$neta1)), .combSens, .pkgVersion,
                    rxode2::rxGetControl(.ui, "interaction", 1L),
                    .iniDf$name,
                    .sumProd, .optExpression, .predMinusDv,
