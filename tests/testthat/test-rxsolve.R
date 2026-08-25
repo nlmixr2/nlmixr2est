@@ -103,3 +103,43 @@ nmTest({
   })
 
 })
+
+nmTest({
+
+  # nlmixr2/rxode2#1289: `$simInfo` re-runs the pre-process hooks and re-derives
+  # the simulation model, which dominated the cost of solving a fit and grew
+  # process memory that was never returned -- and a plain `rxSolve(fit, ...)`
+  # never reads any of it.
+
+  .simInfoEv <- function() {
+    rxode2::et(rxode2::et(amt = 320, cmt = "depot"), seq(0, 24, by = 4))
+  }
+
+  test_that("solving a fit skips simulation information it cannot use", {
+    skip_if(is.null(one.compartment.fit.saem))
+    local_mocked_bindings(
+      .simInfo = function(object) stop("simulation information was derived")
+    )
+    expect_no_error(
+      suppressMessages(rxode2::rxSolve(one.compartment.fit.saem, .simInfoEv()))
+    )
+  })
+
+  test_that("solving a fit with uncertainty still uses its simulation information", {
+    skip_if(is.null(one.compartment.fit.saem))
+    .acc <- new.env(parent = emptyenv())
+    .acc$msg <- character(0)
+    withCallingHandlers(
+      .sim <- rxode2::rxSolve(one.compartment.fit.saem, .simInfoEv(), nStud = 2),
+      message = function(m) {
+        .acc$msg <- c(.acc$msg, conditionMessage(m))
+        invokeRestart("muffleMessage")
+      }
+    )
+    expect_true(any(grepl("population uncertainty", .acc$msg, fixed = TRUE)))
+    expect_true(any(grepl("from the number of observations", .acc$msg, fixed = TRUE)))
+    expect_true(any(grepl("from the number of subjects", .acc$msg, fixed = TRUE)))
+    expect_equal(length(unique(.sim$sim.id)), 2L)
+  })
+
+})

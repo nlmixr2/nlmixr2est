@@ -1091,7 +1091,20 @@ nmObjGetRxSolve.default <- function(x, what) {
 #' @rdname nmObjGet
 #' @export
 nmObjGet.simulationModel <- function(x, ...) {
-  eval(rxode2::getBaseSimModel(x[[1]]))
+  .env <- x[[1]]
+  ## lowering the fit is a pure function of its model, but it is not cheap,
+  ## and `rxode2::rxSolve()` on a fit asks for it on every single call
+  ## (nlmixr2/rxode2#1289) -- see R/simModelCache.R
+  .key <- .simModelCacheKey(.env)
+  if (!is.null(.key)) {
+    .cached <- .simModelCacheGet(.key)
+    if (!is.null(.cached)) return(.cached)
+  }
+  .ret <- eval(rxode2::getBaseSimModel(.env))
+  if (!is.null(.key)) {
+    .simModelCacheSet(.key, .ret)
+  }
+  .ret
 }
 
 #' @rdname nmObjGet

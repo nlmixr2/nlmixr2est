@@ -32,7 +32,11 @@
       .isPred <- TRUE
     }
   }
-  if (!is.null(nlmixr2global$nlmixr2SimInfo)) {
+  ## every use below is conditional on `!.isPred`, so ask for the simulation
+  ## information only when it can actually be used -- on the `rxSolve()` path
+  ## it is a promise, and forcing it re-derives the model from the fit
+  ## (nlmixr2/rxode2#1289)
+  if (!.isPred && !is.null(nlmixr2global$nlmixr2SimInfo)) {
     .thetaMat <- nlmixr2global$nlmixr2SimInfo$thetaMat
     if (is.null(.rxControl$thetaMat) & !.isPred) {
       .minfo("using population uncertainty from fitted model (`thetaMat`)")
@@ -88,7 +92,12 @@
 ##' @export
 nmObjGet.rxControlWithVar <- function(x, ...) {
   .tmp <- x[[1]]
-  nlmixr2global$nlmixr2SimInfo <- .tmp$simInfo
+  ## `$simInfo` re-runs the pre-process hooks and re-derives the simulation
+  ## model from the fit, which is the bulk of the cost of solving a fit and
+  ## grows process memory that is never returned (nlmixr2/rxode2#1289).  Only
+  ## simulations that use the model's uncertainty read it, so hand
+  ## `.rxSolveGetControlForNlmixr()` a promise and let it decide.
+  delayedAssign("nlmixr2SimInfo", .tmp$simInfo, assign.env = nlmixr2global)
   .env <- .tmp$env
   if (exists("control", .env)) {
     .oldControl <- get("control", .env)
