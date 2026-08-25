@@ -1,5 +1,19 @@
 # nlmixr2est 7.0.3
 
+## Bug fixes
+
+- Fitting the same data twice in one session gives the same answer again
+  (#1020).  On a machine with at least twice as many threads as the problem
+  has subjects, the objective function and the estimates differed between two
+  identical `nlmixr2(..., est = "focei")` calls, and the optimizer frequently
+  stopped at (or beside) the initial estimates.  The cause is in rxode2 --
+  `sortIds()` ordered subjects by their *measured* solve time, so FOCEi, which
+  re-sorts around every inner-optimization and gradient loop, handed its
+  subjects to different threads on every pass and carried different per-thread
+  solver state into each likelihood and gradient.  It is fixed there by
+  ordering on the number of events a subject is solved over; this package
+  gains the regression test.
+
 ## Internal
 
 - A covariate whose value is carried on the model in `rxode2::rxForcedPars()` is
