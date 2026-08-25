@@ -32,10 +32,10 @@ nmTest({
     .ctl <- nlmControl(print = 0, normType = normType, scaleType = "nlmixr2",
                        calcTables = FALSE, iterlim = 1)
     .ret <- new.env(parent = emptyenv())
-    nlmixr2est:::.foceiPreProcessData(.dat, .ret, .ui, .ctl$rxControl)
+    .foceiPreProcessData(.dat, .ret, .ui, .ctl$rxControl)
     .p <- setNames(.ui$nlmParIni, .ui$nlmParName)
-    on.exit(nlmixr2est:::.nlmFreeEnv())
-    nlmixr2est:::.nlmSetupEnv(.p, .ui, .ret$dataSav, .ui$nlmSensModel, .ctl)
+    on.exit(.nlmFreeEnv())
+    .nlmSetupEnv(.p, .ui, .ret$dataSav, .ui$nlmSensModel, .ctl)
     list(par = .p, scaled = nlmScalePar(.p))
   }
 

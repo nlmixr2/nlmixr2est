@@ -18,6 +18,12 @@ suppressPackageStartupMessages({
   library(nlmixr2est)
 })
 
+# .nHessianQN() is the internal per-fit counter of quasi-Newton inner-Hessian
+# builds -- the positive evidence that hessianMethod= actually ran. It is not
+# exported, and this script runs standalone (library(), not load_all()), so it
+# is reached through the namespace rather than the public interface.
+.nHessianQN <- getFromNamespace(".nHessianQN", "nlmixr2est")
+
 .bargs <- commandArgs(trailingOnly = TRUE)
 .outDir <- if (length(.bargs) >= 1) .bargs[1] else "inst/benchmarks/results"
 dir.create(.outDir, showWarnings = FALSE, recursive = TRUE)
@@ -71,11 +77,11 @@ dir.create(.outDir, showWarnings = FALSE, recursive = TRUE)
   t1 <- proc.time()["elapsed"]
   if (inherits(fit, "error")) {
     return(list(ok = FALSE, time = unname(t1 - t0), objf = NA_real_,
-                nHessianQN = nlmixr2est:::.nHessianQN(), error = conditionMessage(fit)))
+                nHessianQN = .nHessianQN(), error = conditionMessage(fit)))
   }
   list(ok = TRUE, time = unname(t1 - t0),
        objf = tryCatch(as.numeric(fit$objective), error = function(e) NA_real_),
-       nHessianQN = nlmixr2est:::.nHessianQN(), error = NA_character_)
+       nHessianQN = .nHessianQN(), error = NA_character_)
 }
 
 .runModel <- function(label, object, data, ...) {

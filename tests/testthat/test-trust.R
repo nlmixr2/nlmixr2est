@@ -191,10 +191,10 @@ nmTest({
     # src/nlm.cpp) is a genuine numerical edge case, not reliably reproducible
     # on demand from a real fit -- test the warning logic directly instead.
     expect_warning(
-      nlmixr2est:::.trustWarnUnderConverged(list(underConverged = TRUE)),
+      .trustWarnUnderConverged(list(underConverged = TRUE)),
       "Newton step|verified stationary point"
     )
-    expect_silent(nlmixr2est:::.trustWarnUnderConverged(list(underConverged = FALSE)))
-    expect_silent(nlmixr2est:::.trustWarnUnderConverged(list()))
+    expect_silent(.trustWarnUnderConverged(list(underConverged = FALSE)))
+    expect_silent(.trustWarnUnderConverged(list()))
   })
 })
