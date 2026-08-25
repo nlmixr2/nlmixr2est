@@ -55,6 +55,57 @@
   (e.g. Michaelis-Menten) still flattens (issue
   [\#859](https://github.com/nlmixr2/nlmixr2est/issues/859)).
 
+- A `linCmt()` parameter driven by both an eta and a time-varying
+  covariate (for example `cl <- tcl*(wt/70)^0.75*exp(eta.cl)` with `wt`
+  changing over a subject’s records) now gets an exact FOCEi-family eta
+  gradient. The analytic `linCmt()` sensitivity reconstructs each row’s
+  carried state as if the parameter had been constant over the subject,
+  so a covariate that changes it between rows silently conflated the
+  interval sensitivities (objective-function and converged-eta
+  differences against the equivalent ODE model). The generated inner
+  model now carries the exact sensitivity across rows through rxode2’s
+  `linCmtB()` carry sentinels for every eligible (parameter, eta) pair;
+  models without such a pair generate identical code.
+  `foceiControl(linCmtSensCarry=)` opts out (`"none"`). Data with
+  steady-state (`ss > 0`) or `evid = 2` records fall back to the
+  previous gradient with a note in `$runInfo`, and `"linear"` covariate
+  interpolation on such a covariate is an error (a `linCmt()` model
+  evaluates each interval at its row-end covariate value, so only a
+  piecewise-constant interpolation is representable). The carry also
+  covers the two ways an eta reaches the state through an event: a
+  modeled `f()` whose `d(ln F)/d(eta)` depends on a covariate and a
+  modeled `alag()` on a time-varying kernel each get a per-row jump
+  contribution (`#920`‘s row-local terms are exact only while the
+  parameters are constant), and every `linCmt()` parameterization
+  (`trans`) is handled, with the observation-scaling term taken from
+  rxode2’s own micro-constant translation. Data whose doses enter
+  another compartment than the modified one, or an infusion with an
+  `alag()` / covariate `f()` channel, fall back like `ss` records do. A
+  generalized `ll()` endpoint (or any prediction that wraps the
+  `linCmt()` value in a larger expression) is carried too: the
+  concentration is read back once as `rx_lcConc_`, the carry supplies
+  its eta sensitivity and symengine the outer chain rule, including any
+  eta dependence the likelihood has with the concentration held fixed
+  ([\#1004](https://github.com/nlmixr2/nlmixr2est/issues/1004)). The
+  same carry also serves the population methods’ theta gradients
+  ([\#1003](https://github.com/nlmixr2/nlmixr2est/issues/1003)): a theta
+  on a covariate-driven `linCmt()` parameter gets the carried score in
+  the `nlm` family and `nls` (`nlmControl(linCmtSensCarry=)` /
+  `nlsControl(linCmtSensCarry=)`), with the concentration factored out
+  of the wrapped log-likelihood; SAEM’s linearized FIM needs no change
+  (it perturbs `phi` and re-solves values, which is exact under a
+  time-varying covariate). Requires an rxode2 with the carry sentinels
+  (the event channels need its `which1 = -8` pin); older versions keep
+  the previous behavior. The candidate detection itself is memoized by
+  the focei model digest and persisted as a sidecar in rxode2’s cache
+  directory (`rxCreateCache()`), so repeated fits – and, with a
+  persistent cache, fresh sessions – skip the symbolic pass. The focei
+  model-cache bundle itself now stores each generated model as its
+  [`rxode2::rxNorm()`](https://nlmixr2.github.io/rxode2/reference/rxNorm.html)
+  text instead of a serialized model object (about 1 kb instead of 1 Mb;
+  rebuilding from the text hits rxode2’s compiled-model cache); bundles
+  written by an earlier version still load.
+
 - `focei`/`foce`/`agq`/`laplace`/`nlm` now compute a `matExp()` model’s
   eta/ theta sensitivities natively via
   [`rxode2::rxSensMatExp()`](https://nlmixr2.github.io/rxode2/reference/rxSensMatExp.html),

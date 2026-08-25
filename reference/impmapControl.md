@@ -657,7 +657,7 @@ impmapControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x56182d3f9520>
+#> <bytecode: 0x556d4b9c1160>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -1303,6 +1303,9 @@ impmapControl()
 #> $priorSigmaEl
 #> NULL
 #> 
+#> $linCmtSensPhi
+#> [1] 1
+#> 
 #> attr(,"class")
 #> [1] "rxControl"
 #> 
@@ -1365,6 +1368,9 @@ impmapControl()
 #> 
 #> $sensMethod
 #> [1] "default"
+#> 
+#> $linCmtSensCarry
+#> [1] "auto"
 #> 
 #> $boundedTransform
 #> [1] TRUE

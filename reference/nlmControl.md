@@ -29,6 +29,7 @@ nlmControl(
   shi21maxHess = 20L,
   censOption = c("gauss", "laplace"),
   eventSens = c("jump", "fd"),
+  linCmtSensCarry = c("auto", "none"),
   sensMethod = c("default", "forward"),
   useColor = NULL,
   printNcol = NULL,
@@ -204,6 +205,12 @@ nlmControl(
   the regimen also doses an \*unlagged/unscaled\* compartment alongside
   the lagged/scaled one – a common design for estimating \`f()\` from
   paired IV+oral data (rxode2/rxode2#1237).
+
+- linCmtSensCarry:
+
+  use the linCmt() sensitivity carry for a theta on a covariate-driven
+  linCmt() parameter ("auto", the default) or keep the standard gradient
+  ("none"); see \`foceiControl()\`'s argument of the same name.
 
 - sensMethod:
 
@@ -447,9 +454,9 @@ print(fit2)
 #> ── Time (sec $time): ──
 #> 
 #>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.2907949 0.4560577  5.604e-06      0.041       0.004  0.02    0.001
-#>              other
-#> elapsed 0.07514183
+#> elapsed 0.3973387 0.6452673  9.087e-06      0.062       0.006 0.027    0.001
+#>            other
+#> elapsed 0.105385
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

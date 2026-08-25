@@ -48,6 +48,7 @@ nlsControl(
   returnNls = FALSE,
   addProp = c("combined2", "combined1"),
   eventSens = c("jump", "fd"),
+  linCmtSensCarry = c("auto", "none"),
   calcTables = TRUE,
   compress = TRUE,
   adjObf = TRUE,
@@ -352,6 +353,14 @@ nlsControl(
   the lagged/scaled one – a common design for estimating \`f()\` from
   paired IV+oral data (rxode2/rxode2#1237).
 
+- linCmtSensCarry:
+
+  \`"auto"\` (default) substitutes the exact sensitivity-carry gradient
+  for a \`linCmt()\` parameter driven by both an eta and a time-varying
+  covariate (needs an rxode2 with the carry sentinels; silently keeps
+  the standard gradient otherwise); \`"none"\` always keeps the standard
+  gradient.
+
 - calcTables:
 
   This boolean is to determine if the foceiFit will calculate tables. By
@@ -500,7 +509,7 @@ fit2 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est="nls", nlsControl(algorithm="p
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 6584
-#> → compress parHistData in nlmixr2 object, save 2768
+#> → compress parHistData in nlmixr2 object, save 2776
 
 # You can access the underlying nls object with `$nls`
 fit2$nls

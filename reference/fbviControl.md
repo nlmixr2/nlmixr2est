@@ -637,6 +637,9 @@ fbviControl()
 #> $priorSigmaEl
 #> NULL
 #> 
+#> $linCmtSensPhi
+#> [1] 1
+#> 
 #> attr(,"class")
 #> [1] "rxControl"
 #> 

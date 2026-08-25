@@ -906,6 +906,9 @@ nlmeControl()
 #> $priorSigmaEl
 #> NULL
 #> 
+#> $linCmtSensPhi
+#> [1] 1
+#> 
 #> attr(,"class")
 #> [1] "rxControl"
 #> 
@@ -1461,6 +1464,9 @@ nlmixr2NlmeControl()
 #> 
 #> $priorSigmaEl
 #> NULL
+#> 
+#> $linCmtSensPhi
+#> [1] 1
 #> 
 #> attr(,"class")
 #> [1] "rxControl"

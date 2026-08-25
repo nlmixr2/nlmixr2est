@@ -277,7 +277,7 @@ foceControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x56182d3f9520>
+#> <bytecode: 0x556d4b9c1160>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -923,6 +923,9 @@ foceControl()
 #> $priorSigmaEl
 #> NULL
 #> 
+#> $linCmtSensPhi
+#> [1] 1
+#> 
 #> attr(,"class")
 #> [1] "rxControl"
 #> 
@@ -985,6 +988,9 @@ foceControl()
 #> 
 #> $sensMethod
 #> [1] "default"
+#> 
+#> $linCmtSensCarry
+#> [1] "auto"
 #> 
 #> $boundedTransform
 #> [1] TRUE

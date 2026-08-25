@@ -157,6 +157,7 @@ foceiControl(
   agqLow = -Inf,
   agqHi = Inf,
   sensMethod = c("default", "forward"),
+  linCmtSensCarry = c("auto", "none"),
   zeroTheta = 0.001,
   boundedTransform = TRUE
 )
@@ -1194,6 +1195,14 @@ foceiControl(
   Method used to compute the ODE parameter sensitivities. \`"forward"\`
   uses the classic variational (forward) sensitivity ODEs; \`"default"\`
   is the same thing.
+
+- linCmtSensCarry:
+
+  \`"auto"\` (default) substitutes the exact sensitivity-carry gradient
+  for a \`linCmt()\` parameter driven by both an eta and a time-varying
+  covariate (needs an rxode2 with the carry sentinels; silently keeps
+  the standard gradient otherwise); \`"none"\` always keeps the standard
+  gradient.
 
 - zeroTheta:
 

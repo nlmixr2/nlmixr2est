@@ -66,6 +66,7 @@
 <span>  shi21maxHess <span class="op">=</span> <span class="fl">20L</span>,</span>
 <span>  censOption <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"gauss"</span>, <span class="st">"laplace"</span><span class="op">)</span>,</span>
 <span>  eventSens <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"jump"</span>, <span class="st">"fd"</span><span class="op">)</span>,</span>
+<span>  linCmtSensCarry <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"none"</span><span class="op">)</span>,</span>
 <span>  sensMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"default"</span>, <span class="st">"forward"</span><span class="op">)</span>,</span>
 <span>  useColor <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  printNcol <span class="op">=</span> <span class="cn">NULL</span>,</span>
@@ -248,6 +249,13 @@ lagged/scaled compartment (rxode2/rxode2#1236), or if the regimen also
 doses an *unlagged/unscaled* compartment alongside the lagged/scaled one
 – a common design for estimating `f()` from paired IV+oral data
 (rxode2/rxode2#1237).</p></dd>
+
+
+<dt id="arg-lincmtsenscarry">linCmtSensCarry<a class="anchor" aria-label="anchor" href="#arg-lincmtsenscarry"></a></dt>
+<dd><p>use the linCmt() sensitivity carry for a theta on
+a covariate-driven linCmt() parameter ("auto", the default) or keep the
+standard gradient ("none"); see `foceiControl()`'s argument of the same
+name.</p></dd>
 
 
 <dt id="arg-sensmethod">sensMethod<a class="anchor" aria-label="anchor" href="#arg-sensmethod"></a></dt>
@@ -499,9 +507,9 @@ skips the final back-transform.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Time (sec </span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>             setup  optimize covariance preprocess postprocess table compress</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.2907949 0.4560577  5.604e-06      0.041       0.004  0.02    0.001</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>              other</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.07514183</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.3973387 0.6452673  9.087e-06      0.062       0.006 0.027    0.001</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>            other</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.105385</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── (</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
