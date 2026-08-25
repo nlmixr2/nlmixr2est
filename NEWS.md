@@ -175,6 +175,32 @@
 
 ## Bug fixes
 
+- The FOCEi family (`focei`, `foce`, `focep`, `laplace`, `agq`, `posthoc`, and
+  their `i`/`m` prefixed variants) now applies the M2/M3/M4 censoring
+  correction to a `t()`, `cauchy()` or `dnorm()` endpoint instead of silently
+  scoring a censored row with its ordinary, uncensored density (#992,
+  completing #979 which covered the nlm family only).  Such an endpoint is
+  compiled to a scalar log-density, which hid the location, scale and degrees
+  of freedom the correction needs; the inner model now carries them (together
+  with `d(f)/d(eta)` and `d(R)/d(eta)`, so the inner eta gradient is corrected as
+  well, not just the objective).  A censored `t()`/`cauchy()` fit under these methods changes
+  its objective and its parameter estimates, and no longer emits the
+  "censoring ignored" note in `$runInfo`.  An `ar()` endpoint is excluded: its
+  reported scale is the marginal, not the conditional, one.
+
+- `foceiControl(fast=TRUE)` now downgrades to `fast=FALSE` for a CENSORED
+  log-likelihood endpoint, as the documentation already said it did.  Both the
+  augmented outer-gradient model and the exact second-order inner Hessian
+  differentiate the uncensored log-density, which the M2/M3/M4 correction
+  replaces for a censored row; the outer gradient already refused such a fit at
+  run time, but the inner Hessian did not.
+
+- The persisted FOCEi model cache (`rxUiGet.foceiModelCache()`) now keys on the
+  `nlmixr2est` version.  That cache lives in rxode2's user cache directory when
+  `rxode2::rxCreateCache()` has been run, so it survives an upgrade: any release
+  that changes the generated inner-model text (the censoring columns above, for
+  one) was silently ignored for a model already cached there.
+
 - `est="impmap"`'s inner Hessian (`impGetHessian`), which builds the
   importance-sampling proposal, could read a stale cached `linCmtB()`
   Jacobian on a `linCmt()` model with a non-mu structural theta (a theta with
