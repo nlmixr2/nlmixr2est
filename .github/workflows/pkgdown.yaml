@@ -44,6 +44,7 @@ jobs:
             nlmixr2/rxode2ll
             nlmixr2/rxode2
             nlmixr2/PreciseSums
+            nlmixr2/RcppTrust
             qs=?ignore
             qs2=?source
             stringfish=?source
