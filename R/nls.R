@@ -617,7 +617,7 @@ attr(rxUiGet.loadPruneNlsSens, "rstudio") <- emptyenv()
 #' @export
 rxUiGet.nlsThetaS <- function(x, ...) {
   .s <- rxUiGet.loadPruneNlsSens(x, ...)
-  .sensEtaOrTheta(.s, theta=TRUE)
+  .sensEtaOrTheta(.s, theta=TRUE, rxui = x[[1]])
 }
 attr(rxUiGet.nlsThetaS, "rstudio") <- emptyenv()
 
@@ -690,6 +690,12 @@ attr(rxUiGet.nlsHdTheta, "rstudio") <- emptyenv()
                            optExpression = TRUE, cores = 0L,
                            interpLines = "") {
   interpLines <- interpLines[interpLines != ""]
+  if (isTRUE(.s$..matExpNative)) {
+    # see focei.R's .rxFinalizeInner(): rxSumProdModel()/rxOptExpr() do not
+    # support "indLin(state) <- expr" (Michaelis-Menten forcing)
+    sum.prod <- FALSE
+    optExpression <- FALSE
+  }
   .prd <- get("rx_pred_", envir = .s)
   .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.prd))
   .yj <- paste(get("rx_yj_", envir = .s))

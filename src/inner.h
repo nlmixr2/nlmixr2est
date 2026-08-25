@@ -32,5 +32,10 @@ extern rxSolveF rxOuterNode;
 extern rxSolveF rxOuterCov;
 extern void rxUpdateFuns(SEXP trans, rxSolveF *inner);
 extern void rxClearFuns(rxSolveF *inner);
+
+// #958: count of impEStep per-sample theta-sensitivity reads that reused the
+// E-step's own inner solve (no M-step re-solve).  odeSwapInfo_() exposes it as
+// $impThetaSensHarvestN; tests assert it is > 0 when combSens+harvesting engage.
+extern int impThetaSensHarvestN();
 extern rx_solve *rx;
 #endif

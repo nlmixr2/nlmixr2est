@@ -69,7 +69,8 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
   c("focei-wang2007-lognormal", "cov-analytic", "focei-wang2007-power",
     "cov-condition", "agq-cov", "cov-decouple-saimp"),
   # batch 3
-  c("focei-wang2007-boxcox-half", "nlm-cens", "issue-429", "issue-470",
+  c("focei-wang2007-boxcox-half", "nlm-cens", "focei-cens-t-fit",
+    "issue-429", "issue-470",
     "focei-wang2007-bounded", "saem-loglik", "mu-timevarying", "saem-nearpd",
     "saem-nonmutheta", "focei-theta-reset-bounds",
     "saem-cov-analytic", "focei-shi21-bounds", "splitbolus-interp",

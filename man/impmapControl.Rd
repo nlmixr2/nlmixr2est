@@ -29,7 +29,8 @@ impmapControl(
   qrRefresh = TRUE,
   sir = FALSE,
   sirSample = NULL,
-  muModel = c("lin", "none")
+  muModel = c("lin", "none"),
+  combSens = TRUE
 )
 }
 \arguments{
@@ -327,6 +328,20 @@ uses `sirSample` equal-weight resampled points per subject instead of all
 
 \item{muModel}{Mu-referencing variant for the MAP inner problem; for
 `impmapControl()` this is always `"lin"` and cannot be changed.}
+
+\item{combSens}{When `TRUE` (the default) and there are non-mu (structural
+or residual-error) thetas to estimate, carry their sensitivity columns on
+the INNER model itself (the combined eta+theta sensitivity build, #958)
+instead of compiling and solving a separate, dedicated model for them.
+With `sir=FALSE` (the default) the E-step's own per-sample inner solve
+then supplies the M-step's Newton step directly, with no second solve --
+roughly halving the ODE solving the theta-sensitivity Newton step costs.
+Set `FALSE` to use the older two-model path instead. (Earlier versions
+shipped `FALSE` as the default: on a `linCmt()` model with a single
+non-mu structural theta, `combSens=TRUE`/`FALSE` measurably disagreed --
+not `combSens` moving the answer, but an unrelated pre-existing bug in
+how the shared solve pool swapped between peer models, since fixed. The
+two now agree on every fixture measured, so `TRUE` is the default.)}
 }
 \value{
 impmapControl object

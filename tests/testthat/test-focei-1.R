@@ -51,8 +51,14 @@ nmTest({
       })
     }
 
+    # A pure-linear matExp() model takes the native matrix-exponential
+    # sensitivity path (#860, .sensMatExpNative()) instead of the ODE
+    # flatten -- it has no ..jacobian (that's a .rxJacobian()/ODE-flatten
+    # artifact) and its ..sens is the empty placeholder (the sensitivity
+    # dynamics live in ..ddt's matExp() block, not as separate d/dt() lines).
     s <- rxUiGet.foceiEtaS(list(rxode2::rxode2(one.compartment)))
-    expect_true(exists("..jacobian", envir = s, inherits = FALSE))
+    expect_true(isTRUE(s$..matExpNative))
+    expect_false(exists("..jacobian", envir = s, inherits = FALSE))
     expect_true(exists("..sens", envir = s, inherits = FALSE))
   })
 

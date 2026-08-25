@@ -4,8 +4,8 @@
 \alias{nmGetDistributionSaemLines}
 \alias{nmGetDistributionSaemLines.rxUi}
 \alias{nmGetDistributionSaemLines.norm}
-\alias{nmGetDistributionSaemLines.t}
 \alias{nmGetDistributionSaemLines.LL}
+\alias{nmGetDistributionSaemLines.default}
 \title{This is a S3 method for getting the distribution lines for a base
 rxode2 saem problem}
 \usage{
@@ -15,9 +15,9 @@ nmGetDistributionSaemLines(line)
 
 \method{nmGetDistributionSaemLines}{norm}(line)
 
-\method{nmGetDistributionSaemLines}{t}(line)
-
 \method{nmGetDistributionSaemLines}{LL}(line)
+
+\method{nmGetDistributionSaemLines}{default}(line)
 }
 \arguments{
 \item{line}{Parsed rxode2 model environment}

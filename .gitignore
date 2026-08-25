@@ -104,3 +104,4 @@ tests/testthat/_problems/
 *.tgz
 inst/tools/*.Rout
 src/Makevars.win
+.habit-hooks/
