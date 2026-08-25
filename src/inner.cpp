@@ -258,6 +258,17 @@ struct focei_options {
   //
   List mvi;
   double *etaUpper = NULL;
+  // number of doubles R_Calloc'd for etaUpper in foceiSetupEta_().  Everything
+  // from etaLower to gcHrr is carved out of that one block, and the theta-reset
+  // path saves and restores it wholesale, so the length has to come from the
+  // allocation rather than be re-derived (nlmixr2est: it was, from a formula
+  // that had fallen behind the layout, and read/wrote past the block).
+  size_t etaBufferN = 0;
+  // ... and the same for the other blocks the theta-reset path saves whole
+  size_t nEtaTrans = 0;
+  size_t nFullTheta = 0;
+  size_t nGillRet = 0;
+  size_t nGillDf = 0;
   double *etaLower = NULL;
   int *nbdInner = NULL;
   double *geta = NULL;
@@ -6267,8 +6278,9 @@ static inline void foceiSetupTrans_(CharacterVector pars){
   //         | (gap of omegan when mixIdxN) | mixTrans(N)
   // where N = ntheta+omegan.  The (mixIdxN ? 4 : 3) ntheta+omegan
   // slots become (mixIdxN ? 5 : 4) once probitIdxArr is included.
-  op_focei.etaTrans    = R_Calloc(op_focei.neta*3 +
-                                  (4+(op_focei.mixIdxN != 0))*(op_focei.ntheta + op_focei.omegan), int); //[neta]
+  op_focei.nEtaTrans   = (size_t)op_focei.neta*3 +
+    (size_t)(4+(op_focei.mixIdxN != 0))*(op_focei.ntheta + op_focei.omegan);
+  op_focei.etaTrans    = R_Calloc(op_focei.nEtaTrans, int); //[neta]
   op_focei.nbdInner    = op_focei.etaTrans + op_focei.neta;
   op_focei.xPar        = op_focei.nbdInner + op_focei.neta; // [ntheta+nomega]
   op_focei.probitIdxArr = op_focei.xPar + op_focei.ntheta + op_focei.omegan; // [ntheta+nomega]
@@ -6282,8 +6294,9 @@ static inline void foceiSetupTrans_(CharacterVector pars){
   }
 
   if (op_focei.fullTheta != NULL) R_Free(op_focei.fullTheta);
-  op_focei.fullTheta   = R_Calloc(4*(op_focei.ntheta+op_focei.omegan) +
-                                  2*(_aqn*op_focei.neta), double); // [ntheta+omegan]
+  op_focei.nFullTheta  = (size_t)4*(op_focei.ntheta+op_focei.omegan) +
+    (size_t)2*(_aqn*op_focei.neta);
+  op_focei.fullTheta   = R_Calloc(op_focei.nFullTheta, double); // [ntheta+omegan]
   op_focei.theta       = op_focei.fullTheta+op_focei.ntheta+op_focei.omegan; // [ntheta + omegan]
   op_focei.initPar     = op_focei.theta+op_focei.ntheta+op_focei.omegan; // [ntheta + omegan]
   op_focei.scaleC      = op_focei.initPar+op_focei.ntheta+op_focei.omegan; // [ntheta + omegan]
@@ -6571,6 +6584,7 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
     // per-obs censored inner-Hessian coefficients gcHff/gcHfr/gcHrr
     tot = foceiSzAdd(tot, foceiSzMul(3, nall_mix, "cHff"), "cHff");
     op_focei.etaUpper = R_Calloc(tot, double);
+    op_focei.etaBufferN = tot;
   }
   op_focei.etaLower =  op_focei.etaUpper + op_focei.neta;
   op_focei.geta     = op_focei.etaLower + op_focei.neta;
@@ -7470,11 +7484,10 @@ NumericVector foceiSetup_(const RObject &obj,
   }
 
   if (op_focei.gillRet != NULL) R_Free(op_focei.gillRet);
-  op_focei.gillRet = R_Calloc(2*totN + op_focei.npars +
-                              op_focei.muRefN + op_focei.muRefN + op_focei.skipCovN +
-                              op_focei.mixIdxN +
-                              (size_t)getRxNsub(rx),
-                              int);
+  op_focei.nGillRet = (size_t)2*totN + op_focei.npars +
+    op_focei.muRefN + op_focei.muRefN + op_focei.skipCovN +
+    op_focei.mixIdxN + (size_t)getRxNsub(rx);
+  op_focei.gillRet = R_Calloc(op_focei.nGillRet, int);
   op_focei.gillRetC= op_focei.gillRet + totN;
   op_focei.nbd     = op_focei.gillRetC + totN;//[op_focei.npars]
 
@@ -7504,10 +7517,11 @@ NumericVector foceiSetup_(const RObject &obj,
 
   if (op_focei.gillDf != NULL) R_Free(op_focei.gillDf);
 
-  op_focei.gillDf = R_Calloc(7*totN + 2*op_focei.npars +
-                             (op_focei.mixIdxN + 1)*((size_t)getRxNsub(rx)+1) +
-                             op_focei.mixIdxN*((size_t)getRxNsub(rx)+1) +
-                             (size_t)getRxNsub(rx), double);
+  op_focei.nGillDf = (size_t)7*totN + 2*op_focei.npars +
+    (size_t)(op_focei.mixIdxN + 1)*((size_t)getRxNsub(rx)+1) +
+    (size_t)op_focei.mixIdxN*((size_t)getRxNsub(rx)+1) +
+    (size_t)getRxNsub(rx);
+  op_focei.gillDf = R_Calloc(op_focei.nGillDf, double);
   op_focei.mixProb = op_focei.gillDf+totN; // [op_focei.mixIdN+1 + (op_focei.mixIdN+1)*getRxNsub(rx)]
   op_focei.mixProbGrad = op_focei.mixProb + (op_focei.mixIdxN+1)*(getRxNsub(rx)+1);
   op_focei.gillDf2 = op_focei.mixProbGrad + (op_focei.mixIdxN)*(getRxNsub(rx)+1);
@@ -22337,51 +22351,65 @@ NumericVector iBoxCox_(NumericVector x = 1, double lambda=1, int yj = 0){
 }
 
 void saveIntoEnvrionment(Environment e) {
-  unsigned int totN=op_focei.ntheta + op_focei.omegan;
-  arma::Col<int> etaTrans(op_focei.etaTrans, op_focei.neta*3 + 3*(op_focei.ntheta + op_focei.omegan));
+  // Each block below is saved here and copied back whole by
+  // restoreFromEnvrionment(), so its length has to be the length that was
+  // allocated -- recorded at the R_Calloc -- and not a second copy of the
+  // allocation's formula.  Every one of those copies had drifted from the
+  // layout it described: four saved LESS than was allocated, so a theta reset
+  // silently dropped the tail of the block (etaFD/mixTrans, aqx/aqw,
+  // muRefEtaCovSkipReset/mixIdx/skipCov, mixProb/mixProbGrad/gillDf2), and the
+  // eta block's copy claimed MORE, so saving read past the end of the buffer
+  // and restoring wrote past it -- a heap overflow that corrupted whatever
+  // followed it and, intermittently, aborted the process.
+  arma::Col<int> etaTrans(op_focei.etaTrans, op_focei.nEtaTrans);
   e[".etaTrans"] = etaTrans;
-  arma::vec fullTheta(op_focei.fullTheta, 4*(op_focei.ntheta+op_focei.omegan));
+  arma::vec fullTheta(op_focei.fullTheta, op_focei.nFullTheta);
   e[".fullTheta"] = fullTheta;
   // no eta
   if (op_focei.neta == 0) {
-    arma::vec gthetaGrad(op_focei.fullTheta, 4*(op_focei.ntheta+op_focei.omegan));
+    arma::vec gthetaGrad(op_focei.fullTheta, op_focei.nFullTheta);
     e[".gthetaGrad"] = gthetaGrad;
   } else {
-    size_t _nz = ((op_focei.neta+1)*(op_focei.neta+2)/2 + 6*(op_focei.neta+1) + 1) *
-                  (size_t)getRxNsub(rx);
-    {
-      size_t _nall = (size_t)getRxNall(rx);
-      size_t _nsub = (size_t)getRxNsub(rx);
-      arma::vec etaUpper(op_focei.etaUpper,
-                         (size_t)op_focei.gEtaGTransN*10 + op_focei.npars*(_nsub + 1) + _nz +
-                         2*op_focei.neta * _nall + _nall + _nall*_nall +
-                         op_focei.neta*5 + 2*op_focei.neta*op_focei.neta*_nsub + _nall);
-      e[".etaUpper"] = etaUpper;
-    }
+    arma::vec etaUpper(op_focei.etaUpper, op_focei.etaBufferN);
+    e[".etaUpper"] = etaUpper;
   }
-  arma::Col<int> gillRet(op_focei.gillRet,
-                     2*totN+op_focei.npars+
-                              op_focei.muRefN + op_focei.skipCovN);
+  arma::Col<int> gillRet(op_focei.gillRet, op_focei.nGillRet);
   e[".gillRet"] = gillRet;
-  arma::vec gillDf(op_focei.gillDf,7*totN + 2*op_focei.npars + getRxNsub(rx));
+  arma::vec gillDf(op_focei.gillDf, op_focei.nGillDf);
   e[".gillDf"] = gillDf;
+}
+
+// A saved block whose length is not the length of the block allocated now is
+// not something to copy back quietly: it means the problem changed under the
+// save, and copying would either write past the buffer or half-restore it.
+static inline void foceiCheckRestoreN(size_t saved, size_t expected, const char *what) {
+  if (saved != expected) {
+    stop("focei: the saved %s is %llu long but the current one is %llu",
+         what, (unsigned long long)saved, (unsigned long long)expected);
+  }
 }
 
 void restoreFromEnvrionment(Environment e) {
   arma::Col<int> etaTrans = e[".etaTrans"];
+  foceiCheckRestoreN(etaTrans.n_elem, op_focei.nEtaTrans, "eta translation");
   std::copy(etaTrans.begin(), etaTrans.end(), op_focei.etaTrans);
   arma::vec fullTheta = e[".fullTheta"];
+  foceiCheckRestoreN(fullTheta.n_elem, op_focei.nFullTheta, "theta");
   std::copy(fullTheta.begin(), fullTheta.end(), op_focei.fullTheta);
   // no eta
   if (op_focei.neta == 0) {
     arma::vec gthetaGrad = e[".gthetaGrad"];
+    foceiCheckRestoreN(gthetaGrad.n_elem, op_focei.nFullTheta, "theta gradient");
     std::copy(gthetaGrad.begin(), gthetaGrad.end(), op_focei.fullTheta);
   } else {
     arma::vec etaUpper = e[".etaUpper"];
+    foceiCheckRestoreN(etaUpper.n_elem, op_focei.etaBufferN, "eta buffer");
     std::copy(etaUpper.begin(), etaUpper.end(), op_focei.etaUpper);
   }
   arma::Col<int> gillRet = e[".gillRet"];
+  foceiCheckRestoreN(gillRet.n_elem, op_focei.nGillRet, "gill return code buffer");
   std::copy(gillRet.begin(), gillRet.end(), op_focei.gillRet);
   arma::vec gillDf = e[".gillDf"];
+  foceiCheckRestoreN(gillDf.n_elem, op_focei.nGillDf, "gill forward difference buffer");
   std::copy(gillDf.begin(), gillDf.end(), op_focei.gillDf);
 }

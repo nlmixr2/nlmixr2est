@@ -1,5 +1,26 @@
 # nlmixr2est 7.0.3
 
+## Bug fixes
+
+- The focei theta-reset path no longer reads and writes past the end of its
+  working buffers.  `saveIntoEnvrionment()`/`restoreFromEnvrionment()`
+  (src/inner.cpp) re-derived the length of each buffer they save from a copy of
+  the allocation's formula, and every copy had fallen behind the layout it
+  described: four saved *less* than had been allocated, so a reset silently
+  dropped the tail of those blocks (`etaFD`/`mixTrans`, `aqx`/`aqw`,
+  `muRefEtaCovSkipReset`/`mixIdx`/`skipCov`,
+  `mixProb`/`mixProbGrad`/`gillDf2`), and the eta block's copy claimed *more*
+  (ten eta blocks instead of eleven, `nall^2` instead of `sum(nobs_i^2)`,
+  `neta*5` instead of `neta*6`, no `gcHff`/`gcHfr`/`gcHrr`, and unexpanded
+  subject/observation counts), so saving read past the end of the block and
+  restoring wrote the overshoot back.  AddressSanitizer reports the read as
+  `heap-buffer-overflow ... 0 bytes after 20248-byte region`; the write
+  corrupted whatever followed the block and aborted the process outright in
+  `test-matexp.R` (`malloc(): corrupted double-linked list` /
+  `*** caught segfault ***`), which now runs to completion.  Each length is
+  now recorded where the buffer is allocated and used for both directions, and
+  a restore whose saved length does not match errors instead of copying.
+
 ## Internal
 
 - A covariate whose value is carried on the model in `rxode2::rxForcedPars()` is
