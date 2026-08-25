@@ -2,6 +2,15 @@
 
 ## Internal
 
+- `getBaseSimModelFit()` for the focei family (`focei`, `foce`, `focep`, `fo`,
+  `foi`, `posthoc`) no longer does three times the work for the same answer.
+  The method built a `predOnly`-based simulation model expression and then
+  discarded it, and called `getBaseSimModelFit.default()` twice -- once with
+  the result thrown away -- so lowering a focei fit to a simulation model
+  lowered it three times, one of those through a `rxNorm()` of the focei
+  `predOnly` model.  These methods are now aliases of the default, which is
+  what they already amounted to.
+
 - A covariate whose value is carried on the model in `rxode2::rxForcedPars()` is
   no longer required to be a column of the data.  Such a covariate is supplied
   by the model itself, so demanding it from the data rejected a well-specified
