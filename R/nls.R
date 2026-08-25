@@ -92,6 +92,7 @@ nlsControl <- function(maxiter=10000,
                        returnNls=FALSE,
                        addProp = c("combined2", "combined1"),
                        eventSens = c("jump", "fd"),
+                       linCmtSensCarry = c("auto", "none"),
                        calcTables=TRUE, compress=TRUE,
                        adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL,
                        boundedTransform=TRUE, ...) {
@@ -221,6 +222,7 @@ nlsControl <- function(maxiter=10000,
                scaleOffset=scaleOffset,
                nDcentral=nDcentral,
                solveType=solveType,
+               linCmtSensCarry=match.arg(linCmtSensCarry),
                stickyRecalcN=stickyRecalcN,
                maxOdeRecalc=maxOdeRecalc,
                odeRecalcFactor=odeRecalcFactor,
@@ -639,10 +641,20 @@ rxUiGet.nlsHdTheta <- function(x, ...) {
   })
   .any.zero <- FALSE
   .all.zero <- TRUE
+  # linCmt() sensitivity carry for a theta on a covariate-driven linCmt()
+  # parameter (#1003); see foceiLinCmtCarryTheta.R
+  .thetaVars <- paste0("THETA_", seq_len(.s$..maxTheta), "_")
+  .carry <- .rxCarryThetaPairsForBuild(x, .s, .thetaVars) # nolint: object_usage_linter.
   .ret <- apply(.grd, 1, function(x) {
     .l <- x["calc"]
     .l <- eval(parse(text = .l))
     .ret <- paste0(x["dfe"], "=", rxode2::rxFromSE(.l))
+    if (!is.null(.carry)) {
+      .w <- which(.carry$pairs$eta == sub("^.*_BY_(THETA_[0-9]+)___$", "\\1_", x["dfe"]))
+      if (length(.w) == 1L) {
+        .ret <- .rxCarryThetaEmit(.carry$pairs, .w, .s, x["dfe"], .carry$fp, .predMinusDv) # nolint: object_usage_linter.
+      }
+    }
     .zErr <- suppressWarnings(try(as.numeric(get(x["dfe"], .s)), silent = TRUE))
     if (identical(.zErr, 0)) {
       .any.zero <<- TRUE
@@ -659,6 +671,7 @@ rxUiGet.nlsHdTheta <- function(x, ...) {
     warning("some of the predictions do not depend on 'THETA'", call. = FALSE)
   }
   .s$..HdTheta <- .ret
+  .s$..linCmtCarryThetaPairs <- if (is.null(.carry)) NULL else .carry$pairs
   .s$..pred.minus.dv <- .predMinusDv
   rxode2::rxProgressStop()
   .s

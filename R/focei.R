@@ -1270,6 +1270,14 @@ rxUiGet.foceiHdEta <- function(x, ...) {
   # is not misreported as "does not depend on ETA".
   .linCmtEtaVars <- paste0("ETA_", seq_len(.s$..maxEta), "_")
   .linCmtExtraPred <- .rxFoceiLinCmtEventPredExtra(x, .s, .linCmtEtaVars)
+  # linCmt() sensitivity carry (time-varying covariate on a linCmt()
+  # parameter, phase 3b.3): for a carry-eligible (slot, eta) pair the naive
+  # symengine line below is replaced wholesale by the carry block; all other
+  # rows (and every model with no eligible pair) are byte-identical to
+  # before.  See foceiLinCmtCarry.R.  (nolint: lintr resolves cross-file
+  # helpers against the installed package, not this source tree)
+  .carryPairs <- .rxFoceiLinCmtCarryPairsForBuild(x, .s, .linCmtEtaVars, # nolint: object_usage_linter.
+                                                  .linCmtExtraPred)
   .ret <- apply(.grd, 1, function(x) {
     .l <- x["calc"]
     .l <- eval(parse(text = .l))
@@ -1281,6 +1289,13 @@ rxUiGet.foceiHdEta <- function(x, ...) {
       }
     }
     .ret <- paste0(x["dfe"], "=", rxode2::rxFromSE(.l))
+    if (!is.null(.carryPairs)) {
+      .p <- sub("^.*_BY_(ETA_[0-9]+)___$", "\\1_", x["dfe"])
+      .w <- which(.carryPairs$eta == .p)
+      if (length(.w) == 1L) {
+        .ret <- .rxFoceiLinCmtCarryEmit(.carryPairs, .w, .s, x["dfe"]) # nolint: object_usage_linter.
+      }
+    }
     .zErr <- suppressWarnings(try(as.numeric(get(x["dfe"], .s)), silent = TRUE))
     if (identical(.zErr, 0)) {
       .any.zero <<- TRUE
@@ -1310,6 +1325,7 @@ rxUiGet.foceiHdEta <- function(x, ...) {
   .s$..HdEta <- .ret
   .s$..linCmtEtaVars <- .linCmtEtaVars
   .s$..linCmtExtraPred <- .linCmtExtraPred
+  .s$..linCmtCarryPairs <- .carryPairs
   .s$..pred.minus.dv <- .predMinusDv
   rxode2::rxProgressStop()
   .progressStopped <- TRUE
@@ -1377,6 +1393,10 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
 #' (interaction=1) and FOCE (interaction=0 -- the `ll()`/generalized path) inner builders.
 #' @noRd
 .foceiMaybeAddHdEta2 <- function(x, .s) {
+  # linCmt() sensitivity carry (3b.3): no second-order carry exists, so a
+  # model with a carry-eligible pair keeps the Shi21 finite-difference
+  # inner Hessian (which differentiates the carry-corrected gradient).
+  if (!is.null(.s$..linCmtCarryPairs)) return(.s)
   if (isTRUE(as.logical(rxode2::rxGetControl(x[[1]], "fast", FALSE))) &&
         .foceiLLGradInScope(x[[1]])) {
     .malert("calculate d2(f)/d(eta) for the analytic log-likelihood inner Hessian")
@@ -1688,6 +1708,28 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
   # 0 arguments" when rendering the cached extra terms.
   .linCmtExtraR <- .rxFoceiLinCmtEventChain(
     get("rx_r_", envir = .s), get("rx_pred_", envir = .s), .s$..linCmtExtraPred)
+  # linCmt() sensitivity carry (3b.3): rx_r_ embeds rx_pred_'s linCmtB()
+  # call by value, so its naive d(rx_r_)/d(eta) rows inherit the same
+  # uncarried terms.  For a carry-eligible eta whose ONLY path into rx_r_
+  # is through the prediction, the row is rebuilt as
+  # d(rx_r_)/d(pred) * rx__sens_rx_pred__BY_<eta>___ (the already-corrected
+  # pred sensitivity emitted above -- ..HdEta lines precede ..REta lines in
+  # the assembled model).  Basic-level work here; rendering happens inside
+  # the loop (same rxFromSE poisoning hazard documented above).
+  .carryR <- NULL
+  .carrySubR <- NULL
+  if (!is.null(.s$..linCmtCarryPairs)) {
+    .carryPh <- symengine::S("rx__linCmtCarryPh__")
+    .carrySubR <- symengine::subs(get("rx_r_", envir = .s),
+                                  get("rx_pred_", envir = .s), .carryPh)
+    .carryR <- symengine::D(.carrySubR, .carryPh)
+    if (paste(.carryR) %in% c("0", "0.0")) {
+      .carryR <- NULL
+    } else {
+      .carryR <- symengine::subs(.carryR, .carryPh,
+                                 get("rx_pred_", envir = .s))
+    }
+  }
   rxode2::rxProgress(dim(.grd)[1])
   .stopped <- FALSE
   on.exit({
@@ -1701,6 +1743,18 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
       if (!is.null(.linCmtExtraR[[.p]])) .l <- .l + .linCmtExtraR[[.p]]
     }
     .ret <- paste0(x["dfe"], "=", rxode2::rxFromSE(.l))
+    if (!is.null(.carryR)) {
+      .p <- sub("^.*_BY_(ETA_[0-9]+)___$", "\\1_", x["dfe"])
+      .w <- which(.s$..linCmtCarryPairs$eta == .p)
+      # substitute only when the eta's ONLY route into rx_r_ is through the
+      # prediction (a direct eta dependence, pred held fixed, keeps the
+      # status quo row -- bias to false)
+      if (length(.w) == 1L &&
+            paste(symengine::D(.carrySubR, symengine::S(.p))) %in% c("0", "0.0")) {
+        .ret <- paste0(x["dfe"], "=(", rxode2::rxFromSE(.carryR),
+                       ")*rx__sens_rx_pred__BY_", .p, "__")
+      }
+    }
     rxode2::rxTick()
     .ret
   })
@@ -2299,6 +2353,15 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
   .constCovs <- paste(sort(rxode2::rxGetControl(.ui, "foceiConstCovs", NULL)), collapse=",")
   ## combined eta+theta sensitivity build (#958) changes the inner model text
   .combSens <- isTRUE(rxode2::rxGetControl(.ui, "combSens", FALSE))
+  ## linCmt() sensitivity-carry substitution (3b.3) changes the inner model
+  ## text; it depends on both the control and whether the loaded rxode2 has
+  ## the carry sentinels, so both key the cache.
+  ## covsInterpolation gates the substitution ("linear" skips it), so it must
+  ## key the cache too, else a locf build would be reused for a linear fit
+  .linCmtCarry <- paste0(rxode2::rxGetControl(.ui, "linCmtSensCarry", "auto"),
+                         ",", .rxFoceiLinCmtCarryCapable(), ",",
+                         paste(rxode2::rxGetControl(.ui, "rxControl", NULL)$covsInterpolation,
+                               collapse = ","))
   ## The persisted cache lives in rxode2's user cache directory, so it OUTLIVES
   ## the session (and the installed package) whenever `rxCreateCache()` has been
   ## run.  Any release that changes the generated model text -- #992 gave the
@@ -2307,7 +2370,7 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
   ## model already in that cache, with no error to show for it.  Key on the
   ## package version so an upgrade rebuilds instead.
   .pkgVersion <- as.character(utils::packageVersion("nlmixr2est"))
-  digest::digest(c(all(is.na(.iniDf$neta1)), .combSens, .pkgVersion,
+  digest::digest(c(all(is.na(.iniDf$neta1)), .combSens, .linCmtCarry, .pkgVersion,
                    rxode2::rxGetControl(.ui, "interaction", 1L),
                    .iniDf$name,
                    .sumProd, .optExpression, .predMinusDv,
@@ -2327,30 +2390,53 @@ rxUiGet.foceiModelCache <- function(x, ...) {
 #attr(rxUiGet.foceiModelCache, "desc") <- "Get the focei cache file for a model"
 attr(rxUiGet.foceiModelCache, "rstudio") <- "file"
 
+#' Cached-model bundle element -> storable form: an rxode2 model is stored
+#' as its normalized model TEXT (rxode2::rxNorm()), not a serialized model
+#' object -- the text is small and rebuilding from it hits rxode2's own
+#' compiled-model cache, so rehydration loads the cached dll rather than
+#' compiling
+#' @noRd
+.foceiModelCacheDeflate <- function(el) {
+  if (inherits(el, "rxode2")) {
+    return(structure(list(norm = rxode2::rxNorm(el)),
+                     class = "nlmixr2estFoceiNorm"))
+  }
+  el
+}
+
+#' Storable form -> live model (old-format entries hold rxode2 objects;
+#' keep loading those so an existing cache file still works)
+#' @noRd
+.foceiModelCacheInflate <- function(el) {
+  if (inherits(el, "nlmixr2estFoceiNorm")) {
+    return(suppressMessages(suppressWarnings(rxode2::rxode2(el$norm))))
+  }
+  if (inherits(el, "rxode2")) {
+    return(rxode2::rxLoad(el))
+  }
+  el
+}
+
 #' @export
 rxUiGet.foceiModel <- function(x, ...) {
   .cacheFile <- rxUiGet.foceiModelCache(x, ...)
   if (file.exists(.cacheFile)) {
     .ret <- readRDS(.cacheFile)
-    lapply(seq_along(.ret), function(i) {
-      if (inherits(.ret[[i]], "rxode2")) {
-        rxode2::rxLoad(.ret[[i]])
-      }
-    })
+    .ret[] <- lapply(.ret, .foceiModelCacheInflate)
     return(.ret)
   }
   .ui <- x[[1]]
   .iniDf <- get("iniDf", .ui)
-  if (all(is.na(.iniDf$neta1))) {
-    .ret <- rxUiGet.ebe(x, ...)
+  .ret <- if (all(is.na(.iniDf$neta1))) {
+    rxUiGet.ebe(x, ...)
+  } else if (rxode2::rxGetControl(.ui, "interaction", 1L)) {
+    rxUiGet.focei(x, ...)
   } else {
-    if (rxode2::rxGetControl(.ui, "interaction", 1L)) {
-      .ret <- rxUiGet.focei(x, ...)
-    } else {
-      .ret <- rxUiGet.foce(x, ...)
-    }
+    rxUiGet.foce(x, ...)
   }
-  saveRDS(.ret, .cacheFile)
+  .store <- .ret
+  .store[] <- lapply(.store, .foceiModelCacheDeflate)
+  saveRDS(.store, .cacheFile)
   .ret
 }
 # attr(rxUiGet.foceiModel, "desc") <- "Get focei model object"
@@ -3761,6 +3847,55 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
                      function(.v) length(unique(.v[!is.na(.v)])) <= 1L)), logical(1))]
         rxode2::rxAssignControlValue(ui, "foceiConstCovs", .const)
       }
+    }
+  })
+  # linCmt() sensitivity carry (3b): the carry recurrence steps once per
+  # dose/observation row and does not model the steady-state fixed-point
+  # reset, and likInner0's lhs walk skips evid=2 rows (unlike the solve),
+  # so ss or evid=2 data would silently desync the carry.  Data-aware
+  # fallback to the standard gradient, stashed before the model build.
+  local({
+    if (!identical(rxode2::rxGetControl(ui, "linCmtSensCarry", "auto"), "auto")) {
+      return(invisible(NULL))
+    }
+    if (!.rxFoceiLinCmtCarryCapable()) return(invisible(NULL)) # nolint: object_usage_linter.
+    .rd <- tryCatch(as.data.frame(env$data), error = function(e) NULL)
+    if (is.null(.rd)) return(invisible(NULL))
+    # "linear" covariate interpolation cannot be represented by linCmt()'s
+    # one-sample-per-row evaluation: with a data-confirmed time-varying
+    # covariate on an eligible pair this is an error, not a silent skip
+    .interp <- rxode2::rxGetControl(ui, "rxControl", NULL)$covsInterpolation
+    if (identical(as.integer(.interp), 0L) || identical(.interp, "linear")) {
+      .s <- ui$foceiEtaS
+      .rxFoceiLinCmtCarryEligible(list(ui), .s, # nolint: object_usage_linter.
+                                  paste0("ETA_", seq_len(.s$..maxEta), "_"),
+                                  data = .rd, interpolation = "linear",
+                                  render = FALSE)
+      return(invisible(NULL))
+    }
+    .rdUp <- .rd
+    names(.rdUp) <- toupper(names(.rdUp))
+    .bad <- ("SS" %in% names(.rdUp) && any(.rdUp[["SS"]] > 0, na.rm = TRUE)) ||
+      ("EVID" %in% names(.rdUp) && any(.rdUp[["EVID"]] == 2L, na.rm = TRUE))
+    # only warn when the model would actually have used the carry
+    .pairs <- tryCatch(.foceiLinCmtCarryPairs(ui), error = function(e) NULL) # nolint: object_usage_linter.
+    if (is.null(.pairs) || nrow(.pairs) == 0L) return(invisible(NULL))
+    .why <- if (.bad) "ss/evid=2 rows" else NULL
+    if (is.null(.why)) {
+      # a jump (f()/alag()) channel needs every dose in the modified
+      # compartment and, for alag()/covariate f(), a bolus-only regimen
+      # oral0 rides on the cached pairs so a warm cache never rebuilds the
+      # symengine environment just for the dose-compartment check
+      .oral0 <- attr(.pairs, "oral0")
+      if (is.null(.oral0)) {
+        .oral0 <- .rxFoceiLinCmtCarryShape(ui$foceiEtaS)$oral0 # nolint: object_usage_linter.
+      }
+      .why <- .rxFoceiCarryJumpDataProblem(.pairs, .rd, .oral0) # nolint: object_usage_linter.
+    }
+    if (!is.null(.why)) {
+      rxode2::rxAssignControlValue(ui, "linCmtSensCarry", "none")
+      warning(.why, ": linCmt() carry gradient off for this fit",
+              call. = FALSE)
     }
   })
   # Building the optimization environment (`ui$foceiOptEnv`) is where the

@@ -802,6 +802,12 @@
 #'   `"forward"` uses the classic variational (forward) sensitivity ODEs;
 #'   `"default"` is the same thing.
 #'
+#' @param linCmtSensCarry `"auto"` (default) substitutes the exact
+#'   sensitivity-carry gradient for a `linCmt()` parameter driven by both an
+#'   eta and a time-varying covariate (needs an rxode2 with the carry
+#'   sentinels; silently keeps the standard gradient otherwise); `"none"`
+#'   always keeps the standard gradient.
+#'
 #' @inheritParams rxode2::rxSolve
 #' @inheritParams minqa::bobyqa
 #'
@@ -1009,10 +1015,12 @@ foceiControl <- function(sigdig = 3, #
                          agqLow=-Inf,
                          agqHi=Inf,
                          sensMethod = c("default", "forward"),
+                         linCmtSensCarry = c("auto", "none"),
                          zeroTheta=0.001,
                          boundedTransform=TRUE) { #
   ## sensMethod: forward (variational) ODE parameter sensitivities.
   sensMethod <- match.arg(sensMethod)
+  linCmtSensCarry <- match.arg(linCmtSensCarry)
   if (!is.null(sigdig)) {
     checkmate::assertNumeric(sigdig, lower=1, finite=TRUE, any.missing=TRUE, len=1)
     if (is.null(boundTol)) {
@@ -1706,6 +1714,7 @@ foceiControl <- function(sigdig = 3, #
     agqHi=as.double(agqHi),
     agqLow=as.double(agqLow),
     sensMethod=sensMethod,
+    linCmtSensCarry=linCmtSensCarry,
     boundedTransform=boundedTransform,
     zeroTheta=zeroTheta
   )
