@@ -258,11 +258,10 @@ struct focei_options {
   //
   List mvi;
   double *etaUpper = NULL;
-  // number of doubles R_Calloc'd for etaUpper in foceiSetupEta_().  Everything
-  // from etaLower to gcHrr is carved out of that one block, and the theta-reset
-  // path saves and restores it wholesale, so the length has to come from the
-  // allocation rather than be re-derived (nlmixr2est: it was, from a formula
-  // that had fallen behind the layout, and read/wrote past the block).
+  // Doubles R_Calloc'd for etaUpper in foceiSetupEta_(); everything from
+  // etaLower to gcHrr is carved out of that one block and the theta-reset path
+  // saves it wholesale, so the length must come from the allocation rather than
+  // be re-derived -- re-deriving it is what read and wrote past the block.
   size_t etaBufferN = 0;
   // ... and the same for the other blocks the theta-reset path saves whole
   size_t nEtaTrans = 0;
@@ -22393,8 +22392,8 @@ void saveIntoEnvironment(Environment e) {
 // save, and copying would either write past the buffer or half-restore it.
 static inline void foceiCheckRestoreN(size_t saved, size_t expected, const char *what) {
   if (saved != expected) {
-    stop("focei: the saved %s is %llu long but the current one is %llu",
-         what, (unsigned long long)saved, (unsigned long long)expected);
+    stop("focei: the saved %s is %s long but the current one is %s",
+         what, std::to_string(saved), std::to_string(expected));
   }
 }
 
