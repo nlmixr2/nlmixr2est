@@ -28,6 +28,70 @@ nmTest({
     )
     expect_false(envPrep$.sdOnly)
   })
+
+  test_that(".updateParFixedGetEtaRow returns a numeric `v` when there is no BSV", {
+    # The rows are rbound and their `v` column taken as the BSV values, so a
+    # row of a different type there turns the whole column character.
+    expect_equal(
+      .updateParFixedGetEtaRow(
+        .eta = "iivemax",
+        .env = new.env(),
+        .ome = NULL,
+        .omegaFix = c(iivemax = FALSE),
+        .muRefCurEval = data.frame(parameter = "iivemax", curEval = "",
+                                   low = NA_real_, hi = NA_real_),
+        .sigdig = 3L
+      ),
+      data.frame(ch = "", v = NA_real_)
+    )
+    # an eta that is not in the omega matrix, e.g. a fixed BSV parameter
+    .row <-
+      .updateParFixedGetEtaRow(
+        .eta = "iivemax",
+        .env = new.env(),
+        .ome = matrix(0.4, nrow = 1, dimnames = list("iivcl", "iivcl")),
+        .omegaFix = c(iivemax = FALSE),
+        .muRefCurEval = data.frame(parameter = "iivemax", curEval = "",
+                                   low = NA_real_, hi = NA_real_),
+        .sigdig = 3L
+      )
+    expect_equal(.row, data.frame(ch = "", v = NA_real_))
+    expect_true(is.numeric(.row$v))
+  })
+
+  test_that(".updateParFixedAddBsv keeps the BSV column numeric when a mu-referenced eta is absent from omega", {
+    ui <- one.compartment
+
+    popDf <- data.frame(
+      Estimate = c(0.45, 1, 3.45, 0.7),
+      row.names = c("tka", "tcl", "tv", "add.sd"),
+      check.names = FALSE
+    )
+    # omega is missing eta.ka, and tka is still mu-referenced to it
+    omega <- diag(c(0.3, 0.1))
+    dimnames(omega) <- list(c("eta.cl", "eta.v"), c("eta.cl", "eta.v"))
+
+    res <-
+      .updateParFixedAddBsv(
+        popDf, iniDf = ui$iniDf, omega = omega, .sigdig = 3L,
+        .muRefDataFrame = ui$muRefDataFrame, .muRefCurEval = ui$muRefCurEval
+      )
+
+    expect_true(is.numeric(res$popDf[["BSV(CV%)"]]))
+    expect_equal(
+      res$popDf[["BSV(CV%)"]],
+      c(NA_real_, sqrt(exp(0.3) - 1) * 100, sqrt(exp(0.1) - 1) * 100, NA_real_)
+    )
+
+    # and the formatted table shows the requested significant figures, with ""
+    # for the parameters that have no BSV
+    fmt <-
+      .updateParFixedApplySig(
+        res$popDf, digits = 3L, ci = 0.95,
+        fixedNames = character(), bsvFixedNames = res$bsvFixedNames
+      )
+    expect_equal(fmt[["BSV(CV%)"]], c("", "59.1", "32.4", ""))
+  })
 })
 
 test_that("formatMinWidth", {
