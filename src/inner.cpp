@@ -6304,8 +6304,10 @@ static inline void foceiSetupTrans_(CharacterVector pars){
   // doubles through R to rewrite what is already there.  nFullThetaSave is the
   // saved prefix; nFullTheta is derived from it so the two cannot drift apart.
   op_focei.nFullThetaSave = (size_t)4*(op_focei.ntheta+op_focei.omegan);
+  // (size_t) on each factor: _aqn is nAGQ^neta and neta is unsigned int, so the
+  // product would otherwise be formed in unsigned int before the widening.
   op_focei.nFullTheta  = op_focei.nFullThetaSave +
-    (size_t)2*(_aqn*op_focei.neta);
+    (size_t)2*(size_t)_aqn*(size_t)op_focei.neta;
   op_focei.fullTheta   = R_Calloc(op_focei.nFullTheta, double); // [ntheta+omegan]
   op_focei.theta       = op_focei.fullTheta+op_focei.ntheta+op_focei.omegan; // [ntheta + omegan]
   op_focei.initPar     = op_focei.theta+op_focei.ntheta+op_focei.omegan; // [ntheta + omegan]
