@@ -19,10 +19,14 @@ cp = central/v")
   set.seed(17)
   etaTrue <- rnorm(6, 0, 0.3)
   dv <- unlist(lapply(1:6, function(i) {
-    rxode2::rxSolve(m, params = c(tcl = log(2), tv = log(20),
-                                  eta_cl = etaTrue[i]),
-                    events = dat[dat$id == i, ], returnType = "data.frame",
-                    covsInterpolation = "nocb", useLinCmt = FALSE)$cp
+    rxode2::rxSolve(m,
+      params = c(
+        tcl = log(2), tv = log(20),
+        eta_cl = etaTrue[i]
+      ),
+      events = dat[dat$id == i, ], returnType = "data.frame",
+      covsInterpolation = "nocb", useLinCmt = FALSE
+    )$cp
   }))
   obs <- dat$evid == 0
   dat$dv <- 0
@@ -30,14 +34,19 @@ cp = central/v")
   dat$dv[obs] <- dv + rnorm(sum(obs), 0, 0.3)
   fit <- function(ui, carry, maxOut = 0L) {
     suppressWarnings(suppressMessages(
-      nlmixr2est::nlmixr2(ui, dat, est = "focei",
-                          control = .carryFitCtl(carry, maxOut))))
+      nlmixr2est::nlmixr2(ui, dat,
+        est = "focei",
+        control = .carryFitCtl(carry, maxOut)
+      )
+    ))
   }
   fO <- fit(uiO, "none")
   fC <- fit(uiL, "auto")
   fN <- fit(uiL, "none")
-  expect_true(grepl("rx_lcConc_",
-                    paste(rxode2::rxNorm(fC$env$innerModel), collapse = "\n")))
+  expect_true(grepl(
+    "rx_lcConc_",
+    paste(rxode2::rxNorm(fC$env$innerModel), collapse = "\n")
+  ))
   gapC <- abs(fC$objective - fO$objective)
   gapN <- abs(fN$objective - fO$objective)
   expect_lt(gapC, 0.01)

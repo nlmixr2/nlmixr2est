@@ -38,7 +38,9 @@
   for (.i in 1:7) .args[[.rxFoceiLinCmtCarrySlotNames[.i]]] <- as.name(.rxFoceiCarrySlotPh[.i]) # nolint: object_usage_linter.
   .build <- utils::getFromNamespace(paste0(".linToOdeBuildMicro", ncmt), "rxode2")
   .m <- tryCatch(.build(.args), error = function(e) NULL)
-  if (is.null(.m)) return(NULL)
+  if (is.null(.m)) {
+    return(NULL)
+  }
   .keep <- intersect(c("k", "k12", "k21", "k13", "k31", "v", "ka"), names(.m))
   .ret <- lapply(.keep, function(n) {
     symengine::S(paste(deparse(.m[[n]], width.cutoff = 500L), collapse = ""))
@@ -65,7 +67,9 @@
 #' @noRd
 .rxFoceiCarryVc <- function(ncmt, oral0, trans, slot, slotExpr) {
   .m <- .rxFoceiCarryMicro(ncmt, oral0, trans)
-  if (is.null(.m) || is.null(.m$v)) return(NULL)
+  if (is.null(.m) || is.null(.m$v)) {
+    return(NULL)
+  }
   .vc <- .m$v
   .dvc <- NULL
   if (!is.na(slot)) {
@@ -80,7 +84,9 @@
 #' @noRd
 .rxFoceiCarryRhsTxt <- function(ncmt, oral0, trans, slotExpr, xNames) {
   .m <- .rxFoceiCarryMicro(ncmt, oral0, trans)
-  if (is.null(.m)) return(NULL)
+  if (is.null(.m)) {
+    return(NULL)
+  }
   .S <- symengine::S
   .x <- lapply(xNames, .S)
   .c <- oral0 + 1L # central index (1-based) in the kernel's row order
@@ -114,10 +120,14 @@
 .rxFoceiCarryEventMods <- function(ui, s, etaVars) {
   .lin <- rxode2::.rxLinCmt(ui)
   .lin <- grep("^rx__sens_", .lin, value = TRUE, invert = TRUE)
-  if (length(.lin) == 0L) return(list(f = NULL, lag = NULL))
+  if (length(.lin) == 0L) {
+    return(list(f = NULL, lag = NULL))
+  }
   .one <- function(kind) {
     .rows <- .rxFoceiLinCmtEventRows(s, .lin, kind, etaVars) # nolint: object_usage_linter.
-    if (length(.rows) != 1L) return(NULL)
+    if (length(.rows) != 1L) {
+      return(NULL)
+    }
     list(cmt = names(.rows), sym = .rows[[1]]$sym, drivers = .rows[[1]]$drivers)
   }
   list(f = .one("f"), lag = .one("lag"))

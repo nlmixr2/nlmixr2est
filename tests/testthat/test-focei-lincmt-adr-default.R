@@ -6,13 +6,19 @@
 # must still reach the fit.
 test_that("a linCmt() FOCEi fit uses rxode2's forward-mode AD default", {
   skip_on_cran()
-  skip_if_not(exists("linCmtBSensTypesSeen", envir = asNamespace("rxode2")),
-              "rxode2 without linCmtBSensTypesSeen()")
+  skip_if_not(
+    exists("linCmtBSensTypesSeen", envir = asNamespace("rxode2")),
+    "rxode2 without linCmtBSensTypesSeen()"
+  )
   seen <- function() utils::getFromNamespace("linCmtBSensTypesSeen", "rxode2")(TRUE)
   one.cmt <- function() {
     ini({
-      tka <- 0.45; tcl <- log(c(0, 2.7, 100)); tv <- 3.45
-      eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+      tka <- 0.45
+      tcl <- log(c(0, 2.7, 100))
+      tv <- 3.45
+      eta.ka ~ 0.6
+      eta.cl ~ 0.3
+      eta.v ~ 0.1
       add.sd <- 0.7
     })
     model({
@@ -23,13 +29,16 @@ test_that("a linCmt() FOCEi fit uses rxode2's forward-mode AD default", {
     })
   }
   ctl <- function(st) {
-    foceiControl(print = 0, maxOuterIterations = 0L, covMethod = "",
-                 calcTables = FALSE, rxControl = rxode2::rxControl(linCmtSensType = st))
+    foceiControl(
+      print = 0, maxOuterIterations = 0L, covMethod = "",
+      calcTables = FALSE, rxControl = rxode2::rxControl(linCmtSensType = st)
+    )
   }
   fit <- function(st) {
     invisible(seen())
     f <- suppressWarnings(suppressMessages(
-      nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "focei", control = ctl(st))))
+      nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "focei", control = ctl(st))
+    ))
     list(objf = f$objf, seen = seen())
   }
   auto <- fit("auto")

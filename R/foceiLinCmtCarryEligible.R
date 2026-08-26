@@ -43,7 +43,8 @@
 #' @noRd
 .rxFoceiCarryFreeSyms <- function(expr) {
   tryCatch(vapply(symengine::free_symbols(expr), as.character, character(1)),
-           error = function(e) character(0))
+    error = function(e) character(0)
+  )
 }
 
 #' Is a symengine expression identically zero?
@@ -77,9 +78,13 @@
   .ui <- x[[1]]
   .empty <- .rxFoceiCarryEmpty() # nolint: object_usage_linter.
   .allCovs <- .ui$allCovs
-  if (length(.allCovs) == 0L) return(.empty)
+  if (length(.allCovs) == 0L) {
+    return(.empty)
+  }
   .predArgs <- .rxFoceiCarryPredArgs(.ui, s) # nolint: object_usage_linter.
-  if (is.null(.predArgs)) return(.empty)
+  if (is.null(.predArgs)) {
+    return(.empty)
+  }
   .iniDf <- .ui$iniDf
   .etaDf <- .iniDf[!is.na(.iniDf$neta1) & .iniDf$neta1 == .iniDf$neta2, , drop = FALSE]
   # per-slot free symbols (slots 9-15 of the linCmtB call are p1..ka)
@@ -88,8 +93,10 @@
   .mods <- .rxFoceiCarryEventMods(.ui, s, etaVars) # nolint: object_usage_linter.
   .ret <- .empty
   for (.e in seq_along(etaVars)) {
-    .row <- .rxFoceiCarryEligibleEta(.e, etaVars, .etaDf, .allCovs, .slotExpr,
-                                      .slotFree, .mods, data, interpolation, render)
+    .row <- .rxFoceiCarryEligibleEta(
+      .e, etaVars, .etaDf, .allCovs, .slotExpr,
+      .slotFree, .mods, data, interpolation, render
+    )
     if (!is.null(.row)) .ret <- rbind(.ret, .row)
   }
   .ret
@@ -101,7 +108,9 @@
 #' @noRd
 .rxFoceiCarryEtaIdOnly <- function(e, etaDf) {
   .wEta <- which(etaDf$neta1 == e)
-  if (length(.wEta) != 1L) return(FALSE)
+  if (length(.wEta) != 1L) {
+    return(FALSE)
+  }
   .cond <- etaDf$condition[.wEta]
   is.na(.cond) || identical(.cond, "id")
 }
@@ -112,34 +121,52 @@
 #' @noRd
 .rxFoceiCarryEtaSlotInfo <- function(eta, etaVars, allCovs, slotExpr, slotFree) {
   .inSlot <- which(vapply(slotFree, function(f) eta %in% f, logical(1)))
-  if (length(.inSlot) == 0L) return(list())
+  if (length(.inSlot) == 0L) {
+    return(list())
+  }
   # eta must live in exactly one slot; multi-slot substitution is unvalidated
-  if (length(.inSlot) != 1L) return(NULL)
+  if (length(.inSlot) != 1L) {
+    return(NULL)
+  }
   .free <- slotFree[[.inSlot]]
   # exactly one eta in that slot, no direct time dependence
-  if (sum(etaVars %in% .free) != 1L || "t" %in% .free) return(NULL)
+  if (sum(etaVars %in% .free) != 1L || "t" %in% .free) {
+    return(NULL)
+  }
   .expr <- slotExpr[[.inSlot]]
   .d <- tryCatch(symengine::D(.expr, symengine::S(eta)), error = function(err) NULL)
-  if (is.null(.d) || .rxFoceiCarryIsZero(.d)) return(NULL)
+  if (is.null(.d) || .rxFoceiCarryIsZero(.d)) {
+    return(NULL)
+  }
   .shape <- .rxFoceiCarryShape(.expr, .d, allCovs, etaVars)
-  if (is.null(.shape)) return(NULL)
-  list(k = .inSlot, g = .d, expr = .expr, shape = .shape,
-       covs = intersect(.free, allCovs))
+  if (is.null(.shape)) {
+    return(NULL)
+  }
+  list(
+    k = .inSlot, g = .d, expr = .expr, shape = .shape,
+    covs = intersect(.free, allCovs)
+  )
 }
 
 #' "mult" / "add" when the eta enters separably, else NULL
 #' @noRd
 .rxFoceiCarryShape <- function(expr, d, allCovs, etaVars) {
-  if (.rxFoceiCarryIsZero(symengine::expand(d - expr))) return("mult")
+  if (.rxFoceiCarryIsZero(symengine::expand(d - expr))) {
+    return("mult")
+  }
   .dFree <- .rxFoceiCarryFreeSyms(d)
-  if (length(intersect(.dFree, c(allCovs, etaVars, "t"))) == 0L) return("add")
+  if (length(intersect(.dFree, c(allCovs, etaVars, "t"))) == 0L) {
+    return("add")
+  }
   NULL
 }
 
 #' Render a symengine repr to model text (or pass it through)
 #' @noRd
 .rxFoceiCarryTxt <- function(repr, render) {
-  if (is.null(repr) || is.na(repr)) return(NA_character_)
+  if (is.null(repr) || is.na(repr)) {
+    return(NA_character_)
+  }
   if (render) rxode2::rxFromSE(repr) else repr
 }
 
@@ -148,23 +175,34 @@
 .rxFoceiCarryEligibleEta <- function(e, etaVars, etaDf, allCovs, slotExpr,
                                      slotFree, mods, data, interpolation, render) {
   .eta <- etaVars[e]
-  if (!.rxFoceiCarryEtaIdOnly(e, etaDf)) return(NULL)
+  if (!.rxFoceiCarryEtaIdOnly(e, etaDf)) {
+    return(NULL)
+  }
   .jump <- .rxFoceiCarryEtaJump(.eta, mods, allCovs) # nolint: object_usage_linter.
-  if (!isTRUE(.jump$ok)) return(NULL)
+  if (!isTRUE(.jump$ok)) {
+    return(NULL)
+  }
   .slot <- .rxFoceiCarryEtaSlotInfo(.eta, etaVars, allCovs, slotExpr, slotFree)
-  if (is.null(.slot)) return(NULL)
+  if (is.null(.slot)) {
+    return(NULL)
+  }
   .hasSlot <- length(.slot) > 0L
   .why <- .rxFoceiCarryWhy(if (.hasSlot) .slot else NULL, .jump, mods, slotFree, allCovs)
-  if (length(.why) == 0L) return(NULL)
+  if (length(.why) == 0L) {
+    return(NULL)
+  }
   .varying <- .rxFoceiCarryVarying(.why, data) # nolint: object_usage_linter.
   if (identical(interpolation, "linear") && isTRUE(.varying)) {
     stop("time-varying covariate '", paste(.why, collapse = "', '"),
-         "' on a linCmt() parameter needs 'locf', 'nocb' or 'midpoint' ",
-         "interpolation; 'linear' cannot be represented by the linCmt() solution",
-         call. = FALSE)
+      "' on a linCmt() parameter needs 'locf', 'nocb' or 'midpoint' ",
+      "interpolation; 'linear' cannot be represented by the linCmt() solution",
+      call. = FALSE
+    )
   }
-  .rxFoceiCarryPairRow(.eta, etaDf$name[which(etaDf$neta1 == e)], # nolint: object_usage_linter.
-                       if (.hasSlot) .slot else NULL, .jump, mods, .why, .varying, render)
+  .rxFoceiCarryPairRow(
+    .eta, etaDf$name[which(etaDf$neta1 == e)], # nolint: object_usage_linter.
+    if (.hasSlot) .slot else NULL, .jump, mods, .why, .varying, render
+  )
 }
 
 #' The covariates that make this eta's gradient history-dependent: those on

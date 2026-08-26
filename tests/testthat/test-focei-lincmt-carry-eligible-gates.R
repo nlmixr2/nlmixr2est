@@ -19,12 +19,14 @@ test_that("data confirms or refutes a candidate; linear interpolation errors onl
       cp ~ add(add.sd)
     })
   }
-  .datVary <- data.frame(id = rep(1:2, each = 4),
-                         time = rep(c(0, 12, 24, 36), 2),
-                         amt = rep(c(100, 0, 0, 0), 2),
-                         evid = rep(c(1, 0, 0, 0), 2),
-                         dv = rep(c(0, 1, 2, 1), 2),
-                         wt = rep(c(70, 70, 90, 90), 2))
+  .datVary <- data.frame(
+    id = rep(1:2, each = 4),
+    time = rep(c(0, 12, 24, 36), 2),
+    amt = rep(c(100, 0, 0, 0), 2),
+    evid = rep(c(1, 0, 0, 0), 2),
+    dv = rep(c(0, 1, 2, 1), 2),
+    wt = rep(c(70, 70, 90, 90), 2)
+  )
   .datConst <- .datVary
   .datConst$wt <- 70
 
@@ -39,12 +41,18 @@ test_that("data confirms or refutes a candidate; linear interpolation errors onl
   expect_false(.p$varying)
 
   # linear interpolation: error only when confirmed varying
-  expect_error(suppressMessages(
-    .foceiLinCmtCarryPairs(.mult, data = .datVary, interpolation = "linear")),
-    "linear")
-  expect_error(suppressMessages(
-    .foceiLinCmtCarryPairs(.mult, data = .datConst, interpolation = "linear")),
-    NA)
+  expect_error(
+    suppressMessages(
+      .foceiLinCmtCarryPairs(.mult, data = .datVary, interpolation = "linear")
+    ),
+    "linear"
+  )
+  expect_error(
+    suppressMessages(
+      .foceiLinCmtCarryPairs(.mult, data = .datConst, interpolation = "linear")
+    ),
+    NA
+  )
 })
 
 test_that("a mixed ODE + linCmt() model is never carry-eligible", {
@@ -62,7 +70,7 @@ test_that("a mixed ODE + linCmt() model is never carry-eligible", {
       v <- exp(tv)
       kin <- exp(tkin) * exp(eta.kin)
       cp <- linCmt()
-      d/dt(eff) <- kin * cp - 0.5 * eff
+      d / dt(eff) <- kin * cp - 0.5 * eff
       cp ~ add(add.sd)
     })
   }
@@ -109,8 +117,10 @@ test_that("a prediction wrapping the linCmt() value is carried through the outer
   ui <- nlmixr2est::nlmixr2(scaled)
   expect_equal(nrow(.foceiLinCmtCarryPairs(ui)), 1L)
   skip_if_not(.rxFoceiLinCmtCarryCapable())
-  pars <- c(`THETA[1]` = log(2), `THETA[2]` = log(20), `THETA[3]` = 0.5,
-            `ETA[1]` = 0.3)
+  pars <- c(
+    `THETA[1]` = log(2), `THETA[2]` = log(20), `THETA[3]` = 0.5,
+    `ETA[1]` = 0.3
+  )
   r <- suppressWarnings(.carryJumpFd(scaled, pars, .carryEv(), "auto"))
   expect_lt(r$err, 1e-6)
   expect_true(grepl("rx_lcConc_~linCmtB(", r$txt, fixed = TRUE))
@@ -136,17 +146,21 @@ test_that("data-independent candidate pairs are memoized by the model digest", {
   expect_equal(.st3[["misses"]], 2L)
   expect_false(identical(.p1, .p3))
   # a data-dependent call bypasses the memo entirely (no counter movement)
-  .dat <- data.frame(id = rep(1:2, each = 3), time = rep(c(0, 12, 24), 2),
-                     amt = rep(c(100, 0, 0), 2), evid = rep(c(1, 0, 0), 2),
-                     dv = rep(c(0, 1, 2), 2), wt = rep(c(70, 90, 90), 2))
+  .dat <- data.frame(
+    id = rep(1:2, each = 3), time = rep(c(0, 12, 24), 2),
+    amt = rep(c(100, 0, 0), 2), evid = rep(c(1, 0, 0), 2),
+    dv = rep(c(0, 1, 2), 2), wt = rep(c(70, 90, 90), 2)
+  )
   .p4 <- .foceiLinCmtCarryPairs(.ui, data = .dat)
   .st4 <- .foceiLinCmtCarryMemoStats()
   expect_equal(.st4, .st3)
   expect_true(isTRUE(.p4$varying[1]))
   # a control that keys the digest (covsInterpolation) invalidates the entry
   .ui2 <- .carryUiCov()
-  rxode2::rxAssignControlValue(.ui2, "rxControl",
-                               rxode2::rxControl(covsInterpolation = "nocb"))
+  rxode2::rxAssignControlValue(
+    .ui2, "rxControl",
+    rxode2::rxControl(covsInterpolation = "nocb")
+  )
   .foceiLinCmtCarryPairs(.ui2)
   .st5 <- .foceiLinCmtCarryMemoStats()
   expect_equal(.st5[["misses"]], 3L)
@@ -156,7 +170,7 @@ test_that("candidate pairs persist through the rxode2 cache-directory sidecar", 
   .foceiLinCmtCarryMemoClear()
   .foceiLinCmtCarryMemoStats(reset = TRUE)
   .ui <- .carryUiCov()
-  .p1 <- .foceiLinCmtCarryPairs(.ui)          # compute + write the sidecar
+  .p1 <- .foceiLinCmtCarryPairs(.ui) # compute + write the sidecar
   .key <- rxUiGet.foceiModelDigest(list(rxode2::assertRxUi(.ui)))
   .f <- .foceiLinCmtCarryCacheFile(.key)
   expect_true(file.exists(.f))

@@ -11,13 +11,14 @@
 #' @export
 nmObjGet <- function(x, ...) {
   if (!inherits(x, "nmObjGet")) {
-    stop("'", as.character(substitute(x)), "' is wrong type for 'nmObjGet'", call.=FALSE)
+    stop("'", as.character(substitute(x)), "' is wrong type for 'nmObjGet'", call. = FALSE)
   }
   .arg <- class(x)[1]
   if (any(.arg == c(
     "logLik", "value", "obf", "ofv",
     "objf", "OBJF", "objective", "AIC",
-    "BIC"))) {
+    "BIC"
+  ))) {
     .nmObjEnsureObjective(x[[1]])
   }
   if (.rstudioComplete()) {
@@ -43,8 +44,10 @@ nmObjGet <- function(x, ...) {
 #' @export
 nmObjGet.iniUi <- function(x, ...) {
   .env <- x[[1]]
-  .iniDf0 <- get("iniDf0", envir=.env)
-  if (is.null(.iniDf0)) return(NULL)
+  .iniDf0 <- get("iniDf0", envir = .env)
+  if (is.null(.iniDf0)) {
+    return(NULL)
+  }
   ## When the estimation method changes the model STRUCTURE (e.g. est="vae"
   ## covariate selection), the original model is stashed as a full ui in iniDf0;
   ## return it directly. Otherwise iniDf0 is the original iniDf data.frame -- swap
@@ -54,7 +57,7 @@ nmObjGet.iniUi <- function(x, ...) {
     return(if (nlmixr2global$finalUiCompressed) rxode2::rxUiCompress(.ui) else .ui)
   }
   .ui <- .cloneEnv(rxode2::rxUiDecompress(get("ui", .env)))
-  assign("iniDf", .iniDf0, envir=.ui)
+  assign("iniDf", .iniDf0, envir = .ui)
   rxode2::rxUiCompress(.ui)
 }
 attr(nmObjGet.iniUi, "desc") <- "The initial ui used to run the model"
@@ -66,10 +69,14 @@ nmObjGet.uiIni <- nmObjGet.iniUi
 #' @export
 nmObjGet.iniDf0 <- function(x, ...) {
   .env <- x[[1]]
-  .iniDf0 <- get("iniDf0", envir=.env)
-  if (is.null(.iniDf0)) return(NULL)
+  .iniDf0 <- get("iniDf0", envir = .env)
+  if (is.null(.iniDf0)) {
+    return(NULL)
+  }
   ## a ui (structure changed) -> the original model's iniDf; else the data.frame
-  if (!is.data.frame(.iniDf0)) return(rxode2::rxUiDecompress(.iniDf0)$iniDf)
+  if (!is.data.frame(.iniDf0)) {
+    return(rxode2::rxUiDecompress(.iniDf0)$iniDf)
+  }
   .iniDf0
 }
 attr(nmObjGet.iniDf0, "desc") <- "The initial estimate data frame of the original model"
@@ -89,7 +96,7 @@ attr(nmObjGet.iniDf0, "rstudio") <- emptyenv()
 #' nmObjUiSetCompressed(TRUE) # now the $ui will return a compressed value
 #'
 nmObjUiSetCompressed <- function(type) {
-  checkmate::assertLogical(type,len=1, any.missing=FALSE)
+  checkmate::assertLogical(type, len = 1, any.missing = FALSE)
   nlmixr2global$finalUiCompressed <- type
   invisible(type)
 }
@@ -131,7 +138,7 @@ nmObjGet.ui <- nmObjGet.finalUi
 nmObjGetData <- function(x, ...) {
   # need to assign environment correctly for UDF
   if (!inherits(x, "nmObjGetData")) {
-    stop("'x' is wrong type for 'nmObjGetData'", call.=FALSE)
+    stop("'x' is wrong type for 'nmObjGetData'", call. = FALSE)
   }
   if (.rstudioComplete()) {
     # During Rstudio completion, return a dummy/rstudio value instead of computing the real one.
@@ -157,10 +164,16 @@ nmObjGetData <- function(x, ...) {
 nmObjGetData.dataLloq <- function(x, ...) {
   .fit <- x[[1]]
   .df <- as.data.frame(.fit)
-  if (!any(names(.df) == "CENS")) return(NULL)
-  if (!any(names(.df) == "upperLim")) return(NULL)
+  if (!any(names(.df) == "CENS")) {
+    return(NULL)
+  }
+  if (!any(names(.df) == "upperLim")) {
+    return(NULL)
+  }
   .w <- which(.df$CENS == 1)
-  if (length(.w) == 0) return(NULL)
+  if (length(.w) == 0) {
+    return(NULL)
+  }
   mean(.df$upperLim[.w])
 }
 
@@ -168,10 +181,16 @@ nmObjGetData.dataLloq <- function(x, ...) {
 nmObjGetData.dataUloq <- function(x, ...) {
   .fit <- x[[1]]
   .df <- as.data.frame(.fit)
-  if (!any(names(.df) == "CENS")) return(NULL)
-  if (!any(names(.df) == "lowerLim")) return(NULL)
+  if (!any(names(.df) == "CENS")) {
+    return(NULL)
+  }
+  if (!any(names(.df) == "lowerLim")) {
+    return(NULL)
+  }
   .w <- which(.df$CENS == -1)
-  if (length(.w) == 0) return(NULL)
+  if (length(.w) == 0) {
+    return(NULL)
+  }
   mean(.df$lowerLim[.w])
 }
 
@@ -180,22 +199,26 @@ nmObjGet.dataNormInfo <- function(x, ...) {
   .fit <- x[[1]]
   .ui <- .fit$ui
   .datSav <- .fit$dataSav
-  .predDf <-.ui$predDf
-  if (all(.predDf$dist %in% c("norm", "dnorm","t", "cauchy"))) {
-    return(list(filter=rep(TRUE, length(.datSav[,1])),
-                 nnorm=length(.datSav[,1]),
-                 nlik=0,
-                 nother=0,
-                 nlmixrRowNums=.datSav$nlmixrRowNums))
+  .predDf <- .ui$predDf
+  if (all(.predDf$dist %in% c("norm", "dnorm", "t", "cauchy"))) {
+    return(list(
+      filter = rep(TRUE, length(.datSav[, 1])),
+      nnorm = length(.datSav[, 1]),
+      nlik = 0,
+      nother = 0,
+      nlmixrRowNums = .datSav$nlmixrRowNums
+    ))
   }
-  .ret <- .Call(`_nlmixr2est_filterNormalLikeAndDoses`,
-                .datSav$CMT, .predDf$distribution, .predDf$cmt)
+  .ret <- .Call(
+    `_nlmixr2est_filterNormalLikeAndDoses`,
+    .datSav$CMT, .predDf$distribution, .predDf$cmt
+  )
   .ret$nlmixrRowNums <- .datSav[.ret$filter, "nlmixrRowNums"]
   .ret
 }
 
 #' @export
-nmObjGet.warnings <-function(x, ...) {
+nmObjGet.warnings <- function(x, ...) {
   get("runInfo", x[[1]])
 }
 attr(nmObjGet.warnings, "desc") <- "Warnings from the nlmixr2 run"
@@ -215,33 +238,34 @@ nmObjGet.default <- function(x, ...) {
     .ret <- get(.arg, envir = .env)
     if (inherits(.ret, "raw")) {
       .type <- rxode2::rxGetSerialType_(.ret)
-      .ret <- try(.deserializeRaw(.ret, .type), silent=TRUE)
+      .ret <- try(.deserializeRaw(.ret, .type), silent = TRUE)
       if (inherits(.ret, "try-error")) {
         warning("cannot deserialize object '", .arg, "' (", .type, ")",
-                call.=FALSE)
+          call. = FALSE
+        )
         .ret <- NULL
       }
     }
     return(.ret)
   }
   # Now get the ui, install the control object temporarily and use `rxUiGet`
-  .ui <- get("ui", envir=.env)
+  .ui <- get("ui", envir = .env)
   .ui <- rxode2::rxUiDecompress(.ui)
   on.exit({
-    assign("ui", rxode2::rxUiCompress(.ui), envir=.env)
+    assign("ui", rxode2::rxUiCompress(.ui), envir = .env)
   })
   .ctl <- nmObjGetControl(.createEstObject(x[[1]]), ...)
   if (!is.null(.ctl)) {
-    assign("control", .ctl, envir=.ui)
+    assign("control", .ctl, envir = .ui)
   }
-  on.exit(suppressWarnings(try(rm(list="control", envir=.ui), silent=TRUE)))
+  on.exit(suppressWarnings(try(rm(list = "control", envir = .ui), silent = TRUE)))
   .lst <- list(.ui, x[[2]])
   class(.lst) <- c(.arg, "rxUiGet")
   .ret <- rxUiGet(.lst)
   .ret
 }
 
-#'@rdname nmObjGet
+#' @rdname nmObjGet
 #' @export
 nmObjGet.modelName <- function(x, ...) {
   .obj <- x[[1]]
@@ -263,7 +287,7 @@ nmObjGet.cor <- function(x, ...) {
   .cor
 }
 attr(nmObjGet.cor, "desc") <- "correlation matrix of theta, calculated from covariance of theta"
-attr(nmObjGet.cor, "rstudio") <- lotri::lotri(a+b~c(1, 0.1, 1))
+attr(nmObjGet.cor, "rstudio") <- lotri::lotri(a + b ~ c(1, 0.1, 1))
 
 .omegaR <- function(.cov) {
   .sd2 <- sqrt(diag(.cov))
@@ -286,12 +310,16 @@ attr(nmObjGet.cor, "rstudio") <- lotri::lotri(a+b~c(1, 0.1, 1))
 nmObjGet.omegaR <- function(x, ...) {
   .obj <- x[[1]]
   .cov <- .obj$omega
-  if (is.null(.cov)) return(NULL)
+  if (is.null(.cov)) {
+    return(NULL)
+  }
   if (is.list(.cov)) {
     .n <- names(.cov)
     .ret <- lapply(seq_along(.cov), function(i) {
       .covi <- .cov[[i]]
-      if (is.null(.covi)) return(NULL)
+      if (is.null(.covi)) {
+        return(NULL)
+      }
       .omegaR(.covi)
     })
     names(.ret) <- .n
@@ -301,7 +329,7 @@ nmObjGet.omegaR <- function(x, ...) {
   }
 }
 attr(nmObjGet.omegaR, "desc") <- "correlation matrix of omega"
-attr(nmObjGet.omegaR, "rstudio") <- lotri::lotri(a+b~c(1, 0.1, 1))
+attr(nmObjGet.omegaR, "rstudio") <- lotri::lotri(a + b ~ c(1, 0.1, 1))
 
 #' @rdname nmObjGet
 #' @export
@@ -309,7 +337,7 @@ nmObjGet.phiR <- function(x, ...) {
   .obj <- x[[1]]
   .phi <- .obj$phiC
   if (is.null(.phi)) {
-    if (any(names(x[[1]]) !="CWRES")) warning("this requires 'CWRES' in fit (use `addCwres()`)", call.=FALSE)
+    if (any(names(x[[1]]) != "CWRES")) warning("this requires 'CWRES' in fit (use `addCwres()`)", call. = FALSE)
     return(NULL)
   }
   .ret <- lapply(seq_along(.phi), function(i) {
@@ -317,7 +345,7 @@ nmObjGet.phiR <- function(x, ...) {
     .d <- diag(.cov)
     if (any(.d == 0) || any(!is.finite(.d))) {
       .d1 <- length(.d)
-      return(matrix(rep(NA, .d1*.d1), .d1, .d1))
+      return(matrix(rep(NA, .d1 * .d1), .d1, .d1))
     }
     .sd2 <- sqrt(diag(.cov))
     .cor <- stats::cov2cor(.cov)
@@ -336,14 +364,14 @@ nmObjGet.phiSE <- function(x, ...) {
   .obj <- x[[1]]
   .phi <- .obj$phiC
   if (is.null(.phi)) {
-    if (any(names(x[[1]]) !="CWRES")) warning("this requires 'CWRES' in fit (use `addCwres()`)", call.=FALSE)
+    if (any(names(x[[1]]) != "CWRES")) warning("this requires 'CWRES' in fit (use `addCwres()`)", call. = FALSE)
     return(NULL)
   }
   .d1 <- dim(.phi[[1]])[1]
   .ret <- vapply(seq_along(.phi), function(i) {
     .cov <- .phi[[i]]
     suppressWarnings(sqrt(diag(.cov)))
-  }, double(.d1), USE.NAMES=FALSE)
+  }, double(.d1), USE.NAMES = FALSE)
   dim(.ret) <- c(.d1, length(.phi))
   dimnames(.ret) <- list(paste0("se(", colnames(.phi[[1]]), ")"), names(.phi))
   .ret <- as.data.frame(t(.ret))
@@ -351,7 +379,7 @@ nmObjGet.phiSE <- function(x, ...) {
   if (!is.null(names(.phi))) {
     .id <- names(.phi)
   }
-  cbind(data.frame(ID=.id), .ret)
+  cbind(data.frame(ID = .id), .ret)
 }
 attr(nmObjGet.phiSE, "desc") <- "standard error of each individual's eta (if present)"
 
@@ -360,16 +388,16 @@ attr(nmObjGet.phiSE, "desc") <- "standard error of each individual's eta (if pre
 nmObjGet.phiRSE <- function(x, ...) {
   .obj <- x[[1]]
   .phi <- .obj$phiC
-  .eta <- .obj$eta[,-1, drop=FALSE]
-  if (is.null(.phi)){
-    if (any(names(x[[1]]) !="CWRES")) warning("this requires 'CWRES' in fit (use `addCwres()`)", call.=FALSE)
+  .eta <- .obj$eta[, -1, drop = FALSE]
+  if (is.null(.phi)) {
+    if (any(names(x[[1]]) != "CWRES")) warning("this requires 'CWRES' in fit (use `addCwres()`)", call. = FALSE)
     return(NULL)
   }
-  .d1 <-dim(.phi[[1]])[1]
-  .ret <-vapply(seq_along(.phi), function(i) {
+  .d1 <- dim(.phi[[1]])[1]
+  .ret <- vapply(seq_along(.phi), function(i) {
     .cov <- .phi[[i]]
-    suppressWarnings(sqrt(diag(.cov))/unlist(.eta[i,, drop=FALSE])*100)
-  }, double(.d1), USE.NAMES=FALSE)
+    suppressWarnings(sqrt(diag(.cov)) / unlist(.eta[i, , drop = FALSE]) * 100)
+  }, double(.d1), USE.NAMES = FALSE)
   dim(.ret) <- c(.d1, length(.phi))
   dimnames(.ret) <- list(paste0("rse(", colnames(.phi[[1]]), ")%"), names(.phi))
   .ret <- as.data.frame(t(.ret))
@@ -377,7 +405,7 @@ nmObjGet.phiRSE <- function(x, ...) {
   if (!is.null(names(.phi))) {
     .id <- names(.phi)
   }
-  cbind(data.frame(ID=.id), .ret)
+  cbind(data.frame(ID = .id), .ret)
 }
 attr(nmObjGet.phiRSE, "desc") <- "relative standard error of each individual's eta (if present)"
 
@@ -387,24 +415,26 @@ nmObjGet.phiCI <- function(x, ...) {
   .obj <- x[[1]]
   .phi <- .obj$phiC
   if (is.null(.phi)) {
-    if (any(names(x[[1]]) !="CWRES")) warning("this requires 'CWRES' in fit (use `addCwres()`)", call.=FALSE)
+    if (any(names(x[[1]]) != "CWRES")) warning("this requires 'CWRES' in fit (use `addCwres()`)", call. = FALSE)
     return(NULL)
   }
   .ci <- rxode2::rxGetControl(.obj$ui, "ci", 0.95)
   .qn <- stats::qnorm(1 - (1 - .ci) / 2)
   .etaNames <- colnames(.phi[[1]])
-  .eta <- .obj$eta[, .etaNames, drop=FALSE]
+  .eta <- .obj$eta[, .etaNames, drop = FALSE]
   .low <- (1 - .ci) / 2
   .hi <- 1 - .low
-  .lowLab <- paste0(format(100 * .low, trim=TRUE, digits=3), "%")
-  .hiLab <- paste0(format(100 * .hi, trim=TRUE, digits=3), "%")
+  .lowLab <- paste0(format(100 * .low, trim = TRUE, digits = 3), "%")
+  .hiLab <- paste0(format(100 * .hi, trim = TRUE, digits = 3), "%")
   .ret <- lapply(seq_along(.phi), function(i) {
     .cov <- .phi[[i]]
     .se <- suppressWarnings(sqrt(diag(.cov)))
-    .est <- unlist(.eta[i, , drop=FALSE])
+    .est <- unlist(.eta[i, , drop = FALSE])
     .row <- data.frame(t(as.vector(rbind(.est - .qn * .se, .est + .qn * .se))))
-    names(.row) <- as.vector(rbind(paste0(.etaNames, " (", .lowLab, ")"),
-                                   paste0(.etaNames, " (", .hiLab, ")")))
+    names(.row) <- as.vector(rbind(
+      paste0(.etaNames, " (", .lowLab, ")"),
+      paste0(.etaNames, " (", .hiLab, ")")
+    ))
     .row
   })
   .ret <- do.call(rbind, .ret)
@@ -412,10 +442,9 @@ nmObjGet.phiCI <- function(x, ...) {
   if (!is.null(names(.phi))) {
     .id <- names(.phi)
   }
-  cbind(data.frame(ID=.id), .ret)
+  cbind(data.frame(ID = .id), .ret)
 }
 attr(nmObjGet.phiCI, "desc") <- "confidence interval of each individual's eta (if present)"
-
 
 
 #' @rdname nmObjGet
@@ -423,13 +452,15 @@ attr(nmObjGet.phiCI, "desc") <- "confidence interval of each individual's eta (i
 nmObjGet.dataSav <- function(x, ...) {
   .obj <- x[[1]]
   .objEnv <- .obj$env
-  if (exists("dataSav", .objEnv)) return(get("dataSav", envir=.objEnv))
+  if (exists("dataSav", .objEnv)) {
+    return(get("dataSav", envir = .objEnv))
+  }
   .data <- .obj$origData
   .env <- new.env(emptyenv())
   .foceiPreProcessData(.data, .env, .obj$ui, .obj$control$rxControl)
   .env$dataSav
 }
-#attr(nmObjGet.dataSav, "desc") <- "data that focei sees for optimization"
+# attr(nmObjGet.dataSav, "desc") <- "data that focei sees for optimization"
 
 #' @export
 nmObjGet.foceiControl <- function(x, ...) {
@@ -439,10 +470,12 @@ attr(nmObjGet.foceiControl, "desc") <- "Get the focei control required for creat
 
 #' @rdname nmObjGet
 #' @export
-nmObjGet.idLvl <- function(x, ...){
+nmObjGet.idLvl <- function(x, ...) {
   .obj <- x[[1]]
   .objEnv <- .obj$env
-  if (exists("idLvl", .objEnv)) return(get("idLvl", envir=.objEnv))
+  if (exists("idLvl", .objEnv)) {
+    return(get("idLvl", envir = .objEnv))
+  }
   .data <- .obj$origData
   .env <- new.env(emptyenv())
   .foceiPreProcessData(.data, .env, .obj$ui, .obj$control$rxControl)
@@ -454,16 +487,18 @@ nmObjGet.idLvl <- function(x, ...){
 nmObjGet.covLvl <- function(x, ...) {
   .obj <- x[[1]]
   .objEnv <- .obj$env
-  if (exists("covLvl", .objEnv)) return(get("covLvl", envir=.objEnv))
+  if (exists("covLvl", .objEnv)) {
+    return(get("covLvl", envir = .objEnv))
+  }
   .data <- .obj$origData
   .env <- new.env(emptyenv())
   .foceiPreProcessData(.data, .env, .obj$ui, .obj$control$rxControl)
   .env$covLvl
 }
-#attr(nmObjGet.dataSav, "desc") <- "data that focei sees for optimization"
+# attr(nmObjGet.dataSav, "desc") <- "data that focei sees for optimization"
 
-.dataMergeStub <- function(obj, preferFit=TRUE) {
-  .env      <- obj$env
+.dataMergeStub <- function(obj, preferFit = TRUE) {
+  .env <- obj$env
   .origData <- obj$origData
   .origData$nlmixrRowNums <- seq_len(nrow(.origData))
   # add llikObs
@@ -475,29 +510,31 @@ nmObjGet.covLvl <- function(x, ...) {
     } else {
       .dataSav <- obj$dataSav
       if (length(.dataSav$nlmixrRowNums) == length(obj$env$llikObs)) {
-        .llik0 <- data.frame(nlmixrRowNums=.dataSav$nlmixrRowNums, nlmixrLlikObs=obj$env$llikObs)
-        .llik0 <- .llik0[.llik0$nlmixrRowNums != 0,]
-        .origData <- merge(.origData, .llik0, by="nlmixrRowNums", all.x=TRUE)
-        .origData <- .origData[order(.origData$nlmixrRowNums),]
+        .llik0 <- data.frame(nlmixrRowNums = .dataSav$nlmixrRowNums, nlmixrLlikObs = obj$env$llikObs)
+        .llik0 <- .llik0[.llik0$nlmixrRowNums != 0, ]
+        .origData <- merge(.origData, .llik0, by = "nlmixrRowNums", all.x = TRUE)
+        .origData <- .origData[order(.origData$nlmixrRowNums), ]
       } else {
-        .nlmixrRowNums <- .dataSav[.dataSav$EVID == 0 | .dataSav$EVID == 2 |
-                                     (.dataSav$EVID >= 9 & .dataSav$EVID <= 99),
-                                   "nlmixrRowNums"]
+        .nlmixrRowNums <- .dataSav[
+          .dataSav$EVID == 0 | .dataSav$EVID == 2 |
+            (.dataSav$EVID >= 9 & .dataSav$EVID <= 99),
+          "nlmixrRowNums"
+        ]
         .llikObs <- obj$env$llikObs[!is.na(obj$env$llikObs)]
         if (length(.nlmixrRowNums) == length(.llikObs)) {
-          .llik0 <- data.frame(nlmixrRowNums=.nlmixrRowNums, nlmixrLlikObs=.llikObs)
-          .llik0 <- .llik0[.llik0$nlmixrRowNums != 0,]
-          .origData <- merge(.origData, .llik0, by="nlmixrRowNums", all.x=TRUE)
-          .origData <- .origData[order(.origData$nlmixrRowNums),]
+          .llik0 <- data.frame(nlmixrRowNums = .nlmixrRowNums, nlmixrLlikObs = .llikObs)
+          .llik0 <- .llik0[.llik0$nlmixrRowNums != 0, ]
+          .origData <- merge(.origData, .llik0, by = "nlmixrRowNums", all.x = TRUE)
+          .origData <- .origData[order(.origData$nlmixrRowNums), ]
         } else {
-          warning("'nlmixrLlikObs' not added to dataset", call.=FALSE)
+          warning("'nlmixrLlikObs' not added to dataset", call. = FALSE)
         }
       }
     }
   }
   .fitData <- as.data.frame(obj)
   if (is.null(.fitData$EVID)) .fitData$EVID <- 0
-  if (is.null(.fitData$AMT))  .fitData$AMT  <- 0
+  if (is.null(.fitData$AMT)) .fitData$AMT <- 0
   .names <- tolower(names(.origData))
   .wid <- which(.names == "id")
   names(.origData)[.wid] <- "ID"
@@ -518,110 +555,126 @@ nmObjGet.covLvl <- function(x, ...) {
 #' @export
 nmObjGetData.dataMergeLeft <- function(x, ...) {
   .obj <- x[[1]]
-  .lst <- .dataMergeStub(.obj, preferFit=FALSE)
-  .ret <- merge(.lst[[1]], .lst[[2]], by=c("ID", "nlmixrRowNums"), all.x=TRUE)
+  .lst <- .dataMergeStub(.obj, preferFit = FALSE)
+  .ret <- merge(.lst[[1]], .lst[[2]], by = c("ID", "nlmixrRowNums"), all.x = TRUE)
   .ret <- .ret[, names(.ret) != "nlmixrRowNums"]
   .ret
 }
 attr(nmObjGetData.dataMergeLeft, "desc") <- "left join between original and fit dataset (prefer columns in original dataset)"
-attr(nmObjGetData.dataMergeLeft, "rstudio") <- data.frame(data="prefer original",
-                                                          left="original", right="fit")
+attr(nmObjGetData.dataMergeLeft, "rstudio") <- data.frame(
+  data = "prefer original",
+  left = "original", right = "fit"
+)
 
 #' @rdname nmObjGetData
 #' @export
 nmObjGetData.dataMergeRight <- function(x, ...) {
   .obj <- x[[1]]
-  .lst <- .dataMergeStub(.obj, preferFit=FALSE)
-  .ret <- merge(.lst[[1]], .lst[[2]], by=c("ID", "nlmixrRowNums"), all.y=TRUE)
+  .lst <- .dataMergeStub(.obj, preferFit = FALSE)
+  .ret <- merge(.lst[[1]], .lst[[2]], by = c("ID", "nlmixrRowNums"), all.y = TRUE)
   .ret <- .ret[, names(.ret) != "nlmixrRowNums"]
   .ret
 }
 attr(nmObjGetData.dataMergeRight, "desc") <- "right join between original and fit dataset (prefer columns in original dataset)"
-attr(nmObjGetData.dataMergeRight, "rstudio") <- data.frame(data="prefer original",
-                                                          left="original", right="fit")
+attr(nmObjGetData.dataMergeRight, "rstudio") <- data.frame(
+  data = "prefer original",
+  left = "original", right = "fit"
+)
 
 #' @rdname nmObjGetData
 #' @export
 nmObjGetData.dataMergeInner <- function(x, ...) {
   .obj <- x[[1]]
-  .lst <- .dataMergeStub(.obj, preferFit=FALSE)
-  .ret <- merge(.lst[[1]], .lst[[2]], by=c("ID", "nlmixrRowNums"))
+  .lst <- .dataMergeStub(.obj, preferFit = FALSE)
+  .ret <- merge(.lst[[1]], .lst[[2]], by = c("ID", "nlmixrRowNums"))
   .ret <- .ret[, names(.ret) != "nlmixrRowNums"]
   .ret
 }
 attr(nmObjGetData.dataMergeInner, "desc") <- "inner join between original and fit dataset (prefer columns in original dataset)"
-attr(nmObjGetData.dataMergeInner, "rstudio") <- data.frame(data="prefer original",
-                                                           left="original", right="fit")
+attr(nmObjGetData.dataMergeInner, "rstudio") <- data.frame(
+  data = "prefer original",
+  left = "original", right = "fit"
+)
 
 
 #' @rdname nmObjGetData
 #' @export
 nmObjGetData.dataMergeFull <- function(x, ...) {
   .obj <- x[[1]]
-  .lst <- .dataMergeStub(.obj, preferFit=FALSE)
-  .ret <- merge(.lst[[1]], .lst[[2]], by=c("ID", "nlmixrRowNums"), all.x=TRUE, all.y=TRUE)
+  .lst <- .dataMergeStub(.obj, preferFit = FALSE)
+  .ret <- merge(.lst[[1]], .lst[[2]], by = c("ID", "nlmixrRowNums"), all.x = TRUE, all.y = TRUE)
   .ret <- .ret[, names(.ret) != "nlmixrRowNums"]
   .ret
 }
 attr(nmObjGetData.dataMergeFull, "desc") <- "full join between original and fit dataset (prefer columns in fit dataset)"
-attr(nmObjGetData.dataMergeFull, "rstudio") <- data.frame(data="prefer data",
-                                                           left="original", right="fit")
+attr(nmObjGetData.dataMergeFull, "rstudio") <- data.frame(
+  data = "prefer data",
+  left = "original", right = "fit"
+)
 
 
 #' @rdname nmObjGetData
 #' @export
 nmObjGetData.fitMergeLeft <- function(x, ...) {
   .obj <- x[[1]]
-  .lst <- .dataMergeStub(.obj, preferFit=FALSE)
-  .ret <- merge(.lst[[1]], .lst[[2]], by=c("ID", "nlmixrRowNums"), all.x=TRUE)
+  .lst <- .dataMergeStub(.obj, preferFit = FALSE)
+  .ret <- merge(.lst[[1]], .lst[[2]], by = c("ID", "nlmixrRowNums"), all.x = TRUE)
   .ret <- .ret[, names(.ret) != "nlmixrRowNums"]
   .ret
 }
 attr(nmObjGetData.fitMergeLeft, "desc") <- "left join between original and fit dataset (prefer columns in fit dataset)"
-attr(nmObjGetData.fitMergeLeft, "rstudio") <- data.frame(data="prefer fit",
-                                                           left="original", right="fit")
+attr(nmObjGetData.fitMergeLeft, "rstudio") <- data.frame(
+  data = "prefer fit",
+  left = "original", right = "fit"
+)
 
 
 #' @rdname nmObjGetData
 #' @export
 nmObjGetData.fitMergeRight <- function(x, ...) {
   .obj <- x[[1]]
-  .lst <- .dataMergeStub(.obj, preferFit=TRUE)
-  .ret <- merge(.lst[[1]], .lst[[2]], by=c("ID", "nlmixrRowNums"), all.y=TRUE)
+  .lst <- .dataMergeStub(.obj, preferFit = TRUE)
+  .ret <- merge(.lst[[1]], .lst[[2]], by = c("ID", "nlmixrRowNums"), all.y = TRUE)
   .ret <- .ret[, names(.ret) != "nlmixrRowNums"]
   .ret
 }
 attr(nmObjGetData.fitMergeRight, "desc") <- "right join between original and fit dataset (prefer columns in fit dataset)"
-attr(nmObjGetData.fitMergeRight, "rstudio") <- data.frame(data="prefer fit",
-                                                        left="original", right="fit")
+attr(nmObjGetData.fitMergeRight, "rstudio") <- data.frame(
+  data = "prefer fit",
+  left = "original", right = "fit"
+)
 
 
 #' @rdname nmObjGetData
 #' @export
 nmObjGetData.fitMergeInner <- function(x, ...) {
   .obj <- x[[1]]
-  .lst <- .dataMergeStub(.obj, preferFit=TRUE)
-  .ret <- merge(.lst[[1]], .lst[[2]], by=c("ID", "nlmixrRowNums"))
+  .lst <- .dataMergeStub(.obj, preferFit = TRUE)
+  .ret <- merge(.lst[[1]], .lst[[2]], by = c("ID", "nlmixrRowNums"))
   .ret <- .ret[, names(.ret) != "nlmixrRowNums"]
   .ret
 }
 attr(nmObjGetData.fitMergeInner, "desc") <- "inner join between original and fit dataset (prefer columns in fit dataset)"
-attr(nmObjGetData.fitMergeInner, "rstudio") <- data.frame(data="prefer fit",
-                                                          left="original", right="fit")
+attr(nmObjGetData.fitMergeInner, "rstudio") <- data.frame(
+  data = "prefer fit",
+  left = "original", right = "fit"
+)
 
 
 #' @rdname nmObjGetData
 #' @export
 nmObjGetData.fitMergeFull <- function(x, ...) {
   .obj <- x[[1]]
-  .lst <- .dataMergeStub(.obj, preferFit=TRUE)
-  .ret <- merge(.lst[[1]], .lst[[2]], by=c("ID", "nlmixrRowNums"), all.x=TRUE, all.y=TRUE)
+  .lst <- .dataMergeStub(.obj, preferFit = TRUE)
+  .ret <- merge(.lst[[1]], .lst[[2]], by = c("ID", "nlmixrRowNums"), all.x = TRUE, all.y = TRUE)
   .ret <- .ret[, names(.ret) != "nlmixrRowNums"]
   .ret
 }
 attr(nmObjGetData.fitMergeFull, "desc") <- "full join between original and fit dataset (prefer columns in fit dataset)"
-attr(nmObjGetData.fitMergeFull, "rstudio") <- data.frame(data="prefer fit",
-                                                          left="original", right="fit")
+attr(nmObjGetData.fitMergeFull, "rstudio") <- data.frame(
+  data = "prefer fit",
+  left = "original", right = "fit"
+)
 
 
 #' @rdname nmObjGet
@@ -629,7 +682,7 @@ attr(nmObjGetData.fitMergeFull, "rstudio") <- data.frame(data="prefer fit",
 nmObjGet.parHist <- function(x, ...) {
   .obj <- x[[1]]
   .env <- .obj$env
-  if (exists("parHistData", envir=.env)) {
+  if (exists("parHistData", envir = .env)) {
     return(.parHistCalc(.env))
   }
   NULL
@@ -641,12 +694,14 @@ attr(nmObjGet.parHist, "desc") <- "Parameter History"
 nmObjGet.parHistStacked <- function(x, ...) {
   .obj <- x[[1]]
   .env <- .obj$env
-  if (exists("parHistData", envir=.env)) {
+  if (exists("parHistData", envir = .env)) {
     .parHist <- .parHistCalc(.env)
     .iter <- .parHist$iter
-    .ret <- data.frame(iter=.iter, stack(.parHist[, -1]))
-    names(.ret) <- sub("values", "val",
-                       sub("ind", "par", names(.ret)))
+    .ret <- data.frame(iter = .iter, stack(.parHist[, -1]))
+    names(.ret) <- sub(
+      "values", "val",
+      sub("ind", "par", names(.ret))
+    )
     return(.ret)
   }
   NULL
@@ -677,8 +732,10 @@ attr(nmObjGet.sigma, "rstudio") <- numeric(0)
 #' @rdname nmObjGet
 #' @export
 nmObjGet.coefficients <- function(x, ...) {
-  list(fixed = fixef(x[[1]]),
-       random = ranef(x[[1]]))
+  list(
+    fixed = fixef(x[[1]]),
+    random = ranef(x[[1]])
+  )
 }
 
 #' @rdname nmObjGet
@@ -732,12 +789,14 @@ nmObjGet.saemCfg <- function(x, ...) {
 nmObjGet.saemNmc <- function(x, ...) {
   .obj <- x[[1]]
   .env <- .obj$env
-  if (exists("saemControl", envir=.env)) {
-    .saemControl <- get("saemControl", envir=.env)
+  if (exists("saemControl", envir = .env)) {
+    .saemControl <- get("saemControl", envir = .env)
     return(.saemControl$mcmc$nmc)
-  } else if (exists("control", envir=.env)) {
-    .saemControl <- get("control", envir=.env)
-    if (any(names(.saemControl) == "mcmc")) return(.saemControl$mcmc$nmc)
+  } else if (exists("control", envir = .env)) {
+    .saemControl <- get("control", envir = .env)
+    if (any(names(.saemControl) == "mcmc")) {
+      return(.saemControl$mcmc$nmc)
+    }
   }
   NA_integer_
 }
@@ -753,36 +812,38 @@ nmObjGet.saemEvtDf <- function(x, ...) {
   # the fit; a no-op unless the subject has overlapping-time reset episodes.
   .saemMonotonicResetTime(.evt)
 }
-#attr(nmObjGet.saemEvtDf, "desc") <- "event data frame as seen by saem"
+# attr(nmObjGet.saemEvtDf, "desc") <- "event data frame as seen by saem"
 
 #' @export
 nmObjGet.saemEvt <- function(x, ...) {
   as.matrix(nmObjGet.saemEvtDf(x, ...))
 }
-#attr(nmObjGet.saemEvtDf, "desc") <- "event matrix as seen by saem; stored in saem.cfg"
+# attr(nmObjGet.saemEvtDf, "desc") <- "event matrix as seen by saem; stored in saem.cfg"
 
 #' @export
 nmObjGet.saemEvtMDf <- function(x, ...) {
   .nmc <- nmObjGet.saemNmc(x, ...)
-  if (is.na(.nmc)) stop("cannot figure out the number of mcmc simulations", call.=FALSE)
+  if (is.na(.nmc)) stop("cannot figure out the number of mcmc simulations", call. = FALSE)
   .evt <- nmObjGet.saemEvtDf(x, ...)
   .evtM <- .evt[rep(seq_len(dim(.evt)[1]), .nmc), ]
   .evtM$ID <- cumsum(c(FALSE, diff(.evtM$ID) != 0))
   .evtM
 }
-#attr(nmObjGet.saemEvtDf, "desc") <- "saem event data frame evtM for mcmc"
+# attr(nmObjGet.saemEvtDf, "desc") <- "saem event data frame evtM for mcmc"
 
 #' @export
 nmObjGet.saemEvtM <- function(x, ...) {
   as.matrix(nmObjGet.saemEvtMDf(x, ...))
 }
-#attr(nmObjGet.saemEvtM, "desc") <- "saem event matrix evtM for mcmc; stored in saem.cfg"
-attr(nmObjGet.saemEvtM, "rstudio") <- lotri::lotri(a+b~c(1, 0.1, 1))
+# attr(nmObjGet.saemEvtM, "desc") <- "saem event matrix evtM for mcmc; stored in saem.cfg"
+attr(nmObjGet.saemEvtM, "rstudio") <- lotri::lotri(a + b ~ c(1, 0.1, 1))
 
 #' @export
 nmObjGet.saem <- function(x, ...) {
   .obj <- x[[1]]
-  if (!exists("saem0", .obj)) return(NULL)
+  if (!exists("saem0", .obj)) {
+    return(NULL)
+  }
   .saem <- .obj$saem0
   .saemCfg <- attr(.saem, "saem.cfg")
   .saemCfg$evt <- .obj$saemEvt
@@ -794,10 +855,10 @@ nmObjGet.saem <- function(x, ...) {
 nmObjGet.innerModel <- function(x, ...) {
   .obj <- x[[1]]
   .env <- .obj$env
-  if (exists("foceiModel", envir=.env)) {
-    .model <- get("foceiModel", envir=.env)
-  } else if (exists("model", envir=.env)) {
-    .model <- get("model", envir=.env)
+  if (exists("foceiModel", envir = .env)) {
+    .model <- get("foceiModel", envir = .env)
+  } else if (exists("model", envir = .env)) {
+    .model <- get("model", envir = .env)
   } else {
     return(NULL)
   }
@@ -859,12 +920,12 @@ nmObjGetPredOnly <- function(x) {
 nmObjGetPredOnly.saem <- function(x) {
   .env <- x[[1]]
   .model <- NULL
-  if (exists("saemModel", envir=.env)) {
-    .model <- get("saemModel", envir=.env)
-  } else if (exists("model", envir=.env)) {
-    .model <- get("model", envir=.env)
+  if (exists("saemModel", envir = .env)) {
+    .model <- get("saemModel", envir = .env)
+  } else if (exists("model", envir = .env)) {
+    .model <- get("model", envir = .env)
   } else {
-    stop("cannot find saem model components", call.=FALSE)
+    stop("cannot find saem model components", call. = FALSE)
   }
   .model$predOnly
 }
@@ -874,10 +935,10 @@ nmObjGetPredOnly.saem <- function(x) {
 nmObjGetPredOnly.default <- function(x) {
   .env <- x[[1]]
   .model <- NULL
-  if (exists("foceiModel", envir=.env)) {
-    .model <- get("foceiModel", envir=.env)
-  } else if (exists("model", envir=.env)) {
-    .model <- get("model", envir=.env)
+  if (exists("foceiModel", envir = .env)) {
+    .model <- get("foceiModel", envir = .env)
+  } else if (exists("model", envir = .env)) {
+    .model <- get("model", envir = .env)
   }
   .model$predOnly
 }
@@ -901,12 +962,12 @@ nmObjGetIpredModel <- function(x) {
 nmObjGetIpredModel.saem <- function(x) {
   .env <- x[[1]]
   .model <- NULL
-  if (exists("saemModel", envir=.env)) {
-    .model <- get("saemModel", envir=.env)
-  } else if (exists("model", envir=.env)) {
-    .model <- get("model", envir=.env)
+  if (exists("saemModel", envir = .env)) {
+    .model <- get("saemModel", envir = .env)
+  } else if (exists("model", envir = .env)) {
+    .model <- get("model", envir = .env)
   } else {
-    stop("cannot find saem model components", call.=FALSE)
+    stop("cannot find saem model components", call. = FALSE)
   }
   .model$predOnly
 }
@@ -916,13 +977,15 @@ nmObjGetIpredModel.saem <- function(x) {
 nmObjGetIpredModel.default <- function(x) {
   .env <- x[[1]]
   .model <- NULL
-  if (exists("foceiModel", envir=.env)) {
-    .model <- get("foceiModel", envir=.env)
-  } else if (exists("model", envir=.env)) {
-    .model <- get("model", envir=.env)
+  if (exists("foceiModel", envir = .env)) {
+    .model <- get("foceiModel", envir = .env)
+  } else if (exists("model", envir = .env)) {
+    .model <- get("model", envir = .env)
   }
   .inner <- .model$inner
-  if (is.null(.inner)) return(.model$predOnly)
+  if (is.null(.inner)) {
+    return(.model$predOnly)
+  }
   .inner
 }
 
@@ -964,13 +1027,15 @@ nmObjGetEstimationModel.saem <- function(x) {
 nmObjGetEstimationModel.default <- function(x) {
   .env <- x[[1]]
   .model <- NULL
-  if (exists("foceiModel", envir=.env)) {
-    .model <- get("foceiModel", envir=.env)
-  } else if (exists("model", envir=.env)) {
-    .model <- get("model", envir=.env)
+  if (exists("foceiModel", envir = .env)) {
+    .model <- get("foceiModel", envir = .env)
+  } else if (exists("model", envir = .env)) {
+    .model <- get("model", envir = .env)
   }
   .inner <- .model$inner
-  if (is.null(.inner)) return(.model$predOnly)
+  if (is.null(.inner)) {
+    return(.model$predOnly)
+  }
   .inner
 }
 #' Create an estimation object
@@ -985,13 +1050,13 @@ nmObjGetEstimationModel.default <- function(x) {
   } else {
     .env <- x
   }
-  if (exists("est", envir=.env)) {
-    .est <- get("est", envir=.env)
+  if (exists("est", envir = .env)) {
+    .est <- get("est", envir = .env)
     .ret <- list(.env)
     class(.ret) <- .est
     return(.ret)
   } else {
-    stop("Cannot figure out the estimation method", call.=FALSE)
+    stop("Cannot figure out the estimation method", call. = FALSE)
   }
 }
 
@@ -1082,9 +1147,13 @@ nmObjGetRxSolve <- function(x, what) {
 nmObjGetRxSolve.default <- function(x, what) {
   .env <- x[[1]]
   .control <- nmObjGetControl(x)
-  if (!any(names(.control) == "rxControl")) return(NULL)
+  if (!any(names(.control) == "rxControl")) {
+    return(NULL)
+  }
   .lst <- .control$rxControl
-  if (is.null(what)) return(.lst)
+  if (is.null(what)) {
+    return(.lst)
+  }
   .lst[[what]]
 }
 
@@ -1098,7 +1167,9 @@ nmObjGet.simulationModel <- function(x, ...) {
   .key <- .simModelCacheKey(.env)
   if (!is.null(.key)) {
     .cached <- .simModelCacheGet(.key)
-    if (!is.null(.cached)) return(.cached)
+    if (!is.null(.cached)) {
+      return(.cached)
+    }
   }
   .ret <- eval(rxode2::getBaseSimModel(.env))
   if (!is.null(.key)) {
@@ -1118,35 +1189,44 @@ nmObjGet.rxControl <- function(x, ...) {
 nmObjGet.mixList <- function(x, ...) {
   .obj <- x[[1]]
   .env <- .obj$env
-  if (exists("mixList", envir=.env)) return(get("mixList", envir=.env))
+  if (exists("mixList", envir = .env)) {
+    return(get("mixList", envir = .env))
+  }
   NULL
 }
 attr(nmObjGet.mixList, "desc") <- "List of ETAs and posterior probabilities for each mixture component"
-attr(nmObjGet.mixList, "rstudio") <- list(mix1=data.frame(ID=1L, prob=0.8))
+attr(nmObjGet.mixList, "rstudio") <- list(mix1 = data.frame(ID = 1L, prob = 0.8))
 
 #' @rdname nmObjGet
 #' @export
 nmObjGet.mixNum <- function(x, ...) {
   .obj <- x[[1]]
   .env <- .obj$env
-  if (exists("mixNum", envir=.env)) return(get("mixNum", envir=.env))
+  if (exists("mixNum", envir = .env)) {
+    return(get("mixNum", envir = .env))
+  }
   NULL
 }
 attr(nmObjGet.mixNum, "desc") <- "Data frame with ID and most likely mixture number per subject"
-attr(nmObjGet.mixNum, "rstudio") <- data.frame(ID=1L, mixnum=1L)
+attr(nmObjGet.mixNum, "rstudio") <- data.frame(ID = 1L, mixnum = 1L)
 
 #' @rdname nmObjGet
 #' @export
 nmObjGet.ranef <- function(x, ...) {
   .env <- x[[1]]
-  if (!exists("ranef", envir=.env)) return(NULL)
-  .ret <- get("ranef", envir=.env)
-  if (is.null(.ret)) return(NULL)
-  if (exists("mixNum", envir=.env)) {
-    .mn <- get("mixNum", envir=.env)
+  if (!exists("ranef", envir = .env)) {
+    return(NULL)
+  }
+  .ret <- get("ranef", envir = .env)
+  if (is.null(.ret)) {
+    return(NULL)
+  }
+  if (exists("mixNum", envir = .env)) {
+    .mn <- get("mixNum", envir = .env)
     if (!is.null(.mn) && "mixnum" %in% names(.mn)) {
-      .ret <- merge(.ret, .mn[, c("ID", "mixnum"), drop=FALSE],
-                    by="ID", all.x=TRUE, sort=FALSE)
+      .ret <- merge(.ret, .mn[, c("ID", "mixnum"), drop = FALSE],
+        by = "ID", all.x = TRUE, sort = FALSE
+      )
     }
   }
   .ret

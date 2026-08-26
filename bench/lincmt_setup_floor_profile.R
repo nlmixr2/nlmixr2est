@@ -28,31 +28,43 @@ set.seed(1002003)
 simTimes <- c(0.25, 0.75, 1.5, 3, 5.5, 8, 12.5, 17, 24, 32)
 nSub <- 40L
 eta <- matrix(rnorm(nSub * 3L, 0, 0.3), nSub, 3L,
-              dimnames = list(NULL, c("ka", "cl", "v")))
+  dimnames = list(NULL, c("ka", "cl", "v"))
+)
 simMod <- rxode2::rxode2(
-  "cp = central/v; d/dt(depot) = -ka*depot; d/dt(central) = ka*depot - cl/v*central")
-pars <- data.frame(ka = 1.2 * exp(eta[, "ka"]), cl = 4 * exp(eta[, "cl"]),
-                   v = 30 * exp(eta[, "v"]))
+  "cp = central/v; d/dt(depot) = -ka*depot; d/dt(central) = ka*depot - cl/v*central"
+)
+pars <- data.frame(
+  ka = 1.2 * exp(eta[, "ka"]), cl = 4 * exp(eta[, "cl"]),
+  v = 30 * exp(eta[, "v"])
+)
 ev <- rxode2::et(amt = 100, cmt = "depot") |> rxode2::et(simTimes)
 sim <- rxode2::rxSolve(simMod, pars, ev, cores = 1L, addDosing = FALSE)
 set.seed(2003004)
-simDat <- data.frame(ID = rep(seq_len(nSub), each = length(simTimes)),
-                     TIME = sim$time,
-                     DV = sim$cp * (1 + rnorm(nrow(sim), 0, 0.15)),
-                     AMT = 0, EVID = 0, CMT = "central")
-doseRows <- data.frame(ID = seq_len(nSub), TIME = 0, DV = NA_real_,
-                       AMT = 100, EVID = 1, CMT = "depot")
+simDat <- data.frame(
+  ID = rep(seq_len(nSub), each = length(simTimes)),
+  TIME = sim$time,
+  DV = sim$cp * (1 + rnorm(nrow(sim), 0, 0.15)),
+  AMT = 0, EVID = 0, CMT = "central"
+)
+doseRows <- data.frame(
+  ID = seq_len(nSub), TIME = 0, DV = NA_real_,
+  AMT = 100, EVID = 1, CMT = "depot"
+)
 dat <- rbind(doseRows, simDat)
 dat <- dat[order(dat$ID, dat$TIME, -dat$EVID), ]
 if (useCov) {
-  dat$wt <- 60 + 20 * (dat$ID %% 3L) / 2  # constant within subject
+  dat$wt <- 60 + 20 * (dat$ID %% 3L) / 2 # constant within subject
 }
 
 # nolint start: object_usage_linter. (rxode2 ini/model DSL assignments)
 uiLin <- function() {
   ini({
-    lka <- log(1.44); lcl <- log(4.8); lv <- log(36)
-    eta.ka ~ 0.1; eta.cl ~ 0.1; eta.v ~ 0.1
+    lka <- log(1.44)
+    lcl <- log(4.8)
+    lv <- log(36)
+    eta.ka ~ 0.1
+    eta.cl ~ 0.1
+    eta.v ~ 0.1
     prop.sd <- 0.2
   })
   model({
@@ -65,8 +77,12 @@ uiLin <- function() {
 }
 uiLinCov <- function() {
   ini({
-    lka <- log(1.44); lcl <- log(4.8); lv <- log(36)
-    eta.ka ~ 0.1; eta.cl ~ 0.1; eta.v ~ 0.1
+    lka <- log(1.44)
+    lcl <- log(4.8)
+    lv <- log(36)
+    eta.ka ~ 0.1
+    eta.cl ~ 0.1
+    eta.v ~ 0.1
     prop.sd <- 0.2
   })
   model({
@@ -85,21 +101,25 @@ if (useCov) {
 
 ctlPost <- nlmixr2est::foceiControl(
   calcTables = FALSE, print = 0L, covMethod = "", maxOuterIterations = 0L,
-  rxControl = rxode2::rxControl(cores = 1L, linCmtSensType = "AD"))
+  rxControl = rxode2::rxControl(cores = 1L, linCmtSensType = "AD")
+)
 
 fitOnce <- function() {
   t0 <- proc.time()[["elapsed"]]
   suppressWarnings(suppressMessages(
-    nlmixr2est::nlmixr2(uiLin, dat, est = "focei", control = ctlPost)))
+    nlmixr2est::nlmixr2(uiLin, dat, est = "focei", control = ctlPost)
+  ))
   c(sec = proc.time()[["elapsed"]] - t0)
 }
 
 ## ---- cold vs warm wall times --------------------------------------------
 secs <- numeric(0)
-for (r in seq_len(nRep + 1L)) secs[r] <- fitOnce()  # rep 1 = cold (compiles)
-cat(sprintf("cold (rep1, incl. compile): %.3f s\nwarm reps: %s (median %.3f s)\n",
-            secs[1], paste(sprintf("%.3f", secs[-1]), collapse = ", "),
-            stats::median(secs[-1])))
+for (r in seq_len(nRep + 1L)) secs[r] <- fitOnce() # rep 1 = cold (compiles)
+cat(sprintf(
+  "cold (rep1, incl. compile): %.3f s\nwarm reps: %s (median %.3f s)\n",
+  secs[1], paste(sprintf("%.3f", secs[-1]), collapse = ", "),
+  stats::median(secs[-1])
+))
 
 ## ---- Rprof one warm repeat ----------------------------------------------
 prof <- tempfile(fileext = ".out")
@@ -122,14 +142,19 @@ anchor <- c(
   etTransData  = "etTrans",
   foceiSetup   = "foceiSetup",
   innerEval    = "foceiInner|\\.Call.*Inner|foceiOuterF",
-  tableTear    = "focei\\.theta|nlmixr2CreateOutputFromUi|\\.foceiFitInternal")
+  tableTear    = "focei\\.theta|nlmixr2CreateOutputFromUi|\\.foceiFitInternal"
+)
 cat("\n-- anchor by.total seconds (overlapping; interpret with the tables above) --\n")
 rn <- rownames(s$by.total)
 for (a in names(anchor)) {
   hit <- grepl(anchor[[a]], rn)
   if (any(hit)) {
-    cat(sprintf("%-14s max(by.total)=%6.3f s  fns: %s\n", a,
-                max(s$by.total$total.time[hit]),
-                paste(utils::head(gsub("\"", "", rn[hit]), 3), collapse = ", ")))
-  } else cat(sprintf("%-14s (no samples)\n", a))
+    cat(sprintf(
+      "%-14s max(by.total)=%6.3f s  fns: %s\n", a,
+      max(s$by.total$total.time[hit]),
+      paste(utils::head(gsub("\"", "", rn[hit]), 3), collapse = ", ")
+    ))
+  } else {
+    cat(sprintf("%-14s (no samples)\n", a))
+  }
 }

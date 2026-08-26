@@ -31,15 +31,23 @@
 #' @return the fit's `ui` object, or `NULL` when the value should not be cached
 #' @noRd
 .simModelCacheKey <- function(env) {
-  if (!isTRUE(getOption("nlmixr2.simModelCache", TRUE))) return(NULL)
-  if (!is.environment(env)) return(NULL)
-  if (!exists("ui", envir = env, inherits = FALSE)) return(NULL)
+  if (!isTRUE(getOption("nlmixr2.simModelCache", TRUE))) {
+    return(NULL)
+  }
+  if (!is.environment(env)) {
+    return(NULL)
+  }
+  if (!exists("ui", envir = env, inherits = FALSE)) {
+    return(NULL)
+  }
   .ui <- get("ui", envir = env, inherits = FALSE)
   ## a fit holds a compressed ui, which has value semantics: replacing the
   ## model replaces the object, and that is what invalidates the entry.  An
   ## uncompressed ui is an environment, which could be edited in place behind
   ## the cache's back, so it is not a key that can be trusted.
-  if (is.environment(.ui)) return(NULL)
+  if (is.environment(.ui)) {
+    return(NULL)
+  }
   .ui
 }
 
@@ -71,8 +79,10 @@
 .simModelCacheSet <- function(ui, model) {
   .entries <- .simModelCache$entries
   .keep <- vapply(seq_along(.entries),
-                  function(i) !identical(.entries[[i]]$ui, ui),
-                  logical(1), USE.NAMES = FALSE)
+    function(i) !identical(.entries[[i]]$ui, ui),
+    logical(1),
+    USE.NAMES = FALSE
+  )
   .entries <- c(list(list(ui = ui, model = model)), .entries[.keep])
   if (length(.entries) > .simModelCacheMax) {
     .entries <- .entries[seq_len(.simModelCacheMax)]

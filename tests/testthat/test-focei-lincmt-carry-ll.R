@@ -38,8 +38,10 @@ test_that("a Poisson endpoint with a direct eta term outside the concentration i
   skip_if_not(.rxFoceiLinCmtCarryCapable())
   ev <- .carryLlEv()
   ev$dv[ev$evid == 0] <- c(4, 3, 2, 1)
-  pars <- c(`THETA[1]` = log(2), `THETA[2]` = log(20), `THETA[3]` = 0.5,
-            `THETA[4]` = 0.3, `ETA[1]` = 0.3, `ETA[2]` = -0.2)
+  pars <- c(
+    `THETA[1]` = log(2), `THETA[2]` = log(20), `THETA[3]` = 0.5,
+    `THETA[4]` = 0.3, `ETA[1]` = 0.3, `ETA[2]` = -0.2
+  )
   r <- suppressWarnings(.carryJumpFd(.carryModLlPois, pars, ev, "auto"))
   rn <- suppressWarnings(.carryJumpFd(.carryModLlPois, pars, ev, "none"))
   # eta.cl (ETA_1_) is carried; eta.b (ETA_2_) only enters outside the
@@ -56,8 +58,10 @@ test_that("an eta both in the kernel and outside the concentration gets both ter
   skip_if_not(.rxFoceiLinCmtCarryCapable())
   ev <- .carryLlEv()
   ev$dv[ev$evid == 0] <- c(4, 3, 2, 1)
-  pars <- c(`THETA[1]` = log(2), `THETA[2]` = log(20), `THETA[3]` = 0.5,
-            `THETA[4]` = 0.3, `ETA[1]` = 0.3)
+  pars <- c(
+    `THETA[1]` = log(2), `THETA[2]` = log(20), `THETA[3]` = 0.5,
+    `THETA[4]` = 0.3, `ETA[1]` = 0.3
+  )
   r <- suppressWarnings(.carryJumpFd(.carryModLlPoisShared, pars, ev, "auto"))
   expect_lt(r$err, 1e-6)
   l <- strsplit(r$txt, "\n")[[1]]
@@ -94,7 +98,8 @@ test_that("a carried ll() model keeps the finite-difference inner Hessian under 
   skip_if_not(.rxFoceiLinCmtCarryCapable())
   ui <- rxode2::.copyUi(suppressMessages(nlmixr2est::nlmixr2(.carryModLlNorm)))
   assign("control", nlmixr2est::foceiControl(fast = TRUE, linCmtSensCarry = "auto"),
-         envir = ui)
+    envir = ui
+  )
   s <- suppressWarnings(suppressMessages(ui$foceEnv))
   expect_false(is.null(s$..linCmtCarryPairs))
   expect_null(s$..HdEta2)

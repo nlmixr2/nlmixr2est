@@ -1,6 +1,5 @@
 nmTest({
   test_that("nlmixr interface for solving works", {
-
     one.cmt <- function() {
       ini({
         ## You may label each parameter with a comment
@@ -28,7 +27,7 @@ nmTest({
 
     expect_s3_class(f, "rxSolve")
 
-    f2 <- .nlmixr(one.cmt, nlmixr2data::theo_sd, "rxSolve", rxControl(returnType="data.frame"))
+    f2 <- .nlmixr(one.cmt, nlmixr2data::theo_sd, "rxSolve", rxControl(returnType = "data.frame"))
 
     expect_s3_class(f, "data.frame")
 
@@ -61,7 +60,7 @@ nmTest({
 
   test_that("rxSolve will warn when necessary", {
     library(rxode2)
-    eventTable <- et(amt=320, evid=1, cmt=20, time = 0) |> # nolint: object_name_linter.
+    eventTable <- et(amt = 320, evid = 1, cmt = 20, time = 0) |> # nolint: object_name_linter.
       et(2, 4)
 
     # Now define the nlmixr2/rxode2 model used for both estimation and simulation
@@ -88,14 +87,14 @@ nmTest({
         ka <- exp(tka + eta.ka)
         cl <- exp(tcl + eta.cl)
         v <- exp(tv + eta.v)
-        d/dt(depot) = -ka * depot
-        d/dt(center) = ka * depot - cl / v * center
+        d / dt(depot) <- -ka * depot
+        d / dt(center) <- ka * depot - cl / v * center
 
         f(depot) <- expit(fDepot)
-        f(center) <- 1-expit(fDepot)
+        f(center) <- 1 - expit(fDepot)
         rate(center) <- exp(trate)
 
-        cp = center / v
+        cp <- center / v
         cp ~ add(add.sd)
       })
     }
@@ -108,11 +107,9 @@ nmTest({
       )
     )
   })
-
 })
 
 nmTest({
-
   # nlmixr2/rxode2 issue 1289: `$simInfo` re-runs the pre-process hooks and re-derives
   # the simulation model, which dominated the cost of solving a fit and grew
   # process memory that was never returned -- and a plain `rxSolve(fit, ...)`
@@ -148,5 +145,4 @@ nmTest({
     expect_true(any(grepl("from the number of subjects", .acc$msg, fixed = TRUE)))
     expect_equal(length(unique(.sim$sim.id)), 2L)
   })
-
 })

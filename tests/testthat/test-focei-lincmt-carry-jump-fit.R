@@ -16,17 +16,22 @@
 
 .carryJumpFit <- function(ui, dat, carry, maxOut = 0L) {
   suppressWarnings(suppressMessages(
-    nlmixr2est::nlmixr2(ui, dat, est = "focei",
-                        control = .carryFitCtl(carry, maxOut)))) # nolint: object_usage_linter.
+    nlmixr2est::nlmixr2(ui, dat,
+      est = "focei",
+      control = .carryFitCtl(carry, maxOut)
+    )
+  )) # nolint: object_usage_linter.
 }
 
 # simulate DV from an explicitly integrated ODE truth under nocb
 .carryJumpSimDv <- function(odeTxt, params, dat, nid, sd = 0.3) {
   m <- rxode2::rxode2(odeTxt)
   dv <- unlist(lapply(seq_len(nid), function(i) {
-    rxode2::rxSolve(m, params = params(i), events = dat[dat$id == i, ],
-                    returnType = "data.frame", covsInterpolation = "nocb",
-                    useLinCmt = FALSE, atol = 1e-10, rtol = 1e-10)$cp
+    rxode2::rxSolve(m,
+      params = params(i), events = dat[dat$id == i, ],
+      returnType = "data.frame", covsInterpolation = "nocb",
+      useLinCmt = FALSE, atol = 1e-10, rtol = 1e-10
+    )$cp
   }))
   obs <- dat$evid == 0
   dat$dv <- 0
@@ -51,8 +56,10 @@ alag(depot) = exp(tlag + eta_lag)
 d/dt(depot) = -ka*depot
 d/dt(central) = ka*depot - (cl/v)*central
 cp = central/v", function(i) {
-    c(tcl = log(2), tv = log(20), tka = log(1.2), tf = -0.5, tlag = log(0.5),
-      eta_cl = et[i, 1], eta_f = et[i, 2], eta_lag = et[i, 3])
+    c(
+      tcl = log(2), tv = log(20), tka = log(1.2), tf = -0.5, tlag = log(0.5),
+      eta_cl = et[i, 1], eta_f = et[i, 2], eta_lag = et[i, 3]
+    )
   }, dat, 6L)
   uiO <- rxode2::linToOde(rxode2::rxode2(.carryModJump))
   fO <- .carryJumpFit(uiO, dat, "none")
@@ -87,9 +94,11 @@ cp = central/v", function(i) {
       covMethod = "", calcTables = FALSE, sigdig = 8,
       etaNudge = 0, etaNudge2 = 0, etaMat = .em,
       rxControl = rxode2::rxControl(covsInterpolation = "nocb"),
-      linCmtSensCarry = carry)
+      linCmtSensCarry = carry
+    )
     suppressWarnings(suppressMessages(
-      nlmixr2est::nlmixr2(ui, dat, est = "focei", control = .ctl)))$objective
+      nlmixr2est::nlmixr2(ui, dat, est = "focei", control = .ctl)
+    ))$objective
   }
   oC <- .fixedObj(fC$finalUi, "auto")
   oN <- .fixedObj(fC$finalUi, "none")
@@ -104,10 +113,18 @@ test_that("a 2-cmt A/B/alpha/beta model with a covariate on B fits like its ODE"
   skip_on_cran()
   skip_if_not(.rxFoceiLinCmtCarryCapable())
   mod <- function() {
-    ini({ta <- log(0.5); tb <- log(0.02); tA <- log(0.04); tB <- log(0.01)
-         eta.B ~ 0.1; add.sd <- 0.3})
+    ini({
+      ta <- log(0.5)
+      tb <- log(0.02)
+      tA <- log(0.04)
+      tB <- log(0.01)
+      eta.B ~ 0.1
+      add.sd <- 0.3
+    })
     model({
-      alpha <- exp(ta); beta <- exp(tb); A <- exp(tA)
+      alpha <- exp(ta)
+      beta <- exp(tb)
+      A <- exp(tA)
       B <- exp(tB) * (wt / 70)^-1 * exp(eta.B)
       cp <- linCmt()
       cp ~ add(add.sd)

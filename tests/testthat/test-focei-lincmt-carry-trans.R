@@ -40,8 +40,10 @@ test_that("the other parameterizations carry exactly (eta+covariate on each slot
         cp <- linCmt()
         cp ~ add(add.sd)
       })
-    }, pars = c(`THETA[1]` = log(0.1), `THETA[2]` = log(20), `THETA[3]` = log(0.05),
-                `THETA[4]` = log(0.03), `THETA[5]` = 0.5, `ETA[1]` = 0.3)),
+    }, pars = c(
+      `THETA[1]` = log(0.1), `THETA[2]` = log(20), `THETA[3]` = log(0.05),
+      `THETA[4]` = log(0.03), `THETA[5]` = 0.5, `ETA[1]` = 0.3
+    )),
     list(name = "2-cmt cl/v/q/vss", mod = function() { # nolint: indentation_linter.
       ini({
         tcl <- log(2)
@@ -59,8 +61,10 @@ test_that("the other parameterizations carry exactly (eta+covariate on each slot
         cp <- linCmt()
         cp ~ add(add.sd)
       })
-    }, pars = c(`THETA[1]` = log(2), `THETA[2]` = log(20), `THETA[3]` = log(1),
-                `THETA[4]` = log(60), `THETA[5]` = 0.5, `ETA[1]` = 0.3)),
+    }, pars = c(
+      `THETA[1]` = log(2), `THETA[2]` = log(20), `THETA[3]` = log(1),
+      `THETA[4]` = log(60), `THETA[5]` = 0.5, `ETA[1]` = 0.3
+    )),
     list(name = "2-cmt alpha/beta/k21", mod = function() { # nolint: indentation_linter.
       ini({
         ta <- log(0.5)
@@ -78,8 +82,10 @@ test_that("the other parameterizations carry exactly (eta+covariate on each slot
         cp <- linCmt()
         cp ~ add(add.sd)
       })
-    }, pars = c(`THETA[1]` = log(0.5), `THETA[2]` = log(0.02), `THETA[3]` = log(0.05),
-                `THETA[4]` = log(20), `THETA[5]` = 0.5, `ETA[1]` = 0.3)),
+    }, pars = c(
+      `THETA[1]` = log(0.5), `THETA[2]` = log(0.02), `THETA[3]` = log(0.05),
+      `THETA[4]` = log(20), `THETA[5]` = 0.5, `ETA[1]` = 0.3
+    )),
     list(name = "2-cmt alpha/beta/aob", mod = function() { # nolint: indentation_linter.
       ini({
         ta <- log(0.5)
@@ -97,73 +103,85 @@ test_that("the other parameterizations carry exactly (eta+covariate on each slot
         cp <- linCmt()
         cp ~ add(add.sd)
       })
-    }, pars = c(`THETA[1]` = log(0.5), `THETA[2]` = log(0.02), `THETA[3]` = log(2),
-                `THETA[4]` = log(20), `THETA[5]` = 0.5, `ETA[1]` = 0.3)),
+    }, pars = c(
+      `THETA[1]` = log(0.5), `THETA[2]` = log(0.02), `THETA[3]` = log(2),
+      `THETA[4]` = log(20), `THETA[5]` = 0.5, `ETA[1]` = 0.3
+    )),
     list( # nolint: indentation_linter.
       name = "2-cmt A/B/alpha/beta (B in Vc)", mod = function() { # nolint: indentation_linter.
-      ini({ # nolint: indentation_linter.
-        ta <- log(0.5)
-        tb <- log(0.02)
-        tA <- log(0.04)
-        tB <- log(0.01)
-        eta.bVar ~ 0.1
-        add.sd <- 0.5
-      })
-      model({
-        alpha <- exp(ta)
-        beta <- exp(tb)
-        aVar <- exp(tA)
-        bVar <- exp(tB) * (wt / 70)^-1 * exp(eta.bVar)
-        cp <- linCmt()
-        cp ~ add(add.sd)
-      })
-    }, pars = c(`THETA[1]` = log(0.5), `THETA[2]` = log(0.02), `THETA[3]` = log(0.04),
-                `THETA[4]` = log(0.01), `THETA[5]` = 0.5, `ETA[1]` = 0.3)),
+        ini({ # nolint: indentation_linter.
+          ta <- log(0.5)
+          tb <- log(0.02)
+          tA <- log(0.04)
+          tB <- log(0.01)
+          eta.bVar ~ 0.1
+          add.sd <- 0.5
+        })
+        model({
+          alpha <- exp(ta)
+          beta <- exp(tb)
+          aVar <- exp(tA)
+          bVar <- exp(tB) * (wt / 70)^-1 * exp(eta.bVar)
+          cp <- linCmt()
+          cp ~ add(add.sd)
+        })
+      }, pars = c(
+        `THETA[1]` = log(0.5), `THETA[2]` = log(0.02), `THETA[3]` = log(0.04),
+        `THETA[4]` = log(0.01), `THETA[5]` = 0.5, `ETA[1]` = 0.3
+      )
+    ),
     list( # nolint: indentation_linter.
       name = "2-cmt v/B/alpha/beta (v in Vc)", mod = function() { # nolint: indentation_linter.
-      ini({ # nolint: indentation_linter.
-        ta <- log(0.5)
-        tb <- log(0.02)
-        tv <- log(25)
-        tB <- log(0.01)
-        eta.v ~ 0.1
-        add.sd <- 0.5
-      })
-      model({
-        alpha <- exp(ta)
-        beta <- exp(tb)
-        v <- exp(tv) * (wt / 70) * exp(eta.v)
-        bVar <- exp(tB)
-        cp <- linCmt()
-        cp ~ add(add.sd)
-      })
-    }, pars = c(`THETA[1]` = log(0.5), `THETA[2]` = log(0.02), `THETA[3]` = log(25),
-                `THETA[4]` = log(0.01), `THETA[5]` = 0.5, `ETA[1]` = 0.3)),
+        ini({ # nolint: indentation_linter.
+          ta <- log(0.5)
+          tb <- log(0.02)
+          tv <- log(25)
+          tB <- log(0.01)
+          eta.v ~ 0.1
+          add.sd <- 0.5
+        })
+        model({
+          alpha <- exp(ta)
+          beta <- exp(tb)
+          v <- exp(tv) * (wt / 70) * exp(eta.v)
+          bVar <- exp(tB)
+          cp <- linCmt()
+          cp ~ add(add.sd)
+        })
+      }, pars = c(
+        `THETA[1]` = log(0.5), `THETA[2]` = log(0.02), `THETA[3]` = log(25),
+        `THETA[4]` = log(0.01), `THETA[5]` = 0.5, `ETA[1]` = 0.3
+      )
+    ),
     list( # nolint: indentation_linter.
       name = "3-cmt v/B/C/alpha/beta/gamma (C in Vc)", mod = function() { # nolint: indentation_linter.
-      ini({ # nolint: indentation_linter.
-        ta <- log(1)
-        tb <- log(0.1)
-        tg <- log(0.01)
-        tv <- log(25)
-        tB <- log(0.01)
-        tC <- log(0.005)
-        eta.cVar ~ 0.1
-        add.sd <- 0.5
-      })
-      model({
-        alpha <- exp(ta)
-        beta <- exp(tb)
-        gamma <- exp(tg)
-        v <- exp(tv)
-        bVar <- exp(tB)
-        cVar <- exp(tC) * (wt / 70)^-1 * exp(eta.cVar)
-        cp <- linCmt()
-        cp ~ add(add.sd)
-      })
-    }, pars = c(`THETA[1]` = log(1), `THETA[2]` = log(0.1), `THETA[3]` = log(0.01),
-                `THETA[4]` = log(25), `THETA[5]` = log(0.01), `THETA[6]` = log(0.005),
-                `THETA[7]` = 0.5, `ETA[1]` = 0.3)))
+        ini({ # nolint: indentation_linter.
+          ta <- log(1)
+          tb <- log(0.1)
+          tg <- log(0.01)
+          tv <- log(25)
+          tB <- log(0.01)
+          tC <- log(0.005)
+          eta.cVar ~ 0.1
+          add.sd <- 0.5
+        })
+        model({
+          alpha <- exp(ta)
+          beta <- exp(tb)
+          gamma <- exp(tg)
+          v <- exp(tv)
+          bVar <- exp(tB)
+          cVar <- exp(tC) * (wt / 70)^-1 * exp(eta.cVar)
+          cp <- linCmt()
+          cp ~ add(add.sd)
+        })
+      }, pars = c(
+        `THETA[1]` = log(1), `THETA[2]` = log(0.1), `THETA[3]` = log(0.01),
+        `THETA[4]` = log(25), `THETA[5]` = log(0.01), `THETA[6]` = log(0.005),
+        `THETA[7]` = 0.5, `ETA[1]` = 0.3
+      )
+    )
+  )
   for (cs in cases) {
     rC <- .carryJumpFd(cs$mod, cs$pars, ev)
     expect_true(grepl("rx_lcCarryAdv_", rC$txt, fixed = TRUE), label = cs$name)

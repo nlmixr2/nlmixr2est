@@ -9,8 +9,10 @@
 #' solve, so nothing may be emitted without this.
 #' @noRd
 .rxFoceiLinCmtCarryCapable <- function() {
-  exists("linCmtCarryLiveTest", envir = asNamespace("rxode2"),
-         inherits = FALSE)
+  exists("linCmtCarryLiveTest",
+    envir = asNamespace("rxode2"),
+    inherits = FALSE
+  )
 }
 
 #' Does the loaded rxode2 have the fast-path pin (which1=-8) an event jump
@@ -18,7 +20,9 @@
 #' @noRd
 .rxFoceiLinCmtCarryJumpCapable <- function() {
   .ns <- asNamespace("rxode2")
-  if (!exists("linCmtCarrySentinelMax", envir = .ns, inherits = FALSE)) return(FALSE)
+  if (!exists("linCmtCarrySentinelMax", envir = .ns, inherits = FALSE)) {
+    return(FALSE)
+  }
   isTRUE(get("linCmtCarrySentinelMax", envir = .ns)() >= 8L)
 }
 
@@ -43,14 +47,22 @@
 #' @return eligibility data.frame (zero rows -> NULL), or NULL
 #' @noRd
 .rxFoceiLinCmtCarryPairsForBuild <- function(x, s, etaVars, extraPred = NULL) {
-  if (!.rxFoceiLinCmtCarryBuildEnabled(x[[1]])) return(NULL)
+  if (!.rxFoceiLinCmtCarryBuildEnabled(x[[1]])) {
+    return(NULL)
+  }
   .pairs <- .rxFoceiLinCmtCarryDetect(x, s, etaVars)
-  if (is.null(.pairs) || nrow(.pairs) == 0L) return(NULL)
-  if (!.rxFoceiLinCmtCarryModelOk(s)) return(NULL)
+  if (is.null(.pairs) || nrow(.pairs) == 0L) {
+    return(NULL)
+  }
+  if (!.rxFoceiLinCmtCarryModelOk(s)) {
+    return(NULL)
+  }
   .jump <- !is.na(.pairs$fD) | !is.na(.pairs$lagD)
   if (any(.jump) && !.rxFoceiLinCmtCarryJumpCapable()) {
     .pairs <- .pairs[!.jump, , drop = FALSE]
-    if (nrow(.pairs) == 0L) return(NULL)
+    if (nrow(.pairs) == 0L) {
+      return(NULL)
+    }
   }
   .rxFoceiLinCmtCarryCheckCap(.pairs)
   .pairs
@@ -59,7 +71,9 @@
 #' Is the carry switched on for this build (capability, control, interpolation)?
 #' @noRd
 .rxFoceiLinCmtCarryBuildEnabled <- function(ui) {
-  if (!.rxFoceiLinCmtCarryCapable()) return(FALSE)
+  if (!.rxFoceiLinCmtCarryCapable()) {
+    return(FALSE)
+  }
   if (identical(rxode2::rxGetControl(ui, "linCmtSensCarry", "auto"), "none")) {
     return(FALSE)
   }
@@ -77,13 +91,18 @@
   # D(rx_pred_, ETA_n_) evaluations (shared-symengine-state corruption);
   # the emission renders in-loop via rxFromSE(S(<repr>)) instead.
   # (nolint: lintr resolves cross-file helpers against the installed package)
-  tryCatch(.rxFoceiLinCmtCarryEligible(x, s, etaVars, data = NULL, # nolint: object_usage_linter.
-                                       render = FALSE),
-           error = function(e) {
-             warning("linCmt() carry detection failed; standard gradient used",
-                     call. = FALSE)
-             NULL
-           })
+  tryCatch(
+    .rxFoceiLinCmtCarryEligible(x, s, etaVars,
+      data = NULL, # nolint: object_usage_linter.
+      render = FALSE
+    ),
+    error = function(e) {
+      warning("linCmt() carry detection failed; standard gradient used",
+        call. = FALSE
+      )
+      NULL
+    }
+  )
 }
 
 #' ncmt / oral0 / trans of the structural linCmtB() call in `rx_pred_`
@@ -99,7 +118,9 @@
 #' @noRd
 .rxFoceiLinCmtCarryModelOk <- function(s) {
   .sh <- .rxFoceiLinCmtCarryShape(s)
-  if (any(is.na(unlist(.sh)))) return(FALSE)
+  if (any(is.na(unlist(.sh)))) {
+    return(FALSE)
+  }
   !is.null(.rxFoceiCarryMicro(.sh$ncmt, .sh$oral0, .sh$trans)) # nolint: object_usage_linter.
 }
 
@@ -113,9 +134,10 @@
     as.integer(any(!is.na(pairs$lagD)))
   if (.need > 8L) {
     stop("the carry-eligible (linCmt parameter, eta) pairs need ", .need,
-         " carry columns (8 available); reduce the model or use ",
-         "foceiControl(linCmtSensCarry=\"none\")",
-         call. = FALSE)
+      " carry columns (8 available); reduce the model or use ",
+      "foceiControl(linCmtSensCarry=\"none\")",
+      call. = FALSE
+    )
   }
   invisible(TRUE)
 }
