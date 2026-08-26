@@ -8,7 +8,8 @@ nmTest({
         tcl <- log(c(0, 2.7, 100)) # Log Cl
         ## This works with interactive models
         ## You may also label the preceding line with label("label text")
-        tv <- 3.45; label("log V")
+        tv <- 3.45
+        label("log V")
         ## the label("Label name") works with all models
         eta.ka ~ 0.6
         eta.cl ~ 0.3
@@ -38,7 +39,8 @@ nmTest({
         tcl <- log(c(0, 2.7, 100)) # Log Cl
         ## This works with interactive models
         ## You may also label the preceding line with label("label text")
-        tv <- 3.45; label("log V")
+        tv <- 3.45
+        label("log V")
         ## the label("Label name") works with all models
         eta.ka ~ 0.6
         eta.cl ~ 0.3
@@ -66,11 +68,16 @@ nmTest({
     mod <- function() {
       # Parameters
       ini({
-        tka <- 0.45; label("Ka (first order absorption)")
-        trate <- 0.4 ; label("Zero order rate")
-        tcl <- 1; label("Cl")
-        tv <- 3.45; label("V")
-        fDepot <- logit(0.5) ; label("amount of dose in first order absorption")
+        tka <- 0.45
+        label("Ka (first order absorption)")
+        trate <- 0.4
+        label("Zero order rate")
+        tcl <- 1
+        label("Cl")
+        tv <- 3.45
+        label("V")
+        fDepot <- logit(0.5)
+        label("amount of dose in first order absorption")
         eta.ka ~ 0.6
         eta.cl ~ 0.3
         eta.v ~ 0.1
@@ -106,7 +113,7 @@ nmTest({
 
 nmTest({
 
-  # nlmixr2/rxode2#1289: `$simInfo` re-runs the pre-process hooks and re-derives
+  # nlmixr2/rxode2 issue 1289: `$simInfo` re-runs the pre-process hooks and re-derives
   # the simulation model, which dominated the cost of solving a fit and grew
   # process memory that was never returned -- and a plain `rxSolve(fit, ...)`
   # never reads any of it.

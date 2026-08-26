@@ -65,9 +65,9 @@
   .dat <- .phiDat(times)
   invisible(.phiStats(TRUE))
   .rx <- rxode2::rxControl(cores = 1L, linCmtSensType = "AD",
-    linCmtSensPhi = phi)
+                           linCmtSensPhi = phi)
   .ctl <- nlmixr2est::foceiControl(maxOuterIterations = 0L, print = 0L,
-    calcTables = FALSE, covMethod = "", rxControl = .rx)
+                                   calcTables = FALSE, covMethod = "", rxControl = .rx)
   .f <- suppressMessages(nlmixr2est::nlmixr2(.phiMod, .dat, "focei", .ctl))
   list(stats = .phiStats(TRUE), objf = .f$objf)
 }

@@ -1,4 +1,4 @@
-# #1004, fit level: an ll() linCmt() endpoint under a time-varying covariate
+# issue 1004, fit level: an ll() linCmt() endpoint under a time-varying covariate
 # against the same ll() endpoint on the linToOde() ODE equivalent,
 # integrated with useLinCmt=FALSE (genuine sensitivities).  Slow batch -- see
 # .slowBatches in tests/testthat.R; shared fixtures in helper-lincmt-carry.R.
@@ -43,8 +43,8 @@ cp = central/v")
   expect_lt(gapC, 0.01)
   expect_gt(gapN, 0.05)
   expect_lt(max(abs(fC$eta$eta.cl - fO$eta$eta.cl)), 1e-3)
-  FO <- fit(uiO, "none", 200L)
-  FC <- fit(uiL, "auto", 200L)
+  fo <- fit(uiO, "none", 200L)
+  fc <- fit(uiL, "auto", 200L)
   expect_lt(abs(FC$objective - FO$objective), 0.01)
   expect_lt(max(abs(FC$theta - FO$theta)), 5e-3)
 })

@@ -1,4 +1,4 @@
-# #1004: the linCmt() sensitivity carry for generalized-likelihood ll()
+# issue 1004: the linCmt() sensitivity carry for generalized-likelihood ll()
 # endpoints.  rx_pred_ is then the log-likelihood with the linCmtB() value
 # call embedded in it; the carry factors the call out as rx_lcConc_,
 # supplies d(rx_lcConc_)/d(eta) exactly as for a bare prediction and lets
@@ -75,7 +75,7 @@ test_that("an ll() model without a time-varying covariate generates identical te
 test_that("the structural call must be unique and in value form", {
   mk <- function(txt) {
     s <- new.env()
-    assign("rx_pred_", symengine::S(txt), envir = s)
+    assign("rx_pred_", symengine::S(txt), envir = s) # nolint: object_name_linter.
     s
   }
   one <- "linCmtB(rx__PTR__, t, 1.0, 1.0, 0.0, -1.0, -1.0, 1.0, a, b, 0.0, 0.0, 0.0, 0.0, 0.0)"
