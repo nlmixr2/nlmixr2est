@@ -11,16 +11,16 @@ nmTest({
   .addMod <- function() {
     ini({ lka <- 0.45; lcl <- 1; lv <- 3.45; eta.ka ~ 0.6; add.err <- 0.7 })
     model({ ka <- exp(lka + eta.ka); cl <- exp(lcl); v <- exp(lv)
-      d / dt(depot) <- -ka * depot
-      d / dt(center) <- ka * depot - cl / v * center
+      d/dt(depot) <- -ka * depot
+      d/dt(center) <- ka * depot - cl / v * center
       cp <- center / v
       cp ~ add(add.err) })
   }
   .propMod <- function() {
     ini({ lka <- 0.45; lcl <- 1; lv <- 3.45; eta.ka ~ 0.6; prop.err <- 0.15 })
     model({ ka <- exp(lka + eta.ka); cl <- exp(lcl); v <- exp(lv)
-      d / dt(depot) <- -ka * depot
-      d / dt(center) <- ka * depot - cl / v * center
+      d/dt(depot) <- -ka * depot
+      d/dt(center) <- ka * depot - cl / v * center
       cp <- center / v
       cp ~ prop(prop.err) })
   }
@@ -28,8 +28,8 @@ nmTest({
     ini({ lka <- 0.45; lcl <- 1; lv <- 3.45; eta.ka ~ 0.6
       add.err <- 0.7; prop.err <- 0.15 })
     model({ ka <- exp(lka + eta.ka); cl <- exp(lcl); v <- exp(lv)
-      d / dt(depot) <- -ka * depot
-      d / dt(center) <- ka * depot - cl / v * center
+      d/dt(depot) <- -ka * depot
+      d/dt(center) <- ka * depot - cl / v * center
       cp <- center / v
       cp ~ add(add.err) + prop(prop.err) })
   }
