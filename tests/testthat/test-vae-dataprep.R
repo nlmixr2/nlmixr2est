@@ -41,8 +41,8 @@ nmTest({
     ini({ lka <- 0.4; lcl <- -0.9; lb <- log(3); lsd <- log(1.2); eta.b ~ 0.1 })
     model({
       ka <- exp(lka); cl <- exp(lcl)
-      d / dt(depot) <- -ka * depot
-      d / dt(central) <- ka * depot - cl * central
+      d/dt(depot) <- -ka * depot
+      d/dt(central) <- ka * depot - cl * central
       mu <- exp(lb + eta.b) * central
       sd <- exp(lsd)
       ll(cp) ~ -0.5 * log(2 * pi) - log(sd) - 0.5 * ((DV - mu) / sd)^2
@@ -52,8 +52,8 @@ nmTest({
     ini({ tka <- 0.45; tcl <- 1; tv <- c(2, 3.45, 5); add.sd <- c(0, 0.7, 5)
       eta.ka ~ 0.6; eta.cl ~ 0.3 })
     model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv)
-      d / dt(depot) <- -ka * depot
-      d / dt(center) <- ka * depot - cl / v * center
+      d/dt(depot) <- -ka * depot
+      d/dt(center) <- ka * depot - cl / v * center
       cp <- center / v
       cp ~ add(add.sd) })
   }
@@ -74,7 +74,7 @@ nmTest({
       model({
         k <- exp(lk); v <- exp(lv)
         conc <- central / v
-        d / dt(central) <- -k * conc + eta.b * 0
+        d/dt(central) <- -k * conc + eta.b * 0
         sd <- exp(lsd)
         ll(conc) ~ -log(sd) - 0.5 * ((DV - conc) / sd)^2
       })
@@ -93,7 +93,7 @@ nmTest({
       model({
         cl <- exp(lcl)
         central_0 <- exp(linit)          # rxode2's other spelling of central(0)
-        d / dt(central) <- -cl * central
+        d/dt(central) <- -cl * central
         sd <- exp(lsd)
         ll(cp) ~ -log(sd) - 0.5 * ((DV - central * exp(eta.b)) / sd)^2
       })
@@ -107,7 +107,7 @@ nmTest({
       ini({ lcl <- -1; lsd <- 0; eta.b ~ 0.1 })
       model({
         if (TIME > 0) { cl <- exp(lcl) } else { cl <- exp(lcl) }
-        d / dt(central) <- -cl * central
+        d/dt(central) <- -cl * central
         sd <- exp(lsd)
         ll(cp) ~ -log(sd) - 0.5 * ((DV - central * exp(eta.b)) / sd)^2
       })
@@ -123,8 +123,8 @@ nmTest({
       model({
         k <- exp(lk); v <- exp(lv)
         conc ~ central / v
-        d / dt(central) <- -k * central
-        d / dt(effect) <- 1 - conc * effect
+        d/dt(central) <- -k * central
+        d/dt(effect) <- 1 - conc * effect
         sd <- exp(lsd)
         ll(conc) ~ -log(sd) - 0.5 * ((DV - conc * exp(eta.b)) / sd)^2
       })
@@ -145,7 +145,7 @@ nmTest({
         cl <- exp(tcl); v <- exp(tv)
         cp <- linCmt()
         e0 <- exp(te0 + eta.e0); kout <- exp(tkout); kin <- e0 * kout
-        d / dt(pd) <- kin - kout * pd
+        d/dt(pd) <- kin - kout * pd
         pd ~ prop(prop.err)
       })
     }))
@@ -186,8 +186,8 @@ nmTest({
         eta.b ~ 0.1 })
       model({
         ka <- exp(lka); cl <- exp(lcl)
-        d / dt(depot) <- -ka * depot
-        d / dt(central) <- ka * depot - cl * central
+        d/dt(depot) <- -ka * depot
+        d/dt(central) <- ka * depot - cl * central
         cp <- central
         cp ~ add(add.sd)
         mu <- exp(lb + eta.b) * central

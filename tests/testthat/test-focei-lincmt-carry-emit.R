@@ -50,12 +50,15 @@ test_that("the model cache digest keys covsInterpolation (linear skips the carry
   .mk <- function(interp) {
     .ui <- rxode2::.copyUi(.carryUiCov())
     .ctl <- nlmixr2est::foceiControl(
-      rxControl = rxode2::rxControl(covsInterpolation = interp))
+      rxControl = rxode2::rxControl(covsInterpolation = interp)
+    )
     assign("control", .ctl, envir = .ui)
     .ui
   }
-  expect_false(identical(.mk("locf")$foceiModelDigest,
-                         .mk("linear")$foceiModelDigest))
+  expect_false(identical(
+    .mk("locf")$foceiModelDigest,
+    .mk("linear")$foceiModelDigest
+  ))
   expect_identical(.mk("locf")$foceiModelDigest, .mk("locf")$foceiModelDigest)
 })
 
@@ -63,9 +66,18 @@ test_that("more than four carry-eligible pairs fails loudly at model build", {
   skip_if_not(.rxFoceiLinCmtCarryCapable())
   five <- function() {
     ini({
-      tcl <- log(2); tv <- log(20); tq <- log(1); tv2 <- log(30)
-      tq2 <- log(0.5); tv3 <- log(40); tka <- log(1)
-      eta.cl ~ 0.1; eta.v ~ 0.1; eta.q ~ 0.1; eta.v2 ~ 0.1; eta.ka ~ 0.1
+      tcl <- log(2)
+      tv <- log(20)
+      tq <- log(1)
+      tv2 <- log(30)
+      tq2 <- log(0.5)
+      tv3 <- log(40)
+      tka <- log(1)
+      eta.cl ~ 0.1
+      eta.v ~ 0.1
+      eta.q ~ 0.1
+      eta.v2 ~ 0.1
+      eta.ka ~ 0.1
       add.sd <- 0.5
     })
     model({
@@ -84,7 +96,8 @@ test_that("more than four carry-eligible pairs fails loudly at model build", {
   expect_equal(nrow(.foceiLinCmtCarryPairs(ui)), 5L)
   s <- ui$foceiEtaS
   expect_error(.rxFoceiLinCmtCarryPairsForBuild(
-    list(ui), s, paste0("ETA_", seq_len(s$..maxEta), "_")), "carry columns")
+    list(ui), s, paste0("ETA_", seq_len(s$..maxEta), "_")
+  ), "carry columns")
   # (inside the HdEta build the error is re-raised by the progress abort as
   # "Aborted calculation", which escapes expect_error -- the direct call
   # above is what pins the message)
@@ -94,8 +107,12 @@ test_that("an eta that also drives a modeled alag() is carried with a lag channe
   skip_if_not(.rxFoceiLinCmtCarryCapable() && .rxFoceiLinCmtCarryJumpCapable())
   lagged <- function() {
     ini({
-      tka <- log(1); tcl <- log(2); tv <- log(20); tlag <- log(0.2)
-      eta.cl ~ 0.1; eta.v ~ 0.1
+      tka <- log(1)
+      tcl <- log(2)
+      tv <- log(20)
+      tlag <- log(0.2)
+      eta.cl ~ 0.1
+      eta.v ~ 0.1
       add.sd <- 0.5
     })
     model({

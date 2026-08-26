@@ -18,8 +18,8 @@ if (FALSE) {
         ka <- exp(tka + eta.ka)
         cl <- exp(tcl + eta.cl)
         v <- exp(tv + eta.v)
-        d / dt(depot) <- -ka * depot
-        d / dt(center) <- ka * depot - cl / v * center
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
         ipre <- center / v
         ipre ~ add(add.sd)
       })
@@ -39,8 +39,8 @@ if (FALSE) {
         ka <- exp(tka + eta.ka)
         cl <- exp(tcl + eta.cl)
         v <- exp(tv + eta.v)
-        d / dt(depot) <- -ka * depot
-        d / dt(center) <- ka * depot - cl / v * center
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
         ipre <- log(center / v)
         ipre ~ add(lnorm.sd)
       })

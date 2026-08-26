@@ -10,6 +10,20 @@
   lowered it three times, one of those through a `rxNorm()` of the focei
   `predOnly` model.  These methods are now aliases of the default, which is
   what they already amounted to.
+- `rxode2::rxSolve()` on a fit no longer re-derives the model on every call
+  (nlmixr2/rxode2#1289).  Each call used to lower the fit to an rxode2
+  simulation model *and* re-run the pre-process hooks to build `$simInfo`;
+  for an ODE model that was most of the ~0.1 s per call, and it grew process
+  memory by a couple of MB per call that neither `gc()` nor
+  `rxode2::rxUnloadAll()` gave back, so simulating from a fit in a loop
+  eventually exhausted memory.  The lowered simulation model is now cached
+  (keyed on the fitted model itself, so a piped or refit model gets its own;
+  set `options(nlmixr2.simModelCache = FALSE)` to disable), and `$simInfo` is
+  only derived when the simulation actually uses the model's uncertainty --
+  which a plain `rxSolve(fit, events)` does not.  On the issue's reprex
+  (one-compartment ODE fit of `theo_sd`) repeated `rxSolve(fit, ev)` went from
+  0.106 s and +2.0 MB per call to 0.008 s and no measurable growth; the solved
+  results are unchanged, seed for seed.
 
 - A covariate whose value is carried on the model in `rxode2::rxForcedPars()` is
   no longer required to be a column of the data.  Such a covariate is supplied

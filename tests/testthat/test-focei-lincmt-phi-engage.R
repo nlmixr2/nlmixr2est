@@ -39,9 +39,13 @@
 # Does the loaded rxode2 have the transition-matrix path and its counters?
 .phiFitCapable <- function() {
   .ns <- asNamespace("rxode2")
-  if (!exists("linCmtSeqStats", envir = .ns, inherits = FALSE)) return(FALSE)
+  if (!exists("linCmtSeqStats", envir = .ns, inherits = FALSE)) {
+    return(FALSE)
+  }
   # rxControl() takes ..., so the argument is declared on rxSolve().
-  if (!("linCmtSensPhi" %in% names(formals(rxode2::rxSolve)))) return(FALSE)
+  if (!("linCmtSensPhi" %in% names(formals(rxode2::rxSolve)))) {
+    return(FALSE)
+  }
   "phiBuild" %in% names(utils::getFromNamespace("linCmtSeqStats", "rxode2")(FALSE))
 }
 
@@ -54,9 +58,13 @@
 .phiDat <- function(times, nid = 4L) {
   do.call(rbind, lapply(seq_len(nid), function(i) {
     cp <- 100 / 30 * (exp(-0.13 * times) - exp(-1.2 * times)) * (1 + 0.05 * i)
-    rbind(data.frame(id = i, time = 0, amt = 100, evid = 1, dv = NA_real_),
-          data.frame(id = i, time = times, amt = 0, evid = 0,
-                     dv = cp * (1 + 0.1 * sin(seq_along(times)))))
+    rbind(
+      data.frame(id = i, time = 0, amt = 100, evid = 1, dv = NA_real_),
+      data.frame(
+        id = i, time = times, amt = 0, evid = 0,
+        dv = cp * (1 + 0.1 * sin(seq_along(times)))
+      )
+    )
   }))
 }
 
@@ -64,10 +72,14 @@
 .phiFit <- function(times, phi = TRUE) {
   .dat <- .phiDat(times)
   invisible(.phiStats(TRUE))
-  .rx <- rxode2::rxControl(cores = 1L, linCmtSensType = "AD",
-    linCmtSensPhi = phi)
-  .ctl <- nlmixr2est::foceiControl(maxOuterIterations = 0L, print = 0L,
-    calcTables = FALSE, covMethod = "", rxControl = .rx)
+  .rx <- rxode2::rxControl(
+    cores = 1L, linCmtSensType = "AD",
+    linCmtSensPhi = phi
+  )
+  .ctl <- nlmixr2est::foceiControl(
+    maxOuterIterations = 0L, print = 0L,
+    calcTables = FALSE, covMethod = "", rxControl = .rx
+  )
   .f <- suppressMessages(nlmixr2est::nlmixr2(.phiMod, .dat, "focei", .ctl))
   list(stats = .phiStats(TRUE), objf = .f$objf)
 }

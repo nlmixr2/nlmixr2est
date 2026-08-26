@@ -334,7 +334,7 @@ test_that("dose-handling theta sensitivities carry the event jump (#946)", {
     model({
       cl <- exp(tcl + eta.cl)
       v <- exp(tv)
-      d / dt(central) <- -cl / v * central
+      d/dt(central) <- -cl / v * central
       alag(central) <- exp(tlag)
       cp <- central / v
       cp ~ add(add.sd)
@@ -393,7 +393,7 @@ test_that("an eta entering dose handling gets its jump in the eta gradient (#946
     model({
       cl <- exp(tcl + eta.cl)
       v <- exp(tv)
-      d / dt(central) <- -cl / v * central
+      d/dt(central) <- -cl / v * central
       alag(central) <- exp(tlag + eta.lag)
       cp <- central / v
       cp ~ add(add.sd)

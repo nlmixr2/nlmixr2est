@@ -19,8 +19,8 @@ nmTest({
     ini({ lka <- 0.4; lcl <- -0.9; lb <- log(3); lsd <- log(1.2); eta.b ~ 0.1 })
     model({
       ka <- exp(lka); cl <- exp(lcl)
-      d / dt(depot) <- -ka * depot
-      d / dt(central) <- ka * depot - cl * central
+      d/dt(depot) <- -ka * depot
+      d/dt(central) <- ka * depot - cl * central
       mu <- exp(lb + eta.b) * central
       sd <- exp(lsd)
       ll(cp) ~ -0.5 * log(2 * pi) - log(sd) - 0.5 * ((DV - mu) / sd)^2
@@ -102,8 +102,8 @@ nmTest({
       ini({ tka <- 0.45; tcl <- 1; tv <- c(2, 3.45, 5); add.sd <- c(0, 0.7, 5)
         eta.ka ~ 0.6; eta.cl ~ 0.3 })
       model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv)
-        d / dt(depot) <- -ka * depot
-        d / dt(center) <- ka * depot - cl / v * center
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
         cp <- center / v
         cp ~ add(add.sd) })
     }

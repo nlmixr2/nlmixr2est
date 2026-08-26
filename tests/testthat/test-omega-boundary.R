@@ -2,14 +2,10 @@ nmTest({
   test_that("omega boundary", {
     one.compartment.IV.MM.model <- function(){
       ini({
-        lVM <- 7
-        label("log Vmax (mg/hr)")
-        lKM <- 5.7
-        label("log KM (mg/L)")
-        lVc <- 4.5
-        label("log Vc (L)")
-        prop.err <- 0.3
-        label("Proportional error")
+        lVM <- 7; label("log Vmax (mg/hr)")
+        lKM <- 5.7; label("log KM (mg/L)")
+        lVc <- 4.5; label("log Vc (L)")
+        prop.err <- 0.3; label("Proportional error")
         eta.Vc ~ 0.15
         label("IIV Vc")
         eta.VM ~ 0.15
