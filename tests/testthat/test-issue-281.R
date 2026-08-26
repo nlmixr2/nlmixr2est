@@ -34,9 +34,9 @@ nmTest({
         Stim2 <- emaxD * (CONC^GAM) / (CONC^GAM + ec50^GAM)
         Stim <- Stim1 * (1 + TRX * Stim2)
         Delta <- 1 / (1 + exp(-20 * (time - delay)))
-        d / dt(depot) <- -KA * depot
-        d / dt(centr) <- KA * depot - CL * C2
-        d / dt(Resp) <- kin * (1 + Delta * slope) - kout * (1 + Stim) * Resp
+        d/dt(depot) <- -KA * depot
+        d/dt(centr) <- KA * depot - CL * C2
+        d/dt(Resp) <- kin * (1 + Delta * slope) - kout * (1 + Stim) * Resp
         Resp ~ add(add.err)
       })
     }
@@ -95,9 +95,9 @@ nmTest({
         Stim2 <- emaxD * (CONC^GAM) / (CONC^GAM + ec50^GAM)
         Stim <- Stim1 * (1 + TRX * Stim2)
         Delta <- 1 / (1 + exp(-20 * (time - delay)))
-        d / dt(depot) <- -KA * depot
-        d / dt(centr) <- KA * depot - CL * C2
-        d / dt(Resp) <- kin * (1 + Delta * slope) - kout * (1 + Stim) * Resp
+        d/dt(depot) <- -KA * depot
+        d/dt(centr) <- KA * depot - CL * C2
+        d/dt(Resp) <- kin * (1 + Delta * slope) - kout * (1 + Stim) * Resp
         Resp ~ add(add.err)
       })
     }

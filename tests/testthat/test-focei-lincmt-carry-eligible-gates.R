@@ -70,7 +70,7 @@ test_that("a mixed ODE + linCmt() model is never carry-eligible", {
       v <- exp(tv)
       kin <- exp(tkin) * exp(eta.kin)
       cp <- linCmt()
-      d / dt(eff) <- kin * cp - 0.5 * eff
+      d/dt(eff) <- kin * cp - 0.5 * eff
       cp ~ add(add.sd)
     })
   }

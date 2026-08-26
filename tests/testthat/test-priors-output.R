@@ -34,8 +34,8 @@ nmTest({
         ka <- exp(tka + eta.ka)
         cl <- exp(tcl)
         v <- exp(tv)
-        d / dt(depot) <- -ka * depot
-        d / dt(center) <- ka * depot - cl / v * center
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
         cp <- center / v
         cp ~ add(add.sd)
       })
@@ -69,8 +69,8 @@ nmTest({
         ka <- exp(tka + eta.ka)
         cl <- exp(tcl)
         v <- exp(tv)
-        d / dt(depot) <- -ka * depot
-        d / dt(center) <- ka * depot - cl / v * center
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
         cp <- center / v
         cp ~ add(add.sd)
       })
@@ -102,8 +102,8 @@ nmTest({
         ka <- exp(tka + eta.ka)
         cl <- exp(tcl)
         v <- exp(tv)
-        d / dt(depot) <- -ka * depot
-        d / dt(center) <- ka * depot - cl / v * center
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
         cp <- center / v
         cp ~ add(add.sd)
       })
@@ -132,8 +132,8 @@ nmTest({
         ka <- exp(tka + eta.ka)
         cl <- exp(tcl)
         v <- exp(tv)
-        d / dt(depot) <- -ka * depot
-        d / dt(center) <- ka * depot - cl / v * center
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
         cp <- center / v
         cp ~ add(add.sd)
       })
