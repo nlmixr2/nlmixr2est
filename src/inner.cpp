@@ -189,8 +189,8 @@ static inline double foceiElapsedSeconds(const focei_wall_clock::time_point& sta
   return std::chrono::duration<double>(focei_wall_clock::now() - start).count();
 }
 
-void saveIntoEnvrionment(Environment e);
-void restoreFromEnvrionment(Environment e);
+void saveIntoEnvironment(Environment e);
+void restoreFromEnvironment(Environment e);
 
 #define min2( a , b )  ( (a) < (b) ? (a) : (b) )
 #define max2( a , b )  ( (a) > (b) ? (a) : (b) )
@@ -267,6 +267,10 @@ struct focei_options {
   // ... and the same for the other blocks the theta-reset path saves whole
   size_t nEtaTrans = 0;
   size_t nFullTheta = 0;
+  // leading part of the fullTheta block that the theta-reset path saves:
+  // everything except the trailing aqx/aqw AGQ grid, which setupAq1_() rebuilds
+  // from e$qx/e$qw on every entry (see foceiSetupTrans_).
+  size_t nFullThetaSave = 0;
   size_t nGillRet = 0;
   size_t nGillDf = 0;
   double *etaLower = NULL;
@@ -4087,7 +4091,7 @@ static inline void thetaReset00(NumericVector &thetaIni, NumericVector &omegaThe
   thetaReset["c2"] = op_focei.c2;
   //foceiPrintInfo();
   parHistData(thetaReset, true);
-  saveIntoEnvrionment(thetaReset);
+  saveIntoEnvironment(thetaReset);
 }
 
 static inline bool isFixedTheta(int m) {
@@ -6294,7 +6298,14 @@ static inline void foceiSetupTrans_(CharacterVector pars){
   }
 
   if (op_focei.fullTheta != NULL) R_Free(op_focei.fullTheta);
-  op_focei.nFullTheta  = (size_t)4*(op_focei.ntheta+op_focei.omegan) +
+  // fullTheta | theta | initPar | scaleC | aqx | aqw.  The first four blocks are
+  // the fit state a theta reset carries across the restart; aqx/aqw hold the AGQ
+  // node grid, which setupAq1_() refills from e$qx/e$qw on every foceiFitCpp_
+  // entry (before the restore), so saving them would round-trip nAGQ^neta*neta*2
+  // doubles through R to rewrite what is already there.  nFullThetaSave is the
+  // saved prefix; nFullTheta is derived from it so the two cannot drift apart.
+  op_focei.nFullThetaSave = (size_t)4*(op_focei.ntheta+op_focei.omegan);
+  op_focei.nFullTheta  = op_focei.nFullThetaSave +
     (size_t)2*(_aqn*op_focei.neta);
   op_focei.fullTheta   = R_Calloc(op_focei.nFullTheta, double); // [ntheta+omegan]
   op_focei.theta       = op_focei.fullTheta+op_focei.ntheta+op_focei.omegan; // [ntheta + omegan]
@@ -12357,7 +12368,7 @@ Environment foceiFitCpp_(Environment e){
     Function loadNamespace("loadNamespace", R_BaseNamespace);
     Environment nlmixr2 = loadNamespace("nlmixr2est");
     Environment thetaReset = nlmixr2[".thetaReset"];
-    restoreFromEnvrionment(thetaReset);
+    restoreFromEnvironment(thetaReset);
   }
   foceiFitSetupScale(thetaNames, thetaXPar, thetaProbitIdx);
   if (op_focei.maxOuterIterations > 0 && op_focei.printTop == 1){
@@ -22350,24 +22361,22 @@ NumericVector iBoxCox_(NumericVector x = 1, double lambda=1, int yj = 0){
   return ret;
 }
 
-void saveIntoEnvrionment(Environment e) {
-  // Each block below is saved here and copied back whole by
-  // restoreFromEnvrionment(), so its length has to be the length that was
-  // allocated -- recorded at the R_Calloc -- and not a second copy of the
-  // allocation's formula.  Every one of those copies had drifted from the
-  // layout it described: four saved LESS than was allocated, so a theta reset
-  // silently dropped the tail of the block (etaFD/mixTrans, aqx/aqw,
-  // muRefEtaCovSkipReset/mixIdx/skipCov, mixProb/mixProbGrad/gillDf2), and the
-  // eta block's copy claimed MORE, so saving read past the end of the buffer
-  // and restoring wrote past it -- a heap overflow that corrupted whatever
-  // followed it and, intermittently, aborted the process.
+void saveIntoEnvironment(Environment e) {
+  // Every length below comes from the R_Calloc that made the block, never from a
+  // second copy of the allocation's formula: the copies that used to be here had
+  // all drifted from the layout they described -- three saved short (so a reset
+  // restored a truncated block) and the eta block's claimed more than existed,
+  // which read and wrote past the end of the heap block.
   arma::Col<int> etaTrans(op_focei.etaTrans, op_focei.nEtaTrans);
   e[".etaTrans"] = etaTrans;
-  arma::vec fullTheta(op_focei.fullTheta, op_focei.nFullTheta);
+  // nFullThetaSave, not nFullTheta: the trailing aqx/aqw AGQ grid is rebuilt by
+  // setupAq1_() before the restore runs, so carrying it here would only copy
+  // nAGQ^neta*neta*2 doubles into R to write back what is already correct.
+  arma::vec fullTheta(op_focei.fullTheta, op_focei.nFullThetaSave);
   e[".fullTheta"] = fullTheta;
   // no eta
   if (op_focei.neta == 0) {
-    arma::vec gthetaGrad(op_focei.fullTheta, op_focei.nFullTheta);
+    arma::vec gthetaGrad(op_focei.fullTheta, op_focei.nFullThetaSave);
     e[".gthetaGrad"] = gthetaGrad;
   } else {
     arma::vec etaUpper(op_focei.etaUpper, op_focei.etaBufferN);
@@ -22389,17 +22398,17 @@ static inline void foceiCheckRestoreN(size_t saved, size_t expected, const char 
   }
 }
 
-void restoreFromEnvrionment(Environment e) {
+void restoreFromEnvironment(Environment e) {
   arma::Col<int> etaTrans = e[".etaTrans"];
   foceiCheckRestoreN(etaTrans.n_elem, op_focei.nEtaTrans, "eta translation");
   std::copy(etaTrans.begin(), etaTrans.end(), op_focei.etaTrans);
   arma::vec fullTheta = e[".fullTheta"];
-  foceiCheckRestoreN(fullTheta.n_elem, op_focei.nFullTheta, "theta");
+  foceiCheckRestoreN(fullTheta.n_elem, op_focei.nFullThetaSave, "theta");
   std::copy(fullTheta.begin(), fullTheta.end(), op_focei.fullTheta);
   // no eta
   if (op_focei.neta == 0) {
     arma::vec gthetaGrad = e[".gthetaGrad"];
-    foceiCheckRestoreN(gthetaGrad.n_elem, op_focei.nFullTheta, "theta gradient");
+    foceiCheckRestoreN(gthetaGrad.n_elem, op_focei.nFullThetaSave, "theta gradient");
     std::copy(gthetaGrad.begin(), gthetaGrad.end(), op_focei.fullTheta);
   } else {
     arma::vec etaUpper = e[".etaUpper"];
