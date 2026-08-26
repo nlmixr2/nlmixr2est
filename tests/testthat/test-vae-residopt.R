@@ -14,8 +14,8 @@ nmTest({
     ini({ lka <- 0.45; lcl <- 1; lv <- 3.45; eta.ka ~ 0.6; eta.cl ~ 0.3
       prop.err <- 0.3; pw <- 0.8 })
     model({ ka <- exp(lka + eta.ka); cl <- exp(lcl + eta.cl); v <- exp(lv)
-      d / dt(depot) <- -ka * depot
-      d / dt(center) <- ka * depot - cl / v * center
+      d/dt(depot) <- -ka * depot
+      d/dt(center) <- ka * depot - cl / v * center
       cp <- center / v
       cp ~ pow(prop.err, pw) })
   }
@@ -23,8 +23,8 @@ nmTest({
     ini({ lka <- 0.45; lcl <- 1; lv <- 3.45; eta.ka ~ 0.6; eta.cl ~ 0.3
       add.err <- 0.5 })
     model({ ka <- exp(lka + eta.ka); cl <- exp(lcl + eta.cl); v <- exp(lv)
-      d / dt(depot) <- -ka * depot
-      d / dt(center) <- ka * depot - cl / v * center
+      d/dt(depot) <- -ka * depot
+      d/dt(center) <- ka * depot - cl / v * center
       cp <- center / v
       cp ~ lnorm(add.err) })
   }
@@ -32,8 +32,8 @@ nmTest({
     ini({ lka <- 0.45; lcl <- 1; lv <- 3.45; eta.ka ~ 0.6; eta.cl ~ 0.3
       add.err <- 0.7; prop.err <- 0.1 })
     model({ ka <- exp(lka + eta.ka); cl <- exp(lcl + eta.cl); v <- exp(lv)
-      d / dt(depot) <- -ka * depot
-      d / dt(center) <- ka * depot - cl / v * center
+      d/dt(depot) <- -ka * depot
+      d/dt(center) <- ka * depot - cl / v * center
       cp <- center / v
       cp ~ add(add.err) + prop(prop.err) })
   }
@@ -92,8 +92,8 @@ nmTest({
     ini({ lka <- 0.45; lcl <- 1; lv <- 3.45; eta.ka ~ 0.6; eta.cl ~ 0.3
       add.err <- 0.7; lam <- 1 })
     model({ ka <- exp(lka + eta.ka); cl <- exp(lcl + eta.cl); v <- exp(lv)
-      d / dt(depot) <- -ka * depot
-      d / dt(center) <- ka * depot - cl / v * center
+      d/dt(depot) <- -ka * depot
+      d/dt(center) <- ka * depot - cl / v * center
       cp <- center / v
       cp ~ add(add.err) + boxCox(lam) })
   }
@@ -101,8 +101,8 @@ nmTest({
     ini({ lka <- 0.45; lcl <- 1; lv <- 3.45; eta.ka ~ 0.6; eta.cl ~ 0.3
       add.err <- 0.7; lam <- 1 })
     model({ ka <- exp(lka + eta.ka); cl <- exp(lcl + eta.cl); v <- exp(lv)
-      d / dt(depot) <- -ka * depot
-      d / dt(center) <- ka * depot - cl / v * center
+      d/dt(depot) <- -ka * depot
+      d/dt(center) <- ka * depot - cl / v * center
       cp <- center / v
       cp ~ add(add.err) + yeoJohnson(lam) })
   }
@@ -172,8 +172,8 @@ nmTest({
   .sweep[[1]]$mod <- .addOnlyMod <- function() {
     ini({ lka <- 0.45; lcl <- 1; lv <- 3.45; eta.ka ~ 0.6; eta.cl ~ 0.3; add.err <- 0.7 })
     model({ ka <- exp(lka + eta.ka); cl <- exp(lcl + eta.cl); v <- exp(lv)
-      d / dt(depot) <- -ka * depot
-      d / dt(center) <- ka * depot - cl / v * center
+      d/dt(depot) <- -ka * depot
+      d/dt(center) <- ka * depot - cl / v * center
       cp <- center / v; cp ~ add(add.err) })
   }
   .sweep[[2]]$mod <- .combMod
@@ -219,8 +219,8 @@ nmTest({
         eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
         add.err <- 0.7 })
       model({ ka <- exp(lka + eta.ka); cl <- exp(lcl + eta.cl); v <- exp(lv + eta.v)
-        d / dt(depot) <- -ka * depot
-        d / dt(center) <- ka * depot - cl / v * center
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
         cp <- center / v; cp ~ add(add.err) })
     }
     ui <- rxode2::assertRxUi(mod())

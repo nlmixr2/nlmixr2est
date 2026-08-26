@@ -36,10 +36,14 @@ cp = central/v")
   set.seed(17)
   etaTrue <- rnorm(6, 0, 0.3)
   dv <- unlist(lapply(1:6, function(i) {
-    rxode2::rxSolve(m, params = c(tcl = log(2), tv = log(20),
-                                  eta_cl = etaTrue[i]),
-                    events = dat[dat$id == i, ], returnType = "data.frame",
-                    covsInterpolation = "nocb", useLinCmt = FALSE)$cp
+    rxode2::rxSolve(m,
+      params = c(
+        tcl = log(2), tv = log(20),
+        eta_cl = etaTrue[i]
+      ),
+      events = dat[dat$id == i, ], returnType = "data.frame",
+      covsInterpolation = "nocb", useLinCmt = FALSE
+    )$cp
   }))
   obs <- dat$evid == 0
   dat$dv <- 0
@@ -47,8 +51,11 @@ cp = central/v")
   dat$dv[obs] <- dv + rnorm(sum(obs), 0, 0.3)
   fit <- function(ui, carry, maxOut = 0L) {
     suppressWarnings(suppressMessages(
-      nlmixr2est::nlmixr2(ui, dat, est = "focei",
-                          control = .carryFitCtl(carry, maxOut))))
+      nlmixr2est::nlmixr2(ui, dat,
+        est = "focei",
+        control = .carryFitCtl(carry, maxOut)
+      )
+    ))
   }
   # posthoc (fixed thetas): the pure inner-problem comparison
   fO <- fit(uiO, "none")
@@ -85,7 +92,8 @@ test_that("carry gradient matches FD across compartment configs; naive fails all
       assign("control", ctl, envir = u)
       suppressMessages(u$foceiEnv)
     }
-    sA <- mkS("auto"); sN <- mkS("none")
+    sA <- mkS("auto")
+    sN <- mkS("none")
     expect_true(grepl("rx_lcCarryAdv_", sA$..inner))
     mA <- suppressWarnings(rxode2::rxode2(sA$..inner))
     mN <- suppressWarnings(rxode2::rxode2(sN$..inner))
@@ -106,43 +114,77 @@ test_that("carry gradient matches FD across compartment configs; naive fails all
   }
   # 2-cmt IV (m=2 row stride)
   runCfg(function() {
-    ini({tcl <- log(2); tv <- log(20); tq <- log(1); tvp <- log(30)
-         eta.cl ~ 0.1; add.sd <- 0.5})
+    ini({
+      tcl <- log(2)
+      tv <- log(20)
+      tq <- log(1)
+      tvp <- log(30)
+      eta.cl ~ 0.1
+      add.sd <- 0.5
+    })
     model({
-      cl <- exp(tcl) * (wt/70)^0.75 * exp(eta.cl)
-      v <- exp(tv); q <- exp(tq); vp <- exp(tvp)
+      cl <- exp(tcl) * (wt / 70)^0.75 * exp(eta.cl)
+      v <- exp(tv)
+      q <- exp(tq)
+      vp <- exp(tvp)
       cp <- linCmt()
       cp ~ add(add.sd)
     })
-  }, c(`THETA[1]` = log(2), `THETA[2]` = log(20), `THETA[3]` = log(1),
-       `THETA[4]` = log(30), `THETA[5]` = 0.5, `ETA[1]` = 0.3), mkEv())
+  }, c(
+    `THETA[1]` = log(2), `THETA[2]` = log(20), `THETA[3]` = log(1),
+    `THETA[4]` = log(30), `THETA[5]` = 0.5, `ETA[1]` = 0.3
+  ), mkEv())
   # 1-cmt oral, eta+covariate on ka (slot 7, depot row)
   runCfg(function() {
-    ini({tcl <- log(2); tv <- log(20); tka <- log(1.2)
-         eta.ka ~ 0.1; add.sd <- 0.5})
+    ini({
+      tcl <- log(2)
+      tv <- log(20)
+      tka <- log(1.2)
+      eta.ka ~ 0.1
+      add.sd <- 0.5
+    })
     model({
-      cl <- exp(tcl); v <- exp(tv)
-      ka <- exp(tka) * (wt/70)^0.5 * exp(eta.ka)
+      cl <- exp(tcl)
+      v <- exp(tv)
+      ka <- exp(tka) * (wt / 70)^0.5 * exp(eta.ka)
       cp <- linCmt()
       cp ~ add(add.sd)
     })
-  }, c(`THETA[1]` = log(2), `THETA[2]` = log(20), `THETA[3]` = log(1.2),
-       `THETA[4]` = 0.5, `ETA[1]` = 0.3), mkEv())
+  }, c(
+    `THETA[1]` = log(2), `THETA[2]` = log(20), `THETA[3]` = log(1.2),
+    `THETA[4]` = 0.5, `ETA[1]` = 0.3
+  ), mkEv())
   # 1-cmt IV infusion (rate history through the carry advance)
-  runCfg(.carryModCov,
-         c(`THETA[1]` = log(2), `THETA[2]` = log(20), `THETA[3]` = 0.5,
-           `ETA[1]` = 0.3), mkEv(dur = 2))
+  runCfg(
+    .carryModCov,
+    c(
+      `THETA[1]` = log(2), `THETA[2]` = log(20), `THETA[3]` = 0.5,
+      `ETA[1]` = 0.3
+    ), mkEv(dur = 2)
+  )
   # 2-cmt oral (m=3)
   runCfg(function() {
-    ini({tcl <- log(2); tv <- log(20); tq <- log(1); tvp <- log(30)
-         tka <- log(1.2); eta.cl ~ 0.1; add.sd <- 0.5})
+    ini({
+      tcl <- log(2)
+      tv <- log(20)
+      tq <- log(1)
+      tvp <- log(30)
+      tka <- log(1.2)
+      eta.cl ~ 0.1
+      add.sd <- 0.5
+    })
     model({
-      cl <- exp(tcl) * (wt/70)^0.75 * exp(eta.cl)
-      v <- exp(tv); q <- exp(tq); vp <- exp(tvp); ka <- exp(tka)
+      cl <- exp(tcl) * (wt / 70)^0.75 * exp(eta.cl)
+      v <- exp(tv)
+      q <- exp(tq)
+      vp <- exp(tvp)
+      ka <- exp(tka)
       cp <- linCmt()
       cp ~ add(add.sd)
     })
-  }, c(`THETA[1]` = log(2), `THETA[2]` = log(20), `THETA[3]` = log(1),
-       `THETA[4]` = log(30), `THETA[5]` = log(1.2), `THETA[6]` = 0.5,
-       `ETA[1]` = 0.3), mkEv())
+  }, c(
+    `THETA[1]` = log(2), `THETA[2]` = log(20), `THETA[3]` = log(1),
+    `THETA[4]` = log(30), `THETA[5]` = log(1.2), `THETA[6]` = 0.5,
+    `ETA[1]` = 0.3
+  ), mkEv())
 })

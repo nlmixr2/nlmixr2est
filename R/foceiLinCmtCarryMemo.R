@@ -21,8 +21,10 @@
 #' (tests; a session never needs this itself)
 #' @noRd
 .foceiLinCmtCarryMemoClear <- function(files = TRUE) {
-  .keys <- setdiff(ls(envir = .carryPairsMemo, all.names = FALSE),
-                   c("hits", "misses", "fileHits"))
+  .keys <- setdiff(
+    ls(envir = .carryPairsMemo, all.names = FALSE),
+    c("hits", "misses", "fileHits")
+  )
   rm(list = .keys, envir = .carryPairsMemo)
   if (files) {
     .dir <- tryCatch(rxode2::rxTempDir(), error = function(e) NULL)
@@ -37,9 +39,11 @@
 #' results served from the persistent sidecar in rxode2's cache directory
 #' @noRd
 .foceiLinCmtCarryMemoStats <- function(reset = FALSE) {
-  .st <- c(hits = get0("hits", envir = .carryPairsMemo, ifnotfound = 0L),
-           misses = get0("misses", envir = .carryPairsMemo, ifnotfound = 0L),
-           fileHits = get0("fileHits", envir = .carryPairsMemo, ifnotfound = 0L))
+  .st <- c(
+    hits = get0("hits", envir = .carryPairsMemo, ifnotfound = 0L),
+    misses = get0("misses", envir = .carryPairsMemo, ifnotfound = 0L),
+    fileHits = get0("fileHits", envir = .carryPairsMemo, ifnotfound = 0L)
+  )
   if (reset) {
     assign("hits", 0L, envir = .carryPairsMemo)
     assign("misses", 0L, envir = .carryPairsMemo)
@@ -55,7 +59,8 @@
 #' @noRd
 .foceiLinCmtCarryCacheFile <- function(key) {
   tryCatch(file.path(rxode2::rxTempDir(), paste0("focei-carry-", key, ".rds")),
-           error = function(e) NULL)
+    error = function(e) NULL
+  )
 }
 
 #' Read the sidecar; NULL unless it exists and was written by THIS
@@ -64,9 +69,13 @@
 #' @noRd
 .foceiLinCmtCarryCacheRead <- function(key) {
   .f <- .foceiLinCmtCarryCacheFile(key)
-  if (is.null(.f) || !file.exists(.f)) return(NULL)
+  if (is.null(.f) || !file.exists(.f)) {
+    return(NULL)
+  }
   .x <- tryCatch(readRDS(.f), error = function(e) NULL)
-  if (!is.list(.x) || !identical(.x$md5, nlmixr2.md5)) return(NULL)
+  if (!is.list(.x) || !identical(.x$md5, nlmixr2.md5)) {
+    return(NULL)
+  }
   .x$pairs
 }
 
@@ -74,9 +83,12 @@
 #' @noRd
 .foceiLinCmtCarryCacheWrite <- function(key, pairs) {
   .f <- .foceiLinCmtCarryCacheFile(key)
-  if (is.null(.f)) return(invisible(NULL))
+  if (is.null(.f)) {
+    return(invisible(NULL))
+  }
   tryCatch(saveRDS(list(md5 = nlmixr2.md5, pairs = pairs), .f),
-           error = function(e) NULL)
+    error = function(e) NULL
+  )
   invisible(NULL)
 }
 
@@ -84,7 +96,9 @@
 #' sidecar (hydrating the session env on a file hit); NULL on a miss
 #' @noRd
 .foceiLinCmtCarryMemoGet <- function(key) {
-  if (is.null(key)) return(NULL)
+  if (is.null(key)) {
+    return(NULL)
+  }
   .bump <- function(ctr) {
     assign(ctr, .foceiLinCmtCarryMemoStats()[[ctr]] + 1L, envir = .carryPairsMemo)
   }
@@ -93,7 +107,9 @@
     return(get(key, envir = .carryPairsMemo, inherits = FALSE))
   }
   .cached <- .foceiLinCmtCarryCacheRead(key)
-  if (is.null(.cached)) return(NULL)
+  if (is.null(.cached)) {
+    return(NULL)
+  }
   .bump("fileHits")
   assign(key, .cached, envir = .carryPairsMemo)
   .cached
@@ -102,12 +118,17 @@
 #' Store a computed result in the session env (bounded) and the sidecar
 #' @noRd
 .foceiLinCmtCarryMemoPut <- function(key, pairs) {
-  if (is.null(key)) return(invisible(NULL))
+  if (is.null(key)) {
+    return(invisible(NULL))
+  }
   assign("misses", .foceiLinCmtCarryMemoStats()[["misses"]] + 1L,
-         envir = .carryPairsMemo)
+    envir = .carryPairsMemo
+  )
   # bound the memo (a session rarely fits more than a handful of models)
-  .keys <- setdiff(ls(envir = .carryPairsMemo, all.names = FALSE),
-                   c("hits", "misses", "fileHits"))
+  .keys <- setdiff(
+    ls(envir = .carryPairsMemo, all.names = FALSE),
+    c("hits", "misses", "fileHits")
+  )
   if (length(.keys) >= 64L) {
     rm(list = .keys, envir = .carryPairsMemo)
   }

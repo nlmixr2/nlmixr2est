@@ -32,7 +32,9 @@
 #' @noRd
 .rxCarryFindLinCmtB <- function(expr, acc = list()) {
   .nm <- tryCatch(symengine::get_name(expr), error = function(e) "")
-  if (identical(.nm, "linCmtB")) return(c(acc, list(expr)))
+  if (identical(.nm, "linCmtB")) {
+    return(c(acc, list(expr)))
+  }
   .a <- tryCatch(symengine::get_args(expr), error = function(e) NULL)
   if (!is.null(.a)) {
     for (.i in seq_along(.a)) acc <- .rxCarryFindLinCmtB(.a[[.i]], acc)
@@ -47,15 +49,23 @@
 #'   rx_pred_ does not contain exactly one structural call
 #' @noRd
 .rxCarryFactorPred <- function(s) {
-  if (!exists("rx_pred_", envir = s, inherits = FALSE)) return(NULL)
+  if (!exists("rx_pred_", envir = s, inherits = FALSE)) {
+    return(NULL)
+  }
   .pred <- get("rx_pred_", envir = s, inherits = FALSE)
   .calls <- .rxCarryFindLinCmtB(.pred)
-  if (length(.calls) != 1L) return(NULL)
+  if (length(.calls) != 1L) {
+    return(NULL)
+  }
   .args <- symengine::get_args(.calls[[1]])
-  if (length(.args) != 15L) return(NULL)
+  if (length(.args) != 15L) {
+    return(NULL)
+  }
   # the structural (value) call has which1 = which2 = -1
   .w <- suppressWarnings(as.numeric(c(paste(.args[[6]]), paste(.args[[7]]))))
-  if (any(is.na(.w)) || any(.w != -1)) return(NULL)
+  if (any(is.na(.w)) || any(.w != -1)) {
+    return(NULL)
+  }
   .outer <- symengine::subs(.pred, .calls[[1]], symengine::S("rx_lcConc_"))
   list(call = .calls[[1]], args = .args, outer = .outer)
 }
@@ -78,7 +88,9 @@
   .ui <- x[[1]]
   .empty <- .rxFoceiCarryEmpty() # nolint: object_usage_linter.
   .allCovs <- .ui$allCovs
-  if (length(.allCovs) == 0L) return(.empty)
+  if (length(.allCovs) == 0L) {
+    return(.empty)
+  }
   .slotExpr <- lapply(1:7, function(k) fp$args[[k + 8L]])
   .slotFree <- lapply(.slotExpr, .rxFoceiCarryFreeSyms) # nolint: object_usage_linter.
   .mods <- .rxFoceiCarryEventMods(.ui, s, thetaVars) # nolint: object_usage_linter.
@@ -92,9 +104,11 @@
     .hasSlot <- length(.slot) > 0L
     .why <- .rxFoceiCarryWhy(if (.hasSlot) .slot else NULL, .jump, .mods, .slotFree, .allCovs) # nolint: object_usage_linter.
     if (length(.why) == 0L) next
-    .ret <- rbind(.ret, .rxFoceiCarryPairRow(.th, .rxCarryThetaName(.ui, .k), # nolint: object_usage_linter.
-                                             if (.hasSlot) .slot else NULL,
-                                             .jump, .mods, .why, NA, render))
+    .ret <- rbind(.ret, .rxFoceiCarryPairRow(
+      .th, .rxCarryThetaName(.ui, .k), # nolint: object_usage_linter.
+      if (.hasSlot) .slot else NULL,
+      .jump, .mods, .why, NA, render
+    ))
   }
   .ret
 }
@@ -115,9 +129,13 @@
 #' @noRd
 .rxCarryThetaPairsForBuild <- function(x, s, thetaVars) {
   .fp <- .rxCarryThetaModelOk(x[[1]], s)
-  if (is.null(.fp)) return(NULL)
+  if (is.null(.fp)) {
+    return(NULL)
+  }
   .pairs <- .rxCarryThetaDetect(x, s, thetaVars, .fp)
-  if (is.null(.pairs)) return(NULL)
+  if (is.null(.pairs)) {
+    return(NULL)
+  }
   .rxFoceiLinCmtCarryCheckCap(.pairs) # nolint: object_usage_linter.
   list(pairs = .pairs, fp = .fp)
 }
@@ -125,15 +143,23 @@
 #' The factored call when the model/control can carry at all, else NULL
 #' @noRd
 .rxCarryThetaModelOk <- function(ui, s) {
-  if (!.rxFoceiLinCmtCarryBuildEnabled(ui)) return(NULL) # nolint: object_usage_linter.
-  if (rxode2::.rxLinNcmt(ui)["numLin"] <= 0L) return(NULL)
+  if (!.rxFoceiLinCmtCarryBuildEnabled(ui)) {
+    return(NULL)
+  } # nolint: object_usage_linter.
+  if (rxode2::.rxLinNcmt(ui)["numLin"] <= 0L) {
+    return(NULL)
+  }
   # the once-per-row stepping is only validated for pure linCmt() models
-  if (length(.rxode2stateOdeNoOutput(s)) > 0L) return(NULL)
+  if (length(.rxode2stateOdeNoOutput(s)) > 0L) {
+    return(NULL)
+  }
   .fp <- .rxCarryFactorPred(s)
-  if (is.null(.fp)) return(NULL)
+  if (is.null(.fp)) {
+    return(NULL)
+  }
   .sh <- .rxCarryCallShape(.fp)
   if (any(is.na(unlist(.sh))) ||
-        is.null(.rxFoceiCarryMicro(.sh$ncmt, .sh$oral0, .sh$trans))) { # nolint: object_usage_linter.
+    is.null(.rxFoceiCarryMicro(.sh$ncmt, .sh$oral0, .sh$trans))) { # nolint: object_usage_linter.
     return(NULL)
   }
   .fp
@@ -143,17 +169,23 @@
 #' @noRd
 .rxCarryThetaDetect <- function(x, s, thetaVars, fp) {
   .pairs <- tryCatch(.rxCarryThetaEligible(x, s, thetaVars, fp, render = FALSE),
-                     error = function(e) {
-                       warning("linCmt() theta carry detection failed; standard gradient used",
-                               call. = FALSE)
-                       NULL
-                     })
-  if (is.null(.pairs) || nrow(.pairs) == 0L) return(NULL)
+    error = function(e) {
+      warning("linCmt() theta carry detection failed; standard gradient used",
+        call. = FALSE
+      )
+      NULL
+    }
+  )
+  if (is.null(.pairs) || nrow(.pairs) == 0L) {
+    return(NULL)
+  }
   # slot channels only: a theta on f()/alag() is a dosing parameter the nlm
   # family already routes through its own eventSens machinery
   # (rxUiGet.nlmEnv's eventTheta), and that interaction is unvalidated
   .pairs <- .pairs[is.na(.pairs$fD) & is.na(.pairs$lagD), , drop = FALSE]
-  if (nrow(.pairs) == 0L) return(NULL)
+  if (nrow(.pairs) == 0L) {
+    return(NULL)
+  }
   .pairs
 }
 
@@ -175,8 +207,9 @@
   # `tmp=`; make it an intermediate and point its direct term at the
   # factored concentration rather than at rx_pred_
   .lines[.i] <- gsub("rx_pred_", "rx_lcConc_",
-                     sub(paste0("^", .tmp, "="), paste0(.tmp, "~"), .lines[.i]),
-                     fixed = TRUE)
+    sub(paste0("^", .tmp, "="), paste0(.tmp, "~"), .lines[.i]),
+    fixed = TRUE
+  )
   if (w == 1L) {
     .callRepr <- paste(fp$call)
     .lines <- c(paste0("rx_lcConc_~", rxode2::rxFromSE(.callRepr)), .lines)

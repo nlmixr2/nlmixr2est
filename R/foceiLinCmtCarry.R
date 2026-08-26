@@ -59,8 +59,10 @@
 #' Render one linCmtB() model-text call for the carry lines
 #' @noRd
 .rxFoceiLinCmtCarryCall <- function(pfx, which1, which2, trans, thetas) {
-  paste0("linCmtB(", pfx, ",", which1, ",", which2, ",", trans, ",",
-         paste(thetas, collapse = ","), ")")
+  paste0(
+    "linCmtB(", pfx, ",", which1, ",", which2, ",", trans, ",",
+    paste(thetas, collapse = ","), ")"
+  )
 }
 # (the per-model context and the final composition live in
 # foceiLinCmtCarryCompose.R)
@@ -98,27 +100,39 @@
       .j <- paste0("rx_lcCarryJ", .p, "r", .r, "_")
       .pv <- paste0("rx_lcCarryP", .p, "r", .r, "_")
       .dloc <- paste0("(", .j, "-", .pv, ")")
-      .l <- c(.l,
-              paste0(.j, "~", .rxFoceiLinCmtCarryCall(cx$pfx, .r, .kcol, cx$trans, .z7)),
-              paste0(.pv, "~", .rxFoceiLinCmtCarryCall(cx$pfx, -6L, .r + cx$m * (cx$nP + .p),
-                                                       cx$trans, .z7)))
+      .l <- c(
+        .l,
+        paste0(.j, "~", .rxFoceiLinCmtCarryCall(cx$pfx, .r, .kcol, cx$trans, .z7)),
+        paste0(.pv, "~", .rxFoceiLinCmtCarryCall(
+          cx$pfx, -6L, .r + cx$m * (cx$nP + .p),
+          cx$trans, .z7
+        ))
+      )
       .terms <- c(.terms, paste0(.g, "*", .dloc))
     }
     if (!is.na(pairs$fD[w])) {
       .terms <- c(.terms, paste0("rx_lcCarryD", .r, "_*", .f))
     }
     if (!is.na(pairs$lagD[w])) {
-      .terms <- c(.terms, paste0("rx_lcCarryKP", .r, "_*", .lg,
-                                 "*(rx_lcCarryDel_-rx_lcCarryDelP_)"))
+      .terms <- c(.terms, paste0(
+        "rx_lcCarryKP", .r, "_*", .lg,
+        "*(rx_lcCarryDel_-rx_lcCarryDelP_)"
+      ))
     }
     .z7[3] <- paste(.terms, collapse = "+") # -7's added value rides in the p2 slot
-    .l <- c(.l, paste0("rx_lcCarryS", .p, "r", .r, "_~",
-                       .rxFoceiLinCmtCarryCall(cx$pfx, -7L, .r + cx$m * .p, cx$trans, .z7)))
+    .l <- c(.l, paste0(
+      "rx_lcCarryS", .p, "r", .r, "_~",
+      .rxFoceiLinCmtCarryCall(cx$pfx, -7L, .r + cx$m * .p, cx$trans, .z7)
+    ))
     if (.hasSlot) {
       .z7[3] <- .dloc
-      .l <- c(.l, paste0("rx_lcCarryU", .p, "r", .r, "_~",
-                         .rxFoceiLinCmtCarryCall(cx$pfx, -7L, .r + cx$m * (cx$nP + .p),
-                                                 cx$trans, .z7)))
+      .l <- c(.l, paste0(
+        "rx_lcCarryU", .p, "r", .r, "_~",
+        .rxFoceiLinCmtCarryCall(
+          cx$pfx, -7L, .r + cx$m * (cx$nP + .p),
+          cx$trans, .z7
+        )
+      ))
     }
   }
   .l

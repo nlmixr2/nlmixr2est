@@ -20,14 +20,18 @@ test_that("theta-side carry through a real est='nlm' fit (#1003)", {
   ui0 <- suppressMessages(nlmixr2est::nlmixr2(modTheta))
   sim <- rxode2::rxSolve(ui0, d, returnType = "data.frame", covsInterpolation = "nocb")
   d$dv <- ifelse(d$evid == 0,
-                 sim$cp[match(paste(d$id, d$time), paste(sim$id, sim$time))] +
-                   rnorm(nrow(d), 0, 0.3), 0)
+    sim$cp[match(paste(d$id, d$time), paste(sim$id, sim$time))] +
+      rnorm(nrow(d), 0, 0.3), 0
+  )
   fitWith <- function(carry) {
     u <- rxode2::.copyUi(ui0)
     assign("control",
-           nlmixr2est::nlmControl(print = 0, linCmtSensCarry = carry,
-                                  rxControl = rxode2::rxControl(covsInterpolation = "nocb")),
-           envir = u)
+      nlmixr2est::nlmControl(
+        print = 0, linCmtSensCarry = carry,
+        rxControl = rxode2::rxControl(covsInterpolation = "nocb")
+      ),
+      envir = u
+    )
     suppressMessages(nlmixr2est::nlmixr2(u, d, est = "nlm"))
   }
   fitC <- fitWith("auto")
@@ -44,9 +48,11 @@ test_that("theta-side carry through a real est='nlm' fit (#1003)", {
   obs <- d[d$evid == 0, ]
   surf <- function(ui, useLin) {
     p <- c(tcl = th[["tcl"]], tv = th[["tv"]])
-    s <- rxode2::rxSolve(ui, params = p, events = d, returnType = "data.frame",
-                         covsInterpolation = "nocb", useLinCmt = useLin,
-                         atol = 1e-10, rtol = 1e-10)
+    s <- rxode2::rxSolve(ui,
+      params = p, events = d, returnType = "data.frame",
+      covsInterpolation = "nocb", useLinCmt = useLin,
+      atol = 1e-10, rtol = 1e-10
+    )
     f <- s$cp[match(paste(obs$id, obs$time), paste(s$id, s$time))]
     -2 * sum(dnorm(obs$dv, f, abs(th[["add.sd"]]), log = TRUE))
   }
@@ -55,9 +61,12 @@ test_that("theta-side carry through a real est='nlm' fit (#1003)", {
   # mechanism at the fit's own control: the built gradient model carries
   u <- rxode2::.copyUi(ui0)
   assign("control",
-         nlmixr2est::nlmControl(print = 0, linCmtSensCarry = "auto",
-                                rxControl = rxode2::rxControl(covsInterpolation = "nocb")),
-         envir = u)
+    nlmixr2est::nlmControl(
+      print = 0, linCmtSensCarry = "auto",
+      rxControl = rxode2::rxControl(covsInterpolation = "nocb")
+    ),
+    envir = u
+  )
   e <- suppressMessages(u$nlmEnv)
   expect_true(any(grepl("rx_lcConc_~linCmtB", strsplit(e$..nlmS, "\n")[[1]])))
 
@@ -66,15 +75,20 @@ test_that("theta-side carry through a real est='nlm' fit (#1003)", {
   scoreErr <- function(carry) {
     u2 <- rxode2::.copyUi(ui0)
     assign("control",
-           nlmixr2est::nlmControl(print = 0, linCmtSensCarry = carry,
-                                  rxControl = rxode2::rxControl(covsInterpolation = "nocb")),
-           envir = u2)
+      nlmixr2est::nlmControl(
+        print = 0, linCmtSensCarry = carry,
+        rxControl = rxode2::rxControl(covsInterpolation = "nocb")
+      ),
+      envir = u2
+    )
     e2 <- suppressMessages(u2$nlmEnv)
     m <- suppressWarnings(rxode2::rxode2(e2$..nlmS))
     pars <- c(`THETA[1]` = th[["tcl"]], `THETA[2]` = th[["tv"]], `THETA[3]` = th[["add.sd"]])
     slv <- function(q) {
-      rxode2::rxSolve(m, params = q, events = d, returnType = "data.frame",
-                      covsInterpolation = "nocb")
+      rxode2::rxSolve(m,
+        params = q, events = d, returnType = "data.frame",
+        covsInterpolation = "nocb"
+      )
     }
     r0 <- slv(pars)
     h <- 1e-5
