@@ -53,7 +53,7 @@ nmTest({
     expect_equal(.nAssign("add.sd"), 1L)
   })
 
-  test_that("a mu-referenced parameter keeps both the combined and split form", {
+  test_that("a mu-referenced parameter keeps combined and split form", {
     expect_equal(.nAssign("tka"), 2L)
     expect_true(any(grepl("^tka=THETA\\[1\\]\\+ETA\\[1\\];?$", .lines)))
     expect_true(any(grepl("^tka=THETA\\[1\\];?$", .lines)))
@@ -71,9 +71,9 @@ nmTest({
     .thetaEta <- vapply(.uiGetThetaEta(.ui), deparse1, character(1),
                         USE.NAMES=FALSE)
     .split <- max(which(!grepl("^(cmt|dvid)\\(", .lines)))
-    .dup <- suppressMessages(rxode2::rxode2(paste(
-      c(.lines[seq_len(.split)], .thetaEta, .lines[-seq_len(.split)]),
-      collapse="\n")))
+    .withDup <- c(.lines[seq_len(.split)], .thetaEta,
+                  .lines[-seq_len(.split)])
+    .dup <- suppressMessages(rxode2::rxode2(paste(.withDup, collapse="\n")))
     # the solve column layout must not shift
     expect_equal(.pred$params, .dup$params)
     expect_equal(.pred$lhs, .dup$lhs)
