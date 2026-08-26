@@ -73,6 +73,10 @@ nmTest({
     # d/dt(depot) and f(depot) are not assignments to the name `depot`
     expect_equal(.lhsAssignedIn(.body, c("depot", "cp", "ka")),
                  c(FALSE, FALSE, FALSE))
+    # a comparison is not an assignment to its left operand
+    expect_false(.lhsAssignedIn(c("tv == 1", "tv==1"), "tv"))
+    # ... but a comparison on the rhs of a real assignment still counts
+    expect_true(.lhsAssignedIn("cl=exp(tcl)*(WT==70)", "cl"))
   })
 
   test_that("an alias the model body overwrites is kept", {

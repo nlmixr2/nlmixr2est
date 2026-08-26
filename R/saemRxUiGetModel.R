@@ -588,11 +588,12 @@ attr(rxUiGet.interpLinesStr, "rstudio") <- ""
 #' @param names Character vector of variable names to look for
 #' @return Logical, one per `names`: TRUE when the text assigns (`=`, `<-` or
 #'   `~`) to that plain name.  A non-name target such as `d/dt(x)` or `f(x)`
-#'   never counts.
+#'   never counts, and `=(?!=)` keeps a comparison (`x == 1`) from reading as
+#'   an assignment to `x`.
 #' @author Matthew L. Fidler
 #' @noRd
 .lhsAssignedIn <- function(modelText, names) {
-  .lhs <- trimws(sub("[ \t]*(<-|=|~).*$", "", modelText))
+  .lhs <- trimws(sub("[ \t]*(<-|~|=(?!=)).*$", "", modelText, perl=TRUE))
   names %in% .lhs[grepl("^[A-Za-z._][A-Za-z0-9._]*$", .lhs)]
 }
 
