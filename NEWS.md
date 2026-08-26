@@ -2,6 +2,14 @@
 
 ## Internal
 
+- `getBaseSimModelFit()` for the focei family (`focei`, `foce`, `focep`, `fo`,
+  `foi`, `posthoc`) no longer does three times the work for the same answer.
+  The method built a `predOnly`-based simulation model expression and then
+  discarded it, and called `getBaseSimModelFit.default()` twice -- once with
+  the result thrown away -- so lowering a focei fit to a simulation model
+  lowered it three times, one of those through a `rxNorm()` of the focei
+  `predOnly` model.  These methods are now aliases of the default, which is
+  what they already amounted to.
 - `rxode2::rxSolve()` on a fit no longer re-derives the model on every call
   (nlmixr2/rxode2#1289).  Each call used to lower the fit to an rxode2
   simulation model *and* re-run the pre-process hooks to build `$simInfo`;
