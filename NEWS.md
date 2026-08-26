@@ -2,6 +2,12 @@
 
 ## Internal
 
+- The SAEM `predOnly` model (used for residuals, tables and the covariance
+  step) no longer emits a THETA/ETA alias assignment that exactly duplicates
+  one the mu-reference replacement block already emitted.  These were trailing
+  dead stores that rxode2 repeated in both `dydt` and `calc_lhs`; the emitted
+  model, its solve column layout, and every value it produces are unchanged.
+
 - A covariate whose value is carried on the model in `rxode2::rxForcedPars()` is
   no longer required to be a column of the data.  Such a covariate is supplied
   by the model itself, so demanding it from the data rejected a well-specified
