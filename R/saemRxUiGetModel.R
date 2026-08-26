@@ -582,6 +582,20 @@ attr(rxUiGet.interpLinesStr, "rstudio") <- ""
   }, character(1), USE.NAMES=FALSE)
 }
 
+#' Which of `names` does this model text assign to?
+#'
+#' @param modelText Character vector of rxode2 model lines
+#' @param names Character vector of variable names to look for
+#' @return Logical, one per `names`: TRUE when the text assigns (`=`, `<-` or
+#'   `~`) to that plain name.  A non-name target such as `d/dt(x)` or `f(x)`
+#'   never counts.
+#' @author Matthew L. Fidler
+#' @noRd
+.lhsAssignedIn <- function(modelText, names) {
+  .lhs <- trimws(sub("[ \t]*(<-|=|~).*$", "", modelText))
+  names %in% .lhs[grepl("^[A-Za-z._][A-Za-z0-9._]*$", .lhs)]
+}
+
 #' @export
 rxUiGet.saemModelPred <- function(x, ...) {
   .ui0 <- x[[1]]
@@ -670,15 +684,20 @@ rxUiGet.saemModelPred <- function(x, ...) {
   .interp <- rxUiGet.interpLinesStr(x, ...)
   ## The mu-reference replacement block and the trailing THETA/ETA alias block
   ## can emit the same `lhs <- rhs` twice; codegen then repeats it in dydt and
-  ## calc_lhs as a dead store.  Drop an alias line only when it is an exact
-  ## duplicate (same lhs AND same rhs, after parse/deparse normalization) of a
-  ## replacement line -- a mu-referenced `lhs <- THETA[k] + ETA[j]` and the
-  ## split `lhs <- THETA[k]` are not duplicates and both survive, so the model
-  ## the solver sees is unchanged.
+  ## calc_lhs as a dead store.  Drop an alias line when it is an exact duplicate
+  ## (same lhs AND same rhs, after parse/deparse normalization) of a replacement
+  ## line AND the model body does not assign that lhs.  A mu-referenced
+  ## `lhs <- THETA[k] + ETA[j]` and the split `lhs <- THETA[k]` are not
+  ## duplicates, so both survive.  The body check matters because a model may
+  ## legally write to a parameter's own name (`tv <- tv + 1`): there the trailing
+  ## alias is what puts THETA[k] back into that output column, so it is a live
+  ## store, not a dead one.
   .replaceLines <- paste(names(.replaceLst), "<-", .replaceLst)
   .thetaEtaLines <- vapply(.uiGetThetaEta(x[[1]]), deparse1, character(1), USE.NAMES=FALSE)
-  .thetaEtaLines <- .thetaEtaLines[!(.normAssign(.thetaEtaLines) %in%
-                                       .normAssign(.replaceLines))]
+  .dupAlias <- .normAssign(.thetaEtaLines) %in% .normAssign(.replaceLines)
+  .aliasLhs <- sub("[ \t]*(<-|=|~).*$", "", .thetaEtaLines)
+  .thetaEtaLines <-
+    .thetaEtaLines[!(.dupAlias & !.lhsAssignedIn(strsplit(.ret, "\n")[[1]], .aliasLhs))]
   ## as in rxUiGet.saemModel(), splitBolus() is left out: the events this model
   ## solves have already been split
   .ret <- c(rxUiGet.foceiParams(x, ...),

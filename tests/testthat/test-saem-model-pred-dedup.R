@@ -65,6 +65,54 @@ nmTest({
     expect_equal(.nAssign("eta.cl"), 1L)
   })
 
+  test_that(".lhsAssignedIn() sees plain-name targets only", {
+    .body <- c("rx_expr__0~1+tv", "tv=rx_expr__0", "d/dt(depot)=-ka*depot",
+               "f(depot)=1", "cmt(cp)", "  add.sd <- 2")
+    expect_equal(.lhsAssignedIn(.body, c("tv", "rx_expr__0", "add.sd")),
+                 c(TRUE, TRUE, TRUE))
+    # d/dt(depot) and f(depot) are not assignments to the name `depot`
+    expect_equal(.lhsAssignedIn(.body, c("depot", "cp", "ka")),
+                 c(FALSE, FALSE, FALSE))
+  })
+
+  test_that("an alias the model body overwrites is kept", {
+    # a model may legally write to a parameter's own name.  Both blocks then
+    # emit an identical `tv <- THETA[3]`, but the body reassigns tv between
+    # them, so the trailing alias is a LIVE store -- it is what puts THETA[3]
+    # back into the reported tv column.  Dropping it would silently report
+    # THETA[3] + 1 instead.
+    .reassign <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        eta.ka ~ 0.6
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        tv <- tv + 1
+        cl <- exp(tcl)
+        v <- exp(tv)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .p2 <- suppressMessages(rxUiGet.saemModelPred(list(.reassign()))$predOnly)
+    .l2 <- strsplit(rxode2::rxNorm(.p2), "\n")[[1]]
+    expect_equal(sum(grepl("^tv[=~]", .l2)), 3L)
+    # tcl and add.sd are NOT touched by the body, so they still de-duplicate
+    expect_equal(sum(grepl("^tcl[=~]", .l2)), 1L)
+    expect_equal(sum(grepl("^add\\.sd[=~]", .l2)), 1L)
+    .p <- c("THETA[1]"=0.45, "THETA[2]"=1, "THETA[3]"=3.45, "THETA[4]"=0.7,
+            "ETA[1]"=0.2)
+    .et <- rxode2::et(amt=320)
+    .et <- rxode2::et(.et, seq(0, 24, by=6))
+    .s <- rxode2::rxSolve(.p2, .p, .et, returnType="data.frame",
+                          addDosing=FALSE)
+    # the parameter's own value, not the body's tv + 1
+    expect_equal(unique(.s$tv), 3.45)
+  })
+
   test_that("the dropped aliases were dead stores", {
     # rebuild the pre-de-duplication model: the full THETA/ETA alias block
     # re-appended after the model body, ahead of the trailing cmt()/dvid()
