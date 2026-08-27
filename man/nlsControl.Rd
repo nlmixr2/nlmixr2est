@@ -47,6 +47,7 @@ nlsControl(
   returnNls = FALSE,
   addProp = c("combined2", "combined1"),
   eventSens = c("jump", "fd"),
+  linCmtSensCarry = c("auto", "none"),
   calcTables = TRUE,
   compress = TRUE,
   adjObf = TRUE,
@@ -279,6 +280,12 @@ lagged/scaled compartment (rxode2/rxode2#1236), or if the regimen also
 doses an *unlagged/unscaled* compartment alongside the lagged/scaled one
 -- a common design for estimating `f()` from paired IV+oral data
 (rxode2/rxode2#1237).}
+
+\item{linCmtSensCarry}{`"auto"` (default) substitutes the exact
+sensitivity-carry gradient for a `linCmt()` parameter driven by both an
+eta and a time-varying covariate (needs an rxode2 with the carry
+sentinels; silently keeps the standard gradient otherwise); `"none"`
+always keeps the standard gradient.}
 
 \item{calcTables}{This boolean is to determine if the foceiFit
 will calculate tables. By default this is \code{TRUE}}

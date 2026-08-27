@@ -1,33 +1,35 @@
-.foceiControlInternal <- c("genRxControl", "resetEtaSize", "foceType",
-                           "resetThetaSize", "resetThetaFinalSize",
-                           "outerOptFun", "outerOptTxt", "skipCov",
-                           "foceiMuRef", "foceiMuCovEta", "predNeq", "nfixed", "nomega",
-                           "neta", "ntheta", "nF", "printTop", "needOptimHess",
-                           "iterPrintControl", "est", "foceiMuModel", "foceiMuGroupTheta",
-                           "foceiMuGroupEta", "foceiMuGroupCovStart", "foceiMuGroupCovCount",
-                           "foceiMuGroupCovTheta", "foceiMuGroupCovUserFixed",
-                           "foceiMuGroupThetaLower", "foceiMuGroupThetaUpper",
-                           "foceiMuGroupCovLower", "foceiMuGroupCovUpper",
-                           "foceiMuGroupCovData", "foceiMuGroupTol",
-                           "foceiMuGroupMaxCycles", "foceiMuGroupClampRetries",
-                           # derived from covMethod ("analytic" vs the finite-difference
-                           # formulas); kept internal so a built control round-trips.
-                           "covType",
-                           # foreign covariance ("sa"/"imp") deferred to a post-fit
-                           # recompute; internal so a built control round-trips.
-                           "covMethodDeferred",
-                           # subject-constant covariates stashed by .foceiFamilyReturn
-                           # for the analytic covariate-coefficient reuse; internal so
-                           # a built control round-trips (e.g. posthoc re-validation).
-                           "foceiConstCovs",
-                           # TRUE when the outer optimizer was defaulted (not user
-                           # specified); lets *f wrappers re-default under fast=TRUE
-                           "outerOptDefault",
-                           # the built rx_prior_spec_t* external pointer
-                           # (.nlmixr2BuildPriorSpec(), R/priors.R); not a formal
-                           # argument, not deparseable/comparable, and rebuilt fresh
-                           # every fit -- internal so a built control round-trips.
-                           "priorSpec")
+.foceiControlInternal <- c(
+  "genRxControl", "resetEtaSize", "foceType",
+  "resetThetaSize", "resetThetaFinalSize",
+  "outerOptFun", "outerOptTxt", "skipCov",
+  "foceiMuRef", "foceiMuCovEta", "predNeq", "nfixed", "nomega",
+  "neta", "ntheta", "nF", "printTop", "needOptimHess",
+  "iterPrintControl", "est", "foceiMuModel", "foceiMuGroupTheta",
+  "foceiMuGroupEta", "foceiMuGroupCovStart", "foceiMuGroupCovCount",
+  "foceiMuGroupCovTheta", "foceiMuGroupCovUserFixed",
+  "foceiMuGroupThetaLower", "foceiMuGroupThetaUpper",
+  "foceiMuGroupCovLower", "foceiMuGroupCovUpper",
+  "foceiMuGroupCovData", "foceiMuGroupTol",
+  "foceiMuGroupMaxCycles", "foceiMuGroupClampRetries",
+  # derived from covMethod ("analytic" vs the finite-difference
+  # formulas); kept internal so a built control round-trips.
+  "covType",
+  # foreign covariance ("sa"/"imp") deferred to a post-fit
+  # recompute; internal so a built control round-trips.
+  "covMethodDeferred",
+  # subject-constant covariates stashed by .foceiFamilyReturn
+  # for the analytic covariate-coefficient reuse; internal so
+  # a built control round-trips (e.g. posthoc re-validation).
+  "foceiConstCovs",
+  # TRUE when the outer optimizer was defaulted (not user
+  # specified); lets *f wrappers re-default under fast=TRUE
+  "outerOptDefault",
+  # the built rx_prior_spec_t* external pointer
+  # (.nlmixr2BuildPriorSpec(), R/priors.R); not a formal
+  # argument, not deparseable/comparable, and rebuilt fresh
+  # every fit -- internal so a built control round-trips.
+  "priorSpec"
+)
 
 #' Control Options for FOCEi
 #'
@@ -872,6 +874,12 @@
 #'   `"forward"` uses the classic variational (forward) sensitivity ODEs;
 #'   `"default"` is the same thing.
 #'
+#' @param linCmtSensCarry `"auto"` (default) substitutes the exact
+#'   sensitivity-carry gradient for a `linCmt()` parameter driven by both an
+#'   eta and a time-varying covariate (needs an rxode2 with the carry
+#'   sentinels; silently keeps the standard gradient otherwise); `"none"`
+#'   always keeps the standard gradient.
+#'
 #' @inheritParams rxode2::rxSolve
 #' @inheritParams minqa::bobyqa
 #'
@@ -941,13 +949,13 @@ foceiControl <- function(sigdig = 3, #
                          fdIndividualStep = TRUE, #
                          fdChartrand = TRUE, #
                          # norm of weights = 1/0.225
-                         #hessEps = (1/0.225*.Machine$double.eps)^(1 / 4), #
+                         # hessEps = (1/0.225*.Machine$double.eps)^(1 / 4), #
                          foceEbeTol = NULL, #
-                         hessEps =(.Machine$double.eps)^(1/3),
-                         #hessEpsLlik =(1/0.225*.Machine$double.eps)^(1/4),
-                         hessEpsLlik =(.Machine$double.eps)^(1/3),
+                         hessEps = (.Machine$double.eps)^(1 / 3),
+                         # hessEpsLlik =(1/0.225*.Machine$double.eps)^(1/4),
+                         hessEpsLlik = (.Machine$double.eps)^(1 / 3),
                          optimHessType = c("central", "forward"),
-                         optimHessCovType=c("central", "forward"),
+                         optimHessCovType = c("central", "forward"),
                          censOption = c("gauss", "laplace"),
                          eventType = c("central", "forward"), #
                          eventSens = c("jump", "fd"), #
@@ -959,13 +967,13 @@ foceiControl <- function(sigdig = 3, #
                          diagXform = c("sqrt", "log", "identity"), #
                          iovXform = c("sd", "var", "logsd", "logvar"), #
                          sumProd = FALSE, #
-                         optExpression = TRUE,#
-                         literalFix=TRUE,
-                         literalFixRes=TRUE,
+                         optExpression = TRUE, #
+                         literalFix = TRUE,
+                         literalFixRes = TRUE,
                          ci = 0.95, #
                          useColor = NULL, #
                          boundTol = NULL, #
-                         calcTables = TRUE,#
+                         calcTables = TRUE, #
                          noAbort = TRUE, #
                          interaction = TRUE, #
                          foce = c("nonmem", "foce+"), #
@@ -988,15 +996,17 @@ foceiControl <- function(sigdig = 3, #
                          cholSECov = FALSE, #
                          fo = FALSE, #
                          covTryHarder = FALSE, #
-                         outerOpt = c("bobyqa",
-                                      "nlminb",
-                                      "lbfgsb3c",
-                                      "L-BFGS-B",
-                                      "mma",
-                                      "lbfgsbLG",
-                                      "slsqp",
-                                      "uobyqa",
-                                      "newuoa"), #
+                         outerOpt = c(
+                           "bobyqa",
+                           "nlminb",
+                           "lbfgsb3c",
+                           "L-BFGS-B",
+                           "mma",
+                           "lbfgsbLG",
+                           "slsqp",
+                           "uobyqa",
+                           "newuoa"
+                         ), #
                          innerOpt = c("trust", "n1qn1", "BFGS"), #
                          hessianMethod = c("fd", "bfgs", "sr1", "bofill"), #
                          ## trust-region inner optimizer (RcppTrust)
@@ -1025,25 +1035,25 @@ foceiControl <- function(sigdig = 3, #
                          stateTrim = Inf, #
                          shi21maxOuter = 0L,
                          shi21maxInner = 20L,
-                         shi21maxInnerCov =20L,
-                         shi21maxFD=20L,
-                         shi21hMax=2.0,
-                         shi21hMin=1e-4,
+                         shi21maxInnerCov = 20L,
+                         shi21maxFD = 20L,
+                         shi21hMax = 2.0,
+                         shi21hMin = 1e-4,
                          gillK = 10L, #
                          gillStep = 4, #
                          gillFtol = 0, #
                          gillRtol = sqrt(.Machine$double.eps), #
                          gillKcov = 10L, #
-                         #gillKcovLlik = 20L,
+                         # gillKcovLlik = 20L,
                          gillKcovLlik = 10L,
                          gillStepCovLlik = 4.5,
-                         #gillStepCovLlik = 2,
+                         # gillStepCovLlik = 2,
                          gillStepCov = 2, #
                          gillFtolCov = 0, #
                          gillFtolCovLlik = 0, #
                          rmatNorm = TRUE, #
-                         #rmatNormLlik= FALSE, #
-                         rmatNormLlik= TRUE, #
+                         # rmatNormLlik= FALSE, #
+                         rmatNormLlik = TRUE, #
                          smatNorm = TRUE, #
                          ## smatNormLlik = FALSE,
                          smatNormLlik = TRUE,
@@ -1056,13 +1066,13 @@ foceiControl <- function(sigdig = 3, #
                          odeRecalcFactor = 10^(0.5), #
                          gradCalcCentralSmall = 1e-4, #
                          gradCalcCentralLarge = 1e4, #
-                         etaNudge = qnorm(1-0.05/2)/sqrt(3), #
-                         etaNudge2=qnorm(1-0.05/2) * sqrt(3/5), #
+                         etaNudge = qnorm(1 - 0.05 / 2) / sqrt(3), #
+                         etaNudge2 = qnorm(1 - 0.05 / 2) * sqrt(3 / 5), #
                          nRetries = 3, #
                          seed = 42, #
                          resetThetaCheckPer = 0.1, #
                          etaMat = NULL, #
-                         repeatGillMax = 1,#
+                         repeatGillMax = 1, #
                          stickyRecalcN = 4, #
                          outerMaxOdeRecalc = 5, #
                          outerOdeRecalcFactor = 10^(0.5), #
@@ -1070,28 +1080,30 @@ foceiControl <- function(sigdig = 3, #
                          indTolRelax = TRUE, #
                          gradProgressOfvTime = 10, #
                          addProp = c("combined2", "combined1"),
-                         badSolveObjfAdj=100, #
-                         compress=FALSE, #
-                         rxControl=NULL,
-                         sigdigTable=NULL,
-                         fallbackFD=FALSE,
-                         smatPer=0.6,
-                         sdLowerFact=0.001,
-                         zeroGradFirstReset=TRUE,
-                         zeroGradRunReset=TRUE,
-                         zeroGradBobyqa=TRUE,
-                         mceta=-2L,
-                         warm=c("calc", "save"),
-                         nAGQ=0,
-                         agqLow=-Inf,
-                         agqHi=Inf,
+                         badSolveObjfAdj = 100, #
+                         compress = FALSE, #
+                         rxControl = NULL,
+                         sigdigTable = NULL,
+                         fallbackFD = FALSE,
+                         smatPer = 0.6,
+                         sdLowerFact = 0.001,
+                         zeroGradFirstReset = TRUE,
+                         zeroGradRunReset = TRUE,
+                         zeroGradBobyqa = TRUE,
+                         mceta = -2L,
+                         warm = c("calc", "save"),
+                         nAGQ = 0,
+                         agqLow = -Inf,
+                         agqHi = Inf,
                          sensMethod = c("default", "forward"),
-                         zeroTheta=0.001,
-                         boundedTransform=TRUE) { #
+                         linCmtSensCarry = c("auto", "none"),
+                         zeroTheta = 0.001,
+                         boundedTransform = TRUE) { #
   ## sensMethod: forward (variational) ODE parameter sensitivities.
   sensMethod <- match.arg(sensMethod)
+  linCmtSensCarry <- match.arg(linCmtSensCarry)
   if (!is.null(sigdig)) {
-    checkmate::assertNumeric(sigdig, lower=1, finite=TRUE, any.missing=TRUE, len=1)
+    checkmate::assertNumeric(sigdig, lower = 1, finite = TRUE, any.missing = TRUE, len = 1)
     if (is.null(boundTol)) {
       boundTol <- 5 * 10^(-sigdig + 1)
     }
@@ -1156,107 +1168,112 @@ foceiControl <- function(sigdig = 3, #
       sigdigTable <- sigdig
     }
   } else {
-    checkmate::assertNumeric(sigdigTable, lower=1, finite=TRUE, any.missing=TRUE, len=1)
+    checkmate::assertNumeric(sigdigTable, lower = 1, finite = TRUE, any.missing = TRUE, len = 1)
   }
 
-  checkmate::assertNumeric(epsilon, lower=0, finite=TRUE, any.missing=FALSE, len=1)
-  checkmate::assertIntegerish(maxInnerIterations, lower=0, any.missing=FALSE, len=1)
-  checkmate::assertIntegerish(maxInnerIterations, lower=0, any.missing=FALSE, len=1)
-  checkmate::assertIntegerish(maxOuterIterations, lower=0, any.missing=FALSE, len=1)
+  checkmate::assertNumeric(epsilon, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
+  checkmate::assertIntegerish(maxInnerIterations, lower = 0, any.missing = FALSE, len = 1)
+  checkmate::assertIntegerish(maxInnerIterations, lower = 0, any.missing = FALSE, len = 1)
+  checkmate::assertIntegerish(maxOuterIterations, lower = 0, any.missing = FALSE, len = 1)
 
-  checkmate::assertNumeric(sdLowerFact, lower=0, finite=TRUE, upper=0.1, any.missing=FALSE, len=1)
+  checkmate::assertNumeric(sdLowerFact, lower = 0, finite = TRUE, upper = 0.1, any.missing = FALSE, len = 1)
 
   if (is.null(n1qn1nsim)) {
     n1qn1nsim <- 10 * maxInnerIterations + 1
   }
-  checkmate::assertIntegerish(n1qn1nsim, len=1, lower=1, any.missing=FALSE)
+  checkmate::assertIntegerish(n1qn1nsim, len = 1, lower = 1, any.missing = FALSE)
   # Print args are absorbed/validated by iterPrintControl(); `iterPrintControl`
   # picked up from `...` handles the round-trip via do.call(foceiControl, .ctl).
-  .iterPrintControl <- .absorbIterPrintControl(print = print,
-                                               printNcol = printNcol,
-                                               useColor = useColor,
-                                               iterPrintControl = list(...)$iterPrintControl)
-  checkmate::assertNumeric(scaleTo, len=1, lower=0, any.missing=FALSE)
-  checkmate::assertNumeric(scaleObjective, len=1, lower=0, any.missing=FALSE)
-  checkmate::assertNumeric(scaleCmax, lower=0, any.missing=FALSE, len=1)
-  checkmate::assertNumeric(scaleCmin, lower=0, any.missing=FALSE, len=1)
-  checkmate::assertNumeric(scaleCband, lower=0, finite=TRUE, any.missing=FALSE, len=2)
+  .iterPrintControl <- .absorbIterPrintControl(
+    print = print,
+    printNcol = printNcol,
+    useColor = useColor,
+    iterPrintControl = list(...)$iterPrintControl
+  )
+  checkmate::assertNumeric(scaleTo, len = 1, lower = 0, any.missing = FALSE)
+  checkmate::assertNumeric(scaleObjective, len = 1, lower = 0, any.missing = FALSE)
+  checkmate::assertNumeric(scaleCmax, lower = 0, any.missing = FALSE, len = 1)
+  checkmate::assertNumeric(scaleCmin, lower = 0, any.missing = FALSE, len = 1)
+  checkmate::assertNumeric(scaleCband, lower = 0, finite = TRUE, any.missing = FALSE, len = 2)
   if (scaleCband[1] >= scaleCband[2]) {
-    stop("'scaleCband' must be an increasing pair (low, high)", call.=FALSE)
+    stop("'scaleCband' must be an increasing pair (low, high)", call. = FALSE)
   }
   if (!is.null(scaleC)) {
-    checkmate::assertNumeric(scaleC, lower=0, any.missing=FALSE)
+    checkmate::assertNumeric(scaleC, lower = 0, any.missing = FALSE)
   }
-  checkmate::assertNumeric(scaleC0, lower=0, any.missing=FALSE, len=1)
-  checkmate::assertNumeric(derivEps, lower=0, len=2, any.missing=FALSE)
-  checkmate::assertNumeric(derivSwitchTol, lower=0, len=1, any.missing=FALSE)
-  if (checkmate::testIntegerish(covTryHarder, lower=0, upper=1, any.missing=FALSE, len=1)) {
+  checkmate::assertNumeric(scaleC0, lower = 0, any.missing = FALSE, len = 1)
+  checkmate::assertNumeric(derivEps, lower = 0, len = 2, any.missing = FALSE)
+  checkmate::assertNumeric(derivSwitchTol, lower = 0, len = 1, any.missing = FALSE)
+  if (checkmate::testIntegerish(covTryHarder, lower = 0, upper = 1, any.missing = FALSE, len = 1)) {
     covTryHarder <- as.integer(covTryHarder)
   } else {
-    checkmate::assertLogical(covTryHarder, any.missing=FALSE, len=1)
-    checkmate::assertNumeric(fdOutlierZ, lower=0, finite=TRUE, any.missing=FALSE, len=1)
-    checkmate::assertLogical(fdOutlierScale, any.missing=FALSE, len=1)
+    checkmate::assertLogical(covTryHarder, any.missing = FALSE, len = 1)
+    checkmate::assertNumeric(fdOutlierZ, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
+    checkmate::assertLogical(fdOutlierScale, any.missing = FALSE, len = 1)
     fdRefine <- match.arg(fdRefine)
-    checkmate::assertIntegerish(fdLanczosM, lower=1, any.missing=FALSE, len=1)
-    checkmate::assertIntegerish(fdRichardsonR, lower=1, any.missing=FALSE, len=1)
-    checkmate::assertNumeric(fdRichardsonV, lower=1.0000001, finite=TRUE,
-                             any.missing=FALSE, len=1)
-    checkmate::assertLogical(fdChartrandAll, any.missing=FALSE, len=1)
-    checkmate::assertLogical(fdOutlierAny, any.missing=FALSE, len=1)
-    checkmate::assertLogical(fdIndividualStep, any.missing=FALSE, len=1)
-    checkmate::assertLogical(fdChartrand, any.missing=FALSE, len=1)
+    checkmate::assertIntegerish(fdLanczosM, lower = 1, any.missing = FALSE, len = 1)
+    checkmate::assertIntegerish(fdRichardsonR, lower = 1, any.missing = FALSE, len = 1)
+    checkmate::assertNumeric(fdRichardsonV,
+      lower = 1.0000001, finite = TRUE,
+      any.missing = FALSE, len = 1
+    )
+    checkmate::assertLogical(fdChartrandAll, any.missing = FALSE, len = 1)
+    checkmate::assertLogical(fdOutlierAny, any.missing = FALSE, len = 1)
+    checkmate::assertLogical(fdIndividualStep, any.missing = FALSE, len = 1)
+    checkmate::assertLogical(fdChartrand, any.missing = FALSE, len = 1)
     covTryHarder <- as.integer(covTryHarder)
   }
 
-  checkmate::assertNumeric(rhobeg, lower=0, len=1, finite=TRUE, any.missing=FALSE)
-  checkmate::assertNumeric(rhoend, lower=0, len=1, finite=TRUE, any.missing=FALSE)
+  checkmate::assertNumeric(rhobeg, lower = 0, len = 1, finite = TRUE, any.missing = FALSE)
+  checkmate::assertNumeric(rhoend, lower = 0, len = 1, finite = TRUE, any.missing = FALSE)
   if (rhoend >= rhobeg) {
     stop("the trust region method needs '0 < rhoend < rhobeg'",
-         call.=FALSE)
+      call. = FALSE
+    )
   }
   if (!is.null(npt)) {
-    checkmate::assertIntegerish(npt, lower=1, len=1, any.missing=FALSE)
+    checkmate::assertIntegerish(npt, lower = 1, len = 1, any.missing = FALSE)
   }
-  checkmate::assertIntegerish(eval.max, lower=1, len=1, any.missing=FALSE)
-  checkmate::assertIntegerish(iter.max, lower=0, len=1, any.missing=FALSE)
-  checkmate::assertNumeric(rel.tol, lower=0, len=1, any.missing=FALSE, finite=TRUE)
-  checkmate::assertNumeric(x.tol, lower=0, len=1, any.missing=FALSE, finite=TRUE)
-  checkmate::assertNumeric(abstol, lower=0, len=1, any.missing=FALSE, finite=TRUE)
-  checkmate::assertNumeric(reltol, lower=0, len=1, any.missing=FALSE, finite=TRUE)
+  checkmate::assertIntegerish(eval.max, lower = 1, len = 1, any.missing = FALSE)
+  checkmate::assertIntegerish(iter.max, lower = 0, len = 1, any.missing = FALSE)
+  checkmate::assertNumeric(rel.tol, lower = 0, len = 1, any.missing = FALSE, finite = TRUE)
+  checkmate::assertNumeric(x.tol, lower = 0, len = 1, any.missing = FALSE, finite = TRUE)
+  checkmate::assertNumeric(abstol, lower = 0, len = 1, any.missing = FALSE, finite = TRUE)
+  checkmate::assertNumeric(reltol, lower = 0, len = 1, any.missing = FALSE, finite = TRUE)
 
-  checkmate::assertIntegerish(gillK, lower=0, len=1, any.missing=FALSE)
-  checkmate::assertIntegerish(gillKcov, lower=0, len=1, any.missing=FALSE)
-  checkmate::assertIntegerish(gillKcovLlik, lower=0, len=1, any.missing=FALSE)
-  checkmate::assertNumeric(gillStep, lower=0, len=1, any.missing=FALSE)
-  checkmate::assertNumeric(gillStepCov, lower=0, len=1, any.missing=FALSE)
-  checkmate::assertNumeric(gillStepCovLlik, lower=0, len=1, any.missing=FALSE)
-  checkmate::assertNumeric(gillFtol, lower=0, len=1, any.missing=FALSE)
-  checkmate::assertNumeric(gillFtolCov, lower=0, len=1, any.missing=FALSE)
-  checkmate::assertNumeric(gillFtolCovLlik, lower=0, len=1, any.missing=FALSE)
-  checkmate::assertNumeric(gillRtol, lower=0, len=1, any.missing=FALSE, finite=TRUE)
+  checkmate::assertIntegerish(gillK, lower = 0, len = 1, any.missing = FALSE)
+  checkmate::assertIntegerish(gillKcov, lower = 0, len = 1, any.missing = FALSE)
+  checkmate::assertIntegerish(gillKcovLlik, lower = 0, len = 1, any.missing = FALSE)
+  checkmate::assertNumeric(gillStep, lower = 0, len = 1, any.missing = FALSE)
+  checkmate::assertNumeric(gillStepCov, lower = 0, len = 1, any.missing = FALSE)
+  checkmate::assertNumeric(gillStepCovLlik, lower = 0, len = 1, any.missing = FALSE)
+  checkmate::assertNumeric(gillFtol, lower = 0, len = 1, any.missing = FALSE)
+  checkmate::assertNumeric(gillFtolCov, lower = 0, len = 1, any.missing = FALSE)
+  checkmate::assertNumeric(gillFtolCovLlik, lower = 0, len = 1, any.missing = FALSE)
+  checkmate::assertNumeric(gillRtol, lower = 0, len = 1, any.missing = FALSE, finite = TRUE)
   # gillRtolCov is calculated in the `inner.cpp`
-  if (!checkmate::testIntegerish(rmatNorm, lower=0, upper=1, any.missing=FALSE, len=1)) {
-    checkmate::assertLogical(rmatNorm, any.missing=FALSE, len=1)
+  if (!checkmate::testIntegerish(rmatNorm, lower = 0, upper = 1, any.missing = FALSE, len = 1)) {
+    checkmate::assertLogical(rmatNorm, any.missing = FALSE, len = 1)
   }
   rmatNorm <- as.integer(rmatNorm)
-  if (!checkmate::testIntegerish(rmatNormLlik, lower=0, upper=1, any.missing=FALSE, len=1)) {
-    checkmate::assertLogical(rmatNormLlik, any.missing=FALSE, len=1)
+  if (!checkmate::testIntegerish(rmatNormLlik, lower = 0, upper = 1, any.missing = FALSE, len = 1)) {
+    checkmate::assertLogical(rmatNormLlik, any.missing = FALSE, len = 1)
   }
   rmatNormLlik <- as.integer(rmatNormLlik)
-  if (!checkmate::testIntegerish(smatNorm, lower=0, upper=1, any.missing=FALSE, len=1)) {
-    checkmate::assertLogical(smatNorm, any.missing=FALSE, len=1)
+  if (!checkmate::testIntegerish(smatNorm, lower = 0, upper = 1, any.missing = FALSE, len = 1)) {
+    checkmate::assertLogical(smatNorm, any.missing = FALSE, len = 1)
   }
   smatNorm <- as.integer(smatNorm)
-  if (!checkmate::testIntegerish(smatNormLlik, lower=0, upper=1, any.missing=FALSE, len=1)) {
-    checkmate::assertLogical(smatNormLlik, any.missing=FALSE, len=1)
+  if (!checkmate::testIntegerish(smatNormLlik, lower = 0, upper = 1, any.missing = FALSE, len = 1)) {
+    checkmate::assertLogical(smatNormLlik, any.missing = FALSE, len = 1)
   }
   smatNormLlik <- as.integer(smatNormLlik)
-  if (!checkmate::testIntegerish(covGillF, lower=0, upper=1, any.missing=FALSE, len=1)) {
-    checkmate::assertLogical(covGillF, any.missing=FALSE, len=1)
+  if (!checkmate::testIntegerish(covGillF, lower = 0, upper = 1, any.missing = FALSE, len = 1)) {
+    checkmate::assertLogical(covGillF, any.missing = FALSE, len = 1)
   }
   covGillF <- as.integer(covGillF)
-  if (!checkmate::testIntegerish(optGillF, lower=0, upper=1, any.missing=FALSE, len=1)) {
-    checkmate::assertLogical(optGillF, any.missing=FALSE, len=1)
+  if (!checkmate::testIntegerish(optGillF, lower = 0, upper = 1, any.missing = FALSE, len = 1)) {
+    checkmate::assertLogical(optGillF, any.missing = FALSE, len = 1)
   }
   optGillF <- as.integer(optGillF)
 
@@ -1265,36 +1282,36 @@ foceiControl <- function(sigdig = 3, #
   # sigdig made the analytic FOCE gradient available or not depending on the requested
   # digits.  Fixed at the value the routine shipped with.
   if (is.null(foceEbeTol)) foceEbeTol <- 1e-9
-  checkmate::assertNumeric(foceEbeTol, lower=0, finite=TRUE, any.missing=FALSE, len=1)
-  checkmate::assertNumeric(hessEps, lower=0, any.missing=FALSE, len=1)
-  checkmate::assertNumeric(hessEpsLlik, lower=0, any.missing=FALSE, len=1)
-  checkmate::assertNumeric(centralDerivEps, lower=0, any.missing=FALSE, len=2)
+  checkmate::assertNumeric(foceEbeTol, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
+  checkmate::assertNumeric(hessEps, lower = 0, any.missing = FALSE, len = 1)
+  checkmate::assertNumeric(hessEpsLlik, lower = 0, any.missing = FALSE, len = 1)
+  checkmate::assertNumeric(centralDerivEps, lower = 0, any.missing = FALSE, len = 2)
 
-  checkmate::assertIntegerish(lbfgsLmm, lower=1L, any.missing=FALSE, len=1)
+  checkmate::assertIntegerish(lbfgsLmm, lower = 1L, any.missing = FALSE, len = 1)
   lbfgsLmm <- as.integer(lbfgsLmm)
-  checkmate::assertNumeric(lbfgsPgtol, lower=0, any.missing=FALSE, len=1)
-  checkmate::assertNumeric(lbfgsFactr, lower=0, any.missing=FALSE, len=1)
-  if (!checkmate::testIntegerish(eigen, lower=0, upper=1, any.missing=FALSE, len=1)) {
-    checkmate::assertLogical(eigen, any.missing=FALSE, len=1)
+  checkmate::assertNumeric(lbfgsPgtol, lower = 0, any.missing = FALSE, len = 1)
+  checkmate::assertNumeric(lbfgsFactr, lower = 0, any.missing = FALSE, len = 1)
+  if (!checkmate::testIntegerish(eigen, lower = 0, upper = 1, any.missing = FALSE, len = 1)) {
+    checkmate::assertLogical(eigen, any.missing = FALSE, len = 1)
   }
   eigen <- as.integer(eigen)
 
-  checkmate::assertLogical(sumProd, any.missing=FALSE, len=1)
-  checkmate::assertLogical(optExpression, any.missing=FALSE, len=1)
-  checkmate::assertLogical(literalFix, any.missing=FALSE, len=1)
-  checkmate::assertLogical(literalFixRes, any.missing=FALSE, len=1)
+  checkmate::assertLogical(sumProd, any.missing = FALSE, len = 1)
+  checkmate::assertLogical(optExpression, any.missing = FALSE, len = 1)
+  checkmate::assertLogical(literalFix, any.missing = FALSE, len = 1)
+  checkmate::assertLogical(literalFixRes, any.missing = FALSE, len = 1)
 
-  checkmate::assertNumeric(ci, any.missing=FALSE, len=1, lower=0, upper=1)
-  checkmate::assertNumeric(boundTol, lower=0, any.missing=FALSE, len=1)
+  checkmate::assertNumeric(ci, any.missing = FALSE, len = 1, lower = 0, upper = 1)
+  checkmate::assertNumeric(boundTol, lower = 0, any.missing = FALSE, len = 1)
 
-  checkmate::assertLogical(calcTables, len=1, any.missing=FALSE)
-  if(!checkmate::testIntegerish(noAbort, lower=0, upper=1, any.missing=FALSE, len=1)) {
-    checkmate::assertLogical(noAbort, len=1, any.missing=FALSE)
+  checkmate::assertLogical(calcTables, len = 1, any.missing = FALSE)
+  if (!checkmate::testIntegerish(noAbort, lower = 0, upper = 1, any.missing = FALSE, len = 1)) {
+    checkmate::assertLogical(noAbort, len = 1, any.missing = FALSE)
   }
   noAbort <- as.integer(noAbort)
 
-  if (!checkmate::testIntegerish(interaction, lower=0, upper=1, any.missing=FALSE, len=1)) {
-    checkmate::assertLogical(interaction, len=1, any.missing=FALSE)
+  if (!checkmate::testIntegerish(interaction, lower = 0, upper = 1, any.missing = FALSE, len = 1)) {
+    checkmate::assertLogical(interaction, len = 1, any.missing = FALSE)
   }
   interaction <- as.integer(interaction)
 
@@ -1304,26 +1321,26 @@ foceiControl <- function(sigdig = 3, #
   ## Ignored when interaction=TRUE (FOCEi).
   foceType <- as.integer(foce == "foce+")
 
-  checkmate::assertNumeric(cholSEtol, lower=0, any.missing=FALSE, len=1)
-  checkmate::assertNumeric(cholAccept, lower=0, any.missing=FALSE, len=1)
+  checkmate::assertNumeric(cholSEtol, lower = 0, any.missing = FALSE, len = 1)
+  checkmate::assertNumeric(cholAccept, lower = 0, any.missing = FALSE, len = 1)
 
   ## .methodIdx <- c("lsoda"=1L, "dop853"=0L, "liblsoda"=2L);
   ## method <- as.integer(.methodIdx[method]);
-  if (checkmate::testIntegerish(scaleType, len=1, lower=1, upper=4, any.missing=FALSE)) {
+  if (checkmate::testIntegerish(scaleType, len = 1, lower = 1, upper = 4, any.missing = FALSE)) {
     scaleType <- as.integer(scaleType)
   } else {
     .scaleTypeIdx <- c("norm" = 1L, "nlmixr2" = 2L, "mult" = 3L, "multAdd" = 4L)
     scaleType <- setNames(.scaleTypeIdx[match.arg(scaleType)], NULL)
   }
 
-  if (checkmate::testIntegerish(optimHessType, len=1, lower=1, upper=3, any.missing=FALSE)) {
+  if (checkmate::testIntegerish(optimHessType, len = 1, lower = 1, upper = 3, any.missing = FALSE)) {
     optimHessType <- as.integer(optimHessType)
   } else {
     .optimHessTypeIdx <- c("central" = 1L, "forward" = 3L)
     optimHessType <- setNames(.optimHessTypeIdx[match.arg(optimHessType)], NULL)
   }
 
-  if (checkmate::testIntegerish(optimHessCovType, len=1, lower=1, upper=3, any.missing=FALSE)) {
+  if (checkmate::testIntegerish(optimHessCovType, len = 1, lower = 1, upper = 3, any.missing = FALSE)) {
     optimHessCovType <- as.integer(optimHessCovType)
   } else {
     .optimHessCovTypeIdx <- c("central" = 1L, "forward" = 3L)
@@ -1332,12 +1349,12 @@ foceiControl <- function(sigdig = 3, #
   # censOption: the censored (M2/M3/M4) inner-Hessian / 2nd-derivative treatment.
   # "gauss" (default) keeps the historic uncensored Gauss-Newton curvature; "laplace"
   # uses the exact censored 2nd derivative (a proper Laplace).  Shared with saem/nlm.
-  if (checkmate::testIntegerish(censOption, len=1, lower=0, upper=1, any.missing=FALSE)) {
+  if (checkmate::testIntegerish(censOption, len = 1, lower = 0, upper = 1, any.missing = FALSE)) {
     censOption <- as.integer(censOption)
   } else {
     censOption <- setNames(c("gauss" = 0L, "laplace" = 1L)[match.arg(censOption)], NULL)
   }
-  if (checkmate::testIntegerish(eventType, len=1, lower=1, upper=3, any.missing=FALSE)) {
+  if (checkmate::testIntegerish(eventType, len = 1, lower = 1, upper = 3, any.missing = FALSE)) {
     eventType <- as.integer(eventType)
   } else {
     .eventTypeIdx <- c("central" = 2L, "forward" = 3L)
@@ -1349,19 +1366,19 @@ foceiControl <- function(sigdig = 3, #
   eventSens <- match.arg(eventSens)
 
   .normTypeIdx <- c("rescale2" = 1L, "rescale" = 2L, "mean" = 3L, "std" = 4L, "len" = 5L, "constant" = 6L)
-  if (checkmate::testIntegerish(normType, len=1, lower=1, upper=6, any.missing=FALSE)) {
+  if (checkmate::testIntegerish(normType, len = 1, lower = 1, upper = 6, any.missing = FALSE)) {
     normType <- as.integer(normType)
   } else {
     normType <- setNames(.normTypeIdx[match.arg(normType)], NULL)
   }
   .methodIdx <- c("forward" = 0L, "central" = 1L, "switch" = 3L)
-  if (checkmate::testIntegerish(derivMethod, len=1, lower=0L, upper=3L, any.missing=FALSE)) {
+  if (checkmate::testIntegerish(derivMethod, len = 1, lower = 0L, upper = 3L, any.missing = FALSE)) {
     derivMethod <- as.integer(derivMethod)
   } else {
     derivMethod <- match.arg(derivMethod)
     derivMethod <- setNames(.methodIdx[derivMethod], NULL)
   }
-  if (checkmate::testIntegerish(covDerivMethod, len=1, lower=0L, upper=3L, any.missing=FALSE)) {
+  if (checkmate::testIntegerish(covDerivMethod, len = 1, lower = 0L, upper = 3L, any.missing = FALSE)) {
     covDerivMethod <- as.integer(covDerivMethod)
   } else {
     covDerivMethod <- match.arg(covDerivMethod)
@@ -1377,7 +1394,7 @@ foceiControl <- function(sigdig = 3, #
   # "sa"/"imp" are foreign to the focei kernel; skip the in-kernel cov step and
   # recompute them post-fit at the converged estimates (see .covRecompute).
   covMethodDeferred <- NA_character_
-  if (checkmate::testIntegerish(covMethod, len=1, lower=0L, upper=3L, any.missing=FALSE)) {
+  if (checkmate::testIntegerish(covMethod, len = 1, lower = 0L, upper = 3L, any.missing = FALSE)) {
     covMethod <- as.integer(covMethod)
     .ct <- list(...)$covType
     if (!is.null(.ct)) covType <- match.arg(.ct, c("analytic", "fd"))
@@ -1402,8 +1419,12 @@ foceiControl <- function(sigdig = 3, #
   if (is.na(covMethodDeferred) && !is.null(list(...)$covMethodDeferred)) {
     covMethodDeferred <- list(...)$covMethodDeferred
   }
-  if (!is.null(covSolveTol)) checkmate::assertNumeric(covSolveTol, len = 1, lower = 0,
-                                                      finite = TRUE, any.missing = FALSE)
+  if (!is.null(covSolveTol)) {
+    checkmate::assertNumeric(covSolveTol,
+      len = 1, lower = 0,
+      finite = TRUE, any.missing = FALSE
+    )
+  }
   checkmate::assertFlag(covFull)
   checkmate::assertFlag(fast)
   priorMethod <- match.arg(priorMethod)
@@ -1412,8 +1433,9 @@ foceiControl <- function(sigdig = 3, #
   .bad <- .bad[!(.bad %in% .foceiControlInternal)]
   if (length(.bad) > 0) {
     stop("unused argument: ", paste
-    (paste0("'", .bad, "'", sep=""), collapse=", "),
-    call.=FALSE)
+    (paste0("'", .bad, "'", sep = ""), collapse = ", "),
+    call. = FALSE
+    )
   }
   .skipCov <- NULL
   if (!is.null(.xtra$skipCov)) {
@@ -1462,7 +1484,7 @@ foceiControl <- function(sigdig = 3, #
       outerOptFun <- .newuoa
       outerOpt <- -1L
     } else {
-      if (checkmate::testIntegerish(outerOpt, lower=0, upper=1, len=1)) {
+      if (checkmate::testIntegerish(outerOpt, lower = 0, upper = 1, len = 1)) {
         outerOpt <- as.integer(outerOpt)
       } else {
         .outerOptIdx <- c("L-BFGS-B" = 0L, "lbfgsb3c" = 1L)
@@ -1481,56 +1503,57 @@ foceiControl <- function(sigdig = 3, #
   # so computing it is wasted work: downgrade to fast=FALSE with a warning.
   if (isTRUE(fast) && .outerOptTxt %in% c("bobyqa", "uobyqa", "newuoa")) {
     warning("outerOpt='", .outerOptTxt,
-            "' is derivative-free; the analytic 'fast' gradient is unused -- reverting to fast=FALSE",
-            call.=FALSE)
+      "' is derivative-free; the analytic 'fast' gradient is unused -- reverting to fast=FALSE",
+      call. = FALSE
+    )
     fast <- FALSE
   }
-  if (checkmate::testIntegerish(innerOpt, lower=1, upper=3, len=1)) {
+  if (checkmate::testIntegerish(innerOpt, lower = 1, upper = 3, len = 1)) {
     innerOpt <- as.integer(innerOpt)
   } else {
     .innerOptFun <- c("n1qn1" = 1L, "BFGS" = 2L, "trust" = 3L)
     innerOpt <- setNames(.innerOptFun[match.arg(innerOpt)], NULL)
   }
   .hessianMethodIdx <- c("fd" = 1L, "bfgs" = 2L, "sr1" = 3L, "bofill" = 4L)
-  if (checkmate::testIntegerish(hessianMethod, len=1, lower=1, upper=4, any.missing=FALSE)) {
+  if (checkmate::testIntegerish(hessianMethod, len = 1, lower = 1, upper = 4, any.missing = FALSE)) {
     hessianMethod <- as.integer(hessianMethod)
   } else {
     hessianMethod <- setNames(.hessianMethodIdx[match.arg(hessianMethod)], NULL)
   }
-  checkmate::assertNumeric(trustConf, lower=0, upper=1, finite=TRUE, any.missing=FALSE, len=1)
+  checkmate::assertNumeric(trustConf, lower = 0, upper = 1, finite = TRUE, any.missing = FALSE, len = 1)
   if (trustConf <= 0 || trustConf >= 1) {
     # qchisq(0, df)==0 (zero trust-region radius, no step ever taken) and
     # qchisq(1, df)==Inf (unbounded radius, no trust-region constraint at all)
     # are both degenerate -- checkmate's lower/upper bounds are inclusive, so
     # this has to be checked separately.
-    stop("'trustConf' must be strictly between 0 and 1", call.=FALSE)
+    stop("'trustConf' must be strictly between 0 and 1", call. = FALSE)
   }
   # lower=0 is inclusive (checkmate has no strict-bound form); trustRinit/
   # trustRmax==0 is a zero-radius trust region that can never step, the same
   # degenerate case trustConf==0 is rejected for above.
-  checkmate::assertNumeric(trustRinit, lower=0, finite=TRUE, null.ok=TRUE, len=1)
+  checkmate::assertNumeric(trustRinit, lower = 0, finite = TRUE, null.ok = TRUE, len = 1)
   if (!is.null(trustRinit) && trustRinit <= 0) {
-    stop("'trustRinit' must be > 0", call.=FALSE)
+    stop("'trustRinit' must be > 0", call. = FALSE)
   }
-  checkmate::assertNumeric(trustRmax, lower=0, finite=TRUE, null.ok=TRUE, len=1)
+  checkmate::assertNumeric(trustRmax, lower = 0, finite = TRUE, null.ok = TRUE, len = 1)
   if (!is.null(trustRmax) && trustRmax <= 0) {
-    stop("'trustRmax' must be > 0", call.=FALSE)
+    stop("'trustRmax' must be > 0", call. = FALSE)
   }
   if (!is.null(trustRinit) && !is.null(trustRmax) && trustRinit > trustRmax) {
-    stop("'trustRinit' cannot be larger than 'trustRmax'", call.=FALSE)
+    stop("'trustRinit' cannot be larger than 'trustRmax'", call. = FALSE)
   }
   # Resolved above (like epsilon) whenever sigdig is non-NULL; stays NULL (and
   # errors here, matching epsilon's own strictness) only if the caller also
   # passed sigdig=NULL without supplying trustFterm/trustMterm directly.
-  checkmate::assertNumeric(trustFterm, lower=0, finite=TRUE, any.missing=FALSE, len=1)
+  checkmate::assertNumeric(trustFterm, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
   if (trustFterm <= 0) {
-    stop("'trustFterm' must be > 0", call.=FALSE)
+    stop("'trustFterm' must be > 0", call. = FALSE)
   }
-  checkmate::assertNumeric(trustMterm, lower=0, finite=TRUE, any.missing=FALSE, len=1)
+  checkmate::assertNumeric(trustMterm, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
   if (trustMterm <= 0) {
-    stop("'trustMterm' must be > 0", call.=FALSE)
+    stop("'trustMterm' must be > 0", call. = FALSE)
   }
-  if (checkmate::testIntegerish(warm, lower=0, upper=1, len=1, any.missing=FALSE)) {
+  if (checkmate::testIntegerish(warm, lower = 0, upper = 1, len = 1, any.missing = FALSE)) {
     warm <- as.integer(warm)
   } else {
     .warmIdx <- c("calc" = 1L, "save" = 0L)
@@ -1539,7 +1562,7 @@ foceiControl <- function(sigdig = 3, #
   if (!is.null(.xtra$resetEtaSize)) {
     .resetEtaSize <- .xtra$resetEtaSize
   } else {
-    checkmate::assertNumeric(resetEtaP, lower=0, upper=1, len=1)
+    checkmate::assertNumeric(resetEtaP, lower = 0, upper = 1, len = 1)
     if (resetEtaP > 0 & resetEtaP < 1) {
       .resetEtaSize <- qnorm(1 - (resetEtaP / 2))
     } else if (resetEtaP <= 0) {
@@ -1551,40 +1574,42 @@ foceiControl <- function(sigdig = 3, #
   if (!is.null(.xtra$resetThetaSize)) {
     .resetThetaSize <- .xtra$resetThetaSize
   } else {
-    checkmate::assertNumeric(resetThetaP, lower=0, upper=1, len=1)
+    checkmate::assertNumeric(resetThetaP, lower = 0, upper = 1, len = 1)
     if (resetThetaP > 0 & resetThetaP < 1) {
       .resetThetaSize <- qnorm(1 - (resetThetaP / 2))
     } else if (resetThetaP <= 0) {
       .resetThetaSize <- Inf
     } else {
-      stop("cannot always reset THETAs", call.=FALSE)
+      stop("cannot always reset THETAs", call. = FALSE)
     }
   }
   if (!is.null(.xtra$resetThetaFinalSize)) {
     .resetThetaFinalSize <- .xtra$resetThetaFinalSize
   } else {
-    checkmate::assertNumeric(resetThetaFinalP, lower=0, upper=1, len=1)
+    checkmate::assertNumeric(resetThetaFinalP, lower = 0, upper = 1, len = 1)
     if (resetThetaFinalP > 0 & resetThetaFinalP < 1) {
       .resetThetaFinalSize <- qnorm(1 - (resetThetaFinalP / 2))
     } else if (resetThetaFinalP <= 0) {
       .resetThetaFinalSize <- Inf
     } else {
-      stop("cannot always reset THETAs", call.=FALSE)
+      stop("cannot always reset THETAs", call. = FALSE)
     }
   }
-  if (checkmate::testIntegerish(addProp, lower=1, upper=1, len=1)) {
+  if (checkmate::testIntegerish(addProp, lower = 1, upper = 1, len = 1)) {
     addProp <- c("combined1", "combined2")[addProp]
   } else {
     addProp <- match.arg(addProp)
   }
-  checkmate::assertLogical(compress, any.missing=FALSE, len=1)
+  checkmate::assertLogical(compress, any.missing = FALSE, len = 1)
   if (!is.null(.xtra$genRxControl)) {
     genRxControl <- .xtra$genRxControl
   } else {
     genRxControl <- FALSE
     if (is.null(rxControl)) {
-      rxControl <- .rxControlScaleSigdig(rxode2::rxControl(sigdig=sigdig,
-                                                           maxsteps=500000L), sigdig)
+      rxControl <- .rxControlScaleSigdig(rxode2::rxControl(
+        sigdig = sigdig,
+        maxsteps = 500000L
+      ), sigdig)
       genRxControl <- TRUE
     } else if (inherits(rxControl, "rxControl")) {
       # a fully-formed rxControl object is the user's explicit solving spec; leave
@@ -1594,88 +1619,89 @@ foceiControl <- function(sigdig = 3, #
     }
     if (!inherits(rxControl, "rxControl")) {
       stop("rxControl needs to be ode solving options from rxode2::rxControl()",
-           call.=FALSE)
+        call. = FALSE
+      )
     }
   }
-  checkmate::assertNumeric(diagOmegaBoundUpper, lower=1, len=1, any.missing=FALSE, finite=TRUE)
-  checkmate::assertNumeric(diagOmegaBoundLower, lower=1, len=1, any.missing=FALSE, finite=TRUE)
+  checkmate::assertNumeric(diagOmegaBoundUpper, lower = 1, len = 1, any.missing = FALSE, finite = TRUE)
+  checkmate::assertNumeric(diagOmegaBoundLower, lower = 1, len = 1, any.missing = FALSE, finite = TRUE)
 
-  if (!checkmate::testIntegerish(cholSEOpt, lower=0, upper=1, any.missing=FALSE, len=1)) {
-    checkmate::assertLogical(cholSEOpt, any.missing=FALSE, len=1)
+  if (!checkmate::testIntegerish(cholSEOpt, lower = 0, upper = 1, any.missing = FALSE, len = 1)) {
+    checkmate::assertLogical(cholSEOpt, any.missing = FALSE, len = 1)
   }
   cholSEOpt <- as.integer(cholSEOpt)
 
-  if (!checkmate::testIntegerish(cholSECov, lower=0, upper=1, any.missing=FALSE, len=1)) {
-    checkmate::assertLogical(cholSECov, any.missing=FALSE, len=1)
+  if (!checkmate::testIntegerish(cholSECov, lower = 0, upper = 1, any.missing = FALSE, len = 1)) {
+    checkmate::assertLogical(cholSECov, any.missing = FALSE, len = 1)
   }
   cholSECov <- as.integer(cholSECov)
 
-  if (!checkmate::testIntegerish(fo, lower=0, upper=1, any.missing=FALSE, len=1)) {
-    checkmate::assertLogical(fo, any.missing=FALSE, len=1)
+  if (!checkmate::testIntegerish(fo, lower = 0, upper = 1, any.missing = FALSE, len = 1)) {
+    checkmate::assertLogical(fo, any.missing = FALSE, len = 1)
   }
   fo <- as.integer(fo)
 
-  if (!checkmate::testIntegerish(resetHessianAndEta, lower=0, upper=1, any.missing=FALSE, len=1)) {
-    checkmate::assertLogical(resetHessianAndEta, any.missing=FALSE, len=1)
+  if (!checkmate::testIntegerish(resetHessianAndEta, lower = 0, upper = 1, any.missing = FALSE, len = 1)) {
+    checkmate::assertLogical(resetHessianAndEta, any.missing = FALSE, len = 1)
   }
   resetHessianAndEta <- as.integer(resetHessianAndEta)
 
   muModel <- match.arg(muModel)
-  checkmate::assertLogical(muRefCovAlg, any.missing=FALSE, len=1)
-  checkmate::assertNumeric(muModelTol, lower=0, len=1, any.missing=FALSE)
-  checkmate::assertIntegerish(muModelMaxCycles, lower=1, len=1, any.missing=FALSE)
+  checkmate::assertLogical(muRefCovAlg, any.missing = FALSE, len = 1)
+  checkmate::assertNumeric(muModelTol, lower = 0, len = 1, any.missing = FALSE)
+  checkmate::assertIntegerish(muModelMaxCycles, lower = 1, len = 1, any.missing = FALSE)
   muModelMaxCycles <- as.integer(muModelMaxCycles)
-  checkmate::assertIntegerish(muModelClampRetries, lower=1, len=1, any.missing=FALSE)
+  checkmate::assertIntegerish(muModelClampRetries, lower = 1, len = 1, any.missing = FALSE)
   muModelClampRetries <- as.integer(muModelClampRetries)
 
-  checkmate::assertNumeric(stateTrim, lower=0, len=1, any.missing=FALSE)
-  checkmate::assertNumeric(covSmall, lower=0, any.missing=FALSE, finite=TRUE)
-  checkmate::assertLogical(adjLik, any.missing=FALSE, len=1)
-  checkmate::assertNumeric(gradTrim, any.missing=FALSE, len=1)
-  checkmate::assertIntegerish(maxOdeRecalc, any.missing=FALSE, len=1)
-  checkmate::assertNumeric(odeRecalcFactor, len=1, lower=1, any.missing=FALSE)
-  checkmate::assertNumeric(gradCalcCentralSmall, len=1, lower=0, any.missing=FALSE, finite=TRUE)
-  checkmate::assertNumeric(gradCalcCentralLarge, len=1, lower=0, any.missing=FALSE, finite=TRUE)
-  checkmate::assertNumeric(etaNudge, len=1, lower=0, any.missing=FALSE, finite=TRUE)
-  checkmate::assertNumeric(etaNudge2, len=1, lower=0, any.missing=FALSE, finite=TRUE)
-  checkmate::assertIntegerish(nRetries, lower=0, any.missing=FALSE)
+  checkmate::assertNumeric(stateTrim, lower = 0, len = 1, any.missing = FALSE)
+  checkmate::assertNumeric(covSmall, lower = 0, any.missing = FALSE, finite = TRUE)
+  checkmate::assertLogical(adjLik, any.missing = FALSE, len = 1)
+  checkmate::assertNumeric(gradTrim, any.missing = FALSE, len = 1)
+  checkmate::assertIntegerish(maxOdeRecalc, any.missing = FALSE, len = 1)
+  checkmate::assertNumeric(odeRecalcFactor, len = 1, lower = 1, any.missing = FALSE)
+  checkmate::assertNumeric(gradCalcCentralSmall, len = 1, lower = 0, any.missing = FALSE, finite = TRUE)
+  checkmate::assertNumeric(gradCalcCentralLarge, len = 1, lower = 0, any.missing = FALSE, finite = TRUE)
+  checkmate::assertNumeric(etaNudge, len = 1, lower = 0, any.missing = FALSE, finite = TRUE)
+  checkmate::assertNumeric(etaNudge2, len = 1, lower = 0, any.missing = FALSE, finite = TRUE)
+  checkmate::assertIntegerish(nRetries, lower = 0, any.missing = FALSE)
   if (!is.null(seed)) {
-    checkmate::assertIntegerish(seed, any.missing=FALSE, min.len=1)
+    checkmate::assertIntegerish(seed, any.missing = FALSE, min.len = 1)
   }
-  checkmate::assertNumeric(resetThetaCheckPer, lower=0, upper=1, any.missing=FALSE, finite=TRUE)
-  checkmate::assertIntegerish(repeatGillMax, any.missing=FALSE, lower=0, len=1)
-  checkmate::assertIntegerish(stickyRecalcN, any.missing=FALSE, lower=0, len=1)
-  checkmate::assertIntegerish(outerMaxOdeRecalc, any.missing=FALSE, lower=0, len=1)
-  checkmate::assertNumeric(outerOdeRecalcFactor, len=1, lower=1, any.missing=FALSE)
-  checkmate::assertIntegerish(outerStickyRecalcN, any.missing=FALSE, lower=0, len=1)
-  checkmate::assertLogical(indTolRelax, any.missing=FALSE, len=1)
-  checkmate::assertNumeric(gradProgressOfvTime, any.missing=FALSE, lower=0, len=1)
-  checkmate::assertNumeric(badSolveObjfAdj, any.missing=FALSE, len=1)
-  checkmate::assertLogical(fallbackFD, any.missing=FALSE, len=1)
-  checkmate::assertLogical(zeroGradFirstReset, any.missing=TRUE, len=1)
-  checkmate::assertLogical(zeroGradRunReset, any.missing=FALSE, len=1)
-  checkmate::assertLogical(zeroGradBobyqa, any.missing=TRUE, len=1)
+  checkmate::assertNumeric(resetThetaCheckPer, lower = 0, upper = 1, any.missing = FALSE, finite = TRUE)
+  checkmate::assertIntegerish(repeatGillMax, any.missing = FALSE, lower = 0, len = 1)
+  checkmate::assertIntegerish(stickyRecalcN, any.missing = FALSE, lower = 0, len = 1)
+  checkmate::assertIntegerish(outerMaxOdeRecalc, any.missing = FALSE, lower = 0, len = 1)
+  checkmate::assertNumeric(outerOdeRecalcFactor, len = 1, lower = 1, any.missing = FALSE)
+  checkmate::assertIntegerish(outerStickyRecalcN, any.missing = FALSE, lower = 0, len = 1)
+  checkmate::assertLogical(indTolRelax, any.missing = FALSE, len = 1)
+  checkmate::assertNumeric(gradProgressOfvTime, any.missing = FALSE, lower = 0, len = 1)
+  checkmate::assertNumeric(badSolveObjfAdj, any.missing = FALSE, len = 1)
+  checkmate::assertLogical(fallbackFD, any.missing = FALSE, len = 1)
+  checkmate::assertLogical(zeroGradFirstReset, any.missing = TRUE, len = 1)
+  checkmate::assertLogical(zeroGradRunReset, any.missing = FALSE, len = 1)
+  checkmate::assertLogical(zeroGradBobyqa, any.missing = TRUE, len = 1)
 
-  checkmate::assertIntegerish(shi21maxOuter, lower=0, len=1, any.missing=FALSE)
-  checkmate::assertIntegerish(shi21maxInner, lower=0, len=1, any.missing=FALSE)
-  checkmate::assertIntegerish(shi21maxInnerCov, lower=0, len=1, any.missing=FALSE)
-  checkmate::assertIntegerish(shi21maxFD, lower=0, len=1, any.missing=FALSE)
-  checkmate::assertNumber(zeroTheta, lower=0, finite=TRUE)
+  checkmate::assertIntegerish(shi21maxOuter, lower = 0, len = 1, any.missing = FALSE)
+  checkmate::assertIntegerish(shi21maxInner, lower = 0, len = 1, any.missing = FALSE)
+  checkmate::assertIntegerish(shi21maxInnerCov, lower = 0, len = 1, any.missing = FALSE)
+  checkmate::assertIntegerish(shi21maxFD, lower = 0, len = 1, any.missing = FALSE)
+  checkmate::assertNumber(zeroTheta, lower = 0, finite = TRUE)
   if (zeroTheta <= 0) {
-    stop("'zeroTheta' must be a positive number", call.=FALSE)
+    stop("'zeroTheta' must be a positive number", call. = FALSE)
   }
-  checkmate::assertNumber(shi21hMin, lower=0, finite=TRUE)
-  checkmate::assertNumber(shi21hMax, lower=0, finite=TRUE)
+  checkmate::assertNumber(shi21hMin, lower = 0, finite = TRUE)
+  checkmate::assertNumber(shi21hMax, lower = 0, finite = TRUE)
   if (shi21hMax <= shi21hMin) {
-    stop("'shi21hMax' must be greater than 'shi21hMin'", call.=FALSE)
+    stop("'shi21hMax' must be greater than 'shi21hMin'", call. = FALSE)
   }
-  checkmate::assertIntegerish(mceta, lower=-2, len=1,any.missing=FALSE)
+  checkmate::assertIntegerish(mceta, lower = -2, len = 1, any.missing = FALSE)
 
-  checkmate::assertNumeric(smatPer, any.missing=FALSE, lower=0, upper=1, len=1)
-  checkmate::assertIntegerish(nAGQ, lower=0, len=1, any.missing=FALSE)
-  checkmate::assertNumeric(agqHi, len=1, any.missing=FALSE)
-  checkmate::assertNumeric(agqLow, len=1, any.missing=FALSE)
-  checkmate::assertLogical(boundedTransform, len=1, any.missing=FALSE)
+  checkmate::assertNumeric(smatPer, any.missing = FALSE, lower = 0, upper = 1, len = 1)
+  checkmate::assertIntegerish(nAGQ, lower = 0, len = 1, any.missing = FALSE)
+  checkmate::assertNumeric(agqHi, len = 1, any.missing = FALSE)
+  checkmate::assertNumeric(agqLow, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(boundedTransform, len = 1, any.missing = FALSE)
   .ret <- list(
     maxOuterIterations = as.integer(maxOuterIterations),
     maxInnerIterations = as.integer(maxInnerIterations),
@@ -1717,12 +1743,12 @@ foceiControl <- function(sigdig = 3, #
     iovXform = match.arg(iovXform),
     sumProd = sumProd,
     optExpression = optExpression,
-    literalFix=literalFix,
-    literalFixRes=literalFixRes,
+    literalFix = literalFix,
+    literalFixRes = literalFixRes,
     outerOpt = as.integer(outerOpt),
     ci = as.double(ci),
     sigdig = as.double(sigdig),
-    sigdigTable=sigdigTable,
+    sigdigTable = sigdigTable,
     scaleObjective = as.double(scaleObjective),
     boundTol = as.double(boundTol),
     calcTables = calcTables,
@@ -1734,9 +1760,9 @@ foceiControl <- function(sigdig = 3, #
     foceEbeTol = as.double(foceEbeTol),
     hessEps = as.double(hessEps),
     hessEpsLlik = as.double(hessEpsLlik),
-    optimHessType=optimHessType,
-    optimHessCovType=optimHessCovType,
-    censOption=censOption,
+    optimHessType = optimHessType,
+    optimHessCovType = optimHessCovType,
+    censOption = censOption,
     cholAccept = as.double(cholAccept),
     resetEtaSize = as.double(.resetEtaSize),
     resetThetaSize = as.double(.resetThetaSize),
@@ -1807,7 +1833,7 @@ foceiControl <- function(sigdig = 3, #
     gradCalcCentralSmall = as.double(gradCalcCentralSmall),
     gradCalcCentralLarge = as.double(gradCalcCentralLarge),
     etaNudge = as.double(etaNudge),
-    etaNudge2=as.double(etaNudge2),
+    etaNudge2 = as.double(etaNudge2),
     maxOdeRecalc = as.integer(maxOdeRecalc),
     odeRecalcFactor = as.double(odeRecalcFactor),
     nRetries = nRetries,
@@ -1824,31 +1850,32 @@ foceiControl <- function(sigdig = 3, #
     eventSens = eventSens,
     gradProgressOfvTime = gradProgressOfvTime,
     addProp = addProp,
-    badSolveObjfAdj=badSolveObjfAdj,
-    compress=compress,
-    rxControl=rxControl,
-    genRxControl=genRxControl,
-    skipCov=.skipCov,
-    fallbackFD=fallbackFD,
-    shi21maxOuter=shi21maxOuter,
-    shi21maxInner=shi21maxInner,
-    shi21maxInnerCov=shi21maxInnerCov,
-    shi21maxFD=shi21maxFD,
-    shi21hMax=shi21hMax,
-    shi21hMin=shi21hMin,
-    smatPer=smatPer,
-    sdLowerFact=sdLowerFact,
-    zeroGradFirstReset=zeroGradFirstReset,
-    zeroGradRunReset=zeroGradRunReset,
-    zeroGradBobyqa=zeroGradBobyqa,
-    mceta=as.integer(mceta),
-    warm=warm,
-    nAGQ=as.integer(nAGQ),
-    agqHi=as.double(agqHi),
-    agqLow=as.double(agqLow),
-    sensMethod=sensMethod,
-    boundedTransform=boundedTransform,
-    zeroTheta=zeroTheta
+    badSolveObjfAdj = badSolveObjfAdj,
+    compress = compress,
+    rxControl = rxControl,
+    genRxControl = genRxControl,
+    skipCov = .skipCov,
+    fallbackFD = fallbackFD,
+    shi21maxOuter = shi21maxOuter,
+    shi21maxInner = shi21maxInner,
+    shi21maxInnerCov = shi21maxInnerCov,
+    shi21maxFD = shi21maxFD,
+    shi21hMax = shi21hMax,
+    shi21hMin = shi21hMin,
+    smatPer = smatPer,
+    sdLowerFact = sdLowerFact,
+    zeroGradFirstReset = zeroGradFirstReset,
+    zeroGradRunReset = zeroGradRunReset,
+    zeroGradBobyqa = zeroGradBobyqa,
+    mceta = as.integer(mceta),
+    warm = warm,
+    nAGQ = as.integer(nAGQ),
+    agqHi = as.double(agqHi),
+    agqLow = as.double(agqLow),
+    sensMethod = sensMethod,
+    linCmtSensCarry = linCmtSensCarry,
+    boundedTransform = boundedTransform,
+    zeroTheta = zeroTheta
   )
   if (!is.null(.xtra$est)) {
     .ret$est <- .xtra$est
@@ -1864,19 +1891,20 @@ foceiControl <- function(sigdig = 3, #
     if (.doWarn && missing(maxInnerIterations)) {
       warning(sprintf("using 'etaMat' assuming 'maxInnerIterations=%d', set 'maxInnerIterations' explicitly to avoid this warning", maxInnerIterations))
     }
-    checkmate::assertMatrix(etaMat, mode="double", any.missing=FALSE, min.rows=1, min.cols=1)
+    checkmate::assertMatrix(etaMat, mode = "double", any.missing = FALSE, min.rows = 1, min.cols = 1)
     .ret$etaMat <- etaMat
   }
   class(.ret) <- "foceiControl"
   .ret
 }
 
-.rxUiDeparseFoceiControl <- function(object, var, type="foceiControl") {
+.rxUiDeparseFoceiControl <- function(object, var, type = "foceiControl") {
   .ret <- eval(str2lang(paste0(type, "()")))
   .outerOpt <- character(0)
   if (object$outerOpt == -1L && object$outerOptTxt == "custom") {
     warning("functions for `outerOpt` cannot be deparsed, reset to default",
-            call.=FALSE)
+      call. = FALSE
+    )
   } else if (!(object$outerOptTxt %in% c(.ret$outerOptTxt, "stats::optimize"))) {
     .outerOpt <- paste0("outerOpt = ", deparse1(object$outerOptTxt))
   }
@@ -1884,8 +1912,12 @@ foceiControl <- function(sigdig = 3, #
   # covMethod folds the analytic-vs-finite-difference R-matrix choice (carried by the
   # derived internal covType) into a single token; covType is never deparsed on its own.
   .covMethodStr <- function(o) {
-    if (identical(o$covType, "analytic")) return("analytic")
-    if (identical(as.integer(o$covMethod), 0L)) return("")
+    if (identical(o$covType, "analytic")) {
+      return("analytic")
+    }
+    if (identical(as.integer(o$covMethod), 0L)) {
+      return("")
+    }
     .idx <- c("r,s" = 1L, "r" = 2L, "s" = 3L)
     names(.idx)[match(as.integer(o$covMethod), .idx)]
   }
@@ -1941,10 +1973,10 @@ foceiControl <- function(sigdig = 3, #
       paste0(x, " = ", deparse1(object[[x]]))
     }
   }, character(1)), .outerOpt)
-  str2lang(paste(var, " <- ", type, "(", paste(.retD, collapse=", "), ")"))
+  str2lang(paste(var, " <- ", type, "(", paste(.retD, collapse = ", "), ")"))
 }
 
 #' @export
 rxUiDeparse.foceiControl <- function(object, var) {
-  .rxUiDeparseFoceiControl(object, var, type="foceiControl")
+  .rxUiDeparseFoceiControl(object, var, type = "foceiControl")
 }

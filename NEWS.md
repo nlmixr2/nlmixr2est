@@ -2,6 +2,29 @@
 
 ## Internal
 
+- `getBaseSimModelFit()` for the focei family (`focei`, `foce`, `focep`, `fo`,
+  `foi`, `posthoc`) no longer does three times the work for the same answer.
+  The method built a `predOnly`-based simulation model expression and then
+  discarded it, and called `getBaseSimModelFit.default()` twice -- once with
+  the result thrown away -- so lowering a focei fit to a simulation model
+  lowered it three times, one of those through a `rxNorm()` of the focei
+  `predOnly` model.  These methods are now aliases of the default, which is
+  what they already amounted to.
+- `rxode2::rxSolve()` on a fit no longer re-derives the model on every call
+  (nlmixr2/rxode2#1289).  Each call used to lower the fit to an rxode2
+  simulation model *and* re-run the pre-process hooks to build `$simInfo`;
+  for an ODE model that was most of the ~0.1 s per call, and it grew process
+  memory by a couple of MB per call that neither `gc()` nor
+  `rxode2::rxUnloadAll()` gave back, so simulating from a fit in a loop
+  eventually exhausted memory.  The lowered simulation model is now cached
+  (keyed on the fitted model itself, so a piped or refit model gets its own;
+  set `options(nlmixr2.simModelCache = FALSE)` to disable), and `$simInfo` is
+  only derived when the simulation actually uses the model's uncertainty --
+  which a plain `rxSolve(fit, events)` does not.  On the issue's reprex
+  (one-compartment ODE fit of `theo_sd`) repeated `rxSolve(fit, ev)` went from
+  0.106 s and +2.0 MB per call to 0.008 s and no measurable growth; the solved
+  results are unchanged, seed for seed.
+
 - A covariate whose value is carried on the model in `rxode2::rxForcedPars()` is
   no longer required to be a column of the data.  Such a covariate is supplied
   by the model itself, so demanding it from the data rejected a well-specified
@@ -108,6 +131,53 @@
   is all that changes; `focei`/`nlm`/`nls` are unaffected, and a model with
   an `indLin()` forcing term (e.g. Michaelis-Menten) still flattens (issue
   #859).
+
+- A `linCmt()` parameter driven by both an eta and a time-varying covariate
+  (for example `cl <- tcl*(wt/70)^0.75*exp(eta.cl)` with `wt` changing over a
+  subject's records) now gets an exact FOCEi-family eta gradient.  The
+  analytic `linCmt()` sensitivity reconstructs each row's carried state as if
+  the parameter had been constant over the subject, so a covariate that
+  changes it between rows silently conflated the interval sensitivities
+  (objective-function and converged-eta differences against the equivalent
+  ODE model).  The generated inner model now carries the exact sensitivity
+  across rows through rxode2's `linCmtB()` carry sentinels for every eligible
+  (parameter, eta) pair; models without such a pair generate identical code.
+  `foceiControl(linCmtSensCarry=)` opts out (`"none"`).  Data with
+  steady-state (`ss > 0`) or `evid = 2` records fall back to the previous
+  gradient with a note in `$runInfo`, and `"linear"` covariate interpolation
+  on such a covariate is an error (a `linCmt()` model evaluates each interval
+  at its row-end covariate value, so only a piecewise-constant interpolation
+  is representable).  The carry also covers the two ways an eta reaches the
+  state through an event: a modeled `f()` whose `d(ln F)/d(eta)` depends on
+  a covariate and a modeled `alag()` on a time-varying kernel each get a
+  per-row jump contribution (`#920`'s row-local terms are exact only while
+  the parameters are constant), and every `linCmt()` parameterization
+  (`trans`) is handled, with the observation-scaling term taken from
+  rxode2's own micro-constant translation.  Data whose doses enter another
+  compartment than the modified one, or an infusion with an `alag()` /
+  covariate `f()` channel, fall back like `ss` records do.  A generalized
+  `ll()` endpoint (or any prediction that wraps the `linCmt()` value in a
+  larger expression) is carried too: the concentration is read back once as
+  `rx_lcConc_`, the carry supplies its eta sensitivity and symengine the
+  outer chain rule, including any eta dependence the likelihood has with
+  the concentration held fixed (#1004).  The same carry also serves the
+  population methods' theta gradients (#1003): a theta on a
+  covariate-driven `linCmt()` parameter gets the carried score in the
+  `nlm` family and `nls`
+  (`nlmControl(linCmtSensCarry=)` / `nlsControl(linCmtSensCarry=)`),
+  with the concentration factored out of the wrapped log-likelihood;
+  SAEM's linearized FIM needs no change (it perturbs `phi` and
+  re-solves values, which is exact under a time-varying covariate).
+  Requires an rxode2 with the carry sentinels (the event channels need its
+  `which1 = -8` pin); older versions keep the previous behavior.  The
+  candidate detection itself is memoized by the focei model digest and
+  persisted as a sidecar in rxode2's cache directory (`rxCreateCache()`),
+  so repeated fits -- and, with a persistent cache, fresh sessions -- skip
+  the symbolic pass.  The focei model-cache bundle itself now stores each
+  generated model as its `rxode2::rxNorm()` text instead of a serialized
+  model object (about 1 kb instead of 1 Mb; rebuilding from the text hits
+  rxode2's compiled-model cache); bundles written by an earlier version
+  still load.
 
 - `focei`/`foce`/`agq`/`laplace`/`nlm` now compute a `matExp()` model's eta/
   theta sensitivities natively via `rxode2::rxSensMatExp()`, instead of
@@ -239,6 +309,32 @@
   fit, so removing them changes no result.
 
 ## Bug fixes
+
+- The FOCEi family (`focei`, `foce`, `focep`, `laplace`, `agq`, `posthoc`, and
+  their `i`/`m` prefixed variants) now applies the M2/M3/M4 censoring
+  correction to a `t()`, `cauchy()` or `dnorm()` endpoint instead of silently
+  scoring a censored row with its ordinary, uncensored density (#992,
+  completing #979 which covered the nlm family only).  Such an endpoint is
+  compiled to a scalar log-density, which hid the location, scale and degrees
+  of freedom the correction needs; the inner model now carries them (together
+  with `d(f)/d(eta)` and `d(R)/d(eta)`, so the inner eta gradient is corrected as
+  well, not just the objective).  A censored `t()`/`cauchy()` fit under these methods changes
+  its objective and its parameter estimates, and no longer emits the
+  "censoring ignored" note in `$runInfo`.  An `ar()` endpoint is excluded: its
+  reported scale is the marginal, not the conditional, one.
+
+- `foceiControl(fast=TRUE)` now downgrades to `fast=FALSE` for a CENSORED
+  log-likelihood endpoint, as the documentation already said it did.  Both the
+  augmented outer-gradient model and the exact second-order inner Hessian
+  differentiate the uncensored log-density, which the M2/M3/M4 correction
+  replaces for a censored row; the outer gradient already refused such a fit at
+  run time, but the inner Hessian did not.
+
+- The persisted FOCEi model cache (`rxUiGet.foceiModelCache()`) now keys on the
+  `nlmixr2est` version.  That cache lives in rxode2's user cache directory when
+  `rxode2::rxCreateCache()` has been run, so it survives an upgrade: any release
+  that changes the generated inner-model text (the censoring columns above, for
+  one) was silently ignored for a model already cached there.
 
 - `est="impmap"`'s inner Hessian (`impGetHessian`), which builds the
   importance-sampling proposal, could read a stale cached `linCmtB()`
