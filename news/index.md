@@ -4,6 +4,45 @@
 
 ### Bug fixes
 
+- IOV (`iov.x ~ v | OCC`) no longer copies an unrelated parameter’s
+  `prior` onto the parameters the expansion creates, and now carries the
+  prior the user declared. `.uiApplyIov()` builds the IOV magnitude
+  theta and the per-occasion etas by copying an existing `iniDf` row as
+  a template, and did not clear the template’s `prior`. So the magnitude
+  theta silently inherited the FIRST theta’s prior (an estimation method
+  with prior support sampled it against a distribution belonging to
+  another parameter), a `prior(iov.x)` written on the occasion eta was
+  dropped with the row the rewrite deletes, a
+  [`fix()`](https://rdrr.io/r/utils/fix.html)ed IOV parameter was
+  refused outright (“a prior given for fixed parameter(s)”), and so was
+  any model whose first eta carried a prior – every per-occasion
+  `rx.<iov>.<occ>` eta inherited it. The magnitude theta now carries
+  `prior(iov.x)` (on the `iovXform` scale, `"sd"` by default); the
+  copied rows carry no prior otherwise.
+- Several IOV parameters on ONE occasion variable
+  (`iov.cl ~ 0.1 | occ; iov.v ~ 0.04 | occ`) work. The occasion variable
+  was visited once per parameter riding it, duplicating every magnitude
+  theta, and `fix` was read from a vector over the whole occasion rather
+  than from each parameter’s own row, so the model errored with
+  “replacement has 2 rows, data has 1”.
+- The IOV parameter restored onto a finished fit keeps its own prior.
+  `.uiFinalizeIov()` rebuilds the user’s `iov.x ~ v | occ` row from a
+  template copied from the first remaining eta and restored eight fields
+  from the original but not `prior`, so `fit$ui$iniDf` reported the
+  FIRST eta’s prior on every IOV parameter – the same template-copy
+  mistake as above, on the way back out.
+- An occasion parameter with two variance declarations
+  (`iov.cl ~ 0.1 | occ; iov.cl ~ 0.15 | occ`) is named in the error.
+  rxode2 does build that ui, so every per-parameter field the rewrite
+  read was a vector and it died on “replacement has 2 rows, data has 1”
+  without saying which parameter was at fault.
+- Correlated inter-occasion random effects
+  (`iov.cl + iov.v ~ c(...) | occ`) are refused with an explanatory
+  error. The expansion gives each occasion parameter its own magnitude
+  theta and unit-variance etas, which cannot represent a correlation
+  between two of them; the off-diagonal row was treated as one more
+  occasion parameter named `(iov.cl,iov.v)`, and the model died in
+  `rxRename()` with `unexpected '='`.
 - Fixed a heap overflow in the FOCEi theta-reset path. The buffers it
   saves and copies back on a restart each had their length re-derived
   from a second copy of the allocation’s formula, and every copy had
