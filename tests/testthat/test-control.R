@@ -43,6 +43,15 @@ nmTest({
     expect_error(foceiControl(foceiControl="matt"))
   })
 
+  test_that("foceiControl sigdigTable defaults to sigdig", {
+    # not given -> sigdig, whatever sigdig is
+    expect_equal(foceiControl()$sigdigTable, foceiControl()$sigdig)
+    expect_equal(foceiControl(sigdig = 7)$sigdigTable, 7)
+    # an explicit sigdigTable is respected and overrides sigdig
+    expect_equal(foceiControl(sigdigTable = 2)$sigdigTable, 2)
+    expect_equal(foceiControl(sigdig = 7, sigdigTable = 2)$sigdigTable, 2)
+  })
+
   test_that("saemControl sanity", {
     expect_error(saemControl(), NA)
     nlmixrControlTest(saemControl())
