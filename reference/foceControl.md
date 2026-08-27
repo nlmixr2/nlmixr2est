@@ -277,7 +277,7 @@ foceControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x564a99c19768>
+#> <bytecode: 0x557d5cfb7c88>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg

@@ -2,6 +2,20 @@
 
 ## nlmixr2est 7.0.3
 
+### Bug fixes
+
+- Fixed a heap overflow in the FOCEi theta-reset path. The buffers it
+  saves and copies back on a restart each had their length re-derived
+  from a second copy of the allocation’s formula, and every copy had
+  fallen behind the layout it described – most damagingly the eta block,
+  which claimed `nall^2` where `sum(nobs_i^2)` had been allocated, so a
+  reset read past the end of the block and wrote the overshoot back.
+  Depending on what followed it in the heap, a fit that reset its thetas
+  could return truncated state, corrupt an unrelated allocation, or
+  abort the R process outright (`test-matexp.R` did the last of these).
+  Each length now comes from the allocation itself, and a restore whose
+  saved length does not match the current one errors instead of copying.
+
 ### Internal
 
 - [`getBaseSimModelFit()`](https://nlmixr2.github.io/nlmixr2est/reference/getBaseSimModelFit.md)
