@@ -5019,6 +5019,30 @@ static inline double foceiObjFromLik0(double *theta) {
   return -2*foceiLik0(theta) + foceiPriorObjTerm();
 }
 
+// Whole-block (invWishart(), type 3/4) piece of impPriorOmegaCorrect() --
+// split out to keep that dispatcher's own cyclomatic complexity down.
+// No-op (leaves Omega untouched) when the term's eta indices don't fit the
+// current Omega, or the resulting denominator is non-positive.
+static void impPriorOmegaCorrectBlock(const rx_prior_term_t &term, arma::mat &Omega, int nsub) {
+  int p = term.n;
+  arma::uvec rows((arma::uword)p);
+  for (int k = 0; k < p; ++k) {
+    int e = term.etaIdx[k];
+    if (e <= 0 || e > (int)Omega.n_rows) return;
+    rows[(arma::uword)k] = (arma::uword)(e - 1);
+  }
+  arma::mat Sblk = (double)nsub * Omega.submat(rows, rows);
+  // term.scale is row-major, but a scale/covariance matrix is symmetric,
+  // so reading it as column-major (Armadillo's default) is exactly its
+  // transpose -- identical for a symmetric matrix.
+  arma::mat Psi(term.scale, (arma::uword)p, (arma::uword)p);
+  double denom = (term.type == 3) ? ((double)nsub + term.nu + (double)p + 1.0)
+                                   : ((double)nsub + term.nu);
+  if (!(denom > 0.0)) return;
+  arma::mat num = (term.type == 3) ? arma::mat(Sblk + Psi) : arma::mat(Sblk + term.nu * Psi);
+  Omega.submat(rows, rows) = num / denom;
+}
+
 // MAP correction for imp/impmap/qrpem's Omega EM moment-average update
 // (src/imp.cpp: Omega = mean_i(eta_i*eta_i' + condVar_i), called on the
 // SUM before dividing by nsub -- i.e. Omega on entry is the plain ML moment
@@ -5070,25 +5094,7 @@ void impPriorOmegaCorrect(arma::mat &Omega, int nsub) {
     for (int k = 0; k < term.n; ++k) if (term.etaIdx[k] != 0) touchesOmega = true;
     if (!touchesOmega) continue;
     if (term.type == 3 || term.type == 4) {
-      int p = term.n;
-      arma::uvec rows((arma::uword)p);
-      bool ok = true;
-      for (int k = 0; k < p; ++k) {
-        int e = term.etaIdx[k];
-        if (e <= 0 || e > (int)Omega.n_rows) { ok = false; break; }
-        rows[(arma::uword)k] = (arma::uword)(e - 1);
-      }
-      if (!ok) continue;
-      arma::mat Sblk = (double)nsub * Omega.submat(rows, rows);
-      // term.scale is row-major, but a scale/covariance matrix is symmetric,
-      // so reading it as column-major (Armadillo's default) is exactly its
-      // transpose -- identical for a symmetric matrix.
-      arma::mat Psi(term.scale, (arma::uword)p, (arma::uword)p);
-      double denom = (term.type == 3) ? ((double)nsub + term.nu + (double)p + 1.0)
-                                       : ((double)nsub + term.nu);
-      if (!(denom > 0.0)) continue;
-      arma::mat num = (term.type == 3) ? arma::mat(Sblk + Psi) : arma::mat(Sblk + term.nu * Psi);
-      Omega.submat(rows, rows) = num / denom;
+      impPriorOmegaCorrectBlock(term, Omega, nsub);
     } else {
       anyGeneric = true;
     }
