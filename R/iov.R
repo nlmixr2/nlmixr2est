@@ -252,10 +252,10 @@ nlmixr2iovVarSd <- function(val) {
                          # the prior the user declared with `prior(iov.x)`
                          # describes this magnitude: carry it across the
                          # rewrite, which deletes the row it was written on.
-                         # A fixed magnitude is a constant and cannot hold
-                         # one.
-                         if (any(names(.curTheta) == "prior") &&
-                               !isTRUE(.curTheta$fix)) {
+                         # No `fix` guard is needed -- lotri refuses a prior
+                         # on a fixed parameter while the ui is built, so a
+                         # fixed magnitude reaching here always has none.
+                         if (any(names(.curTheta) == "prior")) {
                            .curTheta$prior <- .iniDf$prior[.wv]
                          }
 
@@ -429,6 +429,13 @@ nlmixr2iovVarSd <- function(val) {
           .cur$err <- .iovDf$err[i]
           .cur$name <- paste0("rx.", .iovDf$name[i]) # Matches replacement
           .cur$condition <- .iovDf$condition[i]
+          # .etaTemplate is a COPY of the first remaining eta (or of the
+          # first iniDf row): its prior belongs to that parameter.  This row
+          # is the user's own `iov.x ~ v | occ` being restored, so it takes
+          # the prior they wrote on it.
+          if (any(names(.cur) == "prior")) {
+            .cur$prior <- .iovDf$prior[i]
+          }
           .etaDf <- rbind(.etaDf, .cur)
           .thetaDf <- .thetaDf[-.w, , drop=FALSE]
         }

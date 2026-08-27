@@ -220,3 +220,64 @@ test_that("an occasion parameter declared twice is named in the error", {
   expect_equal(sum(rxode2::rxode2(.mod)$iniDf$name == "iov.cl"), 2L)
   expect_error(.iovApply(.mod), "'iov.cl' has 2 variance declarations")
 })
+
+test_that("a prior on a FIXED occasion magnitude is refused by name", {
+  skip_on_cran()
+  .mod <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      add.sd <- 0.7
+      prior(iov.cl) ~ dcauchy(0, 1)
+      eta.cl ~ 0.3
+      iov.cl ~ fix(0.1) | occ
+    })
+    model({
+      ka <- exp(tka)
+      cl <- exp(tcl + eta.cl + iov.cl)
+      v <- exp(tv)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  # a fixed magnitude is a constant and cannot carry a prior.  lotri
+  # already refuses the contradiction while the ui is BUILT, naming the
+  # parameter the user wrote, so the rewrite never sees one and needs no
+  # `fix` guard of its own when it carries the prior across.
+  expect_error(rxode2::rxode2(.mod),
+               "prior given for fixed parameter\\(s\\): 'iov.cl'")
+})
+
+test_that("the restored occasion parameter keeps its OWN prior", {
+  skip_on_cran()
+  .mod <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      add.sd <- 0.7
+      prior(eta.cl) ~ invWishart(4)   # the template row's prior
+      prior(iov.cl) ~ dcauchy(0, 1)
+      eta.cl ~ 0.3
+      iov.cl ~ 0.1 | occ
+    })
+    model({
+      ka <- exp(tka)
+      cl <- exp(tcl + eta.cl + iov.cl)
+      v <- exp(tv)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  skip_if_not("prior" %in% names(rxode2::rxode2(.mod)$iniDf),
+              "this lotri has no prior support")
+  # .uiFinalizeIov() rebuilds the user's `iov.cl ~ v | occ` row from a
+  # template copied from the FIRST eta; it restored eight fields but not
+  # `prior`, so the finished fit reported eta.cl's prior on iov.cl
+  .fit <- suppressMessages(suppressWarnings(
+    nlmixr2(.mod, .iovData(), est = "focei",
+            control = foceiControl(print = 0, maxOuterIterations = 0,
+                                   maxInnerIterations = 5))))
+  .ini <- .fit$ui$iniDf
+  expect_equal(.ini$prior[.ini$name == "iov.cl"], "dcauchy(0, 1)")
+  expect_equal(.ini$prior[.ini$name == "eta.cl"], "invWishart(4)")
+})

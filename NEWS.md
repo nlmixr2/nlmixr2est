@@ -21,6 +21,12 @@
   `fix` was read from a vector over the whole occasion rather than from each
   parameter's own row, so the model errored with "replacement has 2 rows, data
   has 1".
+- The IOV parameter restored onto a finished fit keeps its own prior.
+  `.uiFinalizeIov()` rebuilds the user's `iov.x ~ v | occ` row from a template
+  copied from the first remaining eta and restored eight fields from the
+  original but not `prior`, so `fit$ui$iniDf` reported the FIRST eta's prior
+  on every IOV parameter -- the same template-copy mistake as above, on the
+  way back out.
 - An occasion parameter with two variance declarations
   (`iov.cl ~ 0.1 | occ; iov.cl ~ 0.15 | occ`) is named in the error.  rxode2
   does build that ui, so every per-parameter field the rewrite read was a
