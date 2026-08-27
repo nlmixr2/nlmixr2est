@@ -1,0 +1,299 @@
+# Model-generation side of M2/M3/M4 censoring for a llik-forced
+# t()/cauchy()/dnorm() endpoint under the FOCEi family (#992).  The
+# log-density in rx_pred_ hides the location/scale/degrees of freedom
+# censEst.h needs, so .fixCensRNuLine() restores a real rx_r_/rx_nu_ and
+# .rxFinalizeInner()/.rxFinalizePred() emit them (plus d(f)/d(eta)) as real
+# lhs.  Cheap (no fits) -- the end-to-end numeric validation lives in
+# test-focei-cens-t-fit.R.
+
+nmTest({
+
+  .withCensNuFix <- function(code) {
+    .old <- nlmixr2global$rxCensNuFix
+    .oldLlik <- nlmixr2global$rxPredLlik
+    on.exit({
+      nlmixr2global$rxCensNuFix <- .old
+      nlmixr2global$rxPredLlik <- .oldLlik
+    })
+    nlmixr2global$rxCensNuFix <- TRUE
+    nlmixr2global$rxPredLlik <- TRUE
+    force(code)
+  }
+
+  .cauchyLines <- function() {
+    list(quote(rx_yj_ ~ 122),
+         quote(rx_lambda_ ~ 1),
+         quote(rx_pred_f_ ~ cp),
+         quote(rx_pred_ ~ rx_pred_f_),
+         quote(rx_rll_ ~ sqrt((add.sd)^2)),
+         quote(rx_pred_ ~ llikCauchy(DV, rx_pred_, rx_rll_)),
+         quote(rx_r_ ~ 0))
+  }
+
+  .tLines <- function() {
+    list(quote(rx_pred_f_ ~ cp),
+         quote(rx_pred_ ~ rx_pred_f_),
+         quote(rx_rll_ ~ sqrt((add.sd)^2)),
+         quote(rx_pred_ ~ llikT(DV, nu, rx_pred_, rx_rll_)),
+         quote(rx_r_ ~ 0))
+  }
+
+  test_that(".fixCensRNuLine only fires when the censoring flag is set", {
+    .lines <- .cauchyLines()
+    .old <- nlmixr2global$rxCensNuFix
+    on.exit(nlmixr2global$rxCensNuFix <- .old)
+    nlmixr2global$rxCensNuFix <- FALSE
+    expect_identical(.fixCensRNuLine(.lines), .lines)
+  })
+
+  test_that(".fixCensRNuLine restores rx_r_ and adds rx_nu_ for cauchy()", {
+    .out <- .withCensNuFix(.fixCensRNuLine(.cauchyLines()))
+    # cauchy is Student-t with nu=1
+    expect_true(any(vapply(.out, identical, logical(1), quote(rx_nu_ ~ 1))))
+    expect_true(any(vapply(.out, identical, logical(1), quote(rx_r_ ~ rx_rll_^2))))
+    # ...and the hardcoded zero is gone
+    expect_false(any(vapply(.out, identical, logical(1), quote(rx_r_ ~ 0))))
+  })
+
+  test_that(".fixCensRNuLine picks up t()'s own degrees of freedom", {
+    .out <- .withCensNuFix(.fixCensRNuLine(.tLines()))
+    expect_true(any(vapply(.out, identical, logical(1), quote(rx_nu_ ~ nu))))
+    expect_true(any(vapply(.out, identical, logical(1), quote(rx_r_ ~ rx_rll_^2))))
+  })
+
+  test_that(".fixCensRNuLine leaves an ar() endpoint alone", {
+    # rx_rll_ is the MARGINAL sd for an AR(1) endpoint; the conditional scale
+    # handed to llikCauchy() is rx_rll_*sqrt(1-phi^2), so squaring rx_rll_ back
+    # into rx_r_ would feed the correction the wrong scale.
+    .lines <- c(.cauchyLines()[1:5],
+                list(quote(rx_arPhi_cp <- rx_arNf_cp * cor^rx_arDt_cp)),
+                .cauchyLines()[6:7])
+    expect_identical(.withCensNuFix(.fixCensRNuLine(.lines)), .lines)
+  })
+
+  test_that(".fixCensRNuLine leaves a distribution with no rx_rll_ alone", {
+    .lines <- list(quote(rx_pred_f_ ~ cp), quote(rx_pred_ ~ rx_pred_f_),
+                   quote(rx_r_ ~ 0))
+    expect_identical(.withCensNuFix(.fixCensRNuLine(.lines)), .lines)
+  })
+
+  .cauchyUi <- function() {
+    .f <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        add.sd <- c(0, 0.7)
+        eta.ka ~ 0.2
+        eta.cl ~ 0.1
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd) + cauchy()
+      })
+    }
+    rxode2::rxUiDecompress(rxode2::rxode2(.f))
+  }
+
+  .innerText <- function(censFix) {
+    .old <- nlmixr2global$rxCensNuFix
+    .oldLlik <- nlmixr2global$rxPredLlik
+    on.exit({
+      nlmixr2global$rxCensNuFix <- .old
+      nlmixr2global$rxPredLlik <- .oldLlik
+    })
+    nlmixr2global$rxCensNuFix <- censFix
+    nlmixr2global$rxPredLlik <- TRUE
+    .s <- suppressMessages(rxUiGet.foceiEnv(list(.cauchyUi(), TRUE)))
+    .s$..inner
+  }
+
+  test_that("the llik inner model exposes the censoring inputs (#992)", {
+    .on <- suppressMessages(.innerText(TRUE))
+    # the location and the degrees of freedom become real (read-back) lhs
+    expect_match(.on, "rx_pred_f_=", fixed = TRUE)
+    expect_match(.on, "rx_nu_=", fixed = TRUE)
+    # ...and so does d(f)/d(eta), which the eta-gradient correction chains through
+    expect_match(.on, "rx__sens_rx_pred_f__BY_ETA_1___=", fixed = TRUE)
+    expect_match(.on, "rx__sens_rx_pred_f__BY_ETA_2___=", fixed = TRUE)
+    # rx_r_ is no longer the hardcoded zero rxode2 emits for a llik endpoint
+    expect_false(any(strsplit(.on, "\n")[[1]] == "rx_r_=0"))
+    # they are APPENDED after the FOCEi eta block, which likInner0 reads
+    # arithmetically from predOffset -- rx_r_'s last eta column must still
+    # precede them
+    expect_lt(regexpr("rx__sens_rx_r__BY_ETA_2___=", .on, fixed = TRUE),
+              regexpr("rx_pred_f_=", .on, fixed = TRUE))
+  })
+
+  test_that("the FOCE llik inner model gets its own d(R)/d(eta) block (#992)", {
+    # rxUiGet.foceEnv drops ..REta entirely (FOCE does not differentiate R), so
+    # the censored gradient's d(R)/d(eta) has to be patched back in as
+    # ..censREta -- appended at the end and found by name.  Every non-normal
+    # endpoint runs here, because .foceiFitInternal forces interaction = 0 for
+    # one, and rxUiGet.foceiModel then picks the FOCE builder.
+    .old <- nlmixr2global$rxCensNuFix
+    .oldLlik <- nlmixr2global$rxPredLlik
+    on.exit({
+      nlmixr2global$rxCensNuFix <- .old
+      nlmixr2global$rxPredLlik <- .oldLlik
+    })
+    nlmixr2global$rxCensNuFix <- TRUE
+    nlmixr2global$rxPredLlik <- TRUE
+    .s <- suppressMessages(rxUiGet.foceEnv(list(.cauchyUi(), TRUE)))
+    expect_null(.s$..REta)
+    expect_length(.s$..censREta, 2L)   # one line per eta
+    .inner <- .s$..inner
+    expect_match(.inner, "rx__sens_rx_r__BY_ETA_1___=", fixed = TRUE)
+    expect_match(.inner, "rx__sens_rx_r__BY_ETA_2___=", fixed = TRUE)
+    expect_match(.inner, "rx_pred_f_=", fixed = TRUE)
+    expect_match(.inner, "rx_nu_=", fixed = TRUE)
+    # appended AFTER rx_r_, so the FOCE column layout ahead of it is untouched
+    expect_lt(regexpr("rx_r_=", .inner, fixed = TRUE),
+              regexpr("rx__sens_rx_r__BY_ETA_1___=", .inner, fixed = TRUE))
+  })
+
+  test_that("without the flag the llik inner model is unchanged (#992)", {
+    .off <- suppressMessages(.innerText(FALSE))
+    expect_true(any(strsplit(.off, "\n")[[1]] == "rx_r_=0"))
+    expect_false(grepl("rx_nu_=", .off, fixed = TRUE))
+    expect_false(grepl("rx__sens_rx_pred_f__BY_ETA_1___=", .off, fixed = TRUE))
+  })
+
+  .arDnormUi <- function() {
+    .f <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        add.sd <- c(0, 0.7)
+        phi <- c(0, 0.5, 1)
+        eta.ka ~ 0.2
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl)
+        v <- exp(tv)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd) + ar(phi) + dnorm()
+      })
+    }
+    rxode2::rxUiDecompress(rxode2::rxode2(.f))
+  }
+
+  test_that("an ar() endpoint keeps the censoring correction disarmed (#992)", {
+    # .fixCensRNuLine() declines an ar() endpoint (rx_rll_ is the marginal, not
+    # the conditional, scale), so rx_r_ stays rxode2's hardcoded 0.  Emitting
+    # rx_pred_f_ anyway would ARM focei_tCensLl for a dnorm() endpoint -- which
+    # has no rx_nu_ to disarm it -- and hand doCensNormal1() a zero variance.
+    .old <- nlmixr2global$rxCensNuFix
+    .oldLlik <- nlmixr2global$rxPredLlik
+    on.exit({
+      nlmixr2global$rxCensNuFix <- .old
+      nlmixr2global$rxPredLlik <- .oldLlik
+    })
+    nlmixr2global$rxCensNuFix <- TRUE
+    nlmixr2global$rxPredLlik <- TRUE
+    .s <- suppressMessages(rxUiGet.foceiEnv(list(.arDnormUi(), TRUE)))
+    expect_true(any(strsplit(.s$..inner, "\n")[[1]] == "rx_r_=0"))
+    expect_false(grepl("rx_pred_f_=", .s$..inner, fixed = TRUE))
+    expect_false(grepl("rx_nu_=", .s$..inner, fixed = TRUE))
+    # the generator itself declines on a zero rx_r_, whatever produced it
+    expect_identical(.foceiCensLlikCols(.s), character(0))
+  })
+
+  test_that("the persisted model cache keys on the package version (#992)", {
+    # the cache lives in rxode2's user cache directory, so it outlives an
+    # upgrade; a release that changes the generated model text must not be
+    # silently ignored for a model already cached there
+    .ui <- .cauchyUi()
+    .d0 <- rxUiGet.foceiModelDigest(list(.ui, TRUE))
+    testthat::local_mocked_bindings(
+      packageVersion = function(...) package_version("99.9.9"),
+      .package = "utils")
+    expect_false(identical(rxUiGet.foceiModelDigest(list(.ui, TRUE)), .d0))
+  })
+
+  test_that("fast=TRUE downgrades for a CENSORED llik endpoint (#992)", {
+    # the exact 2nd-order inner Hessian (rx__d2pred_) and the augmented
+    # outer-gradient model both differentiate the UNCENSORED log-density, which
+    # doCensT1() replaces for a censored row
+    .f <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        add.sd <- c(0, 0.7)
+        eta.ka ~ 0.2
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl)
+        v <- exp(tv)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd) + cauchy()
+      })
+    }
+    .d <- nlmixr2data::theo_sd
+    .d <- .d[.d$ID <= 2, ]
+    .fastOf <- function(dat) {
+      .env <- new.env(parent = emptyenv())
+      .env$ui <- rxode2::rxUiDecompress(rxode2::rxode2(.f))
+      .env$data <- dat
+      .env$est <- "focei"
+      .env$control <- foceiControl(print = 0L, fast = TRUE)
+      # .foceiFamilyControl() writes the resolved control back onto the ui
+      suppressMessages(.foceiFamilyControl(.env))
+      isTRUE(rxode2::rxGetControl(.env$ui, "fast", FALSE))
+    }
+    expect_true(.fastOf(.d))
+    .m3 <- .d
+    .m3$CENS <- ifelse(.m3$EVID == 0 & .m3$DV < 3, 1L, 0L)
+    expect_false(.fastOf(.m3))
+    # M2 (LIMIT only, nothing flagged censored) counts too
+    .m2 <- .d
+    .m2$LIMIT <- ifelse(.m2$EVID == 0, 0.25, NA_real_)
+    expect_false(.fastOf(.m2))
+  })
+
+  test_that("censoring is no longer reported as ignored for focei t()/cauchy()", {
+    .f <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        add.sd <- c(0, 0.7)
+        eta.ka ~ 0.2
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl)
+        v <- exp(tv)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd) + cauchy()
+      })
+    }
+    .ui <- rxode2::rxUiDecompress(rxode2::rxode2(.f))
+    .d <- nlmixr2data::theo_sd
+    .d <- .d[.d$ID <= 2, ]
+    .d$CENS <- ifelse(.d$EVID == 0 & .d$DV < 3, 1L, 0L)
+    for (.est in c("focei", "foce", "laplace", "agq", "posthoc", "nlm")) {
+      expect_no_warning(.preProcessCensDistWarn(.ui, .est, .d, NULL))
+    }
+    # a method on a kernel that has no t()/cauchy() correction still warns
+    for (.est in c("saem", "imp", "npag")) {
+      expect_warning(.preProcessCensDistWarn(.ui, .est, .d, NULL),
+                     "censoring ignored")
+    }
+  })
+})

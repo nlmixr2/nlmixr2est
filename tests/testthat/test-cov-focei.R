@@ -30,13 +30,13 @@ nmTest({
         ktr <- 6 / mtt
 
         ## ODE example
-        d / dt(depot) <- -ktr * depot
-        d / dt(central) <- ktr * trans5 - (cl / v) * central
-        d / dt(trans1) <- ktr * depot - ktr * trans1
-        d / dt(trans2) <- ktr * trans1 - ktr * trans2
-        d / dt(trans3) <- ktr * trans2 - ktr * trans3
-        d / dt(trans4) <- ktr * trans3 - ktr * trans4
-        d / dt(trans5) <- ktr * trans4 - ktr * trans5
+        d/dt(depot) <- -ktr * depot
+        d/dt(central) <- ktr * trans5 - (cl / v) * central
+        d/dt(trans1) <- ktr * depot - ktr * trans1
+        d/dt(trans2) <- ktr * trans1 - ktr * trans2
+        d/dt(trans3) <- ktr * trans2 - ktr * trans3
+        d/dt(trans4) <- ktr * trans3 - ktr * trans4
+        d/dt(trans5) <- ktr * trans4 - ktr * trans5
 
         ## Concentration is calculated
         cp <- central / v

@@ -10,7 +10,7 @@ nmTest({
     })
     model({
       ke <- popKe * exp(etaKe)
-      d / dt(ipre) <- -ke * ipre
+      d/dt(ipre) <- -ke * ipre
       f(ipre) <- fp * exp(etaF)
       ipre ~ prop(prop.sd)
     })
