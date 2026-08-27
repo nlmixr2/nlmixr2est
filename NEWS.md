@@ -6,12 +6,12 @@
   (#1020).  On a machine with at least twice as many threads as the problem
   has subjects, the objective function and the estimates differed between two
   identical `nlmixr2(..., est = "focei")` calls, and the optimizer frequently
-  stopped at (or beside) the initial estimates.  The cause is in rxode2 --
-  `sortIds()` ordered subjects by their *measured* solve time, so FOCEi, which
-  re-sorts around every inner-optimization and gradient loop, handed its
-  subjects to different threads on every pass and carried different per-thread
-  solver state into each likelihood and gradient.  It is fixed there by
-  ordering on the number of events a subject is solved over; this package
+  stopped at (or beside) the initial estimates.  The cause is in rxode2, where
+  two bugs met on the path FOCEi takes: `sortIds()` ordered subjects by their
+  *measured* solve time, so the order was a function of wall-clock timing, and
+  several per-individual drivers read `ind_solve()`'s subject id as a position
+  in the reordered `rx->ordId` -- so once the order stopped being the identity
+  the wrong individual was integrated.  The fixes are in rxode2; this package
   gains the regression test.
 - Fixed a heap overflow in the FOCEi theta-reset path.  The buffers it saves
   and copies back on a restart each had their length re-derived from a second
