@@ -59,14 +59,18 @@ test_that("theta-side carry: eligibility, emission and FD (#1003)", {
   fdErr <- function(txt) {
     m <- suppressWarnings(rxode2::rxode2(txt))
     slv <- function(q) {
-      rxode2::rxSolve(m, params = q, events = ev, returnType = "data.frame",
-                      covsInterpolation = "nocb")
+      rxode2::rxSolve(m,
+        params = q, events = ev, returnType = "data.frame",
+        covsInterpolation = "nocb"
+      )
     }
     r0 <- slv(pars)
     h <- 1e-5
     vapply(1:3, function(k) {
       got <- r0[[paste0("rx__sens_rx_pred__BY_THETA_", k, "___")]]
-      if (is.null(got)) return(0) # nls carries no residual-sd column
+      if (is.null(got)) {
+        return(0)
+      } # nls carries no residual-sd column
       tn <- paste0("THETA[", k, "]")
       a <- pars
       a[tn] <- a[tn] + h

@@ -13,8 +13,41 @@
   solver state into each likelihood and gradient.  It is fixed there by
   ordering on the number of events a subject is solved over; this package
   gains the regression test.
+- Fixed a heap overflow in the FOCEi theta-reset path.  The buffers it saves
+  and copies back on a restart each had their length re-derived from a second
+  copy of the allocation's formula, and every copy had fallen behind the layout
+  it described -- most damagingly the eta block, which claimed `nall^2` where
+  `sum(nobs_i^2)` had been allocated, so a reset read past the end of the block
+  and wrote the overshoot back.  Depending on what followed it in the heap, a
+  fit that reset its thetas could return truncated state, corrupt an unrelated
+  allocation, or abort the R process outright (`test-matexp.R` did the last of
+  these).  Each length now comes from the allocation itself, and a restore whose
+  saved length does not match the current one errors instead of copying.
 
 ## Internal
+
+- `getBaseSimModelFit()` for the focei family (`focei`, `foce`, `focep`, `fo`,
+  `foi`, `posthoc`) no longer does three times the work for the same answer.
+  The method built a `predOnly`-based simulation model expression and then
+  discarded it, and called `getBaseSimModelFit.default()` twice -- once with
+  the result thrown away -- so lowering a focei fit to a simulation model
+  lowered it three times, one of those through a `rxNorm()` of the focei
+  `predOnly` model.  These methods are now aliases of the default, which is
+  what they already amounted to.
+- `rxode2::rxSolve()` on a fit no longer re-derives the model on every call
+  (nlmixr2/rxode2#1289).  Each call used to lower the fit to an rxode2
+  simulation model *and* re-run the pre-process hooks to build `$simInfo`;
+  for an ODE model that was most of the ~0.1 s per call, and it grew process
+  memory by a couple of MB per call that neither `gc()` nor
+  `rxode2::rxUnloadAll()` gave back, so simulating from a fit in a loop
+  eventually exhausted memory.  The lowered simulation model is now cached
+  (keyed on the fitted model itself, so a piped or refit model gets its own;
+  set `options(nlmixr2.simModelCache = FALSE)` to disable), and `$simInfo` is
+  only derived when the simulation actually uses the model's uncertainty --
+  which a plain `rxSolve(fit, events)` does not.  On the issue's reprex
+  (one-compartment ODE fit of `theo_sd`) repeated `rxSolve(fit, ev)` went from
+  0.106 s and +2.0 MB per call to 0.008 s and no measurable growth; the solved
+  results are unchanged, seed for seed.
 
 - A covariate whose value is carried on the model in `rxode2::rxForcedPars()` is
   no longer required to be a column of the data.  Such a covariate is supplied
