@@ -225,6 +225,17 @@ nlmixr2iovVarSd <- function(val) {
                          # read from here rather than from a vector over the
                          # whole condition
                          .wv <- which(.iniDf$name == v & is.na(.iniDf$ntheta))
+                         if (length(.wv) != 1L) {
+                           # rxode2 does build a ui with the same occasion
+                           # parameter declared twice; every field read from
+                           # .wv below would then be a vector, and the
+                           # rewrite would die on "replacement has 2 rows,
+                           # data has 1" without naming the parameter
+                           stop("the inter-occasion parameter '", v,
+                                "' has ", length(.wv), " variance ",
+                                "declarations; it needs exactly one",
+                                call.=FALSE)
+                         }
                          .est <- .iniDf[.wv, "est"]
                          if (.xform == "var") {
                            .curTheta$est <- .est

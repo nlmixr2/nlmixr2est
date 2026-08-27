@@ -21,6 +21,11 @@
   `fix` was read from a vector over the whole occasion rather than from each
   parameter's own row, so the model errored with "replacement has 2 rows, data
   has 1".
+- An occasion parameter with two variance declarations
+  (`iov.cl ~ 0.1 | occ; iov.cl ~ 0.15 | occ`) is named in the error.  rxode2
+  does build that ui, so every per-parameter field the rewrite read was a
+  vector and it died on "replacement has 2 rows, data has 1" without saying
+  which parameter was at fault.
 - Correlated inter-occasion random effects
   (`iov.cl + iov.v ~ c(...) | occ`) are refused with an explanatory error.
   The expansion gives each occasion parameter its own magnitude theta and

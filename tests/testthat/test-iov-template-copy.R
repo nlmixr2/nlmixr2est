@@ -193,3 +193,30 @@ test_that("correlated occasion random effects are refused explicitly", {
   # error from rxRename() about "rx.(iov.cl,iov.v)="
   expect_error(.iovApply(.mod), "correlated inter-occasion")
 })
+
+test_that("an occasion parameter declared twice is named in the error", {
+  skip_on_cran()
+  .mod <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      add.sd <- 0.7
+      eta.cl ~ 0.3
+      iov.cl ~ 0.1 | occ
+      iov.cl ~ 0.15 | occ
+    })
+    model({
+      ka <- exp(tka)
+      cl <- exp(tcl + eta.cl + iov.cl)
+      v <- exp(tv)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  # rxode2 builds this ui (two eta rows share the name), so the rewrite is
+  # what has to catch it; every per-parameter field would otherwise be a
+  # vector and it would die on "replacement has 2 rows, data has 1" without
+  # saying which parameter
+  expect_equal(sum(rxode2::rxode2(.mod)$iniDf$name == "iov.cl"), 2L)
+  expect_error(.iovApply(.mod), "'iov.cl' has 2 variance declarations")
+})
