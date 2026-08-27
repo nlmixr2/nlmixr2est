@@ -347,8 +347,7 @@ against a default \code{rtol = 1e-6}.  Raise \code{sigdig}, or set
 \code{atol}/\code{rtol} directly, when you want a tighter solve.}
 
 \item{sigdigTable}{Significant digits in the final output table.
-If not specified, then it matches the significant digits in the
-`sigdig` optimization algorithm.  If `sigdig` is NULL, use 3.}
+If not specified (`NULL`), it defaults to `sigdig`.}
 
 \item{stickyRecalcN}{The number of bad ODE solves before reducing
 the atol/rtol for the rest of the problem.}
