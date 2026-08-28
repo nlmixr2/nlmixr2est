@@ -82,3 +82,4 @@ attr(nlmixr2Est.qrpem, "iov") <- TRUE
 attr(nlmixr2Est.qrpem, "mu") <- function(control) {
   isTRUE(!identical(control$muModel, "none")) && isTRUE(control$muRefCovAlg)
 }
+attr(nlmixr2Est.qrpem, "nlmixr2Priors") <- "general"

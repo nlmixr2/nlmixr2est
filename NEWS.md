@@ -13,6 +13,43 @@
   in the reordered `rx->ordId` -- so once the order stopped being the identity
   the wrong individual was integrated.  The fixes are in rxode2; this package
   gains the regression test.
+- IOV (`iov.x ~ v | OCC`) no longer copies an unrelated parameter's `prior`
+  onto the parameters the expansion creates, and now carries the prior the
+  user declared.  `.uiApplyIov()` builds the IOV magnitude theta and the
+  per-occasion etas by copying an existing `iniDf` row as a template, and did
+  not clear the template's `prior`.  So the magnitude theta silently inherited
+  the FIRST theta's prior (an estimation method with prior support sampled it
+  against a distribution belonging to another parameter), a `prior(iov.x)`
+  written on the occasion eta was dropped with the row the rewrite deletes,
+  a `fix()`ed IOV parameter was refused outright ("a prior given for fixed
+  parameter(s)"), and so was any model whose first eta carried a prior --
+  every per-occasion `rx.<iov>.<occ>` eta inherited it.  The magnitude theta
+  now carries `prior(iov.x)` (on the `iovXform` scale, `"sd"` by default);
+  the copied rows carry no prior otherwise.
+- Several IOV parameters on ONE occasion variable
+  (`iov.cl ~ 0.1 | occ; iov.v ~ 0.04 | occ`) work.  The occasion variable was
+  visited once per parameter riding it, duplicating every magnitude theta, and
+  `fix` was read from a vector over the whole occasion rather than from each
+  parameter's own row, so the model errored with "replacement has 2 rows, data
+  has 1".
+- The IOV parameter restored onto a finished fit keeps its own prior.
+  `.uiFinalizeIov()` rebuilds the user's `iov.x ~ v | occ` row from a template
+  copied from the first remaining eta and restored eight fields from the
+  original but not `prior`, so `fit$ui$iniDf` reported the FIRST eta's prior
+  on every IOV parameter -- the same template-copy mistake as above, on the
+  way back out.
+- An occasion parameter with two variance declarations
+  (`iov.cl ~ 0.1 | occ; iov.cl ~ 0.15 | occ`) is named in the error.  rxode2
+  does build that ui, so every per-parameter field the rewrite read was a
+  vector and it died on "replacement has 2 rows, data has 1" without saying
+  which parameter was at fault.
+- Correlated inter-occasion random effects
+  (`iov.cl + iov.v ~ c(...) | occ`) are refused with an explanatory error.
+  The expansion gives each occasion parameter its own magnitude theta and
+  unit-variance etas, which cannot represent a correlation between two of
+  them; the off-diagonal row was treated as one more occasion parameter named
+  `(iov.cl,iov.v)`, and the model died in `rxRename()` with
+  `unexpected '='`.
 - Fixed a heap overflow in the FOCEi theta-reset path.  The buffers it saves
   and copies back on a restart each had their length re-derived from a second
   copy of the allocation's formula, and every copy had fallen behind the layout
@@ -236,6 +273,44 @@
   prior on an omega element silently vanished the first time a
   prior-carrying fit was re-entered, which is every fit's own finalize
   step. `rxUiPriors(fit$ui)` now still reports it afterward.
+
+- `est="imp"`, `est="impmap"` and `est="qrpem"` now honour a prior on a
+  population parameter AND on an omega element, declared
+  `nlmixr2Priors = "general"` individually on each of the three (issue
+  #932). Their shared M-step is an importance-sampling EM, not FOCEi's
+  outer optimizer, so the objective already picking up the prior (via
+  #931's plumbing) was not enough on its own -- the estimates it reported
+  would otherwise still be the maximum-likelihood ones. Each M-step update
+  now folds in the prior's own score/curvature before taking its step:
+
+  - the non-mu structural/residual-error Newton step, the mu-referenced
+    covariate regression (`updateMuGroups()`), and the plain mu-intercept
+    mean-shift each fold in an FD-Hessian one-step Newton correction --
+    exact for a Gaussian prior (a quadratic log-density has no Taylor
+    truncation error), a reasonable one-step approximation otherwise
+    (Cauchy, `multiNormal()`).
+  - the Omega EM moment-average update gets the EXACT joint posterior mode
+    for a conjugate `invWishart()` term (NONMEM's own `"nwpri"` convention
+    or the textbook `"general"` one), and a one-step Fisher-scoring
+    (One-Step-Late) correction, reusing the same `Abar` construction
+    FOCEi's own omega-prior gradient already computes, for a normal prior
+    directly on an omega element (`"tnpri"`) or a `multiNormal()` block
+    mixing omega with theta.
+
+- A prior may now be placed directly on a single omega COVARIANCE
+  (off-diagonal) element -- `prior(eta.cl, eta.v) ~ dnorm(0, 0.1)` on a
+  model with a correlated BSV block -- a marginal, independent prior on
+  that one cell, distinct from a whole-block `invWishart()`/
+  `multiNormal()` prior. NONMEM has no direct mechanism for this specific
+  marginal form; it fills the same ergonomic gap this package's `om.<eta>`
+  shorthand already fills for one individual variance. This is entirely a
+  new capability in the shared upstream kernel (rxode2/lotri, see their
+  own NEWS) -- FOCEi's `foceiPriorOmegaGradAdd()` and imp/impmap/qrpem's
+  `impPriorOmegaCorrect()` already operated on the full `gradOmega`/`Omega`
+  matrices generically, so both pick this up with no nlmixr2est source
+  changes at all, confirmed by new tests in `test-focei-prior.R` and
+  `test-imp-prior.R` that pass unmodified against the upgraded
+  dependencies.
 
 ## Changed defaults
 
