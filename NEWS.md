@@ -263,6 +263,44 @@
   prior-carrying fit was re-entered, which is every fit's own finalize
   step. `rxUiPriors(fit$ui)` now still reports it afterward.
 
+- `est="imp"`, `est="impmap"` and `est="qrpem"` now honour a prior on a
+  population parameter AND on an omega element, declared
+  `nlmixr2Priors = "general"` individually on each of the three (issue
+  #932). Their shared M-step is an importance-sampling EM, not FOCEi's
+  outer optimizer, so the objective already picking up the prior (via
+  #931's plumbing) was not enough on its own -- the estimates it reported
+  would otherwise still be the maximum-likelihood ones. Each M-step update
+  now folds in the prior's own score/curvature before taking its step:
+
+  - the non-mu structural/residual-error Newton step, the mu-referenced
+    covariate regression (`updateMuGroups()`), and the plain mu-intercept
+    mean-shift each fold in an FD-Hessian one-step Newton correction --
+    exact for a Gaussian prior (a quadratic log-density has no Taylor
+    truncation error), a reasonable one-step approximation otherwise
+    (Cauchy, `multiNormal()`).
+  - the Omega EM moment-average update gets the EXACT joint posterior mode
+    for a conjugate `invWishart()` term (NONMEM's own `"nwpri"` convention
+    or the textbook `"general"` one), and a one-step Fisher-scoring
+    (One-Step-Late) correction, reusing the same `Abar` construction
+    FOCEi's own omega-prior gradient already computes, for a normal prior
+    directly on an omega element (`"tnpri"`) or a `multiNormal()` block
+    mixing omega with theta.
+
+- A prior may now be placed directly on a single omega COVARIANCE
+  (off-diagonal) element -- `prior(eta.cl, eta.v) ~ dnorm(0, 0.1)` on a
+  model with a correlated BSV block -- a marginal, independent prior on
+  that one cell, distinct from a whole-block `invWishart()`/
+  `multiNormal()` prior. NONMEM has no direct mechanism for this specific
+  marginal form; it fills the same ergonomic gap this package's `om.<eta>`
+  shorthand already fills for one individual variance. This is entirely a
+  new capability in the shared upstream kernel (rxode2/lotri, see their
+  own NEWS) -- FOCEi's `foceiPriorOmegaGradAdd()` and imp/impmap/qrpem's
+  `impPriorOmegaCorrect()` already operated on the full `gradOmega`/`Omega`
+  matrices generically, so both pick this up with no nlmixr2est source
+  changes at all, confirmed by new tests in `test-focei-prior.R` and
+  `test-imp-prior.R` that pass unmodified against the upgraded
+  dependencies.
+
 ## Changed defaults
 
 - `est="saem"` now refines a population theta that carries no random effect with

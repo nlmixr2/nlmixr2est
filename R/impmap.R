@@ -932,3 +932,4 @@ attr(nlmixr2Est.impmap, "iov") <- TRUE
 attr(nlmixr2Est.impmap, "mu") <- function(control) {
   isTRUE(!identical(control$muModel, "none")) && isTRUE(control$muRefCovAlg)
 }
+attr(nlmixr2Est.impmap, "nlmixr2Priors") <- "general"
