@@ -2,6 +2,17 @@
 
 ## Bug fixes
 
+- Fitting the same data twice in one session gives the same answer again
+  (#1020).  On a machine with at least twice as many threads as the problem
+  has subjects, the objective function and the estimates differed between two
+  identical `nlmixr2(..., est = "focei")` calls, and the optimizer frequently
+  stopped at (or beside) the initial estimates.  The cause is in rxode2, where
+  two bugs met on the path FOCEi takes: `sortIds()` ordered subjects by their
+  *measured* solve time, so the order was a function of wall-clock timing, and
+  several per-individual drivers read `ind_solve()`'s subject id as a position
+  in the reordered `rx->ordId` -- so once the order stopped being the identity
+  the wrong individual was integrated.  The fixes are in rxode2; this package
+  gains the regression test.
 - IOV (`iov.x ~ v | OCC`) no longer copies an unrelated parameter's `prior`
   onto the parameters the expansion creates, and now carries the prior the
   user declared.  `.uiApplyIov()` builds the IOV magnitude theta and the
