@@ -1066,11 +1066,7 @@ foceiControl <- function(sigdig = 3, #
     }
   }
   if (is.null(sigdigTable)) {
-    if (is.null(sigdig)) {
-      sigdigTable <- 3L
-    } else {
-      sigdigTable <- sigdig
-    }
+    sigdigTable <- sigdig
   } else {
     checkmate::assertNumeric(sigdigTable, lower = 1, finite = TRUE, any.missing = TRUE, len = 1)
   }

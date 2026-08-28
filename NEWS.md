@@ -2,6 +2,12 @@
 
 ## Internal
 
+- `foceiControl()` resolves `sigdigTable` to `sigdig` whenever it is not
+  supplied.  The fallback to a hard-coded `3` applied only when `sigdig` was
+  `NULL`, which a caller cannot arrange: `foceiControl(sigdig = NULL)` fails
+  earlier on the `epsilon` assertion.  No change to any value a control
+  function returns.
+
 - `getBaseSimModelFit()` for the focei family (`focei`, `foce`, `focep`, `fo`,
   `foi`, `posthoc`) no longer does three times the work for the same answer.
   The method built a `predOnly`-based simulation model expression and then
