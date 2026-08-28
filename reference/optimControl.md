@@ -388,9 +388,8 @@ optimControl(
 
 - sigdigTable:
 
-  Significant digits in the final output table. If not specified, then
-  it matches the significant digits in the \`sigdig\` optimization
-  algorithm. If \`sigdig\` is NULL, use 3.
+  Significant digits in the final output table. If not specified
+  (\`NULL\`), it defaults to \`sigdig\`.
 
 - boundedTransform:
 
@@ -476,9 +475,9 @@ fit2
 #> ── Time (sec value$time): ──
 #> 
 #>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.3406861 0.5458333  6.252e-06      0.043       0.006 0.025    0.001
+#> elapsed 0.3456871 0.5587153  5.471e-06      0.045       0.006 0.025    0.001
 #>              other
-#> elapsed 0.09347427
+#> elapsed 0.09359215
 #> 
 #> ── (value$parFixed or value$parFixedDf): ──
 #> 

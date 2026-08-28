@@ -323,8 +323,7 @@ this is <code>atol = 1e-6</code>, <code>rtol = 1e-3</code>.</p></dd>
 
 <dt id="arg-sigdigtable">sigdigTable<a class="anchor" aria-label="anchor" href="#arg-sigdigtable"></a></dt>
 <dd><p>Significant digits in the final output table.
-If not specified, then it matches the significant digits in the
-`sigdig` optimization algorithm.  If `sigdig` is NULL, use 3.</p></dd>
+If not specified (`NULL`), it defaults to `sigdig`.</p></dd>
 
 
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
@@ -405,9 +404,9 @@ If not specified, then it matches the significant digits in the
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Time (sec </span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>             setup optimize covariance preprocess postprocess table compress</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.3868548 1.539025  5.971e-06      0.044       0.006 0.029    0.001</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.3897875 1.572097  5.811e-06      0.049       0.007 0.031    0.001</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>             other</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.0981137</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.1001095</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── (</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>

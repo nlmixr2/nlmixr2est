@@ -288,8 +288,7 @@ this is <code>atol = 1e-6</code>, <code>rtol = 1e-3</code>.</p></dd>
 
 <dt id="arg-sigdigtable">sigdigTable<a class="anchor" aria-label="anchor" href="#arg-sigdigtable"></a></dt>
 <dd><p>Significant digits in the final output table.
-If not specified, then it matches the significant digits in the
-`sigdig` optimization algorithm.  If `sigdig` is NULL, use 3.</p></dd>
+If not specified (`NULL`), it defaults to `sigdig`.</p></dd>
 
 
 <dt id="arg-eventsens">eventSens<a class="anchor" aria-label="anchor" href="#arg-eventsens"></a></dt>
@@ -379,9 +378,9 @@ doses an *unlagged/unscaled* compartment alongside the lagged/scaled one
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Time (sec </span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>             setup  optimize covariance preprocess postprocess table compress</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.8330003 0.8480453  8.476e-06      0.045       0.007  0.03    0.001</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>             other</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.1109459</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.8389437 0.8310119  6.191e-06      0.045       0.007 0.031    0.001</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>              other</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.09603825</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── (</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>

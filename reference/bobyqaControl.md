@@ -242,9 +242,8 @@ bobyqaControl(
 
 - sigdigTable:
 
-  Significant digits in the final output table. If not specified, then
-  it matches the significant digits in the \`sigdig\` optimization
-  algorithm. If \`sigdig\` is NULL, use 3.
+  Significant digits in the final output table. If not specified
+  (\`NULL\`), it defaults to \`sigdig\`.
 
 - eventSens:
 
@@ -333,9 +332,9 @@ print(fit2)
 #> ── Time (sec $time): ──
 #> 
 #>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.8330003 0.8480453  8.476e-06      0.045       0.007  0.03    0.001
-#>             other
-#> elapsed 0.1109459
+#> elapsed 0.8389437 0.8310119  6.191e-06      0.045       0.007 0.031    0.001
+#>              other
+#> elapsed 0.09603825
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

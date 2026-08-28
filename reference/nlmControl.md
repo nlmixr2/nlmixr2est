@@ -364,9 +364,8 @@ nlmControl(
 
 - sigdigTable:
 
-  Significant digits in the final output table. If not specified, then
-  it matches the significant digits in the \`sigdig\` optimization
-  algorithm. If \`sigdig\` is NULL, use 3.
+  Significant digits in the final output table. If not specified
+  (\`NULL\`), it defaults to \`sigdig\`.
 
 - boundedTransform:
 
@@ -454,9 +453,9 @@ print(fit2)
 #> ── Time (sec $time): ──
 #> 
 #>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.3406548 0.5700684  5.711e-06      0.044       0.005 0.025    0.001
+#> elapsed 0.3507184 0.5870918  6.392e-06      0.046       0.006 0.025    0.001
 #>              other
-#> elapsed 0.09327107
+#> elapsed 0.09518342
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

@@ -290,8 +290,7 @@ this is <code>atol = 1e-6</code>, <code>rtol = 1e-3</code>.</p></dd>
 
 <dt id="arg-sigdigtable">sigdigTable<a class="anchor" aria-label="anchor" href="#arg-sigdigtable"></a></dt>
 <dd><p>Significant digits in the final output table.
-If not specified, then it matches the significant digits in the
-`sigdig` optimization algorithm.  If `sigdig` is NULL, use 3.</p></dd>
+If not specified (`NULL`), it defaults to `sigdig`.</p></dd>
 
 
 <dt id="arg-boundedtransform">boundedTransform<a class="anchor" aria-label="anchor" href="#arg-boundedtransform"></a></dt>
@@ -389,9 +388,9 @@ doses an *unlagged/unscaled* compartment alongside the lagged/scaled one
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Time (sec </span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>             setup  optimize covariance preprocess postprocess table compress</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.3507048 0.4060752  6.071e-06      0.044       0.006 0.024        0</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>             other</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.0922139</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.3485632 0.4223452   5.51e-06      0.044       0.006 0.024    0.001</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>              other</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.09208615</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── (</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>

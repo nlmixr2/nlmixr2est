@@ -243,9 +243,8 @@ newuoaControl(
 
 - sigdigTable:
 
-  Significant digits in the final output table. If not specified, then
-  it matches the significant digits in the \`sigdig\` optimization
-  algorithm. If \`sigdig\` is NULL, use 3.
+  Significant digits in the final output table. If not specified
+  (\`NULL\`), it defaults to \`sigdig\`.
 
 - boundedTransform:
 
@@ -342,9 +341,9 @@ print(fit2)
 #> ── Time (sec $time): ──
 #> 
 #>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.3507048 0.4060752  6.071e-06      0.044       0.006 0.024        0
-#>             other
-#> elapsed 0.0922139
+#> elapsed 0.3485632 0.4223452   5.51e-06      0.044       0.006 0.024    0.001
+#>              other
+#> elapsed 0.09208615
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

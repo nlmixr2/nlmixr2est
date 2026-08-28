@@ -356,9 +356,8 @@ nlminbControl(
 
 - sigdigTable:
 
-  Significant digits in the final output table. If not specified, then
-  it matches the significant digits in the \`sigdig\` optimization
-  algorithm. If \`sigdig\` is NULL, use 3.
+  Significant digits in the final output table. If not specified
+  (\`NULL\`), it defaults to \`sigdig\`.
 
 - ...:
 
@@ -435,9 +434,9 @@ print(fit2)
 #> ── Time (sec $time): ──
 #> 
 #>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.3526677 0.6350859  6.182e-06      0.044       0.006 0.029    0.011
+#> elapsed 0.3636531 0.6381014  5.881e-06      0.046       0.006 0.025    0.011
 #>              other
-#> elapsed 0.09424022
+#> elapsed 0.09423964
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
