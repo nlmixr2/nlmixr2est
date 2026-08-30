@@ -545,13 +545,22 @@ nmTest({
       })
     }
     .dat <- .mkData(matLin, c(tka = 0.6, tcl = 1.1, tv = 3.6))
+    # What ONE ordinary solve of this model on this data reuses.  A fit begins
+    # with a setup solve that goes through `rxSolve_` like any other, and the
+    # counters are cumulative, so `reused > 0` after a fit would also be true
+    # of a fit whose every iteration ran uncached.  The baseline is what makes
+    # the assertion about the ITERATIONS.
     invisible(.stats(TRUE))
+    invisible(suppressMessages(rxode2::rxSolve(
+      rxode2::rxode2(matLin), .dat,
+      params = c(tka = 0.6, tcl = 1.1, tv = 3.6, eta.ka = 0, add.sd = 0.7))))
+    .base <- .stats(TRUE)[["reused"]]
     .f <- suppressMessages(suppressWarnings(
       .nlmixr(matLin, .dat, est = "focei",
               control = foceiControl(print = 0, maxOuterIterations = 2))))
     .st <- .stats(TRUE)
-    # The cache served rows of the fit itself.
-    expect_gt(.st[["reused"]], 0)
+    # The cache served the fit's own iterations, not just its setup solve.
+    expect_gt(.st[["reused"]], 10 * .base)
     # And every thread that exponentiated owned a slot: a nonzero `noSlot` is a
     # pool this package's team outgrew, which is silent uncached solving.
     expect_equal(unname(.st[["noSlot"]]), 0)
