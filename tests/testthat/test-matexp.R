@@ -522,4 +522,38 @@ nmTest({
     suppressMessages(expect_error(addCwres(.fMM), NA))
     suppressMessages(expect_error(addNpde(.fMM), NA))
   })
+
+  test_that("the matrix-exponential cache is live inside a fit", {
+    # rxode2#1302.  rxode2's exponential cache is sized by `rxSolve_` and freed
+    # at the start of the next solve, and a fit does not go through `rxSolve_`
+    # at all -- it drives `ind_solve()` from this package's own OpenMP team.  So
+    # the pool could plausibly be sized by the setup solve, cleared, and every
+    # row of the fit computed uncached; `$counts` cannot say, because a fit
+    # never builds a solved data frame.  `rxIndLinExpStats()` can, and this is
+    # the assertion the issue asks for: the numbers from a FIT, not a solve.
+    skip_if_not(exists("rxIndLinExpStats", envir = asNamespace("rxode2")),
+                "rxode2 is older than rxIndLinExpStats()")
+    .stats <- get("rxIndLinExpStats", envir = asNamespace("rxode2"))
+    matLin <- function() {
+      ini({ tka <- 0.45; tcl <- 1.0; tv <- 3.45; eta.ka ~ 0.09; add.sd <- 0.7 })
+      model({
+        matExp()
+        k_depot_central <- exp(tka + eta.ka)
+        k_central_output <- exp(tcl) / exp(tv)
+        cp <- central / exp(tv)
+        cp ~ add(add.sd)
+      })
+    }
+    .dat <- .mkData(matLin, c(tka = 0.6, tcl = 1.1, tv = 3.6))
+    invisible(.stats(TRUE))
+    .f <- suppressMessages(suppressWarnings(
+      .nlmixr(matLin, .dat, est = "focei",
+              control = foceiControl(print = 0, maxOuterIterations = 2))))
+    .st <- .stats(TRUE)
+    # The cache served rows of the fit itself.
+    expect_gt(.st[["reused"]], 0)
+    # And every thread that exponentiated owned a slot: a nonzero `noSlot` is a
+    # pool this package's team outgrew, which is silent uncached solving.
+    expect_equal(unname(.st[["noSlot"]]), 0)
+  })
 })
