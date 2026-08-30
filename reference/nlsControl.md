@@ -455,7 +455,6 @@ fit1 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est="nls", nlsControl(algorithm="L
 #> ✔ done
 #> → calculate ∂(f)/∂(θ)
 #> → finding duplicate expressions in nls gradient...
-#> → optimizing duplicate expressions in nls gradient...
 #> → finding duplicate expressions in nls pred-only...
 #>  
 #>  
@@ -467,7 +466,6 @@ fit1 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est="nls", nlsControl(algorithm="L
 #> → pruning branches (`if`/`else`) of full model...
 #> ✔ done
 #> → finding duplicate expressions in EBE model...
-#> → optimizing duplicate expressions in EBE model...
 #> → compiling EBE model...
 #>  
 #>  
@@ -475,7 +473,7 @@ fit1 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est="nls", nlsControl(algorithm="L
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 6584
-#> → compress parHistData in nlmixr2 object, save 2472
+#> → compress parHistData in nlmixr2 object, save 2496
 
 # Uses port and respect parameter boundaries
 fit2 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est="nls", nlsControl(algorithm="port"))
@@ -490,7 +488,6 @@ fit2 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est="nls", nlsControl(algorithm="p
 #> ✔ done
 #> → calculate ∂(f)/∂(θ)
 #> → finding duplicate expressions in nls gradient...
-#> → optimizing duplicate expressions in nls gradient...
 #> → finding duplicate expressions in nls pred-only...
 #>  
 #>  
@@ -500,7 +497,6 @@ fit2 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est="nls", nlsControl(algorithm="p
 #> → pruning branches (`if`/`else`) of full model...
 #> ✔ done
 #> → finding duplicate expressions in EBE model...
-#> → optimizing duplicate expressions in EBE model...
 #> → compiling EBE model...
 #>  
 #>  
@@ -508,7 +504,7 @@ fit2 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est="nls", nlsControl(algorithm="p
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 6584
-#> → compress parHistData in nlmixr2 object, save 2776
+#> → compress parHistData in nlmixr2 object, save 2784
 
 # You can access the underlying nls object with `$nls`
 fit2$nls

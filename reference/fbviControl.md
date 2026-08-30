@@ -638,7 +638,7 @@ fbviControl()
 #> NULL
 #> 
 #> $linCmtSensPhi
-#> [1] 1
+#> [1] 2
 #> 
 #> attr(,"class")
 #> [1] "rxControl"

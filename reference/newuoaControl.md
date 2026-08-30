@@ -314,7 +314,6 @@ fit2 <- nlmixr(mod, dsn, est="newuoa")
 #> ✔ done
 #> → loading into symengine environment...
 #> → finding duplicate expressions in population log-likelihood model...
-#> → optimizing duplicate expressions in population log-likelihood model...
 #> ✔ done
 #>  
 #>  
@@ -324,7 +323,6 @@ fit2 <- nlmixr(mod, dsn, est="newuoa")
 #> → pruning branches (`if`/`else`) of full model...
 #> ✔ done
 #> → finding duplicate expressions in EBE model...
-#> → optimizing duplicate expressions in EBE model...
 #> → compiling EBE model...
 #>  
 #>  
@@ -341,9 +339,9 @@ print(fit2)
 #> ── Time (sec $time): ──
 #> 
 #>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.3485632 0.4223452   5.51e-06      0.044       0.006 0.024    0.001
-#>              other
-#> elapsed 0.09208615
+#> elapsed 0.1607124 0.2280327  5.431e-06      0.044       0.006 0.024    0.001
+#>             other
+#> elapsed 0.0922495
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

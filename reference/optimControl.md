@@ -446,9 +446,7 @@ fit2 <- nlmixr(mod, dsn, est="optim", optimControl(method="BFGS"))
 #> ✔ done
 #> → calculate ∂(f)/∂(θ)
 #> → finding duplicate expressions in nlm llik gradient...
-#> → optimizing duplicate expressions in nlm llik gradient...
 #> → finding duplicate expressions in nlm pred-only...
-#> → optimizing duplicate expressions in nlm pred-only...
 #>  
 #>  
 #>  
@@ -459,7 +457,6 @@ fit2 <- nlmixr(mod, dsn, est="optim", optimControl(method="BFGS"))
 #> → pruning branches (`if`/`else`) of full model...
 #> ✔ done
 #> → finding duplicate expressions in EBE model...
-#> → optimizing duplicate expressions in EBE model...
 #> → compiling EBE model...
 #>  
 #>  
@@ -475,9 +472,9 @@ fit2
 #> ── Time (sec value$time): ──
 #> 
 #>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.3456871 0.5587153  5.471e-06      0.045       0.006 0.025    0.001
+#> elapsed 0.1527433 0.2224209  5.319e-06      0.044       0.014 0.026    0.001
 #>              other
-#> elapsed 0.09359215
+#> elapsed 0.09383046
 #> 
 #> ── (value$parFixed or value$parFixedDf): ──
 #> 

@@ -96,7 +96,6 @@ f <- try(nlmixr2(one.cmt, theo_sd, "saem"))
 #> → finding duplicate expressions in saem predOnly model 0...
 #> → finding duplicate expressions in saem predOnly model 1...
 #> → finding duplicate expressions in saem predOnly model 2...
-#> → optimizing duplicate expressions in saem predOnly model 2...
 #> ✔ done
 #>  
 #>  
@@ -114,10 +113,10 @@ print(f)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.9250416 4.1367e-05 0.01600819      0.075     0.831 5.971       0.991
+#>            setup  optimize covariance preprocess configure  saem postprocess
+#> elapsed 0.905073 2.174e-05 0.01400839      0.077     0.816 5.758       0.864
 #>         table compress     other
-#> elapsed 0.069    0.132 0.4749088
+#> elapsed 0.068     0.13 0.5508969
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -158,9 +157,7 @@ if (!inherits(f, "try-error")) {
 #> → calculate ∂(f)/∂(η)
 #> → calculate ∂(R²)/∂(η)
 #> → finding duplicate expressions in inner model...
-#> → optimizing duplicate expressions in inner model...
 #> → finding duplicate expressions in EBE model...
-#> → optimizing duplicate expressions in EBE model...
 #> → compiling inner model...
 #>  
 #>  
@@ -183,10 +180,10 @@ if (!inherits(f, "try-error")) {
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.9250416 4.1367e-05 0.01600819      0.075     0.831 5.971       0.991
+#>            setup  optimize covariance preprocess configure  saem postprocess
+#> elapsed 0.905073 2.174e-05 0.01400839      0.077     0.816 5.758       0.864
 #>         table compress     other
-#> elapsed 0.069    0.132 0.4749088
+#> elapsed 0.068     0.13 0.5508969
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 

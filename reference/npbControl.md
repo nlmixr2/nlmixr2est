@@ -372,7 +372,7 @@ npbControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x55c38ac4b230>
+#> <bytecode: 0x560840ed9e40>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -1019,7 +1019,7 @@ npbControl()
 #> NULL
 #> 
 #> $linCmtSensPhi
-#> [1] 1
+#> [1] 2
 #> 
 #> attr(,"class")
 #> [1] "rxControl"

@@ -776,15 +776,14 @@ fitS <- nlmixr(one.cmt, theo_sd, "saem")
 #> → finding duplicate expressions in saem predOnly model 0...
 #> → finding duplicate expressions in saem predOnly model 1...
 #> → finding duplicate expressions in saem predOnly model 2...
-#> → optimizing duplicate expressions in saem predOnly model 2...
 #> ✔ done
 #>  
 #>  
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 6584
-#> → compress parHistData in nlmixr2 object, save 9264
-#> → compress phiM in nlmixr2 object, save 444912
+#> → compress parHistData in nlmixr2 object, save 9240
+#> → compress phiM in nlmixr2 object, save 448512
 
 # }
 ```

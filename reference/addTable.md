@@ -112,7 +112,6 @@ f <- nlmixr2(one.cmt, theo_sd, "saem", control=list(calcTables=FALSE))
 #> → finding duplicate expressions in saem predOnly model 0...
 #> → finding duplicate expressions in saem predOnly model 1...
 #> → finding duplicate expressions in saem predOnly model 2...
-#> → optimizing duplicate expressions in saem predOnly model 2...
 #> ✔ done
 #>  
 #>  
@@ -128,10 +127,10 @@ print(f)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>              setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.09766443 2.5538e-05  0.0120046      0.075     0.266 5.967       0.455
+#>             setup   optimize covariance preprocess configure  saem postprocess
+#> elapsed 0.1046551 2.7722e-05 0.01200482      0.074     0.155 5.701       0.266
 #>         compress     other
-#> elapsed     0.13 0.1533054
+#> elapsed    0.131 0.1413124
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -161,10 +160,10 @@ print(f)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>              setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.09766443 2.5538e-05  0.0120046      0.075     0.266 5.967       0.455
+#>             setup   optimize covariance preprocess configure  saem postprocess
+#> elapsed 0.1046551 2.7722e-05 0.01200482      0.074     0.155 5.701       0.266
 #>         compress     other
-#> elapsed     0.13 0.1533054
+#> elapsed    0.131 0.1413124
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 

@@ -288,7 +288,7 @@ laplaceControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x55c38ac4b230>
+#> <bytecode: 0x560840ed9e40>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -935,7 +935,7 @@ laplaceControl()
 #> NULL
 #> 
 #> $linCmtSensPhi
-#> [1] 1
+#> [1] 2
 #> 
 #> attr(,"class")
 #> [1] "rxControl"
@@ -1055,9 +1055,7 @@ fit <- nlmixr(f, r, est="laplace")
 #> ✔ done
 #> → calculate ∂(f)/∂(η)
 #> → finding duplicate expressions in inner model...
-#> → optimizing duplicate expressions in inner model...
 #> → finding duplicate expressions in EBE model...
-#> → optimizing duplicate expressions in EBE model...
 #> → compiling inner model...
 #>  
 #>  
@@ -1112,15 +1110,12 @@ fit <- nlmixr(f, p, est="laplace")
 #> ✔ done
 #> → calculate ∂(f)/∂(η)
 #> → finding duplicate expressions in inner model...
-#> → optimizing duplicate expressions in inner model...
 #> → finding duplicate expressions in EBE model...
-#> → optimizing duplicate expressions in EBE model...
 #> → compiling inner model...
 #>  
 #>  
 #> ✔ done
 #> → finding duplicate expressions in FD model...
-#> → optimizing duplicate expressions in FD model...
 #> → compiling EBE model...
 #>  
 #>  

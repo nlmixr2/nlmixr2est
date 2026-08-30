@@ -70,6 +70,13 @@
 
 ### Internal
 
+- The SAEM `predOnly` model (used for residuals, tables and the
+  covariance step) no longer emits a THETA/ETA alias assignment that
+  exactly duplicates one the mu-reference replacement block already
+  emitted. These were trailing dead stores that rxode2 repeated in both
+  `dydt` and `calc_lhs`; the emitted model, its solve column layout, and
+  every value it produces are unchanged.
+
 - [`getBaseSimModelFit()`](https://nlmixr2.github.io/nlmixr2est/reference/getBaseSimModelFit.md)
   for the focei family (`focei`, `foce`, `focep`, `fo`, `foi`,
   `posthoc`) no longer does three times the work for the same answer.

@@ -314,7 +314,6 @@ fit2 <- nlmixr(mod, dsn, est="uobyqa")
 #> ✔ done
 #> → loading into symengine environment...
 #> → finding duplicate expressions in population log-likelihood model...
-#> → optimizing duplicate expressions in population log-likelihood model...
 #> ✔ done
 #>  
 #>  
@@ -324,7 +323,6 @@ fit2 <- nlmixr(mod, dsn, est="uobyqa")
 #> → pruning branches (`if`/`else`) of full model...
 #> ✔ done
 #> → finding duplicate expressions in EBE model...
-#> → optimizing duplicate expressions in EBE model...
 #> → compiling EBE model...
 #>  
 #>  
@@ -341,9 +339,9 @@ print(fit2)
 #> ── Time (sec $time): ──
 #> 
 #>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.3547643 0.3464312  6.032e-06      0.044       0.006 0.024    0.001
+#> elapsed 0.1607993 0.1653948  5.471e-06      0.046       0.006 0.024    0.001
 #>             other
-#> elapsed 0.1087984
+#> elapsed 0.0928004
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
