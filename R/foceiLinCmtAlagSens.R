@@ -20,33 +20,30 @@
 # left as a follow-up; `fast=TRUE`'s analytic AUGMENTED outer gradient already
 # declines linCmt() models entirely (`foceiGradAnalytic.R`), so it is unaffected.
 #
-# rxode2/rxode2#1236 (infusions): CONFIRMED to reproduce here, not just in the
-# plain rxSolve() path the upstream issue was filed against -- a subject whose
-# regimen infuses into the lagged/F'd linCmt() compartment reads `NA` for
-# `linCmtB(which1=-3)` even when evaluated through this package's own
-# generated model (`ind_solve()`-driven `calc_lhs`, same as FOCEi uses).
-# Whether a subject's regimen contains an infusion is event-table data this
-# build-time step never sees (the compiled model is cached/reused across
-# datasets), so it cannot be gated per-subject here. Gated instead on
+# The correction is emitted PER COMPARTMENT, using rxode2's per-origin
+# decomposition of the linCmt() amounts (rxode2/rxode2#1119 part B):
+# `linCmtB(which1=-9)` is the derivative wrt a delay on ONE compartment's
+# doses, and `linCmtB(which1=-10)` returns the part of the prediction that
+# arrived through one compartment, so d(pred)/dF_q = A^(q)/F_q. That is what
+# makes a mixed-route regimen -- a modeled alag()/f() on an oral depot
+# alongside an unlagged, unscaled IV dose into central, exactly the paired
+# design bioavailability is usually estimated from -- come out right.
+# `which1=-3` (one delay shared by every dose) and `pred/F` (all of `pred`
+# from the F-scaled dose) are only correct when the whole regimen feeds one
+# compartment, and fail SILENTLY, with a roughly constant bias, when it does
+# not (rxode2/rxode2#1237); neither is used here any more, and the
+# one-lagged-compartment / one-F'd-compartment restrictions they forced are
+# gone with them.
+#
+# Remaining gap (rxode2/rxode2#1236's tail): a subject whose regimen reaches
+# the lagged compartment with a STEADY-STATE INFUSION still reads `NA` -- the
+# SS infusion's rate is not carried past the SS solve, so -dA/dt is not
+# recoverable there. Whether a subject's regimen contains one is event-table
+# data this build-time step never sees (the compiled model is cached/reused
+# across datasets), so it cannot be gated per-subject here. Gated instead on
 # `foceiControl(eventSens=)` -- already the documented opt-out for the
 # analogous ODE jump-sensitivity feature -- so `eventSens="fd"` is the escape
-# hatch for a model that infuses into a lagged/F'd linCmt() compartment.
-#
-# rxode2/rxode2#1237 (mixed-route dosing) -- CONFIRMED, and BROADER than "two
-# explicitly different alag()/f() declarations": per rxode2's own doc comment
-# on `linCmtB` (src/linCmt.cpp), which1=-3 "requires that EVERY dose reaching
-# the linear system carr[y] the same alag()" -- an oral depot with a modeled
-# alag() PLUS an unlagged IV bolus/infusion into central in the SAME regimen
-# is just as out of scope as two differently-lagged compartments (an unlagged
-# dose is a lag of 0, still a different delay). Confirmed by direct
-# comparison to central differences: a mixed depot+central regimen returns a
-# gradient biased by a roughly constant, nonzero amount, not NA -- worse than
-# #1236 in that it fails silently rather than loudly. `.rxFoceiLinCmtEventRows()`
-# only sees the MODEL's alag()/f() declarations, not the DATA's dosing
-# routes, so it cannot detect this case; it is the same class of build-time
-# blind spot as #1236 and shares its `eventSens="fd"` escape hatch. This
-# matters most for f() (bioavailability), which is routinely estimated from
-# exactly this kind of paired IV+oral study design.
+# hatch for such a model.
 
 #' Discover (linCmt compartment, driving ETA/THETA, symengine expr) for a
 #' modeled alag()/f() on a linCmt() compartment
@@ -75,27 +72,38 @@
   .rows
 }
 
-#' Build the `linCmtB(which1=-3, ...)` moving-boundary sensitivity call from
-#' the model's own structural `rx_pred_` call
+# rxode2's which2 packing for the per-origin modes (`q*8 + out`, with `out`
+# the compartment whose amount is wanted or 7 for the reported
+# concentration); see RX_LINCMT_ORIGIN_W2 / RX_LINCMT_ORIGIN_CONC in
+# rxode2's src/linCmt.cpp.
+.rxFoceiLinCmtOriginW2 <- 8L
+.rxFoceiLinCmtOriginConc <- 7L
+
+#' Build a per-origin `linCmtB()` call from the model's own structural
+#' `rx_pred_` call
 #'
 #' Reuses every argument of the structural linCmtB() call (pointer, time,
 #' linCmt/ncmt/oral0, trans, p1..ka) so the shape always matches what
-#' `rx_pred_` already solves; only `which1`/`which2` change.  `which2`
-#' mirrors the structural encoding: `-1` (reported concentration) maps to the
-#' new mode's `-3`; an amount-in-compartment `which1` (structural `-2` case)
-#' maps to that same compartment index in the new mode's `which2` slot
-#' (rxode2/rxode2#1235's `which2 >= 0` case).
+#' `rx_pred_` already solves; only `which1`/`which2` change.  The output the
+#' structural call asks for carries over: a reported concentration
+#' (structural `which2 = -1`) becomes `RX_LINCMT_ORIGIN_CONC`, an
+#' amount-in-compartment (structural `which1`) stays that compartment index.
 #'
 #' @param predArgs `symengine::get_args()` of the structural `rx_pred_` call
+#' @param which1 `-9` (per-compartment dose-time) or `-10` (per-compartment
+#'   amounts, the bioavailability chain-rule factor)
+#' @param q linCmt() block index of the origin compartment (0-based, depot
+#'   first when oral)
 #' @return symengine `linCmtB()` FunctionSymbol call
 #' @noRd
-.rxFoceiLinCmtWhich3Call <- function(predArgs) {
+.rxFoceiLinCmtOriginCall <- function(predArgs, which1, q) {
   .args <- predArgs
   .origWhich1 <- .args[[6]]
   .origWhich2 <- .args[[7]]
   .isConc <- isTRUE(all.equal(as.numeric(.origWhich2), -1))
-  .args[[6]] <- symengine::S("-3.0")
-  .args[[7]] <- if (.isConc) symengine::S("-3.0") else .origWhich1
+  .out <- if (.isConc) .rxFoceiLinCmtOriginConc else as.numeric(.origWhich1)
+  .args[[6]] <- symengine::S(sprintf("%.1f", which1))
+  .args[[7]] <- symengine::S(sprintf("%.1f", q * .rxFoceiLinCmtOriginW2 + .out))
   do.call(symengine::Function("linCmtB"), as.list(.args))
 }
 
@@ -103,13 +111,12 @@
 #' compartment (the moving-boundary contribution ordinary symengine
 #' differentiation of `rx_pred_` cannot see)
 #'
-#' Two upstream preconditions gate this: `foceiControl(eventSens="fd")` skips
-#' the correction entirely (rxode2/rxode2#1236 -- an infused dose into the
-#' lagged/F'd compartment reads `NA`; this build-time step has no per-subject
-#' event data to gate on more precisely), and more than one lagged linCmt()
-#' compartment drops the alag correction, keeping only F() if present
-#' (rxode2/rxode2#1237 -- `which1=-3` is one delay shared by every dose, not
-#' a per-compartment one).
+#' Every lagged and every F'd linCmt() compartment contributes its own term,
+#' read off rxode2's per-origin decomposition of the amounts, so a model may
+#' lag or scale as many of them as it likes.  One upstream precondition gates
+#' this: `foceiControl(eventSens="fd")` skips the correction entirely (a
+#' steady-state infusion into the lagged compartment reads `NA`, and this
+#' build-time step has no per-subject event data to gate on more precisely).
 #'
 #' @param x list(rxUi)
 #' @param s symengine env with `rx_pred_` and (when present) `rx_lag_<cmt>_`/
@@ -121,9 +128,9 @@
 .rxFoceiLinCmtEventPredExtra <- function(x, s, etaVars) {
   .ui <- x[[1]]
   if (rxode2::.rxLinNcmt(.ui)["numLin"] <= 0L) return(NULL)
-  # rxode2/rxode2#1236: which1=-3 reads NA for an infused dose into the
-  # lagged/F'd compartment; this build-time step has no per-subject event
-  # data to gate on, so reuse the existing analytic-vs-fd opt-out instead.
+  # A steady-state infusion into the lagged compartment still reads NA; this
+  # build-time step has no per-subject event data to gate on, so reuse the
+  # existing analytic-vs-fd opt-out instead.
   if (identical(rxode2::rxGetControl(.ui, "eventSens", "jump"), "fd")) return(NULL)
   if (!exists("rx_pred_", envir = s, inherits = FALSE)) return(NULL)
   .pred <- get("rx_pred_", envir = s, inherits = FALSE)
@@ -137,42 +144,31 @@
   if (length(.lin) == 0L) return(NULL)
   .lagRows <- .rxFoceiLinCmtEventRows(s, .lin, "lag", etaVars)
   .fRows <- .rxFoceiLinCmtEventRows(s, .lin, "f", etaVars)
-  # rxode2/rxode2#1237: which1=-3 is the derivative wrt ONE delay shared by
-  # EVERY dose reaching the linear system, not a per-compartment one -- more
-  # than one MODELED alag() is only the detectable half of that; a regimen
-  # that also doses an unlagged compartment (a delay of 0) is the same
-  # violation and is NOT detectable here (that is data, not model,
-  # structure -- see the file banner). Skip when the model-visible half is
-  # present; leave the existing (structural-only, still-incomplete) gradient
-  # unchanged rather than emit a call that answers a different question.
-  if (length(.lagRows) > 1L) .lagRows <- list()
-  # d(pred)/dF = pred/F assumes ALL of `pred` comes from the F-scaled
-  # compartment's dose; more than one MODELED f() is the detectable half of
-  # that (same data-invisible caveat as alag() above -- an unscaled dose
-  # elsewhere in the regimen breaks the identity too).
-  if (length(.fRows) > 1L) .fRows <- list()
   if (length(.lagRows) == 0L && length(.fRows) == 0L) return(NULL)
+  # .lin is the linCmt() block order (depot first when oral), which is the
+  # 0-based origin index the which2 packing takes.
+  .qOf <- stats::setNames(seq_along(.lin) - 1L, .lin)
   .extra <- stats::setNames(vector("list", length(etaVars)), etaVars)
   .accum <- function(param, term) {
     .extra[[param]] <<- if (is.null(.extra[[param]])) term else .extra[[param]] + term
   }
-  if (length(.lagRows) == 1L) {
-    .lagCall <- .rxFoceiLinCmtWhich3Call(.predArgs)
-    .row <- .lagRows[[1]]
-    for (.p in .row$drivers) {
-      .d <- symengine::D(.row$sym, symengine::S(.p))
-      if (paste(.d) %in% c("0", "0.0")) next
-      .accum(.p, .d * .lagCall)
+  # d(pred)/d(alag_q) = the dose-time sensitivity of compartment q's own
+  # doses; d(pred)/dF_q = A^(q)/F_q, the part of pred that came through q.
+  # Both are per compartment, so every lagged/F'd compartment contributes.
+  .addRows <- function(rows, which1, factor) {
+    for (.cmt in names(rows)) {
+      .q <- .qOf[[.cmt]]
+      .call <- .rxFoceiLinCmtOriginCall(.predArgs, which1, .q)
+      .row <- rows[[.cmt]]
+      for (.p in .row$drivers) {
+        .d <- symengine::D(.row$sym, symengine::S(.p))
+        if (paste(.d) %in% c("0", "0.0")) next
+        .accum(.p, .d * factor(.call, .row$sym))
+      }
     }
   }
-  if (length(.fRows) == 1L) {
-    .row <- .fRows[[1]]
-    for (.p in .row$drivers) {
-      .d <- symengine::D(.row$sym, symengine::S(.p))
-      if (paste(.d) %in% c("0", "0.0")) next
-      .accum(.p, .d * (.pred / .row$sym))
-    }
-  }
+  .addRows(.lagRows, -9, function(call, sym) call)
+  .addRows(.fRows, -10, function(call, sym) call / sym)
   .extra <- .extra[!vapply(.extra, is.null, logical(1))]
   if (length(.extra) == 0L) return(NULL)
   .extra
