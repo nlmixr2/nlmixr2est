@@ -423,7 +423,7 @@
 #' @param resetThetaCheckPer represents objective function
 #'     \% percentage below which resetThetaP is checked.
 #'
-#' @param resetThetaFinalP represents the p-value for reseting the
+#' @param resetThetaFinalP represents the p-value for resetting the
 #'     population mu-referenced THETA parameters based on ETA drift
 #'     during optimization, and resetting the optimization one final time.
 #'     `0` = never reset (the default); see \code{resetThetaP}.
