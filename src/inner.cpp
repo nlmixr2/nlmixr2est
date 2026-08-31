@@ -689,7 +689,7 @@ struct focei_options {
   double hessEpsLlik;
   double hessEpsInner;
   // Floor on the inner eta Hessian's finite-difference step, as a fraction of
-  // that eta's own SD (sqrt(diag(Omega))).  See calcEtaHessian().
+  // that eta's conditional sd.  See calcEtaHessian().
   double hessEtaStepMin;
   int shi21maxOuter;
   int shi21maxInner;
@@ -3292,51 +3292,24 @@ bool calcEtaHessian(double *eta, int likId, int id,
       arma::vec grPH(op_focei.neta, fill::zeros);
       arma::vec grMH(op_focei.neta, fill::zeros);
 
-      // Floor the Shi (2021) step search at a fraction of each eta's own SD.
+      // Floor the Shi (2021) step search relative to each eta's own scale.
+      // shi21's `ef` should be the noise floor of what it differences, but
+      // hessEpsInner supplies only atolSens -- the gradient comes out of a solve
+      // rtolSens governs too.  Understating ef inflates shiRC()'s ratio past `ru`,
+      // so the search keeps shrinking h until the difference is inside the noise,
+      // with only the absolute shi21hMin to stop it.  n1qn1 mostly absorbs that
+      // (this Hessian is just its warmZm seed, corrected by its own quasi-Newton
+      // updates); innerOpt="trust" re-derives it as the model Hessian every trial
+      // point and adds its log-determinant to the objective, so nothing corrects
+      // it.  See NEWS.md for the measured effect.
       //
-      // shi21's `ef` is meant to be the noise floor of what it differences, and
-      // op_focei.hessEpsInner supplies rxControl$atolSens (1e-8).  The inner
-      // gradient it differences here comes out of a sensitivity solve that
-      // rtolSens (1e-6) governs as well, so that understates the real noise.
-      // shiRC()'s ratio is |third difference|/(8*ef), so too small an ef inflates
-      // it past `ru` and the search SHRINKS h step after step (rcur > ru -> u = h)
-      // until the difference is taken INSIDE the noise, with only the absolute
-      // shi21hMin (1e-4) to stop the runaway.
-      //
-      // n1qn1 absorbed that: it takes this Hessian only as a warmZm warm-start
-      // seed and then CORRECTS it by its own quasi-Newton updates as it iterates,
-      // so a noisy seed is transient.  innerOpt="trust" re-derives it as the
-      // trust-region MODEL Hessian at every trial point, with nothing to correct
-      // it, and its log-determinant is part of the reported objective too -- so
-      // the noise steers both the step and the number being minimized.  Measured on a 1-cmt oral model
-      // fit as a dnorm() endpoint (120 subjects), the runaway step put Vc at 90.6
-      // against a plain-focei 66.4, with eta shrinkage 56/52/34% against 8/10/13%
-      // and the omegas pinned at their starting values.  Stopping the runaway --
-      // shi21hMin = 0.02 -- recovered Vc 65.5 at default tolerances; so did
-      // tightening either sensitivity tolerance, at 2-4x the cost.
-      //
-      // A floor is the right instrument (the search escapes to a sensible step
-      // once it cannot run away: 0.02 and 0.05 gave identical fits), but an
-      // ABSOLUTE floor is not -- the sane step scales with the eta.
-      //
-      // The scale comes from curOmegaInv(), NOT op_focei.omega: this is the same
-      // matrix lpInner() itself uses to form the gradient being differenced
-      // (above), so it is current at every calcEtaHessian() call and honors a
-      // per-thread OmegaScope override.  op_focei.omega would not do -- innerOpt()
-      // refreshes it only on the innerOpt=="trust" branch (the refresh is
-      // deliberately gated, getOmegaMat() is not free), so under any other inner
-      // optimizer it is whatever est="fo" last left there, and scaling a step by
-      // a stale Omega is worse than not scaling it.  Reading the always-current
-      // inverse instead is what lets the SAME step floor apply to every inner
-      // optimizer, which is the point: the step a finite difference needs is a
-      // property of the problem, not of who consumes the Hessian.
-      //
-      // 1/sqrt(omegaInv_kk) is eta_k's CONDITIONAL sd given the other etas, which
-      // is the right scale for a coordinate-wise perturbation holding them fixed;
-      // for a diagonal Omega it is exactly sqrt(Omega_kk).  The dimension check is
-      // the "gate that can crash" precaution this file's notes call for -- an
-      // Armadillo bounds throw inside this OpenMP loop is uncatchable across
-      // threads.
+      // Scale from curOmegaInv(), not op_focei.omega: it is the matrix lpInner()
+      // itself uses, so it is current at every call here and honors an OmegaScope
+      // override, whereas innerOpt() refreshes op_focei.omega only on the trust
+      // branch.  1/sqrt(omegaInv_kk) is eta_k's conditional sd given the other
+      // etas -- the right scale for a coordinate-wise perturbation, and exactly
+      // sqrt(Omega_kk) when Omega is diagonal.  The dimension check guards an
+      // Armadillo bounds throw, which is uncatchable across this OpenMP loop.
       const arma::mat &omegaInvCur = curOmegaInv();
       bool haveOmegaDiag =
         (omegaInvCur.n_rows == (arma::uword)op_focei.neta &&
