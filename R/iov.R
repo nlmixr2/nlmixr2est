@@ -122,9 +122,23 @@ nlmixr2iovVarSd <- function(val) {
   }
   .ui <- ui
   .iniDf <- .ui$iniDf
-  .lvls <- .iniDf$condition[which(!is.na(.iniDf$condition) &
-                                    .iniDf$condition != "id" &
-                                     is.na(.iniDf$err))]
+  .wOcc <- which(!is.na(.iniDf$condition) &
+                   .iniDf$condition != "id" &
+                   is.na(.iniDf$err))
+  # the expansion gives each occasion parameter its OWN magnitude theta and
+  # per-occasion unit-variance etas, which cannot represent a correlation
+  # between two of them; an off-diagonal row here would otherwise be treated
+  # as one more occasion parameter named "(iov.a,iov.b)"
+  .wOff <- .wOcc[which(!is.na(.iniDf$neta1[.wOcc]) &
+                         .iniDf$neta1[.wOcc] != .iniDf$neta2[.wOcc])]
+  if (length(.wOff) > 0L) {
+    stop("correlated inter-occasion random effects are not supported: ",
+         paste0("'", .iniDf$name[.wOff], "'", collapse=", "),
+         "; give each occasion parameter its own variance",
+         call.=FALSE)
+  }
+  # one entry per occasion VARIABLE, however many parameters ride on it
+  .lvls <- unique(.iniDf$condition[.wOcc])
 
   .uiIovEnv$iovRename <- NULL
   if (length(.lvls) > 0) {
@@ -155,6 +169,12 @@ nlmixr2iovVarSd <- function(val) {
     .eta1$fix <- TRUE
     .eta1$neta1 <- .eta1$neta2 <- 0
     .eta1$est <- 1
+    # Both rows are COPIES of an unrelated parameter's row used as a
+    # template; a `prior` carried over from it belongs to that parameter,
+    # not to the IOV magnitude / occasion eta this becomes.  The magnitude
+    # gets the prior declared on the occasion eta itself below.
+    if (any(names(.theta1) == "prior")) .theta1$prior <- NA_character_
+    if (any(names(.eta1) == "prior")) .eta1$prior <- NA_character_
 
     .etas <- .etas[which(!(.etas$condition %in% .lvls)), , drop=FALSE]
     if (length(.etas$name) > 0) {
@@ -195,13 +215,28 @@ nlmixr2iovVarSd <- function(val) {
                      function(l1) {
                        .w <-which(.iniDf$condition == l1)
                        .var <- .iniDf$name[.w]
-                       .fixed <- .iniDf$fix[.w]
                        .lst <- c(lapply(.var, function(v) {
                          # Add theta to dataset; represents variance of iov,
                          # converted below based on the xform
                          .curTheta <- .theta1
-                         .est <- .iniDf[which(.iniDf$name == v &
-                                                is.na(.iniDf$ntheta)), "est"]
+                         # this occasion parameter's OWN row -- `.var` can
+                         # hold several parameters riding on one occasion
+                         # variable, so every per-parameter field has to be
+                         # read from here rather than from a vector over the
+                         # whole condition
+                         .wv <- which(.iniDf$name == v & is.na(.iniDf$ntheta))
+                         if (length(.wv) != 1L) {
+                           # rxode2 does build a ui with the same occasion
+                           # parameter declared twice; every field read from
+                           # .wv below would then be a vector, and the
+                           # rewrite would die on "replacement has 2 rows,
+                           # data has 1" without naming the parameter
+                           stop("the inter-occasion parameter '", v,
+                                "' has ", length(.wv), " variance ",
+                                "declarations; it needs exactly one",
+                                call.=FALSE)
+                         }
+                         .est <- .iniDf[.wv, "est"]
                          if (.xform == "var") {
                            .curTheta$est <- .est
                          } else if (.xform == "sd") {
@@ -213,7 +248,16 @@ nlmixr2iovVarSd <- function(val) {
                          }
                          .curTheta$name <- v
                          .uiIovEnv$iovVars <- c(.uiIovEnv$iovVars, v)
-                         .curTheta$fix <- .fixed
+                         .curTheta$fix <- .iniDf$fix[.wv]
+                         # the prior the user declared with `prior(iov.x)`
+                         # describes this magnitude: carry it across the
+                         # rewrite, which deletes the row it was written on.
+                         # No `fix` guard is needed -- lotri refuses a prior
+                         # on a fixed parameter while the ui is built, so a
+                         # fixed magnitude reaching here always has none.
+                         if (any(names(.curTheta) == "prior")) {
+                           .curTheta$prior <- .iniDf$prior[.wv]
+                         }
 
                          .w <- which(ui$muRefCurEval$parameter == v)
                          if (length(.w) == 1L) {
@@ -385,6 +429,13 @@ nlmixr2iovVarSd <- function(val) {
           .cur$err <- .iovDf$err[i]
           .cur$name <- paste0("rx.", .iovDf$name[i]) # Matches replacement
           .cur$condition <- .iovDf$condition[i]
+          # .etaTemplate is a COPY of the first remaining eta (or of the
+          # first iniDf row): its prior belongs to that parameter.  This row
+          # is the user's own `iov.x ~ v | occ` being restored, so it takes
+          # the prior they wrote on it.
+          if (any(names(.cur) == "prior")) {
+            .cur$prior <- .iovDf$prior[i]
+          }
           .etaDf <- rbind(.etaDf, .cur)
           .thetaDf <- .thetaDf[-.w, , drop=FALSE]
         }

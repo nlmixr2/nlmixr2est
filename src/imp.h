@@ -129,6 +129,21 @@ void impInnerParallelOff();
 // Number of non-mu structural thetas (the length of impThetaSensIdx).
 int impThetaSensN();
 
+// One-step MAP (Newton/Fisher-scoring) correction: folds the ini({}) prior's
+// score/curvature for the non-mu structural thetas into the data-only score
+// `g`/information `H` impThetaAccumOne() already accumulated (post-/nsub),
+// before the caller's arma::solve(step, H, g).  No-op when there is no
+// prior.  See src/inner.cpp for the sign convention and derivation.
+void impPriorStructThetaCorrect(int nsub, arma::vec& g, arma::mat& H);
+
+// MAP correction for the Omega EM moment-average update: `Omega` on entry
+// is the plain ML moment average (mean_i(eta_i*eta_i' + condVar_i), BEFORE
+// the caller's structure mask/fixed-row restore); corrected toward the
+// prior in place (exact conjugate update for an invWishart term, a one-step
+// Fisher-scoring correction otherwise).  No-op when there is no prior
+// touching omega.  See src/inner.cpp for the derivation.
+void impPriorOmegaCorrect(arma::mat& Omega, int nsub);
+
 // Whether the combined eta+theta sensitivity build (#958) is loaded -- the
 // INNER model carries the theta columns, so impEStep's harvest path applies.
 bool impCombSensEnabled();

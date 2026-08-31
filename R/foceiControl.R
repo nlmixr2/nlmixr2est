@@ -48,8 +48,7 @@
 #'   this is \code{atol = 1e-6}, \code{rtol = 1e-3}.
 #'
 #' @param sigdigTable Significant digits in the final output table.
-#'   If not specified, then it matches the significant digits in the
-#'   `sigdig` optimization algorithm.  If `sigdig` is NULL, use 3.
+#'   If not specified (`NULL`), it defaults to `sigdig`.
 #'
 #' @param epsilon Precision of estimate for n1qn1 optimization.
 #'
@@ -494,7 +493,7 @@
 #' @param resetThetaCheckPer represents objective function
 #'     \% percentage below which resetThetaP is checked.
 #'
-#' @param resetThetaFinalP represents the p-value for reseting the
+#' @param resetThetaFinalP represents the p-value for resetting the
 #'     population mu-referenced THETA parameters based on ETA drift
 #'     during optimization, and resetting the optimization one final time.
 #'     `0` = never reset (the default); see \code{resetThetaP}.

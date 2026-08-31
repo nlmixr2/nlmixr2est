@@ -327,4 +327,89 @@ nmTest({
                    label = paste0("Abar formula (", .method, ")"))
     }
   })
+
+  test_that("a strong prior on an omega COVARIANCE (off-diagonal) element pulls the estimate toward it", {
+    # nlmixr2/rxode2#1270-followup: prior(eta.cl, eta.v) ~ dnorm(...) on a
+    # correlated BSV block places a marginal prior directly on that one
+    # covariance cell -- distinct from a whole-block invWishart()/
+    # multiNormal() prior. This requires ZERO nlmixr2est C++ changes:
+    # foceiPriorOmegaGradAdd() already operates on the FULL gradOmega
+    # matrix generically, so it picks this up for free once rxode2's
+    # kernel populates the off-diagonal cell.
+    skip_on_cran()
+    skip_if_not(exists("rxPriorBuildSpec", envir = asNamespace("rxode2"), inherits = FALSE))
+    m <- function() {
+      ini({
+        tka <- 0.45; tcl <- 1; tv <- 3.45
+        eta.cl + eta.v ~ c(0.3, 0.05, 0.2)
+        add.sd <- 0.7
+        prior(eta.cl, eta.v) ~ dnorm(0, 0.01)
+      })
+      model({
+        ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .fit <- suppressWarnings(suppressMessages(
+      nlmixr2(m, nlmixr2data::theo_sd, est = "focei",
+              control = foceiControl(print = 0L))))
+    expect_true(inherits(.fit, "nlmixr2FitData"))
+    expect_equal(unname(.fit$omega["eta.cl", "eta.v"]), 0, tolerance = 0.02)
+  })
+
+  test_that("the off-diagonal omega-prior gradient formula matches central differences", {
+    # Same standalone Abar-formula verification as the diagonal test above,
+    # but for a covariance-cell prior -- confirms foceiPriorOmegaGradAdd()'s
+    # existing (unmodified) code correctly picks up the new off-diagonal
+    # kernel contribution via the full gradOmega matrix.
+    skip_if_not(exists("rxSymInvCholCreate", envir = asNamespace("rxode2"), inherits = FALSE))
+    ns <- asNamespace("rxode2")
+    nms <- c("eta.cl", "eta.v")
+    Omega0 <- matrix(c(0.3, 0.05, 0.05, 0.2), 2, 2, dimnames = list(nms, nms))
+    rxInv <- ns$rxSymInvCholCreate(mat = Omega0, diag.xform = "log")
+    theta0 <- ns$rxSymInvCholEnvCalculate(rxInv, "theta")
+    omegaAt <- function(th) {
+      ns$rxSymInvCholEnvCalculate(rxInv, "theta", th)
+      om <- ns$rxSymInvCholEnvCalculate(rxInv, "omega")
+      dimnames(om) <- list(nms, nms)
+      om
+    }
+    thetaPop <- c(tka = 0.45, tcl = 1, tv = 3.45, add.sd = 0.7)
+    .mod <- function() {
+      ini({
+        tka <- 0.45; tcl <- 1; tv <- 3.45
+        eta.cl + eta.v ~ c(0.3, 0.05, 0.2)
+        add.sd <- 0.7
+        prior(eta.cl, eta.v) ~ dnorm(0, 0.1)
+      })
+      model({
+        ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    ui <- rxode2::rxode2(.mod)
+    .method <- .nlmixr2PriorMethod(ui)
+
+    fAt <- function(th) {
+      om <- omegaAt(th)
+      rxode2::rxPriorLogDensity(ui, theta = thetaPop, omega = om, method = .method)$value
+    }
+    h <- 1e-5
+    fdGrad <- vapply(seq_along(theta0), function(k) {
+      tp <- theta0; tp[k] <- tp[k] + h
+      tm <- theta0; tm[k] <- tm[k] - h
+      (fAt(tp) - fAt(tm)) / (2 * h)
+    }, numeric(1))
+
+    omegaAt(theta0)
+    Omega <- ns$rxSymInvCholEnvCalculate(rxInv, "omega")
+    dimnames(Omega) <- list(nms, nms)
+    dOiL <- ns$rxSymInvCholEnvCalculate(rxInv, "d.omegaInv")
+    r <- rxode2::rxPriorLogDensity(ui, theta = thetaPop, omega = Omega, method = .method)
+    Gsym <- 0.5 * (r$gradOmega + t(r$gradOmega))
+    Abar <- -(Omega %*% Gsym %*% Omega)
+    myGrad <- vapply(dOiL, function(dk) sum(Abar * dk), numeric(1))
+
+    expect_equal(myGrad, fdGrad, tolerance = 1e-4)
+  })
 })

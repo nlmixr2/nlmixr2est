@@ -92,7 +92,7 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
   # x 6 fits (ODE and solved-form) and dominates whatever batch it lands in.
   # batch 4
   c(
-    "impmap", "matexp", "mfocei", "focei-wang2007-yeojohnson",
+    "impmap", "imp-prior", "matexp", "mfocei", "focei-wang2007-yeojohnson",
     "nlme", "focei-fast-grad", "lincmt-ode-fit", "focei-lincmt-carry-fit",
     "focei-lincmt-carry-fit-fallback", "focei-lincmt-carry-jump-fit",
     "focei-lincmt-carry-ll-fit",
@@ -102,7 +102,7 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
   c(
     "focei-wang2007-boxcox-lnorm", "nlme-cov", "agq-fast-grad",
     "focei-ll-fast-grad-fit", "focei-fast-methods-fit", "odeswap-fit",
-    "focei-factr-fit"
+    "focei-factr-fit", "focei-reproducible"
   ),
   # batch 6
   c(

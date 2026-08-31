@@ -56,7 +56,7 @@ postFinalObjectHooksRm <- function(name) {
 #' @param name when specified, the name of the hook, otherwise `NULL`
 #'   to list all hooks
 #'
-#' @return a charcter vector listing all pre-processing hooks or the
+#' @return a character vector listing all pre-processing hooks or the
 #'   function for the hook
 #' @export
 #' @author Matthew L. Fidler
@@ -150,7 +150,7 @@ preFinalParTableHooksRm <- function(name) {
 #' @param name when specified, the name of the hook, otherwise `NULL`
 #'   to list all hooks
 #'
-#' @return a charcter vector listing all pre-processing hooks or the
+#' @return a character vector listing all pre-processing hooks or the
 #'   function for the hook
 #' @export
 #' @author Matthew L. Fidler
@@ -246,7 +246,7 @@ preProcessHooksRm <- function(name) {
 #' @param name when specified, the name of the hook, otherwise `NULL`
 #'   to list all hooks
 #'
-#' @return a charcter vector listing all pre-processing hooks or the
+#' @return a character vector listing all pre-processing hooks or the
 #'   function for the hook
 #' @export
 #' @author Matthew L. Fidler

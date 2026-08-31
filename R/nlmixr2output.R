@@ -136,12 +136,17 @@
 #' @author Matthew L. Fidler and Bill Denney
 #' @noRd
 .updateParFixedGetEtaRow <- function(.eta, .env, .ome, .omegaFix, .muRefCurEval, .sigdig) {
+  # Every return is a one-row data.frame with a character `ch` and a numeric
+  # `v`.  .updateParFixedAddBsv() rbinds these rows and takes the `v` column, so
+  # a return of a different shape or type there coerces the whole BSV column --
+  # a character scalar turns the numeric values into full-precision strings
+  # (e.g. "22.6896152419656") and the empty ones into "<NA>".
   if (is.null(.ome)) {
     # This can happen if there are no BSV parameters in a model
-    return("")
+    return(data.frame(ch = "", v = NA_real_))
   } else if (!(.eta %in% rownames(.ome))) {
     # This can happen if .eta is a fixed BSV parameter
-    return("")
+    return(data.frame(ch = "", v = NA_real_))
   }
   .v <- .ome[.eta, .eta]
   .w <- which(.muRefCurEval$parameter == .eta)

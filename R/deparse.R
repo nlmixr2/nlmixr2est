@@ -94,7 +94,7 @@
 #' @param default A default object used for comparison; This is the
 #'   estimation control procedure.  It should have a class matching
 #'   the function that created it.
-#' @param object The object to be deparsed into a language exression
+#' @param object The object to be deparsed into a language expression
 #' @param w A vector of indices indicating which elements are
 #'   different and need to be deparsed. This likely comes from
 #'   `.deparseDifferent()`

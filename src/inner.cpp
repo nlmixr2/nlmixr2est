@@ -199,8 +199,8 @@ static inline double foceiElapsedSeconds(const focei_wall_clock::time_point& sta
   return std::chrono::duration<double>(focei_wall_clock::now() - start).count();
 }
 
-void saveIntoEnvrionment(Environment e);
-void restoreFromEnvrionment(Environment e);
+void saveIntoEnvironment(Environment e);
+void restoreFromEnvironment(Environment e);
 
 #define min2( a , b )  ( (a) < (b) ? (a) : (b) )
 #define max2( a , b )  ( (a) > (b) ? (a) : (b) )
@@ -268,6 +268,20 @@ struct focei_options {
   //
   List mvi;
   double *etaUpper = NULL;
+  // Doubles R_Calloc'd for etaUpper in foceiSetupEta_(); everything from
+  // etaLower to gcHrr is carved out of that one block and the theta-reset path
+  // saves it wholesale, so the length must come from the allocation rather than
+  // be re-derived -- re-deriving it is what read and wrote past the block.
+  size_t etaBufferN = 0;
+  // ... and the same for the other blocks the theta-reset path saves whole
+  size_t nEtaTrans = 0;
+  size_t nFullTheta = 0;
+  // leading part of the fullTheta block that the theta-reset path saves:
+  // everything except the trailing aqx/aqw AGQ grid, which setupAq1_() rebuilds
+  // from e$qx/e$qw on every entry (see foceiSetupTrans_).
+  size_t nFullThetaSave = 0;
+  size_t nGillRet = 0;
+  size_t nGillDf = 0;
   double *etaLower = NULL;
   int *nbdInner = NULL;
   double *geta = NULL;
@@ -4456,7 +4470,7 @@ static inline void thetaReset00(NumericVector &thetaIni, NumericVector &omegaThe
   thetaReset["c2"] = op_focei.c2;
   //foceiPrintInfo();
   parHistData(thetaReset, true);
-  saveIntoEnvrionment(thetaReset);
+  saveIntoEnvironment(thetaReset);
 }
 
 static inline bool isFixedTheta(int m) {
@@ -4771,6 +4785,12 @@ static inline void innerOptId(int id) {
 
 
 
+// Forward declarations: the ini({}) prior MAP-correction helpers used below
+// are defined later in this file (near foceiPriorGradAdd()), alongside the
+// rest of the prior machinery they share (foceiPriorEval() etc.).
+static bool priorSpecReferencesTheta(int th);
+static void priorGradHessFor(const std::vector<int> &idx, arma::vec &grad, arma::mat &Hp);
+
 // mfocei/ifocei regression update, called once per outer iteration after
 // every subject's eta is finalized. Per group: build phi_i = fullTheta[popIdx]
 // + covariate_effect_i + eta_i, regress on the free covariates (OLS "lin" or
@@ -4781,6 +4801,19 @@ static inline void innerOptId(int id) {
 // parameter's muGroupClamped flag (reported once by R at finalize).
 // Returns the max absolute theta change, used by innerOpt() to decide whether
 // another {re-optimize etas, regress} cycle is needed (muGroupMaxCycles/Tol).
+//
+// ini({}) prior MAP correction (imp/impmap/qrpem only -- FOCEI's own outer
+// optimizer never calls this function): when any of this group's thetas
+// (popIdx or a free covariate coefficient) is prior-referenced, the normal
+// equations solved below are the exact score-stationarity condition of a
+// (locally-weighted) Gaussian log-likelihood in beta -- A*beta = b, with
+// A = X'WX, b = X'Wy -- so a one-step Newton correction folding in the
+// prior's own score/curvature at the CURRENT beta (before this update),
+// (A - Hp)*beta = b + grad_prior(beta0) - Hp*beta0, is exact whenever the
+// prior itself is Gaussian (Hp is then beta-independent, so there is no
+// Taylor truncation at all) and a reasonable one-step approximation
+// otherwise (Cauchy, multiNormal).  See impPriorStructThetaCorrect() above
+// for the identical FD-Hessian machinery and its cost justification.
 static inline double updateMuGroups() {
   if (op_focei.muModel == 0 || op_focei.muGroupN == 0) return 0.0;
   rx = getRxSolve_();
@@ -4849,6 +4882,17 @@ static inline double updateMuGroups() {
       clampIdx[c + 1] = op_focei.muGroupN + freeCovCols[c];
     }
 
+    // fullTheta index of each design column (0 = intercept/popIdx, c+1 = the
+    // c-th free covariate coefficient) -- used only by the prior MAP
+    // correction below.
+    std::vector<int> colTheta(nFree + 1);
+    colTheta[0] = popIdx;
+    for (int c = 0; c < nFree; c++) colTheta[c + 1] = freeCovTheta[c];
+    bool hasPrior = false;
+    for (int p = 0; p <= nFree && !hasPrior; p++) {
+      hasPrior = priorSpecReferencesTheta(colTheta[p]);
+    }
+
     // Active-set clamped (weighted) least squares: solve on the unpinned
     // columns, pin any bound violators, re-solve; at the retry cap project
     // the remaining violators onto their bounds (clamped-feasible).
@@ -4869,7 +4913,52 @@ static inline double updateMuGroups() {
         arma::mat Xf = X.cols(arma::uvec(freePos));
         arma::vec bf;
         try {
-          if (op_focei.muModel == 2) {
+          if (hasPrior) {
+            // Always route through explicit normal equations when a prior
+            // is present (the QR fast path below has nothing to augment).
+            arma::mat A;
+            arma::vec b;
+            if (op_focei.muModel == 2) {
+              arma::mat Wd = arma::diagmat(w);
+              A = Xf.t() * Wd * Xf;
+              b = Xf.t() * Wd * yAdj;
+            } else {
+              A = Xf.t() * Xf;
+              b = Xf.t() * yAdj;
+            }
+            std::vector<int> idx(freePos.size());
+            arma::vec beta0(freePos.size());
+            for (size_t k = 0; k < freePos.size(); k++) {
+              idx[k] = colTheta[freePos[k]];
+              beta0[k] = op_focei.fullTheta[idx[k]];
+            }
+            // A joint prior (e.g. multiNormal()) can span both a free column
+            // and one already pinned at its bound this pass -- yAdj above
+            // already conditions the DATA term on the pinned column's
+            // CURRENT (clamped) beta(p), not its stale pre-M-step fullTheta
+            // value, so the prior gradient needs the same conditioning point
+            // for consistency.  Temporarily substitute the clamped values,
+            // evaluate, then restore -- priorGradHessFor()/foceiPriorEval()
+            // touch no R API and cannot throw, so the restore is guaranteed
+            // to run before the (possibly-throwing) arma::solve() below.
+            std::vector<int> pinnedTh; std::vector<double> pinnedSave;
+            for (int p = 0; p <= nFree; p++) {
+              if (pinned[p]) {
+                int th = colTheta[p];
+                pinnedTh.push_back(th);
+                pinnedSave.push_back(op_focei.fullTheta[th]);
+                op_focei.fullTheta[th] = beta(p);
+              }
+            }
+            arma::vec grad0; arma::mat Hp;
+            priorGradHessFor(idx, grad0, Hp);
+            for (size_t k = 0; k < pinnedTh.size(); k++) {
+              op_focei.fullTheta[pinnedTh[k]] = pinnedSave[k];
+            }
+            A -= Hp;
+            b += grad0 - Hp * beta0;
+            bf = arma::solve(A, b);
+          } else if (op_focei.muModel == 2) {
             arma::mat Wd = arma::diagmat(w);
             bf = arma::solve(Xf.t() * Wd * Xf, Xf.t() * Wd * yAdj);
           } else {
@@ -5400,6 +5489,194 @@ static void foceiPriorOmegaGradAdd(int npars, arma::vec &gp, const arma::mat &Oi
 // likelihood) should call this, not -2*foceiLik0(theta) directly.
 static inline double foceiObjFromLik0(double *theta) {
   return -2*foceiLik0(theta) + foceiPriorObjTerm();
+}
+
+// Whole-block (invWishart(), type 3/4) piece of impPriorOmegaCorrect() --
+// split out to keep that dispatcher's own cyclomatic complexity down.
+// No-op (leaves Omega untouched) when the term's eta indices don't fit the
+// current Omega, or the resulting denominator is non-positive.
+static void impPriorOmegaCorrectBlock(const rx_prior_term_t &term, arma::mat &Omega, int nsub) {
+  int p = term.n;
+  arma::uvec rows((arma::uword)p);
+  for (int k = 0; k < p; ++k) {
+    int e = term.etaIdx[k];
+    if (e <= 0 || e > (int)Omega.n_rows) return;
+    rows[(arma::uword)k] = (arma::uword)(e - 1);
+  }
+  arma::mat Sblk = (double)nsub * Omega.submat(rows, rows);
+  // term.scale is row-major, but a scale/covariance matrix is symmetric,
+  // so reading it as column-major (Armadillo's default) is exactly its
+  // transpose -- identical for a symmetric matrix.
+  arma::mat Psi(term.scale, (arma::uword)p, (arma::uword)p);
+  double denom = (term.type == 3) ? ((double)nsub + term.nu + (double)p + 1.0)
+                                   : ((double)nsub + term.nu);
+  if (!(denom > 0.0)) return;
+  arma::mat num = (term.type == 3) ? arma::mat(Sblk + Psi) : arma::mat(Sblk + term.nu * Psi);
+  Omega.submat(rows, rows) = num / denom;
+}
+
+// MAP correction for imp/impmap/qrpem's Omega EM moment-average update
+// (src/imp.cpp: Omega = mean_i(eta_i*eta_i' + condVar_i), called on the
+// SUM before dividing by nsub -- i.e. Omega on entry is the plain ML moment
+// average -- and BEFORE the caller's structure mask/fixed-row restore and
+// impSetOmega()).  No-op when there is no prior or no omega-touching term.
+//
+// Two paths, matching the two shapes the shared kernel's omega terms take:
+//
+//  - invWishart (type 3/4): CONJUGATE to the EM complete-data objective in
+//    Omega, so the term's own block gets the EXACT joint posterior mode
+//    rather than a one-step approximation.  Derivation: the EM complete-
+//    data objective in Omega is Q(Omega) = -0.5*nsub*log|Omega| -
+//    0.5*tr(Omega^-1*S) (S = nsub*Omega_ML, the pre-division moment sum).
+//    Adding each kernel term's own log-density (rxode2's
+//    invWishartGeneralValueGrad()/invWishartNwpriValueGrad(),
+//    src/priorDensity.cpp) and re-collecting Q+logdensity into the same
+//    -0.5*a*log|Omega| - 0.5*tr(Omega^-1*B) form, whose stationary point is
+//    exactly Omega=B/a (differentiate, multiply through by Omega on both
+//    sides), gives:
+//      general (type 3): a = nsub + nu + p + 1, B = S + Psi
+//      nwpri   (type 4, term.nu holds NONMEM's rho): a = nsub + rho,
+//               B = S + rho*Psi
+//    (NOT the same formula with nu/Psi substituted -- type 4's own density
+//    is NONMEM's modal convention, not a textbook inverse-Wishart with
+//    d_W=rho+p+1 plugged in; see rxode2prior.h's term-type comment.)
+//
+//  - anything else (a plain normal/dnorm() directly on an omega element --
+//    "tnpri" -- or a multiNormal block mixing omega with theta): one
+//    Fisher-scoring (One-Step-Late, Green 1990, "The EM Algorithm and MAP
+//    Bayesian Regularization") step at Omega_ML, Omega += (2/nsub)*Omega*
+//    Gsym*Omega -- reusing the EXACT Abar=-Omega*Gsym*Omega construction
+//    foceiPriorOmegaGradAdd() already computes for FOCEI's own chain rule,
+//    used forward here instead of chain-ruled into Cholesky space.  Falls
+//    out of the same complete-data Fisher information (nsub/2 * Omega^-1
+//    (x) Omega^-1, the standard Gaussian-covariance Fisher tensor) that
+//    makes the invWishart case conjugate -- verified by hand against a
+//    direct scalar (p=1) Newton derivation.
+//
+// The caller re-applies its own omega-structure mask and fixed-row restore
+// AFTER this call -- a generic-term correction can otherwise leak weight
+// outside the declared structure/fixed rows.
+void impPriorOmegaCorrect(arma::mat &Omega, int nsub) {
+  if (op_focei.priorSpec == NULL || !op_focei.priorSpecOmegaTerm || nsub <= 0) return;
+  const rx_prior_spec_t *spec = op_focei.priorSpec;
+  bool anyGeneric = false;
+  for (int t = 0; t < spec->nTerms; ++t) {
+    const rx_prior_term_t &term = spec->terms[t];
+    bool touchesOmega = false;
+    for (int k = 0; k < term.n; ++k) if (term.etaIdx[k] != 0) touchesOmega = true;
+    if (!touchesOmega) continue;
+    if (term.type == 3 || term.type == 4) {
+      impPriorOmegaCorrectBlock(term, Omega, nsub);
+    } else {
+      anyGeneric = true;
+    }
+  }
+  if (anyGeneric) {
+    const int omegaDim = (int)Omega.n_rows;
+    std::vector<double> gradTheta((size_t)op_focei.ntheta, 0.0);
+    std::vector<double> gradOmegaFlat((size_t)omegaDim * (size_t)omegaDim, 0.0);
+    rxPriorLogDensityEval(spec, op_focei.fullTheta, (int)op_focei.ntheta,
+                          Omega.memptr(), omegaDim, gradTheta.data(), gradOmegaFlat.data());
+    arma::mat gradOmegaRaw(gradOmegaFlat.data(), (arma::uword)omegaDim, (arma::uword)omegaDim);
+    arma::mat Gsym = 0.5 * (gradOmegaRaw + gradOmegaRaw.t());
+    Omega += (2.0 / (double)nsub) * (Omega * Gsym * Omega);
+  }
+}
+
+// One-step MAP (Newton/Fisher-scoring) correction for imp/impmap/qrpem's
+// non-mu structural-theta M-step (src/imp.cpp's Newton step on
+// impThetaSensIdx): folds the prior's own score and (finite-differenced)
+// curvature into the data-only score `g`/information `H` that
+// impThetaAccumOne() has already accumulated (and the caller has already
+// divided by nsub), BEFORE arma::solve(step, H, g).  No-op when there is no
+// prior or no structural theta (the common case).
+//
+// Sign convention: `g`/`H` here are d(loglik)/dtheta and its (PSD)
+// Gauss-Newton/Fisher information -- step = solve(H, g) is a Newton ASCENT
+// step on the log-likelihood -- the OPPOSITE convention from
+// foceiPriorGradAdd()'s -2* objective-scale fold-in, which feeds an
+// objective-MINIMIZING outer optimizer instead.  So the prior's raw
+// gradient (not -2*) is added to `g`, and its raw (generally negative, for a
+// proper prior) Hessian is SUBTRACTED from `H` -- e.g. for a Gaussian prior
+// of sd s, the FD Hessian is -1/s^2, so `H -= Hp` adds +1/s^2 of curvature,
+// the expected ridge-like tightening.
+//
+// foceiPriorEval() touches only op_focei.fullTheta/omegaInv -- no ODE solve
+// -- so nSens (always small) extra evaluations to finite-difference its
+// gradient cost nothing next to an actual re-solve.  The FD Hessian is exact
+// for a Gaussian prior (dnorm() on a structural/sigma theta, the common
+// case: a quadratic log-density has no Taylor truncation error at any
+// expansion point) and a reasonable one-step Newton correction otherwise
+// (Cauchy, multiNormal).
+void impPriorStructThetaCorrect(int nsub, arma::vec &g, arma::mat &H) {
+  if (op_focei.priorSpec == NULL) return;
+  IntegerVector &idx = op_focei.impThetaSensIdx;
+  int nSens = idx.size();
+  if (nSens == 0 || nsub <= 0) return;
+  std::vector<double> grad0;
+  foceiPriorEval(grad0);
+  for (int s = 0; s < nSens; ++s) g[s] += grad0[(size_t)idx[s]] / (double)nsub;
+  const double h = 1e-4;
+  arma::mat Hp(nSens, nSens, arma::fill::zeros);
+  for (int sp = 0; sp < nSens; ++sp) {
+    int j = idx[sp];
+    double save = op_focei.fullTheta[j];
+    op_focei.fullTheta[j] = save + h;
+    std::vector<double> gp; foceiPriorEval(gp);
+    op_focei.fullTheta[j] = save - h;
+    std::vector<double> gm; foceiPriorEval(gm);
+    op_focei.fullTheta[j] = save;
+    for (int s = 0; s < nSens; ++s) {
+      Hp(s, sp) = (gp[(size_t)idx[s]] - gm[(size_t)idx[s]]) / (2.0 * h);
+    }
+  }
+  Hp = 0.5 * (Hp + Hp.t());
+  H -= Hp / (double)nsub;
+}
+
+// Whether ANY prior term references theta index `th` (0-based fullTheta
+// index) directly.  Used by the mu-referenced M-step (updateMuGroups(),
+// impMuInterceptStep()) to skip the MAP correction entirely for the
+// (overwhelmingly common) no-prior-on-this-theta case -- both are hot paths
+// and must not slow down or change results for a group/theta with no prior.
+static bool priorSpecReferencesTheta(int th) {
+  const rx_prior_spec_t *spec = op_focei.priorSpec;
+  if (spec == NULL) return false;
+  for (int t = 0; t < spec->nTerms; ++t) {
+    const rx_prior_term_t &term = spec->terms[t];
+    for (int k = 0; k < term.n; ++k) {
+      if (term.thetaIdx[k] - 1 == th) return true;
+    }
+  }
+  return false;
+}
+
+// FD Hessian (and gradient) of the prior's log-density restricted to a small
+// set of theta indices `idx` (0-based), evaluated at the CURRENT fullTheta.
+// `grad`/`Hp` are resized to idx.size(); Hp is symmetrized.  Shared by
+// impPriorStructThetaCorrect()'s sibling mu-referenced-theta callers
+// (updateMuGroups(), impMuInterceptStep()) so the FD-perturbation logic
+// lives in one place.
+static void priorGradHessFor(const std::vector<int> &idx, arma::vec &grad, arma::mat &Hp) {
+  int n = (int)idx.size();
+  grad.set_size(n); grad.zeros();
+  Hp.set_size(n, n); Hp.zeros();
+  if (op_focei.priorSpec == NULL || n == 0) return;
+  std::vector<double> grad0;
+  foceiPriorEval(grad0);
+  for (int s = 0; s < n; ++s) grad[s] = grad0[(size_t)idx[s]];
+  const double h = 1e-4;
+  for (int sp = 0; sp < n; ++sp) {
+    int j = idx[sp];
+    double save = op_focei.fullTheta[j];
+    op_focei.fullTheta[j] = save + h;
+    std::vector<double> gp; foceiPriorEval(gp);
+    op_focei.fullTheta[j] = save - h;
+    std::vector<double> gm; foceiPriorEval(gm);
+    op_focei.fullTheta[j] = save;
+    for (int s = 0; s < n; ++s) Hp(s, sp) = (gp[(size_t)idx[s]] - gm[(size_t)idx[s]]) / (2.0 * h);
+  }
+  Hp = 0.5 * (Hp + Hp.t());
 }
 
 static inline double foceiOfv0(double *theta){
@@ -6657,8 +6934,9 @@ static inline void foceiSetupTrans_(CharacterVector pars){
   //         | (gap of omegan when mixIdxN) | mixTrans(N)
   // where N = ntheta+omegan.  The (mixIdxN ? 4 : 3) ntheta+omegan
   // slots become (mixIdxN ? 5 : 4) once probitIdxArr is included.
-  op_focei.etaTrans    = R_Calloc(op_focei.neta*3 +
-                                  (4+(op_focei.mixIdxN != 0))*(op_focei.ntheta + op_focei.omegan), int); //[neta]
+  op_focei.nEtaTrans   = (size_t)op_focei.neta*3 +
+    (size_t)(4+(op_focei.mixIdxN != 0))*(op_focei.ntheta + op_focei.omegan);
+  op_focei.etaTrans    = R_Calloc(op_focei.nEtaTrans, int); //[neta]
   op_focei.nbdInner    = op_focei.etaTrans + op_focei.neta;
   op_focei.xPar        = op_focei.nbdInner + op_focei.neta; // [ntheta+nomega]
   op_focei.probitIdxArr = op_focei.xPar + op_focei.ntheta + op_focei.omegan; // [ntheta+nomega]
@@ -6672,8 +6950,18 @@ static inline void foceiSetupTrans_(CharacterVector pars){
   }
 
   if (op_focei.fullTheta != NULL) R_Free(op_focei.fullTheta);
-  op_focei.fullTheta   = R_Calloc(4*(op_focei.ntheta+op_focei.omegan) +
-                                  2*(_aqn*op_focei.neta), double); // [ntheta+omegan]
+  // fullTheta | theta | initPar | scaleC | aqx | aqw.  The first four blocks are
+  // the fit state a theta reset carries across the restart; aqx/aqw hold the AGQ
+  // node grid, which setupAq1_() refills from e$qx/e$qw on every foceiFitCpp_
+  // entry (before the restore), so saving them would round-trip nAGQ^neta*neta*2
+  // doubles through R to rewrite what is already there.  nFullThetaSave is the
+  // saved prefix; nFullTheta is derived from it so the two cannot drift apart.
+  op_focei.nFullThetaSave = (size_t)4*(op_focei.ntheta+op_focei.omegan);
+  // (size_t) on each factor: _aqn is nAGQ^neta and neta is unsigned int, so the
+  // product would otherwise be formed in unsigned int before the widening.
+  op_focei.nFullTheta  = op_focei.nFullThetaSave +
+    (size_t)2*(size_t)_aqn*(size_t)op_focei.neta;
+  op_focei.fullTheta   = R_Calloc(op_focei.nFullTheta, double); // [ntheta+omegan]
   op_focei.theta       = op_focei.fullTheta+op_focei.ntheta+op_focei.omegan; // [ntheta + omegan]
   op_focei.initPar     = op_focei.theta+op_focei.ntheta+op_focei.omegan; // [ntheta + omegan]
   op_focei.scaleC      = op_focei.initPar+op_focei.ntheta+op_focei.omegan; // [ntheta + omegan]
@@ -6965,6 +7253,7 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
     tot = foceiSzAdd(tot, foceiSzMul(neta * neta, nsub_mix, "etaHessQN"), "etaHessQN");
     tot = foceiSzAdd(tot, foceiSzMul(2 * neta, nsub_mix, "etaPrevQN"), "etaPrevQN");
     op_focei.etaUpper = R_Calloc(tot, double);
+    op_focei.etaBufferN = tot;
   }
   op_focei.etaLower =  op_focei.etaUpper + op_focei.neta;
   op_focei.geta     = op_focei.etaLower + op_focei.neta;
@@ -7957,11 +8246,10 @@ NumericVector foceiSetup_(const RObject &obj,
   }
 
   if (op_focei.gillRet != NULL) R_Free(op_focei.gillRet);
-  op_focei.gillRet = R_Calloc(2*totN + op_focei.npars +
-                              op_focei.muRefN + op_focei.muRefN + op_focei.skipCovN +
-                              op_focei.mixIdxN +
-                              (size_t)getRxNsub(rx),
-                              int);
+  op_focei.nGillRet = (size_t)2*totN + op_focei.npars +
+    op_focei.muRefN + op_focei.muRefN + op_focei.skipCovN +
+    op_focei.mixIdxN + (size_t)getRxNsub(rx);
+  op_focei.gillRet = R_Calloc(op_focei.nGillRet, int);
   op_focei.gillRetC= op_focei.gillRet + totN;
   op_focei.nbd     = op_focei.gillRetC + totN;//[op_focei.npars]
 
@@ -7991,10 +8279,11 @@ NumericVector foceiSetup_(const RObject &obj,
 
   if (op_focei.gillDf != NULL) R_Free(op_focei.gillDf);
 
-  op_focei.gillDf = R_Calloc(7*totN + 2*op_focei.npars +
-                             (op_focei.mixIdxN + 1)*((size_t)getRxNsub(rx)+1) +
-                             op_focei.mixIdxN*((size_t)getRxNsub(rx)+1) +
-                             (size_t)getRxNsub(rx), double);
+  op_focei.nGillDf = (size_t)7*totN + 2*op_focei.npars +
+    (size_t)(op_focei.mixIdxN + 1)*((size_t)getRxNsub(rx)+1) +
+    (size_t)op_focei.mixIdxN*((size_t)getRxNsub(rx)+1) +
+    (size_t)getRxNsub(rx);
+  op_focei.gillDf = R_Calloc(op_focei.nGillDf, double);
   op_focei.mixProb = op_focei.gillDf+totN; // [op_focei.mixIdN+1 + (op_focei.mixIdN+1)*getRxNsub(rx)]
   op_focei.mixProbGrad = op_focei.mixProb + (op_focei.mixIdxN+1)*(getRxNsub(rx)+1);
   op_focei.gillDf2 = op_focei.mixProbGrad + (op_focei.mixIdxN)*(getRxNsub(rx)+1);
@@ -11713,7 +12002,25 @@ void impMuInterceptStep() {
     int th = thIdx[g], et = etIdx[g];
     double s = 0.0;
     for (int id = 0; id < nsub; ++id) s += inds_focei[id].eta[et];
-    double delta = s / (double)nsub;
+    // s - nsub*delta is the score of the (unnormalized) Gaussian log-lik
+    // "sum_i(eta_i - delta)" in delta; delta=s/nsub is its zero.  When th is
+    // prior-referenced, fold in the prior's own score/curvature (evaluated
+    // at the current th, i.e. delta=0 -- new_theta = th_old + delta, so the
+    // prior's gradient/Hessian w.r.t. delta at delta=0 is identical to its
+    // gradient/Hessian w.r.t. theta at th_old, no extra chain rule needed):
+    // joint stationarity (s - nsub*delta) + grad0 + Hp*delta = 0.  Exact for
+    // a Gaussian prior (Hp then delta-independent); a one-step Newton
+    // correction otherwise -- see updateMuGroups()'s identical derivation.
+    double delta;
+    if (priorSpecReferencesTheta(th)) {
+      std::vector<int> idx(1, th);
+      arma::vec grad0; arma::mat Hp;
+      priorGradHessFor(idx, grad0, Hp);
+      double denom = (double)nsub - Hp(0, 0);
+      delta = (std::fabs(denom) > 1e-8) ? (s + grad0[0]) / denom : s / (double)nsub;
+    } else {
+      delta = s / (double)nsub;
+    }
     op_focei.fullTheta[th] += delta;
     for (int id = 0; id < nsub; ++id) {
       rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
@@ -12835,7 +13142,7 @@ Environment foceiFitCpp_(Environment e){
     Function loadNamespace("loadNamespace", R_BaseNamespace);
     Environment nlmixr2 = loadNamespace("nlmixr2est");
     Environment thetaReset = nlmixr2[".thetaReset"];
-    restoreFromEnvrionment(thetaReset);
+    restoreFromEnvironment(thetaReset);
   }
   foceiFitSetupScale(thetaNames, thetaXPar, thetaProbitIdx);
   if (op_focei.maxOuterIterations > 0 && op_focei.printTop == 1){
@@ -22828,52 +23135,64 @@ NumericVector iBoxCox_(NumericVector x = 1, double lambda=1, int yj = 0){
   return ret;
 }
 
-void saveIntoEnvrionment(Environment e) {
-  unsigned int totN=op_focei.ntheta + op_focei.omegan;
-  arma::Col<int> etaTrans(op_focei.etaTrans, op_focei.neta*3 + 3*(op_focei.ntheta + op_focei.omegan));
+void saveIntoEnvironment(Environment e) {
+  // Every length below comes from the R_Calloc that made the block, never from a
+  // second copy of the allocation's formula: the copies that used to be here had
+  // all drifted from the layout they described -- three saved short (so a reset
+  // restored a truncated block) and the eta block's claimed more than existed,
+  // which read and wrote past the end of the heap block.
+  arma::Col<int> etaTrans(op_focei.etaTrans, op_focei.nEtaTrans);
   e[".etaTrans"] = etaTrans;
-  arma::vec fullTheta(op_focei.fullTheta, 4*(op_focei.ntheta+op_focei.omegan));
+  // nFullThetaSave, not nFullTheta: the trailing aqx/aqw AGQ grid is rebuilt by
+  // setupAq1_() before the restore runs, so carrying it here would only copy
+  // nAGQ^neta*neta*2 doubles into R to write back what is already correct.
+  arma::vec fullTheta(op_focei.fullTheta, op_focei.nFullThetaSave);
   e[".fullTheta"] = fullTheta;
   // no eta
   if (op_focei.neta == 0) {
-    arma::vec gthetaGrad(op_focei.fullTheta, 4*(op_focei.ntheta+op_focei.omegan));
+    arma::vec gthetaGrad(op_focei.fullTheta, op_focei.nFullThetaSave);
     e[".gthetaGrad"] = gthetaGrad;
   } else {
-    size_t _nz = ((op_focei.neta+1)*(op_focei.neta+2)/2 + 6*(op_focei.neta+1) + 1) *
-                  (size_t)getRxNsub(rx);
-    {
-      size_t _nall = (size_t)getRxNall(rx);
-      size_t _nsub = (size_t)getRxNsub(rx);
-      arma::vec etaUpper(op_focei.etaUpper,
-                         (size_t)op_focei.gEtaGTransN*10 + op_focei.npars*(_nsub + 1) + _nz +
-                         2*op_focei.neta * _nall + _nall + _nall*_nall +
-                         op_focei.neta*5 + 2*op_focei.neta*op_focei.neta*_nsub + _nall);
-      e[".etaUpper"] = etaUpper;
-    }
+    arma::vec etaUpper(op_focei.etaUpper, op_focei.etaBufferN);
+    e[".etaUpper"] = etaUpper;
   }
-  arma::Col<int> gillRet(op_focei.gillRet,
-                     2*totN+op_focei.npars+
-                              op_focei.muRefN + op_focei.skipCovN);
+  arma::Col<int> gillRet(op_focei.gillRet, op_focei.nGillRet);
   e[".gillRet"] = gillRet;
-  arma::vec gillDf(op_focei.gillDf,7*totN + 2*op_focei.npars + getRxNsub(rx));
+  arma::vec gillDf(op_focei.gillDf, op_focei.nGillDf);
   e[".gillDf"] = gillDf;
 }
 
-void restoreFromEnvrionment(Environment e) {
+// A saved block whose length is not the length of the block allocated now is
+// not something to copy back quietly: it means the problem changed under the
+// save, and copying would either write past the buffer or half-restore it.
+static inline void foceiCheckRestoreN(size_t saved, size_t expected, const char *what) {
+  if (saved != expected) {
+    stop("focei: the saved %s is %s long but the current one is %s",
+         what, std::to_string(saved), std::to_string(expected));
+  }
+}
+
+void restoreFromEnvironment(Environment e) {
   arma::Col<int> etaTrans = e[".etaTrans"];
+  foceiCheckRestoreN(etaTrans.n_elem, op_focei.nEtaTrans, "eta translation");
   std::copy(etaTrans.begin(), etaTrans.end(), op_focei.etaTrans);
   arma::vec fullTheta = e[".fullTheta"];
+  foceiCheckRestoreN(fullTheta.n_elem, op_focei.nFullThetaSave, "theta");
   std::copy(fullTheta.begin(), fullTheta.end(), op_focei.fullTheta);
   // no eta
   if (op_focei.neta == 0) {
     arma::vec gthetaGrad = e[".gthetaGrad"];
+    foceiCheckRestoreN(gthetaGrad.n_elem, op_focei.nFullThetaSave, "theta gradient");
     std::copy(gthetaGrad.begin(), gthetaGrad.end(), op_focei.fullTheta);
   } else {
     arma::vec etaUpper = e[".etaUpper"];
+    foceiCheckRestoreN(etaUpper.n_elem, op_focei.etaBufferN, "eta buffer");
     std::copy(etaUpper.begin(), etaUpper.end(), op_focei.etaUpper);
   }
   arma::Col<int> gillRet = e[".gillRet"];
+  foceiCheckRestoreN(gillRet.n_elem, op_focei.nGillRet, "gill return code buffer");
   std::copy(gillRet.begin(), gillRet.end(), op_focei.gillRet);
   arma::vec gillDf = e[".gillDf"];
+  foceiCheckRestoreN(gillDf.n_elem, op_focei.nGillDf, "gill forward difference buffer");
   std::copy(gillDf.begin(), gillDf.end(), op_focei.gillDf);
 }
