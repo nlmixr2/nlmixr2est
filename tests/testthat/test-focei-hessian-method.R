@@ -160,4 +160,36 @@ nmTest({
     # Newton-step loop the quasi-Newton state assumes.
     expect_equal(.nHessianQN(), 0L)
   })
+
+  test_that("foceiControl() hessEtaStepMin validation and round-trip", {
+    expect_equal(foceiControl()$hessEtaStepMin, 0.05)
+    expect_equal(foceiControl(hessEtaStepMin = 0.1)$hessEtaStepMin, 0.1)
+    expect_equal(foceiControl(hessEtaStepMin = 0)$hessEtaStepMin, 0)
+    expect_error(foceiControl(hessEtaStepMin = -1))
+    expect_error(foceiControl(hessEtaStepMin = c(0.1, 0.2)))
+    expect_equal(do.call(foceiControl, foceiControl())$hessEtaStepMin, 0.05)
+  })
+
+  test_that("hessEtaStepMin does not disturb a normal endpoint or innerOpt='n1qn1'", {
+    skip_on_cran()
+    # A normal endpoint uses the Gauss-Newton inner Hessian unconditionally, so
+    # calcEtaHessian()'s needOptimHess finite-difference branch -- the only place
+    # hessEtaStepMin is read -- is never reached.
+    .fNorm0 <- .nlmixr(.oneCmt, nlmixr2data::theo_sd, est = "focei",
+                       control = foceiControl(print = 0L, hessEtaStepMin = 0))
+    .fNorm1 <- .nlmixr(.oneCmt, nlmixr2data::theo_sd, est = "focei",
+                       control = foceiControl(print = 0L, hessEtaStepMin = 0.5))
+    expect_equal(.fNorm1$objf, .fNorm0$objf, tolerance = 1e-8)
+
+    # innerOpt="n1qn1" is deliberately excluded: innerOpt() refreshes
+    # op_focei.omega only on the trust branch, so the per-eta scale the floor
+    # needs is not current for any other inner optimizer (src/inner.cpp).
+    .fN0 <- .nlmixr(.poisMod, .poisData, est = "focei",
+                    control = foceiControl(print = 0L, innerOpt = "n1qn1",
+                                           hessEtaStepMin = 0))
+    .fN1 <- .nlmixr(.poisMod, .poisData, est = "focei",
+                    control = foceiControl(print = 0L, innerOpt = "n1qn1",
+                                           hessEtaStepMin = 0.5))
+    expect_equal(.fN1$objf, .fN0$objf, tolerance = 1e-8)
+  })
 })

@@ -252,6 +252,22 @@
 #'   Hessians used for the covariance step/final likelihood: "central"
 #'   (more accurate, used here) or "forward".
 #'
+#' @param hessEtaStepMin Floor on the finite-difference step used for the
+#'   individual (eta) Hessian in generalized log-likelihood estimation,
+#'   expressed as a fraction of that random effect's own standard deviation
+#'   (\code{sqrt(diag(Omega))}).  Default \code{0.05}; \code{0} restores the
+#'   plain absolute \code{shi21hMin} floor.
+#'
+#'   The Shi (2021) step search is told the function's noise floor is
+#'   \code{rxControl(atolSens=)}, but the inner gradient it differences comes
+#'   out of a sensitivity solve that \code{rtolSens} governs as well, so the
+#'   noise is understated and the search shrinks the step until the difference
+#'   is taken inside it.  \code{n1qn1} absorbs that -- it uses this Hessian
+#'   once, as a warm-start seed -- but \code{innerOpt="trust"} rebuilds it at
+#'   every trial point and adds its log-determinant to the reported objective,
+#'   so the noise steers the fit.  Flooring the step relative to the eta scale
+#'   stops the runaway without paying for a tighter solve.
+#'
 #' @param censOption Treatment of the second derivative for censored
 #'   (M2/M3/M4/BLQ) observations in the FOCEI family.  \code{"gauss"} (the default)
 #'   keeps the historic uncensored Gauss-Newton curvature, matching common PMx tools;
@@ -955,6 +971,7 @@ foceiControl <- function(sigdig = 3, #
                          hessEpsLlik = (.Machine$double.eps)^(1 / 3),
                          optimHessType = c("central", "forward"),
                          optimHessCovType = c("central", "forward"),
+                         hessEtaStepMin = 0.05,
                          censOption = c("gauss", "laplace"),
                          eventType = c("central", "forward"), #
                          eventSens = c("jump", "fd"), #
@@ -1215,6 +1232,9 @@ foceiControl <- function(sigdig = 3, #
     checkmate::assertNumeric(fdRichardsonV,
       lower = 1.0000001, finite = TRUE,
       any.missing = FALSE, len = 1
+    )
+    checkmate::assertNumeric(hessEtaStepMin,
+      lower = 0, finite = TRUE, any.missing = FALSE, len = 1
     )
     checkmate::assertLogical(fdChartrandAll, any.missing = FALSE, len = 1)
     checkmate::assertLogical(fdOutlierAny, any.missing = FALSE, len = 1)
@@ -1761,6 +1781,7 @@ foceiControl <- function(sigdig = 3, #
     hessEpsLlik = as.double(hessEpsLlik),
     optimHessType = optimHessType,
     optimHessCovType = optimHessCovType,
+    hessEtaStepMin = as.double(hessEtaStepMin),
     censOption = censOption,
     cholAccept = as.double(cholAccept),
     resetEtaSize = as.double(.resetEtaSize),

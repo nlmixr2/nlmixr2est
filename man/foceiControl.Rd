@@ -46,6 +46,7 @@ foceiControl(
   hessEpsLlik = (.Machine$double.eps)^(1/3),
   optimHessType = c("central", "forward"),
   optimHessCovType = c("central", "forward"),
+  hessEtaStepMin = 0.05,
   censOption = c("gauss", "laplace"),
   eventType = c("central", "forward"),
   eventSens = c("jump", "fd"),
@@ -453,6 +454,22 @@ R's `optimHess()`, default) or "forward" (faster).}
 Hessians used for the covariance step/final likelihood: "central"
 (more accurate, used here) or "forward".}
 
+\item{hessEtaStepMin}{Floor on the finite-difference step used for the
+  individual (eta) Hessian in generalized log-likelihood estimation,
+  expressed as a fraction of that random effect's own standard deviation
+  (\code{sqrt(diag(Omega))}).  Default \code{0.05}; \code{0} restores the
+  plain absolute \code{shi21hMin} floor.
+
+  The Shi (2021) step search is told the function's noise floor is
+  \code{rxControl(atolSens=)}, but the inner gradient it differences comes
+  out of a sensitivity solve that \code{rtolSens} governs as well, so the
+  noise is understated and the search shrinks the step until the difference
+  is taken inside it.  \code{n1qn1} absorbs that -- it uses this Hessian
+  once, as a warm-start seed -- but \code{innerOpt="trust"} rebuilds it at
+  every trial point and adds its log-determinant to the reported objective,
+  so the noise steers the fit.  Flooring the step relative to the eta scale
+  stops the runaway without paying for a tighter solve.}
+
 \item{censOption}{Treatment of the second derivative for censored
 (M2/M3/M4/BLQ) observations in the FOCEI family.  \code{"gauss"} (the default)
 keeps the historic uncensored Gauss-Newton curvature, matching common PMx tools;
@@ -581,7 +598,7 @@ not allowed.  Defaults to off: when the etas cannot re-center the
 reset repeats without progress and can error the fit out, and where
 it converges it reaches a worse optimum than leaving it off.}
 
-\item{resetThetaFinalP}{represents the p-value for reseting the
+\item{resetThetaFinalP}{represents the p-value for resetting the
 population mu-referenced THETA parameters based on ETA drift
 during optimization, and resetting the optimization one final time.
 `0` = never reset (the default); see \code{resetThetaP}.}

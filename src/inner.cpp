@@ -688,6 +688,9 @@ struct focei_options {
   double fitAtol = NA_REAL, fitRtol = NA_REAL;
   double hessEpsLlik;
   double hessEpsInner;
+  // Floor on the inner eta Hessian's finite-difference step, as a fraction of
+  // that eta's own SD (sqrt(diag(Omega))).  See calcEtaHessian().
+  double hessEtaStepMin;
   int shi21maxOuter;
   int shi21maxInner;
   int shi21maxInnerCov;
@@ -3289,10 +3292,59 @@ bool calcEtaHessian(double *eta, int likId, int id,
       arma::vec grPH(op_focei.neta, fill::zeros);
       arma::vec grMH(op_focei.neta, fill::zeros);
 
+      // Floor the Shi (2021) step search at a fraction of each eta's own SD.
+      //
+      // shi21's `ef` is meant to be the noise floor of what it differences, and
+      // op_focei.hessEpsInner supplies rxControl$atolSens (1e-8).  The inner
+      // gradient it differences here comes out of a sensitivity solve that
+      // rtolSens (1e-6) governs as well, so that understates the real noise.
+      // shiRC()'s ratio is |third difference|/(8*ef), so too small an ef inflates
+      // it past `ru` and the search SHRINKS h step after step (rcur > ru -> u = h)
+      // until the difference is taken INSIDE the noise, with only the absolute
+      // shi21hMin (1e-4) to stop the runaway.
+      //
+      // n1qn1 could absorb that -- it takes this Hessian once, as a warm-start
+      // seed, and steers by exact gradients.  innerOpt="trust" rebuilds it at
+      // every trial point AND its log-determinant is part of the reported
+      // objective, so the noise steers the fit.  Measured on a 1-cmt oral model
+      // fit as a dnorm() endpoint (120 subjects), the runaway step put Vc at 90.6
+      // against a plain-focei 66.4, with eta shrinkage 56/52/34% against 8/10/13%
+      // and the omegas pinned at their starting values.  Stopping the runaway --
+      // shi21hMin = 0.02 -- recovered Vc 65.5 at default tolerances; so did
+      // tightening either sensitivity tolerance, at 2-4x the cost.
+      //
+      // A floor is the right instrument (the search escapes to a sensible step
+      // once it cannot run away: 0.02 and 0.05 gave identical fits), but an
+      // ABSOLUTE floor is not -- the sane step scales with the eta, so express it
+      // as a fraction of sqrt(Omega_kk), the same per-eta scale innerOpt="trust"
+      // already uses for its parscale.
+      //
+      // Gated on innerOpt=="trust" (3) for a reason beyond "that is where the bug
+      // is": innerOpt() refreshes op_focei.omega ONLY on that branch (the refresh
+      // is deliberately gated -- getOmegaMat() is not free -- so for any other
+      // inner optimizer Omega is whatever est="fo" last left there, i.e. stale or
+      // never assigned).  Scaling a step by a stale Omega would be worse than not
+      // scaling it at all.  The dimension check is the same "gate that can crash"
+      // precaution the parscale build documents: an Armadillo bounds throw inside
+      // this OpenMP loop is uncatchable across threads.
+      bool haveOmegaDiag =
+        (op_focei.innerOpt == 3 &&
+         op_focei.omega.n_rows == (arma::uword)op_focei.neta &&
+         op_focei.omega.n_cols == (arma::uword)op_focei.neta);
+
       double h = 0;
 
       for (k = op_focei.neta; k--;) {
         h = fInd->etahh[k];
+        double hMinK = op_focei.shi21hMin;
+        if (haveOmegaDiag) {
+          double v = op_focei.omega(k, k);
+          if (R_finite(v) && v > 0.0) {
+            double f = op_focei.hessEtaStepMin * std::sqrt(v);
+            if (f > hMinK) hMinK = f;
+          }
+        }
+        if (hMinK > op_focei.shi21hMax) hMinK = op_focei.shi21hMax;
         if (op_focei.optimHessType == 3 && h <= 0) {
           arma::vec t(eta, op_focei.neta);
           fInd->etahh[k] = shi21Forward(getGradForOptimHess, t, h,
@@ -3301,7 +3353,7 @@ bool calcEtaHessian(double *eta, int likId, int id,
                                         1.5,  //double rl = 1.5,
                                         6.0,  //double ru = 6.0);;
                                         op_focei.shi21maxInner,  //maxiter=15
-                                        op_focei.shi21hMax, op_focei.shi21hMin);
+                                        op_focei.shi21hMax, hMinK);
           H.col(k) = grPH;
           continue;
         }
@@ -3315,7 +3367,7 @@ bool calcEtaHessian(double *eta, int likId, int id,
                                         4.5,//double ru = 4.5,
                                         3.0,//double nu = 8.0);
                                         op_focei.shi21maxInner, // maxiter
-                                        op_focei.shi21hMax, op_focei.shi21hMin);
+                                        op_focei.shi21hMax, hMinK);
           H.col(k) = grPH;
           continue;
         }
@@ -8420,6 +8472,8 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.hessEps=as<double>(foceiO["hessEps"]);
   op_focei.hessEpsLlik=as<double>(foceiO["hessEpsLlik"]);
   op_focei.hessEpsInner=as<double>(rxControl[Rxc_atolSens]);
+  op_focei.hessEtaStepMin = foceiO.containsElementNamed("hessEtaStepMin") ?
+    as<double>(foceiO["hessEtaStepMin"]) : 0.05;
   op_focei.shi21maxOuter = as<int>(foceiO["shi21maxOuter"]);
   op_focei.shi21maxInner = as<int>(foceiO["shi21maxInner"]);
   op_focei.shi21maxInnerCov = as<int>(foceiO["shi21maxInnerCov"]);

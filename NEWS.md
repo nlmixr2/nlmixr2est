@@ -2,6 +2,27 @@
 
 ## Bug fixes
 
+- A generalized log-likelihood model (`dnorm()`, `ll()`, `dpois()`, ...) fit
+  with `foceiControl(innerOpt="trust")` no longer converges to badly biased
+  population parameters on oral or two-compartment models.  Such an endpoint
+  has no Gauss-Newton inner Hessian, so the per-subject eta Hessian is a finite
+  difference of the analytic eta gradient; the Shi (2021) step search is told
+  that gradient's noise floor is `rxControl(atolSens=)`, but the gradient comes
+  out of a sensitivity solve `rtolSens` governs as well.  Understating the
+  noise inflates the search's ratio test, which then shrinks the step until the
+  difference is taken inside the noise, with only the absolute `shi21hMin`
+  (1e-4) to stop it.  `n1qn1` absorbed that -- it uses this Hessian once, as a
+  warm-start seed, and steers by exact gradients -- but `trust` rebuilds it at
+  every trial point and adds its log-determinant to the reported objective, so
+  the noise steered the fit: on a 1-compartment oral model (120 subjects) fit as
+  a `dnorm()` endpoint, Vc came out 90.6 against a plain `focei` 66.4, with eta
+  variance shrinkage 56/52/34% against 8/10/13% and the omegas left at their
+  starting values.  The step is now floored at a fraction of each eta's own SD
+  (`foceiControl(hessEtaStepMin=)`, default `0.05`), recovering Vc 65.5 at
+  unchanged solve tolerances; tightening `atolSens` or `rtolSens` instead also
+  fixed it, at 2-4x the runtime.  Normal endpoints and other inner optimizers
+  are unaffected.
+
 - Fitting the same data twice in one session gives the same answer again
   (#1020).  On a machine with at least twice as many threads as the problem
   has subjects, the objective function and the estimates differed between two
