@@ -3303,10 +3303,12 @@ bool calcEtaHessian(double *eta, int likId, int id,
       // until the difference is taken INSIDE the noise, with only the absolute
       // shi21hMin (1e-4) to stop the runaway.
       //
-      // n1qn1 could absorb that -- it takes this Hessian once, as a warm-start
-      // seed, and steers by exact gradients.  innerOpt="trust" rebuilds it at
-      // every trial point AND its log-determinant is part of the reported
-      // objective, so the noise steers the fit.  Measured on a 1-cmt oral model
+      // n1qn1 absorbed that: it takes this Hessian only as a warmZm warm-start
+      // seed and then CORRECTS it by its own quasi-Newton updates as it iterates,
+      // so a noisy seed is transient.  innerOpt="trust" re-derives it as the
+      // trust-region MODEL Hessian at every trial point, with nothing to correct
+      // it, and its log-determinant is part of the reported objective too -- so
+      // the noise steers both the step and the number being minimized.  Measured on a 1-cmt oral model
       // fit as a dnorm() endpoint (120 subjects), the runaway step put Vc at 90.6
       // against a plain-focei 66.4, with eta shrinkage 56/52/34% against 8/10/13%
       // and the omegas pinned at their starting values.  Stopping the runaway --
@@ -3315,22 +3317,30 @@ bool calcEtaHessian(double *eta, int likId, int id,
       //
       // A floor is the right instrument (the search escapes to a sensible step
       // once it cannot run away: 0.02 and 0.05 gave identical fits), but an
-      // ABSOLUTE floor is not -- the sane step scales with the eta, so express it
-      // as a fraction of sqrt(Omega_kk), the same per-eta scale innerOpt="trust"
-      // already uses for its parscale.
+      // ABSOLUTE floor is not -- the sane step scales with the eta.
       //
-      // Gated on innerOpt=="trust" (3) for a reason beyond "that is where the bug
-      // is": innerOpt() refreshes op_focei.omega ONLY on that branch (the refresh
-      // is deliberately gated -- getOmegaMat() is not free -- so for any other
-      // inner optimizer Omega is whatever est="fo" last left there, i.e. stale or
-      // never assigned).  Scaling a step by a stale Omega would be worse than not
-      // scaling it at all.  The dimension check is the same "gate that can crash"
-      // precaution the parscale build documents: an Armadillo bounds throw inside
-      // this OpenMP loop is uncatchable across threads.
+      // The scale comes from curOmegaInv(), NOT op_focei.omega: this is the same
+      // matrix lpInner() itself uses to form the gradient being differenced
+      // (above), so it is current at every calcEtaHessian() call and honors a
+      // per-thread OmegaScope override.  op_focei.omega would not do -- innerOpt()
+      // refreshes it only on the innerOpt=="trust" branch (the refresh is
+      // deliberately gated, getOmegaMat() is not free), so under any other inner
+      // optimizer it is whatever est="fo" last left there, and scaling a step by
+      // a stale Omega is worse than not scaling it.  Reading the always-current
+      // inverse instead is what lets the SAME step floor apply to every inner
+      // optimizer, which is the point: the step a finite difference needs is a
+      // property of the problem, not of who consumes the Hessian.
+      //
+      // 1/sqrt(omegaInv_kk) is eta_k's CONDITIONAL sd given the other etas, which
+      // is the right scale for a coordinate-wise perturbation holding them fixed;
+      // for a diagonal Omega it is exactly sqrt(Omega_kk).  The dimension check is
+      // the "gate that can crash" precaution this file's notes call for -- an
+      // Armadillo bounds throw inside this OpenMP loop is uncatchable across
+      // threads.
+      const arma::mat &omegaInvCur = curOmegaInv();
       bool haveOmegaDiag =
-        (op_focei.innerOpt == 3 &&
-         op_focei.omega.n_rows == (arma::uword)op_focei.neta &&
-         op_focei.omega.n_cols == (arma::uword)op_focei.neta);
+        (omegaInvCur.n_rows == (arma::uword)op_focei.neta &&
+         omegaInvCur.n_cols == (arma::uword)op_focei.neta);
 
       double h = 0;
 
@@ -3338,9 +3348,9 @@ bool calcEtaHessian(double *eta, int likId, int id,
         h = fInd->etahh[k];
         double hMinK = op_focei.shi21hMin;
         if (haveOmegaDiag) {
-          double v = op_focei.omega(k, k);
+          double v = omegaInvCur(k, k);
           if (R_finite(v) && v > 0.0) {
-            double f = op_focei.hessEtaStepMin * std::sqrt(v);
+            double f = op_focei.hessEtaStepMin / std::sqrt(v);
             if (f > hMinK) hMinK = f;
           }
         }

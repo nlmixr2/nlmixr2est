@@ -11,17 +11,23 @@
   out of a sensitivity solve `rtolSens` governs as well.  Understating the
   noise inflates the search's ratio test, which then shrinks the step until the
   difference is taken inside the noise, with only the absolute `shi21hMin`
-  (1e-4) to stop it.  `n1qn1` absorbed that -- it uses this Hessian once, as a
-  warm-start seed, and steers by exact gradients -- but `trust` rebuilds it at
-  every trial point and adds its log-determinant to the reported objective, so
-  the noise steered the fit: on a 1-compartment oral model (120 subjects) fit as
+  (1e-4) to stop it.  `n1qn1` absorbed that -- it uses this Hessian only as a
+  warm-start seed and then corrects it by its own quasi-Newton updates as it
+  iterates, so a noisy seed is transient -- but `trust` re-derives it as its
+  trust-region model Hessian at every trial point, with nothing to correct it,
+  and adds its log-determinant to the reported objective, so the noise steered
+  both the step and the number being minimized: on a 1-compartment oral model
+  (120 subjects) fit as
   a `dnorm()` endpoint, Vc came out 90.6 against a plain `focei` 66.4, with eta
   variance shrinkage 56/52/34% against 8/10/13% and the omegas left at their
   starting values.  The step is now floored at a fraction of each eta's own SD
   (`foceiControl(hessEtaStepMin=)`, default `0.05`), recovering Vc 65.5 at
   unchanged solve tolerances; tightening `atolSens` or `rtolSens` instead also
-  fixed it, at 2-4x the runtime.  Normal endpoints and other inner optimizers
-  are unaffected.
+  fixed it, at 2-4x the runtime.  The floor applies to every inner optimizer --
+  the step a finite difference needs is a property of the problem, not of who
+  consumes the Hessian -- though only `trust` was visibly broken without it.
+  Normal endpoints, which use the Gauss-Newton inner Hessian, never reach this
+  code.
 
 - Fitting the same data twice in one session gives the same answer again
   (#1020).  On a machine with at least twice as many threads as the problem

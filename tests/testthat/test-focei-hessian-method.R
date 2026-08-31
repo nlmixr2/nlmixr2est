@@ -170,7 +170,7 @@ nmTest({
     expect_equal(do.call(foceiControl, foceiControl())$hessEtaStepMin, 0.05)
   })
 
-  test_that("hessEtaStepMin does not disturb a normal endpoint or innerOpt='n1qn1'", {
+  test_that("hessEtaStepMin does not disturb a normal endpoint", {
     skip_on_cran()
     # A normal endpoint uses the Gauss-Newton inner Hessian unconditionally, so
     # calcEtaHessian()'s needOptimHess finite-difference branch -- the only place
@@ -180,16 +180,37 @@ nmTest({
     .fNorm1 <- .nlmixr(.oneCmt, nlmixr2data::theo_sd, est = "focei",
                        control = foceiControl(print = 0L, hessEtaStepMin = 0.5))
     expect_equal(.fNorm1$objf, .fNorm0$objf, tolerance = 1e-8)
+  })
 
-    # innerOpt="n1qn1" is deliberately excluded: innerOpt() refreshes
-    # op_focei.omega only on the trust branch, so the per-eta scale the floor
-    # needs is not current for any other inner optimizer (src/inner.cpp).
-    .fN0 <- .nlmixr(.poisMod, .poisData, est = "focei",
-                    control = foceiControl(print = 0L, innerOpt = "n1qn1",
+  test_that("hessEtaStepMin applies to every inner optimizer, not just trust", {
+    skip_on_cran()
+    # The step a finite difference needs is a property of the problem, not of
+    # who consumes the Hessian, so the floor must reach n1qn1 too.  This is why
+    # the scale is read from curOmegaInv() (what lpInner() itself uses, always
+    # current) rather than op_focei.omega, which innerOpt() refreshes only on
+    # the trust branch.
+    for (.io in c("trust", "n1qn1")) {
+      .f0 <- .nlmixr(.poisMod, .poisData, est = "focei",
+                     control = foceiControl(print = 0L, innerOpt = .io,
+                                            hessEtaStepMin = 0))
+      .f1 <- .nlmixr(.poisMod, .poisData, est = "focei",
+                     control = foceiControl(print = 0L, innerOpt = .io,
+                                            hessEtaStepMin = 0.5))
+      expect_true(is.finite(.f0$objf), info = .io)
+      expect_true(is.finite(.f1$objf), info = .io)
+    }
+    # Only trust is asserted to MOVE.  n1qn1 uses this Hessian as a warmZm seed
+    # and then corrects it with its own quasi-Newton updates as it iterates, so
+    # a changed seed can wash out by convergence -- that self-correction is
+    # exactly why the unfloored step never broke n1qn1.  Trust re-derives the
+    # Hessian as its trust-region model at every trial point, with nothing to
+    # correct it, so there the floor must show.
+    .fT0 <- .nlmixr(.poisMod, .poisData, est = "focei",
+                    control = foceiControl(print = 0L, innerOpt = "trust",
                                            hessEtaStepMin = 0))
-    .fN1 <- .nlmixr(.poisMod, .poisData, est = "focei",
-                    control = foceiControl(print = 0L, innerOpt = "n1qn1",
+    .fT1 <- .nlmixr(.poisMod, .poisData, est = "focei",
+                    control = foceiControl(print = 0L, innerOpt = "trust",
                                            hessEtaStepMin = 0.5))
-    expect_equal(.fN1$objf, .fN0$objf, tolerance = 1e-8)
+    expect_false(isTRUE(all.equal(.fT1$objf, .fT0$objf, tolerance = 1e-8)))
   })
 })

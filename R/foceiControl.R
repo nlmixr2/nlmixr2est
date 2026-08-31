@@ -262,11 +262,15 @@
 #'   \code{rxControl(atolSens=)}, but the inner gradient it differences comes
 #'   out of a sensitivity solve that \code{rtolSens} governs as well, so the
 #'   noise is understated and the search shrinks the step until the difference
-#'   is taken inside it.  \code{n1qn1} absorbs that -- it uses this Hessian
-#'   once, as a warm-start seed -- but \code{innerOpt="trust"} rebuilds it at
-#'   every trial point and adds its log-determinant to the reported objective,
-#'   so the noise steers the fit.  Flooring the step relative to the eta scale
-#'   stops the runaway without paying for a tighter solve.
+#'   is taken inside it.  \code{n1qn1} absorbs that -- it uses this Hessian only
+#'   as a warm-start seed and then corrects it by its own quasi-Newton updates
+#'   as it iterates -- but \code{innerOpt="trust"} re-derives it as its
+#'   trust-region model Hessian at every trial point, with nothing to correct
+#'   it, and adds its log-determinant to the reported objective.  Flooring the
+#'   step relative to the eta scale stops the runaway without paying for a
+#'   tighter solve.  It applies to every inner optimizer: the step a finite
+#'   difference needs is a property of the problem, not of who consumes the
+#'   Hessian.
 #'
 #' @param censOption Treatment of the second derivative for censored
 #'   (M2/M3/M4/BLQ) observations in the FOCEI family.  \code{"gauss"} (the default)
