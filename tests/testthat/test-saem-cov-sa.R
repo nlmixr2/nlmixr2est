@@ -465,9 +465,19 @@ nmTest({
     expect_equal(unname(.zeroRow[8]), TRUE)
     expect_equal(unname(.zeroRow[9]), FALSE)
     if (identical(f2$covMethod, "sa")) {
+      # Which slots the ANALYTIC FIM itself can supply is what the dropped
+      # zero row decides, and that is deterministic: assert it on the
+      # pre-splice matrix.  The reported $cov is not the place for this --
+      # .saemSpliceLinFimVar replaces the whole variance block from linFim
+      # whenever calc.COV succeeds, which puts add.sd/prop.sd back, so
+      # asserting their ABSENCE there was really asserting that the splice
+      # had failed.
+      .an <- .saemFimToCov(f2$saem$HaSa, f2$env)
+      expect_true("add2.sd" %in% rownames(.an))
+      expect_false("add.sd" %in% rownames(.an))
+      expect_false("prop.sd" %in% rownames(.an))
+      # the pure-additive slot survives into the reported cov either way
       expect_true("add2.sd" %in% rownames(f2$cov))
-      expect_false("add.sd" %in% rownames(f2$cov))
-      expect_false("prop.sd" %in% rownames(f2$cov))
     }
     # the pure-additive endpoint's SE is real regardless (its slot was never
     # dropped); the combined endpoint's SE depends on the linFim splice

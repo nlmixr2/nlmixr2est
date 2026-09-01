@@ -38,7 +38,12 @@ nmTest({
     .b <- .odeSwapInfo()
     .fit0 <- suppressWarnings(suppressMessages(
       nlmixr2(m, nlmixr2data::theo_sd, "impmap",
-              impmapControl(print = 0L, nIter = 1L, isample = 50L, calcTables = FALSE))))
+              impmapControl(print = 0L, nIter = 1L, isample = 50L, calcTables = FALSE,
+                            # combSens=TRUE (the default since #958) carries the theta
+                            # sensitivities on the INNER model, so no dedicated
+                            # theta-sensitivity peer is built at all.  This test is
+                            # about that peer, so ask for the two-model path.
+                            combSens = FALSE))))
     # Read the fit's OWN captured layout, not the process-global registry: the
     # registry describes the most recent registration, and impmap's post-fit
     # objective recompute runs a nested focei fit that re-registers the slots.
@@ -114,7 +119,12 @@ nmTest({
     }
     .fitInv <- suppressWarnings(suppressMessages(
       nlmixr2(inv, d, "impmap",
-              impmapControl(print = 0L, nIter = 1L, isample = 50L, calcTables = FALSE))))
+              impmapControl(print = 0L, nIter = 1L, isample = 50L, calcTables = FALSE,
+                            # combSens=TRUE (the default since #958) carries the theta
+                            # sensitivities on the INNER model, so no dedicated
+                            # theta-sensitivity peer is built at all.  This test is
+                            # about that peer, so ask for the two-model path.
+                            combSens = FALSE))))
     # the fit's own captured layout -- see the note above
     expect_true(.fitInv$env$odeSwapInfo$models$loaded[3])   # thetaSens registered
 
