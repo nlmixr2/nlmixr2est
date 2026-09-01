@@ -1928,12 +1928,14 @@ attr(rxUiGet.getEBEEnv, "rstudio") <- emptyenv()
   ## sensitivities are computed analytically rather than by finite differences.
   ## Passed only for models that carry the sensitivity equations (the inner
   ## model); "fd" everywhere else preserves the legacy behavior.
-  ## Role-tag the compiled artifact.  rxode2 names the .c/.so from the PARSED model
-  ## alone (.rxPre -> rx_<parsed_md5>_<arch>_), while the emitted C also depends on the
-  ## event-sensitivity code generated afterwards -- so two builds of one parsed model
-  ## whose event-sensitivity code differs share one .so and the later build wins for
-  ## both, silently.  See nlmixr2/rxode2#1171.  The md5 stays in the name so genuinely
-  ## different models still never share an artifact.
+  ## rxode2 USED to name the .c/.so from the parsed model text alone, so two builds
+  ## of one text whose event-sensitivity code differed shared one .so and the later
+  ## build silently won for both; it now folds that code into its own cache key
+  ## (nlmixr2/rxode2#1171, rxode2 >= 5.1.6 -- see .nlmixr2estRxode2()), so the
+  ## variants separate upstream.  What still has to be carried by hand is the mode
+  ## itself: it is not recoverable from a compiled model, and the focei bundle is
+  ## cached as model TEXT, so .nlmixr2estRxode2() tags the model and
+  ## .foceiModelCacheInflate() replays the tag.
   .txt <- paste(nlmixr2global$toRxParam, x, nlmixr2global$toRxDvidCmt)
   .ret <- .nlmixr2estRxode2(.txt, role, eventSens = eventSens)
   .msuccess("done")
@@ -2484,8 +2486,15 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
   ## model already in that cache, with no error to show for it.  Key on the
   ## package version so an upgrade rebuilds instead.
   .pkgVersion <- as.character(utils::packageVersion("nlmixr2est"))
+  ## Cache FORMAT marker.  Bump whenever a stored bundle gains a field that
+  ## changes how it rehydrates, so entries written by an older format are not
+  ## reused: the cache can outlive the session (see above), and an entry from
+  ## before the event-sensitivity mode was recorded rehydrates every
+  ## sensitivity model in "fd" mode -- silently zeroing the dosing-parameter
+  ## sensitivities.  Version 2: .foceiModelCacheDeflate() stores eventSens.
+  .cacheFormat <- 2L
   digest::digest(c(
-    all(is.na(.iniDf$neta1)), .combSens, .linCmtCarry, .pkgVersion,
+    all(is.na(.iniDf$neta1)), .combSens, .linCmtCarry, .pkgVersion, .cacheFormat,
     rxode2::rxGetControl(.ui, "interaction", 1L),
     .iniDf$name,
     .sumProd, .optExpression, .predMinusDv,
@@ -2513,10 +2522,16 @@ attr(rxUiGet.foceiModelCache, "rstudio") <- "file"
 #' object -- the text is small and rebuilding from it hits rxode2's own
 #' compiled-model cache, so rehydration loads the cached dll rather than
 #' compiling
+#'
+#' The event-sensitivity mode is stored ALONGSIDE the text.  It is not part of
+#' rxNorm()'s output and cannot be read back off a compiled model, so a bundle
+#' rehydrated from the text alone silently loses it -- see
+#' .foceiModelCacheInflate().
 #' @noRd
 .foceiModelCacheDeflate <- function(el) {
   if (inherits(el, "rxode2")) {
-    return(structure(list(norm = rxode2::rxNorm(el)),
+    return(structure(list(norm = rxode2::rxNorm(el),
+                          eventSens = attr(el, "nlmixr2estEventSens")),
       class = "nlmixr2estFoceiNorm"
     ))
   }
@@ -2525,10 +2540,28 @@ attr(rxUiGet.foceiModelCache, "rstudio") <- "file"
 
 #' Storable form -> live model (old-format entries hold rxode2 objects;
 #' keep loading those so an existing cache file still works)
+#'
+#' Rebuilt in the SAME event-sensitivity mode that built it.  Rebuilding a
+#' sensitivity model without eventSens="jump" drops rxode2's analytic
+#' dosing-parameter (f/alag/rate/dur) sensitivities, and nothing errors: the
+#' fit just gets a zero sensitivity for every eta that enters a dosing
+#' expression, so those etas never leave their initial value.  Because the
+#' cache is written by the FIRST fit of a model in a session and read by every
+#' later one, that turned the second and subsequent fits of an f(eta)/alag(eta)
+#' model into silently wrong answers (a different objective, and etaF pinned at
+#' 0).  An entry cached before the mode was recorded has eventSens NULL, which
+#' replays as "not passed" -- the same call the old code made.
 #' @noRd
 .foceiModelCacheInflate <- function(el) {
   if (inherits(el, "nlmixr2estFoceiNorm")) {
-    return(suppressMessages(suppressWarnings(rxode2::rxode2(el$norm))))
+    .es <- el$eventSens
+    return(suppressMessages(suppressWarnings(
+      if (is.null(.es)) {
+        rxode2::rxode2(el$norm)
+      } else {
+        rxode2::rxode2(el$norm, eventSens = .es)
+      }
+    )))
   }
   if (inherits(el, "rxode2")) {
     return(rxode2::rxLoad(el))

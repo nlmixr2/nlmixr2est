@@ -2,6 +2,19 @@
 
 ## Bug fixes
 
+- A second `focei` fit of a model whose dosing depends on an eta (`f(depot) <-
+  exp(eta.f)`, `alag()`, `dur()`, `rate()`) no longer silently returns the
+  wrong answer.  The compiled model bundle is cached as model TEXT and
+  rehydrated with `rxode2()`, but the event-sensitivity mode was not stored
+  with it -- so the FIRST fit of a model in a session built its sensitivity
+  models with `eventSens = "jump"` (rxode2's analytic dosing-parameter
+  sensitivities) while every LATER fit rebuilt them without it.  Nothing
+  errored: the dose-parameter sensitivity was simply zero, so those etas never
+  left their initial values and the objective, the etas and the analytic
+  gradient were all wrong (`etaF` pinned at 0; the analytic outer gradient
+  exactly 0 in the `f`/`alag` directions).  The mode is now recorded when the
+  model is built and replayed when the bundle is rehydrated, and the cache key
+  carries a format marker so entries written before it are not reused.
 - Fitting the same data twice in one session gives the same answer again
   (#1020).  On a machine with at least twice as many threads as the problem
   has subjects, the objective function and the estimates differed between two
