@@ -29,5 +29,16 @@
   ## `role` no longer shapes the artifact, and the srcref strip that used to live here
   ## moved to rxode2 (rxStripModelSrc), applied while it builds the model.  Both need
   ## rxode2 >= 5.1.6 (DESCRIPTION).
-  rxode2::rxode2(model, ...)
+  .ret <- rxode2::rxode2(model, ...)
+  ## Record which event-sensitivity mode built this model.  The focei model bundle is
+  ## cached as rxNorm() TEXT and rehydrated with rxode2() (.foceiModelCacheInflate),
+  ## and eventSens is NOT recoverable from a compiled model -- rxModelVars() does not
+  ## carry it -- so without this tag a rehydrated sensitivity model is rebuilt in "fd"
+  ## mode and every dosing-parameter (f/alag/rate/dur) sensitivity silently becomes
+  ## zero.  Only set when the caller passed one: rxode2() resolves an absent eventSens
+  ## through getOption("rxode2.eventSens"), and `missing(eventSens)` changes what it
+  ## builds, so "not passed" has to replay as "not passed".
+  .es <- list(...)$eventSens
+  if (!is.null(.es)) attr(.ret, "nlmixr2estEventSens") <- .es
+  .ret
 }
