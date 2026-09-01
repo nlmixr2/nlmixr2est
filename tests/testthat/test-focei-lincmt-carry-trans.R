@@ -114,14 +114,14 @@ test_that("the other parameterizations carry exactly (eta+covariate on each slot
           tb <- log(0.02)
           tA <- log(0.04)
           tB <- log(0.01)
-          eta.bVar ~ 0.1
+          eta.b ~ 0.1
           add.sd <- 0.5
         })
         model({
           alpha <- exp(ta)
           beta <- exp(tb)
-          aVar <- exp(tA)
-          bVar <- exp(tB) * (wt / 70)^-1 * exp(eta.bVar)
+          a <- exp(tA)
+          b <- exp(tB) * (wt / 70)^-1 * exp(eta.b)
           cp <- linCmt()
           cp ~ add(add.sd)
         })
@@ -144,7 +144,7 @@ test_that("the other parameterizations carry exactly (eta+covariate on each slot
           alpha <- exp(ta)
           beta <- exp(tb)
           v <- exp(tv) * (wt / 70) * exp(eta.v)
-          bVar <- exp(tB)
+          b <- exp(tB)
           cp <- linCmt()
           cp ~ add(add.sd)
         })
@@ -162,7 +162,7 @@ test_that("the other parameterizations carry exactly (eta+covariate on each slot
           tv <- log(25)
           tB <- log(0.01)
           tC <- log(0.005)
-          eta.cVar ~ 0.1
+          eta.c ~ 0.1
           add.sd <- 0.5
         })
         model({
@@ -170,8 +170,8 @@ test_that("the other parameterizations carry exactly (eta+covariate on each slot
           beta <- exp(tb)
           gamma <- exp(tg)
           v <- exp(tv)
-          bVar <- exp(tB)
-          cVar <- exp(tC) * (wt / 70)^-1 * exp(eta.cVar)
+          b <- exp(tB)
+          c <- exp(tC) * (wt / 70)^-1 * exp(eta.c)
           cp <- linCmt()
           cp ~ add(add.sd)
         })
