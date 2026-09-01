@@ -12,6 +12,18 @@
 # fault; only a fit can.  rxode2 carries bench/lincmt_phi_fit_engage_check.R
 # as the reproducer, and this is the durable regression test.
 #
+# Which matrix: rxode2's linCmtSensPhi selects between three orderings of the
+# same closed-form solution.  `1` assembles the matrix by probing the kernel
+# with unit-basis prior states -- one evaluation per direction per column, so
+# it is only worth paying where the interval repeats, and it is the mode the
+# engage rule above governs and the `phiBuild`/`phiRows` counters measure.
+# `TRUE`/`2` (rxode2's DEFAULT since the closed-form assembly landed) costs
+# about one kernel evaluation, so it needs no evidence of recurrence at all
+# and is counted separately as `phiAnalyticRows`.  This file therefore asks
+# for `1` explicitly: passing `TRUE` silently moved it onto the analytic path,
+# where `phiBuild` is 0 by construction and the engage rule it exists to pin
+# was not being exercised at all.
+#
 # Skips cleanly on an rxode2 without the mechanism.
 
 # The model function is an rxode2 ini()/model() DSL block, which lintr's
@@ -69,7 +81,9 @@
 }
 
 # One posthoc fit, returning the counters it accumulated and its objective.
-.phiFit <- function(times, phi = TRUE) {
+# phi = 1L is the probe-assembled matrix the engage rule governs; see the
+# header.  FALSE is the row-by-row ordering, TRUE/2 the analytic assembly.
+.phiFit <- function(times, phi = 1L) {
   .dat <- .phiDat(times)
   invisible(.phiStats(TRUE))
   .rx <- rxode2::rxControl(
@@ -107,12 +121,19 @@ test_that("a repeating design engages the matrix and reuses it across rows", {
   # Reuse measured at 92 rows per build; a conservative floor catches a
   # collapse back to per-row assembly without pinning the exact ratio.
   expect_gt(.r$stats[["phiRows"]], 10L * .r$stats[["phiBuild"]])
+  # The DEFAULT is the analytic assembly, which needs no recurrence and so
+  # reports no builds -- cover it here too, or a default that stopped
+  # engaging entirely would show up nowhere.
+  .a <- .phiFit(.phiTimesRepeating, phi = TRUE)
+  expect_equal(.a$stats[["phiBuild"]], 0L)
+  expect_gt(.a$stats[["phiAnalyticRows"]], 0L)
+  expect_equal(.a$objf, .r$objf, tolerance = 1e-8)
 })
 
 test_that("engaging the transition matrix does not move the objective", {
   skip_on_cran()
   skip_if_not(.phiFitCapable())
-  .on <- .phiFit(.phiTimesRepeating, phi = TRUE)
+  .on <- .phiFit(.phiTimesRepeating, phi = 1L)
   .off <- .phiFit(.phiTimesRepeating, phi = FALSE)
   # linCmtSensPhi=FALSE must leave the matrix path entirely unused.
   expect_equal(.off$stats[["phiBuild"]], 0L)
