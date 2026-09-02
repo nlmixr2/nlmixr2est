@@ -437,3 +437,54 @@ never caught it.
 Fixed by invalidating on a generation counter bumped wherever the cache's source
 data is set.  After the fix the three repeated fits are bit-identical
 (`add.sd` 0.0859 every time, `prop.sd` 0.0963, `psi.lKa` 0.02750).
+
+## Pilot reproduction (20 replicates, n = 24), both paths, cache fix applied
+
+Relative bias %, `design/iov-panhard/run.R 24 20 <method>`:
+
+| | true | `iovMethod="theta"` | `iovMethod="twoLevel"` |
+|---|---|---|---|
+| mu (log V) | -0.73 | 1.09 | 1.17 |
+| mu (log Ka) | 0.39 | 3.33 | 2.49 |
+| mu (log AUC) | 4.61 | -0.10 | -0.11 |
+| omega (log V) | 0.01 | 9.33 | 2.16 |
+| omega (log Ka) | 0.04 | 8.02 | -3.40 |
+| omega (log AUC) | 0.04 | 1.46 | -0.07 |
+| **psi (log V)** | 0.0025 | **-95.28** | **-18.25** |
+| **psi (log Ka)** | 0.01 | **-92.68** | **8.09** |
+| **psi (log AUC)** | 0.01 | **-38.76** | **-4.64** |
+| sigma (add) | 0.1 | 18.99 | -5.57 |
+| sigma (prop) | 0.1 | 1.48 | 1.69 |
+
+The two fixes are independent and both needed: the residual-cache fix repairs
+`sigma` and, through it, `Omega` on BOTH paths; the two-level parameterization is
+what makes `Psi` recoverable at all.  The shared rewrite still loses 39-95% of
+the inter-occasion variance even with the cache repaired.
+
+The legacy path is also about twice as slow here (403 s vs 214 s for 20 fits),
+because the IOV magnitude goes through the bounded phi0 optimizer every
+iteration past `niter_phi0`.
+
+## Phase 8 -- output and hand-off (DONE)
+
+`.uiFinalizeIov()` is shared rather than duplicated: `.saemIovExpandUi()` leaves
+the same state behind that the shared rewrite does (`$ui`, `$iovVars`,
+`$iovDrop`, `$lines`, `$iovRename`), plus `$iovTwoLevel` to say the variance
+comes off the pooled occasion etas instead of a magnitude theta.  Three branches
+were needed:
+
+- `getEstimateDf()` reads the variance from the pooled eta rows.  It runs over
+  the final frame AND over `iniDf0`, and `iniDf0` is the user's own frame -- it
+  never went through the expansion, so its `iov.x ~ v | occ` row is already the
+  thing being rebuilt and is left alone (this was a real crash: "replacement has
+  0 rows, data has 1").
+- `$iov` is not rescaled: the shared rewrite's occasion etas are unit-variance
+  and have to be multiplied by the fitted SD, while the two-level ones already
+  carry `c_ik`.
+- the `$fixef`/`parFixed` blocks that strip the magnitude theta are skipped --
+  there is none, and `x[-integer(0)]` empties the vector rather than leaving it
+  alone.
+
+Both paths now produce the same shape: `$omega` split into `$id`/`$occ`, the
+user's `iov.cl` row restored with `condition = "occ"`, an `$iov` deviation
+table, and no `rx.*` leaking into the fit or its `iniDf`.

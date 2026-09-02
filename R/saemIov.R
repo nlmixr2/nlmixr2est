@@ -195,6 +195,20 @@
   })
   assign("iniDf", rbind(.thetas, .etas), envir=.ui)
   assign("lstExpr", c(.lines, .ui$lstExpr), envir=.ui)
+  # .uiFinalizeIov() (R/iov.R) undoes the rewrite after the fit -- restoring the
+  # `iov.x ~ v | occ` row, splitting $omega into $id/$occ, building $iov and the
+  # shrinkage table.  All of that is shared; hand it the same state the shared
+  # rewrite leaves behind, plus `iovTwoLevel` to say the variance comes off the
+  # pooled occasion etas rather than a magnitude theta.
+  .uiIovEnv$ui <- ui
+  .uiIovEnv$iovVars <- .nm
+  .uiIovEnv$iovDrop <- unlist(info$etaNames, use.names=FALSE)
+  .uiIovEnv$lines <- .lines
+  .uiIovEnv$iovTwoLevel <- info$etaNames
+  .uiIovEnv$muModel <- NULL
+  .uiIovEnv$iovRename <-
+    str2lang(paste0("rxode2::rxRename(.ui, ",
+                    paste(paste0(.nm, "=", "rx.", .nm), collapse=", "), ")"))
   rxode2::rxUiDecompress(suppressWarnings(suppressMessages(.ui$fun())))
 }
 

@@ -17,8 +17,10 @@
   inter-occasion variance the model declares.  A model the newer handling does
   not cover (more than one occasion variable, a correlated occasion term, an
   occasion parameter that is not mu-referenced) falls back to the shared
-  rewrite and says so in the fit's `$runInfo`.  The default is unchanged for
-  now (`iovMethod = "theta"`).
+  rewrite and says so in the fit's `$runInfo`.  Either way the fit presents the
+  same: `$omega` split into `$id` and `$occ`, the `iov.x ~ v | occ` row restored
+  in `$ui`, and an `$iov` table of the per-occasion deviations.  The default is
+  unchanged for now (`iovMethod = "theta"`).
 
 ## Bug fixes
 

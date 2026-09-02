@@ -41,22 +41,25 @@ test_that("iovMethod='twoLevel' estimates one occasion variance in closed form",
   .d <- .twoLevelFitData()
   .f2 <- suppressWarnings(nlmixr2(.twoLevelFitModel(), .d, est = "saem",
                                   control = .twoLevelCtl(iovMethod = "twoLevel")))
-  .om <- if (is.list(.f2$omega)) .f2$omega$id else .f2$omega
 
   # the mechanism: the occasion term is an ordinary omega entry, not a
   # population parameter multiplying a unit-variance eta.  There is no
   # magnitude theta at all.
   expect_false("iov.cl" %in% names(.f2$fixef))
-  expect_true(all(c("rx.iov.cl.1", "rx.iov.cl.2") %in% rownames(.om)))
 
-  # the equality constraint (one Psi across occasions) is imposed in the M-step,
-  # so the two occasions carry exactly the same variance -- not merely a similar
-  # one
-  .v1 <- .om["rx.iov.cl.1", "rx.iov.cl.1"]
-  .v2 <- .om["rx.iov.cl.2", "rx.iov.cl.2"]
-  expect_identical(.v1, .v2)
-  expect_true(is.finite(.v1))
-  expect_true(.v1 > 0)
+  # and the fit presents the same way the shared rewrite's does: $omega split
+  # into $id and $occ, the user's `iov.cl ~ v | occ` row restored, an $iov
+  # deviation table, and no rx.* leaking into the fit
+  expect_true(is.list(.f2$omega))
+  expect_equal(names(.f2$omega), c("id", "occ"))
+  expect_equal(rownames(.f2$omega$occ), "iov.cl")
+  expect_true(is.finite(.f2$omega$occ[1, 1]))
+  expect_true(.f2$omega$occ[1, 1] > 0)
+  .ini <- .f2$ui$iniDf
+  expect_equal(.ini$condition[.ini$name == "iov.cl"], "occ")
+  expect_false(any(grepl("^rx[.]", .ini$name)))
+  expect_true(all(c("ID", "occ", "iov.cl") %in% names(.f2$iov$occ)))
+  expect_length(grep("^rx[.]", names(.f2)), 0L)
 })
 
 test_that("the two-level occasion variance does not collapse the way the shared rewrite's does", {
@@ -66,9 +69,8 @@ test_that("the two-level occasion variance does not collapse the way the shared 
                                   control = .twoLevelCtl(iovMethod = "theta")))
   .f2 <- suppressWarnings(nlmixr2(.twoLevelFitModel(), .d, est = "saem",
                                   control = .twoLevelCtl(iovMethod = "twoLevel")))
-  .om2 <- if (is.list(.f2$omega)) .f2$omega$id else .f2$omega
   .iov0 <- .f0$omega$occ[1, 1]
-  .iov2 <- .om2["rx.iov.cl.1", "rx.iov.cl.1"]
+  .iov2 <- .f2$omega$occ[1, 1]
 
   # the shared rewrite estimates this variance through the annealed phi0 path
   # and drives it toward zero; the closed-form M-step does not

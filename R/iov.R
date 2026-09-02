@@ -138,6 +138,7 @@ nlmixr2iovVarSd <- function(val) {
       .uiIovEnv$iovRename <- NULL
       .uiIovEnv$lines <- NULL
       .uiIovEnv$muModel <- NULL
+      .uiIovEnv$iovTwoLevel <- NULL
       return(NULL)
     }
     warning(.why, "; used iovMethod='theta'", call.=FALSE)
@@ -146,6 +147,7 @@ nlmixr2iovVarSd <- function(val) {
   }
   .uiIovEnv$iovVars <- NULL
   .uiIovEnv$muModel <- NULL
+  .uiIovEnv$iovTwoLevel <- NULL
   .xform <- control$iovXform
   if (length(.xform)  != 1) {
     .xform <- "sd"
@@ -448,10 +450,25 @@ nlmixr2iovVarSd <- function(val) {
           .tmp
         }
         for (i in seq_along(.iovDf$name)) {
-          .w <- which(.thetaDf$name == .iovDf$name[i])
-          .fun <- sub("Cv$", "Sd", .thetaDf[.w, "backTransform"])
-          .fun <- get(.fun)
-          .est <- .fun(.thetaDf[.w, "est"])^2
+          if (is.null(.uiIovEnv$iovTwoLevel)) {
+            # shared rewrite: the variance is a magnitude theta on the iovXform
+            # scale, converted back through its own back-transform
+            .w <- which(.thetaDf$name == .iovDf$name[i])
+            .fun <- sub("Cv$", "Sd", .thetaDf[.w, "backTransform"])
+            .fun <- get(.fun)
+            .est <- .fun(.thetaDf[.w, "est"])^2
+          } else {
+            # two-level: the variance IS an omega entry already, shared by every
+            # occasion level (poolOmegaGroups, src/saem.cpp), so read it off the
+            # first one.  This runs over the FINAL frame and over iniDf0, and
+            # iniDf0 is the user's own frame -- it never went through the
+            # expansion, so its `iov.x ~ v | occ` row is already what we would
+            # be rebuilding.  Leave it alone.
+            .w <- integer(0)
+            .poolEta <- .uiIovEnv$iovTwoLevel[[.iovDf$name[i]]][1]
+            if (!(.poolEta %in% .iniDf$name)) next
+            .est <- .iniDf$est[.iniDf$name == .poolEta]
+          }
           .maxEta <- .maxEta + 1L
           .cur <- .etaTemplate
           .cur$neta1 <- .cur$neta2 <- .maxEta
@@ -472,7 +489,7 @@ nlmixr2iovVarSd <- function(val) {
             .cur$prior <- .iovDf$prior[i]
           }
           .etaDf <- rbind(.etaDf, .cur)
-          .thetaDf <- .thetaDf[-.w, , drop=FALSE]
+          if (length(.w) > 0L) .thetaDf <- .thetaDf[-.w, , drop=FALSE]
         }
 
         # Renumber
@@ -580,7 +597,9 @@ nlmixr2iovVarSd <- function(val) {
       .w <- which(names(.iov) %in% c(.uiIovEnv$iovDrop, "ID"))
       .iov <- .iov[,.w]
 
-      .sdIov <- sqrt(.est)
+      # the shared rewrite's occasion etas are unit-variance, so they have to be
+      # rescaled by the fitted SD; the two-level ones already carry c_ik
+      .sdIov <- if (is.null(.uiIovEnv$iovTwoLevel)) sqrt(.est) else NULL
 
       .dt <- NULL
       .iov <- lapply(.n, function(var) {
@@ -594,8 +613,10 @@ nlmixr2iovVarSd <- function(val) {
                                     measure.vars=names(.curd)[-1],
                                     variable.name = var,
                                     value.name = d)
-          # rescale the derived eta (fixed to 1) by the IOV variable's sd
-          .curd[[d]] <- .curd[[d]] *.sdIov[d]
+          if (!is.null(.sdIov)) {
+            # rescale the derived eta (fixed to 1) by the IOV variable's sd
+            .curd[[d]] <- .curd[[d]] * .sdIov[d]
+          }
           if (is.null(.dt)) {
             .dt <- .curd
           } else {
@@ -614,19 +635,27 @@ nlmixr2iovVarSd <- function(val) {
       # Now fixed effects
       .fixef <- ret$env$fixef
       .w <- which(names(.fixef) %in% .iovName$var)
-      .fixef <- .fixef[-.w]
-      assign("fixef",.fixef, envir = ret$env)
+      # `x[-integer(0)]` empties the vector, and the two-level path has no
+      # magnitude theta in fixef to begin with
+      if (length(.w) > 0L) {
+        .fixef <- .fixef[-.w]
+        assign("fixef", .fixef, envir = ret$env)
+      }
 
       .parFixedDf <- ret$env$parFixedDf
       .bck <- which(grepl("Back",names(.parFixedDf)))
       .bsv <- which(grepl("BSV", names(.parFixedDf)))
       .est <- which(grepl("Est", names(.parFixedDf)))
 
-      .valCharPrep <-
-        .parFixedDf[.uiIovEnv$iovVars,.bsv] <-
-        .parFixedDf[.uiIovEnv$iovVars, .bck]
-      .parFixedDf[.uiIovEnv$iovVars,.bsv] <- NA_real_
-      .parFixedDf[.uiIovEnv$iovVars,.est] <- NA_real_
+      .hasIovTheta <- all(.uiIovEnv$iovVars %in% rownames(.parFixedDf))
+      .valCharPrep <- NULL
+      if (.hasIovTheta) {
+        .valCharPrep <-
+          .parFixedDf[.uiIovEnv$iovVars,.bsv] <-
+          .parFixedDf[.uiIovEnv$iovVars, .bck]
+        .parFixedDf[.uiIovEnv$iovVars,.bsv] <- NA_real_
+        .parFixedDf[.uiIovEnv$iovVars,.est] <- NA_real_
+      }
 
       .parFixedDf <- .parFixedDf[!grepl("^rx[.]", rownames(.parFixedDf)),]
       assign("parFixedDf", .parFixedDf, envir = ret$env)
@@ -637,11 +666,13 @@ nlmixr2iovVarSd <- function(val) {
       .est2 <- which(grepl("Est", names(.parFixed)))
 
       .sigdig <- ret$control$sigdig
-      .parFixed[.uiIovEnv$iovVars, .bck2] <- ""
-      .parFixed[.uiIovEnv$iovVars, .est2] <- ""
-      .parFixed[.uiIovEnv$iovVars, .bsv2] <- formatC(
-        signif(.valCharPrep, digits = .sigdig),
-        digits = .sigdig, format = "fg", flag = "#")
+      if (.hasIovTheta) {
+        .parFixed[.uiIovEnv$iovVars, .bck2] <- ""
+        .parFixed[.uiIovEnv$iovVars, .est2] <- ""
+        .parFixed[.uiIovEnv$iovVars, .bsv2] <- formatC(
+          signif(.valCharPrep, digits = .sigdig),
+          digits = .sigdig, format = "fg", flag = "#")
+      }
       .parFixed <- .parFixed[!grepl("^rx[.]", rownames(.parFixed)),]
       assign("parFixed", .parFixed, envir=ret$env)
     }
