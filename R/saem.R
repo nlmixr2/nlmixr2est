@@ -1541,7 +1541,14 @@ nlmixr2Est.saem <- function(env, ...) {
 attr(nlmixr2Est.saem, "covPresent") <- TRUE
 attr(nlmixr2Est.saem, "unbounded") <- TRUE
 attr(nlmixr2Est.saem, "mu") <- TRUE
-attr(nlmixr2Est.saem, "iov") <- TRUE
+# Whether the shared IOV pre-processing rewrite (.uiApplyIov(), R/iov.R) runs.
+# It turns `iov.x ~ v | occ` into a magnitude theta multiplying per-occasion
+# unit-variance etas, which is what every other estimation method wants.  With
+# iovMethod="twoLevel" saem keeps the occasion term as a second variance
+# component and handles it itself, so the rewrite has to stay out of the way.
+attr(nlmixr2Est.saem, "iov") <- function(control) {
+  !identical(control$iovMethod, "twoLevel")
+}
 
 
 #' @rdname nmObjGet

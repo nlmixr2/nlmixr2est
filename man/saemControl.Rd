@@ -47,6 +47,7 @@ saemControl(
   handleUninformativeEtas = TRUE,
   revisitUninformativeEtas = FALSE,
   iovXform = c("sd", "var", "logsd", "logvar"),
+  iovMethod = c("theta", "twoLevel"),
   boundedTransform = TRUE,
   eventSens = c("jump", "fd"),
   mixProbMethod = c("regress", "regularized", "annealed"),
@@ -346,6 +347,14 @@ rest of the fit.  Skipped for mixture models and when
 
 \item{iovXform}{Transformation used on the diagonal of the IOV: one of
 \code{"sd"}, \code{"var"}, \code{"logsd"}, or \code{"logvar"}.}
+
+\item{iovMethod}{How inter-occasion variability (`iov.x ~ v | occ`) is
+estimated.  \code{"theta"} uses the shared pre-processing rewrite, which
+carries the magnitude as a population parameter multiplying per-occasion
+unit-variance etas (the form every other estimation method uses).
+\code{"twoLevel"} keeps the occasion term as a second variance component
+and estimates it with the closed-form updates of Panhard and Samson (2009),
+which is what the SAEM kernel is built around for every other variance.}
 
 \item{boundedTransform}{When `TRUE` (default), bounded parameters are
 transformed for unbounded optimization methods and back-transformed

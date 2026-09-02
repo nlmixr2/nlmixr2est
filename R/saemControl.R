@@ -338,6 +338,13 @@
 #'
 #' @inheritParams rxode2::rxSolve
 #' @inheritParams foceiControl
+#' @param iovMethod How inter-occasion variability (`iov.x ~ v | occ`) is
+#'   estimated.  \code{"theta"} uses the shared pre-processing rewrite, which
+#'   carries the magnitude as a population parameter multiplying per-occasion
+#'   unit-variance etas (the form every other estimation method uses).
+#'   \code{"twoLevel"} keeps the occasion term as a second variance component
+#'   and estimates it with the closed-form updates of Panhard and Samson (2009),
+#'   which is what the SAEM kernel is built around for every other variance.
 #' @return List of options to be used in \code{\link{nlmixr2}} fit for
 #'     SAEM.
 #' @author Wenping Wang & Matthew L. Fidler
@@ -393,6 +400,7 @@ saemControl <- function(seed = 99,
                         handleUninformativeEtas=TRUE,
                         revisitUninformativeEtas=FALSE,
                         iovXform = c("sd", "var", "logsd", "logvar"),
+                        iovMethod = c("theta", "twoLevel"),
                         boundedTransform = TRUE,
                         eventSens = c("jump", "fd"),
                         mixProbMethod = c("regress", "regularized", "annealed"),
@@ -422,6 +430,7 @@ saemControl <- function(seed = 99,
   }
 
   iovXform <- match.arg(iovXform)
+  iovMethod <- match.arg(iovMethod)
   checkmate::assertIntegerish(seed, any.missing=FALSE, min.len=1)
   if (!is.null(.xtra$mcmc)) {
     #mcmc = list(niter = c(nBurn, nEm), nmc = nmc, nu = nu),
@@ -602,6 +611,7 @@ saemControl <- function(seed = 99,
     handleUninformativeEtas=handleUninformativeEtas,
     revisitUninformativeEtas=revisitUninformativeEtas,
     iovXform=iovXform,
+    iovMethod=iovMethod,
     boundedTransform=boundedTransform,
     eventSens=eventSens,
     mixProbMethod=mixProbMethod,
