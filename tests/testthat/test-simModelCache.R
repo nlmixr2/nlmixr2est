@@ -90,14 +90,23 @@ nmTest({
     .simModelCacheReset()
     on.exit(.simModelCacheReset())
 
-    withr::with_options(list(nlmixr2.simModelCache = FALSE), {
+    ## rxSetSeed(), not set.seed(), is what pins the between-subject draws:
+    ## rxode2 seeds its own engine from R's RNG at solve entry, so with
+    ## set.seed() alone the etas depend on how much R RNG was consumed in
+    ## between -- and the uncached arm lowers a fresh model while the cached one
+    ## skips lowering entirely, so the two do not consume the same amount.  That
+    ## made this comparison pass or fail on an accident of the lowering path
+    ## (it failed on CI and in long local sessions, passed in isolation).
+    .solve <- function() {
+      rxode2::rxSetSeed(42)
       set.seed(42)
-      .uncached <- suppressMessages(rxode2::rxSolve(.fit, .ev))
+      suppressMessages(rxode2::rxSolve(.fit, .ev))
+    }
+    withr::with_options(list(nlmixr2.simModelCache = FALSE), {
+      .uncached <- .solve()
     })
-    set.seed(42)
-    .cached <- suppressMessages(rxode2::rxSolve(.fit, .ev))
-    set.seed(42)
-    .cachedAgain <- suppressMessages(rxode2::rxSolve(.fit, .ev))
+    .cached <- .solve()
+    .cachedAgain <- .solve()
 
     expect_equal(as.data.frame(.cached), as.data.frame(.uncached))
     # a shared model must not accumulate state between solves either
