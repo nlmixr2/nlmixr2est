@@ -36,11 +36,14 @@
   an axis-aligned grid covers that badly; compare fits on the estimates rather
   than on `objf`.
 
-  **`"twoLevel"` is now the default, so `saem` IOV estimates change.**  They were biased
-  toward zero, badly: on the paper's own simulation design (20 replicates,
-  n = 24, inter-occasion variances of 0.0025/0.01/0.01) the shared rewrite
-  recovers them with -95%/-93%/-39% relative bias while the two-level handling
-  gets -18%/+8%/-5%.  `iovMethod = "theta"` restores the old behavior.
+  **`"twoLevel"` is now the default, so `saem` IOV estimates change.**  They were
+  biased toward zero, badly.  On the paper's own simulation design (n = 24,
+  inter-occasion variances of 0.0025/0.01/0.01) the shared rewrite recovers them
+  with roughly -95%/-93%/-39% relative bias (a 20-replicate pilot); the
+  two-level handling gets -2.2%/-6.8%/-3.6% over 1000 replicates, which is less
+  biased than the figures
+  Panhard and Samson report for their own implementation (-8.7%/-10.9%/-5.4%).
+  `iovMethod = "theta"` restores the old behavior.
 
 ## Bug fixes
 
