@@ -138,27 +138,6 @@
                          .pars$iov))
 }
 
-#' Reason the collapsed sampler cannot take this model
-#'
-#' On top of [.saemIovInfo()]'s own scope: the collapsed form shares ONE theta
-#' across the occasion columns, and the exact constrained solve for it is the
-#' equal-weight average only because the block is compound-symmetric (`1` is an
-#' eigenvector of a CS matrix, so `Gamma^-1 1` is proportional to `1`).  That
-#' argument needs the intercept-only design, so a mu-referenced covariate on the
-#' occasion parameter's theta is out of scope.
-#'
-#' @param ui rxode2 ui
-#' @param info the result of [.saemIovInfo()]
-#' @return `NULL`, or a short character reason
-#' @noRd
-.saemIovCollapsedDecline <- function(ui, info) {
-  if (!is.list(info)) return(NULL)
-  .cov <- ui$muRefCovariateDataFrame
-  if (is.data.frame(.cov) && any(.cov$theta %in% info$pars$theta)) {
-    return("collapsed IOV cannot do a covariate on that theta")
-  }
-  NULL
-}
 
 #' Rewrite a ui so saem sees the occasion term as a second variance component
 #'
@@ -436,72 +415,7 @@ attr(rxUiGet.saemOmegaPool, "rstudio") <- c(0L, 0L)
 
 preProcessHooksAdd(".uiApplyIovTwoLevel", .uiApplyIovTwoLevel)
 
-#' Contract the pooled occasion columns of a covariance matrix
-#'
-#' `$cov` carries one row/column per phi1 column, so the K per-occasion columns
-#' of a two-level parameter appear K times under their internal `om.rx.<iov>.<k>`
-#' names.  They estimate ONE variance -- the M-step pins them equal
-#' (`poolOmegaGroups`, src/saem.cpp) -- so contract them by averaging, which is
-#' the delta method for `Psi = mean(v_1, ..., v_K)`.  Note this contracts the
-#' LINEARIZED (unconstrained) covariance rather than computing a constrained
-#' Fisher information, so it is an approximation, but a named one: the reported
-#' variance is `Var(mean(v_k))`, not `Var(v_1)`.
-#'
-#' The collapsed row keeps the position of the group's first member so the rest
-#' of the matrix keeps its order.
-#'
-#' @param cv covariance matrix, or `NULL`
-#' @param groups named list, user IOV parameter -> its per-occasion eta names
-#' @return the contracted matrix
-#' @noRd
-.saemIovCollapseCov <- function(cv, groups) {
-  if (!is.matrix(cv) || is.null(rownames(cv)) || length(groups) == 0L) return(cv)
-  .nm <- rownames(cv)
-  .grp <- lapply(groups, function(g) {
-    .w <- match(paste0("om.", g), .nm)
-    .w[!is.na(.w)]
-  })
-  .grp <- .grp[vapply(.grp, length, integer(1)) >= 2L]
-  if (length(.grp) == 0L) return(cv)
-  .rows <- .saemIovCovRows(.nm, .grp)
-  .a <- matrix(0, nrow = length(.rows), ncol = length(.nm))
-  for (.k in seq_along(.rows)) {
-    .a[.k, .rows[[.k]]$idx] <- 1 / length(.rows[[.k]]$idx)
-  }
-  .out <- .a %*% cv %*% t(.a)
-  .rn <- vapply(.rows, function(r) r$nm, character(1))
-  dimnames(.out) <- list(.rn, .rn)
-  .out
-}
 
-#' The rows a contracted covariance matrix will have
-#'
-#' One entry per output row, in input order: the input indices that feed it and
-#' the name it takes.  A pooled group contributes a single entry at the position
-#' of its first member, so the rest of the matrix keeps its order.
-#'
-#' @param nm rownames of the input matrix
-#' @param grp named list of pooled index vectors, each of length >= 2
-#' @return list of `list(idx, nm)`
-#' @noRd
-.saemIovCovRows <- function(nm, grp) {
-  # group id of every row; 0 where the row is not pooled
-  .of <- integer(length(nm))
-  for (.j in seq_along(grp)) .of[grp[[.j]]] <- .j
-  .rows <- list()
-  .seen <- integer(0)
-  for (.i in seq_along(nm)) {
-    .j <- .of[.i]
-    if (.j == 0L) {
-      .rows[[length(.rows) + 1L]] <- list(idx = .i, nm = nm[.i])
-    } else if (!(.j %in% .seen)) {
-      .seen <- c(.seen, .j)
-      .rows[[length(.rows) + 1L]] <-
-        list(idx = grp[[.j]], nm = paste0("om.", names(grp)[.j]))
-    }
-  }
-  .rows
-}
 
 #' Substitute symbols in an expression, dropping some from `+` chains
 #'
@@ -544,6 +458,100 @@ preProcessHooksAdd(".uiApplyIovTwoLevel", .uiApplyIovTwoLevel)
   .w
 }
 
+
+
+
+
+
+
+
+
+#' Reason the collapsed sampler cannot take this model
+#'
+#' On top of [.saemIovInfo()]'s own scope: the collapsed form shares ONE theta
+#' across the occasion columns, and the exact constrained solve for it is the
+#' equal-weight average only because the block is compound-symmetric (`1` is an
+#' eigenvector of a CS matrix, so `Gamma^-1 1` is proportional to `1`).  That
+#' argument needs the intercept-only design, so a mu-referenced covariate on the
+#' occasion parameter's theta is out of scope.
+#'
+#' @param ui rxode2 ui
+#' @param info the result of [.saemIovInfo()]
+#' @return `NULL`, or a short character reason
+#' @noRd
+.saemIovCollapsedDecline <- function(ui, info) {
+  if (!is.list(info)) return(NULL)
+  .cov <- ui$muRefCovariateDataFrame
+  if (is.data.frame(.cov) && any(.cov$theta %in% info$pars$theta)) {
+    return("collapsed IOV cannot do a covariate on that theta")
+  }
+  NULL
+}
+#' Contract the pooled occasion columns of a covariance matrix
+#'
+#' `$cov` carries one row/column per phi1 column, so the K per-occasion columns
+#' of a two-level parameter appear K times under their internal `om.rx.<iov>.<k>`
+#' names.  They estimate ONE variance -- the M-step pins them equal
+#' (`poolOmegaGroups`, src/saem.cpp) -- so contract them by averaging, which is
+#' the delta method for `Psi = mean(v_1, ..., v_K)`.  Note this contracts the
+#' LINEARIZED (unconstrained) covariance rather than computing a constrained
+#' Fisher information, so it is an approximation, but a named one: the reported
+#' variance is `Var(mean(v_k))`, not `Var(v_1)`.
+#'
+#' The collapsed row keeps the position of the group's first member so the rest
+#' of the matrix keeps its order.
+#'
+#' @param cv covariance matrix, or `NULL`
+#' @param groups named list, user IOV parameter -> its per-occasion eta names
+#' @return the contracted matrix
+#' @noRd
+.saemIovCollapseCov <- function(cv, groups) {
+  if (!is.matrix(cv) || is.null(rownames(cv)) || length(groups) == 0L) return(cv)
+  .nm <- rownames(cv)
+  .grp <- lapply(groups, function(g) {
+    .w <- match(paste0("om.", g), .nm)
+    .w[!is.na(.w)]
+  })
+  .grp <- .grp[vapply(.grp, length, integer(1)) >= 2L]
+  if (length(.grp) == 0L) return(cv)
+  .rows <- .saemIovCovRows(.nm, .grp)
+  .a <- matrix(0, nrow = length(.rows), ncol = length(.nm))
+  for (.k in seq_along(.rows)) {
+    .a[.k, .rows[[.k]]$idx] <- 1 / length(.rows[[.k]]$idx)
+  }
+  .out <- .a %*% cv %*% t(.a)
+  .rn <- vapply(.rows, function(r) r$nm, character(1))
+  dimnames(.out) <- list(.rn, .rn)
+  .out
+}
+#' The rows a contracted covariance matrix will have
+#'
+#' One entry per output row, in input order: the input indices that feed it and
+#' the name it takes.  A pooled group contributes a single entry at the position
+#' of its first member, so the rest of the matrix keeps its order.
+#'
+#' @param nm rownames of the input matrix
+#' @param grp named list of pooled index vectors, each of length >= 2
+#' @return list of `list(idx, nm)`
+#' @noRd
+.saemIovCovRows <- function(nm, grp) {
+  # group id of every row; 0 where the row is not pooled
+  .of <- integer(length(nm))
+  for (.j in seq_along(grp)) .of[grp[[.j]]] <- .j
+  .rows <- list()
+  .seen <- integer(0)
+  for (.i in seq_along(nm)) {
+    .j <- .of[.i]
+    if (.j == 0L) {
+      .rows[[length(.rows) + 1L]] <- list(idx = .i, nm = nm[.i])
+    } else if (!(.j %in% .seen)) {
+      .seen <- c(.seen, .j)
+      .rows[[length(.rows) + 1L]] <-
+        list(idx = grp[[.j]], nm = paste0("om.", names(grp)[.j]))
+    }
+  }
+  .rows
+}
 #' Build one IOV parameter's collapsed lines, thetas and eta block
 #'
 #' @param ui rxode2 ui being rewritten
@@ -598,7 +606,6 @@ preProcessHooksAdd(".uiApplyIovTwoLevel", .uiApplyIovTwoLevel)
                        diag = info$pars$iiv[i] + info$pars$est[i],
                        off = info$pars$iiv[i], fix = info$pars$fix[i]))
 }
-
 #' Rewrite a ui for the collapsed (Panhard & Samson) sampler
 #'
 #' Where [.saemIovExpandUi()] keeps `b_i` and `c_ik` as separate columns, this
@@ -697,7 +704,6 @@ preProcessHooksAdd(".uiApplyIovTwoLevel", .uiApplyIovTwoLevel)
   .uiIovEnv$iovRename <- NULL
   rxode2::rxUiDecompress(suppressWarnings(suppressMessages(.ui$fun())))
 }
-
 #' Recover Omega, Psi and mu from a collapsed fit's compound-symmetric block
 #'
 #' The fitted block is `Omega + Psi` on the diagonal and `Omega` off it, and the
@@ -729,7 +735,6 @@ preProcessHooksAdd(".uiApplyIovTwoLevel", .uiApplyIovTwoLevel)
   }
   list(theta = .theta, omega = .omega, psi = .psi)
 }
-
 #' Restore the user's model after a collapsed (Panhard & Samson) fit
 #'
 #' Registered as a post-final hook.  The collapsed expansion replaced the user's
@@ -742,59 +747,84 @@ preProcessHooksAdd(".uiApplyIovTwoLevel", .uiApplyIovTwoLevel)
 #' @param ret fit object
 #' @return the fit, with the user's parameterization restored
 #' @noRd
+#' Rebuild the user's original ui from a collapsed fit
+#'
+#' Puts the collapsed block's estimates back on the parameters the user wrote:
+#' the mu theta, its IIV variance and its IOV variance.
+#'
+#' @param env the fit environment, modified in place
+#' @param info the `.saemIovInfo()` result
+#' @param parts the `.saemIovCollapsedParts()` decomposition
+#' @return `NULL`, called for its side effects
+#' @noRd
+.saemIovRestoreUi <- function(env, info, parts) {
+  .fitIni <- env$ui$iniDf
+  .orig <- rxode2::rxUiDecompress(.uiIovEnv$ui)
+  .ini <- info$origIniDf
+  # carry every estimate that survived the rewrite unchanged
+  .keep <- match(.ini$name, .fitIni$name)
+  .ok <- !is.na(.keep)
+  .ini$est[.ok] <- .fitIni$est[.keep[.ok]]
+  # then the three the collapsed block owns
+  for (.i in seq_len(nrow(info$pars))) {
+    .p <- info$pars[.i, ]
+    .ini$est[.ini$name == .p$theta & is.na(.ini$neta1)] <- parts$theta[[.i]]
+    .ini$est[.ini$name == .p$eta & is.na(.ini$ntheta)] <- parts$omega[[.i]]
+    .ini$est[.ini$name == .p$iov & is.na(.ini$ntheta)] <- parts$psi[[.i]]
+  }
+  .newIni <- as.expression(lotri::as.lotri(.ini))
+  .newIni[[1]] <- quote(`ini`)
+  # .getUiFunFromIniAndModel() hands back a model FUNCTION, not a ui -- the
+  # shared finalizer only ends up with a ui because its rxRename() call
+  # evaluates one.  There is no rename here, so build the ui explicitly.
+  .uiFun <- .getUiFunFromIniAndModel(.orig, .newIni,
+                                     rxode2::as.model(info$origLstExpr))
+  .ui <- rxode2::rxUiDecompress(
+    suppressWarnings(suppressMessages(.uiFun())))
+  assign("ui", .ui, envir = env)
+  assign("iniDf0", info$origIniDf, envir = env)
+  assign("omega", .ui$omega, envir = env)
+  invisible()
+}
+#' Put a collapsed fit's estimates back on the user's parameter names
+#'
+#' Drops the generated `rx.<theta>.<k>` entries from `fixef` in favour of the
+#' single mu theta, and splits the collapsed etas into `ranef` and `iov`.
+#'
+#' @inheritParams .saemIovRestoreUi
+#' @return `NULL`, called for its side effects
+#' @noRd
+.saemIovRestoreEst <- function(env, info, parts) {
+  .fx <- env$fixef
+  .drop <- unlist(lapply(seq_len(nrow(info$pars)), function(i) {
+    paste0("rx.", info$pars$theta[i], ".", info$levels)
+  }), use.names = FALSE)
+  .fx <- .fx[!(names(.fx) %in% .drop)]
+  for (.i in seq_len(nrow(info$pars))) {
+    .fx[[info$pars$theta[.i]]] <- parts$theta[[.i]]
+  }
+  assign("fixef", .fx, envir = env)
+
+  # The collapsed columns hold phi_ik = mu + b_i + c_ik jointly, so the
+  # between-subject and inter-occasion deviations come out of them by the
+  # obvious decomposition: b_i is the subject's mean over occasions and c_ik
+  # what is left.  That is also the split the CS block assumes.
+  .split <- .saemIovSplitRanef(env$ranef, info)
+  if (!is.null(.split)) {
+    assign("ranef", .split$ranef, envir = env)
+    if (!is.null(.split$iov)) assign("iov", .split$iov, envir = env)
+  }
+  invisible()
+}
 .saemIovFinalizeCollapsed <- function(ret) {
   .info <- .uiIovEnv$iovCollapsed
   if (is.null(.info) || is.null(.uiIovEnv$ui)) return(ret)
   if (is.environment(ret$env) && !is.null(ret$ui)) {
-    .fit <- ret$env$ui
-    .om <- .fit$omega
+    .om <- ret$env$ui$omega
     if (is.list(.om)) .om <- .om$id
     .parts <- .saemIovCollapsedParts(.om, ret$env$fixef, .info)
-    .orig <- rxode2::rxUiDecompress(.uiIovEnv$ui)
-    .ini <- .info$origIniDf
-    # carry every estimate that survived the rewrite unchanged
-    .fitIni <- .fit$iniDf
-    .keep <- match(.ini$name, .fitIni$name)
-    .ok <- !is.na(.keep)
-    .ini$est[.ok] <- .fitIni$est[.keep[.ok]]
-    # then the three the collapsed block owns
-    for (.i in seq_len(nrow(.info$pars))) {
-      .p <- .info$pars[.i, ]
-      .ini$est[.ini$name == .p$theta & is.na(.ini$neta1)] <- .parts$theta[[.i]]
-      .ini$est[.ini$name == .p$eta & is.na(.ini$ntheta)] <- .parts$omega[[.i]]
-      .ini$est[.ini$name == .p$iov & is.na(.ini$ntheta)] <- .parts$psi[[.i]]
-    }
-    .newIni <- as.expression(lotri::as.lotri(.ini))
-    .newIni[[1]] <- quote(`ini`)
-    # .getUiFunFromIniAndModel() hands back a model FUNCTION, not a ui -- the
-    # shared finalizer only ends up with a ui because its rxRename() call
-    # evaluates one.  There is no rename here, so build the ui explicitly.
-    .uiFun <- .getUiFunFromIniAndModel(.orig, .newIni,
-                                       rxode2::as.model(.info$origLstExpr))
-    .ui <- rxode2::rxUiDecompress(
-      suppressWarnings(suppressMessages(.uiFun())))
-    assign("ui", .ui, envir = ret$env)
-    assign("iniDf0", .info$origIniDf, envir = ret$env)
-    assign("omega", .ui$omega, envir = ret$env)
-    .fx <- ret$env$fixef
-    .drop <- unlist(lapply(seq_len(nrow(.info$pars)), function(i) {
-      paste0("rx.", .info$pars$theta[i], ".", .info$levels)
-    }), use.names = FALSE)
-    .fx <- .fx[!(names(.fx) %in% .drop)]
-    for (.i in seq_len(nrow(.info$pars))) {
-      .fx[[.info$pars$theta[.i]]] <- .parts$theta[[.i]]
-    }
-    assign("fixef", .fx, envir = ret$env)
-
-    # The collapsed columns hold phi_ik = mu + b_i + c_ik jointly, so the
-    # between-subject and inter-occasion deviations come out of them by the
-    # obvious decomposition: b_i is the subject's mean over occasions and c_ik
-    # what is left.  That is also the split the CS block assumes.
-    .split <- .saemIovSplitRanef(ret$env$ranef, .info)
-    if (!is.null(.split)) {
-      assign("ranef", .split$ranef, envir = ret$env)
-      if (!is.null(.split$iov)) assign("iov", .split$iov, envir = ret$env)
-    }
+    .saemIovRestoreUi(ret$env, .info, .parts)
+    .saemIovRestoreEst(ret$env, .info, .parts)
   }
   if (inherits(ret, "data.frame")) {
     .w <- which(grepl("^rx[.]", names(ret)))
@@ -807,9 +837,7 @@ preProcessHooksAdd(".uiApplyIovTwoLevel", .uiApplyIovTwoLevel)
   }
   ret
 }
-
 postFinalObjectHooksAdd(".saemIovFinalizeCollapsed", .saemIovFinalizeCollapsed)
-
 #' Split the collapsed etas into between-subject and inter-occasion parts
 #'
 #' The collapsed columns hold `phi_ik = mu + b_i + c_ik` jointly, so `b_i` is the
