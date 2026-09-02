@@ -67,6 +67,14 @@ static std::vector<double> _saemFaCache;
 static std::vector<double> _saemFaAdjustCache;
 static double* _saemCacheYptr = nullptr;
 static double* _saemCacheFptr = nullptr;
+// The residual-step transform cache used to be keyed on the ADDRESS of ysb/fsb.
+// Those are per-iteration locals, freed and reallocated every M-step, so the
+// allocator routinely hands back the same address with completely different
+// CONTENTS -- the guard then reported "unchanged" and the residual optimizer
+// scored every later iteration against the FIRST iteration's predictions.  Key
+// it on a counter bumped wherever the data behind the cache is set instead.
+static unsigned long _saemResidGen = 0;
+static unsigned long _saemCacheGen = (unsigned long)-1;
 static int _saemCacheLen = -1;
 static int _saemCacheYj = -1;
 static int _saemCachePropT = -1;
@@ -140,7 +148,8 @@ static inline void saemFormG(vec &g, const vec &a, const vec &b, const vec &ft, 
 }
 
 static inline void ensureSaemFixedTransformCache() {
-  if (_saemCacheYptr == _saemYptr &&
+  if (_saemCacheGen == _saemResidGen &&
+      _saemCacheYptr == _saemYptr &&
       _saemCacheFptr == _saemFptr &&
       _saemCacheLen == _saemLen &&
       _saemCacheYj == _saemYj &&
@@ -163,6 +172,7 @@ static inline void ensureSaemFixedTransformCache() {
     _saemFaCache[i] = handleF(_saemPropT, ft, f, false, false);
     _saemFaAdjustCache[i] = handleF(_saemPropT, ft, f, false, true);
   }
+  _saemCacheGen = _saemResidGen;
   _saemCacheYptr = _saemYptr;
   _saemCacheFptr = _saemFptr;
   _saemCacheLen = _saemLen;
@@ -3544,6 +3554,7 @@ public:
             _saemYptr = ysb.memptr();
             _saemFptr = fsb.memptr();
             _saemLen  = ysb.n_elem;
+            _saemResidGen++;
             _saemYj   = yj(b);
             _saemPropT = propT(b);
             _saemAddProp=addProp(b);
@@ -3622,6 +3633,7 @@ public:
             _saemYptr = ysb.memptr();
             _saemFptr = fsb.memptr();
             _saemLen  = ysb.n_elem;
+            _saemResidGen++;
             _saemYj   = yj(b);
             _saemPropT = propT(b);
             _saemAddProp = addProp(b);
@@ -3690,6 +3702,7 @@ public:
             _saemYptr = ysb.memptr();
             _saemFptr = fsb.memptr();
             _saemLen  = ysb.n_elem;
+            _saemResidGen++;
             _saemYj   = yj(b);
             _saemPropT = propT(b);
             _saemAddProp =addProp(b);
@@ -3753,6 +3766,7 @@ public:
             _saemYptr = ysb.memptr();
             _saemFptr = fsb.memptr();
             _saemLen  = ysb.n_elem;
+            _saemResidGen++;
             _saemYj   = yj(b);
             _saemPropT = propT(b);
             _saemAddProp = addProp(b);
@@ -3817,6 +3831,7 @@ public:
             _saemYptr = ysb.memptr();
             _saemFptr = fsb.memptr();
             _saemLen  = ysb.n_elem;
+            _saemResidGen++;
             _saemYj   = yj(b);
             _saemPropT = propT(b);
             _saemAddProp = addProp(b);
@@ -3889,6 +3904,7 @@ public:
             _saemYptr = ysb.memptr();
             _saemFptr = fsb.memptr();
             _saemLen  = ysb.n_elem;
+            _saemResidGen++;
             _saemYj   = yj(b);
             _saemPropT = propT(b);
             _saemAddProp = addProp(b);
@@ -3966,6 +3982,7 @@ public:
             _saemYptr = ysb.memptr();
             _saemFptr = fsb.memptr();
             _saemLen  = ysb.n_elem;
+            _saemResidGen++;
             _saemYj   = yj(b);
             _saemPropT = propT(b);
             _saemAddProp = addProp(b);
@@ -4051,6 +4068,7 @@ public:
             _saemYptr = ysb.memptr();
             _saemFptr = fsb.memptr();
             _saemLen  = ysb.n_elem;
+            _saemResidGen++;
             _saemYj   = yj(b);
             _saemPropT = propT(b);
             _saemAddProp = addProp(b);

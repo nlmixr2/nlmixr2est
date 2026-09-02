@@ -110,7 +110,8 @@ panhardModel <- function() {
     ka <- exp(lKa)
     cl <- 4 / exp(lAUC)
     cp <- linCmt()
-    cp ~ combined1(add.sd, prop.sd)
+    # g(t, phi) = sigma*(1 + f) -- combined1 is g = add.sd + prop.sd*f
+    cp ~ add(add.sd) + prop(prop.sd) + combined1()
   })
 }
 # nolint end

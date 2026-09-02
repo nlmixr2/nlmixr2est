@@ -22,6 +22,21 @@
 
 ## Bug fixes
 
+- `saem` now gives the same answer every time for a model whose residual error
+  needs the internal optimizer -- anything richer than a pure `add()` or pure
+  `prop()` endpoint, so `combined1()`/`combined2()`, `pow()`, and the
+  transform-both-sides variants.  Repeating one fit in a session, same data and
+  same `seed`, could return a different residual estimate each time (measured:
+  `add.sd` 0.0859, 0.0877, then 0.1807 for three identical calls).  The residual
+  step caches the transformed predictions and observations it scores, and the
+  cache was keyed on the ADDRESS of the buffers holding them.  Those buffers are
+  rebuilt every M-step, so the allocator routinely handed back the same address
+  with different contents and the cache reported itself still valid -- the
+  optimizer then scored later iterations against the FIRST iteration's
+  predictions, which still carry all of the between-subject variability as
+  error.  The residual therefore stayed near its starting value and the variance
+  components shrank to compensate.  The cache is now invalidated whenever the
+  data behind it is rewritten.
 - `saem` with IOV and a general log-likelihood (`ll()`) endpoint no longer
   returns an astronomically large objective function (#1000).  Past half the
   iterations, `saem` refines its non-mu-referenced (`phi0`) parameters with a

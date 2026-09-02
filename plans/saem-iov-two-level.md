@@ -399,3 +399,41 @@ The two occasion variances come out exactly equal, so the constraint is real.
 (one theta feeding K columns via a new `lambdaGroup`, compound-symmetry
 `Gamma`, and the Rao-Blackwellized `V(theta)`/`m(phi_i, theta)` M-step), with
 Phase 3 kept as the fallback and as a cross-check for the paper reproduction.
+
+## Blocker found while reproducing the paper: the residual transform cache
+
+The first 20-replicate pilot of the paper's design came back with `add.sd`
+biased +400% (0.5 against a truth of 0.1) and `Psi` biased about -55%.  Four
+experiments isolated it, and none of it is about IOV:
+
+1. **FOCEi on the same replicate recovers the truth** (`add.sd` 0.112,
+   `Omega` 0.0099/0.0348/0.0359, `Psi` 0.0029/0.0272/0.0102), so the simulator
+   and the model are right.  The simulator's standardized residuals have SD
+   0.0975 against a nominal 0.1.
+2. **Fixing the residual at the truth** brings `saem`'s variance components
+   back: `iovMethod="twoLevel"` then gives `Psi` 0.0014/0.0276/0.0098 against
+   FOCEi's 0.0029/0.0272/0.0102, while `iovMethod="theta"` gives
+   0.00067/0.00047/0.0055 -- so the two-level path tracks FOCEi and the shared
+   rewrite does not.
+3. **A model with no IOV at all** shows the same residual bias (`add.sd` 0.31
+   against 0.1 while FOCEi gets 0.112), so it is not the occasion handling.
+4. **The same fit, same data, same `seed=`, three times in one session gives
+   three different answers**: `add.sd` 0.0859, 0.0877, 0.1807.
+
+Cause: `ensureSaemFixedTransformCache()` (`src/saem.cpp`) keys the residual
+step's transformed-prediction cache on the ADDRESS of `ysb`/`fsb`.  Those are
+per-iteration locals (`vec ysb, fsb;`), freed and reallocated every M-step, so
+the allocator routinely returns the same address holding different data.  Every
+other field in the guard (`_saemLen`, `_saemYj`, `_saemPropT`, `_saemLambda`,
+`_saemLow`, `_saemHi`) is constant across iterations, so nothing invalidated the
+cache and the optimizer scored later iterations against the FIRST iteration's
+predictions -- which still carry all the between-subject variability as error.
+The residual stayed near its warm start and the variance components shrank to
+compensate.  Only `obj`/`objC`/`objD` use the cache, i.e. the residual models
+that need the optimizer (combined1/combined2, add+pow and their TBS variants);
+pure `add()`/`prop()` have closed-form M-steps, which is why the test corpus
+never caught it.
+
+Fixed by invalidating on a generation counter bumped wherever the cache's source
+data is set.  After the fix the three repeated fits are bit-identical
+(`add.sd` 0.0859 every time, `prop.sd` 0.0963, `psi.lKa` 0.02750).
