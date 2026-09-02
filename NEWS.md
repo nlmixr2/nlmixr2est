@@ -36,6 +36,12 @@
   an axis-aligned grid covers that badly; compare fits on the estimates rather
   than on `objf`.
 
+  On the paper's own design (n = 24, 1000 replicates) `"collapsed"` recovers
+  the inter-occasion variances less accurately than the default -- mean
+  absolute relative bias 7.5% against 4.2%, and -16.1% on one component
+  where the default gets -6.8% -- which is why it is opt-in.  It does run
+  somewhat faster.
+
   **`"twoLevel"` is now the default, so `saem` IOV estimates change.**  They
   were biased toward zero, badly.  On the paper's own simulation design
   (n = 24, inter-occasion variances of 0.0025/0.01/0.01) the shared rewrite

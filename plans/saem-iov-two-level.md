@@ -690,3 +690,40 @@ says so rather than inventing them:
 
 `design/iov-panhard/report.R` carries the paper's numbers inline and prints the
 comparison, so the claim is reproducible rather than transcribed into prose.
+
+## The default: twoLevel, decided on the reproduction corpus
+
+`theo_md` could not settle this (see the FOCEi section above -- its "occasions"
+are `TIME >= 144` of one continuous profile, so it carries almost no IOV
+information and all three settings scored within 0.2 objective units).  The
+1000-replicate corpus can.  Both arms at n = 24, 1000/1000 usable:
+
+| | twoLevel bias | collapsed bias | twoLevel RMSE | collapsed RMSE |
+|---|---|---|---|---|
+| mu log V | 0.01 | 0.03 | 3.25 | 3.24 |
+| mu log Ka | -0.12 | 0.07 | 12.41 | 12.36 |
+| mu log AUC | -0.03 | -0.01 | 0.93 | 0.93 |
+| omega^2 log V | -7.46 | -7.29 | 40.86 | 40.21 |
+| omega^2 log Ka | -4.98 | -4.00 | 42.07 | 41.67 |
+| omega^2 log AUC | -4.25 | -4.63 | 34.46 | 34.36 |
+| **psi^2 log V** | **-2.19** | 6.40 | **63.70** | 69.76 |
+| **psi^2 log Ka** | **-6.83** | **-16.08** | **74.86** | 76.04 |
+| **psi^2 log AUC** | -3.60 | **0.09** | 47.32 | **46.17** |
+
+`mu` and `omega^2` are indistinguishable -- every figure agrees to well inside
+Monte Carlo error.  The two separate only on `psi^2`, the inter-occasion
+variance, and there `twoLevel` wins 2 of 3 components on both bias and RMSE.
+Where `collapsed` loses it loses badly: -16.08% on log Ka is more than double
+`twoLevel`'s -6.83% and worse than the -10.94% Panhard and Samson report for
+their own implementation.  Mean absolute `psi^2` bias is 4.21% for `twoLevel`
+against 7.52% for `collapsed`.
+
+So `twoLevel` stays the default and `collapsed` stays opt-in.
+
+`collapsed` was not slower -- 8308 s against 10938 s for the same 1000
+replicates -- and in fact shared the machine with the n = 40 arm for part of its
+run while `twoLevel` did not, so its real margin is probably wider.  That is
+worth knowing but does not change the default: the setting exists to estimate an
+inter-occasion variance, and it is the less accurate of the two at doing so.
+These arms are single-seed-stream runs of one design; the ordering on `psi^2` is
+consistent and large, but it is not a claim about every model shape.
