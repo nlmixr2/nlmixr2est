@@ -543,3 +543,54 @@ Harness note: several test files `assign(..., globalenv())`, which clobbers a
 loop variable of the same name in a driver script run through `Rscript`.  That
 killed the suite driver at the same file twice before the loop was moved inside
 a function.
+
+
+# Phase 4 -- the collapsed (Panhard & Samson) sampler, opt in
+
+`saemControl(iovMethod = "collapsed")`.  Where `"twoLevel"` samples `b_i` and
+`c_ik` as separate columns, this carries `phi_ik = mu + b_i + c_ik` in ONE
+column per occasion, which is the paper's own parameterization:
+
+```r
+rx.cl.1 <- exp(rx.tcl.1 + rx.eta.cl.1)
+rx.cl.2 <- exp(rx.tcl.2 + rx.eta.cl.2)
+cl <- rx.cl.1*(occ == 1) + rx.cl.2*(occ == 2)
+```
+
+**What the paper's algorithm actually buys here.**  Its two advantages are the
+collapsed sampler and Rao-Blackwellizing `b_i` out of the M-step -- but the
+second exists only BECAUSE the paper samples `phi_ik` and must then infer `b_i`.
+`"twoLevel"` samples `b_i` and `c_ik` directly, so its Omega/Psi updates are
+already the exact complete-data maximizers and there is nothing to
+Rao-Blackwellize.  Phase 4's real deliverable is therefore the mixing, which is
+an efficiency claim to be measured rather than asserted.
+
+Design notes, each of which cost a debugging cycle:
+
+- **One mu-reference per LINE.**  rxode2 detects only the first additive
+  `theta + eta` group in a line, so both occasions on one line leaves the second
+  eta non-mu-referenced.  Split across lines, every occasion column is an
+  ordinary mu-referenced parameter -- its own phi column, its own omega entry,
+  mean estimated rather than pinned -- and the whole existing machinery applies.
+- **The equality constraints are exact, not projections.**  The group's block is
+  compound-symmetric, so `1` is an eigenvector of it and `Gamma^-1 1` is
+  proportional to `1`; the constrained GLS for the shared `mu` is therefore the
+  equal-weight average of the group's unconstrained solutions.  Verified: the
+  two thetas come out bit-identical (1.0439118 each), and the block exactly CS
+  (diagonals 0.05152835, off-diagonals 0.04412665).
+- **`rxUiDecompress` is not a copy.**  The two-level path escapes this only
+  because its `rxRename` returns a fresh ui; the collapsed path has no rename,
+  so mutating the decompressed ui also mutated the object stashed as "the
+  original".  The ini and model are snapshotted as VALUES before mutating.
+- **`.getUiFunFromIniAndModel()` returns a model FUNCTION, not a ui.**  The
+  shared finalizer only ends up with a ui because its `rxRename` call evaluates
+  one.
+- **`.uiIovEnv` is process-global**, and each path installs its own post-fit
+  restoration, so every path has to clear the others' markers or a later fit
+  runs through the wrong finalizer.
+
+Known limitation: the Gaussian-quadrature objective is not comparable across the
+two parameterizations when `Psi << Omega` -- the CS prior is then nearly
+degenerate along `b` and the axis-aligned grid covers it badly (measured: objf
+478.9 collapsed against 351.9 two-level on theo_md, from near-identical
+parameter estimates).  Compare on estimates, not `objf`.

@@ -196,3 +196,51 @@ test_that(".saemGqNodes keeps the -2LL grid affordable", {
   expect_equal(.saemGqNodes(3, 5, maxNodes = 10), 1)
   expect_equal(.saemGqNodes(3, 2, maxNodes = 10), 3)
 })
+
+test_that("the collapsed expansion writes phi_ik = mu + b_i + c_ik", {
+  .ui <- rxode2::rxUiDecompress(.twoLevelModel())
+  .i <- .saemIovInfo(.ui, .twoLevelData())
+  .exp <- .saemIovExpandUiCollapsed(.ui, .i)
+  .ini <- .exp$iniDf
+
+  # one theta and one eta per occasion, and the user's own pair is gone
+  expect_true(all(c("rx.tcl.1", "rx.tcl.2") %in% .ini$name))
+  expect_true(all(c("rx.eta.cl.1", "rx.eta.cl.2") %in% .ini$name))
+  expect_false("tcl" %in% .ini$name)
+  expect_false("eta.cl" %in% .ini$name)
+  expect_false("iov.cl" %in% .ini$name)
+  # both thetas start from the user's single tcl
+  expect_equal(.ini$est[.ini$name == "rx.tcl.1"], 1)
+  expect_equal(.ini$est[.ini$name == "rx.tcl.2"], 1)
+
+  # one mu-reference per LINE, which is what makes BOTH occasions
+  # mu-referenced -- rxode2 only detects the first additive group in a line
+  expect_equal(nrow(.exp$muRefDataFrame), 4L)
+  expect_true(all(c("rx.tcl.1", "rx.tcl.2") %in% .exp$muRefDataFrame$theta))
+  expect_null(.exp$nonMuEtas)
+
+  # the joint prior over occasions: Omega + Psi on the diagonal, Omega off it
+  expect_equal(.ini$est[.ini$name == "rx.eta.cl.1"], 0.3 + 0.1)
+  expect_equal(.ini$est[.ini$name == "(rx.eta.cl.1,rx.eta.cl.2)"], 0.3)
+  # covstruct must carry that off-diagonal, or the block cannot be CS
+  .om <- .exp$saemModelOmega
+  .w <- which(.exp$saemParamsToEstimate %in% c("rx.tcl.1", "rx.tcl.2"))
+  expect_equal(length(.w), 2L)
+  expect_equal(.om[.w[1], .w[2]], 1)
+
+  # and the pool group is recovered from the model text, as for two-level
+  expect_equal(rxUiGet.saemOmegaPool(list(.exp)), c(0L, 0L, 1L, 1L))
+})
+
+test_that(".saemIovCollapsedParts splits the CS block into Omega and Psi", {
+  .nm <- c("rx.eta.cl.1", "rx.eta.cl.2")
+  .om <- matrix(c(0.4, 0.3, 0.3, 0.4), 2, dimnames = list(.nm, .nm))
+  .th <- c(rx.tcl.1 = 1.2, rx.tcl.2 = 1.2)
+  .info <- list(levels = c(1, 2),
+                pars = data.frame(iov = "iov.cl", theta = "tcl", eta = "eta.cl",
+                                  stringsAsFactors = FALSE))
+  .p <- .saemIovCollapsedParts(.om, .th, .info)
+  expect_equal(.p$theta[["iov.cl"]], 1.2)
+  expect_equal(.p$omega[["iov.cl"]], 0.3)     # the off-diagonal IS Omega
+  expect_equal(.p$psi[["iov.cl"]], 0.4 - 0.3) # diagonal minus off-diagonal
+})

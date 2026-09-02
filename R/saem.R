@@ -297,7 +297,11 @@
                         mixSampleMethod=rxode2::rxGetControl(ui, "mixSampleMethod", "parallel"),
                         omegaShare=ui$saemOmegaShare,
                         omegaShareSubpop=ui$saemOmegaShareSubpop,
-                        omegaPool=ui$saemOmegaPool)
+                        omegaPool=ui$saemOmegaPool,
+                        # collapsed IOV also shares the group's MEAN (one theta)
+                        omegaPoolMean=as.integer(identical(
+                          rxode2::rxGetControl(ui, "iovMethod", "twoLevel"),
+                          "collapsed")))
     .cfg$nonMuTheta <- rxode2::rxGetControl(ui, "nonMuTheta", "regress")
     # integer gate the SAEM C++ reads: when 1, non-mu (phi0) thetas are
     # estimated by the bounded direct optimizer (bounds from phi0Lower/Upper)
@@ -1552,13 +1556,18 @@ attr(nlmixr2Est.saem, "mu") <- TRUE
 # iovMethod="twoLevel" saem keeps the occasion term as a second variance
 # component and handles it itself, so the rewrite has to stay out of the way.
 attr(nlmixr2Est.saem, "iov") <- function(control) {
-  !identical(control$iovMethod, "twoLevel")
+  !(identical(control$iovMethod, "twoLevel") ||
+      identical(control$iovMethod, "collapsed"))
 }
 # Models the two-level handling cannot take; a reason here sends the model back
 # to the shared rewrite (iovMethod="theta") instead of failing.
 attr(nlmixr2Est.saem, "iovNativeScope") <- function(ui, data, control) {
   .i <- .saemIovInfo(ui, data)
-  if (is.character(.i)) .i else NULL
+  if (is.character(.i)) return(.i)
+  if (identical(control$iovMethod, "collapsed")) {
+    return(.saemIovCollapsedDecline(ui, .i))
+  }
+  NULL
 }
 
 

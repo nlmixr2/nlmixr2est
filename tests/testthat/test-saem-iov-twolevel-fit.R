@@ -137,3 +137,53 @@ test_that("a two-level fit's covariance carries one row for the occasion varianc
   expect_true(is.finite(.cv["om.iov.cl", "om.iov.cl"]))
   expect_true(.cv["om.iov.cl", "om.iov.cl"] > 0)
 })
+
+test_that("iovMethod='collapsed' imposes both constraints exactly", {
+  skip_on_cran()
+  .d <- .twoLevelFitData()
+  .f <- suppressWarnings(nlmixr2(.twoLevelFitModel(), .d, est = "saem",
+                                 control = .twoLevelCtl(iovMethod = "collapsed")))
+
+  # the fit presents in the user's own parameterization, like every other path
+  expect_true("tcl" %in% names(.f$fixef))
+  expect_false(any(grepl("^rx[.]", names(.f$fixef))))
+  expect_equal(names(.f$omega), c("id", "occ"))
+  expect_true("eta.cl" %in% rownames(.f$omega$id))
+  expect_equal(rownames(.f$omega$occ), "iov.cl")
+  expect_length(grep("^rx[.]", names(.f)), 0L)
+  expect_length(grep("^rx[.]", names(.f$env$ranef)), 0L)
+  expect_true("eta.cl" %in% names(.f$env$ranef))
+
+  # for K = 2 the deviations are exactly antisymmetric within a subject,
+  # because b_i is defined as the subject's mean over occasions
+  .iov <- .f$iov[[1]]
+  expect_true(all(c("ID", "occ", "iov.cl") %in% names(.iov)))
+  .s <- tapply(.iov$iov.cl, .iov$ID, sum)
+  expect_true(max(abs(.s)) < 1e-8)
+
+  # both variances are positive and finite
+  expect_true(is.finite(.f$omega$occ[1, 1]) && .f$omega$occ[1, 1] > 0)
+  expect_true(.f$omega$id["eta.cl", "eta.cl"] > 0)
+})
+
+test_that("the collapsed and two-level paths do not contaminate each other", {
+  skip_on_cran()
+  # .uiIovEnv is process-global, and each path installs its own post-fit
+  # restoration; a stale marker sends a fit through the wrong one
+  .d <- .twoLevelFitData()
+  .fc <- suppressWarnings(nlmixr2(.twoLevelFitModel(), .d, est = "saem",
+                                  control = .twoLevelCtl(nBurn = 15, nEm = 15,
+                                                         iovMethod = "collapsed")))
+  .ft <- suppressWarnings(nlmixr2(.twoLevelFitModel(), .d, est = "saem",
+                                  control = .twoLevelCtl(nBurn = 15, nEm = 15,
+                                                         iovMethod = "twoLevel")))
+  .fl <- suppressWarnings(nlmixr2(.twoLevelFitModel(), .d, est = "saem",
+                                  control = .twoLevelCtl(nBurn = 15, nEm = 15,
+                                                         iovMethod = "theta")))
+  for (.f in list(.fc, .ft, .fl)) {
+    expect_equal(names(.f$omega), c("id", "occ"))
+    expect_equal(rownames(.f$omega$occ), "iov.cl")
+    expect_true("tcl" %in% names(.f$fixef))
+    expect_length(grep("^rx[.]", names(.f)), 0L)
+  }
+})

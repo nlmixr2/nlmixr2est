@@ -902,6 +902,48 @@ public:
       for (unsigned int j = 0; j < ix.n_elem; ++j) m += G(ix(j), ix(j));
       m /= (double)ix.n_elem;
       for (unsigned int j = 0; j < ix.n_elem; ++j) G(ix(j), ix(j)) = m;
+      // and the WITHIN-group off-diagonals, which carry Omega in the collapsed
+      // form; equal diagonals plus equal off-diagonals is what makes the block
+      // compound-symmetric
+      double o = 0.0;
+      unsigned int no = 0;
+      for (unsigned int a = 0; a < ix.n_elem; ++a) {
+        for (unsigned int b = a + 1; b < ix.n_elem; ++b) {
+          o += G(ix(a), ix(b));
+          no++;
+        }
+      }
+      if (no == 0) continue;
+      o /= (double)no;
+      for (unsigned int a = 0; a < ix.n_elem; ++a) {
+        for (unsigned int b = a + 1; b < ix.n_elem; ++b) {
+          G(ix(a), ix(b)) = o;
+          G(ix(b), ix(a)) = o;
+        }
+      }
+    }
+  }
+
+  // Impose the collapsed form's shared-mean constraint on the GLS solution.
+  // Exact rather than a projection: see omegaPoolMean.
+  void poolLambdaGroups(vec &P) {
+    if (!omegaPoolMean) return;
+    if (omegaPool.n_elem != (unsigned int)nphi1) return;
+    if (lambdaCol1.n_elem != P.n_elem) return;
+    unsigned int maxg = omegaPool.max();
+    for (unsigned int g = 1; g <= maxg; ++g) {
+      uvec cols = find(omegaPool == g);
+      if (cols.n_elem < 2) continue;
+      std::vector<unsigned int> li;
+      for (unsigned int l = 0; l < P.n_elem; ++l) {
+        if (lambdaCol1(l) < (unsigned int)nphi1 &&
+            omegaPool(lambdaCol1(l)) == g) li.push_back(l);
+      }
+      if (li.size() < 2) continue;
+      double m = 0.0;
+      for (size_t k = 0; k < li.size(); ++k) m += P(li[k]);
+      m /= (double)li.size();
+      for (size_t k = 0; k < li.size(); ++k) P(li[k]) = m;
     }
   }
 
@@ -1977,6 +2019,8 @@ public:
     omegaShare = x.containsElementNamed("omegaShare") ? as<uvec>(x["omegaShare"]) : uvec();
     omegaShareSubpop = x.containsElementNamed("omegaShareSubpop") ? as<uvec>(x["omegaShareSubpop"]) : uvec();
     omegaPool = x.containsElementNamed("omegaPool") ? as<uvec>(x["omegaPool"]) : uvec();
+    omegaPoolMean = x.containsElementNamed("omegaPoolMean") ? as<int>(x["omegaPoolMean"]) : 0;
+    _buildLambdaCol1 = true;
     statphi11_mix.set_size(std::max(nMix, 1));
     for (int _j = 0; _j < std::max(nMix, 1); _j++) {
       statphi11_mix(_j) = statphi11;
@@ -3283,6 +3327,21 @@ public:
           }
         }
       }
+      // collapsed IOV: the group's columns share one mean, so average their
+      // solutions before anything downstream reads them
+      if (omegaPoolMean) {
+        if (_buildLambdaCol1) {
+          lambdaCol1.set_size(LCOV1.n_rows);
+          lambdaCol1.fill((unsigned int)nphi1);
+          for (unsigned int l = 0; l < LCOV1.n_rows; ++l) {
+            for (unsigned int c = 0; c < LCOV1.n_cols; ++c) {
+              if (LCOV1(l, c) == 1) { lambdaCol1(l) = c; break; }
+            }
+          }
+          _buildLambdaCol1 = false;
+        }
+        poolLambdaGroups(Plambda1);
+      }
       if (fixedIx1.n_elem>0) {
         Plambda1(fixedIx1) = MCOV1(jcov1(fixedIx1));
       }
@@ -4463,6 +4522,16 @@ private:
   // occasion parameter observed at different levels, so they estimate ONE
   // variance (Psi).  0 means the column has its own.  See R/saemIov.R.
   uvec omegaPool;
+  // Collapsed (Panhard & Samson) IOV: the pooled columns also share ONE mean --
+  // the single theta the user declared.  Because the group's Gamma block is
+  // compound-symmetric, 1 is an eigenvector of it, so Gamma^-1 1 is proportional
+  // to 1 and the exact constrained GLS for that shared mean is the equal-weight
+  // average of the group's unconstrained solutions.  0 leaves the means alone
+  // (the two-level form pins them at 0 instead).
+  int omegaPoolMean = 0;
+  // lambda -> phi1 column, from LCOV1's single 1 per row; empty when unused
+  uvec lambdaCol1;
+  bool _buildLambdaCol1 = false;
 
   // Per-chain scratch buffers pre-allocated in inits() to avoid repeated heap
   // allocation in the hot distribution==1 loops in saem_fit() and do_mcmc().

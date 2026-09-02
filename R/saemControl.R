@@ -345,8 +345,12 @@
 #'   \code{"twoLevel"} (the default) keeps the occasion term as a second
 #'   variance component and estimates it with the closed-form updates of Panhard
 #'   and Samson (2009), which is what the SAEM kernel is built around for every
-#'   other variance.  A model the two-level handling does not cover falls back
-#'   to \code{"theta"} on its own.
+#'   other variance.  \code{"collapsed"} additionally uses that paper's own
+#'   sampler: one parameter per occasion carrying \code{mu + b_i + c_ik}
+#'   together, with a compound-symmetric prior, instead of sampling \code{b_i}
+#'   and \code{c_ik} separately.  It targets the same estimates and differs only
+#'   in how well the chain mixes.  A model the newer handling does not cover
+#'   falls back to \code{"theta"} on its own.
 #' @return List of options to be used in \code{\link{nlmixr2}} fit for
 #'     SAEM.
 #' @author Wenping Wang & Matthew L. Fidler
@@ -402,7 +406,7 @@ saemControl <- function(seed = 99,
                         handleUninformativeEtas=TRUE,
                         revisitUninformativeEtas=FALSE,
                         iovXform = c("sd", "var", "logsd", "logvar"),
-                        iovMethod = c("twoLevel", "theta"),
+                        iovMethod = c("twoLevel", "collapsed", "theta"),
                         boundedTransform = TRUE,
                         eventSens = c("jump", "fd"),
                         mixProbMethod = c("regress", "regularized", "annealed"),

@@ -194,7 +194,8 @@
                        mixSampleMethod = c("parallel", "msaem"),
                        omegaShare = integer(0),
                        omegaShareSubpop = integer(0),
-                       omegaPool = integer(0)) {
+                       omegaPool = integer(0),
+                       omegaPoolMean = 0L) {
   if (is.null(fixedOmega)) stop("requires fixedOmega", call.=FALSE)
   if (is.null(fixedOmegaValues)) stop("requires fixedOmegaValues", call.=FALSE)
   if (is.null(parHistThetaKeep)) stop("requires parHistThetaKeep", call.=FALSE)
@@ -714,6 +715,8 @@
     # phi1 columns sharing a non-zero group id estimate ONE variance (the
     # inter-occasion Psi of a two-level model); 0 means the column has its own
     omegaPool = as.integer(omegaPool),
+    # 1 when those groups also share ONE mean (collapsed IOV)
+    omegaPoolMean = as.integer(omegaPoolMean),
     mprior_phi0 = mprior_phi0,
     mprior_phi1 = mprior_phi1,
     jcov0 = jcov0,

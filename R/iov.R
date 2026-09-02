@@ -139,6 +139,7 @@ nlmixr2iovVarSd <- function(val) {
       .uiIovEnv$lines <- NULL
       .uiIovEnv$muModel <- NULL
       .uiIovEnv$iovTwoLevel <- NULL
+      .uiIovEnv$iovCollapsed <- NULL
       return(NULL)
     }
     warning(.why, "; used iovMethod='theta'", call.=FALSE)
@@ -148,6 +149,7 @@ nlmixr2iovVarSd <- function(val) {
   .uiIovEnv$iovVars <- NULL
   .uiIovEnv$muModel <- NULL
   .uiIovEnv$iovTwoLevel <- NULL
+  .uiIovEnv$iovCollapsed <- NULL
   .xform <- control$iovXform
   if (length(.xform)  != 1) {
     .xform <- "sd"
@@ -391,7 +393,10 @@ nlmixr2iovVarSd <- function(val) {
 #' @noRd
 #' @author Matthew L. Fidler
 .uiFinalizeIov <- function(ret) {
-  if (!is.null(.uiIovEnv$ui)) {
+  # the collapsed sampler has its own restoration (.saemIovFinalizeCollapsed,
+  # R/saemIov.R): it removed the user's line entirely and has no magnitude theta,
+  # so almost none of the mechanism below applies
+  if (!is.null(.uiIovEnv$ui) && is.null(.uiIovEnv$iovCollapsed)) {
     if (is.null(ret$ui)) return(ret)
 
     if (is.environment(ret$env)) {

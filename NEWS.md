@@ -25,7 +25,18 @@
   variance, so they are contracted by averaging (the delta method for
   `Psi = mean(v_1, ..., v_K)`).
 
-  **This is now the default, so `saem` IOV estimates change.**  They were biased
+  `iovMethod = "collapsed"` is a third, opt-in setting that additionally uses the
+  paper's own sampler: one parameter per occasion carrying `mu + b_i + c_ik`
+  together under a compound-symmetric prior, rather than sampling `b_i` and
+  `c_ik` separately.  It targets the same estimates -- the shared mean and the
+  compound-symmetric block are both imposed exactly, not by projection -- and
+  differs only in how the chain mixes.  Note the Gaussian-quadrature objective
+  is unreliable for it when the inter-occasion variance is much smaller than the
+  between-subject one, because the prior is then nearly degenerate along `b` and
+  an axis-aligned grid covers that badly; compare fits on the estimates rather
+  than on `objf`.
+
+  **`"twoLevel"` is now the default, so `saem` IOV estimates change.**  They were biased
   toward zero, badly: on the paper's own simulation design (20 replicates,
   n = 24, inter-occasion variances of 0.0025/0.01/0.01) the shared rewrite
   recovers them with -95%/-93%/-39% relative bias while the two-level handling
