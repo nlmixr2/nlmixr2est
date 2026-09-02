@@ -512,3 +512,34 @@ flip was for.  Both were real:
    `any(names(fit) == "iov.cl")` was FALSE.
 
 All eight IOV test files pass under the new default (156 assertions).
+## Pre-existing failures in the essential suite (NOT from this branch)
+
+Running the 191-file essential subset surfaced two failing files.  Both were
+checked against a clean `origin/main` worktree and fail there identically, so
+neither comes from this work -- they arrive with the merged upstream PR #1032
+(`lincmt-origin-sens-1119`):
+
+Running the SAME sequential suite on a clean `origin/main` worktree (188 files
+there; this branch adds 3) gives:
+
+| file | origin/main | this branch |
+|---|---|---|
+| `test-focei-char.R` | error=1, passed=0 | error=1, passed=0 |
+| `test-focei-lincmt-alag-sens.R` | failed=8, passed=26 | failed=8, passed=26 |
+| `test-simModelCache.R` | failed=2, passed=29 | failed=2, passed=29 |
+| **total** | failed 10, error 1, passed 4937 | failed 10, error 1, passed 5004 |
+
+Same failures, +67 passing assertions from the new tests: no regression.
+
+The alag failures are analytic-vs-finite-difference gradient mismatches in
+"a MIXED-ROUTE regimen gets the right alag()/f() eta gradient
+(rxode2/rxode2#1119)" -- that PR's own subject, with no saem or IOV involvement.
+
+`test-simModelCache.R` needed the like-for-like run to attribute: it passes
+31/31 in isolation on BOTH branches and only fails inside a long sequential
+session, so an isolated check would have wrongly blamed this branch.
+
+Harness note: several test files `assign(..., globalenv())`, which clobbers a
+loop variable of the same name in a driver script run through `Rscript`.  That
+killed the suite driver at the same file twice before the loop was moved inside
+a function.
