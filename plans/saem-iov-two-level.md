@@ -665,7 +665,7 @@ Relative RMSE (%):
 | omega^2 log Ka | 42.07 | 33.13 | 42.4 | 33.49 |
 | omega^2 log AUC | 34.46 | 26.59 | 34.5 | 27.41 |
 | psi^2 log V | 63.70 | 55.88 | 69.4 | 58.78 |
-| psi^2 log Ka | 74.86 | 63.93 | 74.86 -> 73.5 | 62.00 |
+| psi^2 log Ka | 74.86 | 63.93 | 73.5 | 62.00 |
 | psi^2 log AUC | 47.32 | 36.11 | 43.6 | 33.31 |
 
 Every row moves the right way from n=24 to n=40 -- bias and RMSE both shrink --
