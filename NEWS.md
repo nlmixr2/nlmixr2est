@@ -1,5 +1,25 @@
 # nlmixr2est 7.0.3
 
+## New features
+
+- `saemControl(iovMethod = "twoLevel")` estimates inter-occasion variability
+  the way the rest of `saem` estimates a variance.  The shared pre-processing
+  rewrite that every estimation method uses carries the occasion magnitude as a
+  population parameter multiplying per-occasion unit-variance etas, which makes
+  it non-mu-referenced -- so `saem` had to estimate a *variance* through its
+  fixed-effect-only path, a stochastic sampled mean over draws whose
+  pseudo-variance is deliberately annealed followed by a bounded direct
+  optimization, while every other variance component gets a closed-form M-step.
+  In practice the estimate collapsed toward zero.  `"twoLevel"` writes the
+  occasion term out as a second variance component instead, following Panhard
+  and Samson (2009): one zero-mean eta per occasion level entering additively,
+  with the per-occasion variances constrained equal so they estimate the single
+  inter-occasion variance the model declares.  A model the newer handling does
+  not cover (more than one occasion variable, a correlated occasion term, an
+  occasion parameter that is not mu-referenced) falls back to the shared
+  rewrite and says so in the fit's `$runInfo`.  The default is unchanged for
+  now (`iovMethod = "theta"`).
+
 ## Bug fixes
 
 - `saem` with IOV and a general log-likelihood (`ll()`) endpoint no longer

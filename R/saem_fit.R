@@ -193,7 +193,8 @@
                        mixProbPriorN = 20,
                        mixSampleMethod = c("parallel", "msaem"),
                        omegaShare = integer(0),
-                       omegaShareSubpop = integer(0)) {
+                       omegaShareSubpop = integer(0),
+                       omegaPool = integer(0)) {
   if (is.null(fixedOmega)) stop("requires fixedOmega", call.=FALSE)
   if (is.null(fixedOmegaValues)) stop("requires fixedOmegaValues", call.=FALSE)
   if (is.null(parHistThetaKeep)) stop("requires parHistThetaKeep", call.=FALSE)
@@ -710,6 +711,9 @@
     Gamma2_phi1fixedValues=Gamma2_phi1fixedValues,
     omegaShare = omegaShare,
     omegaShareSubpop = omegaShareSubpop,
+    # phi1 columns sharing a non-zero group id estimate ONE variance (the
+    # inter-occasion Psi of a two-level model); 0 means the column has its own
+    omegaPool = as.integer(omegaPool),
     mprior_phi0 = mprior_phi0,
     mprior_phi1 = mprior_phi1,
     jcov0 = jcov0,

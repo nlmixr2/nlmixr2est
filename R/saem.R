@@ -296,7 +296,8 @@
                         mixProbPriorN=rxode2::rxGetControl(ui, "mixProbPriorN", 20),
                         mixSampleMethod=rxode2::rxGetControl(ui, "mixSampleMethod", "parallel"),
                         omegaShare=ui$saemOmegaShare,
-                        omegaShareSubpop=ui$saemOmegaShareSubpop)
+                        omegaShareSubpop=ui$saemOmegaShareSubpop,
+                        omegaPool=ui$saemOmegaPool)
     .cfg$nonMuTheta <- rxode2::rxGetControl(ui, "nonMuTheta", "regress")
     # integer gate the SAEM C++ reads: when 1, non-mu (phi0) thetas are
     # estimated by the bounded direct optimizer (bounds from phi0Lower/Upper)
@@ -1517,6 +1518,17 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
 #' @export
 nlmixr2Est.saem <- function(env, ...) {
   .ui <- env$ui
+  # iovMethod="twoLevel": the shared rewrite stood down (see the "iov"
+  # attribute below), so write the occasion term out as a second variance
+  # component here -- one zero-mean eta per occasion level behind occasion
+  # indicators (R/saemIov.R).
+  if (identical(env$control$iovMethod, "twoLevel")) {
+    .iovInfo <- .saemIovInfo(.ui, env$data)
+    if (is.list(.iovInfo)) {
+      .ui <- env$ui <- .saemIovExpandUi(.ui, .iovInfo)
+      env$saemIovInfo <- .iovInfo
+    }
+  }
   # saem supports a general log-likelihood endpoint (ll() ~ expr) the saemix way
   # (the model returns the per-obs loglik; the RWM kernels use -ll as the
   # observation loss); only require normality for the ordinary case.
@@ -1548,6 +1560,12 @@ attr(nlmixr2Est.saem, "mu") <- TRUE
 # component and handles it itself, so the rewrite has to stay out of the way.
 attr(nlmixr2Est.saem, "iov") <- function(control) {
   !identical(control$iovMethod, "twoLevel")
+}
+# Models the two-level handling cannot take; a reason here sends the model back
+# to the shared rewrite (iovMethod="theta") instead of failing.
+attr(nlmixr2Est.saem, "iovNativeScope") <- function(ui, data, control) {
+  .i <- .saemIovInfo(ui, data)
+  if (is.character(.i)) .i else NULL
 }
 
 

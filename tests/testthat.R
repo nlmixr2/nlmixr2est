@@ -107,7 +107,8 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
   # batch 6
   c(
     "focei-llik", "iov", "iov-zero-eta", "saem-mix", "saem-mix-regress",
-    "posthoc", "ar-est", "mu-family", "uninformative-etas-revisit"
+    "posthoc", "ar-est", "mu-family", "uninformative-etas-revisit",
+    "saem-iov-twolevel-fit", "iov-loglik-1000"
   ),
   # batch 7
   c(

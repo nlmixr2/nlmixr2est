@@ -22,6 +22,29 @@
   FALSE
 }
 
+#' Reason a method's own IOV handling cannot cover this model
+#'
+#' Read from the optional \code{"iovNativeScope"} attribute on the
+#' \code{nlmixr2Est.<method>} S3 method, a \code{function(ui, data, control)}
+#' returning \code{NULL} when the method's own handling covers the model and a
+#' short reason when it does not.  A reason makes the shared rewrite run after
+#' all, so a model outside the newer handling still fits.
+#'
+#' @param ui rxode2 user interface model
+#' @param est estimation routine name
+#' @param data data set for the fit
+#' @param control control object
+#' @return \code{NULL}, or a short character reason
+#' @noRd
+#' @author Matthew L. Fidler
+.iovNativeDecline <- function(ui, est, data, control) {
+  .v <- as.character(utils::methods("nlmixr2Est"))
+  if (!(paste0("nlmixr2Est.", est) %in% .v)) return(NULL)
+  .f <- attr(utils::getS3method("nlmixr2Est", est), "iovNativeScope")
+  if (!is.function(.f)) return(NULL)
+  .f(ui, data, control)
+}
+
 .nlmixr2iov <- function(val, type, transform) {
   # get the standard deviation
   if (transform == "logvar") {
@@ -102,14 +125,24 @@ nlmixr2iovVarSd <- function(val) {
 #' @noRd
 #' @author Matthew L. Fidler
 .uiApplyIov <- function(ui, est, data, control) {
+  .fellBack <- FALSE
   if (!.isIovMethod(est, control)) {
-    .uiIovEnv$ui <- NULL
-    .uiIovEnv$iovDrop <- NULL
-    .uiIovEnv$iovVars <- NULL
-    .uiIovEnv$iovRename <- NULL
-    .uiIovEnv$lines <- NULL
-    .uiIovEnv$muModel <- NULL
-    return(NULL)
+    # the method's own IOV handling is in force -- unless this model is outside
+    # its scope, in which case fall back to the rewrite below so the fit still
+    # runs.  The reason is short because it is collected into the fit's $runInfo.
+    .why <- .iovNativeDecline(ui, est, data, control)
+    if (is.null(.why)) {
+      .uiIovEnv$ui <- NULL
+      .uiIovEnv$iovDrop <- NULL
+      .uiIovEnv$iovVars <- NULL
+      .uiIovEnv$iovRename <- NULL
+      .uiIovEnv$lines <- NULL
+      .uiIovEnv$muModel <- NULL
+      return(NULL)
+    }
+    warning(.why, "; used iovMethod='theta'", call.=FALSE)
+    control$iovMethod <- "theta"
+    .fellBack <- TRUE
   }
   .uiIovEnv$iovVars <- NULL
   .uiIovEnv$muModel <- NULL
@@ -340,7 +373,9 @@ nlmixr2iovVarSd <- function(val) {
     assign("lstExpr", .lines, envir = .ui)
     .uiIovEnv$ui <- ui
     .uiIovEnv$iovDrop <- .env$drop # extra variables to drop
-    list(ui = rxode2::rxUiDecompress(suppressWarnings(suppressMessages(.ui$fun()))))
+    .ret <- list(ui = rxode2::rxUiDecompress(suppressWarnings(suppressMessages(.ui$fun()))))
+    if (.fellBack) .ret$control <- control
+    .ret
   } else {
     .uiIovEnv$ui <- NULL
     .uiIovEnv$iovDrop <- NULL

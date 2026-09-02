@@ -874,6 +874,27 @@ public:
     return needs;
   }
 
+  // Impose the two-level (IOV) equality constraint on an Omega-shaped matrix.
+  //
+  // Columns sharing an omegaPool group id are the same occasion parameter at
+  // different occasion levels, so their variances are one parameter.  Replace
+  // each group's diagonal entries by their mean.  A user-FIXED occasion
+  // variance needs no special case here: Gamma2_phi1fixedIx is restored after
+  // this runs, so the pin wins.
+  void poolOmegaGroups(mat &G) {
+    if (omegaPool.n_elem != (unsigned int)nphi1) return;
+    if (omegaPool.n_elem == 0) return;
+    unsigned int maxg = omegaPool.max();
+    for (unsigned int g = 1; g <= maxg; ++g) {
+      uvec ix = find(omegaPool == g);
+      if (ix.n_elem < 2) continue;
+      double m = 0.0;
+      for (unsigned int j = 0; j < ix.n_elem; ++j) m += G(ix(j), ix(j));
+      m /= (double)ix.n_elem;
+      for (unsigned int j = 0; j < ix.n_elem; ++j) G(ix(j), ix(j)) = m;
+    }
+  }
+
   // Re-run the uninformative-eta test at the current estimates.
   //
   // The test (R/uninformativeEtas.R) perturbs each eta and asks whether the prediction
@@ -1945,6 +1966,7 @@ public:
     statphi12 = as<mat>(x["statphi12"]);
     omegaShare = x.containsElementNamed("omegaShare") ? as<uvec>(x["omegaShare"]) : uvec();
     omegaShareSubpop = x.containsElementNamed("omegaShareSubpop") ? as<uvec>(x["omegaShareSubpop"]) : uvec();
+    omegaPool = x.containsElementNamed("omegaPool") ? as<uvec>(x["omegaPool"]) : uvec();
     statphi11_mix.set_size(std::max(nMix, 1));
     for (int _j = 0; _j < std::max(nMix, 1); _j++) {
       statphi11_mix(_j) = statphi11;
@@ -3336,12 +3358,22 @@ public:
         }
       }
 
+      // Two-level (IOV): the per-occasion columns of one occasion parameter
+      // estimate a single Psi, so pool their moments.  Under the equality
+      // constraint the maximizer of the complete-data likelihood is the plain
+      // mean of the per-occasion moments -- each column carries the same N
+      // deviations -- so this stays a closed-form M-step, not a projection.
+      poolOmegaGroups(G1);
+
       if (kiter<=(unsigned int)(nb_sa)) {
         Gamma2_phi1=max(Gamma2_phi1*coef_sa, diagmat(G1));
       } else {
         Gamma2_phi1=G1;
       }
       Gamma2_phi1=Gamma2_phi1%covstruct1;
+      // the SA floor above is per-element, so it can pull a pooled group apart
+      // again; restore the constraint after it
+      poolOmegaGroups(Gamma2_phi1);
       // Split-ETA components sharing an omegaShare group are pooled into a single BSV term
       // (law of total variance) for *reporting only*, into Gamma2_phi1Report; the live
       // Gamma2_phi1 feeding IGamma2_phi1/D1Gamma21 stays untouched so tcl1/tcl2 stay uncoupled.
@@ -4409,6 +4441,10 @@ private:
   field<vec> cens_mix;
   uvec omegaShare;
   uvec omegaShareSubpop;
+  // Two-level (IOV) models: phi1 columns sharing a non-zero group id are one
+  // occasion parameter observed at different levels, so they estimate ONE
+  // variance (Psi).  0 means the column has its own.  See R/saemIov.R.
+  uvec omegaPool;
 
   // Per-chain scratch buffers pre-allocated in inits() to avoid repeated heap
   // allocation in the hot distribution==1 loops in saem_fit() and do_mcmc().

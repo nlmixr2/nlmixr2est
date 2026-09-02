@@ -337,3 +337,65 @@ with one serial run, then the full suite.
 7. **Paper** -- the Phase 9 table.
 8. **Full suite** -- serial warm run for the fixture cache, then everything; failures
    reported with their output rather than summarized.
+
+---
+
+# Progress and decisions taken during implementation
+
+## Phase 1 -- #1000 (DONE, commit "fix(saem): stop the IOV magnitude running away")
+
+The issue's premise was wrong: the blowup is not in `calc.2LL`.  `refinePhi0Lik`
+froze the ODE for every `distribution == 4` fit on the premise that a
+general-likelihood phi0 is always a likelihood SD the solve never sees.  With
+the solve frozen the objective was measurably constant in the IOV magnitude
+(`sum = -2523.23` for every candidate from 382 to 1000), and `localTrust` was
+off for `distribution == 4`, so bobyqa got `(0, Inf)` and walked to its bound.
+The magnitude then grew geometrically from `niter_phi0` onward
+(0.0608 -> 6.47 -> 42 -> ... -> 1.24e17) and the objf followed to 3.6e33.
+Fixed by measuring whether the freeze is valid (`phi0NeedsLiveSolve()`) and by
+clamping an ODE-driven general-lik phi0 to the existing absolute trust region.
+`objf` 3.6e33 -> 683 on the issue's model.
+
+## Spike result (changes the plan)
+
+`rxode2` REFUSES `theta + eta1 + eta2` in a user model:
+`mu-ref err: currently do not theta + eta1 + eta2`.  But `iov.x ~ v | occ`
+parses fine and already yields a two-level `$omega` (`$id` + `$occ`), and
+`theta + eta + <variable>` parses.  So the collapsed representation must be
+built in the GENERATED saem model, and the per-occasion combination has to sit
+on a line of its own.
+
+## Phase 3 -- the (b, c) parameterization first (DONE)
+
+The plan's collapsed `phi_ik` layout needs one theta to feed K phi columns,
+which the `LCOV`/`MCOV` design cannot express today (each live `MCOV1` entry is
+its own lambda) and which ripples into the FIM, `parHist` and the covariance
+splice.  The non-collapsed `(b_i, c_ik)` form of the SAME model needs none of
+that -- it drops straight into the existing machinery:
+
+```r
+rx.iov.cl <- (occ == 1)*rx.iov.cl.1 + (occ == 2)*rx.iov.cl.2
+cl <- exp(tcl + eta.cl + rx.iov.cl)
+```
+
+gives `nonMuEtas = rx.iov.cl.1, rx.iov.cl.2` (phi means pinned at 0), five phi1
+columns, no phi0 column at all, and the occasion variances as ordinary omega
+entries.  The single new constraint is that the K per-occasion variances
+estimate ONE `Psi`; under that equality the maximizer of the complete-data
+likelihood is the plain mean of the K per-occasion moments, so
+`poolOmegaGroups()` (src/saem.cpp) stays a closed-form M-step.
+
+Measured on `theo_md` + `occ` (nBurn=200, nEm=300, seed 42):
+
+| path | IOV variance | objf |
+|---|---|---|
+| `iovMethod="theta"` (shared rewrite) | 0.000302 | 351.19 |
+| `iovMethod="twoLevel"` (pooled) | **0.000999** | 346.03 |
+| `focei` | 0.002965 | 350.68 |
+
+The two occasion variances come out exactly equal, so the constraint is real.
+
+**Phase 4 therefore becomes**: collapse those columns to the paper's `phi_ik`
+(one theta feeding K columns via a new `lambdaGroup`, compound-symmetry
+`Gamma`, and the Rao-Blackwellized `V(theta)`/`m(phi_i, theta)` M-step), with
+Phase 3 kept as the fallback and as a cross-check for the paper reproduction.
