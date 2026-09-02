@@ -594,3 +594,42 @@ two parameterizations when `Psi << Omega` -- the CS prior is then nearly
 degenerate along `b` and the axis-aligned grid covers it badly (measured: objf
 478.9 collapsed against 351.9 two-level on theo_md, from near-identical
 parameter estimates).  Compare on estimates, not `objf`.
+
+## Is the FOCEi objective under IOV a valid yardstick?
+
+The `iovMethod` comparison used `est="focei"` on each fit's restored ui as a common
+scale.  That is worth questioning, because FOCEi always takes the legacy `.uiApplyIov()`
+rewrite: the occasion effect becomes a magnitude theta times etas whose variance is
+FIXED at 1, so `Psi` never enters `log|Omega|` or the eta penalty -- it acts only by
+scaling the prediction, and FOCEi then re-optimizes those unit-variance etas freely.  If
+that left the objective flat in `Psi`, the comparison would have been meaningless.
+
+Profiling the objective over `Psi` alone, on data simulated with a known
+`psi(log Ka) = 0.01` (`panhardSim(60, 4242)`, everything else at the truth):
+
+| `Psi` | FOCEi objf |
+|---|---|
+| 0.00001 | 236.6897 |
+| 0.00010 | 236.2073 |
+| 0.00100 | 231.8497 |
+| 0.00300 | 224.6282 |
+| **0.01000** | **213.8754** |
+| 0.03000 | 216.6466 |
+| 0.10000 | 252.7838 |
+
+The minimum sits at the true value and the curvature is large (23 units out to
+`Psi = 1e-5`).  The unit-variance-eta reparameterization is a change of variables that
+the marginal likelihood is invariant to; only the Laplace approximation to it differs,
+and not enough to move the optimum off the truth here.  So no IOV-specific adjustment of
+the ui is needed for the FOCEi objective, and the comparison is on a sound common scale.
+
+Kept as a regression test ("the FOCEi objective under IOV is minimized at the true Psi",
+`test-saem-iov-twolevel-fit.R`).
+
+**But it does invalidate the reading of the `theo_md` comparison.**  Given this much
+sensitivity to `Psi` on data that has real IOV, the three `iovMethod` settings landing
+within 0.2 objective units on `theo_md` means `theo_md` carries almost no IOV
+information -- its occasions are just `TIME >= 144` of one continuous profile.  That
+comparison cannot discriminate between the methods, and the earlier claim that
+`twoLevel` "picks the best etas/iovs" is not supported by it.  The default has to be
+settled on the Phase 9 reproduction, which has known simulated IOV.

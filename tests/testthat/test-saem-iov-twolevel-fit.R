@@ -187,3 +187,67 @@ test_that("the collapsed and two-level paths do not contaminate each other", {
     expect_length(grep("^rx[.]", names(.f)), 0L)
   }
 })
+
+test_that("the FOCEi objective under IOV is minimized at the true Psi", {
+  skip_on_cran()
+  # Under FOCEi an `iov.x ~ v | occ` term goes through the shared rewrite, so
+  # the occasion etas have their variance FIXED at 1 and Psi enters only by
+  # scaling the prediction -- it never appears in log|Omega| or the eta
+  # penalty.  That raises a fair question of whether the objective still
+  # carries information about Psi.  It does: profiled on data simulated with a
+  # known Psi, the objective has a clear minimum there.
+  #
+  # This also guards the yardstick used to compare iovMethod settings; a flat
+  # or mislocated profile would make those comparisons meaningless.
+  skip_if_not(file.exists(test_path("../../design/iov-panhard/simulate.R")))
+  source(test_path("../../design/iov-panhard/simulate.R"), local = TRUE)
+  .d <- panhardSim(60, 4242L)
+
+  # nolint start: object_usage_linter. rxode2 ini()/model() are NSE blocks.
+  .mod <- function() {
+    ini({
+      tlV <- -0.73
+      tlKa <- 0.39
+      tlAUC <- 4.61
+      add.sd <- 0.1
+      prop.sd <- 0.1
+      eta.lV ~ 0.01
+      eta.lKa ~ 0.04
+      eta.lAUC ~ 0.04
+      iov.lKa ~ 0.01 | occ
+    })
+    model({
+      lV <- tlV + eta.lV
+      lKa <- tlKa + eta.lKa + iov.lKa
+      lAUC <- tlAUC + eta.lAUC
+      v <- exp(lV)
+      ka <- exp(lKa)
+      cl <- 4 / exp(lAUC)
+      cp <- linCmt()
+      cp ~ add(add.sd) + prop(prop.sd) + combined1()
+    })
+  }
+  # nolint end
+
+  .at <- function(psi) {
+    .u <- rxode2::rxUiDecompress(.mod())
+    .i <- .u$iniDf
+    .i$est[.i$name == "iov.lKa"] <- psi
+    .ini <- as.expression(lotri::as.lotri(.i))
+    .ini[[1]] <- quote(`ini`)
+    .fun <- .getUiFunFromIniAndModel(.u, .ini, rxode2::as.model(.u$lstExpr))
+    .u2 <- rxode2::rxUiDecompress(suppressWarnings(suppressMessages(.fun())))
+    suppressWarnings(nlmixr2(.u2, .d, est = "focei",
+                             control = foceiControl(maxOuterIterations = 0,
+                                                    print = 0L, covMethod = "",
+                                                    calcTables = FALSE)))$objf
+  }
+  .grid <- c(1e-4, 1e-3, 1e-2, 1e-1)   # the true value is 0.01
+  .obj <- vapply(.grid, .at, numeric(1))
+
+  expect_true(all(is.finite(.obj)))
+  # the minimum sits at the truth, not at an endpoint
+  expect_equal(.grid[which.min(.obj)], 1e-2)
+  # and it is a real minimum, not a flat line
+  expect_true(min(.obj) < min(.obj[.grid != 1e-2]) - 1)
+})
