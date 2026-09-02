@@ -345,7 +345,11 @@ rest of the fit.  Skipped for mixture models and when
 `handleUninformativeEtas=FALSE`.}
 
 \item{iovXform}{Transformation used on the diagonal of the IOV: one of
-\code{"sd"}, \code{"var"}, \code{"logsd"}, or \code{"logvar"}.}
+\code{"sd"}, \code{"var"}, \code{"logsd"}, or \code{"logvar"}.
+This parameterizes the magnitude theta of the \code{"theta"}
+\code{iovMethod}; it has no effect under \code{"omega"}, where the
+magnitude is fixed at one and the variability is carried by the
+omega block itself.}
 
 \item{boundedTransform}{When `TRUE` (default), bounded parameters are
 transformed for unbounded optimization methods and back-transformed

@@ -13,8 +13,8 @@
   .d
 }
 
-.iovApply <- function(f, data = .iovData()) {
-  .uiApplyIov(rxode2::rxode2(f), "focei", data, foceiControl())
+.iovApply <- function(f, data = .iovData(), ...) {
+  .uiApplyIov(rxode2::rxode2(f), "focei", data, foceiControl(...))
 }
 
 test_that("the magnitude theta carries prior(iov.x), not theta #1's", {
@@ -168,7 +168,7 @@ test_that("several occasion parameters ride one occasion variable", {
   expect_equal(sum(grepl("^rx\\.iov\\.v\\.", .ini$name)), 2L)
 })
 
-test_that("correlated occasion random effects are refused explicitly", {
+test_that("correlated occasion random effects are refused under iovMethod='theta'", {
   skip_on_cran()
   .mod <- function() {
     ini({
@@ -187,11 +187,18 @@ test_that("correlated occasion random effects are refused explicitly", {
       linCmt() ~ add(add.sd)
     })
   }
-  # the expansion gives each occasion parameter its own magnitude theta and
-  # unit-variance etas, which cannot carry a correlation; the off-diagonal
-  # row used to be treated as a third occasion parameter, giving a syntax
-  # error from rxRename() about "rx.(iov.cl,iov.v)="
-  expect_error(.iovApply(.mod), "correlated inter-occasion")
+  # the "theta" expansion gives each occasion parameter its own magnitude
+  # theta and unit-variance etas, which cannot carry a correlation; the
+  # off-diagonal row used to be treated as a third occasion parameter,
+  # giving a syntax error from rxRename() about "rx.(iov.cl,iov.v)="
+  expect_error(.iovApply(.mod, iovMethod = "theta"),
+               "correlated inter-occasion")
+  # ... and the message says how to get it
+  expect_error(.iovApply(.mod, iovMethod = "theta"), "iovMethod")
+  # "auto" routes a correlated block to the shared-omega expansion instead
+  # of refusing it
+  .ini <- .iovApply(.mod)$ui$iniDf
+  expect_true(any(grepl(":same:", .ini$condition, fixed = TRUE)))
 })
 
 test_that("an occasion parameter declared twice is named in the error", {

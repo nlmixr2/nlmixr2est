@@ -633,6 +633,20 @@
     # those k occasion etas (reusing the "om" branch), so the occasion etas are the
     # only permitted non-mu-referenced etas.
     iovVars <- .uiIovEnv$iovVars
+    # This whole branch reads the magnitude THETA as the IOV standard
+    # deviation (`iovW <- abs(thVals[v])` below), sets `Om[j,j] <- w^2` and
+    # rescales the eta directions by `w`.  Under `iovMethod = "omega"` that
+    # theta is FIXED AT ONE and the variance lives in a shared (`same()`)
+    # omega block instead, so every one of those steps would overwrite the
+    # estimated per-occasion variances with 1 -- a wrong covariance, not a
+    # conservative one.  Bow out to FD until `.foceiOmegaPairs()` learns to
+    # sum directions over the repeated blocks.
+    if (length(iovVars) > 0L &&
+          identical(rxode2::rxGetControl(ui, "iovMethod", "auto"), "omega"))
+      return(.foceiAnalyticFallback("IOV with a shared (SAME) omega block"))
+    .sameMap0 <- ui$omegaSameMap
+    if (length(.sameMap0) > 0L && any(.sameMap0 != 0L))
+      return(.foceiAnalyticFallback("a repeated (SAME) omega block"))
     # only the SD-scale IOV predictor (abs(v)*occ-eta) is implemented; var/logsd/logvar
     # use a different predictor + chain rule -> bow out to FD.
     if (length(iovVars) > 0L &&
@@ -2484,6 +2498,12 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
   .idf0 <- ui$iniDf
   if (any(!is.na(.idf0$condition) & .idf0$condition != "id" & is.na(.idf0$err)))            # IOV
     return(.foceiAnalyticFallback("inter-occasion variability (IOV)"))
+  # Under `iovMethod = "omega"` the occasion etas all sit at the `id` level,
+  # so the test above only catches them through the `id:same:` copies.  Check
+  # the repetition directly rather than relying on that.
+  .sm0 <- ui$omegaSameMap
+  if (length(.sm0) > 0L && any(.sm0 != 0L))
+    return(.foceiAnalyticFallback("a repeated (SAME) omega block"))
   # censored (M2/M3/M4): FOCEI and FOCE with censOption="gauss" are in scope (censored score
   # partials + Gauss-Newton determinant); only the laplace censored determinant uses FD.
   .hasCens <- (!is.null(fit$dataSav$CENS) && any(fit$dataSav$CENS != 0, na.rm = TRUE)) ||

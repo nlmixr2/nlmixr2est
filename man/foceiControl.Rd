@@ -56,6 +56,7 @@ foceiControl(
   eigen = TRUE,
   diagXform = c("sqrt", "log", "identity"),
   iovXform = c("sd", "var", "logsd", "logvar"),
+  iovMethod = c("auto", "theta", "omega"),
   sumProd = FALSE,
   optExpression = TRUE,
   literalFix = TRUE,
@@ -498,7 +499,42 @@ to include a condition number calculation.}
 \code{"sqrt"} (default), \code{"log"}, or \code{"identity"}.}
 
 \item{iovXform}{Transformation used on the diagonal of the IOV: one of
-\code{"sd"}, \code{"var"}, \code{"logsd"}, or \code{"logvar"}.}
+\code{"sd"}, \code{"var"}, \code{"logsd"}, or \code{"logvar"}.
+This parameterizes the magnitude theta of the \code{"theta"}
+\code{iovMethod}; it has no effect under \code{"omega"}, where the
+magnitude is fixed at one and the variability is carried by the
+omega block itself.}
+
+\item{iovMethod}{How inter-occasion variability is expanded before
+    estimation: one of \code{"auto"} (default), \code{"theta"} or
+    \code{"omega"}.
+
+    \code{"theta"} is the long-standing expansion: each occasion
+    parameter becomes a magnitude theta, with one unit-variance eta per
+    occasion fixed to it.  That shape cannot represent a correlation
+    between two occasion parameters.
+
+    \code{"omega"} instead fixes the magnitude theta at one and
+    estimates the per-occasion eta blocks directly, occasion one being
+    the block and the rest repeating it (NONMEM's
+    \code{$OMEGA BLOCK(n) SAME}).  The correlation then lives in the
+    estimated block.
+
+    \code{"auto"} picks \code{"omega"} when the IOV block has any
+    off-diagonal element, since \code{"theta"} provably cannot
+    represent one, and \code{"theta"} otherwise.  \code{"omega"} may
+    be asked for on a diagonal block as well, so the two can be
+    compared on the same model.
+
+    The two are the same statistical model -- at an occasion variance
+    of one, where the parameterizations coincide, they agree on the
+    objective to machine precision, and evaluated at matched random
+    effects they agree to ~2e-8 at any variance.  They are not
+    interchangeable in practice: \code{"theta"} hands FOCEi's inner
+    optimizer unit-scale etas and so converges the inner problem
+    better when the occasion variance is far from one.  That is why
+    \code{"auto"} keeps \code{"theta"} unless a correlation forces
+    \code{"omega"}.}
 
 \item{sumProd}{Is a boolean indicating if the model should change
 multiplication to high precision multiplication and sums to
@@ -575,7 +611,7 @@ not allowed.  Defaults to off: when the etas cannot re-center the
 reset repeats without progress and can error the fit out, and where
 it converges it reaches a worse optimum than leaving it off.}
 
-\item{resetThetaFinalP}{represents the p-value for reseting the
+\item{resetThetaFinalP}{represents the p-value for resetting the
 population mu-referenced THETA parameters based on ETA drift
 during optimization, and resetting the optimization one final time.
 `0` = never reset (the default); see \code{resetThetaP}.}
