@@ -166,7 +166,14 @@ calc.2LL <- function(fit, nnodes.gq = 8, nsd.gq = 4, phiM) {
     g <- ares + bres * abs(fsave)
     g[g < 1.0e-200] <- 1.0e-200
     .dyf <- -0.5 * ((yobs - f) / g)^2 - log(g)
-    .dyf[.isLL] <- fsave[.isLL]
+    # user_function() writes 1e99 where the solve returned NaN.  On a normal row
+    # that is a huge residual, but on an ll() row the prediction IS the
+    # log-density, so passing the sentinel through makes a FAILED node the best
+    # one in the quadrature.  Score it the way the kernel's MCMC does
+    # (_saemGenLikBadSolvePenalty, src/saem.cpp).
+    .ll <- fsave[.isLL]
+    .ll[!is.finite(.ll) | .ll >= 1.0e99] <- -1.0e10
+    .dyf[.isLL] <- .ll
     DYF[ind.io] <- .dyf
     ly <- colSums(DYF)
     dphi1 <- phi[, i1] - fit$mprior_phi[, i1]

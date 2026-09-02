@@ -844,6 +844,36 @@ public:
     return maxd > 1e-8;
   }
 
+  // Does the phi0 refinement need a LIVE re-solve?
+  //
+  // Freezing the ODE (saemix ind.fix10) is only valid for a phi0 parameter the
+  // SOLVE does not see -- a likelihood SD, a residual parameter.  An IOV
+  // magnitude theta is a phi0 parameter that drives the STRUCTURAL model, and
+  // with the solve frozen the objective is exactly constant in it, so the
+  // bounded optimizer walks to its upper bound and the SA update turns that
+  // into an unbounded runaway (#1000).  Answer by measuring the frozen/live
+  // discrepancy on the free phi0 columns, never by assuming from
+  // `distribution`.  Must run after gPhi0FreeIx is filled.
+  bool phi0NeedsLiveSolve() {
+    bool savedFreeze = _saemFreezeOde;
+    bool needs = false;
+    _saemFreezeOde = false;
+    { mat _t = user_fn(phiM, evt, optM); (void)_t; }   // states at phiM
+    for (size_t fi = 0; fi < gPhi0FreeIx.size() && !needs; ++fi) {
+      mat pp = phiM;
+      pp.col(i0(gPhi0FreeIx[fi])) += 0.1;
+      _saemFreezeOde = true;
+      vec ff = user_fn(pp, evt, optM).col(0);   // frozen: states still at phiM
+      _saemFreezeOde = false;
+      vec fl = user_fn(pp, evt, optM).col(0);   // live
+      double d = arma::abs(ff - fl).max();
+      if (!std::isfinite(d) || d > 1e-8) needs = true;
+      { mat _t = user_fn(phiM, evt, optM); (void)_t; } // restore states at phiM
+    }
+    _saemFreezeOde = savedFreeze;
+    return needs;
+  }
+
   // Re-run the uninformative-eta test at the current estimates.
   //
   // The test (R/uninformativeEtas.R) perturbs each eta and asks whether the prediction
@@ -997,7 +1027,11 @@ public:
     { mat _tmp = user_fn(phiM, evt, optM); (void)_tmp; }  // establish states
     bool doFreeze;
     if (distribution == 4) {
-      doFreeze = true;
+      // NOT unconditionally frozen: a general-likelihood model can still carry a
+      // phi0 that drives the solve (an IOV magnitude theta), and freezing makes
+      // the objective constant in it -- see phi0NeedsLiveSolve() and #1000.
+      if (_phi0NeedsLive < 0) _phi0NeedsLive = phi0NeedsLiveSolve() ? 1 : 0;
+      doFreeze = (_phi0NeedsLive == 0);
     } else if (nonMuThetaRegress) {
       if (_phi0OdeSensitive < 0) _phi0OdeSensitive = phi0AffectsOde() ? 1 : 0;
       doFreeze = (_phi0OdeSensitive == 0);
@@ -1015,13 +1049,18 @@ public:
     // an unbounded bobyqa span breaks there.  Constrain each step to a LOCAL
     // trust region around the current value (intersected with any ini bounds)
     // so the SA iteration refines it gradually, like a clamped regression step.
-    // General-likelihood phi0 (distribution==4) keeps the original wide bounds.
+    // localTrust also selects the optimizer; trustBounds only clamps the step.
     bool localTrust = (distribution != 4) && nonMuThetaRegress;
+    // A general-likelihood phi0 that drives the solve (an IOV magnitude) gets the
+    // same absolute trust region: its ini bounds are typically (0, Inf), and an
+    // unbounded span over an ODE-driven objective is what let it run away (#1000).
+    // A general-likelihood phi0 the solve never sees keeps the original wide bounds.
+    bool trustBounds = localTrust || (distribution == 4 && _phi0NeedsLive == 1);
     for (int c = 0; c < nphi0; c++) {
       par0[c] = mprior_phi0(0, c);
       double userLo = ((int)phi0Lower.n_elem == nphi0) ? phi0Lower(c) : R_NegInf;
       double userHi = ((int)phi0Upper.n_elem == nphi0) ? phi0Upper(c) : R_PosInf;
-      if (localTrust) {
+      if (trustBounds) {
         // ABSOLUTE trust radius (not relative to par0): a relative radius lets a
         // param that starts to drift grow its own step and run away.
         double trust = 0.75;
@@ -4320,6 +4359,10 @@ private:
   // 0 no (residual/likelihood only -> freeze the ODE during the phi0 opt like
   // npag), 1 yes (structural, e.g. ka/V -> keep the ODE live).
   int _phi0OdeSensitive = -1;
+  // Same question for a general-likelihood fit, answered by comparing a frozen
+  // and a live evaluation rather than by watching the prediction move: there the
+  // prediction IS the log-density, so every phi0 changes it.  -1 not yet probed.
+  int _phi0NeedsLive = -1;
   // Phase 4 (SAEM general-likelihood theta plan): the THETA[k]/ETA[k] -> phi
   // column maps, pool-readiness flags, and lhs offsets (_saemPhi1H2ThetaKind,
   // _saemPhi1H2ThetaCol, _saemPhi1H2ThetaFixedVal, _saemPhi1H2EtaCol, _saemPhi1PredOffset,

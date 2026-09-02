@@ -2,6 +2,20 @@
 
 ## Bug fixes
 
+- `saem` with IOV and a general log-likelihood (`ll()`) endpoint no longer
+  returns an astronomically large objective function (#1000).  Past half the
+  iterations, `saem` refines its non-mu-referenced (`phi0`) parameters with a
+  bounded optimizer while holding the ODE states fixed, on the grounds that a
+  general-likelihood `phi0` parameter is a likelihood standard deviation the
+  solve never sees.  The IOV magnitude is a `phi0` parameter that does drive
+  the structural model, so with the states held fixed the objective was
+  exactly constant in it and the optimizer ran to its upper bound: the IOV
+  magnitude grew geometrically (past `1e17`), and the reported objective
+  followed.  Whether the states can be held fixed is now measured rather than
+  assumed, and a `phi0` parameter that drives the solve is refined inside a
+  local trust region.  A failed solve reaching the Gaussian-quadrature
+  objective is also scored as a bad solve rather than as an extremely good
+  log-density.
 - A second `focei` fit of a model whose dosing depends on an eta (`f(depot) <-
   exp(eta.f)`, `alag()`, `dur()`, `rate()`) no longer silently returns the
   wrong answer.  The compiled model bundle is cached as model TEXT and
