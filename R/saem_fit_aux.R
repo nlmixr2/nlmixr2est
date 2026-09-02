@@ -62,6 +62,26 @@
   .ret
 }
 
+#' Node count the Gaussian-quadrature objective can afford
+#'
+#' The grid is `nnodes^nphi1` whole-population solves, and `nphi1` grows by one
+#' per occasion LEVEL for every IOV parameter -- three occasion parameters over
+#' two occasions already makes `3^9 = 19683`.  Step the node count down until
+#' the grid fits a budget rather than silently running an astronomically large
+#' one.  1 is the Laplace route, which `calc.2LL()` already names in its message.
+#'
+#' @param nnodes requested nodes per dimension
+#' @param nphi1 number of mu-referenced (random-effect) phi columns
+#' @param maxNodes grid budget; `getOption("nlmixr2.saemGqMaxNodes", 50000)`
+#' @return the node count to use, never above `nnodes` and never below 1
+#' @noRd
+.saemGqNodes <- function(nnodes, nphi1,
+                         maxNodes = getOption("nlmixr2.saemGqMaxNodes", 50000)) {
+  if (nnodes <= 1 || nphi1 <= 0) return(nnodes)
+  if (nnodes^nphi1 <= maxNodes) return(nnodes)
+  max(1, min(nnodes, floor(maxNodes^(1 / nphi1))))
+}
+
 ##' Log-likelihood using Gaussian Quadrature
 ##'
 ##' Estimate the log-likelihood using Gaussian Quadrature (multidimensional
@@ -133,6 +153,11 @@ calc.2LL <- function(fit, nnodes.gq = 8, nsd.gq = 4, phiM) {
   })
   condsd.eta <- t(sapply(var.all, function(x) sqrt(diag(x))))
 
+  .nodes <- .saemGqNodes(nnodes.gq, nphi1)
+  if (.nodes != nnodes.gq) {
+    warning("-2LL grid too large; used nnodesGq=", .nodes, call. = FALSE)
+    nnodes.gq <- .nodes
+  }
   y <- gqg.mlx(nphi1, nnodes.gq)
   # xform [0,1] => [-1, 1]
   x <- (y$nodes - 0.5) * 2

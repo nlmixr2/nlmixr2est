@@ -178,3 +178,21 @@ test_that(".saemIovCollapseCov contracts the pooled occasion columns", {
   expect_identical(.saemIovCollapseCov(.cv, list()), .cv)
   expect_identical(.saemIovCollapseCov(.cv, list(iov.v = "rx.iov.v.1")), .cv)
 })
+
+test_that(".saemGqNodes keeps the -2LL grid affordable", {
+  # the grid is nnodes^nphi1 whole-population solves, and nphi1 grows by one per
+  # occasion level per IOV parameter
+  expect_equal(.saemGqNodes(3, 3), 3)      # 27
+  expect_equal(.saemGqNodes(3, 5), 3)      # 243
+  expect_equal(.saemGqNodes(3, 9), 3)      # 19683, still inside the budget
+  expect_equal(.saemGqNodes(3, 12), 2)     # 531441 -> 4096
+  expect_equal(.saemGqNodes(3, 16), 1)     # 43e6 -> Laplace
+  # never raises the requested count, and never returns less than 1
+  expect_equal(.saemGqNodes(8, 3), 8)
+  expect_equal(.saemGqNodes(1, 40), 1)
+  expect_equal(.saemGqNodes(3, 0), 3)
+  expect_true(.saemGqNodes(3, 100) >= 1)
+  # the budget is settable
+  expect_equal(.saemGqNodes(3, 5, maxNodes = 10), 1)
+  expect_equal(.saemGqNodes(3, 2, maxNodes = 10), 3)
+})

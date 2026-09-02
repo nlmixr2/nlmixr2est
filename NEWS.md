@@ -33,6 +33,15 @@
 
 ## Bug fixes
 
+- `saem`'s Gaussian-quadrature objective no longer silently attempts a grid it
+  cannot finish.  The grid is `nnodesGq^nphi1` whole-population solves and
+  `nphi1` grows by one per occasion level for every IOV parameter, so three
+  occasion parameters over two occasions already asks for `3^9 = 19683` solves
+  and four over three asks for `3^16`, which is 43 million.  The node count is
+  now stepped down until the grid fits a budget
+  (`getOption("nlmixr2.saemGqMaxNodes", 50000)`), and the fit says which count
+  it used in `$runInfo`; one node is the Laplace approximation, which the
+  progress message already names.
 - `saem` now gives the same answer every time for a model whose residual error
   needs the internal optimizer -- anything richer than a pure `add()` or pure
   `prop()` endpoint, so `combined1()`/`combined2()`, `pow()`, and the
