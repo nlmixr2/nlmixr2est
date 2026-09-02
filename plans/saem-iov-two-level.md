@@ -488,3 +488,27 @@ were needed:
 Both paths now produce the same shape: `$omega` split into `$id`/`$occ`, the
 user's `iov.cl` row restored with `condition = "occ"`, an `$iov` deviation
 table, and no `rx.*` leaking into the fit or its `iniDf`.
+
+
+## Default flip to "twoLevel" (DONE) -- and the two bugs it caught
+
+Flipping the default immediately broke `test-iov.R`, which is exactly what the
+flip was for.  Both were real:
+
+1. **Pipeline position.**  The expansion ran at dispatch, after every hook.
+   `.preProcessBoundedTransform` runs LAST and rewrites a bounded theta
+   (`tcl <- log(c(0, 2.7, 100))`) into `tcl <- 4.6 - exp(rxBoundedTr.tcl)`,
+   which takes `tcl` out of `muRefDataFrame`.  So `.saemIovInfo()` said "in
+   scope" at hook time (letting the shared rewrite stand down) and "needs a
+   mu-referenced parameter" at dispatch -- and a decline at dispatch was
+   silently ignored, leaving the occasion term unhandled ("subscript out of
+   bounds").  The expansion is now a pre-processing hook,
+   `.uiApplyIovTwoLevel`, which sorts immediately after `.uiApplyIov` and so
+   runs at the same point in the pipeline as the rewrite it replaces.
+2. **Missing per-record alias.**  The shared rewrite emits a second line per
+   parameter, `iov.x.rx <- rx.iov.x`, which `.uiFinalizeIov()`'s data-frame
+   branch renames back to `iov.x` -- that is how the fit's data frame carries
+   the realized per-record IOV value.  The two-level expansion did not, so
+   `any(names(fit) == "iov.cl")` was FALSE.
+
+All eight IOV test files pass under the new default (156 assertions).

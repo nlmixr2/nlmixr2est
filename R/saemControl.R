@@ -342,9 +342,11 @@
 #'   estimated.  \code{"theta"} uses the shared pre-processing rewrite, which
 #'   carries the magnitude as a population parameter multiplying per-occasion
 #'   unit-variance etas (the form every other estimation method uses).
-#'   \code{"twoLevel"} keeps the occasion term as a second variance component
-#'   and estimates it with the closed-form updates of Panhard and Samson (2009),
-#'   which is what the SAEM kernel is built around for every other variance.
+#'   \code{"twoLevel"} (the default) keeps the occasion term as a second
+#'   variance component and estimates it with the closed-form updates of Panhard
+#'   and Samson (2009), which is what the SAEM kernel is built around for every
+#'   other variance.  A model the two-level handling does not cover falls back
+#'   to \code{"theta"} on its own.
 #' @return List of options to be used in \code{\link{nlmixr2}} fit for
 #'     SAEM.
 #' @author Wenping Wang & Matthew L. Fidler
@@ -400,7 +402,7 @@ saemControl <- function(seed = 99,
                         handleUninformativeEtas=TRUE,
                         revisitUninformativeEtas=FALSE,
                         iovXform = c("sd", "var", "logsd", "logvar"),
-                        iovMethod = c("theta", "twoLevel"),
+                        iovMethod = c("twoLevel", "theta"),
                         boundedTransform = TRUE,
                         eventSens = c("jump", "fd"),
                         mixProbMethod = c("regress", "regularized", "annealed"),

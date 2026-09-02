@@ -1518,17 +1518,6 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
 #' @export
 nlmixr2Est.saem <- function(env, ...) {
   .ui <- env$ui
-  # iovMethod="twoLevel": the shared rewrite stood down (see the "iov"
-  # attribute below), so write the occasion term out as a second variance
-  # component here -- one zero-mean eta per occasion level behind occasion
-  # indicators (R/saemIov.R).
-  if (identical(env$control$iovMethod, "twoLevel")) {
-    .iovInfo <- .saemIovInfo(.ui, env$data)
-    if (is.list(.iovInfo)) {
-      .ui <- env$ui <- .saemIovExpandUi(.ui, .iovInfo)
-      env$saemIovInfo <- .iovInfo
-    }
-  }
   # saem supports a general log-likelihood endpoint (ll() ~ expr) the saemix way
   # (the model returns the per-obs loglik; the RWM kernels use -ll as the
   # observation loss); only require normality for the ordinary case.

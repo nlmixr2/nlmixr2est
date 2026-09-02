@@ -2,12 +2,12 @@
 # runs at all.  The switch is the "iov" attribute on nlmixr2Est.saem, which
 # .isIovMethod() already supports as a function(control).
 test_that("iovMethod selects the IOV handling", {
-  expect_equal(saemControl()$iovMethod, "theta")
-  expect_equal(saemControl(iovMethod = "twoLevel")$iovMethod, "twoLevel")
+  expect_equal(saemControl()$iovMethod, "twoLevel")
+  expect_equal(saemControl(iovMethod = "theta")$iovMethod, "theta")
   expect_error(saemControl(iovMethod = "nope"))
 
   # the shared rewrite applies for "theta" and stands down for "twoLevel"
-  expect_true(.isIovMethod("saem", saemControl()))
+  expect_false(.isIovMethod("saem", saemControl()))
   expect_true(.isIovMethod("saem", saemControl(iovMethod = "theta")))
   expect_false(.isIovMethod("saem", saemControl(iovMethod = "twoLevel")))
 

@@ -187,12 +187,17 @@
       .etas <- rbind(.etas, .cur)
     }
   }
-  .lines <- lapply(seq_along(.nm), function(.i) {
-    str2lang(paste0("rx.", .nm[.i], " <- ",
-                    paste(paste0("(", info$occVar, " == ", info$levels, ")*",
-                                 info$etaNames[[.i]]),
-                          collapse=" + ")))
-  })
+  .lines <- c(
+    lapply(seq_along(.nm), function(.i) {
+      str2lang(paste0("rx.", .nm[.i], " <- ",
+                      paste(paste0("(", info$occVar, " == ", info$levels, ")*",
+                                   info$etaNames[[.i]]),
+                            collapse=" + ")))
+    }),
+    # the realized per-record value, kept as an output column so the fit's data
+    # frame carries `iov.x` the way the shared rewrite's does
+    # (.uiFinalizeIov() renames `iov.x.rx` back to `iov.x`)
+    lapply(.nm, function(v) str2lang(paste0(v, ".rx <- rx.", v))))
   assign("iniDf", rbind(.thetas, .etas), envir=.ui)
   assign("lstExpr", c(.lines, .ui$lstExpr), envir=.ui)
   # .uiFinalizeIov() (R/iov.R) undoes the rewrite after the fit -- restoring the
@@ -330,3 +335,31 @@ rxUiGet.saemOmegaPool <- function(x, ...) {
   .ret
 }
 attr(rxUiGet.saemOmegaPool, "rstudio") <- c(0L, 0L)
+
+#' Two-level IOV expansion, as a pre-processing hook
+#'
+#' Runs at the same point in the pipeline as the shared rewrite it replaces --
+#' which matters: `.preProcessBoundedTransform` runs LAST and rewrites a bounded
+#' theta into an lhs expression (`tcl <- 4.6 - exp(rxBoundedTr.tcl)`), which
+#' takes that theta out of `muRefDataFrame`.  Expanding after that would see a
+#' parameter that is no longer mu-referenced and decline, while the shared
+#' rewrite had already stood down -- leaving the occasion term unhandled.
+#'
+#' @param ui rxode2 ui
+#' @param est estimation routine name
+#' @param data data set for the fit
+#' @param control control object
+#' @return `NULL`, or a list with the rewritten `ui`
+#' @noRd
+#' @author Matthew L. Fidler
+.uiApplyIovTwoLevel <- function(ui, est, data, control) {
+  if (!identical(est, "saem")) return(NULL)
+  if (!identical(control$iovMethod, "twoLevel")) return(NULL)
+  .info <- .saemIovInfo(ui, data)
+  # a character is a decline; .uiApplyIov() has already fallen back to the
+  # shared rewrite for it, so there is nothing left to do here
+  if (!is.list(.info)) return(NULL)
+  list(ui = .saemIovExpandUi(ui, .info))
+}
+
+preProcessHooksAdd(".uiApplyIovTwoLevel", .uiApplyIovTwoLevel)

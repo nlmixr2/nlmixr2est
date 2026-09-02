@@ -19,8 +19,13 @@
   occasion parameter that is not mu-referenced) falls back to the shared
   rewrite and says so in the fit's `$runInfo`.  Either way the fit presents the
   same: `$omega` split into `$id` and `$occ`, the `iov.x ~ v | occ` row restored
-  in `$ui`, and an `$iov` table of the per-occasion deviations.  The default is
-  unchanged for now (`iovMethod = "theta"`).
+  in `$ui`, and an `$iov` table of the per-occasion deviations.
+
+  **This is now the default, so `saem` IOV estimates change.**  They were biased
+  toward zero, badly: on the paper's own simulation design (20 replicates,
+  n = 24, inter-occasion variances of 0.0025/0.01/0.01) the shared rewrite
+  recovers them with -95%/-93%/-39% relative bias while the two-level handling
+  gets -18%/+8%/-5%.  `iovMethod = "theta"` restores the old behavior.
 
 ## Bug fixes
 
