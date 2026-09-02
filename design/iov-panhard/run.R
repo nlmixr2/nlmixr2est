@@ -24,19 +24,17 @@ iovMethod <- .args[3] %||% "twoLevel"
 outFile <- .args[4] %||% sprintf("design/iov-panhard/results-%d-%s.rds", nSub, iovMethod)
 
 #' Pull the estimates the paper's table reports out of one fit
+#'
+#' Both `iovMethod` paths present the same way once `.uiFinalizeIov()` has run:
+#' `$omega` is a list with the between-subject block in `$id` and the
+#' inter-occasion variances in `$occ`.
 panhardExtract <- function(fit, iovMethod) {
   .fx <- fit$fixef
-  .om <- if (is.list(fit$omega)) fit$omega$id else fit$omega
-  .psi <- if (identical(iovMethod, "twoLevel")) {
-    c(lV = .om["rx.iov.lV.1", "rx.iov.lV.1"],
-      lKa = .om["rx.iov.lKa.1", "rx.iov.lKa.1"],
-      lAUC = .om["rx.iov.lAUC.1", "rx.iov.lAUC.1"])
-  } else {
-    .o <- fit$omega$occ
-    c(lV = .o["iov.lV", "iov.lV"],
-      lKa = .o["iov.lKa", "iov.lKa"],
-      lAUC = .o["iov.lAUC", "iov.lAUC"])
-  }
+  .om <- fit$omega$id
+  .o <- fit$omega$occ
+  .psi <- c(lV = .o["iov.lV", "iov.lV"],
+            lKa = .o["iov.lKa", "iov.lKa"],
+            lAUC = .o["iov.lAUC", "iov.lAUC"])
   c(mu.lV = .fx[["tlV"]], mu.lKa = .fx[["tlKa"]], mu.lAUC = .fx[["tlAUC"]],
     omega.lV = .om["eta.lV", "eta.lV"],
     omega.lKa = .om["eta.lKa", "eta.lKa"],
@@ -58,14 +56,43 @@ panhardTrue <- c(
   sigmaAdd = panhardTruth$sigma,
   sigmaProp = panhardTruth$sigma)
 
+#' Relative bias and RMSE over the usable replicates
+panhardSummary <- function(res) {
+  .ok <- stats::complete.cases(res)
+  if (!any(.ok)) {
+    return(data.frame(true = panhardTrue, biasPct = NA_real_, rmsePct = NA_real_))
+  }
+  .d <- sweep(res[.ok, , drop = FALSE], 2, panhardTrue, "-")
+  data.frame(true = panhardTrue,
+             biasPct = 100 * colMeans(.d) / panhardTrue,
+             rmsePct = 100 * sqrt(colMeans(.d^2)) / abs(panhardTrue))
+}
+
 .ctl <- saemControl(nBurn = 200, nEm = 300, nmc = 3, seed = 99,
                     print = 0L, covMethod = "", calcTables = FALSE,
                     iovMethod = iovMethod)
 
 .res <- matrix(NA_real_, nrow = nRep, ncol = length(panhardTrue),
                dimnames = list(NULL, names(panhardTrue)))
+.done <- 0L
+# resume: a run of 1000 replicates is hours, so pick up where a previous one
+# stopped rather than starting over
+if (file.exists(outFile)) {
+  .prev <- try(readRDS(outFile), silent = TRUE)
+  if (!inherits(.prev, "try-error") && identical(dim(.prev$estimates)[2], ncol(.res))) {
+    .n <- min(nrow(.prev$estimates), nRep)
+    .res[seq_len(.n), ] <- .prev$estimates[seq_len(.n), , drop = FALSE]
+    .done <- .prev$done %||% .n
+    cat(sprintf("resuming after %d replicates\n", .done))
+  }
+}
 .t0 <- proc.time()
+.save <- function(done) {
+  saveRDS(list(n = nSub, nRep = nRep, iovMethod = iovMethod, done = done,
+               estimates = .res, summary = panhardSummary(.res)), outFile)
+}
 for (.r in seq_len(nRep)) {
+  if (.r <= .done) next
   .d <- panhardSim(nSub, seed = 1000L + .r)
   .f <- try(suppressWarnings(suppressMessages(
     nlmixr2(panhardModel(), .d, est = "saem", control = .ctl))), silent = TRUE)
@@ -75,15 +102,13 @@ for (.r in seq_len(nRep)) {
   }
   cat(sprintf("rep %d/%d  (%.1f s elapsed)\n", .r, nRep,
               (proc.time() - .t0)[["elapsed"]]))
+  # checkpoint every 25 replicates so a killed run keeps its work
+  if (.r %% 25L == 0L) .save(.r)
 }
 
-.ok <- stats::complete.cases(.res)
-.bias <- 100 * colMeans(sweep(.res[.ok, , drop = FALSE], 2, panhardTrue, "-")) / panhardTrue
-.rmse <- 100 * sqrt(colMeans(sweep(.res[.ok, , drop = FALSE], 2, panhardTrue, "-")^2)) /
-  abs(panhardTrue)
-.summary <- data.frame(true = panhardTrue, biasPct = .bias, rmsePct = .rmse)
+.summary <- panhardSummary(.res)
 print(round(.summary, 2))
 cat(sprintf("\n%d/%d replicates usable; %.1f s total\n",
-            sum(.ok), nRep, (proc.time() - .t0)[["elapsed"]]))
-saveRDS(list(n = nSub, nRep = nRep, iovMethod = iovMethod,
-             estimates = .res, summary = .summary), outFile)
+            sum(stats::complete.cases(.res)), nRep,
+            (proc.time() - .t0)[["elapsed"]]))
+.save(nRep)

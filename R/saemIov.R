@@ -363,3 +363,70 @@ attr(rxUiGet.saemOmegaPool, "rstudio") <- c(0L, 0L)
 }
 
 preProcessHooksAdd(".uiApplyIovTwoLevel", .uiApplyIovTwoLevel)
+
+#' Contract the pooled occasion columns of a covariance matrix
+#'
+#' `$cov` carries one row/column per phi1 column, so the K per-occasion columns
+#' of a two-level parameter appear K times under their internal `om.rx.<iov>.<k>`
+#' names.  They estimate ONE variance -- the M-step pins them equal
+#' (`poolOmegaGroups`, src/saem.cpp) -- so contract them by averaging, which is
+#' the delta method for `Psi = mean(v_1, ..., v_K)`.  Note this contracts the
+#' LINEARIZED (unconstrained) covariance rather than computing a constrained
+#' Fisher information, so it is an approximation, but a named one: the reported
+#' variance is `Var(mean(v_k))`, not `Var(v_1)`.
+#'
+#' The collapsed row keeps the position of the group's first member so the rest
+#' of the matrix keeps its order.
+#'
+#' @param cv covariance matrix, or `NULL`
+#' @param groups named list, user IOV parameter -> its per-occasion eta names
+#' @return the contracted matrix
+#' @noRd
+.saemIovCollapseCov <- function(cv, groups) {
+  if (!is.matrix(cv) || is.null(rownames(cv)) || length(groups) == 0L) return(cv)
+  .nm <- rownames(cv)
+  .grp <- lapply(groups, function(g) {
+    .w <- match(paste0("om.", g), .nm)
+    .w[!is.na(.w)]
+  })
+  .grp <- .grp[vapply(.grp, length, integer(1)) >= 2L]
+  if (length(.grp) == 0L) return(cv)
+  .rows <- .saemIovCovRows(.nm, .grp)
+  .a <- matrix(0, nrow = length(.rows), ncol = length(.nm))
+  for (.k in seq_along(.rows)) {
+    .a[.k, .rows[[.k]]$idx] <- 1 / length(.rows[[.k]]$idx)
+  }
+  .out <- .a %*% cv %*% t(.a)
+  .rn <- vapply(.rows, function(r) r$nm, character(1))
+  dimnames(.out) <- list(.rn, .rn)
+  .out
+}
+
+#' The rows a contracted covariance matrix will have
+#'
+#' One entry per output row, in input order: the input indices that feed it and
+#' the name it takes.  A pooled group contributes a single entry at the position
+#' of its first member, so the rest of the matrix keeps its order.
+#'
+#' @param nm rownames of the input matrix
+#' @param grp named list of pooled index vectors, each of length >= 2
+#' @return list of `list(idx, nm)`
+#' @noRd
+.saemIovCovRows <- function(nm, grp) {
+  # group id of every row; 0 where the row is not pooled
+  .of <- integer(length(nm))
+  for (.j in seq_along(grp)) .of[grp[[.j]]] <- .j
+  .rows <- list()
+  .seen <- integer(0)
+  for (.i in seq_along(nm)) {
+    .j <- .of[.i]
+    if (.j == 0L) {
+      .rows[[length(.rows) + 1L]] <- list(idx = .i, nm = nm[.i])
+    } else if (!(.j %in% .seen)) {
+      .seen <- c(.seen, .j)
+      .rows[[length(.rows) + 1L]] <-
+        list(idx = grp[[.j]], nm = paste0("om.", names(grp)[.j]))
+    }
+  }
+  .rows
+}

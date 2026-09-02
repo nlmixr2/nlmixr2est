@@ -149,3 +149,32 @@ test_that("saemOmegaPool groups the occasion etas, and only those", {
                          saemControl(iovMethod = "theta"))$ui
   expect_true(all(rxUiGet.saemOmegaPool(list(.legacy)) == 0L))
 })
+
+test_that(".saemIovCollapseCov contracts the pooled occasion columns", {
+  # the K per-occasion columns estimate ONE variance, so the covariance matrix
+  # has to carry one row for them -- Var(mean(v_1..v_K)), not Var(v_1)
+  .nm <- c("tka", "om.eta.ka", "om.rx.iov.cl.1", "om.rx.iov.cl.2")
+  .cv <- matrix(c(4, 1, 2, 3,
+                  1, 5, 6, 7,
+                  2, 6, 10, -4,
+                  3, 7, -4, 8), nrow = 4, byrow = TRUE,
+                dimnames = list(.nm, .nm))
+  .out <- .saemIovCollapseCov(.cv, list(iov.cl = c("rx.iov.cl.1", "rx.iov.cl.2")))
+
+  expect_equal(rownames(.out), c("tka", "om.eta.ka", "om.iov.cl"))
+  expect_equal(colnames(.out), c("tka", "om.eta.ka", "om.iov.cl"))
+  # the untouched block is carried through unchanged
+  expect_equal(.out["tka", "tka"], 4)
+  expect_equal(.out["tka", "om.eta.ka"], 1)
+  # Var(mean(v1,v2)) = (Var v1 + Var v2 + 2 Cov)/4 = (10 + 8 + 2*(-4))/4
+  expect_equal(.out["om.iov.cl", "om.iov.cl"], (10 + 8 + 2 * -4) / 4)
+  # Cov(mean(v1,v2), p) = (Cov(v1,p) + Cov(v2,p))/2
+  expect_equal(.out["tka", "om.iov.cl"], (2 + 3) / 2)
+  expect_equal(.out["om.eta.ka", "om.iov.cl"], (6 + 7) / 2)
+  # symmetry survives
+  expect_equal(.out, t(.out))
+
+  # a matrix with nothing to pool, and an empty group list, are both untouched
+  expect_identical(.saemIovCollapseCov(.cv, list()), .cv)
+  expect_identical(.saemIovCollapseCov(.cv, list(iov.v = "rx.iov.v.1")), .cv)
+})

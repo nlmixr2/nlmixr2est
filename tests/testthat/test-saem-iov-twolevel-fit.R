@@ -31,9 +31,9 @@
 }
 # nolint end
 
-.twoLevelCtl <- function(nBurn = 60, nEm = 80, ...) {
+.twoLevelCtl <- function(nBurn = 60, nEm = 80, covMethod = "", ...) {
   saemControl(nBurn = nBurn, nEm = nEm, seed = 42L, print = 0L,
-              covMethod = "", calcTables = FALSE, ...)
+              covMethod = covMethod, calcTables = FALSE, ...)
 }
 
 test_that("iovMethod='twoLevel' estimates one occasion variance in closed form", {
@@ -119,4 +119,21 @@ test_that("a model outside the two-level scope falls back to the shared rewrite"
   expect_true(any(grepl("two-level IOV needs one occasion variable", .f$runInfo)))
   expect_true(is.list(.f$omega))
   expect_true(all(c("occ", "occ2") %in% names(.f$omega)))
+})
+
+test_that("a two-level fit's covariance carries one row for the occasion variance", {
+  skip_on_cran()
+  .d <- .twoLevelFitData()
+  .f <- suppressWarnings(nlmixr2(.twoLevelFitModel(), .d, est = "saem",
+                                 control = .twoLevelCtl(covMethod = "linFim",
+                                                        iovMethod = "twoLevel")))
+  .cv <- .f$cov
+  skip_if(is.null(.cv) || !is.matrix(.cv))
+  # the K per-occasion columns are ONE parameter; they must not appear
+  # separately, and certainly not under their internal names
+  expect_length(grep("^om[.]rx[.]", rownames(.cv)), 0L)
+  expect_true("om.iov.cl" %in% rownames(.cv))
+  expect_equal(rownames(.cv), colnames(.cv))
+  expect_true(is.finite(.cv["om.iov.cl", "om.iov.cl"]))
+  expect_true(.cv["om.iov.cl", "om.iov.cl"] > 0)
 })

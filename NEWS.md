@@ -19,7 +19,11 @@
   occasion parameter that is not mu-referenced) falls back to the shared
   rewrite and says so in the fit's `$runInfo`.  Either way the fit presents the
   same: `$omega` split into `$id` and `$occ`, the `iov.x ~ v | occ` row restored
-  in `$ui`, and an `$iov` table of the per-occasion deviations.
+  in `$ui`, and an `$iov` table of the per-occasion deviations.  `$cov` carries
+  one row for the occasion variance, `om.iov.x`, rather than one per occasion
+  level under an internal name -- the per-occasion columns estimate a single
+  variance, so they are contracted by averaging (the delta method for
+  `Psi = mean(v_1, ..., v_K)`).
 
   **This is now the default, so `saem` IOV estimates change.**  They were biased
   toward zero, badly: on the paper's own simulation design (20 replicates,

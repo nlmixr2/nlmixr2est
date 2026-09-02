@@ -1062,6 +1062,10 @@
           .full <- matrix(0, length(.fn), length(.fn), dimnames = list(.fn, .fn))
           .full[.ini, .ini] <- .thCov
           .full[.vn, .vn] <- .vc
+          # two-level IOV: the K per-occasion columns are ONE variance, so they
+          # appear K times here under their internal `om.rx.<iov>.<k>` names.
+          # Contract them (no-op when the fit did not take that path).
+          .full <- .saemIovCollapseCov(.full, .uiIovEnv$iovTwoLevel)
           assign(".saemFullCov", .full, envir = env)
         }
         .cov <- .thCov

@@ -675,6 +675,7 @@ nlmixr2iovVarSd <- function(val) {
       }
       .parFixed <- .parFixed[!grepl("^rx[.]", rownames(.parFixed)),]
       assign("parFixed", .parFixed, envir=ret$env)
+
     }
     # In this approach the model is simply kept,
     # but the data drops the iovDrop
