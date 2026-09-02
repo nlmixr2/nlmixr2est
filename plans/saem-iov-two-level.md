@@ -727,3 +727,31 @@ worth knowing but does not change the default: the setting exists to estimate an
 inter-occasion variance, and it is the less accurate of the two at doing so.
 These arms are single-seed-stream runs of one design; the ordering on `psi^2` is
 consistent and large, but it is not a claim about every model shape.
+
+## The legacy path, measured at 1000 replicates
+
+The default flip now rests on matched arms rather than a pilot on one side.
+n = 24, 1000/1000 usable in each:
+
+| relative bias % | `theta` (legacy) | `twoLevel` |
+|---|---|---|
+| mu log V / Ka / AUC | -0.03 / 0.57 / -0.02 | 0.01 / -0.12 / -0.03 |
+| omega^2 log V / Ka / AUC | 2.34 / 2.17 / -0.65 | -7.46 / -4.98 / -4.25 |
+| **psi^2 log V / Ka / AUC** | **-94.70 / -89.00 / -43.56** | -2.19 / -6.83 / -3.60 |
+| sigma add / prop | **25.01** / -0.02 | 2.93 / -0.63 |
+
+| relative RMSE % | `theta` | `twoLevel` |
+|---|---|---|
+| psi^2 log V / Ka / AUC | 94.98 / 91.58 / 61.53 | 63.70 / 74.86 / 47.32 |
+| sigma add | 47.33 | 38.40 |
+
+The legacy path collapses the inter-occasion variance to near zero, and the
+variance it fails to capture reappears as a 25% inflation of the additive
+residual error -- the two findings corroborate each other, which is stronger
+evidence than the psi^2 bias alone.  `mu` is unaffected in both (the fixed
+effects are recovered either way); `omega^2` is slightly LESS biased under the
+legacy path, which is consistent with the same leak, since a fit that cannot put
+occasion variability in `psi` has to put it somewhere.
+
+The 20-replicate pilot that previously backed this claim said -95/-93/-39, so it
+was directionally right, but it is now superseded.

@@ -44,12 +44,13 @@
 
   **`"twoLevel"` is now the default, so `saem` IOV estimates change.**  They
   were biased toward zero, badly.  On the paper's own simulation design
-  (n = 24, inter-occasion variances of 0.0025/0.01/0.01) the shared rewrite
-  recovers them with roughly -95%/-93%/-39% relative bias (a 20-replicate
-  pilot).  The two-level handling gets -2.2%/-6.8%/-3.6% over 1000
-  replicates -- less biased than the figures Panhard and Samson report for
-  their own implementation (-8.7%/-10.9%/-5.4%).  `iovMethod = "theta"`
-  restores the old behavior.
+  (n = 24, inter-occasion variances of 0.0025/0.01/0.01, 1000 replicates each)
+  the shared rewrite recovers them with -94.7%/-89.0%/-43.6% relative bias --
+  it collapses them toward zero, and the variance it does not capture instead
+  inflates the residual error by 25%.  The two-level handling gets
+  -2.2%/-6.8%/-3.6%, less biased than the figures Panhard and Samson report
+  for their own implementation (-8.7%/-10.9%/-5.4%), and leaves the residual
+  error 2.9% high.  `iovMethod = "theta"` restores the old behavior.
 
 ## Bug fixes
 
