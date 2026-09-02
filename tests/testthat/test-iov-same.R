@@ -178,3 +178,74 @@ test_that("two occasion parameters get their occasion number, not NA", {
   expect_equal(sort(unique(.fit$iov$occ$occ)), c(1L, 2L))
   expect_false(any(grepl("NAs introduced", .fit$runInfo)))
 })
+
+test_that("fix() on an occasion parameter is respected under 'omega'", {
+  skip_on_cran()
+  # `iov.cl ~ fix(0.1) | occ` fixes the VARIANCE.  Under "theta" that
+  # rides on the magnitude theta; under "omega" the variance IS the omega
+  # block, so the flag has to land there -- otherwise the parameter is
+  # quietly estimated while the fit still reports it as fixed.
+  .f <- .sameMod("iov.cl ~ fix(0.1) | occ",
+                 "cl <- exp(tcl + iov.cl)\n v <- exp(tv)")
+  .ini <- .applyIov(.f, "omega")$ui$iniDf
+  .occ <- .ini[grepl("^rx\\.iov\\.cl\\.", .ini$name), ]
+  expect_true(all(.occ$fix))
+  expect_equal(.occ$est, rep(0.1, 2))
+
+  .fit <- suppressWarnings(suppressMessages(
+    nlmixr2est::nlmixr2(.f(), .sameData(), "focei",
+                        foceiControl(print = 0, covMethod = "",
+                                     iovMethod = "omega"))))
+  .row <- .fit$ui$iniDf[.fit$ui$iniDf$name == "iov.cl", ]
+  expect_true(.row$fix)
+  expect_equal(.row$est, 0.1)
+})
+
+test_that("a fixed correlated block stays a repeated block", {
+  skip_on_cran()
+  # every occasion carries the same `fix` flags, so lotri still re-emits
+  # `same()` -- a mismatch there would silently dissolve the repetition
+  .f <- .sameMod("iov.cl + iov.v ~ fix(0.1,\n 0.03, 0.2) | occ",
+                 "cl <- exp(tcl + iov.cl)\n v <- exp(tv + iov.v)")
+  .ini <- .applyIov(.f, "omega")$ui$iniDf
+  .occ <- .ini[grepl("^\\(?rx\\.iov\\.", .ini$name), ]
+  expect_true(all(.occ$fix))
+  expect_true(any(grepl(":same:", .ini$condition, fixed = TRUE)))
+})
+
+test_that("the two expansions agree exactly where they coincide", {
+  skip_on_cran()
+  # At an occasion variance of 1 the parameterizations are literally the
+  # same problem -- "theta" scales a unit-variance eta by a theta of 1,
+  # "omega" gives the eta a variance of 1 -- so the objective must agree
+  # to machine precision.  This is the claim NEWS.md makes; if it ever
+  # stops holding, the expansions have diverged.
+  .f <- .sameMod("iov.cl ~ 1 | occ", "cl <- exp(tcl + iov.cl)\n v <- exp(tv)")
+  .obj <- vapply(c("theta", "omega"), function(.m) {
+    suppressWarnings(suppressMessages(
+      nlmixr2est::nlmixr2(.f(), .sameData(), "focei",
+                          foceiControl(print = 0, sigdig = 7, covMethod = "",
+                                       maxOuterIterations = 0L,
+                                       maxInnerIterations = 100000L,
+                                       iovMethod = .m))))$objf
+  }, double(1))
+  expect_equal(.obj[[1]], .obj[[2]], tolerance = 1e-10)
+})
+
+test_that("analytic covariance bows out for an 'omega' IOV fit", {
+  skip_on_cran()
+  # The analytic IOV branch reads the magnitude theta as the occasion
+  # standard deviation.  That theta is FIXED AT ONE here, so it would
+  # overwrite the estimated per-occasion variances rather than merely be
+  # conservative.  The mode is detected from the occasion etas -- the
+  # control still says "auto" after resolving, and with only ONE occasion
+  # there is no repeated block for `omegaSameMap` to report either.
+  .d <- .sameData()
+  .d$occ <- 1L
+  .fit <- suppressWarnings(suppressMessages(
+    nlmixr2est::nlmixr2(.corMod(), .d, "focei",
+                        foceiControl(print = 0, covMethod = "analytic"))))
+  expect_false(identical(.fit$covMethod, "analytic"))
+  # the occasion variances are the ESTIMATED ones, not the theta's 1
+  expect_true(all(diag(.fit$omega$occ) != 1))
+})

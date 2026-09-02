@@ -641,8 +641,20 @@
     # estimated per-occasion variances with 1 -- a wrong covariance, not a
     # conservative one.  Bow out to FD until `.foceiOmegaPairs()` learns to
     # sum directions over the repeated blocks.
-    if (length(iovVars) > 0L &&
-          identical(rxode2::rxGetControl(ui, "iovMethod", "auto"), "omega"))
+    # Detect the mode STRUCTURALLY rather than from the control: "auto"
+    # is what the control still says after it resolved to "omega", and a
+    # single-occasion dataset produces no repeated block for
+    # `omegaSameMap` to report either.  The two expansions are told apart
+    # by the occasion etas themselves -- "theta" fixes their variance at
+    # one and scales them by the magnitude theta, "omega" estimates them.
+    .idfA <- ui$iniDf
+    .omegaIov <- vapply(iovVars, function(.v) {
+      .w <- which(grepl(paste0("^rx\\.", gsub(".", "\\.", .v, fixed = TRUE),
+                               "\\.[0-9]+$"), .idfA$name) &
+                    !is.na(.idfA$neta1) & .idfA$neta1 == .idfA$neta2)
+      length(.w) > 0L && !all(.idfA$fix[.w])
+    }, logical(1), USE.NAMES = FALSE)
+    if (any(.omegaIov))
       return(.foceiAnalyticFallback("IOV with a shared (SAME) omega block"))
     .sameMap0 <- ui$omegaSameMap
     if (length(.sameMap0) > 0L && any(.sameMap0 != 0L))

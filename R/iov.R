@@ -123,18 +123,33 @@ nlmixr2iovVarSd <- function(val) {
 .uiIovOmegaEtas <- function(var, lvls, l1, iniDf, eta1, env) {
   .nm <- function(v, n) paste0("rx.", v, ".", n)
   ## the user's block for this level, read by name
-  .diagEst <- vapply(var, function(v) {
-    .w <- which(iniDf$name == v & is.na(iniDf$ntheta))
-    iniDf$est[.w[1]]
-  }, double(1), USE.NAMES = TRUE)
-  .covEst <- function(a, b) {
-    ## `as.data.frame()` names an off diagonal "(smaller,larger)" by
-    ## matrix position, so try both spellings rather than guessing
+  .diagRow <- function(v) which(iniDf$name == v & is.na(iniDf$ntheta))[1]
+  .diagEst <- vapply(var, function(v) iniDf$est[.diagRow(v)],
+                     double(1), USE.NAMES = TRUE)
+  ## `iov.cl ~ fix(0.1) | occ` fixes the VARIANCE.  Under "theta" that
+  ## rides on the magnitude theta; here the variance is the omega block,
+  ## so the flag has to land on the block or the parameter is quietly
+  ## estimated while `.uiFinalizeIov()` still reports it as fixed.
+  .diagFix <- vapply(var, function(v) isTRUE(iniDf$fix[.diagRow(v)]),
+                     logical(1), USE.NAMES = TRUE)
+  ## `as.data.frame()` names an off diagonal "(smaller,larger)" by
+  ## matrix position, so try both spellings rather than guessing
+  .covRow <- function(a, b) {
     .w <- which(iniDf$name %in% c(paste0("(", a, ",", b, ")"),
                                   paste0("(", b, ",", a, ")")) &
                   is.na(iniDf$ntheta))
-    if (length(.w) == 0L) return(0)
-    iniDf$est[.w[1]]
+    if (length(.w) == 0L) return(NA_integer_)
+    .w[1]
+  }
+  .covEst <- function(a, b) {
+    .w <- .covRow(a, b)
+    if (is.na(.w)) return(0)
+    iniDf$est[.w]
+  }
+  .covFix <- function(a, b) {
+    .w <- .covRow(a, b)
+    if (is.na(.w)) return(FALSE)
+    isTRUE(iniDf$fix[.w])
   }
   .masterOf <- character(0)
   for (.oi in seq_along(lvls)) {
@@ -151,7 +166,7 @@ nlmixr2iovVarSd <- function(val) {
       ## repetition on the next `.ui$fun()` round trip.  These etas are
       ## internal; `.uiFinalizeIov()` restores the user's own labeled rows.
       .cur$label <- NA_character_
-      .cur$fix <- FALSE
+      .cur$fix <- .diagFix[[.v]]
       .cur$est <- .diagEst[[.v]]
       env$drop <- c(env$drop, .cur$name)
       env$maxeta <- .cur$neta1 <- .cur$neta2 <- env$maxeta + 1L
@@ -179,7 +194,7 @@ nlmixr2iovVarSd <- function(val) {
           .cur$name <- paste0("(", .nm(var[.j], .n), ",",
                               .nm(var[.i], .n), ")")
           .cur$label <- NA_character_
-          .cur$fix <- FALSE
+          .cur$fix <- .covFix(var[.i], var[.j])
           .cur$est <- .est
           .cur$neta1 <- .first + .i - 1L
           .cur$neta2 <- .first + .j - 1L
