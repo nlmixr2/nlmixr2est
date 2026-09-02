@@ -631,6 +631,9 @@ preProcessHooksAdd(".uiApplyIovTwoLevel", .uiApplyIovTwoLevel)
   # itself.  Snapshot what the finalizer needs as VALUES first.
   info$origIniDf <- .ui$iniDf
   info$origLstExpr <- .ui$lstExpr
+  .oe <- .ui$iniDf
+  info$etaOrder <- .oe$name[!is.na(.oe$neta1) & .oe$neta1 == .oe$neta2 &
+                              !(.oe$name %in% info$pars$iov)]
   .iniDf <- .ui$iniDf
   .lst <- .ui$lstExpr
   .lvl <- info$levels
@@ -835,6 +838,10 @@ postFinalObjectHooksAdd(".saemIovFinalizeCollapsed", .saemIovFinalizeCollapsed)
     .tab[[info$pars$iov[.i]]] <- .one
     re <- re[, !(names(re) %in% .en), drop = FALSE]
   }
+  # put the restored etas back in the ui's own order; appending them leaves
+  # ranef in a different column order from every other path's
+  .want <- intersect(c("ID", info$etaOrder), names(re))
+  if (length(.want) == length(names(re))) re <- re[, .want, drop = FALSE]
   if (length(.tab) == 0L) return(list(ranef = re, iov = NULL))
   # one table per occasion variable, matching the shared rewrite's shape
   .one <- .tab[[1]]
