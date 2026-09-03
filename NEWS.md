@@ -75,7 +75,11 @@
   orders tighter, the same relationship `lbfgsFactr` already uses.  Every fit
   with `innerOpt="trust"` and no explicit `trustFterm`/`trustMterm` changes
   numerically as a result; generalized-likelihood models are unaffected, since
-  `innerOpt="auto"` sends those to `"n1qn1"`.
+  `innerOpt="auto"` sends those to `"n1qn1"`.  Isolated on this package's own
+  100+ model benchmark corpus (`inst/benchmarks/results/trust-inner-benchmark.md`),
+  the tighter tolerance is a real median accuracy improvement (`|objf diff|`
+  0.0115 -> 0.004) at a small median speed cost (1.10x -> 1.07x faster than
+  `"n1qn1"`) -- not a free win on every model.
 
 - A generalized log-likelihood model (`dnorm()`, `ll()`, `dpois()`, ...) fit
   with `foceiControl(innerOpt="trust")` no longer converges to badly biased
