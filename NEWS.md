@@ -286,8 +286,8 @@
   so `"trust"` must finite-difference one (2*neta inner solves) at every trial
   point where `"n1qn1"` builds it once as a warm-start seed. On a
   1-compartment oral model (120 subjects) as a `dnorm()` endpoint `"trust"`
-  took 114s against `n1qn1`'s 42s, while on the same model with a normal
-  endpoint it took 2.9s against 5.1s. `"trust"` and `"n1qn1"` remain
+  took 26.5s against `n1qn1`'s 16.3s, while on the same model with a normal
+  endpoint it took 1.1s against 4.6s. `"trust"` and `"n1qn1"` remain
   selectable explicitly.
 
   This changes the exact numeric result of every FOCEi-family fit that does
@@ -332,7 +332,7 @@
   uses. Since this loop runs per subject, per Newton step, per outer
   iteration, avoiding a fresh finite difference at every one compounds into
   a much larger speedup than the outer-theta case: `bfgs`/`sr1`/`bofill` ran
-  roughly 3-14x faster than `"fd"` on this package's own small benchmark (a
+  roughly 2.7-19x faster than `"fd"` on this package's own small benchmark (a
   Poisson and a general `ll()` model,
   `inst/benchmarks/benchmark-focei-hessian-method.R`). `"fd"` stays the
   default: unlike the outer-theta case, this inner Hessian's log-determinant

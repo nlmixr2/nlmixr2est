@@ -4,29 +4,29 @@ Total models: 2
 
 ## hessianMethod="fd" (converged: 2/2)
 
-- Median time: 3.248s
+- Median time: 4.002s
 - Median |objf diff| vs fd: 0
 - Total nHessianQN calls: 0
 
 ## hessianMethod="bfgs" (converged: 2/2)
 
-- Median time: 0.598s
-- Median |objf diff| vs fd: 0.0261
-- Total nHessianQN calls: 22140
+- Median time: 0.732s
+- Median |objf diff| vs fd: 0.1597
+- Total nHessianQN calls: 28005
 
 ## hessianMethod="sr1" (converged: 2/2)
 
-- Median time: 0.945s
-- Median |objf diff| vs fd: 0.06753
-- Total nHessianQN calls: 24061
+- Median time: 0.815s
+- Median |objf diff| vs fd: 0.06688
+- Total nHessianQN calls: 30281
 
 ## hessianMethod="bofill" (converged: 2/2)
 
-- Median time: 0.502s
-- Median |objf diff| vs fd: 0.07856
-- Total nHessianQN calls: 22476
+- Median time: 0.648s
+- Median |objf diff| vs fd: 0.06069
+- Total nHessianQN calls: 25869
 
 | model | fd ok | fd time | fd objf | fd dObjf | bfgs ok | bfgs time | bfgs objf | bfgs dObjf | sr1 ok | sr1 time | sr1 objf | sr1 dObjf | bofill ok | bofill time | bofill objf | bofill dObjf |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| poisson-e0 | TRUE | 2.276 | 318.3235 | 0 | TRUE | 0.293 | 318.3635 | 0.04000911 | TRUE | 0.163 | 318.3635 | 0.04000911 | TRUE | 0.157 | 318.3635 | 0.04000911 |
-| ll-gaussian-equivalent | TRUE | 4.22 | 130.9893 | 0 | TRUE | 0.902 | 130.9771 | -0.01218806 | TRUE | 1.727 | 131.0844 | 0.09504399 | TRUE | 0.848 | 131.1064 | 0.1171078 |
+| poisson-e0 | TRUE | 4.252 | 318.3239 | 0 | TRUE | 0.41 | 318.2181 | -0.1057629 | TRUE | 0.222 | 318.3221 | -0.001770251 | TRUE | 0.348 | 318.3221 | -0.001770251 |
+| ll-gaussian-equivalent | TRUE | 3.752 | 130.9302 | 0 | TRUE | 1.055 | 130.7165 | -0.213719 | TRUE | 1.407 | 131.0622 | 0.1319926 | TRUE | 0.949 | 131.0498 | 0.119606 |
