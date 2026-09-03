@@ -318,7 +318,11 @@
   quasi-Newton option converged to the same wrong parameter estimate with a
   *worse* reported objective than `"fd"`'s correct answer -- see the Bug
   fixes section below. Has no effect on normal-endpoint models. Only
-  meaningful with `innerOpt="trust"`.
+  meaningful with `innerOpt="trust"`: asking for `"bfgs"`/`"sr1"`/`"bofill"`
+  under any other inner optimizer is now an error rather than a silent no-op,
+  so a request that could not be honored is not lost. Since `innerOpt="auto"`
+  (the default) sends exactly the non-normal-endpoint models this applies to
+  to `"n1qn1"`, using it means pinning `innerOpt="trust"` as well.
 
 - `impmapControl()`/`impControl()` gain `combSens` (default `TRUE`): when
   `est="impmap"`/`"imp"`/`"qrpem"` has non-mu (structural or residual-error)

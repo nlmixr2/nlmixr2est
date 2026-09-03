@@ -8486,6 +8486,12 @@ NumericVector foceiSetup_(const RObject &obj,
   // field (-> "fd", the historic behavior).
   op_focei.hessianMethod = foceiO.containsElementNamed("hessianMethod") ?
     as<int>(foceiO["hessianMethod"]) : trustHessFd;
+  // foceiControl() refuses a non-fd hessianMethod against a PINNED non-trust
+  // inner optimizer; "auto" is only decided above, so catch that case here
+  // rather than let the request be silently ignored.
+  if (op_focei.hessianMethod != trustHessFd && op_focei.innerOpt != 3) {
+    stop(_("hessianMethod= requires innerOpt=\"trust\"; \"auto\" picked \"n1qn1\" here"));
+  }
 
   op_focei.cholSEOpt=as<double>(foceiO["cholSEOpt"]);
   op_focei.cholSECov=as<double>(foceiO["cholSECov"]);

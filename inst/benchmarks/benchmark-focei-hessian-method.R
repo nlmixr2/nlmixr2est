@@ -40,6 +40,8 @@ dir.create(.outDir, showWarnings = FALSE, recursive = TRUE)
 }
 .blog("=== benchmark-focei-hessian-method.R starting ===")
 
+# innerOpt is pinned to "trust": hessianMethod= is only consulted there, and the
+# default "auto" sends a non-normal endpoint to n1qn1 (which refuses it).
 .hessianMethods <- c("fd", "bfgs", "sr1", "bofill")
 
 .benchResults <- list()
@@ -70,7 +72,8 @@ dir.create(.outDir, showWarnings = FALSE, recursive = TRUE)
   fit <- tryCatch(
     suppressWarnings(suppressMessages(
       nlmixr2est::nlmixr2(object, data, est = "focei",
-                          control = nlmixr2est::foceiControl(print = 0L, hessianMethod = hessianMethod, ...))
+                          control = nlmixr2est::foceiControl(print = 0L, innerOpt = "trust",
+                                                             hessianMethod = hessianMethod, ...))
     )),
     error = function(e) e
   )

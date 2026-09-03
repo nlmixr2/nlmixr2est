@@ -680,8 +680,11 @@ the Hessian on the unscaled parameter space.}
     Has no effect for normal-endpoint models (the Gauss-Newton inner
     Hessian is used unconditionally there). Only meaningful with
     `innerOpt="trust"`, which the default `innerOpt="auto"` does not pick
-    for these models -- so setting this needs `innerOpt="trust"` pinned
-    as well.}
+    for these models -- so setting this needs `innerOpt="trust"` pinned as
+    well. Asking for `"bfgs"`/`"sr1"`/`"bofill"` under any other inner
+    optimizer is an error rather than a silent no-op: `foceiControl()`
+    refuses a pinned `innerOpt`, and the fit refuses one `"auto"` resolves
+    to `"n1qn1"`.}
 
 \item{trustConf}{confidence level defining the `innerOpt="trust"`
 trust-region radius: since eta ~ N(0, Omega), the radius (in

@@ -3,6 +3,10 @@
 # otherwise.  See the innerOpt @param below.
 .innerOptFun <- c("n1qn1" = 1L, "BFGS" = 2L, "trust" = 3L, "auto" = 4L)
 
+# hessianMethod= levels.  Anything but "fd" is only consulted under
+# innerOpt="trust" (hessianQNEligible, src/inner.cpp).
+.hessianMethodIdx <- c("fd" = 1L, "bfgs" = 2L, "sr1" = 3L, "bofill" = 4L)
+
 .foceiControlInternal <- c(
   "genRxControl", "resetEtaSize", "foceType",
   "resetThetaSize", "resetThetaFinalSize",
@@ -509,8 +513,11 @@
 #'     Has no effect for normal-endpoint models (the Gauss-Newton inner
 #'     Hessian is used unconditionally there). Only meaningful with
 #'     `innerOpt="trust"`, which the default `innerOpt="auto"` does not pick
-#'     for these models -- so setting this needs `innerOpt="trust"` pinned
-#'     as well.
+#'     for these models -- so setting this needs `innerOpt="trust"` pinned as
+#'     well. Asking for `"bfgs"`/`"sr1"`/`"bofill"` under any other inner
+#'     optimizer is an error rather than a silent no-op: `foceiControl()`
+#'     refuses a pinned `innerOpt`, and the fit refuses one `"auto"` resolves
+#'     to `"n1qn1"`.
 #'
 #' @param stateTrim Trim state amounts/concentrations to this value.
 #'
@@ -1551,11 +1558,20 @@ foceiControl <- function(sigdig = 3, #
   } else {
     innerOpt <- setNames(.innerOptFun[match.arg(innerOpt)], NULL)
   }
-  .hessianMethodIdx <- c("fd" = 1L, "bfgs" = 2L, "sr1" = 3L, "bofill" = 4L)
   if (checkmate::testIntegerish(hessianMethod, len = 1, lower = 1, upper = 4, any.missing = FALSE)) {
     hessianMethod <- as.integer(hessianMethod)
   } else {
     hessianMethod <- setNames(.hessianMethodIdx[match.arg(hessianMethod)], NULL)
+  }
+  # A quasi-Newton inner Hessian is only ever consulted under innerOpt="trust",
+  # so any other pinned inner optimizer would silently ignore it.  innerOpt=4
+  # ("auto") is not decided yet -- foceiSetup_ raises the same error there once
+  # needOptimHess resolves it.
+  if (hessianMethod != 1L && innerOpt != 3L && innerOpt != 4L) {
+    stop("hessianMethod = \"", names(.hessianMethodIdx)[hessianMethod],
+      "\" requires innerOpt = \"trust\"",
+      call. = FALSE
+    )
   }
   checkmate::assertNumeric(trustConf, lower = 0, upper = 1, finite = TRUE, any.missing = FALSE, len = 1)
   if (trustConf <= 0 || trustConf >= 1) {
@@ -1994,7 +2010,6 @@ foceiControl <- function(sigdig = 3, #
       .methodIdx <- c("central" = 2L, "forward" = 3L)
       paste0(x, " = ", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
     } else if (x == "hessianMethod") {
-      .hessianMethodIdx <- c("fd" = 1L, "bfgs" = 2L, "sr1" = 3L, "bofill" = 4L)
       paste0(x, " = ", deparse1(names(.hessianMethodIdx[which(object[[x]] == .hessianMethodIdx)])))
     } else if (x %in% c("derivMethod", "covDerivMethod")) {
       .methodIdx <- c("forward" = 0L, "central" = 1L, "switch" = 3L)

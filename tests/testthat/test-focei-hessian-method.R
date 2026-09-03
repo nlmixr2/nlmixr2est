@@ -115,7 +115,8 @@ nmTest({
     expect_equal(unname(.fLLFd$theta), unname(.fPlain$theta), tolerance = 0.05)
     for (.hm in c("bfgs", "sr1", "bofill")) {
       .fLLQn <- suppressWarnings(nlmixr2(.ivBolusLL, .dat, est = "focei",
-                                         control = foceiControl(print = 0L, hessianMethod = .hm)))
+                                         control = foceiControl(print = 0L, innerOpt = "trust",
+                                                                hessianMethod = .hm)))
       # A QN method drifting off is the known, not-yet-fixed bias -- assert
       # only that a caller who explicitly opts into it still gets a finite
       # result, not that it matches (it currently does not).
@@ -151,18 +152,34 @@ nmTest({
     expect_equal(.nHessianQN(), 0L)
   })
 
-  test_that("hessianMethod is inert unless innerOpt='trust' (calcEtaHessian() is also reached from warmZm()/LikInner2() for other inner optimizers, where the per-attempt reset does not apply)", {
-    skip_on_cran()
-    .fN1qn1 <- .nlmixr(.poisMod, .poisData, est = "focei",
-                       control = foceiControl(print = 0L, innerOpt = "n1qn1",
-                                              hessianMethod = "sr1"))
-    expect_true(is.finite(.fN1qn1$objf))
-    # The quasi-Newton mechanism must never engage for a non-trust inner
-    # optimizer, regardless of hessianMethod -- calcEtaHessian() is reached
-    # from warmZm()'s one-time n1qn1 warm-start seed and from the final
+  test_that("a non-fd hessianMethod is refused unless innerOpt='trust'", {
+    # The quasi-Newton mechanism can only engage under "trust" -- calcEtaHessian()
+    # is reached from warmZm()'s one-time n1qn1 warm-start seed and from the final
     # objective recompute, neither of which is the repeated, reset-per-attempt
-    # Newton-step loop the quasi-Newton state assumes.
-    expect_equal(.nHessianQN(), 0L)
+    # Newton-step loop the quasi-Newton state assumes.  Asking for it anyway used
+    # to be a silent no-op; it is now an error, so the request cannot be lost.
+    for (.hm in c("bfgs", "sr1", "bofill")) {
+      expect_error(foceiControl(innerOpt = "n1qn1", hessianMethod = .hm),
+                   "innerOpt", info = .hm)
+      expect_error(foceiControl(innerOpt = "BFGS", hessianMethod = .hm),
+                   "innerOpt", info = .hm)
+    }
+    # "fd" is what every non-trust inner optimizer already does, so it is not
+    # refused; nor is the combination the mechanism actually supports.
+    expect_equal(foceiControl(innerOpt = "n1qn1", hessianMethod = "fd")$hessianMethod, 1L)
+    expect_equal(foceiControl(innerOpt = "trust", hessianMethod = "sr1")$hessianMethod, 3L)
+    # "auto" cannot be judged until needOptimHess is known, so the control
+    # builds and the fit raises it instead (see the next test).
+    expect_equal(foceiControl(hessianMethod = "sr1")$hessianMethod, 3L)
+  })
+
+  test_that("innerOpt='auto' refuses a non-fd hessianMethod once it resolves to n1qn1", {
+    skip_on_cran()
+    # A generalized-likelihood endpoint sends "auto" to n1qn1, where the request
+    # could not be honored -- that has to surface as an error, not a silent no-op.
+    expect_error(.nlmixr(.poisMod, .poisData, est = "focei",
+                         control = foceiControl(print = 0L, hessianMethod = "sr1")),
+                 "innerOpt")
   })
 
   test_that("foceiControl() hessEtaStepMin validation and round-trip", {

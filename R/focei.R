@@ -3849,6 +3849,15 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   .control$needOptimHess <- .optimHess
   if (.control$needOptimHess) {
     .control$interaction <- 0L
+    # innerOpt="auto" resolves to n1qn1 here, which cannot honor a quasi-Newton
+    # hessianMethod.  foceiSetup_ refuses this too, but catching it before the
+    # fit starts keeps the reason from being reported as "Could not fit data".
+    if (.control$hessianMethod != 1L && .control$innerOpt == 4L) {
+      stop("hessianMethod = \"", names(.hessianMethodIdx)[.control$hessianMethod],
+        "\" requires innerOpt = \"trust\" (\"auto\" picks \"n1qn1\" here)",
+        call. = FALSE
+      )
+    }
     # A log-likelihood / generalized endpoint has no Gaussian add/prop a/B/c error
     # machinery.  But rx_pred_ IS the per-observation log-density, so the analytic outer
     # gradient differentiates it directly (gradPooledCoreLL, exact inner Hessian +
