@@ -342,7 +342,16 @@
 #'     off-diagonal element, since \code{"theta"} provably cannot
 #'     represent one, and \code{"theta"} otherwise.  \code{"omega"} may
 #'     be asked for on a diagonal block as well, so the two can be
-#'     compared on the same model.
+#'     compared on the same model.  The choice is made per LEVEL of
+#'     variability, so a correlation on \code{occ} does not change how
+#'     an unrelated diagonal \code{occ2} is expanded.
+#'
+#'     \code{"omega"} is only available for estimation methods that
+#'     honour the repeated block (the FOCEi family).  \code{saem} and
+#'     the variational, nonparametric and importance-sampling methods
+#'     estimate omega elsewhere, so they continue to refuse a
+#'     correlated occasion block rather than silently estimate each
+#'     occasion on its own.
 #'
 #'     The two are the same statistical model -- at an occasion variance
 #'     of one, where the parameterizations coincide, they agree on the

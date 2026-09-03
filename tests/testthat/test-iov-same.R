@@ -334,3 +334,68 @@ test_that("analytic covariance bows out for a FIXED single-occasion block", {
   # the block is reported at the values it was fixed to
   expect_equal(unname(diag(.fit$omega$occ)), c(0.1, 0.2))
 })
+
+test_that("the expansion is chosen per level, not per model", {
+  skip_on_cran()
+  # A correlation on `occ` is no reason to change how an unrelated
+  # diagonal `occ2` is expanded -- "theta" is the better conditioned
+  # inner problem, so an unrelated level should keep it.
+  .d <- .sameData()
+  .d$occ2 <- 1 + (.d$TIME >= 9)
+  .f <- function() {
+    ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- c(0, 0.7)
+          eta.ka ~ 0.6
+          iov.cl + iov.v ~ c(0.1,
+                             0.03, 0.2) | occ
+          iov.ka ~ 0.05 | occ2 })
+    model({ ka <- exp(tka + eta.ka + iov.ka)
+            cl <- exp(tcl + iov.cl)
+            v <- exp(tv + iov.v)
+            linCmt() ~ add(add.sd) })
+  }
+  .ini <- .uiApplyIov(rxode2::rxode2(.f()), "focei", .d,
+                      foceiControl())$ui$iniDf
+  .th <- .ini[!is.na(.ini$ntheta), ]
+  # the correlated level took the shared block: magnitude fixed at one
+  expect_true(all(.th$fix[.th$name %in% c("iov.cl", "iov.v")]))
+  expect_equal(.th$est[.th$name == "iov.cl"], 1)
+  # the diagonal level kept the old expansion: a free SD-scale magnitude
+  expect_false(.th$fix[.th$name == "iov.ka"])
+  expect_equal(.th$est[.th$name == "iov.ka"], sqrt(0.05))
+  # ... and its per-occasion etas are still unit variance and fixed
+  .ka <- .ini[grepl("^rx\\.iov\\.ka\\.", .ini$name), ]
+  expect_true(all(.ka$fix))
+  expect_equal(.ka$est, rep(1, 2))
+  expect_true(all(.ka$condition == "id"))
+  # only the correlated level is repeated
+  expect_equal(sum(grepl(":same:", .ini$condition, fixed = TRUE)), 3L)
+})
+
+test_that("a mixed correlated/diagonal model fits and reports both levels", {
+  skip_on_cran()
+  .d <- .sameData()
+  .d$occ2 <- 1 + (.d$TIME >= 9)
+  .f <- function() {
+    ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- c(0, 0.7)
+          eta.ka ~ 0.6
+          iov.cl + iov.v ~ c(0.1,
+                             0.03, 0.2) | occ
+          iov.ka ~ 0.05 | occ2 })
+    model({ ka <- exp(tka + eta.ka + iov.ka)
+            cl <- exp(tcl + iov.cl)
+            v <- exp(tv + iov.v)
+            linCmt() ~ add(add.sd) })
+  }
+  .fit <- suppressWarnings(suppressMessages(
+    nlmixr2est::nlmixr2(.f(), .d, "focei",
+                        foceiControl(print = 0, covMethod = ""))))
+  expect_equal(dim(.fit$omega$occ), c(2L, 2L))
+  expect_equal(dim(.fit$omega$occ2), c(1L, 1L))
+  .ini <- .fit$ui$iniDf
+  expect_equal(sort(.ini$name[.ini$condition %in% "occ" & !is.na(.ini$condition)]),
+               sort(c("iov.cl", "iov.v", "(iov.cl,iov.v)")))
+  expect_equal(.ini$name[.ini$condition %in% "occ2" & !is.na(.ini$condition)],
+               "iov.ka")
+  expect_true(all(!is.na(.fit$iov$occ$occ)))
+  expect_true(all(!is.na(.fit$iov$occ2$occ2)))
+})

@@ -19,7 +19,9 @@
     later occasion repeats it.  That is NONMEM's `$OMEGA BLOCK(n) SAME`,
     and the correlation lives in the estimated block.
   - `"auto"` picks `"omega"` when the occasion block has any off-diagonal
-    element and `"theta"` otherwise.
+    element and `"theta"` otherwise, per LEVEL of variability -- a
+    correlation on `occ` does not change how an unrelated diagonal
+    `occ2` is expanded.
   - `"auto"` only reaches for `"omega"` on an estimation method that
     honours the repeated block -- the FOCEi family.  `saem`, the
     variational (`vae`, `fbvi`, `emvi`), nonparametric (`npag`, ...) and

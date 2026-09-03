@@ -316,9 +316,16 @@ nlmixr2iovVarSd <- function(val) {
   ## silently ignored during estimation and each occasion's block
   ## estimated on its own.
   .sameOk <- .isIovSameMethod(est)
-  if (.iovMethod == "auto") {
-    .iovMethod <- if (length(.wOff) > 0L && .sameOk) "omega" else "theta"
+  ## Resolved PER LEVEL of variability, not per model: a correlation on
+  ## `occ` is no reason to change how an unrelated diagonal `occ2` is
+  ## expanded, and "theta" is the better conditioned inner problem.
+  .offLvls <- unique(.baseCnd[.wOff])
+  .resolveLvl <- function(l1) {
+    if (.iovMethod != "auto") return(.iovMethod)
+    if (l1 %in% .offLvls && .sameOk) "omega" else "theta"
   }
+  .anyOmega <- .iovMethod == "omega" ||
+    (.iovMethod == "auto" && length(.offLvls) > 0L && .sameOk)
   if (.iovMethod == "omega" && !.sameOk) {
     stop("'iovMethod=\"omega\"' repeats one estimated omega block per ",
          "occasion, which the estimation method '", est, "' does not ",
@@ -326,16 +333,21 @@ nlmixr2iovVarSd <- function(val) {
          "inter-occasion random effects",
          call.=FALSE)
   }
-  if (.iovMethod == "theta" && length(.wOff) > 0L) {
+  ## a level whose expansion resolves to "theta" cannot carry a
+  ## correlation, however it was chosen
+  .badOff <- .wOff[vapply(.baseCnd[.wOff], function(l1) {
+    .resolveLvl(l1) == "theta"
+  }, logical(1), USE.NAMES=FALSE)]
+  if (length(.badOff) > 0L) {
     stop("correlated inter-occasion random effects are not supported",
          if (.sameOk) "" else paste0(" by '", est, "'"), ": ",
-         paste0("'", .iniDf$name[.wOff], "'", collapse=", "),
+         paste0("'", .iniDf$name[.badOff], "'", collapse=", "),
          "; give each occasion parameter its own variance",
          if (.sameOk) ", or use `iovMethod=\"omega\"`" else "",
          call.=FALSE)
   }
-  .uiIovEnv$iovMethod <- .iovMethod
-  if (.iovMethod == "omega") {
+  .uiIovEnv$iovMethod <- if (.anyOmega) "omega" else "theta"
+  if (.anyOmega) {
     ## the magnitude theta is fixed at one, so the way it is
     ## parameterized no longer means anything; "sd" is what the model
     ## line and the analytic covariance expect to see
@@ -345,7 +357,6 @@ nlmixr2iovVarSd <- function(val) {
                     "the magnitude is fixed at one and the variability ",
                     "is estimated in the omega block"))
     }
-    .xform <- "sd"
   }
   # one entry per occasion VARIABLE, however many parameters ride on it
   .lvls <- unique(.baseCnd[.wOcc])
@@ -429,6 +440,11 @@ nlmixr2iovVarSd <- function(val) {
     .env$extraEtas <- NULL
     .lines <- lapply(names(.lvls),
                      function(l1) {
+                       ## this LEVEL's expansion; `iovXform` parameterizes
+                       ## the "theta" magnitude and means nothing once the
+                       ## magnitude is fixed at one
+                       .m1 <- .resolveLvl(l1)
+                       .xf1 <- if (.m1 == "omega") "sd" else .xform
                        ## again diagonal rows only -- these are the
                        ## occasion PARAMETERS, not the cells of their block
                        .w <- which(.baseCnd == l1 &
@@ -457,16 +473,16 @@ nlmixr2iovVarSd <- function(val) {
                                 call.=FALSE)
                          }
                          .est <- .iniDf[.wv, "est"]
-                         if (.xform == "var") {
+                         if (.xf1 == "var") {
                            .curTheta$est <- .est
-                         } else if (.xform == "sd") {
+                         } else if (.xf1 == "sd") {
                            .curTheta$est <- sqrt(.est)
-                         } else if (.xform == "logvar") {
+                         } else if (.xf1 == "logvar") {
                            .curTheta$est <- log(.est)
-                         } else if (.xform == "logsd") {
+                         } else if (.xf1 == "logsd") {
                            .curTheta$est <- log(sqrt(.est))
                          }
-                         if (.iovMethod == "omega") {
+                         if (.m1 == "omega") {
                            ## the magnitude is carried by the omega block,
                            ## so the theta is a constant multiplier of one.
                            ## It is kept rather than dropped so the model
@@ -480,7 +496,7 @@ nlmixr2iovVarSd <- function(val) {
                          }
                          .curTheta$name <- v
                          .uiIovEnv$iovVars <- c(.uiIovEnv$iovVars, v)
-                         if (.iovMethod != "omega") {
+                         if (.m1 != "omega") {
                            ## in "omega" mode the magnitude is fixed at one
                            ## above and the user's `fix` belongs to the
                            ## omega block instead
@@ -503,20 +519,20 @@ nlmixr2iovVarSd <- function(val) {
                            .curEval <- ""
                          }
                          .curTheta$backTransform <-
-                           paste0(switch(.xform,
+                           paste0(switch(.xf1,
                                   "sd" = "nlmixr2iovSd",
                                   "var" = "nlmixr2iovVar",
                                   "logsd" = "nlmixr2iovLogsd",
                                   "logvar" = "nlmixr2iovLogvar"),
                                   ifelse(.curEval=="exp", "Cv", "Sd"))
-                         if (.xform %in% c("sd", "var")) {
+                         if (.xf1 %in% c("sd", "var")) {
                            .curTheta$lower <- 0 # doesn't work with saem
                          }
                          .env$maxtheta <- .curTheta$ntheta <- .env$maxtheta + 1L
                          .env$thetas <- rbind(.env$thetas, .curTheta)
 
                          .env$extraThetas <- c(.env$extraThetas, .curTheta)
-                         if (.iovMethod != "omega") {
+                         if (.m1 != "omega") {
                            ## "theta" mode: one unit-variance eta per
                            ## occasion, fixed, scaled by the magnitude
                            ## theta above.  Under "omega" the etas are
@@ -533,21 +549,21 @@ nlmixr2iovVarSd <- function(val) {
                              .env$extraEtas <- c(.env$extraEtas, .curEta)
                            }
                          }
-                         if (.xform == "logsd") {
+                         if (.xf1 == "logsd") {
                            str2lang(paste0("rx.", v, " <- exp(", v, ")*(",
                                            paste(paste0("rx.", v, ".", .lvls[[l1]],
                                                         "*(", l1,
                                                         " == ", .lvls[[l1]], ")"),
                                                  collapse="+"),
                                            ")"))
-                         } else if (.xform == "logvar") {
+                         } else if (.xf1 == "logvar") {
                              str2lang(paste0("rx.", v, " <- sqrt(exp(", v, "))*(",
                                              paste(paste0("rx.", v, ".", .lvls[[l1]],
                                                           "*(", l1,
                                                           " == ", .lvls[[l1]], ")"),
                                                    collapse="+"),
                                              ")"))
-                         } else if (.xform == "sd") {
+                         } else if (.xf1 == "sd") {
                            # |theta| written as sqrt(theta^2): identical value,
                            # but symengine differentiates it EXACTLY
                            # (theta/sqrt(theta^2) = sign) -- abs() is rewritten
@@ -560,7 +576,7 @@ nlmixr2iovVarSd <- function(val) {
                                                         " == ", .lvls[[l1]], ")"),
                                                  collapse="+"),
                                            ")"))
-                         } else if (.xform == "var") {
+                         } else if (.xf1 == "var") {
                            # sqrt(|theta|) as (theta^2)^(1/4), same reasoning
                            # as the "sd" branch above (#952)
                            str2lang(paste0("rx.", v, " <- ((", v, ")^2)^0.25*(",
@@ -574,7 +590,7 @@ nlmixr2iovVarSd <- function(val) {
                        lapply(.var, function(v) {
                          str2lang(paste0(v, ".rx <- rx.", v))
                        }))
-                       if (.iovMethod == "omega") {
+                       if (.m1 == "omega") {
                          .uiIovOmegaEtas(.var, .lvls[[l1]], l1, .iniDf,
                                          .eta1, .env)
                        }
@@ -668,7 +684,10 @@ nlmixr2iovVarSd <- function(val) {
           .tmp$ntheta <- NA_real_
           .tmp
         }
-        .omegaMode <- identical(.uiIovEnv$iovMethod, "omega")
+        ## PER VARIABLE, since the expansion is chosen per level of
+        ## variability: `iovMaster` holds an entry exactly for the
+        ## occasion parameters that got the shared-block treatment
+        .omegaVar <- function(v) !is.null(.uiIovEnv$iovMaster[[v]])
         # in "omega" mode the magnitude theta is FIXED AT ONE and the
         # variability lives in the shared (`same()`) block, so the estimate
         # is read off that block's master row rather than back-transformed
@@ -714,7 +733,7 @@ nlmixr2iovVarSd <- function(val) {
         for (i in .diagI) {
           .v <- .iovDf$name[i]
           .w <- which(.thetaDf$name == .v)
-          if (.omegaMode) {
+          if (.omegaVar(.v)) {
             .est <- .masterEst(.uiIovEnv$iovMaster[[.v]])
           } else {
             .fun <- sub("Cv$", "Sd", .thetaDf[.w, "backTransform"])
@@ -875,7 +894,7 @@ nlmixr2iovVarSd <- function(val) {
       .sdIov <- sqrt(.est)
 
       .dt <- NULL
-      .omegaModeFin <- identical(.uiIovEnv$iovMethod, "omega")
+      .omegaModeFin <- function(d) !is.null(.uiIovEnv$iovMaster[[d]])
       .iov <- lapply(.n, function(var) {
         .cur <- .omega[[var]]
         .dn <- dimnames(.cur)[[1]]
@@ -895,7 +914,7 @@ nlmixr2iovVarSd <- function(val) {
           # Under `iovMethod = "omega"` the eta already carries the whole
           # magnitude -- the theta is fixed at one -- so there is nothing
           # to rescale.
-          if (!.omegaModeFin) {
+          if (!.omegaModeFin(d)) {
             .curd[[d]] <- .curd[[d]] *.sdIov[d]
           }
           if (is.null(.dt)) {
@@ -928,14 +947,17 @@ nlmixr2iovVarSd <- function(val) {
       .bsv <- which(grepl("BSV", names(.parFixedDf)))
       .est <- which(grepl("Est", names(.parFixedDf)))
 
-      if (identical(.uiIovEnv$iovMethod, "omega")) {
-        # The magnitude theta is fixed at one here, so its back-transformed
-        # cell is `nlmixr2iovSdCv(1)` -- a constant 131%, not an estimate.
-        # Take the CV from the variance that WAS estimated: the restored
-        # occasion block on the final `iniDf`.
+      # For a shared-block occasion parameter the magnitude theta is fixed
+      # at one, so its back-transformed cell is `nlmixr2iovSdCv(1)` -- a
+      # constant 131%, not an estimate.  Take the CV from the variance
+      # that WAS estimated: the restored occasion block on the final
+      # `iniDf`.  Only those parameters; a level expanded the old way
+      # still reports its magnitude theta.
+      .omegaVars <- intersect(.uiIovEnv$iovVars, names(.uiIovEnv$iovMaster))
+      if (length(.omegaVars) > 0L) {
         .finIni <- ret$env$ui$iniDf
-        .parFixedDf[.uiIovEnv$iovVars, .bck] <-
-          vapply(.uiIovEnv$iovVars, function(.v) {
+        .parFixedDf[.omegaVars, .bck] <-
+          vapply(.omegaVars, function(.v) {
             .wv <- which(.finIni$name == .v & !is.na(.finIni$neta1) &
                            .finIni$neta1 == .finIni$neta2)
             if (length(.wv) != 1L) return(NA_real_)  # nocov
