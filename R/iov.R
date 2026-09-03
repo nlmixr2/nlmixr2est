@@ -96,6 +96,50 @@ nlmixr2iovVarSd <- function(val) {
 # in nlmixr2 fits
 .uiIovEnv <- new.env(parent = emptyenv())
 .uiIovEnv$iovVars <- NULL
+#' Estimation methods that honour a repeated (`same()`) omega block
+#'
+#' `iovMethod="omega"` only means anything for a method that actually
+#' shares the repeated block's parameters while estimating.  That
+#' sharing lives in `.foceiOptEnvSetupBounds()` (`R/focei.R`), which
+#' passes `same=` to `rxSymInvCholCreate()`, so the FOCEi family gets it
+#' and nothing else does.
+#'
+#' SAEM in particular must NOT be given this expansion: its omega is a
+#' moment M-step in C++ (`Gamma2_phi1`) with no notion of a shared
+#' block, so each occasion's block would be estimated independently and
+#' `.uiFinalizeIov()` would then report occasion one and silently
+#' discard the rest.  The same goes for the variational (`vae`, `fbvi`,
+#' `emvi`), nonparametric (`npag`, `npb`, ...) and importance-sampling
+#' (`imp`, `impmap`, `qrpem`) methods, which build their own omega.
+#'
+#' A method left out here keeps the long standing behaviour: a
+#' correlated occasion block is refused outright.
+#'
+#' @noRd
+.iovSameMethods <- c("focei", "foce", "focep", "laplace", "agq",
+                     "foceif", "focef", "focepf", "agqf",
+                     "ifoce", "ifocep", "ifocei", "ilaplace", "iagq",
+                     "ifoceif", "ifocef", "ifocepf", "iagqf",
+                     "mfoce", "mfocep", "mfocei", "mlaplace", "magq",
+                     "mfoceif", "mfocef", "mfocepf", "magqf")
+
+#' Does this estimation method honour a repeated (`same()`) omega block?
+#'
+#' @param est estimation method name
+#' @return TRUE when the shared-block expansion may be used
+#' @noRd
+#' @author Matthew L. Fidler
+.isIovSameMethod <- function(est) {
+  if (length(est) != 1L || is.na(est)) return(FALSE)
+  ## an out-of-tree method can opt in the way it declares `iov` itself
+  .v <- as.character(utils::methods("nlmixr2Est"))
+  if (paste0("nlmixr2Est.", est) %in% .v) {
+    .a <- attr(utils::getS3method("nlmixr2Est", est), "iovSame")
+    if (isTRUE(.a)) return(TRUE)
+  }
+  est %in% .iovSameMethods
+}
+
 #' Build the per-occasion eta blocks for `iovMethod="omega"`
 #'
 #' Occasion one IS the estimated block: it takes the variances and
@@ -267,14 +311,27 @@ nlmixr2iovVarSd <- function(val) {
         !(.iovMethod %in% c("auto", "theta", "omega"))) {
     .iovMethod <- "auto"
   }
+  ## Only a method that actually shares the repeated block's parameters
+  ## may be given this expansion; for anything else `same()` would be
+  ## silently ignored during estimation and each occasion's block
+  ## estimated on its own.
+  .sameOk <- .isIovSameMethod(est)
   if (.iovMethod == "auto") {
-    .iovMethod <- if (length(.wOff) > 0L) "omega" else "theta"
+    .iovMethod <- if (length(.wOff) > 0L && .sameOk) "omega" else "theta"
+  }
+  if (.iovMethod == "omega" && !.sameOk) {
+    stop("'iovMethod=\"omega\"' repeats one estimated omega block per ",
+         "occasion, which the estimation method '", est, "' does not ",
+         "honour; use a FOCEi family method for correlated ",
+         "inter-occasion random effects",
+         call.=FALSE)
   }
   if (.iovMethod == "theta" && length(.wOff) > 0L) {
-    stop("correlated inter-occasion random effects are not supported: ",
+    stop("correlated inter-occasion random effects are not supported",
+         if (.sameOk) "" else paste0(" by '", est, "'"), ": ",
          paste0("'", .iniDf$name[.wOff], "'", collapse=", "),
-         "; give each occasion parameter its own variance, or use ",
-         "`iovMethod=\"omega\"`",
+         "; give each occasion parameter its own variance",
+         if (.sameOk) ", or use `iovMethod=\"omega\"`" else "",
          call.=FALSE)
   }
   .uiIovEnv$iovMethod <- .iovMethod

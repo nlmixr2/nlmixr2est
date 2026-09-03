@@ -249,3 +249,47 @@ test_that("analytic covariance bows out for an 'omega' IOV fit", {
   # the occasion variances are the ESTIMATED ones, not the theta's 1
   expect_true(all(diag(.fit$omega$occ) != 1))
 })
+
+test_that("only a method that honours the shared block may use it", {
+  skip_on_cran()
+  expect_true(.isIovSameMethod("focei"))
+  expect_true(.isIovSameMethod("laplace"))
+  # SAEM's omega is a moment M-step with no notion of a repeated block;
+  # the variational and nonparametric methods build their own omega
+  expect_false(.isIovSameMethod("saem"))
+  expect_false(.isIovSameMethod("npag"))
+  expect_false(.isIovSameMethod("fbvi"))
+  expect_false(.isIovSameMethod(NA_character_))
+  expect_false(.isIovSameMethod(character(0)))
+})
+
+test_that("saem still refuses a correlated occasion block", {
+  skip_on_cran()
+  # This is the one that would go WRONG rather than merely unsupported:
+  # SAEM would estimate each occasion's block independently and
+  # `.uiFinalizeIov()` would report occasion one and discard the rest.
+  # `assertRxUiIovNoCor()` cannot catch it -- by the time SAEM runs, the
+  # block has already been expanded to `id`/`id:same:` rows whose BASE
+  # condition is "id" -- so `"auto"` must never choose "omega" here.
+  expect_error(
+    .uiApplyIov(rxode2::rxode2(.corMod()), "saem", .sameData(),
+                saemControl(print = 0)),
+    "not supported by 'saem'")
+  # asking for it outright is refused by name, not silently downgraded
+  expect_error(
+    .uiApplyIov(rxode2::rxode2(.corMod()), "saem", .sameData(),
+                foceiControl(iovMethod = "omega")),
+    "does not honour")
+})
+
+test_that("the FOCEi family really shares the repeated block", {
+  skip_on_cran()
+  # Running is not enough: the reported `$occ` is read off occasion one,
+  # so two independently estimated blocks would look fine.  The
+  # parameter count is the tell -- 4 thetas + eta.ka + ONE 2x2 (3) = 8,
+  # against 11 if each occasion were estimated on its own.
+  .fit <- suppressWarnings(suppressMessages(
+    nlmixr2est::nlmixr2(.corMod(), .sameData(), "focei",
+                        foceiControl(print = 0, covMethod = ""))))
+  expect_equal(attr(logLik(.fit), "df"), 8L)
+})

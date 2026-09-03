@@ -20,6 +20,13 @@
     and the correlation lives in the estimated block.
   - `"auto"` picks `"omega"` when the occasion block has any off-diagonal
     element and `"theta"` otherwise.
+  - `"auto"` only reaches for `"omega"` on an estimation method that
+    honours the repeated block -- the FOCEi family.  `saem`, the
+    variational (`vae`, `fbvi`, `emvi`), nonparametric (`npag`, ...) and
+    importance-sampling (`imp`, `impmap`, `qrpem`) methods estimate
+    omega elsewhere and still refuse a correlated occasion block, since
+    they would otherwise estimate each occasion independently and report
+    only the first.
 
   The two expansions are the same statistical model, verified exactly: with
   the occasion variance at 1 (where the two parameterizations coincide) they
