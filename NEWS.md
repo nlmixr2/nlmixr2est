@@ -58,6 +58,13 @@
   column built out of the *first* one's names, so nothing matched.  This
   affected the existing IOV expansion too, not just the new one.
 
+- Two occasion parameters whose names share a prefix (`iov.v` and
+  `iov.v2`) had their per-occasion columns mixed together in
+  `fit$iov$<level>` and `fit$shrink`, again leaving every occasion `NA`.
+  The columns are named `rx.<param>.<occ>` and were selected by
+  substring, so `iov.v` also matched `rx.iov.v2.1`.  Also present on the
+  existing IOV expansion.
+
 - A second `focei` fit of a model whose dosing depends on an eta (`f(depot) <-
   exp(eta.f)`, `alag()`, `dur()`, `rate()`) no longer silently returns the
   wrong answer.  The compiled model bundle is cached as model TEXT and

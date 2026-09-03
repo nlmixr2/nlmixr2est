@@ -293,3 +293,44 @@ test_that("the FOCEi family really shares the repeated block", {
                         foceiControl(print = 0, covMethod = ""))))
   expect_equal(attr(logLik(.fit), "df"), 8L)
 })
+
+test_that("occasion parameters whose names share a prefix stay separate", {
+  skip_on_cran()
+  # The per-occasion columns are named `rx.<param>.<occ>`, and they used
+  # to be selected by SUBSTRING, so `iov.v` also matched `rx.iov.v2.1`.
+  # The two parameters' columns were mixed and every occasion came out
+  # NA.  Reproduces on the long standing "theta" path.
+  .f <- .sameMod("iov.v ~ 0.1 | occ; iov.v2 ~ 0.2 | occ",
+                 "cl <- exp(tcl + iov.v)\n v <- exp(tv + iov.v2)")
+  .fit <- suppressWarnings(suppressMessages(
+    nlmixr2est::nlmixr2(.f(), .sameData(), "focei",
+                        foceiControl(print = 0, covMethod = "",
+                                     iovMethod = "theta"))))
+  .occ <- .fit$iov$occ
+  expect_true(all(!is.na(.occ$occ)))
+  expect_equal(sort(unique(.occ$occ)), c(1L, 2L))
+  # one row per subject per occasion, not doubled up
+  expect_equal(nrow(.occ), 2L * length(unique(.sameData()$ID)))
+  # and the two parameters are not the same column reused
+  expect_false(isTRUE(all.equal(.occ$iov.v, .occ$iov.v2)))
+  expect_false(any(grepl("NAs introduced", .fit$runInfo)))
+})
+
+test_that("analytic covariance bows out for a FIXED single-occasion block", {
+  skip_on_cran()
+  # The narrow residual of the gate: an all-`fix()`ed occasion block
+  # read as "theta" when the test was on `fix` alone, and with one
+  # occasion there is no repeated block for `omegaSameMap` to report.
+  # "theta" is the mode that leaves these etas fixed AT ONE, so the
+  # estimate has to be part of the test.
+  .d <- .sameData()
+  .d$occ <- 1L
+  .f <- .sameMod("iov.cl + iov.v ~ fix(0.1,\n 0.03, 0.2) | occ",
+                 "cl <- exp(tcl + iov.cl)\n v <- exp(tv + iov.v)")
+  .fit <- suppressWarnings(suppressMessages(
+    nlmixr2est::nlmixr2(.f(), .d, "focei",
+                        foceiControl(print = 0, covMethod = "analytic"))))
+  expect_false(identical(.fit$covMethod, "analytic"))
+  # the block is reported at the values it was fixed to
+  expect_equal(unname(diag(.fit$omega$occ)), c(0.1, 0.2))
+})

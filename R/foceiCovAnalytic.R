@@ -652,7 +652,12 @@
       .w <- which(grepl(paste0("^rx\\.", gsub(".", "\\.", .v, fixed = TRUE),
                                "\\.[0-9]+$"), .idfA$name) &
                     !is.na(.idfA$neta1) & .idfA$neta1 == .idfA$neta2)
-      length(.w) > 0L && !all(.idfA$fix[.w])
+      ## "theta" leaves these etas FIXED AT ONE and puts the magnitude in
+      ## the theta; anything else is the shared-block expansion.  Testing
+      ## `fix` alone read an all-`fix()`ed correlated block as "theta"
+      ## and, with a single occasion (so no repeated block for
+      ## `omegaSameMap` to report), slipped past both gates.
+      length(.w) > 0L && !all(.idfA$fix[.w] & .idfA$est[.w] == 1)
     }, logical(1), USE.NAMES = FALSE)
     if (any(.omegaIov))
       return(.foceiAnalyticFallback("IOV with a shared (SAME) omega block"))

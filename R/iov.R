@@ -794,6 +794,16 @@ nlmixr2iovVarSd <- function(val) {
 
       .nid <- length(ret$env$eta$ID)
 
+      ## The per-occasion columns of an occasion parameter `d` are named
+      ## `rx.<d>.<occ>`.  A SUBSTRING match also picks up `rx.<d>2.<occ>`
+      ## whenever one parameter's name is a prefix of another's
+      ## (`iov.v` and `iov.v2`), which silently mixed the two
+      ## parameters' columns together and left the occasion NA.
+      .iovOccCols <- function(d, nms) {
+        which(grepl(paste0("^rx\\.",
+                           gsub(".", "\\.", d, fixed=TRUE),
+                           "\\.[^.]+$"), nms))
+      }
       # Fix shrinkage, now split out by iov variable
       .shrink <- ret$env$shrink
       .w <- which(names(.shrink) %in% .uiIovEnv$iovDrop)
@@ -805,7 +815,7 @@ nlmixr2iovVarSd <- function(val) {
         .dn <- dimnames(.cur)[[1]]
         do.call(`cbind`,
                 lapply(.dn, function(d) {
-                  .w <- c(which(grepl(d, names(.shrinkN), fixed=TRUE)))
+                  .w <- .iovOccCols(d, names(.shrinkN))
                   ## nocov start
                   # simply testing edge cases with warnings
                   if(length(.w)==0L) {
@@ -874,7 +884,7 @@ nlmixr2iovVarSd <- function(val) {
         # parameter's `rx.<name>.<occ>` spellings
         .dFirst <- .dn[1]
         for (d in .dn) {
-          .w <- c(1L,which(grepl(d, names(.iov), fixed=TRUE)))
+          .w <- c(1L, .iovOccCols(d, names(.iov)))
           .curd <- data.table::data.table(.iov[,.w])
           .curd <- data.table::melt(.curd,
                                     id.vars=names(.curd)[1],
