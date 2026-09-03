@@ -263,6 +263,20 @@ nmTest({
     # restores the comparison this test is actually making -- that the un-adapted
     # path is unchanged -- rather than re-recording a baseline whose whole value
     # is being old.
+    # RE-RECORDED at e79f68ecc ("impmap/imp: default combSens=TRUE, fix odeSwap
+    # rx->ndiff staleness").  The previous values were recorded on 2026-07-12,
+    # BEFORE that commit fixed odeSwapSolveInd() failing to restore rx->ndiff per
+    # peer model in the shared solve pool -- so linCmtB()'s cached Jacobian could
+    # be read stale, built for a different peer's structural-parameter set, and
+    # impmap's inner Hessian (impGetHessian) is built on it.  Correcting the
+    # Hessian moves the proposal, which is precisely the "modes + Cholesky" the
+    # samples below are pushed through, so the old baseline was pinning the
+    # buggy Hessian.  Bisected (git bisect over 1335 commits); the drift was
+    # 2.05% on fixef and is not attributable to rxode2 -- nlmixr2est at the
+    # recording commit reproduces the OLD values against today's rxode2 to 2e-9.
+    #
+    # Regenerate with inst/tools/genQrpemBaseline.R, and only when a change is
+    # understood to move this fit on purpose -- never to make a diff go away.
     .ref <- readRDS(test_path("baselines", "qrpem-baseline-ref.rds"))
     .f <- suppressWarnings(
       nlmixr2(.oneCmt, nlmixr2data::theo_sd, "impmap",

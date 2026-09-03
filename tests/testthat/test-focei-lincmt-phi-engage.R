@@ -12,6 +12,11 @@
 # fault; only a fit can.  rxode2 carries bench/lincmt_phi_fit_engage_check.R
 # as the reproducer, and this is the durable regression test.
 #
+# linCmtSensPhi picks WHICH assembly: 0 off, 1 the probe-built matrix this
+# engage rule governs, 2 (TRUE, the default) the closed form, which needs no
+# recurrence evidence.  The engage-rule tests below must therefore ask for 1
+# explicitly; the default is covered by its own test.
+#
 # Skips cleanly on an rxode2 without the mechanism.
 
 # The model function is an rxode2 ini()/model() DSL block, which lintr's
@@ -46,7 +51,8 @@
   if (!("linCmtSensPhi" %in% names(formals(rxode2::rxSolve)))) {
     return(FALSE)
   }
-  "phiBuild" %in% names(utils::getFromNamespace("linCmtSeqStats", "rxode2")(FALSE))
+  .st <- names(utils::getFromNamespace("linCmtSeqStats", "rxode2")(FALSE))
+  all(c("phiBuild", "phiAnalyticRows") %in% .st)
 }
 
 .phiStats <- function(reset = FALSE) {
@@ -69,7 +75,9 @@
 }
 
 # One posthoc fit, returning the counters it accumulated and its objective.
-.phiFit <- function(times, phi = TRUE) {
+# `phi` is passed to linCmtSensPhi verbatim: 0 off, 1 probe-built matrix,
+# 2 (or TRUE, the default) closed-form assembly.
+.phiFit <- function(times, phi = 1L) {
   .dat <- .phiDat(times)
   invisible(.phiStats(TRUE))
   .rx <- rxode2::rxControl(
@@ -92,7 +100,7 @@
 test_that("intervals that never repeat build no transition matrix in a fit", {
   skip_on_cran()
   skip_if_not(.phiFitCapable())
-  .r <- .phiFit(.phiTimesNonRepeating)
+  .r <- .phiFit(.phiTimesNonRepeating, phi = 1L)
   # The regression this pins: a re-query of the same row is not evidence of
   # recurrence, so nothing may be assembled here.
   expect_equal(.r$stats[["phiBuild"]], 0L)
@@ -102,7 +110,7 @@ test_that("intervals that never repeat build no transition matrix in a fit", {
 test_that("a repeating design engages the matrix and reuses it across rows", {
   skip_on_cran()
   skip_if_not(.phiFitCapable())
-  .r <- .phiFit(.phiTimesRepeating)
+  .r <- .phiFit(.phiTimesRepeating, phi = 1L)
   expect_gt(.r$stats[["phiBuild"]], 0L)
   # Reuse measured at 92 rows per build; a conservative floor catches a
   # collapse back to per-row assembly without pinning the exact ratio.
@@ -112,12 +120,25 @@ test_that("a repeating design engages the matrix and reuses it across rows", {
 test_that("engaging the transition matrix does not move the objective", {
   skip_on_cran()
   skip_if_not(.phiFitCapable())
-  .on <- .phiFit(.phiTimesRepeating, phi = TRUE)
-  .off <- .phiFit(.phiTimesRepeating, phi = FALSE)
-  # linCmtSensPhi=FALSE must leave the matrix path entirely unused.
+  .on <- .phiFit(.phiTimesRepeating, phi = 1L)
+  .off <- .phiFit(.phiTimesRepeating, phi = 0L)
+  # linCmtSensPhi=0 must leave the matrix path entirely unused.
   expect_equal(.off$stats[["phiBuild"]], 0L)
   expect_gt(.on$stats[["phiBuild"]], 0L)
   # The two are the same exact closed-form solution evaluated in different
   # operation orders, so they agree to floating-point round-off.
+  expect_equal(.on$objf, .off$objf, tolerance = 1e-8)
+})
+
+test_that("the default closed-form assembly carries the fit's rows", {
+  skip_on_cran()
+  skip_if_not(.phiFitCapable())
+  # linCmtSensPhi=TRUE is mode 2: assembled from its closed form for any
+  # interval, so it needs no recurrence evidence and never probes.
+  .on <- .phiFit(.phiTimesNonRepeating, phi = TRUE)
+  expect_gt(.on$stats[["phiAnalyticRows"]], 0L)
+  expect_equal(.on$stats[["phiBuild"]], 0L)
+  .off <- .phiFit(.phiTimesNonRepeating, phi = 0L)
+  expect_equal(.off$stats[["phiAnalyticRows"]], 0L)
   expect_equal(.on$objf, .off$objf, tolerance = 1e-8)
 })

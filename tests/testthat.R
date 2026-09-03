@@ -107,7 +107,8 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
   # batch 6
   c(
     "focei-llik", "iov", "iov-zero-eta", "saem-mix", "saem-mix-regress",
-    "posthoc", "ar-est", "mu-family", "uninformative-etas-revisit"
+    "posthoc", "ar-est", "mu-family", "uninformative-etas-revisit",
+    "saem-iov-twolevel-fit", "iov-loglik-1000"
   ),
   # batch 7
   c(
@@ -199,4 +200,12 @@ if (nzchar(.batch)) {
 }
 # Locally (and on CRAN) .filter stays NULL -> run everything.
 
-test_check("nlmixr2est", stop_on_failure = FALSE, filter = .filter, perl = TRUE)
+# stop_on_failure MUST stay TRUE (the default).  It was set to FALSE in
+# 4af6a7eba as a debugging aid ("Be more verbose in testthat to track-down
+# future seg faults"), and with it R CMD check never errors on a test failure
+# -- so `checking tests` passed no matter what.  The run on main at 722e5775
+# reported SUCCESS while its three shards printed FAIL 8, FAIL 2 and FAIL 3;
+# thirteen real failures had reached main with a green badge the whole way.
+# If a segfault ever needs that verbosity again, set it for the one run
+# (R_TESTTHAT_... / an env guard), never in the committed harness.
+test_check("nlmixr2est", filter = .filter, perl = TRUE)

@@ -154,18 +154,24 @@ nmTest({
   })
 
   test_that("a block is selected whole, or not at all", {
-    ## The motivating case.  span{1, armLow, armHi} == span{1, lin, armLow} at the
-    ## same column count and so the same penalty -- an exact tie.  Without blocks
-    ## the tie-break lands on a form that does not read as a hockey stick.
+    ## The motivating case.  lin == armLow + armHi EXACTLY, so all three
+    ## two-column subsets span the same space at the same penalty -- a three-way
+    ## exact tie (their RSS agree to every printed digit).  Which one the
+    ## unconstrained search returns is an arbitrary tie-break and is not stable
+    ## across platforms: this returns {lin, armLow} on one and {lin, armHi} on
+    ## another.  So assert only what is determined -- it takes two columns --
+    ## and let the blocked search below carry the real claim, which is that
+    ## blocks make the answer the two arms rather than whichever of the three
+    ## tied forms the search happened to reach.
     N <- 80L
     X <- .hockeyDesign(N, 5)
     set.seed(5)
     y <- as.numeric(1 + X[, "armLow"] * (-0.03) + X[, "armHi"] * 0.06 +
                       rnorm(N, sd = 0.2))
     grp <- c(1L, 1L, 1L)
-    ## unconstrained: lin + one arm, the tie-equivalent parameterization
+    ## unconstrained: two columns, one of the tie-equivalent parameterizations
     free <- vaeBestSubset_(matrix(y, ncol = 1), X, 0.25, FALSE, log(N), "lifo")
-    expect_equal(which(free$selected[1, ] == 1L), c(1L, 2L))
+    expect_length(which(free$selected[1, ] == 1L), 2L)
     ## group only: at most ONE column, so two slopes are unreachable
     gOnly <- vaeBestSubset_(matrix(y, ncol = 1), X, 0.25, FALSE, log(N), "lifo", grp)
     expect_length(which(gOnly$selected[1, ] == 1L), 1L)
