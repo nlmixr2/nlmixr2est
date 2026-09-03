@@ -3852,10 +3852,9 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     # innerOpt="auto" resolves to n1qn1 here, which cannot honor a quasi-Newton
     # hessianMethod.  foceiSetup_ refuses this too, but catching it before the
     # fit starts keeps the reason from being reported as "Could not fit data".
-    if (.control$hessianMethod != 1L && .control$innerOpt == 4L) {
-      stop("hessianMethod = \"", names(.hessianMethodIdx)[.control$hessianMethod],
-        "\" requires innerOpt = \"trust\" (\"auto\" picks \"n1qn1\" here)",
-        call. = FALSE
+    if (.control$innerOpt == 4L) {
+      .foceiAssertHessianMethod(.control$hessianMethod, 1L,
+        note = " (\"auto\" picks \"n1qn1\" here)"
       )
     }
     # A log-likelihood / generalized endpoint has no Gaussian add/prop a/B/c error

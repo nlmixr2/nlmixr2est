@@ -7,6 +7,22 @@
 # innerOpt="trust" (hessianQNEligible, src/inner.cpp).
 .hessianMethodIdx <- c("fd" = 1L, "bfgs" = 2L, "sr1" = 3L, "bofill" = 4L)
 
+#' Refuse a hessianMethod no inner optimizer would consult.
+#'
+#' `innerOpt` must already be resolved: foceiControl() passes `4L` ("auto")
+#' through untouched because needOptimHess is not known there yet, and
+#' R/focei.R re-checks with the value it resolves to.
+#' @noRd
+.foceiAssertHessianMethod <- function(hessianMethod, innerOpt, note = "") {
+  if (hessianMethod == 1L || innerOpt == 3L || innerOpt == 4L) {
+    return(invisible(TRUE))
+  }
+  stop("hessianMethod = \"", names(.hessianMethodIdx)[hessianMethod],
+    "\" requires innerOpt = \"trust\"", note,
+    call. = FALSE
+  )
+}
+
 .foceiControlInternal <- c(
   "genRxControl", "resetEtaSize", "foceType",
   "resetThetaSize", "resetThetaFinalSize",
@@ -1563,16 +1579,7 @@ foceiControl <- function(sigdig = 3, #
   } else {
     hessianMethod <- setNames(.hessianMethodIdx[match.arg(hessianMethod)], NULL)
   }
-  # A quasi-Newton inner Hessian is only ever consulted under innerOpt="trust",
-  # so any other pinned inner optimizer would silently ignore it.  innerOpt=4
-  # ("auto") is not decided yet -- foceiSetup_ raises the same error there once
-  # needOptimHess resolves it.
-  if (hessianMethod != 1L && innerOpt != 3L && innerOpt != 4L) {
-    stop("hessianMethod = \"", names(.hessianMethodIdx)[hessianMethod],
-      "\" requires innerOpt = \"trust\"",
-      call. = FALSE
-    )
-  }
+  .foceiAssertHessianMethod(hessianMethod, innerOpt)
   checkmate::assertNumeric(trustConf, lower = 0, upper = 1, finite = TRUE, any.missing = FALSE, len = 1)
   if (trustConf <= 0 || trustConf >= 1) {
     # qchisq(0, df)==0 (zero trust-region radius, no step ever taken) and
