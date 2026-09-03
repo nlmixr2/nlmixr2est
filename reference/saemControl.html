@@ -85,6 +85,7 @@
 <span>  handleUninformativeEtas <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  revisitUninformativeEtas <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  iovXform <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"sd"</span>, <span class="st">"var"</span>, <span class="st">"logsd"</span>, <span class="st">"logvar"</span><span class="op">)</span>,</span>
+<span>  iovMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"twoLevel"</span>, <span class="st">"collapsed"</span>, <span class="st">"theta"</span><span class="op">)</span>,</span>
 <span>  boundedTransform <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  eventSens <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"jump"</span>, <span class="st">"fd"</span><span class="op">)</span>,</span>
 <span>  mixProbMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"regress"</span>, <span class="st">"regularized"</span>, <span class="st">"annealed"</span><span class="op">)</span>,</span>
@@ -446,6 +447,22 @@ rest of the fit.  Skipped for mixture models and when
 <dt id="arg-iovxform">iovXform<a class="anchor" aria-label="anchor" href="#arg-iovxform"></a></dt>
 <dd><p>Transformation used on the diagonal of the IOV: one of
 <code>"sd"</code>, <code>"var"</code>, <code>"logsd"</code>, or <code>"logvar"</code>.</p></dd>
+
+
+<dt id="arg-iovmethod">iovMethod<a class="anchor" aria-label="anchor" href="#arg-iovmethod"></a></dt>
+<dd><p>How inter-occasion variability (`iov.x ~ v | occ`) is
+estimated.  <code>"theta"</code> uses the shared pre-processing rewrite, which
+carries the magnitude as a population parameter multiplying per-occasion
+unit-variance etas (the form every other estimation method uses).
+<code>"twoLevel"</code> (the default) keeps the occasion term as a second
+variance component and estimates it with the closed-form updates of Panhard
+and Samson (2009), which is what the SAEM kernel is built around for every
+other variance.  <code>"collapsed"</code> additionally uses that paper's own
+sampler: one parameter per occasion carrying <code>mu + b_i + c_ik</code>
+together, with a compound-symmetric prior, instead of sampling <code>b_i</code>
+and <code>c_ik</code> separately.  It targets the same estimates and differs only
+in how well the chain mixes.  A model the newer handling does not cover
+falls back to <code>"theta"</code> on its own.</p></dd>
 
 
 <dt id="arg-boundedtransform">boundedTransform<a class="anchor" aria-label="anchor" href="#arg-boundedtransform"></a></dt>
