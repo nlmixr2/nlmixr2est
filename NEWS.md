@@ -1,7 +1,97 @@
 # nlmixr2est 7.0.3
 
+## New features
+
+- `saemControl(iovMethod = "twoLevel")` estimates inter-occasion variability
+  the way the rest of `saem` estimates a variance.  The shared pre-processing
+  rewrite that every estimation method uses carries the occasion magnitude as a
+  population parameter multiplying per-occasion unit-variance etas, which makes
+  it non-mu-referenced -- so `saem` had to estimate a *variance* through its
+  fixed-effect-only path, a stochastic sampled mean over draws whose
+  pseudo-variance is deliberately annealed followed by a bounded direct
+  optimization, while every other variance component gets a closed-form M-step.
+  In practice the estimate collapsed toward zero.  `"twoLevel"` writes the
+  occasion term out as a second variance component instead, following Panhard
+  and Samson (2009): one zero-mean eta per occasion level entering additively,
+  with the per-occasion variances constrained equal so they estimate the single
+  inter-occasion variance the model declares.  A model the newer handling does
+  not cover (more than one occasion variable, a correlated occasion term, an
+  occasion parameter that is not mu-referenced) falls back to the shared
+  rewrite and says so in the fit's `$runInfo`.  Either way the fit presents the
+  same: `$omega` split into `$id` and `$occ`, the `iov.x ~ v | occ` row restored
+  in `$ui`, and an `$iov` table of the per-occasion deviations.  `$cov` carries
+  one row for the occasion variance, `om.iov.x`, rather than one per occasion
+  level under an internal name -- the per-occasion columns estimate a single
+  variance, so they are contracted by averaging (the delta method for
+  `Psi = mean(v_1, ..., v_K)`).
+
+  `iovMethod = "collapsed"` is a third, opt-in setting that additionally uses the
+  paper's own sampler: one parameter per occasion carrying `mu + b_i + c_ik`
+  together under a compound-symmetric prior, rather than sampling `b_i` and
+  `c_ik` separately.  It targets the same estimates -- the shared mean and the
+  compound-symmetric block are both imposed exactly, not by projection -- and
+  differs only in how the chain mixes.  Note the Gaussian-quadrature objective
+  is unreliable for it when the inter-occasion variance is much smaller than the
+  between-subject one, because the prior is then nearly degenerate along `b` and
+  an axis-aligned grid covers that badly; compare fits on the estimates rather
+  than on `objf`.
+
+  On the paper's own design (n = 24, 1000 replicates) `"collapsed"` recovers
+  the inter-occasion variances less accurately than the default -- mean
+  absolute relative bias 7.5% against 4.2%, and -16.1% on one component
+  where the default gets -6.8% -- which is why it is opt-in.  It does run
+  somewhat faster.
+
+  **`"twoLevel"` is now the default, so `saem` IOV estimates change.**  They
+  were biased toward zero, badly.  On the paper's own simulation design
+  (n = 24, inter-occasion variances of 0.0025/0.01/0.01, 1000 replicates each)
+  the shared rewrite recovers them with -94.7%/-89.0%/-43.6% relative bias --
+  it collapses them toward zero, and the variance it does not capture instead
+  inflates the residual error by 25%.  The two-level handling gets
+  -2.2%/-6.8%/-3.6%, less biased than the figures Panhard and Samson report
+  for their own implementation (-8.7%/-10.9%/-5.4%), and leaves the residual
+  error 2.9% high.  `iovMethod = "theta"` restores the old behavior.
+
 ## Bug fixes
 
+- `saem`'s Gaussian-quadrature objective no longer silently attempts a grid it
+  cannot finish.  The grid is `nnodesGq^nphi1` whole-population solves and
+  `nphi1` grows by one per occasion level for every IOV parameter, so three
+  occasion parameters over two occasions already asks for `3^9 = 19683` solves
+  and four over three asks for `3^16`, which is 43 million.  The node count is
+  now stepped down until the grid fits a budget
+  (`getOption("nlmixr2.saemGqMaxNodes", 50000)`), and the fit says which count
+  it used in `$runInfo`; one node is the Laplace approximation, which the
+  progress message already names.
+- `saem` now gives the same answer every time for a model whose residual error
+  needs the internal optimizer -- anything richer than a pure `add()` or pure
+  `prop()` endpoint, so `combined1()`/`combined2()`, `pow()`, and the
+  transform-both-sides variants.  Repeating one fit in a session, same data and
+  same `seed`, could return a different residual estimate each time (measured:
+  `add.sd` 0.0859, 0.0877, then 0.1807 for three identical calls).  The residual
+  step caches the transformed predictions and observations it scores, and the
+  cache was keyed on the ADDRESS of the buffers holding them.  Those buffers are
+  rebuilt every M-step, so the allocator routinely handed back the same address
+  with different contents and the cache reported itself still valid -- the
+  optimizer then scored later iterations against the FIRST iteration's
+  predictions, which still carry all of the between-subject variability as
+  error.  The residual therefore stayed near its starting value and the variance
+  components shrank to compensate.  The cache is now invalidated whenever the
+  data behind it is rewritten.
+- `saem` with IOV and a general log-likelihood (`ll()`) endpoint no longer
+  returns an astronomically large objective function (#1000).  Past half the
+  iterations, `saem` refines its non-mu-referenced (`phi0`) parameters with a
+  bounded optimizer while holding the ODE states fixed, on the grounds that a
+  general-likelihood `phi0` parameter is a likelihood standard deviation the
+  solve never sees.  The IOV magnitude is a `phi0` parameter that does drive
+  the structural model, so with the states held fixed the objective was
+  exactly constant in it and the optimizer ran to its upper bound: the IOV
+  magnitude grew geometrically (past `1e17`), and the reported objective
+  followed.  Whether the states can be held fixed is now measured rather than
+  assumed, and a `phi0` parameter that drives the solve is refined inside a
+  local trust region.  A failed solve reaching the Gaussian-quadrature
+  objective is also scored as a bad solve rather than as an extremely good
+  log-density.
 - A second `focei` fit of a model whose dosing depends on an eta (`f(depot) <-
   exp(eta.f)`, `alag()`, `dur()`, `rate()`) no longer silently returns the
   wrong answer.  The compiled model bundle is cached as model TEXT and
