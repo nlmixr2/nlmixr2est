@@ -35,9 +35,11 @@
 #' @param iterlim Maximum number of `trust_solve_c()` iterations.
 #' @param fterm,mterm `trust_solve_c()`'s function-value and predicted-
 #'   decrease convergence tolerances. `NULL` (default) uses
-#'   `10^(-sigdig)`, matching `bobyqaControl()`'s `rhoend` and
-#'   `foceiControl()`'s inner `epsilon`. `mterm` defaults to `fterm` when
-#'   not given separately.
+#'   `10^(-sigdig-2)`, two orders tighter than `bobyqaControl()`'s `rhoend`
+#'   and `foceiControl()`'s inner `epsilon` (both the plain `10^(-sigdig)`),
+#'   matching `foceiControl(trustFterm=, trustMterm=)` instead -- the
+#'   analogous tolerance for the other `RcppTrust`-backed solve in this
+#'   package. `mterm` defaults to `fterm` when not given separately.
 #' @param optimHessType Finite-difference type for the per-iteration outer
 #'   Hessian: `1L` forward (default), `2L` central. Exposed explicitly
 #'   (unlike bobyqa/n1qn1, where this is only ever set implicitly) because
@@ -169,11 +171,19 @@ trustControl <- function(rinit=NULL, rmax=NULL, iterlim=1000L,
                          adjObf=TRUE, ci=0.95, sigdig=3, sigdigTable=NULL,
                          boundedTransform=TRUE, ...) {
 
-  # trust_solve_c()'s fterm/mterm from sigdig, matching bobyqaControl()'s
-  # rhoend and foceiControl()'s inner epsilon; a user-supplied value wins,
-  # sigdig=NULL keeps the historic .Machine-derived fallback.
+  # trust_solve_c()'s fterm/mterm from sigdig, two orders tighter than the
+  # plain .sigdigOptTol() every other nlm-family method uses here -- matching
+  # foceiControl(trustFterm=, trustMterm=), the analogous tolerance for the
+  # OTHER RcppTrust-backed solve in this package (the per-subject eta problem
+  # inside FOCEi).  Both wrap the same trust_solve_c() convergence check
+  # around a different problem, and there is no reason for the two to use
+  # different conventions: whatever precision the FD-gradient/Hessian
+  # machinery around this loop needs is a property of trust_solve_c() and
+  # what surrounds it, not of which theta/eta vector it happens to be
+  # solving.  A user-supplied value wins; sigdig=NULL keeps the historic
+  # .Machine-derived fallback.
   if (is.null(fterm)) {
-    fterm <- if (!is.null(sigdig)) .sigdigOptTol(sigdig) else 1.4901161193847656e-08
+    fterm <- if (!is.null(sigdig)) 10^(-sigdig - 2) else 1.4901161193847656e-08
   }
   if (is.null(mterm)) mterm <- fterm
   checkmate::assertNumeric(fterm, len=1, any.missing=FALSE, lower=0)

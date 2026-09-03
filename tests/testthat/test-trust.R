@@ -1,8 +1,8 @@
 nmTest({
   test_that("trustControl() defaults and validation", {
-    expect_equal(trustControl()$fterm, 1e-3)
-    expect_equal(trustControl()$mterm, 1e-3)
-    expect_equal(trustControl(sigdig = 4)$fterm, 1e-4)
+    expect_equal(trustControl()$fterm, 1e-5)
+    expect_equal(trustControl()$mterm, 1e-5)
+    expect_equal(trustControl(sigdig = 4)$fterm, 1e-6)
     expect_equal(trustControl(fterm = 0.5)$mterm, 0.5)
     expect_equal(trustControl(fterm = 0.5, mterm = 0.1)$mterm, 0.1)
     expect_null(trustControl()$rinit)

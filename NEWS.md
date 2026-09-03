@@ -323,6 +323,13 @@
   (Bofill's SR1/Powell-Symmetric-Broyden blend, the standard
   Berny/transition-state-search Hessian update) -- see `?trustControl` for
   full references. `trust` is unbounded, like `n1qn1`/`nlm`.
+  `trustControl(fterm=, mterm=)`, the Newton loop's own function-value and
+  predicted-decrease convergence tolerances, default to `10^(-sigdig-2)` --
+  two orders tighter than every other nlm-family tolerance here uses,
+  matching `foceiControl(trustFterm=, trustMterm=)` (the analogous tolerance
+  for the OTHER `RcppTrust`-backed solve in this package, the per-subject eta
+  problem inside FOCEi) rather than the plain `10^(-sigdig)` `bobyqaControl()`
+  and `foceiControl()`'s own `epsilon` use.
 
 - `foceiControl(hessianMethod=)` extends the same idea to FOCEi's INNER
   (per-subject eta) problem: for a non-normal-endpoint model (any

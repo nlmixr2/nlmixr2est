@@ -65,9 +65,11 @@ subject eta trust region.}
 
 \item{fterm, mterm}{`trust_solve_c()`'s function-value and predicted-
 decrease convergence tolerances. `NULL` (default) uses
-`10^(-sigdig)`, matching `bobyqaControl()`'s `rhoend` and
-`foceiControl()`'s inner `epsilon`. `mterm` defaults to `fterm` when
-not given separately.}
+`10^(-sigdig-2)`, two orders tighter than `bobyqaControl()`'s `rhoend`
+and `foceiControl()`'s inner `epsilon` (both the plain `10^(-sigdig)`),
+matching `foceiControl(trustFterm=, trustMterm=)` instead -- the
+analogous tolerance for the other `RcppTrust`-backed solve in this
+package. `mterm` defaults to `fterm` when not given separately.}
 
 \item{optimHessType}{Finite-difference type for the per-iteration outer
 Hessian: `1L` forward (default), `2L` central. Exposed explicitly
@@ -270,8 +272,7 @@ exactly the precision the solve supports.  At the default \code{sigdig = 3}
 this is \code{atol = 1e-6}, \code{rtol = 1e-3}.}
 
 \item{sigdigTable}{Significant digits in the final output table.
-If not specified, then it matches the significant digits in the
-`sigdig` optimization algorithm.  If `sigdig` is NULL, use 3.}
+If not specified (`NULL`), it defaults to `sigdig`.}
 
 \item{boundedTransform}{When `TRUE` (default), bounded parameters are
 transformed for unbounded optimization methods and back-transformed
