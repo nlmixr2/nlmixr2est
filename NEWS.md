@@ -145,16 +145,25 @@
 ## New features
 
 - `foceiControl(innerOpt=)` adds a trust-region Newton inner (per-subject eta)
-  optimizer backed by the `RcppTrust` package, `"trust"`, and **it is now the
-  default** for every FOCEi-family method (`focei`/`foce`/`foi`/`fo`, and
-  `impmap`'s MAP inner problem) -- `n1qn1` remains available via
-  `foceiControl(innerOpt="n1qn1")`. Unlike `n1qn1`, which gets an approximate
-  Hessian only once as a warm-start seed, the trust-region step is supplied a
-  fresh exact Gauss-Newton+Omega^-1 Hessian every iteration. Each eta is
-  scaled by `sqrt(diag(Omega))`, with the trust-region radius derived from
-  the eta confidence region (`foceiControl(trustConf=)`, default 0.975);
-  `trustRinit`/`trustRmax` override the derived radius directly. `est="vae"`
-  does not use `foceiControl()`'s inner loop and is unaffected.
+  optimizer backed by the `RcppTrust` package, `"trust"`. Unlike `n1qn1`, which
+  gets an approximate Hessian only once as a warm-start seed, the trust-region
+  step is supplied a fresh exact Gauss-Newton+Omega^-1 Hessian every iteration.
+  Each eta is scaled by `sqrt(diag(Omega))`, with the trust-region radius
+  derived from the eta confidence region (`foceiControl(trustConf=)`, default
+  0.975); `trustRinit`/`trustRmax` override the derived radius directly.
+  `est="vae"` does not use `foceiControl()`'s inner loop and is unaffected.
+
+- `foceiControl(innerOpt=)` gains `"auto"`, and **it is now the default** for
+  every FOCEi-family method (`focei`/`foce`/`foi`/`fo`, and `impmap`'s MAP
+  inner problem). It picks `"n1qn1"` for a generalized log-likelihood endpoint
+  (`dnorm()`, `ll()`, `dpois()`, ...) and `"trust"` for everything else, which
+  is where each is faster: such an endpoint has no Gauss-Newton inner Hessian,
+  so `"trust"` must finite-difference one (2*neta inner solves) at every trial
+  point where `"n1qn1"` builds it once as a warm-start seed. On a
+  1-compartment oral model (120 subjects) as a `dnorm()` endpoint `"trust"`
+  took 114s against `n1qn1`'s 42s, while on the same model with a normal
+  endpoint it took 2.9s against 5.1s. `"trust"` and `"n1qn1"` remain
+  selectable explicitly.
 
   This changes the exact numeric result of every FOCEi-family fit that does
   not pin `innerOpt=` explicitly (typically by a few objf units at most; see

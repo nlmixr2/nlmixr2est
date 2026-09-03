@@ -545,9 +545,10 @@ struct focei_options {
   unsigned int nzm;
   int warm; // 1 = seed zm from calculated eta Hessian, 0 = classic behavior
 
-  // innerOpt: 1 = n1qn1 (default), 2 = BFGS (unimplemented -- see #927, falls
-  // back to n1qn1: lbfgsb3C's C++ wrapper keeps shared mutable Rcpp state, not
-  // reentrant under the per-subject OpenMP loop), 3 = trust (RcppTrust)
+  // innerOpt: 1 = n1qn1, 2 = BFGS (unimplemented -- see #927, falls back to
+  // n1qn1: lbfgsb3C's C++ wrapper keeps shared mutable Rcpp state, not
+  // reentrant under the per-subject OpenMP loop), 3 = trust (RcppTrust),
+  // 4 = auto (the default; resolved to 1 or 3 in foceiSetup_).
   int innerOpt;
   double trustConf; // confidence level defining the trust-region radius
   double trustRinit;
@@ -8473,6 +8474,13 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.resetThetaSize=as<double>(foceiO["resetThetaSize"]);
   op_focei.resetThetaFinalSize = as<double>(foceiO["resetThetaFinalSize"]);
   op_focei.needOptimHess = as<bool>(foceiO["needOptimHess"]);
+  // innerOpt="auto" (4) resolves here, the first point where needOptimHess is
+  // known.  A generalized-likelihood endpoint has no Gauss-Newton inner
+  // Hessian, so trust pays 2*neta inner solves to rebuild it at every trial
+  // point while n1qn1 builds it once as a warmZm seed; elsewhere trust wins.
+  if (op_focei.innerOpt == 4) {
+    op_focei.innerOpt = op_focei.needOptimHess ? 1 : 3;
+  }
   // hessianMethod= (foceiControl()): only meaningful when needOptimHess is
   // TRUE (non-normal-endpoint models); tolerate an older control missing the
   // field (-> "fd", the historic behavior).

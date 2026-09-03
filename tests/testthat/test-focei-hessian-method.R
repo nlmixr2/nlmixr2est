@@ -33,12 +33,16 @@ nmTest({
 
   test_that("hessianMethod converges close to fd on a non-normal endpoint", {
     skip_on_cran()
+    # innerOpt is pinned: the quasi-Newton inner Hessian only engages under
+    # "trust", and the default "auto" routes a non-normal endpoint to n1qn1.
     .fFd <- .nlmixr(.poisMod, .poisData, est = "focei",
-                    control = foceiControl(print = 0L, hessianMethod = "fd"))
+                    control = foceiControl(print = 0L, innerOpt = "trust",
+                                           hessianMethod = "fd"))
     expect_true(is.finite(.fFd$objf))
     for (.hm in c("bfgs", "sr1", "bofill")) {
       .fT <- .nlmixr(.poisMod, .poisData, est = "focei",
-                     control = foceiControl(print = 0L, hessianMethod = .hm))
+                     control = foceiControl(print = 0L, innerOpt = "trust",
+                                            hessianMethod = .hm))
       expect_true(is.finite(.fT$objf), info = .hm)
       expect_equal(.fT$objf, .fFd$objf, tolerance = 1e-2, info = .hm)
       expect_equal(unname(.fT$theta), unname(.fFd$theta), tolerance = 1e-2, info = .hm)

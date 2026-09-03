@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
-# Benchmark innerOpt="trust" (RcppTrust) against the innerOpt="n1qn1" default
-# across three corpora:
+# Benchmark innerOpt="trust" (RcppTrust) against innerOpt="n1qn1" -- the two
+# optimizers innerOpt="auto" chooses between -- across three corpora:
 #   (a) the 5 outer-optimizer benchmark models from discussion #924
 #       (https://github.com/nlmixr2/nlmixr2est/discussions/924)
 #   (b) every fitting nlmixr2 package vignette (~/src/nlmixr2/vignettes)

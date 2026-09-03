@@ -81,7 +81,7 @@ foceiControl(
   covTryHarder = FALSE,
   outerOpt = c("bobyqa", "nlminb", "lbfgsb3c", "L-BFGS-B", "mma", "lbfgsbLG", "slsqp",
     "uobyqa", "newuoa"),
-  innerOpt = c("trust", "n1qn1", "BFGS"),
+  innerOpt = c("auto", "trust", "n1qn1", "BFGS"),
   hessianMethod = c("fd", "bfgs", "sr1", "bofill"),
   trustConf = 0.975,
   trustRinit = NULL,
@@ -464,11 +464,15 @@ Hessians used for the covariance step/final likelihood: "central"
   \code{rxControl(atolSens=)}, but the inner gradient it differences comes
   out of a sensitivity solve that \code{rtolSens} governs as well, so the
   noise is understated and the search shrinks the step until the difference
-  is taken inside it.  \code{n1qn1} absorbs that -- it uses this Hessian
-  once, as a warm-start seed -- but \code{innerOpt="trust"} rebuilds it at
-  every trial point and adds its log-determinant to the reported objective,
-  so the noise steers the fit.  Flooring the step relative to the eta scale
-  stops the runaway without paying for a tighter solve.}
+  is taken inside it.  \code{n1qn1} absorbs that -- it uses this Hessian only
+  as a warm-start seed and then corrects it by its own quasi-Newton updates
+  as it iterates -- but \code{innerOpt="trust"} re-derives it as its
+  trust-region model Hessian at every trial point, with nothing to correct
+  it, and adds its log-determinant to the reported objective.  Flooring the
+  step relative to the eta scale stops the runaway without paying for a
+  tighter solve.  It applies to every inner optimizer: the step a finite
+  difference needs is a property of the problem, not of who consumes the
+  Hessian.}
 
 \item{censOption}{Treatment of the second derivative for censored
 (M2/M3/M4/BLQ) observations in the FOCEI family.  \code{"gauss"} (the default)
@@ -624,11 +628,19 @@ the Hessian on the unscaled parameter space.}
 \item{outerOpt}{optimization method for the outer problem}
 
 \item{innerOpt}{optimization method for the inner (per-subject eta)
-problem: `"trust"` (default, RcppTrust trust-region Newton, using an
-exact Gauss-Newton+Omega^-1 Hessian every iteration) or `"n1qn1"`
-(quasi-Newton, gets a Hessian only once as a warm-start seed).
-`"BFGS"` is accepted but not implemented -- it silently falls back to
-`"n1qn1"`.}
+    problem: `"auto"` (default), `"trust"` (RcppTrust trust-region Newton,
+    using an exact Gauss-Newton+Omega^-1 Hessian every iteration) or
+    `"n1qn1"` (quasi-Newton, gets a Hessian only once as a warm-start
+    seed).  `"BFGS"` is accepted but not implemented -- it silently falls
+    back to `"n1qn1"`.
+
+    `"auto"` picks `"n1qn1"` for a generalized-likelihood endpoint
+    (`dnorm()`, `ll()`, `dpois()`, ...) and `"trust"` for everything else.
+    Such an endpoint has no Gauss-Newton shortcut, so the inner eta Hessian
+    is finite-differenced; `"trust"` rebuilds it at every trial point, which
+    costs 2*neta inner solves each time, while `"n1qn1"` builds it once as a
+    warm-start seed and corrects it with its own quasi-Newton updates.  On
+    everything else `"trust"` is typically the faster of the two.}
 
 \item{hessianMethod}{For a non-normal-endpoint model (any distribution
     other than \code{norm}), the per-subject inner Hessian has no
@@ -667,7 +679,9 @@ exact Gauss-Newton+Omega^-1 Hessian every iteration) or `"n1qn1"`
     has verified their model does not depend on this Hessian's precision.
     Has no effect for normal-endpoint models (the Gauss-Newton inner
     Hessian is used unconditionally there). Only meaningful with
-    `innerOpt="trust"`.}
+    `innerOpt="trust"`, which the default `innerOpt="auto"` does not pick
+    for these models -- so setting this needs `innerOpt="trust"` pinned
+    as well.}
 
 \item{trustConf}{confidence level defining the `innerOpt="trust"`
 trust-region radius: since eta ~ N(0, Omega), the radius (in

@@ -1,11 +1,13 @@
 nmTest({
   test_that("foceiControl(innerOpt=) trust mapping", {
-    expect_equal(foceiControl()$innerOpt, 3L)
+    expect_equal(foceiControl()$innerOpt, 4L)
     expect_equal(foceiControl(innerOpt = "n1qn1")$innerOpt, 1L)
     expect_equal(foceiControl(innerOpt = "BFGS")$innerOpt, 2L)
     expect_equal(foceiControl(innerOpt = "trust")$innerOpt, 3L)
+    expect_equal(foceiControl(innerOpt = "auto")$innerOpt, 4L)
     expect_equal(foceiControl(innerOpt = 3L)$innerOpt, 3L)
     expect_error(foceiControl(innerOpt = "bogus"))
+    expect_error(foceiControl(innerOpt = 5L))
 
     expect_equal(foceiControl()$trustConf, 0.975)
     expect_equal(foceiControl(trustConf = 0.9)$trustConf, 0.9)
@@ -122,6 +124,23 @@ nmTest({
     expect_equal(.fB$objf, .f1$objf, tolerance = 1e-8)
     expect_equal(as.data.frame(.fB$eta), as.data.frame(.f1$eta), tolerance = 1e-8)
     expect_equal(.nB, 0L)
+  })
+
+  test_that("innerOpt='auto' picks n1qn1 for a generalized likelihood and trust otherwise", {
+    skip_on_cran()
+    # "auto" resolves in C++ (foceiSetup_), the first point where needOptimHess
+    # is known, so assert on .nTrustInner() -- the R control still reports 4L.
+    .fN <- .fitTrustCmp("auto")
+    expect_true(.nTrustInner() > 0L)
+
+    .llCmt <- .oneCmt |> model(linCmt() ~ add(add.sd) + dnorm())
+    .fLL <- suppressWarnings(suppressMessages(
+      nlmixr2(.llCmt, nlmixr2data::theo_sd, est = "focei",
+              control = foceiControl(innerOpt = "auto", maxOuterIterations = 20,
+                                      covMethod = "", calcTables = FALSE, print = 0))
+    ))
+    expect_equal(.nTrustInner(), 0L)
+    expect_true(is.finite(.fLL$objf))
   })
 
   test_that("innerOpt='trust' restart cascade completes when the inner solve doesn't converge", {

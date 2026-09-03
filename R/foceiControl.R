@@ -1,3 +1,8 @@
+# innerOpt= levels.  "auto" is resolved in C++ (foceiSetup_) once
+# needOptimHess is known: n1qn1 for a generalized-likelihood endpoint, trust
+# otherwise.  See the innerOpt @param below.
+.innerOptFun <- c("n1qn1" = 1L, "BFGS" = 2L, "trust" = 3L, "auto" = 4L)
+
 .foceiControlInternal <- c(
   "genRxControl", "resetEtaSize", "foceType",
   "resetThetaSize", "resetThetaFinalSize",
@@ -425,11 +430,19 @@
 #' @param outerOpt optimization method for the outer problem
 #'
 #' @param innerOpt optimization method for the inner (per-subject eta)
-#'     problem: `"trust"` (default, RcppTrust trust-region Newton, using an
-#'     exact Gauss-Newton+Omega^-1 Hessian every iteration) or `"n1qn1"`
-#'     (quasi-Newton, gets a Hessian only once as a warm-start seed).
-#'     `"BFGS"` is accepted but not implemented -- it silently falls back to
-#'     `"n1qn1"`.
+#'     problem: `"auto"` (default), `"trust"` (RcppTrust trust-region Newton,
+#'     using an exact Gauss-Newton+Omega^-1 Hessian every iteration) or
+#'     `"n1qn1"` (quasi-Newton, gets a Hessian only once as a warm-start
+#'     seed).  `"BFGS"` is accepted but not implemented -- it silently falls
+#'     back to `"n1qn1"`.
+#'
+#'     `"auto"` picks `"n1qn1"` for a generalized-likelihood endpoint
+#'     (`dnorm()`, `ll()`, `dpois()`, ...) and `"trust"` for everything else.
+#'     Such an endpoint has no Gauss-Newton shortcut, so the inner eta Hessian
+#'     is finite-differenced; `"trust"` rebuilds it at every trial point, which
+#'     costs 2*neta inner solves each time, while `"n1qn1"` builds it once as a
+#'     warm-start seed and corrects it with its own quasi-Newton updates.  On
+#'     everything else `"trust"` is typically the faster of the two.
 #'
 #' @param trustConf confidence level defining the `innerOpt="trust"`
 #'     trust-region radius: since eta ~ N(0, Omega), the radius (in
@@ -495,7 +508,9 @@
 #'     has verified their model does not depend on this Hessian's precision.
 #'     Has no effect for normal-endpoint models (the Gauss-Newton inner
 #'     Hessian is used unconditionally there). Only meaningful with
-#'     `innerOpt="trust"`.
+#'     `innerOpt="trust"`, which the default `innerOpt="auto"` does not pick
+#'     for these models -- so setting this needs `innerOpt="trust"` pinned
+#'     as well.
 #'
 #' @param stateTrim Trim state amounts/concentrations to this value.
 #'
@@ -1027,7 +1042,7 @@ foceiControl <- function(sigdig = 3, #
                            "uobyqa",
                            "newuoa"
                          ), #
-                         innerOpt = c("trust", "n1qn1", "BFGS"), #
+                         innerOpt = c("auto", "trust", "n1qn1", "BFGS"), #
                          hessianMethod = c("fd", "bfgs", "sr1", "bofill"), #
                          ## trust-region inner optimizer (RcppTrust)
                          trustConf = 0.975, # confidence level defining the trust-region radius
@@ -1531,10 +1546,9 @@ foceiControl <- function(sigdig = 3, #
     )
     fast <- FALSE
   }
-  if (checkmate::testIntegerish(innerOpt, lower = 1, upper = 3, len = 1)) {
+  if (checkmate::testIntegerish(innerOpt, lower = 1, upper = 4, len = 1)) {
     innerOpt <- as.integer(innerOpt)
   } else {
-    .innerOptFun <- c("n1qn1" = 1L, "BFGS" = 2L, "trust" = 3L)
     innerOpt <- setNames(.innerOptFun[match.arg(innerOpt)], NULL)
   }
   .hessianMethodIdx <- c("fd" = 1L, "bfgs" = 2L, "sr1" = 3L, "bofill" = 4L)
@@ -1969,7 +1983,6 @@ foceiControl <- function(sigdig = 3, #
       return(.val)
     }
     if (x == "innerOpt") {
-      .innerOptFun <- c("n1qn1" = 1L, "BFGS" = 2L, "trust" = 3L)
       paste0("innerOpt = ", deparse1(names(.innerOptFun[which(object[[x]] == .innerOptFun)])))
     } else if (x == "warm") {
       .warmIdx <- c("calc" = 1L, "save" = 0L)
