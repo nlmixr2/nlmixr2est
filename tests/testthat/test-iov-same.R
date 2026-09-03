@@ -399,3 +399,74 @@ test_that("a mixed correlated/diagonal model fits and reports both levels", {
   expect_true(all(!is.na(.fit$iov$occ$occ)))
   expect_true(all(!is.na(.fit$iov$occ2$occ2)))
 })
+
+test_that("foceiFixed() stays aligned when a fixed eta follows a copy", {
+  skip_on_cran()
+  # `rxUiGet.foceiFixed()` returns `c(theta flags, eta-row flags)` and is
+  # consumed POSITIONALLY against the optimizer's `[theta | omegaTheta]`
+  # layout.  A `same()` copy contributes no omega theta of its own, so
+  # its rows must not appear -- otherwise every flag after them is off by
+  # one and the WRONG parameter is held fixed, in a fit that still
+  # converges.  It only bites when a fixed eta row sits AFTER a copy row.
+  .d <- .sameData()
+  .d$occ2 <- 1 + (.d$TIME >= 9)
+  .f <- function() {
+    ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- c(0, 0.7)
+          eta.ka ~ 0.6
+          iov.cl + iov.v ~ c(0.1,
+                             0.03, 0.2) | occ
+          iov.ka ~ fix(0.05) | occ2 })
+    model({ ka <- exp(tka + eta.ka + iov.ka)
+            cl <- exp(tcl + iov.cl)
+            v <- exp(tv + iov.v)
+            linCmt() ~ add(add.sd) })
+  }
+  .ui <- .uiApplyIov(rxode2::rxode2(.f()), "focei", .d, foceiControl())$ui
+  .fx <- rxUiGet.foceiFixed(list(.ui))
+  .nth <- sum(!is.na(.ui$iniDf$ntheta))
+  .rxInv <- rxode2::rxSymInvCholCreate(.ui$omega, "sqrt",
+                                       same = .ui$omegaSameMap)
+  # the contract: one flag per theta, then one per OMEGA PARAMETER
+  expect_equal(length(.fx), .nth + length(.rxInv$theta))
+  # three magnitude thetas are fixed: iov.cl and iov.v at one (shared
+  # block) and iov.ka by the user's own fix()
+  expect_equal(sum(.fx[seq_len(.nth)]), 3L)
+  # The omega half is eta.ka, then the ONE 2x2 block (3), then iov.ka's
+  # two occasion etas -- which "theta" pins at unit variance.  The
+  # alignment is the point: the two TRUEs must be the LAST two entries.
+  # Unfiltered, the copy rows would push them two places along and hold
+  # the wrong parameters fixed in a fit that still converges.
+  .om <- .fx[-seq_len(.nth)]
+  expect_equal(length(.om), 6L)
+  expect_equal(which(.om), c(5L, 6L))
+})
+
+test_that("three parameters over three occasions repeat correctly", {
+  skip_on_cran()
+  .d <- .sameData()
+  .d$occ <- 1 + (.d$TIME >= 3) + (.d$TIME >= 7)
+  .f <- function() {
+    ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- c(0, 0.7)
+          eta.ka ~ 0.6
+          iov.ka + iov.cl + iov.v ~ c(0.1,
+                                      0.02, 0.2,
+                                      0.01, 0.03, 0.3) | occ })
+    model({ ka <- exp(tka + eta.ka + iov.ka)
+            cl <- exp(tcl + iov.cl)
+            v <- exp(tv + iov.v)
+            linCmt() ~ add(add.sd) })
+  }
+  .ui <- .uiApplyIov(rxode2::rxode2(.f()), "focei", .d,
+                     foceiControl(iovMethod = "omega"))$ui
+  .om <- .ui$omega
+  expect_equal(dim(.om), c(10L, 10L))
+  # eta.ka, then three identical 3x3 blocks
+  expect_equal(unname(.om[2:4, 2:4]), unname(.om[5:7, 5:7]))
+  expect_equal(unname(.om[2:4, 2:4]), unname(.om[8:10, 8:10]))
+  # each occasion mirrors occasion ONE, not the occasion before it
+  expect_equal(.ui$omegaSameMap,
+               c(0L, 0L, 0L, 0L, 2L, 3L, 4L, 2L, 3L, 4L))
+  # 1 (eta.ka) + 6 (one 3x3 block) rather than 1 + 18
+  expect_equal(length(rxode2::rxSymInvCholCreate(
+    .om, "sqrt", same = .ui$omegaSameMap)$theta), 7L)
+})
