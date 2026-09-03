@@ -22,6 +22,29 @@
   FALSE
 }
 
+#' Reason a method's own IOV handling cannot cover this model
+#'
+#' Read from the optional \code{"iovNativeScope"} attribute on the
+#' \code{nlmixr2Est.<method>} S3 method, a \code{function(ui, data, control)}
+#' returning \code{NULL} when the method's own handling covers the model and a
+#' short reason when it does not.  A reason makes the shared rewrite run after
+#' all, so a model outside the newer handling still fits.
+#'
+#' @param ui rxode2 user interface model
+#' @param est estimation routine name
+#' @param data data set for the fit
+#' @param control control object
+#' @return \code{NULL}, or a short character reason
+#' @noRd
+#' @author Matthew L. Fidler
+.iovNativeDecline <- function(ui, est, data, control) {
+  .v <- as.character(utils::methods("nlmixr2Est"))
+  if (!(paste0("nlmixr2Est.", est) %in% .v)) return(NULL)
+  .f <- attr(utils::getS3method("nlmixr2Est", est), "iovNativeScope")
+  if (!is.function(.f)) return(NULL)
+  .f(ui, data, control)
+}
+
 .nlmixr2iov <- function(val, type, transform) {
   # get the standard deviation
   if (transform == "logvar") {
@@ -262,21 +285,35 @@ nlmixr2iovVarSd <- function(val) {
 #' @noRd
 #' @author Matthew L. Fidler
 .uiApplyIov <- function(ui, est, data, control) {
+  .fellBack <- FALSE
   if (!.isIovMethod(est, control)) {
-    .uiIovEnv$ui <- NULL
-    .uiIovEnv$iovDrop <- NULL
-    .uiIovEnv$iovVars <- NULL
-    .uiIovEnv$iovRename <- NULL
-    .uiIovEnv$lines <- NULL
-    .uiIovEnv$muModel <- NULL
-    # this env outlives one fit, so a stale "omega" here would make the
-    # NEXT model's finalize read estimates off a block that is not there
-    .uiIovEnv$iovMethod <- NULL
-    .uiIovEnv$iovMaster <- list()
-    return(NULL)
+    # the method's own IOV handling is in force -- unless this model is outside
+    # its scope, in which case fall back to the rewrite below so the fit still
+    # runs.  The reason is short because it is collected into the fit's $runInfo.
+    .why <- .iovNativeDecline(ui, est, data, control)
+    if (is.null(.why)) {
+      .uiIovEnv$ui <- NULL
+      .uiIovEnv$iovDrop <- NULL
+      .uiIovEnv$iovVars <- NULL
+      .uiIovEnv$iovRename <- NULL
+      .uiIovEnv$lines <- NULL
+      .uiIovEnv$muModel <- NULL
+      .uiIovEnv$iovTwoLevel <- NULL
+      .uiIovEnv$iovCollapsed <- NULL
+      # this env outlives one fit, so a stale "omega" here would make the
+      # NEXT model's finalize read estimates off a block that is not there
+      .uiIovEnv$iovMethod <- NULL
+      .uiIovEnv$iovMaster <- list()
+      return(NULL)
+    }
+    warning(.why, "; used iovMethod='theta'", call.=FALSE)
+    control$iovMethod <- "theta"
+    .fellBack <- TRUE
   }
   .uiIovEnv$iovVars <- NULL
   .uiIovEnv$muModel <- NULL
+  .uiIovEnv$iovTwoLevel <- NULL
+  .uiIovEnv$iovCollapsed <- NULL
   .uiIovEnv$iovMaster <- list()
   .xform <- control$iovXform
   if (length(.xform)  != 1) {
@@ -306,16 +343,28 @@ nlmixr2iovVarSd <- function(val) {
   ## "omega" fixes the magnitude at one and estimates the per-occasion eta
   ## blocks instead, occasion one being the block and the rest repeating
   ## it, so a correlation is carried by the block itself.
-  .iovMethod <- control$iovMethod
+  ## `control$iovMethod` is overloaded: `saemControl()` uses it for SAEM's
+  ## NATIVE handling ("twoLevel"/"collapsed"/"theta"), `foceiControl()` for
+  ## which REWRITE to use ("auto"/"theta"/"omega").  Only read it as the
+  ## latter for a method that can honour a shared block; for anything else
+  ## the rewrite is the long standing one, whatever the native value said.
+  ## (A native handler that declined has already set it to "theta" above.)
+  .sameOk <- .isIovSameMethod(est)
+  ## asked for outright on a method that ignores it: refuse by name rather
+  ## than silently downgrade, since the fit would look fine and estimate
+  ## each occasion's block on its own
+  if (!.sameOk && identical(control$iovMethod, "omega")) {
+    stop("'iovMethod=\"omega\"' repeats one estimated omega block per ",
+         "occasion, which the estimation method '", est, "' does not ",
+         "honour; use a FOCEi family method for correlated ",
+         "inter-occasion random effects",
+         call.=FALSE)
+  }
+  .iovMethod <- if (.sameOk) control$iovMethod else "theta"
   if (length(.iovMethod) != 1L ||
         !(.iovMethod %in% c("auto", "theta", "omega"))) {
-    .iovMethod <- "auto"
+    .iovMethod <- if (.sameOk) "auto" else "theta"
   }
-  ## Only a method that actually shares the repeated block's parameters
-  ## may be given this expansion; for anything else `same()` would be
-  ## silently ignored during estimation and each occasion's block
-  ## estimated on its own.
-  .sameOk <- .isIovSameMethod(est)
   ## Resolved PER LEVEL of variability, not per model: a correlation on
   ## `occ` is no reason to change how an unrelated diagonal `occ2` is
   ## expanded, and "theta" is the better conditioned inner problem.
@@ -326,13 +375,6 @@ nlmixr2iovVarSd <- function(val) {
   }
   .anyOmega <- .iovMethod == "omega" ||
     (.iovMethod == "auto" && length(.offLvls) > 0L && .sameOk)
-  if (.iovMethod == "omega" && !.sameOk) {
-    stop("'iovMethod=\"omega\"' repeats one estimated omega block per ",
-         "occasion, which the estimation method '", est, "' does not ",
-         "honour; use a FOCEi family method for correlated ",
-         "inter-occasion random effects",
-         call.=FALSE)
-  }
   ## a level whose expansion resolves to "theta" cannot carry a
   ## correlation, however it was chosen
   .badOff <- .wOff[vapply(.baseCnd[.wOff], function(l1) {
@@ -604,7 +646,9 @@ nlmixr2iovVarSd <- function(val) {
     assign("lstExpr", .lines, envir = .ui)
     .uiIovEnv$ui <- ui
     .uiIovEnv$iovDrop <- .env$drop # extra variables to drop
-    list(ui = rxode2::rxUiDecompress(suppressWarnings(suppressMessages(.ui$fun()))))
+    .ret <- list(ui = rxode2::rxUiDecompress(suppressWarnings(suppressMessages(.ui$fun()))))
+    if (.fellBack) .ret$control <- control
+    .ret
   } else {
     .uiIovEnv$ui <- NULL
     .uiIovEnv$iovDrop <- NULL
@@ -618,7 +662,10 @@ nlmixr2iovVarSd <- function(val) {
 #' @noRd
 #' @author Matthew L. Fidler
 .uiFinalizeIov <- function(ret) {
-  if (!is.null(.uiIovEnv$ui)) {
+  # the collapsed sampler has its own restoration (.saemIovFinalizeCollapsed,
+  # R/saemIov.R): it removed the user's line entirely and has no magnitude theta,
+  # so almost none of the mechanism below applies
+  if (!is.null(.uiIovEnv$ui) && is.null(.uiIovEnv$iovCollapsed)) {
     if (is.null(ret$ui)) return(ret)
 
     if (is.environment(ret$env)) {
@@ -734,11 +781,26 @@ nlmixr2iovVarSd <- function(val) {
           .v <- .iovDf$name[i]
           .w <- which(.thetaDf$name == .v)
           if (.omegaVar(.v)) {
+            # shared (`same()`) block: the magnitude theta is fixed at one,
+            # so the variance is the block's own master row
             .est <- .masterEst(.uiIovEnv$iovMaster[[.v]])
-          } else {
+          } else if (is.null(.uiIovEnv$iovTwoLevel)) {
+            # shared rewrite: the variance is a magnitude theta on the
+            # iovXform scale, converted back through its own back-transform
             .fun <- sub("Cv$", "Sd", .thetaDf[.w, "backTransform"])
             .fun <- get(.fun)
             .est <- .fun(.thetaDf[.w, "est"])^2
+          } else {
+            # two-level: the variance IS an omega entry already, shared by every
+            # occasion level (poolOmegaGroups, src/saem.cpp), so read it off the
+            # first one.  This runs over the FINAL frame and over iniDf0, and
+            # iniDf0 is the user's own frame -- it never went through the
+            # expansion, so its `iov.x ~ v | occ` row is already what we would
+            # be rebuilding.  Leave it alone.
+            .w <- integer(0)
+            .poolEta <- .uiIovEnv$iovTwoLevel[[.v]][1]
+            if (!(.poolEta %in% .iniDf$name)) next
+            .est <- .iniDf$est[.iniDf$name == .poolEta]
           }
           .maxEta <- .maxEta + 1L
           .newEta[[.v]] <- .maxEta
@@ -891,7 +953,9 @@ nlmixr2iovVarSd <- function(val) {
       .w <- which(names(.iov) %in% c(.uiIovEnv$iovDrop, "ID"))
       .iov <- .iov[,.w]
 
-      .sdIov <- sqrt(.est)
+      # the shared rewrite's occasion etas are unit-variance, so they have to be
+      # rescaled by the fitted SD; the two-level ones already carry c_ik
+      .sdIov <- if (is.null(.uiIovEnv$iovTwoLevel)) sqrt(.est) else NULL
 
       .dt <- NULL
       .omegaModeFin <- function(d) !is.null(.uiIovEnv$iovMaster[[d]])
@@ -911,11 +975,12 @@ nlmixr2iovVarSd <- function(val) {
                                     variable.name = var,
                                     value.name = d)
           # rescale the derived eta (fixed to 1) by the IOV variable's sd.
-          # Under `iovMethod = "omega"` the eta already carries the whole
-          # magnitude -- the theta is fixed at one -- so there is nothing
-          # to rescale.
-          if (!.omegaModeFin(d)) {
-            .curd[[d]] <- .curd[[d]] *.sdIov[d]
+          # Under the shared-block expansion the eta already carries the
+          # whole magnitude -- its theta is fixed at one -- so there is
+          # nothing to rescale; the two-level path sets `.sdIov` NULL for
+          # the same reason.
+          if (!is.null(.sdIov) && !.omegaModeFin(d)) {
+            .curd[[d]] <- .curd[[d]] * .sdIov[d]
           }
           if (is.null(.dt)) {
             .dt <- .curd
@@ -939,36 +1004,44 @@ nlmixr2iovVarSd <- function(val) {
       # Now fixed effects
       .fixef <- ret$env$fixef
       .w <- which(names(.fixef) %in% .iovName$var)
-      .fixef <- .fixef[-.w]
-      assign("fixef",.fixef, envir = ret$env)
+      # `x[-integer(0)]` empties the vector, and the two-level path has no
+      # magnitude theta in fixef to begin with
+      if (length(.w) > 0L) {
+        .fixef <- .fixef[-.w]
+        assign("fixef", .fixef, envir = ret$env)
+      }
 
       .parFixedDf <- ret$env$parFixedDf
       .bck <- which(grepl("Back",names(.parFixedDf)))
       .bsv <- which(grepl("BSV", names(.parFixedDf)))
       .est <- which(grepl("Est", names(.parFixedDf)))
 
-      # For a shared-block occasion parameter the magnitude theta is fixed
-      # at one, so its back-transformed cell is `nlmixr2iovSdCv(1)` -- a
-      # constant 131%, not an estimate.  Take the CV from the variance
-      # that WAS estimated: the restored occasion block on the final
-      # `iniDf`.  Only those parameters; a level expanded the old way
-      # still reports its magnitude theta.
-      .omegaVars <- intersect(.uiIovEnv$iovVars, names(.uiIovEnv$iovMaster))
-      if (length(.omegaVars) > 0L) {
-        .finIni <- ret$env$ui$iniDf
-        .parFixedDf[.omegaVars, .bck] <-
-          vapply(.omegaVars, function(.v) {
-            .wv <- which(.finIni$name == .v & !is.na(.finIni$neta1) &
-                           .finIni$neta1 == .finIni$neta2)
-            if (length(.wv) != 1L) return(NA_real_)  # nocov
-            nlmixr2iovSdCv(sqrt(.finIni$est[.wv]))
-          }, double(1), USE.NAMES=FALSE)
+      .hasIovTheta <- all(.uiIovEnv$iovVars %in% rownames(.parFixedDf))
+      .valCharPrep <- NULL
+      if (.hasIovTheta) {
+        # For a shared-block occasion parameter the magnitude theta is fixed
+        # at one, so its back-transformed cell is `nlmixr2iovSdCv(1)` -- a
+        # constant 131%, not an estimate.  Take the CV from the variance
+        # that WAS estimated: the restored occasion block on the final
+        # `iniDf`.  Only those parameters; a level expanded the old way
+        # still reports its magnitude theta.
+        .omegaVars <- intersect(.uiIovEnv$iovVars, names(.uiIovEnv$iovMaster))
+        if (length(.omegaVars) > 0L) {
+          .finIni <- ret$env$ui$iniDf
+          .parFixedDf[.omegaVars, .bck] <-
+            vapply(.omegaVars, function(.v) {
+              .wv <- which(.finIni$name == .v & !is.na(.finIni$neta1) &
+                             .finIni$neta1 == .finIni$neta2)
+              if (length(.wv) != 1L) return(NA_real_)  # nocov
+              nlmixr2iovSdCv(sqrt(.finIni$est[.wv]))
+            }, double(1), USE.NAMES=FALSE)
+        }
+        .valCharPrep <-
+          .parFixedDf[.uiIovEnv$iovVars,.bsv] <-
+          .parFixedDf[.uiIovEnv$iovVars, .bck]
+        .parFixedDf[.uiIovEnv$iovVars,.bsv] <- NA_real_
+        .parFixedDf[.uiIovEnv$iovVars,.est] <- NA_real_
       }
-      .valCharPrep <-
-        .parFixedDf[.uiIovEnv$iovVars,.bsv] <-
-        .parFixedDf[.uiIovEnv$iovVars, .bck]
-      .parFixedDf[.uiIovEnv$iovVars,.bsv] <- NA_real_
-      .parFixedDf[.uiIovEnv$iovVars,.est] <- NA_real_
 
       .parFixedDf <- .parFixedDf[!grepl("^rx[.]", rownames(.parFixedDf)),]
       assign("parFixedDf", .parFixedDf, envir = ret$env)
@@ -979,13 +1052,16 @@ nlmixr2iovVarSd <- function(val) {
       .est2 <- which(grepl("Est", names(.parFixed)))
 
       .sigdig <- ret$control$sigdig
-      .parFixed[.uiIovEnv$iovVars, .bck2] <- ""
-      .parFixed[.uiIovEnv$iovVars, .est2] <- ""
-      .parFixed[.uiIovEnv$iovVars, .bsv2] <- formatC(
-        signif(.valCharPrep, digits = .sigdig),
-        digits = .sigdig, format = "fg", flag = "#")
+      if (.hasIovTheta) {
+        .parFixed[.uiIovEnv$iovVars, .bck2] <- ""
+        .parFixed[.uiIovEnv$iovVars, .est2] <- ""
+        .parFixed[.uiIovEnv$iovVars, .bsv2] <- formatC(
+          signif(.valCharPrep, digits = .sigdig),
+          digits = .sigdig, format = "fg", flag = "#")
+      }
       .parFixed <- .parFixed[!grepl("^rx[.]", rownames(.parFixed)),]
       assign("parFixed", .parFixed, envir=ret$env)
+
     }
     # In this approach the model is simply kept,
     # but the data drops the iovDrop

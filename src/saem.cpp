@@ -67,6 +67,14 @@ static std::vector<double> _saemFaCache;
 static std::vector<double> _saemFaAdjustCache;
 static double* _saemCacheYptr = nullptr;
 static double* _saemCacheFptr = nullptr;
+// The residual-step transform cache used to be keyed on the ADDRESS of ysb/fsb.
+// Those are per-iteration locals, freed and reallocated every M-step, so the
+// allocator routinely hands back the same address with completely different
+// CONTENTS -- the guard then reported "unchanged" and the residual optimizer
+// scored every later iteration against the FIRST iteration's predictions.  Key
+// it on a counter bumped wherever the data behind the cache is set instead.
+static unsigned long _saemResidGen = 0;
+static unsigned long _saemCacheGen = (unsigned long)-1;
 static int _saemCacheLen = -1;
 static int _saemCacheYj = -1;
 static int _saemCachePropT = -1;
@@ -140,7 +148,8 @@ static inline void saemFormG(vec &g, const vec &a, const vec &b, const vec &ft, 
 }
 
 static inline void ensureSaemFixedTransformCache() {
-  if (_saemCacheYptr == _saemYptr &&
+  if (_saemCacheGen == _saemResidGen &&
+      _saemCacheYptr == _saemYptr &&
       _saemCacheFptr == _saemFptr &&
       _saemCacheLen == _saemLen &&
       _saemCacheYj == _saemYj &&
@@ -163,6 +172,7 @@ static inline void ensureSaemFixedTransformCache() {
     _saemFaCache[i] = handleF(_saemPropT, ft, f, false, false);
     _saemFaAdjustCache[i] = handleF(_saemPropT, ft, f, false, true);
   }
+  _saemCacheGen = _saemResidGen;
   _saemCacheYptr = _saemYptr;
   _saemCacheFptr = _saemFptr;
   _saemCacheLen = _saemLen;
@@ -844,6 +854,99 @@ public:
     return maxd > 1e-8;
   }
 
+  // Does the phi0 refinement need a LIVE re-solve?
+  //
+  // Freezing the ODE (saemix ind.fix10) is only valid for a phi0 parameter the
+  // SOLVE does not see -- a likelihood SD, a residual parameter.  An IOV
+  // magnitude theta is a phi0 parameter that drives the STRUCTURAL model, and
+  // with the solve frozen the objective is exactly constant in it, so the
+  // bounded optimizer walks to its upper bound and the SA update turns that
+  // into an unbounded runaway (#1000).  Answer by measuring the frozen/live
+  // discrepancy on the free phi0 columns, never by assuming from
+  // `distribution`.  Must run after gPhi0FreeIx is filled.
+  bool phi0NeedsLiveSolve() {
+    bool savedFreeze = _saemFreezeOde;
+    bool needs = false;
+    _saemFreezeOde = false;
+    { mat _t = user_fn(phiM, evt, optM); (void)_t; }   // states at phiM
+    for (size_t fi = 0; fi < gPhi0FreeIx.size() && !needs; ++fi) {
+      mat pp = phiM;
+      pp.col(i0(gPhi0FreeIx[fi])) += 0.1;
+      _saemFreezeOde = true;
+      vec ff = user_fn(pp, evt, optM).col(0);   // frozen: states still at phiM
+      _saemFreezeOde = false;
+      vec fl = user_fn(pp, evt, optM).col(0);   // live
+      double d = arma::abs(ff - fl).max();
+      if (!std::isfinite(d) || d > 1e-8) needs = true;
+      { mat _t = user_fn(phiM, evt, optM); (void)_t; } // restore states at phiM
+    }
+    _saemFreezeOde = savedFreeze;
+    return needs;
+  }
+
+  // Impose the two-level (IOV) equality constraint on an Omega-shaped matrix.
+  //
+  // Columns sharing an omegaPool group id are the same occasion parameter at
+  // different occasion levels, so their variances are one parameter.  Replace
+  // each group's diagonal entries by their mean.  A user-FIXED occasion
+  // variance needs no special case here: Gamma2_phi1fixedIx is restored after
+  // this runs, so the pin wins.
+  void poolOmegaGroups(mat &G) {
+    if (omegaPool.n_elem != (unsigned int)nphi1) return;
+    if (omegaPool.n_elem == 0) return;
+    unsigned int maxg = omegaPool.max();
+    for (unsigned int g = 1; g <= maxg; ++g) {
+      uvec ix = find(omegaPool == g);
+      if (ix.n_elem < 2) continue;
+      double m = 0.0;
+      for (unsigned int j = 0; j < ix.n_elem; ++j) m += G(ix(j), ix(j));
+      m /= (double)ix.n_elem;
+      for (unsigned int j = 0; j < ix.n_elem; ++j) G(ix(j), ix(j)) = m;
+      // and the WITHIN-group off-diagonals, which carry Omega in the collapsed
+      // form; equal diagonals plus equal off-diagonals is what makes the block
+      // compound-symmetric
+      double o = 0.0;
+      unsigned int no = 0;
+      for (unsigned int a = 0; a < ix.n_elem; ++a) {
+        for (unsigned int b = a + 1; b < ix.n_elem; ++b) {
+          o += G(ix(a), ix(b));
+          no++;
+        }
+      }
+      if (no == 0) continue;
+      o /= (double)no;
+      for (unsigned int a = 0; a < ix.n_elem; ++a) {
+        for (unsigned int b = a + 1; b < ix.n_elem; ++b) {
+          G(ix(a), ix(b)) = o;
+          G(ix(b), ix(a)) = o;
+        }
+      }
+    }
+  }
+
+  // Impose the collapsed form's shared-mean constraint on the GLS solution.
+  // Exact rather than a projection: see omegaPoolMean.
+  void poolLambdaGroups(vec &P) {
+    if (!omegaPoolMean) return;
+    if (omegaPool.n_elem != (unsigned int)nphi1) return;
+    if (lambdaCol1.n_elem != P.n_elem) return;
+    unsigned int maxg = omegaPool.max();
+    for (unsigned int g = 1; g <= maxg; ++g) {
+      uvec cols = find(omegaPool == g);
+      if (cols.n_elem < 2) continue;
+      std::vector<unsigned int> li;
+      for (unsigned int l = 0; l < P.n_elem; ++l) {
+        if (lambdaCol1(l) < (unsigned int)nphi1 &&
+            omegaPool(lambdaCol1(l)) == g) li.push_back(l);
+      }
+      if (li.size() < 2) continue;
+      double m = 0.0;
+      for (size_t k = 0; k < li.size(); ++k) m += P(li[k]);
+      m /= (double)li.size();
+      for (size_t k = 0; k < li.size(); ++k) P(li[k]) = m;
+    }
+  }
+
   // Re-run the uninformative-eta test at the current estimates.
   //
   // The test (R/uninformativeEtas.R) perturbs each eta and asks whether the prediction
@@ -997,7 +1100,11 @@ public:
     { mat _tmp = user_fn(phiM, evt, optM); (void)_tmp; }  // establish states
     bool doFreeze;
     if (distribution == 4) {
-      doFreeze = true;
+      // NOT unconditionally frozen: a general-likelihood model can still carry a
+      // phi0 that drives the solve (an IOV magnitude theta), and freezing makes
+      // the objective constant in it -- see phi0NeedsLiveSolve() and #1000.
+      if (_phi0NeedsLive < 0) _phi0NeedsLive = phi0NeedsLiveSolve() ? 1 : 0;
+      doFreeze = (_phi0NeedsLive == 0);
     } else if (nonMuThetaRegress) {
       if (_phi0OdeSensitive < 0) _phi0OdeSensitive = phi0AffectsOde() ? 1 : 0;
       doFreeze = (_phi0OdeSensitive == 0);
@@ -1015,13 +1122,18 @@ public:
     // an unbounded bobyqa span breaks there.  Constrain each step to a LOCAL
     // trust region around the current value (intersected with any ini bounds)
     // so the SA iteration refines it gradually, like a clamped regression step.
-    // General-likelihood phi0 (distribution==4) keeps the original wide bounds.
+    // localTrust also selects the optimizer; trustBounds only clamps the step.
     bool localTrust = (distribution != 4) && nonMuThetaRegress;
+    // A general-likelihood phi0 that drives the solve (an IOV magnitude) gets the
+    // same absolute trust region: its ini bounds are typically (0, Inf), and an
+    // unbounded span over an ODE-driven objective is what let it run away (#1000).
+    // A general-likelihood phi0 the solve never sees keeps the original wide bounds.
+    bool trustBounds = localTrust || (distribution == 4 && _phi0NeedsLive == 1);
     for (int c = 0; c < nphi0; c++) {
       par0[c] = mprior_phi0(0, c);
       double userLo = ((int)phi0Lower.n_elem == nphi0) ? phi0Lower(c) : R_NegInf;
       double userHi = ((int)phi0Upper.n_elem == nphi0) ? phi0Upper(c) : R_PosInf;
-      if (localTrust) {
+      if (trustBounds) {
         // ABSOLUTE trust radius (not relative to par0): a relative radius lets a
         // param that starts to drift grow its own step and run away.
         double trust = 0.75;
@@ -1906,6 +2018,9 @@ public:
     statphi12 = as<mat>(x["statphi12"]);
     omegaShare = x.containsElementNamed("omegaShare") ? as<uvec>(x["omegaShare"]) : uvec();
     omegaShareSubpop = x.containsElementNamed("omegaShareSubpop") ? as<uvec>(x["omegaShareSubpop"]) : uvec();
+    omegaPool = x.containsElementNamed("omegaPool") ? as<uvec>(x["omegaPool"]) : uvec();
+    omegaPoolMean = x.containsElementNamed("omegaPoolMean") ? as<int>(x["omegaPoolMean"]) : 0;
+    _buildLambdaCol1 = true;
     statphi11_mix.set_size(std::max(nMix, 1));
     for (int _j = 0; _j < std::max(nMix, 1); _j++) {
       statphi11_mix(_j) = statphi11;
@@ -3212,6 +3327,21 @@ public:
           }
         }
       }
+      // collapsed IOV: the group's columns share one mean, so average their
+      // solutions before anything downstream reads them
+      if (omegaPoolMean) {
+        if (_buildLambdaCol1) {
+          lambdaCol1.set_size(LCOV1.n_rows);
+          lambdaCol1.fill((unsigned int)nphi1);
+          for (unsigned int l = 0; l < LCOV1.n_rows; ++l) {
+            for (unsigned int c = 0; c < LCOV1.n_cols; ++c) {
+              if (LCOV1(l, c) == 1) { lambdaCol1(l) = c; break; }
+            }
+          }
+          _buildLambdaCol1 = false;
+        }
+        poolLambdaGroups(Plambda1);
+      }
       if (fixedIx1.n_elem>0) {
         Plambda1(fixedIx1) = MCOV1(jcov1(fixedIx1));
       }
@@ -3297,12 +3427,22 @@ public:
         }
       }
 
+      // Two-level (IOV): the per-occasion columns of one occasion parameter
+      // estimate a single Psi, so pool their moments.  Under the equality
+      // constraint the maximizer of the complete-data likelihood is the plain
+      // mean of the per-occasion moments -- each column carries the same N
+      // deviations -- so this stays a closed-form M-step, not a projection.
+      poolOmegaGroups(G1);
+
       if (kiter<=(unsigned int)(nb_sa)) {
         Gamma2_phi1=max(Gamma2_phi1*coef_sa, diagmat(G1));
       } else {
         Gamma2_phi1=G1;
       }
       Gamma2_phi1=Gamma2_phi1%covstruct1;
+      // the SA floor above is per-element, so it can pull a pooled group apart
+      // again; restore the constraint after it
+      poolOmegaGroups(Gamma2_phi1);
       // Split-ETA components sharing an omegaShare group are pooled into a single BSV term
       // (law of total variance) for *reporting only*, into Gamma2_phi1Report; the live
       // Gamma2_phi1 feeding IGamma2_phi1/D1Gamma21 stays untouched so tcl1/tcl2 stay uncoupled.
@@ -3473,6 +3613,7 @@ public:
             _saemYptr = ysb.memptr();
             _saemFptr = fsb.memptr();
             _saemLen  = ysb.n_elem;
+            _saemResidGen++;
             _saemYj   = yj(b);
             _saemPropT = propT(b);
             _saemAddProp=addProp(b);
@@ -3551,6 +3692,7 @@ public:
             _saemYptr = ysb.memptr();
             _saemFptr = fsb.memptr();
             _saemLen  = ysb.n_elem;
+            _saemResidGen++;
             _saemYj   = yj(b);
             _saemPropT = propT(b);
             _saemAddProp = addProp(b);
@@ -3619,6 +3761,7 @@ public:
             _saemYptr = ysb.memptr();
             _saemFptr = fsb.memptr();
             _saemLen  = ysb.n_elem;
+            _saemResidGen++;
             _saemYj   = yj(b);
             _saemPropT = propT(b);
             _saemAddProp =addProp(b);
@@ -3682,6 +3825,7 @@ public:
             _saemYptr = ysb.memptr();
             _saemFptr = fsb.memptr();
             _saemLen  = ysb.n_elem;
+            _saemResidGen++;
             _saemYj   = yj(b);
             _saemPropT = propT(b);
             _saemAddProp = addProp(b);
@@ -3746,6 +3890,7 @@ public:
             _saemYptr = ysb.memptr();
             _saemFptr = fsb.memptr();
             _saemLen  = ysb.n_elem;
+            _saemResidGen++;
             _saemYj   = yj(b);
             _saemPropT = propT(b);
             _saemAddProp = addProp(b);
@@ -3818,6 +3963,7 @@ public:
             _saemYptr = ysb.memptr();
             _saemFptr = fsb.memptr();
             _saemLen  = ysb.n_elem;
+            _saemResidGen++;
             _saemYj   = yj(b);
             _saemPropT = propT(b);
             _saemAddProp = addProp(b);
@@ -3895,6 +4041,7 @@ public:
             _saemYptr = ysb.memptr();
             _saemFptr = fsb.memptr();
             _saemLen  = ysb.n_elem;
+            _saemResidGen++;
             _saemYj   = yj(b);
             _saemPropT = propT(b);
             _saemAddProp = addProp(b);
@@ -3980,6 +4127,7 @@ public:
             _saemYptr = ysb.memptr();
             _saemFptr = fsb.memptr();
             _saemLen  = ysb.n_elem;
+            _saemResidGen++;
             _saemYj   = yj(b);
             _saemPropT = propT(b);
             _saemAddProp = addProp(b);
@@ -4320,6 +4468,10 @@ private:
   // 0 no (residual/likelihood only -> freeze the ODE during the phi0 opt like
   // npag), 1 yes (structural, e.g. ka/V -> keep the ODE live).
   int _phi0OdeSensitive = -1;
+  // Same question for a general-likelihood fit, answered by comparing a frozen
+  // and a live evaluation rather than by watching the prediction move: there the
+  // prediction IS the log-density, so every phi0 changes it.  -1 not yet probed.
+  int _phi0NeedsLive = -1;
   // Phase 4 (SAEM general-likelihood theta plan): the THETA[k]/ETA[k] -> phi
   // column maps, pool-readiness flags, and lhs offsets (_saemPhi1H2ThetaKind,
   // _saemPhi1H2ThetaCol, _saemPhi1H2ThetaFixedVal, _saemPhi1H2EtaCol, _saemPhi1PredOffset,
@@ -4366,6 +4518,20 @@ private:
   field<vec> cens_mix;
   uvec omegaShare;
   uvec omegaShareSubpop;
+  // Two-level (IOV) models: phi1 columns sharing a non-zero group id are one
+  // occasion parameter observed at different levels, so they estimate ONE
+  // variance (Psi).  0 means the column has its own.  See R/saemIov.R.
+  uvec omegaPool;
+  // Collapsed (Panhard & Samson) IOV: the pooled columns also share ONE mean --
+  // the single theta the user declared.  Because the group's Gamma block is
+  // compound-symmetric, 1 is an eigenvector of it, so Gamma^-1 1 is proportional
+  // to 1 and the exact constrained GLS for that shared mean is the equal-weight
+  // average of the group's unconstrained solutions.  0 leaves the means alone
+  // (the two-level form pins them at 0 instead).
+  int omegaPoolMean = 0;
+  // lambda -> phi1 column, from LCOV1's single 1 per row; empty when unused
+  uvec lambdaCol1;
+  bool _buildLambdaCol1 = false;
 
   // Per-chain scratch buffers pre-allocated in inits() to avoid repeated heap
   // allocation in the hot distribution==1 loops in saem_fit() and do_mcmc().

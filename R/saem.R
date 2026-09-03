@@ -296,7 +296,12 @@
                         mixProbPriorN=rxode2::rxGetControl(ui, "mixProbPriorN", 20),
                         mixSampleMethod=rxode2::rxGetControl(ui, "mixSampleMethod", "parallel"),
                         omegaShare=ui$saemOmegaShare,
-                        omegaShareSubpop=ui$saemOmegaShareSubpop)
+                        omegaShareSubpop=ui$saemOmegaShareSubpop,
+                        omegaPool=ui$saemOmegaPool,
+                        # collapsed IOV also shares the group's MEAN (one theta)
+                        omegaPoolMean=as.integer(identical(
+                          rxode2::rxGetControl(ui, "iovMethod", "twoLevel"),
+                          "collapsed")))
     .cfg$nonMuTheta <- rxode2::rxGetControl(ui, "nonMuTheta", "regress")
     # integer gate the SAEM C++ reads: when 1, non-mu (phi0) thetas are
     # estimated by the bounded direct optimizer (bounds from phi0Lower/Upper)
@@ -1061,6 +1066,10 @@
           .full <- matrix(0, length(.fn), length(.fn), dimnames = list(.fn, .fn))
           .full[.ini, .ini] <- .thCov
           .full[.vn, .vn] <- .vc
+          # two-level IOV: the K per-occasion columns are ONE variance, so they
+          # appear K times here under their internal `om.rx.<iov>.<k>` names.
+          # Contract them (no-op when the fit did not take that path).
+          .full <- .saemIovCollapseCov(.full, .uiIovEnv$iovTwoLevel)
           assign(".saemFullCov", .full, envir = env)
         }
         .cov <- .thCov
@@ -1541,7 +1550,25 @@ nlmixr2Est.saem <- function(env, ...) {
 attr(nlmixr2Est.saem, "covPresent") <- TRUE
 attr(nlmixr2Est.saem, "unbounded") <- TRUE
 attr(nlmixr2Est.saem, "mu") <- TRUE
-attr(nlmixr2Est.saem, "iov") <- TRUE
+# Whether the shared IOV pre-processing rewrite (.uiApplyIov(), R/iov.R) runs.
+# It turns `iov.x ~ v | occ` into a magnitude theta multiplying per-occasion
+# unit-variance etas, which is what every other estimation method wants.  With
+# iovMethod="twoLevel" saem keeps the occasion term as a second variance
+# component and handles it itself, so the rewrite has to stay out of the way.
+attr(nlmixr2Est.saem, "iov") <- function(control) {
+  !(identical(control$iovMethod, "twoLevel") ||
+      identical(control$iovMethod, "collapsed"))
+}
+# Models the two-level handling cannot take; a reason here sends the model back
+# to the shared rewrite (iovMethod="theta") instead of failing.
+attr(nlmixr2Est.saem, "iovNativeScope") <- function(ui, data, control) {
+  .i <- .saemIovInfo(ui, data)
+  if (is.character(.i)) return(.i)
+  if (identical(control$iovMethod, "collapsed")) {
+    return(.saemIovCollapsedDecline(ui, .i))
+  }
+  NULL
+}
 
 
 #' @rdname nmObjGet
