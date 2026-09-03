@@ -12816,6 +12816,25 @@ Environment foceiFitCpp_(Environment e){
   // pool from the PREVIOUS fit's, which is exactly what resetting _impPoolModel
   // around foceiSetup_ used to prevent.
   odeSwapClearAll();
+  // Same reason: globalCensFlag accumulates which censoring methods a fit used
+  // and is only cleared once foceiFinalizeTables() has READ it, so a fit that
+  // never reaches there leaves it set and the NEXT fit reports the previous
+  // one's censoring (test-focei-cens.R passed alone but not after
+  // test-focei-cens-t*.R).  NOT for est="saem": there this call is a
+  // post-estimation table pass, and saem records its censoring before it, so
+  // clearing here would report every censored saem fit as uncensored.
+  {
+    // op_focei.isSaem is not set until foceiSetup_ runs, which is LATER than this
+    // point, so read est off the control instead.
+    bool isSaemFit = false;
+    if (e.exists("control")) {
+      List ctlE = e["control"];
+      if (ctlE.containsElementNamed("est") && TYPEOF(ctlE["est"]) == STRSXP) {
+        isSaemFit = (as<std::string>(ctlE["est"]) == "saem");
+      }
+    }
+    if (!isSaemFit) resetCensFlag();
+  }
   op_focei.innerNeq = 0;
   List model = e["model"];
   bool doPredOnly = false;

@@ -478,18 +478,19 @@
 #'
 #' @param trustFterm,trustMterm `innerOpt="trust"`'s own function-value and
 #'     predicted-decrease convergence tolerances for the per-subject Newton
-#'     solve. `NULL` (default) uses the plain `10^(-sigdig)`, the same
-#'     formula every other tolerance in this control uses. Deliberately NOT
-#'     derived from `epsilon` (`"n1qn1"`'s own, unrelated "precision of
-#'     estimate" tolerance) -- tying `"trust"`'s stopping criterion to a
-#'     value picked for a different optimizer is exactly the coupling these
-#'     parameters exist to remove, so they can be tuned independently of
-#'     `"n1qn1"`. A 2026-08-23 investigation into a stuck-at-start FOCEi fit
-#'     initially suspected this tolerance and tested tightening it to
-#'     `10^-(sigdig+2)`; that turned out to be a red herring -- the actual
-#'     cause was the OUTER `bobyqa` optimizer's own `rhobeg` (see
-#'     `.bobyqa()`'s stuck-search retry), reproducible with `trustFterm`/
-#'     `trustMterm` at either value. Has no effect unless `innerOpt="trust"`.
+#'     solve. `NULL` (default) uses `10^(-sigdig-2)`, two orders tighter than
+#'     the plain `10^(-sigdig)` most tolerances here use, for the same reason
+#'     `lbfgsFactr` is: the inner solve is the function the outer problem
+#'     differentiates, so this tolerance sets the objective's noise floor and a
+#'     finite-difference outer gradient cannot resolve a step below it. Left at
+#'     the plain `10^(-sigdig)`, an `nAGQ=2` `theo_sd` fit stopped at an
+#'     objective of 134.46 against 118.52, and took longer doing it -- the
+#'     noisy gradient misleads the outer search as well as lengthening it.
+#'     Deliberately NOT derived from `epsilon` (`"n1qn1"`'s own, unrelated
+#'     "precision of estimate" tolerance) -- tying `"trust"`'s stopping
+#'     criterion to a value picked for a different optimizer is exactly the
+#'     coupling these parameters exist to remove. Has no effect unless
+#'     `innerOpt="trust"`.
 #'
 #' @param hessianMethod For a non-normal-endpoint model (any distribution
 #'     other than \code{norm}), the per-subject inner Hessian has no
@@ -1192,22 +1193,19 @@ foceiControl <- function(sigdig = 3, #
       lbfgsFactr <- max(10^(-sigdig - 2) / .Machine$double.eps, 1)
     }
     if (is.null(trustFterm)) {
-      # Plain 10^-sigdig, matching every other tolerance in this control
-      # (epsilon, abstol, reltol, rhoend, ...) -- NOT tied to epsilon itself.
-      # A 2026-08-23 investigation into a stuck-at-start FOCEi fit (a 2-cmt IV
-      # infusion steady-state model) initially suspected this tolerance and
-      # tested tightening it (10^-(sigdig+2)); that turned out to be a red
-      # herring -- the actual cause was the OUTER bobyqa's own `rhobeg`
-      # (see .bobyqa()'s stuck-search retry in R/focei.R), reproducible with
-      # this trustFterm/trustMterm at EITHER 10^-sigdig or 10^-(sigdig+2).
-      # Kept at the plain formula since no evidence supports tightening it;
-      # independence from epsilon (n1qn1's own, unrelated "precision of
-      # estimate" tolerance) is the point of having these as their own
-      # parameters, not the numeric default.
-      trustFterm <- 10^(-sigdig)
+      # Two orders tighter than the plain 10^-sigdig the other tolerances use,
+      # for the same reason lbfgsFactr above is: the inner solve IS the function
+      # the outer problem differentiates, so its stopping tolerance sets the
+      # objective's noise floor, and a finite-difference outer gradient cannot
+      # resolve a step below it.  At the plain 10^-sigdig an nAGQ=2 theo_sd fit
+      # ended at objf 134.46 against 118.52 here, taking 6.8s against 1.5s --
+      # the noisy gradient both misleads the outer search and lengthens it.
+      # NOT tied to epsilon ("n1qn1"'s own, unrelated tolerance): independence
+      # from it is the point of having these as their own parameters.
+      trustFterm <- 10^(-sigdig - 2)
     }
     if (is.null(trustMterm)) {
-      trustMterm <- 10^(-sigdig)
+      trustMterm <- 10^(-sigdig - 2)
     }
     if (is.null(rel.tol)) {
       rel.tol <- 10^(-sigdig)

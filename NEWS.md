@@ -54,6 +54,29 @@
 
 ## Bug fixes
 
+- A fit no longer reports the PREVIOUS fit's censoring.  `$censInformation`
+  is built from a process-global flag recording which censoring methods
+  (M2/M3/M4) a fit used, and that flag was cleared only after being read at
+  the end of a fit -- so a fit that set it without reaching there left it
+  set, and the next fit in the session reported the leftover.  An
+  uncensored model fit right after a censored one said "M2, M3 and M4
+  censoring".  It is now also cleared when a fit starts.
+
+- `est="agq"`/`"laplace"`/`"focei"` with the default `innerOpt="trust"` and a
+  finite-difference outer gradient no longer stop early at a much worse
+  objective.  `trustFterm`/`trustMterm`, the inner per-subject Newton solve's
+  convergence tolerances, defaulted to the plain `10^(-sigdig)` used by the
+  other tolerances here, but the inner solve is the function the outer problem
+  differentiates: its stopping tolerance is the objective's noise floor, and a
+  finite-difference outer gradient cannot resolve a step below it.  On an
+  `nAGQ=2` `theo_sd` fit the outer search was misled to an objective of 134.46
+  against 118.52, taking 6.8s against 1.5s -- a noisy gradient both lengthens
+  the search and ends it worse.  They now default to `10^(-sigdig-2)`, two
+  orders tighter, the same relationship `lbfgsFactr` already uses.  Every fit
+  with `innerOpt="trust"` and no explicit `trustFterm`/`trustMterm` changes
+  numerically as a result; generalized-likelihood models are unaffected, since
+  `innerOpt="auto"` sends those to `"n1qn1"`.
+
 - A generalized log-likelihood model (`dnorm()`, `ll()`, `dpois()`, ...) fit
   with `foceiControl(innerOpt="trust")` no longer converges to badly biased
   population parameters on oral or two-compartment models.  Such an endpoint

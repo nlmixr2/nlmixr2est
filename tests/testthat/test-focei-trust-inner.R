@@ -27,13 +27,16 @@ nmTest({
     expect_error(foceiControl(trustRinit = 0))
     expect_error(foceiControl(trustRmax = 0))
 
-    # trustFterm/trustMterm default to the plain 10^(-sigdig), independent of
-    # epsilon (n1qn1's own, unrelated tolerance) even though both happen to
-    # share the same formula/value by default.
-    expect_equal(foceiControl(sigdig = 3)$trustFterm, 0.001)
-    expect_equal(foceiControl(sigdig = 3)$trustMterm, 0.001)
-    expect_equal(foceiControl(sigdig = 3, epsilon = 1e-2)$trustFterm, 0.001)
-    expect_equal(foceiControl(sigdig = 3, epsilon = 1e-2)$trustMterm, 0.001)
+    # trustFterm/trustMterm default to 10^(-sigdig-2), two orders tighter than
+    # the plain 10^(-sigdig): the inner solve is the function the outer problem
+    # differentiates, so this tolerance is the objective's noise floor and a
+    # finite-difference outer gradient cannot resolve a step below it.  They
+    # stay independent of epsilon (n1qn1's own, unrelated tolerance).
+    expect_equal(foceiControl(sigdig = 3)$trustFterm, 1e-5)
+    expect_equal(foceiControl(sigdig = 3)$trustMterm, 1e-5)
+    expect_equal(foceiControl(sigdig = 4)$trustFterm, 1e-6)
+    expect_equal(foceiControl(sigdig = 3, epsilon = 1e-2)$trustFterm, 1e-5)
+    expect_equal(foceiControl(sigdig = 3, epsilon = 1e-2)$trustMterm, 1e-5)
     expect_equal(foceiControl(trustFterm = 0.5)$trustFterm, 0.5)
     expect_equal(foceiControl(trustMterm = 0.25)$trustMterm, 0.25)
     expect_error(foceiControl(trustFterm = 0))

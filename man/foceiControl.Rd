@@ -700,18 +700,19 @@ the boundary of the `trustConf`-level eta confidence region. Default
 
 \item{trustFterm, trustMterm}{`innerOpt="trust"`'s own function-value and
 predicted-decrease convergence tolerances for the per-subject Newton
-solve. `NULL` (default) uses the plain `10^(-sigdig)`, the same
-formula every other tolerance in this control uses. Deliberately NOT
-derived from `epsilon` (`"n1qn1"`'s own, unrelated "precision of
-estimate" tolerance) -- tying `"trust"`'s stopping criterion to a
-value picked for a different optimizer is exactly the coupling these
-parameters exist to remove, so they can be tuned independently of
-`"n1qn1"`. A 2026-08-23 investigation into a stuck-at-start FOCEi fit
-initially suspected this tolerance and tested tightening it to
-`10^-(sigdig+2)`; that turned out to be a red herring -- the actual
-cause was the OUTER `bobyqa` optimizer's own `rhobeg` (see
-`.bobyqa()`'s stuck-search retry), reproducible with `trustFterm`/
-`trustMterm` at either value. Has no effect unless `innerOpt="trust"`.}
+solve. `NULL` (default) uses `10^(-sigdig-2)`, two orders tighter than
+the plain `10^(-sigdig)` most tolerances here use, for the same reason
+`lbfgsFactr` is: the inner solve is the function the outer problem
+differentiates, so this tolerance sets the objective's noise floor and a
+finite-difference outer gradient cannot resolve a step below it. Left at
+the plain `10^(-sigdig)`, an `nAGQ=2` `theo_sd` fit stopped at an
+objective of 134.46 against 118.52, and took longer doing it -- the
+noisy gradient misleads the outer search as well as lengthening it.
+Deliberately NOT derived from `epsilon` (`"n1qn1"`'s own, unrelated
+"precision of estimate" tolerance) -- tying `"trust"`'s stopping
+criterion to a value picked for a different optimizer is exactly the
+coupling these parameters exist to remove. Has no effect unless
+`innerOpt="trust"`.}
 
 \item{rhobeg}{Initial trust region radius for the bobyqa outer optimizer
 (with `rhoend`, must satisfy `0 < rhoend < rhobeg`). Default `0.2`
