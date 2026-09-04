@@ -8,6 +8,13 @@ nmTest({
   # the start of the subject array, so it reads correctly under any stride.
 
   test_that("rxode2's per-subject event counts split the dataset (#1039)", {
+    # NOT on CRAN: the counts and their total are rxode2's own record
+    # accounting, and CRAN pairs this package with whatever rxode2 is already
+    # there.  A release that accounts for records differently should show up
+    # here as a test failure for us, never as a check failure on CRAN -- which
+    # is the whole reason foceiCheckIndCounts() does not enforce this.
+    skip_on_cran()
+
     # unequal per-subject record counts, so a wrong stride cannot pass by
     # reading a neighbouring (identical) subject
     nObsI <- c(3, 5, 2, 7, 4, 6)
@@ -41,6 +48,9 @@ nmTest({
     expect_equal(sum(cnt[, "nAllTimes"]), nrow(d))
   })
 
+  # This one has no skip_on_cran(): it drives the rules on counts supplied from
+  # R and never touches a solve, so it cannot depend on which rxode2 is
+  # installed -- which is exactly the property the rules were narrowed to have.
   test_that("an impossible per-subject event layout is refused (#1039)", {
     # the rejection paths need a build whose rxode2 and nlmixr2est disagree on
     # the solve layout, which no test can produce -- so drive the rules on
@@ -75,6 +85,10 @@ nmTest({
   })
 
   test_that("a multi-subject focei fit sizes its per-subject blocks correctly", {
+    # NOT on CRAN: this asserts llikObs lands on the dose rows of the event
+    # table, which is rxode2's record layout, against whatever rxode2 CRAN has
+    skip_on_cran()
+
     # the report's own reproduction: on a mismatched build this failed at
     # .foceiFitInternal() with "dataset too large", an R_Calloc failure, or a
     # segfault, depending on what the mis-read bytes happened to hold
