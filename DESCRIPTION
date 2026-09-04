@@ -85,7 +85,10 @@ Suggests:
     rlang,
     numDeriv,
     rstan,
-    loo
+    loo,
+    nlmixr2save
+Remotes:
+   nlmixr2/nlmixr2save
 LinkingTo:
     BH,
     n1qn1 (>= 6.0.1-12),

@@ -74,6 +74,39 @@ nmTest({
     }
   })
 
+  test_that("the inner-problem multistart is defaulted on", {
+    ## a declared distribution is a harder likelihood surface, and a cold
+    ## started FOCEi settles into a local optimum without it -- measured on
+    ## Bauer's own gamma dataset, mceta=10 moves the gamma mean of CL from
+    ## 6.7 to 5.2 against a truth of 5.0
+    .etaDistMcetaApply <- function(ctl) {
+      nlmixr2est:::.etaDistMceta(ctl)$mceta
+    }
+    .ctl <- foceiControl()
+    expect_equal(as.integer(.ctl$mceta), -2L)
+    .r <- nlmixr2est:::.preProcessEtaDist(.declMod(), "focei", NULL, .ctl)
+    expect_equal(as.integer(.r$control$mceta), 10L)
+    ## an explicit choice stays in charge
+    .r2 <- nlmixr2est:::.preProcessEtaDist(.declMod(), "focei", NULL,
+                                           foceiControl(mceta=3L))
+    expect_null(.r2$control)
+    ## saem samples the etas rather than optimizing them, so saemControl()
+    ## has no mceta at all -- it must be left completely alone, and the
+    ## model must still be expanded for it
+    expect_false(any(names(saemControl()) == "mceta"))
+    .r3 <- nlmixr2est:::.preProcessEtaDist(.declMod(), "saem", NULL, saemControl())
+    expect_null(.r3$control)
+    expect_true("rxz.eta.cl" %in% .r3$ui$iniDf$name)
+    ## the other methods that DO have the knob get it
+    for (.c in list(impmapControl(), agqControl())) {
+      expect_equal(as.integer(.etaDistMcetaApply(.c)), 10L)
+    }
+    ## and a control that is not a control at all is untouched
+    expect_null(nlmixr2est:::.etaDistMceta(list(notAControl=TRUE)))
+    ## a model with no declaration never reaches any of this
+    expect_null(nlmixr2est:::.etaDistMceta(NULL))
+  })
+
   test_that("methods declare whether they support a declaration", {
     ## the FOCEi family, SAEM and simulation do
     for (.m in c("focei", "foce", "fo", "laplace", "agq", "imp", "impmap",
@@ -87,6 +120,20 @@ nmTest({
       expect_false(nlmixr2est:::.isEtaDistMethod(.m), info=.m)
     }
     expect_false(nlmixr2est:::.isEtaDistMethod("notAMethod"))
+  })
+
+  test_that("an unsupported method refuses before doing any work", {
+    ## the hooks run BEFORE nlmixr2Est()'s gate, so refusing only there
+    ## made an unsupported method pay for the expansion and its own
+    ## pre-processing first -- for est="npag" that is the whole
+    ## nonparametric mu-expansion, minutes of it, to arrive at an error
+    .t0 <- proc.time()
+    expect_error(nlmixr2est:::.preProcessEtaDist(.declMod(), "npag", NULL, NULL),
+                 "npag")
+    expect_lt((proc.time() - .t0)[["elapsed"]], 5)
+    ## a supported method is not refused
+    expect_silent(nlmixr2est:::.etaDistRefuse(
+      rxode2::rxUiEtaDists(.declMod()), "focei", NULL))
   })
 
   test_that("an unsupported method refuses rather than ignoring", {

@@ -40,20 +40,34 @@ ini({
   written) and `$etaDistCor` (the copula correlation matrix of each
   declared block, rebuilt from the `rxCor.*` estimates).
 
-  **Starting values matter more than usual for these models.**  Validated
+  **Declared distributions default `mceta` to 10.**  These are harder
+  likelihood surfaces than the models nlmixr2 usually sees.  Validated
   against Bauer's own gamma-distributed CL/V1 dataset (300 subjects,
   `gamma_indpar.pdf`): at NONMEM's own ITS estimates nlmixr2's objective
   function and per-subject empirical Bayes estimates of the latent copula
   normals agree with NONMEM's (correlation 0.999 and 0.997, RMS
-  differences 0.035 and 0.078 on a unit-variance scale), and FOCEi warm
-  started there converges near both the simulation truth and NONMEM's
-  answer.  From a cold start, though, `focei`/`laplace`/`saem` all settle
-  into a worse local optimum -- which is the same thing Bauer reports
-  ("the Laplace method does not travel well, and tends to end prematurely
-  when not near the answer"), and why his own recipe runs an iterative
-  two-stage pass with `MCETA=10`-`100` before Laplace.  Give these models
-  informative starting values, or warm start `focei` from an EM method
-  (`est="impmap"`/`"imp"`, the closest analogues of that recipe).
+  differences 0.035 and 0.078 on a unit-variance scale), so the
+  *likelihood* is not what differs.  What differs is the path to it: from
+  a cold start `focei`/`laplace`/`saem` settle into a local optimum where
+  the residual error absorbs variability belonging to the random effect.
+  That is what Bauer reports too ("the Laplace method does not travel
+  well, and tends to end prematurely when not near the answer"), and why
+  his recipe runs an EM pass with `MCETA=10`-`100` first.
+
+  `mceta` is the same knob, so a declared distribution now defaults it to
+  `10` instead of `-2`, and says so.  This applies only to the methods
+  that HAVE it -- the FOCEi family, `imp`/`impmap` and `agq`.
+  `saemControl()` has no `mceta` (SAEM samples the etas rather than
+  optimizing them), so a saem control is left completely alone.
+
+  Cold started on that dataset the gamma means go from 6.74/8.02 to
+  5.22/5.55 against a truth of 5.03/4.66, and the relative variances from
+  0.225/0.297 to 0.145/0.134 against a truth of 0.085/0.084.  Better, not
+  perfect -- for a stubborn fit, warm start `focei` from an EM method
+  (`est="impmap"`/`"imp"`), raise `mceta` further, or improve the starting
+  values.  Setting `mceta` explicitly takes charge of it.  For `saem`,
+  where the knob does not exist, a warm start or better starting values
+  are the levers.
 
 - `saemControl(iovMethod = "twoLevel")` estimates inter-occasion variability
   the way the rest of `saem` estimates a variance.  The shared pre-processing
