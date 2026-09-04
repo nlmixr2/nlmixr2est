@@ -56,6 +56,65 @@ is.latex <- function() {
   .ret
 }
 
+#' Retry a stuck BOBYQA search with a wider initial trust region
+#'
+#' Powell's BOBYQA (2009, DAMTP 2009/NA06) builds its initial quadratic model
+#' from `npt=2n+1` points stepped `rhobeg` from the start along each
+#' coordinate direction. On at least one real PK model (a 2-compartment IV
+#' infusion steady-state fit, investigated 2026-08-23), the default
+#' `rhobeg=0.2` made this initial model collapse: bobyqa reported normal
+#' convergence, but 4 of 5 population parameters (in the shared
+#' `rescale2`-scaled space, where the whole starting theta vector is linearly
+#' mapped to `[-1, 1]`) never moved from their starting values at all.
+#' `rhobeg=0.25` or larger escaped it and matched a SAEM reference fit
+#' closely; `rhobeg` as small as `0.001` ALSO escaped it -- this is not
+#' simply "small rhobeg is bad", `0.2` specifically is, for reasons not yet
+#' root-caused (`n1qn1`, FOCEi's other inner optimizer, was never stuck at
+#' the same `rhobeg` on the same model, so it is specific to how `trust`'s
+#' inner responses interact with bobyqa's model-building at that radius).
+#'
+#' This is a pragmatic detect-and-retry safeguard, not a fix for whatever
+#' makes bobyqa's model collapse at that particular radius: rather than
+#' silently return a fit that never actually searched, widen `rhobeg` and
+#' retry. Detection: the final point never left the SAME initial exploration
+#' radius the search started with (the Euclidean distance bobyqa's answer
+#' moved from the start is smaller than the `rhobeg` it was given). This can
+#' also occur for a genuinely-already-optimal starting guess -- a false
+#' positive there costs an extra retry, not a wrong answer, since the retry
+#' should land on the same point again.
+#'
+#' Only engages when the caller passed an explicit `rhobeg` (as
+#' `.foceiFitInternal()`'s outer optimizer always does, via
+#' `foceiControl()$rhobeg`'s own non-NULL default) -- a caller that leaves
+#' `rhobeg` for `minqa::bobyqa()` to default internally (e.g.
+#' `.boundedResidOpt()`) has no known starting radius to compare against or
+#' widen, so is left alone.
+#'
+#' @param par the starting (scaled) parameter vector bobyqa was given
+#' @param fn the objective function
+#' @param lower,upper bobyqa's bounds
+#' @param ctl the (already-filtered) bobyqa control list the first attempt used
+#' @param ret the first attempt's `minqa::bobyqa()` result
+#' @return a `minqa::bobyqa()`-shaped list, from whichever attempt is returned
+#' @noRd
+#' @author Matthew L. Fidler
+.bobyqaRetryIfStuck <- function(par, fn, lower, upper, ctl, ret) {
+  .rhobeg <- ctl$rhobeg
+  if (is.null(.rhobeg)) return(ret)
+  .escalate <- Filter(function(x) x > .rhobeg, c(0.25, 0.3))
+  for (.rb in .escalate) {
+    .dist <- sqrt(sum((ret$par - par)^2))
+    if (.dist >= .rhobeg) break # search actually moved -- stop escalating
+    warning("outer bobyqa search stalled; retrying with a wider rhobeg", call. = FALSE)
+    .ctl2 <- ctl
+    .ctl2$rhobeg <- .rb
+    if (!is.null(.ctl2$rhoend) && .ctl2$rhoend >= .rb) .ctl2$rhoend <- .rb / 100
+    ret <- minqa::bobyqa(par, fn, control = .ctl2, lower = lower, upper = upper)
+    .rhobeg <- .rb
+  }
+  ret
+}
+
 .bobyqa <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
   .ctl <- .controlMaxfun(control)
   if (is.null(.ctl$npt)) .ctl$npt <- length(par) * 2 + 1
@@ -66,6 +125,7 @@ is.latex <- function() {
     lower = lower,
     upper = upper
   )
+  .ret <- .bobyqaRetryIfStuck(par, fn, lower, upper, .ctl, .ret)
   .ret$x <- .ret$par
   .ret$message <- .ret$msg
   .ret$convergence <- .ret$ierr
@@ -3823,6 +3883,14 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   .control$needOptimHess <- .optimHess
   if (.control$needOptimHess) {
     .control$interaction <- 0L
+    # innerOpt="auto" resolves to n1qn1 here, which cannot honor a quasi-Newton
+    # hessianMethod.  foceiSetup_ refuses this too, but catching it before the
+    # fit starts keeps the reason from being reported as "Could not fit data".
+    if (.control$innerOpt == 4L) {
+      .foceiAssertHessianMethod(.control$hessianMethod, 1L,
+        note = " (\"auto\" picks \"n1qn1\" here)"
+      )
+    }
     # A log-likelihood / generalized endpoint has no Gaussian add/prop a/B/c error
     # machinery.  But rx_pred_ IS the per-observation log-density, so the analytic outer
     # gradient differentiates it directly (gradPooledCoreLL, exact inner Hessian +

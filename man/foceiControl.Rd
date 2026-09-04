@@ -46,6 +46,7 @@ foceiControl(
   hessEpsLlik = (.Machine$double.eps)^(1/3),
   optimHessType = c("central", "forward"),
   optimHessCovType = c("central", "forward"),
+  hessEtaStepMin = 0.05,
   censOption = c("gauss", "laplace"),
   eventType = c("central", "forward"),
   eventSens = c("jump", "fd"),
@@ -81,7 +82,13 @@ foceiControl(
   covTryHarder = FALSE,
   outerOpt = c("bobyqa", "nlminb", "lbfgsb3c", "L-BFGS-B", "mma", "lbfgsbLG", "slsqp",
     "uobyqa", "newuoa"),
-  innerOpt = c("n1qn1", "BFGS"),
+  innerOpt = c("auto", "trust", "n1qn1", "BFGS"),
+  hessianMethod = c("fd", "bfgs", "sr1", "bofill"),
+  trustConf = 0.975,
+  trustRinit = NULL,
+  trustRmax = NULL,
+  trustFterm = NULL,
+  trustMterm = NULL,
   rhobeg = 0.2,
   rhoend = NULL,
   npt = NULL,
@@ -448,6 +455,26 @@ R's `optimHess()`, default) or "forward" (faster).}
 Hessians used for the covariance step/final likelihood: "central"
 (more accurate, used here) or "forward".}
 
+\item{hessEtaStepMin}{Floor on the finite-difference step used for the
+  individual (eta) Hessian in generalized log-likelihood estimation,
+  expressed as a fraction of that random effect's own standard deviation
+  (\code{sqrt(diag(Omega))}).  Default \code{0.05}; \code{0} restores the
+  plain absolute \code{shi21hMin} floor.
+
+  The Shi (2021) step search is told the function's noise floor is
+  \code{rxControl(atolSens=)}, but the inner gradient it differences comes
+  out of a sensitivity solve that \code{rtolSens} governs as well, so the
+  noise is understated and the search shrinks the step until the difference
+  is taken inside it.  \code{n1qn1} absorbs that -- it uses this Hessian only
+  as a warm-start seed and then corrects it by its own quasi-Newton updates
+  as it iterates -- but \code{innerOpt="trust"} re-derives it as its
+  trust-region model Hessian at every trial point, with nothing to correct
+  it, and adds its log-determinant to the reported objective.  Flooring the
+  step relative to the eta scale stops the runaway without paying for a
+  tighter solve.  It applies to every inner optimizer: the step a finite
+  difference needs is a property of the problem, not of who consumes the
+  Hessian.}
+
 \item{censOption}{Treatment of the second derivative for censored
 (M2/M3/M4/BLQ) observations in the FOCEI family.  \code{"gauss"} (the default)
 keeps the historic uncensored Gauss-Newton curvature, matching common PMx tools;
@@ -645,8 +672,92 @@ the Hessian on the unscaled parameter space.}
 
 \item{outerOpt}{optimization method for the outer problem}
 
-\item{innerOpt}{optimization method for the inner problem (not
-implemented yet.)}
+\item{innerOpt}{optimization method for the inner (per-subject eta)
+    problem: `"auto"` (default), `"trust"` (RcppTrust trust-region Newton,
+    using an exact Gauss-Newton+Omega^-1 Hessian every iteration) or
+    `"n1qn1"` (quasi-Newton, gets a Hessian only once as a warm-start
+    seed).  `"BFGS"` is accepted but not implemented -- it silently falls
+    back to `"n1qn1"`.
+
+    `"auto"` picks `"n1qn1"` for a generalized-likelihood endpoint
+    (`dnorm()`, `ll()`, `dpois()`, ...) and `"trust"` for everything else.
+    Such an endpoint has no Gauss-Newton shortcut, so the inner eta Hessian
+    is finite-differenced; `"trust"` rebuilds it at every trial point, which
+    costs 2*neta inner solves each time, while `"n1qn1"` builds it once as a
+    warm-start seed and corrects it with its own quasi-Newton updates.  On
+    everything else `"trust"` is typically the faster of the two.}
+
+\item{hessianMethod}{For a non-normal-endpoint model (any distribution
+    other than \code{norm}), the per-subject inner Hessian has no
+    Gaussian Gauss-Newton shortcut and falls back to a finite difference
+    of the gradient every `innerOpt="trust"` Newton step
+    (`calcEtaHessian()`, `src/inner.cpp`). `"fd"` (default) recomputes
+    this Hessian from scratch every Newton step via finite difference.
+    `"bfgs"` is the damped BFGS update (Nocedal & Wright, *Numerical
+    Optimization*, 2nd ed., 2006, Procedure 18.2), always positive
+    definite; `"sr1"` is the Symmetric Rank-1 update (Nocedal & Wright;
+    Murtagh & Sargent, *Comput. J.* 13, 1970), not forced positive
+    definite; `"bofill"` is Bofill's (1994, *J. Comput. Chem.* 15, 1-11)
+    SR1/Powell-Symmetric-Broyden blend. All three are built from
+    consecutive Newton steps' already-computed gradients (no extra
+    evaluations), seeded from one `"fd"`-style Hessian on the first
+    Newton step of each inner solve.
+
+    Unlike `trustControl(hessianMethod=)`'s analogous OUTER-theta option
+    (where `"sr1"` is the default), this inner Hessian is not just a
+    step-direction aid: `LikInner2()` (`src/inner.cpp`) adds this
+    Hessian's log-determinant directly into the reported Laplace
+    objective, which the OUTER optimizer then searches over. A
+    quasi-Newton estimate built from the handful of Newton steps one
+    subject's inner solve takes is accurate enough to guide the step but
+    not accurate enough to serve as that objective term -- confirmed on
+    a real one-compartment IV model fit as a general \code{ll()}/`dnorm()`
+    endpoint: `"bfgs"`/`"sr1"`/`"bofill"` all converged to the same
+    wrong `Vc` (about 90 against a simulated 70 and a plain (non-`ll()`)
+    `focei` fit's 67, with a *worse* reported objective than `"fd"`'s
+    correct answer) -- the biased log-determinant misleads the outer
+    search into a worse point it reports as better. `"fd"`'s fresh
+    finite difference has no such bias, so it stays the default here even
+    though `"bfgs"`/`"sr1"`/`"bofill"` remain available (and are
+    genuinely faster, per this package's own small benchmark,
+    `inst/benchmarks/benchmark-focei-hessian-method.R`) for a caller who
+    has verified their model does not depend on this Hessian's precision.
+    Has no effect for normal-endpoint models (the Gauss-Newton inner
+    Hessian is used unconditionally there). Only meaningful with
+    `innerOpt="trust"`, which the default `innerOpt="auto"` does not pick
+    for these models -- so setting this needs `innerOpt="trust"` pinned as
+    well. Asking for `"bfgs"`/`"sr1"`/`"bofill"` under any other inner
+    optimizer is an error rather than a silent no-op: `foceiControl()`
+    refuses a pinned `innerOpt`, and the fit refuses one `"auto"` resolves
+    to `"n1qn1"`.}
+
+\item{trustConf}{confidence level defining the `innerOpt="trust"`
+trust-region radius: since eta ~ N(0, Omega), the radius (in
+sqrt(diag(Omega))-scaled units) is `sqrt(qchisq(trustConf, df=neta))`,
+the boundary of the `trustConf`-level eta confidence region. Default
+0.975.}
+
+\item{trustRinit}{initial `innerOpt="trust"` trust-region radius. `NULL`
+(default) derives it from `trustConf`.}
+
+\item{trustRmax}{maximum `innerOpt="trust"` trust-region radius. `NULL`
+(default) derives it from `trustConf`.}
+
+\item{trustFterm, trustMterm}{`innerOpt="trust"`'s own function-value and
+predicted-decrease convergence tolerances for the per-subject Newton
+solve. `NULL` (default) uses `10^(-sigdig-2)`, two orders tighter than
+the plain `10^(-sigdig)` most tolerances here use, for the same reason
+`lbfgsFactr` is: the inner solve is the function the outer problem
+differentiates, so this tolerance sets the objective's noise floor and a
+finite-difference outer gradient cannot resolve a step below it. Left at
+the plain `10^(-sigdig)`, an `nAGQ=2` `theo_sd` fit stopped at an
+objective of 134.46 against 118.52, and took longer doing it -- the
+noisy gradient misleads the outer search as well as lengthening it.
+Deliberately NOT derived from `epsilon` (`"n1qn1"`'s own, unrelated
+"precision of estimate" tolerance) -- tying `"trust"`'s stopping
+criterion to a value picked for a different optimizer is exactly the
+coupling these parameters exist to remove. Has no effect unless
+`innerOpt="trust"`.}
 
 \item{rhobeg}{Initial trust region radius for the bobyqa outer optimizer
 (with `rhoend`, must satisfy `0 < rhoend < rhobeg`). Default `0.2`

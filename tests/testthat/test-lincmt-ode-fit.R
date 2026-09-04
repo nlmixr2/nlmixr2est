@@ -153,6 +153,24 @@ nmTest({
     }
   })
 
+  test_that("trust estimates a combined linCmt()/ODE model like the all-ODE model (#996)", {
+    # est="trust" was missing from .linCmtOdeEstFamily (R/preProcessLinCmtOde.R)
+    # when it was added -- the linCmt()->ODE translation this test's own
+    # .linPop/.odePop pair exists to guard never ran for it, so the extra
+    # theta-sensitivity states shifted linCmt()'s compartments the same way
+    # the FOCEi eta-sensitivity states did before #286 was fixed: 5 of the
+    # model's 7 population thetas had an exactly-zero starting gradient.
+    withr::with_seed(42, {
+      rxode2::rxSetSeed(42)
+      .d <- .simData()
+    })
+    .ctl <- trustControl(print = 0, iterlim = 1, calcTables = FALSE)
+    .fLin <- suppressWarnings(nlmixr2(.linPop(), .d, est = "trust", control = .ctl))
+    .fOde <- suppressWarnings(nlmixr2(.odePop(), .d, est = "trust", control = .ctl))
+    expect_equal(.fLin$objDf$OBJF, .fOde$objDf$OBJF, tolerance = 1e-4)
+    expect_true(any(grepl("analytic 'linCmt()'", .fLin$runInfo, fixed = TRUE)))
+  })
+
   test_that("the FD fallback and the table/pred models agree with the all-ODE model", {
     # The linCmt() compartments sit at a different number in the sensitivity
     # inner model than in the prediction models, which share one event table.

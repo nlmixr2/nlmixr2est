@@ -1,3 +1,28 @@
+# innerOpt= levels.  "auto" is resolved in C++ (foceiSetup_) once
+# needOptimHess is known: n1qn1 for a generalized-likelihood endpoint, trust
+# otherwise.  See the innerOpt @param below.
+.innerOptFun <- c("n1qn1" = 1L, "BFGS" = 2L, "trust" = 3L, "auto" = 4L)
+
+# hessianMethod= levels.  Anything but "fd" is only consulted under
+# innerOpt="trust" (hessianQNEligible, src/inner.cpp).
+.hessianMethodIdx <- c("fd" = 1L, "bfgs" = 2L, "sr1" = 3L, "bofill" = 4L)
+
+#' Refuse a hessianMethod no inner optimizer would consult.
+#'
+#' `innerOpt` must already be resolved: foceiControl() passes `4L` ("auto")
+#' through untouched because needOptimHess is not known there yet, and
+#' R/focei.R re-checks with the value it resolves to.
+#' @noRd
+.foceiAssertHessianMethod <- function(hessianMethod, innerOpt, note = "") {
+  if (hessianMethod == 1L || innerOpt == 3L || innerOpt == 4L) {
+    return(invisible(TRUE))
+  }
+  stop("hessianMethod = \"", names(.hessianMethodIdx)[hessianMethod],
+    "\" requires innerOpt = \"trust\"", note,
+    call. = FALSE
+  )
+}
+
 .foceiControlInternal <- c(
   "genRxControl", "resetEtaSize", "foceType",
   "resetThetaSize", "resetThetaFinalSize",
@@ -252,6 +277,26 @@
 #'   Hessians used for the covariance step/final likelihood: "central"
 #'   (more accurate, used here) or "forward".
 #'
+#' @param hessEtaStepMin Floor on the finite-difference step used for the
+#'   individual (eta) Hessian in generalized log-likelihood estimation,
+#'   expressed as a fraction of that random effect's own standard deviation
+#'   (\code{sqrt(diag(Omega))}).  Default \code{0.05}; \code{0} restores the
+#'   plain absolute \code{shi21hMin} floor.
+#'
+#'   The Shi (2021) step search is told the function's noise floor is
+#'   \code{rxControl(atolSens=)}, but the inner gradient it differences comes
+#'   out of a sensitivity solve that \code{rtolSens} governs as well, so the
+#'   noise is understated and the search shrinks the step until the difference
+#'   is taken inside it.  \code{n1qn1} absorbs that -- it uses this Hessian only
+#'   as a warm-start seed and then corrects it by its own quasi-Newton updates
+#'   as it iterates -- but \code{innerOpt="trust"} re-derives it as its
+#'   trust-region model Hessian at every trial point, with nothing to correct
+#'   it, and adds its log-determinant to the reported objective.  Flooring the
+#'   step relative to the eta scale stops the runaway without paying for a
+#'   tighter solve.  It applies to every inner optimizer: the step a finite
+#'   difference needs is a property of the problem, not of who consumes the
+#'   Hessian.
+#'
 #' @param censOption Treatment of the second derivative for censored
 #'   (M2/M3/M4/BLQ) observations in the FOCEI family.  \code{"gauss"} (the default)
 #'   keeps the historic uncensored Gauss-Newton curvature, matching common PMx tools;
@@ -448,8 +493,92 @@
 #'
 #' @param outerOpt optimization method for the outer problem
 #'
-#' @param innerOpt optimization method for the inner problem (not
-#'     implemented yet.)
+#' @param innerOpt optimization method for the inner (per-subject eta)
+#'     problem: `"auto"` (default), `"trust"` (RcppTrust trust-region Newton,
+#'     using an exact Gauss-Newton+Omega^-1 Hessian every iteration) or
+#'     `"n1qn1"` (quasi-Newton, gets a Hessian only once as a warm-start
+#'     seed).  `"BFGS"` is accepted but not implemented -- it silently falls
+#'     back to `"n1qn1"`.
+#'
+#'     `"auto"` picks `"n1qn1"` for a generalized-likelihood endpoint
+#'     (`dnorm()`, `ll()`, `dpois()`, ...) and `"trust"` for everything else.
+#'     Such an endpoint has no Gauss-Newton shortcut, so the inner eta Hessian
+#'     is finite-differenced; `"trust"` rebuilds it at every trial point, which
+#'     costs 2*neta inner solves each time, while `"n1qn1"` builds it once as a
+#'     warm-start seed and corrects it with its own quasi-Newton updates.  On
+#'     everything else `"trust"` is typically the faster of the two.
+#'
+#' @param trustConf confidence level defining the `innerOpt="trust"`
+#'     trust-region radius: since eta ~ N(0, Omega), the radius (in
+#'     sqrt(diag(Omega))-scaled units) is `sqrt(qchisq(trustConf, df=neta))`,
+#'     the boundary of the `trustConf`-level eta confidence region. Default
+#'     0.975.
+#'
+#' @param trustRinit initial `innerOpt="trust"` trust-region radius. `NULL`
+#'     (default) derives it from `trustConf`.
+#'
+#' @param trustRmax maximum `innerOpt="trust"` trust-region radius. `NULL`
+#'     (default) derives it from `trustConf`.
+#'
+#' @param trustFterm,trustMterm `innerOpt="trust"`'s own function-value and
+#'     predicted-decrease convergence tolerances for the per-subject Newton
+#'     solve. `NULL` (default) uses `10^(-sigdig-2)`, two orders tighter than
+#'     the plain `10^(-sigdig)` most tolerances here use, for the same reason
+#'     `lbfgsFactr` is: the inner solve is the function the outer problem
+#'     differentiates, so this tolerance sets the objective's noise floor and a
+#'     finite-difference outer gradient cannot resolve a step below it. Left at
+#'     the plain `10^(-sigdig)`, an `nAGQ=2` `theo_sd` fit stopped at an
+#'     objective of 134.46 against 118.52, and took longer doing it -- the
+#'     noisy gradient misleads the outer search as well as lengthening it.
+#'     Deliberately NOT derived from `epsilon` (`"n1qn1"`'s own, unrelated
+#'     "precision of estimate" tolerance) -- tying `"trust"`'s stopping
+#'     criterion to a value picked for a different optimizer is exactly the
+#'     coupling these parameters exist to remove. Has no effect unless
+#'     `innerOpt="trust"`.
+#'
+#' @param hessianMethod For a non-normal-endpoint model (any distribution
+#'     other than \code{norm}), the per-subject inner Hessian has no
+#'     Gaussian Gauss-Newton shortcut and falls back to a finite difference
+#'     of the gradient every `innerOpt="trust"` Newton step
+#'     (`calcEtaHessian()`, `src/inner.cpp`). `"fd"` (default) recomputes
+#'     this Hessian from scratch every Newton step via finite difference.
+#'     `"bfgs"` is the damped BFGS update (Nocedal & Wright, *Numerical
+#'     Optimization*, 2nd ed., 2006, Procedure 18.2), always positive
+#'     definite; `"sr1"` is the Symmetric Rank-1 update (Nocedal & Wright;
+#'     Murtagh & Sargent, *Comput. J.* 13, 1970), not forced positive
+#'     definite; `"bofill"` is Bofill's (1994, *J. Comput. Chem.* 15, 1-11)
+#'     SR1/Powell-Symmetric-Broyden blend. All three are built from
+#'     consecutive Newton steps' already-computed gradients (no extra
+#'     evaluations), seeded from one `"fd"`-style Hessian on the first
+#'     Newton step of each inner solve.
+#'
+#'     Unlike `trustControl(hessianMethod=)`'s analogous OUTER-theta option
+#'     (where `"sr1"` is the default), this inner Hessian is not just a
+#'     step-direction aid: `LikInner2()` (`src/inner.cpp`) adds this
+#'     Hessian's log-determinant directly into the reported Laplace
+#'     objective, which the OUTER optimizer then searches over. A
+#'     quasi-Newton estimate built from the handful of Newton steps one
+#'     subject's inner solve takes is accurate enough to guide the step but
+#'     not accurate enough to serve as that objective term -- confirmed on
+#'     a real one-compartment IV model fit as a general \code{ll()}/`dnorm()`
+#'     endpoint: `"bfgs"`/`"sr1"`/`"bofill"` all converged to the same
+#'     wrong `Vc` (about 90 against a simulated 70 and a plain (non-`ll()`)
+#'     `focei` fit's 67, with a *worse* reported objective than `"fd"`'s
+#'     correct answer) -- the biased log-determinant misleads the outer
+#'     search into a worse point it reports as better. `"fd"`'s fresh
+#'     finite difference has no such bias, so it stays the default here even
+#'     though `"bfgs"`/`"sr1"`/`"bofill"` remain available (and are
+#'     genuinely faster, per this package's own small benchmark,
+#'     `inst/benchmarks/benchmark-focei-hessian-method.R`) for a caller who
+#'     has verified their model does not depend on this Hessian's precision.
+#'     Has no effect for normal-endpoint models (the Gauss-Newton inner
+#'     Hessian is used unconditionally there). Only meaningful with
+#'     `innerOpt="trust"`, which the default `innerOpt="auto"` does not pick
+#'     for these models -- so setting this needs `innerOpt="trust"` pinned as
+#'     well. Asking for `"bfgs"`/`"sr1"`/`"bofill"` under any other inner
+#'     optimizer is an error rather than a silent no-op: `foceiControl()`
+#'     refuses a pinned `innerOpt`, and the fit refuses one `"auto"` resolves
+#'     to `"n1qn1"`.
 #'
 #' @param stateTrim Trim state amounts/concentrations to this value.
 #'
@@ -929,6 +1058,7 @@ foceiControl <- function(sigdig = 3, #
                          hessEpsLlik = (.Machine$double.eps)^(1 / 3),
                          optimHessType = c("central", "forward"),
                          optimHessCovType = c("central", "forward"),
+                         hessEtaStepMin = 0.05,
                          censOption = c("gauss", "laplace"),
                          eventType = c("central", "forward"), #
                          eventSens = c("jump", "fd"), #
@@ -981,7 +1111,14 @@ foceiControl <- function(sigdig = 3, #
                            "uobyqa",
                            "newuoa"
                          ), #
-                         innerOpt = c("n1qn1", "BFGS"), #
+                         innerOpt = c("auto", "trust", "n1qn1", "BFGS"), #
+                         hessianMethod = c("fd", "bfgs", "sr1", "bofill"), #
+                         ## trust-region inner optimizer (RcppTrust)
+                         trustConf = 0.975, # confidence level defining the trust-region radius
+                         trustRinit = NULL, # NULL -> derived from trustConf/neta
+                         trustRmax = NULL, # NULL -> derived from trustConf/neta
+                         trustFterm = NULL, # NULL -> 10^(-sigdig), NOT epsilon
+                         trustMterm = NULL, # NULL -> 10^(-sigdig), NOT epsilon
                          ##
                          rhobeg = .2, #
                          rhoend = NULL, #
@@ -1100,6 +1237,21 @@ foceiControl <- function(sigdig = 3, #
       # two-order tightening).
       lbfgsFactr <- max(10^(-sigdig - 2) / .Machine$double.eps, 1)
     }
+    if (is.null(trustFterm)) {
+      # Two orders tighter than the plain 10^-sigdig the other tolerances use,
+      # for the same reason lbfgsFactr above is: the inner solve IS the function
+      # the outer problem differentiates, so its stopping tolerance sets the
+      # objective's noise floor, and a finite-difference outer gradient cannot
+      # resolve a step below it.  At the plain 10^-sigdig an nAGQ=2 theo_sd fit
+      # ended at objf 134.46 against 118.52 here, taking 6.8s against 1.5s --
+      # the noisy gradient both misleads the outer search and lengthens it.
+      # NOT tied to epsilon ("n1qn1"'s own, unrelated tolerance): independence
+      # from it is the point of having these as their own parameters.
+      trustFterm <- 10^(-sigdig - 2)
+    }
+    if (is.null(trustMterm)) {
+      trustMterm <- 10^(-sigdig - 2)
+    }
     if (is.null(rel.tol)) {
       rel.tol <- 10^(-sigdig)
     }
@@ -1165,6 +1317,9 @@ foceiControl <- function(sigdig = 3, #
     checkmate::assertNumeric(fdRichardsonV,
       lower = 1.0000001, finite = TRUE,
       any.missing = FALSE, len = 1
+    )
+    checkmate::assertNumeric(hessEtaStepMin,
+      lower = 0, finite = TRUE, any.missing = FALSE, len = 1
     )
     checkmate::assertLogical(fdChartrandAll, any.missing = FALSE, len = 1)
     checkmate::assertLogical(fdOutlierAny, any.missing = FALSE, len = 1)
@@ -1457,11 +1612,49 @@ foceiControl <- function(sigdig = 3, #
     )
     fast <- FALSE
   }
-  if (checkmate::testIntegerish(innerOpt, lower = 1, upper = 2, len = 1)) {
+  if (checkmate::testIntegerish(innerOpt, lower = 1, upper = 4, len = 1)) {
     innerOpt <- as.integer(innerOpt)
   } else {
-    .innerOptFun <- c("n1qn1" = 1L, "BFGS" = 2L)
     innerOpt <- setNames(.innerOptFun[match.arg(innerOpt)], NULL)
+  }
+  if (checkmate::testIntegerish(hessianMethod, len = 1, lower = 1, upper = 4, any.missing = FALSE)) {
+    hessianMethod <- as.integer(hessianMethod)
+  } else {
+    hessianMethod <- setNames(.hessianMethodIdx[match.arg(hessianMethod)], NULL)
+  }
+  .foceiAssertHessianMethod(hessianMethod, innerOpt)
+  checkmate::assertNumeric(trustConf, lower = 0, upper = 1, finite = TRUE, any.missing = FALSE, len = 1)
+  if (trustConf <= 0 || trustConf >= 1) {
+    # qchisq(0, df)==0 (zero trust-region radius, no step ever taken) and
+    # qchisq(1, df)==Inf (unbounded radius, no trust-region constraint at all)
+    # are both degenerate -- checkmate's lower/upper bounds are inclusive, so
+    # this has to be checked separately.
+    stop("'trustConf' must be strictly between 0 and 1", call. = FALSE)
+  }
+  # lower=0 is inclusive (checkmate has no strict-bound form); trustRinit/
+  # trustRmax==0 is a zero-radius trust region that can never step, the same
+  # degenerate case trustConf==0 is rejected for above.
+  checkmate::assertNumeric(trustRinit, lower = 0, finite = TRUE, null.ok = TRUE, len = 1)
+  if (!is.null(trustRinit) && trustRinit <= 0) {
+    stop("'trustRinit' must be > 0", call. = FALSE)
+  }
+  checkmate::assertNumeric(trustRmax, lower = 0, finite = TRUE, null.ok = TRUE, len = 1)
+  if (!is.null(trustRmax) && trustRmax <= 0) {
+    stop("'trustRmax' must be > 0", call. = FALSE)
+  }
+  if (!is.null(trustRinit) && !is.null(trustRmax) && trustRinit > trustRmax) {
+    stop("'trustRinit' cannot be larger than 'trustRmax'", call. = FALSE)
+  }
+  # Resolved above (like epsilon) whenever sigdig is non-NULL; stays NULL (and
+  # errors here, matching epsilon's own strictness) only if the caller also
+  # passed sigdig=NULL without supplying trustFterm/trustMterm directly.
+  checkmate::assertNumeric(trustFterm, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
+  if (trustFterm <= 0) {
+    stop("'trustFterm' must be > 0", call. = FALSE)
+  }
+  checkmate::assertNumeric(trustMterm, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
+  if (trustMterm <= 0) {
+    stop("'trustMterm' must be > 0", call. = FALSE)
   }
   if (checkmate::testIntegerish(warm, lower = 0, upper = 1, len = 1, any.missing = FALSE)) {
     warm <- as.integer(warm)
@@ -1673,6 +1866,7 @@ foceiControl <- function(sigdig = 3, #
     hessEpsLlik = as.double(hessEpsLlik),
     optimHessType = optimHessType,
     optimHessCovType = optimHessCovType,
+    hessEtaStepMin = as.double(hessEtaStepMin),
     censOption = censOption,
     cholAccept = as.double(cholAccept),
     resetEtaSize = as.double(.resetEtaSize),
@@ -1695,6 +1889,13 @@ foceiControl <- function(sigdig = 3, #
     eval.max = eval.max,
     iter.max = iter.max,
     innerOpt = innerOpt,
+    hessianMethod = hessianMethod,
+    ## trust-region inner optimizer (RcppTrust)
+    trustConf = as.double(trustConf),
+    trustRinit = trustRinit,
+    trustRmax = trustRmax,
+    trustFterm = trustFterm,
+    trustMterm = trustMterm,
     ## BFGS
     abstol = abstol,
     reltol = reltol,
@@ -1849,7 +2050,6 @@ foceiControl <- function(sigdig = 3, #
       return(.val)
     }
     if (x == "innerOpt") {
-      .innerOptFun <- c("n1qn1" = 1L, "BFGS" = 2L)
       paste0("innerOpt = ", deparse1(names(.innerOptFun[which(object[[x]] == .innerOptFun)])))
     } else if (x == "warm") {
       .warmIdx <- c("calc" = 1L, "save" = 0L)
@@ -1860,6 +2060,8 @@ foceiControl <- function(sigdig = 3, #
     } else if (x == "eventType") {
       .methodIdx <- c("central" = 2L, "forward" = 3L)
       paste0(x, " = ", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
+    } else if (x == "hessianMethod") {
+      paste0(x, " = ", deparse1(names(.hessianMethodIdx[which(object[[x]] == .hessianMethodIdx)])))
     } else if (x %in% c("derivMethod", "covDerivMethod")) {
       .methodIdx <- c("forward" = 0L, "central" = 1L, "switch" = 3L)
       paste0(x, " = ", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))

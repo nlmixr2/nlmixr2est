@@ -42,6 +42,20 @@ nmTest({
     ct(f.focei, "No censoring")
   })
 
+  test_that("censInformation does not carry over from a previous fit", {
+    # globalCensFlag (src/censEst.h) is a process global that accumulates which
+    # censoring methods a fit used.  It is READ and only then cleared, at the end
+    # of foceiFinalizeTables(), so before this was also cleared at the START of
+    # foceiFitCpp_ a fit that never reached there left it set and the NEXT fit
+    # reported the previous fit's censoring.  This showed up as test-focei-cens.R
+    # passing alone but failing after test-focei-cens-t*.R in the same session.
+    .fCens <- suppressMessages(suppressWarnings(nlmixr(f, dat2, "posthoc")))
+    expect_equal(sub(" \\((laplace|gauss)\\)$", "",
+                     as.character(.fCens$censInformation)), "M2 censoring")
+    .fAfter <- suppressMessages(suppressWarnings(nlmixr(f, dat, "posthoc")))
+    ct(.fAfter, "No censoring")
+  })
+
   test_that("censInformation notes the censored 2nd-derivative type (laplace/gauss)", {
     fg <- suppressWarnings(suppressMessages(nlmixr(f, dat2, "posthoc")))  # gauss is the default
     fl <- suppressWarnings(suppressMessages(nlmixr(f, dat2, "posthoc", control = list(censOption = "laplace"))))
