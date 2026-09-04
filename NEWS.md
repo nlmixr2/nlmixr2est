@@ -40,6 +40,21 @@ ini({
   written) and `$etaDistCor` (the copula correlation matrix of each
   declared block, rebuilt from the `rxCor.*` estimates).
 
+  **Starting values matter more than usual for these models.**  Validated
+  against Bauer's own gamma-distributed CL/V1 dataset (300 subjects,
+  `gamma_indpar.pdf`): at NONMEM's own ITS estimates nlmixr2's objective
+  function and per-subject empirical Bayes estimates of the latent copula
+  normals agree with NONMEM's (correlation 0.999 and 0.997, RMS
+  differences 0.035 and 0.078 on a unit-variance scale), and FOCEi warm
+  started there converges near both the simulation truth and NONMEM's
+  answer.  From a cold start, though, `focei`/`laplace`/`saem` all settle
+  into a worse local optimum -- which is the same thing Bauer reports
+  ("the Laplace method does not travel well, and tends to end prematurely
+  when not near the answer"), and why his own recipe runs an iterative
+  two-stage pass with `MCETA=10`-`100` before Laplace.  Give these models
+  informative starting values, or warm start `focei` from an EM method
+  (`est="impmap"`/`"imp"`, the closest analogues of that recipe).
+
 - `saemControl(iovMethod = "twoLevel")` estimates inter-occasion variability
   the way the rest of `saem` estimates a variance.  The shared pre-processing
   rewrite that every estimation method uses carries the occasion magnitude as a

@@ -29,12 +29,35 @@
 ## construction; and `vae`/`emvi`/`fbvi`, whose ELBO hardcodes the normal
 ## family.
 
-#' Does the dispatched estimation method support a declared eta distribution?
+#' The `"etaDist"` attribute of the dispatched estimation method
 #'
-#' Reads the `"etaDist"` attribute of the `nlmixr2Est.<method>` S3 method,
-#' so a method registered by another package can declare support without
-#' editing this file.  The attribute may be `TRUE`/`FALSE` or a
-#' `function(control)` returning a logical.
+#' Read from the `nlmixr2Est.<method>` S3 method, so a method registered
+#' by another package can declare support without editing this file.  The
+#' attribute may be `TRUE`/`FALSE`, the string `"native"`, or a
+#' `function(control)` returning one of those.
+#'
+#' `"native"` means the method translates the declaration ITSELF and must
+#' see it unexpanded -- babelmixr2's `est="nonmem"` writes Bauer's own
+#' `$ABBR FUNCTION GAMMACDFINV` control stream, which reads nothing like
+#' the expansion and could not be recovered from it.
+#'
+#' @param est estimation routine name
+#' @param control control object
+#' @return `TRUE`, `FALSE` or `"native"`
+#' @noRd
+#' @author Matthew L. Fidler
+.etaDistMethodAttr <- function(est, control=NULL) {
+  if (!is.character(est) || length(est) != 1L) return(FALSE)
+  .v <- as.character(utils::methods("nlmixr2Est"))
+  if (!(paste0("nlmixr2Est.", est) %in% .v)) return(FALSE)
+  .a <- attr(utils::getS3method("nlmixr2Est", est), "etaDist")
+  if (is.null(.a)) return(FALSE)
+  if (is.function(.a)) .a <- .a(control)
+  if (identical(.a, "native")) return("native")
+  isTRUE(.a)
+}
+
+#' Does the dispatched estimation method support a declared eta distribution?
 #'
 #' @param est estimation routine name
 #' @param control control object
@@ -42,13 +65,7 @@
 #' @noRd
 #' @author Matthew L. Fidler
 .isEtaDistMethod <- function(est, control=NULL) {
-  if (!is.character(est) || length(est) != 1L) return(FALSE)
-  .v <- as.character(utils::methods("nlmixr2Est"))
-  if (!(paste0("nlmixr2Est.", est) %in% .v)) return(FALSE)
-  .a <- attr(utils::getS3method("nlmixr2Est", est), "etaDist")
-  if (is.null(.a)) return(FALSE)
-  if (is.function(.a)) return(isTRUE(.a(control)))
-  isTRUE(.a)
+  !isFALSE(.etaDistMethodAttr(est, control))
 }
 
 #' Refuse a declared eta distribution the dispatched method cannot use
@@ -102,6 +119,9 @@
   if (is.null(ui)) return(NULL)
   .d <- .rxUiEtaDists(ui)
   if (nrow(.d) == 0L) return(NULL)
+  ## a method that translates the declaration itself has to see it
+  ## unexpanded (see `.etaDistMethodAttr()`)
+  if (identical(.etaDistMethodAttr(est, control), "native")) return(NULL)
   ## The gate in nlmixr2Est() has already refused a method that cannot use
   ## these; a hook also runs for `est="rxSolve"` (simulate/vpc/augPred),
   ## which is supported.
@@ -142,46 +162,74 @@ preProcessHooksAdd(".preProcessEtaDist", .preProcessEtaDist)
   .R
 }
 
-#' Post-estimation hook: report the declared distributions on the fit
+#' Report the declared distributions on a fit
 #'
-#' The expansion is not something the user wrote, so the fit says what it
-#' did: `$etaDist` is the declarations as written, and `$etaDistCor` is
-#' the copula correlation matrix of each declared block, rebuilt from the
-#' `rxCor.*` estimates.
+#' Computed on demand through the `nmObjGet` accessors rather than stored
+#' by a post-estimation hook, so they are there for every method that can
+#' fit such a model -- the post-final hooks only run on the FOCEi path.
 #'
-#' The `rxCor.*` rows themselves already read as correlations in the
-#' back-transformed column -- `rxEtaDistExpand()` gives them
-#' `backTransform("tanh")`, and `tanh()` of one of them is the partial
-#' correlation between its two random effects given the ones before them,
-#' which for a 2x2 block is simply the correlation.
+#' `$etaDist` is the declarations as the model wrote them; `$etaDistCor`
+#' is the copula correlation matrix of each declared block, rebuilt from
+#' the `rxCor.*` estimates.
 #'
-#' @param ret the finalized fit
-#' @return the fit, with `$etaDist` and `$etaDistCor` when the model
-#'   declared a distribution
-#' @noRd
+#' The `rxCor.*` rows already read as correlations in the fit's
+#' back-transformed column: `rxEtaDistExpand()` gives them
+#' `backTransform("tanh")`, and `tanh()` of one is the partial correlation
+#' between its two random effects given the ones before them -- which for
+#' a 2x2 block, the usual case, is simply the correlation.
+#'
+#' @param x list of the fit environment and the exact flag, as
+#'   `nmObjGet()` dispatches it
+#' @param ... ignored
+#' @return the declarations, or NULL when the model declared none
+#' @export
+#' @keywords internal
 #' @author Matthew L. Fidler
-.postFinalEtaDist <- function(ret) {
-  if (!inherits(ret, "nlmixr2FitCore") || is.null(ret$env)) return(NULL)
-  .ui <- try(ret$ui, silent=TRUE)
-  if (inherits(.ui, "try-error") || is.null(.ui)) return(NULL)
-  .info <- try(get("etaDistInfo", envir=.ui), silent=TRUE)
-  if (inherits(.info, "try-error") || is.null(.info)) return(NULL)
-  .fix <- ret$env$fixef
-  if (is.null(.fix)) return(NULL)
+nmObjGet.etaDist <- function(x, ...) {
+  .info <- .etaDistInfo(x[[1]])
+  if (is.null(.info)) return(NULL)
+  .info$etaDist
+}
+attr(nmObjGet.etaDist, "desc") <-
+  "The non-normal random effect distributions the model declared"
+
+#' @rdname nmObjGet.etaDist
+#' @export
+nmObjGet.etaDistCor <- function(x, ...) {
+  .env <- x[[1]]
+  .info <- .etaDistInfo(.env)
+  if (is.null(.info)) return(NULL)
+  .fix <- try(get("fixef", envir=.env), silent=TRUE)
+  if (inherits(.fix, "try-error") || is.null(.fix)) return(NULL)
   .cor <- lapply(.info$blocks, function(.nms) {
     .need <- unlist(lapply(seq_along(.nms), function(.i) {
       if (.i == 1L) return(NULL)
       paste0("rxCor.", .nms[.i], ".", .nms[seq_len(.i - 1L)])
     }), use.names=FALSE)
-    if (!all(.need %in% names(.fix))) return(NULL)
+    if (length(.need) == 0L || !all(.need %in% names(.fix))) return(NULL)
     .etaDistCorFromY(.nms, as.list(.fix[.need]))
   })
   names(.cor) <- vapply(.info$blocks, function(.n) .n[1], character(1),
                         USE.NAMES=FALSE)
   .cor <- .cor[!vapply(.cor, is.null, logical(1))]
-  assign("etaDist", .info$etaDist, envir=ret$env)
-  assign("etaDistCor", .cor, envir=ret$env)
-  ret
+  if (length(.cor) == 0L) return(NULL)
+  .cor
 }
+attr(nmObjGet.etaDistCor, "desc") <-
+  "The Gaussian copula correlation of each declared random effect block"
 
-postFinalObjectHooksAdd(".postFinalEtaDist", .postFinalEtaDist)
+#' What `rxEtaDistExpand()` recorded on the fit's model
+#'
+#' @param env fit environment
+#' @return the `etaDistInfo` list, or NULL
+#' @noRd
+#' @author Matthew L. Fidler
+.etaDistInfo <- function(env) {
+  .ui <- try(get("ui", envir=env), silent=TRUE)
+  if (inherits(.ui, "try-error") || is.null(.ui)) return(NULL)
+  .ui <- try(rxode2::rxUiDecompress(.ui), silent=TRUE)
+  if (inherits(.ui, "try-error")) return(NULL)
+  .info <- try(get("etaDistInfo", envir=.ui), silent=TRUE)
+  if (inherits(.info, "try-error")) return(NULL)
+  .info
+}
