@@ -43,12 +43,12 @@ nmTest({
     .dat
   }
 
-  .mcetaFit <- function(dat, mceta) {
+  .mcetaFit <- function(dat, mceta, maxOuter = 0L, ...) {
     suppressWarnings(suppressMessages(
       nlmixr2(.mcetaMod, dat, "focei",
-              foceiControl(print = 0L, covMethod = "", maxOuterIterations = 0L,
+              foceiControl(print = 0L, covMethod = "", maxOuterIterations = maxOuter,
                            maxInnerIterations = 5000L, calcTables = FALSE,
-                           mceta = mceta))))
+                           mceta = mceta, ...))))
   }
 
   test_that("mceta > 0 explores its draws and cannot land worse than mceta=0", {
@@ -79,5 +79,24 @@ nmTest({
     expect_equal(.f1$objf, .f0$objf)
     expect_equal(.f1$env$nMcetaStart[["sample"]], 0L)
     expect_gt(.f1$env$nMcetaStart[["zero"]], 0L)
+  })
+
+  test_that("the mceta search does not run on the outer gradient's difference legs", {
+    skip_on_cran()
+    # A finite-difference leg is pinned to the central evaluation's mode, so the
+    # search has to be skipped there -- otherwise a tiny theta perturbation could
+    # flip which candidate starts the inner problem and the two legs would sit in
+    # different basins.  Count the inner solves that ran the search: one more
+    # outer iteration costs a handful of objective evaluations (nsub starts
+    # each), while an UNGATED search would add one full pass per parameter --
+    # npars * nsub -- for that iteration's gradient alone.
+    .dat <- .mcetaData()
+    .nsub <- length(unique(.dat$ID))
+    .g1 <- .mcetaFit(.dat, 5L, maxOuter = 1L, fast = FALSE)
+    .g2 <- .mcetaFit(.dat, 5L, maxOuter = 2L, fast = FALSE)
+    .npars <- length(fixef(.g1))
+    expect_lt(sum(.g2$env$nMcetaStart) - sum(.g1$env$nMcetaStart), .nsub * .npars)
+    # ... and the search did run somewhere, so the bound is not vacuous.
+    expect_gt(.g1$env$nMcetaStart[["sample"]], 0L)
   })
 })
