@@ -446,7 +446,11 @@ rest of the fit.  Skipped for mixture models and when
 
 <dt id="arg-iovxform">iovXform<a class="anchor" aria-label="anchor" href="#arg-iovxform"></a></dt>
 <dd><p>Transformation used on the diagonal of the IOV: one of
-<code>"sd"</code>, <code>"var"</code>, <code>"logsd"</code>, or <code>"logvar"</code>.</p></dd>
+<code>"sd"</code>, <code>"var"</code>, <code>"logsd"</code>, or <code>"logvar"</code>.
+This parameterizes the magnitude theta of the <code>"theta"</code>
+<code>iovMethod</code>; it has no effect under <code>"omega"</code>, where the
+magnitude is fixed at one and the variability is carried by the
+omega block itself.</p></dd>
 
 
 <dt id="arg-iovmethod">iovMethod<a class="anchor" aria-label="anchor" href="#arg-iovmethod"></a></dt>

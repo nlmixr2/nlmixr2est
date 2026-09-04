@@ -438,7 +438,10 @@ saemControl(
 - iovXform:
 
   Transformation used on the diagonal of the IOV: one of `"sd"`,
-  `"var"`, `"logsd"`, or `"logvar"`.
+  `"var"`, `"logsd"`, or `"logvar"`. This parameterizes the magnitude
+  theta of the `"theta"` `iovMethod`; it has no effect under `"omega"`,
+  where the magnitude is fixed at one and the variability is carried by
+  the omega block itself.
 
 - iovMethod:
 

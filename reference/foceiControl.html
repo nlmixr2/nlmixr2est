@@ -94,6 +94,7 @@
 <span>  eigen <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  diagXform <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"sqrt"</span>, <span class="st">"log"</span>, <span class="st">"identity"</span><span class="op">)</span>,</span>
 <span>  iovXform <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"sd"</span>, <span class="st">"var"</span>, <span class="st">"logsd"</span>, <span class="st">"logvar"</span><span class="op">)</span>,</span>
+<span>  iovMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"theta"</span>, <span class="st">"omega"</span><span class="op">)</span>,</span>
 <span>  sumProd <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  optExpression <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  literalFix <span class="op">=</span> <span class="cn">TRUE</span>,</span>
@@ -637,7 +638,48 @@ to include a condition number calculation.</p></dd>
 
 <dt id="arg-iovxform">iovXform<a class="anchor" aria-label="anchor" href="#arg-iovxform"></a></dt>
 <dd><p>Transformation used on the diagonal of the IOV: one of
-<code>"sd"</code>, <code>"var"</code>, <code>"logsd"</code>, or <code>"logvar"</code>.</p></dd>
+<code>"sd"</code>, <code>"var"</code>, <code>"logsd"</code>, or <code>"logvar"</code>.
+This parameterizes the magnitude theta of the <code>"theta"</code>
+<code>iovMethod</code>; it has no effect under <code>"omega"</code>, where the
+magnitude is fixed at one and the variability is carried by the
+omega block itself.</p></dd>
+
+
+<dt id="arg-iovmethod">iovMethod<a class="anchor" aria-label="anchor" href="#arg-iovmethod"></a></dt>
+<dd><p>How inter-occasion variability is expanded before
+    estimation: one of <code>"auto"</code> (default), <code>"theta"</code> or
+    <code>"omega"</code>.</p>
+<p><code>"theta"</code> is the long-standing expansion: each occasion
+    parameter becomes a magnitude theta, with one unit-variance eta per
+    occasion fixed to it.  That shape cannot represent a correlation
+    between two occasion parameters.</p>
+<p><code>"omega"</code> instead fixes the magnitude theta at one and
+    estimates the per-occasion eta blocks directly, occasion one being
+    the block and the rest repeating it (NONMEM's
+    <code>$OMEGA BLOCK(n) SAME</code>).  The correlation then lives in the
+    estimated block.</p>
+<p><code>"auto"</code> picks <code>"omega"</code> when the IOV block has any
+    off-diagonal element, since <code>"theta"</code> provably cannot
+    represent one, and <code>"theta"</code> otherwise.  <code>"omega"</code> may
+    be asked for on a diagonal block as well, so the two can be
+    compared on the same model.  The choice is made per LEVEL of
+    variability, so a correlation on <code>occ</code> does not change how
+    an unrelated diagonal <code>occ2</code> is expanded.</p>
+<p><code>"omega"</code> is only available for estimation methods that
+    honour the repeated block (the FOCEi family).  <code>saem</code> and
+    the variational, nonparametric and importance-sampling methods
+    estimate omega elsewhere, so they continue to refuse a
+    correlated occasion block rather than silently estimate each
+    occasion on its own.</p>
+<p>The two are the same statistical model – at an occasion variance
+    of one, where the parameterizations coincide, they agree on the
+    objective to machine precision, and evaluated at matched random
+    effects they agree to ~2e-8 at any variance.  They are not
+    interchangeable in practice: <code>"theta"</code> hands FOCEi's inner
+    optimizer unit-scale etas and so converges the inner problem
+    better when the occasion variance is far from one.  That is why
+    <code>"auto"</code> keeps <code>"theta"</code> unless a correlation forces
+    <code>"omega"</code>.</p></dd>
 
 
 <dt id="arg-sumprod">sumProd<a class="anchor" aria-label="anchor" href="#arg-sumprod"></a></dt>
@@ -741,7 +783,7 @@ it converges it reaches a worse optimum than leaving it off.</p></dd>
 
 
 <dt id="arg-resetthetafinalp">resetThetaFinalP<a class="anchor" aria-label="anchor" href="#arg-resetthetafinalp"></a></dt>
-<dd><p>represents the p-value for reseting the
+<dd><p>represents the p-value for resetting the
 population mu-referenced THETA parameters based on ETA drift
 during optimization, and resetting the optimization one final time.
 `0` = never reset (the default); see <code>resetThetaP</code>.</p></dd>

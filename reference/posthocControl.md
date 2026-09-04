@@ -167,6 +167,9 @@ posthocControl()
 #> $iovXform
 #> [1] "sd"
 #> 
+#> $iovMethod
+#> [1] "auto"
+#> 
 #> $sumProd
 #> [1] FALSE
 #> 
@@ -281,7 +284,7 @@ posthocControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x560dbd6c1bd8>
+#> <bytecode: 0x56259320c6c8>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg

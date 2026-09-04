@@ -58,7 +58,72 @@
   implementation (-8.7%/-10.9%/-5.4%), and leaves the residual error
   2.9% high. `iovMethod = "theta"` restores the old behavior.
 
+- Inter-occasion variability can now be **correlated**.
+  `iov.cl + iov.v ~ c(0.1, 0.03, 0.2) | occ` estimates the occasion
+  covariance instead of erroring with “correlated inter-occasion random
+  effects are not supported”.
+
+  This adds `foceiControl(iovMethod=)`, one of `"auto"` (default),
+  `"theta"` or `"omega"`:
+
+  - `"theta"` is the long-standing expansion – one magnitude theta per
+    occasion parameter, with unit-variance per-occasion etas fixed to
+    it. That shape provably cannot carry a correlation between two
+    occasion parameters, so it still refuses one.
+  - `"omega"` fixes the magnitude theta at one and estimates the
+    per-occasion eta blocks instead: occasion one *is* the block, and
+    each later occasion repeats it. That is NONMEM’s
+    `$OMEGA BLOCK(n) SAME`, and the correlation lives in the estimated
+    block.
+  - `"auto"` picks `"omega"` when the occasion block has any
+    off-diagonal element and `"theta"` otherwise, per LEVEL of
+    variability – a correlation on `occ` does not change how an
+    unrelated diagonal `occ2` is expanded.
+  - `"auto"` only reaches for `"omega"` on an estimation method that
+    honours the repeated block – the FOCEi family. `saem`, the
+    variational (`vae`, `fbvi`, `emvi`), nonparametric (`npag`, …) and
+    importance-sampling (`imp`, `impmap`, `qrpem`) methods estimate
+    omega elsewhere and still refuse a correlated occasion block, since
+    they would otherwise estimate each occasion independently and report
+    only the first.
+
+  The two expansions are the same statistical model, verified exactly:
+  with the occasion variance at 1 (where the two parameterizations
+  coincide) they agree on the objective to machine precision, and
+  evaluated at matched random effects they agree to ~2e-8 at any
+  variance. They are *not* interchangeable in practice, though –
+  `"theta"` presents unit-scale etas to FOCEi’s inner optimizer, which
+  converges the inner problem better when the occasion variance is far
+  from 1 (on `theo_sd` with a variance of 0.1, `"theta"` reaches an
+  inner optimum 0.059 lower and `"omega"` stops short of it). That is
+  why `"auto"` keeps `"theta"` for a diagonal block and reaches for
+  `"omega"` only when a correlation makes it necessary.
+
+  `iovXform` parameterizes the `"theta"` magnitude and is inert under
+  `"omega"`, where the magnitude is fixed at one; asking for a
+  non-`"sd"` value under `"omega"` now says so once.
+
+  Analytic covariance falls back to finite differences for a repeated
+  (`SAME`) omega block: its IOV special case reads the magnitude theta
+  as the occasion standard deviation, which is 1 in this mode, and would
+  have overwritten the estimated per-occasion variances rather than
+  merely being conservative.
+
 ### Bug fixes
+
+- With two or more occasion parameters on one level, `fit$iov$<level>`
+  had `NA` for every occasion (and the fit warned “NAs introduced by
+  coercion”). The occasion number was parsed out of the eta names by
+  stripping the *last* occasion parameter’s `rx.<name>.` prefix from a
+  column built out of the *first* one’s names, so nothing matched. This
+  affected the existing IOV expansion too, not just the new one.
+
+- Two occasion parameters whose names share a prefix (`iov.v` and
+  `iov.v2`) had their per-occasion columns mixed together in
+  `fit$iov$<level>` and `fit$shrink`, again leaving every occasion `NA`.
+  The columns are named `rx.<param>.<occ>` and were selected by
+  substring, so `iov.v` also matched `rx.iov.v2.1`. Also present on the
+  existing IOV expansion.
 
 - `saem`’s Gaussian-quadrature objective no longer silently attempts a
   grid it cannot finish. The grid is `nnodesGq^nphi1` whole-population
@@ -69,6 +134,7 @@
   fits a budget (`getOption("nlmixr2.saemGqMaxNodes", 50000)`), and the
   fit says which count it used in `$runInfo`; one node is the Laplace
   approximation, which the progress message already names.
+
 - `saem` now gives the same answer every time for a model whose residual
   error needs the internal optimizer – anything richer than a pure
   `add()` or pure `prop()` endpoint, so `combined1()`/`combined2()`,
@@ -85,6 +151,7 @@
   as error. The residual therefore stayed near its starting value and
   the variance components shrank to compensate. The cache is now
   invalidated whenever the data behind it is rewritten.
+
 - `saem` with IOV and a general log-likelihood (`ll()`) endpoint no
   longer returns an astronomically large objective function
   ([\#1000](https://github.com/nlmixr2/nlmixr2est/issues/1000)). Past
@@ -101,6 +168,7 @@
   region. A failed solve reaching the Gaussian-quadrature objective is
   also scored as a bad solve rather than as an extremely good
   log-density.
+
 - A second `focei` fit of a model whose dosing depends on an eta
   (`f(depot) <- exp(eta.f)`, `alag()`, `dur()`, `rate()`) no longer
   silently returns the wrong answer. The compiled model bundle is cached
@@ -117,6 +185,7 @@
   now recorded when the model is built and replayed when the bundle is
   rehydrated, and the cache key carries a format marker so entries
   written before it are not reused.
+
 - Fitting the same data twice in one session gives the same answer again
   ([\#1020](https://github.com/nlmixr2/nlmixr2est/issues/1020)). On a
   machine with at least twice as many threads as the problem has
@@ -130,6 +199,7 @@
   – so once the order stopped being the identity the wrong individual
   was integrated. The fixes are in rxode2; this package gains the
   regression test.
+
 - IOV (`iov.x ~ v | OCC`) no longer copies an unrelated parameter’s
   `prior` onto the parameters the expansion creates, and now carries the
   prior the user declared. `.uiApplyIov()` builds the IOV magnitude
@@ -145,23 +215,27 @@
   `rx.<iov>.<occ>` eta inherited it. The magnitude theta now carries
   `prior(iov.x)` (on the `iovXform` scale, `"sd"` by default); the
   copied rows carry no prior otherwise.
+
 - Several IOV parameters on ONE occasion variable
   (`iov.cl ~ 0.1 | occ; iov.v ~ 0.04 | occ`) work. The occasion variable
   was visited once per parameter riding it, duplicating every magnitude
   theta, and `fix` was read from a vector over the whole occasion rather
   than from each parameter’s own row, so the model errored with
   “replacement has 2 rows, data has 1”.
+
 - The IOV parameter restored onto a finished fit keeps its own prior.
   `.uiFinalizeIov()` rebuilds the user’s `iov.x ~ v | occ` row from a
   template copied from the first remaining eta and restored eight fields
   from the original but not `prior`, so `fit$ui$iniDf` reported the
   FIRST eta’s prior on every IOV parameter – the same template-copy
   mistake as above, on the way back out.
+
 - An occasion parameter with two variance declarations
   (`iov.cl ~ 0.1 | occ; iov.cl ~ 0.15 | occ`) is named in the error.
   rxode2 does build that ui, so every per-parameter field the rewrite
   read was a vector and it died on “replacement has 2 rows, data has 1”
   without saying which parameter was at fault.
+
 - Correlated inter-occasion random effects
   (`iov.cl + iov.v ~ c(...) | occ`) are refused with an explanatory
   error. The expansion gives each occasion parameter its own magnitude
@@ -169,6 +243,7 @@
   between two of them; the off-diagonal row was treated as one more
   occasion parameter named `(iov.cl,iov.v)`, and the model died in
   `rxRename()` with `unexpected '='`.
+
 - Fixed a heap overflow in the FOCEi theta-reset path. The buffers it
   saves and copies back on a restart each had their length re-derived
   from a second copy of the allocation’s formula, and every copy had

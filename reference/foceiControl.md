@@ -57,6 +57,7 @@ foceiControl(
   eigen = TRUE,
   diagXform = c("sqrt", "log", "identity"),
   iovXform = c("sd", "var", "logsd", "logvar"),
+  iovMethod = c("auto", "theta", "omega"),
   sumProd = FALSE,
   optExpression = TRUE,
   literalFix = TRUE,
@@ -598,7 +599,47 @@ foceiControl(
 - iovXform:
 
   Transformation used on the diagonal of the IOV: one of `"sd"`,
-  `"var"`, `"logsd"`, or `"logvar"`.
+  `"var"`, `"logsd"`, or `"logvar"`. This parameterizes the magnitude
+  theta of the `"theta"` `iovMethod`; it has no effect under `"omega"`,
+  where the magnitude is fixed at one and the variability is carried by
+  the omega block itself.
+
+- iovMethod:
+
+  How inter-occasion variability is expanded before estimation: one of
+  `"auto"` (default), `"theta"` or `"omega"`.
+
+  `"theta"` is the long-standing expansion: each occasion parameter
+  becomes a magnitude theta, with one unit-variance eta per occasion
+  fixed to it. That shape cannot represent a correlation between two
+  occasion parameters.
+
+  `"omega"` instead fixes the magnitude theta at one and estimates the
+  per-occasion eta blocks directly, occasion one being the block and the
+  rest repeating it (NONMEM's `$OMEGA BLOCK(n) SAME`). The correlation
+  then lives in the estimated block.
+
+  `"auto"` picks `"omega"` when the IOV block has any off-diagonal
+  element, since `"theta"` provably cannot represent one, and `"theta"`
+  otherwise. `"omega"` may be asked for on a diagonal block as well, so
+  the two can be compared on the same model. The choice is made per
+  LEVEL of variability, so a correlation on `occ` does not change how an
+  unrelated diagonal `occ2` is expanded.
+
+  `"omega"` is only available for estimation methods that honour the
+  repeated block (the FOCEi family). `saem` and the variational,
+  nonparametric and importance-sampling methods estimate omega
+  elsewhere, so they continue to refuse a correlated occasion block
+  rather than silently estimate each occasion on its own.
+
+  The two are the same statistical model – at an occasion variance of
+  one, where the parameterizations coincide, they agree on the objective
+  to machine precision, and evaluated at matched random effects they
+  agree to ~2e-8 at any variance. They are not interchangeable in
+  practice: `"theta"` hands FOCEi's inner optimizer unit-scale etas and
+  so converges the inner problem better when the occasion variance is
+  far from one. That is why `"auto"` keeps `"theta"` unless a
+  correlation forces `"omega"`.
 
 - sumProd:
 
@@ -698,10 +739,10 @@ foceiControl(
 
 - resetThetaFinalP:
 
-  represents the p-value for reseting the population mu-referenced THETA
-  parameters based on ETA drift during optimization, and resetting the
-  optimization one final time. \`0\` = never reset (the default); see
-  `resetThetaP`.
+  represents the p-value for resetting the population mu-referenced
+  THETA parameters based on ETA drift during optimization, and resetting
+  the optimization one final time. \`0\` = never reset (the default);
+  see `resetThetaP`.
 
 - diagOmegaBoundUpper:
 
