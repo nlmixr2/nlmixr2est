@@ -662,6 +662,12 @@ struct focei_options {
   double shi21hMin; // lower bound on the adaptive FD step
   double cholAccept;
   double resetEtaSize;
+  // mceta>=1 bookkeeping: how many inner solves started at eta=0 vs at one of the
+  // omega draws.  A test needs this to show the draws are actually explored --
+  // matching objectives alone cannot distinguish "explored and eta=0 won" from
+  // "never explored" (#1040).
+  std::atomic<int> nMcetaZero{0};
+  std::atomic<int> nMcetaSample{0};
   std::atomic<int> didEtaReset{0};
   double resetThetaSize = std::numeric_limits<double>::infinity();
   double resetThetaFinalSize = std::numeric_limits<double>::infinity();
@@ -3583,6 +3589,8 @@ static inline int innerOpt1(int id, int likId) {
     }
   }
   bool n1qn1Inner = true;
+  // mceta>=1: true when a sampled eta (not eta=0) was chosen as the starting point.
+  bool mcetaSampleStart = false;
   // Use eta
   // Convert Zm to Hessian, if applicable.
   mat etaMat(fop->neta, 1, fill::zeros);
@@ -3627,28 +3635,44 @@ static inline int innerOpt1(int id, int likId) {
   } else if (op_focei.mceta == 0) {
     // always reset to zero
     std::fill(&fInd->eta[0], &fInd->eta[0] + op_focei.neta, 0.0);
-  } else if (op_focei.mceta >= 1 &&
-             static_cast<arma::uword>(id) < op_focei.mcetaSamples.n_slices) {
-    // mceta sampling: ETA samples pre-drawn serially in innerOpt() (mcetaSamples
-    // cube); guard skips subjects with no slice (maxInnerIterations == 0, e.g.
-    // covariance/linearization step) to avoid an out-of-bounds Cube::slice().
-    int nmc = op_focei.mceta-1;
-    double fcur = likInner0(fInd->eta, id); // last eta
+  } else if (op_focei.mceta >= 1 && op_focei.maxInnerIterations > 0 &&
+             !op_focei.freezeOde) {
+    // mceta sampling: the candidates are eta=0 plus the (mceta-1) omega draws
+    // pre-drawn serially in innerOpt() (mcetaSamples cube).  The condition here
+    // MIRRORS the one that fills the cube, so mceta=1 (no draws, empty cube)
+    // still means "start at eta=0" instead of silently doing nothing.
+    //
+    // The carried "last eta" is deliberately NOT a candidate (#1040).  It is the
+    // previous outer iteration's converged EBE, so its inner objective is
+    // essentially always the lowest of the set; including it made mceta=n win
+    // with the last eta for every subject, collapsing mceta>0 onto the keep-last
+    // behavior of mceta=-1/-2 -- mceta=10 returned an objective bit-identical to
+    // mceta=-2 and the extra draws never mattered.
     std::fill(&fInd->tryEta[0], &fInd->tryEta[0] + op_focei.neta, 0.0);
-    double ftry = likInner0(fInd->tryEta, id); // zero eta
-    int sampCol = 0;
-    while (true) {
-      if (ftry < fcur) {
-        std::copy(&fInd->tryEta[0], &fInd->tryEta[0] + op_focei.neta, &fInd->eta[0]);
-        fcur = ftry;
+    double fcur = likInner0(fInd->tryEta, id); // eta = 0
+    std::copy(&fInd->tryEta[0], &fInd->tryEta[0] + op_focei.neta, &fInd->eta[0]);
+    bool sampleWon = false;
+    // Subjects with no slice (empty cube) simply have no draws to try.
+    if (static_cast<arma::uword>(id) < op_focei.mcetaSamples.n_slices) {
+      int nmc = op_focei.mceta - 1;
+      for (int sampCol = 0; sampCol < nmc; sampCol++) {
+        arma::vec samp = op_focei.mcetaSamples.slice(id).col(sampCol);
+        std::copy(samp.begin(), samp.end(), &fInd->tryEta[0]);
+        double ftry = likInner0(fInd->tryEta, id); // sampled eta
+        // An unusable eta=0 must not pin the search: take any finite candidate
+        // over a non-finite incumbent.
+        if (R_FINITE(ftry) && (!R_FINITE(fcur) || ftry < fcur)) {
+          std::copy(&fInd->tryEta[0], &fInd->tryEta[0] + op_focei.neta, &fInd->eta[0]);
+          fcur = ftry;
+          sampleWon = true;
+        }
       }
-      if (nmc <= 0) break;
-      nmc--;
-      // Read the next pre-drawn sample for this individual.
-      arma::vec samp = op_focei.mcetaSamples.slice(id).col(sampCol);
-      sampCol++;
-      std::copy(samp.begin(), samp.end(), &fInd->tryEta[0]);
-      ftry = likInner0(fInd->tryEta, id); // sampled eta
+    }
+    mcetaSampleStart = sampleWon;
+    if (sampleWon) {
+      op_focei.nMcetaSample.fetch_add(1, std::memory_order_relaxed);
+    } else {
+      op_focei.nMcetaZero.fetch_add(1, std::memory_order_relaxed);
     }
   }
   if (!op_focei.calcGrad) {
@@ -3751,8 +3775,27 @@ static inline int innerOpt1(int id, int likId) {
            fInd->var, &epsilon,
            &mode, &maxInnerIterations, &nsim,
            &imp, fInd->zm, &izs, &rzs, &dzs, &id);
-    if (ISNA(f)) return 0;
-    keepBest();
+    if (ISNA(f)) { if (!mcetaSampleStart) return 0; }
+    else keepBest();
+    if (mcetaSampleStart) {
+      // A sampled eta only PRE-SCREENS well: it is ranked by the objective at the
+      // starting point, which does not order the points the inner optimization
+      // converges to.  So also run the problem from eta=0 and keep whichever
+      // converged lower -- that is what makes mceta=n never worse than mceta=0
+      // (#1040), which ranking starting points alone cannot deliver.
+      std::fill(&fInd->eta[0], &fInd->eta[0] + fop->neta, 0.0);
+      if (op_focei.warm == 1) warmZm(fInd, id);
+      else { fInd->mode = 1; fInd->uzm = 1; }
+      mode = fInd->mode;
+      std::fill_n(&fInd->var[0], fop->neta, 0.1);
+      std::fill_n(fInd->x, fop->neta, 0.0);
+      fInd->badSolve = 0;
+      n1qn1_(innerCost, &npar, fInd->x, &f, fInd->g,
+             fInd->var, &epsilon,
+             &mode, &maxInnerIterations, &nsim,
+             &imp, fInd->zm, &izs, &rzs, &dzs, &id);
+      if (ISNA(f)) { if (!haveBest) return 0; restoreBest(); } else keepBest();
+    }
     nF = fInd->nInnerF-nF;
     // REprintf("innerCost id: %d, fInd->nInnerF: %d", id, fInd->nInnerF);
     // If stays at zero try another point?
@@ -4661,27 +4704,36 @@ void innerOpt() {
   }
   // Pre-draw per-subject ETA samples serially before the parallel for-loop so
   // workers only do memory access (no R API calls), making mceta safe under cores > 1.
+  //
+  // Drawn ONCE per fit (the cube is cleared in foceiSetup_).  Redrawing them on
+  // every innerOpt() call made the objective a different random function at every
+  // evaluation: the outer optimizer's finite differences then compared two
+  // different functions, and two evaluations at the SAME theta disagreed (#1040).
+  // The draws come from the omega in force at the first evaluation -- they are
+  // starting points, not part of the likelihood.
   if (op_focei.mceta >= 1 && op_focei.maxInnerIterations > 0 && !op_focei.freezeOde) {
     int nsubAll = (int)getRxNsubAndMix(rx);
     int nmc = op_focei.mceta - 1;
     if (nmc > 0 && op_focei.neta > 0) {
-      op_focei.mcetaSamples.set_size(op_focei.neta, nmc, nsubAll);
-      NumericMatrix omega = getOmega();
-      Function loadNamespace("loadNamespace", R_BaseNamespace);
-      Environment nlmixr2 = loadNamespace("nlmixr2est");
-      Function fSample = as<Function>(nlmixr2[".sampleOmega"]);
-      for (int id = 0; id < nsubAll; ++id) {
-        for (int k = 0; k < nmc; ++k) {
-          NumericMatrix samp = fSample(omega);
-          std::copy(samp.begin(), samp.end(),
-                    op_focei.mcetaSamples.slice(id).colptr(k));
+      if (op_focei.mcetaSamples.n_rows   != (arma::uword)op_focei.neta ||
+          op_focei.mcetaSamples.n_cols   != (arma::uword)nmc ||
+          op_focei.mcetaSamples.n_slices != (arma::uword)nsubAll) {
+        op_focei.mcetaSamples.set_size(op_focei.neta, nmc, nsubAll);
+        NumericMatrix omega = getOmega();
+        Function loadNamespace("loadNamespace", R_BaseNamespace);
+        Environment nlmixr2 = loadNamespace("nlmixr2est");
+        Function fSample = as<Function>(nlmixr2[".sampleOmega"]);
+        for (int id = 0; id < nsubAll; ++id) {
+          for (int k = 0; k < nmc; ++k) {
+            NumericMatrix samp = fSample(omega);
+            std::copy(samp.begin(), samp.end(),
+                      op_focei.mcetaSamples.slice(id).colptr(k));
+          }
         }
       }
     } else {
       op_focei.mcetaSamples.reset();
     }
-  } else {
-    op_focei.mcetaSamples.reset();
   }
   // freezeOde: evaluate each subject's density at its (restored) base EBE with a
   // single innerEval -- no eta re-optimization -- reusing the frozen ODE states.
@@ -7341,6 +7393,9 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.maxOuterIterations = as<int>(foceiO["maxOuterIterations"]);
   op_focei.maxInnerIterations = as<int>(foceiO["maxInnerIterations"]);
   op_focei.mceta = as<int>(foceiO["mceta"]);
+  // The mceta>=1 draws are per-fit (innerOpt() fills the cube once); clear them so a
+  // new fit does not inherit the previous fit's starting etas.
+  op_focei.mcetaSamples.reset();
   op_focei.warm = foceiO.containsElementNamed("warm") ? as<int>(foceiO["warm"]) : 0;
   op_focei.maxOdeRecalc = as<int>(foceiO["maxOdeRecalc"]);
   op_focei.objfRecalN=0;
@@ -8556,6 +8611,8 @@ Environment foceiOuter(Environment e){
   op_focei.curAnalytic=0;
   op_focei.nAnalyticGrad=0;
   op_focei.nAnalyticGradDirect=0;
+  op_focei.nMcetaZero.store(0, std::memory_order_relaxed);
+  op_focei.nMcetaSample.store(0, std::memory_order_relaxed);
   op_focei.nDeclineNewton=0;
   op_focei.nDeclineE0=0;
   op_focei.nDeclineOther=0;
@@ -11209,6 +11266,13 @@ void foceiFinalizeTables(Environment e){
         } else if (op_focei.nG > 0 || op_focei.nFDGradFast > 0) {
           _details += "; grad: fd";
         }
+      }
+      if (op_focei.mceta >= 1) {
+        // Which mceta candidate each inner solve started from.  Not gated on
+        // `fast`: mceta>=1 is independent of the analytic gradient.
+        e["nMcetaStart"] = IntegerVector::create(
+          _["zero"] = op_focei.nMcetaZero.load(std::memory_order_relaxed),
+          _["sample"] = op_focei.nMcetaSample.load(std::memory_order_relaxed));
       }
       if (op_focei.muModel == 1) {
         _details += "; mu: lin";
