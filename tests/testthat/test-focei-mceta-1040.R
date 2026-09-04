@@ -81,6 +81,50 @@ nmTest({
     expect_gt(.f1$env$nMcetaStart[["zero"]], 0L)
   })
 
+  test_that("a fully mu-referenced model still honors mceta", {
+    skip_on_cran()
+    skip_if_not_installed("nlmixr2data")
+    # A user-set mceta used to be silently reset to the default -2 for a model
+    # whose etas are all mu-referenced, on the grounds that "the initial etas are
+    # all exactly zero, so the search has nothing to explore".  That is only true
+    # of the FIRST inner solve: every later one starts from the previous
+    # iteration's mode, and the mceta>0 candidates are draws from omega, which
+    # are not zero.  Resetting it is what made mceta=10 return an objective
+    # bit-identical to mceta=-2 (#1040).
+    .muMod <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .warn <- character(0)
+    .m5 <- withCallingHandlers(
+      suppressMessages(
+        nlmixr2(.muMod, nlmixr2data::theo_sd, "focei",
+                foceiControl(print = 0L, covMethod = "", calcTables = FALSE,
+                             mceta = 5L))),
+      warning = function(w) {
+        .warn <<- c(.warn, conditionMessage(w))
+        invokeRestart("muffleWarning")
+      })
+    # The setting survived, and the draws were explored.
+    expect_true(is.integer(.m5$env$nMcetaStart))
+    expect_gt(.m5$env$nMcetaStart[["sample"]], 0L)
+    # ... and nothing told the user the setting was being ignored.
+    expect_false(any(grepl("has no effect", .warn, fixed = TRUE)))
+  })
+
   test_that("the mceta search does not run on the outer gradient's difference legs", {
     skip_on_cran()
     # A finite-difference leg is pinned to the central evaluation's mode, so the

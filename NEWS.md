@@ -104,6 +104,17 @@
 
 ## Bug fixes
 
+- `foceiControl(mceta = )` is no longer discarded for a model whose etas are
+  all mu-referenced.  Any non-default setting was reset to `-2` on the grounds
+  that "the initial etas are all exactly zero, so the search has nothing to
+  explore" -- true only of the first inner solve, since every later one starts
+  from the previous iteration's mode, and the `mceta > 0` candidates are draws
+  from omega, which are not zero.  This is what made `mceta = 10` return an
+  objective bit-identical to `mceta = -2` on such a model.  On `theo_sd`'s
+  one-compartment model (every eta mu-referenced), `mceta = 5` now starts 420 of
+  its 1008 inner solves from a draw and reaches a different objective than
+  `mceta = -2`.
+
 - `foceiControl(mceta = n)` (`n > 0`) now actually uses the extra starting
   etas, and at fixed parameters can no longer give a worse objective than
   `mceta = 0`.  The candidate set

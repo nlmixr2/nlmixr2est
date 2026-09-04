@@ -3776,39 +3776,43 @@ static inline int innerOpt1(int id, int likId) {
     f = fBest;
     std::copy(etaBest.begin(), etaBest.end(), fInd->x);
   };
+  // Starting points this inner solve runs from.  mceta>=1 picks its start by the
+  // objective AT that point, which does not order the points the optimization
+  // converges to, so a sampled start is followed by a second solve from eta=0 and
+  // the better converged result is kept -- that is what makes mceta=n never end
+  // above mceta=0 (#1040), which ranking starting points alone cannot deliver.
+  // The loop wraps the WHOLE optimizer dispatch rather than living inside one
+  // branch of it, so it holds for whichever inner optimizer is configured, and a
+  // new optimizer arm gets the floor pass without being told about it.  An arm
+  // only has to leave the converged objective in `f` and call keepBest(); on a
+  // non-finite `f` it should hand the loop `_lastStart` (see the arms below)
+  // rather than returning, so a failed sampled start still gets its eta=0 pass.
+  int nInnerStart = mcetaSampleStart ? 2 : 1;
+  for (int _innerStart = 0; _innerStart < nInnerStart; _innerStart++) {
+  bool _lastStart = (_innerStart + 1 == nInnerStart);
+  if (_innerStart > 0) {
+    // The eta=0 floor: re-seed exactly as mceta=0 would have, so this pass is
+    // the run it must not come out above.
+    std::fill(&fInd->eta[0], &fInd->eta[0] + fop->neta, 0.0);
+    if (op_focei.warm == 1) warmZm(fInd, id);
+    else { fInd->mode = 1; fInd->uzm = 1; }
+    mode = fInd->mode;
+    std::fill_n(&fInd->var[0], fop->neta, 0.1);
+    std::fill_n(fInd->x, fop->neta, 0.0);
+    nF = fInd->nInnerF;
+  }
   if (n1qn1Inner) {
     fInd->badSolve = 0;
     n1qn1_(innerCost, &npar, fInd->x, &f, fInd->g,
            fInd->var, &epsilon,
            &mode, &maxInnerIterations, &nsim,
            &imp, fInd->zm, &izs, &rzs, &dzs, &id);
-    if (ISNA(f)) { if (!mcetaSampleStart) return 0; }
-    else keepBest();
-    if (mcetaSampleStart) {
-      // A sampled eta only PRE-SCREENS well: it is ranked by the objective at the
-      // starting point, which does not order the points the inner optimization
-      // converges to.  So also run the problem from eta=0 and keep whichever
-      // converged lower -- that is what makes mceta=n never worse than mceta=0
-      // (#1040), which ranking starting points alone cannot deliver.
-      std::fill(&fInd->eta[0], &fInd->eta[0] + fop->neta, 0.0);
-      if (op_focei.warm == 1) warmZm(fInd, id);
-      else { fInd->mode = 1; fInd->uzm = 1; }
-      mode = fInd->mode;
-      std::fill_n(&fInd->var[0], fop->neta, 0.1);
-      std::fill_n(fInd->x, fop->neta, 0.0);
-      fInd->badSolve = 0;
-      n1qn1_(innerCost, &npar, fInd->x, &f, fInd->g,
-             fInd->var, &epsilon,
-             &mode, &maxInnerIterations, &nsim,
-             &imp, fInd->zm, &izs, &rzs, &dzs, &id);
-      if (ISNA(f)) { if (!haveBest) return 0; restoreBest(); } else keepBest();
-      // Hand the cascade below the WINNER, not the eta=0 leg.  The nudge cascade
-      // decides whether the optimizer got stuck by looking at fInd->x, so an
-      // eta=0 leg that stayed at zero while the sampled start found a real mode
-      // would read as "every eta stuck at 0" and fire the nudges (and the
-      // "initial ETAs were nudged" warning) for a subject that did not stick.
-      if (haveBest && (!R_FINITE(f) || fBest < f)) restoreBest();
+    if (ISNA(f)) {
+      if (haveBest) { restoreBest(); break; }
+      if (_lastStart) return 0;
+      continue;
     }
+    keepBest();
     nF = fInd->nInnerF-nF;
     // REprintf("innerCost id: %d, fInd->nInnerF: %d", id, fInd->nInnerF);
     // If stays at zero try another point?
@@ -3973,7 +3977,12 @@ static inline int innerOpt1(int id, int likId) {
              op_focei.pgtol, &fncount, &grcount,
              op_focei.maxInnerIterations, msg, 0, -1,
              op_focei.abstol, op_focei.reltol, fInd->g);
-    if (ISNA(f)) return 0;
+    if (ISNA(f)) {
+      if (haveBest) { restoreBest(); break; }
+      if (_lastStart) return 0;
+      continue;
+    }
+    keepBest();
     // if (fail != 6 && fail != 7 && fail != 8 && fail != 27){
     //   // did not converge
     //   if (fInd->doEtaNudge == 1 && op_focei.etaNudge != 0.0){
@@ -4000,6 +4009,7 @@ static inline int innerOpt1(int id, int likId) {
     //   }
     // }
   }
+  } // end of the starting-point loop (body deliberately not re-indented)
   // Apply the best candidate found across the restart cascade.  This is what
   // makes the inner solve monotone: a restart can only ever improve the eta the
   // cascade leaves behind, never degrade it.  LikInner2() below recomputes the
