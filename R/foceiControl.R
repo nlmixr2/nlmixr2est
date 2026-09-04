@@ -793,7 +793,9 @@
 #'   mode, so it would win for every subject and `n>0` would reduce to the
 #'   keep-last behavior of `-1`/`-2`.  When a sampled eta wins, the inner
 #'   problem is also solved from eta=0 and the better converged result kept, so
-#'   `n>0` is never worse than `0`.
+#'   no inner solve ends above the one `0` would have reached.  The search is
+#'   skipped while the outer gradient is being differenced, where the eta is
+#'   pinned to the central evaluation's mode.
 #'
 #' @param seed Integer seed (default `42`) used to make a FOCEi fit
 #'   reproducible and self-contained.  The fit (including the `mceta`

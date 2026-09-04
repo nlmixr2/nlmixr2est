@@ -3635,12 +3635,19 @@ static inline int innerOpt1(int id, int likId) {
   } else if (op_focei.mceta == 0) {
     // always reset to zero
     std::fill(&fInd->eta[0], &fInd->eta[0] + op_focei.neta, 0.0);
-  } else if (op_focei.mceta >= 1 && op_focei.maxInnerIterations > 0 &&
-             !op_focei.freezeOde) {
+  } else if (op_focei.mceta >= 1 && !op_focei.calcGrad &&
+             op_focei.maxInnerIterations > 0 && !op_focei.freezeOde) {
     // mceta sampling: the candidates are eta=0 plus the (mceta-1) omega draws
     // pre-drawn serially in innerOpt() (mcetaSamples cube).  The condition here
     // MIRRORS the one that fills the cube, so mceta=1 (no draws, empty cube)
     // still means "start at eta=0" instead of silently doing nothing.
+    //
+    // Skipped while calcGrad is set, like the Almquist branch above and the
+    // standardized-eta reset below.  A finite-difference leg is pinned to the
+    // central evaluation's EBE (fdPinRefEtaForce) precisely so both legs are
+    // taken about one point; re-running the search there would let a tiny theta
+    // perturbation flip which candidate wins and put the legs in different
+    // basins, so the difference would measure the search, not the objective.
     //
     // The carried "last eta" is deliberately NOT a candidate (#1040).  It is the
     // previous outer iteration's converged EBE, so its inner objective is
@@ -4726,6 +4733,11 @@ void innerOpt() {
         for (int id = 0; id < nsubAll; ++id) {
           for (int k = 0; k < nmc; ++k) {
             NumericMatrix samp = fSample(omega);
+            // The destination column is exactly neta wide; .sampleOmega is an R
+            // function, so check rather than trust its length.
+            if (samp.size() != op_focei.neta) {
+              stop(_("mceta: the omega sample must have %d elements"), op_focei.neta);
+            }
             std::copy(samp.begin(), samp.end(),
                       op_focei.mcetaSamples.slice(id).colptr(k));
           }
@@ -7394,8 +7406,12 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.maxInnerIterations = as<int>(foceiO["maxInnerIterations"]);
   op_focei.mceta = as<int>(foceiO["mceta"]);
   // The mceta>=1 draws are per-fit (innerOpt() fills the cube once); clear them so a
-  // new fit does not inherit the previous fit's starting etas.
+  // new fit does not inherit the previous fit's starting etas.  The start counters
+  // are cleared here as well as in foceiOuter(), which the EM/nonparametric methods
+  // never reach -- otherwise those fits would report the previous fit's counts.
   op_focei.mcetaSamples.reset();
+  op_focei.nMcetaZero.store(0, std::memory_order_relaxed);
+  op_focei.nMcetaSample.store(0, std::memory_order_relaxed);
   op_focei.warm = foceiO.containsElementNamed("warm") ? as<int>(foceiO["warm"]) : 0;
   op_focei.maxOdeRecalc = as<int>(foceiO["maxOdeRecalc"]);
   op_focei.objfRecalN=0;
