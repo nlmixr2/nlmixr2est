@@ -925,6 +925,7 @@ nlmixr2Est.impmap <- function(env, ...) {
   .impmapFamilyFit(env, .ui, ...)
 }
 attr(nlmixr2Est.impmap, "covPresent") <- TRUE
+attr(nlmixr2Est.impmap, "etaDist") <- TRUE
 attr(nlmixr2Est.impmap, "unbounded") <- .foUnbounded
 attr(nlmixr2Est.impmap, "iov") <- TRUE
 # Activates the mu2/mu3/mu4 covariate-rewriting hook (.uiApplyMu2hook, R/mu2.R),

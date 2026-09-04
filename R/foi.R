@@ -161,5 +161,6 @@ nlmixr2Est.foi <- function(env, ...) {
   .ret
 }
 attr(nlmixr2Est.foi, "nlmixr2Priors") <- "general"
+attr(nlmixr2Est.foi, "etaDist") <- TRUE
 attr(nlmixr2Est.foi, "covPresent") <- TRUE
 attr(nlmixr2Est.foi, "unbounded") <- .foUnbounded

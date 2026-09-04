@@ -1548,6 +1548,7 @@ nlmixr2Est.saem <- function(env, ...) {
   .saemFamilyFit(env,  ...)
 }
 attr(nlmixr2Est.saem, "covPresent") <- TRUE
+attr(nlmixr2Est.saem, "etaDist") <- TRUE
 attr(nlmixr2Est.saem, "unbounded") <- TRUE
 attr(nlmixr2Est.saem, "mu") <- TRUE
 # Whether the shared IOV pre-processing rewrite (.uiApplyIov(), R/iov.R) runs.

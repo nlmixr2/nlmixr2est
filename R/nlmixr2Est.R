@@ -85,6 +85,9 @@ nlmixr2Est <- function(env, ...) {
   ## something quietly dropped; checked here so that every method,
   ## including those registered by other packages, is covered
   .nlmixr2AssertPriors(env)
+  ## likewise a declared non-normal random effect distribution: a method
+  ## that ignored one would fit a different model than the one written
+  .nlmixr2AssertEtaDist(env)
   ## a registered interceptor may claim the estimation (e.g. nlmixr2nn trains an
   ## embedded nn() network transparently under a standard est); if it returns
   ## non-NULL that is the fit.

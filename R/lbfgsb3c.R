@@ -382,4 +382,5 @@ nlmixr2Est.lbfgsb3c <- function(env, ...) {
   .lbfgsb3cFamilyFit(env,  ...)
 }
 attr(nlmixr2Est.lbfgsb3c, "covPresent") <- TRUE
+attr(nlmixr2Est.lbfgsb3c, "etaDist") <- TRUE
 attr(nlmixr2Est.lbfgsb3c, "unbounded") <- FALSE

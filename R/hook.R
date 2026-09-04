@@ -185,12 +185,18 @@ preFinalParTableHooks <- function(name=NULL) {
 .preProcessHooks <- new.env(parent=emptyenv())
 
 .orderPreProcessHookNames <- function(names) {
+  ## `.preProcessEtaDist` rewrites the model (a declared random effect
+  ## becomes a latent normal plus an inverse CDF, and gains `rxCor.*`
+  ## thetas), so it runs FIRST: every later hook should see the model the
+  ## estimator will actually be handed.  `.preProcessBoundedTransform`
+  ## runs last for the mirror-image reason -- it wraps whatever thetas are
+  ## there by then, including those.
+  .first <- ".preProcessEtaDist"
   .last <- ".preProcessBoundedTransform"
-  if (.last %in% names) {
-    c(names[names != .last], .last)
-  } else {
-    names
-  }
+  .ret <- names
+  if (.first %in% .ret) .ret <- c(.first, .ret[.ret != .first])
+  if (.last %in% .ret) .ret <- c(.ret[.ret != .last], .last)
+  .ret
 }
 
 #' Register a pre-processing hook run before estimation begins

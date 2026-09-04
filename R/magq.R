@@ -18,6 +18,7 @@ nlmixr2Est.magq <- function(env, ...) {
   .foceiFamilyReturn(env, .ui, ..., est="magq")
 }
 attr(nlmixr2Est.magq, "nlmixr2Priors") <- "general"
+attr(nlmixr2Est.magq, "etaDist") <- TRUE
 attr(nlmixr2Est.magq, "iov") <- TRUE
 attr(nlmixr2Est.magq, "covPresent") <- TRUE
 attr(nlmixr2Est.magq, "unbounded") <- .foUnbounded

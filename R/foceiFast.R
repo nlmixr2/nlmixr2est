@@ -40,6 +40,7 @@ getValidNlmixrCtl.foceif <- function(control) .foceiFastCtl(control, foceiContro
 #' @export
 nlmixr2Est.foceif <- function(env, ...) nlmixr2Est.focei(env, ...)
 attr(nlmixr2Est.foceif, "nlmixr2Priors") <- "general"
+attr(nlmixr2Est.foceif, "etaDist") <- TRUE
 attr(nlmixr2Est.foceif, "covPresent") <- TRUE
 attr(nlmixr2Est.foceif, "unbounded") <- .foUnbounded
 attr(nlmixr2Est.foceif, "iov") <- TRUE
@@ -51,6 +52,7 @@ getValidNlmixrCtl.focef <- function(control) .foceiFastCtl(control, foceControl)
 #' @export
 nlmixr2Est.focef <- function(env, ...) nlmixr2Est.foce(env, ...)
 attr(nlmixr2Est.focef, "nlmixr2Priors") <- "general"
+attr(nlmixr2Est.focef, "etaDist") <- TRUE
 attr(nlmixr2Est.focef, "covPresent") <- TRUE
 attr(nlmixr2Est.focef, "unbounded") <- .foUnbounded
 attr(nlmixr2Est.focef, "iov") <- TRUE
@@ -62,6 +64,7 @@ getValidNlmixrCtl.focepf <- function(control) .foceiFastCtl(control, focepContro
 #' @export
 nlmixr2Est.focepf <- function(env, ...) nlmixr2Est.focep(env, ...)
 attr(nlmixr2Est.focepf, "nlmixr2Priors") <- "general"
+attr(nlmixr2Est.focepf, "etaDist") <- TRUE
 attr(nlmixr2Est.focepf, "covPresent") <- TRUE
 attr(nlmixr2Est.focepf, "unbounded") <- .foUnbounded
 attr(nlmixr2Est.focepf, "iov") <- TRUE
@@ -75,6 +78,7 @@ getValidNlmixrCtl.mfoceif <- function(control) .foceiFastCtl(control, mfoceiCont
 #' @export
 nlmixr2Est.mfoceif <- function(env, ...) nlmixr2Est.mfocei(env, ...)
 attr(nlmixr2Est.mfoceif, "nlmixr2Priors") <- "general"
+attr(nlmixr2Est.mfoceif, "etaDist") <- TRUE
 attr(nlmixr2Est.mfoceif, "covPresent") <- TRUE
 attr(nlmixr2Est.mfoceif, "unbounded") <- .foUnbounded
 attr(nlmixr2Est.mfoceif, "iov") <- TRUE
@@ -87,6 +91,7 @@ getValidNlmixrCtl.mfocef <- function(control) .foceiFastCtl(control, mfoceContro
 #' @export
 nlmixr2Est.mfocef <- function(env, ...) nlmixr2Est.mfoce(env, ...)
 attr(nlmixr2Est.mfocef, "nlmixr2Priors") <- "general"
+attr(nlmixr2Est.mfocef, "etaDist") <- TRUE
 attr(nlmixr2Est.mfocef, "covPresent") <- TRUE
 attr(nlmixr2Est.mfocef, "unbounded") <- .foUnbounded
 attr(nlmixr2Est.mfocef, "iov") <- TRUE
@@ -99,6 +104,7 @@ getValidNlmixrCtl.mfocepf <- function(control) .foceiFastCtl(control, mfocepCont
 #' @export
 nlmixr2Est.mfocepf <- function(env, ...) nlmixr2Est.mfocep(env, ...)
 attr(nlmixr2Est.mfocepf, "nlmixr2Priors") <- "general"
+attr(nlmixr2Est.mfocepf, "etaDist") <- TRUE
 attr(nlmixr2Est.mfocepf, "covPresent") <- TRUE
 attr(nlmixr2Est.mfocepf, "unbounded") <- .foUnbounded
 attr(nlmixr2Est.mfocepf, "iov") <- TRUE
@@ -113,6 +119,7 @@ getValidNlmixrCtl.ifoceif <- function(control) .foceiFastCtl(control, ifoceiCont
 #' @export
 nlmixr2Est.ifoceif <- function(env, ...) nlmixr2Est.ifocei(env, ...)
 attr(nlmixr2Est.ifoceif, "nlmixr2Priors") <- "general"
+attr(nlmixr2Est.ifoceif, "etaDist") <- TRUE
 attr(nlmixr2Est.ifoceif, "covPresent") <- TRUE
 attr(nlmixr2Est.ifoceif, "unbounded") <- .foUnbounded
 attr(nlmixr2Est.ifoceif, "iov") <- TRUE
@@ -125,6 +132,7 @@ getValidNlmixrCtl.ifocef <- function(control) .foceiFastCtl(control, ifoceContro
 #' @export
 nlmixr2Est.ifocef <- function(env, ...) nlmixr2Est.ifoce(env, ...)
 attr(nlmixr2Est.ifocef, "nlmixr2Priors") <- "general"
+attr(nlmixr2Est.ifocef, "etaDist") <- TRUE
 attr(nlmixr2Est.ifocef, "covPresent") <- TRUE
 attr(nlmixr2Est.ifocef, "unbounded") <- .foUnbounded
 attr(nlmixr2Est.ifocef, "iov") <- TRUE
@@ -137,6 +145,7 @@ getValidNlmixrCtl.ifocepf <- function(control) .foceiFastCtl(control, ifocepCont
 #' @export
 nlmixr2Est.ifocepf <- function(env, ...) nlmixr2Est.ifocep(env, ...)
 attr(nlmixr2Est.ifocepf, "nlmixr2Priors") <- "general"
+attr(nlmixr2Est.ifocepf, "etaDist") <- TRUE
 attr(nlmixr2Est.ifocepf, "covPresent") <- TRUE
 attr(nlmixr2Est.ifocepf, "unbounded") <- .foUnbounded
 attr(nlmixr2Est.ifocepf, "iov") <- TRUE
@@ -151,6 +160,7 @@ getValidNlmixrCtl.agqf <- function(control) .foceiFastCtl(control, agqControl)
 #' @export
 nlmixr2Est.agqf <- function(env, ...) nlmixr2Est.agq(env, ...)
 attr(nlmixr2Est.agqf, "nlmixr2Priors") <- "general"
+attr(nlmixr2Est.agqf, "etaDist") <- TRUE
 attr(nlmixr2Est.agqf, "covPresent") <- TRUE
 attr(nlmixr2Est.agqf, "unbounded") <- .foUnbounded
 attr(nlmixr2Est.agqf, "iov") <- TRUE
@@ -162,6 +172,7 @@ getValidNlmixrCtl.magqf <- function(control) .foceiFastCtl(control, magqControl)
 #' @export
 nlmixr2Est.magqf <- function(env, ...) nlmixr2Est.magq(env, ...)
 attr(nlmixr2Est.magqf, "nlmixr2Priors") <- "general"
+attr(nlmixr2Est.magqf, "etaDist") <- TRUE
 attr(nlmixr2Est.magqf, "covPresent") <- TRUE
 attr(nlmixr2Est.magqf, "unbounded") <- .foUnbounded
 attr(nlmixr2Est.magqf, "iov") <- TRUE
@@ -174,6 +185,7 @@ getValidNlmixrCtl.iagqf <- function(control) .foceiFastCtl(control, iagqControl)
 #' @export
 nlmixr2Est.iagqf <- function(env, ...) nlmixr2Est.iagq(env, ...)
 attr(nlmixr2Est.iagqf, "nlmixr2Priors") <- "general"
+attr(nlmixr2Est.iagqf, "etaDist") <- TRUE
 attr(nlmixr2Est.iagqf, "covPresent") <- TRUE
 attr(nlmixr2Est.iagqf, "unbounded") <- .foUnbounded
 attr(nlmixr2Est.iagqf, "iov") <- TRUE

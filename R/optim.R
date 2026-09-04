@@ -581,6 +581,7 @@ nlmixr2Est.optim <- function(env, ...) {
   .optimFamilyFit(env,  ...)
 }
 attr(nlmixr2Est.optim, "covPresent") <- TRUE
+attr(nlmixr2Est.optim, "etaDist") <- TRUE
 attr(nlmixr2Est.optim, "unbounded") <- function(control) {
   if (is.null(control) || is.null(control$method)) return(TRUE)
   !(control$method %in% c("L-BFGS-B", "Brent"))
@@ -612,36 +613,42 @@ attr(nlmixr2Est.optim, "unbounded") <- function(control) {
 #' @export
 nlmixr2Est.neldermead <- function(env, ...) .optimEstSugar(env, "Nelder-Mead", ...)
 attr(nlmixr2Est.neldermead, "covPresent") <- TRUE
+attr(nlmixr2Est.neldermead, "etaDist") <- TRUE
 attr(nlmixr2Est.neldermead, "unbounded") <- function(control) TRUE
 
 #' @rdname nlmixr2Est
 #' @export
 nlmixr2Est.bfgs <- function(env, ...) .optimEstSugar(env, "BFGS", ...)
 attr(nlmixr2Est.bfgs, "covPresent") <- TRUE
+attr(nlmixr2Est.bfgs, "etaDist") <- TRUE
 attr(nlmixr2Est.bfgs, "unbounded") <- function(control) TRUE
 
 #' @rdname nlmixr2Est
 #' @export
 nlmixr2Est.cg <- function(env, ...) .optimEstSugar(env, "CG", ...)
 attr(nlmixr2Est.cg, "covPresent") <- TRUE
+attr(nlmixr2Est.cg, "etaDist") <- TRUE
 attr(nlmixr2Est.cg, "unbounded") <- function(control) TRUE
 
 #' @rdname nlmixr2Est
 #' @export
 nlmixr2Est.lbfgsb <- function(env, ...) .optimEstSugar(env, "L-BFGS-B", ...)
 attr(nlmixr2Est.lbfgsb, "covPresent") <- TRUE
+attr(nlmixr2Est.lbfgsb, "etaDist") <- TRUE
 attr(nlmixr2Est.lbfgsb, "unbounded") <- function(control) FALSE
 
 #' @rdname nlmixr2Est
 #' @export
 nlmixr2Est.sann <- function(env, ...) .optimEstSugar(env, "SANN", ...)
 attr(nlmixr2Est.sann, "covPresent") <- TRUE
+attr(nlmixr2Est.sann, "etaDist") <- TRUE
 attr(nlmixr2Est.sann, "unbounded") <- function(control) TRUE
 
 #' @rdname nlmixr2Est
 #' @export
 nlmixr2Est.brent <- function(env, ...) .optimEstSugar(env, "Brent", ...)
 attr(nlmixr2Est.brent, "covPresent") <- TRUE
+attr(nlmixr2Est.brent, "etaDist") <- TRUE
 attr(nlmixr2Est.brent, "unbounded") <- function(control) FALSE
 
 # the sugar aliases validate their control exactly like est="optim"

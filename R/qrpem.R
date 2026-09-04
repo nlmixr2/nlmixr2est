@@ -77,6 +77,7 @@ nlmixr2Est.qrpem <- function(env, ...) {
   .impmapFamilyFit(env, .ui, ...)
 }
 attr(nlmixr2Est.qrpem, "covPresent") <- TRUE
+attr(nlmixr2Est.qrpem, "etaDist") <- TRUE
 attr(nlmixr2Est.qrpem, "unbounded") <- .foUnbounded
 attr(nlmixr2Est.qrpem, "iov") <- TRUE
 attr(nlmixr2Est.qrpem, "mu") <- function(control) {

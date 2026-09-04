@@ -115,6 +115,7 @@ nlmixr2Est.mfocep <- function(env, ...) {
   .foceiFamilyReturn(env, .ui, ..., est="mfocep")
 }
 attr(nlmixr2Est.mfocep, "nlmixr2Priors") <- "general"
+attr(nlmixr2Est.mfocep, "etaDist") <- TRUE
 attr(nlmixr2Est.mfocep, "iov") <- TRUE
 attr(nlmixr2Est.mfocep, "covPresent") <- TRUE
 attr(nlmixr2Est.mfocep, "unbounded") <- .foUnbounded

@@ -2,6 +2,44 @@
 
 ## New features
 
+- Non-Gaussian random effect distributions declared with `lotri`'s
+  `dist()` line now work in estimation.  A pre-processing hook runs
+  `rxode2::rxEtaDistExpand()` before estimation, which is all the support
+  most methods need: what they are handed afterwards is an ordinary model
+  with a fixed identity omega, a `phiU()` + inverse CDF transform in the
+  model block, and unconstrained `rxCor.*` thetas carrying the Gaussian
+  copula's correlation.
+
+```r
+ini({
+  lclm  <- log(5)
+  lclrv <- log(0.09)
+  eta.cl + eta.v1 ~ c(1,
+                      0.5, 1)
+  dist(eta.cl) ~ dgamma(shape=1/exp(lclrv), rate=1/(exp(lclrv)*exp(lclm)))
+})
+```
+
+  Supported by the FOCEi family (whose inner problem needs only
+  `d(eta)/d(latent)`, which rxode2 differentiates exactly through
+  `phiU()` and the inverse CDF), `saem` (a declared random effect has no
+  `theta + eta` form, so it lands in the already-exercised `nonMuEtas`
+  path and is still sampled and updated the same way), `posthoc`, and
+  simulation.
+
+  A method that does not support it refuses rather than quietly fitting a
+  different model than the one written -- the same reasoning, and the same
+  attribute-on-the-S3-method mechanism, as the prior gate.  Refused:
+  `npag`/`npb`, which model the random effect distribution
+  nonparametrically, so a declared one contradicts them outright; `nlme`
+  and `nls`, which are Gaussian by construction; and `vae`/`emvi`/`fbvi`,
+  whose ELBO hardcodes the normal family.  An external package can
+  register support with `attr(nlmixr2Est.myMethod, "etaDist") <- TRUE`.
+
+  A fit from such a model carries `$etaDist` (the declarations as
+  written) and `$etaDistCor` (the copula correlation matrix of each
+  declared block, rebuilt from the `rxCor.*` estimates).
+
 - `saemControl(iovMethod = "twoLevel")` estimates inter-occasion variability
   the way the rest of `saem` estimates a variance.  The shared pre-processing
   rewrite that every estimation method uses carries the occasion magnitude as a

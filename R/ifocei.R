@@ -16,6 +16,7 @@ nlmixr2Est.ifocei <- function(env, ...) {
   .foceiFamilyReturn(env, .ui, ..., est="ifocei")
 }
 attr(nlmixr2Est.ifocei, "nlmixr2Priors") <- "general"
+attr(nlmixr2Est.ifocei, "etaDist") <- TRUE
 attr(nlmixr2Est.ifocei, "covPresent") <- TRUE
 attr(nlmixr2Est.ifocei, "unbounded") <- .foUnbounded
 # Activates mu2/mu3/mu4 covariate rewriting (R/mu2.R); gated on

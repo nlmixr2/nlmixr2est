@@ -141,6 +141,7 @@ nlmixr2Est.rxSolve <- function(env, ...) {
   ))
 }
 attr(nlmixr2Est.rxSolve, "covPresent") <- TRUE
+attr(nlmixr2Est.rxSolve, "etaDist") <- TRUE
 attr(nlmixr2Est.rxSolve, "unbounded") <- FALSE
 attr(nlmixr2Est.rxSolve, "random") <- TRUE
 
@@ -158,6 +159,7 @@ nlmixr2Est.simulate <- function(env, ...) {
   ))
 }
 attr(nlmixr2Est.simulate, "covPresent") <- TRUE
+attr(nlmixr2Est.simulate, "etaDist") <- TRUE
 attr(nlmixr2Est.simulate, "unbounded") <- FALSE
 attr(nlmixr2Est.simulate, "random") <- TRUE
 
@@ -182,6 +184,7 @@ nlmixr2Est.simulation <- function(env, ...) {
   ))
 }
 attr(nlmixr2Est.simulation, "covPresent") <- TRUE
+attr(nlmixr2Est.simulation, "etaDist") <- TRUE
 attr(nlmixr2Est.simulation, "unbounded") <- FALSE
 attr(nlmixr2Est.simulation, "random") <- TRUE
 
@@ -208,6 +211,7 @@ nlmixr2Est.predict <- function(env, ...) {
   )
 }
 attr(nlmixr2Est.predict, "covPresent") <- TRUE
+attr(nlmixr2Est.predict, "etaDist") <- TRUE
 attr(nlmixr2Est.predict, "unbounded") <- FALSE
 attr(nlmixr2Est.predict, "random") <- TRUE
 

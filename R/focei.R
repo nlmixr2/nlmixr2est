@@ -4470,6 +4470,7 @@ nlmixr2Est.focei <- function(env, ...) {
   .ret
 }
 attr(nlmixr2Est.focei, "nlmixr2Priors") <- "general"
+attr(nlmixr2Est.focei, "etaDist") <- TRUE
 attr(nlmixr2Est.focei, "covPresent") <- TRUE
 attr(nlmixr2Est.focei, "unbounded") <- .foUnbounded
 attr(nlmixr2Est.focei, "iov") <- TRUE
@@ -4535,6 +4536,7 @@ nlmixr2Est.output <- function(env, ...) {
 # nothing here that could silently ignore them -- refusing at this point would
 # only break assembling a finished fit from a prior-carrying model (#938).
 attr(nlmixr2Est.output, "nlmixr2Priors") <- "all"
+attr(nlmixr2Est.output, "etaDist") <- TRUE
 
 #' Create nlmixr output from the UI
 #'
