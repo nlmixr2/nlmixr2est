@@ -33,38 +33,45 @@ nmTest({
     expect_equal(as.integer(cnt[, "nAllTimes"]), as.integer(nObsI) + 1L)
     expect_equal(as.integer(cnt[, "nDoses"]), rep(1L, length(nObsI)))
     expect_equal(as.integer(cnt[, "nEvid2"]), rep(0L, length(nObsI)))
-    # this is the invariant foceiCheckIndCounts() enforces before it sizes
-    # anything: the per-subject counts have to add back up to the dataset
+    # the counts have to add back up to the dataset.  This is asserted here, on
+    # a known dataset, rather than enforced in foceiCheckIndCounts(): the only
+    # total available at setup is rxode2's own rx->nall, and a rule resting on
+    # that would fail every fit on any rxode2 release that accounts for records
+    # differently.
     expect_equal(sum(cnt[, "nAllTimes"]), nrow(d))
   })
 
-  test_that("an inconsistent per-subject event layout is refused (#1039)", {
+  test_that("an impossible per-subject event layout is refused (#1039)", {
     # the rejection paths need a build whose rxode2 and nlmixr2est disagree on
     # the solve layout, which no test can produce -- so drive the rules on
     # counts supplied from R instead.  Columns: nAllTimes, nDoses, nEvid2.
     ok <- cbind(c(12L, 10L, 8L), c(1L, 1L, 1L), c(0L, 0L, 0L))
-    expect_silent(foceiCheckIndCounts_(ok, 30L))
+    expect_silent(foceiCheckIndCounts_(ok))
 
-    # a subject whose records went missing -- the counts stay individually
-    # plausible, so only the sum catches it.  This is the dangerous shape: it
-    # under-sizes gVid rather than asking for an absurd block.
+    # garbage read out of unrelated memory: a negative count, or a dose /
+    # evid=2 split that does not fit inside the subject's own records
+    expect_error(foceiCheckIndCounts_(rbind(ok, c(-1L, 0L, 0L))),
+                 "impossible event layout")
+    expect_error(foceiCheckIndCounts_(rbind(ok, c(5L, 0L, -2L))),
+                 "impossible event layout")
+    expect_error(foceiCheckIndCounts_(rbind(ok, c(4L, 3L, 2L))),
+                 "impossible event layout")
+    # a garbage pair that would overflow int if summed in int
+    expect_error(foceiCheckIndCounts_(rbind(ok, c(4L, 2000000000L, 2000000000L))),
+                 "impossible event layout")
+    # the message names the offending subject, counting from 1
+    expect_error(foceiCheckIndCounts_(rbind(ok, c(-1L, 0L, 0L))),
+                 "subject 4")
+
+    # DELIBERATELY accepted: a subject that came back with none of its records
+    # is individually plausible.  Rejecting it needs a total to compare against,
+    # and the only one available is rxode2's own rx->nall -- a rule nlmixr2est
+    # cannot hold across rxode2 releases it is not built alongside.  See
+    # foceiCheckIndCountsCore() in src/inner.cpp.
     dropped <- ok
     dropped[2, 1] <- 0L
     dropped[2, 2] <- 0L
-    expect_error(foceiCheckIndCounts_(dropped, 30L),
-                 "record counts add to")
-
-    # garbage read out of unrelated memory: negative, or wider than the whole
-    # dataset, or a dose/evid=2 split that does not fit in the subject
-    expect_error(foceiCheckIndCounts_(rbind(ok, c(-1L, 0L, 0L)), 30L),
-                 "impossible event layout")
-    expect_error(foceiCheckIndCounts_(rbind(ok, c(1000L, 1L, 0L)), 30L),
-                 "impossible event layout")
-    expect_error(foceiCheckIndCounts_(rbind(ok, c(4L, 3L, 2L)), 30L),
-                 "impossible event layout")
-    # the message names the offending subject, counting from 1
-    expect_error(foceiCheckIndCounts_(rbind(ok, c(-1L, 0L, 0L)), 30L),
-                 "subject 4")
+    expect_silent(foceiCheckIndCounts_(dropped))
   })
 
   test_that("a multi-subject focei fit sizes its per-subject blocks correctly", {

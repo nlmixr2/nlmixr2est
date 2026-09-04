@@ -110,8 +110,9 @@
   layouts those counts are read from the wrong bytes, and the setup sized
   megabytes of storage from garbage -- reported as "dataset too large", as an
   `R_Calloc` failure, or as a segfault, depending on what the mis-read bytes
-  held.  The counts have to add back up to the dataset's record count, and the
-  fit now stops with that as the reason instead (#1039).
+  held.  A negative count, or a dose or `evid=2` count larger than the
+  subject's own record count, now stops the fit with that as the reason
+  instead (#1039).
 
 - With two or more occasion parameters on one level, `fit$iov$<level>` had
   `NA` for every occasion (and the fit warned "NAs introduced by
