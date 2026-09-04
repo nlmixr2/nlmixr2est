@@ -3802,6 +3802,12 @@ static inline int innerOpt1(int id, int likId) {
              &mode, &maxInnerIterations, &nsim,
              &imp, fInd->zm, &izs, &rzs, &dzs, &id);
       if (ISNA(f)) { if (!haveBest) return 0; restoreBest(); } else keepBest();
+      // Hand the cascade below the WINNER, not the eta=0 leg.  The nudge cascade
+      // decides whether the optimizer got stuck by looking at fInd->x, so an
+      // eta=0 leg that stayed at zero while the sampled start found a real mode
+      // would read as "every eta stuck at 0" and fire the nudges (and the
+      // "initial ETAs were nudged" warning) for a subject that did not stick.
+      if (haveBest && (!R_FINITE(f) || fBest < f)) restoreBest();
     }
     nF = fInd->nInnerF-nF;
     // REprintf("innerCost id: %d, fInd->nInnerF: %d", id, fInd->nInnerF);
