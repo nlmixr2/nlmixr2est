@@ -51,10 +51,11 @@ nmTest({
                            mceta = mceta))))
   }
 
-  test_that("mceta > 0 explores the draws and never lands worse than mceta=0", {
+  test_that("mceta > 0 explores its draws and cannot land worse than mceta=0", {
     skip_on_cran()
     .dat <- .mcetaData()
     .f0 <- .mcetaFit(.dat, 0L)
+    .f1 <- .mcetaFit(.dat, 1L)
     .f5 <- .mcetaFit(.dat, 5L)
 
     # The counter is what shows the draws were USED.  Matching (or differing)
@@ -65,21 +66,16 @@ nmTest({
     expect_gt(.f5$env$nMcetaStart[["sample"]], 0L)
 
     # Every inner problem has eta=0 among its candidates and keeps the converged
-    # eta=0 solve as a floor, so the objective cannot be worse than mceta=0.
+    # eta=0 solve as a floor, so at fixed parameters the objective cannot come
+    # out above mceta=0.
     expect_lte(.f5$objf, .f0$objf + 1e-4)
     # ... and on this model it is strictly better, which is what "the extra
     # candidates are not being used" hid.
     expect_lt(.f5$objf, .f0$objf)
-  })
 
-  test_that("mceta=1 is eta=0 only", {
-    skip_on_cran()
-    .dat <- .mcetaData()
     # mceta=1 has no draws, so its candidate set is exactly {eta=0}.  It used to
     # be a silent no-op (empty sample cube -> the whole branch was skipped, so
     # the last eta was kept).
-    .f1 <- .mcetaFit(.dat, 1L)
-    .f0 <- .mcetaFit(.dat, 0L)
     expect_equal(.f1$objf, .f0$objf)
     expect_equal(.f1$env$nMcetaStart[["sample"]], 0L)
     expect_gt(.f1$env$nMcetaStart[["zero"]], 0L)
