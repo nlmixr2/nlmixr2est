@@ -911,6 +911,63 @@ static inline size_t foceiSzAdd(size_t a, size_t b, const char *what) {
   return a + b;
 }
 
+// Every per-subject block in the FOCEi setup (gVid, ga/gc, gB, gcH*,
+// llikObsFull) is sized and strided from rxode2's per-subject event counts,
+// and nothing re-derives them.  They are read through the rxode2 pointer
+// table, so a build where rxode2 and nlmixr2est disagree on the solve layout
+// -- a stale object file in either package -- makes every count garbage: an
+// absurd total that the size guards refuse, or a plausible one that leaves a
+// short buffer the setup then strides past.  rxode2 counted the same records
+// into rx->nall, so the per-subject counts must split it exactly.  Check that
+// before anything is sized from them (#1039).
+static inline void foceiCheckIndCounts(rx_solve* rx) {
+  int nall = getRxNall(rx);
+  int64_t tot = 0;
+  for (int i = getRxNsub(rx); i--;) {
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, i);
+    int nAllTimes = getIndNallTimes(ind);
+    int nDoses = getIndNdoses(ind);
+    int nEvid2 = getIndNevid2(ind);
+    if (nAllTimes < 0 || nDoses < 0 || nEvid2 < 0 ||
+        nAllTimes > nall || nDoses + nEvid2 > nAllTimes) {
+      stop("focei: rxode2 reports an impossible event layout for subject %d "
+           "(records: %d, doses: %d, evid=2: %d of %d total); reinstall "
+           "rxode2 and nlmixr2est from source",
+           i + 1, nAllTimes, nDoses, nEvid2, nall);
+    }
+    tot += nAllTimes;
+  }
+  // nsim > 1 replicates subjects past rx->nsub without scaling rx->nall, so
+  // the sum only has to match the data for a single replicate -- which is the
+  // only case FOCEi sets up.
+  if (getRxNsim(rx) == 1 && tot != (int64_t)nall) {
+    stop("focei: rxode2's per-subject record counts add to %g, not the %d "
+         "records in the dataset; reinstall rxode2 and nlmixr2est from source",
+         (double)tot, nall);
+  }
+}
+
+// The counts foceiCheckIndCounts() validates, exposed so a test can compare
+// them against the dataset directly instead of inferring the layout from a
+// fit's output.
+// [[Rcpp::export]]
+Rcpp::IntegerMatrix foceiIndEventCounts_() {
+  rx_solve* rxl = getRxSolve_();
+  int nsub = getRxNsub(rxl);
+  Rcpp::IntegerMatrix ret(nsub, 3);
+  for (int i = 0; i < nsub; ++i) {
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rxl, i);
+    ret(i, 0) = getIndNallTimes(ind);
+    ret(i, 1) = getIndNdoses(ind);
+    ret(i, 2) = getIndNevid2(ind);
+  }
+  ret.attr("dimnames") =
+    Rcpp::List::create(R_NilValue,
+                       Rcpp::CharacterVector::create("nAllTimes", "nDoses",
+                                                     "nEvid2"));
+  return ret;
+}
+
 // Size of the gVid block.  Each subject holds its own nobs_i x nobs_i
 // residual variance matrix, so the block is sum(nobs_i^2) -- NOT nall^2:
 // nall counts dose (and evid=2) records too, and (sum x)^2 only equals
@@ -6758,6 +6815,7 @@ static inline void foceiSetupNoEta_(){
 
   // Mixtures only work in population only models;
   rx = getRxSolve_();
+  foceiCheckIndCounts(rx);
 
   if (inds_focei != NULL) R_Free(inds_focei);
   inds_focei = R_Calloc(getRxNsub(rx), focei_ind);
@@ -6813,6 +6871,7 @@ static inline void foceiSetupNoEta_(){
 
 static inline void foceiSetupEta_(NumericMatrix etaMat0){
   rx = getRxSolve_();
+  foceiCheckIndCounts(rx);
 
   if (inds_focei != NULL) R_Free(inds_focei);
   inds_focei = R_Calloc(getRxNsubAndMix(rx), focei_ind);
