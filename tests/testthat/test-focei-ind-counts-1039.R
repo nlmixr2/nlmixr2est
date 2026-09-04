@@ -38,6 +38,35 @@ nmTest({
     expect_equal(sum(cnt[, "nAllTimes"]), nrow(d))
   })
 
+  test_that("an inconsistent per-subject event layout is refused (#1039)", {
+    # the rejection paths need a build whose rxode2 and nlmixr2est disagree on
+    # the solve layout, which no test can produce -- so drive the rules on
+    # counts supplied from R instead.  Columns: nAllTimes, nDoses, nEvid2.
+    ok <- cbind(c(12L, 10L, 8L), c(1L, 1L, 1L), c(0L, 0L, 0L))
+    expect_silent(foceiCheckIndCounts_(ok, 30L))
+
+    # a subject whose records went missing -- the counts stay individually
+    # plausible, so only the sum catches it.  This is the dangerous shape: it
+    # under-sizes gVid rather than asking for an absurd block.
+    dropped <- ok
+    dropped[2, 1] <- 0L
+    dropped[2, 2] <- 0L
+    expect_error(foceiCheckIndCounts_(dropped, 30L),
+                 "record counts add to")
+
+    # garbage read out of unrelated memory: negative, or wider than the whole
+    # dataset, or a dose/evid=2 split that does not fit in the subject
+    expect_error(foceiCheckIndCounts_(rbind(ok, c(-1L, 0L, 0L)), 30L),
+                 "impossible event layout")
+    expect_error(foceiCheckIndCounts_(rbind(ok, c(1000L, 1L, 0L)), 30L),
+                 "impossible event layout")
+    expect_error(foceiCheckIndCounts_(rbind(ok, c(4L, 3L, 2L)), 30L),
+                 "impossible event layout")
+    # the message names the offending subject, counting from 1
+    expect_error(foceiCheckIndCounts_(rbind(ok, c(-1L, 0L, 0L)), 30L),
+                 "subject 4")
+  })
+
   test_that("a multi-subject focei fit sizes its per-subject blocks correctly", {
     # the report's own reproduction: on a mismatched build this failed at
     # .foceiFitInternal() with "dataset too large", an R_Calloc failure, or a

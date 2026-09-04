@@ -465,6 +465,17 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// foceiCheckIndCounts_
+void foceiCheckIndCounts_(Rcpp::IntegerMatrix counts, int nall);
+RcppExport SEXP _nlmixr2est_foceiCheckIndCounts_(SEXP countsSEXP, SEXP nallSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Rcpp::IntegerMatrix >::type counts(countsSEXP);
+    Rcpp::traits::input_parameter< int >::type nall(nallSEXP);
+    foceiCheckIndCounts_(counts, nall);
+    return R_NilValue;
+END_RCPP
+}
 // foceiIndEventCounts_
 Rcpp::IntegerMatrix foceiIndEventCounts_();
 RcppExport SEXP _nlmixr2est_foceiIndEventCounts_() {

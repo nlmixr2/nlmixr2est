@@ -911,6 +911,33 @@ static inline size_t foceiSzAdd(size_t a, size_t b, const char *what) {
   return a + b;
 }
 
+// The rules foceiCheckIndCounts() enforces, taking the counts rather than `rx`
+// so a test can drive them.  `nall` is rxode2's record count for ONE replicate
+// of the event data, which is what subjects [0, nsub) hold however many
+// replicates rx->nsim asks for -- so the sum has to match it exactly, with no
+// nsim special case (and none read off the same suspect solve).
+static inline void foceiCheckIndCountsCore(const int *nAllTimes,
+                                           const int *nDoses,
+                                           const int *nEvid2,
+                                           int nsub, int nall) {
+  int64_t tot = 0;
+  for (int i = 0; i < nsub; ++i) {
+    if (nAllTimes[i] < 0 || nDoses[i] < 0 || nEvid2[i] < 0 ||
+        nAllTimes[i] > nall || nDoses[i] + nEvid2[i] > nAllTimes[i]) {
+      stop("focei: rxode2 reports an impossible event layout for subject %d "
+           "(records: %d, doses: %d, evid=2: %d of %d total); reinstall "
+           "rxode2 and nlmixr2est from source",
+           i + 1, nAllTimes[i], nDoses[i], nEvid2[i], nall);
+    }
+    tot += nAllTimes[i];
+  }
+  if (tot != (int64_t)nall) {
+    stop("focei: rxode2's per-subject record counts add to %g, not the %d "
+         "records in the dataset; reinstall rxode2 and nlmixr2est from source",
+         (double)tot, nall);
+  }
+}
+
 // Every per-subject block in the FOCEi setup (gVid, ga/gc, gB, gcH*,
 // llikObsFull) is sized and strided from rxode2's per-subject event counts,
 // and nothing re-derives them.  They are read through the rxode2 pointer
@@ -921,30 +948,41 @@ static inline size_t foceiSzAdd(size_t a, size_t b, const char *what) {
 // into rx->nall, so the per-subject counts must split it exactly.  Check that
 // before anything is sized from them (#1039).
 static inline void foceiCheckIndCounts(rx_solve* rx) {
-  int nall = getRxNall(rx);
-  int64_t tot = 0;
-  for (int i = getRxNsub(rx); i--;) {
+  int nsub = getRxNsub(rx);
+  if (nsub < 0) nsub = 0;
+  std::vector<int> nAllTimes((size_t)nsub), nDoses((size_t)nsub),
+    nEvid2((size_t)nsub);
+  for (int i = 0; i < nsub; ++i) {
     rx_solving_options_ind *ind = getSolvingOptionsInd(rx, i);
-    int nAllTimes = getIndNallTimes(ind);
-    int nDoses = getIndNdoses(ind);
-    int nEvid2 = getIndNevid2(ind);
-    if (nAllTimes < 0 || nDoses < 0 || nEvid2 < 0 ||
-        nAllTimes > nall || nDoses + nEvid2 > nAllTimes) {
-      stop("focei: rxode2 reports an impossible event layout for subject %d "
-           "(records: %d, doses: %d, evid=2: %d of %d total); reinstall "
-           "rxode2 and nlmixr2est from source",
-           i + 1, nAllTimes, nDoses, nEvid2, nall);
-    }
-    tot += nAllTimes;
+    nAllTimes[(size_t)i] = getIndNallTimes(ind);
+    nDoses[(size_t)i] = getIndNdoses(ind);
+    nEvid2[(size_t)i] = getIndNevid2(ind);
   }
-  // nsim > 1 replicates subjects past rx->nsub without scaling rx->nall, so
-  // the sum only has to match the data for a single replicate -- which is the
-  // only case FOCEi sets up.
-  if (getRxNsim(rx) == 1 && tot != (int64_t)nall) {
-    stop("focei: rxode2's per-subject record counts add to %g, not the %d "
-         "records in the dataset; reinstall rxode2 and nlmixr2est from source",
-         (double)tot, nall);
+  foceiCheckIndCountsCore(nsub == 0 ? NULL : &nAllTimes[0],
+                          nsub == 0 ? NULL : &nDoses[0],
+                          nsub == 0 ? NULL : &nEvid2[0], nsub,
+                          getRxNall(rx));
+}
+
+// The same rules, on counts supplied from R, so a test can drive the rejection
+// paths -- they need a build whose rxode2 and nlmixr2est disagree on the solve
+// layout, which no test can produce.
+// [[Rcpp::export]]
+void foceiCheckIndCounts_(Rcpp::IntegerMatrix counts, int nall) {
+  int nsub = counts.nrow();
+  if (counts.ncol() != 3) {
+    stop("focei: counts must have three columns");
   }
+  std::vector<int> nAllTimes((size_t)nsub), nDoses((size_t)nsub),
+    nEvid2((size_t)nsub);
+  for (int i = 0; i < nsub; ++i) {
+    nAllTimes[(size_t)i] = counts(i, 0);
+    nDoses[(size_t)i] = counts(i, 1);
+    nEvid2[(size_t)i] = counts(i, 2);
+  }
+  foceiCheckIndCountsCore(nsub == 0 ? NULL : &nAllTimes[0],
+                          nsub == 0 ? NULL : &nDoses[0],
+                          nsub == 0 ? NULL : &nEvid2[0], nsub, nall);
 }
 
 // The counts foceiCheckIndCounts() validates, exposed so a test can compare
@@ -953,6 +991,7 @@ static inline void foceiCheckIndCounts(rx_solve* rx) {
 // [[Rcpp::export]]
 Rcpp::IntegerMatrix foceiIndEventCounts_() {
   rx_solve* rxl = getRxSolve_();
+  if (rxl == NULL) return Rcpp::IntegerMatrix(0, 3);
   int nsub = getRxNsub(rxl);
   Rcpp::IntegerMatrix ret(nsub, 3);
   for (int i = 0; i < nsub; ++i) {

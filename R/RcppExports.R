@@ -75,6 +75,10 @@ impQrPoints_ <- function(isample, neta, shift) {
     .Call(`_nlmixr2est_impQrPoints_`, isample, neta, shift)
 }
 
+foceiCheckIndCounts_ <- function(counts, nall) {
+    invisible(.Call(`_nlmixr2est_foceiCheckIndCounts_`, counts, nall))
+}
+
 foceiIndEventCounts_ <- function() {
     .Call(`_nlmixr2est_foceiIndEventCounts_`)
 }
