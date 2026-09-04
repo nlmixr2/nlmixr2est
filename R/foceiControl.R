@@ -318,6 +318,50 @@
 #'
 #' @param iovXform Transformation used on the diagonal of the IOV: one of
 #'     \code{"sd"}, \code{"var"}, \code{"logsd"}, or \code{"logvar"}.
+#'     This parameterizes the magnitude theta of the \code{"theta"}
+#'     \code{iovMethod}; it has no effect under \code{"omega"}, where the
+#'     magnitude is fixed at one and the variability is carried by the
+#'     omega block itself.
+#'
+#' @param iovMethod How inter-occasion variability is expanded before
+#'     estimation: one of \code{"auto"} (default), \code{"theta"} or
+#'     \code{"omega"}.
+#'
+#'     \code{"theta"} is the long-standing expansion: each occasion
+#'     parameter becomes a magnitude theta, with one unit-variance eta per
+#'     occasion fixed to it.  That shape cannot represent a correlation
+#'     between two occasion parameters.
+#'
+#'     \code{"omega"} instead fixes the magnitude theta at one and
+#'     estimates the per-occasion eta blocks directly, occasion one being
+#'     the block and the rest repeating it (NONMEM's
+#'     \code{$OMEGA BLOCK(n) SAME}).  The correlation then lives in the
+#'     estimated block.
+#'
+#'     \code{"auto"} picks \code{"omega"} when the IOV block has any
+#'     off-diagonal element, since \code{"theta"} provably cannot
+#'     represent one, and \code{"theta"} otherwise.  \code{"omega"} may
+#'     be asked for on a diagonal block as well, so the two can be
+#'     compared on the same model.  The choice is made per LEVEL of
+#'     variability, so a correlation on \code{occ} does not change how
+#'     an unrelated diagonal \code{occ2} is expanded.
+#'
+#'     \code{"omega"} is only available for estimation methods that
+#'     honour the repeated block (the FOCEi family).  \code{saem} and
+#'     the variational, nonparametric and importance-sampling methods
+#'     estimate omega elsewhere, so they continue to refuse a
+#'     correlated occasion block rather than silently estimate each
+#'     occasion on its own.
+#'
+#'     The two are the same statistical model -- at an occasion variance
+#'     of one, where the parameterizations coincide, they agree on the
+#'     objective to machine precision, and evaluated at matched random
+#'     effects they agree to ~2e-8 at any variance.  They are not
+#'     interchangeable in practice: \code{"theta"} hands FOCEi's inner
+#'     optimizer unit-scale etas and so converges the inner problem
+#'     better when the occasion variance is far from one.  That is why
+#'     \code{"auto"} keeps \code{"theta"} unless a correlation forces
+#'     \code{"omega"}.
 #'
 #' @param sumProd Is a boolean indicating if the model should change
 #'     multiplication to high precision multiplication and sums to
@@ -895,6 +939,7 @@ foceiControl <- function(sigdig = 3, #
                          eigen = TRUE, #
                          diagXform = c("sqrt", "log", "identity"), #
                          iovXform = c("sd", "var", "logsd", "logvar"), #
+                         iovMethod = c("auto", "theta", "omega"), #
                          sumProd = FALSE, #
                          optExpression = TRUE, #
                          literalFix = TRUE,
@@ -1606,6 +1651,7 @@ foceiControl <- function(sigdig = 3, #
     eigen = eigen,
     diagXform = match.arg(diagXform),
     iovXform = match.arg(iovXform),
+    iovMethod = match.arg(iovMethod),
     sumProd = sumProd,
     optExpression = optExpression,
     literalFix = literalFix,
