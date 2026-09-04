@@ -231,6 +231,15 @@
 
 ## Internal
 
+- The build now tracks header dependencies.  R's rules rebuild an object only
+  when its own source is newer, so an incremental build silently kept objects
+  that had been compiled against an earlier version of a header they include.
+  That reaches across packages: a `LinkingTo` package's headers are just
+  another include path, so a struct whose layout changes there leaves objects
+  here compiled to the old layout and the resulting shared library mixes both
+  -- a corrupt binary rather than a compile error.  `src/Makevars*` now
+  compiles with `-MMD -MP` and reads back the generated `.d` files.
+
 - The SAEM `predOnly` model (used for residuals, tables and the covariance
   step) no longer emits a THETA/ETA alias assignment that exactly duplicates
   one the mu-reference replacement block already emitted.  These were trailing
