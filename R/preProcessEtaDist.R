@@ -147,61 +147,9 @@
   ## a method that translates the declaration itself has to see it
   ## unexpanded (see `.etaDistMethodAttr()`)
   if (identical(.etaDistMethodAttr(est, control), "native")) return(NULL)
-  list(ui=rxode2::rxEtaDistExpand(ui),
-       control=.etaDistMceta(control, est))
+  list(ui=rxode2::rxEtaDistExpand(ui))
 }
 
-#' Default the inner-problem multistart on for a declared distribution
-#'
-#' These are harder likelihood surfaces than the models nlmixr2 usually
-#' sees.  Measured on Bauer's own gamma dataset (300 subjects), a cold
-#' started FOCEi settles into a local optimum with the residual error
-#' absorbing variability that belongs to the random effect -- the gamma
-#' mean of CL comes back as 6.7 against a truth of 5.0, and its relative
-#' variance as 0.22 against 0.085.  With `mceta = 10` the same cold start
-#' gives 5.2 and 0.145.  That is exactly the knob Bauer's own recipe uses
-#' (`MCETA=10`, and `100` for the harder cases).
-#'
-#' `mceta = n` evaluates the previous eta, eta = 0, and `n - 1` draws from
-#' omega for each subject's inner problem and keeps the best.  It suits a
-#' declared distribution particularly well: the latent omega is the
-#' identity, so those draws are standard normal -- precisely the right
-#' proposal on the scale the inner problem actually works on.
-#'
-#' Only the methods that HAVE the knob are touched -- the FOCEi family,
-#' `imp`/`impmap` and `agq`.  `saemControl()` has no `mceta` (SAEM samples
-#' the etas rather than optimizing them), so a saem control is returned
-#' unchanged and nothing is said about it.
-#'
-#' The default is only changed when it is still the package default, and
-#' the change is announced, so an explicit `mceta =` stays in charge.
-#'
-#' @param control control object, possibly NULL
-#' @param est estimation routine name, used only to name the right control
-#'   function in the message
-#' @return the control with `mceta` defaulted on, or NULL when this control
-#'   has no `mceta` or already carries a chosen one
-#' @noRd
-#' @author Matthew L. Fidler
-.etaDistMceta <- function(control, est = NULL) {
-  if (!is.list(control) || !any(names(control) == "mceta")) return(NULL)
-  if (!identical(as.integer(control$mceta), .etaDistMcetaPkgDefault)) return(NULL)
-  control$mceta <- .etaDistMcetaDefault
-  .ctlFn <- if (is.character(est) && length(est) == 1L &&
-                  exists(paste0(est, "Control"),
-                         envir=asNamespace("nlmixr2est"), inherits=FALSE)) {
-    paste0(est, "Control(mceta=)")
-  } else {
-    "mceta= in the control"
-  }
-  .minfo(paste0("declared random effect distribution: using mceta=",
-                .etaDistMcetaDefault, " (set ", .ctlFn, " to override)"))
-  control
-}
-
-## the foceiControl() default, and what a declared distribution uses instead
-.etaDistMcetaPkgDefault <- -2L
-.etaDistMcetaDefault <- 10L
 
 preProcessHooksAdd(".preProcessEtaDist", .preProcessEtaDist)
 

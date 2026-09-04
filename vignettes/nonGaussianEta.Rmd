@@ -148,7 +148,7 @@ nlmixr2(gammaCl, nlmixr2data::theo_sd, est = "npag")
 `nlmixr2bayes`' `est = "nuts"` supports it too, and babelmixr2 translates the
 families with an elementary quantile function to NONMEM.
 
-## Starting values matter more than usual
+## The inner problem needs care
 
 These are harder likelihood surfaces than the models nlmixr2 usually sees, and
 this is the practical thing to know about them.
@@ -156,39 +156,35 @@ this is the practical thing to know about them.
 Validated against Bauer's own gamma-distributed CL/V1 dataset (300 subjects):
 at NONMEM's own estimates nlmixr2's objective function and per-subject
 empirical Bayes estimates of the latent normals agree with NONMEM's to a
-correlation of 0.999, and FOCEi warm started there converges near both the
-simulation truth and NONMEM's answer. From a *cold* start, though,
-`focei`/`laplace`/`saem` can settle into a worse local optimum -- one where the
-residual error absorbs variability that belongs to the random effect.
+correlation of 0.999. The *likelihood* is not what differs. What differs is
+how well each subject's inner (eta) problem gets solved -- and for a declared
+distribution that problem has real curvature, because the inverse CDF is
+strongly non-linear.
 
-This is the same thing Bauer reports ("the Laplace method does not travel well,
-and tends to end prematurely when not near the answer"), and why his own recipe
-runs an EM pass with `MCETA=10`-`100` before Laplace.
+How much it matters is easy to measure. Hold the parameters fixed and change
+only `foceiControl(mceta=)`, which controls where each inner optimization
+starts:
 
-nlmixr2 has the same knob, and **a declared distribution turns it on by
-default**: `mceta = 10` rather than the usual `-2`, announced when it happens.
-`mceta = n` evaluates the previous eta, eta = 0, and `n - 1` draws from omega
-for each subject's inner problem and keeps the best; for a declared random
-effect the latent omega is the identity, so those draws are standard normal --
-exactly the proposal `MCETA` uses.
-
-This applies to the methods that have the knob: the FOCEi family,
-`imp`/`impmap` and `agq`. `saem` has no `mceta` -- it *samples* the etas rather
-than optimizing them, so there is no inner optimization to restart -- and its
-control is left alone.
-
-On that same Bauer dataset, cold started, it is worth what it costs:
-
-| | truth | NONMEM (ITS) | `mceta = -2` | `mceta = 10` |
+| parameters | `mceta=-2` | `mceta=0` | `mceta=10` | `mceta=100` |
 |---|---|---|---|---|
-| gamma mean CL | 5.03 | 5.02 | 6.74 | 5.22 |
-| gamma mean V1 | 4.66 | 4.69 | 8.02 | 5.55 |
-| rel. variance CL | 0.085 | 0.085 | 0.225 | 0.145 |
-| rel. variance V1 | 0.084 | 0.080 | 0.297 | 0.134 |
+| NONMEM's estimates | -1756.7 | -8413.3 | -1756.7 | -8579.2 |
+| simulation truth | -2708.5 | -8036.8 | -2708.5 | -8492.6 |
 
-Better, but not the whole way -- the residual error is still overstated. So if
-the fit looks like it stopped early, do what Bauer does: run an EM method
-first (`est = "impmap"`/`"imp"`) and warm start `focei` from it, raise `mceta`
-further, or give the model better starting values. Set `mceta` explicitly to
-take charge of it. For `saem`, where the knob does not exist, the warm start
-and the starting values are the levers you have.
+Thousands of objective units, at the *same* parameters. The outer optimizer
+differentiates that objective, so with a poor inner solve it is not searching a
+stable function -- which is why a cold-started fit can settle well away from
+NONMEM's answer and report *"last objective function was not at minimum"*.
+
+So, for now:
+
+- fit with `foceiControl(mceta = 100)`, or at least `mceta = 0`. The package
+  default of `-2` is the worst of the four above, and `mceta = 10` currently
+  behaves identically to it
+  ([nlmixr2est#1040](https://github.com/nlmixr2/nlmixr2est/issues/1040));
+- or warm start `focei` from an EM method (`est = "impmap"`/`"imp"`), which is
+  what Bauer's own recipe does before Laplace;
+- give the model informative starting values.
+
+`saem` has no `mceta` -- it *samples* the etas rather than optimizing them, so
+there is no inner optimization to restart -- and there the warm start and the
+starting values are the levers you have.
