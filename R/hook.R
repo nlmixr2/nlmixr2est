@@ -196,6 +196,21 @@ preFinalParTableHooks <- function(name=NULL) {
   .ret <- names
   if (.first %in% .ret) .ret <- c(.first, .ret[.ret != .first])
   if (.last %in% .ret) .ret <- c(.ret[.ret != .last], .last)
+  ## `.preProcessZeroOmegaMuRef` has to see a zero omega before
+  ## `.preProcessZeroOmega` does.  The latter substitutes 0 for any random
+  ## effect whose omega is all zeros and takes it out of the model entirely --
+  ## which is right for a plain zero variance, and wrong for a mu-referenced
+  ## one, where the random effect is the EM's handle on its theta.  Running
+  ## the mu-ref hook first lets it claim those and leave the rest.
+  .mu <- ".preProcessZeroOmegaMuRef"
+  .zero <- ".preProcessZeroOmega"
+  if (.mu %in% .ret && .zero %in% .ret) {
+    .iMu <- which(.ret == .mu)
+    .iZero <- which(.ret == .zero)
+    if (.iMu > .iZero) {
+      .ret <- append(.ret[.ret != .mu], .mu, after = which(.ret[.ret != .mu] == .zero) - 1L)
+    }
+  }
   .ret
 }
 

@@ -257,6 +257,7 @@
                         distribution=if (.saemGeneralLik(ui)) "general" else "normal",
                         fixedOmega=ui$saemModelOmegaFixed,
                         fixedOmegaValues=ui$saemModelOmegaFixedValues,
+                        zeroOmegaTune=rxode2::rxGetControl(ui, "zeroOmegaTune", 0.1),
                         parHistThetaKeep=ui$saemParHistThetaKeep,
                         parHistOmegaKeep=ui$saemParHistOmegaKeep,
                         parHistOmegaOffPairs={

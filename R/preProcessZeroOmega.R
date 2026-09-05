@@ -198,6 +198,14 @@ rmEta <- function(ui, eta) {
 .preProcessZeroOmega <- function(ui, est, data, control) {
   .ui <- ui
   .zeroEtas <- .getZeroEtasFromModel(.ui)
+  ## A mu-referenced zero omega is NOT one of these.  Removing it takes away the
+  ## EM's only handle on its theta (the per-subject location it averages and
+  ## folds in), so those are left in the model and excluded from Omega instead
+  ## -- see .zeroOmegaMuRefEtas() and foceiOmegaDropFlat().  The zero is left
+  ## as declared: the omega setup detects it from the matrix and substitutes a
+  ## placeholder locally, so nothing downstream has to be told about it.
+  .muZero <- .zeroOmegaMuRefEtas(.ui)
+  if (length(.muZero) > 0L) .zeroEtas <- setdiff(.zeroEtas, .muZero)
   if (length(.zeroEtas) > 0) {
     nlmixr2global$nlmixr2EstEnv$nlmixrPureInputUi <- rxode2::rxUiDecompress(.ui)
     .minfo(paste0("the following etas are removed from the model since their initial estimates are zero: ",

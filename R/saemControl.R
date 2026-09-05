@@ -3,6 +3,17 @@
 #' @param seed Random Seed for SAEM step.  (Needs to be set for
 #'     reproducibility.)  By default this is 99.
 #'
+#' @param zeroOmegaTune Exploration width for a mu-referenced random effect
+#'   whose variance is declared zero.  Such a random effect carries no
+#'   between-subject variability -- it exists so the EM has a per-subject
+#'   location to average and fold into its theta -- so it contributes nothing
+#'   to the objective or to the estimated omega.  It still has to MOVE,
+#'   though, or the conditional mean the M-step shifts by is identically zero
+#'   and the theta never budges; this sets how far it explores.  Too small and
+#'   the theta stays put, too large and the exploration is wasteful.  Measured
+#'   on Bauer's gamma model: at 1e-8 the parameter stayed pinned at its
+#'   starting value of 6.686 against a truth of 5.03, at 0.1 it reached 5.553.
+#'
 #' @param nBurn Number of iterations in the first phase, ie the  MCMC/Stochastic Approximation
 #'     steps. This is equivalent to Monolix's \code{K_0} or \code{K_b}.
 #'
@@ -366,6 +377,7 @@
 #' @export
 saemControl <- function(seed = 99,
                         nBurn = 200,
+                        zeroOmegaTune = 0.1,
                         nEm = 300,
                         nmc = 3,
                         nu = c(2, 2, 2),
@@ -576,8 +588,11 @@ saemControl <- function(seed = 99,
   } else {
     censOption <- setNames(c("gauss" = 0L, "laplace" = 1L)[match.arg(censOption)], NULL)
   }
+  checkmate::assertNumeric(zeroOmegaTune, len=1, lower=0, finite=TRUE,
+                           any.missing=FALSE, .var.name="zeroOmegaTune")
   .ret <- list(
     mcmc = list(niter = c(nBurn, nEm), nmc = nmc, nu = nu),
+    zeroOmegaTune = zeroOmegaTune,
     rxControl = rxControl,
     seed = seed,
     censOption = censOption,

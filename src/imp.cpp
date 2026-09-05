@@ -342,6 +342,33 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
   // MAP Hessian will not give a proposal (see the impmap branch below).
   arma::mat impOmega;
   impGetOmega(impOmega);
+  // Flat random effects -- a mu-referenced parameter whose omega was declared
+  // zero -- are not part of Omega, so they are not part of the PROPOSAL either.
+  // Excluding them from the prior term alone is not enough: the E-step draws
+  // from gamma*Sigma and weights by the proposal density, so a flat coordinate
+  // left in Sigma feeds the placeholder variance straight into the importance
+  // weights.  (Measured before this: excluding a flat eta from the prior only
+  // gave impmap 193.6 where dropping the random effect outright gave 151.2 --
+  // the gap was the proposal.)
+  //
+  // The proposal is therefore built on the REDUCED block and embedded back at
+  // full size with the flat coordinates zeroed: their draws stay at the mode,
+  // which is what a coordinate with no distribution of its own should do, and
+  // the log-determinant is the reduced one so the weights are over the space
+  // actually sampled.
+  std::vector<int> flatEta;
+  impGetFlatEta(flatEta);
+  arma::uvec keepEta;
+  {
+    std::vector<arma::uword> k;
+    for (int i = 0; i < neta; ++i) {
+      if (std::find(flatEta.begin(), flatEta.end(), i) == flatEta.end()) {
+        k.push_back((arma::uword)i);
+      }
+    }
+    keepEta = arma::uvec(k);
+  }
+  const bool haveFlat = !flatEta.empty() && keepEta.n_elem > 0;
   bool doParProp = (cores > 1);
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(cores) if(doParProp)
@@ -364,7 +391,17 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
       }
       arma::mat Hi;
       double ldv, lds;
-      if (arma::inv_sympd(Hi, Sig) && arma::log_det(ldv, lds, Hi) && lds > 0) {
+      if (haveFlat) {
+        arma::mat Sr = Sig.submat(keepEta, keepEta);
+        arma::mat Hr, Lr;
+        if (arma::inv_sympd(Hr, Sr) && arma::log_det(ldv, lds, Hr) && lds > 0 &&
+            arma::chol(Lr, gammaId * Sr, "lower")) {
+          Hi.zeros(neta, neta); Hi.submat(keepEta, keepEta) = Hr;
+          arma::mat L(neta, neta, arma::fill::zeros);
+          L.submat(keepEta, keepEta) = Lr;
+          Hs[id] = Hi; logDetH[id] = ldv; cholL[id] = L; haveL[id] = 1;
+        }
+      } else if (arma::inv_sympd(Hi, Sig) && arma::log_det(ldv, lds, Hi) && lds > 0) {
         arma::mat L;
         if (arma::chol(L, gammaId * Sig, "lower")) {
           Hs[id] = Hi; logDetH[id] = ldv; cholL[id] = L; haveL[id] = 1;
@@ -379,7 +416,22 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
       if (gotH) {
         arma::mat Sigma;
         double ldv, lds;
-        if (arma::inv_sympd(Sigma, H) && arma::log_det(ldv, lds, H) && lds > 0) {
+        if (haveFlat) {
+          arma::mat Hr = H.submat(keepEta, keepEta);
+          arma::mat Sr, Lr;
+          if (arma::inv_sympd(Sr, Hr) && arma::log_det(ldv, lds, Hr) && lds > 0) {
+            arma::mat Hf(neta, neta, arma::fill::zeros);
+            Hf.submat(keepEta, keepEta) = Hr;
+            Hs[id] = Hf;
+            logDetH[id] = ldv;
+            Sr *= gammaId;
+            if (arma::chol(Lr, Sr, "lower")) {
+              arma::mat L(neta, neta, arma::fill::zeros);
+              L.submat(keepEta, keepEta) = Lr;
+              cholL[id] = L; haveL[id] = 1;
+            }
+          }
+        } else if (arma::inv_sympd(Sigma, H) && arma::log_det(ldv, lds, H) && lds > 0) {
           Hs[id] = H;
           logDetH[id] = ldv;
           Sigma *= gammaId;
@@ -405,10 +457,23 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
         // costs correctness.
         arma::mat Hi;
         double ldv, lds;
-        if (arma::inv_sympd(Hi, impOmega) && arma::log_det(ldv, lds, Hi) && lds > 0) {
+        // The population fallback is reduced for the same reason the MAP-based
+        // proposal is: a flat coordinate has no distribution to fall back TO,
+        // and its placeholder variance must not enter the weights here either.
+        arma::mat omProp = haveFlat ? impOmega.submat(keepEta, keepEta) : impOmega;
+        if (arma::inv_sympd(Hi, omProp) && arma::log_det(ldv, lds, Hi) && lds > 0) {
           arma::mat L;
-          if (arma::chol(L, gammaId * impOmega, "lower")) {
-            Hs[id] = Hi; logDetH[id] = ldv; cholL[id] = L; haveL[id] = 1;
+          if (arma::chol(L, gammaId * omProp, "lower")) {
+            if (haveFlat) {
+              arma::mat Hf(neta, neta, arma::fill::zeros);
+              Hf.submat(keepEta, keepEta) = Hi;
+              arma::mat Lf(neta, neta, arma::fill::zeros);
+              Lf.submat(keepEta, keepEta) = L;
+              Hs[id] = Hf; cholL[id] = Lf;
+            } else {
+              Hs[id] = Hi; cholL[id] = L;
+            }
+            logDetH[id] = ldv; haveL[id] = 1;
             nOmegaFallback.fetch_add(1, std::memory_order_relaxed);
           }
         }

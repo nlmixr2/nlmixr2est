@@ -1067,6 +1067,7 @@ foceiControl <- function(sigdig = 3, #
                          zeroGradRunReset = TRUE,
                          zeroGradBobyqa = TRUE,
                          mceta = -2L,
+                         flatEtaIdx = integer(0),
                          warm = c("calc", "save"),
                          nAGQ = 0,
                          agqLow = -Inf,
@@ -1781,6 +1782,15 @@ foceiControl <- function(sigdig = 3, #
     zeroGradRunReset = zeroGradRunReset,
     zeroGradBobyqa = zeroGradBobyqa,
     mceta = as.integer(mceta),
+    ## 0-based indices of random effects carrying no between-subject
+    ## variability -- a mu-referenced parameter whose omega was declared zero.
+    ## Filled in by the shared omega setup (R/focei.R), not by the user: the
+    ## random effect is the EM's handle on its theta and is excluded from Omega
+    ## entirely, so it must contribute nothing to the objective.  It is a named
+    ## argument rather than an unregistered control entry because the control
+    ## is re-validated by name (an unknown one made est="foi" stop with
+    ## "cannot find foi related control object").
+    flatEtaIdx = as.integer(flatEtaIdx),
     warm = warm,
     nAGQ = as.integer(nAGQ),
     agqHi = as.double(agqHi),
