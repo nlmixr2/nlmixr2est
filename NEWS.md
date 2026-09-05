@@ -104,6 +104,7 @@
 
 ## Bug fixes
 
+<<<<<<< HEAD
 - `foceiControl(mceta = )` is no longer discarded for a model whose etas are
   all mu-referenced.  Any non-default setting was reset to `-2` on the grounds
   that "the initial etas are all exactly zero, so the search has nothing to
@@ -143,6 +144,17 @@
   fit instead of at every objective evaluation, so the objective is the same
   function at every evaluation.  The fit records which
   candidate each inner solve started from in `$env$nMcetaStart`.
+=======
+- `focei` now checks rxode2's per-subject event counts before it sizes the
+  per-subject blocks it strides with them (`gVid`, `ga`/`gc`, `gB`, `gcH*`,
+  `llikObsFull`).  When rxode2 and nlmixr2est are built against different solve
+  layouts those counts are read from the wrong bytes, and the setup sized
+  megabytes of storage from garbage -- reported as "dataset too large", as an
+  `R_Calloc` failure, or as a segfault, depending on what the mis-read bytes
+  held.  A negative count, or a dose or `evid=2` count larger than the
+  subject's own record count, now stops the fit with that as the reason
+  instead (#1039).
+>>>>>>> origin/main
 
 - With two or more occasion parameters on one level, `fit$iov$<level>` had
   `NA` for every occasion (and the fit warned "NAs introduced by

@@ -465,6 +465,26 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// foceiCheckIndCounts_
+void foceiCheckIndCounts_(Rcpp::IntegerMatrix counts);
+RcppExport SEXP _nlmixr2est_foceiCheckIndCounts_(SEXP countsSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Rcpp::IntegerMatrix >::type counts(countsSEXP);
+    foceiCheckIndCounts_(counts);
+    return R_NilValue;
+END_RCPP
+}
+// foceiIndEventCounts_
+Rcpp::IntegerMatrix foceiIndEventCounts_();
+RcppExport SEXP _nlmixr2est_foceiIndEventCounts_() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(foceiIndEventCounts_());
+    return rcpp_result_gen;
+END_RCPP
+}
 // freeFocei
 void freeFocei();
 RcppExport SEXP _nlmixr2est_freeFocei() {
