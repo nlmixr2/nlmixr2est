@@ -31,6 +31,12 @@
 // sitting near zero still gets a usable absolute allowance).
 #define IMP_MSTEP_TRUST 0.5
 
+// Loose sanity bound on an UNDAMPED step, relative to each theta's own
+// magnitude.  A well-conditioned Hessian is allowed a large move -- that is
+// ordinary optimizer progress -- so this sits far above anything a healthy
+// M-step proposes and only catches a step that is plainly not a step.
+#define IMP_MSTEP_SANE 20.0
+
 // Counts of M-step Newton steps that needed Levenberg-Marquardt damping, and of
 // iterations whose structural thetas could not be updated at all.  Reported once
 // at the end of the fit: a run that damps constantly has an ill-conditioned
@@ -1596,33 +1602,60 @@ void impOuter(Environment e) {
       //     at 1) so it means the same thing for a theta of 0.1 and one of 1e5.
       // A well-conditioned iteration is accepted at lambda = 0 on the first try,
       // so healthy fits take a bit-identical step to the unguarded code.
+      // The undamped Newton step is taken whenever the Hessian behind it is
+      // actually trustworthy, so a healthy iteration is bit-identical to the
+      // unguarded code.  "Trustworthy" is measured directly, by conditioning --
+      // NOT by how big the step is, since a large step off a well-determined
+      // Hessian is a legitimate move and damping it would slow every ordinary
+      // fit.  The sanity bound alongside it is deliberately loose: it exists to
+      // catch a step no honest M-step would ever propose, not to shape normal
+      // ones.
       arma::vec step;
-      double hscale = H.is_finite() ? arma::abs(H.diag()).max() : 0.0;
-      if (!R_finite(hscale) || hscale <= 0.0) hscale = 1.0;
       bool stepOk = false;
       double lambda = 0.0;
-      for (int tryK = 0; tryK < 12; ++tryK) {
-        arma::mat Hd = H;
-        if (lambda > 0.0) Hd.diag() += lambda * hscale;
-        arma::vec cand;
-        if (arma::solve(cand, Hd, g) && cand.is_finite() &&
-            impStructStepRel(cand) <= IMP_MSTEP_TRUST) {
-          step = cand;
-          stepOk = true;
-          break;
-        }
-        lambda = (lambda == 0.0) ? 1e-8 : lambda * 100.0;
-      }
-      if (stepOk) {
-        if (lambda > 0.0) nMStepDamped++;
+      double rc = 0.0;
+      if (H.is_finite()) rc = arma::rcond(H);
+      bool wellCond = R_finite(rc) && rc > 1e-10;
+      if (wellCond && arma::solve(step, H, g) && step.is_finite() &&
+          impStructStepRel(step) <= IMP_MSTEP_SANE) {
         impUpdateStructThetas(step);
       } else {
-        // Even a heavily damped solve could not be brought inside the trust
-        // region (or would not solve at all).  Leaving the thetas alone is the
-        // safe move -- this iteration's E-step simply does not inform them --
-        // and it is reported rather than silent, since a run that spends every
-        // iteration here is not estimating those thetas at all.
-        nMStepSkipped++;
+        // Not trustworthy.  arma::solve() SUCCEEDS on a near-singular H and
+        // still returns a FINITE step -- just an astronomically large one -- so
+        // "solved and finite" is not a guard, and one such step throws the
+        // whole parameter vector off the map (measured on Bauer's gamma model:
+        // one iteration took a log relative variance from -2.46 to +60.3).
+        //
+        // Levenberg-Marquardt instead, escalated until the step lands inside a
+        // trust region relative to each theta's own magnitude.  H is
+        // Gauss-Newton and hence positive semi-definite, so the damping only
+        // improves its conditioning and rotates the step toward a scaled
+        // gradient step.
+        double hscale = H.is_finite() ? arma::abs(H.diag()).max() : 0.0;
+        if (!R_finite(hscale) || hscale <= 0.0) hscale = 1.0;
+        for (int tryK = 0; tryK < 12; ++tryK) {
+          arma::mat Hd = H;
+          if (lambda > 0.0) Hd.diag() += lambda * hscale;
+          arma::vec cand;
+          if (arma::solve(cand, Hd, g) && cand.is_finite() &&
+              impStructStepRel(cand) <= IMP_MSTEP_TRUST) {
+            step = cand;
+            stepOk = true;
+            break;
+          }
+          lambda = (lambda == 0.0) ? 1e-8 : lambda * 100.0;
+        }
+        if (stepOk) {
+          nMStepDamped++;
+          impUpdateStructThetas(step);
+        } else {
+          // Even heavily damped the step will not come inside the trust region
+          // (or will not solve at all).  Leaving the thetas alone is the safe
+          // move -- this iteration's E-step simply does not inform them -- and
+          // it is reported rather than silent, since a run that spends every
+          // iteration here is not estimating those thetas at all.
+          nMStepSkipped++;
+        }
       }
     }
 
