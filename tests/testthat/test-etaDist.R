@@ -14,7 +14,7 @@ nmTest({
         lclrv <- log(0.09)
         tv <- 3.45
         eta.ka ~ 0.6
-        eta.cl ~ 1
+
         add.sd <- 0.7
       })
       model({
@@ -144,7 +144,7 @@ nmTest({
         tcl <- 1
         tv <- 3.45
         sdcl <- 0.3
-        eta.cl ~ 1
+
         add.sd <- 0.7
       })
       model({

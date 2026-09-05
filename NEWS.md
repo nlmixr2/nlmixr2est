@@ -14,11 +14,13 @@
 ini({
   lclm  <- log(5)
   lclrv <- log(0.09)
-  eta.cl + eta.v1 ~ c(1,
-                      0.5, 1)
   dist(eta.cl) ~ dgamma(shape=1/exp(lclrv), rate=1/(exp(lclrv)*exp(lclm)))
 })
 ```
+
+  A declared random effect needs no variance -- `dist()` declares it and
+  implies `~ 1`.  A block is written out only for a correlation between
+  two declared random effects.
 
   Supported by the FOCEi family (whose inner problem needs only
   `d(eta)/d(latent)`, which rxode2 differentiates exactly through

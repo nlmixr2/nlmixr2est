@@ -34,7 +34,6 @@ gammaCl <- function() {
     lclrv <- log(0.09)  # gamma relative variance of CL
     tv    <- 3.45
     eta.ka ~ 0.6
-    eta.cl ~ 1
     dist(eta.cl) ~ dgamma(shape = 1/exp(lclrv),
                           rate  = 1/(exp(lclrv)*exp(lclm)))
     add.sd <- 0.7
@@ -54,8 +53,9 @@ gammaCl <- function() {
 Two things to notice. `eta.cl` **is** the clearance -- the declared
 distribution is the marginal distribution of the random effect itself, so the
 model block uses it directly rather than as a deviation from a typical value.
-And its variance is written as `1`, not as a variance to estimate; the reason
-is below.
+And it has no variance: the declaration already fixes its marginal, and the
+latent scale it is built on is standard normal, so `dist()` declares the
+random effect and implies `~ 1`. The reason that has to be one is below.
 
 `lotri::lotriEtaDists()` lists the families you can declare:
 
@@ -93,7 +93,8 @@ effect it integrates over is still standard normal.
 Correlation between two declared random effects is induced on the *latent*
 scale, through a Cholesky factor -- a Gaussian copula. That makes the block a
 **correlation** matrix rather than a covariance one, so its diagonal has to be
-one:
+one. That is the one case where you write the block out, because the
+correlation has nowhere else to go:
 
 ```r
 eta.cl + eta.v ~ c(1,
@@ -102,11 +103,11 @@ dist(eta.cl) ~ dgamma(...)
 dist(eta.v)  ~ dgamma(...)
 ```
 
-`lotri()` says so if it is not. nlmixr2 cannot fix individual components of an
-omega block, so this is stated by *estimating* the diagonal at one rather than
-by fixing it, and the expansion turns the off-diagonals into unconstrained
-`rxCor.*` parameters with a fixed identity omega -- a form every method already
-handles. The fit reports the correlation back:
+`lotri()` says so if the diagonal is not one. nlmixr2 cannot fix individual
+components of an omega block, so this is stated by *estimating* the diagonal at
+one rather than by fixing it, and the expansion turns the off-diagonals into
+unconstrained `rxCor.*` parameters with a fixed identity omega -- a form every
+method already handles. The fit reports the correlation back:
 `fit$etaDistCor`, and `tanh()` of an `rxCor.*` estimate (its back-transformed
 column) is that correlation directly.
 
