@@ -518,6 +518,26 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// nTrustInnerGet
+int nTrustInnerGet();
+RcppExport SEXP _nlmixr2est_nTrustInnerGet() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(nTrustInnerGet());
+    return rcpp_result_gen;
+END_RCPP
+}
+// nHessianQNGet
+int nHessianQNGet();
+RcppExport SEXP _nlmixr2est_nHessianQNGet() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(nHessianQNGet());
+    return rcpp_result_gen;
+END_RCPP
+}
 // foceiLik
 double foceiLik(NumericVector theta);
 RcppExport SEXP _nlmixr2est_foceiLik(SEXP thetaSEXP) {
@@ -1577,6 +1597,28 @@ BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< arma::vec& >::type theta(thetaSEXP);
     rcpp_result_gen = Rcpp::wrap(nlmSolveGradHess(theta));
+    return rcpp_result_gen;
+END_RCPP
+}
+// nlmTrustFit
+List nlmTrustFit(arma::vec& theta, List control);
+RcppExport SEXP _nlmixr2est_nlmTrustFit(SEXP thetaSEXP, SEXP controlSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::vec& >::type theta(thetaSEXP);
+    Rcpp::traits::input_parameter< List >::type control(controlSEXP);
+    rcpp_result_gen = Rcpp::wrap(nlmTrustFit(theta, control));
+    return rcpp_result_gen;
+END_RCPP
+}
+// nTrustOuterGet
+int nTrustOuterGet();
+RcppExport SEXP _nlmixr2est_nTrustOuterGet() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(nTrustOuterGet());
     return rcpp_result_gen;
 END_RCPP
 }

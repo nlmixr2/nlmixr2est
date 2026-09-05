@@ -168,6 +168,8 @@ SEXP _nlmixr2est_RcppExport_registerCCallable(void);
 SEXP _nlmixr2est_nlmSetup(SEXP);
 SEXP _nlmixr2est_nlmFree(void);
 SEXP _nlmixr2est_nlmSolveGradHess(SEXP);
+SEXP _nlmixr2est_nlmTrustFit(SEXP, SEXP);
+SEXP _nlmixr2est_nTrustOuterGet(void);
 SEXP _nlmixr2est_nlmSolveGradR(SEXP);
 SEXP _nlmixr2est_nlmerSolveGrad(SEXP, SEXP);
 SEXP _nlmixr2est_nlmSolveR(SEXP);
@@ -196,6 +198,10 @@ SEXP _nlmixr2est_iniRxodePtrs(SEXP ptr);
 SEXP _nlmixr2est_iniN1qn1cPtrs(SEXP ptr);
 
 SEXP _nlmixr2est_iniLbfgsb3ptr(SEXP ptr);
+
+SEXP _nlmixr2est_iniRcppTrustPtrs(SEXP ptr);
+SEXP _nlmixr2est_nTrustInnerGet(void);
+SEXP _nlmixr2est_nHessianQNGet(void);
 
 SEXP _rxode2version4(SEXP);
 SEXP _nlmixr2est_rxode2stateOde(SEXP);
@@ -286,6 +292,9 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_rxode2stateOde", (DL_FUNC) &_nlmixr2est_rxode2stateOde, 1},
   {"_nlmixr2est_iniLbfgsb3ptr", (DL_FUNC) &_nlmixr2est_iniLbfgsb3ptr, 1},
   {"_nlmixr2est_iniN1qn1cPtrs", (DL_FUNC) &_nlmixr2est_iniN1qn1cPtrs, 1},
+  {"_nlmixr2est_iniRcppTrustPtrs", (DL_FUNC) &_nlmixr2est_iniRcppTrustPtrs, 1},
+  {"_nlmixr2est_nTrustInnerGet", (DL_FUNC) &_nlmixr2est_nTrustInnerGet, 0},
+  {"_nlmixr2est_nHessianQNGet", (DL_FUNC) &_nlmixr2est_nHessianQNGet, 0},
   {"_nlmixr2est_iniRxodePtrs", (DL_FUNC) &_nlmixr2est_iniRxodePtrs, 1},
   {"_nlmixr2est_iniLotriPtr", (DL_FUNC) &_nlmixr2est_iniLotriPtr, 1},
   {"_nlmixr2est_uninformativeEta", (DL_FUNC) &_nlmixr2est_uninformativeEta, 1},
@@ -308,6 +317,8 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_nlmSolveGradR", (DL_FUNC) &_nlmixr2est_nlmSolveGradR, 1},
   {"_nlmixr2est_nlmerSolveGrad", (DL_FUNC) &_nlmixr2est_nlmerSolveGrad, 2},
   {"_nlmixr2est_nlmSolveGradHess", (DL_FUNC) &_nlmixr2est_nlmSolveGradHess, 1},
+  {"_nlmixr2est_nlmTrustFit", (DL_FUNC) &_nlmixr2est_nlmTrustFit, 2},
+  {"_nlmixr2est_nTrustOuterGet", (DL_FUNC) &_nlmixr2est_nTrustOuterGet, 0},
   {"_nlmixr2est_nlmFree", (DL_FUNC) &_nlmixr2est_nlmFree, 0},
   {"_nlmixr2est_RcppExport_registerCCallable", (DL_FUNC) &_nlmixr2est_RcppExport_registerCCallable, 0},
   {"_nlmixr2est_rxode2hasLlik", (DL_FUNC) &_nlmixr2est_rxode2hasLlik, 0},
