@@ -243,7 +243,10 @@ nmTest({
                                      calcTables = FALSE, print = 0))))
     .bc <- .bad$env$nTrustInner
     expect_gt(.bc[["solverFail"]], 0L)
-    expect_equal(.bc[["notConverged"]], .bc[["solverFail"]] + .bc[["newtonGate"]])
+    # An attempt ends non-converged in exactly one of three ways, so the
+    # breakdown has to add up or it is not a breakdown.
+    expect_equal(.bc[["notConverged"]],
+                 .bc[["error"]] + .bc[["solverFail"]] + .bc[["newtonGate"]])
     expect_gt(.bc[["failed"]], 0L)
     expect_true(is.finite(.bad$objf))
   })

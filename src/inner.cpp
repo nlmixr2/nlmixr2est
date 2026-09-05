@@ -4092,11 +4092,11 @@ static inline int innerOpt1(int id, int likId) {
   std::vector<double> candF;
   // Whether the attempt that produced each candidate actually SUCCEEDED (the
   // optimizer reported convergence and no solve failure latched).  A candidate
-  // that did not is a fallback, never a choice: the marginal re-rank below could
-  // otherwise hand a failed attempt's eta to the fit even though a converged
-  // attempt was available, and with mceta>=1 that is exactly what happened
-  // (#1044) -- the failed candidate wins the marginal because its Laplace
-  // log|H| term is computed at a point the objective never actually descended.
+  // that did not is a fallback, never a choice: the marginal re-rank below can
+  // otherwise hand a failed attempt's eta to the fit even though a succeeded
+  // attempt was available, because a failed attempt's Laplace log|H| term is
+  // computed at a point the objective never actually descended to and can come
+  // out larger.  mceta>=1 is where a mixed candidate set is common (#1044).
   std::vector<char> candOk;
   auto keepCand = [&](bool ok) {
     if (!R_FINITE(f)) return;
@@ -4472,13 +4472,17 @@ static inline int innerOpt1(int id, int likId) {
       // discarded etas n1qn1 finds too and cost thousands of objective units.
       // A candidate is bad only when the optimizer itself failed.
       bool solveOk = false;
+      // Whether this attempt produced a result at all.  A hard error and a
+      // finite-looking call that returned NaN/Inf are the same thing here.
+      bool usable = false;
       if (tres.error >= 0 && tres.argument != NULL) {
         std::copy(tres.argument, tres.argument + npar, fInd->x);
         f = tres.value;
         conv = (bool)tres.converged;
         solveOk = conv;
-        if (!conv) op_focei.nTrustSolverNoConv.fetch_add(1, std::memory_order_relaxed);
         if (R_FINITE(f) && !ISNA(f)) {
+          usable = true;
+          if (!conv) op_focei.nTrustSolverNoConv.fetch_add(1, std::memory_order_relaxed);
           keepBest();
           if (tres.gradient != NULL) std::copy(tres.gradient, tres.gradient + npar, fInd->g);
           if (tres.gradient != NULL && tres.hessian != NULL) {
@@ -4510,27 +4514,28 @@ static inline int innerOpt1(int id, int likId) {
           // (the recovery from a failed restart within this pass); the choice of
           // which candidate the fit reports is made on LikInner2()'s marginal,
           // which sees only what keepCand() recorded (#1040, #1044).  It is
-          // recorded here, AFTER the Newton-decrement gate above, so `conv` is
-          // this attempt's final verdict: a candidate marked converged on
-          // trust_solve_c()'s own flag and then withdrawn by the gate would
-          // otherwise still be eligible to win the re-rank.
+          // recorded on solveOk, not on the gated `conv`, so an eager retry
+          // trigger cannot also disqualify the point it was triggered at.
           keepCand(solveOk && fInd->badSolve == 0);
-          if (!conv) op_focei.nTrustNoConv.fetch_add(1, std::memory_order_relaxed);
-        } else {
-          op_focei.nTrustNoConv.fetch_add(1, std::memory_order_relaxed);
         }
-      } else {
-        // Hard error (e.g. tres.error==-3: the nudged starting point itself
-        // was infeasible) -- fInd->x was already overwritten with the raw
-        // nudge fill above, but f is left untouched here otherwise. If a
-        // PRIOR attempt succeeded, f still equals fBest, so the shared
-        // restoreBest() guard below (`fBest < f`) would silently skip
-        // restoring: the reported objective would say fBest while fInd->x
-        // actually held this failed nudge point. Force f to +Inf so that
-        // guard always fires when this attempt didn't produce a usable eta.
+      }
+      if (!usable) {
+        // Either a hard error (e.g. tres.error==-3: the nudged starting point
+        // itself was infeasible) or a call that came back NaN/Inf.  fInd->x may
+        // already hold the raw nudge fill, and f is otherwise left untouched:
+        // if a PRIOR attempt succeeded, f still equals fBest, so the shared
+        // restoreBest() guard below (`fBest < f`) would silently skip restoring
+        // -- the reported objective would say fBest while fInd->x actually held
+        // this failed nudge point.  (A NaN f fails that comparison too.)  Force
+        // f to +Inf so the guard always fires when this attempt didn't produce
+        // a usable eta, and never report convergence on an unusable one.
         f = std::numeric_limits<double>::infinity();
+        conv = false;
         op_focei.nTrustError.fetch_add(1, std::memory_order_relaxed);
       }
+      // Attempts that did not end converged, however they got there:
+      // error + solverFail + newtonGate.
+      if (!conv) op_focei.nTrustNoConv.fetch_add(1, std::memory_order_relaxed);
       trust_result_free_ptr(&tres);
       return conv;
     };
