@@ -3902,9 +3902,11 @@ static inline int innerOpt1(int id, int likId) {
   // The loop wraps the WHOLE optimizer dispatch rather than living inside one
   // branch of it, so it holds for whichever inner optimizer is configured, and a
   // new optimizer arm gets the floor pass without being told about it.  An arm
-  // only has to leave the converged objective in `f` and call keepBest(); keepCand(); on a
-  // non-finite `f` it should hand the loop `_lastStart` (see the arms below)
-  // rather than returning, so a failed sampled start still gets its eta=0 pass.
+  // only has to leave the converged objective in `f` and call both keepBest()
+  // (this pass's running minimum) and keepCand() (the candidate the marginal
+  // re-rank below chooses from).  On a non-finite `f` it should hand the loop
+  // `_lastStart` (see the arms below) rather than returning, so a failed
+  // sampled start still gets its eta=0 pass.
   int nInnerStart = mcetaSampleStart ? 2 : 1;
   for (int _innerStart = 0; _innerStart < nInnerStart; _innerStart++) {
   bool _lastStart = (_innerStart + 1 == nInnerStart);
