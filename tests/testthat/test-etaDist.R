@@ -77,14 +77,16 @@ nmTest({
   test_that("methods declare whether they support a declaration", {
     ## the FOCEi family, posthoc and simulation do
     for (.m in c("focei", "foce", "fo", "laplace", "agq", "imp", "impmap",
-                 "posthoc", "rxSolve", "simulate")) {
+                 "saem", "posthoc", "rxSolve", "simulate")) {
       expect_true(nlmixr2est:::.isEtaDistMethod(.m), info=.m)
     }
-    ## saem does NOT: it parameterizes a random effect by the theta it is
-    ## added to, and a declared distribution enters through an inverse CDF
-    ## instead, so saem never samples it -- it would fit the model with that
-    ## random effect absent (nlmixr2est#1047).
-    expect_false(nlmixr2est:::.isEtaDistMethod("saem"))
+    ## saem does too.  A declared random effect has no `theta + eta` form, so
+    ## it is carried through `nonMuEtas` and sampled like any other non-mu
+    ## random effect.  It did NOT for a while, and the cause was local: the
+    ## latents were filtered out of the set that mu-cov-downgrade records into
+    ## `nonMuEtas` (to silence a warning), which left saem with no parameter
+    ## for them at all.
+    expect_true(nlmixr2est:::.isEtaDistMethod("saem"))
     ## a nonparametric random effect distribution contradicts a declared
     ## one; nlme/nls are Gaussian by construction; the variational methods
     ## hardcode the normal family in their ELBO

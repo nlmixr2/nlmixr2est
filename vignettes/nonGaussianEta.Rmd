@@ -136,7 +136,7 @@ head(fit[, c("ID", "rxz.eta.cl", "eta.cl")], 3)
 ## Which methods support this
 
 The FOCEi family (`focei`/`foce`/`laplace`/`agq`/`imp`/`impmap` and their
-variants), `posthoc` and simulation. A method that cannot use a declared
+variants), `saem`, `posthoc` and simulation. A method that cannot use a declared
 distribution refuses rather than quietly fitting a different model than the
 one written -- `npag`/`npb` model the random effect distribution
 nonparametrically, so a declared one contradicts them; `nlme` and `nls` are
@@ -149,25 +149,6 @@ nlmixr2(gammaCl, nlmixr2data::theo_sd, est = "npag")
 
 `nlmixr2bayes`' `est = "nuts"` supports it too, and babelmixr2 translates the
 families with an elementary quantile function to NONMEM.
-
-### `saem` is refused, for now
-
-`saem` indexes its random effects by the theta each one is *added to* --
-`covstruct` in `R/saem_fit.R` is built over the model's thetas, and marks
-which of them carry a random effect. A declared distribution reaches the
-model through an inverse CDF rather than as `theta + eta`, so it attaches to
-no such parameter and `saem` does not sample it.
-
-That is not a reporting problem. Traced on a model with one declared and one
-ordinary random effect, `saem`'s parameter space was `lclm, lclrv, tv, tka`
-and it sampled exactly **one** random effect -- the ordinary one. A fit would
-run, print plausible iterations, and estimate the model with the declared
-random effect *absent from it*. So `saem` refuses, and says why.
-
-Making it work needs `saem` to sample a random effect that is not in
-`theta + eta` form, which is a change to `saem` itself rather than to this
-feature. Until then use `focei` or one of the EM methods, which take the
-declared distribution as written.
 
 ## Getting these models to converge
 
