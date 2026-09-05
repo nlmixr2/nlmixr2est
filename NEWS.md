@@ -170,6 +170,48 @@ ini({
 
 ## Bug fixes
 
+- `imp`/`impmap`'s M-step no longer takes a raw Newton step on the non-mu
+  structural thetas.  The step was guarded only by "the solve succeeded" and
+  "the step is finite", and neither catches the case that matters: when the
+  importance weights degenerate the IS-weighted Gauss-Newton Hessian goes
+  near-singular, `arma::solve()` still succeeds on it, and the step it returns
+  is still finite -- just astronomically large.  One EM iteration could then
+  throw the whole parameter vector off the map, and which `mceta=` the inner
+  MAP used decided whether that happened.  Measured on a model with declared
+  non-Gaussian random effects (where every structural theta is non-mu-
+  referenced, so all of them ride that one step): at `mceta = 10` a single
+  iteration took a log relative variance from -2.46 to +60.3 and the fit
+  reported a garbage objective, while `mceta = 0` was fine.
+
+  The step is now Levenberg-Marquardt damped, escalated until it lands inside
+  a trust region measured relative to each theta's own magnitude.  A
+  well-conditioned iteration is accepted undamped and takes the same step as
+  before.  `fit$env$impMStepDamped` and `fit$env$impMStepSkipped` report how
+  often the guard engaged, and a run that spends most of its iterations there
+  says so.
+
+- An `impmap` subject whose MAP Hessian will not yield a proposal now falls
+  back to the population omega instead of dropping out of the E-step, and the
+  fallback is reported rather than silent.
+
+- The `mceta` multistart now requires a *converged* inner pass before a
+  candidate can win the selection.  A pass that exhausts `maxInnerIterations`
+  also returns a finite objective, so an unconverged eta could be chosen --
+  and that eta is exactly where the Hessian gets taken, for FOCEi's `log|H|`
+  term and for `impmap`'s per-subject proposal.  If nothing converges the
+  selection falls back to the eta = 0 pass, counted in
+  `fit$env$nInnerRerank["zeroFallback"]`.
+
+- `saem` now warns when a mu-referenced random effect has its variance fixed
+  at (near) zero.  The mu-theta M-step is a normal equation weighted by
+  `omega^-1`, so such a column's population parameter cannot move from its
+  `ini()` value -- while `$saemFixed` still reports it as estimated.  Silently
+  returning the starting value as an estimate is the worst way for that to
+  fail.  This is the usual symptom of porting a NONMEM `$OMEGA (0.0 FIXED)`
+  mu-reference helper eta directly: NONMEM's EM updates such a theta by direct
+  maximization, so the idiom is load-bearing there and inert here.  Use a
+  small but non-degenerate variance (0.01-0.1) instead.
+
 - `foceiControl(mceta = )` is no longer discarded for a model whose etas are
   all mu-referenced.  Any non-default setting was reset to `-2` on the grounds
   that "the initial etas are all exactly zero, so the search has nothing to
