@@ -14,7 +14,7 @@ nmTest({
         lclrv <- log(0.09)
         tv <- 3.45
         eta.ka ~ 0.6
-        eta.cl ~ 1
+
         add.sd <- 0.7
       })
       model({
@@ -89,6 +89,20 @@ nmTest({
     expect_false(nlmixr2est:::.isEtaDistMethod("notAMethod"))
   })
 
+  test_that("an unsupported method refuses before doing any work", {
+    ## the hooks run BEFORE nlmixr2Est()'s gate, so refusing only there
+    ## made an unsupported method pay for the expansion and its own
+    ## pre-processing first -- for est="npag" that is the whole
+    ## nonparametric mu-expansion, minutes of it, to arrive at an error
+    .t0 <- proc.time()
+    expect_error(nlmixr2est:::.preProcessEtaDist(.declMod(), "npag", NULL, NULL),
+                 "npag")
+    expect_lt((proc.time() - .t0)[["elapsed"]], 5)
+    ## a supported method is not refused
+    expect_silent(nlmixr2est:::.etaDistRefuse(
+      rxode2::rxUiEtaDists(.declMod()), "focei", NULL))
+  })
+
   test_that("an unsupported method refuses rather than ignoring", {
     .env <- new.env(parent=emptyenv())
     assign("ui", .declMod(), envir=.env)
@@ -130,7 +144,7 @@ nmTest({
         tcl <- 1
         tv <- 3.45
         sdcl <- 0.3
-        eta.cl ~ 1
+
         add.sd <- 0.7
       })
       model({

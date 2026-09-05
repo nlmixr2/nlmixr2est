@@ -199,6 +199,7 @@ void impClearInnerNeqOverride();
 // Apply a Newton step: add `step` (length nSens) to the non-mu structural thetas
 // and propagate to the full parameter vector.
 void impUpdateStructThetas(const arma::vec& step);
+double impStructStepRel(const arma::vec& step);
 
 // ---- implemented in imp.cpp ----
 

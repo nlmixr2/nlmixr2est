@@ -14,11 +14,13 @@
 ini({
   lclm  <- log(5)
   lclrv <- log(0.09)
-  eta.cl + eta.v1 ~ c(1,
-                      0.5, 1)
   dist(eta.cl) ~ dgamma(shape=1/exp(lclrv), rate=1/(exp(lclrv)*exp(lclm)))
 })
 ```
+
+  A declared random effect needs no variance -- `dist()` declares it and
+  implies `~ 1`.  A block is written out only for a correlation between
+  two declared random effects.
 
   Supported by the FOCEi family (whose inner problem needs only
   `d(eta)/d(latent)`, which rxode2 differentiates exactly through
@@ -40,20 +42,31 @@ ini({
   written) and `$etaDistCor` (the copula correlation matrix of each
   declared block, rebuilt from the `rxCor.*` estimates).
 
-  **Starting values matter more than usual for these models.**  Validated
+  **These models need care with the inner (eta) problem.**  Validated
   against Bauer's own gamma-distributed CL/V1 dataset (300 subjects,
   `gamma_indpar.pdf`): at NONMEM's own ITS estimates nlmixr2's objective
   function and per-subject empirical Bayes estimates of the latent copula
   normals agree with NONMEM's (correlation 0.999 and 0.997, RMS
-  differences 0.035 and 0.078 on a unit-variance scale), and FOCEi warm
-  started there converges near both the simulation truth and NONMEM's
-  answer.  From a cold start, though, `focei`/`laplace`/`saem` all settle
-  into a worse local optimum -- which is the same thing Bauer reports
-  ("the Laplace method does not travel well, and tends to end prematurely
-  when not near the answer"), and why his own recipe runs an iterative
-  two-stage pass with `MCETA=10`-`100` before Laplace.  Give these models
-  informative starting values, or warm start `focei` from an EM method
-  (`est="impmap"`/`"imp"`, the closest analogues of that recipe).
+  differences 0.035 and 0.078 on a unit-variance scale), so the
+  *likelihood* is not what differs.  What differs is how well the inner
+  problem is solved.  At *fixed* parameters the objective moves by
+  thousands of units with `foceiControl(mceta=)`:
+
+  | parameters | `mceta=-2` | `mceta=0` | `mceta=10` | `mceta=100` |
+  |---|---|---|---|---|
+  | NONMEM's estimates | -1756.7 | -8413.3 | -1756.7 | -8579.2 |
+  | simulation truth | -2708.5 | -8036.8 | -2708.5 | -8492.6 |
+
+  The outer optimizer differentiates that objective, so from a cold start
+  `focei`/`laplace`/`saem` settle somewhere other than NONMEM's answer and
+  report "last objective function was not at minimum".  Until
+  nlmixr2/nlmixr2est#1040 is resolved, fit these models with
+  `foceiControl(mceta=100)` (Bauer uses `MCETA=10`-`100` for the same
+  reason), or at least `mceta=0`; the package default of `-2` is the worst
+  of the four here.  Warm starting `focei` from an EM method
+  (`est="impmap"`/`"imp"`) also helps.  `saemControl()` has no `mceta` --
+  SAEM samples the etas rather than optimizing them -- so for `saem` the
+  levers are a warm start and better starting values.
 
 - `saemControl(iovMethod = "twoLevel")` estimates inter-occasion variability
   the way the rest of `saem` estimates a variance.  The shared pre-processing

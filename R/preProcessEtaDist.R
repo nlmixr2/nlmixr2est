@@ -68,6 +68,26 @@
   !isFALSE(.etaDistMethodAttr(est, control))
 }
 
+#' The error a method that cannot use a declared distribution gets
+#'
+#' One message, raised from two places: the pre-processing hook (early,
+#' before any work is done) and the gate in `nlmixr2Est()` (the backstop).
+#'
+#' @param d declaring random effects, as `rxUiEtaDists()` returns them
+#' @param est estimation routine name
+#' @param control control object
+#' @return nothing, called for the error
+#' @noRd
+#' @author Matthew L. Fidler
+.etaDistRefuse <- function(d, est, control) {
+  if (nrow(d) == 0L) return(invisible())
+  if (!is.character(est) || length(est) != 1L) return(invisible())
+  if (.isEtaDistMethod(est, control)) return(invisible())
+  stop("est=\"", est, "\" cannot use the declared non-normal random effect ",
+       "distribution(s) on '", paste(d$name, collapse="', '"), "'",
+       call.=FALSE)
+}
+
 #' Refuse a declared eta distribution the dispatched method cannot use
 #'
 #' @param env nlmixr2 estimation environment
@@ -81,10 +101,7 @@
   if (nrow(.d) == 0L) return(invisible())
   .est <- class(env)[1]
   .control <- if (exists("control", envir=env)) get("control", envir=env) else NULL
-  if (.isEtaDistMethod(.est, .control)) return(invisible())
-  stop("est=\"", .est, "\" cannot use the declared non-normal random effect ",
-       "distribution(s) on '", paste(.d$name, collapse="', '"), "'",
-       call.=FALSE)
+  .etaDistRefuse(.d, .est, .control)
 }
 
 #' `rxode2::rxUiEtaDists()` when the installed rxode2 has it
@@ -119,14 +136,20 @@
   if (is.null(ui)) return(NULL)
   .d <- .rxUiEtaDists(ui)
   if (nrow(.d) == 0L) return(NULL)
+  ## Refuse HERE rather than leaving it to the gate in nlmixr2Est().  The
+  ## hooks run first, so a method that cannot use a declared distribution
+  ## would otherwise pay for the expansion and its own pre-processing
+  ## before being told no -- for `est="npag"` that is the whole
+  ## nonparametric mu-expansion, which is not a wait to impose on someone
+  ## who is about to get an error.  The gate stays as the backstop for
+  ## paths that reach nlmixr2Est() without running hooks.
+  .etaDistRefuse(.d, est, control)
   ## a method that translates the declaration itself has to see it
   ## unexpanded (see `.etaDistMethodAttr()`)
   if (identical(.etaDistMethodAttr(est, control), "native")) return(NULL)
-  ## The gate in nlmixr2Est() has already refused a method that cannot use
-  ## these; a hook also runs for `est="rxSolve"` (simulate/vpc/augPred),
-  ## which is supported.
   list(ui=rxode2::rxEtaDistExpand(ui))
 }
+
 
 preProcessHooksAdd(".preProcessEtaDist", .preProcessEtaDist)
 

@@ -1,0 +1,191 @@
+---
+title: "Non-Gaussian random effect distributions"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Non-Gaussian random effect distributions}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>",
+                      message = FALSE, warning = FALSE)
+## Every fit below is run for real and cached under inst/cache with
+## nlmixr2save's `:=` operator, so this page shows live output without
+## refitting on every build.  See vignettes/cacheSetup.R.
+source("cacheSetup.R")
+estCache("nonGaussianEta-")
+```
+
+A random effect in nlmixr2 is Normal by construction. Sometimes it should not
+be: a heavy-tailed random effect is the standard robustness move against
+influential individuals, and a clearance that is *itself* gamma distributed is
+a different model from a log-normal one, not a reparameterization of it.
+
+You declare the distribution in the `ini({})` block with a `dist()` line:
+
+```{r model}
+library(nlmixr2est)
+
+gammaCl <- function() {
+  ini({
+    tka   <- 0.45
+    lclm  <- log(1.1)   # gamma mean of CL
+    lclrv <- log(0.09)  # gamma relative variance of CL
+    tv    <- 3.45
+    eta.ka ~ 0.6
+    dist(eta.cl) ~ dgamma(shape = 1/exp(lclrv),
+                          rate  = 1/(exp(lclrv)*exp(lclm)))
+    add.sd <- 0.7
+  })
+  model({
+    ka <- exp(tka + eta.ka)
+    cl <- eta.cl        # a gamma distributed clearance
+    v  <- exp(tv)
+    d/dt(depot)  <- -ka*depot
+    d/dt(center) <-  ka*depot - cl/v*center
+    cp <- center/v
+    cp ~ add(add.sd)
+  })
+}
+```
+
+Two things to notice. `eta.cl` **is** the clearance -- the declared
+distribution is the marginal distribution of the random effect itself, so the
+model block uses it directly rather than as a deviation from a typical value.
+And it has no variance: the declaration already fixes its marginal, and the
+latent scale it is built on is standard normal, so `dist()` declares the
+random effect and implies `~ 1`. The reason that has to be one is below.
+
+`lotri::lotriEtaDists()` lists the families you can declare:
+
+```{r families}
+head(lotri::lotriEtaDists()[, c("name", "parNames", "support")], 12)
+```
+
+## How it works
+
+The implementation is Bauer's (NONMEM 7.5.1): **keep the latent random effect
+standard normal and change the CDF**.
+
+```
+z   ~ N(0, 1)          latent, unit variance, fixed
+u   = phiU(z)          normal CDF        ->  U(0, 1)
+eta = Q(u; args)       inverse CDF of the declared family
+```
+
+`rxEtaDistExpand()` performs that rewrite, and it is worth looking at once,
+because everything downstream -- simulation and every estimation method -- sees
+only its output:
+
+```{r expand}
+rxode2::rxEtaDistExpand(gammaCl())$lstExpr[1:3]
+```
+
+The declared random effect became an ordinary model variable computed from a
+latent standard normal, and the arguments of `dgamma()` are ordinary `ini({})`
+parameters, estimated like any others. That is the whole trick: **the
+estimation machinery never needs a non-Gaussian prior**, because the random
+effect it integrates over is still standard normal.
+
+### Why the variance has to be one
+
+Correlation between two declared random effects is induced on the *latent*
+scale, through a Cholesky factor -- a Gaussian copula. That makes the block a
+**correlation** matrix rather than a covariance one, so its diagonal has to be
+one. That is the one case where you write the block out, because the
+correlation has nowhere else to go:
+
+```r
+eta.cl + eta.v ~ c(1,
+                   0.5, 1)
+dist(eta.cl) ~ dgamma(...)
+dist(eta.v)  ~ dgamma(...)
+```
+
+`lotri()` says so if the diagonal is not one. nlmixr2 cannot fix individual
+components of an omega block, so this is stated by *estimating* the diagonal at
+one rather than by fixing it, and the expansion turns the off-diagonals into
+unconstrained `rxCor.*` parameters with a fixed identity omega -- a form every
+method already handles. The fit reports the correlation back:
+`fit$etaDistCor`, and `tanh()` of an `rxCor.*` estimate (its back-transformed
+column) is that correlation directly.
+
+## Fitting
+
+Nothing special at the call site:
+
+```{r fit}
+fit := nlmixr2(gammaCl, nlmixr2data::theo_sd, est = "focei",
+               control = foceiControl(print = 0))
+```
+
+```{r print}
+print(fit)
+```
+
+The gamma's own arguments come back as ordinary population parameters, and the
+fit carries both the latent normal and the gamma-distributed clearance per
+subject:
+
+```{r etas}
+head(fit$eta)
+head(fit[, c("ID", "rxz.eta.cl", "eta.cl")], 3)
+```
+
+## Which methods support this
+
+The FOCEi family, `saem`, `posthoc` and simulation. A method that cannot use a
+declared distribution refuses rather than quietly fitting a different model
+than the one written -- `npag`/`npb` model the random effect distribution
+nonparametrically, so a declared one contradicts them; `nlme` and `nls` are
+Gaussian by construction; `vae`/`emvi`/`fbvi` hardcode the normal family in
+their ELBO:
+
+```{r refuse, error = TRUE}
+nlmixr2(gammaCl, nlmixr2data::theo_sd, est = "npag")
+```
+
+`nlmixr2bayes`' `est = "nuts"` supports it too, and babelmixr2 translates the
+families with an elementary quantile function to NONMEM.
+
+## The inner problem needs care
+
+These are harder likelihood surfaces than the models nlmixr2 usually sees, and
+this is the practical thing to know about them.
+
+Validated against Bauer's own gamma-distributed CL/V1 dataset (300 subjects):
+at NONMEM's own estimates nlmixr2's objective function and per-subject
+empirical Bayes estimates of the latent normals agree with NONMEM's to a
+correlation of 0.999. The *likelihood* is not what differs. What differs is
+how well each subject's inner (eta) problem gets solved -- and for a declared
+distribution that problem has real curvature, because the inverse CDF is
+strongly non-linear.
+
+How much it matters is easy to measure. Hold the parameters fixed and change
+only `foceiControl(mceta=)`, which controls where each inner optimization
+starts:
+
+| parameters | `mceta=-2` | `mceta=0` | `mceta=10` | `mceta=100` |
+|---|---|---|---|---|
+| NONMEM's estimates | -1756.7 | -8413.3 | -1756.7 | -8579.2 |
+| simulation truth | -2708.5 | -8036.8 | -2708.5 | -8492.6 |
+
+Thousands of objective units, at the *same* parameters. The outer optimizer
+differentiates that objective, so with a poor inner solve it is not searching a
+stable function -- which is why a cold-started fit can settle well away from
+NONMEM's answer and report *"last objective function was not at minimum"*.
+
+So, for now:
+
+- fit with `foceiControl(mceta = 100)`, or at least `mceta = 0`. The package
+  default of `-2` is the worst of the four above, and `mceta = 10` currently
+  behaves identically to it
+  ([nlmixr2est#1040](https://github.com/nlmixr2/nlmixr2est/issues/1040));
+- or warm start `focei` from an EM method (`est = "impmap"`/`"imp"`), which is
+  what Bauer's own recipe does before Laplace;
+- give the model informative starting values.
+
+`saem` has no `mceta` -- it *samples* the etas rather than optimizing them, so
+there is no inner optimization to restart -- and there the warm start and the
+starting values are the levers you have.
