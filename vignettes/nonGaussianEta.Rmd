@@ -149,7 +149,7 @@ nlmixr2(gammaCl, nlmixr2data::theo_sd, est = "npag")
 `nlmixr2bayes`' `est = "nuts"` supports it too, and babelmixr2 translates the
 families with an elementary quantile function to NONMEM.
 
-## The inner problem needs care
+## Getting these models to converge
 
 These are harder likelihood surfaces than the models nlmixr2 usually sees, and
 this is the practical thing to know about them.
@@ -158,34 +158,75 @@ Validated against Bauer's own gamma-distributed CL/V1 dataset (300 subjects):
 at NONMEM's own estimates nlmixr2's objective function and per-subject
 empirical Bayes estimates of the latent normals agree with NONMEM's to a
 correlation of 0.999. The *likelihood* is not what differs. What differs is
-how well each subject's inner (eta) problem gets solved -- and for a declared
-distribution that problem has real curvature, because the inverse CDF is
-strongly non-linear.
+how well the fit travels to it.
 
-How much it matters is easy to measure. Hold the parameters fixed and change
-only `foceiControl(mceta=)`, which controls where each inner optimization
-starts:
+The reason is structural. `rxEtaDistExpand()` writes the declared
+distribution's parameters into the model as bare thetas inside an inverse-CDF
+call, and nothing about that shape is `theta + eta`. So every one of them
+comes out **non**-mu-referenced -- which is the case both `saem` and the FOCEi
+family handle worst. A cold start of either method alone settles a long way
+from the answer.
 
-| parameters | `mceta=-2` | `mceta=0` | `mceta=10` | `mceta=100` |
-|---|---|---|---|---|
-| NONMEM's estimates | -1756.7 | -8413.3 | -1756.7 | -8579.2 |
-| simulation truth | -2708.5 | -8036.8 | -2708.5 | -8492.6 |
+### The recipe
 
-Thousands of objective units, at the *same* parameters. The outer optimizer
-differentiates that objective, so with a poor inner solve it is not searching a
-stable function -- which is why a cold-started fit can settle well away from
-NONMEM's answer and report *"last objective function was not at minimum"*.
+Travel on a mu-referenced version of the model, then finish on the model you
+actually mean.
 
-So, for now:
+```r
+stage1 <- nlmixr2(rxEtaDistMuRef(mod), data, est = "saem")
+final  <- nlmixr2(mod |> ini(stage1), data, est = "focei",
+                  control = foceiControl(mceta = 100))
+```
 
-- fit with `foceiControl(mceta = 100)`, or at least `mceta = 0`. The package
-  default of `-2` is the worst of the four above, and `mceta = 10` currently
-  behaves identically to it
-  ([nlmixr2est#1040](https://github.com/nlmixr2/nlmixr2est/issues/1040));
-- or warm start `focei` from an EM method (`est = "impmap"`/`"imp"`), which is
-  what Bauer's own recipe does before Laplace;
-- give the model informative starting values.
+`rxode2::rxEtaDistMuRef()` carries each distribution parameter -- and the
+copula correlation -- on its own random effect with a small fixed variance,
+which is what puts them back into `theta + eta` form. That is the same
+structure NONMEM control streams get from `MU_5 = THETA(5)` with
+`$OMEGA (0.0 FIXED)`, and Bauer's streams do exactly this for all five of his.
+
+On Bauer's data that chain lands the structural parameters essentially on the
+simulation truth, where no cold start did:
+
+| | CL | Q | V2 | prop.sd | corr |
+|---|---|---|---|---|---|
+| simulation truth | 5.03 | 2.13 | 10.34 | 0.141 | 0.44 |
+| two-stage chain | 5.04 | 2.15 | 11.39 | 0.196 | 0.66 |
+| `saem` alone, cold | 7.16 | -- | -- | 0.66 | -- |
+
+The variance components stay inflated -- the residual SD and the copula
+correlation are both high -- so this is a way to reach the right region, not a
+finished answer.
+
+Two things about the chain are not optional.
+
+**The helper variance must not be ~0.** This is where the NONMEM idiom does
+*not* port. nlmixr2's mu-theta M-step is a normal equation weighted by
+`omega^-1`, so a variance fixed at ~0 gives that column infinite weight and
+the sampler cannot move it off its prior mean -- which *is* the current theta.
+The M-step's fixed point becomes the parameter's **starting value**, and it is
+reported as an estimate. NONMEM updates such a parameter by direct
+maximization instead, which is why `(0.0 FIXED)` is load-bearing there and
+inert here. `rxEtaDistMuRef()` refuses anything below 1e-6, and `saem` warns
+if it sees one. Measured: moving the helper variance from 1e-8 to 0.1 took CL
+from 6.686 (pinned at its start) to 5.553.
+
+**Stage two must be a gradient method.** `saem` as the second stage does not
+merely fail to improve on stage one -- it walks away from it, taking CL from
+5.33 down through 4.54 to 4.14 over the run.
+
+### The inner problem
+
+Even with good starting values the inner (eta) problem needs care, because the
+inverse CDF is strongly non-linear and each subject's problem has real
+curvature. Hold the parameters *fixed* and change only
+`foceiControl(mceta=)`, which controls where each inner optimization starts,
+and the objective moves by thousands of units at the same parameters. The
+outer optimizer differentiates that objective, so with a poor inner solve it
+is not searching a stable function -- which is how a fit can report
+*"last objective function was not at minimum"*.
+
+So fit with `foceiControl(mceta = 100)`, or at least `mceta = 0`.
 
 `saem` has no `mceta` -- it *samples* the etas rather than optimizing them, so
-there is no inner optimization to restart -- and there the warm start and the
-starting values are the levers you have.
+there is no inner optimization to restart -- and there the recipe above and
+the starting values are the levers you have.
