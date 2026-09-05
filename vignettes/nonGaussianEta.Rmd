@@ -190,8 +190,19 @@ simulation truth, where no cold start did:
 | | CL | Q | V2 | prop.sd | corr |
 |---|---|---|---|---|---|
 | simulation truth | 5.03 | 2.13 | 10.34 | 0.141 | 0.44 |
-| two-stage chain | 5.04 | 2.15 | 11.39 | 0.196 | 0.66 |
+| two-stage chain | 5.04 | 2.15 | 11.39 | 0.196 | 0.58 |
 | `saem` alone, cold | 7.16 | -- | -- | 0.66 | -- |
+
+Note the correlation there is `tanh(rxCor.eta.v1.eta.cl)`, not the
+`rxCor.eta.v1.eta.cl` row `parFixed` prints. That row is the *unconstrained*
+copula parameter -- the expansion writes `tanh()` around it precisely so the
+optimizer can range over the whole real line -- and reading it as a
+correlation will quietly overstate it. Ask the fit for the correlation
+matrix instead:
+
+```r
+fit$etaDistCor
+```
 
 The variance components stay inflated -- the residual SD and the copula
 correlation are both high -- so this is a way to reach the right region, not a
