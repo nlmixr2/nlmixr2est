@@ -135,9 +135,10 @@ head(fit[, c("ID", "rxz.eta.cl", "eta.cl")], 3)
 
 ## Which methods support this
 
-The FOCEi family, `saem`, `posthoc` and simulation. A method that cannot use a
-declared distribution refuses rather than quietly fitting a different model
-than the one written -- `npag`/`npb` model the random effect distribution
+The FOCEi family (`focei`/`foce`/`laplace`/`agq`/`imp`/`impmap` and their
+variants), `posthoc` and simulation. A method that cannot use a declared
+distribution refuses rather than quietly fitting a different model than the
+one written -- `npag`/`npb` model the random effect distribution
 nonparametrically, so a declared one contradicts them; `nlme` and `nls` are
 Gaussian by construction; `vae`/`emvi`/`fbvi` hardcode the normal family in
 their ELBO:
@@ -148,6 +149,25 @@ nlmixr2(gammaCl, nlmixr2data::theo_sd, est = "npag")
 
 `nlmixr2bayes`' `est = "nuts"` supports it too, and babelmixr2 translates the
 families with an elementary quantile function to NONMEM.
+
+### `saem` is refused, for now
+
+`saem` indexes its random effects by the theta each one is *added to* --
+`covstruct` in `R/saem_fit.R` is built over the model's thetas, and marks
+which of them carry a random effect. A declared distribution reaches the
+model through an inverse CDF rather than as `theta + eta`, so it attaches to
+no such parameter and `saem` does not sample it.
+
+That is not a reporting problem. Traced on a model with one declared and one
+ordinary random effect, `saem`'s parameter space was `lclm, lclrv, tv, tka`
+and it sampled exactly **one** random effect -- the ordinary one. A fit would
+run, print plausible iterations, and estimate the model with the declared
+random effect *absent from it*. So `saem` refuses, and says why.
+
+Making it work needs `saem` to sample a random effect that is not in
+`theta + eta` form, which is a change to `saem` itself rather than to this
+feature. Until then use `focei` or one of the EM methods, which take the
+declared distribution as written.
 
 ## Getting these models to converge
 
@@ -167,63 +187,40 @@ comes out **non**-mu-referenced -- which is the case both `saem` and the FOCEi
 family handle worst. A cold start of either method alone settles a long way
 from the answer.
 
-### The recipe
+### Starting values matter a great deal
 
-Travel on a mu-referenced version of the model, then finish on the model you
-actually mean.
+The reason is structural. `rxEtaDistExpand()` writes the declared
+distribution's parameters into the model as bare thetas inside an inverse-CDF
+call, and nothing about that shape is `theta + eta`. So every one of them
+comes out **non**-mu-referenced, which is the case the FOCEi family handles
+worst. A cold start settles a long way from the answer.
 
-```r
-stage1 <- nlmixr2(rxEtaDistMuRef(mod), data, est = "saem")
-final  <- nlmixr2(mod |> ini(stage1), data, est = "focei",
-                  control = foceiControl(mceta = 100))
-```
-
-`rxode2::rxEtaDistMuRef()` carries each distribution parameter -- and the
-copula correlation -- on its own random effect with a small fixed variance,
-which is what puts them back into `theta + eta` form. That is the same
-structure NONMEM control streams get from `MU_5 = THETA(5)` with
-`$OMEGA (0.0 FIXED)`, and Bauer's streams do exactly this for all five of his.
-
-On Bauer's data that chain lands the structural parameters essentially on the
-simulation truth, where no cold start did:
+What that costs, and what good starting values buy, on Bauer's data:
 
 | | CL | Q | V2 | prop.sd | corr |
 |---|---|---|---|---|---|
 | simulation truth | 5.03 | 2.13 | 10.34 | 0.141 | 0.44 |
-| two-stage chain | 5.04 | 2.15 | 11.39 | 0.196 | 0.58 |
-| `saem` alone, cold | 7.16 | -- | -- | 0.66 | -- |
+| `focei` from good starting values | 5.04 | 2.15 | 11.39 | 0.196 | 0.58 |
 
-Note the correlation there is `tanh(rxCor.eta.v1.eta.cl)`, not the
-`rxCor.eta.v1.eta.cl` row `parFixed` prints. That row is the *unconstrained*
-copula parameter -- the expansion writes `tanh()` around it precisely so the
-optimizer can range over the whole real line -- and reading it as a
-correlation will quietly overstate it. Ask the fit for the correlation
-matrix instead:
+That fit reached an objective of -9099.8, against -8602.2 for the same
+objective evaluated at NONMEM's own estimates. The structural parameters land
+essentially on the truth; the variance components stay inflated.
 
-```r
-fit$etaDistCor
-```
+Two cautions on reading that table. The correlation is
+`tanh(rxCor.eta.v1.eta.cl)`, not the `rxCor.eta.v1.eta.cl` row `parFixed`
+prints -- that row is the *unconstrained* copula parameter, and reading it as
+a correlation overstates it. Ask the fit for `fit$etaDistCor` instead. And
+the objective is still sensitive to the inner problem (below), so an
+objective gap of a few hundred units between two parameter vectors is not yet
+a reliable model comparison.
 
-The variance components stay inflated -- the residual SD and the copula
-correlation are both high -- so this is a way to reach the right region, not a
-finished answer.
-
-Two things about the chain are not optional.
-
-**The helper variance must not be ~0.** This is where the NONMEM idiom does
-*not* port. nlmixr2's mu-theta M-step is a normal equation weighted by
-`omega^-1`, so a variance fixed at ~0 gives that column infinite weight and
-the sampler cannot move it off its prior mean -- which *is* the current theta.
-The M-step's fixed point becomes the parameter's **starting value**, and it is
-reported as an estimate. NONMEM updates such a parameter by direct
-maximization instead, which is why `(0.0 FIXED)` is load-bearing there and
-inert here. `rxEtaDistMuRef()` refuses anything below 1e-6, and `saem` warns
-if it sees one. Measured: moving the helper variance from 1e-8 to 0.1 took CL
-from 6.686 (pinned at its start) to 5.553.
-
-**Stage two must be a gradient method.** `saem` as the second stage does not
-merely fail to improve on stage one -- it walks away from it, taking CL from
-5.33 down through 4.54 to 4.14 over the run.
+Getting to starting values that good currently takes work, because the EM
+method you would normally warm-start from is unavailable here -- see
+`saem` above. `rxode2::rxEtaDistMuRef()` will mu-reference the declared
+distribution's parameters for you, which is the structure NONMEM uses
+(`MU_5 = THETA(5)` with `$OMEGA (0.0 FIXED)`), but it does not make `saem`
+sample the declared random effect, so it is not on its own a way around that
+limitation.
 
 ### The inner problem
 
