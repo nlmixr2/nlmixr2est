@@ -119,15 +119,20 @@ nmTest({
     }
   })
 
-  test_that("the exploration value stays out of the objective", {
-    # saemControl(zeroOmegaTune=) sets how far a flat random effect explores so
-    # the M-step has a conditional mean to shift its theta by.  It is machinery,
-    # not a model parameter, so it must not reach the likelihood -- which is the
-    # same defect a working variance in Omega would have.
+  test_that("the exploration value is connected, and stays out of the omega", {
+    # saemControl(zeroOmegaTune=) sets how far a flat random effect explores.
     #
-    # `fix(0)` vs `fix(1e-9)` cannot detect this: both spellings are rewritten
-    # to the same tuning value for saem, so they agree either way.  Varying the
-    # tuning value itself is what tests it.
+    # The obvious assertion -- that the objective does not depend on it -- is
+    # the WRONG test, and it passed for a long time while the parameter was
+    # disconnected entirely: the pre-processing hook rewrote the omega before
+    # the control was attached, so every fit used the default and 0.1 vs 4 gave
+    # bit-identical results to every digit.  An inert input produces exactly
+    # the same green test as a held invariant.
+    #
+    # So what is asserted is that the value REACHES the sampler (it changes the
+    # trajectory) while remaining absent from what the model claims (omega is
+    # reported as the declared zero).  Whether the declared zero contributes to
+    # the objective is a separate property, tested above via fix(0)/fix(1e-9).
     .m <- function() {
       ini({
         tka <- 0.45
@@ -145,12 +150,20 @@ nmTest({
         linCmt() ~ add(add.sd)
       })
     }
-    .ofv <- function(tune) {
+    .fit <- function(tune) {
       suppressWarnings(nlmixr2(.m(), nlmixr2data::theo_sd, est = "saem",
                                control = saemControl(nBurn = 30, nEm = 30,
                                                      print = 0, covMethod = "",
-                                                     zeroOmegaTune = tune)))$objf
+                                                     zeroOmegaTune = tune)))
     }
-    expect_equal(.ofv(0.1), .ofv(0.5), tolerance = 1e-10)
+    .a <- .fit(0.1)
+    .b <- .fit(4)
+    # connected: a 40x change in sampling width cannot leave the fit identical
+    expect_false(isTRUE(all.equal(.a$objf, .b$objf, tolerance = 1e-12)))
+    # and still not a parameter of the model, at either width
+    for (.f in list(.a, .b)) {
+      expect_equal(.f$omega["eta.mu.tka", "eta.mu.tka"], 0)
+      expect_equal(.f$omega["eta.mu.tv", "eta.mu.tv"], 0)
+    }
   })
 })

@@ -128,8 +128,28 @@
   ## folds into the theta is identically zero and the theta never budges.  It
   ## gets the exploration value written in, held fix()ed so the sufficient
   ## statistics do not update it, and reported back as the declared zero.
+  ## saem's omega IS rewritten here, and the value comes from the `control`
+  ## ARGUMENT rather than from the model.
+  ##
+  ## This hook runs before the method's control is attached to the ui, so
+  ## reading it with rxGetControl(ui, ...) silently returns the default -- and
+  ## that silently disabled `saemControl(zeroOmegaTune=)` entirely: the hook
+  ## wrote 0.1 whatever the user asked for, `.configsaem()`'s own substitution
+  ## then found no zeros left to replace, and the value it was correctly handed
+  ## did nothing.  Measured: tune = 0.1 and tune = 4 gave bit-identical fits.
+  ##
+  ## The rewrite cannot simply be dropped in favour of the one in
+  ## `.configsaem()`: without it saem returns Inf with the theta stuck at its
+  ## starting value.  Its omega is consumed through covstruct and the MCMC
+  ## before .configsaem's substitution can matter.
   if (identical(est, "saem")) {
-    .tune <- rxode2::rxGetControl(.ui, "zeroOmegaTune", 0.1)
+    .tune <- NULL
+    if (is.list(control) && !is.null(control$zeroOmegaTune)) {
+      .tune <- control$zeroOmegaTune
+    }
+    if (is.null(.tune)) {
+      .tune <- rxode2::rxGetControl(.ui, "zeroOmegaTune", 0.1)
+    }
     if (!is.numeric(.tune) || length(.tune) != 1L || !is.finite(.tune) ||
           .tune <= 0) {
       .tune <- 0.1

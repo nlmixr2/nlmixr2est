@@ -14,14 +14,21 @@
 #'   parameter stayed pinned at its starting value of 6.686 against a truth of
 #'   5.03, at 0.1 it reached 5.553.
 #'
-#'   Values ABOVE 1 are legitimate and may be needed for a declared
-#'   non-normal random effect (`dist()`).  There the parameter reaches the
-#'   model through an inverse CDF, so a step on the latent scale is not a
-#'   step of the same size on the parameter -- the mapping can be steep or
-#'   flat depending on the family and where on the distribution the subject
-#'   sits, and a width that explores a log-scale mean adequately can be far
-#'   too small there.  This is a sampling width, not a variance the model
-#'   claims, so widening it costs efficiency rather than correctness.
+#'   There is deliberately no upper bound.  This is a sampling width, not a
+#'   variance the model claims -- it is excluded from the objective and from
+#'   the sufficient statistics either way -- so a value above 1 is legitimate
+#'   and costs efficiency rather than correctness.  It can matter for a
+#'   declared non-normal random effect (`dist()`), where the parameter
+#'   reaches the model through an inverse CDF: a step on the latent scale is
+#'   not a step of the same size on the parameter, and how big it is depends
+#'   on the family and on where in the distribution a subject sits.
+#'
+#'   Wider is not generally better, though.  Measured on Bauer's gamma model
+#'   (300 subjects, mu-referenced distribution parameters, cold start),
+#'   widening degraded every parameter monotonically -- at 0.1 / 1 / 4 the
+#'   residual SD came out 0.150 / 0.162 / 0.170 against a truth of 0.141, and
+#'   Q came out 2.29 / 2.48 / 2.60 against 2.13.  Treat it as something to
+#'   raise when a parameter will not move, not as a default to increase.
 #'
 #' @param nBurn Number of iterations in the first phase, ie the  MCMC/Stochastic Approximation
 #'     steps. This is equivalent to Monolix's \code{K_0} or \code{K_b}.
