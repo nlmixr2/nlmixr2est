@@ -727,6 +727,10 @@ struct focei_options {
   // converged on -- every candidate was a failed attempt, so the selection had
   // nothing good to choose from (#1044).
   std::atomic<int> nInnerNoGood{0};
+  // Inner solves where a failed attempt's candidate was dropped from the
+  // selection because a succeeded one was available.  This is the count that
+  // shows the rule is doing something, rather than that it merely exists.
+  std::atomic<int> nInnerDropped{0};
   std::atomic<int> didEtaReset{0};
   double resetThetaSize = std::numeric_limits<double>::infinity();
   double resetThetaFinalSize = std::numeric_limits<double>::infinity();
@@ -4668,11 +4672,15 @@ static inline int innerOpt1(int id, int likId) {
     // measured at a point the inner objective never descended to) and win.
     // "Failed" is the optimizer's own verdict plus a latched bad solve, NOT a
     // heuristic staleness gate -- see the trust arm's solveOk.
-    bool anyOk = false;
+    bool anyOk = false, anyBad = false;
     for (size_t k = 0; k < candOk.size(); ++k) {
-      if (candOk[k]) { anyOk = true; break; }
+      if (candOk[k]) anyOk = true; else anyBad = true;
     }
-    if (!anyOk) op_focei.nInnerNoGood.fetch_add(1, std::memory_order_relaxed);
+    if (!anyOk) {
+      op_focei.nInnerNoGood.fetch_add(1, std::memory_order_relaxed);
+    } else if (anyBad) {
+      op_focei.nInnerDropped.fetch_add(1, std::memory_order_relaxed);
+    }
     int nElig = 0;
     int bestInnerK = -1;
     for (size_t k = 0; k < candEta.size(); ++k) {
@@ -8176,6 +8184,7 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.nInnerRanked.store(0, std::memory_order_relaxed);
   op_focei.nInnerReranked.store(0, std::memory_order_relaxed);
   op_focei.nInnerNoGood.store(0, std::memory_order_relaxed);
+  op_focei.nInnerDropped.store(0, std::memory_order_relaxed);
   op_focei.warm = foceiO.containsElementNamed("warm") ? as<int>(foceiO["warm"]) : 0;
   op_focei.maxOdeRecalc = as<int>(foceiO["maxOdeRecalc"]);
   op_focei.objfRecalN=0;
@@ -9503,6 +9512,7 @@ Environment foceiOuter(Environment e){
   op_focei.nInnerRanked.store(0, std::memory_order_relaxed);
   op_focei.nInnerReranked.store(0, std::memory_order_relaxed);
   op_focei.nInnerNoGood.store(0, std::memory_order_relaxed);
+  op_focei.nInnerDropped.store(0, std::memory_order_relaxed);
   op_focei.nDeclineNewton=0;
   op_focei.nDeclineE0=0;
   op_focei.nDeclineOther=0;
@@ -12165,7 +12175,10 @@ void foceiFinalizeTables(Environment e){
         _["flipped"] = op_focei.nInnerReranked.load(std::memory_order_relaxed),
         // Inner solves that had nothing converged to choose from, so the fit
         // reports a failed attempt's eta for that subject (#1044).
-        _["noGood"] = op_focei.nInnerNoGood.load(std::memory_order_relaxed));
+        _["noGood"] = op_focei.nInnerNoGood.load(std::memory_order_relaxed),
+        // ... and solves where a failed attempt WAS dropped because a
+        // succeeded one was available.
+        _["dropped"] = op_focei.nInnerDropped.load(std::memory_order_relaxed));
       if (op_focei.innerOpt == 3) {
         // innerOpt="trust" outcomes.  "calls" is what .nTrustInner() reports;
         // the rest say whether those calls actually converged -- a fit whose

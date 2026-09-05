@@ -104,6 +104,32 @@
 
 ## Bug fixes
 
+- A `focei`-family fit now reports whether its inner solves actually
+  converged.  `fit$env$nTrustInner` breaks the `innerOpt="trust"` per-subject
+  Newton solves down by outcome (`calls`, `error`, `notConverged`,
+  `solverFail`, `newtonGate`, `warmRetry`, `radiusRetry`, `nudge`, `failed`)
+  and `fit$env$nInnerRerank` gains `noGood` and `dropped`.  Only the call count
+  existed before, and only through an internal accessor, so a fit whose inner
+  solves were all failing was indistinguishable from one where they all
+  converged.
+
+- The inner restart candidates are no longer chosen from without regard to
+  whether the attempt that produced them succeeded.  A failed attempt's eta
+  could win the marginal re-rank over a converged one -- its Laplace
+  `log|H|` term is measured at a point the inner objective never descended to
+  -- which `mceta >= 1` makes more likely, since the extra starting points are
+  what produce a mixed candidate set.  A failed attempt is now used only when
+  no succeeded one is available.
+
+- `innerOpt="trust"` re-solves in place before falling back to its eta-nudge
+  restarts.  When the inner Newton step still fits inside the current trust
+  radius, the solve stopped on its own step-size criterion rather than on the
+  model's remaining decrease, and the cascade threw that point away to restart
+  from a nudge fill.  On a 300-subject fit swept away from the true parameters,
+  subjects whose whole cascade is exhausted drop by up to half and the total
+  number of inner solves drops with them; a fit where nothing trips the check
+  is unchanged.
+
 - A fit no longer reports the PREVIOUS fit's censoring.  `$censInformation`
   is built from a process-global flag recording which censoring methods
   (M2/M3/M4) a fit used, and that flag was cleared only after being read at
