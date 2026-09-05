@@ -1057,8 +1057,10 @@ inner optimization.  The carried last eta is deliberately not one of the
 `n>0` candidates -- it is the previous iteration's converged conditional
 mode, so it would win for every subject and `n>0` would reduce to the
 keep-last behavior of `-1`/`-2`.  When a sampled eta wins, the inner
-problem is also solved from eta=0 and the better converged result kept, so
-no inner solve ends above the one `0` would have reached.  The search is
+problem is also solved from eta=0 and the better converged result kept --
+compared on the marginal objective the fit reports, which carries the
+Laplace `log|H|` term, not on the inner objective the optimizer minimizes --
+so no inner solve ends above the one `0` would have reached.  The search is
 skipped while the outer gradient is being differenced, where the eta is
 pinned to the central evaluation's mode.}
 

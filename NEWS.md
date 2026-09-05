@@ -157,6 +157,60 @@ ini({
 
 ## Bug fixes
 
+- A fit no longer reports the PREVIOUS fit's censoring.  `$censInformation`
+  is built from a process-global flag recording which censoring methods
+  (M2/M3/M4) a fit used, and that flag was cleared only after being read at
+  the end of a fit -- so a fit that set it without reaching there left it
+  set, and the next fit in the session reported the leftover.  An
+  uncensored model fit right after a censored one said "M2, M3 and M4
+  censoring".  It is now also cleared when a fit starts.
+
+- `est="agq"`/`"laplace"`/`"focei"` with the default `innerOpt="trust"` and a
+  finite-difference outer gradient no longer stop early at a much worse
+  objective.  `trustFterm`/`trustMterm`, the inner per-subject Newton solve's
+  convergence tolerances, defaulted to the plain `10^(-sigdig)` used by the
+  other tolerances here, but the inner solve is the function the outer problem
+  differentiates: its stopping tolerance is the objective's noise floor, and a
+  finite-difference outer gradient cannot resolve a step below it.  On an
+  `nAGQ=2` `theo_sd` fit the outer search was misled to an objective of 134.46
+  against 118.52, taking 6.8s against 1.5s -- a noisy gradient both lengthens
+  the search and ends it worse.  They now default to `10^(-sigdig-2)`, two
+  orders tighter, the same relationship `lbfgsFactr` already uses.  Every fit
+  with `innerOpt="trust"` and no explicit `trustFterm`/`trustMterm` changes
+  numerically as a result; generalized-likelihood models are unaffected, since
+  `innerOpt="auto"` sends those to `"n1qn1"`.  Isolated on this package's own
+  100+ model benchmark corpus (`inst/benchmarks/results/trust-inner-benchmark.md`),
+  the tighter tolerance is a real median accuracy improvement (`|objf diff|`
+  0.0115 -> 0.004) at a small median speed cost (1.10x -> 1.07x faster than
+  `"n1qn1"`) -- not a free win on every model.
+
+- A generalized log-likelihood model (`dnorm()`, `ll()`, `dpois()`, ...) fit
+  with `foceiControl(innerOpt="trust")` no longer converges to badly biased
+  population parameters on oral or two-compartment models.  Such an endpoint
+  has no Gauss-Newton inner Hessian, so the per-subject eta Hessian is a finite
+  difference of the analytic eta gradient; the Shi (2021) step search is told
+  that gradient's noise floor is `rxControl(atolSens=)`, but the gradient comes
+  out of a sensitivity solve `rtolSens` governs as well.  Understating the
+  noise inflates the search's ratio test, which then shrinks the step until the
+  difference is taken inside the noise, with only the absolute `shi21hMin`
+  (1e-4) to stop it.  `n1qn1` absorbed that -- it uses this Hessian only as a
+  warm-start seed and then corrects it by its own quasi-Newton updates as it
+  iterates, so a noisy seed is transient -- but `trust` re-derives it as its
+  trust-region model Hessian at every trial point, with nothing to correct it,
+  and adds its log-determinant to the reported objective, so the noise steered
+  both the step and the number being minimized: on a 1-compartment oral model
+  (120 subjects) fit as
+  a `dnorm()` endpoint, Vc came out 90.6 against a plain `focei` 66.4, with eta
+  variance shrinkage 56/52/34% against 8/10/13% and the omegas left at their
+  starting values.  The step is now floored at a fraction of each eta's own SD
+  (`foceiControl(hessEtaStepMin=)`, default `0.05`), recovering Vc 65.5 at
+  unchanged solve tolerances; tightening `atolSens` or `rtolSens` instead also
+  fixed it, at 2-4x the runtime.  The floor applies to every inner optimizer --
+  the step a finite difference needs is a property of the problem, not of who
+  consumes the Hessian -- though only `trust` was visibly broken without it.
+  Normal endpoints, which use the Gauss-Newton inner Hessian, never reach this
+  code.
+
 - `foceiControl(mceta = )` is no longer discarded for a model whose etas are
   all mu-referenced.  Any non-default setting was reset to `-2` on the grounds
   that "the initial etas are all exactly zero, so the search has nothing to
@@ -168,27 +222,39 @@ ini({
   its 1008 inner solves from a draw and reaches a different objective than
   `mceta = -2`.
 
-- `foceiControl(mceta = n)` (`n > 0`) now actually uses the extra starting
-  etas, and at fixed parameters can no longer give a worse objective than
-  `mceta = 0`.  The candidate set
-  included the carried "last eta" -- the previous outer iteration's converged
-  conditional mode -- whose inner objective is essentially always the lowest, so
-  it won for every subject and `mceta = n` returned an objective bit-identical
-  to the keep-last behavior of `mceta = -1`/`-2`.  The candidates are now eta=0
-  plus the `n-1` draws from omega.  Because a candidate is ranked by the
-  objective at its starting point, which does not order the points the inner
-  optimization converges to, a subject that starts from a draw now also solves
-  from eta=0 and keeps whichever converged lower, so no inner solve can end
-  above the one `mceta = 0` would have reached -- without that, a draw that
-  merely looked better could converge worse (measured on a fixed-omega
-  inverse-CDF model evaluated at fixed parameters: `mceta = 2` gave -2251.0
-  against `mceta = 0`'s -2302.5, and now gives -2338.8).  The floor solve wraps
-  the whole inner-optimizer dispatch rather than living inside one arm of it, so
-  it holds for whichever inner optimizer is configured.  `mceta = 1` means eta=0 rather than being a silent no-op,
-  a non-finite eta=0 no longer pins the search, and the draws are made once per
+- `foceiControl(mceta = n)` (`n > 0`) now actually uses the extra starting etas,
+  and at fixed parameters can no longer give a worse objective than
+  `mceta = 0`.  The candidate set included the carried "last eta" -- the
+  previous outer iteration's converged conditional mode -- whose inner objective
+  is essentially always the lowest, so it won for every subject and `mceta = n`
+  returned an objective bit-identical to the keep-last behavior of
+  `mceta = -1`/`-2`.  The candidates are now eta=0 plus the `n-1` draws from
+  omega.
+
+  Because a candidate is ranked by the objective at its starting point, which
+  does not order the points the inner optimization converges to, a subject that
+  starts from a draw now also solves from eta=0 and keeps whichever converged
+  lower -- without that, a draw that merely looked better could converge worse
+  (measured on a fixed-omega inverse-CDF model at fixed parameters: `mceta = 2`
+  gave -2251.0 against `mceta = 0`'s -2302.5, and now gives -2338.8).  That
+  floor solve wraps the whole inner-optimizer dispatch rather than living inside
+  one arm of it, so it holds for whichever inner optimizer is configured.
+
+  The comparison is made on the objective the fit REPORTS -- the marginal one,
+  which carries the Laplace `log|H|` term -- and not on the inner joint density
+  the optimizer minimizes.  The two order candidates differently often enough
+  (on the model above, 23 of the 44 subjects that had a choice) that ranking on
+  the inner objective alone handed the fit the worse candidate.  Restarts are
+  ranked only when there is more than one candidate, so an inner solve that
+  never restarts pays nothing for it.
+
+  Finally, `mceta = 1` means eta=0 rather than being a silent no-op, a
+  non-finite eta=0 no longer pins the search, and the draws are made once per
   fit instead of at every objective evaluation, so the objective is the same
-  function at every evaluation.  The fit records which
-  candidate each inner solve started from in `$env$nMcetaStart`.
+  function at every evaluation.  The fit records which candidate each inner
+  solve started from in `$env$nMcetaStart`, and how often the two orderings
+  disagreed in `$env$nInnerRerank`.
+
 - `focei` now checks rxode2's per-subject event counts before it sizes the
   per-subject blocks it strides with them (`gVid`, `ga`/`gc`, `gB`, `gcH*`,
   `llikObsFull`).  When rxode2 and nlmixr2est are built against different solve
