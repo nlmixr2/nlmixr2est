@@ -257,3 +257,7 @@ rxode2::rxParams
 #' @importFrom rxode2 rxModelVarsS3
 #' @export
 rxode2::rxModelVarsS3
+
+#' @importFrom rxode2 rxEtaDistMuRef
+#' @export
+rxode2::rxEtaDistMuRef

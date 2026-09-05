@@ -686,6 +686,7 @@ export(mfoceiControl)
 export(mfocepControl)
 export(mlaplaceControl)
 export(model)
+export(rxEtaDistMuRef)
 export(n1qn1Control)
 export(newuoaControl)
 export(nlmControl)
@@ -873,6 +874,7 @@ importFrom(nlme,
   varWeights
 )
 importFrom(rxode2,
+  rxEtaDistMuRef,
   .malert,
   .minfo,
   .msuccess,
