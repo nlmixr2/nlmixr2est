@@ -4442,6 +4442,14 @@ static inline int innerOpt1(int id, int likId) {
     // below to decide whether a wider-radius retry is worth attempting at
     // all before falling back to relocating the start point via nudges.
     double pushDist = -1.0; // -1: not computed / not usable this call
+    // trust_solve_c() allocates tres's argument/gradient/hessian arrays.  The
+    // arma work below (matrix copies, arma::solve) can throw std::bad_alloc,
+    // which the branch-level catch swallows -- so the free has to run on every
+    // exit from the lambda, not only the normal one.
+    struct TresGuard {
+      trust_result_t *r;
+      ~TresGuard() { trust_result_free_ptr(r); }
+    };
     auto trustSolveAt = [&](bool fill, double startVal) {
       if (fill) std::fill_n(fInd->x, npar, startVal);
       // Reset per attempt (mirrors n1qn1's cascade, which clears this before
@@ -4462,6 +4470,7 @@ static inline int innerOpt1(int id, int likId) {
       topts.rmax = curRmax;
       trust_result_t tres;
       trust_solve_c_ptr(npar, fInd->x, trustInnerObjfun, (void*)(&id), &topts, &tres);
+      TresGuard _tresGuard{&tres};
       op_focei.nTrustInner.fetch_add(1, std::memory_order_relaxed);
       bool conv = false;
       // trust_solve_c()'s OWN verdict, kept separate from `conv` because the
@@ -4536,7 +4545,6 @@ static inline int innerOpt1(int id, int likId) {
       // Attempts that did not end converged, however they got there:
       // error + solverFail + newtonGate.
       if (!conv) op_focei.nTrustNoConv.fetch_add(1, std::memory_order_relaxed);
-      trust_result_free_ptr(&tres);
       return conv;
     };
 
