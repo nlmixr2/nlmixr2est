@@ -65,6 +65,17 @@ nmTest({
     expect_equal(sort(names(.f5$env$nMcetaStart)), c("sample", "zero"))
     expect_gt(.f5$env$nMcetaStart[["sample"]], 0L)
 
+    # The floor comparison has to be made on the objective the fit REPORTS --
+    # the marginal one, which carries the Laplace log|H| term -- not on the
+    # inner joint density the optimizer minimizes.  The two order candidates
+    # differently often enough that ranking on the inner objective alone hands
+    # the fit the worse candidate: `flipped` counts the subjects where the
+    # marginal disagreed, and it is a large fraction of `ranked` here.
+    expect_gt(.f5$env$nInnerRerank[["ranked"]], 0L)
+    expect_gt(.f5$env$nInnerRerank[["flipped"]], 0L)
+    # A single candidate is not ranked at all, so mceta=0 pays nothing for this.
+    expect_equal(.f0$env$nInnerRerank[["ranked"]], 0L)
+
     # Every inner problem has eta=0 among its candidates and keeps the converged
     # eta=0 solve as a floor, so at fixed parameters the objective cannot come
     # out above mceta=0.

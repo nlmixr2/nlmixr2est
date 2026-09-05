@@ -179,27 +179,39 @@ ini({
   its 1008 inner solves from a draw and reaches a different objective than
   `mceta = -2`.
 
-- `foceiControl(mceta = n)` (`n > 0`) now actually uses the extra starting
-  etas, and at fixed parameters can no longer give a worse objective than
-  `mceta = 0`.  The candidate set
-  included the carried "last eta" -- the previous outer iteration's converged
-  conditional mode -- whose inner objective is essentially always the lowest, so
-  it won for every subject and `mceta = n` returned an objective bit-identical
-  to the keep-last behavior of `mceta = -1`/`-2`.  The candidates are now eta=0
-  plus the `n-1` draws from omega.  Because a candidate is ranked by the
-  objective at its starting point, which does not order the points the inner
-  optimization converges to, a subject that starts from a draw now also solves
-  from eta=0 and keeps whichever converged lower, so no inner solve can end
-  above the one `mceta = 0` would have reached -- without that, a draw that
-  merely looked better could converge worse (measured on a fixed-omega
-  inverse-CDF model evaluated at fixed parameters: `mceta = 2` gave -2251.0
-  against `mceta = 0`'s -2302.5, and now gives -2338.8).  The floor solve wraps
-  the whole inner-optimizer dispatch rather than living inside one arm of it, so
-  it holds for whichever inner optimizer is configured.  `mceta = 1` means eta=0 rather than being a silent no-op,
-  a non-finite eta=0 no longer pins the search, and the draws are made once per
+- `foceiControl(mceta = n)` (`n > 0`) now actually uses the extra starting etas,
+  and at fixed parameters can no longer give a worse objective than
+  `mceta = 0`.  The candidate set included the carried "last eta" -- the
+  previous outer iteration's converged conditional mode -- whose inner objective
+  is essentially always the lowest, so it won for every subject and `mceta = n`
+  returned an objective bit-identical to the keep-last behavior of
+  `mceta = -1`/`-2`.  The candidates are now eta=0 plus the `n-1` draws from
+  omega.
+
+  Because a candidate is ranked by the objective at its starting point, which
+  does not order the points the inner optimization converges to, a subject that
+  starts from a draw now also solves from eta=0 and keeps whichever converged
+  lower -- without that, a draw that merely looked better could converge worse
+  (measured on a fixed-omega inverse-CDF model at fixed parameters: `mceta = 2`
+  gave -2251.0 against `mceta = 0`'s -2302.5, and now gives -2338.8).  That
+  floor solve wraps the whole inner-optimizer dispatch rather than living inside
+  one arm of it, so it holds for whichever inner optimizer is configured.
+
+  The comparison is made on the objective the fit REPORTS -- the marginal one,
+  which carries the Laplace `log|H|` term -- and not on the inner joint density
+  the optimizer minimizes.  The two order candidates differently often enough
+  (on the model above, 23 of the 44 subjects that had a choice) that ranking on
+  the inner objective alone handed the fit the worse candidate.  Restarts are
+  ranked only when there is more than one candidate, so an inner solve that
+  never restarts pays nothing for it.
+
+  Finally, `mceta = 1` means eta=0 rather than being a silent no-op, a
+  non-finite eta=0 no longer pins the search, and the draws are made once per
   fit instead of at every objective evaluation, so the objective is the same
-  function at every evaluation.  The fit records which
-  candidate each inner solve started from in `$env$nMcetaStart`.
+  function at every evaluation.  The fit records which candidate each inner
+  solve started from in `$env$nMcetaStart`, and how often the two orderings
+  disagreed in `$env$nInnerRerank`.
+
 - `focei` now checks rxode2's per-subject event counts before it sizes the
   per-subject blocks it strides with them (`gVid`, `ga`/`gc`, `gB`, `gcH*`,
   `llikObsFull`).  When rxode2 and nlmixr2est are built against different solve
