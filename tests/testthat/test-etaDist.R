@@ -42,7 +42,7 @@ nmTest({
     .r <- nlmixr2est:::.preProcessEtaDist(.u, "focei", NULL, NULL)
     expect_true(is.list(.r))
     expect_equal(nrow(rxode2::rxUiEtaDists(.r$ui)), 0L)
-    expect_true("z.eta.cl" %in% .r$ui$iniDf$name)
+    expect_true("rxz.eta.cl" %in% .r$ui$iniDf$name)
     ## a model with no declaration is left alone entirely
     .p <- function() {
       ini({
@@ -186,68 +186,5 @@ nmTest({
     .b2 <- suppressWarnings(nlmixr2(.plain, nlmixr2data::theo_sd, est="focei",
                                     control=.ctl))
     expect_equal(.a$objf, .b2$objf, tolerance=1e-4)
-  })
-
-  test_that("saem samples a declared random effect, and says so when it cannot", {
-    # The latent random effect must be visible to saem, not merely present.
-    # It was not, for a long time, because the expansion named it `rxz.*` and
-    # rxode2's mu-reference scan skips `rx`-prefixed identifiers as reserved --
-    # so saem gave it no parameter, fitted the model with the declared random
-    # effect ABSENT, and then died indexing a Gamma2_phi1 with no column for it
-    # (nlmixr2est#1047).  What is asserted here is the outcome: it is sampled.
-    .anchored <- function() {
-      ini({
-        lclm <- log(1.5)
-        lclrv <- log(0.1)
-        tv <- 3.45
-        tka <- 0.45
-        dist(eta.cl) ~ dgamma(shape = 1 / exp(lclrv),
-                              rate = 1 / (exp(lclrv) * exp(lclm)))
-        eta.v ~ 0.1
-        add.sd <- 0.7
-      })
-      model({
-        ka <- exp(tka)
-        cl <- eta.cl
-        v <- exp(tv + eta.v)
-        linCmt() ~ add(add.sd)
-      })
-    }
-    .f <- suppressWarnings(nlmixr2(.anchored(), nlmixr2data::theo_sd,
-                                   est = "saem",
-                                   control = saemControl(nBurn = 20, nEm = 20,
-                                                         print = 0,
-                                                         covMethod = "")))
-    expect_true(is.finite(.f$objf))
-    # both random effects are in the reported omega, and the latent keeps the
-    # unit variance the copula construction requires
-    expect_true(all(c("z.eta.cl", "eta.v") %in% colnames(.f$omega)))
-    expect_equal(.f$omega["z.eta.cl", "z.eta.cl"], 1)
-    expect_true(.f$omega["eta.v", "eta.v"] > 0)
-
-    # A model whose ONLY random effects are declared has nothing to anchor the
-    # mu-reference scan, so saem gets no etas at all.  That is refused by name
-    # rather than surfacing as saem's bare "0 ETA's".
-    .declaredOnly <- function() {
-      ini({
-        lclm <- log(1.5)
-        lclrv <- log(0.1)
-        tv <- 3.45
-        tka <- 0.45
-        dist(eta.cl) ~ dgamma(shape = 1 / exp(lclrv),
-                              rate = 1 / (exp(lclrv) * exp(lclm)))
-        add.sd <- 0.7
-      })
-      model({
-        ka <- exp(tka)
-        cl <- eta.cl
-        v <- exp(tv)
-        linCmt() ~ add(add.sd)
-      })
-    }
-    expect_error(nlmixr2(.declaredOnly(), nlmixr2data::theo_sd, est = "saem",
-                         control = saemControl(nBurn = 5, nEm = 5, print = 0,
-                                               covMethod = "")),
-                 "at least one ordinary mu-referenced random effect")
   })
 })

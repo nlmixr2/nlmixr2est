@@ -14,15 +14,15 @@ nmTest({
       tv1 <- log(30)
       tq <- log(4)
       tv2 <- log(40)
-      z.eta.cl ~ fix(1)
-      z.eta.v1 ~ fix(1)
+      rxz.eta.cl ~ fix(1)
+      rxz.eta.v1 ~ fix(1)
       eta.q + eta.v2 ~ c(0.0305,
                          0.0107, 0.0285)
       prop.sd <- 0.1
     })
     model({
-      cl <- exp(tcl + 0.3 * logit(pnorm(z.eta.cl)))
-      v1 <- exp(tv1 + 0.3 * logit(pnorm(z.eta.v1)))
+      cl <- exp(tcl + 0.3 * logit(pnorm(rxz.eta.cl)))
+      v1 <- exp(tv1 + 0.3 * logit(pnorm(rxz.eta.v1)))
       q <- exp(tq + eta.q)
       v2 <- exp(tv2 + eta.v2)
       linCmt() ~ prop(prop.sd)
