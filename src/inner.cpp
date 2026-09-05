@@ -4450,6 +4450,9 @@ static inline int innerOpt1(int id, int likId) {
     // all before falling back to relocating the start point via nudges.
     double pushDist = -1.0; // -1: not computed / not usable this call
     auto trustSolveAt = [&](bool fill, double startVal) {
+      // Index guard for patching this attempt's multistart candidate record
+      // once conv is final (see the patch just before this lambda returns).
+      size_t candBeforeOuter = candEta.size();
       if (fill) std::fill_n(fInd->x, npar, startVal);
       // Reset per attempt (mirrors n1qn1's cascade, which clears this before
       // every restart): a mid-solve NA from trustInnerObjfun latches
@@ -4475,6 +4478,11 @@ static inline int innerOpt1(int id, int likId) {
         std::copy(tres.argument, tres.argument + npar, fInd->x);
         f = tres.value;
         conv = (bool)tres.converged;
+        // Mirror it into the multistart's per-candidate convergence record.
+        // The pushDist refinement below can still downgrade conv AFTER
+        // keepCand() has run, so the candidate's flag is patched once conv is
+        // final rather than trusted here.
+        passConverged = conv;
         if (R_FINITE(f) && !ISNA(f)) {
           keepBest();
           // Record it for the marginal re-rank after the starting-point loop as
@@ -4482,6 +4490,7 @@ static inline int innerOpt1(int id, int likId) {
           // (the recovery from a failed restart within this pass); the choice of
           // which candidate the fit reports is made on LikInner2()'s marginal,
           // which sees only what keepCand() recorded (#1040, #1044).
+          candBeforeOuter = candEta.size();
           keepCand();
           if (tres.gradient != NULL) std::copy(tres.gradient, tres.gradient + npar, fInd->g);
           if (tres.gradient != NULL && tres.hessian != NULL) {
@@ -4516,6 +4525,13 @@ static inline int innerOpt1(int id, int likId) {
         // actually held this failed nudge point. Force f to +Inf so that
         // guard always fires when this attempt didn't produce a usable eta.
         f = std::numeric_limits<double>::infinity();
+      }
+      // conv is final only here: the Newton-step push check above can downgrade
+      // a trust_solve_c() "converged" to unconverged, and that happens after
+      // keepCand() recorded the candidate.  Patch the record so the multistart
+      // selection sees the same verdict this pass returns.
+      if (candBeforeOuter < candEta.size()) {
+        candConv[candEta.size() - 1] = conv ? 1 : 0;
       }
       trust_result_free_ptr(&tres);
       return conv;
