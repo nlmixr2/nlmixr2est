@@ -4468,9 +4468,14 @@ static inline int innerOpt1(int id, int likId) {
       fInd->etaHasPrevQN = 0;
       pushDist = -1.0;
       topts.rmax = curRmax;
-      trust_result_t tres;
-      trust_solve_c_ptr(npar, fInd->x, trustInnerObjfun, (void*)(&id), &topts, &tres);
+      // Value-initialized so the guard below can free it even if the solve
+      // never allocates: trust_result_free() frees every member unconditionally
+      // and free(NULL) is a no-op, but free() on an indeterminate pointer is
+      // not.  The guard is armed BEFORE the call so an exception thrown out of
+      // trustInnerObjfun mid-solve still frees whatever was allocated.
+      trust_result_t tres = {};
       TresGuard _tresGuard{&tres};
+      trust_solve_c_ptr(npar, fInd->x, trustInnerObjfun, (void*)(&id), &topts, &tres);
       op_focei.nTrustInner.fetch_add(1, std::memory_order_relaxed);
       bool conv = false;
       // trust_solve_c()'s OWN verdict, kept separate from `conv` because the
@@ -4691,6 +4696,11 @@ static inline int innerOpt1(int id, int likId) {
   // LikInner2() writes lik[likId] for whichever candidate it is called on, and
   // the final call at the winner overwrites it, exactly as for likId == 0.
   if (!candEta.empty()) {
+    // keepCand() grows the three candidate vectors one after another, so a
+    // std::bad_alloc between them (swallowed by the trust arm's own catch)
+    // could leave candOk short.  Pad rather than index past it; an unknown
+    // verdict is treated as eligible, which is the behavior before this rule.
+    if (candOk.size() != candEta.size()) candOk.resize(candEta.size(), (char)1);
     // A candidate the optimizer FAILED on is a fallback, not a choice.  Both
     // the inner-objective winner and the marginal re-rank below therefore look
     // only at candidates whose attempt succeeded whenever there is at least
