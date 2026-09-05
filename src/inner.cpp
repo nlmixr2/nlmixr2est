@@ -911,6 +911,105 @@ static inline size_t foceiSzAdd(size_t a, size_t b, const char *what) {
   return a + b;
 }
 
+// The rules foceiCheckIndCounts() enforces, taking the counts rather than `rx`
+// so a test can drive them.
+//
+// Every rule is about ONE subject's own three numbers, deliberately: nlmixr2est
+// has to run against rxode2 releases it is not built alongside, and a rule
+// resting on an rxode2-wide total (rx->nall) would turn a change in how rxode2
+// accounts for records into a failed fit for everyone on that release -- and,
+// on CRAN, a failed submission.  A dose or evid=2 count larger than the
+// subject's own record count, or any of the three negative, is not an
+// accounting convention: no working rxode2 of any version reports it.
+//
+// The cost is that counts which are individually plausible but collectively
+// wrong -- a subject that comes back with none of its records -- are accepted
+// here.  Sizing gVid from those under-allocates rather than over-allocates, so
+// it is the dangerous shape; what keeps it from arising is the stride fix on
+// the rxode2 side (nlmixr2/rxode2#1357), not this check.
+static inline void foceiCheckIndCountsCore(const int *nAllTimes,
+                                           const int *nDoses,
+                                           const int *nEvid2,
+                                           int nsub) {
+  for (int i = 0; i < nsub; ++i) {
+    // in int64_t: two garbage counts can sum past INT_MAX
+    if (nAllTimes[i] < 0 || nDoses[i] < 0 || nEvid2[i] < 0 ||
+        (int64_t)nDoses[i] + (int64_t)nEvid2[i] > (int64_t)nAllTimes[i]) {
+      stop("focei: rxode2 reports an impossible event layout for subject %d "
+           "(records: %d, doses: %d, evid=2: %d); reinstall rxode2 and "
+           "nlmixr2est from source",
+           i + 1, nAllTimes[i], nDoses[i], nEvid2[i]);
+    }
+  }
+}
+
+// Every per-subject block in the FOCEi setup (gVid, ga/gc, gB, gcH*,
+// llikObsFull) is sized and strided from rxode2's per-subject event counts,
+// and nothing re-derives them.  They are read through the rxode2 pointer
+// table, so a build where rxode2 and nlmixr2est disagree on the solve layout
+// -- a stale object file in either package -- makes every count garbage: an
+// absurd total that the size guards refuse, or a plausible one that leaves a
+// short buffer the setup then strides past.  Refuse the counts that cannot be
+// right before anything is sized from them (#1039).
+static inline void foceiCheckIndCounts(rx_solve* rx) {
+  int nsub = getRxNsub(rx);
+  if (nsub < 0) nsub = 0;
+  std::vector<int> nAllTimes((size_t)nsub), nDoses((size_t)nsub),
+    nEvid2((size_t)nsub);
+  for (int i = 0; i < nsub; ++i) {
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, i);
+    nAllTimes[(size_t)i] = getIndNallTimes(ind);
+    nDoses[(size_t)i] = getIndNdoses(ind);
+    nEvid2[(size_t)i] = getIndNevid2(ind);
+  }
+  foceiCheckIndCountsCore(nsub == 0 ? NULL : &nAllTimes[0],
+                          nsub == 0 ? NULL : &nDoses[0],
+                          nsub == 0 ? NULL : &nEvid2[0], nsub);
+}
+
+// The same rules, on counts supplied from R, so a test can drive the rejection
+// paths -- they need a build whose rxode2 and nlmixr2est disagree on the solve
+// layout, which no test can produce.
+// [[Rcpp::export]]
+void foceiCheckIndCounts_(Rcpp::IntegerMatrix counts) {
+  int nsub = counts.nrow();
+  if (counts.ncol() != 3) {
+    stop("focei: counts must have three columns");
+  }
+  std::vector<int> nAllTimes((size_t)nsub), nDoses((size_t)nsub),
+    nEvid2((size_t)nsub);
+  for (int i = 0; i < nsub; ++i) {
+    nAllTimes[(size_t)i] = counts(i, 0);
+    nDoses[(size_t)i] = counts(i, 1);
+    nEvid2[(size_t)i] = counts(i, 2);
+  }
+  foceiCheckIndCountsCore(nsub == 0 ? NULL : &nAllTimes[0],
+                          nsub == 0 ? NULL : &nDoses[0],
+                          nsub == 0 ? NULL : &nEvid2[0], nsub);
+}
+
+// The counts foceiCheckIndCounts() validates, exposed so a test can compare
+// them against the dataset directly instead of inferring the layout from a
+// fit's output.
+// [[Rcpp::export]]
+Rcpp::IntegerMatrix foceiIndEventCounts_() {
+  rx_solve* rxl = getRxSolve_();
+  if (rxl == NULL) return Rcpp::IntegerMatrix(0, 3);
+  int nsub = getRxNsub(rxl);
+  Rcpp::IntegerMatrix ret(nsub, 3);
+  for (int i = 0; i < nsub; ++i) {
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rxl, i);
+    ret(i, 0) = getIndNallTimes(ind);
+    ret(i, 1) = getIndNdoses(ind);
+    ret(i, 2) = getIndNevid2(ind);
+  }
+  ret.attr("dimnames") =
+    Rcpp::List::create(R_NilValue,
+                       Rcpp::CharacterVector::create("nAllTimes", "nDoses",
+                                                     "nEvid2"));
+  return ret;
+}
+
 // Size of the gVid block.  Each subject holds its own nobs_i x nobs_i
 // residual variance matrix, so the block is sum(nobs_i^2) -- NOT nall^2:
 // nall counts dose (and evid=2) records too, and (sum x)^2 only equals
@@ -6758,6 +6857,7 @@ static inline void foceiSetupNoEta_(){
 
   // Mixtures only work in population only models;
   rx = getRxSolve_();
+  foceiCheckIndCounts(rx);
 
   if (inds_focei != NULL) R_Free(inds_focei);
   inds_focei = R_Calloc(getRxNsub(rx), focei_ind);
@@ -6813,6 +6913,7 @@ static inline void foceiSetupNoEta_(){
 
 static inline void foceiSetupEta_(NumericMatrix etaMat0){
   rx = getRxSolve_();
+  foceiCheckIndCounts(rx);
 
   if (inds_focei != NULL) R_Free(inds_focei);
   inds_focei = R_Calloc(getRxNsubAndMix(rx), focei_ind);
