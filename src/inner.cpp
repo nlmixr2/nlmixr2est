@@ -563,7 +563,8 @@ struct focei_options {
   // so a fit whose inner solves all converged and one where every one of them
   // failed look identical from the fit object; these separate the two.
   std::atomic<int> nTrustError{0};   // tres.error < 0 -- no usable eta at all
-  std::atomic<int> nTrustNoConv{0};  // solved, but trust_solve_c said not converged
+  std::atomic<int> nTrustNoConv{0};  // attempts that ended non-converged, either way
+  std::atomic<int> nTrustSolverNoConv{0}; // trust_solve_c's OWN flag said not converged
   std::atomic<int> nTrustPush{0};    // converged flag withdrawn by the Newton-decrement gate
   std::atomic<int> nTrustRetry{0};   // radius-escalation retries attempted
   std::atomic<int> nTrustNudge{0};   // nudge-cascade attempts
@@ -4458,10 +4459,20 @@ static inline int innerOpt1(int id, int likId) {
       trust_solve_c_ptr(npar, fInd->x, trustInnerObjfun, (void*)(&id), &topts, &tres);
       op_focei.nTrustInner.fetch_add(1, std::memory_order_relaxed);
       bool conv = false;
+      // trust_solve_c()'s OWN verdict, kept separate from `conv` because the
+      // Newton-decrement gate below withdraws `conv` to trigger a retry.  That
+      // gate is deliberately eager -- it exists to make the cascade try harder
+      // -- so it is the wrong thing to disqualify a candidate with: measured
+      // against n1qn1 on the same model, treating a gate withdrawal as "bad"
+      // discarded etas n1qn1 finds too and cost thousands of objective units.
+      // A candidate is bad only when the optimizer itself failed.
+      bool solveOk = false;
       if (tres.error >= 0 && tres.argument != NULL) {
         std::copy(tres.argument, tres.argument + npar, fInd->x);
         f = tres.value;
         conv = (bool)tres.converged;
+        solveOk = conv;
+        if (!conv) op_focei.nTrustSolverNoConv.fetch_add(1, std::memory_order_relaxed);
         if (R_FINITE(f) && !ISNA(f)) {
           keepBest();
           if (tres.gradient != NULL) std::copy(tres.gradient, tres.gradient + npar, fInd->g);
@@ -4498,7 +4509,7 @@ static inline int innerOpt1(int id, int likId) {
           // this attempt's final verdict: a candidate marked converged on
           // trust_solve_c()'s own flag and then withdrawn by the gate would
           // otherwise still be eligible to win the re-rank.
-          keepCand(conv && fInd->badSolve == 0);
+          keepCand(solveOk && fInd->badSolve == 0);
           if (!conv) op_focei.nTrustNoConv.fetch_add(1, std::memory_order_relaxed);
         } else {
           op_focei.nTrustNoConv.fetch_add(1, std::memory_order_relaxed);
@@ -4636,14 +4647,16 @@ static inline int innerOpt1(int id, int likId) {
   // LikInner2() writes lik[likId] for whichever candidate it is called on, and
   // the final call at the winner overwrites it, exactly as for likId == 0.
   if (!candEta.empty()) {
-    // A candidate whose attempt did not converge is a FALLBACK, not a choice.
-    // Both the inner-objective winner and the marginal re-rank below therefore
-    // look only at converged candidates whenever there is at least one; a
-    // failed attempt is considered only when nothing else survived (#1044).
-    // This matters most under mceta>=1, where the extra starting points make a
-    // mixed set of converged and failed candidates the common case: a failed
-    // attempt's eta can carry a larger marginal (its Laplace log|H| is measured
-    // at a point the inner objective never descended to) and would then win.
+    // A candidate the optimizer FAILED on is a fallback, not a choice.  Both
+    // the inner-objective winner and the marginal re-rank below therefore look
+    // only at candidates whose attempt succeeded whenever there is at least
+    // one; a failed attempt is used only when nothing else survived (#1044).
+    // This matters most under mceta>=1, where the extra starting points are
+    // what make a mixed candidate set common in the first place: a failed
+    // attempt's eta can carry the larger marginal (its Laplace log|H| is
+    // measured at a point the inner objective never descended to) and win.
+    // "Failed" is the optimizer's own verdict plus a latched bad solve, NOT a
+    // heuristic staleness gate -- see the trust arm's solveOk.
     bool anyOk = false;
     for (size_t k = 0; k < candOk.size(); ++k) {
       if (candOk[k]) { anyOk = true; break; }
@@ -8596,6 +8609,7 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.nTrustInner.store(0, std::memory_order_relaxed);
   op_focei.nTrustError.store(0, std::memory_order_relaxed);
   op_focei.nTrustNoConv.store(0, std::memory_order_relaxed);
+  op_focei.nTrustSolverNoConv.store(0, std::memory_order_relaxed);
   op_focei.nTrustPush.store(0, std::memory_order_relaxed);
   op_focei.nTrustRetry.store(0, std::memory_order_relaxed);
   op_focei.nTrustNudge.store(0, std::memory_order_relaxed);
@@ -12151,8 +12165,10 @@ void foceiFinalizeTables(Environment e){
           _["error"] = op_focei.nTrustError.load(std::memory_order_relaxed),
           // Attempts that ended non-converged (includes the "error" ones).
           _["notConverged"] = op_focei.nTrustNoConv.load(std::memory_order_relaxed),
-          // Convergence trust_solve_c() claimed and the Newton-decrement gate
-          // withdrew.
+          // Of those, the ones trust_solve_c() itself declared non-converged.
+          // Only these disqualify a candidate from the selection; the rest are
+          // convergence the Newton-decrement gate withdrew to force a retry.
+          _["solverFail"] = op_focei.nTrustSolverNoConv.load(std::memory_order_relaxed),
           _["newtonGate"] = op_focei.nTrustPush.load(std::memory_order_relaxed),
           _["radiusRetry"] = op_focei.nTrustRetry.load(std::memory_order_relaxed),
           _["nudge"] = op_focei.nTrustNudge.load(std::memory_order_relaxed),
