@@ -617,6 +617,20 @@
                    "were not sampled; their ini() values are reported unchanged"),
             call.=FALSE)
   }
+  ## A mu-referenced variance declared as a fixed zero was left estimable while
+  ## saem ran, so the random effect could move and the mu-theta M-step had a
+  ## conditional mean to shift the theta by (see .zeroOmegaMuRefEtas()).  The
+  ## declared value goes back now: the theta has absorbed what that random
+  ## effect was carrying, and reporting the working variance as if it were an
+  ## estimate would claim between-subject variability the model does not have.
+  .zeroMu <- .zeroOmegaMuRefStash(.ui)
+  if (length(.zeroMu)) {
+    .zi <- which(.etaNames %in% .zeroMu)
+    for (.k in .zi) {
+      .ome[.k, ] <- 0
+      .ome[, .k] <- 0
+    }
+  }
   env$omega <- .ome
   .saemWarnDegenerateOmega(.ome,
                            fixed=.eta[.eta$neta1 == .eta$neta2 & .eta$fix, "name"])
