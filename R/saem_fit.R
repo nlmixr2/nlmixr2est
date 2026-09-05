@@ -543,6 +543,56 @@
   Gamma2_phi1fixedValues <- fixedOmegaValues[i1, i1, drop = FALSE]
   Gamma2_phi1fixed <- as.integer(any(Gamma2_phi1fixedIx == 1L))
 
+  ## A mu-referenced eta whose variance is FIXED at (near) zero cannot carry an
+  ## estimable theta through SAEM's M-step, and it fails silently -- so say so.
+  ##
+  ## The mu-theta update is a GLS normal equation weighted by Omega^-1
+  ## (`Plambda1 <- solve(CGamma21) %*% ...` in src/saem.cpp): a column with
+  ## variance w gets weight 1/w.  Drive w to zero and two things happen at once.
+  ## The weight explodes, so the solve reduces to "reproduce this column's
+  ## sampled mean exactly"; and the sampler cannot move that column off its
+  ## prior mean, which IS the current theta.  The M-step's fixed point is
+  ## therefore the STARTING value, and the theta never moves -- while
+  ## `$saemFixed` still reports it as estimated, because nothing about it was
+  ## declared fixed.
+  ##
+  ## This is worth naming because it is the direct translation of a NONMEM
+  ## idiom.  `$OMEGA (0.0 FIXED)` on a MU_ helper eta is how NONMEM control
+  ## streams mu-reference a plain theta (Bauer's non-Gaussian-eta streams do it
+  ## for all five distribution parameters), and NONMEM's EM updates such a theta
+  ## by direct maximization.  nlmixr2's SAEM updates it by the Omega-weighted
+  ## regression above, which degenerates instead of switching over.  Ported
+  ## verbatim, the stream fits nothing; with a non-degenerate helper variance
+  ## the same structure estimates well (measured on Bauer's gamma model: CL
+  ## 6.686 -> 5.553 against a truth of 5.03, and the residual SD 0.66 -> 0.149
+  ## against 0.141, simply by moving the helper variance from 1e-8 to 0.1).
+  if (Gamma2_phi1fixed == 1L && nphi1 > 0L) {
+    .fixDiag <- diag(Gamma2_phi1fixedIx) == 1L
+    .om1 <- diag(Gamma2_phi1)
+    .scale <- suppressWarnings(max(.om1[!.fixDiag], na.rm = TRUE))
+    if (!is.finite(.scale) || .scale <= 0) .scale <- 1
+    ## 1e-6 of the largest free variance is where the normal equations are
+    ## conditioned past what a double can carry, so the pin is numerical
+    ## regardless of what the user intended by the value.
+    .degen <- which(.fixDiag & .om1 <= 1e-6 * .scale)
+    if (length(.degen)) {
+      .nm <- names(model$log.eta)[i1][.degen]
+      .nm <- .nm[!is.na(.nm)]
+      if (!length(.nm)) .nm <- paste0("eta[", .degen, "]")
+      warning(paste0(
+        "these mu-referenced random effects have a variance fixed at ~0: ",
+        paste(.nm, collapse = ", "), "\n",
+        "SAEM's mu-theta M-step is weighted by omega^-1, so their population ",
+        "parameters cannot move from their ini() values and will be returned ",
+        "unchanged.\n",
+        "Fix them at a small but non-degenerate variance instead (0.01-0.1 ",
+        "works), estimate them, or drop the mu-reference. This is the usual ",
+        "symptom of porting a NONMEM '$OMEGA (0.0 FIXED)' mu-reference helper ",
+        "eta directly."),
+        call. = FALSE)
+    }
+  }
+
   phiM <- matrix(0, N, nphi)
   phiM[, i1] <- mprior_phi1
   phiM[, i0] <- mprior_phi0
