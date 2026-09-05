@@ -45,18 +45,28 @@ nmTest({
     for (.p in c("lclm", "lclrv", "lv1m", "lv1rv", "tka", "add.sd")) {
       expect_true(.p %in% rownames(.f$parFixedDf), info = .p)
     }
-    # the correlation row back-transforms through tanh, so the
-    # back-transformed column is a correlation rather than its atanh
+    # the dist() parameters carry a back-transformation now.  They are not
+    # mu-referenced -- they only ever reach the model inside the declaration --
+    # so nothing recorded their scale and parFixed printed them raw: a
+    # clearance of 1.5 showed as 0.405.
+    for (.p in c("lclm", "lclrv", "lv1m", "lv1rv")) {
+      expect_equal(unname(.f$parFixedDf[.p, "Back-transformed"]),
+                   exp(unname(.f$parFixedDf[.p, "Estimate"])), info = .p)
+    }
+    # at maxOuterIterations = 0 those are the values the user typed
+    expect_equal(unname(.f$parFixedDf["lclm", "Back-transformed"]), 1.5)
+    expect_equal(unname(.f$parFixedDf["lclrv", "Back-transformed"]), 0.1)
+
+    # the copula correlation was ALREADY reported correctly -- the expansion
+    # sets backTransform = "tanh" -- so this only guards against that being
+    # lost.  (It was briefly "fixed" here on the strength of a misreading of
+    # the raw Estimate column.)
     .c <- grep("^rxCor[.]", rownames(.f$parFixedDf))
     expect_equal(length(.c), 1L)
     .raw <- unname(.f$parFixedDf[.c, "Estimate"])
     .bck <- unname(.f$parFixedDf[.c, "Back-transformed"])
     expect_equal(.bck, tanh(.raw))
-    # at maxOuterIterations = 0 that is the declared 0.5, and the raw number
-    # is its atanh -- the two are different, which is the whole point
     expect_equal(.bck, 0.5)
-    expect_false(isTRUE(all.equal(.raw, .bck)))
-    # a correlation is in range; the raw parameter need not be
     expect_true(abs(.bck) <= 1)
   })
 })
