@@ -24,10 +24,17 @@ ini({
 
   Supported by the FOCEi family (whose inner problem needs only
   `d(eta)/d(latent)`, which rxode2 differentiates exactly through
-  `phiU()` and the inverse CDF), `saem` (a declared random effect has no
-  `theta + eta` form, so it lands in the already-exercised `nonMuEtas`
-  path and is still sampled and updated the same way), `posthoc`, and
-  simulation.
+  `phiU()` and the inverse CDF), `posthoc`, simulation, and `saem` --
+  the last with one condition.
+
+  `saem` parameterizes a random effect by the theta it is *added to*. A
+  declared distribution enters through an inverse CDF instead, so `saem`
+  can only carry it as a non-mu random effect, and rxode2 only makes that
+  classification for a model with at least one ordinary mu-referenced
+  random effect to anchor it.  So a declared distribution works under
+  `saem` as long as something else in the model has a conventional
+  `theta + eta`; a model whose only random effects are declared is
+  refused by name rather than surfacing as `saem`'s bare `"0 ETA's"`.
 
   A method that does not support it refuses rather than quietly fitting a
   different model than the one written -- the same reasoning, and the same
