@@ -52,6 +52,56 @@
   for their own implementation (-8.7%/-10.9%/-5.4%), and leaves the residual
   error 2.9% high.  `iovMethod = "theta"` restores the old behavior.
 
+
+- Inter-occasion variability can now be **correlated**.  `iov.cl + iov.v ~
+  c(0.1, 0.03, 0.2) | occ` estimates the occasion covariance instead of
+  erroring with "correlated inter-occasion random effects are not
+  supported".
+
+  This adds `foceiControl(iovMethod=)`, one of `"auto"` (default),
+  `"theta"` or `"omega"`:
+
+  - `"theta"` is the long-standing expansion -- one magnitude theta per
+    occasion parameter, with unit-variance per-occasion etas fixed to it.
+    That shape provably cannot carry a correlation between two occasion
+    parameters, so it still refuses one.
+  - `"omega"` fixes the magnitude theta at one and estimates the
+    per-occasion eta blocks instead: occasion one *is* the block, and each
+    later occasion repeats it.  That is NONMEM's `$OMEGA BLOCK(n) SAME`,
+    and the correlation lives in the estimated block.
+  - `"auto"` picks `"omega"` when the occasion block has any off-diagonal
+    element and `"theta"` otherwise, per LEVEL of variability -- a
+    correlation on `occ` does not change how an unrelated diagonal
+    `occ2` is expanded.
+  - `"auto"` only reaches for `"omega"` on an estimation method that
+    honours the repeated block -- the FOCEi family.  `saem`, the
+    variational (`vae`, `fbvi`, `emvi`), nonparametric (`npag`, ...) and
+    importance-sampling (`imp`, `impmap`, `qrpem`) methods estimate
+    omega elsewhere and still refuse a correlated occasion block, since
+    they would otherwise estimate each occasion independently and report
+    only the first.
+
+  The two expansions are the same statistical model, verified exactly: with
+  the occasion variance at 1 (where the two parameterizations coincide) they
+  agree on the objective to machine precision, and evaluated at matched
+  random effects they agree to ~2e-8 at any variance.  They are *not*
+  interchangeable in practice, though -- `"theta"` presents unit-scale etas
+  to FOCEi's inner optimizer, which converges the inner problem better when
+  the occasion variance is far from 1 (on `theo_sd` with a variance of 0.1,
+  `"theta"` reaches an inner optimum 0.059 lower and `"omega"` stops short
+  of it).  That is why `"auto"` keeps `"theta"` for a diagonal block and
+  reaches for `"omega"` only when a correlation makes it necessary.
+
+  `iovXform` parameterizes the `"theta"` magnitude and is inert under
+  `"omega"`, where the magnitude is fixed at one; asking for a non-`"sd"`
+  value under `"omega"` now says so once.
+
+  Analytic covariance falls back to finite differences for a repeated
+  (`SAME`) omega block: its IOV special case reads the magnitude theta as
+  the occasion standard deviation, which is 1 in this mode, and would have
+  overwritten the estimated per-occasion variances rather than merely
+  being conservative.
+
 ## Bug fixes
 
 - A fit no longer reports the PREVIOUS fit's censoring.  `$censInformation`
@@ -107,6 +157,75 @@
   consumes the Hessian -- though only `trust` was visibly broken without it.
   Normal endpoints, which use the Gauss-Newton inner Hessian, never reach this
   code.
+
+- `foceiControl(mceta = )` is no longer discarded for a model whose etas are
+  all mu-referenced.  Any non-default setting was reset to `-2` on the grounds
+  that "the initial etas are all exactly zero, so the search has nothing to
+  explore" -- true only of the first inner solve, since every later one starts
+  from the previous iteration's mode, and the `mceta > 0` candidates are draws
+  from omega, which are not zero.  This is what made `mceta = 10` return an
+  objective bit-identical to `mceta = -2` on such a model.  On `theo_sd`'s
+  one-compartment model (every eta mu-referenced), `mceta = 5` now starts 420 of
+  its 1008 inner solves from a draw and reaches a different objective than
+  `mceta = -2`.
+
+- `foceiControl(mceta = n)` (`n > 0`) now actually uses the extra starting etas,
+  and at fixed parameters can no longer give a worse objective than
+  `mceta = 0`.  The candidate set included the carried "last eta" -- the
+  previous outer iteration's converged conditional mode -- whose inner objective
+  is essentially always the lowest, so it won for every subject and `mceta = n`
+  returned an objective bit-identical to the keep-last behavior of
+  `mceta = -1`/`-2`.  The candidates are now eta=0 plus the `n-1` draws from
+  omega.
+
+  Because a candidate is ranked by the objective at its starting point, which
+  does not order the points the inner optimization converges to, a subject that
+  starts from a draw now also solves from eta=0 and keeps whichever converged
+  lower -- without that, a draw that merely looked better could converge worse
+  (measured on a fixed-omega inverse-CDF model at fixed parameters: `mceta = 2`
+  gave -2251.0 against `mceta = 0`'s -2302.5, and now gives -2338.8).  That
+  floor solve wraps the whole inner-optimizer dispatch rather than living inside
+  one arm of it, so it holds for whichever inner optimizer is configured.
+
+  The comparison is made on the objective the fit REPORTS -- the marginal one,
+  which carries the Laplace `log|H|` term -- and not on the inner joint density
+  the optimizer minimizes.  The two order candidates differently often enough
+  (on the model above, 23 of the 44 subjects that had a choice) that ranking on
+  the inner objective alone handed the fit the worse candidate.  Restarts are
+  ranked only when there is more than one candidate, so an inner solve that
+  never restarts pays nothing for it.
+
+  Finally, `mceta = 1` means eta=0 rather than being a silent no-op, a
+  non-finite eta=0 no longer pins the search, and the draws are made once per
+  fit instead of at every objective evaluation, so the objective is the same
+  function at every evaluation.  The fit records which candidate each inner
+  solve started from in `$env$nMcetaStart`, and how often the two orderings
+  disagreed in `$env$nInnerRerank`.
+
+- `focei` now checks rxode2's per-subject event counts before it sizes the
+  per-subject blocks it strides with them (`gVid`, `ga`/`gc`, `gB`, `gcH*`,
+  `llikObsFull`).  When rxode2 and nlmixr2est are built against different solve
+  layouts those counts are read from the wrong bytes, and the setup sized
+  megabytes of storage from garbage -- reported as "dataset too large", as an
+  `R_Calloc` failure, or as a segfault, depending on what the mis-read bytes
+  held.  A negative count, or a dose or `evid=2` count larger than the
+  subject's own record count, now stops the fit with that as the reason
+  instead (#1039).
+
+- With two or more occasion parameters on one level, `fit$iov$<level>` had
+  `NA` for every occasion (and the fit warned "NAs introduced by
+  coercion").  The occasion number was parsed out of the eta names by
+  stripping the *last* occasion parameter's `rx.<name>.` prefix from a
+  column built out of the *first* one's names, so nothing matched.  This
+  affected the existing IOV expansion too, not just the new one.
+
+- Two occasion parameters whose names share a prefix (`iov.v` and
+  `iov.v2`) had their per-occasion columns mixed together in
+  `fit$iov$<level>` and `fit$shrink`, again leaving every occasion `NA`.
+  The columns are named `rx.<param>.<occ>` and were selected by
+  substring, so `iov.v` also matched `rx.iov.v2.1`.  Also present on the
+  existing IOV expansion.
+
 - `saem`'s Gaussian-quadrature objective no longer silently attempts a grid it
   cannot finish.  The grid is `nnodesGq^nphi1` whole-population solves and
   `nphi1` grows by one per occasion level for every IOV parameter, so three

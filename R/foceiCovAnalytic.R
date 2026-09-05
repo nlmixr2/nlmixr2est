@@ -633,6 +633,37 @@
     # those k occasion etas (reusing the "om" branch), so the occasion etas are the
     # only permitted non-mu-referenced etas.
     iovVars <- .uiIovEnv$iovVars
+    # This whole branch reads the magnitude THETA as the IOV standard
+    # deviation (`iovW <- abs(thVals[v])` below), sets `Om[j,j] <- w^2` and
+    # rescales the eta directions by `w`.  Under `iovMethod = "omega"` that
+    # theta is FIXED AT ONE and the variance lives in a shared (`same()`)
+    # omega block instead, so every one of those steps would overwrite the
+    # estimated per-occasion variances with 1 -- a wrong covariance, not a
+    # conservative one.  Bow out to FD until `.foceiOmegaPairs()` learns to
+    # sum directions over the repeated blocks.
+    # Detect the mode STRUCTURALLY rather than from the control: "auto"
+    # is what the control still says after it resolved to "omega", and a
+    # single-occasion dataset produces no repeated block for
+    # `omegaSameMap` to report either.  The two expansions are told apart
+    # by the occasion etas themselves -- "theta" fixes their variance at
+    # one and scales them by the magnitude theta, "omega" estimates them.
+    .idfA <- ui$iniDf
+    .omegaIov <- vapply(iovVars, function(.v) {
+      .w <- which(grepl(paste0("^rx\\.", gsub(".", "\\.", .v, fixed = TRUE),
+                               "\\.[0-9]+$"), .idfA$name) &
+                    !is.na(.idfA$neta1) & .idfA$neta1 == .idfA$neta2)
+      ## "theta" leaves these etas FIXED AT ONE and puts the magnitude in
+      ## the theta; anything else is the shared-block expansion.  Testing
+      ## `fix` alone read an all-`fix()`ed correlated block as "theta"
+      ## and, with a single occasion (so no repeated block for
+      ## `omegaSameMap` to report), slipped past both gates.
+      length(.w) > 0L && !all(.idfA$fix[.w] & .idfA$est[.w] == 1)
+    }, logical(1), USE.NAMES = FALSE)
+    if (any(.omegaIov))
+      return(.foceiAnalyticFallback("IOV with a shared (SAME) omega block"))
+    .sameMap0 <- ui$omegaSameMap
+    if (length(.sameMap0) > 0L && any(.sameMap0 != 0L))
+      return(.foceiAnalyticFallback("a repeated (SAME) omega block"))
     # only the SD-scale IOV predictor (abs(v)*occ-eta) is implemented; var/logsd/logvar
     # use a different predictor + chain rule -> bow out to FD.
     if (length(iovVars) > 0L &&
@@ -2484,6 +2515,12 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
   .idf0 <- ui$iniDf
   if (any(!is.na(.idf0$condition) & .idf0$condition != "id" & is.na(.idf0$err)))            # IOV
     return(.foceiAnalyticFallback("inter-occasion variability (IOV)"))
+  # Under `iovMethod = "omega"` the occasion etas all sit at the `id` level,
+  # so the test above only catches them through the `id:same:` copies.  Check
+  # the repetition directly rather than relying on that.
+  .sm0 <- ui$omegaSameMap
+  if (length(.sm0) > 0L && any(.sm0 != 0L))
+    return(.foceiAnalyticFallback("a repeated (SAME) omega block"))
   # censored (M2/M3/M4): FOCEI and FOCE with censOption="gauss" are in scope (censored score
   # partials + Gauss-Newton determinant); only the laplace censored determinant uses FD.
   .hasCens <- (!is.null(fit$dataSav$CENS) && any(fit$dataSav$CENS != 0, na.rm = TRUE)) ||

@@ -363,6 +363,50 @@
 #'
 #' @param iovXform Transformation used on the diagonal of the IOV: one of
 #'     \code{"sd"}, \code{"var"}, \code{"logsd"}, or \code{"logvar"}.
+#'     This parameterizes the magnitude theta of the \code{"theta"}
+#'     \code{iovMethod}; it has no effect under \code{"omega"}, where the
+#'     magnitude is fixed at one and the variability is carried by the
+#'     omega block itself.
+#'
+#' @param iovMethod How inter-occasion variability is expanded before
+#'     estimation: one of \code{"auto"} (default), \code{"theta"} or
+#'     \code{"omega"}.
+#'
+#'     \code{"theta"} is the long-standing expansion: each occasion
+#'     parameter becomes a magnitude theta, with one unit-variance eta per
+#'     occasion fixed to it.  That shape cannot represent a correlation
+#'     between two occasion parameters.
+#'
+#'     \code{"omega"} instead fixes the magnitude theta at one and
+#'     estimates the per-occasion eta blocks directly, occasion one being
+#'     the block and the rest repeating it (NONMEM's
+#'     \code{$OMEGA BLOCK(n) SAME}).  The correlation then lives in the
+#'     estimated block.
+#'
+#'     \code{"auto"} picks \code{"omega"} when the IOV block has any
+#'     off-diagonal element, since \code{"theta"} provably cannot
+#'     represent one, and \code{"theta"} otherwise.  \code{"omega"} may
+#'     be asked for on a diagonal block as well, so the two can be
+#'     compared on the same model.  The choice is made per LEVEL of
+#'     variability, so a correlation on \code{occ} does not change how
+#'     an unrelated diagonal \code{occ2} is expanded.
+#'
+#'     \code{"omega"} is only available for estimation methods that
+#'     honour the repeated block (the FOCEi family).  \code{saem} and
+#'     the variational, nonparametric and importance-sampling methods
+#'     estimate omega elsewhere, so they continue to refuse a
+#'     correlated occasion block rather than silently estimate each
+#'     occasion on its own.
+#'
+#'     The two are the same statistical model -- at an occasion variance
+#'     of one, where the parameterizations coincide, they agree on the
+#'     objective to machine precision, and evaluated at matched random
+#'     effects they agree to ~2e-8 at any variance.  They are not
+#'     interchangeable in practice: \code{"theta"} hands FOCEi's inner
+#'     optimizer unit-scale etas and so converges the inner problem
+#'     better when the occasion variance is far from one.  That is why
+#'     \code{"auto"} keeps \code{"theta"} unless a correlation forces
+#'     \code{"omega"}.
 #'
 #' @param sumProd Is a boolean indicating if the model should change
 #'     multiplication to high precision multiplication and sums to
@@ -871,9 +915,18 @@
 #'   out of bound); `-1` jumps between the extrapolated eta and eta=0, keeping
 #'   the better; both `-2` and `-1` fall back to keeping the last eta when no
 #'   analytic `d eta*/d theta` is available (`fast = FALSE`).  `0` uses eta=0
-#'   for each inner optimization; for `n>0`, the last eta, eta=0, and n-1
-#'   etas sampled from omega are each evaluated and the best (by inner
-#'   objective) is used.
+#'   for each inner optimization; for `n>0`, eta=0 and n-1 etas sampled from
+#'   omega are each evaluated and the best (by inner objective) starts the
+#'   inner optimization.  The carried last eta is deliberately not one of the
+#'   `n>0` candidates -- it is the previous iteration's converged conditional
+#'   mode, so it would win for every subject and `n>0` would reduce to the
+#'   keep-last behavior of `-1`/`-2`.  When a sampled eta wins, the inner
+#'   problem is also solved from eta=0 and the better converged result kept --
+#'   compared on the marginal objective the fit reports, which carries the
+#'   Laplace `log|H|` term, not on the inner objective the optimizer minimizes --
+#'   so no inner solve ends above the one `0` would have reached.  The search is
+#'   skipped while the outer gradient is being differenced, where the eta is
+#'   pinned to the central evaluation's mode.
 #'
 #' @param seed Integer seed (default `42`) used to make a FOCEi fit
 #'   reproducible and self-contained.  The fit (including the `mceta`
@@ -1025,6 +1078,7 @@ foceiControl <- function(sigdig = 3, #
                          eigen = TRUE, #
                          diagXform = c("sqrt", "log", "identity"), #
                          iovXform = c("sd", "var", "logsd", "logvar"), #
+                         iovMethod = c("auto", "theta", "omega"), #
                          sumProd = FALSE, #
                          optExpression = TRUE, #
                          literalFix = TRUE,
@@ -1799,6 +1853,7 @@ foceiControl <- function(sigdig = 3, #
     eigen = eigen,
     diagXform = match.arg(diagXform),
     iovXform = match.arg(iovXform),
+    iovMethod = match.arg(iovMethod),
     sumProd = sumProd,
     optExpression = optExpression,
     literalFix = literalFix,

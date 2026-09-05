@@ -2660,6 +2660,13 @@ rxUiGet.foceiFixed <- function(x, ...) {
   .dft <- .df[!is.na(.df$ntheta), ]
   .fix <- .dft$fix
   .dft <- .df[is.na(.df$ntheta), ]
+  # This vector is consumed POSITIONALLY, aligned with the optimizer's
+  # `[theta | omegaTheta]` layout (`foceiSetupTheta_()`, src/inner.cpp).
+  # An omega block repeated with `same()` contributes no omega theta of its
+  # own -- it reuses its master's -- so its rows must not appear here or
+  # every flag after them is off by one.
+  .dft <- .dft[.dft$condition ==
+                 lotri::lotriBaseCondition(.dft$condition), , drop = FALSE]
   c(.fix, .dft$fix)
 }
 # attr(rxUiGet.foFixed, "desc") <- "focei theta fixed vector"
@@ -2866,17 +2873,36 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
     # whose inverse/chol fails when building the sym-inv-chol env and aborts the
     # whole fit at the residual/table step.  Repair the omega in that case so
     # post-fit diagnostics still run; the reported fit omega is left unchanged.
-    if (inherits(try(chol(.om0), silent = TRUE), "try-error")) {
+    .repaired <- inherits(try(chol(.om0), silent = TRUE), "try-error")
+    if (.repaired) {
       .om0 <- .foceiRepairOmega(.om0)
     }
-    env$rxInv <- rxode2::rxSymInvCholCreate(mat = .om0, diag.xform = .diagXform)
+    # `same()` blocks share one set of cholesky parameters with the block
+    # they repeat.  A repaired omega is no longer guaranteed to hold
+    # identical blocks, so the sharing is dropped along with it; that path
+    # only feeds post-fit diagnostics.
+    .sameMap <- ui$omegaSameMap
+    if (.repaired || length(.sameMap) != dim(.om0)[1]) {
+      # a map that does not span the matrix cannot be trusted to name the
+      # right rows; estimate the blocks independently rather than mirror
+      # the wrong ones
+      .sameMap <- NULL
+    }
+    env$rxInv <- rxode2::rxSymInvCholCreate(mat = .om0,
+                                            diag.xform = .diagXform,
+                                            same = .sameMap)
     env$xType <- env$rxInv$xType
     .om0a <- .om0
     .om0a <- .om0a / rxode2::rxGetControl(ui, "diagOmegaBoundLower", 100)
     .om0b <- .om0
     .om0b <- .om0b * rxode2::rxGetControl(ui, "diagOmegaBoundUpper", 5)
-    .om0a <- rxode2::rxSymInvCholCreate(mat = .om0a, diag.xform = .diagXform)
-    .om0b <- rxode2::rxSymInvCholCreate(mat = .om0b, diag.xform = .diagXform)
+    # both bound matrices are `.om0` times a constant, so repeated blocks
+    # stay identical and the same map still applies -- and it must, or the
+    # `.omdf` columns below no longer line up row for row
+    .om0a <- rxode2::rxSymInvCholCreate(mat = .om0a, diag.xform = .diagXform,
+                                        same = .sameMap)
+    .om0b <- rxode2::rxSymInvCholCreate(mat = .om0b, diag.xform = .diagXform,
+                                        same = .sameMap)
     .omdf <- data.frame(a = .om0a$theta, m = env$rxInv$theta, b = .om0b$theta, diag = .om0a$theta.diag)
     .omdf$lower <- with(.omdf, ifelse(a > b, b, a))
     .omdf$lower <- with(.omdf, ifelse(lower == m, -Inf, lower))
@@ -2885,7 +2911,11 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
     .omdf$upper <- with(.omdf, ifelse(upper == m, Inf, upper))
     .omdf$upper <- with(.omdf, ifelse(!diag, Inf, upper))
     rxode2::rxAssignControlValue(ui, "nomega", length(.omdf$lower))
-    rxode2::rxAssignControlValue(ui, "neta", sum(.omdf$diag))
+    # `sum(.omdf$diag)` counts diagonal omega PARAMETERS, which is no longer
+    # the number of etas once a `same()` block shares its master's.
+    # `op_focei.neta` is checked against the model's eta count, so take it
+    # from the matrix instead (identical without `same()`).
+    rxode2::rxAssignControlValue(ui, "neta", dim(.om0)[1])
     rxode2::rxAssignControlValue(ui, "ntheta", length(.lower))
     .lower <- c(.lower, .omdf$lower)
     .upper <- c(.upper, .omdf$upper)
@@ -3248,7 +3278,11 @@ attr(rxUiGet.foceiSkipCov, "rstudio") <- c(FALSE, TRUE)
     }
   }
   assign(
-    "nEstOmega", length(which(!is.na(ui$iniDf$neta1) & !ui$iniDf$fix)),
+    # master rows only: a `same()` copy is not separately estimated
+    "nEstOmega",
+    length(which(!is.na(ui$iniDf$neta1) & !ui$iniDf$fix &
+                   ui$iniDf$condition ==
+                     lotri::lotriBaseCondition(ui$iniDf$condition))),
     env
   )
   if (length(env$skipCov) != .maxTheta) {
@@ -4103,39 +4137,8 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   ret
 }
 
-#' Reset a user-specified mceta to the default for fully mu-referenced models
-#'
-#' When every eta is mu-referenced the initial etas are all exactly zero, so the
-#' Monte-Carlo / jump mceta starting-point search has nothing to explore.  A
-#' non-default mceta is ignored (reset to the default -2) with a warning.
-#'
-#' @param ui model ui
-#' @param control focei control
-#' @return control, possibly with mceta reset to -2L
-#' @noRd
-.foceiMcetaMuRefFallback <- function(ui, control) {
-  .mceta <- control$mceta
-  if (is.null(.mceta) || identical(as.integer(.mceta), -2L)) {
-    return(control)
-  }
-  .allEta <- ui$eta
-  if (length(.allEta) == 0L) {
-    return(control)
-  }
-  .muEta <- ui$muRefDataFrame$eta
-  if (all(.allEta %in% .muEta)) {
-    warning("all etas are mu-referenced (initial etas are zero), so 'mceta=", .mceta,
-      "' has no effect; using the default 'mceta=-2'",
-      call. = FALSE
-    )
-    control$mceta <- -2L
-  }
-  control
-}
-
 .foceiFamilyReturn <- function(env, ui, ..., method = NULL, est = "none") {
   .control <- ui$control
-  .control <- .foceiMcetaMuRefFallback(ui, .control)
   .control$est <- est
   ui$control <- .control
   # Analytic covariate-coefficient reuse (fast=TRUE): the eta-scaling of a mu-ref
