@@ -111,6 +111,17 @@
 
 ### Bug fixes
 
+- `focei` now checks rxode2’s per-subject event counts before it sizes
+  the per-subject blocks it strides with them (`gVid`, `ga`/`gc`, `gB`,
+  `gcH*`, `llikObsFull`). When rxode2 and nlmixr2est are built against
+  different solve layouts those counts are read from the wrong bytes,
+  and the setup sized megabytes of storage from garbage – reported as
+  “dataset too large”, as an `R_Calloc` failure, or as a segfault,
+  depending on what the mis-read bytes held. A negative count, or a dose
+  or `evid=2` count larger than the subject’s own record count, now
+  stops the fit with that as the reason instead
+  ([\#1039](https://github.com/nlmixr2/nlmixr2est/issues/1039)).
+
 - With two or more occasion parameters on one level, `fit$iov$<level>`
   had `NA` for every occasion (and the fit warned “NAs introduced by
   coercion”). The occasion number was parsed out of the eta names by
