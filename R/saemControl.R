@@ -10,9 +10,18 @@
 #'   to the objective or to the estimated omega.  It still has to MOVE,
 #'   though, or the conditional mean the M-step shifts by is identically zero
 #'   and the theta never budges; this sets how far it explores.  Too small and
-#'   the theta stays put, too large and the exploration is wasteful.  Measured
-#'   on Bauer's gamma model: at 1e-8 the parameter stayed pinned at its
-#'   starting value of 6.686 against a truth of 5.03, at 0.1 it reached 5.553.
+#'   the theta stays put.  Measured on Bauer's gamma model: at 1e-8 the
+#'   parameter stayed pinned at its starting value of 6.686 against a truth of
+#'   5.03, at 0.1 it reached 5.553.
+#'
+#'   Values ABOVE 1 are legitimate and may be needed for a declared
+#'   non-normal random effect (`dist()`).  There the parameter reaches the
+#'   model through an inverse CDF, so a step on the latent scale is not a
+#'   step of the same size on the parameter -- the mapping can be steep or
+#'   flat depending on the family and where on the distribution the subject
+#'   sits, and a width that explores a log-scale mean adequately can be far
+#'   too small there.  This is a sampling width, not a variance the model
+#'   claims, so widening it costs efficiency rather than correctness.
 #'
 #' @param nBurn Number of iterations in the first phase, ie the  MCMC/Stochastic Approximation
 #'     steps. This is equivalent to Monolix's \code{K_0} or \code{K_b}.
