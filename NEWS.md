@@ -126,7 +126,14 @@
   objective at its starting point, which does not order the points the inner
   optimization converges to, a subject that starts from a draw now also solves
   from eta=0 and keeps whichever converged lower, so no inner solve can end
-  above the one `mceta = 0` would have reached -- without that, a draw that
+  above the one `mceta = 0` would have reached.  That comparison is made on the
+  objective the fit REPORTS -- the marginal one, which carries the Laplace
+  `log|H|` term -- and not on the inner joint density the optimizer minimizes:
+  the two order candidates differently often enough (on the model above, 23 of
+  the 44 subjects that had a choice) that ranking on the inner objective alone
+  handed the fit the worse candidate.  Restarts are only ranked when there is
+  more than one candidate, so a fit that never restarts pays nothing for it, and
+  `$env$nInnerRerank` reports how often the two orderings disagreed -- without that, a draw that
   merely looked better could converge worse (measured on a fixed-omega
   inverse-CDF model evaluated at fixed parameters: `mceta = 2` gave -2251.0
   against `mceta = 0`'s -2302.5, and now gives -2338.8).  The floor solve wraps

@@ -668,6 +668,12 @@ struct focei_options {
   // "never explored" (#1040).
   std::atomic<int> nMcetaZero{0};
   std::atomic<int> nMcetaSample{0};
+  // Inner solves whose restarts produced more than one candidate and so were
+  // ranked on the marginal objective, and how many of those the marginal
+  // ordered differently from the inner objective -- the second count is the
+  // one that says the Laplace log|H| term actually changes the choice.
+  std::atomic<int> nInnerRanked{0};
+  std::atomic<int> nInnerReranked{0};
   std::atomic<int> didEtaReset{0};
   double resetThetaSize = std::numeric_limits<double>::infinity();
   double resetThetaFinalSize = std::numeric_limits<double>::infinity();
@@ -3776,6 +3782,19 @@ static inline int innerOpt1(int id, int likId) {
     f = fBest;
     std::copy(etaBest.begin(), etaBest.end(), fInd->x);
   };
+  // Every converged candidate the restarts below produce, kept for the final
+  // selection after the loop.  This is separate from keepBest()'s running
+  // minimum on purpose: keepBest() is the in-cascade recovery from a failed
+  // restart and has to stay a cheap comparison of the INNER objective, while
+  // WHICH candidate the fit ends up reporting has to be decided on the marginal
+  // objective (see the re-rank after the loop).
+  std::vector< std::vector<double> > candEta;
+  std::vector<double> candF;
+  auto keepCand = [&]() {
+    if (!R_FINITE(f)) return;
+    candEta.push_back(std::vector<double>(fInd->x, fInd->x + fop->neta));
+    candF.push_back(f);
+  };
   // Starting points this inner solve runs from.  mceta>=1 picks its start by the
   // objective AT that point, which does not order the points the optimization
   // converges to, so a sampled start is followed by a second solve from eta=0 and
@@ -3784,7 +3803,7 @@ static inline int innerOpt1(int id, int likId) {
   // The loop wraps the WHOLE optimizer dispatch rather than living inside one
   // branch of it, so it holds for whichever inner optimizer is configured, and a
   // new optimizer arm gets the floor pass without being told about it.  An arm
-  // only has to leave the converged objective in `f` and call keepBest(); on a
+  // only has to leave the converged objective in `f` and call keepBest(); keepCand(); on a
   // non-finite `f` it should hand the loop `_lastStart` (see the arms below)
   // rather than returning, so a failed sampled start still gets its eta=0 pass.
   int nInnerStart = mcetaSampleStart ? 2 : 1;
@@ -3819,7 +3838,7 @@ static inline int innerOpt1(int id, int likId) {
       if (_lastStart) return 0;
       continue;
     }
-    keepBest();
+    keepBest(); keepCand();
     nF = fInd->nInnerF-nF;
     // REprintf("innerCost id: %d, fInd->nInnerF: %d", id, fInd->nInnerF);
     // If stays at zero try another point?
@@ -3853,7 +3872,7 @@ static inline int innerOpt1(int id, int likId) {
                &mode, &maxInnerIterations, &nsim,
                &imp, fInd->zm,
                &izs, &rzs, &dzs, &id);
-        if (ISNA(f)) { if (!haveBest) return 0; restoreBest(); } else keepBest();
+        if (ISNA(f)) { if (!haveBest) return 0; restoreBest(); } else keepBest(); keepCand();
         // nF = fInd->nInnerF - nF;
         // if (nF > 3) tryAgain = false;
         // The re-check below used to be wrapped in `if (!tryAgain)`, which can
@@ -3881,7 +3900,7 @@ static inline int innerOpt1(int id, int likId) {
                  fInd->var, &epsilon,
                  &mode, &maxInnerIterations, &nsim,
                  &imp, fInd->zm, &izs, &rzs, &dzs, &id);
-          if (ISNA(f)) { if (!haveBest) return 0; restoreBest(); } else keepBest();
+          if (ISNA(f)) { if (!haveBest) return 0; restoreBest(); } else keepBest(); keepCand();
           // nF = fInd->nInnerF - nF;
           // if (nF > 3) tryAgain = false;
           {
@@ -3905,7 +3924,7 @@ static inline int innerOpt1(int id, int likId) {
                    fInd->var, &epsilon,
                    &mode, &maxInnerIterations, &nsim,
                    &imp, fInd->zm, &izs, &rzs, &dzs, &id);
-            if (ISNA(f)) { if (!haveBest) return 0; restoreBest(); } else keepBest();
+            if (ISNA(f)) { if (!haveBest) return 0; restoreBest(); } else keepBest(); keepCand();
             // nF = fInd->nInnerF - nF;
             // if (nF > 3) tryAgain = false;
             {
@@ -3929,7 +3948,7 @@ static inline int innerOpt1(int id, int likId) {
                      fInd->var, &epsilon,
                      &mode, &maxInnerIterations, &nsim,
                      &imp, fInd->zm, &izs, &rzs, &dzs, &id);
-              if (ISNA(f)) { if (!haveBest) return 0; restoreBest(); } else keepBest();
+              if (ISNA(f)) { if (!haveBest) return 0; restoreBest(); } else keepBest(); keepCand();
               // nF = fInd->nInnerF - nF;
               // if (nF > 3) tryAgain = false;
               {
@@ -3951,7 +3970,7 @@ static inline int innerOpt1(int id, int likId) {
                        &mode, &maxInnerIterations, &nsim,
                        &imp, fInd->zm,
                        &izs, &rzs, &dzs, &id);
-                if (ISNA(f)) { if (!haveBest) return 0; restoreBest(); } else keepBest();
+                if (ISNA(f)) { if (!haveBest) return 0; restoreBest(); } else keepBest(); keepCand();
                 //nF = fInd->nInnerF-nF;
                 // if (nF > 3) tryAgain = false;
                 {
@@ -3989,7 +4008,7 @@ static inline int innerOpt1(int id, int likId) {
       if (_lastStart) return 0;
       continue;
     }
-    keepBest();
+    keepBest(); keepCand();
     // if (fail != 6 && fail != 7 && fail != 8 && fail != 27){
     //   // did not converge
     //   if (fInd->doEtaNudge == 1 && op_focei.etaNudge != 0.0){
@@ -4024,6 +4043,43 @@ static inline int innerOpt1(int id, int likId) {
   // ultimately sees.
   if (haveBest && (!R_FINITE(f) || fBest < f)) {
     restoreBest();
+  }
+  // The inner optimizer minimizes the JOINT density.  The objective the fit
+  // reports is the MARGINAL one LikInner2() forms, which adds the Laplace
+  // log|H| term evaluated at the eta -- so two converged etas can order one way
+  // on the inner objective and the other way on what the outer optimizer sees.
+  // Choosing among restarts on the inner objective alone therefore hands the
+  // fit the worse of them whenever the two disagree (#1040): the mceta floor
+  // pass could win the inner comparison and still come out above mceta=0 on the
+  // reported objective.
+  //
+  // Re-rank on the marginal, but only when the restarts actually produced more
+  // than one candidate -- with a single candidate there is nothing to choose
+  // and this costs nothing, which is every inner solve on the default path.
+  // likId != 0 is a finite-difference leg: it must stay comparable with the
+  // central leg rather than pick its own winner, and LikInner2() would clobber
+  // the lik[1]/lik[2] slot that leg is filling.
+  if (likId == 0 && candEta.size() > 1) {
+    op_focei.nInnerRanked.fetch_add(1, std::memory_order_relaxed);
+    int bestK = -1, bestInnerK = 0;
+    double bestMarg = 0.0;
+    for (size_t k = 0; k < candEta.size(); ++k) {
+      if (candF[k] < candF[(size_t)bestInnerK]) bestInnerK = (int)k;
+      double m = LikInner2(&candEta[k][0], 0, id);
+      // LikInner2 returns the individual log-likelihood; the outer objective is
+      // -2 times it, so the best candidate is the LARGEST.
+      if (!ISNA(m) && R_FINITE(m) && (bestK < 0 || m > bestMarg)) {
+        bestMarg = m;
+        bestK = (int)k;
+      }
+    }
+    if (bestK >= 0) {
+      if (bestK != bestInnerK) {
+        op_focei.nInnerReranked.fetch_add(1, std::memory_order_relaxed);
+      }
+      std::copy(candEta[(size_t)bestK].begin(), candEta[(size_t)bestK].end(), fInd->x);
+      f = candF[(size_t)bestK];
+    }
   }
 
   // only nudge once
@@ -7441,6 +7497,8 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.mcetaSamples.reset();
   op_focei.nMcetaZero.store(0, std::memory_order_relaxed);
   op_focei.nMcetaSample.store(0, std::memory_order_relaxed);
+  op_focei.nInnerRanked.store(0, std::memory_order_relaxed);
+  op_focei.nInnerReranked.store(0, std::memory_order_relaxed);
   op_focei.warm = foceiO.containsElementNamed("warm") ? as<int>(foceiO["warm"]) : 0;
   op_focei.maxOdeRecalc = as<int>(foceiO["maxOdeRecalc"]);
   op_focei.objfRecalN=0;
@@ -8658,6 +8716,8 @@ Environment foceiOuter(Environment e){
   op_focei.nAnalyticGradDirect=0;
   op_focei.nMcetaZero.store(0, std::memory_order_relaxed);
   op_focei.nMcetaSample.store(0, std::memory_order_relaxed);
+  op_focei.nInnerRanked.store(0, std::memory_order_relaxed);
+  op_focei.nInnerReranked.store(0, std::memory_order_relaxed);
   op_focei.nDeclineNewton=0;
   op_focei.nDeclineE0=0;
   op_focei.nDeclineOther=0;
@@ -11312,6 +11372,12 @@ void foceiFinalizeTables(Environment e){
           _details += "; grad: fd";
         }
       }
+      // Inner restarts ranked on the marginal objective, and how often that
+      // ordered them differently from the inner objective.  Not gated on mceta:
+      // the nudge cascade produces multiple candidates too.
+      e["nInnerRerank"] = IntegerVector::create(
+        _["ranked"] = op_focei.nInnerRanked.load(std::memory_order_relaxed),
+        _["flipped"] = op_focei.nInnerReranked.load(std::memory_order_relaxed));
       if (op_focei.mceta >= 1) {
         // Which mceta candidate each inner solve started from.  Not gated on
         // `fast`: mceta>=1 is independent of the analytic gradient.
