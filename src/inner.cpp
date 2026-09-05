@@ -4749,13 +4749,19 @@ void innerOpt() {
         for (int id = 0; id < nsubAll; ++id) {
           for (int k = 0; k < nmc; ++k) {
             NumericMatrix samp = fSample(omega);
-            // The destination column is exactly neta wide; .sampleOmega is an R
-            // function, so check rather than trust its length.
-            if (samp.size() != op_focei.neta) {
-              stop(_("mceta: the omega sample must have %d elements"), op_focei.neta);
+            // The destination column is exactly neta wide and .sampleOmega is an
+            // R function, so bound the copy by the destination rather than by
+            // what R handed back.  A short draw leaves the tail at zero (an
+            // eta=0 candidate), which is a starting point, not a wrong answer --
+            // so this needs no error, and must not raise one: innerOpt() unwinds
+            // into the caller of the per-subject parallel region.
+            int nCopy = (int)samp.size();
+            if (nCopy > op_focei.neta) nCopy = op_focei.neta;
+            double *dest = op_focei.mcetaSamples.slice(id).colptr(k);
+            std::copy(samp.begin(), samp.begin() + nCopy, dest);
+            if (nCopy < op_focei.neta) {
+              std::fill(dest + nCopy, dest + op_focei.neta, 0.0);
             }
-            std::copy(samp.begin(), samp.end(),
-                      op_focei.mcetaSamples.slice(id).colptr(k));
           }
         }
       }
