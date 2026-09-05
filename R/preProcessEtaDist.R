@@ -256,3 +256,69 @@ attr(nmObjGet.etaDistCor, "desc") <-
   if (inherits(.info, "try-error")) return(NULL)
   .info
 }
+
+#' Report a declared distribution's expansion the way the model was written
+#'
+#' `rxEtaDistExpand()` leaves two kinds of row in `parFixed` that the user
+#' never wrote and cannot read:
+#'
+#'  * the latent standard normals (`rxz.<eta>`).  Their variance is fixed at
+#'    one by construction -- that is what makes the copula a copula -- so they
+#'    are not estimates, and they print as `NA` in every column.
+#'  * the copula correlations (`rxCor.<i>.<j>`).  These ARE estimated, but the
+#'    number carried is the UNCONSTRAINED parameter: the expansion writes
+#'    `tanh()` around it precisely so the optimizer can range over the whole
+#'    real line.  Printed as-is next to genuine estimates it reads as a
+#'    correlation and overstates it -- `rxCor = 1.047` is a correlation of
+#'    0.78, not 1.05, which is outside the legal range and so not even
+#'    plausibly a correlation.  (Two of the summaries written while developing
+#'    this feature quoted it as one.)
+#'
+#' So the latent rows are dropped, and the correlation rows get `tanh()` in
+#' their back-transformed column, which is where a reader looks for the
+#' quantity on the natural scale.  `fit$etaDistCor` remains the way to get the
+#' whole matrix.
+#'
+#' @param ret fit object
+#' @return `ret`, with the expansion's rows made readable
+#' @noRd
+#' @author Matthew L. Fidler
+.postFinalEtaDistParFixed <- function(ret) {
+  .env <- try(ret$env, silent=TRUE)
+  if (inherits(.env, "try-error") || is.null(.env)) return(ret)
+  .pfd <- try(get("parFixedDf", envir=.env), silent=TRUE)
+  if (inherits(.pfd, "try-error") || is.null(.pfd)) return(ret)
+  .nm <- rownames(.pfd)
+  if (is.null(.nm)) return(ret)
+  .cor <- grepl("^rxCor[.]", .nm)
+  .lat <- grepl("^rxz[.]", .nm)
+  if (!any(.cor) && !any(.lat)) return(ret)
+  .bck <- which(grepl("Back", names(.pfd)))
+  .est <- which(grepl("Est", names(.pfd)))
+  if (any(.cor) && length(.bck) == 1L && length(.est) >= 1L) {
+    .pfd[.cor, .bck] <- tanh(.pfd[.cor, .est[1]])
+  }
+  if (any(.lat)) .pfd <- .pfd[!.lat, , drop=FALSE]
+  assign("parFixedDf", .pfd, envir=.env)
+  ## the printed copy carries formatted strings, so it is edited in the same
+  ## way rather than reformatted from the numeric frame
+  .pf <- try(get("parFixed", envir=.env), silent=TRUE)
+  if (!inherits(.pf, "try-error") && !is.null(.pf)) {
+    .nm2 <- rownames(.pf)
+    .cor2 <- grepl("^rxCor[.]", .nm2)
+    .lat2 <- grepl("^rxz[.]", .nm2)
+    .bck2 <- which(grepl("Back", names(.pf)))
+    if (any(.cor2) && length(.bck2) == 1L) {
+      .sig <- try(ret$control$sigdig, silent=TRUE)
+      if (inherits(.sig, "try-error") || !is.numeric(.sig)) .sig <- 3
+      .v <- tanh(.pfd[rownames(.pfd) %in% .nm2[.cor2], .est[1]])
+      .pf[.cor2, .bck2] <- formatC(signif(.v, digits=.sig), digits=.sig,
+                                   format="fg", flag="#")
+    }
+    if (any(.lat2)) .pf <- .pf[!.lat2, , drop=FALSE]
+    assign("parFixed", .pf, envir=.env)
+  }
+  ret
+}
+
+postFinalObjectHooksAdd(".postFinalEtaDistParFixed", .postFinalEtaDistParFixed)
