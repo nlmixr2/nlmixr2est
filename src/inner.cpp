@@ -4203,7 +4203,17 @@ static inline int innerOpt1(int id, int likId) {
                &mode, &maxInnerIterations, &nsim,
                &imp, fInd->zm,
                &izs, &rzs, &dzs, &id);
-        if (ISNA(f)) { if (!haveBest) return 0; restoreBest(); } else { keepBest(); keepCand(fInd->badSolve == 0); }
+        if (ISNA(f)) {
+          if (!haveBest) {
+            // Nothing usable in THIS pass.  haveBest is pass-local, so that is
+            // not "nothing usable for this subject": an earlier starting point
+            // may already have a candidate the selection will take (#1044).
+            if (!candEta.empty()) break;
+            if (_lastStart) return 0;
+            continue;
+          }
+          restoreBest();
+        } else { keepBest(); keepCand(fInd->badSolve == 0); }
         // nF = fInd->nInnerF - nF;
         // if (nF > 3) tryAgain = false;
         // The re-check below used to be wrapped in `if (!tryAgain)`, which can
@@ -4231,7 +4241,17 @@ static inline int innerOpt1(int id, int likId) {
                  fInd->var, &epsilon,
                  &mode, &maxInnerIterations, &nsim,
                  &imp, fInd->zm, &izs, &rzs, &dzs, &id);
-          if (ISNA(f)) { if (!haveBest) return 0; restoreBest(); } else { keepBest(); keepCand(fInd->badSolve == 0); }
+          if (ISNA(f)) {
+            if (!haveBest) {
+              // Nothing usable in THIS pass.  haveBest is pass-local, so that is
+              // not "nothing usable for this subject": an earlier starting point
+              // may already have a candidate the selection will take (#1044).
+              if (!candEta.empty()) break;
+              if (_lastStart) return 0;
+              continue;
+            }
+            restoreBest();
+          } else { keepBest(); keepCand(fInd->badSolve == 0); }
           // nF = fInd->nInnerF - nF;
           // if (nF > 3) tryAgain = false;
           {
@@ -4255,7 +4275,17 @@ static inline int innerOpt1(int id, int likId) {
                    fInd->var, &epsilon,
                    &mode, &maxInnerIterations, &nsim,
                    &imp, fInd->zm, &izs, &rzs, &dzs, &id);
-            if (ISNA(f)) { if (!haveBest) return 0; restoreBest(); } else { keepBest(); keepCand(fInd->badSolve == 0); }
+            if (ISNA(f)) {
+              if (!haveBest) {
+                // Nothing usable in THIS pass.  haveBest is pass-local, so that is
+                // not "nothing usable for this subject": an earlier starting point
+                // may already have a candidate the selection will take (#1044).
+                if (!candEta.empty()) break;
+                if (_lastStart) return 0;
+                continue;
+              }
+              restoreBest();
+            } else { keepBest(); keepCand(fInd->badSolve == 0); }
             // nF = fInd->nInnerF - nF;
             // if (nF > 3) tryAgain = false;
             {
@@ -4279,7 +4309,17 @@ static inline int innerOpt1(int id, int likId) {
                      fInd->var, &epsilon,
                      &mode, &maxInnerIterations, &nsim,
                      &imp, fInd->zm, &izs, &rzs, &dzs, &id);
-              if (ISNA(f)) { if (!haveBest) return 0; restoreBest(); } else { keepBest(); keepCand(fInd->badSolve == 0); }
+              if (ISNA(f)) {
+                if (!haveBest) {
+                  // Nothing usable in THIS pass.  haveBest is pass-local, so that is
+                  // not "nothing usable for this subject": an earlier starting point
+                  // may already have a candidate the selection will take (#1044).
+                  if (!candEta.empty()) break;
+                  if (_lastStart) return 0;
+                  continue;
+                }
+                restoreBest();
+              } else { keepBest(); keepCand(fInd->badSolve == 0); }
               // nF = fInd->nInnerF - nF;
               // if (nF > 3) tryAgain = false;
               {
@@ -4301,7 +4341,17 @@ static inline int innerOpt1(int id, int likId) {
                        &mode, &maxInnerIterations, &nsim,
                        &imp, fInd->zm,
                        &izs, &rzs, &dzs, &id);
-                if (ISNA(f)) { if (!haveBest) return 0; restoreBest(); } else { keepBest(); keepCand(fInd->badSolve == 0); }
+                if (ISNA(f)) {
+                  if (!haveBest) {
+                    // Nothing usable in THIS pass.  haveBest is pass-local, so that is
+                    // not "nothing usable for this subject": an earlier starting point
+                    // may already have a candidate the selection will take (#1044).
+                    if (!candEta.empty()) break;
+                    if (_lastStart) return 0;
+                    continue;
+                  }
+                  restoreBest();
+                } else { keepBest(); keepCand(fInd->badSolve == 0); }
                 //nF = fInd->nInnerF-nF;
                 // if (nF > 3) tryAgain = false;
                 {
