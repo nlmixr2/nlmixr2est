@@ -1201,9 +1201,19 @@ foceiControl(
   the extrapolated eta and eta=0, keeping the better; both \`-2\` and
   \`-1\` fall back to keeping the last eta when no analytic \`d eta\*/d
   theta\` is available (\`fast = FALSE\`). \`0\` uses eta=0 for each
-  inner optimization; for \`n\>0\`, the last eta, eta=0, and n-1 etas
-  sampled from omega are each evaluated and the best (by inner
-  objective) is used.
+  inner optimization; for \`n\>0\`, eta=0 and n-1 etas sampled from
+  omega are each evaluated and the best (by inner objective) starts the
+  inner optimization. The carried last eta is deliberately not one of
+  the \`n\>0\` candidates – it is the previous iteration's converged
+  conditional mode, so it would win for every subject and \`n\>0\` would
+  reduce to the keep-last behavior of \`-1\`/\`-2\`. When a sampled eta
+  wins, the inner problem is also solved from eta=0 and the better
+  converged result kept – compared on the marginal objective the fit
+  reports, which carries the Laplace \`log\|H\|\` term, not on the inner
+  objective the optimizer minimizes – so no inner solve ends above the
+  one \`0\` would have reached. The search is skipped while the outer
+  gradient is being differenced, where the eta is pinned to the central
+  evaluation's mode.
 
 - warm:
 
