@@ -129,7 +129,9 @@
   above the one `mceta = 0` would have reached -- without that, a draw that
   merely looked better could converge worse (measured on a fixed-omega
   inverse-CDF model evaluated at fixed parameters: `mceta = 2` gave -2251.0
-  against `mceta = 0`'s -2302.5, and now gives -2338.8).  `mceta = 1` means eta=0 rather than being a silent no-op,
+  against `mceta = 0`'s -2302.5, and now gives -2338.8).  The floor solve wraps
+  the whole inner-optimizer dispatch rather than living inside one arm of it, so
+  it holds for whichever inner optimizer is configured.  `mceta = 1` means eta=0 rather than being a silent no-op,
   a non-finite eta=0 no longer pins the search, and the draws are made once per
   fit instead of at every objective evaluation, so the objective is the same
   function at every evaluation.  The fit records which

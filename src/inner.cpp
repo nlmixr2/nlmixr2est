@@ -3799,6 +3799,13 @@ static inline int innerOpt1(int id, int likId) {
     mode = fInd->mode;
     std::fill_n(&fInd->var[0], fop->neta, 0.1);
     std::fill_n(fInd->x, fop->neta, 0.0);
+    // n1qn1_ takes these BY POINTER and writes back what it used (see the note
+    // where they are declared), so the floor pass has to be handed a fresh
+    // budget -- otherwise it inherits the first pass's spent iteration and
+    // simulation counts and stops before it has optimized anything.
+    maxInnerIterations = fop->maxInnerIterations;
+    nsim = fop->nsim;
+    imp = fop->imp;
     nF = fInd->nInnerF;
   }
   if (n1qn1Inner) {
