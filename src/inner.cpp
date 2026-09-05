@@ -4589,7 +4589,15 @@ static inline int innerOpt1(int id, int likId) {
     // the count #1044 needed: without it a fit whose trust solves all failed
     // is indistinguishable from one where they all converged.
     if (!converged) op_focei.nTrustFail.fetch_add(1, std::memory_order_relaxed);
-    if (!haveBest) return 0;
+    // haveBest is PASS-LOCAL, so "this pass produced nothing" is not "this
+    // subject produced nothing": under mceta>=1 an earlier pass may already
+    // have a converged candidate, and returning 0 here would throw it away and
+    // fail the subject.  Same three-way exit the n1qn1 arm takes (#1044).
+    if (!haveBest) {
+      if (!candEta.empty()) break;
+      if (_lastStart) return 0;
+      continue;
+    }
     } catch (const std::bad_alloc &) {
       // System out of memory mid-solve -- see the branch-level comment above.
       // Every other exit from this branch marks a failed attempt via
@@ -4597,13 +4605,21 @@ static inline int innerOpt1(int id, int likId) {
       // this subject) -- match that here even though the caller's own
       // innerOpt1() return value already signals the failure on its own.
       fInd->badSolve = 1;
-      if (!haveBest) return 0;
+      if (!haveBest) {
+        if (!candEta.empty()) break;
+        if (_lastStart) return 0;
+        continue;
+      }
     } catch (...) {
       // Defense in depth, matching trust_solve_c()'s own catch(...) fallback:
       // any other C++ exception escaping this branch is equally fatal if it
       // crosses the OpenMP boundary uncaught.
       fInd->badSolve = 1;
-      if (!haveBest) return 0;
+      if (!haveBest) {
+        if (!candEta.empty()) break;
+        if (_lastStart) return 0;
+        continue;
+      }
     }
   } else {
     int fail=0, fncount=0, grcount=0;

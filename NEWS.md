@@ -121,6 +121,12 @@
   what produce a mixed candidate set.  A failed attempt is now used only when
   no succeeded one is available.
 
+- `innerOpt="trust"` with `mceta >= 1` no longer fails a subject whose eta=0
+  floor pass produced nothing.  The "did this pass find anything" check is
+  per-pass, but the trust arm treated it as "did this subject find anything"
+  and returned a failed inner solve, discarding a converged candidate an
+  earlier starting point had already produced.
+
 - `innerOpt="trust"` re-solves in place before falling back to its eta-nudge
   restarts.  When the inner Newton step still fits inside the current trust
   radius, the solve stopped on its own step-size criterion rather than on the
