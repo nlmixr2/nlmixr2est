@@ -567,6 +567,7 @@ struct focei_options {
   std::atomic<int> nTrustSolverNoConv{0}; // trust_solve_c's OWN flag said not converged
   std::atomic<int> nTrustPush{0};    // converged flag withdrawn by the Newton-decrement gate
   std::atomic<int> nTrustRetry{0};   // radius-escalation retries attempted
+  std::atomic<int> nTrustWarm{0};    // same-radius re-solves from the point just found
   std::atomic<int> nTrustNudge{0};   // nudge-cascade attempts
   std::atomic<int> nTrustFail{0};    // inner solves still non-converged after every retry
   // per-fit count of calcEtaHessian() calls that used the hessianMethod=
@@ -4531,6 +4532,16 @@ static inline int innerOpt1(int id, int likId) {
     };
 
     bool converged = trustSolveAt(false, 0.0);
+    if (!converged && pushDist >= 0.0 && pushDist <= curRmax) {
+      // The Newton step FITS in the current radius and trust_solve_c still
+      // stopped: it hit its own fterm/mterm step-size criterion, which is
+      // measured against the PREVIOUS iterate, not against the model's own
+      // remaining decrease.  A fresh solve from the point just found resets
+      // that history and can move again, and it keeps the good point -- the
+      // nudge cascade below throws it away and restarts from a fill.
+      op_focei.nTrustWarm.fetch_add(1, std::memory_order_relaxed);
+      converged = trustSolveAt(false, 0.0);
+    }
     if (!converged && pushDist > curRmax) {
       // Radius-escalation retry from the point just found (already the best
       // seen so far, via keepBest() above) before falling back to eta nudges.
@@ -8612,6 +8623,7 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.nTrustSolverNoConv.store(0, std::memory_order_relaxed);
   op_focei.nTrustPush.store(0, std::memory_order_relaxed);
   op_focei.nTrustRetry.store(0, std::memory_order_relaxed);
+  op_focei.nTrustWarm.store(0, std::memory_order_relaxed);
   op_focei.nTrustNudge.store(0, std::memory_order_relaxed);
   op_focei.nTrustFail.store(0, std::memory_order_relaxed);
   op_focei.nHessianQN.store(0, std::memory_order_relaxed);
@@ -12170,6 +12182,7 @@ void foceiFinalizeTables(Environment e){
           // convergence the Newton-decrement gate withdrew to force a retry.
           _["solverFail"] = op_focei.nTrustSolverNoConv.load(std::memory_order_relaxed),
           _["newtonGate"] = op_focei.nTrustPush.load(std::memory_order_relaxed),
+          _["warmRetry"] = op_focei.nTrustWarm.load(std::memory_order_relaxed),
           _["radiusRetry"] = op_focei.nTrustRetry.load(std::memory_order_relaxed),
           _["nudge"] = op_focei.nTrustNudge.load(std::memory_order_relaxed),
           // Subjects whose whole cascade -- first solve, radius escalation and
