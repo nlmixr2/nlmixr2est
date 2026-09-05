@@ -83,6 +83,35 @@
   if (nrow(d) == 0L) return(invisible())
   if (!is.character(est) || length(est) != 1L) return(invisible())
   if (.isEtaDistMethod(est, control)) return(invisible())
+  if (identical(est, "saem")) {
+    ## Measured, not assumed: saem's phi space is indexed by the model's
+    ## THETAS, and `covstruct <- model$omega` (R/saem_fit.R:302) marks which of
+    ## those carry a random effect.  A declared random effect reaches the model
+    ## through `phiU(rxN.<eta>)` rather than being added to a theta, so it
+    ## attaches to no phi parameter and saem never samples it.  Traced on a
+    ## model with one declared and one ordinary random effect:
+    ##
+    ##   UI etas:       rxz.eta.cl, eta.v
+    ##   saem phi names: lclm, lclrv, tv, tka
+    ##   nphi1:          1        <- only eta.v is sampled
+    ##
+    ## So the fit runs, prints plausible iterations, and estimates a model
+    ## WITHOUT the declared random effect in it.  It then happens to die in
+    ## .getSaemOmega() (nlmixr2est#1047) because that function iterates the
+    ## UI's etas and indexes a Gamma2_phi1 sized for the sampled ones -- which
+    ## is the only reason the wrong answer is not returned silently.  Refusing
+    ## is the honest behaviour until saem can sample a random effect that is
+    ## not in `theta + eta` form.
+    stop("est=\"saem\" cannot yet use declared non-normal random effect ",
+         "distribution(s) on '", paste(d$name, collapse="', '"), "'.\n",
+         "saem indexes its random effects by the theta each one is added to, ",
+         "and a declared distribution enters through an inverse CDF rather ",
+         "than as 'theta + eta', so saem would not sample it -- it would fit ",
+         "the model with that random effect absent.\n",
+         "Use est=\"focei\" (or \"imp\"/\"impmap\"/\"agq\"), which take the ",
+         "declared distribution as written. See nlmixr2est#1047.",
+         call.=FALSE)
+  }
   stop("est=\"", est, "\" cannot use the declared non-normal random effect ",
        "distribution(s) on '", paste(d$name, collapse="', '"), "'",
        call.=FALSE)

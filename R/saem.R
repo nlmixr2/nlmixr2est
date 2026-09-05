@@ -582,15 +582,54 @@
   # back to Gamma2_phi1 for older cached fits without the field.
   .curOme <- if (!is.null(.saem$Gamma2_phi1Report)) .saem$Gamma2_phi1Report else .saem$Gamma2_phi1
   .mat <- nlme::random.effects(.saem)
-  .mat2 <- .mat[, .etaTrans, drop = FALSE]
+  ## An eta whose saemOmegaTrans entry is NA is one saem has no parameter for
+  ## (see rxUiGet.saemOmegaTrans): it is not in `theta + eta` form, so it owns
+  ## no Gamma2_phi1 column and no random.effects() column either.  Indexing
+  ## either with its position is what produced #1047's "subscript out of
+  ## bounds"; its per-subject values are zero because saem never sampled it.
+  .mat2 <- matrix(0, nrow=nrow(.mat), ncol=.len)
+  .haveCol <- which(!is.na(.etaTrans))
+  if (length(.haveCol)) {
+    .mat2[, .haveCol] <- .mat[, .etaTrans[.haveCol], drop = FALSE]
+  }
   colnames(.mat2) <- .etaNames
   for (i in seq_along(.eta$name)) {
     .e1 <- .eta$neta1[i]
     .e2 <- .eta$neta2[i]
     .o1 <- .etaTrans[.e1]
     .o2 <- .etaTrans[.e2]
+    if (is.na(.o1) || is.na(.o2)) {
+      ## saem did not estimate this one, so report what the model declares for
+      ## it rather than inventing a number -- and say so, because a random
+      ## effect the method silently did not fit is not a detail.
+      .ome[.e1, .e2] <- .ome[.e2, .e1] <- .eta$est[i]
+      next
+    }
     .ome[.e1, .e2] <- .curOme[.o1, .o2]
     .ome[.e2, .e1] <- .curOme[.o2, .o1]
+  }
+  .notFit <- .etaNames[is.na(.etaTrans[seq_len(.len)])]
+  if (length(.notFit)) {
+    warning(paste0("saem did not estimate the variance of: ",
+                   paste(.notFit, collapse=", "), "\n",
+                   "saem parameterizes a random effect by the theta it is ",
+                   "added to, and these are not in 'theta + eta' form, so they ",
+                   "were not sampled; their ini() values are reported unchanged"),
+            call.=FALSE)
+  }
+  ## A mu-referenced variance declared as a fixed zero was left estimable while
+  ## saem ran, so the random effect could move and the mu-theta M-step had a
+  ## conditional mean to shift the theta by (see .zeroOmegaMuRefEtas()).  The
+  ## declared value goes back now: the theta has absorbed what that random
+  ## effect was carrying, and reporting the working variance as if it were an
+  ## estimate would claim between-subject variability the model does not have.
+  .zeroMu <- .zeroOmegaMuRefStash(.ui)
+  if (length(.zeroMu)) {
+    .zi <- which(.etaNames %in% .zeroMu)
+    for (.k in .zi) {
+      .ome[.k, ] <- 0
+      .ome[, .k] <- 0
+    }
   }
   env$omega <- .ome
   .saemWarnDegenerateOmega(.ome,
@@ -1548,7 +1587,9 @@ nlmixr2Est.saem <- function(env, ...) {
   .saemFamilyFit(env,  ...)
 }
 attr(nlmixr2Est.saem, "covPresent") <- TRUE
-attr(nlmixr2Est.saem, "etaDist") <- TRUE
+## Declared non-normal random effects are refused for saem: it would not sample
+## them at all (see .etaDistRefuse() in R/preProcessEtaDist.R, nlmixr2est#1047).
+attr(nlmixr2Est.saem, "etaDist") <- FALSE
 attr(nlmixr2Est.saem, "unbounded") <- TRUE
 attr(nlmixr2Est.saem, "mu") <- TRUE
 # Whether the shared IOV pre-processing rewrite (.uiApplyIov(), R/iov.R) runs.

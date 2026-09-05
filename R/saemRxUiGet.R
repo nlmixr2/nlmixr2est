@@ -218,12 +218,24 @@ attr(rxUiGet.saemEtaTransPred, "rstudio") <- c(1L, 3L)
 #' @export
 rxUiGet.saemOmegaTrans <- function(x, ...) {
   .etaTrans <- rxUiGet.saemEtaTrans(x, ...)
-  .o <- order(.etaTrans)
+  ## NA means saem has no parameter for this random effect -- .saemEtaTrans()
+  ## returns NA when the eta is neither mu-referenced nor named among the
+  ## thetas, which is what happens to a random effect that reaches the model
+  ## through something other than `theta + eta`.  saem does not sample such an
+  ## eta and Gamma2_phi1 has no column for it, so the NA has to SURVIVE: the
+  ## loop below used to walk `order()`'s output and hand every position a rank,
+  ## turning "not modelled" into a valid-looking index that then ran off the end
+  ## of Gamma2_phi1 (#1047).  Only the modelled etas are ranked, and they are
+  ## ranked among themselves so the ranks line up with Gamma2_phi1's columns.
   .etaTrans2 <- .etaTrans
-  .c <- 1
-  for (i in .o) {
-    .etaTrans2[i] <- .c
-    .c <- .c + 1
+  .ok <- which(!is.na(.etaTrans))
+  if (length(.ok)) {
+    .o <- .ok[order(.etaTrans[.ok])]
+    .c <- 1
+    for (i in .o) {
+      .etaTrans2[i] <- .c
+      .c <- .c + 1
+    }
   }
   .etaTrans2
 }
