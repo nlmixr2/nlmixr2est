@@ -559,6 +559,17 @@ struct focei_options {
   double trustFterm;
   double trustMterm;
   std::atomic<int> nTrustInner{0}; // per-fit count of trust_solve_c calls (test evidence)
+  // innerOpt="trust" per-fit OUTCOME counts (#1044).  nTrustInner counts CALLS,
+  // so a fit whose inner solves all converged and one where every one of them
+  // failed look identical from the fit object; these separate the two.
+  std::atomic<int> nTrustError{0};   // tres.error < 0 -- no usable eta at all
+  std::atomic<int> nTrustNoConv{0};  // attempts that ended non-converged, either way
+  std::atomic<int> nTrustSolverNoConv{0}; // trust_solve_c's OWN flag said not converged
+  std::atomic<int> nTrustPush{0};    // converged flag withdrawn by the Newton-decrement gate
+  std::atomic<int> nTrustRetry{0};   // radius-escalation retries attempted
+  std::atomic<int> nTrustWarm{0};    // same-radius re-solves from the point just found
+  std::atomic<int> nTrustNudge{0};   // nudge-cascade attempts
+  std::atomic<int> nTrustFail{0};    // inner solves still non-converged after every retry
   // per-fit count of calcEtaHessian() calls that used the hessianMethod=
   // quasi-Newton update (as opposed to a fresh FD pass) -- test evidence the
   // mechanism actually ran, not just that the numbers happen to agree.
@@ -712,6 +723,14 @@ struct focei_options {
   // one that says the Laplace log|H| term actually changes the choice.
   std::atomic<int> nInnerRanked{0};
   std::atomic<int> nInnerReranked{0};
+  // Inner solves that had to report a candidate no optimizer arm actually
+  // converged on -- every candidate was a failed attempt, so the selection had
+  // nothing good to choose from (#1044).
+  std::atomic<int> nInnerNoGood{0};
+  // Inner solves where a failed attempt's candidate was dropped from the
+  // selection because a succeeded one was available.  This is the count that
+  // shows the rule is doing something, rather than that it merely exists.
+  std::atomic<int> nInnerDropped{0};
   std::atomic<int> didEtaReset{0};
   double resetThetaSize = std::numeric_limits<double>::infinity();
   double resetThetaFinalSize = std::numeric_limits<double>::infinity();
@@ -4071,10 +4090,28 @@ static inline int innerOpt1(int id, int likId) {
   // objective (see the re-rank after the loop).
   std::vector< std::vector<double> > candEta;
   std::vector<double> candF;
-  auto keepCand = [&]() {
+  // Whether the attempt that produced each candidate actually SUCCEEDED (the
+  // optimizer reported convergence and no solve failure latched).  A candidate
+  // that did not is a fallback, never a choice: the marginal re-rank below can
+  // otherwise hand a failed attempt's eta to the fit even though a succeeded
+  // attempt was available, because a failed attempt's Laplace log|H| term is
+  // computed at a point the objective never actually descended to and can come
+  // out larger.  mceta>=1 is where a mixed candidate set is common (#1044).
+  std::vector<char> candOk;
+  // The three vectors are read by index against each other, so they must never
+  // end up ragged.  Everything that can allocate -- the eta copy and all three
+  // reserves -- is done FIRST, so a std::bad_alloc (which the trust arm's own
+  // catch swallows, letting the selection below still run) leaves nothing
+  // pushed; the three push_backs that follow allocate nothing and cannot throw.
+  auto keepCand = [&](bool ok) {
     if (!R_FINITE(f)) return;
-    candEta.push_back(std::vector<double>(fInd->x, fInd->x + fop->neta));
+    std::vector<double> eta(fInd->x, fInd->x + fop->neta);
+    candEta.reserve(candEta.size() + 1);
+    candF.reserve(candF.size() + 1);
+    candOk.reserve(candOk.size() + 1);
+    candEta.push_back(std::move(eta));
     candF.push_back(f);
+    candOk.push_back(ok ? (char)1 : (char)0);
   };
   // Starting points this inner solve runs from.  mceta>=1 picks its start by the
   // objective AT that point, which does not order the points the optimization
@@ -4085,8 +4122,9 @@ static inline int innerOpt1(int id, int likId) {
   // branch of it, so it holds for whichever inner optimizer is configured, and a
   // new optimizer arm gets the floor pass without being told about it.  An arm
   // only has to leave the converged objective in `f` and call both keepBest()
-  // (this pass's running minimum) and keepCand() (the candidate the marginal
-  // re-rank below chooses from).  On a non-finite `f` it should hand the loop
+  // (this pass's running minimum) and keepCand(ok) (the candidate the marginal
+  // re-rank below chooses from, with `ok` saying whether that attempt actually
+  // converged -- see candOk).  On a non-finite `f` it should hand the loop
   // `_lastStart` (see the arms below) rather than returning, so a failed
   // sampled start still gets its eta=0 pass.
   int nInnerStart = mcetaSampleStart ? 2 : 1;
@@ -4131,7 +4169,7 @@ static inline int innerOpt1(int id, int likId) {
       if (_lastStart) return 0;
       continue;
     }
-    keepBest(); keepCand();
+    keepBest(); keepCand(fInd->badSolve == 0);
     nF = fInd->nInnerF-nF;
     // REprintf("innerCost id: %d, fInd->nInnerF: %d", id, fInd->nInnerF);
     // If stays at zero try another point?
@@ -4165,7 +4203,17 @@ static inline int innerOpt1(int id, int likId) {
                &mode, &maxInnerIterations, &nsim,
                &imp, fInd->zm,
                &izs, &rzs, &dzs, &id);
-        if (ISNA(f)) { if (!haveBest) return 0; restoreBest(); } else keepBest(); keepCand();
+        if (ISNA(f)) {
+          if (!haveBest) {
+            // Nothing usable in THIS pass.  haveBest is pass-local, so that is
+            // not "nothing usable for this subject": an earlier starting point
+            // may already have a candidate the selection will take (#1044).
+            if (!candEta.empty()) break;
+            if (_lastStart) return 0;
+            continue;
+          }
+          restoreBest();
+        } else { keepBest(); keepCand(fInd->badSolve == 0); }
         // nF = fInd->nInnerF - nF;
         // if (nF > 3) tryAgain = false;
         // The re-check below used to be wrapped in `if (!tryAgain)`, which can
@@ -4193,7 +4241,17 @@ static inline int innerOpt1(int id, int likId) {
                  fInd->var, &epsilon,
                  &mode, &maxInnerIterations, &nsim,
                  &imp, fInd->zm, &izs, &rzs, &dzs, &id);
-          if (ISNA(f)) { if (!haveBest) return 0; restoreBest(); } else keepBest(); keepCand();
+          if (ISNA(f)) {
+            if (!haveBest) {
+              // Nothing usable in THIS pass.  haveBest is pass-local, so that is
+              // not "nothing usable for this subject": an earlier starting point
+              // may already have a candidate the selection will take (#1044).
+              if (!candEta.empty()) break;
+              if (_lastStart) return 0;
+              continue;
+            }
+            restoreBest();
+          } else { keepBest(); keepCand(fInd->badSolve == 0); }
           // nF = fInd->nInnerF - nF;
           // if (nF > 3) tryAgain = false;
           {
@@ -4217,7 +4275,17 @@ static inline int innerOpt1(int id, int likId) {
                    fInd->var, &epsilon,
                    &mode, &maxInnerIterations, &nsim,
                    &imp, fInd->zm, &izs, &rzs, &dzs, &id);
-            if (ISNA(f)) { if (!haveBest) return 0; restoreBest(); } else keepBest(); keepCand();
+            if (ISNA(f)) {
+              if (!haveBest) {
+                // Nothing usable in THIS pass.  haveBest is pass-local, so that is
+                // not "nothing usable for this subject": an earlier starting point
+                // may already have a candidate the selection will take (#1044).
+                if (!candEta.empty()) break;
+                if (_lastStart) return 0;
+                continue;
+              }
+              restoreBest();
+            } else { keepBest(); keepCand(fInd->badSolve == 0); }
             // nF = fInd->nInnerF - nF;
             // if (nF > 3) tryAgain = false;
             {
@@ -4241,7 +4309,17 @@ static inline int innerOpt1(int id, int likId) {
                      fInd->var, &epsilon,
                      &mode, &maxInnerIterations, &nsim,
                      &imp, fInd->zm, &izs, &rzs, &dzs, &id);
-              if (ISNA(f)) { if (!haveBest) return 0; restoreBest(); } else keepBest(); keepCand();
+              if (ISNA(f)) {
+                if (!haveBest) {
+                  // Nothing usable in THIS pass.  haveBest is pass-local, so that is
+                  // not "nothing usable for this subject": an earlier starting point
+                  // may already have a candidate the selection will take (#1044).
+                  if (!candEta.empty()) break;
+                  if (_lastStart) return 0;
+                  continue;
+                }
+                restoreBest();
+              } else { keepBest(); keepCand(fInd->badSolve == 0); }
               // nF = fInd->nInnerF - nF;
               // if (nF > 3) tryAgain = false;
               {
@@ -4263,7 +4341,17 @@ static inline int innerOpt1(int id, int likId) {
                        &mode, &maxInnerIterations, &nsim,
                        &imp, fInd->zm,
                        &izs, &rzs, &dzs, &id);
-                if (ISNA(f)) { if (!haveBest) return 0; restoreBest(); } else keepBest(); keepCand();
+                if (ISNA(f)) {
+                  if (!haveBest) {
+                    // Nothing usable in THIS pass.  haveBest is pass-local, so that is
+                    // not "nothing usable for this subject": an earlier starting point
+                    // may already have a candidate the selection will take (#1044).
+                    if (!candEta.empty()) break;
+                    if (_lastStart) return 0;
+                    continue;
+                  }
+                  restoreBest();
+                } else { keepBest(); keepCand(fInd->badSolve == 0); }
                 //nF = fInd->nInnerF-nF;
                 // if (nF > 3) tryAgain = false;
                 {
@@ -4413,6 +4501,14 @@ static inline int innerOpt1(int id, int likId) {
     // below to decide whether a wider-radius retry is worth attempting at
     // all before falling back to relocating the start point via nudges.
     double pushDist = -1.0; // -1: not computed / not usable this call
+    // trust_solve_c() allocates tres's argument/gradient/hessian arrays.  The
+    // arma work below (matrix copies, arma::solve) can throw std::bad_alloc,
+    // which the branch-level catch swallows -- so the free has to run on every
+    // exit from the lambda, not only the normal one.
+    struct TresGuard {
+      trust_result_t *r;
+      ~TresGuard() { trust_result_free_ptr(r); }
+    };
     auto trustSolveAt = [&](bool fill, double startVal) {
       if (fill) std::fill_n(fInd->x, npar, startVal);
       // Reset per attempt (mirrors n1qn1's cascade, which clears this before
@@ -4431,22 +4527,36 @@ static inline int innerOpt1(int id, int likId) {
       fInd->etaHasPrevQN = 0;
       pushDist = -1.0;
       topts.rmax = curRmax;
-      trust_result_t tres;
+      // Value-initialized so the guard below can free it even if the solve
+      // never allocates: trust_result_free() frees every member unconditionally
+      // and free(NULL) is a no-op, but free() on an indeterminate pointer is
+      // not.  The guard is armed BEFORE the call so an exception thrown out of
+      // trustInnerObjfun mid-solve still frees whatever was allocated.
+      trust_result_t tres = {};
+      TresGuard _tresGuard{&tres};
       trust_solve_c_ptr(npar, fInd->x, trustInnerObjfun, (void*)(&id), &topts, &tres);
       op_focei.nTrustInner.fetch_add(1, std::memory_order_relaxed);
       bool conv = false;
+      // trust_solve_c()'s OWN verdict, kept separate from `conv` because the
+      // Newton-decrement gate below withdraws `conv` to trigger a retry.  That
+      // gate is deliberately eager -- it exists to make the cascade try harder
+      // -- so it is the wrong thing to disqualify a candidate with: measured
+      // against n1qn1 on the same model, treating a gate withdrawal as "bad"
+      // discarded etas n1qn1 finds too and cost thousands of objective units.
+      // A candidate is bad only when the optimizer itself failed.
+      bool solveOk = false;
+      // Whether this attempt produced a result at all.  A hard error and a
+      // finite-looking call that returned NaN/Inf are the same thing here.
+      bool usable = false;
       if (tres.error >= 0 && tres.argument != NULL) {
         std::copy(tres.argument, tres.argument + npar, fInd->x);
         f = tres.value;
         conv = (bool)tres.converged;
+        solveOk = conv;
         if (R_FINITE(f) && !ISNA(f)) {
+          usable = true;
+          if (!conv) op_focei.nTrustSolverNoConv.fetch_add(1, std::memory_order_relaxed);
           keepBest();
-          // Record it for the marginal re-rank after the starting-point loop as
-          // well.  keepBest() is only the running minimum on the INNER objective
-          // (the recovery from a failed restart within this pass); the choice of
-          // which candidate the fit reports is made on LikInner2()'s marginal,
-          // which sees only what keepCand() recorded (#1040, #1044).
-          keepCand();
           if (tres.gradient != NULL) std::copy(tres.gradient, tres.gradient + npar, fInd->g);
           if (tres.gradient != NULL && tres.hessian != NULL) {
             arma::mat H(tres.hessian, npar, npar);
@@ -4463,29 +4573,56 @@ static inline int innerOpt1(int id, int likId) {
                 d2 += si * si;
               }
               pushDist = std::sqrt(d2);
-              if (conv && pushDist > pushTol) conv = false;
+              if (conv && pushDist > pushTol) {
+                conv = false;
+                op_focei.nTrustPush.fetch_add(1, std::memory_order_relaxed);
+              }
             }
             // Newton estimate unusable (singular/indefinite H, or not a
             // descent direction): leave conv at trust_solve_c()'s own flag
             // rather than fabricate a verdict from an untrustworthy estimate.
           }
+          // Record it for the marginal re-rank after the starting-point loop as
+          // well.  keepBest() is only the running minimum on the INNER objective
+          // (the recovery from a failed restart within this pass); the choice of
+          // which candidate the fit reports is made on LikInner2()'s marginal,
+          // which sees only what keepCand() recorded (#1040, #1044).  It is
+          // recorded on solveOk, not on the gated `conv`, so an eager retry
+          // trigger cannot also disqualify the point it was triggered at.
+          keepCand(solveOk && fInd->badSolve == 0);
         }
-      } else {
-        // Hard error (e.g. tres.error==-3: the nudged starting point itself
-        // was infeasible) -- fInd->x was already overwritten with the raw
-        // nudge fill above, but f is left untouched here otherwise. If a
-        // PRIOR attempt succeeded, f still equals fBest, so the shared
-        // restoreBest() guard below (`fBest < f`) would silently skip
-        // restoring: the reported objective would say fBest while fInd->x
-        // actually held this failed nudge point. Force f to +Inf so that
-        // guard always fires when this attempt didn't produce a usable eta.
-        f = std::numeric_limits<double>::infinity();
       }
-      trust_result_free_ptr(&tres);
+      if (!usable) {
+        // Either a hard error (e.g. tres.error==-3: the nudged starting point
+        // itself was infeasible) or a call that came back NaN/Inf.  fInd->x may
+        // already hold the raw nudge fill, and f is otherwise left untouched:
+        // if a PRIOR attempt succeeded, f still equals fBest, so the shared
+        // restoreBest() guard below (`fBest < f`) would silently skip restoring
+        // -- the reported objective would say fBest while fInd->x actually held
+        // this failed nudge point.  (A NaN f fails that comparison too.)  Force
+        // f to +Inf so the guard always fires when this attempt didn't produce
+        // a usable eta, and never report convergence on an unusable one.
+        f = std::numeric_limits<double>::infinity();
+        conv = false;
+        op_focei.nTrustError.fetch_add(1, std::memory_order_relaxed);
+      }
+      // Attempts that did not end converged, however they got there:
+      // error + solverFail + newtonGate.
+      if (!conv) op_focei.nTrustNoConv.fetch_add(1, std::memory_order_relaxed);
       return conv;
     };
 
     bool converged = trustSolveAt(false, 0.0);
+    if (!converged && pushDist >= 0.0 && pushDist <= curRmax) {
+      // The Newton step FITS in the current radius and trust_solve_c still
+      // stopped: it hit its own fterm/mterm step-size criterion, which is
+      // measured against the PREVIOUS iterate, not against the model's own
+      // remaining decrease.  A fresh solve from the point just found resets
+      // that history and can move again, and it keeps the good point -- the
+      // nudge cascade below throws it away and restarts from a fill.
+      op_focei.nTrustWarm.fetch_add(1, std::memory_order_relaxed);
+      converged = trustSolveAt(false, 0.0);
+    }
     if (!converged && pushDist > curRmax) {
       // Radius-escalation retry from the point just found (already the best
       // seen so far, via keepBest() above) before falling back to eta nudges.
@@ -4497,6 +4634,7 @@ static inline int innerOpt1(int id, int likId) {
       // poorly-conditioned subject can't blow the radius up without bound.
       double target = std::max(curRmax * 2.0, pushDist * 1.2);
       curRmax = std::min(target, op_focei.trustRmax * 8.0);
+      op_focei.nTrustRetry.fetch_add(1, std::memory_order_relaxed);
       converged = trustSolveAt(false, 0.0);
     }
     // Restart cascade on non-convergence, same nudge magnitudes n1qn1 uses; the
@@ -4507,10 +4645,23 @@ static inline int innerOpt1(int id, int likId) {
       double nudges[4] = {op_focei.etaNudge, -op_focei.etaNudge,
                            -op_focei.etaNudge2, op_focei.etaNudge2};
       for (int _n = 0; _n < 4 && !converged; _n++) {
+        op_focei.nTrustNudge.fetch_add(1, std::memory_order_relaxed);
         converged = trustSolveAt(true, nudges[_n]);
       }
     }
-    if (!haveBest) return 0;
+    // Every attempt this subject got is spent and none of them converged --
+    // the count #1044 needed: without it a fit whose trust solves all failed
+    // is indistinguishable from one where they all converged.
+    if (!converged) op_focei.nTrustFail.fetch_add(1, std::memory_order_relaxed);
+    // haveBest is PASS-LOCAL, so "this pass produced nothing" is not "this
+    // subject produced nothing": under mceta>=1 an earlier pass may already
+    // have a converged candidate, and returning 0 here would throw it away and
+    // fail the subject.  Same three-way exit the n1qn1 arm takes (#1044).
+    if (!haveBest) {
+      if (!candEta.empty()) break;
+      if (_lastStart) return 0;
+      continue;
+    }
     } catch (const std::bad_alloc &) {
       // System out of memory mid-solve -- see the branch-level comment above.
       // Every other exit from this branch marks a failed attempt via
@@ -4518,13 +4669,21 @@ static inline int innerOpt1(int id, int likId) {
       // this subject) -- match that here even though the caller's own
       // innerOpt1() return value already signals the failure on its own.
       fInd->badSolve = 1;
-      if (!haveBest) return 0;
+      if (!haveBest) {
+        if (!candEta.empty()) break;
+        if (_lastStart) return 0;
+        continue;
+      }
     } catch (...) {
       // Defense in depth, matching trust_solve_c()'s own catch(...) fallback:
       // any other C++ exception escaping this branch is equally fatal if it
       // crosses the OpenMP boundary uncaught.
       fInd->badSolve = 1;
-      if (!haveBest) return 0;
+      if (!haveBest) {
+        if (!candEta.empty()) break;
+        if (_lastStart) return 0;
+        continue;
+      }
     }
   } else {
     int fail=0, fncount=0, grcount=0;
@@ -4544,7 +4703,7 @@ static inline int innerOpt1(int id, int likId) {
       if (_lastStart) return 0;
       continue;
     }
-    keepBest(); keepCand();
+    keepBest(); keepCand(fInd->badSolve == 0);
     // if (fail != 6 && fail != 7 && fail != 8 && fail != 27){
     //   // did not converge
     //   if (fInd->doEtaNudge == 1 && op_focei.etaNudge != 0.0){
@@ -4596,12 +4755,35 @@ static inline int innerOpt1(int id, int likId) {
   // LikInner2() writes lik[likId] for whichever candidate it is called on, and
   // the final call at the winner overwrites it, exactly as for likId == 0.
   if (!candEta.empty()) {
-    int bestInnerK = 0;
-    for (size_t k = 0; k < candEta.size(); ++k) {
-      if (candF[k] < candF[(size_t)bestInnerK]) bestInnerK = (int)k;
+    // A candidate the optimizer FAILED on is a fallback, not a choice.  Both
+    // the inner-objective winner and the marginal re-rank below therefore look
+    // only at candidates whose attempt succeeded whenever there is at least
+    // one; a failed attempt is used only when nothing else survived (#1044).
+    // This matters most under mceta>=1, where the extra starting points are
+    // what make a mixed candidate set common in the first place: a failed
+    // attempt's eta can carry the larger marginal (its Laplace log|H| is
+    // measured at a point the inner objective never descended to) and win.
+    // "Failed" is the optimizer's own verdict plus a latched bad solve, NOT a
+    // heuristic staleness gate -- see the trust arm's solveOk.
+    bool anyOk = false, anyBad = false;
+    for (size_t k = 0; k < candOk.size(); ++k) {
+      if (candOk[k]) anyOk = true; else anyBad = true;
     }
+    if (!anyOk) {
+      op_focei.nInnerNoGood.fetch_add(1, std::memory_order_relaxed);
+    } else if (anyBad) {
+      op_focei.nInnerDropped.fetch_add(1, std::memory_order_relaxed);
+    }
+    int nElig = 0;
+    int bestInnerK = -1;
+    for (size_t k = 0; k < candEta.size(); ++k) {
+      if (anyOk && !candOk[k]) continue;
+      nElig++;
+      if (bestInnerK < 0 || candF[k] < candF[(size_t)bestInnerK]) bestInnerK = (int)k;
+    }
+    if (bestInnerK < 0) bestInnerK = 0; // unreachable; keeps the indexing below total
     int bestK = -1;
-    if (candEta.size() > 1) {
+    if (nElig > 1) {
       op_focei.nInnerRanked.fetch_add(1, std::memory_order_relaxed);
       // calcEtaHessian(), reached through LikInner2(), FREEZES the shi21 finite
       // difference steps on first use.  Snapshot them so the ranking leaves
@@ -4613,6 +4795,7 @@ static inline int innerOpt1(int id, int likId) {
       if (fInd->etahh != NULL) shh.assign(fInd->etahh, fInd->etahh + fop->neta);
       double bestMarg = 0.0;
       for (size_t k = 0; k < candEta.size(); ++k) {
+        if (anyOk && !candOk[k]) continue;
         // Each candidate is measured with ITS OWN step search, which is what
         // the fit would have computed had that candidate been the only one.
         // Without the zeroing the candidate evaluated first freezes the steps
@@ -8093,6 +8276,8 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.nMcetaSample.store(0, std::memory_order_relaxed);
   op_focei.nInnerRanked.store(0, std::memory_order_relaxed);
   op_focei.nInnerReranked.store(0, std::memory_order_relaxed);
+  op_focei.nInnerNoGood.store(0, std::memory_order_relaxed);
+  op_focei.nInnerDropped.store(0, std::memory_order_relaxed);
   op_focei.warm = foceiO.containsElementNamed("warm") ? as<int>(foceiO["warm"]) : 0;
   op_focei.maxOdeRecalc = as<int>(foceiO["maxOdeRecalc"]);
   op_focei.objfRecalN=0;
@@ -8535,6 +8720,14 @@ NumericVector foceiSetup_(const RObject &obj,
     op_focei.trustMterm = as<double>(foceiO["trustMterm"]);
   }
   op_focei.nTrustInner.store(0, std::memory_order_relaxed);
+  op_focei.nTrustError.store(0, std::memory_order_relaxed);
+  op_focei.nTrustNoConv.store(0, std::memory_order_relaxed);
+  op_focei.nTrustSolverNoConv.store(0, std::memory_order_relaxed);
+  op_focei.nTrustPush.store(0, std::memory_order_relaxed);
+  op_focei.nTrustRetry.store(0, std::memory_order_relaxed);
+  op_focei.nTrustWarm.store(0, std::memory_order_relaxed);
+  op_focei.nTrustNudge.store(0, std::memory_order_relaxed);
+  op_focei.nTrustFail.store(0, std::memory_order_relaxed);
   op_focei.nHessianQN.store(0, std::memory_order_relaxed);
   op_focei.nsim=as<int>(foceiO["n1qn1nsim"]);
   op_focei.imp=0;
@@ -9411,6 +9604,8 @@ Environment foceiOuter(Environment e){
   op_focei.nMcetaSample.store(0, std::memory_order_relaxed);
   op_focei.nInnerRanked.store(0, std::memory_order_relaxed);
   op_focei.nInnerReranked.store(0, std::memory_order_relaxed);
+  op_focei.nInnerNoGood.store(0, std::memory_order_relaxed);
+  op_focei.nInnerDropped.store(0, std::memory_order_relaxed);
   op_focei.nDeclineNewton=0;
   op_focei.nDeclineE0=0;
   op_focei.nDeclineOther=0;
@@ -12070,7 +12265,36 @@ void foceiFinalizeTables(Environment e){
       // the nudge cascade produces multiple candidates too.
       e["nInnerRerank"] = IntegerVector::create(
         _["ranked"] = op_focei.nInnerRanked.load(std::memory_order_relaxed),
-        _["flipped"] = op_focei.nInnerReranked.load(std::memory_order_relaxed));
+        _["flipped"] = op_focei.nInnerReranked.load(std::memory_order_relaxed),
+        // Inner solves that had nothing converged to choose from, so the fit
+        // reports a failed attempt's eta for that subject (#1044).
+        _["noGood"] = op_focei.nInnerNoGood.load(std::memory_order_relaxed),
+        // ... and solves where a failed attempt WAS dropped because a
+        // succeeded one was available.
+        _["dropped"] = op_focei.nInnerDropped.load(std::memory_order_relaxed));
+      if (op_focei.innerOpt == 3) {
+        // innerOpt="trust" outcomes.  "calls" is what .nTrustInner() reports;
+        // the rest say whether those calls actually converged -- a fit whose
+        // inner solves all failed used to look exactly like one where they all
+        // succeeded (#1044).
+        e["nTrustInner"] = IntegerVector::create(
+          _["calls"] = op_focei.nTrustInner.load(std::memory_order_relaxed),
+          // trust_solve_c() returned no usable eta at all (tres.error < 0).
+          _["error"] = op_focei.nTrustError.load(std::memory_order_relaxed),
+          // Attempts that ended non-converged (includes the "error" ones).
+          _["notConverged"] = op_focei.nTrustNoConv.load(std::memory_order_relaxed),
+          // Of those, the ones trust_solve_c() itself declared non-converged.
+          // Only these disqualify a candidate from the selection; the rest are
+          // convergence the Newton-decrement gate withdrew to force a retry.
+          _["solverFail"] = op_focei.nTrustSolverNoConv.load(std::memory_order_relaxed),
+          _["newtonGate"] = op_focei.nTrustPush.load(std::memory_order_relaxed),
+          _["warmRetry"] = op_focei.nTrustWarm.load(std::memory_order_relaxed),
+          _["radiusRetry"] = op_focei.nTrustRetry.load(std::memory_order_relaxed),
+          _["nudge"] = op_focei.nTrustNudge.load(std::memory_order_relaxed),
+          // Subjects whose whole cascade -- first solve, radius escalation and
+          // all four nudges -- ended without a converged attempt.
+          _["failed"] = op_focei.nTrustFail.load(std::memory_order_relaxed));
+      }
       if (op_focei.mceta >= 1) {
         // Which mceta candidate each inner solve started from.  Not gated on
         // `fast`: mceta>=1 is independent of the analytic gradient.
