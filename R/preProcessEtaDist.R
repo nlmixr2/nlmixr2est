@@ -220,11 +220,17 @@ attr(nmObjGet.etaDist, "desc") <-
 #' @export
 nmObjGet.etaDistCor <- function(x, ...) {
   .env <- x[[1]]
-  .info <- .etaDistInfo(.env)
-  if (is.null(.info)) return(NULL)
   .fix <- try(get("fixef", envir=.env), silent=TRUE)
   if (inherits(.fix, "try-error") || is.null(.fix)) return(NULL)
-  .cor <- lapply(.info$blocks, function(.nms) {
+  .info <- .etaDistInfo(.env)
+  .blocks <- if (is.null(.info)) NULL else .info$blocks
+  if (is.null(.blocks) || length(.blocks) == 0L) {
+    ## `etaDistInfo` does not survive onto the fit's ui, so the blocks are
+    ## recovered from the fit itself -- see .etaDistBlocksFromFit()
+    .blocks <- .etaDistBlocksFromFit(x[[1]])
+  }
+  if (length(.blocks) == 0L) return(NULL)
+  .cor <- lapply(.blocks, function(.nms) {
     .need <- unlist(lapply(seq_along(.nms), function(.i) {
       if (.i == 1L) return(NULL)
       paste0("rxCor.", .nms[.i], ".", .nms[seq_len(.i - 1L)])
@@ -232,7 +238,7 @@ nmObjGet.etaDistCor <- function(x, ...) {
     if (length(.need) == 0L || !all(.need %in% names(.fix))) return(NULL)
     .etaDistCorFromY(.nms, as.list(.fix[.need]))
   })
-  names(.cor) <- vapply(.info$blocks, function(.n) .n[1], character(1),
+  names(.cor) <- vapply(.blocks, function(.n) .n[1], character(1),
                         USE.NAMES=FALSE)
   .cor <- .cor[!vapply(.cor, is.null, logical(1))]
   if (length(.cor) == 0L) return(NULL)
@@ -257,30 +263,22 @@ attr(nmObjGet.etaDistCor, "desc") <-
   .info
 }
 
-#' Report a declared distribution's expansion the way the model was written
+#' Drop the latent random effects from the reported parameter table
 #'
-#' `rxEtaDistExpand()` leaves two kinds of row in `parFixed` that the user
-#' never wrote and cannot read:
+#' `rxEtaDistExpand()` leaves the latent standard normals (`rxz.<eta>`) in
+#' `parFixed`, where they print as `NA` in every column.  Their variance is
+#' fixed at one by construction -- that is what makes the copula a copula --
+#' so they are not estimates and there is nothing to report for them.
 #'
-#'  * the latent standard normals (`rxz.<eta>`).  Their variance is fixed at
-#'    one by construction -- that is what makes the copula a copula -- so they
-#'    are not estimates, and they print as `NA` in every column.
-#'  * the copula correlations (`rxCor.<i>.<j>`).  These ARE estimated, but the
-#'    number carried is the UNCONSTRAINED parameter: the expansion writes
-#'    `tanh()` around it precisely so the optimizer can range over the whole
-#'    real line.  Printed as-is next to genuine estimates it reads as a
-#'    correlation and overstates it -- `rxCor = 1.047` is a correlation of
-#'    0.78, not 1.05, which is outside the legal range and so not even
-#'    plausibly a correlation.  (Two of the summaries written while developing
-#'    this feature quoted it as one.)
-#'
-#' So the latent rows are dropped, and the correlation rows get `tanh()` in
-#' their back-transformed column, which is where a reader looks for the
-#' quantity on the natural scale.  `fit$etaDistCor` remains the way to get the
-#' whole matrix.
+#' The copula correlations (`rxCor.<i>.<j>`) are NOT touched here: the
+#' expansion already gives them `backTransform = "tanh"`, so their
+#' back-transformed column is the correlation and has always been correct.
+#' (An earlier version of this hook recomputed it, on the strength of my
+#' having misread the raw Estimate column as a correlation.  It was the
+#' reading that was wrong, not the table.)
 #'
 #' @param ret fit object
-#' @return `ret`, with the expansion's rows made readable
+#' @return `ret`, without the latent rows
 #' @noRd
 #' @author Matthew L. Fidler
 .postFinalEtaDistParFixed <- function(ret) {
@@ -289,36 +287,120 @@ attr(nmObjGet.etaDistCor, "desc") <-
   .pfd <- try(get("parFixedDf", envir=.env), silent=TRUE)
   if (inherits(.pfd, "try-error") || is.null(.pfd)) return(ret)
   .nm <- rownames(.pfd)
-  if (is.null(.nm)) return(ret)
-  .cor <- grepl("^rxCor[.]", .nm)
-  .lat <- grepl("^rxz[.]", .nm)
-  if (!any(.cor) && !any(.lat)) return(ret)
-  .bck <- which(grepl("Back", names(.pfd)))
-  .est <- which(grepl("Est", names(.pfd)))
-  if (any(.cor) && length(.bck) == 1L && length(.est) >= 1L) {
-    .pfd[.cor, .bck] <- tanh(.pfd[.cor, .est[1]])
-  }
-  if (any(.lat)) .pfd <- .pfd[!.lat, , drop=FALSE]
-  assign("parFixedDf", .pfd, envir=.env)
-  ## the printed copy carries formatted strings, so it is edited in the same
-  ## way rather than reformatted from the numeric frame
+  if (is.null(.nm) || !any(grepl("^rxz[.]", .nm))) return(ret)
+  assign("parFixedDf", .pfd[!grepl("^rxz[.]", .nm), , drop=FALSE], envir=.env)
   .pf <- try(get("parFixed", envir=.env), silent=TRUE)
   if (!inherits(.pf, "try-error") && !is.null(.pf)) {
     .nm2 <- rownames(.pf)
-    .cor2 <- grepl("^rxCor[.]", .nm2)
-    .lat2 <- grepl("^rxz[.]", .nm2)
-    .bck2 <- which(grepl("Back", names(.pf)))
-    if (any(.cor2) && length(.bck2) == 1L) {
-      .sig <- try(ret$control$sigdig, silent=TRUE)
-      if (inherits(.sig, "try-error") || !is.numeric(.sig)) .sig <- 3
-      .v <- tanh(.pfd[rownames(.pfd) %in% .nm2[.cor2], .est[1]])
-      .pf[.cor2, .bck2] <- formatC(signif(.v, digits=.sig), digits=.sig,
-                                   format="fg", flag="#")
+    if (!is.null(.nm2) && any(grepl("^rxz[.]", .nm2))) {
+      assign("parFixed", .pf[!grepl("^rxz[.]", .nm2), , drop=FALSE], envir=.env)
     }
-    if (any(.lat2)) .pf <- .pf[!.lat2, , drop=FALSE]
-    assign("parFixed", .pf, envir=.env)
   }
   ret
 }
 
+#' Report the declared block in `$omega`, under the names the model used
+#'
+#' The user writes `eta.cl + eta.v1 ~ c(1, 0.5, 1)` -- a covariance block with
+#' the correlation in it.  What comes back is the expansion's internals: a 2x2
+#' identity named `rxz.eta.cl` / `rxz.eta.v1`, with the fitted correlation
+#' living in a `rxCor.*` theta instead.  The block the user wrote is nowhere in
+#' `$omega`.
+#'
+#' The latent random effects are standard normals, so their covariance matrix
+#' IS the correlation matrix -- unit diagonal is what the declaration requires
+#' -- and the fitted block goes back into `$omega` on the covariance scale,
+#' named as the model named it.  `$omegaR` then derives the correlation view
+#' through the machinery every other model uses.
+#'
+#' The `rxCor.*` rows stay in `parFixed`: that is where their standard error
+#' is, on the estimated scale like every other row, and moving the value into
+#' `$omega` must not take the uncertainty out of the output.
+#'
+#' @param ret fit object
+#' @return `ret`, with `$omega` carrying the declared block
+#' @noRd
+#' @author Matthew L. Fidler
+.postFinalEtaDistOmega <- function(ret) {
+  .env <- try(ret$env, silent=TRUE)
+  if (inherits(.env, "try-error") || is.null(.env)) return(ret)
+  .om <- try(get("omega", envir=.env), silent=TRUE)
+  if (inherits(.om, "try-error") || is.null(.om) || !is.matrix(.om)) return(ret)
+  .blocks <- try(.etaDistBlocksFromFit(ret), silent=TRUE)
+  if (inherits(.blocks, "try-error") || length(.blocks) == 0L) return(ret)
+  .fix <- try(get("fixef", envir=.env), silent=TRUE)
+  if (inherits(.fix, "try-error") || is.null(.fix)) return(ret)
+  .nm <- rownames(.om)
+  if (is.null(.nm)) return(ret)
+  for (.b in .blocks) {
+    .need <- unlist(lapply(seq_along(.b), function(.i) {
+      if (.i == 1L) return(NULL)
+      paste0("rxCor.", .b[.i], ".", .b[seq_len(.i - 1L)])
+    }), use.names=FALSE)
+    if (length(.need) == 0L || !all(.need %in% names(.fix))) next
+    .R <- try(.etaDistCorFromY(.b, as.list(.fix[.need])), silent=TRUE)
+    if (inherits(.R, "try-error")) next
+    .row <- match(paste0("rxz.", .b), .nm)
+    if (anyNA(.row)) next
+    .om[.row, .row] <- .R
+    .nm[.row] <- .b          # report them as the model named them
+  }
+  dimnames(.om) <- list(.nm, .nm)
+  assign("omega", .om, envir=.env)
+  ret
+}
+
+postFinalObjectHooksAdd(".postFinalEtaDistOmega", .postFinalEtaDistOmega)
+
 postFinalObjectHooksAdd(".postFinalEtaDistParFixed", .postFinalEtaDistParFixed)
+
+#' Recover the declared correlation blocks from the fit itself
+#'
+#' `rxEtaDistExpand()` records what it did in `etaDistInfo` on the ui it
+#' returns, but that does not survive to the fit object (measured: present on
+#' the expanded ui, absent on `fit$ui`), which is why `fit$etaDistCor` came
+#' back NULL for a model that plainly has a declared block.
+#'
+#' Everything needed is still in the fit, so it is read from there instead of
+#' carried: the latent random effects are `rxz.<declared eta>` and appear in
+#' the omega in their block order, and the copula parameters are
+#' `rxCor.<i>.<j>` thetas naming the pair they connect.  Two random effects
+#' are in the same block exactly when such a theta joins them.
+#'
+#' @param ret fit object
+#' @return list of character vectors, one per block, in omega order; empty
+#'   when the model declares nothing
+#' @noRd
+#' @author Matthew L. Fidler
+.etaDistBlocksFromFit <- function(ret) {
+  .ui <- try(rxode2::rxUiDecompress(ret$ui), silent=TRUE)
+  if (inherits(.ui, "try-error") || is.null(.ui)) return(list())
+  .ini <- .ui$iniDf
+  if (is.null(.ini) || !any(names(.ini) == "neta1")) return(list())
+  .e <- .ini[!is.na(.ini$neta1) & .ini$neta1 == .ini$neta2, ]
+  if (nrow(.e) == 0L) return(list())
+  .e <- .e[order(.e$neta1), ]
+  .lat <- .e$name[grepl("^rxz[.]", .e$name)]
+  if (length(.lat) == 0L) return(list())
+  .dec <- sub("^rxz[.]", "", .lat)
+  .th <- .ini$name[!is.na(.ini$ntheta)]
+  .cor <- .th[grepl("^rxCor[.]", .th)]
+  ## adjacency from the copula thetas; a lone declared random effect is its
+  ## own block and simply has no correlation to report
+  .grp <- seq_along(.dec)
+  for (.c in .cor) {
+    .p <- sub("^rxCor[.]", "", .c)
+    .i <- which(vapply(.dec, function(.d) startsWith(.p, paste0(.d, ".")),
+                       logical(1)))
+    for (.ii in .i) {
+      .j <- which(.dec == sub(paste0("^", .dec[.ii], "[.]"), "", .p))
+      if (length(.j) == 1L) {
+        .keep <- min(.grp[.ii], .grp[.j])
+        .drop <- max(.grp[.ii], .grp[.j])
+        .grp[.grp == .drop] <- .keep
+      }
+    }
+  }
+  .out <- lapply(sort(unique(.grp)), function(.g) .dec[.grp == .g])
+  .out[vapply(.out, length, integer(1)) > 1L]
+}
