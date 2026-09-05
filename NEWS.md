@@ -157,6 +157,47 @@ ini({
 
 ## Bug fixes
 
+- `foceiControl(mceta = )` is no longer discarded for a model whose etas are
+  all mu-referenced.  Any non-default setting was reset to `-2` on the grounds
+  that "the initial etas are all exactly zero, so the search has nothing to
+  explore" -- true only of the first inner solve, since every later one starts
+  from the previous iteration's mode, and the `mceta > 0` candidates are draws
+  from omega, which are not zero.  This is what made `mceta = 10` return an
+  objective bit-identical to `mceta = -2` on such a model.  On `theo_sd`'s
+  one-compartment model (every eta mu-referenced), `mceta = 5` now starts 420 of
+  its 1008 inner solves from a draw and reaches a different objective than
+  `mceta = -2`.
+
+- `foceiControl(mceta = n)` (`n > 0`) now actually uses the extra starting
+  etas, and at fixed parameters can no longer give a worse objective than
+  `mceta = 0`.  The candidate set
+  included the carried "last eta" -- the previous outer iteration's converged
+  conditional mode -- whose inner objective is essentially always the lowest, so
+  it won for every subject and `mceta = n` returned an objective bit-identical
+  to the keep-last behavior of `mceta = -1`/`-2`.  The candidates are now eta=0
+  plus the `n-1` draws from omega.  Because a candidate is ranked by the
+  objective at its starting point, which does not order the points the inner
+  optimization converges to, a subject that starts from a draw now also solves
+  from eta=0 and keeps whichever converged lower, so no inner solve can end
+  above the one `mceta = 0` would have reached -- without that, a draw that
+  merely looked better could converge worse (measured on a fixed-omega
+  inverse-CDF model evaluated at fixed parameters: `mceta = 2` gave -2251.0
+  against `mceta = 0`'s -2302.5, and now gives -2338.8).  The floor solve wraps
+  the whole inner-optimizer dispatch rather than living inside one arm of it, so
+  it holds for whichever inner optimizer is configured.  `mceta = 1` means eta=0 rather than being a silent no-op,
+  a non-finite eta=0 no longer pins the search, and the draws are made once per
+  fit instead of at every objective evaluation, so the objective is the same
+  function at every evaluation.  The fit records which
+  candidate each inner solve started from in `$env$nMcetaStart`.
+- `focei` now checks rxode2's per-subject event counts before it sizes the
+  per-subject blocks it strides with them (`gVid`, `ga`/`gc`, `gB`, `gcH*`,
+  `llikObsFull`).  When rxode2 and nlmixr2est are built against different solve
+  layouts those counts are read from the wrong bytes, and the setup sized
+  megabytes of storage from garbage -- reported as "dataset too large", as an
+  `R_Calloc` failure, or as a segfault, depending on what the mis-read bytes
+  held.  A negative count, or a dose or `evid=2` count larger than the
+  subject's own record count, now stops the fit with that as the reason
+  instead (#1039).
 
 - With two or more occasion parameters on one level, `fit$iov$<level>` had
   `NA` for every occasion (and the fit warned "NAs introduced by
