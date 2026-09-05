@@ -620,6 +620,18 @@ static double gPhi0RefObj(const double *p);
 static void gPhi0NmFn(double *p, double *fx);
 static double gPhi0RefObjR(Rcpp::NumericVector p);
 
+// saemControl(zeroOmegaDirect=): direct maximization of the observation
+// likelihood in the phi1 columns whose declared omega was zero.  Same
+// file-scope-callback shape as the gPhi0 block above, because nelder_fn()
+// takes a plain function pointer.
+static SAEM* gZeroOmSelf = nullptr;
+static std::vector<int> gZeroOmIx;   // phi1 columns being optimized
+static arma::vec gZeroOmLo, gZeroOmHi, gZeroOmBest;
+static double gZeroOmBestF = 0.0;
+static int gZeroOmEvalN = 0, gZeroOmEvalMax = 0;
+static double gZeroOmObj(const double *p);
+static void gZeroOmNmFn(double *p, double *fx);
+
 // phi1 objective for the general-likelihood Laplace-corrected direct
 // optimization (Phase 4, SAEM general-likelihood theta plan) -- the phi1
 // sibling of gPhi0Self/gPhi0ObjR above, same bounded-bobyqa/.boundedResidOpt
@@ -1524,6 +1536,94 @@ public:
     }
   }
 
+  // Objective for zeroOmegaDirectStep(): the observation -log-likelihood with
+  // the named phi1 columns overwritten by the candidate mu and every other
+  // column left at its sampled value -- saemix's compute.Uy, which does
+  // exactly this for i0.omega2 (R/func_aux.R:357-359).
+  double zeroOmegaObjective(const double *p) const {
+    mat phiCand = phiM;
+    for (size_t j = 0; j < gZeroOmIx.size(); ++j) {
+      phiCand.col(i1(gZeroOmIx[j])).fill(p[j]);
+    }
+    return computeUy(phiCand);
+  }
+
+  // saemix's ind.fix10 branch (R/main_mstep.R:63) for the phi1 columns the GLS
+  // above cannot move: a mu-referenced random effect whose DECLARED variance
+  // was zero.  Plambda1 is an Omega^-1-weighted normal equation, so such a
+  // column's update collapses to "reproduce its sampled mean" -- and the
+  // sampler cannot move it off its prior mean, which IS the current theta.
+  // The M-step's fixed point is therefore the ini() value.
+  //
+  // NONMEM has the same two routes -- technical guide eqs. 1.45/1.46 through
+  // mu, 1.47-1.52 by differentiating the entire joint density for a theta that
+  // is not reachable through mu -- and demonstrably takes the second one here:
+  // in ~/src/gamma_indpar/gamma_clv1_saem.ctl all seven thetas are MU_
+  // referenced and five sit on $OMEGA (0.0 FIXED), so every one of those phi
+  // is deterministic, yet the .ext still moves them (THETA5 -3.0 -> -2.42126).
+  // A sampled-mean update returns the starting value by construction.
+  //
+  // So: maximize the observation likelihood in those coordinates directly,
+  // then take the SAME damped stochastic-approximation step refinePhi1Lik()
+  // takes, and keep MCOV1 consistent so the next iteration's COV1*MCOV1
+  // reproduces it.  Intercept-only columns only -- the shape mu-referencing
+  // produces, and the only one whose mu IS the theta.
+  void zeroOmegaDirectStep(unsigned int kiter, const vec &pas) {
+    if (nphi1 <= 0) return;
+    std::vector<bool> phi1Fix((size_t)nphi1, false);
+    for (unsigned int j = 0; j < fixedIx1.n_elem; ++j) {
+      if (fixedIx1(j) < (unsigned int)nphi1) phi1Fix[(size_t)fixedIx1(j)] = true;
+    }
+    gZeroOmIx.clear();
+    for (unsigned int f = 0; f < saemZeroOmegaPhi1.n_elem; ++f) {
+      unsigned int c = saemZeroOmegaPhi1(f);
+      if (c >= (unsigned int)nphi1) continue;
+      if (phi1Fix[(size_t)c]) continue;
+      // intercept-only: exactly one lambda maps to this column
+      if (arma::find(LCOV1.col(c) == 1).eval().n_elem != 1) continue;
+      gZeroOmIx.push_back((int)c);
+    }
+    if (gZeroOmIx.empty()) return;
+    int nFree = (int)gZeroOmIx.size();
+
+    gZeroOmSelf = this;
+    gZeroOmLo.set_size(nFree);
+    gZeroOmHi.set_size(nFree);
+    std::vector<double> st((size_t)nFree), stp((size_t)nFree), xm((size_t)nFree);
+    for (int j = 0; j < nFree; ++j) {
+      double cur = mprior_phi1(0, gZeroOmIx[(size_t)j]);
+      // ABSOLUTE local trust region around the current mu, for the same reason
+      // refinePhi0Lik() uses one: the observation objective has NaN plateaus
+      // far from the current value, and a relative radius lets a coordinate
+      // that starts to drift grow its own step.
+      gZeroOmLo(j) = cur - 0.75;
+      gZeroOmHi(j) = cur + 0.75;
+      st[(size_t)j] = cur;
+      xm[(size_t)j] = cur;
+      stp[(size_t)j] = 0.15;
+    }
+    gZeroOmBest.set_size(nFree);
+    for (int j = 0; j < nFree; ++j) gZeroOmBest(j) = st[(size_t)j];
+    gZeroOmEvalN = 0;
+    gZeroOmBestF = 0.0;
+    gZeroOmEvalMax = (nonMuThetaMaxEval > 0) ? nonMuThetaMaxEval : 20*nFree;
+    int iconv, it, nfcall, iprint = 0;
+    double ynewlo;
+    // itmax generous; gZeroOmObj owns the real evaluation budget
+    nelder_fn(gZeroOmNmFn, nFree, st.data(), stp.data(), 100*nFree,
+              nonMuThetaTol, 1.0, 2.0, 0.5,
+              &iconv, &it, &nfcall, &ynewlo, xm.data(), &iprint);
+
+    for (int j = 0; j < nFree; ++j) {
+      int c = gZeroOmIx[(size_t)j];
+      double cur = mprior_phi1(0, c);
+      double tgt = gZeroOmBest(j);
+      if (!std::isfinite(tgt)) continue;
+      mprior_phi1.col(c).fill(cur + pas(kiter) * (tgt - cur));
+    }
+    phi1BackSolveMCOV();
+  }
+
   void refinePhi1Lik(unsigned int kiter, const vec &pas) {
     if (!_saemPhi1PoolReady || nphi1 <= 0) return;
     std::vector<bool> phi1Fix((size_t)nphi1, false);
@@ -1589,7 +1689,7 @@ public:
   //   phi_i = cor^dt_i, eps_i = e_i - phi_i*e_{prev}, gstar_i = g_i*sqrt(1-phi_i^2).
   // The first record of each subject/endpoint (arPrev<0) is left marginal.  The
   // previous residual is the RAW (pre-whitening) residual, so snapshot e first.
-  void arWhiten(vec &e, vec &g) {
+  void arWhiten(vec &e, vec &g) const {
     if (!hasAr) return;
     vec e0 = e;
     for (arma::uword i = 0; i < e.n_elem; ++i) {
@@ -1611,11 +1711,20 @@ public:
   // so a censored row on the SAME chain can be scored against the AR(1)
   // conditional distribution, not the marginal (ft, g) -- see #918.
   vec arDYFhyp(const vec &yt, const vec &ft, const vec &g) {
+    return arDYFinto(yt, ft, g, _scratch_ftAr, _scratch_gAr);
+  }
+
+  // The same computation with the AR(1) conditional prediction/SD written to
+  // CALLER-OWNED buffers instead of the shared _scratch_ members.  const, so
+  // the compiler enforces that a caller inside an OpenMP region (computeUy())
+  // cannot corrupt the MCMC's own working state.
+  vec arDYFinto(const vec &yt, const vec &ft, const vec &g,
+                vec &ftAr, vec &gAr) const {
     vec e = yt - ft;
     vec gg = g;
     arWhiten(e, gg);
-    _scratch_ftAr = yt - e;
-    _scratch_gAr = gg;
+    ftAr = yt - e;
+    gAr = gg;
     return 0.5*(e/gg)%(e/gg) + log(gg);
   }
 
@@ -2003,6 +2112,20 @@ public:
       saemFlatPhi1 = as<uvec>(x["saemFlatPhi1"]);
     } else {
       saemFlatPhi1 = uvec();
+    }
+    if (x.containsElementNamed("saemZeroOmegaPhi1")) {
+      saemZeroOmegaPhi1 = as<uvec>(x["saemZeroOmegaPhi1"]);
+    } else {
+      saemZeroOmegaPhi1 = uvec();
+    }
+    if (x.containsElementNamed("zeroOmegaAnnealCoef")) {
+      zeroOmegaAnnealCoef = as<double>(x["zeroOmegaAnnealCoef"]);
+    }
+    if (!std::isfinite(zeroOmegaAnnealCoef) || zeroOmegaAnnealCoef <= 0.0) {
+      zeroOmegaAnnealCoef = 1.0;
+    }
+    if (x.containsElementNamed("zeroOmegaDirect")) {
+      zeroOmegaDirect = as<int>(x["zeroOmegaDirect"]);
     }
     Mcovariables = as<mat>(x["Mcovariables"]);
 
@@ -3433,6 +3556,9 @@ public:
           (kiter - (unsigned int)niter_phi0) % (unsigned int)phi1ThetaEvery == 0) {
         refinePhi1Lik(kiter, pas);
       }
+      if (zeroOmegaDirect && saemZeroOmegaPhi1.n_elem > 0) {
+        zeroOmegaDirectStep(kiter, pas);
+      }
       // The sampled-mean update above only weakly informs fixed-effect-only
       // (phi0) parameters, so once the SA/variance-shrinkage phase has begun,
       // refine them by a direct bounded optimization with the ODE states frozen
@@ -3587,6 +3713,30 @@ public:
       // fix before diagonals are enforced
       if (Gamma2_phi1fixed==1 && kiter > (unsigned int)(nb_fixOmega)) {
         Gamma2_phi1.elem(Gamma2_phi1fixedIx) = Gamma2_phi1fixedValues(Gamma2_phi1fixedIx);
+      }
+      // saemControl(zeroOmegaAnneal=): saemix decays the variance of a
+      // parameter WITHOUT IIV geometrically across the SA phase
+      // (diag.omega[i0.omega2] *= alpha0.sa every iteration,
+      // alpha0.sa = 10^(-3/nbiter.sa), R/main_mstep.R:91) rather than holding
+      // it -- wide exploration early, convergence late.  nlmixr2 historically
+      // pinned the placeholder at zeroOmegaTune forever, which makes it a
+      // permanent noise floor: no single constant can be both.
+      //
+      // Applied AFTER the restore above (which resets the diagonal to the
+      // placeholder each iteration), so this is the absolute value
+      // tune*coef^k, not a compounding one, and it deliberately sits after
+      // the Gmin floor -- Gmin would otherwise fight the decay.
+      if (zeroOmegaAnnealCoef < 1.0 && saemZeroOmegaPhi1.n_elem > 0) {
+        unsigned int kd = (kiter <= (unsigned int)nb_sa) ? kiter : (unsigned int)nb_sa;
+        double fac = std::pow(zeroOmegaAnnealCoef, (double)kd);
+        for (unsigned int _f = 0; _f < saemZeroOmegaPhi1.n_elem; ++_f) {
+          unsigned int _c = saemZeroOmegaPhi1(_f);
+          if (_c >= Gamma2_phi1.n_rows) continue;
+          double v = Gamma2_phi1(_c, _c) * fac;
+          // keep IGamma2_phi1 invertible (saemix floors at double eps)
+          if (v < 1e-12) v = 1e-12;
+          Gamma2_phi1(_c, _c) = v;
+        }
       }
 
       if (kiter<=(unsigned int)(nb_correl)) {
@@ -4437,6 +4587,23 @@ private:
   mat phiM;
   uvec indio;
   uvec saemFlatPhi1;
+  // Mu-referenced phi1 columns whose DECLARED omega was zero and which
+  // .preProcessZeroOmegaMuRef() rewrote to the zeroOmegaTune placeholder.
+  // Distinct from saemFlatPhi1 (a genuine zero): these carry a real, fixed
+  // variance whose only job is to let the sampler move the column.
+  uvec saemZeroOmegaPhi1;
+  // saemControl(zeroOmegaAnneal=): per-iteration multiplier applied to that
+  // placeholder over the simulated-annealing phase.  saemix decays the
+  // variance of a parameter WITHOUT IIV by alpha0.sa = 10^(-3/nbiter.sa) every
+  // SA iteration (R/main_mstep.R:91), a 1000x shrink across the phase, rather
+  // than holding it -- exploration early, convergence late.  1.0 = hold (the
+  // historical behaviour).
+  double zeroOmegaAnnealCoef = 1.0;
+  // saemControl(zeroOmegaDirect=): update those columns' thetas by directly
+  // maximizing the observation likelihood (computeUy) instead of by the
+  // Omega^-1-weighted GLS, which cannot move them.  saemix's ind.fix10 branch;
+  // NONMEM technical guide eqs. 1.47-1.52.
+  int zeroOmegaDirect = 0;
   mat Mcovariables;
   List opt, optM;
 
@@ -4877,6 +5044,98 @@ private:
   // candidate phi, evaluated under every component. mix() only lets the component affect which
   // observation columns are read, so only this loss needs mixture treatment; the prior penalty
   // (in do_mcmc_msaem()) stays a standard single-Gaussian quadratic form.
+  // ---- saemix's compute.Uy ------------------------------------------------
+  //
+  // The observation -log-likelihood at a candidate phi, with every column the
+  // caller does not overwrite held at its currently sampled value.  This is
+  // saemix's compute.Uy (R/func_aux.R:355), and the quantity NONMEM's
+  // technical guide differentiates in eqs. 1.47-1.52 for a theta that is not
+  // reachable through mu.  It is the M-step objective for a theta whose
+  // Omega^-1-weighted GLS update cannot move it -- see zeroOmegaDirectStep().
+  //
+  // THREAD SAFETY.  Declared const, and every buffer it writes is
+  // function-local, so it CANNOT touch the _scratch_ members do_mcmc() and
+  // mixObsLoss() share for this same computation -- the compiler enforces
+  // that, which is the point of the const.  The per-observation transform is
+  // an OpenMP region over pure elementwise math (_powerD/handleF); it touches
+  // no rxode2 solve state, so unlike phi1Objective()'s region it deliberately
+  // does NOT call setRxThreadId(), and it makes no R API call.  What is not
+  // reentrant is the ODE solve inside user_fn(), which drives the
+  // process-global _rx: the parallelism lives INSIDE this function, and
+  // concurrent CALLS to it must be serialized by the caller.
+  double computeUy(const mat &phiCand) const {
+    const double double_xmin = 1.0e-200, xmax = 1e300;
+    rx_solving_options *op = getSolvingOptions(_rx);
+    int cores = getOpCores(op);
+    // the transform loop is pure math, so thread-safety of the ODE method is
+    // irrelevant to it; only the per-element work has to be worth splitting
+    bool doParallel = (cores > 1) && (ntotal >= 2048);
+    mat fcMat = nmRngGuard([&]{ return user_fn(phiCand, evt, optM); });
+    const vec fc = fcMat.col(0);
+    const vec curCens = fcMat.col(1);
+    const vec curLimit = fcMat.col(2);
+    double total = 0.0;
+    if (distribution == 1) {
+      vec yt;
+      if (hasFixedObsTransform) {
+        yt = yTrans;
+      } else {
+        yt = y;
+        for (int i = ntotal; i--;) {
+          int cur = (int)ix_endpnt(i);
+          yt(i) = _powerD(y(i), lambda(cur), yj(cur), low(cur), hi(cur));
+        }
+      }
+      for (int k = 0; k < nmc; k++) {
+        const int obs0 = k * ntotal;
+        const vec fsk = fc.subvec(obs0, obs0 + ntotal - 1);
+        const vec limitk = curLimit.subvec(obs0, obs0 + ntotal - 1);
+        const vec censk = curCens.subvec(obs0, obs0 + ntotal - 1);
+        vec ft(ntotal), limT(ntotal), ftT(ntotal), g(ntotal);
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(cores) if(doParallel)
+#endif
+        for (int i = 0; i < ntotal; i++) {
+          int cur = (int)ix_endpnt(i);
+          limT(i) = _powerD(limitk(i), lambda(cur), yj(cur), low(cur), hi(cur));
+          double fi = fsk(i);
+          double fti = _powerD(fi, lambda(cur), yj(cur), low(cur), hi(cur));
+          ft(i) = fti;
+          ftT(i) = handleF((int)propT(cur), fti, fi, false, true);
+        }
+        saemFormG(g, vecares, vecbres, ftT, veccres, vecaddProp);
+        g.elem(find(g == 0.0)).fill(1.0);
+        g.elem(find(g < double_xmin)).fill(double_xmin);
+        g.elem(find(g > xmax)).fill(xmax);
+        vec ftAr, gAr;
+        vec dyf = arDYFinto(yt, ft, g, ftAr, gAr);
+        // same translation applyCensLoss() performs: doCensNormal1 speaks
+        // log-likelihood/variance, the chain carries a loss and an SD, and an
+        // uncensored row comes back untouched
+        for (int i = ntotal; i--;) {
+          dyf(i) = -doCensNormal1(censk(i), yt(i), limT(i), -dyf(i),
+                                  ftAr(i), gAr(i)*gAr(i), 0);
+        }
+        total += accu(dyf);
+      }
+    } else if (distribution == 2) {
+      for (int k = 0; k < nmc; k++) {
+        const vec fck = fc.subvec(k*ntotal, (k+1)*ntotal - 1);
+        total += accu(-y % log(fck) + fck);
+      }
+    } else if (distribution == 3) {
+      for (int k = 0; k < nmc; k++) {
+        const vec fck = fc.subvec(k*ntotal, (k+1)*ntotal - 1);
+        total += accu(-y % log(fck) - (1 - y) % log(1 - fck));
+      }
+    } else if (distribution == 4) {
+      // general log-likelihood: the prediction column IS the per-obs loglik
+      total = -accu(fc);
+    }
+    if (!std::isfinite(total)) return 1e300;
+    return total;
+  }
+
   vec mixObsLoss(const mat &phiC, const mcmcaux &mx) {
     double double_xmin = 1.0e-200;
     double xmax = 1e300;
@@ -5185,6 +5444,30 @@ static double gPhi0RefObj(const double *p) {
 }
 
 static void gPhi0NmFn(double *p, double *fx) { *fx = gPhi0RefObj(p); }
+
+static double gZeroOmObj(const double *p) {
+  if (gZeroOmEvalN >= gZeroOmEvalMax) {
+    // out of budget: report worse than anything seen so the simplex collapses
+    // onto the best point instead of wandering
+    return gZeroOmBestF + 1.0e10;
+  }
+  std::vector<double> q(gZeroOmIx.size());
+  for (size_t i = 0; i < gZeroOmIx.size(); ++i) {
+    double v = p[i];
+    if (v < gZeroOmLo((arma::uword)i)) v = gZeroOmLo((arma::uword)i);
+    if (v > gZeroOmHi((arma::uword)i)) v = gZeroOmHi((arma::uword)i);
+    q[i] = v;
+  }
+  double f = gZeroOmSelf->zeroOmegaObjective(q.data());
+  gZeroOmEvalN++;
+  if (gZeroOmEvalN == 1 || f < gZeroOmBestF) {
+    gZeroOmBestF = f;
+    for (size_t i = 0; i < gZeroOmIx.size(); ++i) gZeroOmBest((arma::uword)i) = q[i];
+  }
+  return f;
+}
+
+static void gZeroOmNmFn(double *p, double *fx) { *fx = gZeroOmObj(p); }
 
 static double gPhi0RefObjR(Rcpp::NumericVector p) {
   return gPhi0RefObj(&(p[0]));

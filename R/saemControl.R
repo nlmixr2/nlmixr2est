@@ -30,6 +30,46 @@
 #'   Q came out 2.29 / 2.48 / 2.60 against 2.13.  Treat it as something to
 #'   raise when a parameter will not move, not as a default to increase.
 #'
+#'   `zeroOmegaAnneal` and `zeroOmegaDirect` both address the underlying
+#'   limitation more directly; see those.
+#'
+#' @param zeroOmegaAnneal Opt-in.  Total factor by which the
+#'   `zeroOmegaTune` exploration width is shrunk, geometrically, across the
+#'   simulated-annealing phase (`nBurn * perSa` iterations).  `0` or `1`
+#'   (the default) holds the width constant, which is what nlmixr2 has always
+#'   done.
+#'
+#'   saemix instead decays the variance of a parameter without
+#'   between-subject variability every annealing iteration by
+#'   `alpha0.sa = 10^(-3/nbiter.sa)` (`R/main_mstep.R:91`) -- a 1000-fold
+#'   shrink across the phase.  The motivation is that a constant width cannot
+#'   be right twice: it has to be wide enough early for the M-step to explore,
+#'   and small enough late for the theta to settle.  Held constant it is a
+#'   permanent noise floor, which is why widening `zeroOmegaTune` degrades
+#'   every parameter monotonically.  Set `zeroOmegaAnneal = 1000` to match
+#'   saemix.
+#'
+#' @param zeroOmegaDirect Opt-in.  When `TRUE`, update the theta of a
+#'   mu-referenced random effect whose declared variance is zero by directly
+#'   maximizing the observation likelihood, instead of by the
+#'   \eqn{\Omega^{-1}}-weighted regression SAEM uses for every other
+#'   mu-referenced theta.
+#'
+#'   That regression cannot move such a theta at all.  It is a generalized
+#'   least squares normal equation, so a column whose variance is ~0 gets an
+#'   enormous weight and the solve reduces to "reproduce this column's sampled
+#'   mean" -- while the sampler cannot move the column off its prior mean,
+#'   which *is* the current theta.  The fixed point is the `ini()` value.
+#'
+#'   Both reference implementations have a second route for exactly this case
+#'   and nlmixr2 did not.  NONMEM's technical guide derives the mu route in
+#'   eqs. 1.45/1.46 and a separate one in eqs. 1.47-1.52 that differentiates
+#'   the entire joint density "for those theta that are not exclusively
+#'   expressed in the model through mu"; saemix drops such parameters out of
+#'   its GLS (`covariate.estim1[,i0.omega2] <- 0`) and optimizes them with
+#'   `optim(compute.Uy)` instead.  This option is the same step, damped by the
+#'   usual stochastic-approximation stepsize.
+#'
 #' @param nBurn Number of iterations in the first phase, ie the  MCMC/Stochastic Approximation
 #'     steps. This is equivalent to Monolix's \code{K_0} or \code{K_b}.
 #'
@@ -394,6 +434,8 @@
 saemControl <- function(seed = 99,
                         nBurn = 200,
                         zeroOmegaTune = 0.1,
+                        zeroOmegaAnneal = 0,
+                        zeroOmegaDirect = FALSE,
                         nEm = 300,
                         nmc = 3,
                         nu = c(2, 2, 2),
@@ -606,9 +648,15 @@ saemControl <- function(seed = 99,
   }
   checkmate::assertNumeric(zeroOmegaTune, len=1, lower=0, finite=TRUE,
                            any.missing=FALSE, .var.name="zeroOmegaTune")
+  checkmate::assertNumeric(zeroOmegaAnneal, len=1, lower=0, finite=TRUE,
+                           any.missing=FALSE, .var.name="zeroOmegaAnneal")
+  checkmate::assertLogical(zeroOmegaDirect, len=1, any.missing=FALSE,
+                           .var.name="zeroOmegaDirect")
   .ret <- list(
     mcmc = list(niter = c(nBurn, nEm), nmc = nmc, nu = nu),
     zeroOmegaTune = zeroOmegaTune,
+    zeroOmegaAnneal = zeroOmegaAnneal,
+    zeroOmegaDirect = zeroOmegaDirect,
     rxControl = rxControl,
     seed = seed,
     censOption = censOption,

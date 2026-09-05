@@ -2834,15 +2834,18 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
       .flatIdx <- as.integer(which(abs(diag(.om0)) <= 1e-8 & .off0 & .isMu) - 1L)
       if (length(.flatIdx) > 0L) for (.k in .flatIdx + 1L) .om0[.k, .k] <- 1
     }
-    ## Recorded on the ui's control -- `env$control` is copied from it further
-    ## down, and that is the list foceiSetup_ receives as `foceiO`.
-    if (exists("control", envir=ui)) {
-      .ctlF <- get("control", envir=ui)
-      if (is.list(.ctlF)) {
-        .ctlF$flatEtaIdx <- .flatIdx
-        assign("control", .ctlF, envir=ui)
-      }
-    }
+    ## Held on `env` for now.  It must NOT go onto the ui's control: that list
+    ## is re-validated by name when a fit down-converts it
+    ## (`do.call(foiControl, .ctl)` in getValidNlmixrCtl.foi), and an entry
+    ## that is not a formal dies there -- est="foi" stopped with "cannot find
+    ## foi related control object".  impmap gets away with the same trick for
+    ## its own index maps only because `.impmapIsControlNames` strips them
+    ## before that conversion; the FOCEi family has no such step.
+    ##
+    ## It is copied onto `env$control` after that is taken from the ui, which
+    ## is the list foceiSetup_ receives as `foceiO` and is never re-validated
+    ## -- the same place `nF` and `printTop` are added.
+    env$.flatEtaIdx <- .flatIdx
     .diagXform <- rxode2::rxGetControl(ui, "diagXform", "sqrt")
     # A degenerate fit can collapse an uninformative random-effect variance to
     # exactly 0 (e.g. SAEM with very few subjects), leaving a singular omega
@@ -3321,6 +3324,10 @@ attr(rxUiGet.foceiSkipCov, "rstudio") <- c(FALSE, TRUE)
   env$xform <- .iterPrintXParFromUi(ui)
   .foceiSetupSkipCov(ui, env)
   env$control <- get("control", envir = ui)
+  ## random effects with no between-subject variability (see the omega setup);
+  ## internal, so it is added here rather than to the ui's control
+  env$control$flatEtaIdx <-
+    if (is.null(env$.flatEtaIdx)) integer(0) else env$.flatEtaIdx
   env$control$nF <- 0
   env$control$printTop <- TRUE
   env

@@ -258,6 +258,8 @@
                         fixedOmega=ui$saemModelOmegaFixed,
                         fixedOmegaValues=ui$saemModelOmegaFixedValues,
                         zeroOmegaTune=rxode2::rxGetControl(ui, "zeroOmegaTune", 0.1),
+                        zeroOmegaAnneal=rxode2::rxGetControl(ui, "zeroOmegaAnneal", 0),
+                        zeroOmegaDirect=rxode2::rxGetControl(ui, "zeroOmegaDirect", FALSE),
                         parHistThetaKeep=ui$saemParHistThetaKeep,
                         parHistOmegaKeep=ui$saemParHistOmegaKeep,
                         parHistOmegaOffPairs={

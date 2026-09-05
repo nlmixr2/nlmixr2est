@@ -167,6 +167,8 @@
                        distribution = c("normal", "poisson", "binomial", "general"),
                        seed = 99, fixedOmega = NULL, fixedOmegaValues=NULL,
                        zeroOmegaTune = 0.1,
+                       zeroOmegaAnneal = 0,
+                       zeroOmegaDirect = FALSE,
                        parHistThetaKeep=NULL,
                        parHistOmegaKeep=NULL,
                        parHistOmegaOffPairs=matrix(integer(0), ncol=2L),
@@ -351,6 +353,9 @@
   ## is what `saemControl(zeroOmegaTune=)` sets, and why it is a tuning value
   ## rather than an arbitrary placeholder.
   flatOmega <- which(inits$omega <= 0)
+  ## kept for saemZeroOmegaPhi1 below: once the placeholder is substituted the
+  ## columns are indistinguishable from any other fixed omega
+  .zeroOmegaPhi <- flatOmega
   if (length(flatOmega) > 0L) {
     .tune <- zeroOmegaTune
     if (is.null(.tune) || !is.finite(.tune) || .tune <= 0) .tune <- 0.1
@@ -478,6 +483,9 @@
   nphi1 <- sum(diag(covstruct))
   nphi0 <- nphi - nphi1
   na <- length(mcmc$stepsize)
+  ## phi index -> phi1 column (0-based, as src/saem.cpp indexes Gamma2_phi1)
+  saemZeroOmegaPhi1 <- as.integer(stats::na.omit(match(.zeroOmegaPhi, i1) - 1L))
+
   nlambda1 <- sum(mcov[, i1])
   nlambda0 <- sum(mcov[, i0])
   nlambda <- nlambda1 + nlambda0
@@ -674,6 +682,14 @@
   niter <- sum(mcmc$niter)
   niter_phi0 <- round(niter * .5)
   nb_sa <- round(mcmc$niter[1] * perSa)
+  ## saemControl(zeroOmegaAnneal=) is a TOTAL shrink across the SA phase; the
+  ## C++ side wants the per-iteration multiplier (saemix's alpha0.sa, which is
+  ## 10^(-3/nbiter.sa) for its own 1000-fold total)
+  zeroOmegaAnnealCoef <- 1.0
+  if (is.numeric(zeroOmegaAnneal) && length(zeroOmegaAnneal) == 1L &&
+        is.finite(zeroOmegaAnneal) && zeroOmegaAnneal > 1 && nb_sa > 0) {
+    zeroOmegaAnnealCoef <- exp(-log(zeroOmegaAnneal) / nb_sa)
+  }
   nb_correl <- round(mcmc$niter[1] * perNoCor)
   nb_fixOmega <- round(mcmc$niter[1] * perFixOmega)
   nb_fixResid <- round(mcmc$niter[1] * perFixResid)
@@ -784,6 +800,9 @@
     MCOV1 = MCOV1,
     Gamma2_phi0 = Gamma2_phi0,
     Gamma2_phi1 = Gamma2_phi1,
+    saemZeroOmegaPhi1 = saemZeroOmegaPhi1,
+    zeroOmegaAnnealCoef = zeroOmegaAnnealCoef,
+    zeroOmegaDirect = as.integer(isTRUE(zeroOmegaDirect)),
     Gamma2_phi1fixed=Gamma2_phi1fixed,
     Gamma2_phi1fixedIx=Gamma2_phi1fixedIx,
     Gamma2_phi1fixedValues=Gamma2_phi1fixedValues,
