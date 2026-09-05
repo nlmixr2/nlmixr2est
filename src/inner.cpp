@@ -3908,6 +3908,13 @@ static inline int innerOpt1(int id, int likId) {
   int nInnerStart = mcetaSampleStart ? 2 : 1;
   for (int _innerStart = 0; _innerStart < nInnerStart; _innerStart++) {
   bool _lastStart = (_innerStart + 1 == nInnerStart);
+  // The running minimum is PASS-LOCAL.  restoreBest() is the recovery from a
+  // failed restart inside this pass's nudge cascade, so it must put back an eta
+  // from THIS pass: carrying the sample pass's eta into the floor pass's cascade
+  // would have the floor nudging away from eta=0 and it would stop being the run
+  // mceta=0 would have made.  Choosing BETWEEN passes is candEta's job below.
+  fBest = std::numeric_limits<double>::infinity();
+  haveBest = false;
   if (_innerStart > 0) {
     // The eta=0 floor: re-seed exactly as mceta=0 would have, so this pass is
     // the run it must not come out above.
@@ -3934,6 +3941,9 @@ static inline int innerOpt1(int id, int likId) {
            &imp, fInd->zm, &izs, &rzs, &dzs, &id);
     if (ISNA(f)) {
       if (haveBest) { restoreBest(); break; }
+      // No usable result in THIS pass; an earlier one may still have a
+      // candidate, and the selection below will take it.
+      if (!candEta.empty()) break;
       if (_lastStart) return 0;
       continue;
     }
@@ -4104,6 +4114,9 @@ static inline int innerOpt1(int id, int likId) {
              op_focei.abstol, op_focei.reltol, fInd->g);
     if (ISNA(f)) {
       if (haveBest) { restoreBest(); break; }
+      // No usable result in THIS pass; an earlier one may still have a
+      // candidate, and the selection below will take it.
+      if (!candEta.empty()) break;
       if (_lastStart) return 0;
       continue;
     }
@@ -4135,64 +4148,78 @@ static inline int innerOpt1(int id, int likId) {
     // }
   }
   } // end of the starting-point loop (body deliberately not re-indented)
-  // Apply the best candidate found across the restart cascade.  This is what
-  // makes the inner solve monotone: a restart can only ever improve the eta the
-  // cascade leaves behind, never degrade it.  LikInner2() below recomputes the
+  // Apply the best candidate the restarts produced.  This is what makes the
+  // inner solve monotone: a restart can only ever improve the eta the cascade
+  // leaves behind, never degrade it.  LikInner2() below recomputes the
   // individual objective at this eta, so this is also what the outer optimizer
   // ultimately sees.
-  if (haveBest && (!R_FINITE(f) || fBest < f)) {
-    restoreBest();
-  }
-  // The inner optimizer minimizes the JOINT density.  The objective the fit
-  // reports is the MARGINAL one LikInner2() forms, which adds the Laplace
-  // log|H| term evaluated at the eta -- so two converged etas can order one way
-  // on the inner objective and the other way on what the outer optimizer sees.
-  // Choosing among restarts on the inner objective alone therefore hands the
-  // fit the worse of them whenever the two disagree (#1040): the mceta floor
-  // pass could win the inner comparison and still come out above mceta=0 on the
-  // reported objective.
   //
-  // Re-rank on the marginal, but only when the restarts actually produced more
-  // than one candidate -- with a single candidate there is nothing to choose
-  // and this costs nothing, which is every inner solve on the default path.
-  // A finite-difference leg (likId != 0) is ranked by the SAME rule, so it picks
+  // The choice is made on the MARGINAL objective LikInner2() forms -- the one
+  // the fit reports, which adds the Laplace log|H| term at the eta -- and not
+  // on the inner joint density the optimizer minimizes.  Two converged etas can
+  // order one way on the inner objective and the other way on what the outer
+  // optimizer sees, so choosing on the inner objective alone hands the fit the
+  // worse of them whenever the two disagree (#1040): the mceta floor pass could
+  // win the comparison it was making and still come out above mceta=0 on the
+  // objective that gets reported.
+  //
+  // Ranking runs only when the restarts actually produced more than one
+  // candidate.  A single candidate has nothing to choose between and costs
+  // nothing extra, which is every inner solve on the default path.  A
+  // finite-difference leg (likId != 0) is ranked by the SAME rule so it picks
   // its winner the way its central leg did; ranking the two differently would
   // let them settle in different basins and the difference would measure that.
   // LikInner2() writes lik[likId] for whichever candidate it is called on, and
   // the final call at the winner overwrites it, exactly as for likId == 0.
-  if (candEta.size() > 1) {
-    op_focei.nInnerRanked.fetch_add(1, std::memory_order_relaxed);
-    // calcEtaHessian(), reached through LikInner2(), FREEZES the shi21 finite
-    // difference steps on first use.  Snapshot them so the ranking leaves them
-    // as it found them: the winner's final LikInner2() below must freeze (or
-    // reuse) them exactly as it would have without a ranking pass, rather than
-    // inheriting steps searched at whichever candidate happened to go first.
-    std::vector<double> shf, shr, shh;
-    if (fInd->etahf != NULL) shf.assign(fInd->etahf, fInd->etahf + fop->neta);
-    if (fInd->etahr != NULL) shr.assign(fInd->etahr, fInd->etahr + fop->neta);
-    if (fInd->etahh != NULL) shh.assign(fInd->etahh, fInd->etahh + fop->neta);
-    int bestK = -1, bestInnerK = 0;
-    double bestMarg = 0.0;
+  if (!candEta.empty()) {
+    int bestInnerK = 0;
     for (size_t k = 0; k < candEta.size(); ++k) {
       if (candF[k] < candF[(size_t)bestInnerK]) bestInnerK = (int)k;
-      double m = LikInner2(&candEta[k][0], likId, id);
-      // LikInner2 returns the individual log-likelihood; the outer objective is
-      // -2 times it, so the best candidate is the LARGEST.
-      if (!ISNA(m) && R_FINITE(m) && (bestK < 0 || m > bestMarg)) {
-        bestMarg = m;
-        bestK = (int)k;
-      }
     }
-    if (!shf.empty()) std::copy(shf.begin(), shf.end(), fInd->etahf);
-    if (!shr.empty()) std::copy(shr.begin(), shr.end(), fInd->etahr);
-    if (!shh.empty()) std::copy(shh.begin(), shh.end(), fInd->etahh);
-    if (bestK >= 0) {
-      if (bestK != bestInnerK) {
+    int bestK = -1;
+    if (candEta.size() > 1) {
+      op_focei.nInnerRanked.fetch_add(1, std::memory_order_relaxed);
+      // calcEtaHessian(), reached through LikInner2(), FREEZES the shi21 finite
+      // difference steps on first use.  Snapshot them so the ranking leaves
+      // them as it found them and the winner's final LikInner2() below behaves
+      // exactly as it would have without a ranking pass.
+      std::vector<double> shf, shr, shh;
+      if (fInd->etahf != NULL) shf.assign(fInd->etahf, fInd->etahf + fop->neta);
+      if (fInd->etahr != NULL) shr.assign(fInd->etahr, fInd->etahr + fop->neta);
+      if (fInd->etahh != NULL) shh.assign(fInd->etahh, fInd->etahh + fop->neta);
+      double bestMarg = 0.0;
+      for (size_t k = 0; k < candEta.size(); ++k) {
+        // Each candidate is measured with ITS OWN step search, which is what
+        // the fit would have computed had that candidate been the only one.
+        // Without the zeroing the candidate evaluated first freezes the steps
+        // for all the rest, which both biases their log|H| and makes the winner
+        // depend on the order the passes happened to run in.
+        if (fInd->etahf != NULL) std::fill_n(&fInd->etahf[0], fop->neta, 0.0);
+        if (fInd->etahr != NULL) std::fill_n(&fInd->etahr[0], fop->neta, 0.0);
+        if (fInd->etahh != NULL) std::fill_n(&fInd->etahh[0], fop->neta, 0.0);
+        double m = LikInner2(&candEta[k][0], likId, id);
+        // LikInner2 returns the individual log-likelihood and the outer
+        // objective is -2 times it, so the best candidate is the LARGEST.
+        if (!ISNA(m) && R_FINITE(m) && (bestK < 0 || m > bestMarg)) {
+          bestMarg = m;
+          bestK = (int)k;
+        }
+      }
+      if (!shf.empty()) std::copy(shf.begin(), shf.end(), fInd->etahf);
+      if (!shr.empty()) std::copy(shr.begin(), shr.end(), fInd->etahr);
+      if (!shh.empty()) std::copy(shh.begin(), shh.end(), fInd->etahh);
+      if (bestK >= 0 && bestK != bestInnerK) {
         op_focei.nInnerReranked.fetch_add(1, std::memory_order_relaxed);
       }
-      std::copy(candEta[(size_t)bestK].begin(), candEta[(size_t)bestK].end(), fInd->x);
-      f = candF[(size_t)bestK];
     }
+    // No usable marginal for any candidate (or only one candidate): fall back
+    // to the inner objective's winner rather than to whatever the last pass
+    // happened to leave in fInd->x.
+    if (bestK < 0) bestK = bestInnerK;
+    std::copy(candEta[(size_t)bestK].begin(), candEta[(size_t)bestK].end(), fInd->x);
+    f = candF[(size_t)bestK];
+  } else if (haveBest && (!R_FINITE(f) || fBest < f)) {
+    restoreBest();
   }
 
   // only nudge once
