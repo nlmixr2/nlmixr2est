@@ -1995,6 +1995,15 @@ public:
 
     pc1 = as<uvec>(x["pc1"]);
     covstruct1 = as<mat>(x["covstruct1"]);
+    // Gamma2_phi1 columns carrying no between-subject variability -- a
+    // mu-referenced parameter whose omega was declared zero.  Excluded from
+    // the omega sufficient statistics (it does not contribute to them) and
+    // given a flat prior in the sampler, since it is not part of Omega.
+    if (x.containsElementNamed("saemFlatPhi1")) {
+      saemFlatPhi1 = as<uvec>(x["saemFlatPhi1"]);
+    } else {
+      saemFlatPhi1 = uvec();
+    }
     Mcovariables = as<mat>(x["Mcovariables"]);
 
     nphi1 = as<int>(x["nphi1"]);
@@ -2481,6 +2490,20 @@ public:
         revisitUninformativeEtas();
       }
       IGamma2_phi1=invSympdNearPd(Gamma2_phi1, "Gamma2_phi1 (Omega)");
+      // A flat column is not part of Omega, so it gets no prior: zeroing its
+      // row and column of the inverse is the same as leaving it out of the
+      // Cholesky (it cannot be correlated with anything -- a zero variance
+      // carries no covariance -- so Omega is block diagonal about it and this
+      // IS the smaller inverse embedded back).  The MCMC prior term and the
+      // objective's quadratic form both lose it, which is what a parameter
+      // with no between-subject variability should contribute.
+      for (unsigned int _f = 0; _f < saemFlatPhi1.n_elem; ++_f) {
+        unsigned int _c = saemFlatPhi1(_f);
+        if (_c < IGamma2_phi1.n_rows) {
+          IGamma2_phi1.row(_c).zeros();
+          IGamma2_phi1.col(_c).zeros();
+        }
+      }
       gamma2_phi1=Gamma2_phi1.diag();
       D1Gamma21=LCOV1*IGamma2_phi1;
       D2Gamma21=D1Gamma21*LCOV1.t();
@@ -3289,7 +3312,39 @@ public:
 
       // update parameters
       vec Plambda1, Plambda0;
-      Plambda1=inv_sympd(CGamma21)*sum((D1Gamma21%(COV1.t()*statphi11)),1);
+      // A flat column has had its row and column of IGamma2_phi1 zeroed (it is
+      // not part of Omega, so it gets no prior), and that zero propagates into
+      // CGamma21 -- whose inverse then fails outright.  It also should: the
+      // Omega^-1-weighted normal equation is the wrong update for a column with
+      // no Omega.  With a flat prior the GLS reduces to ordinary least squares
+      // on that column alone -- it cannot be correlated with any other, a zero
+      // variance carrying no covariance -- and for the intercept-only design
+      // that mu-referencing produces, OLS is just the mean of the sampled phi.
+      //
+      // So the flat rows are decoupled from the system before the solve and
+      // given that mean afterwards.  This is the same "theta += mean(eta)"
+      // update imp gets from impMuInterceptStep(), written in saem's
+      // parameterization, where the theta IS the column's location.
+      mat CG21 = CGamma21;
+      std::vector<unsigned int> flatRow;
+      std::vector<unsigned int> flatCol;
+      for (unsigned int _f = 0; _f < saemFlatPhi1.n_elem; ++_f) {
+        unsigned int _c = saemFlatPhi1(_f);
+        if (_c >= (unsigned int)LCOV1.n_cols) continue;
+        uvec _li = find(LCOV1.col(_c) == 1);
+        if (_li.n_elem != 1) continue;   // covariate design: leave it alone
+        unsigned int _l = _li(0);
+        if (_l >= CG21.n_rows) continue;
+        CG21.row(_l).zeros();
+        CG21.col(_l).zeros();
+        CG21(_l, _l) = 1.0;
+        flatRow.push_back(_l);
+        flatCol.push_back(_c);
+      }
+      Plambda1=inv_sympd(CG21)*sum((D1Gamma21%(COV1.t()*statphi11)),1);
+      for (size_t _k = 0; _k < flatRow.size(); ++_k) {
+        Plambda1(flatRow[_k]) = arma::mean(statphi11.col(flatCol[_k]));
+      }
       // Split-ETA mixture-owned columns (e.g. eta.cl1/eta.cl2): blended statphi11 dilutes each
       // column with the other component's uninformative draws, coupling tcl1/tcl2 and shrinking
       // apparent BSV. Override these columns' theta via responsibility-weighted regression
@@ -3438,6 +3493,19 @@ public:
         Gamma2_phi1=max(Gamma2_phi1*coef_sa, diagmat(G1));
       } else {
         Gamma2_phi1=G1;
+      }
+      // The flat columns contribute nothing to the sufficient statistics that
+      // estimate Omega, so they are held at their placeholder rather than
+      // taking a value out of G1.  (The placeholder only keeps the matrix
+      // invertible; IGamma2_phi1 has already had the column zeroed, so it
+      // reaches neither the sampler nor the objective.)
+      for (unsigned int _f = 0; _f < saemFlatPhi1.n_elem; ++_f) {
+        unsigned int _c = saemFlatPhi1(_f);
+        if (_c < Gamma2_phi1.n_rows) {
+          Gamma2_phi1.row(_c).zeros();
+          Gamma2_phi1.col(_c).zeros();
+          Gamma2_phi1(_c, _c) = 1.0;
+        }
       }
       Gamma2_phi1=Gamma2_phi1%covstruct1;
       // the SA floor above is per-element, so it can pull a pooled group apart
@@ -4368,6 +4436,7 @@ private:
   mat evt;
   mat phiM;
   uvec indio;
+  uvec saemFlatPhi1;
   mat Mcovariables;
   List opt, optM;
 

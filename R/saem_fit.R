@@ -166,6 +166,7 @@
                        rxControl = list(atol = 1e-6, rtol = 1e-4, method = "lsoda", maxeval = 100000),
                        distribution = c("normal", "poisson", "binomial", "general"),
                        seed = 99, fixedOmega = NULL, fixedOmegaValues=NULL,
+                       zeroOmegaTune = 0.1,
                        parHistThetaKeep=NULL,
                        parHistOmegaKeep=NULL,
                        parHistOmegaOffPairs=matrix(integer(0), ncol=2L),
@@ -337,6 +338,32 @@
 
   check <- sum(inits$theta[1, model$log.eta] <= 0)
   if (check) stop("illegal initial theta's")
+  ## A mu-referenced random effect whose variance is declared zero reaches saem
+  ## with omega == 0.  By this point that is the ONLY kind of zero omega left:
+  ## `.preProcessZeroOmega` removes every other one from the model and leaves
+  ## these, because they are the EM's handle on their thetas.
+  ##
+  ## The value is substituted HERE and nowhere else -- ui$omega keeps the
+  ## declared zero, so the objective still excludes the random effect
+  ## (foceiOmegaDropFlat(), src/inner.cpp).  What it buys is EXPLORATION: the
+  ## random effect has to be able to move, or the conditional mean the M-step
+  ## shifts its theta by is identically zero and the theta never budges.  That
+  ## is what `saemControl(zeroOmegaTune=)` sets, and why it is a tuning value
+  ## rather than an arbitrary placeholder.
+  flatOmega <- which(inits$omega <= 0)
+  if (length(flatOmega) > 0L) {
+    .tune <- zeroOmegaTune
+    if (is.null(.tune) || !is.finite(.tune) || .tune <= 0) .tune <- 0.1
+    inits$omega[flatOmega] <- .tune
+    ## held there rather than estimated: it is machinery, not a parameter, so
+    ## it must not be updated from the sufficient statistics
+    if (!is.null(fixedOmega)) {
+      for (.k in flatOmega) {
+        fixedOmega[.k, .k] <- 1L
+        if (!is.null(fixedOmegaValues)) fixedOmegaValues[.k, .k] <- .tune
+      }
+    }
+  }
   check <- sum(inits$omega <= 0)
   if (check) stop("illegal initial omega")
   # check = inits$sigma2<=0

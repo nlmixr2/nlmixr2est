@@ -79,66 +79,13 @@
 #' @return nothing, called for the error
 #' @noRd
 #' @author Matthew L. Fidler
-.etaDistRefuse <- function(d, est, control, ui=NULL) {
+.etaDistRefuse <- function(d, est, control) {
   if (nrow(d) == 0L) return(invisible())
   if (!is.character(est) || length(est) != 1L) return(invisible())
-  ## saem is checked BEFORE the capability flag, not after: it declares
-  ## etaDist=TRUE because it CAN take these models, but only the ones that
-  ## satisfy the condition below, so an unconditional early return here would
-  ## skip the very check that makes the flag honest.
-  if (identical(est, "saem")) {
-    ## saem indexes its random effects by the theta each one is ADDED to.  A
-    ## declared distribution reaches the model through an inverse CDF, not as
-    ## `theta + eta`, so it is only visible to saem as a "non-mu" random effect
-    ## -- and rxode2's mu-reference scan only produces that classification for
-    ## a model that has at least one ORDINARY mu-referenced random effect to
-    ## anchor it.  Measured:
-    ##
-    ##   declared eta + an ordinary mu-referenced eta -> sampled, fit returns
-    ##   declared eta(s) only                         -> no etas at all, saem
-    ##                                                   stops with "0 ETA's"
-    ##
-    ## So the refusal is exactly that case, and it is checked on the model
-    ## rather than assumed from the presence of a declaration.
-    if (!.etaDistHasMuRefEta(ui)) {
-      stop("est=\"saem\" needs at least one ordinary mu-referenced random ",
-           "effect alongside the declared non-normal one(s) on '",
-           paste(d$name, collapse="', '"), "'.\n",
-           "saem parameterizes a random effect by the theta it is added to. A ",
-           "declared distribution enters through an inverse CDF instead, so ",
-           "saem can only carry it as a non-mu random effect -- and with no ",
-           "mu-referenced random effect in the model there is nothing to ",
-           "anchor that, leaving saem with no random effects at all.\n",
-           "Either give a parameter an ordinary 'theta + eta' random effect, ",
-           "or use est=\"focei\" (or \"imp\"/\"impmap\"/\"agq\"), which take ",
-           "the declared distribution as written.",
-           call.=FALSE)
-    }
-    return(invisible())
-  }
   if (.isEtaDistMethod(est, control)) return(invisible())
   stop("est=\"", est, "\" cannot use the declared non-normal random effect ",
        "distribution(s) on '", paste(d$name, collapse="', '"), "'",
        call.=FALSE)
-}
-
-#' Does the model carry an ordinary mu-referenced random effect?
-#'
-#' Checked on the EXPANDED model, since that is what the method is handed.
-#'
-#' @param ui rxode2 model (may be NULL)
-#' @return TRUE when at least one random effect is mu-referenced
-#' @noRd
-#' @author Matthew L. Fidler
-.etaDistHasMuRefEta <- function(ui) {
-  if (is.null(ui)) return(TRUE)   # cannot tell; do not invent a refusal
-  .e <- try({
-    .x <- rxode2::rxEtaDistExpand(rxode2::rxUiDecompress(ui))
-    .m <- rxode2::rxUiDecompress(.x)$muRefDataFrame
-    !is.null(.m) && nrow(.m) > 0L
-  }, silent=TRUE)
-  if (inherits(.e, "try-error")) return(TRUE)
-  isTRUE(.e)
 }
 
 #' Refuse a declared eta distribution the dispatched method cannot use
@@ -154,7 +101,7 @@
   if (nrow(.d) == 0L) return(invisible())
   .est <- class(env)[1]
   .control <- if (exists("control", envir=env)) get("control", envir=env) else NULL
-  .etaDistRefuse(.d, .est, .control, .ui)
+  .etaDistRefuse(.d, .est, .control)
 }
 
 #' `rxode2::rxUiEtaDists()` when the installed rxode2 has it
@@ -196,7 +143,7 @@
   ## nonparametric mu-expansion, which is not a wait to impose on someone
   ## who is about to get an error.  The gate stays as the backstop for
   ## paths that reach nlmixr2Est() without running hooks.
-  .etaDistRefuse(.d, est, control, ui)
+  .etaDistRefuse(.d, est, control)
   ## a method that translates the declaration itself has to see it
   ## unexpanded (see `.etaDistMethodAttr()`)
   if (identical(.etaDistMethodAttr(est, control), "native")) return(NULL)

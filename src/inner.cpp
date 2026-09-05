@@ -928,6 +928,14 @@ struct focei_options {
   IntegerVector impMuThetaIdx; // 0-based theta indices of simple mu intercepts (no covariates)
   IntegerVector impMuEtaIdx;   // corresponding 0-based eta indices
   IntegerVector impThetaSensIdx; // 0-based theta indices with a d(f)/d(theta) sensitivity output
+  // 0-based eta indices that carry NO between-subject variability: a
+  // mu-referenced parameter whose omega is declared zero.  The random effect
+  // exists only so the EM has a per-subject location to take a mean of and
+  // fold into its theta; it is not part of Omega, so it must contribute
+  // nothing to the objective -- no `eta_j^2/omega_jj` in the quadratic form,
+  // no `omega_jj` in the log-determinant, no curvature in the inner Hessian.
+  // Equivalently: excluded from the Cholesky.
+  IntegerVector flatEtaIdx;
   IntegerVector impOmegaFixedEta; // 0-based eta indices whose Omega diagonal is fixed
 };
 
@@ -1647,6 +1655,35 @@ static void foceiOmegaEnvSyncFromTail(void) {
 }
 void foceiOmegaTailMemoClear(void) { _updateThetaOmegaTail.clear(); }
 
+// Take the flat etas out of Omega, after it has been built.
+//
+// A zero-variance random effect cannot carry a covariance (the declaration
+// checks that), so Omega is block diagonal with respect to it and its inverse
+// is too.  Zeroing that row and column of Omega^-1 is therefore EXACTLY the
+// inverse of the smaller Omega, embedded back at full size -- the quadratic
+// form `eta' Omega^-1 eta` and the inner Hessian both lose the term, which is
+// what a parameter with no between-subject variability should contribute.
+// The log-determinant is the reduced one, so the flat entries come out of it:
+// cholOmegaInv is upper triangular with the eta's own 1/sqrt(omega_jj) on the
+// diagonal, and dropping log of that removes its factor and nothing else.
+static void foceiOmegaDropFlat(void) {
+  const int nf = op_focei.flatEtaIdx.size();
+  if (nf == 0) return;
+  const int n = (int)op_focei.omegaInv.n_rows;
+  for (int k = 0; k < nf; ++k) {
+    int j = op_focei.flatEtaIdx[k];
+    if (j < 0 || j >= n) continue;
+    if ((int)op_focei.cholOmegaInv.n_rows == n) {
+      double u = op_focei.cholOmegaInv(j, j);
+      if (u > 0.0 && R_finite(u)) op_focei.logDetOmegaInv5 -= std::log(u);
+      op_focei.cholOmegaInv.row(j).zeros();
+      op_focei.cholOmegaInv.col(j).zeros();
+    }
+    op_focei.omegaInv.row(j).zeros();
+    op_focei.omegaInv.col(j).zeros();
+  }
+}
+
 static void foceiOmegaFastCompute(const double *omBlock) {
   const int n = _omFastNeta;
   arma::mat U(n, n, arma::fill::zeros);
@@ -1664,6 +1701,7 @@ static void foceiOmegaFastCompute(const double *omBlock) {
   op_focei.cholOmegaInv = U;
   op_focei.omegaInv = U.t() * U;
   op_focei.logDetOmegaInv5 = ld;
+  foceiOmegaDropFlat();
 }
 
 // Classify the diagonal transform at (probe) tail value th, given the base
@@ -1767,6 +1805,7 @@ static void foceiOmegaFromTheta(const double *omBlock) {
     op_focei.omegaInv = getOmegaInv();
     op_focei.cholOmegaInv = getCholOmegaInv();
     op_focei.logDetOmegaInv5 = getOmegaDet();
+    foceiOmegaDropFlat();
   }
 }
 
@@ -8112,6 +8151,9 @@ NumericVector foceiSetup_(const RObject &obj,
     if (foceiO.containsElementNamed("impOmegaFixedEta"))
       op_focei.impOmegaFixedEta = as<IntegerVector>(foceiO["impOmegaFixedEta"]);
     else op_focei.impOmegaFixedEta = IntegerVector(0);
+    if (foceiO.containsElementNamed("flatEtaIdx"))
+      op_focei.flatEtaIdx = as<IntegerVector>(foceiO["flatEtaIdx"]);
+    else op_focei.flatEtaIdx = IntegerVector(0);
   }
   // est="advi" reuses the theta-sensitivity model (impThetaSensIdx) for the outer
   // population gradient, but is not isImpmap; load the index here too.
@@ -12512,6 +12554,15 @@ int impThetaSensHarvestN() { return _impThetaSensHarvestN.load(std::memory_order
 
 // 0-based eta indices whose Omega diagonal is fixed (the EM Omega update restores
 // their rows/columns to the starting Omega so fix()ed variances are held).
+// 0-based eta indices carrying no between-subject variability.  imp needs them
+// too: the prior term is only half of where Omega enters -- the E-step's
+// proposal is built from Omega (or from the MAP Hessian's inverse), and a flat
+// eta must be out of that as well, or the placeholder variance reaches the
+// importance weights through the proposal instead.
+void impGetFlatEta(std::vector<int>& idx) {
+  idx.assign(op_focei.flatEtaIdx.begin(), op_focei.flatEtaIdx.end());
+}
+
 void impGetOmegaFixedEta(std::vector<int>& idx) {
   idx.assign(op_focei.impOmegaFixedEta.begin(), op_focei.impOmegaFixedEta.end());
 }

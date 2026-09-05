@@ -2867,6 +2867,42 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
     rxode2::rxAssignControlValue(ui, "ntheta", length(ui$iniDf$lower))
   } else {
     .om0 <- ui$omega
+    ## Random effects with no between-subject variability.  Detected from the
+    ## omega in hand rather than carried across stages -- the marker the
+    ## pre-processing hook writes is not visible here (measured: it reads empty
+    ## at this point), and it need not be.  A variance declared as a fixed zero
+    ## contributes nothing whether or not it is mu-referenced, so the test is
+    ## the matrix itself: a numerically zero diagonal carrying no covariance.
+    ##
+    ## They get a placeholder so the Cholesky below is invertible; it never
+    ## reaches the likelihood, because foceiOmegaDropFlat() (src/inner.cpp)
+    ## removes the row, the column and the log-determinant factor afterwards.
+    ## This must run BEFORE rxSymInvCholCreate(), or the factor is built from
+    ## the zeros.
+    .flatIdx <- integer(0)
+    if (nrow(.om0) > 0L) {
+      .off0 <- vapply(seq_len(nrow(.om0)), function(.k) {
+        all(.om0[.k, -.k] == 0) && all(.om0[-.k, .k] == 0)
+      }, logical(1))
+      ## Restricted to MU-REFERENCED random effects.  Any zero-variance eta
+      ## looks the same in the matrix, but only a mu-referenced one is kept in
+      ## the model on purpose (`.preProcessZeroOmega` removes the rest); a
+      ## legitimately tiny fixed variance in someone else's model must not be
+      ## silently reinterpreted as carrying no variability at all.
+      .muEta <- ui$muRefDataFrame$eta
+      .isMu <- dimnames(.om0)[[1]] %in% .muEta
+      .flatIdx <- as.integer(which(abs(diag(.om0)) <= 1e-8 & .off0 & .isMu) - 1L)
+      if (length(.flatIdx) > 0L) for (.k in .flatIdx + 1L) .om0[.k, .k] <- 1
+    }
+    ## Recorded on the ui's control -- `env$control` is copied from it further
+    ## down, and that is the list foceiSetup_ receives as `foceiO`.
+    if (exists("control", envir=ui)) {
+      .ctlF <- get("control", envir=ui)
+      if (is.list(.ctlF)) {
+        .ctlF$flatEtaIdx <- .flatIdx
+        assign("control", .ctlF, envir=ui)
+      }
+    }
     .diagXform <- rxode2::rxGetControl(ui, "diagXform", "sqrt")
     # A degenerate fit can collapse an uninformative random-effect variance to
     # exactly 0 (e.g. SAEM with very few subjects), leaving a singular omega
@@ -2917,6 +2953,13 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
     # from the matrix instead (identical without `same()`).
     rxode2::rxAssignControlValue(ui, "neta", dim(.om0)[1])
     rxode2::rxAssignControlValue(ui, "ntheta", length(.lower))
+    ## Random effects carrying no between-subject variability -- see
+    ## foceiOmegaDropFlat() in src/inner.cpp, which takes their row and column
+    ## out of Omega^-1 and their factor out of the log-determinant once the
+    ## Cholesky is built.  The variance sitting in `.om0` for them is a
+    ## placeholder that keeps the matrix invertible; without this it would
+    ## reach the likelihood.
+
     .lower <- c(.lower, .omdf$lower)
     .upper <- c(.upper, .omdf$upper)
   }

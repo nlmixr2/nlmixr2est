@@ -60,17 +60,6 @@
   intersect(.cand$name, .mr$eta)
 }
 
-#' Working variance given to a zero-variance mu-referenced random effect
-#'
-#' Large enough that the sampler/MAP can actually move the random effect (which
-#' is the whole point -- a frozen one has a conditional mean of exactly zero and
-#' shifts its theta by nothing), small enough not to distort the model it is
-#' standing in for.  0.1 is what was measured on Bauer's gamma model: at 1e-8
-#' the theta stayed pinned at its starting value of 6.686 against a truth of
-#' 5.03, at 0.1 it reached 5.553.
-#' @noRd
-.zeroOmegaMuRefWorkingVar <- 0.1
-
 ## Methods whose theta update for a mu-referenced parameter is "shift by the
 ## mean of its random effect".  Only these have anything to gain here.  The
 ## FOCEi family estimates such a theta directly through its outer optimizer, so
@@ -86,6 +75,16 @@
   if (is.null(ui) || !is.environment(ui$meta)) return(character(0))
   if (!exists(".zeroOmegaMuRefEtas", envir=ui$meta)) return(character(0))
   get(".zeroOmegaMuRefEtas", envir=ui$meta)
+}
+
+#' The thetas those random effects are mu-referenced to
+#' @param ui rxode2 model carried by the fit
+#' @return character vector, possibly empty
+#' @noRd
+.zeroOmegaMuRefThetaStash <- function(ui) {
+  if (is.null(ui) || !is.environment(ui$meta)) return(character(0))
+  if (!exists(".zeroOmegaMuRefThetas", envir=ui$meta)) return(character(0))
+  get(".zeroOmegaMuRefThetas", envir=ui$meta)
 }
 
 #' Let a zero-variance mu-referenced random effect move while the method runs
@@ -114,9 +113,31 @@
   .w <- which(.iniDf$name %in% .zero &
                 !is.na(.iniDf$neta1) & .iniDf$neta1 == .iniDf$neta2)
   if (length(.w) == 0L) return(NULL)
-  .iniDf$est[.w] <- .zeroOmegaMuRefWorkingVar
-  .iniDf$fix[.w] <- FALSE
-  assign("iniDf", .iniDf, envir=.ui)
+  ## What the two families need here is NOT the same, so this is split by
+  ## method rather than done one way for both.
+  ##
+  ## The FOCEi family (focei/imp/impmap/npag) must see the declared ZERO: its
+  ## omega setup detects a flat random effect by looking for a zero diagonal
+  ## and substitutes -- then removes -- its own placeholder.  Rewriting the
+  ## zero here hides it from exactly that code (measured: `fix(0)` came through
+  ## with no flat indices while `fix(1e-9)`, the same model, was excluded).
+  ##
+  ## saem has no such local step: its omega is consumed through covstruct,
+  ## Gamma2_phi1 and the MCMC before any of that, and a zero there means the
+  ## random effect cannot move at all -- so the conditional mean the M-step
+  ## folds into the theta is identically zero and the theta never budges.  It
+  ## gets the exploration value written in, held fix()ed so the sufficient
+  ## statistics do not update it, and reported back as the declared zero.
+  if (identical(est, "saem")) {
+    .tune <- rxode2::rxGetControl(.ui, "zeroOmegaTune", 0.1)
+    if (!is.numeric(.tune) || length(.tune) != 1L || !is.finite(.tune) ||
+          .tune <= 0) {
+      .tune <- 0.1
+    }
+    .iniDf$est[.w] <- .tune
+    .iniDf$fix[.w] <- TRUE
+    assign("iniDf", .iniDf, envir=.ui)
+  }
   ## Recorded rather than recomputed later: after this rewrite the model no
   ## longer looks like the thing that triggered it -- the variance is an
   ## ordinary estimated one and there is nothing left to detect.  It goes in
@@ -124,8 +145,21 @@
   ## rxAssignControlValue() does not (measured: readable on the ui the hook
   ## returns, gone by the time the fit object exists), which silently left the
   ## working variance reported as an estimate.
+  ## The THETA each of these random effects is mu-referenced to is recorded
+  ## here, not re-derived at fit time.  A zero-variance random effect is
+  ## missing from `muRefDataFrame` by the time a method looks (measured: with
+  ## `fix(0)` the later lookup matched nothing and the flat columns never
+  ## reached saem at all, while `fix(1e-9)` -- the same model under this
+  ## rewrite -- came through), so the pairing has to be taken while the
+  ## original model is still in hand.
+  .mr <- ui$muRefDataFrame
+  .th <- character(0)
+  if (!is.null(.mr) && nrow(.mr) > 0L) {
+    .th <- .mr$theta[.mr$eta %in% .zero]
+  }
   if (is.environment(.ui$meta)) {
     assign(".zeroOmegaMuRefEtas", .zero, envir=.ui$meta)
+    assign(".zeroOmegaMuRefThetas", .th, envir=.ui$meta)
   }
   list(ui=.ui)
 }

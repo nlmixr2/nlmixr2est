@@ -19,7 +19,7 @@
                            # not foceiControl() arguments, so they must be dropped
                            # when down-converting (e.g. .setOfvFo's do.call(foceiControl))
                            "impMuThetaIdx", "impMuEtaIdx", "impThetaSensIdx",
-                           "impOmegaFixedEta",
+                           "impOmegaFixedEta", "flatEtaIdx",
                            # combined eta+theta sensitivity build (#958): an
                            # impmap-internal request for the fused inner model;
                            # not a foceiControl() argument either.
@@ -734,6 +734,24 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   # restores their rows/columns to the starting value so fix()ed variances hold.
   .etaOrd <- .etaRows[order(.etaRows$neta1), ]
   .control$impOmegaFixedEta <- as.integer(which(isTRUE(.etaOrd$fix) | .etaOrd$fix) - 1L)
+  # Random effects carrying no between-subject variability: a mu-referenced
+  # parameter whose omega was declared zero.  They exist only so the EM has a
+  # per-subject location to average into the theta, so they contribute nothing
+  # to the objective -- foceiOmegaDropFlat() (src/inner.cpp) takes their row and
+  # column out of Omega^-1 and their factor out of the log-determinant once the
+  # Cholesky is built.  The variance sitting in the omega for them is a
+  # placeholder that keeps the matrix invertible and never reaches the
+  # likelihood (verified: the objective is identical with it at 1 and at 100).
+  #
+  # This is an internal index map like the ones above, NOT a foceiControl()
+  # argument -- putting it on the shared focei control broke every method that
+  # re-validates its control (est="foi" stopped with "cannot find foi related
+  # control object"), so it lives here and is stripped on down-conversion.
+  .flat <- .zeroOmegaMuRefStash(ui)
+  .control$flatEtaIdx <- if (length(.flat) == 0L) integer(0) else {
+    .fi <- as.integer(match(.flat, .etaOrd$name) - 1L)
+    .fi[!is.na(.fi)]
+  }
   assign("control", .control, envir=ui)
   # Seed the importance-sampling RNG from the control (impSeed) right before the
   # fit, mirroring saem's set.seed(seed).  The E-step draws through rxode2's

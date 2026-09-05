@@ -24,17 +24,10 @@ ini({
 
   Supported by the FOCEi family (whose inner problem needs only
   `d(eta)/d(latent)`, which rxode2 differentiates exactly through
-  `phiU()` and the inverse CDF), `posthoc`, simulation, and `saem` --
-  the last with one condition.
-
-  `saem` parameterizes a random effect by the theta it is *added to*. A
-  declared distribution enters through an inverse CDF instead, so `saem`
-  can only carry it as a non-mu random effect, and rxode2 only makes that
-  classification for a model with at least one ordinary mu-referenced
-  random effect to anchor it.  So a declared distribution works under
-  `saem` as long as something else in the model has a conventional
-  `theta + eta`; a model whose only random effects are declared is
-  refused by name rather than surfacing as `saem`'s bare `"0 ETA's"`.
+  `phiU()` and the inverse CDF), `saem` (a declared random effect has no
+  `theta + eta` form, so it lands in the already-exercised `nonMuEtas`
+  path and is still sampled and updated the same way), `posthoc`, and
+  simulation.
 
   A method that does not support it refuses rather than quietly fitting a
   different model than the one written -- the same reasoning, and the same
@@ -230,6 +223,45 @@ ini({
   consumes the Hessian -- though only `trust` was visibly broken without it.
   Normal endpoints, which use the Gauss-Newton inner Hessian, never reach this
   code.
+- A mu-referenced random effect whose variance is declared zero is no longer
+  removed from the model, and no longer contributes to the objective.
+
+  `$OMEGA (0.0 FIXED)` on a `MU_` helper eta is how a NONMEM control stream
+  mu-references a plain theta: the random effect carries no between-subject
+  variability, it exists so the EM has a per-subject location to average and
+  fold into its theta.  nlmixr2 dropped every zero omega from estimation,
+  which removes exactly that handle -- the theta then came back at its `ini()`
+  value while still being reported as an estimate.
+
+  Such a random effect is now kept, and excluded from Omega rather than from
+  the model.  A zero variance cannot carry a covariance, so Omega is block
+  diagonal about it: taking its row and column out of `Omega^-1` and its
+  factor out of the log-determinant is exactly the smaller Omega's inverse
+  embedded back, and the quadratic form, the log-determinant and the inner
+  Hessian all lose the term -- which is what a parameter with no
+  between-subject variability should contribute.  For `imp`/`impmap` the
+  E-step's PROPOSAL is reduced the same way: it is built from Omega (or the
+  MAP Hessian) and drawn from, so leaving the coordinate in there feeds a
+  variance the model does not have straight into the importance weights.
+  Measured on a model with two such random effects: `focei` 290.62 -> 152.70,
+  `impmap` 193.59 -> 151.24, the latter now matching what removing the random
+  effects outright gives.
+
+  The objective no longer depends on how the zero was written: `fix(0)` and
+  `fix(1e-9)` give identical values under `focei`, `impmap` and `saem`.
+
+- `saemControl(zeroOmegaTune=)` sets how far such a random effect explores.
+  saem consumes omega through `covstruct`, `Gamma2_phi1` and the MCMC well
+  before the objective, and a zero there means the random effect cannot move
+  at all -- so the conditional mean the M-step shifts its theta by is
+  identically zero and the theta never budges.  The value is written in for
+  saem, held `fix()`ed so the sufficient statistics do not update it, and
+  reported back as the declared zero.  It is a tuning knob, not a model
+  parameter: too small and the theta stays put, too large and the exploration
+  is wasteful.  Measured on Bauer's gamma model, at 1e-8 a parameter stayed
+  pinned at its starting value of 6.686 against a truth of 5.03; at 0.1 it
+  reached 5.553.
+
 - `imp`/`impmap`'s M-step no longer takes a raw Newton step on the non-mu
   structural thetas.  The step was guarded only by "the solve succeeded" and
   "the step is finite", and neither catches the case that matters: when the

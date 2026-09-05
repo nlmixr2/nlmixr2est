@@ -80,4 +80,77 @@ nmTest({
     # The real random effect is untouched.
     expect_true(.f$omega["eta.iiv", "eta.iiv"] > 0)
   })
+
+  test_that("a flat random effect contributes nothing to the objective", {
+    # A mu-referenced parameter whose omega is declared zero carries no
+    # between-subject variability, so it must contribute no `eta^2/omega` to
+    # the quadratic form and no `omega` to the log-determinant -- it is taken
+    # out of the Cholesky (foceiOmegaDropFlat(), src/inner.cpp).  The variance
+    # left in the omega matrix for it is a placeholder that keeps the matrix
+    # invertible, and the test of "it never reaches the likelihood" is that the
+    # objective does not depend on it.
+    #
+    # Verified directly while developing this by rebuilding with the internal
+    # placeholder at 1 and at 100: focei 290.6220260211 and impmap
+    # 193.5933442926 both times, to every digit.  What can be asserted from
+    # here is the same invariance through the public interface -- the declared
+    # value varies, the objective does not.
+    .mk <- function(v) {
+      .txt <- sprintf('function() {
+        ini({ tka <- 0.45; tcl <- 1; tv <- 3.45
+              eta.mu.tka ~ fix(%s); eta.mu.tv ~ fix(%s)
+              eta.iiv ~ 0.1; add.sd <- 0.7 })
+        model({ ka <- exp(tka + eta.mu.tka); cl <- exp(tcl + eta.iiv)
+                v <- exp(tv + eta.mu.tv); linCmt() ~ add(add.sd) }) }', v, v)
+      eval(parse(text = .txt))
+    }
+    .ofv <- function(m, est) {
+      .ctl <- if (est == "focei") {
+        foceiControl(print = 0, covMethod = "", maxOuterIterations = 0)
+      } else {
+        impmapControl(nIter = 3L, isample = 50L, print = 0, covMethod = "")
+      }
+      suppressWarnings(nlmixr2(m, nlmixr2data::theo_sd, est = est,
+                               control = .ctl))$objf
+    }
+    for (.est in c("focei", "impmap")) {
+      expect_equal(.ofv(.mk("0"), .est), .ofv(.mk("1e-9"), .est),
+                   tolerance = 1e-10, info = .est)
+    }
+  })
+
+  test_that("the exploration value stays out of the objective", {
+    # saemControl(zeroOmegaTune=) sets how far a flat random effect explores so
+    # the M-step has a conditional mean to shift its theta by.  It is machinery,
+    # not a model parameter, so it must not reach the likelihood -- which is the
+    # same defect a working variance in Omega would have.
+    #
+    # `fix(0)` vs `fix(1e-9)` cannot detect this: both spellings are rewritten
+    # to the same tuning value for saem, so they agree either way.  Varying the
+    # tuning value itself is what tests it.
+    .m <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        eta.mu.tka ~ fix(0)
+        eta.mu.tv ~ fix(0)
+        eta.iiv ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.mu.tka)
+        cl <- exp(tcl + eta.iiv)
+        v <- exp(tv + eta.mu.tv)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .ofv <- function(tune) {
+      suppressWarnings(nlmixr2(.m(), nlmixr2data::theo_sd, est = "saem",
+                               control = saemControl(nBurn = 30, nEm = 30,
+                                                     print = 0, covMethod = "",
+                                                     zeroOmegaTune = tune)))$objf
+    }
+    expect_equal(.ofv(0.1), .ofv(0.5), tolerance = 1e-10)
+  })
 })

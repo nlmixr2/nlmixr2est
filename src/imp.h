@@ -159,6 +159,7 @@ void impThetaSensHarvestTick();
 
 // 0-based eta indices whose Omega diagonal is fixed (held across the EM update).
 void impGetOmegaFixedEta(std::vector<int>& idx);
+void impGetFlatEta(std::vector<int>& idx);
 
 // Iteration print + parameter-history via the shared scale.h machinery.
 void impIterPrintStart();                        // configure/reset op_focei.scale + print header

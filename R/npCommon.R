@@ -254,6 +254,24 @@
   .control$impThetaSensIdx <- integer(0)   # no sensitivity model for npag/npb
   .etaOrd <- .etaRows[order(.etaRows$neta1), ]
   .control$impOmegaFixedEta <- as.integer(which(isTRUE(.etaOrd$fix) | .etaOrd$fix) - 1L)
+  # Random effects carrying no between-subject variability: a mu-referenced
+  # parameter whose omega was declared zero.  They exist only so the EM has a
+  # per-subject location to average into the theta, so they contribute nothing
+  # to the objective -- foceiOmegaDropFlat() (src/inner.cpp) takes their row and
+  # column out of Omega^-1 and their factor out of the log-determinant once the
+  # Cholesky is built.  The variance sitting in the omega for them is a
+  # placeholder that keeps the matrix invertible and never reaches the
+  # likelihood (verified: the objective is identical with it at 1 and at 100).
+  #
+  # This is an internal index map like the ones above, NOT a foceiControl()
+  # argument -- putting it on the shared focei control broke every method that
+  # re-validates its control (est="foi" stopped with "cannot find foi related
+  # control object"), so it lives here and is stripped on down-conversion.
+  .flat <- .zeroOmegaMuRefStash(ui)
+  .control$flatEtaIdx <- if (length(.flat) == 0L) integer(0) else {
+    .fi <- as.integer(match(.flat, .etaOrd$name) - 1L)
+    .fi[!is.na(.fi)]
+  }
   # 0-based theta indices of the variance-scale residual parameters (add/prop/
   # lnorm/...).  The npag/npb assay-error multiplier (gamma) scales the residual
   # variance r; at finalization gamma is folded into these coefficients so the

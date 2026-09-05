@@ -130,13 +130,13 @@ subject:
 
 ```{r etas}
 head(fit$eta)
-head(fit[, c("ID", "z.eta.cl", "eta.cl")], 3)
+head(fit[, c("ID", "rxz.eta.cl", "eta.cl")], 3)
 ```
 
 ## Which methods support this
 
 The FOCEi family (`focei`/`foce`/`laplace`/`agq`/`imp`/`impmap` and their
-variants), `saem` (with the caveat below), `posthoc` and simulation. A method that cannot use a declared
+variants), `saem`, `posthoc` and simulation. A method that cannot use a declared
 distribution refuses rather than quietly fitting a different model than the
 one written -- `npag`/`npb` model the random effect distribution
 nonparametrically, so a declared one contradicts them; `nlme` and `nls` are
@@ -149,30 +149,6 @@ nlmixr2(gammaCl, nlmixr2data::theo_sd, est = "npag")
 
 `nlmixr2bayes`' `est = "nuts"` supports it too, and babelmixr2 translates the
 families with an elementary quantile function to NONMEM.
-
-### `saem` needs an ordinary random effect alongside
-
-`saem` parameterizes a random effect by the theta it is *added to*. A declared
-distribution reaches the model through an inverse CDF rather than as
-`theta + eta`, so `saem` can only carry it as a "non-mu" random effect -- and
-rxode2 only makes that classification for a model that has at least one
-ordinary mu-referenced random effect to anchor it.
-
-In practice that means a declared distribution is fine as long as *something*
-in the model has a conventional `theta + eta`:
-
-```r
-model({
-  cl <- eta.cl                 # declared: gamma
-  v  <- exp(tv + eta.v)        # ordinary: anchors the scan
-  ...
-})
-```
-
-A model whose only random effects are declared leaves `saem` with no random
-effects at all, and is refused by name rather than surfacing as `saem`'s bare
-`"0 ETA's"`. Use `focei` (or `imp`/`impmap`/`agq`) for those, which take the
-declared distribution as written either way.
 
 ## Getting these models to converge
 
@@ -219,42 +195,13 @@ the objective is still sensitive to the inner problem (below), so an
 objective gap of a few hundred units between two parameter vectors is not yet
 a reliable model comparison.
 
-### Travelling to good starting values
-
-Because none of the declared distribution's parameters is mu-referenced, a
-cold start has little to work with. `rxode2::rxEtaDistMuRef()` builds a
-version of the model where they are -- each one carried on its own random
-effect with a small fixed variance, which is the structure NONMEM gets from
-`MU_5 = THETA(5)` with `$OMEGA (0.0 FIXED)`. Fit that, then refit the model
-you actually mean from its estimates:
-
-```r
-stage1 <- nlmixr2(rxEtaDistMuRef(mod), data, est = "saem")
-final  <- nlmixr2(mod |> ini(stage1), data, est = "focei",
-                  control = foceiControl(mceta = 100))
-```
-
-Measured on `theo_sd` with a declared gamma clearance, that chain runs
-end-to-end and stage two improves on stage one (objective 190.34 -> 176.22).
-On Bauer's data, `focei` started this way recovers the structural parameters
-essentially exactly -- CL 5.04 against a simulation truth of 5.03, Q 2.15
-against 2.13 -- where a cold start of either method alone does not.
-
-Two things about the chain are not optional.
-
-**Stage two must be a gradient method.** `saem` as the second stage does not
-merely fail to improve on stage one, it walks away from it -- measured, CL
-went 5.33 -> 4.54 -> 4.14 over the run.
-
-**The helper variance must not be ~0.** This is where the NONMEM idiom does
-*not* port. nlmixr2's mu-theta M-step is a normal equation weighted by
-`omega^-1`, so a variance fixed at ~0 gives that column effectively infinite
-weight and the sampler cannot move it off its prior mean -- which *is* the
-current parameter. The M-step's fixed point becomes the parameter's
-**starting value**, reported as an estimate. nlmixr2 handles a declared zero
-for you (it is estimated while the fit runs and reported as the zero it was
-declared to be), and `rxEtaDistMuRef()` refuses a variance below 1e-6
-outright.
+Getting to starting values that good currently takes work, because the EM
+method you would normally warm-start from is unavailable here -- see
+`saem` above. `rxode2::rxEtaDistMuRef()` will mu-reference the declared
+distribution's parameters for you, which is the structure NONMEM uses
+(`MU_5 = THETA(5)` with `$OMEGA (0.0 FIXED)`), but it does not make `saem`
+sample the declared random effect, so it is not on its own a way around that
+limitation.
 
 ### The inner problem
 
