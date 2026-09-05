@@ -674,6 +674,11 @@ struct focei_options {
   // one that says the Laplace log|H| term actually changes the choice.
   std::atomic<int> nInnerRanked{0};
   std::atomic<int> nInnerReranked{0};
+  // Inner solves where NOTHING converged and the selection fell back to the
+  // eta=0 pass.  Worth counting: it is the signal that the restarts are not
+  // reaching a stationary point, which is what makes the Hessian taken there
+  // -- log|H|, and impmap's proposal -- unreliable.
+  std::atomic<int> nInnerZeroFallback{0};
   std::atomic<int> didEtaReset{0};
   double resetThetaSize = std::numeric_limits<double>::infinity();
   double resetThetaFinalSize = std::numeric_limits<double>::infinity();
@@ -3889,10 +3894,31 @@ static inline int innerOpt1(int id, int likId) {
   // objective (see the re-rank after the loop).
   std::vector< std::vector<double> > candEta;
   std::vector<double> candF;
+  // Whether the pass that produced each candidate actually CONVERGED, and
+  // whether it started from eta=0.
+  //
+  // A finite objective is not a converged one: a pass that exhausts
+  // maxInnerIterations still returns a finite `f` and could win the selection
+  // below.  Its eta is not a stationary point, so the Hessian taken there --
+  // FOCEi's own log|H| term, and impmap's per-subject proposal, which is built
+  // from that same Hessian -- is curvature at a point that is not the minimum.
+  // For impmap that is fatal rather than merely inaccurate: inv_sympd()/chol()
+  // on an indefinite H fails and the subject drops out of the E-step.
+  //
+  // So convergence is recorded per candidate and the selection prefers
+  // converged ones, falling back to the eta=0 pass and only then to whatever
+  // there is -- an unconverged eta is still better than no eta at all.
+  std::vector<char> candConv;
+  std::vector<char> candZero;
+  // Set by whichever optimizer arm ran, immediately after it returns.
+  bool passConverged = false;
+  bool passFromZero = false;
   auto keepCand = [&]() {
     if (!R_FINITE(f)) return;
     candEta.push_back(std::vector<double>(fInd->x, fInd->x + fop->neta));
     candF.push_back(f);
+    candConv.push_back(passConverged ? 1 : 0);
+    candZero.push_back(passFromZero ? 1 : 0);
   };
   // Starting points this inner solve runs from.  mceta>=1 picks its start by the
   // objective AT that point, which does not order the points the optimization
@@ -3910,6 +3936,11 @@ static inline int innerOpt1(int id, int likId) {
   int nInnerStart = mcetaSampleStart ? 2 : 1;
   for (int _innerStart = 0; _innerStart < nInnerStart; _innerStart++) {
   bool _lastStart = (_innerStart + 1 == nInnerStart);
+  // The eta=0 floor pass is the second one; when no sampled start was chosen
+  // the single pass already began at eta=0 (or at the carried eta, which the
+  // fallback treats the same way -- it is the run mceta=0 would have made).
+  passFromZero = (_innerStart > 0) || !mcetaSampleStart;
+  passConverged = false;
   // The running minimum is PASS-LOCAL.  restoreBest() is the recovery from a
   // failed restart inside this pass's nudge cascade, so it must put back an eta
   // from THIS pass: carrying the sample pass's eta into the floor pass's cascade
@@ -3941,6 +3972,11 @@ static inline int innerOpt1(int id, int likId) {
            fInd->var, &epsilon,
            &mode, &maxInnerIterations, &nsim,
            &imp, fInd->zm, &izs, &rzs, &dzs, &id);
+    // n1qn1_ writes back the iteration/simulation counts it SPENT (see where
+    // they are declared), so spending the whole budget is it stopping on the
+    // cap rather than on the gradient.
+    passConverged = (maxInnerIterations < fop->maxInnerIterations) &&
+      (nsim < fop->nsim);
     if (ISNA(f)) {
       if (haveBest) { restoreBest(); break; }
       // No usable result in THIS pass; an earlier one may still have a
@@ -4114,6 +4150,9 @@ static inline int innerOpt1(int id, int likId) {
              op_focei.pgtol, &fncount, &grcount,
              op_focei.maxInnerIterations, msg, 0, -1,
              op_focei.abstol, op_focei.reltol, fInd->g);
+    // lbfgsb3C's convergence code: 0 is a converged stop, anything else is an
+    // iteration/evaluation limit or an error.
+    passConverged = (fail == 0);
     if (ISNA(f)) {
       if (haveBest) { restoreBest(); break; }
       // No usable result in THIS pass; an earlier one may still have a
@@ -4174,12 +4213,31 @@ static inline int innerOpt1(int id, int likId) {
   // LikInner2() writes lik[likId] for whichever candidate it is called on, and
   // the final call at the winner overwrites it, exactly as for likId == 0.
   if (!candEta.empty()) {
-    int bestInnerK = 0;
-    for (size_t k = 0; k < candEta.size(); ++k) {
+    // Which candidates the selection is allowed to choose from.  A converged
+    // pass is required, because the eta this hands back is where the Hessian
+    // gets taken -- FOCEi's log|H| term, and impmap's proposal, are curvature
+    // AT this point, and only a stationary point guarantees that is a minimum.
+    // If nothing converged, fall back to the eta=0 pass (the run mceta=0 would
+    // have made, which is the floor this is supposed to respect) and only then
+    // to whatever there is.
+    std::vector<size_t> pick;
+    for (size_t k = 0; k < candEta.size(); ++k) if (candConv[k]) pick.push_back(k);
+    if (pick.empty()) {
+      for (size_t k = 0; k < candEta.size(); ++k) if (candZero[k]) pick.push_back(k);
+      if (!pick.empty()) {
+        op_focei.nInnerZeroFallback.fetch_add(1, std::memory_order_relaxed);
+      }
+    }
+    if (pick.empty()) {
+      for (size_t k = 0; k < candEta.size(); ++k) pick.push_back(k);
+    }
+    int bestInnerK = (int)pick[0];
+    for (size_t p = 0; p < pick.size(); ++p) {
+      size_t k = pick[p];
       if (candF[k] < candF[(size_t)bestInnerK]) bestInnerK = (int)k;
     }
     int bestK = -1;
-    if (candEta.size() > 1) {
+    if (pick.size() > 1) {
       op_focei.nInnerRanked.fetch_add(1, std::memory_order_relaxed);
       // calcEtaHessian(), reached through LikInner2(), FREEZES the shi21 finite
       // difference steps on first use.  Snapshot them so the ranking leaves
@@ -4190,7 +4248,8 @@ static inline int innerOpt1(int id, int likId) {
       if (fInd->etahr != NULL) shr.assign(fInd->etahr, fInd->etahr + fop->neta);
       if (fInd->etahh != NULL) shh.assign(fInd->etahh, fInd->etahh + fop->neta);
       double bestMarg = 0.0;
-      for (size_t k = 0; k < candEta.size(); ++k) {
+      for (size_t p = 0; p < pick.size(); ++p) {
+        size_t k = pick[p];
         // Each candidate is measured with ITS OWN step search, which is what
         // the fit would have computed had that candidate been the only one.
         // Without the zeroing the candidate evaluated first freezes the steps
@@ -7642,6 +7701,7 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.nMcetaZero.store(0, std::memory_order_relaxed);
   op_focei.nMcetaSample.store(0, std::memory_order_relaxed);
   op_focei.nInnerRanked.store(0, std::memory_order_relaxed);
+  op_focei.nInnerZeroFallback.store(0, std::memory_order_relaxed);
   op_focei.nInnerReranked.store(0, std::memory_order_relaxed);
   op_focei.warm = foceiO.containsElementNamed("warm") ? as<int>(foceiO["warm"]) : 0;
   op_focei.maxOdeRecalc = as<int>(foceiO["maxOdeRecalc"]);
@@ -8861,6 +8921,7 @@ Environment foceiOuter(Environment e){
   op_focei.nMcetaZero.store(0, std::memory_order_relaxed);
   op_focei.nMcetaSample.store(0, std::memory_order_relaxed);
   op_focei.nInnerRanked.store(0, std::memory_order_relaxed);
+  op_focei.nInnerZeroFallback.store(0, std::memory_order_relaxed);
   op_focei.nInnerReranked.store(0, std::memory_order_relaxed);
   op_focei.nDeclineNewton=0;
   op_focei.nDeclineE0=0;
@@ -11521,7 +11582,8 @@ void foceiFinalizeTables(Environment e){
       // the nudge cascade produces multiple candidates too.
       e["nInnerRerank"] = IntegerVector::create(
         _["ranked"] = op_focei.nInnerRanked.load(std::memory_order_relaxed),
-        _["flipped"] = op_focei.nInnerReranked.load(std::memory_order_relaxed));
+        _["flipped"] = op_focei.nInnerReranked.load(std::memory_order_relaxed),
+        _["zeroFallback"] = op_focei.nInnerZeroFallback.load(std::memory_order_relaxed));
       if (op_focei.mceta >= 1) {
         // Which mceta candidate each inner solve started from.  Not gated on
         // `fast`: mceta>=1 is independent of the analytic gradient.
@@ -11937,6 +11999,23 @@ bool impCovProgress() { return op_focei.scale.every != 0; }
 
 // Newton step on the non-mu structural thetas: add step[s] to theta
 // impThetaSensIdx[s] in fullTheta and propagate to every subject's solve.
+// Size of a proposed M-step structural-theta step, measured relative to each
+// theta's own current magnitude (floored at 1 so a theta near zero still gets a
+// usable absolute allowance).  This is what the M-step's trust region is applied
+// to, so the same radius means the same thing whether a theta is 0.1 or 1e5.
+double impStructStepRel(const arma::vec& step) {
+  IntegerVector &thIdx = op_focei.impThetaSensIdx;
+  double worst = 0.0;
+  for (int s = 0; s < thIdx.size(); ++s) {
+    double th = op_focei.fullTheta[thIdx[s]];
+    double scale = std::max(std::fabs(th), 1.0);
+    double rel = std::fabs(step[s]) / scale;
+    if (!R_finite(rel)) return R_PosInf;
+    if (rel > worst) worst = rel;
+  }
+  return worst;
+}
+
 void impUpdateStructThetas(const arma::vec& step) {
   rx = getRxSolve_();
   int nsub = getRxNsub(rx);
@@ -12029,7 +12108,18 @@ double impGetIndLik(int id) {
 bool impGetHessian(int id, arma::mat& H) {
   focei_ind *fInd = &(inds_focei[id]);
   int neta = op_focei.neta;
-  // Establish the inner solve at this subject's mode before the FD Hessian.
+  // Establish the inner solve at this subject's mode before calcEtaHessian().
+  //
+  // NOT a finite difference in general -- calcEtaHessian() picks the same
+  // branch the FOCEi inner problem uses, so impmap gets FOCEi's own Hessian:
+  //   * a normal endpoint (needOptimHess false) -> the Gauss-Newton assembly
+  //     from this subject's a/B/c/cHff/cHfr/cHrr;
+  //   * a log-likelihood / generalized endpoint with the 2nd-order model built
+  //     (predHess2Offset >= 0) -> the EXACT analytic H = Omega^-1 - sum_obs d2;
+  //   * a log-likelihood endpoint WITHOUT that model (fast=FALSE, censoring,
+  //     out-of-scope) -> the Shi21 finite difference, as the fallback.
+  // The comment here used to say "FD Hessian" unconditionally, which reads as
+  // though impmap finite-differences what FOCEi derives analytically.
   double f = likInner0(fInd->eta, id);
   if (ISNA(f)) {
     // The MAP already evaluated this mode, so an NA here means the cached solve
