@@ -4098,9 +4098,18 @@ static inline int innerOpt1(int id, int likId) {
   // computed at a point the objective never actually descended to and can come
   // out larger.  mceta>=1 is where a mixed candidate set is common (#1044).
   std::vector<char> candOk;
+  // The three vectors are read by index against each other, so they must never
+  // end up ragged.  Everything that can allocate -- the eta copy and all three
+  // reserves -- is done FIRST, so a std::bad_alloc (which the trust arm's own
+  // catch swallows, letting the selection below still run) leaves nothing
+  // pushed; the three push_backs that follow allocate nothing and cannot throw.
   auto keepCand = [&](bool ok) {
     if (!R_FINITE(f)) return;
-    candEta.push_back(std::vector<double>(fInd->x, fInd->x + fop->neta));
+    std::vector<double> eta(fInd->x, fInd->x + fop->neta);
+    candEta.reserve(candEta.size() + 1);
+    candF.reserve(candF.size() + 1);
+    candOk.reserve(candOk.size() + 1);
+    candEta.push_back(std::move(eta));
     candF.push_back(f);
     candOk.push_back(ok ? (char)1 : (char)0);
   };
@@ -4696,11 +4705,6 @@ static inline int innerOpt1(int id, int likId) {
   // LikInner2() writes lik[likId] for whichever candidate it is called on, and
   // the final call at the winner overwrites it, exactly as for likId == 0.
   if (!candEta.empty()) {
-    // keepCand() grows the three candidate vectors one after another, so a
-    // std::bad_alloc between them (swallowed by the trust arm's own catch)
-    // could leave candOk short.  Pad rather than index past it; an unknown
-    // verdict is treated as eligible, which is the behavior before this rule.
-    if (candOk.size() != candEta.size()) candOk.resize(candEta.size(), (char)1);
     // A candidate the optimizer FAILED on is a fallback, not a choice.  Both
     // the inner-objective winner and the marginal re-rank below therefore look
     // only at candidates whose attempt succeeded whenever there is at least

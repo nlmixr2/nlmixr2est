@@ -359,6 +359,45 @@ nmTest({
     expect_gt(.c4[["radiusRetry"]], 0L)
   })
 
+  test_that("a hard trust solve error is counted and recovered from (#1044)", {
+    skip_on_cran()
+    # A volume that goes NEGATIVE for part of the eta range makes linCmt()
+    # undefined there, so a nudged starting point can be infeasible and
+    # trust_solve_c() returns an error rather than a result.  That is the one
+    # attempt outcome the retry-stage fit above never produces, and it is also
+    # the path that forces f to +Inf so the shared restore fires.
+    .negV <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 4
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v) - 30
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .fe <- suppressWarnings(suppressMessages(
+      nlmixr2(.negV, nlmixr2data::theo_sd, est = "focei",
+              control = foceiControl(innerOpt = "trust", maxOuterIterations = 0L,
+                                     covMethod = "", calcTables = FALSE,
+                                     print = 0))))
+    .ce <- .fe$env$nTrustInner
+    expect_gt(.ce[["error"]], 0L)
+    expect_equal(.ce[["notConverged"]],
+                 .ce[["error"]] + .ce[["solverFail"]] + .ce[["newtonGate"]])
+    # The failed attempt is recovered from rather than reported: no subject ends
+    # the cascade unconverged, and the objective is a number.
+    expect_equal(.ce[["failed"]], 0L)
+    expect_true(is.finite(.fe$objf))
+  })
+
   test_that("mceta's mixed candidate set drops the failed attempts (#1044)", {
     skip_on_cran()
     # The re-rank only has something to choose between when the restarts
