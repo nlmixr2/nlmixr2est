@@ -1589,7 +1589,7 @@ nlmixr2Est.saem <- function(env, ...) {
 attr(nlmixr2Est.saem, "covPresent") <- TRUE
 ## Declared non-normal random effects are refused for saem: it would not sample
 ## them at all (see .etaDistRefuse() in R/preProcessEtaDist.R, nlmixr2est#1047).
-attr(nlmixr2Est.saem, "etaDist") <- FALSE
+attr(nlmixr2Est.saem, "etaDist") <- TRUE
 attr(nlmixr2Est.saem, "unbounded") <- TRUE
 attr(nlmixr2Est.saem, "mu") <- TRUE
 # Whether the shared IOV pre-processing rewrite (.uiApplyIov(), R/iov.R) runs.
