@@ -569,6 +569,33 @@
 #'   large step, so "solved and finite" is not a guard.  A well-conditioned
 #'   iteration takes the exact undamped step.
 #'
+#'
+#'   Default `FALSE`.  The step is verified correct -- its analytic score agrees
+#'   with a central difference of the objective the search itself minimizes to
+#'   1e-8 or better -- but on Bauer's gamma data it makes the fit converge
+#'   FASTER to a WORSE answer, so it is opt-in.
+#'
+#'   Measured, `nBurn = nEm = 100`, `etaDistMstep = FALSE`, three seeds:
+#'
+#'   | seed | MARE off -> on | cor off -> on (truth 0.438) | time |
+#'   |---|---|---|---|
+#'   | 99 | 45.8% -> 45.8% | 0.892 -> 0.915 | -29% |
+#'   | 7 | 30.3% -> 46.9% | 0.597 -> 0.831 | -31% |
+#'   | 2024 | 29.7% -> 43.2% | 0.556 -> 0.887 | -30% |
+#'
+#'   The ~30% speedup is consistent and is the warm start working as intended:
+#'   the derivative-free search that follows needs fewer of its
+#'   `nonMuThetaMaxEval` evaluations.  The accuracy loss is driven entirely by
+#'   the copula correlation, which moves toward 1 and away from the truth on
+#'   every seed.
+#'
+#'   That is diagnostic rather than a reason to distrust the gradient.  The
+#'   gradient is correct, so it is faithfully descending an objective that
+#'   prefers a high correlation; the derivative-free search was only protective
+#'   by being too imprecise to get there.  The fix belongs in the objective or
+#'   in how `rxCor` is parameterized -- or in letting the distribution M-step
+#'   own that theta (`etaDistCorMstep`) -- not in the optimizer.
+
 #' @param nonMuThetaGradEvery Run the exact-gradient step every
 #'   `nonMuThetaGradEvery` iterations (default 1, i.e. every iteration).
 #'
