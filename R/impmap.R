@@ -14,6 +14,7 @@
                            "autoNonmemSparse", "autoDfPatience",
                            "iscaleMin", "iscaleMax", "iaccept",
                            "ctol", "nConvWindow", "impSeed", "impCov",
+                           "zeroOmegaDirect", "zeroOmegaMaxEval",
                            "qr", "qrShift", "qrRefresh", "sir", "sirSample",
                            # internal M-step index maps added in .impmapFamilyFit;
                            # not foceiControl() arguments, so they must be dropped
@@ -258,6 +259,25 @@
 #'   is inflated (toward `iscaleMax`) only when it drops below this floor.
 #' @param ctol Convergence tolerance on the windowed objective-function change;
 #'   `NULL` derives it from `sigdig`.
+#' @param zeroOmegaDirect Opt-in.  When `TRUE`, update the theta of a
+#'   mu-referenced random effect whose declared variance is zero by directly
+#'   maximizing the observation likelihood, instead of by the EM's
+#'   `theta += mean(eta)` mean-shift.
+#'
+#'   That mean-shift cannot move such a theta.  The random effect carries no
+#'   between-subject variability, so the importance proposal excludes its
+#'   coordinate entirely and its etas never move -- `mean(eta)` is identically
+#'   zero and the theta stays at its `ini()` value.
+#'
+#'   NONMEM's technical guide derives a separate route for a theta not
+#'   reachable through mu (eqs. 1.47-1.52, differentiating the entire joint
+#'   density) and takes it for exactly this case; saemix does the same with
+#'   `optim(compute.Uy)`.  This is that step.  Each objective evaluation is one
+#'   full-population solve, so it is budgeted by `zeroOmegaMaxEval`.
+#'
+#' @param zeroOmegaMaxEval Objective-evaluation budget per `zeroOmegaDirect`
+#'   step.  Each evaluation is a full-population solve.
+#'
 #' @param nConvWindow Length of the trailing iteration window used to average
 #'   the objective-function change for convergence (NONMEM-style CTYPE).
 #' @param muModel Mu-referencing variant for the MAP inner problem; for
@@ -330,6 +350,8 @@ impmapControl <- function(sigdig=3,
                           iaccept=0.4,
                           ctol=NULL,
                           nConvWindow=10L,
+                          zeroOmegaDirect=FALSE,
+                          zeroOmegaMaxEval=25L,
                           impSeed=42L,
                           covMethod=c("imp", "analytic", "r,s", "r", "s", "sa", ""),
                           qr=FALSE,
@@ -448,6 +470,12 @@ impmapControl <- function(sigdig=3,
   .control$iaccept <- as.double(iaccept)
   .control$ctol <- if (is.null(ctol)) NULL else as.double(ctol)
   .control$nConvWindow <- as.integer(nConvWindow)
+  checkmate::assertLogical(zeroOmegaDirect, len=1, any.missing=FALSE,
+                           .var.name="zeroOmegaDirect")
+  checkmate::assertIntegerish(zeroOmegaMaxEval, len=1, lower=1, any.missing=FALSE,
+                              .var.name="zeroOmegaMaxEval")
+  .control$zeroOmegaDirect <- zeroOmegaDirect
+  .control$zeroOmegaMaxEval <- as.integer(zeroOmegaMaxEval)
   .control$impSeed <- as.integer(impSeed)
   .control$qr <- qr
   .control$qrShift <- qrShift

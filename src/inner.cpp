@@ -899,6 +899,12 @@ struct focei_options {
   // Equivalently: excluded from the Cholesky.
   IntegerVector flatEtaIdx;
   IntegerVector impOmegaFixedEta; // 0-based eta indices whose Omega diagonal is fixed
+  // foceiControl(zeroOmegaDirect=)/impmapControl: update a mu-referenced theta
+  // whose eta is flat by directly maximizing the observation likelihood
+  // (impZeroOmegaDirectStep) instead of by theta += mean(eta), which is
+  // identically zero for such an eta.  0 = off.
+  int impZeroOmegaDirect = 0;
+  int impZeroOmegaMaxEval = 25;  // per-call objective budget (each = one full solve)
 };
 
 focei_options op_focei;
@@ -7610,6 +7616,20 @@ NumericVector foceiSetup_(const RObject &obj,
     op_focei.isNpag = false;
     op_focei.isNpb = false;
   }
+  // Random effects carrying no between-subject variability (a mu-referenced
+  // parameter whose omega was declared zero).  foceiOmegaDropFlat() takes their
+  // row/column out of Omega^-1 and their factor out of the log-determinant, and
+  // imp excludes them from its proposal -- so EVERY method in the FOCEi family
+  // needs this map, not just the nonparametric ones.  It used to be read only
+  // inside the isNpag/isNpb branch below, which left op_focei.flatEtaIdx empty
+  // for focei/imp/impmap: foceiOmegaDropFlat() was a silent no-op there and a
+  // flat random effect still contributed to the objective.  R computes the map
+  // in .foceiOptEnvSetupBounds() (R/focei.R), .impmapFamilyFit() (R/impmap.R)
+  // and .npFamilyControl() (R/npCommon.R).  The else-reset matters because
+  // op_focei is a process global that outlives a fit.
+  if (foceiO.containsElementNamed("flatEtaIdx"))
+    op_focei.flatEtaIdx = as<IntegerVector>(foceiO["flatEtaIdx"]);
+  else op_focei.flatEtaIdx = IntegerVector(0);
   if (op_focei.isImpmap) {
     // isample may be a per-subject vector; the scalar is the largest requested
     // count (used for sizing, the SIR default and reporting).
@@ -7646,6 +7666,10 @@ NumericVector foceiSetup_(const RObject &obj,
     if (foceiO.containsElementNamed("ctol") && !Rf_isNull(foceiO["ctol"]))
       op_focei.impCtol = as<double>(foceiO["ctol"]);
     if (foceiO.containsElementNamed("nConvWindow")) op_focei.impNconvWindow = as<int>(foceiO["nConvWindow"]);
+    if (foceiO.containsElementNamed("zeroOmegaDirect"))
+      op_focei.impZeroOmegaDirect = (int)as<bool>(foceiO["zeroOmegaDirect"]);
+    if (foceiO.containsElementNamed("zeroOmegaMaxEval"))
+      op_focei.impZeroOmegaMaxEval = as<int>(foceiO["zeroOmegaMaxEval"]);
     if (foceiO.containsElementNamed("impCov")) op_focei.impCov = as<bool>(foceiO["impCov"]);
     if (foceiO.containsElementNamed("qr")) op_focei.impQr = as<bool>(foceiO["qr"]);
     if (foceiO.containsElementNamed("qrShift")) op_focei.impQrShift = as<bool>(foceiO["qrShift"]);
@@ -7685,9 +7709,6 @@ NumericVector foceiSetup_(const RObject &obj,
     if (foceiO.containsElementNamed("impOmegaFixedEta"))
       op_focei.impOmegaFixedEta = as<IntegerVector>(foceiO["impOmegaFixedEta"]);
     else op_focei.impOmegaFixedEta = IntegerVector(0);
-    if (foceiO.containsElementNamed("flatEtaIdx"))
-      op_focei.flatEtaIdx = as<IntegerVector>(foceiO["flatEtaIdx"]);
-    else op_focei.flatEtaIdx = IntegerVector(0);
   }
   // est="advi" reuses the theta-sensitivity model (impThetaSensIdx) for the outer
   // population gradient, but is not isImpmap; load the index here too.
@@ -11756,6 +11777,8 @@ bool impGammaRuleTarget() { return op_focei.impGammaRule == "target"; }
 double impIscaleMin() { return op_focei.impIscaleMin; }
 double impIscaleMax() { return op_focei.impIscaleMax; }
 int impNconvWindow() { return op_focei.impNconvWindow; }
+int impZeroOmegaDirectOn() { return op_focei.impZeroOmegaDirect; }
+int impZeroOmegaMaxEval() { return op_focei.impZeroOmegaMaxEval; }
 
 // Windowed-convergence tolerance on the (relative) objective change; derived
 // from the table sigdig (10^-sigdig) when the control leaves it unset (<0).
@@ -11959,6 +11982,165 @@ void impMuInterceptStep() {
       setIndParPtr(ind, op_focei.thetaTrans[th], op_focei.fullTheta[th]);
       setIndParPtr(ind, op_focei.etaTrans[et], inds_focei[id].eta[et]);
     }
+  }
+}
+
+// ---- imp's compute.Uy ------------------------------------------------------
+//
+// impMuInterceptStep() above is the EM's exact M-step for a mu-referenced
+// Gaussian random effect: theta += mean(eta).  It is the direct analogue of
+// SAEM's Omega^-1-weighted GLS, and it fails in exactly the same way.  For a
+// random effect whose omega is flat the proposal excludes those coordinates
+// (impGetFlatEta()/foceiOmegaDropFlat()), so their etas never move, mean(eta)
+// is identically zero, and the theta is pinned at its ini() value.
+//
+// NONMEM's technical guide derives a SEPARATE route for a theta that is not
+// reachable through mu -- eqs. 1.47-1.52, differentiating the entire joint
+// density -- and demonstrably takes it here: in
+// ~/src/gamma_indpar/gamma_clv1_saem.ctl all seven thetas are MU_ referenced
+// and five sit on $OMEGA (0.0 FIXED), so every one of those phi is
+// deterministic, yet the .ext still moves them (THETA5 -3.0 -> -2.42126).
+// saemix does the same with optim(compute.Uy) (R/main_mstep.R:63).
+//
+// So maximize the observation likelihood in those thetas directly, holding
+// every subject's eta at its current conditional mean.  The eta prior term
+// 0.5*eta'Omega^-1 eta carries no theta, so maximizing the JOINT density over
+// theta is identical to maximizing the data density -- which is why
+// impEvalJointLik() serves as compute.Uy here unchanged, and why this needs no
+// theta-sensitivity model the way impUpdateStructThetas() does.
+extern "C" void nelder_fn(void (*func)(double *, double *), int n,
+                          double *start, double *step,
+                          int itmax, double ftol_rel, double rcoef,
+                          double ecoef, double ccoef,
+                          int *iconv, int *it, int *nfcall, double *ynewlo,
+                          double *xmin, int *iprint);
+
+static std::vector<int> gImpZoTh;                 // theta indices optimized
+static std::vector<double> gImpZoLo, gImpZoHi, gImpZoBest;
+static double gImpZoBestF = 0.0;
+static int gImpZoEvalN = 0, gImpZoEvalMax = 0;
+
+// Sum over subjects of the joint -log-likelihood at the current etas with the
+// named thetas set to `p`.
+//
+// THREAD SAFETY: the subject loop has the same shape as impEStep()'s own
+// (src/imp.cpp:533) -- one subject per thread, each announcing itself with
+// setRxThreadId(), which is what keeps the per-subject rxode2 solve buffers
+// disjoint.  likInner0() (via impEvalJointLik) is already called this way from
+// inside that region, so this adds no new reentrancy requirement.  The theta
+// values are pushed into every subject BEFORE the region, never inside it.
+static double impZeroOmegaUy(const double *p) {
+  if (gImpZoEvalN >= gImpZoEvalMax) return gImpZoBestF + 1.0e10;
+  rx = getRxSolve_();
+  int nsub = getRxNsub(rx);
+  int neta = op_focei.neta;
+  std::vector<double> q(gImpZoTh.size());
+  for (size_t i = 0; i < gImpZoTh.size(); ++i) {
+    double v = p[i];
+    if (v < gImpZoLo[i]) v = gImpZoLo[i];
+    if (v > gImpZoHi[i]) v = gImpZoHi[i];
+    q[i] = v;
+    op_focei.fullTheta[gImpZoTh[i]] = v;
+  }
+  for (int id = 0; id < nsub; ++id) {
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
+    for (size_t i = 0; i < gImpZoTh.size(); ++i) {
+      setIndParPtr(ind, op_focei.thetaTrans[gImpZoTh[i]], q[i]);
+    }
+    // likInner0() short-circuits when the eta it is handed matches the one it
+    // last saw -- and here the eta deliberately does NOT change, only the
+    // theta.  Without this the objective would be constant in theta and the
+    // optimizer would silently do nothing.
+    impForceResolve(id);
+  }
+  rx_solving_options *op = getSolvingOptions(rx);
+  int cores = getOpCores(op);
+  bool doPar = (cores > 1) && solveMethodThreadSafe(op);
+  double total = 0.0;
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(cores) if(doPar) reduction(+:total)
+#endif
+  for (int id = 0; id < nsub; ++id) {
+#ifdef _OPENMP
+    if (doPar) setRxThreadId(omp_get_thread_num());
+#endif
+    arma::vec eta(neta);
+    impGetEta(id, eta);
+    total += impEvalJointLik(eta, id);
+  }
+#ifdef _OPENMP
+  if (doPar) setRxThreadId(-1);
+#endif
+  if (!R_finite(total)) total = 1e300;
+  gImpZoEvalN++;
+  if (gImpZoEvalN == 1 || total < gImpZoBestF) {
+    gImpZoBestF = total;
+    gImpZoBest = q;
+  }
+  return total;
+}
+
+static void impZeroOmegaNmFn(double *p, double *fx) { *fx = impZeroOmegaUy(p); }
+
+// Run that maximization for the mu-referenced thetas whose eta is flat, and
+// install the result.  `maxEval` is the per-call budget (each evaluation is one
+// full-population solve); `trust` is the absolute local trust radius, for the
+// same reason SAEM's zeroOmegaDirectStep() uses one -- the observation
+// objective has NaN plateaus far from the current value.
+void impZeroOmegaDirectStep(int maxEval, double trust) {
+  rx = getRxSolve_();
+  int nsub = getRxNsub(rx);
+  if (nsub == 0) return;
+  std::vector<int> flatEta;
+  impGetFlatEta(flatEta);
+  if (flatEta.empty()) return;
+  IntegerVector &thIdx = op_focei.impMuThetaIdx;
+  IntegerVector &etIdx = op_focei.impMuEtaIdx;
+  gImpZoTh.clear();
+  for (int g = 0; g < thIdx.size(); ++g) {
+    if (std::find(flatEta.begin(), flatEta.end(), etIdx[g]) != flatEta.end()) {
+      gImpZoTh.push_back(thIdx[g]);
+    }
+  }
+  if (gImpZoTh.empty()) return;
+  int n = (int)gImpZoTh.size();
+  gImpZoLo.assign((size_t)n, 0.0);
+  gImpZoHi.assign((size_t)n, 0.0);
+  std::vector<double> st((size_t)n), stp((size_t)n), xm((size_t)n);
+  for (int i = 0; i < n; ++i) {
+    double cur = op_focei.fullTheta[gImpZoTh[(size_t)i]];
+    gImpZoLo[(size_t)i] = cur - trust;
+    gImpZoHi[(size_t)i] = cur + trust;
+    st[(size_t)i] = cur;
+    xm[(size_t)i] = cur;
+    stp[(size_t)i] = 0.2 * trust;
+  }
+  gImpZoBest = st;
+  gImpZoEvalN = 0;
+  gImpZoBestF = 0.0;
+  gImpZoEvalMax = (maxEval > 0) ? maxEval : 25;
+  int iconv, it, nfcall, iprint = 0;
+  double ynewlo;
+  nelder_fn(impZeroOmegaNmFn, n, st.data(), stp.data(), 100*n,
+            1e-6, 1.0, 2.0, 0.5,
+            &iconv, &it, &nfcall, &ynewlo, xm.data(), &iprint);
+  // install the best point seen (impZeroOmegaUy left fullTheta at the LAST
+  // point the simplex tried, which need not be the best one)
+  for (int i = 0; i < n; ++i) {
+    double v = gImpZoBest[(size_t)i];
+    if (!R_finite(v)) continue;
+    op_focei.fullTheta[gImpZoTh[(size_t)i]] = v;
+  }
+  for (int id = 0; id < nsub; ++id) {
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
+    for (int i = 0; i < n; ++i) {
+      setIndParPtr(ind, op_focei.thetaTrans[gImpZoTh[(size_t)i]],
+                   op_focei.fullTheta[gImpZoTh[(size_t)i]]);
+    }
+    // the installed thetas differ from the last point the simplex evaluated,
+    // so the cached per-subject likelihood is stale for the Omega update and
+    // the next E-step
+    impForceResolve(id);
   }
 }
 

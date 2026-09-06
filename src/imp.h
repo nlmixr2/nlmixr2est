@@ -59,6 +59,9 @@ void impGetOmega(arma::mat& Om);                   // current Omega (for its zer
 bool impIsImp();                                   // est="imp": no MAP search, proposal at conditional mean
 double impUpdateMuThetas();                        // mu-referenced covariate regression (updateMuGroups)
 void impMuInterceptStep();                         // simple mu intercept EM update (no covariates)
+void impZeroOmegaDirectStep(int maxEval, double trust); // direct-ML update for flat-omega mu thetas
+int impZeroOmegaDirectOn();
+int impZeroOmegaMaxEval();
 void impReMap();                                   // re-optimize all conditional modes (innerOpt)
 void impSetOmega(const arma::mat& Omega, const std::string& diagXform); // install new Omega
 void impSyncInitParToFullTheta();                  // sync optimizer reference to converged fullTheta

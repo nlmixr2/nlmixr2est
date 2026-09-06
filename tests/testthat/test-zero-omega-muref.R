@@ -166,4 +166,73 @@ nmTest({
       expect_equal(.f$omega["eta.mu.tv", "eta.mu.tv"], 0)
     }
   })
+  test_that("the two opt-in M-step options validate and round-trip", {
+    .c <- saemControl(zeroOmegaAnneal = 1000, zeroOmegaDirect = TRUE)
+    expect_equal(.c$zeroOmegaAnneal, 1000)
+    expect_true(.c$zeroOmegaDirect)
+    # both default OFF -- they change the M-step, so they are opt-in
+    .d <- saemControl()
+    expect_equal(.d$zeroOmegaAnneal, 0)
+    expect_false(.d$zeroOmegaDirect)
+    expect_error(saemControl(zeroOmegaAnneal = -1), "zeroOmegaAnneal")
+    expect_error(saemControl(zeroOmegaDirect = 1), "zeroOmegaDirect")
+    .i <- impmapControl(zeroOmegaDirect = TRUE, zeroOmegaMaxEval = 10L)
+    expect_true(.i$zeroOmegaDirect)
+    expect_equal(.i$zeroOmegaMaxEval, 10L)
+    expect_false(impmapControl()$zeroOmegaDirect)
+    expect_error(impmapControl(zeroOmegaMaxEval = 0), "zeroOmegaMaxEval")
+  })
+
+  test_that("saem still moves the theta under each M-step option", {
+    # The claim these options exist to fix is that the omega^-1-weighted GLS
+    # cannot move such a theta at all; whatever route is taken, the theta must
+    # not come back as its ini() value, and the declared zero must survive.
+    .run <- function(...) {
+      suppressWarnings(nlmixr2(.helperMod(), nlmixr2data::theo_sd, est = "saem",
+                               control = saemControl(nBurn = 30, nEm = 30,
+                                                     print = 0, covMethod = "",
+                                                     ...)))
+    }
+    for (.nm in c("anneal", "direct", "both")) {
+      .f <- switch(.nm,
+                   anneal = .run(zeroOmegaAnneal = 1000),
+                   direct = .run(zeroOmegaDirect = TRUE),
+                   both   = .run(zeroOmegaAnneal = 1000, zeroOmegaDirect = TRUE))
+      .est <- unname(.f$parFixedDf["tka", "Estimate"])
+      expect_true(is.finite(.est), info = .nm)
+      expect_false(isTRUE(all.equal(.est, 0.45, tolerance = 1e-7)), info = .nm)
+      expect_equal(.f$omega["eta.mu.tka", "eta.mu.tka"], 0, info = .nm)
+      expect_true(.f$omega["eta.iiv", "eta.iiv"] > 0, info = .nm)
+    }
+  })
+
+  test_that("imp already moves a flat-omega mu theta, with or without the option", {
+    # NOT the saem defect.  impMuInterceptStep() is theta += mean(eta), which
+    # looks like the same degenerate update -- but imp gets its etas from the
+    # inner MAP, and a flat random effect is dropped from Omega^-1 entirely
+    # (foceiOmegaDropFlat()), so nothing penalizes it and the MAP moves it
+    # freely against the data.  mean(eta) is therefore informative and the
+    # theta does move.  saem cannot do this because it SAMPLES the eta from a
+    # prior whose variance is ~0, so the column never leaves its prior mean.
+    #
+    # zeroOmegaDirect is still offered for imp (same NONMEM eqs. 1.47-1.52
+    # route), but it is a refinement here rather than a repair -- measured on
+    # this fixture it agreed with the mean-shift to every digit.
+    .run <- function(...) {
+      suppressWarnings(nlmixr2(.helperMod(), nlmixr2data::theo_sd, est = "impmap",
+                               control = impmapControl(nIter = 5L, isample = 50L,
+                                                       print = 0, covMethod = "",
+                                                       ...)))
+    }
+    .off <- .run()
+    .on <- .run(zeroOmegaDirect = TRUE, zeroOmegaMaxEval = 15L)
+    for (.f in list(off = .off, on = .on)) {
+      .est <- unname(.f$parFixedDf["tka", "Estimate"])
+      expect_true(is.finite(.est))
+      expect_false(isTRUE(all.equal(.est, 0.45, tolerance = 1e-7)))
+      # the declared zero still reaches the report either way
+      expect_equal(.f$omega["eta.mu.tka", "eta.mu.tka"], 0)
+    }
+  })
+
 })

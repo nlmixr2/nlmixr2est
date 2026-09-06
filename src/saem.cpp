@@ -1536,6 +1536,32 @@ public:
     }
   }
 
+  // saemControl(zeroOmegaAnneal=).  saemix decays the variance of a parameter
+  // WITHOUT IIV geometrically across the annealing phase
+  // (diag.omega[i0.omega2] *= alpha0.sa every iteration, with
+  // alpha0.sa = 10^(-3/nbiter.sa), R/main_mstep.R:91) rather than holding it:
+  // wide exploration early, convergence late.  nlmixr2 pinned the placeholder
+  // at zeroOmegaTune forever, which makes it a permanent noise floor -- no
+  // single constant can be both, which is why widening zeroOmegaTune degrades
+  // every parameter monotonically.
+  //
+  // Called ONLY from the fixed-restore branch, which has just reset these
+  // diagonals to the placeholder, so the result is the absolute value
+  // tune*coef^k rather than a compounding one.  It also deliberately runs
+  // after the Gmin floor, which would otherwise fight the decay.
+  void zeroOmegaAnneal(unsigned int kiter) {
+    if (zeroOmegaAnnealCoef >= 1.0 || saemZeroOmegaPhi1.n_elem == 0) return;
+    unsigned int kd = (kiter <= (unsigned int)nb_sa) ? kiter : (unsigned int)nb_sa;
+    double fac = std::pow(zeroOmegaAnnealCoef, (double)kd);
+    for (unsigned int f = 0; f < saemZeroOmegaPhi1.n_elem; ++f) {
+      unsigned int c = saemZeroOmegaPhi1(f);
+      if (c >= Gamma2_phi1.n_rows) continue;
+      double v = Gamma2_phi1(c, c) * fac;
+      if (v < 1e-12) v = 1e-12;   // keep IGamma2_phi1 invertible (saemix floors at double eps)
+      Gamma2_phi1(c, c) = v;
+    }
+  }
+
   // Objective for zeroOmegaDirectStep(): the observation -log-likelihood with
   // the named phi1 columns overwritten by the candidate mu and every other
   // column left at its sampled value -- saemix's compute.Uy, which does
@@ -3556,7 +3582,16 @@ public:
           (kiter - (unsigned int)niter_phi0) % (unsigned int)phi1ThetaEvery == 0) {
         refinePhi1Lik(kiter, pas);
       }
-      if (zeroOmegaDirect && saemZeroOmegaPhi1.n_elem > 0) {
+      // saemix gates its ind.fix10 branch to kiter >= nbiter.sa
+      // (R/main_mstep.R:57): through the annealing phase everything goes via
+      // the GLS, and only once the variances have settled does the direct
+      // maximization take over.  nonMuThetaEvery thins it further -- each step
+      // is damped by pas(kiter) anyway, so refining every iteration buys
+      // little against a whole extra optimization (nonMuThetaMaxEval solves of
+      // the full population) per iteration.
+      if (zeroOmegaDirect && saemZeroOmegaPhi1.n_elem > 0 &&
+          kiter >= (unsigned int)nb_sa &&
+          (kiter - (unsigned int)nb_sa) % (unsigned int)nonMuThetaEvery == 0) {
         zeroOmegaDirectStep(kiter, pas);
       }
       // The sampled-mean update above only weakly informs fixed-effect-only
@@ -3713,31 +3748,9 @@ public:
       // fix before diagonals are enforced
       if (Gamma2_phi1fixed==1 && kiter > (unsigned int)(nb_fixOmega)) {
         Gamma2_phi1.elem(Gamma2_phi1fixedIx) = Gamma2_phi1fixedValues(Gamma2_phi1fixedIx);
+        zeroOmegaAnneal(kiter);
       }
-      // saemControl(zeroOmegaAnneal=): saemix decays the variance of a
-      // parameter WITHOUT IIV geometrically across the SA phase
-      // (diag.omega[i0.omega2] *= alpha0.sa every iteration,
-      // alpha0.sa = 10^(-3/nbiter.sa), R/main_mstep.R:91) rather than holding
-      // it -- wide exploration early, convergence late.  nlmixr2 historically
-      // pinned the placeholder at zeroOmegaTune forever, which makes it a
-      // permanent noise floor: no single constant can be both.
-      //
-      // Applied AFTER the restore above (which resets the diagonal to the
-      // placeholder each iteration), so this is the absolute value
-      // tune*coef^k, not a compounding one, and it deliberately sits after
-      // the Gmin floor -- Gmin would otherwise fight the decay.
-      if (zeroOmegaAnnealCoef < 1.0 && saemZeroOmegaPhi1.n_elem > 0) {
-        unsigned int kd = (kiter <= (unsigned int)nb_sa) ? kiter : (unsigned int)nb_sa;
-        double fac = std::pow(zeroOmegaAnnealCoef, (double)kd);
-        for (unsigned int _f = 0; _f < saemZeroOmegaPhi1.n_elem; ++_f) {
-          unsigned int _c = saemZeroOmegaPhi1(_f);
-          if (_c >= Gamma2_phi1.n_rows) continue;
-          double v = Gamma2_phi1(_c, _c) * fac;
-          // keep IGamma2_phi1 invertible (saemix floors at double eps)
-          if (v < 1e-12) v = 1e-12;
-          Gamma2_phi1(_c, _c) = v;
-        }
-      }
+
 
       if (kiter<=(unsigned int)(nb_correl)) {
         Gamma2_phi1 = diagmat(Gamma2_phi1);

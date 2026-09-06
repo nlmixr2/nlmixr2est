@@ -1756,6 +1756,14 @@ void impOuter(Environment e) {
     }
     impUpdateMuThetas();
     impMuInterceptStep();
+    // foceiControl(zeroOmegaDirect=TRUE): impMuInterceptStep() above cannot
+    // move a theta whose eta is flat -- the proposal excludes those
+    // coordinates, so mean(eta) is identically zero and the theta stays at its
+    // ini() value.  Maximize the observation likelihood in them directly
+    // instead (NONMEM technical guide eqs. 1.47-1.52; saemix ind.fix10).
+    if (impZeroOmegaDirectOn()) {
+      impZeroOmegaDirectStep(impZeroOmegaMaxEval(), 0.75);
+    }
 
     arma::mat Omega(neta, neta, arma::fill::zeros);
     for (int id = 0; id < nsub; ++id) {
