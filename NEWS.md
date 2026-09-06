@@ -2,6 +2,34 @@
 
 ## New features
 
+- `impmapControl(proposal=)` selects the importance-sampling proposal family for
+  `est="imp"`, `"impmap"` and `"qrpem"`: `"normal"` and `"t"` as `df` already
+  reached, plus `"laplace"` (a spherical multivariate Laplace, whose exponential
+  tail dominates the joint target's so the importance weights are bounded by
+  construction) and `"mixture"` (a defensive scale mixture about the same mode,
+  set by `propMixScale`/`propMixWeight`).  The default `"auto"` resolves to the
+  historical `df` behaviour, so existing fits are unchanged.  The resolved
+  family is reported in `fit$env$impProposal` and per subject in
+  `fit$env$impPropInd`.
+
+- `impmapControl(qrScramble = "owen" | "lms")` scrambles the QRPEM Sobol point
+  set (`qr = TRUE`).  The Cranley-Patterson shift randomizes the set but leaves
+  the correlation structure between the sequence's high-order dimensions
+  intact, so it helps least on the many-random-effect models that need it most;
+  a nested uniform (Owen) or linear matrix scramble permutes the digits and
+  breaks it.  Scrambling replaces the shift rather than composing with it, and
+  its key is derived arithmetically from `impSeed` and the (iteration, subject,
+  dimension) indices, so it draws nothing from the RNG and the fit stays
+  reproducible and independent of the thread count.  Defaults to `"none"`.
+
+- `impmapControl(nBurn=, burnFreezeOmega=)` add burn-in EM iterations to the
+  importance-sampling family (`est="imp"`, `"impmap"`, `"qrpem"`).  They run
+  before the `nIter` budget rather than out of it, let the `gamma` and `auto`
+  controllers settle, and can hold `Omega` at its starting value while the
+  structural and residual-error thetas update.  Convergence is not tested until
+  the whole trailing `nConvWindow` lies past the burn-in, so a frozen `Omega`
+  cannot be mistaken for a settled one.  Both default off.
+
 - `saemControl(iovMethod = "twoLevel")` estimates inter-occasion variability
   the way the rest of `saem` estimates a variance.  The shared pre-processing
   rewrite that every estimation method uses carries the occasion magnitude as a
@@ -157,6 +185,31 @@
   held.  A negative count, or a dose or `evid=2` count larger than the
   subject's own record count, now stops the fit with that as the reason
   instead (#1039).
+
+- Re-fitting a completed importance-sampling fit from the fit object --
+  `nlmixr2(fit, est = "imp" | "impmap" | "qrpem")` -- failed outright with
+  `unused argument: 'impMuThetaIdx', ...`.  The control is re-validated by
+  `do.call(impmapControl, ctl)`, which forwards anything it does not recognise
+  to `foceiControl()`, and the four per-model M-step index maps stamped on a
+  fit's runtime control are arguments of neither.  They are now carried through
+  the round-trip.
+
+  With that fixed, `est` also now wins over any field another method's `est`
+  stamped on its control.  `est="imp"` stamps `mapIter = 0` (never re-center)
+  and `est="qrpem"` stamps `qr = TRUE, sir = TRUE`, so a re-fit would otherwise
+  have run a different algorithm than the one asked for -- re-fitting an `imp`
+  fit as `"qrpem"` drew plain Monte-Carlo samples and still reported QRPEM, and
+  a `qrpem` fit re-fit as `"imp"` kept quasi-random sampling on.  Values the
+  user wrote themselves are untouched: the rule is keyed on the `est` field a
+  completed fit carries, not on the value.
+
+- `impmapControl(mapIter=)` was accepted and then ignored: the kernel
+  re-centered the importance-sampling proposal at each subject's MAP mode on
+  every EM iteration regardless of the value.  It now sets the MAP-assist
+  period -- `1` (the default, and the previous behavior) re-centers every
+  iteration, `k > 1` every `k`th, and `0` not at all after the startup MAP
+  pass.  Affects `est="impmap"` and `est="qrpem"`; `est="imp"` never
+  re-centers and is unchanged.
 
 - With two or more occasion parameters on one level, `fit$iov$<level>` had
   `NA` for every occasion (and the fit warned "NAs introduced by

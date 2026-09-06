@@ -17,8 +17,10 @@
 #include <rxode2ptr.h>
 #include <boost/random/sobol.hpp>
 #include <boost/math/distributions/chi_squared.hpp>
+#include <boost/math/distributions/gamma.hpp>
 #include <ctime>
 #include "nmMcmcRng.h"
+#include "impQrng.h"
 #include "imp.h"
 #include "odeSwap.h" // odeSwapAnyNdiffSet()
 #include "utilc.h"   // RSprintf (covariance-step progress header)
@@ -33,16 +35,49 @@ using namespace Rcpp;
 // boost engine emits one coordinate per call, cycling through the dimensions
 // of consecutive points, and skips the trivial zero point; the top 53 bits are
 // scaled into (0,1) with a half-step offset so no coordinate is ever 0 or 1.
-static arma::mat impSobolU0(int isample, int neta) {
+// Raw engine output, row-major (isample x neta).  Held as the 64-bit integers
+// so a scramble can act on the digits; the unscrambled path converts with the
+// exact expression it always used.
+static std::vector<uint64_t> impSobolBits(int isample, int neta) {
   boost::random::sobol eng((std::size_t)neta);
+  std::vector<uint64_t> V((size_t)isample * (size_t)neta);
+  for (int k = 0; k < isample; ++k) {
+    for (int j = 0; j < neta; ++j) {
+      V[(size_t)k * (size_t)neta + (size_t)j] = (uint64_t)eng();
+    }
+  }
+  return V;
+}
+
+static arma::mat impSobolU0(int isample, int neta) {
+  std::vector<uint64_t> V = impSobolBits(isample, neta);
   arma::mat U0(isample, neta);
   for (int k = 0; k < isample; ++k) {
     for (int j = 0; j < neta; ++j) {
-      uint64_t v = (uint64_t)eng();
+      uint64_t v = V[(size_t)k * (size_t)neta + (size_t)j];
       U0(k, j) = std::ldexp((double)(v >> 11) + 0.5, -53);
     }
   }
   return U0;
+}
+
+// Scrambled Sobol points -> N(0,1).  The scramble seed is derived
+// arithmetically from (base, id, iter, dimension), so this draws nothing from
+// the threefry engine and replaces the Cranley-Patterson shift rather than
+// composing with it.
+static arma::mat impQrZScrambled(const std::vector<uint64_t>& V, int nrow, int ncol,
+                                 int type, uint32_t base, int id, int iter) {
+  arma::mat Z(nrow, ncol);
+  for (int j = 0; j < ncol; ++j) {
+    uint32_t sj = impQrngSeed(base, id, iter, j);
+    for (int k = 0; k < nrow; ++k) {
+      double u = impQrScrambleU(V[(size_t)k * (size_t)ncol + (size_t)j], type, sj);
+      if (u < 1e-12) u = 1e-12;
+      else if (u > 1.0 - 1e-12) u = 1.0 - 1e-12;
+      Z(k, j) = R::qnorm(u, 0.0, 1.0, 1, 0);
+    }
+  }
+  return Z;
 }
 
 // Uniform Sobol points -> N(0,1): optional Cranley-Patterson shift (mod 1),
@@ -126,6 +161,183 @@ static inline double impCiTCorrection(double df, int p) {
   return 0.5 * (double)p * std::log(0.5 * df) +
     std::lgamma(0.5 * df) - std::lgamma(0.5 * (df + (double)p));
 }
+
+// ---- generalized proposal families -----------------------------------------
+// The kernel already factors the proposal as (peak-normalized kernel) x (peak
+// density), with the peak's gamma and |H| dependence folded into Ci and only a
+// gamma-free, family-specific peak RATIO left over -- that ratio is exactly
+// what impCiTCorrection is for the t.  Everything below generalizes those two
+// pieces plus the radial scale, so a family is three numbers rather than a new
+// code path.
+//
+// Two invariants every family must hold, because the rest of the kernel is
+// built on them:
+//   * the kernel is EXACTLY 0 at d = 0.  qCenter (below) omits the kernel term
+//     for that reason, and xi is measured against qCenter.
+//   * the density depends on d only through quad = d' H d (elliptical).  A
+//     skewed or shifted-component family would break qCenter, xi, iaccept and
+//     Ci simultaneously.  Do not add one without revisiting all four.
+//
+// MVN and MVT are the historical df<=0/df>0 pair and delegate to the untouched
+// functions above, so they stay bit-identical.
+enum impPropType { impPropMvn = 0, impPropMvt = 1, impPropMvl = 2, impPropMix = 3 };
+
+struct impProp {
+  int type = impPropMvn;
+  double df = 0.0;          // mvt
+  double kappa = 1.0;       // mvl: S = kappa * Sigma
+  double rScale = 1.0;      // mvl: sqrt(kappa), the Gamma scale
+  int nmix = 0;             // mix: 2 or 3 components
+  double c[3] = {1.0, 1.0, 1.0};   // mix: variance multipliers
+  double lw[3] = {0.0, 0.0, 0.0};  // mix: log w_k - (p/2) log c_k
+  double cw[3] = {0.0, 0.0, 0.0};  // mix: cumulative weights (component pick)
+  double logPeak = 0.0;     // mix: logSumExp_k(lw_k)
+  double corr = 0.0;        // Ci correction: log(gaussPeak) - log(familyPeak)
+};
+
+// Gamma(shape, 1) by inverse CDF, the same one-uniform-in convention as
+// impChisqQuantile (a rejection sampler would consume a variable number of
+// draws and break reproducibility).
+static inline double impGammaQuantile(double u, double shape) {
+  if (u <= 0.0) u = 1e-12;
+  if (u >= 1.0) u = 1.0 - 1e-12;
+  return boost::math::quantile(boost::math::gamma_distribution<double>(shape, 1.0), u);
+}
+
+static inline double impLogSumExp3(const double* v, int n) {
+  double m = v[0];
+  for (int k = 1; k < n; ++k) if (v[k] > m) m = v[k];
+  if (!R_finite(m)) return m;
+  double s = 0.0;
+  for (int k = 0; k < n; ++k) s += std::exp(v[k] - m);
+  return m + std::log(s);
+}
+
+// Build a subject's proposal from the fit-constant spec plus its own df.
+// kappa = 1/(p+1) makes the MVL COVARIANCE-MATCHED: the spherical Laplace with
+// S = Sigma has Cov = (p+1) Sigma, so without this gamma, iscaleMin and
+// iscaleMax would silently mean something different per neta, and est="imp"'s
+// Sigma <- gamma * condVar recursion would inflate by (p+1) each iteration.
+static impProp impPropBuild(int type, double df, int nmix, const double* cIn,
+                            const double* wIn, int p) {
+  impProp pr;
+  pr.type = type;
+  double dp = (double)p;
+  if (type == impPropMvt) {
+    pr.df = df;
+    pr.corr = impCiTCorrection(df, p);
+  } else if (type == impPropMvl) {
+    pr.kappa = 1.0 / (dp + 1.0);
+    pr.rScale = std::sqrt(pr.kappa);
+    // log(gaussPeak) - log(mvlPeak) for f(x) ~ exp(-sqrt(x' S^-1 x)), whose
+    // normalizer is Gamma(p/2) / (2 pi^(p/2) Gamma(p) |S|^(1/2)).
+    pr.corr = std::log(2.0) - 0.5 * dp * std::log(2.0) +
+      std::lgamma(dp) - std::lgamma(0.5 * dp) + 0.5 * dp * std::log(pr.kappa);
+  } else if (type == impPropMix) {
+    pr.nmix = nmix;
+    double acc = 0.0;
+    for (int k = 0; k < nmix; ++k) {
+      pr.c[k] = cIn[k];
+      pr.lw[k] = std::log(wIn[k]) - 0.5 * dp * std::log(cIn[k]);
+      acc += wIn[k];
+      pr.cw[k] = acc;
+    }
+    pr.cw[nmix - 1] = 1.0;   // guard against fp drift in the last bucket
+    pr.logPeak = impLogSumExp3(pr.lw, nmix);
+    pr.corr = -pr.logPeak;
+  }
+  return pr;
+}
+
+// Fit-constant proposal spec, read once from the control.
+struct impPropSpec { int type = impPropMvn; int nmix = 0; double c[3]; double w[3]; };
+
+static impPropSpec impPropSpecFromControl(double dfCtl) {
+  impPropSpec sp;
+  sp.c[0] = sp.c[1] = sp.c[2] = 1.0;
+  sp.w[0] = sp.w[1] = sp.w[2] = 0.0;
+  int t = impProposalType();          // 0 auto, 1 normal, 2 t, 3 laplace, 4 mixture
+  if (t == 0) sp.type = (dfCtl > 0.0) ? impPropMvt : impPropMvn;
+  else if (t == 1) sp.type = impPropMvn;
+  else if (t == 2) sp.type = impPropMvt;
+  else if (t == 3) sp.type = impPropMvl;
+  else {
+    sp.type = impPropMix;
+    std::vector<double> cv, wv;
+    impPropMixGet(cv, wv);
+    sp.nmix = (int)cv.size();
+    if (sp.nmix < 2 || sp.nmix > 3 || (int)wv.size() != sp.nmix) {
+      sp.type = impPropMvn; sp.nmix = 0; return sp;
+    }
+    double sw = 0.0;
+    for (int k = 0; k < sp.nmix; ++k) sw += wv[k];
+    // The scales are used AS GIVEN.  An earlier version rescaled them so
+    // sum_k w_k c_k == 1 ("so gamma means for the mixture what it means for
+    // MVN"), which quietly defeated the method: with the documented
+    // c = (1, 9), w = (0.9, 0.1) it made the DOMINANT component 0.56x the
+    // Laplace covariance, so 90% of draws came from a proposal far too narrow
+    // and the weight tail got WORSE than a plain normal's (measured on the
+    // 3-eta fixture: max k-hat 0.974 with 0.63 failing subjects, against
+    // -0.221 for normal).  It also contradicted the control's own validation,
+    // which requires propMixScale[1] == 1 precisely so component 1 IS the
+    // Laplace-approximation covariance.
+    //
+    // A defensive mixture is deliberately over-dispersed -- that is the
+    // mechanism, not a defect.  Its covariance is (sum_k w_k c_k) * gamma *
+    // Sigma; gamma still scales the whole mixture, so iscaleMin/iscaleMax
+    // still bound it, they just bound a proposal that starts wider than 1.
+    for (int k = 0; k < sp.nmix; ++k) {
+      sp.c[k] = cv[k];
+      sp.w[k] = wv[k] / sw;
+    }
+  }
+  return sp;
+}
+
+// Radial/scale multiplier on z.  MVN draws NOTHING (stream unchanged); every
+// other family draws exactly one uniform, so the draw count per sample is a
+// deterministic function of the family and the stream stays reproducible.
+static inline double impPropScale(const impProp& pr, const arma::vec& z) {
+  switch (pr.type) {
+  case impPropMvn: return 1.0;
+  case impPropMvt: return impTScale(pr.df);
+  case impPropMvl: {
+    double nz = arma::norm(z, 2);
+    if (!(nz > 0.0)) return 1.0;
+    double r = pr.rScale * impGammaQuantile(rxUnifEng(0.0, 1.0), (double)z.n_elem);
+    if (!(r > 0.0) || !R_finite(r)) return 1.0;
+    return r / nz;
+  }
+  default: {
+    double u = rxUnifEng(0.0, 1.0);
+    int k = 0;
+    while (k + 1 < pr.nmix && u > pr.cw[k]) ++k;
+    return std::sqrt(pr.c[k]);
+  }
+  }
+}
+
+// -log of the peak-normalized kernel; exactly 0 at quad == 0 for every family.
+static inline double impPropLogKernelRecip(const impProp& pr, double quad,
+                                           double gammaId, int p) {
+  switch (pr.type) {
+  case impPropMvn:
+  case impPropMvt: return impLogKernelRecip(quad, gammaId, pr.df, p);
+  case impPropMvl: return std::sqrt(quad / (gammaId * pr.kappa));
+  default: {
+    // MIXTURE DENSITY, never the drawn component's -- using the component's
+    // would give plausible-looking but wrong weights.  Max-shifted: the naive
+    // form underflows to log(0) at large quad and would return +Inf, silently
+    // zeroing the very sample the wide component exists to cover.
+    double t[3];
+    for (int k = 0; k < pr.nmix; ++k) {
+      t[k] = pr.lw[k] - quad / (2.0 * pr.c[k] * gammaId);
+    }
+    return pr.logPeak - impLogSumExp3(t, pr.nmix);
+  }
+  }
+}
+
 
 // ---- Pareto k-hat (PSIS) ----------------------------------------------------
 // In-kernel copy of the Zhang & Stephens (2009) empirical-Bayes GPD fit that
@@ -235,10 +447,53 @@ IntegerVector impSirIndex_(NumericVector zk, int sirN, double u0) {
   return out;
 }
 
-// Test hook: the (optionally shifted) quasi-random N(0,1) point set.
+// Test hook: a proposal family's peak-normalized log-kernel and its Ci
+// correction, so the closed forms can be pinned against numeric quadrature
+// rather than against themselves.
 //[[Rcpp::export]]
-NumericMatrix impQrPoints_(int isample, int neta, Nullable<NumericVector> shift) {
+NumericVector impPropKernel_(std::string type, double df, NumericVector mixScale,
+                             NumericVector mixWeight, double quad, double gamma,
+                             int p) {
+  if (p < 1) stop("'p' must be positive");
+  if (!(gamma > 0.0)) stop("'gamma' must be positive");
+  int t = (type == "normal") ? impPropMvn : ((type == "t") ? impPropMvt :
+    ((type == "laplace") ? impPropMvl : ((type == "mixture") ? impPropMix : -1)));
+  if (t < 0) stop("'type' must be \"normal\", \"t\", \"laplace\" or \"mixture\"");
+  int nmix = 0;
+  double cc[3] = {1.0, 1.0, 1.0}, ww[3] = {0.0, 0.0, 0.0};
+  if (t == impPropMix) {
+    nmix = (int)mixScale.size();
+    if (nmix < 2 || nmix > 3 || (int)mixWeight.size() != nmix) {
+      stop("'mixScale'/'mixWeight' must have matching length 2 or 3");
+    }
+    double sw = 0.0;
+    for (int k = 0; k < nmix; ++k) sw += mixWeight[k];
+    for (int k = 0; k < nmix; ++k) { cc[k] = mixScale[k]; ww[k] = mixWeight[k] / sw; }
+  }
+  impProp pr = impPropBuild(t, df, nmix, cc, ww, p);
+  NumericVector out = NumericVector::create(
+    _["logKernelRecip"] = impPropLogKernelRecip(pr, quad, gamma, p),
+    _["ciCorrection"] = pr.corr,
+    _["kappa"] = pr.kappa);
+  return out;
+}
+
+// Test hook: the (optionally shifted or scrambled) quasi-random N(0,1) point
+// set.  scramble is "none"/"owen"/"lms"; a scramble REPLACES the shift, the
+// same way the kernel treats them, so supplying both is an error.
+//[[Rcpp::export]]
+NumericMatrix impQrPoints_(int isample, int neta, Nullable<NumericVector> shift,
+                           std::string scramble = "none", int seed = 42) {
   if (isample < 1 || neta < 1) stop("'isample' and 'neta' must be positive");
+  int type = (scramble == "none") ? impQrScrambleNone :
+    ((scramble == "owen") ? impQrScrambleOwen :
+     ((scramble == "lms") ? impQrScrambleLms : -1));
+  if (type < 0) stop("'scramble' must be \"none\", \"owen\" or \"lms\"");
+  if (type != impQrScrambleNone) {
+    if (shift.isNotNull()) stop("'shift' does not apply when scrambling");
+    std::vector<uint64_t> V = impSobolBits(isample, neta);
+    return wrap(impQrZScrambled(V, isample, neta, type, (uint32_t)seed, 0, 0));
+  }
   arma::mat U0 = impSobolU0(isample, neta);
   if (shift.isNotNull()) {
     NumericVector s(shift);
@@ -287,7 +542,7 @@ static bool impGetHessianNdiffSafe(int id, arma::mat& H) {
 // throughout and never mentions a t proposal).
 static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
                      const arma::vec& gammaVec,
-                     const arma::vec& dfVec, int cores,
+                     const std::vector<impProp>& props, int cores,
                      int iter, double negHalfLogDetOmega, bool isImp,
                      arma::mat& condMean, std::vector<arma::mat>& condVar,
                      arma::vec& Li, arma::vec& Neff, arma::vec& Xi,
@@ -391,12 +646,23 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
   // QRPEM: one Sobol base point set per E-step (read-only in the parallel
   // loop); with qrShift=FALSE the N(0,1) points are also fixed and shared.
   bool qr = impQrEnabled();
-  bool qrShift = impQrShiftEnabled();
+  int qrScramble = impQrScramble();
+  // Scrambling IS the randomization, so it replaces the Cranley-Patterson
+  // shift rather than composing with it; qrRefresh still says whether the
+  // randomization is redrawn each iteration.
+  bool qrShift = (qrScramble == impQrScrambleNone) && impQrShiftEnabled();
   bool qrRefresh = impQrRefreshEnabled();
   arma::mat qrU0, qrZ0;
+  std::vector<uint64_t> qrBits;
+  int qrNrow = 0;
   if (qr) {
-    qrU0 = impSobolU0((int)isampleVec.max(), neta);
-    if (!qrShift) qrZ0 = impQrZ(qrU0, nullptr);
+    qrNrow = (int)isampleVec.max();
+    if (qrScramble == impQrScrambleNone) {
+      qrU0 = impSobolU0(qrNrow, neta);
+      if (!qrShift) qrZ0 = impQrZ(qrU0, nullptr);
+    } else {
+      qrBits = impSobolBits(qrNrow, neta);
+    }
   }
   // Parallelize over base subjects, iterating a subject's mixture components
   // serially within one thread.  A base subject's expanded pseudo-subjects (id =
@@ -419,7 +685,7 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
       if (!haveL[id]) continue;
       // This subject's own proposal scale (all equal under gammaMethod="global").
       double gammaId = gammaVec[id];
-      double dfId = dfVec[id];   // this subject's proposal df; 0 = Gaussian
+      const impProp& pr = props[id];   // this subject's proposal family
       int nsId = (int)isampleVec[id];   // this subject's sample count
       arma::mat S(nsId, neta);
       if (qr) {
@@ -428,7 +694,13 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
         // fit-constant qrPinSeed (captured once in impOuter -- seed0 advances
         // every E-step) so the whole fit reuses one shift per subject.
         arma::mat Z;
-        if (qrShift) {
+        if (qrScramble != impQrScrambleNone) {
+          // qrRefresh=FALSE pins the scramble to the subject, so every
+          // iteration sees the same scrambled set (a deterministic EM map).
+          Z = impQrZScrambled(qrBits, qrNrow, neta, qrScramble, qrPinSeed, id,
+                              qrRefresh ? iter : 0);
+          if (nsId < qrNrow) Z = Z.rows(0, nsId - 1);
+        } else if (qrShift) {
           if (!qrRefresh) nmSetSeedEng1(qrPinSeed + (uint32_t)(id * 2));
           arma::vec sh(neta);
           for (int jj = 0; jj < neta; ++jj) sh[jj] = rxUnifEng(0.0, 1.0);
@@ -436,19 +708,32 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
         } else {
           Z = qrZ0;
         }
-        for (int k = 0; k < nsId; ++k) {
-          // Quasi-random t: the Sobol point supplies the Gaussian direction and
-          // a fresh uniform supplies the chi-square scale.  (A fully
-          // quasi-random t would need an extra Sobol coordinate; this keeps the
-          // low-discrepancy structure where it does the most good.)
-          double ts = impTScale(dfId);
-          S.row(k) = (modes[id] + cholL[id] * (Z.row(k).t() * ts)).t();
+        // The MVN/MVT branch is kept TEXTUALLY as it was: the two forms should
+        // compile to the same gemv, but "should" is not the bit-identity
+        // contract this path holds to.
+        if (pr.type <= impPropMvt) {
+          for (int k = 0; k < nsId; ++k) {
+            // Quasi-random t: the Sobol point supplies the Gaussian direction and
+            // a fresh uniform supplies the chi-square scale.  (A fully
+            // quasi-random t would need an extra Sobol coordinate; this keeps the
+            // low-discrepancy structure where it does the most good.)
+            double ts = impTScale(pr.df);
+            S.row(k) = (modes[id] + cholL[id] * (Z.row(k).t() * ts)).t();
+          }
+        } else {
+          for (int k = 0; k < nsId; ++k) {
+            arma::vec z = Z.row(k).t();
+            double ts = impPropScale(pr, z);
+            S.row(k) = (modes[id] + cholL[id] * (z * ts)).t();
+          }
         }
       } else {
         for (int k = 0; k < nsId; ++k) {
           arma::vec z(neta);
           for (int jj = 0; jj < neta; ++jj) z[jj] = rxNormEng(0.0, 1.0);
-          double ts = impTScale(dfId);
+          // evaluated AFTER the z fill, so the draw order (and therefore the
+          // stream position) is unchanged for MVN/MVT
+          double ts = impPropScale(pr, z);
           S.row(k) = (modes[id] + cholL[id] * (z * ts)).t();
         }
       }
@@ -479,7 +764,7 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
         arma::vec eta = S.row(k).t();
         arma::vec d = eta - modes[id];
         double qk = -impEvalJointLik(eta, id) +
-          impLogKernelRecip(arma::as_scalar(d.t() * Hs[id] * d), gammaId, dfId, neta);
+          impPropLogKernelRecip(pr, arma::as_scalar(d.t() * Hs[id] * d), gammaId, neta);
         // #958 combined build: impEvalJointLik() just solved this subject's
         // INNER model at this exact (theta, eta) -- when combSens is loaded,
         // that solve already carries the M-step's d(f)/d(theta)/d(V)/d(theta)
@@ -550,11 +835,26 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
       okExp[id] = 1;
       double logMeanExp = qmax + std::log(sumw / (double)nsId);
       double Ci = negHalfLogDetOmega + 0.5 * neta * std::log(gammaId) -
-        0.5 * logDetH[id] + impCiTCorrection(dfId, neta);
+        0.5 * logDetH[id] + pr.corr;
       LiExp[id] = -(logMeanExp + Ci);          // per-component negative log-likelihood
       NeffExp[id] = 1.0 / arma::accu(arma::square(zk));
       // NONMEM xi: mean weight normalized to the proposal center (see above).
-      if (R_finite(qCenter)) XiExp[id] = std::exp(logMeanExp - qCenter);
+      // xi is NOT family-invariant: against a Gaussian target it comes out as
+      // gamma^(-p/2) * exp(-corr), so a family with corr != 0 would drive the
+      // controller (which inverts xi = gamma^(-neta/2) analytically, below) to
+      // a DIFFERENT gamma -- for covariance-matched MVL at p=3 that is ~3x too
+      // wide, or pinned at iscaleMax, with gammaStable still reporting
+      // converged.  Adding corr back puts every family on gamma^(-p/2), so
+      // iaccept / iscaleMin / iscaleMax / pExp keep their tuning verbatim.
+      //
+      // Gated off for MVN and MVT.  MVN's corr is exactly 0.0 so it is a no-op
+      // there either way; MVT's is not (2.5% at df=30), and moving xi moves
+      // gamma and therefore the whole fit -- the AUTO ladder's df 30/20
+      // constants were tuned with this term absent.  By the same token MVT is
+      // not covariance-matched either (Cov = df/(df-2) Sigma); both are
+      // deliberate, not oversights.
+      double xiCorr = (pr.type <= impPropMvt) ? 0.0 : pr.corr;
+      if (R_finite(qCenter)) XiExp[id] = std::exp(logMeanExp - qCenter + xiCorr);
       KhatExp[id] = impPsisKhat(zk);   // tail index of this subject's weights
       arma::rowvec pbar = zk.t() * S;
       cmExp.row(id) = pbar;
@@ -692,8 +992,8 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
 // gamma -- wrong whenever the scale adapted during the fit, and badly wrong
 // under gammaMethod="individual" where the scales are per subject.  The
 // covariance must be evaluated with the same proposal the fit converged on.
-void impComputeCov(Environment e, const arma::vec& gammaVec,
-                   const arma::vec& dfVec) {
+static void impComputeCov(Environment e, const arma::vec& gammaVec,
+                          const std::vector<impProp>& props, int covIter) {
   int nsub = impNsub();
   int neta = impNeta();
   int isample = impNsample();
@@ -745,11 +1045,17 @@ void impComputeCov(Environment e, const arma::vec& gammaVec,
   // With qr=TRUE the fixed set is the Sobol point set (per-subject shifted
   // when qrShift; qrRefresh is irrelevant here -- the set never refreshes).
   bool qr = impQrEnabled();
-  bool qrShift = impQrShiftEnabled();
+  int qrScramble = impQrScramble();
+  bool qrShift = (qrScramble == impQrScrambleNone) && impQrShiftEnabled();
   arma::mat qrU0, qrZ0;
+  std::vector<uint64_t> qrBits;
   if (qr) {
-    qrU0 = impSobolU0(isample, neta);
-    if (!qrShift) qrZ0 = impQrZ(qrU0, nullptr);
+    if (qrScramble == impQrScrambleNone) {
+      qrU0 = impSobolU0(isample, neta);
+      if (!qrShift) qrZ0 = impQrZ(qrU0, nullptr);
+    } else {
+      qrBits = impSobolBits(isample, neta);
+    }
   }
   uint32_t seed0 = (uint32_t)impBaseSeed() + 0x2545F491u;
   setRxThreadId(0);
@@ -759,7 +1065,16 @@ void impComputeCov(Environment e, const arma::vec& gammaVec,
     arma::mat S(isample, neta);
     if (qr) {
       arma::mat Z;
-      if (qrShift) {
+      if (qrScramble != impQrScrambleNone) {
+        // A fixed sample set with common random numbers across the FD
+        // perturbations is what this step needs, and any valid randomization
+        // gives one.  Use the LAST iteration the EM actually ran (covIter) so
+        // it is the converged fit's randomization rather than its first
+        // iteration's; under qrRefresh=FALSE the key is iteration-independent
+        // anyway and this is the same set the whole fit used.
+        Z = impQrZScrambled(qrBits, isample, neta, qrScramble,
+                            (uint32_t)impBaseSeed() + 0x9E3779B1u, id, covIter);
+      } else if (qrShift) {
         arma::vec sh(neta);
         for (int j = 0; j < neta; ++j) sh[j] = rxUnifEng(0.0, 1.0);
         Z = impQrZ(qrU0, &sh);
@@ -767,13 +1082,14 @@ void impComputeCov(Environment e, const arma::vec& gammaVec,
         Z = qrZ0;
       }
       for (int k = 0; k < isample; ++k) {
-        S.row(k) = (modes[id] + Ls[id] * (Z.row(k).t() * impTScale(dfVec[id]))).t();
+        arma::vec z = Z.row(k).t();
+        S.row(k) = (modes[id] + Ls[id] * (z * impPropScale(props[id], z))).t();
       }
     } else {
       for (int k = 0; k < isample; ++k) {
         arma::vec z(neta);
         for (int j = 0; j < neta; ++j) z[j] = rxNormEng(0.0, 1.0);
-        S.row(k) = (modes[id] + Ls[id] * (z * impTScale(dfVec[id]))).t();
+        S.row(k) = (modes[id] + Ls[id] * (z * impPropScale(props[id], z))).t();
       }
     }
     Ss[id] = S;
@@ -815,15 +1131,15 @@ void impComputeCov(Environment e, const arma::vec& gammaVec,
       if (ok[id]) {
         impForceResolve(id);
         // This subject's converged proposal scale (all equal under "global").
-        // Must use the SAME proposal shape (df) as the E-step or the reweighted
-        // objective is not the one the fit converged on.
-        double dfCov = dfVec[id];
+        // Must use the SAME proposal FAMILY and parameters as the E-step or the
+        // reweighted objective is not the one the fit converged on.
+        const impProp& pr = props[id];
         arma::vec q(isample); int nGood = 0;
         for (int k = 0; k < isample; ++k) {
           arma::vec eta = Ss[id].row(k).t();
           arma::vec d = eta - modes[id];
           double qk = -impEvalJointLik(eta, id) +
-            impLogKernelRecip(arma::as_scalar(d.t() * Hs[id] * d), gammaVec[id], dfCov, neta);
+            impPropLogKernelRecip(pr, arma::as_scalar(d.t() * Hs[id] * d), gammaVec[id], neta);
           if (R_finite(qk)) { q[k] = qk; ++nGood; } else q[k] = R_NegInf;
         }
         if (nGood != 0) {
@@ -831,7 +1147,7 @@ void impComputeCov(Environment e, const arma::vec& gammaVec,
           double sumw = arma::accu(arma::exp(q - qmax));
           double logMeanExp = qmax + std::log(sumw / (double)isample);
           double Ci = negHalfLogDetOmega + 0.5 * neta * std::log(gammaVec[id]) - 0.5 * logDetH[id]
-            + impCiTCorrection(dfCov, neta);
+            + pr.corr;
           objBuf[id] = -2.0 * (logMeanExp + Ci);
         }
       }
@@ -927,6 +1243,16 @@ void impOuter(Environment e) {
   double iscaleMax = impIscaleMax();
   int nConvWindow = impNconvWindow();
   double ctol = impCtol();
+  int mapIter = impMapIter();
+  if (mapIter < 0) mapIter = 0;
+  // Burn-in iterations run BEFORE the nIter budget rather than out of it, so
+  // nBurn never silently shortens the fit.  They exist to let the gamma / AUTO
+  // controllers settle, so those run normally; only the Omega M-step (when
+  // burnFreezeOmega) and the convergence test are held back.
+  int nBurn = impNburn();
+  if (nBurn < 0) nBurn = 0;
+  const bool burnFreezeOmega = impBurnFreezeOmega();
+  const int nIterTotal = nBurn + nIter;
 
   arma::mat condMean;
   std::vector<arma::mat> condVar;
@@ -964,6 +1290,13 @@ void impOuter(Environment e) {
   // Per-expanded-subject proposal df and acceptance target.  Uniform unless
   // AUTO differentiates them.
   arma::vec dfVec(nExp); dfVec.fill(impDf());
+  // Proposal FAMILY, per expanded subject, mirroring dfVec/dfFloor.  Kept as a
+  // separate vector rather than folding df into a struct: AUTO mutates dfVec in
+  // place at five sites and its tuned comparisons are arithmetic on it.
+  impPropSpec propSpec = impPropSpecFromControl(impDf());
+  arma::ivec typeVec(nExp); typeVec.fill(propSpec.type);
+  arma::ivec typeFloor(nExp); typeFloor.fill(propSpec.type);
+  std::vector<impProp> props(nExp), propsUsed(nExp);
   // Improvability state for the AUTO df escalation (see AUTO step 3).  noImp
   // counts consecutive iterations in which the current rung has failed to
   // improve on what the subject manages without any escalation.
@@ -1101,7 +1434,15 @@ void impOuter(Environment e) {
       // impDf() rather than 0 for the untriggered case: a global df= is an
       // explicit request and must survive auto=TRUE.  At the default df = 0
       // this is identical to the old expression.
-      double dfI = (sparse || nonNormal) ? 30.0 : impDf();
+      // The df ladder is defined only for the MVN/MVT axis -- it encodes
+      // "Gaussian" as df <= 0, and its constants (30/20, the k-hat 0.7/1.0
+      // thresholds, autoDfPatience) were all swept against a Gaussian
+      // baseline.  A subject already on an exponential-tailed MVL or on a
+      // mixture has a different baseline and no measurement behind it, so
+      // AUTO leaves its family alone.  The sample-budget reallocation below
+      // is family-agnostic and still applies to every subject.
+      const bool dfAxis = (propSpec.type == impPropMvn || propSpec.type == impPropMvt);
+      double dfI = (dfAxis && (sparse || nonNormal)) ? 30.0 : impDf();
       // TUNED: iaccept is left alone here.  Lowering it to 0.2 forces gamma
       // wide, and widening a Gaussian is the lever measured NOT to fix tails
       // while costing a lot of ESS -- on a Poisson fixture whose k-hat was
@@ -1109,9 +1450,12 @@ void impOuter(Environment e) {
       // doubled the objective noise for nothing.  It is now applied only where
       // k-hat says the proposal is genuinely struggling (below).
       double iaI = iaccept;
+      int typeI = dfAxis ? (dfI > 0.0 ? impPropMvt : impPropMvn) : propSpec.type;
       for (int j = 0; j < Nmix; ++j) {
         dfVec[i + j * nsub] = dfI;
         dfFloor[i + j * nsub] = dfI;   // withdrawal may not go below this
+        typeVec[i + j * nsub] = typeI;
+        typeFloor[i + j * nsub] = typeI;
         iacceptVec[i + j * nsub] = iaI;
       }
     }
@@ -1171,8 +1515,12 @@ void impOuter(Environment e) {
   impIterPrintStart();
 
   arma::vec r(neta);
-  for (int iter = 0; iter < nIter; ++iter) {
-    if (iter > 0 && !isImp) impReMap();
+  for (int iter = 0; iter < nIterTotal; ++iter) {
+    const bool burnIter = (iter < nBurn);
+    // MAP-assist period: impReMap() is the mu-referenced FOCEI inner problem,
+    // so re-centering every iteration is the dominant cost of est="impmap".
+    // mapIter = 0 keeps the startup MAP and never re-centers.
+    if (iter > 0 && !isImp && mapIter > 0 && (iter % mapIter) == 0) impReMap();
     // Stash the E-step diagnostics on every iteration so the fit environment
     // reflects the last iteration actually run (the loop may stop early).
     // Global rule: every expanded subject shares the scalar scale.  Under
@@ -1182,9 +1530,18 @@ void impOuter(Environment e) {
     if (!gammaInd) gammaVec.fill(gamma);
     isampleUsed = isampleVec;
     dfUsed = dfVec;
+    // Materialize this iteration's proposals from (family, df, spec).  Built
+    // BEFORE the E-step so the parallel loop only ever reads them, and
+    // snapshotted in the same breath as dfUsed because the controllers below
+    // advance the live vectors for an iteration that never ran.
+    for (int id = 0; id < nExp; ++id) {
+      props[id] = impPropBuild(typeVec[id], dfVec[id], propSpec.nmix,
+                               propSpec.c, propSpec.w, neta);
+    }
+    propsUsed = props;
     gammaUsed = gammaVec;
     gammaScalarUsed = gamma;
-    impEStep(nsub, neta, isampleVec, gammaVec, dfVec, cores, iter, impLogDetOmegaInv5(), isImp,
+    impEStep(nsub, neta, isampleVec, gammaVec, props, cores, iter, impLogDetOmegaInv5(), isImp,
              condMean, condVar, Li, Neff, Xi, XiExp, KhatExp, sampS, sampZk, aMat, &e, qrPinSeed,
              harvestSens, outSens);
     obj = 0.0;
@@ -1244,6 +1601,8 @@ void impOuter(Environment e) {
       // measured it was worse than 20 on the objective.  An unreachable rung
       // calibrated on a regime that no longer occurs is not a safety margin.
       for (int id = 0; id < nExp; ++id) {
+        // the ladder walks the MVN/MVT axis only -- see AUTO step 1 above
+        if (typeVec[id] != impPropMvn && typeVec[id] != impPropMvt) continue;
         double kh = KhatExp[id];
         if (!R_finite(kh)) continue;              // no usable k-hat: leave alone
         if (escDead[id]) continue;                // measured not to help here
@@ -1306,7 +1665,7 @@ void impOuter(Environment e) {
           // lightest tail plausibly heavy enough for this severity
           want = (kh > 1.0) ? 20.0 : 30.0;
           // one-way: only ever go heavier, so the shape cannot oscillate
-          wantEsc = (dfVec[id] <= 0.0 || want < dfVec[id]);
+          wantEsc = (typeVec[id] == impPropMvn || want < dfVec[id]);
         }
 
         // The counterfactual, kept FRESH.  Three separate review findings all
@@ -1344,6 +1703,7 @@ void impOuter(Environment e) {
             // floor is the t proposal the model requires, and withdrawal is
             // permanent (escDead), so dropping below it could never be undone.
             dfVec[id] = dfFloor[id];
+            typeVec[id] = typeFloor[id];
             escDead[id] = 1;
             continue;
           }
@@ -1355,6 +1715,7 @@ void impOuter(Environment e) {
           // had not had time to deliver.
           noImp[id] = 0;
           dfVec[id] = want;
+          typeVec[id] = impPropMvt;
         }
         // NOTE deliberately one-way on SUCCESS.  Relaxing on a low k-hat is
         // circular: once a t proposal is in place k-hat drops precisely BECAUSE
@@ -1574,7 +1935,11 @@ void impOuter(Environment e) {
       int fi = omFixedEta[k];
       if (fi >= 0 && fi < neta) { Omega.row(fi) = Om0.row(fi); Omega.col(fi) = Om0.col(fi); }
     }
-    impSetOmega(Omega, diagXform);
+    // burnFreezeOmega: install nothing, so Omega (and every quantity
+    // impSetOmega rebuilds from it -- omegaInv, cholOmegaInv, logDetOmegaInv5,
+    // the Omega thetas in fullTheta) stays at its starting value.  The thetas
+    // still move; the whole M-step above ran.
+    if (!(burnIter && burnFreezeOmega)) impSetOmega(Omega, diagXform);
 
     // Record the current estimates for the parameter-stability half of the test.
     arma::vec parNow; impGetEstPar(parNow);
@@ -1592,7 +1957,15 @@ void impOuter(Environment e) {
     //      still converging does not trip an objective-only test;
     //  (c) the proposal scale gamma has settled, so objective drift while gamma
     //      is still adapting is not mistaken for convergence.
+    //  (d) the whole trailing window lies AFTER the burn-in.  Not just "do not
+    //      converge while burning in": a window straddling the boundary would
+    //      average burn-in iterations, whose Omega is frozen under
+    //      burnFreezeOmega, so the parameter-drift half (b) would read a drift
+    //      that no M-step was allowed to produce.  objTrace gets exactly one
+    //      push per iteration, so at nBurn = 0 this is identical to the size
+    //      test it sits beside and the default path is unchanged.
     if (nConvWindow > 0 && R_finite(obj) &&
+        iter >= nBurn + nConvWindow &&
         (int)objTrace.size() >= nConvWindow + 1) {
       int n = (int)objTrace.size();
       double objMetric;
@@ -1806,7 +2179,9 @@ void impOuter(Environment e) {
   // gammaVec/dfVec on for an iteration that never ran, so passing them would
   // evaluate the covariance at a proposal the fit never actually used (and
   // disagree with the reported impDfInd / impGammaInd).
-  if (impCovEnabled()) impComputeCov(e, gammaUsed, dfUsed);
+  if (impCovEnabled()) {
+    impComputeCov(e, gammaUsed, propsUsed, impQrRefreshEnabled() ? iterRun - 1 : 0);
+  }
 
   // Clear the multi-endpoint inner neqOverride so it does not leak into a later fit.
   impClearInnerNeqOverride();
@@ -1836,9 +2211,31 @@ void impOuter(Environment e) {
   e["impKhatIter"] = wrap(KhatExp);         // last-iteration in-kernel k-hat
   e["impAuto"]     = autoOn;
   e["impQr"]       = impQrEnabled();
+  {
+    // Resolved proposal family, and the per-expanded-subject families actually
+    // used by the last E-step (so an AUTO ladder that moved a subject
+    // normal -> t is visible).
+    const char* pn[4] = {"normal", "t", "laplace", "mixture"};
+    e["impProposal"] = std::string(pn[propSpec.type]);
+    CharacterVector pind(nExp);
+    for (int id = 0; id < nExp; ++id) pind[id] = pn[propsUsed[id].type];
+    e["impPropInd"] = pind;
+    if (propSpec.type == impPropMix) {
+      NumericVector cs(propSpec.nmix), ws(propSpec.nmix);
+      for (int k = 0; k < propSpec.nmix; ++k) { cs[k] = propSpec.c[k]; ws[k] = propSpec.w[k]; }
+      e["impPropMixScale"] = cs;      // as given: see impPropSpecFromControl
+      e["impPropMixWeight"] = ws;
+    }
+  }
+  e["impQrScramble"] = (impQrScramble() == impQrScrambleOwen) ? "owen" :
+    ((impQrScramble() == impQrScrambleLms) ? "lms" : "none");
   e["impSir"]      = impSirEnabled();
   e["impSirSample"] = impSirN();
-  e["impNiter"]    = nIter;
+  e["impNiter"]    = nIterTotal;   // includes nBurn: the budget impIter is measured against
+  e["impMapIter"]  = isImp ? 0 : mapIter;   // 0 under est="imp": no re-centering at all
+  // Burn-in iterations are the FIRST nBurn rows of every trace and of $parHist.
+  e["impNburn"]    = nBurn;
+  e["impBurnFreezeOmega"] = burnFreezeOmega;
   e["impIter"]     = iterRun;
   e["impConverged"] = converged;
   e["impObjTrace"] = wrap(objTrace);

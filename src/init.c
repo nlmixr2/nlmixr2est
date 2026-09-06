@@ -21,7 +21,8 @@ extern void nelder_fn(S_fp func, int n, double *start, double *step,
 extern SEXP neldermead_wrap(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 /* extern SEXP n1qn1_wrap(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP); */
 extern SEXP _nlmixr2est_llik_binomial_c(SEXP, SEXP, SEXP);
-extern SEXP _nlmixr2est_impQrPoints_(SEXP, SEXP, SEXP);
+extern SEXP _nlmixr2est_impPropKernel_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
+extern SEXP _nlmixr2est_impQrPoints_(SEXP, SEXP, SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_impSirIndex_(SEXP, SEXP, SEXP);
 
 extern SEXP _nlmixr2est_llik_poisson(SEXP, SEXP);
@@ -230,7 +231,8 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_getTestContrib", (DL_FUNC) &_nlmixr2est_getTestContrib, 0},
   {"_nlmixr2est_setTestContribAddLL", (DL_FUNC) &_nlmixr2est_setTestContribAddLL, 1},
   {"_nlmixr2est_setNnOuterFn", (DL_FUNC) &_nlmixr2est_setNnOuterFn, 1},
-  {"_nlmixr2est_impQrPoints_", (DL_FUNC) &_nlmixr2est_impQrPoints_, 3},
+  {"_nlmixr2est_impPropKernel_", (DL_FUNC) &_nlmixr2est_impPropKernel_, 7},
+  {"_nlmixr2est_impQrPoints_", (DL_FUNC) &_nlmixr2est_impQrPoints_, 5},
   {"_nlmixr2est_impSirIndex_", (DL_FUNC) &_nlmixr2est_impSirIndex_, 3},
   {"_rxode2rxFixRes", (DL_FUNC) &_rxode2rxFixRes, 2},
   {"_rxode2version4", (DL_FUNC) &_rxode2version4, 1},

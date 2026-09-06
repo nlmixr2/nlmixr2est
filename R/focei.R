@@ -1752,7 +1752,6 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
   }
 }
 
-#' @export
 #' Generate the `rx__sens_rx_r__BY_ETA_n___` (d(R)/d(eta)) model lines
 #'
 #' The FOCEi eta-epsilon interaction term needs these; FOCE does not (it does

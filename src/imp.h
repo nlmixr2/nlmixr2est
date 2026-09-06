@@ -36,6 +36,9 @@ std::string impDiagXform();
 
 // Convergence controller / proposal-scale adaptation controls (from impmapControl):
 double impIaccept();      // target effective-sample fraction that gamma adapts toward
+int impMapIter();         // MAP-assist period in EM iterations; 0 = never re-center
+int impNburn();           // burn-in EM iterations run before the nIter budget
+bool impBurnFreezeOmega();// hold Omega at its starting value during burn-in
 double impDf();           // proposal degrees of freedom (NONMEM DF); 0 = Gaussian
 void impNsampleVecGet(std::vector<int>& out); // per-subject ISAMPLE (empty = use the scalar)
 int impNobs(int id);      // observation count for subject id (AUTO's sparsity test)
@@ -181,6 +184,9 @@ bool impCovEnabled();                              // whether impCov=TRUE was re
 bool impQrEnabled();                               // qr=TRUE: Sobol importance samples
 bool impQrShiftEnabled();                          // Cranley-Patterson shift randomization
 bool impQrRefreshEnabled();                        // redraw the shift each iteration
+int impQrScramble();                               // 0 none, 1 Owen, 2 linear matrix
+int impProposalType();                             // 0 auto, 1 normal, 2 t, 3 laplace, 4 mixture
+void impPropMixGet(std::vector<double>& c, std::vector<double>& w); // mixture scales/weights
 bool impSirEnabled();                              // sir=TRUE: SIR-accelerated theta M-step
 int impSirN();                                     // SIR resampled points per subject
 int impBaseSeed();                                 // base seed for the per-(iter,subject) streams
@@ -205,8 +211,8 @@ void impUpdateStructThetas(const arma::vec& step);
 // Monte-Carlo observed-information covariance for the estimated thetas: FD
 // Hessian of the importance-sampling -2LL over fixed (common-random-number)
 // samples.  Stashes impCovTheta / impSeTheta / impCovThetaIdx on `e`.
-void impComputeCov(Rcpp::Environment e, const arma::vec& gammaVec,
-                   const arma::vec& dfVec);
+// (declared in imp.cpp, which owns the impProp proposal type; not called
+// outside that translation unit)
 bool impCovProgress();                             // draw the cov-step progress bar?
 
 // Importance-sampling EM driver; called from foceiFitCpp_ when est=="impmap"
