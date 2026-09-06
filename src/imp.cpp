@@ -929,6 +929,14 @@ void impOuter(Environment e) {
   double ctol = impCtol();
   int mapIter = impMapIter();
   if (mapIter < 0) mapIter = 0;
+  // Burn-in iterations run BEFORE the nIter budget rather than out of it, so
+  // nBurn never silently shortens the fit.  They exist to let the gamma / AUTO
+  // controllers settle, so those run normally; only the Omega M-step (when
+  // burnFreezeOmega) and the convergence test are held back.
+  int nBurn = impNburn();
+  if (nBurn < 0) nBurn = 0;
+  const bool burnFreezeOmega = impBurnFreezeOmega();
+  const int nIterTotal = nBurn + nIter;
 
   arma::mat condMean;
   std::vector<arma::mat> condVar;
@@ -1173,7 +1181,8 @@ void impOuter(Environment e) {
   impIterPrintStart();
 
   arma::vec r(neta);
-  for (int iter = 0; iter < nIter; ++iter) {
+  for (int iter = 0; iter < nIterTotal; ++iter) {
+    const bool burnIter = (iter < nBurn);
     // MAP-assist period: impReMap() is the mu-referenced FOCEI inner problem,
     // so re-centering every iteration is the dominant cost of est="impmap".
     // mapIter = 0 keeps the startup MAP and never re-centers.
@@ -1579,7 +1588,11 @@ void impOuter(Environment e) {
       int fi = omFixedEta[k];
       if (fi >= 0 && fi < neta) { Omega.row(fi) = Om0.row(fi); Omega.col(fi) = Om0.col(fi); }
     }
-    impSetOmega(Omega, diagXform);
+    // burnFreezeOmega: install nothing, so Omega (and every quantity
+    // impSetOmega rebuilds from it -- omegaInv, cholOmegaInv, logDetOmegaInv5,
+    // the Omega thetas in fullTheta) stays at its starting value.  The thetas
+    // still move; the whole M-step above ran.
+    if (!(burnIter && burnFreezeOmega)) impSetOmega(Omega, diagXform);
 
     // Record the current estimates for the parameter-stability half of the test.
     arma::vec parNow; impGetEstPar(parNow);
@@ -1597,7 +1610,15 @@ void impOuter(Environment e) {
     //      still converging does not trip an objective-only test;
     //  (c) the proposal scale gamma has settled, so objective drift while gamma
     //      is still adapting is not mistaken for convergence.
+    //  (d) the whole trailing window lies AFTER the burn-in.  Not just "do not
+    //      converge while burning in": a window straddling the boundary would
+    //      average burn-in iterations, whose Omega is frozen under
+    //      burnFreezeOmega, so the parameter-drift half (b) would read a drift
+    //      that no M-step was allowed to produce.  objTrace gets exactly one
+    //      push per iteration, so at nBurn = 0 this is identical to the size
+    //      test it sits beside and the default path is unchanged.
     if (nConvWindow > 0 && R_finite(obj) &&
+        iter >= nBurn + nConvWindow &&
         (int)objTrace.size() >= nConvWindow + 1) {
       int n = (int)objTrace.size();
       double objMetric;
@@ -1845,6 +1866,9 @@ void impOuter(Environment e) {
   e["impSirSample"] = impSirN();
   e["impNiter"]    = nIter;
   e["impMapIter"]  = isImp ? 0 : mapIter;   // 0 under est="imp": no re-centering at all
+  // Burn-in iterations are the FIRST nBurn rows of every trace and of $parHist.
+  e["impNburn"]    = nBurn;
+  e["impBurnFreezeOmega"] = burnFreezeOmega;
   e["impIter"]     = iterRun;
   e["impConverged"] = converged;
   e["impObjTrace"] = wrap(objTrace);

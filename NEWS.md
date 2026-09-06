@@ -2,6 +2,14 @@
 
 ## New features
 
+- `impmapControl(nBurn=, burnFreezeOmega=)` add burn-in EM iterations to the
+  importance-sampling family (`est="imp"`, `"impmap"`, `"qrpem"`).  They run
+  before the `nIter` budget rather than out of it, let the `gamma` and `auto`
+  controllers settle, and can hold `Omega` at its starting value while the
+  structural and residual-error thetas update.  Convergence is not tested until
+  the whole trailing `nConvWindow` lies past the burn-in, so a frozen `Omega`
+  cannot be mistaken for a settled one.  Both default off.
+
 - `saemControl(iovMethod = "twoLevel")` estimates inter-occasion variability
   the way the rest of `saem` estimates a variance.  The shared pre-processing
   rewrite that every estimation method uses carries the occasion magnitude as a
@@ -162,8 +170,9 @@
   re-centered the importance-sampling proposal at each subject's MAP mode on
   every EM iteration regardless of the value.  It now sets the MAP-assist
   period -- `1` (the default, and the previous behavior) re-centers every
-  iteration, `k > 1` every `k`th, and `0` keeps the startup mode.  Affects
-  `est="imp"`, `est="impmap"` and `est="qrpem"`.
+  iteration, `k > 1` every `k`th, and `0` not at all after the startup MAP
+  pass.  Affects `est="impmap"` and `est="qrpem"`; `est="imp"` never
+  re-centers and is unchanged.
 
 - With two or more occasion parameters on one level, `fit$iov$<level>` had
   `NA` for every occasion (and the fit warned "NAs introduced by

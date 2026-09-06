@@ -407,6 +407,7 @@
 .npInertImpCtl <- c("isample", "gamma", "gammaMethod", "df", "auto",
                     "autoNonNormal", "autoNonmemSparse", "autoDfPatience",
                     "iscaleMin", "iscaleMax", "iaccept", "mapIter",
+                    "nBurn", "burnFreezeOmega",
                     "qr", "qrShift", "qrRefresh", "sir", "sirSample")
 
 # Inert too, but with a real np counterpart worth naming.  npag has no seed of

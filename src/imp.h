@@ -37,6 +37,8 @@ std::string impDiagXform();
 // Convergence controller / proposal-scale adaptation controls (from impmapControl):
 double impIaccept();      // target effective-sample fraction that gamma adapts toward
 int impMapIter();         // MAP-assist period in EM iterations; 0 = never re-center
+int impNburn();           // burn-in EM iterations run before the nIter budget
+bool impBurnFreezeOmega();// hold Omega at its starting value during burn-in
 double impDf();           // proposal degrees of freedom (NONMEM DF); 0 = Gaussian
 void impNsampleVecGet(std::vector<int>& out); // per-subject ISAMPLE (empty = use the scalar)
 int impNobs(int id);      // observation count for subject id (AUTO's sparsity test)

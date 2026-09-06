@@ -853,6 +853,10 @@ struct focei_options {
   // MAP-assist period: re-center the proposal at the MAP mode every impMapIter
   // EM iterations.  1 = every iteration; 0 = MAP once at startup, never again.
   int impMapIter = 1;
+  // Burn-in EM iterations run BEFORE the impNiter budget, to settle the
+  // proposal scale / df controllers; convergence cannot fire during them.
+  int impNburn = 0;
+  bool impBurnFreezeOmega = false;  // hold Omega at its starting value while burning in
   double impIaccept = 0.4;   // target importance-sampling effective-sample fraction (adapts gamma)
   // Proposal degrees of freedom (NONMEM DF).  0 = multivariate normal; >0 uses a
   // multivariate t, whose polynomial tails dominate a Gaussian target's.
@@ -7527,6 +7531,9 @@ NumericVector foceiSetup_(const RObject &obj,
     if (foceiO.containsElementNamed("gamma")) op_focei.impGamma = as<double>(foceiO["gamma"]);
     if (foceiO.containsElementNamed("nIter")) op_focei.impNiter = as<int>(foceiO["nIter"]);
     if (foceiO.containsElementNamed("mapIter")) op_focei.impMapIter = as<int>(foceiO["mapIter"]);
+    if (foceiO.containsElementNamed("nBurn")) op_focei.impNburn = as<int>(foceiO["nBurn"]);
+    if (foceiO.containsElementNamed("burnFreezeOmega"))
+      op_focei.impBurnFreezeOmega = as<bool>(foceiO["burnFreezeOmega"]);
     if (foceiO.containsElementNamed("iaccept")) op_focei.impIaccept = as<double>(foceiO["iaccept"]);
     if (foceiO.containsElementNamed("df")) op_focei.impDf = as<double>(foceiO["df"]);
     if (foceiO.containsElementNamed("auto")) op_focei.impAuto = as<bool>(foceiO["auto"]);
@@ -11635,6 +11642,8 @@ std::string impDiagXform() {
 
 double impIaccept() { return op_focei.impIaccept; }
 int impMapIter() { return op_focei.impMapIter; }
+int impNburn() { return op_focei.impNburn; }
+bool impBurnFreezeOmega() { return op_focei.impBurnFreezeOmega; }
 double impDf() { return op_focei.impDf; }
 bool impAutoEnabled() { return op_focei.impAuto; }
 bool impAutoNonNormal() { return op_focei.impAutoNonNormal; }

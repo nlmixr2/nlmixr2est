@@ -10,6 +10,8 @@ impmapControl(
   isample = 300L,
   nIter = 100L,
   mapIter = 1L,
+  nBurn = 0L,
+  burnFreezeOmega = FALSE,
   gamma = 1,
   gammaMethod = c("auto", "global", "individual"),
   gammaRule = c("target", "floor"),
@@ -66,8 +68,8 @@ this is \code{atol = 1e-6}, \code{rtol = 1e-3}.}
 
 \item{mapIter}{MAP-assist period, in EM iterations.  `1` (default)
   re-centers the proposal at each subject's MAP mode every iteration; `k > 1`
-  re-centers every `k`th iteration; `0` keeps the mode found at startup and
-  never re-centers.
+  re-centers every `k`th iteration; `0` never re-centers after the startup
+  MAP pass.
 
   The MAP search is the mu-referenced FOCEI inner problem and is the dominant
   per-iteration cost of `est="impmap"`, so raising `mapIter` trades proposal
@@ -76,9 +78,42 @@ this is \code{atol = 1e-6}, \code{rtol = 1e-3}.}
   not before -- a proposal centered away from the mode costs effective sample
   size, which `fit$env$impNeffFrac` will show.
 
-  `est="imp"` is a different thing and not the `mapIter = 0` case: it also
-  replaces the MAP-Hessian proposal covariance with the running conditional
-  variance, so it never uses a MAP mode at all.}
+  A skipped iteration does not freeze the proposal center: the M-step reseeds
+  every subject's eta with its conditional mean, so the proposal still moves
+  each iteration -- it is the MAP re-optimization, not the center, that is
+  skipped.  The covariance is still built from the inner Hessian there, which
+  is what distinguishes this from `est="imp"`; `est="imp"` uses the running
+  conditional variance instead and is not the `mapIter = 0` case.
+
+  `mapIter` cannot change an `est="imp"` fit, which never re-centers at all.}
+
+\item{nBurn}{Number of burn-in EM iterations run before the `nIter` budget,
+  to let the proposal-scale (`gamma`) and `auto` controllers settle before
+  the estimates they influence are judged.  `0` (default) is no burn-in.
+
+  These are EXTRA iterations, not carved out of `nIter`, so raising `nBurn`
+  never silently shortens the fit; a fit runs at most `nBurn + nIter`
+  iterations.  Everything runs normally during them -- the E-step, both
+  controllers, and the theta M-step -- except that convergence cannot fire,
+  and `Omega` is held when `burnFreezeOmega = TRUE`.
+
+  Burn-in iterations are the first `nBurn` rows of `$parHist` and of
+  `fit$env$impObjTrace`; `fit$env$impNburn` reports how many there were.}
+
+\item{burnFreezeOmega}{When `TRUE`, hold `Omega` at its starting value for
+  the `nBurn` burn-in iterations while the structural and residual-error
+  thetas update normally.  Ignored when `nBurn = 0`.
+
+  The case for it: the first EM iterations run under a proposal whose scale
+  the controller has not yet adapted, and `Omega`'s update is the one that
+  absorbs that -- it is built from the conditional variances
+  (`Omega = mean(eta eta' + condVar)`), which an over- or under-dispersed
+  proposal estimates badly.  Freezing it lets the thetas move the model
+  toward the data while the proposal settles, instead of chasing an `Omega`
+  excursion the fit then has to undo.
+
+  Convergence is not tested until the whole trailing `nConvWindow` lies past
+  the burn-in, so a frozen `Omega` cannot be mistaken for a settled one.}
 
 \item{gamma}{Initial proposal-variance inflation factor (NONMEM ISCALE); the
 proposal covariance is `gamma` times the inverse of the inner information
