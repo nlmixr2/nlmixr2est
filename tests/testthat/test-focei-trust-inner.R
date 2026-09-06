@@ -210,6 +210,222 @@ nmTest({
     expect_true(.n2 > 0L)
   })
 
+  test_that("a fit reports whether its trust inner solves converged (#1044)", {
+    skip_on_cran()
+    # op_focei.nTrustInner counted trust_solve_c() CALLS, so a fit whose inner
+    # solves all failed was indistinguishable, from the fit object, from one
+    # where they all converged -- which is what made #1040's set B impossible to
+    # diagnose.  The outcome breakdown is what answers that.
+    .ok <- .fitTrustCmp("trust")
+    .cnt <- .ok$env$nTrustInner
+    expect_true(is.integer(.cnt))
+    expect_equal(sort(names(.cnt)),
+                 sort(c("calls", "error", "notConverged", "solverFail",
+                        "newtonGate", "warmRetry", "radiusRetry", "nudge",
+                        "failed")))
+    expect_gt(.cnt[["calls"]], 0L)
+    # This fit converges cleanly, so nothing below "calls" fires.  That is the
+    # half of the diagnostic that has to stay quiet or it says nothing.
+    expect_equal(.cnt[["failed"]], 0L)
+    expect_equal(.cnt[["notConverged"]], 0L)
+    expect_equal(.cnt[["nudge"]], 0L)
+
+    # n1qn1 has no trust solves at all, so the entry is absent rather than zero.
+    expect_null(.fitTrustCmp("n1qn1")$env$nTrustInner)
+
+    # maxInnerIterations=2 makes trust_solve_c() hit iterlim, so it reports the
+    # non-convergence itself (solverFail) rather than the Newton-decrement gate
+    # withdrawing it, and some subjects exhaust the whole cascade.
+    .bad <- suppressWarnings(suppressMessages(
+      nlmixr2(.oneCmt, nlmixr2data::theo_sd, est = "focei",
+              control = foceiControl(innerOpt = "trust", maxOuterIterations = 5,
+                                     maxInnerIterations = 2, covMethod = "",
+                                     calcTables = FALSE, print = 0))))
+    .bc <- .bad$env$nTrustInner
+    expect_gt(.bc[["solverFail"]], 0L)
+    # An attempt ends non-converged in exactly one of three ways, so the
+    # breakdown has to add up or it is not a breakdown.
+    expect_equal(.bc[["notConverged"]],
+                 .bc[["error"]] + .bc[["solverFail"]] + .bc[["newtonGate"]])
+    expect_gt(.bc[["failed"]], 0L)
+    expect_true(is.finite(.bad$objf))
+  })
+
+  test_that("a failed inner attempt cannot win the marginal re-rank (#1044)", {
+    skip_on_cran()
+    # The restart candidates the marginal re-rank chooses from carried no record
+    # of whether the attempt that produced them succeeded, so a failed attempt's
+    # eta could be selected over a converged one -- its Laplace log|H| is
+    # measured at a point the inner objective never descended to.  "dropped" is
+    # the count that shows the rule fires; equivalence of objectives cannot
+    # distinguish "dropped a bad candidate" from "never had one".
+    .bad <- suppressWarnings(suppressMessages(
+      nlmixr2(.oneCmt, nlmixr2data::theo_sd, est = "focei",
+              control = foceiControl(innerOpt = "trust", maxOuterIterations = 5,
+                                     maxInnerIterations = 2, covMethod = "",
+                                     calcTables = FALSE, print = 0))))
+    .rr <- .bad$env$nInnerRerank
+    expect_equal(sort(names(.rr)),
+                 sort(c("ranked", "flipped", "noGood", "dropped")))
+    expect_gt(.rr[["dropped"]], 0L)
+    # Solves where EVERY candidate failed still have to report something, so the
+    # rule falls back to them rather than returning nothing.
+    expect_gt(.rr[["noGood"]], 0L)
+    expect_true(is.finite(.bad$objf))
+
+    # A fit whose inner solves all converge drops nothing, so the rule costs the
+    # ordinary path neither a candidate nor an extra evaluation.
+    .ok <- .fitTrustCmp("trust")
+    expect_equal(.ok$env$nInnerRerank[["dropped"]], 0L)
+    expect_equal(.ok$env$nInnerRerank[["noGood"]], 0L)
+  })
+
+  # A model with curvature the inner problem can get lost in -- two etas with a
+  # FIXED unit omega entering through an inverse CDF, alongside an estimated
+  # block (the #1040 model).  Displacing every theta by `d` walks the inner
+  # solves from "all converge" into "most trip the Newton-decrement gate", which
+  # is the regime #1044 is about and the only one the retry counts fire in.
+  .gateBase <- function() {
+    ini({
+      tcl <- log(4)
+      tv1 <- log(30)
+      tq <- log(4)
+      tv2 <- log(40)
+      rxz.eta.cl ~ fix(1)
+      rxz.eta.v1 ~ fix(1)
+      eta.q + eta.v2 ~ c(0.0305,
+                         0.0107, 0.0285)
+      prop.sd <- 0.1
+    })
+    model({
+      cl <- exp(tcl + 0.3 * logit(pnorm(rxz.eta.cl)))
+      v1 <- exp(tv1 + 0.3 * logit(pnorm(rxz.eta.v1)))
+      q <- exp(tq + eta.q)
+      v2 <- exp(tv2 + eta.v2)
+      linCmt() ~ prop(prop.sd)
+    })
+  }
+
+  .gateMod <- function(d) {
+    suppressWarnings(suppressMessages(
+      rxode2::ini(.gateBase, tcl = log(4) + d, tv1 = log(30) - d,
+                  tq = log(4) + 1.5 * d, tv2 = log(40) + d)))
+  }
+
+  .gateData <- function() {
+    withr::with_seed(42, {
+      .ev <- rxode2::et(amt = 200, ii = 24, addl = 2)
+      .ev <- rxode2::et(.ev, seq(0.5, 96, length.out = 12))
+      .ev <- rxode2::et(.ev, id = 1:60)
+      .d <- suppressWarnings(suppressMessages(
+        as.data.frame(rxode2::rxSolve(.gateBase, .ev, addDosing = TRUE))))
+    })
+    .dat <- data.frame(ID = .d$id, TIME = .d$time, DV = .d$sim, EVID = .d$evid,
+                       AMT = ifelse(is.na(.d$amt), 0, .d$amt))
+    .dat$DV[.dat$EVID != 0] <- NA
+    .dat
+  }
+
+  test_that("the trust retry cascade's stages are each reachable (#1044)", {
+    skip_on_cran()
+    .dat <- .gateData()
+    .gateFit <- function(d) {
+      suppressWarnings(suppressMessages(
+        nlmixr2(.gateMod(d), .dat, "focei",
+                foceiControl(print = 0L, covMethod = "", maxOuterIterations = 0L,
+                             maxInnerIterations = 5000L, calcTables = FALSE,
+                             innerOpt = "trust"))))
+    }
+
+    # Each retry stage needs its own count > 0 or it could be dead code and
+    # every other assertion here would still pass.  Only ">0" is asserted: the
+    # exact numbers move with rxode2's solver.
+    .g3 <- .gateFit(3)
+    .c3 <- .g3$env$nTrustInner
+    # trust_solve_c() reports convergence and the Newton decrement says
+    # otherwise -- this is what drives the retries, not solverFail.
+    expect_gt(.c3[["newtonGate"]], 0L)
+    # The in-place re-solve, taken when the Newton step still fits the radius.
+    expect_gt(.c3[["warmRetry"]], 0L)
+    expect_gt(.c3[["nudge"]], 0L)
+    # ... and subjects where none of it worked, which is the count that says a
+    # fit is in trouble.
+    expect_gt(.c3[["failed"]], 0L)
+    expect_true(is.finite(.g3$objf))
+
+    # Displaced further, the Newton step outgrows the radius often enough to
+    # exercise the escalation branch instead.
+    .c4 <- .gateFit(4)$env$nTrustInner
+    expect_gt(.c4[["radiusRetry"]], 0L)
+  })
+
+  test_that("a hard trust solve error is counted and recovered from (#1044)", {
+    skip_on_cran()
+    # A volume that goes NEGATIVE for part of the eta range makes linCmt()
+    # undefined there, so a nudged starting point can be infeasible and
+    # trust_solve_c() returns an error rather than a result.  That is the one
+    # attempt outcome the retry-stage fit above never produces, and it is also
+    # the path that forces f to +Inf so the shared restore fires.
+    .negV <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 4
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v) - 30
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .fe <- suppressWarnings(suppressMessages(
+      nlmixr2(.negV, nlmixr2data::theo_sd, est = "focei",
+              control = foceiControl(innerOpt = "trust", maxOuterIterations = 0L,
+                                     covMethod = "", calcTables = FALSE,
+                                     print = 0))))
+    .ce <- .fe$env$nTrustInner
+    expect_gt(.ce[["error"]], 0L)
+    expect_equal(.ce[["notConverged"]],
+                 .ce[["error"]] + .ce[["solverFail"]] + .ce[["newtonGate"]])
+    # The failed attempt is recovered from rather than reported: no subject ends
+    # the cascade unconverged, and the objective is a number.
+    expect_equal(.ce[["failed"]], 0L)
+    expect_true(is.finite(.fe$objf))
+  })
+
+  test_that("mceta's mixed candidate set drops the failed attempts (#1044)", {
+    skip_on_cran()
+    # The re-rank only has something to choose between when the restarts
+    # produce several candidates, and mceta >= 1 is what makes that ordinary.
+    # maxInnerIterations=2 makes some of those attempts genuinely fail, so the
+    # candidate set is mixed -- which is the case the rule exists for.
+    .mc <- suppressWarnings(suppressMessages(
+      nlmixr2(.oneCmt, nlmixr2data::theo_sd, est = "focei",
+              control = foceiControl(innerOpt = "trust", maxOuterIterations = 5,
+                                     maxInnerIterations = 2, mceta = 5L,
+                                     covMethod = "", calcTables = FALSE,
+                                     print = 0))))
+    expect_gt(.mc$env$nTrustInner[["solverFail"]], 0L)
+    expect_gt(.mc$env$nInnerRerank[["dropped"]], 0L)
+    expect_gt(.mc$env$nInnerRerank[["ranked"]], 0L)
+    expect_true(is.finite(.mc$objf))
+
+    # The same fit with converging inner solves drops nothing, so mceta does not
+    # pay for the rule when there is nothing to drop.
+    .ok <- suppressWarnings(suppressMessages(
+      nlmixr2(.oneCmt, nlmixr2data::theo_sd, est = "focei",
+              control = foceiControl(innerOpt = "trust", maxOuterIterations = 5,
+                                     mceta = 5L, covMethod = "",
+                                     calcTables = FALSE, print = 0))))
+    expect_gt(.ok$env$nInnerRerank[["ranked"]], 0L)
+    expect_equal(.ok$env$nInnerRerank[["dropped"]], 0L)
+  })
+
   test_that("innerOpt='trust' is thread-safe (cores>=2 matches serial)", {
     skip_on_cran()
     .old <- rxode2::getRxThreads()
