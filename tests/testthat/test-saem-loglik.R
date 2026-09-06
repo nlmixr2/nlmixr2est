@@ -76,8 +76,25 @@ nmTest({
     expect_equal(unname(diag(fL$omega)), unname(diag(fA$omega)), tolerance = 0.05)
 
     # objective: equal, not merely equal up to a 0.5*log(2*pi) per observation.
-    # Before the fix the ll() value was 766.5 against the add() model's 123.7.
-    expect_equal(fL$objf, fA$objf, tolerance = 0.005)
+    # Before the fix the ll() value was 766.5 against the add() model's 123.7 --
+    # a gap of ~640, which is what this guards against.
+    #
+    # The tolerance is 0.03, not the 0.005 it was written with.  These are two
+    # SEPARATE stochastic fits of different parameterizations, so their
+    # agreement is itself a random quantity, and 0.005 was calibrated against a
+    # seed-collision bug rather than against the models.  _saemSeedDoMcmc()
+    # ended in a bare `s += mixIdx` after `s = s*M + k1`, so the seed depended
+    # on k1 + mixIdx rather than the pair and HALF of all combinations shared a
+    # stream (108 duplicates out of 216).  The two fits drew shared noise and
+    # tracked each other far more closely than they should have.
+    #
+    # Measured over seeds 42/1/7/2024, relative |ll - add| / add:
+    #   with the collisions:            0.0008  0.0027  0.0030  0.0013
+    #   collisions fixed, nothing else: 0.0022  0.0122  0.0054  0.0052
+    # The second row is the honest spread; the first was the artifact.  0.03
+    # still fails on anything approaching the ~5.2 relative gap the original
+    # bug produced, so the test keeps all of its power.
+    expect_equal(fL$objf, fA$objf, tolerance = 0.03)
 
     # standard errors: theta and the Omega variances.  Before the fix the ratios
     # ran from 4.0 to 80.5; the residual spread is the two fits' own difference.
