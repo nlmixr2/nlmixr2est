@@ -2,6 +2,16 @@
 
 ## New features
 
+- `impmapControl(proposal=)` selects the importance-sampling proposal family for
+  `est="imp"`, `"impmap"` and `"qrpem"`: `"normal"` and `"t"` as `df` already
+  reached, plus `"laplace"` (a spherical multivariate Laplace, whose exponential
+  tail dominates the joint target's so the importance weights are bounded by
+  construction) and `"mixture"` (a defensive scale mixture about the same mode,
+  set by `propMixScale`/`propMixWeight`).  The default `"auto"` resolves to the
+  historical `df` behaviour, so existing fits are unchanged.  The resolved
+  family is reported in `fit$env$impProposal` and per subject in
+  `fit$env$impPropInd`.
+
 - `impmapControl(qrScramble = "owen" | "lms")` scrambles the QRPEM Sobol point
   set (`qr = TRUE`).  The Cranley-Patterson shift randomizes the set but leaves
   the correlation structure between the sequence's high-order dimensions

@@ -886,6 +886,10 @@ struct focei_options {
   bool impQrShift = true;    // Cranley-Patterson random shift of the Sobol points
   bool impQrRefresh = true;  // redraw the shift each iteration (false: one shift/subject)
   int impQrScramble = 0;     // Sobol scrambling: 0 none, 1 Owen, 2 linear matrix
+  // Importance-sampling proposal family: 0 auto (normal, or t when df>0),
+  // 1 normal, 2 t, 3 laplace, 4 mixture (with the scales/weights below).
+  int impProposal = 0;
+  std::vector<double> impPropMixScale, impPropMixWeight;
   bool impSir = false;       // SIR-accelerated non-mu/sigma M-step
   int impSirSample = 30;     // SIR resampled points per subject
   int impSeed = 42;          // base seed for the per-(iter,subject) draw streams
@@ -7564,6 +7568,20 @@ NumericVector foceiSetup_(const RObject &obj,
     if (foceiO.containsElementNamed("qr")) op_focei.impQr = as<bool>(foceiO["qr"]);
     if (foceiO.containsElementNamed("qrShift")) op_focei.impQrShift = as<bool>(foceiO["qrShift"]);
     if (foceiO.containsElementNamed("qrRefresh")) op_focei.impQrRefresh = as<bool>(foceiO["qrRefresh"]);
+    if (foceiO.containsElementNamed("proposal") &&
+        TYPEOF(foceiO["proposal"]) == STRSXP) {
+      std::string ps = as<std::string>(foceiO["proposal"]);
+      op_focei.impProposal = (ps == "normal") ? 1 : ((ps == "t") ? 2 :
+        ((ps == "laplace") ? 3 : ((ps == "mixture") ? 4 : 0)));
+    }
+    if (foceiO.containsElementNamed("propMixScale")) {
+      NumericVector v = as<NumericVector>(foceiO["propMixScale"]);
+      op_focei.impPropMixScale.assign(v.begin(), v.end());
+    }
+    if (foceiO.containsElementNamed("propMixWeight")) {
+      NumericVector v = as<NumericVector>(foceiO["propMixWeight"]);
+      op_focei.impPropMixWeight.assign(v.begin(), v.end());
+    }
     if (foceiO.containsElementNamed("qrScramble") &&
         TYPEOF(foceiO["qrScramble"]) == STRSXP) {
       std::string qs = as<std::string>(foceiO["qrScramble"]);
@@ -11695,6 +11713,11 @@ bool impQrEnabled() { return op_focei.impQr; }
 bool impQrShiftEnabled() { return op_focei.impQrShift; }
 bool impQrRefreshEnabled() { return op_focei.impQrRefresh; }
 int impQrScramble() { return op_focei.impQrScramble; }
+int impProposalType() { return op_focei.impProposal; }
+void impPropMixGet(std::vector<double>& c, std::vector<double>& w) {
+  c = op_focei.impPropMixScale;
+  w = op_focei.impPropMixWeight;
+}
 bool impSirEnabled() { return op_focei.impSir; }
 int impSirN() { return op_focei.impSirSample; }
 int impBaseSeed() { return op_focei.impSeed; }

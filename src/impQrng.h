@@ -28,6 +28,7 @@
 // points than any usable isample.
 
 #include <cstdint>
+#include <cmath>   // std::ldexp
 
 // ---- seed mixing -----------------------------------------------------------
 // A fit's scramble seed must fold in EVERY index that identifies it.  A bare
@@ -86,19 +87,31 @@ static inline uint32_t impOwenScramble(uint32_t x, uint32_t seed) {
 // vendor's variant -- Phoenix's "Tezuka-Faure" is not published in enough
 // detail to claim we reproduce it.
 //
-// Row i of L is (unit diagonal | random bits strictly below it), so L is
-// unit lower-triangular and therefore always invertible; output bit i is the
-// parity of (v & row_i).  Bit 0 here is the MOST significant digit, matching
-// the radical-inverse convention.
+// Output DIGIT i is the parity of (v & row_i), where digit 0 is the MOST
+// significant (radical-inverse convention).  Row i carries the unit diagonal
+// plus random bits at digit indices j < i, i.e. STRICTLY MORE SIGNIFICANT
+// positions -- that is what makes L unit lower-triangular in digit
+// coordinates, which is the orientation the method requires.
+//
+// The orientation is not cosmetic and the natural-looking mask is the wrong
+// one: taking the random bits from the LESS significant side (`0x7FFFFFFFu >>
+// i`) is unit UPPER-triangular in digit terms.  It is still invertible, so it
+// looks fine and passes any 1-D marginal check, but it destroys the
+// (t,m,s)-net property -- only a lower-triangular L leaves the span of the
+// leading d rows of L*C_j equal to that of C_j.  Measured on the first 1024
+// points of dims 1-2, worst 2-D elementary-interval split: 512-767 empty boxes
+// against 30 for the raw sequence and 1 under Owen, and the integration RMSE
+// went the wrong way with dimension (3.4x Owen at neta=6 against 2.9x at
+// neta=3).  test-qrpem-scramble.R pins the 2-D net check for this reason; a
+// 1-D stratification test cannot see it.
 static inline uint32_t impLmsScramble(uint32_t x, uint32_t seed) {
   uint32_t out = 0u;
   uint32_t shift = impQrngMix(((uint64_t)seed << 1) | 1ULL) >> 32;
   for (int i = 0; i < 32; ++i) {
-    // row i: diagonal bit at position i, random bits at positions > i
     uint32_t rnd = (uint32_t)(impQrngMix((uint64_t)seed * 0x2545F4914F6CDD1DULL +
                                          (uint64_t)i) >> 32);
     uint32_t row = (0x80000000u >> i);
-    if (i < 31) row |= (rnd & (0x7FFFFFFFu >> i));
+    if (i > 0) row |= (rnd & ~(0xFFFFFFFFu >> i));
     uint32_t v = x & row;
     // parity of v
     v ^= v >> 16; v ^= v >> 8; v ^= v >> 4; v ^= v >> 2; v ^= v >> 1;

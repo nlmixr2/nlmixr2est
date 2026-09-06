@@ -55,6 +55,36 @@ nmTest({
     }
   })
 
+  test_that("scrambling preserves the 2-D net property", {
+    # A 1-D marginal check CANNOT see a wrong-orientation linear scramble: over
+    # the first 2^m points the low digits are a linear function of the top m, so
+    # an upper-triangular L still permutes them and stays 1-D stratified.  It
+    # does destroy the (t,m,s)-net elementary-interval balance, which is where
+    # the QMC accuracy actually lives -- an earlier draft of impLmsScramble had
+    # exactly that bug and left 512-767 empty boxes below.
+    .net <- function(Z) {
+      .U <- pnorm(Z)
+      .m <- 10L
+      .empty <- 0L
+      for (.d1 in 0:.m) {
+        .d2 <- .m - .d1
+        .b1 <- pmin(floor(.U[, 1] * 2^.d1), 2^.d1 - 1)
+        .b2 <- pmin(floor(.U[, 2] * 2^.d2), 2^.d2 - 1)
+        .tb <- table(factor(.b1 * 2^.d2 + .b2, levels = 0:(2^.m - 1)))
+        .empty <- max(.empty, sum(.tb == 0))
+      }
+      .empty
+    }
+    # the raw sequence leaves 30 (boost skips the zero point); a correct
+    # scramble leaves 1.  A broken one leaves hundreds.
+    expect_lte(.net(impQrPoints_(1024L, 2L, NULL)), 40L)
+    for (.s in c("owen", "lms")) {
+      for (.seed in c(42L, 1L, 12345L)) {
+        expect_lte(.net(impQrPoints_(1024L, 2L, NULL, .s, .seed)), 4L)
+      }
+    }
+  })
+
   test_that("scrambling is seeded, reproducible and distinct per method", {
     .a <- impQrPoints_(512L, 3L, NULL, "owen", 42L)
     .b <- impQrPoints_(512L, 3L, NULL, "owen", 42L)

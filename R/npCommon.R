@@ -408,6 +408,7 @@
                     "autoNonNormal", "autoNonmemSparse", "autoDfPatience",
                     "iscaleMin", "iscaleMax", "iaccept", "mapIter",
                     "nBurn", "burnFreezeOmega",
+                    "proposal", "propMixScale", "propMixWeight",
                     "qr", "qrShift", "qrRefresh", "qrScramble", "sir", "sirSample")
 
 # Inert too, but with a real np counterpart worth naming.  npag has no seed of

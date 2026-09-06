@@ -16,6 +16,9 @@ impmapControl(
   gammaMethod = c("auto", "global", "individual"),
   gammaRule = c("target", "floor"),
   df = 0,
+  proposal = c("auto", "normal", "t", "laplace", "mixture"),
+  propMixScale = c(1, 9),
+  propMixWeight = c(0.9, 0.1),
   auto = TRUE,
   autoNonmemSparse = FALSE,
   autoDfPatience = 2L,
@@ -232,6 +235,39 @@ matrix at the mode.}
   NONMEM's guidance (Bauer, *NONMEM Tutorial Part II*) is to set a nonzero
   `DF` when there are fewer data points than etas, or for categorical data.
   Small values (3-8) are heavy; large values approach the Gaussian.}
+
+\item{proposal}{Importance-sampling proposal family.  `"auto"` (default)
+  resolves to `"t"` when `df > 0` and `"normal"` otherwise, so the historical
+  `df` behaviour is unchanged.
+
+  * `"normal"` / `"t"` -- the multivariate normal and t proposals `df`
+    already selected.  See `df` for the shape-versus-width discussion these
+    all turn on.
+  * `"laplace"` -- a spherical (Kotz-type) multivariate Laplace,
+    `f(x) ~ exp(-sqrt(x' S^-1 x))`.  Its exponential tail dominates the joint
+    target's, which for a bounded likelihood is at worst Gaussian, so the
+    importance weights are BOUNDED by construction -- without having to pick
+    a `df`, and without the low-`df` t's cost in effective sample size.  Its
+    scale is covariance-matched (`S = Sigma/(p+1)`), so `gamma`, `iscaleMin`
+    and `iscaleMax` mean what they mean for `"normal"`.
+  * `"mixture"` -- a defensive scale mixture about the same mode,
+    `sum_k w_k N(mode, c_k gamma Sigma)`, with `propMixScale` and
+    `propMixWeight`.  A broad component covers what a narrow one misses.
+    Note this does NOT bound the weights: its widest component is still
+    Gaussian-tailed, so use `"laplace"` when that is what you need.
+
+  `auto` adapts `df` only on the normal/t axis -- its ladder encodes
+  "Gaussian" as `df <= 0` and its constants were tuned against a Gaussian
+  baseline, so a subject on `"laplace"` or `"mixture"` keeps its family.
+  The `isample` budget reallocation still applies to every family.}
+
+\item{propMixScale}{Component variance multipliers for
+`proposal="mixture"`, length 2 or 3, starting at `1` and strictly
+increasing.  Rescaled internally so the mixture covariance is exactly
+`gamma * Sigma`; `fit$env$impPropMixScale` reports the effective values.}
+
+\item{propMixWeight}{Component weights for `proposal="mixture"`, same length
+as `propMixScale`, positive, normalized internally.}
 
 \item{auto}{NONMEM `AUTO=1` equivalent: adapt the proposal degrees of
   freedom, the sample count and the acceptance target **per subject** rather

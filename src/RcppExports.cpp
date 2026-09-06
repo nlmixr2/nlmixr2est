@@ -452,6 +452,23 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// impPropKernel_
+NumericVector impPropKernel_(std::string type, double df, NumericVector mixScale, NumericVector mixWeight, double quad, double gamma, int p);
+RcppExport SEXP _nlmixr2est_impPropKernel_(SEXP typeSEXP, SEXP dfSEXP, SEXP mixScaleSEXP, SEXP mixWeightSEXP, SEXP quadSEXP, SEXP gammaSEXP, SEXP pSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< std::string >::type type(typeSEXP);
+    Rcpp::traits::input_parameter< double >::type df(dfSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type mixScale(mixScaleSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type mixWeight(mixWeightSEXP);
+    Rcpp::traits::input_parameter< double >::type quad(quadSEXP);
+    Rcpp::traits::input_parameter< double >::type gamma(gammaSEXP);
+    Rcpp::traits::input_parameter< int >::type p(pSEXP);
+    rcpp_result_gen = Rcpp::wrap(impPropKernel_(type, df, mixScale, mixWeight, quad, gamma, p));
+    return rcpp_result_gen;
+END_RCPP
+}
 // impQrPoints_
 NumericMatrix impQrPoints_(int isample, int neta, Nullable<NumericVector> shift, std::string scramble, int seed);
 RcppExport SEXP _nlmixr2est_impQrPoints_(SEXP isampleSEXP, SEXP netaSEXP, SEXP shiftSEXP, SEXP scrambleSEXP, SEXP seedSEXP) {

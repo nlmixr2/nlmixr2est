@@ -65,7 +65,7 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
   # batch 1
   c(
     "focei-wang2007-boxcox", "focei-wang2007-combined", "vpcSim",
-    "qrpem-slow", "focei-foce-plus"
+    "qrpem-slow", "focei-foce-plus", "imp-proposal-slow"
   ),
   # batch 2
   c(

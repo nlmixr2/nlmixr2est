@@ -15,6 +15,7 @@
                            "iscaleMin", "iscaleMax", "iaccept",
                            "nBurn", "burnFreezeOmega",
                            "ctol", "nConvWindow", "impSeed", "impCov",
+                           "proposal", "propMixScale", "propMixWeight",
                            "qr", "qrShift", "qrRefresh", "qrScramble",
                            "sir", "sirSample",
                            # internal M-step index maps added in .impmapFamilyFit;
@@ -26,6 +27,41 @@
                            # impmap-internal request for the fused inner model;
                            # not a foceiControl() argument either.
                            "combSens")
+
+# Validate proposal / mixture arguments.  Every test is on the VALUE rather
+# than missing(), so do.call(impmapControl, ctl) round-trips idempotently -- a
+# round-trip supplies df=0 explicitly, which is conflict-free.
+#' @noRd
+.impmapAssertProposal <- function(proposal, df, propMixScale, propMixWeight) {
+  checkmate::assertNumeric(df, len=1, any.missing=FALSE, .var.name="df")
+  if (identical(proposal, "normal") && df > 0) {
+    stop("'df' > 0 contradicts proposal=\"normal\"; use proposal=\"t\" or df=0",
+         call.=FALSE)
+  }
+  if (identical(proposal, "t") && df <= 0) {
+    stop("proposal=\"t\" needs 'df' > 0", call.=FALSE)
+  }
+  if (proposal %in% c("laplace", "mixture") && df > 0) {
+    stop("'df' applies only to proposal=\"t\"", call.=FALSE)
+  }
+  checkmate::assertNumeric(propMixScale, min.len=2, max.len=3, any.missing=FALSE,
+                           lower=.Machine$double.eps, finite=TRUE,
+                           .var.name="propMixScale")
+  checkmate::assertNumeric(propMixWeight, len=length(propMixScale),
+                           any.missing=FALSE, lower=.Machine$double.eps,
+                           finite=TRUE, .var.name="propMixWeight")
+  # component 1 IS the Laplace-approximation covariance, which is what anchors
+  # the meaning of gamma; a mixture of one is not a mixture (and would not be
+  # bit-identical to "normal" anyway -- the log-sum-exp reassociates).
+  if (!isTRUE(all.equal(propMixScale[1], 1))) {
+    stop("'propMixScale' must start at 1", call.=FALSE)
+  }
+  if (any(diff(propMixScale) <= 0)) {
+    stop("'propMixScale' must be strictly increasing", call.=FALSE)
+  }
+  list(scale=as.double(propMixScale),
+       weight=as.double(propMixWeight / sum(propMixWeight)))
+}
 
 #' Control options for the impmap (importance-sampling EM) estimation method
 #'
@@ -117,6 +153,36 @@
 #'   NONMEM's guidance (Bauer, *NONMEM Tutorial Part II*) is to set a nonzero
 #'   `DF` when there are fewer data points than etas, or for categorical data.
 #'   Small values (3-8) are heavy; large values approach the Gaussian.
+#' @param proposal Importance-sampling proposal family.  `"auto"` (default)
+#'   resolves to `"t"` when `df > 0` and `"normal"` otherwise, so the historical
+#'   `df` behaviour is unchanged.
+#'
+#'   * `"normal"` / `"t"` -- the multivariate normal and t proposals `df`
+#'     already selected.  See `df` for the shape-versus-width discussion these
+#'     all turn on.
+#'   * `"laplace"` -- a spherical (Kotz-type) multivariate Laplace,
+#'     `f(x) ~ exp(-sqrt(x' S^-1 x))`.  Its exponential tail dominates the joint
+#'     target's, which for a bounded likelihood is at worst Gaussian, so the
+#'     importance weights are BOUNDED by construction -- without having to pick
+#'     a `df`, and without the low-`df` t's cost in effective sample size.  Its
+#'     scale is covariance-matched (`S = Sigma/(p+1)`), so `gamma`, `iscaleMin`
+#'     and `iscaleMax` mean what they mean for `"normal"`.
+#'   * `"mixture"` -- a defensive scale mixture about the same mode,
+#'     `sum_k w_k N(mode, c_k gamma Sigma)`, with `propMixScale` and
+#'     `propMixWeight`.  A broad component covers what a narrow one misses.
+#'     Note this does NOT bound the weights: its widest component is still
+#'     Gaussian-tailed, so use `"laplace"` when that is what you need.
+#'
+#'   `auto` adapts `df` only on the normal/t axis -- its ladder encodes
+#'   "Gaussian" as `df <= 0` and its constants were tuned against a Gaussian
+#'   baseline, so a subject on `"laplace"` or `"mixture"` keeps its family.
+#'   The `isample` budget reallocation still applies to every family.
+#' @param propMixScale Component variance multipliers for
+#'   `proposal="mixture"`, length 2 or 3, starting at `1` and strictly
+#'   increasing.  Rescaled internally so the mixture covariance is exactly
+#'   `gamma * Sigma`; `fit$env$impPropMixScale` reports the effective values.
+#' @param propMixWeight Component weights for `proposal="mixture"`, same length
+#'   as `propMixScale`, positive, normalized internally.
 #' @param auto NONMEM `AUTO=1` equivalent: adapt the proposal degrees of
 #'   freedom, the sample count and the acceptance target **per subject** rather
 #'   than applying one global setting to everybody.
@@ -393,6 +459,9 @@ impmapControl <- function(sigdig=3,
                           gammaMethod=c("auto", "global", "individual"),
                           gammaRule=c("target", "floor"),
                           df=0,
+                          proposal=c("auto", "normal", "t", "laplace", "mixture"),
+                          propMixScale=c(1, 9),
+                          propMixWeight=c(0.9, 0.1),
                           auto=TRUE,
                           autoNonmemSparse=FALSE,
                           autoDfPatience=2L,
@@ -438,6 +507,8 @@ impmapControl <- function(sigdig=3,
   checkmate::assertLogical(qrShift, any.missing=FALSE, len=1, .var.name="qrShift")
   checkmate::assertLogical(qrRefresh, any.missing=FALSE, len=1, .var.name="qrRefresh")
   qrScramble <- match.arg(qrScramble)
+  proposal <- match.arg(proposal)
+  .propMix <- .impmapAssertProposal(proposal, df, propMixScale, propMixWeight)
   checkmate::assertLogical(sir, any.missing=FALSE, len=1, .var.name="sir")
   # isample may be a single count or one count PER SUBJECT (NONMEM's per-subject
   # ISAMPLE): a badly covered subject can buy more samples without charging
@@ -534,6 +605,9 @@ impmapControl <- function(sigdig=3,
   .control$qrShift <- qrShift
   .control$qrRefresh <- qrRefresh
   .control$qrScramble <- qrScramble
+  .control$proposal <- proposal
+  .control$propMixScale <- .propMix$scale
+  .control$propMixWeight <- .propMix$weight
   .control$sir <- sir
   .control$sirSample <- .sirSample
   .control$combSens <- combSens
