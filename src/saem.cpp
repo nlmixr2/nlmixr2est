@@ -6991,17 +6991,46 @@ void setupRx(List &opt, SEXP evt, int nmc, int N) {
                      R_NilValue, R_NilValue,
                      parsM, evt, R_NilValue, 1);
     if (_saemThetaSensActive) {
-      // The pool here was sized by SAEM's OWN model, not the peer -- the pooled
-      // branch above deliberately solves the widest peer, and this path cannot,
-      // because SAEM's own model is the one that has to be solved and bound.
-      // A peer with more ODE states, or a wider lhs, then reads and writes past
-      // the pool's per-thread slice.  odeDenyPoolNotSized does NOT catch that
-      // (measured: it segfaulted in the accumulate loop).  So compare the two
-      // models and decline the peer when it does not fit; the refinement runs
-      // the derivative-free search alone, exactly as it did before any of this.
+      // Which model can size this pool is decided by MEASUREMENT, not by
+      // assuming SAEM's own model is the biggest.  It usually is not: the
+      // sensitivity peer expands linCmt() into explicit compartments and adds a
+      // d(state)/d(theta) equation per estimated theta.  Measured on Bauer's
+      // gamma model:
+      //
+      //     SAEM own   neq=2   nlhs=1   npars=9
+      //     thetaSens  neq=10  nlhs=14  npars=12
+      //
+      // The peer is larger on every axis, so this pool cannot hold it and
+      // solving it here reads and writes past the per-thread slice.
+      // odeDenyPoolNotSized does NOT catch that (measured: it segfaulted in the
+      // accumulate loop).
+      //
+      // Sizing the pool by the PEER instead -- solving it here the way the
+      // pooled branch above solves its widest peer -- does not work on this
+      // path either, and the reason is worth recording so it is not retried:
+      // rxSolve_ lays out ONE parameter vector, the solved model's.  The peer
+      // declares THETA[k]/ETA[k]; SAEM's own model declares native names
+      // (lclm, rxz.eta.cl, ...).  Registering SAEM's own model as a peer and
+      // switching to it then makes it read the peer's placeholder slots as its
+      // own parameters -- measured: an immediate segfault.  The pooled branch
+      // gets away with switching precisely because ALL of its peers share one
+      // THETA[]/ETA[]/DV declaration.
+      //
+      // So the real fix is to give SAEM's own likelihood read that shared
+      // declaration on this path too (what predNoLhs already does for a
+      // general-likelihood fit), not to reorder the sizing.  Until then,
+      // measure and decline: the refinement runs the derivative-free search
+      // alone, exactly as it did before any of this.
       List mvTs = _rxode2_rxModelVars_(opt["saemThetaSens"]);
       CharacterVector stTs = mvTs[RxMv_state], stOwn = mv[RxMv_state];
       CharacterVector lhTs = mvTs[RxMv_lhs], lhOwn = mv[RxMv_lhs];
+      CharacterVector pTs = mvTs[RxMv_params], pOwn = mv[RxMv_params];
+      if (getenv("NLMIXR2_SAEM_GRADCHECK") != NULL) {
+        Rprintf("pool sizing (measured): own neq=%d nlhs=%d npars=%d | "
+                "thetaSens neq=%d nlhs=%d npars=%d\n",
+                (int)stOwn.size(), (int)lhOwn.size(), (int)pOwn.size(),
+                (int)stTs.size(), (int)lhTs.size(), (int)pTs.size());
+      }
       if (stTs.size() > stOwn.size() || lhTs.size() > lhOwn.size()) {
         _saemThetaSensActive = false;
       }
