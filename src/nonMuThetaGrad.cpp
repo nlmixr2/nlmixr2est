@@ -1,3 +1,5 @@
+#include <RcppArmadillo.h>
+// [[Rcpp::depends(RcppArmadillo)]]
 #include "nonMuThetaGrad.h"
 
 void nonMuGradAccumObs(nonMuObjKind kind, double y, double f,
@@ -97,4 +99,27 @@ bool nonMuGradStep(const arma::vec &score, const arma::mat &info,
     lambda *= 100.0;
   }
   return false;
+}
+
+// ---- test hook -------------------------------------------------------------
+//
+// The arithmetic above is shared by every estimator that takes this step, so it
+// is worth checking on its own rather than only through a fit -- a fit needs a
+// model whose peer fits the solve pool, and reaching one is incidental to
+// whether the derivatives are right.  This exposes one observation's score and
+// information so a test can compare them against numerical differentiation of
+// the objective in closed form.
+//
+//[[Rcpp::export]]
+Rcpp::List nonMuGradAccumTest_(int kind, double y, double f, double gsd,
+                               double dgsdf, Rcpp::NumericVector dfdth,
+                               double w) {
+  int nth = dfdth.size();
+  arma::vec score(nth, arma::fill::zeros);
+  arma::mat info(nth, nth, arma::fill::zeros);
+  std::vector<double> d(dfdth.begin(), dfdth.end());
+  nonMuGradAccumObs((nonMuObjKind)kind, y, f, gsd, dgsdf, d.data(), nth, w,
+                    score, info);
+  return Rcpp::List::create(Rcpp::_["score"] = Rcpp::wrap(score),
+                            Rcpp::_["info"] = Rcpp::wrap(info));
 }

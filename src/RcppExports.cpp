@@ -1711,6 +1711,23 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// nonMuGradAccumTest_
+Rcpp::List nonMuGradAccumTest_(int kind, double y, double f, double gsd, double dgsdf, Rcpp::NumericVector dfdth, double w);
+RcppExport SEXP _nlmixr2est_nonMuGradAccumTest_(SEXP kindSEXP, SEXP ySEXP, SEXP fSEXP, SEXP gsdSEXP, SEXP dgsdfSEXP, SEXP dfdthSEXP, SEXP wSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< int >::type kind(kindSEXP);
+    Rcpp::traits::input_parameter< double >::type y(ySEXP);
+    Rcpp::traits::input_parameter< double >::type f(fSEXP);
+    Rcpp::traits::input_parameter< double >::type gsd(gsdSEXP);
+    Rcpp::traits::input_parameter< double >::type dgsdf(dgsdfSEXP);
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type dfdth(dfdthSEXP);
+    Rcpp::traits::input_parameter< double >::type w(wSEXP);
+    rcpp_result_gen = Rcpp::wrap(nonMuGradAccumTest_(kind, y, f, gsd, dgsdf, dfdth, w));
+    return rcpp_result_gen;
+END_RCPP
+}
 // npObjAtGamma_
 double npObjAtGamma_(arma::mat etaPoints, int cores, double gamma);
 RcppExport SEXP _nlmixr2est_npObjAtGamma_(SEXP etaPointsSEXP, SEXP coresSEXP, SEXP gammaSEXP) {

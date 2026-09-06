@@ -646,6 +646,10 @@ nlmLikEvalC_ <- function(theta) {
     .Call(`_nlmixr2est_nlmLikEvalC_`, theta)
 }
 
+nonMuGradAccumTest_ <- function(kind, y, f, gsd, dgsdf, dfdth, w) {
+    .Call(`_nlmixr2est_nonMuGradAccumTest_`, kind, y, f, gsd, dgsdf, dfdth, w)
+}
+
 #' Diagnostic: NPAG objective at a fixed grid and residual multiplier gamma
 #' @param etaPoints support points, one per row
 #' @param cores threads
