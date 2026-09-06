@@ -806,6 +806,8 @@ extern arma::ivec _saemThetaSensThetaCol;      // column within that group
 extern arma::vec _saemThetaSensThetaFixedVal;  // value for kind -1
 extern arma::ivec _saemThetaSensEtaCol;        // ETA[k] -> phi1 column
 extern int _saemThetaSensDvCol;                // -1 when DV is not a parameter
+extern int _saemThetaSensSensOffset;           // lhs index of the FIRST d(f)/d(theta)
+extern int _saemThetaSensNlhs;                 // peer's lhs width (sizes the buffer)
 
 extern bool _saemPhi1PoolReady;
 extern bool _saemPhi1UseAnalyticHess;
@@ -826,6 +828,25 @@ extern int _saemPhi1H2PredOffset;
 extern int _saemPhi1H2HessOffset;
 extern arma::uvec _saemPhi1I0;
 extern arma::uvec _saemPhi1I1;
+
+// A C++ exception must NEVER escape an OpenMP region: the runtime cannot unwind
+// out of one, so it calls std::terminate and the whole R process aborts.
+//
+// rxode2ll's likelihood functions throw std::domain_error for an out-of-domain
+// argument -- `student_t_lpdf: Degrees of freedom parameter is -598.433, but
+// must be positive finite` -- and a general-likelihood SAEM fit reaches exactly
+// that as a matter of course: the MCMC proposes a negative df, the model's
+// calc_lhs evaluates ll() there, and it throws from inside the threaded pooled
+// solve.  Serially that would be a caught error; in the parallel region it was
+// an abort with no R-level message.
+//
+// A parameter the likelihood is not defined at is precisely what a bad solve
+// already means, and every caller here handles that by rejecting the proposal.
+// So catch it and report it as one, rather than letting it kill the session.
+template <typename F>
+static inline bool saemNoThrow(F &&f) {
+  try { f(); return true; } catch (...) { return false; }
+}
 
 // class def starts
 class SAEM {
@@ -1143,6 +1164,227 @@ public:
     }
   }
 
+  // Exact-gradient warm start for the non-mu (phi0) thetas.
+  //
+  // refinePhi0Lik's search has no derivative information and a budget of
+  // nonMuThetaMaxEval full-population solves.  The peer model emits exact
+  // symbolic d(f)/d(theta) for every estimated theta in ONE solve per row, so a
+  // Gauss-Newton step off it is cheaper than a handful of search evaluations
+  // and far better directed.  This does NOT replace the search: it moves
+  // mprior_phi0 along the local quadratic model, and the search then runs
+  // warm-started from there and corrects wherever that model was poor
+  // (src/nonMuThetaGrad.h -- the hedge between linearity and non-linearity).
+  //
+  // The objective differentiated here is exactly phi0NormalSSR's, so the two
+  // halves agree on what they are minimizing:
+  //     0.5*((y - f)/g)^2 + log(g),   g = ares(b) + bres(b)*|f|
+  // g and dg/df come from SAEM's OWN live ares/bres, not from the peer's
+  // rx_r_.  SAEM keeps the residual error outside phi, so the peer's residual
+  // THETA is pinned at its ini() value and its rx_r_ would weight the score
+  // with a stale sd while SAEM's actual one moves.
+  //
+  // Returns true when it actually moved something.
+  bool nonMuGradPhi0(unsigned int kiter, const vec &pas) {
+    if (!_saemThetaSensActive || gPhi0FreeIx.empty()) return false;
+    if (_saemNonMuGradEvery > 1 &&
+        ((int)kiter % _saemNonMuGradEvery) != 0) return false;
+    // Which objective this is differentiating MUST match the one the search
+    // minimizes (phi0Objective), or the warm start pulls phi0 toward the argmin
+    // of a different function.  For a general-likelihood model the prediction IS
+    // the per-observation log-likelihood and phi0Objective is -sum(f); for a
+    // normal model it is the Gaussian phi0NormalSSR.
+    const nonMuObjKind objKind = (distribution == 4) ? nonMuObjLl : nonMuObjGauss;
+    if (objKind == nonMuObjGauss) {
+      // Transform-both-sides changes the objective's shape (phi0NormalSSR
+      // applies _powerD to both f and y); the peer's sensitivities are on the
+      // untransformed scale, so the chain rule below would be wrong.  Fall back
+      // to the search.
+      for (int b = 0; b < nendpnt; ++b) {
+        if (yj(b) != 2 || lambda(b) != 1.0) return false;
+      }
+    }
+    const int nFree = (int)gPhi0FreeIx.size();
+    const int nTheta = (int)_saemThetaSensThetaKind.n_elem;
+    const int nEta = (int)_saemThetaSensEtaCol.n_elem;
+    const int nSens = (int)_saemThetaSensPhi0Col.n_elem;
+    // sens output -> free-index position, -1 when that output is not a free
+    // phi0 column (fixed, M-step-owned, or not a phi0 column at all)
+    std::vector<int> sensFree((size_t)nSens, -1);
+    bool any = false;
+    for (int s = 0; s < nSens; ++s) {
+      int c = _saemThetaSensPhi0Col(s);
+      if (c < 0) continue;
+      for (int fi = 0; fi < nFree; ++fi) {
+        if (gPhi0FreeIx[(size_t)fi] == c) { sensFree[(size_t)s] = fi; any = true; break; }
+      }
+    }
+    if (!any) return false;
+
+    // Multi-endpoint needs the per-observation endpoint to pick ares/bres, which
+    // this walk (in solve order) does not carry; ys/ix_endpnt are in
+    // endpoint-blocked ix_sorting order.  Single endpoint is unambiguous, so do
+    // that now and leave the blocked-order translation for when it is needed.
+    // The log-likelihood objective needs no endpoint at all -- f is already the
+    // loglik -- so it is exempt.
+    if (objKind == nonMuObjGauss && nendpnt != 1) return false;
+
+    rx_solving_options *op = getSolvingOptions(_rx);
+    int cores = getOpCores(op);
+    bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
+    const int nRow = N * nmc;
+    // Per-row score/information, reduced serially afterwards -- accumulating
+    // into shared arma objects inside the parallel region would race.
+    std::vector<double> rowScore((size_t)nRow * (size_t)nFree, 0.0);
+    std::vector<double> rowInfo((size_t)nRow * (size_t)nFree * (size_t)nFree, 0.0);
+    std::vector<int> rowBad((size_t)nRow, 0);
+    // The event-sensitivity shape is a process global installed only by
+    // OdeSwapEsBatch, which MUST be constructed outside the OpenMP region --
+    // and a "no ES" slot still needs one built, so a shape left installed by an
+    // earlier solve is deactivated rather than reused with the wrong dimensions
+    // (OdeSwapEsBatch's own contract, src/odeSwap.cpp).
+    std::unique_ptr<OdeSwapEsBatch> tsEsBatch(new OdeSwapEsBatch(odeSlotThetaSens));
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
+#endif
+    for (int r = 0; r < nRow; ++r) {
+#ifdef _OPENMP
+      if (doParallel) setRxThreadId(omp_get_thread_num());
+#endif
+      int subj = r % N;
+      rx_solving_options_ind *ind = getSolvingOptionsInd(_rx, r);
+      OdeSwapScope neqGuard(odeSlotThetaSens, ind, op);
+      OdeSwapCmtScope cmtGuard(odeSlotThetaSens, op, ind);
+      // THETA[k] from whichever phi group owns it; ETA[k] is the row's CURRENT
+      // deviation from its mu, exactly as phi1AnalyticHessAt reads it
+      for (int k = 0; k < nTheta; ++k) {
+        double v;
+        int kind = _saemThetaSensThetaKind(k), col = _saemThetaSensThetaCol(k);
+        if (kind == 1) v = mprior_phi1(subj, col);
+        else if (kind == 0) v = mprior_phi0(0, col);
+        else v = _saemThetaSensThetaFixedVal(k);
+        setIndParPtr(ind, k, v);
+      }
+      for (int k = 0; k < nEta; ++k) {
+        int col = _saemThetaSensEtaCol(k);
+        setIndParPtr(ind, nTheta + k, phiM(r, i1(col)) - mprior_phi1(subj, col));
+      }
+      setIndSolve(ind, -1);
+      if (!saemNoThrow([&]{ odeSwapSolveInd(odeSlotThetaSens, r); }) ||
+          odeSwapIndBadSolveSlot(op, ind, odeSlotThetaSens)) {
+        rowBad[(size_t)r] = 1; continue;
+      }
+      iniSubjectE(r, 1, ind, op, _rx, rxThetaSens.update_inis);
+      double *lhs = neqGuard.lhs();
+      arma::vec sc((int)nFree, fill::zeros);
+      arma::mat inf((int)nFree, (int)nFree, fill::zeros);
+      std::vector<double> dfdth((size_t)nFree);
+      for (int j = 0; j < getIndNallTimes(ind); ++j) {
+        setIndIdx(ind, j);
+        int kk = getIndIx(ind, j);
+        if (getIndEvid(ind, kk) != 0) continue;
+        double curT = getTime(kk, ind);
+        if (!saemNoThrow([&]{
+              rxThetaSens.calc_lhs(r, curT, getOpIndSolve(op, ind, j), lhs); })) {
+          rowBad[(size_t)r] = 1; break;
+        }
+        double f = lhs[_saemThetaSensPredOffset];
+        if (!std::isfinite(f)) { rowBad[(size_t)r] = 1; break; }
+        double y = 0.0, gsd = 0.0, dgsdf = 0.0;
+        if (objKind == nonMuObjGauss) {
+          y = getIndDv(ind, kk);
+          if (!std::isfinite(y)) { rowBad[(size_t)r] = 1; break; }
+          gsd = ares(0) + bres(0) * std::fabs(f);
+          if (!(gsd > 0.0) || !std::isfinite(gsd)) continue;
+          dgsdf = bres(0) * ((f < 0.0) ? -1.0 : 1.0);
+        }
+        std::fill(dfdth.begin(), dfdth.end(), 0.0);
+        bool okObs = true;
+        for (int sIx = 0; sIx < nSens; ++sIx) {
+          int fi = sensFree[(size_t)sIx];
+          if (fi < 0) continue;
+          double d = lhs[_saemThetaSensSensOffset + sIx];
+          if (!std::isfinite(d)) { okObs = false; break; }
+          dfdth[(size_t)fi] = d;
+        }
+        if (!okObs) { rowBad[(size_t)r] = 1; break; }
+        nonMuGradAccumObs(objKind, y, f, gsd, dgsdf,
+                          dfdth.data(), nFree, 1.0, sc, inf);
+      }
+      if (rowBad[(size_t)r]) continue;
+      for (int a = 0; a < nFree; ++a) {
+        rowScore[(size_t)r * (size_t)nFree + (size_t)a] = sc(a);
+        for (int bb = 0; bb < nFree; ++bb)
+          rowInfo[((size_t)r * (size_t)nFree + (size_t)a) * (size_t)nFree + (size_t)bb] =
+            inf(a, bb);
+      }
+    }
+    tsEsBatch.reset();
+    arma::vec score(nFree, fill::zeros);
+    arma::mat info(nFree, nFree, fill::zeros);
+    int nGood = 0;
+    for (int r = 0; r < nRow; ++r) {
+      if (rowBad[(size_t)r]) continue;
+      nGood++;
+      for (int a = 0; a < nFree; ++a) {
+        score(a) += rowScore[(size_t)r * (size_t)nFree + (size_t)a];
+        for (int bb = 0; bb < nFree; ++bb)
+          info(a, bb) +=
+            rowInfo[((size_t)r * (size_t)nFree + (size_t)a) * (size_t)nFree + (size_t)bb];
+      }
+    }
+    // A partial population would bias the step toward whoever happened to
+    // solve; the search alone is better than a skewed Newton step.
+    if (nGood < nRow) return false;
+    // Finite-difference verification of the exact gradient, off by default.
+    // The analytic score above and a central difference of phi0Objective --
+    // the very objective the search minimizes -- must agree; anything else is
+    // a wrong index, a wrong sign, or a stale residual sd.  Kept behind an
+    // env var so a normal fit never pays for the 2*nFree extra population
+    // solves it costs.
+    if (getenv("NLMIXR2_SAEM_GRADCHECK") != NULL) {
+      std::vector<double> pv((size_t)nphi0);
+      for (int c = 0; c < nphi0; ++c) pv[(size_t)c] = mprior_phi0(0, c);
+      Rprintf("saem non-mu gradient check (kiter=%u)\n", kiter);
+      for (int fi = 0; fi < nFree; ++fi) {
+        int c = gPhi0FreeIx[(size_t)fi];
+        double x0 = pv[(size_t)c];
+        double h = 1e-5 * std::max(1.0, std::fabs(x0));
+        pv[(size_t)c] = x0 + h;
+        double fp = phi0Objective(pv.data());
+        pv[(size_t)c] = x0 - h;
+        double fm = phi0Objective(pv.data());
+        pv[(size_t)c] = x0;
+        double fd = (fp - fm) / (2.0 * h);
+        double rel = (std::fabs(fd) > 1e-8) ?
+          std::fabs(score(fi) - fd) / std::fabs(fd) : std::fabs(score(fi) - fd);
+        Rprintf("  phi0[%d] analytic=% .8e  fd=% .8e  rel=%.3e\n",
+                c, score(fi), fd, rel);
+      }
+    }
+    // Damped by the SA step exactly like the M-step's own update, and clamped
+    // to refinePhi0Lik's local trust radius so a poorly conditioned information
+    // matrix cannot throw a phi0 outside the region the search then works in.
+    arma::vec cur(nFree), step;
+    for (int fi = 0; fi < nFree; ++fi) cur(fi) = mprior_phi0(0, gPhi0FreeIx[(size_t)fi]);
+    if (!nonMuGradStep(score, info, cur, 0.75, step)) return false;
+    double damp = (kiter < pas.n_elem) ? pas(kiter) : 1.0;
+    if (!std::isfinite(damp) || damp <= 0.0) return false;
+    bool moved = false;
+    for (int fi = 0; fi < nFree; ++fi) {
+      int c = gPhi0FreeIx[(size_t)fi];
+      double v = cur(fi) + damp * step(fi);
+      double lo = ((int)phi0Lower.n_elem == nphi0) ? phi0Lower(c) : R_NegInf;
+      double hi = ((int)phi0Upper.n_elem == nphi0) ? phi0Upper(c) : R_PosInf;
+      if (std::isfinite(lo) && v < lo) v = lo;
+      if (std::isfinite(hi) && v > hi) v = hi;
+      if (std::isfinite(v) && v != mprior_phi0(0, c)) {
+        mprior_phi0(0, c) = v;
+        moved = true;
+      }
+    }
+    return moved;
+  }
+
   void refinePhi0Lik(unsigned int kiter, const vec &pas) {
     if (nphi0 <= 0) return;
     // A user-FIXED phi0 theta must not be touched here.  Once this refinement
@@ -1187,6 +1429,11 @@ public:
     // across the design even when its coordinate never moved.
     vec mcov0Fixed;
     if (fixedIx0.n_elem > 0) mcov0Fixed = vec(MCOV0(jcov0(fixedIx0)));
+    // Gauss-Newton warm start off the exact sensitivities, then the search
+    // below refines from there (src/nonMuThetaGrad.h).  Runs AFTER gPhi0FreeIx
+    // so it moves exactly the columns the search owns -- never one the
+    // distribution M-step owns or the user fixed.
+    nonMuGradPhi0(kiter, pas);
     // Decide whether to freeze the ODE during the phi0 optimization.  General-
     // likelihood phi0 params (a likelihood SD) never enter the ODE.  For a
     // normal model under nonMuTheta="regress", phi0 thetas that drive the ODE
@@ -1561,19 +1808,32 @@ public:
       if (!_saemPhi1WantHessian) {
         // saemControl(phi1Hessian=FALSE), the default: plain -2*loglik, no
         // Hessian/Omega-prior term at all -- see the field's own docs.
-        rowPred = phi1PredAt(i, ind, op, neqGuard, nH2Theta, eta0, bad);
+        if (!saemNoThrow([&]{
+              rowPred = phi1PredAt(i, ind, op, neqGuard, nH2Theta, eta0, bad); })) {
+          rowBad[i] = 1; continue;
+        }
       } else if (_saemPhi1UseAnalyticHess) {
-        if (!phi1AnalyticHessAt(i, ind, op, neqGuard, nH2Theta, eta0, rowPred, H)) {
+        bool okH = false;
+        if (!saemNoThrow([&]{
+              okH = phi1AnalyticHessAt(i, ind, op, neqGuard, nH2Theta, eta0,
+                                       rowPred, H); }) || !okH) {
           rowBad[i] = 1; continue;
         }
       } else {
-        rowPred = phi1PredAt(i, ind, op, neqGuard, nH2Theta, eta0, bad);
+        if (!saemNoThrow([&]{
+              rowPred = phi1PredAt(i, ind, op, neqGuard, nH2Theta, eta0, bad); })) {
+          rowBad[i] = 1; continue;
+        }
         // restore of the row's solve/lhs state to eta0 is unnecessary --
         // calcEtaHessian's own FD fallback leaves the last perturbation's
         // solve behind too (its caller re-solves before any further read),
         // but SAEM's OWN model (odeSlotSaem) is what user_function reads
         // next, an independent peer/solve buffer.
-        if (!bad) phi1FDHessAt(i, ind, op, neqGuard, nH2Theta, fdH, eta0, rowPred, H, bad);
+        if (!bad && !saemNoThrow([&]{
+              phi1FDHessAt(i, ind, op, neqGuard, nH2Theta, fdH, eta0,
+                           rowPred, H, bad); })) {
+          rowBad[i] = 1; continue;
+        }
       }
       if (bad) { rowBad[i] = 1; continue; }
       if (!_saemPhi1WantHessian) {
@@ -6193,6 +6453,8 @@ arma::ivec _saemThetaSensThetaCol;
 arma::vec _saemThetaSensThetaFixedVal;
 arma::ivec _saemThetaSensEtaCol;
 int _saemThetaSensDvCol = -1;
+int _saemThetaSensSensOffset = -1;
+int _saemThetaSensNlhs = 0;
 
 bool _saemPhi1PoolReady = false;
 bool _saemPhi1UseAnalyticHess = false;
@@ -6258,8 +6520,15 @@ static void saemSetRowsPooled(const mat &_phi) {
 // Parallelized the same way inner.cpp's own per-subject loops are; called
 // once per (re)solve, same as the original par_solve(_rx) call it replaces
 // (including from inside the bad-solve retry loop).
+// Set for individual i when its solve threw (see saemNoThrow).  Read by
+// saemReadRowsPooled, which turns it into the same 1e99/hasNan the NaN path
+// produces -- the solve and the read are separate passes, so the flag has to
+// outlive the solve loop.
+static std::vector<int> _saemPooledThrew;
+
 static void saemSolveIndividualsPooled(int nInd) {
   rx_solving_options *op = getSolvingOptions(_rx);
+  _saemPooledThrew.assign((size_t)nInd, 0);
   int cores = getOpCores(op);
   bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
   // odeSlotPred carries no event sensitivities of its own, but the ES shape is
@@ -6282,7 +6551,9 @@ static void saemSolveIndividualsPooled(int nInd) {
     OdeSwapScope neqGuard(odeSlotPred, ind, op);
     OdeSwapCmtScope cmtGuard(odeSlotPred, op, ind);
     setIndSolve(ind, -1);
-    odeSwapSolveInd(odeSlotPred, i);
+    if (!saemNoThrow([&]{ odeSwapSolveInd(odeSlotPred, i); })) {
+      _saemPooledThrew[(size_t)i] = 1;
+    }
   }
 }
 
@@ -6315,7 +6586,8 @@ static void saemReadRowsPooled(mat &g, int &elt, bool &hasNan, int nInd) {
     int nAll = getIndNallTimes(ind);
     std::vector<double> &obs = rowObs[(size_t)i];
     obs.reserve((size_t)nAll);
-    if (odeSwapIndBadSolveSlot(op, ind, odeSlotPred)) {
+    bool threw = (i < (int)_saemPooledThrew.size()) && _saemPooledThrew[(size_t)i];
+    if (threw || odeSwapIndBadSolveSlot(op, ind, odeSlotPred)) {
       for (int j = 0; j < nAll; ++j) {
         if (getIndEvid(ind, getIndIx(ind, j)) == 0) obs.push_back(1.0e99);
       }
@@ -6329,7 +6601,12 @@ static void saemReadRowsPooled(mat &g, int &elt, bool &hasNan, int nInd) {
       int kk = getIndIx(ind, j);
       if (getIndEvid(ind, kk) != 0) continue;
       double curT = getTime(kk, ind);
-      rxPred.calc_lhs(i, curT, getOpIndSolve(op, ind, j), lhs);
+      if (!saemNoThrow([&]{
+            rxPred.calc_lhs(i, curT, getOpIndSolve(op, ind, j), lhs); })) {
+        obs.push_back(1.0e99);
+        rowNan[i] = 1;
+        continue;
+      }
       double cur = lhs[_saemPhi1PredOffset];
       if (std::isnan(cur)) { cur = 1.0e99; rowNan[i] = 1; }
       obs.push_back(cur);
@@ -6652,7 +6929,19 @@ void setupRx(List &opt, SEXP evt, int nmc, int N) {
       } else {
         _saemThetaSensPredOffset = odeSwapLhsIndex(odeSlotThetaSens, "rx_pred_");
         _saemThetaSensROffset = odeSwapLhsIndex(odeSlotThetaSens, "rx_r_");
-        if (_saemThetaSensPredOffset < 0) _saemThetaSensActive = false;
+        _saemThetaSensNlhs = odeSwapNlhs(odeSlotThetaSens);
+        // The peer emits one rx__sens_rx_pred__BY_THETA_j___ per estimated
+        // theta, ascending and contiguous, so the first one's lhs index plus
+        // the output's position is the whole map (imp reads them the same way,
+        // src/inner.cpp).
+        _saemThetaSensSensOffset = -1;
+        if (_saemThetaSensTheta.n_elem > 0) {
+          std::string f0 = "rx__sens_rx_pred__BY_THETA_" +
+            std::to_string(_saemThetaSensTheta(0)) + "___";
+          _saemThetaSensSensOffset = odeSwapLhsIndex(odeSlotThetaSens, f0.c_str());
+        }
+        if (_saemThetaSensPredOffset < 0 || _saemThetaSensSensOffset < 0 ||
+            _saemThetaSensNlhs <= 0) _saemThetaSensActive = false;
       }
     }
     }
@@ -6698,7 +6987,19 @@ void setupRx(List &opt, SEXP evt, int nmc, int N) {
       } else {
         _saemThetaSensPredOffset = odeSwapLhsIndex(odeSlotThetaSens, "rx_pred_");
         _saemThetaSensROffset = odeSwapLhsIndex(odeSlotThetaSens, "rx_r_");
-        if (_saemThetaSensPredOffset < 0) _saemThetaSensActive = false;
+        _saemThetaSensNlhs = odeSwapNlhs(odeSlotThetaSens);
+        // The peer emits one rx__sens_rx_pred__BY_THETA_j___ per estimated
+        // theta, ascending and contiguous, so the first one's lhs index plus
+        // the output's position is the whole map (imp reads them the same way,
+        // src/inner.cpp).
+        _saemThetaSensSensOffset = -1;
+        if (_saemThetaSensTheta.n_elem > 0) {
+          std::string f0 = "rx__sens_rx_pred__BY_THETA_" +
+            std::to_string(_saemThetaSensTheta(0)) + "___";
+          _saemThetaSensSensOffset = odeSwapLhsIndex(odeSlotThetaSens, f0.c_str());
+        }
+        if (_saemThetaSensPredOffset < 0 || _saemThetaSensSensOffset < 0 ||
+            _saemThetaSensNlhs <= 0) _saemThetaSensActive = false;
       }
     }
   } else {
