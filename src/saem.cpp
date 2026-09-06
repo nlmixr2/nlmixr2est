@@ -1596,17 +1596,24 @@ public:
   // produces, and the only one whose mu IS the theta.
   void zeroOmegaDirectStep(unsigned int kiter, const vec &pas) {
     if (nphi1 <= 0) return;
-    std::vector<bool> phi1Fix((size_t)nphi1, false);
-    for (unsigned int j = 0; j < fixedIx1.n_elem; ++j) {
-      if (fixedIx1(j) < (unsigned int)nphi1) phi1Fix[(size_t)fixedIx1(j)] = true;
-    }
     gZeroOmIx.clear();
     for (unsigned int f = 0; f < saemZeroOmegaPhi1.n_elem; ++f) {
       unsigned int c = saemZeroOmegaPhi1(f);
       if (c >= (unsigned int)nphi1) continue;
-      if (phi1Fix[(size_t)c]) continue;
-      // intercept-only: exactly one lambda maps to this column
-      if (arma::find(LCOV1.col(c) == 1).eval().n_elem != 1) continue;
+      // Intercept-only columns only -- the shape mu-referencing produces, and
+      // the only one whose mu IS the theta.  A covariate column's theta is a
+      // regression coefficient and belongs to the GLS.
+      uvec li = arma::find(LCOV1.col(c) == 1);
+      if (li.n_elem != 1) continue;
+      // fixedIx1 indexes LAMBDA rows, not phi1 columns.  For an intercept-only
+      // column the two coincide, but map through LCOV1 rather than lean on
+      // that: a model with a covariate on any OTHER column shifts the lambda
+      // numbering and the coincidence stops holding.
+      bool isFixed = false;
+      for (unsigned int j = 0; j < fixedIx1.n_elem; ++j) {
+        if (fixedIx1(j) == li(0)) { isFixed = true; break; }
+      }
+      if (isFixed) continue;
       gZeroOmIx.push_back((int)c);
     }
     if (gZeroOmIx.empty()) return;

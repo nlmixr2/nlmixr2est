@@ -260,6 +260,26 @@
                         zeroOmegaTune=rxode2::rxGetControl(ui, "zeroOmegaTune", 0.1),
                         zeroOmegaAnneal=rxode2::rxGetControl(ui, "zeroOmegaAnneal", 0),
                         zeroOmegaDirect=rxode2::rxGetControl(ui, "zeroOmegaDirect", FALSE),
+                        ## phi indices of the mu-referenced random effects whose
+                        ## variance was DECLARED zero.  Taken from the stash the
+                        ## preProcess hook wrote off the original model: by the
+                        ## time .configsaem() runs the hook has already replaced
+                        ## the zero with the exploration placeholder, so it can no
+                        ## longer be detected from the omega itself.
+                        zeroOmegaPhi={
+                          .z <- .zeroOmegaMuRefStash(ui)
+                          if (length(.z) == 0L) {
+                            integer(0)
+                          } else {
+                            .idf <- ui$iniDf
+                            .et <- .idf[!is.na(.idf$neta1) & .idf$neta1 == .idf$neta2, ]
+                            .n1 <- .et$neta1[match(.z, .et$name)]
+                            .n1 <- .n1[!is.na(.n1)]
+                            if (length(.n1) == 0L) integer(0) else {
+                              as.integer(ui$saemEtaTrans[.n1])
+                            }
+                          }
+                        },
                         parHistThetaKeep=ui$saemParHistThetaKeep,
                         parHistOmegaKeep=ui$saemParHistOmegaKeep,
                         parHistOmegaOffPairs={

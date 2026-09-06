@@ -169,6 +169,7 @@
                        zeroOmegaTune = 0.1,
                        zeroOmegaAnneal = 0,
                        zeroOmegaDirect = FALSE,
+                       zeroOmegaPhi = integer(0),
                        parHistThetaKeep=NULL,
                        parHistOmegaKeep=NULL,
                        parHistOmegaOffPairs=matrix(integer(0), ncol=2L),
@@ -353,9 +354,19 @@
   ## is what `saemControl(zeroOmegaTune=)` sets, and why it is a tuning value
   ## rather than an arbitrary placeholder.
   flatOmega <- which(inits$omega <= 0)
-  ## kept for saemZeroOmegaPhi1 below: once the placeholder is substituted the
-  ## columns are indistinguishable from any other fixed omega
-  .zeroOmegaPhi <- flatOmega
+  ## Which phi columns carry a DECLARED-zero mu-referenced variance.
+  ##
+  ## `flatOmega` alone is not enough and reading it here would have made both
+  ## `zeroOmegaAnneal` and `zeroOmegaDirect` silently inert: for `est="saem"`
+  ## the preProcess hook `.preProcessZeroOmegaMuRef()` has ALREADY substituted
+  ## the placeholder by the time `.configsaem()` runs, so nothing is <= 0 any
+  ## more.  (That rewrite cannot be dropped in favour of the one below -- saem
+  ## consumes the omega through covstruct and the MCMC first.)  So the caller
+  ## passes the columns it recorded from the ORIGINAL model, and the local
+  ## scan stays as a fallback for a zero that arrives another way.
+  .zeroOmegaPhi <- unique(c(flatOmega, as.integer(zeroOmegaPhi)))
+  .zeroOmegaPhi <- .zeroOmegaPhi[.zeroOmegaPhi >= 1L &
+                                   .zeroOmegaPhi <= length(inits$omega)]
   if (length(flatOmega) > 0L) {
     .tune <- zeroOmegaTune
     if (is.null(.tune) || !is.finite(.tune) || .tune <= 0) .tune <- 0.1

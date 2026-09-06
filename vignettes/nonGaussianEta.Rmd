@@ -170,12 +170,6 @@ from the answer.
 
 ### Starting values matter a great deal
 
-The reason is structural. `rxEtaDistExpand()` writes the declared
-distribution's parameters into the model as bare thetas inside an inverse-CDF
-call, and nothing about that shape is `theta + eta`. So every one of them
-comes out **non**-mu-referenced, which is the case the FOCEi family handles
-worst. A cold start settles a long way from the answer.
-
 What that costs, and what good starting values buy, on Bauer's data:
 
 | | CL | Q | V2 | prop.sd | corr |
