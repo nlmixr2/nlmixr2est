@@ -1,4 +1,7 @@
-#' Theta-sensitivity model for SAEM's non-mu (phi0) theta refinement
+#' Theta-sensitivity plan for SAEM's non-mu (phi0) theta refinement
+#'
+#' The compiled model (`$saemThetaSens`) plus the phi-column maps that let SAEM
+#' drive it from its own phi matrix.
 #'
 #' `refinePhi0Lik()` moves the non-mu thetas by a derivative-free search that
 #' spends a full population solve on every objective evaluation and has no
@@ -18,7 +21,7 @@
 #' @noRd
 #' @author Matthew L. Fidler
 #' @export
-rxUiGet.saemThetaSens <- function(x, ...) {
+rxUiGet.saemThetaSensPlan <- function(x, ...) {
   .ui <- x[[1]]
   if (!isTRUE(tryCatch(as.logical(rxode2::rxGetControl(.ui, "nonMuThetaGrad", FALSE)),
                        error = function(e) FALSE))) {
@@ -33,13 +36,12 @@ rxUiGet.saemThetaSens <- function(x, ...) {
   .cov <- tryCatch(rxUiGet.saemMuRefCovariateDataFrame(list(.ui)),
                    error = function(e) NULL)
   if (is.null(.cov) || length(.cov$covariateParameter) > 0) return(NULL)
-  ## needV = FALSE: SAEM's gradient never reads d(V)/d(theta).  It takes the
-  ## residual scale from SAEM's own live ares/bres, because SAEM keeps the
-  ## residual error outside phi and this model's residual THETA is pinned at its
-  ## ini() value.  Asking for it and discarding it is pure cost: timed at 25
-  ## solves of Bauer's gamma model, 6.76s with the block against 4.92s without
-  ## it (27%).  imp/impmap still get the full model; only this caller opts out.
-  .mod <- tryCatch(.impmapThetaSensModel(.ui, needV = FALSE),
+  ## Compiled from `$saemThetaSens` -- the lean variant of `$impmapThetaSens`,
+  ## same model without the d(V)/d(theta) columns this gradient never reads.
+  ## `.impmapThetaSensModel()` reaches that text through `$`, so it is cached and
+  ## `ui$saemThetaSens` stays inspectable while debugging, exactly like
+  ## `ui$impmapThetaSens`.
+  .mod <- tryCatch(.impmapThetaSensModel(.ui, needVar = FALSE),
                    error = function(e) NULL)
   if (is.null(.mod)) return(NULL)
   .map <- .saemThetaSensMap(.ui)
@@ -48,7 +50,7 @@ rxUiGet.saemThetaSens <- function(x, ...) {
   if (is.null(.par)) return(NULL)
   c(list(thetaSens = .mod), .map, .par)
 }
-attr(rxUiGet.saemThetaSens, "rstudio") <- emptyenv()
+attr(rxUiGet.saemThetaSensPlan, "rstudio") <- emptyenv()
 
 #' Map each sensitivity output to the SAEM phi0 column it differentiates
 #'

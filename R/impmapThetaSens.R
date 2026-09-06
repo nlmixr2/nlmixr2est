@@ -70,7 +70,7 @@
 # rx__sens_rx_r__BY_THETA_j___ = d(V)/d(theta_j).
 
 #' @export
-rxUiGet.impmapThetaSens <- function(x, ..., needV = TRUE) {
+rxUiGet.impmapThetaSens <- function(x, ..., needVar = TRUE) {
   .ui <- x[[1]]
   .idx <- .impmapEstTheta(.ui)
   if (length(.idx$all) == 0L) return(NULL)
@@ -135,9 +135,9 @@ rxUiGet.impmapThetaSens <- function(x, ..., needV = TRUE) {
   # overstates it.  Dropping the block takes nlhs from 14 to 8 and the linCmtB()
   # calls in the emitted text from 9 to 2, but linCmtB caches per parameter set,
   # so the call count is NOT the cost.  Timed instead, 25 solves of Bauer's gamma
-  # model:  needV=TRUE 6.76s, needV=FALSE 4.92s -- a 27% saving, not the 78% the
+  # model:  needVar=TRUE 6.76s, needVar=FALSE 4.92s -- a 27% saving, not the 78% the
   # call count suggests.
-  .dvOut <- if (isTRUE(needV)) {
+  .dvOut <- if (isTRUE(needVar)) {
     vapply(.idx$all, function(j) {
       paste0("rx__sens_rx_r__BY_THETA_", j, "___=",
              .impmapChainRule(.s, "rx_r_", j, .stateVars, .idx$struct))
@@ -188,6 +188,44 @@ rxUiGet.impmapThetaSens <- function(x, ..., needV = TRUE) {
 }
 attr(rxUiGet.impmapThetaSens, "rstudio") <- emptyenv()
 
+#' SAEM's theta-sensitivity model: `$impmapThetaSens` without d(V)/d(theta)
+#'
+#' Same sensitivity model, built with `needVar = FALSE`.
+#'
+#' A separate NAME rather than an argument on `$impmapThetaSens` so that both
+#' variants stay reachable through `$` -- rxUiGet caches per name, so a
+#' parameterized handler would either hand one caller the other's model or have
+#' to bypass the cache, and bypassing it also loses `ui$impmapThetaSens` as a
+#' thing you can print while debugging a model.
+#'
+#' SAEM's non-mu gradient reads only d(f)/d(theta): it takes the residual scale
+#' from SAEM's own live ares/bres, so the d(V)/d(theta) columns are evaluated at
+#' every observation of every solve and discarded.  Timed over 25 solves of
+#' Bauer's gamma model: 6.76s with them, 4.92s without (27%).
+#'
+#' CAVEAT, because this is a fragile split in general.  Which thetas are
+#' "structural" and which are "sigma" comes from `.impmapEstTheta()`, which
+#' asks whether the theta carries an `err` -- i.e. whether it was DECLARED as a
+#' residual-error parameter, not whether it actually reaches the prediction.  A
+#' theta used in both the endpoint and the value is not something that split
+#' expresses.  It is safe for THIS caller for a reason that does not depend on
+#' the split at all: SAEM never differentiates V, whatever V depends on --
+#' phi0NormalSSR takes the residual scale from ares/bres, and the
+#' general-likelihood objective is -sum(rx_pred_), where V does not appear
+#' separately.  Do not carry `needVar = FALSE` to a caller whose objective does
+#' depend on V.
+#'
+#' @param x rxode2 ui, in a list
+#' @return the same shape `$impmapThetaSens` returns (model TEXT plus
+#'   `thetaSensIdx`), without the `rx__sens_rx_r__BY_THETA_j___` columns
+#' @noRd
+#' @author Matthew L. Fidler
+#' @export
+rxUiGet.saemThetaSens <- function(x, ...) {
+  rxUiGet.impmapThetaSens(x, ..., needVar = FALSE)
+}
+attr(rxUiGet.saemThetaSens, "rstudio") <- emptyenv()
+
 #' Compile the impmap sensitivity model.
 #'
 #' @param ui rxode2 ui object
@@ -201,8 +239,12 @@ attr(rxUiGet.impmapThetaSens, "rstudio") <- emptyenv()
 #'   rx__sens_rx_lambda__BY_THETA_j___ when the transform-both-sides lambda is
 #'   itself estimated), or NULL if there are none.
 #' @noRd
-.impmapThetaSensModel <- function(ui, eventSens = "fd", needV = TRUE) {
-  .s <- rxUiGet.impmapThetaSens(list(ui), needV = needV)
+.impmapThetaSensModel <- function(ui, eventSens = "fd", needVar = TRUE) {
+  ## Through `$`, by name, so each variant is cached under its own name and each
+  ## stays printable while debugging.  Calling the handler directly with
+  ## needVar = would bypass the cache and take `ui$impmapThetaSens` away as
+  ## something you can inspect.
+  .s <- if (isTRUE(needVar)) ui$impmapThetaSens else ui$saemThetaSens
   if (is.null(.s)) return(NULL)
   ## Interpolation is carried like the inner model does; splitBolus() is not --
   ## this model solves the pre-split events, so declaring it would split the

@@ -207,7 +207,7 @@
   # search that follows starts from a Gauss-Newton step instead of from wherever
   # the stochastic phi0 update left things (src/nonMuThetaGrad.h).  NULL for a
   # model shape out of scope, in which case the search runs alone as before.
-  .ts <- nlmixrWithTiming("configure", ui$saemThetaSens)
+  .ts <- nlmixrWithTiming("configure", ui$saemThetaSensPlan)
   if (!is.null(.ts) && isTRUE(.ts$ok)) {
     .model$saemThetaSens <- .ts$thetaSens
     .model$saemThetaSensPhi0Col <- as.integer(.ts$sensPhi0Col)
