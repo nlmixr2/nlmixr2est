@@ -220,6 +220,31 @@
     .model$saemThetaSensEtaCol <- as.integer(.ts$etaCol)
     .model$saemThetaSensDvCol <- as.integer(.ts$dvCol)
   }
+  # A NORMAL model with a sensitivity peer needs its own solves to speak the same
+  # THETA[]/ETA[] declaration, or the peer cannot share the solve pool with it
+  # (see rxUiGet.saemOwnPred).  Only worth building when the sensitivity peer
+  # actually resolved -- otherwise this would reroute every normal fit's solve
+  # for nothing.
+  if (!is.null(.model$saemThetaSens)) {
+    .op <- nlmixrWithTiming("configure", ui$saemOwnPred)
+    if (!is.null(.op) && isTRUE(.op$ok)) {
+      .model$saemPhi1Pred <- .op$predNoLhs
+      .model$saemPhi1ThetaKind <- as.integer(.op$thetaKind)
+      .model$saemPhi1ThetaCol <- as.integer(.op$thetaCol)
+      .model$saemPhi1ThetaFixedVal <- as.numeric(.op$thetaFixedVal)
+      .model$saemPhi1EtaCol <- as.integer(.op$etaCol)
+      .model$saemPhi1EtaNonMu <- as.integer(.op$etaNonMu)
+      # -1: no DV parameter in a normal model.  This is what keeps
+      # _saemPhi1PoolReady FALSE, so the pooled SOLVE engages without the
+      # general-likelihood phi1 theta refinement coming with it.
+      .model$saemPhi1DvCol <- -1L
+      .model$saemPhi1DvColHess2 <- -1L
+    } else {
+      # no shared declaration -> the sensitivity peer cannot be pooled with
+      # SAEM's own model, so do not carry it at all
+      .model$saemThetaSens <- NULL
+    }
+  }
   if (.saemGeneralLik(ui)) {
     .p1 <- nlmixrWithTiming("configure", ui$saemPhi1Inner)
     if (!is.null(.p1) && isTRUE(.p1$ok)) {

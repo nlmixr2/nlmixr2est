@@ -807,6 +807,10 @@ extern arma::vec _saemThetaSensThetaFixedVal;  // value for kind -1
 extern arma::ivec _saemThetaSensEtaCol;        // ETA[k] -> phi1 column
 extern int _saemThetaSensDvCol;                // -1 when DV is not a parameter
 extern int _saemThetaSensSensOffset;           // lhs index of the FIRST d(f)/d(theta)
+// lhs index of EACH d(f)/d(theta) output, resolved by name rather than assumed
+// contiguous from the first -- the outputs are named by ntheta, and the map's
+// order is .impmapEstTheta()$all, which need not be the lhs order.
+extern arma::ivec _saemThetaSensSensIx;
 extern int _saemThetaSensNlhs;                 // peer's lhs width (sizes the buffer)
 
 extern bool _saemPhi1PoolReady;
@@ -815,6 +819,10 @@ extern arma::ivec _saemPhi1H2ThetaKind;
 extern arma::ivec _saemPhi1H2ThetaCol;
 extern arma::vec _saemPhi1H2ThetaFixedVal;
 extern arma::ivec _saemPhi1H2EtaCol;
+arma::ivec _saemPhi1EtaNonMu;
+// 1 when ETA[k]'s parameter has no THETA[] of its own (a nonMuEta, e.g. a
+// dist()-declared eta): the pooled setter must put the phi VALUE there, not 0.
+extern arma::ivec _saemPhi1EtaNonMu;
 extern bool _saemPhi1WantHessian;
 extern int _saemPhi1PredOffset;
 // 0-based DV parameter-slot position, resolved by .saemPhi1TargetMap
@@ -1225,18 +1233,48 @@ public:
     if (gchk) Rprintf("  nSens=%d anyFree=%d\n", nSens, (int)any);
     if (!any) return false;
 
-    // Multi-endpoint needs the per-observation endpoint to pick ares/bres, which
-    // this walk (in solve order) does not carry; ys/ix_endpnt are in
-    // endpoint-blocked ix_sorting order.  Single endpoint is unambiguous, so do
-    // that now and leave the blocked-order translation for when it is needed.
-    // The log-likelihood objective needs no endpoint at all -- f is already the
-    // loglik -- so it is exempt.
-    if (objKind == nonMuObjGauss && nendpnt != 1) return false;
+    // Observation identity, in SOLVE order.
+    //
+    // This walk visits observations subject-by-subject in solve order, but SAEM
+    // holds ys/ix_endpnt in endpoint-blocked ix_sorting order (phi0NormalSSR
+    // reorders f the same way before it can index ys).  getIndDv() is NOT the
+    // observation here -- it reads 0 in this path, which silently made every
+    // residual -f and is what made the analytic score disagree with a finite
+    // difference by seven orders of magnitude.
+    //
+    // ix_sorting maps sorted position t -> solve-order position q, so invert it
+    // once to go the other way.  With the endpoint recovered per observation
+    // there is no need to restrict this to a single endpoint either.
+    arma::uvec invSort;
+    if (objKind == nonMuObjGauss) {
+      if ((int)ix_sorting.n_elem != ntotal || (int)ys.n_elem < ntotal) return false;
+      invSort.set_size(ntotal);
+      for (int t = 0; t < ntotal; ++t) {
+        unsigned int q = ix_sorting(t);
+        if ((int)q >= ntotal) return false;
+        invSort(q) = (unsigned int)t;
+      }
+    }
 
     rx_solving_options *op = getSolvingOptions(_rx);
     int cores = getOpCores(op);
     bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
     const int nRow = N * nmc;
+    // Where each subject's observations start within one chain's solve-order
+    // block.  Chains replicate the same subjects, so this is computed once.
+    std::vector<int> obsOff((size_t)N + 1, 0);
+    if (objKind == nonMuObjGauss) {
+      int acc = 0;
+      for (int i = 0; i < N; ++i) {
+        obsOff[(size_t)i] = acc;
+        rx_solving_options_ind *indI = getSolvingOptionsInd(_rx, i);
+        for (int j = 0; j < getIndNallTimes(indI); ++j) {
+          if (getIndEvid(indI, getIndIx(indI, j)) == 0) acc++;
+        }
+      }
+      obsOff[(size_t)N] = acc;
+      if (acc != ntotal) return false;   // layout is not what this assumes
+    }
     // Per-row score/information, reduced serially afterwards -- accumulating
     // into shared arma objects inside the parallel region would race.
     std::vector<double> rowScore((size_t)nRow * (size_t)nFree, 0.0);
@@ -1283,6 +1321,7 @@ public:
       arma::vec sc((int)nFree, fill::zeros);
       arma::mat inf((int)nFree, (int)nFree, fill::zeros);
       std::vector<double> dfdth((size_t)nFree);
+      int nObs = 0;
       for (int j = 0; j < getIndNallTimes(ind); ++j) {
         setIndIdx(ind, j);
         int kk = getIndIx(ind, j);
@@ -1296,24 +1335,35 @@ public:
         if (!std::isfinite(f)) { rowBad[(size_t)r] = 1; break; }
         double y = 0.0, gsd = 0.0, dgsdf = 0.0;
         if (objKind == nonMuObjGauss) {
-          y = getIndDv(ind, kk);
+          int q = obsOff[(size_t)subj] + nObs;   // solve-order position in the chain
+          if (q >= ntotal) { rowBad[(size_t)r] = 1; break; }
+          unsigned int t = invSort(q);           // its position in ys/ix_endpnt
+          y = ys(t);
+          int b = (nendpnt == 1) ? 0 : (int)ix_endpnt(t);
           if (!std::isfinite(y)) { rowBad[(size_t)r] = 1; break; }
-          gsd = ares(0) + bres(0) * std::fabs(f);
-          if (!(gsd > 0.0) || !std::isfinite(gsd)) continue;
-          dgsdf = bres(0) * ((f < 0.0) ? -1.0 : 1.0);
+          gsd = ares(b) + bres(b) * std::fabs(f);
+          if (!(gsd > 0.0) || !std::isfinite(gsd)) { nObs++; continue; }
+          dgsdf = bres(b) * ((f < 0.0) ? -1.0 : 1.0);
         }
         std::fill(dfdth.begin(), dfdth.end(), 0.0);
         bool okObs = true;
         for (int sIx = 0; sIx < nSens; ++sIx) {
           int fi = sensFree[(size_t)sIx];
           if (fi < 0) continue;
-          double d = lhs[_saemThetaSensSensOffset + sIx];
+          int lix = (sIx < (int)_saemThetaSensSensIx.n_elem) ?
+            _saemThetaSensSensIx(sIx) : -1;
+          if (lix < 0) { okObs = false; break; }
+          double d = lhs[lix];
           if (!std::isfinite(d)) { okObs = false; break; }
           dfdth[(size_t)fi] = d;
         }
         if (!okObs) { rowBad[(size_t)r] = 1; break; }
+        if (r == 0 && nObs < 3 && getenv("NLMIXR2_SAEM_GRADCHECK") != NULL)
+          Rprintf("    [row0 obs%d y=%.6g f=%.6g gsd=%.6g dfdth0=%.6g]\n",
+                  nObs, y, f, gsd, dfdth[0]);
         nonMuGradAccumObs(objKind, y, f, gsd, dgsdf,
                           dfdth.data(), nFree, 1.0, sc, inf);
+        nObs++;
       }
       if (rowBad[(size_t)r]) continue;
       for (int a = 0; a < nFree; ++a) {
@@ -1348,6 +1398,14 @@ public:
     // env var so a normal fit never pays for the 2*nFree extra population
     // solves it costs.
     if (gchk) {
+      // phi0Objective() re-solves only when the ODE is not frozen, and
+      // refinePhi0Lik() establishes the solve states before it starts
+      // optimizing.  This check runs BEFORE both of those, so without doing the
+      // same here it would difference a stale or frozen solve and report a
+      // mismatch that says nothing about the gradient.
+      bool _frz = _saemFreezeOde;
+      _saemFreezeOde = false;
+      { mat _tmp = user_fn(phiM, evt, optM); (void)_tmp; }
       std::vector<double> pv((size_t)nphi0);
       for (int c = 0; c < nphi0; ++c) pv[(size_t)c] = mprior_phi0(0, c);
       Rprintf("saem non-mu gradient check (kiter=%u)\n", kiter);
@@ -1361,11 +1419,13 @@ public:
         double fm = phi0Objective(pv.data());
         pv[(size_t)c] = x0;
         double fd = (fp - fm) / (2.0 * h);
+        if (fi == 0) Rprintf("    [obj fp=%.10e fm=%.10e h=%.3e]\n", fp, fm, h);
         double rel = (std::fabs(fd) > 1e-8) ?
           std::fabs(score(fi) - fd) / std::fabs(fd) : std::fabs(score(fi) - fd);
         Rprintf("  phi0[%d] analytic=% .8e  fd=% .8e  rel=%.3e\n",
                 c, score(fi), fd, rel);
       }
+      _saemFreezeOde = _frz;
     }
     // Damped by the SA step exactly like the M-step's own update, and clamped
     // to refinePhi0Lik's local trust radius so a poorly conditioned information
@@ -2809,6 +2869,12 @@ public:
       _saemPhi1H2ThetaCol = as<ivec>(opt["saemPhi1ThetaCol"]);
       _saemPhi1H2ThetaFixedVal = as<vec>(opt["saemPhi1ThetaFixedVal"]);
       _saemPhi1H2EtaCol = as<ivec>(opt["saemPhi1EtaCol"]);
+      if (opt.containsElementNamed("saemPhi1EtaNonMu") &&
+          !Rf_isNull(opt["saemPhi1EtaNonMu"])) {
+        _saemPhi1EtaNonMu = as<ivec>(opt["saemPhi1EtaNonMu"]);
+      } else {
+        _saemPhi1EtaNonMu = arma::ivec(_saemPhi1H2EtaCol.n_elem, arma::fill::zeros);
+      }
       _saemPhi1DvCol = opt.containsElementNamed("saemPhi1DvCol") ?
         as<int>(opt["saemPhi1DvCol"]) : -1;
       _saemPhi1DvColHess2 = opt.containsElementNamed("saemPhi1DvColHess2") ?
@@ -6464,6 +6530,7 @@ arma::vec _saemThetaSensThetaFixedVal;
 arma::ivec _saemThetaSensEtaCol;
 int _saemThetaSensDvCol = -1;
 int _saemThetaSensSensOffset = -1;
+arma::ivec _saemThetaSensSensIx;
 int _saemThetaSensNlhs = 0;
 
 bool _saemPhi1PoolReady = false;
@@ -6517,7 +6584,17 @@ static void saemSetRowsPooled(const mat &_phi) {
         ((kind == 0) ? _phi(i, _saemPhi1I0(col)) : _saemPhi1H2ThetaFixedVal(k));
       setIndParPtr(ind, k, val);
     }
-    for (int k = 0; k < nEta; ++k) setIndParPtr(ind, nH2Theta + k, 0.0);
+    for (int k = 0; k < nEta; ++k) {
+      // A mu-referenced parameter's whole combined phi value went into its
+      // THETA[] above, so its ETA[] is 0.  A nonMuEta has no THETA[] at all --
+      // the parameter IS the eta -- so its value belongs here instead, or the
+      // model is evaluated at a latent eta of zero for every subject.
+      double v = 0.0;
+      if (k < (int)_saemPhi1EtaNonMu.n_elem && _saemPhi1EtaNonMu(k) != 0) {
+        v = _phi(i, _saemPhi1I1(_saemPhi1H2EtaCol(k)));
+      }
+      setIndParPtr(ind, nH2Theta + k, v);
+    }
   }
 }
 
@@ -6880,6 +6957,8 @@ void setupRx(List &opt, SEXP evt, int nmc, int N) {
       !Rf_isNull(opt["saemPhi1Hess2"]);
     if (haveHess2) odeSwapDeclare(odeSlotHess2, "hess2", opt["saemPhi1Hess2"]);
     if (_saemPhi1PoolActive) odeSwapDeclare(odeSlotPred, "pred", opt["saemPhi1Pred"]);
+    // the sensitivity peer is declared at the top of setupRx, ahead of this
+    // sizing solve, so odeSwapPlan() already accounts for its neq and lhs
     // rxSolve_ on whichever peer has the most states (innerHess2's extra
     // eta-sensitivity states when it built, else predNoLhs) -- matches the
     // number-of-ODEs sizing rule odeSwap already uses for neq; both share
@@ -6945,10 +7024,16 @@ void setupRx(List &opt, SEXP evt, int nmc, int N) {
         // the output's position is the whole map (imp reads them the same way,
         // src/inner.cpp).
         _saemThetaSensSensOffset = -1;
-        if (_saemThetaSensTheta.n_elem > 0) {
-          std::string f0 = "rx__sens_rx_pred__BY_THETA_" +
-            std::to_string(_saemThetaSensTheta(0)) + "___";
-          _saemThetaSensSensOffset = odeSwapLhsIndex(odeSlotThetaSens, f0.c_str());
+        _saemThetaSensSensIx.set_size(_saemThetaSensTheta.n_elem);
+        _saemThetaSensSensIx.fill(-1);
+        for (unsigned int q = 0; q < _saemThetaSensTheta.n_elem; ++q) {
+          std::string fq = "rx__sens_rx_pred__BY_THETA_" +
+            std::to_string(_saemThetaSensTheta(q)) + "___";
+          int ix = odeSwapLhsIndex(odeSlotThetaSens, fq.c_str());
+          _saemThetaSensSensIx(q) = ix;
+          if (q == 0) _saemThetaSensSensOffset = ix;
+          if (getenv("NLMIXR2_SAEM_GRADCHECK") != NULL)
+            Rprintf("  sens out %u: %s -> lhs %d\n", q, fq.c_str(), ix);
         }
         if (_saemThetaSensPredOffset < 0 || _saemThetaSensSensOffset < 0 ||
             _saemThetaSensNlhs <= 0) _saemThetaSensActive = false;
@@ -7048,10 +7133,16 @@ void setupRx(List &opt, SEXP evt, int nmc, int N) {
         // the output's position is the whole map (imp reads them the same way,
         // src/inner.cpp).
         _saemThetaSensSensOffset = -1;
-        if (_saemThetaSensTheta.n_elem > 0) {
-          std::string f0 = "rx__sens_rx_pred__BY_THETA_" +
-            std::to_string(_saemThetaSensTheta(0)) + "___";
-          _saemThetaSensSensOffset = odeSwapLhsIndex(odeSlotThetaSens, f0.c_str());
+        _saemThetaSensSensIx.set_size(_saemThetaSensTheta.n_elem);
+        _saemThetaSensSensIx.fill(-1);
+        for (unsigned int q = 0; q < _saemThetaSensTheta.n_elem; ++q) {
+          std::string fq = "rx__sens_rx_pred__BY_THETA_" +
+            std::to_string(_saemThetaSensTheta(q)) + "___";
+          int ix = odeSwapLhsIndex(odeSlotThetaSens, fq.c_str());
+          _saemThetaSensSensIx(q) = ix;
+          if (q == 0) _saemThetaSensSensOffset = ix;
+          if (getenv("NLMIXR2_SAEM_GRADCHECK") != NULL)
+            Rprintf("  sens out %u: %s -> lhs %d\n", q, fq.c_str(), ix);
         }
         if (_saemThetaSensPredOffset < 0 || _saemThetaSensSensOffset < 0 ||
             _saemThetaSensNlhs <= 0) _saemThetaSensActive = false;

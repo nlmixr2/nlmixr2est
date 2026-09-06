@@ -20,7 +20,7 @@
 #' @export
 rxUiGet.saemThetaSens <- function(x, ...) {
   .ui <- x[[1]]
-  if (!isTRUE(tryCatch(as.logical(rxode2::rxGetControl(.ui, "nonMuThetaGrad", TRUE)),
+  if (!isTRUE(tryCatch(as.logical(rxode2::rxGetControl(.ui, "nonMuThetaGrad", FALSE)),
                        error = function(e) FALSE))) {
     return(NULL)
   }
@@ -137,9 +137,22 @@ attr(rxUiGet.saemThetaSens, "rstudio") <- emptyenv()
   ## ETA[k] is the k'th eta in neta order, which is the order .saemPhi1Split()
   ## returns its phi1 columns in
   .etaCol <- .split$etaPhi1Col[seq_len(.nEta)]
+  ## Which ETA[k] carries its parameter's whole value rather than a deviation
+  ## from a THETA.
+  ##
+  ## The pooled setter reproduces a mu-referenced parameter by putting the
+  ## combined phi value in THETA[k] and 0 in ETA[k].  That is only right when
+  ## the parameter HAS a theta.  A dist()-declared eta is a nonMuEta: the
+  ## parameter IS the eta, no THETA[] slot refers to it, and zeroing ETA[k]
+  ## silently evaluates the model at a latent eta of 0 for every subject.
+  ## Flag those so the setter puts the phi value in ETA[k] instead.
+  .etaNonMu <- vapply(seq_along(.etaCol), function(.k) {
+    !any(.thetaKind == 1L & .thetaCol == .etaCol[.k])
+  }, logical(1))
   list(thetaKind = as.integer(.thetaKind), thetaCol = as.integer(.thetaCol),
        thetaFixedVal = as.numeric(.thetaFixedVal),
-       etaCol = as.integer(.etaCol), dvCol = as.integer(.dvCol))
+       etaCol = as.integer(.etaCol), dvCol = as.integer(.dvCol),
+       etaNonMu = as.integer(.etaNonMu))
 }
 #' Split SAEM's parameter vector into its phi1 and phi0 groups
 #'
@@ -180,3 +193,61 @@ attr(rxUiGet.saemThetaSens, "rstudio") <- emptyenv()
   list(parsAll = .parsAll, isPhi1 = .isPhi1,
        etaPhi1Col = as.integer(.etaPhi1Col), etaNames = .etaNames)
 }
+
+#' Prediction-only peer for a NORMAL model, so its solves share the peer layout
+#'
+#' The exact-gradient refinement needs the theta-sensitivity model to be
+#' solvable alongside SAEM's own.  It is not, on the ordinary path: `rxSolve_`
+#' lays out ONE parameter vector -- the solved model's -- and the two models do
+#' not share one.  The sensitivity peer declares `THETA[k]`/`ETA[k]`; SAEM's own
+#' model declares native names (`lclm`, `rxz.eta.cl`, ...).  Sizing the pool for
+#' the peer and switching to SAEM's model makes it read the peer's slots as its
+#' own parameters (measured: an immediate segfault).
+#'
+#' A general-likelihood fit does not have this problem, because it already
+#' routes SAEM's own likelihood read through `predNoLhs` -- a FOCEi-codegen peer
+#' that shares the `THETA[]`/`ETA[]` declaration.  `predNoLhs` is ordinary FOCEi
+#' codegen and exists for a normal model too; only `.saemPhi1TargetMap()`'s
+#' hard requirement of a `DV` parameter kept it out of reach, and a normal model
+#' has none (it predicts, and the observation comes from the data).
+#'
+#' So build the same peer here.  With it, every model in the pool speaks
+#' `THETA[]`/`ETA[]`, the pool can be sized by whichever measures widest, and
+#' the sensitivity peer becomes solvable -- which is what lets the refinement
+#' engage at all.
+#'
+#' `dvCol = -1` is deliberate and load-bearing: it is what keeps
+#' `_saemPhi1PoolReady` FALSE in the C++, so this turns on the pooled SOLVE
+#' routing without also turning on the phi1 theta refinement, which is a
+#' general-likelihood step and is not wanted here.
+#'
+#' @param x rxode2 ui, in a list
+#' @return list with `predNoLhs` and its phi-column map, or `NULL` when out of
+#'   scope (SAEM then takes its original single-model path unchanged)
+#' @noRd
+#' @author Matthew L. Fidler
+#' @export
+rxUiGet.saemOwnPred <- function(x, ...) {
+  .ui <- x[[1]]
+  ## only for a NORMAL model -- a general-likelihood fit already has this peer
+  ## through saemPhi1Inner, and building a second one would fight it
+  if (.saemGeneralLik(.ui)) return(NULL)
+  ## no point paying for the peer unless the sensitivity model it exists to
+  ## make solvable actually resolved
+  if (!isTRUE(tryCatch(as.logical(rxode2::rxGetControl(.ui, "nonMuThetaGrad", FALSE)),
+                       error = function(e) FALSE))) {
+    return(NULL)
+  }
+  .fm <- tryCatch(.ui$focei, error = function(e) NULL)
+  if (is.null(.fm)) return(NULL)
+  .pred <- .fm$predNoLhs
+  if (is.null(.pred)) return(NULL)
+  .par <- .saemThetaSensParMap(.ui, .pred)
+  if (is.null(.par)) return(NULL)
+  ## the pooled read drives every phi1 column through ETA[]; a mismatch here
+  ## would silently mis-map columns rather than fail
+  .nphi1 <- sum(.saemPhi1Split(.ui)$isPhi1)
+  if (length(.par$etaCol) != .nphi1) return(NULL)
+  c(list(predNoLhs = .pred, ok = TRUE), .par)
+}
+attr(rxUiGet.saemOwnPred, "rstudio") <- emptyenv()

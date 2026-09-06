@@ -461,13 +461,19 @@
   # (nothing attached model$saemPhi1Hess2/Pred), and innerHess2 may itself be
   # NULL for some model shapes (e.g. linCmt()) -- setupRx treats a NULL the
   # same as "not present".
-  if (distribution == 4L) {
+  # A NORMAL model gets the same pred peer when a sensitivity model was built
+  # (rxUiGet.saemOwnPred): without a shared THETA[]/ETA[] declaration the two
+  # cannot occupy one solve pool.  There is no Hess2 in that case and dvCol
+  # stays -1, so _saemPhi1PoolReady stays FALSE and only the pooled SOLVE
+  # routing engages -- not the general-likelihood phi1 theta refinement.
+  if (distribution == 4L || !is.null(model$saemPhi1Pred)) {
     opt$saemPhi1Hess2 <- model$saemPhi1Hess2
     opt$saemPhi1Pred  <- model$saemPhi1Pred
     opt$saemPhi1ThetaKind <- model$saemPhi1ThetaKind
     opt$saemPhi1ThetaCol <- model$saemPhi1ThetaCol
     opt$saemPhi1ThetaFixedVal <- model$saemPhi1ThetaFixedVal
     opt$saemPhi1EtaCol <- model$saemPhi1EtaCol
+    opt$saemPhi1EtaNonMu <- model$saemPhi1EtaNonMu
     opt$saemPhi1DvCol <- model$saemPhi1DvCol
     opt$saemPhi1DvColHess2 <- model$saemPhi1DvColHess2
   }
