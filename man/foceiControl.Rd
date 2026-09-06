@@ -152,6 +152,7 @@ foceiControl(
   zeroGradRunReset = TRUE,
   zeroGradBobyqa = TRUE,
   mceta = -2L,
+  flatEtaIdx = integer(0),
   warm = c("calc", "save"),
   nAGQ = 0,
   agqLow = -Inf,

@@ -2093,6 +2093,16 @@ public:
     if (x.containsElementNamed("ueTol")) ueTol = as<double>(x["ueTol"]);
     coef_sa = as<double>(x["coef_sa"]);
     rmcmc = as<double>(x["rmcmc"]);
+    if (x.containsElementNamed("iaccept")) iaccept = as<double>(x["iaccept"]);
+    if (!std::isfinite(iaccept) || iaccept < 0.0 || iaccept >= 1.0) iaccept = 0.0;
+    if (x.containsElementNamed("iacceptSingle")) iacceptSingle = as<double>(x["iacceptSingle"]);
+    if (!std::isfinite(iacceptSingle) || iacceptSingle < 0.0 || iacceptSingle >= 1.0) iacceptSingle = 0.0;
+    if (x.containsElementNamed("nu1B")) nu1B = as<int>(x["nu1B"]);
+    if (nu1B < 0) nu1B = 0;
+    if (x.containsElementNamed("nb1B")) nb1B = as<int>(x["nb1B"]);
+    if (nb1B < 1) nb1B = 1;
+    if (x.containsElementNamed("stepsizeRw")) stepsizeRw = as<double>(x["stepsizeRw"]);
+    if (!std::isfinite(stepsizeRw) || stepsizeRw <= 0.0) stepsizeRw = 0.4;
     pas = as<vec>(x["pas"]);
     pash = as<vec>(x["pash"]);
     // SA (stochastic-approximation) covariance phase: after the niter estimation
@@ -2673,8 +2683,8 @@ public:
 
       //    MCMC
       mcmcphi mphi1, mphi0;
-      set_mcmcphi(mphi1, i1, nphi1, Gamma2_phi1, IGamma2_phi1, mprior_phi1);
-      set_mcmcphi(mphi0, i0, nphi0, Gamma2_phi0, IGamma2_phi0, mprior_phi0);
+      set_mcmcphi(mphi1, i1, nphi1, Gamma2_phi1, IGamma2_phi1, mprior_phi1, rwScale1);
+      set_mcmcphi(mphi0, i0, nphi0, Gamma2_phi0, IGamma2_phi0, mprior_phi0, rwScale0);
 
       // CHG hard coded 20
       int nu1, nu2, nu3;
@@ -2716,19 +2726,19 @@ public:
         vec U_y = mixObsLoss(phiM, mx);
         if (nphi1 > 0) {
           vec U_phi;
-          do_mcmc_msaem(1, nu1, mx, mphi1, phiM, U_y, U_phi, (int)kiter);
+          do_mcmc_msaem(1, nu1, mx, mphi1, phiM, U_y, U_phi, (int)kiter, &rwScale1);
           mat dphi = phiM.cols(i1) - mphi1.mprior_phiM;
           U_phi = 0.5 * sum(dphi % (dphi * IGamma2_phi1), 1);
-          do_mcmc_msaem(2, nu2, mx, mphi1, phiM, U_y, U_phi, (int)kiter);
-          do_mcmc_msaem(3, nu3, mx, mphi1, phiM, U_y, U_phi, (int)kiter);
+          do_mcmc_msaem(2, nu2, mx, mphi1, phiM, U_y, U_phi, (int)kiter, &rwScale1);
+          do_mcmc_msaem(3, nu3, mx, mphi1, phiM, U_y, U_phi, (int)kiter, &rwScale1);
         }
         if (nphi0 > 0) {
           vec U_phi;
-          do_mcmc_msaem(1, nu1, mx, mphi0, phiM, U_y, U_phi, (int)kiter);
+          do_mcmc_msaem(1, nu1, mx, mphi0, phiM, U_y, U_phi, (int)kiter, &rwScale0);
           mat dphi = phiM.cols(i0) - mphi0.mprior_phiM;
           U_phi = 0.5 * sum(dphi % (dphi * IGamma2_phi0), 1);
-          do_mcmc_msaem(2, nu2, mx, mphi0, phiM, U_y, U_phi, (int)kiter);
-          do_mcmc_msaem(3, nu3, mx, mphi0, phiM, U_y, U_phi, (int)kiter);
+          do_mcmc_msaem(2, nu2, mx, mphi0, phiM, U_y, U_phi, (int)kiter, &rwScale0);
+          do_mcmc_msaem(3, nu3, mx, mphi0, phiM, U_y, U_phi, (int)kiter, &rwScale0);
         }
         if (DEBUG > 0) Rcout << "mcmc successful (msaem)\n";
         if (kiter < (unsigned int)niter) phiFile << phiM;
@@ -3005,19 +3015,19 @@ public:
 
           if (nphi1 > 0) {
             vec U_phi;
-            do_mcmc(1, nu1, mx, mphi1, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter, jMix + 1);
+            do_mcmc(1, nu1, mx, mphi1, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter, jMix + 1, &rwScale1);
             mat dphi = cur_phiM.cols(i1) - mphi1.mprior_phiM;
             U_phi = 0.5 * sum(dphi % (dphi * IGamma2_phi1), 1);
-            do_mcmc(2, nu2, mx, mphi1, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter, jMix + 1);
-            do_mcmc(3, nu3, mx, mphi1, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter, jMix + 1);
+            do_mcmc(2, nu2, mx, mphi1, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter, jMix + 1, &rwScale1);
+            do_mcmc(3, nu3, mx, mphi1, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter, jMix + 1, &rwScale1);
           }
           if (nphi0 > 0) {
             vec U_phi;
-            do_mcmc(1, nu1, mx, mphi0, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter, jMix + 1);
+            do_mcmc(1, nu1, mx, mphi0, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter, jMix + 1, &rwScale0);
             mat dphi = cur_phiM.cols(i0) - mphi0.mprior_phiM;
             U_phi = 0.5 * sum(dphi % (dphi * IGamma2_phi0), 1);
-            do_mcmc(2, nu2, mx, mphi0, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter, jMix + 1);
-            do_mcmc(3, nu3, mx, mphi0, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter, jMix + 1);
+            do_mcmc(2, nu2, mx, mphi0, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter, jMix + 1, &rwScale0);
+            do_mcmc(3, nu3, mx, mphi0, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter, jMix + 1, &rwScale0);
           }
 
           // Joint NLL (U_y + U_phi) for mixture weights: U_y alone is insufficient since MCMC
@@ -3314,19 +3324,24 @@ public:
 
         if(nphi1>0) {
           vec U_phi;
-          do_mcmc(1, nu1, mx, mphi1, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter);
+          do_mcmc(1, nu1, mx, mphi1, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter, 0, &rwScale1);
           mat dphi = phiM.cols(i1)-mphi1.mprior_phiM;
           U_phi    = 0.5*sum(dphi%(dphi*IGamma2_phi1),1);
-          do_mcmc(2, nu2, mx, mphi1, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter);
-          do_mcmc(3, nu3, mx, mphi1, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter);
+          // NONMEM runs mode 1B directly after mode 1, once each subject's
+          // conditional moments have had time to accumulate
+          if (buildMode1B(i1, kiter)) {
+            do_mcmc(4, nu1B, mx, mphi1, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter, 0, &rwScale1);
+          }
+          do_mcmc(2, nu2, mx, mphi1, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter, 0, &rwScale1);
+          do_mcmc(3, nu3, mx, mphi1, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter, 0, &rwScale1);
         }
         if(nphi0>0) {
           vec U_phi;
-          do_mcmc(1, nu1, mx, mphi0, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter);
+          do_mcmc(1, nu1, mx, mphi0, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter, 0, &rwScale0);
           mat dphi = phiM.cols(i0)-mphi0.mprior_phiM;
           U_phi    = 0.5*sum(dphi%(dphi*IGamma2_phi0),1);
-          do_mcmc(2, nu2, mx, mphi0, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter);
-          do_mcmc(3, nu3, mx, mphi0, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter);
+          do_mcmc(2, nu2, mx, mphi0, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter, 0, &rwScale0);
+          do_mcmc(3, nu3, mx, mphi0, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter, 0, &rwScale0);
         }
         if (DEBUG>0) Rcout << "mcmc successful\n";
         if (kiter < (unsigned int)niter) phiFile << phiM;
@@ -4444,6 +4459,23 @@ public:
       mat sphi2 = sum(phi2,2);
       mpost_phi=mpost_phi+pash(kiter)*(sphi1/nmc-mpost_phi);
       cpost_phi=cpost_phi+pash(kiter)*(sphi2/nmc-cpost_phi);
+      // Full per-subject second moment for mode 1B (see xpost_phi).  Same
+      // Robbins-Monro weighting as mpost_phi/cpost_phi, so the three stay
+      // consistent with one another.
+      if (nu1B > 0) {
+        if (xpost_phi.n_slices != (unsigned int)N) {
+          xpost_phi.zeros(nphi, nphi, N);
+        }
+        for (int _i = 0; _i < N; ++_i) {
+          mat S(nphi, nphi, fill::zeros);
+          for (int _k = 0; _k < nmc; ++_k) {
+            vec v = phi.slice(_k).row(_i).t();
+            S += v * v.t();
+          }
+          S /= (double)nmc;
+          xpost_phi.slice(_i) += pash(kiter) * (S - xpost_phi.slice(_i));
+        }
+      }
       mpost_phi.cols(i0)=mprior_phi0;
 
       //FIXME: chg according to multiple endpnts; need to chg dim(par_hist)
@@ -4596,6 +4628,59 @@ private:
   vec phi0Upper;
   double rmcmc;
   double coef_sa;
+  // saemControl(iaccept=): TARGET Metropolis acceptance rate for the
+  // random-walk kernels (0 = do not adapt, the historical behaviour).
+  // saemix calls this proba.mcmc (default 0.4); NONMEM calls it IACCEPT, and
+  // Bauer's gamma control streams set it to 0.3.
+  double iaccept = 0.0;
+  // saemControl(iacceptSingle=): the SAME target for the coordinate-wise
+  // kernel.  The optimal acceptance rate depends on the proposal's dimension:
+  // ~0.234 for a multidimensional symmetric random walk (kernel 2, all
+  // coordinates at once) and ~0.44 for a one-at-a-time
+  // Metropolis-within-Gibbs update (kernel 3).  saemix uses ONE proba.mcmc
+  // (0.4) for both, which is about right for kernel 3 and too HIGH for
+  // kernel 2 -- and targeting too high an acceptance rate forces the step too
+  // small, which is the direction that under-disperses the latent normals.
+  double iacceptSingle = 0.0;
+  // saemControl(stepsizeRw=): Robbins-Monro rate for that adaptation
+  // (saemix stepsize.rw, default 0.4).
+  double stepsizeRw = 0.4;
+  // Per-column multiplier on the random-walk step, adapted toward `iaccept`.
+  // rmcmc is only the STARTING value of this -- it is saemix's rw.init, which
+  // nlmixr2 froze because the adaptation was never ported.
+  vec rwScale1, rwScale0;
+  // NONMEM's proposal kernel "mode 1B" (technical guide, "The MCMC method of
+  // Expectation in SAEM"): after the first few iterations, propose from a
+  // Gaussian built out of each subject's OWN accumulated conditional mean and
+  // variance, rather than from the population prior (mode 1) or a random walk
+  // around the current point (modes 2/3).  Bauer describes it as "a type of
+  // importance sampling kernel for SAEM".
+  //
+  // It is an INDEPENDENCE sampler, so unlike modes 2/3 its acceptance ratio
+  // carries a proposal-density correction; and unlike mode 1 the proposal is
+  // not the prior, so that correction does not cancel.  See do_mcmc case 4.
+  //
+  // nu1B = 0 disables it (the default), which is exactly the historical
+  // behaviour.  nb1B is the iteration it starts at -- the moments have to
+  // accumulate first (NONMEM starts after the 10th).
+  int nu1B = 0;
+  int nb1B = 10;
+  // Per-(subject x chain) proposal mean and SD, rebuilt each iteration from
+  // mpost_phi / cpost_phi.  Empty when mode 1B is off or not yet started.
+  mat m1bMean, m1bSd;
+  // Running per-subject SECOND MOMENT E[phi phi'] (nphi x nphi x N).  cpost_phi
+  // only keeps the elementwise E[phi^2], i.e. the diagonal; NONMEM's mode 1B
+  // proposal density uses the full individual conditional variance --- its
+  // B_i (technical guide eq. 1.147) is an OUTER product, so it carries the
+  // off-diagonals.  For a model whose individual posterior is correlated
+  // across coordinates (a copula/inverse-CDF model certainly is) a diagonal
+  // proposal is the materially weaker version.  Only accumulated when mode 1B
+  // is actually on, so an ordinary fit pays nothing.
+  cube xpost_phi;
+  // Lower Cholesky of each subject's conditional covariance, restricted to the
+  // sampled columns; empty when the covariance was not usable this iteration.
+  field<mat> m1bChol;
+  bool m1bFull = false;
   vec pas, pash;
   vec minv;
   int nmc;
@@ -4863,14 +4948,135 @@ private:
 		   const int nphi1,
 		   const mat Gamma2_phi1,
 		   const mat IGamma2_phi1,
-		   const mat mprior_phi1) {
+		   const mat mprior_phi1,
+		   vec &rwScale) {
     mphi1.i = i1;
     mphi1.nphi = nphi1;
     mphi1.Gamma_phi=chol(Gamma2_phi1);
     mphi1.IGamma2_phi = IGamma2_phi1;
     mphi1.Gdiag_phi.zeros(nphi1, nphi1);
-    mphi1.Gdiag_phi.diag() = sqrt(Gamma2_phi1.diag())*rmcmc;
+    // rmcmc is the INITIAL scale (saemix rw.init); rwScale1 carries the
+    // acceptance-rate adaptation from iteration to iteration.  With
+    // iaccept == 0 rwScale1 stays all-ones and this is bit-identical to
+    // before.
+    if (rwScale.n_elem != (unsigned int)nphi1) rwScale.ones(nphi1);
+    mphi1.Gdiag_phi.diag() = sqrt(Gamma2_phi1.diag())*rmcmc % rwScale;
     mphi1.mprior_phiM = repmat(mprior_phi1,nmc,1);
+  }
+
+  // Build mode 1B's per-subject proposal moments from the accumulated
+  // conditional mean (mpost_phi) and second moment (cpost_phi):
+  //   var_ic = E[phi^2] - E[phi]^2
+  // replicated across the nmc chains so it lines up with phiM's row layout.
+  // Returns false when the moments are not usable yet (too early, or a
+  // degenerate/negative variance), in which case the kernel is skipped for
+  // this iteration rather than proposing from a broken density.
+  bool buildMode1B(const uvec &cols, unsigned int kiter) {
+    if (nu1B <= 0 || (int)kiter < nb1B) return false;
+    unsigned int nc = cols.n_elem;
+    if (nc == 0) return false;
+    mat m = mpost_phi.cols(cols);              // N x nc
+    m1bMean = repmat(m, nmc, 1);
+    if (!m1bMean.is_finite()) return false;
+
+    // FULL individual conditional covariance (NONMEM's B_i, eq. 1.147):
+    //   V_i = E[phi phi'] - E[phi] E[phi]'
+    // Symmetrized, with a jitter escalation so a not-yet-moved or numerically
+    // indefinite V_i still factors instead of aborting the kernel.
+    m1bFull = false;
+    if (xpost_phi.n_slices == (unsigned int)N) {
+      field<mat> L(N);
+      bool ok = true;
+      for (int i = 0; i < N && ok; ++i) {
+        mat Vi = xpost_phi.slice(i).submat(cols, cols);
+        vec mi = m.row(i).t();
+        Vi -= mi * mi.t();
+        Vi = 0.5 * (Vi + Vi.t());
+        double sc = Vi.diag().max();
+        if (!std::isfinite(sc) || sc <= 0.0) sc = 1.0;
+        mat Li;
+        bool got = false;
+        double jit = 0.0;
+        for (int t = 0; t < 8 && !got; ++t) {
+          mat Vj = Vi;
+          if (jit > 0.0) Vj.diag() += jit * sc;
+          if (arma::chol(Li, Vj, "lower") && Li.is_finite()) got = true;
+          else jit = (jit == 0.0) ? 1e-8 : jit * 100.0;
+        }
+        if (!got) ok = false; else L(i) = Li;
+      }
+      if (ok) { m1bChol = L; m1bFull = true; }
+    }
+    if (m1bFull) return true;
+
+    // Fallback: diagonal-only proposal from cpost_phi.  Correct, just the
+    // weaker kernel -- it cannot exploit correlation between coordinates.
+    mat v = cpost_phi.cols(cols) - (m % m);
+    for (unsigned int c = 0; c < nc; ++c) {
+      for (unsigned int r = 0; r < v.n_rows; ++r) {
+        if (!std::isfinite(v(r, c)) || v(r, c) < 1e-8) v(r, c) = 1e-8;
+      }
+    }
+    m1bSd = sqrt(repmat(v, nmc, 1));
+    return m1bSd.is_finite();
+  }
+
+  // Correlated mode 1B noise: L_i z per (subject x chain) row.
+  mat mode1BNoise(const mat &noise) const {
+    mat out(noise.n_rows, noise.n_cols);
+    for (unsigned int r = 0; r < noise.n_rows; ++r) {
+      unsigned int subj = r % (unsigned int)N;
+      out.row(r) = (m1bChol(subj) * noise.row(r).t()).t();
+    }
+    return out;
+  }
+
+  // Q(x) = 0.5 (x-m)' V^-1 (x-m), the mode 1B proposal's exponent.  The
+  // -0.5*log|V| normalizer is identical at the current and proposed points and
+  // cancels from the Metropolis-Hastings ratio, so it is deliberately omitted.
+  vec mode1BQ(const mat &x) const {
+    mat d = x - m1bMean;
+    vec q(d.n_rows);
+    if (m1bFull) {
+      for (unsigned int r = 0; r < d.n_rows; ++r) {
+        unsigned int subj = r % (unsigned int)N;
+        vec z = arma::solve(arma::trimatl(m1bChol(subj)), d.row(r).t());
+        q(r) = 0.5 * arma::dot(z, z);
+      }
+    } else {
+      mat vv = m1bSd % m1bSd;
+      q = 0.5 * sum((d % d) / vv, 1);
+    }
+    return q;
+  }
+
+  // Robbins-Monro adaptation of the random-walk scale toward the target
+  // acceptance rate, exactly saemix's rule (R/main_estep.R:59 and :95):
+  //
+  //   domega2 <- domega2 * (1 + stepsize.rw*(nbc2/nt2 - proba.mcmc))
+  //
+  // NONMEM does the same thing through IACCEPT (Bauer's gamma streams set
+  // IACCEPT=0.3).  nlmixr2 had neither: it carried saemix's INITIAL value
+  // (rw.init = 0.5, here `rmcmc`) frozen for the whole fit, so a chain whose
+  // acceptance was far from target never corrected, and the step could not
+  // grow to reach the tails of the latent normal.
+  //
+  // The per-iteration factor is clamped to [0.5, 2] and the accumulated scale
+  // to [1e-3, 1e3] so one unlucky iteration cannot collapse or explode the
+  // proposal.
+  void adaptRw(vec *rwScale, const uvec &cols, double accRate, double target) {
+    if (rwScale == nullptr || target <= 0.0) return;
+    double f = 1.0 + stepsizeRw * (accRate - target);
+    if (f < 0.5) f = 0.5;
+    else if (f > 2.0) f = 2.0;
+    for (unsigned int j = 0; j < cols.n_elem; ++j) {
+      unsigned int c = cols(j);
+      if (c >= rwScale->n_elem) continue;
+      double v = (*rwScale)(c) * f;
+      if (v < 1e-3) v = 1e-3;
+      else if (v > 1e3) v = 1e3;
+      (*rwScale)(c) = v;
+    }
   }
 
   // do_mcmc's distribution==4 (general-likelihood) branch clamps: a legitimate
@@ -4897,7 +5103,8 @@ private:
                vec &cur_cens,
                vec &cur_limit,
                int kiter,
-               int mixIdx = 0) {
+               int mixIdx = 0,
+               vec *rwScale = nullptr) {
     mat fcMat;
     vec fc, fs, Uc_y, Uc_phi, deltu;
     uvec ind;
@@ -4929,6 +5136,16 @@ private:
           vec noise(mx.nM); _saemFillNormEng(noise);
           phiMc.col(i(k1))=phiM.col(i(k1))+
             noise*mphi.Gdiag_phi(k1,k1) % current_saem_state->_saemUE.col(i(k1));
+          break;
+        }
+        case 4: {
+          // NONMEM mode 1B: independence proposal from each subject's own
+          // accumulated conditional mean/variance (see buildMode1B()).
+          mat noise(mx.nM, mphi.nphi); _saemFillNormEng(noise);
+          mat step = m1bFull ? mode1BNoise(noise) : (noise % m1bSd);
+          // UE masks the NOISE, not the mean -- matching mode 1, so a masked
+          // coordinate stays at its proposal centre rather than collapsing to 0
+          phiMc.cols(i) = m1bMean + (step % current_saem_state->_saemUE.cols(i));
           break;
         }
         }
@@ -5037,7 +5254,23 @@ private:
 
         Uc_y=sum(DYF,0).t();
         if (method==1) {
+          // proposal IS the prior, so the prior terms cancel out of the ratio
           deltu=Uc_y-U_y;
+        }
+        else if (method==4) {
+          // Mode 1B is an INDEPENDENCE sampler whose proposal is not the
+          // prior, so the Metropolis-Hastings ratio keeps both the prior term
+          // AND a proposal-density correction:
+          //   log alpha = [logpi(new)-logpi(cur)] + [log k(cur)-log k(new)]
+          // With U = -logpi and Q(x) = 0.5*sum((x-m)^2/v) (the -0.5*sum(log v)
+          // normalizer is identical for both points and cancels), this is
+          //   deltu = (Uc_y-U_y) + (Uc_phi-U_phi) - (Q_new - Q_cur)
+          // and the existing `deltu < -log(u)` test applies unchanged.
+          mat dphic=phiMc.cols(i)-mphi.mprior_phiM;
+          Uc_phi=0.5*sum(dphic%(dphic*mphi.IGamma2_phi),1);
+          vec Qn = mode1BQ(phiMc.cols(i));
+          vec Qc = mode1BQ(phiM.cols(i));
+          deltu=Uc_y-U_y+Uc_phi-U_phi-(Qn-Qc);
         }
         else {
           mat dphic=phiMc.cols(i)-mphi.mprior_phiM;
@@ -5046,6 +5279,20 @@ private:
         }
 
         ind=find( deltu < -log(accU) );
+        // acceptance-rate adaptation of the random-walk scale (methods 2/3).
+        // Method 1 draws from the prior, so its acceptance is not a function
+        // of any step size -- NONMEM does not adapt its mode 1 either.
+        if (method > 1 && mx.nM > 0) {
+          double accRate = (double)ind.n_elem / (double)mx.nM;
+          if (method == 2) {
+            // multidimensional symmetric random walk: optimal ~0.234
+            adaptRw(rwScale, arma::regspace<uvec>(0, mphi.nphi - 1), accRate, iaccept);
+          } else {
+            // one-at-a-time (Metropolis-within-Gibbs): optimal ~0.44
+            uvec one(1); one(0) = (arma::uword)k1;
+            adaptRw(rwScale, one, accRate, iacceptSingle);
+          }
+        }
         phiM(ind,i)=phiMc(ind,i);
         U_y(ind)=Uc_y(ind);
         if (method>1) {
@@ -5053,7 +5300,9 @@ private:
         }
         ind = getObsIdx(ix_idM.rows(ind));
         cur_fsave(ind)=fs(ind);
-        if (method<3) {
+        // only kernel 3 walks the columns one at a time; every other kernel's
+        // proposal already covers all of them, so one pass IS the sweep
+        if (method!=3) {
           break;
         }
       }
@@ -5357,7 +5606,8 @@ private:
                       mat &phiM,
                       vec &U_y,
                       vec &U_phi,
-                      int kiter) {
+                      int kiter,
+                      vec *rwScale = nullptr) {
     mat phiMc;
     vec Uc_y, Uc_phi, deltu;
     uvec ind;
@@ -5403,6 +5653,17 @@ private:
         }
 
         ind = find(deltu < -log(accU));
+        if (method > 1 && mx.nM > 0) {
+          double accRate = (double)ind.n_elem / (double)mx.nM;
+          if (method == 2) {
+            // multidimensional symmetric random walk: optimal ~0.234
+            adaptRw(rwScale, arma::regspace<uvec>(0, mphi.nphi - 1), accRate, iaccept);
+          } else {
+            // one-at-a-time (Metropolis-within-Gibbs): optimal ~0.44
+            uvec one(1); one(0) = (arma::uword)k1;
+            adaptRw(rwScale, one, accRate, iacceptSingle);
+          }
+        }
         phiM(ind, i) = phiMc(ind, i);
         U_y(ind) = Uc_y(ind);
         if (method > 1) {

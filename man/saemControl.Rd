@@ -7,6 +7,14 @@
 saemControl(
   seed = 99,
   nBurn = 200,
+  zeroOmegaTune = 0.1,
+  zeroOmegaAnneal = 0,
+  zeroOmegaDirect = FALSE,
+  rmcmc = 0.5,
+  iaccept = 0.4,
+  stepsizeRw = 0.4,
+  coefSa = 0.95,
+  coefPhi0 = 0.9638,
   nEm = 300,
   nmc = 3,
   nu = c(2, 2, 2),
@@ -74,6 +82,123 @@ reproducibility.)  By default this is 99.}
 
 \item{nBurn}{Number of iterations in the first phase, ie the  MCMC/Stochastic Approximation
 steps. This is equivalent to Monolix's \code{K_0} or \code{K_b}.}
+
+\item{zeroOmegaTune}{Exploration width for a mu-referenced random effect
+  whose variance is declared zero.  Such a random effect carries no
+  between-subject variability -- it exists so the EM has a per-subject
+  location to average and fold into its theta -- so it contributes nothing
+  to the objective or to the estimated omega.  It still has to MOVE,
+  though, or the conditional mean the M-step shifts by is identically zero
+  and the theta never budges; this sets how far it explores.  Too small and
+  the theta stays put.  Measured on Bauer's gamma model: at 1e-8 the
+  parameter stayed pinned at its starting value of 6.686 against a truth of
+  5.03, at 0.1 it reached 5.553.
+
+  There is deliberately no upper bound.  This is a sampling width, not a
+  variance the model claims -- it is excluded from the objective and from
+  the sufficient statistics either way -- so a value above 1 is legitimate
+  and costs efficiency rather than correctness.  It can matter for a
+  declared non-normal random effect (`dist()`), where the parameter
+  reaches the model through an inverse CDF: a step on the latent scale is
+  not a step of the same size on the parameter, and how big it is depends
+  on the family and on where in the distribution a subject sits.
+
+  Wider is not generally better, though.  Measured on Bauer's gamma model
+  (300 subjects, mu-referenced distribution parameters, cold start),
+  widening degraded every parameter monotonically -- at 0.1 / 1 / 4 the
+  residual SD came out 0.150 / 0.162 / 0.170 against a truth of 0.141, and
+  Q came out 2.29 / 2.48 / 2.60 against 2.13.  Treat it as something to
+  raise when a parameter will not move, not as a default to increase.
+
+  `zeroOmegaAnneal` and `zeroOmegaDirect` both address the underlying
+  limitation more directly; see those.}
+
+\item{zeroOmegaAnneal}{Opt-in.  Total factor by which the
+  `zeroOmegaTune` exploration width is shrunk, geometrically, across the
+  simulated-annealing phase (`nBurn * perSa` iterations).  `0` or `1`
+  (the default) holds the width constant, which is what nlmixr2 has always
+  done.
+
+  saemix instead decays the variance of a parameter without
+  between-subject variability every annealing iteration by
+  `alpha0.sa = 10^(-3/nbiter.sa)` (`R/main_mstep.R:91`) -- a 1000-fold
+  shrink across the phase.  The motivation is that a constant width cannot
+  be right twice: it has to be wide enough early for the M-step to explore,
+  and small enough late for the theta to settle.  Held constant it is a
+  permanent noise floor, which is why widening `zeroOmegaTune` degrades
+  every parameter monotonically.  Set `zeroOmegaAnneal = 1000` to match
+  saemix.
+
+  **Intended to be used together with `zeroOmegaDirect = TRUE`.**  In saemix
+  the decay is safe precisely because those parameters' fixed effects are
+  estimated by the direct route (`ind.fix10`) rather than by the GLS.
+  Annealing on its own drives the width toward zero with no other route
+  available, which pins the theta -- the very thing it was meant to avoid.
+  Measured on the theophylline helper fixture (40+40 iterations), annealing
+  alone took the residual SD from 0.72 to 1.20.}
+
+\item{zeroOmegaDirect}{Opt-in.  When `TRUE`, update the theta of a
+  mu-referenced random effect whose declared variance is zero by directly
+  maximizing the observation likelihood, instead of by the
+  \eqn{\Omega^{-1}}-weighted regression SAEM uses for every other
+  mu-referenced theta.
+
+  That regression cannot move such a theta at all.  It is a generalized
+  least squares normal equation, so a column whose variance is ~0 gets an
+  enormous weight and the solve reduces to "reproduce this column's sampled
+  mean" -- while the sampler cannot move the column off its prior mean,
+  which *is* the current theta.  The fixed point is the `ini()` value.
+
+  Both reference implementations have a second route for exactly this case
+  and nlmixr2 did not.  NONMEM's technical guide derives the mu route in
+  eqs. 1.45/1.46 and a separate one in eqs. 1.47-1.52 that differentiates
+  the entire joint density "for those theta that are not exclusively
+  expressed in the model through mu"; saemix drops such parameters out of
+  its GLS (`covariate.estim1[,i0.omega2] <- 0`) and optimizes them with
+  `optim(compute.Uy)` instead.  This option is the same step, damped by the
+  usual stochastic-approximation stepsize.}
+
+\item{rmcmc}{Scale of the Metropolis random-walk kernels, as a multiple of
+each parameter's prior SD (`step = rmcmc * sqrt(omega_jj)`).  This was
+hardcoded at 0.5 and is saemix's `rw.init` -- documented there as the
+*initial* value of an adaptive scheme.  nlmixr2 carried the starting value
+and never ported the adaptation, so the step was fixed for the whole fit;
+see `iaccept`.}
+
+\item{iaccept}{Target Metropolis acceptance rate for the random-walk
+  kernels.  Defaults to `0.4`, matching saemix's `proba.mcmc`.
+
+  **Set `iaccept = 0` to disable adaptation entirely and reproduce results
+  from nlmixr2est 7.0.3 and earlier bit-for-bit** (verified: with
+  `iaccept = 0` a theophylline saem fit reproduces the pre-change objective
+  and every parameter to 10 decimal places).  Because the default is
+  non-zero, saem estimates WILL differ from previous versions unless you
+  set it.
+
+  Both reference implementations adapt.  saemix applies Robbins-Monro to the
+  kernel scale every iteration (`R/main_estep.R:59`, `:95`):
+  `domega2 <- domega2 * (1 + stepsize.rw*(observed - proba.mcmc))`, with
+  `proba.mcmc = 0.4`.  NONMEM calls the same target `IACCEPT`; Bauer's
+  non-Gaussian-eta control streams set it to 0.3.  Without adaptation a
+  chain whose acceptance is far from target never corrects, and the step
+  cannot grow to reach the tails of the latent normal -- which matters for
+  `dist()`-declared random effects, where the tails carry the shape
+  information.
+
+  Adaptation is per phi column, uses only the random-walk kernels (kernel 1
+  draws from the prior, so its acceptance is not a function of any step
+  size, and NONMEM does not adapt its mode 1 either), and is clamped to a
+  factor of [0.5, 2] per iteration and [1e-3, 1e3] overall.}
+
+\item{stepsizeRw}{Robbins-Monro rate for the `iaccept` adaptation
+(saemix `stepsize.rw`, default 0.4).  Ignored when `iaccept = 0`.}
+
+\item{coefSa}{Simulated-annealing coefficient on the estimated omega
+diagonals: `Gamma2 <- max(Gamma2*coefSa, G1)` during the annealing phase.
+Previously hardcoded at 0.95 (saemix's `alpha.sa` is 0.97).}
+
+\item{coefPhi0}{Annealing coefficient for the phi0 (no-IIV) variance.
+Previously hardcoded at 0.9638.}
 
 \item{nEm}{Number of iterations in the Expectation-Maximization
 (EM) Step. This is equivalent to Monolix's \code{K_1}.}

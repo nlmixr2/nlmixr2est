@@ -78,6 +78,119 @@
 #'   `optim(compute.Uy)` instead.  This option is the same step, damped by the
 #'   usual stochastic-approximation stepsize.
 #'
+#' @param rmcmc Scale of the Metropolis random-walk kernels, as a multiple of
+#'   each parameter's prior SD (`step = rmcmc * sqrt(omega_jj)`).  This was
+#'   hardcoded at 0.5 and is saemix's `rw.init` -- documented there as the
+#'   *initial* value of an adaptive scheme.  nlmixr2 carried the starting value
+#'   and never ported the adaptation, so the step was fixed for the whole fit;
+#'   see `iaccept`.
+#'
+#' @param iaccept Target acceptance rate for the MULTIDIMENSIONAL random-walk
+#'   kernel (kernel 2, which moves every coordinate at once).  Defaults to
+#'   `0.234`, the asymptotically optimal rate for a symmetric random walk
+#'   proposal in high dimension (Roberts, Gelman and Gilks 1997).
+#'
+#'   **Set `iaccept = 0` to disable adaptation entirely and reproduce results
+#'   from nlmixr2est 7.0.3 and earlier bit-for-bit** (verified: with
+#'   `iaccept = 0` a theophylline saem fit reproduces the pre-change objective
+#'   and every parameter to 10 decimal places).  Because the default is
+#'   non-zero, saem estimates WILL differ from previous versions unless you
+#'   set it.
+#'
+#'   Both reference implementations adapt.  saemix applies Robbins-Monro to the
+#'   kernel scale every iteration (`R/main_estep.R:59`, `:95`):
+#'   `domega2 <- domega2 * (1 + stepsize.rw*(observed - proba.mcmc))`, with
+#'   `proba.mcmc = 0.4`.  NONMEM calls the same target `IACCEPT`; Bauer's
+#'   non-Gaussian-eta control streams set it to 0.3.  Without adaptation a
+#'   chain whose acceptance is far from target never corrects, and the step
+#'   cannot grow to reach the tails of the latent normal -- which matters for
+#'   `dist()`-declared random effects, where the tails carry the shape
+#'   information.
+#'
+#'   Adaptation is per phi column, uses only the random-walk kernels (kernel 1
+#'   draws from the prior, so its acceptance is not a function of any step
+#'   size, and NONMEM does not adapt its mode 1 either), and is clamped to a
+#'   factor of [0.5, 2] per iteration and [1e-3, 1e3] overall.
+#'
+#' @param iacceptSingle Target acceptance rate for the COORDINATE-WISE
+#'   random-walk kernel, which `iaccept` does not cover.
+#'
+#'   The optimal acceptance rate depends on the proposal's dimension: about
+#'   0.234 for a multidimensional symmetric random walk (kernel 2, which moves
+#'   every coordinate at once), rising to about 0.44 for a one-at-a-time
+#'   Metropolis-within-Gibbs update (kernel 3).  saemix applies a single
+#'   `proba.mcmc = 0.4` to both, which is close to right for the coordinate-wise
+#'   kernel and too HIGH for the multidimensional one -- and targeting too high
+#'   an acceptance rate forces the step too SMALL.
+#'
+#'   Defaults to `0.44`, the optimal rate in dimension one.  Together with
+#'   `iaccept = 0.234` this is the standard pairing --- Vihola's Grapham states
+#'   it directly: *"The default values for a* are 0.44 in dimension one and
+#'   0.234 otherwise following Roberts and Rosenthal (2009)."*
+#'
+#'   saemix instead applies a single `proba.mcmc = 0.4` to both kernels; set
+#'   `iaccept = 0.4, iacceptSingle = 0.4` to reproduce that exactly.  Set
+#'   either to `0` to leave that kernel unadapted.
+#'
+#' @references
+#'
+#' Roberts GO, Gelman A, Gilks WR (1997).  Weak convergence and optimal
+#' scaling of random walk Metropolis algorithms.  *The Annals of Applied
+#' Probability* **7**(1):110-120.  \doi{10.1214/aoap/1034625254}
+#' (the 0.234 result).
+#'
+#' Roberts GO, Rosenthal JS (2001).  Optimal scaling for various
+#' Metropolis-Hastings algorithms.  *Statistical Science* **16**(4):351-367.
+#' \doi{10.1214/ss/1015346320}
+#'
+#' Roberts GO, Rosenthal JS (2009).  Examples of Adaptive MCMC.  *Journal of
+#' Computational and Graphical Statistics* **18**(2):349-367.
+#' \doi{10.1198/jcgs.2009.06134} (adaptive Metropolis-within-Gibbs; the source
+#' Vihola attributes the 0.44/0.234 defaults to).
+#'
+#' Vihola M (2010).  Grapham: Graphical models with adaptive random walk
+#' Metropolis algorithms.  *Computational Statistics & Data Analysis*
+#' **54**(1):49-54.  \doi{10.1016/j.csda.2009.09.001} (states the 0.44
+#' dimension-one / 0.234 otherwise pairing verbatim).
+#'
+#' Panhard X, Samson A (2008).  Extension of the SAEM algorithm for nonlinear
+#' mixed models with 2 levels of random effects.  *Biostatistics*
+#' **10**(1):121-135.  \doi{10.1093/biostatistics/kxn020} (the two-level SAEM
+#' this package's IOV support follows; it targets "around 30%").
+#'
+#' @param nu1B Number of sweeps of NONMEM's proposal kernel **mode 1B** per
+#'   iteration.  `0` (the default) disables it, which is the historical
+#'   behaviour.
+#'
+#'   saem's three existing kernels propose either from the population prior
+#'   (kernel 1) or by a random walk around the current point (kernels 2 and 3).
+#'   Neither uses what the sampler has already learned about the individual.
+#'   Mode 1B does: it proposes from a Gaussian built out of each subject's OWN
+#'   accumulated conditional mean and variance, which NONMEM's technical guide
+#'   describes as "a type of importance sampling kernel for SAEM".  Because the
+#'   proposal approximates the individual posterior it can JUMP to a
+#'   well-supported region, where a random walk can only diffuse there.
+#'
+#'   This is an independence sampler whose proposal is not the prior, so its
+#'   Metropolis-Hastings ratio carries a proposal-density correction (the prior
+#'   terms do not cancel as they do for kernel 1).
+#'
+#'   Each sweep costs one full-population solve.
+#'
+#' @param nb1B Iteration at which `nu1B` starts.  The per-subject conditional
+#'   moments have to accumulate first; NONMEM starts after the 10th iteration,
+#'   which is the default here.  Ignored when `nu1B = 0`.
+#'
+#' @param stepsizeRw Robbins-Monro rate for the `iaccept` adaptation
+#'   (saemix `stepsize.rw`, default 0.4).  Ignored when `iaccept = 0`.
+#'
+#' @param coefSa Simulated-annealing coefficient on the estimated omega
+#'   diagonals: `Gamma2 <- max(Gamma2*coefSa, G1)` during the annealing phase.
+#'   Previously hardcoded at 0.95 (saemix's `alpha.sa` is 0.97).
+#'
+#' @param coefPhi0 Annealing coefficient for the phi0 (no-IIV) variance.
+#'   Previously hardcoded at 0.9638.
+#'
 #' @param nBurn Number of iterations in the first phase, ie the  MCMC/Stochastic Approximation
 #'     steps. This is equivalent to Monolix's \code{K_0} or \code{K_b}.
 #'
@@ -444,6 +557,14 @@ saemControl <- function(seed = 99,
                         zeroOmegaTune = 0.1,
                         zeroOmegaAnneal = 0,
                         zeroOmegaDirect = FALSE,
+                        rmcmc = 0.5,
+                        iaccept = 0.234,
+                        iacceptSingle = 0.44,
+                        nu1B = 0L,
+                        nb1B = 10L,
+                        stepsizeRw = 0.4,
+                        coefSa = 0.95,
+                        coefPhi0 = 0.9638,
                         nEm = 300,
                         nmc = 3,
                         nu = c(2, 2, 2),
@@ -660,11 +781,33 @@ saemControl <- function(seed = 99,
                            any.missing=FALSE, .var.name="zeroOmegaAnneal")
   checkmate::assertLogical(zeroOmegaDirect, len=1, any.missing=FALSE,
                            .var.name="zeroOmegaDirect")
+  checkmate::assertNumeric(rmcmc, len=1, lower=0, finite=TRUE,
+                           any.missing=FALSE, .var.name="rmcmc")
+  checkmate::assertNumeric(iaccept, len=1, lower=0, upper=0.999, finite=TRUE,
+                           any.missing=FALSE, .var.name="iaccept")
+  checkmate::assertNumeric(iacceptSingle, len=1, lower=0, upper=0.999, finite=TRUE,
+                           any.missing=FALSE, .var.name="iacceptSingle")
+  checkmate::assertIntegerish(nu1B, len=1, lower=0, any.missing=FALSE, .var.name="nu1B")
+  checkmate::assertIntegerish(nb1B, len=1, lower=1, any.missing=FALSE, .var.name="nb1B")
+  checkmate::assertNumeric(stepsizeRw, len=1, lower=0, finite=TRUE,
+                           any.missing=FALSE, .var.name="stepsizeRw")
+  checkmate::assertNumeric(coefSa, len=1, lower=0, finite=TRUE,
+                           any.missing=FALSE, .var.name="coefSa")
+  checkmate::assertNumeric(coefPhi0, len=1, lower=0, finite=TRUE,
+                           any.missing=FALSE, .var.name="coefPhi0")
   .ret <- list(
     mcmc = list(niter = c(nBurn, nEm), nmc = nmc, nu = nu),
     zeroOmegaTune = zeroOmegaTune,
     zeroOmegaAnneal = zeroOmegaAnneal,
     zeroOmegaDirect = zeroOmegaDirect,
+    rmcmc = rmcmc,
+    iaccept = iaccept,
+    iacceptSingle = iacceptSingle,
+    nu1B = as.integer(nu1B),
+    nb1B = as.integer(nb1B),
+    stepsizeRw = stepsizeRw,
+    coefSa = coefSa,
+    coefPhi0 = coefPhi0,
     rxControl = rxControl,
     seed = seed,
     censOption = censOption,

@@ -260,6 +260,14 @@
                         zeroOmegaTune=rxode2::rxGetControl(ui, "zeroOmegaTune", 0.1),
                         zeroOmegaAnneal=rxode2::rxGetControl(ui, "zeroOmegaAnneal", 0),
                         zeroOmegaDirect=rxode2::rxGetControl(ui, "zeroOmegaDirect", FALSE),
+                        rmcmc=rxode2::rxGetControl(ui, "rmcmc", 0.5),
+                        iaccept=rxode2::rxGetControl(ui, "iaccept", 0.234),
+                        iacceptSingle=rxode2::rxGetControl(ui, "iacceptSingle", 0.44),
+                        nu1B=rxode2::rxGetControl(ui, "nu1B", 0L),
+                        nb1B=rxode2::rxGetControl(ui, "nb1B", 10L),
+                        stepsizeRw=rxode2::rxGetControl(ui, "stepsizeRw", 0.4),
+                        coefSa=rxode2::rxGetControl(ui, "coefSa", 0.95),
+                        coefPhi0=rxode2::rxGetControl(ui, "coefPhi0", 0.9638),
                         ## phi indices of the mu-referenced random effects whose
                         ## variance was DECLARED zero.  Taken from the stash the
                         ## preProcess hook wrote off the original model: by the
