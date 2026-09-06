@@ -5,9 +5,18 @@
 // A raw Sobol sequence is deterministic, so the only randomization the
 // importance sampler had was a Cranley-Patterson shift: u -> frac(u + s).  A CP
 // shift randomizes the point set but does not break the correlation structure
-// between the high-order dimensions of the sequence, which is where a Sobol set
-// degrades first -- so it helps least exactly where a fit has many random
-// effects.  Scrambling permutes the digits themselves and does break it.
+// between the sequence's dimensions; scrambling permutes the digits themselves
+// and does.
+//
+// MEASURED, so nobody re-derives the wrong expectation from the paragraph
+// above: the scramble's advantage over the shift is real but FLAT in
+// dimension -- on a smooth test integrand at isample=300 it is 1.79x at 1
+// dimension and 1.53x at 12, not growing.  And it lands on the E-STEP INTEGRAL
+// (single-iteration IS -2LL RMSE 0.056 under Owen against 0.080 unscrambled),
+// not on the converged parameters: at 8 etas scrambling is WORSE than a plain
+// shifted Sobol set on theta RMSE (0.0179 owen / 0.0192 lms against 0.0149).
+// So this is a tool for a more accurate reported impObj, not for better
+// estimates, and qrScramble stays "none" by default.
 //
 // Two families, both applied to the ENGINE'S OUTPUT bits rather than to its
 // direction numbers (boost does not expose those).  That is legitimate for
