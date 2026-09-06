@@ -136,3 +136,101 @@
   if (length(.w) != 1L) return(NA_character_)
   .tab$support[.w]
 }
+
+#' Solve a declared family's thetas so its ARGUMENTS take given values
+#'
+#' The C++ M-step estimates the family's NATIVE parameters (shape, rate, ...);
+#' this turns those back into the user's thetas, which may enter through
+#' arbitrary expressions (`shape = 1/exp(lclrv)`).  Called ONCE per iteration,
+#' not per objective evaluation -- the expensive part (the likelihood over
+#' every sampled eta) stays in C++.
+#'
+#' Exact when the map is invertible; when it is not, this returns the
+#' least-squares closest thetas, which is the best that can be done without
+#' constraining what `dist()` accepts.
+#' @noRd
+.etaDistArgsToThetas <- function(distCall, thetaNames, start, targetArgs) {
+  .cl <- if (is.character(distCall)) str2lang(distCall) else distCall
+  .ex <- as.list(.cl)[-1]
+  if (length(.ex) != length(targetArgs)) return(NULL)
+  .obj <- function(p) {
+    .tv <- stats::setNames(as.list(p), thetaNames)
+    .a <- vapply(.ex, function(.e) {
+      .v <- tryCatch(eval(.e, envir = .tv), error = function(e) NA_real_)
+      if (!is.numeric(.v) || length(.v) != 1L) NA_real_ else as.numeric(.v)
+    }, numeric(1))
+    if (anyNA(.a) || any(!is.finite(.a))) return(1e10)
+    ## relative, so arguments on very different scales weigh comparably
+    sum((log(pmax(abs(.a), 1e-300)) - log(pmax(abs(targetArgs), 1e-300)))^2) +
+      sum((sign(.a) != sign(targetArgs)) * 1e3)
+  }
+  .x <- .etaDistNm(start, .obj)
+  if (is.null(.x) || .x$value > 1e-6) return(NULL)
+  stats::setNames(.x$par, thetaNames)
+}
+
+#' Metadata the C++ distribution M-step needs
+#'
+#' Returns the phi column of each declared eta's own latent normal, its family
+#' code, which declared eta it is copula-correlated with, its current NATIVE
+#' parameters and correlation -- plus the bookkeeping R needs to map the
+#' updated parameters back onto thetas.
+#' @noRd
+.etaDistMstepInfo <- function(ui, etaTrans, etaNames) {
+  .ui <- rxode2::rxUiDecompress(ui)
+  .d <- rxode2::rxUiEtaDists(.ui)
+  if (nrow(.d) == 0L) return(NULL)
+  .ini <- .ui$iniDf
+  .thNames <- .ini$name[!is.na(.ini$ntheta)]
+  .thVals <- stats::setNames(as.list(.ini$est[!is.na(.ini$ntheta)]), .thNames)
+  .n <- nrow(.d)
+  .lat <- integer(.n); .fam <- integer(.n); .cw <- rep(-1L, .n)
+  .maxA <- 0L; .args <- vector("list", .n); .tn <- vector("list", .n)
+  for (.i in seq_len(.n)) {
+    .e <- .d$name[.i]
+    ## the expansion renames the declared eta's latent `rxz.<eta>`
+    .lz <- paste0("rxz.", .e)
+    .w <- which(etaNames == .lz)
+    .lat[.i] <- if (length(.w) == 1L) as.integer(etaTrans[.w]) - 1L else -1L
+    .fam[.i] <- .etaDistFamilyCode(.d$etaDist[.i])
+    .cl <- str2lang(.d$etaDist[.i])
+    .a <- vapply(as.list(.cl)[-1], function(.x) {
+      .v <- tryCatch(eval(.x, envir = .thVals), error = function(e) NA_real_)
+      if (!is.numeric(.v) || length(.v) != 1L) NA_real_ else as.numeric(.v)
+    }, numeric(1))
+    .args[[.i]] <- .a
+    .maxA <- max(.maxA, length(.a))
+    .tn[[.i]] <- intersect(all.vars(.cl), .thNames)
+  }
+  if (any(.lat < 0) || any(.fam <= 0)) return(NULL)   # -> R fallback
+  ## Copula structure.  In the DECLARED model a copula block is an omega block
+  ## with a unit diagonal whose off-diagonal IS the correlation; the expansion
+  ## turns that into independent latents plus an in-model Cholesky, so the
+  ## correlation has to be carried here for the driver to rebuild the
+  ## correlated latent.  Only a PAIR is handled -- etaDistMstep() reconstructs
+  ## a single partner, so a larger block would be silently wrong; return NULL
+  ## and let the R fallback take it.
+  .rho <- rep(0, .n)
+  .off <- .ini[!is.na(.ini$neta1) & !is.na(.ini$neta2) &
+                 .ini$neta1 != .ini$neta2, , drop = FALSE]
+  .netaOf <- function(.nm) {
+    .w <- which(.ini$name == .nm & .ini$neta1 == .ini$neta2)
+    if (length(.w) == 1L) as.integer(.ini$neta1[.w]) else NA_integer_
+  }
+  .id <- vapply(.d$name, .netaOf, integer(1))
+  if (nrow(.off) > 0L) {
+    for (.r in seq_len(nrow(.off))) {
+      .a1 <- which(.id == .off$neta1[.r]); .a2 <- which(.id == .off$neta2[.r])
+      if (length(.a1) != 1L || length(.a2) != 1L) next   # not a declared pair
+      .hi <- max(.a1, .a2); .lo <- min(.a1, .a2)
+      if (.cw[.hi] >= 0L) return(NULL)                   # >2 declared partners
+      .cw[.hi] <- .lo - 1L                               # 0-based
+      .rho[.hi] <- .off$est[.r]
+    }
+  }
+  .am <- matrix(0, nrow = .n, ncol = max(1L, .maxA))
+  for (.i in seq_len(.n)) .am[.i, seq_along(.args[[.i]])] <- .args[[.i]]
+  list(latent = .lat, fam = .fam, corWith = .cw,
+       args = .am, rho = .rho,
+       dist = .d$etaDist, thetas = .tn, etas = .d$name)
+}
