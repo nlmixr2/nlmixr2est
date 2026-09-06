@@ -33,7 +33,15 @@ rxUiGet.saemThetaSens <- function(x, ...) {
   .cov <- tryCatch(rxUiGet.saemMuRefCovariateDataFrame(list(.ui)),
                    error = function(e) NULL)
   if (is.null(.cov) || length(.cov$covariateParameter) > 0) return(NULL)
-  .mod <- tryCatch(.impmapThetaSensModel(.ui), error = function(e) NULL)
+  ## needV = FALSE: SAEM's gradient never reads d(V)/d(theta).  It takes the
+  ## residual scale from SAEM's own live ares/bres, because SAEM keeps the
+  ## residual error outside phi and this model's residual THETA is pinned at its
+  ## ini() value.  That block is the expensive half of the model -- on a linCmt()
+  ## model every one of its columns embeds linCmtB() calls, evaluated at every
+  ## observation of every solve -- so asking for it and discarding it is pure
+  ## cost.  imp/impmap still get the full model; only this caller opts out.
+  .mod <- tryCatch(.impmapThetaSensModel(.ui, needV = FALSE),
+                   error = function(e) NULL)
   if (is.null(.mod)) return(NULL)
   .map <- .saemThetaSensMap(.ui)
   if (is.null(.map)) return(NULL)

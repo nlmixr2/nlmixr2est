@@ -70,7 +70,7 @@
 # rx__sens_rx_r__BY_THETA_j___ = d(V)/d(theta_j).
 
 #' @export
-rxUiGet.impmapThetaSens <- function(x, ...) {
+rxUiGet.impmapThetaSens <- function(x, ..., needV = TRUE) {
   .ui <- x[[1]]
   .idx <- .impmapEstTheta(.ui)
   if (length(.idx$all) == 0L) return(NULL)
@@ -123,10 +123,23 @@ rxUiGet.impmapThetaSens <- function(x, ...) {
            .impmapChainRule(.s, "rx_pred_", j, .stateVars, .idx$struct))
   }, character(1))
   # d(V)/d(theta_j): chain rule (structural) or direct partial (sigma).
-  .dvOut <- vapply(.idx$all, function(j) {
-    paste0("rx__sens_rx_r__BY_THETA_", j, "___=",
-           .impmapChainRule(.s, "rx_r_", j, .stateVars, .idx$struct))
-  }, character(1))
+  #
+  # This block is the expensive half of the model.  On a linCmt() model each of
+  # these columns embeds one or two linCmtB() calls, evaluated at every
+  # observation of every solve.  imp/impmap need them -- their objective carries
+  # a d(V)/d(theta) term.  SAEM's non-mu gradient does NOT: it takes the residual
+  # scale from SAEM's own live ares/bres, because SAEM keeps the residual error
+  # outside phi and this model's residual THETA is pinned at its ini() value
+  # (src/saem.cpp, nonMuGradPhi0).  So let that caller ask for the model without
+  # them rather than integrate and discard them.
+  .dvOut <- if (isTRUE(needV)) {
+    vapply(.idx$all, function(j) {
+      paste0("rx__sens_rx_r__BY_THETA_", j, "___=",
+             .impmapChainRule(.s, "rx_r_", j, .stateVars, .idx$struct))
+    }, character(1))
+  } else {
+    character(0)
+  }
   # d(lambda)/d(theta_j), emitted only when some column is non-zero (an estimated
   # transform-both-sides lambda).  The conditional depends on lambda through the
   # TRANSFORMED DV as well, err = h(y; lambda) - h(f; lambda), and h(y) is applied
@@ -183,8 +196,8 @@ attr(rxUiGet.impmapThetaSens, "rstudio") <- emptyenv()
 #'   rx__sens_rx_lambda__BY_THETA_j___ when the transform-both-sides lambda is
 #'   itself estimated), or NULL if there are none.
 #' @noRd
-.impmapThetaSensModel <- function(ui, eventSens = "fd") {
-  .s <- rxUiGet.impmapThetaSens(list(ui))
+.impmapThetaSensModel <- function(ui, eventSens = "fd", needV = TRUE) {
+  .s <- rxUiGet.impmapThetaSens(list(ui), needV = needV)
   if (is.null(.s)) return(NULL)
   ## Interpolation is carried like the inner model does; splitBolus() is not --
   ## this model solves the pre-split events, so declaring it would split the
