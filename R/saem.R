@@ -419,7 +419,15 @@
     .nms <- rxode2::rxGetControl(ui, "nonMuThetaStart", NULL)
     .cfg$nonMuThetaStart <-
       if (is.null(.nms)) {
-        as.integer(round(rxode2::rxGetControl(ui, "nBurn", 200L) * 0.5))
+        ## nBurn/nEm are NOT stored under those names -- saemControl() folds
+        ## them into control$mcmc$niter = c(nBurn, nEm).  Reading "nBurn" here
+        ## always missed and silently took the 200 default, so this gate sat at
+        ## a constant 100 no matter what burn-in the user asked for (a 70
+        ## iteration fit never reached it at all).
+        .burn <- tryCatch(rxode2::rxGetControl(ui, "mcmc", NULL)$niter[1],
+                          error = function(e) NULL)
+        if (is.null(.burn) || !is.finite(.burn)) .burn <- 200L
+        as.integer(round(.burn * 0.5))
       } else if (identical(as.integer(.nms), -2L)) {
         -1L   # C++ falls back to niter_phi0
       } else {

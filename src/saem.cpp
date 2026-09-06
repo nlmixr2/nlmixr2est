@@ -1185,6 +1185,10 @@ public:
   //
   // Returns true when it actually moved something.
   bool nonMuGradPhi0(unsigned int kiter, const vec &pas) {
+    const bool gchk = (getenv("NLMIXR2_SAEM_GRADCHECK") != NULL);
+    if (gchk) Rprintf("gradPhi0 kiter=%u active=%d nFreeIx=%d nphi0=%d dist=%d nendpnt=%d\n",
+                      kiter, (int)_saemThetaSensActive, (int)gPhi0FreeIx.size(),
+                      nphi0, distribution, nendpnt);
     if (!_saemThetaSensActive || gPhi0FreeIx.empty()) return false;
     if (_saemNonMuGradEvery > 1 &&
         ((int)kiter % _saemNonMuGradEvery) != 0) return false;
@@ -1218,6 +1222,7 @@ public:
         if (gPhi0FreeIx[(size_t)fi] == c) { sensFree[(size_t)s] = fi; any = true; break; }
       }
     }
+    if (gchk) Rprintf("  nSens=%d anyFree=%d\n", nSens, (int)any);
     if (!any) return false;
 
     // Multi-endpoint needs the per-observation endpoint to pick ares/bres, which
@@ -1334,6 +1339,7 @@ public:
     }
     // A partial population would bias the step toward whoever happened to
     // solve; the search alone is better than a skewed Newton step.
+    if (gchk) Rprintf("  nGood=%d / nRow=%d\n", nGood, nRow);
     if (nGood < nRow) return false;
     // Finite-difference verification of the exact gradient, off by default.
     // The analytic score above and a central difference of phi0Objective --
@@ -1341,7 +1347,7 @@ public:
     // a wrong index, a wrong sign, or a stale residual sd.  Kept behind an
     // env var so a normal fit never pays for the 2*nFree extra population
     // solves it costs.
-    if (getenv("NLMIXR2_SAEM_GRADCHECK") != NULL) {
+    if (gchk) {
       std::vector<double> pv((size_t)nphi0);
       for (int c = 0; c < nphi0; ++c) pv[(size_t)c] = mprior_phi0(0, c);
       Rprintf("saem non-mu gradient check (kiter=%u)\n", kiter);
@@ -4094,6 +4100,10 @@ public:
       // 0.004: the search never gets a chance to matter.
       unsigned int phi0Start = (nonMuThetaStart >= 0) ?
         (unsigned int)nonMuThetaStart : (unsigned int)niter_phi0;
+      if (getenv("NLMIXR2_SAEM_GRADCHECK") != NULL && kiter % 10 == 0)
+        Rprintf("refineGate kiter=%u dist=%d regress=%d nphi0=%d start=%u every=%d\n",
+                kiter, distribution, nonMuThetaRegress, nphi0, phi0Start,
+                nonMuThetaEvery);
       if ((distribution == 4 || nonMuThetaRegress) &&
           nphi0 > 0 && kiter >= phi0Start &&
           (kiter - phi0Start) % (unsigned int)nonMuThetaEvery == 0) {
@@ -6980,6 +6990,22 @@ void setupRx(List &opt, SEXP evt, int nmc, int N) {
     rxode2::rxSolve_(obj, odeO,
                      R_NilValue, R_NilValue,
                      parsM, evt, R_NilValue, 1);
+    if (_saemThetaSensActive) {
+      // The pool here was sized by SAEM's OWN model, not the peer -- the pooled
+      // branch above deliberately solves the widest peer, and this path cannot,
+      // because SAEM's own model is the one that has to be solved and bound.
+      // A peer with more ODE states, or a wider lhs, then reads and writes past
+      // the pool's per-thread slice.  odeDenyPoolNotSized does NOT catch that
+      // (measured: it segfaulted in the accumulate loop).  So compare the two
+      // models and decline the peer when it does not fit; the refinement runs
+      // the derivative-free search alone, exactly as it did before any of this.
+      List mvTs = _rxode2_rxModelVars_(opt["saemThetaSens"]);
+      CharacterVector stTs = mvTs[RxMv_state], stOwn = mv[RxMv_state];
+      CharacterVector lhTs = mvTs[RxMv_lhs], lhOwn = mv[RxMv_lhs];
+      if (stTs.size() > stOwn.size() || lhTs.size() > lhOwn.size()) {
+        _saemThetaSensActive = false;
+      }
+    }
     if (_saemThetaSensActive) {
       if (!odeSwapRegister(odeSlotThetaSens, "thetaSens", opt["saemThetaSens"],
                            &rxThetaSens)) {
