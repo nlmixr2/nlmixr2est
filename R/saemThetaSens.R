@@ -24,10 +24,12 @@ rxUiGet.saemThetaSens <- function(x, ...) {
                        error = function(e) FALSE))) {
     return(NULL)
   }
-  ## the same shape restrictions saemPhi1Inner's map imposes: a covariate
-  ## mu-group or a non-mu ETA means the phi columns are not a plain
-  ## one-per-parameter map and the column translation below would be wrong
-  if (length(.ui$nonMuEtas) > 0) return(NULL)
+  ## A covariate mu-group splits one parameter across several phi columns, so
+  ## the one-per-parameter translation below would be wrong.  A non-mu ETA is
+  ## NOT excluded here: `.saemPhi1Split()` resolves those through the same map
+  ## SAEM itself uses, and they are exactly the case this refinement exists for
+  ## -- a `dist()`-declared eta has no additive `theta + eta` form and so is
+  ## always classified `nonMuEta`.
   .cov <- tryCatch(rxUiGet.saemMuRefCovariateDataFrame(list(.ui)),
                    error = function(e) NULL)
   if (is.null(.cov) || length(.cov$covariateParameter) > 0) return(NULL)
@@ -58,11 +60,9 @@ attr(rxUiGet.saemThetaSens, "rstudio") <- emptyenv()
   .est <- tryCatch(.impmapEstTheta(ui)$all, error = function(e) NULL)
   if (is.null(.est) || length(.est) == 0L) return(NULL)
   .iniDf <- ui$iniDf
-  .parsAll <- tryCatch(rxUiGet.saemParamsToEstimateCov(list(ui)),
-                       error = function(e) NULL)
-  if (is.null(.parsAll)) return(NULL)
-  .muRef <- ui$muRefDataFrame
-  .phi0Names <- .parsAll[!(.parsAll %in% .muRef$theta)]
+  .split <- .saemPhi1Split(ui)
+  if (is.null(.split)) return(NULL)
+  .phi0Names <- .split$parsAll[!.split$isPhi1]
   .col <- integer(length(.est))
   for (.i in seq_along(.est)) {
     .nm <- .iniDf$name[!is.na(.iniDf$ntheta) & .iniDf$ntheta == .est[.i]]
@@ -99,16 +99,19 @@ attr(rxUiGet.saemThetaSens, "rstudio") <- emptyenv()
   ## guessing at what to put in the extra slots
   .other <- .pars[!(grepl("^(THETA|ETA)\\[", .pars) | .pars == "DV")]
   if (length(.other) > 0) return(NULL)
+  ## DV is a model INPUT only for a general-likelihood model, where the
+  ## likelihood expression names it.  A normal-error model (`prop()`, `add()`,
+  ## ...) predicts rx_pred_/rx_r_ and the observation comes from SAEM's own
+  ## data, so no DV parameter exists -- -1 tells the accumulate loop to take y
+  ## from there rather than writing a parameter slot that is not present.
   .dvCol <- match("DV", .pars) - 1L
-  if (is.na(.dvCol)) return(NULL)
+  if (is.na(.dvCol)) .dvCol <- -1L
   .iniDf <- ui$iniDf
-  .parsAll <- tryCatch(rxUiGet.saemParamsToEstimateCov(list(ui)),
-                       error = function(e) NULL)
-  if (is.null(.parsAll)) return(NULL)
-  .muRef <- ui$muRefDataFrame
-  .isPhi1 <- .parsAll %in% .muRef$theta
-  .phi1Names <- .parsAll[.isPhi1]
-  .phi0Names <- .parsAll[!.isPhi1]
+  .split <- .saemPhi1Split(ui)
+  if (is.null(.split)) return(NULL)
+  .parsAll <- .split$parsAll
+  .phi1Names <- .parsAll[.split$isPhi1]
+  .phi0Names <- .parsAll[!.split$isPhi1]
   .nTheta <- length(grep("^THETA\\[", .pars))
   .thetaKind <- integer(.nTheta)
   .thetaCol <- integer(.nTheta)
@@ -130,20 +133,50 @@ attr(rxUiGet.saemThetaSens, "rstudio") <- emptyenv()
     }
   }
   .nEta <- length(grep("^ETA\\[", .pars))
-  .etaDiag <- !is.na(.iniDf$neta1) & .iniDf$neta1 == .iniDf$neta2
-  .etaNames <- .iniDf$name[.etaDiag][order(.iniDf$neta1[.etaDiag])]
-  .etaCol <- integer(.nEta)
-  for (.k in seq_len(.nEta)) {
-    if (.k > length(.etaNames)) return(NULL)
-    ## SAEM's phi1 columns are the mu-referenced parameters, in that order; an
-    ## eta maps to its own parameter's column
-    .th <- .muRef$theta[match(.etaNames[.k], .muRef$eta)]
-    if (is.na(.th)) return(NULL)
-    .m <- match(.th, .phi1Names)
-    if (is.na(.m)) return(NULL)
-    .etaCol[.k] <- as.integer(.m) - 1L
-  }
+  if (.nEta > length(.split$etaPhi1Col)) return(NULL)
+  ## ETA[k] is the k'th eta in neta order, which is the order .saemPhi1Split()
+  ## returns its phi1 columns in
+  .etaCol <- .split$etaPhi1Col[seq_len(.nEta)]
   list(thetaKind = as.integer(.thetaKind), thetaCol = as.integer(.thetaCol),
        thetaFixedVal = as.numeric(.thetaFixedVal),
        etaCol = as.integer(.etaCol), dvCol = as.integer(.dvCol))
+}
+#' Split SAEM's parameter vector into its phi1 and phi0 groups
+#'
+#' SAEM itself makes this split from the omega diagonal (`covstruct`):
+#' `i1 <- grep(1, diag(covstruct))` in `.configsaem()`.  A parameter is phi1
+#' exactly when it carries a random effect.
+#'
+#' The obvious proxy -- `parsAll %in% muRefDataFrame$theta` -- gets that right
+#' only for mu-referenced etas.  A `dist()`-declared eta has no additive
+#' `theta + eta` form, so rxode2's mu-ref scanner classifies it as a
+#' `nonMuEta`, it has no `muRefDataFrame` row, and the proxy files it under
+#' phi0 even though SAEM samples it in phi1.  `saemEtaTrans` is the map SAEM
+#' actually uses (`.saemEtaTrans()`), and it resolves both kinds, so derive
+#' membership from it instead.
+#'
+#' @param ui rxode2 ui
+#' @return list with `parsAll`, `isPhi1` (logical over `parsAll`), `etaPhi1Col`
+#'   (0-based phi1 column per eta, in neta order) and `etaNames`, or `NULL`
+#'   when the map does not resolve
+#' @noRd
+#' @author Matthew L. Fidler
+.saemPhi1Split <- function(ui) {
+  .parsAll <- tryCatch(rxUiGet.saemParamsToEstimateCov(list(ui)),
+                       error = function(e) NULL)
+  if (is.null(.parsAll)) return(NULL)
+  .trans <- tryCatch(rxUiGet.saemEtaTrans(list(ui)), error = function(e) NULL)
+  if (is.null(.trans) || anyNA(.trans)) return(NULL)
+  ## a negative index is .saemEtaTrans()'s nonMu=TRUE (pred-model) encoding;
+  ## rxUiGet.saemEtaTrans is the nonMu=FALSE form and must not produce one
+  if (any(.trans < 1L) || any(.trans > length(.parsAll))) return(NULL)
+  .isPhi1 <- seq_along(.parsAll) %in% .trans
+  .iniDf <- ui$iniDf
+  .etaDiag <- !is.na(.iniDf$neta1) & .iniDf$neta1 == .iniDf$neta2
+  .etaNames <- .iniDf$name[.etaDiag][order(.iniDf$neta1[.etaDiag])]
+  if (length(.etaNames) != length(.trans)) return(NULL)
+  .etaPhi1Col <- match(.trans, which(.isPhi1)) - 1L
+  if (anyNA(.etaPhi1Col)) return(NULL)
+  list(parsAll = .parsAll, isPhi1 = .isPhi1,
+       etaPhi1Col = as.integer(.etaPhi1Col), etaNames = .etaNames)
 }

@@ -212,6 +212,13 @@
     .model$saemThetaSens <- .ts$thetaSens
     .model$saemThetaSensPhi0Col <- as.integer(.ts$sensPhi0Col)
     .model$saemThetaSensTheta <- as.integer(.ts$sensTheta)
+    # THETA[k]/ETA[k] -> phi column translation, so the peer can be driven from
+    # SAEM's own phi matrix (the phi1 peers carry the same five)
+    .model$saemThetaSensThetaKind <- as.integer(.ts$thetaKind)
+    .model$saemThetaSensThetaCol <- as.integer(.ts$thetaCol)
+    .model$saemThetaSensThetaFixedVal <- as.numeric(.ts$thetaFixedVal)
+    .model$saemThetaSensEtaCol <- as.integer(.ts$etaCol)
+    .model$saemThetaSensDvCol <- as.integer(.ts$dvCol)
   }
   if (.saemGeneralLik(ui)) {
     .p1 <- nlmixrWithTiming("configure", ui$saemPhi1Inner)

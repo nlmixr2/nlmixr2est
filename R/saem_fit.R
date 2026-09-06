@@ -478,6 +478,11 @@
     opt$saemThetaSens <- model$saemThetaSens
     opt$saemThetaSensPhi0Col <- as.integer(model$saemThetaSensPhi0Col)
     opt$saemThetaSensTheta <- as.integer(model$saemThetaSensTheta)
+    opt$saemThetaSensThetaKind <- as.integer(model$saemThetaSensThetaKind)
+    opt$saemThetaSensThetaCol <- as.integer(model$saemThetaSensThetaCol)
+    opt$saemThetaSensThetaFixedVal <- as.numeric(model$saemThetaSensThetaFixedVal)
+    opt$saemThetaSensEtaCol <- as.integer(model$saemThetaSensEtaCol)
+    opt$saemThetaSensDvCol <- as.integer(model$saemThetaSensDvCol)
     opt$nonMuThetaGradEvery <- as.integer(nonMuThetaGradEvery)
   }
   ## opt$.dat <- dat;

@@ -168,16 +168,20 @@ attr(rxUiGet.saemPhi1Inner, "rstudio") <- emptyenv()
     if (is.na(.v)) return(NULL)
     .v
   }
-  if (length(ui$nonMuEtas) > 0) return(NULL)
+  # A covariate mu-group splits one parameter across several phi columns, so
+  # the one-per-parameter translation below would be wrong.  A non-mu ETA is
+  # NOT excluded: `.saemPhi1Split()` resolves those through the map SAEM itself
+  # uses (the omega diagonal, via saemEtaTrans) rather than through
+  # muRefDataFrame, which a `dist()`-declared eta has no row in.
   .cov <- rxUiGet.saemMuRefCovariateDataFrame(list(ui))
   if (length(.cov$covariateParameter) > 0) return(NULL)
 
   .iniDf <- ui$iniDf
-  .parsAll <- rxUiGet.saemParamsToEstimateCov(list(ui))
-  .muRef <- ui$muRefDataFrame
-  .isPhi1 <- .parsAll %in% .muRef$theta
-  .phi1Names <- .parsAll[.isPhi1]
-  .phi0Names <- .parsAll[!.isPhi1]
+  .split <- .saemPhi1Split(ui)
+  if (is.null(.split)) return(NULL)
+  .parsAll <- .split$parsAll
+  .phi1Names <- .parsAll[.split$isPhi1]
+  .phi0Names <- .parsAll[!.split$isPhi1]
 
   .nTheta <- length(grep("^THETA\\[", .parsH2))
   .thetaKind <- integer(.nTheta)
@@ -200,17 +204,11 @@ attr(rxUiGet.saemPhi1Inner, "rstudio") <- emptyenv()
     }
   }
 
+  # ETA[k] is the k'th eta in neta order, the order .saemPhi1Split() returns
+  # its phi1 columns in
   .nEta <- length(grep("^ETA\\[", .parsH2))
-  .etaCol <- integer(.nEta)
-  .etaDiag <- !is.na(.iniDf$neta1) &
-    (is.na(.iniDf$neta2) | .iniDf$neta1 == .iniDf$neta2)
-  for (.k in seq_len(.nEta)) {
-    .nm <- .iniDf$name[.etaDiag & .iniDf$neta1 == .k]
-    if (length(.nm) != 1L) return(NULL)
-    .thNm <- .muRef$theta[.muRef$eta == .nm]
-    if (length(.thNm) != 1L || !(.thNm %in% .phi1Names)) return(NULL)
-    .etaCol[.k] <- match(.thNm, .phi1Names) - 1L
-  }
+  if (.nEta > length(.split$etaPhi1Col)) return(NULL)
+  .etaCol <- .split$etaPhi1Col[seq_len(.nEta)]
 
   list(ok = TRUE, thetaKind = .thetaKind, thetaCol = .thetaCol,
        thetaFixedVal = .thetaFixedVal, etaCol = .etaCol,

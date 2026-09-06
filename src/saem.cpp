@@ -797,6 +797,15 @@ extern bool _saemThetaSensActive;
 extern arma::ivec _saemThetaSensPhi0Col;  // sens output -> phi0 column, -1 = none
 extern arma::ivec _saemThetaSensTheta;    // sens output -> 1-based ntheta
 extern int _saemNonMuGradEvery;
+extern int _saemThetaSensPredOffset;      // lhs index of rx_pred_ in the peer
+extern int _saemThetaSensROffset;         // lhs index of rx_r_, -1 when absent
+// THETA[k]/ETA[k] -> phi column translation for driving the peer from SAEM's
+// own phi matrix, the same shape the phi1 peers use.
+extern arma::ivec _saemThetaSensThetaKind;     // 1 = phi1, 0 = phi0, -1 = fixed
+extern arma::ivec _saemThetaSensThetaCol;      // column within that group
+extern arma::vec _saemThetaSensThetaFixedVal;  // value for kind -1
+extern arma::ivec _saemThetaSensEtaCol;        // ETA[k] -> phi1 column
+extern int _saemThetaSensDvCol;                // -1 when DV is not a parameter
 
 extern bool _saemPhi1PoolReady;
 extern bool _saemPhi1UseAnalyticHess;
@@ -6177,6 +6186,13 @@ bool _saemThetaSensActive = false;
 arma::ivec _saemThetaSensPhi0Col;
 arma::ivec _saemThetaSensTheta;
 int _saemNonMuGradEvery = 1;
+int _saemThetaSensPredOffset = -1;
+int _saemThetaSensROffset = -1;
+arma::ivec _saemThetaSensThetaKind;
+arma::ivec _saemThetaSensThetaCol;
+arma::vec _saemThetaSensThetaFixedVal;
+arma::ivec _saemThetaSensEtaCol;
+int _saemThetaSensDvCol = -1;
 
 bool _saemPhi1PoolReady = false;
 bool _saemPhi1UseAnalyticHess = false;
@@ -6531,29 +6547,80 @@ void setupRx(List &opt, SEXP evt, int nmc, int N) {
   _saemThetaSensActive = opt.containsElementNamed("saemThetaSens") &&
     !Rf_isNull(opt["saemThetaSens"]);
   if (_saemThetaSensActive) {
-    odeSwapDeclare(odeSlotThetaSens, "thetaSens", opt["saemThetaSens"]);
+    // Declared here, ONCE, ahead of either branch's sizing solve -- both the
+    // pooled solve below and the ordinary one further down need odeSwapPlan()
+    // to have already seen this peer.  Registration (which rxDynLoad's) waits
+    // until after that solve, in whichever branch runs.
+    if (!odeSwapDeclare(odeSlotThetaSens, "thetaSens", opt["saemThetaSens"])) {
+      _saemThetaSensActive = false;
+    }
+  }
+  if (_saemThetaSensActive) {
     _saemThetaSensPhi0Col = as<arma::ivec>(opt["saemThetaSensPhi0Col"]);
     _saemThetaSensTheta = as<arma::ivec>(opt["saemThetaSensTheta"]);
+    _saemThetaSensThetaKind = as<arma::ivec>(opt["saemThetaSensThetaKind"]);
+    _saemThetaSensThetaCol = as<arma::ivec>(opt["saemThetaSensThetaCol"]);
+    _saemThetaSensThetaFixedVal = as<arma::vec>(opt["saemThetaSensThetaFixedVal"]);
+    _saemThetaSensEtaCol = as<arma::ivec>(opt["saemThetaSensEtaCol"]);
+    _saemThetaSensDvCol = as<int>(opt["saemThetaSensDvCol"]);
     _saemNonMuGradEvery = opt.containsElementNamed("nonMuThetaGradEvery") ?
       as<int>(opt["nonMuThetaGradEvery"]) : 1;
     if (_saemNonMuGradEvery < 1) _saemNonMuGradEvery = 1;
   } else {
     _saemThetaSensPhi0Col.reset();
     _saemThetaSensTheta.reset();
+    _saemThetaSensThetaKind.reset();
+    _saemThetaSensThetaCol.reset();
+    _saemThetaSensThetaFixedVal.reset();
+    _saemThetaSensEtaCol.reset();
+    _saemThetaSensDvCol = -1;
   }
   _saemPhi1PoolActive = opt.containsElementNamed("saemPhi1Pred") &&
     !Rf_isNull(opt["saemPhi1Pred"]);
+  // The pool is built ONCE, sized for whichever declared peer has the most ODE
+  // states, and every peer must be declared before that sizing solve.  So this
+  // block runs when EITHER family of peers is present: the phi1 pair (a
+  // general-likelihood fit) or the theta-sensitivity model (any fit that wants
+  // the exact-gradient non-mu refinement), or both.
+  //
+  // Registering before the pool exists rebinds rxode2's event-sensitivity
+  // globals and corrupts the solve, and a stale registry from a PRIOR fit has
+  // already been seen to segfault a later one -- hence odeSwapClearAll() above
+  // and the strict declare -> size -> register order below.
   if (_saemPhi1PoolActive) {
-    bool haveHess2 = opt.containsElementNamed("saemPhi1Hess2") &&
+    bool haveHess2 = _saemPhi1PoolActive &&
+      opt.containsElementNamed("saemPhi1Hess2") &&
       !Rf_isNull(opt["saemPhi1Hess2"]);
     if (haveHess2) odeSwapDeclare(odeSlotHess2, "hess2", opt["saemPhi1Hess2"]);
-    odeSwapDeclare(odeSlotPred, "pred", opt["saemPhi1Pred"]);
+    if (_saemPhi1PoolActive) odeSwapDeclare(odeSlotPred, "pred", opt["saemPhi1Pred"]);
     // rxSolve_ on whichever peer has the most states (innerHess2's extra
     // eta-sensitivity states when it built, else predNoLhs) -- matches the
     // number-of-ODEs sizing rule odeSwap already uses for neq; both share
     // the identical THETA[]/ETA[]/DV parameter declaration (verified by
     // .saemPhi1TargetMap), so either works as the params-matrix source.
-    RObject widePar = haveHess2 ? opt["saemPhi1Hess2"] : opt["saemPhi1Pred"];
+    // Widest = most ODE states, which is odeSwap's own neq sizing rule.  With
+    // the sensitivity peer in play the answer is no longer "hess2 if it built":
+    // its extra d(state)/d(theta) equations can exceed the eta-sensitivity ones.
+    RObject widePar = R_NilValue;
+    {
+      int wideN = -1;
+      auto consider = [&](RObject cand) {
+        if (Rf_isNull(cand)) return;
+        List mvC = _rxode2_rxModelVars_(cand);
+        CharacterVector st = mvC[RxMv_state];
+        if ((int)st.size() > wideN) { wideN = (int)st.size(); widePar = cand; }
+      };
+      if (haveHess2) consider(opt["saemPhi1Hess2"]);
+      if (_saemPhi1PoolActive) consider(opt["saemPhi1Pred"]);
+      if (_saemThetaSensActive) consider(opt["saemThetaSens"]);
+    }
+    if (Rf_isNull(widePar)) {
+      // nothing usable to size against; fall through to the ordinary
+      // (non-pooled) setup rather than solving a null model
+      _saemThetaSensActive = false;
+      _saemPhi1PoolActive = false;
+      odeSwapClearAll();
+    } else {
     List odeO = opt["rxControl"];
     List wideMv = _rxode2_rxModelVars_(widePar);
     CharacterVector wideParNames = wideMv[RxMv_params];
@@ -6575,11 +6642,37 @@ void setupRx(List &opt, SEXP evt, int nmc, int N) {
     // rxDynLoad's) before it exists rebinds rxode2's event-sensitivity
     // globals and corrupts the solve (see odeSwap.h).
     if (haveHess2) odeSwapRegister(odeSlotHess2, "hess2", opt["saemPhi1Hess2"], &rxHess2);
-    odeSwapRegister(odeSlotPred, "pred", opt["saemPhi1Pred"], &rxPred);
+    if (_saemPhi1PoolActive) odeSwapRegister(odeSlotPred, "pred", opt["saemPhi1Pred"], &rxPred);
+    if (_saemThetaSensActive) {
+      if (!odeSwapRegister(odeSlotThetaSens, "thetaSens", opt["saemThetaSens"],
+                           &rxThetaSens)) {
+        // could not bind it -- run without the gradient step rather than solve
+        // a slot whose entry points were never resolved
+        _saemThetaSensActive = false;
+      } else {
+        _saemThetaSensPredOffset = odeSwapLhsIndex(odeSlotThetaSens, "rx_pred_");
+        _saemThetaSensROffset = odeSwapLhsIndex(odeSlotThetaSens, "rx_r_");
+        if (_saemThetaSensPredOffset < 0) _saemThetaSensActive = false;
+      }
+    }
+    }
     return;
   }
 
   rxUpdateFuns(mv["trans"], &rxInner);
+  // Non-pooled fit (a plain normal model, which is most of them): carry the
+  // theta-sensitivity peer here instead.  Declared BEFORE the sizing solve so
+  // odeSwapPlan() accounts for it, and only registered after -- rxDynLoad-ing a
+  // sensitivity model before rxSolve_ has built the pool rebinds rxode2's
+  // event-sensitivity globals and the inner solve then frees a buffer sized for
+  // the wrong neq.
+  //
+  // The pool is still sized by SAEM's OWN model here, not the peer.  If the
+  // peer needs more states it is refused at solve time with
+  // odeDenyPoolNotSized -- a loud refusal, not a corrupted solve -- and the
+  // refinement falls back to the search alone.  That keeps the blast radius of
+  // this on ordinary fits at zero, which matters more than covering every model
+  // shape on the first pass.
   if (!Rf_isNull(obj)){
     RObject pars0 = opt[".pars"];
     List odeO = opt["rxControl"];
@@ -6598,6 +6691,16 @@ void setupRx(List &opt, SEXP evt, int nmc, int N) {
     rxode2::rxSolve_(obj, odeO,
                      R_NilValue, R_NilValue,
                      parsM, evt, R_NilValue, 1);
+    if (_saemThetaSensActive) {
+      if (!odeSwapRegister(odeSlotThetaSens, "thetaSens", opt["saemThetaSens"],
+                           &rxThetaSens)) {
+        _saemThetaSensActive = false;
+      } else {
+        _saemThetaSensPredOffset = odeSwapLhsIndex(odeSlotThetaSens, "rx_pred_");
+        _saemThetaSensROffset = odeSwapLhsIndex(odeSlotThetaSens, "rx_r_");
+        if (_saemThetaSensPredOffset < 0) _saemThetaSensActive = false;
+      }
+    }
   } else {
     stop("cannot find rxode2 model");
   }
