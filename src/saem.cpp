@@ -1294,22 +1294,34 @@ public:
       if (doParallel) setRxThreadId(omp_get_thread_num());
 #endif
       int subj = r % N;
+      (void)subj;
       rx_solving_options_ind *ind = getSolvingOptionsInd(_rx, r);
       OdeSwapScope neqGuard(odeSlotThetaSens, ind, op);
       OdeSwapCmtScope cmtGuard(odeSlotThetaSens, op, ind);
-      // THETA[k] from whichever phi group owns it; ETA[k] is the row's CURRENT
-      // deviation from its mu, exactly as phi1AnalyticHessAt reads it
+      // Set the peer exactly the way saemSetRowsPooled sets its own: the WHOLE
+      // combined phi value goes in THETA[k] and ETA[k] is 0.  SAEM's phi is
+      // already theta+eta, and the model depends on the pair only through their
+      // sum, so this gives the same f AND the same d(f)/d(THETA[k]) as splitting
+      // it back into a mu and a deviation -- with none of the mprior_phi1
+      // bookkeeping that split needed.
+      //
+      // The exception is a nonMuEta: no THETA[] refers to it, the parameter IS
+      // the eta, so its phi value belongs in ETA[k] (same rule, and same flag,
+      // as the pooled setter).
       for (int k = 0; k < nTheta; ++k) {
         double v;
         int kind = _saemThetaSensThetaKind(k), col = _saemThetaSensThetaCol(k);
-        if (kind == 1) v = mprior_phi1(subj, col);
+        if (kind == 1) v = phiM(r, i1(col));
         else if (kind == 0) v = mprior_phi0(0, col);
         else v = _saemThetaSensThetaFixedVal(k);
         setIndParPtr(ind, k, v);
       }
       for (int k = 0; k < nEta; ++k) {
-        int col = _saemThetaSensEtaCol(k);
-        setIndParPtr(ind, nTheta + k, phiM(r, i1(col)) - mprior_phi1(subj, col));
+        double v = 0.0;
+        if (k < (int)_saemPhi1EtaNonMu.n_elem && _saemPhi1EtaNonMu(k) != 0) {
+          v = phiM(r, i1(_saemThetaSensEtaCol(k)));
+        }
+        setIndParPtr(ind, nTheta + k, v);
       }
       setIndSolve(ind, -1);
       if (!saemNoThrow([&]{ odeSwapSolveInd(odeSlotThetaSens, r); }) ||
