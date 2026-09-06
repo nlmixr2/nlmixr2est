@@ -263,6 +263,33 @@
                         rmcmc=rxode2::rxGetControl(ui, "rmcmc", 0.5),
                         iaccept=rxode2::rxGetControl(ui, "iaccept", 0.234),
                         iacceptSingle=rxode2::rxGetControl(ui, "iacceptSingle", 0.44),
+                        etaDistInfo={
+                          ## Metadata for the declared-distribution M-steps.  Built
+                          ## when EITHER the family fit (etaDistMstep) or the copula
+                          ## closed form (etaDistCorMstep) wants it -- the latter is
+                          ## on by default, so a declared copula gets its bounded
+                          ## closed-form update even on an otherwise ordinary fit.
+                          if (!isTRUE(rxode2::rxGetControl(ui, "etaDistMstep", FALSE)) &&
+                              !isTRUE(rxode2::rxGetControl(ui, "etaDistCorMstep", TRUE))) {
+                            NULL
+                          } else {
+                            .en <- .inits$name.eta
+                            if (is.null(.en)) {
+                              .idf <- ui$iniDf
+                              .en <- .idf$name[!is.na(.idf$neta1) & .idf$neta1 == .idf$neta2]
+                            }
+                            .edi <- .etaDistMstepInfo(ui, ui$saemEtaTrans, .en,
+                                                      ui$saemParamsToEstimate)
+                            ## only warn when the FAMILY M-step was asked for and
+                            ## cannot run; the copula closed form is a default, so
+                            ## a model with no declaration is not a user error
+                            if (is.null(.edi) &&
+                                isTRUE(rxode2::rxGetControl(ui, "etaDistMstep", FALSE))) {
+                              .etaDistMstepWarnInert("saem")
+                            }
+                            .edi
+                          }
+                        },
                         nu1B=rxode2::rxGetControl(ui, "nu1B", 0L),
                         nb1B=rxode2::rxGetControl(ui, "nb1B", 10L),
                         stepsizeRw=rxode2::rxGetControl(ui, "stepsizeRw", 0.4),
@@ -349,6 +376,35 @@
     .cfg$nonMuThetaTol <- as.numeric(rxode2::rxGetControl(ui, "nonMuThetaTol",
                                                           .Machine$double.eps^0.25))
     .cfg$nonMuThetaEvery <- as.integer(rxode2::rxGetControl(ui, "nonMuThetaEvery", 1L))
+    ## First iteration refinePhi0Lik -- the direct maximization of the
+    ## observation likelihood in the non-mu (phi0) thetas -- becomes eligible.
+    ##
+    ## Default is saemix's rule: HALF THE BURN-IN.  saemix gates its equivalent
+    ## step (R/main_mstep.R:57, `optim(compute.Uy)` over ind.fix10) on
+    ## `kiter >= opt$nbiter.sa`, and nbiter.sa defaults to nbiter.saemix[1]/2.
+    ##
+    ## What makes the placement matter is the STEP SIZE it lands on.  saemix's
+    ## stepsize is 1 throughout burn-in, so its direct optimization gets the
+    ## whole second half of burn-in at full steps.  nlmixr2 previously used
+    ## niter_phi0 = round((nBurn + nEm)/2) -- half the TOTAL -- which for the
+    ## common nEm ~ nBurn lands exactly on the burn-in/EM boundary, precisely
+    ## where `pas` collapses (1.0 at iteration 200, 0.5 at 201, 0.02 at 250).
+    ## The refinement then got ONE full-step iteration instead of ~100, and the
+    ## non-mu thetas stayed wherever the stochastic phi0 update had parked them:
+    ## measured on Bauer's gamma data they were frozen for 376 of 400
+    ## iterations, and the answer depended on the seed (CL 7.47 vs 2.66)
+    ## against NONMEM's 4.79 on the same data.
+    ##
+    ## `nonMuThetaStart = -2` restores the historical niter_phi0 gate.
+    .nms <- rxode2::rxGetControl(ui, "nonMuThetaStart", NULL)
+    .cfg$nonMuThetaStart <-
+      if (is.null(.nms)) {
+        as.integer(round(rxode2::rxGetControl(ui, "nBurn", 200L) * 0.5))
+      } else if (identical(as.integer(.nms), -2L)) {
+        -1L   # C++ falls back to niter_phi0
+      } else {
+        as.integer(.nms)
+      }
     # Phase 4 (SAEM general-likelihood theta plan): cadence/budget for the
     # phi1 (mu-referenced theta) Laplace-corrected refinement -- see
     # saemControl()'s own docs for phi1ThetaEvery/phi1ThetaMaxEval.

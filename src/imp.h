@@ -61,6 +61,10 @@ double impUpdateMuThetas();                        // mu-referenced covariate re
 void impMuInterceptStep();                         // simple mu intercept EM update (no covariates)
 void impZeroOmegaDirectStep(int maxEval, double trust); // direct-ML update for flat-omega mu thetas
 int impZeroOmegaDirectOn();
+// impmapControl(etaDistMstep=): declared-distribution M-step metadata, or an
+// empty list when the option is off.  See impEtaDistMstep() in src/imp.cpp.
+int impEtaDistOn();
+SEXP impEtaDistInfoGet();
 int impZeroOmegaMaxEval();
 void impReMap();                                   // re-optimize all conditional modes (innerOpt)
 void impSetOmega(const arma::mat& Omega, const std::string& diagXform); // install new Omega

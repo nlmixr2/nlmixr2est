@@ -1,5 +1,5 @@
 nmTest({
-  # 22 hand-written quantiles and log densities in src/saem.cpp back the
+  # 22 hand-written quantiles and log densities in src/etaDistFam.cpp back the
   # ODE-free distribution M-step.  That is exactly the kind of code that is
   # silently wrong, so every family is pinned against an independent R
   # reference -- the same reason saemFormGTest() exists.

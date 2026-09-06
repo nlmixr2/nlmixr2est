@@ -3426,6 +3426,10 @@ rxUiGet.foceiOptEnv <- function(x, ...) {
   # the values matrix once the dataset is available, without recomputing
   # .muRefCppGroupSetup() a second time.
   assign(".muGroupCovNames", .muGroupSetup$muGroupCovNames, envir = .x)
+  # Declared-distribution M-step.  Outside the muModel branch above on purpose:
+  # a dist() declaration is orthogonal to mu-referencing, and plain focei must
+  # reach this too.
+  .foceiEtaDistSetup(.x)
   .env$adjLik <- rxode2::rxGetControl(.x, "adjLik", TRUE)
   .env$diagXformInv <- c("sqrt" = ".square", "log" = "exp", "identity" = "identity")[rxode2::rxGetControl(.x, "diagXform", "sqrt")]
   .env$thetaNames <- .x$iniDf[!is.na(.x$iniDf$ntheta), "name"]

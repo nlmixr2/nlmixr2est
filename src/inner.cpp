@@ -11,6 +11,7 @@
 #include "foceiGrad.h"
 #include "inner.h"
 #include "nmMcmcRng.h"
+#include "etaDistFam.h" // declared-distribution family dispatch, shared with saem/imp
 #include <cfloat>
 #include <cstring>
 #include <cstdint>
@@ -381,6 +382,22 @@ struct focei_options {
   // Printed/history column count: npars plus the regression-updated mu-group
   // thetas (== npars when muModel is off); see _printOptIdx/_printFullIdx.
   unsigned int nparsPrint;
+  // Parameter count the per-subject gradient pool must be SIZED for.
+  //
+  // npars is the OPTIMIZER's free set, and thetas held out of it -- covariate
+  // mu-group thetas, or dist()-declared thetas under etaDistMstep -- are put
+  // back for the covariance step, which re-runs foceiSetupTheta_() and grows
+  // npars.  gthetaGrad is a slice of one pooled block sized npars*(nsub+1) with
+  // gZm immediately after it, so growing npars afterwards makes each subject's
+  // gradient row overrun into gZm and silently corrupts the S matrix.  (Seen as
+  // an add.sd standard error of 0.1238 against 0.05689 with the hold-out off,
+  // while the R-matrix route -- which finite-differences at covariance time and
+  // never touches this buffer -- agreed to 0.3%.)
+  //
+  // So size the pool for the free set IGNORING optimizer-only hold-outs: an
+  // upper bound on whatever the covariance restores, and equal to npars when
+  // nothing is held out.
+  unsigned int nparsAlloc;
   unsigned int thetan;
   unsigned int omegan;
 
@@ -905,6 +922,42 @@ struct focei_options {
   // identically zero for such an eta.  0 = off.
   int impZeroOmegaDirect = 0;
   int impZeroOmegaMaxEval = 25;  // per-call objective budget (each = one full solve)
+  // impmapControl(etaDistMstep=): estimate a dist()-declared random effect's
+  // family parameters by a weighted distribution fit to the importance samples
+  // (impEtaDistMstep, src/imp.cpp) rather than through the data likelihood.
+  // The thetas so estimated are dropped from impThetaSensIdx on the R side, so
+  // the Newton M-step never sees them; they stay ordinary thetas everywhere
+  // else, including the covariance step, which still reports their SEs.
+  int impEtaDistOn = 0;
+  Rcpp::List impEtaDistInfo;
+  // foceiControl(etaDistMstep=): the FOCEi-family counterpart.  A dist()-declared
+  // family's parameters get their OWN optimizer -- an eta-space distribution fit
+  // to draws from each subject's Laplace posterior -- and are held out of the
+  // outer problem entirely: no gradient, no column in the free-parameter vector,
+  // exactly as a covariate mu-group theta is (muGroupThetaSkip above).
+  //
+  // The hold-out is on the SEARCH only.  These stay estimated parameters and
+  // must still be reported with standard errors, so `etaDistOptSkip` is cleared
+  // before the covariance step re-runs foceiSetupTheta_(): the free-parameter
+  // vector is rebuilt WITH them and the R/S matrices get their rows and columns
+  // by the same finite differences every other theta uses there.  (This mirrors
+  // muModel being 0 at that call site, which is what unlocks the mu-group
+  // thetas for the covariance.)
+  int etaDistOn = 0;
+  int etaDistOptSkip = 0;         // 1 while optimizing, 0 for the covariance
+  // 1 for exactly the duration of the OUTER OPTIMIZER's callbacks.  Distinct
+  // from etaDistOptSkip, which has to stay 1 across the whole estimation
+  // because foceiSetupTheta_() reads it: the M-step must stop the moment the
+  // optimizer returns, because foceiOuterFinal() and the covariance both drive
+  // innerOpt() again with calcGrad clear, and letting the step fire there moves
+  // the reported estimates.  Measured before this existed: lclm came out 1.0304
+  // under covMethod="r", 1.0204 under "s" and 1.0127 under "r,s" -- a
+  // covariance method silently changing the fit.  Same shape as
+  // op_foceiUseAnalyticGrad, which brackets the same region for the same reason.
+  int etaDistRun = 0;
+  std::vector<int> etaDistThetaSkip;  // [ntheta] 1 = this M-step owns it
+  Rcpp::List etaDistInfo;
+  int etaDistNsamp = 50;          // Laplace draws per subject per M-step
 };
 
 focei_options op_focei;
@@ -1259,8 +1312,22 @@ static std::vector<int> _printOptIdx, _printFullIdx, _printNoGrad;
 static std::vector<double> _printX, _printGr, _printInitPar, _printScaleC;
 static std::vector<int> _printXPar, _printProbitIdx;
 
+// Does the printed/recorded parameter set differ from the optimizer's?
+//
+// True whenever some theta is held out of the free-parameter vector but still
+// reported -- a covariate mu-group theta, or a dist()-declared theta under
+// etaDistMstep.  Everything downstream keys off this to record nparsPrint
+// columns (optimizer values interleaved with the held-out ones read from
+// fullTheta) instead of npars.
+//
+// It MUST cover every hold-out, not just the mu-group one.  The history matrix
+// is sized by npars while its column NAMES come from nparsPrint, so when the
+// two disagree and this returns false the recorded values silently shift: on a
+// 5-theta model with 2 held out, `parHist` labelled the free thetas' values
+// with the held-out thetas' names and dropped the last column entirely.
 static inline bool muPrintActive() {
-  return op_focei.muModel != 0 && op_focei.muGroupN > 0;
+  return (op_focei.muModel != 0 && op_focei.muGroupN > 0) ||
+    (op_focei.etaDistOn != 0 && op_focei.etaDistOptSkip != 0);
 }
 
 static void releaseCovSolveArgs_(); // defined with covSolveArgs_ below; teardown backstop
@@ -4809,6 +4876,11 @@ static void priorGradHessFor(const std::vector<int> &idx, arma::vec &grad, arma:
 // Taylor truncation at all) and a reasonable one-step approximation
 // otherwise (Cauchy, multiNormal).  See impPriorStructThetaCorrect() above
 // for the identical FD-Hessian machinery and its cost justification.
+// Defined after impGetHessian(), which it uses to build each subject's Laplace
+// posterior; declared here for innerOpt()'s call site below.
+static bool foceiEtaDistMstep();
+extern long _foceiEtaDistN;
+
 static inline double updateMuGroups() {
   if (op_focei.muModel == 0 || op_focei.muGroupN == 0) return 0.0;
   rx = getRxSolve_();
@@ -5184,6 +5256,12 @@ void innerOpt() {
     // perturbations (foceiCalcR()), where overwriting fullTheta would corrupt
     // the derivative being computed.
     if (!op_focei.calcGrad) {
+      // Declared-distribution thetas have their own optimizer and are not in
+      // the outer free-parameter vector, so they are updated here, on the same
+      // {re-optimize etas, update} cycle the mu-group regression uses.  Inside
+      // the !calcGrad guard on purpose: during a finite-difference perturbation
+      // these must hold still.
+      foceiEtaDistMstep();
       double muDelta = updateMuGroups();
       if (muDelta <= op_focei.muGroupTol) break;
     } else {
@@ -7054,8 +7132,19 @@ static inline void foceiSetupTheta_(List mvi,
     return op_focei.muModel != 0 && op_focei.muGroupThetaSkip != NULL &&
       jj < thetan && op_focei.muGroupThetaSkip[jj] != 0;
   };
+  // Declared-distribution thetas, on the same footing -- but only while the
+  // outer problem is running.  op_focei.etaDistOptSkip is cleared before the
+  // covariance re-runs this function, so the covariance sees them.
+  auto isEtaDistSkip = [&](int jj) -> bool {
+    return op_focei.etaDistOn != 0 && op_focei.etaDistOptSkip != 0 &&
+      jj < thetan && jj < (int)op_focei.etaDistThetaSkip.size() &&
+      op_focei.etaDistThetaSkip[jj] != 0;
+  };
+  auto isOptSkip = [&](int jj) -> bool {
+    return isMuGroupSkip(jj) || isEtaDistSkip(jj);
+  };
   for (j = thetan; j--;){
-    if (isMuGroupSkip(j) && !(j < thetaFixed2.size() && thetaFixed2[j])) fixedn++;
+    if (isOptSkip(j) && !(j < thetaFixed2.size() && thetaFixed2[j])) fixedn++;
   }
   int npars = thetan+omegan-fixedn;
   if (alloc){
@@ -7106,7 +7195,7 @@ static inline void foceiSetupTheta_(List mvi,
   op_focei.omegan = (unsigned int)omegan;
   int k = 0;
   for (j = 0; j < thetan+omegan; j++){
-    if (isMuGroupSkip(j)) continue;
+    if (isOptSkip(j)) continue;
     if (j < thetaFixed2.size() && !thetaFixed2[j]){
       if (j < theta.size()){
         op_focei.initPar[k] = theta[j];
@@ -7133,7 +7222,7 @@ static inline void foceiSetupTheta_(List mvi,
   _printOptIdx.clear(); _printFullIdx.clear(); _printNoGrad.clear();
   int k2 = 0;
   for (j = 0; j < thetan+omegan; j++){
-    if (isMuGroupSkip(j)) {
+    if (isOptSkip(j)) {
       if (!(j < thetaFixed2.size() && thetaFixed2[j])) {
         _printOptIdx.push_back(-1);
         _printFullIdx.push_back(j);
@@ -7147,6 +7236,16 @@ static inline void foceiSetupTheta_(List mvi,
   }
   op_focei.nparsPrint = (unsigned int)_printOptIdx.size();
   op_focei.npars  = (unsigned int)npars;
+  // free set counting ONLY the user's own ini(...~fix); see nparsAlloc
+  {
+    int userFixed = 0;
+    for (j = 0; j < thetan + omegan; j++) {
+      if (j < thetaFixed2.size() && thetaFixed2[j]) userFixed++;
+    }
+    int na = thetan + omegan - userFixed;
+    if (na < npars) na = npars;
+    op_focei.nparsAlloc = (unsigned int)na;
+  }
 }
 
 static inline void foceiSetupNoEta_(){
@@ -7164,7 +7263,7 @@ static inline void foceiSetupNoEta_(){
   // The thetaGrad block is npars per subject, not gEtaGTransN: this path is
   // only taken when neta == 0, so gEtaGTransN is 0 and sizing it that way gave
   // thetaGrad no storage at all and started llikObsFull at the same address.
-  size_t _gThetaGradN = foceiSzMul(op_focei.npars, (size_t)getRxNsub(rx),
+  size_t _gThetaGradN = foceiSzMul(op_focei.nparsAlloc, (size_t)getRxNsub(rx),
                                    "thetaGrad");
   op_focei.gthetaGrad = R_Calloc(foceiSzAdd(_gThetaGradN, (size_t)getRxNall(rx),
                                             "llikObs"), double);
@@ -7245,7 +7344,7 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
     // 11 per-subject eta blocks: geta, gtryEta, goldEta, getahf, getahr,
     // getahh, gsaveEta, gG, gVar, gX, glp.
     size_t tot = foceiSzMul((size_t)op_focei.gEtaGTransN, 11, "eta");
-    tot = foceiSzAdd(tot, foceiSzMul(op_focei.npars, nsub_mix + 1, "thetaGrad"), "thetaGrad");
+    tot = foceiSzAdd(tot, foceiSzMul(op_focei.nparsAlloc, nsub_mix + 1, "thetaGrad"), "thetaGrad");
     tot = foceiSzAdd(tot, nz, "zm");
     tot = foceiSzAdd(tot, foceiSzMul(2 * neta, nall_mix, "ga/gc"), "ga/gc");
     tot = foceiSzAdd(tot, nall_mix, "gB");                            // gB
@@ -7273,11 +7372,11 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
   op_focei.gVar     = op_focei.gG + op_focei.gEtaGTransN;
   op_focei.gX       = op_focei.gVar + op_focei.gEtaGTransN;
   op_focei.glp      = op_focei.gX + op_focei.gEtaGTransN;
-  op_focei.gthetaGrad = op_focei.glp + op_focei.gEtaGTransN;  // op_focei.npars*(getRxNsub(rx) + 1)
+  op_focei.gthetaGrad = op_focei.glp + op_focei.gEtaGTransN;  // op_focei.nparsAlloc*(getRxNsub(rx) + 1)
   // (The per-subject outer-FD step store was here.  The FD fallback's step is searched on the
   // SUM over the flagged subjects, so it is a property of that set, not of a subject; it now
   // lives in op_focei.outerFdStep, keyed on the set.)
-  op_focei.gZm      = op_focei.gthetaGrad + op_focei.npars*(getRxNsubAndMix(rx) + 1); // nz
+  op_focei.gZm      = op_focei.gthetaGrad + op_focei.nparsAlloc*(getRxNsubAndMix(rx) + 1); // nz
   op_focei.ga       = op_focei.gZm + nz;//[op_focei.neta * getRxNall(rx)]
   op_focei.gc       = op_focei.ga + op_focei.neta * getRxNallAndMix(rx);//[op_focei.neta * getRxNall(rx)]
   op_focei.gB       = op_focei.gc + op_focei.neta * getRxNallAndMix(rx);//[getRxNall(rx)]
@@ -7630,6 +7729,28 @@ NumericVector foceiSetup_(const RObject &obj,
   if (foceiO.containsElementNamed("flatEtaIdx"))
     op_focei.flatEtaIdx = as<IntegerVector>(foceiO["flatEtaIdx"]);
   else op_focei.flatEtaIdx = IntegerVector(0);
+  // foceiControl(etaDistMstep=).  Both halves have to arrive together: the mask
+  // without the metadata would hold thetas out of the optimizer with nothing to
+  // update them, which would silently leave them at their ini() values.  Reset
+  // in the else because op_focei is a process global that outlives a fit.
+  op_focei.etaDistOn = 0;
+  op_focei.etaDistOptSkip = 0;
+  op_focei.etaDistRun = 0;
+  _foceiEtaDistN = 0;
+  op_focei.etaDistThetaSkip.clear();
+  op_focei.etaDistInfo = Rcpp::List(0);
+  if (!op_focei.isImpmap &&
+      foceiO.containsElementNamed("foceiEtaDistInfo") &&
+      !Rf_isNull(foceiO["foceiEtaDistInfo"]) &&
+      foceiO.containsElementNamed("foceiEtaDistThetaSkip")) {
+    op_focei.etaDistInfo = as<Rcpp::List>(foceiO["foceiEtaDistInfo"]);
+    IntegerVector sk = as<IntegerVector>(foceiO["foceiEtaDistThetaSkip"]);
+    op_focei.etaDistThetaSkip.assign(sk.begin(), sk.end());
+    op_focei.etaDistOn = 1;
+    op_focei.etaDistOptSkip = 1;
+    if (foceiO.containsElementNamed("etaDistNsamp"))
+      op_focei.etaDistNsamp = as<int>(foceiO["etaDistNsamp"]);
+  }
   if (op_focei.isImpmap) {
     // isample may be a per-subject vector; the scalar is the largest requested
     // count (used for sizing, the SIR default and reporting).
@@ -7670,6 +7791,21 @@ NumericVector foceiSetup_(const RObject &obj,
       op_focei.impZeroOmegaDirect = (int)as<bool>(foceiO["zeroOmegaDirect"]);
     if (foceiO.containsElementNamed("zeroOmegaMaxEval"))
       op_focei.impZeroOmegaMaxEval = as<int>(foceiO["zeroOmegaMaxEval"]);
+    // Declared-distribution M-step.  Both halves have to arrive together: the
+    // flag without the metadata would run a driver with nothing to fit, and the
+    // metadata without the flag is inert.
+    op_focei.impEtaDistOn = 0;
+    op_focei.impEtaDistInfo = Rcpp::List(0);
+    if (foceiO.containsElementNamed("impEtaDistInfo") &&
+        !Rf_isNull(foceiO["impEtaDistInfo"])) {
+      op_focei.impEtaDistInfo = as<Rcpp::List>(foceiO["impEtaDistInfo"]);
+      op_focei.impEtaDistOn = 1;
+    }
+    // imp reaches its M-step through impEtaDistMstep(), not the FOCEi outer
+    // loop, so the FOCEi hold-out stays off here: imp's thetas are already out
+    // of the Newton step by way of impThetaSensIdx.
+    op_focei.etaDistOn = 0;
+    op_focei.etaDistOptSkip = 0;
     if (foceiO.containsElementNamed("impCov")) op_focei.impCov = as<bool>(foceiO["impCov"]);
     if (foceiO.containsElementNamed("qr")) op_focei.impQr = as<bool>(foceiO["qr"]);
     if (foceiO.containsElementNamed("qrShift")) op_focei.impQrShift = as<bool>(foceiO["qrShift"]);
@@ -9029,6 +9165,7 @@ Environment foceiOuter(Environment e){
     op_foceiFitEnv = e;
     op_foceiFitEnvSet = true;
     op_foceiUseAnalyticGrad = (op_focei.fast != 0);
+    op_focei.etaDistRun = op_focei.etaDistOn;
     // Per-fit constants for the all-C++ gradient, read out of R exactly once.  After
     // this every gradient evaluation runs without touching R.
     loadGradPooledSetup(e);
@@ -9043,6 +9180,7 @@ Environment foceiOuter(Environment e){
       foceiCustomFun(e);
     }
     op_foceiUseAnalyticGrad = false;
+    op_focei.etaDistRun = 0;
   } else {
     NumericVector x(op_focei.npars);
     for (unsigned int k = op_focei.npars; k--;){
@@ -10265,6 +10403,14 @@ NumericMatrix foceiCalcCov(Environment e){
       setupAq0_(e);
       // muModel is always 0 here: ordinary methods never set it, and mu-referenced
       // (lin/irls) families bail above and recompute the covariance on the full model.
+      //
+      // Declared-distribution thetas are held out of the OUTER OPTIMIZER only.
+      // They are estimated parameters and must be reported with standard
+      // errors, so the hold-out is released here and this rebuild puts them
+      // back into the free-parameter vector: the R and S matrices then get
+      // their rows and columns from the same finite differences every other
+      // theta uses, no analytic gradient required.
+      op_focei.etaDistOptSkip = 0;
       foceiSetupTheta_(op_focei.mvi, fullT2, skipCov, 0, false);
       op_focei.scaleType=10;
       if (op_focei.covMethod && !boundary) {
@@ -11779,6 +11925,11 @@ double impIscaleMax() { return op_focei.impIscaleMax; }
 int impNconvWindow() { return op_focei.impNconvWindow; }
 int impZeroOmegaDirectOn() { return op_focei.impZeroOmegaDirect; }
 int impZeroOmegaMaxEval() { return op_focei.impZeroOmegaMaxEval; }
+int impEtaDistOn() { return op_focei.impEtaDistOn; }
+
+//[[Rcpp::export]]
+long foceiEtaDistN_() { return _foceiEtaDistN; }
+SEXP impEtaDistInfoGet() { return op_focei.impEtaDistInfo; }
 
 // Windowed-convergence tolerance on the (relative) objective change; derived
 // from the table sigdig (10^-sigdig) when the control leaves it unset (<0).
@@ -12370,6 +12521,188 @@ bool impGetHessian(int id, arma::mat& H) {
   H.zeros();
   arma::mat H0(neta, neta, arma::fill::zeros);
   return calcEtaHessian(fInd->eta, 0, id, fInd, ind, H, H0);
+}
+
+// ---- FOCEi-family declared-distribution M-step -----------------------------
+//
+// foceiControl(etaDistMstep=).  The third member of the family that saem's
+// etaDistMstep() and imp's impEtaDistMstep() belong to, and it works the same
+// way: a dist()-declared family's parameters appear ONLY in log p(eta | theta),
+// so fitting them is a distribution fit to this iteration's etas -- no data
+// term, no ODE solve.
+//
+// What differs is where the etas come from, and what that costs.  saem has MCMC
+// draws and imp has weighted importance samples, so for those two the M-step
+// adds no solves whatever; FOCEi has each subject's posterior MODE and the
+// inner Hessian computed for the Laplace objective, and impGetHessian()
+// re-establishes the subject's solve at that mode before reading it -- so this
+// version does cost one population's worth of solves per update.  That is still
+// far less than leaving these thetas in the outer problem, where each one buys
+// a finite-difference gradient over the full population every outer iteration.  Fitting the
+// family to the modes alone would be badly wrong -- conditional modes are
+// shrunk toward the population, measurably so (a ten-fold collapse in spread on
+// Bauer's gamma model) -- so this draws from the Laplace posterior
+// N(mode, H^-1) instead.  That is exactly imp's own proposal density, obtained
+// here from the same impGetHessian(), which is what makes this "the same
+// machinery" rather than a third estimator of its own.
+//
+// Deliberately NOT etaMat: that is reserved for user-supplied initial etas that
+// override the defaults.  Here the etas are implied, and recomputed from the
+// current thetas every time this runs.
+//
+// Called only from the !calcGrad branch of innerOpt(), so it never fires during
+// a finite-difference perturbation -- these thetas must be frozen while the
+// outer gradient in the others is formed.
+// Diagnostic: how many times the M-step actually ran.  Exposed because
+// "the metadata built" is NOT the same as "the step fired", and inferring the
+// second from estimates is exactly how this went wrong before.
+long _foceiEtaDistN = 0;
+
+static bool foceiEtaDistMstep() {
+  if (!op_focei.etaDistOn || op_focei.etaDistInfo.size() == 0) return false;
+  // ESTIMATION ONLY.  The covariance step drives innerOpt() too -- to re-optimize
+  // the etas at each perturbed theta -- and not every one of those calls has
+  // calcGrad set, so without this the M-step fires inside the covariance and
+  // moves the parameters underneath the R and S matrices.  Measured: the final
+  // estimates then depend on which covMethod was asked for (lclm 1.0304 under
+  // "r", 1.0204 under "s", 1.0127 under "r,s", against 1.0299 with the step
+  // off), which is nonsense -- a covariance method must not change the fit.
+  //
+  // etaDistOptSkip is exactly the right marker: it is cleared immediately
+  // before the covariance re-runs foceiSetupTheta_(), so it is 1 for precisely
+  // the phase this step belongs to.
+  if (!op_focei.etaDistRun) return false;
+  if (op_focei.neta <= 0) return false;
+  Rcpp::List info(op_focei.etaDistInfo);
+  Rcpp::IntegerVector lat  = info["latent"];
+  Rcpp::IntegerVector fam  = info["fam"];
+  Rcpp::IntegerVector cw   = info["corWith"];
+  Rcpp::NumericMatrix args = info["args"];
+  Rcpp::NumericVector rho  = info["rho"];
+  Rcpp::List thIdx         = info["thetaIdx"];
+  Rcpp::Function mapFn     = Rcpp::as<Rcpp::Function>(info["map"]);
+  int nd = lat.size();
+  int neta = op_focei.neta;
+  if (nd <= 0 || args.nrow() != nd) return false;
+  for (int k = 0; k < nd; ++k) if (lat[k] < 0 || lat[k] >= neta) return false;
+  rx = getRxSolve_();
+  int nsub = getRxNsub(rx);
+  if (nsub <= 0) return false;
+  int nsamp = op_focei.etaDistNsamp > 0 ? op_focei.etaDistNsamp : 50;
+
+  // Pass 1 -- each subject's mode and the Cholesky factor of its conditional
+  // covariance.  Done for every subject BEFORE any draw, because
+  // impGetHessian() re-solves and rxode2 re-seeds the threefry engine per
+  // subject mid-solve; drawing in the same loop would have the solves walking
+  // over the sampling stream.
+  std::vector<arma::vec> mode; mode.reserve(nsub);
+  std::vector<arma::mat> chol; chol.reserve(nsub);
+  for (int id = 0; id < nsub; ++id) {
+    arma::mat H;
+    if (!impGetHessian(id, H) || !H.is_finite()) continue;
+    arma::mat V, L;
+    if (!arma::inv_sympd(V, H)) continue;
+    if (!arma::chol(L, V, "lower")) continue;
+    focei_ind *fInd = &(inds_focei[id]);
+    arma::vec m(neta);
+    for (int j = 0; j < neta; ++j) m[j] = fInd->eta[j];
+    if (!m.is_finite()) continue;
+    mode.push_back(m); chol.push_back(L);
+  }
+  if (mode.size() < 2) return false;
+
+  // Pass 2 -- the draws, off one seeded stream so a step is reproducible
+  // regardless of how many outer iterations preceded it.
+  setSeedEng1((uint32_t)(op_focei.impSeed + 7919L*(_foceiEtaDistN + 1)));
+  std::vector< std::vector<double> > w((size_t)nd);
+  for (int k = 0; k < nd; ++k) w[(size_t)k].reserve(mode.size()*(size_t)nsamp);
+  arma::vec z(neta), e(neta);
+  for (size_t i = 0; i < mode.size(); ++i) {
+    for (int s = 0; s < nsamp; ++s) {
+      for (int j = 0; j < neta; ++j) z[j] = rxNormEng(0.0, 1.0);
+      e = mode[i] + chol[i]*z;
+      if (!e.is_finite()) continue;
+      // latent normals actually seen by each declared eta's quantile: its own
+      // column, or -- for a copula member -- the correlated combination the
+      // model forms (rho*z_j + sqrt(1-rho^2)*z_k)
+      for (int k = 0; k < nd; ++k) {
+        double zv = e[lat[k]];
+        if (cw[k] >= 0) {
+          int j = cw[k];
+          if (j >= nd) return false;
+          double rr = rho[k];
+          if (!std::isfinite(rr)) rr = 0.0;
+          double s2 = 1.0 - rr*rr;
+          zv = rr*e[lat[j]] + (s2 > 0 ? std::sqrt(s2) : 0.0)*zv;
+        }
+        w[(size_t)k].push_back(zv);
+      }
+    }
+  }
+  if (w[0].size() < 2) return false;
+
+  bool moved = false;
+  for (int k = 0; k < nd; ++k) {
+    int f = fam[k];
+    int na = rxEtaDistNarg(f);
+    if (na <= 0 || na > args.ncol()) continue;
+    double a0[4];
+    for (int i = 0; i < na; ++i) a0[i] = args(k, i);
+    std::vector<double> ev; ev.reserve(w[(size_t)k].size());
+    for (size_t r = 0; r < w[(size_t)k].size(); ++r) {
+      // the boundary guard phiU() applies: pnorm saturates to 0/1 in double
+      // precision and an inverse CDF there is +/-Inf
+      double u = R::pnorm(w[(size_t)k][r], 0.0, 1.0, 1, 0);
+      if (u < 1e-15) u = 1e-15; else if (u > 1.0 - 1e-15) u = 1.0 - 1e-15;
+      double v = rxEtaDistQ(f, u, a0);
+      if (std::isfinite(v)) ev.push_back(v);
+    }
+    // Same guard saem's and imp's M-steps apply: the latent is standard normal
+    // by construction, so a pooled spread ABOVE 1 means the draws are not
+    // yet worth fitting rather than that the family is wrong.
+    if (!rxEtaDistSpreadOk(w[(size_t)k], 0.5, 1.0, nullptr)) continue;
+    double aNew[4];
+    for (int i = 0; i < na; ++i) aNew[i] = a0[i];
+    if (!rxEtaDistMle(f, ev, aNew)) continue;
+    Rcpp::NumericVector an(na);
+    for (int i = 0; i < na; ++i) an[i] = aNew[i];
+    Rcpp::RObject got = mapFn(k + 1, an);
+    if (got.isNULL()) continue;
+    Rcpp::NumericVector th(got);
+    Rcpp::IntegerVector ti = thIdx[k];
+    if (th.size() != ti.size()) continue;
+    bool ok = true;
+    for (int i = 0; i < th.size(); ++i) if (!std::isfinite(th[i])) ok = false;
+    if (!ok) continue;
+    for (int i = 0; i < th.size(); ++i) impSetThetaAll(ti[i], th[i]);
+    for (int i = 0; i < na; ++i) args(k, i) = aNew[i];
+    moved = true;
+  }
+  // Copula correlations: the latent pair is bivariate normal with unit
+  // variances, so this is a closed form, not a search.
+  if (info.containsElementNamed("corThetaIdx") && !Rf_isNull(info["corThetaIdx"])) {
+    Rcpp::IntegerVector cti = info["corThetaIdx"];
+    int m = 0;
+    for (int k = 0; k < nd && m < cti.size(); ++k) {
+      if (cw[k] < 0) continue;
+      // same spread guard the family fits get; see saem's etaDistMstep()
+      if (!rxEtaDistSpreadOk(w[(size_t)k], 0.5, 1.0, nullptr, nullptr) ||
+          !rxEtaDistSpreadOk(w[(size_t)cw[k]], 0.5, 1.0, nullptr, nullptr)) { m++; continue; }
+      double r = rxEtaDistCorMle(w[(size_t)cw[k]], w[(size_t)k]);
+      if (std::isfinite(r)) {
+        // the expansion carries the correlation as atanh(rho)
+        double v = std::atanh(r);
+        if (std::isfinite(v)) { rho[k] = r; impSetThetaAll(cti[m], v); moved = true; }
+      }
+      m++;
+    }
+  }
+  if (moved) {
+    _foceiEtaDistN++;
+    // the thetas moved, but likInner0 skips a re-solve when the eta repeats
+    for (int id = 0; id < nsub; ++id) impForceResolve(id);
+  }
+  return moved;
 }
 
 double impEvalJointLik(const arma::vec& eta, int id) {

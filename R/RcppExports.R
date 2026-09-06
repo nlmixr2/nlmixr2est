@@ -187,6 +187,10 @@ foceiCalcCov <- function(e) {
     .Call(`_nlmixr2est_foceiCalcCov`, e)
 }
 
+foceiEtaDistN_ <- function() {
+    .Call(`_nlmixr2est_foceiEtaDistN_`)
+}
+
 #' Fit/Evaluate FOCEi
 #'
 #' This shouldn't be called directly.
@@ -774,6 +778,18 @@ rxode2stateOde <- function(inp) {
 
 saemPhi1RefineN_ <- function() {
     .Call(`_nlmixr2est_saemPhi1RefineN_`)
+}
+
+saemEtaDistN_ <- function() {
+    .Call(`_nlmixr2est_saemEtaDistN_`)
+}
+
+saemEtaDistOn_ <- function() {
+    .Call(`_nlmixr2est_saemEtaDistOn_`)
+}
+
+rxEtaDistCorTest_ <- function(z1, z2) {
+    .Call(`_nlmixr2est_rxEtaDistCorTest_`, z1, z2)
 }
 
 saem_do_pred <- function(in_phi, in_evt, in_opt) {

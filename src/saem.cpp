@@ -35,164 +35,10 @@ using namespace Rcpp;
 // -- must be included AFTER the `using namespace Rcpp;` above.
 #include "scale.h"
 
-// ---- declared random-effect distributions: family dispatch ----------------
-//
-// The ODE-free M-step (see etaDistMstep()) needs the declared family's
-// quantile (to map a sampled latent normal to an eta) and its density (for the
-// likelihood).  Both come from Rmath's C API, so the whole M-step -- objective
-// AND optimizer -- stays in C++; nothing crosses into R on the hot loop.
-//
-// Codes are assigned by .etaDistFamilyCode() (R/etaDistMstep.R) and must stay
-// in sync with it.  Arguments are the family's NATIVE parameters in the order
-// the d*()/q*() pair takes them, EXCEPT that a rate is converted to Rmath's
-// scale here rather than in R.
-// Family codes: the ROW NUMBER in lotri::lotriEtaDists(), so the C++ dispatch
-// and the catalog cannot drift apart.  .etaDistFamilyCode() (R/etaDistMstep.R)
-// assigns them; a family this dispatch does not implement gets code 0 and falls
-// back to the general R path, which evaluates the declaration's own d*() call.
-#define RXETADIST_NORM        1   // mean, sd
-#define RXETADIST_STDNORMAL   2   // (none)
-#define RXETADIST_STUDENTT    3   // nu, mu, sigma
-#define RXETADIST_CAUCHY      4   // location, scale
-#define RXETADIST_DBLEXP      5   // mu, sigma
-#define RXETADIST_LOGIS       6   // location, scale
-#define RXETADIST_GUMBEL      7   // mu, beta
-#define RXETADIST_LNORM       8   // meanlog, sdlog
-#define RXETADIST_CHISQ       9   // df
-#define RXETADIST_INVCHISQ   10   // nu
-#define RXETADIST_SCINVCHISQ 11   // nu, sigma
-#define RXETADIST_EXP        12   // rate
-#define RXETADIST_GAMMA      13   // shape, rate
-#define RXETADIST_INVGAMMA   14   // alpha, beta
-#define RXETADIST_WEIBULL    15   // shape, scale
-#define RXETADIST_FRECHET    16   // alpha, sigma
-#define RXETADIST_RAYLEIGH   17   // sigma
-#define RXETADIST_PARETO     18   // y_min, alpha
-#define RXETADIST_PARETO2    19   // mu, lambda, alpha
-#define RXETADIST_BETA       20   // shape1, shape2
-#define RXETADIST_BETAPROP   21   // mu, kappa
-#define RXETADIST_UNIF       22   // min, max
-
-static inline int rxEtaDistNarg(int fam) {
-  switch (fam) {
-  case RXETADIST_STDNORMAL:                      return 0;
-  case RXETADIST_CHISQ:  case RXETADIST_INVCHISQ:
-  case RXETADIST_EXP:    case RXETADIST_RAYLEIGH: return 1;
-  case RXETADIST_STUDENTT: case RXETADIST_PARETO2: return 3;
-  case RXETADIST_NORM:   case RXETADIST_CAUCHY: case RXETADIST_DBLEXP:
-  case RXETADIST_LOGIS:  case RXETADIST_GUMBEL: case RXETADIST_LNORM:
-  case RXETADIST_SCINVCHISQ: case RXETADIST_GAMMA: case RXETADIST_INVGAMMA:
-  case RXETADIST_WEIBULL: case RXETADIST_FRECHET: case RXETADIST_PARETO:
-  case RXETADIST_BETA:   case RXETADIST_BETAPROP: case RXETADIST_UNIF: return 2;
-  default: return -1;                 // unimplemented -> R fallback
-  }
-}
-
-// Native parameters constrained positive, as a bit mask.  nelder_fn is
-// unbounded, so the objective optimizes log() of these.
-static inline int rxEtaDistPosMask(int fam) {
-  switch (fam) {
-  case RXETADIST_NORM: case RXETADIST_CAUCHY: case RXETADIST_DBLEXP:
-  case RXETADIST_LOGIS: case RXETADIST_GUMBEL: case RXETADIST_LNORM:
-  case RXETADIST_BETAPROP:                                    return 0x2;
-  case RXETADIST_STUDENTT:                                    return 0x5; // nu, sigma
-  case RXETADIST_PARETO2:                                     return 0x6; // lambda, alpha
-  case RXETADIST_CHISQ: case RXETADIST_INVCHISQ:
-  case RXETADIST_EXP:   case RXETADIST_RAYLEIGH:              return 0x1;
-  case RXETADIST_SCINVCHISQ: case RXETADIST_GAMMA:
-  case RXETADIST_INVGAMMA: case RXETADIST_WEIBULL:
-  case RXETADIST_FRECHET: case RXETADIST_PARETO:
-  case RXETADIST_BETA:                                        return 0x3;
-  default:                                                    return 0x0;
-  }
-}
-
-// quantile: latent uniform -> eta.  Mirrors the catalog's own templates.
-static inline double rxEtaDistQ(int fam, double u, const double *a) {
-  switch (fam) {
-  case RXETADIST_NORM:      return R::qnorm(u, a[0], a[1], 1, 0);
-  case RXETADIST_STDNORMAL: return R::qnorm(u, 0.0, 1.0, 1, 0);
-  case RXETADIST_STUDENTT:  return a[1] + a[2]*R::qt(u, a[0], 1, 0);
-  case RXETADIST_CAUCHY:    return R::qcauchy(u, a[0], a[1], 1, 0);
-  case RXETADIST_DBLEXP: {
-    double sg = (u < 0.5) ? -1.0 : 1.0;
-    return a[0] - a[1]*sg*std::log1p(-2.0*sg*(u - 0.5));
-  }
-  case RXETADIST_LOGIS:     return R::qlogis(u, a[0], a[1], 1, 0);
-  case RXETADIST_GUMBEL:    return a[0] - a[1]*std::log(-std::log(u));
-  case RXETADIST_LNORM:     return R::qlnorm(u, a[0], a[1], 1, 0);
-  case RXETADIST_CHISQ:     return R::qchisq(u, a[0], 1, 0);
-  // 2*gammapInv(nu/2, 1-u) IS qchisq(1-u, nu)
-  case RXETADIST_INVCHISQ:  return 1.0/R::qchisq(1.0 - u, a[0], 1, 0);
-  case RXETADIST_SCINVCHISQ: return a[0]*a[1]*a[1]/R::qchisq(1.0 - u, a[0], 1, 0);
-  case RXETADIST_EXP:       return R::qexp(u, 1.0/a[0], 1, 0);
-  case RXETADIST_GAMMA:     return R::qgamma(u, a[0], 1.0/a[1], 1, 0);
-  case RXETADIST_INVGAMMA:  return a[1]/R::qgamma(1.0 - u, a[0], 1.0, 1, 0);
-  case RXETADIST_WEIBULL:   return R::qweibull(u, a[0], a[1], 1, 0);
-  case RXETADIST_FRECHET:   return a[1]*std::pow(-std::log(u), -1.0/a[0]);
-  case RXETADIST_RAYLEIGH:  return a[0]*std::sqrt(-2.0*std::log1p(-u));
-  case RXETADIST_PARETO:    return a[0]*std::pow(1.0 - u, -1.0/a[1]);
-  case RXETADIST_PARETO2:   return a[0] + a[1]*(std::pow(1.0 - u, -1.0/a[2]) - 1.0);
-  case RXETADIST_BETA:      return R::qbeta(u, a[0], a[1], 1, 0);
-  case RXETADIST_BETAPROP:  return R::qbeta(u, a[0]*a[1], (1.0 - a[0])*a[1], 1, 0);
-  case RXETADIST_UNIF:      return R::qunif(u, a[0], a[1], 1, 0);
-  default:                  return NA_REAL;
-  }
-}
-
-// log density at an eta value
-static inline double rxEtaDistLogD(int fam, double x, const double *a) {
-  switch (fam) {
-  case RXETADIST_NORM:      return R::dnorm(x, a[0], a[1], 1);
-  case RXETADIST_STDNORMAL: return R::dnorm(x, 0.0, 1.0, 1);
-  case RXETADIST_STUDENTT:  // location-scale t: dt(z)/sigma
-    return R::dt((x - a[1])/a[2], a[0], 1) - std::log(a[2]);
-  case RXETADIST_CAUCHY:    return R::dcauchy(x, a[0], a[1], 1);
-  case RXETADIST_DBLEXP:
-    return -std::log(2.0*a[1]) - std::fabs(x - a[0])/a[1];
-  case RXETADIST_LOGIS:     return R::dlogis(x, a[0], a[1], 1);
-  case RXETADIST_GUMBEL: {
-    double z = (x - a[0])/a[1];
-    return -std::log(a[1]) - z - std::exp(-z);
-  }
-  case RXETADIST_LNORM:     return R::dlnorm(x, a[0], a[1], 1);
-  case RXETADIST_CHISQ:     return R::dchisq(x, a[0], 1);
-  case RXETADIST_INVCHISQ:  // X = 1/Y, Y~chisq(nu); |dY/dX| = 1/x^2
-    return (x > 0) ? R::dchisq(1.0/x, a[0], 1) - 2.0*std::log(x) : R_NegInf;
-  case RXETADIST_SCINVCHISQ: {
-    if (x <= 0) return R_NegInf;
-    double nu = a[0], t2 = a[1]*a[1];
-    return (nu/2.0)*std::log(nu*t2/2.0) - R::lgammafn(nu/2.0)
-      - (1.0 + nu/2.0)*std::log(x) - nu*t2/(2.0*x);
-  }
-  case RXETADIST_EXP:       return R::dexp(x, 1.0/a[0], 1);
-  case RXETADIST_GAMMA:     return R::dgamma(x, a[0], 1.0/a[1], 1);
-  case RXETADIST_INVGAMMA:
-    return (x > 0) ? a[0]*std::log(a[1]) - R::lgammafn(a[0])
-      - (a[0] + 1.0)*std::log(x) - a[1]/x : R_NegInf;
-  case RXETADIST_WEIBULL:   return R::dweibull(x, a[0], a[1], 1);
-  case RXETADIST_FRECHET: {
-    if (x <= 0) return R_NegInf;
-    double z = x/a[1];
-    return std::log(a[0]/a[1]) - (1.0 + a[0])*std::log(z) - std::pow(z, -a[0]);
-  }
-  case RXETADIST_RAYLEIGH:
-    return (x > 0) ? std::log(x) - 2.0*std::log(a[0]) - x*x/(2.0*a[0]*a[0])
-      : R_NegInf;
-  case RXETADIST_PARETO:
-    return (x >= a[0]) ? std::log(a[1]) + a[1]*std::log(a[0])
-      - (a[1] + 1.0)*std::log(x) : R_NegInf;
-  case RXETADIST_PARETO2: {
-    double z = (x - a[0])/a[1];
-    return (z >= 0) ? std::log(a[2]/a[1]) - (a[2] + 1.0)*std::log1p(z) : R_NegInf;
-  }
-  case RXETADIST_BETA:      return R::dbeta(x, a[0], a[1], 1);
-  case RXETADIST_BETAPROP:
-    return R::dbeta(x, a[0]*a[1], (1.0 - a[0])*a[1], 1);
-  case RXETADIST_UNIF:      return R::dunif(x, a[0], a[1], 1);
-  default:                  return R_NegInf;
-  }
-}
+// The declared-distribution family dispatch and the ODE-free maximum-
+// likelihood M-step live in their own translation unit so saem and imp share
+// one implementation -- see src/etaDistFam.h.
+#include "etaDistFam.h"
 
 typedef void (*fn_ptr) (double *, double *);
 
@@ -775,98 +621,6 @@ static double gPhi0Obj1DR(double x);
 static arma::vec gPhi0Lo, gPhi0Hi, gPhi0RefBest;
 static int gPhi0RefEvalMax = 0, gPhi0RefEvalN = 0;
 static double gPhi0RefBestF = 0.0;
-// ---- ODE-free M-step for a declared distribution --------------------------
-//
-// In the (y, eta) augmentation the complete-data likelihood factors as
-//   log p(y | eta) + log p(eta | theta_dist)
-// and theta_dist appears ONLY in the second term, so its M-step is a pure
-// distribution fit to the sampled etas -- no data term, no ODE solve -- exactly
-// as the residual step (_saemOpt) fits accumulated residuals rather than
-// re-solving.  rxEtaDistExpand() breaks that by rewriting eta = Q(phi(z)) with
-// z ~ N(0,1), which moves theta_dist into the DATA likelihood and lands it in
-// refinePhi0Lik()'s derivative-free search.  EM lets the augmentation be chosen
-// freely: sample in z-space, take this M-step in eta-space.
-//
-// Not circular: prior draws of z would make Q(phi(z)) exactly family(theta_old)
-// and return theta_old, but these are POSTERIOR draws -- which is why their
-// measured spread is ~0.94 rather than 1.0 -- so they carry data information.
-//
-// Estimated in the family's NATIVE parameters (option A): the objective and the
-// simplex are both C++, with no R on the hot loop.  Positive parameters are
-// optimized on the log scale because nelder_fn is unbounded.
-static std::vector<double> gEtaDistVals;   // sampled etas for the current eta
-static int gEtaDistFam = 0;
-static int gEtaDistNa = 0;
-static int gEtaDistPos = 0;
-
-static inline void gEtaDistUnpack(const double *p, double *a) {
-  for (int i = 0; i < gEtaDistNa; ++i) {
-    a[i] = (gEtaDistPos & (1 << i)) ? std::exp(p[i]) : p[i];
-  }
-}
-
-static double gEtaDistObj(const double *p) {
-  double a[4];
-  gEtaDistUnpack(p, a);
-  for (int i = 0; i < gEtaDistNa; ++i) if (!std::isfinite(a[i])) return 1e300;
-  double nll = 0.0;
-  const size_t n = gEtaDistVals.size();
-  for (size_t i = 0; i < n; ++i) {
-    double l = rxEtaDistLogD(gEtaDistFam, gEtaDistVals[i], a);
-    if (!std::isfinite(l)) return 1e300;
-    nll -= l;
-  }
-  return std::isfinite(nll) ? nll : 1e300;
-}
-static void gEtaDistNmFn(double *p, double *fx) { *fx = gEtaDistObj(p); }
-
-// Fit `fam` to `vals` by maximum likelihood, starting from native `a0`.
-// Returns false and leaves `a0` untouched when the fit fails.
-static bool rxEtaDistMle(int fam, const std::vector<double> &vals, double *a0) {
-  int na = rxEtaDistNarg(fam);
-  if (na <= 0 || vals.size() < 2) return false;
-  gEtaDistFam = fam; gEtaDistNa = na; gEtaDistPos = rxEtaDistPosMask(fam);
-  gEtaDistVals = vals;
-  std::vector<double> st(na), stp(na), xm(na);
-  for (int i = 0; i < na; ++i) {
-    double v = (gEtaDistPos & (1 << i)) ? std::log(a0[i]) : a0[i];
-    if (!std::isfinite(v)) return false;
-    st[i] = v; xm[i] = v;
-    // nelder_fn derives nothing from the start, so give every coordinate a
-    // usable step even when it starts at zero
-    stp[i] = (std::fabs(v) > 1e-8) ? 0.1*std::fabs(v) : 0.1;
-  }
-  int iconv, it, nfcall, iprint = 0;
-  double ynewlo;
-  nelder_fn(gEtaDistNmFn, na, st.data(), stp.data(), 200*na, 1e-8,
-            1.0, 2.0, 0.5, &iconv, &it, &nfcall, &ynewlo, xm.data(), &iprint);
-  if (!std::isfinite(ynewlo) || ynewlo >= 1e300) return false;
-  double a[4];
-  gEtaDistUnpack(xm.data(), a);
-  for (int i = 0; i < na; ++i) {
-    if (!std::isfinite(a[i])) return false;
-    a0[i] = a[i];
-  }
-  return true;
-}
-
-// Closed-form M-step for a Gaussian copula's correlation: the latent pair is
-// bivariate normal with UNIT variances, so the constrained MLE is sum(w1*w2)/n
-// -- a closed form, not a search.
-static double rxEtaDistCorMle(const std::vector<double> &w1,
-                              const std::vector<double> &w2) {
-  size_t n = std::min(w1.size(), w2.size());
-  if (n < 2) return NA_REAL;
-  double s = 0.0; size_t m = 0;
-  for (size_t i = 0; i < n; ++i) {
-    if (std::isfinite(w1[i]) && std::isfinite(w2[i])) { s += w1[i]*w2[i]; m++; }
-  }
-  if (m < 2) return NA_REAL;
-  double r = s / (double)m;
-  if (!std::isfinite(r)) return NA_REAL;
-  return std::max(std::min(r, 0.999), -0.999);
-}
-
 static double gPhi0RefObj(const double *p);
 static void gPhi0NmFn(double *p, double *fx);
 static double gPhi0RefObjR(Rcpp::NumericVector p);
@@ -895,6 +649,15 @@ static std::vector<int> gPhi1FreeIx;
 // the mechanism executed rather than infer it from matching estimates alone
 // (evaluation criterion #2 in the plan).
 static long _saemPhi1RefineN = 0;
+// Same idea for the declared-distribution M-step: every way it can decline to
+// run is silent, and a fit whose estimates look reasonable is no evidence that
+// it engaged.  Counted so a test can prove the mechanism executed rather than
+// infer it from matching estimates -- which it does not: with the M-step inert,
+// etaDistMstep=TRUE and FALSE give bit-identical fits.
+static long _saemEtaDistN = 0;
+// Whether THIS fit asked for the declared-distribution M-step at all, so
+// "never ran" can be told apart from "was never requested".
+static int _saemEtaDistOn = 0;
 
 // Fill an armadillo mat/vec from rxode2's threefry engine (the current seeded
 // stream).  Used for the MCMC proposals; the saem ODE solve does not draw from
@@ -1372,9 +1135,32 @@ public:
     for (unsigned int j = 0; j < fixedIx0.n_elem; ++j) {
       if (fixedIx0(j) < (unsigned int)nphi0) phi0Fix[(size_t)fixedIx0(j)] = true;
     }
+    // A theta the distribution M-step owns must NOT also be optimized here --
+    // two optimizers on the same parameter, against different objectives, is
+    // exactly the fight this change exists to end.
+    // Columns another mechanism owns, held out of this refinement.  Split the
+    // same way the M-step is: the family thetas only when etaDistOn, the copula
+    // theta whenever the closed form is running.  The closed form has ALREADY
+    // written its damped value into mprior_phi0 this iteration, so excluding it
+    // here is what makes that value the warm start rather than something the
+    // search immediately overwrites.
+    std::vector<bool> phi0Dist((size_t)nphi0, false);
+    if (etaDistOn && etaDistNdist > 0 &&
+        (int)etaDistThetaPhi0.n_rows == etaDistNdist) {
+      for (int k = 0; k < etaDistNdist; ++k) {
+        for (int t = 0; t < etaDistNth(k) && t < (int)etaDistThetaPhi0.n_cols; ++t) {
+          int c = etaDistThetaPhi0(k, t);
+          if (c >= 0 && c < nphi0) phi0Dist[(size_t)c] = true;
+        }
+      }
+    }
+    // the copula theta keyed off its OWN flag, not the family M-step's
+    if (etaDistCorOn && etaDistCorPhi0 >= 0 && etaDistCorPhi0 < nphi0) {
+      phi0Dist[(size_t)etaDistCorPhi0] = true;
+    }
     gPhi0FreeIx.clear();
     for (int c = 0; c < nphi0; ++c) {
-      if (!phi0Fix[(size_t)c]) gPhi0FreeIx.push_back(c);
+      if (!phi0Fix[(size_t)c] && !phi0Dist[(size_t)c]) gPhi0FreeIx.push_back(c);
     }
     if (gPhi0FreeIx.empty()) return;
     // Snapshot the fixed MCOV0 entries: the closing least-squares update rewrites
@@ -2379,12 +2165,26 @@ public:
     if (x.containsElementNamed("iacceptSingle")) iacceptSingle = as<double>(x["iacceptSingle"]);
     if (!std::isfinite(iacceptSingle) || iacceptSingle < 0.0 || iacceptSingle >= 1.0) iacceptSingle = 0.0;
     if (x.containsElementNamed("etaDistOn")) etaDistOn = as<int>(x["etaDistOn"]);
-    if (etaDistOn && x.containsElementNamed("etaDistLatent")) {
+    if (x.containsElementNamed("etaDistCorOn")) etaDistCorOn = as<int>(x["etaDistCorOn"]);
+    if (x.containsElementNamed("etaDistDebug")) etaDistDebug = as<int>(x["etaDistDebug"]);
+    if (x.containsElementNamed("etaDistStart")) etaDistStart = as<int>(x["etaDistStart"]);
+    if (x.containsElementNamed("etaDistSdLo")) etaDistSdLo = as<double>(x["etaDistSdLo"]);
+    if (x.containsElementNamed("etaDistSdHi")) etaDistSdHi = as<double>(x["etaDistSdHi"]);
+    // per fit, not per session: the question this answers is "did THIS fit's
+    // M-step run", so it cannot accumulate across fits the way
+    // _saemPhi1RefineN does
+    _saemEtaDistN = 0;
+    _saemEtaDistOn = etaDistOn;
+    if ((etaDistOn || etaDistCorOn) && x.containsElementNamed("etaDistLatent")) {
       etaDistLatent  = as<ivec>(x["etaDistLatent"]);
       etaDistFam     = as<ivec>(x["etaDistFam"]);
       etaDistCorWith = as<ivec>(x["etaDistCorWith"]);
       etaDistArgs    = as<mat>(x["etaDistArgs"]);
       etaDistRho     = as<vec>(x["etaDistRho"]);
+      etaDistThetaPhi0 = as<imat>(x["etaDistThetaPhi0"]);
+      etaDistNth     = as<ivec>(x["etaDistNth"]);
+      etaDistCorPhi0 = as<int>(x["etaDistCorPhi0"]);
+      if (x.containsElementNamed("etaDistMapFn")) etaDistMapR = x["etaDistMapFn"];
       etaDistNdist   = (int)etaDistLatent.n_elem;
     }
     if (x.containsElementNamed("nu1B")) nu1B = as<int>(x["nu1B"]);
@@ -2677,6 +2477,8 @@ public:
 
     nonMuThetaRegress = x.containsElementNamed("nonMuThetaRegress") ?
       as<int>(x["nonMuThetaRegress"]) : 0;
+    nonMuThetaStart = x.containsElementNamed("nonMuThetaStart") ?
+      as<int>(x["nonMuThetaStart"]) : -1;
     nonMuThetaOptType = x.containsElementNamed("nonMuThetaOptType") ?
       as<int>(x["nonMuThetaOptType"]) : 0;
     nonMuThetaMaxEval = x.containsElementNamed("nonMuThetaMaxEval") ?
@@ -3867,6 +3669,38 @@ public:
         if (fixedIx0.n_elem>0) {
           Plambda0(fixedIx0) = MCOV0(jcov0(fixedIx0));
         }
+        // A theta the declared-distribution M-step owns must not ALSO be moved
+        // by this GLS.  The two answer to different objectives and pull in
+        // opposite directions: measured on Bauer's gamma model, the GLS alone
+        // drives lclm from 6.686 up to 7.51 while the M-step's own target is
+        // 4.5, and the spread guard means the M-step only fires on a minority
+        // of iterations -- so the GLS wins the rest and the family's variance
+        // absorbs the conflict (rvCL 51.6 against a truth of 0.086).
+        //
+        // Holding them here is what makes the M-step the SOLE owner, which is
+        // the whole point of taking them out of refinePhi0Lik as well: on an
+        // iteration the guard blocks, the right behavior is for these thetas
+        // to stay put, not to drift.
+        if (etaDistOn && etaDistNdist > 0) {
+          for (int k = 0; k < etaDistNdist; ++k) {
+            for (int t = 0; t < etaDistNth(k); ++t) {
+              int c = etaDistThetaPhi0(k, t);
+              if (c < 0 || c >= nphi0) continue;
+              uvec li = arma::find(LCOV0.col(c) == 1);
+              for (unsigned int q = 0; q < li.n_elem; ++q) {
+                uvec hit = arma::find(jcov0 == (li(q) + c*(unsigned int)LCOV0.n_rows));
+                if (hit.n_elem == 1) Plambda0(hit(0)) = MCOV0(jcov0(hit(0)));
+              }
+            }
+          }
+          if (etaDistCorOn && etaDistCorPhi0 >= 0 && etaDistCorPhi0 < nphi0) {
+            uvec li = arma::find(LCOV0.col(etaDistCorPhi0) == 1);
+            for (unsigned int q = 0; q < li.n_elem; ++q) {
+              uvec hit = arma::find(jcov0 == (li(q) + etaDistCorPhi0*(unsigned int)LCOV0.n_rows));
+              if (hit.n_elem == 1) Plambda0(hit(0)) = MCOV0(jcov0(hit(0)));
+            }
+          }
+        }
         MCOV0(jcov0)=Plambda0;
       }
       // Phase 4 (SAEM general-likelihood theta plan): once the direct phi1
@@ -3901,6 +3735,60 @@ public:
       // is damped by pas(kiter) anyway, so refining every iteration buys
       // little against a whole extra optimization (nonMuThetaMaxEval solves of
       // the full population) per iteration.
+      // ODE-free distribution M-step.  Runs EVERY iteration, like the residual
+      // step: it reads only the sampled etas, so there is no solve to amortize.
+      if (etaDistOn && etaDistNdist > 0 && nphi0 > 0 &&
+          kiter >= (unsigned int)etaDistStart) {
+        if (etaDistMstep(kiter, pas)) {
+          _saemEtaDistN++;
+          // Map the updated NATIVE parameters back onto the user's thetas.
+          // This is the ONE place the loop touches R -- once per iteration, not
+          // per objective evaluation -- because a declared family's arguments
+          // are arbitrary expressions over thetas that C++ cannot evaluate.
+          if (etaDistOn && !etaDistMapR.isNULL()) {
+            Rcpp::Function mapFn(etaDistMapR);
+            for (int k = 0; k < etaDistNdist; ++k) {
+              int na = rxEtaDistNarg(etaDistFam(k));
+              if (na <= 0) continue;
+              NumericVector av(na);
+              for (int i = 0; i < na; ++i) av[i] = etaDistArgs(k, i);
+              RObject got = mapFn(k + 1, av);
+              if (got.isNULL()) continue;
+              NumericVector th(got);
+              int nth = etaDistNth(k);
+              if ((int)th.size() != nth) continue;
+              for (int t = 0; t < nth; ++t) {
+                int c = etaDistThetaPhi0(k, t);
+                if (c < 0 || c >= nphi0 || !std::isfinite(th[t])) continue;
+                mprior_phi0.col(c).fill(th[t]);
+              }
+            }
+          }
+          if (etaDistCorPhi0 >= 0 && etaDistCorPhi0 < nphi0) {
+            // the copula theta is atanh(rho): the expansion writes the
+            // correlation as tanh() of it
+            double r = 0.0; int nr = 0;
+            for (int k = 0; k < etaDistNdist; ++k) {
+              if (etaDistCorWith(k) >= 0) { r += etaDistRho(k); nr++; }
+            }
+            if (nr > 0) {
+              r /= (double)nr;
+              double a = std::atanh(std::max(std::min(r, 0.999), -0.999));
+              if (std::isfinite(a)) mprior_phi0.col(etaDistCorPhi0).fill(a);
+            }
+          }
+          // keep MCOV0 consistent so the next COV0*MCOV0 reproduces this
+          for (int c = 0; c < nphi0; c++) {
+            uvec li = arma::find(LCOV0.col(c) == 1);
+            if (li.n_elem == 0) continue;
+            mat Xc = COV0.cols(li);
+            vec bc;
+            if (arma::solve(bc, Xc.t() * Xc, Xc.t() * mprior_phi0.col(c))) {
+              for (unsigned int j = 0; j < li.n_elem; ++j) MCOV0(li(j), c) = bc(j);
+            }
+          }
+        }
+      }
       if (zeroOmegaDirect && saemZeroOmegaPhi1.n_elem > 0 &&
           kiter >= (unsigned int)nb_sa &&
           (kiter - (unsigned int)nb_sa) % (unsigned int)nonMuThetaEvery == 0) {
@@ -3916,9 +3804,20 @@ public:
       // nonMuThetaEvery>1 refines only every k-th iteration; mprior_phi0 holds its
       // last refined value in between (the SA step pas(kiter) moves it a fraction
       // of one optimizer step anyway, so refining every iteration buys little).
+      // The start point is its OWN quantity, not niter_phi0.  niter_phi0 is half
+      // of nBurn+nEm, so on a default fit this refinement -- nlmixr2's analogue
+      // of the NONMEM technical guide's non-mu theta route (eqs 1.47-1.52) --
+      // is barred until the whole burn-in is over.  Measured on Bauer's gamma
+      // model: the phi0 GLS parks CL at 7.51 within 24 iterations, this cannot
+      // run until 200, and by then pas(kiter) ~ 1/k is far too small to travel
+      // back to the 4.79 NONMEM's SAEM reaches.  The thetas are frozen for 376
+      // of 400 iterations, which is why a 12x evaluation budget moved CL by
+      // 0.004: the search never gets a chance to matter.
+      unsigned int phi0Start = (nonMuThetaStart >= 0) ?
+        (unsigned int)nonMuThetaStart : (unsigned int)niter_phi0;
       if ((distribution == 4 || nonMuThetaRegress) &&
-          nphi0 > 0 && kiter >= (unsigned int)niter_phi0 &&
-          (kiter - (unsigned int)niter_phi0) % (unsigned int)nonMuThetaEvery == 0) {
+          nphi0 > 0 && kiter >= phi0Start &&
+          (kiter - phi0Start) % (unsigned int)nonMuThetaEvery == 0) {
         refinePhi0Lik(kiter, pas);
       }
       mprior_phi0.set_size(N, nphi0);                              // deal w/ nphi0=0
@@ -4963,12 +4862,67 @@ private:
   // distribution fit to the sampled etas rather than through the data
   // likelihood.  0 = off (the historical behaviour).
   int etaDistOn = 0;
+  // saemControl(etaDistCorMstep=): update a declared Gaussian copula's
+  // correlation from its CLOSED FORM -- the sample correlation of the latent
+  // pair -- rather than leaving it to the general theta refinement.
+  //
+  // Independent of etaDistOn: the correlation needs this even when the family
+  // parameters are estimated the ordinary way.  rxEtaDistExpand() gives the
+  // rxCor.* theta an atanh scale with lower=-Inf/upper=Inf (rxode2
+  // R/etaDist.R), so tanh() of it can reach 1 and refinePhi0Lik -- which
+  // maximizes the observation likelihood CONDITIONAL on the current draws, with
+  // no prior term to penalize degeneracy -- walks there: at rho=1 the copula
+  // partner's latent collapses onto its partner's and two random effects become
+  // one.  Measured on Bauer's gamma data, rho pinned at 1.000 in 3 of 7 fits
+  // across seeds and start points, contributing 128% of one of the eight MARE
+  // terms on its own.
+  //
+  // The closed form cannot do that: it is a correlation coefficient, bounded by
+  // construction.  Damped like every other M-step here, and the damped value is
+  // what the refinement then warm-starts from.
+  int etaDistCorOn = 0;
+  // getOption("nlmixr2.etaDistDebug"): 0 off; 1 traces the M-step (the first two
+  // iterations and every tenth thereafter) while it acts; 2 traces the same but
+  // does NOT apply the update, so the trajectory shown is an ordinary fit's,
+  // unperturbed.  Level 2 is what established that the early wide latent spread
+  // is a mixing transient rather than a broken construction.
+  int etaDistDebug = 0;
+  // First iteration the M-step is allowed to run.  It must NOT run from
+  // iteration 0: the whole signal it reads is the pooled latents' departure
+  // from N(0,1), so an unmixed chain is indistinguishable from a badly wrong
+  // family, and it acts on the difference.  Measured on Bauer's gamma model
+  // (etaDistDebug=2, which traces without acting), the pooled latent spread
+  // starts at 2.15 and relaxes through 1.58 (it=10) and 1.25 (it=20) to 1.04
+  // (it=30); acting on the it=0 draws drove the fitted shape from 7.39 to 1.74
+  // and then to 0.51, each shrink widening the mapped etas and feeding the
+  // next -- a runaway, with the copula correlation pinned at its clamp on the
+  // way.  saemix gates the analogous ind.fix10 step to kiter >= nbiter.sa for
+  // the same reason (R/main_mstep.R:57).
+  int etaDistStart = 0;
+  // Acceptable pooled spread for the latent normals; outside this the draws are
+  // not yet a sample from anything worth fitting.
+  //
+  // The upper bound is 1 on principle, not by tuning: the latent's PRIOR is
+  // exactly N(0,1), and a posterior is not wider than its prior, so a pooled
+  // spread above 1 means the chain has not settled -- it is never evidence that
+  // the family is too narrow.  Measured on Bauer's gamma model the spread
+  // starts at 2.15, is still 1.43 at iteration 10 and 1.25 at 20, and only
+  // settles (1.04 at 30, 0.93 at 50, ~0.85 thereafter) once the chain has
+  // mixed.  An earlier version of this bound was 1.5, which admitted exactly
+  // those transients: acting on the it=10 draws took the gamma's shape from
+  // 7.389 to 3.696, and ten iterations later it was 0.0885 with the mapped etas
+  // averaging 176 -- each widening feeding the next.
+  double etaDistSdLo = 0.5, etaDistSdHi = 1.0;
   int etaDistNdist = 0;          // number of declared random effects
   ivec etaDistLatent;            // phi column of each one's OWN latent normal
   ivec etaDistFam;               // family code (rxEtaDistQ/rxEtaDistLogD)
   ivec etaDistCorWith;           // declared eta it is copula-correlated with, or -1
   mat etaDistArgs;               // current NATIVE parameters, ndist x maxNarg
   vec etaDistRho;                // current copula correlation per declared eta
+  imat etaDistThetaPhi0;         // phi0 COLUMN of each declared theta
+  ivec etaDistNth;               // how many thetas each declared eta has
+  int etaDistCorPhi0 = -1;       // phi0 column of the copula correlation theta
+  RObject etaDistMapR;           // R closure: (k, args) -> thetas (once/iter)
   // Running per-subject SECOND MOMENT E[phi phi'] (nphi x nphi x N).  cpost_phi
   // only keeps the elementwise E[phi^2], i.e. the diagonal; NONMEM's mode 1B
   // proposal density uses the full individual conditional variance --- its
@@ -5104,7 +5058,8 @@ private:
   int nonMuThetaOptType;
   int nonMuThetaMaxEval;
   int nonMuThetaSweeps;
-  int nonMuThetaEvery;
+int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_phi0
+    int nonMuThetaEvery;
   double nonMuThetaTol;
   // Cached: does any phi0 param change the structural prediction f?  -1 unknown,
   // 0 no (residual/likelihood only -> freeze the ODE during the phi0 opt like
@@ -5358,7 +5313,7 @@ private:
   // Returns true when anything moved, in which case the caller maps the new
   // NATIVE parameters back onto the user's thetas.
   bool etaDistMstep(unsigned int kiter, const vec &pas) {
-    if (!etaDistOn || etaDistNdist <= 0) return false;
+    if ((!etaDistOn && !etaDistCorOn) || etaDistNdist <= 0) return false;
     if (etaDistArgs.n_rows != (unsigned int)etaDistNdist) return false;
     bool moved = false;
     // latent normals actually seen by each declared eta's quantile: its own
@@ -5382,7 +5337,7 @@ private:
       }
     }
     // each declared family: latent -> eta via the CURRENT parameters, then MLE
-    for (int k = 0; k < etaDistNdist; ++k) {
+    for (int k = 0; etaDistOn && k < etaDistNdist; ++k) {
       int fam = etaDistFam(k);
       int na = rxEtaDistNarg(fam);
       if (na <= 0) continue;
@@ -5397,9 +5352,40 @@ private:
         double e = rxEtaDistQ(fam, u, a0);
         if (std::isfinite(e)) ev.push_back(e);
       }
+      // Guard on the assumption the whole step rests on: the latent is
+      // standard normal BY CONSTRUCTION, so the only reason the pooled draws
+      // depart from that is information -- or a chain that has not mixed.  The
+      // step cannot tell those apart, and acting on the second is a runaway
+      // (see etaDistStart).  A spread far from 1 is therefore not signal to be
+      // fitted but a sample not yet worth fitting, so skip it.  Self-tuning,
+      // unlike an iteration count, and it degrades the right way: a chain that
+      // never settles simply never updates, which the M-step counter reports
+      // rather than hides.
+      double lsd = NA_REAL;
+      bool spreadOk = rxEtaDistSpreadOk(w[(size_t)k], etaDistSdLo, etaDistSdHi, &lsd);
       double aNew[4];
       for (int i = 0; i < na; ++i) aNew[i] = a0[i];
-      if (!rxEtaDistMle(fam, ev, aNew)) continue;
+      bool mleOk = spreadOk && rxEtaDistMle(fam, ev, aNew);
+      if (etaDistDebug && (kiter % 10 == 0 || kiter < 2)) {
+        double ws = 0, ws2 = 0, es = 0, es2 = 0;
+        size_t nw = w[(size_t)k].size();
+        for (size_t r = 0; r < nw; ++r) { ws += w[(size_t)k][r]; ws2 += w[(size_t)k][r]*w[(size_t)k][r]; }
+        for (size_t r = 0; r < ev.size(); ++r) { es += ev[r]; es2 += ev[r]*ev[r]; }
+        double wm = nw ? ws/nw : 0, wsd = nw ? std::sqrt(std::max(0.0, ws2/nw - wm*wm)) : 0;
+        double em = ev.size() ? es/ev.size() : 0;
+        double esd = ev.size() ? std::sqrt(std::max(0.0, es2/ev.size() - em*em)) : 0;
+        RSprintf("[etaDist k=%d it=%d] nw=%d latent m=%.4f sd=%.4f | eta n=%d m=%.4g sd=%.4g | a0=(%.4g,%.4g) -> aNew=(%.4g,%.4g) ok=%d\n",
+                 k, (int)kiter, (int)nw, wm, wsd, (int)ev.size(), em, esd,
+                 a0[0], na>1?a0[1]:0.0, aNew[0], na>1?aNew[1]:0.0, (int)mleOk);
+        if (!spreadOk) RSprintf("[etaDist k=%d it=%d] SKIPPED: latent sd %.4f outside [%.2f, %.2f]\n",
+                                k, (int)kiter, lsd, etaDistSdLo, etaDistSdHi);
+      }
+      if (!mleOk) continue;
+      // etaDistDebug >= 2 observes without acting: the trace above then shows
+      // what the M-step WOULD have seen over an otherwise ordinary fit, which
+      // is the only way to watch the latent spread settle without the M-step's
+      // own updates perturbing it.
+      if (etaDistDebug > 1) continue;
       // stochastic-approximation damping, as every other M-step here does
       for (int i = 0; i < na; ++i) {
         double cur = etaDistArgs(k, i);
@@ -5407,12 +5393,25 @@ private:
         if (std::isfinite(v)) { etaDistArgs(k, i) = v; moved = true; }
       }
     }
-    // copula correlations: closed form, no search
-    for (int k = 0; k < etaDistNdist; ++k) {
+    // copula correlations: closed form, no search.  Runs independently of the
+    // family M-step -- see etaDistCorOn.
+    for (int k = 0; etaDistCorOn && k < etaDistNdist; ++k) {
       int j = etaDistCorWith(k);
       if (j < 0) continue;
+      // Same spread guard the family fits get.  This loop used to bypass it
+      // entirely, so the correlation was updated from exactly the unmixed draws
+      // the guard exists to reject -- and being pinned at its clamp makes the
+      // partner's latent numerically equal to its partner's, which breaks BOTH
+      // family fits, not just the correlation.
+      if (!rxEtaDistSpreadOk(w[(size_t)k], etaDistSdLo, etaDistSdHi, nullptr) ||
+          !rxEtaDistSpreadOk(w[(size_t)j], etaDistSdLo, etaDistSdHi, nullptr)) continue;
       double r = rxEtaDistCorMle(w[(size_t)j], w[(size_t)k]);
+      if (etaDistDebug && (kiter % 10 == 0 || kiter < 2)) {
+        RSprintf("[etaDist cor k=%d<-j=%d it=%d] rhoCur=%.4f rhoNew=%.4f\n",
+                 k, j, (int)kiter, etaDistRho(k), r);
+      }
       if (!std::isfinite(r)) continue;
+      if (etaDistDebug > 1) continue;
       double cur = etaDistRho(k);
       double v = cur + pas(kiter) * (r - cur);
       if (std::isfinite(v)) { etaDistRho(k) = v; moved = true; }
@@ -6065,6 +6064,23 @@ static double gPhi1ObjR(Rcpp::NumericVector p) {
 //[[Rcpp::export]]
 long saemPhi1RefineN_() { return _saemPhi1RefineN; }
 
+//[[Rcpp::export]]
+long saemEtaDistN_() { return _saemEtaDistN; }
+
+//[[Rcpp::export]]
+int saemEtaDistOn_() { return _saemEtaDistOn; }
+
+// Exposed for testing.  The copula M-step is one line of arithmetic that was
+// wrong in a way no fit-level assertion would localize: the product-moment it
+// used is the constrained MLE only when the draws have unit variance, so any
+// departure -- which every burn-in has -- inflated it into its clamp, and a
+// clamped correlation makes both declared etas share one latent.
+//[[Rcpp::export]]
+double rxEtaDistCorTest_(Rcpp::NumericVector z1, Rcpp::NumericVector z2) {
+  std::vector<double> a(z1.begin(), z1.end()), b(z2.begin(), z2.end());
+  return rxEtaDistCorMle(a, b);
+}
+
 static double gPhi0Obj1DR(double x) {
   gPhi0Work[gPhi0Coord] = x;
   return gPhi0Self->phi0Objective(gPhi0Work.memptr());
@@ -6605,6 +6621,15 @@ SEXP saem_fit(SEXP xSEXP) {
   saem.set_fn(user_function);
 
   saem.saem_fit();
+
+  // etaDistMstep=TRUE with the step never firing is indistinguishable from the
+  // option being off -- the fit converges and looks entirely normal.  The
+  // spread guard can legitimately hold it back for a whole fit (a chain that
+  // never settles below the unit prior), so say so rather than let it pass as a
+  // silent no-op.  Same report imp makes for the same reason.
+  if (saemEtaDistOn_() && saemEtaDistN_() == 0) {
+    RSprintf("saem: the declared-distribution M-step never ran (etaDistMstep had no effect; the pooled latent spread stayed outside its bounds)\n");
+  }
 
   int _saemNsub = (int)getRxNsub(_rx);
   NumericVector _saemTf(_saemNsub);

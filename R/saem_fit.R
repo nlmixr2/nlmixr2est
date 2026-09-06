@@ -175,6 +175,8 @@
                        iacceptSingle = 0.44,
                        nu1B = 0L,
                        nb1B = 10L,
+                       etaDistInfo = NULL,
+                       etaDistStart = NULL,
                        stepsizeRw = 0.4,
                        coefSa = 0.95,
                        coefPhi0 = 0.9638,
@@ -505,6 +507,72 @@
   ## phi index -> phi1 column (0-based, as src/saem.cpp indexes Gamma2_phi1)
   saemZeroOmegaPhi1 <- as.integer(stats::na.omit(match(.zeroOmegaPhi, i1) - 1L))
 
+  ## ODE-free distribution M-step: finish the theta mapping.  A declared
+  ## distribution's thetas carry no random effect, so their phi columns are in
+  ## i0 -- convert each phi index to its phi0 COLUMN, which is what
+  ## mprior_phi0/MCOV0 are indexed by.  Anything that does not land in phi0
+  ## disables the C++ step and leaves the R fallback.
+  etaDistOn <- 0L
+  etaDistLatent <- etaDistFam <- etaDistCorWith <- integer(0)
+  etaDistArgs <- matrix(0, 0, 0); etaDistRho <- numeric(0)
+  etaDistThetaPhi0 <- matrix(-1L, 0, 0); etaDistNth <- integer(0)
+  etaDistCorPhi0 <- -1L
+  if (!is.null(etaDistInfo)) {
+    .nd <- length(etaDistInfo$latent)
+    .mx <- max(1L, max(vapply(etaDistInfo$thetaPhi, length, integer(1))))
+    .tp <- matrix(-1L, nrow = .nd, ncol = .mx)
+    .nth <- integer(.nd)
+    .ok <- TRUE
+    for (.k in seq_len(.nd)) {
+      .c <- match(etaDistInfo$thetaPhi[[.k]], i0) - 1L
+      if (anyNA(.c)) { .ok <- FALSE; break }
+      .tp[.k, seq_along(.c)] <- as.integer(.c)
+      .nth[.k] <- length(.c)
+    }
+    .cp <- if (length(etaDistInfo$corPhi) == 1L) match(etaDistInfo$corPhi, i0) - 1L else NA_integer_
+    if (.ok) {
+      etaDistOn <- 1L
+      etaDistLatent  <- as.integer(etaDistInfo$latent)
+      etaDistFam     <- as.integer(etaDistInfo$fam)
+      etaDistCorWith <- as.integer(etaDistInfo$corWith)
+      etaDistArgs    <- as.matrix(etaDistInfo$args)
+      etaDistRho     <- as.numeric(etaDistInfo$rho)
+      etaDistThetaPhi0 <- .tp
+      etaDistNth     <- .nth
+      etaDistCorPhi0 <- if (is.na(.cp)) -1L else as.integer(.cp)
+    } else {
+      ## A declared theta that is not a plain phi0 column cannot be written
+      ## back, so the M-step has to stand down.  Say so: leaving etaDistOn at 0
+      ## here is the same silent no-op the metadata path warns about, and the
+      ## fit would look completely normal.
+      .etaDistMstepWarnInert("saem")
+    }
+  }
+  ## Closure the C++ M-step calls once per iteration to turn a declared
+  ## family's NATIVE parameters back into the user's thetas.  It remembers its
+  ## last answer and starts there, so the solve is warm and local.
+  etaDistMapFn <- NULL
+  if (etaDistOn == 1L) {
+    .cur <- lapply(seq_along(etaDistInfo$thetas), function(.k) {
+      .nm <- etaDistInfo$thetas[[.k]]
+      stats::setNames(vapply(.nm, function(.t) {
+        .w <- which(names(inits$theta[1, ]) == .t)
+        if (length(.w) == 1L) as.numeric(inits$theta[1, .w]) else 0
+      }, numeric(1)), .nm)
+    })
+    .env <- new.env(parent = emptyenv()); .env$cur <- .cur
+    etaDistMapFn <- function(k, args) {
+      .k <- as.integer(k)
+      .st <- .env$cur[[.k]]
+      if (is.null(.st) || anyNA(.st)) return(NULL)
+      .s <- .etaDistArgsToThetas(etaDistInfo$dist[.k], etaDistInfo$thetas[[.k]],
+                                 .st, as.numeric(args))
+      if (is.null(.s)) return(NULL)
+      .env$cur[[.k]] <- .s
+      as.numeric(.s)
+    }
+  }
+
   nlambda1 <- sum(mcov[, i1])
   nlambda0 <- sum(mcov[, i0])
   nlambda <- nlambda1 + nlambda0
@@ -828,6 +896,24 @@
     Gamma2_phi0 = Gamma2_phi0,
     Gamma2_phi1 = Gamma2_phi1,
     saemZeroOmegaPhi1 = saemZeroOmegaPhi1,
+    etaDistOn = etaDistOn,
+    etaDistLatent = etaDistLatent,
+    etaDistFam = etaDistFam,
+    etaDistCorWith = etaDistCorWith,
+    etaDistArgs = etaDistArgs,
+    etaDistRho = etaDistRho,
+    etaDistThetaPhi0 = etaDistThetaPhi0,
+    etaDistNth = etaDistNth,
+    etaDistCorPhi0 = etaDistCorPhi0,
+    etaDistMapFn = etaDistMapFn,
+    etaDistDebug = as.integer(getOption("nlmixr2.etaDistDebug", 0L)),
+    ## The declared-distribution M-step must not run before the latent omega is
+    ## pinned to its declared unit value: until then saem is still ESTIMATING
+    ## that variance, so the latents are not standard normal and the step's
+    ## whole premise is false.  nb_fixOmega is exactly that point.  The spread
+    ## guard in etaDistMstep() is the real protection; this is the cheap,
+    ## principled floor beneath it.
+    etaDistStart = if (is.null(etaDistStart)) as.integer(nb_fixOmega) else as.integer(etaDistStart),
     zeroOmegaAnnealCoef = zeroOmegaAnnealCoef,
     zeroOmegaDirect = as.integer(isTRUE(zeroOmegaDirect)),
     Gamma2_phi1fixed=Gamma2_phi1fixed,

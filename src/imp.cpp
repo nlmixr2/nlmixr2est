@@ -23,6 +23,7 @@
 #include "imp.h"
 #include "odeSwap.h" // odeSwapAnyNdiffSet()
 #include "utilc.h"   // RSprintf (covariance-step progress header)
+#include "etaDistFam.h" // declared-distribution family dispatch, shared with saem
 #ifdef _OPENMP
 #include <omp.h>
 
@@ -304,6 +305,150 @@ static bool impGetHessianNdiffSafe(int id, arma::mat& H) {
 // subject buy more samples without charging every other subject for them, which
 // is the NM7 Technical Guide's own mechanism (its derivation is Gaussian
 // throughout and never mentions a t proposal).
+// ---- declared-distribution M-step -----------------------------------------
+//
+// The imp analogue of saem's etaDistMstep().  In the (y, eta) augmentation the
+// complete-data likelihood factors as log p(y | eta) + log p(eta | theta_dist)
+// and the family's parameters appear ONLY in the second term, so their M-step
+// is a distribution fit to this iteration's etas -- no data term, no ODE solve.
+// rxEtaDistExpand() hides that by rewriting eta = Q(phi(z)) with z ~ N(0,1),
+// which moves theta_dist into the DATA likelihood and lands it in the Newton
+// step's theta-sensitivity model, the most expensive route available.
+//
+// The E-step already carries exactly what the fit needs: sampS[i] holds subject
+// i's importance samples (rows) in latent-eta space and sampZk[i] their
+// weights.  The fit is therefore the WEIGHTED MLE over the pooled samples --
+// weighted because an importance sample is a draw from the posterior only once
+// its weight is applied; pooling them unweighted would fit the proposal.
+//
+// A full (undamped) step, unlike saem's: this is an EM M-step over an entire
+// E-step's samples, the same way impMuInterceptStep() takes its mean shift
+// whole, not a stochastic-approximation increment off one MCMC sweep.
+static bool impEtaDistMstep(const std::vector<arma::mat>& sampS,
+                            const std::vector<arma::vec>& sampZk,
+                            int nsub, int neta) {
+  if (!impEtaDistOn()) return false;
+  Rcpp::List info(impEtaDistInfoGet());
+  if (info.size() == 0) return false;
+  Rcpp::IntegerVector lat  = info["latent"];
+  Rcpp::IntegerVector fam  = info["fam"];
+  Rcpp::IntegerVector cw   = info["corWith"];
+  Rcpp::NumericMatrix args = info["args"];
+  Rcpp::NumericVector rho  = info["rho"];
+  Rcpp::List thIdx         = info["thetaIdx"];
+  Rcpp::Function mapFn     = Rcpp::as<Rcpp::Function>(info["map"]);
+  int nd = lat.size();
+  if (nd <= 0 || args.nrow() != nd) return false;
+  for (int k = 0; k < nd; ++k) {
+    if (lat[k] < 0 || lat[k] >= neta) return false;
+  }
+  // Pooled latent normals actually seen by each declared eta's quantile: its
+  // own sampled column, or -- for a copula member -- the correlated
+  // combination the model forms (rho*z_j + sqrt(1-rho^2)*z_k).  Pooled across
+  // subjects because the family is a POPULATION distribution: every subject's
+  // eta is one draw from it.
+  std::vector< std::vector<double> > w((size_t)nd);
+  std::vector<double> wt;
+  bool first = true;
+  for (int k = 0; k < nd; ++k) {
+    w[(size_t)k].clear();
+    for (int i = 0; i < nsub; ++i) {
+      const arma::mat& S = sampS[(size_t)i];
+      const arma::vec& zk = sampZk[(size_t)i];
+      if (S.n_rows == 0 || zk.n_elem != S.n_rows) continue;
+      if ((int)S.n_cols <= lat[k]) return false;
+      for (unsigned int r = 0; r < S.n_rows; ++r) {
+        double zv = S(r, (unsigned int)lat[k]);
+        if (cw[k] >= 0) {
+          int j = cw[k];
+          if (j >= nd || (int)S.n_cols <= lat[j]) return false;
+          double rr = rho[k];
+          if (!std::isfinite(rr)) rr = 0.0;
+          double s2 = 1.0 - rr*rr;
+          zv = rr*S(r, (unsigned int)lat[j]) + (s2 > 0 ? std::sqrt(s2) : 0.0)*zv;
+        }
+        w[(size_t)k].push_back(zv);
+        if (first) wt.push_back(zk[r]);
+      }
+    }
+    first = false;
+  }
+  if (wt.size() < 2) return false;
+  bool moved = false;
+  for (int k = 0; k < nd; ++k) {
+    int f = fam[k];
+    int na = rxEtaDistNarg(f);
+    if (na <= 0 || na > args.ncol()) continue;
+    double a0[4];
+    for (int i = 0; i < na; ++i) a0[i] = args(k, i);
+    // latent -> eta through the CURRENT parameters, then fit the family to
+    // those etas.  Values the quantile cannot produce (a sample in a tail the
+    // current parameters place outside the support) are dropped along with
+    // their weight rather than silently contributing a garbage eta.
+    std::vector<double> ev, ew;
+    ev.reserve(w[(size_t)k].size()); ew.reserve(w[(size_t)k].size());
+    for (size_t r = 0; r < w[(size_t)k].size() && r < wt.size(); ++r) {
+      // the boundary guard phiU() applies: pnorm saturates to 0/1 in double
+      // precision and an inverse CDF there is +/-Inf
+      double u = R::pnorm(w[(size_t)k][r], 0.0, 1.0, 1, 0);
+      if (u < 1e-15) u = 1e-15; else if (u > 1.0 - 1e-15) u = 1.0 - 1e-15;
+      double e = rxEtaDistQ(f, u, a0);
+      if (std::isfinite(e) && std::isfinite(wt[r]) && wt[r] > 0.0) {
+        ev.push_back(e); ew.push_back(wt[r]);
+      }
+    }
+    // Same guard saem's M-step applies: the latent is standard normal by
+    // construction, so a pooled spread ABOVE 1 means the E-step's samples
+    // are not yet worth fitting rather than that the family is wrong.  WEIGHTED
+    // here -- the raw samples come from an inflated proposal and are wide by
+    // design; it is the posterior's spread the bound is about.
+    if (!rxEtaDistSpreadOk(w[(size_t)k], 0.5, 1.0, nullptr, &wt)) continue;
+    double aNew[4];
+    for (int i = 0; i < na; ++i) aNew[i] = a0[i];
+    if (!rxEtaDistMleW(f, ev, &ew, aNew)) continue;
+    // native parameters -> the user's thetas (an R closure, once per iteration
+    // per declared eta -- not on any hot loop)
+    Rcpp::NumericVector an(na);
+    for (int i = 0; i < na; ++i) an[i] = aNew[i];
+    Rcpp::RObject got = mapFn(k + 1, an);
+    if (got.isNULL()) continue;
+    Rcpp::NumericVector th(got);
+    Rcpp::IntegerVector ti = thIdx[k];
+    if (th.size() != ti.size()) continue;
+    bool ok = true;
+    for (int i = 0; i < th.size(); ++i) if (!std::isfinite(th[i])) ok = false;
+    if (!ok) continue;
+    for (int i = 0; i < th.size(); ++i) impSetThetaAll(ti[i], th[i]);
+    for (int i = 0; i < na; ++i) args(k, i) = aNew[i];
+    moved = true;
+  }
+  // Copula correlations: the latent pair is bivariate normal with unit
+  // variances, so this is a closed form, not a search.
+  if (info.containsElementNamed("corThetaIdx") &&
+      !Rf_isNull(info["corThetaIdx"])) {
+    Rcpp::IntegerVector cti = info["corThetaIdx"];
+    int m = 0;
+    for (int k = 0; k < nd && m < cti.size(); ++k) {
+      if (cw[k] < 0) continue;
+      // same spread guard the family fits get; see saem's etaDistMstep()
+      if (!rxEtaDistSpreadOk(w[(size_t)k], 0.5, 1.0, nullptr, &wt) ||
+          !rxEtaDistSpreadOk(w[(size_t)cw[k]], 0.5, 1.0, nullptr, &wt)) { m++; continue; }
+      double r = rxEtaDistCorMleW(w[(size_t)cw[k]], w[(size_t)k], &wt);
+      if (!std::isfinite(r)) { m++; continue; }
+      rho[k] = r;
+      // the expansion carries the correlation as atanh(rho), which is
+      // unbounded and so needs no constraint handling here
+      double v = std::atanh(r);
+      if (std::isfinite(v)) { impSetThetaAll(cti[m], v); moved = true; }
+      m++;
+    }
+  }
+  // The thetas just moved, but every subject's cached solve was built at the
+  // old ones and likInner0 skips a re-solve when the eta repeats.
+  if (moved) for (int id = 0; id < nsub; ++id) impForceResolve(id);
+  return moved;
+}
+
 static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
                      const arma::vec& gammaVec,
                      const arma::vec& dfVec, int cores,
@@ -1062,6 +1207,7 @@ void impOuter(Environment e) {
   int Nmix = impNmix();
   int nExp = nsub * Nmix;         // expanded pseudo-subjects for the mixture E/M-step
   double obj = R_PosInf;
+  int nEtaDistRan = 0;            // iterations the declared-distribution M-step actually ran
   int nSens = impThetaSensN();
   // est="imp": skip the per-iteration MAP search; the E-step proposal is centered
   // at the running conditional mean with covariance gamma*Omega.
@@ -1540,6 +1686,12 @@ void impOuter(Environment e) {
     neffTrace.push_back(accFrac);
     xiTrace.push_back(xiMean);
     iterRun = iter + 1;
+
+    // Declared-distribution M-step, before the Newton step so the family's own
+    // parameters are already current when the remaining structural thetas are
+    // updated.  Its thetas were removed from impThetaSensIdx on the R side, so
+    // the two never fight over the same coordinate.
+    if (impEtaDistMstep(sampS, sampZk, nsub, neta)) nEtaDistRan++;
 
     // M-step.  First a Newton step on the non-mu structural thetas from the
     // IS-weighted score and Gauss-Newton Hessian accumulated over subjects/samples
@@ -2049,6 +2201,13 @@ void impOuter(Environment e) {
   e["impSirSample"] = impSirN();
   e["impNiter"]    = nIter;
   e["impIter"]     = iterRun;
+  // Whether the declared-distribution M-step ran, and how often.  Reported
+  // rather than inferred: every way it can decline is silent, and a fit whose
+  // estimates look reasonable is no evidence at all that it engaged.
+  e["impEtaDistN"] = nEtaDistRan;
+  if (impEtaDistOn() && nEtaDistRan == 0) {
+    RSprintf("imp: the declared-distribution M-step never updated a parameter (etaDistMstep had no effect)\n");
+  }
   e["impMStepDamped"]  = nMStepDamped.load(std::memory_order_relaxed);
   e["impMStepSkipped"] = nMStepSkipped.load(std::memory_order_relaxed);
   {

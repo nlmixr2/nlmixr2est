@@ -14,13 +14,17 @@
                            "autoNonmemSparse", "autoDfPatience",
                            "iscaleMin", "iscaleMax", "iaccept",
                            "ctol", "nConvWindow", "impSeed", "impCov",
-                           "zeroOmegaDirect", "zeroOmegaMaxEval",
+                           "zeroOmegaDirect", "zeroOmegaMaxEval", "etaDistMstep",
                            "qr", "qrShift", "qrRefresh", "sir", "sirSample",
                            # internal M-step index maps added in .impmapFamilyFit;
                            # not foceiControl() arguments, so they must be dropped
                            # when down-converting (e.g. .setOfvFo's do.call(foceiControl))
                            "impMuThetaIdx", "impMuEtaIdx", "impThetaSensIdx",
                            "impOmegaFixedEta", "flatEtaIdx",
+                           # declared-distribution M-step metadata (family
+                           # codes, current native parameters, index maps and
+                           # the native-parameters -> thetas closure)
+                           "impEtaDistInfo",
                            # combined eta+theta sensitivity build (#958): an
                            # impmap-internal request for the fused inner model;
                            # not a foceiControl() argument either.
@@ -278,6 +282,29 @@
 #' @param zeroOmegaMaxEval Objective-evaluation budget per `zeroOmegaDirect`
 #'   step.  Each evaluation is a full-population solve.
 #'
+#' @param etaDistMstep Opt-in.  Estimate a `dist()`-declared random effect's
+#'   family parameters (and any Gaussian-copula correlation between declared
+#'   effects) by a weighted maximum-likelihood fit to the E-step's importance
+#'   samples, instead of through the data likelihood.
+#'
+#'   The family's parameters appear only in `log p(eta | theta_dist)`, never in
+#'   `log p(y | eta)`, so their M-step is a pure distribution fit -- no data
+#'   term and, decisively, no ODE solve.  `rxEtaDistExpand()` obscures this by
+#'   rewriting `eta = Q(phi(z))` with `z ~ N(0, 1)`, which moves those
+#'   parameters into the data likelihood and lands them in the Newton M-step's
+#'   theta-sensitivity model, the most expensive route available.  EM lets the
+#'   augmentation be chosen freely: sample in `z`-space, take this M-step in
+#'   eta-space.
+#'
+#'   The thetas so estimated are removed from the Newton step, but stay
+#'   ordinary estimated thetas in every other respect -- in particular the
+#'   covariance step still differentiates the objective in them and reports
+#'   their standard errors.
+#'
+#'   Ignored for a model with no `dist()` declaration, and silently ignored for
+#'   a declared family the C++ dispatch does not implement (the fit then takes
+#'   the ordinary sensitivity route).
+#'
 #' @param nConvWindow Length of the trailing iteration window used to average
 #'   the objective-function change for convergence (NONMEM-style CTYPE).
 #' @param muModel Mu-referencing variant for the MAP inner problem; for
@@ -352,6 +379,7 @@ impmapControl <- function(sigdig=3,
                           nConvWindow=10L,
                           zeroOmegaDirect=FALSE,
                           zeroOmegaMaxEval=25L,
+                          etaDistMstep=FALSE,
                           impSeed=42L,
                           covMethod=c("imp", "analytic", "r,s", "r", "s", "sa", ""),
                           qr=FALSE,
@@ -476,6 +504,9 @@ impmapControl <- function(sigdig=3,
                               .var.name="zeroOmegaMaxEval")
   .control$zeroOmegaDirect <- zeroOmegaDirect
   .control$zeroOmegaMaxEval <- as.integer(zeroOmegaMaxEval)
+  checkmate::assertLogical(etaDistMstep, len=1, any.missing=FALSE,
+                           .var.name="etaDistMstep")
+  .control$etaDistMstep <- etaDistMstep
   .control$impSeed <- as.integer(impSeed)
   .control$qr <- qr
   .control$qrShift <- qrShift
@@ -730,6 +761,28 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   # error) with sensitivity outputs in the sensitivity model; the M-step Newton
   # update maps its output columns back to these thetas.
   .control$impThetaSensIdx <- as.integer(.impmapEstTheta(ui)$all - 1L)
+  # impmapControl(etaDistMstep=): a dist()-declared family's parameters enter
+  # ONLY through log p(eta | theta_dist), so they can be fit to this iteration's
+  # importance samples directly -- no data term, no ODE solve (impEtaDistMstep,
+  # src/imp.cpp).  Take them out of impThetaSensIdx so the Newton M-step does
+  # not also try to move them through the (far more expensive) sensitivity
+  # model.  They remain ordinary estimated thetas everywhere else: the
+  # covariance step still differentiates the objective in them and still reports
+  # their standard errors.  Falls back silently to the sensitivity route when
+  # the model's declarations are not ones the C++ dispatch handles.
+  .control$impEtaDistInfo <- NULL
+  if (isTRUE(rxode2::rxGetControl(ui, "etaDistMstep", FALSE))) {
+    .edi <- .etaDistMstepInfoFocei(ui)
+    if (is.null(.edi)) {
+      .etaDistMstepWarnInert("impmap")
+    } else {
+      .drop <- as.integer(match(.edi$thetaNames, .thNames) - 1L)
+      .drop <- .drop[!is.na(.drop)]
+      .control$impThetaSensIdx <-
+        .control$impThetaSensIdx[!(.control$impThetaSensIdx %in% .drop)]
+      .control$impEtaDistInfo <- .edi
+    }
+  }
   # Combined eta+theta sensitivity build (#958), on by default when there is
   # anything to differentiate (impmapControl(combSens=FALSE) opts back out):
   # carries the theta columns on the INNER model itself instead of

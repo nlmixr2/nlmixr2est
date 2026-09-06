@@ -158,6 +158,68 @@
 #' **10**(1):121-135.  \doi{10.1093/biostatistics/kxn020} (the two-level SAEM
 #' this package's IOV support follows; it targets "around 30%").
 #'
+#' @param etaDistMstep Opt-in.  Estimate a `dist()`-declared random effect's
+#'   distribution parameters by a fit to the sampled etas, rather than through
+#'   the data likelihood.
+#'
+#'   In the `(y, eta)` augmentation the complete-data likelihood factors as
+#'   `log p(y | eta) + log p(eta | theta)`, and the distribution parameters
+#'   appear only in the second term -- so their M-step is a pure distribution
+#'   fit: no data term and no ODE solve, exactly like the residual-error step.
+#'   `rxEtaDistExpand()` breaks that by rewriting `eta = Q(phi(z))`, which moves
+#'   those parameters into the data likelihood and hands them to
+#'   `refinePhi0Lik()`'s derivative-free search.
+#'
+#'   Measured on Bauer's gamma data, that search is not the limiting factor: a
+#'   12-fold larger evaluation budget moves CL from 6.471 to 6.467, and 2.5x
+#'   the iterations moves it to 6.401, against a truth of 5.03.
+#'
+#'   With this on, those thetas leave `refinePhi0Lik()`'s remit entirely -- two
+#'   optimizers on one parameter against different objectives is the problem,
+#'   not the solution.
+#'
+#'   The step does not run for the whole fit.  The latent normals are standard
+#'   normal by construction, so the only reason a pooled sample departs from
+#'   that is information about the declared family -- or a chain that has not
+#'   settled, which the step cannot distinguish and would act on just the same.
+#'   It therefore waits until the latent omega has been pinned to its declared
+#'   unit value (`perFixOmega`), and skips any iteration whose pooled latent
+#'   spread is outside `[0.5, 1]`.  The upper bound is 1 on principle rather
+#'   than by tuning: the latent's prior is exactly `N(0, 1)`, and a posterior is
+#'   not wider than its prior, so a pooled spread above 1 means the chain has
+#'   not settled -- it is never evidence that the declared family is too
+#'   narrow.
+#'
+#'   Both guards are there because the failure is not graceful.  Measured on
+#'   Bauer's gamma data, the M-step run from iteration 0 saw a pooled spread of
+#'   2.15 and drove the gamma's shape from 7.39 to 1.74 and then 0.51, each
+#'   shrink widening the mapped etas and feeding the next, with the copula
+#'   correlation pinned at its clamp.  A looser bound of 1.5 was not enough --
+#'   the spread is still 1.43 at iteration 10 and 1.25 at 20, and acting on
+#'   those diverged just as surely, only slower.  It reaches 1.04 at 30 and
+#'   settles near 0.85, where the step recovers a mean of 4.8 against a
+#'   simulation truth of 5.03 -- the ordinary route lands at 6.4 to 7.5.
+#'
+#' @param etaDistCorMstep Update a `dist()`-declared Gaussian copula's
+#'   correlation from its closed form -- the sample correlation of the latent
+#'   pair -- instead of leaving it to the general non-mu theta refinement.  On
+#'   by default, and independent of `etaDistMstep`: the correlation needs this
+#'   even when the family's own parameters are estimated the ordinary way.
+#'
+#'   `rxEtaDistExpand()` carries the correlation as `atanh(rho)`, and a
+#'   refinement that maximizes the observation likelihood CONDITIONAL on the
+#'   current draws has no prior term to penalize `rho -> 1`.  At that boundary
+#'   the copula partner's latent collapses onto its partner's and two declared
+#'   random effects become one -- a genuine optimum of the conditional
+#'   objective, and a nonsense model.  Measured on Bauer's gamma data, `rho`
+#'   pinned at 1.000 in 3 of 7 fits across seeds and refinement start points,
+#'   contributing 128% of one of the eight relative errors by itself.
+#'
+#'   A sample correlation cannot do that: it is bounded by construction.  It is
+#'   damped by `pas(kiter)` like every other M-step here, and the damped value
+#'   is what the refinement warm-starts from -- so this narrows the search
+#'   rather than fighting it.
+#'
 #' @param nu1B Number of sweeps of NONMEM's proposal kernel **mode 1B** per
 #'   iteration.  `0` (the default) disables it, which is the historical
 #'   behaviour.
@@ -482,6 +544,86 @@
 #'   refinement (`newuoa`'s `rhoend`, the nelder-mead relative objective
 #'   tolerance, or the `optimize()` `tol`).
 #'
+#' @param nonMuThetaGrad Precede the `nonMuTheta="regress"` refinement with an
+#'   exact-gradient Gauss-Newton step.  `TRUE` (the default); set `FALSE` to get
+#'   the search alone.
+#'
+#'   The refinement is otherwise a derivative-free search that spends a full
+#'   population solve on every objective evaluation -- `nonMuThetaMaxEval` of
+#'   them per call -- with no derivative information at all.  nlmixr2 already
+#'   emits exact symbolic sensitivities, so ONE solve of the theta-sensitivity
+#'   model yields `d(f)/d(theta)` for every theta at once, through the same
+#'   pooled and threaded solve path the fit already uses.  A Gauss-Newton step
+#'   off that is both far cheaper than the search and better directed than
+#'   anything a finite search budget recovers.
+#'
+#'   The two are a hedge rather than an either/or: the gradient step moves along
+#'   the local quadratic model, and the search then runs warm-started from there
+#'   and corrects wherever that model was poor.  Because the search starts from
+#'   a much better point, `nonMuThetaMaxEval` can usually come DOWN rather than
+#'   up.
+#'
+#'   The step is damped by Levenberg-Marquardt gated on the *conditioning* of
+#'   the information matrix, not on how large the step is: `arma::solve()`
+#'   succeeds on a near-singular Hessian and returns a finite but astronomically
+#'   large step, so "solved and finite" is not a guard.  A well-conditioned
+#'   iteration takes the exact undamped step.
+#'
+#' @param nonMuThetaGradEvery Run the exact-gradient step every
+#'   `nonMuThetaGradEvery` iterations (default 1, i.e. every iteration).
+#'
+#'   The two halves of the refinement have very different costs, so they want
+#'   different schedules.  The gradient step is ONE pooled, threaded solve that
+#'   yields every theta's derivative at once, so it is affordable every
+#'   iteration.  The derivative-free search is `nonMuThetaMaxEval` full
+#'   population solves per call -- 25 by default -- so it is not.
+#'
+#'   That inverts the sensible cadence: run the cheap directed step often and
+#'   the expensive undirected one rarely.  With `nonMuThetaGrad = TRUE` the
+#'   search is also starting from a much better point, so `nonMuThetaEvery` can
+#'   be raised and `nonMuThetaMaxEval` lowered from the values that made sense
+#'   when the search was doing all the work alone.
+#'
+#' @param nonMuThetaStart First iteration at which the `nonMuTheta="regress"`
+#'   refinement -- direct maximization of the observation likelihood in the
+#'   non-mu thetas -- may run.
+#'
+#'   `NULL` (the default) is **saemix's rule: half the burn-in**,
+#'   `round(nBurn/2)`.  saemix gates its equivalent step (`optim(compute.Uy)`
+#'   over `ind.fix10`, R/main_mstep.R:57) on `kiter >= nbiter.sa`, whose default
+#'   is `nbiter.saemix[1]/2`.  `-2` restores the historical nlmixr2 value,
+#'   `round((nBurn + nEm)/2)`.
+#'
+#'   The placement matters because of the step size it lands on.  saemix's
+#'   `stepsize` is 1 throughout burn-in, so its direct optimization gets the
+#'   whole second half of burn-in at full steps.  The historical nlmixr2 value
+#'   -- half the TOTAL -- lands, for the common `nEm ~ nBurn`, exactly on the
+#'   burn-in/EM boundary where `pas` collapses (1.0 at iteration 200, 0.5 at
+#'   201, 0.02 at 250), giving the refinement ONE full-step iteration instead of
+#'   roughly `nBurn/2` of them.
+#'
+#'   That matters for a model whose non-mu thetas start far from their optimum.
+#'   Measured on Bauer's gamma data (`~/src/gamma_indpar`): the stochastic phi0
+#'   update parks CL at 7.51 within 24 iterations, this refinement cannot run
+#'   until iteration 200, and by then the stochastic-approximation step
+#'   `pas(kiter)` is small enough that it travels 0.03 over the remaining 200
+#'   iterations.  The thetas are effectively frozen for 376 of 400 iterations,
+#'   which is why enlarging `nonMuThetaMaxEval` twelve-fold moves the answer by
+#'   0.004 -- the search was never the binding constraint.
+#'
+#'   Measured on that model (`nBurn = nEm = 200`):
+#'
+#'   | `nonMuThetaStart` | CL | V1 | cor | MARE |
+#'   | --- | --- | --- | --- | --- |
+#'   | `-2` (historical, iteration 200) | 7.472 | 6.851 | 0.343 | 19.9% |
+#'   | `0` | 4.445 | 4.491 | 0.406 | 10.3% |
+#'   | NONMEM 7.5.1 SAEM | 4.786 | 4.606 | 0.411 | 3.8% |
+#'   | simulation truth | 5.03 | 4.66 | 0.438 | -- |
+#'
+#'   Both reference implementations update these thetas well before the
+#'   historical nlmixr2 gate: NONMEM from the first iteration (technical guide
+#'   eqs. 1.47-1.52), saemix from half the burn-in.
+#'
 #' @param nonMuThetaEvery Run the `nonMuTheta="regress"` refinement every
 #'   `nonMuThetaEvery` iterations instead of every iteration (default 1).  In
 #'   between, `phi0` keeps its last refined value.
@@ -562,6 +704,8 @@ saemControl <- function(seed = 99,
                         iacceptSingle = 0.44,
                         nu1B = 0L,
                         nb1B = 10L,
+                        etaDistMstep = FALSE,
+                        etaDistCorMstep = TRUE,
                         stepsizeRw = 0.4,
                         coefSa = 0.95,
                         coefPhi0 = 0.9638,
@@ -613,6 +757,9 @@ saemControl <- function(seed = 99,
                         mixProbPriorN = 20,
                         mixSampleMethod = c("parallel", "msaem"),
                         nonMuTheta = c("regress", "eta"),
+                        nonMuThetaStart = NULL,
+                        nonMuThetaGrad = TRUE,
+                        nonMuThetaGradEvery = 1L,
                         nonMuThetaOpt = c("newuoa", "optimize", "nelderMead"),
                         nonMuThetaSweeps = 2L,
                         nonMuThetaMaxEval = 25L,
@@ -700,6 +847,10 @@ saemControl <- function(seed = 99,
   checkmate::assertIntegerish(nonMuThetaMaxEval, any.missing=FALSE, len=1, lower=0)
   checkmate::assertNumeric(nonMuThetaTol, any.missing=FALSE, len=1, lower=0, finite=TRUE)
   checkmate::assertIntegerish(nonMuThetaEvery, any.missing=FALSE, len=1, lower=1)
+  checkmate::assertLogical(nonMuThetaGrad, len=1, any.missing=FALSE,
+                           .var.name="nonMuThetaGrad")
+  checkmate::assertIntegerish(nonMuThetaGradEvery, len=1, lower=1,
+                              any.missing=FALSE, .var.name="nonMuThetaGradEvery")
   checkmate::assertIntegerish(phi1ThetaMaxEval, any.missing=FALSE, len=1, lower=0)
   checkmate::assertIntegerish(phi1ThetaEvery, any.missing=FALSE, len=1, lower=1)
   checkmate::assertLogical(phi1Hessian, any.missing=FALSE, len=1)
@@ -789,6 +940,10 @@ saemControl <- function(seed = 99,
                            any.missing=FALSE, .var.name="iacceptSingle")
   checkmate::assertIntegerish(nu1B, len=1, lower=0, any.missing=FALSE, .var.name="nu1B")
   checkmate::assertIntegerish(nb1B, len=1, lower=1, any.missing=FALSE, .var.name="nb1B")
+  checkmate::assertLogical(etaDistMstep, len=1, any.missing=FALSE,
+                           .var.name="etaDistMstep")
+  checkmate::assertLogical(etaDistCorMstep, len=1, any.missing=FALSE,
+                           .var.name="etaDistCorMstep")
   checkmate::assertNumeric(stepsizeRw, len=1, lower=0, finite=TRUE,
                            any.missing=FALSE, .var.name="stepsizeRw")
   checkmate::assertNumeric(coefSa, len=1, lower=0, finite=TRUE,
@@ -805,6 +960,8 @@ saemControl <- function(seed = 99,
     iacceptSingle = iacceptSingle,
     nu1B = as.integer(nu1B),
     nb1B = as.integer(nb1B),
+    etaDistMstep = etaDistMstep,
+    etaDistCorMstep = etaDistCorMstep,
     stepsizeRw = stepsizeRw,
     coefSa = coefSa,
     coefPhi0 = coefPhi0,
@@ -860,6 +1017,9 @@ saemControl <- function(seed = 99,
     nonMuThetaMaxEval=as.integer(nonMuThetaMaxEval),
     nonMuThetaTol=nonMuThetaTol,
     nonMuThetaEvery=as.integer(nonMuThetaEvery),
+    nonMuThetaGrad=nonMuThetaGrad,
+    nonMuThetaGradEvery=as.integer(nonMuThetaGradEvery),
+    nonMuThetaStart=if (is.null(nonMuThetaStart)) NULL else as.integer(nonMuThetaStart),
     phi1ThetaMaxEval=as.integer(phi1ThetaMaxEval),
     phi1ThetaEvery=as.integer(phi1ThetaEvery),
     phi1Hessian=isTRUE(phi1Hessian),

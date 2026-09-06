@@ -147,7 +147,72 @@
   ## a method that translates the declaration itself has to see it
   ## unexpanded (see `.etaDistMethodAttr()`)
   if (identical(.etaDistMethodAttr(est, control), "native")) return(NULL)
-  list(ui=rxode2::rxEtaDistExpand(ui))
+  ## rxEtaDistExpand() clears the iniDf's `etaDist` column (rxode2
+  ## R/etaDist.R), and the copula block it replaces with independent latents
+  ## plus rxCor.* thetas -- so after expansion rxUiEtaDists() reports nothing
+  ## and the declarations are unrecoverable.  Everything downstream that needs
+  ## to know a random effect WAS declared (the ODE-free M-step in particular)
+  ## reads this stash instead.
+  .decl <- .etaDistDeclStash(ui, .d)
+  ## Decompress BEFORE stashing: rxUiDecompress() on a compressed ui returns a
+  ## new object, so assigning into it would write to a temporary and the stash
+  ## would never reach the ui that is returned.
+  .ui <- rxode2::rxUiDecompress(rxode2::rxEtaDistExpand(ui))
+  ## In `meta`, which is the ONLY container that survives to the estimators.
+  ## Measured, on a real saem fit, by planting a probe in each candidate and
+  ## seeing which arrived: the ui environment, the control and an extra iniDf
+  ## column were all gone by the time the M-step asked, because the ui is
+  ## rebuilt and the est method installs its own freshly-built control after
+  ## the hooks have run.  `meta` is rxode2's own metadata environment and is
+  ## deliberately carried across model rewrites, so it is the one that holds.
+  if (!is.null(.decl)) .etaDistDeclSet(.ui, .decl)
+  list(ui=.ui)
+}
+
+#' Preserve the declarations across `rxEtaDistExpand()`
+#'
+#' The expansion is lossy by design: it rewrites the model into one with
+#' ordinary standard-normal random effects, so the declaration it consumed is
+#' no longer anywhere in the ui.  This records the parts that cannot be
+#' reconstructed afterwards -- which etas were declared, with what family, and
+#' how the copula paired them -- keyed so the expanded model's own thetas and
+#' etas can be found from it.
+#'
+#' Copula pairing is read here rather than later because the block that carries
+#' it (a unit-diagonal omega whose off-diagonal IS the correlation) is exactly
+#' what the expansion removes.  Only a PAIR is recorded: the M-step drivers
+#' reconstruct a single partner, so a larger block returns `NULL` and takes the
+#' general path instead of being silently wrong.
+#'
+#' @param ui the UNEXPANDED rxode2 ui
+#' @param d declared random effects, as `rxUiEtaDists()` returns them
+#' @return a list, or `NULL` when the block is not one this can describe
+#' @noRd
+.etaDistDeclStash <- function(ui, d) {
+  .ini <- rxode2::rxUiDecompress(ui)$iniDf
+  .n <- nrow(d)
+  .netaOf <- function(.nm) {
+    .w <- which(.ini$name == .nm & .ini$neta1 == .ini$neta2)
+    if (length(.w) == 1L) as.integer(.ini$neta1[.w]) else NA_integer_
+  }
+  .id <- vapply(d$name, .netaOf, integer(1))
+  .cw <- rep(-1L, .n)                       # 0-based partner, or -1
+  .ct <- rep(NA_character_, .n)             # the rxCor.* theta carrying it
+  .off <- .ini[!is.na(.ini$neta1) & !is.na(.ini$neta2) &
+                 .ini$neta1 != .ini$neta2, , drop = FALSE]
+  if (nrow(.off) > 0L) {
+    for (.r in seq_len(nrow(.off))) {
+      .a1 <- which(.id == .off$neta1[.r]); .a2 <- which(.id == .off$neta2[.r])
+      if (length(.a1) != 1L || length(.a2) != 1L) next  # not a declared pair
+      .hi <- max(.a1, .a2); .lo <- min(.a1, .a2)
+      if (.cw[.hi] >= 0L) return(NULL)                  # >2 declared partners
+      .cw[.hi] <- .lo - 1L
+      ## rxEtaDistExpand() names the Cholesky theta rxCor.<later>.<earlier>
+      .ct[.hi] <- paste0("rxCor.", d$name[.hi], ".", d$name[.lo])
+    }
+  }
+  list(name = as.character(d$name), etaDist = as.character(d$etaDist),
+       corWith = .cw, corTheta = .ct)
 }
 
 

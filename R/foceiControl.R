@@ -11,6 +11,9 @@
   "foceiMuGroupCovLower", "foceiMuGroupCovUpper",
   "foceiMuGroupCovData", "foceiMuGroupTol",
   "foceiMuGroupMaxCycles", "foceiMuGroupClampRetries",
+  # declared-distribution M-step: the metadata and the per-theta hold-out
+  # mask, both built in .foceiEtaDistSetup() rather than supplied by the user
+  "foceiEtaDistInfo", "foceiEtaDistThetaSkip",
   # derived from covMethod ("analytic" vs the finite-difference
   # formulas); kept internal so a built control round-trips.
   "covType",
@@ -367,6 +370,47 @@
 #'     multiplication to high precision multiplication and sums to
 #'     high precision sums using the PreciseSums package.  By default
 #'     this is \code{FALSE}.
+#'
+#' @param etaDistMstep Opt-in.  Estimate a `dist()`-declared random effect's
+#'   family parameters (and any Gaussian-copula correlation between declared
+#'   effects) with their own optimizer, instead of through the outer problem.
+#'
+#'   Those parameters appear only in `log p(eta | theta)`, never in
+#'   `log p(y | eta)`, so fitting them is a distribution fit to the current
+#'   etas -- no data term and no ODE solve.  `rxEtaDistExpand()` obscures this
+#'   by rewriting `eta = Q(phi(z))` with `z ~ N(0, 1)`, which moves them into
+#'   the data likelihood and makes them ordinary outer parameters, each costing
+#'   a finite-difference gradient over full-population solves.
+#'
+#'   FOCEi has no sampler, so the etas come from each subject's Laplace
+#'   posterior `N(mode, H^-1)` -- the inner Hessian the objective already
+#'   computes, and the same proposal `impmap` uses.  The conditional modes
+#'   alone would not do: they are shrunk toward the population, badly enough to
+#'   collapse the fitted spread.  The draws are recomputed from the current
+#'   thetas every outer iteration; this never uses `etaMat`, which is reserved
+#'   for user-supplied initial etas that override the defaults.
+#'
+#'   Unlike the `saem` and `impmap` versions -- which read a sampler's draws
+#'   and so add no solves at all -- this one is not quite free: the draws need
+#'   each subject's inner Hessian, and reading it re-establishes that subject's
+#'   solve at its mode.  That is one population's worth of solves per update,
+#'   against a finite-difference gradient over the full population for each of
+#'   these thetas on every outer iteration if they are left in the outer
+#'   problem, and the draws and the distribution fit themselves cost nothing.
+#'
+#'   These thetas are held out of the outer optimizer -- no gradient, no column
+#'   in the free-parameter vector -- exactly as a covariate mu-group theta is.
+#'   The hold-out is on the SEARCH only: they remain estimated parameters, and
+#'   the covariance step puts them back into the free-parameter vector so their
+#'   standard errors are reported like any other theta's.
+#'
+#'   Ignored for a model with no `dist()` declaration, and for a declared
+#'   family the C++ dispatch does not implement (the fit then estimates those
+#'   thetas in the outer problem as before).
+#'
+#' @param etaDistNsamp Draws per subject per `etaDistMstep` update.  Each is a
+#'   multivariate normal draw from that subject's already-formed Laplace
+#'   posterior, so raising this costs arithmetic only -- no extra solves.
 #'
 #' @param optExpression Optimize the rxode2 expression to speed up
 #'     calculation. By default this is turned on.
@@ -1048,6 +1092,8 @@ foceiControl <- function(sigdig = 3, #
                          seed = 42, #
                          resetThetaCheckPer = 0.1, #
                          etaMat = NULL, #
+                         etaDistMstep = FALSE, #
+                         etaDistNsamp = 50L, #
                          repeatGillMax = 1, #
                          stickyRecalcN = 4, #
                          outerMaxOdeRecalc = 5, #
@@ -1754,6 +1800,8 @@ foceiControl <- function(sigdig = 3, #
     seed = seed,
     resetThetaCheckPer = resetThetaCheckPer,
     etaMat = etaMat,
+    etaDistMstep = as.logical(etaDistMstep),
+    etaDistNsamp = as.integer(etaDistNsamp),
     repeatGillMax = as.integer(repeatGillMax),
     stickyRecalcN = as.integer(max(1, abs(stickyRecalcN))),
     outerMaxOdeRecalc = as.integer(outerMaxOdeRecalc),

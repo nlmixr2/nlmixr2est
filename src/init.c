@@ -134,6 +134,10 @@ SEXP _nlmixr2est_nlmixr2Unscaled_(SEXP, SEXP);
 SEXP _nlmixr2est_saem_fit(SEXP);
 SEXP _nlmixr2est_saem_do_pred(SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_saemPhi1RefineN_(void);
+SEXP _nlmixr2est_saemEtaDistN_(void);
+SEXP _nlmixr2est_saemEtaDistOn_(void);
+SEXP _nlmixr2est_rxEtaDistCorTest_(SEXP, SEXP);
+SEXP _nlmixr2est_foceiEtaDistN_(void);
 SEXP _nlmixr2est_saemFormGTest(SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_rxEtaDistTest_(SEXP, SEXP, SEXP);
 
@@ -358,6 +362,10 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_saem_fit", (DL_FUNC) &_nlmixr2est_saem_fit, 1},
   {"_nlmixr2est_saem_do_pred", (DL_FUNC) &_nlmixr2est_saem_do_pred, 3},
   {"_nlmixr2est_saemPhi1RefineN_", (DL_FUNC) &_nlmixr2est_saemPhi1RefineN_, 0},
+  {"_nlmixr2est_saemEtaDistN_", (DL_FUNC) &_nlmixr2est_saemEtaDistN_, 0},
+  {"_nlmixr2est_saemEtaDistOn_", (DL_FUNC) &_nlmixr2est_saemEtaDistOn_, 0},
+  {"_nlmixr2est_rxEtaDistCorTest_", (DL_FUNC) &_nlmixr2est_rxEtaDistCorTest_, 2},
+  {"_nlmixr2est_foceiEtaDistN_", (DL_FUNC) &_nlmixr2est_foceiEtaDistN_, 0},
   {"_nlmixr2est_saemFormGTest", (DL_FUNC) &_nlmixr2est_saemFormGTest, 5},
   {"_nlmixr2est_rxEtaDistTest_", (DL_FUNC) &_nlmixr2est_rxEtaDistTest_, 3},
   {"_nlmixr2est_powerD", (DL_FUNC) &_nlmixr2est_powerD, 5},

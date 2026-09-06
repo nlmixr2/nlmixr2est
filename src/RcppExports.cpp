@@ -733,6 +733,16 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// foceiEtaDistN_
+long foceiEtaDistN_();
+RcppExport SEXP _nlmixr2est_foceiEtaDistN_() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(foceiEtaDistN_());
+    return rcpp_result_gen;
+END_RCPP
+}
 // foceiFitCpp_
 Environment foceiFitCpp_(Environment e);
 RcppExport SEXP _nlmixr2est_foceiFitCpp_(SEXP eSEXP) {
@@ -1864,6 +1874,38 @@ BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     rcpp_result_gen = Rcpp::wrap(saemPhi1RefineN_());
+    return rcpp_result_gen;
+END_RCPP
+}
+// saemEtaDistN_
+long saemEtaDistN_();
+RcppExport SEXP _nlmixr2est_saemEtaDistN_() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(saemEtaDistN_());
+    return rcpp_result_gen;
+END_RCPP
+}
+// saemEtaDistOn_
+int saemEtaDistOn_();
+RcppExport SEXP _nlmixr2est_saemEtaDistOn_() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(saemEtaDistOn_());
+    return rcpp_result_gen;
+END_RCPP
+}
+// rxEtaDistCorTest_
+double rxEtaDistCorTest_(Rcpp::NumericVector z1, Rcpp::NumericVector z2);
+RcppExport SEXP _nlmixr2est_rxEtaDistCorTest_(SEXP z1SEXP, SEXP z2SEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type z1(z1SEXP);
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type z2(z2SEXP);
+    rcpp_result_gen = Rcpp::wrap(rxEtaDistCorTest_(z1, z2));
     return rcpp_result_gen;
 END_RCPP
 }
