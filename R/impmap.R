@@ -768,26 +768,49 @@ getValidNlmixrCtl.impmap <- function(control) {
   .impmapEstWins(.ctl, .cls)
 }
 
-#' `est` wins over a `mapIter` inherited from another method's fit.
+#' `est` wins over the values another method's `est` stamped on its control.
 #'
-#' `nlmixr2(fit, est=)` adopts the prior fit's control, and `est="imp"` stamps
-#' `mapIter = 0` on it (that IS what `imp` means: never re-center).  Re-fitting
-#' such a control as `impmap`/`qrpem` would then silently run a method that
-#' never re-optimizes the mode -- a different algorithm from the one asked for.
-#' `est` has to win, the same way `emviControl()` resolves `pointEstimate`.
+#' `nlmixr2(fit, est=)` adopts the prior fit's control, and several fields on a
+#' COMPLETED fit's control were put there by that fit's `est` rather than by the
+#' user: `est="imp"` stamps `mapIter = 0` (that IS what imp means -- never
+#' re-center), and `est="qrpem"` stamps `qr = TRUE, sir = TRUE` (that is what
+#' qrpem means).  Carrying those into a different method silently runs a
+#' different algorithm than the one asked for -- a re-fit as `"qrpem"` that
+#' inherited an `imp` control would draw plain Monte-Carlo samples and still be
+#' labelled QRPEM.  `est` has to win, the same way `emviControl()` resolves
+#' `pointEstimate`.
 #'
-#' Keyed on the `est` field a COMPLETED fit carries, so a user's own
-#' `impmapControl(mapIter = 0)` -- which has no `est` -- is left alone.
+#' Keyed on the `est` field a COMPLETED fit carries, never on the value alone,
+#' so a control the user built themselves -- `impmapControl(mapIter = 0)`,
+#' `qrpemControl(qr = FALSE)` -- has no `est` and is left exactly as written.
 #' @param ctl validated impmapControl
 #' @param est target estimation method
-#' @return ctl, possibly with mapIter restored to the impmap default
+#' @return ctl, with any field the SOURCE est stamped restored to the TARGET
+#'   est's own value
 #' @noRd
 .impmapEstWins <- function(ctl, est) {
-  if (!identical(est, "impmap") && !identical(est, "qrpem")) return(ctl)
-  if (!identical(ctl$est, "imp")) return(ctl)
-  if (!identical(as.integer(ctl$mapIter), 0L)) return(ctl)
-  .minfo(paste0("`est=\"", est, "\"` restores mapIter=1 (was 0 from an `est=\"imp\"` fit)"))
-  ctl$mapIter <- 1L
+  .src <- ctl$est
+  # a freshly built control (no completed fit behind it) is the user's own
+  if (is.null(.src) || !is.character(.src) || identical(.src, est)) return(ctl)
+  .msg <- character(0)
+  # est="imp" stamped mapIter = 0; every other method re-centers
+  if (identical(.src, "imp") && identical(as.integer(ctl$mapIter), 0L) &&
+        (identical(est, "impmap") || identical(est, "qrpem"))) {
+    ctl$mapIter <- 1L
+    .msg <- c(.msg, "mapIter=1")
+  }
+  # est="qrpem" IS impmapControl(qr=TRUE, sir=TRUE); neither travels
+  if (identical(est, "qrpem")) {
+    if (!isTRUE(ctl$qr)) { ctl$qr <- TRUE; .msg <- c(.msg, "qr=TRUE") }
+    if (!isTRUE(ctl$sir)) { ctl$sir <- TRUE; .msg <- c(.msg, "sir=TRUE") }
+  } else if (identical(.src, "qrpem")) {
+    if (isTRUE(ctl$qr)) { ctl$qr <- FALSE; .msg <- c(.msg, "qr=FALSE") }
+    if (isTRUE(ctl$sir)) { ctl$sir <- FALSE; .msg <- c(.msg, "sir=FALSE") }
+  }
+  if (length(.msg) > 0L) {
+    .minfo(paste0("`est=\"", est, "\"` restores ", paste(.msg, collapse = ", "),
+                  " (inherited from an `est=\"", .src, "\"` fit)"))
+  }
   ctl
 }
 

@@ -6,10 +6,14 @@
 # every re-fit died with "unused argument: 'impMuThetaIdx', ...".
 #
 # The second half is the rule that only becomes reachable once the first is
-# fixed: est="imp" stamps mapIter = 0 on its control (that is what imp means),
-# so adopting an imp fit's control under est="impmap" would silently run a
-# method that never re-optimizes the mode.  `est` has to win -- but only over
-# an INHERITED 0, never over one the user asked for.
+# fixed.  Several fields on a completed fit's control were put there by that
+# fit's est rather than by the user: est="imp" stamps mapIter = 0 (that IS what
+# imp means) and est="qrpem" stamps qr = TRUE, sir = TRUE.  Carrying either into
+# a different method silently runs a different algorithm than the one asked for
+# -- a re-fit as qrpem inheriting an imp control drew plain Monte-Carlo samples
+# and was still labelled QRPEM.  `est` has to win, but ONLY over a value another
+# est stamped, never over one the user wrote themselves (which is why the rule
+# is keyed on the control's `est` field, not on the value).
 nmTest({
   .one <- function() {
     ini({
@@ -78,6 +82,44 @@ nmTest({
     # ... and re-fitting as imp still means imp
     .ri <- suppressWarnings(suppressMessages(nlmixr2(.fi, est = "imp")))
     expect_identical(.ri$env$impMapIter, 0L)
+  })
+
+  test_that("est wins over qr/sir inherited from a qrpem fit, both ways", {
+    .dat <- nlmixr2data::theo_sd
+    .fi <- suppressWarnings(suppressMessages(
+      nlmixr2(.one, .dat, "imp", impControl(print = 0L, nIter = 2L,
+                                            isample = 150L, covMethod = "",
+                                            calcTables = FALSE))))
+    expect_false(.fi$env$impQr)
+    # est="qrpem" IS impmapControl(qr=TRUE, sir=TRUE).  Re-fitting an imp fit
+    # as qrpem must not draw plain Monte-Carlo samples and call it QRPEM.
+    .rq <- suppressWarnings(suppressMessages(nlmixr2(.fi, est = "qrpem")))
+    expect_true(.rq$env$impQr)
+    expect_true(.rq$env$impSir)
+
+    # and the other direction: qrpem's qr/sir must not leak into imp/impmap
+    .fq <- suppressWarnings(suppressMessages(
+      nlmixr2(.one, .dat, "qrpem", qrpemControl(print = 0L, nIter = 2L,
+                                                isample = 150L, covMethod = "",
+                                                calcTables = FALSE))))
+    expect_true(.fq$env$impQr)
+    .ri <- suppressWarnings(suppressMessages(nlmixr2(.fq, est = "imp")))
+    expect_false(.ri$env$impQr)
+    expect_false(.ri$env$impSir)
+  })
+
+  test_that("est does not override a qr/sir the user asked for", {
+    # a user-built control carries no `est`, which is what distinguishes it
+    # from one inherited off a completed fit
+    .c <- qrpemControl(qr = FALSE, sir = FALSE)
+    expect_null(.c$est)
+    .v <- getValidNlmixrCtl.qrpem(structure(list(.c), class = "qrpem"))
+    expect_false(.v$qr)
+    expect_false(.v$sir)
+    # ... and an impmapControl(qr=TRUE) survives validation as impmap
+    .c2 <- impmapControl(qr = TRUE)
+    .v2 <- getValidNlmixrCtl.impmap(structure(list(.c2), class = "impmap"))
+    expect_true(.v2$qr)
   })
 
   test_that("est does not override a mapIter the user asked for", {

@@ -194,10 +194,14 @@
   fit's runtime control are arguments of neither.  They are now carried through
   the round-trip.
 
-  With that fixed, `est` also now wins over an inherited `mapIter`: `est="imp"`
-  stamps `mapIter = 0` (never re-center), so re-fitting an `imp` fit as
-  `impmap`/`qrpem` would otherwise have silently run a method that never
-  re-optimizes the mode.  A `mapIter = 0` the user asked for is untouched.
+  With that fixed, `est` also now wins over any field another method's `est`
+  stamped on its control.  `est="imp"` stamps `mapIter = 0` (never re-center)
+  and `est="qrpem"` stamps `qr = TRUE, sir = TRUE`, so a re-fit would otherwise
+  have run a different algorithm than the one asked for -- re-fitting an `imp`
+  fit as `"qrpem"` drew plain Monte-Carlo samples and still reported QRPEM, and
+  a `qrpem` fit re-fit as `"imp"` kept quasi-random sampling on.  Values the
+  user wrote themselves are untouched: the rule is keyed on the `est` field a
+  completed fit carries, not on the value.
 
 - `impmapControl(mapIter=)` was accepted and then ignored: the kernel
   re-centered the importance-sampling proposal at each subject's MAP mode on

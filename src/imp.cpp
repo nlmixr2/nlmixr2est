@@ -2223,7 +2223,7 @@ void impOuter(Environment e) {
     if (propSpec.type == impPropMix) {
       NumericVector cs(propSpec.nmix), ws(propSpec.nmix);
       for (int k = 0; k < propSpec.nmix; ++k) { cs[k] = propSpec.c[k]; ws[k] = propSpec.w[k]; }
-      e["impPropMixScale"] = cs;      // effective (covariance-matched) values
+      e["impPropMixScale"] = cs;      // as given: see impPropSpecFromControl
       e["impPropMixWeight"] = ws;
     }
   }
