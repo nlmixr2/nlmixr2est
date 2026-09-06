@@ -49,6 +49,14 @@
 #'   every parameter monotonically.  Set `zeroOmegaAnneal = 1000` to match
 #'   saemix.
 #'
+#'   **Intended to be used together with `zeroOmegaDirect = TRUE`.**  In saemix
+#'   the decay is safe precisely because those parameters' fixed effects are
+#'   estimated by the direct route (`ind.fix10`) rather than by the GLS.
+#'   Annealing on its own drives the width toward zero with no other route
+#'   available, which pins the theta -- the very thing it was meant to avoid.
+#'   Measured on the theophylline helper fixture (40+40 iterations), annealing
+#'   alone took the residual SD from 0.72 to 1.20.
+#'
 #' @param zeroOmegaDirect Opt-in.  When `TRUE`, update the theta of a
 #'   mu-referenced random effect whose declared variance is zero by directly
 #'   maximizing the observation likelihood, instead of by the
