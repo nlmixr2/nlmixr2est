@@ -927,6 +927,8 @@ void impOuter(Environment e) {
   double iscaleMax = impIscaleMax();
   int nConvWindow = impNconvWindow();
   double ctol = impCtol();
+  int mapIter = impMapIter();
+  if (mapIter < 0) mapIter = 0;
 
   arma::mat condMean;
   std::vector<arma::mat> condVar;
@@ -1172,7 +1174,10 @@ void impOuter(Environment e) {
 
   arma::vec r(neta);
   for (int iter = 0; iter < nIter; ++iter) {
-    if (iter > 0 && !isImp) impReMap();
+    // MAP-assist period: impReMap() is the mu-referenced FOCEI inner problem,
+    // so re-centering every iteration is the dominant cost of est="impmap".
+    // mapIter = 0 keeps the startup MAP and never re-centers.
+    if (iter > 0 && !isImp && mapIter > 0 && (iter % mapIter) == 0) impReMap();
     // Stash the E-step diagnostics on every iteration so the fit environment
     // reflects the last iteration actually run (the loop may stop early).
     // Global rule: every expanded subject shares the scalar scale.  Under
@@ -1839,6 +1844,7 @@ void impOuter(Environment e) {
   e["impSir"]      = impSirEnabled();
   e["impSirSample"] = impSirN();
   e["impNiter"]    = nIter;
+  e["impMapIter"]  = isImp ? 0 : mapIter;   // 0 under est="imp": no re-centering at all
   e["impIter"]     = iterRun;
   e["impConverged"] = converged;
   e["impObjTrace"] = wrap(objTrace);

@@ -11,7 +11,7 @@ postFinalObjectHooks(name = NULL)
 to list all hooks}
 }
 \value{
-a charcter vector listing all pre-processing hooks or the
+a character vector listing all pre-processing hooks or the
   function for the hook
 }
 \description{

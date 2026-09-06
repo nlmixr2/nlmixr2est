@@ -49,8 +49,21 @@
 #'   tails are too light still gives weights with infinite variance, which
 #'   `fit$env$impPsisK` will show.  See `df` for the shape-based remedy.
 #' @param nIter Maximum number of importance-sampling EM iterations.
-#' @param mapIter Number of MAP re-centering iterations per EM step; `> 0`
-#'   re-centers the proposal at the MAP mode each iteration.
+#' @param mapIter MAP-assist period, in EM iterations.  `1` (default)
+#'   re-centers the proposal at each subject's MAP mode every iteration; `k > 1`
+#'   re-centers every `k`th iteration; `0` keeps the mode found at startup and
+#'   never re-centers.
+#'
+#'   The MAP search is the mu-referenced FOCEI inner problem and is the dominant
+#'   per-iteration cost of `est="impmap"`, so raising `mapIter` trades proposal
+#'   accuracy for speed.  It is worth raising once the population parameters are
+#'   moving slowly enough that the mode barely shifts between iterations, and
+#'   not before -- a proposal centered away from the mode costs effective sample
+#'   size, which `fit$env$impNeffFrac` will show.
+#'
+#'   `est="imp"` is a different thing and not the `mapIter = 0` case: it also
+#'   replaces the MAP-Hessian proposal covariance with the running conditional
+#'   variance, so it never uses a MAP mode at all.
 #' @param gamma Initial proposal-variance inflation factor (NONMEM ISCALE); the
 #'   proposal covariance is `gamma` times the inverse of the inner information
 #'   matrix at the mode.
@@ -429,6 +442,8 @@ impmapControl <- function(sigdig=3,
   if (!is.null(.autoNonNormal)) .control$autoNonNormal <- .autoNonNormal
   .control$isample <- .isampleAll
   .control$nIter <- as.integer(nIter)
+  checkmate::assertIntegerish(mapIter, lower=0, len=1, any.missing=FALSE,
+                              .var.name="mapIter")
   .control$mapIter <- as.integer(mapIter)
   .control$gamma <- as.double(gamma)
   .control$gammaMethod <- gammaMethod

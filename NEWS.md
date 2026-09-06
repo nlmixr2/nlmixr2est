@@ -104,6 +104,12 @@
 
 ## Bug fixes
 
+- `impmapControl(mapIter=)` was accepted and then ignored: the kernel
+  re-centered the importance-sampling proposal at each subject's MAP mode on
+  every EM iteration regardless of the value.  It now sets the MAP-assist
+  period -- `1` (the default, and the previous behavior) re-centers every
+  iteration, `k > 1` every `k`th, and `0` keeps the startup mode.  Affects
+  `est="imp"`, `est="impmap"` and `est="qrpem"`.
 
 - With two or more occasion parameters on one level, `fit$iov$<level>` had
   `NA` for every occasion (and the fit warned "NAs introduced by
