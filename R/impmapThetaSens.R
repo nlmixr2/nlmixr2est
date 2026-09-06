@@ -124,14 +124,19 @@ rxUiGet.impmapThetaSens <- function(x, ..., needV = TRUE) {
   }, character(1))
   # d(V)/d(theta_j): chain rule (structural) or direct partial (sigma).
   #
-  # This block is the expensive half of the model.  On a linCmt() model each of
-  # these columns embeds one or two linCmtB() calls, evaluated at every
-  # observation of every solve.  imp/impmap need them -- their objective carries
-  # a d(V)/d(theta) term.  SAEM's non-mu gradient does NOT: it takes the residual
-  # scale from SAEM's own live ares/bres, because SAEM keeps the residual error
-  # outside phi and this model's residual THETA is pinned at its ini() value
-  # (src/saem.cpp, nonMuGradPhi0).  So let that caller ask for the model without
-  # them rather than integrate and discard them.
+  # imp/impmap need these -- their objective carries a d(V)/d(theta) term.
+  # SAEM's non-mu gradient does NOT: it takes the residual scale from SAEM's own
+  # live ares/bres, because SAEM keeps the residual error outside phi and this
+  # model's residual THETA is pinned at its ini() value (src/saem.cpp,
+  # nonMuGradPhi0).  So let that caller ask for the model without them rather
+  # than evaluate and discard them.
+  #
+  # Worth stating the size of this honestly, because the generated code
+  # overstates it.  Dropping the block takes nlhs from 14 to 8 and the linCmtB()
+  # calls in the emitted text from 9 to 2, but linCmtB caches per parameter set,
+  # so the call count is NOT the cost.  Timed instead, 25 solves of Bauer's gamma
+  # model:  needV=TRUE 6.76s, needV=FALSE 4.92s -- a 27% saving, not the 78% the
+  # call count suggests.
   .dvOut <- if (isTRUE(needV)) {
     vapply(.idx$all, function(j) {
       paste0("rx__sens_rx_r__BY_THETA_", j, "___=",

@@ -36,10 +36,9 @@ rxUiGet.saemThetaSens <- function(x, ...) {
   ## needV = FALSE: SAEM's gradient never reads d(V)/d(theta).  It takes the
   ## residual scale from SAEM's own live ares/bres, because SAEM keeps the
   ## residual error outside phi and this model's residual THETA is pinned at its
-  ## ini() value.  That block is the expensive half of the model -- on a linCmt()
-  ## model every one of its columns embeds linCmtB() calls, evaluated at every
-  ## observation of every solve -- so asking for it and discarding it is pure
-  ## cost.  imp/impmap still get the full model; only this caller opts out.
+  ## ini() value.  Asking for it and discarding it is pure cost: timed at 25
+  ## solves of Bauer's gamma model, 6.76s with the block against 4.92s without
+  ## it (27%).  imp/impmap still get the full model; only this caller opts out.
   .mod <- tryCatch(.impmapThetaSensModel(.ui, needV = FALSE),
                    error = function(e) NULL)
   if (is.null(.mod)) return(NULL)
