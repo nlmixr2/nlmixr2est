@@ -135,8 +135,11 @@ rxUiGet.impmapThetaSens <- function(x, ..., needVar = TRUE) {
   # overstates it.  Dropping the block takes nlhs from 14 to 8 and the linCmtB()
   # calls in the emitted text from 9 to 2, but linCmtB caches per parameter set,
   # so the call count is NOT the cost.  Timed instead, 25 solves of Bauer's gamma
-  # model:  needVar=TRUE 6.76s, needVar=FALSE 4.92s -- a 27% saving, not the 78% the
-  # call count suggests.
+  # model:  needVar=TRUE 4.86s, needVar=FALSE 2.20s -- a 55% saving.
+  #
+  # (An earlier 27% here was measured against an rxode2 that predated the copula
+  # theta bound, where unbounded rxCor drove stiff solves that swamped the
+  # difference.  Same test on a current rxode2 gives 55%.)
   .dvOut <- if (isTRUE(needVar)) {
     vapply(.idx$all, function(j) {
       paste0("rx__sens_rx_r__BY_THETA_", j, "___=",
@@ -201,7 +204,7 @@ attr(rxUiGet.impmapThetaSens, "rstudio") <- emptyenv()
 #' SAEM's non-mu gradient reads only d(f)/d(theta): it takes the residual scale
 #' from SAEM's own live ares/bres, so the d(V)/d(theta) columns are evaluated at
 #' every observation of every solve and discarded.  Timed over 25 solves of
-#' Bauer's gamma model: 6.76s with them, 4.92s without (27%).
+#' Bauer's gamma model: 4.86s with them, 2.20s without (55%).
 #'
 #' CAVEAT, because this is a fragile split in general.  Which thetas are
 #' "structural" and which are "sigma" comes from `.impmapEstTheta()`, which

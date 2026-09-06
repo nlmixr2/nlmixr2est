@@ -1370,9 +1370,6 @@ public:
           dfdth[(size_t)fi] = d;
         }
         if (!okObs) { rowBad[(size_t)r] = 1; break; }
-        if (r == 0 && nObs < 3 && getenv("NLMIXR2_SAEM_GRADCHECK") != NULL)
-          Rprintf("    [row0 obs%d y=%.6g f=%.6g gsd=%.6g dfdth0=%.6g]\n",
-                  nObs, y, f, gsd, dfdth[0]);
         nonMuGradAccumObs(objKind, y, f, gsd, dgsdf,
                           dfdth.data(), nFree, 1.0, sc, inf);
         nObs++;
@@ -1431,7 +1428,6 @@ public:
         double fm = phi0Objective(pv.data());
         pv[(size_t)c] = x0;
         double fd = (fp - fm) / (2.0 * h);
-        if (fi == 0) Rprintf("    [obj fp=%.10e fm=%.10e h=%.3e]\n", fp, fm, h);
         double rel = (std::fabs(fd) > 1e-8) ?
           std::fabs(score(fi) - fd) / std::fabs(fd) : std::fabs(score(fi) - fd);
         Rprintf("  phi0[%d] analytic=% .8e  fd=% .8e  rel=%.3e\n",
@@ -4178,10 +4174,6 @@ public:
       // 0.004: the search never gets a chance to matter.
       unsigned int phi0Start = (nonMuThetaStart >= 0) ?
         (unsigned int)nonMuThetaStart : (unsigned int)niter_phi0;
-      if (getenv("NLMIXR2_SAEM_GRADCHECK") != NULL && kiter % 10 == 0)
-        Rprintf("refineGate kiter=%u dist=%d regress=%d nphi0=%d start=%u every=%d\n",
-                kiter, distribution, nonMuThetaRegress, nphi0, phi0Start,
-                nonMuThetaEvery);
       if ((distribution == 4 || nonMuThetaRegress) &&
           nphi0 > 0 && kiter >= phi0Start &&
           (kiter - phi0Start) % (unsigned int)nonMuThetaEvery == 0) {
