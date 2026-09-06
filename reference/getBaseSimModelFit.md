@@ -7,6 +7,9 @@ Method for getting simulation rxode2 classic models based on fits
 ``` r
 getBaseSimModelFit(x)
 
+# Default S3 method
+getBaseSimModelFit(x)
+
 # S3 method for class 'focei'
 getBaseSimModelFit(x)
 
@@ -23,9 +26,6 @@ getBaseSimModelFit(x)
 getBaseSimModelFit(x)
 
 # S3 method for class 'posthoc'
-getBaseSimModelFit(x)
-
-# Default S3 method
 getBaseSimModelFit(x)
 ```
 

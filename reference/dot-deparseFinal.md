@@ -19,7 +19,7 @@ function for specific elements.
 
 - object:
 
-  The object to be deparsed into a language exression
+  The object to be deparsed into a language expression
 
 - w:
 

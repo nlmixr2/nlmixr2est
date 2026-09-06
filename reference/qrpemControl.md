@@ -284,7 +284,7 @@ qrpemControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x558781acb280>
+#> <bytecode: 0x55d48000cab0>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -1017,6 +1017,12 @@ qrpemControl()
 #> $mapIter
 #> [1] 1
 #> 
+#> $nBurn
+#> [1] 0
+#> 
+#> $burnFreezeOmega
+#> [1] FALSE
+#> 
 #> $gamma
 #> [1] 1
 #> 
@@ -1061,6 +1067,18 @@ qrpemControl()
 #> 
 #> $qrRefresh
 #> [1] TRUE
+#> 
+#> $qrScramble
+#> [1] "none"
+#> 
+#> $proposal
+#> [1] "auto"
+#> 
+#> $propMixScale
+#> [1] 1 9
+#> 
+#> $propMixWeight
+#> [1] 0.9 0.1
 #> 
 #> $sir
 #> [1] TRUE

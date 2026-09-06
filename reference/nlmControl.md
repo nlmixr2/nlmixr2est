@@ -390,28 +390,27 @@ Matthew L. Fidler
 ## Examples
 
 ``` r
-
 # \donttest{
 # A logit regression example with emax model
 
-dsn <- data.frame(i=1:1000)
+dsn <- data.frame(i = 1:1000)
 dsn$time <- exp(rnorm(1000))
-dsn$DV=rbinom(1000,1,exp(-1+dsn$time)/(1+exp(-1+dsn$time)))
+dsn$DV <- rbinom(1000, 1, exp(-1 + dsn$time) / (1 + exp(-1 + dsn$time)))
 
 mod <- function() {
- ini({
-   E0 <- 0.5
-   Em <- 0.5
-   E50 <- 2
-   g <- fix(2)
- })
- model({
-   v <- E0+Em*time^g/(E50^g+time^g)
-   ll(bin) ~ DV * v - log(1 + exp(v))
- })
+  ini({
+    E0 <- 0.5
+    Em <- 0.5
+    E50 <- 2
+    g <- fix(2)
+  })
+  model({
+    v <- E0 + Em * time^g / (E50^g + time^g)
+    ll(bin) ~ DV * v - log(1 + exp(v))
+  })
 }
 
-fit2 <- nlmixr(mod, dsn, est="nlm")
+fit2 <- nlmixr(mod, dsn, est = "nlm")
 #>  
 #>  
 #>  
@@ -450,9 +449,9 @@ print(fit2)
 #> ── Time (sec $time): ──
 #> 
 #>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.1535012 0.2461702  6.722e-06      0.053       0.006 0.022        0
+#> elapsed 0.1574607 0.2315741  6.319e-06      0.053       0.006 0.021    0.001
 #>              other
-#> elapsed 0.09732183
+#> elapsed 0.09095882
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

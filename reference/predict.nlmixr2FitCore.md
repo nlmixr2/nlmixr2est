@@ -34,34 +34,35 @@ A data frame with predictions
 ## Examples
 
 ``` r
-
 # \donttest{
 
 one.compartment <- function() {
- ini({
-  tka <- log(1)
-  tcl <- log(10)
-  tv <- log(35)
-  eta.ka ~ 0.1
-  eta.cl ~ 0.1
-  eta.v ~ 0.1
-  add.sd <- 0.1
- })
- model({
-  ka <- exp(tka + eta.ka)
-  cl <- exp(tcl + eta.cl)
-  v <- exp(tv + eta.v)
-  d/dt(depot) = -ka * depot
-  d/dt(center) = ka * depot - cl / v * center
-  cp = center / v
-  cp ~ add(add.sd)
- })
+  ini({
+    tka <- log(1)
+    tcl <- log(10)
+    tv <- log(35)
+    eta.ka ~ 0.1
+    eta.cl ~ 0.1
+    eta.v ~ 0.1
+    add.sd <- 0.1
+  })
+  model({
+    ka <- exp(tka + eta.ka)
+    cl <- exp(tcl + eta.cl)
+    v <- exp(tv + eta.v)
+    d/dt(depot) <- -ka * depot
+    d/dt(center) <- ka * depot - cl / v * center
+    cp <- center / v
+    cp ~ add(add.sd)
+  })
 }
 
 # The fit is performed by the function nlmixr/nlmix2 specifying
 # the model, data and estimate
-fit <- nlmixr2(one.compartment, theo_sd, est = "focei",
-               foceiControl(maxOuterIterations = 0L))
+fit <- nlmixr2(one.compartment, theo_sd,
+  est = "focei",
+  foceiControl(maxOuterIterations = 0L)
+)
 #>  
 #>  
 #>  
@@ -94,7 +95,7 @@ fit <- nlmixr2(one.compartment, theo_sd, est = "focei",
 #> ✔ done
 
 # Population predictions
-ppred <- predict(fit, theo_sd, level="population")
+ppred <- predict(fit, theo_sd, level = "population")
 #> ℹ population predictions requested (`level="population"`)
 #> ℹ using new data for predictions
 #>  
@@ -105,11 +106,10 @@ ppred <- predict(fit, theo_sd, level="population")
 #>  
 
 # Individual predictions
-ipred <- predict(fit, theo_sd, level="individual")
+ipred <- predict(fit, theo_sd, level = "individual")
 #> ℹ individual predictions requested (`level="individual"`)
 #> ℹ using new data for predictions
 #>  
 #>  
-
 # }
 ```

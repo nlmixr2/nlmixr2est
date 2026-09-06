@@ -17,7 +17,7 @@ preFinalParTableHooks(name = NULL)
 
 ## Value
 
-a charcter vector listing all pre-processing hooks or the function for
+a character vector listing all pre-processing hooks or the function for
 the hook
 
 ## See also
