@@ -55,8 +55,39 @@ llEta <- function() {
   })
 }
 
-fixtures <- list(eta1 = oneEta, eta3 = threeEta, ll2 = llEta)
-dat <- nlmixr2data::theo_sd
+# 8 ETAs, transit-absorption PK + Emax turnover PD on warfarin (the same model
+# test-npag-golden.R uses).  This fixture is not optional garnish: the whole
+# claim for scrambling is about the sequence's HIGH-ORDER dimensions, where a
+# Cranley-Patterson shift is supposed to help least.  A 1-3 eta answer cannot
+# settle it, and it is also where gammaRule="floor" was already measured to
+# stop adapting at all.
+eightEta <- function() {
+  ini({
+    tktr <- log(1.0); tka <- log(1.0); tv <- log(8); tcl <- log(0.15)
+    temax <- logit(0.9); tec50 <- log(1.0); tkout <- log(0.05); te0 <- log(100)
+    eta.ktr ~ 0.5; eta.ka ~ 0.5; eta.v ~ 0.5; eta.cl ~ 0.5
+    eta.emax ~ 0.5; eta.ec50 ~ 0.5; eta.kout ~ 0.5; eta.e0 ~ 0.5
+    prop.sd <- 0.1; add.sd <- 2.0
+  })
+  model({
+    ktr <- exp(tktr + eta.ktr); ka <- exp(tka + eta.ka)
+    v <- exp(tv + eta.v); cl <- exp(tcl + eta.cl)
+    emax <- expit(temax + eta.emax); ec50 <- exp(tec50 + eta.ec50)
+    kout <- exp(tkout + eta.kout); e0 <- exp(te0 + eta.e0)
+    d/dt(depot) <- -ktr * depot
+    d/dt(gut) <- ktr * depot - ka * gut
+    d/dt(center) <- ka * gut - cl / v * center
+    DCP <- center / v
+    d/dt(effect) <- -e0 * kout * (emax * DCP / (ec50 + DCP)) - kout * effect
+    cp <- center / v; pca <- effect + e0
+    cp ~ prop(prop.sd); pca ~ add(add.sd)
+  })
+}
+
+fixtures <- list(eta1 = oneEta, eta3 = threeEta, ll2 = llEta, eta8 = eightEta)
+datFor <- function(fx) {
+  if (identical(fx, "eta8")) nlmixr2data::warfarin else nlmixr2data::theo_sd
+}
 
 ## ---- settings under test ---------------------------------------------------
 # Each is (label, extra impmapControl args).  "base" is the shipping default and
@@ -78,7 +109,7 @@ NPROD   <- 300L      # production sample count
 NREF    <- 8000L     # reference sample count
 NITER   <- 60L
 
-fitOne <- function(gen, seed, isample, nIter, extra = list()) {
+fitOne <- function(gen, dat, seed, isample, nIter, extra = list()) {
   ctl <- do.call(impmapControl,
                  c(list(print = 0L, nIter = nIter, isample = as.integer(isample),
                         impSeed = as.integer(seed), covMethod = "",
@@ -116,13 +147,14 @@ score <- function(runs, refTheta, refOmega) {
 out <- list()
 for (fx in names(fixtures)) {
   gen <- fixtures[[fx]]
+  dat <- datFor(fx)
   cat("\n=== fixture:", fx, "===\n")
   cat("reference at isample =", NREF, "...\n")
-  ref <- fitOne(gen, 1L, NREF, NITER)
+  ref <- fitOne(gen, dat, 1L, NREF, NITER)
   if (is.null(ref)) { cat("  reference FAILED, skipping fixture\n"); next }
   for (sname in names(settings)) {
     runs <- lapply(SEEDS, function(s)
-      fitOne(gen, s, NPROD, NITER, settings[[sname]]))
+      fitOne(gen, dat, s, NPROD, NITER, settings[[sname]]))
     sc <- score(runs, ref$theta, ref$omega)
     if (is.null(sc)) { cat(sprintf("  %-13s ALL FAILED\n", sname)); next }
     sc$fixture <- fx; sc$setting <- sname

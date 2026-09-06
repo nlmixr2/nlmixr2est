@@ -6,6 +6,13 @@
 # The numerical kernel lives in C++ (src/imp.cpp); this file is orchestration
 # only: control construction, dispatch, and post-fit assembly.
 
+# Per-model M-step index maps stamped on the RUNTIME control by
+# .impmapFamilyFit.  They are neither impmapControl() nor foceiControl()
+# arguments, so both the down-conversion and impmapControl()'s own `...` have to
+# know about them.
+.impmapIdxMapNames <- c("impMuThetaIdx", "impMuEtaIdx", "impThetaSensIdx",
+                        "impOmegaFixedEta")
+
 # Importance-sampling / EM control names -- stripped when down-converting to a
 # plain foceiControl for the MAP inner problem / output.
 .impmapIsControlNames <- c("isample", "nIter", "mapIter", "gamma",
@@ -21,8 +28,7 @@
                            # internal M-step index maps added in .impmapFamilyFit;
                            # not foceiControl() arguments, so they must be dropped
                            # when down-converting (e.g. .setOfvFo's do.call(foceiControl))
-                           "impMuThetaIdx", "impMuEtaIdx", "impThetaSensIdx",
-                           "impOmegaFixedEta",
+                           .impmapIdxMapNames,
                            # combined eta+theta sensitivity build (#958): an
                            # impmap-internal request for the fused inner model;
                            # not a foceiControl() argument either.
@@ -107,6 +113,16 @@
 #'   conditional variance instead and is not the `mapIter = 0` case.
 #'
 #'   `mapIter` cannot change an `est="imp"` fit, which never re-centers at all.
+#'
+#'   **Measured trade-off.**  `mapIter = 3` against the default, same harness:
+#'   theta RMSE 0.00102 vs 0.00157 (1 ETA), 0.00130 vs 0.00144 (3 ETAs), 0.00173
+#'   vs 0.00173 (general `ll()`), with `Omega` RMSE, effective sample size and
+#'   k-hat essentially unmoved.  On these fixtures skipping two MAP searches in
+#'   three is close to free, which is the point of the knob -- but the saving is
+#'   model-dependent (it is the inner FOCEI problem, so it scales with how hard
+#'   that is), and a proposal centred away from the mode costs effective sample
+#'   size on a model whose mode moves faster.  `1` stays the default because it
+#'   is the setting that cannot be wrong.
 #' @param nBurn Number of burn-in EM iterations run before the `nIter` budget,
 #'   to let the proposal-scale (`gamma`) and `auto` controllers settle before
 #'   the estimates they influence are judged.  `0` (default) is no burn-in.
@@ -119,6 +135,16 @@
 #'
 #'   Burn-in iterations are the first `nBurn` rows of `$parHist` and of
 #'   `fit$env$impObjTrace`; `fit$env$impNburn` reports how many there were.
+#'
+#'   **Measured trade-off.**  `nBurn = 5, burnFreezeOmega = TRUE` against the
+#'   default, same harness as `proposal`: theta RMSE 0.00140 vs 0.00157 (1 ETA),
+#'   0.00185 vs 0.00144 (3 ETAs), 0.00104 vs 0.00173 (general `ll()`); `Omega`
+#'   RMSE worse on all three (0.00404 / 0.00261 / 0.00249 against 0.00344 /
+#'   0.00184 / 0.00170), for 2-5 extra iterations.  Off by default: it costs
+#'   iterations unconditionally and none of these fixtures shows the early
+#'   `Omega` excursion it exists to prevent, so freezing a quantity that was not
+#'   misbehaving only delays it.  Worth trying when a fit's `Omega` visibly
+#'   overshoots in the first rows of `$parHist` and then has to come back.
 #' @param burnFreezeOmega When `TRUE`, hold `Omega` at its starting value for
 #'   the `nBurn` burn-in iterations while the structural and residual-error
 #'   thetas update normally.  Ignored when `nBurn = 0`.
@@ -169,7 +195,8 @@
 #'     and `iscaleMax` mean what they mean for `"normal"`.
 #'   * `"mixture"` -- a defensive scale mixture about the same mode,
 #'     `sum_k w_k N(mode, c_k gamma Sigma)`, with `propMixScale` and
-#'     `propMixWeight`.  A broad component covers what a narrow one misses.
+#'     `propMixWeight`.  A broad component covers what a narrow one misses, so
+#'     the mixture is deliberately over-dispersed relative to `gamma * Sigma`.
 #'     Note this does NOT bound the weights: its widest component is still
 #'     Gaussian-tailed, so use `"laplace"` when that is what you need.
 #'
@@ -177,10 +204,44 @@
 #'   "Gaussian" as `df <= 0` and its constants were tuned against a Gaussian
 #'   baseline, so a subject on `"laplace"` or `"mixture"` keeps its family.
 #'   The `isample` budget reallocation still applies to every family.
+#'
+#'   `fit$env$impProposal` reports the resolved family and `fit$env$impPropInd`
+#'   the per-subject families actually used, so an `auto` escalation from normal
+#'   to t is visible.
+#'
+#'   **Measured trade-off.**  8 seeds, `isample = 300`, RMSE against an
+#'   `isample = 8000` reference (`design/qrpem/qrpem-options-bench.R`), reported
+#'   as theta RMSE / `Omega` RMSE / max Pareto k-hat / mean effective-sample
+#'   fraction:
+#'
+#'   \itemize{
+#'     \item 1 ETA -- `"normal"` 0.00157 / 0.00344 / -1.18 / 0.624;
+#'       `"laplace"` 0.00128 / 0.00367 / -0.86 / 0.753;
+#'       `"mixture"` 0.00173 / 0.00510 / -1.33 / 0.592
+#'     \item 3 ETAs -- `"normal"` 0.00144 / 0.00184 / -0.22 / 0.724;
+#'       `"laplace"` 0.00110 / 0.00229 / +0.28 / 0.817;
+#'       `"mixture"` 0.00140 / 0.00296 / -0.33 / 0.668
+#'     \item general `ll()` -- `"normal"` 0.00173 / 0.00170 / -0.66 / 0.658;
+#'       `"laplace"` 0.00214 / 0.00227 / -0.31 / 0.798;
+#'       `"mixture"` 0.00144 / 0.00208 / -0.67 / 0.611
+#'   }
+#'
+#'   `"auto"` stays the default.  Neither new family wins the accuracy columns
+#'   here -- but note what these fixtures are: no subject exceeds k-hat 0.7
+#'   under ANY setting on any of them, so there is no tail failure for a
+#'   bounded-weight proposal to repair, and `auto` plus `gammaRule="target"`
+#'   are what keep it that way.  The table shows the mechanism working rather
+#'   than paying off: `"laplace"` buys the highest effective sample size of the
+#'   three on every fixture (0.75-0.82 against 0.62-0.72).  Reach for it when
+#'   `fit$env$impPsisK` shows a tail the `df` ladder is not fixing -- the case
+#'   this table does not contain.
 #' @param propMixScale Component variance multipliers for
 #'   `proposal="mixture"`, length 2 or 3, starting at `1` and strictly
-#'   increasing.  Rescaled internally so the mixture covariance is exactly
-#'   `gamma * Sigma`; `fit$env$impPropMixScale` reports the effective values.
+#'   increasing.  Used as given: component 1 is the Laplace-approximation
+#'   covariance itself and the rest are the wider defensive components, so the
+#'   mixture's covariance is `(sum_k w_k c_k) * gamma * Sigma` -- deliberately
+#'   wider than `gamma * Sigma`, which is the whole mechanism.  `gamma` still
+#'   scales the entire mixture, so `iscaleMin`/`iscaleMax` still bound it.
 #' @param propMixWeight Component weights for `proposal="mixture"`, same length
 #'   as `propMixScale`, positive, normalized internally.
 #' @param auto NONMEM `AUTO=1` equivalent: adapt the proposal degrees of
@@ -553,6 +614,17 @@ impmapControl <- function(sigdig=3,
   # control never worked.
   .autoNonNormal <- .dots$autoNonNormal
   .dots$autoNonNormal <- NULL
+  # The four M-step index maps are stamped on the RUNTIME control by
+  # .impmapFamilyFit and are not arguments here either.  Without pulling them
+  # out, do.call(impmapControl, <a fit's own control>) died with "unused
+  # argument: 'impMuThetaIdx', ..." -- which is the path
+  # getValidNlmixrCtl.impmap takes, so re-fitting ANY completed imp-family fit
+  # from the fit object (nlmixr2(fit, est="impmap")) failed outright.  They are
+  # per-model and .impmapFamilyFit recomputes all four before every fit, so
+  # carrying them is only about keeping the round-trip idempotent.
+  .impIdxMaps <- .dots[.impmapIdxMapNames]
+  names(.impIdxMaps) <- .impmapIdxMapNames
+  .dots[.impmapIdxMapNames] <- NULL
   if (is.character(covMethod)) {
     if (length(covMethod) == 1L && !nzchar(covMethod)) {
       covMethod <- ""
@@ -571,6 +643,9 @@ impmapControl <- function(sigdig=3,
                         list(covMethod=.foceiCovMethod, muModel="lin")))
   .control$impCov <- .impCov
   if (!is.null(.autoNonNormal)) .control$autoNonNormal <- .autoNonNormal
+  for (.nm in .impmapIdxMapNames) {
+    if (!is.null(.impIdxMaps[[.nm]])) .control[[.nm]] <- .impIdxMaps[[.nm]]
+  }
   .control$isample <- .isampleAll
   .control$nIter <- as.integer(nIter)
   checkmate::assertIntegerish(mapIter, lower=0, len=1, any.missing=FALSE,
@@ -639,7 +714,30 @@ getValidNlmixrCtl.impmap <- function(control) {
   } else {
     .ctl <- do.call(impmapControl, .ctl)
   }
-  .ctl
+  .impmapEstWins(.ctl, .cls)
+}
+
+#' `est` wins over a `mapIter` inherited from another method's fit.
+#'
+#' `nlmixr2(fit, est=)` adopts the prior fit's control, and `est="imp"` stamps
+#' `mapIter = 0` on it (that IS what `imp` means: never re-center).  Re-fitting
+#' such a control as `impmap`/`qrpem` would then silently run a method that
+#' never re-optimizes the mode -- a different algorithm from the one asked for.
+#' `est` has to win, the same way `emviControl()` resolves `pointEstimate`.
+#'
+#' Keyed on the `est` field a COMPLETED fit carries, so a user's own
+#' `impmapControl(mapIter = 0)` -- which has no `est` -- is left alone.
+#' @param ctl validated impmapControl
+#' @param est target estimation method
+#' @return ctl, possibly with mapIter restored to the impmap default
+#' @noRd
+.impmapEstWins <- function(ctl, est) {
+  if (!identical(est, "impmap") && !identical(est, "qrpem")) return(ctl)
+  if (!identical(ctl$est, "imp")) return(ctl)
+  if (!identical(as.integer(ctl$mapIter), 0L)) return(ctl)
+  .minfo(paste0("`est=\"", est, "\"` restores mapIter=1 (was 0 from an `est=\"imp\"` fit)"))
+  ctl$mapIter <- 1L
+  ctl
 }
 
 #' @rdname nmObjGetControl

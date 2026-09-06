@@ -84,13 +84,17 @@ nmTest({
       # the sampler stayed usable
       expect_lt(max(.f$env$impPsisK), 0.7)
     }
-    # the mixture reports its EFFECTIVE (covariance-matched) scales, which are
-    # not the ones supplied
+    # the mixture uses the scales AS GIVEN -- component 1 is the
+    # Laplace-approximation covariance itself, which is what the control's own
+    # validation (propMixScale[1] == 1) exists to guarantee.  Rescaling them to
+    # covariance-match made the dominant component 0.56x too narrow and made the
+    # weight tail worse than a plain normal's.
     .fm <- .run(proposal = "mixture", propMixScale = c(1, 9),
                 propMixWeight = c(0.9, 0.1))
-    expect_length(.fm$env$impPropMixScale, 2L)
-    expect_equal(sum(.fm$env$impPropMixWeight * .fm$env$impPropMixScale), 1,
-                 tolerance = 1e-10)
+    expect_equal(.fm$env$impPropMixScale, c(1, 9), tolerance = 1e-12)
+    expect_equal(.fm$env$impPropMixWeight, c(0.9, 0.1), tolerance = 1e-12)
+    # deliberately over-dispersed: that is the defensive-mixture mechanism
+    expect_gt(sum(.fm$env$impPropMixWeight * .fm$env$impPropMixScale), 1)
   })
 
   test_that("auto leaves a non-df family alone but still moves the budget", {

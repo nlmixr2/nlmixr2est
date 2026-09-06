@@ -186,6 +186,19 @@
   subject's own record count, now stops the fit with that as the reason
   instead (#1039).
 
+- Re-fitting a completed importance-sampling fit from the fit object --
+  `nlmixr2(fit, est = "imp" | "impmap" | "qrpem")` -- failed outright with
+  `unused argument: 'impMuThetaIdx', ...`.  The control is re-validated by
+  `do.call(impmapControl, ctl)`, which forwards anything it does not recognise
+  to `foceiControl()`, and the four per-model M-step index maps stamped on a
+  fit's runtime control are arguments of neither.  They are now carried through
+  the round-trip.
+
+  With that fixed, `est` also now wins over an inherited `mapIter`: `est="imp"`
+  stamps `mapIter = 0` (never re-center), so re-fitting an `imp` fit as
+  `impmap`/`qrpem` would otherwise have silently run a method that never
+  re-optimizes the mode.  A `mapIter = 0` the user asked for is untouched.
+
 - `impmapControl(mapIter=)` was accepted and then ignored: the kernel
   re-centered the importance-sampling proposal at each subject's MAP mode on
   every EM iteration regardless of the value.  It now sets the MAP-assist

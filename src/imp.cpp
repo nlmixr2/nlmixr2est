@@ -271,13 +271,23 @@ static impPropSpec impPropSpecFromControl(double dfCtl) {
     }
     double sw = 0.0;
     for (int k = 0; k < sp.nmix; ++k) sw += wv[k];
-    // Rescale the component variances so sum_k w_k c_k == 1, i.e. the mixture's
-    // covariance is gamma*Sigma exactly -- gamma then means for the mixture
-    // what it means for MVN, and iscaleMin/iscaleMax keep their meaning.
-    double cbar = 0.0;
-    for (int k = 0; k < sp.nmix; ++k) cbar += (wv[k] / sw) * cv[k];
+    // The scales are used AS GIVEN.  An earlier version rescaled them so
+    // sum_k w_k c_k == 1 ("so gamma means for the mixture what it means for
+    // MVN"), which quietly defeated the method: with the documented
+    // c = (1, 9), w = (0.9, 0.1) it made the DOMINANT component 0.56x the
+    // Laplace covariance, so 90% of draws came from a proposal far too narrow
+    // and the weight tail got WORSE than a plain normal's (measured on the
+    // 3-eta fixture: max k-hat 0.974 with 0.63 failing subjects, against
+    // -0.221 for normal).  It also contradicted the control's own validation,
+    // which requires propMixScale[1] == 1 precisely so component 1 IS the
+    // Laplace-approximation covariance.
+    //
+    // A defensive mixture is deliberately over-dispersed -- that is the
+    // mechanism, not a defect.  Its covariance is (sum_k w_k c_k) * gamma *
+    // Sigma; gamma still scales the whole mixture, so iscaleMin/iscaleMax
+    // still bound it, they just bound a proposal that starts wider than 1.
     for (int k = 0; k < sp.nmix; ++k) {
-      sp.c[k] = cv[k] / cbar;
+      sp.c[k] = cv[k];
       sp.w[k] = wv[k] / sw;
     }
   }

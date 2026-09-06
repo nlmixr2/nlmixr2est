@@ -89,7 +89,17 @@ this is \code{atol = 1e-6}, \code{rtol = 1e-3}.}
   is what distinguishes this from `est="imp"`; `est="imp"` uses the running
   conditional variance instead and is not the `mapIter = 0` case.
 
-  `mapIter` cannot change an `est="imp"` fit, which never re-centers at all.}
+  `mapIter` cannot change an `est="imp"` fit, which never re-centers at all.
+
+  **Measured trade-off.**  `mapIter = 3` against the default, same harness:
+  theta RMSE 0.00102 vs 0.00157 (1 ETA), 0.00130 vs 0.00144 (3 ETAs), 0.00173
+  vs 0.00173 (general `ll()`), with `Omega` RMSE, effective sample size and
+  k-hat essentially unmoved.  On these fixtures skipping two MAP searches in
+  three is close to free, which is the point of the knob -- but the saving is
+  model-dependent (it is the inner FOCEI problem, so it scales with how hard
+  that is), and a proposal centred away from the mode costs effective sample
+  size on a model whose mode moves faster.  `1` stays the default because it
+  is the setting that cannot be wrong.}
 
 \item{nBurn}{Number of burn-in EM iterations run before the `nIter` budget,
   to let the proposal-scale (`gamma`) and `auto` controllers settle before
@@ -102,7 +112,17 @@ this is \code{atol = 1e-6}, \code{rtol = 1e-3}.}
   and `Omega` is held when `burnFreezeOmega = TRUE`.
 
   Burn-in iterations are the first `nBurn` rows of `$parHist` and of
-  `fit$env$impObjTrace`; `fit$env$impNburn` reports how many there were.}
+  `fit$env$impObjTrace`; `fit$env$impNburn` reports how many there were.
+
+  **Measured trade-off.**  `nBurn = 5, burnFreezeOmega = TRUE` against the
+  default, same harness as `proposal`: theta RMSE 0.00140 vs 0.00157 (1 ETA),
+  0.00185 vs 0.00144 (3 ETAs), 0.00104 vs 0.00173 (general `ll()`); `Omega`
+  RMSE worse on all three (0.00404 / 0.00261 / 0.00249 against 0.00344 /
+  0.00184 / 0.00170), for 2-5 extra iterations.  Off by default: it costs
+  iterations unconditionally and none of these fixtures shows the early
+  `Omega` excursion it exists to prevent, so freezing a quantity that was not
+  misbehaving only delays it.  Worth trying when a fit's `Omega` visibly
+  overshoots in the first rows of `$parHist` and then has to come back.}
 
 \item{burnFreezeOmega}{When `TRUE`, hold `Omega` at its starting value for
   the `nBurn` burn-in iterations while the structural and residual-error
@@ -252,19 +272,54 @@ matrix at the mode.}
     and `iscaleMax` mean what they mean for `"normal"`.
   * `"mixture"` -- a defensive scale mixture about the same mode,
     `sum_k w_k N(mode, c_k gamma Sigma)`, with `propMixScale` and
-    `propMixWeight`.  A broad component covers what a narrow one misses.
+    `propMixWeight`.  A broad component covers what a narrow one misses, so
+    the mixture is deliberately over-dispersed relative to `gamma * Sigma`.
     Note this does NOT bound the weights: its widest component is still
     Gaussian-tailed, so use `"laplace"` when that is what you need.
 
   `auto` adapts `df` only on the normal/t axis -- its ladder encodes
   "Gaussian" as `df <= 0` and its constants were tuned against a Gaussian
   baseline, so a subject on `"laplace"` or `"mixture"` keeps its family.
-  The `isample` budget reallocation still applies to every family.}
+  The `isample` budget reallocation still applies to every family.
+
+  `fit$env$impProposal` reports the resolved family and `fit$env$impPropInd`
+  the per-subject families actually used, so an `auto` escalation from normal
+  to t is visible.
+
+  **Measured trade-off.**  8 seeds, `isample = 300`, RMSE against an
+  `isample = 8000` reference (`design/qrpem/qrpem-options-bench.R`), reported
+  as theta RMSE / `Omega` RMSE / max Pareto k-hat / mean effective-sample
+  fraction:
+
+  \itemize{
+    \item 1 ETA -- `"normal"` 0.00157 / 0.00344 / -1.18 / 0.624;
+      `"laplace"` 0.00128 / 0.00367 / -0.86 / 0.753;
+      `"mixture"` 0.00173 / 0.00510 / -1.33 / 0.592
+    \item 3 ETAs -- `"normal"` 0.00144 / 0.00184 / -0.22 / 0.724;
+      `"laplace"` 0.00110 / 0.00229 / +0.28 / 0.817;
+      `"mixture"` 0.00140 / 0.00296 / -0.33 / 0.668
+    \item general `ll()` -- `"normal"` 0.00173 / 0.00170 / -0.66 / 0.658;
+      `"laplace"` 0.00214 / 0.00227 / -0.31 / 0.798;
+      `"mixture"` 0.00144 / 0.00208 / -0.67 / 0.611
+  }
+
+  `"auto"` stays the default.  Neither new family wins the accuracy columns
+  here -- but note what these fixtures are: no subject exceeds k-hat 0.7
+  under ANY setting on any of them, so there is no tail failure for a
+  bounded-weight proposal to repair, and `auto` plus `gammaRule="target"`
+  are what keep it that way.  The table shows the mechanism working rather
+  than paying off: `"laplace"` buys the highest effective sample size of the
+  three on every fixture (0.75-0.82 against 0.62-0.72).  Reach for it when
+  `fit$env$impPsisK` shows a tail the `df` ladder is not fixing -- the case
+  this table does not contain.}
 
 \item{propMixScale}{Component variance multipliers for
 `proposal="mixture"`, length 2 or 3, starting at `1` and strictly
-increasing.  Rescaled internally so the mixture covariance is exactly
-`gamma * Sigma`; `fit$env$impPropMixScale` reports the effective values.}
+increasing.  Used as given: component 1 is the Laplace-approximation
+covariance itself and the rest are the wider defensive components, so the
+mixture's covariance is `(sum_k w_k c_k) * gamma * Sigma` -- deliberately
+wider than `gamma * Sigma`, which is the whole mechanism.  `gamma` still
+scales the entire mixture, so `iscaleMin`/`iscaleMax` still bound it.}
 
 \item{propMixWeight}{Component weights for `proposal="mixture"`, same length
 as `propMixScale`, positive, normalized internally.}
