@@ -184,6 +184,7 @@ bool impCovEnabled();                              // whether impCov=TRUE was re
 bool impQrEnabled();                               // qr=TRUE: Sobol importance samples
 bool impQrShiftEnabled();                          // Cranley-Patterson shift randomization
 bool impQrRefreshEnabled();                        // redraw the shift each iteration
+int impQrScramble();                               // 0 none, 1 Owen, 2 linear matrix
 bool impSirEnabled();                              // sir=TRUE: SIR-accelerated theta M-step
 int impSirN();                                     // SIR resampled points per subject
 int impBaseSeed();                                 // base seed for the per-(iter,subject) streams

@@ -19,6 +19,7 @@
 #include <boost/math/distributions/chi_squared.hpp>
 #include <ctime>
 #include "nmMcmcRng.h"
+#include "impQrng.h"
 #include "imp.h"
 #include "odeSwap.h" // odeSwapAnyNdiffSet()
 #include "utilc.h"   // RSprintf (covariance-step progress header)
@@ -33,16 +34,49 @@ using namespace Rcpp;
 // boost engine emits one coordinate per call, cycling through the dimensions
 // of consecutive points, and skips the trivial zero point; the top 53 bits are
 // scaled into (0,1) with a half-step offset so no coordinate is ever 0 or 1.
-static arma::mat impSobolU0(int isample, int neta) {
+// Raw engine output, row-major (isample x neta).  Held as the 64-bit integers
+// so a scramble can act on the digits; the unscrambled path converts with the
+// exact expression it always used.
+static std::vector<uint64_t> impSobolBits(int isample, int neta) {
   boost::random::sobol eng((std::size_t)neta);
+  std::vector<uint64_t> V((size_t)isample * (size_t)neta);
+  for (int k = 0; k < isample; ++k) {
+    for (int j = 0; j < neta; ++j) {
+      V[(size_t)k * (size_t)neta + (size_t)j] = (uint64_t)eng();
+    }
+  }
+  return V;
+}
+
+static arma::mat impSobolU0(int isample, int neta) {
+  std::vector<uint64_t> V = impSobolBits(isample, neta);
   arma::mat U0(isample, neta);
   for (int k = 0; k < isample; ++k) {
     for (int j = 0; j < neta; ++j) {
-      uint64_t v = (uint64_t)eng();
+      uint64_t v = V[(size_t)k * (size_t)neta + (size_t)j];
       U0(k, j) = std::ldexp((double)(v >> 11) + 0.5, -53);
     }
   }
   return U0;
+}
+
+// Scrambled Sobol points -> N(0,1).  The scramble seed is derived
+// arithmetically from (base, id, iter, dimension), so this draws nothing from
+// the threefry engine and replaces the Cranley-Patterson shift rather than
+// composing with it.
+static arma::mat impQrZScrambled(const std::vector<uint64_t>& V, int nrow, int ncol,
+                                 int type, uint32_t base, int id, int iter) {
+  arma::mat Z(nrow, ncol);
+  for (int j = 0; j < ncol; ++j) {
+    uint32_t sj = impQrngSeed(base, id, iter, j);
+    for (int k = 0; k < nrow; ++k) {
+      double u = impQrScrambleU(V[(size_t)k * (size_t)ncol + (size_t)j], type, sj);
+      if (u < 1e-12) u = 1e-12;
+      else if (u > 1.0 - 1e-12) u = 1.0 - 1e-12;
+      Z(k, j) = R::qnorm(u, 0.0, 1.0, 1, 0);
+    }
+  }
+  return Z;
 }
 
 // Uniform Sobol points -> N(0,1): optional Cranley-Patterson shift (mod 1),
@@ -235,10 +269,22 @@ IntegerVector impSirIndex_(NumericVector zk, int sirN, double u0) {
   return out;
 }
 
-// Test hook: the (optionally shifted) quasi-random N(0,1) point set.
+// Test hook: the (optionally shifted or scrambled) quasi-random N(0,1) point
+// set.  scramble is "none"/"owen"/"lms"; a scramble REPLACES the shift, the
+// same way the kernel treats them, so supplying both is an error.
 //[[Rcpp::export]]
-NumericMatrix impQrPoints_(int isample, int neta, Nullable<NumericVector> shift) {
+NumericMatrix impQrPoints_(int isample, int neta, Nullable<NumericVector> shift,
+                           std::string scramble = "none", int seed = 42) {
   if (isample < 1 || neta < 1) stop("'isample' and 'neta' must be positive");
+  int type = (scramble == "none") ? impQrScrambleNone :
+    ((scramble == "owen") ? impQrScrambleOwen :
+     ((scramble == "lms") ? impQrScrambleLms : -1));
+  if (type < 0) stop("'scramble' must be \"none\", \"owen\" or \"lms\"");
+  if (type != impQrScrambleNone) {
+    if (shift.isNotNull()) stop("'shift' does not apply when scrambling");
+    std::vector<uint64_t> V = impSobolBits(isample, neta);
+    return wrap(impQrZScrambled(V, isample, neta, type, (uint32_t)seed, 0, 0));
+  }
   arma::mat U0 = impSobolU0(isample, neta);
   if (shift.isNotNull()) {
     NumericVector s(shift);
@@ -391,12 +437,23 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
   // QRPEM: one Sobol base point set per E-step (read-only in the parallel
   // loop); with qrShift=FALSE the N(0,1) points are also fixed and shared.
   bool qr = impQrEnabled();
-  bool qrShift = impQrShiftEnabled();
+  int qrScramble = impQrScramble();
+  // Scrambling IS the randomization, so it replaces the Cranley-Patterson
+  // shift rather than composing with it; qrRefresh still says whether the
+  // randomization is redrawn each iteration.
+  bool qrShift = (qrScramble == impQrScrambleNone) && impQrShiftEnabled();
   bool qrRefresh = impQrRefreshEnabled();
   arma::mat qrU0, qrZ0;
+  std::vector<uint64_t> qrBits;
+  int qrNrow = 0;
   if (qr) {
-    qrU0 = impSobolU0((int)isampleVec.max(), neta);
-    if (!qrShift) qrZ0 = impQrZ(qrU0, nullptr);
+    qrNrow = (int)isampleVec.max();
+    if (qrScramble == impQrScrambleNone) {
+      qrU0 = impSobolU0(qrNrow, neta);
+      if (!qrShift) qrZ0 = impQrZ(qrU0, nullptr);
+    } else {
+      qrBits = impSobolBits(qrNrow, neta);
+    }
   }
   // Parallelize over base subjects, iterating a subject's mixture components
   // serially within one thread.  A base subject's expanded pseudo-subjects (id =
@@ -428,7 +485,13 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
         // fit-constant qrPinSeed (captured once in impOuter -- seed0 advances
         // every E-step) so the whole fit reuses one shift per subject.
         arma::mat Z;
-        if (qrShift) {
+        if (qrScramble != impQrScrambleNone) {
+          // qrRefresh=FALSE pins the scramble to the subject, so every
+          // iteration sees the same scrambled set (a deterministic EM map).
+          Z = impQrZScrambled(qrBits, qrNrow, neta, qrScramble, qrPinSeed, id,
+                              qrRefresh ? iter : 0);
+          if (nsId < qrNrow) Z = Z.rows(0, nsId - 1);
+        } else if (qrShift) {
           if (!qrRefresh) nmSetSeedEng1(qrPinSeed + (uint32_t)(id * 2));
           arma::vec sh(neta);
           for (int jj = 0; jj < neta; ++jj) sh[jj] = rxUnifEng(0.0, 1.0);
@@ -745,11 +808,17 @@ void impComputeCov(Environment e, const arma::vec& gammaVec,
   // With qr=TRUE the fixed set is the Sobol point set (per-subject shifted
   // when qrShift; qrRefresh is irrelevant here -- the set never refreshes).
   bool qr = impQrEnabled();
-  bool qrShift = impQrShiftEnabled();
+  int qrScramble = impQrScramble();
+  bool qrShift = (qrScramble == impQrScrambleNone) && impQrShiftEnabled();
   arma::mat qrU0, qrZ0;
+  std::vector<uint64_t> qrBits;
   if (qr) {
-    qrU0 = impSobolU0(isample, neta);
-    if (!qrShift) qrZ0 = impQrZ(qrU0, nullptr);
+    if (qrScramble == impQrScrambleNone) {
+      qrU0 = impSobolU0(isample, neta);
+      if (!qrShift) qrZ0 = impQrZ(qrU0, nullptr);
+    } else {
+      qrBits = impSobolBits(isample, neta);
+    }
   }
   uint32_t seed0 = (uint32_t)impBaseSeed() + 0x2545F491u;
   setRxThreadId(0);
@@ -759,7 +828,13 @@ void impComputeCov(Environment e, const arma::vec& gammaVec,
     arma::mat S(isample, neta);
     if (qr) {
       arma::mat Z;
-      if (qrShift) {
+      if (qrScramble != impQrScrambleNone) {
+        // The covariance must be evaluated under the SAME proposal the fit
+        // converged on, so it scrambles with the same fit-constant key.  iter=0
+        // matches the qrRefresh=FALSE convention: this set never refreshes.
+        Z = impQrZScrambled(qrBits, isample, neta, qrScramble,
+                            (uint32_t)impBaseSeed() + 0x9E3779B1u, id, 0);
+      } else if (qrShift) {
         arma::vec sh(neta);
         for (int j = 0; j < neta; ++j) sh[j] = rxUnifEng(0.0, 1.0);
         Z = impQrZ(qrU0, &sh);
@@ -1862,6 +1937,8 @@ void impOuter(Environment e) {
   e["impKhatIter"] = wrap(KhatExp);         // last-iteration in-kernel k-hat
   e["impAuto"]     = autoOn;
   e["impQr"]       = impQrEnabled();
+  e["impQrScramble"] = (impQrScramble() == impQrScrambleOwen) ? "owen" :
+    ((impQrScramble() == impQrScrambleLms) ? "lms" : "none");
   e["impSir"]      = impSirEnabled();
   e["impSirSample"] = impSirN();
   e["impNiter"]    = nIter;

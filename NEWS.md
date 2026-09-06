@@ -2,6 +2,16 @@
 
 ## New features
 
+- `impmapControl(qrScramble = "owen" | "lms")` scrambles the QRPEM Sobol point
+  set (`qr = TRUE`).  The Cranley-Patterson shift randomizes the set but leaves
+  the correlation structure between the sequence's high-order dimensions
+  intact, so it helps least on the many-random-effect models that need it most;
+  a nested uniform (Owen) or linear matrix scramble permutes the digits and
+  breaks it.  Scrambling replaces the shift rather than composing with it, and
+  its key is derived arithmetically from `impSeed` and the (iteration, subject,
+  dimension) indices, so it draws nothing from the RNG and the fit stays
+  reproducible and independent of the thread count.  Defaults to `"none"`.
+
 - `impmapControl(nBurn=, burnFreezeOmega=)` add burn-in EM iterations to the
   importance-sampling family (`est="imp"`, `"impmap"`, `"qrpem"`).  They run
   before the `nIter` budget rather than out of it, let the `gamma` and `auto`

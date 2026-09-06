@@ -885,6 +885,7 @@ struct focei_options {
   bool impQr = false;        // quasi-random (Sobol) importance samples (QRPEM)
   bool impQrShift = true;    // Cranley-Patterson random shift of the Sobol points
   bool impQrRefresh = true;  // redraw the shift each iteration (false: one shift/subject)
+  int impQrScramble = 0;     // Sobol scrambling: 0 none, 1 Owen, 2 linear matrix
   bool impSir = false;       // SIR-accelerated non-mu/sigma M-step
   int impSirSample = 30;     // SIR resampled points per subject
   int impSeed = 42;          // base seed for the per-(iter,subject) draw streams
@@ -7563,6 +7564,11 @@ NumericVector foceiSetup_(const RObject &obj,
     if (foceiO.containsElementNamed("qr")) op_focei.impQr = as<bool>(foceiO["qr"]);
     if (foceiO.containsElementNamed("qrShift")) op_focei.impQrShift = as<bool>(foceiO["qrShift"]);
     if (foceiO.containsElementNamed("qrRefresh")) op_focei.impQrRefresh = as<bool>(foceiO["qrRefresh"]);
+    if (foceiO.containsElementNamed("qrScramble") &&
+        TYPEOF(foceiO["qrScramble"]) == STRSXP) {
+      std::string qs = as<std::string>(foceiO["qrScramble"]);
+      op_focei.impQrScramble = (qs == "owen") ? 1 : ((qs == "lms") ? 2 : 0);
+    }
     if (foceiO.containsElementNamed("sir")) op_focei.impSir = as<bool>(foceiO["sir"]);
     if (foceiO.containsElementNamed("sirSample")) op_focei.impSirSample = as<int>(foceiO["sirSample"]);
     if (foceiO.containsElementNamed("impSeed")) op_focei.impSeed = as<int>(foceiO["impSeed"]);
@@ -11688,6 +11694,7 @@ bool impCovEnabled() { return op_focei.impCov; }
 bool impQrEnabled() { return op_focei.impQr; }
 bool impQrShiftEnabled() { return op_focei.impQrShift; }
 bool impQrRefreshEnabled() { return op_focei.impQrRefresh; }
+int impQrScramble() { return op_focei.impQrScramble; }
 bool impSirEnabled() { return op_focei.impSir; }
 int impSirN() { return op_focei.impSirSample; }
 int impBaseSeed() { return op_focei.impSeed; }

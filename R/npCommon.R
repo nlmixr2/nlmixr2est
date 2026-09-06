@@ -408,7 +408,7 @@
                     "autoNonNormal", "autoNonmemSparse", "autoDfPatience",
                     "iscaleMin", "iscaleMax", "iaccept", "mapIter",
                     "nBurn", "burnFreezeOmega",
-                    "qr", "qrShift", "qrRefresh", "sir", "sirSample")
+                    "qr", "qrShift", "qrRefresh", "qrScramble", "sir", "sirSample")
 
 # Inert too, but with a real np counterpart worth naming.  npag has no seed of
 # its own -- its grid is Sobol-deterministic -- so impSeed only remaps under npb.

@@ -15,7 +15,8 @@
                            "iscaleMin", "iscaleMax", "iaccept",
                            "nBurn", "burnFreezeOmega",
                            "ctol", "nConvWindow", "impSeed", "impCov",
-                           "qr", "qrShift", "qrRefresh", "sir", "sirSample",
+                           "qr", "qrShift", "qrRefresh", "qrScramble",
+                           "sir", "sirSample",
                            # internal M-step index maps added in .impmapFamilyFit;
                            # not foceiControl() arguments, so they must be dropped
                            # when down-converting (e.g. .setOfvFo's do.call(foceiControl))
@@ -333,6 +334,29 @@
 #'   averages out over the EM; `FALSE` draws one shift per subject at the fit
 #'   start, making each EM iteration a deterministic map (smoothest objective
 #'   trace).
+#' @param qrScramble Only used with `qr=TRUE`.  Scrambling of the Sobol point
+#'   set: `"none"` (default) uses the raw sequence, randomized only by the
+#'   Cranley-Patterson shift; `"owen"` applies a hash-based nested uniform
+#'   (Owen) scramble; `"lms"` applies a linear matrix scramble with a digital
+#'   shift.
+#'
+#'   A Cranley-Patterson shift randomizes the point set but leaves the
+#'   correlation structure between the sequence's high-order dimensions intact,
+#'   which is where a Sobol set degrades first -- so it helps least on exactly
+#'   the models with many random effects that need it most.  Scrambling permutes
+#'   the digits and does break that structure.
+#'
+#'   Scrambling IS the randomization, so it REPLACES the shift rather than
+#'   composing with it: `qrShift` is ignored when this is not `"none"`, while
+#'   `qrRefresh` still decides whether the randomization is redrawn each
+#'   iteration (`FALSE` pins one scramble per subject, making each EM iteration
+#'   a deterministic map).  The scramble key is derived arithmetically from
+#'   `impSeed` and the (iteration, subject, dimension) indices rather than drawn
+#'   from the RNG, so it consumes no draws and the fit stays reproducible and
+#'   independent of the thread count.
+#'
+#'   `"lms"` is named for the method (Matousek/Tezuka linear matrix scrambling)
+#'   and is not a claim to reproduce any particular vendor's variant.
 #' @param sir When `TRUE`, accelerate the non-mu / residual-error M-step by
 #'   SIR (sampling-importance-resampling): the theta-sensitivity Newton step
 #'   uses `sirSample` equal-weight resampled points per subject instead of all
@@ -382,6 +406,7 @@ impmapControl <- function(sigdig=3,
                           qr=FALSE,
                           qrShift=TRUE,
                           qrRefresh=TRUE,
+                          qrScramble=c("none", "owen", "lms"),
                           sir=FALSE,
                           sirSample=NULL,
                           muModel=c("lin", "none"),
@@ -412,6 +437,7 @@ impmapControl <- function(sigdig=3,
   checkmate::assertLogical(qr, any.missing=FALSE, len=1, .var.name="qr")
   checkmate::assertLogical(qrShift, any.missing=FALSE, len=1, .var.name="qrShift")
   checkmate::assertLogical(qrRefresh, any.missing=FALSE, len=1, .var.name="qrRefresh")
+  qrScramble <- match.arg(qrScramble)
   checkmate::assertLogical(sir, any.missing=FALSE, len=1, .var.name="sir")
   # isample may be a single count or one count PER SUBJECT (NONMEM's per-subject
   # ISAMPLE): a badly covered subject can buy more samples without charging
@@ -507,6 +533,7 @@ impmapControl <- function(sigdig=3,
   .control$qr <- qr
   .control$qrShift <- qrShift
   .control$qrRefresh <- qrRefresh
+  .control$qrScramble <- qrScramble
   .control$sir <- sir
   .control$sirSample <- .sirSample
   .control$combSens <- combSens

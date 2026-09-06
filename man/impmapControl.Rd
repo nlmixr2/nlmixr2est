@@ -29,6 +29,7 @@ impmapControl(
   qr = FALSE,
   qrShift = TRUE,
   qrRefresh = TRUE,
+  qrScramble = c("none", "owen", "lms"),
   sir = FALSE,
   sirSample = NULL,
   muModel = c("lin", "none"),
@@ -365,6 +366,30 @@ the shift is redrawn each iteration so residual quasi-random error
 averages out over the EM; `FALSE` draws one shift per subject at the fit
 start, making each EM iteration a deterministic map (smoothest objective
 trace).}
+
+\item{qrScramble}{Only used with `qr=TRUE`.  Scrambling of the Sobol point
+  set: `"none"` (default) uses the raw sequence, randomized only by the
+  Cranley-Patterson shift; `"owen"` applies a hash-based nested uniform
+  (Owen) scramble; `"lms"` applies a linear matrix scramble with a digital
+  shift.
+
+  A Cranley-Patterson shift randomizes the point set but leaves the
+  correlation structure between the sequence's high-order dimensions intact,
+  which is where a Sobol set degrades first -- so it helps least on exactly
+  the models with many random effects that need it most.  Scrambling permutes
+  the digits and does break that structure.
+
+  Scrambling IS the randomization, so it REPLACES the shift rather than
+  composing with it: `qrShift` is ignored when this is not `"none"`, while
+  `qrRefresh` still decides whether the randomization is redrawn each
+  iteration (`FALSE` pins one scramble per subject, making each EM iteration
+  a deterministic map).  The scramble key is derived arithmetically from
+  `impSeed` and the (iteration, subject, dimension) indices rather than drawn
+  from the RNG, so it consumes no draws and the fit stays reproducible and
+  independent of the thread count.
+
+  `"lms"` is named for the method (Matousek/Tezuka linear matrix scrambling)
+  and is not a claim to reproduce any particular vendor's variant.}
 
 \item{sir}{When `TRUE`, accelerate the non-mu / residual-error M-step by
 SIR (sampling-importance-resampling): the theta-sensitivity Newton step

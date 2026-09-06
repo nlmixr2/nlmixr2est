@@ -453,15 +453,17 @@ BEGIN_RCPP
 END_RCPP
 }
 // impQrPoints_
-NumericMatrix impQrPoints_(int isample, int neta, Nullable<NumericVector> shift);
-RcppExport SEXP _nlmixr2est_impQrPoints_(SEXP isampleSEXP, SEXP netaSEXP, SEXP shiftSEXP) {
+NumericMatrix impQrPoints_(int isample, int neta, Nullable<NumericVector> shift, std::string scramble, int seed);
+RcppExport SEXP _nlmixr2est_impQrPoints_(SEXP isampleSEXP, SEXP netaSEXP, SEXP shiftSEXP, SEXP scrambleSEXP, SEXP seedSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< int >::type isample(isampleSEXP);
     Rcpp::traits::input_parameter< int >::type neta(netaSEXP);
     Rcpp::traits::input_parameter< Nullable<NumericVector> >::type shift(shiftSEXP);
-    rcpp_result_gen = Rcpp::wrap(impQrPoints_(isample, neta, shift));
+    Rcpp::traits::input_parameter< std::string >::type scramble(scrambleSEXP);
+    Rcpp::traits::input_parameter< int >::type seed(seedSEXP);
+    rcpp_result_gen = Rcpp::wrap(impQrPoints_(isample, neta, shift, scramble, seed));
     return rcpp_result_gen;
 END_RCPP
 }
