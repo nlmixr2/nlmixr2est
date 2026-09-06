@@ -1891,6 +1891,19 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// rxEtaDistTest_
+SEXP rxEtaDistTest_(int fam, SEXP inU, SEXP inArgs);
+RcppExport SEXP _nlmixr2est_rxEtaDistTest_(SEXP famSEXP, SEXP inUSEXP, SEXP inArgsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< int >::type fam(famSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type inU(inUSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type inArgs(inArgsSEXP);
+    rcpp_result_gen = Rcpp::wrap(rxEtaDistTest_(fam, inU, inArgs));
+    return rcpp_result_gen;
+END_RCPP
+}
 // saemFormGTest
 SEXP saemFormGTest(SEXP inA, SEXP inB, SEXP inFt, SEXP inC, SEXP inAddProp);
 RcppExport SEXP _nlmixr2est_saemFormGTest(SEXP inASEXP, SEXP inBSEXP, SEXP inFtSEXP, SEXP inCSEXP, SEXP inAddPropSEXP) {

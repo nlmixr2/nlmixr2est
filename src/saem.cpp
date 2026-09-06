@@ -35,6 +35,165 @@ using namespace Rcpp;
 // -- must be included AFTER the `using namespace Rcpp;` above.
 #include "scale.h"
 
+// ---- declared random-effect distributions: family dispatch ----------------
+//
+// The ODE-free M-step (see etaDistMstep()) needs the declared family's
+// quantile (to map a sampled latent normal to an eta) and its density (for the
+// likelihood).  Both come from Rmath's C API, so the whole M-step -- objective
+// AND optimizer -- stays in C++; nothing crosses into R on the hot loop.
+//
+// Codes are assigned by .etaDistFamilyCode() (R/etaDistMstep.R) and must stay
+// in sync with it.  Arguments are the family's NATIVE parameters in the order
+// the d*()/q*() pair takes them, EXCEPT that a rate is converted to Rmath's
+// scale here rather than in R.
+// Family codes: the ROW NUMBER in lotri::lotriEtaDists(), so the C++ dispatch
+// and the catalog cannot drift apart.  .etaDistFamilyCode() (R/etaDistMstep.R)
+// assigns them; a family this dispatch does not implement gets code 0 and falls
+// back to the general R path, which evaluates the declaration's own d*() call.
+#define RXETADIST_NORM        1   // mean, sd
+#define RXETADIST_STDNORMAL   2   // (none)
+#define RXETADIST_STUDENTT    3   // nu, mu, sigma
+#define RXETADIST_CAUCHY      4   // location, scale
+#define RXETADIST_DBLEXP      5   // mu, sigma
+#define RXETADIST_LOGIS       6   // location, scale
+#define RXETADIST_GUMBEL      7   // mu, beta
+#define RXETADIST_LNORM       8   // meanlog, sdlog
+#define RXETADIST_CHISQ       9   // df
+#define RXETADIST_INVCHISQ   10   // nu
+#define RXETADIST_SCINVCHISQ 11   // nu, sigma
+#define RXETADIST_EXP        12   // rate
+#define RXETADIST_GAMMA      13   // shape, rate
+#define RXETADIST_INVGAMMA   14   // alpha, beta
+#define RXETADIST_WEIBULL    15   // shape, scale
+#define RXETADIST_FRECHET    16   // alpha, sigma
+#define RXETADIST_RAYLEIGH   17   // sigma
+#define RXETADIST_PARETO     18   // y_min, alpha
+#define RXETADIST_PARETO2    19   // mu, lambda, alpha
+#define RXETADIST_BETA       20   // shape1, shape2
+#define RXETADIST_BETAPROP   21   // mu, kappa
+#define RXETADIST_UNIF       22   // min, max
+
+static inline int rxEtaDistNarg(int fam) {
+  switch (fam) {
+  case RXETADIST_STDNORMAL:                      return 0;
+  case RXETADIST_CHISQ:  case RXETADIST_INVCHISQ:
+  case RXETADIST_EXP:    case RXETADIST_RAYLEIGH: return 1;
+  case RXETADIST_STUDENTT: case RXETADIST_PARETO2: return 3;
+  case RXETADIST_NORM:   case RXETADIST_CAUCHY: case RXETADIST_DBLEXP:
+  case RXETADIST_LOGIS:  case RXETADIST_GUMBEL: case RXETADIST_LNORM:
+  case RXETADIST_SCINVCHISQ: case RXETADIST_GAMMA: case RXETADIST_INVGAMMA:
+  case RXETADIST_WEIBULL: case RXETADIST_FRECHET: case RXETADIST_PARETO:
+  case RXETADIST_BETA:   case RXETADIST_BETAPROP: case RXETADIST_UNIF: return 2;
+  default: return -1;                 // unimplemented -> R fallback
+  }
+}
+
+// Native parameters constrained positive, as a bit mask.  nelder_fn is
+// unbounded, so the objective optimizes log() of these.
+static inline int rxEtaDistPosMask(int fam) {
+  switch (fam) {
+  case RXETADIST_NORM: case RXETADIST_CAUCHY: case RXETADIST_DBLEXP:
+  case RXETADIST_LOGIS: case RXETADIST_GUMBEL: case RXETADIST_LNORM:
+  case RXETADIST_BETAPROP:                                    return 0x2;
+  case RXETADIST_STUDENTT:                                    return 0x5; // nu, sigma
+  case RXETADIST_PARETO2:                                     return 0x6; // lambda, alpha
+  case RXETADIST_CHISQ: case RXETADIST_INVCHISQ:
+  case RXETADIST_EXP:   case RXETADIST_RAYLEIGH:              return 0x1;
+  case RXETADIST_SCINVCHISQ: case RXETADIST_GAMMA:
+  case RXETADIST_INVGAMMA: case RXETADIST_WEIBULL:
+  case RXETADIST_FRECHET: case RXETADIST_PARETO:
+  case RXETADIST_BETA:                                        return 0x3;
+  default:                                                    return 0x0;
+  }
+}
+
+// quantile: latent uniform -> eta.  Mirrors the catalog's own templates.
+static inline double rxEtaDistQ(int fam, double u, const double *a) {
+  switch (fam) {
+  case RXETADIST_NORM:      return R::qnorm(u, a[0], a[1], 1, 0);
+  case RXETADIST_STDNORMAL: return R::qnorm(u, 0.0, 1.0, 1, 0);
+  case RXETADIST_STUDENTT:  return a[1] + a[2]*R::qt(u, a[0], 1, 0);
+  case RXETADIST_CAUCHY:    return R::qcauchy(u, a[0], a[1], 1, 0);
+  case RXETADIST_DBLEXP: {
+    double sg = (u < 0.5) ? -1.0 : 1.0;
+    return a[0] - a[1]*sg*std::log1p(-2.0*sg*(u - 0.5));
+  }
+  case RXETADIST_LOGIS:     return R::qlogis(u, a[0], a[1], 1, 0);
+  case RXETADIST_GUMBEL:    return a[0] - a[1]*std::log(-std::log(u));
+  case RXETADIST_LNORM:     return R::qlnorm(u, a[0], a[1], 1, 0);
+  case RXETADIST_CHISQ:     return R::qchisq(u, a[0], 1, 0);
+  // 2*gammapInv(nu/2, 1-u) IS qchisq(1-u, nu)
+  case RXETADIST_INVCHISQ:  return 1.0/R::qchisq(1.0 - u, a[0], 1, 0);
+  case RXETADIST_SCINVCHISQ: return a[0]*a[1]*a[1]/R::qchisq(1.0 - u, a[0], 1, 0);
+  case RXETADIST_EXP:       return R::qexp(u, 1.0/a[0], 1, 0);
+  case RXETADIST_GAMMA:     return R::qgamma(u, a[0], 1.0/a[1], 1, 0);
+  case RXETADIST_INVGAMMA:  return a[1]/R::qgamma(1.0 - u, a[0], 1.0, 1, 0);
+  case RXETADIST_WEIBULL:   return R::qweibull(u, a[0], a[1], 1, 0);
+  case RXETADIST_FRECHET:   return a[1]*std::pow(-std::log(u), -1.0/a[0]);
+  case RXETADIST_RAYLEIGH:  return a[0]*std::sqrt(-2.0*std::log1p(-u));
+  case RXETADIST_PARETO:    return a[0]*std::pow(1.0 - u, -1.0/a[1]);
+  case RXETADIST_PARETO2:   return a[0] + a[1]*(std::pow(1.0 - u, -1.0/a[2]) - 1.0);
+  case RXETADIST_BETA:      return R::qbeta(u, a[0], a[1], 1, 0);
+  case RXETADIST_BETAPROP:  return R::qbeta(u, a[0]*a[1], (1.0 - a[0])*a[1], 1, 0);
+  case RXETADIST_UNIF:      return R::qunif(u, a[0], a[1], 1, 0);
+  default:                  return NA_REAL;
+  }
+}
+
+// log density at an eta value
+static inline double rxEtaDistLogD(int fam, double x, const double *a) {
+  switch (fam) {
+  case RXETADIST_NORM:      return R::dnorm(x, a[0], a[1], 1);
+  case RXETADIST_STDNORMAL: return R::dnorm(x, 0.0, 1.0, 1);
+  case RXETADIST_STUDENTT:  // location-scale t: dt(z)/sigma
+    return R::dt((x - a[1])/a[2], a[0], 1) - std::log(a[2]);
+  case RXETADIST_CAUCHY:    return R::dcauchy(x, a[0], a[1], 1);
+  case RXETADIST_DBLEXP:
+    return -std::log(2.0*a[1]) - std::fabs(x - a[0])/a[1];
+  case RXETADIST_LOGIS:     return R::dlogis(x, a[0], a[1], 1);
+  case RXETADIST_GUMBEL: {
+    double z = (x - a[0])/a[1];
+    return -std::log(a[1]) - z - std::exp(-z);
+  }
+  case RXETADIST_LNORM:     return R::dlnorm(x, a[0], a[1], 1);
+  case RXETADIST_CHISQ:     return R::dchisq(x, a[0], 1);
+  case RXETADIST_INVCHISQ:  // X = 1/Y, Y~chisq(nu); |dY/dX| = 1/x^2
+    return (x > 0) ? R::dchisq(1.0/x, a[0], 1) - 2.0*std::log(x) : R_NegInf;
+  case RXETADIST_SCINVCHISQ: {
+    if (x <= 0) return R_NegInf;
+    double nu = a[0], t2 = a[1]*a[1];
+    return (nu/2.0)*std::log(nu*t2/2.0) - R::lgammafn(nu/2.0)
+      - (1.0 + nu/2.0)*std::log(x) - nu*t2/(2.0*x);
+  }
+  case RXETADIST_EXP:       return R::dexp(x, 1.0/a[0], 1);
+  case RXETADIST_GAMMA:     return R::dgamma(x, a[0], 1.0/a[1], 1);
+  case RXETADIST_INVGAMMA:
+    return (x > 0) ? a[0]*std::log(a[1]) - R::lgammafn(a[0])
+      - (a[0] + 1.0)*std::log(x) - a[1]/x : R_NegInf;
+  case RXETADIST_WEIBULL:   return R::dweibull(x, a[0], a[1], 1);
+  case RXETADIST_FRECHET: {
+    if (x <= 0) return R_NegInf;
+    double z = x/a[1];
+    return std::log(a[0]/a[1]) - (1.0 + a[0])*std::log(z) - std::pow(z, -a[0]);
+  }
+  case RXETADIST_RAYLEIGH:
+    return (x > 0) ? std::log(x) - 2.0*std::log(a[0]) - x*x/(2.0*a[0]*a[0])
+      : R_NegInf;
+  case RXETADIST_PARETO:
+    return (x >= a[0]) ? std::log(a[1]) + a[1]*std::log(a[0])
+      - (a[1] + 1.0)*std::log(x) : R_NegInf;
+  case RXETADIST_PARETO2: {
+    double z = (x - a[0])/a[1];
+    return (z >= 0) ? std::log(a[2]/a[1]) - (a[2] + 1.0)*std::log1p(z) : R_NegInf;
+  }
+  case RXETADIST_BETA:      return R::dbeta(x, a[0], a[1], 1);
+  case RXETADIST_BETAPROP:
+    return R::dbeta(x, a[0]*a[1], (1.0 - a[0])*a[1], 1);
+  case RXETADIST_UNIF:      return R::dunif(x, a[0], a[1], 1);
+  default:                  return R_NegInf;
+  }
+}
+
 typedef void (*fn_ptr) (double *, double *);
 
 extern "C" void nelder_fn(fn_ptr func, int n, double *start, double *step,
@@ -616,6 +775,98 @@ static double gPhi0Obj1DR(double x);
 static arma::vec gPhi0Lo, gPhi0Hi, gPhi0RefBest;
 static int gPhi0RefEvalMax = 0, gPhi0RefEvalN = 0;
 static double gPhi0RefBestF = 0.0;
+// ---- ODE-free M-step for a declared distribution --------------------------
+//
+// In the (y, eta) augmentation the complete-data likelihood factors as
+//   log p(y | eta) + log p(eta | theta_dist)
+// and theta_dist appears ONLY in the second term, so its M-step is a pure
+// distribution fit to the sampled etas -- no data term, no ODE solve -- exactly
+// as the residual step (_saemOpt) fits accumulated residuals rather than
+// re-solving.  rxEtaDistExpand() breaks that by rewriting eta = Q(phi(z)) with
+// z ~ N(0,1), which moves theta_dist into the DATA likelihood and lands it in
+// refinePhi0Lik()'s derivative-free search.  EM lets the augmentation be chosen
+// freely: sample in z-space, take this M-step in eta-space.
+//
+// Not circular: prior draws of z would make Q(phi(z)) exactly family(theta_old)
+// and return theta_old, but these are POSTERIOR draws -- which is why their
+// measured spread is ~0.94 rather than 1.0 -- so they carry data information.
+//
+// Estimated in the family's NATIVE parameters (option A): the objective and the
+// simplex are both C++, with no R on the hot loop.  Positive parameters are
+// optimized on the log scale because nelder_fn is unbounded.
+static std::vector<double> gEtaDistVals;   // sampled etas for the current eta
+static int gEtaDistFam = 0;
+static int gEtaDistNa = 0;
+static int gEtaDistPos = 0;
+
+static inline void gEtaDistUnpack(const double *p, double *a) {
+  for (int i = 0; i < gEtaDistNa; ++i) {
+    a[i] = (gEtaDistPos & (1 << i)) ? std::exp(p[i]) : p[i];
+  }
+}
+
+static double gEtaDistObj(const double *p) {
+  double a[4];
+  gEtaDistUnpack(p, a);
+  for (int i = 0; i < gEtaDistNa; ++i) if (!std::isfinite(a[i])) return 1e300;
+  double nll = 0.0;
+  const size_t n = gEtaDistVals.size();
+  for (size_t i = 0; i < n; ++i) {
+    double l = rxEtaDistLogD(gEtaDistFam, gEtaDistVals[i], a);
+    if (!std::isfinite(l)) return 1e300;
+    nll -= l;
+  }
+  return std::isfinite(nll) ? nll : 1e300;
+}
+static void gEtaDistNmFn(double *p, double *fx) { *fx = gEtaDistObj(p); }
+
+// Fit `fam` to `vals` by maximum likelihood, starting from native `a0`.
+// Returns false and leaves `a0` untouched when the fit fails.
+static bool rxEtaDistMle(int fam, const std::vector<double> &vals, double *a0) {
+  int na = rxEtaDistNarg(fam);
+  if (na <= 0 || vals.size() < 2) return false;
+  gEtaDistFam = fam; gEtaDistNa = na; gEtaDistPos = rxEtaDistPosMask(fam);
+  gEtaDistVals = vals;
+  std::vector<double> st(na), stp(na), xm(na);
+  for (int i = 0; i < na; ++i) {
+    double v = (gEtaDistPos & (1 << i)) ? std::log(a0[i]) : a0[i];
+    if (!std::isfinite(v)) return false;
+    st[i] = v; xm[i] = v;
+    // nelder_fn derives nothing from the start, so give every coordinate a
+    // usable step even when it starts at zero
+    stp[i] = (std::fabs(v) > 1e-8) ? 0.1*std::fabs(v) : 0.1;
+  }
+  int iconv, it, nfcall, iprint = 0;
+  double ynewlo;
+  nelder_fn(gEtaDistNmFn, na, st.data(), stp.data(), 200*na, 1e-8,
+            1.0, 2.0, 0.5, &iconv, &it, &nfcall, &ynewlo, xm.data(), &iprint);
+  if (!std::isfinite(ynewlo) || ynewlo >= 1e300) return false;
+  double a[4];
+  gEtaDistUnpack(xm.data(), a);
+  for (int i = 0; i < na; ++i) {
+    if (!std::isfinite(a[i])) return false;
+    a0[i] = a[i];
+  }
+  return true;
+}
+
+// Closed-form M-step for a Gaussian copula's correlation: the latent pair is
+// bivariate normal with UNIT variances, so the constrained MLE is sum(w1*w2)/n
+// -- a closed form, not a search.
+static double rxEtaDistCorMle(const std::vector<double> &w1,
+                              const std::vector<double> &w2) {
+  size_t n = std::min(w1.size(), w2.size());
+  if (n < 2) return NA_REAL;
+  double s = 0.0; size_t m = 0;
+  for (size_t i = 0; i < n; ++i) {
+    if (std::isfinite(w1[i]) && std::isfinite(w2[i])) { s += w1[i]*w2[i]; m++; }
+  }
+  if (m < 2) return NA_REAL;
+  double r = s / (double)m;
+  if (!std::isfinite(r)) return NA_REAL;
+  return std::max(std::min(r, 0.999), -0.999);
+}
+
 static double gPhi0RefObj(const double *p);
 static void gPhi0NmFn(double *p, double *fx);
 static double gPhi0RefObjR(Rcpp::NumericVector p);
@@ -668,14 +919,35 @@ static inline void _saemFillUnifEng(arma::vec &v) {
 static inline void _saemSeedDoMcmc(uint32_t baseSeed, int kiter, int method, int u, int k1,
                                    int mixIdx = 0) {
   setRxThreadId(0);
-  uint32_t s = baseSeed;
-  s = s * 2654435761u + 0x00006D0Cu;   // "do_mcmc" namespace tag
-  s = s * 2654435761u + (uint32_t)kiter;
-  s = s * 2654435761u + (uint32_t)method;
-  s = s * 2654435761u + (uint32_t)u;
-  s = s * 2654435761u + (uint32_t)k1;
-  s += (uint32_t)mixIdx;               // per-component stream offset
-  nmSetSeedEng1(s);
+  // threefry is COUNTER-based, and sitmo's own guidance for parallel streams is
+  // simply to seed separate engines with distinct seeds -- distinct seeds are
+  // uncorrelated by construction (see the sitmo "uniform_rng_with_sitmo"
+  // vignette, which measures exactly that).  So the stream index does not need
+  // to be hashed; it needs to be UNIQUE.  Packing the fields into disjoint bit
+  // ranges makes it injective by construction.
+  //
+  // The Knuth-multiply chain this replaces was not injective.  Its last step
+  // was a bare `s += mixIdx` after `s = s*M + k1`, so the seed depended on
+  // k1 + mixIdx rather than on the pair: HALF of all combinations collided
+  // (measured: 108 duplicate seeds out of 216 (kiter,method,u,k1,mixIdx)
+  // combinations).  In a mixture fit under kernel 3 -- the only kernel that
+  // loops k1 -- component m at coordinate j drew the IDENTICAL proposal noise
+  // as component m-1 at coordinate j+1, which is the very failure the mixIdx
+  // offset exists to prevent.  The sibling _saemSeedCensAug() had the same bug
+  // found and fixed; this one was missed.
+  //
+  // Field widths: kiter 14 bits (< 16384), method 3, u 4, k1 6, mixIdx 5.
+  // Values are masked rather than allowed to overflow into a neighbouring
+  // field, so an out-of-range index degrades to a collision within its own
+  // field instead of silently corrupting another one.
+  uint32_t ns = baseSeed * 2654435761u + 0x00006D0Cu;  // "do_mcmc" namespace
+  uint32_t idx =
+    (((uint32_t)kiter  & 0x3FFFu) << 18) |
+    (((uint32_t)method & 0x7u)    << 15) |
+    (((uint32_t)u      & 0xFu)    << 11) |
+    (((uint32_t)k1     & 0x3Fu)   <<  5) |
+    ( (uint32_t)mixIdx & 0x1Fu);
+  nmSetSeedEng1(ns + idx);
 }
 
 // Iteration-indexed threefry stream seed for the censored-DV data-augmentation
@@ -686,16 +958,25 @@ static inline void _saemSeedDoMcmc(uint32_t baseSeed, int kiter, int method, int
 static inline void _saemSeedCensAug(uint32_t baseSeed, int kiter, int k, int b,
                                     int mixIdx) {
   setRxThreadId(0);
-  uint32_t s = baseSeed;
-  s = s * 2654435761u + 0x63656E73u;   // "cens" namespace tag
-  s = s * 2654435761u + (uint32_t)kiter;
-  s = s * 2654435761u + (uint32_t)k;
-  s = s * 2654435761u + (uint32_t)b;
-  // per-component stream offset (mixIdx can be -1); multiply-folded like every
-  // other field above -- a bare `+=` here collides whenever b and mixIdx+1
-  // sum to the same value (e.g. b=0,mixIdx=1 vs b=1,mixIdx=0).
-  s = s * 2654435761u + (uint32_t)(mixIdx + 1);
-  nmSetSeedEng1(s);
+  // Injective bit-packed stream index, for the same reason as
+  // _saemSeedDoMcmc(): threefry decorrelates distinct seeds on its own (see the
+  // sitmo "uniform_rng_with_sitmo" vignette), so the index only has to be
+  // UNIQUE -- it does not have to be hashed, and hashing it is what let a
+  // collision in here in the first place.  The multiply-fold this replaces was
+  // a fix for a bare `+=` that collided whenever b and mixIdx+1 summed alike;
+  // multiply-folding made collisions unlikely rather than impossible.  Packing
+  // makes them impossible.
+  //
+  // Field widths: kiter 14 bits (< 16384), k (chain) 4, b (endpoint) 6
+  // (MAXENDPNT is 40), mixIdx+1 5 (mixIdx can be -1).  Masked, not overflowed,
+  // so an out-of-range index cannot corrupt a neighbouring field.
+  uint32_t ns = baseSeed * 2654435761u + 0x63656E73u;  // "cens" namespace
+  uint32_t idx =
+    (((uint32_t)kiter      & 0x3FFFu) << 15) |
+    (((uint32_t)k          & 0xFu)    << 11) |
+    (((uint32_t)b          & 0x3Fu)   <<  5) |
+    ( (uint32_t)(mixIdx + 1) & 0x1Fu);
+  nmSetSeedEng1(ns + idx);
 }
 
 // Simulate the "true" value of a censored (M3/M4) observation from the
@@ -2097,6 +2378,15 @@ public:
     if (!std::isfinite(iaccept) || iaccept < 0.0 || iaccept >= 1.0) iaccept = 0.0;
     if (x.containsElementNamed("iacceptSingle")) iacceptSingle = as<double>(x["iacceptSingle"]);
     if (!std::isfinite(iacceptSingle) || iacceptSingle < 0.0 || iacceptSingle >= 1.0) iacceptSingle = 0.0;
+    if (x.containsElementNamed("etaDistOn")) etaDistOn = as<int>(x["etaDistOn"]);
+    if (etaDistOn && x.containsElementNamed("etaDistLatent")) {
+      etaDistLatent  = as<ivec>(x["etaDistLatent"]);
+      etaDistFam     = as<ivec>(x["etaDistFam"]);
+      etaDistCorWith = as<ivec>(x["etaDistCorWith"]);
+      etaDistArgs    = as<mat>(x["etaDistArgs"]);
+      etaDistRho     = as<vec>(x["etaDistRho"]);
+      etaDistNdist   = (int)etaDistLatent.n_elem;
+    }
     if (x.containsElementNamed("nu1B")) nu1B = as<int>(x["nu1B"]);
     if (nu1B < 0) nu1B = 0;
     if (x.containsElementNamed("nb1B")) nb1B = as<int>(x["nb1B"]);
@@ -4668,6 +4958,17 @@ private:
   // Per-(subject x chain) proposal mean and SD, rebuilt each iteration from
   // mpost_phi / cpost_phi.  Empty when mode 1B is off or not yet started.
   mat m1bMean, m1bSd;
+  // ---- declared-distribution M-step (see rxEtaDistMle) --------------------
+  // saemControl(etaDistMstep=): estimate a declared family's parameters by a
+  // distribution fit to the sampled etas rather than through the data
+  // likelihood.  0 = off (the historical behaviour).
+  int etaDistOn = 0;
+  int etaDistNdist = 0;          // number of declared random effects
+  ivec etaDistLatent;            // phi column of each one's OWN latent normal
+  ivec etaDistFam;               // family code (rxEtaDistQ/rxEtaDistLogD)
+  ivec etaDistCorWith;           // declared eta it is copula-correlated with, or -1
+  mat etaDistArgs;               // current NATIVE parameters, ndist x maxNarg
+  vec etaDistRho;                // current copula correlation per declared eta
   // Running per-subject SECOND MOMENT E[phi phi'] (nphi x nphi x N).  cpost_phi
   // only keeps the elementwise E[phi^2], i.e. the diagonal; NONMEM's mode 1B
   // proposal density uses the full individual conditional variance --- its
@@ -5048,6 +5349,75 @@ private:
       q = 0.5 * sum((d % d) / vv, 1);
     }
     return q;
+  }
+
+  // The ODE-free distribution M-step.  Runs EVERY iteration, like the residual
+  // step and for the same reason: it reads only the sampled etas, so it costs
+  // nothing beyond one simplex over a handful of parameters.
+  //
+  // Returns true when anything moved, in which case the caller maps the new
+  // NATIVE parameters back onto the user's thetas.
+  bool etaDistMstep(unsigned int kiter, const vec &pas) {
+    if (!etaDistOn || etaDistNdist <= 0) return false;
+    if (etaDistArgs.n_rows != (unsigned int)etaDistNdist) return false;
+    bool moved = false;
+    // latent normals actually seen by each declared eta's quantile: its own
+    // sampled column, or -- for a copula member -- the correlated combination
+    // the model forms (rho*z_j + sqrt(1-rho^2)*z_k).
+    std::vector< std::vector<double> > w((size_t)etaDistNdist);
+    for (int k = 0; k < etaDistNdist; ++k) {
+      int ck = etaDistLatent(k);
+      if (ck < 0 || ck >= (int)phiM.n_cols) return false;
+      int j = etaDistCorWith(k);
+      w[(size_t)k].resize(phiM.n_rows);
+      for (unsigned int r = 0; r < phiM.n_rows; ++r) {
+        double zk = phiM(r, ck);
+        if (j < 0) { w[(size_t)k][r] = zk; continue; }
+        int cj = etaDistLatent(j);
+        if (cj < 0 || cj >= (int)phiM.n_cols) return false;
+        double rho = etaDistRho(k);
+        if (!std::isfinite(rho)) rho = 0.0;
+        double s2 = 1.0 - rho*rho;
+        w[(size_t)k][r] = rho*phiM(r, cj) + (s2 > 0 ? std::sqrt(s2) : 0.0)*zk;
+      }
+    }
+    // each declared family: latent -> eta via the CURRENT parameters, then MLE
+    for (int k = 0; k < etaDistNdist; ++k) {
+      int fam = etaDistFam(k);
+      int na = rxEtaDistNarg(fam);
+      if (na <= 0) continue;
+      double a0[4];
+      for (int i = 0; i < na; ++i) a0[i] = etaDistArgs(k, i);
+      std::vector<double> ev; ev.reserve(w[(size_t)k].size());
+      for (size_t r = 0; r < w[(size_t)k].size(); ++r) {
+        // same boundary guard phiU() applies: pnorm saturates to 0/1 in double
+        // precision and an inverse CDF there is +/-Inf
+        double u = R::pnorm(w[(size_t)k][r], 0.0, 1.0, 1, 0);
+        if (u < 1e-15) u = 1e-15; else if (u > 1.0 - 1e-15) u = 1.0 - 1e-15;
+        double e = rxEtaDistQ(fam, u, a0);
+        if (std::isfinite(e)) ev.push_back(e);
+      }
+      double aNew[4];
+      for (int i = 0; i < na; ++i) aNew[i] = a0[i];
+      if (!rxEtaDistMle(fam, ev, aNew)) continue;
+      // stochastic-approximation damping, as every other M-step here does
+      for (int i = 0; i < na; ++i) {
+        double cur = etaDistArgs(k, i);
+        double v = cur + pas(kiter) * (aNew[i] - cur);
+        if (std::isfinite(v)) { etaDistArgs(k, i) = v; moved = true; }
+      }
+    }
+    // copula correlations: closed form, no search
+    for (int k = 0; k < etaDistNdist; ++k) {
+      int j = etaDistCorWith(k);
+      if (j < 0) continue;
+      double r = rxEtaDistCorMle(w[(size_t)j], w[(size_t)k]);
+      if (!std::isfinite(r)) continue;
+      double cur = etaDistRho(k);
+      double v = cur + pas(kiter) * (r - cur);
+      if (std::isfinite(v)) { etaDistRho(k) = v; moved = true; }
+    }
+    return moved;
   }
 
   // Robbins-Monro adaptation of the random-walk scale toward the target
@@ -6265,6 +6635,25 @@ SEXP saem_fit(SEXP xSEXP) {
   out.attr("saem.cfg") = x;
   out.attr("class") = "saemFit";
   return out;
+}
+
+// Expose the declared-distribution dispatch so every family's quantile and log
+// density can be pinned against its R counterpart (the same reason
+// saemFormGTest exists).  22 hand-written densities are exactly the kind of
+// thing that is silently wrong otherwise.
+//[[Rcpp::export]]
+SEXP rxEtaDistTest_(int fam, SEXP inU, SEXP inArgs) {
+  NumericVector u(inU), ar(inArgs);
+  int na = rxEtaDistNarg(fam);
+  if (na < 0) return R_NilValue;
+  double a[4] = {0,0,0,0};
+  for (int i = 0; i < na && i < ar.size(); ++i) a[i] = ar[i];
+  NumericVector q(u.size()), ld(u.size());
+  for (int i = 0; i < u.size(); ++i) {
+    q[i] = rxEtaDistQ(fam, u[i], a);
+    ld[i] = rxEtaDistLogD(fam, q[i], a);
+  }
+  return List::create(_["q"] = q, _["logd"] = ld, _["narg"] = na);
 }
 
 // Test-only wrapper: exposes the E-step's per-observation combined-error SD

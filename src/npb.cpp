@@ -35,12 +35,24 @@ using namespace Rcpp;
 // desync this sampler's draws from run to run: the next group's draws never
 // depend on where a prior solve happened to leave the engine.
 static inline uint32_t npbGroupSeed(uint32_t baseSeed, int chain, int it, int group) {
-  uint32_t s = baseSeed;
-  s = s * 2654435761u + 0x6e706200u;   // "npb" namespace tag
-  s = s * 2654435761u + (uint32_t)chain;
-  s = s * 2654435761u + (uint32_t)it;
-  s = s * 2654435761u + (uint32_t)group;
-  return s;
+  // Injective bit-packed stream index rather than a hash chain, matching
+  // _saemSeedDoMcmc()/_saemSeedCensAug() (src/saem.cpp).  threefry is
+  // counter-based and decorrelates distinct seeds on its own -- sitmo's
+  // "uniform_rng_with_sitmo" vignette measures exactly that -- so the stream
+  // index only has to be UNIQUE, not hashed.  Packing the fields into disjoint
+  // bit ranges makes uniqueness structural instead of probabilistic; the
+  // multiply-fold this replaces was collision-free in practice but only
+  // because the multiplier happens to spread consecutive values far apart.
+  //
+  // Field widths: group 5 bits (a phase tag, 0..3 in use), chain 6, it+1 15
+  // (`it` is -1 for the pre-iteration draw).  Masked rather than overflowed,
+  // so an out-of-range index cannot corrupt a neighbouring field.
+  uint32_t ns = baseSeed * 2654435761u + 0x6e706200u;  // "npb" namespace
+  uint32_t idx =
+    (((uint32_t)(it + 1) & 0x7FFFu) << 11) |
+    (((uint32_t)chain    & 0x3Fu)   <<  5) |
+    ( (uint32_t)group    & 0x1Fu);
+  return ns + idx;
 }
 static inline void npbSeedEng(uint32_t baseSeed, int chain, int it, int group) {
   setRxThreadId(0);

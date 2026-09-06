@@ -784,6 +784,10 @@ saem_fit <- function(xSEXP) {
     .Call(`_nlmixr2est_saem_fit`, xSEXP)
 }
 
+rxEtaDistTest_ <- function(fam, inU, inArgs) {
+    .Call(`_nlmixr2est_rxEtaDistTest_`, fam, inU, inArgs)
+}
+
 saemFormGTest <- function(inA, inB, inFt, inC, inAddProp) {
     .Call(`_nlmixr2est_saemFormGTest`, inA, inB, inFt, inC, inAddProp)
 }

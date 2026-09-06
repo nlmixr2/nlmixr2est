@@ -77,11 +77,12 @@
     (log(.mv[["mean"]] / target[["mean"]]))^2 +
       (log(.mv[["var"]] / target[["var"]]))^2
   }
-  .o <- tryCatch(stats::optim(start, .obj, method = "Nelder-Mead",
-                              control = list(maxit = 500, reltol = 1e-10)),
-                 error = function(e) NULL)
-  if (is.null(.o) || !is.finite(.o$value) || .o$value > 1e-3) return(NULL)
-  stats::setNames(.o$par, thetaNames)
+  ## nlmixr2est's own Nelder-Mead (nmsimplex -> neldermead_wrap -> nelder_fn),
+  ## not stats::optim: every other optimization in this package goes through
+  ## the C simplex and this should not be the one exception.
+  .x <- .etaDistNm(start, .obj)
+  if (is.null(.x) || .x$value > 1e-3) return(NULL)
+  stats::setNames(.x$par, thetaNames)
 }
 
 #' Build the ordinary-random-effect surrogate of a declared model
