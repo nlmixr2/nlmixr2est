@@ -202,6 +202,17 @@
   # exact-Hessian model and its pred-only FD-fallback peer so .configsaem can
   # thread them into opt$saemPhi1Hess2/opt$saemPhi1Pred -- setupRx registers
   # them as odeSwap peers of SAEM's own model for the phi1 theta step.
+  # Exact-gradient refinement of the non-mu (phi0) thetas: one solve of this
+  # peer yields d(f)/d(theta) for all of them at once, so the derivative-free
+  # search that follows starts from a Gauss-Newton step instead of from wherever
+  # the stochastic phi0 update left things (src/nonMuThetaGrad.h).  NULL for a
+  # model shape out of scope, in which case the search runs alone as before.
+  .ts <- nlmixrWithTiming("configure", ui$saemThetaSens)
+  if (!is.null(.ts) && isTRUE(.ts$ok)) {
+    .model$saemThetaSens <- .ts$thetaSens
+    .model$saemThetaSensPhi0Col <- as.integer(.ts$sensPhi0Col)
+    .model$saemThetaSensTheta <- as.integer(.ts$sensTheta)
+  }
   if (.saemGeneralLik(ui)) {
     .p1 <- nlmixrWithTiming("configure", ui$saemPhi1Inner)
     if (!is.null(.p1) && isTRUE(.p1$ok)) {
@@ -263,6 +274,8 @@
                         rmcmc=rxode2::rxGetControl(ui, "rmcmc", 0.5),
                         iaccept=rxode2::rxGetControl(ui, "iaccept", 0.234),
                         iacceptSingle=rxode2::rxGetControl(ui, "iacceptSingle", 0.44),
+                        nonMuThetaGradEvery=as.integer(
+                          rxode2::rxGetControl(ui, "nonMuThetaGradEvery", 1L)),
                         etaDistInfo={
                           ## Metadata for the declared-distribution M-steps.  Built
                           ## when EITHER the family fit (etaDistMstep) or the copula

@@ -176,6 +176,7 @@
                        nu1B = 0L,
                        nb1B = 10L,
                        etaDistInfo = NULL,
+                       nonMuThetaGradEvery = 1L,
                        etaDistStart = NULL,
                        stepsizeRw = 0.4,
                        coefSa = 0.95,
@@ -469,6 +470,15 @@
     opt$saemPhi1EtaCol <- model$saemPhi1EtaCol
     opt$saemPhi1DvCol <- model$saemPhi1DvCol
     opt$saemPhi1DvColHess2 <- model$saemPhi1DvColHess2
+  }
+  ## The theta-sensitivity peer is independent of the phi1 (general-likelihood)
+  ## machinery: a plain normal model wants the exact gradient for its non-mu
+  ## theta refinement just as much (src/nonMuThetaGrad.h).
+  if (!is.null(model$saemThetaSens)) {
+    opt$saemThetaSens <- model$saemThetaSens
+    opt$saemThetaSensPhi0Col <- as.integer(model$saemThetaSensPhi0Col)
+    opt$saemThetaSensTheta <- as.integer(model$saemThetaSensTheta)
+    opt$nonMuThetaGradEvery <- as.integer(nonMuThetaGradEvery)
   }
   ## opt$.dat <- dat;
   # normally drop 'dv' by name (the kernel gets observations separately as 'y').

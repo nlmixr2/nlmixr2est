@@ -34,6 +34,7 @@ using namespace Rcpp;
 // scale.h needs Rcpp:: types in scope (CharacterVector, RObject, warning, stop)
 // -- must be included AFTER the `using namespace Rcpp;` above.
 #include "scale.h"
+#include "nonMuThetaGrad.h"
 
 // The declared-distribution family dispatch and the ODE-free maximum-
 // likelihood M-step live in their own translation unit so saem and imp share
@@ -788,6 +789,15 @@ extern rx_solve* _rx;
 // user_function (a free function, uses odeSlotPred for its own per-row
 // solve) -- see the fuller doc comment and real definitions after the class
 // body, alongside _saemPhi1PoolActive.
+// Theta-sensitivity peer state for the non-mu gradient refinement
+// (src/nonMuThetaGrad.h).  Separate from the phi1 pool state: it is declared
+// for any model shape that produced a sensitivity model, general-likelihood or
+// not.
+extern bool _saemThetaSensActive;
+extern arma::ivec _saemThetaSensPhi0Col;  // sens output -> phi0 column, -1 = none
+extern arma::ivec _saemThetaSensTheta;    // sens output -> 1-based ntheta
+extern int _saemNonMuGradEvery;
+
 extern bool _saemPhi1PoolReady;
 extern bool _saemPhi1UseAnalyticHess;
 extern arma::ivec _saemPhi1H2ThetaKind;
@@ -6163,6 +6173,11 @@ t_update_inis saem_inis = NULL;
 // phi0/phi1 theta, unpaired eta, ...) -- both keep the original
 // single-model rxInner path, byte-identically.
 static bool _saemPhi1PoolActive = false;
+bool _saemThetaSensActive = false;
+arma::ivec _saemThetaSensPhi0Col;
+arma::ivec _saemThetaSensTheta;
+int _saemNonMuGradEvery = 1;
+
 bool _saemPhi1PoolReady = false;
 bool _saemPhi1UseAnalyticHess = false;
 arma::ivec _saemPhi1H2ThetaKind;
@@ -6508,6 +6523,24 @@ void setupRx(List &opt, SEXP evt, int nmc, int N) {
   // for it (measured: a normal-model fit run after a general-lik pooled fit
   // in the same R session segfaulted from exactly this).
   odeSwapClearAll();
+  // The theta-sensitivity peer for the non-mu (phi0) gradient refinement.
+  // Declared for ANY model shape that produced one -- unlike the phi1 peers
+  // below it is not tied to a general-likelihood fit.  Declaring it here also
+  // means odeSwapPlan() sizes the shared pool for it, so the solve is threaded
+  // across subjects like every other pooled solve.
+  _saemThetaSensActive = opt.containsElementNamed("saemThetaSens") &&
+    !Rf_isNull(opt["saemThetaSens"]);
+  if (_saemThetaSensActive) {
+    odeSwapDeclare(odeSlotThetaSens, "thetaSens", opt["saemThetaSens"]);
+    _saemThetaSensPhi0Col = as<arma::ivec>(opt["saemThetaSensPhi0Col"]);
+    _saemThetaSensTheta = as<arma::ivec>(opt["saemThetaSensTheta"]);
+    _saemNonMuGradEvery = opt.containsElementNamed("nonMuThetaGradEvery") ?
+      as<int>(opt["nonMuThetaGradEvery"]) : 1;
+    if (_saemNonMuGradEvery < 1) _saemNonMuGradEvery = 1;
+  } else {
+    _saemThetaSensPhi0Col.reset();
+    _saemThetaSensTheta.reset();
+  }
   _saemPhi1PoolActive = opt.containsElementNamed("saemPhi1Pred") &&
     !Rf_isNull(opt["saemPhi1Pred"]);
   if (_saemPhi1PoolActive) {
