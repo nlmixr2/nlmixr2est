@@ -803,6 +803,7 @@ extern rx_solve* _rx;
 // (src/nonMuThetaGrad.h).  Separate from the phi1 pool state: it is declared
 // for any model shape that produced a sensitivity model, general-likelihood or
 // not.
+extern bool _saemThetaSensAnalytic;
 extern int _saemEtaDistCppMap;
 extern int _saemEtaDistRMap;
 extern bool _saemThetaSensActive;
@@ -1405,16 +1406,35 @@ public:
       // phi, ETA = 0 except a nonMuEta).  Re-integrating would solve the
       // identical system twice per refinement iteration.
       bool reuse = (_saemReadSlot == odeSlotThetaSens);
+      int _tolTries = 0;
+      double _tol0 = getIndTolFactor(ind);
       // setIndSolve() selects which solve buffer this individual reads through,
       // so it is needed whether or not we re-integrate -- skipping it with the
       // solve is what made the reused read return zeros for some columns.
       setIndSolve(ind, -1);
       if (!reuse) {
-        if (!saemNoThrow([&]{ odeSwapSolveInd(odeSlotThetaSens, r); })) {
-          rowBad[(size_t)r] = 1; continue;
+        // Bad-solve ladder, following focei: retry with loosened tolerances up
+        // to maxOdeRecalc times, each by odeRecalcFactor.  Skipped entirely
+        // when the peer is analytic -- there is no integration for a tolerance
+        // to affect, so a retry would just repeat the same answer.  The
+        // subject's tolFactor is restored afterwards so a row that needed
+        // loosening here does not silently loosen SAEM's own later solves.
+        int maxTry = _saemThetaSensAnalytic ? 0 :
+          ((current_saem_state != nullptr) ? current_saem_state->_saemMaxOdeRecalc : 0);
+        double fac = (current_saem_state != nullptr) ?
+          current_saem_state->_saemOdeRecalcFactor : 1.0;
+        bool solved = false;
+        while (true) {
+          if (saemNoThrow([&]{ odeSwapSolveInd(odeSlotThetaSens, r); }) &&
+              !odeSwapIndBadSolveSlot(op, ind, odeSlotThetaSens)) { solved = true; break; }
+          if (_tolTries >= maxTry || !(fac > 1.0)) break;
+          setIndTolFactor(ind, getIndTolFactor(ind) * fac);
+          _tolTries++;
+          setIndSolve(ind, -1);
         }
-      }
-      if (odeSwapIndBadSolveSlot(op, ind, odeSlotThetaSens)) {
+        if (_tolTries > 0) setIndTolFactor(ind, _tol0);
+        if (!solved) { rowBad[(size_t)r] = 1; continue; }
+      } else if (odeSwapIndBadSolveSlot(op, ind, odeSlotThetaSens)) {
         rowBad[(size_t)r] = 1; continue;
       }
       iniSubjectE(r, 1, ind, op, _rx, rxThetaSens.update_inis);
@@ -6763,6 +6783,10 @@ t_update_inis saem_inis = NULL;
 // phi0/phi1 theta, unpaired eta, ...) -- both keep the original
 // single-model rxInner path, byte-identically.
 static bool _saemPhi1PoolActive = false;
+// True when the sensitivity peer has no ODE to integrate (a linCmt() model is
+// solved analytically).  Relaxing solver tolerances cannot change such a solve,
+// so the retry ladder is skipped for it -- exactly as focei skips it.
+bool _saemThetaSensAnalytic = false;
 int _saemEtaDistCppMap = 0;
 int _saemEtaDistRMap = 0;
 bool _saemThetaSensActive = false;
@@ -7415,6 +7439,11 @@ void setupRx(List &opt, SEXP evt, int nmc, int N) {
       CharacterVector stTs = mvTs[RxMv_state], stOwn = mv[RxMv_state];
       CharacterVector lhTs = mvTs[RxMv_lhs], lhOwn = mv[RxMv_lhs];
       CharacterVector pTs = mvTs[RxMv_params], pOwn = mv[RxMv_params];
+      {
+        IntegerVector fl = mvTs[RxMv_flags];
+        _saemThetaSensAnalytic = (fl.size() > RxMvFlag_linCmt) &&
+          (fl[RxMvFlag_linCmt] != 0);
+      }
       if (getenv("NLMIXR2_SAEM_GRADCHECK") != NULL) {
         Rprintf("pool sizing (measured): own neq=%d nlhs=%d npars=%d | "
                 "thetaSens neq=%d nlhs=%d npars=%d\n",
