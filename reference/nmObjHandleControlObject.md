@@ -100,6 +100,9 @@ nmObjHandleControlObject(control, env)
 # S3 method for class 'posthocControl'
 nmObjHandleControlObject(control, env)
 
+# S3 method for class 'trustControl'
+nmObjHandleControlObject(control, env)
+
 # S3 method for class 'uobyqaControl'
 nmObjHandleControlObject(control, env)
 

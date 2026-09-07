@@ -260,6 +260,9 @@ ifoceControl()
 #> $optimHessCovType
 #> [1] 1
 #> 
+#> $hessEtaStepMin
+#> [1] 0.05
+#> 
 #> $censOption
 #> [1] 0
 #> 
@@ -305,13 +308,15 @@ ifoceControl()
 #>         "iprint", "maxfun")]
 #>     .ret <- minqa::bobyqa(par, fn, control = .ctl, lower = lower, 
 #>         upper = upper)
+#>     .ret <- .bobyqaRetryIfStuck(par, fn, lower, upper, .ctl, 
+#>         .ret)
 #>     .ret$x <- .ret$par
 #>     .ret$message <- .ret$msg
 #>     .ret$convergence <- .ret$ierr
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x55d48000cab0>
+#> <bytecode: 0x55e14b7e67b0>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -336,7 +341,25 @@ ifoceControl()
 #> [1] 2000
 #> 
 #> $innerOpt
+#> [1] 4
+#> 
+#> $hessianMethod
 #> [1] 1
+#> 
+#> $trustConf
+#> [1] 0.975
+#> 
+#> $trustRinit
+#> NULL
+#> 
+#> $trustRmax
+#> NULL
+#> 
+#> $trustFterm
+#> [1] 1e-05
+#> 
+#> $trustMterm
+#> [1] 1e-05
 #> 
 #> $abstol
 #> [1] 0.001

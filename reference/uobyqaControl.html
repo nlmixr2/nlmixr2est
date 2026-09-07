@@ -380,22 +380,22 @@ doses an *unlagged/unscaled* compartment alongside the lagged/scaled one
 <span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">fit2</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── </span><span style="color: #0000BB; font-weight: bold;">nlmix</span><span style="color: #BB0000; font-weight: bold;">r²</span><span style="font-weight: bold;"> log-likelihood </span><span style="color: #BBBB00; font-weight: bold;">uobyqa</span><span style="font-weight: bold;"> ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>           OBJF     AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> lPop -679.7168 1164.16 1178.884      -579.0801        407.0934        67.95307</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> lPop -666.9292 1176.948 1191.671      -585.4739        173.3654        48.92769</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Time (sec </span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>             setup  optimize covariance preprocess postprocess table compress</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.1594156 0.1634571   6.57e-06      0.054       0.006 0.023    0.001</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.1625646 0.1788881  7.641e-06      0.064       0.006 0.025    0.001</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>              other</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.09212071</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.09753968</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── (</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>       <span style="font-weight: bold;">Est.</span>    <span style="font-weight: bold;">SE</span>  <span style="font-weight: bold;">%RSE</span> <span style="font-weight: bold;">Back-transformed(95%CI)</span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">E0</span>  -0.806 0.123  15.3  -0.806 (-1.05, -0.564)</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">Em</span>    5.49  1.18  21.6       5.49 (3.17, 7.81)</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">E50</span>   2.90 0.622  21.5       2.90 (1.68, 4.12)</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">E0</span>  -0.595 0.133  22.4 -0.595 (-0.856, -0.334)</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">Em</span>    4.06 0.703  17.3       4.06 (2.69, 5.44)</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">E50</span>   2.22 0.497  22.4       2.22 (1.24, 3.19)</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">g</span>     2.00 <span style="color: #00BB00; font-weight: bold;">FIXED</span> <span style="color: #00BB00; font-weight: bold;">FIXED</span>                    2.00</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>  </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   Covariance Type (<span style="color: #0000BB; font-weight: bold;">$covMethod</span>): <span style="font-weight: bold;">r</span></span>
@@ -405,16 +405,16 @@ doses an *unlagged/unscaled* compartment alongside the lagged/scaled one
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #949494;"># A tibble: 1,000 × 5</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   ID      TIME    DV  IPRED      v</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   <span style="color: #949494; font-style: italic;">&lt;fct&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span> <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">1</span> 1     0.038<span style="text-decoration: underline;">3</span>     0 -<span style="color: #BB0000;">0.369</span> -<span style="color: #BB0000;">0.805</span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">2</span> 1     0.050<span style="text-decoration: underline;">9</span>     0 -<span style="color: #BB0000;">0.370</span> -<span style="color: #BB0000;">0.805</span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">3</span> 1     0.054<span style="text-decoration: underline;">3</span>     1 -<span style="color: #BB0000;">1.17</span>  -<span style="color: #BB0000;">0.804</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">1</span> 1     0.042<span style="text-decoration: underline;">5</span>     1 -<span style="color: #BB0000;">1.03</span>  -<span style="color: #BB0000;">0.594</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">2</span> 1     0.070<span style="text-decoration: underline;">4</span>     0 -<span style="color: #BB0000;">0.441</span> -<span style="color: #BB0000;">0.591</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">3</span> 1     0.077<span style="text-decoration: underline;">4</span>     0 -<span style="color: #BB0000;">0.441</span> -<span style="color: #BB0000;">0.590</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #949494;"># ℹ 997 more rows</span></span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># you can also get the nlm output with fit2$nlm</span></span></span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="va">fit2</span><span class="op">$</span><span class="va">uobyqa</span></span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> parameter estimates: -0.806219301959938, 5.48662148012539, 2.89815804525741 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> objective: 579.08014982352 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> parameter estimates: -0.595251603663845, 4.06291383579694, 2.2179934281309 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> objective: 585.47394401315 </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> number of function evaluations: 57 </span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># The nlm control has been modified slightly to include</span></span></span>

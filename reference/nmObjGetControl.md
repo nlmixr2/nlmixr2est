@@ -127,6 +127,9 @@ nmObjGetControl(x, ...)
 # S3 method for class 'qrpem'
 nmObjGetControl(x, ...)
 
+# S3 method for class 'trust'
+nmObjGetControl(x, ...)
+
 # S3 method for class 'uobyqa'
 nmObjGetControl(x, ...)
 

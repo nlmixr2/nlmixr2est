@@ -28,5 +28,5 @@ nlmixr2AllEst()
 #> [46] "newuoa"     "nlm"        "nlme"       "nlminb"     "nls"       
 #> [51] "npag"       "npb"        "optim"      "posthoc"    "predict"   
 #> [56] "qrpem"      "rxSolve"    "saem"       "sann"       "simulate"  
-#> [61] "simulation" "uobyqa"     "vae"       
+#> [61] "simulation" "trust"      "uobyqa"     "vae"       
 ```

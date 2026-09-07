@@ -333,22 +333,22 @@ fit2 <- nlmixr(mod, dsn, est="uobyqa")
 print(fit2)
 #> ── nlmixr² log-likelihood uobyqa ──
 #> 
-#>           OBJF     AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -679.7168 1164.16 1178.884      -579.0801        407.0934        67.95307
+#>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
+#> lPop -666.9292 1176.948 1191.671      -585.4739        173.3654        48.92769
 #> 
 #> ── Time (sec $time): ──
 #> 
 #>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.1594156 0.1634571   6.57e-06      0.054       0.006 0.023    0.001
+#> elapsed 0.1625646 0.1788881  7.641e-06      0.064       0.006 0.025    0.001
 #>              other
-#> elapsed 0.09212071
+#> elapsed 0.09753968
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
 #>       Est.    SE  %RSE Back-transformed(95%CI)
-#> E0  -0.806 0.123  15.3  -0.806 (-1.05, -0.564)
-#> Em    5.49  1.18  21.6       5.49 (3.17, 7.81)
-#> E50   2.90 0.622  21.5       2.90 (1.68, 4.12)
+#> E0  -0.595 0.133  22.4 -0.595 (-0.856, -0.334)
+#> Em    4.06 0.703  17.3       4.06 (2.69, 5.44)
+#> E50   2.22 0.497  22.4       2.22 (1.24, 3.19)
 #> g     2.00 FIXED FIXED                    2.00
 #>  
 #>   Covariance Type ($covMethod): r
@@ -358,16 +358,16 @@ print(fit2)
 #> # A tibble: 1,000 × 5
 #>   ID      TIME    DV  IPRED      v
 #>   <fct>  <dbl> <dbl>  <dbl>  <dbl>
-#> 1 1     0.0383     0 -0.369 -0.805
-#> 2 1     0.0509     0 -0.370 -0.805
-#> 3 1     0.0543     1 -1.17  -0.804
+#> 1 1     0.0425     1 -1.03  -0.594
+#> 2 1     0.0704     0 -0.441 -0.591
+#> 3 1     0.0774     0 -0.441 -0.590
 #> # ℹ 997 more rows
 
 # you can also get the nlm output with fit2$nlm
 
 fit2$uobyqa
-#> parameter estimates: -0.806219301959938, 5.48662148012539, 2.89815804525741 
-#> objective: 579.08014982352 
+#> parameter estimates: -0.595251603663845, 4.06291383579694, 2.2179934281309 
+#> objective: 585.47394401315 
 #> number of function evaluations: 57 
 
 # The nlm control has been modified slightly to include

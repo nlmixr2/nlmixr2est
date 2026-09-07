@@ -521,21 +521,21 @@ skips the final back-transform.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── </span><span style="color: #0000BB; font-weight: bold;">nlmix</span><span style="color: #BB0000; font-weight: bold;">r²</span><span style="font-weight: bold;"> log-likelihood </span><span style="color: #BBBB00; font-weight: bold;">optim</span><span style="font-weight: bold;"> with </span><span style="color: #BBBB00; font-weight: bold;">BFGS</span><span style="font-weight: bold;"> method ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> lPop -675.4914 1168.386 1183.109      -581.1928        14608.13         128.638</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> lPop -692.3413 1151.536 1166.259      -572.7679        113.5603        27.45912</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Time (sec </span><span style="color: #BBBB00; font-weight: bold;">value</span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>             setup  optimize covariance preprocess postprocess table compress</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.1653858 0.2202783   6.89e-06      0.053       0.006 0.022    0.001</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.1655823 0.2275288 2.2414e-05      0.053       0.006 0.023    0.001</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>              other</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.09432904</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.09186647</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── (</span><span style="color: #BBBB00; font-weight: bold;">value</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #BBBB00; font-weight: bold;">value</span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>       <span style="font-weight: bold;">Est.</span>    <span style="font-weight: bold;">SE</span>  <span style="font-weight: bold;">%RSE</span> <span style="font-weight: bold;">Back-transformed(95%CI)</span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">E0</span>  -0.257 0.144  55.9 -0.257 (-0.539, 0.0246)</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">Em</span>    16.9  7.48  44.4       16.9 (2.19, 31.5)</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">E50</span>   8.80  3.55  40.3       8.80 (1.85, 15.8)</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">E0</span>  -0.681 0.118  17.3 -0.681 (-0.912, -0.451)</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">Em</span>    4.32 0.603  14.0       4.32 (3.14, 5.50)</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">E50</span>   2.35 0.377  16.1       2.35 (1.61, 3.09)</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">g</span>     2.00 <span style="color: #00BB00; font-weight: bold;">FIXED</span> <span style="color: #00BB00; font-weight: bold;">FIXED</span>                    2.00</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>  </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   Covariance Type (<span style="color: #BBBB00;">value</span><span style="color: #0000BB; font-weight: bold;">$covMethod</span>): <span style="font-weight: bold;">r (optim)</span></span>
@@ -545,9 +545,9 @@ skips the final back-transform.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #949494;"># A tibble: 1,000 × 5</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   ID      TIME    DV  IPRED      v</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   <span style="color: #949494; font-style: italic;">&lt;fct&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span> <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">1</span> 1     0.042<span style="text-decoration: underline;">9</span>     0 -<span style="color: #BB0000;">0.573</span> -<span style="color: #BB0000;">0.257</span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">2</span> 1     0.069<span style="text-decoration: underline;">3</span>     1 -<span style="color: #BB0000;">0.829</span> -<span style="color: #BB0000;">0.256</span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">3</span> 1     0.074<span style="text-decoration: underline;">3</span>     0 -<span style="color: #BB0000;">0.573</span> -<span style="color: #BB0000;">0.256</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">1</span> 1     0.042<span style="text-decoration: underline;">9</span>     0 -<span style="color: #BB0000;">0.410</span> -<span style="color: #BB0000;">0.680</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">2</span> 1     0.069<span style="text-decoration: underline;">3</span>     1 -<span style="color: #BB0000;">1.09</span>  -<span style="color: #BB0000;">0.678</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">3</span> 1     0.074<span style="text-decoration: underline;">3</span>     0 -<span style="color: #BB0000;">0.411</span> -<span style="color: #BB0000;">0.677</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #949494;"># ℹ 997 more rows</span></span>
 <span class="r-in"><span><span class="co"># }</span></span></span>
 </code></pre></div>

@@ -221,6 +221,8 @@
   : Print an SAEM model fit summary
 - [`tableControl()`](https://nlmixr2.github.io/nlmixr2est/reference/tableControl.md)
   : Output table/data.frame options
+- [`trustControl()`](https://nlmixr2.github.io/nlmixr2est/reference/trustControl.md)
+  : Control for the trust estimation method in nlmixr2
 - [`uobyqaControl()`](https://nlmixr2.github.io/nlmixr2est/reference/uobyqaControl.md)
   : Control for uobyqa estimation method in nlmixr2
 - [`vaeControl()`](https://nlmixr2.github.io/nlmixr2est/reference/vaeControl.md)
