@@ -2682,6 +2682,8 @@ public:
     if (x.containsElementNamed("etaDistCorOn")) etaDistCorOn = as<int>(x["etaDistCorOn"]);
     if (x.containsElementNamed("etaDistDebug")) etaDistDebug = as<int>(x["etaDistDebug"]);
     if (x.containsElementNamed("etaDistStart")) etaDistStart = as<int>(x["etaDistStart"]);
+    if (x.containsElementNamed("etaDistEvery")) etaDistEvery = as<int>(x["etaDistEvery"]);
+    if (etaDistEvery < 1) etaDistEvery = 1;
     if (x.containsElementNamed("etaDistSdLo")) etaDistSdLo = as<double>(x["etaDistSdLo"]);
     if (x.containsElementNamed("etaDistSdHi")) etaDistSdHi = as<double>(x["etaDistSdHi"]);
     // per fit, not per session: the question this answers is "did THIS fit's
@@ -4255,10 +4257,23 @@ public:
       // is damped by pas(kiter) anyway, so refining every iteration buys
       // little against a whole extra optimization (nonMuThetaMaxEval solves of
       // the full population) per iteration.
-      // ODE-free distribution M-step.  Runs EVERY iteration, like the residual
-      // step: it reads only the sampled etas, so there is no solve to amortize.
-      if (etaDistOn && etaDistNdist > 0 && nphi0 > 0 &&
-          kiter >= (unsigned int)etaDistStart) {
+      // ODE-free distribution M-step.  The step itself reads only the sampled
+      // etas -- no solve -- which is why it originally ran every iteration.
+      // That reasoning is incomplete: the step is cheap, but the parameters it
+      // moves to are not.  Measured on Bauer's gamma model, 80 iterations, the
+      // copula M-step alone (etaDistCorMstep, which defaults on) took the fit
+      // from 184.9s to 700.8s -- 3.8x -- while improving both CL (3.722 ->
+      // 5.963, truth 5.03) and the correlation (0.344 -> 0.384, truth 0.438).
+      // The cost is not the M-step arithmetic; it is that the parameters it
+      // reaches make gammapInv's iterative inversion work much harder.
+      //
+      // So it gets a cadence, exactly like the non-mu theta refinement's
+      // nonMuThetaEvery: each step is damped by pas(kiter) anyway, so running
+      // it every k-th iteration keeps most of the benefit for a fraction of the
+      // cost.
+      if ((etaDistOn || etaDistCorOn) && etaDistNdist > 0 && nphi0 > 0 &&
+          kiter >= (unsigned int)etaDistStart &&
+          ((int)(kiter - (unsigned int)etaDistStart) % etaDistEvery) == 0) {
         if (etaDistMstep(kiter, pas)) {
           _saemEtaDistN++;
           // Map the updated NATIVE parameters back onto the user's thetas.
@@ -5419,6 +5434,8 @@ private:
   // way.  saemix gates the analogous ind.fix10 step to kiter >= nbiter.sa for
   // the same reason (R/main_mstep.R:57).
   int etaDistStart = 0;
+  // How often the declared-distribution M-step runs.  1 = every iteration.
+  int etaDistEvery = 1;
   // Acceptable pooled spread for the latent normals; outside this the draws are
   // not yet a sample from anything worth fitting.
   //

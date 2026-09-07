@@ -418,6 +418,32 @@
     .cfg$nonMuThetaOptType <- as.integer(match(
       rxode2::rxGetControl(ui, "nonMuThetaOpt", "newuoa"),
       c("optimize", "nelderMead", "newuoa", "n1qn1"), nomatch = 1L) - 1L)
+    # Cadence for the declared-distribution M-step, the same idea as
+    # nonMuThetaEvery: the step is cheap but the parameters it moves to are not
+    # (see the gate in src/saem.cpp for the 3.8x measurement), and each step is
+    # damped by pas(kiter) anyway.
+    .cfg$etaDistEvery <- as.integer(rxode2::rxGetControl(ui, "etaDistEvery", 1L))
+    # etaDistOn must mean "the FAMILY M-step is wanted", not "the metadata
+    # resolved".  .configsaem() sets it to 1 whenever etaDistInfo builds, and
+    # that info builds when EITHER etaDistMstep or etaDistCorMstep is on -- so
+    # etaDistCorMstep, which defaults TRUE and is documented as the cheap
+    # closed-form copula update, was silently switching on the family
+    # Nelder-Mead MLE (nelder_fn, 200*na iterations at 1e-8, per declared
+    # distribution per call).  Measured: etaDistMstep=FALSE with
+    # etaDistCorMstep=TRUE still reported 19 M-step calls, and the fit went from
+    # 184.9s to 700.8s.
+    #
+    # And etaDistCorOn was never passed at all -- C++ declares it 0 and R never
+    # set it -- so the copula closed form has in fact never run.  The C++ driver
+    # already splits the two correctly; only this plumbing was wrong.
+    if (!is.null(.cfg$etaDistOn) && .cfg$etaDistOn == 1L) {
+      .cfg$etaDistOn <-
+        as.integer(isTRUE(rxode2::rxGetControl(ui, "etaDistMstep", FALSE)))
+      .cfg$etaDistCorOn <-
+        as.integer(isTRUE(rxode2::rxGetControl(ui, "etaDistCorMstep", TRUE)))
+    } else {
+      .cfg$etaDistCorOn <- 0L
+    }
     .cfg$nonMuThetaSweeps <- as.integer(rxode2::rxGetControl(ui, "nonMuThetaSweeps", 2L))
     .cfg$nonMuThetaMaxEval <- as.integer(rxode2::rxGetControl(ui, "nonMuThetaMaxEval", 25L))
     .cfg$nonMuThetaTol <- as.numeric(rxode2::rxGetControl(ui, "nonMuThetaTol",
