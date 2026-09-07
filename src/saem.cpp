@@ -830,6 +830,8 @@ extern int _saemPhi1PredOffset;
 // when that peer is live.
 extern int _saemOwnSolveSlot;
 extern int _saemOwnPredOffset;
+extern int _saemSolveCompleteOnce;
+extern int _saemReadSlot;
 static void saemPickOwnSolveSlot();
 // 0-based DV parameter-slot position, resolved by .saemPhi1TargetMap
 // (R/saemPhi1Inner.R) purely as a readiness check -- confirms the compiled
@@ -1356,18 +1358,15 @@ public:
       // this read does not survive, so the saving is not free the way the
       // parameter-convention argument suggested.  Left in place, and off, until
       // that is understood; re-solving is correct but pays for the system twice.
-      // OFF.  Reuse is correct in principle -- the caller's solve is at exactly
-      // these parameters -- but measured, the solve it leaves behind has the
-      // base compartments and ZERO sensitivity states:
-      //
-      //   row0 obs0  states: 83.31 5.181 0 0 0 0 0 0 0 0
-      //
-      // i.e. the two ODE compartments are populated and all eight
-      // d(state)/d(theta) compartments are exactly zero, which is the signature
-      // of predNoLhs (2 states) having solved rather than thetaSens (10) --
-      // even though _saemOwnSolveSlot reports odeSlotThetaSens.  Until that is
-      // reconciled, re-solve: correct, but it pays for the system twice.
-      bool reuse = false && (_saemOwnSolveSlot == odeSlotThetaSens);
+      // Reuse the caller's solve.  refinePhi0Lik establishes states with a full
+      // population solve immediately before this, through _saemOwnSolveSlot --
+      // which is odeSlotThetaSens whenever the peer is registered, i.e. the
+      // COMPLETE system, whose lhs carries rx_pred_ and every d(f)/d(theta)
+      // column.  Its parameters are the ones set just above, because
+      // saemSetRowsPooled uses this loop's own convention (THETA = combined
+      // phi, ETA = 0 except a nonMuEta).  Re-integrating would solve the
+      // identical system twice per refinement iteration.
+      bool reuse = (_saemReadSlot == odeSlotThetaSens);
       // setIndSolve() selects which solve buffer this individual reads through,
       // so it is needed whether or not we re-integrate -- skipping it with the
       // solve is what made the reused read return zeros for some columns.
@@ -1569,7 +1568,18 @@ public:
     // recompute only the objective, exactly like npag's ELS residual step.  The
     // f-sensitivity is detected once (perturb each phi0, see if f moves).
     _saemFreezeOde = false;
+    // Refresh phiM's phi0 columns from mprior_phi0 before establishing states.
+    // phiM is only rebuilt from mprior_phi0 at the END of the iteration, so
+    // anything that moved phi0 earlier in THIS one (the distribution M-step,
+    // say) leaves phiM carrying the previous value.  Without this the solve is
+    // taken at a slightly stale phi0 while the gradient reads parameters at the
+    // current one, and the two disagree: the finite-difference check sat at
+    // ~5e-4 instead of ~1e-8, which is exactly that inconsistency and not
+    // solver noise.
+    if (nphi0 > 0) phiM.cols(i0) = repmat(mprior_phi0, nmc, 1);
+    _saemSolveCompleteOnce = 1;                 // this ONE solve carries the
     { mat _tmp = user_fn(phiM, evt, optM); (void)_tmp; }  // establish states
+    _saemSolveCompleteOnce = 0;                 // sensitivities for the gradient
     // Gauss-Newton warm start off the exact sensitivities, then the search
     // below refines from there (src/nonMuThetaGrad.h).  Placed AFTER
     // gPhi0FreeIx so it moves exactly the columns the search owns -- never one
@@ -1792,8 +1802,8 @@ public:
     odeSwapSolveInd(odeSlotPred, i);
     if (odeSwapIndBadSolveSlot(op, ind, odeSlotPred)) { bad = true; return 0.0; }
     iniSubjectE(i, 1, ind, op, _rx,
-                (_saemOwnSolveSlot == odeSlotThetaSens) ? rxThetaSens.update_inis
-                                                        : rxPred.update_inis);
+                (_saemReadSlot == odeSlotThetaSens) ? rxThetaSens.update_inis
+                                                    : rxPred.update_inis);
     double *lhs = neqGuard.lhs();
     double pred = 0.0;
     for (int j = 0; j < getIndNallTimes(ind); ++j) {
@@ -6695,6 +6705,18 @@ static std::vector<int> _saemPooledThrew;
 // -1 means no peer: the ordinary bulk par_solve path, unchanged.
 int _saemOwnSolveSlot = -1;
 int _saemOwnPredOffset = -1;
+// One-shot request for the COMPLETE system (odeSlotThetaSens) on the NEXT solve
+// only.  Making that the standing choice is a net loss: refinePhi0Lik's search
+// spends nonMuThetaMaxEval solves per refinement on the objective, and
+// upgrading all of them from the 2-state predNoLhs to the 10-state sensitivity
+// model costs more than sharing one solve saves (measured on Bauer's gamma
+// model, 70 iterations: 164.0s -> 259.8s).  So the complete system is requested
+// for exactly the establish-states solve the gradient then reads, and every
+// other solve keeps the cheap peer.
+int _saemSolveCompleteOnce = 0;
+// Which slot the LAST pooled solve actually used, so the read pass and the
+// gradient follow the solve rather than a standing preference.
+int _saemReadSlot = -1;
 
 // Resolve the own-solve slot from the odeSwap REGISTRY rather than from
 // whatever offsets happen to have been ingested yet -- setupRx runs before the
@@ -6703,22 +6725,24 @@ int _saemOwnPredOffset = -1;
 static void saemPickOwnSolveSlot() {
   _saemOwnSolveSlot = -1;
   _saemOwnPredOffset = -1;
-  if (_saemThetaSensActive && odeSwapLoaded(odeSlotThetaSens)) {
-    int o = odeSwapLhsIndex(odeSlotThetaSens, "rx_pred_");
-    if (o >= 0) { _saemOwnSolveSlot = odeSlotThetaSens; _saemOwnPredOffset = o; }
-  }
-  if (_saemOwnSolveSlot < 0 && _saemPhi1PoolActive && odeSwapLoaded(odeSlotPred)) {
+  // The STANDING slot is the cheap prediction peer.  The sensitivity model is
+  // requested per call through _saemSolveCompleteOnce, for the single solve the
+  // gradient reads -- see that flag for the measurement showing why making it
+  // standing is slower, not faster.
+  if (_saemPhi1PoolActive && odeSwapLoaded(odeSlotPred)) {
     int o = odeSwapLhsIndex(odeSlotPred, "rx_pred_");
     if (o >= 0) { _saemOwnSolveSlot = odeSlotPred; _saemOwnPredOffset = o; }
   }
 }
 
-static void saemSolveIndividualsPooled(int nInd) {
+static void saemSolveIndividualsPooled(int nInd, int slot) {
   rx_solving_options *op = getSolvingOptions(_rx);
+  _saemReadSlot = slot;
   _saemPooledThrew.assign((size_t)nInd, 0);
   int cores = getOpCores(op);
   bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
-  // odeSlotPred carries no event sensitivities of its own, but the ES shape is
+  // The peer being solved may carry no event sensitivities of its own, but the
+  // ES shape is
   // still a process global: without a batch here, a shape some earlier solve
   // left installed (this fit's own odeSlotHess2 call, or a prior FOCEi fit's
   // fit-wide inner load) stays live and handle_evid injects jumps sized for
@@ -6726,7 +6750,7 @@ static void saemSolveIndividualsPooled(int nInd) {
   // OdeSwapEsBatch's own constructor is what deactivates it for a "no ES" slot
   // -- see its contract in src/odeSwap.cpp.  Must be constructed outside the
   // OpenMP region below, matching every other peer solve's own batch.
-  OdeSwapEsBatch predEsBatch(odeSlotPred);
+  OdeSwapEsBatch predEsBatch(slot);
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
 #endif
@@ -6735,10 +6759,10 @@ static void saemSolveIndividualsPooled(int nInd) {
     if (doParallel) setRxThreadId(omp_get_thread_num());
 #endif
     rx_solving_options_ind *ind = getSolvingOptionsInd(_rx, i);
-    OdeSwapScope neqGuard(odeSlotPred, ind, op);
-    OdeSwapCmtScope cmtGuard(odeSlotPred, op, ind);
+    OdeSwapScope neqGuard(slot, ind, op);
+    OdeSwapCmtScope cmtGuard(slot, op, ind);
     setIndSolve(ind, -1);
-    if (!saemNoThrow([&]{ odeSwapSolveInd(odeSlotPred, i); })) {
+    if (!saemNoThrow([&]{ odeSwapSolveInd(slot, i); })) {
       _saemPooledThrew[(size_t)i] = 1;
     }
   }
@@ -6768,13 +6792,13 @@ static void saemReadRowsPooled(mat &g, int &elt, bool &hasNan, int nInd) {
     if (doParallel) setRxThreadId(omp_get_thread_num());
 #endif
     rx_solving_options_ind *ind = getSolvingOptionsInd(_rx, i);
-    OdeSwapScope neqGuard(_saemOwnSolveSlot, ind, op);
-    OdeSwapCmtScope cmtGuard(_saemOwnSolveSlot, op, ind);
+    OdeSwapScope neqGuard(_saemReadSlot, ind, op);
+    OdeSwapCmtScope cmtGuard(_saemReadSlot, op, ind);
     int nAll = getIndNallTimes(ind);
     std::vector<double> &obs = rowObs[(size_t)i];
     obs.reserve((size_t)nAll);
     bool threw = (i < (int)_saemPooledThrew.size()) && _saemPooledThrew[(size_t)i];
-    if (threw || odeSwapIndBadSolveSlot(op, ind, _saemOwnSolveSlot)) {
+    if (threw || odeSwapIndBadSolveSlot(op, ind, _saemReadSlot)) {
       for (int j = 0; j < nAll; ++j) {
         if (getIndEvid(ind, getIndIx(ind, j)) == 0) obs.push_back(1.0e99);
       }
@@ -6789,7 +6813,7 @@ static void saemReadRowsPooled(mat &g, int &elt, bool &hasNan, int nInd) {
       if (getIndEvid(ind, kk) != 0) continue;
       double curT = getTime(kk, ind);
       if (!saemNoThrow([&]{
-            if (_saemOwnSolveSlot == odeSlotThetaSens) {
+            if (_saemReadSlot == odeSlotThetaSens) {
               rxThetaSens.calc_lhs(i, curT, getOpIndSolve(op, ind, j), lhs);
             } else {
               rxPred.calc_lhs(i, curT, getOpIndSolve(op, ind, j), lhs);
@@ -6798,7 +6822,8 @@ static void saemReadRowsPooled(mat &g, int &elt, bool &hasNan, int nInd) {
         rowNan[i] = 1;
         continue;
       }
-      double cur = lhs[_saemOwnPredOffset];
+      double cur = lhs[(_saemReadSlot == odeSlotThetaSens)
+                       ? _saemThetaSensPredOffset : _saemOwnPredOffset];
       if (std::isnan(cur)) { cur = 1.0e99; rowNan[i] = 1; }
       obs.push_back(cur);
     }
@@ -6871,8 +6896,13 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
   // Phase 4: a general-lik fit whose phi1 map resolved routes SAEM's own
   // solve through odeSlotPred (see setupRx) instead of the bulk par_solve --
   // every other fit is byte-identical to before.
-  if (_saemPhi1PoolActive) {
-    saemSolveIndividualsPooled(_Nnlmixr2);
+  int _slotNow = _saemOwnSolveSlot;
+  if (_saemSolveCompleteOnce && _saemThetaSensActive &&
+      odeSwapLoaded(odeSlotThetaSens)) {
+    _slotNow = odeSlotThetaSens;
+  }
+  if (_slotNow >= 0) {
+    saemSolveIndividualsPooled(_Nnlmixr2, _slotNow);
   } else {
     par_solve(_rx); // Solve the complete system (possibly in parallel)
   }
@@ -6904,8 +6934,8 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
       }
     }
     resetRxBadSolve(_rx);
-    if (_saemPhi1PoolActive) {
-      saemSolveIndividualsPooled(_Nnlmixr2);
+    if (_slotNow >= 0) {
+      saemSolveIndividualsPooled(_Nnlmixr2, _slotNow);
     } else {
       par_solve(_rx);
     }
