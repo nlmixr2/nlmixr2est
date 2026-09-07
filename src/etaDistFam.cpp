@@ -15,9 +15,13 @@
 // measured spread is below 1 rather than equal to it -- so they carry data
 // information.
 //
-// Estimated in the family's NATIVE parameters: the objective and the simplex
-// are both C++, with no R on the hot loop.  Positive parameters are optimized
-// on the log scale because nelder_fn is unbounded.
+// Estimated in the family's NATIVE parameters.  The objective is C++ and stays
+// there: newuoa is reached through R, but the function it is handed is an
+// Rcpp::InternalFunction pointing back at C++, so the per-evaluation work never
+// crosses the boundary -- only the single optimizer call per M-step does.
+// Positive parameters are optimized on the log scale because neither newuoa nor
+// nelder_fn is bounded.
+#include <RcppArmadillo.h>
 #include "etaDistFam.h"
 #include <algorithm>
 
@@ -61,6 +65,17 @@ static double gEtaDistObj(const double *p) {
 }
 static void gEtaDistNmFn(double *p, double *fx) { *fx = gEtaDistObj(p); }
 
+// newuoa reaches the same objective through R (nlmixr2est:::.newuoa), the way
+// SAEM's own _saemType==2 residual step does.  The objective itself stays in
+// C++ -- Rcpp::InternalFunction hands newuoa a pointer, so the per-evaluation
+// work never crosses into R; only the one optimizer call per M-step does.
+double gEtaDistNewuoaFn(Rcpp::NumericVector p) {
+  std::vector<double> pv(p.begin(), p.end());
+  double v = gEtaDistObj(pv.data());
+  if (!std::isfinite(v)) return 1e300;
+  return v;
+}
+
 bool rxEtaDistMleW(int fam, const std::vector<double> &vals,
                    const std::vector<double> *w, double *a0) {
   int na = rxEtaDistNarg(fam);
@@ -90,10 +105,54 @@ bool rxEtaDistMleW(int fam, const std::vector<double> &vals,
     // usable step even when it starts at zero
     stp[i] = (std::fabs(v) > 1e-8) ? 0.1*std::fabs(v) : 0.1;
   }
-  int iconv, it, nfcall, iprint = 0;
-  double ynewlo;
-  nelder_fn(gEtaDistNmFn, na, st.data(), stp.data(), 200*na, 1e-8,
-            1.0, 2.0, 0.5, &iconv, &it, &nfcall, &ynewlo, xm.data(), &iprint);
+  // newuoa first.  It builds a quadratic model from its interpolation points,
+  // so on a smooth low-dimensional MLE like this it needs far fewer objective
+  // evaluations than a simplex walking downhill -- and this objective is
+  // evaluated over every sampled eta, every M-step call, for every declared
+  // distribution.  Nelder-Mead is kept as the fallback for when newuoa returns
+  // nothing usable, mirroring what SAEM's own _saemType==2 residual step does.
+  double ynewlo = R_PosInf;
+  bool haveMin = false;
+  {
+    int npt = 2*na + 1;
+    Rcpp::Environment nlmixr2 = Rcpp::Environment::namespace_env("nlmixr2est");
+    Rcpp::Function newuoa = nlmixr2[".newuoa"];
+    Rcpp::InternalFunction fnRef(&gEtaDistNewuoaFn);
+    Rcpp::NumericVector par0(na);
+    double rhobeg = 0.0;
+    for (int i = 0; i < na; ++i) {
+      par0[i] = st[(size_t)i];
+      double sp = std::fabs(stp[(size_t)i]);
+      if (sp > rhobeg) rhobeg = sp;
+    }
+    if (!(rhobeg > 0.0)) rhobeg = 0.1;
+    Rcpp::List ret;
+    bool ok = true;
+    try {
+      ret = newuoa(Rcpp::_["par"] = par0, Rcpp::_["fn"] = fnRef,
+                   Rcpp::_["control"] = Rcpp::List::create(
+                     Rcpp::_["rhobeg"] = rhobeg,
+                     Rcpp::_["rhoend"] = 1e-8,
+                     Rcpp::_["npt"] = npt,
+                     Rcpp::_["maxfun"] = 200*na));
+    } catch (...) {
+      ok = false;
+    }
+    if (ok && ret.containsElementNamed("value") && ret.containsElementNamed("par")) {
+      double f = Rcpp::as<double>(ret["value"]);
+      Rcpp::NumericVector xx = ret["par"];
+      if (std::isfinite(f) && f < 1e300 && (int)xx.size() == na) {
+        for (int i = 0; i < na; ++i) xm[(size_t)i] = xx[i];
+        ynewlo = f;
+        haveMin = true;
+      }
+    }
+  }
+  if (!haveMin) {
+    int iconv, it, nfcall, iprint = 0;
+    nelder_fn(gEtaDistNmFn, na, st.data(), stp.data(), 200*na, 1e-8,
+              1.0, 2.0, 0.5, &iconv, &it, &nfcall, &ynewlo, xm.data(), &iprint);
+  }
   if (!std::isfinite(ynewlo) || ynewlo >= 1e300) return false;
   double a[4];
   gEtaDistUnpack(xm.data(), a);
