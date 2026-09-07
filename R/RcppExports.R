@@ -71,8 +71,12 @@ impSirIndex_ <- function(zk, sirN, u0) {
     .Call(`_nlmixr2est_impSirIndex_`, zk, sirN, u0)
 }
 
-impQrPoints_ <- function(isample, neta, shift) {
-    .Call(`_nlmixr2est_impQrPoints_`, isample, neta, shift)
+impPropKernel_ <- function(type, df, mixScale, mixWeight, quad, gamma, p) {
+    .Call(`_nlmixr2est_impPropKernel_`, type, df, mixScale, mixWeight, quad, gamma, p)
+}
+
+impQrPoints_ <- function(isample, neta, shift, scramble = "none", seed = 42L) {
+    .Call(`_nlmixr2est_impQrPoints_`, isample, neta, shift, scramble, seed)
 }
 
 foceiCheckIndCounts_ <- function(counts) {

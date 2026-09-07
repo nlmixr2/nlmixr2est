@@ -907,6 +907,13 @@ struct focei_options {
   int impIsample = 300;  // importance samples drawn per subject per iteration
   double impGamma = 1.0; // proposal-variance inflation factor: cov = gamma * H^-1
   int impNiter = 100;    // maximum EM iterations
+  // MAP-assist period: re-center the proposal at the MAP mode every impMapIter
+  // EM iterations.  1 = every iteration; 0 = MAP once at startup, never again.
+  int impMapIter = 1;
+  // Burn-in EM iterations run BEFORE the impNiter budget, to settle the
+  // proposal scale / df controllers; convergence cannot fire during them.
+  int impNburn = 0;
+  bool impBurnFreezeOmega = false;  // hold Omega at its starting value while burning in
   double impIaccept = 0.4;   // target importance-sampling effective-sample fraction (adapts gamma)
   // Proposal degrees of freedom (NONMEM DF).  0 = multivariate normal; >0 uses a
   // multivariate t, whose polynomial tails dominate a Gaussian target's.
@@ -935,6 +942,11 @@ struct focei_options {
   bool impQr = false;        // quasi-random (Sobol) importance samples (QRPEM)
   bool impQrShift = true;    // Cranley-Patterson random shift of the Sobol points
   bool impQrRefresh = true;  // redraw the shift each iteration (false: one shift/subject)
+  int impQrScramble = 0;     // Sobol scrambling: 0 none, 1 Owen, 2 linear matrix
+  // Importance-sampling proposal family: 0 auto (normal, or t when df>0),
+  // 1 normal, 2 t, 3 laplace, 4 mixture (with the scales/weights below).
+  int impProposal = 0;
+  std::vector<double> impPropMixScale, impPropMixWeight;
   bool impSir = false;       // SIR-accelerated non-mu/sigma M-step
   int impSirSample = 30;     // SIR resampled points per subject
   int impSeed = 42;          // base seed for the per-(iter,subject) draw streams
@@ -8156,6 +8168,10 @@ NumericVector foceiSetup_(const RObject &obj,
     }
     if (foceiO.containsElementNamed("gamma")) op_focei.impGamma = as<double>(foceiO["gamma"]);
     if (foceiO.containsElementNamed("nIter")) op_focei.impNiter = as<int>(foceiO["nIter"]);
+    if (foceiO.containsElementNamed("mapIter")) op_focei.impMapIter = as<int>(foceiO["mapIter"]);
+    if (foceiO.containsElementNamed("nBurn")) op_focei.impNburn = as<int>(foceiO["nBurn"]);
+    if (foceiO.containsElementNamed("burnFreezeOmega"))
+      op_focei.impBurnFreezeOmega = as<bool>(foceiO["burnFreezeOmega"]);
     if (foceiO.containsElementNamed("iaccept")) op_focei.impIaccept = as<double>(foceiO["iaccept"]);
     if (foceiO.containsElementNamed("df")) op_focei.impDf = as<double>(foceiO["df"]);
     if (foceiO.containsElementNamed("auto")) op_focei.impAuto = as<bool>(foceiO["auto"]);
@@ -8185,6 +8201,25 @@ NumericVector foceiSetup_(const RObject &obj,
     if (foceiO.containsElementNamed("qr")) op_focei.impQr = as<bool>(foceiO["qr"]);
     if (foceiO.containsElementNamed("qrShift")) op_focei.impQrShift = as<bool>(foceiO["qrShift"]);
     if (foceiO.containsElementNamed("qrRefresh")) op_focei.impQrRefresh = as<bool>(foceiO["qrRefresh"]);
+    if (foceiO.containsElementNamed("proposal") &&
+        TYPEOF(foceiO["proposal"]) == STRSXP) {
+      std::string ps = as<std::string>(foceiO["proposal"]);
+      op_focei.impProposal = (ps == "normal") ? 1 : ((ps == "t") ? 2 :
+        ((ps == "laplace") ? 3 : ((ps == "mixture") ? 4 : 0)));
+    }
+    if (foceiO.containsElementNamed("propMixScale")) {
+      NumericVector v = as<NumericVector>(foceiO["propMixScale"]);
+      op_focei.impPropMixScale.assign(v.begin(), v.end());
+    }
+    if (foceiO.containsElementNamed("propMixWeight")) {
+      NumericVector v = as<NumericVector>(foceiO["propMixWeight"]);
+      op_focei.impPropMixWeight.assign(v.begin(), v.end());
+    }
+    if (foceiO.containsElementNamed("qrScramble") &&
+        TYPEOF(foceiO["qrScramble"]) == STRSXP) {
+      std::string qs = as<std::string>(foceiO["qrScramble"]);
+      op_focei.impQrScramble = (qs == "owen") ? 1 : ((qs == "lms") ? 2 : 0);
+    }
     if (foceiO.containsElementNamed("sir")) op_focei.impSir = as<bool>(foceiO["sir"]);
     if (foceiO.containsElementNamed("sirSample")) op_focei.impSirSample = as<int>(foceiO["sirSample"]);
     if (foceiO.containsElementNamed("impSeed")) op_focei.impSeed = as<int>(foceiO["impSeed"]);
@@ -12403,6 +12438,9 @@ std::string impDiagXform() {
 }
 
 double impIaccept() { return op_focei.impIaccept; }
+int impMapIter() { return op_focei.impMapIter; }
+int impNburn() { return op_focei.impNburn; }
+bool impBurnFreezeOmega() { return op_focei.impBurnFreezeOmega; }
 double impDf() { return op_focei.impDf; }
 bool impAutoEnabled() { return op_focei.impAuto; }
 bool impAutoNonNormal() { return op_focei.impAutoNonNormal; }
@@ -12447,6 +12485,12 @@ bool impCovEnabled() { return op_focei.impCov; }
 bool impQrEnabled() { return op_focei.impQr; }
 bool impQrShiftEnabled() { return op_focei.impQrShift; }
 bool impQrRefreshEnabled() { return op_focei.impQrRefresh; }
+int impQrScramble() { return op_focei.impQrScramble; }
+int impProposalType() { return op_focei.impProposal; }
+void impPropMixGet(std::vector<double>& c, std::vector<double>& w) {
+  c = op_focei.impPropMixScale;
+  w = op_focei.impPropMixWeight;
+}
 bool impSirEnabled() { return op_focei.impSir; }
 int impSirN() { return op_focei.impSirSample; }
 int impBaseSeed() { return op_focei.impSeed; }

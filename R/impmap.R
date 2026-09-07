@@ -6,6 +6,13 @@
 # The numerical kernel lives in C++ (src/imp.cpp); this file is orchestration
 # only: control construction, dispatch, and post-fit assembly.
 
+# Per-model M-step index maps stamped on the RUNTIME control by
+# .impmapFamilyFit.  They are neither impmapControl() nor foceiControl()
+# arguments, so both the down-conversion and impmapControl()'s own `...` have to
+# know about them.
+.impmapIdxMapNames <- c("impMuThetaIdx", "impMuEtaIdx", "impThetaSensIdx",
+                        "impOmegaFixedEta")
+
 # Importance-sampling / EM control names -- stripped when down-converting to a
 # plain foceiControl for the MAP inner problem / output.
 .impmapIsControlNames <- c("isample", "nIter", "mapIter", "gamma",
@@ -13,17 +20,54 @@
                            "df", "auto", "autoNonNormal",
                            "autoNonmemSparse", "autoDfPatience",
                            "iscaleMin", "iscaleMax", "iaccept",
+                           "nBurn", "burnFreezeOmega",
                            "ctol", "nConvWindow", "impSeed", "impCov",
-                           "qr", "qrShift", "qrRefresh", "sir", "sirSample",
+                           "proposal", "propMixScale", "propMixWeight",
+                           "qr", "qrShift", "qrRefresh", "qrScramble",
+                           "sir", "sirSample",
                            # internal M-step index maps added in .impmapFamilyFit;
                            # not foceiControl() arguments, so they must be dropped
                            # when down-converting (e.g. .setOfvFo's do.call(foceiControl))
-                           "impMuThetaIdx", "impMuEtaIdx", "impThetaSensIdx",
-                           "impOmegaFixedEta",
+                           .impmapIdxMapNames,
                            # combined eta+theta sensitivity build (#958): an
                            # impmap-internal request for the fused inner model;
                            # not a foceiControl() argument either.
                            "combSens")
+
+# Validate proposal / mixture arguments.  Every test is on the VALUE rather
+# than missing(), so do.call(impmapControl, ctl) round-trips idempotently -- a
+# round-trip supplies df=0 explicitly, which is conflict-free.
+#' @noRd
+.impmapAssertProposal <- function(proposal, df, propMixScale, propMixWeight) {
+  checkmate::assertNumeric(df, len=1, any.missing=FALSE, .var.name="df")
+  if (identical(proposal, "normal") && df > 0) {
+    stop("'df' > 0 contradicts proposal=\"normal\"; use proposal=\"t\" or df=0",
+         call.=FALSE)
+  }
+  if (identical(proposal, "t") && df <= 0) {
+    stop("proposal=\"t\" needs 'df' > 0", call.=FALSE)
+  }
+  if (proposal %in% c("laplace", "mixture") && df > 0) {
+    stop("'df' applies only to proposal=\"t\"", call.=FALSE)
+  }
+  checkmate::assertNumeric(propMixScale, min.len=2, max.len=3, any.missing=FALSE,
+                           lower=.Machine$double.eps, finite=TRUE,
+                           .var.name="propMixScale")
+  checkmate::assertNumeric(propMixWeight, len=length(propMixScale),
+                           any.missing=FALSE, lower=.Machine$double.eps,
+                           finite=TRUE, .var.name="propMixWeight")
+  # component 1 IS the Laplace-approximation covariance, which is what anchors
+  # the meaning of gamma; a mixture of one is not a mixture (and would not be
+  # bit-identical to "normal" anyway -- the log-sum-exp reassociates).
+  if (!isTRUE(all.equal(propMixScale[1], 1))) {
+    stop("'propMixScale' must start at 1", call.=FALSE)
+  }
+  if (any(diff(propMixScale) <= 0)) {
+    stop("'propMixScale' must be strictly increasing", call.=FALSE)
+  }
+  list(scale=as.double(propMixScale),
+       weight=as.double(propMixWeight / sum(propMixWeight)))
+}
 
 #' Control options for the impmap (importance-sampling EM) estimation method
 #'
@@ -49,8 +93,90 @@
 #'   tails are too light still gives weights with infinite variance, which
 #'   `fit$env$impPsisK` will show.  See `df` for the shape-based remedy.
 #' @param nIter Maximum number of importance-sampling EM iterations.
-#' @param mapIter Number of MAP re-centering iterations per EM step; `> 0`
-#'   re-centers the proposal at the MAP mode each iteration.
+#' @param mapIter MAP-assist period, in EM iterations.  `1` (default)
+#'   re-centers the proposal at each subject's MAP mode every iteration; `k > 1`
+#'   re-centers every `k`th iteration; `0` never re-centers after the startup
+#'   MAP pass.
+#'
+#'   The MAP search is the mu-referenced FOCEI inner problem and is the dominant
+#'   per-iteration cost of `est="impmap"`, so raising `mapIter` trades proposal
+#'   accuracy for speed.  It is worth raising once the population parameters are
+#'   moving slowly enough that the mode barely shifts between iterations, and
+#'   not before -- a proposal centered away from the mode costs effective sample
+#'   size, which `fit$env$impNeffFrac` will show.
+#'
+#'   A skipped iteration does not freeze the proposal center: the M-step reseeds
+#'   every subject's eta with its conditional mean, so the proposal still moves
+#'   each iteration -- it is the MAP re-optimization, not the center, that is
+#'   skipped.  The covariance is still built from the inner Hessian there, which
+#'   is what distinguishes this from `est="imp"`; `est="imp"` uses the running
+#'   conditional variance instead and is not the `mapIter = 0` case.
+#'
+#'   `mapIter` cannot change an `est="imp"` fit, which never re-centers at all.
+#'
+#'   **Measured trade-off.**  `mapIter = 3` against the default, same harness:
+#'   theta RMSE 0.00102 vs 0.00157 (1 ETA), 0.00130 vs 0.00144 (3 ETAs), 0.00173
+#'   vs 0.00173 (general `ll()`), with `Omega` RMSE, effective sample size and
+#'   k-hat essentially unmoved.  On those fixtures skipping two MAP searches in
+#'   three is close to free, which is the point of the knob.
+#'
+#'   At 8 ETAs it becomes a genuine trade rather than a free saving, and in a
+#'   direction worth knowing: theta RMSE 0.0205 against 0.0146 (worse), but
+#'   Pareto k-hat +0.88 against +0.97 and the number of subjects above 0.7 down
+#'   from 2.1 to **0.25** -- by a wide margin the healthiest sampler of any
+#'   setting measured on that fixture.  Re-optimizing the mode every iteration
+#'   is not automatically the safer choice at high eta dimension.
+#'
+#'   `1` stays the default: it is the previous behaviour, and it never runs a
+#'   stale proposal.  Raise it when the per-iteration MAP cost matters (it is
+#'   the inner FOCEI problem, so it scales with how hard that is), and watch
+#'   `fit$env$impNeffFrac` -- a proposal centred away from the mode costs
+#'   effective sample size on a model whose mode moves quickly.
+#' @param nBurn Number of burn-in EM iterations run before the `nIter` budget,
+#'   to let the proposal-scale (`gamma`) and `auto` controllers settle before
+#'   the estimates they influence are judged.  `0` (default) is no burn-in.
+#'
+#'   These are EXTRA iterations, not carved out of `nIter`, so raising `nBurn`
+#'   never silently shortens the fit; a fit runs at most `nBurn + nIter`
+#'   iterations.  Everything runs normally during them -- the E-step, both
+#'   controllers, and the theta M-step -- except that convergence cannot fire,
+#'   and `Omega` is held when `burnFreezeOmega = TRUE`.
+#'
+#'   Burn-in iterations are the first `nBurn` rows of `$parHist` and of
+#'   `fit$env$impObjTrace`; `fit$env$impNburn` reports how many there were.
+#'
+#'   **Measured trade-off.**  `nBurn = 5, burnFreezeOmega = TRUE` against the
+#'   default, same harness as `proposal`: theta RMSE 0.00140 vs 0.00157 (1 ETA),
+#'   0.00185 vs 0.00144 (3 ETAs), 0.00104 vs 0.00173 (general `ll()`); `Omega`
+#'   RMSE worse on all three (0.00404 / 0.00261 / 0.00249 against 0.00344 /
+#'   0.00184 / 0.00170), for 2-5 extra iterations.
+#'
+#'   **It can be much worse than that, so do not switch it on speculatively.**
+#'   On an 8-ETA warfarin PK/PD fit the same setting gave theta RMSE 0.149
+#'   against 0.0146 for the default -- ten times worse -- with k-hat and the
+#'   failing-subject count both degraded (+1.30 / 3.1 against +0.97 / 2.1).
+#'   Holding `Omega` while the thetas move is a coherent thing to want, but on a
+#'   high-dimensional model the thetas can travel a long way from an `Omega`
+#'   that is not allowed to follow, and the fit does not recover the difference
+#'   in the iterations that remain.
+#'
+#'   Off by default, and worth trying only when a fit's `Omega` visibly
+#'   overshoots in the first rows of `$parHist` and then has to come back --
+#'   which is the specific failure it addresses.
+#' @param burnFreezeOmega When `TRUE`, hold `Omega` at its starting value for
+#'   the `nBurn` burn-in iterations while the structural and residual-error
+#'   thetas update normally.  Ignored when `nBurn = 0`.
+#'
+#'   The case for it: the first EM iterations run under a proposal whose scale
+#'   the controller has not yet adapted, and `Omega`'s update is the one that
+#'   absorbs that -- it is built from the conditional variances
+#'   (`Omega = mean(eta eta' + condVar)`), which an over- or under-dispersed
+#'   proposal estimates badly.  Freezing it lets the thetas move the model
+#'   toward the data while the proposal settles, instead of chasing an `Omega`
+#'   excursion the fit then has to undo.
+#'
+#'   Convergence is not tested until the whole trailing `nConvWindow` lies past
+#'   the burn-in, so a frozen `Omega` cannot be mistaken for a settled one.
 #' @param gamma Initial proposal-variance inflation factor (NONMEM ISCALE); the
 #'   proposal covariance is `gamma` times the inverse of the inner information
 #'   matrix at the mode.
@@ -71,6 +197,83 @@
 #'   NONMEM's guidance (Bauer, *NONMEM Tutorial Part II*) is to set a nonzero
 #'   `DF` when there are fewer data points than etas, or for categorical data.
 #'   Small values (3-8) are heavy; large values approach the Gaussian.
+#' @param proposal Importance-sampling proposal family.  `"auto"` (default)
+#'   resolves to `"t"` when `df > 0` and `"normal"` otherwise, so the historical
+#'   `df` behaviour is unchanged.
+#'
+#'   * `"normal"` / `"t"` -- the multivariate normal and t proposals `df`
+#'     already selected.  See `df` for the shape-versus-width discussion these
+#'     all turn on.
+#'   * `"laplace"` -- a spherical (Kotz-type) multivariate Laplace,
+#'     `f(x) ~ exp(-sqrt(x' S^-1 x))`.  Its exponential tail dominates the joint
+#'     target's, which for a bounded likelihood is at worst Gaussian, so the
+#'     importance weights are BOUNDED by construction -- without having to pick
+#'     a `df`, and without the low-`df` t's cost in effective sample size.  Its
+#'     scale is covariance-matched (`S = Sigma/(p+1)`), so `gamma`, `iscaleMin`
+#'     and `iscaleMax` mean what they mean for `"normal"`.
+#'   * `"mixture"` -- a defensive scale mixture about the same mode,
+#'     `sum_k w_k N(mode, c_k gamma Sigma)`, with `propMixScale` and
+#'     `propMixWeight`.  A broad component covers what a narrow one misses, so
+#'     the mixture is deliberately over-dispersed relative to `gamma * Sigma`.
+#'     Note this does NOT bound the weights: its widest component is still
+#'     Gaussian-tailed, so use `"laplace"` when that is what you need.
+#'
+#'   `auto` adapts `df` only on the normal/t axis -- its ladder encodes
+#'   "Gaussian" as `df <= 0` and its constants were tuned against a Gaussian
+#'   baseline, so a subject on `"laplace"` or `"mixture"` keeps its family.
+#'   The `isample` budget reallocation still applies to every family.
+#'
+#'   `fit$env$impProposal` reports the resolved family and `fit$env$impPropInd`
+#'   the per-subject families actually used, so an `auto` escalation from normal
+#'   to t is visible.
+#'
+#'   **Measured trade-off.**  8 seeds, `isample = 300`, RMSE against an
+#'   `isample = 8000` reference (`design/qrpem/qrpem-options-bench.R`), reported
+#'   as theta RMSE / `Omega` RMSE / max Pareto k-hat / mean effective-sample
+#'   fraction:
+#'
+#'   \itemize{
+#'     \item 1 ETA -- `"normal"` 0.00157 / 0.00344 / -1.18 / 0.624;
+#'       `"laplace"` 0.00128 / 0.00367 / -0.86 / 0.753;
+#'       `"mixture"` 0.00173 / 0.00510 / -1.33 / 0.592
+#'     \item 3 ETAs -- `"normal"` 0.00144 / 0.00184 / -0.22 / 0.724;
+#'       `"laplace"` 0.00110 / 0.00229 / +0.28 / 0.817;
+#'       `"mixture"` 0.00140 / 0.00296 / -0.33 / 0.668
+#'     \item general `ll()` -- `"normal"` 0.00173 / 0.00170 / -0.66 / 0.658;
+#'       `"laplace"` 0.00214 / 0.00227 / -0.31 / 0.798;
+#'       `"mixture"` 0.00144 / 0.00208 / -0.67 / 0.611
+#'     \item 8 ETAs (warfarin PK/PD) -- `"normal"` 0.01459 / 0.01941 / +0.97 /
+#'       0.551; `"laplace"` 0.01161 / 0.01430 / +1.07 / 0.576;
+#'       `"mixture"` 0.01905 / 0.02003 / +1.19 / 0.527
+#'   }
+#'
+#'   `"auto"` stays the default -- no family wins everywhere -- but the 8-ETA
+#'   row is the informative one and it is worth reading carefully.  It is the
+#'   only fixture here whose sampler actually fails (2.1 subjects above k-hat
+#'   0.7 under the default), and there `"laplace"` gives the best theta RMSE of
+#'   every setting measured, 20% better than the default, with the best
+#'   effective sample size.  On the three easy fixtures no subject exceeds 0.7
+#'   under any setting, so there is nothing for a bounded-weight proposal to
+#'   repair and it merely costs accuracy.  That is the rule of thumb: reach for
+#'   `"laplace"` when `fit$env$impPsisK` shows a tail the `df` ladder is not
+#'   fixing, not otherwise.
+#'
+#'   One honest caveat on the mechanism.  `"laplace"` improved ACCURACY at 8
+#'   ETAs without improving k-hat itself (+1.07 against +0.97).  Bounded weights
+#'   are an asymptotic guarantee, and 300 samples in 8 dimensions is not the
+#'   asymptotic regime; the tail here is also not the non-identified kind the
+#'   `autoNonmemSparse` note describes, since every subject has 13 observations
+#'   for its 8 random effects.  So take the accuracy gain as measured and the
+#'   tail argument as theory that this fixture does not confirm.
+#' @param propMixScale Component variance multipliers for
+#'   `proposal="mixture"`, length 2 or 3, starting at `1` and strictly
+#'   increasing.  Used as given: component 1 is the Laplace-approximation
+#'   covariance itself and the rest are the wider defensive components, so the
+#'   mixture's covariance is `(sum_k w_k c_k) * gamma * Sigma` -- deliberately
+#'   wider than `gamma * Sigma`, which is the whole mechanism.  `gamma` still
+#'   scales the entire mixture, so `iscaleMin`/`iscaleMax` still bound it.
+#' @param propMixWeight Component weights for `proposal="mixture"`, same length
+#'   as `propMixScale`, positive, normalized internally.
 #' @param auto NONMEM `AUTO=1` equivalent: adapt the proposal degrees of
 #'   freedom, the sample count and the acceptance target **per subject** rather
 #'   than applying one global setting to everybody.
@@ -288,6 +491,50 @@
 #'   averages out over the EM; `FALSE` draws one shift per subject at the fit
 #'   start, making each EM iteration a deterministic map (smoothest objective
 #'   trace).
+#' @param qrScramble Only used with `qr=TRUE`.  Scrambling of the Sobol point
+#'   set: `"none"` (default) uses the raw sequence, randomized only by the
+#'   Cranley-Patterson shift; `"owen"` applies a hash-based nested uniform
+#'   (Owen) scramble; `"lms"` applies a linear matrix scramble with a digital
+#'   shift.
+#'
+#'   A Cranley-Patterson shift randomizes the point set but leaves the
+#'   correlation structure between the sequence's dimensions intact; scrambling
+#'   permutes the digits and breaks it.
+#'
+#'   **Measured trade-off, and it is not the one the paragraph above suggests.**
+#'   The scramble's advantage over the shift is real but does NOT grow with the
+#'   number of random effects: on a smooth test integrand at `isample = 300` it
+#'   is 1.79x at one dimension and 1.53x at twelve.  And it lands on the E-STEP
+#'   INTEGRAL rather than on the estimates -- single-iteration importance-
+#'   sampling `-2LL` RMSE 0.056 under `"owen"` against 0.080 unscrambled (3
+#'   ETAs), while converged parameter accuracy is unmoved or worse.  Against an
+#'   `isample = 8000` reference over 8 seeds, theta RMSE:
+#'
+#'   \itemize{
+#'     \item 1 ETA -- shift 0.00022, `"owen"` 0.00018, `"lms"` 0.00022
+#'     \item 3 ETAs -- shift 0.00031, `"owen"` 0.00045, `"lms"` 0.00049
+#'     \item general `ll()` -- shift 0.00020, `"owen"` 0.00032, `"lms"` 0.00028
+#'     \item 8 ETAs -- shift 0.01493, `"owen"` 0.01787, `"lms"` 0.01924
+#'   }
+#'
+#'   So `"none"` stays the default: at the eta dimension where a scramble was
+#'   expected to pay off most it is the worst of the three on theta, and it
+#'   never improves Pareto k-hat.  Set `"owen"` when the quantity you care about
+#'   is the reported importance-sampling objective (`fit$env$impObj`, e.g. for
+#'   comparing models by IS likelihood) rather than the parameter estimates --
+#'   that is the integral it measurably improves.
+#'
+#'   Scrambling IS the randomization, so it REPLACES the shift rather than
+#'   composing with it: `qrShift` is ignored when this is not `"none"`, while
+#'   `qrRefresh` still decides whether the randomization is redrawn each
+#'   iteration (`FALSE` pins one scramble per subject, making each EM iteration
+#'   a deterministic map).  The scramble key is derived arithmetically from
+#'   `impSeed` and the (iteration, subject, dimension) indices rather than drawn
+#'   from the RNG, so it consumes no draws and the fit stays reproducible and
+#'   independent of the thread count.
+#'
+#'   `"lms"` is named for the method (Matousek/Tezuka linear matrix scrambling)
+#'   and is not a claim to reproduce any particular vendor's variant.
 #' @param sir When `TRUE`, accelerate the non-mu / residual-error M-step by
 #'   SIR (sampling-importance-resampling): the theta-sensitivity Newton step
 #'   uses `sirSample` equal-weight resampled points per subject instead of all
@@ -318,10 +565,15 @@ impmapControl <- function(sigdig=3,
                           isample=300L,
                           nIter=100L,
                           mapIter=1L,
+                          nBurn=0L,
+                          burnFreezeOmega=FALSE,
                           gamma=1.0,
                           gammaMethod=c("auto", "global", "individual"),
                           gammaRule=c("target", "floor"),
                           df=0,
+                          proposal=c("auto", "normal", "t", "laplace", "mixture"),
+                          propMixScale=c(1, 9),
+                          propMixWeight=c(0.9, 0.1),
                           auto=TRUE,
                           autoNonmemSparse=FALSE,
                           autoDfPatience=2L,
@@ -335,6 +587,7 @@ impmapControl <- function(sigdig=3,
                           qr=FALSE,
                           qrShift=TRUE,
                           qrRefresh=TRUE,
+                          qrScramble=c("none", "owen", "lms"),
                           sir=FALSE,
                           sirSample=NULL,
                           muModel=c("lin", "none"),
@@ -365,6 +618,9 @@ impmapControl <- function(sigdig=3,
   checkmate::assertLogical(qr, any.missing=FALSE, len=1, .var.name="qr")
   checkmate::assertLogical(qrShift, any.missing=FALSE, len=1, .var.name="qrShift")
   checkmate::assertLogical(qrRefresh, any.missing=FALSE, len=1, .var.name="qrRefresh")
+  qrScramble <- match.arg(qrScramble)
+  proposal <- match.arg(proposal)
+  .propMix <- .impmapAssertProposal(proposal, df, propMixScale, propMixWeight)
   checkmate::assertLogical(sir, any.missing=FALSE, len=1, .var.name="sir")
   # isample may be a single count or one count PER SUBJECT (NONMEM's per-subject
   # ISAMPLE): a badly covered subject can buy more samples without charging
@@ -409,6 +665,17 @@ impmapControl <- function(sigdig=3,
   # control never worked.
   .autoNonNormal <- .dots$autoNonNormal
   .dots$autoNonNormal <- NULL
+  # The four M-step index maps are stamped on the RUNTIME control by
+  # .impmapFamilyFit and are not arguments here either.  Without pulling them
+  # out, do.call(impmapControl, <a fit's own control>) died with "unused
+  # argument: 'impMuThetaIdx', ..." -- which is the path
+  # getValidNlmixrCtl.impmap takes, so re-fitting ANY completed imp-family fit
+  # from the fit object (nlmixr2(fit, est="impmap")) failed outright.  They are
+  # per-model and .impmapFamilyFit recomputes all four before every fit, so
+  # carrying them is only about keeping the round-trip idempotent.
+  .impIdxMaps <- .dots[.impmapIdxMapNames]
+  names(.impIdxMaps) <- .impmapIdxMapNames
+  .dots[.impmapIdxMapNames] <- NULL
   if (is.character(covMethod)) {
     if (length(covMethod) == 1L && !nzchar(covMethod)) {
       covMethod <- ""
@@ -427,9 +694,20 @@ impmapControl <- function(sigdig=3,
                         list(covMethod=.foceiCovMethod, muModel="lin")))
   .control$impCov <- .impCov
   if (!is.null(.autoNonNormal)) .control$autoNonNormal <- .autoNonNormal
+  for (.nm in .impmapIdxMapNames) {
+    if (!is.null(.impIdxMaps[[.nm]])) .control[[.nm]] <- .impIdxMaps[[.nm]]
+  }
   .control$isample <- .isampleAll
   .control$nIter <- as.integer(nIter)
+  checkmate::assertIntegerish(mapIter, lower=0, len=1, any.missing=FALSE,
+                              .var.name="mapIter")
   .control$mapIter <- as.integer(mapIter)
+  checkmate::assertIntegerish(nBurn, lower=0, len=1, any.missing=FALSE,
+                              .var.name="nBurn")
+  checkmate::assertLogical(burnFreezeOmega, len=1, any.missing=FALSE,
+                           .var.name="burnFreezeOmega")
+  .control$nBurn <- as.integer(nBurn)
+  .control$burnFreezeOmega <- burnFreezeOmega
   .control$gamma <- as.double(gamma)
   .control$gammaMethod <- gammaMethod
   .control$gammaRule <- gammaRule
@@ -452,6 +730,10 @@ impmapControl <- function(sigdig=3,
   .control$qr <- qr
   .control$qrShift <- qrShift
   .control$qrRefresh <- qrRefresh
+  .control$qrScramble <- qrScramble
+  .control$proposal <- proposal
+  .control$propMixScale <- .propMix$scale
+  .control$propMixWeight <- .propMix$weight
   .control$sir <- sir
   .control$sirSample <- .sirSample
   .control$combSens <- combSens
@@ -483,7 +765,53 @@ getValidNlmixrCtl.impmap <- function(control) {
   } else {
     .ctl <- do.call(impmapControl, .ctl)
   }
-  .ctl
+  .impmapEstWins(.ctl, .cls)
+}
+
+#' `est` wins over the values another method's `est` stamped on its control.
+#'
+#' `nlmixr2(fit, est=)` adopts the prior fit's control, and several fields on a
+#' COMPLETED fit's control were put there by that fit's `est` rather than by the
+#' user: `est="imp"` stamps `mapIter = 0` (that IS what imp means -- never
+#' re-center), and `est="qrpem"` stamps `qr = TRUE, sir = TRUE` (that is what
+#' qrpem means).  Carrying those into a different method silently runs a
+#' different algorithm than the one asked for -- a re-fit as `"qrpem"` that
+#' inherited an `imp` control would draw plain Monte-Carlo samples and still be
+#' labelled QRPEM.  `est` has to win, the same way `emviControl()` resolves
+#' `pointEstimate`.
+#'
+#' Keyed on the `est` field a COMPLETED fit carries, never on the value alone,
+#' so a control the user built themselves -- `impmapControl(mapIter = 0)`,
+#' `qrpemControl(qr = FALSE)` -- has no `est` and is left exactly as written.
+#' @param ctl validated impmapControl
+#' @param est target estimation method
+#' @return ctl, with any field the SOURCE est stamped restored to the TARGET
+#'   est's own value
+#' @noRd
+.impmapEstWins <- function(ctl, est) {
+  .src <- ctl$est
+  # a freshly built control (no completed fit behind it) is the user's own
+  if (is.null(.src) || !is.character(.src) || identical(.src, est)) return(ctl)
+  .msg <- character(0)
+  # est="imp" stamped mapIter = 0; every other method re-centers
+  if (identical(.src, "imp") && identical(as.integer(ctl$mapIter), 0L) &&
+        (identical(est, "impmap") || identical(est, "qrpem"))) {
+    ctl$mapIter <- 1L
+    .msg <- c(.msg, "mapIter=1")
+  }
+  # est="qrpem" IS impmapControl(qr=TRUE, sir=TRUE); neither travels
+  if (identical(est, "qrpem")) {
+    if (!isTRUE(ctl$qr)) { ctl$qr <- TRUE; .msg <- c(.msg, "qr=TRUE") }
+    if (!isTRUE(ctl$sir)) { ctl$sir <- TRUE; .msg <- c(.msg, "sir=TRUE") }
+  } else if (identical(.src, "qrpem")) {
+    if (isTRUE(ctl$qr)) { ctl$qr <- FALSE; .msg <- c(.msg, "qr=FALSE") }
+    if (isTRUE(ctl$sir)) { ctl$sir <- FALSE; .msg <- c(.msg, "sir=FALSE") }
+  }
+  if (length(.msg) > 0L) {
+    .minfo(paste0("`est=\"", est, "\"` restores ", paste(.msg, collapse = ", "),
+                  " (inherited from an `est=\"", .src, "\"` fit)"))
+  }
+  ctl
 }
 
 #' @rdname nmObjGetControl
