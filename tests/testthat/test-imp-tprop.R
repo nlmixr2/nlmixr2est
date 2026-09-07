@@ -63,7 +63,7 @@ nmTest({
     # proposal bounds them.  Measured max k-hat: 1.61 (Gaussian) vs -0.58
     # (df=20), -0.86 (df=5).
     .g <- .fitDf(0)
-    .t <- .fitDf(20)
+    .t <- .fitDf(50)
     expect_gt(max(.g$env$impPsisK), 0.7)      # premise: the Gaussian fails
     expect_gt(sum(.g$env$impPsisK > 0.7), 0L)
     expect_lt(max(.t$env$impPsisK), 0.7)      # and the t proposal fixes it
@@ -216,7 +216,7 @@ nmTest({
     .t <- suppressWarnings(nlmixr2(.isModel, .d, "impmap",
                                    impmapControl(print = 0L, nIter = 8L,
                                                  isample = 300L, covMethod = "",
-                                                 auto = FALSE, df = 20, gammaRule = "floor")))
+                                                 auto = FALSE, df = 50, gammaRule = "floor")))
     # the heavier tail is at least as good as 10x the draws ...
     expect_lte(max(.t$env$impPsisK), max(.boost$env$impPsisK) + 1e-8)
     # ... and clears the unreliable regime at the ORIGINAL sample count

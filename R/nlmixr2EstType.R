@@ -44,6 +44,7 @@
   newuoa   = list(type="Optimizer (NLM family)", description="NEWUOA (derivative-free)"),
   uobyqa   = list(type="Optimizer (NLM family)", description="UOBYQA (derivative-free)"),
   n1qn1    = list(type="Optimizer (NLM family)", description="n1qn1 (BFGS)"),
+  trust    = list(type="Optimizer (NLM family)", description="Trust-region Newton (C++-resident, RcppTrust)"),
   lbfgsb3c = list(type="Optimizer (NLM family)", description="L-BFGS-B"),
   optim    = list(type="Optimizer (NLM family)", description="Nelder-Mead / BFGS (optim)"),
   nls      = list(type="Optimizer (NLM family)", description="nonlinear least squares")

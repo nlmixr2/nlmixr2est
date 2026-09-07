@@ -58,6 +58,7 @@ Imports:
     rxode2ll (>= 2.0.16.9001),
     nlme,
     Rcpp,
+    RcppTrust (>= 0.1.0),
     rex,
     rxode2 (>= 5.1.7),
     stats,
@@ -99,6 +100,7 @@ LinkingTo:
     Rcpp,
     RcppArmadillo (>= 0.11.2.3.1),
     RcppEigen,
+    RcppTrust (>= 0.1.0),
     rxode2 (>= 5.1.7)
 Biarch: true
 Config/testthat/edition: 3

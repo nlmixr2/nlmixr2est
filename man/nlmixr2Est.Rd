@@ -5,7 +5,7 @@
 %   R/laplace.R, R/lbfgsb3c.R, R/magq.R, R/mfoce.R, R/mfocei.R, R/mfocep.R,
 %   R/mlaplace.R, R/n1qn1.R, R/newuoa.R, R/nlm.R, R/nlme.R, R/nlminb.R,
 %   R/nlmixr2Est.R, R/nls.R, R/npag.R, R/npb.R, R/optim.R, R/posthoc.R,
-%   R/qrpem.R, R/rxsolve.R, R/saem.R, R/uobyqa.R, R/vae.R
+%   R/qrpem.R, R/rxsolve.R, R/saem.R, R/trust.R, R/uobyqa.R, R/vae.R
 \name{nlmixr2Est.agq}
 \alias{nlmixr2Est.agq}
 \alias{nlmixr2Est.bobyqa}
@@ -71,6 +71,7 @@
 \alias{nlmixr2Est.simulation}
 \alias{nlmixr2Est.predict}
 \alias{nlmixr2Est.saem}
+\alias{nlmixr2Est.trust}
 \alias{nlmixr2Est.uobyqa}
 \alias{nlmixr2Est.vae}
 \title{Generic for nlmixr2 estimation methods}
@@ -202,6 +203,8 @@ nlmixr2Est(env, ...)
 \method{nlmixr2Est}{predict}(env, ...)
 
 \method{nlmixr2Est}{saem}(env, ...)
+
+\method{nlmixr2Est}{trust}(env, ...)
 
 \method{nlmixr2Est}{uobyqa}(env, ...)
 

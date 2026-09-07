@@ -65,7 +65,7 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
   # batch 1
   c(
     "focei-wang2007-boxcox", "focei-wang2007-combined", "vpcSim",
-    "qrpem-slow", "focei-foce-plus"
+    "qrpem-slow", "focei-foce-plus", "imp-proposal-slow"
   ),
   # batch 2
   c(
@@ -102,7 +102,7 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
   c(
     "focei-wang2007-boxcox-lnorm", "nlme-cov", "agq-fast-grad",
     "focei-ll-fast-grad-fit", "focei-fast-methods-fit", "odeswap-fit",
-    "focei-factr-fit", "focei-reproducible"
+    "focei-factr-fit", "focei-reproducible", "focei-hessian-etastep"
   ),
   # batch 6
   c(

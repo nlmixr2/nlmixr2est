@@ -4,7 +4,7 @@
 %   R/laplace.R, R/lbfgsb3c.R, R/mfocep.R, R/muRefControl.R, R/n1qn1.R,
 %   R/newuoa.R, R/nlm.R, R/nlme.R, R/nlminb.R, R/nls.R, R/nmObjHandle.R,
 %   R/npCommon.R, R/npag.R, R/npb.R, R/optim.R, R/posthoc.R, R/qrpem.R,
-%   R/uobyqa.R, R/vae.R
+%   R/trust.R, R/uobyqa.R, R/vae.R
 \name{nmObjGetControl.agq}
 \alias{nmObjGetControl.agq}
 \alias{nmObjGetControl.bobyqa}
@@ -47,6 +47,7 @@
 \alias{nmObjGetControl.optim}
 \alias{nmObjGetControl.posthoc}
 \alias{nmObjGetControl.qrpem}
+\alias{nmObjGetControl.trust}
 \alias{nmObjGetControl.uobyqa}
 \alias{nmObjGetControl.vae}
 \title{Get control object from fit}
@@ -132,6 +133,8 @@ nmObjGetControl(x, ...)
 \method{nmObjGetControl}{posthoc}(x, ...)
 
 \method{nmObjGetControl}{qrpem}(x, ...)
+
+\method{nmObjGetControl}{trust}(x, ...)
 
 \method{nmObjGetControl}{uobyqa}(x, ...)
 

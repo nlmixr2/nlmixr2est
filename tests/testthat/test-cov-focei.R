@@ -80,7 +80,15 @@ nmTest({
     # ~0.12), so s/rs runs ~2 for cl/v -- finite-sample OPG behaviour that collapses toward 1 on
     # larger / well-specified data, NOT a scaling error.  This leg guards against the old constant
     # factor (covS = 4*Sinv), which would DOUBLE these ratios to ~4.5.
-    expect_true(all(se_s  / se_rs < 3), label = "covMethod='s' SE not inflated by the old 2x constant factor")
+    #
+    # Bound recalibrated from 3 to 3.5 when trustFterm/trustMterm's default was
+    # tightened to 10^(-sigdig-2): tcl's ratio moved from 1.00 to 3.09.  The
+    # looser inner solve was the reason the old numbers looked tame -- it also
+    # put se_r/se_rs at 0.30-0.50, which CONTRADICTS the information equality
+    # the r leg above asserts; tightening moves that to 0.88-1.26, i.e. onto the
+    # ~1 this test says to expect.  3.5 still leaves clear room under the ~4.5 a
+    # return of the constant factor would produce, which is what this guards.
+    expect_true(all(se_s  / se_rs < 3.5), label = "covMethod='s' SE not inflated by the old 2x constant factor")
   })
 
   test_that("covariance with many omegas fixed will not crash focei", {

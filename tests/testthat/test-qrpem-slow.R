@@ -275,13 +275,24 @@ nmTest({
     # 2.05% on fixef and is not attributable to rxode2 -- nlmixr2est at the
     # recording commit reproduces the OLD values against today's rxode2 to 2e-9.
     #
+    # innerOpt is pinned to "n1qn1" for the SAME reason as sigdig/gammaRule
+    # above: the baseline predates foceiControl(innerOpt="auto"), which for
+    # this normal-endpoint model resolves to "trust" -- a different inner
+    # eta optimizer than the n1qn1 this baseline was recorded under.  Measured
+    # against this baseline: innerOpt="n1qn1" reproduces it to bit-identity
+    # (0 diff on both fixef and omega); "auto"/"trust" are off by ~6.7e-7 on
+    # omega[1,1] alone, enough to fail this test's 1e-6 tolerance once it
+    # compounds across the whole matrix.  Pinning restores the comparison
+    # this test is actually making -- that the un-adapted path is unchanged --
+    # independent of whichever inner optimizer becomes the ambient default.
+    #
     # Regenerate with inst/tools/genQrpemBaseline.R, and only when a change is
     # understood to move this fit on purpose -- never to make a diff go away.
     .ref <- readRDS(test_path("baselines", "qrpem-baseline-ref.rds"))
     .f <- suppressWarnings(
       nlmixr2(.oneCmt, nlmixr2data::theo_sd, "impmap",
               impmapControl(print=0L, nIter=5L, isample=100L, auto=FALSE,
-                            sigdig=4, gammaRule="floor")))
+                            sigdig=4, gammaRule="floor", innerOpt="n1qn1")))
     expect_equal(fixef(.f), .ref$fixef, tolerance=1e-6)
     expect_equal(.f$omega, .ref$omega, tolerance=1e-6)
     expect_equal(.f$env$impObj, .ref$obj, tolerance=1e-6)

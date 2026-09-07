@@ -75,8 +75,12 @@ impSirIndex_ <- function(zk, sirN, u0) {
     .Call(`_nlmixr2est_impSirIndex_`, zk, sirN, u0)
 }
 
-impQrPoints_ <- function(isample, neta, shift) {
-    .Call(`_nlmixr2est_impQrPoints_`, isample, neta, shift)
+impPropKernel_ <- function(type, df, mixScale, mixWeight, quad, gamma, p) {
+    .Call(`_nlmixr2est_impPropKernel_`, type, df, mixScale, mixWeight, quad, gamma, p)
+}
+
+impQrPoints_ <- function(isample, neta, shift, scramble = "none", seed = 42L) {
+    .Call(`_nlmixr2est_impQrPoints_`, isample, neta, shift, scramble, seed)
 }
 
 foceiCheckIndCounts_ <- function(counts) {
@@ -97,6 +101,14 @@ foceiInnerLp <- function(eta, id = 1L) {
 
 likInner <- function(eta, id = 1L) {
     .Call(`_nlmixr2est_likInner`, eta, id)
+}
+
+.nTrustInner <- function() {
+    .Call(`_nlmixr2est_nTrustInnerGet`)
+}
+
+.nHessianQN <- function() {
+    .Call(`_nlmixr2est_nHessianQNGet`)
 }
 
 foceiLik <- function(theta) {
@@ -585,6 +597,14 @@ solveGradNls <- function(theta, returnType) {
 
 nlmSolveGradHess <- function(theta) {
     .Call(`_nlmixr2est_nlmSolveGradHess`, theta)
+}
+
+nlmTrustFit <- function(theta, control) {
+    .Call(`_nlmixr2est_nlmTrustFit`, theta, control)
+}
+
+.nTrustOuter <- function() {
+    .Call(`_nlmixr2est_nTrustOuterGet`)
 }
 
 nlmSolveSwitch <- function(theta) {

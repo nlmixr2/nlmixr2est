@@ -2,16 +2,18 @@
 % Please edit documentation in R/fitSim.R
 \name{getBaseSimModelFit}
 \alias{getBaseSimModelFit}
+\alias{getBaseSimModelFit.default}
 \alias{getBaseSimModelFit.focei}
 \alias{getBaseSimModelFit.foce}
 \alias{getBaseSimModelFit.focep}
 \alias{getBaseSimModelFit.fo}
 \alias{getBaseSimModelFit.foi}
 \alias{getBaseSimModelFit.posthoc}
-\alias{getBaseSimModelFit.default}
 \title{Method for getting simulation rxode2 classic models based on fits}
 \usage{
 getBaseSimModelFit(x)
+
+\method{getBaseSimModelFit}{default}(x)
 
 \method{getBaseSimModelFit}{focei}(x)
 
@@ -24,8 +26,6 @@ getBaseSimModelFit(x)
 \method{getBaseSimModelFit}{foi}(x)
 
 \method{getBaseSimModelFit}{posthoc}(x)
-
-\method{getBaseSimModelFit}{default}(x)
 }
 \arguments{
 \item{x}{list where first element is the fit.  The class represents the estimation method.}

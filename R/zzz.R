@@ -70,12 +70,19 @@
         PACKAGE = "nlmixr2est")
 }
 
+.iniRcppTrustPtr <- function() {
+  .Call(`_nlmixr2est_iniRcppTrustPtrs`,
+        RcppTrust::.RcppTrustPtr(),
+        PACKAGE = "nlmixr2est")
+}
+
 .iniPtrs <- function() {
   .iniLotriPtr()
   .iniRxode2Ptr()
   .iniN1qn1ptr()
   .iniRxode2llPtr()
   .iniLbfgsb3c()
+  .iniRcppTrustPtr()
 }
 #' Initialize S3 methods
 #'

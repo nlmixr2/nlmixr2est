@@ -335,29 +335,28 @@ nlmixr2 defaults controls for nls
 
 one.cmt <- function() {
   ini({
-   tka <- 0.45
-   tcl <- log(c(0, 2.7, 100))
-   tv <- 3.45
-   add.sd <- 0.7
- })
- model({
-   ka <- exp(tka)
-   cl <- exp(tcl)
-   v <- exp(tv)
-   linCmt() ~ add(add.sd)
- })
+    tka <- 0.45
+    tcl <- log(c(0, 2.7, 100))
+    tv <- 3.45
+    add.sd <- 0.7
+  })
+  model({
+    ka <- exp(tka)
+    cl <- exp(tcl)
+    v <- exp(tv)
+    linCmt() ~ add(add.sd)
+  })
 }
 
 # Uses nlsLM from minpack.lm if available
 
-fit1 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est="nls", nlsControl(algorithm="LM"))
+fit1 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est = "nls", nlsControl(algorithm = "LM"))
 
 # Uses port and respect parameter boundaries
-fit2 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est="nls", nlsControl(algorithm="port"))
+fit2 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est = "nls", nlsControl(algorithm = "port"))
 
 # You can access the underlying nls object with `$nls`
 fit2$nls
-
 }
 }
 \author{
