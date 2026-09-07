@@ -394,6 +394,45 @@ correlation the posterior draws have left over.  In isolation that is biased
 upward but stable (a toy with `rho_true = 0.438` settles at ~0.60); on the real
 model it accounts for roughly half of the remaining error in `rho`.
 
+## Diagnosing the chain
+
+Every difference in Difference 1 is a claim about how well the MCMC mixes, and
+until recently nothing in `saem` could confirm or refute any of them: the
+acceptance rate was computed each iteration, used to adapt the random-walk
+scale, and discarded.  Four per-iteration traces now reach the fit.
+
+```r
+fit$env$mcmcAccept   # pooled acceptance, columns: prior, rw, coord, mode1B
+fit$env$mcmcStuck    # fraction of SUBJECTS that accepted nothing
+fit$env$mcmcPhiSd    # pooled SD of each sampled parameter
+fit$env$mcmcPhiAcf   # lag-1 autocorrelation against the previous iteration
+```
+
+Two of these deserve emphasis.
+
+`mcmcStuck` is the number a pooled acceptance rate structurally cannot show.
+A population rate of 0.3 is equally consistent with every subject at 0.3 and
+with 60% of subjects at 0.5 and 40% never moving at all.  Only the second is a
+problem, and only the second contributes last iteration's draw to this
+iteration's M-step.  This is also the diagnostic that says whether
+`iacceptPerId = TRUE` is worth turning on.
+
+`mcmcPhiSd` is unusually powerful **for a declared non-Gaussian random
+effect**, because that model pins down what the answer should be.  The latent
+is standard normal by construction with a fixed identity omega, so its pooled
+SD across subjects and chains has a known target of exactly **1.0** -- and,
+importantly, well-mixed MCMC *draws* (not conditional means) from a correct
+model are marginally distributed as the prior, so 1.0 is the right target at
+every iteration, not just at convergence.  A pooled SD of 0.94 is mixing; a
+pooled SD of 0.09 is a chain that has stopped.  No reference chain, no
+convergence criterion and no second run is needed to interpret it.
+
+That matters because it is the input the distribution M-step is most sensitive
+to, in the direction that looks most like success: an under-dispersed latent
+produces a fitted family that is too tight, which tightens the next
+iteration's prior, and the fit reports a confident typical value with no
+between-subject variability left.
+
 ## Transcribing Bauer's own control stream
 
 Bauer's `gamma_indpar` SAEM stream is the reference answer for the declared
