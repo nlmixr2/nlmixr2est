@@ -538,6 +538,7 @@
   etaDistArgs <- matrix(0, 0, 0); etaDistRho <- numeric(0)
   etaDistThetaPhi0 <- matrix(-1L, 0, 0); etaDistNth <- integer(0)
   etaDistCorPhi0 <- -1L
+  etaDistExprs <- NULL; etaDistExprThetas <- NULL
   if (!is.null(etaDistInfo)) {
     .nd <- length(etaDistInfo$latent)
     .mx <- max(1L, max(vapply(etaDistInfo$thetaPhi, length, integer(1))))
@@ -553,6 +554,10 @@
     .cp <- if (length(etaDistInfo$corPhi) == 1L) match(etaDistInfo$corPhi, i0) - 1L else NA_integer_
     if (.ok) {
       etaDistOn <- 1L
+      ## argument expressions + their theta names, so the C++ M-step can map
+      ## native parameters back onto thetas without calling into R
+      etaDistExprs <- etaDistInfo$exprs
+      etaDistExprThetas <- etaDistInfo$exprThetas
       etaDistLatent  <- as.integer(etaDistInfo$latent)
       etaDistFam     <- as.integer(etaDistInfo$fam)
       etaDistCorWith <- as.integer(etaDistInfo$corWith)
@@ -918,6 +923,8 @@
     Gamma2_phi1 = Gamma2_phi1,
     saemZeroOmegaPhi1 = saemZeroOmegaPhi1,
     etaDistOn = etaDistOn,
+    etaDistExprs = etaDistExprs,
+    etaDistExprThetas = etaDistExprThetas,
     etaDistLatent = etaDistLatent,
     etaDistFam = etaDistFam,
     etaDistCorWith = etaDistCorWith,

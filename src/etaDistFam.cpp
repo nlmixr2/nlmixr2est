@@ -25,6 +25,7 @@
 #include <rxode2llPtrs.h>
 #include <n1qn1c.h>
 #include "etaDistFam.h"
+#include "etaDistExpr.h"
 
 // Defines the rxode2ll function pointers and the .Call entry that fills them
 // from rxode2ll::.rxode2llPtr() at load (R/zzz.R).  External pointers rather
@@ -225,6 +226,84 @@ double gEtaDistNewuoaFn(Rcpp::NumericVector p) {
   double v = gEtaDistObj(pv.data());
   if (!std::isfinite(v)) return 1e300;
   return v;
+}
+
+// ---- native arguments -> the user's thetas, in C++ -------------------------
+//
+// The M-step fits a family's NATIVE parameters; the declaration writes those as
+// expressions over ini() thetas, so the fitted values have to be mapped back.
+// That map was the last part of this M-step that had to call R: an R
+// Nelder-Mead over an objective that eval()'d the argument expressions, invoked
+// from inside the C++ loop.
+//
+// Same objective as the R version it replaces: relative, on the log scale, so
+// arguments on very different scales weigh comparably, with a sign penalty.
+static std::vector<std::vector<etaDistTok> > gEtaDistRpn;
+static std::vector<double> gEtaDistTarget;
+static int gEtaDistNth = 0;
+
+static double gEtaDistMapObj(const double *p) {
+  double v = 0.0;
+  for (size_t k = 0; k < gEtaDistRpn.size(); ++k) {
+    double a = etaDistExprEval(gEtaDistRpn[k], p, gEtaDistNth);
+    if (!std::isfinite(a)) return 1e10;
+    double t = gEtaDistTarget[k];
+    double la = std::log(std::max(std::fabs(a), 1e-300));
+    double lt = std::log(std::max(std::fabs(t), 1e-300));
+    v += (la - lt)*(la - lt);
+    if ((a < 0) != (t < 0)) v += 1e3;
+  }
+  return std::isfinite(v) ? v : 1e10;
+}
+static void gEtaDistMapNmFn(double *p, double *fx) { *fx = gEtaDistMapObj(p); }
+
+// Returns false when any expression is outside the C++ grammar, or the solve
+// does not converge -- the caller then keeps the R route, which handles the
+// general case.
+bool rxEtaDistArgsToThetas(const std::vector<std::string> &exprs,
+                           const std::vector<std::string> &thetaNames,
+                           const double *start, const double *target,
+                           double *out) {
+  int nth = (int)thetaNames.size();
+  if (nth <= 0 || nth > 32 || exprs.size() != (size_t)0 + exprs.size()) return false;
+  gEtaDistRpn.assign(exprs.size(), std::vector<etaDistTok>());
+  for (size_t k = 0; k < exprs.size(); ++k) {
+    if (!etaDistExprParse(exprs[k], thetaNames, gEtaDistRpn[k])) return false;
+  }
+  gEtaDistTarget.assign(target, target + exprs.size());
+  gEtaDistNth = nth;
+  std::vector<double> st(start, start + nth), stp((size_t)nth), xm(start, start + nth);
+  for (int i = 0; i < nth; ++i)
+    stp[(size_t)i] = (std::fabs(st[(size_t)i]) > 1e-8) ? 0.1*std::fabs(st[(size_t)i]) : 0.1;
+  int iconv, it, nfcall, iprint = 0;
+  double ynewlo = R_PosInf;
+  // SAEM's own simplex (src/neldermead.cpp), not an R one
+  nelder_fn(gEtaDistMapNmFn, nth, st.data(), stp.data(), 200*nth, 1e-10,
+            1.0, 2.0, 0.5, &iconv, &it, &nfcall, &ynewlo, xm.data(), &iprint);
+  if (!std::isfinite(ynewlo) || ynewlo > 1e-6) return false;
+  for (int i = 0; i < nth; ++i) {
+    if (!std::isfinite(xm[(size_t)i])) return false;
+    out[i] = xm[(size_t)i];
+  }
+  return true;
+}
+
+//[[Rcpp::export]]
+Rcpp::NumericVector rxEtaDistArgsToThetasTest_(Rcpp::CharacterVector exprs,
+                                               Rcpp::CharacterVector thetaNames,
+                                               Rcpp::NumericVector start,
+                                               Rcpp::NumericVector target) {
+  std::vector<std::string> e, tn;
+  for (int i = 0; i < exprs.size(); ++i) e.push_back(Rcpp::as<std::string>(exprs[i]));
+  for (int i = 0; i < thetaNames.size(); ++i) tn.push_back(Rcpp::as<std::string>(thetaNames[i]));
+  std::vector<double> out((size_t)tn.size(), 0.0);
+  if (!rxEtaDistArgsToThetas(e, tn, start.begin(), target.begin(), out.data())) {
+    return Rcpp::NumericVector(0);
+  }
+  Rcpp::NumericVector r(tn.size());
+  for (size_t i = 0; i < out.size(); ++i) r[i] = out[i];
+  r.names() = thetaNames;
+  return r;
 }
 
 bool rxEtaDistMleW(int fam, const std::vector<double> &vals,

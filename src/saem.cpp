@@ -803,6 +803,8 @@ extern rx_solve* _rx;
 // (src/nonMuThetaGrad.h).  Separate from the phi1 pool state: it is declared
 // for any model shape that produced a sensitivity model, general-likelihood or
 // not.
+extern int _saemEtaDistCppMap;
+extern int _saemEtaDistRMap;
 extern bool _saemThetaSensActive;
 extern arma::ivec _saemThetaSensPhi0Col;  // sens output -> phi0 column, -1 = none
 extern arma::ivec _saemThetaSensTheta;    // sens output -> 1-based ntheta
@@ -2683,6 +2685,19 @@ public:
     if (x.containsElementNamed("etaDistDebug")) etaDistDebug = as<int>(x["etaDistDebug"]);
     if (x.containsElementNamed("etaDistStart")) etaDistStart = as<int>(x["etaDistStart"]);
     if (x.containsElementNamed("etaDistEvery")) etaDistEvery = as<int>(x["etaDistEvery"]);
+    // Argument expressions + their theta names, for the C++ native->theta map.
+    etaDistExprs.clear(); etaDistExprThetas.clear();
+    if (x.containsElementNamed("etaDistExprs") && !Rf_isNull(x["etaDistExprs"]) &&
+        x.containsElementNamed("etaDistExprThetas") && !Rf_isNull(x["etaDistExprThetas"])) {
+      List le = x["etaDistExprs"], lt = x["etaDistExprThetas"];
+      for (int k = 0; k < le.size(); ++k) {
+        CharacterVector ce = le[k], ct = lt[k];
+        std::vector<std::string> e, t;
+        for (int i = 0; i < ce.size(); ++i) e.push_back(as<std::string>(ce[i]));
+        for (int i = 0; i < ct.size(); ++i) t.push_back(as<std::string>(ct[i]));
+        etaDistExprs.push_back(e); etaDistExprThetas.push_back(t);
+      }
+    }
     if (etaDistEvery < 1) etaDistEvery = 1;
     if (x.containsElementNamed("etaDistSdLo")) etaDistSdLo = as<double>(x["etaDistSdLo"]);
     if (x.containsElementNamed("etaDistSdHi")) etaDistSdHi = as<double>(x["etaDistSdHi"]);
@@ -4280,17 +4295,43 @@ public:
           // This is the ONE place the loop touches R -- once per iteration, not
           // per objective evaluation -- because a declared family's arguments
           // are arbitrary expressions over thetas that C++ cannot evaluate.
-          if (etaDistOn && !etaDistMapR.isNULL()) {
+          if (getenv("NLMIXR2_ETADIST_OPT") != NULL && kiter % 20 == 0)
+        Rprintf("etaDist map: C++=%d R=%d\n", _saemEtaDistCppMap, _saemEtaDistRMap);
+      if (etaDistOn && !etaDistMapR.isNULL()) {
             Rcpp::Function mapFn(etaDistMapR);
             for (int k = 0; k < etaDistNdist; ++k) {
               int na = rxEtaDistNarg(etaDistFam(k));
               if (na <= 0) continue;
               NumericVector av(na);
               for (int i = 0; i < na; ++i) av[i] = etaDistArgs(k, i);
+              // C++ first.  This is the map that used to be the ONE place this
+              // loop touched R; it now only falls back when an argument
+              // expression is outside the C++ grammar, which the parse reports
+              // rather than guesses at.
+              int nth = etaDistNth(k);
+              if (k < (int)etaDistExprs.size() &&
+                  (int)etaDistExprThetas[(size_t)k].size() == nth && nth > 0) {
+                std::vector<double> st((size_t)nth), got2((size_t)nth);
+                for (int t = 0; t < nth; ++t) {
+                  int c = etaDistThetaPhi0(k, t);
+                  st[(size_t)t] = (c >= 0 && c < nphi0) ? mprior_phi0(0, c) : 0.0;
+                }
+                if (rxEtaDistArgsToThetas(etaDistExprs[(size_t)k],
+                                          etaDistExprThetas[(size_t)k],
+                                          st.data(), av.begin(), got2.data())) {
+                if (getenv("NLMIXR2_ETADIST_OPT") != NULL) _saemEtaDistCppMap++;
+                  for (int t = 0; t < nth; ++t) {
+                    int c = etaDistThetaPhi0(k, t);
+                    if (c < 0 || c >= nphi0 || !std::isfinite(got2[(size_t)t])) continue;
+                    mprior_phi0.col(c).fill(got2[(size_t)t]);
+                  }
+                  continue;
+                }
+              }
+              if (getenv("NLMIXR2_ETADIST_OPT") != NULL) _saemEtaDistRMap++;
               RObject got = mapFn(k + 1, av);
               if (got.isNULL()) continue;
               NumericVector th(got);
-              int nth = etaDistNth(k);
               if ((int)th.size() != nth) continue;
               for (int t = 0; t < nth; ++t) {
                 int c = etaDistThetaPhi0(k, t);
@@ -5436,6 +5477,10 @@ private:
   int etaDistStart = 0;
   // How often the declared-distribution M-step runs.  1 = every iteration.
   int etaDistEvery = 1;
+  // Per declared distribution: its argument expressions and the theta names
+  // they are written over, so the map back onto thetas stays in C++.
+  std::vector<std::vector<std::string> > etaDistExprs;
+  std::vector<std::vector<std::string> > etaDistExprThetas;
   // Acceptable pooled spread for the latent normals; outside this the draws are
   // not yet a sample from anything worth fitting.
   //
@@ -6718,6 +6763,8 @@ t_update_inis saem_inis = NULL;
 // phi0/phi1 theta, unpaired eta, ...) -- both keep the original
 // single-model rxInner path, byte-identically.
 static bool _saemPhi1PoolActive = false;
+int _saemEtaDistCppMap = 0;
+int _saemEtaDistRMap = 0;
 bool _saemThetaSensActive = false;
 arma::ivec _saemThetaSensPhi0Col;
 arma::ivec _saemThetaSensTheta;

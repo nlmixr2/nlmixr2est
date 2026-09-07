@@ -208,7 +208,19 @@
     if (anyNA(.m)) return(NULL)
     .rn <- .rc; .rp <- as.integer(.m)
   }
+  ## The ARGUMENT expressions and their theta names, so the C++ M-step can do
+  ## the native-parameters -> thetas map itself instead of calling back into R.
+  ## Deparsed here because this is where the dist() call is already parsed; the
+  ## C++ side parses them once into RPN and declines anything outside its
+  ## grammar, in which case the `map` closure below is still used.
+  .exprs <- lapply(seq_len(.c$n), function(.k) {
+    .cl <- .c$dist[[.k]]
+    if (is.character(.cl)) .cl <- str2lang(.cl)
+    vapply(as.list(.cl)[-1], function(.e) paste(deparse(.e), collapse = ""),
+           character(1))
+  })
   list(latent = .lat, fam = .c$fam, corWith = .c$corWith,
+       exprs = .exprs, exprThetas = .c$thetas,
        args = .c$args, rho = .c$rho,
        dist = .c$dist, thetas = .c$thetas, thetaPhi = .tp,
        corName = .rn, corPhi = .rp, etas = .c$etas)

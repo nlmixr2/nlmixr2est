@@ -11,6 +11,7 @@
 #include <cmath>
 #include <cstddef>
 #include <vector>
+#include <string>
 // R::qnorm(), R::dgamma() and friends are Rcpp's namespaced Rmath wrappers, not
 // the bare C API, so this needs Rcpp rather than <Rmath.h>.
 #include <Rcpp.h>
@@ -173,6 +174,14 @@ static inline double rxEtaDistLogD(int fam, double x, const double *a) {
 // `w`, when non-null, is a vector of nonnegative weights of the same length as
 // `vals` -- the importance weights imp carries on each sampled eta.  A null `w`
 // means unit weights, which is what saem's equally-weighted MCMC draws want.
+// Map a family's fitted NATIVE parameters back onto the user's thetas, in C++.
+// Returns false when an argument expression is outside the C++ grammar or the
+// solve does not converge -- the caller then keeps the R route.
+bool rxEtaDistArgsToThetas(const std::vector<std::string> &exprs,
+                           const std::vector<std::string> &thetaNames,
+                           const double *start, const double *target,
+                           double *out);
+
 bool rxEtaDistMleW(int fam, const std::vector<double> &vals,
                    const std::vector<double> *w, double *a0);
 bool rxEtaDistMle(int fam, const std::vector<double> &vals, double *a0);

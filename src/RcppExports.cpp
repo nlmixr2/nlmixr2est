@@ -27,6 +27,20 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// rxEtaDistArgsToThetasTest_
+Rcpp::NumericVector rxEtaDistArgsToThetasTest_(Rcpp::CharacterVector exprs, Rcpp::CharacterVector thetaNames, Rcpp::NumericVector start, Rcpp::NumericVector target);
+RcppExport SEXP _nlmixr2est_rxEtaDistArgsToThetasTest_(SEXP exprsSEXP, SEXP thetaNamesSEXP, SEXP startSEXP, SEXP targetSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Rcpp::CharacterVector >::type exprs(exprsSEXP);
+    Rcpp::traits::input_parameter< Rcpp::CharacterVector >::type thetaNames(thetaNamesSEXP);
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type start(startSEXP);
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type target(targetSEXP);
+    rcpp_result_gen = Rcpp::wrap(rxEtaDistArgsToThetasTest_(exprs, thetaNames, start, target));
+    return rcpp_result_gen;
+END_RCPP
+}
 // nlmixrExpandFdParNlme_
 List nlmixrExpandFdParNlme_(CharacterVector state, CharacterVector vars);
 static SEXP _nlmixr2est_nlmixrExpandFdParNlme__try(SEXP stateSEXP, SEXP varsSEXP) {
