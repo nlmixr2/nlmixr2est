@@ -729,6 +729,9 @@ saemControl <- function(seed = 99,
                         rmcmc = 0.5,
                         iaccept = 0.234,
                         iacceptSingle = 0.44,
+                        iacceptPerId = FALSE,
+                        rwOmega = FALSE,
+                        nonMuThetaBhhh = FALSE,
                         nu1B = 0L,
                         nb1B = 10L,
                         etaDistMstep = FALSE,
@@ -967,6 +970,11 @@ saemControl <- function(seed = 99,
                            any.missing=FALSE, .var.name="iaccept")
   checkmate::assertNumeric(iacceptSingle, len=1, lower=0, upper=0.999, finite=TRUE,
                            any.missing=FALSE, .var.name="iacceptSingle")
+  checkmate::assertLogical(iacceptPerId, len=1, any.missing=FALSE,
+                           .var.name="iacceptPerId")
+  checkmate::assertLogical(rwOmega, len=1, any.missing=FALSE, .var.name="rwOmega")
+  checkmate::assertLogical(nonMuThetaBhhh, len=1, any.missing=FALSE,
+                           .var.name="nonMuThetaBhhh")
   checkmate::assertIntegerish(nu1B, len=1, lower=0, any.missing=FALSE, .var.name="nu1B")
   checkmate::assertIntegerish(nb1B, len=1, lower=1, any.missing=FALSE, .var.name="nb1B")
   checkmate::assertLogical(etaDistMstep, len=1, any.missing=FALSE,
@@ -987,6 +995,9 @@ saemControl <- function(seed = 99,
     rmcmc = rmcmc,
     iaccept = iaccept,
     iacceptSingle = iacceptSingle,
+    iacceptPerId = iacceptPerId,
+    rwOmega = rwOmega,
+    nonMuThetaBhhh = nonMuThetaBhhh,
     nu1B = as.integer(nu1B),
     nb1B = as.integer(nb1B),
     etaDistMstep = etaDistMstep,

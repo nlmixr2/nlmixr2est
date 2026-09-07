@@ -306,6 +306,9 @@
                         rmcmc=rxode2::rxGetControl(ui, "rmcmc", 0.5),
                         iaccept=rxode2::rxGetControl(ui, "iaccept", 0.234),
                         iacceptSingle=rxode2::rxGetControl(ui, "iacceptSingle", 0.44),
+                        iacceptPerId=rxode2::rxGetControl(ui, "iacceptPerId", FALSE),
+                        rwOmega=rxode2::rxGetControl(ui, "rwOmega", FALSE),
+                        nonMuThetaBhhh=rxode2::rxGetControl(ui, "nonMuThetaBhhh", FALSE),
                         nonMuThetaGradEvery=as.integer(
                           rxode2::rxGetControl(ui, "nonMuThetaGradEvery", 1L)),
                         etaDistInfo={

@@ -2,6 +2,36 @@
 
 ## New features
 
+- Three `saemControl()` options that give `saem` what NONMEM's `METHOD=SAEM`
+  does differently, all opt-in and all leaving the default path bit-identical:
+
+  - `rwOmega = TRUE` proposes the mode-2 random walk from `lambda * Omega`
+    (NONMEM technical guide eq. 1.139) rather than from a diagonal.  Monolix's
+    kernel 4 is `N(phi, kappa * Omega)` too; only saemix -- and, inherited from
+    it, nlmixr2 -- takes an independent step per coordinate.  On a posterior
+    with correlated random effects, which is exactly what a declared copula
+    produces, a diagonal walk mixes slowly along the correlated direction while
+    the acceptance rate still looks healthy.
+
+  - `iacceptPerId = TRUE` tunes one random-walk scale per SUBJECT against
+    `iaccept`, the way NONMEM tunes its `lambda`, rather than one scale per
+    coordinate against a population-pooled rate.  A pooled 0.3 is equally
+    consistent with every subject at 0.3 and with half the subjects at 0.6 and
+    half never moving; only the per-subject rate can tell those apart, and the
+    second leaves those subjects' draws equal to the previous iteration's.
+
+  - `nonMuThetaBhhh = TRUE` updates the non-mu thetas with ONE per-subject BHHH
+    Newton step subject to NONMEM's `alpha` acceptance test (eqs. 1.47-1.52 and
+    the text after eq. 1.46) -- try `alpha = 1`, evaluate the objective, and
+    shrink by `sqrt(2)` until it improves -- instead of damping the argmax of a
+    full derivative-free maximization.  It also switches the information matrix
+    from the per-observation outer product to NONMEM's per-subject
+    `sum_i g_i g_i'` (eq. 1.51).  A full maximization of a nearly flat
+    direction lands on the boundary and the stochastic-approximation gain then
+    only sets how fast the theta marches there; a step that has to prove it
+    improved the objective cannot.  The existing gate tests the CONDITIONING of
+    the information matrix, which is a different question.
+
 - New vignette `vignette("saemComparison")`: a sourced, line-by-line
   comparison of nlmixr2's `est="saem"` against NONMEM's `METHOD=SAEM` (the
   NONMEM 7 Technical Guide's eqs. 1.45-1.52 and 1.133-1.153) and saemix 3.5.

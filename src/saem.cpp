@@ -572,6 +572,12 @@ struct mcmcphi {
   uvec i;
   mat Gamma_phi;
   mat Gdiag_phi;
+  // saemControl(rwOmega=): NONMEM's mode-2 random walk proposes from
+  // Z = lambda*Omega (technical guide eq. 1.139) -- the FULL covariance, so the
+  // walk moves along the posterior's correlated directions.  Gdiag_phi is the
+  // diagonal saemix and nlmixr2 have always used; this is chol(Omega)*rmcmc,
+  // the Omega-shaped alternative.
+  mat Gfull_phi;
   mat IGamma2_phi;
   mat mprior_phiM;
 };
@@ -1506,9 +1512,25 @@ public:
       nGood++;
       for (int a = 0; a < nFree; ++a) {
         score(a) += rowScore[(size_t)r * (size_t)nFree + (size_t)a];
-        for (int bb = 0; bb < nFree; ++bb)
-          info(a, bb) +=
-            rowInfo[((size_t)r * (size_t)nFree + (size_t)a) * (size_t)nFree + (size_t)bb];
+      }
+      if (nonMuThetaBhhh) {
+        // NONMEM eq. 1.51: H = sum_i g_i g_i', the outer product of each
+        // SUBJECT's score.  rowScore is already per (subject, chain), so the
+        // subject-level gradient is in hand.  The default path instead sums
+        // per-OBSERVATION outer products (rowInfo), which is a different matrix
+        // -- it drops the within-subject correlation of the score and so
+        // overstates the information.
+        for (int a = 0; a < nFree; ++a) {
+          double ga = rowScore[(size_t)r * (size_t)nFree + (size_t)a];
+          for (int bb = 0; bb < nFree; ++bb) {
+            info(a, bb) += ga * rowScore[(size_t)r * (size_t)nFree + (size_t)bb];
+          }
+        }
+      } else {
+        for (int a = 0; a < nFree; ++a)
+          for (int bb = 0; bb < nFree; ++bb)
+            info(a, bb) +=
+              rowInfo[((size_t)r * (size_t)nFree + (size_t)a) * (size_t)nFree + (size_t)bb];
       }
     }
     // A partial population would bias the step toward whoever happened to
@@ -1562,6 +1584,47 @@ public:
     if (!nonMuGradStep(score, info, cur, 0.75, step)) return false;
     double damp = (kiter < pas.n_elem) ? pas(kiter) : 1.0;
     if (!std::isfinite(damp) || damp <= 0.0) return false;
+    // NONMEM's alpha acceptance test (the text after eq. 1.46): try alpha = 1,
+    // evaluate the objective at the proposed point, and if it did not improve
+    // shrink alpha by sqrt(2) and try again.  This is the guard the default
+    // path does not have: nonMuGradStep() gates on the CONDITIONING of the
+    // information matrix, which says the step is numerically trustworthy, not
+    // that it goes downhill.  On a nearly flat or degenerate direction those
+    // are different questions, and only the second one stops a march to the
+    // boundary.
+    if (nonMuThetaBhhh) {
+      std::vector<double> pv((size_t)nphi0);
+      for (int c = 0; c < nphi0; ++c) pv[(size_t)c] = mprior_phi0(0, c);
+      bool frz = _saemFreezeOde;
+      _saemFreezeOde = false;
+      double f0 = phi0Objective(pv.data());
+      double alpha = 1.0;
+      bool accepted = false;
+      if (std::isfinite(f0)) {
+        for (int t = 0; t < 8 && !accepted; ++t) {
+          for (int fi = 0; fi < nFree; ++fi) {
+            int c = gPhi0FreeIx[(size_t)fi];
+            double v = cur(fi) + alpha * step(fi);
+            double lo = ((int)phi0Lower.n_elem == nphi0) ? phi0Lower(c) : R_NegInf;
+            double hi = ((int)phi0Upper.n_elem == nphi0) ? phi0Upper(c) : R_PosInf;
+            if (std::isfinite(lo) && v < lo) v = lo;
+            if (std::isfinite(hi) && v > hi) v = hi;
+            pv[(size_t)c] = v;
+          }
+          double ft = phi0Objective(pv.data());
+          if (std::isfinite(ft) && ft < f0) accepted = true;
+          else alpha /= std::sqrt(2.0);
+        }
+      }
+      // restore, so the damped write below is the only thing that moves phi0
+      for (int c = 0; c < nphi0; ++c) pv[(size_t)c] = mprior_phi0(0, c);
+      _saemFreezeOde = frz;
+      if (!accepted) {
+        if (gchk) Rprintf("  bhhh: no alpha improved the objective; theta held\n");
+        return false;
+      }
+      step *= alpha;
+    }
     bool moved = false;
     for (int fi = 0; fi < nFree; ++fi) {
       int c = gPhi0FreeIx[(size_t)fi];
@@ -1651,6 +1714,26 @@ public:
     // system (rx_pred_ and d(f)/d(theta) together, _saemOwnSolveSlot), and it
     // was going to happen anyway, so the gradient costs no solve at all.
     nonMuGradPhi0(kiter, pas);
+    if (nonMuThetaBhhh) {
+      // The BHHH step IS the update (NONMEM eqs. 1.47-1.52): one accepted
+      // Newton step per iteration, averaged across iterations by the SA gain
+      // (eq. 1.152).  No search follows it, which is the whole point -- what
+      // the default path damps is the argmax of a full maximization, and a
+      // full maximization is what walks a degenerate direction to its bound.
+      // Still close the same way, so mprior_phi0 = COV0*MCOV0 next iteration.
+      _saemFreezeOde = false;
+      for (int c = 0; c < nphi0; c++) {
+        uvec li = arma::find(LCOV0.col(c) == 1);
+        if (li.n_elem == 0) continue;
+        mat Xc = COV0.cols(li);
+        vec bc;
+        if (arma::solve(bc, Xc.t() * Xc, Xc.t() * mprior_phi0.col(c))) {
+          for (unsigned int j = 0; j < li.n_elem; ++j) MCOV0(li(j), c) = bc(j);
+        }
+      }
+      if (fixedIx0.n_elem > 0) MCOV0(jcov0(fixedIx0)) = mcov0Fixed;
+      return;
+    }
     bool doFreeze;
     if (distribution == 4) {
       // NOT unconditionally frozen: a general-likelihood model can still carry a
@@ -2699,6 +2782,9 @@ public:
     if (x.containsElementNamed("iaccept")) iaccept = as<double>(x["iaccept"]);
     if (!std::isfinite(iaccept) || iaccept < 0.0 || iaccept >= 1.0) iaccept = 0.0;
     if (x.containsElementNamed("iacceptSingle")) iacceptSingle = as<double>(x["iacceptSingle"]);
+    if (x.containsElementNamed("iacceptPerId")) iacceptPerId = as<int>(x["iacceptPerId"]);
+    if (x.containsElementNamed("rwOmega")) rwOmega = as<int>(x["rwOmega"]);
+    if (x.containsElementNamed("nonMuThetaBhhh")) nonMuThetaBhhh = as<int>(x["nonMuThetaBhhh"]);
     if (!std::isfinite(iacceptSingle) || iacceptSingle < 0.0 || iacceptSingle >= 1.0) iacceptSingle = 0.0;
     if (x.containsElementNamed("etaDistOn")) etaDistOn = as<int>(x["etaDistOn"]);
     if (x.containsElementNamed("etaDistCorOn")) etaDistCorOn = as<int>(x["etaDistCorOn"]);
@@ -3375,19 +3461,19 @@ public:
         vec U_y = mixObsLoss(phiM, mx);
         if (nphi1 > 0) {
           vec U_phi;
-          do_mcmc_msaem(1, nu1, mx, mphi1, phiM, U_y, U_phi, (int)kiter, &rwScale1);
+          do_mcmc_msaem(1, nu1, mx, mphi1, phiM, U_y, U_phi, (int)kiter, &rwScale1, &rwLam1);
           mat dphi = phiM.cols(i1) - mphi1.mprior_phiM;
           U_phi = 0.5 * sum(dphi % (dphi * IGamma2_phi1), 1);
-          do_mcmc_msaem(2, nu2, mx, mphi1, phiM, U_y, U_phi, (int)kiter, &rwScale1);
-          do_mcmc_msaem(3, nu3, mx, mphi1, phiM, U_y, U_phi, (int)kiter, &rwScale1);
+          do_mcmc_msaem(2, nu2, mx, mphi1, phiM, U_y, U_phi, (int)kiter, &rwScale1, &rwLam1);
+          do_mcmc_msaem(3, nu3, mx, mphi1, phiM, U_y, U_phi, (int)kiter, &rwScale1, &rwLam1);
         }
         if (nphi0 > 0) {
           vec U_phi;
-          do_mcmc_msaem(1, nu1, mx, mphi0, phiM, U_y, U_phi, (int)kiter, &rwScale0);
+          do_mcmc_msaem(1, nu1, mx, mphi0, phiM, U_y, U_phi, (int)kiter, &rwScale0, &rwLam0);
           mat dphi = phiM.cols(i0) - mphi0.mprior_phiM;
           U_phi = 0.5 * sum(dphi % (dphi * IGamma2_phi0), 1);
-          do_mcmc_msaem(2, nu2, mx, mphi0, phiM, U_y, U_phi, (int)kiter, &rwScale0);
-          do_mcmc_msaem(3, nu3, mx, mphi0, phiM, U_y, U_phi, (int)kiter, &rwScale0);
+          do_mcmc_msaem(2, nu2, mx, mphi0, phiM, U_y, U_phi, (int)kiter, &rwScale0, &rwLam0);
+          do_mcmc_msaem(3, nu3, mx, mphi0, phiM, U_y, U_phi, (int)kiter, &rwScale0, &rwLam0);
         }
         if (DEBUG > 0) Rcout << "mcmc successful (msaem)\n";
         if (kiter < (unsigned int)niter) phiFile << phiM;
@@ -3664,19 +3750,19 @@ public:
 
           if (nphi1 > 0) {
             vec U_phi;
-            do_mcmc(1, nu1, mx, mphi1, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter, jMix + 1, &rwScale1);
+            do_mcmc(1, nu1, mx, mphi1, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter, jMix + 1, &rwScale1, &rwLam1);
             mat dphi = cur_phiM.cols(i1) - mphi1.mprior_phiM;
             U_phi = 0.5 * sum(dphi % (dphi * IGamma2_phi1), 1);
-            do_mcmc(2, nu2, mx, mphi1, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter, jMix + 1, &rwScale1);
-            do_mcmc(3, nu3, mx, mphi1, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter, jMix + 1, &rwScale1);
+            do_mcmc(2, nu2, mx, mphi1, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter, jMix + 1, &rwScale1, &rwLam1);
+            do_mcmc(3, nu3, mx, mphi1, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter, jMix + 1, &rwScale1, &rwLam1);
           }
           if (nphi0 > 0) {
             vec U_phi;
-            do_mcmc(1, nu1, mx, mphi0, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter, jMix + 1, &rwScale0);
+            do_mcmc(1, nu1, mx, mphi0, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter, jMix + 1, &rwScale0, &rwLam0);
             mat dphi = cur_phiM.cols(i0) - mphi0.mprior_phiM;
             U_phi = 0.5 * sum(dphi % (dphi * IGamma2_phi0), 1);
-            do_mcmc(2, nu2, mx, mphi0, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter, jMix + 1, &rwScale0);
-            do_mcmc(3, nu3, mx, mphi0, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter, jMix + 1, &rwScale0);
+            do_mcmc(2, nu2, mx, mphi0, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter, jMix + 1, &rwScale0, &rwLam0);
+            do_mcmc(3, nu3, mx, mphi0, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter, jMix + 1, &rwScale0, &rwLam0);
           }
 
           // Joint NLL (U_y + U_phi) for mixture weights: U_y alone is insufficient since MCMC
@@ -3973,24 +4059,24 @@ public:
 
         if(nphi1>0) {
           vec U_phi;
-          do_mcmc(1, nu1, mx, mphi1, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter, 0, &rwScale1);
+          do_mcmc(1, nu1, mx, mphi1, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter, 0, &rwScale1, &rwLam1);
           mat dphi = phiM.cols(i1)-mphi1.mprior_phiM;
           U_phi    = 0.5*sum(dphi%(dphi*IGamma2_phi1),1);
           // NONMEM runs mode 1B directly after mode 1, once each subject's
           // conditional moments have had time to accumulate
           if (buildMode1B(i1, kiter)) {
-            do_mcmc(4, nu1B, mx, mphi1, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter, 0, &rwScale1);
+            do_mcmc(4, nu1B, mx, mphi1, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter, 0, &rwScale1, &rwLam1);
           }
-          do_mcmc(2, nu2, mx, mphi1, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter, 0, &rwScale1);
-          do_mcmc(3, nu3, mx, mphi1, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter, 0, &rwScale1);
+          do_mcmc(2, nu2, mx, mphi1, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter, 0, &rwScale1, &rwLam1);
+          do_mcmc(3, nu3, mx, mphi1, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter, 0, &rwScale1, &rwLam1);
         }
         if(nphi0>0) {
           vec U_phi;
-          do_mcmc(1, nu1, mx, mphi0, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter, 0, &rwScale0);
+          do_mcmc(1, nu1, mx, mphi0, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter, 0, &rwScale0, &rwLam0);
           mat dphi = phiM.cols(i0)-mphi0.mprior_phiM;
           U_phi    = 0.5*sum(dphi%(dphi*IGamma2_phi0),1);
-          do_mcmc(2, nu2, mx, mphi0, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter, 0, &rwScale0);
-          do_mcmc(3, nu3, mx, mphi0, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter, 0, &rwScale0);
+          do_mcmc(2, nu2, mx, mphi0, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter, 0, &rwScale0, &rwLam0);
+          do_mcmc(3, nu3, mx, mphi0, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter, 0, &rwScale0, &rwLam0);
         }
         if (DEBUG>0) Rcout << "mcmc successful\n";
         if (kiter < (unsigned int)niter) phiFile << phiM;
@@ -5434,6 +5520,22 @@ private:
   // rmcmc is only the STARTING value of this -- it is saemix's rw.init, which
   // nlmixr2 froze because the adaptation was never ported.
   vec rwScale1, rwScale0;
+  // saemControl(iacceptPerId=): one random-walk scale per SUBJECT, the way
+  // NONMEM tunes its lambda, rather than one per coordinate pooled over the
+  // population.  Sized to N on first use; left empty (and so inert) when off.
+  vec rwLam1, rwLam0;
+  int iacceptPerId = 0;
+  // saemControl(rwOmega=): propose the mode-2 random walk from lambda*Omega
+  // (NONMEM eq. 1.139) rather than from a diagonal.
+  int rwOmega = 0;
+  // saemControl(nonMuThetaBhhh=): update the non-mu thetas with ONE per-subject
+  // BHHH Newton step subject to an alpha acceptance test (NONMEM eqs.
+  // 1.47-1.52 and the text after 1.46), instead of damping the argmax of a
+  // full derivative-free maximization.  A full maximization of a nearly flat
+  // or degenerate direction lands on the boundary, and the SA damping then
+  // only sets how fast the theta marches there; a step that has to prove it
+  // improved the objective cannot.
+  int nonMuThetaBhhh = 0;
   // NONMEM's proposal kernel "mode 1B" (technical guide, "The MCMC method of
   // Expectation in SAEM"): after the first few iterations, propose from a
   // Gaussian built out of each subject's OWN accumulated conditional mean and
@@ -5818,7 +5920,16 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
     // iaccept == 0 rwScale1 stays all-ones and this is bit-identical to
     // before.
     if (rwScale.n_elem != (unsigned int)nphi1) rwScale.ones(nphi1);
+    if (iacceptPerId) {
+      if ((int)rwLam1.n_elem != N) rwLam1.ones(N);
+      if ((int)rwLam0.n_elem != N) rwLam0.ones(N);
+    }
     mphi1.Gdiag_phi.diag() = sqrt(Gamma2_phi1.diag())*rmcmc % rwScale;
+    // Omega-shaped step (saemControl(rwOmega=)).  chol() already succeeded
+    // above for Gamma_phi, so this cannot throw where that did not.  No
+    // per-coordinate rwScale: an Omega-shaped proposal has ONE scale, which is
+    // what NONMEM's lambda is, and per-subject when iacceptPerId is on.
+    mphi1.Gfull_phi = mphi1.Gamma_phi * rmcmc;
     mphi1.mprior_phiM = repmat(mprior_phi1,nmc,1);
   }
 
@@ -6035,6 +6146,32 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
   // The per-iteration factor is clamped to [0.5, 2] and the accumulated scale
   // to [1e-3, 1e3] so one unlucky iteration cannot collapse or explode the
   // proposal.
+  // Per-subject form of adaptRw (saemControl(iacceptPerId=)).  `acc` holds the
+  // ACCEPTED ROW indices of this proposal block; phiM stacks the nmc chains
+  // vertically, so row r belongs to subject r % N and each subject gets nmc
+  // trials per block.  Same Robbins-Monro rule, same clamps, applied to one
+  // scalar per subject rather than one per coordinate.
+  void adaptRwPerId(vec *rwLam, const uvec &acc, int nM, double target) {
+    if (rwLam == nullptr || target <= 0.0 || N <= 0) return;
+    if ((int)rwLam->n_elem != N) return;
+    vec nAcc(N, fill::zeros);
+    for (unsigned int j = 0; j < acc.n_elem; ++j) {
+      int sIdx = (int)(acc(j) % (arma::uword)N);
+      nAcc(sIdx) += 1.0;
+    }
+    double denom = (double)(nM / N);
+    if (denom <= 0.0) denom = 1.0;
+    for (int sIdx = 0; sIdx < N; ++sIdx) {
+      double f = 1.0 + stepsizeRw * (nAcc(sIdx) / denom - target);
+      if (f < 0.5) f = 0.5;
+      else if (f > 2.0) f = 2.0;
+      double v = (*rwLam)(sIdx) * f;
+      if (v < 1e-3) v = 1e-3;
+      else if (v > 1e3) v = 1e3;
+      (*rwLam)(sIdx) = v;
+    }
+  }
+
   void adaptRw(vec *rwScale, const uvec &cols, double accRate, double target) {
     if (rwScale == nullptr || target <= 0.0) return;
     double f = 1.0 + stepsizeRw * (accRate - target);
@@ -6075,8 +6212,18 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
                vec &cur_limit,
                int kiter,
                int mixIdx = 0,
-               vec *rwScale = nullptr) {
+               vec *rwScale = nullptr,
+               vec *rwLam = nullptr) {
     mat fcMat;
+    // Per-subject random-walk scale (saemControl(iacceptPerId=)), replicated
+    // across the nmc chains so it lines up with phiM's row layout.  phiM
+    // stacks the chains vertically (mprior_phiM = repmat(., nmc, 1)), so row r
+    // belongs to subject r % N.  All ones when the option is off, which makes
+    // every expression below bit-identical to the pooled path.
+    const bool perId = (rwLam != nullptr) && ((int)rwLam->n_elem == N);
+    vec lamRow;
+    if (perId) lamRow = repmat(*rwLam, nmc, 1);
+    else lamRow = ones<vec>(mx.nM);
     vec fc, fs, Uc_y, Uc_phi, deltu;
     uvec ind;
     arma::vec accU(mx.nM);   // per-block threefry acceptance uniforms
@@ -6099,14 +6246,20 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
         }
         case 2: {
           mat noise(mx.nM, mphi.nphi); _saemFillNormEng(noise);
-          phiMc.cols(i)=phiM.cols(i) +
-            noise*mphi.Gdiag_phi % current_saem_state->_saemUE.cols(i);
+          // rwOmega: NONMEM's Z = lambda*Omega (eq. 1.139).  Otherwise the
+          // historical diagonal, which is also what saemix uses.
+          mat step = rwOmega ? (noise * mphi.Gfull_phi)
+                             : (noise * mphi.Gdiag_phi);
+          if (perId) step.each_col() %= lamRow;
+          phiMc.cols(i)=phiM.cols(i) + step % current_saem_state->_saemUE.cols(i);
           break;
         }
         case 3: {
           vec noise(mx.nM); _saemFillNormEng(noise);
+          vec step = noise*mphi.Gdiag_phi(k1,k1);
+          if (perId) step %= lamRow;
           phiMc.col(i(k1))=phiM.col(i(k1))+
-            noise*mphi.Gdiag_phi(k1,k1) % current_saem_state->_saemUE.col(i(k1));
+            step % current_saem_state->_saemUE.col(i(k1));
           break;
         }
         case 4: {
@@ -6254,14 +6407,23 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
         // Method 1 draws from the prior, so its acceptance is not a function
         // of any step size -- NONMEM does not adapt its mode 1 either.
         if (method > 1 && mx.nM > 0) {
-          double accRate = (double)ind.n_elem / (double)mx.nM;
-          if (method == 2) {
-            // multidimensional symmetric random walk: optimal ~0.234
-            adaptRw(rwScale, arma::regspace<uvec>(0, mphi.nphi - 1), accRate, iaccept);
+          double target = (method == 2) ? iaccept       // multivariate: ~0.234
+                                        : iacceptSingle; // one-at-a-time: ~0.44
+          if (perId) {
+            // NONMEM tunes lambda for EACH SUBJECT so that subject's own
+            // acceptance rate approaches IACCEPT (eq. 1.139 and the text after
+            // it).  A pooled rate cannot see a subject stuck at zero: 0.3
+            // overall is equally consistent with everyone at 0.3 and with half
+            // the subjects at 0.6 and half never moving, and it is the second
+            // that leaves those subjects' draws equal to the previous
+            // iteration's.
+            adaptRwPerId(rwLam, ind, mx.nM, target);
+          } else if (method == 2) {
+            adaptRw(rwScale, arma::regspace<uvec>(0, mphi.nphi - 1),
+                    (double)ind.n_elem / (double)mx.nM, iaccept);
           } else {
-            // one-at-a-time (Metropolis-within-Gibbs): optimal ~0.44
             uvec one(1); one(0) = (arma::uword)k1;
-            adaptRw(rwScale, one, accRate, iacceptSingle);
+            adaptRw(rwScale, one, (double)ind.n_elem / (double)mx.nM, iacceptSingle);
           }
         }
         phiM(ind,i)=phiMc(ind,i);
@@ -6578,12 +6740,18 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
                       vec &U_y,
                       vec &U_phi,
                       int kiter,
-                      vec *rwScale = nullptr) {
+                      vec *rwScale = nullptr,
+                      vec *rwLam = nullptr) {
     mat phiMc;
     vec Uc_y, Uc_phi, deltu;
     uvec ind;
     uvec i = mphi.i;
     arma::vec accU(mx.nM);
+    // see do_mcmc(): all ones, and so inert, when iacceptPerId is off
+    const bool perId = (rwLam != nullptr) && ((int)rwLam->n_elem == N);
+    vec lamRow;
+    if (perId) lamRow = repmat(*rwLam, nmc, 1);
+    else lamRow = ones<vec>(mx.nM);
 
     for (int u = 0; u < nu; u++)
       for (int k1 = 0; k1 < mphi.nphi; k1++) {
@@ -6600,14 +6768,19 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
         }
         case 2: {
           mat noise(mx.nM, mphi.nphi); _saemFillNormEng(noise);
+          mat step = rwOmega ? (noise * mphi.Gfull_phi)
+                             : (noise * mphi.Gdiag_phi);
+          if (perId) step.each_col() %= lamRow;
           phiMc.cols(i) = phiM.cols(i) +
-            noise * mphi.Gdiag_phi % current_saem_state->_saemUE.cols(i);
+            step % current_saem_state->_saemUE.cols(i);
           break;
         }
         case 3: {
           vec noise(mx.nM); _saemFillNormEng(noise);
+          vec step = noise * mphi.Gdiag_phi(k1, k1);
+          if (perId) step %= lamRow;
           phiMc.col(i(k1)) = phiM.col(i(k1)) +
-            noise * mphi.Gdiag_phi(k1, k1) % current_saem_state->_saemUE.col(i(k1));
+            step % current_saem_state->_saemUE.col(i(k1));
           break;
         }
         }
@@ -6626,7 +6799,10 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
         ind = find(deltu < -log(accU));
         if (method > 1 && mx.nM > 0) {
           double accRate = (double)ind.n_elem / (double)mx.nM;
-          if (method == 2) {
+          double target = (method == 2) ? iaccept : iacceptSingle;
+          if (perId) {
+            adaptRwPerId(rwLam, ind, mx.nM, target);
+          } else if (method == 2) {
             // multidimensional symmetric random walk: optimal ~0.234
             adaptRw(rwScale, arma::regspace<uvec>(0, mphi.nphi - 1), accRate, iaccept);
           } else {

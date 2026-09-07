@@ -1,8 +1,8 @@
 ---
-title: "How nlmixr2's SAEM differs from NONMEM's and saemix's"
+title: "How nlmixr2's SAEM differs from NONMEM's, Monolix's and saemix's"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{How nlmixr2's SAEM differs from NONMEM's and saemix's}
+  %\VignetteIndexEntry{How nlmixr2's SAEM differs from NONMEM's, Monolix's and saemix's}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -19,14 +19,22 @@ line-by-line comparison of
   (R.J. Bauer) -- the MCMC kernels in its section "The MCMC method of
   Expectation in SAEM" (eqs. 1.133-1.153) and the maximization in eqs.
   1.45-1.52;
+* **Monolix**, as specified in its own *Methodology* document (sections 1.1.1
+  "The SAEM algorithm", 1.1.2 "The MCMC-SAEM algorithm" and 1.1.3 "The
+  Simulated Annealing SAEM algorithm", eqs. 1.1 and 1.12-1.15);
 * **saemix** 3.5 (Comets, Lavielle, Mentre), the reference R implementation of
   Kuhn & Lavielle's algorithm -- `R/main_estep.R`, `R/main_mstep.R`,
   `R/main_initialiseMainAlgo.R`;
 * **nlmixr2est** `est = "saem"` -- `src/saem.cpp`, `R/saem_fit.R`,
   `R/saemControl.R`.
 
-Everything below is sourced to one of those three.  Where nlmixr2 has an option
+Everything below is sourced to one of those four.  Where nlmixr2 has an option
 that closes a gap, it is named; where it does not, that is said plainly.
+
+Monolix and saemix are the same algorithm by descent -- both are Lavielle's --
+so they agree on most of what follows.  Where they *disagree* is unusually
+informative, because it separates "this is the Kuhn-Lavielle algorithm" from
+"this is one implementation's choice".
 
 ## The shape all three share
 
@@ -54,36 +62,47 @@ in a single maximization.
 
 ## Difference 1: the MCMC kernels
 
-| | NONMEM | saemix | nlmixr2 |
-|---|---|---|---|
-| independence from the prior `N(mu_i, Omega)` | mode 1, `ISAMPLE_M1` | kernel 1, `nbiter.mcmc[1] = 2` | kernel 1, `nu[1] = 2` |
-| proposal from each subject's **accumulated conditional mean/variance** | **mode 1B**, from iteration 10 on | none | kernel 4, `nu1B` -- **default `0`, i.e. off** |
-| borrow another subject's draw | mode 1A (off by default) | none | none |
-| **multivariate** random walk | mode 2, proposal `Z = lambda * Omega` | -- | -- |
-| **diagonal** block random walk | -- | kernel 2, `nbiter.mcmc[2] = 2` | kernel 2, `nu[2] = 2` |
-| coordinate-wise random walk | mode 3, from `diag(Z^-1)` | kernel 3, `nbiter.mcmc[3] = 2` | kernel 3, `nu[3] = 2` |
-| MAP-mode proposal | -- | kernel 4, `nbiter.mcmc[4] = 0` (off) | none |
-| acceptance-rate adaptation | `IACCEPT`, scale tuned **per subject**, bounded by `ISCALE_MIN`/`MAX` | `proba.mcmc = 0.4`, one scale per coordinate, population-wide | `iaccept = 0.234` / `iacceptSingle = 0.44`, one scale per coordinate, population-wide |
+| | NONMEM | Monolix | saemix | nlmixr2 |
+|---|---|---|---|---|
+| independence from the prior `N(C_i mu, Omega)` | mode 1, `ISAMPLE_M1` | kernel 1 | kernel 1, `nbiter.mcmc[1] = 2` | kernel 1, `nu[1] = 2` |
+| proposal from each subject's **accumulated conditional mean/variance** | **mode 1B**, from iteration 10 on | none | none | kernel 4, `nu1B` -- **default `0`, i.e. off** |
+| borrow another subject's draw | mode 1A (off by default) | kernel 2 (**deprecated**) | none | none |
+| **multivariate** random walk, `Omega`-shaped | mode 2, `Z = lambda * Omega` | kernel 4, `N(phi, kappa * Omega)`, block size cycling 2..d | -- | -- |
+| **diagonal** block random walk | -- | -- | kernel 2, `nbiter.mcmc[2] = 2`; kernel 3, block size cycling | kernel 2, `nu[2] = 2`; kernel 3 |
+| coordinate-wise random walk | mode 3, from `diag(Z^-1)` | kernel 3 | kernel 3, `nbiter.mcmc[3] = 2` | kernel 3, `nu[3] = 2` |
+| MAP-mode proposal | -- | -- | kernel 4, `nbiter.mcmc[4] = 0` (off) | none |
+| acceptance-rate adaptation | `IACCEPT`, scale tuned **per subject**, bounded by `ISCALE_MIN`/`MAX` | `kappa` | `proba.mcmc = 0.4`, one scale per coordinate, population-wide | `iaccept = 0.234` / `iacceptSingle = 0.44`, one scale per coordinate, population-wide |
 
 Two of these are worth dwelling on.
 
-**NONMEM's random walk is `Omega`-shaped; the other two walk on a diagonal.**
-NONMEM's mode 2 proposes from `N(phi_i, lambda * Omega)` (eq. 1.139) -- the
-full covariance, so the walk moves along the correlated directions of the
-posterior.  saemix's kernel 2 (`domega2`, `R/main_estep.R:44`) and nlmixr2's
-kernel 2 (`Gdiag_phi`, `src/saem.cpp` `do_mcmc` case 2) propose one coordinate
-at a time with independent steps.  On a model whose random effects are strongly
-correlated -- which is exactly what a copula, or a two-compartment CL/V pair,
-produces -- a diagonal walk mixes slowly along the correlated direction while
-the acceptance rate looks perfectly healthy.  Nothing reports this.
+**NONMEM's and Monolix's random walks are `Omega`-shaped; saemix's and
+nlmixr2's walk on a diagonal.**  NONMEM's mode 2 proposes from
+`N(phi_i, lambda * Omega)` (eq. 1.139) and Monolix's kernel 4 from
+`N(phi_i, kappa * Omega)` -- the full covariance, so the walk moves along the
+correlated directions of the posterior.  saemix's kernel 2 (`domega2`,
+`R/main_estep.R:44`) and nlmixr2's kernel 2 (`Gdiag_phi`, `src/saem.cpp`
+`do_mcmc` case 2) propose with independent per-coordinate steps.  On a model
+whose random effects are strongly correlated -- which is exactly what a copula,
+or a two-compartment CL/V pair, produces -- a diagonal walk mixes slowly along
+the correlated direction while the acceptance rate looks perfectly healthy.
+Nothing reports this.
 
-**NONMEM adapts the proposal scale per subject; the other two adapt it
+This is the clearest case where Monolix and saemix part company, and it is the
+tell: saemix's kernel 3 reproduces Monolix's kernel 4 *structure* (blocks of
+consecutive components, block size cycling from 2 up to `d`) but takes a
+**diagonal** step where Monolix takes `kappa * Omega`.  nlmixr2 inherited
+saemix's version.  `saemControl(rwOmega = TRUE)` switches nlmixr2's kernel 2 to
+the `Omega`-shaped proposal.
+
+**NONMEM adapts the proposal scale per subject; the others adapt it
 globally.**  NONMEM tunes `lambda` for each subject so that subject's
 acceptance rate approaches `IACCEPT` (eq. 1.139 and the surrounding text).
 saemix and nlmixr2 tune one scale per coordinate against a pooled acceptance
 rate (saemix `R/main_estep.R:59`, nlmixr2 `adaptRw()`).  A pooled rate of 0.3
 is compatible with half the subjects at 0.6 and half at 0.0; the half that is
-stuck never moves, and its draws are the previous iteration's draws.
+stuck never moves, and its draws are the previous iteration's draws -- which is
+precisely the input that makes a distribution M-step collapse (see below).
+`saemControl(iacceptPerId = TRUE)` gives nlmixr2 one scale per subject.
 
 nlmixr2 is the only one of the three that implements NONMEM's mode 1B, but it
 is **off by default** (`saemControl(nu1B = 0)`).  Setting `nu1B = 2` with
@@ -95,14 +114,49 @@ This is the largest structural difference and the one most likely to change an
 answer.
 
 The mu-referenced M-step is a generalized least squares normal equation
-weighted by `Omega^-1` (NONMEM eqs. 1.45/1.46, saemix `R/main_mstep.R:63`,
-nlmixr2 `src/saem.cpp`).  It cannot move a theta whose random effect has
-(near-)zero variance: the column gets an enormous weight, the solve reduces to
-"reproduce this column's sampled mean", and the sampler cannot move the column
-off its prior mean -- which *is* the current theta.  The fixed point is the
-`ini()` value.
+weighted by `Omega^-1` (NONMEM eqs. 1.45/1.46 and 1.148-1.150, saemix
+`R/main_mstep.R:63`, nlmixr2 `src/saem.cpp`).  It is natural to say that this
+update "cannot move a theta whose random effect has zero variance because the
+weight explodes".  **That is not right, and the distinction matters**, so it is
+worth doing the algebra once.
 
-All three implementations know this.  They solve it differently.
+For an intercept-only mu on a coordinate `k` whose random effect is
+uncorrelated with the rest, `d(mu_i)/d(theta) = 1` and
+
+```
+g = sum_i (1/w^2) (phibar_ik - theta)          H = sum_i (1/w^2) = m / w^2
+H^-1 g = mean_i(phibar_ik - theta)
+```
+
+The `w^2` **cancels**.  The mu M-step is `theta <- mean_i(phibar_ik)` with no
+variance in it anywhere, and it is perfectly well defined in the limit
+`w -> 0`.  Nothing about the maximization degenerates.
+
+What degenerates is the **E-step**.  If the random effect genuinely has zero
+variance, the sampler cannot move it, so `phibar_ik = mu_ik = theta` for every
+subject, the increment is identically zero, and the fixed point is the `ini()`
+value.  The theta does not move because there is no variability to inform it --
+not because the weighting broke.
+
+That reading is confirmed from the other side inside this package.  `imp`'s
+`impMuInterceptStep()` is literally `theta += mean(eta)` -- the same update --
+and it works, because `imp` takes its etas from the inner MAP and drops a flat
+random effect from `Omega^-1` entirely, so the MAP moves it freely against the
+data and `mean(eta)` carries information.  `saem` cannot do that: it *samples*
+the eta from a prior of variance ~0.
+
+So a "second M-step route" is not the fix for a zero-variance mu-referenced
+theta in `saem`, and in this package it has been measured not to be: forcing
+the width non-zero so the sampler can move (`zeroOmegaTune`) degrades every
+parameter monotonically on Bauer's gamma model (residual SD 0.150 / 0.162 /
+0.170 at 0.1 / 1 / 4, against a truth of 0.141), and annealing that width
+without a second route pins the theta outright (residual SD 0.72 -> 1.20 on the
+theophylline helper fixture).  Put a parameter that has no between-subject
+variability on the **non-mu** route instead, where the data likelihood, not a
+sampled mean, is what moves it.
+
+The rest of this section is about that non-mu route, which all four
+implementations do have and implement differently.
 
 **NONMEM** derives a second route (eqs. 1.47-1.52) for thetas not expressed
 through mu.  It differentiates the *entire* joint density, builds a
@@ -125,9 +179,31 @@ given a **real, decaying random effect**, shrunk every iteration by
 `alpha0.sa = 10^(-3/nbiter.sa)` -- a 1000-fold decay across the phase
 (`R/main_mstep.R:91`).
 
+**Monolix** does something different from all of them, and it is the cleanest
+statement of the issue.  Its stochastic approximation is applied to the
+**objective**, not to the parameter (eq. 1.1):
+
+```
+Q_k(theta) = Q_{k-1}(theta) + gamma_k ( log p(y, psi^(k); theta) - Q_{k-1}(theta) )
+theta_{k+1} = argmax_theta Q_k(theta)
+```
+
+It averages the *function* over iterations and then maximizes; saemix and
+nlmixr2 maximize the current iteration's function and then average the
+*maximizer*.  For an exponential family these coincide -- which is why the
+sufficient-statistic shortcut is valid for the mu thetas -- but for a non-mu
+theta they do not.  Averaging first is much the more stable of the two on a
+flat or degenerate direction: `Q_k` carries curvature accumulated from every
+past draw, so no single draw's flat direction can send the argmax to a
+boundary.  Maximizing first has nothing holding it back, and the gain then
+only sets how fast the parameter marches there.
+
 **nlmixr2** is closest to saemix: `refinePhi0Lik()` runs a full bounded
 derivative-free maximization (bobyqa / newuoa / Nelder-Mead, budget
-`nonMuThetaMaxEval`) and damps the argmax by the gain.  The equivalents of
+`nonMuThetaMaxEval`) and damps the argmax by the gain.
+`saemControl(nonMuThetaBhhh = TRUE)` replaces that with NONMEM's arrangement --
+one per-subject BHHH Newton step, subject to the `alpha` acceptance test, and
+no search at all.  The equivalents of
 saemix's two stabilizers exist but are **not the default**:
 
 | | saemix | nlmixr2 |
@@ -152,9 +228,34 @@ Two further differences inside the step itself:
 * Neither nlmixr2 nor saemix applies NONMEM's `alpha` **acceptance test**.
   Both damp an unconditional argmax.  A full maximization of a nearly flat or
   degenerate direction goes to the boundary, and damping only controls how fast
-  it marches there; NONMEM's accepted single step cannot.
+  it marches there; NONMEM's accepted single step cannot, and Monolix's
+  averaged objective cannot either.  nlmixr2's `nonMuThetaBhhh = TRUE` gates
+  on the same test: try `alpha = 1`, evaluate `phi0Objective`, shrink by
+  `sqrt(2)` up to eight times, and if nothing improves leave the theta alone.
+  Note that this is a *different* gate from the default path's, which tests
+  the **conditioning** of the information matrix (`nonMuGradStep()`) -- that
+  says the step is numerically trustworthy, not that it goes downhill.
 
 ## Difference 3: simulated annealing
+
+Monolix states this one most clearly (section 1.1.3).  It introduces a
+**temperature** `T_k` and runs MCMC-SAEM against the tempered complete model
+`p_T(y, phi; theta) proportional to exp(-U(y, phi; theta)/T)`, which "consists
+in replacing the variance matrix `Omega` by `T Omega` and the residual variance
+`a^2` by `T a^2`".  `T_k` starts large and decreases to 1.  In practice that is
+implemented as a floor on how fast the variances may fall (eqs. 1.14/1.15):
+
+```
+Omega_{k+1} = max(tau * Omega_k, Omega~_{k+1})
+a^2_{k+1}   = max(tau * a^2_k,   s3_k / N)
+```
+
+which is exactly saemix's `alpha.sa` rule -- saemix implements Monolix's
+temperature.  Monolix additionally allows **two** coefficients, `tau1` for
+`Omega` and `tau2` for `a^2`, and explicitly sanctions `tau1 < 1` with
+`tau2 > 1`: fit tightly at first while allowing large between-subject
+variability, then trade the two off.  Neither saemix nor nlmixr2 exposes the
+second coefficient.
 
 saemix anneals during the first `nbiter.sa = nbiter.saemix[1]/2` iterations:
 the diagonal of `Omega` is floored so it cannot fall faster than
@@ -169,9 +270,16 @@ variability -- see `zeroOmegaAnneal` above.
 
 ## Difference 4: chains
 
-| | NONMEM | saemix | nlmixr2 |
-|---|---|---|---|
-| chains per iteration | `ISAMPLE`, default 2 for SAEM | `nb.chains = 1` | `nmc = 3` |
+| | NONMEM | Monolix | saemix | nlmixr2 |
+|---|---|---|---|---|
+| chains per iteration | `ISAMPLE`, default 2 for SAEM | `L`, recommended above 1 when `N` is small | `nb.chains = 1` | `nmc = 3` |
+| iterations with the parameters frozen | `NBURN` | `K_b` ("we only run the MCMC algorithm but the parameters are not updated") | `nbiter.burn = 5` | -- |
+
+That last row is worth noting on its own: NONMEM, Monolix and saemix all have a
+phase in which the chain runs but nothing is estimated, and nlmixr2 has no
+equivalent -- its `nBurn` is the full-replacement (`gamma = 1`) phase, which is
+a different thing.  In Bauer's own gamma stream that phase is `NBURN=5000`
+against `NITER=500`.
 
 ## What none of them has: an M-step on the random effect distribution
 
@@ -253,6 +361,39 @@ is the *combined* latent `rho*z_j + sqrt(1-rho^2)*z_k`, whose spread is 1 by
 construction for **any** `rho`, including a degenerate `rho = 1`.  A spread
 check cannot detect copula collapse.
 
+Measured on Bauer's gamma model (300 subjects, `nBurn = nEm = 100`, cold
+start), the second failure mode is what actually happens:
+
+| seed | `etaDistMstep` | CL | V1 | rel.var CL | rel.var V1 | cor |
+|---|---|---|---|---|---|---|
+| 7 | `FALSE` | 3.041 | 6.893 | 0.0469 | 0.1095 | 0.999 |
+| 7 | `TRUE` | 0.515 | 0.105 | **0.0003** | **0.0027** | 0.999 |
+| 99 | `FALSE` | 4.978 | 4.797 | 0.0521 | 0.0329 | 0.974 |
+| 99 | `TRUE` | 3.621 | 4.066 | **0.0000** | **0.0000** | 0.996 |
+| truth | | 5.03 | 4.66 | 0.086 | 0.086 | 0.438 |
+
+Both relative variances collapse to zero, in both seeds -- the "conditional
+means" row of the demonstration above, not the "well-mixed draws" row.  The
+step is not wrong in principle; the chain it is being fed is not mixing well
+enough to feed it.  This is why `etaDistMstep` defaults to `FALSE`, and why
+the MCMC differences in Difference 1 are not academic.
+
+The copula M-step (`etaDistCorMstep`, which defaults **`TRUE`** and is keyed
+off its own flag, so it runs even when `etaDistMstep = FALSE`) contributes
+separately.  Same model and seed 99, with both off:
+
+| | CL | V1 | rel.var CL | rel.var V1 | cor | MARE |
+|---|---|---|---|---|---|---|
+| `etaDistCorMstep = TRUE` (default) | 4.978 | 4.797 | 0.0521 | 0.0329 | 0.974 | 45.5% |
+| `etaDistCorMstep = FALSE` | 5.020 | 4.872 | 0.0492 | 0.0336 | **0.729** | **35.0%** |
+| truth | 5.03 | 4.66 | 0.086 | 0.086 | 0.438 | |
+
+Its update is `rho <- cor(w_j, w_k)`, and `w_k` already contains `rho`, so the
+recursion is `rho_new = rho + sqrt(1-rho^2) * c` where `c` is whatever
+correlation the posterior draws have left over.  In isolation that is biased
+upward but stable (a toy with `rho_true = 0.438` settles at ~0.60); on the real
+model it accounts for roughly half of the remaining error in `rho`.
+
 ## Transcribing Bauer's own control stream
 
 Bauer's `gamma_indpar` SAEM stream is the reference answer for the declared
@@ -274,40 +415,85 @@ the copula element `L21`.  So:
   **mu-referenced with a helper random effect of variance exactly zero**.  None
   of them is a non-mu theta.
 
-The nlmixr2 equivalent of the third line is `rxode2::rxEtaDistMuRef()`, and the
-exact-zero variance needs the direct route:
+It is tempting to port that third line directly -- `rxode2::rxEtaDistMuRef()`
+creates the helper etas, and `saemControl(zeroOmegaDirect = TRUE)` supplies the
+direct route a zero variance needs.  **That has been tried in nlmixr2 and it
+makes the fit worse, not better.**  The observation is right and the conclusion
+does not carry over, for a reason worth stating:
 
-```r
-ui <- rxEtaDistMuRef(ui, variance = 0)
-nlmixr2(ui, data, est = "saem",
-        control = saemControl(zeroOmegaDirect = TRUE, zeroOmegaAnneal = 1000))
+* NONMEM handles an exactly-zero `$OMEGA` on a mu-referenced eta internally.
+* nlmixr2's saem cannot sample a zero-variance random effect at all, so
+  `zeroOmegaTune` has to write in a non-zero width -- and a helper eta with a
+  real width **is** a real random effect on the gamma mean, on its relative
+  variance and on `rho`.  Every subject then gets its own, which absorbs the
+  between-subject variability that belongs to the latent normals and leaves
+  them under-dispersed.
+
+Neither end of that trade-off works: zero cannot move, non-zero absorbs the
+variability.  In nlmixr2 a declared distribution's parameters belong on the
+**non-mu** route (`refinePhi0Lik`, the `zeroOmega*` options' `else` branch),
+which is what `dist()` gives them by default.  The divergence from NONMEM is
+elsewhere -- in the kernels of Difference 1 and the step of Difference 2.
+
+### What that stream actually does, and how long it takes
+
+`gamma_clv1_saem.ctl` has **no** preceding ITS or Laplace step -- SAEM runs
+cold from `$THETA ... -3 -3 0.3`.  What it does have is
+
+```
+$EST METHOD=SAEM ... NBURN=5000 NITER=500 CTYPE=3
 ```
 
-A non-zero `zeroOmegaTune` makes each helper a *real* random effect on the
-gamma mean, the relative variance and `rho`, so each subject gets its own --
-which absorbs between-subject variability that belongs to the latent normals
-and leaves them under-dispersed.  That is a different model from the one
-written, and it fits better in-sample.
+**a five-thousand-iteration burn-in.**  The `.ext` trajectory shows where the
+work happens (THETA5 and THETA6 are the two gamma relative variances, THETA7 is
+the copula element `L21`; all three are mu-referenced onto helper etas with
+`$OMEGA (0.0 FIXED)`):
 
-Bauer's stream also runs `METHOD=ITS ... MCETA=100` for 100 iterations
-*before* SAEM, and gives SAEM `NITER=500` with `IACCEPT=0.3`.  A cold SAEM
-start at 200 iterations is not the same experiment.
+| iteration | THETA1 | THETA5 | THETA6 | THETA7 |
+|---|---|---|---|---|
+| -5000 (start) | 1.50000 | -3.00000 | -3.00000 | 0.30000 |
+| -4000 | 1.59112 | -2.53152 | -2.55892 | 0.42588 |
+| 0 (end of burn-in) | 1.56391 | -2.43855 | -2.50978 | 0.36270 |
+| 500 (final) | 1.56550 | -2.42126 | -2.52589 | 0.41119 |
+
+Two things follow.  First, **NONMEM does move these thetas** -- THETA5 travels
+0.58 -- so "a zero-variance mu-referenced theta is simply pinned" is not a
+description of NONMEM's behavior, whatever route it takes to move them.  (The
+`.ext` cannot say *which* route; as shown above the mu step's `Omega^-1`
+cancels, so it is not degenerate on its face, and the guide scopes eqs.
+1.47-1.52 to thetas *not* expressed through mu, which these are.)
+
+Second, essentially all of the movement happens in the first ~1000 burn-in
+iterations and the 500 accumulation iterations barely change anything.  A cold
+nlmixr2 `saem` run at `nBurn = 100, nEm = 100` is not a shorter version of this
+experiment; it is a different one.
 
 ## Summary of levers
 
 | Gap | nlmixr2 setting that closes it | Default |
 |---|---|---|
 | no mode 1B kernel | `saemControl(nu1B = 2, nb1B = 10)` | off |
+| diagonal rather than `Omega`-shaped random walk | `rwOmega = TRUE` | `FALSE` |
+| pooled rather than per-subject acceptance adaptation | `iacceptPerId = TRUE` | `FALSE` |
+| damped argmax rather than one accepted BHHH step | `nonMuThetaBhhh = TRUE` | `FALSE` |
 | GLS cannot move a zero-variance mu theta | `zeroOmegaDirect = TRUE` | `FALSE` |
 | exploration width never decays | `zeroOmegaAnneal = 1000` | `0` |
 | non-mu refinement starts at half the *total* | `nonMuThetaStart = round(nBurn/2)` | half of `nBurn + nEm` |
 | single chain vs several | `nmc` | `3` |
 
+The two `zeroOmega*` rows apply to a model that genuinely has a mu-referenced
+random effect with no between-subject variability.  They are **not** a route to
+Bauer's arrangement for a declared distribution -- see the section above.
+
+(`nonMuThetaBhhh` carries two of NONMEM's changes at once: the information
+matrix becomes the per-subject outer product `sum_i g_i g_i'` rather than the
+per-observation one, and the step must pass the `alpha` acceptance test.)
+
 Not closable by an option, and listed so they are not mistaken for tuning:
-the diagonal (rather than `Omega`-shaped) random walk, the population-wide
-(rather than per-subject) acceptance adaptation, the per-observation (rather
-than per-subject) BHHH information, and the absence of NONMEM's `alpha`
-acceptance test on the non-mu step.
+Monolix's averaging of the *objective* rather than the maximizer, its second
+annealing coefficient `tau2` for the residual variance, and the frozen-parameter
+burn-in phase (`NBURN` / `K_b` / `nbiter.burn`) that the other three have and
+nlmixr2 does not.
 
 ## References
 
@@ -316,6 +502,8 @@ acceptance test on the non-mu step.
   (eqs. 1.45-1.52).
 * Bauer, R.J. NONMEM Tutorial Part II: Estimation Methods and Advanced Examples.
   *CPT Pharmacometrics Syst Pharmacol* 2019.
+* *Monolix Methodology*, sections 1.1.1-1.1.3 (the SAEM, MCMC-SAEM and
+  Simulated Annealing SAEM algorithms).
 * Comets, E., Lavielle, M., Mentre, F. Parameter estimation in nonlinear mixed
   effect models using saemix. *J Stat Softw* 2017; and the saemix 3.5 sources.
 * Kuhn, E., Lavielle, M. Coupling a stochastic approximation version of EM with

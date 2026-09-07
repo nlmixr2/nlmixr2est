@@ -173,6 +173,9 @@
                        rmcmc = 0.5,
                        iaccept = 0.234,
                        iacceptSingle = 0.44,
+                       iacceptPerId = FALSE,
+                       rwOmega = FALSE,
+                       nonMuThetaBhhh = FALSE,
                        nu1B = 0L,
                        nb1B = 10L,
                        etaDistInfo = NULL,
@@ -879,6 +882,12 @@
     coef_sa = coefSa,
     iaccept = iaccept,
     iacceptSingle = iacceptSingle,
+    # NONMEM's three: per-subject lambda (eq. 1.139), an Omega-shaped
+    # mode-2 walk (eq. 1.139), and a single accepted BHHH step for the non-mu
+    # thetas (eqs. 1.47-1.52).  Integers, since the C++ reads them with as<int>.
+    iacceptPerId = as.integer(isTRUE(iacceptPerId)),
+    rwOmega = as.integer(isTRUE(rwOmega)),
+    nonMuThetaBhhh = as.integer(isTRUE(nonMuThetaBhhh)),
     nu1B = as.integer(nu1B),
     nb1B = as.integer(nb1B),
     stepsizeRw = stepsizeRw,
