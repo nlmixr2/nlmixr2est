@@ -2678,6 +2678,11 @@ public:
     return Plambda;
   }
 
+  mat get_mcmcAccTrace()   { return mcmcAccTrace; }
+  mat get_mcmcStuckTrace() { return mcmcStuckTrace; }
+  mat get_phiSdTrace()     { return phiSdTrace; }
+  mat get_phiAcfTrace()    { return phiAcfTrace; }
+
   mat get_Gamma2_phi1() {
     return Gamma2_phi1;
   }
@@ -4079,6 +4084,10 @@ public:
           do_mcmc(3, nu3, mx, mphi0, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter, 0, &rwScale0, &rwLam0);
         }
         if (DEBUG>0) Rcout << "mcmc successful\n";
+        // Close this iteration's mixing diagnostics.  Placed here, after every
+        // kernel and before the sufficient statistics are accumulated, so the
+        // traces describe exactly the draws the M-step is about to use.
+        mcmcCloseIter(kiter, (unsigned int)niter, phiM);
         if (kiter < (unsigned int)niter) phiFile << phiM;
 
         //integration
@@ -5524,6 +5533,33 @@ private:
   // NONMEM tunes its lambda, rather than one per coordinate pooled over the
   // population.  Sized to N on first use; left empty (and so inert) when off.
   vec rwLam1, rwLam0;
+
+  // ---- MCMC mixing diagnostics -------------------------------------------
+  //
+  // saem computed its acceptance rate every iteration, used it to adapt the
+  // random-walk scale, and threw it away.  Nothing about the chain reached the
+  // fit, so a chain that had stopped moving was indistinguishable from one
+  // exploring properly -- and "the chain is not mixing" is the diagnosis for
+  // the declared-distribution M-step collapsing, so it had to become
+  // measurable before it could be fixed.
+  //
+  // Four traces, one row per iteration:
+  //   mcmcAccTrace   pooled acceptance rate, one column per kernel (1,2,3,1B)
+  //   mcmcStuckTrace fraction of SUBJECTS that accepted NOTHING that iteration
+  //                  -- the number a pooled rate cannot show, and the one that
+  //                  says whether a healthy-looking 0.3 is everyone at 0.3 or
+  //                  half the population never moving
+  //   phiSdTrace     pooled SD of each phi column across subjects x chains.
+  //                  For a declared distribution's latent this is 1 BY
+  //                  CONSTRUCTION, so any departure is mixing, not signal.
+  //   phiAcfTrace    lag-1 autocorrelation of each phi column against the
+  //                  PREVIOUS iteration's draws.  This is the direct measure:
+  //                  1.0 means the chain did not move at all.
+  mat mcmcAccTrace, mcmcStuckTrace, phiSdTrace, phiAcfTrace;
+  vec mcmcAccNum, mcmcAccDen;      // per-kernel, accumulated within an iteration
+  vec mcmcAccById;                 // per-subject accepts within an iteration
+  double mcmcAccByIdTrials = 0.0;
+  mat phiMprevIter;                // last iteration's phiM, for the lag-1 acf
   int iacceptPerId = 0;
   // saemControl(rwOmega=): propose the mode-2 random walk from lambda*Omega
   // (NONMEM eq. 1.139) rather than from a diagonal.
@@ -6146,6 +6182,63 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
   // The per-iteration factor is clamped to [0.5, 2] and the accumulated scale
   // to [1e-3, 1e3] so one unlucky iteration cannot collapse or explode the
   // proposal.
+  // Accumulate one proposal block's acceptances into this iteration's
+  // diagnostic counters.  `acc` holds the accepted ROW indices; phiM stacks the
+  // nmc chains, so row r belongs to subject r % N.  Kernels are indexed 1,2,3
+  // and 4 (mode 1B) -> columns 0..3.
+  void mcmcRecordAccept(int method, const uvec &acc, int nM) {
+    if (method < 1 || method > 4 || nM <= 0) return;
+    if (mcmcAccNum.n_elem != 4) { mcmcAccNum.zeros(4); mcmcAccDen.zeros(4); }
+    mcmcAccNum(method - 1) += (double)acc.n_elem;
+    mcmcAccDen(method - 1) += (double)nM;
+    if (N > 0) {
+      if ((int)mcmcAccById.n_elem != N) mcmcAccById.zeros(N);
+      for (unsigned int j = 0; j < acc.n_elem; ++j) {
+        mcmcAccById((arma::uword)(acc(j) % (arma::uword)N)) += 1.0;
+      }
+      mcmcAccByIdTrials += 1.0;
+    }
+  }
+
+  // Close out one iteration's diagnostics and start the next.  Called once per
+  // iteration, after the whole MCMC block, so it sees the chain as the M-step
+  // will see it.
+  void mcmcCloseIter(unsigned int kiter, unsigned int niterTot, const mat &phiCur) {
+    if ((int)mcmcAccTrace.n_rows != (int)niterTot) {
+      mcmcAccTrace.set_size(niterTot, 4);    mcmcAccTrace.fill(NA_REAL);
+      mcmcStuckTrace.set_size(niterTot, 1);  mcmcStuckTrace.fill(NA_REAL);
+      phiSdTrace.set_size(niterTot, phiCur.n_cols);   phiSdTrace.fill(NA_REAL);
+      phiAcfTrace.set_size(niterTot, phiCur.n_cols);  phiAcfTrace.fill(NA_REAL);
+    }
+    if (kiter >= niterTot) return;
+    if (mcmcAccNum.n_elem == 4) {
+      for (int k = 0; k < 4; ++k) {
+        if (mcmcAccDen(k) > 0) mcmcAccTrace(kiter, k) = mcmcAccNum(k) / mcmcAccDen(k);
+      }
+    }
+    if ((int)mcmcAccById.n_elem == N && N > 0) {
+      double nStuck = 0.0;
+      for (int i = 0; i < N; ++i) if (mcmcAccById(i) <= 0.0) nStuck += 1.0;
+      mcmcStuckTrace(kiter, 0) = nStuck / (double)N;
+    }
+    for (unsigned int c = 0; c < phiCur.n_cols; ++c) {
+      vec col = phiCur.col(c);
+      if (col.n_elem > 1) phiSdTrace(kiter, c) = arma::stddev(col);
+      if (phiMprevIter.n_rows == phiCur.n_rows &&
+          phiMprevIter.n_cols == phiCur.n_cols) {
+        vec pv = phiMprevIter.col(c);
+        double sd1 = arma::stddev(col), sd0 = arma::stddev(pv);
+        if (sd1 > 1e-12 && sd0 > 1e-12) {
+          phiAcfTrace(kiter, c) = arma::as_scalar(arma::cor(pv, col));
+        }
+      }
+    }
+    phiMprevIter = phiCur;
+    mcmcAccNum.zeros(4); mcmcAccDen.zeros(4);
+    if (N > 0) mcmcAccById.zeros(N);
+    mcmcAccByIdTrials = 0.0;
+  }
+
   // Per-subject form of adaptRw (saemControl(iacceptPerId=)).  `acc` holds the
   // ACCEPTED ROW indices of this proposal block; phiM stacks the nmc chains
   // vertically, so row r belongs to subject r % N and each subject gets nmc
@@ -6403,6 +6496,7 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
         }
 
         ind=find( deltu < -log(accU) );
+        mcmcRecordAccept(method, ind, mx.nM);
         // acceptance-rate adaptation of the random-walk scale (methods 2/3).
         // Method 1 draws from the prior, so its acceptance is not a function
         // of any step size -- NONMEM does not adapt its mode 1 either.
@@ -6797,6 +6891,7 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
         }
 
         ind = find(deltu < -log(accU));
+        mcmcRecordAccept(method, ind, mx.nM);
         if (method > 1 && mx.nM > 0) {
           double accRate = (double)ind.n_elem / (double)mx.nM;
           double target = (method == 2) ? iaccept : iacceptSingle;
@@ -7747,7 +7842,11 @@ SEXP saem_fit(SEXP xSEXP) {
     Named("res_info") = saem.get_resInfo(),
     Named("tolFactor") = _saemTf,
     Named("mixProb") = wrap(saem.get_mixProb()),
-    Named("mixWeights") = wrap(saem.get_mixWeights())
+    Named("mixWeights") = wrap(saem.get_mixWeights()),
+    Named("mcmcAccept") = saem.get_mcmcAccTrace(),
+    Named("mcmcStuck") = saem.get_mcmcStuckTrace(),
+    Named("mcmcPhiSd") = saem.get_phiSdTrace(),
+    Named("mcmcPhiAcf") = saem.get_phiAcfTrace()
   );
   current_saem_state = nullptr;
   out.attr("saem.cfg") = x;

@@ -2,6 +2,31 @@
 
 ## New features
 
+- `est="saem"` now reports whether its MCMC chain actually moved.  Four
+  per-iteration traces on the fit environment:
+
+  - `fit$env$mcmcAccept` -- pooled acceptance rate, one column per kernel
+    (`prior`, `rw`, `coord`, `mode1B`).
+  - `fit$env$mcmcStuck` -- the fraction of SUBJECTS that accepted nothing that
+    iteration.  This is the number a pooled acceptance rate structurally
+    cannot show: a healthy-looking 0.3 is equally consistent with every subject
+    at 0.3 and with half the population never moving at all, and a subject that
+    never moves contributes the previous iteration's draw to the M-step.
+  - `fit$env$mcmcPhiSd` -- pooled SD of each sampled parameter across subjects
+    x chains.  For a declared non-Gaussian random effect's latent normal this
+    has a known target of exactly 1, so a departure measures mixing rather than
+    signal -- the rare case where mixing is diagnosable without a reference
+    chain.
+  - `fit$env$mcmcPhiAcf` -- lag-1 autocorrelation of each parameter against the
+    previous iteration's draws; 1.0 means the chain did not move.
+
+  saem computed its acceptance rate every iteration, used it to adapt the
+  random-walk scale, and discarded it, so a chain that had stopped exploring
+  was indistinguishable from one that had not.  That mattered: an M-step on a
+  declared random effect distribution is a valid EM step when fed well-mixed
+  posterior DRAWS and collapses the distribution to a point mass when fed
+  anything else, and there was no way to tell which was being fed.
+
 - Three `saemControl()` options that give `saem` what NONMEM's `METHOD=SAEM`
   does differently, all opt-in and all leaving the default path bit-identical:
 

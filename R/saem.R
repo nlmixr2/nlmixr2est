@@ -842,6 +842,56 @@
   attr(.cls, "niter") <- env$saemControl$mcmc$niter[1]
   class(.ph) <- .cls
   assign("parHistData", .ph, envir=env)
+  .saemAddMcmcDiag(env)
+}
+
+#' Surface saem's MCMC mixing diagnostics on the fit environment
+#'
+#' Four per-iteration traces the C++ side records (`src/saem.cpp`,
+#' `mcmcCloseIter()`).  They exist because saem used to compute its acceptance
+#' rate, adapt the random-walk scale with it, and discard it -- so a chain that
+#' had stopped moving looked exactly like one exploring properly, and "the
+#' chain is not mixing" is the diagnosis for a declared-distribution M-step
+#' collapsing.
+#'
+#' - `$mcmcAccept`  pooled acceptance rate per iteration, one column per kernel
+#'   (`prior`, `rw`, `coord`, `mode1B`).
+#' - `$mcmcStuck`   fraction of SUBJECTS that accepted nothing that iteration.
+#'   This is the one a pooled rate cannot show: a healthy-looking 0.3 is
+#'   equally consistent with everyone at 0.3 and with half the population never
+#'   moving at all.
+#' - `$mcmcPhiSd`   pooled SD of each sampled parameter across subjects x
+#'   chains.  For a declared distribution's latent normal this is 1 BY
+#'   CONSTRUCTION, so a departure from 1 measures mixing rather than signal.
+#' - `$mcmcPhiAcf`  lag-1 autocorrelation of each parameter against the
+#'   previous iteration's draws.  The direct measure: 1.0 means the chain did
+#'   not move.
+#'
+#' @param env nlmixr2 estimation environment
+#' @return Nothing, called for side effects
+#' @noRd
+#' @author Matthew L. Fidler
+.saemAddMcmcDiag <- function(env) {
+  .saem <- env$saem
+  .acc <- .saem$mcmcAccept
+  if (!is.matrix(.acc) || nrow(.acc) == 0L) return(invisible())
+  colnames(.acc) <- c("prior", "rw", "coord", "mode1B")
+  assign("mcmcAccept", .acc, envir=env)
+  .stuck <- .saem$mcmcStuck
+  if (is.matrix(.stuck) && ncol(.stuck) == 1L) {
+    assign("mcmcStuck", as.numeric(.stuck[, 1]), envir=env)
+  }
+  # name the phi columns the way the model does; saemParHistNames covers the
+  # thetas, but these are the SAMPLED parameters, so use the eta names when the
+  # count lines up and fall back to positional names otherwise
+  .nm <- tryCatch(env$ui$saemParams, error=function(e) NULL)
+  for (.f in c("mcmcPhiSd", "mcmcPhiAcf")) {
+    .m <- .saem[[.f]]
+    if (!is.matrix(.m) || nrow(.m) == 0L) next
+    if (is.character(.nm) && length(.nm) == ncol(.m)) colnames(.m) <- .nm
+    assign(.f, .m, envir=env)
+  }
+  invisible()
 }
 #' Stochastic-approximation (Louis) FIM covariance for SAEM
 #'
