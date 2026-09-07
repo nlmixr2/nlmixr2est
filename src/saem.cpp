@@ -1293,7 +1293,13 @@ public:
     // and a "no ES" slot still needs one built, so a shape left installed by an
     // earlier solve is deactivated rather than reused with the wrong dimensions
     // (OdeSwapEsBatch's own contract, src/odeSwap.cpp).
-    std::unique_ptr<OdeSwapEsBatch> tsEsBatch(new OdeSwapEsBatch(odeSlotThetaSens));
+    // Only when we are going to SOLVE.  This object installs/deactivates the
+    // process-wide event-sensitivity shape for a solve; constructing it when we
+    // are merely reading a solve someone else took can only disturb it.
+    std::unique_ptr<OdeSwapEsBatch> tsEsBatch;
+    if (_saemOwnSolveSlot != odeSlotThetaSens) {
+      tsEsBatch.reset(new OdeSwapEsBatch(odeSlotThetaSens));
+    }
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
 #endif
@@ -1350,9 +1356,23 @@ public:
       // this read does not survive, so the saving is not free the way the
       // parameter-convention argument suggested.  Left in place, and off, until
       // that is understood; re-solving is correct but pays for the system twice.
+      // OFF.  Reuse is correct in principle -- the caller's solve is at exactly
+      // these parameters -- but measured, the solve it leaves behind has the
+      // base compartments and ZERO sensitivity states:
+      //
+      //   row0 obs0  states: 83.31 5.181 0 0 0 0 0 0 0 0
+      //
+      // i.e. the two ODE compartments are populated and all eight
+      // d(state)/d(theta) compartments are exactly zero, which is the signature
+      // of predNoLhs (2 states) having solved rather than thetaSens (10) --
+      // even though _saemOwnSolveSlot reports odeSlotThetaSens.  Until that is
+      // reconciled, re-solve: correct, but it pays for the system twice.
       bool reuse = false && (_saemOwnSolveSlot == odeSlotThetaSens);
+      // setIndSolve() selects which solve buffer this individual reads through,
+      // so it is needed whether or not we re-integrate -- skipping it with the
+      // solve is what made the reused read return zeros for some columns.
+      setIndSolve(ind, -1);
       if (!reuse) {
-        setIndSolve(ind, -1);
         if (!saemNoThrow([&]{ odeSwapSolveInd(odeSlotThetaSens, r); })) {
           rowBad[(size_t)r] = 1; continue;
         }
@@ -1371,6 +1391,12 @@ public:
         int kk = getIndIx(ind, j);
         if (getIndEvid(ind, kk) != 0) continue;
         double curT = getTime(kk, ind);
+        if (gchk && r == 0 && nObs == 0) {
+          double *st = getOpIndSolve(op, ind, j);
+          Rprintf("    [row0 obs0 reuse=%d states:", (int)reuse);
+          for (int q = 0; q < 10; ++q) Rprintf(" %.4g", st[q]);
+          Rprintf("]\n");
+        }
         if (!saemNoThrow([&]{
               rxThetaSens.calc_lhs(r, curT, getOpIndSolve(op, ind, j), lhs); })) {
           rowBad[(size_t)r] = 1; break;
