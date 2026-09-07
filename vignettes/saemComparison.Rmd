@@ -507,6 +507,43 @@ iterations and the 500 accumulation iterations barely change anything.  A cold
 nlmixr2 `saem` run at `nBurn = 100, nEm = 100` is not a shorter version of this
 experiment; it is a different one.
 
+## Do they matter?  One measured example
+
+Bauer's gamma model (300 subjects, seed 99, `nBurn = nEm = 100` cold, BOTH
+distribution M-steps off so only the option under test differs).  The
+simulation truth is known, so the last column is the mean absolute relative
+error against it rather than a likelihood.
+
+| arm | CL | V1 | rel.var CL | rel.var V1 | cor | MARE |
+|---|---|---|---|---|---|---|
+| default | 5.020 | 4.872 | 0.0492 | 0.0336 | 0.729 | 35.0% |
+| `rwOmega = TRUE` | 4.513 | 5.300 | 0.0444 | 0.0664 | **0.485** | **21.2%** |
+| `nonMuThetaBhhh = TRUE` | 7.511 | 6.815 | 0.1109 | 0.0944 | 0.356 | 30.6% |
+| `iacceptPerId = TRUE` | 3.051 | 6.141 | 0.0119 | 0.0710 | 1.000 | 60.6% |
+| truth | 5.03 | 4.66 | 0.086 | 0.086 | **0.438** | |
+| NONMEM `METHOD=SAEM` | 4.786 | 4.606 | 0.0888 | -- | 0.411 | ~3.8% |
+
+The `Omega`-shaped random walk is the largest single effect and it is the one
+that recovers the copula correlation: 0.485 against a truth of 0.438, where the
+diagonal walk leaves it at 0.729 and other configurations pin it at 1.000.
+That is the predicted symptom -- a diagonal proposal cannot traverse the
+correlated direction a copula creates, and `rho` marching to its clamp is what
+that looks like from the outside.
+
+`nonMuThetaBhhh` is the only arm that puts both relative variances on the right
+order of magnitude, which is consistent with a full argmax being what drove
+them toward zero; it overshoots the means instead.  `iacceptPerId` alone made
+this model worse.
+
+Three cautions on reading this table.  It is **one seed and one model**; none of
+these is established as a default, and all three ship off.  The best arm here is
+still far from NONMEM's answer, so this identifies contributing mechanisms
+rather than a fix.  And note that the objective and the distance-from-truth
+disagree: `nonMuThetaBhhh` reaches a *lower* objective (-23670) than `rwOmega`
+(-20385) while being further from the truth -- on this class of model the
+likelihood surface is itself misleading, which is documented separately under
+`foceiControl(mceta=)`.
+
 ## Summary of levers
 
 | Gap | nlmixr2 setting that closes it | Default |
