@@ -39,7 +39,11 @@ nmTest({
   test_that("the pre-processing hook expands a declaration", {
     .u <- .declMod()
     expect_equal(nrow(rxode2::rxUiEtaDists(.u)), 1L)
-    .r <- nlmixr2est:::.preProcessEtaDist(.u, "focei", NULL, NULL)
+    ## .declMod() hands back the model FUNCTION; the hook is only ever given a
+    ## ui in production (nlmixr2Est passes one), so build one here.  Without
+    ## this the hook hit rxUiDecompress(<closure>)$iniDf and errored.
+    .r <- nlmixr2est:::.preProcessEtaDist(
+      rxode2::rxUiDecompress(rxode2::rxode2(.u)), "focei", NULL, NULL)
     expect_true(is.list(.r))
     expect_equal(nrow(rxode2::rxUiEtaDists(.r$ui)), 0L)
     expect_true("rxz.eta.cl" %in% .r$ui$iniDf$name)

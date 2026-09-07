@@ -50,6 +50,22 @@
     # path is handled in R/iov.R and should not be rewrapped here.
     if (!is.na(.thetaDf$backTransform[i]) &&
           grepl("^nlmixr2iov", .thetaDf$backTransform[i])) next
+    # Skip the Gaussian copula's Cholesky theta (rxEtaDistExpand()'s rxCor.*).
+    #
+    # It is ALREADY unconstrained by construction: the model uses tanh() of it,
+    # so every real value maps to a valid correlation.  Its finite bounds are a
+    # guard rail added in rxode2 so a search cannot walk it out to rho = +-1 --
+    # not a parameterization constraint -- and refinePhi0Lik() enforces them
+    # directly through phi0Lower/phi0Upper, so nothing is lost by skipping here.
+    #
+    # Wrapping it would be actively harmful.  This hook renames what it wraps to
+    # rxBoundedTr.<name>, and .preProcessEtaDist (which runs FIRST, since it is
+    # what creates these thetas) has already stashed the declarations recording
+    # the ORIGINAL name.  The rename makes that stash unresolvable, so
+    # .etaDistMstepCore() returns NULL and the declared-distribution M-step goes
+    # SILENTLY inert -- measured: saemEtaDistN_() == 0 on Bauer's gamma model,
+    # with etaDistMstep=TRUE producing estimates identical to FALSE.
+    if (grepl("^rxCor[.]", .name)) next
 
     .hasLo <- is.finite(.lo)
     .hasHi <- is.finite(.hi)

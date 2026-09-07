@@ -33,7 +33,7 @@ nmTest({
     .d <- rxode2::rxUiEtaDists(.u0)
     expect_equal(nrow(.d), 2L)
 
-    .stash <- .etaDistDeclStash(.u0, .d)
+    .stash <- nlmixr2est:::.etaDistDeclStash(.u0, .d)
     expect_false(is.null(.stash))
     expect_equal(.stash$name, c("eta.cl", "eta.v1"))
     # the copula pairs the second declared eta back to the first
@@ -43,11 +43,11 @@ nmTest({
     # the expansion is lossy: this is exactly why the stash exists
     .u <- rxode2::rxUiDecompress(rxode2::rxEtaDistExpand(.u0))
     expect_equal(nrow(rxode2::rxUiEtaDists(.u)), 0L)
-    expect_null(.etaDistMstepCore(.u))
+    expect_null(nlmixr2est:::.etaDistMstepCore(.u))
 
     # ... and with it, the metadata builds
-    .etaDistDeclSet(.u, .stash)
-    .core <- .etaDistMstepCore(.u)
+    nlmixr2est:::.etaDistDeclSet(.u, .stash)
+    .core <- nlmixr2est:::.etaDistMstepCore(.u)
     expect_false(is.null(.core))
     expect_equal(.core$fam, c(13L, 13L))          # dgamma
     expect_equal(.core$corWith, c(-1L, 0L))
@@ -76,7 +76,7 @@ nmTest({
       })
     }
     .u0 <- rxode2::rxUiDecompress(rxode2::rxode2(.mod))
-    .r <- .preProcessEtaDist(.u0, "saem", NULL,
+    .r <- nlmixr2est:::.preProcessEtaDist(.u0, "saem", NULL,
                              saemControl(etaDistMstep = TRUE))
     expect_true(is.list(.r))
     .u <- rxode2::rxUiDecompress(.r$ui)
@@ -84,8 +84,8 @@ nmTest({
     # extra iniDf column are all dropped before the estimator asks (the ui is
     # rebuilt, and the est method installs its own freshly-built control after
     # the hooks run).  Measured, not assumed.
-    expect_false(is.null(.etaDistDeclGet(.u)))
-    expect_false(is.null(.etaDistMstepCore(.u)))
+    expect_false(is.null(nlmixr2est:::.etaDistDeclGet(.u)))
+    expect_false(is.null(nlmixr2est:::.etaDistMstepCore(.u)))
   })
 
   test_that("saem's M-step actually runs, and moves the declared parameters", {
@@ -106,15 +106,22 @@ nmTest({
     }
     .d <- nlmixr2data::theo_sd
     .ctl <- function(on) {
+      # etaDistCorMstep defaults TRUE, so the copula closed form runs even when
+      # the FAMILY M-step is off.  This test contrasts the family step, so the
+      # "off" arm has to turn both off -- otherwise its counter is non-zero and
+      # the contrast is not the one being asserted.  (That assertion only held
+      # before because the copula step was itself inert: rxode2 bounded the
+      # rxCor theta, .preProcessBoundedTransform renamed it to rxBoundedTr.*,
+      # and the stash stopped resolving.)
       saemControl(nBurn = 5, nEm = 5, print = 0, covMethod = "",
-                  etaDistMstep = on)
+                  etaDistMstep = on, etaDistCorMstep = on)
     }
     .fOn <- suppressWarnings(nlmixr2(.mod, .d, est = "saem", control = .ctl(TRUE)))
     # the counter is reset per fit, so this is THIS fit's count
-    expect_gt(saemEtaDistN_(), 0)
+    expect_gt(nlmixr2est:::saemEtaDistN_(), 0)
 
     .fOff <- suppressWarnings(nlmixr2(.mod, .d, est = "saem", control = .ctl(FALSE)))
-    expect_equal(saemEtaDistN_(), 0)
+    expect_equal(nlmixr2est:::saemEtaDistN_(), 0)
 
     # and it has to make a difference: with the M-step inert the two fits are
     # bit-identical, which is how this went unnoticed in the first place
@@ -189,24 +196,65 @@ nmTest({
     .z2 <- .rho * .z1 + sqrt(1 - .rho^2) * stats::rnorm(.n)
 
     # standard draws: recovers rho
-    expect_equal(rxEtaDistCorTest_(.z1, .z2), .rho, tolerance = 0.05)
+    expect_equal(nlmixr2est:::rxEtaDistCorTest_(.z1, .z2), .rho, tolerance = 0.05)
 
     # the case that broke it -- an unmixed chain, spread ~2
-    expect_equal(rxEtaDistCorTest_(2 * .z1, 2 * .z2), .rho, tolerance = 0.05)
-    expect_lt(rxEtaDistCorTest_(2 * .z1, 2 * .z2), 0.9)   # never near the clamp
+    expect_equal(nlmixr2est:::rxEtaDistCorTest_(2 * .z1, 2 * .z2), .rho, tolerance = 0.05)
+    expect_lt(nlmixr2est:::rxEtaDistCorTest_(2 * .z1, 2 * .z2), 0.9)   # never near the clamp
 
     # and the shrunk case, spread ~0.8, which is where a settled fit sits
-    expect_equal(rxEtaDistCorTest_(0.8 * .z1, 0.8 * .z2), .rho, tolerance = 0.05)
+    expect_equal(nlmixr2est:::rxEtaDistCorTest_(0.8 * .z1, 0.8 * .z2), .rho, tolerance = 0.05)
 
     # scale invariance outright, including unequal scales
-    expect_equal(rxEtaDistCorTest_(3 * .z1, 0.5 * .z2),
-                 rxEtaDistCorTest_(.z1, .z2), tolerance = 1e-8)
+    expect_equal(nlmixr2est:::rxEtaDistCorTest_(3 * .z1, 0.5 * .z2),
+                 nlmixr2est:::rxEtaDistCorTest_(.z1, .z2), tolerance = 1e-8)
 
     # a location shift must not matter either
-    expect_equal(rxEtaDistCorTest_(.z1 + 5, .z2 - 2),
-                 rxEtaDistCorTest_(.z1, .z2), tolerance = 1e-8)
+    expect_equal(nlmixr2est:::rxEtaDistCorTest_(.z1 + 5, .z2 - 2),
+                 nlmixr2est:::rxEtaDistCorTest_(.z1, .z2), tolerance = 1e-8)
 
     # still bounded for a genuinely near-perfect correlation
-    expect_lte(rxEtaDistCorTest_(.z1, .z1), 0.999)
+    expect_lte(nlmixr2est:::rxEtaDistCorTest_(.z1, .z1), 0.999)
   })
+  test_that("the M-step actually FIRES in a saem fit, not just maps", {
+    # The tests above check the R-side core builds from a stashed declaration.
+    # None of them ran a fit, and that gap hid a real regression: rxode2 gave
+    # the copula theta finite bounds, .preProcessBoundedTransform wrapped it and
+    # renamed it to rxBoundedTr.rxCor.*, the stash's recorded name stopped
+    # resolving, and the M-step went SILENTLY inert -- etaDistMstep=TRUE
+    # produced estimates identical to FALSE, with only a runInfo warning to say
+    # so.  Assert engagement against the counter, in a real fit.
+    skip_if_not(file.exists("~/src/gamma_indpar/gamma_clv1.dat"))
+    .d <- utils::read.table("~/src/gamma_indpar/gamma_clv1.dat", skip = 1,
+                            header = TRUE)
+    names(.d) <- c("ID", "TIME", "AMT", "RATE", "EVID", "MDV", "DV", "IPRED")
+    .d$CMT <- 1
+    .d <- .d[, c("ID", "TIME", "AMT", "RATE", "EVID", "DV", "CMT")]
+    .m <- function() {
+      ini({
+        lclm <- 1.9; lv1m <- 1.8; tq <- 0.9; tv2 <- 4.2
+        lclrv <- -2; lv1rv <- -2
+        eta.cl + eta.v1 ~ c(1, 0.3, 1)
+        dist(eta.cl) ~ dgamma(shape = 1 / exp(lclrv),
+                              rate = 1 / (exp(lclrv) * exp(lclm)))
+        dist(eta.v1) ~ dgamma(shape = 1 / exp(lv1rv),
+                              rate = 1 / (exp(lv1rv) * exp(lv1m)))
+        eta.q + eta.v2 ~ c(0.1, 0.01, 0.1)
+        prop.sd <- 0.316
+      })
+      model({
+        cl <- eta.cl; v <- eta.v1
+        q <- exp(tq + eta.q); v2 <- exp(tv2 + eta.v2)
+        linCmt() ~ prop(prop.sd)
+      })
+    }
+    .f <- suppressWarnings(nlmixr2(.m, .d, est = "saem",
+      control = saemControl(nBurn = 25, nEm = 25, print = 0L, covMethod = "",
+                            seed = 99, calcTables = FALSE,
+                            etaDistMstep = TRUE)))
+    expect_gt(nlmixr2est:::saemEtaDistN_(), 0L)
+    expect_false(any(grepl("etaDistMstep=TRUE was requested",
+                           as.character(.f$runInfo), fixed = TRUE)))
+  })
+
 })
