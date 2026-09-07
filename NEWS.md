@@ -2,6 +2,15 @@
 
 ## New features
 
+- New vignette `vignette("saemComparison")`: a sourced, line-by-line
+  comparison of nlmixr2's `est="saem"` against NONMEM's `METHOD=SAEM` (the
+  NONMEM 7 Technical Guide's eqs. 1.45-1.52 and 1.133-1.153) and saemix 3.5.
+  It names the MCMC kernels each implementation has and lacks, how each moves a
+  theta whose random effect has no between-subject variability, and which
+  `saemControl()` options close which gap -- along with the differences no
+  option closes.  It also shows, with a runnable demonstration, the two ways an
+  M-step on a declared random effect distribution fails silently.
+
 - Non-Gaussian random effect distributions declared with `lotri`'s
   `dist()` line now work in estimation.  A pre-processing hook runs
   `rxode2::rxEtaDistExpand()` before estimation, which is all the support
