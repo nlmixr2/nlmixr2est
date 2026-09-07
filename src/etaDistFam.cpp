@@ -22,7 +22,22 @@
 // Positive parameters are optimized on the log scale because neither newuoa nor
 // nelder_fn is bounded.
 #include <RcppArmadillo.h>
+#include <rxode2llPtrs.h>
+#include <n1qn1c.h>
 #include "etaDistFam.h"
+
+// Defines the rxode2ll function pointers and the .Call entry that fills them
+// from rxode2ll::.rxode2llPtr() at load (R/zzz.R).  External pointers rather
+// than R_GetCCallable: the latter leaves this package compiled against a cached
+// address and a typedef'd signature, so a rxode2ll update would need a rebuild
+// here and a reload would leave the pointers dangling.
+//
+// The macro names its entry iniRxode2llPtrs; init.c registers the
+// package-prefixed symbol, so rename it the way inner.cpp does for n1qn1.
+extern "C" {
+#define iniRxode2llPtrs _nlmixr2est_iniRxode2llPtrs
+iniRxode2ll
+}
 #include <algorithm>
 
 typedef void (*fn_ptr) (double *, double *);
@@ -64,6 +79,142 @@ static double gEtaDistObj(const double *p) {
   return std::isfinite(nll) ? nll : 1e300;
 }
 static void gEtaDistNmFn(double *p, double *fx) { *fx = gEtaDistObj(p); }
+
+// ---- exact gradients, from rxode2ll ---------------------------------------
+//
+// Every family this dispatch fits has a Stan-backed log-density in rxode2ll
+// with analytic derivatives, reached through the external pointers installed at
+// load (see the iniRxode2ll above).  With them the family MLE is a smooth,
+// low-dimensional problem WITH a gradient, so it can be handed to n1qn1 instead
+// of a derivative-free search.
+//
+// Writes the log-density to *ll and d(logD)/d(native parameter) into g[0..na).
+// Returns false when the family has no pointer available -- the caller then
+// falls back to the derivative-free path, which is always correct.
+//
+// ret[] is the caller-allocated cache rxode2ll's <Fam>Full() uses: 3 + 2*na
+// doubles, so 9 covers the widest family here (3 parameters).
+static bool rxEtaDistGradD1(rxLlik1_t f, rxLlik1_t d0,
+                            double x, const double *a, double *ll, double *g) {
+  if (f == NULL || d0 == NULL) return false;
+  double ret[9]; std::fill_n(ret, 9, 0.0);
+  *ll = f(ret, x, a[0]);
+  g[0] = d0(ret, x, a[0]);
+  return true;
+}
+static bool rxEtaDistGradD2(rxLlik2_t f, rxLlik2_t d0, rxLlik2_t d1,
+                            double x, const double *a, double *ll, double *g) {
+  if (f == NULL || d0 == NULL || d1 == NULL) return false;
+  double ret[9]; std::fill_n(ret, 9, 0.0);
+  *ll = f(ret, x, a[0], a[1]);
+  g[0] = d0(ret, x, a[0], a[1]);
+  g[1] = d1(ret, x, a[0], a[1]);
+  return true;
+}
+static bool rxEtaDistGradD3(rxLlik3_t f, rxLlik3_t d0, rxLlik3_t d1, rxLlik3_t d2,
+                            double x, const double *a, double *ll, double *g) {
+  if (f == NULL || d0 == NULL || d1 == NULL || d2 == NULL) return false;
+  double ret[9]; std::fill_n(ret, 9, 0.0);
+  *ll = f(ret, x, a[0], a[1], a[2]);
+  g[0] = d0(ret, x, a[0], a[1], a[2]);
+  g[1] = d1(ret, x, a[0], a[1], a[2]);
+  g[2] = d2(ret, x, a[0], a[1], a[2]);
+  return true;
+}
+
+bool rxEtaDistGradD(int fam, double x, const double *a, double *ll, double *g) {
+  switch (fam) {
+  case RXETADIST_NORM:
+    return rxEtaDistGradD2(_p_rxLlikNorm, _p_rxLlikNormDmean, _p_rxLlikNormDsd, x, a, ll, g);
+  case RXETADIST_STUDENTT:
+    return rxEtaDistGradD3(_p_rxLlikT, _p_rxLlikTDdf, _p_rxLlikTDmean, _p_rxLlikTDsd, x, a, ll, g);
+  case RXETADIST_CAUCHY:
+    return rxEtaDistGradD2(_p_rxLlikCauchy, _p_rxLlikCauchyDlocation, _p_rxLlikCauchyDscale, x, a, ll, g);
+  case RXETADIST_DBLEXP:
+    return rxEtaDistGradD2(_p_rxLlikDblExp, _p_rxLlikDblExpDMu, _p_rxLlikDblExpDSigma, x, a, ll, g);
+  case RXETADIST_LOGIS:
+    return rxEtaDistGradD2(_p_rxLlikLogis, _p_rxLlikLogisDLocation, _p_rxLlikLogisDScale, x, a, ll, g);
+  case RXETADIST_GUMBEL:
+    return rxEtaDistGradD2(_p_rxLlikGumbel, _p_rxLlikGumbelDMu, _p_rxLlikGumbelDBeta, x, a, ll, g);
+  case RXETADIST_LNORM:
+    return rxEtaDistGradD2(_p_rxLlikLnorm, _p_rxLlikLnormDMeanlog, _p_rxLlikLnormDSdlog, x, a, ll, g);
+  case RXETADIST_CHISQ:
+    return rxEtaDistGradD1(_p_rxLlikChisq, _p_rxLlikChisqDdf, x, a, ll, g);
+  case RXETADIST_INVCHISQ:
+    return rxEtaDistGradD1(_p_rxLlikInvChisq, _p_rxLlikInvChisqDNu, x, a, ll, g);
+  case RXETADIST_SCINVCHISQ:
+    return rxEtaDistGradD2(_p_rxLlikScaledInvChisq, _p_rxLlikScaledInvChisqDNu, _p_rxLlikScaledInvChisqDSigma, x, a, ll, g);
+  case RXETADIST_EXP:
+    return rxEtaDistGradD1(_p_rxLlikExp, _p_rxLlikExpDrate, x, a, ll, g);
+  case RXETADIST_GAMMA:
+    return rxEtaDistGradD2(_p_rxLlikGamma, _p_rxLlikGammaDshape, _p_rxLlikGammaDrate, x, a, ll, g);
+  case RXETADIST_INVGAMMA:
+    return rxEtaDistGradD2(_p_rxLlikInvGamma, _p_rxLlikInvGammaDAlpha, _p_rxLlikInvGammaDBeta, x, a, ll, g);
+  case RXETADIST_WEIBULL:
+    return rxEtaDistGradD2(_p_rxLlikWeibull, _p_rxLlikWeibullDshape, _p_rxLlikWeibullDscale, x, a, ll, g);
+  case RXETADIST_FRECHET:
+    return rxEtaDistGradD2(_p_rxLlikFrechet, _p_rxLlikFrechetDAlpha, _p_rxLlikFrechetDSigma, x, a, ll, g);
+  case RXETADIST_RAYLEIGH:
+    return rxEtaDistGradD1(_p_rxLlikRayleigh, _p_rxLlikRayleighDSigma, x, a, ll, g);
+  case RXETADIST_PARETO:
+    return rxEtaDistGradD2(_p_rxLlikPareto, _p_rxLlikParetoDYMin, _p_rxLlikParetoDAlpha, x, a, ll, g);
+  case RXETADIST_PARETO2:
+    return rxEtaDistGradD3(_p_rxLlikParetoType2, _p_rxLlikParetoType2DMu, _p_rxLlikParetoType2DLambda, _p_rxLlikParetoType2DAlpha, x, a, ll, g);
+  case RXETADIST_BETA:
+    return rxEtaDistGradD2(_p_rxLlikBeta, _p_rxLlikBetaDshape1, _p_rxLlikBetaDshape2, x, a, ll, g);
+  case RXETADIST_BETAPROP:
+    return rxEtaDistGradD2(_p_rxLlikBetaProportion, _p_rxLlikBetaProportionDMu, _p_rxLlikBetaProportionDKappa, x, a, ll, g);
+  case RXETADIST_UNIF:
+    return rxEtaDistGradD2(_p_rxLlikUnif, _p_rxLlikUnifDalpha, _p_rxLlikUnifDbeta, x, a, ll, g);
+  default: return false;
+  }
+}
+
+// Objective AND gradient of the family MLE at the OPTIMIZER's coordinates.
+// Positive parameters are carried on the log scale, so the chain rule is
+// d/d(log p) = p * d/dp.  Returns false if any observation has no usable
+// gradient, which sends the caller back to the derivative-free path.
+static bool gEtaDistObjGrad(const double *p, double *fx, double *gr) {
+  double a[4];
+  gEtaDistUnpack(p, a);
+  for (int i = 0; i < gEtaDistNa; ++i) if (!std::isfinite(a[i])) return false;
+  double nll = 0.0;
+  std::fill_n(gr, gEtaDistNa, 0.0);
+  const size_t n = gEtaDistVals.size();
+  const bool wtd = !gEtaDistW.empty();
+  double g1[4], ll;
+  for (size_t i = 0; i < n; ++i) {
+    double wi = wtd ? gEtaDistW[i] : 1.0;
+    if (wi == 0.0) continue;
+    if (!rxEtaDistGradD(gEtaDistFam, gEtaDistVals[i], a, &ll, g1)) return false;
+    if (!std::isfinite(ll)) return false;
+    nll -= wi*ll;
+    for (int k = 0; k < gEtaDistNa; ++k) {
+      if (!std::isfinite(g1[k])) return false;
+      gr[k] -= wi*g1[k];
+    }
+  }
+  if (!std::isfinite(nll)) return false;
+  // chain rule onto the optimizer's scale
+  for (int k = 0; k < gEtaDistNa; ++k) {
+    if (gEtaDistPos & (1 << k)) gr[k] *= a[k];
+    if (!std::isfinite(gr[k])) return false;
+  }
+  *fx = nll;
+  return true;
+}
+
+static int gEtaDistN1Bad = 0;
+static void gEtaDistN1Cost(int *ind, int *nn, double *x, double *f, double *g,
+                           int *ti, float *tr, double *td, int *id) {
+  (void)ti; (void)tr; (void)td; (void)id;
+  if (gEtaDistN1Bad) return;
+  double fv = 0.0, gg[4];
+  if (!gEtaDistObjGrad(x, &fv, gg)) { gEtaDistN1Bad = 1; return; }
+  if (*ind == 2 || *ind == 4) *f = fv;
+  if (*ind == 3 || *ind == 4) for (int i = 0; i < *nn; ++i) g[i] = gg[i];
+}
+
 
 // newuoa reaches the same objective through R (nlmixr2est:::.newuoa), the way
 // SAEM's own _saemType==2 residual step does.  The objective itself stays in
@@ -113,7 +264,44 @@ bool rxEtaDistMleW(int fam, const std::vector<double> &vals,
   // nothing usable, mirroring what SAEM's own _saemType==2 residual step does.
   double ynewlo = R_PosInf;
   bool haveMin = false;
+  // n1qn1 first, when rxode2ll can supply exact derivatives for this family.
+  // A quasi-Newton with the true gradient converges in far fewer objective
+  // evaluations than a derivative-free method, and every evaluation here walks
+  // all the sampled etas.  Falls through to newuoa when the family has no
+  // pointer, when n1qn1 is unavailable, or when any observation yields a
+  // non-finite gradient.
   {
+    double llProbe, gProbe[4];
+    double aProbe[4];
+    gEtaDistUnpack(st.data(), aProbe);
+    bool haveGrad = (n1qn1_ != NULL) && !gEtaDistVals.empty() &&
+      rxEtaDistGradD(fam, gEtaDistVals[0], aProbe, &llProbe, gProbe);
+    if (haveGrad) {
+      std::vector<double> x(st.begin(), st.end()), gg((size_t)na, 0.0);
+      std::vector<double> zm((size_t)(na*(na+13)/2 + 1), 0.0);
+      std::vector<double> var((size_t)na, 0.1);
+      double f = 0.0, eps = 1e-8;
+      int nn = na, mode = 1, niter = 100*na, nsim = 100*na, impr = 0, izs = 0;
+      float rzs = 0; double dzs = 0; int idz = 0;
+      gEtaDistN1Bad = 0;
+      n1qn1_(gEtaDistN1Cost, &nn, x.data(), &f, gg.data(), var.data(), &eps,
+             &mode, &niter, &nsim, &impr, zm.data(), &izs, &rzs, &dzs, &idz);
+      if (getenv("NLMIXR2_ETADIST_OPT") != NULL)
+        Rprintf("etaDistMle fam=%d n1qn1 bad=%d f=%.6g\n", fam, gEtaDistN1Bad, f);
+      if (!gEtaDistN1Bad && std::isfinite(f) && f < 1e300) {
+        bool ok = true;
+        for (int i = 0; i < na; ++i) if (!std::isfinite(x[(size_t)i])) ok = false;
+        if (ok) {
+          for (int i = 0; i < na; ++i) xm[(size_t)i] = x[(size_t)i];
+          ynewlo = f;
+          haveMin = true;
+        }
+      }
+    }
+  }
+  if (!haveMin && getenv("NLMIXR2_ETADIST_OPT") != NULL)
+    Rprintf("etaDistMle fam=%d falling back to newuoa\n", fam);
+  if (!haveMin) {
     int npt = 2*na + 1;
     Rcpp::Environment nlmixr2 = Rcpp::Environment::namespace_env("nlmixr2est");
     Rcpp::Function newuoa = nlmixr2[".newuoa"];
@@ -148,6 +336,7 @@ bool rxEtaDistMleW(int fam, const std::vector<double> &vals,
       }
     }
   }
+
   if (!haveMin) {
     int iconv, it, nfcall, iprint = 0;
     nelder_fn(gEtaDistNmFn, na, st.data(), stp.data(), 200*na, 1e-8,

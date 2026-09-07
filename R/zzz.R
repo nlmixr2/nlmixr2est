@@ -52,6 +52,12 @@
         PACKAGE = "nlmixr2est")
 }
 
+.iniRxode2llPtr <- function() {
+  .Call(`_nlmixr2est_iniRxode2llPtrs`,
+        rxode2ll::.rxode2llPtr(),
+        PACKAGE = "nlmixr2est")
+}
+
 .iniN1qn1ptr <- function() {
   .Call(`_nlmixr2est_iniN1qn1cPtrs`,
         n1qn1::.n1qn1ptr(),
@@ -68,6 +74,7 @@
   .iniLotriPtr()
   .iniRxode2Ptr()
   .iniN1qn1ptr()
+  .iniRxode2llPtr()
   .iniLbfgsb3c()
 }
 #' Initialize S3 methods

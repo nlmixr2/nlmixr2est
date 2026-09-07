@@ -55,6 +55,7 @@ Imports:
     methods,
     minqa,
     n1qn1 (>= 6.0.1-12),
+    rxode2ll (>= 2.0.16.9001),
     nlme,
     Rcpp,
     rex,
@@ -92,6 +93,7 @@ Remotes:
 LinkingTo:
     BH,
     n1qn1 (>= 6.0.1-12),
+    rxode2ll (>= 2.0.16.9001),
     lbfgsb3c (>= 2024-3.5),
     lotri (>= 0.5.0),
     Rcpp,
