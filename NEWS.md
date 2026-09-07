@@ -44,6 +44,12 @@
     consistent with every subject at 0.3 and with half the subjects at 0.6 and
     half never moving; only the per-subject rate can tell those apart, and the
     second leaves those subjects' draws equal to the previous iteration's.
+    The update runs once per ITERATION against acceptances pooled over every
+    random-walk block, not once per block: a block gives a subject only `nmc`
+    trials, and a rate drawn from {0, 1/nmc, ..., 1} is too coarse to drive a
+    multiplicative update -- compounded over an iteration's blocks it walks
+    `lambda` into its own clamps, and a subject at the ceiling proposes steps
+    so large it never accepts again.
 
   - `nonMuThetaBhhh = TRUE` updates the non-mu thetas with ONE per-subject BHHH
     Newton step subject to NONMEM's `alpha` acceptance test (eqs. 1.47-1.52 and

@@ -5559,6 +5559,8 @@ private:
   vec mcmcAccNum, mcmcAccDen;      // per-kernel, accumulated within an iteration
   vec mcmcAccById;                 // per-subject accepts within an iteration
   double mcmcAccByIdTrials = 0.0;
+  vec mcmcAccByIdRw;               // ... counting only the random-walk kernels
+  double mcmcAccByIdRwTrials = 0.0;
   mat phiMprevIter;                // last iteration's phiM, for the lag-1 acf
   int iacceptPerId = 0;
   // saemControl(rwOmega=): propose the mode-2 random walk from lambda*Omega
@@ -6193,10 +6195,20 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
     mcmcAccDen(method - 1) += (double)nM;
     if (N > 0) {
       if ((int)mcmcAccById.n_elem != N) mcmcAccById.zeros(N);
+      if ((int)mcmcAccByIdRw.n_elem != N) mcmcAccByIdRw.zeros(N);
       for (unsigned int j = 0; j < acc.n_elem; ++j) {
-        mcmcAccById((arma::uword)(acc(j) % (arma::uword)N)) += 1.0;
+        arma::uword sIdx = acc(j) % (arma::uword)N;
+        mcmcAccById(sIdx) += 1.0;
+        if (method == 2 || method == 3) mcmcAccByIdRw(sIdx) += 1.0;
       }
       mcmcAccByIdTrials += 1.0;
+      // Trials per subject in this block is the chain count.  Only the
+      // random-walk kernels are counted: kernel 1 draws from the prior, so its
+      // acceptance is not a function of any step size and NONMEM does not
+      // adapt on it either.
+      if (method == 2 || method == 3) {
+        mcmcAccByIdRwTrials += (double)(nM / (N > 0 ? N : 1));
+      }
     }
   }
 
@@ -6234,9 +6246,13 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
       }
     }
     phiMprevIter = phiCur;
+    // saemControl(iacceptPerId=) adapts here, on the pooled-over-blocks rate,
+    // and must run before the counters are cleared.
+    adaptRwPerIdIter();
     mcmcAccNum.zeros(4); mcmcAccDen.zeros(4);
-    if (N > 0) mcmcAccById.zeros(N);
+    if (N > 0) { mcmcAccById.zeros(N); mcmcAccByIdRw.zeros(N); }
     mcmcAccByIdTrials = 0.0;
+    mcmcAccByIdRwTrials = 0.0;
   }
 
   // Per-subject form of adaptRw (saemControl(iacceptPerId=)).  `acc` holds the
@@ -6244,24 +6260,32 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
   // vertically, so row r belongs to subject r % N and each subject gets nmc
   // trials per block.  Same Robbins-Monro rule, same clamps, applied to one
   // scalar per subject rather than one per coordinate.
-  void adaptRwPerId(vec *rwLam, const uvec &acc, int nM, double target) {
-    if (rwLam == nullptr || target <= 0.0 || N <= 0) return;
-    if ((int)rwLam->n_elem != N) return;
-    vec nAcc(N, fill::zeros);
-    for (unsigned int j = 0; j < acc.n_elem; ++j) {
-      int sIdx = (int)(acc(j) % (arma::uword)N);
-      nAcc(sIdx) += 1.0;
-    }
-    double denom = (double)(nM / N);
-    if (denom <= 0.0) denom = 1.0;
-    for (int sIdx = 0; sIdx < N; ++sIdx) {
-      double f = 1.0 + stepsizeRw * (nAcc(sIdx) / denom - target);
-      if (f < 0.5) f = 0.5;
-      else if (f > 2.0) f = 2.0;
-      double v = (*rwLam)(sIdx) * f;
-      if (v < 1e-3) v = 1e-3;
-      else if (v > 1e3) v = 1e3;
-      (*rwLam)(sIdx) = v;
+  // Per-subject form of adaptRw (saemControl(iacceptPerId=)), applied ONCE PER
+  // ITERATION against acceptances pooled over every random-walk block.
+  //
+  // Pooling is the whole point.  One block gives a subject only `nmc` trials,
+  // so its acceptance rate is one of {0, 1/nmc, ..., 1} -- far too coarse to
+  // drive a multiplicative update.  Over a whole iteration a subject sees
+  // (1 + nphi) * nu blocks, which is a usable estimate.  Same Robbins-Monro
+  // rule and same clamps as adaptRw, applied to one scalar per subject.
+  void adaptRwPerIdIter() {
+    if (!iacceptPerId || N <= 0) return;
+    if ((int)mcmcAccByIdRw.n_elem != N || mcmcAccByIdRwTrials <= 0.0) return;
+    double target = iaccept;
+    if (!(target > 0.0)) return;
+    for (int j = 0; j < 2; ++j) {
+      vec *lam = (j == 0) ? &rwLam1 : &rwLam0;
+      if ((int)lam->n_elem != N) continue;
+      for (int i = 0; i < N; ++i) {
+        double rate = mcmcAccByIdRw(i) / mcmcAccByIdRwTrials;
+        double f = 1.0 + stepsizeRw * (rate - target);
+        if (f < 0.5) f = 0.5;
+        else if (f > 2.0) f = 2.0;
+        double v = (*lam)(i) * f;
+        if (v < 1e-3) v = 1e-3;
+        else if (v > 1e3) v = 1e3;
+        (*lam)(i) = v;
+      }
     }
   }
 
@@ -6506,12 +6530,18 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
           if (perId) {
             // NONMEM tunes lambda for EACH SUBJECT so that subject's own
             // acceptance rate approaches IACCEPT (eq. 1.139 and the text after
-            // it).  A pooled rate cannot see a subject stuck at zero: 0.3
-            // overall is equally consistent with everyone at 0.3 and with half
-            // the subjects at 0.6 and half never moving, and it is the second
-            // that leaves those subjects' draws equal to the previous
-            // iteration's.
-            adaptRwPerId(rwLam, ind, mx.nM, target);
+            // it).  The update itself happens ONCE PER ITERATION, in
+            // mcmcCloseIter(), against acceptances pooled over every
+            // random-walk block -- NOT here, per block.  Adapting per block
+            // estimates a subject's rate from only `nmc` trials, which is far
+            // too noisy to drive a multiplicative update: compounded over the
+            // ~1+nphi blocks each iteration runs it random-walks lambda into
+            // its own clamps, and a subject whose lambda hits the ceiling
+            // proposes steps so large it never accepts again.  Measured on
+            // Bauer's gamma model, the per-block version left 83.4% of
+            // subjects frozen against 30.7% for the pooled default -- the
+            // exact opposite of what the option is for.
+            (void)target;
           } else if (method == 2) {
             adaptRw(rwScale, arma::regspace<uvec>(0, mphi.nphi - 1),
                     (double)ind.n_elem / (double)mx.nM, iaccept);
@@ -6896,7 +6926,7 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
           double accRate = (double)ind.n_elem / (double)mx.nM;
           double target = (method == 2) ? iaccept : iacceptSingle;
           if (perId) {
-            adaptRwPerId(rwLam, ind, mx.nM, target);
+            (void)target;   // adapted once per iteration; see do_mcmc()
           } else if (method == 2) {
             // multidimensional symmetric random walk: optimal ~0.234
             adaptRw(rwScale, arma::regspace<uvec>(0, mphi.nphi - 1), accRate, iaccept);

@@ -417,21 +417,48 @@ problem, and only the second contributes last iteration's draw to this
 iteration's M-step.  This is also the diagnostic that says whether
 `iacceptPerId = TRUE` is worth turning on.
 
-`mcmcPhiSd` is unusually powerful **for a declared non-Gaussian random
-effect**, because that model pins down what the answer should be.  The latent
-is standard normal by construction with a fixed identity omega, so its pooled
-SD across subjects and chains has a known target of exactly **1.0** -- and,
-importantly, well-mixed MCMC *draws* (not conditional means) from a correct
-model are marginally distributed as the prior, so 1.0 is the right target at
-every iteration, not just at convergence.  A pooled SD of 0.94 is mixing; a
-pooled SD of 0.09 is a chain that has stopped.  No reference chain, no
-convergence criterion and no second run is needed to interpret it.
+`mcmcPhiSd` has a known target **for a declared non-Gaussian random effect**,
+because that model pins down what the answer should be: the latent is standard
+normal by construction with a fixed identity omega, and well-mixed MCMC *draws*
+(not conditional means) from a correct model are marginally distributed as the
+prior.  So its pooled SD across subjects and chains targets exactly **1.0** at
+every iteration, not just at convergence.  No reference chain and no second run
+is needed to interpret it.
 
-That matters because it is the input the distribution M-step is most sensitive
-to, in the direction that looks most like success: an under-dispersed latent
-produces a fitted family that is too tight, which tightens the next
-iteration's prior, and the fit reports a confident typical value with no
-between-subject variability left.
+**But a pooled SD of 1.0 does not establish that the chain is mixing**, and it
+is worth being explicit about that, because the number is reassuring and the
+inference from it is wrong.  The SD describes the *marginal spread* of the
+draws; a chain that has stopped moving retains whatever spread it already had,
+so it reports a perfectly healthy 1.0 forever.  Measured on Bauer's gamma model
+at the package defaults, the two declared latents have pooled SDs of 1.055 and
+0.970 -- and lag-1 autocorrelations of **0.991 and 0.975**.  The spread is
+right and the chain is barely moving.
+
+`mcmcPhiAcf` is the trace that catches that, and on this model it is the one
+that matters.  An autocorrelation near 1 means this iteration's draws are
+essentially last iteration's, which is exactly the input that collapses a
+distribution M-step: refitting a family to the same draws over and over is the
+"barely mixing" row of the demonstration above.
+
+Read the two together.  A latent whose pooled SD has drifted below 1 produces a
+fitted family that is too tight, which tightens the next iteration's prior --
+the fit then reports a confident typical value with no between-subject
+variability left.  A latent whose SD is 1 but whose autocorrelation is 0.99 is
+the same hazard arriving without the warning sign.
+
+Measured at the package defaults on Bauer's gamma model (300 subjects, means
+over the last 20 iterations):
+
+```
+acceptance   prior=0.254  rw=0.440  coord=0.476
+subjects that accepted NOTHING: 30.7%
+```
+
+Every pooled acceptance rate is close to its theoretical optimum -- 0.234 for
+the multivariate walk and 0.44 one-at-a-time are exactly what `iaccept` and
+`iacceptSingle` target -- while **nearly a third of the population is frozen**.
+That is the discrepancy `mcmcStuck` exists to expose, and it is invisible in
+every other number the fit reports.
 
 ## Transcribing Bauer's own control stream
 
