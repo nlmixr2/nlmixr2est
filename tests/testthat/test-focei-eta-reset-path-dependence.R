@@ -9,6 +9,14 @@
 ## The gate below is the invariant itself, so it cannot rot into prose: the
 ## objective a fit reports must not be worse than a cold-start (etas from zero)
 ## evaluation at the fit's own final estimates.
+##
+## Pinned to innerOpt="n1qn1": the failure mode this guards against is
+## specific to n1qn1's own warm-started Hessian (zm) carried across outer
+## iterations -- innerOpt="trust" recomputes an exact Gauss-Newton+Omega^-1
+## Hessian fresh on every call and carries no such state forward, so it
+## structurally cannot exhibit a stale-warm-start-replaces-a-converged-EBE
+## regression the way n1qn1 can. Testing this invariant under trust would be
+## testing a mechanism trust doesn't have.
 
 nmTest({
   test_that("FOCEi objective does not depend on the inner eta history", {
@@ -87,7 +95,8 @@ nmTest({
     }
 
     fit <- suppressWarnings(
-      nlmixr2(fitMod, d, est = "focei", control = list(print = 0L)))
+      nlmixr2(fitMod, d, est = "focei",
+              control = list(print = 0L, innerOpt = "n1qn1")))
 
     ## (1) the optimizer must not return a point worse than one it evaluated
     trace <- fit$parHistData$objf[fit$parHistData$type == "Unscaled"]
@@ -107,7 +116,7 @@ nmTest({
                             eta.vmax = om[[3]], eta.km = om[[4]]),
       d, est = "focei",
       control = list(print = 0L, maxOuterIterations = 0L,
-                     covMethod = "", calcTables = FALSE)))
+                     covMethod = "", calcTables = FALSE, innerOpt = "n1qn1")))
 
     expect_lt(fit$objDf$OBJF[1] - cold$objDf$OBJF[1], 1)
   })
