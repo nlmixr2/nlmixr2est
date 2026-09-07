@@ -413,9 +413,11 @@
     # cost controls for that refinement; it re-solves the ODE per objective
     # evaluation, so it is the dominant per-iteration cost for a model whose
     # non-mu thetas are structural
+    # 3 = n1qn1 (BFGS on the exact gradient).  It needs nonMuThetaGrad; without
+    # a gradient there is nothing to hand it and the C++ falls through to newuoa.
     .cfg$nonMuThetaOptType <- as.integer(match(
       rxode2::rxGetControl(ui, "nonMuThetaOpt", "newuoa"),
-      c("optimize", "nelderMead", "newuoa"), nomatch = 1L) - 1L)
+      c("optimize", "nelderMead", "newuoa", "n1qn1"), nomatch = 1L) - 1L)
     .cfg$nonMuThetaSweeps <- as.integer(rxode2::rxGetControl(ui, "nonMuThetaSweeps", 2L))
     .cfg$nonMuThetaMaxEval <- as.integer(rxode2::rxGetControl(ui, "nonMuThetaMaxEval", 25L))
     .cfg$nonMuThetaTol <- as.numeric(rxode2::rxGetControl(ui, "nonMuThetaTol",

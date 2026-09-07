@@ -35,6 +35,7 @@ using namespace Rcpp;
 // -- must be included AFTER the `using namespace Rcpp;` above.
 #include "scale.h"
 #include "nonMuThetaGrad.h"
+#include <n1qn1c.h>
 
 // The declared-distribution family dispatch and the ODE-free maximum-
 // likelihood M-step live in their own translation unit so saem and imp share
@@ -623,6 +624,15 @@ static arma::vec gPhi0Lo, gPhi0Hi, gPhi0RefBest;
 static int gPhi0RefEvalMax = 0, gPhi0RefEvalN = 0;
 static double gPhi0RefBestF = 0.0;
 static double gPhi0RefObj(const double *p);
+// n1qn1 driver for the non-mu (phi0) refinement.  Available only with the exact
+// gradient: a quasi-Newton is pointless without one, and with one each iteration
+// costs a single COMPLETE solve (objective and gradient together) where the
+// derivative-free search spends one solve per objective evaluation and never
+// sees a derivative.
+static void gPhi0N1Cost(int *ind, int *n, double *x, double *f, double *g,
+                        int *ti, float *tr, double *td, int *id);
+static int gPhi0N1Bad = 0;
+static int gPhi0N1Evals = 0;
 static void gPhi0NmFn(double *p, double *fx);
 static double gPhi0RefObjR(Rcpp::NumericVector p);
 
@@ -1200,7 +1210,15 @@ public:
   // with a stale sd while SAEM's actual one moves.
   //
   // Returns true when it actually moved something.
-  bool nonMuGradPhi0(unsigned int kiter, const vec &pas) {
+  // xEval != nullptr puts this in EVALUATE mode: write those free-coordinate
+  // values into mprior_phi0, take ONE solve of the complete system, and hand
+  // back both the objective and its exact gradient without stepping.  That is
+  // precisely what a quasi-Newton wants, and it is only affordable because the
+  // complete system emits rx_pred_ alongside d(f)/d(theta) -- a derivative-free
+  // search pays a solve per objective evaluation and gets no gradient at all.
+  bool nonMuGradPhi0(unsigned int kiter, const vec &pas,
+                     const double *xEval = nullptr,
+                     double *fOut = nullptr, double *gOut = nullptr) {
     const bool gchk = (getenv("NLMIXR2_SAEM_GRADCHECK") != NULL);
     if (gchk) Rprintf("gradPhi0 kiter=%u active=%d nFreeIx=%d nphi0=%d dist=%d nendpnt=%d\n",
                       kiter, (int)_saemThetaSensActive, (int)gPhi0FreeIx.size(),
@@ -1287,6 +1305,24 @@ public:
     }
     // Per-row score/information, reduced serially afterwards -- accumulating
     // into shared arma objects inside the parallel region would race.
+    if (xEval != nullptr) {
+      for (int fi = 0; fi < nFree; ++fi) {
+        int c = gPhi0FreeIx[(size_t)fi];
+        if (!std::isfinite(xEval[fi])) return false;
+        mprior_phi0.col(c).fill(xEval[fi]);
+      }
+      if (nphi0 > 0) phiM.cols(i0) = repmat(mprior_phi0, nmc, 1);
+      bool frz = _saemFreezeOde;
+      _saemFreezeOde = false;
+      _saemSolveCompleteOnce = 1;
+      mat fMat = user_fn(phiM, evt, optM);
+      _saemSolveCompleteOnce = 0;
+      _saemFreezeOde = frz;
+      double v = (distribution == 4) ? -accu(fMat.col(0))
+                                     : phi0NormalSSR(fMat.col(0));
+      if (!std::isfinite(v)) return false;
+      if (fOut != nullptr) *fOut = v;
+    }
     std::vector<double> rowScore((size_t)nRow * (size_t)nFree, 0.0);
     std::vector<double> rowInfo((size_t)nRow * (size_t)nFree * (size_t)nFree, 0.0);
     std::vector<int> rowBad((size_t)nRow, 0);
@@ -1457,6 +1493,10 @@ public:
     // solve; the search alone is better than a skewed Newton step.
     if (gchk) Rprintf("  nGood=%d / nRow=%d\n", nGood, nRow);
     if (nGood < nRow) return false;
+    if (xEval != nullptr) {
+      if (gOut != nullptr) for (int fi = 0; fi < nFree; ++fi) gOut[fi] = score(fi);
+      return true;
+    }
     // Finite-difference verification of the exact gradient, off by default.
     // The analytic score above and a central difference of phi0Objective --
     // the very objective the search minimizes -- must agree; anything else is
@@ -1664,7 +1704,54 @@ public:
         gPhi0RefEvalN = 0;
         gPhi0RefBestF = 0.0;
         gPhi0RefEvalMax = (nonMuThetaMaxEval > 0) ? nonMuThetaMaxEval : 10*nFree;
-        if (nonMuThetaOptType == 1) {
+        bool n1qn1Done = false;
+        if (nonMuThetaOptType == 3) {
+          // n1qn1 (BFGS) on the EXACT gradient.  Each iteration costs one
+          // complete solve returning objective and gradient together; the
+          // derivative-free alternatives pay a solve per objective evaluation
+          // and never see a derivative.  Requires the gradient -- without it
+          // there is nothing to hand n1qn1, so fall through to newuoa.
+          if (_saemThetaSensActive) {
+            std::vector<double> x((size_t)nFree), gg((size_t)nFree, 0.0);
+            for (int fi = 0; fi < nFree; ++fi) x[(size_t)fi] = par0[gPhi0FreeIx[(size_t)fi]];
+            // n1qn1 is unbounded; clamp each accepted iterate back into the
+            // trust region the same way the searches are clamped.
+            std::vector<double> zm((size_t)(nFree*(nFree+13)/2 + 1), 0.0);
+            std::vector<double> var((size_t)nFree, 0.1);
+            double f = 0.0, eps = nonMuThetaTol;
+            int nn = nFree, mode = 1, niter = gPhi0RefEvalMax,
+              nsim = gPhi0RefEvalMax, impr = 0, izs = 0; float rzs = 0;
+            double dzs = 0; int idz = 0;
+            gPhi0Self = this;
+            gPhi0N1Bad = 0;
+            gPhi0N1Evals = 0;
+            if (n1qn1_ != NULL) {
+              n1qn1_(gPhi0N1Cost, &nn, x.data(), &f, gg.data(), var.data(), &eps,
+                     &mode, &niter, &nsim, &impr, zm.data(), &izs, &rzs, &dzs, &idz);
+            }
+            if (!gPhi0N1Bad && gPhi0N1Evals > 0) {
+              for (int fi = 0; fi < nFree; ++fi) {
+                int c = gPhi0FreeIx[(size_t)fi];
+                double v = x[(size_t)fi];
+                if (v < lo[c]) v = lo[c];
+                if (v > hi[c]) v = hi[c];
+                if (std::isfinite(v)) xmin[c] = v; else xmin[c] = par0[c];
+              }
+              for (int c = 0; c < nphi0; c++) {
+                bool free = false;
+                for (size_t q = 0; q < gPhi0FreeIx.size(); ++q)
+                  if (gPhi0FreeIx[q] == c) { free = true; break; }
+                if (!free) xmin[c] = par0[c];
+              }
+              n1qn1Done = true;
+            }
+            // n1qn1 got nowhere; fall through to the derivative-free search
+            for (int c = 0; c < nphi0; c++) gPhi0Work[c] = par0[c];
+          }
+        }
+        if (n1qn1Done) {
+          // n1qn1 already wrote xmin; skip the derivative-free search entirely
+        } else if (nonMuThetaOptType == 1) {
           std::vector<double> st((size_t)nFree), stp((size_t)nFree), xm((size_t)nFree);
           for (int fi = 0; fi < nFree; fi++) {
             int c = gPhi0FreeIx[(size_t)fi];
@@ -1702,7 +1789,7 @@ public:
                      Rcpp::_["rhoend"] = nonMuThetaTol,
                      Rcpp::_["npt"] = npt);
         }
-        for (int fi = 0; fi < nFree; fi++) {
+        for (int fi = 0; n1qn1Done ? false : (fi < nFree); fi++) {
           gPhi0Work[gPhi0FreeIx[(size_t)fi]] = gPhi0RefBest(fi);
         }
       } else {
@@ -6568,6 +6655,24 @@ static double gZeroOmObj(const double *p) {
 }
 
 static void gZeroOmNmFn(double *p, double *fx) { *fx = gZeroOmObj(p); }
+
+// n1qn1's simul contract: ind 2|4 -> objective, 3|4 -> gradient.  Both come
+// from ONE solve here, so the two branches share it rather than solving twice.
+static void gPhi0N1Cost(int *ind, int *n, double *x, double *f, double *g,
+                        int *ti, float *tr, double *td, int *id) {
+  (void)ti; (void)tr; (void)td; (void)id;
+  if (gPhi0Self == nullptr || gPhi0N1Bad) return;
+  std::vector<double> gg((size_t)*n, 0.0);
+  double fv = 0.0;
+  vec pasDummy;
+  if (!gPhi0Self->nonMuGradPhi0(0, pasDummy, x, &fv, gg.data())) {
+    gPhi0N1Bad = 1;
+    return;
+  }
+  gPhi0N1Evals++;
+  if (*ind == 2 || *ind == 4) *f = fv;
+  if (*ind == 3 || *ind == 4) for (int i = 0; i < *n; ++i) g[i] = gg[(size_t)i];
+}
 
 static double gPhi0RefObjR(Rcpp::NumericVector p) {
   return gPhi0RefObj(&(p[0]));
