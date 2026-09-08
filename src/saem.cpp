@@ -1596,9 +1596,15 @@ public:
         if (getIndEvid(ind, kk) != 0) continue;
         double curT = getTime(kk, ind);
         if (gchk && r == 0 && nObs == 0) {
+          // Print the states this row actually HAS.  A fixed 10 walks off the
+          // end of the solve buffer on any model with fewer (a 2-compartment
+          // linCmt has 2), which aborted the check with an out-of-bounds throw
+          // -- debug-only, but a trap for whoever next turns the check on.
           double *st = getOpIndSolve(op, ind, j);
+          int nSt = getOpNeq(op);
+          if (nSt > 10) nSt = 10;
           Rprintf("    [row0 obs0 reuse=%d states:", (int)reuse);
-          for (int q = 0; q < 10; ++q) Rprintf(" %.4g", st[q]);
+          for (int q = 0; q < nSt; ++q) Rprintf(" %.4g", st[q]);
           Rprintf("]\n");
         }
         if (!saemNoThrow([&]{

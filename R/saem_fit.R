@@ -173,7 +173,7 @@
                        rmcmc = 0.5,
                        iaccept = 0.234,
                        iacceptSingle = 0.44,
-                       iacceptPerId = FALSE,
+                       iacceptPerId = TRUE,
                        rwOmega = FALSE,
                        nonMuThetaBhhh = FALSE,
                        nu1B = 0L,

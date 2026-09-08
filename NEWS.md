@@ -46,8 +46,16 @@
   The two are complementary rather than redundant: the per-subject adaptation
   fixes the marginal spreads and drives the correlation too low, the spaced
   copula M-step fixes the dependence and leaves the spreads low, and together
-  they land near both.  Neither default is changed pending more than one model
-  and seed.
+  they land near both.
+
+  **Both are now on by default.**  `etaDistEvery` is inert unless a model
+  declares a non-Gaussian random effect distribution, so it reaches only the
+  fits it was measured on.  `iacceptPerId` is a general MCMC change and does
+  reach every `saem` fit; it is on because the acceptance adaptation it
+  replaces is the one that was freezing chains, and because a per-subject rate
+  is the only form that can see a subject which has stopped moving -- a pooled
+  0.24 is equally consistent with every subject at 0.24 and with a third of
+  them frozen.  Set `iacceptPerId = FALSE` to recover the pooled behaviour.
 
   `saemControl(rwOmega=)` -- the `Omega`-shaped random-walk proposal NONMEM and
   Monolix both use -- makes no measurable difference on this model once the

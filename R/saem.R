@@ -425,7 +425,7 @@
     # nonMuThetaEvery: the step is cheap but the parameters it moves to are not
     # (see the gate in src/saem.cpp for the 3.8x measurement), and each step is
     # damped by pas(kiter) anyway.
-    .cfg$etaDistEvery <- as.integer(rxode2::rxGetControl(ui, "etaDistEvery", 1L))
+    .cfg$etaDistEvery <- as.integer(rxode2::rxGetControl(ui, "etaDistEvery", 20L))
     # etaDistOn must mean "the FAMILY M-step is wanted", not "the metadata
     # resolved".  .configsaem() sets it to 1 whenever etaDistInfo builds, and
     # that info builds when EITHER etaDistMstep or etaDistCorMstep is on -- so
