@@ -75,6 +75,25 @@
 ## Measured on a covariate model: rvCL collapsed 0.135 -> 0.020 and rvV1 to
 ## 0.005, CL landed at 3.36 against a truth near 5.1.
 ##
+## STATUS.  The peer route of section 4 is now built and reachable through
+## saemControl(etaDistLoglik = TRUE), which defaults FALSE -- so (a)-(d) above
+## remain what an ordinary fit runs.  What exists:
+##
+##   * R/etaDistPeer.R: the log-density table (21 declarable families, each
+##     checked against R's own density and by integrating to 1), the assembler
+##     (symbolic, one symengine load, thetas per family found by
+##     differentiating rather than by reading names), the compile, and the
+##     saem-side plan.
+##   * src/saem.cpp: odeSlotEtaDistLl in the swap pool, etaDistPeerAt() (one
+##     solve per subject, accumulated over evid == 0 records), etaDistPeerObj()
+##     (the Q-function and its exact gradient), etaDistPeerStep() (n1qn1 plus
+##     the usual SA damping).
+##
+## Steps (b) and (c) are what the peer replaces; step (d) it removes entirely,
+## because it optimizes the THETAS directly and never forms a population `a`
+## to invert.  The old route stays as the default until the peer route is
+## measured against it on the four gamma arms.
+##
 ## ---------------------------------------------------------------------------
 ## 3.  The general objective
 ## ---------------------------------------------------------------------------
