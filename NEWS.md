@@ -2,35 +2,56 @@
 
 ## New features
 
-- `saemControl(etaDistMstep=)` is usable after all, but its schedule is what
-  decides that.  The M-step on a declared random effect distribution is a valid
-  EM step given well-mixed posterior draws and collapses the distribution to a
+- `est="saem"`'s acceptance-rate adaptation had three defects that froze the
+  MCMC chain, two of them fatal on ordinary models.  On plain `theo_sd`
+  (one-compartment, `nBurn = 200`, `nEm = 100`) this package was returning an
+  objective of 182.94-212.75 where `origin/main` -- which has no acceptance
+  adaptation at all -- returns 122.5-123.3, with the residual SD inflated ~70%
+  and estimates that swung with the seed.  **Every subject was frozen**, and
+  acceptance was exactly 0.000 on all three kernels.
+
+  - Kernels 2 and 3 shared one scale vector while adapting it toward different
+    targets (`iaccept` ~0.234 for the multivariate block walk, `iacceptSingle`
+    ~0.44 for the one-at-a-time sweep).  Either adaptation alone was fine;
+    together they drove the scale to its clamp.  Each kernel now carries its
+    own scale.
+  - A row whose current objective went non-finite could never accept again --
+    `deltu` was NaN, so the comparison failed for every proposal, including
+    from the kernel that proposes from the prior and uses no step size at all.
+    That made a transient excursion permanent.  Such a row now accepts any
+    finite candidate, which is the correct Metropolis limit.
+  - `iacceptPerId` had the first defect in its own form, pooling both kernels'
+    acceptances against a single target.  It now counts and adapts per kernel.
+
+  After: objective 122.61 on the combination that was fatal, with both
+  adaptations reaching their targets simultaneously (0.232 and 0.446), and a
+  seed-to-seed spread of 0.2 objective units where it had been ~30.
+
+- `saemControl(etaDistMstep=)` is usable when it is given a mixing time between
+  updates.  The M-step on a declared random effect distribution is a valid EM
+  step given well-mixed posterior draws and collapses the distribution to a
   point mass given anything else, and at the default `etaDistEvery = 1` it runs
-  on every iteration -- the worst possible schedule for a step whose only
-  failure mode is being fed draws that have not moved.  Measured on Bauer's
-  gamma model (300 subjects, seed 99, `nBurn = nEm = 100`, M-step on):
+  on every iteration -- the worst possible schedule for such a step.  Measured
+  on Bauer's gamma model (300 subjects, seed 99, `nBurn = nEm = 100`), against
+  a known simulation truth:
 
-  | `etaDistEvery` | CL | rel.var CL | cor | MARE | subjects frozen | latent SD |
-  |---|---|---|---|---|---|---|
-  | 1 | 3.621 | 0.0000 | 0.996 | 73.7% | -- | -- |
-  | 5 | 4.754 | 0.0328 | 0.944 | 54.3% | 12% | 1.24 |
-  | 10 | 4.884 | 0.0443 | 0.439 | 24.0% | 6% | 1.16 |
-  | 20 | 5.109 | 0.0699 | 0.498 | 15.1% | 3% | 1.03 |
-  | 30 | 4.996 | 0.0719 | 0.529 | 18.4% | 8% | 0.94 |
-  | truth | 5.03 | 0.086 | 0.438 | | | 1.0 |
+  | configuration | rel.var CL | cor | MARE | subjects frozen |
+  |---|---|---|---|---|
+  | default | 0.0392 | 0.846 | 42.0% | 36% |
+  | `etaDistEvery = 20` | 0.0543 | 0.585 | 26.6% | 13% |
+  | `iacceptPerId = TRUE` | 0.0824 | 0.142 | 21.6% | 8% |
+  | both | 0.0885 | 0.476 | 10.0% | 1% |
+  | truth | 0.086 | 0.438 | | |
 
-  At `etaDistEvery = 20` this is the best configuration measured on that model
-  -- better than leaving the M-step off, and CL and V1 land closer to the
-  simulation truth than NONMEM's own estimates.  The frozen-subject share falls
-  from 30.7% to 3% and the pooled latent SD settles on its known target of 1.0.
-  The curve has an interior optimum (1 -> 5 -> 10 -> 20 improves, 30 is worse
-  than 20), which is what "the step needs about one mixing time between
-  updates" predicts.
+  The two are complementary rather than redundant: the per-subject adaptation
+  fixes the marginal spreads and drives the correlation too low, the spaced
+  copula M-step fixes the dependence and leaves the spreads low, and together
+  they land near both.  Neither default is changed pending more than one model
+  and seed.
 
-  `etaDistEvery` also gates `etaDistCorMstep`, which defaults `TRUE`, so the
-  schedule matters to fits that never opt into `etaDistMstep`.  The default is
-  unchanged pending more than one model and seed; `etaDistEvery = 20` is the
-  value to try first.
+  `saemControl(rwOmega=)` -- the `Omega`-shaped random-walk proposal NONMEM and
+  Monolix both use -- makes no measurable difference on this model once the
+  chain is mixing (41.2% against 42.0% alone, 9.9% against 10.0% combined).
 
 - The non-mu theta gradient falls back to Shi (2021) finite differences of the
   ORIGINAL model when the sensitivity solve's bad-solve ladder is exhausted,
