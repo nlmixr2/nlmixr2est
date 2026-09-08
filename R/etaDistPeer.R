@@ -384,3 +384,32 @@ rxUiGet.etaDistPeer <- function(x, ...) {
        etaIdx = .etaIdx, thetaIdx = .thetaIdx, declined = .declined)
 }
 attr(rxUiGet.etaDistPeer, "rstudio") <- emptyenv()
+
+#' Compile the peer model
+#'
+#' Mirrors `.impmapThetaSensModel()`: same FOCEi codegen parameter block
+#' (`THETA[]`/`ETA[]`), same cmt/interpolation preamble, same role-tagged
+#' artifact name so it cannot share a compiled shared object with another build
+#' of the same text.
+#'
+#' `eventSens` is not offered.  The peer has no states, so there is nothing for
+#' an event sensitivity to be taken with respect to.
+#'
+#' @param ui rxode2 ui, already expanded
+#' @return the compiled model, or `NULL` when there is no peer to compile
+#' @noRd
+#' @author Matthew L. Fidler
+.etaDistPeerModel <- function(ui) {
+  ## Through `$`, by name, so it is cached and `ui$etaDistPeer` stays printable
+  ## while debugging -- the same reason .impmapThetaSensModel() does.
+  .p <- ui$etaDistPeer
+  if (is.null(.p) || is.null(.p$peer)) return(NULL)
+  .cmt <- ui$foceiCmtPreModel
+  .interp <- ui$interpLinesStr
+  if (.interp != "") .cmt <- paste0(.cmt, "\n", .interp)
+  nlmixr2global$toRxParam <-
+    paste0(.uiGetThetaEtaParams(ui, TRUE), "\n", .cmt, "\n")
+  nlmixr2global$toRxDvidCmt <- .foceiToCmtLinesAndDvid(ui)
+  .toRx(.p$peer, "compiling declared-distribution model...",
+        role = "rxEtaDistLl")
+}
