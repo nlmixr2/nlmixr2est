@@ -594,6 +594,190 @@ Rcpp::List foceiGradAllFoceFR_(const arma::mat& a, const arma::cube& A,
 // 1-based); a residual sigma direction has a=A=Ath=0.  Omega derivatives: dOi
 // (neta,neta,nom), d2Oi (neta,neta,nom*nom) with slice a*nom+b, d2LD (nom,nom).
 // Shared core (called from the single-subject export and the batched OpenMP driver).
+// AGQ curvature separates node motion, conditional density, and weighted moments.
+struct FoceiAgqHessianWork {
+  int neta, ndir, ndirP, nom, nobs, np;
+  const FoceiHessianQuadrature *quadrature;
+  const mat &Ht, &etaP, &Oi, &d2LD, &Cee;
+  const vec &Cen, &ehat, &yv;
+  const ivec &censv, &dirP;
+  const vec &limv;
+  const cube &dOi, &d2Oi;
+  const std::vector<mat> &dHtD;
+  const std::vector<std::vector<mat>> &d2HtDD;
+  const std::vector<vec> &CpeRow;
+  std::function<mat(int)> dHt_p;
+  std::function<mat(int,int)> d2Ht_pp, d2HtEtaP;
+  std::function<vec(int,int)> eta2;
+  std::function<double(int,int)> Cpp;
+  mat cholHt, inverseChol, omega, determinant;
+  std::vector<mat> totalH, u, inverseFirst, inverseSecond;
+  std::vector<vec> modeSecond;
+
+  bool isDir(int p) const { return p < ndirP; }
+  int dOf(int p) const { return dirP[p]-1; }
+  int omc(int p) const { return p-ndirP; }
+
+  void prepare() {
+    if (!chol(cholHt,Ht) || rcond(Ht) < 1e-10 || !inv(inverseChol,trimatu(cholHt)))
+      throw std::runtime_error("AGQ node covariance is singular");
+    auto upperHalf = [](const mat &x) { mat out = trimatu(x); out.diag() *= 0.5; return out; };
+    totalH.resize(np); u.resize(np); inverseFirst.resize(np); inverseSecond.resize(np*np);
+    modeSecond.resize(np*np);
+    determinant.zeros(np,np);
+    for (int p = 0; p < np; ++p) {
+      totalH[p] = dHt_p(p);
+      for (int l = 0; l < neta; ++l) totalH[p] += dHtD[l]*etaP(l,p);
+      u[p] = upperHalf(inverseChol.t()*totalH[p]*inverseChol);
+      inverseFirst[p] = -inverseChol*u[p];
+    }
+    for (int p = 0; p < np; ++p) for (int q = p; q < np; ++q) {
+      modeSecond[p*np+q] = eta2(p,q);
+      modeSecond[q*np+p] = modeSecond[p*np+q];
+      mat totalSecond = d2Ht_pp(p,q);
+      for (int l = 0; l < neta; ++l) {
+        totalSecond += d2HtEtaP(p,l)*etaP(l,q)+d2HtEtaP(q,l)*etaP(l,p)+dHtD[l]*modeSecond[p*np+q][l];
+        for (int m = 0; m < neta; ++m) totalSecond += d2HtDD[l][m]*etaP(l,p)*etaP(m,q);
+      }
+      inverseSecond[p*np+q] = inverseChol*u[q]*u[p]-inverseChol*upperHalf(
+        inverseFirst[q].t()*totalH[p]*inverseChol+inverseChol.t()*totalSecond*inverseChol+
+        inverseChol.t()*totalH[p]*inverseFirst[q]);
+      inverseSecond[q*np+p] = inverseSecond[p*np+q];
+      determinant(p,q) = determinant(q,p) = Cpp(p,q)+dot(CpeRow[p],etaP.col(q))+
+        dot(CpeRow[q],etaP.col(p))+as_scalar(etaP.col(p).t()*Cee*etaP.col(q))+dot(Cen,modeSecond[p*np+q]);
+    }
+    omega = inv(Oi);
+  }
+
+  double density(const vec &eta, const FoceiHessianNode &e, vec &score, mat &partial) const {
+    vec residual = yv-e.f, df = -residual/e.R, dr = 0.5*(1/e.R-square(residual)/square(e.R));
+    vec dff = 1/e.R, dfr = residual/square(e.R), drr = square(residual)/pow(e.R,3)-0.5/square(e.R);
+    double phi = 0.5*as_scalar(eta.t()*Oi*eta);
+    for (int o = 0; o < nobs; ++o) {
+      double ll = -0.5*(std::log(e.R[o])+residual[o]*residual[o]/e.R[o]);
+      int cens = censv.n_elem == (unsigned)nobs ? censv[o] : 0;
+      double limit = limv.n_elem == (unsigned)nobs ? limv[o] : R_NegInf;
+      phi -= doCensNormal1(cens,yv[o],limit,ll,e.f[o],e.R[o],0);
+      if (cens != 0 || R_FINITE(limit)) {
+        double cp[9] = {};
+        censNormalPartials(cens,yv[o],limit,e.f[o],e.R[o],2,cp);
+        df[o] = cp[0]; dr[o] = cp[1]; dff[o] = cp[2]; dfr[o] = cp[3]; drr[o] = cp[4];
+      }
+    }
+    score = e.a.t()*df+e.aR.t()*dr;
+    partial.zeros(ndir,ndir);
+    for (int p = 0; p < ndir; ++p) for (int q = p; q < ndir; ++q) {
+      double v = 0;
+      for (int o = 0; o < nobs; ++o) {
+        double ap = e.a(o,p), aq = e.a(o,q);
+        double rp = e.aR(o,p), rq = e.aR(o,q);
+        v += dff[o]*ap*aq+dfr[o]*(ap*rq+rp*aq)+drr[o]*rp*rq+
+          df[o]*e.A(o,p,q)+dr[o]*e.AR(o,p,q);
+      }
+      partial(p,q) = partial(q,p) = v;
+    }
+    return phi;
+  }
+
+  void nodeDerivatives(const vec &node, const vec &eta, const vec &score,
+                       const mat &partial, vec &totalScore, mat &nodeHessian) const {
+    vec etaScore = Oi*eta+score.head(neta);
+    totalScore.set_size(np);
+    mat etaHessian = Oi+partial.submat(0,0,neta-1,neta-1), mixed(neta,np), motion(neta,np);
+    for (int p = 0; p < np; ++p) {
+      double direct;
+      if (isDir(p)) {
+        mixed.col(p) = partial.submat(0,dOf(p),neta-1,dOf(p));
+        direct = score[dOf(p)];
+      } else {
+        mixed.col(p) = dOi.slice(omc(p))*eta;
+        direct = 0.5*as_scalar(eta.t()*dOi.slice(omc(p))*eta)-0.5*trace(omega*dOi.slice(omc(p)));
+      }
+      motion.col(p) = etaP.col(p)+M_SQRT2*inverseFirst[p]*node;
+      totalScore[p] = direct+dot(etaScore,motion.col(p));
+    }
+    nodeHessian.zeros(np,np);
+    for (int p = 0; p < np; ++p) for (int q = p; q < np; ++q) {
+      double v = 0;
+      if (isDir(p) && isDir(q)) v = partial(dOf(p),dOf(q));
+      else if (!isDir(p) && !isDir(q)) v = 0.5*as_scalar(eta.t()*d2Oi.slice(omc(p)*nom+omc(q))*eta)+0.5*d2LD(omc(p),omc(q));
+      v += dot(mixed.col(p),motion.col(q))+dot(mixed.col(q),motion.col(p))+
+        as_scalar(motion.col(p).t()*etaHessian*motion.col(q))+
+        dot(etaScore,modeSecond[p*np+q]+M_SQRT2*inverseSecond[p*np+q]*node);
+      nodeHessian(p,q) = nodeHessian(q,p) = v;
+    }
+  }
+
+  mat calculate() {
+    prepare();
+    mat sumH(np,np,fill::zeros), centeredGG(np,np,fill::zeros);
+    vec meanG(np,fill::zeros);
+    double maxLogWeight = -datum::inf, totalWeight = 0;
+    for (unsigned int k = 0; k < quadrature->points.n_rows; ++k) {
+      vec node = quadrature->points.row(k).t(), eta = ehat+M_SQRT2*inverseChol*node;
+      FoceiHessianNode e;
+      if (!quadrature->evaluate(eta,e)) throw std::runtime_error("AGQ sensitivity solve failed");
+      vec score, totalScore;
+      mat partial, nodeHessian;
+      double phi = density(eta,e,score,partial);
+      nodeDerivatives(node,eta,score,partial,totalScore,nodeHessian);
+      double logWeight = accu(log(quadrature->weights.row(k)))+dot(node,node)-phi;
+      if (!std::isfinite(logWeight) || !totalScore.is_finite() || !nodeHessian.is_finite())
+        throw std::runtime_error("Non-finite AGQ curvature");
+      if (logWeight > maxLogWeight) {
+        double scale = std::exp(maxLogWeight-logWeight);
+        sumH *= scale; centeredGG *= scale; totalWeight *= scale; maxLogWeight = logWeight;
+      }
+      // Centered weighted moments avoid subtracting two large score products.
+      double weight = std::exp(logWeight-maxLogWeight), nextWeight = totalWeight+weight;
+      vec delta = totalScore-meanG;
+      centeredGG += weight*totalWeight/nextWeight*(delta*delta.t());
+      meanG += weight/nextWeight*delta;
+      sumH += weight*nodeHessian;
+      totalWeight = nextWeight;
+    }
+    return determinant+(sumH-centeredGG)/totalWeight;
+  }
+};
+
+static void foceiHessianDeterminant(const mat &a, const cube &A, const cube &Ath,
+                                    const mat &aR, const cube &AR, const cube &AthR,
+                                    const vec &Rv, const mat &Oi, int neta, int ndir,
+                                    mat &Ht, std::vector<mat> &dHtD,
+                                    std::vector<std::vector<mat>> &d2HtDD) {
+  int nobs = a.n_rows;
+  vec iR = 1.0 / Rv, iR2 = square(iR), iR3 = pow(iR, 3), iR4 = pow(iR, 4);
+  auto Ai = [&](const cube &T, int o, int l, int s, int t) { return T(o,l,s+t*ndir); };
+  // determinant Ht = Oi + sum(a a / R + 0.5 aR aR / R^2); dHtD / d2HtDD by (f,R) chain
+  Ht = Oi;
+  for (int l = 0; l < neta; l++) for (int m = 0; m < neta; m++) {
+    double v = 0.0; for (int o = 0; o < nobs; o++) v += a(o, l) * a(o, m) * iR[o] + 0.5 * aR(o, l) * aR(o, m) * iR2[o];
+    Ht(l, m) += v;
+  }
+  dHtD.resize(ndir);
+  for (int s = 0; s < ndir; s++) { mat D(neta, neta, fill::zeros);
+    for (int l = 0; l < neta; l++) for (int m = 0; m < neta; m++) { double v = 0.0;
+      for (int o = 0; o < nobs; o++)
+        v += (A(o, l, s) * a(o, m) + a(o, l) * A(o, m, s)) * iR[o] - a(o, l) * a(o, m) * aR(o, s) * iR2[o] +
+          0.5 * (AR(o, l, s) * aR(o, m) + aR(o, l) * AR(o, m, s)) * iR2[o] - aR(o, l) * aR(o, m) * aR(o, s) * iR3[o];
+      D(l, m) = v; }
+    dHtD[s] = D; }
+  d2HtDD.assign(ndir, std::vector<mat>(ndir));
+  for (int s = 0; s < ndir; s++) for (int t = 0; t < ndir; t++) { mat D(neta, neta, fill::zeros);
+    for (int l = 0; l < neta; l++) for (int m = 0; m < neta; m++) { double v = 0.0;
+      for (int o = 0; o < nobs; o++)
+        v += (Ai(Ath, o, l, s, t) * a(o, m) + A(o, l, s) * A(o, m, t) + A(o, l, t) * A(o, m, s) + a(o, l) * Ai(Ath, o, m, s, t)) * iR[o] -
+          (A(o, l, s) * a(o, m) + a(o, l) * A(o, m, s)) * aR(o, t) * iR2[o] -
+          (A(o, l, t) * a(o, m) + a(o, l) * A(o, m, t)) * aR(o, s) * iR2[o] - a(o, l) * a(o, m) * AR(o, s, t) * iR2[o] +
+          2.0 * a(o, l) * a(o, m) * aR(o, s) * aR(o, t) * iR3[o] +
+          0.5 * (Ai(AthR, o, l, s, t) * aR(o, m) + AR(o, l, s) * AR(o, m, t) + AR(o, l, t) * AR(o, m, s) + aR(o, l) * Ai(AthR, o, m, s, t)) * iR2[o] -
+          (AR(o, l, s) * aR(o, m) + aR(o, l) * AR(o, m, s)) * aR(o, t) * iR3[o] -
+          (AR(o, l, t) * aR(o, m) + aR(o, l) * AR(o, m, t)) * aR(o, s) * iR3[o] - aR(o, l) * aR(o, m) * AR(o, s, t) * iR3[o] +
+          3.0 * aR(o, l) * aR(o, m) * aR(o, s) * aR(o, t) * iR4[o];
+      D(l, m) = v; }
+    d2HtDD[s][t] = D; }
+}
+
 arma::mat foceiRSubjectFR_(const arma::mat& a, const arma::cube& A, const arma::cube& Ath,
                            const arma::mat& aR, const arma::cube& AR, const arma::cube& AthR,
                            const arma::mat& dvSens, const arma::mat& dvSens2,
@@ -613,7 +797,6 @@ arma::mat foceiRSubjectFR_(const arma::mat& a, const arma::cube& A, const arma::
   // normal obs); the determinant below stays Gauss-Newton (censOption="gauss").
   vec rfff;
   censScoreCoefs(censv, limv, fv, yv, Rv, nobs, rf, rR, rff, rfR, rRR, rffR, rfRR, rRRR, rfff);
-  vec iR = 1.0 / Rv, iR2 = square(iR), iR3 = pow(iR, 3), iR4 = pow(iR, 4);
   auto Ai = [&](const arma::cube& T, int o, int l, int s, int t) { return T(o, l, s + t * ndir); };
   // DV-transform chain (estimated boxCox/yeoJohnson lambda): the residual pred sensitivity
   // ra = a - dy'/dlambda (dvSens, lambda column only) enters the RHO residual terms; the
@@ -653,35 +836,11 @@ arma::mat foceiRSubjectFR_(const arma::mat& a, const arma::cube& A, const arma::
     }
     Tn(l, s, t) = v;
   }
-  // determinant Ht = Oi + sum(a a / R + 0.5 aR aR / R^2); dHtD / d2HtDD by (f,R) chain
-  mat Ht = Oi;
-  for (int l = 0; l < neta; l++) for (int m = 0; m < neta; m++) {
-    double v = 0.0; for (int o = 0; o < nobs; o++) v += a(o, l) * a(o, m) * iR[o] + 0.5 * aR(o, l) * aR(o, m) * iR2[o];
-    Ht(l, m) += v;
-  }
+  mat Ht;
+  std::vector<mat> dHtD;
+  std::vector<std::vector<mat>> d2HtDD;
+  foceiHessianDeterminant(a,A,Ath,aR,AR,AthR,Rv,Oi,neta,ndir,Ht,dHtD,d2HtDD);
   mat Hti = inv(Ht);
-  std::vector<mat> dHtD(ndir);
-  for (int s = 0; s < ndir; s++) { mat D(neta, neta, fill::zeros);
-    for (int l = 0; l < neta; l++) for (int m = 0; m < neta; m++) { double v = 0.0;
-      for (int o = 0; o < nobs; o++)
-        v += (A(o, l, s) * a(o, m) + a(o, l) * A(o, m, s)) * iR[o] - a(o, l) * a(o, m) * aR(o, s) * iR2[o] +
-          0.5 * (AR(o, l, s) * aR(o, m) + aR(o, l) * AR(o, m, s)) * iR2[o] - aR(o, l) * aR(o, m) * aR(o, s) * iR3[o];
-      D(l, m) = v; }
-    dHtD[s] = D; }
-  std::vector<std::vector<mat> > d2HtDD(ndir, std::vector<mat>(ndir));
-  for (int s = 0; s < ndir; s++) for (int t = 0; t < ndir; t++) { mat D(neta, neta, fill::zeros);
-    for (int l = 0; l < neta; l++) for (int m = 0; m < neta; m++) { double v = 0.0;
-      for (int o = 0; o < nobs; o++)
-        v += (Ai(Ath, o, l, s, t) * a(o, m) + A(o, l, s) * A(o, m, t) + A(o, l, t) * A(o, m, s) + a(o, l) * Ai(Ath, o, m, s, t)) * iR[o] -
-          (A(o, l, s) * a(o, m) + a(o, l) * A(o, m, s)) * aR(o, t) * iR2[o] -
-          (A(o, l, t) * a(o, m) + a(o, l) * A(o, m, t)) * aR(o, s) * iR2[o] - a(o, l) * a(o, m) * AR(o, s, t) * iR2[o] +
-          2.0 * a(o, l) * a(o, m) * aR(o, s) * aR(o, t) * iR3[o] +
-          0.5 * (Ai(AthR, o, l, s, t) * aR(o, m) + AR(o, l, s) * AR(o, m, t) + AR(o, l, t) * AR(o, m, s) + aR(o, l) * Ai(AthR, o, m, s, t)) * iR2[o] -
-          (AR(o, l, s) * aR(o, m) + aR(o, l) * AR(o, m, s)) * aR(o, t) * iR3[o] -
-          (AR(o, l, t) * aR(o, m) + aR(o, l) * AR(o, m, t)) * aR(o, s) * iR3[o] - aR(o, l) * aR(o, m) * AR(o, s, t) * iR3[o] +
-          3.0 * aR(o, l) * aR(o, m) * aR(o, s) * aR(o, t) * iR4[o];
-      D(l, m) = v; }
-    d2HtDD[s][t] = D; }
   vec Cen(neta); for (int l = 0; l < neta; l++) Cen[l] = 0.5 * trace(Hti * dHtD[l]);
   mat Cee(neta, neta, fill::zeros);
   for (int s = 0; s < neta; s++) for (int t = 0; t < neta; t++)
@@ -722,107 +881,9 @@ arma::mat foceiRSubjectFR_(const arma::mat& a, const arma::cube& A, const arma::
   std::vector<vec> CpeRow(np);
   for (int p = 0; p < np; p++) { vec r(neta); for (int l = 0; l < neta; l++) r[l] = Cpe(p, l); CpeRow[p] = r; }
   if (quadrature != nullptr) {
-    mat cholHt, inverseChol;
-    if (!chol(cholHt,Ht) || rcond(Ht) < 1e-10 || !inv(inverseChol,trimatu(cholHt)))
-      throw std::runtime_error("AGQ node covariance is singular");
-    auto upperHalf = [](const mat &x) { mat out = trimatu(x); out.diag() *= 0.5; return out; };
-    std::vector<mat> totalH(np), u(np), inverseFirst(np), inverseSecond(np*np);
-    std::vector<vec> modeSecond(np*np);
-    mat determinant(np,np,fill::zeros);
-    for (int p = 0; p < np; ++p) {
-      totalH[p] = dHt_p(p);
-      for (int l = 0; l < neta; ++l) totalH[p] += dHtD[l]*etaP(l,p);
-      u[p] = upperHalf(inverseChol.t()*totalH[p]*inverseChol);
-      inverseFirst[p] = -inverseChol*u[p];
-    }
-    for (int p = 0; p < np; ++p) for (int q = p; q < np; ++q) {
-      modeSecond[p*np+q] = eta2(p,q);
-      modeSecond[q*np+p] = modeSecond[p*np+q];
-      mat totalSecond = d2Ht_pp(p,q);
-      for (int l = 0; l < neta; ++l) {
-        totalSecond += d2HtEtaP(p,l)*etaP(l,q)+d2HtEtaP(q,l)*etaP(l,p)+dHtD[l]*modeSecond[p*np+q][l];
-        for (int m = 0; m < neta; ++m) totalSecond += d2HtDD[l][m]*etaP(l,p)*etaP(m,q);
-      }
-      inverseSecond[p*np+q] = inverseChol*u[q]*u[p]-inverseChol*upperHalf(
-        inverseFirst[q].t()*totalH[p]*inverseChol+inverseChol.t()*totalSecond*inverseChol+
-        inverseChol.t()*totalH[p]*inverseFirst[q]);
-      inverseSecond[q*np+p] = inverseSecond[p*np+q];
-      determinant(p,q) = determinant(q,p) = Cpp(p,q)+dot(CpeRow[p],etaP.col(q))+
-        dot(CpeRow[q],etaP.col(p))+as_scalar(etaP.col(p).t()*Cee*etaP.col(q))+dot(Cen,modeSecond[p*np+q]);
-    }
-    mat omega = inv(Oi), sumH(np,np,fill::zeros), centeredGG(np,np,fill::zeros);
-    vec meanG(np,fill::zeros);
-    double maxLogWeight = -datum::inf, totalWeight = 0;
-    for (unsigned int k = 0; k < quadrature->points.n_rows; ++k) {
-      vec node = quadrature->points.row(k).t(), eta = ehat+M_SQRT2*inverseChol*node;
-      FoceiHessianNode e;
-      if (!quadrature->evaluate(eta,e)) throw std::runtime_error("AGQ sensitivity solve failed");
-      vec residual = yv-e.f, df = -residual/e.R, dr = 0.5*(1/e.R-square(residual)/square(e.R));
-      vec dff = 1/e.R, dfr = residual/square(e.R), drr = square(residual)/pow(e.R,3)-0.5/square(e.R);
-      double phi = 0.5*as_scalar(eta.t()*Oi*eta);
-      for (int o = 0; o < nobs; ++o) {
-        double ll = -0.5*(std::log(e.R[o])+residual[o]*residual[o]/e.R[o]);
-        int cens = censv.n_elem == (unsigned)nobs ? censv[o] : 0;
-        double limit = limv.n_elem == (unsigned)nobs ? limv[o] : R_NegInf;
-        phi -= doCensNormal1(cens,yv[o],limit,ll,e.f[o],e.R[o],0);
-        if (cens != 0 || R_FINITE(limit)) {
-          double cp[9] = {};
-          censNormalPartials(cens,yv[o],limit,e.f[o],e.R[o],2,cp);
-          df[o] = cp[0]; dr[o] = cp[1]; dff[o] = cp[2]; dfr[o] = cp[3]; drr[o] = cp[4];
-        }
-      }
-      vec score = e.a.t()*df+e.aR.t()*dr;
-      mat partial(ndir,ndir,fill::zeros);
-      for (int p = 0; p < ndir; ++p) for (int q = p; q < ndir; ++q) {
-        double v = 0;
-        for (int o = 0; o < nobs; ++o) {
-          double ap = e.a(o,p), aq = e.a(o,q);
-          double rp = e.aR(o,p), rq = e.aR(o,q);
-          v += dff[o]*ap*aq+dfr[o]*(ap*rq+rp*aq)+drr[o]*rp*rq+
-            df[o]*e.A(o,p,q)+dr[o]*e.AR(o,p,q);
-        }
-        partial(p,q) = partial(q,p) = v;
-      }
-      vec etaScore = Oi*eta+score.head(neta), totalScore(np);
-      mat etaHessian = Oi+partial.submat(0,0,neta-1,neta-1), mixed(neta,np), motion(neta,np);
-      for (int p = 0; p < np; ++p) {
-        double direct;
-        if (isDir(p)) {
-          mixed.col(p) = partial.submat(0,dOf(p),neta-1,dOf(p));
-          direct = score[dOf(p)];
-        } else {
-          mixed.col(p) = dOi.slice(omc(p))*eta;
-          direct = 0.5*as_scalar(eta.t()*dOi.slice(omc(p))*eta)-0.5*trace(omega*dOi.slice(omc(p)));
-        }
-        motion.col(p) = etaP.col(p)+M_SQRT2*inverseFirst[p]*node;
-        totalScore[p] = direct+dot(etaScore,motion.col(p));
-      }
-      mat nodeHessian(np,np,fill::zeros);
-      for (int p = 0; p < np; ++p) for (int q = p; q < np; ++q) {
-        double v = 0;
-        if (isDir(p) && isDir(q)) v = partial(dOf(p),dOf(q));
-        else if (!isDir(p) && !isDir(q)) v = 0.5*as_scalar(eta.t()*d2Oi.slice(omc(p)*nom+omc(q))*eta)+0.5*d2LD(omc(p),omc(q));
-        v += dot(mixed.col(p),motion.col(q))+dot(mixed.col(q),motion.col(p))+
-          as_scalar(motion.col(p).t()*etaHessian*motion.col(q))+
-          dot(etaScore,modeSecond[p*np+q]+M_SQRT2*inverseSecond[p*np+q]*node);
-        nodeHessian(p,q) = nodeHessian(q,p) = v;
-      }
-      double logWeight = accu(log(quadrature->weights.row(k)))+dot(node,node)-phi;
-      if (!std::isfinite(logWeight) || !totalScore.is_finite() || !nodeHessian.is_finite())
-        throw std::runtime_error("Non-finite AGQ curvature");
-      if (logWeight > maxLogWeight) {
-        double scale = std::exp(maxLogWeight-logWeight);
-        sumH *= scale; centeredGG *= scale; totalWeight *= scale; maxLogWeight = logWeight;
-      }
-      // Centered weighted moments avoid subtracting two large score products.
-      double weight = std::exp(logWeight-maxLogWeight), nextWeight = totalWeight+weight;
-      vec delta = totalScore-meanG;
-      centeredGG += weight*totalWeight/nextWeight*(delta*delta.t());
-      meanG += weight/nextWeight*delta;
-      sumH += weight*nodeHessian;
-      totalWeight = nextWeight;
-    }
-    return determinant+(sumH-centeredGG)/totalWeight;
+    FoceiAgqHessianWork work{neta,ndir,ndirP,nom,nobs,np,quadrature,Ht,etaP,Oi,d2LD,Cee,
+      Cen,ehat,yv,censv,dirP,limv,dOi,d2Oi,dHtD,d2HtDD,CpeRow,dHt_p,d2Ht_pp,d2HtEtaP,eta2,Cpp};
+    return work.calculate();
   }
   mat R(np, np, fill::zeros);
   for (int aa = 0; aa < np; aa++) for (int bb = aa; bb < np; bb++) {

@@ -3339,6 +3339,79 @@ arma::vec getGradForOptimHess(arma::vec &t, int id) {
 
 bool _finalObfCalc = false;
 
+static bool conditionalInnerPartials(rx_solving_options_ind *ind, int kk2,
+                                     int ne, const double *lhs, double *cp) {
+  int p = op_focei.predOffset;
+  double f = lhs[p], variance = lhs[p+ne+1];
+  if (!R_FINITE(variance) || variance <= std::sqrt(DBL_EPSILON)) return false;
+  double y = tbs(getIndDv(ind, kk2));
+  double limit = hasRxLimit(rx) ? getIndLimit(ind, kk2) : R_NegInf;
+  if (ISNA(limit)) limit = R_NegInf;
+  if (R_FINITE(limit)) limit = tbs(limit);
+  int cens = hasRxCens(rx) ? getIndCens(ind, kk2) : 0;
+  double err = f-y;
+  cp[0] = err/variance;
+  cp[1] = 0.5/variance-0.5*err*err/(variance*variance);
+  cp[2] = 1.0/variance;
+  cp[3] = -err/(variance*variance);
+  cp[4] = -0.5/(variance*variance)+err*err/(variance*variance*variance);
+  if (cens != 0 || R_FINITE(limit)) censNormalPartials(cens,y,limit,f,variance,2,cp);
+  return true;
+}
+
+// Evaluate the separate second-order model in this subject's pool slot.
+static bool calcModelEtaHessian(double *eta, int id, focei_ind *fInd,
+                                rx_solving_options_ind *ind, mat &H, bool conditional) {
+  rx = getRxSolve_();
+  int _rxId = getRxId(id);
+  rx_solving_options *op = getSolvingOptions(rx);
+  int ne = op_focei.neta;
+  // This re-solve overwrites ind->solve with the 2nd-order model; force the next likInner0
+  // for this subject to re-solve the inner model (do not let the eta*-unchanged short-circuit
+  // read the rxHess2 buffer as the inner solve) -- mirrors impThetaSensCollect.
+  fInd->setup = 0;
+  OdeSwapScope _h2Guard(odeSlotHess2, ind, op);
+  for (int j = 0; j < ne; ++j) setIndParPtr(ind, op_focei.etaTrans[j], eta[j]);
+  setIndSolve(ind, -1);
+  resetOpBadSolve(op);
+  odeSwapSolveInd(odeSlotHess2, _rxId);
+  if (indHasBadSolve(op, ind)) return false;              // 2nd-order solve failed at eta*
+  iniSubjectE(_rxId, 1, ind, op, rx, rxHess2.update_inis);
+  OdeSwapCmtScope _h2Cmt(odeSlotHess2, op, ind);   // pooled table -> hess2's basis
+  double *lhs = _h2Guard.lhs();   // private buffer; never rxode2's inner-sized slice
+  for (int jj = 0; jj < getIndNallTimes(ind); ++jj) {
+    setIndIdx(ind, jj);
+    int kk2 = getIndIx(ind, jj);
+    if (getIndEvid(ind, kk2) != 0) continue;              // observations only
+    double curT2 = getTime(kk2, ind);
+    rxHess2.calc_lhs(_rxId, curT2, getOpIndSolve(op, ind, jj), lhs);
+    double cp[9] = {};
+    if (conditional && !conditionalInnerPartials(ind,kk2,ne,lhs,cp)) return false;
+    int r = 0;                                            // rx__d2pred_ order: j-outer, i-inner (i<=j)
+    for (int jc = 0; jc < ne; ++jc)
+      for (int ic = 0; ic <= jc; ++ic) {
+        if (conditional) {
+          int p = op_focei.predOffset;
+          double fi = lhs[p+ic+1], fj = lhs[p+jc+1];
+          double ri = lhs[p+ne+ic+2], rj = lhs[p+ne+jc+2];
+          H(ic,jc) += cp[2]*fi*fj+cp[3]*(fi*rj+ri*fj)+cp[4]*ri*rj+
+            cp[0]*lhs[op_focei.conditionalHess2Offset+r]+
+            cp[1]*lhs[op_focei.varianceHess2Offset+r];
+        } else {
+          H(ic, jc) += -lhs[op_focei.predHess2Offset + r];
+        }
+        ++r;
+      }
+  }
+  for (int jc = 0; jc < ne; ++jc)
+    for (int ic = 0; ic <= jc; ++ic) {
+      H(ic, jc) += curOmegaInv()(ic, jc);
+      if (!R_finite(H(ic, jc))) return false;
+      H(jc, ic) = H(ic, jc);
+    }
+  return true;
+}
+
 bool calcEtaHessian(double *eta, int likId, int id,
                     focei_ind *fInd,
                     rx_solving_options_ind *ind,
@@ -3349,80 +3422,7 @@ bool calcEtaHessian(double *eta, int likId, int id,
   bool conditional = forOptimization && op_focei.conditionalHess2Offset >= 0;
   if (conditional) ++op_focei.nConditionalInnerHessian;
   if (op_focei.predHess2Offset >= 0 || conditional) {
-    // Exact log-likelihood inner Hessian (fast=TRUE ll()/generalized): rx_pred_ is the
-    // per-observation log-density, so the inner model's rx__d2pred_i_j__ column is
-    // d2(logLik)/deta_i deta_j.  Assemble H = Omega^-1 - sum_obs d2 analytically (the exact
-    // inner Hessian), mirroring the Gaussian Gauss-Newton assembly (Omega^-1 added
-    // explicitly, unlike the finite-difference branch which folds it into the gradient).
-    // The n1qn1 Newton solved only the cheap 1st-order inner model, so re-solve the SEPARATE
-    // 2nd-order model (rxHess2) for THIS subject once at eta* and read rx__d2pred_ =
-    // d2(logLik)/deta2.  The shared pool is sized for rxHess2, so switch this subject's
-    // neqOverride to hess2Neq for the solve (restored on branch exit to the inner override).
-    // OdeSwapScope supplies the lhs buffer: rxode2's per-thread slice when it is
-    // wide enough for this model, a private one otherwise.
-    rx = getRxSolve_();
-    int _rxId = getRxId(id);
-    rx_solving_options *op = getSolvingOptions(rx);
-    int ne = op_focei.neta;
-    // This re-solve overwrites ind->solve with the 2nd-order model; force the next likInner0
-    // for this subject to re-solve the inner model (do not let the eta*-unchanged short-circuit
-    // read the rxHess2 buffer as the inner solve) -- mirrors impThetaSensCollect.
-    fInd->setup = 0;
-    OdeSwapScope _h2Guard(odeSlotHess2, ind, op);
-    for (int j = 0; j < ne; ++j) setIndParPtr(ind, op_focei.etaTrans[j], eta[j]);
-    setIndSolve(ind, -1);
-    resetOpBadSolve(op);
-    odeSwapSolveInd(odeSlotHess2, _rxId);
-    if (indHasBadSolve(op, ind)) return false;              // 2nd-order solve failed at eta*
-    iniSubjectE(_rxId, 1, ind, op, rx, rxHess2.update_inis);
-    OdeSwapCmtScope _h2Cmt(odeSlotHess2, op, ind);   // pooled table -> hess2's basis
-    double *lhs = _h2Guard.lhs();   // private buffer; never rxode2's inner-sized slice
-    for (int jj = 0; jj < getIndNallTimes(ind); ++jj) {
-      setIndIdx(ind, jj);
-      int kk2 = getIndIx(ind, jj);
-      if (getIndEvid(ind, kk2) != 0) continue;              // observations only
-      double curT2 = getTime(kk2, ind);
-      rxHess2.calc_lhs(_rxId, curT2, getOpIndSolve(op, ind, jj), lhs);
-      double cp[9] = {};
-      if (conditional) {
-        int p = op_focei.predOffset;
-        double f = lhs[p], variance = lhs[p+ne+1];
-        if (!R_FINITE(variance) || variance <= std::sqrt(DBL_EPSILON)) return false;
-        double y = tbs(getIndDv(ind, kk2));
-        double limit = hasRxLimit(rx) ? getIndLimit(ind, kk2) : R_NegInf;
-        if (ISNA(limit)) limit = R_NegInf;
-        if (R_FINITE(limit)) limit = tbs(limit);
-        int cens = hasRxCens(rx) ? getIndCens(ind, kk2) : 0;
-        double err = f-y;
-        cp[0] = err/variance;
-        cp[1] = 0.5/variance-0.5*err*err/(variance*variance);
-        cp[2] = 1.0/variance;
-        cp[3] = -err/(variance*variance);
-        cp[4] = -0.5/(variance*variance)+err*err/(variance*variance*variance);
-        if (cens != 0 || R_FINITE(limit)) censNormalPartials(cens,y,limit,f,variance,2,cp);
-      }
-      int r = 0;                                            // rx__d2pred_ order: j-outer, i-inner (i<=j)
-      for (int jc = 0; jc < ne; ++jc)
-        for (int ic = 0; ic <= jc; ++ic) {
-          if (conditional) {
-            int p = op_focei.predOffset;
-            double fi = lhs[p+ic+1], fj = lhs[p+jc+1];
-            double ri = lhs[p+ne+ic+2], rj = lhs[p+ne+jc+2];
-            H(ic,jc) += cp[2]*fi*fj+cp[3]*(fi*rj+ri*fj)+cp[4]*ri*rj+
-              cp[0]*lhs[op_focei.conditionalHess2Offset+r]+
-              cp[1]*lhs[op_focei.varianceHess2Offset+r];
-          } else {
-            H(ic, jc) += -lhs[op_focei.predHess2Offset + r];
-          }
-          ++r;
-        }
-    }
-    for (int jc = 0; jc < ne; ++jc)
-      for (int ic = 0; ic <= jc; ++ic) {
-        H(ic, jc) += curOmegaInv()(ic, jc);
-        if (!R_finite(H(ic, jc))) return false;
-        H(jc, ic) = H(ic, jc);
-      }
+    if (!calcModelEtaHessian(eta,id,fInd,ind,H,conditional)) return false;
   } else if (op_focei.needOptimHess) {
     arma::vec gr0(op_focei.neta, fill::zeros);
     std::copy(&fInd->lp[0], &fInd->lp[0] + op_focei.neta, &gr0[0]);
@@ -3658,10 +3658,18 @@ bool calcEtaHessian(double *eta, int likId, int id,
 }
 
 // FOCE+ defines its EBE by the truncated-score root with live variance.
-static bool refineFocePlusEta(double *eta, int id) {
-  if (op_focei.interaction != 0 || op_focei.foceType != 1 || op_focei.fo ||
+static bool focePlusRefinementRequired() {
+  return !(op_focei.interaction != 0 || op_focei.foceType != 1 || op_focei.fo ||
       op_focei.needOptimHess || op_focei.maxInnerIterations <= 0 ||
-      op_focei.freezeOde || op_focei.neta == 0) return true;
+      op_focei.freezeOde || op_focei.neta == 0);
+}
+
+static bool focePlusSmallStep(double norm, double decrement) {
+  return norm < 1e-3 && decrement >= 0 && decrement <= 1e-9;
+}
+
+static bool refineFocePlusEta(double *eta, int id) {
+  if (!focePlusRefinementRequired()) return true;
   auto *ind = &inds_focei[id];
   arma::vec x(eta,op_focei.neta), g(op_focei.neta);
   auto score = [&](arma::vec &at, arma::vec &out) {
@@ -3699,7 +3707,7 @@ static bool refineFocePlusEta(double *eta, int id) {
       }
       if (!accepted) {
         double decrement = arma::dot(g,step);
-        return norm < 1e-3 && decrement >= 0 && decrement <= 1e-9 && finish();
+        return focePlusSmallStep(norm,decrement) && finish();
       }
     }
     return arma::abs(g).max() < 1e-9 && finish();
@@ -24093,13 +24101,123 @@ static void foceiHessianPrepare(void *ptr) {
   } catch (...) { d.status = -3; }
 }
 
+template <typename Solve>
+static bool foceiHessianThird(FoceiHessianCall &d, const FoceiGradPooledSetup &g,
+                               const std::vector<VaeOuterE> &base, bool foce, Solve &solve,
+                               std::vector<arma::cube> &third, std::vector<arma::cube> &thirdR) {
+  int ns = base.size(), ne = g.neta, nd = g.nd+g.nsg;
+  for (int id = 0; id < ns; ++id) {
+    third[id].zeros(base[id].nobs,ne,nd*nd);
+    if (!foce) thirdR[id].zeros(base[id].nobs,ne,nd*nd);
+  }
+  {
+    OdeSolveTolGuard tolerance(std::min(1e-12,std::min(op_focei.fitAtol,op_focei.fitRtol)));
+    for (int l = 0; l < ne; ++l) {
+      double h = d.step*std::max(1.0,arma::abs(d.eta.col(l)).max());
+      std::vector<std::vector<VaeOuterE>> probe(4,std::vector<VaeOuterE>(ns));
+      for (int k = 0; k < 4; ++k) {
+        arma::mat eta = d.eta;
+        eta.col(l) += (k%2 ? -1 : 1)*h*(k < 2 ? 1 : 0.5);
+        if (!solve(eta,probe[k])) return false;
+        for (int id = 0; id < ns; ++id) if (probe[k][id].nobs != base[id].nobs) return false;
+      }
+      for (int id = 0; id < ns; ++id) for (int a = 0; a < nd; ++a) for (int b = 0; b < nd; ++b) {
+        third[id].slice(a+b*nd).col(l) =
+          (8*(probe[2][id].A.slice(b).col(a)-probe[3][id].A.slice(b).col(a))-
+           (probe[0][id].A.slice(b).col(a)-probe[1][id].A.slice(b).col(a)))/(6*h);
+        if (!foce) thirdR[id].slice(a+b*nd).col(l) =
+          (8*(probe[2][id].AR.slice(b).col(a)-probe[3][id].AR.slice(b).col(a))-
+           (probe[0][id].AR.slice(b).col(a)-probe[1][id].AR.slice(b).col(a)))/(6*h);
+      }
+    }
+  }
+  return true;
+}
+
+struct FoceiHessianSubjects {
+  FoceiHessianCall &d;
+  const FoceiGradPooledSetup &g;
+  const std::vector<VaeOuterE> &base, &population;
+  const std::vector<arma::cube> &third, &thirdR;
+  const arma::cube &doi, &d2oi;
+  const arma::mat &d2ld;
+  const arma::ivec &dirs;
+  const std::vector<double> &theta;
+
+  bool add(int id, arma::mat &information) {
+    int ns = base.size(), ne = g.neta, nd = g.nd+g.nsg;
+    bool foce = g.interaction == 0, agq = g.nAGQ > 1;
+    bool frozen = foce && g.foceType == 0;
+    auto *op = getSolvingOptions(rx);
+    std::vector<VaeOuterE> node(agq ? 1 : 0);
+    const auto &e = base[id];
+    GradPooledBlocks obs;
+    obs.a.zeros(e.nobs,g.nd); obs.y.zeros(e.nobs); obs.hasLam = false;
+    obs.hasCens = hasRxCens(rx) || hasRxLimit(rx);
+    obs.cens.zeros(obs.hasCens ? e.nobs : 0); obs.lim.set_size(obs.hasCens ? e.nobs : 0);
+    double jacobian = 0;
+    if (!gradPooledStackDv(g,obs,e,id,0,e.nobs,jacobian)) return false;
+    arma::mat noDv(e.nobs,0);
+    if (foce) {
+      const auto &p = frozen ? population[id] : e;
+      arma::mat etaR = frozen ? arma::mat(e.nobs,nd,arma::fill::zeros) : e.aR;
+      arma::cube etaR2 = frozen ? arma::cube(e.nobs,nd,nd,arma::fill::zeros) : e.AR;
+      information += foceiRSubjectFoceFR_(e.a,e.A,third[id],etaR,p.aR,etaR2,p.AR,noDv,noDv,
+        obs.cens,obs.lim,e.f,obs.y,p.R,d.eta.row(id).t(),op_focei.omegaInv,
+        doi,d2oi,d2ld,ne,nd,g.nth+g.nsg,g.nom,dirs);
+    } else {
+      FoceiHessianQuadrature quadrature;
+      if (agq) {
+        if (_aqn <= 0 || !op_focei.aqx || !op_focei.aqw) return false;
+        quadrature.points = arma::mat(op_focei.aqx,_aqn,ne,false,true);
+        quadrature.weights = arma::mat(op_focei.aqw,_aqn,ne,false,true);
+        quadrature.evaluate = [&](const arma::vec &eta, FoceiHessianNode &out) {
+          arma::mat at = d.eta; at.row(id) = eta.t();
+          d.probes->reset();
+          outerSolveFill(odeSlotOuter,&rxVaeOuter,theta,at,g,1,op,ns,ne,node,id);
+          if (!foceiHessianExpand(node[0],g) || node[0].nobs != e.nobs) return false;
+          out.f = node[0].f; out.R = node[0].R; out.a = node[0].a; out.aR = node[0].aR;
+          out.A = node[0].A; out.AR = node[0].AR;
+          return true;
+        };
+      }
+      information += foceiRSubjectFR_(e.a,e.A,third[id],e.aR,e.AR,thirdR[id],noDv,noDv,
+        obs.cens,obs.lim,e.f,obs.y,e.R,d.eta.row(id).t(),op_focei.omegaInv,
+        doi,d2oi,d2ld,ne,nd,g.nth+g.nsg,g.nom,dirs,agq ? &quadrature : nullptr);
+    }
+    return true;
+  }
+};
+
+struct FoceiHessianModel {
+  FoceiHessianCall &d;
+  const FoceiGradPooledSetup &g;
+  const std::vector<double> &theta;
+  bool frozen;
+
+  bool solve(const arma::mat &eta, std::vector<VaeOuterE> &e) {
+    auto *op = getSolvingOptions(rx);
+    d.probes->reset();
+    outerSolveFill(odeSlotOuter,&rxVaeOuter,theta,eta,g,getOpCores(op),op,getRxNsub(rx),g.neta,e);
+    for (auto &one : e) if (!foceiHessianExpand(one,g,!frozen)) return false;
+    return true;
+  }
+
+  bool population(std::vector<VaeOuterE> &e) {
+    arma::mat zero(d.eta.n_rows,g.neta,arma::fill::zeros);
+    if (!solve(zero,e)) return false;
+    for (const auto &one : e) if (one.R.min() <= std::sqrt(DBL_EPSILON)) return false;
+    return true;
+  }
+};
+
 static void foceiHessianAssemble(void *ptr) {
   auto &d = *static_cast<FoceiHessianCall*>(ptr);
   d.status = -4;
   try {
     const auto &g = _gradPooled;
-    int ns = getRxNsub(rx), ne = g.neta, nd = g.nd+g.nsg, np = g.nth+g.nsg+g.nom;
-    bool foce = g.interaction == 0, agq = g.nAGQ > 1;
+    int ns = getRxNsub(rx), np = g.nth+g.nsg+g.nom;
+    bool foce = g.interaction == 0;
     bool frozen = foce && g.foceType == 0;
     auto *op = getSolvingOptions(rx);
     if (!odeSwapCheckLhsWidth(odeSlotOuter,&rxVaeOuter,rx,op) ||
@@ -24108,88 +24226,22 @@ static void foceiHessianAssemble(void *ptr) {
     arma::mat d2ld;
     if (!foceiHessianOmega(doi,d2oi,d2ld)) return;
     std::vector<double> theta(op_focei.fullTheta,op_focei.fullTheta+op_focei.ntheta);
+    FoceiHessianModel model{d,g,theta,frozen};
     auto solve = [&](const arma::mat &eta, std::vector<VaeOuterE> &e) {
-      d.probes->reset();
-      outerSolveFill(odeSlotOuter,&rxVaeOuter,theta,eta,g,getOpCores(op),op,ns,ne,e);
-      for (auto &one : e) if (!foceiHessianExpand(one,g,!frozen)) return false;
-      return true;
+      return model.solve(eta,e);
     };
     std::vector<VaeOuterE> base(ns);
     if (!solve(d.eta,base)) return;
     std::vector<VaeOuterE> population(frozen ? ns : 0);
-    if (frozen) {
-      arma::mat zero(ns,ne,arma::fill::zeros);
-      if (!solve(zero,population)) return;
-      for (const auto &e : population) if (e.R.min() <= std::sqrt(DBL_EPSILON)) return;
-    }
+    if (frozen && !model.population(population)) return;
     std::vector<arma::cube> third(ns), thirdR(ns);
-    for (int id = 0; id < ns; ++id) {
-      third[id].zeros(base[id].nobs,ne,nd*nd);
-      if (!foce) thirdR[id].zeros(base[id].nobs,ne,nd*nd);
-    }
-    {
-      OdeSolveTolGuard tolerance(std::min(1e-12,std::min(op_focei.fitAtol,op_focei.fitRtol)));
-      for (int l = 0; l < ne; ++l) {
-        double h = d.step*std::max(1.0,arma::abs(d.eta.col(l)).max());
-        std::vector<std::vector<VaeOuterE>> probe(4,std::vector<VaeOuterE>(ns));
-        for (int k = 0; k < 4; ++k) {
-          arma::mat eta = d.eta;
-          eta.col(l) += (k%2 ? -1 : 1)*h*(k < 2 ? 1 : 0.5);
-          if (!solve(eta,probe[k])) return;
-          for (int id = 0; id < ns; ++id) if (probe[k][id].nobs != base[id].nobs) return;
-        }
-        for (int id = 0; id < ns; ++id) for (int a = 0; a < nd; ++a) for (int b = 0; b < nd; ++b) {
-          third[id].slice(a+b*nd).col(l) =
-            (8*(probe[2][id].A.slice(b).col(a)-probe[3][id].A.slice(b).col(a))-
-             (probe[0][id].A.slice(b).col(a)-probe[1][id].A.slice(b).col(a)))/(6*h);
-          if (!foce) thirdR[id].slice(a+b*nd).col(l) =
-            (8*(probe[2][id].AR.slice(b).col(a)-probe[3][id].AR.slice(b).col(a))-
-             (probe[0][id].AR.slice(b).col(a)-probe[1][id].AR.slice(b).col(a)))/(6*h);
-        }
-      }
-    }
+    if (!foceiHessianThird(d,g,base,foce,solve,third,thirdR)) return;
     arma::ivec dirs(g.nth+g.nsg);
     for (int k = 0; k < g.nth; ++k) dirs[k] = g.dirTh[k];
     for (int k = 0; k < g.nsg; ++k) dirs[g.nth+k] = g.nd+k+1;
     arma::mat information(np,np,arma::fill::zeros);
-    std::vector<VaeOuterE> node(agq ? 1 : 0);
-    for (int id = 0; id < ns; ++id) {
-      const auto &e = base[id];
-      GradPooledBlocks obs;
-      obs.a.zeros(e.nobs,g.nd); obs.y.zeros(e.nobs); obs.hasLam = false;
-      obs.hasCens = hasRxCens(rx) || hasRxLimit(rx);
-      obs.cens.zeros(obs.hasCens ? e.nobs : 0); obs.lim.set_size(obs.hasCens ? e.nobs : 0);
-      double jacobian = 0;
-      if (!gradPooledStackDv(g,obs,e,id,0,e.nobs,jacobian)) return;
-      arma::mat noDv(e.nobs,0);
-      if (foce) {
-        const auto &p = frozen ? population[id] : e;
-        arma::mat etaR = frozen ? arma::mat(e.nobs,nd,arma::fill::zeros) : e.aR;
-        arma::cube etaR2 = frozen ? arma::cube(e.nobs,nd,nd,arma::fill::zeros) : e.AR;
-        information += foceiRSubjectFoceFR_(e.a,e.A,third[id],etaR,p.aR,etaR2,p.AR,noDv,noDv,
-          obs.cens,obs.lim,e.f,obs.y,p.R,d.eta.row(id).t(),op_focei.omegaInv,
-          doi,d2oi,d2ld,ne,nd,g.nth+g.nsg,g.nom,dirs);
-      } else {
-        FoceiHessianQuadrature quadrature;
-        if (agq) {
-          if (_aqn <= 0 || !op_focei.aqx || !op_focei.aqw) return;
-          quadrature.points = arma::mat(op_focei.aqx,_aqn,ne,false,true);
-          quadrature.weights = arma::mat(op_focei.aqw,_aqn,ne,false,true);
-          quadrature.evaluate = [&](const arma::vec &eta, FoceiHessianNode &out) {
-            arma::mat at = d.eta; at.row(id) = eta.t();
-            d.probes->reset();
-            outerSolveFill(odeSlotOuter,&rxVaeOuter,theta,at,g,1,op,ns,ne,node,id);
-            if (!foceiHessianExpand(node[0],g) || node[0].nobs != e.nobs) return false;
-            out.f = node[0].f; out.R = node[0].R; out.a = node[0].a; out.aR = node[0].aR;
-            out.A = node[0].A; out.AR = node[0].AR;
-            return true;
-          };
-        }
-        information += foceiRSubjectFR_(e.a,e.A,third[id],e.aR,e.AR,thirdR[id],noDv,noDv,
-          obs.cens,obs.lim,e.f,obs.y,e.R,d.eta.row(id).t(),op_focei.omegaInv,
-          doi,d2oi,d2ld,ne,nd,g.nth+g.nsg,g.nom,dirs,agq ? &quadrature : nullptr);
-      }
-    }
+    FoceiHessianSubjects subjects{d,g,base,population,third,thirdR,doi,d2oi,d2ld,dirs,theta};
+    for (int id = 0; id < ns; ++id) if (!subjects.add(id,information)) return;
     double scale = op_focei.scaleObjective == 2 ? op_focei.scaleObjectiveTo/op_focei.initObjective : 1;
     d.hessian.set_size(d.x.n_elem,d.x.n_elem);
     for (unsigned int j = 0; j < d.x.n_elem; ++j) for (unsigned int k = 0; k < d.x.n_elem; ++k)
@@ -24198,21 +24250,39 @@ static void foceiHessianAssemble(void *ptr) {
   } catch (...) { d.status = -3; }
 }
 
+static bool foceiHessianSensitivitySupport(int n) {
+  const auto &g = _gradPooled;
+  return op_foceiUseAnalyticGrad && g.ok && !g.isLL && g.neta > 0 &&
+    g.neta == op_focei.neta && (int)g.gMap.size() == n && !g.nLam &&
+    g.hasR && !g.f2.empty() && !g.rvar2.empty();
+}
+
+static bool foceiHessianObjectiveSupport() {
+  return !op_focei.fo && !op_focei.mixIdxN && !op_focei.muGroupN && !op_focei.freezeOde &&
+    !op_focei.covFdDirect && op_focei.priorSpec == NULL && op_focei.npResidScale == 1 &&
+    odeSwapCanPool(odeSlotOuter) == odeDenyNone;
+}
+
+static bool foceiHessianObservationSupport() {
+  const auto &g = _gradPooled;
+  if ((hasRxCens(rx) || hasRxLimit(rx)) && g.censOpt != 0) return false;
+  if (g.nAGQ > 1 && (g.interaction == 0 || std::isfinite(op_focei.aqLow) || std::isfinite(op_focei.aqHi))) return false;
+  for (int k : g.gMap) if (k < 0 || k >= g.nth+g.nsg+g.nom) return false;
+  return true;
+}
+
+static bool foceiHessianInputValid(const double *theta, int n, double relStep, double *out) {
+  if (!theta || !out || n != (int)op_focei.npars || n <= 0 || !std::isfinite(relStep) || relStep <= 0) return false;
+  for (int j = 0; j < n; ++j)
+    if (!std::isfinite(theta[j]) || theta[j] < op_focei.lower[j] || theta[j] > op_focei.upper[j]) return false;
+  return true;
+}
+
 extern "C" int nlmixr2FoceiOuterHessian(const double *theta, int n, double relStep, double *out) {
   if (!foceiOuterActive || !inds_focei) return -1;
-  if (!theta || !out || n != (int)op_focei.npars || n <= 0 || !std::isfinite(relStep) || relStep <= 0) return -2;
-  for (int j = 0; j < n; ++j)
-    if (!std::isfinite(theta[j]) || theta[j] < op_focei.lower[j] || theta[j] > op_focei.upper[j]) return -2;
-  const auto &g = _gradPooled;
-  if (!op_foceiUseAnalyticGrad || !g.ok || g.isLL ||
-      g.neta <= 0 || g.neta != op_focei.neta || (int)g.gMap.size() != n ||
-      g.nLam || !g.hasR || g.f2.empty() || g.rvar2.empty() ||
-      op_focei.fo || op_focei.mixIdxN || op_focei.muGroupN || op_focei.freezeOde ||
-      op_focei.covFdDirect || op_focei.priorSpec != NULL || op_focei.npResidScale != 1 ||
-      odeSwapCanPool(odeSlotOuter) != odeDenyNone) return -4;
-  if ((hasRxCens(rx) || hasRxLimit(rx)) && g.censOpt != 0) return -4;
-  if (g.nAGQ > 1 && (g.interaction == 0 || std::isfinite(op_focei.aqLow) || std::isfinite(op_focei.aqHi))) return -4;
-  for (int k : g.gMap) if (k < 0 || k >= g.nth+g.nsg+g.nom) return -4;
+  if (!foceiHessianInputValid(theta,n,relStep,out)) return -2;
+  if (!foceiHessianSensitivitySupport(n) || !foceiHessianObjectiveSupport() ||
+      !foceiHessianObservationSupport()) return -4;
   try {
     FoceiHessianCall d{arma::vec(theta,n),relStep};
     if (!R_ToplevelExec(foceiHessianPrepare,&d)) return -3;
