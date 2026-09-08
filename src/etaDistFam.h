@@ -278,6 +278,8 @@ bool rxEtaDistSpreadOk(const std::vector<double> &w, double lo, double hi,
 
 // Closed-form M-step for a Gaussian copula's correlation from paired latent
 // draws.  `w` weights as above.
+double rxEtaDistCorSpearman(const std::vector<double> &z1,
+                            const std::vector<double> &z2);
 double rxEtaDistCorMleW(const std::vector<double> &w1,
                         const std::vector<double> &w2,
                         const std::vector<double> *w);

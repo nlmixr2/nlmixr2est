@@ -491,6 +491,61 @@ bool rxEtaDistSpreadOk(const std::vector<double> &w, double lo, double hi,
 // Normalizing by the observed spreads costs nothing, is bounded in [-1, 1] by
 // construction, and agrees with the product-moment exactly when the draws do
 // have unit variance -- so it is strictly the safer estimator here.
+// Gaussian-copula correlation from the RANKS, analytically.
+//
+// Spearman's rank correlation is invariant under the monotone marginal
+// transform eta = Q(phiU(z)), so the ranks of the etas and of the latents carry
+// the same rho.  For a Gaussian copula the relation is exact,
+//
+//     rho_S = (6/pi) * asin(rho/2)      =>   rho = 2*sin(pi*rho_S/6)
+//
+// which makes this a closed form rather than a fit.  Unlike the product-moment
+// estimator it does not care about the SPREAD of the latents, only their
+// ordering -- and an over-dispersed latent is exactly what drives the
+// product-moment version to its clamp and collapses the copula partner onto its
+// partner.
+double rxEtaDistCorSpearman(const std::vector<double> &z1,
+                            const std::vector<double> &z2) {
+  size_t n = std::min(z1.size(), z2.size());
+  std::vector<double> a, b;
+  a.reserve(n); b.reserve(n);
+  for (size_t i = 0; i < n; ++i) {
+    if (!std::isfinite(z1[i]) || !std::isfinite(z2[i])) continue;
+    a.push_back(z1[i]); b.push_back(z2[i]);
+  }
+  size_t m = a.size();
+  if (m < 3) return NA_REAL;
+  // average ranks, so ties do not bias the coefficient
+  auto ranks = [&](const std::vector<double> &v) {
+    std::vector<size_t> ix(v.size());
+    for (size_t i = 0; i < ix.size(); ++i) ix[i] = i;
+    std::sort(ix.begin(), ix.end(),
+              [&](size_t p, size_t q) { return v[p] < v[q]; });
+    std::vector<double> r(v.size(), 0.0);
+    size_t i = 0;
+    while (i < ix.size()) {
+      size_t j = i;
+      while (j + 1 < ix.size() && v[ix[j + 1]] == v[ix[i]]) ++j;
+      double avg = 0.5*((double)i + (double)j) + 1.0;
+      for (size_t k = i; k <= j; ++k) r[ix[k]] = avg;
+      i = j + 1;
+    }
+    return r;
+  };
+  std::vector<double> ra = ranks(a), rb = ranks(b);
+  double mr = 0.5*((double)m + 1.0);
+  double s11 = 0.0, s22 = 0.0, s12 = 0.0;
+  for (size_t i = 0; i < m; ++i) {
+    double d1 = ra[i] - mr, d2 = rb[i] - mr;
+    s11 += d1*d1; s22 += d2*d2; s12 += d1*d2;
+  }
+  if (!(s11 > 0.0) || !(s22 > 0.0)) return NA_REAL;
+  double rs = s12/std::sqrt(s11*s22);
+  if (rs > 1.0) rs = 1.0; else if (rs < -1.0) rs = -1.0;
+  double rho = 2.0*std::sin(M_PI*rs/6.0);
+  return std::isfinite(rho) ? rho : NA_REAL;
+}
+
 double rxEtaDistCorMleW(const std::vector<double> &z1,
                         const std::vector<double> &z2,
                         const std::vector<double> *w) {

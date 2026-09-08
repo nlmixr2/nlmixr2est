@@ -2033,9 +2033,12 @@ public:
     // Held out whenever something else owns it: the closed form once it has
     // fired, or -- in the observation-likelihood mode -- the gradient step,
     // which now carries rxCor alongside the family thetas.
-    if ((etaDistObsLik() || (etaDistCorOn && etaDistCorFired)) &&
-        etaDistCorPhi0 >= 0 && etaDistCorPhi0 < nphi0) {
-      phi0Dist[(size_t)etaDistCorPhi0] = true;
+    if ((etaDistObsLik() && etaDistCorMethod == 2) ||
+        (etaDistCorOn && etaDistCorFired)) {
+      for (int k = 0; k < etaDistNdist; ++k) {
+        int c = corCol(k);
+        if (c >= 0) phi0Dist[(size_t)c] = true;
+      }
     }
     // SCOPE, and a correction to why this is here.
     //
@@ -2505,12 +2508,15 @@ public:
     // One Newton step couples its parameters through that matrix; two steps do
     // not.
     std::vector<int> corIx;
-    if (etaDistCorPhi0 >= 0 && etaDistCorPhi0 < nphi0 &&
-        !isFix[(size_t)etaDistCorPhi0]) {
+    for (int k = 0; k < etaDistNdist; ++k) {
+      int cc = corCol(k);
+      if (cc < 0 || isFix[(size_t)cc]) continue;
       bool dup = false;
       for (size_t q = 0; q < famIx.size(); ++q)
-        if (famIx[q] == etaDistCorPhi0) { dup = true; break; }
-      if (!dup) corIx.push_back(etaDistCorPhi0);
+        if (famIx[q] == cc) { dup = true; break; }
+      for (size_t q = 0; q < corIx.size() && !dup; ++q)
+        if (corIx[q] == cc) dup = true;
+      if (!dup) corIx.push_back(cc);
     }
     bool frz = _saemFreezeOde;
     _saemFreezeOde = false;
@@ -2545,6 +2551,7 @@ public:
     // budget is tens of evaluations and the extra order of convergence buys
     // less than the guarantee of never leaving the bracket.
     gPhi0FreeIx = corIx;
+    if (etaDistCorMethod != 2) gPhi0FreeIx.clear();   // a closed form owns it
     if (!gPhi0FreeIx.empty()) {
       ensureCompleteSolve(kiter, true);
       int c = gPhi0FreeIx[0];
@@ -3395,6 +3402,7 @@ public:
     if (x.containsElementNamed("etaDistStart")) etaDistStart = as<int>(x["etaDistStart"]);
     if (x.containsElementNamed("etaDistEvery")) etaDistEvery = as<int>(x["etaDistEvery"]);
     if (x.containsElementNamed("etaDistCorTrust")) etaDistCorTrust = as<double>(x["etaDistCorTrust"]);
+    if (x.containsElementNamed("etaDistCorMethod")) etaDistCorMethod = as<int>(x["etaDistCorMethod"]);
     // Argument expressions + their theta names, for the C++ native->theta map.
     etaDistExprs.clear(); etaDistExprThetas.clear();
     if (x.containsElementNamed("etaDistExprs") && !Rf_isNull(x["etaDistExprs"]) &&
@@ -3427,7 +3435,7 @@ public:
       etaDistRho     = as<vec>(x["etaDistRho"]);
       etaDistThetaPhi0 = as<imat>(x["etaDistThetaPhi0"]);
       etaDistNth     = as<ivec>(x["etaDistNth"]);
-      etaDistCorPhi0 = as<int>(x["etaDistCorPhi0"]);
+      etaDistCorPhi0 = as<arma::ivec>(x["etaDistCorPhi0"]);
       if (x.containsElementNamed("etaDistMapFn")) etaDistMapR = x["etaDistMapFn"];
       etaDistNdist   = (int)etaDistLatent.n_elem;
     }
@@ -4968,12 +4976,16 @@ public:
               }
             }
           }
-          if ((etaDistObsLik() || (etaDistCorOn && etaDistCorFired)) &&
-              etaDistCorPhi0 >= 0 && etaDistCorPhi0 < nphi0) {
-            uvec li = arma::find(LCOV0.col(etaDistCorPhi0) == 1);
-            for (unsigned int q = 0; q < li.n_elem; ++q) {
-              uvec hit = arma::find(jcov0 == (li(q) + etaDistCorPhi0*(unsigned int)LCOV0.n_rows));
-              if (hit.n_elem == 1) Plambda0(hit(0)) = MCOV0(jcov0(hit(0)));
+          if ((etaDistObsLik() && etaDistCorMethod == 2) ||
+              (etaDistCorOn && etaDistCorFired)) {
+            for (int kc = 0; kc < etaDistNdist; ++kc) {
+              int cc = corCol(kc);
+              if (cc < 0) continue;
+              uvec li = arma::find(LCOV0.col(cc) == 1);
+              for (unsigned int q = 0; q < li.n_elem; ++q) {
+                uvec hit = arma::find(jcov0 == (li(q) + cc*(unsigned int)LCOV0.n_rows));
+                if (hit.n_elem == 1) Plambda0(hit(0)) = MCOV0(jcov0(hit(0)));
+              }
             }
           }
         }
@@ -5083,18 +5095,19 @@ public:
               }
             }
           }
-          if (etaDistCorPhi0 >= 0 && etaDistCorPhi0 < nphi0) {
+          // Each correlation to its OWN column.  This used to AVERAGE every
+          // rho into a single column, which blends a +0.6 pair and a -0.4 pair
+          // into 0.1; it was unreachable only because the R side disabled the
+          // whole path whenever there was more than one.
+          for (int k = 0; k < etaDistNdist; ++k) {
+            int cc = corCol(k);
+            if (cc < 0 || etaDistCorWith(k) < 0) continue;
             // the copula theta is atanh(rho): the expansion writes the
             // correlation as tanh() of it
-            double r = 0.0; int nr = 0;
-            for (int k = 0; k < etaDistNdist; ++k) {
-              if (etaDistCorWith(k) >= 0) { r += etaDistRho(k); nr++; }
-            }
-            if (nr > 0) {
-              r /= (double)nr;
-              double a = std::atanh(std::max(std::min(r, 0.999), -0.999));
-              if (std::isfinite(a)) mprior_phi0.col(etaDistCorPhi0).fill(a);
-            }
+            double r = etaDistRho(k);
+            if (!std::isfinite(r)) continue;
+            double a = std::atanh(std::max(std::min(r, 0.999), -0.999));
+            if (std::isfinite(a)) mprior_phi0.col(cc).fill(a);
           }
           // keep MCOV0 consistent so the next COV0*MCOV0 reproduces this
           for (int c = 0; c < nphi0; c++) {
@@ -6369,6 +6382,18 @@ private:
   // copula's bounded 1-D search works in, on the atanh scale.  Wider than the
   // 0.75 the phi0 search uses -- see the search itself for why.
   double etaDistCorTrust = 1.5;
+  // saemControl(etaDistCor=): HOW the copula correlation is updated, always
+  // AFTER the distributional thetas have moved.
+  //   0 "observed"  the product-moment correlation of the latent pair -- what
+  //                 this has always done.  Sensitive to the latent SPREAD: an
+  //                 over-dispersed latent drives it to its clamp.
+  //   1 "analytic"  the Gaussian-copula identity rho = 2*sin(pi*rho_S/6) from
+  //                 the RANKS.  Exact for the copula, and rank-based, so the
+  //                 spread cannot reach it.
+  //   2 "optimize"  a bounded 1-D search of the observation objective inside a
+  //                 local trust region (etaDistCorTrust).  Only for a model
+  //                 with ONE correlation; a system is not a scalar problem.
+  int etaDistCorMethod = 0;
   // Per declared distribution: its argument expressions and the theta names
   // they are written over, so the map back onto thetas stays in C++.
   std::vector<std::vector<std::string> > etaDistExprs;
@@ -6395,7 +6420,24 @@ private:
   vec etaDistRho;                // current copula correlation per declared eta
   imat etaDistThetaPhi0;         // phi0 COLUMN of each declared theta
   ivec etaDistNth;               // how many thetas each declared eta has
-  int etaDistCorPhi0 = -1;       // phi0 column of the copula correlation theta
+  // phi0 column of each declared family's copula correlation theta, -1 where
+  // that family has no partner.  A VECTOR, not a scalar: a model with two
+  // correlated pairs has two correlations, and collapsing them to one column
+  // either averaged them (blending +0.6 and -0.4 into 0.1) or -- as it actually
+  // behaved -- disabled the machinery outright and left the second one with no
+  // owner at all.
+  arma::ivec etaDistCorPhi0;
+  // the phi0 column family k's correlation lives in, or -1
+  int corCol(int k) const {
+    if (k < 0 || k >= (int)etaDistCorPhi0.n_elem) return -1;
+    int c = etaDistCorPhi0(k);
+    return (c >= 0 && c < nphi0) ? c : -1;
+  }
+  bool anyCorCol() const {
+    for (int k = 0; k < (int)etaDistCorPhi0.n_elem; ++k)
+      if (corCol(k) >= 0) return true;
+    return false;
+  }
   RObject etaDistMapR;           // R closure: (k, args) -> thetas (once/iter)
   // Running per-subject SECOND MOMENT E[phi phi'] (nphi x nphi x N).  cpost_phi
   // only keeps the elementwise E[phi^2], i.e. the diagonal; NONMEM's mode 1B
@@ -6975,7 +7017,12 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
     // The copula closed form stands down when the gradient step owns rxCor:
     // two owners on one parameter, against different objectives, is the fight
     // this whole area keeps losing.
-    for (int k = 0; etaDistCorOn && !etaDistObsLik() && k < etaDistNdist; ++k) {
+    // Stands down only when the SEARCH owns rxCor.  "observed" and "analytic"
+    // are closed forms and run here in every mode -- including the
+    // observation-likelihood mode, where they are the only thing that keeps the
+    // correlation off the boundary the search walks to.
+    bool corBySearch = etaDistObsLik() && etaDistCorMethod == 2;
+    for (int k = 0; etaDistCorOn && !corBySearch && k < etaDistNdist; ++k) {
       int j = etaDistCorWith(k);
       if (j < 0) continue;
       // Same spread guard the family fits get.  This loop used to bypass it
@@ -6985,7 +7032,13 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
       // family fits, not just the correlation.
       if (!rxEtaDistSpreadOk(w[(size_t)k], etaDistSdLo, etaDistSdHi, nullptr) ||
           !rxEtaDistSpreadOk(w[(size_t)j], etaDistSdLo, etaDistSdHi, nullptr)) continue;
-      double r = rxEtaDistCorMle(w[(size_t)j], w[(size_t)k]);
+      // "observed" is the product-moment correlation of the latent pair;
+      // "analytic" the rank-based Gaussian-copula identity.  Both are closed
+      // forms evaluated after the distributional thetas moved; "optimize" is
+      // handled in etaDistGradStep() instead and skips this loop.
+      double r = (etaDistCorMethod == 1) ?
+        rxEtaDistCorSpearman(w[(size_t)j], w[(size_t)k]) :
+        rxEtaDistCorMle(w[(size_t)j], w[(size_t)k]);
       if (etaDistDebug && (kiter % 10 == 0 || kiter < 2)) {
         RSprintf("[etaDist cor k=%d<-j=%d it=%d] rhoCur=%.4f rhoNew=%.4f\n",
                  k, j, (int)kiter, etaDistRho(k), r);

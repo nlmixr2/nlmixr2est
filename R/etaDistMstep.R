@@ -622,12 +622,19 @@
   ## the copula correlation is itself a theta and gets the same treatment,
   ## matched by the name the core resolved rather than by grep()ing rxCor.*
   .rn <- character(0); .rp <- integer(0)
+  ## ...and PER FAMILY, so a model with more than one correlated pair is
+  ## representable.  `.rp` is indexed by `.ck` (the families that have a
+  ## partner); `.rpf` is indexed by family, NA where there is no partner, which
+  ## is what lets each correlation keep its OWN phi0 column downstream instead
+  ## of every pair sharing one.
+  .rpf <- rep(NA_integer_, .c$n)
   .ck <- which(.c$corWith >= 0L)
   if (!is.null(paramsToEstimate) && length(.ck) > 0L) {
     .rc <- .c$corTheta[.ck]
     .m <- match(.rc, paramsToEstimate)
     if (anyNA(.m)) return(NULL)
     .rn <- .rc; .rp <- as.integer(.m)
+    .rpf[.ck] <- as.integer(.m)
   }
   ## The ARGUMENT expressions and their theta names, so the C++ M-step can do
   ## the native-parameters -> thetas map itself instead of calling back into R.
@@ -644,7 +651,7 @@
        exprs = .exprs, exprThetas = .c$thetas,
        args = .c$args, rho = .c$rho,
        dist = .c$dist, thetas = .c$thetas, thetaPhi = .tp,
-       corName = .rn, corPhi = .rp, etas = .c$etas)
+       corName = .rn, corPhi = .rp, corPhiByFam = .rpf, etas = .c$etas)
 }
 
 #' Read the declaration stash `.preProcessEtaDist()` left on the ui

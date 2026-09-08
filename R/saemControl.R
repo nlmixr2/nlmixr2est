@@ -254,6 +254,34 @@
 #'   latents is not a property of the mean function, and no
 #'   observation-likelihood term identifies it.
 #'
+#' @param etaDistCor How a `dist()`-declared Gaussian copula's correlation is
+#'   updated.  Always AFTER the declared distribution's own thetas have moved,
+#'   so it reads latents implied by the current parameters rather than the
+#'   previous ones.
+#'
+#'   * `"observed"` (default, and what this has always done): the product-moment
+#'     correlation of the latent pair.  Closed form, one line of arithmetic.  It
+#'     is sensitive to the latent SPREAD -- an over-dispersed latent drives it to
+#'     its clamp, which collapses the copula partner onto its partner and turns
+#'     two declared random effects into one.
+#'   * `"analytic"`: the Gaussian-copula identity from the RANKS.  Spearman's
+#'     rank correlation is invariant under the monotone marginal transform
+#'     `eta = Q(phiU(z))`, and for a Gaussian copula `rho_S = (6/pi)*asin(rho/2)`
+#'     exactly, so `rho = 2*sin(pi*rho_S/6)`.  Also a closed form, and being
+#'     rank-based the spread cannot reach it.
+#'   * `"optimize"`: a bounded one-dimensional search of the OBSERVATION
+#'     objective within a local trust region (`etaDistCorTrust`).  Available only
+#'     for a model with ONE correlation -- with two the stationarity condition is
+#'     a system, and optimizing one coordinate at a time does not solve it.
+#'
+#'     Use this one knowingly.  Maximizing the observation likelihood
+#'     CONDITIONAL on the current draws has no interior optimum on every model:
+#'     collapsing the two latents onto one can always fit the current draws
+#'     better, and on Bauer's `g1` the search walks to the clamp one trust radius
+#'     at a time and sits at 0.995.  On a richer model (four declared etas, two
+#'     correlated pairs) it stays interior and lands near truth.  The trust
+#'     region bounds the step, not the objective.
+#'
 #' @param etaDistCorMstep Update a `dist()`-declared Gaussian copula's
 #'   correlation from its closed form -- the sample correlation of the latent
 #'   pair -- instead of leaving it to the general non-mu theta refinement.  On
@@ -791,6 +819,7 @@ saemControl <- function(seed = 99,
                         etaDistMstep = TRUE,
                         etaDistStart = NULL,
                         etaDistEvery = 20L,
+                        etaDistCor = c("observed", "analytic", "optimize"),
                         etaDistCorTrust = 1.5,
                         etaDistCorMstep = TRUE,
                         etaDistLoglik = FALSE,
@@ -1030,6 +1059,7 @@ saemControl <- function(seed = 99,
                            .var.name="iacceptPerId")
   checkmate::assertLogical(nonMuThetaBhhh, len=1, any.missing=FALSE,
                            .var.name="nonMuThetaBhhh")
+  etaDistCor <- match.arg(etaDistCor)
   checkmate::assertNumeric(etaDistCorTrust, len=1, lower=0, any.missing=FALSE,
                            .var.name="etaDistCorTrust")
   checkmate::assertLogical(rwOmega, len=1, any.missing=FALSE, .var.name="rwOmega")
@@ -1062,6 +1092,13 @@ saemControl <- function(seed = 99,
     etaDistMstep = etaDistMstep,
     etaDistStart = if (is.null(etaDistStart)) NULL else as.integer(etaDistStart),
     etaDistEvery = as.integer(etaDistEvery),
+    ## Only etaDistCor itself, never a derived etaDistCorMethod: the control
+    ## list is round-tripped through do.call(saemControl, .ctl)
+    ## (R/sharedControl.R), so anything returned here has to BE an argument of
+    ## this function.  A derived element makes that call fail with
+    ## "unused argument", which surfaces as the fit erroring rather than as
+    ## anything pointing at the control.  saem.R derives the integer instead.
+    etaDistCor = etaDistCor,
     etaDistCorTrust = as.numeric(etaDistCorTrust),
     etaDistCorMstep = etaDistCorMstep,
     rwOmega = rwOmega,

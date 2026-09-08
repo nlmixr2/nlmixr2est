@@ -175,6 +175,9 @@
                        iacceptSingle = 0.44,
                        iacceptPerId = TRUE,
                        rwOmega = FALSE,
+                       etaDistCor = "observed",
+                       etaDistCorMethod = 0L,
+                       etaDistCorTrust = 1.5,
                        nonMuThetaBhhh = FALSE,
                        nu1B = 0L,
                        nb1B = 10L,
@@ -541,7 +544,8 @@
   etaDistLatent <- etaDistFam <- etaDistCorWith <- integer(0)
   etaDistArgs <- matrix(0, 0, 0); etaDistRho <- numeric(0)
   etaDistThetaPhi0 <- matrix(-1L, 0, 0); etaDistNth <- integer(0)
-  etaDistCorPhi0 <- -1L
+  ## aligned with the declared families; empty when there are none
+  etaDistCorPhi0 <- integer(0)
   etaDistExprs <- NULL; etaDistExprThetas <- NULL
   if (!is.null(etaDistInfo)) {
     .nd <- length(etaDistInfo$latent)
@@ -555,7 +559,22 @@
       .tp[.k, seq_along(.c)] <- as.integer(.c)
       .nth[.k] <- length(.c)
     }
-    .cp <- if (length(etaDistInfo$corPhi) == 1L) match(etaDistInfo$corPhi, i0) - 1L else NA_integer_
+    ## PER FAMILY, one phi0 column each, -1 where a family has no partner.
+    ##
+    ## This used to collapse to NA -- disabling the copula machinery outright --
+    ## whenever there was more than one correlation, which is why a model with
+    ## two correlated pairs had its second correlation silently unmanaged: no
+    ## owner held it out of the GLS and no step moved it.  Bauer's datasets all
+    ## carry exactly one, so nothing caught it.
+    .cpf <- etaDistInfo$corPhiByFam
+    if (is.null(.cpf)) .cpf <- rep(NA_integer_, length(etaDistInfo$corWith))
+    .cp <- rep(-1L, length(.cpf))
+    .have <- !is.na(.cpf)
+    if (any(.have)) {
+      .mm <- match(.cpf[.have], i0) - 1L
+      .mm[is.na(.mm)] <- -1L
+      .cp[.have] <- as.integer(.mm)
+    }
     if (.ok) {
       etaDistOn <- 1L
       ## argument expressions + their theta names, so the C++ M-step can map
@@ -569,7 +588,7 @@
       etaDistRho     <- as.numeric(etaDistInfo$rho)
       etaDistThetaPhi0 <- .tp
       etaDistNth     <- .nth
-      etaDistCorPhi0 <- if (is.na(.cp)) -1L else as.integer(.cp)
+      etaDistCorPhi0 <- as.integer(.cp)
     } else {
       ## A declared theta that is not a plain phi0 column cannot be written
       ## back, so the M-step has to stand down.  Say so: leaving etaDistOn at 0
@@ -888,6 +907,8 @@
     # thetas (eqs. 1.47-1.52).  Integers, since the C++ reads them with as<int>.
     iacceptPerId = as.integer(isTRUE(iacceptPerId)),
     rwOmega = as.integer(isTRUE(rwOmega)),
+    etaDistCorMethod = as.integer(etaDistCorMethod),
+    etaDistCorTrust = as.numeric(etaDistCorTrust),
     nonMuThetaBhhh = as.integer(isTRUE(nonMuThetaBhhh)),
     nu1B = as.integer(nu1B),
     nb1B = as.integer(nb1B),

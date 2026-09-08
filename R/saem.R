@@ -323,6 +323,11 @@
                         iacceptSingle=rxode2::rxGetControl(ui, "iacceptSingle", 0.44),
                         iacceptPerId=rxode2::rxGetControl(ui, "iacceptPerId", FALSE),
                         rwOmega=rxode2::rxGetControl(ui, "rwOmega", FALSE),
+                        etaDistCorMethod=as.integer(match(
+                          rxode2::rxGetControl(ui, "etaDistCor", "observed"),
+                          c("observed", "analytic", "optimize")) - 1L),
+                        etaDistCorTrust=as.numeric(
+                          rxode2::rxGetControl(ui, "etaDistCorTrust", 1.5)),
                         nonMuThetaBhhh=rxode2::rxGetControl(ui, "nonMuThetaBhhh", FALSE),
                         nonMuThetaGradEvery=as.integer(
                           rxode2::rxGetControl(ui, "nonMuThetaGradEvery", 1L)),
