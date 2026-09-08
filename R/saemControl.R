@@ -820,6 +820,7 @@ saemControl <- function(seed = 99,
                         etaDistStart = NULL,
                         etaDistEvery = 20L,
                         etaDistCor = c("observed", "analytic", "optimize"),
+                        etaDistCorMethod = NULL,
                         etaDistCorTrust = 1.5,
                         etaDistCorMstep = TRUE,
                         etaDistLoglik = FALSE,
@@ -1060,6 +1061,18 @@ saemControl <- function(seed = 99,
   checkmate::assertLogical(nonMuThetaBhhh, len=1, any.missing=FALSE,
                            .var.name="nonMuThetaBhhh")
   etaDistCor <- match.arg(etaDistCor)
+  ## Derived, but DECLARED and RETURNED -- both are required, for different
+  ## reasons.  The control list is round-tripped through
+  ## do.call(saemControl, .ctl) (R/sharedControl.R), so an element that is not a
+  ## declared argument fails with "unused argument".  And the C++ ingests the
+  ## control list itself, so an element that is not RETURNED never arrives.
+  ## Dropping it from the list to satisfy the first silently broke the second:
+  ## "observed" and "analytic" came back byte identical on six quantities
+  ## because both ran as method 0.
+  if (is.null(etaDistCorMethod)) {
+    etaDistCorMethod <- match(etaDistCor,
+                              c("observed", "analytic", "optimize")) - 1L
+  }
   checkmate::assertNumeric(etaDistCorTrust, len=1, lower=0, any.missing=FALSE,
                            .var.name="etaDistCorTrust")
   checkmate::assertLogical(rwOmega, len=1, any.missing=FALSE, .var.name="rwOmega")
@@ -1092,13 +1105,8 @@ saemControl <- function(seed = 99,
     etaDistMstep = etaDistMstep,
     etaDistStart = if (is.null(etaDistStart)) NULL else as.integer(etaDistStart),
     etaDistEvery = as.integer(etaDistEvery),
-    ## Only etaDistCor itself, never a derived etaDistCorMethod: the control
-    ## list is round-tripped through do.call(saemControl, .ctl)
-    ## (R/sharedControl.R), so anything returned here has to BE an argument of
-    ## this function.  A derived element makes that call fail with
-    ## "unused argument", which surfaces as the fit erroring rather than as
-    ## anything pointing at the control.  saem.R derives the integer instead.
     etaDistCor = etaDistCor,
+    etaDistCorMethod = as.integer(etaDistCorMethod),
     etaDistCorTrust = as.numeric(etaDistCorTrust),
     etaDistCorMstep = etaDistCorMstep,
     rwOmega = rwOmega,

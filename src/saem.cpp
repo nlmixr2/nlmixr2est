@@ -3402,7 +3402,19 @@ public:
     if (x.containsElementNamed("etaDistStart")) etaDistStart = as<int>(x["etaDistStart"]);
     if (x.containsElementNamed("etaDistEvery")) etaDistEvery = as<int>(x["etaDistEvery"]);
     if (x.containsElementNamed("etaDistCorTrust")) etaDistCorTrust = as<double>(x["etaDistCorTrust"]);
-    if (x.containsElementNamed("etaDistCorMethod")) etaDistCorMethod = as<int>(x["etaDistCorMethod"]);
+    if (x.containsElementNamed("etaDistCorMethod")) {
+      etaDistCorMethod = as<int>(x["etaDistCorMethod"]);
+    } else if (getenv("NLMIXR2_ETADIST_OPT") != NULL) {
+      // Worth saying out loud.  A control that never arrives is invisible: two
+      // estimators came back byte identical on six quantities because both ran
+      // as method 0, and nothing in the output said so.
+      RSprintf("[etaDist] etaDistCorMethod ABSENT from the control -- using %d\n",
+               etaDistCorMethod);
+    }
+    if (getenv("NLMIXR2_ETADIST_OPT") != NULL) {
+      RSprintf("[etaDist] etaDistCorMethod=%d etaDistCorTrust=%.3g\n",
+               etaDistCorMethod, etaDistCorTrust);
+    }
     // Argument expressions + their theta names, for the C++ native->theta map.
     etaDistExprs.clear(); etaDistExprThetas.clear();
     if (x.containsElementNamed("etaDistExprs") && !Rf_isNull(x["etaDistExprs"]) &&
