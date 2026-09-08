@@ -627,6 +627,12 @@ static std::vector<int> gPhi0FreeIx;
 // system more than once per step unless something MOVES phi0 underneath it,
 // which is why the writers invalidate rather than the readers re-solving.
 static int _saemCompleteSolveIter = -1;
+// ...and whether that established solve carries the SENSITIVITIES.  The
+// sensitivity solve is the expensive one and only the gradient step needs it;
+// the derivative-free search wants the plain prediction solve, which is
+// faster.  A sensitivity solve satisfies a later plain request (it is a
+// superset); the reverse re-solves.
+static bool _saemCompleteSolveHasSens = false;
 static double gPhi0Obj1DR(double x);
 // ---- Shi-difference fallback for the non-mu theta gradient ----------------
 //
@@ -992,15 +998,19 @@ public:
   // phi0 since -- the writers call invalidateCompleteSolve() -- or when the
   // regressor search runs, which evaluates candidates and therefore solves per
   // candidate by nature.
-  void ensureCompleteSolve(unsigned int kiter) {
-    if (_saemCompleteSolveIter == (int)kiter) return;
+  void ensureCompleteSolve(unsigned int kiter, bool wantSens) {
+    if (_saemCompleteSolveIter == (int)kiter &&
+        (_saemCompleteSolveHasSens || !wantSens)) return;
     if (nphi0 > 0) phiM.cols(i0) = repmat(mprior_phi0, nmc, 1);
-    _saemSolveCompleteOnce = 1;
+    _saemSolveCompleteOnce = wantSens ? 1 : 0;
     { mat _tmp = user_fn(phiM, evt, optM); (void)_tmp; }
     _saemSolveCompleteOnce = 0;
     _saemCompleteSolveIter = (int)kiter;
+    _saemCompleteSolveHasSens = wantSens;
   }
-  void invalidateCompleteSolve() { _saemCompleteSolveIter = -1; }
+  void invalidateCompleteSolve() {
+    _saemCompleteSolveIter = -1; _saemCompleteSolveHasSens = false;
+  }
 
   double phi0Objective(double *p) {
     mat phiCand = phiM;
@@ -2012,7 +2022,11 @@ public:
     // current one, and the two disagree: the finite-difference check sat at
     // ~5e-4 instead of ~1e-8, which is exactly that inconsistency and not
     // solver noise.
-    ensureCompleteSolve(kiter);
+    // Sensitivities only when nonMuGradPhi0() below can actually consume them.
+    // Without the peer it declines outright, and the SEARCH that follows is
+    // derivative-free -- so the plain prediction solve is the right one and is
+    // faster.
+    ensureCompleteSolve(kiter, _saemThetaSensActive != 0);
     // Gauss-Newton warm start off the exact sensitivities, then the search
     // below refines from there (src/nonMuThetaGrad.h).  Placed AFTER
     // gPhi0FreeIx so it moves exactly the columns the search owns -- never one
@@ -2407,7 +2421,7 @@ public:
     // solve of its own.
     bool frz = _saemFreezeOde;
     _saemFreezeOde = false;
-    ensureCompleteSolve(kiter);
+    ensureCompleteSolve(kiter, true);   // the gradient step needs them
     bool moved = nonMuGradPhi0(kiter, pas);
     _saemFreezeOde = frz;
     if (moved) {
