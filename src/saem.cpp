@@ -1677,6 +1677,32 @@ public:
     // A partial population would bias the step toward whoever happened to
     // solve; the search alone is better than a skewed Newton step.
     if (gchk) Rprintf("  nGood=%d / nRow=%d\n", nGood, nRow);
+    // NLMIXR2_SAEM_SHICHECK: compute the Shi fallback ALONGSIDE a healthy
+    // analytic gradient and print both.  The fallback is otherwise reached only
+    // when the sensitivity ladder is exhausted, which is rare and not
+    // reproducible on demand -- so without this it ships untested.  The two are
+    // meant to be the same gradient by different means; large disagreement is a
+    // wrong index, a wrong solve slot, or a step search that never converged.
+    if (getenv("NLMIXR2_SAEM_SHICHECK") != NULL && nGood == nRow && xEval == nullptr) {
+      arma::vec sA = score;
+      arma::mat iA = info;
+      std::vector<double> rsA = rowScore, riA = rowInfo;
+      arma::vec sS(nFree, fill::zeros); arma::mat iS(nFree, nFree, fill::zeros);
+      std::vector<double> rsS = rowScore, riS = rowInfo;
+      if (shiGradPhi0(objKind, nFree, obsOff, invSort, sS, iS, rsS, riS, nRow)) {
+        Rprintf("saem shi-vs-analytic (kiter=%u)\n", kiter);
+        for (int fi = 0; fi < nFree; ++fi) {
+          double rel = (std::fabs(sA(fi)) > 1e-8) ?
+            std::fabs(sS(fi) - sA(fi)) / std::fabs(sA(fi)) :
+            std::fabs(sS(fi) - sA(fi));
+          Rprintf("  phi0[%d] analytic=% .8e  shi=% .8e  rel=%.3e\n",
+                  gPhi0FreeIx[(size_t)fi], sA(fi), sS(fi), rel);
+        }
+      } else {
+        Rprintf("saem shi-vs-analytic (kiter=%u): fallback declined\n", kiter);
+      }
+      score = sA; info = iA; rowScore = rsA; rowInfo = riA;
+    }
     if (nGood < nRow) {
       // The analytic sensitivities did not survive for the whole population,
       // and a partial one biases the step toward whoever happened to solve.
