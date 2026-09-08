@@ -1951,11 +1951,33 @@ public:
       }
     }
     // the copula theta keyed off its OWN flag, not the family M-step's -- and,
-    // like them, only once its closed form has actually written a value.  In
-    // the observation-likelihood mode this refinement owns it too.
-    if (!etaDistObsLik() && etaDistCorOn && etaDistCorFired &&
+    // like them, only once its closed form has actually written a value.  Mode
+    // independent: the closed form runs in the observation-likelihood mode too
+    // (a latent correlation is not a property of the mean function), so it owns
+    // this column either way.
+    if (etaDistCorOn && etaDistCorFired &&
         etaDistCorPhi0 >= 0 && etaDistCorPhi0 < nphi0) {
       phi0Dist[(size_t)etaDistCorPhi0] = true;
+    }
+    // SCOPE.  etaDistLoglik takes over the DECLARED thetas and nothing else.
+    //
+    // refinePhi0Lik's free set is otherwise every non-fixed phi0 column, so
+    // entering it unrestricted would also hand it prop.sd and every other
+    // non-mu theta -- which is nonMuTheta="regress", a much larger change with
+    // its own control and its own measurements.  The two COMPOSE: set both and
+    // the free set widens back out, because nonMuThetaRegress skips this.
+    if (etaDistObsLik() && !nonMuThetaRegress && distribution != 4 &&
+        (int)etaDistThetaPhi0.n_rows == etaDistNdist) {
+      std::vector<bool> phi0Decl((size_t)nphi0, false);
+      for (int k = 0; k < etaDistNdist; ++k) {
+        for (int t = 0; t < etaDistNth(k) && t < (int)etaDistThetaPhi0.n_cols; ++t) {
+          int c = etaDistThetaPhi0(k, t);
+          if (c >= 0 && c < nphi0) phi0Decl[(size_t)c] = true;
+        }
+      }
+      for (int c = 0; c < nphi0; ++c) {
+        if (!phi0Decl[(size_t)c]) phi0Dist[(size_t)c] = true;
+      }
     }
     gPhi0FreeIx.clear();
     for (int c = 0; c < nphi0; ++c) {
@@ -2031,7 +2053,7 @@ public:
       // the objective constant in it -- see phi0NeedsLiveSolve() and #1000.
       if (_phi0NeedsLive < 0) _phi0NeedsLive = phi0NeedsLiveSolve() ? 1 : 0;
       doFreeze = (_phi0NeedsLive == 0);
-    } else if (nonMuThetaRegress) {
+    } else if (phi0ObsLikRoute()) {
       if (_phi0OdeSensitive < 0) _phi0OdeSensitive = phi0AffectsOde() ? 1 : 0;
       doFreeze = (_phi0OdeSensitive == 0);
     } else {
@@ -2049,7 +2071,7 @@ public:
     // trust region around the current value (intersected with any ini bounds)
     // so the SA iteration refines it gradually, like a clamped regression step.
     // localTrust also selects the optimizer; trustBounds only clamps the step.
-    bool localTrust = (distribution != 4) && nonMuThetaRegress;
+    bool localTrust = (distribution != 4) && phi0ObsLikRoute();
     // A general-likelihood phi0 that drives the solve (an IOV magnitude) gets the
     // same absolute trust region: its ini bounds are typically (0, Inf), and an
     // unbounded span over an ODE-driven objective is what let it run away (#1000).
@@ -5077,8 +5099,12 @@ public:
       // (kiter>=niter_phi0), do NOT overwrite mprior_phi0 with the stochastic
       // sampled-mean update -- that fights the optimizer and lets phi0 drift.
       // The optimizer result from the previous iteration persists as the seed.
-      bool skipStochPhi0 = (nonMuThetaRegress || etaDistObsLik()) &&
-        (distribution != 4) && (kiter >= (unsigned int)niter_phi0);
+      // Only nonMuThetaRegress suppresses the stochastic phi0 update.  The
+      // etaDist-only route takes just the DECLARED columns, and the GLS still
+      // owns the rest -- suppressing it there would freeze prop.sd and every
+      // other non-mu theta at whatever the last GLS pass left.
+      bool skipStochPhi0 = nonMuThetaRegress && (distribution != 4) &&
+        (kiter >= (unsigned int)niter_phi0);
       if (!skipStochPhi0) {
         mprior_phi0=COV0*MCOV0;
       }
@@ -5216,7 +5242,7 @@ public:
       // fit wants this refinement for the same reason a general-likelihood one
       // does, and Bauer's models are normal (prop()), so neither existing
       // condition would let it run.
-      if ((distribution == 4 || nonMuThetaRegress || etaDistObsLik()) &&
+      if ((distribution == 4 || phi0ObsLikRoute()) &&
           nphi0 > 0 && kiter >= phi0Start &&
           (kiter - phi0Start) % (unsigned int)nonMuThetaEvery == 0) {
         refinePhi0Lik(kiter, pas);
@@ -6323,6 +6349,20 @@ private:
   // the model itself recomputes eta per record from the candidate thetas.
   bool etaDistObsLik() const {
     return etaDistLoglik && etaDistOn && etaDistNdist > 0;
+  }
+
+  // "phi0 is estimated by direct optimization of the observation likelihood".
+  //
+  // ONE predicate, because nonMuThetaRegress gates FOUR things -- whether
+  // refinePhi0Lik runs, whether the stochastic phi0 update is skipped, whether
+  // the ODE may be frozen during the search, and whether the search gets a
+  // local trust region -- and adding a second entry to only some of them
+  // leaves the mode running that optimizer WITHOUT the trust region normal
+  // models need.  (It did, for one build: the comment on localTrust is
+  // explicit that a normal model's phi0 drives the ODE and an unbounded
+  // bobyqa span breaks on the objective's NaN plateaus.)
+  bool phi0ObsLikRoute() const {
+    return nonMuThetaRegress || etaDistObsLik();
   }
   // How often the Shi-difference fallback supplied the non-mu gradient because
   // the analytic sensitivity path's bad-solve ladder was exhausted.  Reported,
