@@ -3668,15 +3668,43 @@ static bool focePlusSmallStep(double norm, double decrement) {
   return norm < 1e-3 && decrement >= 0 && decrement <= 1e-9;
 }
 
+static bool focePlusScore(arma::vec &at, arma::vec &out, int id) {
+  auto *ind = &inds_focei[id];
+  ind->setup = 0; ++ind->nInnerF; ++ind->nInnerG;
+  if (!R_FINITE(likInner0(at.memptr(),id))) return false;
+  std::copy(ind->lp,ind->lp+op_focei.neta,out.begin());
+  return out.is_finite();
+}
+
+static bool focePlusScoreJacobian(const arma::vec &x, arma::mat &jacobian, int id) {
+  for (unsigned int j = 0; j < x.n_elem; ++j) {
+    double h = std::max(1e-4,op_focei.hessEtaStepMin)*std::max(1.0,std::abs(x[j]));
+    arma::vec plus = x, minus = x, gp(x.n_elem), gm(x.n_elem);
+    plus[j] += h; minus[j] -= h;
+    if (!focePlusScore(plus,gp,id) || !focePlusScore(minus,gm,id)) return false;
+    jacobian.col(j) = (gp-gm)/(2*h);
+  }
+  return true;
+}
+
+static bool focePlusBacktrack(arma::vec &x, arma::vec &g, const arma::vec &step,
+                               double norm, int id) {
+  double alpha = 1;
+  for (int back = 0; back <= 8; ++back, alpha *= 0.5) {
+    arma::vec trial = x-alpha*step, gt(g.n_elem);
+    if (focePlusScore(trial,gt,id) && arma::abs(gt).max() < norm) {
+      x = trial; g = gt; return true;
+    }
+  }
+  return false;
+}
+
 static bool refineFocePlusEta(double *eta, int id) {
   if (!focePlusRefinementRequired()) return true;
   auto *ind = &inds_focei[id];
   arma::vec x(eta,op_focei.neta), g(op_focei.neta);
   auto score = [&](arma::vec &at, arma::vec &out) {
-    ind->setup = 0; ++ind->nInnerF; ++ind->nInnerG;
-    if (!R_FINITE(likInner0(at.memptr(),id))) return false;
-    std::copy(ind->lp,ind->lp+op_focei.neta,out.begin());
-    return out.is_finite();
+    return focePlusScore(at,out,id);
   };
   auto finish = [&]() {
     std::copy(x.begin(),x.end(),eta); ind->setup = 0;
@@ -3688,23 +3716,10 @@ static bool refineFocePlusEta(double *eta, int id) {
       double norm = arma::abs(g).max();
       if (norm < 1e-9) return finish();
       arma::mat jacobian(x.n_elem,x.n_elem);
-      for (unsigned int j = 0; j < x.n_elem; ++j) {
-        double h = std::max(1e-4,op_focei.hessEtaStepMin)*std::max(1.0,std::abs(x[j]));
-        arma::vec plus = x, minus = x, gp(g.n_elem), gm(g.n_elem);
-        plus[j] += h; minus[j] -= h;
-        if (!score(plus,gp) || !score(minus,gm)) return false;
-        jacobian.col(j) = (gp-gm)/(2*h);
-      }
+      if (!focePlusScoreJacobian(x,jacobian,id)) return false;
       arma::vec step;
       if (!arma::solve(step,jacobian,g) || !step.is_finite()) return false;
-      bool accepted = false;
-      double alpha = 1;
-      for (int back = 0; back <= 8; ++back, alpha *= 0.5) {
-        arma::vec trial = x-alpha*step, gt(g.n_elem);
-        if (score(trial,gt) && arma::abs(gt).max() < norm) {
-          x = trial; g = gt; accepted = true; break;
-        }
-      }
+      bool accepted = focePlusBacktrack(x,g,step,norm,id);
       if (!accepted) {
         double decrement = arma::dot(g,step);
         return focePlusSmallStep(norm,decrement) && finish();
@@ -24144,11 +24159,27 @@ struct FoceiHessianSubjects {
   const arma::ivec &dirs;
   const std::vector<double> &theta;
 
+  bool setupQuadrature(int id, std::vector<VaeOuterE> &node, FoceiHessianQuadrature &quadrature) {
+    if (_aqn <= 0 || !op_focei.aqx || !op_focei.aqw) return false;
+    quadrature.points = arma::mat(op_focei.aqx,_aqn,g.neta,false,true);
+    quadrature.weights = arma::mat(op_focei.aqw,_aqn,g.neta,false,true);
+    quadrature.evaluate = [this,id,&node](const arma::vec &eta, FoceiHessianNode &out) {
+      arma::mat at = d.eta; at.row(id) = eta.t();
+      d.probes->reset();
+      auto *op = getSolvingOptions(rx);
+      outerSolveFill(odeSlotOuter,&rxVaeOuter,theta,at,g,1,op,base.size(),g.neta,node,id);
+      if (!foceiHessianExpand(node[0],g) || node[0].nobs != base[id].nobs) return false;
+      out.f = node[0].f; out.R = node[0].R; out.a = node[0].a; out.aR = node[0].aR;
+      out.A = node[0].A; out.AR = node[0].AR;
+      return true;
+    };
+    return true;
+  }
+
   bool add(int id, arma::mat &information) {
-    int ns = base.size(), ne = g.neta, nd = g.nd+g.nsg;
+    int ne = g.neta, nd = g.nd+g.nsg;
     bool foce = g.interaction == 0, agq = g.nAGQ > 1;
     bool frozen = foce && g.foceType == 0;
-    auto *op = getSolvingOptions(rx);
     std::vector<VaeOuterE> node(agq ? 1 : 0);
     const auto &e = base[id];
     GradPooledBlocks obs;
@@ -24167,20 +24198,7 @@ struct FoceiHessianSubjects {
         doi,d2oi,d2ld,ne,nd,g.nth+g.nsg,g.nom,dirs);
     } else {
       FoceiHessianQuadrature quadrature;
-      if (agq) {
-        if (_aqn <= 0 || !op_focei.aqx || !op_focei.aqw) return false;
-        quadrature.points = arma::mat(op_focei.aqx,_aqn,ne,false,true);
-        quadrature.weights = arma::mat(op_focei.aqw,_aqn,ne,false,true);
-        quadrature.evaluate = [&](const arma::vec &eta, FoceiHessianNode &out) {
-          arma::mat at = d.eta; at.row(id) = eta.t();
-          d.probes->reset();
-          outerSolveFill(odeSlotOuter,&rxVaeOuter,theta,at,g,1,op,ns,ne,node,id);
-          if (!foceiHessianExpand(node[0],g) || node[0].nobs != e.nobs) return false;
-          out.f = node[0].f; out.R = node[0].R; out.a = node[0].a; out.aR = node[0].aR;
-          out.A = node[0].A; out.AR = node[0].AR;
-          return true;
-        };
-      }
+      if (agq && !setupQuadrature(id,node,quadrature)) return false;
       information += foceiRSubjectFR_(e.a,e.A,third[id],e.aR,e.AR,thirdR[id],noDv,noDv,
         obs.cens,obs.lim,e.f,obs.y,e.R,d.eta.row(id).t(),op_focei.omegaInv,
         doi,d2oi,d2ld,ne,nd,g.nth+g.nsg,g.nom,dirs,agq ? &quadrature : nullptr);
@@ -24211,6 +24229,20 @@ struct FoceiHessianModel {
   }
 };
 
+static void foceiHessianScale(FoceiHessianCall &d, const FoceiGradPooledSetup &g,
+                               const arma::mat &information) {
+  double scale = op_focei.scaleObjective == 2 ? op_focei.scaleObjectiveTo/op_focei.initObjective : 1;
+  d.hessian.set_size(d.x.n_elem,d.x.n_elem);
+  for (unsigned int j = 0; j < d.x.n_elem; ++j) for (unsigned int k = 0; k < d.x.n_elem; ++k)
+    d.hessian(j,k) = 2*scale*information(g.gMap[j],g.gMap[k])*dUnscaleParDx(j)*dUnscaleParDx(k);
+  if (d.hessian.is_finite()) d.status = 0;
+}
+
+static bool foceiHessianLayoutValid(const FoceiGradPooledSetup &g) {
+  return odeSwapCheckLhsWidth(odeSlotOuter,&rxVaeOuter,rx,getSolvingOptions(rx)) &&
+    outerColsWithin(g,odeSwapNlhs(odeSlotOuter));
+}
+
 static void foceiHessianAssemble(void *ptr) {
   auto &d = *static_cast<FoceiHessianCall*>(ptr);
   d.status = -4;
@@ -24219,9 +24251,7 @@ static void foceiHessianAssemble(void *ptr) {
     int ns = getRxNsub(rx), np = g.nth+g.nsg+g.nom;
     bool foce = g.interaction == 0;
     bool frozen = foce && g.foceType == 0;
-    auto *op = getSolvingOptions(rx);
-    if (!odeSwapCheckLhsWidth(odeSlotOuter,&rxVaeOuter,rx,op) ||
-        !outerColsWithin(g,odeSwapNlhs(odeSlotOuter))) return;
+    if (!foceiHessianLayoutValid(g)) return;
     arma::cube doi, d2oi;
     arma::mat d2ld;
     if (!foceiHessianOmega(doi,d2oi,d2ld)) return;
@@ -24242,11 +24272,7 @@ static void foceiHessianAssemble(void *ptr) {
     arma::mat information(np,np,arma::fill::zeros);
     FoceiHessianSubjects subjects{d,g,base,population,third,thirdR,doi,d2oi,d2ld,dirs,theta};
     for (int id = 0; id < ns; ++id) if (!subjects.add(id,information)) return;
-    double scale = op_focei.scaleObjective == 2 ? op_focei.scaleObjectiveTo/op_focei.initObjective : 1;
-    d.hessian.set_size(d.x.n_elem,d.x.n_elem);
-    for (unsigned int j = 0; j < d.x.n_elem; ++j) for (unsigned int k = 0; k < d.x.n_elem; ++k)
-      d.hessian(j,k) = 2*scale*information(g.gMap[j],g.gMap[k])*dUnscaleParDx(j)*dUnscaleParDx(k);
-    if (d.hessian.is_finite()) d.status = 0;
+    foceiHessianScale(d,g,information);
   } catch (...) { d.status = -3; }
 }
 
