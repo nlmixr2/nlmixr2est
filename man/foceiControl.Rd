@@ -688,6 +688,7 @@ curvature is unavailable.}
 \item{innerHessian}{Inner optimization curvature: \code{"focei"} (default) or
 \code{"conditional"}. Full conditional curvature requires fast Gaussian FOCEI.
 Inner trust uses it at each trial; n1qn1 uses it with \code{warm="calc"}.
+Value, gradient and full curvature share one sensitivity solve.
 The marginal objective's FOCEI curvature is unchanged.}
 
 \item{hessianMethod}{For a non-normal-endpoint model (any distribution

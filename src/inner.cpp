@@ -3339,8 +3339,14 @@ arma::vec getGradForOptimHess(arma::vec &t, int id) {
 
 bool _finalObfCalc = false;
 
+struct FoceiInnerResult {
+  double value = 0;
+  arma::vec gradient;
+  bool isFinite() const { return R_FINITE(value) && gradient.is_finite(); }
+};
+
 static bool conditionalInnerPartials(rx_solving_options_ind *ind, int kk2,
-                                     int ne, const double *lhs, double *cp) {
+                                     int ne, const double *lhs, double *cp, double &value) {
   int p = op_focei.predOffset;
   double f = lhs[p], variance = lhs[p+ne+1];
   if (!R_FINITE(variance) || variance <= std::sqrt(DBL_EPSILON)) return false;
@@ -3350,6 +3356,8 @@ static bool conditionalInnerPartials(rx_solving_options_ind *ind, int kk2,
   if (R_FINITE(limit)) limit = tbs(limit);
   int cens = hasRxCens(rx) ? getIndCens(ind, kk2) : 0;
   double err = f-y;
+  double ll = -0.5*(std::log(variance)+err*err/variance);
+  value = -doCensNormal1(cens,y,limit,ll,f,variance,op_focei.adjLik);
   cp[0] = err/variance;
   cp[1] = 0.5/variance-0.5*err*err/(variance*variance);
   cp[2] = 1.0/variance;
@@ -3359,13 +3367,33 @@ static bool conditionalInnerPartials(rx_solving_options_ind *ind, int kk2,
   return true;
 }
 
-// Evaluate the separate second-order model in this subject's pool slot.
+static void conditionalInnerScore(FoceiInnerResult &result, double value,
+                                   const double *lhs, const double *cp, int ne) {
+  result.value += value;
+  int p = op_focei.predOffset;
+  for (int j = 0; j < ne; ++j) {
+    double fj = lhs[p+j+1], rj = lhs[p+ne+j+2];
+    // Match the ordinary inner score's zero-sensitivity convention.
+    if (fj == 0) fj = std::sqrt(DBL_EPSILON);
+    if (rj == 0) rj = std::sqrt(DBL_EPSILON);
+    result.gradient[j] += cp[0]*fj+cp[1]*rj;
+  }
+}
+
+// One second-order solve supplies the conditional value, gradient and Hessian.
 static bool calcModelEtaHessian(double *eta, int id, focei_ind *fInd,
-                                rx_solving_options_ind *ind, mat &H, bool conditional) {
+                                rx_solving_options_ind *ind, mat &H, bool conditional,
+                                FoceiInnerResult &result) {
   rx = getRxSolve_();
   int _rxId = getRxId(id);
   rx_solving_options *op = getSolvingOptions(rx);
   int ne = op_focei.neta;
+  if (conditional) {
+    arma::vec x(eta,ne);
+    result.gradient = curOmegaInv()*x;
+    result.value = 0.5*arma::dot(x,result.gradient);
+    op_focei.didLikCalc.store(true,std::memory_order_relaxed);
+  }
   // This re-solve overwrites ind->solve with the 2nd-order model; force the next likInner0
   // for this subject to re-solve the inner model (do not let the eta*-unchanged short-circuit
   // read the rxHess2 buffer as the inner solve) -- mirrors impThetaSensCollect.
@@ -3386,7 +3414,11 @@ static bool calcModelEtaHessian(double *eta, int id, focei_ind *fInd,
     double curT2 = getTime(kk2, ind);
     rxHess2.calc_lhs(_rxId, curT2, getOpIndSolve(op, ind, jj), lhs);
     double cp[9] = {};
-    if (conditional && !conditionalInnerPartials(ind,kk2,ne,lhs,cp)) return false;
+    if (conditional) {
+      double value;
+      if (!conditionalInnerPartials(ind,kk2,ne,lhs,cp,value)) return false;
+      conditionalInnerScore(result,value,lhs,cp,ne);
+    }
     int r = 0;                                            // rx__d2pred_ order: j-outer, i-inner (i<=j)
     for (int jc = 0; jc < ne; ++jc)
       for (int ic = 0; ic <= jc; ++ic) {
@@ -3409,20 +3441,23 @@ static bool calcModelEtaHessian(double *eta, int id, focei_ind *fInd,
       if (!R_finite(H(ic, jc))) return false;
       H(jc, ic) = H(ic, jc);
     }
-  return true;
+  return !conditional || result.isFinite();
 }
 
 bool calcEtaHessian(double *eta, int likId, int id,
                     focei_ind *fInd,
                     rx_solving_options_ind *ind,
-                    mat &H, mat &H0, bool forOptimization = false) {
+                    mat &H, mat &H0, bool forOptimization = false,
+                    FoceiInnerResult *evaluation = nullptr) {
   H.zeros();
   int k, l;
   // This is actually -H
   bool conditional = forOptimization && op_focei.conditionalHess2Offset >= 0;
   if (conditional) ++op_focei.nConditionalInnerHessian;
   if (op_focei.predHess2Offset >= 0 || conditional) {
-    if (!calcModelEtaHessian(eta,id,fInd,ind,H,conditional)) return false;
+    FoceiInnerResult result;
+    if (!calcModelEtaHessian(eta,id,fInd,ind,H,conditional,result)) return false;
+    if (evaluation) *evaluation = std::move(result);
   } else if (op_focei.needOptimHess) {
     arma::vec gr0(op_focei.neta, fill::zeros);
     std::copy(&fInd->lp[0], &fInd->lp[0] + op_focei.neta, &gr0[0]);
@@ -3853,28 +3888,31 @@ double LikInner2(double *eta, int likId, int id) {
   return lik;
 }
 
-// warm="calc": seed n1qn1's zm with the eta Hessian calculated at the starting
-// eta.  Always recalculated: theta moves between outer evaluations, so a
-// Hessian saved from an earlier round is stale even at an identical eta.
-// For FD Hessians (needOptimHess) this optimizes the shi21 step (etahh) at
-// the starting eta (e.g. eta=0) instead of the EBE mode, shifting downstream
-// Hessians by FD error; the warm-start speedup is worth that small shift.
+static bool evaluateInner(double *eta, int id, FoceiInnerResult &result, mat &H, mat &H0) {
+  auto *fInd = &inds_focei[id];
+  auto *ind = getSolvingOptionsInd(getRxSolve_(),getRxId(id));
+  if (op_focei.conditionalHess2Offset >= 0) {
+    if (!calcEtaHessian(eta,0,id,fInd,ind,H,H0,true,&result)) return false;
+    fInd->llik = result.value;
+    std::copy(result.gradient.begin(),result.gradient.end(),fInd->lp);
+    return true;
+  }
+  result.value = likInner0(eta,id);
+  if (!R_FINITE(result.value)) return false;
+  result.gradient = arma::vec(fInd->lp,op_focei.neta);
+  return calcEtaHessian(eta,0,id,fInd,ind,H,H0,true);
+}
+
+// n1qn1 uses this freshly calculated Hessian only as its starting seed.
 void warmZm(focei_ind *fInd, int id) {
-  std::fill(&fInd->zm[0], &fInd->zm[0] + op_focei.nzm, 0.0);
+  std::fill(fInd->zm,fInd->zm+op_focei.nzm,0.0);
   int neta = op_focei.neta;
-  bool haveH = false;
-  double f = likInner0(fInd->eta, id);
-  if (!ISNA(f)) {
-    rx = getRxSolve_();
-    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
-    mat H(neta, neta, fill::zeros);
-    mat H0(neta, neta, fill::zeros);
-    if (calcEtaHessian(fInd->eta, 0, id, fInd, ind, H, H0, true)) {
-      // n1qn1 mode=2 reads the packed lower-triangle Hessian from zm
-      vec hPack = H.elem(lowerTri(H, true));
-      std::copy(hPack.begin(), hPack.end(), &fInd->zm[0]);
-      haveH = true;
-    }
+  FoceiInnerResult result;
+  mat H(neta,neta,fill::zeros), H0(neta,neta,fill::zeros);
+  bool haveH = evaluateInner(fInd->eta,id,result,H,H0);
+  if (haveH) {
+    vec hPack = H.elem(lowerTri(H,true));
+    std::copy(hPack.begin(),hPack.end(),fInd->zm);
   }
   fInd->mode = haveH ? 2 : 1;
   fInd->uzm = 1;
@@ -3929,36 +3967,24 @@ void innerCost(int *ind, int *n, double *x, double *f, double *g, int *ti, float
   }
 }
 
-// RcppTrust objfun: value+gradient+Hessian every call (a true trust-region
-// Newton step wants a fresh Hessian each iteration, unlike n1qn1's one-time
-// warm-start seed). calcEtaHessian() is cheap since neta is small, and is
-// already proven safe inside this OpenMP per-subject loop (warmZm calls it
-// the same way). No R API calls -- matches innerCost/likInner0's discipline.
+// Inner trust consumes value, gradient and Hessian at every trial.
 extern "C" int trustInnerObjfun(int n, const double *par, double *value,
                                  double *gradient, double *hessian, void *userdata) {
   int id = *((int*)userdata);
   focei_ind *fInd = &(inds_focei[id]);
   if (fInd->badSolve == 1) { *value = std::numeric_limits<double>::infinity(); return 1; }
-  std::copy(par, par + n, fInd->x);
-  double f = likInner0(fInd->x, id);
-  if (ISNA(f)) {
+  std::copy(par,par+n,fInd->x);
+  ++fInd->nInnerF; ++fInd->nInnerG;
+  FoceiInnerResult result;
+  mat H(n,n,fill::zeros), H0(n,n,fill::zeros);
+  if (!evaluateInner(fInd->x,id,result,H,H0)) {
     fInd->badSolve = 1;
     *value = std::numeric_limits<double>::infinity();
     return 1;
   }
-  fInd->nInnerF++;
-  lpInner(fInd->x, gradient, id);
-  fInd->nInnerG++;
-  rx = getRxSolve_();
-  rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
-  mat H((arma::uword)n, (arma::uword)n, fill::zeros), H0((arma::uword)n, (arma::uword)n, fill::zeros);
-  if (!calcEtaHessian(fInd->x, 0, id, fInd, ind, H, H0, true)) {
-    fInd->badSolve = 1;
-    *value = std::numeric_limits<double>::infinity();
-    return 1;
-  }
-  std::copy(H.begin(), H.end(), hessian);
-  *value = f;
+  std::copy(H.begin(),H.end(),hessian);
+  std::copy(result.gradient.begin(),result.gradient.end(),gradient);
+  *value = result.value;
   return 0;
 }
 

@@ -9,6 +9,9 @@
   `innerHessian="conditional"`, used by inner trust and n1qn1's `warm="calc"`
   seed. The FOCEI marginal objective was unchanged.
 
+- Evaluated the conditional inner value, gradient and full curvature jointly
+  in one pooled sensitivity solve, including M2/M3/M4 censoring.
+
 - `impmapControl(proposal=)` selects the importance-sampling proposal family for
   `est="imp"`, `"impmap"` and `"qrpem"`: `"normal"` and `"t"` as `df` already
   reached, plus `"laplace"` (a spherical multivariate Laplace, whose exponential

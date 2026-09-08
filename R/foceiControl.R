@@ -547,6 +547,7 @@
 #' @param innerHessian Inner optimization curvature: `"focei"` (default) or
 #'   `"conditional"`. Full conditional curvature requires fast Gaussian FOCEI.
 #'   Inner trust uses it at each trial; n1qn1 uses it with `warm="calc"`.
+#'   Value, gradient and full curvature share one sensitivity solve.
 #'   The marginal objective's FOCEI curvature is unchanged.
 #' @param hessianMethod For a non-normal-endpoint model (any distribution
 #'     other than \code{norm}), the per-subject inner Hessian has no
