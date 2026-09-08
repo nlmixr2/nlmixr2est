@@ -544,6 +544,10 @@
 #'     coupling these parameters exist to remove. Has no effect unless
 #'     `innerOpt="trust"`.
 #'
+#' @param innerHessian Inner optimization curvature: `"focei"` (default) or
+#'   `"conditional"`. Full conditional curvature requires fast Gaussian FOCEI.
+#'   Inner trust uses it at each trial; n1qn1 uses it with `warm="calc"`.
+#'   The marginal objective's FOCEI curvature is unchanged.
 #' @param hessianMethod For a non-normal-endpoint model (any distribution
 #'     other than \code{norm}), the per-subject inner Hessian has no
 #'     Gaussian Gauss-Newton shortcut and falls back to a finite difference
@@ -1129,6 +1133,7 @@ foceiControl <- function(sigdig = 3, #
                            "newuoa"
                          ), #
                          innerOpt = c("auto", "trust", "n1qn1", "BFGS"), #
+                         innerHessian = c("focei", "conditional"), #
                          hessianMethod = c("fd", "bfgs", "sr1", "bofill"), #
                          ## trust-region inner optimizer (RcppTrust)
                          trustConf = 0.975, # confidence level defining the trust-region radius
@@ -1640,6 +1645,11 @@ foceiControl <- function(sigdig = 3, #
     hessianMethod <- setNames(.hessianMethodIdx[match.arg(hessianMethod)], NULL)
   }
   .foceiAssertHessianMethod(hessianMethod, innerOpt)
+  innerHessian <- match.arg(innerHessian)
+  if (innerHessian == "conditional" && (!isTRUE(fast) || !isTRUE(as.logical(interaction)) ||
+      !(innerOpt %in% c(1L, 3L, 4L)))) {
+    stop("Conditional inner Hessian requires fast FOCEI with trust or n1qn1", call. = FALSE)
+  }
   checkmate::assertNumeric(trustConf, lower = 0, upper = 1, finite = TRUE, any.missing = FALSE, len = 1)
   if (trustConf <= 0 || trustConf >= 1) {
     # qchisq(0, df)==0 (zero trust-region radius, no step ever taken) and
@@ -1907,6 +1917,7 @@ foceiControl <- function(sigdig = 3, #
     iter.max = iter.max,
     innerOpt = innerOpt,
     hessianMethod = hessianMethod,
+    innerHessian = innerHessian,
     ## trust-region inner optimizer (RcppTrust)
     trustConf = as.double(trustConf),
     trustRinit = trustRinit,

@@ -366,6 +366,10 @@ struct focei_options {
   // Shi21 finite difference.  rxHess2 is re-solved per subject at eta* -- the cheap 1st-order
   // inner model (rxInner) drives the Newton (neqOverride = innerNeq).
   int predHess2Offset = -1;
+  int conditionalHess2Offset = -1;
+  bool conditionalHessianRequested = false;
+  std::atomic<int> nConditionalInnerHessian{0};
+  int varianceHess2Offset = -1;
   int hess2Neq = 0;    // rxHess2 ODE state count (the full 2nd-order model)
   int hess2Nlhs = 0;   // rxHess2 lhs width (sizes the thread-local read buffer)
   int thetaSensOffset = -1;   // lhs offset of the first d(f)/d(theta) output (impmap)
@@ -3338,11 +3342,13 @@ bool _finalObfCalc = false;
 bool calcEtaHessian(double *eta, int likId, int id,
                     focei_ind *fInd,
                     rx_solving_options_ind *ind,
-                    mat &H, mat &H0) {
+                    mat &H, mat &H0, bool forOptimization = false) {
   H.zeros();
   int k, l;
   // This is actually -H
-  if (op_focei.predHess2Offset >= 0) {
+  bool conditional = forOptimization && op_focei.conditionalHess2Offset >= 0;
+  if (conditional) ++op_focei.nConditionalInnerHessian;
+  if (op_focei.predHess2Offset >= 0 || conditional) {
     // Exact log-likelihood inner Hessian (fast=TRUE ll()/generalized): rx_pred_ is the
     // per-observation log-density, so the inner model's rx__d2pred_i_j__ column is
     // d2(logLik)/deta_i deta_j.  Assemble H = Omega^-1 - sum_obs d2 analytically (the exact
@@ -3377,10 +3383,37 @@ bool calcEtaHessian(double *eta, int likId, int id,
       if (getIndEvid(ind, kk2) != 0) continue;              // observations only
       double curT2 = getTime(kk2, ind);
       rxHess2.calc_lhs(_rxId, curT2, getOpIndSolve(op, ind, jj), lhs);
+      double cp[9] = {};
+      if (conditional) {
+        int p = op_focei.predOffset;
+        double f = lhs[p], variance = lhs[p+ne+1];
+        if (!R_FINITE(variance) || variance <= std::sqrt(DBL_EPSILON)) return false;
+        double y = tbs(getIndDv(ind, kk2));
+        double limit = hasRxLimit(rx) ? getIndLimit(ind, kk2) : R_NegInf;
+        if (ISNA(limit)) limit = R_NegInf;
+        if (R_FINITE(limit)) limit = tbs(limit);
+        int cens = hasRxCens(rx) ? getIndCens(ind, kk2) : 0;
+        double err = f-y;
+        cp[0] = err/variance;
+        cp[1] = 0.5/variance-0.5*err*err/(variance*variance);
+        cp[2] = 1.0/variance;
+        cp[3] = -err/(variance*variance);
+        cp[4] = -0.5/(variance*variance)+err*err/(variance*variance*variance);
+        if (cens != 0 || R_FINITE(limit)) censNormalPartials(cens,y,limit,f,variance,2,cp);
+      }
       int r = 0;                                            // rx__d2pred_ order: j-outer, i-inner (i<=j)
       for (int jc = 0; jc < ne; ++jc)
         for (int ic = 0; ic <= jc; ++ic) {
-          H(ic, jc) += -lhs[op_focei.predHess2Offset + r];
+          if (conditional) {
+            int p = op_focei.predOffset;
+            double fi = lhs[p+ic+1], fj = lhs[p+jc+1];
+            double ri = lhs[p+ne+ic+2], rj = lhs[p+ne+jc+2];
+            H(ic,jc) += cp[2]*fi*fj+cp[3]*(fi*rj+ri*fj)+cp[4]*ri*rj+
+              cp[0]*lhs[op_focei.conditionalHess2Offset+r]+
+              cp[1]*lhs[op_focei.varianceHess2Offset+r];
+          } else {
+            H(ic, jc) += -lhs[op_focei.predHess2Offset + r];
+          }
           ++r;
         }
     }
@@ -3603,6 +3636,7 @@ bool calcEtaHessian(double *eta, int likId, int id,
     }
   }
   k=0;
+  if (conditional && op_focei.innerOpt == 3) return H.is_finite();
   if (!H.is_sympd()) {
     arma::mat H2;
     if (nmNearPD(H2, H)) {
@@ -3812,7 +3846,7 @@ void warmZm(focei_ind *fInd, int id) {
     rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
     mat H(neta, neta, fill::zeros);
     mat H0(neta, neta, fill::zeros);
-    if (calcEtaHessian(fInd->eta, 0, id, fInd, ind, H, H0)) {
+    if (calcEtaHessian(fInd->eta, 0, id, fInd, ind, H, H0, true)) {
       // n1qn1 mode=2 reads the packed lower-triangle Hessian from zm
       vec hPack = H.elem(lowerTri(H, true));
       std::copy(hPack.begin(), hPack.end(), &fInd->zm[0]);
@@ -3895,7 +3929,7 @@ extern "C" int trustInnerObjfun(int n, const double *par, double *value,
   rx = getRxSolve_();
   rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
   mat H((arma::uword)n, (arma::uword)n, fill::zeros), H0((arma::uword)n, (arma::uword)n, fill::zeros);
-  if (!calcEtaHessian(fInd->x, 0, id, fInd, ind, H, H0)) {
+  if (!calcEtaHessian(fInd->x, 0, id, fInd, ind, H, H0, true)) {
     fInd->badSolve = 1;
     *value = std::numeric_limits<double>::infinity();
     return 1;
@@ -8813,6 +8847,7 @@ NumericVector foceiSetup_(const RObject &obj,
     op_focei.trustMterm = as<double>(foceiO["trustMterm"]);
   }
   op_focei.nTrustInner.store(0, std::memory_order_relaxed);
+  op_focei.nConditionalInnerHessian.store(0, std::memory_order_relaxed);
   op_focei.nTrustError.store(0, std::memory_order_relaxed);
   op_focei.nTrustNoConv.store(0, std::memory_order_relaxed);
   op_focei.nTrustSolverNoConv.store(0, std::memory_order_relaxed);
@@ -9068,6 +9103,11 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.resetThetaSize=as<double>(foceiO["resetThetaSize"]);
   op_focei.resetThetaFinalSize = as<double>(foceiO["resetThetaFinalSize"]);
   op_focei.needOptimHess = as<bool>(foceiO["needOptimHess"]);
+  op_focei.conditionalHessianRequested = foceiO.containsElementNamed("innerHessian") &&
+    as<std::string>(foceiO["innerHessian"]) == "conditional";
+  if (op_focei.conditionalHessianRequested && op_focei.needOptimHess) {
+    stop("Conditional inner Hessian requires Gaussian endpoints");
+  }
   // innerOpt="auto" (4) resolves here, the first point where needOptimHess is
   // known.  A generalized-likelihood endpoint has no Gauss-Newton inner
   // Hessian, so trust pays 2*neta inner solves to rebuild it at every trial
@@ -12371,6 +12411,7 @@ void foceiFinalizeTables(Environment e){
         // ... and solves where a failed attempt WAS dropped because a
         // succeeded one was available.
         _["dropped"] = op_focei.nInnerDropped.load(std::memory_order_relaxed));
+      e["nConditionalInnerHessian"] = op_focei.nConditionalInnerHessian.load(std::memory_order_relaxed);
       if (op_focei.innerOpt == 3) {
         // innerOpt="trust" outcomes.  "calls" is what .nTrustInner() reports;
         // the rest say whether those calls actually converged -- a fit whose
@@ -13675,6 +13716,8 @@ Environment foceiFitCpp_(Environment e){
       // rx__d2pred_1_1__.  calcEtaHessian re-solves it per subject at eta*; the cheap
       // 1st-order inner Newton runs with ind->neqOverride = innerNeq (pool sized for rxHess2).
       op_focei.predHess2Offset = -1;
+      op_focei.conditionalHess2Offset = -1;
+      op_focei.varianceHess2Offset = -1;
       op_focei.hess2Neq = 0;
       op_focei.hess2Nlhs = 0;
       if (model.containsElementNamed("innerHess2")) {
@@ -13683,6 +13726,11 @@ Environment foceiFitCpp_(Environment e){
           op_focei.hess2Neq = odeSwapNeq(odeSlotHess2);
           op_focei.hess2Nlhs = odeSwapNlhs(odeSlotHess2);
           op_focei.predHess2Offset = odeSwapLhsIndex(odeSlotHess2, "rx__d2pred_1_1__");
+          op_focei.varianceHess2Offset = odeSwapLhsIndex(odeSlotHess2, "rx__d2r_1_1__");
+          if (op_focei.varianceHess2Offset >= 0) {
+            op_focei.conditionalHess2Offset = op_focei.predHess2Offset;
+            op_focei.predHess2Offset = -1;
+          }
           // rx__d2pred_ is the second derivative of the UNCENSORED log-density, and
           // doCensT1()/doCensNormal1() REPLACE a censored row's contribution -- so once
           // the M2/M3/M4 correction is armed (predFOffset >= 0, #992) that curvature is
@@ -13696,7 +13744,7 @@ Environment foceiFitCpp_(Environment e){
             op_focei.predHess2Offset = -1;
           }
           // pin the 1st-order inner Newton solves to innerNeq (pool sized for rxHess2)
-          if (op_focei.predHess2Offset >= 0 && op_focei.innerNeq > 0) {
+          if ((op_focei.predHess2Offset >= 0 || op_focei.conditionalHess2Offset >= 0) && op_focei.innerNeq > 0) {
             impSetInnerNeqOverride();
           }
         }
@@ -13705,6 +13753,12 @@ Environment foceiFitCpp_(Environment e){
       if (model.containsElementNamed("eventEta")) {
         IntegerVector eventEta = model["eventEta"];
         std::copy(eventEta.begin(), eventEta.end(),&op_focei.etaFD[0]);
+      }
+      if (op_focei.conditionalHessianRequested) {
+        if (op_focei.conditionalHess2Offset < 0) stop("Conditional inner Hessian model is unavailable");
+        for (int j = 0; j < op_focei.neta; ++j) {
+          if (op_focei.etaFD[j]) stop("Conditional inner Hessian requires analytical ETA sensitivities");
+        }
       }
     } else if (model.containsElementNamed("predOnly")){
       if (model.containsElementNamed("predOnlyLlik")){
@@ -14140,6 +14194,8 @@ RObject vaeInnerSetup_(Environment e) {
   // into the exact-Hessian branch against a model that is not loaded here.
   // foceiFitCpp_ resets this for the same reason; do it on this entry too.
   op_focei.predHess2Offset = -1;
+  op_focei.conditionalHess2Offset = -1;
+  op_focei.varianceHess2Offset = -1;
   op_focei.hess2Neq = 0;
   op_focei.hess2Nlhs = 0;
   setupAq0_(e);

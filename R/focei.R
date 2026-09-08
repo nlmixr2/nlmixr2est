@@ -1485,7 +1485,7 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
 #' Add `..HdEta2`/`..sens2` to a symengine env that already carries the first-order
 #' eta sensitivities (i.e. the output of [rxUiGet.foceiHdEta]/[rxUiGet.foceiEtaS]).
 #' @noRd
-.foceiAddHdEta2 <- function(.s) {
+.foceiAddHdEta2 <- function(.s, conditional = FALSE) {
   .neta <- .s$..maxEta
   .etaVars <- paste0("ETA_", seq_len(.neta), "_")
   .st <- rxode2::rxStateOde(.s)
@@ -1515,6 +1515,15 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
     }
   }
   .s$..HdEta2 <- .lines
+  if (conditional) {
+    .variance <- get("rx_r_", .s)
+    .lines <- character()
+    for (.j in seq_len(.neta)) for (.i in seq_len(.j)) {
+      .lines <- c(.lines, paste0("rx__d2r_", .i, "_", .j, "__=",
+        .toRx(.g2(.variance, .etaVars[.i], .etaVars[.j]))))
+    }
+    .s$..RdEta2 <- .lines
+  }
   .s$..sens2 <- .s2
   .s
 }
@@ -1527,11 +1536,17 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
 #' (interaction=1) and FOCE (interaction=0 -- the `ll()`/generalized path) inner builders.
 #' @noRd
 .foceiMaybeAddHdEta2 <- function(x, .s) {
+  .conditional <- identical(rxode2::rxGetControl(x[[1]], "innerHessian", "focei"), "conditional")
   # linCmt() sensitivity carry (3b.3): no second-order carry exists, so a
   # model with a carry-eligible pair keeps the Shi21 finite-difference
   # inner Hessian (which differentiates the carry-corrected gradient).
   if (!is.null(.s$..linCmtCarryPairs)) {
+    if (.conditional) stop("Conditional inner Hessian does not support this sensitivity carry", call. = FALSE)
     return(.s)
+  }
+  if (.conditional) {
+    if (.foceiLLGradInScope(x[[1]])) stop("Conditional inner Hessian requires Gaussian endpoints", call. = FALSE)
+    return(.foceiAddHdEta2(.s, conditional = TRUE))
   }
   if (isTRUE(as.logical(rxode2::rxGetControl(x[[1]], "fast", FALSE))) &&
     .foceiLLGradInScope(x[[1]])) {
@@ -1771,6 +1786,7 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
       .s$..REta,
       .adjLhs,
       .s$..HdEta2,
+      .s$..RdEta2,
       .s$..stateInfo["statef"],
       .s$..stateInfo["dvid"],
       ""
@@ -2571,7 +2587,9 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
   ## sensitivity model in "fd" mode -- silently zeroing the dosing-parameter
   ## sensitivities.  Version 2: .foceiModelCacheDeflate() stores eventSens.
   .cacheFormat <- 2L
+  .innerHessian <- rxode2::rxGetControl(.ui, "innerHessian", "focei")
   digest::digest(c(
+    if (.innerHessian == "conditional") "conditionalInner1",
     all(is.na(.iniDf$neta1)), .combSens, .linCmtCarry, .pkgVersion, .cacheFormat,
     rxode2::rxGetControl(.ui, "interaction", 1L),
     .iniDf$name,

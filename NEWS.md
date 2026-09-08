@@ -5,6 +5,10 @@
 - Added a native analytical outer Hessian for fast Gaussian FOCE/FOCE+/FOCEI/AGQ fits, using
   the existing sensitivity pool. Fast `nlminb` fits used it automatically.
 
+- Added optional full conditional inner curvature for fast Gaussian FOCEI via
+  `innerHessian="conditional"`, used by inner trust and n1qn1's `warm="calc"`
+  seed. The FOCEI marginal objective was unchanged.
+
 - `impmapControl(proposal=)` selects the importance-sampling proposal family for
   `est="imp"`, `"impmap"` and `"qrpem"`: `"normal"` and `"t"` as `df` already
   reached, plus `"laplace"` (a spherical multivariate Laplace, whose exponential

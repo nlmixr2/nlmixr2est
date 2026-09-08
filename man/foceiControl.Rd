@@ -83,6 +83,7 @@ foceiControl(
   outerOpt = c("bobyqa", "nlminb", "lbfgsb3c", "L-BFGS-B", "mma", "lbfgsbLG", "slsqp",
     "uobyqa", "newuoa"),
   innerOpt = c("auto", "trust", "n1qn1", "BFGS"),
+  innerHessian = c("focei", "conditional"),
   hessianMethod = c("fd", "bfgs", "sr1", "bofill"),
   trustConf = 0.975,
   trustRinit = NULL,
@@ -683,6 +684,11 @@ curvature is unavailable.}
     costs 2*neta inner solves each time, while `"n1qn1"` builds it once as a
     warm-start seed and corrects it with its own quasi-Newton updates.  On
     everything else `"trust"` is typically the faster of the two.}
+
+\item{innerHessian}{Inner optimization curvature: \code{"focei"} (default) or
+\code{"conditional"}. Full conditional curvature requires fast Gaussian FOCEI.
+Inner trust uses it at each trial; n1qn1 uses it with \code{warm="calc"}.
+The marginal objective's FOCEI curvature is unchanged.}
 
 \item{hessianMethod}{For a non-normal-endpoint model (any distribution
     other than \code{norm}), the per-subject inner Hessian has no
