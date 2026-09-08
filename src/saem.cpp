@@ -2265,6 +2265,99 @@ public:
     return pred;
   }
 
+  // The declared-distribution M-step objective, evaluated through the peer.
+  //
+  //   -sum over (subject i, observation record j) of log p( eta_i ; args_ij(x) )
+  //
+  // for ONE family, with `x` the candidate values of that family's thetas and
+  // `etaFix` the eta each subject is scored at -- fixed at theta_old, which is
+  // what makes this the EM Q-function rather than a marginal MLE of the family
+  // against its own draws (see R/etaDistMstep.R section 3).
+  //
+  // Option 1 of the design: the peer is re-solved at every candidate.  It has
+  // no states, so a "solve" is arithmetic over the subject's records, not
+  // integration -- the cost is the record walk.
+  //
+  // par_ptr is filled with the SAME convention saemSetRowsPooled() uses -- a
+  // mu-referenced parameter's whole combined phi goes in its THETA[] and its
+  // ETA[] is 0, a nonMuEta's value goes in its ETA[] instead -- with two
+  // deliberate departures: this family's own thetas take the CANDIDATE values,
+  // and its declared random effect's ETA[] slot takes the fixed eta.
+  // `phiSub` is the per-SUBJECT phi (N rows), indexed through the same
+  // _saemPhi1I0/_saemPhi1I1 column maps saemSetRowsPooled() uses -- that
+  // function receives the identical matrix as its `_phi` argument.
+  bool etaDistPeerObj(int kk, const arma::mat &phiSub,
+                      const std::vector<double> &etaFix,
+                      const double *x, double *fOut, double *gOut) {
+    if (!_saemEdActive || kk < 0 || kk >= (int)_saemEdLlOff.size()) return false;
+    if (!odeSwapLoaded(odeSlotEtaDistLl)) return false;
+    int nTh = (int)_saemEdTheta[(size_t)kk].size();
+    if (nTh <= 0) return false;
+    int nHTheta = (int)_saemPhi1H2ThetaKind.n_elem;
+    int nHEta = (int)_saemPhi1H2EtaCol.n_elem;
+    if (nHTheta <= 0) return false;
+    int nInd = (int)etaFix.size();
+    if (nInd <= 0 || (int)phiSub.n_rows < nInd) return false;
+    int etaSlot = _saemEdEta[(size_t)kk] - 1;   // 1-based from R
+    if (etaSlot < 0 || etaSlot >= nHEta) return false;
+    rx_solving_options *op = getSolvingOptions(_rx);
+    // Which THETA[] slot each candidate belongs in.  THETA[j] is the j-th
+    // theta of the iniDf, so the slot is j - 1.
+    std::vector<int> slot((size_t)nTh);
+    for (int t = 0; t < nTh; ++t) {
+      int j = _saemEdTheta[(size_t)kk][(size_t)t] - 1;
+      if (j < 0 || j >= nHTheta) return false;
+      slot[(size_t)t] = j;
+    }
+    std::vector<double> ll(_saemEdLlOff.size(), 0.0);
+    std::vector< std::vector<double> > gr(_saemEdLlOff.size());
+    for (size_t q = 0; q < gr.size(); ++q) {
+      gr[q].assign(_saemEdGradOff[q].size(), 0.0);
+    }
+    // ES shape is a process global even for a peer with no event sensitivities
+    // of its own; without a batch here a shape some earlier solve installed
+    // stays live and handle_evid injects jumps sized for THAT model into this
+    // one's events.  Constructed outside any parallel region, like every other
+    // peer solve's batch.
+    OdeSwapEsBatch edEsBatch(odeSlotEtaDistLl);
+    bool ok = true;
+    for (int i = 0; i < nInd && ok; ++i) {
+      rx_solving_options_ind *ind = getSolvingOptionsInd(_rx, i);
+      OdeSwapScope neqGuard(odeSlotEtaDistLl, ind, op);
+      OdeSwapCmtScope cmtGuard(odeSlotEtaDistLl, op, ind);
+      for (int k = 0; k < nHTheta; ++k) {
+        int kind = _saemPhi1H2ThetaKind(k), col = _saemPhi1H2ThetaCol(k);
+        double v = (kind == 1) ? phiSub(i, _saemPhi1I1(col)) :
+          ((kind == 0) ? phiSub(i, _saemPhi1I0(col)) : _saemPhi1H2ThetaFixedVal(k));
+        setIndParPtr(ind, k, v);
+      }
+      for (int t = 0; t < nTh; ++t) setIndParPtr(ind, slot[(size_t)t], x[t]);
+      for (int k = 0; k < nHEta; ++k) {
+        double v = 0.0;
+        if (k < (int)_saemPhi1EtaNonMu.n_elem && _saemPhi1EtaNonMu(k) != 0) {
+          v = phiSub(i, _saemPhi1I1(_saemPhi1H2EtaCol(k)));
+        }
+        setIndParPtr(ind, nHTheta + k, v);
+      }
+      // the fixed eta, last, so it wins over whatever the convention above put
+      // in that slot
+      setIndParPtr(ind, nHTheta + etaSlot, etaFix[(size_t)i]);
+      if (!saemNoThrow([&]{
+            ok = etaDistPeerAt(i, ind, op, neqGuard, _saemEdLlOff,
+                               _saemEdGradOff, ll, gr);
+          })) {
+        ok = false;
+      }
+    }
+    if (!ok || !std::isfinite(ll[(size_t)kk])) return false;
+    *fOut = -ll[(size_t)kk];
+    for (int t = 0; t < nTh; ++t) {
+      double gv = (t < (int)gr[(size_t)kk].size()) ? -gr[(size_t)kk][(size_t)t] : 0.0;
+      gOut[t] = std::isfinite(gv) ? gv : 0.0;
+    }
+    return true;
+  }
+
   // One peer solve for subject i: accumulate log p(eta_k; args_k) and its
   // d/d(THETA_j_) over that subject's OBSERVATION records.
   //
