@@ -148,3 +148,42 @@ test_that("the peer's theta derivatives match central differences", {
     expect_equal(.g5(.th), .fd(.f, .th, 5L), tolerance = 1e-6)
   }
 })
+
+## Argument substitution.  The templates use lotri's canonical parameter names
+## in lotri's canonical ORDER, and the declaration supplies them positionally,
+## so a mismatch between the two tables would silently swap (say) shape and
+## rate -- a wrong density that still integrates to 1 and still differentiates,
+## which neither test above would catch.
+
+test_that("declaration arguments land in the right template slots", {
+  skip_if_not(requireNamespace("lotri", quietly = TRUE) &&
+              !is.null(utils::getFromNamespace("lotriEtaDists", "lotri")))
+  .f <- nlmixr2est:::.etaDistPeerLogDensity
+  ## gamma: shape then rate
+  expect_equal(.f("dgamma(A, B)", "ETA_1_", "eta.cl"),
+               "llikGamma(ETA_1_, (A), (B))")
+  ## weibull: shape then scale
+  expect_equal(.f("dweibull(A, B)", "ETA_1_", "eta.cl"),
+               "llikWeibull(ETA_1_, (A), (B))")
+  ## normal: mean then sd
+  expect_equal(.f("dnorm(A, B)", "ETA_1_", "eta.cl"),
+               "llikNorm(ETA_1_, (A), (B))")
+  ## studentT is nu, mu, sigma in the catalog but llikT() takes
+  ## (x, df, mean, sd) -- the template is what reorders them, so this is the
+  ## case a naive positional pass-through would get wrong
+  expect_equal(.f("studentT(NU, MU, SG)", "ETA_1_", "eta.cl"),
+               "llikT(ETA_1_, (NU), (MU), (SG))")
+  ## pareto is y_min then alpha, and the template uses each more than once.
+  ## The doubled parentheses are the template's own -- it writes `({alpha})`
+  ## where the parameter is followed by an operator -- plus the pair the
+  ## substitution adds around every argument.  Harmless, and worth pinning: it
+  ## is what proves the substitution wraps rather than splices.
+  expect_equal(.f("pareto(YM, AL)", "ETA_1_", "eta.cl"),
+               "log((AL)) + ((AL))*log((YM)) - (((AL)) + 1)*log(ETA_1_)")
+  ## expressions, not just symbols, and the eta spelling is whatever the
+  ## caller passes (the latent slot name in practice)
+  expect_equal(.f("dgamma(1/exp(a), 1/(exp(a) * exp(b)))", "rxz.eta.cl", "eta.cl"),
+               "llikGamma(rxz.eta.cl, (1/exp(a)), (1/(exp(a) * exp(b))))")
+  ## a family with no log density here declines rather than guessing
+  expect_null(.f("stdNormal()", "ETA_1_", "eta.cl"))
+})
