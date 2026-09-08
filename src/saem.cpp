@@ -646,6 +646,9 @@ static int gEdFam = -1;
 static std::vector<int> _saemEdLlOff;
 static std::vector< std::vector<int> > _saemEdGradOff;
 static std::vector<int> _saemEdEta;
+// which DECLARED family (0-based) each retained block belongs to; a declined
+// family has no block, so retained index != declared index in general
+static std::vector<int> _saemEdFam;
 static std::vector< std::vector<int> > _saemEdTheta;
 static bool _saemEdActive = false;
 
@@ -694,6 +697,23 @@ static void gEdN1Cost(int *ind, int *n, double *x, double *f, double *g,
     gEdBestPar.assign(x, x + gEdNth);
   }
 }
+
+// ---- peer-driven declared-distribution M-step ------------------------------
+// n1qn1 takes a bare function pointer, so the problem is reached through file
+// statics the way gEdN1Cost and gShiSelf already are.  Only ever touched from
+// the serial part of the iteration -- the M-step is not inside an OpenMP
+// region.
+//
+// n1qn1 rather than newuoa or nelder: this objective HAS an exact gradient
+// (the peer emits it as lhs columns), and n1qn1 is the thread-safe one.
+static SAEM *gEdPeerSelf = nullptr;
+static int gEdPeerK = -1, gEdPeerNth = 0, gEdPeerBad = 0, gEdPeerEvals = 0;
+static const arma::mat *gEdPeerPhi = nullptr;
+static const std::vector<double> *gEdPeerEta = nullptr;
+static double gEdPeerBest = R_PosInf;
+static std::vector<double> gEdPeerBestPar;
+static void gEdPeerCost(int *ind, int *n, double *x, double *f, double *g,
+                        int *ti, float *tr, double *td, int *id);
 
 static arma::vec gShiPredFn(arma::vec &t, int id);
 
@@ -2263,6 +2283,99 @@ public:
       pred += lhs[_saemPhi1PredOffset];
     }
     return pred;
+  }
+
+  // Per-subject phi: the mean over the nmc MCMC chains.  phiM stacks the
+  // chains as nmc blocks of N rows, so subject i owns rows i, N+i, 2N+i, ...
+  arma::mat etaDistPeerPhi() const {
+    arma::mat out(N, phiM.n_cols, arma::fill::zeros);
+    int nb = (phiM.n_rows >= (unsigned int)N) ? (int)(phiM.n_rows / (unsigned int)N) : 1;
+    for (int i = 0; i < N; ++i) {
+      for (int c = 0; c < nb; ++c) {
+        unsigned int r = (unsigned int)(c*N + i);
+        if (r < phiM.n_rows) out.row(i) += phiM.row(r);
+      }
+      out.row(i) /= (double)nb;
+    }
+    return out;
+  }
+
+  // One peer-driven M-step for retained family kk: n1qn1 on the exact gradient,
+  // then the same stochastic-approximation damping every other M-step here
+  // applies.  Returns true when it owned the family this iteration -- whether
+  // or not it moved -- so the caller does not also run the MLE route on it.
+  bool etaDistPeerStep(int kk, const std::vector<double> &wk,
+                       unsigned int kiter, const vec &pas, bool &moved) {
+    if (!_saemEdActive || kk < 0 || kk >= (int)_saemEdTheta.size()) return false;
+    int nth = (int)_saemEdTheta[(size_t)kk].size();
+    if (nth <= 0) return false;
+    // eta per SUBJECT, averaged over the chains, at theta_old
+    int declK = _saemEdFam[(size_t)kk];
+    if (declK < 0 || declK >= etaDistNdist) return false;
+    int fam = etaDistFam(declK);
+    int na = rxEtaDistNarg(fam);
+    if (na <= 0) return false;
+    double a0[4];
+    for (int i = 0; i < na; ++i) a0[i] = etaDistArgs(declK, i);
+    if (wk.empty()) return false;
+    int nb = (wk.size() >= (size_t)N) ? (int)(wk.size() / (size_t)N) : 1;
+    std::vector<double> etaFix((size_t)N, 0.0);
+    for (int i = 0; i < N; ++i) {
+      double acc = 0.0; int n = 0;
+      for (int c = 0; c < nb; ++c) {
+        size_t r = (size_t)(c*N + i);
+        if (r >= wk.size()) continue;
+        double u = R::pnorm(wk[r], 0.0, 1.0, 1, 0);
+        if (u < 1e-15) u = 1e-15; else if (u > 1.0 - 1e-15) u = 1.0 - 1e-15;
+        double e = rxEtaDistQ(fam, u, a0);
+        if (std::isfinite(e)) { acc += e; n++; }
+      }
+      if (n == 0) return false;
+      etaFix[(size_t)i] = acc / n;
+    }
+    arma::mat phiSub = etaDistPeerPhi();
+    // start at the CURRENT theta values, so a step that fails leaves them alone
+    std::vector<double> st((size_t)nth);
+    for (int t = 0; t < nth; ++t) {
+      int c = etaDistThetaPhi0(declK, t);
+      st[(size_t)t] = (c >= 0 && c < nphi0) ? mprior_phi0(0, c) : 0.0;
+    }
+    gEdPeerSelf = this; gEdPeerK = kk; gEdPeerNth = nth;
+    gEdPeerPhi = &phiSub; gEdPeerEta = &etaFix;
+    gEdPeerBad = 0; gEdPeerEvals = 0;
+    gEdPeerBest = R_PosInf; gEdPeerBestPar.assign(st.begin(), st.end());
+    double f0 = 0.0;
+    std::vector<double> g0((size_t)nth, 0.0);
+    bool ok0 = etaDistPeerObj(kk, phiSub, etaFix, st.data(), &f0, g0.data());
+    if (ok0 && std::isfinite(f0)) {
+      gEdPeerBest = f0;
+      // Same invocation the RPN route uses.  n1qn1: quasi-Newton on the exact
+      // gradient -- NOT nelder_fn and NOT newuoa, which is not thread-safe.
+      std::vector<double> gg((size_t)nth, 0.0), var((size_t)nth, 0.1),
+        zm((size_t)(nth*(nth + 13)/2 + 1), 0.0);
+      double fN = 0.0, eps = 1e-8;
+      int nn = nth, mode = 1, niter = 200, nsim = 200, impr = 0,
+        izs = 0, idz = 0; float rzs = 0; double dzs = 0;
+      if (n1qn1_ != NULL) {
+        n1qn1_(gEdPeerCost, &nn, st.data(), &fN, gg.data(), var.data(),
+               &eps, &mode, &niter, &nsim, &impr, zm.data(),
+               &izs, &rzs, &dzs, &idz);
+      }
+    }
+    gEdPeerSelf = nullptr; gEdPeerPhi = nullptr; gEdPeerEta = nullptr;
+    if (!ok0 || gEdPeerBestPar.size() != (size_t)nth ||
+        !std::isfinite(gEdPeerBest)) {
+      return true;   // owned it; nothing usable came back, so leave it alone
+    }
+    for (int t = 0; t < nth; ++t) {
+      int c = etaDistThetaPhi0(declK, t);
+      if (c < 0 || c >= nphi0) continue;
+      double cur = mprior_phi0(0, c);
+      double v = cur + pas(kiter) * (gEdPeerBestPar[(size_t)t] - cur);
+      if (std::isfinite(v)) { mprior_phi0.col(c).fill(v); moved = true; }
+    }
+    if ((int)etaDistFiredK.size() == etaDistNdist) etaDistFiredK[(size_t)declK] = 1;
+    return true;
   }
 
   // The declared-distribution M-step objective, evaluated through the peer.
@@ -6604,6 +6717,34 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
         if (!spreadOk) RSprintf("[etaDist k=%d it=%d] SKIPPED: latent sd %.4f outside [%.2f, %.2f]\n",
                                 k, (int)kiter, lsd, etaDistSdLo, etaDistSdHi);
       }
+      // The PEER route: the same general objective, evaluated through the
+      // compiled rxode2 peer rather than the RPN evaluator, which is what lets
+      // a covariate -- fixed or time-varying -- on a distribution parameter be
+      // scored at all (each observation record carries its own args).
+      //
+      // Deliberately NOT gated on spreadOk, unlike the MLE route above.
+      //
+      // That guard protects a premise this objective does not rest on.  The MLE
+      // route fits the family MARGINALLY to the eta draws, which double-counts
+      // the data and can run away, so it needs the pooled latent to look like
+      // the standard normal it is a priori.  This route maximizes the EM
+      // Q-function -- sum log p(eta_i; args(theta)) with the etas HELD FIXED at
+      // theta_old -- which is the correct M-step whatever the pooled draws look
+      // like.  Requiring the latent to be standard normal would reject exactly
+      // the situation the step exists for: pooled conditional draws are
+      // standard normal only AT the truth, and their departure from it is the
+      // information being consumed.  Measured on Bauer's g1, that guard
+      // rejected all 400 iterations (latent settling near mean 0.56, sd 1.41),
+      // so gating this on it would make the route untestable as well as wrong.
+      if (etaDistLoglik && _saemEdActive && !ev.empty()) {
+        // _saemEd* are indexed by RETAINED family, k by DECLARED family; a
+        // declined family has no block, so they are not the same index
+        int kk = -1;
+        for (size_t q = 0; q < _saemEdFam.size(); ++q) {
+          if (_saemEdFam[q] == k) { kk = (int)q; break; }
+        }
+        if (kk >= 0 && etaDistPeerStep(kk, w[(size_t)k], kiter, pas, moved)) continue;
+      }
       // saemControl(etaDistLoglik=): the general objective (see the design in
       // R/etaDistMstep.R).  Maximizes the family log-likelihood over the THETAS
       // directly, so there is no population-level native parameter set to fit
@@ -7549,6 +7690,36 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
   }
 };
 
+// Definition deferred to here: the trampoline calls a SAEM member, so the class
+// has to be complete.
+static void gEdPeerCost(int *ind, int *n, double *x, double *f, double *g,
+                        int *ti, float *tr, double *td, int *id) {
+  (void)ti; (void)tr; (void)td; (void)id; (void)n;
+  double v = 0.0;
+  std::vector<double> gr((size_t)gEdPeerNth, 0.0);
+  bool ok = (gEdPeerSelf != nullptr && gEdPeerPhi != nullptr &&
+             gEdPeerEta != nullptr &&
+             gEdPeerSelf->etaDistPeerObj(gEdPeerK, *gEdPeerPhi, *gEdPeerEta,
+                                         x, &v, gr.data()));
+  if (!ok || !std::isfinite(v)) {
+    gEdPeerBad = 1;
+    if (*ind == 2 || *ind == 4) *f = 1e300;
+    if (*ind == 3 || *ind == 4) for (int t = 0; t < gEdPeerNth; ++t) g[t] = 0.0;
+    return;
+  }
+  gEdPeerEvals++;
+  // etaDistPeerObj already returns the NEGATIVE log-likelihood and its
+  // gradient, so this is a plain minimization -- no sign flip here, unlike
+  // gEdN1Cost which is handed the log-likelihood itself.
+  if (*ind == 2 || *ind == 4) *f = v;
+  if (*ind == 3 || *ind == 4) for (int t = 0; t < gEdPeerNth; ++t) g[t] = gr[(size_t)t];
+  if (v < gEdPeerBest) {
+    gEdPeerBest = v;
+    gEdPeerBestPar.assign(x, x + gEdPeerNth);
+  }
+}
+
+
 // Shi-difference fallback trampoline: the population prediction vector at the
 // candidate free phi0 values `t`.
 //
@@ -8255,7 +8426,7 @@ void setupRx(List &opt, SEXP evt, int nmc, int N) {
     // resolved by NAME, one block per family, because the peer emits one block
     // per declared random effect rather than one contiguous set.
     _saemEdLlOff.clear(); _saemEdGradOff.clear(); _saemEdEta.clear();
-    _saemEdTheta.clear(); _saemEdActive = false;
+    _saemEdTheta.clear(); _saemEdFam.clear(); _saemEdActive = false;
     if (opt.containsElementNamed("saemEtaDistLl") &&
         opt.containsElementNamed("saemEtaDistLlName")) {
       if (odeSwapRegister(odeSlotEtaDistLl, "etaDistLl", opt["saemEtaDistLl"],
@@ -8264,6 +8435,7 @@ void setupRx(List &opt, SEXP evt, int nmc, int N) {
         CharacterVector edGr = as<CharacterVector>(opt["saemEtaDistLlGradName"]);
         IntegerVector edNth  = as<IntegerVector>(opt["saemEtaDistLlNth"]);
         IntegerVector edEta  = as<IntegerVector>(opt["saemEtaDistLlEta"]);
+        IntegerVector edFam  = as<IntegerVector>(opt["saemEtaDistLlFam"]);
         IntegerVector edTh   = as<IntegerVector>(opt["saemEtaDistLlTheta"]);
         int nlhsEd = odeSwapNlhs(odeSlotEtaDistLl);
         bool okEd = (edNm.size() == edNth.size() && edNm.size() == edEta.size());
@@ -8274,6 +8446,7 @@ void setupRx(List &opt, SEXP evt, int nmc, int N) {
           if (o < 0 || o >= nlhsEd) { okEd = false; break; }
           _saemEdLlOff.push_back(o);
           _saemEdEta.push_back(edEta[k]);
+          _saemEdFam.push_back(k < edFam.size() ? edFam[k] - 1 : -1);  // 1-based from R
           std::vector<int> go, gt;
           for (int t = 0; t < edNth[k]; ++t, ++at) {
             if (at >= edGr.size() || at >= edTh.size()) { okEd = false; break; }
@@ -8291,7 +8464,7 @@ void setupRx(List &opt, SEXP evt, int nmc, int N) {
         _saemEdActive = okEd && !_saemEdLlOff.empty();
         if (!_saemEdActive) {
           _saemEdLlOff.clear(); _saemEdGradOff.clear();
-          _saemEdEta.clear(); _saemEdTheta.clear();
+          _saemEdEta.clear(); _saemEdTheta.clear(); _saemEdFam.clear();
         }
         // Same env-var guard the rest of this file's etaDist tracing uses.
         // Worth having: the peer is built and compiled on the R side whether
