@@ -87,6 +87,23 @@ or a two-compartment CL/V pair, produces -- a diagonal walk mixes slowly along
 the correlated direction while the acceptance rate looks perfectly healthy.
 Nothing reports this.
 
+`saemControl(rwOmega = TRUE)` implements it, and it is **off by default
+because it measures as nothing here**.  On Bauer's four gamma-copula datasets
+the mean absolute relative error moves by -0.10 percentage points on average
+(g1 +0.2, g2 -0.6, g3 +0.1) and the estimated correlation agrees to three
+digits on every arm.
+
+That null is worth reading carefully rather than as a refutation.  It was
+first measured while the declared distribution's thetas were being held out of
+both of their owners and returned their `ini()` values -- a proposal that
+changes how the latent block is explored cannot show a difference in
+parameters that cannot move, so that measurement was uninformative either way.
+It was re-measured after that was fixed, with the parameters demonstrably
+moving, and came out the same.  So the effect is absent on THESE models, which
+have a single compartment and a 2x2 copula; the argument above is about what a
+diagonal walk does to a strongly correlated block, and these may simply not
+stress it.
+
 This is the clearest case where Monolix and saemix part company, and it is the
 tell: saemix's kernel 3 reproduces Monolix's kernel 4 *structure* (blocks of
 consecutive components, block size cycling from 2 up to `d`) but takes a

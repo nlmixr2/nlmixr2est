@@ -2,6 +2,26 @@
 
 ## New features
 
+- `saemControl(rwOmega=)` is back, and **off**.  It proposes the mode-2 MCMC
+  random walk from `lambda * Omega` -- NONMEM's eq. 1.139, Monolix's kernel 4
+  -- instead of the diagonal step saemix uses and this package inherited.
+
+  It had been removed as measuring nothing.  That measurement was taken while
+  the declared distribution's thetas were being held out of BOTH of their
+  owners and returning their `ini()` values, so it could not have shown an
+  effect on them either way.  Re-measured after that was fixed, with the
+  parameters demonstrably moving, it comes out the same: -0.10 percentage
+  points of mean absolute relative error on average across Bauer's four
+  gamma-copula datasets (g1 +0.2, g2 -0.6, g3 +0.1), correlation agreeing to
+  three digits on every arm.
+
+  Kept disabled rather than deleted again, so the null is reproducible in one
+  line rather than reconstructible from `git log`.  The theory is untouched --
+  a diagonal walk really does mix slowly along a correlated direction while
+  the acceptance rate looks healthy -- and these models, one compartment and a
+  2x2 copula, may simply not stress it.  See `vignette("saemComparison")`.
+
+
 - `est="saem"`'s acceptance-rate adaptation had three defects that froze the
   MCMC chain, two of them fatal on ordinary models.  On plain `theo_sd`
   (one-compartment, `nBurn = 200`, `nEm = 100`) this package was returning an

@@ -200,6 +200,31 @@
 #'   settles near 0.85, where the step recovers a mean of 4.8 against a
 #'   simulation truth of 5.03 -- the ordinary route lands at 6.4 to 7.5.
 #'
+#' @param rwOmega OFF, and measured that way.  Propose the mode-2 MCMC random
+#'   walk from `lambda * Omega` -- NONMEM's `Z = lambda*Omega` (technical guide
+#'   eq. 1.139), Monolix's kernel 4 -- instead of the per-coordinate diagonal
+#'   step saemix uses and this package inherited.
+#'
+#'   The theoretical case is the strongest one the reference comparison makes
+#'   (see `vignette("saemComparison")`): on strongly correlated random effects
+#'   -- exactly what a `dist()` copula or a two-compartment CL/V pair produces
+#'   -- a diagonal walk mixes slowly along the correlated direction while the
+#'   acceptance rate looks perfectly healthy, and nothing reports it.
+#'
+#'   It does not show up in the fits.  On Bauer's four gamma-copula datasets it
+#'   changes the mean absolute relative error by -0.10 percentage points on
+#'   average -- g1 +0.2, g2 -0.6, g3 +0.1 -- with the estimated correlation
+#'   agreeing to three digits on every arm.  That was first measured while the
+#'   declared thetas were frozen at their `ini()` values (see NEWS), which
+#'   could not have shown an effect; it was re-measured afterwards with those
+#'   thetas demonstrably moving and came out the same.
+#'
+#'   Kept, disabled, for two reasons: the null result is now reproducible in
+#'   one line rather than reconstructible from `git log`, and the theory is
+#'   untouched -- these models have one state and a 2x2 copula, and may simply
+#'   not stress a diagonal proposal.  A model that does would be worth trying
+#'   it on.
+#'
 #' @param etaDistLoglik Estimate a `dist()`-declared random effect's own
 #'   parameters from the OBSERVATION likelihood rather than by fitting the
 #'   declared family to the sampled etas.  Opt-in; `FALSE` leaves
