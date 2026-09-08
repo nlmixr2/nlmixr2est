@@ -2,6 +2,9 @@
 
 ## New features
 
+- Added a native analytical outer Hessian for fast Gaussian FOCE/FOCEI/AGQ fits, using
+  the existing sensitivity pool. Fast `nlminb` fits used it automatically.
+
 - `impmapControl(proposal=)` selects the importance-sampling proposal family for
   `est="imp"`, `"impmap"` and `"qrpem"`: `"normal"` and `"t"` as `df` already
   reached, plus `"laplace"` (a spherical multivariate Laplace, whose exponential
@@ -131,6 +134,10 @@
   being conservative.
 
 ## Bug fixes
+
+- Corrected objective scaling of the fast outer gradient.
+
+- Corrected FOCE curvature's row stride when solves included bookkeeping rows.
 
 - A `focei`-family fit now reports whether its inner solves actually
   converged.  `fit$env$nTrustInner` breaks the `innerOpt="trust"` per-subject

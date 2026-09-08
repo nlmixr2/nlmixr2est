@@ -614,14 +614,15 @@ Rcpp::List foceiGradAllFoceFR_(const arma::mat& a, const arma::cube& A,
 // 1-based); a residual sigma direction has a=A=Ath=0.  Omega derivatives: dOi
 // (neta,neta,nom), d2Oi (neta,neta,nom*nom) with slice a*nom+b, d2LD (nom,nom).
 // Shared core (called from the single-subject export and the batched OpenMP driver).
-static arma::mat foceiRSubjectFR_(const arma::mat& a, const arma::cube& A, const arma::cube& Ath,
+arma::mat foceiRSubjectFR_(const arma::mat& a, const arma::cube& A, const arma::cube& Ath,
                            const arma::mat& aR, const arma::cube& AR, const arma::cube& AthR,
                            const arma::mat& dvSens, const arma::mat& dvSens2,
                            const arma::ivec& censv, const arma::vec& limv,
                            const arma::vec& fv, const arma::vec& yv, const arma::vec& Rv,
                            const arma::vec& ehat, const arma::mat& Oi,
                            const arma::cube& dOi, const arma::cube& d2Oi, const arma::mat& d2LD,
-                           int neta, int ndir, int ndirP, int nom, const arma::ivec& dirP) {
+                           int neta, int ndir, int ndirP, int nom, const arma::ivec& dirP,
+                           const FoceiHessianQuadrature *quadrature) {
   const int nobs = (int)a.n_rows;
   const int np = ndirP + nom;
   vec res = yv - fv;
@@ -740,6 +741,97 @@ static arma::mat foceiRSubjectFR_(const arma::mat& a, const arma::cube& A, const
   auto Cpp = [&](int aa, int bb) { return 0.5 * (trace(Hti * d2Ht_pp(aa, bb)) - trace(Hti * dHt_p(aa) * Hti * dHt_p(bb))); };
   std::vector<vec> CpeRow(np);
   for (int p = 0; p < np; p++) { vec r(neta); for (int l = 0; l < neta; l++) r[l] = Cpe(p, l); CpeRow[p] = r; }
+  if (quadrature != nullptr) {
+    mat cholHt, inverseChol;
+    if (!chol(cholHt,Ht) || rcond(Ht) < 1e-10 || !inv(inverseChol,trimatu(cholHt)))
+      throw std::runtime_error("AGQ node covariance is singular");
+    auto upperHalf = [](const mat &x) { mat out = trimatu(x); out.diag() *= 0.5; return out; };
+    std::vector<mat> totalH(np), u(np), inverseFirst(np), inverseSecond(np*np);
+    std::vector<vec> modeSecond(np*np);
+    mat determinant(np,np,fill::zeros);
+    for (int p = 0; p < np; ++p) {
+      totalH[p] = dHt_p(p);
+      for (int l = 0; l < neta; ++l) totalH[p] += dHtD[l]*etaP(l,p);
+      u[p] = upperHalf(inverseChol.t()*totalH[p]*inverseChol);
+      inverseFirst[p] = -inverseChol*u[p];
+    }
+    for (int p = 0; p < np; ++p) for (int q = p; q < np; ++q) {
+      modeSecond[p*np+q] = eta2(p,q);
+      modeSecond[q*np+p] = modeSecond[p*np+q];
+      mat totalSecond = d2Ht_pp(p,q);
+      for (int l = 0; l < neta; ++l) {
+        totalSecond += d2HtEtaP(p,l)*etaP(l,q)+d2HtEtaP(q,l)*etaP(l,p)+dHtD[l]*modeSecond[p*np+q][l];
+        for (int m = 0; m < neta; ++m) totalSecond += d2HtDD[l][m]*etaP(l,p)*etaP(m,q);
+      }
+      inverseSecond[p*np+q] = inverseChol*u[q]*u[p]-inverseChol*upperHalf(
+        inverseFirst[q].t()*totalH[p]*inverseChol+inverseChol.t()*totalSecond*inverseChol+
+        inverseChol.t()*totalH[p]*inverseFirst[q]);
+      inverseSecond[q*np+p] = inverseSecond[p*np+q];
+      determinant(p,q) = determinant(q,p) = Cpp(p,q)+dot(CpeRow[p],etaP.col(q))+
+        dot(CpeRow[q],etaP.col(p))+as_scalar(etaP.col(p).t()*Cee*etaP.col(q))+dot(Cen,modeSecond[p*np+q]);
+    }
+    mat omega = inv(Oi), sumH(np,np,fill::zeros), centeredGG(np,np,fill::zeros);
+    vec meanG(np,fill::zeros);
+    double maxLogWeight = -datum::inf, totalWeight = 0;
+    for (unsigned int k = 0; k < quadrature->points.n_rows; ++k) {
+      vec node = quadrature->points.row(k).t(), eta = ehat+M_SQRT2*inverseChol*node;
+      FoceiHessianNode e;
+      if (!quadrature->evaluate(eta,e)) throw std::runtime_error("AGQ sensitivity solve failed");
+      vec residual = yv-e.f, df = -residual/e.R, dr = 0.5*(1/e.R-square(residual)/square(e.R));
+      vec score = e.a.t()*df+e.aR.t()*dr;
+      mat partial(ndir,ndir,fill::zeros);
+      for (int p = 0; p < ndir; ++p) for (int q = p; q < ndir; ++q) {
+        double v = 0;
+        for (int o = 0; o < nobs; ++o) {
+          double r = e.R[o], res = residual[o], ap = e.a(o,p), aq = e.a(o,q);
+          double rp = e.aR(o,p), rq = e.aR(o,q);
+          v += ap*aq/r+res/(r*r)*(ap*rq+rp*aq)+(res*res/(r*r*r)-0.5/(r*r))*rp*rq+
+            df[o]*e.A(o,p,q)+dr[o]*e.AR(o,p,q);
+        }
+        partial(p,q) = partial(q,p) = v;
+      }
+      vec etaScore = Oi*eta+score.head(neta), totalScore(np);
+      mat etaHessian = Oi+partial.submat(0,0,neta-1,neta-1), mixed(neta,np), motion(neta,np);
+      for (int p = 0; p < np; ++p) {
+        double direct;
+        if (isDir(p)) {
+          mixed.col(p) = partial.submat(0,dOf(p),neta-1,dOf(p));
+          direct = score[dOf(p)];
+        } else {
+          mixed.col(p) = dOi.slice(omc(p))*eta;
+          direct = 0.5*as_scalar(eta.t()*dOi.slice(omc(p))*eta)-0.5*trace(omega*dOi.slice(omc(p)));
+        }
+        motion.col(p) = etaP.col(p)+M_SQRT2*inverseFirst[p]*node;
+        totalScore[p] = direct+dot(etaScore,motion.col(p));
+      }
+      mat nodeHessian(np,np,fill::zeros);
+      for (int p = 0; p < np; ++p) for (int q = p; q < np; ++q) {
+        double v = 0;
+        if (isDir(p) && isDir(q)) v = partial(dOf(p),dOf(q));
+        else if (!isDir(p) && !isDir(q)) v = 0.5*as_scalar(eta.t()*d2Oi.slice(omc(p)*nom+omc(q))*eta)+0.5*d2LD(omc(p),omc(q));
+        v += dot(mixed.col(p),motion.col(q))+dot(mixed.col(q),motion.col(p))+
+          as_scalar(motion.col(p).t()*etaHessian*motion.col(q))+
+          dot(etaScore,modeSecond[p*np+q]+M_SQRT2*inverseSecond[p*np+q]*node);
+        nodeHessian(p,q) = nodeHessian(q,p) = v;
+      }
+      double phi = 0.5*accu(log(e.R)+square(residual)/e.R)+0.5*as_scalar(eta.t()*Oi*eta);
+      double logWeight = accu(log(quadrature->weights.row(k)))+dot(node,node)-phi;
+      if (!std::isfinite(logWeight) || !totalScore.is_finite() || !nodeHessian.is_finite())
+        throw std::runtime_error("Non-finite AGQ curvature");
+      if (logWeight > maxLogWeight) {
+        double scale = std::exp(maxLogWeight-logWeight);
+        sumH *= scale; centeredGG *= scale; totalWeight *= scale; maxLogWeight = logWeight;
+      }
+      // Centered weighted moments avoid subtracting two large score products.
+      double weight = std::exp(logWeight-maxLogWeight), nextWeight = totalWeight+weight;
+      vec delta = totalScore-meanG;
+      centeredGG += weight*totalWeight/nextWeight*(delta*delta.t());
+      meanG += weight/nextWeight*delta;
+      sumH += weight*nodeHessian;
+      totalWeight = nextWeight;
+    }
+    return determinant+(sumH-centeredGG)/totalWeight;
+  }
   mat R(np, np, fill::zeros);
   for (int aa = 0; aa < np; aa++) for (int bb = aa; bb < np; bb++) {
     double dat = d2Phi(aa, bb) - as_scalar(Mcols[aa].t() * HiM * Mcols[bb]);
@@ -819,7 +911,7 @@ arma::mat foceiRAllFR_(const arma::mat& a, const arma::cube& A, const arma::cube
 // nonmem, the same live E for foce+).  Ath is reshaped as in foceiSubjectRFR_; a sigma
 // direction has a=A=Ath=0 (only aRc/ARc).
 // Shared core (called from the single-subject export and the batched OpenMP driver).
-static arma::mat foceiRSubjectFoceFR_(const arma::mat& a, const arma::cube& A, const arma::cube& Ath,
+arma::mat foceiRSubjectFoceFR_(const arma::mat& a, const arma::cube& A, const arma::cube& Ath,
                                const arma::mat& aRe, const arma::mat& aRc,
                                const arma::cube& ARe, const arma::cube& ARc, const arma::mat& dvSens,
                                const arma::mat& dvSens2,

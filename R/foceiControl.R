@@ -492,6 +492,18 @@
 #'     Decomposition for a R or S matrix.
 #'
 #' @param outerOpt optimization method for the outer problem
+#'   Fast \code{"nlminb"} fits automatically use the analytical outer Hessian
+#'   for supported Gaussian FOCE/FOCEI/AGQ models, restarting with gradients only if
+#'   curvature is unavailable.
+#'
+#' @details Custom outer optimizers receive \code{control$hessian(par, relStep=1e-3)}.
+#'   It settles the requested point and assembles the reported objective's
+#'   Hessian in the existing C++ sensitivity pool. Third-order terms are obtained
+#'   by differencing second-order sensitivities in ETA directions. The result uses
+#'   optimizer coordinates and objective scaling and retains negative curvature.
+#'   This requires \code{fast=TRUE}; FOCE+, priors, censoring, clipped AGQ and
+#'   estimated transformations are unsupported. Unsuccessful inner solves and an
+#'   active variance floor also make curvature unavailable.
 #'
 #' @param innerOpt optimization method for the inner (per-subject eta)
 #'     problem: `"auto"` (default), `"trust"` (RcppTrust trust-region Newton,

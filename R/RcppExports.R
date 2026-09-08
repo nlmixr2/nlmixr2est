@@ -490,6 +490,10 @@ iBoxCox_ <- function(x = 1L, lambda = 1, yj = 0L) {
     .Call(`_nlmixr2est_iBoxCox_`, x, lambda, yj)
 }
 
+foceiOuterH <- function(theta, relStep = 1e-3) {
+    .Call(`_nlmixr2est_foceiOuterH`, theta, relStep)
+}
+
 nmNearPD_ <- function(x, keepDiag = FALSE, do2eigen = TRUE, doDykstra = TRUE, only_values = FALSE, eig_tol = 1e-6, conv_tol = 1e-7, posd_tol = 1e-8, maxit = 100L, trace = FALSE) {
     .Call(`_nlmixr2est_nmNearPD_`, x, keepDiag, do2eigen, doDykstra, only_values, eig_tol, conv_tol, posd_tol, maxit, trace)
 }

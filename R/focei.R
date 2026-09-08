@@ -245,10 +245,29 @@ is.latex <- function() {
     "scale.inti", "diff.g"
   )]
   .ctl$trace <- 0
-  .ret <- stats::nlminb(
-    start = par, objective = fn, gradient = gr, hessian = NULL, control = .ctl,
+  hessianCalls <- 0L
+  hessianFailed <- FALSE
+  hessian <- NULL
+  if (isTRUE(control$fast) && is.function(control$hessian)) {
+    hessian <- function(x) {
+      hessianCalls <<- hessianCalls+1L
+      tryCatch(control$hessian(x), error = function(e) {
+        hessianFailed <<- TRUE
+        stop(e)
+      })
+    }
+  }
+  run <- function(hessian) stats::nlminb(
+    start = par, objective = fn, gradient = gr, hessian = hessian, control = .ctl,
     lower = lower, upper = upper
   )
+  .ret <- tryCatch(run(hessian), error = function(e) {
+    if (!hessianFailed) stop(e)
+    warning("Outer Hessian unavailable; restarting gradient-only nlminb", call. = FALSE)
+    run(NULL)
+  })
+  .ret$hessianEvaluations <- hessianCalls
+  .ret$hessianFallback <- hessianFailed
   .ret$x <- .ret$par
   ## .ret$message   already there.
   ## .ret$convergence already there.

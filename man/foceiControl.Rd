@@ -670,7 +670,10 @@ should be used while calculating the Covariance Matrix.}
 cannot be corrected to be non-positive definite try estimating
 the Hessian on the unscaled parameter space.}
 
-\item{outerOpt}{optimization method for the outer problem}
+\item{outerOpt}{optimization method for the outer problem
+Fast \code{"nlminb"} fits automatically use the analytical outer Hessian
+for supported Gaussian FOCE/FOCEI/AGQ models, restarting with gradients only if
+curvature is unavailable.}
 
 \item{innerOpt}{optimization method for the inner (per-subject eta)
     problem: `"auto"` (default), `"trust"` (RcppTrust trust-region Newton,
@@ -1117,6 +1120,15 @@ The control object that changes the options for the FOCEi
 Control Options for FOCEi
 }
 \details{
+Custom outer optimizers receive \code{control$hessian(par, relStep=1e-3)}.
+It settles the requested point and assembles the reported objective's
+Hessian in the existing C++ sensitivity pool. Third-order terms are obtained
+by differencing second-order sensitivities in ETA directions. The result uses
+optimizer coordinates and objective scaling and retains negative curvature.
+This requires \code{fast=TRUE}; FOCE+, priors, censoring, clipped AGQ and
+estimated transformations are unsupported. Unsuccessful inner solves and an
+active variance floor also make curvature unavailable.
+
 Uses R's L-BFGS-B (\code{\link{optim}}) for the outer problem and BFGS
 \code{\link[n1qn1]{n1qn1}} (restoring the prior individual Hessian) for
 the inner problem, which is left unscaled since eta estimates start near
