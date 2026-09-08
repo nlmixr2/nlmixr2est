@@ -226,13 +226,20 @@
   # resolved -- otherwise this would reroute every normal fit's solve for
   # nothing.
   #
-  # The declared-distribution peer needs it for exactly the same reason, and it
-  # is what makes the pool ACTIVE: `_saemPhi1PoolActive` keys off
-  # opt$saemPhi1Pred, and saem registers every peer inside that gate.  Without
-  # this the etaDist peer is built and compiled and then never registered, so
-  # the M-step has nothing to solve -- which is what happened on Bauer's gamma
-  # model, whose prop() endpoint leaves the general-likelihood phi1 machinery
-  # off and the theta-sensitivity peer off by default.
+  # A declared-distribution fit needs it for the same reason, and it is what
+  # makes the pool ACTIVE: `_saemPhi1PoolActive` keys off opt$saemPhi1Pred, and
+  # saem registers every peer inside that gate -- so without it the
+  # theta-sensitivity peer is built and then never registered, and the
+  # declared thetas' gradient step has nothing to read.  Bauer's gamma models
+  # hit exactly that: a prop() endpoint leaves the general-likelihood phi1
+  # machinery off, and nonMuThetaGrad is off by default.
+  #
+  # Note what activating the pool also does: SAEM's own standing solve then
+  # routes through odeSlotPred rather than falling to par_solve on the main
+  # model.  That is the CHEAP peer either way -- the sensitivity model is
+  # borrowed for one solve at a time through _saemSolveCompleteOnce and handed
+  # back, never left standing (making it standing measured 164.0s -> 259.8s) --
+  # but it is a change in path for every declared-distribution fit.
   if (!is.null(.model$saemThetaSens)) {
     .op <- nlmixrWithTiming("configure", ui$saemOwnPred)
     if (!is.null(.op) && isTRUE(.op$ok)) {
