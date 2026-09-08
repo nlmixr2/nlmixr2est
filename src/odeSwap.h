@@ -45,6 +45,10 @@ enum OdeSwapSlot {
   odeSlotOuter,       // rxVaeOuter:     augmented outer-gradient model (order 2)
   odeSlotOuterNode,   // rxOuterNode:    same directions at order 1, for AGQ nodes
   odeSlotOuterCov,    // rxOuterCov:     covariance model over its own direction set
+  odeSlotEtaDistLl,   // rxEtaDistLl:    declared-distribution M-step peer,
+                      //                 log p(eta_k; args_k) and its d/d(theta).
+                      //                 ODE-free: no states, so nothing to
+                      //                 integrate when it is swapped in.
   odeSlotN
 };
 
