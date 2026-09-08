@@ -1959,13 +1959,23 @@ public:
         etaDistCorPhi0 >= 0 && etaDistCorPhi0 < nphi0) {
       phi0Dist[(size_t)etaDistCorPhi0] = true;
     }
-    // SCOPE.  etaDistLoglik takes over the DECLARED thetas and nothing else.
+    // SCOPE, and a correction to why this is here.
     //
-    // refinePhi0Lik's free set is otherwise every non-fixed phi0 column, so
-    // entering it unrestricted would also hand it prop.sd and every other
-    // non-mu theta -- which is nonMuTheta="regress", a much larger change with
-    // its own control and its own measurements.  The two COMPOSE: set both and
-    // the free set widens back out, because nonMuThetaRegress skips this.
+    // The reasoning it was written for was wrong: "unrestricted, this hands
+    // refinePhi0Lik prop.sd as well".  It does not.  On Bauer's model phi0 is
+    // {lclm, lv1m, lclrv, lv1rv, rxCor} -- nphi0 == 5, all five free --
+    // because a residual-error parameter lives in ares/bres, not in phi0.  So
+    // the free set was already the declared thetas plus the copula.
+    //
+    // It is also nearly unreachable: nonMuTheta defaults to "regress", so
+    // nonMuThetaRegress is 1 on essentially every fit and this block is
+    // skipped.  It applies only to nonMuTheta="eta", where refinePhi0Lik would
+    // otherwise not run at all and etaDistLoglik is the only thing asking for
+    // it -- there, restricting the free set to the declared thetas is what
+    // keeps this control from quietly becoming "regress".
+    //
+    // Kept, narrowly, for that case.  Do not read it as the mechanism behind
+    // any measured difference: with the default control it never executes.
     if (etaDistObsLik() && !nonMuThetaRegress && distribution != 4 &&
         (int)etaDistThetaPhi0.n_rows == etaDistNdist) {
       std::vector<bool> phi0Decl((size_t)nphi0, false);
@@ -2060,6 +2070,19 @@ public:
       doFreeze = false;
     }
     _saemFreezeOde = doFreeze;
+    if (getenv("NLMIXR2_ETADIST_OPT") != NULL) {
+      static int _edOnce = 0;
+      if (_edOnce++ < 2) {
+        std::string fx;
+        for (size_t q = 0; q < gPhi0FreeIx.size(); ++q)
+          fx += std::to_string(gPhi0FreeIx[q]) + " ";
+        RSprintf("[phi0] nphi0=%d nFree=%d free={%s} obsLikRoute=%d regress=%d "
+                 "dist4=%d doFreeze=%d optType=%d thetaSensActive=%d\n",
+                 nphi0, (int)gPhi0FreeIx.size(), fx.c_str(),
+                 (int)phi0ObsLikRoute(), nonMuThetaRegress, (int)(distribution == 4),
+                 (int)doFreeze, nonMuThetaOptType, (int)_saemThetaSensActive);
+      }
+    }
     // optimize phi0 with the BOUNDED bobyqa (.boundedResidOpt), honoring the
     // ini-block bounds of the phi0 thetas.  An unbounded method (newuoa/
     // nelder-mead) could push a phi0 like a likelihood SD into an invalid region.
@@ -6356,11 +6379,19 @@ private:
   // ONE predicate, because nonMuThetaRegress gates FOUR things -- whether
   // refinePhi0Lik runs, whether the stochastic phi0 update is skipped, whether
   // the ODE may be frozen during the search, and whether the search gets a
-  // local trust region -- and adding a second entry to only some of them
-  // leaves the mode running that optimizer WITHOUT the trust region normal
-  // models need.  (It did, for one build: the comment on localTrust is
-  // explicit that a normal model's phi0 drives the ODE and an unbounded
-  // bobyqa span breaks on the objective's NaN plateaus.)
+  // local trust region -- and a second entry added to only some of them would
+  // leave the mode running that optimizer without the trust region a normal
+  // model needs.
+  //
+  // In practice the second entry changes nothing: nonMuTheta DEFAULTS to
+  // "regress", so nonMuThetaRegress is already 1 and this refinement already
+  // runs on every saem fit.  What is actually restricted is WHEN
+  // (nonMuThetaStart defaults to half of nBurn+nEm) and HOW OFTEN
+  // (nonMuThetaEvery), and that the search is derivative-free unless
+  // nonMuThetaOpt="n1qn1" and nonMuThetaGrad=TRUE.  So etaDistLoglik is a
+  // SCHEDULING/ownership change to machinery that already runs -- not a new
+  // estimation method -- and any comparison of it has to be against
+  // nonMuThetaStart/nonMuThetaEvery, or the two are conflated.
   bool phi0ObsLikRoute() const {
     return nonMuThetaRegress || etaDistObsLik();
   }

@@ -142,6 +142,45 @@
 ##     gamma of sd ~1.0 and drove the copula to 0.95 (MARE 29.0% against the
 ##     guarded MLE route's 18.3%).
 ##
+## WHAT THIS ACTUALLY CHANGES -- corrected after measuring.
+##
+## The paragraph below said refinePhi0Lik had to be let in because a normal
+## model's gate barred it.  That was wrong.  `nonMuTheta` DEFAULTS to
+## "regress", so `nonMuThetaRegress` is 1 on essentially every saem fit and
+## this refinement ALREADY runs, against exactly this objective.  Traced on
+## Bauer's g1:
+##
+##   [phi0] nphi0=5 nFree=5 free={0 1 2 3 4} obsLikRoute=1 regress=1 dist4=0
+##          doFreeze=0 optType=2 thetaSensActive=0
+##
+## nphi0 is 5 -- the four declared thetas plus rxCor -- because a residual
+## parameter lives in ares/bres, not phi0.  So the free set was already the
+## declared thetas, the local trust region was already on, and BOTH gate
+## changes made no difference: the fits came back byte identical.
+##
+## So `etaDistLoglik = TRUE` is not a new estimation method.  It is a
+## SCHEDULING and OWNERSHIP change to machinery that already runs: it turns the
+## family M-step off and hands those columns to the regression unconditionally.
+## What is genuinely restricted about that regression is
+##
+##   nonMuThetaStart    barred until half of (nBurn + nEm) -- the whole
+##                      exploratory phase
+##   nonMuThetaEvery    thins it further
+##   nonMuThetaMaxEval  25 evaluations per firing
+##   nonMuThetaOpt      "newuoa", DERIVATIVE-FREE; the exact gradient needs
+##                      nonMuThetaOpt="n1qn1" AND nonMuThetaGrad=TRUE
+##
+## and any claim for this control has to be measured against moving those --
+## a full optimization every X from iteration 0 -- or the schedule and the
+## heuristic-removal are conflated.  The conflated numbers are not even
+## uniformly good: g1 14.5 against 18.3 and g2 30.3 against 34.5, but g3 17.6
+## against 5.5.
+##
+## NOT solve-free, either.  phi0Objective() calls user_fn -- a full population
+## solve per evaluation.  `doFreeze` skips re-solving only when
+## phi0AffectsOde() is false, and a declared eta drives the structural model.
+## The peer of section 4 WAS solve-free; that is what this gives up.
+##
 ## IMPLEMENTATION.  Almost none of this is new code, because saem already has
 ## the objective: `phi0Objective()` is the observation -log-likelihood at
 ## candidate phi0 values with the phi1 samples held fixed, and
