@@ -498,9 +498,11 @@
   ## the non-mu theta gradient, and the other way round.
   if (!is.null(model$saemEtaDistLl)) {
     opt$saemEtaDistLl <- model$saemEtaDistLl
+    opt$saemEtaDistEta <- model$saemEtaDistEta
     opt$saemEtaDistLlFam <- as.integer(model$saemEtaDistLlFam)
     opt$saemEtaDistLlEta <- as.integer(model$saemEtaDistLlEta)
     opt$saemEtaDistLlName <- as.character(model$saemEtaDistLlName)
+    opt$saemEtaDistLlEtaName <- as.character(model$saemEtaDistLlEtaName)
     opt$saemEtaDistLlNth <- as.integer(model$saemEtaDistLlNth)
     opt$saemEtaDistLlTheta <- as.integer(model$saemEtaDistLlTheta)
     opt$saemEtaDistLlGradName <- as.character(model$saemEtaDistLlGradName)

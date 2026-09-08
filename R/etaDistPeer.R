@@ -156,6 +156,23 @@
 #' @author Matthew L. Fidler
 .etaDistPeerLlName <- function(k) paste0("rx_edll_", k, "_")
 
+#' The lhs name carrying a declared family's OWN eta
+#'
+#' The eta the M-step holds fixed has to come from the same place the density's
+#' parameters do.  Taking it from the native argument set (`etaDistArgs`)
+#' instead does not work: that set is what the legacy MLE route maintains and
+#' then inverts to thetas, while the peer route writes thetas DIRECTLY and
+#' never updates it -- so the two drift apart from the first peer step, and the
+#' objective is then evaluating a density at an eta implied by different
+#' parameters.  Emitting the eta as an lhs of the same model makes them
+#' consistent by construction.
+#'
+#' @param k 1-based index of the declared random effect
+#' @return character
+#' @noRd
+#' @author Matthew L. Fidler
+.etaDistPeerEtaName <- function(k) paste0("rx_edeta_", k, "_")
+
 #' The lhs name carrying d(log p_k)/d(THETA_j_)
 #' @param k 1-based index of the declared random effect
 #' @param j 1-based theta index (THETA_j_ / ntheta ordering)
@@ -288,6 +305,7 @@ rxUiGet.etaDistPeer <- function(x, ...) {
   if (is.null(.states)) .states <- character(0)
   .declined <- character(0)
   .peerLine <- rep(NA_character_, .n)
+  .etaDecl <- rep(NA_character_, .n)
   for (.k in seq_len(.n)) {
     .nm <- .st$name[.k]
     if (is.na(.etaIdx[.k])) {
@@ -311,6 +329,7 @@ rxUiGet.etaDistPeer <- function(x, ...) {
       next
     }
     .peerLine[.k] <- paste0(.etaDistPeerLlName(.k), " <- ", .dens)
+    .etaDecl[.k] <- .st$name[.k]
   }
   if (all(is.na(.peerLine))) {
     return(list(peer = NULL, etaIdx = .etaIdx,
@@ -344,10 +363,36 @@ rxUiGet.etaDistPeer <- function(x, ...) {
                 thetaIdx = vector("list", .n), declined = .declined))
   }
   .lines <- character(0)
+  .etaLines <- character(0)
   .thetaIdx <- vector("list", .n)
+  .etaName <- rep(NA_character_, .n)
   for (.k in which(!is.na(.peerLine))) {
     .nm <- .st$name[.k]
     .ll <- .etaDistPeerLlName(.k)
+    ## the declared eta's own model expression -- after rxEtaDistExpand() the
+    ## declared name is an ordinary lhs holding Q(phiU(latent); args), so this
+    ## is the eta AT THE CURRENT THETAS, which is exactly what the M-step has
+    ## to hold fixed
+    .eSym <- tryCatch(.s[[.nm]], error = function(e) NULL)
+    if (!is.null(.eSym)) {
+      .eTxt <- tryCatch(rxode2::rxFromSE(.eSym), error = function(e) NULL)
+      if (!is.null(.eTxt)) {
+        .etaName[.k] <- .etaDistPeerEtaName(.k)
+        ## a SEPARATE model, not another line of the same one.
+        ##
+        ## calc_lhs evaluates every lhs of the model it is given.  The eta line
+        ## needs the LATENT in ETA[k]; the density line needs the FIXED eta in
+        ## the same slot.  Put them in one model and the pre-pass evaluates the
+        ## density at a latent normal draw, which for a positive-support family
+        ## is fatal:
+        ##
+        ##   gamma_lpdf: Random variable is -0.587828, but must be positive
+        ##   finite!
+        ##
+        ## Two models, two slots, two passes.
+        .etaLines <- c(.etaLines, paste0(.etaName[.k], "=", .eTxt))
+      }
+    }
     ## `$` through an intermediate variable, never `with(s, <bare name>)` --
     ## see the caveat on .etaDistPeerD().
     .llSym <- .s[[.ll]]
@@ -381,7 +426,10 @@ rxUiGet.etaDistPeer <- function(x, ...) {
   ## Lightweight return only -- never the symengine environment (see the note on
   ## rxUiGet.impmapThetaSens, where caching it doubled memory per model).
   list(peer = if (length(.lines) == 0L) NULL else paste(c(.lines, ""), collapse = "\n"),
-       etaIdx = .etaIdx, thetaIdx = .thetaIdx, declined = .declined)
+       peerEta = if (length(.etaLines) == 0L) NULL else
+         paste(c(.etaLines, ""), collapse = "\n"),
+       etaIdx = .etaIdx, thetaIdx = .thetaIdx, etaName = .etaName,
+       declined = .declined)
 }
 attr(rxUiGet.etaDistPeer, "rstudio") <- emptyenv()
 
@@ -414,6 +462,30 @@ attr(rxUiGet.etaDistPeer, "rstudio") <- emptyenv()
         role = "rxEtaDistLl")
 }
 
+#' Compile the peer's eta pre-pass model
+#'
+#' The same construction as `.etaDistPeerModel()`, over the `rx_edeta_<k>_`
+#' lines only.  Separate because one `calc_lhs` evaluates every lhs of its
+#' model, and these two need OPPOSITE things in the same `ETA[k]` slot -- the
+#' latent here, the fixed eta there.
+#'
+#' @param ui rxode2 ui, already expanded
+#' @return the compiled model, or `NULL`
+#' @noRd
+#' @author Matthew L. Fidler
+.etaDistPeerEtaModel <- function(ui) {
+  .p <- ui$etaDistPeer
+  if (is.null(.p) || is.null(.p$peerEta)) return(NULL)
+  .cmt <- ui$foceiCmtPreModel
+  .interp <- ui$interpLinesStr
+  if (.interp != "") .cmt <- paste0(.cmt, "\n", .interp)
+  nlmixr2global$toRxParam <-
+    paste0(.uiGetThetaEtaParams(ui, TRUE), "\n", .cmt, "\n")
+  nlmixr2global$toRxDvidCmt <- .foceiToCmtLinesAndDvid(ui)
+  .toRx(.p$peerEta, "compiling declared-distribution eta model...",
+        role = "rxEtaDistEta")
+}
+
 #' The saem-side plan for the declared-distribution peer
 #'
 #' The compiled peer plus the lhs NAMES the M-step has to resolve once it is
@@ -437,6 +509,8 @@ rxUiGet.etaDistPeerPlan <- function(x, ...) {
   if (is.null(.p) || is.null(.p$peer)) return(NULL)
   .mod <- tryCatch(.etaDistPeerModel(.ui), error = function(e) NULL)
   if (is.null(.mod)) return(NULL)
+  .modEta <- tryCatch(.etaDistPeerEtaModel(.ui), error = function(e) NULL)
+  if (is.null(.modEta)) return(NULL)
   ## Only the families that actually produced columns.  A declined family has
   ## no lhs to resolve and must not occupy a slot in the M-step's index
   ## vectors, or the k-th entry would stop meaning the k-th declared eta.
@@ -444,12 +518,23 @@ rxUiGet.etaDistPeerPlan <- function(x, ...) {
   if (length(.keep) == 0L) return(NULL)
   list(ok = TRUE,
        etaDistLl = .mod,
+       etaDistEta = .modEta,
        ## which declared random effect each retained block belongs to (1-based)
        etaDistLlFam = as.integer(.keep),
        ## ETA[k] slot each retained family reads its fixed eta out of
        etaDistLlEta = as.integer(.p$etaIdx[.keep]),
        ## lhs name of each retained family's log density
        etaDistLlName = vapply(.keep, .etaDistPeerLlName, character(1)),
+       ## lhs name of each retained family's OWN eta, read in a pre-pass.
+       ##
+       ## Two passes are required, not one: rx_edeta_<k>_ reads the LATENT out
+       ## of ETA[k] and rx_edll_<k>_ reads the FIXED eta out of the same slot,
+       ## so a single solve cannot serve both.  The pre-pass runs first, at
+       ## theta_old with the latents in place; the optimization passes then
+       ## overwrite that slot with the eta the pre-pass produced.  Safe only
+       ## because the two passes are disjoint, which is why they are described
+       ## here rather than left implicit.
+       etaDistLlEtaName = as.character(.p$etaName[.keep]),
        ## the theta indices behind each retained family's gradient columns,
        ## flattened with a per-family count so C++ can walk them without a
        ## ragged structure

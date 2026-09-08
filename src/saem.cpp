@@ -649,6 +649,11 @@ static std::vector<int> _saemEdEta;
 // which DECLARED family (0-based) each retained block belongs to; a declined
 // family has no block, so retained index != declared index in general
 static std::vector<int> _saemEdFam;
+// lhs offset of each retained family's OWN eta (rx_edeta_<k>_), read in a
+// PRE-PASS at theta_old with the latents still in ETA[k].  The objective's
+// passes then overwrite that same slot with the eta this produced, which is
+// safe only because the two passes are disjoint.
+static std::vector<int> _saemEdEtaOff;
 static std::vector< std::vector<int> > _saemEdTheta;
 static bool _saemEdActive = false;
 
@@ -2321,38 +2326,36 @@ public:
     // eta per SUBJECT, averaged over the chains, at theta_old
     int declK = _saemEdFam[(size_t)kk];
     if (declK < 0 || declK >= etaDistNdist) ED_BAIL("declK");
-    if ((int)w.size() != etaDistNdist) ED_BAIL("latent count");
-    // Fixed etas for EVERY retained family, not only the one being optimized:
-    // one calc_lhs evaluates all of them, and a family whose ETA[] slot still
-    // holds a latent draw makes its own density throw.
+    (void)w;
+    arma::mat phiSub = etaDistPeerPhi();
+    // PRE-PASS: the fixed etas, read out of the peer itself at theta_old.
+    //
+    // NOT computed from etaDistArgs.  That is the NATIVE parameter set the
+    // legacy MLE route maintains and then inverts to thetas; this route writes
+    // thetas directly and never updates it, so the two drift apart from the
+    // first peer step and the objective ends up scoring a density at an eta
+    // implied by different parameters.  Measured before this: the objective
+    // opened at 1e5 on a model whose per-record log density should be order 1,
+    // and the fit came back essentially at its starting values.
+    //
+    // rx_edeta_<k>_ reads the LATENT out of ETA[k]; rx_edll_<k>_ reads the
+    // FIXED eta out of the same slot.  One solve cannot serve both, hence a
+    // separate pass -- run first, with the latents still in place, before any
+    // candidate theta is written.
     std::vector< std::vector<double> > etaFix(_saemEdLlOff.size());
-    for (size_t q = 0; q < _saemEdLlOff.size(); ++q) {
-      int dq = _saemEdFam[q];
-      if (dq < 0 || dq >= etaDistNdist) ED_BAIL("declK (fam)");
-      int famq = etaDistFam(dq);
-      int naq = rxEtaDistNarg(famq);
-      if (naq <= 0) ED_BAIL("narg");
-      double aq[4];
-      for (int i = 0; i < naq; ++i) aq[i] = etaDistArgs(dq, i);
-      const std::vector<double> &wq = w[(size_t)dq];
-      if (wq.empty()) ED_BAIL("no latent (fam)");
-      int nb = (wq.size() >= (size_t)N) ? (int)(wq.size() / (size_t)N) : 1;
-      etaFix[q].assign((size_t)N, 0.0);
-      for (int i = 0; i < N; ++i) {
-        double acc = 0.0; int n = 0;
-        for (int c = 0; c < nb; ++c) {
-          size_t r = (size_t)(c*N + i);
-          if (r >= wq.size()) continue;
-          double u = R::pnorm(wq[r], 0.0, 1.0, 1, 0);
-          if (u < 1e-15) u = 1e-15; else if (u > 1.0 - 1e-15) u = 1.0 - 1e-15;
-          double e = rxEtaDistQ(famq, u, aq);
-          if (std::isfinite(e)) { acc += e; n++; }
+    for (size_t q = 0; q < etaFix.size(); ++q) etaFix[q].assign((size_t)N, 0.0);
+    if (!etaDistPeerEtaAt(phiSub, etaFix)) ED_BAIL("eta pre-pass");
+    if (edTrace) {
+      for (size_t q = 0; q < etaFix.size(); ++q) {
+        double mn = R_PosInf, mx = R_NegInf, sm = 0.0;
+        for (int i = 0; i < N; ++i) {
+          double e = etaFix[q][(size_t)i];
+          if (e < mn) mn = e; if (e > mx) mx = e; sm += e;
         }
-        if (n == 0) ED_BAIL("eta not finite");
-        etaFix[q][(size_t)i] = acc / n;
+        RSprintf("[etaDist pre] it=%d fam=%d N=%d eta min=%.4g mean=%.4g max=%.4g\n",
+                 (int)kiter, (int)q, N, mn, sm/N, mx);
       }
     }
-    arma::mat phiSub = etaDistPeerPhi();
     // start at the CURRENT theta values, so a step that fails leaves them alone
     std::vector<double> st((size_t)nth);
     for (int t = 0; t < nth; ++t) {
@@ -2423,6 +2426,95 @@ public:
   // `phiSub` is the per-SUBJECT phi (N rows), indexed through the same
   // _saemPhi1I0/_saemPhi1I1 column maps saemSetRowsPooled() uses -- that
   // function receives the identical matrix as its `_phi` argument.
+  // PRE-PASS: solve the peer at the CURRENT thetas with the latents in place
+  // and read each retained family's own eta (rx_edeta_<k>_) per subject.
+  //
+  // Per subject rather than per record: without a covariate every record gives
+  // the same value, and with one the eta is still the subject's -- it is the
+  // DENSITY's arguments that vary by record, not the random effect.  So the
+  // first observation record is taken and the rest skipped.
+  bool etaDistPeerEtaAt(const arma::mat &phiSub,
+                        std::vector< std::vector<double> > &etaFix) {
+    if (!_saemEdActive || _saemEdEtaOff.size() != _saemEdLlOff.size()) return false;
+    if (!odeSwapLoaded(odeSlotEtaDistEta)) return false;
+    int nHTheta = (int)_saemPhi1H2ThetaKind.n_elem;
+    int nHEta = (int)_saemPhi1H2EtaCol.n_elem;
+    if (nHTheta <= 0) return false;
+    rx_solving_options *op = getSolvingOptions(_rx);
+    int nlhs = odeSwapNlhs(odeSlotEtaDistEta);
+    OdeSwapEsBatch edEsBatch(odeSlotEtaDistEta);
+    for (int i = 0; i < N; ++i) {
+      rx_solving_options_ind *ind = getSolvingOptionsInd(_rx, i);
+      OdeSwapScope neqGuard(odeSlotEtaDistEta, ind, op);
+      OdeSwapCmtScope cmtGuard(odeSlotEtaDistEta, op, ind);
+      // the ordinary convention, latents included -- no candidate override and
+      // no fixed eta, which is exactly what makes rx_edeta_ meaningful here
+      for (int k = 0; k < nHTheta; ++k) {
+        int kind = _saemPhi1H2ThetaKind(k), col = _saemPhi1H2ThetaCol(k);
+        double v = (kind == 1) ? phiSub(i, _saemPhi1I1(col)) :
+          ((kind == 0) ? phiSub(i, _saemPhi1I0(col)) : _saemPhi1H2ThetaFixedVal(k));
+        setIndParPtr(ind, k, v);
+      }
+      for (int k = 0; k < nHEta; ++k) {
+        setIndParPtr(ind, nHTheta + k,
+                     phiSub(i, _saemPhi1I1(_saemPhi1H2EtaCol(k))));
+      }
+      bool ok = true;
+      try {
+        setIndSolve(ind, -1);
+        resetOpBadSolve(op);
+        odeSwapSolveInd(odeSlotEtaDistEta, i);
+        if (odeSwapIndBadSolveSlot(op, ind, odeSlotEtaDistEta)) {
+          if (getenv("NLMIXR2_ETADIST_OPT") != NULL)
+            RSprintf("[etaDist pre] i=%d bad solve\n", i);
+          ok = false;
+        }
+        else {
+          iniSubjectE(i, 1, ind, op, _rx, rxEtaDistEta.update_inis);
+          double *lhs = neqGuard.lhs();
+          bool got = false;
+          for (int j = 0; j < getIndNallTimes(ind) && !got; ++j) {
+            setIndIdx(ind, j);
+            int kk2 = getIndIx(ind, j);
+            if (getIndEvid(ind, kk2) != 0) continue;
+            rxEtaDistEta.calc_lhs(i, getTime(kk2, ind),
+                                  getOpIndSolve(op, ind, j), lhs);
+            for (size_t q = 0; q < _saemEdEtaOff.size(); ++q) {
+              int o = _saemEdEtaOff[q];
+              if (o < 0 || o >= nlhs || !std::isfinite(lhs[o])) {
+                if (getenv("NLMIXR2_ETADIST_OPT") != NULL)
+                  RSprintf("[etaDist pre] i=%d q=%d off=%d nlhs=%d val=%g\n",
+                           i, (int)q, o, nlhs, (o >= 0 && o < nlhs) ? lhs[o] : 0.0);
+                ok = false; break;
+              }
+              etaFix[q][(size_t)i] = lhs[o];
+            }
+            got = true;
+          }
+          if (!got) {
+            if (getenv("NLMIXR2_ETADIST_OPT") != NULL)
+              RSprintf("[etaDist pre] i=%d no observation record\n", i);
+            ok = false;   // no observation record for this subject
+          }
+        }
+      } catch (const std::exception &e) {
+        if (getenv("NLMIXR2_ETADIST_OPT") != NULL)
+          RSprintf("[etaDist pre] i=%d THREW: %s\n", i, e.what());
+        ok = false;
+      } catch (...) {
+        if (getenv("NLMIXR2_ETADIST_OPT") != NULL)
+          RSprintf("[etaDist pre] i=%d THREW (non-std)\n", i);
+        ok = false;
+      }
+      if (!ok) {
+        if (getenv("NLMIXR2_ETADIST_OPT") != NULL)
+          RSprintf("[etaDist pre] i=%d failed\n", i);
+        return false;
+      }
+    }
+    return true;
+  }
+
   // `etaFix` is per RETAINED FAMILY, then per subject.  EVERY family's slot is
   // written, not just the one being optimized: one calc_lhs evaluates all of
   // them, so a family left holding whatever the phi convention put in its
@@ -8449,6 +8541,10 @@ void setupRx(List &opt, SEXP evt, int nmc, int N) {
         !Rf_isNull(opt["saemEtaDistLl"])) {
       odeSwapDeclare(odeSlotEtaDistLl, "etaDistLl", opt["saemEtaDistLl"]);
     }
+    if (opt.containsElementNamed("saemEtaDistEta") &&
+        !Rf_isNull(opt["saemEtaDistEta"])) {
+      odeSwapDeclare(odeSlotEtaDistEta, "etaDistEta", opt["saemEtaDistEta"]);
+    }
     // the sensitivity peer is declared at the top of setupRx, ahead of this
     // sizing solve, so odeSwapPlan() already accounts for its neq and lhs
     // rxSolve_ on whichever peer has the most states (innerHess2's extra
@@ -8505,13 +8601,19 @@ void setupRx(List &opt, SEXP evt, int nmc, int N) {
     // resolved by NAME, one block per family, because the peer emits one block
     // per declared random effect rather than one contiguous set.
     _saemEdLlOff.clear(); _saemEdGradOff.clear(); _saemEdEta.clear();
-    _saemEdTheta.clear(); _saemEdFam.clear(); _saemEdActive = false;
+    _saemEdTheta.clear(); _saemEdFam.clear(); _saemEdEtaOff.clear();
+    _saemEdActive = false;
+    bool edEtaReg = opt.containsElementNamed("saemEtaDistEta") &&
+      !Rf_isNull(opt["saemEtaDistEta"]) &&
+      odeSwapRegister(odeSlotEtaDistEta, "etaDistEta", opt["saemEtaDistEta"],
+                      &rxEtaDistEta);
     if (opt.containsElementNamed("saemEtaDistLl") &&
         opt.containsElementNamed("saemEtaDistLlName")) {
       if (odeSwapRegister(odeSlotEtaDistLl, "etaDistLl", opt["saemEtaDistLl"],
                           &rxEtaDistLl)) {
         CharacterVector edNm = as<CharacterVector>(opt["saemEtaDistLlName"]);
         CharacterVector edGr = as<CharacterVector>(opt["saemEtaDistLlGradName"]);
+        CharacterVector edEn = as<CharacterVector>(opt["saemEtaDistLlEtaName"]);
         IntegerVector edNth  = as<IntegerVector>(opt["saemEtaDistLlNth"]);
         IntegerVector edEta  = as<IntegerVector>(opt["saemEtaDistLlEta"]);
         IntegerVector edFam  = as<IntegerVector>(opt["saemEtaDistLlFam"]);
@@ -8526,6 +8628,15 @@ void setupRx(List &opt, SEXP evt, int nmc, int N) {
           _saemEdLlOff.push_back(o);
           _saemEdEta.push_back(edEta[k]);
           _saemEdFam.push_back(k < edFam.size() ? edFam[k] - 1 : -1);  // 1-based from R
+          int eo = -1;
+          if (k < edEn.size() && edEn[k] != NA_STRING) {
+            // resolved against the ETA slot, not the density slot -- the
+            // rx_edeta_ columns live in the pre-pass model
+            eo = odeSwapLhsIndex(odeSlotEtaDistEta, std::string(edEn[k]).c_str());
+            if (eo >= odeSwapNlhs(odeSlotEtaDistEta)) eo = -1;
+          }
+          if (eo < 0) { okEd = false; break; }
+          _saemEdEtaOff.push_back(eo);
           std::vector<int> go, gt;
           for (int t = 0; t < edNth[k]; ++t, ++at) {
             if (at >= edGr.size() || at >= edTh.size()) { okEd = false; break; }
@@ -8540,10 +8651,13 @@ void setupRx(List &opt, SEXP evt, int nmc, int N) {
         // All or nothing.  A partially resolved peer would have the M-step
         // maximize over a silently narrowed set of thetas -- the same failure
         // the R side declines a family for rather than papering over.
-        _saemEdActive = okEd && !_saemEdLlOff.empty();
+        // both models have to be there: the density alone cannot produce the
+        // eta it is scored at
+        _saemEdActive = okEd && edEtaReg && !_saemEdLlOff.empty();
         if (!_saemEdActive) {
           _saemEdLlOff.clear(); _saemEdGradOff.clear();
           _saemEdEta.clear(); _saemEdTheta.clear(); _saemEdFam.clear();
+          _saemEdEtaOff.clear();
         }
         // Same env-var guard the rest of this file's etaDist tracing uses.
         // Worth having: the peer is built and compiled on the R side whether

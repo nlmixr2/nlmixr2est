@@ -1493,6 +1493,8 @@ rxSolveF rxThetaSens; // est="impmap": d(f)/d(theta) model (peer of rxInner/rxPr
 // ODE-free (no states), and on the ordinary FOCEi parameter block, so it rides
 // the shared ind->par_ptr like every other peer in the pool.
 rxSolveF rxEtaDistLl;
+// The same peer's eta pre-pass model (rx_edeta_<k>_).
+rxSolveF rxEtaDistEta;
 rxSolveF rxHess2;     // fast=TRUE ll(): 2nd-order model d2(logLik)/deta2 (peer of rxInner), re-solved at eta*
 rxSolveF rxOuterNode; // analytic gradient: order-1 augmented model for AGQ nodes
 rxSolveF rxOuterCov;  // analytic covariance: augmented model over the cov direction set

@@ -227,9 +227,11 @@
   .ed <- nlmixrWithTiming("configure", ui$etaDistPeerPlan)
   if (!is.null(.ed) && isTRUE(.ed$ok)) {
     .model$saemEtaDistLl <- .ed$etaDistLl
+    .model$saemEtaDistEta <- .ed$etaDistEta
     .model$saemEtaDistLlFam <- as.integer(.ed$etaDistLlFam)
     .model$saemEtaDistLlEta <- as.integer(.ed$etaDistLlEta)
     .model$saemEtaDistLlName <- as.character(.ed$etaDistLlName)
+    .model$saemEtaDistLlEtaName <- as.character(.ed$etaDistLlEtaName)
     .model$saemEtaDistLlNth <- as.integer(.ed$etaDistLlNth)
     .model$saemEtaDistLlTheta <- as.integer(.ed$etaDistLlTheta)
     .model$saemEtaDistLlGradName <- as.character(.ed$etaDistLlGradName)

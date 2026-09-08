@@ -27,6 +27,7 @@ extern rxSolveF rxInner;
 extern rxSolveF rxPred;
 extern rxSolveF rxThetaSens;
 extern rxSolveF rxEtaDistLl;
+extern rxSolveF rxEtaDistEta;
 extern rxSolveF rxHess2;
 extern rxSolveF rxVaeOuter;
 extern rxSolveF rxOuterNode;
