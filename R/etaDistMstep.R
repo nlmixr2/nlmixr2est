@@ -95,7 +95,82 @@
 ## measured against it on the four gamma arms.
 ##
 ## ---------------------------------------------------------------------------
-## 3.  The general objective
+## 3a.  THE OBJECTIVE, CORRECTED: the observation likelihood
+## ---------------------------------------------------------------------------
+##
+## Section 3 below states the objective this file was built around -- fit the
+## declared family to the sampled etas.  That is a HEURISTIC, not the M-step
+## the construction implies, and section 3 is kept because the heuristic is
+## what the default route still runs and measures well.  But it is not the
+## right answer, and here is why.
+##
+## The complete data is (y, z), with z the latent standard normal:
+##
+##     log p(y, z | theta) = log p(y | z, theta) + log p(z)
+##
+## and log p(z) is theta-FREE.  eta = Q(phiU(z); args(theta)) is a
+## deterministic transform of z, not observed data, so the family density
+## NEVER APPEARS in the Q-function.  The declared parameters are structural
+## parameters of the mean function and belong to the observation likelihood,
+## exactly like any other non-mu theta:
+##
+##     maximize over theta:
+##       sum over (subject i, observation j) of
+##          log p( y_ij | f(eta_i(theta), ...), sigma )
+##       with   eta_i(theta) = Q( phiU(z_i) ; args_i(theta) ),  z_i FIXED
+##
+## The difference from section 3 is where theta enters.  There the etas are
+## frozen and the family's parameters move under them; here the LATENTS are
+## frozen and the etas are recomputed at every candidate theta, which is what
+## the EM actually holds fixed.
+##
+## Three consequences:
+##
+##   * A covariate on a distribution parameter needs NO machinery.  The model
+##     already recomputes eta per record from the candidate thetas, so fixed
+##     and time-varying covariates are handled by the ordinary solve.  This is
+##     what section 4's peer was built to provide, and it obsoletes most of it.
+##
+##   * There is nothing to invert.  Step (d) of section 2 disappears, for the
+##     same reason it does under the peer: thetas are optimized directly.
+##
+##   * NO SPREAD GUARD IS NEEDED.  A theta that makes the PREDICTIONS worse is
+##     rejected whatever the latents look like, so an over-dispersed latent
+##     cannot drive a runaway.  That failure mode belongs to fitting the
+##     family to the eta sample -- measured: the peer-density route, being
+##     unguarded, widened the family to cover etas spanning 1.3-9.9 against a
+##     gamma of sd ~1.0 and drove the copula to 0.95 (MARE 29.0% against the
+##     guarded MLE route's 18.3%).
+##
+## IMPLEMENTATION.  Almost none of this is new code, because saem already has
+## the objective: `phi0Objective()` is the observation -log-likelihood at
+## candidate phi0 values with the phi1 samples held fixed, and
+## `refinePhi0Lik()` optimizes it.  The declared thetas are already IN the
+## non-mu set that machinery serves -- `.impmapEstTheta()` returns them
+## (struct 1, 2, 5, 6, 8 on Bauer's model; only tq/tv2 are mu-referenced), and
+## the theta-sensitivity peer already differentiates the observation
+## likelihood through `gammapInv`/`phiU` to give the exact gradient.
+##
+## (An earlier commit message here claimed .impmapEstTheta() excluded all four
+## of Bauer's declaration thetas.  It does not; that was inferred from an
+## empty result whose real cause was the derivative failing.)
+##
+## So `saemControl(etaDistLoglik = TRUE)` now means: hand the declared thetas
+## to refinePhi0Lik, and stand the family M-step down for them.  What changes
+## is only ownership --
+##
+##   * refinePhi0Lik runs for a declared-distribution fit (it was gated on
+##     distribution == 4 || nonMuThetaRegress, and Bauer's models are prop());
+##   * it no longer holds the declared thetas out of its own free list;
+##   * the GLS holds them out unconditionally, since refinePhi0Lik owns them;
+##   * the family MLE loop is skipped.
+##
+## The COPULA M-step still runs.  The correlation is a property of the latent
+## block rather than of the mean function, and no observation-likelihood term
+## identifies it.
+##
+## ---------------------------------------------------------------------------
+## 3.  The general objective (the heuristic route, still the default)
 ## ---------------------------------------------------------------------------
 ##
 ##   maximize over theta:

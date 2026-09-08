@@ -1927,7 +1927,11 @@ public:
     // here is what makes that value the warm start rather than something the
     // search immediately overwrites.
     std::vector<bool> phi0Dist((size_t)nphi0, false);
-    if (etaDistOn && etaDistNdist > 0 &&
+    // In the observation-likelihood mode THIS refinement is the declared
+    // thetas' owner, so it must not hold them out of its own free list --
+    // the hold-out below exists to keep it off parameters the family M-step
+    // owns, and in this mode the family M-step does not touch them.
+    if (!etaDistObsLik() && etaDistOn && etaDistNdist > 0 &&
         (int)etaDistThetaPhi0.n_rows == etaDistNdist) {
       for (int k = 0; k < etaDistNdist; ++k) {
         // Only cede family k's thetas to the M-step once it has actually moved
@@ -1943,8 +1947,9 @@ public:
       }
     }
     // the copula theta keyed off its OWN flag, not the family M-step's -- and,
-    // like them, only once its closed form has actually written a value
-    if (etaDistCorOn && etaDistCorFired &&
+    // like them, only once its closed form has actually written a value.  In
+    // the observation-likelihood mode this refinement owns it too.
+    if (!etaDistObsLik() && etaDistCorOn && etaDistCorFired &&
         etaDistCorPhi0 >= 0 && etaDistCorPhi0 < nphi0) {
       phi0Dist[(size_t)etaDistCorPhi0] = true;
     }
@@ -5023,7 +5028,12 @@ public:
         // Bauer's model has a prop() endpoint, so it never runs there at all.
         if (etaDistOn && etaDistNdist > 0) {
           for (int k = 0; k < etaDistNdist; ++k) {
-            if ((int)etaDistFiredK.size() == etaDistNdist &&
+            // In the observation-likelihood mode refinePhi0Lik owns these, so
+            // the GLS holds them out unconditionally -- there is no "has the
+            // M-step fired yet" question, because the owner is not the family
+            // M-step.
+            if (!etaDistObsLik() &&
+                (int)etaDistFiredK.size() == etaDistNdist &&
                 etaDistFiredK[(size_t)k] == 0) continue;
             for (int t = 0; t < etaDistNth(k); ++t) {
               int c = etaDistThetaPhi0(k, t);
@@ -5062,8 +5072,8 @@ public:
       // (kiter>=niter_phi0), do NOT overwrite mprior_phi0 with the stochastic
       // sampled-mean update -- that fights the optimizer and lets phi0 drift.
       // The optimizer result from the previous iteration persists as the seed.
-      bool skipStochPhi0 = nonMuThetaRegress && (distribution != 4) &&
-        (kiter >= (unsigned int)niter_phi0);
+      bool skipStochPhi0 = (nonMuThetaRegress || etaDistObsLik()) &&
+        (distribution != 4) && (kiter >= (unsigned int)niter_phi0);
       if (!skipStochPhi0) {
         mprior_phi0=COV0*MCOV0;
       }
@@ -5197,7 +5207,11 @@ public:
       // 0.004: the search never gets a chance to matter.
       unsigned int phi0Start = (nonMuThetaStart >= 0) ?
         (unsigned int)nonMuThetaStart : (unsigned int)niter_phi0;
-      if ((distribution == 4 || nonMuThetaRegress) &&
+      // etaDistObsLik() joins the two existing entries: a declared-distribution
+      // fit wants this refinement for the same reason a general-likelihood one
+      // does, and Bauer's models are normal (prop()), so neither existing
+      // condition would let it run.
+      if ((distribution == 4 || nonMuThetaRegress || etaDistObsLik()) &&
           nphi0 > 0 && kiter >= phi0Start &&
           (kiter - phi0Start) % (unsigned int)nonMuThetaEvery == 0) {
         refinePhi0Lik(kiter, pas);
@@ -6276,6 +6290,35 @@ private:
   // the declared-distribution M-step instead of fitting native parameters and
   // inverting them.  Opt-in while it is measured against the inversion.
   int etaDistLoglik = 0;
+
+  // saemControl(etaDistLoglik=TRUE): estimate the DECLARED thetas from the
+  // OBSERVATION likelihood rather than by fitting the family to the sampled
+  // etas.
+  //
+  // This is the M-step the construction actually implies.  The complete data
+  // is (y, z) with z the latent standard normal, so
+  //
+  //   log p(y, z | theta) = log p(y | z, theta) + log p(z)
+  //
+  // and log p(z) is theta-free.  eta = Q(phiU(z); args(theta)) is a
+  // DETERMINISTIC transform, not observed data, so the family density never
+  // enters the Q-function at all -- the declared parameters are structural
+  // parameters of the mean function and belong to the observation likelihood
+  // like any other non-mu theta.
+  //
+  // Fitting the family to the eta sample -- what both the MLE route and the
+  // peer-density route do -- is a heuristic.  It measurably helps (the gamma
+  // arms), but it is not this, and it is what needs the spread guard: an
+  // over-dispersed latent makes the eta sample look over-dispersed and the
+  // family widens to cover it.  The observation likelihood has no such
+  // failure mode, because a theta that makes the PREDICTIONS worse is
+  // rejected whatever the latents look like.
+  //
+  // A covariate on a distribution parameter then needs no machinery at all:
+  // the model itself recomputes eta per record from the candidate thetas.
+  bool etaDistObsLik() const {
+    return etaDistLoglik && etaDistOn && etaDistNdist > 0;
+  }
   // How often the Shi-difference fallback supplied the non-mu gradient because
   // the analytic sensitivity path's bad-solve ladder was exhausted.  Reported,
   // not hidden: a fit that spends most of its refinements on a finite
@@ -6806,6 +6849,12 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
     if ((!etaDistOn && !etaDistCorOn) || etaDistNdist <= 0) return false;
     if (etaDistArgs.n_rows != (unsigned int)etaDistNdist) return false;
     bool moved = false;
+    // In the observation-likelihood mode the declared thetas are estimated by
+    // refinePhi0Lik against the observation likelihood, so this step has
+    // nothing to do for the FAMILIES.  The copula closed form still runs: the
+    // correlation is a property of the latent block, not of the mean function,
+    // and no observation-likelihood term identifies it.
+    bool famOff = etaDistObsLik();
     // latent normals actually seen by each declared eta's quantile: its own
     // sampled column, or -- for a copula member -- the correlated combination
     // the model forms (rho*z_j + sqrt(1-rho^2)*z_k).
@@ -6827,7 +6876,7 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
       }
     }
     // each declared family: latent -> eta via the CURRENT parameters, then MLE
-    for (int k = 0; etaDistOn && k < etaDistNdist; ++k) {
+    for (int k = 0; etaDistOn && !famOff && k < etaDistNdist; ++k) {
       int fam = etaDistFam(k);
       int na = rxEtaDistNarg(fam);
       if (na <= 0) continue;

@@ -200,6 +200,35 @@
 #'   settles near 0.85, where the step recovers a mean of 4.8 against a
 #'   simulation truth of 5.03 -- the ordinary route lands at 6.4 to 7.5.
 #'
+#' @param etaDistLoglik Estimate a `dist()`-declared random effect's own
+#'   parameters from the OBSERVATION likelihood rather than by fitting the
+#'   declared family to the sampled etas.  Opt-in; `FALSE` leaves
+#'   `etaDistMstep`'s route in place.
+#'
+#'   This is the M-step the construction implies.  The complete data is
+#'   `(y, z)` with `z` the latent standard normal, so
+#'   `log p(y, z | theta) = log p(y | z, theta) + log p(z)` and `log p(z)` is
+#'   theta-free.  `eta = Q(phiU(z); args(theta))` is a deterministic transform,
+#'   not observed data, so the declared family's density never enters the
+#'   Q-function -- its parameters are structural parameters of the mean
+#'   function and belong to the observation likelihood like any other non-mu
+#'   theta.  Fitting the family to the eta sample is a heuristic; it measures
+#'   well (see `etaDistMstep`), but it is a different thing.
+#'
+#'   Practically this hands the declared thetas to the same
+#'   observation-likelihood refinement the non-mu thetas already use, and
+#'   stands the family M-step down for them.  Two things follow.  A covariate
+#'   on a distribution parameter needs no special handling at all, because the
+#'   model recomputes `eta` per record from the candidate thetas -- fixed and
+#'   time-varying alike.  And no spread guard is needed: a theta that makes the
+#'   PREDICTIONS worse is rejected whatever the latents look like, so an
+#'   over-dispersed latent cannot drive a runaway the way it can when the
+#'   family is fitted to the etas it produces.
+#'
+#'   The copula M-step (`etaDistCorMstep`) still runs.  A correlation between
+#'   latents is not a property of the mean function, and no
+#'   observation-likelihood term identifies it.
+#'
 #' @param etaDistCorMstep Update a `dist()`-declared Gaussian copula's
 #'   correlation from its closed form -- the sample correlation of the latent
 #'   pair -- instead of leaving it to the general non-mu theta refinement.  On
