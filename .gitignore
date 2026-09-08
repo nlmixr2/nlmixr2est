@@ -106,3 +106,4 @@ inst/tools/*.Rout
 src/Makevars.win
 .habit-hooks/
 compile_commands.json
+/src/*.d

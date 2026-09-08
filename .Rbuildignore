@@ -121,3 +121,4 @@ BinaryFiles$
 # The fixtures CRAN's own checks read are the CHECKED-IN csv references
 # (npag/pmetrics_reference.csv, npag/ipm/burke-golden.csv) and are kept.
 ^tests/testthat/fixtures/.*\.rds$
+^src/.*[.]d$
