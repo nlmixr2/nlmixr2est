@@ -378,9 +378,46 @@ step is not wrong in principle; the chain it is being fed is not mixing well
 enough to feed it.  This is why `etaDistMstep` defaults to `FALSE`, and why
 the MCMC differences in Difference 1 are not academic.
 
+### The M-step needs a mixing time between updates
+
+The collapse above is at `etaDistEvery = 1` -- the default -- which runs the
+M-step on **every** iteration.  That is the worst possible schedule for a step
+whose only failure mode is being fed draws that have not moved.  Spacing it
+changes the result completely (same model, seed and iteration count, M-step
+on):
+
+| `etaDistEvery` | CL | V1 | rel.var CL | rel.var V1 | cor | MARE | stuck | latent SD |
+|---|---|---|---|---|---|---|---|---|
+| 1 (default) | 3.621 | 4.066 | **0.0000** | **0.0000** | 0.996 | 73.7% | -- | -- |
+| 5 | 4.754 | 4.382 | 0.0328 | 0.0146 | 0.944 | 54.3% | 12% | 1.24, 1.04 |
+| 10 | 4.884 | 4.464 | 0.0443 | 0.0307 | **0.439** | 24.0% | 6% | 1.16, 1.15 |
+| **20** | **5.109** | **4.688** | 0.0699 | 0.0507 | 0.498 | **15.1%** | **3%** | 1.03, 1.07 |
+| 30 | 4.996 | 4.707 | 0.0719 | 0.0403 | 0.529 | 18.4% | 8% | 0.94, 1.02 |
+| truth | 5.03 | 4.66 | 0.086 | 0.086 | 0.438 | | | 1.0 |
+
+At `etaDistEvery = 20` this is the **best configuration measured on this
+model** -- better than turning the M-step off entirely (21.2% with
+`rwOmega`), and CL and V1 are closer to the simulation truth than NONMEM's own
+estimates are.  The diagnostics move with it rather than merely alongside it:
+the frozen-subject share falls from 30.7% to 3%, and the pooled latent SD
+settles on its known target of 1.0 (1.24 at `every = 5`, 1.03 at 20) instead
+of collapsing.
+
+The curve has a genuine interior optimum -- 1 -> 5 -> 10 -> 20 improves
+monotonically and 30 is worse than 20 -- which is what "the step needs roughly
+one mixing time between updates" predicts: too often and it compounds its own
+output, too rarely and it simply runs fewer times.
+
+So the earlier reading, that a distribution M-step is unsafe, was really a
+statement about its *schedule*.  Two caveats before treating 20 as a default:
+this is one seed and one model, and 20 out of 200 iterations is 10% of the run
+-- whether the right value is a fixed count or a fraction of `nBurn` is not
+established.
+
 The copula M-step (`etaDistCorMstep`, which defaults **`TRUE`** and is keyed
 off its own flag, so it runs even when `etaDistMstep = FALSE`) contributes
-separately.  Same model and seed 99, with both off:
+separately, and is gated by the same `etaDistEvery` -- so the default schedule
+affects fits that never opt into `etaDistMstep` at all.  Same model and seed 99, with both off:
 
 | | CL | V1 | rel.var CL | rel.var V1 | cor | MARE |
 |---|---|---|---|---|---|---|

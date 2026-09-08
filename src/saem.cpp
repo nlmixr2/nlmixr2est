@@ -35,6 +35,7 @@ using namespace Rcpp;
 // -- must be included AFTER the `using namespace Rcpp;` above.
 #include "scale.h"
 #include "nonMuThetaGrad.h"
+#include "shi21.h"
 #include <n1qn1c.h>
 
 // The declared-distribution family dispatch and the ODE-free maximum-
@@ -619,6 +620,27 @@ static int gPhi0Coord = 0;
 static arma::vec gPhi0Full;
 static std::vector<int> gPhi0FreeIx;
 static double gPhi0Obj1DR(double x);
+// ---- Shi-difference fallback for the non-mu theta gradient ----------------
+//
+// When the sensitivity peer's bad-solve ladder is exhausted the analytic
+// d(f)/d(theta) is unavailable.  focei's answer in that situation is to fall
+// back to the ORIGINAL model -- no sensitivities -- and difference it with the
+// Shi (2021) step search; this is the same fallback for saem's non-mu step.
+//
+// gShiPredFn is the vector-valued function shi21Forward differentiates: it
+// writes the candidate free phi0 values into the phi0 columns and returns the
+// population prediction column.  It solves through user_fn with
+// _saemSolveCompleteOnce left at 0, which routes to _saemOwnSolveSlot
+// (odeSlotPred) rather than the sensitivity peer -- i.e. exactly "the original
+// model without the theta gradients", and the same solve phi0Objective uses,
+// which is known to succeed where the sensitivity read did not.
+//
+// shi21fn_type is a bare function pointer, so the instance is reached through a
+// file-static the way gPhi0ObjR already does.
+static SAEM *gShiSelf = nullptr;
+static std::vector<int> gShiFreeIx;
+static arma::vec gShiPredFn(arma::vec &t, int id);
+
 // Shared state for the multivariate phi0 refinements (nelder-mead and newuoa).
 // Both are unbounded, so the objective clamps each candidate into the trust
 // region before evaluating it, and both need their evaluation budget enforced
@@ -915,6 +937,21 @@ public:
     }
     if (!std::isfinite(v)) return 1e300;
     return v;
+  }
+
+  // Population prediction vector at candidate free phi0 values, for the
+  // Shi-difference fallback (gShiPredFn).  Writes the candidates into the phi0
+  // columns of mprior_phi0/phiM and solves; the caller restores phi0.
+  arma::vec shiPredAt(const arma::vec &t, const std::vector<int> &freeIx) {
+    for (size_t j = 0; j < freeIx.size(); ++j) {
+      int c = freeIx[j];
+      if (c < 0 || c >= nphi0) continue;
+      if (!std::isfinite(t((arma::uword)j))) return arma::vec();
+      mprior_phi0.col(c).fill(t((arma::uword)j));
+    }
+    if (nphi0 > 0) phiM.cols(i0) = repmat(mprior_phi0, nmc, 1);
+    mat fMat = user_fn(phiM, evt, optM);
+    return arma::vec(fMat.col(0));
   }
 
   // Side-effect-free observation -log-likelihood objective for the normal-model
@@ -1225,6 +1262,110 @@ public:
   // precisely what a quasi-Newton wants, and it is only affordable because the
   // complete system emits rx_pred_ alongside d(f)/d(theta) -- a derivative-free
   // search pays a solve per objective evaluation and gets no gradient at all.
+  // Shi (2021) finite-difference gradient of the ORIGINAL (no-sensitivity)
+  // model, used when the analytic path's bad-solve ladder is exhausted.
+  //
+  // Differentiates the population prediction vector with shi21Forward, one free
+  // phi0 coordinate at a time, then walks the observations and feeds the SAME
+  // accumulator the analytic path uses (nonMuGradAccumObs).  That is what makes
+  // the two paths interchangeable: score and information come out with
+  // identical semantics, including the per-subject BHHH form, so nothing
+  // downstream needs to know which one produced them.
+  //
+  // Returns false when the fallback itself cannot produce a usable gradient, in
+  // which case the caller leaves its thetas to the derivative-free search.
+  bool shiGradPhi0(nonMuObjKind objKind, int nFree,
+                   const std::vector<int> &obsOff, const arma::uvec &invSort,
+                   arma::vec &score, arma::mat &info,
+                   std::vector<double> &rowScore, std::vector<double> &rowInfo,
+                   int nRow) {
+    if (nFree <= 0 || nphi0 <= 0) return false;
+    gShiSelf = this;
+    gShiFreeIx = gPhi0FreeIx;
+    arma::vec t((arma::uword)nFree);
+    for (int fi = 0; fi < nFree; ++fi) t(fi) = mprior_phi0(0, gPhi0FreeIx[(size_t)fi]);
+    // Snapshot phi0 so a probe cannot leave the model at a perturbed value.
+    arma::rowvec phi0Save = mprior_phi0.row(0);
+    bool frz = _saemFreezeOde;
+    _saemFreezeOde = false;
+    arma::vec f0 = gShiPredFn(t, 0);
+    bool ok = f0.is_finite() && f0.n_elem == (arma::uword)(nmc * ntotal);
+    std::vector< arma::vec > gr((size_t)nFree);
+    for (int fi = 0; fi < nFree && ok; ++fi) {
+      double h = 0.0;
+      arma::vec g1;
+      // shi21Forward picks the step from the objective's own noise floor; the
+      // defaults are focei's.  A non-finite result for any coordinate makes the
+      // whole fallback unusable, for the same reason a partial population is:
+      // a gradient missing one direction is not a descent direction.
+      double rc = shi21Forward(gShiPredFn, t, h, f0, g1, 0, fi);
+      (void)rc;
+      if (!g1.is_finite() || g1.n_elem != f0.n_elem) ok = false;
+      else gr[(size_t)fi] = g1;
+    }
+    // Restore phi0 and the caller's solve state before returning either way.
+    for (int c = 0; c < nphi0; ++c) mprior_phi0.col(c).fill(phi0Save(c));
+    if (nphi0 > 0) phiM.cols(i0) = repmat(mprior_phi0, nmc, 1);
+    { mat _t = user_fn(phiM, evt, optM); (void)_t; }
+    _saemFreezeOde = frz;
+    if (!ok) return false;
+
+    score.zeros(nFree);
+    info.zeros(nFree, nFree);
+    std::fill(rowScore.begin(), rowScore.end(), 0.0);
+    std::fill(rowInfo.begin(), rowInfo.end(), 0.0);
+    std::vector<double> dfdth((size_t)nFree);
+    // phiM stacks the chains, so row r = k*N + i (the same layout phi.slice(k)
+    // reads).  Within one chain the prediction vector is in SOLVE order, which
+    // obsOff indexes by subject and invSort maps to ys/ix_endpnt order --
+    // exactly the convention the analytic loop established.
+    for (int k = 0; k < nmc; ++k) {
+      for (int i = 0; i < N; ++i) {
+        int r = k * N + i;
+        if (r >= nRow) continue;
+        arma::vec sc((arma::uword)nFree, fill::zeros);
+        arma::mat inf((arma::uword)nFree, (arma::uword)nFree, fill::zeros);
+        for (int q = obsOff[(size_t)i]; q < obsOff[(size_t)i + 1]; ++q) {
+          arma::uword idx = (arma::uword)(k * ntotal + q);
+          double f = f0(idx);
+          if (!std::isfinite(f)) return false;
+          double y = 0.0, gsd = 0.0, dgsdf = 0.0;
+          if (objKind != nonMuObjLl) {
+            if (q >= ntotal) return false;
+            arma::uword tt = invSort((arma::uword)q);
+            y = ys(tt);
+            int b = (nendpnt == 1) ? 0 : (int)ix_endpnt(tt);
+            if (!std::isfinite(y)) return false;
+            gsd = ares(b) + bres(b) * std::fabs(f);
+            if (!(gsd > 0.0) || !std::isfinite(gsd)) continue;
+            dgsdf = bres(b) * ((f < 0.0) ? -1.0 : 1.0);
+          }
+          for (int fi = 0; fi < nFree; ++fi) dfdth[(size_t)fi] = gr[(size_t)fi](idx);
+          nonMuGradAccumObs(objKind, y, f, gsd, dgsdf,
+                            dfdth.data(), nFree, 1.0, sc, inf);
+        }
+        for (int a = 0; a < nFree; ++a) {
+          rowScore[(size_t)r * (size_t)nFree + (size_t)a] = sc(a);
+          score(a) += sc(a);
+        }
+        if (nonMuThetaBhhh) {
+          // same per-subject outer product the analytic path forms
+          for (int a = 0; a < nFree; ++a)
+            for (int bb = 0; bb < nFree; ++bb)
+              info(a, bb) += sc(a) * sc(bb);
+        } else {
+          for (int a = 0; a < nFree; ++a)
+            for (int bb = 0; bb < nFree; ++bb) {
+              rowInfo[((size_t)r * (size_t)nFree + (size_t)a) * (size_t)nFree + (size_t)bb] =
+                inf(a, bb);
+              info(a, bb) += inf(a, bb);
+            }
+        }
+      }
+    }
+    return score.is_finite() && info.is_finite();
+  }
+
   bool nonMuGradPhi0(unsigned int kiter, const vec &pas,
                      const double *xEval = nullptr,
                      double *fOut = nullptr, double *gOut = nullptr) {
@@ -1536,7 +1677,18 @@ public:
     // A partial population would bias the step toward whoever happened to
     // solve; the search alone is better than a skewed Newton step.
     if (gchk) Rprintf("  nGood=%d / nRow=%d\n", nGood, nRow);
-    if (nGood < nRow) return false;
+    if (nGood < nRow) {
+      // The analytic sensitivities did not survive for the whole population,
+      // and a partial one biases the step toward whoever happened to solve.
+      // Fall back to the original model differenced with Shi (2021) steps --
+      // focei's own answer in this situation.  Costs nFree+1 population solves,
+      // paid only after the ladder has already failed.
+      if (xEval != nullptr) return false;   // evaluate-at-x mode has no fallback
+      if (!shiGradPhi0(objKind, nFree, obsOff, invSort, score, info,
+                       rowScore, rowInfo, nRow)) return false;
+      if (gchk) Rprintf("  shi fallback supplied the gradient\n");
+      _saemShiFallbackN++;
+    }
     if (xEval != nullptr) {
       if (gOut != nullptr) for (int fi = 0; fi < nFree; ++fi) gOut[fi] = score(fi);
       return true;
@@ -5574,6 +5726,12 @@ private:
   // only sets how fast the theta marches there; a step that has to prove it
   // improved the objective cannot.
   int nonMuThetaBhhh = 0;
+  // How often the Shi-difference fallback supplied the non-mu gradient because
+  // the analytic sensitivity path's bad-solve ladder was exhausted.  Reported,
+  // not hidden: a fit that spends most of its refinements on a finite
+  // difference is a fit whose sensitivity peer is failing, and that is worth
+  // knowing rather than inferring from the runtime.
+  int _saemShiFallbackN = 0;
   // NONMEM's proposal kernel "mode 1B" (technical guide, "The MCMC method of
   // Expectation in SAEM"): after the first few iterations, propose from a
   // Gaussian built out of each subject's OWN accumulated conditional mean and
@@ -6948,6 +7106,20 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
     setRxThreadId(-1);
   }
 };
+
+// Shi-difference fallback trampoline: the population prediction vector at the
+// candidate free phi0 values `t`.
+//
+// Solves through user_fn with _saemSolveCompleteOnce left at 0, so the solve
+// goes to _saemOwnSolveSlot (odeSlotPred) rather than the sensitivity peer --
+// the original model without theta gradients, which is the whole point of the
+// fallback.  The caller has already cleared _saemFreezeOde and snapshotted
+// phi0, and restores both afterwards.
+static arma::vec gShiPredFn(arma::vec &t, int id) {
+  (void)id;
+  if (gShiSelf == nullptr) return arma::vec();
+  return gShiSelf->shiPredAt(t, gShiFreeIx);
+}
 
 // phi0 objective trampoline for the general-likelihood direct optimization.
 static double gPhi0ObjR(Rcpp::NumericVector p) {

@@ -2,6 +2,50 @@
 
 ## New features
 
+- `saemControl(etaDistMstep=)` is usable after all, but its schedule is what
+  decides that.  The M-step on a declared random effect distribution is a valid
+  EM step given well-mixed posterior draws and collapses the distribution to a
+  point mass given anything else, and at the default `etaDistEvery = 1` it runs
+  on every iteration -- the worst possible schedule for a step whose only
+  failure mode is being fed draws that have not moved.  Measured on Bauer's
+  gamma model (300 subjects, seed 99, `nBurn = nEm = 100`, M-step on):
+
+  | `etaDistEvery` | CL | rel.var CL | cor | MARE | subjects frozen | latent SD |
+  |---|---|---|---|---|---|---|
+  | 1 | 3.621 | 0.0000 | 0.996 | 73.7% | -- | -- |
+  | 5 | 4.754 | 0.0328 | 0.944 | 54.3% | 12% | 1.24 |
+  | 10 | 4.884 | 0.0443 | 0.439 | 24.0% | 6% | 1.16 |
+  | 20 | 5.109 | 0.0699 | 0.498 | 15.1% | 3% | 1.03 |
+  | 30 | 4.996 | 0.0719 | 0.529 | 18.4% | 8% | 0.94 |
+  | truth | 5.03 | 0.086 | 0.438 | | | 1.0 |
+
+  At `etaDistEvery = 20` this is the best configuration measured on that model
+  -- better than leaving the M-step off, and CL and V1 land closer to the
+  simulation truth than NONMEM's own estimates.  The frozen-subject share falls
+  from 30.7% to 3% and the pooled latent SD settles on its known target of 1.0.
+  The curve has an interior optimum (1 -> 5 -> 10 -> 20 improves, 30 is worse
+  than 20), which is what "the step needs about one mixing time between
+  updates" predicts.
+
+  `etaDistEvery` also gates `etaDistCorMstep`, which defaults `TRUE`, so the
+  schedule matters to fits that never opt into `etaDistMstep`.  The default is
+  unchanged pending more than one model and seed; `etaDistEvery = 20` is the
+  value to try first.
+
+- The non-mu theta gradient falls back to Shi (2021) finite differences of the
+  ORIGINAL model when the sensitivity solve's bad-solve ladder is exhausted,
+  completing the fallback chain focei has.  Previously the gradient was simply
+  skipped for that iteration and the derivative-free search ran alone.  The
+  fallback solves through `_saemOwnSolveSlot` (`odeSlotPred`) rather than the
+  sensitivity peer -- the same solve `phi0Objective` uses, which is known to
+  succeed where the sensitivity read did not -- differentiates the population
+  prediction vector one free coordinate at a time with `shi21Forward()`, and
+  feeds the SAME accumulator the analytic path uses, so score and information
+  come out with identical semantics (including the per-subject BHHH form).  It
+  costs `nFree + 1` population solves, paid only after the analytic path has
+  already failed, and refuses as a unit if any coordinate's difference is not
+  finite.  `fit$env` reports how often it engaged.
+
 - `est="saem"` now reports whether its MCMC chain actually moved.  Four
   per-iteration traces on the fit environment:
 
