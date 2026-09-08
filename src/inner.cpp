@@ -3586,10 +3586,11 @@ bool calcEtaHessian(double *eta, int likId, int id,
       }
     }
   } else {
-    arma::mat a(fInd->a, fInd->nObs, op_focei.neta, false, true);
+    int nO = getIndNallTimes(ind)-getIndNdoses(ind)-getIndNevid2(ind);
+    arma::mat a(fInd->a, nO, op_focei.neta, false, true);
     // FOCE (no interaction): frozen variance -> only the prediction curvature enters
     // the inner Hessian; censored obs use rho_ff^cens (cHff), normal use 1/r.
-    arma::vec cHff(fInd->cHff, fInd->nObs, false, true);
+    arma::vec cHff(fInd->cHff, nO, false, true);
     for (k = op_focei.neta; k--;){
       for (l = k+1; l--;) {
         H(k, l) = sum(cHff % a.col(l) % a.col(k)) +
