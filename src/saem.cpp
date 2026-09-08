@@ -1962,7 +1962,10 @@ public:
     // independent: the closed form runs in the observation-likelihood mode too
     // (a latent correlation is not a property of the mean function), so it owns
     // this column either way.
-    if (etaDistCorOn && etaDistCorFired &&
+    // Held out whenever something else owns it: the closed form once it has
+    // fired, or -- in the observation-likelihood mode -- the gradient step,
+    // which now carries rxCor alongside the family thetas.
+    if ((etaDistObsLik() || (etaDistCorOn && etaDistCorFired)) &&
         etaDistCorPhi0 >= 0 && etaDistCorPhi0 < nphi0) {
       phi0Dist[(size_t)etaDistCorPhi0] = true;
     }
@@ -2413,6 +2416,31 @@ public:
           if (gPhi0FreeIx[q] == c) { dup = true; break; }
         if (!dup) gPhi0FreeIx.push_back(c);
       }
+    }
+    // THE COPULA THETA TOO.
+    //
+    // It was previously left to its own closed form on the reasoning that a
+    // latent correlation "is not a property of the mean function and no
+    // observation-likelihood term identifies it".  That is wrong: rxCor enters
+    // through the copula combination that forms the correlated latent, hence
+    // eta, hence the structural parameter, hence the prediction.  The
+    // eta-routed sensitivity model already emits its column --
+    // rx__sens_rx_pred__BY_THETA_8___ is a real expression on Bauer's model,
+    // carrying the tanh(THETA[8]) derivative through phiU() -- so the
+    // observation likelihood identifies it exactly as it does the family's own
+    // parameters, and it belongs on the same step.
+    //
+    // It is also the parameter that keeps failing: the closed form pinned it at
+    // 0.999 and at +/-1.000 across earlier arms, and the one arm measured with
+    // the family thetas on this step and the copula still on the closed form
+    // came out better on all four family parameters and twice as bad on the
+    // correlation.
+    if (etaDistCorPhi0 >= 0 && etaDistCorPhi0 < nphi0 &&
+        !isFix[(size_t)etaDistCorPhi0]) {
+      bool dup = false;
+      for (size_t q = 0; q < gPhi0FreeIx.size(); ++q)
+        if (gPhi0FreeIx[q] == etaDistCorPhi0) { dup = true; break; }
+      if (!dup) gPhi0FreeIx.push_back(etaDistCorPhi0);
     }
     if (gPhi0FreeIx.empty()) { gPhi0FreeIx = saveFree; return false; }
     // Establish the states ONCE, exactly as refinePhi0Lik does before its own
@@ -4814,7 +4842,7 @@ public:
               }
             }
           }
-          if (etaDistCorOn && etaDistCorFired &&
+          if ((etaDistObsLik() || (etaDistCorOn && etaDistCorFired)) &&
               etaDistCorPhi0 >= 0 && etaDistCorPhi0 < nphi0) {
             uvec li = arma::find(LCOV0.col(etaDistCorPhi0) == 1);
             for (unsigned int q = 0; q < li.n_elem; ++q) {
@@ -6814,7 +6842,10 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
     }
     // copula correlations: closed form, no search.  Runs independently of the
     // family M-step -- see etaDistCorOn.
-    for (int k = 0; etaDistCorOn && k < etaDistNdist; ++k) {
+    // The copula closed form stands down when the gradient step owns rxCor:
+    // two owners on one parameter, against different objectives, is the fight
+    // this whole area keeps losing.
+    for (int k = 0; etaDistCorOn && !etaDistObsLik() && k < etaDistNdist; ++k) {
       int j = etaDistCorWith(k);
       if (j < 0) continue;
       // Same spread guard the family fits get.  This loop used to bypass it
