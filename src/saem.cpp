@@ -709,7 +709,7 @@ static void gEdN1Cost(int *ind, int *n, double *x, double *f, double *g,
 static SAEM *gEdPeerSelf = nullptr;
 static int gEdPeerK = -1, gEdPeerNth = 0, gEdPeerBad = 0, gEdPeerEvals = 0;
 static const arma::mat *gEdPeerPhi = nullptr;
-static const std::vector<double> *gEdPeerEta = nullptr;
+static const std::vector< std::vector<double> > *gEdPeerEta = nullptr;
 static double gEdPeerBest = R_PosInf;
 static std::vector<double> gEdPeerBestPar;
 static void gEdPeerCost(int *ind, int *n, double *x, double *f, double *g,
@@ -2304,34 +2304,53 @@ public:
   // then the same stochastic-approximation damping every other M-step here
   // applies.  Returns true when it owned the family this iteration -- whether
   // or not it moved -- so the caller does not also run the MLE route on it.
-  bool etaDistPeerStep(int kk, const std::vector<double> &wk,
+  // `w` is the latent per DECLARED family (the M-step's own pooled draws), not
+  // just this family's: the fixed etas have to be built for every retained
+  // family, so the whole set is needed.
+  bool etaDistPeerStep(int kk, const std::vector< std::vector<double> > &w,
                        unsigned int kiter, const vec &pas, bool &moved) {
-    if (!_saemEdActive || kk < 0 || kk >= (int)_saemEdTheta.size()) return false;
+    bool edTrace = (getenv("NLMIXR2_ETADIST_OPT") != NULL);
+#define ED_BAIL(why) do {                                               \
+      if (edTrace) RSprintf("[etaDist peer] it=%d kk=%d bail: %s\n",     \
+                            (int)kiter, kk, why);                       \
+      return false;                                                     \
+    } while (0)
+    if (!_saemEdActive || kk < 0 || kk >= (int)_saemEdTheta.size()) ED_BAIL("inactive/range");
     int nth = (int)_saemEdTheta[(size_t)kk].size();
-    if (nth <= 0) return false;
+    if (nth <= 0) ED_BAIL("no thetas");
     // eta per SUBJECT, averaged over the chains, at theta_old
     int declK = _saemEdFam[(size_t)kk];
-    if (declK < 0 || declK >= etaDistNdist) return false;
-    int fam = etaDistFam(declK);
-    int na = rxEtaDistNarg(fam);
-    if (na <= 0) return false;
-    double a0[4];
-    for (int i = 0; i < na; ++i) a0[i] = etaDistArgs(declK, i);
-    if (wk.empty()) return false;
-    int nb = (wk.size() >= (size_t)N) ? (int)(wk.size() / (size_t)N) : 1;
-    std::vector<double> etaFix((size_t)N, 0.0);
-    for (int i = 0; i < N; ++i) {
-      double acc = 0.0; int n = 0;
-      for (int c = 0; c < nb; ++c) {
-        size_t r = (size_t)(c*N + i);
-        if (r >= wk.size()) continue;
-        double u = R::pnorm(wk[r], 0.0, 1.0, 1, 0);
-        if (u < 1e-15) u = 1e-15; else if (u > 1.0 - 1e-15) u = 1.0 - 1e-15;
-        double e = rxEtaDistQ(fam, u, a0);
-        if (std::isfinite(e)) { acc += e; n++; }
+    if (declK < 0 || declK >= etaDistNdist) ED_BAIL("declK");
+    if ((int)w.size() != etaDistNdist) ED_BAIL("latent count");
+    // Fixed etas for EVERY retained family, not only the one being optimized:
+    // one calc_lhs evaluates all of them, and a family whose ETA[] slot still
+    // holds a latent draw makes its own density throw.
+    std::vector< std::vector<double> > etaFix(_saemEdLlOff.size());
+    for (size_t q = 0; q < _saemEdLlOff.size(); ++q) {
+      int dq = _saemEdFam[q];
+      if (dq < 0 || dq >= etaDistNdist) ED_BAIL("declK (fam)");
+      int famq = etaDistFam(dq);
+      int naq = rxEtaDistNarg(famq);
+      if (naq <= 0) ED_BAIL("narg");
+      double aq[4];
+      for (int i = 0; i < naq; ++i) aq[i] = etaDistArgs(dq, i);
+      const std::vector<double> &wq = w[(size_t)dq];
+      if (wq.empty()) ED_BAIL("no latent (fam)");
+      int nb = (wq.size() >= (size_t)N) ? (int)(wq.size() / (size_t)N) : 1;
+      etaFix[q].assign((size_t)N, 0.0);
+      for (int i = 0; i < N; ++i) {
+        double acc = 0.0; int n = 0;
+        for (int c = 0; c < nb; ++c) {
+          size_t r = (size_t)(c*N + i);
+          if (r >= wq.size()) continue;
+          double u = R::pnorm(wq[r], 0.0, 1.0, 1, 0);
+          if (u < 1e-15) u = 1e-15; else if (u > 1.0 - 1e-15) u = 1.0 - 1e-15;
+          double e = rxEtaDistQ(famq, u, aq);
+          if (std::isfinite(e)) { acc += e; n++; }
+        }
+        if (n == 0) ED_BAIL("eta not finite");
+        etaFix[q][(size_t)i] = acc / n;
       }
-      if (n == 0) return false;
-      etaFix[(size_t)i] = acc / n;
     }
     arma::mat phiSub = etaDistPeerPhi();
     // start at the CURRENT theta values, so a step that fails leaves them alone
@@ -2363,6 +2382,10 @@ public:
       }
     }
     gEdPeerSelf = nullptr; gEdPeerPhi = nullptr; gEdPeerEta = nullptr;
+    if (edTrace) {
+      RSprintf("[etaDist peer] it=%d kk=%d ok0=%d f0=%.6g evals=%d bad=%d best=%.6g\n",
+               (int)kiter, kk, (int)ok0, f0, gEdPeerEvals, gEdPeerBad, gEdPeerBest);
+    }
     if (!ok0 || gEdPeerBestPar.size() != (size_t)nth ||
         !std::isfinite(gEdPeerBest)) {
       return true;   // owned it; nothing usable came back, so leave it alone
@@ -2376,6 +2399,7 @@ public:
     }
     if ((int)etaDistFiredK.size() == etaDistNdist) etaDistFiredK[(size_t)declK] = 1;
     return true;
+#undef ED_BAIL
   }
 
   // The declared-distribution M-step objective, evaluated through the peer.
@@ -2399,27 +2423,43 @@ public:
   // `phiSub` is the per-SUBJECT phi (N rows), indexed through the same
   // _saemPhi1I0/_saemPhi1I1 column maps saemSetRowsPooled() uses -- that
   // function receives the identical matrix as its `_phi` argument.
+  // `etaFix` is per RETAINED FAMILY, then per subject.  EVERY family's slot is
+  // written, not just the one being optimized: one calc_lhs evaluates all of
+  // them, so a family left holding whatever the phi convention put in its
+  // ETA[] slot -- a latent normal draw, which can be negative -- makes its own
+  // density throw ("gamma_lpdf: Random variable is -0.363266, but must be
+  // positive finite") and takes down the solve for the family that IS being
+  // optimized.
   bool etaDistPeerObj(int kk, const arma::mat &phiSub,
-                      const std::vector<double> &etaFix,
+                      const std::vector< std::vector<double> > &etaFix,
                       const double *x, double *fOut, double *gOut) {
-    if (!_saemEdActive || kk < 0 || kk >= (int)_saemEdLlOff.size()) return false;
-    if (!odeSwapLoaded(odeSlotEtaDistLl)) return false;
+    bool oTr = (getenv("NLMIXR2_ETADIST_OPT") != NULL);
+#define ED_OBJ_BAIL(why) do {                                           \
+      if (oTr) RSprintf("[etaDist obj] kk=%d bail: %s\n", kk, why);      \
+      return false;                                                     \
+    } while (0)
+    if (!_saemEdActive || kk < 0 || kk >= (int)_saemEdLlOff.size()) ED_OBJ_BAIL("inactive/range");
+    if (!odeSwapLoaded(odeSlotEtaDistLl)) ED_OBJ_BAIL("slot not loaded");
     int nTh = (int)_saemEdTheta[(size_t)kk].size();
-    if (nTh <= 0) return false;
+    if (nTh <= 0) ED_OBJ_BAIL("no thetas");
     int nHTheta = (int)_saemPhi1H2ThetaKind.n_elem;
     int nHEta = (int)_saemPhi1H2EtaCol.n_elem;
-    if (nHTheta <= 0) return false;
-    int nInd = (int)etaFix.size();
-    if (nInd <= 0 || (int)phiSub.n_rows < nInd) return false;
-    int etaSlot = _saemEdEta[(size_t)kk] - 1;   // 1-based from R
-    if (etaSlot < 0 || etaSlot >= nHEta) return false;
+    if (nHTheta <= 0) ED_OBJ_BAIL("no phi1 theta map");
+    if (etaFix.size() != _saemEdLlOff.size()) ED_OBJ_BAIL("eta fam size");
+    int nInd = (int)etaFix[(size_t)kk].size();
+    if (nInd <= 0 || (int)phiSub.n_rows < nInd) ED_OBJ_BAIL("phi/eta size");
+    for (size_t q = 0; q < etaFix.size(); ++q) {
+      int sl = _saemEdEta[q] - 1;                // 1-based from R
+      if (sl < 0 || sl >= nHEta) ED_OBJ_BAIL("eta slot range");
+      if ((int)etaFix[q].size() < nInd) ED_OBJ_BAIL("eta fam length");
+    }
     rx_solving_options *op = getSolvingOptions(_rx);
     // Which THETA[] slot each candidate belongs in.  THETA[j] is the j-th
     // theta of the iniDf, so the slot is j - 1.
     std::vector<int> slot((size_t)nTh);
     for (int t = 0; t < nTh; ++t) {
       int j = _saemEdTheta[(size_t)kk][(size_t)t] - 1;
-      if (j < 0 || j >= nHTheta) return false;
+      if (j < 0 || j >= nHTheta) ED_OBJ_BAIL("theta slot range");
       slot[(size_t)t] = j;
     }
     std::vector<double> ll(_saemEdLlOff.size(), 0.0);
@@ -2452,17 +2492,27 @@ public:
         }
         setIndParPtr(ind, nHTheta + k, v);
       }
-      // the fixed eta, last, so it wins over whatever the convention above put
-      // in that slot
-      setIndParPtr(ind, nHTheta + etaSlot, etaFix[(size_t)i]);
-      if (!saemNoThrow([&]{
-            ok = etaDistPeerAt(i, ind, op, neqGuard, _saemEdLlOff,
-                               _saemEdGradOff, ll, gr);
-          })) {
+      // every family's fixed eta, last, so they win over whatever the
+      // convention above put in those slots
+      for (size_t q = 0; q < etaFix.size(); ++q) {
+        setIndParPtr(ind, nHTheta + (_saemEdEta[q] - 1), etaFix[q][(size_t)i]);
+      }
+      try {
+        ok = etaDistPeerAt(i, ind, op, neqGuard, _saemEdLlOff,
+                           _saemEdGradOff, ll, gr);
+      } catch (const std::exception &e) {
+        if (oTr) RSprintf("[etaDist obj] kk=%d subject=%d THREW: %s\n", kk, i, e.what());
+        ok = false;
+      } catch (...) {
+        if (oTr) RSprintf("[etaDist obj] kk=%d subject=%d THREW: (non-std)\n", kk, i);
         ok = false;
       }
     }
-    if (!ok || !std::isfinite(ll[(size_t)kk])) return false;
+    if (!ok || !std::isfinite(ll[(size_t)kk])) {
+      if (oTr) RSprintf("[etaDist obj] kk=%d bail: solve ok=%d ll=%.6g\n",
+                        kk, (int)ok, ll[(size_t)kk]);
+      return false;
+    }
     *fOut = -ll[(size_t)kk];
     for (int t = 0; t < nTh; ++t) {
       double gv = (t < (int)gr[(size_t)kk].size()) ? -gr[(size_t)kk][(size_t)t] : 0.0;
@@ -2502,10 +2552,21 @@ public:
     setIndSolve(ind, -1);
     resetOpBadSolve(op);
     odeSwapSolveInd(odeSlotEtaDistLl, i);
-    if (odeSwapIndBadSolveSlot(op, ind, odeSlotEtaDistLl)) return false;
+    if (odeSwapIndBadSolveSlot(op, ind, odeSlotEtaDistLl)) {
+      if (getenv("NLMIXR2_ETADIST_OPT") != NULL) {
+        RSprintf("[etaDist at] subject=%d bad solve\n", i);
+      }
+      return false;
+    }
+    bool aTr = (getenv("NLMIXR2_ETADIST_OPT") != NULL);
+    if (aTr) RSprintf("[etaDist at] i=%d solved; update_inis=%p\n", i,
+                      (void*)rxEtaDistLl.update_inis);
     iniSubjectE(i, 1, ind, op, _rx, rxEtaDistLl.update_inis);
+    if (aTr) RSprintf("[etaDist at] i=%d iniSubjectE ok\n", i);
     double *lhs = guard.lhs();
     int nlhs = odeSwapNlhs(odeSlotEtaDistLl);
+    if (aTr) RSprintf("[etaDist at] i=%d lhs=%p nlhs=%d scratch=%d\n",
+                      i, (void*)lhs, nlhs, (int)guard.usesScratch());
     for (int j = 0; j < getIndNallTimes(ind); ++j) {
       setIndIdx(ind, j);
       int kk = getIndIx(ind, j);
@@ -6736,6 +6797,12 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
       // information being consumed.  Measured on Bauer's g1, that guard
       // rejected all 400 iterations (latent settling near mean 0.56, sd 1.41),
       // so gating this on it would make the route untestable as well as wrong.
+      if (etaDistLoglik && !ev.empty()) {
+        if (getenv("NLMIXR2_ETADIST_OPT") != NULL) {
+          RSprintf("[etaDist peer] it=%d k=%d active=%d nfam=%d\n",
+                   (int)kiter, k, (int)_saemEdActive, (int)_saemEdFam.size());
+        }
+      }
       if (etaDistLoglik && _saemEdActive && !ev.empty()) {
         // _saemEd* are indexed by RETAINED family, k by DECLARED family; a
         // declined family has no block, so they are not the same index
@@ -6743,7 +6810,7 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
         for (size_t q = 0; q < _saemEdFam.size(); ++q) {
           if (_saemEdFam[q] == k) { kk = (int)q; break; }
         }
-        if (kk >= 0 && etaDistPeerStep(kk, w[(size_t)k], kiter, pas, moved)) continue;
+        if (kk >= 0 && etaDistPeerStep(kk, w, kiter, pas, moved)) continue;
       }
       // saemControl(etaDistLoglik=): the general objective (see the design in
       // R/etaDistMstep.R).  Maximizes the family log-likelihood over the THETAS
@@ -8370,6 +8437,18 @@ void setupRx(List &opt, SEXP evt, int nmc, int N) {
       !Rf_isNull(opt["saemPhi1Hess2"]);
     if (haveHess2) odeSwapDeclare(odeSlotHess2, "hess2", opt["saemPhi1Hess2"]);
     if (_saemPhi1PoolActive) odeSwapDeclare(odeSlotPred, "pred", opt["saemPhi1Pred"]);
+    // The declared-distribution peer has to be DECLARED here too, not only
+    // registered below.  The pool is built once and sized for the declared
+    // peers -- states AND lhs -- so a peer that is registered without being
+    // declared solves into a buffer sized for somebody else.  It has no
+    // states, so it cannot widen the state count, but it emits one lhs per
+    // family plus one per theta and CAN widen nlhs; when it did not, the lhs
+    // read ran past the end of the scope's buffer and threw (caught by
+    // saemNoThrow, so it surfaced as "bad subject" rather than as a crash).
+    if (opt.containsElementNamed("saemEtaDistLl") &&
+        !Rf_isNull(opt["saemEtaDistLl"])) {
+      odeSwapDeclare(odeSlotEtaDistLl, "etaDistLl", opt["saemEtaDistLl"]);
+    }
     // the sensitivity peer is declared at the top of setupRx, ahead of this
     // sizing solve, so odeSwapPlan() already accounts for its neq and lhs
     // rxSolve_ on whichever peer has the most states (innerHess2's extra
