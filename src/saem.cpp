@@ -1906,8 +1906,10 @@ public:
         }
       }
     }
-    // the copula theta keyed off its OWN flag, not the family M-step's
-    if (etaDistCorOn && etaDistCorPhi0 >= 0 && etaDistCorPhi0 < nphi0) {
+    // the copula theta keyed off its OWN flag, not the family M-step's -- and,
+    // like them, only once its closed form has actually written a value
+    if (etaDistCorOn && etaDistCorFired &&
+        etaDistCorPhi0 >= 0 && etaDistCorPhi0 < nphi0) {
       phi0Dist[(size_t)etaDistCorPhi0] = true;
     }
     gPhi0FreeIx.clear();
@@ -3062,6 +3064,7 @@ public:
     _saemEtaDistN = 0;
     _saemEtaDistOn = etaDistOn;
     if (etaDistNdist > 0) etaDistFiredK.assign((size_t)etaDistNdist, 0);
+    etaDistCorFired = false;
     if ((etaDistOn || etaDistCorOn) && x.containsElementNamed("etaDistLatent")) {
       etaDistLatent  = as<ivec>(x["etaDistLatent"]);
       etaDistFam     = as<ivec>(x["etaDistFam"]);
@@ -4578,8 +4581,24 @@ public:
         // the whole point of taking them out of refinePhi0Lik as well: on an
         // iteration the guard blocks, the right behavior is for these thetas
         // to stay put, not to drift.
+        //
+        // Conditional on the M-step having ACTUALLY FIRED for that family, for
+        // the same reason refinePhi0Lik's hold-out is.  An M-step that never
+        // fires must not leave its parameters unowned: the GLS is then the only
+        // thing that would move them, and holding them out of it returns the
+        // ini() values as if they were estimates.
+        //
+        // That is not hypothetical.  On Bauer's g1 arm the spread guard
+        // rejected every one of 400 iterations, and lclm/lv1m/lclrv/lv1rv and
+        // rxCor all came back at exactly their ini values while tq/tv2/prop.sd
+        // -- the thetas this block does not hold -- moved normally.  The
+        // etaDistFiredK guard added to refinePhi0Lik did not catch it: that
+        // refinement is gated on (distribution == 4 || nonMuThetaRegress), and
+        // Bauer's model has a prop() endpoint, so it never runs there at all.
         if (etaDistOn && etaDistNdist > 0) {
           for (int k = 0; k < etaDistNdist; ++k) {
+            if ((int)etaDistFiredK.size() == etaDistNdist &&
+                etaDistFiredK[(size_t)k] == 0) continue;
             for (int t = 0; t < etaDistNth(k); ++t) {
               int c = etaDistThetaPhi0(k, t);
               if (c < 0 || c >= nphi0) continue;
@@ -4590,7 +4609,8 @@ public:
               }
             }
           }
-          if (etaDistCorOn && etaDistCorPhi0 >= 0 && etaDistCorPhi0 < nphi0) {
+          if (etaDistCorOn && etaDistCorFired &&
+              etaDistCorPhi0 >= 0 && etaDistCorPhi0 < nphi0) {
             uvec li = arma::find(LCOV0.col(etaDistCorPhi0) == 1);
             for (unsigned int q = 0; q < li.n_elem; ++q) {
               uvec hit = arma::find(jcov0 == (li(q) + etaDistCorPhi0*(unsigned int)LCOV0.n_rows));
@@ -5852,6 +5872,9 @@ private:
   // returned as the ini() values.  Ownership is therefore conditional on the
   // step having actually fired for that family.
   std::vector<int> etaDistFiredK;
+  // Same idea for the copula: its hold-out from the GLS is only legitimate
+  // once its closed form has actually written a value.
+  bool etaDistCorFired = false;
   // NONMEM's proposal kernel "mode 1B" (technical guide, "The MCMC method of
   // Expectation in SAEM"): after the first few iterations, propose from a
   // Gaussian built out of each subject's OWN accumulated conditional mean and
@@ -6526,7 +6549,7 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
       if (etaDistDebug > 1) continue;
       double cur = etaDistRho(k);
       double v = cur + pas(kiter) * (r - cur);
-      if (std::isfinite(v)) { etaDistRho(k) = v; moved = true; }
+      if (std::isfinite(v)) { etaDistRho(k) = v; moved = true; etaDistCorFired = true; }
     }
     return moved;
   }
