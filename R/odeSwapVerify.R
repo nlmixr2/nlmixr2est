@@ -54,8 +54,11 @@
 #' compiled entry points, and solving one calls those rather than re-registering
 #' a shared slot.
 #' @noRd
+## POSITIONAL -- this must stay in the same order as `enum OdeSwapSlot` in
+## src/odeSwap.h, or every slot after the divergence is reported under the
+## wrong name.
 .odeSwapSlots <- c("inner", "pred", "thetaSens", "hess2",
-                   "outer", "outerNode", "outerCov")
+                   "outer", "outerNode", "outerCov", "etaDistLl")
 
 #' Drive the shared bad-solve retry loop with stub side effects.
 #'

@@ -220,12 +220,34 @@
     .model$saemThetaSensEtaCol <- as.integer(.ts$etaCol)
     .model$saemThetaSensDvCol <- as.integer(.ts$dvCol)
   }
-  # A NORMAL model with a sensitivity peer needs its own solves to speak the same
+  # The declared-distribution M-step peer: log p(eta_k; args_k) and its
+  # derivative wrt each theta that family reaches, per observation record.
+  # NULL unless the model declares a distribution the peer can score, so a
+  # model with no dist() line pays nothing.
+  .ed <- nlmixrWithTiming("configure", ui$etaDistPeerPlan)
+  if (!is.null(.ed) && isTRUE(.ed$ok)) {
+    .model$saemEtaDistLl <- .ed$etaDistLl
+    .model$saemEtaDistLlFam <- as.integer(.ed$etaDistLlFam)
+    .model$saemEtaDistLlEta <- as.integer(.ed$etaDistLlEta)
+    .model$saemEtaDistLlName <- as.character(.ed$etaDistLlName)
+    .model$saemEtaDistLlNth <- as.integer(.ed$etaDistLlNth)
+    .model$saemEtaDistLlTheta <- as.integer(.ed$etaDistLlTheta)
+    .model$saemEtaDistLlGradName <- as.character(.ed$etaDistLlGradName)
+  }
+  # A NORMAL model with a peer needs its own solves to speak the same
   # THETA[]/ETA[] declaration, or the peer cannot share the solve pool with it
-  # (see rxUiGet.saemOwnPred).  Only worth building when the sensitivity peer
-  # actually resolved -- otherwise this would reroute every normal fit's solve
-  # for nothing.
-  if (!is.null(.model$saemThetaSens)) {
+  # (see rxUiGet.saemOwnPred).  Only worth building when a peer actually
+  # resolved -- otherwise this would reroute every normal fit's solve for
+  # nothing.
+  #
+  # The declared-distribution peer needs it for exactly the same reason, and it
+  # is what makes the pool ACTIVE: `_saemPhi1PoolActive` keys off
+  # opt$saemPhi1Pred, and saem registers every peer inside that gate.  Without
+  # this the etaDist peer is built and compiled and then never registered, so
+  # the M-step has nothing to solve -- which is what happened on Bauer's gamma
+  # model, whose prop() endpoint leaves the general-likelihood phi1 machinery
+  # off and the theta-sensitivity peer off by default.
+  if (!is.null(.model$saemThetaSens) || !is.null(.model$saemEtaDistLl)) {
     .op <- nlmixrWithTiming("configure", ui$saemOwnPred)
     if (!is.null(.op) && isTRUE(.op$ok)) {
       .model$saemPhi1Pred <- .op$predNoLhs
@@ -240,9 +262,10 @@
       .model$saemPhi1DvCol <- -1L
       .model$saemPhi1DvColHess2 <- -1L
     } else {
-      # no shared declaration -> the sensitivity peer cannot be pooled with
-      # SAEM's own model, so do not carry it at all
+      # no shared declaration -> neither peer can be pooled with SAEM's own
+      # model, so do not carry them at all
       .model$saemThetaSens <- NULL
+      .model$saemEtaDistLl <- NULL
     }
   }
   if (.saemGeneralLik(ui)) {

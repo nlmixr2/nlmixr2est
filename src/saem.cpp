@@ -638,6 +638,17 @@ static std::vector<int> gShiFreeIx;
 // file statics the way gPhi0ObjR already is.  Only ever touched from the
 // serial part of the iteration.
 static int gEdFam = -1;
+// Registered declared-distribution peer: per family, the lhs offset of its log
+// density and of each of its theta-gradient columns, the ETA slot it reads its
+// fixed eta out of, and the 1-based theta index each gradient column belongs
+// to.  Resolved once at registration; empty (and _saemEdActive false) when the
+// model declares nothing the peer can score.
+static std::vector<int> _saemEdLlOff;
+static std::vector< std::vector<int> > _saemEdGradOff;
+static std::vector<int> _saemEdEta;
+static std::vector< std::vector<int> > _saemEdTheta;
+static bool _saemEdActive = false;
+
 static const std::vector< std::vector<etaDistTok> > *gEdRpn = NULL;
 static int gEdNth = 0, gEdNSym = 0, gEdNRec = 0;
 static const double *gEdRec = NULL, *gEdEta = NULL, *gEdWt = NULL;
@@ -8146,6 +8157,61 @@ void setupRx(List &opt, SEXP evt, int nmc, int N) {
     // rxDynLoad's) before it exists rebinds rxode2's event-sensitivity
     // globals and corrupts the solve (see odeSwap.h).
     if (haveHess2) odeSwapRegister(odeSlotHess2, "hess2", opt["saemPhi1Hess2"], &rxHess2);
+    // The declared-distribution peer, registered here for the same reason the
+    // others are: AFTER rxSolve_ has sized the pool.  Its lhs offsets are
+    // resolved by NAME, one block per family, because the peer emits one block
+    // per declared random effect rather than one contiguous set.
+    _saemEdLlOff.clear(); _saemEdGradOff.clear(); _saemEdEta.clear();
+    _saemEdTheta.clear(); _saemEdActive = false;
+    if (opt.containsElementNamed("saemEtaDistLl") &&
+        opt.containsElementNamed("saemEtaDistLlName")) {
+      if (odeSwapRegister(odeSlotEtaDistLl, "etaDistLl", opt["saemEtaDistLl"],
+                          &rxEtaDistLl)) {
+        CharacterVector edNm = as<CharacterVector>(opt["saemEtaDistLlName"]);
+        CharacterVector edGr = as<CharacterVector>(opt["saemEtaDistLlGradName"]);
+        IntegerVector edNth  = as<IntegerVector>(opt["saemEtaDistLlNth"]);
+        IntegerVector edEta  = as<IntegerVector>(opt["saemEtaDistLlEta"]);
+        IntegerVector edTh   = as<IntegerVector>(opt["saemEtaDistLlTheta"]);
+        int nlhsEd = odeSwapNlhs(odeSlotEtaDistLl);
+        bool okEd = (edNm.size() == edNth.size() && edNm.size() == edEta.size());
+        int at = 0;
+        for (int k = 0; okEd && k < edNm.size(); ++k) {
+          int o = odeSwapLhsIndex(odeSlotEtaDistLl,
+                                  std::string(edNm[k]).c_str());
+          if (o < 0 || o >= nlhsEd) { okEd = false; break; }
+          _saemEdLlOff.push_back(o);
+          _saemEdEta.push_back(edEta[k]);
+          std::vector<int> go, gt;
+          for (int t = 0; t < edNth[k]; ++t, ++at) {
+            if (at >= edGr.size() || at >= edTh.size()) { okEd = false; break; }
+            int g = odeSwapLhsIndex(odeSlotEtaDistLl,
+                                    std::string(edGr[at]).c_str());
+            if (g < 0 || g >= nlhsEd) { okEd = false; break; }
+            go.push_back(g); gt.push_back(edTh[at]);
+          }
+          _saemEdGradOff.push_back(go);
+          _saemEdTheta.push_back(gt);
+        }
+        // All or nothing.  A partially resolved peer would have the M-step
+        // maximize over a silently narrowed set of thetas -- the same failure
+        // the R side declines a family for rather than papering over.
+        _saemEdActive = okEd && !_saemEdLlOff.empty();
+        if (!_saemEdActive) {
+          _saemEdLlOff.clear(); _saemEdGradOff.clear();
+          _saemEdEta.clear(); _saemEdTheta.clear();
+        }
+        // Same env-var guard the rest of this file's etaDist tracing uses.
+        // Worth having: the peer is built and compiled on the R side whether
+        // or not it registers, so "the model exists" is NOT evidence that the
+        // M-step can solve it -- registration happens inside
+        // `if (_saemPhi1PoolActive)`, and a fit that leaves the pool off gets
+        // a compiled peer nothing ever calls.
+        if (getenv("NLMIXR2_ETADIST_OPT") != NULL) {
+          RSprintf("[etaDist peer] registered=%d families=%d nlhs=%d\n",
+                   (int)_saemEdActive, (int)_saemEdLlOff.size(), nlhsEd);
+        }
+      }
+    }
     if (_saemPhi1PoolActive) odeSwapRegister(odeSlotPred, "pred", opt["saemPhi1Pred"], &rxPred);
     if (_saemThetaSensActive) {
       if (!odeSwapRegister(odeSlotThetaSens, "thetaSens", opt["saemThetaSens"],

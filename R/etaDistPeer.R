@@ -413,3 +413,52 @@ attr(rxUiGet.etaDistPeer, "rstudio") <- emptyenv()
   .toRx(.p$peer, "compiling declared-distribution model...",
         role = "rxEtaDistLl")
 }
+
+#' The saem-side plan for the declared-distribution peer
+#'
+#' The compiled peer plus the lhs NAMES the M-step has to resolve once it is
+#' registered.  Names rather than offsets: the peer emits one block per family,
+#' so there is no single contiguous offset to hand over, and `odeSwapLhsIndex()`
+#' resolves each by name at registration.
+#'
+#' Shaped like `rxUiGet.saemThetaSensPlan()` and attached the same way, so the
+#' peer rides the machinery that already exists rather than a parallel one.
+#'
+#' @param x rxode2 ui, in a list
+#' @return list with `ok`, the compiled `etaDistLl`, the per-family lhs name
+#'   vectors and the ETA slot each family reads, or `NULL` when the model
+#'   declares no distribution the peer can score
+#' @noRd
+#' @author Matthew L. Fidler
+#' @export
+rxUiGet.etaDistPeerPlan <- function(x, ...) {
+  .ui <- x[[1]]
+  .p <- .ui$etaDistPeer
+  if (is.null(.p) || is.null(.p$peer)) return(NULL)
+  .mod <- tryCatch(.etaDistPeerModel(.ui), error = function(e) NULL)
+  if (is.null(.mod)) return(NULL)
+  ## Only the families that actually produced columns.  A declined family has
+  ## no lhs to resolve and must not occupy a slot in the M-step's index
+  ## vectors, or the k-th entry would stop meaning the k-th declared eta.
+  .keep <- which(!vapply(.p$thetaIdx, is.null, logical(1)))
+  if (length(.keep) == 0L) return(NULL)
+  list(ok = TRUE,
+       etaDistLl = .mod,
+       ## which declared random effect each retained block belongs to (1-based)
+       etaDistLlFam = as.integer(.keep),
+       ## ETA[k] slot each retained family reads its fixed eta out of
+       etaDistLlEta = as.integer(.p$etaIdx[.keep]),
+       ## lhs name of each retained family's log density
+       etaDistLlName = vapply(.keep, .etaDistPeerLlName, character(1)),
+       ## the theta indices behind each retained family's gradient columns,
+       ## flattened with a per-family count so C++ can walk them without a
+       ## ragged structure
+       etaDistLlNth = as.integer(vapply(.p$thetaIdx[.keep], length, integer(1))),
+       etaDistLlTheta = as.integer(unlist(.p$thetaIdx[.keep], use.names = FALSE)),
+       etaDistLlGradName = unlist(lapply(.keep, function(.k) {
+         vapply(.p$thetaIdx[[.k]], function(.j) .etaDistPeerSensName(.k, .j),
+                character(1))
+       }), use.names = FALSE),
+       declined = .p$declined)
+}
+attr(rxUiGet.etaDistPeerPlan, "rstudio") <- emptyenv()

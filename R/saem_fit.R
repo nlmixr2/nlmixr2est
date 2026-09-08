@@ -493,6 +493,18 @@
     opt$saemThetaSensDvCol <- as.integer(model$saemThetaSensDvCol)
     opt$nonMuThetaGradEvery <- as.integer(nonMuThetaGradEvery)
   }
+  ## The declared-distribution peer, threaded the same way.  Independent of the
+  ## theta-sensitivity peer: a model can declare a distribution without wanting
+  ## the non-mu theta gradient, and the other way round.
+  if (!is.null(model$saemEtaDistLl)) {
+    opt$saemEtaDistLl <- model$saemEtaDistLl
+    opt$saemEtaDistLlFam <- as.integer(model$saemEtaDistLlFam)
+    opt$saemEtaDistLlEta <- as.integer(model$saemEtaDistLlEta)
+    opt$saemEtaDistLlName <- as.character(model$saemEtaDistLlName)
+    opt$saemEtaDistLlNth <- as.integer(model$saemEtaDistLlNth)
+    opt$saemEtaDistLlTheta <- as.integer(model$saemEtaDistLlTheta)
+    opt$saemEtaDistLlGradName <- as.character(model$saemEtaDistLlGradName)
+  }
   ## opt$.dat <- dat;
   # normally drop 'dv' by name (the kernel gets observations separately as 'y').
   # A general log-likelihood model, though, references DV in its rx_pred_ (the ll

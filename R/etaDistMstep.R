@@ -188,10 +188,37 @@
 ##     thetas, so n1qn1 works on a 1-2 dimensional problem rather than the
 ##     concatenation of all of them.
 ##
-## Still open: whether the peer is re-solved for each candidate theta the
-## optimizer tries (cheap -- no ODE -- and simplest), or emits enough for the
-## objective to be re-formed without re-solving.  Re-solving is the obvious
-## first implementation; measure before optimizing it away.
+## Cost, and what is deliberately NOT being optimized yet.
+##
+## Two schedules, at different levels, easily confused:
+##
+##   etaDistEvery   how many SAEM ITERATIONS between M-step firings.  Measured;
+##                  20 is best on the models tried.
+##   candidates     how many objective evaluations n1qn1 makes WITHIN one
+##                  firing.  Each needs the peer at that candidate theta, so
+##                  each is a peer solve -- population-wide, though ODE-free.
+##
+## They multiply: ~5 firings x ~30 candidates x per family.  Individually cheap,
+## collectively not obviously so.
+##
+## Implement re-solve-per-candidate FIRST.  It is the general form -- it makes
+## no assumption about the estimation method around it, so the same objective
+## serves saem, imp and the focei family, which is the point of putting it in
+## C++ at all.  It is also the version whose correctness can be tested in
+## isolation, because the optimizer is doing ordinary work on an ordinary
+## objective.
+##
+## The alternative -- one damped Newton step per firing, no inner search, the
+## SAEM gain supplying the damping across iterations instead (NONMEM's shape
+## for its non-mu thetas, eqs. 1.47-1.52) -- makes the per-candidate cost
+## vanish, but it is SAEM-SPECIFIC: it borrows the gain sequence, which imp and
+## focei do not have.  So it is a saem-only refinement to be MEASURED against
+## the general form, not the thing to build first.  Measure it in saem and see
+## whether it loses anything.
+##
+## Emitting enough to re-form the objective in C++ without re-solving is a
+## third option and a false economy: it brings the algebra back to C++, which
+## is exactly what this design removes.
 ##
 ## 5.  The copula
 ## ---------------------------------------------------------------------------

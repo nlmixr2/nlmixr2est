@@ -241,12 +241,26 @@ rxUiGet.saemOwnPred <- function(x, ...) {
   ## only for a NORMAL model -- a general-likelihood fit already has this peer
   ## through saemPhi1Inner, and building a second one would fight it
   if (.saemGeneralLik(.ui)) return(NULL)
-  ## no point paying for the peer unless the sensitivity model it exists to
-  ## make solvable actually resolved
-  if (!isTRUE(tryCatch(as.logical(rxode2::rxGetControl(.ui, "nonMuThetaGrad", FALSE)),
-                       error = function(e) FALSE))) {
-    return(NULL)
-  }
+  ## No point paying for the peer unless something that needs it is actually
+  ## there.  TWO callers now qualify, not one:
+  ##
+  ##   * the theta-sensitivity model (nonMuThetaGrad), which this was written
+  ##     for;
+  ##   * a declared-distribution M-step peer, which needs the pool for exactly
+  ##     the same reason -- and needs it MORE, because saem registers every
+  ##     peer inside `if (_saemPhi1PoolActive)`, which keys off this model.
+  ##     Without it the etaDist peer is built and compiled and then never
+  ##     registered.  Bauer's gamma models hit that: a prop() endpoint leaves
+  ##     the general-likelihood machinery off, and nonMuThetaGrad is off by
+  ##     default, so nothing turned the pool on.
+  ##
+  ## Tested on the DECLARATIONS rather than on `$etaDistPeerPlan`, which would
+  ## compile a model just to answer a gate.
+  .wantSens <- isTRUE(tryCatch(as.logical(rxode2::rxGetControl(.ui, "nonMuThetaGrad", FALSE)),
+                               error = function(e) FALSE))
+  .wantDist <- !is.null(.etaDistDeclGet(.ui)) ||
+    isTRUE(tryCatch(nrow(rxode2::rxUiEtaDists(.ui)) > 0L, error = function(e) FALSE))
+  if (!.wantSens && !.wantDist) return(NULL)
   .fm <- tryCatch(.ui$focei, error = function(e) NULL)
   if (is.null(.fm)) return(NULL)
   .pred <- .fm$predNoLhs
