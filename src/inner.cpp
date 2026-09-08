@@ -7104,6 +7104,8 @@ void numericGrad(double *theta, double *g){
     // term -- and treating that as a reset request would fire thetaResetZero() on fast=TRUE
     // fits that have nothing wrong with them, changing convergence for a legitimate value.
     for (int cpar = (int)op_focei.npars; cpar--;) {
+      if (op_focei.scaleObjective == 2)
+        g[cpar] *= op_focei.scaleObjectiveTo/op_focei.initObjective;
       if (R_FINITE(op_focei.gradTrim)) {
         if (g[cpar] > op_focei.gradTrim) {
           g[cpar] = op_focei.gradTrim;
