@@ -619,6 +619,14 @@ static int gPhi0Coord = 0;
 // the full phi0 vector so FIXED coordinates keep their ini value in the objective.
 static arma::vec gPhi0Full;
 static std::vector<int> gPhi0FreeIx;
+// The iteration whose COMPLETE-SYSTEM solve is currently established, or -1.
+//
+// With the sensitivity peer live, one solve carries rx_pred_ AND every
+// d(f)/d(theta) together (_saemSolveCompleteOnce), so it serves the gradient
+// step and the single-solve pred both -- there is no reason to solve the
+// system more than once per step unless something MOVES phi0 underneath it,
+// which is why the writers invalidate rather than the readers re-solving.
+static int _saemCompleteSolveIter = -1;
 static double gPhi0Obj1DR(double x);
 // ---- Shi-difference fallback for the non-mu theta gradient ----------------
 //
@@ -976,6 +984,24 @@ public:
   // holding the current phi1 samples fixed (general-likelihood / distribution==4:
   // the model prediction column is the per-observation log-likelihood).  Summed
   // over all chains, which is the SAEM stochastic-approximation objective.
+  // ONE complete-system solve per step, shared.
+  //
+  // _saemSolveCompleteOnce makes this solve carry rx_pred_ and every
+  // d(f)/d(theta) together, so the same one serves the gradient step and the
+  // single-solve pred.  Re-solving is only needed when something has MOVED
+  // phi0 since -- the writers call invalidateCompleteSolve() -- or when the
+  // regressor search runs, which evaluates candidates and therefore solves per
+  // candidate by nature.
+  void ensureCompleteSolve(unsigned int kiter) {
+    if (_saemCompleteSolveIter == (int)kiter) return;
+    if (nphi0 > 0) phiM.cols(i0) = repmat(mprior_phi0, nmc, 1);
+    _saemSolveCompleteOnce = 1;
+    { mat _tmp = user_fn(phiM, evt, optM); (void)_tmp; }
+    _saemSolveCompleteOnce = 0;
+    _saemCompleteSolveIter = (int)kiter;
+  }
+  void invalidateCompleteSolve() { _saemCompleteSolveIter = -1; }
+
   double phi0Objective(double *p) {
     mat phiCand = phiM;
     for (int c = 0; c < nphi0; c++) {
@@ -1986,10 +2012,7 @@ public:
     // current one, and the two disagree: the finite-difference check sat at
     // ~5e-4 instead of ~1e-8, which is exactly that inconsistency and not
     // solver noise.
-    if (nphi0 > 0) phiM.cols(i0) = repmat(mprior_phi0, nmc, 1);
-    _saemSolveCompleteOnce = 1;                 // this ONE solve carries the
-    { mat _tmp = user_fn(phiM, evt, optM); (void)_tmp; }  // establish states
-    _saemSolveCompleteOnce = 0;                 // sensitivities for the gradient
+    ensureCompleteSolve(kiter);
     // Gauss-Newton warm start off the exact sensitivities, then the search
     // below refines from there (src/nonMuThetaGrad.h).  Placed AFTER
     // gPhi0FreeIx so it moves exactly the columns the search owns -- never one
@@ -2266,6 +2289,8 @@ public:
       }
     }
     if (fixedIx0.n_elem > 0) MCOV0(jcov0(fixedIx0)) = mcov0Fixed;
+    // the search moved phi0 underneath the established solve
+    invalidateCompleteSolve();
   }
 
   // Phase 4 (SAEM general-likelihood theta plan): Laplace-corrected objective
@@ -2342,6 +2367,18 @@ public:
   bool etaDistGradStep(unsigned int kiter, const vec &pas) {
     if (!etaDistObsLik() || !_saemThetaSensActive || nphi0 <= 0) return false;
     if (etaDistThetaPhi0.n_rows != (unsigned int)etaDistNdist) return false;
+    // CADENCE.  This is the declared-distribution M-step, so it runs on that
+    // step's own schedule (etaDistStart / etaDistEvery, default 20) rather
+    // than every iteration.
+    //
+    // Every iteration is what the first implementation did, and it is not
+    // affordable: each firing needs a COMPLETE-SYSTEM solve to produce the
+    // sensitivity columns, which the MCMC's own solves do not carry.  At
+    // etaDistEvery = 1 that is ~300 extra population solves and the fit ran
+    // 7x the baseline without finishing.  The step is SA-damped anyway, so
+    // firing it every iteration bought little even in principle.
+    if (kiter < (unsigned int)etaDistStart) return false;
+    if (((int)(kiter - (unsigned int)etaDistStart) % etaDistEvery) != 0) return false;
     if (_saemNonMuGradEvery > 1 &&
         ((int)kiter % _saemNonMuGradEvery) != 0) return false;
     // the free set is exactly the declared thetas, minus anything the user
@@ -2368,12 +2405,9 @@ public:
     // call: with the sensitivity peer live this solve IS the complete system
     // (rx_pred_ and every d(f)/d(theta) together), so the gradient costs no
     // solve of its own.
-    phiM.cols(i0) = repmat(mprior_phi0, nmc, 1);
     bool frz = _saemFreezeOde;
     _saemFreezeOde = false;
-    _saemSolveCompleteOnce = 1;
-    { mat _tmp = user_fn(phiM, evt, optM); (void)_tmp; }
-    _saemSolveCompleteOnce = 0;
+    ensureCompleteSolve(kiter);
     bool moved = nonMuGradPhi0(kiter, pas);
     _saemFreezeOde = frz;
     if (moved) {
@@ -2394,6 +2428,8 @@ public:
       if ((int)etaDistFiredK.size() == etaDistNdist) {
         for (int k = 0; k < etaDistNdist; ++k) etaDistFiredK[(size_t)k] = 1;
       }
+      // phi0 moved underneath the established solve
+      invalidateCompleteSolve();
     }
     gPhi0FreeIx = saveFree;
     return moved;
