@@ -1008,6 +1008,74 @@ public:
     _saemCompleteSolveIter = (int)kiter;
     _saemCompleteSolveHasSens = wantSens;
   }
+  // Brent's method: parabolic interpolation with golden-section fallback,
+  // the algorithm behind R's optimize().  Self-contained because Brent_fmin is
+  // not in R's public headers.
+  //
+  // Minimizes the OBSERVATION objective directly rather than root-finding on
+  // its score.  The score route was tried and is not usable here: its values
+  // came back at 1e+04 to 1e+09 on this parameter and the sign change it
+  // bracketed sat at rho = -0.92 against a truth of +0.5.  Minimizing the
+  // objective cannot pick a minimum of the log-likelihood by accident, and does
+  // not depend on the score's scale or sign convention at all.
+  double brentMinPhi0Col(int col, double ax, double bx, double tol,
+                         int maxIt, std::vector<double> &pv, bool &ok) {
+    const double gold = 0.5*(3.0 - std::sqrt(5.0));
+    double a = ax, b = bx;
+    double x = a + gold*(b - a), w = x, v = x;
+    double d = 0.0, e = 0.0;
+    pv[(size_t)col] = x;
+    double fx = phi0Objective(pv.data());
+    ok = std::isfinite(fx) && fx < 1e299;
+    if (!ok) return x;
+    double fw = fx, fv = fx;
+    for (int it = 0; it < maxIt; ++it) {
+      double xm = 0.5*(a + b);
+      double tol1 = tol*std::fabs(x) + 1e-10, tol2 = 2.0*tol1;
+      if (std::fabs(x - xm) <= tol2 - 0.5*(b - a)) break;
+      bool useGold = true;
+      if (std::fabs(e) > tol1) {
+        double r = (x - w)*(fx - fv), q = (x - v)*(fx - fw);
+        double pq = (x - v)*q - (x - w)*r;
+        q = 2.0*(q - r);
+        if (q > 0) pq = -pq; else q = -q;
+        if (std::fabs(pq) < std::fabs(0.5*q*e) && pq > q*(a - x) && pq < q*(b - x)) {
+          double etmp = e; e = d; d = pq/q; useGold = false;
+          if (d - (b - x) > 0 || x + d - a < tol2) d = (xm >= x) ? tol1 : -tol1;
+          (void)etmp;
+        }
+      }
+      if (useGold) { e = (x >= xm) ? (a - x) : (b - x); d = gold*e; }
+      double u = x + ((std::fabs(d) >= tol1) ? d : ((d > 0) ? tol1 : -tol1));
+      pv[(size_t)col] = u;
+      double fu = phi0Objective(pv.data());
+      if (!std::isfinite(fu) || fu >= 1e299) break;
+      if (fu <= fx) {
+        if (u >= x) a = x; else b = x;
+        v = w; fv = fw; w = x; fw = fx; x = u; fx = fu;
+      } else {
+        if (u < x) a = u; else b = u;
+        if (fu <= fw || w == x) { v = w; fv = fw; w = u; fw = fu; }
+        else if (fu <= fv || v == x || v == w) { v = u; fv = fu; }
+      }
+    }
+    return x;
+  }
+
+  // persist a phi0 move through MCOV0, per column against its own design
+  // block: one least squares over all of COV0 is rank deficient when nphi0 > 1
+  void writeBackPhi0(const std::vector<int> &ix) {
+    for (size_t fi = 0; fi < ix.size(); ++fi) {
+      int c = ix[fi];
+      uvec li = arma::find(LCOV0.col(c) == 1);
+      if (li.n_elem == 0) continue;
+      mat Xc = COV0.cols(li);
+      vec bc;
+      if (arma::solve(bc, Xc.t() * Xc, Xc.t() * mprior_phi0.col(c))) {
+        for (unsigned int j = 0; j < li.n_elem; ++j) MCOV0(li(j), c) = bc(j);
+      }
+    }
+  }
   void invalidateCompleteSolve() {
     _saemCompleteSolveIter = -1; _saemCompleteSolveHasSens = false;
   }
@@ -2396,6 +2464,10 @@ public:
     // firing it every iteration bought little even in principle.
     if (kiter < (unsigned int)etaDistStart) return false;
     if (((int)(kiter - (unsigned int)etaDistStart) % etaDistEvery) != 0) return false;
+    if (getenv("NLMIXR2_ETADIST_OPT") != NULL) {
+      RSprintf("[edGrad] it=%d gate passed (start=%d every=%d)\n",
+               (int)kiter, etaDistStart, etaDistEvery);
+    }
     if (_saemNonMuGradEvery > 1 &&
         ((int)kiter % _saemNonMuGradEvery) != 0) return false;
     // the free set is exactly the declared thetas, minus anything the user
@@ -2417,61 +2489,114 @@ public:
         if (!dup) gPhi0FreeIx.push_back(c);
       }
     }
-    // THE COPULA THETA TOO.
+    // The copula is stepped SEPARATELY below, not added here -- see there.
+    if (gPhi0FreeIx.empty()) { gPhi0FreeIx = saveFree; return false; }
+    std::vector<int> famIx = gPhi0FreeIx;
+    // The copula gets its OWN step, over its own information matrix.
     //
-    // It was previously left to its own closed form on the reasoning that a
-    // latent correlation "is not a property of the mean function and no
-    // observation-likelihood term identifies it".  That is wrong: rxCor enters
-    // through the copula combination that forms the correlated latent, hence
-    // eta, hence the structural parameter, hence the prediction.  The
-    // eta-routed sensitivity model already emits its column --
-    // rx__sens_rx_pred__BY_THETA_8___ is a real expression on Bauer's model,
-    // carrying the tanh(THETA[8]) derivative through phiU() -- so the
-    // observation likelihood identifies it exactly as it does the family's own
-    // parameters, and it belongs on the same step.
-    //
-    // It is also the parameter that keeps failing: the closed form pinned it at
-    // 0.999 and at +/-1.000 across earlier arms, and the one arm measured with
-    // the family thetas on this step and the copula still on the closed form
-    // came out better on all four family parameters and twice as bad on the
-    // correlation.
+    // Not because the observation likelihood does not identify it -- it does,
+    // and rx__sens_rx_pred__BY_THETA_8___ is exactly that derivative -- but
+    // because nonMuGradStep() gates on the CONDITIONING of the information
+    // matrix and escalates Levenberg-Marquardt damping when rcond says it is
+    // untrustworthy.  rxCor is a nearly flat direction, so putting it in the
+    // same matrix as the family thetas made the whole 5x5 ill-conditioned and
+    // the damping collapsed EVERY column: the family thetas went from
+    // moved=0.694 in their own 4x4 step to moved=0.001 sharing one with it.
+    // One Newton step couples its parameters through that matrix; two steps do
+    // not.
+    std::vector<int> corIx;
     if (etaDistCorPhi0 >= 0 && etaDistCorPhi0 < nphi0 &&
         !isFix[(size_t)etaDistCorPhi0]) {
       bool dup = false;
-      for (size_t q = 0; q < gPhi0FreeIx.size(); ++q)
-        if (gPhi0FreeIx[q] == etaDistCorPhi0) { dup = true; break; }
-      if (!dup) gPhi0FreeIx.push_back(etaDistCorPhi0);
+      for (size_t q = 0; q < famIx.size(); ++q)
+        if (famIx[q] == etaDistCorPhi0) { dup = true; break; }
+      if (!dup) corIx.push_back(etaDistCorPhi0);
     }
-    if (gPhi0FreeIx.empty()) { gPhi0FreeIx = saveFree; return false; }
-    // Establish the states ONCE, exactly as refinePhi0Lik does before its own
-    // call: with the sensitivity peer live this solve IS the complete system
-    // (rx_pred_ and every d(f)/d(theta) together), so the gradient costs no
-    // solve of its own.
     bool frz = _saemFreezeOde;
     _saemFreezeOde = false;
-    ensureCompleteSolve(kiter, true);   // the gradient step needs them
-    bool moved = nonMuGradPhi0(kiter, pas);
-    _saemFreezeOde = frz;
-    if (moved) {
-      // persist through MCOV0 the way refinePhi0Lik does, or the next
-      // mprior_phi0 = COV0*MCOV0 discards the step.  Per column against its own
-      // design block: a single least squares over all of COV0 is rank deficient
-      // whenever nphi0 > 1.
-      for (size_t fi = 0; fi < gPhi0FreeIx.size(); ++fi) {
-        int c = gPhi0FreeIx[fi];
-        uvec li = arma::find(LCOV0.col(c) == 1);
-        if (li.n_elem == 0) continue;
-        mat Xc = COV0.cols(li);
-        vec bc;
-        if (arma::solve(bc, Xc.t() * Xc, Xc.t() * mprior_phi0.col(c))) {
-          for (unsigned int j = 0; j < li.n_elem; ++j) MCOV0(li(j), c) = bc(j);
+    bool moved = false;
+    bool edTr = (getenv("NLMIXR2_ETADIST_OPT") != NULL);
+
+    // PASS 1 -- the non-correlation thetas, by the damped Newton step.
+    gPhi0FreeIx = famIx;
+    if (!gPhi0FreeIx.empty()) {
+      ensureCompleteSolve(kiter, true);
+      bool m = nonMuGradPhi0(kiter, pas);
+      if (edTr) RSprintf("[edGrad] it=%d family nFree=%d moved=%d\n",
+                         (int)kiter, (int)gPhi0FreeIx.size(), (int)m);
+      if (m) { moved = true; writeBackPhi0(gPhi0FreeIx); invalidateCompleteSolve(); }
+    }
+
+    // PASS 2 -- the correlation, with pass 1's values now FIXED.
+    //
+    // A ROOT FIND, not a Newton step.  With one free parameter the stationarity
+    // condition is scalar -- score(rho) = 0 -- and that is a uniroot problem,
+    // which is robust exactly where the Newton step is not: nonMuGradStep()
+    // gates on the conditioning of the information matrix, and rxCor is a
+    // nearly flat direction, so Levenberg-Marquardt damping eats the step and
+    // returns "moved" without moving.  Measured: the family thetas stepped
+    // moved=0.694 in their own 4x4, and 0.001 sharing a 5x5 with rxCor;
+    // splitting into two Newton steps left it at 0.003, because a 1x1 Newton
+    // step on a flat direction has the same problem the 5x5 did.
+    //
+    // nonMuGradPhi0()'s xEval mode returns the score at an arbitrary point,
+    // which is the only thing a bracketing root find needs.  Bisection rather
+    // than boost's toms748: each evaluation costs a population solve, so the
+    // budget is tens of evaluations and the extra order of convergence buys
+    // less than the guarantee of never leaving the bracket.
+    gPhi0FreeIx = corIx;
+    if (!gPhi0FreeIx.empty()) {
+      ensureCompleteSolve(kiter, true);
+      int c = gPhi0FreeIx[0];
+      double cur = mprior_phi0(0, c);
+      // Only ONE correlation may take this route.  With one free parameter the
+      // problem is a scalar minimization; with two or more it is not, and
+      // minimizing one coordinate at a time is not solving it.  Anything else
+      // is left to the damped Newton step.
+      bool oneCor = (corIx.size() == 1);
+      bool rooted = false;
+      double best = cur;
+      if (oneCor) {
+        std::vector<double> pv((size_t)nphi0);
+        for (int q = 0; q < nphi0; ++q) pv[(size_t)q] = mprior_phi0(0, q);
+        bool ok = false;
+        // A LOCAL TRUST REGION, not the whole range.
+        //
+        // Maximizing the conditional observation likelihood over rho has no
+        // interior optimum: collapsing the two latents onto one always fits the
+        // CURRENT draws better, so the objective is monotone toward rho -> 1.
+        // Searched over the full (-3, 3) this lands on the bound every time --
+        // measured, argmin 2.9965, rho 0.995 -- which is the degeneracy
+        // etaDistCorMstep's own documentation warns about.
+        //
+        // A trust region makes it a LOCAL problem, which is why the ordinary
+        // bounded search keeps rho interior where an unbounded one does not.
+        // Wider than the 0.75 phi0 uses, because the correlation's derivative
+        // information is weak -- that is what ruled out both the Newton step
+        // and the score root find -- so it needs room to move per firing rather
+        // than sharper local curvature.  Derivative-free for the same reason.
+        double r = (etaDistCorTrust > 0.0) ? etaDistCorTrust : 1.5;
+        double lo2 = cur - r, hi2 = cur + r;
+        if (lo2 < -3.0) lo2 = -3.0;
+        if (hi2 > 3.0) hi2 = 3.0;
+        double xm = brentMinPhi0Col(c, lo2, hi2, 1e-3, 40, pv, ok);
+        if (ok && std::isfinite(xm)) { best = xm; rooted = true; }
+        mprior_phi0.col(c).fill(cur);   // restore; the damped move is below
+      }
+      if (rooted) {
+        double v = cur + pas(kiter) * (best - cur);
+        if (std::isfinite(v)) {
+          mprior_phi0.col(c).fill(v);
+          moved = true; writeBackPhi0(gPhi0FreeIx); invalidateCompleteSolve();
         }
       }
-      if ((int)etaDistFiredK.size() == etaDistNdist) {
-        for (int k = 0; k < etaDistNdist; ++k) etaDistFiredK[(size_t)k] = 1;
-      }
-      // phi0 moved underneath the established solve
-      invalidateCompleteSolve();
+      if (edTr) RSprintf("[edGrad] it=%d copula nCor=%d solved=%d argmin=%.4f cur=%.4f -> %.4f\n",
+                         (int)kiter, (int)corIx.size(), (int)rooted, best, cur,
+                         mprior_phi0(0, c));
+    }
+    _saemFreezeOde = frz;
+    if (moved && (int)etaDistFiredK.size() == etaDistNdist) {
+      for (int k = 0; k < etaDistNdist; ++k) etaDistFiredK[(size_t)k] = 1;
     }
     gPhi0FreeIx = saveFree;
     return moved;
@@ -3269,6 +3394,7 @@ public:
     if (x.containsElementNamed("etaDistDebug")) etaDistDebug = as<int>(x["etaDistDebug"]);
     if (x.containsElementNamed("etaDistStart")) etaDistStart = as<int>(x["etaDistStart"]);
     if (x.containsElementNamed("etaDistEvery")) etaDistEvery = as<int>(x["etaDistEvery"]);
+    if (x.containsElementNamed("etaDistCorTrust")) etaDistCorTrust = as<double>(x["etaDistCorTrust"]);
     // Argument expressions + their theta names, for the C++ native->theta map.
     etaDistExprs.clear(); etaDistExprThetas.clear();
     if (x.containsElementNamed("etaDistExprs") && !Rf_isNull(x["etaDistExprs"]) &&
@@ -6239,6 +6365,10 @@ private:
   int etaDistStart = 0;
   // How often the declared-distribution M-step runs.  1 = every iteration.
   int etaDistEvery = 1;
+  // saemControl(etaDistCorTrust=): half-width of the local trust region the
+  // copula's bounded 1-D search works in, on the atanh scale.  Wider than the
+  // 0.75 the phi0 search uses -- see the search itself for why.
+  double etaDistCorTrust = 1.5;
   // Per declared distribution: its argument expressions and the theta names
   // they are written over, so the map back onto thetas stays in C++.
   std::vector<std::vector<std::string> > etaDistExprs;

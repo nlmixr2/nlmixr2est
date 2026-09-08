@@ -791,6 +791,7 @@ saemControl <- function(seed = 99,
                         etaDistMstep = TRUE,
                         etaDistStart = NULL,
                         etaDistEvery = 20L,
+                        etaDistCorTrust = 1.5,
                         etaDistCorMstep = TRUE,
                         etaDistLoglik = FALSE,
                         stepsizeRw = 0.4,
@@ -1029,6 +1030,8 @@ saemControl <- function(seed = 99,
                            .var.name="iacceptPerId")
   checkmate::assertLogical(nonMuThetaBhhh, len=1, any.missing=FALSE,
                            .var.name="nonMuThetaBhhh")
+  checkmate::assertNumeric(etaDistCorTrust, len=1, lower=0, any.missing=FALSE,
+                           .var.name="etaDistCorTrust")
   checkmate::assertLogical(rwOmega, len=1, any.missing=FALSE, .var.name="rwOmega")
   checkmate::assertLogical(etaDistLoglik, len=1, any.missing=FALSE,
                            .var.name="etaDistLoglik")
@@ -1059,6 +1062,7 @@ saemControl <- function(seed = 99,
     etaDistMstep = etaDistMstep,
     etaDistStart = if (is.null(etaDistStart)) NULL else as.integer(etaDistStart),
     etaDistEvery = as.integer(etaDistEvery),
+    etaDistCorTrust = as.numeric(etaDistCorTrust),
     etaDistCorMstep = etaDistCorMstep,
     rwOmega = rwOmega,
     etaDistLoglik = etaDistLoglik,
