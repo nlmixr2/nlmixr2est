@@ -3369,15 +3369,6 @@ attr(rxUiGet.foceiSkipCov, "rstudio") <- c(FALSE, TRUE)
       error = function(e) NULL
     )
   }
-  # The declared-distribution M-step peer: log p(eta_k; args_k) and its
-  # derivative wrt each theta that family reaches, per observation record.
-  # Built here for the same reason thetaSens is -- after the inner model, in the
-  # symengine pipeline context -- and only when the model actually declares a
-  # distribution, which `$etaDistPeer` reports by returning NULL when it does
-  # not.  A model with no dist() line therefore pays nothing.
-  if (is.null(env$model$etaDistLl)) {
-    env$model$etaDistLl <- tryCatch(.etaDistPeerModel(ui), error = function(e) NULL)
-  }
   # } else {
   # env$model <- rxUiGet.ebe(list(ui))
   # }

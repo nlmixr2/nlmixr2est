@@ -254,8 +254,8 @@ rxUiGet.saemOwnPred <- function(x, ...) {
   ##     the general-likelihood machinery off, and nonMuThetaGrad is off by
   ##     default, so nothing turned the pool on.
   ##
-  ## Tested on the DECLARATIONS rather than on `$etaDistPeerPlan`, which would
-  ## compile a model just to answer a gate.
+  ## Tested on the DECLARATIONS, not on anything that would compile a model
+  ## just to answer a gate.
   .wantSens <- isTRUE(tryCatch(as.logical(rxode2::rxGetControl(.ui, "nonMuThetaGrad", FALSE)),
                                error = function(e) FALSE))
   .wantDist <- !is.null(.etaDistDeclGet(.ui)) ||

@@ -1488,13 +1488,6 @@ void freeFocei(){
 rxSolveF rxInner;
 rxSolveF rxPred;
 rxSolveF rxThetaSens; // est="impmap": d(f)/d(theta) model (peer of rxInner/rxPred)
-// Declared-distribution M-step peer: log p(eta_k; args_k) and its derivative
-// with respect to each theta the family reaches, per observation record.
-// ODE-free (no states), and on the ordinary FOCEi parameter block, so it rides
-// the shared ind->par_ptr like every other peer in the pool.
-rxSolveF rxEtaDistLl;
-// The same peer's eta pre-pass model (rx_edeta_<k>_).
-rxSolveF rxEtaDistEta;
 rxSolveF rxHess2;     // fast=TRUE ll(): 2nd-order model d2(logLik)/deta2 (peer of rxInner), re-solved at eta*
 rxSolveF rxOuterNode; // analytic gradient: order-1 augmented model for AGQ nodes
 rxSolveF rxOuterCov;  // analytic covariance: augmented model over the cov direction set
@@ -14849,17 +14842,6 @@ RObject vaeInnerSetup_(Environment e) {
     if (op_focei.thetaSensOffset >= 0 && op_focei.innerNeq > 0) {
       impSetInnerNeqOverride();
     }
-  }
-  // Declared-distribution M-step peer.  Registered unconditionally when the
-  // model list carries it -- the R side only builds it for a fit with a
-  // dist() declaration, so its presence IS the condition.  No neq/lhs offsets
-  // are cached here: the peer's lhs names are keyed by family and theta index,
-  // which the M-step resolves through odeSwapLhsIndex() when it sets up, and
-  // caching a "first column" offset the way thetaSens does would assume one
-  // contiguous block -- the peer emits one block PER FAMILY.
-  if (model.containsElementNamed("etaDistLl")) {
-    odeSwapRegister(odeSlotEtaDistLl, "etaDistLl", model["etaDistLl"],
-                    &rxEtaDistLl);
   }
   // nonMuTheta="grad": the augmented outer-gradient model was DECLARED before
   // foceiSetup_ so it could size the shared pool.  Bind its entry points now --

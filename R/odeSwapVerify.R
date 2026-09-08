@@ -58,7 +58,7 @@
 ## src/odeSwap.h, or every slot after the divergence is reported under the
 ## wrong name.
 .odeSwapSlots <- c("inner", "pred", "thetaSens", "hess2",
-                   "outer", "outerNode", "outerCov", "etaDistEta", "etaDistLl")
+                   "outer", "outerNode", "outerCov")
 
 #' Drive the shared bad-solve retry loop with stub side effects.
 #'

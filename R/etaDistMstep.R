@@ -75,24 +75,18 @@
 ## Measured on a covariate model: rvCL collapsed 0.135 -> 0.020 and rvV1 to
 ## 0.005, CL landed at 3.36 against a truth near 5.1.
 ##
-## STATUS.  The peer route of section 4 is now built and reachable through
-## saemControl(etaDistLoglik = TRUE), which defaults FALSE -- so (a)-(d) above
-## remain what an ordinary fit runs.  What exists:
+## STATUS.  The peer that section 4 describes was BUILT AND THEN REMOVED, and
+## sections 3 and 4 are kept only as the record of why.  It scored the declared
+## FAMILY against the sampled etas, which section 3a shows is the wrong
+## question; and the covariate problem it existed to solve dissolves once the
+## objective is the observation likelihood, because the model recomputes eta
+## per record on its own.  `git log` has it if the family term is ever wanted
+## as a PENALTY rather than as the objective.
 ##
-##   * R/etaDistPeer.R: the log-density table (21 declarable families, each
-##     checked against R's own density and by integrating to 1), the assembler
-##     (symbolic, one symengine load, thetas per family found by
-##     differentiating rather than by reading names), the compile, and the
-##     saem-side plan.
-##   * src/saem.cpp: odeSlotEtaDistLl in the swap pool, etaDistPeerAt() (one
-##     solve per subject, accumulated over evid == 0 records), etaDistPeerObj()
-##     (the Q-function and its exact gradient), etaDistPeerStep() (n1qn1 plus
-##     the usual SA damping).
-##
-## Steps (b) and (c) are what the peer replaces; step (d) it removes entirely,
-## because it optimizes the THETAS directly and never forms a population `a`
-## to invert.  The old route stays as the default until the peer route is
-## measured against it on the four gamma arms.
+## What replaced it is much smaller and lives in R/etaDistPeer.R:
+## rxUiGet.etaDistThetaSens() builds the theta sensitivities THROUGH THE ETAS,
+## emitting the same lhs names the ordinary construction does so the existing
+## gradient step consumes it unchanged.  See section 3b.
 ##
 ## ---------------------------------------------------------------------------
 ## 3a.  THE OBJECTIVE, CORRECTED: the observation likelihood
@@ -207,6 +201,37 @@
 ## The COPULA M-step still runs.  The correlation is a property of the latent
 ## block rather than of the mean function, and no observation-likelihood term
 ## identifies it.
+##
+## ---------------------------------------------------------------------------
+## 3b.  How the step is actually taken: through the etas, off ONE solve
+## ---------------------------------------------------------------------------
+##
+## A declared theta reaches the model ONLY through its own random effect, so
+##
+##   d(state)/d(theta_j) = sum_k d(state)/d(eta_k) * d(eta_k)/d(theta_j)
+##
+## The first factor is already in `ind->solve` from the solve that produced the
+## prediction; the second is pure algebra on Q(phiU(z); args(theta)) with the
+## latent FIXED.  So the theta derivative is a READ AND A MULTIPLY against the
+## solved buffer, and the sensitivity system scales with the number of declared
+## ETAS rather than with the number of parameters the declarations carry.
+##
+## Measured, 2-state ODE model, 2 declared distributions, 6 estimated non-mu
+## thetas: 10 state-sensitivity ODEs the theta way, 4 the eta way, same 6 theta
+## columns out of both.  On a linCmt() model there are no ODE states and both
+## routes fall through to linCmtB's own parameter sensitivities -- there the
+## columns come out BYTE IDENTICAL, which is the check that this is a
+## reparameterization of one derivative and not a different one.
+##
+## Two things that are easy to get wrong here:
+##
+##   * the differentiation variable is the declared eta's VALUE, not its
+##     latent.  The latent is held fixed during the step, so d/d(latent) is
+##     identically zero and the gradient silently vanishes.
+##   * saem does NOT integrate eta sensitivities by default -- its MCMC is
+##     derivative-free -- and what this needs is not focei's full eta
+##     sensitivity set either, only the declared (non-normal) etas.  So it is a
+##     distinct, smaller model, not a reuse of something already being solved.
 ##
 ## ---------------------------------------------------------------------------
 ## 3.  The general objective (the heuristic route, still the default)

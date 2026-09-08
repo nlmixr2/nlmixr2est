@@ -220,22 +220,6 @@
     .model$saemThetaSensEtaCol <- as.integer(.ts$etaCol)
     .model$saemThetaSensDvCol <- as.integer(.ts$dvCol)
   }
-  # The declared-distribution M-step peer: log p(eta_k; args_k) and its
-  # derivative wrt each theta that family reaches, per observation record.
-  # NULL unless the model declares a distribution the peer can score, so a
-  # model with no dist() line pays nothing.
-  .ed <- nlmixrWithTiming("configure", ui$etaDistPeerPlan)
-  if (!is.null(.ed) && isTRUE(.ed$ok)) {
-    .model$saemEtaDistLl <- .ed$etaDistLl
-    .model$saemEtaDistEta <- .ed$etaDistEta
-    .model$saemEtaDistLlFam <- as.integer(.ed$etaDistLlFam)
-    .model$saemEtaDistLlEta <- as.integer(.ed$etaDistLlEta)
-    .model$saemEtaDistLlName <- as.character(.ed$etaDistLlName)
-    .model$saemEtaDistLlEtaName <- as.character(.ed$etaDistLlEtaName)
-    .model$saemEtaDistLlNth <- as.integer(.ed$etaDistLlNth)
-    .model$saemEtaDistLlTheta <- as.integer(.ed$etaDistLlTheta)
-    .model$saemEtaDistLlGradName <- as.character(.ed$etaDistLlGradName)
-  }
   # A NORMAL model with a peer needs its own solves to speak the same
   # THETA[]/ETA[] declaration, or the peer cannot share the solve pool with it
   # (see rxUiGet.saemOwnPred).  Only worth building when a peer actually
@@ -249,7 +233,7 @@
   # the M-step has nothing to solve -- which is what happened on Bauer's gamma
   # model, whose prop() endpoint leaves the general-likelihood phi1 machinery
   # off and the theta-sensitivity peer off by default.
-  if (!is.null(.model$saemThetaSens) || !is.null(.model$saemEtaDistLl)) {
+  if (!is.null(.model$saemThetaSens)) {
     .op <- nlmixrWithTiming("configure", ui$saemOwnPred)
     if (!is.null(.op) && isTRUE(.op$ok)) {
       .model$saemPhi1Pred <- .op$predNoLhs
@@ -267,7 +251,6 @@
       # no shared declaration -> neither peer can be pooled with SAEM's own
       # model, so do not carry them at all
       .model$saemThetaSens <- NULL
-      .model$saemEtaDistLl <- NULL
     }
   }
   if (.saemGeneralLik(ui)) {

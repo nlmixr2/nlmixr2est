@@ -45,15 +45,6 @@ enum OdeSwapSlot {
   odeSlotOuter,       // rxVaeOuter:     augmented outer-gradient model (order 2)
   odeSlotOuterNode,   // rxOuterNode:    same directions at order 1, for AGQ nodes
   odeSlotOuterCov,    // rxOuterCov:     covariance model over its own direction set
-  odeSlotEtaDistEta,  // rxEtaDistEta:   the same peer's eta pre-pass -- reads
-                      //                 the LATENT out of ETA[k].  A separate
-                      //                 model because calc_lhs evaluates every
-                      //                 lhs, and the density below needs the
-                      //                 FIXED eta in that same slot.
-  odeSlotEtaDistLl,   // rxEtaDistLl:    declared-distribution M-step peer,
-                      //                 log p(eta_k; args_k) and its d/d(theta).
-                      //                 ODE-free: no states, so nothing to
-                      //                 integrate when it is swapped in.
   odeSlotN
 };
 
