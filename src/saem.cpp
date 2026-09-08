@@ -1931,11 +1931,12 @@ public:
     // here is what makes that value the warm start rather than something the
     // search immediately overwrites.
     std::vector<bool> phi0Dist((size_t)nphi0, false);
-    // In the observation-likelihood mode THIS refinement is the declared
-    // thetas' owner, so it must not hold them out of its own free list --
-    // the hold-out below exists to keep it off parameters the family M-step
-    // owns, and in this mode the family M-step does not touch them.
-    if (!etaDistObsLik() && etaDistOn && etaDistNdist > 0 &&
+    // Held out in BOTH modes, only the owner differs: the family M-step by
+    // default, the one-solve gradient step (etaDistGradStep) under
+    // etaDistLoglik.  Either way this SEARCH must not also move them -- it
+    // pays a population solve per candidate to rediscover a derivative the
+    // sensitivity peer already emits.
+    if (etaDistOn && etaDistNdist > 0 &&
         (int)etaDistThetaPhi0.n_rows == etaDistNdist) {
       for (int k = 0; k < etaDistNdist; ++k) {
         // Only cede family k's thetas to the M-step once it has actually moved
@@ -2457,6 +2458,88 @@ public:
     if ((int)etaDistFiredK.size() == etaDistNdist) etaDistFiredK[(size_t)declK] = 1;
     return true;
 #undef ED_BAIL
+  }
+
+  // ONE-SOLVE gradient step for the DECLARED thetas.
+  //
+  // This is what etaDistLoglik should have been.  The observation likelihood is
+  // the right objective, but handing it to refinePhi0Lik's SEARCH pays a full
+  // population solve per candidate -- 25 of them per firing -- to rediscover a
+  // derivative nlmixr2 already emits.
+  //
+  // Instead: the solve is FROZEN at the current parameters and taken once, the
+  // theta-sensitivity peer gives d(f)/d(theta) for every declared theta out of
+  // that same solve (linCmt promoted to linCmtB through odeSwap, so an analytic
+  // model costs no integration at all), and nonMuGradPhi0() turns that into a
+  // damped step.  The declared thetas reach the likelihood ONLY through
+  // eta = Q(phiU(z); args(theta)), and the sensitivity model differentiates
+  // through gammapInv/phiU exactly, so the chain rule is already in that one
+  // derivative.  No re-solve, and the steps are only loosely coupled -- which
+  // is fine, because SA damps each one anyway.
+  //
+  // Scheduled on its OWN cadence from iteration 0.  nonMuGradPhi0 is otherwise
+  // called from inside refinePhi0Lik, so it inherits the SEARCH's schedule and
+  // cannot run before nonMuThetaStart (half of nBurn+nEm by default) -- the
+  // opposite of what src/nonMuThetaGrad.h prescribes: "run the cheap directed
+  // step often, the expensive undirected one rarely".
+  bool etaDistGradStep(unsigned int kiter, const vec &pas) {
+    if (!etaDistObsLik() || !_saemThetaSensActive || nphi0 <= 0) return false;
+    if (etaDistThetaPhi0.n_rows != (unsigned int)etaDistNdist) return false;
+    if (_saemNonMuGradEvery > 1 &&
+        ((int)kiter % _saemNonMuGradEvery) != 0) return false;
+    // the free set is exactly the declared thetas, minus anything the user
+    // fixed.  NOT every phi0 column: taking the rest is nonMuTheta="regress",
+    // which has its own control.  The copula keeps its own closed form.
+    std::vector<bool> isFix((size_t)nphi0, false);
+    for (unsigned int j = 0; j < fixedIx0.n_elem; ++j) {
+      if (fixedIx0(j) < (unsigned int)nphi0) isFix[(size_t)fixedIx0(j)] = true;
+    }
+    std::vector<int> saveFree = gPhi0FreeIx;
+    gPhi0FreeIx.clear();
+    for (int k = 0; k < etaDistNdist; ++k) {
+      for (int t = 0; t < etaDistNth(k) && t < (int)etaDistThetaPhi0.n_cols; ++t) {
+        int c = etaDistThetaPhi0(k, t);
+        if (c < 0 || c >= nphi0 || isFix[(size_t)c]) continue;
+        bool dup = false;
+        for (size_t q = 0; q < gPhi0FreeIx.size(); ++q)
+          if (gPhi0FreeIx[q] == c) { dup = true; break; }
+        if (!dup) gPhi0FreeIx.push_back(c);
+      }
+    }
+    if (gPhi0FreeIx.empty()) { gPhi0FreeIx = saveFree; return false; }
+    // Establish the states ONCE, exactly as refinePhi0Lik does before its own
+    // call: with the sensitivity peer live this solve IS the complete system
+    // (rx_pred_ and every d(f)/d(theta) together), so the gradient costs no
+    // solve of its own.
+    phiM.cols(i0) = repmat(mprior_phi0, nmc, 1);
+    bool frz = _saemFreezeOde;
+    _saemFreezeOde = false;
+    _saemSolveCompleteOnce = 1;
+    { mat _tmp = user_fn(phiM, evt, optM); (void)_tmp; }
+    _saemSolveCompleteOnce = 0;
+    bool moved = nonMuGradPhi0(kiter, pas);
+    _saemFreezeOde = frz;
+    if (moved) {
+      // persist through MCOV0 the way refinePhi0Lik does, or the next
+      // mprior_phi0 = COV0*MCOV0 discards the step.  Per column against its own
+      // design block: a single least squares over all of COV0 is rank deficient
+      // whenever nphi0 > 1.
+      for (size_t fi = 0; fi < gPhi0FreeIx.size(); ++fi) {
+        int c = gPhi0FreeIx[fi];
+        uvec li = arma::find(LCOV0.col(c) == 1);
+        if (li.n_elem == 0) continue;
+        mat Xc = COV0.cols(li);
+        vec bc;
+        if (arma::solve(bc, Xc.t() * Xc, Xc.t() * mprior_phi0.col(c))) {
+          for (unsigned int j = 0; j < li.n_elem; ++j) MCOV0(li(j), c) = bc(j);
+        }
+      }
+      if ((int)etaDistFiredK.size() == etaDistNdist) {
+        for (int k = 0; k < etaDistNdist; ++k) etaDistFiredK[(size_t)k] = 1;
+      }
+    }
+    gPhi0FreeIx = saveFree;
+    return moved;
   }
 
   // The declared-distribution M-step objective, evaluated through the peer.
@@ -5084,7 +5167,7 @@ public:
             // M-step.
             if (!etaDistObsLik() &&
                 (int)etaDistFiredK.size() == etaDistNdist &&
-                etaDistFiredK[(size_t)k] == 0) continue;
+                etaDistFiredK[(size_t)k] == 0) continue;   // GLS: see below
             for (int t = 0; t < etaDistNth(k); ++t) {
               int c = etaDistThetaPhi0(k, t);
               if (c < 0 || c >= nphi0) continue;
@@ -5261,10 +5344,11 @@ public:
       // 0.004: the search never gets a chance to matter.
       unsigned int phi0Start = (nonMuThetaStart >= 0) ?
         (unsigned int)nonMuThetaStart : (unsigned int)niter_phi0;
-      // etaDistObsLik() joins the two existing entries: a declared-distribution
-      // fit wants this refinement for the same reason a general-likelihood one
-      // does, and Bauer's models are normal (prop()), so neither existing
-      // condition would let it run.
+      // The declared thetas' own step: ONE solve, exact gradient, one damped
+      // move -- from iteration 0, on nonMuThetaGradEvery, independent of the
+      // search's nonMuThetaStart.  Placed BEFORE the search so that when both
+      // run the search sees the gradient's result, never the other way round.
+      etaDistGradStep(kiter, pas);
       if ((distribution == 4 || phi0ObsLikRoute()) &&
           nphi0 > 0 && kiter >= phi0Start &&
           (kiter - phi0Start) % (unsigned int)nonMuThetaEvery == 0) {
@@ -6393,7 +6477,12 @@ private:
   // estimation method -- and any comparison of it has to be against
   // nonMuThetaStart/nonMuThetaEvery, or the two are conflated.
   bool phi0ObsLikRoute() const {
-    return nonMuThetaRegress || etaDistObsLik();
+    // etaDistObsLik() is deliberately NOT here any more.  It used to widen the
+    // SEARCH's gate, which is the expensive way to use the observation
+    // likelihood -- a population solve per candidate.  The declared thetas now
+    // get etaDistGradStep() instead: one solve, exact gradient, one damped
+    // step.  nonMuThetaRegress still governs the search for everything else.
+    return nonMuThetaRegress;
   }
   // How often the Shi-difference fallback supplied the non-mu gradient because
   // the analytic sensitivity path's bad-solve ladder was exhausted.  Reported,

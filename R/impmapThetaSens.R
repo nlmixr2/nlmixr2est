@@ -247,7 +247,24 @@ attr(rxUiGet.saemThetaSens, "rstudio") <- emptyenv()
   ## stays printable while debugging.  Calling the handler directly with
   ## needVar = would bypass the cache and take `ui$impmapThetaSens` away as
   ## something you can inspect.
-  .s <- if (isTRUE(needVar)) ui$impmapThetaSens else ui$saemThetaSens
+  ## A DECLARED-DISTRIBUTION model gets the eta-routed construction of the same
+  ## quantity: same lhs names, same consumer, but the state sensitivities it
+  ## asks the solve for are per declared ETA rather than per THETA.  A declared
+  ## theta reaches the model only through its own random effect, so
+  ## d(state)/d(theta) = sum_k d(state)/d(eta_k) * d(eta_k)/d(theta), and the
+  ## first factor is already in ind->solve while the second is algebraic.  That
+  ## makes the sensitivity system scale with the number of declared etas
+  ## instead of the number of their parameters.
+  ##
+  ## Falls back silently to the ordinary construction: it is a cheaper way to
+  ## compute the same columns, never different ones, so declining is safe.
+  .s <- NULL
+  if (!isTRUE(needVar)) {
+    .s <- tryCatch(ui$etaDistThetaSens, error = function(e) NULL)
+  }
+  if (is.null(.s)) {
+    .s <- if (isTRUE(needVar)) ui$impmapThetaSens else ui$saemThetaSens
+  }
   if (is.null(.s)) return(NULL)
   ## Interpolation is carried like the inner model does; splitBolus() is not --
   ## this model solves the pre-split events, so declaring it would split the
