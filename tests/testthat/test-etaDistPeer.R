@@ -109,3 +109,42 @@ test_that("the peer table declines a family it has no density for", {
   ## everything else lotri can declare has one
   expect_equal(sum(is.na(.tab$logDensity)), 1L)
 })
+
+## The peer's emitted derivatives, checked against central differences on the
+## expression the assembler actually produced for Bauer's two-gamma model:
+##
+##   rx_edll_1_ = llikGamma(ETA[1], exp(-THETA[5]), exp(-(THETA[1] + THETA[5])))
+##
+## Written out rather than re-derived through symengine so the test states what
+## the model is expected to contain.  If the assembler's output changes, this
+## does not silently follow it -- it keeps checking the chain rule that the
+## declaration `dgamma(shape = 1/exp(lclrv), rate = 1/(exp(lclrv)*exp(lclm)))`
+## implies, with lclm = THETA_1_ and lclrv = THETA_5_.
+
+test_that("the peer's theta derivatives match central differences", {
+  skip_if_not_installed("rxode2ll")
+  .ll <- function(x, sh, rt) rxode2ll::llikGamma(x, sh, rt)$fx
+  .dS <- function(x, sh, rt) rxode2ll::llikGamma(x, sh, rt)$dShape
+  .dR <- function(x, sh, rt) rxode2ll::llikGamma(x, sh, rt)$dRate
+  .eta <- 1.7
+  .f <- function(th) .ll(.eta, exp(-th[5]), exp(-(th[1] + th[5])))
+  .g1 <- function(th) {
+    -1*exp(-(th[1] + th[5]))*.dR(.eta, exp(-th[5]), exp(-(th[1] + th[5])))
+  }
+  .g5 <- function(th) {
+    -1*exp(-th[5])*.dS(.eta, exp(-th[5]), exp(-(th[1] + th[5]))) -
+      exp(-(th[1] + th[5]))*.dR(.eta, exp(-th[5]), exp(-(th[1] + th[5])))
+  }
+  .fd <- function(f, th, j, h = 1e-6) {
+    .a <- th; .b <- th; .a[j] <- .a[j] + h; .b[j] <- .b[j] - h
+    (f(.a) - f(.b))/(2*h)
+  }
+  ## the starting values of three of the four gamma arms, which span a 22-fold
+  ## range of relative variance
+  for (.th in list(c(1.5, 1.5, 0.9, 4.2, -3, -3),
+                   c(1.9, 1.8, 0.9, 4.2, -0.6, -0.6),
+                   c(1.5, 1.5, 0.9, 4.2, 0.7, 0.7))) {
+    expect_equal(.g1(.th), .fd(.f, .th, 1L), tolerance = 1e-6)
+    expect_equal(.g5(.th), .fd(.f, .th, 5L), tolerance = 1e-6)
+  }
+})
