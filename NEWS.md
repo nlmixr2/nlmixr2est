@@ -48,7 +48,17 @@
   copula M-step fixes the dependence and leaves the spreads low, and together
   they land near both.
 
-  **Both are now on by default.**  `etaDistEvery` is inert unless a model
+  **`etaDistMstep` is now on by default for `saem`**, with the schedule that
+  makes it work.  Its earlier reputation was earned at `etaDistEvery = 1`,
+  which runs the step on every iteration and collapses the distribution; at
+  `etaDistEvery = 20` it is worth roughly half the remaining error.  Measured
+  alongside the per-subject adaptation, which is the configuration it now ships
+  in: 21.6% -> 10.0% mean absolute relative error, with the copula correlation
+  going 0.142 -> 0.476 against a truth of 0.438.  Without the per-subject
+  adaptation the direction is the same, 42.0% -> 26.6%.  It stays off for the
+  `imp` family, where it has not been measured the same way.
+
+  **`iacceptPerId` and `etaDistEvery` are on by default too.**  `etaDistEvery` is inert unless a model
   declares a non-Gaussian random effect distribution, so it reaches only the
   fits it was measured on.  `iacceptPerId` is a general MCMC change and does
   reach every `saem` fit; it is on because the acceptance adaptation it

@@ -2864,6 +2864,7 @@ public:
     return Plambda;
   }
 
+  int get_etaDistMapFail() { return _saemEtaDistMapFail; }
   mat get_mcmcAccTrace()   { return mcmcAccTrace; }
   mat get_mcmcStuckTrace() { return mcmcStuckTrace; }
   mat get_phiSdTrace()     { return phiSdTrace; }
@@ -4630,9 +4631,9 @@ public:
               }
               if (getenv("NLMIXR2_ETADIST_OPT") != NULL) _saemEtaDistRMap++;
               RObject got = mapFn(k + 1, av);
-              if (got.isNULL()) continue;
+              if (got.isNULL()) { _saemEtaDistMapFail++; continue; }
               NumericVector th(got);
-              if ((int)th.size() != nth) continue;
+              if ((int)th.size() != nth) { _saemEtaDistMapFail++; continue; }
               for (int t = 0; t < nth; ++t) {
                 int c = etaDistThetaPhi0(k, t);
                 if (c < 0 || c >= nphi0 || !std::isfinite(th[t])) continue;
@@ -5772,6 +5773,15 @@ private:
   // difference is a fit whose sensitivity peer is failing, and that is worth
   // knowing rather than inferring from the runtime.
   int _saemShiFallbackN = 0;
+  // Times the native-parameters -> thetas map could not produce thetas, so the
+  // family's fitted parameters were computed and then thrown away.  Counted
+  // because the failure is otherwise invisible: the fit converges, looks
+  // entirely normal, and the M-step simply had no effect.  The commonest cause
+  // is an argument expression the map cannot invert -- a COVARIATE on a
+  // distribution parameter, which the model-block dist() form now allows and
+  // this inversion cannot represent (it solves for one POPULATION-level set of
+  // native parameters, and a covariate gives every subject their own).
+  int _saemEtaDistMapFail = 0;
   // NONMEM's proposal kernel "mode 1B" (technical guide, "The MCMC method of
   // Expectation in SAEM"): after the first few iterations, propose from a
   // Gaussian built out of each subject's OWN accumulated conditional mean and
@@ -8126,7 +8136,18 @@ SEXP saem_fit(SEXP xSEXP) {
   // never settles below the unit prior), so say so rather than let it pass as a
   // silent no-op.  Same report imp makes for the same reason.
   if (saemEtaDistOn_() && saemEtaDistN_() == 0) {
-    RSprintf("saem: the declared-distribution M-step never ran (etaDistMstep had no effect; the pooled latent spread stayed outside its bounds)\n");
+    int _mf = saem.get_etaDistMapFail();
+    if (_mf > 0) {
+      // Distinguish the two reasons.  This one is not a chain that needs longer
+      // to settle -- it is a declaration this M-step cannot represent, and it
+      // will not fix itself with more iterations.
+      RSprintf("saem: the declared-distribution M-step never ran -- its fitted family parameters could not be mapped back to thetas (%d attempts).\n", _mf);
+      RSprintf("      This is what happens when a distribution parameter depends on a COVARIATE: the map solves for one\n");
+      RSprintf("      population-level set of native parameters, and a covariate gives every subject their own.  The family\n");
+      RSprintf("      parameters were estimated by the rest of saem, not by this step; set etaDistMstep=FALSE to silence this.\n");
+    } else {
+      RSprintf("saem: the declared-distribution M-step never ran (etaDistMstep had no effect; the pooled latent spread stayed outside its bounds)\n");
+    }
   }
 
   int _saemNsub = (int)getRxNsub(_rx);

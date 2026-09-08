@@ -27,6 +27,174 @@
 ## POSTERIOR draws -- which is precisely why their spread is measured at ~0.94
 ## rather than 1.0 -- so the implied etas carry data information.
 
+## ===========================================================================
+## DESIGN: the general declared-distribution M-step
+## ===========================================================================
+##
+## This is the complete specification.  It is written down before the work so
+## the pieces that are NOT yet settled are visible as open questions rather
+## than discovered halfway through.
+##
+## ---------------------------------------------------------------------------
+## 1.  Why the step exists
+## ---------------------------------------------------------------------------
+##
+## In the (y, eta) augmentation the complete-data likelihood factors as
+##
+##     log p(y | eta)  +  log p(eta | theta_dist)
+##
+## and theta_dist appears ONLY in the second term.  Its M-step is therefore a
+## distribution fit to the random effects -- no data term, no ODE solve.
+##
+## rxEtaDistExpand() breaks that factorization: writing eta = Q(phiU(z)) with
+## z ~ N(0,1) moves theta_dist out of the prior and into the data likelihood,
+## where it becomes a structural parameter needing a solve per objective
+## evaluation, and lands in refinePhi0Lik()'s derivative-free search.  Measured
+## on Bauer's gamma data that search converges to a stable WRONG point.
+##
+## EM lets the augmentation be chosen freely: sample in z-space (good MCMC
+## geometry, which is the point of the technique) and take the M-step in
+## eta-space.  Both are valid EM algorithms for the same MLE.
+##
+## ---------------------------------------------------------------------------
+## 2.  What is implemented today, and exactly where it stops
+## ---------------------------------------------------------------------------
+##
+##   (a) pool the sampled latents            w_k   (copula-combined if paired)
+##   (b) implied random effects              eta = Q(phiU(w); a_old)
+##   (c) MLE the family to them              a_new = (shape, rate, ...)
+##   (d) invert the argument expressions     a_new -> the user's thetas
+##
+## Step (d) is a numeric inversion (.etaDistArgsToThetas) that binds only theta
+## names.  It assumes ONE population-level native parameter set.  A covariate
+## breaks that assumption outright -- every subject has its own args, and with
+## a time-varying covariate every observation does -- so the inversion cannot
+## represent the model and returns NULL.  Steps (b) and (c) are equally wrong
+## in that case: there is no single population `a` to imply etas from or to fit.
+##
+## Measured on a covariate model: rvCL collapsed 0.135 -> 0.020 and rvV1 to
+## 0.005, CL landed at 3.36 against a truth near 5.1.
+##
+## ---------------------------------------------------------------------------
+## 3.  The general objective
+## ---------------------------------------------------------------------------
+##
+##   maximize over theta:
+##     sum over (subject i, record j with evid == 0) of
+##        log p_family( eta_ij ; args_ij(theta, covariates_ij) )
+##
+##   with   eta_ij = Q( phiU(w_i) ; args_ij(theta_old) )
+##
+## Gated on evid == 0, the way every other likelihood accumulation in saem is.
+##
+## Three properties:
+##
+##   * It SUBSUMES the current behaviour.  With no covariate, args_ij does not
+##     depend on i or j, every record of a subject contributes the same term,
+##     and the maximizer is the pooled fit of (b)+(c) -- reached directly,
+##     without the second numerical solve of (d).
+##
+##   * It handles a TIME-VARYING covariate with no special case, exactly as the
+##     normal case does.  There, a time-varying covariate makes each
+##     observation's MEAN slightly different and the observation-based
+##     likelihood is what gets optimized.  Here it makes each observation's
+##     DISTRIBUTION slightly different and the same thing happens.  w_i is the
+##     subject's percentile, held fixed, of a distribution whose parameters
+##     move -- the analogue of exp(eta_i) being a fixed multiplier on a
+##     time-varying typical value.  Nothing requires the covariate to be
+##     constant within a subject.
+##
+##   * The gradient is available.  The argument expressions are symbolic, so
+##     d(args)/d(theta) is known and the optimization can be gradient-based
+##     rather than another derivative-free search.  d(log p)/d(args) is already
+##     supplied per family by rxode2ll's exact derivatives (rxEtaDistGradD).
+##
+## ---------------------------------------------------------------------------
+## 4.  What it must read, and from where
+## ---------------------------------------------------------------------------
+##
+## Per record: the value of every non-theta symbol the argument expressions
+## reference -- a model lhs such as `aCl`, or a covariate column.  These come
+## from the PRED-ONLY / analytic-solution model, which every rxode2 model
+## provides and which phi0Objective() already reads.  No sensitivity system and
+## no re-integration: the step remains ODE-free in the sense that matters, it
+## simply reads the solve the rest of the iteration has already taken.
+##
+## The fetch has to live INSIDE the optimization pathway, not as a one-off
+## lookup beforehand: the objective re-evaluates the expressions at every
+## candidate theta, and each evaluation needs that record's row.
+##
+## ---------------------------------------------------------------------------
+## 5.  The copula
+## ---------------------------------------------------------------------------
+##
+## Unchanged in shape.  rho is estimated from the correlation of the paired
+## COMBINED latents, which is a closed form rather than a search, and is keyed
+## off its own flag (etaDistCorMstep) because a model may declare distributions
+## without correlating them.  It stays outside the objective above: the copula
+## couples the latents, not the marginal families, and the two are separable by
+## construction.
+##
+## ---------------------------------------------------------------------------
+## 6.  Guards that must survive the rewrite
+## ---------------------------------------------------------------------------
+##
+##   * The latent spread guard.  The latent is standard normal BY CONSTRUCTION,
+##     so a pooled spread far from 1 means the chain has not mixed, not that
+##     the family is wrong.  Fitting an unmixed chain is a runaway: it collapses
+##     the distribution toward a point mass.  MUST be kept -- it is the only
+##     thing standing between this step and that failure.
+##
+##   * The schedule (etaDistEvery).  The step needs roughly one mixing time
+##     between updates; run every iteration it compounds its own output.
+##
+##   * Audibility.  A step that cannot run must SAY so.  An M-step that
+##     silently does nothing is indistinguishable from a converged fit.
+##
+## ---------------------------------------------------------------------------
+## 7.  Open questions -- to settle BEFORE trusting a test
+## ---------------------------------------------------------------------------
+##
+##   Q1  eta_ij is computed at theta_old while the objective varies theta.
+##       That is the standard EM two-argument form, but here the SAME
+##       expressions appear on both sides, so the fixed point deserves a proof
+##       rather than an assumption.  A toy shows it is stable given well-mixed
+##       draws and divergent given conditional means or an unmixed chain --
+##       that is evidence, not a proof.
+##
+##   Q2  Weighting.  A subject with 20 observations contributes 20 terms for
+##       ONE random effect draw.  With no covariate that is a harmless constant
+##       factor; with a time-varying one it is not, and it silently weights
+##       subjects by their observation count.  Per-subject averaging, or
+##       per-record with an explicit 1/n_i, has to be chosen deliberately.
+##
+##   Q3  Which records.  evid == 0 excludes doses, but a subject with no
+##       observations still has a random effect.  Decide whether it contributes.
+##
+##   Q4  Identifiability.  A covariate on a distribution parameter is estimated
+##       here from the random effects, while the same covariate may also enter
+##       the structural model.  Whether both are identified is a modelling
+##       question the step cannot answer, but it should not diverge silently
+##       when they are not.
+##
+## ---------------------------------------------------------------------------
+## 8.  Test plan
+## ---------------------------------------------------------------------------
+##
+##   T1  No covariate: must reproduce the current inversion's answer to within
+##       optimizer tolerance, on all four of Bauer's gamma datasets (relative
+##       variance 0.09 / 0.5 / 1.0 / 2.0).
+##   T2  No correlation: a single declared distribution, no copula -- the case
+##       none of Bauer's datasets exercises, so simulated with known truth.
+##   T3  Fixed covariate: recover a known covariate effect on a distribution
+##       parameter from simulated data.
+##   T4  Time-varying covariate: same, with the covariate varying within
+##       subject; must not error and must not be biased by record count (Q2).
+##   T5  Degenerate: the covariate effect is truly zero -- must return zero, not
+##       drift.
+##
+## ===========================================================================
+
 #' nlmixr2est's own Nelder-Mead, with two guards its interface needs
 #'
 #' `nmsimplex()` returns a LIST (`$par`, `$value`), and it derives the simplex

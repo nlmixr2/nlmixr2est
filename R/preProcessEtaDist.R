@@ -469,3 +469,32 @@ postFinalObjectHooksAdd(".postFinalEtaDistParFixed", .postFinalEtaDistParFixed)
   .out <- lapply(sort(unique(.grp)), function(.g) .dec[.grp == .g])
   .out[vapply(.out, length, integer(1)) > 1L]
 }
+
+  .lhs <- tryCatch(vapply(ui$lstExpr, function(.e) {
+    if (is.call(.e) && length(.e) >= 3L &&
+          (identical(.e[[1]], quote(`<-`)) || identical(.e[[1]], quote(`=`))) &&
+          is.name(.e[[2]])) as.character(.e[[2]]) else NA_character_
+  }, character(1)), error=function(e) character(0))
+  ## one pass of substitution: a declaration naming `aCl` reaches whatever
+  ## `aCl <- ...` reads
+  for (.i in seq_along(ui$lstExpr)) {
+    if (is.na(.lhs[.i]) || !(.lhs[.i] %in% .sym)) next
+    .sym <- unique(c(.sym, all.vars(ui$lstExpr[[.i]][[3]])))
+  }
+  .use <- intersect(.sym, .cov)
+  if (length(.use) == 0L) return(invisible())
+  .bad <- .use[vapply(.use, function(.cv) {
+    isTRUE(tryCatch(.rxFoceiCarryCovVaries(data, .cv), error=function(e) FALSE))
+  }, logical(1))]
+  if (length(.bad) == 0L) return(invisible())
+  stop("a declared random effect distribution depends on '",
+       paste(.bad, collapse="', '"),
+       "', which varies WITHIN a subject in this data.\n",
+       "  A random effect is drawn once per subject, so its distribution ",
+       "cannot change during that subject's record -- rxode2 would evaluate ",
+       "the inverse CDF at every observation and give a different value each ",
+       "time for the same draw.\n",
+       "  Use a baseline (time-constant) covariate for a distribution ",
+       "parameter, or put the time-varying term on the structural parameter ",
+       "instead.", call.=FALSE)
+}
