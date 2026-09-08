@@ -2254,6 +2254,62 @@ public:
     return pred;
   }
 
+  // One peer solve for subject i: accumulate log p(eta_k; args_k) and its
+  // d/d(THETA_j_) over that subject's OBSERVATION records.
+  //
+  // The caller has already put the candidate thetas and the FIXED etas into
+  // ind->par_ptr.  The fixed eta goes in the declared random effect's own
+  // ETA[k] latent slot -- see R/etaDistPeer.R for why it has to arrive as a
+  // value rather than be recomputed, and why that slot is free to borrow: the
+  // peer never calls phiU() or the inverse CDF, so nothing else reads it while
+  // this model is swapped in.
+  //
+  // Gated on evid == 0, like every other likelihood accumulation here, which is
+  // what makes a time-varying covariate on a distribution parameter work with
+  // no special case: each observation record simply carries its own args.
+  //
+  // The peer has no states, so the "solve" is arithmetic -- the cost is the
+  // record walk, not integration.
+  //
+  // `llOff[k]` is the lhs index of rx_edll_<k+1>_ and `gOff[k][t]` that of
+  // rx__sens_rx_edll_<k+1>___BY_THETA_<j>___ for that family's t-th theta, both
+  // resolved once by name through odeSwapLhsIndex() -- the peer emits one block
+  // PER FAMILY, so there is no single contiguous offset to cache.
+  // A negative offset means the column is not present and is skipped.
+  bool etaDistPeerAt(int i, rx_solving_options_ind *ind, rx_solving_options *op,
+                     OdeSwapScope &guard,
+                     const std::vector<int> &llOff,
+                     const std::vector< std::vector<int> > &gOff,
+                     std::vector<double> &ll,
+                     std::vector< std::vector<double> > &gr) {
+    setIndSolve(ind, -1);
+    resetOpBadSolve(op);
+    odeSwapSolveInd(odeSlotEtaDistLl, i);
+    if (odeSwapIndBadSolveSlot(op, ind, odeSlotEtaDistLl)) return false;
+    iniSubjectE(i, 1, ind, op, _rx, rxEtaDistLl.update_inis);
+    double *lhs = guard.lhs();
+    int nlhs = odeSwapNlhs(odeSlotEtaDistLl);
+    for (int j = 0; j < getIndNallTimes(ind); ++j) {
+      setIndIdx(ind, j);
+      int kk = getIndIx(ind, j);
+      if (getIndEvid(ind, kk) != 0) continue;
+      double curT = getTime(kk, ind);
+      rxEtaDistLl.calc_lhs(i, curT, getOpIndSolve(op, ind, j), lhs);
+      for (size_t k = 0; k < llOff.size() && k < ll.size(); ++k) {
+        int o = llOff[k];
+        if (o < 0 || o >= nlhs || !std::isfinite(lhs[o])) continue;
+        ll[k] += lhs[o];
+        if (k >= gOff.size() || k >= gr.size()) continue;
+        for (size_t t = 0; t < gOff[k].size() && t < gr[k].size(); ++t) {
+          int go = gOff[k][t];
+          if (go < 0 || go >= nlhs || !std::isfinite(lhs[go])) continue;
+          gr[k][t] += lhs[go];
+        }
+      }
+    }
+    return true;
+  }
+
   // Solve odeSlotHess2 (the exact analytic eta-Hessian model) at eta0 for row
   // i, accumulating rx_pred_ into rowPred and the packed lower-triangular
   // d2pred into H.  Returns false (row is bad) on solve failure, matching the
