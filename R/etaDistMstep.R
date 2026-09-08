@@ -110,21 +110,89 @@
 ##     supplied per family by rxode2ll's exact derivatives (rxEtaDistGradD).
 ##
 ## ---------------------------------------------------------------------------
-## 4.  What it must read, and from where
+## 4.  ONE peer model, one solve, swapped in with odeSwap
 ## ---------------------------------------------------------------------------
 ##
-## Per record: the value of every non-theta symbol the argument expressions
-## reference -- a model lhs such as `aCl`, or a covariate column.  These come
-## from the PRED-ONLY / analytic-solution model, which every rxode2 model
-## provides and which phi0Objective() already reads.  No sensitivity system and
-## no re-integration: the step remains ODE-free in the sense that matters, it
-## simply reads the solve the rest of the iteration has already taken.
+## NOT by enumerating which symbols in a declaration are not thetas, resolving
+## each to an lhs index, and finite-differencing the expressions.  That was the
+## first attempt and it is the wrong shape twice over: it makes the R side
+## describe the expressions to the C++ side, and it reimplements rxode2's own
+## symbolic differentiation as a numeric approximation.
 ##
-## The fetch has to live INSIDE the optimization pathway, not as a one-off
-## lookup beforehand: the objective re-evaluates the expressions at every
-## candidate theta, and each evaluation needs that record's row.
+## Build ONE rxode2 model covering every declared distribution in the fit, and
+## swap it in with odeSwap exactly as odeSlotThetaSens, odeSlotHess2 and
+## odeSlotPred already are.  A single solve then produces everything the M-step
+## needs, per OBSERVATION RECORD, in one pass.
 ##
-## ---------------------------------------------------------------------------
+## The model can go all the way to the objective itself.  rxode2 already has
+## the families as model functions (rxode2ll's llikGamma() and friends) and
+## already differentiates through phiU() and the inverse CDF exactly -- that is
+## what the FOCEi path for these models relies on.  So the peer's lhs can be
+##
+##     rx_edll_              sum over declared families of log p( eta ; args )
+##     rx_edll_dtheta_t      its derivative wrt each theta, symbolically
+##
+## and the M-step reduces to a weighted sum of lhs values over records.  The
+## whole chain rule -- d(log p)/d(args) AND d(args)/d(theta) -- happens inside
+## rxode2's symbolic engine rather than being assembled from two sources in
+## C++.
+##
+## What that buys:
+##
+##   * A covariate needs NO handling at all.  The peer is evaluated per record
+##     against the data, so a covariate -- fixed or time-varying -- is simply a
+##     value the model already has.  No symbol list, no lhs resolution, no
+##     branch separating the covariate case from the plain one.
+##
+##   * The same thetas are produced.  The peer is parameterized by the thetas
+##     the fit already carries, so it composes with the existing phi
+##     bookkeeping instead of introducing a parallel one.
+##
+##   * It stays ODE-free.  The peer has no states -- arithmetic on parameters
+##     and covariates -- so swap/solve/read costs no integration, exactly like
+##     the pred-only model.
+##
+##   * One solve per iteration for ALL declared distributions, rather than one
+##     per family, and the per-record values are saved once and reused for
+##     every candidate theta the optimizer tries.
+##
+##   * It obsoletes most of what the C++ side currently carries for this: the
+##     RPN expression evaluator (etaDistExpr.h), rxEtaDistLoglikObj/Grad's
+##     arithmetic, and the args->thetas inversion all exist to reconstruct in
+##     C++ what rxode2 can emit directly.  Whatever survives should be the
+##     accumulation, not the algebra.
+##
+##   * It reuses machinery that exists and is already threaded: the odeSwap
+##     peer pool, odeSwapLhsIndex() for the offsets, and the per-record
+##     calc_lhs() walk phi1PredAt() and the theta-sensitivity loop already do.
+##
+## SPLIT BY FAMILY.  One solve, but the peer emits a separate set of lhs for
+## each declared eta/family in the model,
+##
+##     rx_edll_<k>              log p( eta_k ; args_k )
+##     rx_edll_<k>_dtheta_t     its derivative wrt each of THAT family's thetas
+##
+## and each family is optimized on its own.  Not one summed objective, for
+## three reasons:
+##
+##   * Each declared eta has its own family and its own thetas.  A joint
+##     optimization would couple parameters that are not coupled -- the only
+##     coupling between declared random effects is the copula, and that is
+##     estimated separately and in closed form (section 5).
+##
+##   * A family can then decline independently.  The spread guard is per
+##     family already; one eta whose chain has not settled must not hold back
+##     another whose has, and must not drag a shared objective around.
+##
+##   * Smaller problems are better conditioned.  Each family carries one or two
+##     thetas, so n1qn1 works on a 1-2 dimensional problem rather than the
+##     concatenation of all of them.
+##
+## Still open: whether the peer is re-solved for each candidate theta the
+## optimizer tries (cheap -- no ODE -- and simplest), or emits enough for the
+## objective to be re-formed without re-solving.  Re-solving is the obvious
+## first implementation; measure before optimizing it away.
+##
 ## 5.  The copula
 ## ---------------------------------------------------------------------------
 ##

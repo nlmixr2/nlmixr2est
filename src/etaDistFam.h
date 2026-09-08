@@ -177,6 +177,75 @@ static inline double rxEtaDistLogD(int fam, double x, const double *a) {
 // Map a family's fitted NATIVE parameters back onto the user's thetas, in C++.
 // Returns false when an argument expression is outside the C++ grammar or the
 // solve does not converge -- the caller then keeps the R route.
+#include "etaDistExpr.h"
+
+// ---------------------------------------------------------------------------
+// The general declared-distribution M-step objective (see the design block in
+// R/etaDistMstep.R).  C++ because it has to run inside the OpenMP regions the
+// focei family and imp use -- the R API cannot be touched from a parallel
+// region at all, so an R implementation could never be the target.
+//
+//   sum over (subject i, record j with evid == 0) of
+//      w_ij * log p_family( eta_ij ; args_ij(theta) )
+//
+// Everything it needs is already thread-safe: etaDistExprParse/Eval are
+// header-only pure arithmetic, and rxEtaDistGradD dispatches through
+// rxode2ll's exported function pointers.
+//
+// The argument expressions are parsed ONCE against a name list holding the
+// thetas FIRST and then the per-record symbols, so evaluation is a flat array
+// lookup: vals[0..nth) are the candidate thetas and vals[nth..) that record's
+// own values.  A covariate needs no special case -- it is simply a name whose
+// value differs by record.
+//
+// `rec` is nRec x nSym in row-major order, `etaAt` is the random effect held
+// at the CURRENT parameters (design Q1), and `wt` carries the per-record
+// weight (design Q2: 1/n_i, so each SUBJECT contributes one unit however many
+// times it was observed).
+//
+// Returns false when any record cannot be evaluated -- a partial sum would
+// silently drop whichever subjects failed.
+bool rxEtaDistLoglikObj(int fam,
+                        const std::vector< std::vector<etaDistTok> > &rpn,
+                        int nth, int nSym,
+                        const double *theta,
+                        const double *rec, const double *etaAt,
+                        const double *wt, int nRec,
+                        double *out);
+
+// Objective AND its gradient with respect to the thetas.
+//
+// The chain rule is complete here because both halves already exist:
+//
+//   dL/dtheta_t = sum_r w_r * sum_k  g_k(r) * da_k/dtheta_t (r)
+//
+//   g_k        = d(log p)/d(a_k), returned by rxEtaDistGradD() from rxode2ll's
+//                exact Stan-backed derivatives -- this is what the function
+//                pointer export was FOR.
+//   da_k/dth_t = derivative of the argument expression.  Central-differenced on
+//                the RPN, which is pure arithmetic with no solve behind it, so
+//                it costs a handful of nanoseconds per record and is accurate
+//                to ~1e-8 -- ample for a quasi-Newton step.
+//
+// Same contract as rxEtaDistLoglikObj(): false when any record cannot be
+// evaluated, since a partial sum silently drops subjects.
+bool rxEtaDistLoglikGrad(int fam,
+                         const std::vector< std::vector<etaDistTok> > &rpn,
+                         int nth, int nSym,
+                         const double *theta,
+                         const double *rec, const double *etaAt,
+                         const double *wt, int nRec,
+                         double *out, double *grad);
+
+// Parse a declaration's argument expressions for rxEtaDistLoglikObj().
+// `names` must be the thetas followed by the per-record symbols, in the same
+// order the `theta`/`rec` arrays supply them.  Returns false when any
+// expression falls outside the evaluator's grammar, which is reported rather
+// than guessed at.
+bool rxEtaDistLoglikParse(const std::vector<std::string> &exprs,
+                          const std::vector<std::string> &names,
+                          std::vector< std::vector<etaDistTok> > &rpn);
+
 bool rxEtaDistArgsToThetas(const std::vector<std::string> &exprs,
                            const std::vector<std::string> &thetaNames,
                            const double *start, const double *target,

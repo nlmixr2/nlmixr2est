@@ -633,6 +633,57 @@ static double gPhi0Obj1DR(double x);
 // file-static the way gPhi0ObjR already does.
 static SAEM *gShiSelf = nullptr;
 static std::vector<int> gShiFreeIx;
+// ---- general declared-distribution M-step objective ------------------------
+// nelder_fn takes a bare function pointer, so the problem is reached through
+// file statics the way gPhi0ObjR already is.  Only ever touched from the
+// serial part of the iteration.
+static int gEdFam = -1;
+static const std::vector< std::vector<etaDistTok> > *gEdRpn = NULL;
+static int gEdNth = 0, gEdNSym = 0, gEdNRec = 0;
+static const double *gEdRec = NULL, *gEdEta = NULL, *gEdWt = NULL;
+// newuoa's own maxfun stop returns whatever point it was holding rather than
+// the best one it saw, so the objective tracks the best itself -- the same
+// convention gPhi0RefObjR uses in this file.
+static double gEdBest = R_PosInf;
+static std::vector<double> gEdBestPar;
+static double gEdObj(double *p) {
+  double v = 0.0;
+  if (gEdRpn == NULL ||
+      !rxEtaDistLoglikObj(gEdFam, *gEdRpn, gEdNth, gEdNSym, p,
+                          gEdRec, gEdEta, gEdWt, gEdNRec, &v)) return 1e300;
+  return -v;   // the optimizers here minimize
+}
+
+// n1qn1 cost: value and gradient together, and NO R API anywhere in it -- the
+// whole reason this objective is in C++ is to be callable from the OpenMP
+// regions the focei family and imp use, and n1qn1_ is a plain C function
+// pointer.  (newuoa is not thread-safe and would have to be reached through
+// Rcpp::Function, which is doubly disqualifying here.)
+static int gEdN1Bad = 0;
+static int gEdN1Evals = 0;
+static void gEdN1Cost(int *ind, int *n, double *x, double *f, double *g,
+                      int *ti, float *tr, double *td, int *id) {
+  (void)ti; (void)tr; (void)td; (void)id; (void)n;
+  double v = 0.0;
+  std::vector<double> gr((size_t)gEdNth, 0.0);
+  if (gEdRpn == NULL ||
+      !rxEtaDistLoglikGrad(gEdFam, *gEdRpn, gEdNth, gEdNSym, x,
+                           gEdRec, gEdEta, gEdWt, gEdNRec, &v, gr.data())) {
+    gEdN1Bad = 1;
+    if (*ind == 2 || *ind == 4) *f = 1e300;
+    if (*ind == 3 || *ind == 4) for (int t = 0; t < gEdNth; ++t) g[t] = 0.0;
+    return;
+  }
+  gEdN1Evals++;
+  // maximizing the log-likelihood, so minimize its negative -- gradient too
+  if (*ind == 2 || *ind == 4) *f = -v;
+  if (*ind == 3 || *ind == 4) for (int t = 0; t < gEdNth; ++t) g[t] = -gr[(size_t)t];
+  if (-v < gEdBest) {
+    gEdBest = -v;
+    gEdBestPar.assign(x, x + gEdNth);
+  }
+}
+
 static arma::vec gShiPredFn(arma::vec &t, int id);
 
 // Shared state for the multivariate phi0 refinements (nelder-mead and newuoa).
@@ -1843,6 +1894,12 @@ public:
     if (etaDistOn && etaDistNdist > 0 &&
         (int)etaDistThetaPhi0.n_rows == etaDistNdist) {
       for (int k = 0; k < etaDistNdist; ++k) {
+        // Only cede family k's thetas to the M-step once it has actually moved
+        // them.  Otherwise this search keeps them: an M-step that never fires
+        // must not leave its parameters unowned, which returns the ini()
+        // values as if they were estimates.
+        if ((int)etaDistFiredK.size() == etaDistNdist &&
+            etaDistFiredK[(size_t)k] == 0) continue;
         for (int t = 0; t < etaDistNth(k) && t < (int)etaDistThetaPhi0.n_cols; ++t) {
           int c = etaDistThetaPhi0(k, t);
           if (c >= 0 && c < nphi0) phi0Dist[(size_t)c] = true;
@@ -2976,6 +3033,7 @@ public:
     if (x.containsElementNamed("iacceptSingle")) iacceptSingle = as<double>(x["iacceptSingle"]);
     if (x.containsElementNamed("iacceptPerId")) iacceptPerId = as<int>(x["iacceptPerId"]);
     if (x.containsElementNamed("nonMuThetaBhhh")) nonMuThetaBhhh = as<int>(x["nonMuThetaBhhh"]);
+    if (x.containsElementNamed("etaDistLoglik")) etaDistLoglik = as<int>(x["etaDistLoglik"]);
     if (!std::isfinite(iacceptSingle) || iacceptSingle < 0.0 || iacceptSingle >= 1.0) iacceptSingle = 0.0;
     if (x.containsElementNamed("etaDistOn")) etaDistOn = as<int>(x["etaDistOn"]);
     if (x.containsElementNamed("etaDistCorOn")) etaDistCorOn = as<int>(x["etaDistCorOn"]);
@@ -3003,6 +3061,7 @@ public:
     // _saemPhi1RefineN does
     _saemEtaDistN = 0;
     _saemEtaDistOn = etaDistOn;
+    if (etaDistNdist > 0) etaDistFiredK.assign((size_t)etaDistNdist, 0);
     if ((etaDistOn || etaDistCorOn) && x.containsElementNamed("etaDistLatent")) {
       etaDistLatent  = as<ivec>(x["etaDistLatent"]);
       etaDistFam     = as<ivec>(x["etaDistFam"]);
@@ -5767,6 +5826,10 @@ private:
   // only sets how fast the theta marches there; a step that has to prove it
   // improved the objective cannot.
   int nonMuThetaBhhh = 0;
+  // saemControl(etaDistLoglik=): use the general log-likelihood objective for
+  // the declared-distribution M-step instead of fitting native parameters and
+  // inverting them.  Opt-in while it is measured against the inversion.
+  int etaDistLoglik = 0;
   // How often the Shi-difference fallback supplied the non-mu gradient because
   // the analytic sensitivity path's bad-solve ladder was exhausted.  Reported,
   // not hidden: a fit that spends most of its refinements on a finite
@@ -5782,6 +5845,13 @@ private:
   // this inversion cannot represent (it solves for one POPULATION-level set of
   // native parameters, and a covariate gives every subject their own).
   int _saemEtaDistMapFail = 0;
+  // Whether the M-step has ever actually moved family k's parameters.
+  // refinePhi0Lik() hands those thetas over to the M-step and stops optimizing
+  // them; if the M-step then never fires -- the spread guard can legitimately
+  // hold it back for a whole fit -- NOBODY moves them and they are silently
+  // returned as the ini() values.  Ownership is therefore conditional on the
+  // step having actually fired for that family.
+  std::vector<int> etaDistFiredK;
   // NONMEM's proposal kernel "mode 1B" (technical guide, "The MCMC method of
   // Expectation in SAEM"): after the first few iterations, propose from a
   // Gaussian built out of each subject's OWN accumulated conditional mean and
@@ -6351,6 +6421,76 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
         if (!spreadOk) RSprintf("[etaDist k=%d it=%d] SKIPPED: latent sd %.4f outside [%.2f, %.2f]\n",
                                 k, (int)kiter, lsd, etaDistSdLo, etaDistSdHi);
       }
+      // saemControl(etaDistLoglik=): the general objective (see the design in
+      // R/etaDistMstep.R).  Maximizes the family log-likelihood over the THETAS
+      // directly, so there is no population-level native parameter set to fit
+      // and none to invert -- which is what lets a covariate on a distribution
+      // parameter be represented at all.
+      //
+      // This first increment covers the nSym == 0 case: no covariate, one
+      // record per sampled draw, equal weights.  That is design test T1 -- it
+      // must reproduce the MLE-plus-inversion answer, which is the check that
+      // the objective is right before the per-record plumbing is added on top.
+      if (etaDistLoglik && spreadOk && !ev.empty()) {
+        int nth = etaDistNth(k);
+        if (nth > 0 && k < (int)etaDistExprs.size() &&
+            (int)etaDistExprThetas[(size_t)k].size() == nth) {
+          std::vector< std::vector<etaDistTok> > rpn;
+          if (rxEtaDistLoglikParse(etaDistExprs[(size_t)k],
+                                   etaDistExprThetas[(size_t)k], rpn)) {
+            std::vector<double> wt(ev.size(), 1.0);
+            gEdFam = fam; gEdRpn = &rpn; gEdNth = nth; gEdNSym = 0;
+            gEdNRec = (int)ev.size();
+            gEdRec = NULL; gEdEta = ev.data(); gEdWt = wt.data();
+            std::vector<double> st((size_t)nth), step((size_t)nth),
+              xmin((size_t)nth);
+            for (int t = 0; t < nth; ++t) {
+              int c = etaDistThetaPhi0(k, t);
+              st[(size_t)t] = (c >= 0 && c < nphi0) ? mprior_phi0(0, c) : 0.0;
+              double a = std::fabs(st[(size_t)t]);
+              step[(size_t)t] = (a > 1e-8) ? 0.2 * a : 0.1;
+            }
+            double f0 = gEdObj(st.data());
+            if (f0 < 1e299) {
+              // n1qn1: quasi-Newton on the exact gradient.  NOT nelder_fn
+              // (measured badly enough elsewhere here that it is not a
+              // defensible default) and NOT newuoa, which is not thread-safe
+              // and would need Rcpp::Function to reach -- both disqualifying
+              // for a step whose point is to run inside an OpenMP region.
+              gEdBest = R_PosInf;
+              gEdBestPar.assign(st.begin(), st.end());
+              gEdN1Bad = 0; gEdN1Evals = 0;
+              std::vector<double> gg((size_t)nth, 0.0);
+              std::vector<double> zm((size_t)(nth*(nth+13)/2 + 1), 0.0);
+              std::vector<double> var((size_t)nth, 0.1);
+              double fN = 0.0, eps = 1e-8;
+              int nn = nth, mode = 1, niter = 200, nsim = 200, impr = 0,
+                izs = 0, idz = 0; float rzs = 0; double dzs = 0;
+              if (n1qn1_ != NULL) {
+                n1qn1_(gEdN1Cost, &nn, st.data(), &fN, gg.data(), var.data(),
+                       &eps, &mode, &niter, &nsim, &impr, zm.data(),
+                       &izs, &rzs, &dzs, &idz);
+              }
+              double ynew = gEdBest;
+              for (int t = 0; t < nth; ++t) xmin[(size_t)t] = gEdBestPar[(size_t)t];
+              if (!gEdN1Bad && gEdN1Evals > 0 && ynew < f0) {
+
+                for (int t = 0; t < nth; ++t) {
+                  int c = etaDistThetaPhi0(k, t);
+                  if (c < 0 || c >= nphi0 || !std::isfinite(xmin[(size_t)t])) continue;
+                  double cur = mprior_phi0(0, c);
+                  double v = cur + pas(kiter) * (xmin[(size_t)t] - cur);
+                  if (std::isfinite(v)) { mprior_phi0.col(c).fill(v); moved = true; }
+                }
+                gEdRpn = NULL; gEdEta = NULL; gEdWt = NULL;
+                if ((int)etaDistFiredK.size() == etaDistNdist) etaDistFiredK[(size_t)k] = 1;
+                continue;   // thetas set directly; no MLE, no inversion
+              }
+            }
+            gEdRpn = NULL; gEdEta = NULL; gEdWt = NULL;
+          }
+        }
+      }
       if (!mleOk) continue;
       // etaDistDebug >= 2 observes without acting: the trace above then shows
       // what the M-step WOULD have seen over an otherwise ordinary fit, which
@@ -6363,6 +6503,7 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
         double v = cur + pas(kiter) * (aNew[i] - cur);
         if (std::isfinite(v)) { etaDistArgs(k, i) = v; moved = true; }
       }
+      if ((int)etaDistFiredK.size() == etaDistNdist) etaDistFiredK[(size_t)k] = 1;
     }
     // copula correlations: closed form, no search.  Runs independently of the
     // family M-step -- see etaDistCorOn.

@@ -524,3 +524,123 @@ double rxEtaDistCorMle(const std::vector<double> &z1,
                        const std::vector<double> &z2) {
   return rxEtaDistCorMleW(z1, z2, nullptr);
 }
+
+bool rxEtaDistLoglikParse(const std::vector<std::string> &exprs,
+                          const std::vector<std::string> &names,
+                          std::vector< std::vector<etaDistTok> > &rpn) {
+  rpn.clear();
+  rpn.resize(exprs.size());
+  for (size_t k = 0; k < exprs.size(); ++k) {
+    // Declines rather than guesses when an expression is outside the grammar;
+    // the caller falls back rather than silently fitting the wrong thing.
+    if (!etaDistExprParse(exprs[k], names, rpn[k])) { rpn.clear(); return false; }
+  }
+  return true;
+}
+
+bool rxEtaDistLoglikObj(int fam,
+                        const std::vector< std::vector<etaDistTok> > &rpn,
+                        int nth, int nSym,
+                        const double *theta,
+                        const double *rec, const double *etaAt,
+                        const double *wt, int nRec,
+                        double *out) {
+  int na = (int)rpn.size();
+  if (na <= 0 || na > 4 || nRec <= 0 || nth < 0 || nSym < 0) return false;
+  // vals[0..nth) candidate thetas, vals[nth..nth+nSym) this record's symbols
+  std::vector<double> vals((size_t)(nth + nSym), 0.0);
+  for (int t = 0; t < nth; ++t) {
+    if (!std::isfinite(theta[t])) return false;
+    vals[(size_t)t] = theta[t];
+  }
+  double a[4], ll = 0.0, g[4];
+  double tot = 0.0;
+  for (int r = 0; r < nRec; ++r) {
+    for (int c = 0; c < nSym; ++c) {
+      double v = rec[(size_t)r * (size_t)nSym + (size_t)c];
+      if (!std::isfinite(v)) return false;
+      vals[(size_t)(nth + c)] = v;
+    }
+    for (int k = 0; k < na; ++k) {
+      a[k] = etaDistExprEval(rpn[(size_t)k], vals.data(), nth + nSym);
+      if (!std::isfinite(a[k])) return false;
+    }
+    if (!std::isfinite(etaAt[r])) return false;
+    if (!rxEtaDistGradD(fam, etaAt[r], a, &ll, g)) return false;
+    if (!std::isfinite(ll)) return false;
+    tot += wt[r] * ll;
+  }
+  if (!std::isfinite(tot)) return false;
+  *out = tot;
+  return true;
+}
+
+bool rxEtaDistLoglikGrad(int fam,
+                         const std::vector< std::vector<etaDistTok> > &rpn,
+                         int nth, int nSym,
+                         const double *theta,
+                         const double *rec, const double *etaAt,
+                         const double *wt, int nRec,
+                         double *out, double *grad) {
+  int na = (int)rpn.size();
+  if (na <= 0 || na > 4 || nRec <= 0 || nth <= 0 || nSym < 0) return false;
+  std::vector<double> vals((size_t)(nth + nSym), 0.0);
+  for (int t = 0; t < nth; ++t) {
+    if (!std::isfinite(theta[t])) return false;
+    vals[(size_t)t] = theta[t];
+  }
+  // per-theta central-difference step, relative to that theta's own magnitude
+  std::vector<double> h((size_t)nth);
+  for (int t = 0; t < nth; ++t) {
+    double a = std::fabs(theta[t]);
+    h[(size_t)t] = 1e-6 * ((a > 1e-8) ? a : 1.0);
+  }
+  double a[4], ll = 0.0, g[4];
+  double tot = 0.0;
+  for (int t = 0; t < nth; ++t) grad[t] = 0.0;
+  for (int r = 0; r < nRec; ++r) {
+    for (int c = 0; c < nSym; ++c) {
+      double v = rec[(size_t)r * (size_t)nSym + (size_t)c];
+      if (!std::isfinite(v)) return false;
+      vals[(size_t)(nth + c)] = v;
+    }
+    for (int k = 0; k < na; ++k) {
+      a[k] = etaDistExprEval(rpn[(size_t)k], vals.data(), nth + nSym);
+      if (!std::isfinite(a[k])) return false;
+    }
+    if (!std::isfinite(etaAt[r])) return false;
+    if (!rxEtaDistGradD(fam, etaAt[r], a, &ll, g)) return false;
+    if (!std::isfinite(ll)) return false;
+    tot += wt[r] * ll;
+    // d(args)/d(theta) for THIS record: the expressions mix thetas with this
+    // record's own symbols, so it cannot be hoisted out of the loop.
+    for (int t = 0; t < nth; ++t) {
+      double th0 = vals[(size_t)t], step = h[(size_t)t];
+      vals[(size_t)t] = th0 + step;
+      double ap[4];
+      bool ok = true;
+      for (int k = 0; k < na && ok; ++k) {
+        ap[k] = etaDistExprEval(rpn[(size_t)k], vals.data(), nth + nSym);
+        if (!std::isfinite(ap[k])) ok = false;
+      }
+      vals[(size_t)t] = th0 - step;
+      double am[4];
+      for (int k = 0; k < na && ok; ++k) {
+        am[k] = etaDistExprEval(rpn[(size_t)k], vals.data(), nth + nSym);
+        if (!std::isfinite(am[k])) ok = false;
+      }
+      vals[(size_t)t] = th0;
+      if (!ok) return false;
+      double acc = 0.0;
+      for (int k = 0; k < na; ++k) {
+        if (!std::isfinite(g[k])) return false;
+        acc += g[k] * (ap[k] - am[k]) / (2.0 * step);
+      }
+      grad[t] += wt[r] * acc;
+    }
+  }
+  if (!std::isfinite(tot)) return false;
+  for (int t = 0; t < nth; ++t) if (!std::isfinite(grad[t])) return false;
+  *out = tot;
+  return true;
+}
