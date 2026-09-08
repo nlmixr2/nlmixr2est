@@ -166,29 +166,67 @@
   paste0("rx__sens_rx_edll_", k, "___BY_THETA_", j, "___")
 }
 
+#' d(log p_k)/d(THETA_j_), taken by symengine
+#'
+#' Deliberately the same shape as `.impmapChainRule()`, including the parameter
+#' name `s`: the symengine environment has to be reached with the idiom that
+#' setup supports, and reads have to go through the `$` accessor via an
+#' intermediate variable.  `with(s, <bare name>)` does NOT work here -- the `$`
+#' NSE misbehaves when nested in a call and base `get`/`::` are shadowed, which
+#' is the same caveat `rxUiGet.impmapThetaSens()` records for rx_pred_ / rx_r_.
+#'
+#' No state-sensitivity term, unlike `.impmapChainRule()`: the peer is ODE-free
+#' and a declaration reaching a state is declined before it gets here.
+#'
+#' @param s symengine environment carrying the peer model
+#' @param target lhs name, eg `"rx_edll_1_"`
+#' @param j 1-based theta index
+#' @return the derivative as an rxode2 expression
+#' @noRd
+#' @author Matthew L. Fidler
+.etaDistPeerD <- function(s, target, j) {
+  .l <- eval(parse(text = paste0("with(s, D(", target, ", THETA_", j, "_))")))
+  rxode2::rxFromSE(.l)
+}
+
 #' Peer model text for the declared-distribution M-step
 #'
-#' Built the way `rxUiGet.impmapThetaSens()` builds the sensitivity model:
-#' load the model into symengine, define the new quantities there so the
-#' argument expressions resolve against the model's own assignments, then
-#' render each one back with `rxFromSE()`.
+#' Builds the log density of every declared random effect and its derivative
+#' with respect to every estimated theta, symbolically, in ONE symengine load
+#' over the model's own text with the peer lines appended.
 #'
-#' Two differences from the sensitivity model, both because this peer is
-#' ODE-free (section 4: "The peer has no states -- arithmetic on parameters and
-#' covariates"):
+#' Two constraints force that shape, both learned the hard way:
 #'
-#'   * no `..ddt` / `..sens` lines are carried, so no state sensitivity ODEs and
-#'     no integration when it is swapped in;
-#'   * a declaration whose arguments reach a STATE is declined by name rather
-#'     than quietly given a wrong derivative -- the peer would then need the
-#'     state sensitivities it deliberately does not carry.
+#'   * The peer lines have to be IN the text that is loaded.  Defining
+#'     `rx_edll_k_` into an environment loaded from the fitted model instead
+#'     leaves symengine with a model that never mentions `llik*()`, and
+#'     `rxFromSE()` then does not recognize llikGamma as a model function --
+#'     it falls through to treating the `.rxD` entry's own R closure as a
+#'     user-defined function ("R user function 'paste0' has variable number of
+#'     arguments").  Putting the call in the text is what makes the `.rxD`
+#'     dispatch fire.
+#'
+#'   * It has to be ONE load.  A symengine load shadows base `get`, `parse`,
+#'     `paste0` and `with` on the search path, and a second `rxS()` in the same
+#'     session leaves them shadowed, so every subsequent `with(s, D(...))`
+#'     fails.  This runs inside the package namespace, where those names
+#'     resolve through the namespace imports and the shadow is not on the
+#'     lookup path -- which is also why `.impmapChainRule()` can use the same
+#'     idiom, and why none of this works from the global environment.
+#'
+#' The peer is ODE-free (design section 4: "no states -- arithmetic on
+#' parameters and covariates"), so the endpoint lines are dropped and no state
+#' sensitivities are carried.  A declaration whose arguments reach a STATE is
+#' declined by name rather than quietly given a wrong derivative.
 #'
 #' WHICH THETAS BELONG TO WHICH FAMILY is decided symbolically, not by scanning
-#' the declaration for names: `d(rx_edll_k_)/d(THETA_j_)` is emitted for every
+#' the declaration for names: `d(rx_edll_k_)/d(THETA_j_)` is taken for every
 #' estimated theta and the zero columns are dropped.  A theta that reaches the
 #' family through a chain of intermediate model variables is found the same way
-#' as one written into the declaration directly, and a theta that appears in the
-#' text but cancels out is correctly left out.
+#' as one written into the declaration directly, and a theta that appears in
+#' the text but cancels out is correctly left out.  A derivative that ERRORS is
+#' not one that is zero -- that declines the family and names itself, rather
+#' than silently narrowing what the M-step maximizes over.
 #'
 #' @param x rxode2 ui, in a list (rxUiGet convention)
 #' @return a list with `peer` (the model text), `etaIdx` (the `ETA[k]` slot each
@@ -200,85 +238,149 @@
 #' @author Matthew L. Fidler
 #' @export
 rxUiGet.etaDistPeer <- function(x, ...) {
-  .ui <- x[[1]]
-  .core <- .etaDistMstepCore(.ui)
-  if (is.null(.core)) return(NULL)
+  .ui <- rxode2::rxUiDecompress(x[[1]])
   .st <- .etaDistDeclGet(.ui)
-  if (is.null(.st)) return(NULL)
-  .ini <- rxode2::rxUiDecompress(.ui)$iniDf
+  if (is.null(.st)) {
+    .d <- rxode2::rxUiEtaDists(.ui)
+    if (nrow(.d) == 0L) return(NULL)
+    .st <- .etaDistDeclStash(.ui, .d)
+    if (is.null(.st)) return(NULL)
+  }
   .n <- length(.st$name)
+  if (.n == 0L) return(NULL)
+  .ini <- .ui$iniDf
   ## ETA[k]: the declared random effect's own latent slot, which the M-step
   ## overwrites with the fixed eta for the duration of the peer solve.
-  .etaIdx <- vapply(.st$name, function(.nm) {
+  ##
+  ## rxEtaDistExpand() renames that latent `rxz.<eta>` and turns the declared
+  ## name into an ordinary lhs, so THAT is what carries the eta number here --
+  ## the same convention .etaDistMstepInfo() uses.  The bare name is the
+  ## fallback for an UNEXPANDED ui, which is what the tests and etaDistInit()
+  ## hand in.
+  ##
+  ## For a correlated pair the expansion also writes `rxN.<eta>`, the copula
+  ## combination of the latents.  The peer wants `rxz.<eta>`: it never maps a
+  ## latent through the inverse CDF, it only needs a slot to read the
+  ## already-computed eta out of, and rxz is the one nothing else reads while
+  ## the peer is swapped in.
+  .netaOf <- function(.nm) {
     .w <- which(.ini$name == .nm & .ini$neta1 == .ini$neta2)
     if (length(.w) == 1L) as.integer(.ini$neta1[.w]) else NA_integer_
-  }, integer(1), USE.NAMES = FALSE)
-  .idx <- .impmapEstTheta(.ui)$all
-  .s <- rxUiGet.loadPruneSens(x, ...)
-  if (!exists("..maxTheta", .s)) return(NULL)
-  .stateVars <- .rxode2stateOdeNoOutput(.s)
+  }
+  .latName <- character(.n)
+  .etaIdx <- integer(.n)
+  for (.k in seq_len(.n)) {
+    .z <- paste0("rxz.", .st$name[.k])
+    .i <- .netaOf(.z)
+    if (is.na(.i)) { .z <- .st$name[.k]; .i <- .netaOf(.z) }
+    .latName[.k] <- .z
+    .etaIdx[.k] <- .i
+  }
+  ## Every estimated theta, NOT .impmapEstTheta()'s non-mu subset.  That split
+  ## exists for the sensitivity model, whose mu-referenced thetas are updated by
+  ## the EM closed form; it says nothing about which thetas a DECLARATION
+  ## reaches, and on Bauer's gamma model it excludes all four of them.  The
+  ## zero-column drop is what narrows this, and it narrows it correctly:
+  ## rxCor.* and the residual-error thetas appear in no rx_edll_ and fall out.
+  .th <- .ini[!is.na(.ini$ntheta), ]
+  .idx <- sort(as.integer(.th$ntheta[!(!is.na(.th$fix) & .th$fix)]))
+  .states <- .ui$state
+  if (is.null(.states)) .states <- character(0)
   .declined <- character(0)
-  .lines <- character(0)
-  .thetaIdx <- vector("list", .n)
+  .peerLine <- rep(NA_character_, .n)
   for (.k in seq_len(.n)) {
     .nm <- .st$name[.k]
     if (is.na(.etaIdx[.k])) {
       .declined[.nm] <- "no latent random effect to read the fixed eta from"
       next
     }
-    ## The symengine SYMBOL is ETA_k_ (it renders back as ETA[k]), the same
-    ## spelling .impmapChainRule() uses for THETA_j_.
-    .d <- .etaDistPeerLogDensity(.st$etaDist[.k], paste0("ETA_", .etaIdx[.k], "_"),
-                                 .nm)
-    if (is.null(.d)) {
+    .dens <- .etaDistPeerLogDensity(.st$etaDist[.k], .latName[.k], .nm)
+    if (is.null(.dens)) {
       .declined[.nm] <- paste0("no log density for '",
                                as.character(str2lang(.st$etaDist[.k])[[1]]), "'")
       next
     }
     ## A distribution parameter is population-level plus covariates; it must not
-    ## reach a state.  Checked on the DECLARATION as written -- after symengine
+    ## reach a state.  Checked on the DECLARATION as written -- once symengine
     ## substitutes, a state is indistinguishable from anything else it resolves.
-    .reach <- all.vars(str2lang(.st$etaDist[.k]))
-    if (length(intersect(.reach, .stateVars)) > 0L) {
+    .reach <- intersect(all.vars(str2lang(.st$etaDist[.k])), .states)
+    if (length(.reach) > 0L) {
       .declined[.nm] <- paste0("its arguments reach the state(s) ",
-                               paste(intersect(.reach, .stateVars), collapse = ", "),
+                               paste(.reach, collapse = ", "),
                                "; the peer is ODE-free and carries no state sensitivities")
       next
     }
+    .peerLine[.k] <- paste0(.etaDistPeerLlName(.k), " <- ", .dens)
+  }
+  if (all(is.na(.peerLine))) {
+    return(list(peer = NULL, etaIdx = .etaIdx,
+                thetaIdx = vector("list", .n), declined = .declined))
+  }
+  ## ONE load, through rxUiGet.loadPruneSens(), of a ui carrying the peer lines.
+  ##
+  ## Not a bare rxS() on assembled text: loadPruneSens() is what sets the
+  ## environment up the way the rest of this file's idioms require (it is the
+  ## same entry rxUiGet.impmapThetaSens() uses), and a bare load leaves reads
+  ## and derivatives failing inside rxFromSE().  And not two loads: a second
+  ## rxS() in one session leaves base `get`/`parse`/`paste0`/`with` shadowed and
+  ## every later derivative fails.
+  ##
+  ## The peer lines have to be IN the loaded model.  Defining rx_edll_k_ into an
+  ## environment loaded WITHOUT them leaves symengine with a model that never
+  ## mentions llik*(), and rxFromSE() then does not recognize llikGamma as a
+  ## model function -- it falls through to treating the `.rxD` entry's own R
+  ## closure as user-defined ("R user function 'paste0' has variable number of
+  ## arguments").  Appending them is what makes the `.rxD` dispatch fire.
+  .uiP <- rxode2::rxUiDecompress(.ui)
+  .uiP$lstExpr <- c(.uiP$lstExpr,
+                    lapply(.peerLine[!is.na(.peerLine)], str2lang))
+  .s <- tryCatch(rxUiGet.loadPruneSens(list(.uiP), ...), error = function(e) NULL)
+  if (!is.null(.s) && !exists("..maxTheta", .s)) .s <- NULL
+  if (is.null(.s)) {
+    for (.k in which(!is.na(.peerLine))) {
+      .declined[.st$name[.k]] <- "the peer model could not be loaded into symengine"
+    }
+    return(list(peer = NULL, etaIdx = .etaIdx,
+                thetaIdx = vector("list", .n), declined = .declined))
+  }
+  .lines <- character(0)
+  .thetaIdx <- vector("list", .n)
+  for (.k in which(!is.na(.peerLine))) {
+    .nm <- .st$name[.k]
     .ll <- .etaDistPeerLlName(.k)
-    .ok <- tryCatch({
-      .e <- eval(parse(text = paste0("with(.s, ", .d, ")")))
-      assign(.ll, .e, envir = .s)
-      TRUE
-    }, error = function(e) {
-      .declined[.nm] <<- paste0("could not be built: ", conditionMessage(e))
-      FALSE
-    })
-    if (!.ok) next
-    .lines <- c(.lines, paste0(.ll, "=", rxode2::rxFromSE(get(.ll, envir = .s))))
-    ## The family's thetas, found by differentiating rather than by name.
-    .keep <- integer(0)
+    ## `$` through an intermediate variable, never `with(s, <bare name>)` --
+    ## see the caveat on .etaDistPeerD().
+    .llSym <- .s[[.ll]]
+    .llTxt <- tryCatch(rxode2::rxFromSE(.llSym), error = function(e) NULL)
+    if (is.null(.llTxt)) {
+      .declined[.nm] <- "the log density did not survive the symengine load"
+      next
+    }
+    .keep <- integer(0); .err <- NULL; .col <- character(0)
     for (.j in .idx) {
       .g <- tryCatch(
-        rxode2::rxFromSE(eval(parse(text = paste0("with(.s, D(", .ll, ", THETA_",
-                                                  .j, "_))")))),
-        error = function(e) "0")
+        .etaDistPeerD(.s, .ll, .j),
+        error = function(e) {
+          .err <<- paste0("d/d(THETA_", .j, "_) could not be taken: ",
+                          conditionMessage(e))
+          NULL
+        })
+      if (!is.null(.err)) break
       if (.g %in% c("0", "0.0", "-0")) next
       .keep <- c(.keep, .j)
-      .lines <- c(.lines, paste0(.etaDistPeerSensName(.k, .j), "=", .g))
+      .col <- c(.col, paste0(.etaDistPeerSensName(.k, .j), "=", .g))
     }
-    .thetaIdx[[.k]] <- .keep
+    if (!is.null(.err)) { .declined[.nm] <- .err; next }
     if (length(.keep) == 0L) {
       .declined[.nm] <- "no estimated theta reaches it, so there is nothing to maximize"
+      next
     }
-  }
-  if (length(.lines) == 0L) {
-    return(list(peer = NULL, etaIdx = .etaIdx, thetaIdx = .thetaIdx,
-                declined = .declined))
+    .thetaIdx[[.k]] <- .keep
+    .lines <- c(.lines, paste0(.ll, "=", .llTxt), .col)
   }
   ## Lightweight return only -- never the symengine environment (see the note on
-  ## rxUiGet.impmapThetaSens, where caching `.s` doubled memory per model).
-  list(peer = paste(c(.lines, ""), collapse = "\n"), etaIdx = .etaIdx,
-       thetaIdx = .thetaIdx, declined = .declined)
+  ## rxUiGet.impmapThetaSens, where caching it doubled memory per model).
+  list(peer = if (length(.lines) == 0L) NULL else paste(c(.lines, ""), collapse = "\n"),
+       etaIdx = .etaIdx, thetaIdx = .thetaIdx, declined = .declined)
 }
 attr(rxUiGet.etaDistPeer, "rstudio") <- emptyenv()
