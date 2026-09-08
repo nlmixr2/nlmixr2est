@@ -592,6 +592,14 @@ static bool impEtaDistMstep(const std::vector<arma::mat>& sampS,
   Rcpp::NumericVector rho  = info["rho"];
   Rcpp::List thIdx         = info["thetaIdx"];
   Rcpp::Function mapFn     = Rcpp::as<Rcpp::Function>(info["map"]);
+  // The argument expressions, when the R side supplied them (see
+  // .etaDistMstepInfoFocei); absent on an older control, in which case the
+  // closure above is the only route and this M-step behaves exactly as before.
+  bool haveExprs = info.containsElementNamed("exprs") &&
+    !Rf_isNull(info["exprs"]) && info.containsElementNamed("exprThetas") &&
+    !Rf_isNull(info["exprThetas"]);
+  Rcpp::List exprsL  = haveExprs ? Rcpp::List(info["exprs"])      : Rcpp::List(0);
+  Rcpp::List exprThL = haveExprs ? Rcpp::List(info["exprThetas"]) : Rcpp::List(0);
   int nd = lat.size();
   if (nd <= 0 || args.nrow() != nd) return false;
   for (int k = 0; k < nd; ++k) {
@@ -661,19 +669,44 @@ static bool impEtaDistMstep(const std::vector<arma::mat>& sampS,
     double aNew[4];
     for (int i = 0; i < na; ++i) aNew[i] = a0[i];
     if (!rxEtaDistMleW(f, ev, &ew, aNew)) continue;
-    // native parameters -> the user's thetas (an R closure, once per iteration
-    // per declared eta -- not on any hot loop)
-    Rcpp::NumericVector an(na);
-    for (int i = 0; i < na; ++i) an[i] = aNew[i];
-    Rcpp::RObject got = mapFn(k + 1, an);
-    if (got.isNULL()) continue;
-    Rcpp::NumericVector th(got);
+    // Native parameters -> the user's thetas.  C++ FIRST, the way saem's own
+    // M-step does it: the argument expressions are parsed once into RPN and
+    // inverted here, and the R closure is used only when an expression falls
+    // outside that grammar -- which the parse REPORTS rather than guesses at.
+    // This was the one place imp's M-step still called back into R.
     Rcpp::IntegerVector ti = thIdx[k];
-    if (th.size() != ti.size()) continue;
-    bool ok = true;
-    for (int i = 0; i < th.size(); ++i) if (!std::isfinite(th[i])) ok = false;
-    if (!ok) continue;
-    for (int i = 0; i < th.size(); ++i) impSetThetaAll(ti[i], th[i]);
+    bool didCpp = false;
+    if (haveExprs && k < exprsL.size() && k < exprThL.size()) {
+      std::vector<std::string> ex =
+        Rcpp::as<std::vector<std::string> >(exprsL[k]);
+      std::vector<std::string> tn =
+        Rcpp::as<std::vector<std::string> >(exprThL[k]);
+      int nth = (int)tn.size();
+      if (nth > 0 && (int)ti.size() == nth) {
+        std::vector<double> st((size_t)nth), got2((size_t)nth);
+        for (int t = 0; t < nth; ++t) st[(size_t)t] = impGetFullThetaVal(ti[t]);
+        if (rxEtaDistArgsToThetas(ex, tn, st.data(), aNew, got2.data())) {
+          bool fin = true;
+          for (int t = 0; t < nth; ++t) if (!std::isfinite(got2[(size_t)t])) fin = false;
+          if (fin) {
+            for (int t = 0; t < nth; ++t) impSetThetaAll(ti[t], got2[(size_t)t]);
+            didCpp = true;
+          }
+        }
+      }
+    }
+    if (!didCpp) {
+      Rcpp::NumericVector an(na);
+      for (int i = 0; i < na; ++i) an[i] = aNew[i];
+      Rcpp::RObject got = mapFn(k + 1, an);
+      if (got.isNULL()) continue;
+      Rcpp::NumericVector th(got);
+      if (th.size() != ti.size()) continue;
+      bool ok = true;
+      for (int i = 0; i < th.size(); ++i) if (!std::isfinite(th[i])) ok = false;
+      if (!ok) continue;
+      for (int i = 0; i < th.size(); ++i) impSetThetaAll(ti[i], th[i]);
+    }
     for (int i = 0; i < na; ++i) args(k, i) = aNew[i];
     moved = true;
   }

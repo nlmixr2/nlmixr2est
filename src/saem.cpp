@@ -573,12 +573,6 @@ struct mcmcphi {
   uvec i;
   mat Gamma_phi;
   mat Gdiag_phi;
-  // saemControl(rwOmega=): NONMEM's mode-2 random walk proposes from
-  // Z = lambda*Omega (technical guide eq. 1.139) -- the FULL covariance, so the
-  // walk moves along the posterior's correlated directions.  Gdiag_phi is the
-  // diagonal saemix and nlmixr2 have always used; this is chol(Omega)*rmcmc,
-  // the Omega-shaped alternative.
-  mat Gfull_phi;
   mat IGamma2_phi;
   mat mprior_phiM;
 };
@@ -2980,7 +2974,6 @@ public:
     if (!std::isfinite(iaccept) || iaccept < 0.0 || iaccept >= 1.0) iaccept = 0.0;
     if (x.containsElementNamed("iacceptSingle")) iacceptSingle = as<double>(x["iacceptSingle"]);
     if (x.containsElementNamed("iacceptPerId")) iacceptPerId = as<int>(x["iacceptPerId"]);
-    if (x.containsElementNamed("rwOmega")) rwOmega = as<int>(x["rwOmega"]);
     if (x.containsElementNamed("nonMuThetaBhhh")) nonMuThetaBhhh = as<int>(x["nonMuThetaBhhh"]);
     if (!std::isfinite(iacceptSingle) || iacceptSingle < 0.0 || iacceptSingle >= 1.0) iacceptSingle = 0.0;
     if (x.containsElementNamed("etaDistOn")) etaDistOn = as<int>(x["etaDistOn"]);
@@ -5765,9 +5758,6 @@ private:
   double mcmcAccByIdK2Trials = 0.0, mcmcAccByIdK3Trials = 0.0;
   mat phiMprevIter;                // last iteration's phiM, for the lag-1 acf
   int iacceptPerId = 0;
-  // saemControl(rwOmega=): propose the mode-2 random walk from lambda*Omega
-  // (NONMEM eq. 1.139) rather than from a diagonal.
-  int rwOmega = 0;
   // saemControl(nonMuThetaBhhh=): update the non-mu thetas with ONE per-subject
   // BHHH Newton step subject to an alpha acceptance test (NONMEM eqs.
   // 1.47-1.52 and the text after 1.46), instead of damping the argmax of a
@@ -6188,11 +6178,6 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
     // origin/main, which has no acceptance adaptation at all.  Either
     // adaptation ALONE was fine.
     mphi1.Gdiag_phi.diag() = sqrt(Gamma2_phi1.diag())*rmcmc;
-    // Omega-shaped step (saemControl(rwOmega=)).  chol() already succeeded
-    // above for Gamma_phi, so this cannot throw where that did not.  No
-    // per-coordinate rwScale: an Omega-shaped proposal has ONE scale, which is
-    // what NONMEM's lambda is, and per-subject when iacceptPerId is on.
-    mphi1.Gfull_phi = mphi1.Gamma_phi * rmcmc;
     mphi1.mprior_phiM = repmat(mprior_phi1,nmc,1);
   }
 
@@ -6610,10 +6595,7 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
         }
         case 2: {
           mat noise(mx.nM, mphi.nphi); _saemFillNormEng(noise);
-          // rwOmega: NONMEM's Z = lambda*Omega (eq. 1.139).  Otherwise the
-          // historical diagonal, which is also what saemix uses.
-          mat step = rwOmega ? (noise * mphi.Gfull_phi)
-                             : (noise * mphi.Gdiag_phi);
+          mat step = noise * mphi.Gdiag_phi;
           // kernel 2's own acceptance scale, per coordinate
           if (rwScale != nullptr && rwScale->n_elem == (unsigned int)mphi.nphi) {
             for (int c = 0; c < mphi.nphi; ++c) step.col(c) *= (*rwScale)(c);
@@ -7167,8 +7149,7 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
         }
         case 2: {
           mat noise(mx.nM, mphi.nphi); _saemFillNormEng(noise);
-          mat step = rwOmega ? (noise * mphi.Gfull_phi)
-                             : (noise * mphi.Gdiag_phi);
+          mat step = noise * mphi.Gdiag_phi;
           if (rwScale != nullptr && rwScale->n_elem == (unsigned int)mphi.nphi) {
             for (int c = 0; c < mphi.nphi; ++c) step.col(c) *= (*rwScale)(c);
           }

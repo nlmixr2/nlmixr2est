@@ -57,9 +57,14 @@
   0.24 is equally consistent with every subject at 0.24 and with a third of
   them frozen.  Set `iacceptPerId = FALSE` to recover the pooled behaviour.
 
-  `saemControl(rwOmega=)` -- the `Omega`-shaped random-walk proposal NONMEM and
-  Monolix both use -- makes no measurable difference on this model once the
-  chain is mixing (41.2% against 42.0% alone, 9.9% against 10.0% combined).
+  An `Omega`-shaped mode-2 random-walk proposal -- what NONMEM (eq. 1.139) and
+  Monolix (kernel 4) both use, against the diagonal saemix and this package
+  inherited -- was implemented, measured and REMOVED.  Once the chain is
+  mixing it makes no difference on this model: 41.2% against 42.0% alone, 9.9%
+  against 10.0% combined, every parameter agreeing to three digits.  It is
+  recorded here because it is the difference the reference implementations make
+  the strongest case for, and because a control that does nothing is worse than
+  no control.
 
 - The non-mu theta gradient falls back to Shi (2021) finite differences of the
   ORIGINAL model when the sensitivity solve's bad-solve ladder is exhausted,
@@ -102,14 +107,6 @@
 
 - Three `saemControl()` options that give `saem` what NONMEM's `METHOD=SAEM`
   does differently, all opt-in and all leaving the default path bit-identical:
-
-  - `rwOmega = TRUE` proposes the mode-2 random walk from `lambda * Omega`
-    (NONMEM technical guide eq. 1.139) rather than from a diagonal.  Monolix's
-    kernel 4 is `N(phi, kappa * Omega)` too; only saemix -- and, inherited from
-    it, nlmixr2 -- takes an independent step per coordinate.  On a posterior
-    with correlated random effects, which is exactly what a declared copula
-    produces, a diagonal walk mixes slowly along the correlated direction while
-    the acceptance rate still looks healthy.
 
   - `iacceptPerId = TRUE` tunes one random-walk scale per SUBJECT against
     `iaccept`, the way NONMEM tunes its `lambda`, rather than one scale per

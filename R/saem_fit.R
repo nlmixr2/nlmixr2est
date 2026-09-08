@@ -174,7 +174,6 @@
                        iaccept = 0.234,
                        iacceptSingle = 0.44,
                        iacceptPerId = TRUE,
-                       rwOmega = FALSE,
                        nonMuThetaBhhh = FALSE,
                        nu1B = 0L,
                        nb1B = 10L,
@@ -886,7 +885,6 @@
     # mode-2 walk (eq. 1.139), and a single accepted BHHH step for the non-mu
     # thetas (eqs. 1.47-1.52).  Integers, since the C++ reads them with as<int>.
     iacceptPerId = as.integer(isTRUE(iacceptPerId)),
-    rwOmega = as.integer(isTRUE(rwOmega)),
     nonMuThetaBhhh = as.integer(isTRUE(nonMuThetaBhhh)),
     nu1B = as.integer(nu1B),
     nb1B = as.integer(nb1B),

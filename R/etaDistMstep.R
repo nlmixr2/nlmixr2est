@@ -389,8 +389,21 @@
     .env$cur[[.k]] <- .s
     as.numeric(.s)
   }
+  ## The ARGUMENT expressions and their theta names, so imp's C++ M-step can do
+  ## the native-parameters -> thetas map itself rather than calling `map` back
+  ## into R once per iteration per declared eta.  Same emission saem's
+  ## .etaDistMstepInfo() makes, for the same reason and consumed the same way:
+  ## C++ parses them once into RPN and DECLINES anything outside its grammar,
+  ## in which case `map` is still there to fall back on.
+  .exprs <- lapply(seq_len(.c$n), function(.k) {
+    .cl <- .c$dist[[.k]]
+    if (is.character(.cl)) .cl <- str2lang(.cl)
+    vapply(as.list(.cl)[-1], function(.e) paste(deparse(.e), collapse = ""),
+           character(1))
+  })
   list(latent = .lat, fam = as.integer(.c$fam), corWith = as.integer(.c$corWith),
        args = .c$args, rho = as.numeric(.c$rho),
+       exprs = .exprs, exprThetas = .c$thetas,
        thetaIdx = .ti, corThetaIdx = .cti, map = .map,
        ## the thetas this M-step owns, so the caller can drop them from the
        ## Newton step's sensitivity list / the outer free-parameter vector

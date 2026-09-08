@@ -91,8 +91,9 @@ This is the clearest case where Monolix and saemix part company, and it is the
 tell: saemix's kernel 3 reproduces Monolix's kernel 4 *structure* (blocks of
 consecutive components, block size cycling from 2 up to `d`) but takes a
 **diagonal** step where Monolix takes `kappa * Omega`.  nlmixr2 inherited
-saemix's version.  `saemControl(rwOmega = TRUE)` switches nlmixr2's kernel 2 to
-the `Omega`-shaped proposal.
+saemix's version.  nlmixr2 implemented the `Omega`-shaped proposal, measured
+it, and removed it again -- see "Do they matter?" below, where it turns out to
+change nothing on a chain that is otherwise mixing.
 
 **NONMEM adapts the proposal scale per subject; the others adapt it
 globally.**  NONMEM tunes `lambda` for each subject so that subject's
@@ -574,11 +575,9 @@ error against it rather than a likelihood.
 | arm | CL | V1 | rel.var CL | rel.var V1 | cor | MARE | frozen |
 |---|---|---|---|---|---|---|---|
 | default | 4.448 | 5.158 | 0.0392 | 0.0516 | 0.846 | 42.0% | 36% |
-| `rwOmega = TRUE` | 4.447 | 5.170 | 0.0390 | 0.0516 | 0.827 | 41.2% | 36% |
 | `etaDistEvery = 20` | 4.668 | 4.532 | 0.0543 | 0.0406 | 0.585 | 26.6% | 13% |
 | `iacceptPerId = TRUE` | 4.725 | 5.313 | 0.0824 | 0.0998 | 0.142 | 21.6% | 8% |
 | **both of the last two** | 5.269 | 4.835 | **0.0885** | 0.0604 | 0.476 | **10.0%** | 1% |
-| ... plus `rwOmega` | 5.264 | 4.835 | 0.0883 | 0.0604 | 0.476 | 9.9% | 1% |
 | truth | 5.03 | 4.66 | 0.086 | 0.086 | 0.438 | | |
 | NONMEM `METHOD=SAEM` | 4.786 | 4.606 | 0.0888 | -- | 0.411 | ~3.8% | |
 
@@ -592,8 +591,10 @@ is visible in the columns:
   (0.585) while leaving both variances low.
 * Together: 0.0885 and 0.476, and less than half the error of either alone.
 
-`rwOmega` does essentially nothing on this model -- 41.2% against 42.0% alone,
-9.9% against 10.0% combined, with every parameter agreeing to three digits.
+An `Omega`-shaped mode-2 proposal was implemented, measured and then **removed
+from the package**: it does essentially nothing on this model -- 41.2% against
+the default's 42.0% alone, 9.9% against 10.0% combined, with every parameter
+agreeing to three digits.
 That is worth stating plainly because it is the difference the comparison above
 makes the strongest theoretical case for: NONMEM and Monolix both propose from
 `lambda * Omega` and only saemix walks on a diagonal.  On a chain that is
@@ -614,7 +615,6 @@ is also the argument for the diagnostics: nothing else in the fit reported that
 | Gap | nlmixr2 setting that closes it | Default |
 |---|---|---|
 | no mode 1B kernel | `saemControl(nu1B = 2, nb1B = 10)` | off |
-| diagonal rather than `Omega`-shaped random walk | `rwOmega = TRUE` | `FALSE` |
 | pooled rather than per-subject acceptance adaptation | `iacceptPerId = TRUE` | `FALSE` |
 | damped argmax rather than one accepted BHHH step | `nonMuThetaBhhh = TRUE` | `FALSE` |
 | GLS cannot move a zero-variance mu theta | `zeroOmegaDirect = TRUE` | `FALSE` |
