@@ -459,21 +459,15 @@
 #'     \itemize{
 #'
 #'     \item \code{"nonmem"} freezes R at the \code{eta = 0} population
-#'     prediction and holds it constant across the inner optimization, matching
-#'     NONMEM's FOCE.  Advantage: reproduces NONMEM FOCE objective and standard
-#'     errors, and an ODE model agrees with its closed-form (\code{linCmt})
-#'     equivalent.  Disadvantage: R ignores the individual (conditional)
-#'     heteroscedasticity, so it can be slightly less accurate than
-#'     \code{"foce+"} for proportional/combined error.
+#'     prediction and holds it constant across the inner optimization. This
+#'     follows NONMEM's residual-variance convention for FOCE without interaction.
 #'
 #'     \item \code{"foce+"} evaluates R at the current conditional
 #'     \code{eta} (the live variance), keeping the truncated FOCE
-#'     inner gradient.  Advantage: uses the conditional variance and
-#'     is a bit more accurate than NONMEM's FOCE in some cases.
-#'     Disadvantage: does not match NONMEM FOCE.  This was the FOCE
-#'     behavior in \pkg{nlmixr2est} 6.0.1 and earlier. This does not
-#'     use the gradient of \code{eta} like the full \code{focei}
-#'     method, so it is not as accurate as \code{focei}.
+#'     inner score, which is refined before evaluating the marginal objective.
+#'     It retains the live-variance convention used in \pkg{nlmixr2est} 6.0.1
+#'     and earlier. It differs from NONMEM's FOCE without interaction and
+#'     omits the variance derivatives included in FOCEI.
 #'
 #'     }
 #'
@@ -493,7 +487,7 @@
 #'
 #' @param outerOpt optimization method for the outer problem
 #'   Fast \code{"nlminb"} fits automatically use the analytical outer Hessian
-#'   for supported Gaussian FOCE/FOCEI/AGQ models, restarting with gradients only if
+#'   for supported Gaussian FOCE/FOCE+/FOCEI/AGQ models, restarting with gradients only if
 #'   curvature is unavailable.
 #'
 #' @details Custom outer optimizers receive \code{control$hessian(par, relStep=1e-3)}.
@@ -501,8 +495,10 @@
 #'   Hessian in the existing C++ sensitivity pool. Third-order terms are obtained
 #'   by differencing second-order sensitivities in ETA directions. The result uses
 #'   optimizer coordinates and objective scaling and retains negative curvature.
-#'   This requires \code{fast=TRUE}; FOCE+, priors, censoring, clipped AGQ and
-#'   estimated transformations are unsupported. Unsuccessful inner solves and an
+#'   This requires \code{fast=TRUE}. M2/M3/M4 censoring uses the analytical-SE
+#'   \code{censOption="gauss"} convention. Censored \code{"laplace"} curvature,
+#'   priors, clipped AGQ and estimated transformations are unsupported.
+#'   Unsuccessful inner solves and an
 #'   active variance floor also make curvature unavailable.
 #'
 #' @param innerOpt optimization method for the inner (per-subject eta)

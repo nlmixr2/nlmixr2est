@@ -61,7 +61,7 @@ void foceiGradSubjectFoceFR_(const arma::mat& a, const arma::cube& A,
                              const arma::cube& dOiEst, const arma::vec& tr28,
                              int neta, int nth, int nsg, int nom,
                              const arma::ivec& dirTh, const arma::ivec& sigCol, int fp,
-                             arma::vec& g_out, arma::mat& etaP_out);
+                             arma::vec& g_out, arma::mat& etaP_out, int censOpt = 0);
 
 // Per-subject AGQ kernel.  The node arrays are node-major: node k occupies rows
 // k*nobs .. k*nobs+nobs-1, and y is node-invariant.  Reports failure through ok_out
@@ -77,6 +77,8 @@ void foceiGradSubjectAgqFR_(const arma::mat& a, const arma::cube& A,
                             const arma::cube& dOiEst, const arma::vec& tr28,
                             int neta, int nth, int nsg, int nom,
                             const arma::ivec& dirTh, const arma::ivec& sigCol,
-                            arma::vec& g_out, arma::mat& etaP_out, bool& ok_out);
+                            arma::vec& g_out, arma::mat& etaP_out, bool& ok_out,
+                            const arma::ivec& censv = arma::ivec(),
+                            const arma::vec& limv = arma::vec(), int censOpt = 0);
 #endif
 #endif

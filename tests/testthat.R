@@ -103,7 +103,8 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
     "focei-wang2007-boxcox-lnorm", "nlme-cov", "agq-fast-grad",
     "focei-ll-fast-grad-fit", "focei-fast-methods-fit", "odeswap-fit",
     "focei-factr-fit", "focei-reproducible", "focei-hessian-etastep",
-    "focei-outer-hessian-fit", "focei-outer-hessian-nlminb-fit", "focei-outer-hessian-family"
+    "focei-outer-hessian-fit", "focei-outer-hessian-nlminb-fit", "focei-outer-hessian-family",
+    "focei-outer-hessian-censor"
   ),
   # batch 6
   c(

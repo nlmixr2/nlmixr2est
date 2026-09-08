@@ -3623,8 +3623,61 @@ bool calcEtaHessian(double *eta, int likId, int id,
   return true;
 }
 
+// FOCE+ defines its EBE by the truncated-score root with live variance.
+static bool refineFocePlusEta(double *eta, int id) {
+  if (op_focei.interaction != 0 || op_focei.foceType != 1 || op_focei.fo ||
+      op_focei.needOptimHess || op_focei.maxInnerIterations <= 0 ||
+      op_focei.freezeOde || op_focei.neta == 0) return true;
+  auto *ind = &inds_focei[id];
+  arma::vec x(eta,op_focei.neta), g(op_focei.neta);
+  auto score = [&](arma::vec &at, arma::vec &out) {
+    ind->setup = 0; ++ind->nInnerF; ++ind->nInnerG;
+    if (!R_FINITE(likInner0(at.memptr(),id))) return false;
+    std::copy(ind->lp,ind->lp+op_focei.neta,out.begin());
+    return out.is_finite();
+  };
+  auto finish = [&]() {
+    std::copy(x.begin(),x.end(),eta); ind->setup = 0;
+    return R_FINITE(likInner0(eta,id));
+  };
+  try {
+    if (!score(x,g)) return false;
+    for (int iteration = 0; iteration < std::min(100,op_focei.maxInnerIterations); ++iteration) {
+      double norm = arma::abs(g).max();
+      if (norm < 1e-9) return finish();
+      arma::mat jacobian(x.n_elem,x.n_elem);
+      for (unsigned int j = 0; j < x.n_elem; ++j) {
+        double h = std::max(1e-4,op_focei.hessEtaStepMin)*std::max(1.0,std::abs(x[j]));
+        arma::vec plus = x, minus = x, gp(g.n_elem), gm(g.n_elem);
+        plus[j] += h; minus[j] -= h;
+        if (!score(plus,gp) || !score(minus,gm)) return false;
+        jacobian.col(j) = (gp-gm)/(2*h);
+      }
+      arma::vec step;
+      if (!arma::solve(step,jacobian,g) || !step.is_finite()) return false;
+      bool accepted = false;
+      double alpha = 1;
+      for (int back = 0; back <= 8; ++back, alpha *= 0.5) {
+        arma::vec trial = x-alpha*step, gt(g.n_elem);
+        if (score(trial,gt) && arma::abs(gt).max() < norm) {
+          x = trial; g = gt; accepted = true; break;
+        }
+      }
+      if (!accepted) {
+        double decrement = arma::dot(g,step);
+        return norm < 1e-3 && decrement >= 0 && decrement <= 1e-9 && finish();
+      }
+    }
+    return arma::abs(g).max() < 1e-9 && finish();
+  } catch (...) { return false; }
+}
+
 double LikInner2(double *eta, int likId, int id) {
   focei_ind *fInd = &(inds_focei[id]);
+  if (!refineFocePlusEta(eta,id)) {
+    fInd->lik[likId] = NA_REAL;
+    return NA_REAL;
+  }
   double lik=0;
   if (op_focei.neta == 0) {
     lik = fInd->llik;
@@ -16739,6 +16792,7 @@ static bool foceEbeNewton(const FoceiGradPooledSetup &G,
       obsFromInd(ind, E, G.hasT, hasCens, hasLimit, yt, cens, limt);
       arma::vec q0 = -(yt - E.f) / R0v;
       arma::vec q1 = 1.0 / R0v;
+      arma::vec qr = (yt-E.f)/arma::square(R0v);
       if (hasCens || hasLimit) {
         for (int o = 0; o < nobs; ++o) {
           double lim = limt[o];
@@ -16747,6 +16801,7 @@ static bool foceEbeNewton(const FoceiGradPooledSetup &G,
           censNormalPartials((double)cens[o], yt[o], lim, E.f[o], R0v[o], 2, cp);
           q0[o] = cp[0];       // rho_f
           q1[o] = cp[2];       // rho_ff
+          qr[o] = cp[3];
         }
       }
       arma::vec S = Oi * etaOut.row(i).t();
@@ -16757,7 +16812,10 @@ static bool foceEbeNewton(const FoceiGradPooledSetup &G,
         S[l] += s;
         for (int m = 0; m < neta; ++m) {
           double h = 0.0;
-          for (int o = 0; o < nobs; ++o) h += q1[o] * E.a(o, l) * E.a(o, m) + q0[o] * E.A(o, l, m);
+          for (int o = 0; o < nobs; ++o) {
+            h += q1[o]*E.a(o,l)*E.a(o,m)+q0[o]*E.A(o,l,m);
+            if (fp) h += qr[o]*E.a(o,l)*E.aR(o,m);
+          }
           Hf(l, m) += h;
         }
       }
@@ -17258,7 +17316,7 @@ static bool gradPooledAgqNodes(const FoceiGradPooledSetup &G,
                                const std::vector<double> &thVals,
                                const std::vector<VaeOuterE> &Es,
                                const arma::mat &ebesUse, const arma::mat &Oi,
-                               const std::vector<int> &nobsAll,
+                               const std::vector<int> &nobsAll, const GradPooledBlocks &observations,
                                int nn, int nsub, int neta, int cores,
                                rx_solving_options *op,
                                arma::mat &qx, arma::mat &qw,
@@ -17272,9 +17330,19 @@ static bool gradPooledAgqNodes(const FoceiGradPooledSetup &G,
     if (!E.ok) return declineHere(17);                       // a flagged subject has no Ht
     arma::mat Ht = Oi;
     arma::vec eff = 1.0 / E.R, eRR = 0.5 / arma::square(E.R);
+    arma::vec efr(E.nobs,arma::fill::zeros);
+    if (G.censOpt == 1 && observations.hasCens) for (int o = 0; o < E.nobs; ++o) {
+      int row = observations.off[i]+o;
+      if (observations.cens[row] != 0 || R_FINITE(observations.lim[row])) {
+        double cp[9] = {};
+        censNormalPartials(observations.cens[row],observations.y[row],observations.lim[row],E.f[o],E.R[o],2,cp);
+        eff[o] = cp[2]; efr[o] = cp[3]; eRR[o] = cp[4];
+      }
+    }
     for (int l = 0; l < neta; ++l)
       for (int m = 0; m < neta; ++m)
         Ht(l, m) += arma::accu(eff % E.a.col(l) % E.a.col(m) +
+                               efr % E.a.col(l) % E.aR.col(m) + efr % E.aR.col(l) % E.a.col(m) +
                                eRR % E.aR.col(l) % E.aR.col(m));
     // A non-PD Ht means the OBJECTIVE took its nmNearPD/cholSE branch -- a different,
     // non-smooth function -- so differentiating a Cholesky here would be answering the
@@ -17409,7 +17477,7 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
   const int nn = isAgq ? (int)_aqn : 0;
   std::vector< std::vector<VaeOuterE> > Ek;          // [node][subject]
   arma::mat qx, qw;
-  if (isAgq && !gradPooledAgqNodes(G, thVals, Es, ebesUse, Oi, nobsAll, nn, nsub, neta,
+  if (isAgq && !gradPooledAgqNodes(G, thVals, Es, ebesUse, Oi, nobsAll, B, nn, nsub, neta,
                                    cores, op, qx, qw, Ek)) return false;
 
   // ---- kernel -----------------------------------------------------------------------
@@ -17458,7 +17526,7 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
                                B.f.subvec(o0, o1), B.y.subvec(o0, o1), B.R.subvec(o0, o1),
                                aN, aRN, RsigN, fN, RN, qx, qw,
                                ebesUse.row(i).t(), Oi, dOiEst, tr28,
-                               neta, nth, nsg, nom, dirThV, sigColV, gi, etaPi, okI);
+                               neta, nth, nsg, nom, dirThV, sigColV, gi, etaPi, okI, censi, limi, G.censOpt);
         // The AGQ kernel reports failure rather than throwing (non-PD H0 at a node, a
         // non-finite log-weight).  A subject the quadrature could not assemble makes the
         // whole gradient wrong, not just that column, so poison it and let the finite
@@ -17472,7 +17540,7 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
         foceiGradSubjectFoceFR_(ai, Ai, aRei, aRci, R0sigi, dvi, censi, limi,
                                 B.f.subvec(o0, o1), B.y.subvec(o0, o1), B.R.subvec(o0, o1),
                                 ebesUse.row(i).t(), Oi, dOiEst, tr28,
-                                neta, nth, nsg, nom, dirThV, sigColV, B.fp, gi, etaPi);
+                                neta, nth, nsg, nom, dirThV, sigColV, B.fp, gi, etaPi, G.censOpt);
       } else {
         foceiGradSubjectFR_(ai, Ai, aRi, ARi, Rsigi, RsigDiri, dvi, censi, limi, G.censOpt,
                             B.f.subvec(o0, o1), B.y.subvec(o0, o1), B.R.subvec(o0, o1),
@@ -23976,6 +24044,7 @@ static void foceiHessianAssemble(void *ptr) {
     const auto &g = _gradPooled;
     int ns = getRxNsub(rx), ne = g.neta, nd = g.nd+g.nsg, np = g.nth+g.nsg+g.nom;
     bool foce = g.interaction == 0, agq = g.nAGQ > 1;
+    bool frozen = foce && g.foceType == 0;
     auto *op = getSolvingOptions(rx);
     if (!odeSwapCheckLhsWidth(odeSlotOuter,&rxVaeOuter,rx,op) ||
         !outerColsWithin(g,odeSwapNlhs(odeSlotOuter))) return;
@@ -23986,13 +24055,13 @@ static void foceiHessianAssemble(void *ptr) {
     auto solve = [&](const arma::mat &eta, std::vector<VaeOuterE> &e) {
       d.probes->reset();
       outerSolveFill(odeSlotOuter,&rxVaeOuter,theta,eta,g,getOpCores(op),op,ns,ne,e);
-      for (auto &one : e) if (!foceiHessianExpand(one,g,!foce)) return false;
+      for (auto &one : e) if (!foceiHessianExpand(one,g,!frozen)) return false;
       return true;
     };
     std::vector<VaeOuterE> base(ns);
     if (!solve(d.eta,base)) return;
-    std::vector<VaeOuterE> population(foce ? ns : 0);
-    if (foce) {
+    std::vector<VaeOuterE> population(frozen ? ns : 0);
+    if (frozen) {
       arma::mat zero(ns,ne,arma::fill::zeros);
       if (!solve(zero,population)) return;
       for (const auto &e : population) if (e.R.min() <= std::sqrt(DBL_EPSILON)) return;
@@ -24031,16 +24100,18 @@ static void foceiHessianAssemble(void *ptr) {
     for (int id = 0; id < ns; ++id) {
       const auto &e = base[id];
       GradPooledBlocks obs;
-      obs.a.zeros(e.nobs,g.nd); obs.y.zeros(e.nobs); obs.hasLam = false; obs.hasCens = false;
+      obs.a.zeros(e.nobs,g.nd); obs.y.zeros(e.nobs); obs.hasLam = false;
+      obs.hasCens = hasRxCens(rx) || hasRxLimit(rx);
+      obs.cens.zeros(obs.hasCens ? e.nobs : 0); obs.lim.set_size(obs.hasCens ? e.nobs : 0);
       double jacobian = 0;
       if (!gradPooledStackDv(g,obs,e,id,0,e.nobs,jacobian)) return;
       arma::mat noDv(e.nobs,0);
       if (foce) {
-        const auto &p = population[id];
-        arma::mat zeroR(e.nobs,nd,arma::fill::zeros);
-        arma::cube zeroR2(e.nobs,nd,nd,arma::fill::zeros);
-        information += foceiRSubjectFoceFR_(e.a,e.A,third[id],zeroR,p.aR,zeroR2,p.AR,noDv,noDv,
-          arma::ivec(),arma::vec(),e.f,obs.y,p.R,d.eta.row(id).t(),op_focei.omegaInv,
+        const auto &p = frozen ? population[id] : e;
+        arma::mat etaR = frozen ? arma::mat(e.nobs,nd,arma::fill::zeros) : e.aR;
+        arma::cube etaR2 = frozen ? arma::cube(e.nobs,nd,nd,arma::fill::zeros) : e.AR;
+        information += foceiRSubjectFoceFR_(e.a,e.A,third[id],etaR,p.aR,etaR2,p.AR,noDv,noDv,
+          obs.cens,obs.lim,e.f,obs.y,p.R,d.eta.row(id).t(),op_focei.omegaInv,
           doi,d2oi,d2ld,ne,nd,g.nth+g.nsg,g.nom,dirs);
       } else {
         FoceiHessianQuadrature quadrature;
@@ -24059,7 +24130,7 @@ static void foceiHessianAssemble(void *ptr) {
           };
         }
         information += foceiRSubjectFR_(e.a,e.A,third[id],e.aR,e.AR,thirdR[id],noDv,noDv,
-          arma::ivec(),arma::vec(),e.f,obs.y,e.R,d.eta.row(id).t(),op_focei.omegaInv,
+          obs.cens,obs.lim,e.f,obs.y,e.R,d.eta.row(id).t(),op_focei.omegaInv,
           doi,d2oi,d2ld,ne,nd,g.nth+g.nsg,g.nom,dirs,agq ? &quadrature : nullptr);
       }
     }
@@ -24077,12 +24148,13 @@ extern "C" int nlmixr2FoceiOuterHessian(const double *theta, int n, double relSt
   for (int j = 0; j < n; ++j)
     if (!std::isfinite(theta[j]) || theta[j] < op_focei.lower[j] || theta[j] > op_focei.upper[j]) return -2;
   const auto &g = _gradPooled;
-  if (!op_foceiUseAnalyticGrad || !g.ok || g.isLL || (g.interaction == 0 && g.foceType != 0) ||
+  if (!op_foceiUseAnalyticGrad || !g.ok || g.isLL ||
       g.neta <= 0 || g.neta != op_focei.neta || (int)g.gMap.size() != n ||
       g.nLam || !g.hasR || g.f2.empty() || g.rvar2.empty() ||
       op_focei.fo || op_focei.mixIdxN || op_focei.muGroupN || op_focei.freezeOde ||
       op_focei.covFdDirect || op_focei.priorSpec != NULL || op_focei.npResidScale != 1 ||
-      hasRxCens(rx) || hasRxLimit(rx) || odeSwapCanPool(odeSlotOuter) != odeDenyNone) return -4;
+      odeSwapCanPool(odeSlotOuter) != odeDenyNone) return -4;
+  if ((hasRxCens(rx) || hasRxLimit(rx)) && g.censOpt != 0) return -4;
   if (g.nAGQ > 1 && (g.interaction == 0 || std::isfinite(op_focei.aqLow) || std::isfinite(op_focei.aqHi))) return -4;
   for (int k : g.gMap) if (k < 0 || k >= g.nth+g.nsg+g.nom) return -4;
   try {

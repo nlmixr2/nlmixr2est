@@ -8,7 +8,7 @@ test_that("FOCE and AGQ curvature includes their objective-specific terms", {
   }
   data <- data.frame(ID = rep(1:2, each = 3), TIME = rep(1:3, 2),
     DV = c(1.5, 1.4, 1.3, 0.8, 0.85, 0.9), AMT = 0, EVID = 0)
-  for (family in c("FOCE", "AGQ3", "AGQ5")) for (inner in c("n1qn1", "trust")) {
+  for (family in c("FOCE", "FOCE+", "AGQ3", "AGQ5")) for (inner in c("n1qn1", "trust")) {
     observed <- NULL
     optimizer <- function(par, fn, gr, lower, upper, control) {
       fn(par); gradient <- gr(par); value <- fn(par)
@@ -32,7 +32,8 @@ test_that("FOCE and AGQ curvature includes their objective-specific terms", {
       list(x = par, convergence = 0L, message = "FOCE/AGQ curvature check")
     }
     control <- foceiControl(fast = TRUE, outerOpt = optimizer, innerOpt = inner,
-      interaction = family != "FOCE", nAGQ = if (family == "FOCE") 0L else as.integer(sub("AGQ", "", family)),
+      interaction = !(family %in% c("FOCE", "FOCE+")), foce = if (family == "FOCE+") "foce+" else "nonmem",
+      nAGQ = if (startsWith(family, "AGQ")) as.integer(sub("AGQ", "", family)) else 0L,
       print = 0, covMethod = "", calcTables = FALSE, boundedTransform = FALSE,
       epsilon = 1e-10, maxInnerIterations = 1000L, trustFterm = 1e-12, trustMterm = 1e-12,
       scaleType = "mult", scaleTo = 0,

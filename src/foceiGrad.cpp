@@ -83,28 +83,6 @@ static inline void censScoreCoefs(const arma::ivec& censv, const arma::vec& limv
   }
 }
 
-// FOCE (frozen-R0) censored SCORE: override rho_f, rho_R and the inner-Hessian 2nd derivative
-// rff (=1/R0 for a normal obs, exact at (f,R0) for a censored obs) on censored observations.
-// The FOCE inner Hessian freezes the variance, so only the f-chain (rho_f, rho_ff) enters the
-// eta-block; rho_R feeds the parameter columns.  The determinant stays Gauss-Newton (gauss).
-static inline void censFoceScoreCoefs(const arma::ivec& censv, const arma::vec& limv,
-                                      const arma::vec& fv, const arma::vec& yv, const arma::vec& R0v, int nobs,
-                                      arma::vec& rho_f, arma::vec& rho_R, arma::vec& rff, arma::vec& rfR) {
-  rff = 1.0 / R0v;
-  rfR = (yv - fv) / arma::square(R0v);                 // normal d(rho_f)/dR0 (the R0-chain cross deriv)
-  const bool hasCens = ((int)censv.n_elem == nobs);
-  if (!hasCens) return;
-  for (int o = 0; o < nobs; o++) {
-    double lim = limv.n_elem == (unsigned) nobs ? limv[o] : R_NegInf;
-    int cens = censv[o];
-    bool isCens = (cens != 0) || (R_FINITE(lim) && !ISNA(lim));
-    if (!isCens) continue;
-    double cp[9]; for (int i = 0; i < 9; i++) cp[i] = 0.0;
-    censNormalPartials((double)cens, yv[o], lim, fv[o], R0v[o], 2, cp);
-    rho_f[o] = cp[0]; rho_R[o] = cp[1]; rff[o] = cp[2]; rfR[o] = cp[3];
-  }
-}
-
 // R-callable wrapper for the exact censored rho(f,R) partials (M2/M3/M4).  Returns an
 // nobs x 9 matrix of rho_{f,r,ff,fr,rr,fff,ffr,frr,rrr}; used by the FOCE EBE re-solve to
 // build the censored inner score/Hessian (q0=rho_f, q1=rho_ff) at the frozen variance.
@@ -477,7 +455,7 @@ void foceiGradSubjectFoceFR_(const arma::mat& a, const arma::cube& A,
                              const arma::cube& dOiEst, const arma::vec& tr28,
                              int neta, int nth, int nsg, int nom,
                              const arma::ivec& dirTh, const arma::ivec& sigCol, int fp,
-                             arma::vec& g_out, arma::mat& etaP_out) {
+                             arma::vec& g_out, arma::mat& etaP_out, int censOpt) {
   const int nobs = (int)a.n_rows;
   const int ndir = (int)a.n_cols;
   const int np = nth + nsg + nom;
@@ -488,16 +466,17 @@ void foceiGradSubjectFoceFR_(const arma::mat& a, const arma::cube& A,
   vec rho_f = -res / R0v, rho_R = 0.5 * (1.0 / R0v - square(res) / square(R0v));
   // censored (M2/M3/M4) score overrides rho_f/rho_R, the frozen-R inner 2nd deriv rff, and the
   // R0-chain cross deriv rfR = d(rho_f)/dR0 (used by the EBE-sensitivity McolEBE).
-  vec rff, rfR;
-  censFoceScoreCoefs(censv, limv, fv, yv, R0v, nobs, rho_f, rho_R, rff, rfR);
+  vec rff = 1.0/R0v, rfR = res/square(R0v), rRR = square(res)/pow(R0v,3)-0.5/square(R0v);
+  vec dff, dfr, drr, pfff, pffR, pfRR, pRRR, pfrf;
+  censGradCoefs(censv,limv,fv,yv,R0v,censOpt,nobs,rho_f,rho_R,rff,rfR,rRR,
+                dff,dfr,drr,pfff,pffR,pfRR,pRRR,pfrf);
   vec q0 = rho_f, q1 = rff;
-  vec iR = 1.0 / R0v, iR2 = square(iR);
   vec gPhi = Oi * ehat;
   for (int l = 0; l < neta; l++) { double s = 0.0; for (int o = 0; o < nobs; o++) s += rho_f[o] * a(o, l) + rho_R[o] * aRe(o, l); gPhi[l] += s; }
   mat Hf = Oi, Ht = Oi, Nf(neta, ndir, fill::zeros);
   for (int l = 0; l < neta; l++) {
     for (int m = 0; m < neta; m++) { double sh = 0.0, st = 0.0;
-      for (int o = 0; o < nobs; o++) { sh += q1[o] * a(o, l) * a(o, m) + q0[o] * A(o, l, m); st += a(o, l) * a(o, m) * iR[o]; }
+      for (int o = 0; o < nobs; o++) { sh += q1[o]*a(o,l)*a(o,m)+q0[o]*A(o,l,m)+rfR[o]*a(o,l)*aRe(o,m); st += a(o,l)*a(o,m)*dff[o]; }
       Hf(l, m) += sh; Ht(l, m) += st; }
     for (int d = 0; d < ndir; d++) { double s = 0.0; for (int o = 0; o < nobs; o++) {
       double ad = hasDv ? a(o, d) - dvSens(o, d) : a(o, d); s += q1[o] * a(o, l) * ad + q0[o] * A(o, l, d); } Nf(l, d) = s; }
@@ -506,7 +485,8 @@ void foceiGradSubjectFoceFR_(const arma::mat& a, const arma::cube& A,
   std::vector<mat> dHtD(ndir);
   for (int s = 0; s < ndir; s++) { mat D(neta, neta, fill::zeros);
     for (int l = 0; l < neta; l++) for (int m = 0; m < neta; m++) { double v = 0.0;
-      for (int o = 0; o < nobs; o++) v += -aRe(o, s) * iR2[o] * a(o, l) * a(o, m) + (A(o, l, s) * a(o, m) + a(o, l) * A(o, m, s)) * iR[o];
+      for (int o = 0; o < nobs; o++) v += (pfff[o]*a(o,s)+pffR[o]*aRe(o,s))*a(o,l)*a(o,m)+
+        (A(o,l,s)*a(o,m)+a(o,l)*A(o,m,s))*dff[o];
       D(l, m) = v; }
     dHtD[s] = D; }
   vec Cen(neta); for (int l = 0; l < neta; l++) Cen[l] = 0.5 * trace(Hti * dHtD[l]);
@@ -521,8 +501,8 @@ void foceiGradSubjectFoceFR_(const arma::mat& a, const arma::cube& A,
       for (int l = 0; l < neta; l++) { double s = 0.0; for (int o = 0; o < nobs; o++) s += a(o, l) * rfR[o] * R0sig(o, c); r[l] = s; } return r; }
     return vec(dOiEst.slice(p - nth - nsg) * ehat); };
   auto dHt_p = [&](int p) -> mat { int t = typ(p);
-    if (t == 0) { int d = dirTh[p] - 1; mat D = dHtD[d]; if (!fp) D += ouRc(-aRc.col(d) % iR2); return D; }
-    if (t == 1) { int c = sigCol[p - nth] - 1; return ouRc(-R0sig.col(c) % iR2); }
+    if (t == 0) { int d = dirTh[p] - 1; mat D = dHtD[d]; if (!fp) D += ouRc(aRc.col(d)%pffR); return D; }
+    if (t == 1) { int c = sigCol[p - nth] - 1; return ouRc(R0sig.col(c)%pffR); }
     return dOiEst.slice(p - nth - nsg); };
   auto dPhiExplicit = [&](int p) -> double { int t = typ(p);
     if (t == 0) { int d = dirTh[p] - 1; double s = 0.0; for (int o = 0; o < nobs; o++) s += rho_f[o] * (hasDv ? a(o, d) - dvSens(o, d) : a(o, d)) + rho_R[o] * aRc(o, d); return s; }
@@ -778,14 +758,27 @@ arma::mat foceiRSubjectFR_(const arma::mat& a, const arma::cube& A, const arma::
       FoceiHessianNode e;
       if (!quadrature->evaluate(eta,e)) throw std::runtime_error("AGQ sensitivity solve failed");
       vec residual = yv-e.f, df = -residual/e.R, dr = 0.5*(1/e.R-square(residual)/square(e.R));
+      vec dff = 1/e.R, dfr = residual/square(e.R), drr = square(residual)/pow(e.R,3)-0.5/square(e.R);
+      double phi = 0.5*as_scalar(eta.t()*Oi*eta);
+      for (int o = 0; o < nobs; ++o) {
+        double ll = -0.5*(std::log(e.R[o])+residual[o]*residual[o]/e.R[o]);
+        int cens = censv.n_elem == (unsigned)nobs ? censv[o] : 0;
+        double limit = limv.n_elem == (unsigned)nobs ? limv[o] : R_NegInf;
+        phi -= doCensNormal1(cens,yv[o],limit,ll,e.f[o],e.R[o],0);
+        if (cens != 0 || R_FINITE(limit)) {
+          double cp[9] = {};
+          censNormalPartials(cens,yv[o],limit,e.f[o],e.R[o],2,cp);
+          df[o] = cp[0]; dr[o] = cp[1]; dff[o] = cp[2]; dfr[o] = cp[3]; drr[o] = cp[4];
+        }
+      }
       vec score = e.a.t()*df+e.aR.t()*dr;
       mat partial(ndir,ndir,fill::zeros);
       for (int p = 0; p < ndir; ++p) for (int q = p; q < ndir; ++q) {
         double v = 0;
         for (int o = 0; o < nobs; ++o) {
-          double r = e.R[o], res = residual[o], ap = e.a(o,p), aq = e.a(o,q);
+          double ap = e.a(o,p), aq = e.a(o,q);
           double rp = e.aR(o,p), rq = e.aR(o,q);
-          v += ap*aq/r+res/(r*r)*(ap*rq+rp*aq)+(res*res/(r*r*r)-0.5/(r*r))*rp*rq+
+          v += dff[o]*ap*aq+dfr[o]*(ap*rq+rp*aq)+drr[o]*rp*rq+
             df[o]*e.A(o,p,q)+dr[o]*e.AR(o,p,q);
         }
         partial(p,q) = partial(q,p) = v;
@@ -814,7 +807,6 @@ arma::mat foceiRSubjectFR_(const arma::mat& a, const arma::cube& A, const arma::
           dot(etaScore,modeSecond[p*np+q]+M_SQRT2*inverseSecond[p*np+q]*node);
         nodeHessian(p,q) = nodeHessian(q,p) = v;
       }
-      double phi = 0.5*accu(log(e.R)+square(residual)/e.R)+0.5*as_scalar(eta.t()*Oi*eta);
       double logWeight = accu(log(quadrature->weights.row(k)))+dot(node,node)-phi;
       if (!std::isfinite(logWeight) || !totalScore.is_finite() || !nodeHessian.is_finite())
         throw std::runtime_error("Non-finite AGQ curvature");
@@ -953,15 +945,23 @@ arma::mat foceiRSubjectFoceFR_(const arma::mat& a, const arma::cube& A, const ar
   // ---- FOCE inner (EBE) tensors: interaction-free q-based Hf/Nf/Tnf ----
   mat Hf = Oi; mat Nf(neta, ndir, fill::zeros);
   for (int l = 0; l < neta; l++) {
-    for (int m = 0; m < neta; m++) { double v = 0.0; for (int o = 0; o < nobs; o++) v += q1[o] * a(o, l) * a(o, m) + q0[o] * A(o, l, m); Hf(l, m) += v; }
+    for (int m = 0; m < neta; m++) { double v = 0.0; for (int o = 0; o < nobs; o++) v += q1[o]*a(o,l)*a(o,m)+q0[o]*A(o,l,m)+rfR[o]*a(o,l)*aRe(o,m); Hf(l,m) += v; }
     for (int d = 0; d < ndir; d++) { double v = 0.0; for (int o = 0; o < nobs; o++) v += q1[o] * a(o, l) * ra(o, d) + q0[o] * A(o, l, d); Nf(l, d) = v; } }
   mat HfInv = inv(Hf);
-  cube Tnf(neta, ndir, ndir, fill::zeros);
-  for (int l = 0; l < neta; l++) for (int s = 0; s < ndir; s++) for (int t = 0; t < ndir; t++) { double v = 0.0;
-    for (int o = 0; o < nobs; o++) { double Yst = (s == t) ? dvY(o, s) : 0.0;
-      v += rfff[o] * ra(o, s) * ra(o, t) * a(o, l) +   // frozen-R 3rd-order f-chain (0 for normal)
-        q1[o] * (A(o, l, s) * ra(o, t) + A(o, l, t) * ra(o, s) + A(o, s, t) * a(o, l) - Yst * a(o, l)) + q0[o] * Ai(Ath, o, l, s, t); }
-    Tnf(l, s, t) = v; }
+  auto scoreSecond = [&](int l, int s, int t, const mat &rs, const mat &rt, const cube &rst) {
+    double value = 0;
+    for (int o = 0; o < nobs; ++o) {
+      double fs = ra(o,s), ft = ra(o,t), yst = s == t ? dvY(o,s) : 0;
+      double qs = q1[o]*fs+rfR[o]*rs(o,s), qt = q1[o]*ft+rfR[o]*rt(o,t);
+      double qst = rfff[o]*fs*ft+rffR[o]*(fs*rt(o,t)+rs(o,s)*ft)+rfRR[o]*rs(o,s)*rt(o,t)+
+        q1[o]*(A(o,s,t)-yst)+rfR[o]*rst(o,s,t);
+      value += qst*a(o,l)+qs*A(o,l,t)+qt*A(o,l,s)+q0[o]*Ai(Ath,o,l,s,t);
+    }
+    return value;
+  };
+  cube Tnf(neta,ndir,ndir,fill::zeros);
+  for (int l = 0; l < neta; ++l) for (int s = 0; s < ndir; ++s) for (int t = 0; t < ndir; ++t)
+    Tnf(l,s,t) = scoreSecond(l,s,t,aRe,aRe,ARe);
   // ---- determinant Ht = Oi + sum(a a / R0) (interaction-free) + its derivatives ----
   mat Ht = Oi; for (int l = 0; l < neta; l++) for (int m = 0; m < neta; m++) { double v = 0.0;
     for (int o = 0; o < nobs; o++) v += a(o, l) * a(o, m) * iR[o]; Ht(l, m) += v; }
@@ -988,10 +988,18 @@ arma::mat foceiRSubjectFoceFR_(const arma::mat& a, const arma::cube& A, const ar
   auto isDir = [&](int p) { return p < ndirP; };
   auto dOf = [&](int p) { return dirP[p] - 1; };
   auto omc = [&](int p) { return p - ndirP; };
-  auto McolData = [&](int p) -> vec { if (!isDir(p)) return vec(dOi.slice(omc(p)) * ehat);
+  auto McolEBE = [&](int p) -> vec { if (!isDir(p)) return vec(dOi.slice(omc(p)) * ehat);
     int d = dOf(p); vec r = Nf.col(d);
     for (int l = 0; l < neta; l++) { double v = 0.0; for (int o = 0; o < nobs; o++) v += a(o, l) * rfR[o] * aRc(o, d); r[l] += v; }
     return r; };
+  auto McolData = [&](int p) -> vec {
+    vec value = McolEBE(p);
+    if (isDir(p)) for (int l = 0; l < neta; ++l) for (int o = 0; o < nobs; ++o) {
+      int d = dOf(p);
+      value[l] += rfR[o]*aRe(o,l)*ra(o,d)+rRR[o]*aRe(o,l)*aRc(o,d)+rR[o]*ARe(o,l,d);
+    }
+    return value;
+  };
   auto dHtP = [&](int p) -> mat { if (isDir(p)) return dHtDir(dOf(p), aRc); return dOi.slice(omc(p)); };
   auto d2Phi = [&](int aa, int bb) -> double {
     if (!isDir(aa) && !isDir(bb)) return 0.5 * as_scalar(ehat.t() * d2Oi.slice(omc(aa) * nom + omc(bb)) * ehat) + 0.5 * d2LD(omc(aa), omc(bb));
@@ -1002,24 +1010,20 @@ arma::mat foceiRSubjectFoceFR_(const arma::mat& a, const arma::cube& A, const ar
         rRR[o] * aRc(o, da) * aRc(o, db) + rR[o] * ARc(o, da, db);
       if (da == db) v += -rf[o] * dvY(o, da); }        // (r/R0) d2y'/dlambda2, lambda-lambda only
     return v; };
-  auto SmatEBE = [&](int p) -> mat { mat M(neta, ndir, fill::zeros);
-    if (!isDir(p)) { M.cols(0, neta - 1) = dOi.slice(omc(p)); return M; }
-    int d = dOf(p);
-    for (int l = 0; l < neta; l++) for (int s = 0; s < ndir; s++) { double v = Tnf(l, d, s);
-      for (int o = 0; o < nobs; o++) v += rffR[o] * aRc(o, d) * ra(o, s) * a(o, l) + rfR[o] * aRc(o, d) * A(o, l, s);
-      M(l, s) = v; }
-    return M; };
-  auto SvecEBE = [&](int aa, int bb) -> vec { vec v(neta, fill::zeros);
-    bool ta = isDir(aa), tb = isDir(bb);
-    if (!ta && !tb) { v = d2Oi.slice(omc(aa) * nom + omc(bb)) * ehat; return v; }
-    if (!ta || !tb) return v;
-    int da = dOf(aa), db = dOf(bb);
-    for (int l = 0; l < neta; l++) { double s = Tnf(l, da, db);
-      for (int o = 0; o < nobs; o++) { double w = rffR[o] * (ra(o, da) * aRc(o, db) + aRc(o, da) * ra(o, db)) +
-          rfR[o] * ARc(o, da, db) + rfRR[o] * aRc(o, da) * aRc(o, db);
-        s += w * a(o, l) + rfR[o] * (aRc(o, da) * A(o, l, db) + aRc(o, db) * A(o, l, da)); }
-      v[l] = s; }
-    return v; };
+  auto SmatEBE = [&](int p) -> mat {
+    mat M(neta,ndir,fill::zeros);
+    if (!isDir(p)) { M.cols(0,neta-1) = dOi.slice(omc(p)); return M; }
+    for (int l = 0; l < neta; ++l) for (int s = 0; s < ndir; ++s)
+      M(l,s) = scoreSecond(l,s,dOf(p),aRe,aRc,ARe);
+    return M;
+  };
+  auto SvecEBE = [&](int p, int q) -> vec {
+    vec value(neta,fill::zeros);
+    if (!isDir(p) && !isDir(q)) return vec(d2Oi.slice(omc(p)*nom+omc(q))*ehat);
+    if (isDir(p) && isDir(q)) for (int l = 0; l < neta; ++l)
+      value[l] = scoreSecond(l,dOf(p),dOf(q),aRc,aRc,ARc);
+    return value;
+  };
   auto d2HtEtaP = [&](int p, int l) -> mat { if (!isDir(p)) return zeros<mat>(neta, neta); return d2HtDir(dOf(p), l, aRc, aRe, ARe); };
   auto d2Ht_pp = [&](int aa, int bb) -> mat { bool ta = isDir(aa), tb = isDir(bb);
     if (ta && tb) return d2HtDir(dOf(aa), dOf(bb), aRc, aRc, ARc);
@@ -1028,7 +1032,7 @@ arma::mat foceiRSubjectFoceFR_(const arma::mat& a, const arma::cube& A, const ar
   auto Cpe = [&](int p, int l) { return 0.5 * (trace(Hti * d2HtEtaP(p, l)) - trace(Hti * dHtP(p) * Hti * dHtE[l])); };
   auto Cpp = [&](int aa, int bb) { return 0.5 * (trace(Hti * d2Ht_pp(aa, bb)) - trace(Hti * dHtP(aa) * Hti * dHtP(bb))); };
   std::vector<vec> McolV(np); for (int p = 0; p < np; p++) McolV[p] = McolData(p);
-  mat etaP(neta, np); for (int p = 0; p < np; p++) etaP.col(p) = -HfInv * McolV[p];
+  mat etaP(neta, np); for (int p = 0; p < np; p++) etaP.col(p) = -HfInv * McolEBE(p);
   auto eta2 = [&](int aa, int bb) -> vec {
     mat SmA = SmatEBE(aa).cols(0, neta - 1), SmB = SmatEBE(bb).cols(0, neta - 1);
     vec b = SvecEBE(aa, bb) + SmA * etaP.col(bb) + SmB * etaP.col(aa);
@@ -1130,8 +1134,7 @@ arma::mat foceiRAllFoceFR_(const arma::mat& a, const arma::cube& A, const arma::
 // The eta-hat block MIRRORS foceiGradSubjectFR_ rather than refactoring that merged,
 // validated kernel; the nAGQ=1 identity test guards the duplication against drift.
 // Node arrays are node-major: node k occupies rows k*nobs .. k*nobs+nobs-1; y is
-// node-invariant.  Censoring/estimated lambda are gated out in R, so censGradCoefs takes
-// an empty censv -- giving exactly the Gauss-Newton determinant coefficients.
+// node-invariant. Censored rows use the same likelihood and partials as the inner solve.
 void foceiGradSubjectAgqFR_(const arma::mat& a, const arma::cube& A,
                             const arma::mat& aR, const arma::cube& AR,
                             const arma::mat& Rsig, const arma::cube& RsigDir,
@@ -1143,19 +1146,19 @@ void foceiGradSubjectAgqFR_(const arma::mat& a, const arma::cube& A,
                             const arma::cube& dOiEst, const arma::vec& tr28,
                             int neta, int nth, int nsg, int nom,
                             const arma::ivec& dirTh, const arma::ivec& sigCol,
-                            arma::vec& g_out, arma::mat& etaP_out, bool& ok_out) {
+                            arma::vec& g_out, arma::mat& etaP_out, bool& ok_out,
+                            const arma::ivec& censv, const arma::vec& limv, int censOpt) {
   ok_out = false;
   const int nobs = (int)a.n_rows;
   const int ndir = (int)a.n_cols;
   const int np = nth + nsg + nom;
   const int nn = (int)qx.n_rows;
-  // ---- eta-hat block (mirrors foceiGradSubjectFR_; no cens/dvSens in AGQ scope) ----
+  // ---- eta-hat block (mirrors foceiGradSubjectFR_) ----
   vec res = yv - fv;
   vec rf = -res / Rv, rR = 0.5 * (1.0 / Rv - square(res) / square(Rv));
   vec rff = 1.0 / Rv, rfR = res / square(Rv), rRR = 0.5 * (-1.0 / square(Rv) + 2.0 * square(res) / pow(Rv, 3));
   vec dff, dfr, drr, pfff, pffR, pfRR, pRRR, pfrf;
-  ivec censEmpty; vec limEmpty;
-  censGradCoefs(censEmpty, limEmpty, fv, yv, Rv, 0, nobs,
+  censGradCoefs(censv, limv, fv, yv, Rv, censOpt, nobs,
                 rf, rR, rff, rfR, rRR, dff, dfr, drr, pfff, pffR, pfRR, pRRR, pfrf);
   mat H = Oi, Ht = Oi, N(neta, ndir, fill::zeros);
   for (int l = 0; l < neta; l++) {
@@ -1264,8 +1267,13 @@ void foceiGradSubjectAgqFR_(const arma::mat& a, const arma::cube& A,
   // ---- node loop ----
   // l(eta) up to an eta-independent constant (cancels in pi_k and in l - l0)
   double l0 = 0.0;
-  for (int o = 0; o < nobs; o++) l0 += std::log(Rv[o]) + res[o] * res[o] / Rv[o];
-  l0 = -0.5 * l0 - 0.5 * as_scalar(ehat.t() * Oi * ehat);
+  bool hasCens = (int)censv.n_elem == nobs;
+  for (int o = 0; o < nobs; o++) {
+    double ll = -0.5*(std::log(Rv[o])+res[o]*res[o]/Rv[o]);
+    double limit = limv.n_elem == (unsigned)nobs ? limv[o] : R_NegInf;
+    l0 += hasCens ? doCensNormal1(censv[o],yv[o],limit,ll,fv[o],Rv[o],0) : ll;
+  }
+  l0 -= 0.5*as_scalar(ehat.t()*Oi*ehat);
   vec lognode(nn, fill::zeros);
   mat perNode(nn, np, fill::zeros);
   vec rfk(nobs), rRk(nobs);
@@ -1276,11 +1284,18 @@ void foceiGradSubjectAgqFR_(const arma::mat& a, const arma::cube& A,
     double lk = 0.0;
     for (int o = 0; o < nobs; o++) {
       double Rk = RN[b + o], rk = yv[o] - fN[b + o];
-      lk += std::log(Rk) + rk * rk / Rk;
+      double ll = -0.5*(std::log(Rk)+rk*rk/Rk);
+      double limit = limv.n_elem == (unsigned)nobs ? limv[o] : R_NegInf;
+      lk += hasCens ? doCensNormal1(censv[o],yv[o],limit,ll,fN[b+o],Rk,0) : ll;
       rfk[o] = -rk / Rk;
       rRk[o] = 0.5 * (1.0 / Rk - rk * rk / (Rk * Rk));
+      if (hasCens && (censv[o] != 0 || R_FINITE(limit))) {
+        double cp[9] = {};
+        censNormalPartials(censv[o],yv[o],limit,fN[b+o],Rk,2,cp);
+        rfk[o] = cp[0]; rRk[o] = cp[1];
+      }
     }
-    lk = -0.5 * lk - 0.5 * as_scalar(etaCur.t() * Oi * etaCur);
+    lk -= 0.5*as_scalar(etaCur.t()*Oi*etaCur);
     double lw = 0.0, xx = 0.0;
     for (int j = 0; j < neta; j++) { lw += std::log(qw(k, j)); xx += qx(k, j) * qx(k, j); }
     lognode[k] = lw + xx + (lk - l0);   // exp(x'x) untilt (was 0.5*x'x)

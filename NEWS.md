@@ -2,7 +2,7 @@
 
 ## New features
 
-- Added a native analytical outer Hessian for fast Gaussian FOCE/FOCEI/AGQ fits, using
+- Added a native analytical outer Hessian for fast Gaussian FOCE/FOCE+/FOCEI/AGQ fits, using
   the existing sensitivity pool. Fast `nlminb` fits used it automatically.
 
 - `impmapControl(proposal=)` selects the importance-sampling proposal family for
@@ -138,6 +138,11 @@
 - Corrected objective scaling of the fast outer gradient.
 
 - Corrected FOCE curvature's row stride when solves included bookkeeping rows.
+
+- Aligned FOCE+ objectives and derivatives with the live-variance ETA score root.
+
+- Included M2/M3/M4 censoring in the analytical AGQ gradient and the
+  FOCE/FOCE+/FOCEI/AGQ outer Hessian with `censOption="gauss"`.
 
 - A `focei`-family fit now reports whether its inner solves actually
   converged.  `fit$env$nTrustInner` breaks the `innerOpt="trust"` per-subject
