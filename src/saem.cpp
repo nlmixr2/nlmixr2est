@@ -778,6 +778,10 @@ static long _saemEtaDistN = 0;
 // Whether THIS fit asked for the declared-distribution M-step at all, so
 // "never ran" can be told apart from "was never requested".
 static int _saemEtaDistOn = 0;
+// etaDistLoglik: the declared thetas are estimated from the OBSERVATION
+// likelihood instead, so the family M-step standing down is the intended
+// behaviour and must not be reported as a no-op.
+static int _saemEtaDistObsLik = 0;
 
 // Fill an armadillo mat/vec from rxode2's threefry engine (the current seeded
 // stream).  Used for the MCMC proposals; the saem ODE solve does not draw from
@@ -3494,6 +3498,7 @@ public:
     // _saemPhi1RefineN does
     _saemEtaDistN = 0;
     _saemEtaDistOn = etaDistOn;
+    _saemEtaDistObsLik = (etaDistLoglik && etaDistOn && etaDistNdist > 0) ? 1 : 0;
     if (etaDistNdist > 0) etaDistFiredK.assign((size_t)etaDistNdist, 0);
     etaDistCorFired = false;
     if ((etaDistOn || etaDistCorOn) && x.containsElementNamed("etaDistLatent")) {
@@ -7966,6 +7971,11 @@ long saemEtaDistN_() { return _saemEtaDistN; }
 //[[Rcpp::export]]
 int saemEtaDistOn_() { return _saemEtaDistOn; }
 
+// Not Rcpp-exported: only saem_fit_ below reads it, and an export would mean
+// regenerating RcppExports AND hand-editing src/init.c's .Call table for a
+// value nothing in R asks for.
+static int saemEtaDistObsLik_() { return _saemEtaDistObsLik; }
+
 // Exposed for testing.  The copula M-step is one line of arithmetic that was
 // wrong in a way no fit-level assertion would localize: the product-moment it
 // used is the constrained MLE only when the draws have unit variance, so any
@@ -8929,7 +8939,11 @@ SEXP saem_fit(SEXP xSEXP) {
   // spread guard can legitimately hold it back for a whole fit (a chain that
   // never settles below the unit prior), so say so rather than let it pass as a
   // silent no-op.  Same report imp makes for the same reason.
-  if (saemEtaDistOn_() && saemEtaDistN_() == 0) {
+  // Not in the observation-likelihood mode: there the family M-step standing
+  // down for the declared families is the POINT, not a no-op to report.  The
+  // thetas were estimated -- by refinePhi0Lik against the observation
+  // likelihood -- so saying "never ran ... had no effect" would be wrong twice.
+  if (saemEtaDistOn_() && saemEtaDistN_() == 0 && !saemEtaDistObsLik_()) {
     int _mf = saem.get_etaDistMapFail();
     if (_mf > 0) {
       // Distinguish the two reasons.  This one is not a chain that needs longer
