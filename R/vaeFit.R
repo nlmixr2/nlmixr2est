@@ -164,7 +164,12 @@
                       parInfo = NULL) {
   ## RNG is seeded ONCE for the whole estimation in nlmixr2Est.vae (rxWithSeed),
   ## which also covers the model's own random draws and restores the caller's seed
-  zDim <- prep$zDim; hDim <- control$hiddenDim; nCov <- ncol(prep$covIn); N <- prep$N
+  zDim <- prep$zDim; hDim <- control$hiddenDim; N <- prep$N
+  ## The encoder is conditioned on the mixture component: it characterizes every
+  ## (subject, component) pair, with the component entering the FC head as a
+  ## one-hot appended to the covariate block (see vaeTileEncoderInputs in
+  ## src/inner.cpp).  So the head is nMix wider for a mixture model.
+  nCov <- ncol(prep$covIn) + if (nMix > 1L) as.integer(nMix) else 0L
   ## the FC head is [outDim x (hDim + nCov)]; a width mismatch reaches armadillo
   ## as a std::logic_error and aborts the session, so check it here
   .vaeCheckEncoderDims <- function(params) {

@@ -21601,9 +21601,46 @@ struct VaeStepOut {
   std::vector<std::vector<double> > rvar;   // per-subject residual variance r (sigma^2)
   arma::ivec mixnum;    // [N] selected mixture component (1-based)
   arma::vec mixW;       // [nMix] mean posterior responsibility over subjects
+  arma::mat muAll;      // [N*nMix, zDim] posterior mean per (subject, component)
   // encoder parameter gradients
   arma::mat gWih, gWhh, gFcW; arma::vec gbih, gbhh, gFcB;
 };
+
+// Component-conditioned encoder inputs.  The encoder must characterize every
+// (subject, component) pair, so it is run over nSub*nMix pseudo-subjects laid
+// out component-major (row m*N + i), matching the flattened id space the inner
+// driver already uses (id = m*nsub + subject).
+//
+// The sequence the trunk reads does not depend on the component, so the
+// sequence data is tiled unchanged and the component identity enters at the FC
+// head as a one-hot appended to the covariate block -- which is exactly where
+// covariates enter.  That makes this encoder(y_i, cov_i, m) with no change to
+// the encoder itself: the trunk gradient accumulates over the nMix copies,
+// which is the correct gradient for a shared trunk with a conditioned head.
+//
+// Built ONCE per fit by the callers, not per ELBO step.
+static void vaeTileEncoderInputs(const arma::cube& dataIn, const arma::ivec& lengths,
+                                 const arma::mat& covIn, int nMix,
+                                 arma::cube& dataOut, arma::ivec& lenOut,
+                                 arma::mat& covOut) {
+  const int N = dataIn.n_rows;
+  if (nMix <= 1) { dataOut = dataIn; lenOut = lengths; covOut = covIn; return; }
+  const int nCov = covIn.n_cols;
+  dataOut.set_size(N * nMix, dataIn.n_cols, dataIn.n_slices);
+  lenOut.set_size(N * nMix);
+  covOut.zeros(N * nMix, nCov + nMix);
+  for (int m = 0; m < nMix; ++m) {
+    for (int i = 0; i < N; ++i) {
+      const int r = m * N + i;
+      for (unsigned int sl = 0; sl < dataIn.n_slices; ++sl) {
+        dataOut.slice(sl).row(r) = dataIn.slice(sl).row(i);
+      }
+      lenOut[r] = lengths[i];
+      if (nCov > 0) covOut.submat(r, 0, r, nCov - 1) = covIn.row(i);
+      covOut(r, nCov + m) = 1.0;          // component one-hot
+    }
+  }
+}
 
 // One ELBO evaluation using the FOCEi inner likelihood (port of
 // .vaeElboStepInner).  zPopMat [N,zDim] is the (possibly subject-specific) KL
@@ -21620,7 +21657,10 @@ static VaeStepOut vaeElboStepCpp(const arma::mat& Wih, const arma::mat& Whh,
                                  int nMix, const arma::vec& mixProb, int cores,
                                  bool withGrad = true, bool parEncoderBackward = false) {
   VaeStepOut S; S.ok = true;
-  const int N = dataIn.n_rows;
+  // dataIn/lengths/covIn arrive TILED to nSub*nMix pseudo-subjects (see
+  // vaeTileEncoderInputs); N stays the physical subject count.
+  const int Ne = dataIn.n_rows;
+  const int N = (nMix > 1) ? Ne / nMix : Ne;
   // full-omega prior pieces; the diagonal path below is kept verbatim so
   // diagonal models are bit-identical to the historic code
   const arma::vec omega = Om.diag();
@@ -21632,11 +21672,22 @@ static VaeStepOut vaeElboStepCpp(const arma::mat& Wih, const arma::mat& Whh,
     double sgn; arma::log_det(logdetOm, sgn, arma::symmatu(Om));
   }
   // encoder forward (no backward yet -- need z to form gZ first)
-  arma::mat mu(N, zDim), logSigma(N, zDim), zOut(N, zDim);
-  arma::cube Lout(zDim, zDim, N);
-  arma::mat dummyGz(N, zDim, arma::fill::zeros), dummyGls(N, zDim, arma::fill::zeros);
+  arma::mat mu(Ne, zDim), logSigma(Ne, zDim), zOut(Ne, zDim);
+  arma::cube Lout(zDim, zDim, Ne);
+  arma::mat dummyGz(Ne, zDim, arma::fill::zeros), dummyGls(Ne, zDim, arma::fill::zeros);
   arma::mat gWih, gWhh, gFcW; arma::vec gbih, gbhh, gFcB;
-  vaeEncoderFwdBwdCore(dataIn, lengths, covIn, eps, Wih, Whh, bih, bhh, fcW, fcB, zDim,
+  // one reparameterization draw per subject, shared across that subject's
+  // components (common random numbers -- lower variance, and the components
+  // differ through the head, not the noise)
+  arma::mat epsE = eps, zPopE = zPopMat;
+  if (nMix > 1) {
+    epsE.set_size(Ne, zDim); zPopE.set_size(Ne, zDim);
+    for (int m = 0; m < nMix; ++m) {
+      epsE.rows(m * N, m * N + N - 1) = eps.rows(0, N - 1);
+      zPopE.rows(m * N, m * N + N - 1) = zPopMat.rows(0, N - 1);
+    }
+  }
+  vaeEncoderFwdBwdCore(dataIn, lengths, covIn, epsE, Wih, Whh, bih, bhh, fcW, fcB, zDim,
                        dummyGz, dummyGls, false, mu, logSigma, Lout, zOut,
                        gWih, gWhh, gbih, gbhh, gFcW, gFcB, cores);
   arma::mat eta = zOut;
@@ -21644,15 +21695,16 @@ static VaeStepOut vaeElboStepCpp(const arma::mat& Wih, const arma::mat& Whh,
   // inner-problem re-parameterization + evaluation
   arma::vec thv = vaeBuildTh(th, zPopThetaIdx0, baseline, errThetaIdx0, a);
   vaeInnerUpdateParCore(thv, Om);
-  arma::mat etaEval = eta;
-  if (nMix > 1) { etaEval.set_size(nMix * N, zDim); for (int m = 0; m < nMix; ++m) etaEval.rows(m * N, m * N + N - 1) = eta; }
+  // eta already carries one row per (subject, component): each component is
+  // scored at ITS OWN eta, not at a shared one tiled across components
+  const arma::mat& etaEval = eta;
   arma::vec obj; arma::mat lp; std::vector<std::vector<double> > pf;
   std::vector<std::vector<double> > prv;
   vaeInnerLikCore(etaEval, cores, true, true, obj, lp, pf, false, &prv);
 
   const double ln2pi = std::log(2 * M_PI);
-  arma::vec pzI(N);
-  for (int i = 0; i < N; ++i) {
+  arma::vec pzI(Ne);
+  for (int i = 0; i < Ne; ++i) {
     double s;
     if (omOff) {
       arma::vec ei = eta.row(i).t();
@@ -21663,7 +21715,9 @@ static VaeStepOut vaeElboStepCpp(const arma::mat& Wih, const arma::mat& Whh,
     pzI[i] = 0.5 * s;
   }
   double jointTot;
-  arma::mat lpBest(N, zDim);
+  arma::mat lpAll(Ne, zDim, arma::fill::zeros);
+  arma::uvec sel(N);                       // selected pseudo-subject row per subject
+  for (int i = 0; i < N; ++i) sel[i] = i;  // nMix == 1: the subject IS the row
   S.preds.resize(N);
   S.rvar.resize(N);
   S.mixnum.set_size(N); S.mixnum.fill(1);
@@ -21697,71 +21751,98 @@ static VaeStepOut vaeElboStepCpp(const arma::mat& Wih, const arma::mat& Whh,
         jointTot += op_focei.badSolveObjfAdj;
         resp[best] = 1.0;
       }
-      // the encoder is trained on the objective it optimizes: the gradient of
-      // the marginal is the responsibility-weighted mean, not the argmax
-      // component's gradient
-      lpBest.row(i).zeros();
+      // Each component has its OWN eta, so eta_im appears in component m's term
+      // alone: d(marginal)/d(eta_im) is just that component's gradient scaled
+      // by its responsibility.  Nothing is combined across components.
       for (int m = 0; m < nMix; ++m) {
-        if (resp[m] > 0) lpBest.row(i) += resp[m] * lp.row(m * N + i);
+        lpAll.row(m * N + i) = resp[m] * lp.row(m * N + i);
       }
-      // preds/rvar stay on the argmax component: the closed-form residual
-      // M-step is a moment estimator, and averaging residuals across
-      // components inflates the residual SD
-      S.preds[i] = pf[best * N + i];
-      if (!prv.empty()) S.rvar[i] = prv[best * N + i];
+      // everything reported per SUBJECT comes from the selected component --
+      // its eta, its predictions, its residual variance -- the same way focei
+      // reports bestMixEst
+      sel[i] = best * N + i;
+      S.preds[i] = pf[sel[i]];
+      if (!prv.empty()) S.rvar[i] = prv[sel[i]];
       S.mixnum[i] = best + 1;
       S.mixW += resp;
     }
     S.mixW /= (double)N;
   } else {
     jointTot = arma::accu(obj);
-    lpBest = lp;
+    lpAll = lp;
     for (int i = 0; i < N; ++i) {
       S.preds[i] = pf[i];
       if (!prv.empty()) S.rvar[i] = prv[i];
     }
   }
-  double pxz = jointTot - arma::accu(pzI);
+  // the prior is removed at the SELECTED component, which is the eta this
+  // subject is reported at
+  double pxzPrior = 0;
+  for (int i = 0; i < N; ++i) pxzPrior += pzI[sel[i]];
+  double pxz = jointTot - pxzPrior;
   double pz = 0, qz = 0;
   for (int i = 0; i < N; ++i) {
+    const unsigned int r = sel[i];         // the selected component's posterior
     if (omOff) {
-      arma::vec d = (zOut.row(i) - zPopMat.row(i)).t();
+      arma::vec d = (zOut.row(r) - zPopE.row(r)).t();
       pz += 0.5 * (arma::dot(d, OmInv * d) + logdetOm + zDim * ln2pi);
     }
     for (int k = 0; k < zDim; ++k) {
       if (!omOff) {
-        double d = zOut(i, k) - zPopMat(i, k);
+        double d = zOut(r, k) - zPopE(r, k);
         pz += 0.5 * (d * d / omega[k] + std::log(omega[k]) + ln2pi);
       }
-      qz += 0.5 * (eps(i, k) * eps(i, k) + ln2pi + 2 * logSigma(i, k));
+      qz += 0.5 * (epsE(r, k) * epsE(r, k) + ln2pi + 2 * logSigma(r, k));
     }
   }
   double DKL = pz - qz;
   if (withGrad) {
     // encoder upstream: d(pxz)/dz = lp - Omega^-1 eta; KL adds
     // alphaKL * Omega^-1 (z - zPopMat)
-    arma::mat gZ = lpBest;
+    // Every pseudo-subject keeps its OWN data gradient (already responsibility
+    // scaled).  The prior correction and the KL apply to the selected row only,
+    // because that is where pxz removed the prior and where DKL was formed.
+    arma::mat gZ = lpAll;
+    arma::mat gLS(Ne, zDim, arma::fill::zeros);
     for (int i = 0; i < N; ++i) {
+      const unsigned int r = sel[i];
       arma::vec pri(zDim), klg(zDim);
       if (omOff) {
-        pri = OmInv * eta.row(i).t();
-        klg = OmInv * (zOut.row(i) - zPopMat.row(i)).t();
+        pri = OmInv * eta.row(r).t();
+        klg = OmInv * (zOut.row(r) - zPopE.row(r)).t();
       }
       for (int k = 0; k < zDim; ++k) {
         double g = omOff
-          ? gZ(i, k) - pri[k] + alphaKL * klg[k]
-          : gZ(i, k) - eta(i, k) / omega[k] + alphaKL * (zOut(i, k) - zPopMat(i, k)) / omega[k];
-        gZ(i, k) = R_FINITE(g) ? g : 0.0;
+          ? gZ(r, k) - pri[k] + alphaKL * klg[k]
+          : gZ(r, k) - eta(r, k) / omega[k] + alphaKL * (zOut(r, k) - zPopE(r, k)) / omega[k];
+        gZ(r, k) = R_FINITE(g) ? g : 0.0;
       }
+      gLS.row(r).fill(-alphaKL);
     }
-    arma::mat gLS(N, zDim); gLS.fill(-alphaKL);
-    arma::mat mu2(N, zDim), ls2(N, zDim), z2(N, zDim); arma::cube L2(zDim, zDim, N);
-    vaeEncoderFwdBwdCore(dataIn, lengths, covIn, eps, Wih, Whh, bih, bhh, fcW, fcB, zDim,
+    for (int r = 0; r < Ne; ++r) {
+      for (int k = 0; k < zDim; ++k) if (!R_FINITE(gZ(r, k))) gZ(r, k) = 0.0;
+    }
+    arma::mat mu2(Ne, zDim), ls2(Ne, zDim), z2(Ne, zDim); arma::cube L2(zDim, zDim, Ne);
+    vaeEncoderFwdBwdCore(dataIn, lengths, covIn, epsE, Wih, Whh, bih, bhh, fcW, fcB, zDim,
                          gZ, gLS, true, mu2, ls2, L2, z2,
                          S.gWih, S.gWhh, S.gbih, S.gbhh, S.gFcW, S.gFcB, cores,
                          parEncoderBackward);
   }
-  S.pxz = pxz; S.DKL = DKL; S.mu = mu; S.z = zOut; S.L = Lout; S.lp = lpBest;
+  // report one row per SUBJECT: the selected component's posterior
+  S.pxz = pxz; S.DKL = DKL;
+  if (nMix > 1) {
+    S.mu.set_size(N, zDim); S.z.set_size(N, zDim); S.lp.set_size(N, zDim);
+    S.L.set_size(zDim, zDim, N);
+    for (int i = 0; i < N; ++i) {
+      S.mu.row(i) = mu.row(sel[i]);
+      S.z.row(i) = zOut.row(sel[i]);
+      S.lp.row(i) = lpAll.row(sel[i]);
+      S.L.slice(i) = Lout.slice(sel[i]);
+    }
+  } else {
+    S.mu = mu; S.z = zOut; S.L = Lout; S.lp = lpAll;
+  }
+  S.muAll = mu;
   if (!R_FINITE(pxz)) S.ok = true; // a failed subject is zeroed in gZ, not fatal
   return S;
 }
@@ -21788,6 +21869,17 @@ List vaeElboStepCpp_(List params, List prep, RObject zPopR, RObject omegaR,
   arma::cube dataIn = as<arma::cube>(prep["dataIn"]);
   arma::ivec lengths = vaeToIvec(prep["lengths"]);
   arma::mat covIn = as<arma::mat>(prep["covIn"]);
+  // component-conditioned encoder inputs (see vaeTileEncoderInputs)
+  arma::cube dataInE; arma::ivec lenE; arma::mat covEnc;
+  vaeTileEncoderInputs(dataIn, lengths, covIn, nMix, dataInE, lenE, covEnc);
+  // A head that does not match the (widened) input reaches armadillo as a
+  // std::logic_error from inside the encoder, which terminates the SESSION
+  // rather than raising an R error.  Check it here while we still can.
+  if ((int)fcW.n_cols != (int)(Whh.n_cols + covEnc.n_cols)) {
+    stop("vae encoder head is %d wide but needs hiddenDim + ncol(covIn)%s = %d",
+         (int)fcW.n_cols, nMix > 1 ? " + nMix" : "",
+         (int)(Whh.n_cols + covEnc.n_cols));
+  }
   arma::vec th = as<arma::vec>(prep["th"]);
   // .vaeDataPrep stores 1-based theta indices with NA for a free/mixture eta; map
   // to the 0-based (-1 = free) form the core uses.
@@ -21812,7 +21904,7 @@ List vaeElboStepCpp_(List params, List prep, RObject zPopR, RObject omegaR,
     zPopMat.each_row() = zp.t();
     baseline = zp;
   }
-  VaeStepOut S = vaeElboStepCpp(Wih, Whh, bih, bhh, fcW, fcB, dataIn, lengths, covIn,
+  VaeStepOut S = vaeElboStepCpp(Wih, Whh, bih, bhh, fcW, fcB, dataInE, lenE, covEnc,
                                 eps, zDim, th, zPopThetaIdx0, errThetaIdx0, zPopMat, baseline,
                                 Om, a, alphaKL, nMix, mixProb, cores, withGrad);
   RObject grads = R_NilValue;
@@ -21827,7 +21919,10 @@ List vaeElboStepCpp_(List params, List prep, RObject zPopR, RObject omegaR,
   for (int i = 0; i < N; ++i) mixnum[i] = S.mixnum[i];
   return List::create(_["loss"] = S.pxz + alphaKL * S.DKL, _["pxz"] = S.pxz, _["DKL"] = S.DKL,
                       _["grads"] = grads, _["mu"] = S.mu, _["L"] = S.L, _["z"] = S.z,
-                      _["preds"] = preds, _["rvar"] = rvar, _["mixnum"] = mixnum);
+                      _["preds"] = preds, _["rvar"] = rvar, _["mixnum"] = mixnum,
+                      // per (subject, component) posterior mean, component-major
+                      // (row m*N + i) -- the encoder characterizes every pair
+                      _["muAll"] = S.muAll, _["mixW"] = S.mixW);
 }
 
 // ---------------------------------------------------------------------------
@@ -22707,13 +22802,12 @@ static double gVaeThetaObjR(Rcpp::NumericVector r) {
   }
   arma::vec thv = vaeBuildTh(thc, gVaeRegZpopIdx0, gVaeRegBaseline, gVaeRegErrIdx0, aCand);
   vaeInnerUpdateParCore(thv, gVaeRegOmega);
-  const int N = (int)gVaeRegEtaCentered.n_rows;
+  // gVaeRegEtaCentered already carries one row per (subject, component) --
+  // each component is scored at ITS OWN eta, not at a shared one tiled across
+  // components
   const int nMix = gVaeRegNMix;
-  arma::mat etaEval = gVaeRegEtaCentered;
-  if (nMix > 1) {
-    etaEval.set_size(nMix * N, gVaeRegEtaCentered.n_cols);
-    for (int m = 0; m < nMix; ++m) etaEval.rows(m * N, m * N + N - 1) = gVaeRegEtaCentered;
-  }
+  const int N = (int)gVaeRegEtaCentered.n_rows / (nMix > 1 ? nMix : 1);
+  const arma::mat& etaEval = gVaeRegEtaCentered;
   arma::vec obj; arma::mat lp; std::vector<std::vector<double> > pf;
   vaeInnerLikCore(etaEval, gVaeRegCores, false, false, obj, lp, pf, gVaeRegAdjOuter);
   double v;
@@ -22760,6 +22854,12 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
   arma::cube dataIn = as<arma::cube>(prep["dataIn"]);
   arma::ivec lengths = vaeToIvec(prep["lengths"]);
   arma::mat covIn = as<arma::mat>(prep["covIn"]);
+  // Component-conditioned ENCODER inputs, built once (see
+  // vaeTileEncoderInputs).  Kept separate from covIn, which the covariate
+  // best-subset machinery below indexes against covAllow/covGroup -- the
+  // component one-hot is not a covariate and must not be selectable.
+  arma::cube dataInE; arma::ivec lenE; arma::mat covEnc;
+  vaeTileEncoderInputs(dataIn, lengths, covIn, nMix, dataInE, lenE, covEnc);
   arma::mat covMat = as<arma::mat>(prep["covMat"]);
   arma::vec th = as<arma::vec>(prep["th"]);
   arma::ivec zPopThetaIdx0 = vaeToIvec(prep["zPopThetaIdx0"]);
@@ -23125,7 +23225,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       arma::mat eps(N, zDim);
       vaeDrawEps(eps, (uint32_t)(seed + (it - 1) * Lg + l));
       arma::mat zPopMat(N, zDim); zPopMat.each_row() = zPop.t();
-      VaeStepOut st = vaeElboStepCpp(Wih, Whh, bih, bhh, fcW, fcB, dataIn, lengths, covIn,
+      VaeStepOut st = vaeElboStepCpp(Wih, Whh, bih, bhh, fcW, fcB, dataInE, lenE, covEnc,
                                      eps, zDim, th, zPopThetaIdx0, errThetaIdx0, zPopMat, zPop,
                                      omFull(), a, 0.001, nMix, mixProb, cores, true, parEncoderBackward);
       tstep++;
@@ -23546,7 +23646,8 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       gVaeRegBaseline = baseline;
       gVaeRegA = a;
       gVaeRegOmega = omFull();
-      gVaeRegEtaCentered = last.mu; gVaeRegEtaCentered.each_row() -= baseline.t();
+      gVaeRegEtaCentered = last.muAll.n_rows > 0 ? last.muAll : last.mu;
+      gVaeRegEtaCentered.each_row() -= baseline.t();
       gVaeRegCores = cores; gVaeRegNMix = nMix; gVaeRegMixProb = mixProb;
       gVaeRegAdjOuter = mStepOuter;  // outer objective, or the reference ELBO
       Rcpp::Environment nlmixr2 = Rcpp::Environment::namespace_env("nlmixr2est");
@@ -23694,7 +23795,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
     for (int l = 1; l <= Lg; ++l) {
       arma::mat eps(N, zDim);
       vaeDrawEps(eps, (uint32_t)(seed + 1000003 + (it - 1) * Lg + l));
-      VaeStepOut st = vaeElboStepCpp(Wih, Whh, bih, bhh, fcW, fcB, dataIn, lengths, covIn,
+      VaeStepOut st = vaeElboStepCpp(Wih, Whh, bih, bhh, fcW, fcB, dataInE, lenE, covEnc,
                                      eps, zDim, th, zPopThetaIdx0, errThetaIdx0, zPopArg, baseline,
                                      omFull(), a, alphaKL, nMix, mixProb, cores, true, parEncoderBackward);
       tstep++;

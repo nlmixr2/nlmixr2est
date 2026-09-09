@@ -168,6 +168,15 @@
   thetas the same wrong way, and the two must agree or the M-step optimizes a
   different function than the reported ELBO.
 
+- `est="vae"`'s encoder now characterizes every subject-component pair, each
+  at its own random effect, the way the other mixture methods do.  It produced
+  a single posterior per subject which was then reused for every component, so
+  the components were compared at a random effect that had been fitted to none
+  of them.  The component enters the encoder at its head, alongside the
+  covariates, so a mixture model's encoder head is `nMix` inputs wider.
+  Everything reported per subject -- the random effect, the predictions, the
+  residual variance -- comes from the selected component.
+
 - `est="vae"`'s encoder is trained on the gradient of the objective it
   optimizes.  The objective was the marginal over components but the gradient
   handed to the encoder was the single best component's; it is now the

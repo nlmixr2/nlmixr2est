@@ -311,7 +311,10 @@ nmTest({
     innerEnv <- .vaeInnerSetup(ui, nlmixr2data::theo_sd, matrix(0, N, zDim), ctl)
     on.exit(.vaeInnerFree(), add = TRUE)
     .testSeed(7)
-    params <- .vaeEncoderInitParams(zDim, 12L, ncol(prep$covIn), prep$zPop, rep(0.1, zDim))
+    ## the encoder is conditioned on the component, so the head carries nMix
+    ## extra one-hot inputs alongside the covariates
+    params <- .vaeEncoderInitParams(zDim, 12L, ncol(prep$covIn) + nMix, prep$zPop,
+                                    rep(0.1, zDim))
     eps <- matrix(rnorm(N * zDim), N, zDim)
     st <- .vaeElboStepInner(params, prep, innerEnv, prep$zPop, prep$omega, prep$a,
                             1, eps, ctl, nMix, mixProb, withGrad = FALSE)
@@ -332,6 +335,22 @@ nmTest({
     .mm <- apply(.ll, 1, max)
     .want <- -sum(.mm + log(rowSums(exp(.ll - .mm))))
     expect_equal(.jointTot, .want, tolerance = 1e-8)
+
+    ## Every (subject, component) pair gets its OWN posterior from the encoder.
+    ## The components used to be scored at a single shared eta tiled across them
+    ## -- an eta fitted to none of them.  This is the assertion that would
+    ## regress if the tiling came back.
+    expect_equal(dim(st$muAll), c(N * nMix, zDim))
+    expect_equal(dim(st$mu), c(N, zDim))
+    .m1 <- st$muAll[seq_len(N), , drop = FALSE]
+    .m2 <- st$muAll[N + seq_len(N), , drop = FALSE]
+    expect_false(isTRUE(all.equal(.m1, .m2)))
+    ## and what is reported per subject is the SELECTED component's row
+    .sel <- (st$mixnum - 1L) * N + seq_len(N)
+    expect_equal(st$mu, st$muAll[.sel, , drop = FALSE])
+    ## responsibilities are a distribution over components
+    expect_length(st$mixW, nMix)
+    expect_equal(sum(st$mixW), 1)
 
     ## and it is NOT the square-root marginalization the code used to compute
     .ll2 <- sweep(-0.5 * .obj, 2, log(mixProb), "+")
