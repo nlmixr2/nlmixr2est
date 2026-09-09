@@ -4370,7 +4370,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     if (inherits(.tmp, "try-error")) {
       warning("error calculating tables, returning without table step", call. = FALSE)
     } else {
-      .ret <- .mixFixTable(.tmp, .env, ui)
+      .ret <- .tmp
     }
   }
   assign("sessioninfo", .sessionInfo(), envir = .env)

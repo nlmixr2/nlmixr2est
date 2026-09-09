@@ -128,9 +128,21 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   }
   if (is.environment(.env) && exists("mixIcov", envir=.env, inherits = FALSE)) {
     .iCov <- get("mixIcov", envir=.env, inherits = FALSE)
+    # ID has to match the type of the data's ID column.  It is built as an
+    # integer, but output creation re-levels every ID column in the fit
+    # environment to a factor afterwards, so coerce at the point of use.
+    if (!is.null(.iCov) && !is.null(.iCov$ID)) {
+      .iCov$ID <- if (is.factor(.iCov$ID)) {
+        as.integer(as.character(.iCov$ID))
+      } else {
+        as.integer(.iCov$ID)
+      }
+      if (anyNA(.iCov$ID)) .iCov <- NULL
+    }
   }
-  # Fallback flag: if rxode2 rejects iCov (older versions), retry without
-  # it; .mixFixTable() post-corrects me/mn/mu from mixNum.
+  # Fallback flag: an rxode2 that predates per-individual mixest for an
+  # expanded mix() rejects the iCov; retry without it rather than losing the
+  # whole table step.  mixest/mixnum then read 0 there, as they did before.
   .iCovOK <- !is.null(.iCov)
   while (recalc & length(odeMethods) > 0) {
     recalcN <- 0
@@ -155,7 +167,8 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
                             iCov = .iCov,
                             keep=keep, addDosing=addDosing, subsetNonmem=subsetNonmem, addCov=addCov),
           error = function(e) {
-            if (grepl("time.varying|mixest must be", conditionMessage(e), ignore.case=TRUE)) {
+            if (grepl("time.varying|mixest|mixunif|'iCov'", conditionMessage(e),
+                      ignore.case=TRUE)) {
               .iCovOK <<- FALSE
               .foceiSolveWithId(model, pars, fit$dataSav,
                                 returnType = returnType,

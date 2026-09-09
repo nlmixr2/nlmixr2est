@@ -178,8 +178,8 @@
 #'
 #' SAEM analogue of `.mixFix()`: builds `mixList` (per-mixture ID/ETA/
 #' probability), `mixNum` (best mixture assignment), `mixIcov` (for rxode2's
-#' mixture fixing during solve/table calc), and `mixProbabilities` (full
-#' nMix-length vector for `.mixFixTable()`), all from the `mixWeights` matrix
+#' mixture fixing during solve/table calc), and `mixProbabilities` (the full
+#' nMix-length vector), all from the `mixWeights` matrix
 #' already computed by the SAEM C++ engine (`env$saem$mixWeights`) -- unlike
 #' `.mixFix()`, no `etaObfFull` is needed.
 #'
@@ -433,39 +433,6 @@
 }
 preFinalParTableHooksAdd(".aaaPostEstimationMixBacktransform", .aaaPostEstimationMixBacktransform)
 
-#' Fix mixture LHS variables in the assembled fit table
-#'
-#' Safety fallback: replaces me/mn/mu with values from mixNum (me/mn) and
-#' 1/nMix (mu), since older rxode2 versions silently reject iCov's mixest
-#' and leave these columns as 0.
-#'
-#' @param fit nlmixr2FitData object (after addTable)
-#' @param env fit environment
-#' @param ui rxode2 UI object
-#' @return modified fit (or fit unchanged for non-mixture models)
-#' @noRd
-#' @author Matthew L. Fidler
-.mixFixTable <- function(fit, env, ui) {
-  if (!inherits(fit, "nlmixr2FitData")) return(fit)
-  if (!exists("mixNum", envir=env)) return(fit)
-  .mn <- get("mixNum", envir=env)
-  if (is.null(.mn) || nrow(.mn) == 0L) return(fit)
-  .nMix <- length(ui$mixProbs) + 1L  # nMix = n_explicit_probs + 1
-  # me and mn: best-fit mixture per individual (1-indexed)
-  if ("me" %in% names(fit)) {
-    .meMap <- setNames(as.integer(.mn$mixnum), as.integer(.mn$ID))
-    fit[["me"]] <- .meMap[as.integer(fit[["ID"]])]
-  }
-  if ("mn" %in% names(fit)) {
-    .meMap <- setNames(as.integer(.mn$mixnum), as.integer(.mn$ID))
-    fit[["mn"]] <- .meMap[as.integer(fit[["ID"]])]
-  }
-  # mu: uniform mixture probability = 1/nMix (constant)
-  if ("mu" %in% names(fit) && .nMix > 0L) {
-    fit[["mu"]] <- 1.0 / .nMix
-  }
-  fit
-}
 
 #' @export
 rxUiGet.thetaIniMix <- function(x, ...) {

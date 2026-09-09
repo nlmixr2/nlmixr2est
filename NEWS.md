@@ -104,6 +104,41 @@
 
 ## Bug fixes
 
+### Mixture models
+
+- A mixture fit's table reported `mixest`, `mixnum` and the result of `mix()`
+  itself as 0 for every row, and `PRED`/`IPRED` were computed from those zeros
+  -- silently wrong predictions rather than an error (#1041).  The prediction
+  model is built through symengine, which expands the `mix()` call away, and
+  rxode2 then no longer read the model as a mixture at all, so the
+  per-individual component never reached the solve.  Fixed in rxode2
+  (nlmixr2/rxode2#1358); this release stops working around it.
+
+- A mixture probability declared before a mu-referenced population parameter
+  shifted every eta after it onto the wrong parameter -- in the reported model
+  the volume's eta landed on the mixture probability and the volume itself got
+  none, so `IPRED` carried no volume between-subject variability.  The eta to
+  theta map is an index into the SAEM estimation parameter vector, which leaves
+  the mixture probabilities out, and it was used to subscript the model text
+  built in `ini()` order, which keeps them.
+
+- The `mixest`/`mixnum` iCov handed to the table step is rejected by rxode2
+  when its `ID` is a factor, which it always was: it is built as an integer and
+  output creation re-levels every `ID` in the fit environment afterwards.  The
+  whole table step was then dropped and the fit came back without a table.
+
+- A rejected iCov no longer takes the table step down with it -- the retry
+  without it now covers the rxode2 messages that can actually be raised.
+
+- The post-hoc correction of the `mixest`/`mixnum`/`mixunif` output columns is
+  removed.  It only ever fired for columns literally named `me`, `mn` and `mu`,
+  so a model that named them anything else kept the zeros; and now that the
+  solve is right it was corrupting correct values -- it wrote the per-subject
+  component into the column holding `mixnum`, which is the component *count*.
+  A model that reads `mixunif` in an expanded prediction model gets the
+  supplied component back rather than a fabricated `1/nMix`; use `mixest`.
+
+### Estimation
 
 - With two or more occasion parameters on one level, `fit$iov$<level>` had
   `NA` for every occasion (and the fit warned "NAs introduced by

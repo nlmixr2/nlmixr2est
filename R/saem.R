@@ -1507,13 +1507,6 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
     # table is built, attempt the FOCEI analytic covariance at the converged
     # estimates (keeps linFim on any failure).
     .saemInstallAnalyticCov(.ret)
-    # For mixture models: post-correct me/mn/mu in the assembled fit table
-    # (mirrors the .mixFixTable call in .foceiFamilyReturn for FOCEi fits)
-    if (inherits(.ret, "nlmixr2FitData") && length(.ui$mixProbs) > 0L) {
-      .retEnv <- attr(class(.ret), ".foceiEnv")
-      if (is.null(.retEnv)) .retEnv <- .ret$env
-      .ret <- .mixFixTable(.ret, .retEnv, .ui)
-    }
     .setSaemExtra(.ret, "FOCEi")
     .ret
   })

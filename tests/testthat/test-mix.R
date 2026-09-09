@@ -381,4 +381,44 @@ nmTest({
     expect_false(any(vapply(.mixList, function(m) any(is.nan(m$prob)), logical(1))))
   })
 
+  test_that("a mixture probability does not shift the eta/theta pairing", {
+    # The eta -> theta index comes from the SAEM ESTIMATION parameter vector,
+    # which leaves the mixture probabilities out, while the model text is built
+    # in iniDf order, which keeps them.  Using the raw index paired every eta
+    # after the probability with the wrong parameter -- here eta.v landed on p1
+    # and tv got no eta at all, so IPRED carried no volume IIV (#1041).
+    .mod <- function() {
+      ini({
+        kel1 <- 0.45; kel2 <- 0.90; p1 <- 0.40; tv <- 1.80
+        eta.kel1 ~ 0.02; eta.kel2 ~ 0.08; eta.v ~ 0.20
+        add.sd <- 0.02
+      })
+      model({
+        kelLow <- kel1 + eta.kel1
+        kelHigh <- kel2 + eta.kel2
+        Kel <- mix(kelLow, p1, kelHigh)
+        Vol <- tv + eta.v
+        d/dt(centr) <- -Kel * centr
+        cp <- centr / Vol
+        cp ~ add(add.sd)
+      })
+    }
+    .ui <- .mod()
+    .repl <- rxUiGet.saemModelPredReplaceLst(list(.ui))
+    # each eta rides on the theta it is mu-referenced to
+    expect_equal(unname(.repl["kel1"]), "THETA[1] + ETA[1]")
+    expect_equal(unname(.repl["kel2"]), "THETA[2] + ETA[2]")
+    expect_equal(unname(.repl["tv"]), "THETA[4] + ETA[3]")
+    # and the mixture probability carries no eta
+    expect_equal(unname(.repl["p1"]), "THETA[3]")
+
+    # the same, read off the model that is actually solved for the table
+    .txt <- rxode2::rxModelVars(.ui$saemModelPred$predOnly)$model[["normModel"]]
+    expect_match(.txt, "tv=THETA[4]+ETA[3];", fixed = TRUE)
+    expect_match(.txt, "p1=THETA[3];", fixed = TRUE)
+    # and that model still reads as a 2-component mixture, so rxode2 will take
+    # the per-subject mixest the table step hands it through iCov
+    expect_equal(unname(rxode2::rxModelVars(.ui$saemModelPred$predOnly)$flags["mix"]), 2L)
+  })
+
 })
