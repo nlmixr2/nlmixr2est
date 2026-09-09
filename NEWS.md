@@ -132,6 +132,22 @@
 
 ## Bug fixes
 
+### Mixture models
+
+- `fit$etaMat` no longer carries the `mixnum` column that `$eta` gains for a
+  mixture fit.  Every consumer that hands it back as `foceiControl(etaMat=)`
+  compared `neta + 1` columns against the model's `neta` and stopped with "The
+  etaMat must have the same number of ETAs (cols) as the model" -- so `$cov`,
+  `addCwres()`, the FO objective and re-fitting a fit were all failing for
+  every mixture fit, in most cases inside a `try()` that swallowed it.
+
+- A mixture fit's `$ui` now carries the mixture probability on the probability
+  scale rather than the mlogit scale it is estimated on.  `fullTheta` is left
+  on the estimation scale and only `$theta` was back-transformed, so `$ui`
+  reported `p1 = -0.847` where `fixef()` reported `0.3`, and re-fitting the fit
+  failed its own `ini()` validation ("the probabilities in a mixture must sum
+  to a number between 0 and 1").
+
 - A `focei`-family fit now reports whether its inner solves actually
   converged.  `fit$env$nTrustInner` breaks the `innerOpt="trust"` per-subject
   Newton solves down by outcome (`calls`, `error`, `notConverged`,

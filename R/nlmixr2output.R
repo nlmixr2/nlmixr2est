@@ -806,7 +806,11 @@ vcov.nlmixr2FitCoreSilent <- vcov.nlmixr2FitCore
   .ui <- x$ui
   .iniDf <- .ui$iniDf
   assign("iniDf0", nlmixr2global$nlmixr2EstEnv$iniDf0, envir=x)
-  if (exists("fullTheta", x)) {
+  # `fullTheta` is on the ESTIMATION scale; a mixture probability is therefore
+  # still mlogit there and has to be brought back below.  `fixef` and `theta`
+  # were already back-transformed by .aaaPostEstimationMixBacktransform().
+  .fromFullTheta <- exists("fullTheta", x)
+  if (.fromFullTheta) {
     .thetas <- x$fullTheta
   } else if (exists("fixef", x)) {
     .thetas <- get("fixef", x)
@@ -818,6 +822,15 @@ vcov.nlmixr2FitCoreSilent <- vcov.nlmixr2FitCore
     if (length(.thetaNames) > length(.thetas)) stop("corrupted rxode2 ui", call.=FALSE)
     .thetas <- .thetas[seq_along(.thetaNames)]
     names(.thetas) <- .thetaNames
+  }
+  # Without this the ui carries e.g. p1 = -0.847 = mlogit(0.3) while fixef()
+  # reports 0.3, and re-fitting the fit fails its own ini() validation.
+  if (.fromFullTheta) {
+    .mixNames <- tryCatch(.ui$mixProbs, error = function(e) character(0))
+    .mixNames <- intersect(.mixNames, names(.thetas))
+    if (length(.mixNames) > 0L) {
+      .thetas[.mixNames] <- rxode2::mexpit(unname(.thetas[.mixNames]))
+    }
   }
   for (.n in names(.thetas)) {
     .iniDf$est[.iniDf$name == .n] <- .thetas[.n]

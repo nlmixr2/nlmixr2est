@@ -281,8 +281,7 @@
   }
   .eta <- tryCatch(fit$eta, error = function(e) NULL)
   if (!is.null(.eta)) {
-    .etaCols <- setdiff(names(.eta), "ID")
-    .control$etaMat <- as.matrix(.eta[, .etaCols, drop = FALSE])
+    .control$etaMat <- as.matrix(.nmDropNonEtaCols(.eta))
   }
   # the nested re-fit resets mu-referencing global state (.muRefTrans$cur); save + restore.
   .savedMuRef <- .muRefTrans$cur

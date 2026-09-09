@@ -29,9 +29,9 @@
   .eta <- tryCatch(fit$eta, error = function(e) NULL)
   .etaMat <- NULL
   if (!is.null(.eta)) {
-    .etaCols <- setdiff(names(.eta), "ID")
-    if (length(.etaCols) > 0L) {
-      .etaMat <- as.matrix(.eta[, .etaCols, drop = FALSE])
+    .eta <- .nmDropNonEtaCols(.eta)
+    if (ncol(.eta) > 0L) {
+      .etaMat <- as.matrix(.eta)
     }
   }
   list(ui = .ui, data = getData(fit), etaMat = .etaMat)

@@ -32,6 +32,30 @@ nmTest({
     expect_false("MIXEST" %in% names(fit$ranef))
     expect_equal(nrow(fit$ranef), length(unique(nlmixr2data::theo_sd$ID)))
 
+    ## $eta carries a mixnum column for a mixture fit, but an etaMat must be
+    ## etas only or foceiSetup_ rejects it on the column count -- which broke
+    ## $cov, addCwres, the FO objective and any refit of the fit.
+    expect_equal(ncol(fit$etaMat), nrow(fit$omega))
+    expect_false("mixnum" %in% colnames(fit$etaMat))
+    expect_equal(colnames(fit$etaMat), c("eta.ka", "eta.cl", "eta.v"))
+
+    ## the ui must carry the PROBABILITY, not the mlogit fullTheta value, or it
+    ## disagrees with fixef() and the fit cannot be re-fit through its own ini()
+    .p1 <- fit$ui$iniDf$est[fit$ui$iniDf$name == "p1"]
+    expect_true(.p1 > 0 && .p1 < 1)
+    expect_equal(.p1, unname(fixef(fit)[["p1"]]))
+
+    ## both round trips that the two fixes above unblock
+    expect_error(nlmixr2(one.cmt, nlmixr2data::theo_sd, "focei",
+                         control = foceiControl(print = 0, maxOuterIterations = 0L,
+                                                maxInnerIterations = 0L,
+                                                etaMat = fit$etaMat, covMethod = "")),
+                 NA)
+    expect_error(nlmixr2(fit, nlmixr2data::theo_sd, "focei",
+                         control = foceiControl(print = 0, maxOuterIterations = 0L,
+                                                maxInnerIterations = 0L, covMethod = "")),
+                 NA)
+
     # mixNum: one row per subject
     mn <- fit$mixNum
     expect_true(is.data.frame(mn))
