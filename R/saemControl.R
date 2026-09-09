@@ -550,32 +550,6 @@
 #'   Monte-carlo iteration.
 #'
 #'
-#' @param burnAuto End burn-in when the estimated parameters have stopped
-#'   trending, rather than always spending all of `nBurn`.  `"off"` (default)
-#'   keeps `nBurn` meaning exactly what it means today; `"observe"` reports
-#'   where the test WOULD have stopped without changing the fit; `"stop"` acts
-#'   on it.
-#'
-#'   An automatic burn LENGTH is only safe alongside an automatic STOP.  A
-#'   generous `nBurn` costs nothing when a test ends it and is pure waste when
-#'   nothing does, which is why the reference tools pair them: on Bauer's g4
-#'   NONMEM was given a 4000-iteration cap and its own convergence test ended
-#'   burn-in after 517.  With `burnAuto = "stop"`, `nBurn` becomes that kind of
-#'   cap.
-#'
-#'   Set `nBurn` generously when using this.  The test can only ever end
-#'   burn-in EARLY -- it never extends it -- so an `nBurn` that was too small
-#'   stays too small.
-#'
-#' @param burnWindow Iterations of parameter history the `burnAuto` test looks
-#'   back over (NONMEM's `CITER`, default 10).  Minimum 4, since the trend test
-#'   needs `burnWindow - 2` degrees of freedom.
-#'
-#' @param burnAlpha Two-sided significance for the `burnAuto` trend test
-#'   (NONMEM's `CALPHA`, default 0.05).  Burn-in ends on the first iteration
-#'   where no estimated parameter's slope over the window is significant at this
-#'   level.  Smaller values stop sooner, being harder to call a trend.
-#'
 #' @param perFixOmega This is the percentage of the `nBurn` phase
 #'   where the omega values are unfixed to allow better exploration
 #'   of the likelihood surface.  After this time, the omegas are
@@ -967,9 +941,6 @@ saemControl <- function(seed = 99,
                         indTolRelax=TRUE,
                         perSa=0.75,
                         perNoCor=0.75,
-                        burnAuto = c("off", "observe", "stop"),
-                        burnWindow = 10L,
-                        burnAlpha = 0.05,
                         perFixOmega=0.1,
                         perFixResid=0.1,
                         compress=TRUE,
@@ -1063,11 +1034,6 @@ saemControl <- function(seed = 99,
   checkmate::assertNumeric(perSa, any.missing=FALSE, lower=0, upper=1, len=1)
   checkmate::assertNumeric(perNoCor, any.missing=FALSE, lower=0, upper=1, len=1)
   checkmate::assertNumeric(perFixOmega, any.missing=FALSE, lower=0, upper=1, len=1)
-  burnAuto <- match.arg(burnAuto)
-  checkmate::assertIntegerish(burnWindow, len=1, lower=4, any.missing=FALSE,
-                              .var.name="burnWindow")
-  checkmate::assertNumeric(burnAlpha, len=1, lower=1e-8, upper=0.5,
-                           any.missing=FALSE, .var.name="burnAlpha")
   checkmate::assertNumeric(perFixResid, any.missing=FALSE, lower=0, upper=1, len=1)
   checkmate::assertLogical(muRefCov, any.missing=FALSE, len=1)
   checkmate::assertLogical(muRefCovAlg, any.missing=FALSE, len=1)
@@ -1275,9 +1241,6 @@ saemControl <- function(seed = 99,
     perSa=perSa,
     perNoCor=perNoCor,
     perFixOmega=perFixOmega,
-    burnAuto = burnAuto,
-    burnWindow = as.integer(burnWindow),
-    burnAlpha = as.numeric(burnAlpha),
     perFixResid=perFixResid,
     compress=compress,
     genRxControl=.genRxControl,
