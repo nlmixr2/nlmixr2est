@@ -9157,6 +9157,13 @@ NumericVector foceiSetup_(const RObject &obj,
   if (op_focei.conditionalHessianRequested && op_focei.needOptimHess) {
     stop("Conditional inner Hessian requires Gaussian endpoints");
   }
+  // The conditional assembly REPLACES likInner0 (see evaluateInner), and it only
+  // builds the Gaussian density -- a registered contributor's LL and its eta
+  // derivatives would be dropped, so inner trust would optimize a different
+  // objective than the one the fit reports.
+  if (op_focei.conditionalHessianRequested && nlmixrHasLikContrib()) {
+    stop("Conditional inner Hessian does not support likelihood contributions");
+  }
   // innerOpt="auto" (4) resolves here, the first point where needOptimHess is
   // known.  A generalized-likelihood endpoint has no Gauss-Newton inner
   // Hessian, so trust pays 2*neta inner solves to rebuild it at every trial

@@ -548,7 +548,8 @@
 #'   `"conditional"`. Full conditional curvature requires fast Gaussian FOCEI.
 #'   Inner trust uses it at each trial; n1qn1 uses it with `warm="calc"`.
 #'   Value, gradient and full curvature share one sensitivity solve.
-#'   The marginal objective's FOCEI curvature is unchanged.
+#'   The marginal objective's FOCEI curvature is unchanged.  It is not
+#'   supported with registered external likelihood contributions.
 #' @param hessianMethod For a non-normal-endpoint model (any distribution
 #'     other than \code{norm}), the per-subject inner Hessian has no
 #'     Gaussian Gauss-Newton shortcut and falls back to a finite difference
@@ -1647,10 +1648,6 @@ foceiControl <- function(sigdig = 3, #
   }
   .foceiAssertHessianMethod(hessianMethod, innerOpt)
   innerHessian <- match.arg(innerHessian)
-  if (innerHessian == "conditional" && (!isTRUE(fast) || !isTRUE(as.logical(interaction)) ||
-      !(innerOpt %in% c(1L, 3L, 4L)))) {
-    stop("Conditional inner Hessian requires fast FOCEI with trust or n1qn1", call. = FALSE)
-  }
   checkmate::assertNumeric(trustConf, lower = 0, upper = 1, finite = TRUE, any.missing = FALSE, len = 1)
   if (trustConf <= 0 || trustConf >= 1) {
     # qchisq(0, df)==0 (zero trust-region radius, no step ever taken) and
@@ -1689,6 +1686,19 @@ foceiControl <- function(sigdig = 3, #
   } else {
     .warmIdx <- c("calc" = 1L, "save" = 0L)
     warm <- setNames(.warmIdx[match.arg(warm)], NULL)
+  }
+  # Checked here, AFTER `warm` is normalized to 1L/0L, because n1qn1 reaches the
+  # conditional curvature only through warmZm(), which runs only when warm=="calc".
+  # innerOpt="auto" resolves in C++ (needOptimHess ? n1qn1 : trust) and conditional
+  # curvature already rejects needOptimHess, so auto cannot land on n1qn1 here.
+  if (innerHessian == "conditional") {
+    if (!isTRUE(fast) || !isTRUE(as.logical(interaction)) || !(innerOpt %in% c(1L, 3L, 4L))) {
+      stop("Conditional inner Hessian requires fast FOCEI with trust or n1qn1", call. = FALSE)
+    }
+    if (innerOpt == 1L && warm == 0L) {
+      stop("innerHessian=\"conditional\" with innerOpt=\"n1qn1\" requires warm=\"calc\"",
+           call. = FALSE)
+    }
   }
   if (!is.null(.xtra$resetEtaSize)) {
     .resetEtaSize <- .xtra$resetEtaSize
