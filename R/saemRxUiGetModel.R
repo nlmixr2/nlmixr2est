@@ -499,12 +499,13 @@ rxUiGet.saemModelPredReplaceLst <- function(x, ...) {
   }
   .thetaValue <- c(.thetaValue, .thetaValueErr)
   .etaTrans <- rxUiGet.saemEtaTransPred(x, ...)
-  # .etaTrans indexes the SAEM ESTIMATION parameter vector, which leaves the
-  # mixture probabilities out; .thetaValue is in iniDf order and keeps them, so
-  # the position has to be turned back into a name before it is used here.
-  # Indexing .thetaValue by the raw position pairs each eta with whatever theta
-  # sits at that spot -- for a mixture model that shifts every eta after the
-  # probability onto the wrong parameter (nlmixr2/nlmixr2est#1041).
+  # .etaTrans indexes the SAEM ESTIMATION parameter vector; .thetaValue is in
+  # iniDf order.  The two differ by every theta saem does not estimate as its
+  # own parameter -- the mixture probabilities and the mu-referenced covariate
+  # parameters -- so the position has to be turned back into a name before it
+  # is used here.  Indexing .thetaValue by the raw position pairs each eta with
+  # whatever theta happens to sit at that spot, shifting every eta declared
+  # after one of those onto the wrong parameter (nlmixr2/nlmixr2est#1041).
   .etaTransNames <- rxUiGet.saemParamsToEstimateCov(x, ...)
   .etaTransNames <- .etaTransNames[!(.etaTransNames %in% .ui$nonMuEtas)]
   for (.e in seq_along(.etaTrans)) {
@@ -525,8 +526,12 @@ rxUiGet.saemModelPredReplaceLst <- function(x, ...) {
       .thetaValue[.etas[-.tn]] <- .eta
     } else {
       .tnName <- .etaTransNames[.tn]
+      # stop() rather than falling back to the position: the position is what
+      # was wrong in the first place, so a silent fallback would put the eta
+      # back on the wrong parameter in exactly the case this resolves
       if (is.na(.tnName) || !(.tnName %in% names(.thetaValue))) {
-        .tnName <- .tn
+        stop("cannot pair '", .etas[.e], "' with a population parameter ",
+             "while building the saem prediction model", call. = FALSE)
       }
       if (.thetaValue[.tnName] == "") {
         .thetaValue[.tnName] <- .eta

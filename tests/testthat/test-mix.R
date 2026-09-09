@@ -381,7 +381,7 @@ nmTest({
     expect_false(any(vapply(.mixList, function(m) any(is.nan(m$prob)), logical(1))))
   })
 
-  test_that("a mixture probability does not shift the eta/theta pairing", {
+  test_that("a theta saem does not estimate does not shift the eta pairing", {
     # The eta -> theta index comes from the SAEM ESTIMATION parameter vector,
     # which leaves the mixture probabilities out, while the model text is built
     # in iniDf order, which keeps them.  Using the raw index paired every eta
@@ -411,6 +411,27 @@ nmTest({
     expect_equal(unname(.repl["tv"]), "THETA[4] + ETA[3]")
     # and the mixture probability carries no eta
     expect_equal(unname(.repl["p1"]), "THETA[3]")
+
+    # the same shift, with no mixture anywhere: a mu-referenced COVARIATE
+    # parameter is dropped from the SAEM estimation vector too, so declaring
+    # one before another mu-referenced theta shifted the etas the same way
+    # (here eta.v landed on tcl.wt and tv got none)
+    .covMod <- function() {
+      ini({
+        tka <- 0.45; tcl <- 1.0; tcl.wt <- 0.75; tv <- 3.45
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + WT * tcl.wt + eta.cl)
+        v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .cr <- rxUiGet.saemModelPredReplaceLst(list(.covMod()))
+    expect_equal(unname(.cr["tv"]), "THETA[4] + ETA[3]")
+    expect_equal(unname(.cr["tcl.wt"]), "THETA[3]")
 
     # the same, read off the model that is actually solved for the table
     .txt <- rxode2::rxModelVars(.ui$saemModelPred$predOnly)$model[["normModel"]]

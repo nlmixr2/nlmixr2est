@@ -142,8 +142,21 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   }
   # Fallback flag: an rxode2 that predates per-individual mixest for an
   # expanded mix() rejects the iCov; retry without it rather than losing the
-  # whole table step.  mixest/mixnum then read 0 there, as they did before.
+  # whole table step.  The retry SAYS SO -- mixest/mixnum and everything
+  # mix() feeds read 0 without it, and that is the silently-wrong table this
+  # whole path exists to stop producing.
   .iCovOK <- !is.null(.iCov)
+  if (.iCovOK) {
+    # An rxode2 without nlmixr2/rxode2#1358 does not reject the iCov, it just
+    # never reads a mixture out of a model whose mix() symengine expanded away.
+    # Nothing errors, so say so here or the zeros are silent.
+    .predFlags <- try(rxode2::rxModelVars(model)$flags, silent=TRUE)
+    if (!inherits(.predFlags, "try-error") && !is.null(.predFlags) &&
+          "mix" %in% names(.predFlags) && .predFlags[["mix"]] == 0L) {
+      warning("mixture not passed to table; mixest/mixnum read 0", call.=FALSE)
+      .iCovOK <- FALSE
+    }
+  }
   while (recalc & length(odeMethods) > 0) {
     recalcN <- 0
     currentOdeMethod <- odeMethods[[1]]
@@ -167,9 +180,11 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
                             iCov = .iCov,
                             keep=keep, addDosing=addDosing, subsetNonmem=subsetNonmem, addCov=addCov),
           error = function(e) {
-            if (grepl("time.varying|mixest|mixunif|'iCov'", conditionMessage(e),
+            if (grepl("iCov|mixest|mixunif|time.varying", conditionMessage(e),
                       ignore.case=TRUE)) {
               .iCovOK <<- FALSE
+              warning("mixture not passed to table; mixest/mixnum read 0",
+                      call.=FALSE)
               .foceiSolveWithId(model, pars, fit$dataSav,
                                 returnType = returnType,
                                 atol = .atol, rtol = .rtol,

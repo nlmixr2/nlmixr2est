@@ -114,13 +114,17 @@
   per-individual component never reached the solve.  Fixed in rxode2
   (nlmixr2/rxode2#1358); this release stops working around it.
 
-- A mixture probability declared before a mu-referenced population parameter
-  shifted every eta after it onto the wrong parameter -- in the reported model
-  the volume's eta landed on the mixture probability and the volume itself got
-  none, so `IPRED` carried no volume between-subject variability.  The eta to
-  theta map is an index into the SAEM estimation parameter vector, which leaves
-  the mixture probabilities out, and it was used to subscript the model text
-  built in `ini()` order, which keeps them.
+- A theta that `saem` does not estimate as a parameter of its own, declared
+  before a mu-referenced population parameter, shifted every eta after it onto
+  the wrong parameter in the model `saem` solves for its table.  The eta to
+  theta map is an index into the SAEM estimation parameter vector, and it was
+  used to subscript the model text built in `ini()` order; the two differ by
+  exactly those thetas.  This is not mixture-specific -- a mu-referenced
+  COVARIATE parameter is dropped from that vector as well, so an ordinary
+  covariate model that declares `tcl.wt` before `tv` had the volume's eta land
+  on `tcl.wt` and the volume get none, and its table lost the volume's
+  between-subject variability entirely (`v` came back constant, and `IPRED`
+  with it).  Now paired by name.
 
 - The `mixest`/`mixnum` iCov handed to the table step is rejected by rxode2
   when its `ID` is a factor, which it always was: it is built as an integer and
@@ -128,7 +132,10 @@
   whole table step was then dropped and the fit came back without a table.
 
 - A rejected iCov no longer takes the table step down with it -- the retry
-  without it now covers the rxode2 messages that can actually be raised.
+  without it now covers the rxode2 messages that can actually be raised, and
+  the retry says so in the fit's `$runInfo` rather than quietly handing back a
+  table whose mixture columns are all 0 (which is what happens on an rxode2
+  without nlmixr2/rxode2#1358).
 
 - The post-hoc correction of the `mixest`/`mixnum`/`mixunif` output columns is
   removed.  It only ever fired for columns literally named `me`, `mn` and `mu`,
