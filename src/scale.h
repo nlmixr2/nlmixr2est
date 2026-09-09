@@ -163,17 +163,23 @@ static inline void scaleSetup(scaling *scale,
     mx=scale->initPar[scale->npars-1],
     mean=0, oN=0, oM=0,s=0;
   double len=0;
+  // `for (unsigned int k = scale->npars; k-- > 0;)` visits k=npars-1 down to
+  // 0 inclusive (the previous `for (k = scale->npars-1; k--;)` form skipped
+  // k=npars-1: k-- as the condition tests the PRE-decrement value, so the
+  // first body execution already saw the post-decrement k, silently leaving
+  // scale->scaleC[npars-1] unreset and dropping the top parameter from the
+  // mean/std/len accumulators below -- issue #995).
   switch (scale->normType){
   case normTypeRescale2:
     // OptdesX
     // http://apmonitor.com/me575/uploads/Main/optimization_book.pdf
-    for (unsigned int k = scale->npars-1; k--;){
+    for (unsigned int k = scale->npars; k-- > 0;){
       mn = min2(scale->initPar[k],mn);
       mx = max2(scale->initPar[k],mx);
       scale->scaleC[k] = NA_REAL;
     }
     if (fabs(mx-mn) < DBL_EPSILON) {
-      for (unsigned int k = scale->npars-1; k--;){
+      for (unsigned int k = scale->npars; k-- > 0;){
         len += scale->initPar[k]*scale->initPar[k];
       }
       if (len < DBL_EPSILON){
@@ -193,13 +199,13 @@ static inline void scaleSetup(scaling *scale,
     }
     break;
   case normTypeRescale: // Rescaling (min-max normalization)
-    for (unsigned int k = scale->npars-1; k--;){
+    for (unsigned int k = scale->npars; k-- > 0;){
       mn = min2(scale->initPar[k],mn);
       mx = max2(scale->initPar[k],mx);
       scale->scaleC[k] = NA_REAL;
     }
     if (fabs(mx-mn) < DBL_EPSILON) {
-      for (unsigned int k = scale->npars-1; k--;){
+      for (unsigned int k = scale->npars; k-- > 0;){
         len += scale->initPar[k]*scale->initPar[k];
       }
       if (len < DBL_EPSILON){
@@ -219,7 +225,7 @@ static inline void scaleSetup(scaling *scale,
     }
     break;
   case normTypeMean: // Mean normalization
-    for (unsigned int k = scale->npars-1; k--;){
+    for (unsigned int k = scale->npars; k-- > 0;){
       mn = min2(scale->initPar[k],mn);
       mx = max2(scale->initPar[k],mx);
       oN++;
@@ -227,7 +233,7 @@ static inline void scaleSetup(scaling *scale,
       scale->scaleC[k] = NA_REAL;
     }
     if (fabs(mx-mn) < DBL_EPSILON) {
-      for (unsigned int k = scale->npars-1; k--;){
+      for (unsigned int k = scale->npars; k-- > 0;){
         len += scale->initPar[k]*scale->initPar[k];
       }
       if (len < DBL_EPSILON){
@@ -247,7 +253,7 @@ static inline void scaleSetup(scaling *scale,
     }
     break;
   case normTypeStd: // Standardization
-    for (unsigned int k = scale->npars-1; k--;){
+    for (unsigned int k = scale->npars; k-- > 0;){
       mn = min2(scale->initPar[k],mn);
       mx = max2(scale->initPar[k],mx);
       oM= mean;
@@ -257,7 +263,7 @@ static inline void scaleSetup(scaling *scale,
       scale->scaleC[k] = NA_REAL;
     }
     if (fabs(mx-mn) < DBL_EPSILON) {
-      for (unsigned int k = scale->npars-1; k--;){
+      for (unsigned int k = scale->npars; k-- > 0;){
         len += scale->initPar[k]*scale->initPar[k];
       }
       if (len < DBL_EPSILON){
@@ -277,7 +283,7 @@ static inline void scaleSetup(scaling *scale,
     }
     break;
   case normTypeLen: // Normalize to length.
-    for (unsigned int k = scale->npars-1; k--;){
+    for (unsigned int k = scale->npars; k-- > 0;){
       len += scale->initPar[k]*scale->initPar[k];
       scale->scaleC[k] = NA_REAL;
     }
@@ -293,7 +299,7 @@ static inline void scaleSetup(scaling *scale,
     break;
   case normTypeConstant:
     // No Normalization
-    for (unsigned int k = scale->npars-1; k--;){
+    for (unsigned int k = scale->npars; k-- > 0;){
       scale->scaleC[k] = NA_REAL;
     }
     scale->c1 = 0;

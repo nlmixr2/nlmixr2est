@@ -407,7 +407,9 @@
 .npInertImpCtl <- c("isample", "gamma", "gammaMethod", "df", "auto",
                     "autoNonNormal", "autoNonmemSparse", "autoDfPatience",
                     "iscaleMin", "iscaleMax", "iaccept", "mapIter",
-                    "qr", "qrShift", "qrRefresh", "sir", "sirSample")
+                    "nBurn", "burnFreezeOmega",
+                    "proposal", "propMixScale", "propMixWeight",
+                    "qr", "qrShift", "qrRefresh", "qrScramble", "sir", "sirSample")
 
 # Inert too, but with a real np counterpart worth naming.  npag has no seed of
 # its own -- its grid is Sobol-deterministic -- so impSeed only remaps under npb.

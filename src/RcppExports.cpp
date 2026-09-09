@@ -452,16 +452,55 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// impPropKernel_
+NumericVector impPropKernel_(std::string type, double df, NumericVector mixScale, NumericVector mixWeight, double quad, double gamma, int p);
+RcppExport SEXP _nlmixr2est_impPropKernel_(SEXP typeSEXP, SEXP dfSEXP, SEXP mixScaleSEXP, SEXP mixWeightSEXP, SEXP quadSEXP, SEXP gammaSEXP, SEXP pSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< std::string >::type type(typeSEXP);
+    Rcpp::traits::input_parameter< double >::type df(dfSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type mixScale(mixScaleSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type mixWeight(mixWeightSEXP);
+    Rcpp::traits::input_parameter< double >::type quad(quadSEXP);
+    Rcpp::traits::input_parameter< double >::type gamma(gammaSEXP);
+    Rcpp::traits::input_parameter< int >::type p(pSEXP);
+    rcpp_result_gen = Rcpp::wrap(impPropKernel_(type, df, mixScale, mixWeight, quad, gamma, p));
+    return rcpp_result_gen;
+END_RCPP
+}
 // impQrPoints_
-NumericMatrix impQrPoints_(int isample, int neta, Nullable<NumericVector> shift);
-RcppExport SEXP _nlmixr2est_impQrPoints_(SEXP isampleSEXP, SEXP netaSEXP, SEXP shiftSEXP) {
+NumericMatrix impQrPoints_(int isample, int neta, Nullable<NumericVector> shift, std::string scramble, int seed);
+RcppExport SEXP _nlmixr2est_impQrPoints_(SEXP isampleSEXP, SEXP netaSEXP, SEXP shiftSEXP, SEXP scrambleSEXP, SEXP seedSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< int >::type isample(isampleSEXP);
     Rcpp::traits::input_parameter< int >::type neta(netaSEXP);
     Rcpp::traits::input_parameter< Nullable<NumericVector> >::type shift(shiftSEXP);
-    rcpp_result_gen = Rcpp::wrap(impQrPoints_(isample, neta, shift));
+    Rcpp::traits::input_parameter< std::string >::type scramble(scrambleSEXP);
+    Rcpp::traits::input_parameter< int >::type seed(seedSEXP);
+    rcpp_result_gen = Rcpp::wrap(impQrPoints_(isample, neta, shift, scramble, seed));
+    return rcpp_result_gen;
+END_RCPP
+}
+// foceiCheckIndCounts_
+void foceiCheckIndCounts_(Rcpp::IntegerMatrix counts);
+RcppExport SEXP _nlmixr2est_foceiCheckIndCounts_(SEXP countsSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Rcpp::IntegerMatrix >::type counts(countsSEXP);
+    foceiCheckIndCounts_(counts);
+    return R_NilValue;
+END_RCPP
+}
+// foceiIndEventCounts_
+Rcpp::IntegerMatrix foceiIndEventCounts_();
+RcppExport SEXP _nlmixr2est_foceiIndEventCounts_() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(foceiIndEventCounts_());
     return rcpp_result_gen;
 END_RCPP
 }
@@ -495,6 +534,26 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< NumericVector >::type eta(etaSEXP);
     Rcpp::traits::input_parameter< int >::type id(idSEXP);
     rcpp_result_gen = Rcpp::wrap(likInner(eta, id));
+    return rcpp_result_gen;
+END_RCPP
+}
+// nTrustInnerGet
+int nTrustInnerGet();
+RcppExport SEXP _nlmixr2est_nTrustInnerGet() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(nTrustInnerGet());
+    return rcpp_result_gen;
+END_RCPP
+}
+// nHessianQNGet
+int nHessianQNGet();
+RcppExport SEXP _nlmixr2est_nHessianQNGet() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(nHessianQNGet());
     return rcpp_result_gen;
 END_RCPP
 }
@@ -1557,6 +1616,28 @@ BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< arma::vec& >::type theta(thetaSEXP);
     rcpp_result_gen = Rcpp::wrap(nlmSolveGradHess(theta));
+    return rcpp_result_gen;
+END_RCPP
+}
+// nlmTrustFit
+List nlmTrustFit(arma::vec& theta, List control);
+RcppExport SEXP _nlmixr2est_nlmTrustFit(SEXP thetaSEXP, SEXP controlSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::vec& >::type theta(thetaSEXP);
+    Rcpp::traits::input_parameter< List >::type control(controlSEXP);
+    rcpp_result_gen = Rcpp::wrap(nlmTrustFit(theta, control));
+    return rcpp_result_gen;
+END_RCPP
+}
+// nTrustOuterGet
+int nTrustOuterGet();
+RcppExport SEXP _nlmixr2est_nTrustOuterGet() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(nTrustOuterGet());
     return rcpp_result_gen;
 END_RCPP
 }

@@ -17,6 +17,12 @@
 #define _(String) (String)
 
 #include "scale.h"
+// trust_solve_c_ptr/trust_result_free_ptr are extern-declared here and DEFINED
+// exactly once, via the iniRcppTrust macro expansion already sitting in
+// inner.cpp -- do not redefine iniRcppTrustPtrs here, just link against the
+// same globals (ordinary linker-visible symbols within this one .so).
+#include <RcppTrust.h>
+#include "trustHessianUpdate.h"
 
 
 // Solves go through odeSwapSolveInd(slot, id) -- see the note in inner.cpp.  nlm's
@@ -69,6 +75,22 @@ struct nlmOptions {
 #define save_hess 3
   std::atomic<int> naZero{0};
   std::atomic<int> naGrad{0};
+  // # of nlmTrustObjfun calls this fit -- proof the C++-resident est="trust"
+  // loop actually ran (mirrors op_focei.nTrustInner/.nTrustInner()).
+  std::atomic<int> nTrustOuter{0};
+  // hessianMethod= on trustControl(): 1=fd (nlmCalcHessian, fresh every call),
+  // 2=bfgs, 3=sr1, 4=bofill (quasi-Newton updates from consecutive gradients;
+  // see trustHessianUpdate()). Set by nlmTrustFit() from control$hessianMethod.
+  int trustHessMethod=1;
+  // Running quasi-Newton Hessian state for trustHessMethod 2/3/4 -- the
+  // previous outer call's theta/gradient and the Hessian estimate carried
+  // forward between calls. Reset (trustHasPrev=false) at the top of every
+  // nlmTrustFit() call, not just once at model load, since it is only valid
+  // within a single trust_solve_c() run.
+  arma::mat trustHessQN;
+  arma::vec trustThetaPrev;
+  arma::vec trustGradPrev;
+  bool trustHasPrev=false;
   int hasFR=0; // 1 if predOnly model has rx_pred_f_ (lhs[1]) and rx_r_ (lhs[2])
   // Index of rx_pred_ in each model's lhs.  The gradient (thetaGrad) model emits
   // the intermediate parameter assignments (eg ka/cl/v needed by the sensitivity
@@ -176,6 +198,8 @@ RObject nlmSetup(Environment e) {
   nlmOp.naZero.store(0, std::memory_order_relaxed);
   nlmOp.saveType = 0;
   nlmOp.naGrad.store(0, std::memory_order_relaxed);
+  nlmOp.nTrustOuter.store(0, std::memory_order_relaxed);
+  nlmOp.trustHasPrev = false;
   nlmOp.maxOdeRecalc = as<int>(control["maxOdeRecalc"]);
   nlmOp.odeRecalcFactor = as<double>(control["odeRecalcFactor"]);
 
@@ -991,6 +1015,181 @@ RObject nlmSolveGradHess(arma::vec &theta) {
   scalePrintFun(&(nlmOp.scale), &theta[0], ll);
   scalePrintGrad(&(nlmOp.scale), &grad[0], iterTypeSens);
   return ret;
+}
+
+// est="trust": a trust_c_objfun_t-shaped C callback for the OUTER (population
+// theta) problem -- value+gradient+Hessian every call, the same triad
+// nlmSolveGradHess() above already computes, just returned via raw output
+// pointers instead of R attributes so trust_solve_c() can drive the WHOLE
+// optimization loop from C++ with no per-iteration R round-trip. Unlike
+// src/inner.cpp's per-subject trustInnerObjfun (called from inside an
+// OpenMP-parallel loop, so it must avoid the R API entirely), this callback
+// is only ever reached from nlmTrustFit()'s single top-level .Call() -- the
+// whole trust_solve_c() run stays on R's main thread throughout (nlmSolveGrad()
+// opens and joins its own OpenMP region internally, returning control to the
+// main thread before this function continues), so the same scalePrintFun()/
+// scalePrintGrad() iteration-print calls nlmSolveGradHess() already makes are
+// safe here too.
+extern "C" int nlmTrustObjfun(int n, const double *par, double *value,
+                               double *gradient, double *hessian, void *userdata) {
+  if (!nlmOp.loaded || (unsigned int)n != nlmOp.ntheta) return -1;
+  try {
+    rx_solving_options *op = getSolvingOptions(rx);
+    resetOpBadSolve(op);
+    arma::vec theta(n);
+    std::copy(par, par + n, theta.begin());
+    arma::mat ret0 = nlmSolveGrad(theta);
+    arma::vec cs = (arma::sum(ret0, 0)).t();
+    if (!cs.is_finite()) {
+      *value = std::numeric_limits<double>::infinity();
+      return 1; // infeasible, per trust_c_objfun_t's contract
+    }
+    double ll = cs[0];
+    arma::vec gr0 = cs(span(1, nlmOp.ntheta));
+    arma::mat H;
+    if (nlmOp.trustHessMethod == trustHessFd) {
+      // nlmCalcHessian() caches its per-theta FD step size (nlmOp.thetahh[k])
+      // and only re-derives it via shi21Forward/shi21Central when h<=0. Every
+      // OTHER caller invokes this at most once per fit (post-fit covariance),
+      // so that cache is valid for the theta it was calibrated at. trust calls
+      // this every outer iteration as theta moves, so a step size calibrated
+      // at iteration 1 can become stale (or, per this method's own benchmark
+      // history, simply unstable near a bounded/transformed parameter
+      // regardless of caching) once theta has moved away from where it was
+      // derived -- force a fresh derivation every call.
+      std::fill(nlmOp.thetahh, nlmOp.thetahh + nlmOp.ntheta, 0.0);
+      H = nlmCalcHessian(gr0, theta);
+    } else if (!nlmOp.trustHasPrev) {
+      // Seed the quasi-Newton methods with one FD Hessian, matching how
+      // every other nlmCalcHessian() consumer uses it (a one-time, not
+      // per-iteration, cost).
+      std::fill(nlmOp.thetahh, nlmOp.thetahh + nlmOp.ntheta, 0.0);
+      H = nlmCalcHessian(gr0, theta);
+      nlmOp.trustHessQN = H;
+      nlmOp.trustThetaPrev = theta;
+      nlmOp.trustGradPrev = gr0;
+      nlmOp.trustHasPrev = true;
+    } else {
+      // trust_solve_c() calls this once per TRIAL point every outer
+      // iteration, whether or not that trial is later accepted (verified
+      // directly in RcppTrust's trust_core_run()) -- the secant equation
+      // y ~= H*s holds for any two evaluated points regardless of trust's
+      // accept/reject bookkeeping, so updating on every call is standard
+      // practice; the skip guards inside trustHessianUpdate() protect
+      // against an unreliable (e.g. reject-then-shrink, near-zero-step)
+      // secant pair corrupting the running estimate.
+      arma::vec s = theta - nlmOp.trustThetaPrev;
+      arma::vec y = gr0 - nlmOp.trustGradPrev;
+      trustHessianUpdate(nlmOp.trustHessMethod, nlmOp.trustHessQN, s, y);
+      nlmOp.trustThetaPrev = theta;
+      nlmOp.trustGradPrev = gr0;
+      H = nlmOp.trustHessQN;
+    }
+    H = 0.5 * (H + H.t());
+    if (!H.is_finite()) {
+      *value = std::numeric_limits<double>::infinity();
+      return 1;
+    }
+    *value = ll;
+    std::copy(gr0.begin(), gr0.end(), gradient);
+    // H is symmetric (nlmCalcHessian() already does H = 0.5*(H+H.t())), so the
+    // row-major vs. column-major layout of the output buffer is immaterial --
+    // same reasoning already used at the per-subject eta trust call site.
+    std::copy(H.begin(), H.end(), hessian);
+    nlmOp.nTrustOuter.fetch_add(1, std::memory_order_relaxed);
+    // Unconditional, matching nlmSolveGradHess()/nlmSolveGradR()/optimFunC()'s
+    // own convention: scalePrintFun()/scalePrintGrad() record every call into
+    // the resident parHistData buffer regardless of print cadence (the print
+    // *display* itself is gated internally by nlmOp.scale.every) -- a
+    // C++-resident loop still needs a normal iteration history since R never
+    // sees an intermediate iterate. nlmixr2NlmEval's EXTERNALLY-gated variant
+    // is specific to that entry point's very-high-frequency sampler use (it
+    // deliberately skips recording most of ~1e5 evaluations); a normal
+    // optimization fit has few enough iterations that no such gate belongs
+    // here.
+    NumericVector gradR = wrap(gr0);
+    scalePrintFun(&(nlmOp.scale), &theta[0], ll);
+    scalePrintGrad(&(nlmOp.scale), &gradR[0], iterTypeSens);
+    return 0;
+  } catch (...) {
+    return -4;
+  }
+}
+
+//[[Rcpp::export]]
+List nlmTrustFit(arma::vec &theta, List control) {
+  if (!nlmOp.loaded) stop("'nlm' problem not loaded");
+  // hessianMethod= state is only valid within a single trust_solve_c() run
+  // (see nlmOptions' comment) -- reset here, not just at model load.
+  nlmOp.trustHessMethod = control.containsElementNamed("hessianMethod") ?
+    as<int>(control["hessianMethod"]) : trustHessFd;
+  nlmOp.trustHasPrev = false;
+  nlmOp.trustHessQN.reset();
+  nlmOp.trustThetaPrev.reset();
+  nlmOp.trustGradPrev.reset();
+  double rinit  = as<double>(control["rinit"]);
+  double rmax   = as<double>(control["rmax"]);
+  trust_options_t topts = trust_options_default(rinit, rmax);
+  // Deliberately no parscale layer: .nlmScalePar() (R side) already IS the
+  // scaling every nlm-family method (bobyqa included) optimizes in -- stacking
+  // RcppTrust's own parscale on top would silently redefine what rinit/rmax
+  // mean relative to that shared scale. Contrast with the per-subject eta
+  // trust use (src/inner.cpp), where RcppTrust's parscale is that problem's
+  // ONLY scaling mechanism.
+  topts.has_parscale = 0;
+  topts.parscale = NULL;
+  topts.iterlim = as<int>(control["iterlim"]);
+  topts.fterm = as<double>(control["fterm"]);
+  topts.mterm = as<double>(control["mterm"]);
+
+  trust_result_t tres;
+  trust_solve_c_ptr((int)nlmOp.ntheta, theta.memptr(), nlmTrustObjfun,
+                     nullptr, &topts, &tres);
+  bool converged = false, underConverged = false;
+  int ntheta = (int)nlmOp.ntheta;
+  NumericVector par(ntheta), grad(ntheta);
+  NumericMatrix hess(ntheta, ntheta);
+  double value = NA_REAL;
+  if (tres.error >= 0 && tres.argument != NULL) {
+    std::copy(tres.argument, tres.argument + ntheta, par.begin());
+    value = tres.value;
+    converged = (bool)tres.converged;
+    if (tres.gradient != NULL) std::copy(tres.gradient, tres.gradient + ntheta, grad.begin());
+    if (tres.gradient != NULL && tres.hessian != NULL) {
+      std::copy(tres.hessian, tres.hessian + (size_t)ntheta*(size_t)ntheta, hess.begin());
+      arma::mat H(tres.hessian, ntheta, ntheta);
+      arma::vec g(tres.gradient, ntheta);
+      arma::vec step;
+      // Newton-decrement stationarity check: tres.converged alone can be a
+      // false positive off RcppTrust's own internal step-size tolerance (the
+      // same caveat already established for the per-subject eta trust use).
+      // No parscale layer here, so the step is already in the SAME units
+      // rmax uses -- no conversion needed, unlike the inner-eta version. A
+      // singular/indefinite Hessian or a non-descent step leaves
+      // tres.converged as the sole signal, rather than fabricating a verdict
+      // from an unusable estimate.
+      if (arma::solve(step, H, -g, arma::solve_opts::no_approx) &&
+          arma::dot(g, step) < 0) {
+        double pushDist = arma::norm(step);
+        if (converged && pushDist > std::sqrt(topts.fterm)) {
+          converged = false;
+          underConverged = true;
+        }
+      }
+    }
+  }
+  int errCode = tres.error;
+  int iterations = tres.iterations;
+  trust_result_free_ptr(&tres);
+  return List::create(_["par"] = par, _["value"] = value, _["gradient"] = grad,
+                       _["hessian"] = hess, _["converged"] = converged,
+                       _["underConverged"] = underConverged,
+                       _["iterations"] = iterations, _["error"] = errCode);
+}
+
+//[[Rcpp::export(".nTrustOuter")]]
+int nTrustOuterGet() {
+  return nlmOp.nTrustOuter.load(std::memory_order_relaxed);
 }
 
 //[[Rcpp::export]]

@@ -8,6 +8,7 @@
 #include "censEst.h"
 #include "nearPD.h"
 #include "shi21.h"
+#include "trustHessianUpdate.h"
 #include "foceiGrad.h"
 #include "inner.h"
 #include "nmMcmcRng.h"
@@ -28,6 +29,7 @@
 #endif
 #include "scale.h"
 #include <n1qn1c.h>
+#include <RcppTrust.h>
 #include <Rinternals.h>
 #ifdef _OPENMP
   #include <omp.h>
@@ -37,6 +39,12 @@
 #include <memory>
 #include <deque>
 #include <queue>
+// Boost.Math quantile functions -- stateless (no static/global mutable data),
+// so unlike relying on Rmath's own thread-safety story for every R::q* entry
+// point, these are safe by construction from any thread. Matches imp.cpp's
+// own boost::math::chi_squared_distribution usage (impChisqQuantile()).
+#include <boost/math/distributions/chi_squared.hpp>
+#include <boost/math/distributions/fisher_f.hpp>
 
 // Set while inside the parallel inner optimization region: R-API calls and
 // running-mean accumulation are deferred to the post-parallel phase. Atomic
@@ -177,6 +185,8 @@ extern "C" {
   iniRxode2ptr
 #define iniN1qn1cPtrs _nlmixr2est_iniN1qn1cPtrs
   iniN1qn1c
+#define iniRcppTrustPtrs _nlmixr2est_iniRcppTrustPtrs
+  iniRcppTrust
 }
 
 #define _(String) (String)
@@ -301,6 +311,12 @@ struct focei_options {
   double *gcHrr = NULL;
   double *gH = NULL;
   double *gVid = NULL;
+  // hessianMethod= (see trustHessianUpdate.h) pooled per-subject state for
+  // calcEtaHessian()'s non-normal-endpoint (needOptimHess) branch.
+  double *getaHessQN = NULL;     // [neta*neta*nsub_mix]
+  double *getaGradPrevQN = NULL; // [neta*nsub_mix]
+  double *getaPrevQN = NULL;     // [neta*nsub_mix]
+  int hessianMethod = trustHessFd;
 
   double *likSav = NULL;
   double *llikObsFull = NULL;
@@ -529,6 +545,36 @@ struct focei_options {
   unsigned int nzm;
   int warm; // 1 = seed zm from calculated eta Hessian, 0 = classic behavior
 
+  // innerOpt: 1 = n1qn1, 2 = BFGS (unimplemented -- see #927, falls back to
+  // n1qn1: lbfgsb3C's C++ wrapper keeps shared mutable Rcpp state, not
+  // reentrant under the per-subject OpenMP loop), 3 = trust (RcppTrust),
+  // 4 = auto (the default; resolved to 1 or 3 in foceiSetup_).
+  int innerOpt;
+  double trustConf; // confidence level defining the trust-region radius
+  double trustRinit;
+  double trustRmax;
+  // innerOpt="trust"'s own function-value/predicted-decrease convergence
+  // tolerances -- independently settable, NOT tied to epsilon (which is
+  // shared with n1qn1's unrelated "precision of estimate" criterion).
+  double trustFterm;
+  double trustMterm;
+  std::atomic<int> nTrustInner{0}; // per-fit count of trust_solve_c calls (test evidence)
+  // innerOpt="trust" per-fit OUTCOME counts (#1044).  nTrustInner counts CALLS,
+  // so a fit whose inner solves all converged and one where every one of them
+  // failed look identical from the fit object; these separate the two.
+  std::atomic<int> nTrustError{0};   // tres.error < 0 -- no usable eta at all
+  std::atomic<int> nTrustNoConv{0};  // attempts that ended non-converged, either way
+  std::atomic<int> nTrustSolverNoConv{0}; // trust_solve_c's OWN flag said not converged
+  std::atomic<int> nTrustPush{0};    // converged flag withdrawn by the Newton-decrement gate
+  std::atomic<int> nTrustRetry{0};   // radius-escalation retries attempted
+  std::atomic<int> nTrustWarm{0};    // same-radius re-solves from the point just found
+  std::atomic<int> nTrustNudge{0};   // nudge-cascade attempts
+  std::atomic<int> nTrustFail{0};    // inner solves still non-converged after every retry
+  // per-fit count of calcEtaHessian() calls that used the hessianMethod=
+  // quasi-Newton update (as opposed to a fresh FD pass) -- test evidence the
+  // mechanism actually ran, not just that the numbers happen to agree.
+  std::atomic<int> nHessianQN{0};
+
   int imp;
   // int printInner;
 
@@ -654,6 +700,9 @@ struct focei_options {
   double fitAtol = NA_REAL, fitRtol = NA_REAL;
   double hessEpsLlik;
   double hessEpsInner;
+  // Floor on the inner eta Hessian's finite-difference step, as a fraction of
+  // that eta's conditional sd.  See calcEtaHessian().
+  double hessEtaStepMin;
   int shi21maxOuter;
   int shi21maxInner;
   int shi21maxInnerCov;
@@ -662,6 +711,26 @@ struct focei_options {
   double shi21hMin; // lower bound on the adaptive FD step
   double cholAccept;
   double resetEtaSize;
+  // mceta>=1 bookkeeping: how many inner solves started at eta=0 vs at one of the
+  // omega draws.  A test needs this to show the draws are actually explored --
+  // matching objectives alone cannot distinguish "explored and eta=0 won" from
+  // "never explored" (#1040).
+  std::atomic<int> nMcetaZero{0};
+  std::atomic<int> nMcetaSample{0};
+  // Inner solves whose restarts produced more than one candidate and so were
+  // ranked on the marginal objective, and how many of those the marginal
+  // ordered differently from the inner objective -- the second count is the
+  // one that says the Laplace log|H| term actually changes the choice.
+  std::atomic<int> nInnerRanked{0};
+  std::atomic<int> nInnerReranked{0};
+  // Inner solves that had to report a candidate no optimizer arm actually
+  // converged on -- every candidate was a failed attempt, so the selection had
+  // nothing good to choose from (#1044).
+  std::atomic<int> nInnerNoGood{0};
+  // Inner solves where a failed attempt's candidate was dropped from the
+  // selection because a succeeded one was available.  This is the count that
+  // shows the rule is doing something, rather than that it merely exists.
+  std::atomic<int> nInnerDropped{0};
   std::atomic<int> didEtaReset{0};
   double resetThetaSize = std::numeric_limits<double>::infinity();
   double resetThetaFinalSize = std::numeric_limits<double>::infinity();
@@ -838,6 +907,13 @@ struct focei_options {
   int impIsample = 300;  // importance samples drawn per subject per iteration
   double impGamma = 1.0; // proposal-variance inflation factor: cov = gamma * H^-1
   int impNiter = 100;    // maximum EM iterations
+  // MAP-assist period: re-center the proposal at the MAP mode every impMapIter
+  // EM iterations.  1 = every iteration; 0 = MAP once at startup, never again.
+  int impMapIter = 1;
+  // Burn-in EM iterations run BEFORE the impNiter budget, to settle the
+  // proposal scale / df controllers; convergence cannot fire during them.
+  int impNburn = 0;
+  bool impBurnFreezeOmega = false;  // hold Omega at its starting value while burning in
   double impIaccept = 0.4;   // target importance-sampling effective-sample fraction (adapts gamma)
   // Proposal degrees of freedom (NONMEM DF).  0 = multivariate normal; >0 uses a
   // multivariate t, whose polynomial tails dominate a Gaussian target's.
@@ -866,6 +942,11 @@ struct focei_options {
   bool impQr = false;        // quasi-random (Sobol) importance samples (QRPEM)
   bool impQrShift = true;    // Cranley-Patterson random shift of the Sobol points
   bool impQrRefresh = true;  // redraw the shift each iteration (false: one shift/subject)
+  int impQrScramble = 0;     // Sobol scrambling: 0 none, 1 Owen, 2 linear matrix
+  // Importance-sampling proposal family: 0 auto (normal, or t when df>0),
+  // 1 normal, 2 t, 3 laplace, 4 mixture (with the scales/weights below).
+  int impProposal = 0;
+  std::vector<double> impPropMixScale, impPropMixWeight;
   bool impSir = false;       // SIR-accelerated non-mu/sigma M-step
   int impSirSample = 30;     // SIR resampled points per subject
   int impSeed = 42;          // base seed for the per-(iter,subject) draw streams
@@ -909,6 +990,105 @@ static inline size_t foceiSzAdd(size_t a, size_t b, const char *what) {
     stop("focei: dataset too large -- the %s allocation overflows", what); // nocov
   } // nocov
   return a + b;
+}
+
+// The rules foceiCheckIndCounts() enforces, taking the counts rather than `rx`
+// so a test can drive them.
+//
+// Every rule is about ONE subject's own three numbers, deliberately: nlmixr2est
+// has to run against rxode2 releases it is not built alongside, and a rule
+// resting on an rxode2-wide total (rx->nall) would turn a change in how rxode2
+// accounts for records into a failed fit for everyone on that release -- and,
+// on CRAN, a failed submission.  A dose or evid=2 count larger than the
+// subject's own record count, or any of the three negative, is not an
+// accounting convention: no working rxode2 of any version reports it.
+//
+// The cost is that counts which are individually plausible but collectively
+// wrong -- a subject that comes back with none of its records -- are accepted
+// here.  Sizing gVid from those under-allocates rather than over-allocates, so
+// it is the dangerous shape; what keeps it from arising is the stride fix on
+// the rxode2 side (nlmixr2/rxode2#1357), not this check.
+static inline void foceiCheckIndCountsCore(const int *nAllTimes,
+                                           const int *nDoses,
+                                           const int *nEvid2,
+                                           int nsub) {
+  for (int i = 0; i < nsub; ++i) {
+    // in int64_t: two garbage counts can sum past INT_MAX
+    if (nAllTimes[i] < 0 || nDoses[i] < 0 || nEvid2[i] < 0 ||
+        (int64_t)nDoses[i] + (int64_t)nEvid2[i] > (int64_t)nAllTimes[i]) {
+      stop("focei: rxode2 reports an impossible event layout for subject %d "
+           "(records: %d, doses: %d, evid=2: %d); reinstall rxode2 and "
+           "nlmixr2est from source",
+           i + 1, nAllTimes[i], nDoses[i], nEvid2[i]);
+    }
+  }
+}
+
+// Every per-subject block in the FOCEi setup (gVid, ga/gc, gB, gcH*,
+// llikObsFull) is sized and strided from rxode2's per-subject event counts,
+// and nothing re-derives them.  They are read through the rxode2 pointer
+// table, so a build where rxode2 and nlmixr2est disagree on the solve layout
+// -- a stale object file in either package -- makes every count garbage: an
+// absurd total that the size guards refuse, or a plausible one that leaves a
+// short buffer the setup then strides past.  Refuse the counts that cannot be
+// right before anything is sized from them (#1039).
+static inline void foceiCheckIndCounts(rx_solve* rx) {
+  int nsub = getRxNsub(rx);
+  if (nsub < 0) nsub = 0;
+  std::vector<int> nAllTimes((size_t)nsub), nDoses((size_t)nsub),
+    nEvid2((size_t)nsub);
+  for (int i = 0; i < nsub; ++i) {
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, i);
+    nAllTimes[(size_t)i] = getIndNallTimes(ind);
+    nDoses[(size_t)i] = getIndNdoses(ind);
+    nEvid2[(size_t)i] = getIndNevid2(ind);
+  }
+  foceiCheckIndCountsCore(nsub == 0 ? NULL : &nAllTimes[0],
+                          nsub == 0 ? NULL : &nDoses[0],
+                          nsub == 0 ? NULL : &nEvid2[0], nsub);
+}
+
+// The same rules, on counts supplied from R, so a test can drive the rejection
+// paths -- they need a build whose rxode2 and nlmixr2est disagree on the solve
+// layout, which no test can produce.
+// [[Rcpp::export]]
+void foceiCheckIndCounts_(Rcpp::IntegerMatrix counts) {
+  int nsub = counts.nrow();
+  if (counts.ncol() != 3) {
+    stop("focei: counts must have three columns");
+  }
+  std::vector<int> nAllTimes((size_t)nsub), nDoses((size_t)nsub),
+    nEvid2((size_t)nsub);
+  for (int i = 0; i < nsub; ++i) {
+    nAllTimes[(size_t)i] = counts(i, 0);
+    nDoses[(size_t)i] = counts(i, 1);
+    nEvid2[(size_t)i] = counts(i, 2);
+  }
+  foceiCheckIndCountsCore(nsub == 0 ? NULL : &nAllTimes[0],
+                          nsub == 0 ? NULL : &nDoses[0],
+                          nsub == 0 ? NULL : &nEvid2[0], nsub);
+}
+
+// The counts foceiCheckIndCounts() validates, exposed so a test can compare
+// them against the dataset directly instead of inferring the layout from a
+// fit's output.
+// [[Rcpp::export]]
+Rcpp::IntegerMatrix foceiIndEventCounts_() {
+  rx_solve* rxl = getRxSolve_();
+  if (rxl == NULL) return Rcpp::IntegerMatrix(0, 3);
+  int nsub = getRxNsub(rxl);
+  Rcpp::IntegerMatrix ret(nsub, 3);
+  for (int i = 0; i < nsub; ++i) {
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rxl, i);
+    ret(i, 0) = getIndNallTimes(ind);
+    ret(i, 1) = getIndNdoses(ind);
+    ret(i, 2) = getIndNevid2(ind);
+  }
+  ret.attr("dimnames") =
+    Rcpp::List::create(R_NilValue,
+                       Rcpp::CharacterVector::create("nAllTimes", "nDoses",
+                                                     "nEvid2"));
+  return ret;
 }
 
 // Size of the gVid block.  Each subject holds its own nobs_i x nobs_i
@@ -967,6 +1147,15 @@ struct focei_ind {
   double *etahf;
   double *etahr;
   double *etahh;
+  // hessianMethod= (op_focei.hessianMethod) quasi-Newton state for the
+  // needOptimHess (non-normal-endpoint) inner Hessian -- see calcEtaHessian().
+  // Per-subject (this struct is R_Calloc'd, so no C++ constructors run --
+  // these are plain POD raw-pointer slices into a pooled buffer, matching
+  // etahh's own convention, NOT arma::mat/arma::vec members).
+  double *etaHessQN;     // [neta*neta]
+  double *etaGradPrevQN; // [neta]
+  double *etaPrevQN;     // [neta]
+  int etaHasPrevQN;      // 0/1: reset once per trust_solve_c() attempt
   double *thetaGrad; // Theta gradient; Calculated on the individual level for S matrix calculation
   double thVal[2]; // thVal[0] = lower; thVal[2] = upper
   //
@@ -3205,77 +3394,164 @@ bool calcEtaHessian(double *eta, int likId, int id,
     arma::vec gr0(op_focei.neta, fill::zeros);
     std::copy(&fInd->lp[0], &fInd->lp[0] + op_focei.neta, &gr0[0]);
 
-    arma::vec grPH(op_focei.neta, fill::zeros);
-    arma::vec grMH(op_focei.neta, fill::zeros);
+    // hessianMethod= (default "sr1", trustHessianUpdate.h): a non-fd method
+    // builds this inner Hessian from consecutive Newton-step (eta, gradient)
+    // pairs instead of a fresh finite difference every call. The FIRST call
+    // for this subject still seeds from one FD pass below (matching every
+    // other calcEtaHessian() consumer's one-time, not-per-iteration, cost);
+    // every later call updates the running fInd->etaHessQN instead.
+    //
+    // Gated on innerOpt=="trust" (3) in addition to hessianMethod!=fd:
+    // calcEtaHessian() is also called from warmZm() (n1qn1's own Hessian
+    // warm-start seed, at n1qn1's STARTING eta) and from LikInner2()/the
+    // importance-sampling joint-lik path (the final-objective recompute, at
+    // whatever eta that OTHER inner optimizer converged to) -- neither of
+    // those is the repeated, same-attempt per-Newton-step loop
+    // fInd->etaHasPrevQN's reset (innerOpt1()'s trustSolveAt lambda) assumes.
+    // Without this gate, a non-trust fit's warmZm seed call would leave
+    // etaHasPrevQN=1 with a stale (eta, gradient) pair, and a LATER call at a
+    // very different (converged) eta would then feed a bogus, non-Newton-step
+    // secant pair into the quasi-Newton update -- corrupting exactly the
+    // Hessian this option was meant to make MORE accurate. Confined to trust,
+    // where every calcEtaHessian() call for a subject happens inside that
+    // same reset-per-attempt loop, this is a non-issue.
+    bool hessianQNEligible = (op_focei.hessianMethod != trustHessFd) && (op_focei.innerOpt == 3);
+    bool useQN = hessianQNEligible && fInd->etaHasPrevQN;
+    bool seedQN = hessianQNEligible && !fInd->etaHasPrevQN;
 
-    double h = 0;
+    if (useQN) {
+      arma::mat Hqn(fInd->etaHessQN, op_focei.neta, op_focei.neta, false, true);
+      arma::vec etaPrev(fInd->etaPrevQN, op_focei.neta, false, true);
+      arma::vec gradPrev(fInd->etaGradPrevQN, op_focei.neta, false, true);
+      arma::vec etaV(eta, op_focei.neta);
+      arma::vec s = etaV - etaPrev;
+      arma::vec y = gr0 - gradPrev;
+      trustHessianUpdate(op_focei.hessianMethod, Hqn, s, y);
+      etaPrev = etaV;
+      gradPrev = gr0;
+      H = Hqn;
+      op_focei.nHessianQN.fetch_add(1, std::memory_order_relaxed);
+    } else {
+      arma::vec grPH(op_focei.neta, fill::zeros);
+      arma::vec grMH(op_focei.neta, fill::zeros);
 
-    for (k = op_focei.neta; k--;) {
-      h = fInd->etahh[k];
-      if (op_focei.optimHessType == 3 && h <= 0) {
-        arma::vec t(eta, op_focei.neta);
-        fInd->etahh[k] = shi21Forward(getGradForOptimHess, t, h,
-                                      gr0, grPH, id, k,
-                                      op_focei.hessEpsInner, //double ef = 7e-7,
-                                      1.5,  //double rl = 1.5,
-                                      6.0,  //double ru = 6.0);;
-                                      op_focei.shi21maxInner,  //maxiter=15
-                                      op_focei.shi21hMax, op_focei.shi21hMin);
-        H.col(k) = grPH;
-        continue;
-      }
-      if (op_focei.optimHessType == 1 && h <= 0) {
-        // Central
-        arma::vec t(eta, op_focei.neta);
-        fInd->etahh[k] = shi21Central(getGradForOptimHess, t, h,
-                                      gr0, grPH, id, k,
-                                      op_focei.hessEpsInner, // ef,
-                                      1.5,//double rl = 1.5,
-                                      4.5,//double ru = 4.5,
-                                      3.0,//double nu = 8.0);
-                                      op_focei.shi21maxInner, // maxiter
-                                      op_focei.shi21hMax, op_focei.shi21hMin);
-        H.col(k) = grPH;
-        continue;
-      }
-      // x + h
-      eta[k] += h;
-      lpInner(eta, &grPH[0], id);
-      bool forwardFinite =  grPH.is_finite();
-      if (op_focei.optimHessType == 3 && forwardFinite) { // forward
-        H.col(k) = (grPH-gr0)/h;
-        eta[k] -= h;
-        continue;
-      }
+      // Floor the Shi (2021) step search relative to each eta's own scale.
+      // shi21's `ef` should be the noise floor of what it differences, but
+      // hessEpsInner supplies only atolSens -- the gradient comes out of a solve
+      // rtolSens governs too.  Understating ef inflates shiRC()'s ratio past `ru`,
+      // so the search keeps shrinking h until the difference is inside the noise,
+      // with only the absolute shi21hMin to stop it.  n1qn1 mostly absorbs that
+      // (this Hessian is just its warmZm seed, corrected by its own quasi-Newton
+      // updates); innerOpt="trust" re-derives it as the model Hessian every trial
+      // point and adds its log-determinant to the objective, so nothing corrects
+      // it.  See NEWS.md for the measured effect.
+      //
+      // Scale from curOmegaInv(), not op_focei.omega: it is the matrix lpInner()
+      // itself uses, so it is current at every call here and honors an OmegaScope
+      // override, whereas innerOpt() refreshes op_focei.omega only on the trust
+      // branch.  1/sqrt(omegaInv_kk) is eta_k's conditional sd given the other
+      // etas -- the right scale for a coordinate-wise perturbation, and exactly
+      // sqrt(Omega_kk) when Omega is diagonal.  The dimension check guards an
+      // Armadillo bounds throw, which is uncatchable across this OpenMP loop.
+      const arma::mat &omegaInvCur = curOmegaInv();
+      bool haveOmegaDiag =
+        (omegaInvCur.n_rows == (arma::uword)op_focei.neta &&
+         omegaInvCur.n_cols == (arma::uword)op_focei.neta);
 
-      // x - h
-      eta[k] -= 2*h;
-      lpInner(eta, &grMH[0], id);
-      bool backwardFinite = grMH.is_finite();
-      if (op_focei.optimHessType == 1 &&
-          forwardFinite && backwardFinite) {
-        // central
+      double h = 0;
+
+      for (k = op_focei.neta; k--;) {
+        h = fInd->etahh[k];
+        double hMinK = op_focei.shi21hMin;
+        if (haveOmegaDiag) {
+          double v = omegaInvCur(k, k);
+          if (R_finite(v) && v > 0.0) {
+            double f = op_focei.hessEtaStepMin / std::sqrt(v);
+            if (f > hMinK) hMinK = f;
+          }
+        }
+        if (hMinK > op_focei.shi21hMax) hMinK = op_focei.shi21hMax;
+        if (op_focei.optimHessType == 3 && h <= 0) {
+          arma::vec t(eta, op_focei.neta);
+          fInd->etahh[k] = shi21Forward(getGradForOptimHess, t, h,
+                                        gr0, grPH, id, k,
+                                        op_focei.hessEpsInner, //double ef = 7e-7,
+                                        1.5,  //double rl = 1.5,
+                                        6.0,  //double ru = 6.0);;
+                                        op_focei.shi21maxInner,  //maxiter=15
+                                        op_focei.shi21hMax, hMinK);
+          H.col(k) = grPH;
+          continue;
+        }
+        if (op_focei.optimHessType == 1 && h <= 0) {
+          // Central
+          arma::vec t(eta, op_focei.neta);
+          fInd->etahh[k] = shi21Central(getGradForOptimHess, t, h,
+                                        gr0, grPH, id, k,
+                                        op_focei.hessEpsInner, // ef,
+                                        1.5,//double rl = 1.5,
+                                        4.5,//double ru = 4.5,
+                                        3.0,//double nu = 8.0);
+                                        op_focei.shi21maxInner, // maxiter
+                                        op_focei.shi21hMax, hMinK);
+          H.col(k) = grPH;
+          continue;
+        }
+        // x + h
         eta[k] += h;
-        H.col(k) = (grPH-grMH)/(2.0*h);
-        continue;
-      }
-      if (forwardFinite && !backwardFinite) {
-        // forward difference
-        H.col(k) = (grPH-gr0)/h;
+        lpInner(eta, &grPH[0], id);
+        bool forwardFinite =  grPH.is_finite();
+        if (op_focei.optimHessType == 3 && forwardFinite) { // forward
+          H.col(k) = (grPH-gr0)/h;
+          eta[k] -= h;
+          continue;
+        }
+
+        // x - h
+        eta[k] -= 2*h;
+        lpInner(eta, &grMH[0], id);
+        bool backwardFinite = grMH.is_finite();
+        if (op_focei.optimHessType == 1 &&
+            forwardFinite && backwardFinite) {
+          // central
+          eta[k] += h;
+          H.col(k) = (grPH-grMH)/(2.0*h);
+          continue;
+        }
+        if (forwardFinite && !backwardFinite) {
+          // forward difference
+          H.col(k) = (grPH-gr0)/h;
+          eta[k] += h;
+          continue;
+        }
+        if (!forwardFinite && backwardFinite) {
+          // backward difference
+          H.col(k) = (gr0-grMH)/h;
+          eta[k] += h;
+          continue;
+        }
+        // Both forward and backward evaluations were non-finite: H.col(k) is
+        // left at its zero-initialized default (no usable column), but eta[k]
+        // is currently x-h (from the "x - h" step above) and was never
+        // restored by any of the branches above -- do so here, or it stays
+        // permanently shifted for the rest of the fit (eta is the caller's
+        // persistent per-subject buffer, not a local copy).
         eta[k] += h;
-        continue;
-      }
-      if (!forwardFinite && backwardFinite) {
-        // backward difference
-        H.col(k) = (gr0-grMH)/h;
-        eta[k] += h;
-        continue;
       }
     }
     // symmetrize
     H = 0.5*(H + H.t());
     // Note that since the gradient includes omegaInv*etam,
     // op_focei.omegaInv(k, l) shouldn't be added.
+    if (seedQN) {
+      arma::mat Hqn(fInd->etaHessQN, op_focei.neta, op_focei.neta, false, true);
+      arma::vec etaPrev(fInd->etaPrevQN, op_focei.neta, false, true);
+      arma::vec gradPrev(fInd->etaGradPrevQN, op_focei.neta, false, true);
+      Hqn = H;
+      etaPrev = arma::vec(eta, op_focei.neta);
+      gradPrev = gr0;
+      fInd->etaHasPrevQN = 1;
+    }
   } else if (op_focei.interaction) {
     int nO = getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind);
     arma::mat a(fInd->a, nO, op_focei.neta, false, true);
@@ -3542,6 +3818,49 @@ void innerCost(int *ind, int *n, double *x, double *f, double *g, int *ti, float
   }
 }
 
+// RcppTrust objfun: value+gradient+Hessian every call (a true trust-region
+// Newton step wants a fresh Hessian each iteration, unlike n1qn1's one-time
+// warm-start seed). calcEtaHessian() is cheap since neta is small, and is
+// already proven safe inside this OpenMP per-subject loop (warmZm calls it
+// the same way). No R API calls -- matches innerCost/likInner0's discipline.
+extern "C" int trustInnerObjfun(int n, const double *par, double *value,
+                                 double *gradient, double *hessian, void *userdata) {
+  int id = *((int*)userdata);
+  focei_ind *fInd = &(inds_focei[id]);
+  if (fInd->badSolve == 1) { *value = std::numeric_limits<double>::infinity(); return 1; }
+  std::copy(par, par + n, fInd->x);
+  double f = likInner0(fInd->x, id);
+  if (ISNA(f)) {
+    fInd->badSolve = 1;
+    *value = std::numeric_limits<double>::infinity();
+    return 1;
+  }
+  fInd->nInnerF++;
+  lpInner(fInd->x, gradient, id);
+  fInd->nInnerG++;
+  rx = getRxSolve_();
+  rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
+  mat H((arma::uword)n, (arma::uword)n, fill::zeros), H0((arma::uword)n, (arma::uword)n, fill::zeros);
+  if (!calcEtaHessian(fInd->x, 0, id, fInd, ind, H, H0)) {
+    fInd->badSolve = 1;
+    *value = std::numeric_limits<double>::infinity();
+    return 1;
+  }
+  std::copy(H.begin(), H.end(), hessian);
+  *value = f;
+  return 0;
+}
+
+//[[Rcpp::export(".nTrustInner")]]
+int nTrustInnerGet() {
+  return op_focei.nTrustInner.load(std::memory_order_relaxed);
+}
+
+//[[Rcpp::export(".nHessianQN")]]
+int nHessianQNGet() {
+  return op_focei.nHessianQN.load(std::memory_order_relaxed);
+}
+
 static inline int innerEval(int id){
   focei_ind *fInd = &(inds_focei[id]);
   // Use eta
@@ -3582,7 +3901,14 @@ static inline int innerOpt1(int id, int likId) {
       fInd->setup = 0;
     }
   }
-  bool n1qn1Inner = true;
+  // innerOpt==2 ("BFGS") is intentionally left mapped to n1qn1: lbfgsb3C's C++
+  // wrapper (lbfgsb3x.cpp) writes a file-scope global Rcpp::List on every call,
+  // which is not reentrant under this per-subject OpenMP loop (#927) -- do not
+  // route it there without first fixing that.
+  bool trustInner = (op_focei.innerOpt == 3);
+  bool n1qn1Inner = !trustInner;
+  // mceta>=1: true when a sampled eta (not eta=0) was chosen as the starting point.
+  bool mcetaSampleStart = false;
   // Use eta
   // Convert Zm to Hessian, if applicable.
   mat etaMat(fop->neta, 1, fill::zeros);
@@ -3627,28 +3953,51 @@ static inline int innerOpt1(int id, int likId) {
   } else if (op_focei.mceta == 0) {
     // always reset to zero
     std::fill(&fInd->eta[0], &fInd->eta[0] + op_focei.neta, 0.0);
-  } else if (op_focei.mceta >= 1 &&
-             static_cast<arma::uword>(id) < op_focei.mcetaSamples.n_slices) {
-    // mceta sampling: ETA samples pre-drawn serially in innerOpt() (mcetaSamples
-    // cube); guard skips subjects with no slice (maxInnerIterations == 0, e.g.
-    // covariance/linearization step) to avoid an out-of-bounds Cube::slice().
-    int nmc = op_focei.mceta-1;
-    double fcur = likInner0(fInd->eta, id); // last eta
+  } else if (op_focei.mceta >= 1 && !op_focei.calcGrad &&
+             op_focei.maxInnerIterations > 0 && !op_focei.freezeOde) {
+    // mceta sampling: the candidates are eta=0 plus the (mceta-1) omega draws
+    // pre-drawn serially in innerOpt() (mcetaSamples cube).  The condition here
+    // MIRRORS the one that fills the cube, so mceta=1 (no draws, empty cube)
+    // still means "start at eta=0" instead of silently doing nothing.
+    //
+    // Skipped while calcGrad is set, like the Almquist branch above and the
+    // standardized-eta reset below.  A finite-difference leg is pinned to the
+    // central evaluation's EBE (fdPinRefEtaForce) precisely so both legs are
+    // taken about one point; re-running the search there would let a tiny theta
+    // perturbation flip which candidate wins and put the legs in different
+    // basins, so the difference would measure the search, not the objective.
+    //
+    // The carried "last eta" is deliberately NOT a candidate (#1040).  It is the
+    // previous outer iteration's converged EBE, so its inner objective is
+    // essentially always the lowest of the set; including it made mceta=n win
+    // with the last eta for every subject, collapsing mceta>0 onto the keep-last
+    // behavior of mceta=-1/-2 -- mceta=10 returned an objective bit-identical to
+    // mceta=-2 and the extra draws never mattered.
     std::fill(&fInd->tryEta[0], &fInd->tryEta[0] + op_focei.neta, 0.0);
-    double ftry = likInner0(fInd->tryEta, id); // zero eta
-    int sampCol = 0;
-    while (true) {
-      if (ftry < fcur) {
-        std::copy(&fInd->tryEta[0], &fInd->tryEta[0] + op_focei.neta, &fInd->eta[0]);
-        fcur = ftry;
+    double fcur = likInner0(fInd->tryEta, id); // eta = 0
+    std::copy(&fInd->tryEta[0], &fInd->tryEta[0] + op_focei.neta, &fInd->eta[0]);
+    bool sampleWon = false;
+    // Subjects with no slice (empty cube) simply have no draws to try.
+    if (static_cast<arma::uword>(id) < op_focei.mcetaSamples.n_slices) {
+      int nmc = op_focei.mceta - 1;
+      for (int sampCol = 0; sampCol < nmc; sampCol++) {
+        arma::vec samp = op_focei.mcetaSamples.slice(id).col(sampCol);
+        std::copy(samp.begin(), samp.end(), &fInd->tryEta[0]);
+        double ftry = likInner0(fInd->tryEta, id); // sampled eta
+        // An unusable eta=0 must not pin the search: take any finite candidate
+        // over a non-finite incumbent.
+        if (R_FINITE(ftry) && (!R_FINITE(fcur) || ftry < fcur)) {
+          std::copy(&fInd->tryEta[0], &fInd->tryEta[0] + op_focei.neta, &fInd->eta[0]);
+          fcur = ftry;
+          sampleWon = true;
+        }
       }
-      if (nmc <= 0) break;
-      nmc--;
-      // Read the next pre-drawn sample for this individual.
-      arma::vec samp = op_focei.mcetaSamples.slice(id).col(sampCol);
-      sampCol++;
-      std::copy(samp.begin(), samp.end(), &fInd->tryEta[0]);
-      ftry = likInner0(fInd->tryEta, id); // sampled eta
+    }
+    mcetaSampleStart = sampleWon;
+    if (sampleWon) {
+      op_focei.nMcetaSample.fetch_add(1, std::memory_order_relaxed);
+    } else {
+      op_focei.nMcetaZero.fetch_add(1, std::memory_order_relaxed);
     }
   }
   if (!op_focei.calcGrad) {
@@ -3745,14 +4094,94 @@ static inline int innerOpt1(int id, int likId) {
     f = fBest;
     std::copy(etaBest.begin(), etaBest.end(), fInd->x);
   };
+  // Every converged candidate the restarts below produce, kept for the final
+  // selection after the loop.  This is separate from keepBest()'s running
+  // minimum on purpose: keepBest() is the in-cascade recovery from a failed
+  // restart and has to stay a cheap comparison of the INNER objective, while
+  // WHICH candidate the fit ends up reporting has to be decided on the marginal
+  // objective (see the re-rank after the loop).
+  std::vector< std::vector<double> > candEta;
+  std::vector<double> candF;
+  // Whether the attempt that produced each candidate actually SUCCEEDED (the
+  // optimizer reported convergence and no solve failure latched).  A candidate
+  // that did not is a fallback, never a choice: the marginal re-rank below can
+  // otherwise hand a failed attempt's eta to the fit even though a succeeded
+  // attempt was available, because a failed attempt's Laplace log|H| term is
+  // computed at a point the objective never actually descended to and can come
+  // out larger.  mceta>=1 is where a mixed candidate set is common (#1044).
+  std::vector<char> candOk;
+  // The three vectors are read by index against each other, so they must never
+  // end up ragged.  Everything that can allocate -- the eta copy and all three
+  // reserves -- is done FIRST, so a std::bad_alloc (which the trust arm's own
+  // catch swallows, letting the selection below still run) leaves nothing
+  // pushed; the three push_backs that follow allocate nothing and cannot throw.
+  auto keepCand = [&](bool ok) {
+    if (!R_FINITE(f)) return;
+    std::vector<double> eta(fInd->x, fInd->x + fop->neta);
+    candEta.reserve(candEta.size() + 1);
+    candF.reserve(candF.size() + 1);
+    candOk.reserve(candOk.size() + 1);
+    candEta.push_back(std::move(eta));
+    candF.push_back(f);
+    candOk.push_back(ok ? (char)1 : (char)0);
+  };
+  // Starting points this inner solve runs from.  mceta>=1 picks its start by the
+  // objective AT that point, which does not order the points the optimization
+  // converges to, so a sampled start is followed by a second solve from eta=0 and
+  // the better converged result is kept -- that is what makes mceta=n never end
+  // above mceta=0 (#1040), which ranking starting points alone cannot deliver.
+  // The loop wraps the WHOLE optimizer dispatch rather than living inside one
+  // branch of it, so it holds for whichever inner optimizer is configured, and a
+  // new optimizer arm gets the floor pass without being told about it.  An arm
+  // only has to leave the converged objective in `f` and call both keepBest()
+  // (this pass's running minimum) and keepCand(ok) (the candidate the marginal
+  // re-rank below chooses from, with `ok` saying whether that attempt actually
+  // converged -- see candOk).  On a non-finite `f` it should hand the loop
+  // `_lastStart` (see the arms below) rather than returning, so a failed
+  // sampled start still gets its eta=0 pass.
+  int nInnerStart = mcetaSampleStart ? 2 : 1;
+  for (int _innerStart = 0; _innerStart < nInnerStart; _innerStart++) {
+  bool _lastStart = (_innerStart + 1 == nInnerStart);
+  // The running minimum is PASS-LOCAL.  restoreBest() is the recovery from a
+  // failed restart inside this pass's nudge cascade, so it must put back an eta
+  // from THIS pass: carrying the sample pass's eta into the floor pass's cascade
+  // would have the floor nudging away from eta=0 and it would stop being the run
+  // mceta=0 would have made.  Choosing BETWEEN passes is candEta's job below.
+  fBest = std::numeric_limits<double>::infinity();
+  haveBest = false;
+  if (_innerStart > 0) {
+    // The eta=0 floor: re-seed exactly as mceta=0 would have, so this pass is
+    // the run it must not come out above.
+    std::fill(&fInd->eta[0], &fInd->eta[0] + fop->neta, 0.0);
+    if (op_focei.warm == 1) warmZm(fInd, id);
+    else { fInd->mode = 1; fInd->uzm = 1; }
+    mode = fInd->mode;
+    std::fill_n(&fInd->var[0], fop->neta, 0.1);
+    std::fill_n(fInd->x, fop->neta, 0.0);
+    // n1qn1_ takes these BY POINTER and writes back what it used (see the note
+    // where they are declared), so the floor pass has to be handed a fresh
+    // budget -- otherwise it inherits the first pass's spent iteration and
+    // simulation counts and stops before it has optimized anything.
+    maxInnerIterations = fop->maxInnerIterations;
+    nsim = fop->nsim;
+    imp = fop->imp;
+    nF = fInd->nInnerF;
+  }
   if (n1qn1Inner) {
     fInd->badSolve = 0;
     n1qn1_(innerCost, &npar, fInd->x, &f, fInd->g,
            fInd->var, &epsilon,
            &mode, &maxInnerIterations, &nsim,
            &imp, fInd->zm, &izs, &rzs, &dzs, &id);
-    if (ISNA(f)) return 0;
-    keepBest();
+    if (ISNA(f)) {
+      if (haveBest) { restoreBest(); break; }
+      // No usable result in THIS pass; an earlier one may still have a
+      // candidate, and the selection below will take it.
+      if (!candEta.empty()) break;
+      if (_lastStart) return 0;
+      continue;
+    }
+    keepBest(); keepCand(fInd->badSolve == 0);
     nF = fInd->nInnerF-nF;
     // REprintf("innerCost id: %d, fInd->nInnerF: %d", id, fInd->nInnerF);
     // If stays at zero try another point?
@@ -3786,7 +4215,17 @@ static inline int innerOpt1(int id, int likId) {
                &mode, &maxInnerIterations, &nsim,
                &imp, fInd->zm,
                &izs, &rzs, &dzs, &id);
-        if (ISNA(f)) { if (!haveBest) return 0; restoreBest(); } else keepBest();
+        if (ISNA(f)) {
+          if (!haveBest) {
+            // Nothing usable in THIS pass.  haveBest is pass-local, so that is
+            // not "nothing usable for this subject": an earlier starting point
+            // may already have a candidate the selection will take (#1044).
+            if (!candEta.empty()) break;
+            if (_lastStart) return 0;
+            continue;
+          }
+          restoreBest();
+        } else { keepBest(); keepCand(fInd->badSolve == 0); }
         // nF = fInd->nInnerF - nF;
         // if (nF > 3) tryAgain = false;
         // The re-check below used to be wrapped in `if (!tryAgain)`, which can
@@ -3814,7 +4253,17 @@ static inline int innerOpt1(int id, int likId) {
                  fInd->var, &epsilon,
                  &mode, &maxInnerIterations, &nsim,
                  &imp, fInd->zm, &izs, &rzs, &dzs, &id);
-          if (ISNA(f)) { if (!haveBest) return 0; restoreBest(); } else keepBest();
+          if (ISNA(f)) {
+            if (!haveBest) {
+              // Nothing usable in THIS pass.  haveBest is pass-local, so that is
+              // not "nothing usable for this subject": an earlier starting point
+              // may already have a candidate the selection will take (#1044).
+              if (!candEta.empty()) break;
+              if (_lastStart) return 0;
+              continue;
+            }
+            restoreBest();
+          } else { keepBest(); keepCand(fInd->badSolve == 0); }
           // nF = fInd->nInnerF - nF;
           // if (nF > 3) tryAgain = false;
           {
@@ -3838,7 +4287,17 @@ static inline int innerOpt1(int id, int likId) {
                    fInd->var, &epsilon,
                    &mode, &maxInnerIterations, &nsim,
                    &imp, fInd->zm, &izs, &rzs, &dzs, &id);
-            if (ISNA(f)) { if (!haveBest) return 0; restoreBest(); } else keepBest();
+            if (ISNA(f)) {
+              if (!haveBest) {
+                // Nothing usable in THIS pass.  haveBest is pass-local, so that is
+                // not "nothing usable for this subject": an earlier starting point
+                // may already have a candidate the selection will take (#1044).
+                if (!candEta.empty()) break;
+                if (_lastStart) return 0;
+                continue;
+              }
+              restoreBest();
+            } else { keepBest(); keepCand(fInd->badSolve == 0); }
             // nF = fInd->nInnerF - nF;
             // if (nF > 3) tryAgain = false;
             {
@@ -3862,7 +4321,17 @@ static inline int innerOpt1(int id, int likId) {
                      fInd->var, &epsilon,
                      &mode, &maxInnerIterations, &nsim,
                      &imp, fInd->zm, &izs, &rzs, &dzs, &id);
-              if (ISNA(f)) { if (!haveBest) return 0; restoreBest(); } else keepBest();
+              if (ISNA(f)) {
+                if (!haveBest) {
+                  // Nothing usable in THIS pass.  haveBest is pass-local, so that is
+                  // not "nothing usable for this subject": an earlier starting point
+                  // may already have a candidate the selection will take (#1044).
+                  if (!candEta.empty()) break;
+                  if (_lastStart) return 0;
+                  continue;
+                }
+                restoreBest();
+              } else { keepBest(); keepCand(fInd->badSolve == 0); }
               // nF = fInd->nInnerF - nF;
               // if (nF > 3) tryAgain = false;
               {
@@ -3884,7 +4353,17 @@ static inline int innerOpt1(int id, int likId) {
                        &mode, &maxInnerIterations, &nsim,
                        &imp, fInd->zm,
                        &izs, &rzs, &dzs, &id);
-                if (ISNA(f)) { if (!haveBest) return 0; restoreBest(); } else keepBest();
+                if (ISNA(f)) {
+                  if (!haveBest) {
+                    // Nothing usable in THIS pass.  haveBest is pass-local, so that is
+                    // not "nothing usable for this subject": an earlier starting point
+                    // may already have a candidate the selection will take (#1044).
+                    if (!candEta.empty()) break;
+                    if (_lastStart) return 0;
+                    continue;
+                  }
+                  restoreBest();
+                } else { keepBest(); keepCand(fInd->badSolve == 0); }
                 //nF = fInd->nInnerF-nF;
                 // if (nF > 3) tryAgain = false;
                 {
@@ -3907,6 +4386,317 @@ static inline int innerOpt1(int id, int likId) {
         }
       }
     }
+  } else if (trustInner) {
+    // The whole branch is wrapped in try/catch: any C++ exception escaping
+    // this #pragma omp parallel for loop body (up through innerOptId() ->
+    // innerOpt()'s caller) is uncatchable across the OpenMP thread boundary
+    // and calls std::terminate, crashing the whole R session -- the same
+    // class of bug already found here once (an uncaught Armadillo
+    // Mat::operator() bounds exception, see the parscale guard below).
+    // trust_solve_c() itself already catches std::bad_alloc internally and
+    // returns a clean tres.error==-4 (RcppTrust's src/trust_core.cpp), but
+    // an allocation failure in THIS code around it (parscale, or anything
+    // inside likInner0/calcEtaHessian's Armadillo temporaries) is not
+    // protected by that boundary. Treat any escape as this subject's solve
+    // failing, same as any other unrecoverable inner-solve error.
+    try {
+    fInd->badSolve = 0;
+    // Per-eta scale: sqrt(diag(Omega)) -- the eta-level analogue of bobyqa's
+    // theta scaling; conditions RcppTrust's trust-region metric via parscale.
+    // op_focei.omega is NOT refreshed here when covFdDirect is set (the FD-full
+    // covariance step owns Omega directly then, see innerOpt()) or when this
+    // subject's inner solve runs from a context where the size/outer-gradient
+    // FD-fallback path leaves it stale/mismatched -- indexing it unconditionally
+    // is exactly the "gate that can crash" this file's own odeSwap notes warn
+    // against (an Armadillo operator() bounds-check throw from inside this
+    // OpenMP loop is uncatchable across threads and aborts the whole process,
+    // #issue found via test-focei-outer-fd-fallback.R crashing with
+    // "Mat::operator(): index out of bounds" once trust became reachable from
+    // more code paths). Check the size before indexing; anything unexpected
+    // falls back to no scaling (1.0) for every eta rather than risking OOB.
+    std::vector<double> parscale((size_t)npar, 1.0);
+    if ((arma::uword)npar == op_focei.omega.n_rows &&
+        (arma::uword)npar == op_focei.omega.n_cols) {
+      for (int j = 0; j < npar; j++) {
+        double v = op_focei.omega(j, j);
+        // A normal/multiNormal prior directly on THIS omega diagonal element
+        // (rx_prior_term_t.type==0 or 2 -- both are on the RAW omega value,
+        // per R/priors.R/rxPriorBuildSpec(); a prior on an off-diagonal omega
+        // element is refused upstream, so every omega-touching member here
+        // IS a diagonal element) can imply a LARGER plausible variance than
+        // the current running estimate -- e.g. early in a fit, or whenever
+        // the point estimate undershoots what the prior itself allows for.
+        // Using only the current (possibly too-small) estimate would then
+        // understate how far this eta may need to move -- the same
+        // understated-trust-region failure the invWishart-nu widening above
+        // targets for the other omega-prior convention.
+        //
+        // The prior's MEAN is not by itself "the prior's omega value": these
+        // priors are commonly centered at 0 as a pure shrinkage penalty
+        // (e.g. `prior(eta.cl) ~ dnorm(0, 0.05)`, test-focei-prior.R), where
+        // 0 is meaningless as a variance magnitude but the prior still
+        // considers values out to about its own SPREAD plausible. Using
+        // |mu| + SD (mean plus one prior standard deviation -- a roughly
+        // 84th-percentile plausible value, the same kind of one-SD-out
+        // heuristic parscale itself already applies to Omega via
+        // sqrt(diag(Omega))) captures that; it reduces to the earlier
+        // "prior mean" reading whenever the prior is tight (SD -> 0) and
+        // widens it whenever the prior's spread, not just its center, says a
+        // larger variance is plausible. Take whichever of that or the
+        // current estimate is larger.
+        if (op_focei.priorSpec != NULL) {
+          for (int _t = 0; _t < op_focei.priorSpec->nTerms; ++_t) {
+            const rx_prior_term_t &_term = op_focei.priorSpec->terms[_t];
+            if (_term.type != 0 && _term.type != 1 && _term.type != 2) continue;
+            for (int _k = 0; _k < _term.n; ++_k) {
+              if (_term.etaIdx[_k] != j + 1) continue;
+              double _mu = (_term.mu != NULL) ? _term.mu[_k] : 0.0;
+              double _sd = 0.0;
+              if (_term.scale != NULL) {
+                if (_term.type == 2) {
+                  double _var = _term.scale[_k * _term.n + _k];
+                  _sd = (_var > 0) ? std::sqrt(_var) : 0.0;
+                } else {
+                  _sd = _term.scale[0]; // normal sd / cauchy scale, length 1
+                }
+              }
+              double _cand = std::fabs(_mu) + _sd;
+              if (_cand > v) v = _cand;
+            }
+          }
+        }
+        parscale[j] = (v > 0) ? std::sqrt(v) : 1.0;
+      }
+    }
+    double curRmax = op_focei.trustRmax;
+    trust_options_t topts = trust_options_default(op_focei.trustRinit, curRmax);
+    topts.has_parscale = 1;
+    topts.parscale = parscale.data();
+    topts.iterlim = maxInnerIterations;
+    topts.fterm = op_focei.trustFterm;
+    topts.mterm = op_focei.trustMterm;
+
+    // Stationarity check via the Newton STEP length, not the raw gradient:
+    // trust_solve_c() can report converged==true off its own internal
+    // step-size (fterm/mterm) tolerance while a curvature-BLIND look at the
+    // gradient alone would misjudge whether that's actually right, in
+    // either direction -- a raw |g| includes no information about how much
+    // curvature is already pulling the objective flat around that point (a
+    // legitimately converged point in a STEEP well can have a large-looking
+    // raw gradient a small distance out from it), while a fixed radius or a
+    // poor-fit local quadratic model can ALSO produce a falsely-converged
+    // point with a small raw gradient. The unconstrained Newton step,
+    // ||H^-1 g|| in the same parscale-scaled units the trust radius uses, is
+    // exactly the scale-invariant, curvature-aware criterion Newton's method
+    // itself stops on (the "Newton decrement") -- small precisely when the
+    // CURRENT local model has nowhere better nearby to offer, regardless of
+    // how steep or flat that model is. H is symmetric (exact Hessian of a
+    // scalar objective, freshly evaluated by trustInnerObjfun every call --
+    // not a stale quadratic-model artifact), so the row-major vs.
+    // column-major layout of tres.hessian is immaterial here. arma::solve
+    // (no_approx) fails cleanly on a singular/indefinite H rather than
+    // silently returning a pseudo-inverse result -- an unusable estimate
+    // then leaves trust_solve_c()'s own converged flag as the only signal.
+    // Tied to trustFterm (not the shared epsilon local above): this is
+    // trust's OWN stationarity gate, not n1qn1's unrelated tolerance, so it
+    // belongs with the rest of trust's own criteria rather than epsilon.
+    // NOTE: a 2026-08-23 investigation into a stuck-at-start FOCEi fit
+    // initially suspected this gate (and topts.fterm/mterm) as the cause --
+    // that was a red herring; tightening neither this nor trustFterm/
+    // trustMterm fixed the actual fit. The real cause was the OUTER bobyqa
+    // optimizer's own rhobeg (see .bobyqa()'s stuck-search retry, R/focei.R).
+    double pushTol = std::sqrt(op_focei.trustFterm);
+    // When the Newton step turns out large (pushDist > curRmax), that is
+    // this problem's genuine trust-region-radius-collapse signal -- the
+    // literal "amount eta is being pushed" past what the current radius
+    // allows, a measured distance rather than a guessed multiplier, used
+    // below to decide whether a wider-radius retry is worth attempting at
+    // all before falling back to relocating the start point via nudges.
+    double pushDist = -1.0; // -1: not computed / not usable this call
+    // trust_solve_c() allocates tres's argument/gradient/hessian arrays.  The
+    // arma work below (matrix copies, arma::solve) can throw std::bad_alloc,
+    // which the branch-level catch swallows -- so the free has to run on every
+    // exit from the lambda, not only the normal one.
+    struct TresGuard {
+      trust_result_t *r;
+      ~TresGuard() { trust_result_free_ptr(r); }
+    };
+    auto trustSolveAt = [&](bool fill, double startVal) {
+      if (fill) std::fill_n(fInd->x, npar, startVal);
+      // Reset per attempt (mirrors n1qn1's cascade, which clears this before
+      // every restart): a mid-solve NA from trustInnerObjfun latches
+      // fInd->badSolve, and trustInnerObjfun's own guard then short-circuits
+      // every later call to it -- without resetting here, one NA during the
+      // FIRST trust_solve_c run would silently poison the entire nudge
+      // cascade, making the retries a no-op for exactly the cases that need
+      // them.
+      fInd->badSolve = 0;
+      // hessianMethod= quasi-Newton state (calcEtaHessian()) is only valid
+      // WITHIN one trust_solve_c() attempt -- a retry (radius escalation or
+      // an eta nudge) starts from a different point, so its running Hessian
+      // must reseed from a fresh FD pass rather than update from the PRIOR
+      // attempt's last (eta, gradient), same reasoning as badSolve above.
+      fInd->etaHasPrevQN = 0;
+      pushDist = -1.0;
+      topts.rmax = curRmax;
+      // Value-initialized so the guard below can free it even if the solve
+      // never allocates: trust_result_free() frees every member unconditionally
+      // and free(NULL) is a no-op, but free() on an indeterminate pointer is
+      // not.  The guard is armed BEFORE the call so an exception thrown out of
+      // trustInnerObjfun mid-solve still frees whatever was allocated.
+      trust_result_t tres = {};
+      TresGuard _tresGuard{&tres};
+      trust_solve_c_ptr(npar, fInd->x, trustInnerObjfun, (void*)(&id), &topts, &tres);
+      op_focei.nTrustInner.fetch_add(1, std::memory_order_relaxed);
+      bool conv = false;
+      // trust_solve_c()'s OWN verdict, kept separate from `conv` because the
+      // Newton-decrement gate below withdraws `conv` to trigger a retry.  That
+      // gate is deliberately eager -- it exists to make the cascade try harder
+      // -- so it is the wrong thing to disqualify a candidate with: measured
+      // against n1qn1 on the same model, treating a gate withdrawal as "bad"
+      // discarded etas n1qn1 finds too and cost thousands of objective units.
+      // A candidate is bad only when the optimizer itself failed.
+      bool solveOk = false;
+      // Whether this attempt produced a result at all.  A hard error and a
+      // finite-looking call that returned NaN/Inf are the same thing here.
+      bool usable = false;
+      if (tres.error >= 0 && tres.argument != NULL) {
+        std::copy(tres.argument, tres.argument + npar, fInd->x);
+        f = tres.value;
+        conv = (bool)tres.converged;
+        solveOk = conv;
+        if (R_FINITE(f) && !ISNA(f)) {
+          usable = true;
+          if (!conv) op_focei.nTrustSolverNoConv.fetch_add(1, std::memory_order_relaxed);
+          keepBest();
+          if (tres.gradient != NULL) std::copy(tres.gradient, tres.gradient + npar, fInd->g);
+          if (tres.gradient != NULL && tres.hessian != NULL) {
+            arma::mat H(tres.hessian, npar, npar);
+            arma::vec g(tres.gradient, npar);
+            arma::vec step;
+            if (arma::solve(step, H, -g, arma::solve_opts::no_approx) &&
+                arma::dot(g, step) < 0) {
+              // step is in raw eta units; theta_try = theta + ptry/parscale
+              // inside trust_core.h means the SCALED step (comparable to r)
+              // is ptry = step_raw * parscale component-wise.
+              double d2 = 0.0;
+              for (int i = 0; i < npar; i++) {
+                double si = step[i] * parscale[i];
+                d2 += si * si;
+              }
+              pushDist = std::sqrt(d2);
+              if (conv && pushDist > pushTol) {
+                conv = false;
+                op_focei.nTrustPush.fetch_add(1, std::memory_order_relaxed);
+              }
+            }
+            // Newton estimate unusable (singular/indefinite H, or not a
+            // descent direction): leave conv at trust_solve_c()'s own flag
+            // rather than fabricate a verdict from an untrustworthy estimate.
+          }
+          // Record it for the marginal re-rank after the starting-point loop as
+          // well.  keepBest() is only the running minimum on the INNER objective
+          // (the recovery from a failed restart within this pass); the choice of
+          // which candidate the fit reports is made on LikInner2()'s marginal,
+          // which sees only what keepCand() recorded (#1040, #1044).  It is
+          // recorded on solveOk, not on the gated `conv`, so an eager retry
+          // trigger cannot also disqualify the point it was triggered at.
+          keepCand(solveOk && fInd->badSolve == 0);
+        }
+      }
+      if (!usable) {
+        // Either a hard error (e.g. tres.error==-3: the nudged starting point
+        // itself was infeasible) or a call that came back NaN/Inf.  fInd->x may
+        // already hold the raw nudge fill, and f is otherwise left untouched:
+        // if a PRIOR attempt succeeded, f still equals fBest, so the shared
+        // restoreBest() guard below (`fBest < f`) would silently skip restoring
+        // -- the reported objective would say fBest while fInd->x actually held
+        // this failed nudge point.  (A NaN f fails that comparison too.)  Force
+        // f to +Inf so the guard always fires when this attempt didn't produce
+        // a usable eta, and never report convergence on an unusable one.
+        f = std::numeric_limits<double>::infinity();
+        conv = false;
+        op_focei.nTrustError.fetch_add(1, std::memory_order_relaxed);
+      }
+      // Attempts that did not end converged, however they got there:
+      // error + solverFail + newtonGate.
+      if (!conv) op_focei.nTrustNoConv.fetch_add(1, std::memory_order_relaxed);
+      return conv;
+    };
+
+    bool converged = trustSolveAt(false, 0.0);
+    if (!converged && pushDist >= 0.0 && pushDist <= curRmax) {
+      // The Newton step FITS in the current radius and trust_solve_c still
+      // stopped: it hit its own fterm/mterm step-size criterion, which is
+      // measured against the PREVIOUS iterate, not against the model's own
+      // remaining decrease.  A fresh solve from the point just found resets
+      // that history and can move again, and it keeps the good point -- the
+      // nudge cascade below throws it away and restarts from a fill.
+      op_focei.nTrustWarm.fetch_add(1, std::memory_order_relaxed);
+      converged = trustSolveAt(false, 0.0);
+    }
+    if (!converged && pushDist > curRmax) {
+      // Radius-escalation retry from the point just found (already the best
+      // seen so far, via keepBest() above) before falling back to eta nudges.
+      // Target = the measured Newton-step distance (with a 20% margin so the
+      // re-solve lands on an INTERIOR point, not again exactly on the new
+      // boundary), floored at a plain doubling to match trust_core.h's own
+      // internal growth rule (`r = std::min(2.0*r, rmax)` on a very
+      // successful step) and ceiled at 8x -- three such doublings -- so one
+      // poorly-conditioned subject can't blow the radius up without bound.
+      double target = std::max(curRmax * 2.0, pushDist * 1.2);
+      curRmax = std::min(target, op_focei.trustRmax * 8.0);
+      op_focei.nTrustRetry.fetch_add(1, std::memory_order_relaxed);
+      converged = trustSolveAt(false, 0.0);
+    }
+    // Restart cascade on non-convergence, same nudge magnitudes n1qn1 uses; the
+    // monotone keepBest()/restoreBest() (shared below) guarantees a later
+    // restart can only improve on an earlier one.
+    if (!converged && fInd->doEtaNudge == 1 && op_focei.etaNudge != 0.0) {
+      op_focei.didEtaNudge.store(1, std::memory_order_relaxed);
+      double nudges[4] = {op_focei.etaNudge, -op_focei.etaNudge,
+                           -op_focei.etaNudge2, op_focei.etaNudge2};
+      for (int _n = 0; _n < 4 && !converged; _n++) {
+        op_focei.nTrustNudge.fetch_add(1, std::memory_order_relaxed);
+        converged = trustSolveAt(true, nudges[_n]);
+      }
+    }
+    // Every attempt this subject got is spent and none of them converged --
+    // the count #1044 needed: without it a fit whose trust solves all failed
+    // is indistinguishable from one where they all converged.
+    if (!converged) op_focei.nTrustFail.fetch_add(1, std::memory_order_relaxed);
+    // haveBest is PASS-LOCAL, so "this pass produced nothing" is not "this
+    // subject produced nothing": under mceta>=1 an earlier pass may already
+    // have a converged candidate, and returning 0 here would throw it away and
+    // fail the subject.  Same three-way exit the n1qn1 arm takes (#1044).
+    if (!haveBest) {
+      if (!candEta.empty()) break;
+      if (_lastStart) return 0;
+      continue;
+    }
+    } catch (const std::bad_alloc &) {
+      // System out of memory mid-solve -- see the branch-level comment above.
+      // Every other exit from this branch marks a failed attempt via
+      // fInd->badSolve (checked by trustInnerObjfun/etc. on the NEXT call to
+      // this subject) -- match that here even though the caller's own
+      // innerOpt1() return value already signals the failure on its own.
+      fInd->badSolve = 1;
+      if (!haveBest) {
+        if (!candEta.empty()) break;
+        if (_lastStart) return 0;
+        continue;
+      }
+    } catch (...) {
+      // Defense in depth, matching trust_solve_c()'s own catch(...) fallback:
+      // any other C++ exception escaping this branch is equally fatal if it
+      // crosses the OpenMP boundary uncaught.
+      fInd->badSolve = 1;
+      if (!haveBest) {
+        if (!candEta.empty()) break;
+        if (_lastStart) return 0;
+        continue;
+      }
+    }
   } else {
     int fail=0, fncount=0, grcount=0;
     char msg[100];
@@ -3917,7 +4707,15 @@ static inline int innerOpt1(int id, int likId) {
              op_focei.pgtol, &fncount, &grcount,
              op_focei.maxInnerIterations, msg, 0, -1,
              op_focei.abstol, op_focei.reltol, fInd->g);
-    if (ISNA(f)) return 0;
+    if (ISNA(f)) {
+      if (haveBest) { restoreBest(); break; }
+      // No usable result in THIS pass; an earlier one may still have a
+      // candidate, and the selection below will take it.
+      if (!candEta.empty()) break;
+      if (_lastStart) return 0;
+      continue;
+    }
+    keepBest(); keepCand(fInd->badSolve == 0);
     // if (fail != 6 && fail != 7 && fail != 8 && fail != 27){
     //   // did not converge
     //   if (fInd->doEtaNudge == 1 && op_focei.etaNudge != 0.0){
@@ -3944,12 +4742,102 @@ static inline int innerOpt1(int id, int likId) {
     //   }
     // }
   }
-  // Apply the best candidate found across the restart cascade.  This is what
-  // makes the inner solve monotone: a restart can only ever improve the eta the
-  // cascade leaves behind, never degrade it.  LikInner2() below recomputes the
+  } // end of the starting-point loop (body deliberately not re-indented)
+  // Apply the best candidate the restarts produced.  This is what makes the
+  // inner solve monotone: a restart can only ever improve the eta the cascade
+  // leaves behind, never degrade it.  LikInner2() below recomputes the
   // individual objective at this eta, so this is also what the outer optimizer
   // ultimately sees.
-  if (haveBest && (!R_FINITE(f) || fBest < f)) {
+  //
+  // The choice is made on the MARGINAL objective LikInner2() forms -- the one
+  // the fit reports, which adds the Laplace log|H| term at the eta -- and not
+  // on the inner joint density the optimizer minimizes.  Two converged etas can
+  // order one way on the inner objective and the other way on what the outer
+  // optimizer sees, so choosing on the inner objective alone hands the fit the
+  // worse of them whenever the two disagree (#1040): the mceta floor pass could
+  // win the comparison it was making and still come out above mceta=0 on the
+  // objective that gets reported.
+  //
+  // Ranking runs only when the restarts actually produced more than one
+  // candidate.  A single candidate has nothing to choose between and costs
+  // nothing extra, which is every inner solve on the default path.  A
+  // finite-difference leg (likId != 0) is ranked by the SAME rule so it picks
+  // its winner the way its central leg did; ranking the two differently would
+  // let them settle in different basins and the difference would measure that.
+  // LikInner2() writes lik[likId] for whichever candidate it is called on, and
+  // the final call at the winner overwrites it, exactly as for likId == 0.
+  if (!candEta.empty()) {
+    // A candidate the optimizer FAILED on is a fallback, not a choice.  Both
+    // the inner-objective winner and the marginal re-rank below therefore look
+    // only at candidates whose attempt succeeded whenever there is at least
+    // one; a failed attempt is used only when nothing else survived (#1044).
+    // This matters most under mceta>=1, where the extra starting points are
+    // what make a mixed candidate set common in the first place: a failed
+    // attempt's eta can carry the larger marginal (its Laplace log|H| is
+    // measured at a point the inner objective never descended to) and win.
+    // "Failed" is the optimizer's own verdict plus a latched bad solve, NOT a
+    // heuristic staleness gate -- see the trust arm's solveOk.
+    bool anyOk = false, anyBad = false;
+    for (size_t k = 0; k < candOk.size(); ++k) {
+      if (candOk[k]) anyOk = true; else anyBad = true;
+    }
+    if (!anyOk) {
+      op_focei.nInnerNoGood.fetch_add(1, std::memory_order_relaxed);
+    } else if (anyBad) {
+      op_focei.nInnerDropped.fetch_add(1, std::memory_order_relaxed);
+    }
+    int nElig = 0;
+    int bestInnerK = -1;
+    for (size_t k = 0; k < candEta.size(); ++k) {
+      if (anyOk && !candOk[k]) continue;
+      nElig++;
+      if (bestInnerK < 0 || candF[k] < candF[(size_t)bestInnerK]) bestInnerK = (int)k;
+    }
+    if (bestInnerK < 0) bestInnerK = 0; // unreachable; keeps the indexing below total
+    int bestK = -1;
+    if (nElig > 1) {
+      op_focei.nInnerRanked.fetch_add(1, std::memory_order_relaxed);
+      // calcEtaHessian(), reached through LikInner2(), FREEZES the shi21 finite
+      // difference steps on first use.  Snapshot them so the ranking leaves
+      // them as it found them and the winner's final LikInner2() below behaves
+      // exactly as it would have without a ranking pass.
+      std::vector<double> shf, shr, shh;
+      if (fInd->etahf != NULL) shf.assign(fInd->etahf, fInd->etahf + fop->neta);
+      if (fInd->etahr != NULL) shr.assign(fInd->etahr, fInd->etahr + fop->neta);
+      if (fInd->etahh != NULL) shh.assign(fInd->etahh, fInd->etahh + fop->neta);
+      double bestMarg = 0.0;
+      for (size_t k = 0; k < candEta.size(); ++k) {
+        if (anyOk && !candOk[k]) continue;
+        // Each candidate is measured with ITS OWN step search, which is what
+        // the fit would have computed had that candidate been the only one.
+        // Without the zeroing the candidate evaluated first freezes the steps
+        // for all the rest, which both biases their log|H| and makes the winner
+        // depend on the order the passes happened to run in.
+        if (fInd->etahf != NULL) std::fill_n(&fInd->etahf[0], fop->neta, 0.0);
+        if (fInd->etahr != NULL) std::fill_n(&fInd->etahr[0], fop->neta, 0.0);
+        if (fInd->etahh != NULL) std::fill_n(&fInd->etahh[0], fop->neta, 0.0);
+        double m = LikInner2(&candEta[k][0], likId, id);
+        // LikInner2 returns the individual log-likelihood and the outer
+        // objective is -2 times it, so the best candidate is the LARGEST.
+        if (!ISNA(m) && R_FINITE(m) && (bestK < 0 || m > bestMarg)) {
+          bestMarg = m;
+          bestK = (int)k;
+        }
+      }
+      if (!shf.empty()) std::copy(shf.begin(), shf.end(), fInd->etahf);
+      if (!shr.empty()) std::copy(shr.begin(), shr.end(), fInd->etahr);
+      if (!shh.empty()) std::copy(shh.begin(), shh.end(), fInd->etahh);
+      if (bestK >= 0 && bestK != bestInnerK) {
+        op_focei.nInnerReranked.fetch_add(1, std::memory_order_relaxed);
+      }
+    }
+    // No usable marginal for any candidate (or only one candidate): fall back
+    // to the inner objective's winner rather than to whatever the last pass
+    // happened to leave in fInd->x.
+    if (bestK < 0) bestK = bestInnerK;
+    std::copy(candEta[(size_t)bestK].begin(), candEta[(size_t)bestK].end(), fInd->x);
+    f = candF[(size_t)bestK];
+  } else if (haveBest && (!R_FINITE(f) || fBest < f)) {
     restoreBest();
   }
 
@@ -4658,30 +5546,60 @@ void innerOpt() {
     foceiOmegaEnvSyncFromTail(); // fast omega path leaves the env theta stale
     op_focei.omegaInv=getOmegaInv();
     op_focei.logDetOmegaInv5 = getOmegaDet();
+    if (op_focei.innerOpt == 3) {
+      // trust-region parscale needs Omega (not just its inverse) refreshed on
+      // the same cadence as omegaInv -- op_focei.omega is otherwise only kept
+      // current for est="fo" (foceiOmegaFromTheta only refreshes it on that
+      // branch). getOmegaMat() is a real computation, not free, so this stays
+      // gated: unconditionally refreshing it every outer iteration for EVERY
+      // fit (including the n1qn1 default) would pay that cost on the hot path
+      // for every innerOpt/est combination that never reads op_focei.omega.
+      op_focei.omega = getOmegaMat();
+    }
   }
   // Pre-draw per-subject ETA samples serially before the parallel for-loop so
   // workers only do memory access (no R API calls), making mceta safe under cores > 1.
+  //
+  // Drawn ONCE per fit (the cube is cleared in foceiSetup_).  Redrawing them on
+  // every innerOpt() call made the objective a different random function at every
+  // evaluation: the outer optimizer's finite differences then compared two
+  // different functions, and two evaluations at the SAME theta disagreed (#1040).
+  // The draws come from the omega in force at the first evaluation -- they are
+  // starting points, not part of the likelihood.
   if (op_focei.mceta >= 1 && op_focei.maxInnerIterations > 0 && !op_focei.freezeOde) {
     int nsubAll = (int)getRxNsubAndMix(rx);
     int nmc = op_focei.mceta - 1;
     if (nmc > 0 && op_focei.neta > 0) {
-      op_focei.mcetaSamples.set_size(op_focei.neta, nmc, nsubAll);
-      NumericMatrix omega = getOmega();
-      Function loadNamespace("loadNamespace", R_BaseNamespace);
-      Environment nlmixr2 = loadNamespace("nlmixr2est");
-      Function fSample = as<Function>(nlmixr2[".sampleOmega"]);
-      for (int id = 0; id < nsubAll; ++id) {
-        for (int k = 0; k < nmc; ++k) {
-          NumericMatrix samp = fSample(omega);
-          std::copy(samp.begin(), samp.end(),
-                    op_focei.mcetaSamples.slice(id).colptr(k));
+      if (op_focei.mcetaSamples.n_rows   != (arma::uword)op_focei.neta ||
+          op_focei.mcetaSamples.n_cols   != (arma::uword)nmc ||
+          op_focei.mcetaSamples.n_slices != (arma::uword)nsubAll) {
+        op_focei.mcetaSamples.set_size(op_focei.neta, nmc, nsubAll);
+        NumericMatrix omega = getOmega();
+        Function loadNamespace("loadNamespace", R_BaseNamespace);
+        Environment nlmixr2 = loadNamespace("nlmixr2est");
+        Function fSample = as<Function>(nlmixr2[".sampleOmega"]);
+        for (int id = 0; id < nsubAll; ++id) {
+          for (int k = 0; k < nmc; ++k) {
+            NumericMatrix samp = fSample(omega);
+            // The destination column is exactly neta wide and .sampleOmega is an
+            // R function, so bound the copy by the destination rather than by
+            // what R handed back.  A short draw leaves the tail at zero (an
+            // eta=0 candidate), which is a starting point, not a wrong answer --
+            // so this needs no error, and must not raise one: innerOpt() unwinds
+            // into the caller of the per-subject parallel region.
+            int nCopy = (int)samp.size();
+            if (nCopy > op_focei.neta) nCopy = op_focei.neta;
+            double *dest = op_focei.mcetaSamples.slice(id).colptr(k);
+            std::copy(samp.begin(), samp.begin() + nCopy, dest);
+            if (nCopy < op_focei.neta) {
+              std::fill(dest + nCopy, dest + op_focei.neta, 0.0);
+            }
+          }
         }
       }
     } else {
       op_focei.mcetaSamples.reset();
     }
-  } else {
-    op_focei.mcetaSamples.reset();
   }
   // freezeOde: evaluate each subject's density at its (restored) base EBE with a
   // single innerEval -- no eta re-optimization -- reusing the frozen ODE states.
@@ -6758,6 +7676,7 @@ static inline void foceiSetupNoEta_(){
 
   // Mixtures only work in population only models;
   rx = getRxSolve_();
+  foceiCheckIndCounts(rx);
 
   if (inds_focei != NULL) R_Free(inds_focei);
   inds_focei = R_Calloc(getRxNsub(rx), focei_ind);
@@ -6813,6 +7732,7 @@ static inline void foceiSetupNoEta_(){
 
 static inline void foceiSetupEta_(NumericMatrix etaMat0){
   rx = getRxSolve_();
+  foceiCheckIndCounts(rx);
 
   if (inds_focei != NULL) R_Free(inds_focei);
   inds_focei = R_Calloc(getRxNsubAndMix(rx), focei_ind);
@@ -6858,6 +7778,10 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
     tot = foceiSzAdd(tot, nall_mix, "llikObs");                       // llikObsFull
     // per-obs censored inner-Hessian coefficients gcHff/gcHfr/gcHrr
     tot = foceiSzAdd(tot, foceiSzMul(3, nall_mix, "cHff"), "cHff");
+    // hessianMethod= quasi-Newton state: etaHessQN [neta*neta] +
+    // etaGradPrevQN/etaPrevQN [neta] each, per subject
+    tot = foceiSzAdd(tot, foceiSzMul(neta * neta, nsub_mix, "etaHessQN"), "etaHessQN");
+    tot = foceiSzAdd(tot, foceiSzMul(2 * neta, nsub_mix, "etaPrevQN"), "etaPrevQN");
     op_focei.etaUpper = R_Calloc(tot, double);
     op_focei.etaBufferN = tot;
   }
@@ -6890,6 +7814,11 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
   op_focei.gcHff    = op_focei.gVid + getRxNobsSqAndMix(rx); //[nall_mix]
   op_focei.gcHfr    = op_focei.gcHff + getRxNallAndMix(rx); //[nall_mix]
   op_focei.gcHrr    = op_focei.gcHfr + getRxNallAndMix(rx); //[nall_mix]
+  op_focei.getaHessQN     = op_focei.gcHrr + getRxNallAndMix(rx); //[neta*neta*nsub_mix]
+  op_focei.getaGradPrevQN = op_focei.getaHessQN +
+    op_focei.neta*op_focei.neta*getRxNsubAndMix(rx); //[neta*nsub_mix]
+  op_focei.getaPrevQN     = op_focei.getaGradPrevQN +
+    op_focei.neta*getRxNsubAndMix(rx); //[neta*nsub_mix]
   // Could use .zeros() but since I used Calloc, they are already zero.
   // Yet not doing it causes the theta reset error.
   op_focei.etaM     = mat(op_focei.neta, 1, arma::fill::zeros);
@@ -6942,6 +7871,15 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
     fInd->etahf = &op_focei.getahf[j];
     fInd->etahr = &op_focei.getahr[j];
     fInd->etahh = &op_focei.getahh[j];
+    // hessianMethod= quasi-Newton state -- direct i*neta(*neta) indexing
+    // (matching op_focei.gH's own convention, e.g. src/inner.cpp's
+    // `op_focei.gH + id*op_focei.neta*op_focei.neta`), not the +1-padded
+    // gEtaGTransN blocks the eta vectors above use (no subject-id sentinel
+    // slot is needed here).
+    fInd->etaHessQN = &op_focei.getaHessQN[i * op_focei.neta * op_focei.neta];
+    fInd->etaGradPrevQN = &op_focei.getaGradPrevQN[i * op_focei.neta];
+    fInd->etaPrevQN = &op_focei.getaPrevQN[i * op_focei.neta];
+    fInd->etaHasPrevQN = 0;
     fInd->oldEta = &op_focei.goldEta[j];
     fInd->tryEta = &op_focei.gtryEta[j];
     fInd->saveEta = &op_focei.gsaveEta[j];
@@ -7230,6 +8168,10 @@ NumericVector foceiSetup_(const RObject &obj,
     }
     if (foceiO.containsElementNamed("gamma")) op_focei.impGamma = as<double>(foceiO["gamma"]);
     if (foceiO.containsElementNamed("nIter")) op_focei.impNiter = as<int>(foceiO["nIter"]);
+    if (foceiO.containsElementNamed("mapIter")) op_focei.impMapIter = as<int>(foceiO["mapIter"]);
+    if (foceiO.containsElementNamed("nBurn")) op_focei.impNburn = as<int>(foceiO["nBurn"]);
+    if (foceiO.containsElementNamed("burnFreezeOmega"))
+      op_focei.impBurnFreezeOmega = as<bool>(foceiO["burnFreezeOmega"]);
     if (foceiO.containsElementNamed("iaccept")) op_focei.impIaccept = as<double>(foceiO["iaccept"]);
     if (foceiO.containsElementNamed("df")) op_focei.impDf = as<double>(foceiO["df"]);
     if (foceiO.containsElementNamed("auto")) op_focei.impAuto = as<bool>(foceiO["auto"]);
@@ -7259,6 +8201,25 @@ NumericVector foceiSetup_(const RObject &obj,
     if (foceiO.containsElementNamed("qr")) op_focei.impQr = as<bool>(foceiO["qr"]);
     if (foceiO.containsElementNamed("qrShift")) op_focei.impQrShift = as<bool>(foceiO["qrShift"]);
     if (foceiO.containsElementNamed("qrRefresh")) op_focei.impQrRefresh = as<bool>(foceiO["qrRefresh"]);
+    if (foceiO.containsElementNamed("proposal") &&
+        TYPEOF(foceiO["proposal"]) == STRSXP) {
+      std::string ps = as<std::string>(foceiO["proposal"]);
+      op_focei.impProposal = (ps == "normal") ? 1 : ((ps == "t") ? 2 :
+        ((ps == "laplace") ? 3 : ((ps == "mixture") ? 4 : 0)));
+    }
+    if (foceiO.containsElementNamed("propMixScale")) {
+      NumericVector v = as<NumericVector>(foceiO["propMixScale"]);
+      op_focei.impPropMixScale.assign(v.begin(), v.end());
+    }
+    if (foceiO.containsElementNamed("propMixWeight")) {
+      NumericVector v = as<NumericVector>(foceiO["propMixWeight"]);
+      op_focei.impPropMixWeight.assign(v.begin(), v.end());
+    }
+    if (foceiO.containsElementNamed("qrScramble") &&
+        TYPEOF(foceiO["qrScramble"]) == STRSXP) {
+      std::string qs = as<std::string>(foceiO["qrScramble"]);
+      op_focei.impQrScramble = (qs == "owen") ? 1 : ((qs == "lms") ? 2 : 0);
+    }
     if (foceiO.containsElementNamed("sir")) op_focei.impSir = as<bool>(foceiO["sir"]);
     if (foceiO.containsElementNamed("sirSample")) op_focei.impSirSample = as<int>(foceiO["sirSample"]);
     if (foceiO.containsElementNamed("impSeed")) op_focei.impSeed = as<int>(foceiO["impSeed"]);
@@ -7341,6 +8302,17 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.maxOuterIterations = as<int>(foceiO["maxOuterIterations"]);
   op_focei.maxInnerIterations = as<int>(foceiO["maxInnerIterations"]);
   op_focei.mceta = as<int>(foceiO["mceta"]);
+  // The mceta>=1 draws are per-fit (innerOpt() fills the cube once); clear them so a
+  // new fit does not inherit the previous fit's starting etas.  The start counters
+  // are cleared here as well as in foceiOuter(), which the EM/nonparametric methods
+  // never reach -- otherwise those fits would report the previous fit's counts.
+  op_focei.mcetaSamples.reset();
+  op_focei.nMcetaZero.store(0, std::memory_order_relaxed);
+  op_focei.nMcetaSample.store(0, std::memory_order_relaxed);
+  op_focei.nInnerRanked.store(0, std::memory_order_relaxed);
+  op_focei.nInnerReranked.store(0, std::memory_order_relaxed);
+  op_focei.nInnerNoGood.store(0, std::memory_order_relaxed);
+  op_focei.nInnerDropped.store(0, std::memory_order_relaxed);
   op_focei.warm = foceiO.containsElementNamed("warm") ? as<int>(foceiO["warm"]) : 0;
   op_focei.maxOdeRecalc = as<int>(foceiO["maxOdeRecalc"]);
   op_focei.objfRecalN=0;
@@ -7705,6 +8677,93 @@ NumericVector foceiSetup_(const RObject &obj,
     else foceiSetupEta_(etaMat0);
   }
   op_focei.epsilon=as<double>(foceiO["epsilon"]);
+  op_focei.innerOpt = foceiO.containsElementNamed("innerOpt") ? as<int>(foceiO["innerOpt"]) : 1;
+  op_focei.trustConf = foceiO.containsElementNamed("trustConf") ? as<double>(foceiO["trustConf"]) : 0.975;
+  {
+    // rmax: radius (in sqrt(diag(Omega))-scaled units) of the trustConf-level eta
+    // confidence region. Plain case: eta ~ N(0, Omega) makes eta'Omega^-1 eta
+    // chi-square(df=neta) -- the textbook confidence-ellipsoid radius, valid
+    // when Omega itself is treated as known.
+    //
+    // When the model ALSO puts a textbook inverse-Wishart prior on (a block
+    // of) Omega (rx_prior_term_t.type==3, the "general" prior method's own
+    // invWishart(nu) -- R/priors.R), Omega is not known, and using the plain
+    // chi-square radius anyway (as if the current Omega estimate were exact)
+    // understates how far eta may legitimately need to move -- especially
+    // with a low-nu (weak/uncertain) prior, or early in a fit before Omega
+    // has settled. Standard Normal-Inverse-Wishart theory: if
+    // Sigma ~ InvWishart(Psi, nu) and x | Sigma ~ N(0, Sigma), the MARGINAL
+    // distribution of x (Sigma integrated out) is multivariate-t with
+    // df_t = nu - d + 1 (d = the prior block's own dimension) and scale
+    // Psi/df_t. A multivariate-t's trustConf-level confidence-ellipsoid
+    // radius is sqrt(d * qf(trustConf, d, df_t)) (Johnson & Wichern,
+    // "Applied Multivariate Statistical Analysis") -- and as
+    // df_t -> Inf (nu -> Inf, Omega effectively known), F_{d,df_t}/1 ->
+    // chisq_d/d, recovering the plain chi-square formula exactly. So this is
+    // a strict generalization, not a different formula, and reduces to
+    // today's behavior whenever there is no omega-block prior.
+    //
+    // A joint per-subject eta solve moves every eta together under ONE
+    // scalar radius, so with several omega-block priors in play (or a prior
+    // covering only part of a larger joint eta vector) this uses the
+    // SMALLEST nu found (the most uncertain block) applied to the FULL
+    // neta-dimensional ellipsoid -- conservative, since over-widening for a
+    // well-determined direction costs a few extra trust-region iterations,
+    // never correctness, while under-widening is exactly the bug this fixes
+    // (test-focei-prior.R's omega-prior case).
+    double _df = (double) op_focei.neta;
+    double _nuMin = R_PosInf, _nuMinBlockDim = 0.0;
+    if (op_focei.priorSpec != NULL) {
+      for (int _t = 0; _t < op_focei.priorSpec->nTerms; ++_t) {
+        const rx_prior_term_t &_term = op_focei.priorSpec->terms[_t];
+        if (_term.type == 3 && _term.nu < _nuMin) {
+          _nuMin = _term.nu;
+          _nuMinBlockDim = (double) _term.n;
+        }
+      }
+    }
+    double _rmaxDefault;
+    if (_df > 0 && R_FINITE(_nuMin) && _nuMin > _nuMinBlockDim - 1.0) {
+      double _dfT = _nuMin - _nuMinBlockDim + 1.0;
+      _rmaxDefault = std::sqrt(_df * boost::math::quantile(
+        boost::math::fisher_f_distribution<double>(_df, _dfT), op_focei.trustConf));
+    } else {
+      // No omega-block prior (the common case), or one whose nu is not
+      // large enough for a proper marginal-t (nu <= blockDim-1) -- fall back
+      // to the plain known-Omega chi-square radius rather than a
+      // nonsensical/negative df_t.
+      _rmaxDefault = (_df > 0) ? std::sqrt(boost::math::quantile(
+        boost::math::chi_squared_distribution<double>(_df), op_focei.trustConf)) : 1.0;
+    }
+    SEXP _trustRmaxS = foceiO.containsElementNamed("trustRmax") ? (SEXP)foceiO["trustRmax"] : R_NilValue;
+    op_focei.trustRmax = Rf_isNull(_trustRmaxS) ? _rmaxDefault : as<double>(_trustRmaxS);
+    SEXP _trustRinitS = foceiO.containsElementNamed("trustRinit") ? (SEXP)foceiO["trustRinit"] : R_NilValue;
+    op_focei.trustRinit = Rf_isNull(_trustRinitS) ? (op_focei.trustRmax / 2.0) : as<double>(_trustRinitS);
+    // R only rejects trustRinit > trustRmax when BOTH are given explicitly --
+    // it can't know trustRmax's derived default (needs neta, not resolved
+    // until here). An explicit trustRinit paired with a smaller *derived*
+    // trustRmax would otherwise start the trust region already past its own
+    // cap; clamp rather than error since this is just as easy to reach by an
+    // ordinary trustConf choice as by a deliberate override.
+    if (op_focei.trustRinit > op_focei.trustRmax) op_focei.trustRinit = op_focei.trustRmax;
+    // trustFterm/trustMterm: innerOpt="trust"'s own convergence tolerances,
+    // independent of epsilon (n1qn1's unrelated "precision of estimate"
+    // tolerance). Resolved to a concrete number on the R side (foceiControl.R,
+    // plain 10^-sigdig by default -- NOT derived from epsilon) the same way
+    // epsilon itself is, so no NULL fallback is needed here.
+    op_focei.trustFterm = as<double>(foceiO["trustFterm"]);
+    op_focei.trustMterm = as<double>(foceiO["trustMterm"]);
+  }
+  op_focei.nTrustInner.store(0, std::memory_order_relaxed);
+  op_focei.nTrustError.store(0, std::memory_order_relaxed);
+  op_focei.nTrustNoConv.store(0, std::memory_order_relaxed);
+  op_focei.nTrustSolverNoConv.store(0, std::memory_order_relaxed);
+  op_focei.nTrustPush.store(0, std::memory_order_relaxed);
+  op_focei.nTrustRetry.store(0, std::memory_order_relaxed);
+  op_focei.nTrustWarm.store(0, std::memory_order_relaxed);
+  op_focei.nTrustNudge.store(0, std::memory_order_relaxed);
+  op_focei.nTrustFail.store(0, std::memory_order_relaxed);
+  op_focei.nHessianQN.store(0, std::memory_order_relaxed);
   op_focei.nsim=as<int>(foceiO["n1qn1nsim"]);
   op_focei.imp=0;
   op_focei.resetThetaSize = std::numeric_limits<double>::infinity();
@@ -7933,6 +8992,8 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.hessEps=as<double>(foceiO["hessEps"]);
   op_focei.hessEpsLlik=as<double>(foceiO["hessEpsLlik"]);
   op_focei.hessEpsInner=as<double>(rxControl[Rxc_atolSens]);
+  op_focei.hessEtaStepMin = foceiO.containsElementNamed("hessEtaStepMin") ?
+    as<double>(foceiO["hessEtaStepMin"]) : 0.05;
   op_focei.shi21maxOuter = as<int>(foceiO["shi21maxOuter"]);
   op_focei.shi21maxInner = as<int>(foceiO["shi21maxInner"]);
   op_focei.shi21maxInnerCov = as<int>(foceiO["shi21maxInnerCov"]);
@@ -7949,6 +9010,24 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.resetThetaSize=as<double>(foceiO["resetThetaSize"]);
   op_focei.resetThetaFinalSize = as<double>(foceiO["resetThetaFinalSize"]);
   op_focei.needOptimHess = as<bool>(foceiO["needOptimHess"]);
+  // innerOpt="auto" (4) resolves here, the first point where needOptimHess is
+  // known.  A generalized-likelihood endpoint has no Gauss-Newton inner
+  // Hessian, so trust pays 2*neta inner solves to rebuild it at every trial
+  // point while n1qn1 builds it once as a warmZm seed; elsewhere trust wins.
+  if (op_focei.innerOpt == 4) {
+    op_focei.innerOpt = op_focei.needOptimHess ? 1 : 3;
+  }
+  // hessianMethod= (foceiControl()): only meaningful when needOptimHess is
+  // TRUE (non-normal-endpoint models); tolerate an older control missing the
+  // field (-> "fd", the historic behavior).
+  op_focei.hessianMethod = foceiO.containsElementNamed("hessianMethod") ?
+    as<int>(foceiO["hessianMethod"]) : trustHessFd;
+  // foceiControl() refuses a non-fd hessianMethod against a PINNED non-trust
+  // inner optimizer; "auto" is only decided above, so catch that case here
+  // rather than let the request be silently ignored.
+  if (op_focei.hessianMethod != trustHessFd && op_focei.innerOpt != 3) {
+    stop(_("hessianMethod= requires innerOpt=\"trust\"; \"auto\" picked \"n1qn1\" here"));
+  }
 
   op_focei.cholSEOpt=as<double>(foceiO["cholSEOpt"]);
   op_focei.cholSECov=as<double>(foceiO["cholSECov"]);
@@ -8556,6 +9635,12 @@ Environment foceiOuter(Environment e){
   op_focei.curAnalytic=0;
   op_focei.nAnalyticGrad=0;
   op_focei.nAnalyticGradDirect=0;
+  op_focei.nMcetaZero.store(0, std::memory_order_relaxed);
+  op_focei.nMcetaSample.store(0, std::memory_order_relaxed);
+  op_focei.nInnerRanked.store(0, std::memory_order_relaxed);
+  op_focei.nInnerReranked.store(0, std::memory_order_relaxed);
+  op_focei.nInnerNoGood.store(0, std::memory_order_relaxed);
+  op_focei.nInnerDropped.store(0, std::memory_order_relaxed);
   op_focei.nDeclineNewton=0;
   op_focei.nDeclineE0=0;
   op_focei.nDeclineOther=0;
@@ -11210,6 +12295,48 @@ void foceiFinalizeTables(Environment e){
           _details += "; grad: fd";
         }
       }
+      // Inner restarts ranked on the marginal objective, and how often that
+      // ordered them differently from the inner objective.  Not gated on mceta:
+      // the nudge cascade produces multiple candidates too.
+      e["nInnerRerank"] = IntegerVector::create(
+        _["ranked"] = op_focei.nInnerRanked.load(std::memory_order_relaxed),
+        _["flipped"] = op_focei.nInnerReranked.load(std::memory_order_relaxed),
+        // Inner solves that had nothing converged to choose from, so the fit
+        // reports a failed attempt's eta for that subject (#1044).
+        _["noGood"] = op_focei.nInnerNoGood.load(std::memory_order_relaxed),
+        // ... and solves where a failed attempt WAS dropped because a
+        // succeeded one was available.
+        _["dropped"] = op_focei.nInnerDropped.load(std::memory_order_relaxed));
+      if (op_focei.innerOpt == 3) {
+        // innerOpt="trust" outcomes.  "calls" is what .nTrustInner() reports;
+        // the rest say whether those calls actually converged -- a fit whose
+        // inner solves all failed used to look exactly like one where they all
+        // succeeded (#1044).
+        e["nTrustInner"] = IntegerVector::create(
+          _["calls"] = op_focei.nTrustInner.load(std::memory_order_relaxed),
+          // trust_solve_c() returned no usable eta at all (tres.error < 0).
+          _["error"] = op_focei.nTrustError.load(std::memory_order_relaxed),
+          // Attempts that ended non-converged (includes the "error" ones).
+          _["notConverged"] = op_focei.nTrustNoConv.load(std::memory_order_relaxed),
+          // Of those, the ones trust_solve_c() itself declared non-converged.
+          // Only these disqualify a candidate from the selection; the rest are
+          // convergence the Newton-decrement gate withdrew to force a retry.
+          _["solverFail"] = op_focei.nTrustSolverNoConv.load(std::memory_order_relaxed),
+          _["newtonGate"] = op_focei.nTrustPush.load(std::memory_order_relaxed),
+          _["warmRetry"] = op_focei.nTrustWarm.load(std::memory_order_relaxed),
+          _["radiusRetry"] = op_focei.nTrustRetry.load(std::memory_order_relaxed),
+          _["nudge"] = op_focei.nTrustNudge.load(std::memory_order_relaxed),
+          // Subjects whose whole cascade -- first solve, radius escalation and
+          // all four nudges -- ended without a converged attempt.
+          _["failed"] = op_focei.nTrustFail.load(std::memory_order_relaxed));
+      }
+      if (op_focei.mceta >= 1) {
+        // Which mceta candidate each inner solve started from.  Not gated on
+        // `fast`: mceta>=1 is independent of the analytic gradient.
+        e["nMcetaStart"] = IntegerVector::create(
+          _["zero"] = op_focei.nMcetaZero.load(std::memory_order_relaxed),
+          _["sample"] = op_focei.nMcetaSample.load(std::memory_order_relaxed));
+      }
       if (op_focei.muModel == 1) {
         _details += "; mu: lin";
       } else if (op_focei.muModel == 2) {
@@ -11311,6 +12438,9 @@ std::string impDiagXform() {
 }
 
 double impIaccept() { return op_focei.impIaccept; }
+int impMapIter() { return op_focei.impMapIter; }
+int impNburn() { return op_focei.impNburn; }
+bool impBurnFreezeOmega() { return op_focei.impBurnFreezeOmega; }
 double impDf() { return op_focei.impDf; }
 bool impAutoEnabled() { return op_focei.impAuto; }
 bool impAutoNonNormal() { return op_focei.impAutoNonNormal; }
@@ -11355,6 +12485,12 @@ bool impCovEnabled() { return op_focei.impCov; }
 bool impQrEnabled() { return op_focei.impQr; }
 bool impQrShiftEnabled() { return op_focei.impQrShift; }
 bool impQrRefreshEnabled() { return op_focei.impQrRefresh; }
+int impQrScramble() { return op_focei.impQrScramble; }
+int impProposalType() { return op_focei.impProposal; }
+void impPropMixGet(std::vector<double>& c, std::vector<double>& w) {
+  c = op_focei.impPropMixScale;
+  w = op_focei.impPropMixWeight;
+}
 bool impSirEnabled() { return op_focei.impSir; }
 int impSirN() { return op_focei.impSirSample; }
 int impBaseSeed() { return op_focei.impSeed; }
@@ -12273,6 +13409,25 @@ Environment foceiFitCpp_(Environment e){
   // pool from the PREVIOUS fit's, which is exactly what resetting _impPoolModel
   // around foceiSetup_ used to prevent.
   odeSwapClearAll();
+  // Same reason: globalCensFlag accumulates which censoring methods a fit used
+  // and is only cleared once foceiFinalizeTables() has READ it, so a fit that
+  // never reaches there leaves it set and the NEXT fit reports the previous
+  // one's censoring (test-focei-cens.R passed alone but not after
+  // test-focei-cens-t*.R).  NOT for est="saem": there this call is a
+  // post-estimation table pass, and saem records its censoring before it, so
+  // clearing here would report every censored saem fit as uncensored.
+  {
+    // op_focei.isSaem is not set until foceiSetup_ runs, which is LATER than this
+    // point, so read est off the control instead.
+    bool isSaemFit = false;
+    if (e.exists("control")) {
+      List ctlE = e["control"];
+      if (ctlE.containsElementNamed("est") && TYPEOF(ctlE["est"]) == STRSXP) {
+        isSaemFit = (as<std::string>(ctlE["est"]) == "saem");
+      }
+    }
+    if (!isSaemFit) resetCensFlag();
+  }
   op_focei.innerNeq = 0;
   List model = e["model"];
   bool doPredOnly = false;
