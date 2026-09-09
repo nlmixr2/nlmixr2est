@@ -1115,6 +1115,28 @@ public:
     }
   }
 
+  // Has family k's pooled latent spread STOPPED CHANGING between M-step
+  // attempts?  Records this attempt's spread either way, so the comparison is
+  // always over one etaDistEvery gap.  `record` is false for the correlation
+  // loop, which asks about the same attempt the family loop already logged.
+  //
+  // Returns false on the first attempt (nothing to compare with) -- one skipped
+  // attempt, and it is what makes a chain that never settles never update.
+  bool etaDistSpreadSettled(int k, double lsd) {
+    if (k >= (int)etaDistSdPrev.n_elem) return false;
+    // stage this attempt's value; the baseline advances once per iteration, at
+    // the end of the M-step.  Advancing it inside a loop instead would let the
+    // correlation loop compare an attempt against ITSELF -- relative change
+    // zero, so always "settled", which is the opposite of the intent.
+    etaDistSdCur(k) = lsd;
+    if (!std::isfinite(lsd)) return false;
+    if (!(lsd >= etaDistSdLo && lsd <= etaDistSdHi)) return false;
+    if (!(etaDistSdTol > 0.0)) return true;          // cap only
+    double p = etaDistSdPrev(k);
+    if (!std::isfinite(p) || !(p > 0.0)) return false;
+    return std::fabs(lsd - p) <= etaDistSdTol * p;
+  }
+
   // how many declared correlations the data do not identify
   int etaDistCorNotEstimable() const {
     int n = 0;
@@ -3563,16 +3585,18 @@ public:
     if (x.containsElementNamed("etaDistSpreadGuard")) etaDistSpreadGuard = as<int>(x["etaDistSpreadGuard"]);
     if (x.containsElementNamed("etaDistSdLo")) etaDistSdLo = as<double>(x["etaDistSdLo"]);
     if (x.containsElementNamed("etaDistSdHi")) etaDistSdHi = as<double>(x["etaDistSdHi"]);
+    if (x.containsElementNamed("etaDistSdTol")) etaDistSdTol = as<double>(x["etaDistSdTol"]);
     // AFTER every read above.  Printed before them it reported the C++
     // defaults no matter what the control carried, which is worse than no
     // trace at all: it says a control did not arrive when it did, and a valid
     // measurement gets thrown away on its word.
     if (getenv("NLMIXR2_ETADIST_OPT") != NULL) {
       RSprintf("[etaDist] etaDistCorMethod=%d etaDistCorTrust=%.3g "
-               "spreadGuard=%d sdLo=%.3g sdHi=%.3g etaDistEvery=%d "
+               "spreadGuard=%d sdLo=%.3g sdHi=%.3g sdTol=%.3g etaDistEvery=%d "
                "etaDistStart=%d\n",
                etaDistCorMethod, etaDistCorTrust, etaDistSpreadGuard,
-               etaDistSdLo, etaDistSdHi, etaDistEvery, etaDistStart);
+               etaDistSdLo, etaDistSdHi, etaDistSdTol, etaDistEvery,
+               etaDistStart);
     }
     // per fit, not per session: the question this answers is "did THIS fit's
     // M-step run", so it cannot accumulate across fits the way
@@ -3603,6 +3627,10 @@ public:
         etaDistCorEstim.fill(-1);
         etaDistCorOffMag = arma::vec((unsigned int)etaDistNdist, arma::fill::zeros);
         etaDistCorOffMax = arma::vec((unsigned int)etaDistNdist, arma::fill::zeros);
+        etaDistSdPrev = arma::vec((unsigned int)etaDistNdist);
+        etaDistSdPrev.fill(NA_REAL);
+        etaDistSdCur = arma::vec((unsigned int)etaDistNdist);
+        etaDistSdCur.fill(NA_REAL);
       }
     }
     if (x.containsElementNamed("nu1B")) nu1B = as<int>(x["nu1B"]);
@@ -6600,7 +6628,21 @@ private:
   // those transients: acting on the it=10 draws took the gamma's shape from
   // 7.389 to 3.696, and ten iterations later it was 0.0885 with the mapped etas
   // averaging 176 -- each widening feeding the next.
-  double etaDistSdLo = 0.5, etaDistSdHi = 1.0;
+  // A pure DIVERGENCE cap, not a calibration.  The real test is
+  // etaDistSdTol below; these only exclude a latent that has run away or
+  // collapsed outright, so they are deliberately loose.
+  double etaDistSdLo = 0.2, etaDistSdHi = 5.0;
+  // saemControl(etaDistSdTol=): the M-step waits until the pooled latent spread
+  // STOPS CHANGING between attempts, rather than until it reaches some level.
+  // Level cannot do this job.  A settled chain under a wrong family sits at
+  // sd 1.40 on Bauer's g1 and that spread IS the information the step needs; a
+  // still-burning chain passes through 1.40 on its way down from 2.6 and acting
+  // there is a runaway.  The two are indistinguishable by value and obvious by
+  // trajectory.  <= 0 disables the test and falls back to the cap alone.
+  double etaDistSdTol = 0.10;
+  // spread at each family's previous M-step attempt, and this attempt's,
+  // for that comparison.  Prev advances only at the end of the M-step.
+  arma::vec etaDistSdPrev, etaDistSdCur;
   // saemControl(etaDistSpreadGuard=FALSE): skip the spread test entirely.
   // Setting the bounds wide is NOT the same thing -- the lower bound still
   // applies, and a sample whose spread has collapsed is rejected just as a
@@ -7105,20 +7147,24 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
       // rather than hides.
       double lsd = NA_REAL;
       bool famTr = (getenv("NLMIXR2_ETADIST_OPT") != NULL);
+      // Measure unconditionally (lo=0, hi=inf just fills lsd), so the trace
+      // reports the spread even on an iteration that rejects, and so the
+      // trajectory is recorded on every attempt rather than only on the ones
+      // that pass.  Running unguarded should not also mean running blind.
+      rxEtaDistSpreadOk(w[(size_t)k], 0.0, R_PosInf, &lsd);
+      double sdPrevWas = (k < (int)etaDistSdPrev.n_elem) ? etaDistSdPrev(k) : NA_REAL;
       bool spreadOk = (etaDistSpreadGuard == 0) ||
-        rxEtaDistSpreadOk(w[(size_t)k], etaDistSdLo, etaDistSdHi, &lsd);
-      if (etaDistSpreadGuard == 0) {
-        // still measure it, so the trace reports the spread that WOULD have
-        // been rejected -- running unguarded should not also mean running blind
-        rxEtaDistSpreadOk(w[(size_t)k], etaDistSdLo, etaDistSdHi, &lsd);
-      }
+        etaDistSpreadSettled(k, lsd);
       double aNew[4];
       for (int i = 0; i < na; ++i) aNew[i] = a0[i];
       bool mleOk = spreadOk && rxEtaDistMle(fam, ev, aNew);
       if (famTr) {
-        RSprintf("[fam] it=%d k=%d latentSd=%.4f in [%.2f,%.2f] guard=%d "
-                 "spreadOk=%d mleOk=%d\n",
-                 (int)kiter, k, lsd, etaDistSdLo, etaDistSdHi,
+        double relCh = (std::isfinite(sdPrevWas) && sdPrevWas > 0) ?
+          std::fabs(lsd - sdPrevWas)/sdPrevWas : NA_REAL;
+        RSprintf("[fam] it=%d k=%d latentSd=%.4f prev=%.4f relCh=%.4f tol=%.3g "
+                 "cap=[%.2f,%.2f] guard=%d spreadOk=%d mleOk=%d\n",
+                 (int)kiter, k, lsd, sdPrevWas, relCh, etaDistSdTol,
+                 etaDistSdLo, etaDistSdHi,
                  etaDistSpreadGuard, (int)spreadOk, (int)mleOk);
       }
       if (etaDistDebug && (kiter % 10 == 0 || kiter < 2)) {
@@ -7252,9 +7298,14 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
       // So method 3 is exempt -- and that matters, because the guard rejecting
       // every iteration is what made three estimators produce byte-identical
       // fits while none of them ran.
+      // Same test the family fits get, against the same baseline: both loops
+      // read etaDistSdPrev, which does not move until the end of the M-step.
+      double lsdK = NA_REAL, lsdJ = NA_REAL;
+      rxEtaDistSpreadOk(w[(size_t)k], 0.0, R_PosInf, &lsdK);
+      rxEtaDistSpreadOk(w[(size_t)j], 0.0, R_PosInf, &lsdJ);
       bool corSpreadOk = (etaDistSpreadGuard == 0) || (etaDistCorMethod == 3) ||
-        (rxEtaDistSpreadOk(w[(size_t)k], etaDistSdLo, etaDistSdHi, nullptr) &&
-         rxEtaDistSpreadOk(w[(size_t)j], etaDistSdLo, etaDistSdHi, nullptr));
+        (etaDistSpreadSettled(k, lsdK) &&
+         etaDistSpreadSettled(j, lsdJ));
       if (getenv("NLMIXR2_ETADIST_OPT") != NULL) {
         int cj2 = etaDistLatent(j), ck2 = etaDistLatent(k);
         if (cj2 >= 0 && ck2 >= 0 && cj2 < (int)phiM.n_cols &&
@@ -7336,6 +7387,11 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
       double cur = etaDistRho(k);
       double v = cur + pas(kiter) * (r - cur);
       if (std::isfinite(v)) { etaDistRho(k) = v; moved = true; etaDistCorFired = true; }
+    }
+    // ONE advance per M-step attempt, after every loop that consulted the
+    // baseline, so the next attempt compares across a full etaDistEvery gap.
+    for (int k = 0; k < (int)etaDistSdCur.n_elem; ++k) {
+      if (std::isfinite(etaDistSdCur(k))) etaDistSdPrev(k) = etaDistSdCur(k);
     }
     return moved;
   }
@@ -9131,7 +9187,11 @@ SEXP saem_fit(SEXP xSEXP) {
       RSprintf("      population-level set of native parameters, and a covariate gives every subject their own.  The family\n");
       RSprintf("      parameters were estimated by the rest of saem, not by this step; set etaDistMstep=FALSE to silence this.\n");
     } else {
-      RSprintf("saem: the declared-distribution M-step never ran (etaDistMstep had no effect; the pooled latent spread stayed outside its bounds)\n");
+      RSprintf("saem: the declared-distribution M-step never ran (etaDistMstep had no effect).\n");
+      RSprintf("      The pooled latent spread never settled: it kept changing by more than etaDistSdTol\n");
+      RSprintf("      between attempts, or left the [etaDistSdLo, etaDistSdHi] divergence cap.  The usual\n");
+      RSprintf("      cause is too short a run -- the step needs at least two attempts after the chain\n");
+      RSprintf("      has equilibrated, so raise nBurn or lower etaDistEvery.\n");
     }
   }
 

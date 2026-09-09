@@ -121,6 +121,7 @@ rxUiGet.etaDistThetaSens <- function(x, ...) {
   ## here reads.  On an ODE model that is a state-sensitivity equation per
   ## correlation, integrated and thrown away.
   .idx <- .impmapEstTheta(.ui)$all
+  .ini <- .ui$iniDf
   .thn <- .ini$name[!is.na(.ini$ntheta)][order(.ini$ntheta[!is.na(.ini$ntheta)])]
   .isCor <- vapply(.idx, function(.j) {
     .j >= 1L && .j <= length(.thn) && grepl("^rxCor\\.", .thn[.j])

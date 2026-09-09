@@ -332,9 +332,11 @@
                         etaDistSpreadGuard=as.integer(
                           rxode2::rxGetControl(ui, "etaDistSpreadGuard", 1L)),
                         etaDistSdLo=as.numeric(
-                          rxode2::rxGetControl(ui, "etaDistSdLo", 0.5)),
+                          rxode2::rxGetControl(ui, "etaDistSdLo", 0.2)),
                         etaDistSdHi=as.numeric(
-                          rxode2::rxGetControl(ui, "etaDistSdHi", 1.0)),
+                          rxode2::rxGetControl(ui, "etaDistSdHi", 5.0)),
+                        etaDistSdTol=as.numeric(
+                          rxode2::rxGetControl(ui, "etaDistSdTol", 0.10)),
                         ## saemControl(etaDistStart=) declared it and
                         ## .configsaem() consumed it, but nothing joined the two,
                         ## so the value silently stayed at .configsaem's own

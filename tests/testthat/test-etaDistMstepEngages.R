@@ -113,8 +113,15 @@ nmTest({
       # before because the copula step was itself inert: rxode2 bounded the
       # rxCor theta, .preProcessBoundedTransform renamed it to rxBoundedTr.*,
       # and the stash stopped resolving.)
+      # etaDistSdTol = 0 reduces the spread guard to its divergence cap.  This
+      # test is about the M-step's PLUMBING -- that the metadata survives
+      # rxEtaDistExpand() and the counter moves -- and a 5+5 fit cannot possibly
+      # settle a latent chain, so the default settling test would (correctly)
+      # decline and the test would assert nothing about what it means to.  The
+      # settling policy has its own test below.
       saemControl(nBurn = 5, nEm = 5, print = 0, covMethod = "",
-                  etaDistMstep = on, etaDistCorMstep = on)
+                  etaDistMstep = on, etaDistCorMstep = on,
+                  etaDistSdTol = 0)
     }
     .fOn <- suppressWarnings(nlmixr2(.mod, .d, est = "saem", control = .ctl(TRUE)))
     # the counter is reset per fit, so this is THIS fit's count
@@ -255,6 +262,39 @@ nmTest({
     expect_gt(nlmixr2est:::saemEtaDistN_(), 0L)
     expect_false(any(grepl("etaDistMstep=TRUE was requested",
                            as.character(.f$runInfo), fixed = TRUE)))
+  })
+
+  test_that("the M-step declines while the latent is still settling", {
+    # The counterpart to the tests above, and the reason the first of them has
+    # to pass etaDistSdTol = 0.  The guard tests whether the pooled latent
+    # spread has STOPPED CHANGING between attempts, not whether it sits in some
+    # band -- a level cannot separate "settled under a wrong family" from "still
+    # burning", because the transient passes through the settled value on its
+    # way down.  Measured on Bauer's g1: the level band [0.5, 1.0] scored 19.7%
+    # at 300+150 against 9.2% for a band wide enough to admit the settled spread
+    # -- but that same wide band scored 255.1% at 60+30, where the chain has not
+    # settled.  Trajectory separates them; no threshold does.
+    #
+    # So on a fit far too short to settle anything, declining IS the contract.
+    .mod <- function() {
+      ini({
+        tka <- 0.45; tv <- 3.45; lclm <- 1.0; lclrv <- -1.0
+        eta.cl ~ 1
+        dist(eta.cl) ~ dgamma(shape = 1 / exp(lclrv),
+                              rate = 1 / (exp(lclrv) * exp(lclm)))
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka); cl <- eta.cl; v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .f <- suppressWarnings(nlmixr2(.mod, nlmixr2data::theo_sd, est = "saem",
+      control = saemControl(nBurn = 5, nEm = 5, print = 0, covMethod = "",
+                            etaDistMstep = TRUE, etaDistCorMstep = TRUE)))
+    # never a silent no-op: refusing to act is reported
+    expect_equal(nlmixr2est:::saemEtaDistN_(), 0)
   })
 
 })

@@ -254,12 +254,33 @@
 #'   latents is not a property of the mean function, and no
 #'   observation-likelihood term identifies it.
 #'
-#' @param etaDistSpreadGuard Apply the spread guard at all.  `FALSE` skips the
-#'   test entirely, which is NOT the same as widening `etaDistSdHi`: the lower
-#'   bound still rejects a collapsed sample however wide the upper one is.  The
-#'   guard has rejected 100% of attempts on every arm measured, so turning it
-#'   off is the only way to see what the step it protects actually does.
+#' @param etaDistSpreadGuard Apply the spread guard at all.  `FALSE` skips
+#'   both the settling test (`etaDistSdTol`) and the divergence cap
+#'   (`etaDistSdLo`/`etaDistSdHi`), which is not the same as loosening either
+#'   one.  Measured on Bauer's g1 (`nBurn=300`, `nEm=150`), the guard's original
+#'   `[0.5, 1.0]` band rejected every attempt and cost more than half the
+#'   available accuracy:
 #'
+#'   \tabular{lrr}{
+#'     guard              \tab 300 + 150 \tab 60 + 30 \cr
+#'     level band [0.5,1] \tab 19.7\%    \tab 61.0\%  \cr
+#'     level band [0.5,3] \tab  9.2\%    \tab 255.1\% \cr
+#'   }
+#'
+#'   which is why the test is now on the spread's TRAJECTORY rather than its
+#'   level: no single threshold can admit g1's settled 1.40 while rejecting the
+#'   short run's still-falling 2.2, because the transient passes through 1.40 on
+#'   its way down.
+#'
+#' @param etaDistSdTol Relative change in the pooled latent standard
+#'   deviation, between consecutive M-step attempts, below which the latent is
+#'   treated as settled and the declared-distribution M-step is allowed to run.
+#'   This, not `etaDistSdLo`/`etaDistSdHi`, is the real test.  A LEVEL cannot do
+#'   the job: under a wrong family a fully mixed chain sits well away from 1
+#'   (sd 1.40 on Bauer's g1) and that spread is exactly the information the
+#'   M-step needs, while a still-burning chain passes through the same 1.40 on
+#'   its way down and acting there diverges.  Indistinguishable by value,
+#'   obvious by trajectory.  `0` disables the test, leaving the cap alone.
 #' @param etaDistSdLo,etaDistSdHi Bounds on the pooled latent standard
 #'   deviation within which the declared-distribution M-step will act.  The
 #'   latent is standard normal by construction, so a pooled spread far from 1 is
@@ -842,8 +863,9 @@ saemControl <- function(seed = 99,
                         etaDistCor = c("observed", "analytic", "optimize", "posterior"),
                         etaDistCorMethod = NULL,
                         etaDistSpreadGuard = TRUE,
-                        etaDistSdLo = 0.5,
-                        etaDistSdHi = 1.0,
+                        etaDistSdLo = 0.2,
+                        etaDistSdHi = 5.0,
+                        etaDistSdTol = 0.10,
                         etaDistCorTrust = 1.5,
                         etaDistCorMstep = TRUE,
                         etaDistLoglik = FALSE,
@@ -1089,6 +1111,8 @@ saemControl <- function(seed = 99,
                            .var.name="etaDistSdLo")
   checkmate::assertNumeric(etaDistSdHi, len=1, lower=0, any.missing=FALSE,
                            .var.name="etaDistSdHi")
+  checkmate::assertNumeric(etaDistSdTol, len=1, lower=0, any.missing=FALSE,
+                           .var.name="etaDistSdTol")
   etaDistCor <- match.arg(etaDistCor)
   ## Derived, but DECLARED and RETURNED -- both are required, for different
   ## reasons.  The control list is round-tripped through
@@ -1143,6 +1167,7 @@ saemControl <- function(seed = 99,
     etaDistSpreadGuard = isTRUE(etaDistSpreadGuard),
     etaDistSdLo = as.numeric(etaDistSdLo),
     etaDistSdHi = as.numeric(etaDistSdHi),
+    etaDistSdTol = as.numeric(etaDistSdTol),
     etaDistCor = etaDistCor,
     etaDistCorMethod = as.integer(etaDistCorMethod),
     etaDistCorTrust = as.numeric(etaDistCorTrust),
