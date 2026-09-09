@@ -210,7 +210,10 @@ nmTest({
                       nGradStep = 4L, covariateSelection = FALSE, seed = 1L)
     prep <- .vaeDataPrep(ui, dat)
     nMix <- as.integer(ui$saemNMix)
-    mixProb <- { p <- as.numeric(prep$th[ui$thetaMixIndex]); c(p, 1 - sum(p)) }
+    ## prep$th holds the mixture slots on the MLOGIT scale (the scale the inner
+    ## problem reads them on); mexpit back, exactly as .vaeFitModel does
+    mixProb <- .getMixFromLog(prep$th, ui$thetaMixIndex)
+    expect_equal(mixProb, c(0.5, 0.5))
     innerEnv <- .vaeInnerSetup(ui, dat, matrix(0, prep$N, prep$zDim), ctl)
     on.exit(.vaeInnerFree(), add = TRUE)
     fit <- .vaeTrain(prep, innerEnv, ctl, nMix, mixProb)

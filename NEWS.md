@@ -148,6 +148,22 @@
   failed its own `ini()` validation ("the probabilities in a mixture must sum
   to a number between 0 and 1").
 
+- `est="vae"` can fit a mixture (`mix()`) model.  It could not before: the
+  two defects above stopped every such fit during assembly, so only the
+  training loop had ever run with a mixture.
+
+- `est="vae"` no longer treats a mixture proportion as an ordinary structural
+  theta.  `p1` appears inside `mix(a, p1, b)`, so it passed the "does this
+  theta appear in a model expression" filter and became a `nonMuTheta`
+  regression parameter, moved by `bobyqa` against the `(-Inf, Inf)` bounds it
+  carries in `iniDf` -- writing values like `p1 <- 10.6` back into `ini()`.
+  `est="npag"` already excluded them for the same reason.
+
+- `est="vae"` reads the mixture proportion on the scale the inner problem
+  reads it on.  The prepared theta vector held the raw `ini()` probability
+  while the inner problem passes that slot through `mexpit()`, so `p1 = 0.3`
+  was used as `mexpit(0.3) = 0.574`.
+
 - A `focei`-family fit now reports whether its inner solves actually
   converged.  `fit$env$nTrustInner` breaks the `innerOpt="trust"` per-subject
   Newton solves down by outcome (`calls`, `error`, `notConverged`,

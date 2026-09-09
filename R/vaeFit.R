@@ -343,8 +343,9 @@
   if (is.na(.nMix) || .nMix < 1L) .nMix <- 1L
   .mixProb <- 1
   if (.nMix > 1L) {
-    .p <- as.numeric(.prep$th[.ui$thetaMixIndex])
-    .mixProb <- c(.p, 1 - sum(.p))
+    ## prep$th holds the mlogit values (see .vaeDataPrep); mexpit them back to
+    ## the simplex, exactly as the inner problem does
+    .mixProb <- .getMixFromLog(.prep$th, .ui$thetaMixIndex)
   }
   ## parameter-history / iteration-print names: structural typical values on the
   ## mu-referenced etas, the omega diagonal, and the residual error params
