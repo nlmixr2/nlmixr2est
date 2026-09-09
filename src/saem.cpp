@@ -1116,12 +1116,13 @@ public:
   }
 
   // Has family k's pooled latent spread STOPPED CHANGING between M-step
-  // attempts?  Records this attempt's spread either way, so the comparison is
-  // always over one etaDistEvery gap.  `record` is false for the correlation
-  // loop, which asks about the same attempt the family loop already logged.
+  // attempts?  Returns false on the first attempt (nothing to compare with) --
+  // one skipped attempt, and it is what makes a chain that never settles never
+  // update.
   //
-  // Returns false on the first attempt (nothing to compare with) -- one skipped
-  // attempt, and it is what makes a chain that never settles never update.
+  // MUST be called for every family on every attempt, or the comparison stops
+  // spanning one etaDistEvery gap.  The caller therefore may not reach it
+  // through a short-circuiting && (see the correlation loop).
   bool etaDistSpreadSettled(int k, double lsd) {
     if (k >= (int)etaDistSdPrev.n_elem) return false;
     // stage this attempt's value; the baseline advances once per iteration, at
@@ -1129,7 +1130,13 @@ public:
     // correlation loop compare an attempt against ITSELF -- relative change
     // zero, so always "settled", which is the opposite of the intent.
     etaDistSdCur(k) = lsd;
-    if (!std::isfinite(lsd)) return false;
+    if (!std::isfinite(lsd)) {
+      // a measurement that failed is not a gap to be spanned: drop the
+      // baseline so the next attempt declines for want of one, rather than
+      // silently comparing across two gaps or more
+      etaDistSdPrev(k) = NA_REAL;
+      return false;
+    }
     if (!(lsd >= etaDistSdLo && lsd <= etaDistSdHi)) return false;
     if (!(etaDistSdTol > 0.0)) return true;          // cap only
     double p = etaDistSdPrev(k);
@@ -7093,6 +7100,10 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
   bool etaDistMstep(unsigned int kiter, const vec &pas) {
     if ((!etaDistOn && !etaDistCorOn) || etaDistNdist <= 0) return false;
     if (etaDistArgs.n_rows != (unsigned int)etaDistNdist) return false;
+    // Per ATTEMPT, not per fit.  Left standing from the previous attempt, an
+    // entry for a family neither loop visits this time would be copied into the
+    // baseline below as though it had just been measured.
+    if (etaDistSdCur.n_elem == (unsigned int)etaDistNdist) etaDistSdCur.fill(NA_REAL);
     bool moved = false;
     // In the observation-likelihood mode the declared thetas are estimated by
     // refinePhi0Lik against the observation likelihood, so this step has
@@ -7303,9 +7314,18 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
       double lsdK = NA_REAL, lsdJ = NA_REAL;
       rxEtaDistSpreadOk(w[(size_t)k], 0.0, R_PosInf, &lsdK);
       rxEtaDistSpreadOk(w[(size_t)j], 0.0, R_PosInf, &lsdJ);
+      // Both, ALWAYS, before combining.  Through a short-circuiting && a false
+      // from k would skip j entirely, j's spread would never be staged for this
+      // attempt, and the advance below would carry j's value from some EARLIER
+      // attempt into the baseline -- so j's next comparison spans two gaps or
+      // more.  That mis-rejects a settled j, and worse, an oscillating j whose
+      // frozen baseline it keeps matching passes as "settled".  Reachable
+      // whenever the family loop above does not run: etaDistMstep=FALSE with
+      // etaDistCorMstep=TRUE, and the observation-likelihood mode (famOff).
+      bool okK = etaDistSpreadSettled(k, lsdK);
+      bool okJ = etaDistSpreadSettled(j, lsdJ);
       bool corSpreadOk = (etaDistSpreadGuard == 0) || (etaDistCorMethod == 3) ||
-        (etaDistSpreadSettled(k, lsdK) &&
-         etaDistSpreadSettled(j, lsdJ));
+        (okK && okJ);
       if (getenv("NLMIXR2_ETADIST_OPT") != NULL) {
         int cj2 = etaDistLatent(j), ck2 = etaDistLatent(k);
         if (cj2 >= 0 && ck2 >= 0 && cj2 < (int)phiM.n_cols &&

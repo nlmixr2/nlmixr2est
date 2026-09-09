@@ -281,19 +281,22 @@
 #'   M-step needs, while a still-burning chain passes through the same 1.40 on
 #'   its way down and acting there diverges.  Indistinguishable by value,
 #'   obvious by trajectory.  `0` disables the test, leaving the cap alone.
-#' @param etaDistSdLo,etaDistSdHi Bounds on the pooled latent standard
-#'   deviation within which the declared-distribution M-step will act.  The
-#'   latent is standard normal by construction, so a pooled spread far from 1 is
-#'   taken as a sample not yet worth fitting rather than as information.
+#' @param etaDistSdLo,etaDistSdHi A DIVERGENCE CAP on the pooled latent
+#'   standard deviation, outside which the declared-distribution M-step will not
+#'   act.  Deliberately loose: the real test is `etaDistSdTol`, and these only
+#'   exclude a latent that has run away or collapsed outright.
 #'
-#'   These were hard-coded at `0.5` and `1.0` and unreachable from R until now,
-#'   so the guard had never been measured at any other setting.  Two things are
-#'   worth knowing before changing them.  An upper bound of exactly 1 rejects
-#'   roughly half of a PERFECTLY mixed sample by chance -- the sample SD of a
-#'   standard normal with n draws is 1 +/- 1/sqrt(2n).  And on every arm
-#'   measured so far the pooled spread sits at 1.2 to 2.6, so the guard rejects
-#'   100% of attempts and the M-step it protects never runs at all; the
-#'   estimates then come from whatever else owns those parameters.
+#'   They are not a calibration, and widening or narrowing them is not a way to
+#'   tune when the step runs.  The latent IS standard normal by construction,
+#'   but only once the family parameters are right -- so a settled spread away
+#'   from 1 measures how wrong they still are, which is the very information the
+#'   M-step consumes.  These bounds were `[0.5, 1.0]` and unreachable from R,
+#'   and that band was the wrong shape twice over: a perfectly specified,
+#'   converged model gives a spread of exactly 1, its upper edge, so the band
+#'   admitted only UNDER-dispersed latents; and the sample SD of a standard
+#'   normal is 1 +/- 1/sqrt(2n), so an upper bound of exactly 1 rejects about
+#'   half of a perfectly mixed sample by chance.  On Bauer's four gamma arms
+#'   only one settled spread fell inside it.
 #'
 #' @param etaDistCor How a `dist()`-declared Gaussian copula's correlation is
 #'   updated.  Always AFTER the declared distribution's own thetas have moved,
