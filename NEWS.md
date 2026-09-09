@@ -159,6 +159,26 @@
   carries in `iniDf` -- writing values like `p1 <- 10.6` back into `ini()`.
   `est="npag"` already excluded them for the same reason.
 
+- `est="vae"`'s mixture objective is the marginal -2LL.  It exponentiated
+  `-obj/2` and negated the result twice, so it marginalized a *square root*
+  likelihood and carried a spurious `-log` of the winning component's
+  proportion.  Both errors cancel exactly when there is one component, and
+  again when the components are identical under a uniform proportion, so no
+  existing test could see it.  The prediction-model M-step scored candidate
+  thetas the same wrong way, and the two must agree or the M-step optimizes a
+  different function than the reported ELBO.
+
+- `est="vae"`'s encoder is trained on the gradient of the objective it
+  optimizes.  The objective was the marginal over components but the gradient
+  handed to the encoder was the single best component's; it is now the
+  responsibility-weighted mean.  Predictions and the residual variance stay on
+  the best component, since the closed-form residual step is a moment
+  estimator.
+
+- A subject whose components all fail to solve no longer *improves*
+  `est="vae"`'s objective.  It contributed nothing at all; it is now charged
+  the same bad-solve penalty the `focei` mixture likelihood charges.
+
 - `est="vae"` reads the mixture proportion on the scale the inner problem
   reads it on.  The prepared theta vector held the raw `ini()` probability
   while the inner problem passes that slot through `mexpit()`, so `p1 = 0.3`

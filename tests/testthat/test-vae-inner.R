@@ -283,4 +283,61 @@ nmTest({
     }, numeric(1))
     expect_lt(max(abs(fd - st$grads$fcB)) / max(abs(st$grads$fcB)), 1e-3)
   })
+
+  test_that("the mixture ELBO is the marginal -2LL, at the right temperature", {
+    ## obj is -log p(y_i, eta_i | m) at 1x scale, so the marginal is
+    ## -sum_i log sum_m pi_m exp(-obj_im).  The code used exp(-0.5*obj) and
+    ## negated twice, i.e. it marginalized a SQUARE ROOT likelihood and carried
+    ## a spurious -log(pi_best).  Both errors cancel exactly when nMix == 1, and
+    ## also when the components are identical AND pi is uniform -- which is why
+    ## p1 here is 0.7 and not 0.5.  Nothing else in the suite could see this.
+    mixmod <- function() {
+      ini({ lka <- log(1.5); lke1 <- log(0.15); lke2 <- log(0.04); lV <- log(32)
+            p1 <- 0.7
+            eta.ka ~ 0.04; eta.ke ~ 0.02; eta.V ~ 0.02; add.err <- 0.25 })
+      model({ ka <- exp(lka + eta.ka)
+        ke <- mix(exp(lke1 + eta.ke), p1, exp(lke2 + eta.ke)); V <- exp(lV + eta.V)
+        d/dt(depot) = -ka * depot; d/dt(central) = ka * depot - ke * central
+        cp <- central / V; cp ~ add(add.err) })
+    }
+    ui <- rxode2::assertRxUi(mixmod)
+    ctl <- vaeControl(itersBurnIn = 2L, iters = 2L, covariateSelection = FALSE, seed = 1L)
+    prep <- .vaeDataPrep(ui, nlmixr2data::theo_sd)
+    N <- prep$N; zDim <- prep$zDim
+    nMix <- as.integer(ui$saemNMix)
+    mixProb <- .getMixFromLog(prep$th, ui$thetaMixIndex)
+    expect_equal(mixProb, c(0.7, 0.3))
+
+    innerEnv <- .vaeInnerSetup(ui, nlmixr2data::theo_sd, matrix(0, N, zDim), ctl)
+    on.exit(.vaeInnerFree(), add = TRUE)
+    .testSeed(7)
+    params <- .vaeEncoderInitParams(zDim, 12L, ncol(prep$covIn), prep$zPop, rep(0.1, zDim))
+    eps <- matrix(rnorm(N * zDim), N, zDim)
+    st <- .vaeElboStepInner(params, prep, innerEnv, prep$zPop, prep$omega, prep$a,
+                            1, eps, ctl, nMix, mixProb, withGrad = FALSE)
+
+    ## pxz = jointTot - sum(pzI); rebuild pzI from the returned z to recover the
+    ## mixture term the step actually computed
+    eta <- sweep(st$z, 2, prep$zPop, "-")
+    .om <- if (is.matrix(prep$omega)) prep$omega else
+      diag(as.numeric(prep$omega), nrow = length(prep$omega))
+    pzI <- 0.5 * (rowSums((eta %*% solve(.om)) * eta) +
+                    as.numeric(determinant(.om, logarithm = TRUE)$modulus) +
+                    zDim * log(2 * pi))
+    .jointTot <- st$pxz + sum(pzI)
+
+    ## the same quantity, recomputed in R from the raw per-component objectives
+    .obj <- matrix(.vaeInnerEval(do.call(rbind, rep(list(eta), nMix)), ctl)$obj, nrow = N)
+    .ll <- sweep(-.obj, 2, log(mixProb), "+")
+    .mm <- apply(.ll, 1, max)
+    .want <- -sum(.mm + log(rowSums(exp(.ll - .mm))))
+    expect_equal(.jointTot, .want, tolerance = 1e-8)
+
+    ## and it is NOT the square-root marginalization the code used to compute
+    .ll2 <- sweep(-0.5 * .obj, 2, log(mixProb), "+")
+    .mm2 <- apply(.ll2, 1, max)
+    .old <- -2 * sum(.mm2 + log(rowSums(exp(.ll2 - .mm2))))
+    expect_false(isTRUE(all.equal(.want, .old)))
+    expect_false(isTRUE(all.equal(.jointTot, .old)))
+  })
 })

@@ -21596,10 +21596,11 @@ struct VaeStepOut {
   double pxz, DKL;
   arma::mat mu, z;      // [N, zDim]
   arma::cube L;         // [zDim, zDim, N]
-  arma::mat lp;         // [N, zDim] decoder eta-gradient (best mixture component)
+  arma::mat lp;         // [N, zDim] decoder eta-gradient (responsibility-weighted)
   std::vector<std::vector<double> > preds;  // per-subject predictions f
   std::vector<std::vector<double> > rvar;   // per-subject residual variance r (sigma^2)
   arma::ivec mixnum;    // [N] selected mixture component (1-based)
+  arma::vec mixW;       // [nMix] mean posterior responsibility over subjects
   // encoder parameter gradients
   arma::mat gWih, gWhh, gFcW; arma::vec gbih, gbhh, gFcB;
 };
@@ -21666,25 +21667,52 @@ static VaeStepOut vaeElboStepCpp(const arma::mat& Wih, const arma::mat& Whh,
   S.preds.resize(N);
   S.rvar.resize(N);
   S.mixnum.set_size(N); S.mixnum.fill(1);
+  S.mixW.zeros(nMix > 1 ? nMix : 1); S.mixW[0] = 1.0;
   if (nMix > 1) {
+    S.mixW.zeros();
+    // Marginal mixture -2LL.  obj is -log p(y_i, eta_i | m) at 1x scale
+    // (likInner0 returns -(llik - 0.5 eta' Om^-1 eta), and the nMix == 1 branch
+    // below sums it directly), so the exponent is -obj, NOT -0.5*obj, and the
+    // sum is negated once, not twice.  The old -0.5/-2 pair marginalized a
+    // SQUARE ROOT likelihood and carried a spurious -log(pi_best); it cancels
+    // exactly at nMix == 1 and at identical components with uniform pi, which
+    // is why no test could see it.
     jointTot = 0;
     for (int i = 0; i < N; ++i) {
       double mmax = -std::numeric_limits<double>::infinity(); int best = 0;
       arma::vec ll(nMix);
       for (int m = 0; m < nMix; ++m) {
-        double v = std::log(mixProb[m]) - 0.5 * obj[m * N + i];
+        double v = std::log(mixProb[m]) - obj[m * N + i];
         if (!R_FINITE(v)) v = -std::numeric_limits<double>::infinity();
         ll[m] = v; if (v > mmax) { mmax = v; best = m; }
       }
+      arma::vec resp(nMix, arma::fill::zeros);
       if (R_FINITE(mmax)) {
         double se = 0; for (int m = 0; m < nMix; ++m) se += std::exp(ll[m] - mmax);
-        jointTot += -2 * (mmax + std::log(se));
+        jointTot += -(mmax + std::log(se));
+        for (int m = 0; m < nMix; ++m) resp[m] = std::exp(ll[m] - mmax)/se;
+      } else {
+        // every component failed to solve: charge the same penalty focei does
+        // (foceiLik0Mix), instead of contributing 0 and IMPROVING the objective
+        jointTot += op_focei.badSolveObjfAdj;
+        resp[best] = 1.0;
       }
-      lpBest.row(i) = lp.row(best * N + i);
+      // the encoder is trained on the objective it optimizes: the gradient of
+      // the marginal is the responsibility-weighted mean, not the argmax
+      // component's gradient
+      lpBest.row(i).zeros();
+      for (int m = 0; m < nMix; ++m) {
+        if (resp[m] > 0) lpBest.row(i) += resp[m] * lp.row(m * N + i);
+      }
+      // preds/rvar stay on the argmax component: the closed-form residual
+      // M-step is a moment estimator, and averaging residuals across
+      // components inflates the residual SD
       S.preds[i] = pf[best * N + i];
       if (!prv.empty()) S.rvar[i] = prv[best * N + i];
       S.mixnum[i] = best + 1;
+      S.mixW += resp;
     }
+    S.mixW /= (double)N;
   } else {
     jointTot = arma::accu(obj);
     lpBest = lp;
@@ -22696,13 +22724,17 @@ static double gVaeThetaObjR(Rcpp::NumericVector r) {
       double mmax = -std::numeric_limits<double>::infinity();
       arma::vec ll(nMix);
       for (int m = 0; m < nMix; ++m) {
-        double lv = std::log(gVaeRegMixProb[m]) - 0.5 * obj[m * N + i];
+        // same 1x-scale marginal as vaeElboStepCpp -- the two MUST optimize one
+        // functional, or the M-step chases a different objective than the ELBO
+        double lv = std::log(gVaeRegMixProb[m]) - obj[m * N + i];
         if (!R_FINITE(lv)) lv = -std::numeric_limits<double>::infinity();
         ll[m] = lv; if (lv > mmax) mmax = lv;
       }
       if (R_FINITE(mmax)) {
         double se = 0; for (int m = 0; m < nMix; ++m) se += std::exp(ll[m] - mmax);
-        v += -2 * (mmax + std::log(se));
+        v += -(mmax + std::log(se));
+      } else {
+        v += op_focei.badSolveObjfAdj;
       }
     }
   } else {
