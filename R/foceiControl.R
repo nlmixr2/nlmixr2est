@@ -431,6 +431,26 @@
 #'   stand-in, used only to produce starting values.  Set `FALSE` to fit from
 #'   the model's own `ini()`.
 #'
+#' @param etaDistSdTol Relative change in the pooled latent standard deviation,
+#'   between consecutive declared-distribution M-step attempts, below which the
+#'   latent is treated as settled and the M-step is allowed to run.  This, not
+#'   `etaDistSdLo`/`etaDistSdHi`, is the real test.
+#'
+#'   A LEVEL threshold cannot do this job, which is why the `[0.5, 1.0]` band
+#'   this used to hardcode is gone.  Under a wrong family a fully mixed chain
+#'   sits well away from 1 -- 1.40 on Bauer's g1 -- and that spread is exactly
+#'   the information the M-step consumes; a still-burning chain passes through
+#'   the same 1.40 on its way down from 2.6, where acting on it diverges.
+#'   Indistinguishable by value, obvious by trajectory.  Across Bauer's four
+#'   gamma arms the old band admitted exactly ONE (g3, settled spread 0.880), so
+#'   this M-step effectively never ran.  `0` disables the test, leaving the cap.
+#'
+#' @param etaDistSdLo,etaDistSdHi A DIVERGENCE CAP on the pooled latent standard
+#'   deviation, outside which the declared-distribution M-step will not act.
+#'   Deliberately loose -- these only exclude a latent that has run away or
+#'   collapsed outright.  Not a calibration, and not a way to tune when the step
+#'   runs; that is `etaDistSdTol`.
+#'
 #' @param etaDistMstep Opt-in.  Estimate a `dist()`-declared random effect's
 #'   family parameters (and any Gaussian-copula correlation between declared
 #'   effects) with their own optimizer, instead of through the outer problem.
@@ -1247,6 +1267,9 @@ foceiControl <- function(sigdig = 3, #
                          etaDistWarmStart = TRUE, #
                          etaDistMstep = FALSE, #
                          etaDistNsamp = 50L, #
+                         etaDistSdLo = 0.2, #
+                         etaDistSdHi = 5.0, #
+                         etaDistSdTol = 0.10, #
                          repeatGillMax = 1, #
                          stickyRecalcN = 4, #
                          outerMaxOdeRecalc = 5, #
@@ -2020,6 +2043,9 @@ foceiControl <- function(sigdig = 3, #
     etaDistWarmStart = as.logical(etaDistWarmStart),
     etaDistMstep = as.logical(etaDistMstep),
     etaDistNsamp = as.integer(etaDistNsamp),
+    etaDistSdLo = as.numeric(etaDistSdLo),
+    etaDistSdHi = as.numeric(etaDistSdHi),
+    etaDistSdTol = as.numeric(etaDistSdTol),
     repeatGillMax = as.integer(repeatGillMax),
     stickyRecalcN = as.integer(max(1, abs(stickyRecalcN))),
     outerMaxOdeRecalc = as.integer(outerMaxOdeRecalc),

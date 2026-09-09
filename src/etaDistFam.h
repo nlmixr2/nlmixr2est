@@ -273,6 +273,58 @@ bool rxEtaDistMle(int fam, const std::vector<double> &vals, double *a0);
 // RAW sample spread is over-dispersed by design and would trip the upper bound
 // on a perfectly healthy fit, silently disabling the M-step.  The weighted
 // spread is the posterior's, which is what the bound is about.
+// Has family k's pooled latent spread STOPPED CHANGING between M-step attempts?
+//
+// A LEVEL test cannot do this job, and the [0.5, 1.0] band that used to be
+// written at each call site is measurably wrong.  Under a wrong family a fully
+// mixed chain sits far from 1 -- 1.40 on Bauer's g1 -- and that spread IS the
+// information the M-step consumes; a still-burning chain passes through the
+// same 1.40 on its way down from 2.6, where acting on it diverges.  The two are
+// indistinguishable by value and obvious by trajectory.  Measured on g1, saem
+// at 300 burn + 150 EM: the level band scored 19.7% against 9.2% for a band
+// wide enough to admit the settled spread -- but that same wide band scored
+// 255.1% at 60 + 30, where the chain has not settled.  Across the four Bauer
+// arms the [0.5, 1.0] band admitted exactly one (g3, settled spread 0.880).
+//
+// `lo`/`hi` remain as a loose DIVERGENCE cap only.  `tol <= 0` disables the
+// settling test and leaves the cap alone.
+//
+// The caller measures `lsd` -- weighted for imp, unweighted for focei -- and
+// owns `prev`/`cur`, so this stays free of estimator state.  `cur` must be
+// cleared per attempt and copied into `prev` ONCE per attempt, after every loop
+// that consulted it (see rxEtaDistSpreadAdvance): advancing inside a loop lets
+// a later loop compare an attempt against itself, which always looks settled.
+static inline bool rxEtaDistSpreadSettled(int k, double lsd,
+                                          std::vector<double> &prev,
+                                          std::vector<double> &cur,
+                                          double lo, double hi, double tol) {
+  if (k < 0) return false;
+  if ((int)prev.size() <= k) prev.resize((size_t)k + 1, NA_REAL);
+  if ((int)cur.size() <= k) cur.resize((size_t)k + 1, NA_REAL);
+  cur[(size_t)k] = lsd;
+  if (!std::isfinite(lsd)) {
+    // a measurement that failed is not a gap to be spanned: drop the baseline
+    // so the next attempt declines for want of one rather than silently
+    // comparing across two gaps or more
+    prev[(size_t)k] = NA_REAL;
+    return false;
+  }
+  if (!(lsd >= lo && lsd <= hi)) return false;
+  if (!(tol > 0.0)) return true;                  // cap only
+  double p = prev[(size_t)k];
+  if (!std::isfinite(p) || !(p > 0.0)) return false;
+  return std::fabs(lsd - p) <= tol * p;
+}
+
+// ONE advance per M-step attempt, after every loop that consulted the baseline.
+static inline void rxEtaDistSpreadAdvance(std::vector<double> &prev,
+                                          std::vector<double> &cur) {
+  if (prev.size() < cur.size()) prev.resize(cur.size(), NA_REAL);
+  for (size_t i = 0; i < cur.size(); ++i) {
+    if (std::isfinite(cur[i])) prev[i] = cur[i];
+  }
+}
+
 bool rxEtaDistSpreadOk(const std::vector<double> &w, double lo, double hi,
                        double *sdOut, const std::vector<double> *wt = nullptr);
 

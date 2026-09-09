@@ -67,6 +67,8 @@ int impZeroOmegaDirectOn();
 // impmapControl(etaDistMstep=): declared-distribution M-step metadata, or an
 // empty list when the option is off.  See impEtaDistMstep() in src/imp.cpp.
 int impEtaDistOn();
+// resets the trajectory spread guard's file-static state, per fit
+void impEtaDistSpreadReset(double lo, double hi, double tol);
 SEXP impEtaDistInfoGet();
 int impZeroOmegaMaxEval();
 void impReMap();                                   // re-optimize all conditional modes (innerOpt)

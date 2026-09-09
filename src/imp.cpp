@@ -579,10 +579,26 @@ static bool impGetHessianNdiffSafe(int id, arma::mat& H) {
 // A full (undamped) step, unlike saem's: this is an EM M-step over an entire
 // E-step's samples, the same way impMuInterceptStep() takes its mean shift
 // whole, not a stochastic-approximation increment off one MCMC sweep.
+// Trajectory spread guard state (see rxEtaDistSpreadSettled, src/etaDistFam.h).
+// The [0.5, 1.0] LEVEL band this used to hardcode is measurably wrong: under a
+// wrong family a fully mixed chain sits far from 1 -- 1.40 on Bauer's g1 -- and
+// that spread IS what the M-step needs, while a still-burning chain passes
+// through the same value on its way down.  Across the four Bauer arms the band
+// admitted exactly one, so this M-step effectively never ran.
+static std::vector<double> impEtaDistSdPrev, impEtaDistSdCur;
+static double impEtaDistSdLo = 0.2, impEtaDistSdHi = 5.0, impEtaDistSdTol = 0.10;
+void impEtaDistSpreadReset(double lo, double hi, double tol) {
+  impEtaDistSdPrev.clear(); impEtaDistSdCur.clear();
+  impEtaDistSdLo = lo; impEtaDistSdHi = hi; impEtaDistSdTol = tol;
+}
+
 static bool impEtaDistMstep(const std::vector<arma::mat>& sampS,
                             const std::vector<arma::vec>& sampZk,
                             int nsub, int neta) {
   if (!impEtaDistOn()) return false;
+  // Per ATTEMPT: a value left standing for a declaration this attempt does not
+  // visit would be copied into the baseline below as a fresh measurement.
+  impEtaDistSdCur.assign(impEtaDistSdCur.size(), NA_REAL);
   Rcpp::List info(impEtaDistInfoGet());
   if (info.size() == 0) return false;
   Rcpp::IntegerVector lat  = info["latent"];
@@ -660,12 +676,14 @@ static bool impEtaDistMstep(const std::vector<arma::mat>& sampS,
         ev.push_back(e); ew.push_back(wt[r]);
       }
     }
-    // Same guard saem's M-step applies: the latent is standard normal by
-    // construction, so a pooled spread ABOVE 1 means the E-step's samples
-    // are not yet worth fitting rather than that the family is wrong.  WEIGHTED
-    // here -- the raw samples come from an inflated proposal and are wide by
-    // design; it is the posterior's spread the bound is about.
-    if (!rxEtaDistSpreadOk(w[(size_t)k], 0.5, 1.0, nullptr, &wt)) continue;
+    // Settled, not in-band.  Still WEIGHTED -- the raw samples come from an
+    // inflated proposal and are wide by design; it is the posterior's spread
+    // whose trajectory this is about.
+    double lsd = NA_REAL;
+    rxEtaDistSpreadOk(w[(size_t)k], 0.0, R_PosInf, &lsd, &wt);
+    if (!rxEtaDistSpreadSettled(k, lsd, impEtaDistSdPrev, impEtaDistSdCur,
+                                impEtaDistSdLo, impEtaDistSdHi,
+                                impEtaDistSdTol)) continue;
     double aNew[4];
     for (int i = 0; i < na; ++i) aNew[i] = a0[i];
     if (!rxEtaDistMleW(f, ev, &ew, aNew)) continue;
@@ -718,9 +736,18 @@ static bool impEtaDistMstep(const std::vector<arma::mat>& sampS,
     int m = 0;
     for (int k = 0; k < nd && m < cti.size(); ++k) {
       if (cw[k] < 0) continue;
-      // same spread guard the family fits get; see saem's etaDistMstep()
-      if (!rxEtaDistSpreadOk(w[(size_t)k], 0.5, 1.0, nullptr, &wt) ||
-          !rxEtaDistSpreadOk(w[(size_t)cw[k]], 0.5, 1.0, nullptr, &wt)) { m++; continue; }
+      // Same settling test the family fits get, against the same baseline, and
+      // BOTH evaluated before combining -- a short-circuiting && would leave
+      // the partner's spread unstaged for this attempt, so the advance below
+      // would carry a value from an earlier one.
+      double lsdK = NA_REAL, lsdJ = NA_REAL;
+      rxEtaDistSpreadOk(w[(size_t)k], 0.0, R_PosInf, &lsdK, &wt);
+      rxEtaDistSpreadOk(w[(size_t)cw[k]], 0.0, R_PosInf, &lsdJ, &wt);
+      bool okK = rxEtaDistSpreadSettled(k, lsdK, impEtaDistSdPrev, impEtaDistSdCur,
+                                        impEtaDistSdLo, impEtaDistSdHi, impEtaDistSdTol);
+      bool okJ = rxEtaDistSpreadSettled(cw[k], lsdJ, impEtaDistSdPrev, impEtaDistSdCur,
+                                        impEtaDistSdLo, impEtaDistSdHi, impEtaDistSdTol);
+      if (!okK || !okJ) { m++; continue; }
       double r = rxEtaDistCorMleW(w[(size_t)cw[k]], w[(size_t)k], &wt);
       if (!std::isfinite(r)) { m++; continue; }
       rho[k] = r;
@@ -731,6 +758,10 @@ static bool impEtaDistMstep(const std::vector<arma::mat>& sampS,
       m++;
     }
   }
+  // ONE advance per attempt, after every loop that consulted the baseline, so
+  // the next attempt compares across a full gap.  Runs even when nothing moved:
+  // a declined attempt still measured the spread.
+  rxEtaDistSpreadAdvance(impEtaDistSdPrev, impEtaDistSdCur);
   // The thetas just moved, but every subject's cached solve was built at the
   // old ones and likInner0 skips a re-solve when the eta repeats.
   if (moved) for (int id = 0; id < nsub; ++id) impForceResolve(id);

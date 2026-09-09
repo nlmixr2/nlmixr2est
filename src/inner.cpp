@@ -1027,6 +1027,12 @@ struct focei_options {
   std::vector<int> etaDistThetaSkip;  // [ntheta] 1 = this M-step owns it
   Rcpp::List etaDistInfo;
   int etaDistNsamp = 50;          // Laplace draws per subject per M-step
+  // Trajectory spread guard (see rxEtaDistSpreadSettled).  A LEVEL band cannot
+  // separate a settled wrong family from a still-burning chain; the [0.5, 1.0]
+  // band this used to hardcode admitted exactly one of Bauer's four arms, so
+  // this M-step effectively never ran.
+  double etaDistSdLo = 0.2, etaDistSdHi = 5.0, etaDistSdTol = 0.10;
+  std::vector<double> etaDistSdPrev, etaDistSdCur;
 };
 
 focei_options op_focei;
@@ -8388,6 +8394,8 @@ NumericVector foceiSetup_(const RObject &obj,
   _foceiEtaDistN = 0;
   op_focei.etaDistThetaSkip.clear();
   op_focei.etaDistInfo = Rcpp::List(0);
+  op_focei.etaDistSdPrev.clear();
+  op_focei.etaDistSdCur.clear();
   if (!op_focei.isImpmap &&
       foceiO.containsElementNamed("foceiEtaDistInfo") &&
       !Rf_isNull(foceiO["foceiEtaDistInfo"]) &&
@@ -8399,6 +8407,12 @@ NumericVector foceiSetup_(const RObject &obj,
     op_focei.etaDistOptSkip = 1;
     if (foceiO.containsElementNamed("etaDistNsamp"))
       op_focei.etaDistNsamp = as<int>(foceiO["etaDistNsamp"]);
+    if (foceiO.containsElementNamed("etaDistSdLo"))
+      op_focei.etaDistSdLo = as<double>(foceiO["etaDistSdLo"]);
+    if (foceiO.containsElementNamed("etaDistSdHi"))
+      op_focei.etaDistSdHi = as<double>(foceiO["etaDistSdHi"]);
+    if (foceiO.containsElementNamed("etaDistSdTol"))
+      op_focei.etaDistSdTol = as<double>(foceiO["etaDistSdTol"]);
   }
   if (op_focei.isImpmap) {
     // isample may be a per-subject vector; the scalar is the largest requested
@@ -8453,6 +8467,17 @@ NumericVector foceiSetup_(const RObject &obj,
         !Rf_isNull(foceiO["impEtaDistInfo"])) {
       op_focei.impEtaDistInfo = as<Rcpp::List>(foceiO["impEtaDistInfo"]);
       op_focei.impEtaDistOn = 1;
+    }
+    {
+      // Trajectory spread guard, reset per fit.  The state is file-static in
+      // imp.cpp, so it MUST be cleared here or a second fit in the same session
+      // starts with the first fit's baseline and settles against a chain that
+      // no longer exists.
+      double sdLo = 0.2, sdHi = 5.0, sdTol = 0.10;
+      if (foceiO.containsElementNamed("etaDistSdLo")) sdLo = as<double>(foceiO["etaDistSdLo"]);
+      if (foceiO.containsElementNamed("etaDistSdHi")) sdHi = as<double>(foceiO["etaDistSdHi"]);
+      if (foceiO.containsElementNamed("etaDistSdTol")) sdTol = as<double>(foceiO["etaDistSdTol"]);
+      impEtaDistSpreadReset(sdLo, sdHi, sdTol);
     }
     // imp reaches its M-step through impEtaDistMstep(), not the FOCEi outer
     // loop, so the FOCEi hold-out stays off here: imp's thetas are already out
@@ -13396,6 +13421,10 @@ static bool foceiEtaDistMstep() {
   // the phase this step belongs to.
   if (!op_focei.etaDistRun) return false;
   if (op_focei.neta <= 0) return false;
+  // Per ATTEMPT, not per fit: an entry left standing from the previous attempt
+  // for a declaration neither loop visits would be copied into the baseline
+  // below as though it had just been measured.
+  op_focei.etaDistSdCur.assign(op_focei.etaDistSdCur.size(), NA_REAL);
   Rcpp::List info(op_focei.etaDistInfo);
   Rcpp::IntegerVector lat  = info["latent"];
   Rcpp::IntegerVector fam  = info["fam"];
@@ -13480,10 +13509,16 @@ static bool foceiEtaDistMstep() {
       double v = rxEtaDistQ(f, u, a0);
       if (std::isfinite(v)) ev.push_back(v);
     }
-    // Same guard saem's and imp's M-steps apply: the latent is standard normal
-    // by construction, so a pooled spread ABOVE 1 means the draws are not
-    // yet worth fitting rather than that the family is wrong.
-    if (!rxEtaDistSpreadOk(w[(size_t)k], 0.5, 1.0, nullptr)) continue;
+    // Settled, not in-band.  The old [0.5, 1.0] test asserted that a pooled
+    // spread above 1 means the draws are not worth fitting; that is measurably
+    // false -- under a wrong family a fully mixed chain sits at 1.40 on Bauer's
+    // g1 and that spread is exactly what the M-step needs.  The band admitted
+    // one of four arms, so this step effectively never ran.
+    double lsd = NA_REAL;
+    rxEtaDistSpreadOk(w[(size_t)k], 0.0, R_PosInf, &lsd);
+    if (!rxEtaDistSpreadSettled(k, lsd, op_focei.etaDistSdPrev,
+                                op_focei.etaDistSdCur, op_focei.etaDistSdLo,
+                                op_focei.etaDistSdHi, op_focei.etaDistSdTol)) continue;
     double aNew[4];
     for (int i = 0; i < na; ++i) aNew[i] = a0[i];
     if (!rxEtaDistMle(f, ev, aNew)) continue;
@@ -13508,9 +13543,22 @@ static bool foceiEtaDistMstep() {
     int m = 0;
     for (int k = 0; k < nd && m < cti.size(); ++k) {
       if (cw[k] < 0) continue;
-      // same spread guard the family fits get; see saem's etaDistMstep()
-      if (!rxEtaDistSpreadOk(w[(size_t)k], 0.5, 1.0, nullptr, nullptr) ||
-          !rxEtaDistSpreadOk(w[(size_t)cw[k]], 0.5, 1.0, nullptr, nullptr)) { m++; continue; }
+      // Same settling test the family fits get, against the same baseline.
+      // BOTH evaluated before combining: through a short-circuiting && a false
+      // from k would skip cw[k] entirely, leaving its spread unstaged for this
+      // attempt so the advance below carries a value from an EARLIER one --
+      // which mis-rejects a settled partner and, worse, lets an oscillating one
+      // whose frozen baseline it keeps matching pass as settled.
+      double lsdK = NA_REAL, lsdJ = NA_REAL;
+      rxEtaDistSpreadOk(w[(size_t)k], 0.0, R_PosInf, &lsdK, nullptr);
+      rxEtaDistSpreadOk(w[(size_t)cw[k]], 0.0, R_PosInf, &lsdJ, nullptr);
+      bool okK = rxEtaDistSpreadSettled(k, lsdK, op_focei.etaDistSdPrev,
+                                        op_focei.etaDistSdCur, op_focei.etaDistSdLo,
+                                        op_focei.etaDistSdHi, op_focei.etaDistSdTol);
+      bool okJ = rxEtaDistSpreadSettled(cw[k], lsdJ, op_focei.etaDistSdPrev,
+                                        op_focei.etaDistSdCur, op_focei.etaDistSdLo,
+                                        op_focei.etaDistSdHi, op_focei.etaDistSdTol);
+      if (!okK || !okJ) { m++; continue; }
       double r = rxEtaDistCorMle(w[(size_t)cw[k]], w[(size_t)k]);
       if (std::isfinite(r)) {
         // the expansion carries the correlation as atanh(rho)
@@ -13520,6 +13568,11 @@ static bool foceiEtaDistMstep() {
       m++;
     }
   }
+  // ONE advance per attempt, after every loop that consulted the baseline, so
+  // the next attempt compares across a full gap.  Runs whether or not anything
+  // moved: a declined attempt still measured the spread, and dropping it would
+  // make the next comparison span two gaps.
+  rxEtaDistSpreadAdvance(op_focei.etaDistSdPrev, op_focei.etaDistSdCur);
   if (moved) {
     _foceiEtaDistN++;
     // the thetas moved, but likInner0 skips a re-solve when the eta repeats

@@ -25,6 +25,7 @@
                            "proposal", "propMixScale", "propMixWeight",
                            "zeroOmegaDirect", "zeroOmegaMaxEval", "etaDistMstep",
                            "etaDistWarmStart", "mceta",
+                           "etaDistSdLo", "etaDistSdHi", "etaDistSdTol",
                            "qr", "qrShift", "qrRefresh", "qrScramble",
                            "sir", "sirSample",
                            # internal M-step index maps added in .impmapFamilyFit;
@@ -501,6 +502,26 @@
 #'   stand-in, used only to produce starting values.  Set `FALSE` to fit from
 #'   the model's own `ini()`.
 #'
+#' @param etaDistSdTol Relative change in the pooled latent standard deviation,
+#'   between consecutive declared-distribution M-step attempts, below which the
+#'   latent is treated as settled and the M-step is allowed to run.  This, not
+#'   `etaDistSdLo`/`etaDistSdHi`, is the real test.
+#'
+#'   A LEVEL threshold cannot do this job, which is why the `[0.5, 1.0]` band
+#'   this used to hardcode is gone.  Under a wrong family a fully mixed chain
+#'   sits well away from 1 -- 1.40 on Bauer's g1 -- and that spread is exactly
+#'   the information the M-step consumes; a still-burning chain passes through
+#'   the same 1.40 on its way down from 2.6, where acting on it diverges.
+#'   Indistinguishable by value, obvious by trajectory.  Across Bauer's four
+#'   gamma arms the old band admitted exactly ONE (g3, settled spread 0.880), so
+#'   this M-step effectively never ran.  `0` disables the test, leaving the cap.
+#'
+#' @param etaDistSdLo,etaDistSdHi A DIVERGENCE CAP on the pooled latent standard
+#'   deviation, outside which the declared-distribution M-step will not act.
+#'   Deliberately loose -- these only exclude a latent that has run away or
+#'   collapsed outright.  Not a calibration, and not a way to tune when the step
+#'   runs; that is `etaDistSdTol`.
+#'
 #' @param etaDistMstep Opt-in.  Estimate a `dist()`-declared random effect's
 #'   family parameters (and any Gaussian-copula correlation between declared
 #'   effects) by a weighted maximum-likelihood fit to the E-step's importance
@@ -665,6 +686,9 @@ impmapControl <- function(sigdig=3,
                           zeroOmegaMaxEval=25L,
                           etaDistWarmStart=TRUE,
                           etaDistMstep=FALSE,
+                          etaDistSdLo=0.2,
+                          etaDistSdHi=5.0,
+                          etaDistSdTol=0.10,
                           mceta=-2L,
                           impSeed=42L,
                           covMethod=c("imp", "analytic", "r,s", "r", "s", "sa", ""),
@@ -822,6 +846,15 @@ impmapControl <- function(sigdig=3,
                            .var.name="etaDistWarmStart")
   .control$etaDistWarmStart <- etaDistWarmStart
   .control$etaDistMstep <- etaDistMstep
+  checkmate::assertNumeric(etaDistSdLo, len=1, lower=0, any.missing=FALSE,
+                           .var.name="etaDistSdLo")
+  checkmate::assertNumeric(etaDistSdHi, len=1, lower=0, any.missing=FALSE,
+                           .var.name="etaDistSdHi")
+  checkmate::assertNumeric(etaDistSdTol, len=1, lower=0, any.missing=FALSE,
+                           .var.name="etaDistSdTol")
+  .control$etaDistSdLo <- as.numeric(etaDistSdLo)
+  .control$etaDistSdHi <- as.numeric(etaDistSdHi)
+  .control$etaDistSdTol <- as.numeric(etaDistSdTol)
   .control$impSeed <- as.integer(impSeed)
   checkmate::assertIntegerish(mceta, lower=-2, len=1, any.missing=FALSE,
                               .var.name="mceta")
