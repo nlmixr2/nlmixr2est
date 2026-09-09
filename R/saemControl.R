@@ -113,7 +113,10 @@
 #'   factor of [0.5, 2] per iteration and [1e-3, 1e3] overall.
 #'
 #' @param iacceptSingle Target acceptance rate for the COORDINATE-WISE
-#'   random-walk kernel, which `iaccept` does not cover.
+#'   random-walk kernel, which `iaccept` does not cover.  A TARGET the
+#'   adaptation aims at, not the speed of the adaptation -- that is
+#'   `stepsizeRw`, whose default 0.4 is easily misread as this parameter's
+#'   0.44.
 #'
 #'   The optimal acceptance rate depends on the proposal's dimension: about
 #'   0.234 for a multidimensional symmetric random walk (kernel 2, which moves
@@ -369,8 +372,21 @@
 #'   moments have to accumulate first; NONMEM starts after the 10th iteration,
 #'   which is the default here.  Ignored when `nu1B = 0`.
 #'
-#' @param stepsizeRw Robbins-Monro rate for the `iaccept` adaptation
-#'   (saemix `stepsize.rw`, default 0.4).  Ignored when `iaccept = 0`.
+#' @param stepsizeRw Robbins-Monro LEARNING RATE for the acceptance-rate
+#'   adaptation (saemix `stepsize.rw`, default 0.4) -- how fast the random-walk
+#'   scale moves, not a rate that is being targeted.  The rule is
+#'
+#'   \preformatted{  scale <- scale * (1 + stepsizeRw * (observed - target))}
+#'
+#'   so `stepsizeRw` is the multiplier on the error, while the TARGET is
+#'   `iaccept` for kernel 2 and `iacceptSingle` for kernel 3.  One learning
+#'   rate is shared by both kernels; only the targets are per kernel.
+#'
+#'   Do not confuse `stepsizeRw = 0.4` with `iacceptSingle = 0.44`.  They are
+#'   adjacent numbers meaning unrelated things, and reading one for the other
+#'   makes the adaptation look far more (or less) aggressive than it is.
+#'
+#'   Ignored when `iaccept = 0`.
 #'
 #' @param coefSa Simulated-annealing coefficient on the estimated omega
 #'   diagonals: `Gamma2 <- max(Gamma2*coefSa, G1)` during the annealing phase.
@@ -390,20 +406,38 @@
 #'     MC method will be more accurate at the cost of more
 #'     computation.  In Monolix this is equivalent to \code{L}.
 #'
-#' @param nu This is a vector of 3 integers. They represent the
-#'     numbers of transitions of the three different kernels used in
-#'     the Hasting-Metropolis algorithm.  The default value is \code{c(2,2,2)},
-#'     representing 40 for each transition initially (each value is
-#'     multiplied by 20).
+#' @param nu Vector of 3 integers: the number of transitions performed
+#'     per iteration by each of the three Hastings-Metropolis kernels.
+#'     Default \code{c(2,2,2)}.
 #'
-#'     The first value represents the initial number of multi-variate
-#'     Gibbs samples are taken from a normal distribution.
+#'     \strong{The x20 applies to the FIRST iteration only.}  On
+#'     \code{kiter == 0} each element is multiplied by 20 (so the default
+#'     runs 40 transitions per kernel), and on \emph{every} iteration
+#'     afterwards the value is used as given -- 2 transitions per kernel for
+#'     the default, not 40.  This mirrors saemix, which likewise boosts only
+#'     the opening iteration to place the chain before estimation begins; see
+#'     \code{src/saem.cpp}, the \code{if (kiter==0)} branch.  Earlier wording
+#'     here said "representing 40 for each transition initially", which reads
+#'     as the steady-state count and is not.
 #'
-#'     The second value represents the number of uni-variate, or multi-
-#'     dimensional random walk Gibbs samples are taken.
+#'     Raising \code{nu} is the most direct control over how far each chain
+#'     travels between M-steps, and costs proportionally more time per
+#'     iteration.  It is worth reaching for when the sampler is mixing slowly
+#'     rather than when it needs more iterations -- notably for a
+#'     \code{dist()}-declared random effect whose family is heavy-tailed,
+#'     where \code{eta = Q(phi(z))} is strongly curved and one random-walk
+#'     scale serves the range poorly (see \code{etaDistSdTol}).
 #'
-#'     The third value represents the number of bootstrap/reshuffling or
-#'     uni-dimensional random samples are taken.
+#'     The first value is the number of multivariate Gibbs samples drawn from
+#'     a normal distribution.
+#'
+#'     The second value is the number of univariate, or multidimensional,
+#'     random-walk Gibbs samples drawn.  Its acceptance rate is adapted toward
+#'     \code{iaccept}.
+#'
+#'     The third value is the number of bootstrap/reshuffling, or
+#'     unidimensional, random samples drawn.  Its acceptance rate is adapted
+#'     toward \code{iacceptSingle}.
 #'
 #' @inheritParams iterPrintParams
 #'

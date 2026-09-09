@@ -1123,14 +1123,16 @@ public:
   // MUST be called for every family on every attempt, or the comparison stops
   // spanning one etaDistEvery gap.  The caller therefore may not reach it
   // through a short-circuiting && (see the correlation loop).
-  bool etaDistSpreadSettled(int k, double lsd) {
+  bool etaDistSpreadSettled(int k, double lsd, double lmean) {
     if (k >= (int)etaDistSdPrev.n_elem) return false;
     // stage this attempt's value; the baseline advances once per iteration, at
     // the end of the M-step.  Advancing it inside a loop instead would let the
     // correlation loop compare an attempt against ITSELF -- relative change
     // zero, so always "settled", which is the opposite of the intent.
     etaDistSdCur(k) = lsd;
-    if (!std::isfinite(lsd)) {
+    etaDistMeanCur(k) = lmean;
+    if (!std::isfinite(lsd) || !std::isfinite(lmean)) {
+      etaDistMeanPrev(k) = NA_REAL;
       // a measurement that failed is not a gap to be spanned: drop the
       // baseline so the next attempt declines for want of one, rather than
       // silently comparing across two gaps or more
@@ -1141,7 +1143,13 @@ public:
     if (!(etaDistSdTol > 0.0)) return true;          // cap only
     double p = etaDistSdPrev(k);
     if (!std::isfinite(p) || !(p > 0.0)) return false;
-    return std::fabs(lsd - p) <= etaDistSdTol * p;
+    if (!(std::fabs(lsd - p) <= etaDistSdTol * p)) return false;
+    // Location, on the same tolerance.  Scaled by the spread rather than by the
+    // previous mean: the mean's limit is zero, so a RELATIVE test against it
+    // divides by something heading to zero and never settles.
+    double pm = etaDistMeanPrev(k);
+    if (!std::isfinite(pm)) return false;
+    return std::fabs(lmean - pm) <= etaDistSdTol * lsd;
   }
 
   // how many declared correlations the data do not identify
@@ -3638,6 +3646,10 @@ public:
         etaDistSdPrev.fill(NA_REAL);
         etaDistSdCur = arma::vec((unsigned int)etaDistNdist);
         etaDistSdCur.fill(NA_REAL);
+        etaDistMeanPrev = arma::vec((unsigned int)etaDistNdist);
+        etaDistMeanPrev.fill(NA_REAL);
+        etaDistMeanCur = arma::vec((unsigned int)etaDistNdist);
+        etaDistMeanCur.fill(NA_REAL);
       }
     }
     if (x.containsElementNamed("nu1B")) nu1B = as<int>(x["nu1B"]);
@@ -6650,6 +6662,11 @@ private:
   // spread at each family's previous M-step attempt, and this attempt's,
   // for that comparison.  Prev advances only at the end of the M-step.
   arma::vec etaDistSdPrev, etaDistSdCur;
+  // and the LOCATION trajectory.  Testing only the spread certifies "settled"
+  // on half the evidence: on Bauer's g4 the latent sd reaches 1.00 while its
+  // mean is still 0.14 and falling, and at gamma shape 0.5 that offset alone
+  // is +19% on E[eta] -- which the M-step then fits.
+  arma::vec etaDistMeanPrev, etaDistMeanCur;
   // saemControl(etaDistSpreadGuard=FALSE): skip the spread test entirely.
   // Setting the bounds wide is NOT the same thing -- the lower bound still
   // applies, and a sample whose spread has collapsed is rejected just as a
@@ -7104,6 +7121,7 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
     // entry for a family neither loop visits this time would be copied into the
     // baseline below as though it had just been measured.
     if (etaDistSdCur.n_elem == (unsigned int)etaDistNdist) etaDistSdCur.fill(NA_REAL);
+    if (etaDistMeanCur.n_elem == (unsigned int)etaDistNdist) etaDistMeanCur.fill(NA_REAL);
     bool moved = false;
     // In the observation-likelihood mode the declared thetas are estimated by
     // refinePhi0Lik against the observation likelihood, so this step has
@@ -7162,19 +7180,25 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
       // reports the spread even on an iteration that rejects, and so the
       // trajectory is recorded on every attempt rather than only on the ones
       // that pass.  Running unguarded should not also mean running blind.
-      rxEtaDistSpreadOk(w[(size_t)k], 0.0, R_PosInf, &lsd);
+      double lmean = NA_REAL;
+      rxEtaDistSpreadOk(w[(size_t)k], 0.0, R_PosInf, &lsd, nullptr, &lmean);
       double sdPrevWas = (k < (int)etaDistSdPrev.n_elem) ? etaDistSdPrev(k) : NA_REAL;
+      double meanPrevWas = (k < (int)etaDistMeanPrev.n_elem) ? etaDistMeanPrev(k) : NA_REAL;
       bool spreadOk = (etaDistSpreadGuard == 0) ||
-        etaDistSpreadSettled(k, lsd);
+        etaDistSpreadSettled(k, lsd, lmean);
       double aNew[4];
       for (int i = 0; i < na; ++i) aNew[i] = a0[i];
       bool mleOk = spreadOk && rxEtaDistMle(fam, ev, aNew);
       if (famTr) {
         double relCh = (std::isfinite(sdPrevWas) && sdPrevWas > 0) ?
           std::fabs(lsd - sdPrevWas)/sdPrevWas : NA_REAL;
-        RSprintf("[fam] it=%d k=%d latentSd=%.4f prev=%.4f relCh=%.4f tol=%.3g "
+        double relChM = (std::isfinite(meanPrevWas) && lsd > 0) ?
+          std::fabs(lmean - meanPrevWas)/lsd : NA_REAL;
+        RSprintf("[fam] it=%d k=%d latentSd=%.4f prev=%.4f relCh=%.4f | "
+                 "latentMean=%+.4f prev=%+.4f relChM=%.4f | tol=%.3g "
                  "cap=[%.2f,%.2f] guard=%d spreadOk=%d mleOk=%d\n",
-                 (int)kiter, k, lsd, sdPrevWas, relCh, etaDistSdTol,
+                 (int)kiter, k, lsd, sdPrevWas, relCh,
+                 lmean, meanPrevWas, relChM, etaDistSdTol,
                  etaDistSdLo, etaDistSdHi,
                  etaDistSpreadGuard, (int)spreadOk, (int)mleOk);
       }
@@ -7311,9 +7335,9 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
       // fits while none of them ran.
       // Same test the family fits get, against the same baseline: both loops
       // read etaDistSdPrev, which does not move until the end of the M-step.
-      double lsdK = NA_REAL, lsdJ = NA_REAL;
-      rxEtaDistSpreadOk(w[(size_t)k], 0.0, R_PosInf, &lsdK);
-      rxEtaDistSpreadOk(w[(size_t)j], 0.0, R_PosInf, &lsdJ);
+      double lsdK = NA_REAL, lsdJ = NA_REAL, lmK = NA_REAL, lmJ = NA_REAL;
+      rxEtaDistSpreadOk(w[(size_t)k], 0.0, R_PosInf, &lsdK, nullptr, &lmK);
+      rxEtaDistSpreadOk(w[(size_t)j], 0.0, R_PosInf, &lsdJ, nullptr, &lmJ);
       // Both, ALWAYS, before combining.  Through a short-circuiting && a false
       // from k would skip j entirely, j's spread would never be staged for this
       // attempt, and the advance below would carry j's value from some EARLIER
@@ -7322,8 +7346,8 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
       // frozen baseline it keeps matching passes as "settled".  Reachable
       // whenever the family loop above does not run: etaDistMstep=FALSE with
       // etaDistCorMstep=TRUE, and the observation-likelihood mode (famOff).
-      bool okK = etaDistSpreadSettled(k, lsdK);
-      bool okJ = etaDistSpreadSettled(j, lsdJ);
+      bool okK = etaDistSpreadSettled(k, lsdK, lmK);
+      bool okJ = etaDistSpreadSettled(j, lsdJ, lmJ);
       bool corSpreadOk = (etaDistSpreadGuard == 0) || (etaDistCorMethod == 3) ||
         (okK && okJ);
       if (getenv("NLMIXR2_ETADIST_OPT") != NULL) {
@@ -7412,6 +7436,7 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
     // baseline, so the next attempt compares across a full etaDistEvery gap.
     for (int k = 0; k < (int)etaDistSdCur.n_elem; ++k) {
       if (std::isfinite(etaDistSdCur(k))) etaDistSdPrev(k) = etaDistSdCur(k);
+      if (std::isfinite(etaDistMeanCur(k))) etaDistMeanPrev(k) = etaDistMeanCur(k);
     }
     return moved;
   }
