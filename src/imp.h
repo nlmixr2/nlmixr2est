@@ -68,7 +68,7 @@ int impZeroOmegaDirectOn();
 // empty list when the option is off.  See impEtaDistMstep() in src/imp.cpp.
 int impEtaDistOn();
 // resets the trajectory spread guard's file-static state, per fit
-void impEtaDistSpreadReset(double lo, double hi, double tol);
+void impEtaDistSpreadReset(double lo, double hi, double tol, bool corSuff);
 SEXP impEtaDistInfoGet();
 int impZeroOmegaMaxEval();
 void impReMap();                                   // re-optimize all conditional modes (innerOpt)

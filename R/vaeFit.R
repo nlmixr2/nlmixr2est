@@ -369,5 +369,23 @@
   ## set up the inner likelihood once (compiled model + processed data)
   .innerEnv <- .vaeInnerSetup(.ui, env$data, matrix(0, .prep$N, .prep$zDim), .control)
   on.exit(.vaeInnerFree(), add = TRUE)
+  ## The augmented outer-gradient model did not build, so nothing sized the pool
+  ## for it and no peer is registered.  THIS control is the one that reaches both
+  ## `.vaeGradInit` and `vaeTrainCpp_`'s `useGrad` gate (src/inner.cpp:23729), so
+  ## the downgrade has to land here -- `.vaeInnerSetup` only sees a copy and can
+  ## flag the decision, not enforce it.
+  ##
+  ## Leaving "grad" set with no augmented model SEGFAULTS: the first burn-in ELBO
+  ## step dies in iniSubject() -> _setIndPointersByThread() on a null
+  ## gInfusionRate, one solve after vaeInnerUpdatePar_.  Reproduced on a declared
+  ## (`dist()`-expanded) model, for which `ui$foceiOuter` does not build; the same
+  ## model under "regress" is clean, and so is an undeclared model under "grad",
+  ## where the build succeeds and IS registered.
+  if (isTRUE(.innerEnv$vaeGradDeclined) &&
+      identical(.control$nonMuTheta, "grad")) {
+    .control$nonMuTheta <- "regress"
+    .minfo(paste0("est=\"vae\": the augmented outer-gradient model did not build, ",
+                  "so nonMuTheta=\"grad\" is using \"regress\" instead"))
+  }
   .vaeTrain(.prep, .innerEnv, .control, .nMix, .mixProb, parInfo = .parInfo)
 }

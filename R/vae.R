@@ -179,6 +179,14 @@
 #' @param nonMuEtaOmega Variance of the eta injected for a non-mu-referenced theta
 #'   (starting value for `nonMuTheta="eta"`, fixed value for `nonMuTheta="fix"`;
 #'   unused for `"regress"`).
+#' @param etaDistWarmStart Solve a log-normal surrogate first and hand its answer
+#'   to the declared families as starting values (`etaDistInit()`).  `TRUE` by
+#'   default for any model carrying a `dist()` declaration; models without one
+#'   ignore it entirely.
+#'
+#'   A declared family is very largely a STARTING VALUE problem, and the warm
+#'   start costs one extra nested fit.  Set `FALSE` to pay only for the fit you
+#'   asked for -- or when the surrogate itself is the thing under test.
 #' @param covSelectAlpha Starting multiplier for the covariate-selection L0
 #'   penalty, ramped linearly from `covSelectAlpha` down to `1` over the
 #'   `klWarmup` warmup iterations and held at `1` afterward (matching the
@@ -439,6 +447,7 @@ vaeControl <- function(seed = 42L,
                        parEncoderBackward = !isTRUE(getOption("nlmixr2.identical", FALSE)),
                        nonMuTheta = c("regress", "grad", "eta", "fix", "none"),
                        nonMuEtaOmega = 0.01,
+                       etaDistWarmStart = TRUE,
                        mStepObjective = c("outer", "elbo"),
                        likelihood = c("focei", "foce", "focep", "laplace"),
                        objf = c("importanceSampling", "linear"),
@@ -536,6 +545,8 @@ vaeControl <- function(seed = 42L,
   nonMuTheta <- match.arg(nonMuTheta)
   mStepObjective <- match.arg(mStepObjective)
   checkmate::assertNumeric(nonMuEtaOmega, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
+  checkmate::assertLogical(etaDistWarmStart, len = 1, any.missing = FALSE,
+                           .var.name = "etaDistWarmStart")
   checkmate::assertIntegerish(nIsSample, lower = 1, any.missing = FALSE, len = 1)
   checkmate::assertLogical(returnVae, len = 1, any.missing = FALSE)
   checkmate::assertLogical(optExpression, len = 1, any.missing = FALSE)
@@ -656,6 +667,7 @@ vaeControl <- function(seed = 42L,
                parEncoderBackward = parEncoderBackward,
                nonMuTheta = nonMuTheta,
                nonMuEtaOmega = nonMuEtaOmega,
+               etaDistWarmStart = etaDistWarmStart,
                mStepObjective = mStepObjective,
                likelihood = likelihood,
                objf = objf,
@@ -789,3 +801,13 @@ attr(nlmixr2Est.vae, "iov") <- TRUE
 ## into a linear nlmixrMuDerCov# data column -- the centering is carried by the
 ## mu2/mu3 data, not re-applied by the VAE covariate search -- gated on muRefCovAlg
 attr(nlmixr2Est.vae, "mu") <- function(control) isTRUE(control$muRefCovAlg)
+## enable declared non-normal between-subject distributions (`dist(cl) ~ dgamma(...)`).
+## The ELBO needs no change.  `rxEtaDistExpand()` leaves the LATENT standard normal
+## -- `rxz.cl ~ fix(1)` has no `theta + eta` form, so `.vaeDataPrep()` marks it
+## `isFree` (zPop 0, held there) and reads `omegaFix` from the ini() `fix`, which is
+## exactly the N(0,1) the prior term and the KL are written for.  The non-normality
+## lives in a decoder line inside the inner problem, and rxode2 differentiates the
+## inverse CDF exactly (`.rxD$gammapInv` gives `dq/dp = 1/gammapDer(...)`), so both
+## the inner gradient (`lpInner()`) and the outer gradient (`.vaeGradEval`) already
+## carry `d(eta.declared)/d(eta.latent)`.
+attr(nlmixr2Est.vae, "etaDist") <- TRUE

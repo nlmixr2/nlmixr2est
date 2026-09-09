@@ -587,9 +587,15 @@ static bool impGetHessianNdiffSafe(int id, arma::mat& H) {
 // admitted exactly one, so this M-step effectively never ran.
 static std::vector<double> impEtaDistSdPrev, impEtaDistSdCur;
 static double impEtaDistSdLo = 0.2, impEtaDistSdHi = 5.0, impEtaDistSdTol = 0.10;
-void impEtaDistSpreadReset(double lo, double hi, double tol) {
+// Copula route (see the note at the update itself) and how many times it
+// actually WROTE a correlation -- separate from impEtaDistN, which counts an
+// iteration where anything moved.  Both file-static, so both are reset per fit.
+static bool impEtaDistCorSuff = false;
+long impEtaDistCorN = 0;
+void impEtaDistSpreadReset(double lo, double hi, double tol, bool corSuff) {
   impEtaDistSdPrev.clear(); impEtaDistSdCur.clear();
   impEtaDistSdLo = lo; impEtaDistSdHi = hi; impEtaDistSdTol = tol;
+  impEtaDistCorSuff = corSuff; impEtaDistCorN = 0;
 }
 
 static bool impEtaDistMstep(const std::vector<arma::mat>& sampS,
@@ -627,10 +633,14 @@ static bool impEtaDistMstep(const std::vector<arma::mat>& sampS,
   // subjects because the family is a POPULATION distribution: every subject's
   // eta is one draw from it.
   std::vector< std::vector<double> > w((size_t)nd);
+  // The RAW latent column per declaration.  w[k] is already a function of the
+  // current rho, so the copula's sufficient statistic has to read these.
+  std::vector< std::vector<double> > zr((size_t)nd);
   std::vector<double> wt;
   bool first = true;
   for (int k = 0; k < nd; ++k) {
     w[(size_t)k].clear();
+    zr[(size_t)k].clear();
     for (int i = 0; i < nsub; ++i) {
       const arma::mat& S = sampS[(size_t)i];
       const arma::vec& zk = sampZk[(size_t)i];
@@ -647,6 +657,7 @@ static bool impEtaDistMstep(const std::vector<arma::mat>& sampS,
           zv = rr*S(r, (unsigned int)lat[j]) + (s2 > 0 ? std::sqrt(s2) : 0.0)*zv;
         }
         w[(size_t)k].push_back(zv);
+        zr[(size_t)k].push_back(S(r, (unsigned int)lat[k]));
         if (first) wt.push_back(zk[r]);
       }
     }
@@ -747,14 +758,50 @@ static bool impEtaDistMstep(const std::vector<arma::mat>& sampS,
                                         impEtaDistSdLo, impEtaDistSdHi, impEtaDistSdTol);
       bool okJ = rxEtaDistSpreadSettled(cw[k], lsdJ, impEtaDistSdPrev, impEtaDistSdCur,
                                         impEtaDistSdLo, impEtaDistSdHi, impEtaDistSdTol);
-      if (!okK || !okJ) { m++; continue; }
-      double r = rxEtaDistCorMleW(w[(size_t)cw[k]], w[(size_t)k], &wt);
+      // See the long note in foceiEtaDistMstep(): the sufficient-statistic route
+      // reads the RAW latents (w[k] is built FROM the current rho, so a
+      // correlation on it is partly self-fulfilling) and is not gated on the
+      // spread guard, which is about FAMILY fits to a mid-flight eta sample.
+      // IS-weighted here, like every other imp statistic.
+      double r = NA_REAL;
+      if (impEtaDistCorSuff) {
+        const std::vector<double> &zj = zr[(size_t)cw[k]];
+        const std::vector<double> &zkk_ = zr[(size_t)k];
+        size_t nz = std::min(zj.size(), zkk_.size());
+        if (nz > wt.size()) nz = wt.size();
+        double zjj = 0, zkk = 0, zjk = 0, sw = 0; size_t nn = 0;
+        for (size_t q = 0; q < nz; ++q) {
+          double a = zj[q], b = zkk_[q], wq = wt[q];
+          if (!std::isfinite(a) || !std::isfinite(b)) continue;
+          if (!std::isfinite(wq) || wq <= 0.0) continue;
+          zjj += wq*a*a; zkk += wq*b*b; zjk += wq*a*b; sw += wq; nn++;
+        }
+        if (nn >= 2 && sw > 0 && zjj > 0 && zkk > 0) {
+          r = rxEtaDistCorFromRz(rho[k], zjk/std::sqrt(zjj*zkk));
+        }
+      } else {
+        if (!okK || !okJ) {
+          if (getenv("NLMIXR2_ETADIST_OPT") != NULL) {
+            RSprintf("[cor] imp k=%d route=pm BLOCKED okK=%d okJ=%d rho=%+.4f\n",
+                     k, (int)okK, (int)okJ, rho[k]);
+          }
+          m++; continue;
+        }
+        r = rxEtaDistCorMleW(w[(size_t)cw[k]], w[(size_t)k], &wt);
+      }
       if (!std::isfinite(r)) { m++; continue; }
+      if (getenv("NLMIXR2_ETADIST_OPT") != NULL) {
+        RSprintf("[cor] imp k=%d route=%s okK=%d okJ=%d rho %+.4f -> %+.4f\n",
+                 k, impEtaDistCorSuff ? "suff" : "pm", (int)okK, (int)okJ, rho[k], r);
+      }
+      // Only a REAL change counts -- see the note in foceiEtaDistMstep().  The
+      // sufficient statistic returns rho unchanged at its fixed point.
+      if (std::fabs(r - rho[k]) <= 1e-10) { m++; continue; }
       rho[k] = r;
       // the expansion carries the correlation as atanh(rho), which is
       // unbounded and so needs no constraint handling here
       double v = std::atanh(r);
-      if (std::isfinite(v)) { impSetThetaAll(cti[m], v); moved = true; }
+      if (std::isfinite(v)) { impSetThetaAll(cti[m], v); moved = true; impEtaDistCorN++; }
       m++;
     }
   }
@@ -2666,6 +2713,7 @@ void impOuter(Environment e) {
   // rather than inferred: every way it can decline is silent, and a fit whose
   // estimates look reasonable is no evidence at all that it engaged.
   e["impEtaDistN"] = nEtaDistRan;
+  e["impEtaDistCorN"] = (double)impEtaDistCorN;
   if (impEtaDistOn() && nEtaDistRan == 0) {
     RSprintf("imp: the declared-distribution M-step never updated a parameter (etaDistMstep had no effect)\n");
   }

@@ -207,6 +207,10 @@ foceiEtaDistN_ <- function() {
     .Call(`_nlmixr2est_foceiEtaDistN_`)
 }
 
+foceiEtaDistCorN_ <- function() {
+    .Call(`_nlmixr2est_foceiEtaDistCorN_`)
+}
+
 #' Fit/Evaluate FOCEi
 #'
 #' This shouldn't be called directly.
@@ -814,6 +818,10 @@ saemEtaDistN_ <- function() {
 
 saemEtaDistOn_ <- function() {
     .Call(`_nlmixr2est_saemEtaDistOn_`)
+}
+
+rxEtaDistCorFromRz_ <- function(rho, rz) {
+    .Call(`_nlmixr2est_rxEtaDistCorFromRz_`, rho, rz)
 }
 
 rxEtaDistCorTest_ <- function(z1, z2) {

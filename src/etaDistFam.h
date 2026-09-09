@@ -334,6 +334,49 @@ double rxEtaDistCorPost(const std::vector<double> &z1,
                         const std::vector<double> &z2);
 double rxEtaDistCorSpearman(const std::vector<double> &z1,
                             const std::vector<double> &z2);
+// The copula correlation update from the STANDARDIZED latent statistic.
+//
+// The latent pair enters the model as n = L z with L the unit-diagonal
+// Cholesky of the current correlation, so S_n = L S_z L' and the M-step for a
+// unit-diagonal correlation is the normalized off-diagonal of S_n.  Written in
+// terms of rz -- the CORRELATION of the raw latents -- that is
+//
+//     rho_new = (l21 + l22*rz) / sqrt(1 + 2*l21*l22*rz)
+//
+// with l21 = rho, l22 = sqrt(1 - rho^2).
+//
+// Two properties this has and a product-moment correlation of the COMBINED
+// latents does not:
+//
+//   * rz == 0 returns rho unchanged, which is the correct fixed point: S_z == I
+//     means the current rho already explains the draws.
+//   * it cannot be driven by the diagonal.  Feeding RAW second moments through
+//     L S_z L' biases the ratio when the latent diagonals are unequally
+//     inflated (routine -- an over-dispersed latent is signal here, not
+//     pathology), because njj uses zjj alone while nkk mixes zjj, zjk and zkk.
+//     On Bauer's g1 that drove rho to +0.999, collapsed the partner's latent
+//     onto its partner's, failed the family M-step's own spread guard and froze
+//     every family theta at its starting value (MARE 41.2% vs 18.3%).
+//
+// Clamped at 0.99, not 0.999: at the boundary the partner's latent becomes
+// numerically its partner's and the model stops being identified, so the clamp
+// has to sit where the collapse cannot complete rather than where a double
+// still rounds.
+static inline double rxEtaDistCorFromRz(double rho, double rz) {
+  if (!std::isfinite(rz)) rz = 0.0;
+  if (rz > 0.999) rz = 0.999; else if (rz < -0.999) rz = -0.999;
+  double l21 = rho;
+  if (!std::isfinite(l21)) l21 = 0.0;
+  if (l21 > 0.999) l21 = 0.999; else if (l21 < -0.999) l21 = -0.999;
+  double l22 = std::sqrt(std::max(0.0, 1.0 - l21*l21));
+  double nkk = 1.0 + 2.0*l21*l22*rz;
+  if (!(nkk > 0.0)) return NA_REAL;
+  double r = (l21 + l22*rz)/std::sqrt(nkk);
+  if (!std::isfinite(r)) return NA_REAL;
+  if (r > 0.99) r = 0.99; else if (r < -0.99) r = -0.99;
+  return r;
+}
+
 double rxEtaDistCorMleW(const std::vector<double> &w1,
                         const std::vector<double> &w2,
                         const std::vector<double> *w);

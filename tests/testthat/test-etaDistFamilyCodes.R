@@ -71,4 +71,70 @@ nmTest({
     }
   })
 
+  ## --------------------------------------------------------------- roles --
+
+  test_that("roles come back per argument, in the family's own order", {
+    skip_if_not_installed("lotri")
+    skip_if(is.null(lotri::lotriEtaDists()$roles), "lotri has no roles column")
+    expect_identical(.etaDistRoles(quote(dgamma(shape = a, rate = b))),
+                     c("shape", "rate"))
+    ## the ORDER is the family's, not the call's -- the roles describe the
+    ## catalog's positional argument list, which is what the M-step estimates
+    expect_identical(.etaDistRoles(quote(dgamma(rate = b, shape = a))),
+                     c("shape", "rate"))
+    expect_identical(.etaDistRoles(quote(studentT(n, m, s))),
+                     c("df", "location", "scale"))
+    expect_identical(.etaDistRoles(quote(dbeta(a, b))), c("shape1", "shape2"))
+    expect_identical(.etaDistRoles(quote(stdNormal())), character(0))
+    ## an unknown family is "no role information", NOT "no roles"
+    expect_identical(.etaDistRoles(quote(dnotAFamily(a))), character(0))
+    ## a string is accepted the same way the rest of this file's helpers do
+    expect_identical(.etaDistRoles("dexp(r)"), "rate")
+  })
+
+  test_that("roles line up one-for-one with the arguments the M-step fits", {
+    skip_if_not_installed("lotri")
+    .tab <- lotri::lotriEtaDists()
+    skip_if(is.null(.tab$roles), "lotri has no roles column")
+    ## The M-step indexes the declaration's arguments POSITIONALLY
+    ## (`as.list(.cl)[-1]`), so a roles vector of a different length would
+    ## attach a covariate to the wrong parameter rather than fail.
+    for (.i in seq_len(nrow(.tab))) {
+      .r <- strsplit(.tab$roles[.i], ",", fixed = TRUE)[[1]]
+      .r <- .r[nzchar(.r)]
+      expect_identical(length(.r), as.integer(.tab$nPar[.i]), label = .tab$name[.i])
+    }
+  })
+
+  test_that("role groups are usable as covariate group keys", {
+    skip_if_not_installed("lotri")
+    skip_if(is.null(lotri::lotriEtaDists()$roles), "lotri has no roles column")
+    .g <- .etaDistRoleGroups(quote(dgamma(shape = a, rate = b)))
+    expect_identical(names(.g), c("shape", "rate"))
+    expect_identical(.g[["shape"]], 1L)
+    expect_identical(.g[["rate"]], 2L)
+    ## every argument lands in exactly one group -- a covariate attached to a
+    ## role must reach one parameter, not zero and not two
+    .n <- .etaDistRoles(quote(paretoType2(m, l, a)))
+    .g2 <- .etaDistRoleGroups(quote(paretoType2(m, l, a)))
+    expect_equal(sort(unlist(.g2, use.names = FALSE)), seq_along(.n))
+    expect_identical(names(.g2), c("location", "scale", "shape"))
+    ## unknown family -> NULL, so a caller declines rather than grouping
+    ## every argument together under one empty key
+    expect_null(.etaDistRoleGroups(quote(dnotAFamily(a))))
+  })
+
+  test_that("the support endpoints are the roles that refuse covariates", {
+    skip_if_not_installed("lotri")
+    skip_if(is.null(lotri::lotriEtaDists()$roles), "lotri has no roles column")
+    ## dunif's bounds and pareto's minimum ARE the support.  A subject-varying
+    ## endpoint makes the density discontinuous in the parameter.
+    expect_true(all(.etaDistRoles(quote(dunif(lo, hi))) %in% .etaDistRoleNoCovariate))
+    expect_true("lower" %in% .etaDistRoles(quote(pareto(ymin, alpha))))
+    ## but pareto's shape is ordinary and must stay searchable
+    expect_false("shape" %in% .etaDistRoleNoCovariate)
+    ## and nothing in the families the C++ M-step implements is a bound
+    expect_false(any(.etaDistRoles(quote(dgamma(a, b))) %in% .etaDistRoleNoCovariate))
+  })
+
 })

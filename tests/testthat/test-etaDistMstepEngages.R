@@ -76,8 +76,13 @@ nmTest({
       })
     }
     .u0 <- rxode2::rxUiDecompress(rxode2::rxode2(.mod))
+    ## etaDistWarmStart=FALSE: the hook runs `etaDistInit()` by default now, and
+    ## with data=NULL that warns ("need data") and leaves the starting values
+    ## alone.  This test is about the STASH, so turn it off rather than assert
+    ## around a warning that has nothing to do with what is being checked.
     .r <- nlmixr2est:::.preProcessEtaDist(.u0, "saem", NULL,
-                             saemControl(etaDistMstep = TRUE))
+                             saemControl(etaDistMstep = TRUE,
+                                         etaDistWarmStart = FALSE))
     expect_true(is.list(.r))
     .u <- rxode2::rxUiDecompress(.r$ui)
     # the hook must stash in `meta`: the ui environment, the control and an

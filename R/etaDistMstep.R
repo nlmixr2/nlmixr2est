@@ -558,6 +558,57 @@
   .tab$support[.w]
 }
 
+#' Argument ROLES of a declared family, in the family's own argument order
+#'
+#' The role names what an argument DOES (`shape` vs `rate`), which is what a
+#' covariate has to be attached to: a covariate on gamma's shape and one on its
+#' rate are different models, and the SAME covariate may legitimately enter both
+#' with different shapes.  Roles are unique within a family, so a role is a
+#' usable group key -- `dbeta` has `shape1`/`shape2` rather than two `shape`s.
+#'
+#' Roles stay in R.  The C++ objective is role-agnostic (it maximizes over the
+#' family's native parameters whatever they mean), and a role dispatch there
+#' would be a second catalog to keep in sync with lotri's.
+#'
+#' `character(0)` when the family is unknown, or when lotri is too old to carry
+#' the column -- callers must treat that as "no role information", not as "no
+#' roles", and decline rather than group everything together.
+#' @noRd
+.etaDistRoles <- function(distCall) {
+  .cl <- if (is.character(distCall)) str2lang(distCall) else distCall
+  .nm <- as.character(.cl[[1]])
+  .tab <- try(lotri::lotriEtaDists(), silent = TRUE)
+  if (inherits(.tab, "try-error") || is.null(.tab$roles)) return(character(0))
+  .w <- which(.tab$name == .nm)
+  if (length(.w) != 1L) return(character(0))
+  .r <- strsplit(.tab$roles[.w], ",", fixed = TRUE)[[1]]
+  .r[nzchar(.r)]
+}
+
+#' Roles that refuse a covariate
+#'
+#' A SUPPORT endpoint (`dunif`'s bounds, the pareto minimum).  Letting it vary
+#' by subject makes the density discontinuous in the parameter -- the likelihood
+#' jumps the moment an eta crosses the moving endpoint -- so there is nothing
+#' for a derivative-based M-step to follow.
+#' @noRd
+.etaDistRoleNoCovariate <- c("lower", "upper")
+
+#' Map a declared family's ARGUMENT POSITIONS to their role groups
+#'
+#' Returns a named list: role -> integer positions in the family's argument
+#' order.  With unique roles every group has exactly one member today; the list
+#' shape is what lets a family with a genuinely shared role (should one ever be
+#' added) group its arguments without changing any caller.
+#'
+#' `NULL` when the roles are unknown -- see [.etaDistRoles()].
+#' @noRd
+.etaDistRoleGroups <- function(distCall) {
+  .r <- .etaDistRoles(distCall)
+  if (length(.r) == 0L) return(NULL)
+  split(seq_along(.r), factor(.r, levels = unique(.r)))
+}
+
 #' Solve a declared family's thetas so its ARGUMENTS take given values
 #'
 #' The C++ M-step estimates the family's NATIVE parameters (shape, rate, ...);

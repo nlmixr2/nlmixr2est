@@ -26,6 +26,7 @@
                            "zeroOmegaDirect", "zeroOmegaMaxEval", "etaDistMstep",
                            "etaDistWarmStart", "mceta",
                            "etaDistSdLo", "etaDistSdHi", "etaDistSdTol",
+                           "etaDistCorSuff",
                            "qr", "qrShift", "qrRefresh", "qrScramble",
                            "sir", "sirSample",
                            # internal M-step index maps added in .impmapFamilyFit;
@@ -502,6 +503,22 @@
 #'   stand-in, used only to produce starting values.  Set `FALSE` to fit from
 #'   the model's own `ini()`.
 #'
+#' @param etaDistCorSuff Estimate the declared copula correlation from the
+#'   standardized SUFFICIENT STATISTIC of the raw latents (saem's route) instead
+#'   of a product-moment correlation of the copula-combined ones.
+#'
+#'   The combined latent `w_k = rho*z_j + sqrt(1 - rho^2)*z_k` is built FROM the
+#'   current `rho`, so correlating it against `w_j` returns the value it was
+#'   handed whenever the latent second moments are equal -- a fixed point at the
+#'   current estimate rather than at the data's.  All the information about the
+#'   correlation is in the departure of the latent second-moment matrix from the
+#'   identity, so this route reads that instead, and is not gated on the
+#'   trajectory spread guard: the guard exists because a FAMILY fit to a
+#'   mid-flight eta sample fits the wrong thing, which does not apply to a second
+#'   moment of the latents.
+#'
+#'   `FALSE` (the default) keeps the product-moment route while the two are
+#'   being compared.
 #' @param etaDistSdTol Relative change in the pooled latent standard deviation,
 #'   between consecutive declared-distribution M-step attempts, below which the
 #'   latent is treated as settled and the M-step is allowed to run.  This, not
@@ -689,6 +706,7 @@ impmapControl <- function(sigdig=3,
                           etaDistSdLo=0.2,
                           etaDistSdHi=5.0,
                           etaDistSdTol=0.10,
+                          etaDistCorSuff=FALSE,
                           mceta=-2L,
                           impSeed=42L,
                           covMethod=c("imp", "analytic", "r,s", "r", "s", "sa", ""),
@@ -855,6 +873,9 @@ impmapControl <- function(sigdig=3,
   .control$etaDistSdLo <- as.numeric(etaDistSdLo)
   .control$etaDistSdHi <- as.numeric(etaDistSdHi)
   .control$etaDistSdTol <- as.numeric(etaDistSdTol)
+  checkmate::assertLogical(etaDistCorSuff, len=1, any.missing=FALSE,
+                           .var.name="etaDistCorSuff")
+  .control$etaDistCorSuff <- as.logical(etaDistCorSuff)
   .control$impSeed <- as.integer(impSeed)
   checkmate::assertIntegerish(mceta, lower=-2, len=1, any.missing=FALSE,
                               .var.name="mceta")

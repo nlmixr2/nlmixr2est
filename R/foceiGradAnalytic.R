@@ -927,6 +927,8 @@
     !is.null(tryCatch(.foceiOuterDirsLL(ui), error = function(e) NULL))
 }
 
+
+
 #' Direction set for the augmented outer-gradient model, computed from the UI
 #' alone (does not depend on theta/eta values): one direction per eta plus one per
 #' non-mu-referenced structural theta.  `NULL` if out of analytic scope.

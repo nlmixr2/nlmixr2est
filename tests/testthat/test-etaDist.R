@@ -42,8 +42,13 @@ nmTest({
     ## .declMod() hands back the model FUNCTION; the hook is only ever given a
     ## ui in production (nlmixr2Est passes one), so build one here.  Without
     ## this the hook hit rxUiDecompress(<closure>)$iniDf and errored.
+    ## etaDistWarmStart=FALSE: the hook now runs `etaDistInit()` by default, and
+    ## with no data that warns ("need data") and leaves the starting values
+    ## alone.  Harmless, but this test is about the EXPANSION, so turn the warm
+    ## start off rather than assert around its warning.
     .r <- nlmixr2est:::.preProcessEtaDist(
-      rxode2::rxUiDecompress(rxode2::rxode2(.u)), "focei", NULL, NULL)
+      rxode2::rxUiDecompress(rxode2::rxode2(.u)), "focei", NULL,
+      list(etaDistWarmStart = FALSE))
     expect_true(is.list(.r))
     expect_equal(nrow(rxode2::rxUiEtaDists(.r$ui)), 0L)
     expect_true("rxz.eta.cl" %in% .r$ui$iniDf$name)
@@ -91,10 +96,17 @@ nmTest({
     ## `nonMuEtas` (to silence a warning), which left saem with no parameter
     ## for them at all.
     expect_true(nlmixr2est:::.isEtaDistMethod("saem"))
-    ## a nonparametric random effect distribution contradicts a declared
-    ## one; nlme/nls are Gaussian by construction; the variational methods
-    ## hardcode the normal family in their ELBO
-    for (.m in c("npag", "npb", "nlme", "nls", "vae", "emvi", "fbvi")) {
+    ## vae does too, and the ELBO needed no change for it: the expansion leaves
+    ## the LATENT standard normal (`rxz.* ~ fix(1)`, block off-diagonals
+    ## dropped), which is exactly what the prior term and the KL are written
+    ## for, while the non-normality sits in a decoder line inside the inner
+    ## problem.  The old refusal was on the reading that its ELBO "hardcodes
+    ## the normal family"; what it hardcodes is a normal LATENT, correctly.
+    expect_true(nlmixr2est:::.isEtaDistMethod("vae"))
+    ## a nonparametric random effect distribution contradicts a declared one;
+    ## nlme/nls are Gaussian by construction; emvi/fbvi each still need their
+    ## own audit before the same claim can be made for them
+    for (.m in c("npag", "npb", "nlme", "nls", "emvi", "fbvi")) {
       expect_false(nlmixr2est:::.isEtaDistMethod(.m), info=.m)
     }
     expect_false(nlmixr2est:::.isEtaDistMethod("notAMethod"))

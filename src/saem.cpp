@@ -1028,7 +1028,7 @@ public:
       double nn = (double)nr;
       double rho0 = etaDistRho(k);
       if (!std::isfinite(rho0)) rho0 = 0.0;
-      double l21 = rho0, l22 = std::sqrt(std::max(0.0, 1.0 - l21*l21));
+      double l21 = rho0;
       // STANDARDIZE S_z first.  The raw second moments carry the latent's
       // over-dispersion (diag ~2-3 rather than 1), and feeding that through
       // L S_z L' biases the ratio: njj uses zjj alone while nkk is a MIXTURE of
@@ -1047,18 +1047,13 @@ public:
       // means the current rho already explains the draws.  rz > 0 moves it up,
       // rz < 0 down, and neither can be driven by the diagonal any more.
       double rz = zjk/std::sqrt(zjj*zkk);
-      if (!std::isfinite(rz)) rz = 0.0;
-      if (rz > 0.999) rz = 0.999; else if (rz < -0.999) rz = -0.999;
-      double njj = 1.0;
-      double nkk = 1.0 + 2.0*l21*l22*rz;
-      double njk = l21 + l22*rz;
-      double rh = (nkk > 0) ? njk/std::sqrt(njj*nkk) : NA_REAL;
+      // ONE copy of this update, shared with imp and the FOCEi family
+      // (rxEtaDistCorFromRz, src/etaDistFam.h).  It used to live only here,
+      // while imp and focei correlated the COMBINED latents instead -- a
+      // different estimator with a fixed point at the current rho, which is
+      // how their copula came back frozen at its ini() value.
+      double rh = rxEtaDistCorFromRz(l21, rz);
       if (std::isfinite(rh)) {
-        // 0.99, not 0.999.  The clamp is not cosmetic: at the boundary the
-        // copula partner's latent becomes numerically its partner's and the
-        // model stops being identified, so the clamp has to sit where the
-        // collapse cannot complete rather than where a double still rounds.
-        if (rh > 0.99) rh = 0.99; else if (rh < -0.99) rh = -0.99;
         etaDistCorSuff(k) = rh;
       }
       double off = std::fabs(zjk/nn);
@@ -8308,6 +8303,14 @@ static int saemEtaDistObsLik_() { return _saemEtaDistObsLik; }
 // used is the constrained MLE only when the draws have unit variance, so any
 // departure -- which every burn-in has -- inflated it into its clamp, and a
 // clamped correlation makes both declared etas share one latent.
+// The copula update the M-steps share (rxEtaDistCorFromRz), exposed so the
+// formula can be pinned directly instead of inferred from a fit.  `rho` is the
+// current correlation, `rz` the CORRELATION of the raw latents.
+//[[Rcpp::export]]
+double rxEtaDistCorFromRz_(double rho, double rz) {
+  return rxEtaDistCorFromRz(rho, rz);
+}
+
 //[[Rcpp::export]]
 double rxEtaDistCorTest_(Rcpp::NumericVector z1, Rcpp::NumericVector z2) {
   std::vector<double> a(z1.begin(), z1.end()), b(z2.begin(), z2.end());

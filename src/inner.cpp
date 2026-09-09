@@ -1032,6 +1032,10 @@ struct focei_options {
   // band this used to hardcode admitted exactly one of Bauer's four arms, so
   // this M-step effectively never ran.
   double etaDistSdLo = 0.2, etaDistSdHi = 5.0, etaDistSdTol = 0.10;
+  // copula correlation route: 0 = product-moment on the COMBINED latents
+  // (historical), 1 = saem's standardized sufficient statistic on the RAW
+  // latents, ungated by the spread guard.  See foceiEtaDistMstep().
+  int etaDistCorSuff = 0;
   std::vector<double> etaDistSdPrev, etaDistSdCur;
 };
 
@@ -5507,6 +5511,7 @@ static void priorGradHessFor(const std::vector<int> &idx, arma::vec &grad, arma:
 // posterior; declared here for innerOpt()'s call site below.
 static bool foceiEtaDistMstep();
 extern long _foceiEtaDistN;
+extern long _foceiEtaDistCorN;
 
 static inline double updateMuGroups() {
   if (op_focei.muModel == 0 || op_focei.muGroupN == 0) return 0.0;
@@ -8413,6 +8418,8 @@ NumericVector foceiSetup_(const RObject &obj,
       op_focei.etaDistSdHi = as<double>(foceiO["etaDistSdHi"]);
     if (foceiO.containsElementNamed("etaDistSdTol"))
       op_focei.etaDistSdTol = as<double>(foceiO["etaDistSdTol"]);
+    if (foceiO.containsElementNamed("etaDistCorSuff"))
+      op_focei.etaDistCorSuff = (int)(as<bool>(foceiO["etaDistCorSuff"]));
   }
   if (op_focei.isImpmap) {
     // isample may be a per-subject vector; the scalar is the largest requested
@@ -8477,7 +8484,10 @@ NumericVector foceiSetup_(const RObject &obj,
       if (foceiO.containsElementNamed("etaDistSdLo")) sdLo = as<double>(foceiO["etaDistSdLo"]);
       if (foceiO.containsElementNamed("etaDistSdHi")) sdHi = as<double>(foceiO["etaDistSdHi"]);
       if (foceiO.containsElementNamed("etaDistSdTol")) sdTol = as<double>(foceiO["etaDistSdTol"]);
-      impEtaDistSpreadReset(sdLo, sdHi, sdTol);
+      bool corSuff = false;
+      if (foceiO.containsElementNamed("etaDistCorSuff"))
+        corSuff = as<bool>(foceiO["etaDistCorSuff"]);
+      impEtaDistSpreadReset(sdLo, sdHi, sdTol, corSuff);
     }
     // imp reaches its M-step through impEtaDistMstep(), not the FOCEi outer
     // loop, so the FOCEi hold-out stays off here: imp's thetas are already out
@@ -12771,6 +12781,9 @@ int impEtaDistOn() { return op_focei.impEtaDistOn; }
 
 //[[Rcpp::export]]
 long foceiEtaDistN_() { return _foceiEtaDistN; }
+
+//[[Rcpp::export]]
+long foceiEtaDistCorN_() { return _foceiEtaDistCorN; }
 SEXP impEtaDistInfoGet() { return op_focei.impEtaDistInfo; }
 
 // Windowed-convergence tolerance on the (relative) objective change; derived
@@ -13405,6 +13418,11 @@ bool impGetHessian(int id, arma::mat& H) {
 // "the metadata built" is NOT the same as "the step fired", and inferring the
 // second from estimates is exactly how this went wrong before.
 long _foceiEtaDistN = 0;
+// How many times the COPULA update actually wrote a correlation.  Separate
+// from _foceiEtaDistN because that counts an attempt where ANYTHING moved:
+// a run with 13 family fits and 0 copula writes is indistinguishable from
+// one with both, and the two have very different answers.
+long _foceiEtaDistCorN = 0;
 
 static bool foceiEtaDistMstep() {
   if (!op_focei.etaDistOn || op_focei.etaDistInfo.size() == 0) return false;
@@ -13467,7 +13485,15 @@ static bool foceiEtaDistMstep() {
   // regardless of how many outer iterations preceded it.
   setSeedEng1((uint32_t)(op_focei.impSeed + 7919L*(_foceiEtaDistN + 1)));
   std::vector< std::vector<double> > w((size_t)nd);
-  for (int k = 0; k < nd; ++k) w[(size_t)k].reserve(mode.size()*(size_t)nsamp);
+  // The RAW latent column per declaration, kept separately from the combined
+  // one.  The copula's sufficient statistic is a property of the INDEPENDENT
+  // latents; w[k] is already a function of the current rho, so a correlation
+  // taken on it is partly self-fulfilling.
+  std::vector< std::vector<double> > zr((size_t)nd);
+  for (int k = 0; k < nd; ++k) {
+    w[(size_t)k].reserve(mode.size()*(size_t)nsamp);
+    zr[(size_t)k].reserve(mode.size()*(size_t)nsamp);
+  }
   arma::vec z(neta), e(neta);
   for (size_t i = 0; i < mode.size(); ++i) {
     for (int s = 0; s < nsamp; ++s) {
@@ -13488,6 +13514,7 @@ static bool foceiEtaDistMstep() {
           zv = rr*e[lat[j]] + (s2 > 0 ? std::sqrt(s2) : 0.0)*zv;
         }
         w[(size_t)k].push_back(zv);
+        zr[(size_t)k].push_back(e[lat[k]]);
       }
     }
   }
@@ -13558,12 +13585,76 @@ static bool foceiEtaDistMstep() {
       bool okJ = rxEtaDistSpreadSettled(cw[k], lsdJ, op_focei.etaDistSdPrev,
                                         op_focei.etaDistSdCur, op_focei.etaDistSdLo,
                                         op_focei.etaDistSdHi, op_focei.etaDistSdTol);
-      if (!okK || !okJ) { m++; continue; }
-      double r = rxEtaDistCorMle(w[(size_t)cw[k]], w[(size_t)k]);
+      // The SUFFICIENT-STATISTIC route (saem's etaDistCorSuffStat, ported).
+      //
+      // Two differences from the product-moment route below, and both matter:
+      //
+      //  * it reads the RAW latents, not the combined ones.  w[k] is built as
+      //    rho*z_j + sqrt(1-rho^2)*z_k, so cor(w_j, w_k) returns the rho it was
+      //    just handed whenever the latent second moments happen to be equal --
+      //    a fixed point at the CURRENT value rather than at the data's.  All
+      //    the information about rho is in the departure of S_z from the
+      //    identity, so that is what this reads.
+      //
+      //  * it is NOT gated on the spread guard.  The guard exists because a
+      //    FAMILY fit to a mid-flight eta sample is fitting the wrong thing;
+      //    the copula statistic is a second moment of the latents, which is
+      //    exactly as meaningful mid-flight.  saem accumulates it every
+      //    iteration for that reason.
+      //
+      // S_z is STANDARDIZED first.  Feeding raw second moments through
+      // L S_z L' biases the ratio when the latent diagonals are unequally
+      // inflated (they routinely are -- an over-dispersed latent is signal
+      // here, not pathology): njj uses zjj alone while nkk mixes zjj, zjk and
+      // zkk.  On Bauer's g1 that drove rho to +0.999 in saem, collapsing the
+      // partner's latent onto its partner's.  Uncentred, like saem: the
+      // latent's PRIOR mean is zero, so a shifted sample is information.
+      double r = NA_REAL;
+      if (op_focei.etaDistCorSuff) {
+        const std::vector<double> &zj = zr[(size_t)cw[k]];
+        const std::vector<double> &zk = zr[(size_t)k];
+        size_t nz = std::min(zj.size(), zk.size());
+        double zjj = 0, zkk = 0, zjk = 0; size_t nn = 0;
+        for (size_t q = 0; q < nz; ++q) {
+          double a = zj[q], b = zk[q];
+          if (!std::isfinite(a) || !std::isfinite(b)) continue;
+          zjj += a*a; zkk += b*b; zjk += a*b; nn++;
+        }
+        if (nn >= 2 && zjj > 0 && zkk > 0) {
+          r = rxEtaDistCorFromRz(rho[k], zjk/std::sqrt(zjj*zkk));
+        }
+      } else {
+        if (!okK || !okJ) {
+          // Traced, because a silent decline here and a branch that was never
+          // reached look identical from the outside -- and telling them apart
+          // is the whole question when a fit reports its copula still sitting
+          // on its ini() value after a dozen M-steps.
+          if (getenv("NLMIXR2_ETADIST_OPT") != NULL) {
+            RSprintf("[cor] k=%d route=pm BLOCKED okK=%d okJ=%d rho=%+.4f\n",
+                     k, (int)okK, (int)okJ, rho[k]);
+          }
+          m++; continue;
+        }
+        r = rxEtaDistCorMle(w[(size_t)cw[k]], w[(size_t)k]);
+      }
       if (std::isfinite(r)) {
         // the expansion carries the correlation as atanh(rho)
         double v = std::atanh(r);
-        if (std::isfinite(v)) { rho[k] = r; impSetThetaAll(cti[m], v); moved = true; }
+        if (std::isfinite(v)) {
+          if (getenv("NLMIXR2_ETADIST_OPT") != NULL) {
+            RSprintf("[cor] k=%d route=%s okK=%d okJ=%d rho %+.4f -> %+.4f\n",
+                     k, op_focei.etaDistCorSuff ? "suff" : "pm",
+                     (int)okK, (int)okJ, rho[k], r);
+          }
+          // Only a REAL change counts.  The sufficient statistic's fixed point
+          // returns rho unchanged (that is the property that makes it an
+          // M-step), so writing it back unconditionally would mark every
+          // attempt as "moved", force a full re-solve per subject for a no-op,
+          // and mask the nothing-ran signal the counters exist to give.
+          if (std::fabs(r - rho[k]) > 1e-10) {
+            rho[k] = r; impSetThetaAll(cti[m], v); moved = true; _foceiEtaDistCorN++;
+          }
+        }
       }
       m++;
     }

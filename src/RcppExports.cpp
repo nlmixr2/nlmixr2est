@@ -796,6 +796,16 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// foceiEtaDistCorN_
+long foceiEtaDistCorN_();
+RcppExport SEXP _nlmixr2est_foceiEtaDistCorN_() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(foceiEtaDistCorN_());
+    return rcpp_result_gen;
+END_RCPP
+}
 // foceiFitCpp_
 Environment foceiFitCpp_(Environment e);
 RcppExport SEXP _nlmixr2est_foceiFitCpp_(SEXP eSEXP) {
@@ -1986,6 +1996,18 @@ BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     rcpp_result_gen = Rcpp::wrap(saemEtaDistOn_());
+    return rcpp_result_gen;
+END_RCPP
+}
+// rxEtaDistCorFromRz_
+double rxEtaDistCorFromRz_(double rho, double rz);
+RcppExport SEXP _nlmixr2est_rxEtaDistCorFromRz_(SEXP rhoSEXP, SEXP rzSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< double >::type rho(rhoSEXP);
+    Rcpp::traits::input_parameter< double >::type rz(rzSEXP);
+    rcpp_result_gen = Rcpp::wrap(rxEtaDistCorFromRz_(rho, rz));
     return rcpp_result_gen;
 END_RCPP
 }

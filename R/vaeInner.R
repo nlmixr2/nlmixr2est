@@ -106,6 +106,28 @@
       ## aliases its THETA_1_/ETA_1_ spelling onto the THETA[1]/ETA[1] columns so
       ## rxSolve_ can bind it.
       .env$model$vaeOuter <- .am$augMod
+    } else {
+      ## The augmented model did NOT build, so nothing sized the pool for it --
+      ## and the control must stop claiming otherwise before vaeInnerSetup_ reads
+      ## it.  "The two switches move together" (R/vaeGrad.R): leaving "grad" set
+      ## here while `vaeOuter` is absent installs an inner-neq override against a
+      ## pool that was sized for the INNER model, and the integrator is then fed a
+      ## state count the buffers do not match.  Measured on a declared
+      ## (`dist()`-expanded) model, where `ui$foceiOuter` does not build: the
+      ## first burn-in ELBO step SEGFAULTS in iniSubject() ->
+      ## _setIndPointersByThread() with a null gInfusionRate, one solve after
+      ## vaeInnerUpdatePar_.  The same model under "regress" is clean.
+      ##
+      ## This is not specific to declared distributions -- ANY model whose
+      ## augmented build declines under nonMuTheta="grad" reaches it -- which is
+      ## why the guard is here, on the actual build result, rather than on a
+      ## property of the model.  `.vaeGradInit` independently declines when `am`
+      ## is NULL, so downgrading here is what makes the two agree.
+      .fcd <- .ui$control
+      .fcd$nonMuTheta <- "regress"
+      assign("control", .fcd, envir = .ui)
+      .env$control$nonMuTheta <- "regress"
+      .env$vaeGradDeclined <- TRUE
     }
   }
   vaeInnerSetup_(.env)
