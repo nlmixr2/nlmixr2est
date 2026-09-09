@@ -335,6 +335,16 @@
                           rxode2::rxGetControl(ui, "etaDistSdLo", 0.5)),
                         etaDistSdHi=as.numeric(
                           rxode2::rxGetControl(ui, "etaDistSdHi", 1.0)),
+                        ## saemControl(etaDistStart=) declared it and
+                        ## .configsaem() consumed it, but nothing joined the two,
+                        ## so the value silently stayed at .configsaem's own
+                        ## default no matter what the user passed.  NULL here is
+                        ## meaningful -- it is what selects that default -- so it
+                        ## must survive rxGetControl rather than be coerced.
+                        etaDistStart={
+                          .eds <- rxode2::rxGetControl(ui, "etaDistStart", NULL)
+                          if (is.null(.eds)) NULL else as.integer(.eds)
+                        },
                         nonMuThetaBhhh=rxode2::rxGetControl(ui, "nonMuThetaBhhh", FALSE),
                         nonMuThetaGradEvery=as.integer(
                           rxode2::rxGetControl(ui, "nonMuThetaGradEvery", 1L)),

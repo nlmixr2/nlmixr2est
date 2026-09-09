@@ -3546,12 +3546,6 @@ public:
       RSprintf("[etaDist] etaDistCorMethod ABSENT from the control -- using %d\n",
                etaDistCorMethod);
     }
-    if (getenv("NLMIXR2_ETADIST_OPT") != NULL) {
-      RSprintf("[etaDist] etaDistCorMethod=%d etaDistCorTrust=%.3g "
-               "spreadGuard=%d sdLo=%.3g sdHi=%.3g etaDistEvery=%d\n",
-               etaDistCorMethod, etaDistCorTrust, etaDistSpreadGuard,
-               etaDistSdLo, etaDistSdHi, etaDistEvery);
-    }
     // Argument expressions + their theta names, for the C++ native->theta map.
     etaDistExprs.clear(); etaDistExprThetas.clear();
     if (x.containsElementNamed("etaDistExprs") && !Rf_isNull(x["etaDistExprs"]) &&
@@ -3569,6 +3563,17 @@ public:
     if (x.containsElementNamed("etaDistSpreadGuard")) etaDistSpreadGuard = as<int>(x["etaDistSpreadGuard"]);
     if (x.containsElementNamed("etaDistSdLo")) etaDistSdLo = as<double>(x["etaDistSdLo"]);
     if (x.containsElementNamed("etaDistSdHi")) etaDistSdHi = as<double>(x["etaDistSdHi"]);
+    // AFTER every read above.  Printed before them it reported the C++
+    // defaults no matter what the control carried, which is worse than no
+    // trace at all: it says a control did not arrive when it did, and a valid
+    // measurement gets thrown away on its word.
+    if (getenv("NLMIXR2_ETADIST_OPT") != NULL) {
+      RSprintf("[etaDist] etaDistCorMethod=%d etaDistCorTrust=%.3g "
+               "spreadGuard=%d sdLo=%.3g sdHi=%.3g etaDistEvery=%d "
+               "etaDistStart=%d\n",
+               etaDistCorMethod, etaDistCorTrust, etaDistSpreadGuard,
+               etaDistSdLo, etaDistSdHi, etaDistEvery, etaDistStart);
+    }
     // per fit, not per session: the question this answers is "did THIS fit's
     // M-step run", so it cannot accumulate across fits the way
     // _saemPhi1RefineN does
