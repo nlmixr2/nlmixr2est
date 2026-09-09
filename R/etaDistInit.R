@@ -58,7 +58,25 @@
   if (is.null(.q) || !all(is.finite(.q))) return(NULL)
   .m <- sum(gh$w * .q)
   .v <- sum(gh$w * (.q - .m)^2)
-  c(mean = .m, var = .v)
+  ## LOG-scale moments too, and they are the ones the surrogate should use.
+  ##
+  ## The surrogate IS a log-normal, so meanlog/varlog ARE its parameters -- on
+  ## that side the conversion is an identity rather than an approximation.  The
+  ## arithmetic pair is not interchangeable with it: a log-normal and a gamma
+  ## sharing a log-variance have wildly different relative variances once the
+  ## family is heavy-tailed.  Measured on Bauer's g4 (gamma shape 0.5, relvar
+  ## 2.0), matching the arithmetic pair returns relvar 68 where matching the
+  ## log pair returns 1.83.
+  ##
+  ## NA for a family whose support reaches 0 or below, where log is undefined;
+  ## callers fall back to the arithmetic pair.
+  .lm <- NA_real_; .lv <- NA_real_
+  if (all(.q > 0)) {
+    .lq <- log(.q)
+    .lm <- sum(gh$w * .lq)
+    .lv <- sum(gh$w * (.lq - .lm)^2)
+  }
+  c(mean = .m, var = .v, meanlog = .lm, varlog = .lv)
 }
 
 #' Solve a declared family's thetas so its mean/variance match a target
@@ -69,13 +87,24 @@
 #' @noRd
 .etaDistSolveThetas <- function(distCall, thetaNames, start, target,
                                 gh = .etaDistGh()) {
+  .useLog <- all(c("meanlog", "varlog") %in% names(target)) &&
+    all(is.finite(target[c("meanlog", "varlog")]))
   .obj <- function(p) {
     .tv <- stats::setNames(as.list(p), thetaNames)
     .mv <- .etaDistMoments(distCall, .tv, gh)
     if (is.null(.mv)) return(1e10)
-    ## relative, so a mean of 5 and a variance of 2 weigh comparably
-    (log(.mv[["mean"]] / target[["mean"]]))^2 +
-      (log(.mv[["var"]] / target[["var"]]))^2
+    if (.useLog) {
+      if (!all(is.finite(.mv[c("meanlog", "varlog")]))) return(1e10)
+      ## meanlog is a location on the log scale and can be zero or negative, so
+      ## it is matched by DIFFERENCE; varlog is positive and matched by ratio,
+      ## which keeps both terms dimensionless the way the arithmetic pair was.
+      (.mv[["meanlog"]] - target[["meanlog"]])^2 +
+        (log(.mv[["varlog"]] / target[["varlog"]]))^2
+    } else {
+      ## relative, so a mean of 5 and a variance of 2 weigh comparably
+      (log(.mv[["mean"]] / target[["mean"]]))^2 +
+        (log(.mv[["var"]] / target[["var"]]))^2
+    }
   }
   ## nlmixr2est's own Nelder-Mead (nmsimplex -> neldermead_wrap -> nelder_fn),
   ## not stats::optim: every other optimization in this package goes through
@@ -119,9 +148,18 @@
   for (.i in seq_len(nrow(.d))) {
     .e <- .d$name[.i]
     .mv <- .etaDistMoments(.d$etaDist[.i], .thVals, gh)
-    if (is.null(.mv) || !all(is.finite(.mv)) || .mv[["mean"]] <= 0) return(NULL)
-    .cv2 <- .mv[["var"]] / (.mv[["mean"]]^2)
-    .sd <- sqrt(log1p(.cv2)); .mu <- log(.mv[["mean"]]) - 0.5 * .sd^2
+    if (is.null(.mv) || !is.finite(.mv[["mean"]]) ||
+          !is.finite(.mv[["var"]]) || .mv[["mean"]] <= 0) return(NULL)
+    ## Seed the log-normal from the declared family's LOG-scale moments, which
+    ## are its parameters outright.  Going through the arithmetic pair instead
+    ## understates the log-spread badly for a heavy tail: on g4's ini() it gives
+    ## varlog 1.10 where the declared gamma's own varlog is 4.97.
+    if (all(is.finite(.mv[c("meanlog", "varlog")])) && .mv[["varlog"]] > 0) {
+      .mu <- .mv[["meanlog"]]; .sd <- sqrt(.mv[["varlog"]])
+    } else {
+      .cv2 <- .mv[["var"]] / (.mv[["mean"]]^2)
+      .sd <- sqrt(log1p(.cv2)); .mu <- log(.mv[["mean"]]) - 0.5 * .sd^2
+    }
     ## the model line whose entire right-hand side is this eta
     .pat <- paste0("^(\\s*[A-Za-z._][A-Za-z0-9._]*\\s*<-\\s*)",
                    gsub("[.]", "[.]", .e), "\\s*$")
@@ -235,8 +273,12 @@ etaDistInit <- function(object, data, control = saemControl(nBurn = 100, nEm = 1
     if (is.null(.om) || !(.e %in% rownames(.om))) next
     .w <- .om[.e, .e]
     if (!is.finite(.w) || .w <= 0) next
-    ## log-normal moments (meanlog = mu, varlog = omega) -> the target the
-    ## declared family has to reproduce
+    ## The surrogate's fitted meanlog/varlog ARE (.mu, .w) -- pass them across
+    ## unchanged and let the declared family match them on the log scale.  The
+    ## arithmetic pair is carried too, as the fallback for a family whose
+    ## support reaches zero, but it must not be the primary target: exp(.w) - 1
+    ## turns the surrogate's varlog 4.24 into relvar 68 where the declared
+    ## gamma's answer is 1.83 against a truth of 2.0.
     .mean <- exp(.mu + 0.5 * .w)
     .var <- (exp(.w) - 1) * exp(2 * .mu + .w)
     if (!is.finite(.mean) || !is.finite(.var) || .var <= 0) next
@@ -244,10 +286,35 @@ etaDistInit <- function(object, data, control = saemControl(nBurn = 100, nEm = 1
     if (length(.tn) == 0L) next
     .start <- stats::setNames(.ini$est[match(.tn, .ini$name)], .tn)
     .sol <- .etaDistSolveThetas(.d$etaDist[.i], .tn, .start,
-                                c(mean = .mean, var = .var), .gh)
+                                c(mean = .mean, var = .var,
+                                  meanlog = .mu, varlog = .w), .gh)
     if (is.null(.sol)) {
       warning("could not match '", .e, "' to the surrogate's moments; ",
               "its starting values are unchanged", call. = FALSE)
+      next
+    }
+    ## Keep the answer only if it is actually CLOSER to the surrogate than what
+    ## the model already had.  A warm start has one job, and there is no reason
+    ## to accept one that fails at it -- silently, as this did: the surrogate
+    ## fit succeeds, the solver reports convergence because it matched the
+    ## moments it was handed, and nothing downstream is placed to notice the
+    ## values are absurd.  Before this check the g4 arm was seeded with a
+    ## relative variance of 68 against a truth of 2, and the fit it warm-started
+    ## ran away to CL 2312 (MARE 9132%) where the COLD start reached 25.9%.
+    ##
+    ## Threshold-free on purpose: the comparison is against the model's own
+    ## starting values on the surrogate's own criterion, so it needs no notion
+    ## of what counts as an implausible parameter for an arbitrary family.
+    .fitTo <- function(.v) {
+      .mm <- .etaDistMoments(.d$etaDist[.i], as.list(.v), .gh)
+      if (is.null(.mm) || !all(is.finite(.mm[c("meanlog", "varlog")])) ||
+            .mm[["varlog"]] <= 0) return(Inf)
+      (.mm[["meanlog"]] - .mu)^2 + (log(.mm[["varlog"]] / .w))^2
+    }
+    if (all(is.finite(c(.mu, .w))) && .w > 0 &&
+          !(.fitTo(.sol) < .fitTo(.start))) {
+      warning("the surrogate's starting values for '", .e, "' were no better ",
+              "than the model's own; they are unchanged", call. = FALSE)
       next
     }
     for (.t in .tn) .ini$est[.ini$name == .t] <- .sol[[.t]]
