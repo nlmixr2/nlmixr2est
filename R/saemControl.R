@@ -254,6 +254,26 @@
 #'   latents is not a property of the mean function, and no
 #'   observation-likelihood term identifies it.
 #'
+#' @param etaDistSpreadGuard Apply the spread guard at all.  `FALSE` skips the
+#'   test entirely, which is NOT the same as widening `etaDistSdHi`: the lower
+#'   bound still rejects a collapsed sample however wide the upper one is.  The
+#'   guard has rejected 100% of attempts on every arm measured, so turning it
+#'   off is the only way to see what the step it protects actually does.
+#'
+#' @param etaDistSdLo,etaDistSdHi Bounds on the pooled latent standard
+#'   deviation within which the declared-distribution M-step will act.  The
+#'   latent is standard normal by construction, so a pooled spread far from 1 is
+#'   taken as a sample not yet worth fitting rather than as information.
+#'
+#'   These were hard-coded at `0.5` and `1.0` and unreachable from R until now,
+#'   so the guard had never been measured at any other setting.  Two things are
+#'   worth knowing before changing them.  An upper bound of exactly 1 rejects
+#'   roughly half of a PERFECTLY mixed sample by chance -- the sample SD of a
+#'   standard normal with n draws is 1 +/- 1/sqrt(2n).  And on every arm
+#'   measured so far the pooled spread sits at 1.2 to 2.6, so the guard rejects
+#'   100% of attempts and the M-step it protects never runs at all; the
+#'   estimates then come from whatever else owns those parameters.
+#'
 #' @param etaDistCor How a `dist()`-declared Gaussian copula's correlation is
 #'   updated.  Always AFTER the declared distribution's own thetas have moved,
 #'   so it reads latents implied by the current parameters rather than the
@@ -821,6 +841,9 @@ saemControl <- function(seed = 99,
                         etaDistEvery = 20L,
                         etaDistCor = c("observed", "analytic", "optimize", "posterior"),
                         etaDistCorMethod = NULL,
+                        etaDistSpreadGuard = TRUE,
+                        etaDistSdLo = 0.5,
+                        etaDistSdHi = 1.0,
                         etaDistCorTrust = 1.5,
                         etaDistCorMstep = TRUE,
                         etaDistLoglik = FALSE,
@@ -1060,6 +1083,12 @@ saemControl <- function(seed = 99,
                            .var.name="iacceptPerId")
   checkmate::assertLogical(nonMuThetaBhhh, len=1, any.missing=FALSE,
                            .var.name="nonMuThetaBhhh")
+  checkmate::assertLogical(etaDistSpreadGuard, len=1, any.missing=FALSE,
+                           .var.name="etaDistSpreadGuard")
+  checkmate::assertNumeric(etaDistSdLo, len=1, lower=0, any.missing=FALSE,
+                           .var.name="etaDistSdLo")
+  checkmate::assertNumeric(etaDistSdHi, len=1, lower=0, any.missing=FALSE,
+                           .var.name="etaDistSdHi")
   etaDistCor <- match.arg(etaDistCor)
   ## Derived, but DECLARED and RETURNED -- both are required, for different
   ## reasons.  The control list is round-tripped through
@@ -1106,6 +1135,14 @@ saemControl <- function(seed = 99,
     etaDistMstep = etaDistMstep,
     etaDistStart = if (is.null(etaDistStart)) NULL else as.integer(etaDistStart),
     etaDistEvery = as.integer(etaDistEvery),
+    ## LOGICAL, not integer.  The list is round-tripped through
+    ## do.call(saemControl, .ctl), and this function asserts logical -- so
+    ## returning the integer the C++ wants fails its own assertion on the way
+    ## back in.  The round-trip constrains the TYPE as well as the name;
+    ## saem.R converts.
+    etaDistSpreadGuard = isTRUE(etaDistSpreadGuard),
+    etaDistSdLo = as.numeric(etaDistSdLo),
+    etaDistSdHi = as.numeric(etaDistSdHi),
     etaDistCor = etaDistCor,
     etaDistCorMethod = as.integer(etaDistCorMethod),
     etaDistCorTrust = as.numeric(etaDistCorTrust),

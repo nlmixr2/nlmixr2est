@@ -3547,8 +3547,10 @@ public:
                etaDistCorMethod);
     }
     if (getenv("NLMIXR2_ETADIST_OPT") != NULL) {
-      RSprintf("[etaDist] etaDistCorMethod=%d etaDistCorTrust=%.3g\n",
-               etaDistCorMethod, etaDistCorTrust);
+      RSprintf("[etaDist] etaDistCorMethod=%d etaDistCorTrust=%.3g "
+               "spreadGuard=%d sdLo=%.3g sdHi=%.3g etaDistEvery=%d\n",
+               etaDistCorMethod, etaDistCorTrust, etaDistSpreadGuard,
+               etaDistSdLo, etaDistSdHi, etaDistEvery);
     }
     // Argument expressions + their theta names, for the C++ native->theta map.
     etaDistExprs.clear(); etaDistExprThetas.clear();
@@ -3564,6 +3566,7 @@ public:
       }
     }
     if (etaDistEvery < 1) etaDistEvery = 1;
+    if (x.containsElementNamed("etaDistSpreadGuard")) etaDistSpreadGuard = as<int>(x["etaDistSpreadGuard"]);
     if (x.containsElementNamed("etaDistSdLo")) etaDistSdLo = as<double>(x["etaDistSdLo"]);
     if (x.containsElementNamed("etaDistSdHi")) etaDistSdHi = as<double>(x["etaDistSdHi"]);
     // per fit, not per session: the question this answers is "did THIS fit's
@@ -6593,6 +6596,11 @@ private:
   // 7.389 to 3.696, and ten iterations later it was 0.0885 with the mapped etas
   // averaging 176 -- each widening feeding the next.
   double etaDistSdLo = 0.5, etaDistSdHi = 1.0;
+  // saemControl(etaDistSpreadGuard=FALSE): skip the spread test entirely.
+  // Setting the bounds wide is NOT the same thing -- the lower bound still
+  // applies, and a sample whose spread has collapsed is rejected just as a
+  // widened upper bound stops rejecting an inflated one.  Off means off.
+  int etaDistSpreadGuard = 1;
   int etaDistNdist = 0;          // number of declared random effects
   ivec etaDistLatent;            // phi column of each one's OWN latent normal
   ivec etaDistFam;               // family code (rxEtaDistQ/rxEtaDistLogD)
@@ -7091,10 +7099,23 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
       // never settles simply never updates, which the M-step counter reports
       // rather than hides.
       double lsd = NA_REAL;
-      bool spreadOk = rxEtaDistSpreadOk(w[(size_t)k], etaDistSdLo, etaDistSdHi, &lsd);
+      bool famTr = (getenv("NLMIXR2_ETADIST_OPT") != NULL);
+      bool spreadOk = (etaDistSpreadGuard == 0) ||
+        rxEtaDistSpreadOk(w[(size_t)k], etaDistSdLo, etaDistSdHi, &lsd);
+      if (etaDistSpreadGuard == 0) {
+        // still measure it, so the trace reports the spread that WOULD have
+        // been rejected -- running unguarded should not also mean running blind
+        rxEtaDistSpreadOk(w[(size_t)k], etaDistSdLo, etaDistSdHi, &lsd);
+      }
       double aNew[4];
       for (int i = 0; i < na; ++i) aNew[i] = a0[i];
       bool mleOk = spreadOk && rxEtaDistMle(fam, ev, aNew);
+      if (famTr) {
+        RSprintf("[fam] it=%d k=%d latentSd=%.4f in [%.2f,%.2f] guard=%d "
+                 "spreadOk=%d mleOk=%d\n",
+                 (int)kiter, k, lsd, etaDistSdLo, etaDistSdHi,
+                 etaDistSpreadGuard, (int)spreadOk, (int)mleOk);
+      }
       if (etaDistDebug && (kiter % 10 == 0 || kiter < 2)) {
         double ws = 0, ws2 = 0, es = 0, es2 = 0;
         size_t nw = w[(size_t)k].size();
@@ -7226,7 +7247,7 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
       // So method 3 is exempt -- and that matters, because the guard rejecting
       // every iteration is what made three estimators produce byte-identical
       // fits while none of them ran.
-      bool corSpreadOk = (etaDistCorMethod == 3) ||
+      bool corSpreadOk = (etaDistSpreadGuard == 0) || (etaDistCorMethod == 3) ||
         (rxEtaDistSpreadOk(w[(size_t)k], etaDistSdLo, etaDistSdHi, nullptr) &&
          rxEtaDistSpreadOk(w[(size_t)j], etaDistSdLo, etaDistSdHi, nullptr));
       if (getenv("NLMIXR2_ETADIST_OPT") != NULL) {

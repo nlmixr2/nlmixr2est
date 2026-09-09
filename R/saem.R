@@ -329,6 +329,12 @@
                             "posterior")) - 1L),
                         etaDistCorTrust=as.numeric(
                           rxode2::rxGetControl(ui, "etaDistCorTrust", 1.5)),
+                        etaDistSpreadGuard=as.integer(
+                          rxode2::rxGetControl(ui, "etaDistSpreadGuard", 1L)),
+                        etaDistSdLo=as.numeric(
+                          rxode2::rxGetControl(ui, "etaDistSdLo", 0.5)),
+                        etaDistSdHi=as.numeric(
+                          rxode2::rxGetControl(ui, "etaDistSdHi", 1.0)),
                         nonMuThetaBhhh=rxode2::rxGetControl(ui, "nonMuThetaBhhh", FALSE),
                         nonMuThetaGradEvery=as.integer(
                           rxode2::rxGetControl(ui, "nonMuThetaGradEvery", 1L)),
