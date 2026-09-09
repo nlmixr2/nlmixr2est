@@ -161,6 +161,34 @@
 #' **10**(1):121-135.  \doi{10.1093/biostatistics/kxn020} (the two-level SAEM
 #' this package's IOV support follows; it targets "around 30%").
 #'
+#' @param etaDistWarmStart Solve a log-normal surrogate first and hand its
+#'   answer to the declared families as starting values (`etaDistInit()`).
+#'   `TRUE` by default for any model with a `dist()` declaration; ignored
+#'   entirely by models without one.
+#'
+#'   A declared family is very largely a STARTING VALUE problem.  The E-step
+#'   draws etas under the current family, the M-step fits the family to those
+#'   draws, and from a poor start the two walk off together to an answer they
+#'   agree on and the data do not support.  On Bauer's g4 the cold fit walks CL
+#'   from 4.48 to 8.59 against a truth of 5.10; warm-started it lands at 5.46.
+#'
+#'   Measured on Bauer's four gamma arms (`nBurn=300`, `nEm=150`; mean absolute
+#'   relative error over CL, V1, both relative variances and the copula
+#'   correlation):
+#'
+#'   \tabular{lrrrrr}{
+#'          \tab g1    \tab g2   \tab g3   \tab g4    \tab mean  \cr
+#'     cold \tab 10.6\% \tab 9.6\% \tab 5.1\% \tab 25.9\% \tab 12.8\% \cr
+#'     warm \tab  6.9\% \tab 6.4\% \tab 5.9\% \tab  7.6\% \tab  6.7\% \cr
+#'   }
+#'
+#'   It costs something only on g3, the arm that already fits best -- least to
+#'   gain, most to disturb.  Set `FALSE` to fit from the model's own `ini()`.
+#'
+#'   The surrogate is refused rather than used when it is no closer to the
+#'   declared family than the model's own starting values, so a bad surrogate
+#'   leaves the fit where it was rather than moving it somewhere worse.
+#'
 #' @param etaDistMstep Opt-in.  Estimate a `dist()`-declared random effect's
 #'   distribution parameters by a fit to the sampled etas, rather than through
 #'   the data likelihood.
@@ -898,6 +926,7 @@ saemControl <- function(seed = 99,
                         nonMuThetaBhhh = FALSE,
                         nu1B = 0L,
                         nb1B = 10L,
+                        etaDistWarmStart = TRUE,
                         etaDistMstep = TRUE,
                         etaDistStart = NULL,
                         etaDistEvery = 20L,
@@ -1173,6 +1202,8 @@ saemControl <- function(seed = 99,
   checkmate::assertLogical(rwOmega, len=1, any.missing=FALSE, .var.name="rwOmega")
   checkmate::assertLogical(etaDistLoglik, len=1, any.missing=FALSE,
                            .var.name="etaDistLoglik")
+  checkmate::assertLogical(etaDistWarmStart, len=1, any.missing=FALSE,
+                           .var.name="etaDistWarmStart")
   checkmate::assertIntegerish(nu1B, len=1, lower=0, any.missing=FALSE, .var.name="nu1B")
   checkmate::assertIntegerish(nb1B, len=1, lower=1, any.missing=FALSE, .var.name="nb1B")
   checkmate::assertLogical(etaDistMstep, len=1, any.missing=FALSE,
@@ -1198,6 +1229,7 @@ saemControl <- function(seed = 99,
     nu1B = as.integer(nu1B),
     nb1B = as.integer(nb1B),
     etaDistMstep = etaDistMstep,
+    etaDistWarmStart = etaDistWarmStart,
     etaDistStart = if (is.null(etaDistStart)) NULL else as.integer(etaDistStart),
     etaDistEvery = as.integer(etaDistEvery),
     ## LOGICAL, not integer.  The list is round-tripped through

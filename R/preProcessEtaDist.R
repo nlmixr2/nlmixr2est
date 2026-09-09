@@ -147,6 +147,40 @@
   ## a method that translates the declaration itself has to see it
   ## unexpanded (see `.etaDistMethodAttr()`)
   if (identical(.etaDistMethodAttr(est, control), "native")) return(NULL)
+  ## Warm start, before the expansion and after the refusal.
+  ##
+  ## A declared family is very largely a STARTING VALUE problem: the E-step
+  ## hands the M-step an eta sample drawn under the current family, the M-step
+  ## fits the family to that sample, and from a poor start the pair simply walk
+  ## off together to a self-consistent wrong answer.  etaDistInit() solves a
+  ## log-normal surrogate -- an ordinary, well-conditioned saem fit -- and
+  ## moment-matches its answer back onto the declared families, which stops the
+  ## walk before it starts.  Measured on Bauer's four gamma arms, saem at
+  ## nBurn=300/nEm=150, mean absolute relative error over CL, V1, both relative
+  ## variances and the copula correlation:
+  ##
+  ##        g1     g2     g3     g4    mean
+  ##  cold  10.6%   9.6%   5.1%  25.9%  12.8%
+  ##  warm   6.9%   6.4%   5.9%   7.6%   6.7%
+  ##
+  ## g3 is the one arm it costs anything, and it is the arm that already fits
+  ## best -- least to gain, most to disturb.
+  ##
+  ## No recursion: the surrogate has no dist() declarations left (they become
+  ## exp(mu + eta)), so this hook returns NULL for the nested fit.
+  if (!identical(control$etaDistWarmStart, FALSE)) {
+    .warm <- try(etaDistInit(ui, data), silent=TRUE)
+    if (inherits(.warm, "try-error")) {
+      warning("the declared-distribution warm start failed; starting values ",
+              "are unchanged\n  ",
+              conditionMessage(attr(.warm, "condition")), call.=FALSE)
+    } else {
+      ui <- .warm
+      ## the declarations themselves are untouched, but re-read so the stash
+      ## below records the WARMED starting values rather than the original ones
+      .d <- .rxUiEtaDists(ui)
+    }
+  }
   ## rxEtaDistExpand() clears the iniDf's `etaDist` column (rxode2
   ## R/etaDist.R), and the copula block it replaces with independent latents
   ## plus rxCor.* thetas -- so after expansion rxUiEtaDists() reports nothing

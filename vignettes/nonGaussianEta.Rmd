@@ -22,7 +22,9 @@ be: a heavy-tailed random effect is the standard robustness move against
 influential individuals, and a clearance that is *itself* gamma distributed is
 a different model from a log-normal one, not a reparameterization of it.
 
-You declare the distribution in the `ini({})` block with a `dist()` line:
+You declare the distribution in the `model({})` block with a `dist()` line,
+alongside the residual error -- it is a distributional statement, and that is
+where distributional statements live:
 
 ```{r model}
 library(nlmixr2est)
@@ -34,11 +36,11 @@ gammaCl <- function() {
     lclrv <- log(0.09)  # gamma relative variance of CL
     tv    <- 3.45
     eta.ka ~ 0.6
-    dist(eta.cl) ~ dgamma(shape = 1/exp(lclrv),
-                          rate  = 1/(exp(lclrv)*exp(lclm)))
     add.sd <- 0.7
   })
   model({
+    dist(eta.cl) ~ dgamma(shape = 1/exp(lclrv),
+                          rate  = 1/(exp(lclrv)*exp(lclm)))
     ka <- exp(tka + eta.ka)
     cl <- eta.cl        # a gamma distributed clearance
     v  <- exp(tv)

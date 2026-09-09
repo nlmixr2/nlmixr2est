@@ -416,6 +416,21 @@
 #'     high precision sums using the PreciseSums package.  By default
 #'     this is \code{FALSE}.
 #'
+#' @param etaDistWarmStart Solve a log-normal surrogate first and hand its answer
+#'   to the declared families as starting values (`etaDistInit()`).  `TRUE` by
+#'   default for any model carrying a `dist()` declaration; models without one
+#'   ignore it entirely.
+#'
+#'   A declared family is very largely a STARTING VALUE problem.  The E-step
+#'   draws etas under the current family, the M-step fits the family to those
+#'   draws, and from a poor start the two walk off together to an answer they
+#'   agree on and the data do not support.
+#'
+#'   Note the surrogate is fitted with `est="saem"` whatever method is being
+#'   warm started -- it is an ordinary, well-conditioned fit of a log-normal
+#'   stand-in, used only to produce starting values.  Set `FALSE` to fit from
+#'   the model's own `ini()`.
+#'
 #' @param etaDistMstep Opt-in.  Estimate a `dist()`-declared random effect's
 #'   family parameters (and any Gaussian-copula correlation between declared
 #'   effects) with their own optimizer, instead of through the outer problem.
@@ -1229,6 +1244,7 @@ foceiControl <- function(sigdig = 3, #
                          seed = 42, #
                          resetThetaCheckPer = 0.1, #
                          etaMat = NULL, #
+                         etaDistWarmStart = TRUE, #
                          etaDistMstep = FALSE, #
                          etaDistNsamp = 50L, #
                          repeatGillMax = 1, #
@@ -2001,6 +2017,7 @@ foceiControl <- function(sigdig = 3, #
     seed = seed,
     resetThetaCheckPer = resetThetaCheckPer,
     etaMat = etaMat,
+    etaDistWarmStart = as.logical(etaDistWarmStart),
     etaDistMstep = as.logical(etaDistMstep),
     etaDistNsamp = as.integer(etaDistNsamp),
     repeatGillMax = as.integer(repeatGillMax),

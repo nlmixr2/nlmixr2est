@@ -142,8 +142,15 @@
   .ini <- .ui$iniDf
   .thNames <- .ini$name[!is.na(.ini$ntheta)]
   .thVals <- stats::setNames(as.list(.ini$est[!is.na(.ini$ntheta)]), .thNames)
-  .iniTxt <- deparse(.ui$iniFun)
-  .modTxt <- deparse(.ui$modelFun)
+  ## width.cutoff so a statement is never WRAPPED across lines: everything below
+  ## is line-wise regex, and deparse()'s 60-character default splits exactly the
+  ## declarations this has to find.  rxode2 normalizes `dist()` into iniFun from
+  ## either block, but writing it in model({}) keeps the argument NAMES, which
+  ## pushes the line past 60 -- so the model({}) form wrapped, the declaration
+  ## was only half removed, the surrogate would not parse, and the warm start
+  ## silently did nothing for precisely the form users are told to write.
+  .iniTxt <- deparse(.ui$iniFun, width.cutoff = 500L)
+  .modTxt <- deparse(.ui$modelFun, width.cutoff = 500L)
   .seed <- list()
   for (.i in seq_len(nrow(.d))) {
     .e <- .d$name[.i]
@@ -160,19 +167,46 @@
       .cv2 <- .mv[["var"]] / (.mv[["mean"]]^2)
       .sd <- sqrt(log1p(.cv2)); .mu <- log(.mv[["mean"]]) - 0.5 * .sd^2
     }
-    ## the model line whose entire right-hand side is this eta
-    .pat <- paste0("^(\\s*[A-Za-z._][A-Za-z0-9._]*\\s*<-\\s*)",
-                   gsub("[.]", "[.]", .e), "\\s*$")
+    ## The model line the declaration OWNS.  rxode2 normalizes `dist()` into the
+    ## model block from either place it can be written (.rxEtaDistIniToModel(),
+    ## rxode2 R/ui.R), and it emits its inverse-CDF line there:
+    ##
+    ##     cl <- gammapInv((1/exp(lclrv)), phiU(rxN.cl))/(...)
+    ##
+    ## so the declared name is assigned the transform directly.  Matching
+    ## `<var> <- <declared>` instead -- the shape the ini({}) form used to leave
+    ## behind, before the model block owned the line -- found nothing, and the
+    ## surrogate was silently not built.
+    ##
+    ## The whole right-hand side is replaced, since the transform is exactly
+    ## what the surrogate exists to stand in for.
+    .en <- gsub("[.]", "[.]", .e)
+    .pat <- paste0("^(\\s*", .en, "\\s*<-\\s*).*$")
     .w <- grep(.pat, .modTxt)
     if (length(.w) != 1L) return(NULL)
     .mn <- paste0("rxWs.mu.", .e)
-    .modTxt[.w] <- sub(.pat, paste0("\\1exp(", .mn, " + ", .e, ")"), .modTxt[.w])
-    .seed[[.e]] <- c(mu = .mn, sd = .sd)
+    ## The declared name is the MODEL variable here, so the surrogate's random
+    ## effect needs a name of its own -- `cl <- exp(mu + cl)` would be circular.
+    .rn <- paste0("rxWs.eta.", .e)
+    .modTxt[.w] <- sub(.pat, paste0("\\1exp(", .mn, " + ", .rn, ")"), .modTxt[.w])
+    ## `eta` is the surrogate's OWN name for this random effect, which is not
+    ## the declared name: the declaration names the model parameter, so the
+    ## surrogate has to call its random effect something else (see .rn above).
+    ## etaDistInit() reads the fitted spread out of the surrogate's omega by
+    ## this name -- looking it up by the DECLARED name finds nothing and skips
+    ## the family silently, which is a warm start that quietly does nothing.
+    .seed[[.e]] <- c(mu = .mn, sd = .sd, eta = .rn)
     .iniTxt <- c(.iniTxt[-length(.iniTxt)],
                  paste0("  ", .mn, " <- ", format(.mu, digits = 10)), "})")
-    ## drop the declaration
-    .iniTxt <- .iniTxt[!grepl(paste0("^\\s*dist\\(\\s*", gsub("[.]", "[.]", .e),
-                                     "\\s*\\)\\s*~"), .iniTxt)]
+    ## Drop the declaration, from WHEREVER it was written.  `dist()` is accepted
+    ## in either block, and model({}) is the preferred place -- it is a
+    ## distributional statement, like the residual error.  Stripping it only
+    ## from ini({}) left the declaration standing in a surrogate that is
+    ## supposed to have none, so the surrogate was never built and the warm
+    ## start silently did nothing for exactly the form users are told to write.
+    .dpat <- paste0("^\\s*dist\\(\\s*", gsub("[.]", "[.]", .e), "\\s*\\)\\s*~")
+    .iniTxt <- .iniTxt[!grepl(.dpat, .iniTxt)]
+    .modTxt <- .modTxt[!grepl(.dpat, .modTxt)]
   }
   ## Free the latent block.  Its unit diagonal exists only so the copula is a
   ## correlation matrix; as an ordinary random effect it is estimated, and its
@@ -204,6 +238,19 @@
                        else paste0("~ c(", paste(format(.vals, digits = 10),
                                                  collapse = ", "), ")"),
                        .iniTxt[.k])
+  }
+  ## Rename the declared random effects to the surrogate's own names.
+  ##
+  ## The declaration names the MODEL PARAMETER -- `dist(cl)` -- so in the
+  ## declared model `cl` is both an omega row and the variable the transform
+  ## assigns.  The surrogate writes `cl <- exp(rxWs.mu.cl + rxWs.eta.cl)`, so
+  ## its random effect must be named apart from the variable or the line is
+  ## circular.  Done here, after the block has been rescaled, so the rescaling
+  ## can still find the rows by their declared names.
+  for (.e in .d$name) {
+    .en <- gsub("[.]", "[.]", .e)
+    .iniTxt <- gsub(paste0("(^|[^A-Za-z0-9._])", .en, "([^A-Za-z0-9._]|$)"),
+                    paste0("\\1rxWs.eta.", .e, "\\2"), .iniTxt)
   }
   ## thetas orphaned by dropping the declarations
   .cand <- intersect(unique(unlist(lapply(.d$etaDist, function(.s) all.vars(str2lang(.s))),
@@ -270,8 +317,10 @@ etaDistInit <- function(object, data, control = saemControl(nBurn = 100, nEm = 1
     .mu <- .est[[.mn]]
     ## The surrogate's spread is an ORDINARY omega now, not a theta.
     .om <- .fit$omega
-    if (is.null(.om) || !(.e %in% rownames(.om))) next
-    .w <- .om[.e, .e]
+    .rn <- .s$seed[[.e]][["eta"]]
+    if (is.null(.rn) || is.na(.rn)) .rn <- .e     # older stash: declared name
+    if (is.null(.om) || !(.rn %in% rownames(.om))) next
+    .w <- .om[.rn, .rn]
     if (!is.finite(.w) || .w <= 0) next
     ## The surrogate's fitted meanlog/varlog ARE (.mu, .w) -- pass them across
     ## unchanged and let the declared family match them on the log scale.  The
@@ -325,7 +374,10 @@ etaDistInit <- function(object, data, control = saemControl(nBurn = 100, nEm = 1
   ## no moment matching.  The declared block stores it on the unit-diagonal
   ## (correlation) scale.
   .om <- .fit$omega
-  .en <- .d$name
+  .en <- vapply(.d$name, function(.q) {
+    .r <- .s$seed[[.q]][["eta"]]
+    if (is.null(.r) || is.na(.r)) .q else .r
+  }, character(1), USE.NAMES = FALSE)
   if (!is.null(.om) && length(.en) > 1L && all(.en %in% rownames(.om))) {
     for (.a in seq_len(length(.en) - 1L)) {
       for (.b in seq(.a + 1L, length(.en))) {

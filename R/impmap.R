@@ -24,6 +24,7 @@
                            "ctol", "nConvWindow", "impSeed", "impCov",
                            "proposal", "propMixScale", "propMixWeight",
                            "zeroOmegaDirect", "zeroOmegaMaxEval", "etaDistMstep",
+                           "etaDistWarmStart", "mceta",
                            "qr", "qrShift", "qrRefresh", "qrScramble",
                            "sir", "sirSample",
                            # internal M-step index maps added in .impmapFamilyFit;
@@ -485,6 +486,21 @@
 #' @param zeroOmegaMaxEval Objective-evaluation budget per `zeroOmegaDirect`
 #'   step.  Each evaluation is a full-population solve.
 #'
+#' @param etaDistWarmStart Solve a log-normal surrogate first and hand its answer
+#'   to the declared families as starting values (`etaDistInit()`).  `TRUE` by
+#'   default for any model carrying a `dist()` declaration; models without one
+#'   ignore it entirely.
+#'
+#'   A declared family is very largely a STARTING VALUE problem.  The E-step
+#'   draws etas under the current family, the M-step fits the family to those
+#'   draws, and from a poor start the two walk off together to an answer they
+#'   agree on and the data do not support.
+#'
+#'   Note the surrogate is fitted with `est="saem"` whatever method is being
+#'   warm started -- it is an ordinary, well-conditioned fit of a log-normal
+#'   stand-in, used only to produce starting values.  Set `FALSE` to fit from
+#'   the model's own `ini()`.
+#'
 #' @param etaDistMstep Opt-in.  Estimate a `dist()`-declared random effect's
 #'   family parameters (and any Gaussian-copula correlation between declared
 #'   effects) by a weighted maximum-likelihood fit to the E-step's importance
@@ -512,6 +528,22 @@
 #'   the objective-function change for convergence (NONMEM-style CTYPE).
 #' @param muModel Mu-referencing variant for the MAP inner problem; for
 #'   `impmapControl()` this is always `"lin"` and cannot be changed.
+#' @param mceta Monte Carlo samples for the best initial ETA of the inner
+#'   MAP, as in [foceiControl()].  imp has always USED this -- it goes through
+#'   the shared FOCEi inner problem and reaches the C++ at the same place focei
+#'   does -- but it was reachable only through `...`, so it was neither
+#'   validated nor documented here.
+#'
+#'   It matters more for imp than the default suggests.  The Newton M-step on
+#'   non-mu structural thetas is only as good as its IS-weighted Gauss-Newton
+#'   Hessian, and `mceta` changes which mode the inner search starts from.
+#'   Measured on Bauer's declared-gamma model, `mceta = 10` moved log relative
+#'   variance from -2.46 to +60.3 in a single iteration -- a relative variance
+#'   of 1.6e26 and a garbage objective -- where the same fit at `mceta = 0` was
+#'   fine (see the Levenberg-Marquardt damping in `src/imp.cpp`).  The damping
+#'   contains that now, but the sensitivity is real: hold `mceta` fixed when
+#'   comparing runs, and report it.
+#'
 #' @param impSeed Base seed for the per-subject thread-safe (threefry) RNG
 #'   streams; results are reproducible and independent of the thread count.
 #' @param covMethod Covariance method.  `"imp"` (default) computes the
@@ -631,7 +663,9 @@ impmapControl <- function(sigdig=3,
                           nConvWindow=10L,
                           zeroOmegaDirect=FALSE,
                           zeroOmegaMaxEval=25L,
+                          etaDistWarmStart=TRUE,
                           etaDistMstep=FALSE,
+                          mceta=-2L,
                           impSeed=42L,
                           covMethod=c("imp", "analytic", "r,s", "r", "s", "sa", ""),
                           qr=FALSE,
@@ -784,8 +818,14 @@ impmapControl <- function(sigdig=3,
   .control$zeroOmegaMaxEval <- as.integer(zeroOmegaMaxEval)
   checkmate::assertLogical(etaDistMstep, len=1, any.missing=FALSE,
                            .var.name="etaDistMstep")
+  checkmate::assertLogical(etaDistWarmStart, len=1, any.missing=FALSE,
+                           .var.name="etaDistWarmStart")
+  .control$etaDistWarmStart <- etaDistWarmStart
   .control$etaDistMstep <- etaDistMstep
   .control$impSeed <- as.integer(impSeed)
+  checkmate::assertIntegerish(mceta, lower=-2, len=1, any.missing=FALSE,
+                              .var.name="mceta")
+  .control$mceta <- as.integer(mceta)
   .control$qr <- qr
   .control$qrShift <- qrShift
   .control$qrRefresh <- qrRefresh
