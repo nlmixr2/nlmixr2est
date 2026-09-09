@@ -325,7 +325,8 @@
                         rwOmega=rxode2::rxGetControl(ui, "rwOmega", FALSE),
                         etaDistCorMethod=as.integer(match(
                           rxode2::rxGetControl(ui, "etaDistCor", "observed"),
-                          c("observed", "analytic", "optimize")) - 1L),
+                          c("observed", "analytic", "optimize",
+                            "posterior")) - 1L),
                         etaDistCorTrust=as.numeric(
                           rxode2::rxGetControl(ui, "etaDistCorTrust", 1.5)),
                         nonMuThetaBhhh=rxode2::rxGetControl(ui, "nonMuThetaBhhh", FALSE),

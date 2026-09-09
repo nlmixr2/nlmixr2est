@@ -491,6 +491,36 @@ bool rxEtaDistSpreadOk(const std::vector<double> &w, double lo, double hi,
 // Normalizing by the observed spreads costs nothing, is bounded in [-1, 1] by
 // construction, and agrees with the product-moment exactly when the draws do
 // have unit variance -- so it is strictly the safer estimator here.
+// Posterior second-moment correlation: the EM M-step for a correlation matrix
+// with a UNIT DIAGONAL.
+//
+//     rho = sum(n1*n2) / sqrt(sum(n1^2) * sum(n2^2))
+//
+// Moments about ZERO, not about the sample mean, because the prior mean of the
+// latent IS zero -- so a shifted posterior sample is information about the
+// correlation, and centring it away discards that.  This is the difference from
+// the product-moment estimator, and it is not academic here: the pooled latent
+// on Bauer's g1 sits near mean 0.56, sd 1.41, and Pearson subtracts exactly the
+// 0.56 that the prior says should not be there.
+//
+// Normalizing by the observed second moments rather than asserting 1 is what
+// keeps the result inside [-1, 1] when the sample is over-dispersed, which is
+// the failure mode that drives the centred version to its clamp.
+double rxEtaDistCorPost(const std::vector<double> &z1,
+                        const std::vector<double> &z2) {
+  size_t n = std::min(z1.size(), z2.size());
+  double s11 = 0.0, s22 = 0.0, s12 = 0.0; size_t m = 0;
+  for (size_t i = 0; i < n; ++i) {
+    if (!std::isfinite(z1[i]) || !std::isfinite(z2[i])) continue;
+    s11 += z1[i]*z1[i]; s22 += z2[i]*z2[i]; s12 += z1[i]*z2[i]; m++;
+  }
+  if (m < 2 || !(s11 > 0.0) || !(s22 > 0.0)) return NA_REAL;
+  double r = s12/std::sqrt(s11*s22);
+  if (!std::isfinite(r)) return NA_REAL;
+  if (r > 1.0) r = 1.0; else if (r < -1.0) r = -1.0;
+  return r;
+}
+
 // Gaussian-copula correlation from the RANKS, analytically.
 //
 // Spearman's rank correlation is invariant under the monotone marginal

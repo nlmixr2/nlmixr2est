@@ -766,6 +766,8 @@ static int _saemEtaDistOn = 0;
 // likelihood instead, so the family M-step standing down is the intended
 // behaviour and must not be reported as a no-op.
 static int _saemEtaDistObsLik = 0;
+// declared correlations the sufficient statistic says the data do not identify
+static int _saemEtaDistCorNotEst = 0;
 
 // Fill an armadillo mat/vec from rxode2's threefry engine (the current seeded
 // stream).  Used for the MCMC proposals; the saem ODE solve does not draw from
@@ -990,6 +992,113 @@ public:
   // holding the current phi1 samples fixed (general-likelihood / distribution==4:
   // the model prediction column is the per-observation log-likelihood).  Summed
   // over all chains, which is the SAEM stochastic-approximation objective.
+  // The copula correlation's SUFFICIENT STATISTIC, every iteration.
+  //
+  // S_n = L S_z L' with L from the current rho, so the normalized off-diagonal
+  //
+  //     rho_hat = S_n[j,k] / sqrt(S_n[j,j] * S_n[k,k])
+  //
+  // is the M-step for a unit-diagonal correlation.  Uncentred: the latent's
+  // PRIOR mean is zero, so a shifted sample is information, not nuisance.
+  //
+  // ESTIMABILITY.  All of the information about rho lives in the departure of
+  // S_z from the identity -- if S_z = I then S_n = L L' = R_old and the update
+  // returns whatever it was handed, for any estimator.  So the off-diagonal is
+  // compared against the sampling noise of a zero correlation, 2/sqrt(N):
+  // below that, the data do not identify this correlation and the fit should
+  // say so rather than report whatever the search drifted to.
+  void etaDistCorSuffStat(unsigned int kiter, const vec &pas) {
+    if (etaDistNdist <= 0 || (int)etaDistCorSuff.n_elem != etaDistNdist) return;
+    bool tr = (getenv("NLMIXR2_ETADIST_OPT") != NULL);
+    for (int k = 0; k < etaDistNdist; ++k) {
+      int j = etaDistCorWith(k);
+      if (j < 0) { etaDistCorEstim(k) = -1; continue; }
+      int cj = etaDistLatent(j), ck = etaDistLatent(k);
+      if (cj < 0 || ck < 0 || cj >= (int)phiM.n_cols || ck >= (int)phiM.n_cols) {
+        etaDistCorEstim(k) = -1; continue;
+      }
+      double zjj = 0, zkk = 0, zjk = 0;
+      unsigned int nr = phiM.n_rows;
+      for (unsigned int r = 0; r < nr; ++r) {
+        double a = phiM(r, cj), b = phiM(r, ck);
+        if (!std::isfinite(a) || !std::isfinite(b)) continue;
+        zjj += a*a; zkk += b*b; zjk += a*b;
+      }
+      if (nr < 2 || !(zjj > 0) || !(zkk > 0)) { etaDistCorEstim(k) = -1; continue; }
+      double nn = (double)nr;
+      double rho0 = etaDistRho(k);
+      if (!std::isfinite(rho0)) rho0 = 0.0;
+      double l21 = rho0, l22 = std::sqrt(std::max(0.0, 1.0 - l21*l21));
+      double njj = zjj/nn;
+      double nkk = l21*l21*(zjj/nn) + 2*l21*l22*(zjk/nn) + l22*l22*(zkk/nn);
+      double njk = l21*(zjj/nn) + l22*(zjk/nn);
+      double rh = (njj > 0 && nkk > 0) ? njk/std::sqrt(njj*nkk) : NA_REAL;
+      if (std::isfinite(rh)) {
+        if (rh > 0.999) rh = 0.999; else if (rh < -0.999) rh = -0.999;
+        etaDistCorSuff(k) = rh;
+      }
+      double off = std::fabs(zjk/nn);
+      etaDistCorOffMag(k) = off;
+      // 2 SE of a zero correlation on the standardized scale
+      double thresh = 2.0/std::sqrt(nn);
+      if ((int)etaDistCorOffMax.n_elem == etaDistNdist && off > etaDistCorOffMax(k)) {
+        etaDistCorOffMax(k) = off;
+      }
+      // estimable if it was EVER informative, not if it is informative right now
+      double peak = ((int)etaDistCorOffMax.n_elem == etaDistNdist) ?
+        etaDistCorOffMax(k) : off;
+      etaDistCorEstim(k) = (peak > thresh) ? 1 : 0;
+      // THE DAMPED ADJUSTMENT, every iteration, on the SAME stochastic-
+      // approximation series pas(kiter) every other parameter uses.  The
+      // statistic is second moments over phiM and costs nothing, so there is no
+      // reason to hold the adjustment back to the M-step's cadence -- and a
+      // parameter that moves once every 20 iterations while the SA weight is
+      // shrinking barely moves at all.
+      //
+      // Only for method 3, which IS this statistic; the other estimators are
+      // applied in the copula loop on their own terms.  And only when the data
+      // identify it -- adjusting toward a statistic that is within noise of zero
+      // is how a correlation ends up reporting the search's drift.
+      if (etaDistCorMethod == 3 && etaDistCorEstim(k) == 1 &&
+          std::isfinite(etaDistCorSuff(k))) {
+        // note this keeps adjusting after the off-diagonal has shrunk: that is
+        // correct, the statistic is still the M-step, and pas(kiter) is what
+        // makes the adjustment fade rather than an estimability test
+        double cur = etaDistRho(k);
+        if (!std::isfinite(cur)) cur = 0.0;
+        double v = cur + pas(kiter) * (etaDistCorSuff(k) - cur);
+        if (std::isfinite(v)) {
+          if (v > 0.999) v = 0.999; else if (v < -0.999) v = -0.999;
+          etaDistRho(k) = v;
+          int cc = corCol(k);
+          if (cc >= 0) {
+            double a = std::atanh(v);
+            if (std::isfinite(a)) {
+              mprior_phi0.col(cc).fill(a);
+              std::vector<int> one(1, cc);
+              writeBackPhi0(one);
+            }
+          }
+          etaDistCorFired = true;
+        }
+      }
+      if (tr && (kiter % 20 == 0)) {
+        RSprintf("[suff] it=%d k=%d S_z/N jj=%.4f kk=%.4f jk=%+.4f | rho cur=%+.4f "
+                 "suff=%+.4f | off=%.4f thresh=%.4f estimable=%d\n",
+                 (int)kiter, k, zjj/nn, zkk/nn, zjk/nn, rho0, etaDistCorSuff(k),
+                 off, thresh, (int)etaDistCorEstim(k));
+      }
+    }
+  }
+
+  // how many declared correlations the data do not identify
+  int etaDistCorNotEstimable() const {
+    int n = 0;
+    for (int k = 0; k < (int)etaDistCorEstim.n_elem; ++k)
+      if (etaDistCorEstim(k) == 0) n++;
+    return n;
+  }
+
   // ONE complete-system solve per step, shared.
   //
   // _saemSolveCompleteOnce makes this solve carry rx_pred_ and every
@@ -3282,6 +3391,8 @@ public:
   }
 
   int get_etaDistMapFail() { return _saemEtaDistMapFail; }
+  // declared correlations the data do not identify, for the $runInfo warning
+  int get_etaDistCorNotEst() { return etaDistCorNotEstimable(); }
   mat get_mcmcAccTrace()   { return mcmcAccTrace; }
   mat get_mcmcStuckTrace() { return mcmcStuckTrace; }
   mat get_phiSdTrace()     { return phiSdTrace; }
@@ -3450,6 +3561,17 @@ public:
       etaDistCorPhi0 = as<arma::ivec>(x["etaDistCorPhi0"]);
       if (x.containsElementNamed("etaDistMapFn")) etaDistMapR = x["etaDistMapFn"];
       etaDistNdist   = (int)etaDistLatent.n_elem;
+      // sized HERE, not with the other resets above: etaDistNdist is assigned on
+      // this line, so anything sized before it gets length zero -- and
+      // etaDistCorSuffStat() then returns immediately on every iteration, which
+      // reads exactly like the statistic being uninformative.
+      if (etaDistNdist > 0) {
+        etaDistCorSuff = arma::vec((unsigned int)etaDistNdist, arma::fill::zeros);
+        etaDistCorEstim = arma::ivec((unsigned int)etaDistNdist);
+        etaDistCorEstim.fill(-1);
+        etaDistCorOffMag = arma::vec((unsigned int)etaDistNdist, arma::fill::zeros);
+        etaDistCorOffMax = arma::vec((unsigned int)etaDistNdist, arma::fill::zeros);
+      }
     }
     if (x.containsElementNamed("nu1B")) nu1B = as<int>(x["nu1B"]);
     if (nu1B < 0) nu1B = 0;
@@ -5159,6 +5281,10 @@ public:
       // 0.004: the search never gets a chance to matter.
       unsigned int phi0Start = (nonMuThetaStart >= 0) ?
         (unsigned int)nonMuThetaStart : (unsigned int)niter_phi0;
+      // The copula's sufficient statistic, EVERY iteration.  Second moments
+      // over phiM -- no solve, so no reason to put it on a cadence -- and it is
+      // what the parameter adjustment below reads.
+      etaDistCorSuffStat(kiter, pas);
       // The declared thetas' own step: ONE solve, exact gradient, one damped
       // move -- from iteration 0, on nonMuThetaGradEvery, independent of the
       // search's nonMuThetaStart.  Placed BEFORE the search so that when both
@@ -6402,10 +6528,29 @@ private:
   //   1 "analytic"  the Gaussian-copula identity rho = 2*sin(pi*rho_S/6) from
   //                 the RANKS.  Exact for the copula, and rank-based, so the
   //                 spread cannot reach it.
+  //   3 "posterior" the EM M-step for a unit-diagonal correlation: second
+  //                 moments about ZERO rather than about the sample mean, since
+  //                 the latent's PRIOR mean is zero and a shifted sample is
+  //                 information rather than nuisance.
   //   2 "optimize"  a bounded 1-D search of the observation objective inside a
   //                 local trust region (etaDistCorTrust).  Only for a model
   //                 with ONE correlation; a system is not a scalar problem.
   int etaDistCorMethod = 0;
+  // Sufficient statistic for the copula correlation, refreshed EVERY iteration.
+  // R enters the complete-data likelihood only through S_n = sum(n n'), and
+  // n = L z, so S_n = L S_z L' -- three scalars per pair.  It is second moments
+  // over phiM, so it costs nothing next to a solve and there is no reason to
+  // put it on the M-step's cadence.
+  arma::vec etaDistCorSuff;     // the normalized suff-stat rho, per family
+  arma::ivec etaDistCorEstim;   // 1 estimable, 0 not, -1 no partner
+  arma::vec etaDistCorOffMag;   // |S_z off-diagonal|/N, for the report
+  // the LARGEST |S_z off-diagonal| seen over the whole fit.  Estimability is a
+  // property of the trajectory, not of the endpoint: S_z -> I is what CONVERGENCE
+  // looks like (S_n = L S_z L' -> L L' = R), so the instantaneous off-diagonal
+  // being small says rho is settled, not that it was never identified.  A
+  // correlation the data cannot inform is one whose off-diagonal NEVER left the
+  // noise floor.
+  arma::vec etaDistCorOffMax;
   // Per declared distribution: its argument expressions and the theta names
   // they are written over, so the map back onto thetas stays in C++.
   std::vector<std::vector<std::string> > etaDistExprs;
@@ -7033,7 +7178,10 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
     // are closed forms and run here in every mode -- including the
     // observation-likelihood mode, where they are the only thing that keeps the
     // correlation off the boundary the search walks to.
-    bool corBySearch = etaDistObsLik() && etaDistCorMethod == 2;
+    // method 2 is owned by the search; method 3 by the every-iteration damped
+    // adjustment above.  Only 0 and 1 are applied here.
+    bool corBySearch = (etaDistObsLik() && etaDistCorMethod == 2) ||
+      etaDistCorMethod == 3;
     for (int k = 0; etaDistCorOn && !corBySearch && k < etaDistNdist; ++k) {
       int j = etaDistCorWith(k);
       if (j < 0) continue;
@@ -7042,15 +7190,93 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
       // the guard exists to reject -- and being pinned at its clamp makes the
       // partner's latent numerically equal to its partner's, which breaks BOTH
       // family fits, not just the correlation.
-      if (!rxEtaDistSpreadOk(w[(size_t)k], etaDistSdLo, etaDistSdHi, nullptr) ||
-          !rxEtaDistSpreadOk(w[(size_t)j], etaDistSdLo, etaDistSdHi, nullptr)) continue;
+      // EVERY firing, no modulus.  The M-step already has its own cadence
+      // (etaDistStart + n*etaDistEvery); an independent `kiter % 20` cannot be
+      // relied on to coincide with it, and when it does not the trace is simply
+      // absent -- which reads as "nothing happened" rather than "not printed".
+      // That has now cost two debugging rounds in this file.
+      // The spread guard exists because the RAW product-moment estimator runs
+      // away when the latents are over-dispersed.  The normalized sufficient
+      // statistic cannot: it is a ratio bounded in [-1, 1] by construction, and
+      // an inflated diagonal ATTENUATES it toward zero rather than inflating it.
+      // So method 3 is exempt -- and that matters, because the guard rejecting
+      // every iteration is what made three estimators produce byte-identical
+      // fits while none of them ran.
+      bool corSpreadOk = (etaDistCorMethod == 3) ||
+        (rxEtaDistSpreadOk(w[(size_t)k], etaDistSdLo, etaDistSdHi, nullptr) &&
+         rxEtaDistSpreadOk(w[(size_t)j], etaDistSdLo, etaDistSdHi, nullptr));
+      if (getenv("NLMIXR2_ETADIST_OPT") != NULL) {
+        int cj2 = etaDistLatent(j), ck2 = etaDistLatent(k);
+        if (cj2 >= 0 && ck2 >= 0 && cj2 < (int)phiM.n_cols &&
+            ck2 < (int)phiM.n_cols) {
+          double zjj = 0, zkk = 0, zjk = 0, njj = 0, nkk = 0, njk = 0;
+          unsigned int nr2 = phiM.n_rows;
+          for (unsigned int rr = 0; rr < nr2; ++rr) {
+            double zj = phiM(rr, cj2), zk2 = phiM(rr, ck2);
+            zjj += zj*zj; zkk += zk2*zk2; zjk += zj*zk2;
+          }
+          for (size_t rr = 0; rr < w[(size_t)k].size() && rr < w[(size_t)j].size(); ++rr) {
+            double a = w[(size_t)j][rr], b = w[(size_t)k][rr];
+            njj += a*a; nkk += b*b; njk += a*b;
+          }
+          double nn = (double)nr2;
+          double rho0 = etaDistRho(k);
+          double l21 = std::isfinite(rho0) ? rho0 : 0.0;
+          double l22 = std::sqrt(std::max(0.0, 1.0 - l21*l21));
+          // S_n = L S_z L' for the 2x2 block, rebuilt from S_z
+          double bjj = zjj/nn;
+          double bkk = l21*l21*(zjj/nn) + 2*l21*l22*(zjk/nn) + l22*l22*(zkk/nn);
+          double bjk = l21*(zjj/nn) + l22*(zjk/nn);
+          RSprintf("[Sz] it=%d k=%d  S_z/N: jj=%.4f kk=%.4f jk=%+.4f (I would be 1,1,0)\n",
+                   (int)kiter, k, zjj/nn, zkk/nn, zjk/nn);
+          RSprintf("[Sz] it=%d k=%d  S_n/N direct jj=%.4f kk=%.4f jk=%+.4f | via L*Sz*L' jj=%.4f kk=%.4f jk=%+.4f\n",
+                   (int)kiter, k, njj/nn, nkk/nn, njk/nn, bjj, bkk, bjk);
+          RSprintf("[Sz] it=%d k=%d  rho: current=%+.4f  suff-stat=%+.4f\n",
+                   (int)kiter, k, rho0,
+                   (njj > 0 && nkk > 0) ? njk/std::sqrt(njj*nkk) : NA_REAL);
+        }
+      }
+      if (getenv("NLMIXR2_ETADIST_OPT") != NULL) {
+        RSprintf("[Sz] it=%d k=%d  spreadOk=%d  (0 means this loop returns "
+                 "WITHOUT running any estimator)\n",
+                 (int)kiter, k, (int)corSpreadOk);
+      }
+      // The guard stays, but note what its failing MEANS: no estimator runs, and
+      // rxCor is then left to whatever else owns it -- which is why three
+      // different estimators produced byte-identical fits.
+      if (!corSpreadOk) continue;
+
       // "observed" is the product-moment correlation of the latent pair;
       // "analytic" the rank-based Gaussian-copula identity.  Both are closed
       // forms evaluated after the distributional thetas moved; "optimize" is
       // handled in etaDistGradStep() instead and skips this loop.
-      double r = (etaDistCorMethod == 1) ?
-        rxEtaDistCorSpearman(w[(size_t)j], w[(size_t)k]) :
-        rxEtaDistCorMle(w[(size_t)j], w[(size_t)k]);
+      // SUFFICIENT-STATISTIC DIAGNOSTIC.
+      //
+      // R enters the complete-data likelihood only through S_n = sum(n n'),
+      // and n = L z is not sampled -- z is (phiM's rxz.* columns).  So
+      //
+      //     S_n = L * S_z * L'
+      //
+      // and if S_z is the identity then S_n = L L' = R_old and the M-step
+      // returns exactly what it was handed, whatever estimator is used.  ALL
+      // the information about R lives in the departure of S_z from I, so print
+      // it: three numbers per pair settle whether the update has anything to
+      // work with, or whether the chain simply is not moving z.
+      //
+      // Also prints S_n both ways -- accumulated directly from w, and rebuilt
+      // as L S_z L' -- because those must agree, and agreeing is what shows
+      // "posterior" IS the normalized sufficient statistic rather than merely
+      // resembling it.
+      double r;
+      if (etaDistCorMethod == 1) {
+        r = rxEtaDistCorSpearman(w[(size_t)j], w[(size_t)k]);
+      } else if (etaDistCorMethod == 3) {
+        // straight from the statistic refreshed this iteration
+        r = ((int)etaDistCorSuff.n_elem == etaDistNdist) ?
+          etaDistCorSuff(k) : rxEtaDistCorPost(w[(size_t)j], w[(size_t)k]);
+      } else {
+        r = rxEtaDistCorMle(w[(size_t)j], w[(size_t)k]);
+      }
       if (etaDistDebug && (kiter % 10 == 0 || kiter < 2)) {
         RSprintf("[etaDist cor k=%d<-j=%d it=%d] rhoCur=%.4f rhoNew=%.4f\n",
                  k, j, (int)kiter, etaDistRho(k), r);
@@ -7945,6 +8171,7 @@ long saemEtaDistN_() { return _saemEtaDistN; }
 //[[Rcpp::export]]
 int saemEtaDistOn_() { return _saemEtaDistOn; }
 
+
 // Not Rcpp-exported: only saem_fit_ below reads it, and an export would mean
 // regenerating RcppExports AND hand-editing src/init.c's .Call table for a
 // value nothing in R asks for.
@@ -8816,6 +9043,23 @@ SEXP saem_fit(SEXP xSEXP) {
   saem.set_fn(user_function);
 
   saem.saem_fit();
+  _saemEtaDistCorNotEst = saem.get_etaDistCorNotEst();
+  // Rf_warningcall() is the C++ route onto the fit's $runInfo -- collected in
+  // nlmixr2Est.R and printed under "Information about run", the same path
+  // src/npde.cpp uses.  Worth a warning rather than a note: a correlation the
+  // data do not identify still comes back with a number beside it, and that
+  // number is whatever the search drifted to.  All the information about a
+  // copula correlation is in the departure of S_z from the identity; when the
+  // off-diagonal sits inside the sampling noise of zero there is none.
+  if (_saemEtaDistCorNotEst > 0) {
+    Rf_warningcall(R_NilValue,
+                   "saem: %d declared copula correlation(s) are not identified by "
+                   "the data -- the latent second-moment matrix is within sampling "
+                   "noise of the identity, so the reported correlation reflects the "
+                   "starting value and the search rather than information in the "
+                   "data.  Treat it as unestimated.",
+                   _saemEtaDistCorNotEst);
+  }
 
   // etaDistMstep=TRUE with the step never firing is indistinguishable from the
   // option being off -- the fit converges and looks entirely normal.  The

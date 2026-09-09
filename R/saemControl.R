@@ -819,7 +819,7 @@ saemControl <- function(seed = 99,
                         etaDistMstep = TRUE,
                         etaDistStart = NULL,
                         etaDistEvery = 20L,
-                        etaDistCor = c("observed", "analytic", "optimize"),
+                        etaDistCor = c("observed", "analytic", "optimize", "posterior"),
                         etaDistCorMethod = NULL,
                         etaDistCorTrust = 1.5,
                         etaDistCorMstep = TRUE,
@@ -1071,7 +1071,8 @@ saemControl <- function(seed = 99,
   ## because both ran as method 0.
   if (is.null(etaDistCorMethod)) {
     etaDistCorMethod <- match(etaDistCor,
-                              c("observed", "analytic", "optimize")) - 1L
+                              c("observed", "analytic", "optimize",
+                                "posterior")) - 1L
   }
   checkmate::assertNumeric(etaDistCorTrust, len=1, lower=0, any.missing=FALSE,
                            .var.name="etaDistCorTrust")

@@ -113,7 +113,19 @@ rxUiGet.etaDistThetaSens <- function(x, ...) {
   }
   .etaNames <- as.character(.st$name)
   if (length(.etaNames) == 0L) return(NULL)
+  ## The COPULA thetas are excluded.
+  ##
+  ## rxCor is not estimated by this route -- it has its own estimator, applied
+  ## after the distributional thetas move -- so carrying its sensitivity column
+  ## means differentiating the prediction with respect to a parameter nothing
+  ## here reads.  On an ODE model that is a state-sensitivity equation per
+  ## correlation, integrated and thrown away.
   .idx <- .impmapEstTheta(.ui)$all
+  .thn <- .ini$name[!is.na(.ini$ntheta)][order(.ini$ntheta[!is.na(.ini$ntheta)])]
+  .isCor <- vapply(.idx, function(.j) {
+    .j >= 1L && .j <= length(.thn) && grepl("^rxCor\\.", .thn[.j])
+  }, logical(1))
+  .idx <- .idx[!.isCor]
   if (length(.idx) == 0L) return(NULL)
   .s <- rxUiGet.loadPruneSens(x, ...)
   if (!exists("..maxTheta", .s)) return(NULL)
