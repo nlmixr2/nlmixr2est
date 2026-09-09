@@ -284,6 +284,10 @@
 #'   M-step needs, while a still-burning chain passes through the same 1.40 on
 #'   its way down and acting there diverges.  Indistinguishable by value,
 #'   obvious by trajectory.  `0` disables the test, leaving the cap alone.
+#'
+#'   The test watches the pooled latent SPREAD only.  Extending it to the latent
+#'   MEAN as well was tried and measured worse -- see the revert commit -- so the
+#'   apparent asymmetry is deliberate, not an oversight.
 #' @param etaDistSdLo,etaDistSdHi A DIVERGENCE CAP on the pooled latent
 #'   standard deviation, outside which the declared-distribution M-step will not
 #'   act.  Deliberately loose: the real test is `etaDistSdTol`, and these only

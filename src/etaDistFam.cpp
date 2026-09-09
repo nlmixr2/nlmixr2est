@@ -436,10 +436,8 @@ bool rxEtaDistMle(int fam, const std::vector<double> &vals, double *a0) {
 }
 
 bool rxEtaDistSpreadOk(const std::vector<double> &w, double lo, double hi,
-                       double *sdOut, const std::vector<double> *wt,
-                       double *meanOut) {
+                       double *sdOut, const std::vector<double> *wt) {
   if (sdOut != nullptr) *sdOut = NA_REAL;
-  if (meanOut != nullptr) *meanOut = NA_REAL;
   if (wt != nullptr && wt->size() < w.size()) return false;
   size_t n = 0;
   double sw = 0.0, m = 0.0;
@@ -472,11 +470,6 @@ bool rxEtaDistSpreadOk(const std::vector<double> &w, double lo, double hi,
   v /= den;
   double sd = std::sqrt(v > 0.0 ? v : 0.0);
   if (sdOut != nullptr) *sdOut = sd;
-  // The latent is standard normal in BOTH moments; a caller testing only the
-  // spread is blind to a location shift, which for a heavy-tailed family is the
-  // larger error (a +0.14 mean offset moves E[eta] by 19% at gamma shape 0.5
-  // against 5% at shape 11.1).
-  if (meanOut != nullptr) *meanOut = m;
   return std::isfinite(sd) && sd >= lo && sd <= hi;
 }
 

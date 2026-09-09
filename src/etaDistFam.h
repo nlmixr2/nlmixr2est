@@ -274,8 +274,7 @@ bool rxEtaDistMle(int fam, const std::vector<double> &vals, double *a0);
 // on a perfectly healthy fit, silently disabling the M-step.  The weighted
 // spread is the posterior's, which is what the bound is about.
 bool rxEtaDistSpreadOk(const std::vector<double> &w, double lo, double hi,
-                       double *sdOut, const std::vector<double> *wt = nullptr,
-                       double *meanOut = nullptr);
+                       double *sdOut, const std::vector<double> *wt = nullptr);
 
 // Closed-form M-step for a Gaussian copula's correlation from paired latent
 // draws.  `w` weights as above.
