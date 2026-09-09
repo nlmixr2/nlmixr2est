@@ -3553,6 +3553,11 @@ public:
     // Phase-1 (SA/burn) iteration count for the print's SA/EM row tag; -1
     // (missing, e.g. a saved cfg from an older version) disables the tag.
     nPhase1 = x.containsElementNamed("nPhase1") ? as<int>(x["nPhase1"]) : -1;
+    if (x.containsElementNamed("burnAuto")) burnAuto = as<int>(x["burnAuto"]);
+    if (x.containsElementNamed("burnWindow")) burnWindow = as<int>(x["burnWindow"]);
+    if (x.containsElementNamed("burnAlpha")) burnAlpha = as<double>(x["burnAlpha"]);
+    if (burnWindow < 4) burnWindow = 4;      // need df = W-2 >= 2 for the t test
+    burnBuf.reset(); burnBufN = 0; burnBufAt = 0; burnStopAt = -1;
     // uninformative-eta revisit (absent in a cfg saved by an older version -> off)
     ueRevisitIter = x.containsElementNamed("ueRevisitIter") ? as<int>(x["ueRevisitIter"]) : -1;
     if (x.containsElementNamed("ueRevisitCols")) ueRevisitCols = as<uvec>(x["ueRevisitCols"]);
@@ -6312,6 +6317,41 @@ public:
         vec mixP = mixProb.head(nMix - 1);
         pl = join_cols(pl, mixP);
       }
+      // saemControl(burnAuto=): watch the same parameter vector par_hist keeps.
+      // Only during burn, and only past nb_fixOmega -- before that the latent
+      // omega is still being estimated, so a quiet stretch means nothing.
+      if (burnAuto > 0 && nPhase1 > 0 && (int)kiter < nPhase1 &&
+          (int)kiter >= nb_fixOmega) {
+        if ((int)burnBuf.n_cols != (int)pl.n_elem) {
+          burnBuf.set_size(burnWindow, pl.n_elem);
+          burnBufN = 0; burnBufAt = 0;
+        }
+        burnBuf.row(burnBufAt) = pl.t();
+        burnBufAt = (burnBufAt + 1) % burnWindow;
+        if (burnBufN < burnWindow) burnBufN++;
+        if (getenv("NLMIXR2_SAEM_BURNAUTO") != NULL && ((int)kiter % 20) == 0) {
+          double t = burnMaxT();
+          RSprintf("[burnAuto] it=%d maxAbsT=%.3f crit=%.3f npar=%d %s\n",
+                   (int)kiter, t,
+                   R::qt(1.0 - burnAlpha/2.0, (double)(burnWindow - 2), 1, 0),
+                   (int)burnBuf.n_cols, (t < 0) ? "(window not full)" : "");
+        }
+        if (burnStopAt < 0 && burnSettled()) {
+          burnStopAt = (int)kiter;
+          if (getenv("NLMIXR2_SAEM_BURNAUTO") != NULL) {
+            RSprintf("[burnAuto] settled at iteration %d of %d burn (window=%d alpha=%.3g) -- %s\n",
+                     burnStopAt, nPhase1, burnWindow, burnAlpha,
+                     (burnAuto >= 2) ? "ending burn-in" : "observing only");
+          }
+          if (burnAuto >= 2) {
+            // Jump to the end of burn: pas is indexed by kiter, so this both
+            // skips the remaining burn iterations and moves the gain onto the
+            // EM schedule, which is what ending burn-in means.
+            kiter = (unsigned int)(nPhase1 - 1);
+            continue;
+          }
+        }
+      }
       if (kiter < (unsigned int)niter) {
         par_hist.row(kiter) = pl.t();
         // saem has no per-iteration objective function; scale.showOfv=0 so the
@@ -6351,6 +6391,21 @@ private:
   int niter;
   int saemSeed = 99;
   int nPhase1;
+  // saemControl(burnAuto=): stop burn-in when the estimated parameters have
+  // stopped trending, instead of always spending all of nBurn.  0 off, 1
+  // observe (report where it WOULD stop, change nothing), 2 stop.
+  //
+  // An auto burn LENGTH is only safe with an auto STOP: a generous nBurn costs
+  // nothing when a test ends it, and is pure waste when nothing does.  NONMEM
+  // pairs them the same way -- on Bauer's g4 it was given a 4000 cap and its
+  // own test ended burn-in after 517.
+  int burnAuto = 0;
+  int burnWindow = 10;
+  double burnAlpha = 0.05;
+  arma::mat burnBuf;      // burnWindow x npar ring of recent parameter vectors
+  int burnBufN = 0;       // rows filled so far (saturates at burnWindow)
+  int burnBufAt = 0;      // next row to overwrite
+  int burnStopAt = -1;    // iteration the test first passed, -1 if never
   // uninformative-eta revisit: re-run the informativeness test at the end of burn-in
   // (see revisitUninformativeEtas).  ueRevisitIter < 0 disables it.
   int ueRevisitIter = -1;
@@ -7439,6 +7494,65 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
       if (std::isfinite(etaDistMeanCur(k))) etaDistMeanPrev(k) = etaDistMeanCur(k);
     }
     return moved;
+  }
+
+  // Has every estimated parameter stopped TRENDING over the last burnWindow
+  // iterations?  Per parameter, the OLS slope against iteration index and its
+  // t statistic; converged when no parameter's |t| reaches the two-sided
+  // burnAlpha critical value.
+  //
+  // A trend test rather than a "has it moved less than X" test because the
+  // burn phase runs at pas == 1, where every parameter is fully REPLACED each
+  // iteration rather than averaged.  Step size therefore says little; a drift
+  // that survives that noise is what marks a chain still travelling.  The t
+  // statistic is scale free, so parameters on wildly different scales -- a log
+  // clearance beside an omega -- need no weighting.
+  //
+  // The same noise is why this can only ever END burn-in early and never
+  // extend it: a quiet stretch of a noisy trajectory looks converged, so the
+  // test is an economy measure, not a guarantee of convergence.
+  // Largest |t| over the parameters, or -1 when there is not yet a full window.
+  // Split out from burnSettled() so the diagnostic can report HOW FAR the test
+  // is from passing: "never fired" alone cannot distinguish a chain that is
+  // still trending from a test that is not running.
+  double burnMaxT() const {
+    int W = burnBufN, P = (int)burnBuf.n_cols;
+    if (W < burnWindow || W < 4 || P <= 0) return -1.0;
+    double sx = 0.0, sxx = 0.0;
+    for (int i = 0; i < W; ++i) { sx += i; sxx += (double)i*i; }
+    double mx = sx/W, Sxx = sxx - W*mx*mx;
+    if (!(Sxx > 0)) return -1.0;
+    double worst = 0.0;
+    for (int j = 0; j < P; ++j) {
+      double sy = 0.0, sxy = 0.0;
+      for (int i = 0; i < W; ++i) {
+        // rows are a ring: unwrap so index i really is "i iterations ago"
+        double v = burnBuf((burnBufAt + i) % W, j);
+        if (!std::isfinite(v)) return -1.0;
+        sy += v; sxy += (double)i*v;
+      }
+      double my = sy/W, Sxy = sxy - W*mx*my, b = Sxy/Sxx;
+      double sse = 0.0;
+      for (int i = 0; i < W; ++i) {
+        double v = burnBuf((burnBufAt + i) % W, j);
+        double r = v - (my + b*((double)i - mx));
+        sse += r*r;
+      }
+      // a perfectly flat parameter (fixed, or not yet moved) is settled, and
+      // its zero residual variance must not become a 0/0 t statistic
+      if (!(sse > 1e-300)) continue;
+      double se = std::sqrt(sse/((double)(W - 2)*Sxx));
+      if (!(se > 0)) continue;
+      double t = std::fabs(b/se);
+      if (t > worst) worst = t;
+    }
+    return worst;
+  }
+
+  bool burnSettled() const {
+    double t = burnMaxT();
+    if (t < 0) return false;
+    return t < R::qt(1.0 - burnAlpha/2.0, (double)(burnBufN - 2), 1, 0);
   }
 
   // Robbins-Monro adaptation of the random-walk scale toward the target

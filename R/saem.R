@@ -337,6 +337,13 @@
                           rxode2::rxGetControl(ui, "etaDistSdHi", 5.0)),
                         etaDistSdTol=as.numeric(
                           rxode2::rxGetControl(ui, "etaDistSdTol", 0.10)),
+                        burnAuto=as.integer(match(
+                          rxode2::rxGetControl(ui, "burnAuto", "off"),
+                          c("off", "observe", "stop")) - 1L),
+                        burnWindow=as.integer(
+                          rxode2::rxGetControl(ui, "burnWindow", 10L)),
+                        burnAlpha=as.numeric(
+                          rxode2::rxGetControl(ui, "burnAlpha", 0.05)),
                         ## saemControl(etaDistStart=) declared it and
                         ## .configsaem() consumed it, but nothing joined the two,
                         ## so the value silently stayed at .configsaem's own
