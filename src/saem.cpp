@@ -1029,12 +1029,36 @@ public:
       double rho0 = etaDistRho(k);
       if (!std::isfinite(rho0)) rho0 = 0.0;
       double l21 = rho0, l22 = std::sqrt(std::max(0.0, 1.0 - l21*l21));
-      double njj = zjj/nn;
-      double nkk = l21*l21*(zjj/nn) + 2*l21*l22*(zjk/nn) + l22*l22*(zkk/nn);
-      double njk = l21*(zjj/nn) + l22*(zjk/nn);
-      double rh = (njj > 0 && nkk > 0) ? njk/std::sqrt(njj*nkk) : NA_REAL;
+      // STANDARDIZE S_z first.  The raw second moments carry the latent's
+      // over-dispersion (diag ~2-3 rather than 1), and feeding that through
+      // L S_z L' biases the ratio: njj uses zjj alone while nkk is a MIXTURE of
+      // zjj, zjk and zkk, so unequal inflated diagonals inflate rho_hat.  On
+      // Bauer's g1 that drove rho to +0.999, which collapses the partner's
+      // latent onto its partner's, fails the family M-step's own spread guard,
+      // and froze every family theta at its starting value (MARE 41.2% against
+      // the baseline's 18.3%).
+      //
+      // Using the CORRELATION of z instead leaves a well-behaved update with
+      // the right fixed point:
+      //
+      //     rho_hat = (l21 + l22*rz) / sqrt(1 + 2*l21*l22*rz)
+      //
+      // rz = 0 returns rho unchanged -- which is exactly correct, since S_z = I
+      // means the current rho already explains the draws.  rz > 0 moves it up,
+      // rz < 0 down, and neither can be driven by the diagonal any more.
+      double rz = zjk/std::sqrt(zjj*zkk);
+      if (!std::isfinite(rz)) rz = 0.0;
+      if (rz > 0.999) rz = 0.999; else if (rz < -0.999) rz = -0.999;
+      double njj = 1.0;
+      double nkk = 1.0 + 2.0*l21*l22*rz;
+      double njk = l21 + l22*rz;
+      double rh = (nkk > 0) ? njk/std::sqrt(njj*nkk) : NA_REAL;
       if (std::isfinite(rh)) {
-        if (rh > 0.999) rh = 0.999; else if (rh < -0.999) rh = -0.999;
+        // 0.99, not 0.999.  The clamp is not cosmetic: at the boundary the
+        // copula partner's latent becomes numerically its partner's and the
+        // model stops being identified, so the clamp has to sit where the
+        // collapse cannot complete rather than where a double still rounds.
+        if (rh > 0.99) rh = 0.99; else if (rh < -0.99) rh = -0.99;
         etaDistCorSuff(k) = rh;
       }
       double off = std::fabs(zjk/nn);
@@ -1068,7 +1092,7 @@ public:
         if (!std::isfinite(cur)) cur = 0.0;
         double v = cur + pas(kiter) * (etaDistCorSuff(k) - cur);
         if (std::isfinite(v)) {
-          if (v > 0.999) v = 0.999; else if (v < -0.999) v = -0.999;
+          if (v > 0.99) v = 0.99; else if (v < -0.99) v = -0.99;
           etaDistRho(k) = v;
           int cc = corCol(k);
           if (cc >= 0) {
@@ -1083,10 +1107,10 @@ public:
         }
       }
       if (tr && (kiter % 20 == 0)) {
-        RSprintf("[suff] it=%d k=%d S_z/N jj=%.4f kk=%.4f jk=%+.4f | rho cur=%+.4f "
-                 "suff=%+.4f | off=%.4f thresh=%.4f estimable=%d\n",
-                 (int)kiter, k, zjj/nn, zkk/nn, zjk/nn, rho0, etaDistCorSuff(k),
-                 off, thresh, (int)etaDistCorEstim(k));
+        RSprintf("[suff] it=%d k=%d S_z/N jj=%.4f kk=%.4f jk=%+.4f rz=%+.4f | "
+                 "rho cur=%+.4f suff=%+.4f | off=%.4f thresh=%.4f estimable=%d\n",
+                 (int)kiter, k, zjj/nn, zkk/nn, zjk/nn, rz, rho0,
+                 etaDistCorSuff(k), off, thresh, (int)etaDistCorEstim(k));
       }
     }
   }
