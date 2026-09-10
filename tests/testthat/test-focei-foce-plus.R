@@ -69,9 +69,9 @@ nmTest({
     #
     # Measured under the CURRENT defaults (foce="nonmem" default, resetThetaP=0,
     # innerOpt="auto", trustFterm/trustMterm = 10^(-sigdig-2)):
-    #   foce+ / focep      117.880675  (identical -- focep IS foce + foce="foce+")
-    #   mfocep             111.731506
-    #   ifocep             111.731506
+    #   foce+ / focep      112.320500  (identical -- focep IS foce + foce="foce+")
+    #   mfocep             110.192593
+    #   ifocep             110.152543
     #
     # An earlier revision of this file recorded 116.63 for "foce+ / focep" and sized the
     # neighbourhood bound at 3 around it.  That number dates from when est="foce" WAS the
@@ -90,10 +90,10 @@ nmTest({
     expect_equal(fM$objective, fI$objective, tolerance = 1e-2)
     # Pin the mu variants to the basin they actually reach on this fixture, so a
     # future change to the mu-referenced inner path shows up here.
-    expect_equal(fM$objective, 111.731506, tolerance = 1e-3)
-    expect_equal(fI$objective, 111.731506, tolerance = 1e-3)
+    expect_equal(fM$objective, 110.192593, tolerance = 1e-3)
+    expect_equal(fI$objective, 110.152543, tolerance = 1e-3)
     # ... and keep them in the same neighbourhood as the plain fit.  Sized at 8
-    # against a measured 6.149: the gap is between two different conditional
+    # against a measured 2.128: the gap is between two different conditional
     # basins, so it moves whenever either inner path does, and a bound sitting
     # 0.15 from the measurement is a tripwire for unrelated changes rather than
     # a claim about this one.

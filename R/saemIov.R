@@ -735,18 +735,6 @@ preProcessHooksAdd(".uiApplyIovTwoLevel", .uiApplyIovTwoLevel)
   }
   list(theta = .theta, omega = .omega, psi = .psi)
 }
-#' Restore the user's model after a collapsed (Panhard & Samson) fit
-#'
-#' Registered as a post-final hook.  The collapsed expansion replaced the user's
-#' line outright, so this rebuilds from the ORIGINAL ui rather than unpicking the
-#' rewritten one: it takes the pre-rewrite `iniDf`/`model` and writes the fitted
-#' values back into it -- the shared `mu` from the pooled thetas, the
-#' between-subject variance from the block's off-diagonal, and the
-#' inter-occasion variance from diagonal minus off-diagonal.
-#'
-#' @param ret fit object
-#' @return the fit, with the user's parameterization restored
-#' @noRd
 #' Rebuild the user's original ui from a collapsed fit
 #'
 #' Puts the collapsed block's estimates back on the parameters the user wrote:
@@ -816,6 +804,18 @@ preProcessHooksAdd(".uiApplyIovTwoLevel", .uiApplyIovTwoLevel)
   }
   invisible()
 }
+#' Restore the user's model after a collapsed (Panhard & Samson) fit
+#'
+#' Registered as a post-final hook.  The collapsed expansion replaced the user's
+#' line outright, so this rebuilds from the ORIGINAL ui rather than unpicking the
+#' rewritten one: it takes the pre-rewrite `iniDf`/`model` and writes the fitted
+#' values back into it -- the shared `mu` from the pooled thetas, the
+#' between-subject variance from the block's off-diagonal, and the
+#' inter-occasion variance from diagonal minus off-diagonal.
+#'
+#' @param ret fit object
+#' @return the fit, with the user's parameterization restored
+#' @noRd
 .saemIovFinalizeCollapsed <- function(ret) {
   .info <- .uiIovEnv$iovCollapsed
   if (is.null(.info) || is.null(.uiIovEnv$ui)) return(ret)

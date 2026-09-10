@@ -164,7 +164,13 @@
                       parInfo = NULL) {
   ## RNG is seeded ONCE for the whole estimation in nlmixr2Est.vae (rxWithSeed),
   ## which also covers the model's own random draws and restores the caller's seed
-  zDim <- prep$zDim; hDim <- control$hiddenDim; nCov <- ncol(prep$covIn); N <- prep$N
+  zDim <- prep$zDim
+  hDim <- control$hiddenDim
+  ## The encoder is conditioned on the mixture component: it characterizes every
+  ## (subject, component) pair, with the component entering the FC head as a
+  ## one-hot appended to the covariate block (see vaeTileEncoderInputs in
+  ## src/inner.cpp).  So the head is nMix wider for a mixture model.
+  nCov <- ncol(prep$covIn) + if (nMix > 1L) as.integer(nMix) else 0L
   ## the FC head is [outDim x (hDim + nCov)]; a width mismatch reaches armadillo
   ## as a std::logic_error and aborts the session, so check it here
   .vaeCheckEncoderDims <- function(params) {
@@ -329,7 +335,13 @@
        nRegGrad = as.integer(.fit$nRegGrad), nRegFallback = as.integer(.fit$nRegFallback),
        nStage2 = as.integer(.fit$nStage2),
        covSelectMethodUsed = .modes$used,
-       nMix = nMix, mixProb = mixProb, mixnum = as.integer(.fit$mixnum))
+       nMix = nMix,
+       ## the FITTED proportions, not the ini() ones: they are estimated on the
+       ## mlogit scale by their own analytic gradient (Adam), so the value that
+       ## comes back from training is the one to report and write into ini()
+       mixProb = if (is.null(.fit$mixProb)) mixProb else as.numeric(.fit$mixProb),
+       nMixThetaStep = .fit$nMixThetaStep,
+       mixnum = as.integer(.fit$mixnum))
 }
 
 #' Fit entry: prepare data, set up the FOCEi inner problem once, train.
@@ -343,8 +355,9 @@
   if (is.na(.nMix) || .nMix < 1L) .nMix <- 1L
   .mixProb <- 1
   if (.nMix > 1L) {
-    .p <- as.numeric(.prep$th[.ui$thetaMixIndex])
-    .mixProb <- c(.p, 1 - sum(.p))
+    ## prep$th holds the mlogit values (see .vaeDataPrep); mexpit them back to
+    ## the simplex, exactly as the inner problem does
+    .mixProb <- .getMixFromLog(.prep$th, .ui$thetaMixIndex)
   }
   ## parameter-history / iteration-print names: structural typical values on the
   ## mu-referenced etas, the omega diagonal, and the residual error params
