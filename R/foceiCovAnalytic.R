@@ -2493,7 +2493,7 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
   .cw <- which(cens != 0 | is.finite(limit))
   if (length(.cw)) {
     .limt <- .foceiAnalyticTbsY(limit, E$trans)          # transform the bound like the DV
-    .cp <- censNormalPartials_(cens, yt, .limt, E$f, Rv, 3L)   # rho_{f,R,ff,fR,RR,...}
+    .cp <- censNormalPartials_(cens, yt, .limt, E$f, Rv, 2L)   # rho_{f,R,ff,fR,RR}
     rf[.cw] <- .cp[.cw, 1]; rR[.cw] <- .cp[.cw, 2]
     rff[.cw] <- .cp[.cw, 3]; rfR[.cw] <- .cp[.cw, 4]; rRR[.cw] <- .cp[.cw, 5]
   }
