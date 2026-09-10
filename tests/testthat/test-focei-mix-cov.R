@@ -164,6 +164,46 @@ nmTest({
     expect_false(isTRUE(all.equal(.e$cov[1, 1], .e$cov[2, 2])))
   })
 
+  test_that("a fix()ed proportion is not given an appended variance", {
+    ## thetaMixIndex still lists a fix()ed proportion, but it was never
+    ## estimated -- appending a row for it would report a non-zero SE for a
+    ## parameter with no uncertainty.
+    .m <- function() {
+      ini({
+        tcl <- log(1)
+        p1 <- fix(0.40)
+        p2 <- 0.35
+        tv <- log(20)
+        eta.cl ~ 0.01
+        add.sd <- 0.05
+      })
+      model({
+        cl <- mix(exp(tcl + eta.cl), p1, exp(tcl + 2 + eta.cl), p2,
+                  exp(tcl + 3 + eta.cl))
+        v <- exp(tv)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .ui <- rxode2::rxUiDecompress(rxode2::assertRxUi(.m))
+    .n <- 100L
+    .k <- round(.n * 0.35)
+    .r <- cbind(rep(0.40, .n),
+                c(rep(1, .k), rep(0, .n - .k)))
+    .r <- cbind(.r, 1 - rowSums(.r))
+    .e <- new.env(parent = emptyenv())
+    .e$ui <- .ui
+    .e$mixProbabilities <- c(0.40, .k / .n, 1 - 0.40 - .k / .n)
+    .nm <- c("tcl", "add.sd")
+    .e$cov <- diag(c(4, 9)); dimnames(.e$cov) <- list(.nm, .nm)
+    .e$mixList <- lapply(seq_len(3L), function(.j) data.frame(prob = .r[, .j]))
+    .mixCovAppendBlock(.e)
+    ## exactly one appended row, for the ESTIMATED proportion
+    expect_equal(rownames(.e$cov), c("tcl", "add.sd", "p2"))
+    expect_false("p1" %in% rownames(.e$cov))
+    expect_equal(unname(sqrt(diag(.e$cov))[3]),
+                 sqrt(0.35 * 0.65 / .n), tolerance = 1e-6)
+  })
+
   test_that("a proportion at the boundary is flagged, not reported as precise", {
     ## The probability-scale SE carries a factor p(1-p), so it goes to ZERO as a
     ## proportion approaches 0 or 1.  That is the correct delta-method answer but

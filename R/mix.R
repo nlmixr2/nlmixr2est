@@ -577,7 +577,17 @@
   if (is.null(.mp) || length(.mp) != length(.idx) || anyNA(.mp)) return(NULL)
   .pi <- tryCatch(env$mixProbabilities, error = function(e) NULL)
   if (is.null(.pi) || length(.pi) != length(.mp) + 1L || !all(is.finite(.pi))) return(NULL)
-  .ret <- list(names = .mp, idx = .idx, p = .pi[seq_along(.mp)], pi = .pi)
+  # which of them were actually ESTIMATED: a fix()ed proportion is still in
+  # thetaMixIndex, but it has no covariance row and must not be given one
+  .fx <- tryCatch({
+    .idf <- .ui$iniDf
+    .w <- match(.mp, .idf$name)
+    .v <- if (is.null(.idf$fix)) rep(FALSE, length(.w)) else .idf$fix[.w]
+    .v[is.na(.v)] <- FALSE
+    .v
+  }, error = function(e) rep(FALSE, length(.mp)))
+  .ret <- list(names = .mp, idx = .idx, p = .pi[seq_along(.mp)], pi = .pi,
+               fixed = .fx)
   if (!needResp) return(.ret)
   .ml <- tryCatch(env$mixList, error = function(e) NULL)
   if (is.null(.ml) || length(.ml) != length(.pi)) return(NULL)
@@ -637,13 +647,17 @@
 .mixCovAppendBlock <- function(env) {
   .mix <- .mixEnvPieces(env, needResp = TRUE)
   if (is.null(.mix)) return(invisible(NULL))
-  .mp <- .mix$names
   .pi <- .mix$pi
   .r <- .mix$r
   .cov <- tryCatch(get("cov", envir = env, inherits = FALSE), error = function(e) NULL)
   if (!is.matrix(.cov) || is.null(rownames(.cov))) return(invisible(NULL))
-  if (any(.mp %in% rownames(.cov))) return(invisible(NULL))   # already covered
-  .free <- seq_along(.mp)
+  if (any(.mix$names %in% rownames(.cov))) return(invisible(NULL))   # already covered
+  # only the ESTIMATED proportions get a row: a fix()ed one has no uncertainty
+  # to report, and appending one would give a parameter that was never estimated
+  # a non-zero SE
+  .free <- which(!.mix$fixed)
+  if (length(.free) == 0L) return(invisible(NULL))
+  .mp <- .mix$names[.free]
   # An information matrix reports the precision of a MAXIMUM-likelihood estimate.
   # The mixture score is s_l = sum_i (r_il - p_l), so the fixed point is s == 0;
   # away from it the block is a confident-looking number attached to an estimate
@@ -674,7 +688,9 @@
   .n <- nrow(.cov)
   .out <- matrix(0, .n + length(.mp), .n + length(.mp))
   .out[seq_len(.n), seq_len(.n)] <- .cov
-  .out[.n + .free, .n + .free] <- .blk
+  # .free indexes the FULL mixture set; the appended block is only the estimated
+  # subset, so place it by its own position
+  .out[.n + seq_along(.mp), .n + seq_along(.mp)] <- .blk
   .nm <- c(rownames(.cov), .mp)
   dimnames(.out) <- list(.nm, .nm)
   assign("cov", .out, envir = env)
