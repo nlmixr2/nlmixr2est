@@ -9740,7 +9740,8 @@ Environment foceiOuter(Environment e){
         rx = getRxSolve_();
         // nIndsFocei, not getRxNsub(): a mixture fit carries one focei_ind per
         // subject PER mixture component, and foceiOfv0() moves all of them.
-        const int _ns = (rx == NULL || inds_focei == NULL) ? 0 : nIndsFocei;
+        const int _ns = (rx == NULL || inds_focei == NULL || getRxNsub(rx) <= 0) ?
+          0 : nIndsFocei;
         FdPhaseStateGuard _phaseGuard;
         std::vector< std::unique_ptr<FdInnerStateGuard> > _inGuards;
         _inGuards.reserve((size_t)_ns);
