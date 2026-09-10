@@ -1,5 +1,15 @@
 # nlmixr2est 7.0.3
 
+## Bug fixes
+
+- A focei fit reports standard errors that match its own covariance again.
+  `.foceiInstallFdFullCov()` replaces `$cov` with the full theta+omega matrix
+  after the C++ step has already derived `popDf$SE` from the native theta-only
+  covariance it discards, so `parFixedDf$SE` described a matrix the fit no
+  longer held and a `setCov()` round trip silently changed the reported SEs.
+  The parameter table is now refreshed from the covariance actually installed
+  (nlmixr2extra#125).
+
 ## New features
 
 - `impmapControl(proposal=)` selects the importance-sampling proposal family for
