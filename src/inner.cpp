@@ -7110,6 +7110,15 @@ static bool analyticOuterGradDirect(double *theta, double *g);
 // with the rest of the kernel below.
 static inline bool declineHere(int site);
 
+// #1051 refusal: record the site, and say why once per fit.
+static inline bool contribDeclineAnalyticGrad(void) {
+  if (!op_focei.warnedContribFallback) {
+    op_focei.warnedContribFallback = 1;
+    Rf_warning("analytic gradient off: external likelihood contribution");
+  }
+  return declineHere(119);
+}
+
 static bool analyticOuterGrad(double *theta, double *g) {
   if (!op_foceiUseAnalyticGrad || !op_foceiFitEnvSet) return false;
   op_focei.calcGrad = 1;
@@ -7120,14 +7129,7 @@ static bool analyticOuterGrad(double *theta, double *g) {
   // is not, so the fit converges to a non-stationary point and reports success.
   // Checked AFTER foceiOfv0() so the registry has actually been cycled at least
   // once and a pure observer is correctly recognized as harmless.
-  if (nlmixrContribBreaksAnalyticGrad()) {
-    declineHere(119);
-    if (!op_focei.warnedContribFallback) {
-      op_focei.warnedContribFallback = 1;
-      Rf_warning("analytic gradient off: external likelihood contribution");
-    }
-    return false;
-  }
+  if (nlmixrContribBreaksAnalyticGrad()) return contribDeclineAnalyticGrad();
   // The all-C++ path.  Preferred because it touches R not at all: the R route below has
   // to build etaObf/omega/.gradTheta as R objects, call into R, have R re-derive the
   // setup and .Call back down, then read etaP back out of the fit env -- every gradient
