@@ -181,11 +181,12 @@
   structural parameters and its SEs are mildly optimistic.
 
   The block is only reported when the fit is actually at the mixture's fixed
-  point, `p_l == mean_i r_il`.  An information matrix describes the precision of
-  a maximum-likelihood estimate, and away from that point it is a
+  point, judged by the score statistic `s' I^-1 s` (which is on a chi-square
+  scale, so unlike a tolerance on `mean(r) - p` it does not loosen as the number
+  of subjects grows).  An information matrix describes the precision of a
+  maximum-likelihood estimate, and away from that point it is a
   confident-looking number attached to something that is not one; instead the
-  fit's `$runInfo` says the SE was not computed and by how much the identity
-  fails.  `est="saem"` currently lands far from it (nlmixr2/nlmixr2est#1058), so
+  fit's `$runInfo` says the SE was skipped.  `est="saem"` currently lands far from it (nlmixr2/nlmixr2est#1058), so
   in practice this declines today and will start reporting once that is fixed.
 
 - `est="focei"` estimates the mixture proportions under a gradient-based

@@ -70,7 +70,9 @@
   if (inherits(.fit2, "try-error")) return(NULL)
   .cov <- tryCatch(.fit2$cov, error = function(e) NULL)
   if (is.null(.cov) || !is.matrix(.cov)) return(NULL)
-  list(cov = .cov, covMethod = .fit2$covMethod)
+  # .fit2 is a full re-fit, so its $cov has already been through
+  # .mixInstallProbScaleCov(); say so, or .covInstallResult() rotates it twice.
+  list(cov = .cov, covMethod = .fit2$covMethod, mixRotated = TRUE)
 }
 
 #' Recompute the SAEM Louis SA-FIM ("sa") at any fit's converged estimates.
@@ -135,12 +137,18 @@
 .covInstallResult <- function(env, r) {
   if (is.null(r) || is.null(r$cov) || !is.matrix(r$cov)) return(invisible(FALSE))
   .cov <- 0.5 * (r$cov + t(r$cov))                         # exact symmetry
-  # analytic/sa/imp produce the covariance on the mlogit estimation scale; rotate
-  # the mixture block onto the probability scale the estimates are reported on
-  .cov <- tryCatch(
-    .mixCovToProbScale(.cov, env$ui$mixProbs,
-                       utils::head(env$mixProbabilities, -1L)),
-    error = function(e) .cov)
+  # A covariance computed directly (analytic) is on the mlogit estimation scale
+  # and needs the mixture block rotated onto the probability scale; one that came
+  # back from a re-fit (sa/imp, via .covRecompute) was already rotated there.
+  # Key the rotation on the THETA slot, like every other consumer -- ui$mixProbs
+  # is in mix()-call order and would scramble the rows.
+  if (!isTRUE(r$mixRotated)) {
+    .mix <- .mixEnvPieces(env)
+    if (!is.null(.mix)) {
+      .cov <- tryCatch(.mixCovToProbScale(.cov, .mix$names, .mix$p),
+                       error = function(e) .cov)
+    }
+  }
   .ev <- suppressWarnings(eigen(.cov, symmetric = TRUE, only.values = TRUE)$values)
   if (any(!is.finite(diag(.cov))) || any(diag(.cov) <= 0) ||
         !all(is.finite(.ev)) || min(.ev) <= 0) {

@@ -278,10 +278,35 @@ nmTest({
     ## and this is not one.  saem lands here (nlmixr2est#1058), and reporting a
     ## number would be a confident-looking SE on a non-stationary estimate.
     .e <- .mkMixEnv(c(rep(1, 30), rep(0, 70)), 0.64, 100L)
-    .mixCovAppendBlock(.e)
+    expect_warning(.mixCovAppendBlock(.e), "score-zero")
     expect_false("p1" %in% rownames(.e$cov))
     expect_equal(dim(.e$cov), c(2L, 2L))
-    expect_true(any(grepl("mean responsibility", .e$runInfo)))
+  })
+
+  test_that("the stationarity gate does not loosen with the number of subjects", {
+    ## The gate is the score statistic s' I^-1 s, not |mean(r) - p|: the score is
+    ## N*(mean(r) - p), so an absolute tolerance on the mean accepts a score of 1
+    ## at N=100 and 100 at N=10000.  Hold the DEVIATION fixed and grow N; the
+    ## same deviation must be refused at least as firmly at the larger N.
+    .dev <- 0.02
+    .mk <- function(n) {
+      .k <- round(n * (0.45 + .dev))
+      .mkMixEnv(c(rep(1, .k), rep(0, n - .k)), 0.45, n)
+    }
+    for (.n in c(100L, 2000L)) {
+      .e <- .mk(.n)
+      expect_warning(.mixCovAppendBlock(.e), "score-zero")
+      expect_false("p1" %in% rownames(.e$cov))
+    }
+    ## and a fit that IS at the fixed point is still accepted at both sizes
+    for (.n in c(100L, 2000L)) {
+      .k <- round(.n * 0.45)
+      .e <- .mkMixEnv(c(rep(1, .k), rep(0, .n - .k)), .k / .n, .n)
+      .mixCovAppendBlock(.e)
+      expect_true("p1" %in% rownames(.e$cov))
+      expect_equal(unname(sqrt(diag(.e$cov))[3]),
+                   sqrt(0.45 * 0.55 / .n), tolerance = 1e-6)
+    }
   })
 
   test_that("covMethod='analytic' declines a mixture rather than reporting one component", {

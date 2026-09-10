@@ -610,17 +610,27 @@
   if (any(.mp %in% rownames(.cov))) return(invisible(NULL))   # already covered
   .free <- seq_along(.mp)
   # An information matrix reports the precision of a MAXIMUM-likelihood estimate.
-  # The mixture score is sum_i (r_il - p_l), so the fixed point is
-  # p_l == mean_i r_il; away from it the block is a confident-looking number
-  # attached to an estimate that is not an MLE.  Refuse rather than report it,
-  # and say why -- saem can land far off this (its proportions are updated by a
-  # separate EM step, outside the kernel that converged everything else).
-  .off <- max(abs(colMeans(.r[, .free, drop = FALSE]) - .pi[.free]))
-  if (!is.finite(.off) || .off > 0.01) {
-    .msg <- paste0("mixture proportion SE not computed; p != mean responsibility (off by ",
-                   signif(.off, 2), ")")
-    .ri <- tryCatch(get("runInfo", envir = env, inherits = FALSE), error = function(e) NULL)
-    assign("runInfo", unique(c(.ri, .msg)), envir = env)
+  # The mixture score is s_l = sum_i (r_il - p_l), so the fixed point is s == 0;
+  # away from it the block is a confident-looking number attached to an estimate
+  # that is not an MLE.  Refuse rather than report it, and say why -- saem can
+  # land far off this (its proportions are updated by a separate EM step,
+  # outside the kernel that converged everything else).
+  #
+  # Judge it by the SCORE STATISTIC s' solve(I) s, not by |mean(r) - p|: the
+  # score is N*(mean(r) - p), so any absolute tolerance on the mean silently
+  # loosens with the number of subjects (0.01 is a score of 1 at N=100 and 100
+  # at N=10000).  s' I^-1 s is on a chi-square scale and does not drift with N.
+  .d <- sweep(.r[, .free, drop = FALSE], 2, .pi[.free], "-")
+  .s <- colSums(.d)
+  .stat <- tryCatch(as.numeric(crossprod(.s, solve(crossprod(.d), .s))),
+                    error = function(e) NA_real_)
+  if (!is.finite(.stat) || .stat > 1e-3) {
+    # warning(), not an assignment to runInfo: that is the channel the fit
+    # collects run-time notes through, and a direct assignment here is
+    # overwritten by the later table assembly.  Kept under 75 characters so it
+    # renders on one line, and unprefixed -- the fit already reports its method.
+    warning("mixture proportion SE skipped; not at the score-zero point",
+            call. = FALSE)
     return(invisible(NULL))
   }
   .blk <- .mixProbCovBlock(.r[, .free, drop = FALSE], .pi[.free])
