@@ -219,6 +219,7 @@ SEXP _nlmixr2est_registerTestContrib(void);
 SEXP _nlmixr2est_removeTestContrib(void);
 SEXP _nlmixr2est_getTestContrib(void);
 SEXP _nlmixr2est_setTestContribAddLL(SEXP);
+SEXP _nlmixr2est_setTestContribAddLLf(SEXP);
 SEXP _nlmixr2est_setNnOuterFn(SEXP);
 SEXP _nlmixr2est_likContribPtrs(void);
 SEXP _nlmixr2est_foceiPtrs(void);
@@ -236,6 +237,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_removeTestContrib", (DL_FUNC) &_nlmixr2est_removeTestContrib, 0},
   {"_nlmixr2est_getTestContrib", (DL_FUNC) &_nlmixr2est_getTestContrib, 0},
   {"_nlmixr2est_setTestContribAddLL", (DL_FUNC) &_nlmixr2est_setTestContribAddLL, 1},
+  {"_nlmixr2est_setTestContribAddLLf", (DL_FUNC) &_nlmixr2est_setTestContribAddLLf, 1},
   {"_nlmixr2est_setNnOuterFn", (DL_FUNC) &_nlmixr2est_setNnOuterFn, 1},
   {"_nlmixr2est_impPropKernel_", (DL_FUNC) &_nlmixr2est_impPropKernel_, 7},
   {"_nlmixr2est_impQrPoints_", (DL_FUNC) &_nlmixr2est_impQrPoints_, 5},

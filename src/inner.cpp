@@ -62,16 +62,26 @@ static const nlmixrLikContrib* _nlmixrContrib[NLMIXR_MAX_CONTRIB] = {NULL};
 static int _nlmixrNContrib = 0;
 static nlmixrEmLik_fn _nlmixrEmLik[NLMIXR_MAX_CONTRIB] = {NULL};
 static int _nlmixrNEmLik = 0;
+// What the registered bundles were observed to DO (#1051); see likContribUtil.h.
+std::atomic<int> _nlmixrContribSeen{0};
+std::atomic<int> _nlmixrContribChanged{0};
+static inline void nlmixrContribResetObserved(void) {
+  _nlmixrContribSeen.store(0, std::memory_order_relaxed);
+  _nlmixrContribChanged.store(0, std::memory_order_relaxed);
+}
 
 extern "C" void nlmixrRegisterLikContrib(const nlmixrLikContrib *c) {
   if (c == NULL || c->obs == NULL) return;
   for (int i = 0; i < _nlmixrNContrib; ++i) if (_nlmixrContrib[i] == c) return;
   if (_nlmixrNContrib < NLMIXR_MAX_CONTRIB) _nlmixrContrib[_nlmixrNContrib++] = c;
+  nlmixrContribResetObserved();
 }
 extern "C" void nlmixrRemoveLikContrib(const nlmixrLikContrib *c) {
   for (int i = 0; i < _nlmixrNContrib; ++i) if (_nlmixrContrib[i] == c) {
     for (int k = i; k < _nlmixrNContrib - 1; ++k) _nlmixrContrib[k] = _nlmixrContrib[k + 1];
-    _nlmixrContrib[--_nlmixrNContrib] = NULL; return;
+    _nlmixrContrib[--_nlmixrNContrib] = NULL;
+    nlmixrContribResetObserved();
+    return;
   }
 }
 extern "C" void nlmixrRegisterEmLik(nlmixrEmLik_fn fn) {
@@ -86,6 +96,18 @@ extern "C" void nlmixrRemoveEmLik(nlmixrEmLik_fn fn) {
   }
 }
 extern "C" int nlmixrHasLikContrib(void) { return _nlmixrNContrib; }
+
+// #1051: may the analytic outer gradient run?  It re-derives d(objective)/d(theta)
+// from model sensitivities only, so it is exact for a pure OBSERVER (records the
+// cotangents, writes nothing back -- e.g. nlmixr2nn's weight-gradient capture) and
+// wrong for a contributor that adds an llik term or a d(LL)/d(eta) term.  A
+// registered bundle whose obs hook has not run yet is treated as contributing:
+// declining costs speed, running it costs correctness.
+static inline bool nlmixrContribBreaksAnalyticGrad(void) {
+  if (_nlmixrNContrib == 0) return false;
+  if (_nlmixrContribSeen.load(std::memory_order_relaxed) == 0) return true;
+  return _nlmixrContribChanged.load(std::memory_order_relaxed) != 0;
+}
 
 // Cross-TU dispatch: drive the (static, inner.cpp-private) registry from another
 // translation unit (nlm.cpp's population objective).  Same series semantics as
@@ -125,7 +147,7 @@ extern "C" SEXP _nlmixr2est_likContribPtrs(void) {
 // test-only contributor (tests/testthat/test-lik-contrib.R): records per-obs
 // values to confirm the hook fires with correct f/dv/r and dLL/df.  Uses global
 // accumulators, so the test runs single-threaded.
-static double _testSumDLLdf, _testSumErr, _testSumF, _testAddLL;
+static double _testSumDLLdf, _testSumErr, _testSumF, _testAddLL, _testAddLLf;
 static int _testNObs, _testNBegin, _testNEnd;
 static void _testBegin(const nlmixrLikSubj *s) { (void)s; _testNBegin++; }
 static void _testEnd(const nlmixrLikSubj *s) { (void)s; _testNEnd++; }
@@ -135,14 +157,28 @@ static void _testObs(nlmixrLikObs *o) {
   _testSumErr += (o->f - o->dv);
   _testSumF += o->f;
   if (_testAddLL != 0.0) *o->llik += _testAddLL;   // constant LL shift per obs
+  // THETA-dependent contribution (#1051): c*f reaches theta through the prediction
+  // and supplies its own exact d(LL)/d(eta), so the inner mode stays exact and any
+  // outer difference is attributable to the outer gradient alone.  A constant shift
+  // (_testAddLL above) cannot move an optimum, so it cannot exercise that path.
+  if (_testAddLLf != 0.0) {
+    *o->llik += _testAddLLf * o->f;
+    if (o->df_deta != NULL) {
+      for (int q = 0; q < o->neta; ++q) o->dLL_deta[q] += _testAddLLf * o->df_deta[q];
+    }
+  }
 }
 extern "C" SEXP _nlmixr2est_setTestContribAddLL(SEXP v) {
   _testAddLL = Rf_asReal(v);
   return R_NilValue;
 }
+extern "C" SEXP _nlmixr2est_setTestContribAddLLf(SEXP v) {
+  _testAddLLf = Rf_asReal(v);
+  return R_NilValue;
+}
 static const nlmixrLikContrib _testContribBundle = { _testBegin, _testObs, _testEnd };
 extern "C" SEXP _nlmixr2est_registerTestContrib(void) {
-  _testSumDLLdf = _testSumErr = _testSumF = _testAddLL = 0.0;
+  _testSumDLLdf = _testSumErr = _testSumF = _testAddLL = _testAddLLf = 0.0;
   _testNObs = _testNBegin = _testNEnd = 0;
   nlmixrRegisterLikContrib(&_testContribBundle);
   return R_NilValue;
@@ -693,6 +729,7 @@ struct focei_options {
   int firstDirectGradSet = 0;
   int nFDGradFast = 0;      // # FD fallbacks while fast was requested
   int warnedAnalyticFallback = 0; // one-time FD-fallback warning latch
+  int warnedContribFallback = 0;  // one-time #1051 contributor FD-fallback latch
   double cholSEtol;
   double hessEps;
   // The FIT's ODE tolerances, captured the first time the analytic gradient runs.
@@ -7042,12 +7079,28 @@ bool foceiGradPooledSetupLoad_(List st) {
 // Defined after the augmented-solve machinery it needs (VaeOuterE, outerSolveFill,
 // OdeFitTolGuard, foceiOuterFdInd_); declared here so analyticOuterGrad can prefer it.
 static bool analyticOuterGradDirect(double *theta, double *g);
+// Records the refusal site (and prints it under NLMIXR2EST_GRAD_DECLINE); defined
+// with the rest of the kernel below.
+static inline bool declineHere(int site);
 
 static bool analyticOuterGrad(double *theta, double *g) {
   if (!op_foceiUseAnalyticGrad || !op_foceiFitEnvSet) return false;
   op_focei.calcGrad = 1;
   // Ensure the inner solutions (eta*) and omega are current at this theta.
   foceiOfv0(theta);
+  // #1051: an external likelihood contribution that changes the objective is
+  // invisible to the kernel below -- the objective is right, the theta direction
+  // is not, so the fit converges to a non-stationary point and reports success.
+  // Checked AFTER foceiOfv0() so the registry has actually been cycled at least
+  // once and a pure observer is correctly recognized as harmless.
+  if (nlmixrContribBreaksAnalyticGrad()) {
+    declineHere(119);
+    if (!op_focei.warnedContribFallback) {
+      op_focei.warnedContribFallback = 1;
+      Rf_warning("analytic gradient off: external likelihood contribution");
+    }
+    return false;
+  }
   // The all-C++ path.  Preferred because it touches R not at all: the R route below has
   // to build etaObf/omega/.gradTheta as R objects, call into R, have R re-derive the
   // setup and .Call back down, then read etaP back out of the fit env -- every gradient
@@ -9668,6 +9721,10 @@ Environment foceiOuter(Environment e){
   op_focei.firstDirectGradSet=0;
   op_focei.nFDGradFast=0;
   op_focei.warnedAnalyticFallback=0;
+  op_focei.warnedContribFallback=0;
+  // Re-observe what the registered contributors do on THIS fit (#1051): a bundle
+  // can be swapped between fits, and the flags are process globals.
+  nlmixrContribResetObserved();
   if (op_focei.maxOuterIterations > 0){
     for (unsigned int k = op_focei.npars; k--;){
       if (R_FINITE(op_focei.lower[k])){
@@ -17836,6 +17893,10 @@ RObject foceiGradPooledDirect_(NumericVector thVals, NumericMatrix ebes,
                                int cores) {
   const FoceiGradPooledSetup &G = _gradPooled;
   if (!G.ok) return R_NilValue;
+  // Same #1051 refusal as analyticOuterGrad(): the kernel cannot carry an external
+  // likelihood contribution's theta dependence.  The R caller (vaeGrad) treats NULL
+  // as "declined" and falls back, so this costs speed and not the fit.
+  if (nlmixrContribBreaksAnalyticGrad()) return R_NilValue;
   const int neta = G.neta, nom = G.nom;
   const int np = G.nth + G.nsg + nom;
   if (ebes.ncol() != neta) return R_NilValue;
