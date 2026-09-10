@@ -408,7 +408,7 @@
 #' variance scale rather than the \code{chol(solve(omega))} estimation scale.
 #'
 #' @param cov covariance matrix with dimnames
-#' @param mixNames names of the mixture-proportion parameters (\code{ui$mixProbs})
+#' @param mixNames mixture-proportion parameter names, in THETA-slot order
 #' @param p free mixture probabilities, in \code{mixNames} order
 #' @return \code{cov} with the mixture rows/columns on the probability scale;
 #'   unchanged when there is no mixture block to rotate
@@ -452,17 +452,17 @@
                       error = function(e) FALSE))) {
     return(invisible(NULL))
   }
-  .m <- .mixEnvPieces(env)
-  if (is.null(.m)) return(invisible(NULL))
-  .mp <- .m$names
-  .p <- .m$p
+  .mix <- .mixEnvPieces(env)
+  if (is.null(.mix)) return(invisible(NULL))
+  .mp <- .mix$names
+  .p <- .mix$p
   for (.n in c("cov", "covR", "covS", "covRS")) {
     if (!exists(.n, envir = env, inherits = FALSE)) next
-    .m <- get(.n, envir = env)
-    if (!is.matrix(.m)) next
-    assign(.n, .mixCovToProbScale(.m, .mp, .p), envir = env)
+    .cur <- get(.n, envir = env)
+    if (!is.matrix(.cur)) next
+    assign(.n, .mixCovToProbScale(.cur, .mp, .p), envir = env)
   }
-  .mixRefreshSeFromCov(env, .mp)
+  .mixRefreshSeFromCov(env, .mp, .mix$idx)
   invisible(NULL)
 }
 
@@ -475,13 +475,15 @@
 #' probability.
 #'
 #' @param env fit environment
-#' @param mixNames mixture-proportion parameter names
+#' @param mixNames mixture-proportion parameter names, in THETA-slot order
+#' @param mixIdx their positions in the theta vector, same order as
+#'   \code{mixNames}
 #' @return invisible \code{NULL}; called for its side effects on \code{env}
 #' @noRd
 #' @author Matthew L. Fidler
-.mixRefreshSeFromCov <- function(env, mixNames) {
+.mixRefreshSeFromCov <- function(env, mixNames, mixIdx) {
   .cov <- tryCatch(get("cov", envir = env, inherits = FALSE), error = function(e) NULL)
-  .mixIdx <- tryCatch(get("mixIdx", envir = env, inherits = FALSE), error = function(e) NULL)
+  .mixIdx <- mixIdx
   if (!is.matrix(.cov) || is.null(rownames(.cov)) ||
         is.null(.mixIdx) || length(.mixIdx) != length(mixNames)) {
     return(invisible(NULL))
@@ -525,11 +527,22 @@
 #' @noRd
 #' @author Matthew L. Fidler
 .mixEnvPieces <- function(env, needResp = FALSE) {
-  .mp <- tryCatch(env$ui$mixProbs, error = function(e) NULL)
-  if (is.null(.mp) || length(.mp) == 0L) return(NULL)
+  .ui <- tryCatch(env$ui, error = function(e) NULL)
+  if (is.null(.ui)) return(NULL)
+  .idx <- tryCatch(.ui$thetaMixIndex, error = function(e) NULL)
+  if (is.null(.idx) || length(.idx) == 0L) return(NULL)
+  # Name the proportions by their THETA slot, not by ui$mixProbs.  The two are
+  # the same set but NOT the same order: mixProbs follows the mix() call while
+  # thetaMixIndex follows ini(), and everything downstream -- the covariance's
+  # rows, op_focei.mixProb, $mixProbabilities, and the se/popDf rows -- is keyed
+  # on the theta slot.  Using mixProbs to index a theta-ordered covariance puts
+  # the Jacobian on the wrong rows whenever ini() lists them in a different
+  # order than mix() uses them.
+  .mp <- tryCatch(names(.ui$theta)[.idx], error = function(e) NULL)
+  if (is.null(.mp) || length(.mp) != length(.idx) || anyNA(.mp)) return(NULL)
   .pi <- tryCatch(env$mixProbabilities, error = function(e) NULL)
   if (is.null(.pi) || length(.pi) != length(.mp) + 1L || !all(is.finite(.pi))) return(NULL)
-  .ret <- list(names = .mp, p = .pi[seq_along(.mp)], pi = .pi)
+  .ret <- list(names = .mp, idx = .idx, p = .pi[seq_along(.mp)], pi = .pi)
   if (!needResp) return(.ret)
   .ml <- tryCatch(env$mixList, error = function(e) NULL)
   if (is.null(.ml) || length(.ml) != length(.pi)) return(NULL)
@@ -587,11 +600,11 @@
 #' @noRd
 #' @author Matthew L. Fidler
 .mixCovAppendBlock <- function(env) {
-  .m <- .mixEnvPieces(env, needResp = TRUE)
-  if (is.null(.m)) return(invisible(NULL))
-  .mp <- .m$names
-  .pi <- .m$pi
-  .r <- .m$r
+  .mix <- .mixEnvPieces(env, needResp = TRUE)
+  if (is.null(.mix)) return(invisible(NULL))
+  .mp <- .mix$names
+  .pi <- .mix$pi
+  .r <- .mix$r
   .cov <- tryCatch(get("cov", envir = env, inherits = FALSE), error = function(e) NULL)
   if (!is.matrix(.cov) || is.null(rownames(.cov))) return(invisible(NULL))
   if (any(.mp %in% rownames(.cov))) return(invisible(NULL))   # already covered

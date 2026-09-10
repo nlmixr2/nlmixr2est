@@ -111,6 +111,59 @@ nmTest({
     expect_equal(max(.ses) / min(.ses), 1, tolerance = 0.05)
   })
 
+  test_that("the rotation is keyed on the theta slot, not on ui$mixProbs order", {
+    ## ui$mixProbs follows the mix() CALL; thetaMixIndex follows ini().  When the
+    ## two orders differ, everything downstream -- the covariance's rows,
+    ## op_focei.mixProb, $mixProbabilities, se/popDf -- is keyed on the THETA
+    ## slot, so indexing a theta-ordered covariance by mixProbs puts the Jacobian
+    ## on the wrong rows.
+    .mod <- function() {
+      ini({
+        tka <- log(1.1)
+        p2 <- 0.30          # deliberately declared BEFORE p1
+        p1 <- 0.60
+        tcl1 <- log(1)
+        tcl2 <- log(8)
+        tcl3 <- log(30)
+        tv <- log(20)
+        eta.cl ~ 0.01
+        add.sd <- 0.05
+      })
+      model({
+        ka <- exp(tka)
+        cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl), p2,
+                  exp(tcl3 + eta.cl))
+        v <- exp(tv)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .ui <- rxode2::rxUiDecompress(rxode2::assertRxUi(.mod))
+    .slot <- names(.ui$theta)[.ui$thetaMixIndex]
+    ## the hazard this guards is real for this model
+    expect_false(identical(.ui$mixProbs, .slot))
+    expect_equal(.slot, c("p2", "p1"))
+
+    ## component-ordered probabilities, far enough apart that a swap shows
+    .p <- c(0.60, 0.30)
+    .e <- new.env(parent = emptyenv())
+    .e$ui <- .ui
+    .e$mixProbabilities <- c(.p, 1 - sum(.p))
+    ## the covariance is in THETA order, so its mixture rows are named p2, p1
+    .nm <- c(.slot, "add.sd")
+    .e$cov <- diag(c(1, 4, 9))
+    dimnames(.e$cov) <- list(.nm, .nm)
+    .mixInstallProbScaleCov(.e)
+
+    ## component m's Jacobian must land on the row for theta slot mixIdx[m]
+    .j <- diag(.p, nrow = 2L) - outer(.p, .p)
+    .a <- diag(1, 3)
+    .a[1:2, 1:2] <- .j
+    .want <- .a %*% diag(c(1, 4, 9)) %*% t(.a)
+    expect_equal(unname(.e$cov), unname(.want))
+    ## and concretely: the two mixture variances are NOT interchangeable here
+    expect_false(isTRUE(all.equal(.e$cov[1, 1], .e$cov[2, 2])))
+  })
+
   test_that("setCov() round trips without re-rotating the mixture block", {
     ## setCov() re-installs a CACHED covariance (covList) by handing it back as a
     ## matrix, which refits and would rotate an already-probability-scale matrix
@@ -178,8 +231,24 @@ nmTest({
   ## (saem excludes the proportions from its kernel parameter vector).  Driven
   ## from a synthetic env so both branches are exercised without a fit.
   .mkMixEnv <- function(r1, pi1, n = 100L) {
+    ## a REAL ui: the covariance helpers key the proportions on their theta slot
+    ## (names(ui$theta)[ui$thetaMixIndex]), so a stub list will not do
+    .m <- function() {
+      ini({
+        tcl <- log(1)
+        p1 <- 0.45
+        tv <- log(20)
+        eta.cl ~ 0.01
+        add.sd <- 0.05
+      })
+      model({
+        cl <- mix(exp(tcl + eta.cl), p1, exp(tcl + 2 + eta.cl))
+        v <- exp(tv)
+        linCmt() ~ add(add.sd)
+      })
+    }
     .e <- new.env(parent = emptyenv())
-    .e$ui <- list(mixProbs = "p1")
+    .e$ui <- rxode2::rxUiDecompress(rxode2::assertRxUi(.m))
     .nm <- c("tcl", "tv")
     .e$cov <- matrix(c(4, 1, 1, 9), 2, 2, dimnames = list(.nm, .nm))
     .e$mixProbabilities <- c(pi1, 1 - pi1)
