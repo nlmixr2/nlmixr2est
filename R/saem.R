@@ -496,6 +496,13 @@
       .theta[paste(.tmp$name[.w])] <- .saem$arCor[i]
     }
   }
+  if (length(.ui$mixProbs) > 0) {
+    # saem estimates the proportions on the natural [0, 1] scale (the kernel's
+    # simplex SA/M-step), unlike focei's mlogit thetas; flag it so the shared
+    # pre-final-table hook does not mlogit back-transform an already-natural
+    # value (#1058).
+    env$mixProbNatural <- TRUE
+  }
   if (length(.ui$mixProbs) > 0 && !is.null(.saem$mixProb)) {
     .estMix <- .saem$mixProb[seq_along(.ui$mixProbs)]
     .estMixClamped <- pmax(1e-6, pmin(1 - 1e-6, .estMix))
@@ -1507,13 +1514,6 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
     # table is built, attempt the FOCEI analytic covariance at the converged
     # estimates (keeps linFim on any failure).
     .saemInstallAnalyticCov(.ret)
-    # For mixture models: post-correct me/mn/mu in the assembled fit table
-    # (mirrors the .mixFixTable call in .foceiFamilyReturn for FOCEi fits)
-    if (inherits(.ret, "nlmixr2FitData") && length(.ui$mixProbs) > 0L) {
-      .retEnv <- attr(class(.ret), ".foceiEnv")
-      if (is.null(.retEnv)) .retEnv <- .ret$env
-      .ret <- .mixFixTable(.ret, .retEnv, .ui)
-    }
     .setSaemExtra(.ret, "FOCEi")
     .ret
   })

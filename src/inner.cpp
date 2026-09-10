@@ -9719,13 +9719,58 @@ Environment foceiOuter(Environment e){
     // This branch sets scaleObjective = 0 and does no parameter scaling, so
     // dUnscaleParDx is the identity and the stashed gradient is on the NATURAL scale --
     // the same scale .foceiGradDirect() reports.
+    //
+    // The evaluation is DIAGNOSTIC, so it must not move the fit's own state.
+    // analyticOuterGrad() opens with foceiOfv0(), i.e. one more inner optimization pass
+    // per subject, and foceiOuterFinal() then starts from wherever that left each eta.
+    // With the default warm start (mceta<0 keeps the last eta) the inner solve converges
+    // only to its own tolerance, so that extra pass shifted the reported ETAs -- and with
+    // them the objective, the tables and the analytic covariance -- by ~1e-4 at sigdig=4
+    // relative to the same fit with fast=FALSE (#1057).  The guards below put the
+    // per-subject inner state and the fit-wide eta statistics back, so `fast=` selects the
+    // gradient and nothing else.  The SOLVE is deliberately left alone: the augmented
+    // model must stay in the pool for foceiOuterFinal to re-solve over.
     if (op_focei.fast) {
       op_foceiFitEnv = e;
       op_foceiFitEnvSet = true;
       op_foceiUseAnalyticGrad = true;
       loadGradPooledSetup(e);
       std::vector<double> _g((size_t)op_focei.npars, 0.0);
-      analyticOuterGrad(x.begin(), _g.data());   // stashes firstDirectGrad on success
+      rx = getRxSolve_();
+      // nIndsFocei, not getRxNsub(): a mixture fit carries one focei_ind per
+      // subject PER mixture component, and foceiOfv0() moves all of them.
+      const int _nsGuarded = (rx == NULL || inds_focei == NULL || getRxNsub(rx) <= 0) ?
+        0 : nIndsFocei;
+      {
+        FdPhaseStateGuard _phaseGuard;
+        std::vector< std::unique_ptr<FdInnerStateGuard> > _inGuards;
+        _inGuards.reserve((size_t)_nsGuarded);
+        for (int _i = 0; _i < _nsGuarded; ++_i) {
+          _inGuards.push_back(std::unique_ptr<FdInnerStateGuard>(new FdInnerStateGuard(_i)));
+        }
+        rx_solve *_rxSave = rx;
+        analyticOuterGrad(x.begin(), _g.data());   // stashes firstDirectGrad on success
+        // analyticOuterGradDirect() assigns the GLOBAL rx, and declines (declineHere(102))
+        // if getRxSolve_() hands back nothing -- which would leave every later
+        // getRxId(cid) (cid % getRxNsub(rx)) dereferencing NULL, ~FdInnerStateGuard's
+        // included.  rxode2's getRxSolve_() actually returns &rx_global, a file-scope
+        // static it never frees, so this cannot fire today and _rxSave cannot dangle;
+        // it is here so the guards keep a usable pointer if that ever changes, matching
+        // the NULL check analyticOuterGradDirect already makes.
+        if (rx == NULL) rx = _rxSave;
+      }
+      // The guards put fInd->setup and oldEta back, which is exactly the state in which
+      // likInner0() answers from the CACHE instead of solving -- and ind->solve still holds
+      // the AUGMENTED model's solution, because restoring the inner state deliberately does
+      // not restore the solve.  Force the re-solve so foceiOuterFinal() cannot read it;
+      // fdPinRefEtaForce() pairs setIndSolve(-1) with an invalidated cache for the same
+      // reason on the differencing legs.  The eta is unchanged, so this costs one solve
+      // per subject and changes no result.
+      for (int _i = 0; _i < _nsGuarded; ++_i) {
+        inds_focei[_i].setup = 0;
+        rx_solving_options_ind *_ind = getSolvingOptionsInd(rx, getRxId(_i));
+        if (_ind != NULL) setIndSolve(_ind, -1);
+      }
       op_foceiUseAnalyticGrad = false;
       op_focei.calcGrad = 0;
     }

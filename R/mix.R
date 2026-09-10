@@ -64,6 +64,33 @@
   return(NULL)
 }
 
+#' Extract ETA names referenced outside any mix() component expression
+#'
+#' The component expressions of a `mix()` call are skipped (they are scanned
+#' per-component elsewhere); everything else, including a `mix()` call's
+#' probability arguments, counts as outside.  An ETA found here applies to every
+#' mixture component, so it is shared no matter which component also uses it.
+#'
+#' @param expr A parsed expression (or sub-expression) from `ui$lstExpr`
+#' @param etas Character vector of all known ETA names to match against
+#' @return Character vector of ETA names found outside a component (deduplicated)
+#' @noRd
+#' @author Matthew L. Fidler
+.extractEtasOutsideMix <- function(expr, etas) {
+  if (is.name(expr)) {
+    .n <- as.character(expr)
+    if (.n %in% etas) return(.n)
+  } else if (is.call(expr)) {
+    if (identical(expr[[1]], quote(mix))) {
+      .args <- as.list(expr)[-1]
+      .probs <- .args[seq_along(.args) %% 2L == 0L]
+      return(unique(unlist(lapply(.probs, .extractEtasOutsideMix, etas = etas))))
+    }
+    return(unique(unlist(lapply(as.list(expr)[-1], .extractEtasOutsideMix, etas = etas))))
+  }
+  NULL
+}
+
 #' Process mixture model information after a focei fit
 #'
 #' After the C++ focei fit, strips the MIXEST column from ranef, computes
@@ -178,8 +205,8 @@
 #'
 #' SAEM analogue of `.mixFix()`: builds `mixList` (per-mixture ID/ETA/
 #' probability), `mixNum` (best mixture assignment), `mixIcov` (for rxode2's
-#' mixture fixing during solve/table calc), and `mixProbabilities` (full
-#' nMix-length vector for `.mixFixTable()`), all from the `mixWeights` matrix
+#' mixture fixing during solve/table calc), and `mixProbabilities` (the full
+#' nMix-length vector), all from the `mixWeights` matrix
 #' already computed by the SAEM C++ engine (`env$saem$mixWeights`) -- unlike
 #' `.mixFix()`, no `etaObfFull` is needed.
 #'
@@ -217,7 +244,9 @@
   .bestMix <- apply(.mixWeights, 1L, which.max)
 
   # Final mixture probabilities (full simplex, nMix elements)
-  .mixProb <- .saem$mixProb
+  # .saem$mixProb comes back from armadillo as an n x 1 matrix; keep
+  # env$mixProbabilities a plain vector, as the focei side already is.
+  .mixProb <- as.vector(.saem$mixProb)
   if (length(.mixProb) == .nMix - 1L) {
     .mixProbabilities <- c(.mixProb, 1.0 - sum(.mixProb))
   } else if (length(.mixProb) == .nMix) {
@@ -409,6 +438,10 @@
   .mixIdx <- try(get("mixIdx", envir=env), silent=TRUE)
   if (inherits(.mixIdx, "try-error")) return(invisible(NULL))
   if (length(.mixIdx) == 0L) return(invisible(NULL))
+  # saem reports the proportions already on the natural scale (env$mixProbNatural,
+  # set by .getSaemTheta()); mexpit()-ing them again silently reports
+  # expit(p) instead of p and breaks the p == mean_i r_i identity (#1058).
+  if (isTRUE(env$mixProbNatural)) return(invisible(NULL))
 
   .thetaDf <- env$theta
   if (is.null(.thetaDf) || !is.data.frame(.thetaDf)) return(invisible(NULL))
@@ -433,39 +466,6 @@
 }
 preFinalParTableHooksAdd(".aaaPostEstimationMixBacktransform", .aaaPostEstimationMixBacktransform)
 
-#' Fix mixture LHS variables in the assembled fit table
-#'
-#' Safety fallback: replaces me/mn/mu with values from mixNum (me/mn) and
-#' 1/nMix (mu), since older rxode2 versions silently reject iCov's mixest
-#' and leave these columns as 0.
-#'
-#' @param fit nlmixr2FitData object (after addTable)
-#' @param env fit environment
-#' @param ui rxode2 UI object
-#' @return modified fit (or fit unchanged for non-mixture models)
-#' @noRd
-#' @author Matthew L. Fidler
-.mixFixTable <- function(fit, env, ui) {
-  if (!inherits(fit, "nlmixr2FitData")) return(fit)
-  if (!exists("mixNum", envir=env)) return(fit)
-  .mn <- get("mixNum", envir=env)
-  if (is.null(.mn) || nrow(.mn) == 0L) return(fit)
-  .nMix <- length(ui$mixProbs) + 1L  # nMix = n_explicit_probs + 1
-  # me and mn: best-fit mixture per individual (1-indexed)
-  if ("me" %in% names(fit)) {
-    .meMap <- setNames(as.integer(.mn$mixnum), as.integer(.mn$ID))
-    fit[["me"]] <- .meMap[as.integer(fit[["ID"]])]
-  }
-  if ("mn" %in% names(fit)) {
-    .meMap <- setNames(as.integer(.mn$mixnum), as.integer(.mn$ID))
-    fit[["mn"]] <- .meMap[as.integer(fit[["ID"]])]
-  }
-  # mu: uniform mixture probability = 1/nMix (constant)
-  if ("mu" %in% names(fit) && .nMix > 0L) {
-    fit[["mu"]] <- 1.0 / .nMix
-  }
-  fit
-}
 
 #' @export
 rxUiGet.thetaIniMix <- function(x, ...) {

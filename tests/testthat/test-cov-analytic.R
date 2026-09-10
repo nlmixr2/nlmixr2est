@@ -1306,12 +1306,20 @@ nmTest({
     # pool is only available with fast=TRUE, `fast=` moved the standard errors.  Both
     # routes now solve at solveTol.
     #
-    # On THIS model at sigdig = 4 the defect is 1.16e-5 relative and what is left after
-    # the fix is 5.6e-8 (two different code paths integrating the same quantity at the
-    # same tolerance), so 1e-6 below has ~18x margin under it and ~12x over it.  Do not
-    # loosen it without re-measuring: the gap TRACKS the fit tolerance, and at sigdig = 3
-    # the defect is only 1.9e-4, so a tolerance chosen off the 1.7e-2 seen on a 5-ETA
-    # 2-compartment model would pass with the bug still in.
+    # On THIS model at sigdig = 4 that defect is 1.16e-5 relative; at sigdig = 3 it is only
+    # 1.9e-4, so a tolerance chosen off the 1.7e-2 seen on a 5-ETA 2-compartment model
+    # would pass with the bug still in.  Do not loosen 1e-8 below without re-measuring.
+    #
+    # #1057: a SECOND way `fast=` moved the SEs, unrelated to the tolerance.  With
+    # maxOuterIterations = 0, fast=TRUE evaluates the analytic gradient once (so
+    # .foceiGradDirect() has something to report), and that evaluation ran one more inner
+    # optimization pass per subject before foceiOuterFinal re-solved the inner problem.
+    # Under the default warm start (mceta < 0 keeps the last eta) the inner solve converges
+    # only to its own tolerance, so the extra pass left different ETAs and the SEs followed:
+    # 1.8e-4 relative on om.eta.ka.  With the diagnostic evaluation guarded, the two routes
+    # agree to 2.7e-12 -- so 1e-8 sits ~3700x above what is left and ~100x below what a
+    # tolerance regression costs (measured: solving the augmented model at the fit's 1e-4
+    # instead of its own moves the SEs 1.4e-6).
     .m <- function() {
       ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- 0.7
             eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1 })
@@ -1332,7 +1340,8 @@ nmTest({
       expect_equal(.f$covMethod, "analytic")   # a fallback would compare the wrong thing
       .i <- .odeSwapInfo()
       list(se = sqrt(diag(.f$cov)), pooled = .i$pooledSolveN - .n0,
-           bailed = .foceiOuterFlagged$n - .b0, cores = .i$pooledSolveCores)
+           bailed = .foceiOuterFlagged$n - .b0, cores = .i$pooledSolveCores,
+           eta = as.matrix(.f$eta[, -1, drop = FALSE]), objf = .f$objf)
     }
     .rT <- .se(TRUE); .rF <- .se(FALSE)
     # Without this the comparison is vacuous: if fast=TRUE stopped reaching the pool the
@@ -1348,8 +1357,13 @@ nmTest({
     # threads -> min2(cores, getOpCores(op)) -> doParallel.  Measured 11 with the fix and
     # 1 without, on a host reporting 11 threads.
     if (rxode2::getRxThreads() > 1L) expect_gt(.rT$cores, 1L)
+    # The SEs are a function of the EBEs, so compare the INPUT before the output: this is
+    # what #1057 actually broke, and it fails first and says so, instead of leaving a
+    # tolerance on the SEs to be blamed.  0.0003 apart with the bug in.
+    expect_equal(unname(.rT$eta), unname(.rF$eta), tolerance = 1e-8)
+    expect_equal(.rT$objf, .rF$objf, tolerance = 1e-8)
     .n <- intersect(names(.rT$se), names(.rF$se))
     expect_gt(length(.n), 0L)
-    expect_equal(unname(.rT$se[.n]), unname(.rF$se[.n]), tolerance = 1e-6)
+    expect_equal(unname(.rT$se[.n]), unname(.rF$se[.n]), tolerance = 1e-8)
   })
 })

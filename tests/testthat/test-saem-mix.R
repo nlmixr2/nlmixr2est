@@ -693,6 +693,76 @@ nmTest({
     agree <- mean(fit$mixNum$mixnum[order(fit$mixNum$ID)] == sub_pop)
     expect_true(agree > 0.6 || (1 - agree) > 0.6) # allow for label swap
   })
+
+  test_that("a mixture fit's table reports the component it actually solved", {
+    # Before the fix the prediction model had lost its mix() call to symengine,
+    # so rxode2 no longer read it as a mixture: the per-subject mixest was
+    # discarded and mixest/mixnum/the mix() result all solved as 0, silently
+    # (#1041).  Assert the table agrees with the mixture the fit assigned.
+    rxode2::rxWithSeed(4242, {
+      n_subj <- 20
+      sub_pop <- rbinom(n_subj, 1, 0.6) + 1
+      cl_sim <- ifelse(sub_pop == 1, 1.2, 6.0)
+      sim_data <- do.call(rbind, lapply(seq_len(n_subj), function(i) {
+        times <- c(0.5, 1, 2, 4, 8, 12, 24)
+        ka_val <- 1.5; v_val <- 24.0; k_val <- cl_sim[i] / v_val
+        cp <- 100 * ka_val / (v_val * (ka_val - k_val)) *
+          (exp(-k_val * times) - exp(-ka_val * times)) +
+          rnorm(length(times), 0, 0.05)
+        cp[cp < 0] <- 0
+        data.frame(ID = i, TIME = c(0, times), AMT = c(100, rep(0, length(times))),
+                   EVID = c(1, rep(0, length(times))), DV = c(0, cp),
+                   CMT = c(1, rep(2, length(times))))
+      }))
+    })
+
+    mixTab <- function() {
+      ini({
+        # p1 sits BEFORE a mu-referenced theta on purpose: the mixture
+        # probability is dropped from the SAEM estimation parameter vector, so
+        # an eta paired by position rather than by name lands on the wrong
+        # parameter from here on (eta.v onto p1, tv left with no eta)
+        tka <- log(1.5); tcl1 <- log(1.0); tcl2 <- log(5.0)
+        p1 <- 0.5
+        tv <- log(20)
+        eta.cl ~ 0.01; eta.v ~ 0.01
+        add.sd <- 0.05
+      })
+      model({
+        ka <- exp(tka)
+        clLow <- exp(tcl1 + eta.cl)
+        clHigh <- exp(tcl2 + eta.cl)
+        cl <- mix(clLow, p1, clHigh)
+        v <- exp(tv + eta.v)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd)
+        selected <- mixest
+        nComp <- mixnum
+      })
+    }
+
+    fit <- .nlmixr(mixTab(), sim_data, est = "saem",
+                   saemControl(print = 0, seed = 1234, nBurn = 5, nEm = 5,
+                               covMethod = 0L))
+    skip_if_not(inherits(fit, "nlmixr2FitData"))
+    d <- as.data.frame(fit)
+
+    # mixnum is the COUNT: constant, and equal to the number of components
+    expect_equal(sort(unique(d$nComp)), 2)
+    # mixest is the per-subject component, and it is the one the fit assigned
+    expect_setequal(unique(d$selected), c(1, 2))
+    .want <- setNames(as.integer(fit$mixNum$mixnum),
+                      as.character(fit$mixNum$ID))
+    expect_equal(as.integer(d$selected), unname(.want[as.character(d$ID)]))
+    # the mix() result is the selected component, not 0
+    expect_equal(d$cl[d$selected == 1], d$clLow[d$selected == 1])
+    expect_equal(d$cl[d$selected == 2], d$clHigh[d$selected == 2])
+    expect_true(all(d$cl > 0))
+    # and the etas still reach the parameters they are mu-referenced to, so
+    # IPRED carries the individual volume rather than collapsing onto PRED
+    expect_true(length(unique(d$v)) > 1L)
+    expect_false(isTRUE(all.equal(d$IPRED, d$PRED)))
+  })
 })
-
-
