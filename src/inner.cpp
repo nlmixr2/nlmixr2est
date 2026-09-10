@@ -9750,12 +9750,13 @@ Environment foceiOuter(Environment e){
         }
         rx_solve *_rxSave = rx;
         analyticOuterGrad(x.begin(), _g.data());   // stashes firstDirectGrad on success
-        // analyticOuterGradDirect() assigns the GLOBAL rx and leaves it NULL when
-        // getRxSolve_() hands back nothing (declineHere(102)).  ~FdInnerStateGuard runs
-        // next and resolves its subject through getRxId(), i.e. cid % getRxNsub(rx) --
-        // a NULL dereference before any of its own NULL checks.  Put the live pointer
-        // back; prefer whatever the gradient left when it is usable, since it re-reads
-        // the same solve the pool was built on.
+        // analyticOuterGradDirect() assigns the GLOBAL rx, and declines (declineHere(102))
+        // if getRxSolve_() hands back nothing -- which would leave every later
+        // getRxId(cid) (cid % getRxNsub(rx)) dereferencing NULL, ~FdInnerStateGuard's
+        // included.  rxode2's getRxSolve_() actually returns &rx_global, a file-scope
+        // static it never frees, so this cannot fire today and _rxSave cannot dangle;
+        // it is here so the guards keep a usable pointer if that ever changes, matching
+        // the NULL check analyticOuterGradDirect already makes.
         if (rx == NULL) rx = _rxSave;
       }
       // The guards put fInd->setup and oldEta back, which is exactly the state in which
