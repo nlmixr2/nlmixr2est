@@ -278,9 +278,15 @@ rxUiGet.saemOmegaShareSubpop <- function(x, ...) {
   for (.mc in .mixCalls) {
     .args <- as.list(.mc)[-1]
     .comps <- .args[seq(1, length(.args), by = 2)]
+    .byComp <- lapply(.comps, .extractEtas, etas = .allEtas)
     for (.j in seq_along(.comps)) {
-      .grpEtas <- .extractEtas(.comps[[.j]], etas = .allEtas)
-      for (.eta in .grpEtas) {
+      for (.eta in .byComp[[.j]]) {
+        # An eta referenced by more than one component of the same mix() is
+        # shared, not owned by a component.  Leaving it marked as component .j
+        # (whichever mentions it last) sends a shared-eta mixture down the
+        # split-ETA code paths, which weight that eta's theta/omega update by a
+        # single component's responsibilities.
+        if (sum(vapply(.byComp, function(.e) .eta %in% .e, logical(1))) > 1L) next
         .w <- which(.eta == .etaNames)
         if (length(.w) == 1L) {
           .ret[.w] <- .j

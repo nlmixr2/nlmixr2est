@@ -217,7 +217,9 @@
   .bestMix <- apply(.mixWeights, 1L, which.max)
 
   # Final mixture probabilities (full simplex, nMix elements)
-  .mixProb <- .saem$mixProb
+  # .saem$mixProb comes back from armadillo as an n x 1 matrix; keep
+  # env$mixProbabilities a plain vector, as the focei side already is.
+  .mixProb <- as.vector(.saem$mixProb)
   if (length(.mixProb) == .nMix - 1L) {
     .mixProbabilities <- c(.mixProb, 1.0 - sum(.mixProb))
   } else if (length(.mixProb) == .nMix) {
@@ -409,6 +411,10 @@
   .mixIdx <- try(get("mixIdx", envir=env), silent=TRUE)
   if (inherits(.mixIdx, "try-error")) return(invisible(NULL))
   if (length(.mixIdx) == 0L) return(invisible(NULL))
+  # saem reports the proportions already on the natural scale (env$mixProbNatural,
+  # set by .getSaemTheta()); mexpit()-ing them again silently reports
+  # expit(p) instead of p and breaks the p == mean_i r_i identity (#1058).
+  if (isTRUE(env$mixProbNatural)) return(invisible(NULL))
 
   .thetaDf <- env$theta
   if (is.null(.thetaDf) || !is.data.frame(.thetaDf)) return(invisible(NULL))
