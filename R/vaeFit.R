@@ -164,7 +164,8 @@
                       parInfo = NULL) {
   ## RNG is seeded ONCE for the whole estimation in nlmixr2Est.vae (rxWithSeed),
   ## which also covers the model's own random draws and restores the caller's seed
-  zDim <- prep$zDim; hDim <- control$hiddenDim; N <- prep$N
+  zDim <- prep$zDim
+  hDim <- control$hiddenDim
   ## The encoder is conditioned on the mixture component: it characterizes every
   ## (subject, component) pair, with the component entering the FC head as a
   ## one-hot appended to the covariate block (see vaeTileEncoderInputs in
