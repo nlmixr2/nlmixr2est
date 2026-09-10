@@ -275,23 +275,27 @@ rxUiGet.saemOmegaShareSubpop <- function(x, ...) {
   .mixCalls <- do.call(c, lapply(.ui$lstExpr, .findMixCalls))
   if (length(.mixCalls) == 0L) return(.ret)
 
+  # Collect, for each eta, every component index it is referenced from, across
+  # ALL of the model's mix() calls.  An eta seen from more than one component is
+  # SHARED, not owned: marking it as a component (the assignment below used to
+  # take whichever mix() call mentioned it last) sends a shared-eta mixture down
+  # the split-ETA code paths, which weight that eta's theta/omega update by a
+  # single component's responsibilities.
+  .compsOf <- list()
   for (.mc in .mixCalls) {
     .args <- as.list(.mc)[-1]
     .comps <- .args[seq(1, length(.args), by = 2)]
-    .byComp <- lapply(.comps, .extractEtas, etas = .allEtas)
     for (.j in seq_along(.comps)) {
-      for (.eta in .byComp[[.j]]) {
-        # An eta referenced by more than one component of the same mix() is
-        # shared, not owned by a component.  Leaving it marked as component .j
-        # (whichever mentions it last) sends a shared-eta mixture down the
-        # split-ETA code paths, which weight that eta's theta/omega update by a
-        # single component's responsibilities.
-        if (sum(vapply(.byComp, function(.e) .eta %in% .e, logical(1))) > 1L) next
-        .w <- which(.eta == .etaNames)
-        if (length(.w) == 1L) {
-          .ret[.w] <- .j
-        }
+      for (.eta in .extractEtas(.comps[[.j]], etas = .allEtas)) {
+        .compsOf[[.eta]] <- unique(c(.compsOf[[.eta]], .j))
       }
+    }
+  }
+  for (.eta in names(.compsOf)) {
+    if (length(.compsOf[[.eta]]) != 1L) next
+    .w <- which(.eta == .etaNames)
+    if (length(.w) == 1L) {
+      .ret[.w] <- .compsOf[[.eta]]
     }
   }
   .ret
