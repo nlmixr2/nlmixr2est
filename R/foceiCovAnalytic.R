@@ -2472,16 +2472,18 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
 #' covariance is checked against while leaving an already-converged fit unperturbed.  A
 #' Newton that lands more than one omega SD away from the stored EBE has found a different
 #' mode rather than refined this one, so it is rejected.
+#' The prior SD `sqrt(diag(Om))` does double duty: it is the Newton's own scale-free
+#' convergence measure (see [.foceiAnalyticFoceEbeBatch]) and the mode guard here.
 #' @noRd
 .foceiAnalyticEbeRefine <- function(am, th, ebes, idCode, data, obsAll, obsT, etav, Oi, neta,
                                     Om, solveTol, rescale = FALSE, skip = 1e-6) {
   if (rescale || !isTRUE(am$hasRvar)) return(list(eta = ebes))     # does not apply
-  .e <- tryCatch(.foceiAnalyticFoceEbeBatch(am, th, ebes, idCode, data, obsAll, obsT, etav, Oi, neta,
-                                            solveTol, interaction = 1L, skip = skip),
-                 error = function(e) NULL)
-  if (is.null(.e) || !all(is.finite(.e))) return(list(decline = TRUE))
   .sd <- suppressWarnings(sqrt(diag(Om)))
   if (!all(is.finite(.sd)) || any(.sd <= 0)) return(list(decline = TRUE))
+  .e <- tryCatch(.foceiAnalyticFoceEbeBatch(am, th, ebes, idCode, data, obsAll, obsT, etav, Oi, neta,
+                                            solveTol, interaction = 1L, skip = skip, etaSd = .sd),
+                 error = function(e) NULL)
+  if (is.null(.e) || !all(is.finite(.e))) return(list(decline = TRUE))
   if (any(abs(.e - ebes) > rep(.sd, each = nrow(ebes)))) return(list(decline = TRUE))  # another mode
   list(eta = .e)
 }
@@ -2540,7 +2542,7 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
 #' @noRd
 .foceiAnalyticFoceEbeBatch <- function(am, th, ebes, ids, data, obsAll, obsTimes, etav, Oi, neta, tol,
                                        foceType = 0L, E0all = NULL, maxit = 30L, skip = 1e-3, conv = 1e-9,
-                                       interaction = 0L) {
+                                       interaction = 0L, etaSd = NULL, etaTol = 1e-6) {
   nsub <- nrow(ebes); ei <- seq_len(neta)
   .fp <- identical(as.integer(foceType), 1L) || is.null(E0all)
   .inter <- identical(as.integer(interaction), 1L)
@@ -2570,8 +2572,14 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
       # branch when the solve carried no rx_r_ variance columns to build rho_R from.
       if (is.null(sh) || !all(is.finite(sh$S))) return(NULL)
       if (max(abs(sh$S)) < (if (it == 1L) skip else conv)) { active[i] <- FALSE; next }
-      if (it == maxit + 1L) return(NULL)                 # did not converge -> FD fallback
       step <- tryCatch(solve(sh$Hf, sh$S), error = function(e) NULL); if (is.null(step)) return(NULL)
+      # |S| is NOT scale-free -- every score term carries a 1/R, so a model with a small
+      # residual variance floors at a larger |S| than `conv` for the same converged eta (a
+      # DDE fit with add.sd = 0.05 stalls at 5e-9).  Judging that as "did not converge"
+      # threw away a solved subject.  Stop on the NEWTON STEP measured against the prior SD,
+      # which is scale-free, and keep `conv` only as the cheap first test.
+      if (!is.null(etaSd) && all(abs(step) <= etaTol * etaSd)) { active[i] <- FALSE; next }
+      if (it == maxit + 1L) return(NULL)                 # did not converge -> FD fallback
       eta[i, ] <- eta[i, ] - step
     }
     if (!any(active)) break
