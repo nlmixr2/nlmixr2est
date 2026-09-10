@@ -81,6 +81,23 @@ static inline int rxEtaDistPosMask(int fam) {
 }
 
 // quantile: latent uniform -> eta.  Mirrors the catalog's own templates.
+// Support-rejection settings, set once per fit (rxEtaDistSetSupport).
+//
+// C++17 inline variables so the header's one definition is shared by imp.cpp,
+// inner.cpp and saem.cpp rather than each getting a private copy.
+//
+// `rxEtaDistSupportOn` carries the endpoint condition: reject only when the
+// observations are all strictly positive.  Data containing zeros or negatives
+// is not asserting a positive-support model, and dropping draws on its behalf
+// would silently thin the eta sample for a model the user did not ask for.
+inline double rxEtaDistSupportEps = 0.0;
+inline bool rxEtaDistSupportOn = true;
+
+static inline void rxEtaDistSetSupport(double eps, bool on) {
+  rxEtaDistSupportEps = eps;
+  rxEtaDistSupportOn = on;
+}
+
 static inline double rxEtaDistQ_(int fam, double u, const double *a);
 
 // Is this family's support strictly positive?  Used ONLY to reject a quantile
@@ -124,7 +141,13 @@ static inline double rxEtaDistQ(int fam, double u, const double *a) {
   // "Random variable is 0, but must be positive finite".  Returning NA here
   // makes the existing finiteness filters drop it, in every caller at once,
   // without teaching any of them about supports.
-  if (rxEtaDistPosSupport(fam) && rxEtaDistQ_ret <= 0.0) return NA_REAL;
+  //
+  // Gated on the ENDPOINT condition and a tunable threshold: see
+  // rxEtaDistSetSupport().  A threshold above 0 also rejects a draw that is
+  // merely subnormal rather than exactly zero -- the model's own Boost decoder
+  // floors at DBL_MIN, and a value that small is not a draw either.
+  if (rxEtaDistSupportOn && rxEtaDistPosSupport(fam) &&
+      rxEtaDistQ_ret <= rxEtaDistSupportEps) return NA_REAL;
   return rxEtaDistQ_ret;
 }
 

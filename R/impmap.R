@@ -26,7 +26,7 @@
                            "zeroOmegaDirect", "zeroOmegaMaxEval", "etaDistMstep",
                            "etaDistWarmStart", "mceta",
                            "etaDistSdLo", "etaDistSdHi", "etaDistSdTol",
-                           "etaDistCorSuff",
+                           "etaDistCorSuff", "etaDistSupportEps",
                            "qr", "qrShift", "qrRefresh", "qrScramble",
                            "sir", "sirSample",
                            # internal M-step index maps added in .impmapFamilyFit;
@@ -503,6 +503,12 @@
 #'   stand-in, used only to produce starting values.  Set `FALSE` to fit from
 #'   the model's own `ini()`.
 #'
+#' @param etaDistSupportEps Reject a decoded random effect at or below this
+#'   value when the declared family has strictly positive support.  See
+#'   [foceiControl()] for why this exists (Rmath's `qgamma` returns exactly 0
+#'   where the model's own Boost decoder floors at `DBL_MIN`, and the zero
+#'   reached a density that is undefined there).  Applied only when every
+#'   observation is strictly positive.
 #' @param etaDistCorSuff Estimate the declared copula correlation from the
 #'   standardized SUFFICIENT STATISTIC of the raw latents (saem's route) instead
 #'   of a product-moment correlation of the copula-combined ones.
@@ -714,6 +720,7 @@ impmapControl <- function(sigdig=3,
                           etaDistSdHi=5.0,
                           etaDistSdTol=0.10,
                           etaDistCorSuff=FALSE,
+                          etaDistSupportEps=0,
                           mceta=-2L,
                           impSeed=42L,
                           covMethod=c("imp", "analytic", "r,s", "r", "s", "sa", ""),
@@ -883,6 +890,9 @@ impmapControl <- function(sigdig=3,
   checkmate::assertLogical(etaDistCorSuff, len=1, any.missing=FALSE,
                            .var.name="etaDistCorSuff")
   .control$etaDistCorSuff <- as.logical(etaDistCorSuff)
+  checkmate::assertNumeric(etaDistSupportEps, len=1, any.missing=FALSE,
+                           lower=0, .var.name="etaDistSupportEps")
+  .control$etaDistSupportEps <- as.double(etaDistSupportEps)
   .control$impSeed <- as.integer(impSeed)
   checkmate::assertIntegerish(mceta, lower=-2, len=1, any.missing=FALSE,
                               .var.name="mceta")

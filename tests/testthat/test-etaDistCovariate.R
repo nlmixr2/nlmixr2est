@@ -424,3 +424,22 @@ test_that("a coarser cadence fires the M-step far less often", {
   # the cadence has to actually thin it, not merely be accepted
   expect_gt(.n1, .n20)
 })
+
+test_that("the support rejection is tunable on both controls", {
+  # Threshold: 0 rejects only an exact zero; raising it also rejects a merely
+  # SUBNORMAL draw, which is not a draw either.
+  expect_equal(nlmixr2est::foceiControl()$etaDistSupportEps, 0)
+  expect_equal(nlmixr2est::impmapControl()$etaDistSupportEps, 0)
+  expect_equal(nlmixr2est::impmapControl(etaDistSupportEps = 1e-300)$etaDistSupportEps,
+               1e-300)
+  expect_equal(nlmixr2est::foceiControl(etaDistSupportEps = 1e-300)$etaDistSupportEps,
+               1e-300)
+  # a negative threshold would reject nothing AND admit negative etas into a
+  # positive-support family, so refuse it rather than silently disabling
+  expect_error(nlmixr2est::impmapControl(etaDistSupportEps = -1))
+  # and it round-trips through do.call(), which is how the control is rebuilt
+  .c <- nlmixr2est::impmapControl(etaDistSupportEps = 1e-300)
+  expect_equal(do.call(nlmixr2est::impmapControl,
+                       .c[names(.c) %in% names(formals(nlmixr2est::impmapControl))]
+                       )$etaDistSupportEps, 1e-300)
+})

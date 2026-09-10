@@ -592,16 +592,46 @@ static double impEtaDistSdLo = 0.2, impEtaDistSdHi = 5.0, impEtaDistSdTol = 0.10
 // iteration where anything moved.  Both file-static, so both are reset per fit.
 static bool impEtaDistCorSuff = false;
 long impEtaDistCorN = 0;
+// Settled once per fit at the first M-step; see impEtaDistAllObsPositive().
+static bool _impEtaDistObsChecked = false;
 void impEtaDistSpreadReset(double lo, double hi, double tol, bool corSuff) {
+  _impEtaDistObsChecked = false;
   impEtaDistSdPrev.clear(); impEtaDistSdCur.clear();
   impEtaDistSdLo = lo; impEtaDistSdHi = hi; impEtaDistSdTol = tol;
   impEtaDistCorSuff = corSuff; impEtaDistCorN = 0;
+}
+
+// Endpoint condition for the support rejection, settled once per fit at the
+// first M-step.  Duplicated from inner.cpp rather than shared through
+// etaDistFam.h because that header is pure arithmetic and has no rx accessors;
+// scanning it at setup time instead SEGFAULTED -- the per-subject data is not
+// safe to walk that early.
+static bool impEtaDistAllObsPositive() {
+  rx_solve *rxs = getRxSolve_();
+  if (rxs == NULL) return true;
+  int ns = getRxNsub(rxs);
+  for (int id = 0; id < ns; ++id) {
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rxs, id);
+    if (ind == NULL) continue;
+    for (int jj = 0; jj < getIndNallTimes(ind); ++jj) {
+      setIndIdx(ind, jj);
+      int kk = getIndIx(ind, jj);
+      if (getIndEvid(ind, kk) != 0) continue;
+      double dv = getIndDv(ind, kk);
+      if (!ISNA(dv) && dv <= 0.0) return false;
+    }
+  }
+  return true;
 }
 
 static bool impEtaDistMstep(const std::vector<arma::mat>& sampS,
                             const std::vector<arma::vec>& sampZk,
                             int nsub, int neta) {
   if (!impEtaDistOn()) return false;
+  if (!_impEtaDistObsChecked) {
+    _impEtaDistObsChecked = true;
+    rxEtaDistSetSupport(rxEtaDistSupportEps, impEtaDistAllObsPositive());
+  }
   // Per ATTEMPT: a value left standing for a declaration this attempt does not
   // visit would be copied into the baseline below as a fresh measurement.
   impEtaDistSdCur.assign(impEtaDistSdCur.size(), NA_REAL);

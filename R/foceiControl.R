@@ -431,6 +431,27 @@
 #'   stand-in, used only to produce starting values.  Set `FALSE` to fit from
 #'   the model's own `ini()`.
 #'
+#' @param etaDistSupportEps Reject a decoded random effect at or below this
+#'   value when the declared family has strictly positive support (gamma,
+#'   Weibull, ...).  The draw is dropped from the eta sample rather than handed
+#'   to a density that is undefined there.
+#'
+#'   This exists because the two inverse routes disagree at the extreme: Rmath's
+#'   `qgamma`, which decodes the eta sample, returns EXACTLY 0 below about
+#'   `u = 1e-6` once the shape is small, while the Boost `gammapInv` the model's
+#'   own decoder uses floors at `DBL_MIN` and stays positive.  Measured at a
+#'   state the M-step drifts to on Bauer's heaviest-tailed arm (shape 0.0170,
+#'   rate 32437) the first gives 0 and the second 6.86e-313; the zero reached
+#'   `gamma_lpdf`, which requires a strictly positive variate, and the fit died.
+#'
+#'   Raising it above `0` also rejects a merely SUBNORMAL draw, which is not a
+#'   draw either.  It is applied ONLY when every observation is strictly
+#'   positive: data containing zeros or negatives is not asserting a
+#'   positive-support model, and thinning the eta sample on its behalf would be
+#'   acting for a model the user did not write.  (The check spans all endpoints,
+#'   because the quantile it guards has no endpoint context; for the
+#'   single-endpoint models a declared distribution is written on today, the two
+#'   are the same.)
 #' @param etaDistEvery Run the declared-distribution M-step every `etaDistEvery`
 #'   OUTER objective evaluations, and at most once per evaluation.  Mirrors
 #'   `saemControl(etaDistEvery=)`, and defaults to the same 20.
@@ -1338,6 +1359,7 @@ foceiControl <- function(sigdig = 3, #
                          etaDistSdLo = 0.2, #
                          etaDistSdHi = 5.0, #
                          etaDistSdTol = 0.10, #
+                         etaDistSupportEps = 0, #
                          etaDistEvery = 20L, #
                          etaDistCorSuff = TRUE, #
                          repeatGillMax = 1, #
@@ -2116,6 +2138,7 @@ foceiControl <- function(sigdig = 3, #
     etaDistSdLo = as.numeric(etaDistSdLo),
     etaDistSdHi = as.numeric(etaDistSdHi),
     etaDistSdTol = as.numeric(etaDistSdTol),
+    etaDistSupportEps = as.double(etaDistSupportEps),
     etaDistEvery = as.integer(etaDistEvery),
     etaDistCorSuff = as.logical(etaDistCorSuff),
     repeatGillMax = as.integer(repeatGillMax),

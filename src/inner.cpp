@@ -5520,6 +5520,28 @@ static bool foceiEtaDistMstep();
 // theta.  Both reset per fit in foceiSetup.
 static long _foceiEtaDistOuterN = 0;
 static bool _foceiEtaDistRanThisOfv = false;
+// Endpoint condition for the support rejection, settled once per fit at the
+// first M-step (see rxEtaDistSetSupport).
+static bool _foceiEtaDistObsChecked = false;
+// Walk the observations and report whether they are ALL strictly positive.
+// Called only from a point where the solve structure is populated.
+static bool rxEtaDistAllObsPositive() {
+  rx_solve *rxs = getRxSolve_();
+  if (rxs == NULL) return true;
+  int ns = getRxNsub(rxs);
+  for (int id = 0; id < ns; ++id) {
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rxs, id);
+    if (ind == NULL) continue;
+    for (int jj = 0; jj < getIndNallTimes(ind); ++jj) {
+      setIndIdx(ind, jj);
+      int kk = getIndIx(ind, jj);
+      if (getIndEvid(ind, kk) != 0) continue;
+      double dv = getIndDv(ind, kk);
+      if (!ISNA(dv) && dv <= 0.0) return false;
+    }
+  }
+  return true;
+}
 extern long _foceiEtaDistN;
 extern long _foceiEtaDistCorN;
 
@@ -8527,6 +8549,20 @@ NumericVector foceiSetup_(const RObject &obj,
       if (foceiO.containsElementNamed("etaDistCorSuff"))
         corSuff = as<bool>(foceiO["etaDistCorSuff"]);
       impEtaDistSpreadReset(sdLo, sdHi, sdTol, corSuff);
+      // Support rejection: only when the observations are all strictly
+      // positive.  Scanned HERE because rxEtaDistQ() is pure arithmetic in a
+      // header and has no data; scanned across every endpoint because it has no
+      // endpoint context either.  For a single-endpoint model -- which is what
+      // a declared distribution is written on today -- the two coincide.
+      double supEps = 0.0;
+      if (foceiO.containsElementNamed("etaDistSupportEps"))
+        supEps = as<double>(foceiO["etaDistSupportEps"]);
+      // The endpoint condition itself is evaluated LAZILY, at the first M-step,
+      // where the solve structure is known populated.  Scanning it here
+      // segfaulted: at foceiSetup time the per-subject data is not yet safe to
+      // walk.  Assume the guard is on until then; the first M-step settles it.
+      rxEtaDistSetSupport(supEps, true);
+      _foceiEtaDistObsChecked = false;
     }
     // imp reaches its M-step through impEtaDistMstep(), not the FOCEi outer
     // loop, so the FOCEi hold-out stays off here: imp's thetas are already out
@@ -13480,6 +13516,10 @@ static bool foceiEtaDistMstep() {
   // the phase this step belongs to.
   if (!op_focei.etaDistRun) return false;
   if (op_focei.neta <= 0) return false;
+  if (!_foceiEtaDistObsChecked) {
+    _foceiEtaDistObsChecked = true;
+    rxEtaDistSetSupport(rxEtaDistSupportEps, rxEtaDistAllObsPositive());
+  }
   // Per ATTEMPT, not per fit: an entry left standing from the previous attempt
   // for a declaration neither loop visits would be copied into the baseline
   // below as though it had just been measured.
