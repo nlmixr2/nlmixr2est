@@ -151,3 +151,62 @@ test_that("a theta is not shadowed by a covariate of the same name", {
   .b <- nlmixr2est:::.etaDistMoments(.plain, .tv, covRef = list(lclm = 99))
   expect_equal(.a[["mean"]], .b[["mean"]], tolerance = 1e-12)
 })
+
+# --------------------------------------------------------- end to end (T3) --
+# The metadata tests above work on a hand-built ui.  This one goes through the
+# real path -- nlmixr2() then rxEtaDistExpand() -- and checks the thing that
+# actually makes a covariate on a declaration work at all: the expansion puts
+# the covariate INTO the decoder line, so the ordinary per-record solve
+# evaluates it and no M-step machinery is needed for it.
+
+.edcCovModel <- function() {
+  function() {
+    ini({ lclm <- 1.5; lv1m <- 1.5; lclrv <- -1.2; lv1rv <- -1.2; bWT <- 0.5
+          prop.sd <- 0.1
+          eta.cl + eta.v ~ c(1, 0.3, 1) })
+    model({
+      dist(eta.cl) ~ dgamma(shape = 1/exp(lclrv),
+                            rate = 1/(exp(lclrv)*exp(lclm + bWT*log(WT/70))))
+      dist(eta.v)  ~ dgamma(shape = 1/exp(lv1rv), rate = 1/(exp(lv1rv)*exp(lv1m)))
+      cl <- eta.cl; v <- eta.v
+      d/dt(central) <- -(cl/v)*central
+      cp <- central/v
+      cp ~ prop(prop.sd)
+    })
+  }
+}
+
+test_that("the covariate lands in the decoder line, per record", {
+  skip_on_cran()
+  .ui <- rxode2::rxUiDecompress(nlmixr2est::nlmixr2(.edcCovModel()))
+  expect_true("WT" %in% .ui$allCovs)
+  .e <- rxode2::rxUiDecompress(rxode2::rxEtaDistExpand(.ui))
+  .ln <- vapply(.e$lstExpr, function(.z) paste(deparse(.z), collapse = " "),
+                character(1))
+  .dec <- .ln[grepl("^eta.cl <-", .ln)]
+  expect_length(.dec, 1L)
+  # this is what makes a covariate on a declaration need NO M-step machinery:
+  # the solve evaluates the argument per record, covariate and all
+  expect_true(grepl("WT", .dec, fixed = TRUE))
+  expect_true(grepl("gammapInv", .dec, fixed = TRUE))
+  # and the declaration WITHOUT the covariate does not acquire one
+  expect_false(grepl("WT", .ln[grepl("^eta.v <-", .ln)], fixed = TRUE))
+})
+
+test_that("through the real path, only the plain declaration is held out", {
+  skip_on_cran()
+  .ui <- rxode2::rxUiDecompress(nlmixr2est::nlmixr2(.edcCovModel()))
+  .st <- nlmixr2est:::.etaDistDeclStash(.ui, rxode2::rxUiEtaDists(.ui))
+  .e <- rxode2::rxUiDecompress(rxode2::rxEtaDistExpand(.ui))
+  nlmixr2est:::.etaDistDeclSet(.e, .st)
+  .c <- nlmixr2est:::.etaDistMstepCore(.e)
+  expect_false(is.null(.c))
+  expect_identical(.c$hasCov, c(TRUE, FALSE))
+  .i <- nlmixr2est:::.etaDistMstepInfoFocei(.e)
+  expect_false(is.null(.i))
+  # the covariate declaration's thetas stay estimable by the outer optimizer
+  for (.t in c("lclm", "lclrv", "bWT")) expect_false(.t %in% .i$thetaNames)
+  # the plain one's, and the copula, are owned by the M-step
+  for (.t in c("lv1m", "lv1rv")) expect_true(.t %in% .i$thetaNames)
+  expect_true(any(grepl("^rxCor[.]", .i$thetaNames)))
+})
