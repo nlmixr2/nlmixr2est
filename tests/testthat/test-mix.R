@@ -381,4 +381,75 @@ nmTest({
     expect_false(any(vapply(.mixList, function(m) any(is.nan(m$prob)), logical(1))))
   })
 
+  test_that("saemOmegaShareSubpop only marks an eta owned by ONE mixture component (#1058)", {
+    # a SHARED eta belongs to no component: marking it (the loop used to keep
+    # whichever component mentioned it last) sends the fit down the split-ETA
+    # paths, which weight that eta's theta/omega update by one component's
+    # responsibilities
+    sharedEta <- function() {
+      ini({
+        tcl1 <- log(1); tcl2 <- log(8); tv <- log(20); tka <- log(1.1)
+        p1 <- 0.5; eta.cl ~ 0.1; add.sd <- 0.1
+      })
+      model({
+        ka <- exp(tka)
+        cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl))
+        v <- exp(tv)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    expect_equal(rxode2::rxode2(sharedEta)$saemOmegaShareSubpop, 0L)
+
+    # a genuine split-ETA mixture still marks each eta with its own component
+    splitEta <- function() {
+      ini({
+        tcl1 <- log(1); tcl2 <- log(8); tv <- log(20); tka <- log(1.1)
+        p1 <- 0.5; eta.cl1 ~ 0.1; eta.cl2 ~ 0.1; add.sd <- 0.1
+      })
+      model({
+        ka <- exp(tka)
+        cl <- mix(exp(tcl1 + eta.cl1), p1, exp(tcl2 + eta.cl2))
+        v <- exp(tv)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .split <- rxode2::rxode2(splitEta)
+    expect_equal(.split$saemOmegaShareSubpop[.split$saemEtaNames == "eta.cl1"], 1L)
+    expect_equal(.split$saemOmegaShareSubpop[.split$saemEtaNames == "eta.cl2"], 2L)
+
+    # sharing is judged across ALL mix() calls: eta.cl is shared by both
+    # components of cl, so v's second component must not claim it
+    twoMix <- function() {
+      ini({
+        tcl1 <- log(1); tcl2 <- log(8); tv1 <- log(20); tv2 <- log(30)
+        tka <- log(1.1); p1 <- 0.5; eta.cl ~ 0.1; add.sd <- 0.1
+      })
+      model({
+        ka <- exp(tka)
+        cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl))
+        v <- mix(exp(tv1), p1, exp(tv2 + eta.cl))
+        linCmt() ~ add(add.sd)
+      })
+    }
+    expect_equal(rxode2::rxode2(twoMix)$saemOmegaShareSubpop, 0L)
+
+    # an eta used inside one component AND outside the mix() applies to every
+    # component, so it is shared too
+    outsideEta <- function() {
+      ini({
+        tcl1 <- log(1); tcl2 <- log(8); tv <- log(20); tka <- log(1.1)
+        p1 <- 0.5; eta.cl1 ~ 0.1; eta.cl2 ~ 0.1; add.sd <- 0.1
+      })
+      model({
+        ka <- exp(tka)
+        cl <- mix(exp(tcl1 + eta.cl1), p1, exp(tcl2 + eta.cl2))
+        v <- exp(tv + eta.cl1)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .outside <- rxode2::rxode2(outsideEta)
+    expect_equal(.outside$saemOmegaShareSubpop[.outside$saemEtaNames == "eta.cl1"], 0L)
+    expect_equal(.outside$saemOmegaShareSubpop[.outside$saemEtaNames == "eta.cl2"], 2L)
+  })
+
 })
