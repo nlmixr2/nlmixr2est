@@ -373,3 +373,54 @@ test_that("no declared theta comes back holding another parameter's start value"
   expect_false(isTRUE(all.equal(unname(.e[["lclrv"]]), 2.22)))
   expect_false(isTRUE(all.equal(unname(.e[["rxCor.eta.v.eta.cl"]]), -4.44)))
 })
+
+test_that("focei's M-step honors etaDistEvery and fires once per outer evaluation", {
+  skip_on_cran()
+  expect_equal(nlmixr2est::foceiControl()$etaDistEvery, 20L)
+  expect_equal(nlmixr2est::foceiControl(etaDistEvery = 5L)$etaDistEvery, 5L)
+  # saem's cadence and focei's should agree by default -- they are the same knob
+  expect_equal(nlmixr2est::foceiControl()$etaDistEvery,
+               nlmixr2est::saemControl()$etaDistEvery)
+})
+
+test_that("a coarser cadence fires the M-step far less often", {
+  skip_on_cran()
+  skip_on_os("windows")
+  # The step rewrites the thetas it owns, so firing it inside the objective made
+  # the objective at the same theta differ between calls and every outer
+  # optimizer stalled.  It used to run once per pass of the inner
+  # {re-optimize etas, update} loop; it now runs at most once per OUTER
+  # evaluation, thinned by etaDistEvery.  Counting the firings is the direct
+  # observable -- ~200 vs a handful on the same fit.
+  .d <- suppressWarnings(nlmixr2data::theo_sd)
+  skip_if(is.null(.d), "theo_sd unavailable")
+  .d$WT <- 60 + (.d$ID %% 5L) * 8
+  .m <- function() {
+    ini({ lclm <- 1.5; lv1m <- 1.5; lclrv <- -1.2; lv1rv <- -1.2; bWT <- 0.2
+          prop.sd <- 0.15
+          eta.cl + eta.v ~ c(1, 0.3, 1) })
+    model({
+      dist(eta.cl) ~ dgamma(shape = 1/exp(lclrv),
+                            rate = 1/(exp(lclrv)*exp(lclm + bWT*log(WT/70))))
+      dist(eta.v)  ~ dgamma(shape = 1/exp(lv1rv), rate = 1/(exp(lv1rv)*exp(lv1m)))
+      cl <- eta.cl; v <- eta.v
+      d/dt(central) <- -(cl/v)*central
+      cp <- central/v
+      cp ~ prop(prop.sd)
+    })
+  }
+  .fire <- function(.every) {
+    .f <- try(suppressWarnings(suppressMessages(nlmixr2est::nlmixr2(
+      .m, .d, est = "focei",
+      control = nlmixr2est::foceiControl(print = 0, covMethod = "",
+                                         calcTables = FALSE, etaDistMstep = TRUE,
+                                         etaDistEvery = .every)))), silent = TRUE)
+    if (inherits(.f, "try-error")) return(NA_integer_)
+    tryCatch(nlmixr2est:::foceiEtaDistN_(), error = function(e) NA_integer_)
+  }
+  .n1 <- .fire(1L)
+  .n20 <- .fire(20L)
+  skip_if(is.na(.n1) || is.na(.n20), "focei fit unavailable in this environment")
+  # the cadence has to actually thin it, not merely be accepted
+  expect_gt(.n1, .n20)
+})

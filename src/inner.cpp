@@ -1036,6 +1036,10 @@ struct focei_options {
   // (historical), 1 = saem's standardized sufficient statistic on the RAW
   // latents, ungated by the spread guard.  See foceiEtaDistMstep().
   int etaDistCorSuff = 0;
+  // Cadence, mirroring saem's etaDistEvery.  The step rewrites the thetas it
+  // owns, so running it inside the objective makes the outer surface MOVE
+  // between evaluations; see the note at the call site.
+  int etaDistEvery = 20;
   std::vector<double> etaDistSdPrev, etaDistSdCur;
 };
 
@@ -5510,6 +5514,12 @@ static void priorGradHessFor(const std::vector<int> &idx, arma::vec &grad, arma:
 // Defined after impGetHessian(), which it uses to build each subject's Laplace
 // posterior; declared here for innerOpt()'s call site below.
 static bool foceiEtaDistMstep();
+// ONE firing per OUTER objective evaluation, thinned by etaDistEvery.
+// _foceiEtaDistOuterN counts those evaluations; _foceiEtaDistRanThisOfv keeps
+// the inner {re-optimize etas, update} cycle from firing it again on the same
+// theta.  Both reset per fit in foceiSetup.
+static long _foceiEtaDistOuterN = 0;
+static bool _foceiEtaDistRanThisOfv = false;
 extern long _foceiEtaDistN;
 extern long _foceiEtaDistCorN;
 
@@ -5899,11 +5909,31 @@ void innerOpt() {
     // the derivative being computed.
     if (!op_focei.calcGrad) {
       // Declared-distribution thetas have their own optimizer and are not in
-      // the outer free-parameter vector, so they are updated here, on the same
-      // {re-optimize etas, update} cycle the mu-group regression uses.  Inside
-      // the !calcGrad guard on purpose: during a finite-difference perturbation
+      // the outer free-parameter vector, so they are updated here.  Inside the
+      // !calcGrad guard on purpose: during a finite-difference perturbation
       // these must hold still.
-      foceiEtaDistMstep();
+      //
+      // But ONCE PER OUTER EVALUATION, and thinned by etaDistEvery -- not once
+      // per pass of this {re-optimize etas, update} loop, which is what it used
+      // to be.  The step rewrites the thetas it owns, so firing it inside the
+      // objective makes the objective at the SAME theta differ between calls,
+      // and every outer optimizer then stalls.  Measured on a covariate model
+      // (truth bWT +0.75): from a poor start bobyqa returned -0.027, lbfgsb3c
+      // -0.272 and nlminb -0.545, while with the step off all of them returned
+      // +0.59 -- the gradient-based ones doing WORSE is the signature of a
+      // moving objective rather than a hard surface.  Started AT truth the step
+      // holds +0.549, so the objective was never the problem; the search was.
+      // Counted FROM THE START, like saem's (kiter - etaDistStart) % every: the
+      // first outer evaluation fires, then every etaDistEvery-th.  Using
+      // `n % every` instead would make the first firing the 20th evaluation, so
+      // a short fit never engaged the step at all -- which the engagement test
+      // caught.
+      if (!_foceiEtaDistRanThisOfv &&
+          (op_focei.etaDistEvery <= 1 ||
+           ((_foceiEtaDistOuterN - 1) % (long)op_focei.etaDistEvery) == 0)) {
+        _foceiEtaDistRanThisOfv = true;
+        foceiEtaDistMstep();
+      }
       double muDelta = updateMuGroups();
       if (muDelta <= op_focei.muGroupTol) break;
     } else {
@@ -6405,6 +6435,13 @@ static void priorGradHessFor(const std::vector<int> &idx, arma::vec &grad, arma:
 }
 
 static inline double foceiOfv0(double *theta){
+  if (!op_focei.calcGrad) {
+    // A new OUTER point.  calcGrad evaluations are finite-difference
+    // perturbations of it, not points of their own, and must not advance the
+    // cadence or the step would fire mid-derivative.
+    ++_foceiEtaDistOuterN;
+    _foceiEtaDistRanThisOfv = false;
+  }
   if (op_focei.objfRecalN != 0 && !op_focei.calcGrad) {
     op_focei.stickyRecalcN1++;
     if (op_focei.indTolRelax) {
@@ -8420,6 +8457,8 @@ NumericVector foceiSetup_(const RObject &obj,
       op_focei.etaDistSdTol = as<double>(foceiO["etaDistSdTol"]);
     if (foceiO.containsElementNamed("etaDistCorSuff"))
       op_focei.etaDistCorSuff = (int)(as<bool>(foceiO["etaDistCorSuff"]));
+    if (foceiO.containsElementNamed("etaDistEvery"))
+      op_focei.etaDistEvery = as<int>(foceiO["etaDistEvery"]);
   }
   if (op_focei.isImpmap) {
     // isample may be a per-subject vector; the scalar is the largest requested
@@ -9929,6 +9968,8 @@ void foceiCustomFun(Environment e){
 //[[Rcpp::export]]
 Environment foceiOuter(Environment e){
   op_focei.nF=0;
+  _foceiEtaDistOuterN = 0;
+  _foceiEtaDistRanThisOfv = false;
   op_focei.nG=0;
   op_focei.curAnalytic=0;
   op_focei.nAnalyticGrad=0;

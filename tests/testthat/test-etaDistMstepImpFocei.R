@@ -72,6 +72,15 @@ nmTest({
               control = foceiControl(maxOuterIterations = 3L, print = 0L,
                                      covMethod = "", calcTables = FALSE,
                                      etaDistMstep = TRUE,
+                                     # etaDistEvery defaults to 20, and the
+                                     # spread guard compares CONSECUTIVE
+                                     # attempts -- the first has no baseline and
+                                     # can never pass.  Three outer iterations
+                                     # at that cadence give one attempt, so
+                                     # nothing can move.  This test is about
+                                     # engagement, not cadence, so ask for every
+                                     # evaluation.
+                                     etaDistEvery = 1L,
                                      etaDistWarmStart = FALSE,
                                      mceta = 0L)))
     expect_gt(nlmixr2est:::foceiEtaDistN_(), 0)

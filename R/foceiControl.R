@@ -431,6 +431,38 @@
 #'   stand-in, used only to produce starting values.  Set `FALSE` to fit from
 #'   the model's own `ini()`.
 #'
+#' @param etaDistEvery Run the declared-distribution M-step every `etaDistEvery`
+#'   OUTER objective evaluations, and at most once per evaluation.  Mirrors
+#'   `saemControl(etaDistEvery=)`, and defaults to the same 20.
+#'
+#'   The step rewrites the thetas it owns, so firing it inside the objective
+#'   makes the objective at the SAME theta differ between calls and the outer
+#'   optimizer is then searching a surface that moves under it.  It used to run
+#'   once per pass of the inner `{re-optimize etas, update}` loop, which on a
+#'   covariate model was ~200 firings in an 11 second fit.  Measured there
+#'   (truth `bWT` +0.75, log-normal reference +0.574): from a poor start bobyqa
+#'   returned -0.027, `lbfgsb3c` -0.272 and `nlminb` -0.545, while with the step
+#'   off every one of them returned +0.59.  The gradient-based optimizers doing
+#'   WORSE is the signature of a moving objective rather than a hard surface --
+#'   and started AT truth the step holds +0.549, so the objective was never
+#'   wrong, the search was.
+#'
+#'   Counted FROM THE FIRST outer evaluation, like saem's
+#'   `(kiter - etaDistStart) %% etaDistEvery`: evaluation 1 fires, then every
+#'   `etaDistEvery`-th.  Counting from 20 instead would let a short fit finish
+#'   without ever engaging the step.
+#'
+#'   `1` fires on every outer evaluation (the old cadence, minus the inner
+#'   repeats); `0` or less is treated as 1.
+#'
+#'   Note the interaction with the trajectory spread guard, which compares
+#'   CONSECUTIVE attempts: the first attempt has no baseline and can never pass,
+#'   so the step needs at least TWO attempts within the fit to move anything.
+#'   A short fit at a coarse cadence -- three outer iterations at the default 20
+#'   -- gets one attempt and the step correctly does nothing.  Lower this (or
+#'   run longer) when the step is wanted on a short fit.  Finite-difference perturbations
+#'   never fire it and never advance the count, or the step would move a theta
+#'   in the middle of a derivative.
 #' @param etaDistCorSuff Estimate the declared copula correlation from the
 #'   standardized SUFFICIENT STATISTIC of the raw latents (saem's route) instead
 #'   of a product-moment correlation of the copula-combined ones.
@@ -1306,6 +1338,7 @@ foceiControl <- function(sigdig = 3, #
                          etaDistSdLo = 0.2, #
                          etaDistSdHi = 5.0, #
                          etaDistSdTol = 0.10, #
+                         etaDistEvery = 20L, #
                          etaDistCorSuff = TRUE, #
                          repeatGillMax = 1, #
                          stickyRecalcN = 4, #
@@ -2083,6 +2116,7 @@ foceiControl <- function(sigdig = 3, #
     etaDistSdLo = as.numeric(etaDistSdLo),
     etaDistSdHi = as.numeric(etaDistSdHi),
     etaDistSdTol = as.numeric(etaDistSdTol),
+    etaDistEvery = as.integer(etaDistEvery),
     etaDistCorSuff = as.logical(etaDistCorSuff),
     repeatGillMax = as.integer(repeatGillMax),
     stickyRecalcN = as.integer(max(1, abs(stickyRecalcN))),
