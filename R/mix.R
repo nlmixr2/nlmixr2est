@@ -64,6 +64,33 @@
   return(NULL)
 }
 
+#' Extract ETA names referenced outside any mix() component expression
+#'
+#' The component expressions of a `mix()` call are skipped (they are scanned
+#' per-component elsewhere); everything else, including a `mix()` call's
+#' probability arguments, counts as outside.  An ETA found here applies to every
+#' mixture component, so it is shared no matter which component also uses it.
+#'
+#' @param expr A parsed expression (or sub-expression) from `ui$lstExpr`
+#' @param etas Character vector of all known ETA names to match against
+#' @return Character vector of ETA names found outside a component (deduplicated)
+#' @noRd
+#' @author Matthew L. Fidler
+.extractEtasOutsideMix <- function(expr, etas) {
+  if (is.name(expr)) {
+    .n <- as.character(expr)
+    if (.n %in% etas) return(.n)
+  } else if (is.call(expr)) {
+    if (identical(expr[[1]], quote(mix))) {
+      .args <- as.list(expr)[-1]
+      .probs <- .args[seq_along(.args) %% 2L == 0L]
+      return(unique(unlist(lapply(.probs, .extractEtasOutsideMix, etas = etas))))
+    }
+    return(unique(unlist(lapply(as.list(expr)[-1], .extractEtasOutsideMix, etas = etas))))
+  }
+  return(NULL)
+}
+
 #' Process mixture model information after a focei fit
 #'
 #' After the C++ focei fit, strips the MIXEST column from ranef, computes

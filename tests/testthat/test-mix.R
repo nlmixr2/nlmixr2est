@@ -432,6 +432,24 @@ nmTest({
       })
     }
     expect_equal(rxode2::rxode2(twoMix)$saemOmegaShareSubpop, 0L)
+
+    # an eta used inside one component AND outside the mix() applies to every
+    # component, so it is shared too
+    outsideEta <- function() {
+      ini({
+        tcl1 <- log(1); tcl2 <- log(8); tv <- log(20); tka <- log(1.1)
+        p1 <- 0.5; eta.cl1 ~ 0.1; eta.cl2 ~ 0.1; add.sd <- 0.1
+      })
+      model({
+        ka <- exp(tka)
+        cl <- mix(exp(tcl1 + eta.cl1), p1, exp(tcl2 + eta.cl2))
+        v <- exp(tv + eta.cl1)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .outside <- rxode2::rxode2(outsideEta)
+    expect_equal(.outside$saemOmegaShareSubpop[.outside$saemEtaNames == "eta.cl1"], 0L)
+    expect_equal(.outside$saemOmegaShareSubpop[.outside$saemEtaNames == "eta.cl2"], 2L)
   })
 
 })
