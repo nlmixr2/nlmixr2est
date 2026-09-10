@@ -611,10 +611,27 @@
       ## subject, so a row per subject is the whole story here; a time-varying
       ## covariate on a declaration has to go to the observation-likelihood
       ## route instead.
-      .cvAll <- covariables
-      if (!is.null(.cvAll) && is.null(colnames(.cvAll)) &&
-            ncol(.cvAll) == length(model$covars)) {
-        colnames(.cvAll) <- model$covars
+      ## Built from the DATA, not from `covariables`.  That matrix comes from
+      ## model$covars, which is saem's MU-REFERENCED covariate list -- a
+      ## covariate that appears only inside a dist() declaration never enters a
+      ## `theta + eta` mu reference, so it is absent from it and every
+      ## declaration came back with a zero-column matrix.
+      ##
+      ## Aggregated by id with the first value per subject, in the same sorted-id
+      ## order `covariables` uses, so the row index matches saem's subject index.
+      .needCov <- unique(unlist(etaDistInfo$cov))
+      .cvAll <- NULL
+      if (length(.needCov) > 0L) {
+        .dd <- data$data
+        .have <- .needCov[.needCov %in% names(.dd)]
+        if (length(.have) > 0L) {
+          .ag <- stats::aggregate(.dd[, .have, drop = FALSE], list(id = id),
+                                  function(.z) .z[1])
+          .ag <- .ag[order(.ag$id), , drop = FALSE]
+          .cvAll <- as.matrix(.ag[, .have, drop = FALSE])
+          colnames(.cvAll) <- .have
+          if (nrow(.cvAll) != N) .cvAll <- NULL
+        }
       }
       .cvList <- lapply(etaDistInfo$cov, function(.nm) {
         if (length(.nm) == 0L) return(matrix(0, nrow = N, ncol = 0L))

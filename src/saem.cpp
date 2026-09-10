@@ -7202,12 +7202,62 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
       // indexes as rec[r*nSym + c].
       std::vector<double> rec;
       if (nSym > 0) rec.reserve(w[(size_t)k].size() * (size_t)nSym);
+      // A covariate declaration has NO population argument set -- `rate` here
+      // is 1/(exp(lclrv)*exp(lclm + bWT*log(WT/70))) and the R side leaves it
+      // NA precisely because there is no single value to give it.  So the eta
+      // SAMPLE cannot be decoded with etaDistArgs either: rxEtaDistQ(fam, u,
+      // NA) is non-finite for every draw, every one is dropped, and `ev` comes
+      // back EMPTY -- which silently skipped the whole objective below for the
+      // one declaration it exists to serve.  Decode per record instead, from
+      // the current thetas and that subject's covariate row.
+      std::vector< std::vector<etaDistTok> > rpnQ;
+      std::vector<double> stQ, valsQ;
+      bool perRec = false;
+      if (nSym > 0) {
+        int nthQ = etaDistNth(k);
+        if (nthQ > 0 && k < (int)etaDistExprs.size() &&
+            (int)etaDistExprThetas[(size_t)k].size() == nthQ &&
+            k < (int)etaDistCovNames.size() &&
+            (int)etaDistCovNames[(size_t)k].size() == nSym) {
+          std::vector<std::string> pv = etaDistExprThetas[(size_t)k];
+          for (int c = 0; c < nSym; ++c) pv.push_back(etaDistCovNames[(size_t)k][(size_t)c]);
+          if (rxEtaDistLoglikParse(etaDistExprs[(size_t)k], pv, rpnQ)) {
+            stQ.assign((size_t)nthQ, 0.0);
+            for (int t = 0; t < nthQ; ++t) {
+              int c = etaDistThetaPhi0(k, t);
+              stQ[(size_t)t] = (c >= 0 && c < nphi0) ? mprior_phi0(0, c) : 0.0;
+            }
+            valsQ.assign((size_t)(nthQ + nSym), 0.0);
+            for (int t = 0; t < nthQ; ++t) valsQ[(size_t)t] = stQ[(size_t)t];
+            perRec = (rpnQ.size() == (size_t)na);
+          }
+        }
+        // Without a usable parse there is nothing to decode the sample with, so
+        // leave it empty rather than fabricating one from NA arguments.
+        if (!perRec) nSym = 0;
+      }
       for (size_t r = 0; r < w[(size_t)k].size(); ++r) {
         // same boundary guard phiU() applies: pnorm saturates to 0/1 in double
         // precision and an inverse CDF there is +/-Inf
         double u = R::pnorm(w[(size_t)k][r], 0.0, 1.0, 1, 0);
         if (u < 1e-15) u = 1e-15; else if (u > 1.0 - 1e-15) u = 1.0 - 1e-15;
-        double e = rxEtaDistQ(fam, u, a0);
+        double aR[4];
+        const double *aUse = a0;
+        if (perRec) {
+          unsigned int sj = (unsigned int)(r % (size_t)N);
+          if (sj >= cvK->n_rows) break;
+          for (int c = 0; c < nSym; ++c) {
+            valsQ[(size_t)((int)stQ.size() + c)] = (*cvK)(sj, (unsigned int)c);
+          }
+          bool okA = true;
+          for (int q = 0; q < na; ++q) {
+            aR[q] = etaDistExprEval(rpnQ[(size_t)q], valsQ.data(), (int)valsQ.size());
+            if (!std::isfinite(aR[q])) { okA = false; break; }
+          }
+          if (!okA) continue;
+          aUse = aR;
+        }
+        double e = rxEtaDistQ(fam, u, aUse);
         if (!std::isfinite(e)) continue;
         // ONE loop, dropped TOGETHER.  Pushing the covariate in a second pass
         // over the same range would keep every record that this one skips and
