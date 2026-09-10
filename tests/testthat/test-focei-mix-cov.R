@@ -164,6 +164,28 @@ nmTest({
     expect_false(isTRUE(all.equal(.e$cov[1, 1], .e$cov[2, 2])))
   })
 
+  test_that("a proportion missing from the covariance does not block the others", {
+    ## A fix()ed proportion is dropped from the covariance by skipCov.  Bailing
+    ## on the whole rotation when a name is absent left the REMAINING
+    ## proportions reported on the mlogit scale -- measured 0.265 where the
+    ## probability scale is 0.063, a factor of 1/(p(1-p)).
+    .nm <- c("p2", "add.sd")
+    .cov <- diag(c(4, 9)); dimnames(.cov) <- list(.nm, .nm)
+    .p <- c(0.40, 0.35)                       # p1 (fixed, absent) and p2
+    .out <- .mixCovToProbScale(.cov, c("p1", "p2"), .p)
+    ## only p2's row is rotated, by its own diagonal Jacobian entry p2(1-p2)
+    .j22 <- .p[2] * (1 - .p[2])
+    expect_equal(unname(.out[1, 1]), .j22^2 * 4)
+    expect_equal(unname(.out[2, 2]), 9)       # add.sd untouched
+    ## and it is NOT left unrotated
+    expect_false(isTRUE(all.equal(unname(.out[1, 1]), 4)))
+
+    ## with every name absent the matrix is returned as-is
+    .nm2 <- c("tcl", "add.sd")
+    .cov2 <- diag(c(4, 9)); dimnames(.cov2) <- list(.nm2, .nm2)
+    expect_equal(.mixCovToProbScale(.cov2, c("p1", "p2"), .p), .cov2)
+  })
+
   test_that("setCov() round trips without re-rotating the mixture block", {
     ## setCov() re-installs a CACHED covariance (covList) by handing it back as a
     ## matrix, which refits and would rotate an already-probability-scale matrix

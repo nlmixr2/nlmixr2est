@@ -418,10 +418,18 @@
   if (!is.matrix(cov) || length(mixNames) == 0L) return(cov)
   if (is.null(rownames(cov))) return(cov)
   .i <- match(mixNames, rownames(cov))
-  if (anyNA(.i) || length(p) != length(.i) || !all(is.finite(p))) return(cov)
-  .J <- diag(p, nrow = length(p)) - outer(p, p)
+  if (length(p) != length(.i) || !all(is.finite(p))) return(cov)
+  # A proportion can be absent from THIS matrix while others are present -- a
+  # fix()ed proportion is dropped by skipCov, and covR/covS can drop a singular
+  # direction.  Rotate the subset that IS here rather than bailing on the whole
+  # matrix: aborting left the remaining proportions reported on the mlogit
+  # scale (measured 0.265 where the probability scale is 0.063).  Holding the
+  # absent coordinates fixed makes the correct Jacobian exactly the submatrix.
+  .keep <- !is.na(.i)
+  if (!any(.keep)) return(cov)
+  .J <- (diag(p, nrow = length(p)) - outer(p, p))[.keep, .keep, drop = FALSE]
   .A <- diag(1, nrow(cov))
-  .A[.i, .i] <- .J
+  .A[.i[.keep], .i[.keep]] <- .J
   .out <- .A %*% cov %*% t(.A)
   dimnames(.out) <- dimnames(cov)
   .out
@@ -489,7 +497,12 @@
     return(invisible(NULL))
   }
   .w <- match(mixNames, rownames(.cov))
-  if (anyNA(.w)) return(invisible(NULL))
+  # refresh the proportions that ARE in this covariance; one can be absent (a
+  # fix()ed proportion is dropped by skipCov) without invalidating the rest
+  .keep <- !is.na(.w)
+  if (!any(.keep)) return(invisible(NULL))
+  .w <- .w[.keep]
+  .mixIdx <- .mixIdx[.keep]
   .newSe <- sqrt(diag(.cov))[.w]
   if (exists("se", envir = env, inherits = FALSE)) {
     .se <- get("se", envir = env)
@@ -625,10 +638,11 @@
   .stat <- tryCatch(as.numeric(crossprod(.s, solve(crossprod(.d), .s))),
                     error = function(e) NA_real_)
   if (!is.finite(.stat) || .stat > 1e-3) {
-    # warning(), not an assignment to runInfo: that is the channel the fit
-    # collects run-time notes through, and a direct assignment here is
-    # overwritten by the later table assembly.  Kept under 75 characters so it
-    # renders on one line, and unprefixed -- the fit already reports its method.
+    # warning() IS how a note reaches the fit's $runInfo -- every warning raised
+    # during a run is collected there.  Assigning env$runInfo directly instead
+    # does NOT work: the later table assembly overwrites it.  Kept under 75
+    # characters so it renders on one line, and unprefixed (the fit already
+    # reports which method was run).
     warning("mixture proportion SE skipped; not at the score-zero point",
             call. = FALSE)
     return(invisible(NULL))
