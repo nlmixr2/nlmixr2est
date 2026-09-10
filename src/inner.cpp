@@ -21602,6 +21602,8 @@ struct VaeStepOut {
   arma::ivec mixnum;    // [N] selected mixture component (1-based)
   arma::vec mixW;       // [nMix] mean posterior responsibility over subjects
   arma::mat muAll;      // [N*nMix, zDim] posterior mean per (subject, component)
+  arma::vec gMixTheta;  // [nMix-1] d(objective)/d(mlogit mixture theta)
+  arma::vec mixProbCur; // [nMix] proportions the step actually used
   // encoder parameter gradients
   arma::mat gWih, gWhh, gFcW; arma::vec gbih, gbhh, gFcB;
 };
@@ -21698,6 +21700,16 @@ static VaeStepOut vaeElboStepCpp(const arma::mat& Wih, const arma::mat& Whh,
   // eta already carries one row per (subject, component): each component is
   // scored at ITS OWN eta, not at a shared one tiled across components
   const arma::mat& etaEval = eta;
+  // The proportions come from op_focei, which updateTheta just refreshed from
+  // th through .getMixFromLog (mexpit).  That is the ONLY source of truth: the
+  // R-side vector cannot track a theta the optimizer is moving, and reading it
+  // is how the mlogit-vs-probability scale confusion got in.
+  arma::vec pi = mixProb;
+  if (nMix > 1 && op_focei.mixProb != NULL) {
+    pi.set_size(nMix);
+    for (int m = 0; m < nMix; ++m) pi[m] = op_focei.mixProb[m];
+  }
+  S.mixProbCur = pi;
   arma::vec obj; arma::mat lp; std::vector<std::vector<double> > pf;
   std::vector<std::vector<double> > prv;
   vaeInnerLikCore(etaEval, cores, true, true, obj, lp, pf, false, &prv);
@@ -21717,6 +21729,7 @@ static VaeStepOut vaeElboStepCpp(const arma::mat& Wih, const arma::mat& Whh,
   double jointTot;
   arma::mat lpAll(Ne, zDim, arma::fill::zeros);
   arma::uvec sel(N);                       // selected pseudo-subject row per subject
+  arma::vec gpi(nMix > 1 ? nMix - 1 : 1, arma::fill::zeros);
   for (int i = 0; i < N; ++i) sel[i] = i;  // nMix == 1: the subject IS the row
   S.preds.resize(N);
   S.rvar.resize(N);
@@ -21736,7 +21749,7 @@ static VaeStepOut vaeElboStepCpp(const arma::mat& Wih, const arma::mat& Whh,
       double mmax = -std::numeric_limits<double>::infinity(); int best = 0;
       arma::vec ll(nMix);
       for (int m = 0; m < nMix; ++m) {
-        double v = std::log(mixProb[m]) - obj[m * N + i];
+        double v = std::log(pi[m]) - obj[m * N + i];
         if (!R_FINITE(v)) v = -std::numeric_limits<double>::infinity();
         ll[m] = v; if (v > mmax) { mmax = v; best = m; }
       }
@@ -21765,8 +21778,23 @@ static VaeStepOut vaeElboStepCpp(const arma::mat& Wih, const arma::mat& Whh,
       if (!prv.empty()) S.rvar[i] = prv[sel[i]];
       S.mixnum[i] = best + 1;
       S.mixW += resp;
+      // d/d(pi_m) of -log sum_k pi_k exp(-obj_ik) is -(r_im/pi_m), and the last
+      // component is not free (pi_last = 1 - sum), so its share is subtracted --
+      // the same difference foceiLik0Mix accumulates into fInd->mixProbGrad.
+      for (int m = 0; m < nMix - 1; ++m) {
+        double gm = -(resp[m] / pi[m] - resp[nMix - 1] / pi[nMix - 1]);
+        if (R_FINITE(gm)) gpi[m] += gm;
+      }
     }
     S.mixW /= (double)N;
+    // chain rule through mexpit: op_focei.mixProbGrad is the dmexpit Jacobian
+    // updateTheta filled, exactly as mixGrad() applies it for focei
+    S.gMixTheta.zeros(nMix - 1);
+    for (int m = 0; m < nMix - 1; ++m) {
+      double j = (op_focei.mixProbGrad != NULL) ? op_focei.mixProbGrad[m] : 1.0;
+      double g = gpi[m] * j;
+      S.gMixTheta[m] = R_FINITE(g) ? g : 0.0;
+    }
   } else {
     jointTot = arma::accu(obj);
     lpAll = lp;
@@ -21922,7 +21950,8 @@ List vaeElboStepCpp_(List params, List prep, RObject zPopR, RObject omegaR,
                       _["preds"] = preds, _["rvar"] = rvar, _["mixnum"] = mixnum,
                       // per (subject, component) posterior mean, component-major
                       // (row m*N + i) -- the encoder characterizes every pair
-                      _["muAll"] = S.muAll, _["mixW"] = S.mixW);
+                      _["muAll"] = S.muAll, _["mixW"] = S.mixW,
+                      _["gMixTheta"] = S.gMixTheta, _["mixProb"] = S.mixProbCur);
 }
 
 // ---------------------------------------------------------------------------
@@ -22820,7 +22849,8 @@ static double gVaeThetaObjR(Rcpp::NumericVector r) {
       for (int m = 0; m < nMix; ++m) {
         // same 1x-scale marginal as vaeElboStepCpp -- the two MUST optimize one
         // functional, or the M-step chases a different objective than the ELBO
-        double lv = std::log(gVaeRegMixProb[m]) - obj[m * N + i];
+        double pm = (op_focei.mixProb != NULL) ? op_focei.mixProb[m] : gVaeRegMixProb[m];
+        double lv = std::log(pm) - obj[m * N + i];
         if (!R_FINITE(lv)) lv = -std::numeric_limits<double>::infinity();
         ll[m] = lv; if (lv > mmax) mmax = lv;
       }
@@ -22854,6 +22884,22 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
   arma::cube dataIn = as<arma::cube>(prep["dataIn"]);
   arma::ivec lengths = vaeToIvec(prep["lengths"]);
   arma::mat covIn = as<arma::mat>(prep["covIn"]);
+  // Adam state for the mixture proportions, which are estimated on the MLOGIT
+  // scale through their own analytic gradient (see vaeElboStepCpp) rather than
+  // by the bobyqa regress step or held at their ini() value.  1-based theta
+  // indices, as op_focei.mixIdx stores them.
+  arma::uvec mixThIdx;
+  if (nMix > 1 && op_focei.mixIdx != NULL && op_focei.mixIdxN > 0) {
+    mixThIdx.set_size(op_focei.mixIdxN);
+    for (int m = 0; m < op_focei.mixIdxN; ++m) mixThIdx[m] = op_focei.mixIdx[m] - 1;
+  }
+  VaeAdamBlk aMixTh; int nMixThStep = 0;
+  if (mixThIdx.n_elem > 0) {
+    // vaeAdam accumulates into m/v in place, so they must be sized up front
+    aMixTh.m.zeros(mixThIdx.n_elem, 1);
+    aMixTh.v.zeros(mixThIdx.n_elem, 1);
+  }
+  arma::vec mixProbFinal = as<arma::vec>(mixProbR);
   // Component-conditioned ENCODER inputs, built once (see
   // vaeTileEncoderInputs).  Kept separate from covIn, which the covariate
   // best-subset machinery below indexes against covAllow/covGroup -- the
@@ -23807,6 +23853,15 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       vaeAdam(fcW, st.gFcW, aFcW, learningRate, tstep);
       vaeAdam(fcBM, st.gFcB, aFcB, learningRate, tstep); fcB = fcBM.col(0);
       esum += st.pxz + st.DKL;
+      if (mixThIdx.n_elem > 0 && st.gMixTheta.n_elem == mixThIdx.n_elem) {
+        arma::mat pm(mixThIdx.n_elem, 1), gm(mixThIdx.n_elem, 1);
+        for (unsigned int m = 0; m < mixThIdx.n_elem; ++m) {
+          pm(m, 0) = th[mixThIdx[m]]; gm(m, 0) = st.gMixTheta[m];
+        }
+        vaeAdam(pm, gm, aMixTh, learningRate, ++nMixThStep);
+        for (unsigned int m = 0; m < mixThIdx.n_elem; ++m) th[mixThIdx[m]] = pm(m, 0);
+      }
+      if (st.mixProbCur.n_elem > 0) mixProbFinal = st.mixProbCur;
       last = st;
     }
     elboTrace[it - 1] = esum / Lg;
@@ -23835,7 +23890,8 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
                       _["parHist"] = parHist, _["mu"] = last.mu, _["zPopMat"] = zPopMatOut,
                       _["mixnum"] = mixnumOut, _["regressTheta"] = regressThetaOut,
                       _["nRegGrad"] = nRegGrad, _["nRegFallback"] = nRegFallback,
-                      _["nStage2"] = nStage2);
+                      _["nStage2"] = nStage2,
+                      _["mixProb"] = mixProbFinal, _["nMixThetaStep"] = nMixThStep);
 }
 
 // Test-facing entry point for the exact L0/BIC best-subset kernel used by the VAE

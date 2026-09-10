@@ -352,11 +352,96 @@ nmTest({
     expect_length(st$mixW, nMix)
     expect_equal(sum(st$mixW), 1)
 
+    ## The mixture proportion is estimated on the MLOGIT scale through its own
+    ## analytic gradient -- the same chain focei uses (mixGrad): the per-subject
+    ## responsibility difference against the last (non-free) component, times
+    ## the dmexpit Jacobian.  Check it against finite differences of the term it
+    ## is the gradient of.
+    .stepAt <- function(prp, alpha = 0) {
+      .vaeElboStepInner(params, prp, innerEnv, prp$zPop, prp$omega, prp$a,
+                        alpha, eps, ctl, nMix, mixProb, withGrad = TRUE)
+    }
+    .g <- .stepAt(prep)
+    expect_length(.g$gMixTheta, nMix - 1L)
+    .h <- 1e-5
+    .pp <- prep; .pp$th[ui$thetaMixIndex] <- prep$th[ui$thetaMixIndex] + .h
+    .pm <- prep; .pm$th[ui$thetaMixIndex] <- prep$th[ui$thetaMixIndex] - .h
+    .fd <- (.stepAt(.pp)$pxz - .stepAt(.pm)$pxz) / (2 * .h)
+    expect_equal(as.numeric(.g$gMixTheta), .fd, tolerance = 1e-4)
+    ## and the proportions the step used are the ones the inner problem holds,
+    ## on the simplex
+    expect_equal(sum(.g$mixProb), 1)
+    expect_equal(as.numeric(.g$mixProb), mixProb, tolerance = 1e-5)
+
     ## and it is NOT the square-root marginalization the code used to compute
     .ll2 <- sweep(-0.5 * .obj, 2, log(mixProb), "+")
     .mm2 <- apply(.ll2, 1, max)
     .old <- -2 * sum(.mm2 + log(rowSums(exp(.ll2 - .mm2))))
     expect_false(isTRUE(all.equal(.want, .old)))
     expect_false(isTRUE(all.equal(.jointTot, .old)))
+  })
+
+  test_that("vae estimates the mixture proportion", {
+    skip_on_cran()
+    ## Two subpopulations in a 3:1 split, started from 0.5.  The proportion was
+    ## previously either held at its ini() value or moved by the bobyqa regress
+    ## step against (-Inf, Inf) on the wrong scale; it is now estimated on the
+    ## mlogit scale by its own analytic gradient, consumed by the same Adam
+    ## loop that trains the encoder.
+    sim <- function() {
+      ini({ lka <- log(1.5); lV <- log(32) })
+      model({ ka <- exp(lka + eta.ka); ke <- KE * exp(eta.ke); V <- exp(lV + eta.V)
+        d/dt(depot) = -ka * depot; d/dt(central) = ka * depot - ke * central
+        cp <- central / V })
+    }
+    .testSeed(42)
+    nFast <- 30L; nSlow <- 10L
+    ev <- rxode2::et(amt = 320, cmt = "depot") %>% rxode2::et(seq(0.5, 24, length.out = 8))
+    mkGroup <- function(ke, ids) {
+      d <- rxode2::rxSolve(sim, rxode2::et(ev, id = ids),
+                           params = c(lka = log(1.5), lV = log(32), KE = ke),
+                           omega = lotri::lotri(eta.ka ~ 0.04, eta.ke ~ 0.02, eta.V ~ 0.02))
+      d <- as.data.frame(d)[, c("id", "time", "cp")]
+      names(d) <- c("ID", "TIME", "DV"); d$ID <- d$ID + (ids[1] - 1)
+      d$DV <- d$DV + stats::rnorm(nrow(d), 0, 0.25); d
+    }
+    dat <- rbind(mkGroup(0.15, 1:nFast), mkGroup(0.04, (nFast + 1):(nFast + nSlow)))
+    dose <- data.frame(ID = unique(dat$ID), TIME = 0, DV = 0, EVID = 1, AMT = 320, CMT = 1)
+    dat$EVID <- 0; dat$AMT <- 0; dat$CMT <- 2
+    dat <- rbind(dose, dat); dat <- dat[order(dat$ID, dat$TIME, -dat$EVID), ]
+    trueGrp <- ifelse(unique(dat$ID) <= nFast, 1L, 2L)
+
+    mixmod <- function() {
+      ini({ lka <- log(1.5); lke1 <- log(0.15); lke2 <- log(0.04); lV <- log(32)
+            p1 <- 0.5                       # deliberately NOT the truth (0.75)
+            eta.ka ~ 0.04; eta.ke ~ 0.02; eta.V ~ 0.02; add.err <- 0.25 })
+      model({ ka <- exp(lka + eta.ka)
+        ke <- mix(exp(lke1 + eta.ke), p1, exp(lke2 + eta.ke)); V <- exp(lV + eta.V)
+        d/dt(depot) = -ka * depot; d/dt(central) = ka * depot - ke * central
+        cp <- central / V; cp ~ add(add.err) })
+    }
+    ui <- rxode2::assertRxUi(mixmod)
+    ctl <- vaeControl(itersBurnIn = 40L, iters = 100L, klWarmup = 30L, gammaIter = 60L,
+                      nGradStep = 4L, covariateSelection = FALSE, seed = 1L)
+    prep <- .vaeDataPrep(ui, dat)
+    nMix <- as.integer(ui$saemNMix)
+    mixProb <- .getMixFromLog(prep$th, ui$thetaMixIndex)
+    expect_equal(mixProb, c(0.5, 0.5))
+    innerEnv <- .vaeInnerSetup(ui, dat, matrix(0, prep$N, prep$zDim), ctl)
+    on.exit(.vaeInnerFree(), add = TRUE)
+    fit <- .vaeTrain(prep, innerEnv, ctl, nMix, mixProb)
+
+    ## the gradient actually ran -- a held proportion would report 0 steps and
+    ## still look plausible
+    expect_true(fit$nMixThetaStep > 0L)
+    expect_length(fit$mixProb, nMix)
+    expect_equal(sum(fit$mixProb), 1, tolerance = 1e-8)
+    expect_true(all(fit$mixProb > 0 & fit$mixProb < 1))
+    ## it MOVED off its start, and toward the truth
+    expect_false(isTRUE(all.equal(as.numeric(fit$mixProb), c(0.5, 0.5))))
+    .agree <- mean(fit$mixnum == trueGrp)
+    .p1 <- if (.agree >= 0.5) fit$mixProb[1] else fit$mixProb[2]   # allow label swap
+    expect_equal(.p1, nFast / (nFast + nSlow), tolerance = 0.1)
+    expect_gt(max(.agree, 1 - .agree), 0.9)
   })
 })

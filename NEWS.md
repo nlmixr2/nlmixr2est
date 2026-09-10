@@ -152,6 +152,15 @@
   two defects above stopped every such fit during assembly, so only the
   training loop had ever run with a mixture.
 
+- `est="vae"` estimates the mixture proportions.  They were read once from
+  `ini()` and never updated, so the reported proportion was whatever the model
+  started at.  They are now estimated on the mlogit scale through their own
+  analytic gradient -- the same chain `focei` uses (`mixGrad`): each subject's
+  responsibility difference against the last, non-free component, times the
+  `mexpit` Jacobian -- consumed by the same Adam loop that trains the encoder.
+  The gradient agrees with finite differences to 1e-4.  On simulated data with
+  a 3:1 split started from 0.5, the fitted proportion comes back at 0.74.
+
 - `est="vae"` no longer treats a mixture proportion as an ordinary structural
   theta.  `p1` appears inside `mix(a, p1, b)`, so it passed the "does this
   theta appear in a model expression" filter and became a `nonMuTheta`

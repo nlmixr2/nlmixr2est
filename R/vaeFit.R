@@ -334,7 +334,13 @@
        nRegGrad = as.integer(.fit$nRegGrad), nRegFallback = as.integer(.fit$nRegFallback),
        nStage2 = as.integer(.fit$nStage2),
        covSelectMethodUsed = .modes$used,
-       nMix = nMix, mixProb = mixProb, mixnum = as.integer(.fit$mixnum))
+       nMix = nMix,
+       ## the FITTED proportions, not the ini() ones: they are estimated on the
+       ## mlogit scale by their own analytic gradient (Adam), so the value that
+       ## comes back from training is the one to report and write into ini()
+       mixProb = if (is.null(.fit$mixProb)) mixProb else as.numeric(.fit$mixProb),
+       nMixThetaStep = .fit$nMixThetaStep,
+       mixnum = as.integer(.fit$mixnum))
 }
 
 #' Fit entry: prepare data, set up the FOCEi inner problem once, train.
