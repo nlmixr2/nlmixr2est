@@ -210,3 +210,53 @@ test_that("through the real path, only the plain declaration is held out", {
   for (.t in c("lv1m", "lv1rv")) expect_true(.t %in% .i$thetaNames)
   expect_true(any(grepl("^rxCor[.]", .i$thetaNames)))
 })
+
+test_that("the M-step warns rather than silently mis-estimating a covariate", {
+  skip_on_cran()
+  # MEASURED: with the M-step ON, focei returned bWT -0.027 for a truth of
+  # +0.75; with it OFF, +0.598, against +0.574 from a log-normal reference fit
+  # of the same data.  The cause is upstream of the M-step -- the C++ argument
+  # parser resolves symbols against the declaration's THETA names only, so an
+  # argument reading a data column fails to parse (etaDistExprParse,
+  # src/etaDistExpr.h) and the general family objective never runs.  Until the
+  # covariate names are passed to it (nSym/rec, already accepted by
+  # rxEtaDistLoglikObj), this route must SAY so rather than return a number.
+  .ui <- rxode2::rxUiDecompress(nlmixr2est::nlmixr2(.edcModel(.edcCovCl, .edcPlainV1)))
+  .st <- nlmixr2est:::.etaDistDeclStash(.ui, rxode2::rxUiEtaDists(.ui))
+  .u2 <- rxode2::rxUiDecompress(rxode2::rxEtaDistExpand(.ui))
+  nlmixr2est:::.etaDistDeclSet(.u2, .st)
+  rxode2::rxAssignControlValue(.u2, "etaDistMstep", TRUE)
+  expect_warning(nlmixr2est:::.foceiEtaDistSetup(.u2), "covariate coefficient")
+  expect_warning(nlmixr2est:::.foceiEtaDistSetup(.u2), "eta.cl")
+  expect_warning(nlmixr2est:::.foceiEtaDistSetup(.u2), "etaDistMstep=FALSE")
+})
+
+test_that("no covariate means no warning", {
+  skip_on_cran()
+  .ui <- rxode2::rxUiDecompress(nlmixr2est::nlmixr2(.edcModel(.edcPlainCl, .edcPlainV1)))
+  .st <- nlmixr2est:::.etaDistDeclStash(.ui, rxode2::rxUiEtaDists(.ui))
+  .u2 <- rxode2::rxUiDecompress(rxode2::rxEtaDistExpand(.ui))
+  nlmixr2est:::.etaDistDeclSet(.u2, .st)
+  rxode2::rxAssignControlValue(.u2, "etaDistMstep", TRUE)
+  # every declaration usable -> the guard must stay quiet
+  expect_no_warning(nlmixr2est:::.foceiEtaDistSetup(.u2))
+})
+
+test_that("the argument parser is what cannot see the covariate", {
+  # pins the exact mechanism, so a fix is visible here first: the grammar
+  # already handles the expression -- only the SYMBOL is unknown
+  .f <- nlmixr2est:::rxEtaDistArgsToThetasTest_
+  .plain <- .f(c("1/exp(lclrv)", "1/(exp(lclrv)*exp(lclm))"),
+               c("lclrv", "lclm"), c(-2, 1.5), c(11, 2.2))
+  expect_false(is.null(.plain))
+  expect_length(.plain, 2L)
+  # same shape of expression, plus a covariate symbol -> declines
+  .cov <- .f(c("1/exp(lclrv)", "1/(exp(lclrv)*exp(lclm + bWT*log(WT/70)))"),
+             c("lclrv", "lclm", "bWT"), c(-2, 1.5, 0.2), c(11, 2.2))
+  expect_true(is.null(.cov) || length(.cov) == 0L)
+  # and it parses as soon as the symbol is known, which is the whole fix
+  .named <- .f(c("1/exp(lclrv)", "1/(exp(lclrv)*exp(lclm + bWT*log(WT/70)))"),
+               c("lclrv", "lclm", "bWT", "WT"), c(-2, 1.5, 0.2, 70), c(11, 2.2))
+  expect_false(is.null(.named))
+  expect_length(.named, 4L)
+})

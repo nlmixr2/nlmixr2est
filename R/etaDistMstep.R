@@ -916,6 +916,47 @@
        thetaNames = unique(c(setdiff(.own, .foreign), .c$corTheta[.ck])))
 }
 
+#' Warn when a covariate-carrying declaration is left unidentified
+#'
+#' MEASURED, and it is silent otherwise.  With the M-step on, the COVARIATE
+#' COEFFICIENT on a declaration argument is not estimated -- the declaration's
+#' other parameters are fine (lclm +1.660 and lclrv -2.095 against truth +1.63
+#' and -2.40 in the same run).  The C++ argument
+#' parser resolves symbols against the declaration's THETA names only, so an
+#' argument reading a data column fails to parse
+#' (`etaDistExprParse`, src/etaDistExpr.h), the general family objective at
+#' src/saem.cpp never runs, and the coefficient is left in the outer problem
+#' with an objective that no longer identifies it.  On simulated data with a
+#' known allometric effect (truth +0.75, started +0.20) focei returned -0.027
+#' with the M-step ON and +0.598 with it OFF, against +0.574 from a log-normal
+#' reference fit of the same data -- so the DEFAULT route is right and the
+#' M-step route quietly returns a wrong number rather than declining.
+#'
+#' The fix is to pass the covariate names to the parser and supply their
+#' per-record values (`nSym`/`rec`, `rxEtaDistLoglikObj()` in src/etaDistFam.cpp,
+#' which already takes them); until that is wired, say so.
+#'
+#' @param edi metadata from `.etaDistMstepInfoFocei()`
+#' @param ui the ui, for the declaration names
+#' @return nothing; called for the warning
+#' @noRd
+.etaDistWarnCovMstep <- function(edi, ui) {
+  .u <- as.integer(edi$usable)
+  if (length(.u) == 0L || all(.u == 1L)) return(invisible())
+  .c <- .etaDistMstepCore(ui)
+  .nm <- if (!is.null(.c) && length(.c$etas) == length(.u)) .c$etas[.u == 0L] else "a declaration"
+  warning("the declared-distribution M-step cannot estimate the covariate ",
+          "coefficient on ", paste0("dist(", .nm, ")", collapse = ", "),
+          ".  The family fit stands down for that declaration and the ",
+          "coefficient is left in the outer problem, where it is not ",
+          "identified: measured on a known allometric effect it returned ",
+          "-0.027 for a truth of +0.75.  The other parameters are unaffected. ",
+          "Use etaDistMstep=FALSE (the default), where the covariate is ",
+          "evaluated per record by the ordinary solve and the same effect ",
+          "recovers as +0.598.", call. = FALSE)
+  invisible()
+}
+
 #' Wire the declared-distribution M-step into a FOCEi-family control
 #'
 #' Builds the metadata `foceiEtaDistMstep()` (src/inner.cpp) reads and the
@@ -939,6 +980,7 @@
     if (is.null(.edi)) {
       .etaDistMstepWarnInert("focei")
     } else {
+      .etaDistWarnCovMstep(.edi, ui)
       .ini <- rxode2::rxUiDecompress(ui)$iniDf
       .th <- .ini[!is.na(.ini$ntheta), , drop = FALSE]
       .thNames <- .th[order(.th$ntheta), "name"]
