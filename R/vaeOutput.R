@@ -107,12 +107,6 @@
   if (length(.m) == 0L) .own else .m[1L]
 }
 
-#' Update a ui with the VAE's selected covariate effects and fitted estimates.
-#'
-#' Continuous covariates enter as `beta*log(COV/center)`, categorical as
-#' `beta*(COV - center)`, inserted into each mu-referenced parameter's model
-#' line. Returns the updated ui.
-#' @noRd
 #' Write a mixture model's fitted proportions back into `ini()`
 #'
 #' `fit$mixProb` is the full simplex (nMix entries); `ini()` carries the first
@@ -140,6 +134,12 @@
   ui2
 }
 
+#' Update a ui with the VAE's selected covariate effects and fitted estimates.
+#'
+#' Continuous covariates enter as `beta*log(COV/center)`, categorical as
+#' `beta*(COV - center)`, inserted into each mu-referenced parameter's model
+#' line. Returns the updated ui.
+#' @noRd
 .vaeUpdateModel <- function(ui, fit) {
   prep <- fit$prep
   .map <- .foceiEtaThetaMap(ui)
