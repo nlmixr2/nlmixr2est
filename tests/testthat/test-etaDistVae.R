@@ -63,21 +63,21 @@ nmTest({
   ## the ui the vae actually sees: expanded, with the stash the expansion destroys
   .edVaeUi <- function(f) {
     .ui <- rxode2::rxUiDecompress(nlmixr2est::nlmixr2(f))
-    .st <- .etaDistDeclStash(.ui, rxode2::rxUiEtaDists(.ui))
+    .st <- nlmixr2est:::.etaDistDeclStash(.ui, rxode2::rxUiEtaDists(.ui))
     .u2 <- rxode2::rxUiDecompress(rxode2::rxEtaDistExpand(.ui))
-    .etaDistDeclSet(.u2, .st)
+    nlmixr2est:::.etaDistDeclSet(.u2, .st)
     .u2
   }
 
   ## ---------------------------------------------------------------- 2.1/2.2 --
 
   test_that("vae declares etaDist support and emvi/fbvi still do not", {
-    expect_true(.etaDistMethodAttr("vae", NULL))
+    expect_true(nlmixr2est:::.etaDistMethodAttr("vae", NULL))
     ## the refusal was never about the ELBO; it is lifted, and only for vae
-    expect_false(.etaDistMethodAttr("emvi", NULL))
-    expect_false(.etaDistMethodAttr("fbvi", NULL))
+    expect_false(nlmixr2est:::.etaDistMethodAttr("emvi", NULL))
+    expect_false(nlmixr2est:::.etaDistMethodAttr("fbvi", NULL))
     ## the nonparametric methods stay refused -- a declared family contradicts them
-    expect_false(.etaDistMethodAttr("npag", NULL))
+    expect_false(nlmixr2est:::.etaDistMethodAttr("npag", NULL))
   })
 
   ## ------------------------------------------------------------------- 2.3 --
@@ -106,12 +106,12 @@ nmTest({
     ## sees the UNEXPANDED model, the declared thetas never reach `regressNames`,
     ## and the fit completes with the declaration frozen at its ini() values -- no
     ## error, no warning, wrong answer.
-    .h <- .orderPreProcessHookNames(c(".preProcessBoundedTransform", ".preProcessIov",
+    .h <- nlmixr2est:::.orderPreProcessHookNames(c(".preProcessBoundedTransform", ".preProcessIov",
                                       ".preProcessEtaDist", ".preProcessVaeNonMuTheta"))
     expect_identical(.h[1], ".preProcessEtaDist")
     expect_identical(.h[length(.h)], ".preProcessBoundedTransform")
     ## and in the registered chain itself
-    .r <- .orderPreProcessHookNames(ls(.preProcessHooks))
+    .r <- nlmixr2est:::.orderPreProcessHookNames(ls(nlmixr2est:::.preProcessHooks))
     if (".preProcessEtaDist" %in% .r) expect_identical(.r[1], ".preProcessEtaDist")
   })
 
@@ -120,7 +120,7 @@ nmTest({
   test_that("the expansion leaves the vae latent standard normal", {
     skip_on_cran()
     .u <- .edVaeUi(.edVaeMod())
-    .p <- .vaeDataPrep(.u, nlmixr2data::theo_sd, vaeControl(covariateSelection = FALSE))
+    .p <- nlmixr2est:::.vaeDataPrep(.u, nlmixr2data::theo_sd, vaeControl(covariateSelection = FALSE))
     .z <- grep("^rxz[.]", .p$etaNames)
     expect_gt(length(.z), 0L)                      # the declaration produced latents
     ## isFree: no `theta + eta` form, so zPop is forced to 0 and HELD there
@@ -169,7 +169,7 @@ nmTest({
     skip_on_cran()
     ## If they do not, the M-step never touches them and the fit returns ini().
     .u <- .edVaeUi(.edVaeMod())
-    .nm <- .vaeNonMuThetas(.u)
+    .nm <- nlmixr2est:::.vaeNonMuThetas(.u)
     expect_true(all(c("lclm", "lclrv", "lv1m", "lv1rv") %in% .nm))
     ## rxCor.* is the Gaussian copula parameter; vae regresses it, and if it comes
     ## back NA the whole M-step declines (R/vaeGrad.R)
@@ -177,7 +177,7 @@ nmTest({
     ## lka stays OUT -- it is mu-referenced through eta.ka
     expect_false("lka" %in% .nm)
     ## and .vaeDataPrep agrees with the helper
-    .p <- .vaeDataPrep(.u, nlmixr2data::theo_sd, vaeControl(covariateSelection = FALSE))
+    .p <- nlmixr2est:::.vaeDataPrep(.u, nlmixr2data::theo_sd, vaeControl(covariateSelection = FALSE))
     expect_true(all(.nm %in% .p$regressNames))
   })
 
@@ -192,8 +192,8 @@ nmTest({
     ## it does NOT build for a declared model.  So the safety property is not
     ## enforced here; it is enforced on the real build result -- see the segfault
     ## regression test below.
-    expect_true(.vaeGradInScope(.edVaeUi(.edVaeMod())))
-    expect_true(.vaeGradInScope(rxode2::assertRxUi(.edVaeNorm()())))
+    expect_true(nlmixr2est:::.vaeGradInScope(.edVaeUi(.edVaeMod())))
+    expect_true(nlmixr2est:::.vaeGradInScope(rxode2::assertRxUi(.edVaeNorm()())))
   })
 
   test_that("the augmented outer-gradient model builds for a declared model", {
@@ -218,7 +218,7 @@ nmTest({
     expect_true(inherits(.am$augMod, "rxode2"))
     expect_true(all(c("lclm", "lv1m", "lclrv", "lv1rv",
                       grep("^rxCor[.]", .u$iniDf$name, value = TRUE)) %in%
-                      .foceiOuterDirs(.u, "vae")$thStruct))
+                      nlmixr2est:::.foceiOuterDirs(.u, "vae")$thStruct))
   })
 
   test_that("a declared grad fit runs, and the gradient is attempted", {
@@ -274,7 +274,7 @@ nmTest({
         .hj <- h * max(1, abs(eta[j]))
         .up <- eta; .up[j] <- .up[j] + .hj
         .dn <- eta; .dn[j] <- .dn[j] - .hj
-        (likInner(.up, id) - likInner(.dn, id)) / (2 * .hj)
+        (nlmixr2est:::likInner(.up, id) - nlmixr2est:::likInner(.dn, id)) / (2 * .hj)
       }, numeric(1))
     }
     .ctl <- vaeControl(covariateSelection = FALSE)
@@ -284,10 +284,10 @@ nmTest({
     ## --- calibration on the Gaussian twin -------------------------------------
     .un <- rxode2::assertRxUi(.edVaeNorm()())
     .e0 <- matrix(0.05, .N, 3L)
-    .ienv <- .vaeInnerSetup(.un, .d, .e0, .ctl)
-    .lpN <- as.numeric(foceiInnerLp(.e0[1, ], 1L))
+    .ienv <- nlmixr2est:::.vaeInnerSetup(.un, .d, .e0, .ctl)
+    .lpN <- as.numeric(nlmixr2est:::foceiInnerLp(.e0[1, ], 1L))
     .cdN <- .cd(1L, .e0[1, ], 1e-4)
-    .vaeInnerFree()
+    nlmixr2est:::.vaeInnerFree()
     .k <- stats::median(.lpN / .cdN)
     ## lpInner IS d(likInner)/d(eta): same sign, unit scale, no prior offset
     expect_equal(.k, 1, tolerance = 1e-3)
@@ -297,11 +297,11 @@ nmTest({
     ## finite difference through it; a relative step of 1e-4 clears that and
     ## stays in the linear regime (measured identical at 1e-5 and 1e-6).
     .ud <- .edVaeUi(.edVaeMod())
-    .p <- .vaeDataPrep(.ud, .d, .ctl)
+    .p <- nlmixr2est:::.vaeDataPrep(.ud, .d, .ctl)
     .e1 <- matrix(0.05, .N, .p$zDim)
-    .ienv <- .vaeInnerSetup(.ud, .d, .e1, .ctl)
-    on.exit(.vaeInnerFree(), add = TRUE)
-    .lpD <- as.numeric(foceiInnerLp(.e1[1, ], 1L))
+    .ienv <- nlmixr2est:::.vaeInnerSetup(.ud, .d, .e1, .ctl)
+    on.exit(nlmixr2est:::.vaeInnerFree(), add = TRUE)
+    .lpD <- as.numeric(nlmixr2est:::foceiInnerLp(.e1[1, ], 1L))
     .cdD <- .cd(1L, .e1[1, ], 1e-4)
     expect_true(all(is.finite(.lpD)))
     .zi <- grep("^rxz[.]", .p$etaNames)
