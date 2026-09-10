@@ -829,7 +829,12 @@ vcov.nlmixr2FitCoreSilent <- vcov.nlmixr2FitCore
   }
   # Without this the ui carries e.g. p1 = -0.847 = mlogit(0.3) while fixef()
   # reports 0.3, and re-fitting the fit fails its own ini() validation.
-  if (.fromFullTheta) {
+  #
+  # saem is the exception: it reports the proportions ALREADY on the natural
+  # scale (env$mixProbNatural, set by .getSaemTheta()), so mexpit()-ing them
+  # again writes expit(p) into the ui -- 0.4 came back as 0.599 -- the same
+  # double back-transform #1058 fixed in .aaaPostEstimationMixBacktransform().
+  if (.fromFullTheta && !isTRUE(x$mixProbNatural)) {
     .mixNames <- tryCatch(.ui$mixProbs, error = function(e) character(0))
     .mixNames <- intersect(.mixNames, names(.thetas))
     if (length(.mixNames) > 0L) {
