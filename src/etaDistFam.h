@@ -81,7 +81,54 @@ static inline int rxEtaDistPosMask(int fam) {
 }
 
 // quantile: latent uniform -> eta.  Mirrors the catalog's own templates.
+static inline double rxEtaDistQ_(int fam, double u, const double *a);
+
+// Is this family's support strictly positive?  Used ONLY to reject a quantile
+// that has underflowed out of it; the estimation itself stays support-agnostic.
+static inline bool rxEtaDistPosSupport(int fam) {
+  switch (fam) {
+  case RXETADIST_LNORM:
+  case RXETADIST_CHISQ:
+  case RXETADIST_INVCHISQ:
+  case RXETADIST_SCINVCHISQ:
+  case RXETADIST_EXP:
+  case RXETADIST_GAMMA:
+  case RXETADIST_INVGAMMA:
+  case RXETADIST_WEIBULL:
+  case RXETADIST_FRECHET:
+  case RXETADIST_RAYLEIGH:
+  case RXETADIST_PARETO:
+  case RXETADIST_BETA:
+  case RXETADIST_BETAPROP:
+    return true;
+  default:
+    return false;
+  }
+}
+
 static inline double rxEtaDistQ(int fam, double u, const double *a) {
+  double rxEtaDistQ_ret = rxEtaDistQ_(fam, u, a);
+  // A quantile that has UNDERFLOWED out of the family's support is not a draw,
+  // it is a zero, and the density is undefined there.
+  //
+  // The two inverse routes disagree at the extreme and only one of them can
+  // produce it: Rmath's qgamma returns EXACTLY 0 below about u = 1e-6 once the
+  // shape is small, where Boost's gammapInv (which the model's own decoder
+  // uses) floors at DBL_MIN and stays positive.  Measured at a state the
+  // M-step reached on Bauer's g4 -- shape 0.0170, rate 32437 -- qgamma gives 0
+  // and gammapInv/rate gives 6.86e-313.
+  //
+  // The callers filter on std::isfinite() alone, and 0 is perfectly finite, so
+  // the zero was accepted into the eta sample and handed to gamma_lpdf, which
+  // requires a strictly positive variate and threw: the whole fit died with
+  // "Random variable is 0, but must be positive finite".  Returning NA here
+  // makes the existing finiteness filters drop it, in every caller at once,
+  // without teaching any of them about supports.
+  if (rxEtaDistPosSupport(fam) && rxEtaDistQ_ret <= 0.0) return NA_REAL;
+  return rxEtaDistQ_ret;
+}
+
+static inline double rxEtaDistQ_(int fam, double u, const double *a) {
   switch (fam) {
   case RXETADIST_NORM:      return R::qnorm(u, a[0], a[1], 1, 0);
   case RXETADIST_STDNORMAL: return R::qnorm(u, 0.0, 1.0, 1, 0);
