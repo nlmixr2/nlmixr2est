@@ -143,6 +143,24 @@
 
 ### Bug fixes
 
+- `est="saem"` now reports a mixture proportion that agrees with the
+  fit’s own posterior responsibilities (`sum_i (r_i - p) == 0`) and with
+  what the data identifies. Three things were wrong: the shared
+  parameter-table hook mlogit back-transformed `saem`’s proportions,
+  which are already on the natural scale, so the reported value was
+  `expit(p)` and could not equal the responsibilities it was averaged
+  from; `mixProbMethod="regress"` classified each subject at that
+  subject’s `phiM` draw, whose fixed-effect-only columns carry a search
+  variance of 1 rather than a real BSV, so the draw swamped the
+  between-component signal and misclassified a fifth of the subjects
+  even with 8-fold separated components; and an eta shared by every
+  mixture component was marked as owned by whichever component mentioned
+  it last, sending shared-eta mixtures down the split-ETA code paths.
+  Every `mixProbMethod` now reports the proportion at the score-zero
+  point: one exact M-step at the final responsibilities, rather than a
+  value still carrying the annealing or Dirichlet-style shrinkage that
+  stabilizes the trajectory.
+
 - A `focei`-family fit now reports whether its inner solves actually
   converged. `fit$env$nTrustInner` breaks the `innerOpt="trust"`
   per-subject Newton solves down by outcome (`calls`, `error`,
