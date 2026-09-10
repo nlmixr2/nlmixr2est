@@ -128,6 +128,11 @@ nmTest({
     expect_lt(min(eigen(r$R, symmetric = TRUE, only.values = TRUE)$values), 0)
     expect_equal(fit$cov, .cov0)                       # the FD covariance survives
     expect_identical(fit$covMethod, .m0)
+    # setCov() is the supported way to ask for the same thing; its own PD gate must
+    # refuse and leave the covariance alone rather than install the indefinite one
+    expect_error(setCov(fit, "analytic"), "left unchanged")
+    expect_equal(fit$cov, .cov0)
+    expect_identical(fit$covMethod, .m0)
   })
 
   test_that("single random-effect model is handled analytically (no sapply collapse)", {

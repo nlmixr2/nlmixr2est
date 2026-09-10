@@ -397,8 +397,9 @@
   if (any(vapply(.obsAll, is.null, logical(1L))))
     return(.foceiAnalyticFallback("a subject with no observations"))
   .obsT <- lapply(.obsAll, function(.o) .o$TIME)
-  .e0 <- .foceiAnalyticEbeRefine(am, th, ebes, .idCode, data, .obsAll, .obsT, etav, Oi, neta, Om, solveTol)
-  eta0Mat <- if (is.null(.e0)) ebes else .e0          # FOCEI EBE refinement to Phi_eta = 0
+  .rf <- .foceiAnalyticEbeRefine(am, th, ebes, .idCode, data, .obsAll, .obsT, etav, Oi, neta, Om, solveTol)
+  if (isTRUE(.rf$decline)) return(.foceiAnalyticFallback(.foceiAnalyticEbeReason))
+  eta0Mat <- .rf$eta                                  # FOCEI EBE refinement to Phi_eta = 0
   .batch <- !nzchar(Sys.getenv("FOCEI_NO_FD3_BATCH"))
   .EsAll <- if (.batch) .foceiAnalyticSolveAllFD3(am, th, eta0Mat, .idCode, data, .obsT, tol = solveTol, withR = TRUE,
                                                  sigSel = .sigSel) else NULL
@@ -524,9 +525,10 @@
     eta0Mat[i, ] <- .e0
   }
   if (!.foce) {                                       # FOCEI EBE refinement to Phi_eta = 0
-    .e0 <- .foceiAnalyticEbeRefine(am, th, ebes, .idCode, data, .obsAll, .obsT, etav, Oi, neta,
+    .rf <- .foceiAnalyticEbeRefine(am, th, ebes, .idCode, data, .obsAll, .obsT, etav, Oi, neta,
                                    Om, solveTol, rescale)
-    if (!is.null(.e0)) eta0Mat <- .e0
+    if (isTRUE(.rf$decline)) return(.foceiAnalyticFallback(.foceiAnalyticEbeReason))
+    eta0Mat <- .rf$eta
   }
   .batch <- !rescale && !nzchar(Sys.getenv("FOCEI_NO_FD3_BATCH"))
   .EsAll <- NULL
@@ -2450,10 +2452,16 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
 #' one batched solve when the EBEs are already stationary (the `skip` test in
 #' [.foceiAnalyticFoceEbeBatch] short-circuits) and a handful of Newton steps otherwise.
 #'
-#' Declining is not a failure: a refinement that will not build or converge returns `NULL`
-#' and the caller keeps the stored EBEs, which is exactly the pre-refinement behaviour.
-#' IOV (`rescale`) opts out -- its EBEs are the Param A (unit occasion eta) values that the
-#' caller rescales itself, so a Newton on the unscaled model would not solve the same problem.
+#' There are two ways not to refine and they are NOT the same, so the result separates
+#' them.  `list(eta = ebes)` means the refinement does not apply -- IOV (`rescale`), whose
+#' EBEs are the Param A (unit occasion eta) values the caller rescales itself, so a Newton
+#' on the unscaled model would not solve the same problem; or a model with no `rx_r_`
+#' variance columns to build rho_R from.  `list(decline = TRUE)` means it was ATTEMPTED and
+#' failed -- the solve, the Newton, or the mode guard -- and the caller must fall back to
+#' the finite-difference covariance rather than assemble one at EBEs now known not to
+#' satisfy Phi_eta = 0.  That is what the FOCE sibling already does with its own failed
+#' re-solve; carrying on would put the error the refinement exists to remove back into R,
+#' silently.
 #'
 #' `skip` is the score below which the stored EBEs are taken as stationary and returned
 #' untouched (one batched solve, no Newton).  The error the residual score puts into R is
@@ -2464,16 +2472,20 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
 #' @noRd
 .foceiAnalyticEbeRefine <- function(am, th, ebes, idCode, data, obsAll, obsT, etav, Oi, neta,
                                     Om, solveTol, rescale = FALSE, skip = 1e-6) {
-  if (rescale || !isTRUE(am$hasRvar)) return(NULL)
+  if (rescale || !isTRUE(am$hasRvar)) return(list(eta = ebes))     # does not apply
   .e <- tryCatch(.foceiAnalyticFoceEbeBatch(am, th, ebes, idCode, data, obsAll, obsT, etav, Oi, neta,
                                             solveTol, interaction = 1L, skip = skip),
                  error = function(e) NULL)
-  if (is.null(.e) || !all(is.finite(.e))) return(NULL)
+  if (is.null(.e) || !all(is.finite(.e))) return(list(decline = TRUE))
   .sd <- suppressWarnings(sqrt(diag(Om)))
-  if (!all(is.finite(.sd)) || any(.sd <= 0)) return(NULL)
-  if (any(abs(.e - ebes) > rep(.sd, each = nrow(ebes)))) return(NULL)   # a different mode
-  .e
+  if (!all(is.finite(.sd)) || any(.sd <= 0)) return(list(decline = TRUE))
+  if (any(abs(.e - ebes) > rep(.sd, each = nrow(ebes)))) return(list(decline = TRUE))  # another mode
+  list(eta = .e)
 }
+
+#' The reason both assemblers give when the FOCEI EBE refinement was attempted and failed.
+#' @noRd
+.foceiAnalyticEbeReason <- "a subject whose EBE will not re-solve to the FOCEI inner optimum"
 
 #' FOCEI inner score Phi_eta and its Jacobian Phi_etaeta at one subject's trial eta.
 #'
