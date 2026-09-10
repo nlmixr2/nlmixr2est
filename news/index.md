@@ -143,6 +143,51 @@
 
 ### Bug fixes
 
+#### Mixture models
+
+- A mixture fit’s table reported `mixest`, `mixnum` and the result of
+  `mix()` itself as 0 for every row, and `PRED`/`IPRED` were computed
+  from those zeros – silently wrong predictions rather than an error
+  ([\#1041](https://github.com/nlmixr2/nlmixr2est/issues/1041)). The
+  prediction model is built through symengine, which expands the `mix()`
+  call away, and rxode2 then no longer read the model as a mixture at
+  all, so the per-individual component never reached the solve. Fixed in
+  rxode2 (nlmixr2/rxode2#1358); this release stops working around it.
+
+- A theta that `saem` does not estimate as a parameter of its own,
+  declared before a mu-referenced population parameter, shifted every
+  eta after it onto the wrong parameter in the model `saem` solves for
+  its table. The eta to theta map is an index into the SAEM estimation
+  parameter vector, and it was used to subscript the model text built in
+  [`ini()`](https://nlmixr2.github.io/rxode2/reference/ini.html) order;
+  the two differ by exactly those thetas. This is not mixture-specific –
+  a mu-referenced COVARIATE parameter is dropped from that vector as
+  well, so an ordinary covariate model that declares `tcl.wt` before
+  `tv` had the volume’s eta land on `tcl.wt` and the volume get none,
+  and its table lost the volume’s between-subject variability entirely
+  (`v` came back constant, and `IPRED` with it). Now paired by name.
+
+- The `mixest`/`mixnum` iCov handed to the table step is rejected by
+  rxode2 when its `ID` is a factor, which it always was: it is built as
+  an integer and output creation re-levels every `ID` in the fit
+  environment afterwards. The whole table step was then dropped and the
+  fit came back without a table.
+
+- A rejected iCov no longer takes the table step down with it – the
+  retry without it now covers the rxode2 messages that can actually be
+  raised, and the retry says so in the fit’s `$runInfo` rather than
+  quietly handing back a table whose mixture columns are all 0 (which is
+  what happens on an rxode2 without nlmixr2/rxode2#1358).
+
+- The post-hoc correction of the `mixest`/`mixnum`/`mixunif` output
+  columns is removed. It only ever fired for columns literally named
+  `me`, `mn` and `mu`, so a model that named them anything else kept the
+  zeros; and now that the solve is right it was corrupting correct
+  values – it wrote the per-subject component into the column holding
+  `mixnum`, which is the component *count*. A model that reads `mixunif`
+  in an expanded prediction model gets the supplied component back
+  rather than a fabricated `1/nMix`; use `mixest`.
+
 - `est="saem"` now reports a mixture proportion that agrees with the
   fit’s own posterior responsibilities (`sum_i (r_i - p) == 0`) and with
   what the data identifies. Three things were wrong: the shared
@@ -160,6 +205,8 @@
   point: one exact M-step at the final responsibilities, rather than a
   value still carrying the annealing or Dirichlet-style shrinkage that
   stabilizes the trajectory.
+
+#### Estimation
 
 - A `focei`-family fit now reports whether its inner solves actually
   converged. `fit$env$nTrustInner` breaks the `innerOpt="trust"`
