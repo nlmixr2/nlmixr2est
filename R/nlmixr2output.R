@@ -395,6 +395,7 @@
     .changed <- TRUE
   }
   if (!.changed) return(invisible())
+  .pf <- .mixParFixedCi(env$ui, .pf, .ci)
   env$parFixedDf <- .pf
   # regenerate the formatted table; the FIXED / fix(...) decorations are
   # re-derived from the existing formatted table (the numeric one lacks them)
@@ -502,6 +503,9 @@
     popDf <- .bsv$popDf
     popDf <- .updateParFixedAddShrinkage(popDf, shrink = .ret$shrink, ui = .ui)
   }
+  # a mixture proportion's CI belongs on the logit scale: the generic
+  # symmetric interval leaves (0, 1) and is built from the pre-rotation SE
+  popDf <- .mixParFixedCi(.ui, popDf, .parFixedCi)
   .ret$popDf <- popDf
   # $popDfSig may still exist from the C++ side but is no longer used
   .ret$parFixed <-

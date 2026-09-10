@@ -165,6 +165,12 @@
   across rather than dropped.  Same principle as `covFull` reporting Omega on the
   natural variance scale instead of `chol(solve(omega))`.
 
+  The confidence interval is taken on the logit scale,
+  `expit(logit(p) +/- z*SE/(p(1-p)))`, from the SE actually reported.  The
+  generic symmetric `est +/- z*SE` interval walks out of `(0, 1)` for a
+  proportion (a fit reported `p1 = 0.648 (-0.045, 1.34)`) and was built from the
+  covariance before the rotation, so it did not agree with the SE beside it.
+
   That rotation carries a factor of `p(1-p)`, so a proportion sitting near 0 or
   1 gets an SE that shrinks toward zero.  It is the right delta-method answer
   but it reads as certainty, when in fact the symmetric Wald interval has

@@ -209,6 +209,30 @@ nmTest({
                  sqrt(0.35 * 0.65 / .n), tolerance = 1e-6)
   })
 
+  test_that("a mixture proportion's CI stays inside (0, 1)", {
+    ## The estimate IS a probability, so the generic symmetric
+    ## backTransform(est +/- z*SE) interval walks straight out of (0, 1) -- a
+    ## real fit reported p1 = 0.648 (-0.045, 1.34).  It was also built from the
+    ## covariance BEFORE the probability-scale rotation, so it did not even
+    ## agree with the SE printed beside it.
+    .ui <- rxode2::rxUiDecompress(rxode2::assertRxUi(.mixCovMod))
+    .pf <- data.frame(Estimate = c(0.648, 0.5), SE = c(0.0862, 0.30),
+                      `CI Lower` = c(-0.045, -0.1), `CI Upper` = c(1.34, 1.1),
+                      row.names = c("p1", "add.sd"), check.names = FALSE)
+    .out <- .mixParFixedCi(.ui, .pf, 0.95)
+    expect_true(.out["p1", "CI Lower"] > 0 && .out["p1", "CI Upper"] < 1)
+    ## it is the logit-scale interval, built from the REPORTED SE
+    .p <- 0.648; .s <- 0.0862; .j <- .p * (1 - .p)
+    expect_equal(.out["p1", "CI Lower"],
+                 rxode2::expit(rxode2::logit(.p) - 1.959964 * .s / .j),
+                 tolerance = 1e-5)
+    ## asymmetric about the estimate, which is the honest shape here
+    expect_false(isTRUE(all.equal(.p - .out["p1", "CI Lower"],
+                                  .out["p1", "CI Upper"] - .p)))
+    ## a non-mixture row is untouched
+    expect_equal(.out["add.sd", "CI Lower"], -0.1)
+  })
+
   test_that("a proportion at the boundary is flagged, not reported as precise", {
     ## The probability-scale SE carries a factor p(1-p), so it goes to ZERO as a
     ## proportion approaches 0 or 1.  That is the correct delta-method answer but

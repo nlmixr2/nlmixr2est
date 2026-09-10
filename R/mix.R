@@ -527,6 +527,45 @@
   invisible(NULL)
 }
 
+#' Put a mixture proportion's confidence interval on the logit scale
+#'
+#' A proportion's reported estimate IS a probability, so the generic
+#' \code{backTransform(est +/- z*SE)} interval is symmetric on (0, 1) and walks
+#' straight out of it -- a fit reported \code{p1 = 0.648 (-0.045, 1.34)}.  It is
+#' also built from the covariance as it stood BEFORE the probability-scale
+#' rotation, so it does not even agree with the SE printed beside it.
+#'
+#' Both are fixed by taking the interval where the parameter is actually
+#' estimated: \code{expit(logit(p) +/- z*SE_p/(p(1-p)))}, using the REPORTED SE
+#' so the two columns are consistent.  The result is inside (0, 1) by
+#' construction and asymmetric, which is the honest shape near a boundary.
+#'
+#' @param ui the fit's rxode2 ui
+#' @param popDf parameter table carrying Estimate/SE/CI columns
+#' @param ci confidence level
+#' @return \code{popDf} with the mixture rows' CI columns replaced
+#' @noRd
+#' @author Matthew L. Fidler
+.mixParFixedCi <- function(ui, popDf, ci = 0.95) {
+  .mp <- tryCatch(ui$mixProbs, error = function(e) NULL)
+  if (is.null(.mp) || length(.mp) == 0L) return(popDf)
+  if (!is.data.frame(popDf) || is.null(rownames(popDf))) return(popDf)
+  if (!all(c("Estimate", "SE", "CI Lower", "CI Upper") %in% names(popDf))) return(popDf)
+  if (!(length(ci) == 1L && is.numeric(ci) && is.finite(ci))) ci <- 0.95
+  .qn <- stats::qnorm(1 - (1 - ci) / 2)
+  for (.n in intersect(.mp, rownames(popDf))) {
+    .p <- popDf[.n, "Estimate"]
+    .s <- popDf[.n, "SE"]
+    if (!is.finite(.p) || !is.finite(.s) || .p <= 0 || .p >= 1) next
+    .j <- .p * (1 - .p)                       # dp/d(logit p)
+    if (!is.finite(.j) || .j <= 0) next
+    .sl <- .s / .j                            # SE on the logit scale
+    popDf[.n, "CI Lower"] <- rxode2::expit(rxode2::logit(.p) - .qn * .sl)
+    popDf[.n, "CI Upper"] <- rxode2::expit(rxode2::logit(.p) + .qn * .sl)
+  }
+  popDf
+}
+
 #' Note when a mixture proportion sits near 0 or 1
 #'
 #' The probability-scale SE is \code{J Sigma J'} with \code{J = diag(p) - p p'},
