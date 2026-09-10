@@ -517,8 +517,15 @@
 #'   mid-flight eta sample fits the wrong thing, which does not apply to a second
 #'   moment of the latents.
 #'
-#'   `FALSE` (the default) keeps the product-moment route while the two are
-#'   being compared.
+#'   `FALSE` is the default for imp, on measurement -- unlike `foceiControl()`,
+#'   which defaults to `TRUE`.  On Bauer's declared-gamma arms this route leaves
+#'   imp's copula correlation accurate (g2 +0.502, g3 +0.453 against a truth of
+#'   0.50) and its relative variances sane, but sends the LOCATION parameters
+#'   away: CL 1823 on g2 and 306204 on g3, against a truth of 5.10.  focei is
+#'   fine on the same arms with the same estimator, and the estimator itself is
+#'   pinned against the `S_n = L S_z L'` definition in
+#'   `test-etaDistCorSuff.R`, so this is a property of imp's fit rather than of
+#'   the correlation.  Set it to `TRUE` explicitly to measure it.
 #' @param etaDistSdTol Relative change in the pooled latent standard deviation,
 #'   between consecutive declared-distribution M-step attempts, below which the
 #'   latent is treated as settled and the M-step is allowed to run.  This, not

@@ -445,8 +445,28 @@
 #'   mid-flight eta sample fits the wrong thing, which does not apply to a second
 #'   moment of the latents.
 #'
-#'   `FALSE` (the default) keeps the product-moment route while the two are
-#'   being compared.
+#'   `TRUE` is the default for focei, on measurement.  Across Bauer's four
+#'   declared-gamma arms (300 subjects, truth rho 0.50 started from 0.30) it is
+#'   better or equal in every one, and the gap is widest exactly where the
+#'   product-moment route is predicted to fail -- on g1, whose latent spread is
+#'   the smallest (relative variance 0.081/0.047), it reports rho +0.691 where
+#'   the sufficient statistic reports +0.540:
+#'
+#'   \tabular{lrrrr}{
+#'     arm \tab MARE FALSE \tab MARE TRUE \tab rho FALSE \tab rho TRUE \cr
+#'     g1  \tab 40.7% \tab 28.3% \tab +0.691 \tab +0.540 \cr
+#'     g2  \tab 11.3% \tab 10.0% \tab +0.466 \tab +0.456 \cr
+#'     g3  \tab 17.3% \tab 11.2% \tab +0.473 \tab +0.461 \cr
+#'     g4  \tab  6.4% \tab  6.4% \tab +0.515 \tab +0.514
+#'   }
+#'
+#'   It also writes the correlation on every M-step attempt, where the
+#'   product-moment route is blocked by the spread guard on some.
+#'
+#'   Note `impmapControl()` keeps `FALSE`: on the same arms this route leaves
+#'   imp's copula correlation accurate but sends the LOCATION parameters away
+#'   (g2 CL 1823 and g3 CL 306204 against a truth of 5.10), which is not
+#'   understood yet.  Set it explicitly there if you want to measure it.
 #' @param etaDistSdTol Relative change in the pooled latent standard deviation,
 #'   between consecutive declared-distribution M-step attempts, below which the
 #'   latent is treated as settled and the M-step is allowed to run.  This, not
@@ -1286,7 +1306,7 @@ foceiControl <- function(sigdig = 3, #
                          etaDistSdLo = 0.2, #
                          etaDistSdHi = 5.0, #
                          etaDistSdTol = 0.10, #
-                         etaDistCorSuff = FALSE, #
+                         etaDistCorSuff = TRUE, #
                          repeatGillMax = 1, #
                          stickyRecalcN = 4, #
                          outerMaxOdeRecalc = 5, #

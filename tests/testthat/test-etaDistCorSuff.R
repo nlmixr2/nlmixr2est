@@ -96,11 +96,16 @@ nmTest({
     expect_gt(abs(.pm - .rho), 0.1)
   })
 
-  test_that("both controls carry the route and default to the old one", {
-    ## Default FALSE while the two are being compared: the route must be chosen
-    ## by measurement, not by which one was written second.
-    expect_false(foceiControl()$etaDistCorSuff)
-    expect_true(foceiControl(etaDistCorSuff = TRUE)$etaDistCorSuff)
+  test_that("the two controls default DIFFERENTLY, on measurement", {
+    ## focei TRUE: better or equal on all four of Bauer's declared-gamma arms,
+    ## and widest exactly where the product-moment route is predicted to fail
+    ## (g1, smallest latent spread: rho +0.691 vs +0.540 against truth 0.50).
+    expect_true(foceiControl()$etaDistCorSuff)
+    expect_false(foceiControl(etaDistCorSuff = FALSE)$etaDistCorSuff)
+    ## imp FALSE: the same route leaves imp's correlation accurate but sends the
+    ## LOCATION away (g2 CL 1823, g3 CL 306204 against truth 5.10).  The
+    ## asymmetry is deliberate; this pins it so neither drifts to match the
+    ## other by accident.
     expect_false(impmapControl()$etaDistCorSuff)
     expect_true(impmapControl(etaDistCorSuff = TRUE)$etaDistCorSuff)
     expect_error(impmapControl(etaDistCorSuff = "yes"))
@@ -108,6 +113,21 @@ nmTest({
     .c <- impmapControl(etaDistCorSuff = TRUE)
     expect_true(do.call(impmapControl,
                         .c[names(.c) %in% names(formals(impmapControl))])$etaDistCorSuff)
+  })
+
+  test_that("focei's default cannot leak into imp", {
+    ## impmapControl() builds itself with do.call(foceiControl, .) and THEN
+    ## overwrites this field from its own argument (R/impmap.R).  If that
+    ## overwrite were ever removed, imp would silently inherit focei's TRUE --
+    ## which is the setting measured to send imp's location parameters to
+    ## CL 306204.  Assert the overwrite, not just the default.
+    expect_false(impmapControl()$etaDistCorSuff)
+    expect_false(impmapControl(etaDistCorSuff = FALSE)$etaDistCorSuff)
+    ## the C++ reads this off the control list by name (src/inner.cpp ~8488),
+    ## so the name must actually be PRESENT and logical, not absent-and-defaulted
+    .c <- impmapControl()
+    expect_true("etaDistCorSuff" %in% names(.c))
+    expect_type(.c$etaDistCorSuff, "logical")
   })
 
   test_that("the copula write has its own counter", {
