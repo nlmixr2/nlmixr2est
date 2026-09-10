@@ -142,6 +142,16 @@
 
 ## Bug fixes
 
+- `foceiControl(fast=)` no longer moves a `maxOuterIterations = 0` fit's ETAs.
+  That fit evaluates the analytic outer gradient once so `.foceiGradDirect()`
+  has something to report, and the evaluation ran an extra inner optimization
+  pass per subject before the final one; under the default warm start
+  (`mceta < 0` keeps the last eta) the inner solve converges only to its own
+  tolerance, so the extra pass shifted the reported ETAs and everything derived
+  from them.  On `theo_sd` at `sigdig = 4` the `covMethod = "analytic"`
+  standard errors differed by 1.8e-4 relative between `fast = TRUE` and
+  `fast = FALSE`; they now agree to 2.7e-12.
+
 ### Mixture models
 
 - A mixture proportion now binds to the `mix()` component it was written for,
