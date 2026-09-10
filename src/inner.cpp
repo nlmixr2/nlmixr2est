@@ -66,6 +66,11 @@ static int _nlmixrNEmLik = 0;
 // What the registered bundles were observed to DO (#1051); see likContribUtil.h.
 std::atomic<int> _nlmixrContribSeen{0};
 std::atomic<int> _nlmixrContribChanged{0};
+// Deliberately NOT reset per fit: a bundle whose contribution happens to be
+// exactly 0.0 for the first few outer iterations (an NN whose output weights
+// start at zero) would otherwise be re-classified as an observer at the start of
+// every fit.  Only a change to the registry -- a different bundle -- invalidates
+// what was observed, and the stale direction is slower, never wrong.
 static inline void nlmixrContribResetObserved(void) {
   _nlmixrContribSeen.store(0, std::memory_order_relaxed);
   _nlmixrContribChanged.store(0, std::memory_order_relaxed);
@@ -164,17 +169,21 @@ static void _testObs(nlmixrLikObs *o) {
   // (_testAddLL above) cannot move an optimum, so it cannot exercise that path.
   if (_testAddLLf != 0.0) {
     *o->llik += _testAddLLf * o->f;
-    if (o->df_deta != NULL) {
+    if (o->df_deta != NULL && o->dLL_deta != NULL) {
       for (int q = 0; q < o->neta; ++q) o->dLL_deta[q] += _testAddLLf * o->df_deta[q];
     }
   }
 }
+// Both setters change what the bundle DOES, so what was observed of it no longer
+// applies (#1051) -- the same invalidation a registry change gets.
 extern "C" SEXP _nlmixr2est_setTestContribAddLL(SEXP v) {
   _testAddLL = Rf_asReal(v);
+  nlmixrContribResetObserved();
   return R_NilValue;
 }
 extern "C" SEXP _nlmixr2est_setTestContribAddLLf(SEXP v) {
   _testAddLLf = Rf_asReal(v);
+  nlmixrContribResetObserved();
   return R_NilValue;
 }
 static const nlmixrLikContrib _testContribBundle = { _testBegin, _testObs, _testEnd };
@@ -182,6 +191,7 @@ extern "C" SEXP _nlmixr2est_registerTestContrib(void) {
   _testSumDLLdf = _testSumErr = _testSumF = _testAddLL = _testAddLLf = 0.0;
   _testNObs = _testNBegin = _testNEnd = 0;
   nlmixrRegisterLikContrib(&_testContribBundle);
+  nlmixrContribResetObserved();   // re-register with the adds zeroed
   return R_NilValue;
 }
 extern "C" SEXP _nlmixr2est_removeTestContrib(void) {
@@ -9751,9 +9761,6 @@ Environment foceiOuter(Environment e){
   op_focei.nFDGradFast=0;
   op_focei.warnedAnalyticFallback=0;
   op_focei.warnedContribFallback=0;
-  // Re-observe what the registered contributors do on THIS fit (#1051): a bundle
-  // can be swapped between fits, and the flags are process globals.
-  nlmixrContribResetObserved();
   if (op_focei.maxOuterIterations > 0){
     for (unsigned int k = op_focei.npars; k--;){
       if (R_FINITE(op_focei.lower[k])){
