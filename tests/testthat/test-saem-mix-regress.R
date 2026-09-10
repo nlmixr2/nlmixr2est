@@ -121,4 +121,15 @@ test_that("saem's mixture proportion equals its own responsibilities and the dat
   # variance of 1, not a real BSV -- misclassified a fifth of these subjects
   # even though the components are 8-fold apart.
   expect_equal(as.integer(fit$env$mixNum$mixnum), as.integer(grp))
+
+  # the identity has to survive the dedicated SA covariance phase too:
+  # covMethod="sa" runs nSaCov extra iterations and then restores the converged
+  # snapshot, and the reported proportion is taken after that restore
+  fitSa <- suppressWarnings(nlmixr2(mixmod, dat, est = "saem",
+                                    saemControl(print = 0, nBurn = 100L, nEm = 100L,
+                                                covMethod = "sa", nSaCov = 50L,
+                                                calcTables = FALSE)))
+  .pSa <- fitSa$env$mixProbabilities[1]
+  expect_equal(sum(fitSa$env$mixList[[1]]$prob - .pSa), 0, tolerance = 1e-6)
+  expect_equal(unname(.pSa), pTrue, tolerance = 0.05)
 })
