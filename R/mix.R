@@ -88,7 +88,7 @@
     }
     return(unique(unlist(lapply(as.list(expr)[-1], .extractEtasOutsideMix, etas = etas))))
   }
-  return(NULL)
+  NULL
 }
 
 #' Process mixture model information after a focei fit
