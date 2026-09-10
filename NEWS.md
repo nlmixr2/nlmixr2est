@@ -144,7 +144,9 @@
   initial values; from three components up the magnitude was wrong too.  The
   full Jacobian collapses to `-2 * sum_i (r_il - pi_l)`, which is what it now
   uses -- checked against a central difference of the objective to eight
-  significant digits at three components.  Fits left on the default
+  significant digits at three components, and equal to a literal evaluation of
+  the NONMEM 7 Technical Guide's own equations (1.194) and (1.197) for the
+  mixture-proportion gradient.  Fits left on the default
   derivative-free `outerOpt="bobyqa"` never reached this code and are
   unchanged, as are the reported standard errors (a mixture proportion is
   `skipCov`).

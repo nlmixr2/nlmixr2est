@@ -6777,6 +6777,19 @@ int mixGrad(double *g, int cpar) {
     // every m != l term -- which cancels by accident at nMix == 2 and is
     // wrong from nMix == 3 up.  The -2 is the objective scale
     // (foceiObjFromLik0() = -2*foceiLik0()).
+    //
+    // This is the NONMEM 7 Technical Guide's own formulation, eq. (1.194) for
+    // d(L_i)/d(a_j) -- what foceiLik0Mix() leaves in mixProbGrad -- chained by
+    // eq. (1.197), g_a = sum_i (dL_i/da)(da/dtheta_a), whose da/dtheta_a is the
+    // FULL Jacobian.  NONMEM carries it as a matrix because $MIX lets P(j) be
+    // arbitrary code; here the link is fixed to mexpit, so the product has the
+    // closed form above (checked equal to a literal evaluation of (1.194) x
+    // (1.197) to 2e-16).  It is valid for THAT link only -- a covariate- or
+    // otherwise non-softmax-modelled proportion has to go back to the matrix
+    // product.  NONMEM's L is -log-lik where this OFV is -2*log-lik, so this is
+    // 2x its g_a; the factor cancels in NONMEM's own Gauss-Newton step (1.199)
+    // but not here, where g[] must match the finite differences taken for every
+    // other parameter.
     int mi = op_focei.mixTrans[cpar];
     double tot = 0.0, nUsed = 0.0;
     for (int i = 0; i < getRxNsub(rx); ++i) {
