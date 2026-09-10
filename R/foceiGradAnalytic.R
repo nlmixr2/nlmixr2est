@@ -507,7 +507,37 @@
     .thRows <- ui$iniDf[!is.na(ui$iniDf$ntheta), , drop = FALSE]
     .thRows <- .thRows[order(.thRows$ntheta), , drop = FALSE]
     .thEst <- .thRows$name[!.thRows$fix]
-    .parNames <- c(setdiff(.thEst, .foceiMuSkipThetaNames(ui, .thAll)), st$omNames)
+    ## FIXED omega entries are not optimizer parameters.  The theta half of this
+    ## already respects `fix`; the omega half did not, so `gMap` was longer than
+    ## `op_focei.npars` for any model that fixes an omega entry and
+    ## foceiGradPooledDirect_ declined on its arity guard -- opaquely, since the
+    ## caller just falls back to finite differences.
+    ##
+    ## `rxEtaDistExpand()` makes this the NORMAL case: it writes every declared
+    ## latent as `rxz.* ~ fix(1)` and drops the block off-diagonals, so a declared
+    ## model estimates ZERO omega parameters.  Measured on a two-latent declared
+    ## gamma model: gMap 9 (6 theta + 1 sigma + 2 omega) against npars 7 (7 theta
+    ## + 0 omega), so the analytic outer gradient could never run for one.  An
+    ## ordinary model whose omega is estimated is unaffected -- there gMap 6
+    ## against npars 6 already agreed.
+    ##
+    ## Only the all-or-nothing cases are mapped.  `omNames` is an opaque sequence
+    ## over the Cholesky parameterization of the WHOLE omega, so with a PARTIALLY
+    ## fixed block there is no sound way to say which Cholesky parameter a fixed
+    ## entry owns; guessing would silently misalign every omega gradient
+    ## component, and this helper is shared with focei's own analytic covariance.
+    ## Declining is what already happened for that case, just now on purpose.
+    .omRows <- ui$iniDf[!is.na(ui$iniDf$neta1), , drop = FALSE]
+    .omFix <- !is.na(.omRows$fix) & .omRows$fix
+    .omEstNames <-
+      if (nrow(.omRows) == 0L || !any(.omFix)) {
+        st$omNames
+      } else if (all(.omFix)) {
+        character(0)
+      } else {
+        return(NULL)
+      }
+    .parNames <- c(setdiff(.thEst, .foceiMuSkipThetaNames(ui, .thAll)), .omEstNames)
     .gMap <- match(.parNames, .kernelNames)
     if (anyNA(.gMap)) return(NULL)
     .gMap <- as.integer(.gMap - 1L)          # 0-based for C++
