@@ -164,6 +164,18 @@ nmTest({
     expect_false(isTRUE(all.equal(.e$cov[1, 1], .e$cov[2, 2])))
   })
 
+  test_that("a proportion at the boundary is flagged, not reported as precise", {
+    ## The probability-scale SE carries a factor p(1-p), so it goes to ZERO as a
+    ## proportion approaches 0 or 1.  That is the correct delta-method answer but
+    ## reads as certainty, so it must be said out loud.
+    expect_warning(.mixWarnBoundary(c(0.001, 0.999)), "near 0/1")
+    expect_warning(.mixWarnBoundary(c(0.45, 0.996)), "near 0/1")
+    expect_silent(.mixWarnBoundary(c(0.45, 0.55)))
+    expect_silent(.mixWarnBoundary(c(0.02, 0.98)))
+    expect_silent(.mixWarnBoundary(numeric(0)))
+    expect_silent(.mixWarnBoundary(c(NA_real_, 0.5)))
+  })
+
   test_that("a proportion missing from the covariance does not block the others", {
     ## A fix()ed proportion is dropped from the covariance by skipCov.  Bailing
     ## on the whole rotation when a name is absent left the REMAINING

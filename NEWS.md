@@ -151,6 +151,12 @@
   across rather than dropped.  Same principle as `covFull` reporting Omega on the
   natural variance scale instead of `chol(solve(omega))`.
 
+  That rotation carries a factor of `p(1-p)`, so a proportion sitting near 0 or
+  1 gets an SE that shrinks toward zero.  It is the right delta-method answer
+  but it reads as certainty, when in fact the symmetric Wald interval has
+  stopped being meaningful there, so the fit's `$runInfo` now says when a
+  proportion is at a boundary.
+
 - The S matrix is no longer singular for mixture models, so `covMethod="r,s"`
   stops silently degrading to `"r"`.  `foceiS()` built each subject's score by
   finite-differencing component 0's likelihood instead of the marginal

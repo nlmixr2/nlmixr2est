@@ -471,6 +471,7 @@
     assign(.n, .mixCovToProbScale(.cur, .mp, .p), envir = env)
   }
   .mixRefreshSeFromCov(env, .mp, .mix$idx)
+  .mixWarnBoundary(.mix$pi)
   invisible(NULL)
 }
 
@@ -523,6 +524,27 @@
       ifelse(is.finite(.e) & .e != 0, abs(.newSe / .e) * 100, NA_real_)
   }
   assign("popDf", .pd, envir = env)
+  invisible(NULL)
+}
+
+#' Note when a mixture proportion sits near 0 or 1
+#'
+#' The probability-scale SE is \code{J Sigma J'} with \code{J = diag(p) - p p'},
+#' so it is scaled by \code{p(1-p)} and goes to ZERO as a proportion approaches
+#' a boundary.  That is the correct delta-method answer but it reads as
+#' certainty, when in truth the Wald approximation has simply stopped being
+#' meaningful there (the real interval is strongly asymmetric).  Say so rather
+#' than let a vanishing SE be taken for precision.
+#'
+#' @param p the mixture probabilities to check
+#' @return invisible \code{NULL}; called for the warning
+#' @noRd
+#' @author Matthew L. Fidler
+.mixWarnBoundary <- function(p) {
+  .p <- p[is.finite(p)]
+  if (length(.p) == 0L || !any(.p < 0.01 | .p > 0.99)) return(invisible(NULL))
+  warning("mixture proportion near 0/1; its SE is shrunk by the p(1-p) scale",
+          call. = FALSE)
   invisible(NULL)
 }
 
@@ -657,6 +679,7 @@
   dimnames(.out) <- list(.nm, .nm)
   assign("cov", .out, envir = env)
   .updateParFixedRefreshSeFromCov(env, .out, onlyMissing = TRUE)
+  .mixWarnBoundary(.pi)
   invisible(NULL)
 }
 
