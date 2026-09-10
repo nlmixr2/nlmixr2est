@@ -22,6 +22,7 @@
 #include "nmMcmcRng.h"
 #include "impQrng.h"
 #include "imp.h"
+#include "logSumExp.h"
 #include "odeSwap.h" // odeSwapAnyNdiffSet()
 #include "utilc.h"   // RSprintf (covariance-step progress header)
 #ifdef _OPENMP
@@ -204,13 +205,10 @@ static inline double impGammaQuantile(double u, double shape) {
   return boost::math::quantile(boost::math::gamma_distribution<double>(shape, 1.0), u);
 }
 
+// unweighted log-sum-exp over the proposal's log-weights; the max-shifted sum
+// itself is rxLogSumExp() (logSumExp.h), shared with the mixture marginals
 static inline double impLogSumExp3(const double* v, int n) {
-  double m = v[0];
-  for (int k = 1; k < n; ++k) if (v[k] > m) m = v[k];
-  if (!R_finite(m)) return m;
-  double s = 0.0;
-  for (int k = 0; k < n; ++k) s += std::exp(v[k] - m);
-  return m + std::log(s);
+  return rxLogSumExp(v, n);
 }
 
 // Build a subject's proposal from the fit-constant spec plus its own df.
@@ -992,11 +990,45 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
 // gamma -- wrong whenever the scale adapted during the fit, and badly wrong
 // under gammaMethod="individual" where the scales are per subject.  The
 // covariance must be evaluated with the same proposal the fit converged on.
+// Central finite-difference Hessian of `f` at `par0`, with the same relative
+// step the MC covariance has always used.  Split out of impComputeCov() so the
+// FD bookkeeping is readable on its own; `f` reuses the fixed importance
+// samples (common random numbers), which is what makes this well behaved.
+static arma::mat impFdHessian(const arma::vec& par0,
+                              const std::function<double(const arma::vec&)>& f) {
+  const int np = (int)par0.n_elem;
+  arma::vec hstep(np);
+  for (int j = 0; j < np; ++j) {
+    double a = std::fabs(par0[j]);
+    hstep[j] = 1e-3 * (a > 1e-3 ? a : 1.0);
+  }
+  double f0 = f(par0);
+  arma::mat hess(np, np, arma::fill::zeros);
+  for (int j = 0; j < np; ++j) {
+    arma::vec p = par0; p[j] = par0[j] + hstep[j]; double fp = f(p);
+    p = par0; p[j] = par0[j] - hstep[j]; double fm = f(p);
+    hess(j, j) = (fp - 2.0 * f0 + fm) / (hstep[j] * hstep[j]);
+  }
+  for (int a = 0; a < np; ++a) {
+    for (int b = a + 1; b < np; ++b) {
+      arma::vec p = par0; p[a] += hstep[a]; p[b] += hstep[b]; double fpp = f(p);
+      p = par0; p[a] += hstep[a]; p[b] -= hstep[b]; double fpm = f(p);
+      p = par0; p[a] -= hstep[a]; p[b] += hstep[b]; double fmp = f(p);
+      p = par0; p[a] -= hstep[a]; p[b] -= hstep[b]; double fmm = f(p);
+      double v = (fpp - fpm - fmp + fmm) / (4.0 * hstep[a] * hstep[b]);
+      hess(a, b) = v; hess(b, a) = v;
+    }
+  }
+  return hess;
+}
+
 static void impComputeCov(Environment e, const arma::vec& gammaVec,
                           const std::vector<impProp>& props, int covIter) {
   int nsub = impNsub();
   int neta = impNeta();
   int isample = impNsample();
+  int Nm = impNmix();
+  int nExp = nsub * Nm;   // expanded pseudo-subjects: component j is i + j*nsub
   // Parallelize the reweighted-objective subject loop (each subject contributes an
   // independent scalar to the -2LL) when the inner solves are thread-safe: no
   // mixture (expanded pseudo-subjects share solve rows) and no multi-endpoint
@@ -1017,15 +1049,19 @@ static void impComputeCov(Environment e, const arma::vec& gammaVec,
   int nTh = 0;
   for (int j = 0; j < np; ++j) if (pl[j] < ntheta) ++nTh;
 
-  // Per-subject proposal: mode, information H, lower Cholesky of gamma*H^-1, and
-  // one fixed sample matrix.
-  std::vector<arma::vec> modes(nsub);
-  std::vector<arma::mat> Hs(nsub), Ls(nsub), Ss(nsub);
-  std::vector<double> logDetH(nsub, 0.0);
-  std::vector<char> ok(nsub, 0);
+  // Per-pseudo-subject proposal: mode, information H, lower Cholesky of
+  // gamma*H^-1, and one fixed sample matrix.  For a mixture these run over the
+  // EXPANDED subjects (component j is i + j*nsub), exactly as the E-step does:
+  // the objective differenced below is the mixture MARGINAL, so every component
+  // needs its own proposal.  Component 0 alone left the proportions' directions
+  // exactly flat and their SEs at 0.
+  std::vector<arma::vec> modes(nExp);
+  std::vector<arma::mat> Hs(nExp), Ls(nExp), Ss(nExp);
+  std::vector<double> logDetH(nExp, 0.0);
+  std::vector<char> ok(nExp, 0);
   arma::vec mode(neta);
   arma::mat H(neta, neta, arma::fill::zeros);
-  for (int id = 0; id < nsub; ++id) {
+  for (int id = 0; id < nExp; ++id) {
     impGetMode(id, mode);
     modes[id] = mode;
     if (impGetHessian(id, H)) {
@@ -1059,7 +1095,7 @@ static void impComputeCov(Environment e, const arma::vec& gammaVec,
   }
   uint32_t seed0 = (uint32_t)impBaseSeed() + 0x2545F491u;
   setRxThreadId(0);
-  for (int id = 0; id < nsub; ++id) {
+  for (int id = 0; id < nExp; ++id) {
     if (!ok[id]) continue;
     setSeedEng1(seed0 + (uint32_t)(id * 2 + 1));
     arma::mat S(isample, neta);
@@ -1108,7 +1144,9 @@ static void impComputeCov(Environment e, const arma::vec& gammaVec,
   // per-subject buffer under the parallel loop, then reduce in id order so the sum
   // is bit-identical to the serial `obj += ...` accumulation.  objBuf is allocated
   // once here and refilled per call (the FD Hessian calls evalObj O(np^2) times).
-  std::vector<double> objBuf(nsub, 0.0);
+  std::vector<double> objBuf(nExp, 0.0);
+  std::vector<char> objGood(nExp, 0);
+  std::vector<double> mixLl((size_t)Nm);
   // Progress bar over the finite-difference covariance evaluations, like the
   // focei covariance step.  evalObj is called f0 (1) + 2*np (diagonal) +
   // 2*np*(np-1) (off-diagonal) = 1 + 2*np*np times; tick once per call.
@@ -1121,10 +1159,11 @@ static void impComputeCov(Environment e, const arma::vec& gammaVec,
     // Re-read after setting: an Omega perturbation changes -0.5 log|Omega|.
     double negHalfLogDetOmega = impLogDetOmegaInv5();
     std::fill(objBuf.begin(), objBuf.end(), 0.0);
+    std::fill(objGood.begin(), objGood.end(), 0);
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(cores) if(doParCov)
 #endif
-    for (int id = 0; id < nsub; ++id) {
+    for (int id = 0; id < nExp; ++id) {
 #ifdef _OPENMP
       if (doParCov) setRxThreadId(omp_get_thread_num());
 #endif
@@ -1148,15 +1187,31 @@ static void impComputeCov(Environment e, const arma::vec& gammaVec,
           double logMeanExp = qmax + std::log(sumw / (double)isample);
           double Ci = negHalfLogDetOmega + 0.5 * neta * std::log(gammaVec[id]) - 0.5 * logDetH[id]
             + pr.corr;
-          objBuf[id] = -2.0 * (logMeanExp + Ci);
+          objBuf[id] = logMeanExp + Ci;   // log-likelihood; combined below
+          objGood[id] = 1;
         }
       }
 #ifdef _OPENMP
       if (doParCov) setRxThreadId(-1);
 #endif
     }
+    // Reduce in id order so the sum is bit-identical to a serial accumulation.
+    // For a mixture each physical subject's contribution is the marginal
+    // log(sum_m p_m L_im) over its components, which is what makes the mixture
+    // proportions enter the objective at all.  A subject with no usable
+    // component contributes 0, as the single-component path always did.
     double obj = 0.0;
-    for (int id = 0; id < nsub; ++id) obj += objBuf[id];
+    if (Nm == 1) {
+      for (int id = 0; id < nsub; ++id) obj += objGood[id] ? -2.0 * objBuf[id] : 0.0;
+    } else {
+      for (int i = 0; i < nsub; ++i) {
+        for (int m = 0; m < Nm; ++m) {
+          mixLl[(size_t)m] = objGood[i + m*nsub] ? objBuf[i + m*nsub] : NA_REAL;
+        }
+        double lse = impMixLogSumExp(mixLl);
+        if (R_FINITE(lse)) obj += -2.0 * lse;
+      }
+    }
     if (covProg) covTick = par_progress(covCur++, covTot, covTick, 1, covT0, 0);
     return obj;
   };
@@ -1165,34 +1220,14 @@ static void impComputeCov(Environment e, const arma::vec& gammaVec,
   for (int j = 0; j < np; ++j)
     par0[j] = (pl[j] < ntheta) ? impGetFullThetaVal(pl[j])
                                : impGetOmegaThetaVal(pl[j] - ntheta);
-  double f0 = evalObj(par0);
-  arma::vec hstep(np);
-  for (int j = 0; j < np; ++j) {
-    double a = std::fabs(par0[j]);
-    hstep[j] = 1e-3 * (a > 1e-3 ? a : 1.0);
-  }
-  arma::vec fp(np), fm(np);
-  for (int j = 0; j < np; ++j) {
-    arma::vec p = par0; p[j] = par0[j] + hstep[j]; fp[j] = evalObj(p);
-    p = par0; p[j] = par0[j] - hstep[j]; fm[j] = evalObj(p);
-  }
-  arma::mat Hess(np, np, arma::fill::zeros);
-  for (int j = 0; j < np; ++j)
-    Hess(j, j) = (fp[j] - 2.0 * f0 + fm[j]) / (hstep[j] * hstep[j]);
-  for (int a = 0; a < np; ++a) {
-    for (int b = a + 1; b < np; ++b) {
-      arma::vec p = par0; p[a] += hstep[a]; p[b] += hstep[b]; double fpp = evalObj(p);
-      p = par0; p[a] += hstep[a]; p[b] -= hstep[b]; double fpm = evalObj(p);
-      p = par0; p[a] -= hstep[a]; p[b] += hstep[b]; double fmp = evalObj(p);
-      p = par0; p[a] -= hstep[a]; p[b] -= hstep[b]; double fmm = evalObj(p);
-      double v = (fpp - fpm - fmp + fmm) / (4.0 * hstep[a] * hstep[b]);
-      Hess(a, b) = v; Hess(b, a) = v;
-    }
-  }
+  arma::mat Hess = impFdHessian(par0, evalObj);
   if (covProg) par_progress(covTot, covTot, covTick, 1, covT0, 1);   // close the bar
   // Restore the converged estimates.
   for (int j = 0; j < np; ++j) setPar(j, par0[j]);
-  for (int id = 0; id < nsub; ++id) impForceResolve(id);
+  // every pseudo-subject, not just component 0: the perturbed solves above ran
+  // over nExp, so stopping at nsub leaves the other components' cached solves
+  // sitting at the LAST perturbation rather than the converged estimates
+  for (int id = 0; id < nExp; ++id) impForceResolve(id);
 
   // Observed information = 0.5 * Hess(-2LL) (symmetrized); covariance = inverse.
   arma::mat info = 0.25 * (Hess + Hess.t());

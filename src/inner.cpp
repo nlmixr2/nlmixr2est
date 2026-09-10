@@ -10,6 +10,7 @@
 #include "shi21.h"
 #include "trustHessianUpdate.h"
 #include "foceiGrad.h"
+#include "logSumExp.h"
 #include "inner.h"
 #include "nmMcmcRng.h"
 #include <cfloat>
@@ -5785,6 +5786,38 @@ static double foceiLik0Mix() {
   return lik;
 }
 
+// log( sum_m pi_m exp(ll[m]) ) -- the mixture marginal in log space, weighted
+// by op_focei.mixProb (the population proportions).  Returns NA_REAL when no
+// component has a finite contribution.  The max-shifted sum itself lives in
+// rxLogSumExpW() (logSumExp.h); this only supplies the weights and the
+// NA_REAL-vs-R_NegInf convention its callers expect.
+static double foceiMixLogSumExp(const double *ll, int nMix) {
+  if (nMix <= 1) return (nMix == 1) ? ll[0] : NA_REAL;
+  double r = rxLogSumExpMix(ll, op_focei.mixProb, nMix, NULL);
+  return R_FINITE(r) ? r : NA_REAL;
+}
+
+// One physical subject's MARGINAL contribution to the objective (-2*log-lik),
+// combined from the per-component values innerOpt1() leaves in lik[slot].  The
+// pseudo-subject layout is component-major (id = m*nsub + i).
+//
+// The slots do NOT share a scale: LikInner2() writes lik[0] as the raw
+// log-likelihood and lik[1]/lik[2] as -2*log-likelihood, so slot 0 is used as
+// is and the difference legs are halved back before combining.  Without this
+// the per-subject score foceiS() differences is component 0's alone, which is
+// how the S matrix came out singular for every mixture model (a parameter that
+// only enters component 2 gets an exactly-zero score).
+static double foceiMixObjSlot(int gid, int slot) {
+  int nsub = (int)getRxNsub(rx), nMix = (int)op_focei.mixIdxN + 1;
+  std::vector<double> ll((size_t)nMix);
+  for (int m = 0; m < nMix; ++m) {
+    double l = inds_focei[gid + m*nsub].lik[slot];
+    ll[(size_t)m] = (slot == 0) ? l : -0.5*l;
+  }
+  double lse = foceiMixLogSumExp(ll.data(), nMix);
+  return R_FINITE(lse) ? -2.0*lse : NA_REAL;
+}
+
 static inline double foceiLik0(double *theta) {
   updateTheta(theta);
   innerOpt();
@@ -6733,73 +6766,6 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
 
 // Calculate the mixture parameter gradient
 //
-// This notes that the mixture gradient does not need to be numerically, but
-// can be calculated directly from the mixture probabilities, the translation from
-// the by the mexpit, and the scaling factors.
-//
-// @param theta The parameter vector
-//
-// @param g The gradient vector to fill in
-//
-// @param cpar The parameter index to test/calculate the gradient for.
-//
-// @return 0 if the gradient was not calculated, 1 if it was.
-//
-int mixGrad(double *theta, double *g, int cpar) {
-  if (op_focei.mixTrans == NULL) return 0;
-  if (op_focei.mixTrans[cpar] != -1) {
-    // This is a mixture grad
-    int mi = op_focei.mixTrans[cpar];
-    // First add the gradients from each individual contribution
-    g[cpar] = 0.0;
-    for (int i = 0; i < getRxNsub(rx); ++i) {
-      focei_ind *fInd = &(inds_focei[i]);
-      g[cpar] += fInd->mixProbGrad[mi];
-    }
-    // Next multiple the gradient from the mexpit() transformation
-    // (from chain rule)
-    g[cpar] *= op_focei.mixProbGrad[mi];
-    // FIXME: Last apply the scaling gradient changes from chain rule
-    double scaleTo = op_focei.scaleTo, C=getScaleC(cpar);
-    switch (op_focei.scaleType){
-    case 1: // normalized
-      g[cpar] *= op_focei.c2;
-      return 1;
-      break;
-    case 2: // log vs linear scales and/or ranges
-      g[cpar] *= C;
-      return 1;
-      break;
-    case 3: // simple multiplicative scaling
-      if (op_focei.scaleTo != 0){
-        g[cpar] *= op_focei.initPar[cpar]/scaleTo;
-        return 1;
-      } else {
-        return 1;
-      }
-      break;
-    case 4: // log non-log multiplicative scaling
-      if (op_focei.scaleTo > 0){
-        switch (op_focei.xPar[cpar]){
-        case 1:
-          return 1;
-        default:
-          g[cpar] *= op_focei.initPar[cpar]/scaleTo;
-          return 1;
-        }
-      } else {
-        return 1;
-      }
-    default:
-      return 1;
-    }
-    return 0;
-
-  }
-  return 0;
-}
-
-
 // d(unscalePar)/d(x_i): the finite-difference outer gradient is d(OFV)/d(scaled
 // par), so an analytic d(OFV)/d(theta) must be multiplied by this factor to land
 // in the same optimizer scale.  Mirrors the linear coefficient of unscalePar().
@@ -6817,6 +6783,67 @@ static inline double dUnscaleParDx(int i) {
   default: return 1.0;
   }
 }
+
+// This notes that the mixture gradient does not need to be numerically, but
+// can be calculated directly from the mixture probabilities, the translation from
+// the by the mexpit, and the scaling factors.
+//
+// @param g The gradient vector to fill in
+//
+// @param cpar The parameter index to test/calculate the gradient for.
+//
+// @return 0 if the gradient was not calculated, 1 if it was.
+//
+int mixGrad(double *g, int cpar) {
+  if (op_focei.mixTrans == NULL) return 0;
+  if (op_focei.mixTrans[cpar] != -1) {
+    // This is a mixture grad.  pi = mexpit(t) is a softmax, so
+    // d(pi_m)/d(t_l) = pi_m*(delta_ml - pi_l); feeding that through
+    // d(log-lik)/d(pi_m) = sum_i (r_im/pi_m - r_iK/pi_K) and using
+    // sum_m r_im = 1 collapses the whole Jacobian to
+    //
+    //   d(-2*log-lik)/d(t_l) = -2 * sum_i (r_il - pi_l)
+    //
+    // with r_il = fInd->mixProb[l] the subject's posterior responsibility
+    // from foceiLik0Mix().  Do NOT chain through op_focei.mixProbGrad here:
+    // rxode2::dmexpit() is the DIAGONAL of that Jacobian only, so it drops
+    // every m != l term -- which cancels by accident at nMix == 2 and is
+    // wrong from nMix == 3 up.  The -2 is the objective scale
+    // (foceiObjFromLik0() = -2*foceiLik0()).
+    //
+    // This is the NONMEM 7 Technical Guide's own formulation, eq. (1.194) for
+    // d(L_i)/d(a_j) -- what foceiLik0Mix() leaves in mixProbGrad -- chained by
+    // eq. (1.197), g_a = sum_i (dL_i/da)(da/dtheta_a), whose da/dtheta_a is the
+    // FULL Jacobian.  NONMEM carries it as a matrix because $MIX lets P(j) be
+    // arbitrary code; here the link is fixed to mexpit, so the product has the
+    // closed form above (checked equal to a literal evaluation of (1.194) x
+    // (1.197) to 2e-16).  It is valid for THAT link only -- a covariate- or
+    // otherwise non-softmax-modelled proportion has to go back to the matrix
+    // product.  NONMEM's L is -log-lik where this OFV is -2*log-lik, so this is
+    // 2x its g_a; the factor cancels in NONMEM's own Gauss-Newton step (1.199)
+    // but not here, where g[] must match the finite differences taken for every
+    // other parameter.
+    int mi = op_focei.mixTrans[cpar];
+    double tot = 0.0, nUsed = 0.0;
+    for (int i = 0; i < getRxNsub(rx); ++i) {
+      double r = inds_focei[i].mixProb[mi];
+      // a subject whose every component failed to solve took the flat
+      // badSolveObjfAdj penalty, which does not depend on the proportions
+      if (!R_FINITE(r)) continue;
+      tot += r;
+      nUsed += 1.0;
+    }
+    double gr = -2.0*(tot - nUsed*op_focei.mixProb[mi]);
+    if (!R_FINITE(gr)) gr = 0.0;
+    // and into the optimizer's scale, the same chain rule every other analytic
+    // gradient applies -- the finite-difference paths get it for free by
+    // differencing in the scaled space
+    g[cpar] = gr*dUnscaleParDx(cpar);
+    return 1;
+  }
+  return 0;
+}
+
 
 static bool restoreFitSolve_();   // defined below (with covSolveArgs_)
 void impSetInnerNeqOverride();     // defined below; re-pins the inner neqOverride after restore
@@ -7146,7 +7173,7 @@ void numericGrad(double *theta, double *g){
     std::copy(theta, theta+op_focei.npars, armaTheta.begin());
     double h = 0;
     for (int cpar = (int)op_focei.npars; cpar--;) {
-      if (mixGrad(theta, g, cpar) == 1) {
+      if (mixGrad(g, cpar) == 1) {
         continue;
       } else {
         op_focei.calcGrad=1;
@@ -7191,7 +7218,7 @@ void numericGrad(double *theta, double *g){
       }
     }
     for (int cpar = (int)op_focei.npars; cpar--;) {
-      if (mixGrad(theta, g, cpar) == 1) {
+      if (mixGrad(g, cpar) == 1) {
         continue;
       } else {
         op_focei.gillRet[cpar] = gill83(&hf, &hphif, &op_focei.gillDf[cpar], &op_focei.gillDf2[cpar], &op_focei.gillErr[cpar],
@@ -7283,7 +7310,7 @@ void numericGrad(double *theta, double *g){
       haveF=true;
     }
     for (cpar = npars; cpar--;) {
-      if (mixGrad(theta, g, cpar) == 1) {
+      if (mixGrad(g, cpar) == 1) {
         continue;
       } else {
         if (doForward){
@@ -10668,6 +10695,124 @@ int foceiCalcR(Environment e){
 }
 
 
+// Re-run the inner problem at the CURRENT theta for every pseudo-subject,
+// writing lik[slot].  Mirrors innerOpt()'s mixture arrangement exactly:
+// components SERIAL on the outside, physical subjects parallel inside, because
+// components share the physical subjects' solving structures and must never be
+// solved concurrently.
+//
+// res[i] is 1 only when EVERY component of physical subject i converged -- the
+// subject's marginal needs all of them, so one failed component invalidates the
+// whole contribution.
+static void foceiSInnerAll(int slot, std::vector<int> &res) {
+  rx = getRxSolve_();
+  int nsub = (int)getRxNsub(rx);
+  int nMix = (int)op_focei.mixIdxN + 1;
+  rx_solving_options *op = getSolvingOptions(rx);
+  int cores = getOpCores(op);
+  bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
+  res.assign((size_t)nsub, 1);
+  std::vector<int> ok((size_t)nsub, 0);
+  for (int m = 0; m < nMix; ++m) {
+    std::fill(ok.begin(), ok.end(), 0);
+    if (doParallel) sortIds(rx, 2);
+    _innerParallel.store(1, std::memory_order_release);
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
+#endif
+    for (int i = 0; i < nsub; i++) {
+      int gid = doParallel ? (getOrdId(rx, i) - 1) : i;
+      setRxThreadId(omp_get_thread_num());
+      ok[(size_t)gid] = innerOpt1(gid + m*nsub, slot);
+      setRxThreadId(-1);
+    }
+    _innerParallel.store(0, std::memory_order_release);
+    if (doParallel) sortIds(rx, 0);
+    for (int i = 0; i < nsub; ++i) if (!ok[(size_t)i]) res[(size_t)i] = 0;
+  }
+}
+
+// A mixture proportion's per-subject score is known in closed form -- NONMEM
+// (1.194) chained by (1.197) for ONE subject, the same expression mixGrad()
+// sums over subjects.  Exact, and it costs no solves.  Returns true when cpar
+// IS such a parameter (the caller then skips the finite difference for it).
+static bool foceiSMixScore(int cpar, const std::vector<double> &mixR,
+                           const std::vector<double> &mixP, int nMixS) {
+  if (op_focei.mixIdxN == 0 || op_focei.mixTrans == NULL ||
+      op_focei.mixTrans[cpar] == -1) return false;
+  int mi = op_focei.mixTrans[cpar];
+  double sc = dUnscaleParDx(cpar);
+  for (int gid = 0; gid < (int)getRxNsub(rx); ++gid) {
+    double r = mixR[(size_t)gid*nMixS + mi];
+    double g = R_FINITE(r) ? -2.0*(r - mixP[(size_t)mi])*sc : 0.0;
+    inds_focei[gid].thetaGrad[cpar] = R_FINITE(g) ? g : 0.0;
+  }
+  op_focei.cur++;
+  op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick,
+                                  1, op_focei.t0, 0);
+  return true;
+}
+
+// This subject contributed no usable score for cpar: fall back to the pooled
+// gradient, which is what the non-mixture branch's serial retry ends up doing.
+// sInfoPer must be docked as well -- it feeds the smatPer gate that decides
+// whether the S matrix is trustworthy at all, so a substituted value has to be
+// counted rather than silently pass for a real per-subject score.
+static inline void foceiSMixNoInfo(focei_ind *fInd, int cpar, const arma::vec &gfull,
+                                   bool &hasZero, double &sInfoPer) {
+  hasZero = true;
+  sInfoPer -= 1.0;
+  fInd->thetaGrad[cpar] = gfull[cpar];
+}
+
+// Forward leg of the per-subject difference for a MIXTURE model.  The subject's
+// contribution is the marginal over components, so every component has to be
+// re-optimized before any per-subject score exists: differencing component 0
+// alone gives an exactly-zero score for a parameter that only enters another
+// component, which is what made S singular for every mixture model.
+static void foceiSMixForward(int cpar, double delta, bool doForward,
+                             const arma::vec &gfull, std::vector<int> &mixFwdOk,
+                             bool &hasZero, double &sInfoPer) {
+  int nsub = (int)getRxNsub(rx);
+  foceiSInnerAll(2, mixFwdOk);
+  for (int gid = 0; gid < nsub; gid++) {
+    focei_ind *fIndL = &(inds_focei[gid]);
+    fIndL->thetaGrad[cpar] = NA_REAL;
+    if (!doForward) continue;                // the central leg fills these in
+    double o2 = mixFwdOk[gid] ? foceiMixObjSlot(gid, 2) : NA_REAL;
+    if (R_FINITE(o2) && R_FINITE(op_focei.likSav[gid])) {
+      fIndL->thetaGrad[cpar] = (o2 - op_focei.likSav[gid]) / delta;
+    } else {
+      foceiSMixNoInfo(fIndL, cpar, gfull, hasZero, sInfoPer);
+    }
+  }
+}
+
+// Central leg of the per-subject difference for a MIXTURE model.  mixFwdOk is
+// the FORWARD leg's per-subject convergence: lik[2] is stale from a previous
+// cpar for any component that failed there, and foceiMixObjSlot() would combine
+// it into a finite but wrong marginal.
+static void foceiSMixCentral(int cpar, double delta, const arma::vec &gfull,
+                             const std::vector<int> &mixFwdOk,
+                             bool &hasZero, double &sInfoPer) {
+  int nsub = (int)getRxNsub(rx);
+  std::vector<int> res1;
+  foceiSInnerAll(1, res1);
+  for (int gid = 0; gid < nsub; gid++) {
+    focei_ind *fIndL = &(inds_focei[gid]);
+    if (!ISNA(fIndL->thetaGrad[cpar])) continue;
+    double o1 = res1[gid] ? foceiMixObjSlot(gid, 1) : NA_REAL;
+    double o2 = mixFwdOk[gid] ? foceiMixObjSlot(gid, 2) : NA_REAL;
+    if (R_FINITE(o1) && R_FINITE(o2)) {
+      fIndL->thetaGrad[cpar] = (o2 - o1) / (2*delta);
+    } else {
+      // one leg is unusable; likSav is only filled on the doForward path, so a
+      // stale forward difference is not an option here
+      foceiSMixNoInfo(fIndL, cpar, gfull, hasZero, sInfoPer);
+    }
+  }
+}
+
 // Necessary for S-matrix calculation
 int foceiS(double *theta, Environment e, bool &hasZero){
   int npars = op_focei.npars;
@@ -10694,10 +10839,15 @@ int foceiS(double *theta, Environment e, bool &hasZero){
       }
     }
     if (doForward){
-      // Fill in lik0
+      // Fill in lik0.  For a mixture the subject's contribution is the MARGINAL
+      // over components, not component 0's -- see foceiMixObjSlot().
       for (gid = getRxNsub(rx); gid--;){
-        fInd = &(inds_focei[gid]);
-        op_focei.likSav[gid] = -2*fInd->lik[0];
+        if (op_focei.mixIdxN != 0) {
+          op_focei.likSav[gid] = foceiMixObjSlot(gid, 0);
+        } else {
+          fInd = &(inds_focei[gid]);
+          op_focei.likSav[gid] = -2*fInd->lik[0];
+        }
       }
     }
   }
@@ -10705,8 +10855,42 @@ int foceiS(double *theta, Environment e, bool &hasZero){
   if (op_focei.needOptimHess) {
     smatNorm = op_focei.smatNormLlik;
   }
+  // Per-subject responsibilities r_im and the population proportions pi_m at the
+  // BASE theta, for the analytic mixture-proportion score below.  Recomputed
+  // here from the per-component lik[0] rather than read from fInd->mixProb when
+  // it is needed: the loop below perturbs theta, and neither innerOpt1() nor
+  // updateTheta() refreshes the responsibilities, so a later read would be at
+  // the wrong point.  Same base-theta assumption likSav above already makes.
+  int nMixS = (int)op_focei.mixIdxN + 1;
+  std::vector<double> mixR, mixP;
+  // Which subjects' FORWARD (slot 2) leg converged for the current cpar.  Held
+  // at function scope because the central leg below needs it too: lik[2] is
+  // stale from a previous cpar for any component that failed, and
+  // foceiMixObjSlot() would happily combine that into a finite but wrong
+  // marginal.
+  std::vector<int> mixFwdOk;
+  if (op_focei.mixIdxN != 0) {
+    int _nsub = (int)getRxNsub(rx);
+    mixP.assign((size_t)nMixS, 0.0);
+    for (int m = 0; m < nMixS; ++m) mixP[(size_t)m] = op_focei.mixProb[m];
+    mixR.assign((size_t)_nsub*(size_t)nMixS, NA_REAL);
+    std::vector<double> ll((size_t)nMixS);
+    for (int i = 0; i < _nsub; ++i) {
+      for (int m = 0; m < nMixS; ++m) ll[(size_t)m] = inds_focei[i + m*_nsub].lik[0];
+      double lse = foceiMixLogSumExp(ll.data(), nMixS);
+      if (!R_FINITE(lse)) continue;
+      for (int m = 0; m < nMixS; ++m) {
+        if (!R_FINITE(ll[(size_t)m])) { mixR[(size_t)i*nMixS + m] = 0.0; continue; }
+        mixR[(size_t)i*nMixS + m] =
+          std::exp(ll[(size_t)m] + std::log(std::max(1e-300, mixP[(size_t)m])) - lse);
+      }
+    }
+  }
   double sInfoPer = npars * getRxNsub(rx);
   for (cpar = npars; cpar--;){
+    // A mixture proportion's per-subject score is known in closed form, so the
+    // finite difference is skipped entirely for those parameters.
+    if (foceiSMixScore(cpar, mixR, mixP, nMixS)) continue;
     double rEps = op_focei.rEps[cpar];
     double rEpsC = op_focei.rEpsC[cpar];
     if (smatNorm){
@@ -10726,7 +10910,9 @@ int foceiS(double *theta, Environment e, bool &hasZero){
     cur = theta[cpar];
     theta[cpar] = cur + delta;
     updateTheta(theta);
-    {
+    if (op_focei.mixIdxN != 0) {
+      foceiSMixForward(cpar, delta, doForward, gfull, mixFwdOk, hasZero, sInfoPer);
+    } else {
       int _nsub = (int)getRxNsub(rx);
       rx_solving_options *_op = getSolvingOptions(rx);
       int _cores = getOpCores(_op);
@@ -10774,7 +10960,9 @@ int foceiS(double *theta, Environment e, bool &hasZero){
       theta[cpar] = cur - delta;
       updateTheta(theta);
       // Second inner loop: run innerOpt1(gid, 1) over subjects in parallel.
-      {
+      if (op_focei.mixIdxN != 0) {
+        foceiSMixCentral(cpar, delta, gfull, mixFwdOk, hasZero, sInfoPer);
+      } else {
         int _nsub = (int)getRxNsub(rx);
         rx_solving_options *_op = getSolvingOptions(rx);
         int _cores = getOpCores(_op);
@@ -11575,19 +11763,19 @@ static bool foceiFdHessian(const FdFullCtx &c, const std::vector<double> &x0, do
 }
 
 // per-subject -2LL contributions after a foceiFdObjAt probe -- the quantity foceiS
-// differences (native: likSav[gid] = -2*fInd->lik[0]).  Returns false for mixture models
-// (op_focei.mixIdxN != 0: no per-subject contribution is stashed) or any non-finite subject
-// value (a failed inner solve leaves lik[0] = NA_REAL), so the caller keeps the native cov.
+// differences (native: likSav[gid] = -2*fInd->lik[0]).  For a mixture the contribution is
+// the MARGINAL over components (foceiMixObjSlot), not component 0's.  Returns false on any
+// non-finite subject value (a failed inner solve leaves lik[0] = NA_REAL), so the caller
+// keeps the native cov.
 static bool foceiFdLikById(arma::vec &out) {
-  if (op_focei.mixIdxN != 0) return false;
   rx = getRxSolve_();
   int nsub = getRxNsub(rx);
   if (nsub <= 0) return false;
   out.set_size(nsub);
   for (int gid = 0; gid < nsub; ++gid) {
-    double l = inds_focei[gid].lik[0];
+    double l = (op_focei.mixIdxN != 0) ? foceiMixObjSlot(gid, 0) : -2.0 * inds_focei[gid].lik[0];
     if (!R_FINITE(l)) return false;
-    out[gid] = -2.0 * l;
+    out[gid] = l;
   }
   return true;
 }
@@ -12613,6 +12801,17 @@ void impSetThetaAll(int idx, double val) {
   for (int id = 0; id < nsub; ++id) {
     rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
     setIndParPtr(ind, op_focei.thetaTrans[idx], val);
+  }
+  // A mixture proportion reaches the likelihood ONLY through op_focei.mixProb
+  // (the mlogit -> probability map), and nothing on this path refreshes it --
+  // updateTheta() is the outer route, which the MC covariance does not take.
+  // Without this the FD Hessian moves fullTheta while the proportions stay put,
+  // so every mixture direction comes back an exact zero.  Calls R, so it must
+  // stay outside any parallel region (evalObj's caller is serial).
+  if (op_focei.mixIdxN != 0 && op_focei.mixIdx != NULL) {
+    for (unsigned int m = 0; m < op_focei.mixIdxN; ++m) {
+      if (op_focei.mixIdx[m] - 1 == idx) { impUpdateMixProbs(); break; }
+    }
   }
 }
 
@@ -18920,19 +19119,15 @@ static int gFreezeNsub = 0, gFreezeNpoint = 0, gFreezeNmix = 1;
 
 // log( sum_m mixProb(m) * exp(ll[m]) ); ll[] are the per-component conditional
 // log-likelihoods for one subject.  Identity for a single component.
+double impMixLogSumExp(const std::vector<double>& ll) {
+  if (ll.empty()) return R_NegInf;
+  if (ll.size() == 1) return ll[0];
+  double r = foceiMixLogSumExp(ll.data(), (int)ll.size());
+  return R_FINITE(r) ? r : R_NegInf;
+}
+
 static double npMixLogSumExp(const std::vector<double>& ll) {
-  int nMix = (int)ll.size();
-  if (nMix <= 1) return ll.empty() ? R_NegInf : ll[0];
-  double mx = R_NegInf;
-  std::vector<double> lp(nMix);
-  for (int m = 0; m < nMix; ++m) {
-    lp[m] = ll[m] + std::log(std::max(1e-300, impMixProb(m)));
-    if (std::isfinite(lp[m]) && lp[m] > mx) mx = lp[m];
-  }
-  if (!std::isfinite(mx)) return R_NegInf;
-  double se = 0.0;
-  for (int m = 0; m < nMix; ++m) se += std::exp(lp[m] - mx);
-  return mx + std::log(se);
+  return impMixLogSumExp(ll);
 }
 
 static int npIndSolveSize(rx_solving_options* op, rx_solving_options_ind* ind) {
@@ -21641,13 +21836,53 @@ struct VaeStepOut {
   double pxz, DKL;
   arma::mat mu, z;      // [N, zDim]
   arma::cube L;         // [zDim, zDim, N]
-  arma::mat lp;         // [N, zDim] decoder eta-gradient (best mixture component)
+  arma::mat lp;         // [N, zDim] decoder eta-gradient (responsibility-weighted)
   std::vector<std::vector<double> > preds;  // per-subject predictions f
   std::vector<std::vector<double> > rvar;   // per-subject residual variance r (sigma^2)
   arma::ivec mixnum;    // [N] selected mixture component (1-based)
+  arma::vec mixW;       // [nMix] mean posterior responsibility over subjects
+  arma::mat muAll;      // [N*nMix, zDim] posterior mean per (subject, component)
+  arma::vec gMixTheta;  // [nMix-1] d(objective)/d(mlogit mixture theta)
+  arma::vec mixProbCur; // [nMix] proportions the step actually used
   // encoder parameter gradients
   arma::mat gWih, gWhh, gFcW; arma::vec gbih, gbhh, gFcB;
 };
+
+// Component-conditioned encoder inputs.  The encoder must characterize every
+// (subject, component) pair, so it is run over nSub*nMix pseudo-subjects laid
+// out component-major (row m*N + i), matching the flattened id space the inner
+// driver already uses (id = m*nsub + subject).
+//
+// The sequence the trunk reads does not depend on the component, so the
+// sequence data is tiled unchanged and the component identity enters at the FC
+// head as a one-hot appended to the covariate block -- which is exactly where
+// covariates enter.  That makes this encoder(y_i, cov_i, m) with no change to
+// the encoder itself: the trunk gradient accumulates over the nMix copies,
+// which is the correct gradient for a shared trunk with a conditioned head.
+//
+// Built ONCE per fit by the callers, not per ELBO step.
+static void vaeTileEncoderInputs(const arma::cube& dataIn, const arma::ivec& lengths,
+                                 const arma::mat& covIn, int nMix,
+                                 arma::cube& dataOut, arma::ivec& lenOut,
+                                 arma::mat& covOut) {
+  const int N = dataIn.n_rows;
+  if (nMix <= 1) { dataOut = dataIn; lenOut = lengths; covOut = covIn; return; }
+  const int nCov = covIn.n_cols;
+  dataOut.set_size(N * nMix, dataIn.n_cols, dataIn.n_slices);
+  lenOut.set_size(N * nMix);
+  covOut.zeros(N * nMix, nCov + nMix);
+  for (int m = 0; m < nMix; ++m) {
+    for (int i = 0; i < N; ++i) {
+      const int r = m * N + i;
+      for (unsigned int sl = 0; sl < dataIn.n_slices; ++sl) {
+        dataOut.slice(sl).row(r) = dataIn.slice(sl).row(i);
+      }
+      lenOut[r] = lengths[i];
+      if (nCov > 0) covOut.submat(r, 0, r, nCov - 1) = covIn.row(i);
+      covOut(r, nCov + m) = 1.0;          // component one-hot
+    }
+  }
+}
 
 // One ELBO evaluation using the FOCEi inner likelihood (port of
 // .vaeElboStepInner).  zPopMat [N,zDim] is the (possibly subject-specific) KL
@@ -21664,7 +21899,10 @@ static VaeStepOut vaeElboStepCpp(const arma::mat& Wih, const arma::mat& Whh,
                                  int nMix, const arma::vec& mixProb, int cores,
                                  bool withGrad = true, bool parEncoderBackward = false) {
   VaeStepOut S; S.ok = true;
-  const int N = dataIn.n_rows;
+  // dataIn/lengths/covIn arrive TILED to nSub*nMix pseudo-subjects (see
+  // vaeTileEncoderInputs); N stays the physical subject count.
+  const int Ne = dataIn.n_rows;
+  const int N = (nMix > 1) ? Ne / nMix : Ne;
   // full-omega prior pieces; the diagonal path below is kept verbatim so
   // diagonal models are bit-identical to the historic code
   const arma::vec omega = Om.diag();
@@ -21676,11 +21914,22 @@ static VaeStepOut vaeElboStepCpp(const arma::mat& Wih, const arma::mat& Whh,
     double sgn; arma::log_det(logdetOm, sgn, arma::symmatu(Om));
   }
   // encoder forward (no backward yet -- need z to form gZ first)
-  arma::mat mu(N, zDim), logSigma(N, zDim), zOut(N, zDim);
-  arma::cube Lout(zDim, zDim, N);
-  arma::mat dummyGz(N, zDim, arma::fill::zeros), dummyGls(N, zDim, arma::fill::zeros);
+  arma::mat mu(Ne, zDim), logSigma(Ne, zDim), zOut(Ne, zDim);
+  arma::cube Lout(zDim, zDim, Ne);
+  arma::mat dummyGz(Ne, zDim, arma::fill::zeros), dummyGls(Ne, zDim, arma::fill::zeros);
   arma::mat gWih, gWhh, gFcW; arma::vec gbih, gbhh, gFcB;
-  vaeEncoderFwdBwdCore(dataIn, lengths, covIn, eps, Wih, Whh, bih, bhh, fcW, fcB, zDim,
+  // one reparameterization draw per subject, shared across that subject's
+  // components (common random numbers -- lower variance, and the components
+  // differ through the head, not the noise)
+  arma::mat epsE = eps, zPopE = zPopMat;
+  if (nMix > 1) {
+    epsE.set_size(Ne, zDim); zPopE.set_size(Ne, zDim);
+    for (int m = 0; m < nMix; ++m) {
+      epsE.rows(m * N, m * N + N - 1) = eps.rows(0, N - 1);
+      zPopE.rows(m * N, m * N + N - 1) = zPopMat.rows(0, N - 1);
+    }
+  }
+  vaeEncoderFwdBwdCore(dataIn, lengths, covIn, epsE, Wih, Whh, bih, bhh, fcW, fcB, zDim,
                        dummyGz, dummyGls, false, mu, logSigma, Lout, zOut,
                        gWih, gWhh, gbih, gbhh, gFcW, gFcB, cores);
   arma::mat eta = zOut;
@@ -21688,15 +21937,26 @@ static VaeStepOut vaeElboStepCpp(const arma::mat& Wih, const arma::mat& Whh,
   // inner-problem re-parameterization + evaluation
   arma::vec thv = vaeBuildTh(th, zPopThetaIdx0, baseline, errThetaIdx0, a);
   vaeInnerUpdateParCore(thv, Om);
-  arma::mat etaEval = eta;
-  if (nMix > 1) { etaEval.set_size(nMix * N, zDim); for (int m = 0; m < nMix; ++m) etaEval.rows(m * N, m * N + N - 1) = eta; }
+  // eta already carries one row per (subject, component): each component is
+  // scored at ITS OWN eta, not at a shared one tiled across components
+  const arma::mat& etaEval = eta;
+  // The proportions come from op_focei, which updateTheta just refreshed from
+  // th through .getMixFromLog (mexpit).  That is the ONLY source of truth: the
+  // R-side vector cannot track a theta the optimizer is moving, and reading it
+  // is how the mlogit-vs-probability scale confusion got in.
+  arma::vec pi = mixProb;
+  if (nMix > 1 && op_focei.mixProb != NULL) {
+    pi.set_size(nMix);
+    for (int m = 0; m < nMix; ++m) pi[m] = op_focei.mixProb[m];
+  }
+  S.mixProbCur = pi;
   arma::vec obj; arma::mat lp; std::vector<std::vector<double> > pf;
   std::vector<std::vector<double> > prv;
   vaeInnerLikCore(etaEval, cores, true, true, obj, lp, pf, false, &prv);
 
   const double ln2pi = std::log(2 * M_PI);
-  arma::vec pzI(N);
-  for (int i = 0; i < N; ++i) {
+  arma::vec pzI(Ne);
+  for (int i = 0; i < Ne; ++i) {
     double s;
     if (omOff) {
       arma::vec ei = eta.row(i).t();
@@ -21707,78 +21967,155 @@ static VaeStepOut vaeElboStepCpp(const arma::mat& Wih, const arma::mat& Whh,
     pzI[i] = 0.5 * s;
   }
   double jointTot;
-  arma::mat lpBest(N, zDim);
+  arma::mat lpAll(Ne, zDim, arma::fill::zeros);
+  arma::uvec sel(N);                       // selected pseudo-subject row per subject
+  for (int i = 0; i < N; ++i) sel[i] = i;  // nMix == 1: the subject IS the row
   S.preds.resize(N);
   S.rvar.resize(N);
   S.mixnum.set_size(N); S.mixnum.fill(1);
+  S.mixW.zeros(nMix > 1 ? nMix : 1); S.mixW[0] = 1.0;
   if (nMix > 1) {
+    S.mixW.zeros();
+    // Marginal mixture -2LL.  obj is -log p(y_i, eta_i | m) at 1x scale
+    // (likInner0 returns -(llik - 0.5 eta' Om^-1 eta), and the nMix == 1 branch
+    // below sums it directly), so the exponent is -obj, NOT -0.5*obj, and the
+    // sum is negated once, not twice.  The old -0.5/-2 pair marginalized a
+    // SQUARE ROOT likelihood and carried a spurious -log(pi_best); it cancels
+    // exactly at nMix == 1 and at identical components with uniform pi, which
+    // is why no test could see it.
     jointTot = 0;
     for (int i = 0; i < N; ++i) {
-      double mmax = -std::numeric_limits<double>::infinity(); int best = 0;
       arma::vec ll(nMix);
+      int best = 0;
+      double bestLl = -std::numeric_limits<double>::infinity();
       for (int m = 0; m < nMix; ++m) {
-        double v = std::log(mixProb[m]) - 0.5 * obj[m * N + i];
-        if (!R_FINITE(v)) v = -std::numeric_limits<double>::infinity();
-        ll[m] = v; if (v > mmax) { mmax = v; best = m; }
+        ll[m] = -obj[m * N + i];
+        double v = std::log(pi[m]) + ll[m];
+        if (R_FINITE(v) && v > bestLl) { bestLl = v; best = m; }
       }
-      if (R_FINITE(mmax)) {
-        double se = 0; for (int m = 0; m < nMix; ++m) se += std::exp(ll[m] - mmax);
-        jointTot += -2 * (mmax + std::log(se));
+      arma::vec resp(nMix, arma::fill::zeros);
+      double lse = rxLogSumExpMix(ll.memptr(), pi.memptr(), nMix, resp.memptr());
+      if (R_FINITE(lse)) {
+        jointTot += -lse;
+      } else {
+        // every component failed to solve: charge the same penalty focei does
+        // (foceiLik0Mix), instead of contributing 0 and IMPROVING the objective.
+        // The likelihood says nothing about membership here, so the posterior
+        // IS the prior -- giving component 1 the whole responsibility (best is
+        // still its initial 0) would silently drag the proportions toward it.
+        // saem falls back the same way when its weights underflow.
+        jointTot += op_focei.badSolveObjfAdj;
+        resp = pi;
       }
-      lpBest.row(i) = lp.row(best * N + i);
-      S.preds[i] = pf[best * N + i];
-      if (!prv.empty()) S.rvar[i] = prv[best * N + i];
+      // Each component has its OWN eta, so eta_im appears in component m's term
+      // alone: d(marginal)/d(eta_im) is just that component's gradient scaled
+      // by its responsibility.  Nothing is combined across components.
+      for (int m = 0; m < nMix; ++m) {
+        lpAll.row(m * N + i) = resp[m] * lp.row(m * N + i);
+      }
+      // everything reported per SUBJECT comes from the selected component --
+      // its eta, its predictions, its residual variance -- the same way focei
+      // reports bestMixEst
+      sel[i] = best * N + i;
+      S.preds[i] = pf[sel[i]];
+      if (!prv.empty()) S.rvar[i] = prv[sel[i]];
       S.mixnum[i] = best + 1;
+      S.mixW += resp;
+    }
+    S.mixW /= (double)N;
+    // Gradient of the marginal -2LL wrt the MLOGIT parameters.  Carrying
+    // d/d(pi) and then applying a Jacobian is a trap here: mexpit's Jacobian is
+    // dense, d(pi_m)/d(theta_l) = pi_m (delta_ml - pi_l), so treating it as one
+    // scalar per free parameter (as mixGrad does) silently drops the
+    // off-diagonal -pi_m pi_l terms.  That is exact only at nMix == 2, where
+    // there is a single free parameter -- and wrong by 25% at nMix == 3.
+    //
+    // Chaining it properly collapses: summing -r_im/pi_m against the dense
+    // Jacobian over ALL components gives -(r_il - pi_l), since the
+    // responsibilities sum to one.  So the exact gradient is just
+    //   N * pi_l - sum_i r_il
+    // for every l, with no Jacobian to get wrong.
+    S.gMixTheta.zeros(nMix - 1);
+    for (int m = 0; m < nMix - 1; ++m) {
+      double g = (double)N * (pi[m] - S.mixW[m]);
+      S.gMixTheta[m] = R_FINITE(g) ? g : 0.0;
     }
   } else {
     jointTot = arma::accu(obj);
-    lpBest = lp;
+    lpAll = lp;
     for (int i = 0; i < N; ++i) {
       S.preds[i] = pf[i];
       if (!prv.empty()) S.rvar[i] = prv[i];
     }
   }
-  double pxz = jointTot - arma::accu(pzI);
+  // the prior is removed at the SELECTED component, which is the eta this
+  // subject is reported at
+  double pxzPrior = 0;
+  for (int i = 0; i < N; ++i) pxzPrior += pzI[sel[i]];
+  double pxz = jointTot - pxzPrior;
   double pz = 0, qz = 0;
   for (int i = 0; i < N; ++i) {
+    const unsigned int r = sel[i];         // the selected component's posterior
     if (omOff) {
-      arma::vec d = (zOut.row(i) - zPopMat.row(i)).t();
+      arma::vec d = (zOut.row(r) - zPopE.row(r)).t();
       pz += 0.5 * (arma::dot(d, OmInv * d) + logdetOm + zDim * ln2pi);
     }
     for (int k = 0; k < zDim; ++k) {
       if (!omOff) {
-        double d = zOut(i, k) - zPopMat(i, k);
+        double d = zOut(r, k) - zPopE(r, k);
         pz += 0.5 * (d * d / omega[k] + std::log(omega[k]) + ln2pi);
       }
-      qz += 0.5 * (eps(i, k) * eps(i, k) + ln2pi + 2 * logSigma(i, k));
+      qz += 0.5 * (epsE(r, k) * epsE(r, k) + ln2pi + 2 * logSigma(r, k));
     }
   }
   double DKL = pz - qz;
   if (withGrad) {
     // encoder upstream: d(pxz)/dz = lp - Omega^-1 eta; KL adds
     // alphaKL * Omega^-1 (z - zPopMat)
-    arma::mat gZ = lpBest;
+    // Every pseudo-subject keeps its OWN data gradient (already responsibility
+    // scaled).  The prior correction and the KL apply to the selected row only,
+    // because that is where pxz removed the prior and where DKL was formed.
+    arma::mat gZ = lpAll;
+    arma::mat gLS(Ne, zDim, arma::fill::zeros);
     for (int i = 0; i < N; ++i) {
+      const unsigned int r = sel[i];
       arma::vec pri(zDim), klg(zDim);
       if (omOff) {
-        pri = OmInv * eta.row(i).t();
-        klg = OmInv * (zOut.row(i) - zPopMat.row(i)).t();
+        pri = OmInv * eta.row(r).t();
+        klg = OmInv * (zOut.row(r) - zPopE.row(r)).t();
       }
       for (int k = 0; k < zDim; ++k) {
         double g = omOff
-          ? gZ(i, k) - pri[k] + alphaKL * klg[k]
-          : gZ(i, k) - eta(i, k) / omega[k] + alphaKL * (zOut(i, k) - zPopMat(i, k)) / omega[k];
-        gZ(i, k) = R_FINITE(g) ? g : 0.0;
+          ? gZ(r, k) - pri[k] + alphaKL * klg[k]
+          : gZ(r, k) - eta(r, k) / omega[k] + alphaKL * (zOut(r, k) - zPopE(r, k)) / omega[k];
+        gZ(r, k) = R_FINITE(g) ? g : 0.0;
       }
+      gLS.row(r).fill(-alphaKL);
     }
-    arma::mat gLS(N, zDim); gLS.fill(-alphaKL);
-    arma::mat mu2(N, zDim), ls2(N, zDim), z2(N, zDim); arma::cube L2(zDim, zDim, N);
-    vaeEncoderFwdBwdCore(dataIn, lengths, covIn, eps, Wih, Whh, bih, bhh, fcW, fcB, zDim,
+    for (int r = 0; r < Ne; ++r) {
+      for (int k = 0; k < zDim; ++k) if (!R_FINITE(gZ(r, k))) gZ(r, k) = 0.0;
+    }
+    arma::mat mu2(Ne, zDim), ls2(Ne, zDim), z2(Ne, zDim); arma::cube L2(zDim, zDim, Ne);
+    vaeEncoderFwdBwdCore(dataIn, lengths, covIn, epsE, Wih, Whh, bih, bhh, fcW, fcB, zDim,
                          gZ, gLS, true, mu2, ls2, L2, z2,
                          S.gWih, S.gWhh, S.gbih, S.gbhh, S.gFcW, S.gFcB, cores,
                          parEncoderBackward);
   }
-  S.pxz = pxz; S.DKL = DKL; S.mu = mu; S.z = zOut; S.L = Lout; S.lp = lpBest;
+  // report one row per SUBJECT: the selected component's posterior
+  S.pxz = pxz; S.DKL = DKL;
+  if (nMix > 1) {
+    S.mu.set_size(N, zDim); S.z.set_size(N, zDim); S.lp.set_size(N, zDim);
+    S.L.set_size(zDim, zDim, N);
+    for (int i = 0; i < N; ++i) {
+      S.mu.row(i) = mu.row(sel[i]);
+      S.z.row(i) = zOut.row(sel[i]);
+      S.lp.row(i) = lpAll.row(sel[i]);
+      S.L.slice(i) = Lout.slice(sel[i]);
+    }
+  } else {
+    S.mu = mu; S.z = zOut; S.L = Lout; S.lp = lpAll;
+  }
+  S.muAll = mu;
   if (!R_FINITE(pxz)) S.ok = true; // a failed subject is zeroed in gZ, not fatal
   return S;
 }
@@ -21805,6 +22142,17 @@ List vaeElboStepCpp_(List params, List prep, RObject zPopR, RObject omegaR,
   arma::cube dataIn = as<arma::cube>(prep["dataIn"]);
   arma::ivec lengths = vaeToIvec(prep["lengths"]);
   arma::mat covIn = as<arma::mat>(prep["covIn"]);
+  // component-conditioned encoder inputs (see vaeTileEncoderInputs)
+  arma::cube dataInE; arma::ivec lenE; arma::mat covEnc;
+  vaeTileEncoderInputs(dataIn, lengths, covIn, nMix, dataInE, lenE, covEnc);
+  // A head that does not match the (widened) input reaches armadillo as a
+  // std::logic_error from inside the encoder, which terminates the SESSION
+  // rather than raising an R error.  Check it here while we still can.
+  if ((int)fcW.n_cols != (int)(Whh.n_cols + covEnc.n_cols)) {
+    stop("vae encoder head is %d wide but needs hiddenDim + ncol(covIn)%s = %d",
+         (int)fcW.n_cols, nMix > 1 ? " + nMix" : "",
+         (int)(Whh.n_cols + covEnc.n_cols));
+  }
   arma::vec th = as<arma::vec>(prep["th"]);
   // .vaeDataPrep stores 1-based theta indices with NA for a free/mixture eta; map
   // to the 0-based (-1 = free) form the core uses.
@@ -21829,7 +22177,7 @@ List vaeElboStepCpp_(List params, List prep, RObject zPopR, RObject omegaR,
     zPopMat.each_row() = zp.t();
     baseline = zp;
   }
-  VaeStepOut S = vaeElboStepCpp(Wih, Whh, bih, bhh, fcW, fcB, dataIn, lengths, covIn,
+  VaeStepOut S = vaeElboStepCpp(Wih, Whh, bih, bhh, fcW, fcB, dataInE, lenE, covEnc,
                                 eps, zDim, th, zPopThetaIdx0, errThetaIdx0, zPopMat, baseline,
                                 Om, a, alphaKL, nMix, mixProb, cores, withGrad);
   RObject grads = R_NilValue;
@@ -21844,7 +22192,11 @@ List vaeElboStepCpp_(List params, List prep, RObject zPopR, RObject omegaR,
   for (int i = 0; i < N; ++i) mixnum[i] = S.mixnum[i];
   return List::create(_["loss"] = S.pxz + alphaKL * S.DKL, _["pxz"] = S.pxz, _["DKL"] = S.DKL,
                       _["grads"] = grads, _["mu"] = S.mu, _["L"] = S.L, _["z"] = S.z,
-                      _["preds"] = preds, _["rvar"] = rvar, _["mixnum"] = mixnum);
+                      _["preds"] = preds, _["rvar"] = rvar, _["mixnum"] = mixnum,
+                      // per (subject, component) posterior mean, component-major
+                      // (row m*N + i) -- the encoder characterizes every pair
+                      _["muAll"] = S.muAll, _["mixW"] = S.mixW,
+                      _["gMixTheta"] = S.gMixTheta, _["mixProb"] = S.mixProbCur);
 }
 
 // ---------------------------------------------------------------------------
@@ -22516,50 +22868,75 @@ static void vaeScoreCandidates(VaeBnbCtx& c, int nCov,
 // Moves are per BLOCK, not per column: a single-column add or drop inside a
 // hockey block only ever produces a half-selected support, which vaeBnbLeaf
 // rejects -- so a column-wise polish could never move a blocked relationship.
+// append block b's columns to `t`, keeping it sorted
+static void vaeLsAddBlock(const VaeBnbCtx& c, std::vector<int>& t, int b) {
+  const std::vector<int>& cols = c.blocks[(size_t)b];
+  t.insert(t.end(), cols.begin(), cols.end());
+  std::sort(t.begin(), t.end());
+}
+
+// `cur` minus every column of block b
+static std::vector<int> vaeLsDropBlock(const VaeBnbCtx& c,
+                                       const std::vector<int>& cur, int b) {
+  std::vector<int> t;
+  t.reserve(cur.size());
+  for (size_t s = 0; s < cur.size(); ++s) {
+    if (c.blockOf[(size_t)cur[s]] != b) t.push_back(cur[s]);
+  }
+  return t;
+}
+
+// score every support reachable from `cur` by ADDING one absent block
+static void vaeLsAdd(VaeBnbCtx& c, const std::vector<int>& cur,
+                     const std::vector<char>& inBlk) {
+  for (int b = 0; b < (int)c.blocks.size(); ++b) {
+    if (inBlk[(size_t)b]) continue;
+    if (!vaeGroupFreeBlock(c, cur, b)) continue;         // group already taken
+    std::vector<int> t = cur;
+    vaeLsAddBlock(c, t, b);
+    vaeBnbLeaf(c, t);
+  }
+}
+
+// score every support reachable from `cur` by DROPPING one present block
+static void vaeLsDrop(VaeBnbCtx& c, const std::vector<int>& cur,
+                      const std::vector<char>& inBlk) {
+  for (int d = 0; d < (int)c.blocks.size(); ++d) {
+    if (!inBlk[(size_t)d]) continue;
+    vaeBnbLeaf(c, vaeLsDropBlock(c, cur, d));
+  }
+}
+
+// score every support reachable from `cur` by SWAPPING a present block for an
+// absent one.  The swap vacates block d, so feasibility is judged against the
+// REST of the support -- swapping one shape of a covariate for another stays
+// legal.
+static void vaeLsSwap(VaeBnbCtx& c, const std::vector<int>& cur,
+                      const std::vector<char>& inBlk) {
+  const int nBlk = (int)c.blocks.size();
+  for (int d = 0; d < nBlk; ++d) {
+    if (!inBlk[(size_t)d]) continue;
+    std::vector<int> rest = vaeLsDropBlock(c, cur, d);
+    for (int b = 0; b < nBlk; ++b) {
+      if (inBlk[(size_t)b]) continue;
+      if (!vaeGroupFreeBlock(c, rest, b)) continue;
+      std::vector<int> t = rest;
+      vaeLsAddBlock(c, t, b);
+      vaeBnbLeaf(c, t);
+    }
+  }
+}
+
 static void vaeLocalSearchL0(VaeBnbCtx& c, int maxPass = 100) {
   const int nBlk = (int)c.blocks.size();
-  // append block b's columns to `t`, keeping it sorted
-  auto addBlock = [&](std::vector<int>& t, int b) {
-    const std::vector<int>& cols = c.blocks[(size_t)b];
-    t.insert(t.end(), cols.begin(), cols.end());
-    std::sort(t.begin(), t.end());
-  };
-  // `cur` minus every column of block b
-  auto dropBlock = [&](const std::vector<int>& cur, int b) {
-    std::vector<int> t;
-    t.reserve(cur.size());
-    for (size_t s = 0; s < cur.size(); ++s) {
-      if (c.blockOf[(size_t)cur[s]] != b) t.push_back(cur[s]);
-    }
-    return t;
-  };
   for (int pass = 0; pass < maxPass; ++pass) {
     const std::vector<int> cur = c.bestSel;
     const double before = c.bestScore;
     std::vector<char> inBlk((size_t)nBlk, 0);
     for (size_t s = 0; s < cur.size(); ++s) inBlk[(size_t)c.blockOf[(size_t)cur[s]]] = 1;
-    for (int b = 0; b < nBlk; ++b) {                     // add
-      if (inBlk[(size_t)b]) continue;
-      if (!vaeGroupFreeBlock(c, cur, b)) continue;       // group already taken
-      std::vector<int> t = cur; addBlock(t, b);
-      vaeBnbLeaf(c, t);
-    }
-    for (int d = 0; d < nBlk; ++d) {                     // drop
-      if (!inBlk[(size_t)d]) continue;
-      vaeBnbLeaf(c, dropBlock(cur, d));
-    }
-    for (int d = 0; d < nBlk; ++d) {                     // swap
-      if (!inBlk[(size_t)d]) continue;
-      // the swap vacates block d, so feasibility is judged against the REST of
-      // the support -- swapping one shape of a covariate for another stays legal
-      std::vector<int> rest = dropBlock(cur, d);
-      for (int b = 0; b < nBlk; ++b) {
-        if (inBlk[(size_t)b]) continue;
-        if (!vaeGroupFreeBlock(c, rest, b)) continue;
-        std::vector<int> t = rest; addBlock(t, b);
-        vaeBnbLeaf(c, t);
-      }
-    }
+    vaeLsAdd(c, cur, inBlk);
+    vaeLsDrop(c, cur, inBlk);
+    vaeLsSwap(c, cur, inBlk);
     if (!(c.bestScore < before)) break;                  // local optimum
   }
 }
@@ -22724,13 +23101,12 @@ static double gVaeThetaObjR(Rcpp::NumericVector r) {
   }
   arma::vec thv = vaeBuildTh(thc, gVaeRegZpopIdx0, gVaeRegBaseline, gVaeRegErrIdx0, aCand);
   vaeInnerUpdateParCore(thv, gVaeRegOmega);
-  const int N = (int)gVaeRegEtaCentered.n_rows;
+  // gVaeRegEtaCentered already carries one row per (subject, component) --
+  // each component is scored at ITS OWN eta, not at a shared one tiled across
+  // components
   const int nMix = gVaeRegNMix;
-  arma::mat etaEval = gVaeRegEtaCentered;
-  if (nMix > 1) {
-    etaEval.set_size(nMix * N, gVaeRegEtaCentered.n_cols);
-    for (int m = 0; m < nMix; ++m) etaEval.rows(m * N, m * N + N - 1) = gVaeRegEtaCentered;
-  }
+  const int N = (int)gVaeRegEtaCentered.n_rows / (nMix > 1 ? nMix : 1);
+  const arma::mat& etaEval = gVaeRegEtaCentered;
   arma::vec obj; arma::mat lp; std::vector<std::vector<double> > pf;
   vaeInnerLikCore(etaEval, gVaeRegCores, false, false, obj, lp, pf, gVaeRegAdjOuter);
   double v;
@@ -22738,16 +23114,18 @@ static double gVaeThetaObjR(Rcpp::NumericVector r) {
     // per-subject mixture -2LL via log-sum-exp (same as vaeElboStepCpp)
     v = 0;
     for (int i = 0; i < N; ++i) {
-      double mmax = -std::numeric_limits<double>::infinity();
-      arma::vec ll(nMix);
+      // same 1x-scale marginal as vaeElboStepCpp -- the two MUST optimize one
+      // functional, or the M-step chases a different objective than the ELBO
+      arma::vec ll(nMix), pm(nMix);
       for (int m = 0; m < nMix; ++m) {
-        double lv = std::log(gVaeRegMixProb[m]) - 0.5 * obj[m * N + i];
-        if (!R_FINITE(lv)) lv = -std::numeric_limits<double>::infinity();
-        ll[m] = lv; if (lv > mmax) mmax = lv;
+        ll[m] = -obj[m * N + i];
+        pm[m] = (op_focei.mixProb != NULL) ? op_focei.mixProb[m] : gVaeRegMixProb[m];
       }
-      if (R_FINITE(mmax)) {
-        double se = 0; for (int m = 0; m < nMix; ++m) se += std::exp(ll[m] - mmax);
-        v += -2 * (mmax + std::log(se));
+      double lse = rxLogSumExpMix(ll.memptr(), pm.memptr(), nMix, NULL);
+      if (R_FINITE(lse)) {
+        v += -lse;
+      } else {
+        v += op_focei.badSolveObjfAdj;
       }
     }
   } else {
@@ -22773,6 +23151,28 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
   arma::cube dataIn = as<arma::cube>(prep["dataIn"]);
   arma::ivec lengths = vaeToIvec(prep["lengths"]);
   arma::mat covIn = as<arma::mat>(prep["covIn"]);
+  // Adam state for the mixture proportions, which are estimated on the MLOGIT
+  // scale through their own analytic gradient (see vaeElboStepCpp) rather than
+  // by the bobyqa regress step or held at their ini() value.  1-based theta
+  // indices, as op_focei.mixIdx stores them.
+  arma::uvec mixThIdx;
+  if (nMix > 1 && op_focei.mixIdx != NULL && op_focei.mixIdxN > 0) {
+    mixThIdx.set_size(op_focei.mixIdxN);
+    for (int m = 0; m < op_focei.mixIdxN; ++m) mixThIdx[m] = op_focei.mixIdx[m] - 1;
+  }
+  VaeAdamBlk aMixTh; int nMixThStep = 0;
+  if (mixThIdx.n_elem > 0) {
+    // vaeAdam accumulates into m/v in place, so they must be sized up front
+    aMixTh.m.zeros(mixThIdx.n_elem, 1);
+    aMixTh.v.zeros(mixThIdx.n_elem, 1);
+  }
+  arma::vec mixProbFinal = as<arma::vec>(mixProbR);
+  // Component-conditioned ENCODER inputs, built once (see
+  // vaeTileEncoderInputs).  Kept separate from covIn, which the covariate
+  // best-subset machinery below indexes against covAllow/covGroup -- the
+  // component one-hot is not a covariate and must not be selectable.
+  arma::cube dataInE; arma::ivec lenE; arma::mat covEnc;
+  vaeTileEncoderInputs(dataIn, lengths, covIn, nMix, dataInE, lenE, covEnc);
   arma::mat covMat = as<arma::mat>(prep["covMat"]);
   arma::vec th = as<arma::vec>(prep["th"]);
   arma::ivec zPopThetaIdx0 = vaeToIvec(prep["zPopThetaIdx0"]);
@@ -23138,7 +23538,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       arma::mat eps(N, zDim);
       vaeDrawEps(eps, (uint32_t)(seed + (it - 1) * Lg + l));
       arma::mat zPopMat(N, zDim); zPopMat.each_row() = zPop.t();
-      VaeStepOut st = vaeElboStepCpp(Wih, Whh, bih, bhh, fcW, fcB, dataIn, lengths, covIn,
+      VaeStepOut st = vaeElboStepCpp(Wih, Whh, bih, bhh, fcW, fcB, dataInE, lenE, covEnc,
                                      eps, zDim, th, zPopThetaIdx0, errThetaIdx0, zPopMat, zPop,
                                      omFull(), a, 0.001, nMix, mixProb, cores, true, parEncoderBackward);
       tstep++;
@@ -23559,7 +23959,8 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       gVaeRegBaseline = baseline;
       gVaeRegA = a;
       gVaeRegOmega = omFull();
-      gVaeRegEtaCentered = last.mu; gVaeRegEtaCentered.each_row() -= baseline.t();
+      gVaeRegEtaCentered = last.muAll.n_rows > 0 ? last.muAll : last.mu;
+      gVaeRegEtaCentered.each_row() -= baseline.t();
       gVaeRegCores = cores; gVaeRegNMix = nMix; gVaeRegMixProb = mixProb;
       gVaeRegAdjOuter = mStepOuter;  // outer objective, or the reference ELBO
       Rcpp::Environment nlmixr2 = Rcpp::Environment::namespace_env("nlmixr2est");
@@ -23707,7 +24108,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
     for (int l = 1; l <= Lg; ++l) {
       arma::mat eps(N, zDim);
       vaeDrawEps(eps, (uint32_t)(seed + 1000003 + (it - 1) * Lg + l));
-      VaeStepOut st = vaeElboStepCpp(Wih, Whh, bih, bhh, fcW, fcB, dataIn, lengths, covIn,
+      VaeStepOut st = vaeElboStepCpp(Wih, Whh, bih, bhh, fcW, fcB, dataInE, lenE, covEnc,
                                      eps, zDim, th, zPopThetaIdx0, errThetaIdx0, zPopArg, baseline,
                                      omFull(), a, alphaKL, nMix, mixProb, cores, true, parEncoderBackward);
       tstep++;
@@ -23719,6 +24120,15 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       vaeAdam(fcW, st.gFcW, aFcW, learningRate, tstep);
       vaeAdam(fcBM, st.gFcB, aFcB, learningRate, tstep); fcB = fcBM.col(0);
       esum += st.pxz + st.DKL;
+      if (mixThIdx.n_elem > 0 && st.gMixTheta.n_elem == mixThIdx.n_elem) {
+        arma::mat pm(mixThIdx.n_elem, 1), gm(mixThIdx.n_elem, 1);
+        for (unsigned int m = 0; m < mixThIdx.n_elem; ++m) {
+          pm(m, 0) = th[mixThIdx[m]]; gm(m, 0) = st.gMixTheta[m];
+        }
+        vaeAdam(pm, gm, aMixTh, learningRate, ++nMixThStep);
+        for (unsigned int m = 0; m < mixThIdx.n_elem; ++m) th[mixThIdx[m]] = pm(m, 0);
+      }
+      if (st.mixProbCur.n_elem > 0) mixProbFinal = st.mixProbCur;
       last = st;
     }
     elboTrace[it - 1] = esum / Lg;
@@ -23731,6 +24141,17 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
   }
   setRxThreadId(-1);
 
+  // The proportions each step reports are the ones it USED, i.e. from before
+  // that step's own Adam update; refresh from the final th so what is reported
+  // and written into ini() is the estimate, not the estimate one step ago.
+  if (mixThIdx.n_elem > 0) {
+    arma::vec thvEnd = vaeBuildTh(th, zPopThetaIdx0, zPop, errThetaIdx0, a);
+    vaeInnerUpdateParCore(thvEnd, omFull());
+    if (op_focei.mixProb != NULL) {
+      mixProbFinal.set_size(nMix);
+      for (int m = 0; m < nMix; ++m) mixProbFinal[m] = op_focei.mixProb[m];
+    }
+  }
   RObject parHist = vaeIterPrintGet_(printCtl >= 1);
   arma::mat zPopMatOut(N, zDim);
   if (isCovStep) zPopMatOut = zPopArg; else zPopMatOut.each_row() = zPop.t();
@@ -23747,7 +24168,8 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
                       _["parHist"] = parHist, _["mu"] = last.mu, _["zPopMat"] = zPopMatOut,
                       _["mixnum"] = mixnumOut, _["regressTheta"] = regressThetaOut,
                       _["nRegGrad"] = nRegGrad, _["nRegFallback"] = nRegFallback,
-                      _["nStage2"] = nStage2);
+                      _["nStage2"] = nStage2,
+                      _["mixProb"] = mixProbFinal, _["nMixThetaStep"] = nMixThStep);
 }
 
 // Test-facing entry point for the exact L0/BIC best-subset kernel used by the VAE

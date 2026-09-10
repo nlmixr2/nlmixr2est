@@ -137,6 +137,12 @@
     } else if (inherits(.lst$covMethod, "matrix")) {
       .env2$cov <- as.matrix(.lst$covMethod)
       .env2$ui <- obj$ui
+      # A caller-supplied covariance -- setCov() with a matrix, and the cached
+      # covList entry setCov() re-installs -- is ALREADY on the reported scale.
+      # Without this the mixture block is rotated by the mexpit Jacobian a
+      # second time on the refit, which silently shrinks the proportion's SE
+      # by a factor of p(1-p) every round trip.
+      .env2$.mixCovPreRotated <- TRUE
       .control$covMethod <- 0L
     } else if (length(.lst$covMethod) == 1) {
       if (.lst$covMethod == "") {
@@ -281,8 +287,7 @@
   }
   .eta <- tryCatch(fit$eta, error = function(e) NULL)
   if (!is.null(.eta)) {
-    .etaCols <- setdiff(names(.eta), "ID")
-    .control$etaMat <- as.matrix(.eta[, .etaCols, drop = FALSE])
+    .control$etaMat <- as.matrix(.nmDropNonEtaCols(.eta))
   }
   # the nested re-fit resets mu-referencing global state (.muRefTrans$cur); save + restore.
   .savedMuRef <- .muRefTrans$cur

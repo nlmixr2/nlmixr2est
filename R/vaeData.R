@@ -796,7 +796,16 @@ vaeCovariates <- function(data, warn = TRUE,
   ## full theta vector (THETA_i_ in ntheta order), from ini estimates
   .thRows <- .idf[!is.na(.idf$ntheta), , drop = FALSE]
   .thRows <- .thRows[order(.thRows$ntheta), , drop = FALSE]
-  .th <- setNames(as.numeric(.thRows$est), paste0("THETA_", seq_len(nrow(.thRows)), "_"))
+  ## thetaIniMix puts the mixture proportions on the mlogit scale, which is the
+  ## scale the inner problem reads them on (updateTheta -> .getMixFromLog); the
+  ## raw iniDf estimate is the probability, and pushing that in unchanged made
+  ## p1 = 0.6 be read as mexpit(0.6) = 0.646.  It also stop()s on an invalid
+  ## ini() proportion, which is the right error to surface.
+  .thEst <- tryCatch(as.numeric(ui$thetaIniMix), error = function(e) NULL)
+  if (is.null(.thEst) || length(.thEst) != nrow(.thRows)) {
+    .thEst <- as.numeric(.thRows$est)
+  }
+  .th <- setNames(.thEst, paste0("THETA_", seq_len(nrow(.thRows)), "_"))
   ## structural theta index (in the full theta vector) paired with each eta.
   ## A random effect that is not mu-referenced to a single theta -- a mixture eta
   ## (mix(exp(lke1+eta.ke),p,exp(lke2+eta.ke))), an eta on a fixed (literalFix-ed)

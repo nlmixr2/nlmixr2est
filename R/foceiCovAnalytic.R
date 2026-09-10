@@ -915,6 +915,12 @@
   if (!length(.dist)) .dist <- tryCatch(as.character(ui$predDf$distribution), error = function(e) character(0))
   if (length(.dist) && !all(.dist %in% c("norm", "dnorm")))
     return(.foceiAnalyticFallback("a non-normal likelihood endpoint"))
+  # Mixture models: the augmented sensitivity model differentiates ONE component's
+  # conditional likelihood, not the marginal log(sum_m p_m L_m) the fit optimizes,
+  # and there is no mixture-proportion block at all.  Assembling it anyway would
+  # report a single-component observed information as "analytic".
+  if (length(tryCatch(ui$mixProbs, error = function(e) NULL)) > 0L)
+    return(.foceiAnalyticFallback("a mixture (mix()) model"))
   # Multiple modeled endpoints: rx_pred_ and rx_r_ are single dvid-conditional
   # expressions that already select the right endpoint per observation when solved
   # against the dataset, so the (f,R) path handles them -- but the single-endpoint
