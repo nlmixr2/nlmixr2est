@@ -9748,7 +9748,15 @@ Environment foceiOuter(Environment e){
         for (int _i = 0; _i < _nsGuarded; ++_i) {
           _inGuards.push_back(std::unique_ptr<FdInnerStateGuard>(new FdInnerStateGuard(_i)));
         }
+        rx_solve *_rxSave = rx;
         analyticOuterGrad(x.begin(), _g.data());   // stashes firstDirectGrad on success
+        // analyticOuterGradDirect() assigns the GLOBAL rx and leaves it NULL when
+        // getRxSolve_() hands back nothing (declineHere(102)).  ~FdInnerStateGuard runs
+        // next and resolves its subject through getRxId(), i.e. cid % getRxNsub(rx) --
+        // a NULL dereference before any of its own NULL checks.  Put the live pointer
+        // back; prefer whatever the gradient left when it is usable, since it re-reads
+        // the same solve the pool was built on.
+        if (rx == NULL) rx = _rxSave;
       }
       // The guards put fInd->setup and oldEta back, which is exactly the state in which
       // likInner0() answers from the CACHE instead of solving -- and ind->solve still holds
