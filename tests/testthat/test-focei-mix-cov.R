@@ -153,6 +153,47 @@ nmTest({
     expect_equal(unname(.se), sqrt(.p * (1 - .p) / .dat$n), tolerance = 0.05)
   })
 
+  ## The appended block for engines whose covariance has no mixture rows at all
+  ## (saem excludes the proportions from its kernel parameter vector).  Driven
+  ## from a synthetic env so both branches are exercised without a fit.
+  .mkMixEnv <- function(r1, pi1, n = 100L) {
+    .e <- new.env(parent = emptyenv())
+    .e$ui <- list(mixProbs = "p1")
+    .nm <- c("tcl", "tv")
+    .e$cov <- matrix(c(4, 1, 1, 9), 2, 2, dimnames = list(.nm, .nm))
+    .e$mixProbabilities <- c(pi1, 1 - pi1)
+    .e$mixList <- list(data.frame(prob = r1), data.frame(prob = 1 - r1))
+    .e
+  }
+
+  test_that("a covariance with no mixture rows gets the NONMEM (7.51) block appended", {
+    ## hard 0/1 responsibilities with mean == the proportion: the EM fixed point,
+    ## where the information is n*p*(1-p) and the answer is the binomial variance
+    .n <- 100L
+    .r <- c(rep(1, 45), rep(0, 55))
+    .e <- .mkMixEnv(.r, 0.45, .n)
+    .mixCovAppendBlock(.e)
+    expect_true("p1" %in% rownames(.e$cov))
+    expect_equal(dim(.e$cov), c(3L, 3L))
+    expect_equal(unname(sqrt(diag(.e$cov))[3]), sqrt(0.45 * 0.55 / .n), tolerance = 1e-8)
+    ## the pre-existing block is untouched and the new one is uncorrelated with
+    ## it -- the cross terms (7.52)-(7.54) need per-subject scores this engine
+    ## does not expose, so they are deliberately absent
+    expect_equal(unname(.e$cov[1:2, 1:2]), matrix(c(4, 1, 1, 9), 2, 2))
+    expect_equal(unname(.e$cov[1:2, 3]), c(0, 0))
+  })
+
+  test_that("the appended block is refused when the fit is not at the EM fixed point", {
+    ## p != mean_i r_i: an information matrix reports the precision of an MLE,
+    ## and this is not one.  saem lands here (nlmixr2est#1058), and reporting a
+    ## number would be a confident-looking SE on a non-stationary estimate.
+    .e <- .mkMixEnv(c(rep(1, 30), rep(0, 70)), 0.64, 100L)
+    .mixCovAppendBlock(.e)
+    expect_false("p1" %in% rownames(.e$cov))
+    expect_equal(dim(.e$cov), c(2L, 2L))
+    expect_true(any(grepl("mean responsibility", .e$runInfo)))
+  })
+
   test_that("covMethod='analytic' declines a mixture rather than reporting one component", {
     ## The augmented sensitivity model differentiates ONE component's conditional
     ## likelihood, not the marginal, and has no mixture-proportion block at all.

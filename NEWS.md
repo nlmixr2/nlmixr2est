@@ -171,6 +171,23 @@
   The augmented sensitivity model differentiates one component's conditional
   likelihood and has no mixture-proportion block at all.
 
+- `est="saem"` mixture fits can report a mixture-proportion SE as well.  `saem`
+  leaves the proportions out of the parameter vector its kernel converges (they
+  are updated by a separate EM step), so its `linFim`/`fim`/`sa` covariance has
+  no mixture rows to extend; the (7.51) block is appended from the fit's own
+  posterior responsibilities.  The cross terms (7.52)-(7.54) are NOT formed --
+  they need per-subject scores for the other parameters on the same footing,
+  which that covariance does not expose -- so the block is uncorrelated with the
+  structural parameters and its SEs are mildly optimistic.
+
+  The block is only reported when the fit is actually at the mixture's fixed
+  point, `p_l == mean_i r_il`.  An information matrix describes the precision of
+  a maximum-likelihood estimate, and away from that point it is a
+  confident-looking number attached to something that is not one; instead the
+  fit's `$runInfo` says the SE was not computed and by how much the identity
+  fails.  `est="saem"` currently lands far from it (nlmixr2/nlmixr2est#1058), so
+  in practice this declines today and will start reporting once that is fixed.
+
 - `est="focei"` estimates the mixture proportions under a gradient-based
   `outerOpt`.  `mixGrad()` supplies an analytic value that short-circuits the
   finite difference in `numericGrad()`, and it chained the per-subject

@@ -447,28 +447,41 @@
 #' @noRd
 #' @author Matthew L. Fidler
 .mixInstallProbScaleCov <- function(env) {
-  .mp <- tryCatch(env$ui$mixProbs, error = function(e) NULL)
-  if (is.null(.mp) || length(.mp) == 0L) return(invisible(NULL))
-  .p <- tryCatch(env$mixProbabilities, error = function(e) NULL)
-  if (is.null(.p) || length(.p) != length(.mp) + 1L) return(invisible(NULL))
-  .p <- .p[seq_along(.mp)]
+  .m <- .mixEnvPieces(env)
+  if (is.null(.m)) return(invisible(NULL))
+  .mp <- .m$names
+  .p <- .m$p
   for (.n in c("cov", "covR", "covS", "covRS")) {
     if (!exists(.n, envir = env, inherits = FALSE)) next
     .m <- get(.n, envir = env)
     if (!is.matrix(.m)) next
     assign(.n, .mixCovToProbScale(.m, .mp, .p), envir = env)
   }
-  # foceiFinalizeTables filled se/popDf from the covariance as it stood BEFORE
-  # this rotation (mlogit scale), and .updateParFixed() reads popDf -- so the
-  # mixture rows have to be refreshed here or the reported SE stays on the
-  # estimation scale while the estimate next to it is a probability.
+  .mixRefreshSeFromCov(env, .mp)
+  invisible(NULL)
+}
+
+#' Refresh the mixture rows of se/popDf from the rotated covariance
+#'
+#' \code{foceiFinalizeTables} fills \code{se}/\code{popDf} from the covariance
+#' as it stood BEFORE the probability-scale rotation, and
+#' \code{.updateParFixed()} reads \code{popDf} -- so without this the reported
+#' SE stays on the mlogit estimation scale while the estimate beside it is a
+#' probability.
+#'
+#' @param env fit environment
+#' @param mixNames mixture-proportion parameter names
+#' @return invisible \code{NULL}; called for its side effects on \code{env}
+#' @noRd
+#' @author Matthew L. Fidler
+.mixRefreshSeFromCov <- function(env, mixNames) {
   .cov <- tryCatch(get("cov", envir = env, inherits = FALSE), error = function(e) NULL)
   .mixIdx <- tryCatch(get("mixIdx", envir = env, inherits = FALSE), error = function(e) NULL)
   if (!is.matrix(.cov) || is.null(rownames(.cov)) ||
-        is.null(.mixIdx) || length(.mixIdx) != length(.mp)) {
+        is.null(.mixIdx) || length(.mixIdx) != length(mixNames)) {
     return(invisible(NULL))
   }
-  .w <- match(.mp, rownames(.cov))
+  .w <- match(mixNames, rownames(.cov))
   if (anyNA(.w)) return(invisible(NULL))
   .newSe <- sqrt(diag(.cov))[.w]
   if (exists("se", envir = env, inherits = FALSE)) {
@@ -478,18 +491,130 @@
       assign("se", .se, envir = env)
     }
   }
-  if (exists("popDf", envir = env, inherits = FALSE)) {
-    .pd <- get("popDf", envir = env)
-    if (is.data.frame(.pd) && nrow(.pd) >= max(.mixIdx) && "SE" %in% names(.pd)) {
-      .pd[["SE"]][.mixIdx] <- .newSe
-      if ("%RSE" %in% names(.pd)) {
-        .e <- .pd[["Estimate"]][.mixIdx]
-        .pd[["%RSE"]][.mixIdx] <-
-          ifelse(is.finite(.e) & .e != 0, abs(.newSe / .e) * 100, NA_real_)
-      }
-      assign("popDf", .pd, envir = env)
-    }
+  if (!exists("popDf", envir = env, inherits = FALSE)) return(invisible(NULL))
+  .pd <- get("popDf", envir = env)
+  if (!is.data.frame(.pd) || nrow(.pd) < max(.mixIdx) || !("SE" %in% names(.pd))) {
+    return(invisible(NULL))
   }
+  .pd[["SE"]][.mixIdx] <- .newSe
+  if ("%RSE" %in% names(.pd)) {
+    .e <- .pd[["Estimate"]][.mixIdx]
+    .pd[["%RSE"]][.mixIdx] <-
+      ifelse(is.finite(.e) & .e != 0, abs(.newSe / .e) * 100, NA_real_)
+  }
+  assign("popDf", .pd, envir = env)
+  invisible(NULL)
+}
+
+#' Read a fit environment's mixture pieces, or NULL if it has none usable
+#'
+#' Both covariance consumers need the same three things off a fit env -- the
+#' proportion parameter names, the free probabilities, and the per-subject
+#' responsibility matrix -- with the same consistency checks between them.
+#'
+#' @param env fit environment
+#' @param needResp when \code{TRUE} also require \code{$mixList} and return the
+#'   responsibility matrix
+#' @return list with \code{names}, \code{p} (free probabilities) and, when
+#'   requested, \code{r} (subjects x components); \code{NULL} if unavailable
+#' @noRd
+#' @author Matthew L. Fidler
+.mixEnvPieces <- function(env, needResp = FALSE) {
+  .mp <- tryCatch(env$ui$mixProbs, error = function(e) NULL)
+  if (is.null(.mp) || length(.mp) == 0L) return(NULL)
+  .pi <- tryCatch(env$mixProbabilities, error = function(e) NULL)
+  if (is.null(.pi) || length(.pi) != length(.mp) + 1L || !all(is.finite(.pi))) return(NULL)
+  .ret <- list(names = .mp, p = .pi[seq_along(.mp)], pi = .pi)
+  if (!needResp) return(.ret)
+  .ml <- tryCatch(env$mixList, error = function(e) NULL)
+  if (is.null(.ml) || length(.ml) != length(.pi)) return(NULL)
+  .r <- try(do.call(cbind, lapply(.ml, function(.z) .z$prob)), silent = TRUE)
+  if (inherits(.r, "try-error") || !is.matrix(.r) || ncol(.r) != length(.pi)) return(NULL)
+  .ret$r <- .r
+  .ret
+}
+
+#' Probability-scale covariance of the mixture proportions from responsibilities
+#'
+#' NONMEM 7 Technical Guide eq. (7.51): the mixture parameters' information is
+#' the outer product of the per-subject scores, \code{sum_i (r_i - p)(r_i - p)'}
+#' on the mlogit scale.  Its inverse is rotated onto the probability scale with
+#' the same full Jacobian every other method uses.
+#'
+#' @param r matrix of per-subject responsibilities, one column per FREE component
+#' @param p free mixture probabilities
+#' @return the probability-scale covariance block, or \code{NULL} if it is not
+#'   invertible / not a usable covariance
+#' @noRd
+#' @author Matthew L. Fidler
+.mixProbCovBlock <- function(r, p) {
+  .d <- sweep(r, 2, p, "-")
+  .blk <- try(solve(t(.d) %*% .d), silent = TRUE)
+  if (inherits(.blk, "try-error") || !all(is.finite(.blk))) return(NULL)
+  .j <- diag(p, nrow = length(p)) - outer(p, p)
+  .blk <- .j %*% .blk %*% t(.j)
+  if (!all(is.finite(.blk)) || any(diag(.blk) <= 0)) return(NULL)
+  .blk
+}
+
+#' Append a mixture-proportion block to a covariance that has none
+#'
+#' \code{saem} excludes the mixture proportions from its kernel parameter vector
+#' (they are updated by a separate EM step), so its Louis/linFim covariance has
+#' no mixture rows at all and \code{p1} reports \code{SE = NA}.
+#'
+#' The block is NONMEM 7 Technical Guide eq. (7.51): the mixture parameters'
+#' information is the outer product of the per-subject scores,
+#' \code{sum_i (r_i - p)(r_i - p)'} on the mlogit scale, with \code{r_i} the
+#' subject's posterior responsibilities -- which the fit already carries in
+#' \code{$mixList}.  Its inverse is rotated onto the probability scale with the
+#' same full Jacobian every other method uses.
+#'
+#' The cross terms (7.52)-(7.54) are NOT formed: they need per-subject scores for
+#' the other parameters on the same footing, which the SAEM covariance does not
+#' expose.  The appended block is therefore uncorrelated with the structural
+#' parameters, so these SEs ignore that correlation and are mildly optimistic.
+#' Measured against a focei fit of the same data, where the cross terms ARE
+#' available, the difference is a couple of percent.
+#'
+#' @param env fit environment
+#' @return invisible \code{NULL}; called for its side effects on \code{env}
+#' @noRd
+#' @author Matthew L. Fidler
+.mixCovAppendBlock <- function(env) {
+  .m <- .mixEnvPieces(env, needResp = TRUE)
+  if (is.null(.m)) return(invisible(NULL))
+  .mp <- .m$names
+  .pi <- .m$pi
+  .r <- .m$r
+  .cov <- tryCatch(get("cov", envir = env, inherits = FALSE), error = function(e) NULL)
+  if (!is.matrix(.cov) || is.null(rownames(.cov))) return(invisible(NULL))
+  if (any(.mp %in% rownames(.cov))) return(invisible(NULL))   # already covered
+  .free <- seq_along(.mp)
+  # An information matrix reports the precision of a MAXIMUM-likelihood estimate.
+  # The mixture score is sum_i (r_il - p_l), so the fixed point is
+  # p_l == mean_i r_il; away from it the block is a confident-looking number
+  # attached to an estimate that is not an MLE.  Refuse rather than report it,
+  # and say why -- saem can land far off this (its proportions are updated by a
+  # separate EM step, outside the kernel that converged everything else).
+  .off <- max(abs(colMeans(.r[, .free, drop = FALSE]) - .pi[.free]))
+  if (!is.finite(.off) || .off > 0.01) {
+    .msg <- paste0("mixture proportion SE not computed; p != mean responsibility (off by ",
+                   signif(.off, 2), ")")
+    .ri <- tryCatch(get("runInfo", envir = env, inherits = FALSE), error = function(e) NULL)
+    assign("runInfo", unique(c(.ri, .msg)), envir = env)
+    return(invisible(NULL))
+  }
+  .blk <- .mixProbCovBlock(.r[, .free, drop = FALSE], .pi[.free])
+  if (is.null(.blk)) return(invisible(NULL))
+  .n <- nrow(.cov)
+  .out <- matrix(0, .n + length(.mp), .n + length(.mp))
+  .out[seq_len(.n), seq_len(.n)] <- .cov
+  .out[.n + .free, .n + .free] <- .blk
+  .nm <- c(rownames(.cov), .mp)
+  dimnames(.out) <- list(.nm, .nm)
+  assign("cov", .out, envir = env)
+  .updateParFixedRefreshSeFromCov(env, .out, onlyMissing = TRUE)
   invisible(NULL)
 }
 
