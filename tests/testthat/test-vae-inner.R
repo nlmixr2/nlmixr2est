@@ -463,6 +463,26 @@ nmTest({
     .p1 <- if (.agree >= 0.5) fit$mixProb[1] else fit$mixProb[2]   # allow label swap
     expect_equal(.p1, nFast / (nFast + nSlow), tolerance = 0.1)
     expect_gt(max(.agree, 1 - .agree), 0.9)
+
+    ## a fix()ed proportion is NOT estimated -- it stays exactly where ini() put
+    ## it, even though the gradient machinery still runs
+    mixFixed <- function() {
+      ini({ lka <- log(1.5); lke1 <- log(0.15); lke2 <- log(0.04); lV <- log(32)
+            p1 <- fix(0.5)
+            eta.ka ~ 0.04; eta.ke ~ 0.02; eta.V ~ 0.02; add.err <- 0.25 })
+      model({ ka <- exp(lka + eta.ka)
+        ke <- mix(exp(lke1 + eta.ke), p1, exp(lke2 + eta.ke)); V <- exp(lV + eta.V)
+        d/dt(depot) = -ka * depot; d/dt(central) = ka * depot - ke * central
+        cp <- central / V; cp ~ add(add.err) })
+    }
+    .uiF <- rxode2::assertRxUi(mixFixed)
+    .ctlF <- vaeControl(itersBurnIn = 5L, iters = 10L, klWarmup = 3L, gammaIter = 6L,
+                        nGradStep = 2L, covariateSelection = FALSE, seed = 1L, print = 0L)
+    .prepF <- .vaeDataPrep(.uiF, dat)
+    .mpF <- .getMixFromLog(.prepF$th, .uiF$thetaMixIndex)
+    .envF <- .vaeInnerSetup(.uiF, dat, matrix(0, .prepF$N, .prepF$zDim), .ctlF)
+    .fitF <- .vaeTrain(.prepF, .envF, .ctlF, nMix, .mpF)
+    expect_equal(as.numeric(.fitF$mixProb), c(0.5, 0.5))
   })
 
   test_that("the mixture proportion gradient is exact beyond two components", {
