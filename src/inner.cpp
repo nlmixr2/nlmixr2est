@@ -10,6 +10,7 @@
 #include "shi21.h"
 #include "trustHessianUpdate.h"
 #include "foceiGrad.h"
+#include "logSumExp.h"
 #include "inner.h"
 #include "nmMcmcRng.h"
 #include <cfloat>
@@ -5785,25 +5786,15 @@ static double foceiLik0Mix() {
   return lik;
 }
 
-// log( sum_m pi_m exp(ll[m]) ) -- the mixture marginal in log space, with the
-// usual max-shift so a component whose likelihood underflows does not take the
-// sum with it.  pi is op_focei.mixProb (the population proportions).  Returns
-// NA_REAL when no component has a finite contribution.  Shared with npMixLogSumExp().
+// log( sum_m pi_m exp(ll[m]) ) -- the mixture marginal in log space, weighted
+// by op_focei.mixProb (the population proportions).  Returns NA_REAL when no
+// component has a finite contribution.  The max-shifted sum itself lives in
+// rxLogSumExpW() (logSumExp.h); this only supplies the weights and the
+// NA_REAL-vs-R_NegInf convention its callers expect.
 static double foceiMixLogSumExp(const double *ll, int nMix) {
   if (nMix <= 1) return (nMix == 1) ? ll[0] : NA_REAL;
-  double mx = R_NegInf;
-  for (int m = 0; m < nMix; ++m) {
-    if (!R_FINITE(ll[m])) continue;
-    double lp = ll[m] + std::log(std::max(1e-300, op_focei.mixProb[m]));
-    if (lp > mx) mx = lp;
-  }
-  if (!R_FINITE(mx)) return NA_REAL;
-  double se = 0.0;
-  for (int m = 0; m < nMix; ++m) {
-    if (!R_FINITE(ll[m])) continue;
-    se += std::exp(ll[m] + std::log(std::max(1e-300, op_focei.mixProb[m])) - mx);
-  }
-  return mx + std::log(se);
+  double r = rxLogSumExpMix(ll, op_focei.mixProb, nMix, NULL);
+  return R_FINITE(r) ? r : NA_REAL;
 }
 
 // One physical subject's MARGINAL contribution to the objective (-2*log-lik),
@@ -10717,6 +10708,18 @@ static bool foceiSMixScore(int cpar, const std::vector<double> &mixR,
   return true;
 }
 
+// This subject contributed no usable score for cpar: fall back to the pooled
+// gradient, which is what the non-mixture branch's serial retry ends up doing.
+// sInfoPer must be docked as well -- it feeds the smatPer gate that decides
+// whether the S matrix is trustworthy at all, so a substituted value has to be
+// counted rather than silently pass for a real per-subject score.
+static inline void foceiSMixNoInfo(focei_ind *fInd, int cpar, const arma::vec &gfull,
+                                   bool &hasZero, double &sInfoPer) {
+  hasZero = true;
+  sInfoPer -= 1.0;
+  fInd->thetaGrad[cpar] = gfull[cpar];
+}
+
 // Forward leg of the per-subject difference for a MIXTURE model.  The subject's
 // contribution is the marginal over components, so every component has to be
 // re-optimized before any per-subject score exists: differencing component 0
@@ -10735,11 +10738,7 @@ static void foceiSMixForward(int cpar, double delta, bool doForward,
     if (R_FINITE(o2) && R_FINITE(op_focei.likSav[gid])) {
       fIndL->thetaGrad[cpar] = (o2 - op_focei.likSav[gid]) / delta;
     } else {
-      // no usable contribution for this subject/parameter: fall back to the
-      // pooled gradient, as the non-mixture serial retry does
-      hasZero = true;
-      sInfoPer -= 1.0;
-      fIndL->thetaGrad[cpar] = gfull[cpar];
+      foceiSMixNoInfo(fIndL, cpar, gfull, hasZero, sInfoPer);
     }
   }
 }
@@ -10764,9 +10763,7 @@ static void foceiSMixCentral(int cpar, double delta, const arma::vec &gfull,
     } else {
       // one leg is unusable; likSav is only filled on the doForward path, so a
       // stale forward difference is not an option here
-      hasZero = true;
-      sInfoPer -= 1.0;
-      fIndL->thetaGrad[cpar] = gfull[cpar];
+      foceiSMixNoInfo(fIndL, cpar, gfull, hasZero, sInfoPer);
     }
   }
 }
@@ -21943,18 +21940,18 @@ static VaeStepOut vaeElboStepCpp(const arma::mat& Wih, const arma::mat& Whh,
     // is why no test could see it.
     jointTot = 0;
     for (int i = 0; i < N; ++i) {
-      double mmax = -std::numeric_limits<double>::infinity(); int best = 0;
       arma::vec ll(nMix);
+      int best = 0;
+      double bestLl = -std::numeric_limits<double>::infinity();
       for (int m = 0; m < nMix; ++m) {
-        double v = std::log(pi[m]) - obj[m * N + i];
-        if (!R_FINITE(v)) v = -std::numeric_limits<double>::infinity();
-        ll[m] = v; if (v > mmax) { mmax = v; best = m; }
+        ll[m] = -obj[m * N + i];
+        double v = std::log(pi[m]) + ll[m];
+        if (R_FINITE(v) && v > bestLl) { bestLl = v; best = m; }
       }
       arma::vec resp(nMix, arma::fill::zeros);
-      if (R_FINITE(mmax)) {
-        double se = 0; for (int m = 0; m < nMix; ++m) se += std::exp(ll[m] - mmax);
-        jointTot += -(mmax + std::log(se));
-        for (int m = 0; m < nMix; ++m) resp[m] = std::exp(ll[m] - mmax)/se;
+      double lse = rxLogSumExpMix(ll.memptr(), pi.memptr(), nMix, resp.memptr());
+      if (R_FINITE(lse)) {
+        jointTot += -lse;
       } else {
         // every component failed to solve: charge the same penalty focei does
         // (foceiLik0Mix), instead of contributing 0 and IMPROVING the objective.
@@ -23072,19 +23069,16 @@ static double gVaeThetaObjR(Rcpp::NumericVector r) {
     // per-subject mixture -2LL via log-sum-exp (same as vaeElboStepCpp)
     v = 0;
     for (int i = 0; i < N; ++i) {
-      double mmax = -std::numeric_limits<double>::infinity();
-      arma::vec ll(nMix);
+      // same 1x-scale marginal as vaeElboStepCpp -- the two MUST optimize one
+      // functional, or the M-step chases a different objective than the ELBO
+      arma::vec ll(nMix), pm(nMix);
       for (int m = 0; m < nMix; ++m) {
-        // same 1x-scale marginal as vaeElboStepCpp -- the two MUST optimize one
-        // functional, or the M-step chases a different objective than the ELBO
-        double pm = (op_focei.mixProb != NULL) ? op_focei.mixProb[m] : gVaeRegMixProb[m];
-        double lv = std::log(pm) - obj[m * N + i];
-        if (!R_FINITE(lv)) lv = -std::numeric_limits<double>::infinity();
-        ll[m] = lv; if (lv > mmax) mmax = lv;
+        ll[m] = -obj[m * N + i];
+        pm[m] = (op_focei.mixProb != NULL) ? op_focei.mixProb[m] : gVaeRegMixProb[m];
       }
-      if (R_FINITE(mmax)) {
-        double se = 0; for (int m = 0; m < nMix; ++m) se += std::exp(ll[m] - mmax);
-        v += -(mmax + std::log(se));
+      double lse = rxLogSumExpMix(ll.memptr(), pm.memptr(), nMix, NULL);
+      if (R_FINITE(lse)) {
+        v += -lse;
       } else {
         v += op_focei.badSolveObjfAdj;
       }

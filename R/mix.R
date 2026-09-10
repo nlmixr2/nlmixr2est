@@ -422,6 +422,22 @@
   parHist
 }
 
+#' Jacobian of the mexpit (softmax) map, d(p_j)/d(t_l)
+#'
+#' `p = mexpit(t)` is a softmax over the `K-1` free coordinates, so
+#' `d(p_j)/d(t_l) = p_j*(delta_jl - p_l)`, i.e. `diag(p) - p p'`.  It is the
+#' same matrix wherever a mixture quantity moves between the mlogit scale the
+#' proportions are estimated on and the probability scale they are reported on,
+#' so it is defined once here.
+#'
+#' @param p the free mixture probabilities
+#' @return the `(K-1) x (K-1)` Jacobian
+#' @noRd
+#' @author Matthew L. Fidler
+.mixProbJacobian <- function(p) {
+  diag(p, nrow = length(p)) - outer(p, p)
+}
+
 #' Rotate a covariance's mixture-proportion block onto the probability scale
 #'
 #' The proportions are estimated as a multinomial logit, so the covariance a
@@ -456,7 +472,7 @@
   # absent coordinates fixed makes the correct Jacobian exactly the submatrix.
   .keep <- !is.na(.i)
   if (!any(.keep)) return(cov)
-  .J <- (diag(p, nrow = length(p)) - outer(p, p))[.keep, .keep, drop = FALSE]
+  .J <- .mixProbJacobian(p)[.keep, .keep, drop = FALSE]
   .A <- diag(1, nrow(cov))
   .A[.i[.keep], .i[.keep]] <- .J
   .out <- .A %*% cov %*% t(.A)
@@ -682,7 +698,7 @@
   .d <- sweep(r, 2, p, "-")
   .blk <- try(solve(t(.d) %*% .d), silent = TRUE)
   if (inherits(.blk, "try-error") || !all(is.finite(.blk))) return(NULL)
-  .j <- diag(p, nrow = length(p)) - outer(p, p)
+  .j <- .mixProbJacobian(p)
   .blk <- .j %*% .blk %*% t(.j)
   if (!all(is.finite(.blk)) || any(diag(.blk) <= 0)) return(NULL)
   .blk

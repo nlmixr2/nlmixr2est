@@ -22,6 +22,7 @@
 #include "nmMcmcRng.h"
 #include "impQrng.h"
 #include "imp.h"
+#include "logSumExp.h"
 #include "odeSwap.h" // odeSwapAnyNdiffSet()
 #include "utilc.h"   // RSprintf (covariance-step progress header)
 #ifdef _OPENMP
@@ -204,13 +205,10 @@ static inline double impGammaQuantile(double u, double shape) {
   return boost::math::quantile(boost::math::gamma_distribution<double>(shape, 1.0), u);
 }
 
+// unweighted log-sum-exp over the proposal's log-weights; the max-shifted sum
+// itself is rxLogSumExp() (logSumExp.h), shared with the mixture marginals
 static inline double impLogSumExp3(const double* v, int n) {
-  double m = v[0];
-  for (int k = 1; k < n; ++k) if (v[k] > m) m = v[k];
-  if (!R_finite(m)) return m;
-  double s = 0.0;
-  for (int k = 0; k < n; ++k) s += std::exp(v[k] - m);
-  return m + std::log(s);
+  return rxLogSumExp(v, n);
 }
 
 // Build a subject's proposal from the fit-constant spec plus its own df.
