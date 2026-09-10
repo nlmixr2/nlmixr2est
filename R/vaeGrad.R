@@ -91,10 +91,132 @@
   ## The C++ pooled setup is per-fit (it holds this model's lhs column maps); clearing
   ## the flag makes the next fit install its own rather than inherit this one's shape.
   .vaeGradEnv$pooledOk <- NULL
+  .vaeGradEnv$order <- NULL
+  .vaeGradEnv$dv <- NULL
   invisible(NULL)
 }
 
-.vaeGradInit <- function(ui, data, regNames) {
+#' Sensitivity ORDER the M-step's objective actually needs
+#'
+#' `mStepObjective="outer"` is the full FOCEi outer objective -- frozen-eta joint
+#' PLUS the Laplace determinant, `0.5*log|Omega^-1|` and the DV-transform
+#' Jacobian.  Differentiating the determinant needs `d(eta*)/d(p)` and the second
+#' derivative of the prediction, hence `order = 2`.
+#'
+#' `mStepObjective="elbo"` is the plain variational bound: the frozen-eta joint
+#' likelihood and nothing else.  With the etas held fixed there is no `eta*` to
+#' differentiate and no determinant, so FIRST-order sensitivities are sufficient
+#' and the whole second-order expansion is waste.  Measured on a two-latent
+#' declared gamma model over the same 8 directions:
+#'
+#'   order = 2   146 ODE states, 36 second-order pairs, 76s to build
+#'   order = 1    18 ODE states,  0 second-order pairs,  5s to build
+#'
+#' and one `order = 2` gradient evaluation costs ~285s, which is why a declared
+#' `nonMuTheta="grad"` fit could not finish.  The full gradient is only built when
+#' the full objective is what the M-step was asked to optimize.
+#' @noRd
+.vaeGradAugOrder <- function(ui) {
+  if (identical(tryCatch(rxode2::rxGetControl(ui, "mStepObjective", "outer"),
+                         error = function(e) "outer"), "elbo")) 1L else 2L
+}
+
+#' UNVALIDATED -- DO NOT ENABLE.  Gradient of the ELBO M-step objective.
+#'
+#' MEASURED WRONG, and the reason is recorded here so the next attempt does not
+#' repeat it.  Rebuilding `0.5*sum[log(2pi) + log R + res^2/R]` in R from
+#' `vaeOuterSolve_`'s `f`/`R` gives **2.9e18** where `sum(vaeInnerLik$obj)` --
+#' the objective `mStepObjective="elbo"` actually optimizes -- is **1.02e8**, a
+#' factor of 2.8e10 out, and the gradient is correspondingly wrong (analytic
+#' 2.1e20 vs central difference 1.5e9, and `rxCor` even sign-flipped).
+#'
+#' It is NOT a convention error: the augmented solve's `f` is a genuine decaying
+#' profile (4.31, 0.83, 0.040, 0.0016) against DV (10.9, 3.91, 0.32, 0.020), and
+#' the solve's first-order sensitivities match finite differences of its own `f`
+#' to 4-5 digits.  The failure is the PROPORTIONAL VARIANCE in the tail: with
+#' `R = (prop.sd*f)^2` the last observation has `R ~ 2.6e-8` and `res^2/R ~ 1.4e4`,
+#' so a naive `log R + res^2/R` is dominated by points `likInner0` evidently
+#' safeguards (a variance floor, and/or a different variance construction).
+#'
+#' CONCLUSION for the next attempt: do NOT re-derive the residual/variance terms
+#' in R from solve columns.  Assemble the ELBO gradient in C++ beside `likInner0`,
+#' where `R` and the residual are already formed with the same safeguards the
+#' objective uses, and reuse them.  Any R-side reimplementation has to reproduce
+#' every guard exactly, and silently disagrees when it does not.
+#'
+#' Currently unreachable from a fit: `nlmixr2Est.vae` still downgrades
+#' `nonMuTheta="grad"` to `"regress"` under `mStepObjective="elbo"`, so nothing
+#' calls this. Leave that downgrade in place until this is fixed and validated.
+#'
+#' What IS correct and kept: the ORDER selection. The ELBO objective needs only
+#' first-order sensitivities -- 18 ODE states against 146, and 59.5s against 285s
+#' per evaluation on a declared model.
+#'
+#' Gradient of the ELBO M-step objective: the frozen-eta joint -2LL.
+#'
+#'   -2LL_joint = sum_obs [ log R + (y - f)^2 / R ]
+#'   d/dtheta   = sum_obs [ (1/R - (y-f)^2/R^2) * dR/dtheta - 2(y-f)/R * df/dtheta ]
+#'
+#' The `eta' Omega^-1 eta` prior carries no theta dependence at frozen etas, and
+#' the ELBO objective excludes the Laplace determinant and the DV-transform
+#' Jacobian by definition, so neither appears.  Everything needed is FIRST order.
+#'
+#' Works in PARAMETER space, not direction space, and takes the map explicitly.
+#' `dir$dirP = c(dirTh, dirSg)` is the codebase's own "every non-Omega param -> a
+#' direction" map; a residual sigma enters the variance only (`df/dsigma == 0` by
+#' construction, which is why sigma directions carry no prediction chain), so its
+#' variance derivative comes from `RsigDir` rather than from `aR`.  Getting this
+#' mapping wrong is silent -- the gradient stays finite and points somewhere else.
+#' @param E per-subject list from `vaeOuterSolve_`
+#' @param dv per-subject observed values, in solve order
+#' @param dirTh direction index of each structural theta (1-based)
+#' @param nsg number of residual-sigma parameters, appended after the thetas
+#' @return numeric gradient over `c(thStruct, sgName)`, or NULL
+#' @noRd
+.vaeGradElboAssemble <- function(E, dv, dirTh, nsg) {
+  .nth <- length(dirTh)
+  .np <- .nth + nsg
+  if (.np == 0L) return(NULL)
+  .g <- numeric(.np)
+  .ok <- attr(E, "ok")
+  .used <- 0L
+  for (.i in seq_along(E)) {
+    .Ei <- E[[.i]]
+    if (is.null(.Ei) || (!is.null(.ok) && !isTRUE(.ok[.i] == 1L))) next
+    .f <- as.numeric(.Ei$f)
+    .y <- if (.i <= length(dv)) as.numeric(dv[[.i]]) else NULL
+    if (is.null(.y) || length(.y) != length(.f)) return(NULL)
+    .r <- if (is.null(.Ei$R)) rep(1.0, length(.f)) else as.numeric(.Ei$R)
+    if (any(!is.finite(.r)) || any(.r <= 0)) return(NULL)
+    .res <- .y - .f
+    .w1 <- 1 / .r - (.res * .res) / (.r * .r)      # multiplies dR/dtheta
+    .w2 <- -2 * .res / .r                          # multiplies df/dtheta
+    ## `Rsig` is dR/d(sigma_k), nobs x nsig -- that is the first-order variance
+    ## derivative a residual sigma needs.  NOT `RsigDir`, which is nobs x ndir x
+    ## nsig, the MIXED second derivative d2R/(d dir)(d sigma) and a 3-D array; it
+    ## belongs to the determinant block of the full outer objective, which the
+    ## ELBO does not have.  Indexing it as a matrix simply throws.
+    .a <- .Ei$a; .aR <- .Ei$aR; .rs <- .Ei$Rsig
+    for (.q in seq_len(.nth)) {
+      .d <- dirTh[.q]
+      if (is.na(.d) || .d < 1L) return(NULL)
+      .dfk <- if (!is.null(.a) && .d <= ncol(.a)) .a[, .d] else rep(0, length(.f))
+      .dRk <- if (!is.null(.aR) && .d <= ncol(.aR)) .aR[, .d] else rep(0, length(.f))
+      .g[.q] <- .g[.q] + sum(.w1 * .dRk + .w2 * .dfk)
+    }
+    for (.j in seq_len(nsg)) {
+      .dRj <- if (!is.null(.rs) && length(dim(.rs)) == 2L && .j <= ncol(.rs)) {
+        as.numeric(.rs[, .j])
+      } else rep(0, length(.f))
+      .g[.nth + .j] <- .g[.nth + .j] + sum(.w1 * .dRj)
+    }
+    .used <- .used + 1L
+  }
+  if (.used == 0L || !all(is.finite(.g))) return(NULL)
+  .g
+}
+
+.vaeGradInit <- function(ui, data, regNames, order = NULL) {
   ## .vaeInnerSetup replaced the ui's control with the DERIVED focei control, so
   ## .analyticGradCaller (which rxUiGet.foceiOuter consults) would resolve to NA.
   ## Re-mark it so the augmented model builds for this caller.
@@ -113,7 +235,28 @@
   ## .foceiAnalyticSolveAll on the rxSolve path (correct, just slower).
   .vaeGradEnv$outerCols <- NULL
   .vaeGradEnv$cores <- 1L
-  .am <- tryCatch(ui$foceiOuter, error = function(e) NULL)
+  ## Passed in, NOT read off the ui.  `.vaeInnerSetup` replaced `ui$control` with
+  ## the derived FOCEi control, which does not carry `mStepObjective`, so reading
+  ## it here silently resolves to the "outer" default -- the order then disagrees
+  ## with the model `.vaeInnerSetup` actually registered and sized the pool for,
+  ## and every gradient call declines.  (Same trap as `.analyticGradCaller`.)
+  .vaeGradEnv$order <- if (is.null(order)) .vaeGradAugOrder(ui) else as.integer(order)
+  ## Observed values per subject, in solve order -- the ELBO assembly differences
+  ## (y - f) per observation and there is no other place to get `y`.
+  .vaeGradEnv$dv <- tryCatch({
+    .d0 <- data
+    if (!is.null(.d0$EVID)) .d0 <- .d0[.d0$EVID == 0, , drop = FALSE]
+    split(as.numeric(.d0$DV), factor(.d0$ID, levels = .vaeGradEnv$ids))
+  }, error = function(e) NULL)
+  .am <- if (identical(.vaeGradEnv$order, 1L)) {
+    .d1 <- tryCatch(.foceiOuterDirs(ui, "vae"), error = function(e) NULL)
+    if (is.null(.d1)) NULL else {
+      tryCatch(.foceiAnalyticAugModelDirs(ui, .d1$dirs, order = 1L),
+               error = function(e) NULL)
+    }
+  } else {
+    tryCatch(ui$foceiOuter, error = function(e) NULL)
+  }
   if (!is.null(.am) && inherits(.am$augMod, "rxode2")) {
     .vaeGradEnv$am <- .am
     ## Enables the pooled vaeOuterSolve_ path.  Valid ONLY because the augmented
@@ -169,6 +312,26 @@
         return(NULL)
       }
       .vaeGradEnv$pooledOk <- TRUE
+    }
+    ## ELBO objective: the frozen-eta joint, assembled from the FIRST-order solve.
+    ## foceiGradPooledDirect_ differentiates the full outer objective (Laplace
+    ## determinant included), which is a DIFFERENT functional -- stepping with it
+    ## while scoring the ELBO would optimize one thing and report another, and it
+    ## costs ~285s a call on a declared model against ~18 states here.
+    if (identical(.vaeGradEnv$order, 1L)) {
+      if (is.null(.vaeGradEnv$outerCols) || is.null(.vaeGradEnv$dv)) return(NULL)
+      .E <- vaeOuterSolve_(as.numeric(thVals), as.matrix(ebes),
+                           .vaeGradEnv$outerCols, .vaeGradEnv$cores)
+      if (is.null(.E)) return(NULL)
+      .ge <- .vaeGradElboAssemble(.E, .vaeGradEnv$dv, .st$dir$dirTh,
+                                  length(.st$ef$sgName))
+      if (is.null(.ge)) return(NULL)
+      .nm <- c(.st$dir$thStruct, .st$ef$sgName)
+      if (length(.ge) != length(.nm)) return(NULL)
+      names(.ge) <- .nm
+      .gv <- .ge[.reg]
+      if (anyNA(.gv) || !all(is.finite(.gv))) return(NULL)
+      return(as.numeric(.gv))
     }
     .g <- foceiGradPooledDirect_(as.numeric(thVals), as.matrix(ebes),
                                  solve(.Om), .st$dOiEst, as.numeric(.st$tr28),

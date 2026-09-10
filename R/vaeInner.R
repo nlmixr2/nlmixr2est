@@ -98,7 +98,21 @@
     .fcg <- .ui$control
     .fcg$nonMuTheta <- "grad"
     assign("control", .fcg, envir = .ui)
-    .am <- tryCatch(.ui$foceiOuter, error = function(e) NULL)
+    ## ORDER matters here, and it is the objective that decides it (see
+    ## .vaeGradAugOrder): mStepObjective="elbo" is the frozen-eta joint, which
+    ## needs only FIRST-order sensitivities -- 18 ODE states against 146 for the
+    ## full outer objective on a declared model.  The pool is sized for whatever
+    ## is registered below, so the order has to be settled BEFORE that.
+    .ordA <- if (identical(control$mStepObjective, "elbo")) 1L else 2L
+    .am <- if (.ordA == 1L) {
+      .dA <- tryCatch(.foceiOuterDirs(.ui, "vae"), error = function(e) NULL)
+      if (is.null(.dA)) NULL else {
+        tryCatch(.foceiAnalyticAugModelDirs(.ui, .dA$dirs, order = 1L),
+                 error = function(e) NULL)
+      }
+    } else {
+      tryCatch(.ui$foceiOuter, error = function(e) NULL)
+    }
     if (!is.null(.am) && inherits(.am$augMod, "rxode2") && !is.null(.env$model)) {
       ## Registering it on the model list is enough: the C++ pool registry sizes
       ## the pool for the largest peer and derives the inner override itself, so R

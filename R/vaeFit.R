@@ -306,7 +306,9 @@
   ## nonMuTheta="grad": stash the per-fit context the analytic outer-gradient
   ## M-step reads; the C++ loop then passes only theta/eta/omega per M-step
   if (identical(control$nonMuTheta, "grad") && length(prep$regressNames)) {
-    .vaeGradInit(innerEnv$ui, innerEnv$dataSav, prep$regressNames)
+    ## order from the VAE control -- the only place that still knows the objective
+    .vaeGradInit(innerEnv$ui, innerEnv$dataSav, prep$regressNames,
+                 order = if (identical(control$mStepObjective, "elbo")) 1L else 2L)
     ## .vaeGradEnv lives for the SESSION; drop the fit-specific state when this
     ## fit ends so a later focei fast fit cannot see it (see .foceiAnalyticSolveAll)
     on.exit(.vaeGradReset(), add = TRUE)
