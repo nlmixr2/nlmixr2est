@@ -88,7 +88,7 @@ fit <- nlmixr(one.cmt, theo_sd, est="saem")
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 6584
-#> → compress parHistData in nlmixr2 object, save 8776
+#> → compress parHistData in nlmixr2 object, save 8800
 #> → compress phiM in nlmixr2 object, save 446912
 
 nlmixrWithTiming("time1", {
@@ -107,10 +107,10 @@ print(fit)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>              setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.07603349 2.5137e-05 0.01000508      0.064     0.122 5.942       0.245
+#>             setup   optimize covariance preprocess configure  saem postprocess
+#> elapsed 0.0993748 3.0576e-05 0.01100528      0.079     0.143 6.671       0.274
 #>         table compress     other time2 time1
-#> elapsed 0.043    0.122 0.1179363 1.002 1.001
+#> elapsed 0.053    0.136 0.1345893 1.002 1.001
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 

@@ -2,6 +2,18 @@
 
 ## nlmixr2est 7.0.3
 
+### Bug fixes
+
+- A focei fit reports standard errors that match its own covariance
+  again. `.foceiInstallFdFullCov()` replaces `$cov` with the full
+  theta+omega matrix after the C++ step has already derived `popDf$SE`
+  from the native theta-only covariance it discards, so `parFixedDf$SE`
+  described a matrix the fit no longer held and a
+  [`setCov()`](https://nlmixr2.github.io/nlmixr2est/reference/setCov.md)
+  round trip silently changed the reported SEs. The parameter table is
+  now refreshed from the covariance actually installed
+  (nlmixr2extra#125).
+
 ### New features
 
 - `impmapControl(proposal=)` selects the importance-sampling proposal
@@ -142,6 +154,17 @@
   merely being conservative.
 
 ### Bug fixes
+
+- `foceiControl(fast=)` no longer moves a `maxOuterIterations = 0` fit’s
+  ETAs. That fit evaluates the analytic outer gradient once so
+  `.foceiGradDirect()` has something to report, and the evaluation ran
+  an extra inner optimization pass per subject before the final one;
+  under the default warm start (`mceta < 0` keeps the last eta) the
+  inner solve converges only to its own tolerance, so the extra pass
+  shifted the reported ETAs and everything derived from them. On
+  `theo_sd` at `sigdig = 4` the `covMethod = "analytic"` standard errors
+  differed by 1.8e-4 relative between `fast = TRUE` and `fast = FALSE`;
+  they now agree to 2.7e-12.
 
 #### Mixture models
 
