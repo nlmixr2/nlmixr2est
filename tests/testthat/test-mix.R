@@ -437,6 +437,67 @@ nmTest({
     expect_gt(.rev$thetaMixIndex[1], .rev$thetaMixIndex[2])
   })
 
+  test_that("a theta saem does not estimate does not shift the eta pairing", {
+    # The eta -> theta index comes from the SAEM ESTIMATION parameter vector,
+    # which leaves the mixture probabilities out, while the model text is built
+    # in iniDf order, which keeps them.  Using the raw index paired every eta
+    # after the probability with the wrong parameter -- here eta.v landed on p1
+    # and tv got no eta at all, so IPRED carried no volume IIV (#1041).
+    .mod <- function() {
+      ini({
+        kel1 <- 0.45; kel2 <- 0.90; p1 <- 0.40; tv <- 1.80
+        eta.kel1 ~ 0.02; eta.kel2 ~ 0.08; eta.v ~ 0.20
+        add.sd <- 0.02
+      })
+      model({
+        kelLow <- kel1 + eta.kel1
+        kelHigh <- kel2 + eta.kel2
+        Kel <- mix(kelLow, p1, kelHigh)
+        Vol <- tv + eta.v
+        d/dt(centr) <- -Kel * centr
+        cp <- centr / Vol
+        cp ~ add(add.sd)
+      })
+    }
+    .ui <- .mod()
+    .repl <- rxUiGet.saemModelPredReplaceLst(list(.ui))
+    # each eta rides on the theta it is mu-referenced to
+    expect_equal(unname(.repl["kel1"]), "THETA[1] + ETA[1]")
+    expect_equal(unname(.repl["kel2"]), "THETA[2] + ETA[2]")
+    expect_equal(unname(.repl["tv"]), "THETA[4] + ETA[3]")
+    # and the mixture probability carries no eta
+    expect_equal(unname(.repl["p1"]), "THETA[3]")
+
+    # the same shift, with no mixture anywhere: a mu-referenced COVARIATE
+    # parameter is dropped from the SAEM estimation vector too, so declaring
+    # one before another mu-referenced theta shifted the etas the same way
+    # (here eta.v landed on tcl.wt and tv got none)
+    .covMod <- function() {
+      ini({
+        tka <- 0.45; tcl <- 1.0; tcl.wt <- 0.75; tv <- 3.45
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + WT * tcl.wt + eta.cl)
+        v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .cr <- rxUiGet.saemModelPredReplaceLst(list(.covMod()))
+    expect_equal(unname(.cr["tv"]), "THETA[4] + ETA[3]")
+    expect_equal(unname(.cr["tcl.wt"]), "THETA[3]")
+
+    # the same, read off the model that is actually solved for the table
+    .txt <- rxode2::rxModelVars(.ui$saemModelPred$predOnly)$model[["normModel"]]
+    expect_match(.txt, "tv=THETA[4]+ETA[3];", fixed = TRUE)
+    expect_match(.txt, "p1=THETA[3];", fixed = TRUE)
+    # and that model still reads as a 2-component mixture, so rxode2 will take
+    # the per-subject mixest the table step hands it through iCov
+    expect_equal(unname(rxode2::rxModelVars(.ui$saemModelPred$predOnly)$flags["mix"]), 2L)
+  })
+
   test_that("saemOmegaShareSubpop only marks an eta owned by ONE mixture component (#1058)", {
     # a SHARED eta belongs to no component: marking it (the loop used to keep
     # whichever component mentioned it last) sends the fit down the split-ETA

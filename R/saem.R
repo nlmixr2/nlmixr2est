@@ -1516,15 +1516,9 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
     .saemInstallAnalyticCov(.ret)
     # saem leaves the mixture proportions out of its kernel parameter vector, so
     # its covariance has no mixture rows; append that block (NONMEM 7.51) from
-    # the fit's own responsibilities.
+    # the fit's own responsibilities.  (.mixFixTable(), which used to follow,
+    # was removed in #1052 -- with the solve fixed it corrupted correct values.)
     .mixCovAppendBlock(if (rxode2::rxIs(.ret, "nlmixr2FitData")) .ret$env else .ret)
-    # For mixture models: post-correct me/mn/mu in the assembled fit table
-    # (mirrors the .mixFixTable call in .foceiFamilyReturn for FOCEi fits)
-    if (inherits(.ret, "nlmixr2FitData") && length(.ui$mixProbs) > 0L) {
-      .retEnv <- attr(class(.ret), ".foceiEnv")
-      if (is.null(.retEnv)) .retEnv <- .ret$env
-      .ret <- .mixFixTable(.ret, .retEnv, .ui)
-    }
     .setSaemExtra(.ret, "FOCEi")
     .ret
   })
