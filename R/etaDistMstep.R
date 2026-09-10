@@ -698,8 +698,51 @@
     vapply(as.list(.cl)[-1], function(.e) paste(deparse(.e), collapse = ""),
            character(1))
   })
+  ## Follow saem's mu2 covariate rewrite into these expressions.
+  ##
+  ## mu2 hoists a covariate term out of the model into a generated column and
+  ## DROPS the original covariate from the dataset: `bWT * log(WT/70)` becomes
+  ## `nlmixrMuDerCov1 * bWT`, and data$data then holds nlmixrMuDerCov1 (which
+  ## carries log(WT/70), verified to 15 digits) with no WT column at all.  The
+  ## declaration's argument text is captured from the DECLARATION, so without
+  ## this it still says log(WT/70) -- the expression the M-step parses and the
+  ## data saem holds no longer share a symbol, the parse declines on the unknown
+  ## name, and the covariate is silently invisible to the step.
+  ##
+  ## Rewriting here rather than teaching the M-step about mu2: the substitution
+  ## is already recorded, the generated column already carries the transformed
+  ## value, and doing it in one place keeps the two descriptions of the same
+  ## model from drifting.
+  .mu2 <- tryCatch(rxode2::rxUiDecompress(ui)$mu2RefCovariateReplaceDataFrame,
+                   error = function(e) NULL)
+  .covK <- .c$cov
+  if (!is.null(.mu2) && NROW(.mu2) > 0L) {
+    .sub <- function(.txt) {
+      for (.i in seq_len(NROW(.mu2))) {
+        .o <- .mu2$modelExpression[.i]
+        .n <- paste0("nlmixrMuDerCov", .i, " * ", .mu2$covariateParameter[.i])
+        .txt <- gsub(.o, .n, .txt, fixed = TRUE)
+        ## deparse() spacing need not match the recorded text exactly, so fall
+        ## back to a whitespace-insensitive match rather than silently missing it
+        if (!grepl(.n, .txt, fixed = TRUE)) {
+          .txt <- gsub(gsub("[[:space:]]+", "", .o), .n,
+                       .txt, fixed = TRUE)
+        }
+      }
+      .txt
+    }
+    .exprs <- lapply(.exprs, function(.e) vapply(.e, .sub, character(1),
+                                                 USE.NAMES = FALSE))
+    ## Symbols come from the SUBSTITUTED text -- nlmixrMuDerCov1 is a real data
+    ## column where WT no longer is.
+    .thAll <- .c$iniDf$name[!is.na(.c$iniDf$ntheta)]
+    .covK <- lapply(.exprs, function(.e) {
+      setdiff(unique(unlist(lapply(.e, function(.z) all.vars(str2lang(.z))))),
+              .thAll)
+    })
+  }
   list(latent = .lat, fam = .c$fam, corWith = .c$corWith,
-       usable = as.integer(.c$usable), cov = .c$cov,
+       usable = as.integer(.c$usable), cov = .covK,
        exprs = .exprs, exprThetas = .c$thetas,
        args = .c$args, rho = .c$rho,
        dist = .c$dist, thetas = .c$thetas, thetaPhi = .tp,
