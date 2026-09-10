@@ -4366,8 +4366,16 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       assign("control", .control, envir = .ret)
     }
     .foceiInstallAnalyticCov(.ret)
-    .foceiInstallFdFullCov(.ret)
+    # Installing the FD-full covariance replaces $cov with a matrix spanning
+    # theta AND omega, but the C++ step has already derived popDf$SE from the
+    # native theta-only covariance it discards.  Left alone the fit reports SEs
+    # that are not sqrt(diag(fit$cov)), and a setCov() round trip then silently
+    # changes them (nlmixr2extra#125).
+    .fdFullInstalled <- .foceiInstallFdFullCov(.ret)
     .updateParFixed(.ret)
+    if (isTRUE(.fdFullInstalled)) {
+      .updateParFixedRefreshSeFromCov(.ret, .ret$cov)
+    }
     if (!exists("table", .ret)) {
       .ret$table <- tableControl()
     }
@@ -4406,7 +4414,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     if (inherits(.tmp, "try-error")) {
       warning("error calculating tables, returning without table step", call. = FALSE)
     } else {
-      .ret <- .mixFixTable(.tmp, .env, ui)
+      .ret <- .tmp
     }
   }
   assign("sessioninfo", .sessionInfo(), envir = .env)

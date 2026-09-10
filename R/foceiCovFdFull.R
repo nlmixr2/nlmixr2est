@@ -42,7 +42,7 @@
 #' @param .ret focei fit environment
 #' @noRd
 .foceiInstallFdFullCov <- function(.ret) {
-  if (!exists(".fdFullCov", envir = .ret, inherits = FALSE)) return(invisible())
+  if (!exists(".fdFullCov", envir = .ret, inherits = FALSE)) return(invisible(FALSE))
   # The fit env's covMethod records what the NATIVE theta-only step produced, not what was
   # asked for -- C++ downgrades it to "s" when that step's "r" fails.  The full R/S pieces
   # used below are computed independently of that step, so route on the REQUESTED control;
@@ -64,20 +64,20 @@
   .type <- if (grepl("^(r\\+?|\\|r\\|),(s\\+?|\\|s\\|)$", .cm)) "r,s"
     else if (grepl("^(r\\+?|\\|r\\|)$", .cm)) "r"
     else if (grepl("^(s\\+?|\\|s\\|)$", .cm)) "s"
-    else return(invisible())   # analytic / failed / "" / boundary -> keep the native cov
+    else return(invisible(FALSE))   # analytic / failed / "" / boundary -> keep the native cov
   .Rinv <- get(".fdFullCov", envir = .ret)
-  if (!is.matrix(.Rinv) || !all(is.finite(.Rinv))) return(invisible())
+  if (!is.matrix(.Rinv) || !all(is.finite(.Rinv))) return(invisible(FALSE))
   .S <- if (exists(".fdFullS", envir = .ret, inherits = FALSE)) get(".fdFullS", envir = .ret) else NULL
-  if (.type != "r" && (!is.matrix(.S) || !all(is.finite(.S)))) return(invisible())
+  if (.type != "r" && (!is.matrix(.S) || !all(is.finite(.S)))) return(invisible(FALSE))
   .covS <- if (is.null(.S)) NULL else tryCatch(solve(.S), error = function(e) NULL)
-  if (.type != "r" && is.null(.covS)) return(invisible())
+  if (.type != "r" && is.null(.covS)) return(invisible(FALSE))
   .covRS <- if (is.null(.S)) NULL else .Rinv %*% .S %*% .Rinv
   .cov <- switch(.type, "r" = .Rinv, "s" = .covS, "r,s" = .covRS)
-  if (is.null(.cov) || !is.matrix(.cov) || !all(is.finite(.cov))) return(invisible())
+  if (is.null(.cov) || !is.matrix(.cov) || !all(is.finite(.cov))) return(invisible(FALSE))
   dimnames(.cov) <- dimnames(.Rinv)
   # PD guard: reject an indefinite cov (negative variances -> NaN SEs), keep the native cov.
   .ev <- suppressWarnings(eigen(.cov, symmetric = TRUE, only.values = TRUE)$values)
-  if (any(diag(.cov) <= 0) || !all(is.finite(.ev)) || min(.ev) <= 0) return(invisible())
+  if (any(diag(.cov) <= 0) || !all(is.finite(.ev)) || min(.ev) <= 0) return(invisible(FALSE))
   .ret$cov <- .cov
   # Keep the reported covMethod consistent with what was installed: routing on the
   # requested control can install a sandwich where the env still says "s".  Only rewrite
@@ -96,5 +96,8 @@
     .ret$covRS <- .covRS
   }
   .foceiCovCondition(.ret, .cov, .ev)
-  invisible()
+  # Report the swap: the SEs the C++ step derived from the native theta-only
+  # covariance describe a matrix that is no longer $cov, so the caller must
+  # refresh the parameter table.
+  invisible(TRUE)
 }
