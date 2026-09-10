@@ -132,6 +132,24 @@
 
 ## Bug fixes
 
+- `covMethod="analytic"` now re-solves the FOCEI empirical Bayes estimates to
+  their own stationarity, `Phi_eta = 0`, before forming the observed
+  information.  The FOCEI data term is the envelope/Schur form
+  `Phi_pq - M_p' H^-1 M_q`, which is the total second derivative only AT the
+  inner stationary point, and a fit's stored EBEs satisfy that only to the inner
+  tolerance.  Its FOCE sibling already re-solved.  On the block-Omega `theo_sd`
+  fit the analytic observed information disagreed with an independent
+  brute-force central-difference Hessian of the same objective by 3.9e-3;
+  re-solving drops that to 7.7e-5, which is the finite-difference noise floor,
+  and reproduces the reference standard errors to every printed digit.
+
+- `getVarCov()` on a `focei` fit no longer installs an analytic covariance that
+  is not positive definite.  An outer optimizer that stops short of a local
+  minimum leaves an observed information with a negative eigenvalue, which
+  inverts to negative variances and `NaN` standard errors; the fit's existing
+  covariance is now kept and a warning says why.  The live `covMethod="analytic"`
+  seam, `setCov()` and the `saem` installer already guarded this.
+
 - A `focei`-family fit now reports whether its inner solves actually
   converged.  `fit$env$nTrustInner` breaks the `innerOpt="trust"` per-subject
   Newton solves down by outcome (`calls`, `error`, `notConverged`,
