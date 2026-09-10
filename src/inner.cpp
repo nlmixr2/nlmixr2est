@@ -9719,13 +9719,36 @@ Environment foceiOuter(Environment e){
     // This branch sets scaleObjective = 0 and does no parameter scaling, so
     // dUnscaleParDx is the identity and the stashed gradient is on the NATURAL scale --
     // the same scale .foceiGradDirect() reports.
+    //
+    // The evaluation is DIAGNOSTIC, so it must not move the fit's own state.
+    // analyticOuterGrad() opens with foceiOfv0(), i.e. one more inner optimization pass
+    // per subject, and foceiOuterFinal() then starts from wherever that left each eta.
+    // With the default warm start (mceta<0 keeps the last eta) the inner solve converges
+    // only to its own tolerance, so that extra pass shifted the reported ETAs -- and with
+    // them the objective, the tables and the analytic covariance -- by ~1e-4 at sigdig=4
+    // relative to the same fit with fast=FALSE (#1057).  The guards below put the
+    // per-subject inner state and the fit-wide eta statistics back, so `fast=` selects the
+    // gradient and nothing else.  The SOLVE is deliberately left alone: the augmented
+    // model must stay in the pool for foceiOuterFinal to re-solve over.
     if (op_focei.fast) {
       op_foceiFitEnv = e;
       op_foceiFitEnvSet = true;
       op_foceiUseAnalyticGrad = true;
       loadGradPooledSetup(e);
       std::vector<double> _g((size_t)op_focei.npars, 0.0);
-      analyticOuterGrad(x.begin(), _g.data());   // stashes firstDirectGrad on success
+      {
+        rx = getRxSolve_();
+        // nIndsFocei, not getRxNsub(): a mixture fit carries one focei_ind per
+        // subject PER mixture component, and foceiOfv0() moves all of them.
+        const int _ns = (rx == NULL || inds_focei == NULL) ? 0 : nIndsFocei;
+        FdPhaseStateGuard _phaseGuard;
+        std::vector< std::unique_ptr<FdInnerStateGuard> > _inGuards;
+        _inGuards.reserve((size_t)_ns);
+        for (int _i = 0; _i < _ns; ++_i) {
+          _inGuards.push_back(std::unique_ptr<FdInnerStateGuard>(new FdInnerStateGuard(_i)));
+        }
+        analyticOuterGrad(x.begin(), _g.data());   // stashes firstDirectGrad on success
+      }
       op_foceiUseAnalyticGrad = false;
       op_focei.calcGrad = 0;
     }
