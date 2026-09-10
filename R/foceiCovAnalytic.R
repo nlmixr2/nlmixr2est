@@ -397,13 +397,15 @@
   if (any(vapply(.obsAll, is.null, logical(1L))))
     return(.foceiAnalyticFallback("a subject with no observations"))
   .obsT <- lapply(.obsAll, function(.o) .o$TIME)
+  .e0 <- .foceiAnalyticEbeRefine(am, th, ebes, .idCode, data, .obsAll, .obsT, etav, Oi, neta, Om, solveTol)
+  eta0Mat <- if (is.null(.e0)) ebes else .e0          # FOCEI EBE refinement to Phi_eta = 0
   .batch <- !nzchar(Sys.getenv("FOCEI_NO_FD3_BATCH"))
-  .EsAll <- if (.batch) .foceiAnalyticSolveAllFD3(am, th, ebes, .idCode, data, .obsT, tol = solveTol, withR = TRUE,
+  .EsAll <- if (.batch) .foceiAnalyticSolveAllFD3(am, th, eta0Mat, .idCode, data, .obsT, tol = solveTol, withR = TRUE,
                                                  sigSel = .sigSel) else NULL
   if (.batch && is.null(.EsAll)) .batch <- FALSE
   for (i in seq_len(nsub)) {
     s <- .byId[[as.character(.idCode[i])]]; obs <- .obsAll[[i]]
-    E <- if (.batch) .EsAll[[i]] else .foceiAnalyticSolveSubjectFD3(am, c(th, setNames(ebes[i, ], etav)), s, obs$TIME, tol = solveTol, withR = TRUE)
+    E <- if (.batch) .EsAll[[i]] else .foceiAnalyticSolveSubjectFD3(am, c(th, setNames(eta0Mat[i, ], etav)), s, obs$TIME, tol = solveTol, withR = TRUE)
     if (is.null(E))
       return(.foceiAnalyticFallback("a failed subject sensitivity solve"))
     if (isTRUE(ef$canVanish)) { .fa <- abs(E$f)
@@ -429,7 +431,7 @@
     E <- Elist[[i]]; no <- nobsAll[i]; rows <- (off[i] + 1L):off[i + 1L]
     aB[rows, ] <- E$a; aRB[rows, ] <- E$aR; AB[rows, , ] <- E$A; ARB[rows, , ] <- E$AR
     AthB[rows, , ] <- array(E$Ath, c(no, neta, nd2)); AthRB[rows, , ] <- array(E$AthR, c(no, neta, nd2))
-    fB[rows] <- E$f; yB[rows] <- E$y; RB[rows] <- E$R; ehatB[i, ] <- ebes[i, ]
+    fB[rows] <- E$f; yB[rows] <- E$y; RB[rows] <- E$R; ehatB[i, ] <- eta0Mat[i, ]
     if (length(lamDir) || .hasCens) {
       s <- .byId[[as.character(.idCode[i])]]; obs <- s[s$EVID == 0, , drop = FALSE]
       if (length(lamDir)) {                            # DV-transform chain (estimated lambda)
@@ -520,6 +522,11 @@
                                  foceType = foceType, cens = .o$CENS, limit = .o$LIMIT)
     if (is.null(.e0)) return(NULL)
     eta0Mat[i, ] <- .e0
+  }
+  if (!.foce) {                                       # FOCEI EBE refinement to Phi_eta = 0
+    .e0 <- .foceiAnalyticEbeRefine(am, th, ebes, .idCode, data, .obsAll, .obsT, etav, Oi, neta,
+                                   Om, solveTol, rescale)
+    if (!is.null(.e0)) eta0Mat <- .e0
   }
   .batch <- !rescale && !nzchar(Sys.getenv("FOCEI_NO_FD3_BATCH"))
   .EsAll <- NULL
@@ -2435,22 +2442,99 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
   eta
 }
 
-#' Batched FOCE/foce+ EBE re-solve: the same interaction-free Newton as
-#' [.foceiAnalyticFoceEbe] but over ALL subjects at once via [.foceiAnalyticSolveAll]
-#' (one batched solve per Newton iteration instead of per-subject SolveFA).  Bit-identical
-#' to the per-subject Newton; avoids the per-subject solve entirely (needed for the shared
-#' `dirs` model, which solves batched but not per-subject in the fit's cov-hook context) and
-#' is faster.  Returns the nsub x neta eta-hat matrix, or NULL if any subject fails to converge.
+#' Refine the stored FOCEI EBEs to the FOCEI inner stationarity Phi_eta = 0.
+#'
+#' The FOCEI observed information uses the envelope/Schur data term Phi_pq - M_p' H^-1 M_q,
+#' which is the total second derivative only AT the stationary point.  The fit's stored EBEs
+#' satisfy Phi_eta = 0 only to the inner tolerance, so R inherits that error.  Refining costs
+#' one batched solve when the EBEs are already stationary (the `skip` test in
+#' [.foceiAnalyticFoceEbeBatch] short-circuits) and a handful of Newton steps otherwise.
+#'
+#' Declining is not a failure: a refinement that will not build or converge returns `NULL`
+#' and the caller keeps the stored EBEs, which is exactly the pre-refinement behaviour.
+#' IOV (`rescale`) opts out -- its EBEs are the Param A (unit occasion eta) values that the
+#' caller rescales itself, so a Newton on the unscaled model would not solve the same problem.
+#'
+#' `skip` is the score below which the stored EBEs are taken as stationary and returned
+#' untouched (one batched solve, no Newton).  The error the residual score puts into R is
+#' the same order as the score itself, so 1e-6 keeps it far below the FD noise the
+#' covariance is checked against while leaving an already-converged fit unperturbed.  A
+#' Newton that lands more than one omega SD away from the stored EBE has found a different
+#' mode rather than refined this one, so it is rejected.
+#' @noRd
+.foceiAnalyticEbeRefine <- function(am, th, ebes, idCode, data, obsAll, obsT, etav, Oi, neta,
+                                    Om, solveTol, rescale = FALSE, skip = 1e-6) {
+  if (rescale || !isTRUE(am$hasRvar)) return(NULL)
+  .e <- tryCatch(.foceiAnalyticFoceEbeBatch(am, th, ebes, idCode, data, obsAll, obsT, etav, Oi, neta,
+                                            solveTol, interaction = 1L, skip = skip),
+                 error = function(e) NULL)
+  if (is.null(.e) || !all(is.finite(.e))) return(NULL)
+  .sd <- suppressWarnings(sqrt(diag(Om)))
+  if (!all(is.finite(.sd)) || any(.sd <= 0)) return(NULL)
+  if (any(abs(.e - ebes) > rep(.sd, each = nrow(ebes)))) return(NULL)   # a different mode
+  .e
+}
+
+#' FOCEI inner score Phi_eta and its Jacobian Phi_etaeta at one subject's trial eta.
+#'
+#' The FOCEI inner problem keeps the interaction term, so the score contracts BOTH
+#' prediction and variance sensitivities: Phi_eta_l = sum(rho_f a_l + rho_R aR_l) +
+#' (Omega^-1 eta)_l, with rho(f, R) = 0.5 ((y-f)^2/R + log R).  Its Jacobian is the exact
+#' eta-Hessian the covariance kernel calls `H`.  Censored (M2/M3/M4) observations replace
+#' rho_{f,R,ff,fR,RR} with the exact censored partials.  `NULL` when the solve carried no
+#' variance columns (`rx_r_`), which the caller treats as "leave the stored EBEs alone".
+#' @noRd
+.foceiAnalyticSHfocei <- function(E, eta, yt, cens, limit, Oi, ei) {
+  Rv <- E$R; aR <- E$aR; AR <- E$AR
+  if (is.null(Rv) || is.null(aR) || is.null(AR)) return(NULL)
+  res <- yt - E$f
+  rf <- -res / Rv; rR <- 0.5 * (1 / Rv - res^2 / Rv^2)
+  rff <- 1 / Rv; rfR <- res / Rv^2; rRR <- 0.5 * (-1 / Rv^2 + 2 * res^2 / Rv^3)
+  .cw <- which(cens != 0 | is.finite(limit))
+  if (length(.cw)) {
+    .limt <- .foceiAnalyticTbsY(limit, E$trans)          # transform the bound like the DV
+    .cp <- censNormalPartials_(cens, yt, .limt, E$f, Rv, 3L)   # rho_{f,R,ff,fR,RR,...}
+    rf[.cw] <- .cp[.cw, 1]; rR[.cw] <- .cp[.cw, 2]
+    rff[.cw] <- .cp[.cw, 3]; rfR[.cw] <- .cp[.cw, 4]; rRR[.cw] <- .cp[.cw, 5]
+  }
+  S <- as.numeric(Oi %*% eta)
+  for (l in ei) S[l] <- S[l] + sum(rf * E$a[, l] + rR * aR[, l])
+  H <- Oi
+  for (l in ei) for (m in ei)
+    H[l, m] <- H[l, m] + sum(rff * E$a[, l] * E$a[, m] +
+                               rfR * (E$a[, l] * aR[, m] + aR[, l] * E$a[, m]) +
+                               rRR * aR[, l] * aR[, m] + rf * E$A[, l, m] + rR * AR[, l, m])
+  list(S = S, Hf = H)
+}
+
+#' Batched EBE re-solve: the same Newton as [.foceiAnalyticFoceEbe] but over ALL
+#' subjects at once via [.foceiAnalyticSolveAll] (one batched solve per Newton iteration
+#' instead of per-subject SolveFA).  Bit-identical to the per-subject Newton; avoids the
+#' per-subject solve entirely (needed for the shared `dirs` model, which solves batched but
+#' not per-subject in the fit's cov-hook context) and is faster.
+#'
+#' `interaction = 0L` re-solves the interaction-free FOCE condition S_FOCE = sum(q0 a) +
+#' Omega^-1 eta = 0; `interaction = 1L` re-solves the FOCEI condition Phi_eta =
+#' sum(rho_f a + rho_R aR) + Omega^-1 eta = 0 at the LIVE conditional variance, which is the
+#' stationarity the FOCEI envelope/Schur data term in [.foceiAnalyticSubjectR] assumes.  The
+#' stored EBEs satisfy it only to the fit's inner tolerance, and the residual shows up as an
+#' error in the observed information (3.9e-3 relative against a brute-force FD Hessian on the
+#' block-Omega theo_sd fit, 7.7e-5 once re-solved).
+#'
+#' Returns the nsub x neta eta-hat matrix, or NULL if any subject fails to converge.
 #' @noRd
 .foceiAnalyticFoceEbeBatch <- function(am, th, ebes, ids, data, obsAll, obsTimes, etav, Oi, neta, tol,
-                                       foceType = 0L, E0all = NULL, maxit = 30L, skip = 1e-3, conv = 1e-9) {
+                                       foceType = 0L, E0all = NULL, maxit = 30L, skip = 1e-3, conv = 1e-9,
+                                       interaction = 0L) {
   nsub <- nrow(ebes); ei <- seq_len(neta)
   .fp <- identical(as.integer(foceType), 1L) || is.null(E0all)
+  .inter <- identical(as.integer(interaction), 1L)
   Y  <- lapply(obsAll, function(.o) .o$DV)
   CV <- lapply(obsAll, function(.o) if (is.null(.o$CENS)) integer(length(.o$DV)) else as.integer(ifelse(is.na(.o$CENS), 0L, .o$CENS)))
   LV <- lapply(obsAll, function(.o) if (is.null(.o$LIMIT)) rep(NA_real_, length(.o$DV)) else as.numeric(.o$LIMIT))
-  .SHi <- function(E, eta_i, i) {                        # S_FOCE + Hf for subject i (censored-aware)
+  .SHi <- function(E, eta_i, i) {                        # inner score + its Jacobian (censored-aware)
     yt <- .foceiAnalyticTbsY(Y[[i]], E$trans)
+    if (.inter) return(.foceiAnalyticSHfocei(E, eta_i, yt, CV[[i]], LV[[i]], Oi, ei))
     R0e <- if (.fp) E$R else E0all[[i]]$R
     q0 <- -(yt - E$f) / R0e; q1 <- 1 / R0e
     .cw <- which(CV[[i]] != 0 | is.finite(LV[[i]]))
@@ -2467,8 +2551,9 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
     for (i in which(active)) {
       sh <- .SHi(Es[[i]], eta[i, ], i)
       # a subject that cannot be solved gives a non-finite score; max(abs(S)) is then NA
-      # and the test below would error rather than fall back
-      if (!all(is.finite(sh$S))) return(NULL)
+      # and the test below would error rather than fall back.  A NULL comes from the FOCEI
+      # branch when the solve carried no rx_r_ variance columns to build rho_R from.
+      if (is.null(sh) || !all(is.finite(sh$S))) return(NULL)
       if (max(abs(sh$S)) < (if (it == 1L) skip else conv)) { active[i] <- FALSE; next }
       if (it == maxit + 1L) return(NULL)                 # did not converge -> FD fallback
       step <- tryCatch(solve(sh$Hf, sh$S), error = function(e) NULL); if (is.null(step)) return(NULL)
@@ -2596,8 +2681,13 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
   onm <- etaNames                                            # Omega named by the eta (om.eta.cl)
   nm <- c(thStruct, .dir$sgName, .foceiOmegaCovNames(pairs, onm))
   dimnames(R) <- dimnames(cov) <- list(nm, nm)
+  # `pd` is the caller's install gate: an observed information with a negative eigenvalue
+  # (the outer optimizer stopped at a point that is not a local minimum) inverts to
+  # negative variances and NaN SEs.  Report it rather than making each caller re-decide.
+  .ev <- suppressWarnings(eigen(cov, symmetric = TRUE, only.values = TRUE)$values)
   list(cov = cov, se = setNames(suppressWarnings(sqrt(diag(cov))), nm),  # NaN flags non-PD
-       R = R, params = nm, method = "analytic")
+       R = R, params = nm, method = "analytic",
+       pd = all(is.finite(.ev)) && all(diag(cov) > 0) && min(.ev) > 0)
 }
 
 #' Full analytic FOCEI covariance (theta + sigma + Omega) for a fitted object, or
@@ -2606,9 +2696,11 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
 #' The result is cached on the fit environment (`.covAnalytic`) and its `$cov` is
 #' installed as the fit's `$cov` on the first call, so repeated calls -- and
 #' `getVarCov()` -- return the stored covariance instead of recomputing the
-#' augmented sensitivity solve every time.
+#' augmented sensitivity solve every time.  A covariance that is not positive
+#' definite is still returned (the caller asked for the analytic pieces) but is
+#' NOT installed -- see the `$pd` gate.
 #' @param fit a fitted nlmixr2 focei object
-#' @return list(cov, se, R, params, method) or `NULL`
+#' @return list(cov, se, R, params, method, pd) or `NULL`
 #' @noRd
 foceiCovAnalytic <- function(fit) {
   .env <- fit
@@ -2623,8 +2715,16 @@ foceiCovAnalytic <- function(fit) {
   .ret <- tryCatch(.foceiCovAnalyticCalc(fit), error = .foceiAnalyticErrWarn(2L))
   assign(".covAnalytic", .ret, envir = .env)   # cache (incl. NULL) -- do not recompute
   if (!is.null(.ret) && is.matrix(.ret$cov)) {
-    .env$cov <- .ret$cov                        # install so getVarCov()/$cov reuse it
-    .env$covMethod <- "analytic"                # report the analytic observed information
+    # PD guard, as in .foceiInstallAnalyticCov and .covInstallResult: an indefinite
+    # observed information inverts to negative variances and NaN SEs, so installing it
+    # would replace a usable covariance with an unusable one.
+    if (isTRUE(.ret$pd)) {
+      .env$cov <- .ret$cov                      # install so getVarCov()/$cov reuse it
+      .env$covMethod <- "analytic"              # report the analytic observed information
+    } else {
+      warning("analytic covariance is not positive definite; fit$cov unchanged",
+              call. = FALSE)
+    }
   }
   .ret
 }
