@@ -320,3 +320,56 @@ test_that("nSym == 0 still works, so no-covariate models are unchanged", {
   expect_equal(.v[1], sum(stats::dgamma(.eta, shape = .sh, rate = .rt, log = TRUE)),
                tolerance = 1e-8)
 })
+
+# ------------------------- the phi mapping must not count covariate coefficients --
+# saemParamsToEstimate INTERLEAVES each theta with its mu-referenced covariate
+# coefficients, because it indexes MCOV.  A coefficient is not a phi parameter
+# (covstruct stays 7x7 while that list grows to 8), but the indices built from
+# it are consumed as PHI indices.  Matching against the longer list put every
+# parameter at or after the coefficient one too high, so the M-step wrote into
+# the WRONG slots: declaration 1's (lclrv, lclm, bWT) landed on phi0 columns
+# (3, 0, 1) = (lv1rv, lclm, lv1m).  A range check cannot catch it -- the indices
+# stay within nphi, they just mean something else -- so pin the mapping itself.
+
+test_that("no declared theta comes back holding another parameter's start value", {
+  skip_on_cran()
+  skip_on_os("windows")
+  # THE regression, and it has to go through a fit: saemParamsToEstimate only
+  # interleaves the covariate coefficient once saem's own setup has classified
+  # it, so neither a fresh nor an expanded ui reproduces the condition -- both
+  # report an EMPTY saemMuRefCovariateDataFrame.
+  #
+  # With the bug the M-step wrote into the wrong phi0 columns and the table came
+  # back with lclrv holding lv1m's start value and the copula theta holding
+  # lv1rv's -- EXACT equalities, which is what makes this testable.  Distinct
+  # starting values are the whole trick.
+  .d <- suppressWarnings(nlmixr2data::theo_sd)
+  skip_if(is.null(.d), "theo_sd unavailable")
+  .d$WT <- 60 + (.d$ID %% 5L) * 8      # subject-constant, so saem accepts it
+  .m <- function() {
+    ini({ lclm <- 1.11; lv1m <- 2.22; lclrv <- -3.33; lv1rv <- -4.44; bWT <- 0.55
+          prop.sd <- 0.77
+          eta.cl + eta.v ~ c(1, 0.3, 1) })
+    model({
+      dist(eta.cl) ~ dgamma(shape = 1/exp(lclrv),
+                            rate = 1/(exp(lclrv)*exp(lclm + bWT*log(WT/70))))
+      dist(eta.v)  ~ dgamma(shape = 1/exp(lv1rv), rate = 1/(exp(lv1rv)*exp(lv1m)))
+      cl <- eta.cl; v <- eta.v
+      d/dt(central) <- -(cl/v)*central
+      cp <- central/v
+      cp ~ prop(prop.sd)
+    })
+  }
+  .f <- try(suppressWarnings(suppressMessages(nlmixr2est::nlmixr2(
+    .m, .d, est = "saem",
+    control = nlmixr2est::saemControl(print = 0, covMethod = "", calcTables = FALSE,
+                                      etaDistMstep = TRUE, nBurn = 40, nEm = 40,
+                                      seed = 99)))), silent = TRUE)
+  skip_if(inherits(.f, "try-error"), "saem fit unavailable in this environment")
+  .e <- .f$parFixedDf[, "Estimate"]
+  names(.e) <- rownames(.f$parFixedDf)
+  skip_if(!all(c("lclrv", "rxCor.eta.v.eta.cl") %in% names(.e)), "parameters absent")
+  # the two the bug corrupted, against the values it handed them
+  expect_false(isTRUE(all.equal(unname(.e[["lclrv"]]), 2.22)))
+  expect_false(isTRUE(all.equal(unname(.e[["rxCor.eta.v.eta.cl"]]), -4.44)))
+})

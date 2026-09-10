@@ -662,6 +662,37 @@
   ## parameters in `saemParamsToEstimate` order; a declared-distribution theta
   ## has no eta, so its phi column carries no random effect and lands in phi0,
   ## where .configsaem() finishes the mapping (phi index -> phi0 column).
+  ## Match against the PHI parameters, which `saemParamsToEstimate` is NOT.
+  ##
+  ## That accessor INTERLEAVES each theta with its mu-referenced covariate
+  ## coefficients (rxUiGet.saemParamsToEstimate builds [theta, cov1, ...] rows
+  ## and flattens them), because it indexes MCOV.  A coefficient is carried by
+  ## the COV/MCOV machinery and is NOT a phi parameter: with one covariate the
+  ## list has 8 entries while covstruct stays 7x7 and nphi is 7.
+  ##
+  ## The indices built here are consumed as PHI indices (saem_fit.R matches them
+  ## against i0, the phi columns with no random effect), so matching against the
+  ## longer list puts every parameter at or after the coefficient one too high.
+  ## Measured on a covariate model with deliberately distinct starting values:
+  ## declaration 1's thetas (lclrv, lclm, bWT) mapped to phi0 columns (3, 0, 1),
+  ## which are (lv1rv, lclm, lv1m) -- lclrv was never written, lv1m was
+  ## clobbered, and the reported table showed lclrv holding lv1m's start value
+  ## while only the residual error moved.  A range check cannot catch it: the
+  ## indices stay within nphi, they just mean something else.
+  ##
+  ## Dropping the coefficients reproduces exactly the list a no-covariate model
+  ## has.  A declaration whose theta IS a coefficient then fails to match and
+  ## the step declines with a warning, which is right -- a coefficient has no
+  ## phi0 column to be written back through, and saem's covariate machinery
+  ## owns it.
+  if (!is.null(paramsToEstimate)) {
+    .muCov <- tryCatch(rxode2::rxUiDecompress(ui)$saemMuRefCovariateDataFrame,
+                       error = function(e) NULL)
+    if (!is.null(.muCov) && length(.muCov$covariateParameter) > 0L) {
+      paramsToEstimate <- paramsToEstimate[
+        !(paramsToEstimate %in% .muCov$covariateParameter)]
+    }
+  }
   .tp <- vector("list", .c$n)
   if (!is.null(paramsToEstimate)) {
     for (.i in seq_len(.c$n)) {
