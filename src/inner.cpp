@@ -10696,6 +10696,81 @@ static void foceiSInnerAll(int slot, std::vector<int> &res) {
   }
 }
 
+// A mixture proportion's per-subject score is known in closed form -- NONMEM
+// (1.194) chained by (1.197) for ONE subject, the same expression mixGrad()
+// sums over subjects.  Exact, and it costs no solves.  Returns true when cpar
+// IS such a parameter (the caller then skips the finite difference for it).
+static bool foceiSMixScore(int cpar, const std::vector<double> &mixR,
+                           const std::vector<double> &mixP, int nMixS) {
+  if (op_focei.mixIdxN == 0 || op_focei.mixTrans == NULL ||
+      op_focei.mixTrans[cpar] == -1) return false;
+  int mi = op_focei.mixTrans[cpar];
+  double sc = dUnscaleParDx(cpar);
+  for (int gid = 0; gid < (int)getRxNsub(rx); ++gid) {
+    double r = mixR[(size_t)gid*nMixS + mi];
+    double g = R_FINITE(r) ? -2.0*(r - mixP[(size_t)mi])*sc : 0.0;
+    inds_focei[gid].thetaGrad[cpar] = R_FINITE(g) ? g : 0.0;
+  }
+  op_focei.cur++;
+  op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick,
+                                  1, op_focei.t0, 0);
+  return true;
+}
+
+// Forward leg of the per-subject difference for a MIXTURE model.  The subject's
+// contribution is the marginal over components, so every component has to be
+// re-optimized before any per-subject score exists: differencing component 0
+// alone gives an exactly-zero score for a parameter that only enters another
+// component, which is what made S singular for every mixture model.
+static void foceiSMixForward(int cpar, double delta, bool doForward,
+                             const arma::vec &gfull, std::vector<int> &mixFwdOk,
+                             bool &hasZero, double &sInfoPer) {
+  int nsub = (int)getRxNsub(rx);
+  foceiSInnerAll(2, mixFwdOk);
+  for (int gid = 0; gid < nsub; gid++) {
+    focei_ind *fIndL = &(inds_focei[gid]);
+    fIndL->thetaGrad[cpar] = NA_REAL;
+    if (!doForward) continue;                // the central leg fills these in
+    double o2 = mixFwdOk[gid] ? foceiMixObjSlot(gid, 2) : NA_REAL;
+    if (R_FINITE(o2) && R_FINITE(op_focei.likSav[gid])) {
+      fIndL->thetaGrad[cpar] = (o2 - op_focei.likSav[gid]) / delta;
+    } else {
+      // no usable contribution for this subject/parameter: fall back to the
+      // pooled gradient, as the non-mixture serial retry does
+      hasZero = true;
+      sInfoPer -= 1.0;
+      fIndL->thetaGrad[cpar] = gfull[cpar];
+    }
+  }
+}
+
+// Central leg of the per-subject difference for a MIXTURE model.  mixFwdOk is
+// the FORWARD leg's per-subject convergence: lik[2] is stale from a previous
+// cpar for any component that failed there, and foceiMixObjSlot() would combine
+// it into a finite but wrong marginal.
+static void foceiSMixCentral(int cpar, double delta, const arma::vec &gfull,
+                             const std::vector<int> &mixFwdOk,
+                             bool &hasZero, double &sInfoPer) {
+  int nsub = (int)getRxNsub(rx);
+  std::vector<int> res1;
+  foceiSInnerAll(1, res1);
+  for (int gid = 0; gid < nsub; gid++) {
+    focei_ind *fIndL = &(inds_focei[gid]);
+    if (!ISNA(fIndL->thetaGrad[cpar])) continue;
+    double o1 = res1[gid] ? foceiMixObjSlot(gid, 1) : NA_REAL;
+    double o2 = mixFwdOk[gid] ? foceiMixObjSlot(gid, 2) : NA_REAL;
+    if (R_FINITE(o1) && R_FINITE(o2)) {
+      fIndL->thetaGrad[cpar] = (o2 - o1) / (2*delta);
+    } else {
+      // one leg is unusable; likSav is only filled on the doForward path, so a
+      // stale forward difference is not an option here
+      hasZero = true;
+      sInfoPer -= 1.0;
+      fIndL->thetaGrad[cpar] = gfull[cpar];
+    }
+  }
+}
+
 // Necessary for S-matrix calculation
 int foceiS(double *theta, Environment e, bool &hasZero){
   int npars = op_focei.npars;
@@ -10771,24 +10846,9 @@ int foceiS(double *theta, Environment e, bool &hasZero){
   }
   double sInfoPer = npars * getRxNsub(rx);
   for (cpar = npars; cpar--;){
-    // A mixture proportion's per-subject score is known in closed form -- NONMEM
-    // (1.194) chained by (1.197) for ONE subject, the same expression mixGrad()
-    // sums over subjects.  Exact, and it costs no solves, so skip the finite
-    // difference entirely for these parameters.
-    if (op_focei.mixIdxN != 0 && op_focei.mixTrans != NULL &&
-        op_focei.mixTrans[cpar] != -1) {
-      int mi = op_focei.mixTrans[cpar];
-      double sc = dUnscaleParDx(cpar);
-      for (int _gid = 0; _gid < (int)getRxNsub(rx); ++_gid) {
-        double r = mixR[(size_t)_gid*nMixS + mi];
-        double g = R_FINITE(r) ? -2.0*(r - mixP[(size_t)mi])*sc : 0.0;
-        inds_focei[_gid].thetaGrad[cpar] = R_FINITE(g) ? g : 0.0;
-      }
-      op_focei.cur++;
-      op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick,
-                                      1, op_focei.t0, 0);
-      continue;
-    }
+    // A mixture proportion's per-subject score is known in closed form, so the
+    // finite difference is skipped entirely for those parameters.
+    if (foceiSMixScore(cpar, mixR, mixP, nMixS)) continue;
     double rEps = op_focei.rEps[cpar];
     double rEpsC = op_focei.rEpsC[cpar];
     if (smatNorm){
@@ -10809,29 +10869,7 @@ int foceiS(double *theta, Environment e, bool &hasZero){
     theta[cpar] = cur + delta;
     updateTheta(theta);
     if (op_focei.mixIdxN != 0) {
-      // Mixture: the subject's contribution is the marginal over components, so
-      // every component has to be re-optimized before any per-subject score
-      // exists.  Differencing component 0 alone (what this did before) gives an
-      // exactly-zero score for any parameter that only enters another
-      // component, which made S singular for every mixture model.
-      int _nsub = (int)getRxNsub(rx);
-      foceiSInnerAll(2, mixFwdOk);
-      for (int _gid = 0; _gid < _nsub; _gid++) {
-        focei_ind *fIndL = &(inds_focei[_gid]);
-        fIndL->thetaGrad[cpar] = NA_REAL;
-        double _o2 = mixFwdOk[_gid] ? foceiMixObjSlot(_gid, 2) : NA_REAL;
-        if (doForward) {
-          if (R_FINITE(_o2) && R_FINITE(op_focei.likSav[_gid])) {
-            fIndL->thetaGrad[cpar] = (_o2 - op_focei.likSav[_gid]) / delta;
-          } else {
-            // no usable contribution for this subject/parameter: fall back to
-            // the pooled gradient, as the non-mixture serial retry does
-            hasZero = true;
-            sInfoPer -= 1.0;
-            fIndL->thetaGrad[cpar] = gfull[cpar];
-          }
-        }
-      }
+      foceiSMixForward(cpar, delta, doForward, gfull, mixFwdOk, hasZero, sInfoPer);
     } else {
       int _nsub = (int)getRxNsub(rx);
       rx_solving_options *_op = getSolvingOptions(rx);
@@ -10881,24 +10919,7 @@ int foceiS(double *theta, Environment e, bool &hasZero){
       updateTheta(theta);
       // Second inner loop: run innerOpt1(gid, 1) over subjects in parallel.
       if (op_focei.mixIdxN != 0) {
-        int _nsub = (int)getRxNsub(rx);
-        std::vector<int> _res1;
-        foceiSInnerAll(1, _res1);
-        for (int _gid = 0; _gid < _nsub; _gid++) {
-          focei_ind *fIndL = &(inds_focei[_gid]);
-          if (!ISNA(fIndL->thetaGrad[cpar])) continue;
-          double _o1 = _res1[_gid] ? foceiMixObjSlot(_gid, 1) : NA_REAL;
-          double _o2 = mixFwdOk[_gid] ? foceiMixObjSlot(_gid, 2) : NA_REAL;
-          if (R_FINITE(_o1) && R_FINITE(_o2)) {
-            fIndL->thetaGrad[cpar] = (_o2 - _o1) / (2*delta);
-          } else {
-            // one leg is unusable; likSav is only filled on the doForward
-            // path, so a stale forward difference is not an option here
-            hasZero = true;
-            sInfoPer -= 1.0;
-            fIndL->thetaGrad[cpar] = gfull[cpar];
-          }
-        }
+        foceiSMixCentral(cpar, delta, gfull, mixFwdOk, hasZero, sInfoPer);
       } else {
         int _nsub = (int)getRxNsub(rx);
         rx_solving_options *_op = getSolvingOptions(rx);

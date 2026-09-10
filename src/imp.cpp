@@ -992,6 +992,38 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
 // gamma -- wrong whenever the scale adapted during the fit, and badly wrong
 // under gammaMethod="individual" where the scales are per subject.  The
 // covariance must be evaluated with the same proposal the fit converged on.
+// Central finite-difference Hessian of `f` at `par0`, with the same relative
+// step the MC covariance has always used.  Split out of impComputeCov() so the
+// FD bookkeeping is readable on its own; `f` reuses the fixed importance
+// samples (common random numbers), which is what makes this well behaved.
+static arma::mat impFdHessian(const arma::vec& par0,
+                              const std::function<double(const arma::vec&)>& f) {
+  const int np = (int)par0.n_elem;
+  arma::vec hstep(np);
+  for (int j = 0; j < np; ++j) {
+    double a = std::fabs(par0[j]);
+    hstep[j] = 1e-3 * (a > 1e-3 ? a : 1.0);
+  }
+  double f0 = f(par0);
+  arma::mat hess(np, np, arma::fill::zeros);
+  for (int j = 0; j < np; ++j) {
+    arma::vec p = par0; p[j] = par0[j] + hstep[j]; double fp = f(p);
+    p = par0; p[j] = par0[j] - hstep[j]; double fm = f(p);
+    hess(j, j) = (fp - 2.0 * f0 + fm) / (hstep[j] * hstep[j]);
+  }
+  for (int a = 0; a < np; ++a) {
+    for (int b = a + 1; b < np; ++b) {
+      arma::vec p = par0; p[a] += hstep[a]; p[b] += hstep[b]; double fpp = f(p);
+      p = par0; p[a] += hstep[a]; p[b] -= hstep[b]; double fpm = f(p);
+      p = par0; p[a] -= hstep[a]; p[b] += hstep[b]; double fmp = f(p);
+      p = par0; p[a] -= hstep[a]; p[b] -= hstep[b]; double fmm = f(p);
+      double v = (fpp - fpm - fmp + fmm) / (4.0 * hstep[a] * hstep[b]);
+      hess(a, b) = v; hess(b, a) = v;
+    }
+  }
+  return hess;
+}
+
 static void impComputeCov(Environment e, const arma::vec& gammaVec,
                           const std::vector<impProp>& props, int covIter) {
   int nsub = impNsub();
@@ -1190,30 +1222,7 @@ static void impComputeCov(Environment e, const arma::vec& gammaVec,
   for (int j = 0; j < np; ++j)
     par0[j] = (pl[j] < ntheta) ? impGetFullThetaVal(pl[j])
                                : impGetOmegaThetaVal(pl[j] - ntheta);
-  double f0 = evalObj(par0);
-  arma::vec hstep(np);
-  for (int j = 0; j < np; ++j) {
-    double a = std::fabs(par0[j]);
-    hstep[j] = 1e-3 * (a > 1e-3 ? a : 1.0);
-  }
-  arma::vec fp(np), fm(np);
-  for (int j = 0; j < np; ++j) {
-    arma::vec p = par0; p[j] = par0[j] + hstep[j]; fp[j] = evalObj(p);
-    p = par0; p[j] = par0[j] - hstep[j]; fm[j] = evalObj(p);
-  }
-  arma::mat Hess(np, np, arma::fill::zeros);
-  for (int j = 0; j < np; ++j)
-    Hess(j, j) = (fp[j] - 2.0 * f0 + fm[j]) / (hstep[j] * hstep[j]);
-  for (int a = 0; a < np; ++a) {
-    for (int b = a + 1; b < np; ++b) {
-      arma::vec p = par0; p[a] += hstep[a]; p[b] += hstep[b]; double fpp = evalObj(p);
-      p = par0; p[a] += hstep[a]; p[b] -= hstep[b]; double fpm = evalObj(p);
-      p = par0; p[a] -= hstep[a]; p[b] += hstep[b]; double fmp = evalObj(p);
-      p = par0; p[a] -= hstep[a]; p[b] -= hstep[b]; double fmm = evalObj(p);
-      double v = (fpp - fpm - fmp + fmm) / (4.0 * hstep[a] * hstep[b]);
-      Hess(a, b) = v; Hess(b, a) = v;
-    }
-  }
+  arma::mat Hess = impFdHessian(par0, evalObj);
   if (covProg) par_progress(covTot, covTot, covTick, 1, covT0, 1);   // close the bar
   // Restore the converged estimates.
   for (int j = 0; j < np; ++j) setPar(j, par0[j]);

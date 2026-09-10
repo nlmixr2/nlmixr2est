@@ -405,4 +405,36 @@ nmTest({
     expect_false(any(vapply(.mixList, function(m) any(is.nan(m$prob)), logical(1))))
   })
 
+  test_that("mixture proportions bind to the mix() component, not the ini() order", {
+    ## `mix(a, p1, b, p2, c)` means p1 is COMPONENT 1's share.  thetaMixIndex is
+    ## what carries that binding: every consumer reads mixIdx[m] as component m's
+    ## theta slot.  Building it with which(names %in% mixProbs) returned
+    ## ASCENDING theta positions -- ini() order -- so declaring the proportions
+    ## in a different order than mix() uses them ran component 1 on p2's value.
+    ## Measured at zero iterations with ini({p2 <- 0.20; p1 <- 0.70}):
+    ## $mixProbabilities came back 0.2 0.7 0.1 instead of 0.7 0.2 0.1.
+    .mk <- function(.iniTxt) {
+      eval(parse(text = paste0(
+        "function() { ini({tka <- log(1.1); ", .iniTxt,
+        "; tcl1 <- log(1); tcl2 <- log(8); tcl3 <- log(30); tv <- log(20);",
+        " eta.cl ~ 0.01; add.sd <- 0.05}) ; model({ka <- exp(tka);",
+        " cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl), p2,",
+        " exp(tcl3 + eta.cl)); v <- exp(tv); linCmt() ~ add(add.sd)}) }")))
+    }
+    for (.o in c("p1 <- 0.70; p2 <- 0.20", "p2 <- 0.20; p1 <- 0.70")) {
+      .ui <- rxode2::rxUiDecompress(rxode2::assertRxUi(.mk(.o)))
+      ## the slots are named in mix() order whatever ini() did
+      expect_equal(names(.ui$theta)[.ui$thetaMixIndex], .ui$mixProbs)
+      ## and round-tripping them through the mlogit scale the solver uses gives
+      ## the proportions back against the right components
+      expect_equal(unname(rxode2::mexpit(.ui$thetaIniMix[.ui$thetaMixIndex])),
+                   c(0.70, 0.20), tolerance = 1e-8)
+    }
+    ## the reversed declaration really does reorder the theta vector -- without
+    ## this the two loop passes would be the same model and prove nothing
+    .rev <- rxode2::rxUiDecompress(rxode2::assertRxUi(.mk("p2 <- 0.20; p1 <- 0.70")))
+    expect_equal(names(.rev$theta)[.rev$thetaMixIndex[1]], "p1")
+    expect_gt(.rev$thetaMixIndex[1], .rev$thetaMixIndex[2])
+  })
+
 })

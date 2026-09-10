@@ -801,11 +801,18 @@ attr(rxUiGet.thetaIniMix, "rstudio") <- stats::setNames(1, "a")
 #' @export
 rxUiGet.thetaMixIndex <- function(x, ...) {
   .ui <- x[[1]]
-  .theta <- .ui$theta
-  if (length(.ui$mixProbs) > 0) {
-    which(names(.ui$theta) %in% .ui$mixProbs)
-  } else {
-    integer(0)
-  }
+  if (length(.ui$mixProbs) == 0) return(integer(0))
+  # COMPONENT order (the order the proportions appear in the mix() call), not
+  # ini() order.  Every consumer reads mixIdx[m] as "component m's theta slot":
+  # op_focei.mixProb[m] is component m's proportion, .getMixFromLog() maps the
+  # slots through mexpit() positionally, and .aaaPostEstimationMixBacktransform
+  # writes probs[m] back to slot mixIdx[m].
+  #
+  # which(names %in% mixProbs) returns ASCENDING theta positions, i.e. ini()
+  # order, so declaring the proportions in a different order than mix() uses
+  # them silently attached each component's proportion to the other's name --
+  # mix(a, p1, b, p2, c) with ini({p2; p1}) reported fixef()["p1"] as
+  # component 2's proportion.  match() keeps mixProbs' own (component) order.
+  match(.ui$mixProbs, names(.ui$theta))
 }
 attr(rxUiGet.thetaMixIndex, "rstudio") <- 1L

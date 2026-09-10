@@ -182,7 +182,7 @@ nmTest({
     }
     .testSeed(42)
     nPer <- 20L
-    ev <- rxode2::et(amt = 320, cmt = "depot") %>% rxode2::et(seq(0.5, 24, length.out = 8))
+    ev <- rxode2::et(amt = 320, cmt = "depot") |> rxode2::et(seq(0.5, 24, length.out = 8))
     mkGroup <- function(ke, ids) {
       d <- rxode2::rxSolve(sim, rxode2::et(ev, id = ids),
                            params = c(lka = log(1.5), lV = log(32), KE = ke),
@@ -416,7 +416,7 @@ nmTest({
     }
     .testSeed(42)
     nFast <- 30L; nSlow <- 10L
-    ev <- rxode2::et(amt = 320, cmt = "depot") %>% rxode2::et(seq(0.5, 24, length.out = 8))
+    ev <- rxode2::et(amt = 320, cmt = "depot") |> rxode2::et(seq(0.5, 24, length.out = 8))
     mkGroup <- function(ke, ids) {
       d <- rxode2::rxSolve(sim, rxode2::et(ev, id = ids),
                            params = c(lka = log(1.5), lV = log(32), KE = ke),

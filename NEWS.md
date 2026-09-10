@@ -134,6 +134,20 @@
 
 ### Mixture models
 
+- A mixture proportion now binds to the `mix()` component it was written for,
+  whatever order `ini()` declares the proportions in.  `mix(a, p1, b, p2, c)`
+  means `p1` is component 1's share, but the theta slots were collected with
+  `which(names(theta) %in% mixProbs)`, which returns ascending theta positions
+  -- `ini()` order.  Every consumer reads that index as "component m's slot"
+  (`op_focei.mixProb[m]`, `.getMixFromLog()`, the back-transform that writes the
+  estimates back), so declaring the proportions in a different order than
+  `mix()` uses them ran component 1 on `p2`'s value and reported each
+  component's proportion under the other's name.  Measured at zero iterations
+  with `ini({p2 <- 0.20; p1 <- 0.70})`: `$mixProbabilities` came back
+  `0.2 0.7 0.1` instead of `0.7 0.2 0.1`.  A model whose `ini()` order already
+  matched its `mix()` order -- which is the usual way to write one -- was never
+  affected.
+
 - Mixture proportions now get standard errors, under every covariance method
   that supports them: `covMethod="r"`, `"s"`, `"r,s"` and `"imp"`.  They were
   forced out of the covariance entirely (`skipCov`), so `p1` reported `SE = NA`

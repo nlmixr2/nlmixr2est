@@ -39,7 +39,7 @@ nmTest({
     expect_equal(dimnames(.out), dimnames(.cov))
     ## a non-mixture cov, or names that are not present, is left alone
     expect_equal(.mixCovToProbScale(.cov, character(0), numeric(0)), .cov)
-    expect_equal(.mixCovToProbScale(.cov, c("nope"), .p[1]), .cov)
+    expect_equal(.mixCovToProbScale(.cov, "nope", .p[1]), .cov)
   })
 
   ## Two well-separated components with everything but the proportion and the
@@ -139,9 +139,14 @@ nmTest({
     }
     .ui <- rxode2::rxUiDecompress(rxode2::assertRxUi(.mod))
     .slot <- names(.ui$theta)[.ui$thetaMixIndex]
-    ## the hazard this guards is real for this model
-    expect_false(identical(.ui$mixProbs, .slot))
-    expect_equal(.slot, c("p2", "p1"))
+    ## thetaMixIndex is in COMPONENT order, so the slots it names are mixProbs
+    expect_equal(.slot, .ui$mixProbs)
+    ## ...but this model's ini() declares them in the OTHER order, so those slot
+    ## POSITIONS are descending.  That is what makes the test non-trivial: the
+    ## covariance's rows are built in ascending theta order (p2 then p1) while
+    ## the Jacobian is built in component order (p1 then p2), so the two must be
+    ## bridged by name rather than by position.
+    expect_gt(.ui$thetaMixIndex[1], .ui$thetaMixIndex[2])
 
     ## component-ordered probabilities, far enough apart that a swap shows
     .p <- c(0.60, 0.30)
