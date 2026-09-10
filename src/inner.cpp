@@ -22826,50 +22826,75 @@ static void vaeScoreCandidates(VaeBnbCtx& c, int nCov,
 // Moves are per BLOCK, not per column: a single-column add or drop inside a
 // hockey block only ever produces a half-selected support, which vaeBnbLeaf
 // rejects -- so a column-wise polish could never move a blocked relationship.
+// append block b's columns to `t`, keeping it sorted
+static void vaeLsAddBlock(const VaeBnbCtx& c, std::vector<int>& t, int b) {
+  const std::vector<int>& cols = c.blocks[(size_t)b];
+  t.insert(t.end(), cols.begin(), cols.end());
+  std::sort(t.begin(), t.end());
+}
+
+// `cur` minus every column of block b
+static std::vector<int> vaeLsDropBlock(const VaeBnbCtx& c,
+                                       const std::vector<int>& cur, int b) {
+  std::vector<int> t;
+  t.reserve(cur.size());
+  for (size_t s = 0; s < cur.size(); ++s) {
+    if (c.blockOf[(size_t)cur[s]] != b) t.push_back(cur[s]);
+  }
+  return t;
+}
+
+// score every support reachable from `cur` by ADDING one absent block
+static void vaeLsAdd(VaeBnbCtx& c, const std::vector<int>& cur,
+                     const std::vector<char>& inBlk) {
+  for (int b = 0; b < (int)c.blocks.size(); ++b) {
+    if (inBlk[(size_t)b]) continue;
+    if (!vaeGroupFreeBlock(c, cur, b)) continue;         // group already taken
+    std::vector<int> t = cur;
+    vaeLsAddBlock(c, t, b);
+    vaeBnbLeaf(c, t);
+  }
+}
+
+// score every support reachable from `cur` by DROPPING one present block
+static void vaeLsDrop(VaeBnbCtx& c, const std::vector<int>& cur,
+                      const std::vector<char>& inBlk) {
+  for (int d = 0; d < (int)c.blocks.size(); ++d) {
+    if (!inBlk[(size_t)d]) continue;
+    vaeBnbLeaf(c, vaeLsDropBlock(c, cur, d));
+  }
+}
+
+// score every support reachable from `cur` by SWAPPING a present block for an
+// absent one.  The swap vacates block d, so feasibility is judged against the
+// REST of the support -- swapping one shape of a covariate for another stays
+// legal.
+static void vaeLsSwap(VaeBnbCtx& c, const std::vector<int>& cur,
+                      const std::vector<char>& inBlk) {
+  const int nBlk = (int)c.blocks.size();
+  for (int d = 0; d < nBlk; ++d) {
+    if (!inBlk[(size_t)d]) continue;
+    std::vector<int> rest = vaeLsDropBlock(c, cur, d);
+    for (int b = 0; b < nBlk; ++b) {
+      if (inBlk[(size_t)b]) continue;
+      if (!vaeGroupFreeBlock(c, rest, b)) continue;
+      std::vector<int> t = rest;
+      vaeLsAddBlock(c, t, b);
+      vaeBnbLeaf(c, t);
+    }
+  }
+}
+
 static void vaeLocalSearchL0(VaeBnbCtx& c, int maxPass = 100) {
   const int nBlk = (int)c.blocks.size();
-  // append block b's columns to `t`, keeping it sorted
-  auto addBlock = [&](std::vector<int>& t, int b) {
-    const std::vector<int>& cols = c.blocks[(size_t)b];
-    t.insert(t.end(), cols.begin(), cols.end());
-    std::sort(t.begin(), t.end());
-  };
-  // `cur` minus every column of block b
-  auto dropBlock = [&](const std::vector<int>& cur, int b) {
-    std::vector<int> t;
-    t.reserve(cur.size());
-    for (size_t s = 0; s < cur.size(); ++s) {
-      if (c.blockOf[(size_t)cur[s]] != b) t.push_back(cur[s]);
-    }
-    return t;
-  };
   for (int pass = 0; pass < maxPass; ++pass) {
     const std::vector<int> cur = c.bestSel;
     const double before = c.bestScore;
     std::vector<char> inBlk((size_t)nBlk, 0);
     for (size_t s = 0; s < cur.size(); ++s) inBlk[(size_t)c.blockOf[(size_t)cur[s]]] = 1;
-    for (int b = 0; b < nBlk; ++b) {                     // add
-      if (inBlk[(size_t)b]) continue;
-      if (!vaeGroupFreeBlock(c, cur, b)) continue;       // group already taken
-      std::vector<int> t = cur; addBlock(t, b);
-      vaeBnbLeaf(c, t);
-    }
-    for (int d = 0; d < nBlk; ++d) {                     // drop
-      if (!inBlk[(size_t)d]) continue;
-      vaeBnbLeaf(c, dropBlock(cur, d));
-    }
-    for (int d = 0; d < nBlk; ++d) {                     // swap
-      if (!inBlk[(size_t)d]) continue;
-      // the swap vacates block d, so feasibility is judged against the REST of
-      // the support -- swapping one shape of a covariate for another stays legal
-      std::vector<int> rest = dropBlock(cur, d);
-      for (int b = 0; b < nBlk; ++b) {
-        if (inBlk[(size_t)b]) continue;
-        if (!vaeGroupFreeBlock(c, rest, b)) continue;
-        std::vector<int> t = rest; addBlock(t, b);
-        vaeBnbLeaf(c, t);
-      }
-    }
+    vaeLsAdd(c, cur, inBlk);
+    vaeLsDrop(c, cur, inBlk);
+    vaeLsSwap(c, cur, inBlk);
     if (!(c.bestScore < before)) break;                  // local optimum
   }
 }
