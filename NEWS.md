@@ -377,6 +377,16 @@
   Dirichlet-style shrinkage that stabilizes the trajectory.
 
 ### Estimation
+
+- The standalone analytic-covariance entry point no longer installs a covariance
+  that is not positive definite.  An outer optimizer that stops short of a local
+  minimum leaves an observed information with a negative eigenvalue, which
+  inverts to negative variances and `NaN` standard errors -- and once installed
+  as the fit's `$cov` that is what every later `getVarCov()` returns.  The fit's
+  existing covariance is now kept and a warning says why.  The live
+  `covMethod="analytic"` seam, `setCov()` and the `saem` installer already
+  guarded this; the standalone entry was the one that did not.
+
 - A `focei`-family fit now reports whether its inner solves actually
   converged.  `fit$env$nTrustInner` breaks the `innerOpt="trust"` per-subject
   Newton solves down by outcome (`calls`, `error`, `notConverged`,
