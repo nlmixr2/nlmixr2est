@@ -306,6 +306,49 @@ Rcpp::NumericVector rxEtaDistArgsToThetasTest_(Rcpp::CharacterVector exprs,
   return r;
 }
 
+//' Evaluate the per-record declared-family log-likelihood from R
+//'
+//' Test hook for rxEtaDistLoglikObj(), which is the estimator that lets a
+//' COVARIATE on a declaration argument be fitted from the EBEs: it maximizes
+//' sum_r wt[r] * log p_family(eta[r]; args_r(theta, rec_r)) rather than fitting
+//' one population native parameter set and inverting it, and there is no single
+//' population `a` to invert when an argument varies by subject.
+//'
+//' `vars` is thetas THEN the per-record symbols; `rec` is nRec x nSym in the
+//' same column order as those trailing names.  Returns the objective, or a
+//' zero-length vector when the expressions fall outside the grammar.
+//[[Rcpp::export]]
+Rcpp::NumericVector rxEtaDistLoglikTest_(int fam,
+                                         Rcpp::CharacterVector exprs,
+                                         Rcpp::CharacterVector vars,
+                                         Rcpp::NumericVector theta,
+                                         Rcpp::NumericMatrix rec,
+                                         Rcpp::NumericVector etaAt,
+                                         Rcpp::NumericVector wt) {
+  std::vector<std::string> e, vn;
+  for (int i = 0; i < exprs.size(); ++i) e.push_back(Rcpp::as<std::string>(exprs[i]));
+  for (int i = 0; i < vars.size(); ++i) vn.push_back(Rcpp::as<std::string>(vars[i]));
+  std::vector< std::vector<etaDistTok> > rpn;
+  if (!rxEtaDistLoglikParse(e, vn, rpn)) return Rcpp::NumericVector(0);
+  int nth = theta.size();
+  int nSym = (int)vn.size() - nth;
+  if (nSym < 0) return Rcpp::NumericVector(0);
+  int nRec = etaAt.size();
+  if (nSym > 0 && (rec.nrow() != nRec || rec.ncol() != nSym)) return Rcpp::NumericVector(0);
+  // row-major, which is what rxEtaDistLoglikObj indexes as rec[r*nSym + c]
+  std::vector<double> flat((size_t)(nRec > 0 && nSym > 0 ? nRec * nSym : 0), 0.0);
+  for (int r = 0; r < nRec && nSym > 0; ++r) {
+    for (int c = 0; c < nSym; ++c) flat[(size_t)(r * nSym + c)] = rec(r, c);
+  }
+  double out = 0.0;
+  if (!rxEtaDistLoglikObj(fam, rpn, nth, nSym, theta.begin(),
+                          nSym > 0 ? flat.data() : NULL,
+                          etaAt.begin(), wt.begin(), nRec, &out)) {
+    return Rcpp::NumericVector(0);
+  }
+  return Rcpp::NumericVector::create(out);
+}
+
 bool rxEtaDistMleW(int fam, const std::vector<double> &vals,
                    const std::vector<double> *w, double *a0) {
   int na = rxEtaDistNarg(fam);

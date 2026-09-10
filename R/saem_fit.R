@@ -551,6 +551,11 @@
   ## the C++ dispatch does not implement).  Empty means "all usable", so an
   ## older metadata list behaves exactly as before.
   etaDistUsable <- integer(0)
+  ## Per-declaration covariate values, one row per SUBJECT in saem's own subject
+  ## order, so the eta-sample M-step can estimate a covariate coefficient from
+  ## the EBEs.  `etaDistCovN[k]` is that declaration's nSym; an empty matrix
+  ## means no covariate and reproduces the previous behaviour exactly.
+  etaDistCov <- list(); etaDistCovN <- integer(0)
   etaDistArgs <- matrix(0, 0, 0); etaDistRho <- numeric(0)
   etaDistThetaPhi0 <- matrix(-1L, 0, 0); etaDistNth <- integer(0)
   ## aligned with the declared families; empty when there are none
@@ -600,6 +605,34 @@
       etaDistThetaPhi0 <- .tp
       etaDistNth     <- .nth
       etaDistCorPhi0 <- as.integer(.cp)
+      ## Line up each declaration's covariate SYMBOLS with saem's per-subject
+      ## covariate matrix.  `covariables` is aggregated by id with unique(), and
+      ## the length check above already refuses a covariate that varies within a
+      ## subject, so a row per subject is the whole story here; a time-varying
+      ## covariate on a declaration has to go to the observation-likelihood
+      ## route instead.
+      .cvAll <- covariables
+      if (!is.null(.cvAll) && is.null(colnames(.cvAll)) &&
+            ncol(.cvAll) == length(model$covars)) {
+        colnames(.cvAll) <- model$covars
+      }
+      .cvList <- lapply(etaDistInfo$cov, function(.nm) {
+        if (length(.nm) == 0L) return(matrix(0, nrow = N, ncol = 0L))
+        if (is.null(.cvAll) || !all(.nm %in% colnames(.cvAll))) return(NULL)
+        matrix(as.numeric(.cvAll[, .nm, drop = FALSE]), nrow = N,
+               dimnames = list(NULL, .nm))
+      })
+      ## A declaration whose covariate cannot be resolved stays UNUSABLE rather
+      ## than being handed a wrong column -- the M-step then stands down for it
+      ## and its coefficient is left to the outer problem, which is what the
+      ## warning in .etaDistWarnCovMstep() describes.
+      .bad <- vapply(.cvList, is.null, logical(1))
+      if (any(.bad)) {
+        etaDistUsable[.bad] <- 0L
+        .cvList[.bad] <- lapply(which(.bad), function(.i) matrix(0, nrow = N, ncol = 0L))
+      }
+      etaDistCov  <- .cvList
+      etaDistCovN <- vapply(.cvList, ncol, integer(1))
     } else {
       ## A declared theta that is not a plain phi0 column cannot be written
       ## back, so the M-step has to stand down.  Say so: leaving etaDistOn at 0
@@ -975,6 +1008,8 @@
     etaDistFam = etaDistFam,
     etaDistCorWith = etaDistCorWith,
     etaDistUsable = etaDistUsable,
+    etaDistCov = etaDistCov,
+    etaDistCovN = etaDistCovN,
     etaDistArgs = etaDistArgs,
     etaDistRho = etaDistRho,
     etaDistThetaPhi0 = etaDistThetaPhi0,

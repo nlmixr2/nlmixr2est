@@ -9,6 +9,21 @@ rxEtaDistArgsToThetasTest_ <- function(exprs, thetaNames, start, target) {
     .Call(`_nlmixr2est_rxEtaDistArgsToThetasTest_`, exprs, thetaNames, start, target)
 }
 
+#' Evaluate the per-record declared-family log-likelihood from R
+#'
+#' Test hook for rxEtaDistLoglikObj(), which is the estimator that lets a
+#' COVARIATE on a declaration argument be fitted from the EBEs: it maximizes
+#' sum_r wt[r] * log p_family(eta[r]; args_r(theta, rec_r)) rather than fitting
+#' one population native parameter set and inverting it, and there is no single
+#' population `a` to invert when an argument varies by subject.
+#'
+#' `vars` is thetas THEN the per-record symbols; `rec` is nRec x nSym in the
+#' same column order as those trailing names.  Returns the objective, or a
+#' zero-length vector when the expressions fall outside the grammar.
+rxEtaDistLoglikTest_ <- function(fam, exprs, vars, theta, rec, etaAt, wt) {
+    .Call(`_nlmixr2est_rxEtaDistLoglikTest_`, fam, exprs, vars, theta, rec, etaAt, wt)
+}
+
 #' Expand Gradient for nlme
 #'
 #' @param state is the state to expand

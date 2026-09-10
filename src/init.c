@@ -140,6 +140,7 @@ SEXP _nlmixr2est_saemEtaDistOn_(void);
 SEXP _nlmixr2est_rxEtaDistCorTest_(SEXP, SEXP);
 SEXP _nlmixr2est_rxEtaDistCorFromRz_(SEXP, SEXP);
 SEXP _nlmixr2est_rxEtaDistArgsToThetasTest_(SEXP, SEXP, SEXP, SEXP);
+SEXP _nlmixr2est_rxEtaDistLoglikTest_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_nonMuGradAccumTest_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_foceiEtaDistN_(void);
 SEXP _nlmixr2est_foceiEtaDistCorN_(void);
@@ -386,6 +387,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_rxEtaDistCorTest_", (DL_FUNC) &_nlmixr2est_rxEtaDistCorTest_, 2},
   {"_nlmixr2est_rxEtaDistCorFromRz_", (DL_FUNC) &_nlmixr2est_rxEtaDistCorFromRz_, 2},
   {"_nlmixr2est_rxEtaDistArgsToThetasTest_", (DL_FUNC) &_nlmixr2est_rxEtaDistArgsToThetasTest_, 4},
+  {"_nlmixr2est_rxEtaDistLoglikTest_", (DL_FUNC) &_nlmixr2est_rxEtaDistLoglikTest_, 7},
   {"_nlmixr2est_nonMuGradAccumTest_", (DL_FUNC) &_nlmixr2est_nonMuGradAccumTest_, 7},
   {"_nlmixr2est_foceiEtaDistN_", (DL_FUNC) &_nlmixr2est_foceiEtaDistN_, 0},
   {"_nlmixr2est_foceiEtaDistCorN_", (DL_FUNC) &_nlmixr2est_foceiEtaDistCorN_, 0},

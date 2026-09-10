@@ -260,3 +260,63 @@ test_that("the argument parser is what cannot see the covariate", {
   expect_false(is.null(.named))
   expect_length(.named, 4L)
 })
+
+# ---------------------------- the EBE route estimates a covariate directly --
+# Each subject's EBE for a declared parameter is a draw from family(args_i)
+# with args_i depending on THAT subject's covariates, so the family likelihood
+# over the EBE sample identifies the covariate coefficient -- no
+# observation-likelihood route needed.  rxEtaDistLoglikObj() implements exactly
+# that: it maximizes sum_r wt[r]*log p(eta[r]; args_r(theta, rec_r)) over the
+# THETAS, instead of fitting one population native parameter set and inverting
+# it (there is no single population `a` to invert when an argument varies by
+# subject).  These pin the estimator itself, away from any estimator's gating.
+
+test_that("the per-record objective recovers a covariate from the EBEs", {
+  skip_on_cran()
+  set.seed(7)
+  .f <- nlmixr2est:::rxEtaDistLoglikTest_
+  .GAMMA <- 13L
+  .n <- 4000L; .lclrv <- -2.4; .lclm <- 1.63; .bWT <- 0.75
+  .WT <- stats::runif(.n, 40, 100)
+  # drawn from the model the objective assumes, so nothing but the covariate
+  # can explain the effect
+  .eta <- stats::rgamma(.n, shape = 1/exp(.lclrv),
+                        rate = 1/(exp(.lclrv)*exp(.lclm + .bWT*log(.WT/70))))
+  .exprs <- c("1/exp(lclrv)", "1/(exp(lclrv)*exp(lclm + bWT*log(WT/70)))")
+  .vars <- c("lclrv", "lclm", "bWT", "WT")   # thetas THEN the record symbols
+  .rec <- matrix(.WT, ncol = 1L); .wt <- rep(1, .n)
+  .obj <- function(.th) {
+    .v <- .f(.GAMMA, .exprs, .vars, .th, .rec, .eta, .wt)
+    if (length(.v) == 0L) NA_real_ else -.v[1]
+  }
+  # the truth is a better explanation than no covariate, by a wide margin
+  expect_lt(.obj(c(.lclrv, .lclm, .bWT)), .obj(c(.lclrv, .lclm, 0)))
+  .o <- stats::optim(c(-2.0, 1.5, 0.2), .obj, method = "Nelder-Mead",
+                     control = list(maxit = 4000, reltol = 1e-10))
+  expect_equal(.o$par[1], .lclrv, tolerance = 0.05)
+  expect_equal(.o$par[2], .lclm, tolerance = 0.05)
+  expect_equal(.o$par[3], .bWT, tolerance = 0.08)
+})
+
+test_that("the objective declines when the covariate symbol is not supplied", {
+  # same contract as the parser: an unresolvable symbol falls back rather than
+  # guessing, which is what silently cost the covariate before
+  .f <- nlmixr2est:::rxEtaDistLoglikTest_
+  .v <- .f(13L, c("1/exp(lclrv)", "1/(exp(lclrv)*exp(lclm + bWT*log(WT/70)))"),
+           c("lclrv", "lclm", "bWT"), c(-2.4, 1.63, 0.75),
+           matrix(0, nrow = 3L, ncol = 0L), c(1, 2, 3), c(1, 1, 1))
+  expect_length(.v, 0L)
+})
+
+test_that("nSym == 0 still works, so no-covariate models are unchanged", {
+  .f <- nlmixr2est:::rxEtaDistLoglikTest_
+  .eta <- c(2.0, 3.0, 5.0, 7.0)
+  .v <- .f(13L, c("1/exp(lclrv)", "1/(exp(lclrv)*exp(lclm))"),
+           c("lclrv", "lclm"), c(-2.4, 1.63),
+           matrix(0, nrow = 4L, ncol = 0L), .eta, rep(1, 4))
+  expect_length(.v, 1L)
+  # it is the plain gamma log-likelihood, so check it against dgamma directly
+  .sh <- 1/exp(-2.4); .rt <- 1/(exp(-2.4)*exp(1.63))
+  expect_equal(.v[1], sum(stats::dgamma(.eta, shape = .sh, rate = .rt, log = TRUE)),
+               tolerance = 1e-8)
+})

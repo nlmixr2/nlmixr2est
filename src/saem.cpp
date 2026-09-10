@@ -3617,6 +3617,26 @@ public:
       } else {
         etaDistUsable = ivec();
       }
+      etaDistCov.clear(); etaDistCovNames.clear();
+      if (x.containsElementNamed("etaDistCov")) {
+        Rcpp::List cvl(x["etaDistCov"]);
+        for (int k = 0; k < cvl.size(); ++k) {
+          if (Rf_isNull(cvl[k])) {
+            etaDistCov.push_back(arma::mat());
+            etaDistCovNames.push_back(std::vector<std::string>());
+            continue;
+          }
+          Rcpp::NumericMatrix m(cvl[k]);
+          etaDistCov.push_back(as<arma::mat>(cvl[k]));
+          std::vector<std::string> nms;
+          Rcpp::List dn(m.attr("dimnames"));
+          if (dn.size() == 2 && !Rf_isNull(dn[1])) {
+            Rcpp::CharacterVector cn(dn[1]);
+            for (int c = 0; c < cn.size(); ++c) nms.push_back(Rcpp::as<std::string>(cn[c]));
+          }
+          etaDistCovNames.push_back(nms);
+        }
+      }
       etaDistArgs    = as<mat>(x["etaDistArgs"]);
       etaDistRho     = as<vec>(x["etaDistRho"]);
       etaDistThetaPhi0 = as<imat>(x["etaDistThetaPhi0"]);
@@ -6658,6 +6678,14 @@ private:
   int etaDistNdist = 0;          // number of declared random effects
   ivec etaDistLatent;            // phi column of each one's OWN latent normal
   ivec etaDistFam;               // family code (rxEtaDistQ/rxEtaDistLogD)
+  // Per-declaration covariate values, one row per SUBJECT in saem's own subject
+  // order (phiM row r is subject r % N -- see the mixture weighting at
+  // phiM_weighted).  Empty for a declaration with no covariate, which is the
+  // nSym == 0 case and behaves exactly as before.
+  std::vector<arma::mat> etaDistCov;
+  // and their names, in the same order as the matrix columns -- the parser
+  // needs the symbol, the objective needs the value.
+  std::vector< std::vector<std::string> > etaDistCovNames;
   // 1 where this M-step owns the declaration's family; 0 where it stands down
   // for that declaration alone -- an argument that varies by subject has no
   // single population value to fit.  Empty means every declaration is usable,
@@ -7137,28 +7165,61 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
       }
     }
     // each declared family: latent -> eta via the CURRENT parameters, then MLE
-    for (int k = 0; etaDistOn && !famOff && k < etaDistNdist; ++k) {
-      // Per DECLARATION.  famOff above is the whole-model form of this; a
-      // covariate on ONE declaration's argument stands only that one down and
-      // leaves the others to be fitted normally.  The copula loop below is
-      // deliberately not gated on it -- the correlation is a property of the
-      // raw latent block, which a covariate on a family argument does not
-      // touch, so it stays a closed form either way.
-      if (etaDistUsable.n_elem == (unsigned int)etaDistNdist &&
-          etaDistUsable(k) == 0) continue;
+    // NOT gated on famOff.  The general objective below lives in this loop and
+    // is enabled by exactly the flag that sets famOff, so gating the loop on it
+    // made that block unreachable -- etaDistLoglik=TRUE turned the family MLE
+    // off and then skipped the thing meant to replace it, leaving every
+    // declared theta at its ini() value while the step still counted as having
+    // run.  famOff now guards only the MLE-and-inversion half, which is what
+    // the comment above it always described.
+    for (int k = 0; etaDistOn && k < etaDistNdist; ++k) {
+      // Per DECLARATION, and it guards the MLE-and-inversion half ONLY.
+      //
+      // It used to `continue` here, which also skipped the general objective
+      // below -- the one route that CAN fit a covariate-carrying declaration,
+      // because it maximizes over the thetas directly instead of fitting
+      // population native parameters and inverting them (there is no single
+      // population `a` to invert when an argument varies by subject).  Skipping
+      // the declaration outright therefore stood down the only thing able to
+      // help it.
+      //
+      // The copula loop further down is deliberately not gated on this either:
+      // the correlation is a property of the raw latent block, which a
+      // covariate on a family argument does not touch.
+      bool famUsable = !(etaDistUsable.n_elem == (unsigned int)etaDistNdist &&
+                         etaDistUsable(k) == 0);
       int fam = etaDistFam(k);
       int na = rxEtaDistNarg(fam);
       if (na <= 0) continue;
       double a0[4];
       for (int i = 0; i < na; ++i) a0[i] = etaDistArgs(k, i);
+      // This declaration's covariate columns, if any.  nSym == 0 is the
+      // no-covariate case and everything below collapses to what it was.
+      const arma::mat *cvK = (k < (int)etaDistCov.size()) ? &etaDistCov[(size_t)k] : NULL;
+      int nSym = (cvK != NULL && cvK->n_rows > 0) ? (int)cvK->n_cols : 0;
       std::vector<double> ev; ev.reserve(w[(size_t)k].size());
+      // `rec` is nRec x nSym ROW-MAJOR, which is the layout rxEtaDistLoglikObj
+      // indexes as rec[r*nSym + c].
+      std::vector<double> rec;
+      if (nSym > 0) rec.reserve(w[(size_t)k].size() * (size_t)nSym);
       for (size_t r = 0; r < w[(size_t)k].size(); ++r) {
         // same boundary guard phiU() applies: pnorm saturates to 0/1 in double
         // precision and an inverse CDF there is +/-Inf
         double u = R::pnorm(w[(size_t)k][r], 0.0, 1.0, 1, 0);
         if (u < 1e-15) u = 1e-15; else if (u > 1.0 - 1e-15) u = 1.0 - 1e-15;
         double e = rxEtaDistQ(fam, u, a0);
-        if (std::isfinite(e)) ev.push_back(e);
+        if (!std::isfinite(e)) continue;
+        // ONE loop, dropped TOGETHER.  Pushing the covariate in a second pass
+        // over the same range would keep every record that this one skips and
+        // shift the whole column by however many etas came back non-finite --
+        // silently, since both vectors would still look well formed.
+        ev.push_back(e);
+        if (nSym > 0) {
+          // phiM stacks chains: row r is subject r % N (see phiM_weighted).
+          unsigned int subj = (unsigned int)(r % (size_t)N);
+          if (subj >= cvK->n_rows) { rec.clear(); nSym = 0; break; }
+          for (int c = 0; c < nSym; ++c) rec.push_back((*cvK)(subj, (unsigned int)c));
+        }
       }
       // Guard on the assumption the whole step rests on: the latent is
       // standard normal BY CONSTRUCTION, so the only reason the pooled draws
@@ -7181,7 +7242,9 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
         etaDistSpreadSettled(k, lsd);
       double aNew[4];
       for (int i = 0; i < na; ++i) aNew[i] = a0[i];
-      bool mleOk = spreadOk && rxEtaDistMle(fam, ev, aNew);
+      // famOff: in the observation-likelihood mode the families are estimated
+      // by the objective below (or by refinePhi0Lik), not by this MLE.
+      bool mleOk = !famOff && famUsable && spreadOk && rxEtaDistMle(fam, ev, aNew);
       if (famTr) {
         double relCh = (std::isfinite(sdPrevWas) && sdPrevWas > 0) ?
           std::fabs(lsd - sdPrevWas)/sdPrevWas : NA_REAL;
@@ -7219,13 +7282,27 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
         int nth = etaDistNth(k);
         if (nth > 0 && k < (int)etaDistExprs.size() &&
             (int)etaDistExprThetas[(size_t)k].size() == nth) {
+          // Parse against thetas THEN the covariate symbols.  That order is
+          // the contract: rxEtaDistLoglikObj lays out vals[0..nth) as the
+          // candidate thetas and vals[nth..nth+nSym) as this record's symbols,
+          // and the parser stores each symbol's index into that same flat
+          // vector.  Without the covariate names the parse simply DECLINES on
+          // the unknown symbol, which is how a covariate silently cost the
+          // whole objective before this.
+          std::vector<std::string> pvars = etaDistExprThetas[(size_t)k];
+          if (nSym > 0 && k < (int)etaDistCovNames.size()) {
+            for (size_t c = 0; c < etaDistCovNames[(size_t)k].size(); ++c) {
+              pvars.push_back(etaDistCovNames[(size_t)k][c]);
+            }
+          }
           std::vector< std::vector<etaDistTok> > rpn;
-          if (rxEtaDistLoglikParse(etaDistExprs[(size_t)k],
-                                   etaDistExprThetas[(size_t)k], rpn)) {
+          if ((int)pvars.size() == nth + nSym &&
+              rxEtaDistLoglikParse(etaDistExprs[(size_t)k], pvars, rpn)) {
             std::vector<double> wt(ev.size(), 1.0);
-            gEdFam = fam; gEdRpn = &rpn; gEdNth = nth; gEdNSym = 0;
+            gEdFam = fam; gEdRpn = &rpn; gEdNth = nth; gEdNSym = nSym;
             gEdNRec = (int)ev.size();
-            gEdRec = NULL; gEdEta = ev.data(); gEdWt = wt.data();
+            gEdRec = (nSym > 0) ? rec.data() : NULL;
+            gEdEta = ev.data(); gEdWt = wt.data();
             std::vector<double> st((size_t)nth), step((size_t)nth),
               xmin((size_t)nth);
             for (int t = 0; t < nth; ++t) {

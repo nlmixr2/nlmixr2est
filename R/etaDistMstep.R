@@ -699,7 +699,7 @@
            character(1))
   })
   list(latent = .lat, fam = .c$fam, corWith = .c$corWith,
-       usable = as.integer(.c$usable),
+       usable = as.integer(.c$usable), cov = .c$cov,
        exprs = .exprs, exprThetas = .c$thetas,
        args = .c$args, rho = .c$rho,
        dist = .c$dist, thetas = .c$thetas, thetaPhi = .tp,
@@ -771,6 +771,12 @@
   .fam <- integer(.n); .maxA <- 0L
   .args <- vector("list", .n); .tn <- vector("list", .n)
   .hasCov <- logical(.n)
+  ## The covariate SYMBOLS each declaration reads, in the order all.vars() finds
+  ## them.  Kept rather than just counted: the C++ argument parser resolves
+  ## symbols against a flat name list and rxEtaDistLoglikObj() lays out
+  ## vals[0..nth) thetas then vals[nth..nth+nSym) this record's symbols, so
+  ## `c(thetas, cov)` is exactly the vector it needs.
+  .cov <- vector("list", .n)
   for (.i in seq_len(.n)) {
     .fam[.i] <- .etaDistFamilyCode(.st$etaDist[.i])
     .cl <- str2lang(.st$etaDist[.i])
@@ -779,7 +785,8 @@
     ## population value to fit" from "evaluates to nonsense", and the two want
     ## opposite handling: the first is a supported model whose family MLE has
     ## to stand down for THIS declaration, the second is a broken declaration.
-    .hasCov[.i] <- length(setdiff(all.vars(.cl), .thNames)) > 0L
+    .cov[[.i]] <- setdiff(all.vars(.cl), .thNames)
+    .hasCov[.i] <- length(.cov[[.i]]) > 0L
     .a <- vapply(as.list(.cl)[-1], function(.x) {
       .v <- tryCatch(eval(.x, envir = .thVals), error = function(e) NA_real_)
       if (!is.numeric(.v) || length(.v) != 1L) NA_real_ else as.numeric(.v)
@@ -821,7 +828,7 @@
   for (.i in seq_len(.n)) .am[.i, seq_along(.args[[.i]])] <- .args[[.i]]
   list(n = .n, fam = .fam, corWith = .cw, args = .am, rho = .rho,
        corTheta = .corTheta, dist = .st$etaDist, thetas = .tn,
-       hasCov = .hasCov, usable = .usable,
+       hasCov = .hasCov, usable = .usable, cov = .cov,
        etas = .st$name, iniDf = .ini)
 }
 
