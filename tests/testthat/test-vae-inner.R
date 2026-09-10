@@ -444,4 +444,58 @@ nmTest({
     expect_equal(.p1, nFast / (nFast + nSlow), tolerance = 0.1)
     expect_gt(max(.agree, 1 - .agree), 0.9)
   })
+
+  test_that("the mixture proportion gradient is exact beyond two components", {
+    ## mexpit's Jacobian is DENSE -- d(pi_m)/d(theta_l) = pi_m (delta_ml - pi_l)
+    ## -- so carrying d/d(pi) and applying one scalar per free parameter (which
+    ## is what mixGrad does) drops the off-diagonal terms.  That is exact at
+    ## nMix == 2, where there is a single free parameter, and wrong by 25% at
+    ## nMix == 3.  Three components is the smallest case that can see it.
+    mixmod3 <- function() {
+      ini({ lka <- log(1.5); lke1 <- log(0.15); lke2 <- log(0.08); lke3 <- log(0.04)
+            lV <- log(32); p1 <- 0.5; p2 <- 0.3
+            eta.ka ~ 0.04; eta.ke ~ 0.02; eta.V ~ 0.02; add.err <- 0.25 })
+      model({ ka <- exp(lka + eta.ka)
+        ke <- mix(exp(lke1 + eta.ke), p1, exp(lke2 + eta.ke), p2, exp(lke3 + eta.ke))
+        V <- exp(lV + eta.V)
+        d/dt(depot) = -ka * depot; d/dt(central) = ka * depot - ke * central
+        cp <- central / V; cp ~ add(add.err) })
+    }
+    ui <- rxode2::assertRxUi(mixmod3)
+    ctl <- vaeControl(itersBurnIn = 2L, iters = 2L, covariateSelection = FALSE, seed = 1L)
+    prep <- .vaeDataPrep(ui, nlmixr2data::theo_sd)
+    N <- prep$N; zDim <- prep$zDim
+    nMix <- as.integer(ui$saemNMix)
+    expect_equal(nMix, 3L)
+    mixProb <- .getMixFromLog(prep$th, ui$thetaMixIndex)
+    expect_equal(sum(mixProb), 1)
+
+    innerEnv <- .vaeInnerSetup(ui, nlmixr2data::theo_sd, matrix(0, N, zDim), ctl)
+    on.exit(.vaeInnerFree(), add = TRUE)
+    .testSeed(11)
+    params <- .vaeEncoderInitParams(zDim, 12L, ncol(prep$covIn) + nMix, prep$zPop,
+                                    rep(0.1, zDim))
+    eps <- matrix(rnorm(N * zDim), N, zDim)
+    .stepAt <- function(prp) {
+      .vaeElboStepInner(params, prp, innerEnv, prp$zPop, prp$omega, prp$a,
+                        0, eps, ctl, nMix, mixProb, withGrad = TRUE)
+    }
+    .g <- .stepAt(prep)
+    expect_length(.g$gMixTheta, nMix - 1L)
+
+    .idx <- ui$thetaMixIndex
+    .h <- 1e-5
+    .fd <- vapply(seq_along(.idx), function(j) {
+      .pp <- prep; .pp$th[.idx[j]] <- prep$th[.idx[j]] + .h
+      .pm <- prep; .pm$th[.idx[j]] <- prep$th[.idx[j]] - .h
+      (.stepAt(.pp)$pxz - .stepAt(.pm)$pxz) / (2 * .h)
+    }, numeric(1))
+    expect_equal(as.numeric(.g$gMixTheta), .fd, tolerance = 1e-4)
+
+    ## the gradient is N*(pi_l - mean responsibility), with no Jacobian involved
+    expect_equal(as.numeric(.g$gMixTheta),
+                 N * (as.numeric(.g$mixProb)[seq_along(.idx)] -
+                        as.numeric(.g$mixW)[seq_along(.idx)]),
+                 tolerance = 1e-8)
+  })
 })

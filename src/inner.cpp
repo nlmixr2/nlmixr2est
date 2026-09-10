@@ -21729,7 +21729,6 @@ static VaeStepOut vaeElboStepCpp(const arma::mat& Wih, const arma::mat& Whh,
   double jointTot;
   arma::mat lpAll(Ne, zDim, arma::fill::zeros);
   arma::uvec sel(N);                       // selected pseudo-subject row per subject
-  arma::vec gpi(nMix > 1 ? nMix - 1 : 1, arma::fill::zeros);
   for (int i = 0; i < N; ++i) sel[i] = i;  // nMix == 1: the subject IS the row
   S.preds.resize(N);
   S.rvar.resize(N);
@@ -21778,21 +21777,23 @@ static VaeStepOut vaeElboStepCpp(const arma::mat& Wih, const arma::mat& Whh,
       if (!prv.empty()) S.rvar[i] = prv[sel[i]];
       S.mixnum[i] = best + 1;
       S.mixW += resp;
-      // d/d(pi_m) of -log sum_k pi_k exp(-obj_ik) is -(r_im/pi_m), and the last
-      // component is not free (pi_last = 1 - sum), so its share is subtracted --
-      // the same difference foceiLik0Mix accumulates into fInd->mixProbGrad.
-      for (int m = 0; m < nMix - 1; ++m) {
-        double gm = -(resp[m] / pi[m] - resp[nMix - 1] / pi[nMix - 1]);
-        if (R_FINITE(gm)) gpi[m] += gm;
-      }
     }
     S.mixW /= (double)N;
-    // chain rule through mexpit: op_focei.mixProbGrad is the dmexpit Jacobian
-    // updateTheta filled, exactly as mixGrad() applies it for focei
+    // Gradient of the marginal -2LL wrt the MLOGIT parameters.  Carrying
+    // d/d(pi) and then applying a Jacobian is a trap here: mexpit's Jacobian is
+    // dense, d(pi_m)/d(theta_l) = pi_m (delta_ml - pi_l), so treating it as one
+    // scalar per free parameter (as mixGrad does) silently drops the
+    // off-diagonal -pi_m pi_l terms.  That is exact only at nMix == 2, where
+    // there is a single free parameter -- and wrong by 25% at nMix == 3.
+    //
+    // Chaining it properly collapses: summing -r_im/pi_m against the dense
+    // Jacobian over ALL components gives -(r_il - pi_l), since the
+    // responsibilities sum to one.  So the exact gradient is just
+    //   N * pi_l - sum_i r_il
+    // for every l, with no Jacobian to get wrong.
     S.gMixTheta.zeros(nMix - 1);
     for (int m = 0; m < nMix - 1; ++m) {
-      double j = (op_focei.mixProbGrad != NULL) ? op_focei.mixProbGrad[m] : 1.0;
-      double g = gpi[m] * j;
+      double g = (double)N * (pi[m] - S.mixW[m]);
       S.gMixTheta[m] = R_FINITE(g) ? g : 0.0;
     }
   } else {
