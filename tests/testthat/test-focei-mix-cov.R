@@ -111,6 +111,22 @@ nmTest({
     expect_equal(max(.ses) / min(.ses), 1, tolerance = 0.05)
   })
 
+  test_that("setCov() round trips without re-rotating the mixture block", {
+    ## setCov() re-installs a CACHED covariance (covList) by handing it back as a
+    ## matrix, which refits and would rotate an already-probability-scale matrix
+    ## a second time -- shrinking the proportion's SE by p(1-p) every round trip
+    ## (measured 0.0644 -> 0.0155).
+    .dat <- .mixCovData()
+    .f <- suppressWarnings(nlmixr2(.mixCovMod, .dat$data, "focei",
+      foceiControl(print = 0, outerOpt = "lbfgsb3c", maxOuterIterations = 200L,
+                   maxInnerIterations = 100L, covMethod = "r,s", calcTables = FALSE)))
+    .se0 <- .f$parFixedDf["p1", "SE"]
+    setCov(.f, "s")
+    expect_true("r,s" %in% names(.f$env$covList))
+    setCov(.f, "r,s")                       # served from covList, not recomputed
+    expect_equal(unname(.f$parFixedDf["p1", "SE"]), unname(.se0), tolerance = 1e-10)
+  })
+
   test_that("the S matrix is no longer singular for a mixture model", {
     .dat <- .mixCovData()
     .f <- suppressWarnings(nlmixr2(.mixCovMod, .dat$data, "focei",

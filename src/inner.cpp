@@ -10746,6 +10746,12 @@ int foceiS(double *theta, Environment e, bool &hasZero){
   // the wrong point.  Same base-theta assumption likSav above already makes.
   int nMixS = (int)op_focei.mixIdxN + 1;
   std::vector<double> mixR, mixP;
+  // Which subjects' FORWARD (slot 2) leg converged for the current cpar.  Held
+  // at function scope because the central leg below needs it too: lik[2] is
+  // stale from a previous cpar for any component that failed, and
+  // foceiMixObjSlot() would happily combine that into a finite but wrong
+  // marginal.
+  std::vector<int> mixFwdOk;
   if (op_focei.mixIdxN != 0) {
     int _nsub = (int)getRxNsub(rx);
     mixP.assign((size_t)nMixS, 0.0);
@@ -10809,12 +10815,11 @@ int foceiS(double *theta, Environment e, bool &hasZero){
       // exactly-zero score for any parameter that only enters another
       // component, which made S singular for every mixture model.
       int _nsub = (int)getRxNsub(rx);
-      std::vector<int> _opt1Res;
-      foceiSInnerAll(2, _opt1Res);
+      foceiSInnerAll(2, mixFwdOk);
       for (int _gid = 0; _gid < _nsub; _gid++) {
         focei_ind *fIndL = &(inds_focei[_gid]);
         fIndL->thetaGrad[cpar] = NA_REAL;
-        double _o2 = _opt1Res[_gid] ? foceiMixObjSlot(_gid, 2) : NA_REAL;
+        double _o2 = mixFwdOk[_gid] ? foceiMixObjSlot(_gid, 2) : NA_REAL;
         if (doForward) {
           if (R_FINITE(_o2) && R_FINITE(op_focei.likSav[_gid])) {
             fIndL->thetaGrad[cpar] = (_o2 - op_focei.likSav[_gid]) / delta;
@@ -10883,7 +10888,7 @@ int foceiS(double *theta, Environment e, bool &hasZero){
           focei_ind *fIndL = &(inds_focei[_gid]);
           if (!ISNA(fIndL->thetaGrad[cpar])) continue;
           double _o1 = _res1[_gid] ? foceiMixObjSlot(_gid, 1) : NA_REAL;
-          double _o2 = foceiMixObjSlot(_gid, 2);
+          double _o2 = mixFwdOk[_gid] ? foceiMixObjSlot(_gid, 2) : NA_REAL;
           if (R_FINITE(_o1) && R_FINITE(_o2)) {
             fIndL->thetaGrad[cpar] = (_o2 - _o1) / (2*delta);
           } else {

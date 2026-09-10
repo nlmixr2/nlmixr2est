@@ -447,6 +447,11 @@
 #' @noRd
 #' @author Matthew L. Fidler
 .mixInstallProbScaleCov <- function(env) {
+  # a covariance handed in by the caller is already on the reported scale
+  if (isTRUE(tryCatch(get(".mixCovPreRotated", envir = env, inherits = FALSE),
+                      error = function(e) FALSE))) {
+    return(invisible(NULL))
+  }
   .m <- .mixEnvPieces(env)
   if (is.null(.m)) return(invisible(NULL))
   .mp <- .m$names

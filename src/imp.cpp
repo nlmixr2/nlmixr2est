@@ -1217,7 +1217,10 @@ static void impComputeCov(Environment e, const arma::vec& gammaVec,
   if (covProg) par_progress(covTot, covTot, covTick, 1, covT0, 1);   // close the bar
   // Restore the converged estimates.
   for (int j = 0; j < np; ++j) setPar(j, par0[j]);
-  for (int id = 0; id < nsub; ++id) impForceResolve(id);
+  // every pseudo-subject, not just component 0: the perturbed solves above ran
+  // over nExp, so stopping at nsub leaves the other components' cached solves
+  // sitting at the LAST perturbation rather than the converged estimates
+  for (int id = 0; id < nExp; ++id) impForceResolve(id);
 
   // Observed information = 0.5 * Hess(-2LL) (symmetrized); covariance = inverse.
   arma::mat info = 0.25 * (Hess + Hess.t());
