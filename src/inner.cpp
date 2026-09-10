@@ -9736,19 +9736,31 @@ Environment foceiOuter(Environment e){
       op_foceiUseAnalyticGrad = true;
       loadGradPooledSetup(e);
       std::vector<double> _g((size_t)op_focei.npars, 0.0);
+      rx = getRxSolve_();
+      // nIndsFocei, not getRxNsub(): a mixture fit carries one focei_ind per
+      // subject PER mixture component, and foceiOfv0() moves all of them.
+      const int _nsGuarded = (rx == NULL || inds_focei == NULL || getRxNsub(rx) <= 0) ?
+        0 : nIndsFocei;
       {
-        rx = getRxSolve_();
-        // nIndsFocei, not getRxNsub(): a mixture fit carries one focei_ind per
-        // subject PER mixture component, and foceiOfv0() moves all of them.
-        const int _ns = (rx == NULL || inds_focei == NULL || getRxNsub(rx) <= 0) ?
-          0 : nIndsFocei;
         FdPhaseStateGuard _phaseGuard;
         std::vector< std::unique_ptr<FdInnerStateGuard> > _inGuards;
-        _inGuards.reserve((size_t)_ns);
-        for (int _i = 0; _i < _ns; ++_i) {
+        _inGuards.reserve((size_t)_nsGuarded);
+        for (int _i = 0; _i < _nsGuarded; ++_i) {
           _inGuards.push_back(std::unique_ptr<FdInnerStateGuard>(new FdInnerStateGuard(_i)));
         }
         analyticOuterGrad(x.begin(), _g.data());   // stashes firstDirectGrad on success
+      }
+      // The guards put fInd->setup and oldEta back, which is exactly the state in which
+      // likInner0() answers from the CACHE instead of solving -- and ind->solve still holds
+      // the AUGMENTED model's solution, because restoring the inner state deliberately does
+      // not restore the solve.  Force the re-solve so foceiOuterFinal() cannot read it;
+      // fdPinRefEtaForce() pairs setIndSolve(-1) with an invalidated cache for the same
+      // reason on the differencing legs.  The eta is unchanged, so this costs one solve
+      // per subject and changes no result.
+      for (int _i = 0; _i < _nsGuarded; ++_i) {
+        inds_focei[_i].setup = 0;
+        rx_solving_options_ind *_ind = getSolvingOptionsInd(rx, getRxId(_i));
+        if (_ind != NULL) setIndSolve(_ind, -1);
       }
       op_foceiUseAnalyticGrad = false;
       op_focei.calcGrad = 0;
