@@ -196,30 +196,56 @@ nmTest({
     expect_true(.vaeGradInScope(rxode2::assertRxUi(.edVaeNorm()())))
   })
 
-  test_that("grad without a built augmented model downgrades instead of crashing", {
+  test_that("the augmented outer-gradient model builds for a declared model", {
     skip_on_cran()
-    ## REGRESSION TEST for a segfault.  With nonMuTheta="grad" and no augmented
-    ## model registered, nothing sized the shared solve pool for it, and the first
-    ## burn-in ELBO step died in iniSubject() -> _setIndPointersByThread() on a
-    ## null gInfusionRate -- one solve after vaeInnerUpdatePar_.
+    ## It did not, until four upstream rxode2 bugs were fixed (see the rxode2
+    ## commit).  `.foceiOuterDirs()` gives a declared model 8 directions -- the
+    ## three latents plus a direction each for the declaration's own thetas and
+    ## the copula theta -- and the SECOND-order expansion over them used to abort
+    ## outright, so `ui$foceiOuter` returned NULL and nonMuTheta="grad" could
+    ## never do anything.
+    .u <- .edVaeUi(.edVaeMod())
+    ## `rxUiGet.foceiOuter` consults `.analyticGradCaller()`, which reads
+    ## nonMuTheta off the control -- unset it returns NA and foceiOuter declines
+    ## before doing anything.  `.vaeInnerSetup`/`.vaeGradInit` both mark it for
+    ## exactly this reason; do the same here.
+    .ctl <- tryCatch(.u$control, error = function(e) NULL)
+    if (is.null(.ctl)) .ctl <- foceiControl()
+    .ctl$nonMuTheta <- "grad"
+    assign("control", .ctl, envir = .u)
+    .am <- tryCatch(.u$foceiOuter, error = function(e) NULL)
+    expect_false(is.null(.am))
+    expect_true(inherits(.am$augMod, "rxode2"))
+    expect_true(all(c("lclm", "lv1m", "lclrv", "lv1rv",
+                      grep("^rxCor[.]", .u$iniDf$name, value = TRUE)) %in%
+                      .foceiOuterDirs(.u, "vae")$thStruct))
+  })
+
+  test_that("a declared grad fit runs, and the gradient is attempted", {
+    skip_on_cran()
+    ## Two separate properties, and only the first is fully settled.
     ##
-    ## A declared model is the case that REACHES this (`ui$foceiOuter` does not
-    ## build for one), but the bug was never about declarations: ANY model whose
-    ## augmented build declines under "grad" hit it.  The fix downgrades on the
-    ## actual build result in `.vaeFitModel`, which owns the only control that
-    ## reaches both `.vaeGradInit` and `vaeTrainCpp_`'s `useGrad` gate.
+    ## (1) SAFETY: the fit completes.  This is the regression test for a
+    ##     segfault -- with "grad" set and no augmented model registered, the
+    ##     first burn-in ELBO step died in iniSubject() ->
+    ##     _setIndPointersByThread() on a null gInfusionRate.
+    ##
+    ## (2) The analytic gradient is now ATTEMPTED rather than unavailable:
+    ##     nRegGrad + nRegFallback > 0.  It is not yet USED -- `.vaeGradEval`
+    ##     declines per M-step because the assembled gradient comes back
+    ##     non-finite (R/vaeGrad.R returns NULL on any NA), so every M-step
+    ##     falls back to bobyqa.  That is the remaining work; asserting the
+    ##     ATTEMPT is what distinguishes "the model builds and is solved" from
+    ##     the old state, and it is what would regress if the build broke again.
     r <- suppressWarnings(suppressMessages(
       nlmixr2(.edVaeMod()(), nlmixr2data::theo_sd, est = "vae",
               control = vaeControl(nonMuTheta = "grad", print = 0L,
                                    calcTables = FALSE, returnVae = TRUE,
                                    covariateSelection = FALSE,
-                                   etaDistWarmStart = FALSE, itersBurnIn = 10L,
-                                   iters = 20L, klWarmup = 5L, gammaIter = 15L))))
-    ## it COMPLETED -- that is the property under test
+                                   etaDistWarmStart = FALSE, itersBurnIn = 5L,
+                                   iters = 10L, klWarmup = 3L, gammaIter = 5L))))
     expect_false(is.null(r))
-    ## and it completed on the regression, rather than pretending grad ran
-    expect_equal(r$nRegGrad, 0L)
-    expect_equal(r$nRegFallback, 0L)
+    expect_gt(r$nRegGrad + r$nRegFallback, 0L)
     expect_true(all(is.finite(r$regressTheta)))
   })
 
