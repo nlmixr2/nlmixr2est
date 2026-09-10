@@ -21759,9 +21759,13 @@ static VaeStepOut vaeElboStepCpp(const arma::mat& Wih, const arma::mat& Whh,
         for (int m = 0; m < nMix; ++m) resp[m] = std::exp(ll[m] - mmax)/se;
       } else {
         // every component failed to solve: charge the same penalty focei does
-        // (foceiLik0Mix), instead of contributing 0 and IMPROVING the objective
+        // (foceiLik0Mix), instead of contributing 0 and IMPROVING the objective.
+        // The likelihood says nothing about membership here, so the posterior
+        // IS the prior -- giving component 1 the whole responsibility (best is
+        // still its initial 0) would silently drag the proportions toward it.
+        // saem falls back the same way when its weights underflow.
         jointTot += op_focei.badSolveObjfAdj;
-        resp[best] = 1.0;
+        resp = pi;
       }
       // Each component has its OWN eta, so eta_im appears in component m's term
       // alone: d(marginal)/d(eta_im) is just that component's gradient scaled
@@ -23875,6 +23879,17 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
   }
   setRxThreadId(-1);
 
+  // The proportions each step reports are the ones it USED, i.e. from before
+  // that step's own Adam update; refresh from the final th so what is reported
+  // and written into ini() is the estimate, not the estimate one step ago.
+  if (mixThIdx.n_elem > 0) {
+    arma::vec thvEnd = vaeBuildTh(th, zPopThetaIdx0, zPop, errThetaIdx0, a);
+    vaeInnerUpdateParCore(thvEnd, omFull());
+    if (op_focei.mixProb != NULL) {
+      mixProbFinal.set_size(nMix);
+      for (int m = 0; m < nMix; ++m) mixProbFinal[m] = op_focei.mixProb[m];
+    }
+  }
   RObject parHist = vaeIterPrintGet_(printCtl >= 1);
   arma::mat zPopMatOut(N, zDim);
   if (isCovStep) zPopMatOut = zPopArg; else zPopMatOut.each_row() = zPop.t();

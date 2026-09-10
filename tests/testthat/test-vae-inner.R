@@ -373,6 +373,26 @@ nmTest({
     expect_equal(sum(.g$mixProb), 1)
     expect_equal(as.numeric(.g$mixProb), mixProb, tolerance = 1e-5)
 
+    ## The encoder gradient under a mixture must be the gradient of the loss the
+    ## step actually reports -- the marginal data term, the SELECTED component's
+    ## prior and KL.  Finite-difference it, which settles at once whether the
+    ## prior correction and the KL are applied at the right rows and scaled the
+    ## right way.
+    .lossAt <- function(pp) {
+      .vaeElboStepInner(pp, prep, innerEnv, prep$zPop, prep$omega, prep$a,
+                        1, eps, ctl, nMix, mixProb, withGrad = FALSE)$loss
+    }
+    .withG <- .vaeElboStepInner(params, prep, innerEnv, prep$zPop, prep$omega,
+                                prep$a, 1, eps, ctl, nMix, mixProb, withGrad = TRUE)
+    .hh <- 1e-6
+    .anaB <- as.numeric(.withG$grads$fcB)
+    .fdB <- vapply(seq_along(.anaB), function(j) {
+      .pp <- params; .pp$fcB[j] <- params$fcB[j] + .hh
+      .pm <- params; .pm$fcB[j] <- params$fcB[j] - .hh
+      (.lossAt(.pp) - .lossAt(.pm)) / (2 * .hh)
+    }, numeric(1))
+    expect_equal(.anaB, .fdB, tolerance = 1e-3)
+
     ## and it is NOT the square-root marginalization the code used to compute
     .ll2 <- sweep(-0.5 * .obj, 2, log(mixProb), "+")
     .mm2 <- apply(.ll2, 1, max)
