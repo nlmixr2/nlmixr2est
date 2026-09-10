@@ -20,7 +20,20 @@ suppressMessages(library(rxode2))
 set.seed(20260910)
 
 nSub <- 120L
-.lclm <- 1.63; .lv1m <- 1.55; .lclrv <- -1.2; .lv1rv <- -1.2
+## Relative variance 0.09 (about 30% CV), which is Bauer's g1 arm -- a spread
+## the 0.25-24 h schedule can actually observe.
+##
+## An earlier version used rv = 0.30 (55% CV) on BOTH cl and v.  That makes the
+## elimination rate cl/v span 0.03-57 /h, i.e. half-lives from 23 h to 45 s, and
+## no single sampling schedule covers it: fast subjects decay past the solver's
+## absolute tolerance (central goes NEGATIVE, measured -2.7e-10 at 0.5 h) and
+## slow ones never leave the peak.  Both repairs tried on that design failed --
+## an LLOQ at 1e-3 of max removed 40% of records, all of them the low late ones
+## that identify clearance, and biased lclm 1.63 -> 2.63; keeping every positive
+## record instead drove it to 9.44, because under prop() a 1e-12 observation
+## against a 1e-5 prediction is a relative residual of 1e7 and those records
+## dominate.  The design was the problem, not the filter.
+.lclm <- 1.63; .lv1m <- 1.55; .lclrv <- -2.4; .lv1rv <- -2.4
 .bWT  <- 0.75                      # TRUTH: allometric-style exponent on WT/70
 .rho  <- 0.50
 WT <- round(stats::rnorm(nSub, 70, 12), 1)
@@ -45,12 +58,20 @@ ev <- do.call(rbind, lapply(seq_len(nSub), function(i) {
 }))
 s <- rxSolve(m, ev, returnType = "data.frame")
 s <- s[!is.na(s$cp) & s$time > 0, ]
-## LLOQ.  A fast-clearing subject's 24 h sample decays to ~1e-10, and 10%
-## proportional noise on that lands below zero -- invalid under prop().  Cut on
-## the TRUE concentration, before the noise, so this is an assay limit and not a
-## selection on the noise draw.
-.lloq <- 1e-3 * max(s$cp)
-s <- s[s$cp >= .lloq, ]
+## Assay limit.  Applied to the TRUE concentration rather than the measured
+## one, so this is a limit of quantification and not a selection on the noise
+## draw (which would bias the retained values upward at the limit).
+##
+## This matters more than it looks.  Keeping every positive record makes the
+## declared M-step run AWAY from truth: started exactly at truth it drifted
+## lclm 1.63 -> 2.12 in 5 iterations and -> 5.55 in 20, with the step firing
+## every iteration.  With the limit below it sits at 1.641 after 5 and 1.641
+## after 20 -- truth is a fixed point.  The M-step fits the family to the EBEs,
+## and a subject whose only records are ~1e-12 has an essentially undetermined
+## EBE; a plain log-normal fit of the same data tolerates them (it recovers
+## CL 4.93 / V 4.77) which is why this took a controlled experiment to find.
+.LLOQ <- 0.01
+s <- s[s$cp > .LLOQ, ]
 s$DV <- s$cp * (1 + stats::rnorm(nrow(s), 0, 0.10))     # 10% proportional
 stopifnot(all(s$DV > 0))
 

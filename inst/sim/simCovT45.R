@@ -16,7 +16,20 @@
 ##     at n.  A slow drift away from zero is the failure a single fit hides.
 suppressMessages(library(rxode2))
 
-.lclm <- 1.63; .lv1m <- 1.55; .lclrv <- -1.2; .lv1rv <- -1.2; .rho <- 0.50
+## Relative variance 0.09 (about 30% CV), which is Bauer's g1 arm -- a spread
+## the 0.25-24 h schedule can actually observe.
+##
+## An earlier version used rv = 0.30 (55% CV) on BOTH cl and v.  That makes the
+## elimination rate cl/v span 0.03-57 /h, i.e. half-lives from 23 h to 45 s, and
+## no single sampling schedule covers it: fast subjects decay past the solver's
+## absolute tolerance (central goes NEGATIVE, measured -2.7e-10 at 0.5 h) and
+## slow ones never leave the peak.  Both repairs tried on that design failed --
+## an LLOQ at 1e-3 of max removed 40% of records, all of them the low late ones
+## that identify clearance, and biased lclm 1.63 -> 2.63; keeping every positive
+## record instead drove it to 9.44, because under prop() a 1e-12 observation
+## against a 1e-5 prediction is a relative residual of 1e7 and those records
+## dominate.  The design was the problem, not the filter.
+.lclm <- 1.63; .lv1m <- 1.55; .lclrv <- -2.4; .lv1rv <- -2.4; .rho <- 0.50
 u <- function(z) pmin(pmax(stats::pnorm(z), 1e-15), 1 - 1e-15)
 tim <- c(0.25, 0.5, 1, 2, 4, 8, 12, 24)
 
@@ -46,9 +59,9 @@ build <- function(bWT, seed, nSub = 120L, tag) {
                AMT = NA_real_, EVID = 0L, CMT = 1L, WT = .w)
   })
   obs <- do.call(rbind, rows)
-  ## LLOQ on the TRUE concentration, before the noise -- see simT3.R.  Applied
-  ## across the whole dataset so it is one assay limit, not a per-subject one.
-  obs <- obs[obs$CP >= 1e-3 * max(obs$CP), ]
+  ## Assay limit on the TRUE concentration -- see simCovT3.R for why this is
+  ## load-bearing (without it the declared M-step runs away from truth).
+  obs <- obs[obs$CP > 0.01, ]
   obs$DV <- obs$CP * (1 + stats::rnorm(nrow(obs), 0, 0.10))
   stopifnot(all(obs$DV > 0))
   obs <- obs[, c("ID", "TIME", "DV", "AMT", "EVID", "CMT", "WT")]
