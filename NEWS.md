@@ -134,6 +134,21 @@
 
 ### Mixture models
 
+- `est="focei"` estimates the mixture proportions under a gradient-based
+  `outerOpt`.  `mixGrad()` supplies an analytic value that short-circuits the
+  finite difference in `numericGrad()`, and it chained the per-subject
+  responsibility sum through the *diagonal* of the `mexpit` Jacobian
+  (`dmexpit()` returns only the diagonal) while dropping the `-2` of the
+  objective scale.  That flipped the sign at every number of components, so the
+  line search rejected the first step and the proportions never moved off their
+  initial values; from three components up the magnitude was wrong too.  The
+  full Jacobian collapses to `-2 * sum_i (r_il - pi_l)`, which is what it now
+  uses -- checked against a central difference of the objective to eight
+  significant digits at three components.  Fits left on the default
+  derivative-free `outerOpt="bobyqa"` never reached this code and are
+  unchanged, as are the reported standard errors (a mixture proportion is
+  `skipCov`).
+
 - `fit$etaMat` no longer carries the `mixnum` column that `$eta` gains for a
   mixture fit.  Every consumer that hands it back as `foceiControl(etaMat=)`
   compared `neta + 1` columns against the model's `neta` and stopped with "The
@@ -155,9 +170,9 @@
 - `est="vae"` estimates the mixture proportions.  They were read once from
   `ini()` and never updated, so the reported proportion was whatever the model
   started at.  They are now estimated on the mlogit scale through their own
-  analytic gradient -- the same chain `focei` uses (`mixGrad`): each subject's
-  responsibility difference against the last, non-free component, reduced
-  against the full `mexpit` Jacobian -- consumed by the same Adam loop that trains the encoder.
+  analytic gradient -- the same closed form `focei`'s corrected `mixGrad()`
+  uses, each component's summed responsibility against its expected count --
+  consumed by the same Adam loop that trains the encoder.
   The gradient agrees with finite differences to 1e-4 at two components and at
   three.  On simulated data with
   a 3:1 split started from 0.5, the fitted proportion comes back at 0.74.

@@ -6733,73 +6733,6 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
 
 // Calculate the mixture parameter gradient
 //
-// This notes that the mixture gradient does not need to be numerically, but
-// can be calculated directly from the mixture probabilities, the translation from
-// the by the mexpit, and the scaling factors.
-//
-// @param theta The parameter vector
-//
-// @param g The gradient vector to fill in
-//
-// @param cpar The parameter index to test/calculate the gradient for.
-//
-// @return 0 if the gradient was not calculated, 1 if it was.
-//
-int mixGrad(double *theta, double *g, int cpar) {
-  if (op_focei.mixTrans == NULL) return 0;
-  if (op_focei.mixTrans[cpar] != -1) {
-    // This is a mixture grad
-    int mi = op_focei.mixTrans[cpar];
-    // First add the gradients from each individual contribution
-    g[cpar] = 0.0;
-    for (int i = 0; i < getRxNsub(rx); ++i) {
-      focei_ind *fInd = &(inds_focei[i]);
-      g[cpar] += fInd->mixProbGrad[mi];
-    }
-    // Next multiple the gradient from the mexpit() transformation
-    // (from chain rule)
-    g[cpar] *= op_focei.mixProbGrad[mi];
-    // FIXME: Last apply the scaling gradient changes from chain rule
-    double scaleTo = op_focei.scaleTo, C=getScaleC(cpar);
-    switch (op_focei.scaleType){
-    case 1: // normalized
-      g[cpar] *= op_focei.c2;
-      return 1;
-      break;
-    case 2: // log vs linear scales and/or ranges
-      g[cpar] *= C;
-      return 1;
-      break;
-    case 3: // simple multiplicative scaling
-      if (op_focei.scaleTo != 0){
-        g[cpar] *= op_focei.initPar[cpar]/scaleTo;
-        return 1;
-      } else {
-        return 1;
-      }
-      break;
-    case 4: // log non-log multiplicative scaling
-      if (op_focei.scaleTo > 0){
-        switch (op_focei.xPar[cpar]){
-        case 1:
-          return 1;
-        default:
-          g[cpar] *= op_focei.initPar[cpar]/scaleTo;
-          return 1;
-        }
-      } else {
-        return 1;
-      }
-    default:
-      return 1;
-    }
-    return 0;
-
-  }
-  return 0;
-}
-
-
 // d(unscalePar)/d(x_i): the finite-difference outer gradient is d(OFV)/d(scaled
 // par), so an analytic d(OFV)/d(theta) must be multiplied by this factor to land
 // in the same optimizer scale.  Mirrors the linear coefficient of unscalePar().
@@ -6817,6 +6750,54 @@ static inline double dUnscaleParDx(int i) {
   default: return 1.0;
   }
 }
+
+// This notes that the mixture gradient does not need to be numerically, but
+// can be calculated directly from the mixture probabilities, the translation from
+// the by the mexpit, and the scaling factors.
+//
+// @param g The gradient vector to fill in
+//
+// @param cpar The parameter index to test/calculate the gradient for.
+//
+// @return 0 if the gradient was not calculated, 1 if it was.
+//
+int mixGrad(double *g, int cpar) {
+  if (op_focei.mixTrans == NULL) return 0;
+  if (op_focei.mixTrans[cpar] != -1) {
+    // This is a mixture grad.  pi = mexpit(t) is a softmax, so
+    // d(pi_m)/d(t_l) = pi_m*(delta_ml - pi_l); feeding that through
+    // d(log-lik)/d(pi_m) = sum_i (r_im/pi_m - r_iK/pi_K) and using
+    // sum_m r_im = 1 collapses the whole Jacobian to
+    //
+    //   d(-2*log-lik)/d(t_l) = -2 * sum_i (r_il - pi_l)
+    //
+    // with r_il = fInd->mixProb[l] the subject's posterior responsibility
+    // from foceiLik0Mix().  Do NOT chain through op_focei.mixProbGrad here:
+    // rxode2::dmexpit() is the DIAGONAL of that Jacobian only, so it drops
+    // every m != l term -- which cancels by accident at nMix == 2 and is
+    // wrong from nMix == 3 up.  The -2 is the objective scale
+    // (foceiObjFromLik0() = -2*foceiLik0()).
+    int mi = op_focei.mixTrans[cpar];
+    double tot = 0.0, nUsed = 0.0;
+    for (int i = 0; i < getRxNsub(rx); ++i) {
+      double r = inds_focei[i].mixProb[mi];
+      // a subject whose every component failed to solve took the flat
+      // badSolveObjfAdj penalty, which does not depend on the proportions
+      if (!R_FINITE(r)) continue;
+      tot += r;
+      nUsed += 1.0;
+    }
+    double gr = -2.0*(tot - nUsed*op_focei.mixProb[mi]);
+    if (!R_FINITE(gr)) gr = 0.0;
+    // and into the optimizer's scale, the same chain rule every other analytic
+    // gradient applies -- the finite-difference paths get it for free by
+    // differencing in the scaled space
+    g[cpar] = gr*dUnscaleParDx(cpar);
+    return 1;
+  }
+  return 0;
+}
+
 
 static bool restoreFitSolve_();   // defined below (with covSolveArgs_)
 void impSetInnerNeqOverride();     // defined below; re-pins the inner neqOverride after restore
@@ -7146,7 +7127,7 @@ void numericGrad(double *theta, double *g){
     std::copy(theta, theta+op_focei.npars, armaTheta.begin());
     double h = 0;
     for (int cpar = (int)op_focei.npars; cpar--;) {
-      if (mixGrad(theta, g, cpar) == 1) {
+      if (mixGrad(g, cpar) == 1) {
         continue;
       } else {
         op_focei.calcGrad=1;
@@ -7191,7 +7172,7 @@ void numericGrad(double *theta, double *g){
       }
     }
     for (int cpar = (int)op_focei.npars; cpar--;) {
-      if (mixGrad(theta, g, cpar) == 1) {
+      if (mixGrad(g, cpar) == 1) {
         continue;
       } else {
         op_focei.gillRet[cpar] = gill83(&hf, &hphif, &op_focei.gillDf[cpar], &op_focei.gillDf2[cpar], &op_focei.gillErr[cpar],
@@ -7283,7 +7264,7 @@ void numericGrad(double *theta, double *g){
       haveF=true;
     }
     for (cpar = npars; cpar--;) {
-      if (mixGrad(theta, g, cpar) == 1) {
+      if (mixGrad(g, cpar) == 1) {
         continue;
       } else {
         if (doForward){
