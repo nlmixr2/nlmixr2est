@@ -2455,8 +2455,11 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
 #' There are two ways not to refine and they are NOT the same, so the result separates
 #' them.  `list(eta = ebes)` means the refinement does not apply -- IOV (`rescale`), whose
 #' EBEs are the Param A (unit occasion eta) values the caller rescales itself, so a Newton
-#' on the unscaled model would not solve the same problem; or a model with no `rx_r_`
-#' variance columns to build rho_R from.  `list(decline = TRUE)` means it was ATTEMPTED and
+#' against the caller's Param B `Omega` would not solve the same problem; or a model with no
+#' `rx_r_` variance columns to build rho_R from.  Neither case is silently exact: an IOV
+#' FOCEI covariance keeps the pre-refinement accuracy, which is a KNOWN remaining gap and
+#' wants the Newton run in the Param A basis to close.  `list(decline = TRUE)` means it
+#' was ATTEMPTED and
 #' failed -- the solve, the Newton, or the mode guard -- and the caller must fall back to
 #' the finite-difference covariance rather than assemble one at EBEs now known not to
 #' satisfy Phi_eta = 0.  That is what the FOCE sibling already does with its own failed
@@ -2710,15 +2713,28 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
 #' `getVarCov()` -- return the stored covariance instead of recomputing the
 #' augmented sensitivity solve every time.  A covariance that is not positive
 #' definite is still returned (the caller asked for the analytic pieces) but is
-#' NOT installed -- see the `$pd` gate.
+#' NOT installed -- see the `$pd` gate.  The warning that says so is repeated on
+#' the cached path: a second call hands back the same indefinite matrix, and
+#' saying it once would leave that one silent.
 #' @param fit a fitted nlmixr2 focei object
 #' @return list(cov, se, R, params, method, pd) or `NULL`
 #' @noRd
 foceiCovAnalytic <- function(fit) {
   .env <- fit
   if (rxode2::rxIs(fit, "nlmixr2FitData")) .env <- fit$env
+  # PD guard, as in .foceiInstallAnalyticCov and .covInstallResult: an indefinite
+  # observed information inverts to negative variances and NaN SEs, so installing it
+  # would replace a usable covariance with an unusable one.
+  .notPd <- function(.r) !is.null(.r) && is.matrix(.r$cov) && !isTRUE(.r$pd)
   if (exists(".covAnalytic", envir = .env, inherits = FALSE)) {
-    return(get(".covAnalytic", envir = .env))
+    .cached <- get(".covAnalytic", envir = .env)
+    # only warn here -- do NOT re-install, so a covariance the caller replaced since
+    # (setCov(), a refit) is left as they set it
+    if (.notPd(.cached)) {
+      warning("analytic covariance is not positive definite; fit$cov unchanged",
+              call. = FALSE)
+    }
+    return(.cached)
   }
   # Match the live covType="analytic" hook (.foceiCalcRanalytic), which wraps the whole assembly
   # in tryCatch and returns NULL on any error -> FD fallback.  A direct foceiCovAnalytic()/
@@ -2726,17 +2742,12 @@ foceiCovAnalytic <- function(fit) {
   # near-zero-prediction branch can hit an NA), never throw.
   .ret <- tryCatch(.foceiCovAnalyticCalc(fit), error = .foceiAnalyticErrWarn(2L))
   assign(".covAnalytic", .ret, envir = .env)   # cache (incl. NULL) -- do not recompute
-  if (!is.null(.ret) && is.matrix(.ret$cov)) {
-    # PD guard, as in .foceiInstallAnalyticCov and .covInstallResult: an indefinite
-    # observed information inverts to negative variances and NaN SEs, so installing it
-    # would replace a usable covariance with an unusable one.
-    if (isTRUE(.ret$pd)) {
-      .env$cov <- .ret$cov                      # install so getVarCov()/$cov reuse it
-      .env$covMethod <- "analytic"              # report the analytic observed information
-    } else {
-      warning("analytic covariance is not positive definite; fit$cov unchanged",
-              call. = FALSE)
-    }
+  if (.notPd(.ret)) {
+    warning("analytic covariance is not positive definite; fit$cov unchanged",
+            call. = FALSE)
+  } else if (!is.null(.ret) && is.matrix(.ret$cov)) {
+    .env$cov <- .ret$cov                        # install so getVarCov()/$cov reuse it
+    .env$covMethod <- "analytic"                # report the analytic observed information
   }
   .ret
 }

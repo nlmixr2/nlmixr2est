@@ -135,6 +135,38 @@ nmTest({
     expect_identical(fit$covMethod, .m0)
   })
 
+  # The decline gate is the branch nothing else reaches: a refinement that will not solve
+  # must drop to the finite-difference covariance rather than assemble the observed
+  # information at EBEs now known not to satisfy Phi_eta = 0.  Every successful fit takes
+  # the other branch, so drive .foceiAnalyticEbeRefine directly.
+  test_that("a FOCEI EBE refinement that fails declines rather than using stale EBEs", {
+    .ebes <- matrix(c(0.1, -0.2, 0.3, -0.4), nrow = 2L)      # 2 subjects x 2 etas
+    .om <- diag(c(0.25, 0.09))                               # SDs 0.5 and 0.3
+    .oi <- solve(.om)
+    .args <- list(th = NULL, ebes = .ebes, idCode = 1:2, data = NULL, obsAll = NULL,
+                  obsT = NULL, etav = c("ETA_1_", "ETA_2_"), Oi = .oi, neta = 2L,
+                  Om = .om, solveTol = 1e-10)
+    .call <- function(am, ...) do.call(.foceiAnalyticEbeRefine, c(list(am = am), .args, list(...)))
+    # does not apply -> keep the stored EBEs, never decline
+    expect_equal(.call(list(hasRvar = FALSE))$eta, .ebes)
+    expect_null(.call(list(hasRvar = FALSE))$decline)
+    expect_equal(.call(list(hasRvar = TRUE), rescale = TRUE)$eta, .ebes)   # IOV opts out
+    expect_null(.call(list(hasRvar = TRUE), rescale = TRUE)$decline)
+    # attempted and failed -> decline (an `am` with no model makes the batch error out)
+    expect_true(isTRUE(.call(list(hasRvar = TRUE))$decline))
+    expect_null(.call(list(hasRvar = TRUE))$eta)
+    # a batch that returns a mode more than one omega SD away is a different mode, not a
+    # refinement, so it declines too -- while a move inside 1 SD is accepted
+    local_mocked_bindings(.foceiAnalyticFoceEbeBatch = function(...) .ebes + 0.6)
+    expect_true(isTRUE(.call(list(hasRvar = TRUE))$decline))
+    local_mocked_bindings(.foceiAnalyticFoceEbeBatch = function(...) .ebes + 0.2)
+    expect_equal(.call(list(hasRvar = TRUE))$eta, .ebes + 0.2)
+    # a non-finite Newton result declines rather than propagating NaN etas
+    local_mocked_bindings(.foceiAnalyticFoceEbeBatch = function(...) {
+      .m <- .ebes; .m[1L, 1L] <- NaN; .m })
+    expect_true(isTRUE(.call(list(hasRvar = TRUE))$decline))
+  })
+
   test_that("single random-effect model is handled analytically (no sapply collapse)", {
     skip_on_cran()
     skip_if_not_installed("nlmixr2data")
