@@ -1115,6 +1115,22 @@ nmTest({
     expect_equal(eigen(Ran, symmetric = TRUE, only.values = TRUE)$values,
                  eigen(H, symmetric = TRUE, only.values = TRUE)$values,
                  tolerance = 1e-3)
+
+    # The refinement Newton's scale-free exit.  |Phi_eta| is NOT scale-free -- every score
+    # term carries a 1/R -- so a model with a small residual variance floors above any fixed
+    # `conv` for an equally converged eta (a DDE fit at add.sd = 0.05 stalls at 5e-9, which
+    # an absolute test read as "did not converge" and threw a solved subject away).  conv = 0
+    # makes the score test unpassable, so the loop can only exit on the STEP test; without
+    # etaSd there is no step test and the same call must run out of iterations.  This is what
+    # keeps that exit honest -- every other model here has add.sd = 0.7 and leaves on `conv`.
+    .eb <- .foceiAnalyticFoceEbeBatch(am, thBase, eta0m, idCode, fit$dataSav, obsL, obsT, etav,
+                                      solve(Om0), neta, 1e-10, interaction = 1L, skip = 1e-12,
+                                      conv = 0, etaSd = sqrt(diag(Om0)))
+    expect_true(is.matrix(.eb))                             # exited on the step
+    expect_lt(max(abs(.eb - eta0m)), max(sqrt(diag(Om0))))  # and stayed on this mode
+    expect_null(.foceiAnalyticFoceEbeBatch(am, thBase, eta0m, idCode, fit$dataSav, obsL, obsT, etav,
+                                           solve(Om0), neta, 1e-10, interaction = 1L, skip = 1e-12,
+                                           conv = 0, etaSd = NULL))
   })
 
   test_that("FOCE (interaction=FALSE) combined analytic cov matches the corrected-FOCE gold FD", {
