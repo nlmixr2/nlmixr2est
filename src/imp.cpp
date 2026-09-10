@@ -614,6 +614,12 @@ static bool impEtaDistMstep(const std::vector<arma::mat>& sampS,
   Rcpp::NumericVector rho  = info["rho"];
   Rcpp::List thIdx         = info["thetaIdx"];
   Rcpp::Function mapFn     = Rcpp::as<Rcpp::Function>(info["map"]);
+  // 1 where this M-step owns the declaration's family, 0 where it stands down
+  // for that one alone.  Absent on metadata from an older R side, in which
+  // case every declaration is usable and this behaves exactly as before.
+  Rcpp::IntegerVector usable = info.containsElementNamed("usable") &&
+    !Rf_isNull(info["usable"]) ? Rcpp::IntegerVector(info["usable"]) :
+    Rcpp::IntegerVector(0);
   // The argument expressions, when the R side supplied them (see
   // .etaDistMstepInfoFocei); absent on an older control, in which case the
   // closure above is the only route and this M-step behaves exactly as before.
@@ -666,6 +672,12 @@ static bool impEtaDistMstep(const std::vector<arma::mat>& sampS,
   if (wt.size() < 2) return false;
   bool moved = false;
   for (int k = 0; k < nd; ++k) {
+    // Per DECLARATION.  A covariate on ONE declaration's argument stands only
+    // that one down: there is no single population value to fit it at.  The
+    // copula loop below is deliberately NOT gated on this -- the correlation
+    // is a property of the raw latent block, which a covariate on a family
+    // argument does not touch.
+    if (usable.size() == nd && usable[k] == 0) continue;
     int f = fam[k];
     int na = rxEtaDistNarg(f);
     if (na <= 0 || na > args.ncol()) continue;

@@ -546,6 +546,11 @@
   ## disables the C++ step and leaves the R fallback.
   etaDistOn <- 0L
   etaDistLatent <- etaDistFam <- etaDistCorWith <- integer(0)
+  ## 1 where this M-step owns the declaration's family, 0 where it must stand
+  ## down for that declaration alone (a covariate on an argument, or a family
+  ## the C++ dispatch does not implement).  Empty means "all usable", so an
+  ## older metadata list behaves exactly as before.
+  etaDistUsable <- integer(0)
   etaDistArgs <- matrix(0, 0, 0); etaDistRho <- numeric(0)
   etaDistThetaPhi0 <- matrix(-1L, 0, 0); etaDistNth <- integer(0)
   ## aligned with the declared families; empty when there are none
@@ -588,6 +593,8 @@
       etaDistLatent  <- as.integer(etaDistInfo$latent)
       etaDistFam     <- as.integer(etaDistInfo$fam)
       etaDistCorWith <- as.integer(etaDistInfo$corWith)
+      etaDistUsable  <- if (is.null(etaDistInfo$usable)) rep(1L, .nd)
+                        else as.integer(etaDistInfo$usable)
       etaDistArgs    <- as.matrix(etaDistInfo$args)
       etaDistRho     <- as.numeric(etaDistInfo$rho)
       etaDistThetaPhi0 <- .tp
@@ -967,6 +974,7 @@
     etaDistLatent = etaDistLatent,
     etaDistFam = etaDistFam,
     etaDistCorWith = etaDistCorWith,
+    etaDistUsable = etaDistUsable,
     etaDistArgs = etaDistArgs,
     etaDistRho = etaDistRho,
     etaDistThetaPhi0 = etaDistThetaPhi0,

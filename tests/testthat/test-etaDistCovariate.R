@@ -1,0 +1,153 @@
+# Phase 3.2: a covariate on a declaration argument used to disable the
+# declared-distribution M-step for the WHOLE model.
+#
+# The refusal was implicit and total.  .etaDistMstepCore() evaluates each
+# declaration's arguments in an environment holding only the thetas, so an
+# argument reading a covariate column evaluated to NA, and
+# `if (any(vapply(.args, anyNA, logical(1)))) return(NULL)` then returned no
+# metadata at all.  A model with one covariate-carrying declaration and three
+# plain ones lost the M-step on all four -- and silently, because NULL metadata
+# downstream is indistinguishable from "this model has no declaration".
+#
+# The classification is now per declaration, so the plain ones are still fitted
+# and only the covariate-carrying one stands down.  Its thetas then have to stay
+# in the OUTER optimizer: a theta held out with nothing left to update it sits
+# at its ini() value for the whole fit and is reported as an estimate.
+
+.edcModel <- function(clRate, v1Decl) {
+  ## Declare ONLY the thetas the two declarations actually reference: rxode2
+  ## rejects a model with an ini() parameter the model block never uses, and
+  ## these fixtures deliberately vary which thetas appear (the shared-theta case
+  ## drops lv1rv, the no-covariate case drops bWT).
+  .opt <- c("lclm", "lv1m", "lclrv", "lv1rv", "bWT")
+  .txt <- paste(clRate, v1Decl)
+  .use <- .opt[vapply(.opt, function(.z) grepl(.z, .txt, fixed = TRUE), logical(1))]
+  .val <- c(lclm = "1.5", lv1m = "1.5", lclrv = "-1", lv1rv = "-1", bWT = "0.1")
+  .ini <- paste0("      ", .use, " <- ", .val[.use], collapse = "\n")
+  eval(parse(text = paste0("function() {
+    ini({
+      lka <- 0.5
+", .ini, "
+      eta.cl + eta.v ~ c(1, 0.3, 1)
+      dist(eta.cl) ~ dgamma(shape = 1/exp(lclrv), rate = ", clRate, ")
+      ", v1Decl, "
+      eta.ka ~ 0.1
+      prop.sd <- 0.3
+    })
+    model({
+      ka <- exp(lka + eta.ka); cl <- eta.cl; v <- eta.v
+      d/dt(depot) <- -ka*depot
+      d/dt(central) <- ka*depot - (cl/v)*central
+      cp <- central/v
+      cp ~ prop(prop.sd)
+    })
+  }")))
+}
+
+## the ui the M-step actually sees: expanded, carrying the declaration stash
+## that the expansion would otherwise destroy (same idiom as
+## test-etaDistThetaSens.R -- .etaDistMstepInfoFocei() needs the rxz.* latents
+## that only expansion creates, and the stash that only the hook preserves)
+.edcUi <- function(f) {
+  .ui <- rxode2::rxUiDecompress(nlmixr2est::nlmixr2(f))
+  .st <- nlmixr2est:::.etaDistDeclStash(.ui, rxode2::rxUiEtaDists(.ui))
+  .u2 <- rxode2::rxUiDecompress(rxode2::rxEtaDistExpand(.ui))
+  nlmixr2est:::.etaDistDeclSet(.u2, .st)
+  .u2
+}
+
+.edcCore <- function(f) nlmixr2est:::.etaDistMstepCore(.edcUi(f))
+.edcInfo <- function(f) nlmixr2est:::.etaDistMstepInfoFocei(.edcUi(f))
+
+.edcPlainCl <- "1/(exp(lclrv)*exp(lclm))"
+.edcCovCl   <- "1/(exp(lclrv)*exp(lclm + bWT*(WT - 70)))"
+.edcPlainV1 <- "dist(eta.v) ~ dgamma(shape = 1/exp(lv1rv), rate = 1/(exp(lv1rv)*exp(lv1m)))"
+.edcCovV1   <- "dist(eta.v) ~ dgamma(shape = 1/exp(lv1rv), rate = 1/(exp(lv1rv)*exp(lv1m + bWT*(WT - 70))))"
+
+test_that("no covariate: every declaration is usable (regression guard T1)", {
+  .c <- .edcCore(.edcModel(.edcPlainCl, .edcPlainV1))
+  expect_false(is.null(.c))
+  expect_identical(.c$hasCov, c(FALSE, FALSE))
+  expect_identical(.c$usable, c(TRUE, TRUE))
+})
+
+test_that("a covariate on ONE declaration leaves the OTHER fittable", {
+  .c <- .edcCore(.edcModel(.edcCovCl, .edcPlainV1))
+  # this is the whole point: metadata at all, where before it was NULL
+  expect_false(is.null(.c))
+  expect_identical(.c$hasCov, c(TRUE, FALSE))
+  expect_identical(.c$usable, c(FALSE, TRUE))
+})
+
+test_that("a covariate declaration's thetas stay in the outer optimizer", {
+  .i <- .edcInfo(.edcModel(.edcCovCl, .edcPlainV1))
+  skip_if(is.null(.i), "focei metadata unavailable on this model")
+  # cl's declaration carries the covariate, so the M-step does not own its
+  # thetas -- holding them out would freeze them at ini() with nothing to move
+  # them, which reports as an estimate and is exactly the silent failure here
+  expect_false("lclm" %in% .i$thetaNames)
+  expect_false("bWT" %in% .i$thetaNames)
+  # v1's declaration is plain, so the M-step does own those
+  expect_true("lv1m" %in% .i$thetaNames)
+  expect_true("lv1rv" %in% .i$thetaNames)
+  expect_identical(as.integer(.i$usable), c(0L, 1L))
+})
+
+test_that("a theta SHARED with a covariate declaration is not held out", {
+  # both declarations read lclrv; only v1's is fittable.  Holding lclrv out for
+  # v1's sake would freeze it for cl's covariate declaration too.
+  .shared <- "dist(eta.v) ~ dgamma(shape = 1/exp(lclrv), rate = 1/(exp(lclrv)*exp(lv1m)))"
+  .i <- .edcInfo(.edcModel(.edcCovCl, .shared))
+  skip_if(is.null(.i), "focei metadata unavailable on this model")
+  expect_false("lclrv" %in% .i$thetaNames)
+  expect_true("lv1m" %in% .i$thetaNames)
+})
+
+test_that("the map closure declines LOUDLY for a declaration it does not own", {
+  .i <- .edcInfo(.edcModel(.edcCovCl, .edcPlainV1))
+  skip_if(is.null(.i), "focei metadata unavailable on this model")
+  # there is no single population `a` to invert when an argument varies by
+  # subject, so a best-effort answer would be a wrong number, not a missing one
+  expect_null(.i$map(1L, c(1, 1)))
+  expect_false(is.null(.i$map(2L, as.numeric(.i$args[2, seq_len(2)]))))
+})
+
+test_that("ALL declarations covariate-carrying still stands the M-step down", {
+  .c <- .edcCore(.edcModel(.edcCovCl, .edcCovV1))
+  expect_null(.c)
+})
+
+test_that("the warm start NAMES the covariate instead of refusing silently", {
+  .ui <- rxode2::rxUiDecompress(nlmixr2est::nlmixr2(.edcModel(.edcCovCl, .edcPlainV1)))
+  expect_warning(.s <- nlmixr2est:::.etaDistSurrogate(.ui), "WT")
+  expect_null(.s)
+})
+
+test_that("covRef lets the warm start proceed", {
+  .ui <- rxode2::rxUiDecompress(nlmixr2est::nlmixr2(.edcModel(.edcCovCl, .edcPlainV1)))
+  expect_silent(.s <- nlmixr2est:::.etaDistSurrogate(.ui, covRef = list(WT = 70)))
+  expect_false(is.null(.s))
+})
+
+test_that("covRef evaluates the moments AT the reference", {
+  # at WT = 70 the covariate term vanishes, so the moments must equal the
+  # plain declaration's -- a reference that was ignored would not
+  .cov <- "dgamma(shape = 1/exp(lclrv), rate = 1/(exp(lclrv)*exp(lclm + bWT*(WT - 70))))"
+  .plain <- "dgamma(shape = 1/exp(lclrv), rate = 1/(exp(lclrv)*exp(lclm)))"
+  .tv <- list(lclrv = -2.0, lclm = 1.5, bWT = 0.1)
+  .a <- nlmixr2est:::.etaDistMoments(.cov, .tv, covRef = list(WT = 70))
+  .b <- nlmixr2est:::.etaDistMoments(.plain, .tv)
+  expect_equal(.a[["mean"]], .b[["mean"]], tolerance = 1e-10)
+  expect_equal(.a[["var"]], .b[["var"]], tolerance = 1e-10)
+  # and a DIFFERENT reference must move it, or the argument is being dropped
+  .c <- nlmixr2est:::.etaDistMoments(.cov, .tv, covRef = list(WT = 90))
+  expect_false(isTRUE(all.equal(.a[["mean"]], .c[["mean"]])))
+})
+
+test_that("a theta is not shadowed by a covariate of the same name", {
+  .tv <- list(lclrv = -2.0, lclm = 1.5)
+  .plain <- "dgamma(shape = 1/exp(lclrv), rate = 1/(exp(lclrv)*exp(lclm)))"
+  .a <- nlmixr2est:::.etaDistMoments(.plain, .tv)
+  .b <- nlmixr2est:::.etaDistMoments(.plain, .tv, covRef = list(lclm = 99))
+  expect_equal(.a[["mean"]], .b[["mean"]], tolerance = 1e-12)
+})

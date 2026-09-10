@@ -38,12 +38,22 @@
 #' the base-R `q*()` sibling, so `E[eta]` and `Var[eta]` follow from
 #' `eta = Q(pnorm(z))` integrated against the standard normal.
 #' @noRd
-.etaDistMoments <- function(distCall, thetaVals, gh = .etaDistGh()) {
+.etaDistMoments <- function(distCall, thetaVals, gh = .etaDistGh(),
+                            covRef = NULL) {
   .cl <- if (is.character(distCall)) str2lang(distCall) else distCall
   .qn <- sub("^d", "q", as.character(.cl[[1]]))
   if (!exists(.qn, mode = "function")) return(NULL)
+  ## `covRef` supplies a population REFERENCE value for any covariate an
+  ## argument reads, so a declaration such as
+  ##   rate = 1/(exp(lclrv)*exp(lclm + bWT*(WT-70)))
+  ## still has population moments to warm-start from -- evaluated at the
+  ## reference, with the slope wherever ini() put it (0 is the usual seed).
+  ## Thetas win on a name clash: a covariate shadowing a theta would silently
+  ## change which quantity the moments describe.
+  .env <- c(as.list(covRef), as.list(thetaVals))
+  .env <- .env[!duplicated(names(.env), fromLast = TRUE)]
   .args <- lapply(as.list(.cl)[-1], function(.a) {
-    tryCatch(eval(.a, envir = as.list(thetaVals)), error = function(e) NA_real_)
+    tryCatch(eval(.a, envir = .env), error = function(e) NA_real_)
   })
   if (any(!vapply(.args, function(.a) is.numeric(.a) && length(.a) == 1L &&
                     is.finite(.a), logical(1)))) return(NULL)
@@ -135,7 +145,7 @@
 #' declaration used as `p <- exp(theta + eta)` already has a normal surrogate --
 #' just drop the declaration -- and is returned unchanged.
 #' @noRd
-.etaDistSurrogate <- function(ui, gh = .etaDistGh()) {
+.etaDistSurrogate <- function(ui, gh = .etaDistGh(), covRef = NULL) {
   .ui <- rxode2::rxUiDecompress(ui)
   .d <- rxode2::rxUiEtaDists(.ui)
   if (nrow(.d) == 0L) return(NULL)
@@ -152,9 +162,30 @@
   .iniTxt <- deparse(.ui$iniFun, width.cutoff = 500L)
   .modTxt <- deparse(.ui$modelFun, width.cutoff = 500L)
   .seed <- list()
+  ## A covariate on a declaration argument, with no reference value to evaluate
+  ## it at, is the one refusal here that is NOT a broken model -- so say so.
+  ##
+  ## This surrogate is all-or-nothing by construction: it rewrites every
+  ## declaration into a log-normal and a declaration left un-rewritten would
+  ## leave a dist() standing in a model that is supposed to have none.  So a
+  ## covariate it cannot evaluate still stands the whole warm start down -- but
+  ## NAMING it, rather than returning NULL, which is indistinguishable from
+  ## "there was nothing to do" and is how this area has hidden bugs before.
+  ## Supply `covRef` and the warm start proceeds.
+  .covNeed <- setdiff(unlist(lapply(.d$etaDist, function(.z) all.vars(str2lang(.z)))),
+                      c(.thNames, names(covRef)))
+  if (length(.covNeed) > 0L) {
+    warning("declared-distribution warm start skipped: ",
+            paste0("dist(", .d$name, ")", collapse = ", "),
+            " reads ", paste(.covNeed, collapse = ", "),
+            ", which is not a model parameter; pass covRef= with a reference ",
+            "value for it to warm start anyway, or set etaDistWarmStart=FALSE ",
+            "to silence this", call. = FALSE)
+    return(NULL)
+  }
   for (.i in seq_len(nrow(.d))) {
     .e <- .d$name[.i]
-    .mv <- .etaDistMoments(.d$etaDist[.i], .thVals, gh)
+    .mv <- .etaDistMoments(.d$etaDist[.i], .thVals, gh, covRef)
     if (is.null(.mv) || !is.finite(.mv[["mean"]]) ||
           !is.finite(.mv[["var"]]) || .mv[["mean"]] <= 0) return(NULL)
     ## Seed the log-normal from the declared family's LOG-scale moments, which

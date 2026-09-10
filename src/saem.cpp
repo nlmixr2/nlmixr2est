@@ -3612,6 +3612,11 @@ public:
       etaDistLatent  = as<ivec>(x["etaDistLatent"]);
       etaDistFam     = as<ivec>(x["etaDistFam"]);
       etaDistCorWith = as<ivec>(x["etaDistCorWith"]);
+      if (x.containsElementNamed("etaDistUsable")) {
+        etaDistUsable = as<ivec>(x["etaDistUsable"]);
+      } else {
+        etaDistUsable = ivec();
+      }
       etaDistArgs    = as<mat>(x["etaDistArgs"]);
       etaDistRho     = as<vec>(x["etaDistRho"]);
       etaDistThetaPhi0 = as<imat>(x["etaDistThetaPhi0"]);
@@ -6653,6 +6658,11 @@ private:
   int etaDistNdist = 0;          // number of declared random effects
   ivec etaDistLatent;            // phi column of each one's OWN latent normal
   ivec etaDistFam;               // family code (rxEtaDistQ/rxEtaDistLogD)
+  // 1 where this M-step owns the declaration's family; 0 where it stands down
+  // for that declaration alone -- an argument that varies by subject has no
+  // single population value to fit.  Empty means every declaration is usable,
+  // so metadata from an older R side behaves as it always did.
+  ivec etaDistUsable;
   ivec etaDistCorWith;           // declared eta it is copula-correlated with, or -1
   mat etaDistArgs;               // current NATIVE parameters, ndist x maxNarg
   vec etaDistRho;                // current copula correlation per declared eta
@@ -7128,6 +7138,14 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
     }
     // each declared family: latent -> eta via the CURRENT parameters, then MLE
     for (int k = 0; etaDistOn && !famOff && k < etaDistNdist; ++k) {
+      // Per DECLARATION.  famOff above is the whole-model form of this; a
+      // covariate on ONE declaration's argument stands only that one down and
+      // leaves the others to be fitted normally.  The copula loop below is
+      // deliberately not gated on it -- the correlation is a property of the
+      // raw latent block, which a covariate on a family argument does not
+      // touch, so it stays a closed form either way.
+      if (etaDistUsable.n_elem == (unsigned int)etaDistNdist &&
+          etaDistUsable(k) == 0) continue;
       int fam = etaDistFam(k);
       int na = rxEtaDistNarg(fam);
       if (na <= 0) continue;

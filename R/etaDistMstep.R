@@ -699,6 +699,7 @@
            character(1))
   })
   list(latent = .lat, fam = .c$fam, corWith = .c$corWith,
+       usable = as.integer(.c$usable),
        exprs = .exprs, exprThetas = .c$thetas,
        args = .c$args, rho = .c$rho,
        dist = .c$dist, thetas = .c$thetas, thetaPhi = .tp,
@@ -769,9 +770,16 @@
   .thVals <- stats::setNames(as.list(.ini$est[!is.na(.ini$ntheta)]), .thNames)
   .fam <- integer(.n); .maxA <- 0L
   .args <- vector("list", .n); .tn <- vector("list", .n)
+  .hasCov <- logical(.n)
   for (.i in seq_len(.n)) {
     .fam[.i] <- .etaDistFamilyCode(.st$etaDist[.i])
     .cl <- str2lang(.st$etaDist[.i])
+    ## A name in a declaration argument that is not a theta is DATA -- a
+    ## covariate column.  That is the only thing separating "has no single
+    ## population value to fit" from "evaluates to nonsense", and the two want
+    ## opposite handling: the first is a supported model whose family MLE has
+    ## to stand down for THIS declaration, the second is a broken declaration.
+    .hasCov[.i] <- length(setdiff(all.vars(.cl), .thNames)) > 0L
     .a <- vapply(as.list(.cl)[-1], function(.x) {
       .v <- tryCatch(eval(.x, envir = .thVals), error = function(e) NA_real_)
       if (!is.numeric(.v) || length(.v) != 1L) NA_real_ else as.numeric(.v)
@@ -780,8 +788,12 @@
     .maxA <- max(.maxA, length(.a))
     .tn[[.i]] <- intersect(all.vars(.cl), .thNames)
   }
-  if (any(.fam <= 0)) return(NULL)               # -> R fallback
-  if (any(vapply(.args, anyNA, logical(1)))) return(NULL)
+  ## Per DECLARATION, not per model.  This used to be `if (any(...)) return(NULL)`
+  ## three times over, so one covariate-carrying or unimplemented declaration
+  ## disabled the M-step for every OTHER declaration in the model too -- and
+  ## silently, since a NULL here just means "no metadata" downstream.
+  .usable <- .fam > 0L & !.hasCov & !vapply(.args, anyNA, logical(1))
+  if (!any(.usable)) return(NULL)
   ## Current copula correlation.  Read from the rxCor.* theta the expansion
   ## created, not from the declaration's ini() value: that theta is what the
   ## model actually uses, and it moves during the fit.  It carries atanh(rho)
@@ -809,6 +821,7 @@
   for (.i in seq_len(.n)) .am[.i, seq_along(.args[[.i]])] <- .args[[.i]]
   list(n = .n, fam = .fam, corWith = .cw, args = .am, rho = .rho,
        corTheta = .corTheta, dist = .st$etaDist, thetas = .tn,
+       hasCov = .hasCov, usable = .usable,
        etas = .st$name, iniDf = .ini)
 }
 
@@ -861,6 +874,11 @@
   })
   .map <- function(k, args) {
     .k <- as.integer(k)
+    ## Decline LOUDLY for a declaration this M-step does not own.  There is no
+    ## single population `a` to invert when an argument varies by subject, so a
+    ## quiet best-effort answer here would be a wrong number rather than a
+    ## missing one.
+    if (!isTRUE(.c$usable[.k])) return(NULL)
     .st <- .env$cur[[.k]]
     if (is.null(.st) || anyNA(.st)) return(NULL)
     .s <- .etaDistArgsToThetas(.c$dist[.k], .c$thetas[[.k]], .st, as.numeric(args))
@@ -880,13 +898,22 @@
     vapply(as.list(.cl)[-1], function(.e) paste(deparse(.e), collapse = ""),
            character(1))
   })
+  ## The thetas this M-step OWNS, so the caller can drop them from the Newton
+  ## step's sensitivity list / the outer free-parameter vector.
+  ##
+  ## Only the usable declarations' thetas.  A theta held out here with nothing
+  ## to update it stays at its ini() value for the whole fit and reports as an
+  ## estimate -- so a theta that ANY unusable declaration also reads has to
+  ## stay in the outer optimizer, even if a usable declaration reads it too.
+  ## Sharing is why this is a setdiff and not just `.c$thetas[.c$usable]`.
+  .own <- unique(unlist(.c$thetas[.c$usable]))
+  .foreign <- unique(unlist(.c$thetas[!.c$usable]))
   list(latent = .lat, fam = as.integer(.c$fam), corWith = as.integer(.c$corWith),
        args = .c$args, rho = as.numeric(.c$rho),
+       usable = as.integer(.c$usable),
        exprs = .exprs, exprThetas = .c$thetas,
        thetaIdx = .ti, corThetaIdx = .cti, map = .map,
-       ## the thetas this M-step owns, so the caller can drop them from the
-       ## Newton step's sensitivity list / the outer free-parameter vector
-       thetaNames = unique(c(unlist(.c$thetas), .c$corTheta[.ck])))
+       thetaNames = unique(c(setdiff(.own, .foreign), .c$corTheta[.ck])))
 }
 
 #' Wire the declared-distribution M-step into a FOCEi-family control
