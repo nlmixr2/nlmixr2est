@@ -5785,6 +5785,48 @@ static double foceiLik0Mix() {
   return lik;
 }
 
+// log( sum_m pi_m exp(ll[m]) ) -- the mixture marginal in log space, with the
+// usual max-shift so a component whose likelihood underflows does not take the
+// sum with it.  pi is op_focei.mixProb (the population proportions).  Returns
+// NA_REAL when no component has a finite contribution.  Shared with npMixLogSumExp().
+static double foceiMixLogSumExp(const double *ll, int nMix) {
+  if (nMix <= 1) return (nMix == 1) ? ll[0] : NA_REAL;
+  double mx = R_NegInf;
+  for (int m = 0; m < nMix; ++m) {
+    if (!R_FINITE(ll[m])) continue;
+    double lp = ll[m] + std::log(std::max(1e-300, op_focei.mixProb[m]));
+    if (lp > mx) mx = lp;
+  }
+  if (!R_FINITE(mx)) return NA_REAL;
+  double se = 0.0;
+  for (int m = 0; m < nMix; ++m) {
+    if (!R_FINITE(ll[m])) continue;
+    se += std::exp(ll[m] + std::log(std::max(1e-300, op_focei.mixProb[m])) - mx);
+  }
+  return mx + std::log(se);
+}
+
+// One physical subject's MARGINAL contribution to the objective (-2*log-lik),
+// combined from the per-component values innerOpt1() leaves in lik[slot].  The
+// pseudo-subject layout is component-major (id = m*nsub + i).
+//
+// The slots do NOT share a scale: LikInner2() writes lik[0] as the raw
+// log-likelihood and lik[1]/lik[2] as -2*log-likelihood, so slot 0 is used as
+// is and the difference legs are halved back before combining.  Without this
+// the per-subject score foceiS() differences is component 0's alone, which is
+// how the S matrix came out singular for every mixture model (a parameter that
+// only enters component 2 gets an exactly-zero score).
+static double foceiMixObjSlot(int gid, int slot) {
+  int nsub = (int)getRxNsub(rx), nMix = (int)op_focei.mixIdxN + 1;
+  std::vector<double> ll((size_t)nMix);
+  for (int m = 0; m < nMix; ++m) {
+    double l = inds_focei[gid + m*nsub].lik[slot];
+    ll[(size_t)m] = (slot == 0) ? l : -0.5*l;
+  }
+  double lse = foceiMixLogSumExp(ll.data(), nMix);
+  return R_FINITE(lse) ? -2.0*lse : NA_REAL;
+}
+
 static inline double foceiLik0(double *theta) {
   updateTheta(theta);
   innerOpt();
@@ -10617,6 +10659,43 @@ int foceiCalcR(Environment e){
 }
 
 
+// Re-run the inner problem at the CURRENT theta for every pseudo-subject,
+// writing lik[slot].  Mirrors innerOpt()'s mixture arrangement exactly:
+// components SERIAL on the outside, physical subjects parallel inside, because
+// components share the physical subjects' solving structures and must never be
+// solved concurrently.
+//
+// res[i] is 1 only when EVERY component of physical subject i converged -- the
+// subject's marginal needs all of them, so one failed component invalidates the
+// whole contribution.
+static void foceiSInnerAll(int slot, std::vector<int> &res) {
+  rx = getRxSolve_();
+  int nsub = (int)getRxNsub(rx);
+  int nMix = (int)op_focei.mixIdxN + 1;
+  rx_solving_options *op = getSolvingOptions(rx);
+  int cores = getOpCores(op);
+  bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
+  res.assign((size_t)nsub, 1);
+  std::vector<int> ok((size_t)nsub, 0);
+  for (int m = 0; m < nMix; ++m) {
+    std::fill(ok.begin(), ok.end(), 0);
+    if (doParallel) sortIds(rx, 2);
+    _innerParallel.store(1, std::memory_order_release);
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
+#endif
+    for (int i = 0; i < nsub; i++) {
+      int gid = doParallel ? (getOrdId(rx, i) - 1) : i;
+      setRxThreadId(omp_get_thread_num());
+      ok[(size_t)gid] = innerOpt1(gid + m*nsub, slot);
+      setRxThreadId(-1);
+    }
+    _innerParallel.store(0, std::memory_order_release);
+    if (doParallel) sortIds(rx, 0);
+    for (int i = 0; i < nsub; ++i) if (!ok[(size_t)i]) res[(size_t)i] = 0;
+  }
+}
+
 // Necessary for S-matrix calculation
 int foceiS(double *theta, Environment e, bool &hasZero){
   int npars = op_focei.npars;
@@ -10643,10 +10722,15 @@ int foceiS(double *theta, Environment e, bool &hasZero){
       }
     }
     if (doForward){
-      // Fill in lik0
+      // Fill in lik0.  For a mixture the subject's contribution is the MARGINAL
+      // over components, not component 0's -- see foceiMixObjSlot().
       for (gid = getRxNsub(rx); gid--;){
-        fInd = &(inds_focei[gid]);
-        op_focei.likSav[gid] = -2*fInd->lik[0];
+        if (op_focei.mixIdxN != 0) {
+          op_focei.likSav[gid] = foceiMixObjSlot(gid, 0);
+        } else {
+          fInd = &(inds_focei[gid]);
+          op_focei.likSav[gid] = -2*fInd->lik[0];
+        }
       }
     }
   }
@@ -10654,8 +10738,51 @@ int foceiS(double *theta, Environment e, bool &hasZero){
   if (op_focei.needOptimHess) {
     smatNorm = op_focei.smatNormLlik;
   }
+  // Per-subject responsibilities r_im and the population proportions pi_m at the
+  // BASE theta, for the analytic mixture-proportion score below.  Recomputed
+  // here from the per-component lik[0] rather than read from fInd->mixProb when
+  // it is needed: the loop below perturbs theta, and neither innerOpt1() nor
+  // updateTheta() refreshes the responsibilities, so a later read would be at
+  // the wrong point.  Same base-theta assumption likSav above already makes.
+  int nMixS = (int)op_focei.mixIdxN + 1;
+  std::vector<double> mixR, mixP;
+  if (op_focei.mixIdxN != 0) {
+    int _nsub = (int)getRxNsub(rx);
+    mixP.assign((size_t)nMixS, 0.0);
+    for (int m = 0; m < nMixS; ++m) mixP[(size_t)m] = op_focei.mixProb[m];
+    mixR.assign((size_t)_nsub*(size_t)nMixS, NA_REAL);
+    std::vector<double> ll((size_t)nMixS);
+    for (int i = 0; i < _nsub; ++i) {
+      for (int m = 0; m < nMixS; ++m) ll[(size_t)m] = inds_focei[i + m*_nsub].lik[0];
+      double lse = foceiMixLogSumExp(ll.data(), nMixS);
+      if (!R_FINITE(lse)) continue;
+      for (int m = 0; m < nMixS; ++m) {
+        if (!R_FINITE(ll[(size_t)m])) { mixR[(size_t)i*nMixS + m] = 0.0; continue; }
+        mixR[(size_t)i*nMixS + m] =
+          std::exp(ll[(size_t)m] + std::log(std::max(1e-300, mixP[(size_t)m])) - lse);
+      }
+    }
+  }
   double sInfoPer = npars * getRxNsub(rx);
   for (cpar = npars; cpar--;){
+    // A mixture proportion's per-subject score is known in closed form -- NONMEM
+    // (1.194) chained by (1.197) for ONE subject, the same expression mixGrad()
+    // sums over subjects.  Exact, and it costs no solves, so skip the finite
+    // difference entirely for these parameters.
+    if (op_focei.mixIdxN != 0 && op_focei.mixTrans != NULL &&
+        op_focei.mixTrans[cpar] != -1) {
+      int mi = op_focei.mixTrans[cpar];
+      double sc = dUnscaleParDx(cpar);
+      for (int _gid = 0; _gid < (int)getRxNsub(rx); ++_gid) {
+        double r = mixR[(size_t)_gid*nMixS + mi];
+        double g = R_FINITE(r) ? -2.0*(r - mixP[(size_t)mi])*sc : 0.0;
+        inds_focei[_gid].thetaGrad[cpar] = R_FINITE(g) ? g : 0.0;
+      }
+      op_focei.cur++;
+      op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick,
+                                      1, op_focei.t0, 0);
+      continue;
+    }
     double rEps = op_focei.rEps[cpar];
     double rEpsC = op_focei.rEpsC[cpar];
     if (smatNorm){
@@ -10675,7 +10802,32 @@ int foceiS(double *theta, Environment e, bool &hasZero){
     cur = theta[cpar];
     theta[cpar] = cur + delta;
     updateTheta(theta);
-    {
+    if (op_focei.mixIdxN != 0) {
+      // Mixture: the subject's contribution is the marginal over components, so
+      // every component has to be re-optimized before any per-subject score
+      // exists.  Differencing component 0 alone (what this did before) gives an
+      // exactly-zero score for any parameter that only enters another
+      // component, which made S singular for every mixture model.
+      int _nsub = (int)getRxNsub(rx);
+      std::vector<int> _opt1Res;
+      foceiSInnerAll(2, _opt1Res);
+      for (int _gid = 0; _gid < _nsub; _gid++) {
+        focei_ind *fIndL = &(inds_focei[_gid]);
+        fIndL->thetaGrad[cpar] = NA_REAL;
+        double _o2 = _opt1Res[_gid] ? foceiMixObjSlot(_gid, 2) : NA_REAL;
+        if (doForward) {
+          if (R_FINITE(_o2) && R_FINITE(op_focei.likSav[_gid])) {
+            fIndL->thetaGrad[cpar] = (_o2 - op_focei.likSav[_gid]) / delta;
+          } else {
+            // no usable contribution for this subject/parameter: fall back to
+            // the pooled gradient, as the non-mixture serial retry does
+            hasZero = true;
+            sInfoPer -= 1.0;
+            fIndL->thetaGrad[cpar] = gfull[cpar];
+          }
+        }
+      }
+    } else {
       int _nsub = (int)getRxNsub(rx);
       rx_solving_options *_op = getSolvingOptions(rx);
       int _cores = getOpCores(_op);
@@ -10723,7 +10875,26 @@ int foceiS(double *theta, Environment e, bool &hasZero){
       theta[cpar] = cur - delta;
       updateTheta(theta);
       // Second inner loop: run innerOpt1(gid, 1) over subjects in parallel.
-      {
+      if (op_focei.mixIdxN != 0) {
+        int _nsub = (int)getRxNsub(rx);
+        std::vector<int> _res1;
+        foceiSInnerAll(1, _res1);
+        for (int _gid = 0; _gid < _nsub; _gid++) {
+          focei_ind *fIndL = &(inds_focei[_gid]);
+          if (!ISNA(fIndL->thetaGrad[cpar])) continue;
+          double _o1 = _res1[_gid] ? foceiMixObjSlot(_gid, 1) : NA_REAL;
+          double _o2 = foceiMixObjSlot(_gid, 2);
+          if (R_FINITE(_o1) && R_FINITE(_o2)) {
+            fIndL->thetaGrad[cpar] = (_o2 - _o1) / (2*delta);
+          } else {
+            // one leg is unusable; likSav is only filled on the doForward
+            // path, so a stale forward difference is not an option here
+            hasZero = true;
+            sInfoPer -= 1.0;
+            fIndL->thetaGrad[cpar] = gfull[cpar];
+          }
+        }
+      } else {
         int _nsub = (int)getRxNsub(rx);
         rx_solving_options *_op = getSolvingOptions(rx);
         int _cores = getOpCores(_op);
@@ -11524,19 +11695,19 @@ static bool foceiFdHessian(const FdFullCtx &c, const std::vector<double> &x0, do
 }
 
 // per-subject -2LL contributions after a foceiFdObjAt probe -- the quantity foceiS
-// differences (native: likSav[gid] = -2*fInd->lik[0]).  Returns false for mixture models
-// (op_focei.mixIdxN != 0: no per-subject contribution is stashed) or any non-finite subject
-// value (a failed inner solve leaves lik[0] = NA_REAL), so the caller keeps the native cov.
+// differences (native: likSav[gid] = -2*fInd->lik[0]).  For a mixture the contribution is
+// the MARGINAL over components (foceiMixObjSlot), not component 0's.  Returns false on any
+// non-finite subject value (a failed inner solve leaves lik[0] = NA_REAL), so the caller
+// keeps the native cov.
 static bool foceiFdLikById(arma::vec &out) {
-  if (op_focei.mixIdxN != 0) return false;
   rx = getRxSolve_();
   int nsub = getRxNsub(rx);
   if (nsub <= 0) return false;
   out.set_size(nsub);
   for (int gid = 0; gid < nsub; ++gid) {
-    double l = inds_focei[gid].lik[0];
+    double l = (op_focei.mixIdxN != 0) ? foceiMixObjSlot(gid, 0) : -2.0 * inds_focei[gid].lik[0];
     if (!R_FINITE(l)) return false;
-    out[gid] = -2.0 * l;
+    out[gid] = l;
   }
   return true;
 }
@@ -12562,6 +12733,17 @@ void impSetThetaAll(int idx, double val) {
   for (int id = 0; id < nsub; ++id) {
     rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
     setIndParPtr(ind, op_focei.thetaTrans[idx], val);
+  }
+  // A mixture proportion reaches the likelihood ONLY through op_focei.mixProb
+  // (the mlogit -> probability map), and nothing on this path refreshes it --
+  // updateTheta() is the outer route, which the MC covariance does not take.
+  // Without this the FD Hessian moves fullTheta while the proportions stay put,
+  // so every mixture direction comes back an exact zero.  Calls R, so it must
+  // stay outside any parallel region (evalObj's caller is serial).
+  if (op_focei.mixIdxN != 0 && op_focei.mixIdx != NULL) {
+    for (unsigned int m = 0; m < op_focei.mixIdxN; ++m) {
+      if (op_focei.mixIdx[m] - 1 == idx) { impUpdateMixProbs(); break; }
+    }
   }
 }
 
@@ -18869,19 +19051,15 @@ static int gFreezeNsub = 0, gFreezeNpoint = 0, gFreezeNmix = 1;
 
 // log( sum_m mixProb(m) * exp(ll[m]) ); ll[] are the per-component conditional
 // log-likelihoods for one subject.  Identity for a single component.
+double impMixLogSumExp(const std::vector<double>& ll) {
+  if (ll.empty()) return R_NegInf;
+  if (ll.size() == 1) return ll[0];
+  double r = foceiMixLogSumExp(ll.data(), (int)ll.size());
+  return R_FINITE(r) ? r : R_NegInf;
+}
+
 static double npMixLogSumExp(const std::vector<double>& ll) {
-  int nMix = (int)ll.size();
-  if (nMix <= 1) return ll.empty() ? R_NegInf : ll[0];
-  double mx = R_NegInf;
-  std::vector<double> lp(nMix);
-  for (int m = 0; m < nMix; ++m) {
-    lp[m] = ll[m] + std::log(std::max(1e-300, impMixProb(m)));
-    if (std::isfinite(lp[m]) && lp[m] > mx) mx = lp[m];
-  }
-  if (!std::isfinite(mx)) return R_NegInf;
-  double se = 0.0;
-  for (int m = 0; m < nMix; ++m) se += std::exp(lp[m] - mx);
-  return mx + std::log(se);
+  return impMixLogSumExp(ll);
 }
 
 static int npIndSolveSize(rx_solving_options* op, rx_solving_options_ind* ind) {

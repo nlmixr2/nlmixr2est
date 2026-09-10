@@ -3243,11 +3243,10 @@ rxUiGet.foceiSkipCov <- function(x, ...) {
     if (length(.uiIovEnv$iovVars) > 0) {
       .skipCov[which(.theta$name %in% .uiIovEnv$iovVars)] <- TRUE
     }
-    # Mixture probability parameters are estimated on the mlogit scale; their
-    # covariance cannot be meaningfully interpreted, so skip them.
-    if (length(.ui$mixProbs) > 0) {
-      .skipCov[which(.theta$name %in% .ui$mixProbs)] <- TRUE
-    }
+    # Mixture probability parameters ARE part of the covariance.  They are
+    # estimated on the mlogit scale, but the installed covariance is rotated to
+    # the probability scale with the full mexpit Jacobian (.mixCovToProbScale),
+    # so the reported SE sits on the same scale as the reported estimate.
     .skipCov
   }
 }
@@ -4367,6 +4366,9 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     }
     .foceiInstallAnalyticCov(.ret)
     .foceiInstallFdFullCov(.ret)
+    # both installers replace $cov with a matrix on the mlogit estimation scale;
+    # rotate the mixture block before .updateParFixed() derives SEs from it
+    .mixInstallProbScaleCov(.ret)
     .updateParFixed(.ret)
     if (!exists("table", .ret)) {
       .ret$table <- tableControl()

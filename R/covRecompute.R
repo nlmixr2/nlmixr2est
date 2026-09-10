@@ -135,6 +135,12 @@
 .covInstallResult <- function(env, r) {
   if (is.null(r) || is.null(r$cov) || !is.matrix(r$cov)) return(invisible(FALSE))
   .cov <- 0.5 * (r$cov + t(r$cov))                         # exact symmetry
+  # analytic/sa/imp produce the covariance on the mlogit estimation scale; rotate
+  # the mixture block onto the probability scale the estimates are reported on
+  .cov <- tryCatch(
+    .mixCovToProbScale(.cov, env$ui$mixProbs,
+                       utils::head(env$mixProbabilities, -1L)),
+    error = function(e) .cov)
   .ev <- suppressWarnings(eigen(.cov, symmetric = TRUE, only.values = TRUE)$values)
   if (any(!is.finite(diag(.cov))) || any(diag(.cov) <= 0) ||
         !all(is.finite(.ev)) || min(.ev) <= 0) {

@@ -393,13 +393,116 @@
   parHist
 }
 
+#' Rotate a covariance's mixture-proportion block onto the probability scale
+#'
+#' The proportions are estimated as a multinomial logit, so the covariance a
+#' covariance method produces is on that scale while the reported estimate is a
+#' probability.  \code{p = mexpit(t)} is a softmax over the \code{K-1} free
+#' coordinates, whose Jacobian is \code{dp_j/dt_l = p_j*(delta_jl - p_l)}, i.e.
+#' \code{J = diag(p) - p \%*\% t(p)}.  The FULL Jacobian is used, not its
+#' diagonal: the off-diagonal terms are what carry the proportions'
+#' cross-covariances -- with each other and with the structural thetas -- onto
+#' the reported scale.
+#'
+#' Same principle as \code{covFull}, which reports Omega on the natural
+#' variance scale rather than the \code{chol(solve(omega))} estimation scale.
+#'
+#' @param cov covariance matrix with dimnames
+#' @param mixNames names of the mixture-proportion parameters (\code{ui$mixProbs})
+#' @param p free mixture probabilities, in \code{mixNames} order
+#' @return \code{cov} with the mixture rows/columns on the probability scale;
+#'   unchanged when there is no mixture block to rotate
+#' @noRd
+#' @author Matthew L. Fidler
+.mixCovToProbScale <- function(cov, mixNames, p) {
+  if (!is.matrix(cov) || length(mixNames) == 0L) return(cov)
+  if (is.null(rownames(cov))) return(cov)
+  .i <- match(mixNames, rownames(cov))
+  if (anyNA(.i) || length(p) != length(.i) || !all(is.finite(p))) return(cov)
+  .J <- diag(p, nrow = length(p)) - outer(p, p)
+  .A <- diag(1, nrow(cov))
+  .A[.i, .i] <- .J
+  .out <- .A %*% cov %*% t(.A)
+  dimnames(.out) <- dimnames(cov)
+  .out
+}
+
+#' Rotate a fit's installed covariance onto the probability scale
+#'
+#' The pre-final table hook rotates \code{env$cov}, but the \code{covFull} and
+#' analytic installers (\code{.foceiInstallFdFullCov} /
+#' \code{.foceiInstallAnalyticCov}) then REPLACE it wholesale with a matrix
+#' still on the mlogit estimation scale, so the hook's rotation is gone by the
+#' time \code{.updateParFixed()} reads it.  This runs between the two and covers
+#' whichever matrix ended up installed, plus the \code{covR}/\code{covS}/
+#' \code{covRS} diagnostics so they stay on one scale.
+#'
+#' This is the ONLY fit-time rotation, so no matrix is rotated twice: the native
+#' C++ covariance and both installers' output all arrive here on the mlogit
+#' scale.  Post-fit \code{setCov()} installs rotate separately, in
+#' \code{.covInstallResult()}, on a matrix the recompute engine produced.
+#'
+#' @param env fit environment
+#' @return invisible \code{NULL}; called for its side effects on \code{env}
+#' @noRd
+#' @author Matthew L. Fidler
+.mixInstallProbScaleCov <- function(env) {
+  .mp <- tryCatch(env$ui$mixProbs, error = function(e) NULL)
+  if (is.null(.mp) || length(.mp) == 0L) return(invisible(NULL))
+  .p <- tryCatch(env$mixProbabilities, error = function(e) NULL)
+  if (is.null(.p) || length(.p) != length(.mp) + 1L) return(invisible(NULL))
+  .p <- .p[seq_along(.mp)]
+  for (.n in c("cov", "covR", "covS", "covRS")) {
+    if (!exists(.n, envir = env, inherits = FALSE)) next
+    .m <- get(.n, envir = env)
+    if (!is.matrix(.m)) next
+    assign(.n, .mixCovToProbScale(.m, .mp, .p), envir = env)
+  }
+  # foceiFinalizeTables filled se/popDf from the covariance as it stood BEFORE
+  # this rotation (mlogit scale), and .updateParFixed() reads popDf -- so the
+  # mixture rows have to be refreshed here or the reported SE stays on the
+  # estimation scale while the estimate next to it is a probability.
+  .cov <- tryCatch(get("cov", envir = env, inherits = FALSE), error = function(e) NULL)
+  .mixIdx <- tryCatch(get("mixIdx", envir = env, inherits = FALSE), error = function(e) NULL)
+  if (!is.matrix(.cov) || is.null(rownames(.cov)) ||
+        is.null(.mixIdx) || length(.mixIdx) != length(.mp)) {
+    return(invisible(NULL))
+  }
+  .w <- match(.mp, rownames(.cov))
+  if (anyNA(.w)) return(invisible(NULL))
+  .newSe <- sqrt(diag(.cov))[.w]
+  if (exists("se", envir = env, inherits = FALSE)) {
+    .se <- get("se", envir = env)
+    if (length(.se) >= max(.mixIdx)) {
+      .se[.mixIdx] <- .newSe
+      assign("se", .se, envir = env)
+    }
+  }
+  if (exists("popDf", envir = env, inherits = FALSE)) {
+    .pd <- get("popDf", envir = env)
+    if (is.data.frame(.pd) && nrow(.pd) >= max(.mixIdx) && "SE" %in% names(.pd)) {
+      .pd[["SE"]][.mixIdx] <- .newSe
+      if ("%RSE" %in% names(.pd)) {
+        .e <- .pd[["Estimate"]][.mixIdx]
+        .pd[["%RSE"]][.mixIdx] <-
+          ifelse(is.finite(.e) & .e != 0, abs(.newSe / .e) * 100, NA_real_)
+      }
+      assign("popDf", .pd, envir = env)
+    }
+  }
+  invisible(NULL)
+}
+
 #' Pre-final parameter table hook: back-transform mixture probability parameters
 #'
 #' Registered via \code{preFinalParTableHooksAdd()}; converts mixture
 #' probability parameters from mlogit scale to natural probability scale in
-#' \code{env$theta$theta}. SE/\%RSE stay \code{NA} (skipCov already set for
-#' these indices); the full probability vector (including the implicit last
-#' component) is stored in \code{env$mixProbabilities} for \code{.mixFix()}.
+#' \code{env$theta$theta}. The full probability vector (including the implicit
+#' last component) is stored in \code{env$mixProbabilities}, which
+#' \code{.mixFix()} and \code{.mixInstallProbScaleCov()} both read.  The
+#' covariance is rotated onto the probability scale later, by
+#' \code{.mixInstallProbScaleCov()} -- not here, because the covFull/analytic
+#' installers replace \code{env$cov} after this hook runs.
 #'
 #' @param env Fit environment containing \code{mixIdx} and \code{theta}
 #' @return invisible \code{NULL}; called for its side effects on \code{env}

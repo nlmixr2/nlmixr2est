@@ -997,6 +997,8 @@ static void impComputeCov(Environment e, const arma::vec& gammaVec,
   int nsub = impNsub();
   int neta = impNeta();
   int isample = impNsample();
+  int Nm = impNmix();
+  int nExp = nsub * Nm;   // expanded pseudo-subjects: component j is i + j*nsub
   // Parallelize the reweighted-objective subject loop (each subject contributes an
   // independent scalar to the -2LL) when the inner solves are thread-safe: no
   // mixture (expanded pseudo-subjects share solve rows) and no multi-endpoint
@@ -1017,15 +1019,19 @@ static void impComputeCov(Environment e, const arma::vec& gammaVec,
   int nTh = 0;
   for (int j = 0; j < np; ++j) if (pl[j] < ntheta) ++nTh;
 
-  // Per-subject proposal: mode, information H, lower Cholesky of gamma*H^-1, and
-  // one fixed sample matrix.
-  std::vector<arma::vec> modes(nsub);
-  std::vector<arma::mat> Hs(nsub), Ls(nsub), Ss(nsub);
-  std::vector<double> logDetH(nsub, 0.0);
-  std::vector<char> ok(nsub, 0);
+  // Per-pseudo-subject proposal: mode, information H, lower Cholesky of
+  // gamma*H^-1, and one fixed sample matrix.  For a mixture these run over the
+  // EXPANDED subjects (component j is i + j*nsub), exactly as the E-step does:
+  // the objective differenced below is the mixture MARGINAL, so every component
+  // needs its own proposal.  Component 0 alone left the proportions' directions
+  // exactly flat and their SEs at 0.
+  std::vector<arma::vec> modes(nExp);
+  std::vector<arma::mat> Hs(nExp), Ls(nExp), Ss(nExp);
+  std::vector<double> logDetH(nExp, 0.0);
+  std::vector<char> ok(nExp, 0);
   arma::vec mode(neta);
   arma::mat H(neta, neta, arma::fill::zeros);
-  for (int id = 0; id < nsub; ++id) {
+  for (int id = 0; id < nExp; ++id) {
     impGetMode(id, mode);
     modes[id] = mode;
     if (impGetHessian(id, H)) {
@@ -1059,7 +1065,7 @@ static void impComputeCov(Environment e, const arma::vec& gammaVec,
   }
   uint32_t seed0 = (uint32_t)impBaseSeed() + 0x2545F491u;
   setRxThreadId(0);
-  for (int id = 0; id < nsub; ++id) {
+  for (int id = 0; id < nExp; ++id) {
     if (!ok[id]) continue;
     setSeedEng1(seed0 + (uint32_t)(id * 2 + 1));
     arma::mat S(isample, neta);
@@ -1108,7 +1114,9 @@ static void impComputeCov(Environment e, const arma::vec& gammaVec,
   // per-subject buffer under the parallel loop, then reduce in id order so the sum
   // is bit-identical to the serial `obj += ...` accumulation.  objBuf is allocated
   // once here and refilled per call (the FD Hessian calls evalObj O(np^2) times).
-  std::vector<double> objBuf(nsub, 0.0);
+  std::vector<double> objBuf(nExp, 0.0);
+  std::vector<char> objGood(nExp, 0);
+  std::vector<double> mixLl((size_t)Nm);
   // Progress bar over the finite-difference covariance evaluations, like the
   // focei covariance step.  evalObj is called f0 (1) + 2*np (diagonal) +
   // 2*np*(np-1) (off-diagonal) = 1 + 2*np*np times; tick once per call.
@@ -1121,10 +1129,11 @@ static void impComputeCov(Environment e, const arma::vec& gammaVec,
     // Re-read after setting: an Omega perturbation changes -0.5 log|Omega|.
     double negHalfLogDetOmega = impLogDetOmegaInv5();
     std::fill(objBuf.begin(), objBuf.end(), 0.0);
+    std::fill(objGood.begin(), objGood.end(), 0);
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(cores) if(doParCov)
 #endif
-    for (int id = 0; id < nsub; ++id) {
+    for (int id = 0; id < nExp; ++id) {
 #ifdef _OPENMP
       if (doParCov) setRxThreadId(omp_get_thread_num());
 #endif
@@ -1148,15 +1157,31 @@ static void impComputeCov(Environment e, const arma::vec& gammaVec,
           double logMeanExp = qmax + std::log(sumw / (double)isample);
           double Ci = negHalfLogDetOmega + 0.5 * neta * std::log(gammaVec[id]) - 0.5 * logDetH[id]
             + pr.corr;
-          objBuf[id] = -2.0 * (logMeanExp + Ci);
+          objBuf[id] = logMeanExp + Ci;   // log-likelihood; combined below
+          objGood[id] = 1;
         }
       }
 #ifdef _OPENMP
       if (doParCov) setRxThreadId(-1);
 #endif
     }
+    // Reduce in id order so the sum is bit-identical to a serial accumulation.
+    // For a mixture each physical subject's contribution is the marginal
+    // log(sum_m p_m L_im) over its components, which is what makes the mixture
+    // proportions enter the objective at all.  A subject with no usable
+    // component contributes 0, as the single-component path always did.
     double obj = 0.0;
-    for (int id = 0; id < nsub; ++id) obj += objBuf[id];
+    if (Nm == 1) {
+      for (int id = 0; id < nsub; ++id) obj += objGood[id] ? -2.0 * objBuf[id] : 0.0;
+    } else {
+      for (int i = 0; i < nsub; ++i) {
+        for (int m = 0; m < Nm; ++m) {
+          mixLl[(size_t)m] = objGood[i + m*nsub] ? objBuf[i + m*nsub] : NA_REAL;
+        }
+        double lse = impMixLogSumExp(mixLl);
+        if (R_FINITE(lse)) obj += -2.0 * lse;
+      }
+    }
     if (covProg) covTick = par_progress(covCur++, covTot, covTick, 1, covT0, 0);
     return obj;
   };

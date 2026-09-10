@@ -134,6 +134,43 @@
 
 ### Mixture models
 
+- Mixture proportions now get standard errors, under every covariance method
+  that supports them: `covMethod="r"`, `"s"`, `"r,s"` and `"imp"`.  They were
+  forced out of the covariance entirely (`skipCov`), so `p1` reported `SE = NA`
+  no matter what was asked for.  This is the NONMEM 7 Technical Guide's own
+  construction, eq. (7.51)-(7.54): the mixture parameters' information is the
+  outer product of the same per-subject scores `g_ia` that give the gradient,
+  and `nlmixr2est`'s S matrix already IS that outer product, so the block drops
+  in once the per-subject score exists.  The per-subject mixture score is taken
+  analytically rather than by finite difference, so it costs no extra solves.
+
+  The reported covariance is rotated onto the probability scale with the FULL
+  mexpit Jacobian `J = diag(p) - p p'` -- so `$cov`, the SE, the %RSE and the CI
+  for `p1` all sit on the same scale as the estimate, and the proportions'
+  cross-covariances (with each other and with the structural thetas) are carried
+  across rather than dropped.  Same principle as `covFull` reporting Omega on the
+  natural variance scale instead of `chol(solve(omega))`.
+
+- The S matrix is no longer singular for mixture models, so `covMethod="r,s"`
+  stops silently degrading to `"r"`.  `foceiS()` built each subject's score by
+  finite-differencing component 0's likelihood instead of the marginal
+  `log(sum_m p_m L_im)`, so a parameter entering only another component got an
+  exactly-zero score.  Measured on a 3-component fit, two of six diagonal
+  entries came out at 1.9e-18 and 6.6e-10, the S matrix was reported
+  non-positive-definite, and the sandwich was dropped.  Each perturbation now
+  re-optimizes every component before combining, in the components-serial /
+  subjects-parallel order the rest of the mixture code uses.
+
+- `covMethod="imp"` builds its Monte-Carlo proposals for every mixture
+  component rather than component 0 alone, so the importance-sampling objective
+  it differences is the mixture marginal.  Without this the proportions'
+  directions were exactly flat and their SEs came back as 0.
+
+- `covMethod="analytic"` now declines a mixture model and falls back, instead of
+  reporting a single-component observed information as if it were the mixture's.
+  The augmented sensitivity model differentiates one component's conditional
+  likelihood and has no mixture-proportion block at all.
+
 - `est="focei"` estimates the mixture proportions under a gradient-based
   `outerOpt`.  `mixGrad()` supplies an analytic value that short-circuits the
   finite difference in `numericGrad()`, and it chained the per-subject
