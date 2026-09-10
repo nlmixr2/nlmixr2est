@@ -160,6 +160,11 @@
   }
   assign("cov", .cov, envir = env)
   assign("covMethod", r$covMethod, envir = env)
+  # An engine whose covariance carries no mixture rows at all (saem) needs the
+  # (7.51) block appended again -- the recomputed matrix REPLACED the one that
+  # had it, so without this a setCov() drops the proportion back to SE = NA.
+  .mixCovAppendBlock(env)
+  .cov <- tryCatch(get("cov", envir = env, inherits = FALSE), error = function(e) .cov)
   # refresh SE/%RSE/CI on the fit's own parameter table from the new covariance
   .updateParFixedRefreshSeFromCov(env, .cov)
   .nlmixr2CovConditionUpdate(env)

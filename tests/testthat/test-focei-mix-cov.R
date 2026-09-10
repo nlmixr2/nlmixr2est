@@ -121,10 +121,15 @@ nmTest({
       foceiControl(print = 0, outerOpt = "lbfgsb3c", maxOuterIterations = 200L,
                    maxInnerIterations = 100L, covMethod = "r,s", calcTables = FALSE)))
     .se0 <- .f$parFixedDf["p1", "SE"]
+    ## without this the round-trip check passes vacuously against the old code,
+    ## where the SE was NA at both ends and NA == NA
+    expect_true(is.finite(.se0) && .se0 > 0)
     setCov(.f, "s")
     expect_true("r,s" %in% names(.f$env$covList))
     setCov(.f, "r,s")                       # served from covList, not recomputed
-    expect_equal(unname(.f$parFixedDf["p1", "SE"]), unname(.se0), tolerance = 1e-10)
+    .se1 <- .f$parFixedDf["p1", "SE"]
+    expect_true(is.finite(.se1) && .se1 > 0)
+    expect_equal(unname(.se1), unname(.se0), tolerance = 1e-10)
   })
 
   test_that("the S matrix is no longer singular for a mixture model", {
