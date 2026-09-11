@@ -511,6 +511,36 @@ nmTest({
     expect_true(is.finite(f2$parFixedDf["add2.sd", "SE"]) && f2$parFixedDf["add2.sd", "SE"] > 0)
   })
 
+  test_that("a fix()ed additive residual gets no fim/sa covariance row", {
+    # src/saem.cpp fills an endpoint's log-sigma2 slot whether or not that
+    # endpoint's residual is estimated, and only the all-zero (non-additive) and
+    # fixed-theta rows were dropped before inverting.  So a fix()ed add.sd came
+    # back with an SE -- printed as a back-transformed 95% CI on a value the fit
+    # never estimated -- and every other parameter got the marginal rather than
+    # the conditional information.
+    m <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- fix(0.7)
+            eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+              linCmt() ~ add(add.sd) })
+    }
+    f <- .nlmixr(m, theo_sd, est = "saem",
+                 control = saemControl(nBurn = 100, nEm = 120, print = 0, seed = 1L,
+                                       covMethod = "sa", nSaCov = 200))
+    skip_if_not(identical(f$covMethod, "sa"))
+    # dropped before inverting, so it is in neither the pre-splice analytic
+    # matrix nor the reported covariance
+    expect_false("add.sd" %in% rownames(.saemFimToCov(f$saem$HaSa, f$env)))
+    expect_false("add.sd" %in% rownames(f$cov))
+    expect_true(is.na(f$parFixedDf["add.sd", "SE"]))
+    expect_equal(unname(f$parFixed["add.sd", "SE"]), "FIXED")
+    # printed as the point value alone -- no interval
+    expect_false(grepl("(", f$parFixed["add.sd", "Back-transformed(95%CI)"], fixed = TRUE))
+    # the estimated parameters still get real SEs from the reduced matrix
+    expect_true(all(sqrt(diag(f$cov))[c("tka", "tcl", "tv")] > 1e-3))
+    expect_true(all(c("om.eta.ka", "om.eta.cl", "om.eta.v") %in% rownames(f$cov)))
+  })
+
   test_that(".saemLlObsMask refuses to guess rather than mis-score (#871)", {
     .ix <- c(1L, 1L, 2L, 2L)
     # res.mod present: per-observation, res.mod == 0 marks the ll() endpoint

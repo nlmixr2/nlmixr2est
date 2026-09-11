@@ -12,6 +12,13 @@
   Omega block still takes the whole block from the linearized FIM, because the
   Louis score only ever sees the diagonal of Omega (#1022).
 
+- `saemControl(covMethod="sa"|"fim")` no longer reports a standard error for a
+  `fix()`ed additive residual error.  The SAEM kernel fills an endpoint's
+  residual slot whether or not the value is estimated, so a fixed `add.sd` came
+  back with a covariance row -- printed as a back-transformed 95% interval on a
+  value the fit never estimated -- and the remaining parameters were given the
+  marginal instead of the conditional information.  Found while fixing #1022.
+
 - `foceiControl(fast=TRUE)` no longer converges to a non-stationary point when
   an external likelihood contribution is registered (`nlmixrRegisterLikContrib`,
   e.g. from `nlmixr2nn`).  The analytic outer gradient re-derives

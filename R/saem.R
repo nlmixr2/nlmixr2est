@@ -661,6 +661,27 @@
 .saemSaCov <- function(env) {
   .saemFimToCov(env$saem$HaSa, env)
 }
+#' Kernel FIM slots belonging to a `fix()`ed additive residual
+#'
+#' `src/saem.cpp` fills an endpoint's log-sigma2 slot whether or not that
+#' endpoint's residual is `fix()`ed, but a fixed value is not estimated, so the
+#' slot is dropped before inverting the same way a fixed theta's row is
+#' (`calc.COV`'s variance block excludes it too).
+#' @param .idf model `iniDf`
+#' @param .predDf model `predDf`
+#' @param .base number of FIM rows ahead of the residual block (theta + Omega diag)
+#' @param .np FIM dimension
+#' @return integer FIM positions to drop, possibly empty
+#' @noRd
+.saemFimFixedResidSlots <- function(.idf, .predDf, .base, .np) {
+  .nEp <- length(.predDf$cond)
+  if (.nEp == 0L || .np < .base + .nEp) return(integer(0))
+  .base + which(vapply(seq_len(.nEp), function(.i) {
+    .rows <- .idf[which(.idf$condition == paste(.predDf$cond[.i]) & !is.na(.idf$err)), ,
+                  drop = FALSE]
+    nrow(.rows) == 1L && isTRUE(.rows$fix)
+  }, logical(1)))
+}
 #' Invert a SAEM Fisher Information Matrix into a reported-scale covariance
 #'
 #' Shared by `covMethod="sa"` (converged FIM `saem$HaSa`) and `covMethod="fim"`
@@ -733,30 +754,36 @@
   #    1/gamma2_phi0 -> Inf.  The caller splices a real SE in from the
   #    linearized FIM (.saemSplicePhi0Theta).
   #  - the fixed theta rows: nothing to report for a known, not estimated,
-  #    value.
+  #    value.  A fix()ed additive residual's slot goes with them
+  #    (.saemFimFixedResidSlots) -- the kernel fills it whether or not the
+  #    value is estimated, so left in it both reported an SE (and a CI) for a
+  #    fixed parameter and gave every other parameter the marginal instead of
+  #    the conditional information.
   #  - any all-zero row: src/saem.cpp gives a non-additive endpoint's
   #    residual slot (and a general-log-likelihood endpoint) an exactly-zero
   #    row/col in every entry, which would make the full matrix singular
   #    (its column is zero too: Ha/HaSa is symmetric and d2logk/D11 never
   #    write a cross term into an excluded slot).
+  .idf <- .ui$iniDf
+  .predDf <- .ui$predDf
+  .etaN <- tryCatch(.foceiEtaThetaMap(.ui)$etaNames, error = function(e) NULL)
+  .nEta <- length(.etaN)
   .zeroRows <- which(apply(.H, 1L, function(.r) all(.r == 0)))
-  .drop <- Reduce(union, list(which(.fx), match(.phi0Nm, .tn), .zeroRows))
+  .drop <- Reduce(union, list(which(.fx), match(.phi0Nm, .tn), .zeroRows,
+                              .saemFimFixedResidSlots(.idf, .predDf, .nth + .nEta, .np)))
   .keep <- if (length(.drop) > 0L) seq_len(.np)[-.drop] else seq_len(.np)
   if (length(.keep) == 0L) return(NULL)
   .C <- suppressWarnings(tryCatch(solve(.H[.keep, .keep, drop = FALSE]), error = function(e) NULL))
   if (is.null(.C) || !all(is.finite(.C))) return(NULL)
   .orig2sub <- rep(NA_integer_, .np)
   .orig2sub[.keep] <- seq_along(.keep)
-  .idf <- .ui$iniDf
   # structural theta block (natural scale; H[1:nth] rows are .tn)
   .ini <- .idf[is.na(.idf$err) & !is.na(.idf$ntheta) & !.idf$fix, "name"]
   if (length(.ui$mixProbs) > 0) .ini <- .ini[!(.ini %in% .ui$mixProbs)]
   .ini <- .ini[.ini %in% .tn]
   .idx <- match(.ini, .tn); .nm <- .ini; .jac <- rep(1, length(.ini))
   # diagonal Omega block: log-variance -> variance, d(var)/d(log var) = var
-  .etaN <- tryCatch(.foceiEtaThetaMap(.ui)$etaNames, error = function(e) NULL)
   .omVar <- tryCatch(diag(as.matrix(.saem$Gamma2_phi1)), error = function(e) NULL)
-  .nEta <- length(.etaN)
   if (.nEta > 0L && !is.null(.omVar) && length(.omVar) >= .nEta &&
         .np >= .nth + .nEta) {
     .idx <- c(.idx, .nth + seq_len(.nEta))
@@ -765,11 +792,9 @@
   }
   # per-endpoint additive residual: src/saem.cpp lays out one log-sigma2 slot per
   # endpoint (in .predDf$cond order, matching resMat's rows), right after the
-  # theta+Omega-diag block -- d(sd)/d(log sigma2) = 0.5 sd.  Only a PURE additive
-  # endpoint (a single iniDf residual row with err=="add") has a real slot; any
-  # other endpoint's slot was dropped above (all-zero row) and simply has no
-  # surviving column to select here.
-  .predDf <- .ui$predDf
+  # theta+Omega-diag block -- d(sd)/d(log sigma2) = 0.5 sd.  Only a PURE additive,
+  # estimated endpoint has a real slot; any other endpoint's slot was dropped above
+  # (all-zero row, or fix()ed) and simply has no surviving column to select here.
   .nEp <- length(.predDf$cond)
   if (.nEp > 0L && .np >= .nth + .nEta + .nEp) {
     .base <- .nth + .nEta
