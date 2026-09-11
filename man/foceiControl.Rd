@@ -304,7 +304,10 @@ parameter set otherwise).  For the finite-difference methods it follows
 \code{covMethod}: \code{"r,s"} is the full sandwich
 \code{solve(Rfull) \%*\% Sfull \%*\% solve(Rfull)}, \code{"s"} is
 \code{solve(Sfull)}, \code{"r"} is \code{solve(Rfull)}.  \code{FALSE}
-installs only the structural-theta block (the historical shape).}
+installs only the structural-theta block (the historical shape).  The
+installed shape is named by \code{fit$covMethod} -- \code{"r,s (full)"}
+versus \code{"r,s"} -- and the other shape is cached, so
+\code{\link{setCov}()} swaps between them without recomputing either.}
 
 \item{fast}{When \code{TRUE}, compute the outer (population) gradient
 analytically from Almquist (2015) sensitivity equations instead of by

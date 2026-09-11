@@ -420,7 +420,7 @@ nmTest({
       foceiControl(print = 0, outerOpt = "lbfgsb3c", maxOuterIterations = 200L,
                    maxInnerIterations = 100L, covMethod = "analytic",
                    calcTables = FALSE)))
-    expect_false(identical(.f$covMethod, "analytic"))
+    expect_false(identical(.covBaseName(.f$covMethod), "analytic"))
     ## and the fallback still reports the proportion
     expect_true(is.finite(.f$parFixedDf["p1", "SE"]))
   })
