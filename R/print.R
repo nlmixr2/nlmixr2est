@@ -159,7 +159,7 @@ print.nlmixr2FitCore <- function(x, ...) {
     }
   }
   .nb <- TRUE
-  if (!is.na(get("objective", x$env))) {
+  if (!is.na(get("objective", x$env, inherits = FALSE))) {
     .nb <- .pagedPrint(x$objDf, "Objective", .bound)
   }
   if (.nb) .nb <- .pagedPrint(x$time, "Time (sec)", .bound)
@@ -211,7 +211,7 @@ print.nlmixr2FitCore <- function(x, ...) {
         .bound <- .bound[1]
       }
     }
-    if (is.na(get("objective", x$env))) {
+    if (is.na(get("objective", x$env, inherits = FALSE))) {
       cat(sprintf(
         " Gaussian/Laplacian Likelihoods: AIC(%s) or %s etc.",
         crayon::yellow(.bound),
@@ -274,7 +274,7 @@ print.nlmixr2FitCore <- function(x, ...) {
         crayon::bold(x$covMethod), "\n"
       ))
     }
-    if (exists("covList", x$env)) {
+    if (exists("covList", x$env, inherits = FALSE)) {
       cat("    other calculated covs (", crayon::bold$blue("setCov()"), "): ",
         paste(crayon::bold(names(x$env$covList)), collapse = ", "),
         "\n",
@@ -432,7 +432,7 @@ print.nlmixr2FitCore <- function(x, ...) {
       x$covMethod
     ))
   }
-  if (is.na(get("objective", x$env))) {
+  if (is.na(get("objective", x$env, inherits = FALSE))) {
     .c <- c(
       .c,
       "Missing Objective function; Can add by:",

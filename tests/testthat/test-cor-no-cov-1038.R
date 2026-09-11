@@ -24,10 +24,12 @@ nmTest({
   # nlmixr2save reloads a fit with list2env(), which parents the fit
   # environment on globalenv() instead of emptyenv(); there "cov" and "cor"
   # resolve to stats::cov/stats::cor unless the lookup is local.
-  .asReloaded <- function(fit) {
+  # `drop` mimics the items nlmixr2save leaves out of the saved fit ("model")
+  .asReloaded <- function(fit, parent = globalenv(), drop = character(0)) {
     .env <- fit$env
-    .re <- list2env(mget(ls(.env, all.names = TRUE), envir = .env),
-      envir = new.env(parent = globalenv())
+    .nm <- setdiff(ls(.env, all.names = TRUE), drop)
+    .re <- list2env(mget(.nm, envir = .env),
+      envir = new.env(parent = parent)
     )
     class(.re) <- c("nlmixr2FitCore", paste0("nlmixr2.", fit$est))
     .re
@@ -113,10 +115,40 @@ nmTest({
   test_that("$cor is NULL for a non-matrix $cov (#1038)", {
     .lst <- list(new.env(parent = emptyenv()), FALSE)
     class(.lst) <- c("cor", "nmObjGet")
-    for (.v in list(NULL, stats::cov, "a", data.frame(a = 1), matrix(numeric(0), 0, 0),
-                    matrix(1:6, 2, 3))) {
+    for (.v in list(NULL, stats::cov, "a", data.frame(a = 1), matrix(1:6, 2, 3))) {
       assign("cov", .v, envir = .lst[[1]])
       expect_null(nmObjGet(.lst))
     }
+    # an empty square matrix is a covariance, so $cor mirrors it like $cov does
+    assign("cov", matrix(numeric(0), 0, 0), envir = .lst[[1]])
+    expect_equal(nmObjGet(.lst), matrix(numeric(0), 0, 0))
+  })
+
+  test_that("a reloaded fit does not read fit items out of its parent (#1038)", {
+    fit <- .nlmixr(one.cmt, nlmixr2data::theo_sd,
+      est = "focei",
+      control = foceiControl(
+        print = 0, maxInnerIterations = 1, maxOuterIterations = 1,
+        eval.max = 1, covMethod = "r"
+      )
+    )
+
+    # stands in for the user workspace a reloaded fit is parented on
+    .shadow <- new.env(parent = emptyenv())
+    assign("cov", matrix(1, 1, 1, dimnames = list("bogus", "bogus")), envir = .shadow)
+    assign("covList", list(bogus = matrix(1, 1, 1)), envir = .shadow)
+    assign("ranef", "bogus", envir = .shadow)
+    assign("mixNum", "bogus", envir = .shadow)
+    assign("parHistData", "bogus", envir = .shadow)
+
+    .re <- .asReloaded(fit, parent = .shadow,
+      drop = c("cov", "ranef", "mixNum", "parHistData")
+    )
+    expect_null(.re$cov)
+    expect_null(.re$cor)
+    expect_null(.re$ranef)
+    expect_null(.re$mixNum)
+    expect_null(.re$parHist)
+    expect_false(any(grepl("bogus", capture.output(print(.re)))))
   })
 })
