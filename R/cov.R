@@ -158,6 +158,14 @@
   tryCatch(.mixCovToProbScale(cov, .mix$names, .mix$p), error = function(e) cov)
 }
 
+#' Is `x` usable as a covariance-method name?
+#' @param x candidate name
+#' @return single logical
+#' @noRd
+.covIsName <- function(x) {
+  length(x) == 1L && is.character(x) && !is.na(x) && nzchar(x)
+}
+
 #' Cache a computed covariance under `name` for `setCov()` to reinstall
 #'
 #' Never overwrites an existing entry; the caller is responsible for not caching
@@ -168,19 +176,25 @@
 #' @return invisibly TRUE when an entry was added
 #' @noRd
 .covCacheAdd <- function(env, name, cov) {
-  if (!is.environment(env) || !is.matrix(cov)) return(invisible(FALSE))
-  if (length(name) != 1L || !is.character(name) || is.na(name) || !nzchar(name)) {
+  if (!is.environment(env) || !is.matrix(cov) || !.covIsName(name)) {
     return(invisible(FALSE))
   }
-  .cl <- if (exists("covList", envir = env, inherits = FALSE)) {
-    get("covList", envir = env)
-  } else {
-    NULL
-  }
+  .cl <- .covCacheGet(env)
   if (!is.null(.cl[[name]])) return(invisible(FALSE))
   .cl[[name]] <- cov
   assign("covList", .cl, envir = env)
   invisible(TRUE)
+}
+
+#' The fit's covariance cache, or `NULL` when it has none
+#' @param env fit environment
+#' @return named list of covariance matrices, or `NULL`
+#' @noRd
+.covCacheGet <- function(env) {
+  if (!is.environment(env) || !exists("covList", envir = env, inherits = FALSE)) {
+    return(NULL)
+  }
+  get("covList", envir = env)
 }
 
 #' Drop `name` from the fit's covariance cache (it is the installed `$cov`)
@@ -189,12 +203,8 @@
 #' @return invisibly TRUE when an entry was dropped
 #' @noRd
 .covCacheDrop <- function(env, name) {
-  if (!is.environment(env) || !exists("covList", envir = env, inherits = FALSE)) {
-    return(invisible(FALSE))
-  }
-  .cl <- get("covList", envir = env)
-  if (length(name) != 1L || !is.character(name) || is.na(name) ||
-        is.null(.cl[[name]])) {
+  .cl <- .covCacheGet(env)
+  if (is.null(.cl) || !.covIsName(name) || is.null(.cl[[name]])) {
     return(invisible(FALSE))
   }
   .cl[[name]] <- NULL
@@ -541,68 +551,112 @@ setCov <- function(fit, method) {
       call. = FALSE
     )
   }
-  # already calculated: re-install from the cache -- no refit, no recompute
-  .cov <- if (exists("covList", envir = .env, inherits = FALSE)) {
-    .env$covList[[method]]
-  } else {
-    NULL
+  if (!.setCovFromCache(fit, .env, method)) {
+    .setCovRecompute(fit, .env, method)
   }
-  if (!is.null(.cov)) {
-    # a cached covariance was stored on the reported scale (see covList above), so
-    # it must not be rotated onto the probability scale a second time
-    if (!isTRUE(.covInstallResult(.env, list(cov = .cov, covMethod = method,
-                                             mixRotated = TRUE)))) {
-      stop("the cached covMethod=\"", method,
-           "\" covariance is not positive definite; the covariance is left unchanged",
-           call. = FALSE)
-    }
-    .covCacheDrop(.env, method)
-    .env$time$covariance <- (proc.time() - .pt)["elapsed"]
-    return(invisible(fit))
+  .env$time$covariance <- (proc.time() - .pt)["elapsed"]
+  invisible(fit)
+}
+
+#' Re-install an already-calculated covariance from the fit's cache
+#'
+#' No refit and no reassembly: the matrix was computed once and stored on the
+#' reported scale, so it is installed as-is.
+#' @param fit nlmixr2 fit
+#' @param env fit environment
+#' @param method covariance-method name
+#' @return `TRUE` when the cache held `method` and it was installed
+#' @noRd
+.setCovFromCache <- function(fit, env, method) {
+  if (!.covIsName(method)) return(FALSE)
+  .cov <- .covCacheGet(env)[[method]]
+  if (is.null(.cov)) return(FALSE)
+  # a cached covariance is already on the reported scale, so it must not be
+  # rotated onto the probability scale a second time
+  if (!isTRUE(.covInstallResult(env, list(cov = .cov, covMethod = method,
+                                          mixRotated = TRUE)))) {
+    # .covInstallResult() PD-guards; a cached covariance that does not pass it was
+    # still installed once, so hand it to the legacy re-finalization path rather
+    # than refusing to switch
+    .setCov(fit, covMethod = .cov)
+    env$covMethod <- method
   }
+  .covCacheDrop(env, method)
+  TRUE
+}
+
+#' Compute a covariance `method` the fit does not already hold
+#'
+#' Errors (leaving the covariance unchanged) when `method` is unknown or cannot
+#' be computed -- it is never silently downgraded to another method.
+#' @param fit nlmixr2 fit
+#' @param env fit environment
+#' @param method covariance-method name
+#' @return invisibly `TRUE`; called for its side effects on `env`
+#' @noRd
+.setCovRecompute <- function(fit, env, method) {
   .base <- .covBaseName(method)
-  .full <- .covIsFull(method)
-  # analytic: compute the EXACT analytic observed information; on any failure the
-  # covariance is left UNCHANGED -- it is never silently downgraded to the "r,s"
-  # finite-difference covariance (which the C++ cov chain would otherwise fall
-  # back to and mislabel "analytic").
-  if (identical(.base, "analytic")) {
-    .r <- tryCatch(.foceiCovAnalyticCalc(fit), error = function(e) NULL)
-    .cov <- if (is.null(.r)) NULL else .covAnalyticScope(.env, .r$cov, .full)
-    if (is.null(.cov) || !is.matrix(.cov) || !all(is.finite(.cov)) ||
-          !isTRUE(.covInstallResult(.env, list(cov = .cov, covMethod = method)))) {
-      stop("covMethod=\"", method, "\" could not be computed for this fit; the covariance is left unchanged",
-           call. = FALSE)
-    }
-    assign(".covAnalytic", .r, envir = .env)
-    # the assembly produced both shapes; keep the other one swappable
-    .covCacheAdd(.env, if (.full) "analytic" else .covFullName("analytic"),
-                 .covToReportedScale(.env, .covAnalyticScope(.env, .r$cov, !.full)))
-    .covCacheDrop(.env, method)
-    .env$time$covariance <- (proc.time() - .pt)["elapsed"]
-    return(invisible(fit))
-  }
-  # not cached: the finite-difference methods can be recomputed on the full model
-  # at the converged estimates (.setCov refits with est="none")
-  if (.base %in% c("r,s", "r", "s")) {
-    .setCov(fit, covMethod = .base, covFull = .full)
-    .env$covMethod <- method
-    .covCacheDrop(.env, method)
-    return(invisible(fit))
-  }
-  # sa/imp: decoupled recompute at the converged estimates (mixed-effects fits)
-  if (method %in% c("sa", "imp")) {
-    .r <- tryCatch(.covRecompute(fit, method), error = function(e) NULL)
-    if (!isTRUE(.covInstallResult(.env, .r))) {
-      stop("covMethod=\"", method, "\" could not be computed for this fit; the covariance is left unchanged",
-           call. = FALSE)
-    }
-    .covCacheDrop(.env, method)
-    return(invisible(fit))
-  }
+  if (identical(.base, "analytic")) return(.setCovAnalytic(fit, env, method))
+  if (.base %in% c("r,s", "r", "s")) return(.setCovFd(fit, env, method, .base))
+  if (method %in% c("sa", "imp")) return(.setCovDecoupled(fit, env, method))
   stop("different covariance types have not been calculated",
     call. = FALSE
   )
+}
+
+#' Assemble the exact analytic observed information and install the shape
+#' `method` names
+#'
+#' On any failure the covariance is left UNCHANGED -- it is never silently
+#' downgraded to the "r,s" finite-difference covariance (which the C++ cov chain
+#' would otherwise fall back to and mislabel "analytic").
+#' @inheritParams .setCovRecompute
+#' @return invisibly `TRUE`
+#' @noRd
+.setCovAnalytic <- function(fit, env, method) {
+  .full <- .covIsFull(method)
+  .r <- tryCatch(.foceiCovAnalyticCalc(fit), error = function(e) NULL)
+  .cov <- if (is.null(.r)) NULL else .covAnalyticScope(env, .r$cov, .full)
+  if (is.null(.cov) || !is.matrix(.cov) || !all(is.finite(.cov)) ||
+        !isTRUE(.covInstallResult(env, list(cov = .cov, covMethod = method)))) {
+    stop("covMethod=\"", method, "\" could not be computed for this fit; the covariance is left unchanged",
+         call. = FALSE)
+  }
+  assign(".covAnalytic", .r, envir = env)
+  # the assembly produced both shapes; keep the other one swappable
+  .covCacheAdd(env, if (.full) "analytic" else .covFullName("analytic"),
+               .covToReportedScale(env, .covAnalyticScope(env, .r$cov, !.full)))
+  .covCacheDrop(env, method)
+  invisible(TRUE)
+}
+
+#' Recompute a finite-difference covariance at the converged estimates
+#'
+#' `.setCov()` refits with `est="none"`; `covFull` selects the shape `method`
+#' names.
+#' @inheritParams .setCovRecompute
+#' @param base `method` without its scope suffix
+#' @return invisibly `TRUE`
+#' @noRd
+.setCovFd <- function(fit, env, method, base) {
+  .setCov(fit, covMethod = base, covFull = .covIsFull(method))
+  env$covMethod <- method
+  .covCacheDrop(env, method)
+  invisible(TRUE)
+}
+
+#' Recompute a decoupled covariance ("sa"/"imp") at the converged estimates
+#' @inheritParams .setCovRecompute
+#' @return invisibly `TRUE`
+#' @noRd
+.setCovDecoupled <- function(fit, env, method) {
+  .r <- tryCatch(.covRecompute(fit, method), error = function(e) NULL)
+  if (!isTRUE(.covInstallResult(env, .r))) {
+    stop("covMethod=\"", method, "\" could not be computed for this fit; the covariance is left unchanged",
+         call. = FALSE)
+  }
+  .covCacheDrop(env, method)
+  invisible(TRUE)
 }
 
 ##' @export
