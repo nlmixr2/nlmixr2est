@@ -383,8 +383,8 @@ nmTest({
     # etaMat + maxInnerIterations=0 pins the foce+ fit to the FOCEI fit's EBEs, which is what
     # isolates the KERNELS.  Two independent fits would not do it: foce+ refines its EBEs to
     # the truncated-score root during estimation (focePlusRefinementRequired, src/inner.cpp)
-    # and FOCEI does not, so at sigdig=4 the two fits sit 1.2e-3 apart in eta -- an
-    # estimation-side difference that has nothing to do with the covariance kernels.
+    # and FOCEI does not, so at sigdig=4 the two fits sit 1.2e-3 apart in eta (plain FOCE,
+    # which does not refine, sits 6.9e-09 away) -- estimation side, not the kernels.
     fitI <- suppressWarnings(suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
               foceiControl(sigdig = 4, print = 0L, covMethod = "", maxOuterIterations = 0L))))
     .em <- as.matrix(fitI$eta[, -1, drop = FALSE]); dimnames(.em) <- NULL
@@ -408,11 +408,13 @@ nmTest({
   test_that("foce+ and FOCEI additive analytic R converge as the inner solve tightens", {
     skip_on_cran()
     skip_if_not_installed("nlmixr2data")
-    # The companion to the test above: two INDEPENDENT fits do not land on the same EBEs
-    # (foce+ refines its own, FOCEI does not), so their observed informations differ by
-    # whatever that eta gap buys.  What must hold is that the gap is the inner tolerance and
-    # nothing structural -- i.e. it shrinks with sigdig.  Measured 1.1e-2 (sigdig 4) ->
-    # 7.5e-5 (sigdig 7) on the raw R, 1.1e-3 -> 4.7e-6 on the SEs.
+    # The companion to the test above: two INDEPENDENT fits do not land on the same EBEs, so
+    # their observed informations differ by whatever that eta gap buys.  It is foce+ that
+    # moves -- at the same theta, plain FOCE's EBEs match FOCEI's to 6.9e-09 while foce+'s
+    # differ by 1.2e-03, because foce+ alone refines its EBEs to the truncated-score root
+    # during estimation (focePlusRefinementRequired, src/inner.cpp).  What must hold is that
+    # the gap is the inner tolerance and nothing structural -- i.e. it shrinks with sigdig.
+    # Measured 1.1e-2 (sigdig 4) -> 7.5e-5 (sigdig 7) on the raw R, 1.1e-3 -> 4.7e-6 on SEs.
     .fitBoth <- function(sd) {
       .p <- suppressWarnings(suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
              foceiControl(sigdig = sd, print = 0L, covMethod = "", maxOuterIterations = 0L,
