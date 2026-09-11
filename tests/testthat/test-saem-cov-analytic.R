@@ -38,7 +38,7 @@ nmTest({
     fit <- suppressMessages(suppressWarnings(
       nlmixr2(odeMod, nlmixr2data::theo_sd, est = "saem",
               control = ctl(covMethod = "analytic"))))
-    expect_identical(fit$covMethod, "analytic")
+    expect_identical(.covBaseName(fit$covMethod), "analytic")
     expect_true(all(is.finite(fit$parFixedDf$SE)))
     expect_true(all(fit$parFixedDf$SE > 0))
     ## the linFim fallback is retained and selectable

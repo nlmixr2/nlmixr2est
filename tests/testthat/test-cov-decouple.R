@@ -21,7 +21,10 @@ nmTest({
   test_that("FOCEI-family default covMethod is now r,s", {
     .f <- suppressWarnings(nlmixr2(.lc, .d, est = "focei",
                                    control = foceiControl(print = 0L)))
-    expect_equal(.f$covMethod, "r,s")
+    # covFull=TRUE (the default) installs the full theta+sigma+Omega shape, which
+    # the " (full)" suffix names; the theta-only shape is cached as "r,s"
+    expect_equal(.f$covMethod, "r,s (full)")
+    expect_true("r,s" %in% names(.f$env$covList))
     # foceControl / laplaceControl inherit the foceiControl default
     expect_equal(foceiControl()$covMethod, 1L)     # "r,s" -> integer slot 1
     expect_equal(foceControl()$covMethod, 1L)
@@ -32,12 +35,13 @@ nmTest({
     # a linCmt() model is out of analytic-covariance scope
     .f <- suppressWarnings(nlmixr2(.lc, .d, est = "focei",
                                    control = foceiControl(print = 0L)))
-    expect_equal(.f$covMethod, "r,s")
+    expect_equal(.f$covMethod, "r,s (full)")
     .cov0 <- .f$cov
     # analytic cannot be computed -> error, covariance left unchanged (NOT r,s
     # mislabeled as analytic)
     expect_error(setCov(.f, "analytic"), "could not be computed")
-    expect_equal(.f$covMethod, "r,s")
+    expect_error(setCov(.f, "analytic (full)"), "could not be computed")
+    expect_equal(.f$covMethod, "r,s (full)")
     expect_equal(.f$cov, .cov0)
   })
 

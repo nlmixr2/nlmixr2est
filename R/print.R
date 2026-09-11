@@ -274,7 +274,8 @@ print.nlmixr2FitCore <- function(x, ...) {
         crayon::bold(x$covMethod), "\n"
       ))
     }
-    if (exists("covList", x$env, inherits = FALSE)) {
+    if (exists("covList", x$env, inherits = FALSE) &&
+          length(x$env$covList) > 0L) {
       cat("    other calculated covs (", crayon::bold$blue("setCov()"), "): ",
         paste(crayon::bold(names(x$env$covList)), collapse = ", "),
         "\n",
