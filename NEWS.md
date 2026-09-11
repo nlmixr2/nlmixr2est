@@ -2,6 +2,12 @@
 
 ## Bug fixes
 
+- A focei fit whose inner ETA solves failed now says so in `$runInfo`.  The
+  per-outcome counters added for #1044 live on `fit$env$nTrustInner` /
+  `fit$env$nInnerRerank`, which nothing reads unprompted, so a fit that spent
+  every retry on a subject still looked exactly like one where every inner
+  solve converged (#1044).
+
 - A model containing `mtime()` can be fit again, with every estimation method.
   `etTrans()` materializes the modeled times as `EVID` 10-99 records (`TIME=0`,
   `AMT=NA`) and `$dataSav` persisted them, so re-translating it for each

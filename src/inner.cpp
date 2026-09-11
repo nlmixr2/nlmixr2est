@@ -14346,6 +14346,23 @@ Environment foceiFitCpp_(Environment e){
     if (op_focei.didEtaReset==1){
       warning(_("ETAs were reset to zero during optimization; (Can control by foceiControl(resetEtaP=.))"));
     }
+    // The inner-solve outcome counters (#1044) live on $env, which nothing
+    // reads unprompted -- so a fit whose inner solves failed still looked, to
+    // anyone holding it, exactly like one where they all converged.  $runInfo
+    // is the channel a run-time note reaches, so the two outcomes that mean
+    // the reported ETAs are not trustworthy are raised there.
+    {
+      int _nInnerFail = op_focei.nTrustFail.load(std::memory_order_relaxed);
+      if (_nInnerFail > 0) {
+        warning(_("%d inner solves spent every retry; see $env$nTrustInner"),
+                _nInnerFail);
+      }
+      int _nInnerNoGood = op_focei.nInnerNoGood.load(std::memory_order_relaxed);
+      if (_nInnerNoGood > 0) {
+        warning(_("%d reported ETAs come from a failed inner solve"),
+                _nInnerNoGood);
+      }
+    }
     if (op_focei.repeatGillN > 0){
       warning(_("tolerances were reduced during Gill Gradient, so it was repeated %d/%d times\nYou can control this with foceiControl(repeatGillMax=.)"), op_focei.repeatGillN, op_focei.repeatGillMax);
     }
