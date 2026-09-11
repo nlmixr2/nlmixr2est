@@ -719,10 +719,14 @@ rxUiGet.saemModelPred <- function(x, ...) {
   .ret <- c(rxUiGet.foceiParams(x, ...),
             rxUiGet.foceiCmtPreModel(x, ...),
             .interp,
-            # mtime() lines are re-emitted here (#919); see .mtimeLinesStr()
-            .mtimeLinesStr(.s),
             "rx_pred_=NA\nrx_r_=NA\n",
             .replaceLines,
+            # mtime() lines are re-emitted here (#919); see .mtimeLinesStr().
+            # AFTER the mu-reference replacement block, not with the other
+            # declarations: this model's body is in the NATURAL names, which
+            # only those lines define, so an mtime right hand side naming a
+            # theta would otherwise read it before it is assigned.
+            .mtimeLinesStr(.s),
             .ret,
             .thetaEtaLines,
             .foceiToCmtLinesAndDvid(x[[1]]))

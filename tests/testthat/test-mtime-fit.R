@@ -49,8 +49,18 @@ nmTest({
     .ui <- rxode2::rxUiDecompress(.mk(c(.base, "mtime(tsw5) <- exp(tsw)",
       "kmult <- ifelse(t < tsw5, 1.0, 2.0)", .tail), useTsw=TRUE)())
     expect_equal(.mtimeLines(.ui$focei$inner), "mtime(tsw5)~exp(THETA[4]);")
+    .ui <- rxode2::rxUiDecompress(.mk(c(.base, "mtime(tsw5) <- exp(tsw)",
+      "kmult <- ifelse(t < tsw5, 1.0, 2.0)", .tail), useTsw=TRUE)())
     expect_equal(grep("^mtime", strsplit(.ui$saemModel, "\n")[[1]], value=TRUE),
                  "mtime(tsw5)~exp(tsw)")
+    # saem's predOnly (residuals/tables) body is in the NATURAL names, which
+    # only the mu-reference replacement block defines, so the declaration has
+    # to come after it -- not with the other prologue lines
+    .ui <- rxode2::rxUiDecompress(.mk(c(.base, "mtime(tsw5) <- exp(tsw)",
+      "kmult <- ifelse(t < tsw5, 1.0, 2.0)", .tail), useTsw=TRUE)())
+    .txt <- strsplit(rxode2::rxModelVars(.ui$saemModelPred$predOnly)$model["normModel"],
+                     "\n")[[1]]
+    expect_true(grep("^mtime\\(tsw5\\)", .txt) > grep("^tsw=", .txt))
 
     # a covariate stays a covariate
     .ui <- rxode2::rxUiDecompress(.mk(c(.base, "mtime(tw) <- WT / 10",
