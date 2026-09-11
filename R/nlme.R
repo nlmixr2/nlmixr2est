@@ -219,8 +219,17 @@ nlmeControl <- nlmixr2NlmeControl
   if (.hasMtime) .args$keep <- unique(c(.args$keep, "nlmixrRowNums"))
   .retF <- do.call(rxode2::rxSolve, .args)
   .ret <- .retF$rx_pred_
-  if (.hasMtime && !is.null(.retF$nlmixrRowNums)) {
-    .ret <- .ret[!is.na(.retF$nlmixrRowNums)]
+  if (.hasMtime) {
+    # Prefer the solve's own EVID when it is there (it is whenever dose rows
+    # are kept); the row-number test alone only tells mtime records apart while
+    # the doses are left out, since an ADDL-expanded dose has no source row either.
+    .evidW <- which(tolower(names(.retF)) == "evid")
+    if (length(.evidW) == 1L) {
+      .ev <- .retF[[.evidW]]
+      .ret <- .ret[!(!is.na(.ev) & .ev >= 10 & .ev <= 99)]
+    } else if (!is.null(.retF$nlmixrRowNums)) {
+      .ret <- .ret[!is.na(.retF$nlmixrRowNums)]
+    }
   }
   .ret
 }
