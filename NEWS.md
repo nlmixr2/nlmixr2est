@@ -2,6 +2,15 @@
 
 ## Bug fixes
 
+- `foceiControl(fast=TRUE)` no longer converges to a non-stationary point when
+  an external likelihood contribution is registered (`nlmixrRegisterLikContrib`,
+  e.g. from `nlmixr2nn`).  The analytic outer gradient re-derives
+  d(objective)/d(theta) from the model sensitivities alone, so a contributor
+  that adds a theta-dependent log-likelihood term left the objective right and
+  the gradient wrong.  It now declines to the finite-difference gradient for a
+  contributor that writes back `llik` or `d(LL)/d(eta)`; a pure observer changes
+  nothing and stays on the fast path (#1051).
+
 - A focei fit reports standard errors that match its own covariance again.
   `.foceiInstallFdFullCov()` replaces `$cov` with the full theta+omega matrix
   after the C++ step has already derived `popDf$SE` from the native theta-only

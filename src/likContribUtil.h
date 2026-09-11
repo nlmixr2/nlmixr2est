@@ -4,8 +4,20 @@
 // that cycles the external likelihood-contribution registry: likInner0 and
 // vaeDecoderPxzCore in inner.cpp, and the population objective in nlm.cpp.
 #include <float.h>
+#include <atomic>
 #include "censEst.h"
 #include "../inst/include/nlmixr2estLikContrib.h"
+
+// #1051: the analytic outer gradient (foceiControl(fast=TRUE)) re-derives
+// d(objective)/d(theta) from MODEL sensitivities alone, so a contributor that
+// CHANGES the objective -- writes llik, or d(LL)/d(eta), which moves eta* off
+// the base problem's stationary point -- makes it wrong.  A pure observer
+// writes neither and stays exact.  Which one a bundle is cannot be asked of it,
+// so it is observed here, the single place every objective cycles the registry,
+// and read by analyticOuterGrad().  Defined in inner.cpp; reset per fit by
+// foceiOuter() and whenever the registry changes.
+extern std::atomic<int> _nlmixrContribSeen;     // the obs hook has run at least once
+extern std::atomic<int> _nlmixrContribChanged;  // ... and something wrote back
 
 // Exact Gaussian cotangents d(LL)/d(f) and d(LL)/d(r), honoring censoring the
 // same way the base objective does: dCensNormal1 chains the uncensored score
@@ -41,6 +53,18 @@ static inline double nlmixrLikContribObs1(int id, int k, int neta,
   o.f = f; o.dv = dv; o.r = r; o.dLL_df = dLLdf; o.dLL_dr = dLLdr;
   o.df_deta = dfdEta; o.llik = &llAdd; o.dLL_deta = dLLdEta;
   nlmixrLikContribObs(&o);
+  // Relaxed set-once-to-1 from any thread (#1051); never cleared here.
+  _nlmixrContribSeen.store(1, std::memory_order_relaxed);
+  if (llAdd != 0.0) {
+    _nlmixrContribChanged.store(1, std::memory_order_relaxed);
+  } else {
+    for (int q = 0; q < neta; ++q) {
+      if (dLLdEta[q] != 0.0) {
+        _nlmixrContribChanged.store(1, std::memory_order_relaxed);
+        break;
+      }
+    }
+  }
   return llAdd;
 }
 
