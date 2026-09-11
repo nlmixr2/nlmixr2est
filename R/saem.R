@@ -630,7 +630,10 @@
   .curOme <- if (!is.null(.saem$Gamma2_phi1Report)) .saem$Gamma2_phi1Report else .saem$Gamma2_phi1
   # Backstop for #1047: .saemAssertEtaPhi() refuses such a model up front, so
   # reaching here means the UI's etas and the kernel's phi1 block disagree.
-  .off <- is.na(.etaTrans) | .etaTrans > nrow(.curOme)
+  # A missing Gamma2_phi1 has to be counted as zero columns: `x > nrow(NULL)`
+  # is logical(0), so comparing against it would make every eta look in range.
+  .nOme <- if (is.matrix(.curOme)) nrow(.curOme) else 0L
+  .off <- is.na(.etaTrans) | .etaTrans > .nOme
   if (any(.off)) {
     stop("saem reported no variance for random effect(s): ",
          paste(.etaNames[.off], collapse=", "),

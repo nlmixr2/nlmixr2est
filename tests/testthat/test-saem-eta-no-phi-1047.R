@@ -70,6 +70,66 @@ nmTest({
     expect_error(nlmixr2Est.saem(.env), "eta.occ")
   })
 
+  test_that("the gate does not refuse a model whose eta simply is not mu-referenced", {
+    # Every one of these fits today: rxode2 records an eta that is not
+    # `theta + eta` in `nonMuEtas`, which `saemParamsToEstimate()` appends to
+    # the phi list, so the eta DOES own a phi1 column.  Refusing any of them
+    # would be a regression, not a fix.
+    .shared <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        eta.x ~ 0.6
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.x)
+        cl <- exp(tcl + eta.x)
+        v <- exp(tv)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .mixShared <- function() {
+      ini({
+        tka1 <- 0.45
+        tka2 <- 0.8
+        tcl <- 1
+        tv <- 3.45
+        p1 <- 0.5
+        eta.ka ~ 0.6
+        add.sd <- 0.7
+      })
+      model({
+        ka <- mix(exp(tka1 + eta.ka), p1, exp(tka2 + eta.ka))
+        cl <- exp(tcl)
+        v <- exp(tv)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .muCov <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        cl.wt <- 0.1
+        eta.cl ~ 0.3
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl + cl.wt * WT + eta.cl)
+        v <- exp(tv)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    for (.f in list(.shared, .mixShared, .muCov)) {
+      .ui <- rxode2::rxUiDecompress(rxode2::rxode2(.f))
+      expect_equal(.saemEtaNoPhi(.ui), character(0))
+      expect_false(anyNA(.ui$saemOmegaTrans))
+    }
+  })
+
   test_that(".getSaemOmega() reports the mismatch instead of running off the end", {
     # Gamma2_phi1 one column short of the UI's etas: the backstop for a
     # disagreement the up-front check did not catch.
@@ -81,5 +141,12 @@ nmTest({
 
     .env$ui <- rxode2::rxUiDecompress(rxode2::rxode2(.noPhiMod))
     expect_error(.getSaemOmega(.env), "eta.occ")
+
+    # A missing Gamma2_phi1 has to count as zero columns.  `x > nrow(NULL)` is
+    # logical(0), so comparing the ranks against it makes every eta look in
+    # range and the message is lost again.
+    .env$ui <- rxode2::rxUiDecompress(rxode2::rxode2(.muMod))
+    .env$saem <- list()
+    expect_error(.getSaemOmega(.env), "eta.ka, eta.cl")
   })
 })
