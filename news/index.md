@@ -4,6 +4,13 @@
 
 ### Bug fixes
 
+- `saem` refuses a model whose random effect has no population parameter
+  of its own – added to none, or sharing one with another random effect
+  – naming the random effects, instead of fitting the model without them
+  and then failing with “subscript out of bounds” while assembling the
+  reported omega at the end of the run
+  ([\#1047](https://github.com/nlmixr2/nlmixr2est/issues/1047)).
+
 - A model containing `mtime()` can be fit again, with every estimation
   method. `etTrans()` materializes the modeled times as `EVID` 10-99
   records (`TIME=0`, `AMT=NA`) and `$dataSav` persisted them, so
