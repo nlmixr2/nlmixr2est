@@ -142,6 +142,22 @@
   ""
 }
 
+#' Put a freshly assembled covariance on the scale `$cov` is reported in
+#'
+#' A mixture fit reports its mixture block on the probability scale; a matrix
+#' that has not been through `.mixInstallProbScaleCov()` is still on the mlogit
+#' estimation scale.  No-op for a non-mixture fit.
+#' @param env fit environment
+#' @param cov covariance matrix
+#' @return `cov`, rotated when the fit is a mixture
+#' @noRd
+.covToReportedScale <- function(env, cov) {
+  if (!is.matrix(cov)) return(cov)
+  .mix <- .mixEnvPieces(env)
+  if (is.null(.mix)) return(cov)
+  tryCatch(.mixCovToProbScale(cov, .mix$names, .mix$p), error = function(e) cov)
+}
+
 #' Cache a computed covariance under `name` for `setCov()` to reinstall
 #'
 #' Never overwrites an existing entry; the caller is responsible for not caching
@@ -235,6 +251,12 @@
     } else if (inherits(.lst$covMethod, "matrix")) {
       .env2$cov <- as.matrix(.lst$covMethod)
       .env2$ui <- obj$ui
+      # A caller-supplied covariance -- setCov() with a matrix, and the cached
+      # covList entry setCov() re-installs -- is ALREADY on the reported scale.
+      # Without this the mixture block is rotated by the mexpit Jacobian a
+      # second time on the refit, which silently shrinks the proportion's SE
+      # by a factor of p(1-p) every round trip.
+      .env2$.mixCovPreRotated <- TRUE
       .control$covMethod <- 0L
     } else if (length(.lst$covMethod) == 1) {
       if (.lst$covMethod == "") {
@@ -379,8 +401,7 @@
   }
   .eta <- tryCatch(fit$eta, error = function(e) NULL)
   if (!is.null(.eta)) {
-    .etaCols <- setdiff(names(.eta), "ID")
-    .control$etaMat <- as.matrix(.eta[, .etaCols, drop = FALSE])
+    .control$etaMat <- as.matrix(.nmDropNonEtaCols(.eta))
   }
   # the nested re-fit resets mu-referencing global state (.muRefTrans$cur); save + restore.
   .savedMuRef <- .muRefTrans$cur
@@ -527,7 +548,10 @@ setCov <- function(fit, method) {
     NULL
   }
   if (!is.null(.cov)) {
-    if (!isTRUE(.covInstallResult(.env, list(cov = .cov, covMethod = method)))) {
+    # a cached covariance was stored on the reported scale (see covList above), so
+    # it must not be rotated onto the probability scale a second time
+    if (!isTRUE(.covInstallResult(.env, list(cov = .cov, covMethod = method,
+                                             mixRotated = TRUE)))) {
       stop("the cached covMethod=\"", method,
            "\" covariance is not positive definite; the covariance is left unchanged",
            call. = FALSE)
@@ -553,7 +577,7 @@ setCov <- function(fit, method) {
     assign(".covAnalytic", .r, envir = .env)
     # the assembly produced both shapes; keep the other one swappable
     .covCacheAdd(.env, if (.full) "analytic" else .covFullName("analytic"),
-                 .covAnalyticScope(.env, .r$cov, !.full))
+                 .covToReportedScale(.env, .covAnalyticScope(.env, .r$cov, !.full)))
     .covCacheDrop(.env, method)
     .env$time$covariance <- (proc.time() - .pt)["elapsed"]
     return(invisible(fit))

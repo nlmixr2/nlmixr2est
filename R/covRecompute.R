@@ -29,9 +29,9 @@
   .eta <- tryCatch(fit$eta, error = function(e) NULL)
   .etaMat <- NULL
   if (!is.null(.eta)) {
-    .etaCols <- setdiff(names(.eta), "ID")
-    if (length(.etaCols) > 0L) {
-      .etaMat <- as.matrix(.eta[, .etaCols, drop = FALSE])
+    .eta <- .nmDropNonEtaCols(.eta)
+    if (ncol(.eta) > 0L) {
+      .etaMat <- as.matrix(.eta)
     }
   }
   list(ui = .ui, data = getData(fit), etaMat = .etaMat)
@@ -70,7 +70,9 @@
   if (inherits(.fit2, "try-error")) return(NULL)
   .cov <- tryCatch(.fit2$cov, error = function(e) NULL)
   if (is.null(.cov) || !is.matrix(.cov)) return(NULL)
-  list(cov = .cov, covMethod = .fit2$covMethod)
+  # .fit2 is a full re-fit, so its $cov has already been through
+  # .mixInstallProbScaleCov(); say so, or .covInstallResult() rotates it twice.
+  list(cov = .cov, covMethod = .fit2$covMethod, mixRotated = TRUE)
 }
 
 #' Recompute the SAEM Louis SA-FIM ("sa") at any fit's converged estimates.
@@ -135,6 +137,18 @@
 .covInstallResult <- function(env, r) {
   if (is.null(r) || is.null(r$cov) || !is.matrix(r$cov)) return(invisible(FALSE))
   .cov <- 0.5 * (r$cov + t(r$cov))                         # exact symmetry
+  # A covariance computed directly (analytic) is on the mlogit estimation scale
+  # and needs the mixture block rotated onto the probability scale; one that came
+  # back from a re-fit (sa/imp, via .covRecompute) was already rotated there.
+  # Key the rotation on the THETA slot, like every other consumer -- ui$mixProbs
+  # is in mix()-call order and would scramble the rows.
+  if (!isTRUE(r$mixRotated)) {
+    .mix <- .mixEnvPieces(env)
+    if (!is.null(.mix)) {
+      .cov <- tryCatch(.mixCovToProbScale(.cov, .mix$names, .mix$p),
+                       error = function(e) .cov)
+    }
+  }
   .ev <- suppressWarnings(eigen(.cov, symmetric = TRUE, only.values = TRUE)$values)
   if (any(!is.finite(diag(.cov))) || any(diag(.cov) <= 0) ||
         !all(is.finite(.ev)) || min(.ev) <= 0) {
@@ -154,6 +168,11 @@
   }
   assign("cov", .cov, envir = env)
   assign("covMethod", r$covMethod, envir = env)
+  # An engine whose covariance carries no mixture rows at all (saem) needs the
+  # (7.51) block appended again -- the recomputed matrix REPLACED the one that
+  # had it, so without this a setCov() drops the proportion back to SE = NA.
+  .mixCovAppendBlock(env)
+  .cov <- tryCatch(get("cov", envir = env, inherits = FALSE), error = function(e) .cov)
   # refresh SE/%RSE/CI on the fit's own parameter table from the new covariance
   .updateParFixedRefreshSeFromCov(env, .cov)
   .nlmixr2CovConditionUpdate(env)
