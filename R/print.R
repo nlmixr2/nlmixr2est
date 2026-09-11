@@ -281,11 +281,14 @@ print.nlmixr2FitCore <- function(x, ...) {
         sep = ""
       )
     }
-    if (exists("cor", x$env)) {
-      .tmp <- .getR(x$cor)
+    # $cor is NULL when there is no covariance (covMethod=""); testing
+    # exists("cor", x$env) instead found stats::cor on a reloaded fit (#1038)
+    .cor <- x$cor
+    if (!is.null(.cor)) {
+      .tmp <- .getR(.cor)
       if (any(abs(.tmp) >= getOption("nlmixr2.strong.corr", 0.7))) {
         cat(paste0("  Some strong fixed parameter correlations exist (", crayon::yellow(.bound), crayon::bold$blue("$cor"), ") :\n"))
-        .getCorPrint(x$cor)
+        .getCorPrint(.cor)
       } else {
         cat(paste0("  Fixed parameter correlations in ", crayon::yellow(.bound), crayon::bold$blue("$cor"), "\n"))
       }

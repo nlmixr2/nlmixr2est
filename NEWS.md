@@ -2,6 +2,12 @@
 
 ## Bug fixes
 
+- `fit$cor` returns `NULL` instead of erroring when the fit has no covariance
+  (`covMethod=""`), matching `fit$cov`.  Fit items are also looked up only in
+  the fit environment itself; a fit reloaded by `nlmixr2save` is parented on
+  the global environment, where `fit$cov` used to resolve to `stats::cov` and
+  break `print()` (#1038).
+
 - `foceiControl(fast=TRUE)` no longer converges to a non-stationary point when
   an external likelihood contribution is registered (`nlmixrRegisterLikContrib`,
   e.g. from `nlmixr2nn`).  The analytic outer gradient re-derives

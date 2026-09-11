@@ -234,8 +234,10 @@ nmObjGetData.default <- function(x, ...) {
 nmObjGet.default <- function(x, ...) {
   .arg <- class(x)[1]
   .env <- x[[1]]
-  if (exists(.arg, envir = .env)) {
-    .ret <- get(.arg, envir = .env)
+  # inherits=FALSE: a deserialized fit environment can be parented on
+  # globalenv(), where a name like "cov" resolves to stats::cov (#1038)
+  if (exists(.arg, envir = .env, inherits = FALSE)) {
+    .ret <- get(.arg, envir = .env, inherits = FALSE)
     if (inherits(.ret, "raw")) {
       .type <- rxode2::rxGetSerialType_(.ret)
       .ret <- try(.deserializeRaw(.ret, .type), silent = TRUE)
@@ -280,6 +282,11 @@ attr(nmObjGet.modelName, "rstudio") <- "modelName"
 nmObjGet.cor <- function(x, ...) {
   .obj <- x[[1]]
   .cov <- .obj$cov
+  # no covariance (covMethod="") gives no correlation; match what $cov returns
+  if (!is.matrix(.cov) || !is.numeric(.cov) ||
+        nrow(.cov) != ncol(.cov) || nrow(.cov) == 0L) {
+    return(NULL)
+  }
   .sd2 <- sqrt(diag(.cov))
   .cor <- stats::cov2cor(.cov)
   dimnames(.cor) <- dimnames(.cov)
