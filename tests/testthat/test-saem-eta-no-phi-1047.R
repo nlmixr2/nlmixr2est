@@ -162,6 +162,9 @@ nmTest({
       .ui <- rxode2::rxUiDecompress(rxode2::rxode2(.f))
       expect_equal(.saemEtaNoPhi(.ui), character(0))
       expect_false(anyNA(.ui$saemOmegaTrans))
+      # assert the GATE, not just what it reads: a gate broken to refuse
+      # everything would sail past the two lines above
+      expect_silent(.saemAssertEtaPhi(.ui))
     }
   })
 
