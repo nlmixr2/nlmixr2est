@@ -136,6 +136,14 @@ nmTest({
     .resolves(.norm(rxode2::rxUiDecompress(.mkTheta()())$nlsRxModel$predOnly),
               "nlsRxModel")
     .resolves(.norm(rxode2::rxUiDecompress(.mkTheta()())$nlmeRxModel), "nlmeRxModel")
+    # the impmap theta-sensitivity model builds off a LIGHTWEIGHT list, not the
+    # symengine environment (that is deliberate, it used to leak), so the mtime
+    # lines have to be carried in that list
+    .uiI <- rxode2::rxUiDecompress(.mkTheta()())
+    rxode2::rxAssignControlValue(.uiI, "combSens", TRUE)
+    .ts <- .impmapThetaSensModel(.uiI)
+    expect_false(is.null(.ts))
+    .resolves(.norm(.ts), "impmapThetaSens")
   })
 
   test_that("mtime() does not cost the table its ADDL doses", {
