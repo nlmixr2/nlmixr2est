@@ -223,7 +223,8 @@ rxUiGet.saemOmegaTrans <- function(x, ...) {
   .c <- 1
   for (i in .o) {
     # An eta with no phi parameter (NA) owns no Gamma2_phi1 column, so it gets
-    # no slot either; handing it one indexes past the matrix (#1047).
+    # no slot either.  Handing it a dense rank is what used to index past the
+    # matrix in .getSaemOmega() (#1047).
     if (is.na(.etaTrans[i])) next
     .etaTrans2[i] <- .c
     .c <- .c + 1

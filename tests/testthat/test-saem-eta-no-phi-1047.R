@@ -105,11 +105,13 @@ nmTest({
     expect_error(.saemAssertEtaPhi(.ui), "eta.ka, eta.cl")
   })
 
-  test_that("the gate does not refuse a model whose eta simply is not mu-referenced", {
-    # Every one of these fits today: rxode2 records an eta that is not
-    # `theta + eta` in `nonMuEtas`, which `saemParamsToEstimate()` appends to
-    # the phi list, so the eta DOES own a phi1 column.  Refusing any of them
-    # would be a regression, not a fix.
+  test_that("the gate does not refuse the models it must not", {
+    # Every one of these fits today.  The first two are NOT `theta + eta`, and
+    # rxode2 records such an eta in `nonMuEtas`, which `saemParamsToEstimate()`
+    # appends to the phi list, so they still own a phi1 column; the third is an
+    # ordinary mu-referenced covariate, whose slope is dropped from the phi
+    # list while the eta's own theta is not.  Refusing any of them would be a
+    # regression, not a fix.
     .shared <- function() {
       ini({
         tka <- 0.45
