@@ -66,4 +66,30 @@ nmTest({
       nlmixr2(.modNonMu, nlmixr2data::theo_sd, "saem", .ctl)))
     expect_equal(.fitNonMu$omega["eta.ka", "eta.ka"], 1, tolerance = 1e-12)
   })
+
+  # A fix()ed CORRELATED block: the off-diagonal restore also happens after the
+  # old snapshot point, so the reported covariance drifted too.
+  .modBlock <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      add.sd <- 0.7
+      eta.ka + eta.cl ~ fix(c(0.3, 0.02, 0.1))
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv)
+      linCmt() ~ add(add.sd)
+    })
+  }
+
+  test_that("a fix()ed correlated omega block reports every fixed entry (#1073)", {
+    .fitBlock <- suppressMessages(suppressWarnings(
+      nlmixr2(.modBlock, nlmixr2data::theo_sd, "saem", .ctl)))
+    expect_equal(unname(.fitBlock$omega),
+                 matrix(c(0.3, 0.02, 0.02, 0.1), 2, 2),
+                 tolerance = 1e-12)
+  })
 })
