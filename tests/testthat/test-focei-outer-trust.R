@@ -15,6 +15,26 @@ test_that("outerOpt='trust' validates its own control", {
   expect_equal(foceiControl(outerOpt = "trust")$outerOptTxt, "trust")
 })
 
+test_that("the trust outer controls survive a control round trip", {
+  # A built control is rebuilt from itself (posthoc re-validation, the *f
+  # wrappers, rxUiDeparse), so every new argument has to come back as the type
+  # and value it went in as -- outerOpt in particular, which is stored as -1L
+  # with the function in outerOptFun and recovered by name from outerOptTxt.
+  .c <- foceiControl(outerOpt = "trust", fast = TRUE, outerTrustHessian = "fd",
+                     outerTrustRinit = 0.3, outerTrustRmax = 2,
+                     outerTrustFterm = 1e-7, outerTrustMterm = 1e-8,
+                     outerTrustRelStep = 5e-4, outerTrustRestarts = 5L)
+  .r <- do.call(foceiControl, unclass(.c))
+  for (.n in c("outerTrustHessian", "outerTrustRinit", "outerTrustRmax",
+               "outerTrustFterm", "outerTrustMterm", "outerTrustRelStep",
+               "outerTrustRestarts", "outerOptTxt")) {
+    expect_identical(.r[[.n]], .c[[.n]], info = .n)
+  }
+  expect_true(is.function(.r$outerOptFun))
+  expect_match(paste(deparse(rxode2::rxUiDeparse(.c, "ctl")), collapse = " "),
+               "outerOpt = \"trust\"")
+})
+
 test_that("the Newton decrement gate reads a trust result", {
   # positive definite Hessian: 0.5 * g' H^-1 g
   expect_equal(.trustOuterDecrement(list(gradient = c(1, 2),
