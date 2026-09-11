@@ -2200,9 +2200,10 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
   ##
   ## Under "jump" this scan is new work that used to be skipped, so it must not
   ## be able to turn a building model into a failing one: a scan error there
-  ## leaves the flags at zero, which is exactly what the guarded code did.  In
-  ## "fd" the flags ARE the fallback switches, so an error still propagates.
-  .scan <- try(
+  ## leaves the C++ flags at zero, which is exactly what the guarded code did,
+  ## and records eventEtaAll as unknown rather than as "none" (below).  In "fd"
+  ## the flags ARE the fallback switches, so an error still propagates.
+  .scanErr <- tryCatch(
     {
       for (.v in s$..eventVars) {
         .vars <- as.character(get(.v, envir = s))
@@ -2220,16 +2221,23 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
           }
         }
       }
-      TRUE
+      NULL
     },
-    silent = TRUE
+    error = function(e) e
   )
-  if (inherits(.scan, "try-error")) {
-    if (!identical(.eventSens, "jump")) stop(attr(.scan, "condition"))
+  .eventEtaAll <- .eventEta
+  if (!is.null(.scanErr)) {
+    ## The loop only runs when the model HAS dosing modifiers, so an error here
+    ## means "this model doses through f()/alag()/rate()/dur() and which etas
+    ## reach them could not be resolved" -- NOT "no dosing etas".  Recording it
+    ## as zeros would let the fit-time tripwire conclude the jumps do not matter
+    ## and stay silent, which is the very thing it exists to prevent, so it is
+    ## recorded as unknown instead.
+    if (!identical(.eventSens, "jump")) stop(.scanErr)
     .eventEta[] <- 0L
     .eventTheta[] <- 0L
+    .eventEtaAll[] <- NA_integer_
   }
-  .eventEtaAll <- .eventEta
   if (identical(.eventSens, "jump")) {
     .eventEta[] <- 0L
     .eventTheta[] <- 0L
@@ -3605,11 +3613,23 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
 #'
 #' @param esLoaded What `rxEventSensLoadModel()` returned.
 #' @param model The focei model bundle (for `eventEtaAll`).
+#' @param eventSens The fit's resolved `eventSens`.  Only `"jump"` asks for the
+#'   analytic sensitivities, so only `"jump"` can be missing them -- an `"fd"`
+#'   fit never installs a shape and its dosing etas go through the C++
+#'   finite-difference fallback instead.  The mode is checked here rather than
+#'   only at the call site so the helper cannot be reused into a false alarm.
 #' @return invisibly `TRUE` when it warned, `FALSE` otherwise
 #' @noRd
-.foceiEventSensWarn <- function(esLoaded, model) {
+.foceiEventSensWarn <- function(esLoaded, model, eventSens = "jump") {
+  if (!identical(eventSens, "jump")) return(invisible(FALSE))
   if (isTRUE(esLoaded)) return(invisible(FALSE))
-  if (!isTRUE(any(model$eventEtaAll == 1L))) return(invisible(FALSE))
+  .eta <- model$eventEtaAll
+  ## NULL: a bundle from before the field existed, so nothing is established --
+  ## stay silent rather than warn about every model without dosing etas.  NA:
+  ## the scan that builds it failed on a model that DOES dose through
+  ## f()/alag()/rate()/dur(), so a dosing eta cannot be ruled out -- warn.
+  if (is.null(.eta)) return(invisible(FALSE))
+  if (!anyNA(.eta) && !any(.eta == 1L)) return(invisible(FALSE))
   warning("dosing-parameter (f/alag) event sensitivities not loaded",
     call. = FALSE
   )
@@ -3656,7 +3676,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       rxode2::rxEventSensLoadModel(.ret$model$inner),
       error = function(e) FALSE
     )
-    .foceiEventSensWarn(.esLoaded, .ret$model)
+    .foceiEventSensWarn(.esLoaded, .ret$model, .eventSens)
     if (isTRUE(.esLoaded)) {
       ## Tell the C++ core which model the event path is now bound to.  handle_evid
       ## sizes its scratch from the effective neq but calls the INSTALLED model's

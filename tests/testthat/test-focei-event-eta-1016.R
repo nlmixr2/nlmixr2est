@@ -98,6 +98,10 @@ nmTest({
     # the shape installed -- nothing to say
     expect_false(.foceiEventSensWarn(TRUE, .b))
     expect_silent(.foceiEventSensWarn(TRUE, .b))
+    # an "fd" fit never installs a shape; its dosing etas go through the C++
+    # finite-difference fallback, so a missing shape there is not a defect
+    expect_false(.foceiEventSensWarn(FALSE, .b, "fd"))
+    expect_silent(.foceiEventSensWarn(FALSE, .b, "fd"))
     # it did not, and this model's etas need it: the fit would otherwise leave
     # eta.f/eta.lag where they started with no diagnostic at all
     expect_warning(
@@ -113,6 +117,16 @@ nmTest({
     )
     # a model with no dosing eta does not depend on the jumps, so it stays quiet
     .b$eventEtaAll <- c(0L, 0L, 0L)
+    expect_false(.foceiEventSensWarn(FALSE, .b))
+    expect_silent(.foceiEventSensWarn(FALSE, .b))
+    # unknown is NOT quiet: the scan that fills eventEtaAll only runs on a model
+    # that doses through f()/alag()/rate()/dur(), so a failed scan cannot be
+    # read as "no dosing etas" -- that would silence the tripwire on exactly the
+    # models it exists for
+    .b$eventEtaAll <- c(NA_integer_, NA_integer_, NA_integer_)
+    expect_warning(expect_true(.foceiEventSensWarn(FALSE, .b)))
+    # a bundle from before the field existed establishes nothing either way
+    .b$eventEtaAll <- NULL
     expect_false(.foceiEventSensWarn(FALSE, .b))
     expect_silent(.foceiEventSensWarn(FALSE, .b))
   })
@@ -166,6 +180,42 @@ nmTest({
     # and they did not collapse: with the jumps gone both fits sat at ~1e-9
     expect_gt(max(abs(.f1$eta$eta.f)), 1e-3)
     expect_gt(max(abs(.f2$eta$eta.f)), 1e-3)
+  })
+
+  test_that("a fit whose cached bundle lost the mode says so (#1016)", {
+    skip_on_cran()
+    .dat <- .evEtaDat()
+    .ctl <- foceiControl(
+      print = 0, maxOuterIterations = 0L, covMethod = "",
+      calcTables = FALSE, sigdig = 6, etaNudge = 0, etaNudge2 = 0
+    )
+    .msg <- "event sensitivities not loaded"
+    # healthy first: the assertion below has to be able to come out either way
+    .ok <- .nlmixr(.evEtaMod, .dat, est = "focei", control = .ctl)
+    expect_false(any(grepl(.msg, .ok$runInfo)))
+
+    # now reproduce #1016 itself end to end.  The bundle is cached as model
+    # TEXT plus the mode that built it; before the fix the mode was not stored,
+    # so every fit after the first rehydrated the inner model in "fd" mode.
+    # Poisoning the stored mode is exactly that state.
+    .ui <- rxode2::.copyUi(suppressMessages(nlmixr2est::nlmixr2(.evEtaMod)))
+    assign("control", .ctl, envir = .ui)
+    .cacheFile <- .ui$foceiModelCache
+    on.exit(unlink(.cacheFile), add = TRUE)
+    expect_true(file.exists(.cacheFile))
+    .store <- readRDS(.cacheFile)
+    expect_equal(.store$inner$eventSens, "jump")
+    .store$inner$eventSens <- "fd"
+    saveRDS(.store, .cacheFile)
+
+    # the fit still runs and still returns -- that is the whole problem -- so
+    # the only thing that tells anyone is the note on $runInfo
+    .bad <- .nlmixr(.evEtaMod, .dat, est = "focei", control = .ctl)
+    expect_true(any(grepl(.msg, .bad$runInfo)))
+    # and it is the #1016 answer: the dosing etas did not move (reported as
+    # ~9e-09 on the issue's own model; the healthy fit below is 100x larger)
+    expect_lt(max(abs(.bad$eta$eta.f)), 1e-5)
+    expect_gt(max(abs(.ok$eta$eta.f)), 1e-3)
   })
 
 })
