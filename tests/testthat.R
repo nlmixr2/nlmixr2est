@@ -70,7 +70,7 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
   # batch 2
   c(
     "focei-wang2007-lognormal", "cov-analytic", "focei-wang2007-power",
-    "cov-condition", "agq-cov", "cov-decouple-saimp"
+    "cov-condition", "agq-cov", "cov-decouple-saimp", "cov-scope-swap"
   ),
   # batch 3
   c(
