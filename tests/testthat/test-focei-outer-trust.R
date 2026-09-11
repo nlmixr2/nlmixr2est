@@ -132,6 +132,45 @@ test_that("the finite-difference curvature settles every point it reads", {
   expect_identical(.seen[length(.seen)], "fn:1,1")
 })
 
+test_that("the trust driver hands its control through to the region and curvature", {
+  # The unit tests above exercise the helpers directly, so they cannot see the
+  # driver reading the wrong control field.  Drive .trustOuter() itself over a
+  # quadratic whose answer is known and watch what reaches each seam.
+  .seen <- list()
+  .control <- list(
+    fast = TRUE, sigdig = 3, maxOuterIterations = 50L,
+    outerTrustHessian = "analytic", outerTrustRelStep = 5e-4,
+    outerTrustRinit = 0.4, outerTrustRmax = 3.2, outerTrustRestarts = 2L,
+    outerTrustFterm = 1e-11, outerTrustMterm = 1e-11,
+    hessian = function(x, relStep) {
+      .seen$relStep <<- relStep
+      diag(c(2, 8))
+    }
+  )
+  .ret <- .trustOuter(c(3, -2),
+    fn = function(x) x[1]^2 + 4 * x[2]^2,
+    gr = function(x) c(2 * x[1], 8 * x[2]),
+    lower = c(-Inf, -Inf), upper = c(Inf, Inf), control = .control
+  )
+  expect_equal(.ret$x, c(0, 0), tolerance = 1e-6)
+  expect_equal(.ret$convergence, 0L)
+  expect_equal(.seen$relStep, 5e-4)
+  expect_gt(.ret$hessianEvaluations, 0L)
+  expect_false(.ret$hessianFallback)
+  # a true Newton step from a quadratic lands in one iteration, so the restart
+  # budget is untouched and the decrement gate is satisfied
+  expect_equal(.ret$restarts, 0L)
+  expect_lt(.ret$newtonDecrement, .control$outerTrustFterm)
+
+  # the box is enforced by rejecting the point, not by projecting the step
+  .ret <- .trustOuter(c(3, 2),
+    fn = function(x) x[1]^2 + 4 * x[2]^2,
+    gr = function(x) c(2 * x[1], 8 * x[2]),
+    lower = c(1, 1), upper = c(Inf, Inf), control = .control
+  )
+  expect_true(all(.ret$x >= c(1, 1)))
+})
+
 test_that("outerOpt='trust' fits and consumes the analytic outer Hessian", {
   skip_on_cran()
   model <- function() {
