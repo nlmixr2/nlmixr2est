@@ -234,6 +234,17 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   } else if (length(failedMethods) > 0) {
     warning("Problems solving ", what, " with ", paste(failedMethods, collapse = ", "), ", returning results from ", currentOdeMethod)
   }
+  # mtime() records are model output, not data (#919): the solve emits one extra
+  # row per subject per mtime, which is not an observation and has no source row
+  # in the input dataset, so it would land in the fit table as a DV=NA row.  They
+  # are the rows with no `nlmixrRowNums`; only looked for when the solved model
+  # actually declares an mtime.
+  .hasMtime <- tryCatch(rxode2::rxModelVars(model)$nMtime > 0L,
+                        error = function(e) FALSE)
+  if (isTRUE(.hasMtime) && !is.null(.res$nlmixrRowNums)) {
+    .res <- .res[!is.na(.res$nlmixrRowNums), , drop = FALSE]
+    rownames(.res) <- NULL
+  }
   .res
 }
 

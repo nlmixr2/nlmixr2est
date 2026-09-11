@@ -613,10 +613,8 @@ rxUiGet.nlmRxModel <- function(x, ...) {
     .msuccess("done")
   }
   .cmt <- rxUiGet.foceiCmtPreModel(x, ...)
-  .interp <- rxUiGet.interpLinesStr(x, ...)
-  if (.interp != "") {
-    .cmt <- paste0(.cmt, "\n", .interp)
-  }
+  # mtime() lines are re-emitted here (#919); see .mtimeLinesStr()
+  .cmt <- .addPreModelLines(.cmt, rxUiGet.interpLinesStr(x, ...), .mtimeLinesStr(.s))
   ## no splitBolus() here -- this model solves the pre-split events, so
   ## declaring it would split the doses twice (see .foceiPreProcessData())
   list(
@@ -714,6 +712,9 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
 .rxFinalizeNlm <- function(.s, sum.prod = FALSE,
                            optExpression = TRUE, cores = 0L,
                            interpLines = "") {
+  interpLines <- interpLines[interpLines != ""]
+  # mtime() lines are re-emitted here (#919); see .mtimeLinesStr()
+  interpLines <- c(interpLines, .mtimeLinesStr(.s))
   interpLines <- interpLines[interpLines != ""]
   # see focei.R's .rxFinalizeInner(): do not re-flatten a matExp-native ..ddt (#860)
   if (!isTRUE(.s$..matExpNative)) .rxInjectMatExpDdt(.s)

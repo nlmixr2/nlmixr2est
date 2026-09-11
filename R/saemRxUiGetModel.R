@@ -463,10 +463,8 @@ rxUiGet.saemModel <- function(x, ...) {
      .msuccess("done")
   }
   .cmt <-  rxUiGet.foceiCmtPreModel(x, ...)
-  .interp <- rxUiGet.interpLinesStr(x, ...)
-  if (.interp != "") {
-    .cmt <-paste0(.cmt, "\n", .interp)
-  }
+  # mtime() lines are re-emitted here (#919); see .mtimeLinesStr()
+  .cmt <- .addPreModelLines(.cmt, rxUiGet.interpLinesStr(x, ...), .mtimeLinesStr(.s))
   ## no splitBolus() here -- saem solves the pre-split $dataSav, so declaring it
   ## would split the doses twice (see .foceiPreProcessData())
   paste(c(rxUiGet.saemParams(x, ...), .cmt,
@@ -721,6 +719,8 @@ rxUiGet.saemModelPred <- function(x, ...) {
   .ret <- c(rxUiGet.foceiParams(x, ...),
             rxUiGet.foceiCmtPreModel(x, ...),
             .interp,
+            # mtime() lines are re-emitted here (#919); see .mtimeLinesStr()
+            .mtimeLinesStr(.s),
             "rx_pred_=NA\nrx_r_=NA\n",
             .replaceLines,
             .ret,

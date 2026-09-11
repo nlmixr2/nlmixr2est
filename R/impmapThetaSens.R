@@ -190,8 +190,8 @@ attr(rxUiGet.impmapThetaSens, "rstudio") <- emptyenv()
   ## this model solves the pre-split events, so declaring it would split the
   ## doses twice (see .foceiPreProcessData())
   .cmt <- ui$foceiCmtPreModel
-  .interp <- ui$interpLinesStr
-  if (.interp != "") .cmt <- paste0(.cmt, "\n", .interp)
+  # mtime() lines are re-emitted here (#919); see .mtimeLinesStr()
+  .cmt <- .addPreModelLines(.cmt, ui$interpLinesStr, .mtimeLinesStr(.s))
   nlmixr2global$toRxParam <-
     paste0(.uiGetThetaEtaParams(ui, TRUE), "\n", .cmt, "\n")
   nlmixr2global$toRxDvidCmt <- .foceiToCmtLinesAndDvid(ui)

@@ -1445,7 +1445,12 @@
     # NULL (no delay()) for ordinary models.
     .pastLines <- .s$..pastLines
     if (is.null(.pastLines)) .pastLines <- character(0)
-    .modTxt <- paste(c(.baseOde, .dose, .s1, .s2, .icL, .pastLines, paste0("rx_predf_=", .toRx(.pred)), .fL1, .fL2, .rvarL, .sigL, .tvarL), collapse = "\n")
+    # mtime() lines are re-emitted here (#919); see .mtimeLinesStr().  They go
+    # in BEFORE the THETA[#]/ETA[#] -> THETA_#_/ETA_#_ rename below so an mtime
+    # right hand side that references a parameter is renamed with everything else.
+    .mtime <- .mtimeLinesStr(.s)
+    if (.mtime == "") .mtime <- character(0)
+    .modTxt <- paste(c(.mtime, .baseOde, .dose, .s1, .s2, .icL, .pastLines, paste0("rx_predf_=", .toRx(.pred)), .fL1, .fL2, .rvarL, .sigL, .tvarL), collapse = "\n")
     .modTxt <- gsub("ETA\\[([0-9]+)\\]", "ETA_\\1_", .modTxt); .modTxt <- gsub("THETA\\[([0-9]+)\\]", "THETA_\\1_", .modTxt)
     # Optimize common subexpressions (as the inner model does): the augmented model
     # has heavy shared subexpressions across the sensitivity ODEs and the f1/f2

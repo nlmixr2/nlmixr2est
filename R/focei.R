@@ -849,6 +849,86 @@ attr(rxUiGet.foceiModel0ll, "rstudio") <- quote(rxModelVars({}))
   rxode2::rxNorm(.mv)
 }
 
+#' Pull the `mtime()` declarations out of normalized rxode2 model text
+#'
+#' `rxode2::rxS()` records only the mtime VARIABLE and discards the assignment,
+#' so every model generated from a symengine environment silently loses its
+#' modeled times.  They are recovered from the text that was loaded.
+#'
+#' @param newmod normalized rxode2 model text
+#' @return named character vector, names the mtime variables and values their
+#'   right hand side model text; `character(0)` when the model has no mtime
+#' @author Matthew L. Fidler
+#' @noRd
+.rxMtimeRhs <- function(newmod) {
+  .lines <- unlist(strsplit(paste(newmod, collapse = "\n"), "\n", fixed = TRUE))
+  .re <- "^\\s*mtime\\s*\\(\\s*([A-Za-z._][A-Za-z0-9._]*)\\s*\\)\\s*(=|<-|~)\\s*(.*?);?\\s*$"
+  .w <- grep(.re, .lines)
+  if (length(.w) == 0L) {
+    return(character(0))
+  }
+  stats::setNames(sub(.re, "\\3", .lines[.w]), sub(.re, "\\1", .lines[.w]))
+}
+
+#' Store the model's `mtime()` declarations on its symengine environment
+#'
+#' The right hand side is expanded THROUGH the symengine environment so it
+#' comes back in the same parameter namespace as the rest of the generated
+#' model (`THETA[#]`/`ETA[#]` for the focei family, natural names for saem).
+#'
+#' @param newmod normalized rxode2 model text that was loaded
+#' @param env symengine environment from `rxode2::rxS()`
+#' @return Nothing, called for the `..mtime` side effect
+#' @author Matthew L. Fidler
+#' @noRd
+.rxMtimeAssign <- function(newmod, env) {
+  .rhs <- .rxMtimeRhs(newmod)
+  if (length(.rhs) == 0L) {
+    assign("..mtime", character(0), envir = env)
+    return(invisible(NULL))
+  }
+  .lines <- vapply(seq_along(.rhs), function(.i) {
+    .se <- rxode2::.rxToSE(str2lang(.rhs[.i]))
+    .expr <- eval(parse(text = paste0("with(env, ", .se, ")")))
+    .txt <- paste(.expr)
+    # `~` not `=`: the modeled time is not read back, and an extra output
+    # column would shift the positional lhs layout inner.cpp reads
+    paste0("mtime(", names(.rhs)[.i], ")~", rxode2::rxFromSE(.txt))
+  }, character(1), USE.NAMES = FALSE)
+  assign("..mtime", .lines, envir = env)
+  invisible(NULL)
+}
+
+#' `mtime()` declaration line(s) for a generated model
+#'
+#' @param .s symengine environment loaded by `.loadSymengine()`
+#' @return single string of the model's mtime lines, `""` when there are none
+#' @author Matthew L. Fidler
+#' @noRd
+.mtimeLinesStr <- function(.s) {
+  .m <- .s$..mtime
+  if (is.null(.m) || length(.m) == 0L) {
+    return("")
+  }
+  paste(.m, collapse = "\n")
+}
+
+#' Append the model prologue lines that are not always present
+#'
+#' @param cmt compartment/parameter prologue built so far
+#' @param ... additional line blocks; empty ones are skipped
+#' @return `cmt` with every non-empty block appended on its own line
+#' @author Matthew L. Fidler
+#' @noRd
+.addPreModelLines <- function(cmt, ...) {
+  for (.l in list(...)) {
+    if (!is.null(.l) && length(.l) > 0L && any(.l != "")) {
+      cmt <- paste0(cmt, "\n", paste(.l, collapse = "\n"))
+    }
+  }
+  cmt
+}
+
 #' Load a model into a symengine environment
 #'
 #' @param newmod model text (normalized rxode2 model, e.g. from a prune)
@@ -879,6 +959,9 @@ attr(rxUiGet.foceiModel0ll, "rstudio") <- quote(rxModelVars({}))
   if (inherits(.ret$rx_r_, "numeric")) {
     assign("rx_r_", symengine::S(as.character(.ret$rx_r_)), envir = .ret)
   }
+  # rxS() drops mtime() entirely (issue #919); keep it so the generated models
+  # still stop the solver at the modeled times and still define the variable.
+  .rxMtimeAssign(newmod, .ret)
   .ret
 }
 
@@ -2141,10 +2224,10 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
   ## Interpolation is carried into the generated models, splitBolus() is not:
   ## these models solve the pre-split $dataSav (see .foceiPreProcessData()).
   .cmt <- ui$foceiCmtPreModel
-  .interp <- ui$interpLinesStr
-  if (.interp != "") {
-    .cmt <- paste0(.cmt, "\n", .interp)
-  }
+  # mtime() declarations are re-emitted into every generated model (#919); rxS()
+  # keeps only the variable name, so without this the modeled times silently
+  # disappear from the inner/pred/outer models and the variable is undefined.
+  .cmt <- .addPreModelLines(.cmt, ui$interpLinesStr, .mtimeLinesStr(s))
   .paramStr <- .uiGetThetaEtaParams(ui, TRUE)
   if (.getRxPredLlikOption()) {
     # DV is not an ordinary covariate (rxode2's etTran.cpp excludes any
