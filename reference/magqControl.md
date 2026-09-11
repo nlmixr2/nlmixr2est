@@ -317,7 +317,7 @@ magqControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x5650bfd18948>
+#> <bytecode: 0x56229bfec260>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg

@@ -4,6 +4,19 @@
 
 ### Bug fixes
 
+- A model containing `mtime()` can be fit again, with every estimation
+  method. `etTrans()` materializes the modeled times as `EVID` 10-99
+  records (`TIME=0`, `AMT=NA`) and `$dataSav` persisted them, so
+  re-translating it for each estimation solve rejected them as doses
+  with a missing amount. They are now dropped, and since
+  [`rxode2::rxS()`](https://nlmixr2.github.io/rxode2/reference/rxS.html)
+  keeps only the mtime variable name, the `mtime()` declarations are
+  re-emitted into every generated model so the modeled times survive
+  estimation and the mtime variable stays defined. The extra records the
+  solve regenerates are also kept out of the fit’s output table and out
+  of the `nlme` objective
+  ([\#919](https://github.com/nlmixr2/nlmixr2est/issues/919)).
+
 - `fit$cor` returns `NULL` instead of erroring when the fit has no
   covariance (`covMethod=""`), matching `fit$cov`
   ([\#1038](https://github.com/nlmixr2/nlmixr2est/issues/1038)).
