@@ -138,6 +138,9 @@ nmTest({
     .df <- as.data.frame(.fit)
     expect_equal(nrow(.df), sum(.theo$EVID == 0))
     expect_false(anyNA(.df$DV))
+    # the declaration is emitted suppressed, so the mtime variable is not an
+    # output of the solve and does not reach the table either
+    expect_false("t5" %in% names(.df))
 
     # PRED at eta=0 must reproduce an independent rxode2 solve.  The reference is
     # plain rxode2 model text writing the same switch with a literal 5 instead of

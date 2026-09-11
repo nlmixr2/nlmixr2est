@@ -252,6 +252,10 @@ nmTest({
     # of the same model's prediction
     .sens <- function(useMtime, h=1e-4) {
       .inner <- rxode2::rxUiDecompress(.mkSw(useMtime)())$focei$inner
+      # loading the declaration as an assignment must not turn the modeled time
+      # into an output column: that would shift the positional lhs layout
+      # inner.cpp reads
+      if (useMtime) expect_false("tsw5" %in% rxode2::rxModelVars(.inner)$lhs)
       .at <- function(.e) {
         .p <- stats::setNames(c(.th, .e),
                               c(paste0("THETA[", 1:5, "]"), "ETA[1]"))
