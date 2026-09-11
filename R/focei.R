@@ -1197,6 +1197,201 @@ attr(rxUiGet.foceiModel0ll, "rstudio") <- quote(rxModelVars({}))
   rxode2::rxNorm(.mv)
 }
 
+#' Pull the `mtime()` declarations out of normalized rxode2 model text
+#'
+#' `rxode2::rxS()` records only the mtime VARIABLE and discards the assignment,
+#' so every model generated from a symengine environment silently loses its
+#' modeled times.  They are recovered from the text that was loaded.
+#'
+#' @param newmod normalized rxode2 model text
+#' @return named character vector, names the mtime variables and values their
+#'   right hand side model text; `character(0)` when the model has no mtime
+#' @author Matthew L. Fidler
+#' @noRd
+.rxMtimeRe <-
+  "^\\s*mtime\\s*\\(\\s*([A-Za-z._][A-Za-z0-9._]*)\\s*\\)\\s*(=|<-|~)\\s*(.*?);?\\s*$"
+
+.rxMtimeRhs <- function(newmod) {
+  .lines <- unlist(strsplit(paste(newmod, collapse = "\n"), "\n", fixed = TRUE))
+  .w <- grep(.rxMtimeRe, .lines)
+  if (length(.w) == 0L) {
+    return(character(0))
+  }
+  stats::setNames(sub(.rxMtimeRe, "\\3", .lines[.w]),
+                  sub(.rxMtimeRe, "\\1", .lines[.w]))
+}
+
+#' Plain-name assignment target of each normalized model line
+#'
+#' @param lines character vector of normalized rxode2 model lines
+#' @return character vector the same length, the assigned name or `NA` for a
+#'   line that does not assign to a plain name (`d/dt(x)=`, `mtime(x)=`, ...)
+#' @author Matthew L. Fidler
+#' @noRd
+.rxLineLhs <- function(lines) {
+  .t <- trimws(sub("[ \t]*(<-|~|=(?!=)).*$", "", lines, perl = TRUE))
+  ifelse(grepl("^[A-Za-z._][A-Za-z0-9._]*$", .t), .t, NA_character_)
+}
+
+#' Names an `mtime()` right hand side depends on, through the model text
+#'
+#' Walks the assignments that PRECEDE the declaration, so the answer is the set
+#' of names whose value at that point the expansion relies on.
+#'
+#' @param lines normalized model lines
+#' @param lhs `.rxLineLhs(lines)`
+#' @param idx line index of the mtime declaration
+#' @param rhs its right hand side model text
+#' @return character vector of names
+#' @author Matthew L. Fidler
+#' @noRd
+.rxMtimeDeps <- function(lines, lhs, idx, rhs) {
+  .vars <- function(.txt) {
+    .p <- try(str2lang(.txt), silent = TRUE)
+    if (inherits(.p, "try-error")) character(0) else all.vars(.p)
+  }
+  .seen <- character(0)
+  .todo <- .vars(rhs)
+  while (length(.todo) > 0L) {
+    .v <- .todo[1L]
+    .todo <- .todo[-1L]
+    if (.v %in% .seen) next
+    .seen <- c(.seen, .v)
+    .w <- which(!is.na(lhs) & lhs == .v & seq_along(lhs) < idx)
+    if (length(.w) > 0L) {
+      .todo <- c(.todo, .vars(sub(";[ \t]*$", "", sub("^[^=~]*(=|~)", "", lines[max(.w)]))))
+    }
+  }
+  .seen
+}
+
+#' Store the model's `mtime()` declarations on its symengine environment
+#'
+#' The right hand side is expanded THROUGH the symengine environment so it
+#' comes back in the same parameter namespace as the rest of the generated
+#' model (`THETA[#]`/`ETA[#]` for the focei family, natural names for saem).
+#'
+#' @param newmod normalized rxode2 model text that was loaded
+#' @param env symengine environment from `rxode2::rxS()`
+#' @return Nothing, called for the `..mtime` side effect
+#' @author Matthew L. Fidler
+#' @noRd
+.rxMtimeAssign <- function(newmod, env) {
+  .rhs <- .rxMtimeRhs(newmod)
+  if (length(.rhs) == 0L) {
+    assign("..mtime", character(0), envir = env)
+    return(invisible(NULL))
+  }
+  # Expand in a CHILD of the symengine environment, never in it: one mtime may
+  # reference an earlier one, and rxS() left those variables unbound (it drops
+  # the assignment, not just its value), so bind them to themselves here rather
+  # than adding them to the environment every other generated model reads.
+  # rxS() keeps only each variable's FINAL value, so expanding against it is the
+  # value at the END of the model.  That is the value at the declaration only
+  # while nothing the right hand side depends on is assigned again afterwards --
+  # rxode2 itself evaluates the declaration in place, so refuse rather than
+  # silently emit the later value.
+  .lines <- unlist(strsplit(paste(newmod, collapse = "\n"), "\n", fixed = TRUE))
+  .lhs <- .rxLineLhs(.lines)
+  .mtIdx <- grep(.rxMtimeRe, .lines)
+  for (.i in seq_along(.rhs)) {
+    .dep <- .rxMtimeDeps(.lines, .lhs, .mtIdx[.i], .rhs[[.i]])
+    .bad <- unique(.lhs[!is.na(.lhs) & .lhs %in% .dep &
+                          seq_along(.lhs) >= .mtIdx[.i]])
+    if (length(.bad) > 0L) {
+      stop("mtime(", names(.rhs)[.i], ") uses '", .bad[1L],
+           "', which the model assigns again after it; rename or move it",
+           call. = FALSE)
+    }
+  }
+  .e <- new.env(parent = env)
+  for (.v in names(.rhs)) {
+    assign(.v, symengine::S(.v), envir = .e)
+  }
+  .expand <- function(.i) {
+    .se <- rxode2::.rxToSE(str2lang(.rhs[[.i]]))
+    .val <- eval(parse(text = paste0("with(.e, ", .se, ")")))
+    .txt <- paste(.val)
+    rxode2::rxFromSE(.txt)
+  }
+  .lines <- vapply(seq_along(.rhs), function(.i) {
+    # Refuse an expression symengine cannot take rather than emitting the text
+    # it was parsed from: the declaration is re-emitted at the TOP of the
+    # generated model, so unexpanded text naming a model lhs would read that
+    # variable before the model assigns it.
+    .one <- tryCatch(.expand(.i), error = function(e) {
+      stop("mtime(", names(.rhs)[.i], ") right hand side cannot be expanded: ",
+           conditionMessage(e), call. = FALSE)
+    })
+    # `~` not `=`: the modeled time is not read back, and an extra output
+    # column would shift the positional lhs layout inner.cpp reads
+    paste0("mtime(", names(.rhs)[.i], ")~", .one)
+  }, character(1), USE.NAMES = FALSE)
+  assign("..mtime", .lines, envir = env)
+  invisible(NULL)
+}
+
+#' `mtime()` declaration line(s) for a generated model
+#'
+#' @param .s symengine environment loaded by `.loadSymengine()`
+#' @return single string of the model's mtime lines, `""` when there are none
+#' @author Matthew L. Fidler
+#' @noRd
+.mtimeLinesStr <- function(.s) {
+  .m <- .s$..mtime
+  if (is.null(.m) || length(.m) == 0L) {
+    return("")
+  }
+  paste(.m, collapse = "\n")
+}
+
+#' Splice a model's `mtime()` lines into already-assembled model text
+#'
+#' `rxode2::rxOptExpr()` does not know the `mtime()` lhs form and stops with
+#' "stopped optimizing duplicate expressions", so a model whose text is
+#' optimized in place has to get its mtime lines afterwards.  They are put
+#' after the leading declaration block (`param()`/`cmt()`/interpolation), since
+#' a trailing endpoint `cmt()` must stay last.
+#'
+#' @param txt assembled (and optimized) rxode2 model text
+#' @param .s symengine environment loaded by `.loadSymengine()`
+#' @return `txt` with the mtime lines spliced in, unchanged when there are none
+#' @author Matthew L. Fidler
+#' @noRd
+.addMtimeLines <- function(txt, .s) {
+  .m <- .s$..mtime
+  if (is.null(.m) || length(.m) == 0L) {
+    return(txt)
+  }
+  .lines <- unlist(strsplit(paste(txt, collapse = "\n"), "\n", fixed = TRUE))
+  .isDecl <- function(.l) {
+    !nzchar(trimws(.l)) ||
+      grepl("^[ \t]*(params?|cmt|linear|locf|nocb|midpoint)[ \t]*\\(", .l)
+  }
+  .i <- 0L
+  while (.i < length(.lines) && .isDecl(.lines[.i + 1L])) .i <- .i + 1L
+  if (.i == 0L) {
+    return(paste(c(.m, .lines), collapse = "\n"))
+  }
+  paste(c(.lines[seq_len(.i)], .m, .lines[-seq_len(.i)]), collapse = "\n")
+}
+
+#' Append the model prologue lines that are not always present
+#'
+#' @param cmt compartment/parameter prologue built so far
+#' @param ... additional line blocks; empty ones are skipped
+#' @return `cmt` with every non-empty block appended on its own line
+#' @author Matthew L. Fidler
+#' @noRd
+.addPreModelLines <- function(cmt, ...) {
+  for (.l in list(...)) {
+    if (!is.null(.l) && length(.l) > 0L && any(.l != "")) {
+      cmt <- paste0(cmt, "\n", paste(.l, collapse = "\n"))
+    }
+  }
+  cmt
+}
+
 #' Load a model into a symengine environment
 #'
 #' @param newmod model text (normalized rxode2 model, e.g. from a prune)
@@ -1227,6 +1422,9 @@ attr(rxUiGet.foceiModel0ll, "rstudio") <- quote(rxModelVars({}))
   if (inherits(.ret$rx_r_, "numeric")) {
     assign("rx_r_", symengine::S(as.character(.ret$rx_r_)), envir = .ret)
   }
+  # rxS() drops mtime() entirely (issue #919); keep it so the generated models
+  # still stop the solver at the modeled times and still define the variable.
+  .rxMtimeAssign(newmod, .ret)
   .ret
 }
 
@@ -2505,10 +2703,10 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
   ## Interpolation is carried into the generated models, splitBolus() is not:
   ## these models solve the pre-split $dataSav (see .foceiPreProcessData()).
   .cmt <- ui$foceiCmtPreModel
-  .interp <- ui$interpLinesStr
-  if (.interp != "") {
-    .cmt <- paste0(.cmt, "\n", .interp)
-  }
+  # mtime() declarations are re-emitted into every generated model (#919); rxS()
+  # keeps only the variable name, so without this the modeled times silently
+  # disappear from the inner/pred/outer models and the variable is undefined.
+  .cmt <- .addPreModelLines(.cmt, ui$interpLinesStr, .mtimeLinesStr(s))
   .paramStr <- .uiGetThetaEtaParams(ui, TRUE)
   if (.getRxPredLlikOption()) {
     # DV is not an ordinary covariate (rxode2's etTran.cpp excludes any
@@ -3958,6 +4156,15 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     .dat$ID <- match(.idLvl[.dat$ID], .keepLvl)
     .idLvl <- .keepLvl
   }
+  # mtime() records (EVID 10-99) are MODEL output, not data: etTrans() adds one
+  # per subject per mtime, at TIME=0 with AMT=NA, and the real time is only
+  # computed during the solve.  $dataSav is re-translated for every estimation
+  # solve, where those rows arrive as INPUT and are rejected as doses with a
+  # missing amt ("'amt' value NA for dose event", issue #919).  The solving
+  # models carry their own mtime() declarations (.mtimeLinesStr()), so each
+  # solve regenerates them; they must not be persisted here.  EVID 9 (system
+  # init) is below the range and is kept.
+  .dat <- .dat[!(.dat$EVID >= 10 & .dat$EVID <= 99), , drop = FALSE]
   env$dataSav <- .dat
   env$idLvl <- .idLvl
   env$covLvl <- .lvls

@@ -1540,8 +1540,12 @@
     # (pool = outer), still takes the analytic gradient, objf 133.654382798 against
     # fast=FALSE's 133.654382066.
     .cmtPre <- ui$foceiCmtPreModel
-    .interp <- ui$interpLinesStr
-    if (!is.null(.interp) && .interp != "") .cmtPre <- paste0(.cmtPre, "\n", .interp)
+    # mtime() lines ride with the prologue (#919), so they are not in the text
+    # rxOptExpr() sees -- it cannot parse them and would decline to optimize the
+    # whole augmented model.  Renamed to match this model's THETA_#_/ETA_#_ form.
+    .mtime <- gsub("ETA\\[([0-9]+)\\]", "ETA_\\1_",
+                   gsub("THETA\\[([0-9]+)\\]", "THETA_\\1_", .mtimeLinesStr(.s)))
+    .cmtPre <- .addPreModelLines(.cmtPre, ui$interpLinesStr, .mtime)
     .modTxt <- paste(c(.param, .cmtPre, .modTxt, .foceiToCmtLinesAndDvid(ui)), collapse = "\n")
     # no splitBolus() in the augmented model -- it translates the already-split
     # dataSav, so declaring it would split the doses twice (.foceiPreProcessData)

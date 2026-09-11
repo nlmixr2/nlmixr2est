@@ -6,6 +6,7 @@ nlmixr2global <- new.env(parent = emptyenv())
   nlmixr2global$rxPredLlik <- FALSE # is this a log-likelihood?
   nlmixr2global$nlmeFitDataAll <- NULL # data for nlme fit
   nlmixr2global$nlmeFitRxModel <- NULL # rx model for nlme fit
+  nlmixr2global$nlmeFitHasMtime <- FALSE # does that model declare mtime()? (#919)
   nlmixr2global$nlmeFitRxControl <- NULL # rx control for nlme fit
   nlmixr2global$nlmixr2SimInfo <- NULL # sim info for nlmixr2
 

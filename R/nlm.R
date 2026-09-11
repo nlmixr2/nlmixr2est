@@ -613,10 +613,8 @@ rxUiGet.nlmRxModel <- function(x, ...) {
     .msuccess("done")
   }
   .cmt <- rxUiGet.foceiCmtPreModel(x, ...)
-  .interp <- rxUiGet.interpLinesStr(x, ...)
-  if (.interp != "") {
-    .cmt <- paste0(.cmt, "\n", .interp)
-  }
+  # mtime() lines are re-emitted here (#919); see .mtimeLinesStr()
+  .cmt <- .addPreModelLines(.cmt, rxUiGet.interpLinesStr(x, ...), .mtimeLinesStr(.s))
   ## no splitBolus() here -- this model solves the pre-split events, so
   ## declaring it would split the doses twice (see .foceiPreProcessData())
   list(
@@ -803,6 +801,9 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
     .s$..nlmS <- rxode2::rxOptExpr(.s$..nlmS, "nlm llik gradient", parallel = cores)
     .s$..pred.nolhs <- rxode2::rxOptExpr(.s$..pred.nolhs, "nlm pred-only", parallel = cores)
   }
+  # mtime() lines go in AFTER the optimization, which cannot parse them (#919)
+  .s$..nlmS <- .addMtimeLines(.s$..nlmS, .s)
+  .s$..pred.nolhs <- .addMtimeLines(.s$..pred.nolhs, .s)
 }
 
 #' @export

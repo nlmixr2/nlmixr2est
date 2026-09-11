@@ -166,7 +166,11 @@ rxUiGet.impmapThetaSens <- function(x, ...) {
   ## exactly the workflow that leaked, so this was user-facing, not just a test
   ## problem.  Anything registered as an rxUiGet method must return a lightweight
   ## value for the same reason.
-  list(thetaSens = .s$..thetaSens, thetaSensIdx = .s$..thetaSensIdx)
+  ## ..mtime rides along for the same reason: the model builder cannot read it
+  ## off `.s`, which is deliberately not returned (#919).  It is a short
+  ## character vector, so it does not reintroduce the leak above.
+  list(thetaSens = .s$..thetaSens, thetaSensIdx = .s$..thetaSensIdx,
+       ..mtime = .s$..mtime)
 }
 attr(rxUiGet.impmapThetaSens, "rstudio") <- emptyenv()
 
@@ -190,8 +194,8 @@ attr(rxUiGet.impmapThetaSens, "rstudio") <- emptyenv()
   ## this model solves the pre-split events, so declaring it would split the
   ## doses twice (see .foceiPreProcessData())
   .cmt <- ui$foceiCmtPreModel
-  .interp <- ui$interpLinesStr
-  if (.interp != "") .cmt <- paste0(.cmt, "\n", .interp)
+  # mtime() lines are re-emitted here (#919); see .mtimeLinesStr()
+  .cmt <- .addPreModelLines(.cmt, ui$interpLinesStr, .mtimeLinesStr(.s))
   nlmixr2global$toRxParam <-
     paste0(.uiGetThetaEtaParams(ui, TRUE), "\n", .cmt, "\n")
   nlmixr2global$toRxDvidCmt <- .foceiToCmtLinesAndDvid(ui)

@@ -463,10 +463,8 @@ rxUiGet.saemModel <- function(x, ...) {
      .msuccess("done")
   }
   .cmt <-  rxUiGet.foceiCmtPreModel(x, ...)
-  .interp <- rxUiGet.interpLinesStr(x, ...)
-  if (.interp != "") {
-    .cmt <-paste0(.cmt, "\n", .interp)
-  }
+  # mtime() lines are re-emitted here (#919); see .mtimeLinesStr()
+  .cmt <- .addPreModelLines(.cmt, rxUiGet.interpLinesStr(x, ...), .mtimeLinesStr(.s))
   ## no splitBolus() here -- saem solves the pre-split $dataSav, so declaring it
   ## would split the doses twice (see .foceiPreProcessData())
   paste(c(rxUiGet.saemParams(x, ...), .cmt,
@@ -723,6 +721,12 @@ rxUiGet.saemModelPred <- function(x, ...) {
             .interp,
             "rx_pred_=NA\nrx_r_=NA\n",
             .replaceLines,
+            # mtime() lines are re-emitted here (#919); see .mtimeLinesStr().
+            # AFTER the mu-reference replacement block, not with the other
+            # declarations: this model's body is in the NATURAL names, which
+            # only those lines define, so an mtime right hand side naming a
+            # theta would otherwise read it before it is assigned.
+            .mtimeLinesStr(.s),
             .ret,
             .thetaEtaLines,
             .foceiToCmtLinesAndDvid(x[[1]]))
