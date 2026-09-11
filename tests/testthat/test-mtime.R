@@ -41,6 +41,49 @@ nmTest({
     expect_equal(.addMtimeLines("d/dt(x)=-a*x", .s), "d/dt(x)=-a*x")
   })
 
+  test_that(".rxMtimeToAssign() loads the declaration as a suppressed assignment", {
+    # no mtime: the text is handed to rxS() untouched
+    expect_equal(.rxMtimeToAssign("d/dt(depot)=-ka*depot;\n"),
+                 "d/dt(depot)=-ka*depot;\n")
+    expect_equal(.rxMtimeToAssign("mtime(t5)=5;\nd/dt(x)=-a*x;"),
+                 "t5~5;\nd/dt(x)=-a*x;")
+    # every declaration form, and `~` so no generated model gains an output column
+    expect_equal(.rxMtimeToAssign("mtime(t5)~5;\nmtime(tx)=2*THETA[1];"),
+                 "t5~5;\ntx~2*THETA[1];")
+  })
+
+  test_that("a modeled time that moves with a parameter is differentiated", {
+    # A boundary that moves with an estimated parameter contributes to the
+    # sensitivities.  rxS() drops the mtime() right hand side, so the switch time
+    # used to reach symengine as a free symbol and every derivative through it was
+    # zero -- silently, and only for the mtime() spelling.  The reference is the
+    # same switch written out in place, which has always been differentiated.
+    .mkSw <- function(useMtime) {
+      .bdy <- c("ka <- exp(tka)", "cl <- exp(tcl)", "v <- exp(tv)",
+                if (useMtime) c("mtime(tsw5) <- exp(tsw + eta.sw)",
+                                "kmult <- ifelse(t < tsw5, 1.0, 2.0)")
+                else "kmult <- ifelse(t < exp(tsw + eta.sw), 1.0, 2.0)",
+                "d/dt(depot) <- -ka * depot",
+                "d/dt(center) <- ka * depot - kmult * cl / v * center",
+                "cp <- center / v", "cp ~ add(add.sd)")
+      eval(parse(text=paste0(
+        "function() {\n ini({tka <- 0.45; tcl <- -3.2; tv <- -1; tsw <- 1.386;",
+        " eta.sw ~ 0.1; add.sd <- 0.7})\n model({\n",
+        paste(.bdy, collapse="\n"), "\n })\n}")))
+    }
+    .ddt <- function(useMtime) {
+      .s <- rxode2::rxUiDecompress(.mkSw(useMtime)())$loadPruneSens
+      get("rx__d_dt_center__", .s)
+    }
+    .mt <- .ddt(TRUE)
+    # the loaded equation is the in-place one: the switch time is its expansion,
+    # not an opaque name
+    expect_equal(paste(.mt), paste(.ddt(FALSE)))
+    expect_match(paste(.mt), "rxLt(t, exp(ETA_1_ + THETA_4_))", fixed=TRUE)
+    # ...so the eta reaches the branch and the derivative is not identically zero
+    expect_false(paste(symengine::D(.mt, symengine::S("ETA_1_"))) == "0")
+  })
+
   test_that(".rxMtimeDeps() walks back through the preceding assignments", {
     .lines <- c("a=1;", "b=a+2;", "mtime(tx)=b;", "c=3;")
     .lhs <- .rxLineLhs(.lines)

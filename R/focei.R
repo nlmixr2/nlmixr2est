@@ -1265,6 +1265,36 @@ attr(rxUiGet.foceiModel0ll, "rstudio") <- quote(rxModelVars({}))
   .seen
 }
 
+#' Rewrite `mtime()` declarations as plain assignments for the symengine load
+#'
+#' `rxode2::rxS()` keeps only the mtime VARIABLE, never its right hand side, so
+#' the modeled time is a free symbol and every derivative taken through it is
+#' zero.  A boundary that moves with an estimated parameter
+#' (`mtime(tsw5) <- exp(tsw)`, used as `ifelse(t < tsw5, ...)`) then contributes
+#' nothing to the sensitivities, while the same branch written out in place
+#' (`ifelse(t < exp(tsw), ...)`) is differentiated normally.  Loading the
+#' declaration as a suppressed assignment lets the chain rule reach the
+#' parameter; `.rxMtimeAssign()` re-emits the declaration itself, so the solver
+#' still stops at the modeled time.
+#'
+#' `~` not `=`: the variable is an intermediate of the loaded model, and an `=`
+#' would add an output column to every model generated from it.
+#'
+#' @param newmod normalized rxode2 model text
+#' @return the same text with each `mtime(v) = rhs` replaced by `v ~ rhs`
+#' @author Matthew L. Fidler
+#' @noRd
+.rxMtimeToAssign <- function(newmod) {
+  .lines <- unlist(strsplit(paste(newmod, collapse = "\n"), "\n", fixed = TRUE))
+  .w <- grep(.rxMtimeRe, .lines)
+  if (length(.w) == 0L) {
+    return(newmod)
+  }
+  .lines[.w] <- paste0(sub(.rxMtimeRe, "\\1", .lines[.w]), "~",
+                       sub(.rxMtimeRe, "\\3", .lines[.w]), ";")
+  paste(.lines, collapse = "\n")
+}
+
 #' Store the model's `mtime()` declarations on its symengine environment
 #'
 #' The right hand side is expanded THROUGH the symengine environment so it
@@ -1283,9 +1313,11 @@ attr(rxUiGet.foceiModel0ll, "rstudio") <- quote(rxModelVars({}))
     return(invisible(NULL))
   }
   # Expand in a CHILD of the symengine environment, never in it: one mtime may
-  # reference an earlier one, and rxS() left those variables unbound (it drops
-  # the assignment, not just its value), so bind them to themselves here rather
-  # than adding them to the environment every other generated model reads.
+  # reference an earlier one, and that reference has to stay a reference to the
+  # DECLARATION being re-emitted above it, so bind every mtime variable to
+  # itself here -- shadowing the value .rxMtimeToAssign() gave it -- rather than
+  # re-expanding it inline or adding names to the environment every other
+  # generated model reads.
   # rxS() keeps only each variable's FINAL value, so expanding against it is the
   # value at the END of the model.  That is the value at the declaration only
   # while nothing the right hand side depends on is assigned again afterwards --
@@ -1418,7 +1450,10 @@ attr(rxUiGet.foceiModel0ll, "rstudio") <- quote(rxModelVars({}))
       .malert("loading into {.pkg symengine} environment...")
     }
   }
-  .ret <- rxode2::rxS(newmod, TRUE, promoteLinSens = promoteLinSens)
+  # mtime() is loaded as an ordinary assignment so derivatives can reach a
+  # modeled time that moves with an estimated parameter (see .rxMtimeToAssign);
+  # the declaration itself is restored by .rxMtimeAssign() below.
+  .ret <- rxode2::rxS(.rxMtimeToAssign(newmod), TRUE, promoteLinSens = promoteLinSens)
   if (inherits(.ret$rx_r_, "numeric")) {
     assign("rx_r_", symengine::S(as.character(.ret$rx_r_)), envir = .ret)
   }
