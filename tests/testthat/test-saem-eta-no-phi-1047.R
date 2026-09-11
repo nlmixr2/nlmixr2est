@@ -1,10 +1,12 @@
 nmTest({
   # #1047: saem parameterizes a random effect by the population parameter it is
-  # added to, so an eta paired with none owns no Gamma2_phi1 column.  It was
-  # then silently dropped from the kernel's `model$omega` -- `m[NA, NA] <- 1` is
-  # a no-op in R -- and never sampled, so the fit ran on a model without that
-  # random effect and only died at the very end, assembling the reported omega,
-  # with "subscript out of bounds".
+  # added to and gives that phi ONE Gamma2_phi1 column, so an eta paired with no
+  # phi -- or sharing one with another eta -- owns no column.  It was then
+  # silently dropped from the kernel's `model$omega` (`m[NA, NA] <- 1` is a
+  # no-op in R, and a repeated index writes the same cell twice) and never
+  # sampled, so the fit ran on a model without that random effect and only died
+  # at the very end, assembling the reported omega, with "subscript out of
+  # bounds".
 
   # A non-mu eta on a non-"id" condition: rxode2's mu-ref downgrade only
   # records "id" etas into `nonMuEtas`, so this one is left with no phi.
@@ -93,9 +95,14 @@ nmTest({
     # both map to tka, so the model gets ONE phi1 column for the two of them
     expect_equal(.ui$saemEtaTrans, c(1L, 1L))
     expect_equal(sum(diag(.ui$saemModelOmega)), 1)
-    # the second is the one with no column of its own
-    expect_equal(.saemEtaNoPhi(.ui), "eta.cl")
-    expect_error(.saemAssertEtaPhi(.ui), "eta.cl")
+    # BOTH are named: which of the two the kernel keeps is not well defined --
+    # saemEtaNames() labels the shared column with the last, saemOmegaTrans()
+    # maps the first onto it -- so naming one of them would name an arbitrary
+    # half of the problem
+    expect_equal(.saemEtaNoPhi(.ui), c("eta.ka", "eta.cl"))
+    expect_equal(.ui$saemEtaNames, "eta.cl")
+    expect_equal(.ui$saemOmegaTrans, c(1L, 2L))
+    expect_error(.saemAssertEtaPhi(.ui), "eta.ka, eta.cl")
   })
 
   test_that("the gate does not refuse a model whose eta simply is not mu-referenced", {
@@ -213,7 +220,7 @@ nmTest({
     expect_equal(.ui$saemEtaNames, "eta.cl2")
     expect_error(
       suppressMessages(nlmixr2(.mixOnePhiMod, nlmixr2data::theo_sd, "saem", .ctl)),
-      "eta.cl2")
+      "eta.cl1, eta.cl2")
 
     .ui2 <- rxode2::rxUiDecompress(rxode2::rxode2(.mixSplitMod))
     expect_equal(.ui2$saemEtaTrans, c(2L, 3L))

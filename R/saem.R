@@ -585,7 +585,12 @@
   .etas <- .iniDf[!is.na(.iniDf$neta1), ]
   .etas <- .etas$name[.etas$neta1 == .etas$neta2]
   .tr <- ui$saemEtaTrans
-  .etas[is.na(.tr) | duplicated(.tr)]
+  # Report the WHOLE colliding group, not just the repeats: which eta of the
+  # group the kernel keeps is not well defined -- `saemEtaNames` labels the
+  # shared column with the LAST of them while `saemOmegaTrans` maps the FIRST
+  # onto it -- so blaming one of the two would name an arbitrary half.
+  .shared <- .tr %in% .tr[duplicated(.tr)]
+  .etas[is.na(.tr) | .shared]
 }
 
 #' Refuse a model whose random effect saem has no parameter for
