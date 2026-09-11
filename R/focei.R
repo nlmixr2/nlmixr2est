@@ -3628,6 +3628,15 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   ## stay silent rather than warn about every model without dosing etas.  NA:
   ## the scan that builds it failed on a model that DOES dose through
   ## f()/alag()/rate()/dur(), so a dosing eta cannot be ruled out -- warn.
+  ##
+  ## ETAS ONLY, deliberately.  A dosing expression built from THETAs alone is
+  ## NOT affected by a missing inner shape: the inner model carries eta
+  ## sensitivities only, a theta gradient comes from the outer re-solve (or from
+  ## the separately built augmented model, whose shape C++ installs itself), and
+  ## the bundle's eventTheta is read nowhere in src/.  Measured: poisoning the
+  ## stored mode for a model with f()/alag() on thetas alone reproduces the fit
+  ## exactly -- same objective, every theta to the last digit.  Warning on it
+  ## would be a false alarm.
   if (is.null(.eta)) return(invisible(FALSE))
   if (!anyNA(.eta) && !any(.eta == 1L)) return(invisible(FALSE))
   warning("dosing-parameter (f/alag) event sensitivities not loaded",

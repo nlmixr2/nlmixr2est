@@ -218,4 +218,60 @@ nmTest({
     expect_gt(max(abs(.ok$eta$eta.f)), 1e-3)
   })
 
+  # dosing built from THETAs alone: the tripwire is eta-scoped on purpose, and
+  # this is why.  A missing inner shape cannot change such a fit -- the inner
+  # model carries eta sensitivities only, a theta gradient comes from the outer
+  # re-solve, and the bundle's eventTheta is read nowhere in src/ -- so warning
+  # on it would be a false alarm on every model with a modeled lag and no eta
+  # on it.
+  .evThetaMod <- function() {
+    ini({
+      tka <- log(1.2)
+      tcl <- log(2)
+      tv <- log(20)
+      tf <- -0.5
+      tlag <- log(0.5)
+      eta.cl ~ 0.1
+      add.sd <- 0.5
+    })
+    model({
+      ka <- exp(tka)
+      cl <- exp(tcl) * exp(eta.cl)
+      v <- exp(tv)
+      f(depot) <- expit(tf)
+      alag(depot) <- exp(tlag)
+      d/dt(depot) <- -ka * depot
+      d/dt(central) <- ka * depot - (cl / v) * central
+      cp <- central / v
+      cp ~ add(add.sd)
+    })
+  }
+
+  test_that("dosing on thetas alone is untouched by a lost shape (#1016)", {
+    skip_on_cran()
+    .dat <- .evEtaDat()
+    .ctl <- foceiControl(
+      print = 0, maxOuterIterations = 20L, covMethod = "",
+      calcTables = FALSE, sigdig = 5, etaNudge = 0, etaNudge2 = 0
+    )
+    .ui <- rxode2::.copyUi(suppressMessages(nlmixr2est::nlmixr2(.evThetaMod)))
+    assign("control", .ctl, envir = .ui)
+    .cacheFile <- .ui$foceiModelCache
+    on.exit(unlink(.cacheFile), add = TRUE)
+    .ok <- .nlmixr(.evThetaMod, .dat, est = "focei", control = .ctl)
+    # no eta enters a dosing expression, so there is nothing for the jumps to
+    # carry into the inner problem
+    .store <- readRDS(.cacheFile)
+    expect_equal(as.integer(.store$eventEtaAll), 0L)
+
+    .store$inner$eventSens <- "fd"
+    saveRDS(.store, .cacheFile)
+    .bad <- .nlmixr(.evThetaMod, .dat, est = "focei", control = .ctl)
+    # identical fit, to the last digit -- measured max abs theta difference 0
+    expect_equal(.bad$objective, .ok$objective, tolerance = 1e-10)
+    expect_equal(.bad$theta, .ok$theta, tolerance = 1e-10)
+    # so it must stay quiet
+    expect_false(any(grepl("event sensitivities not loaded", .bad$runInfo)))
+  })
+
 })
