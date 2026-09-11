@@ -2,6 +2,15 @@
 
 ## Bug fixes
 
+- A focei fit of a model whose dosing depends on an eta -- `f()`, `alag()`,
+  `rate()`, `dur()` -- now says so when rxode2's analytic event ("jump")
+  sensitivities cannot be installed, instead of silently returning a fit whose
+  dosing etas never left their initial values while their omegas stayed finite.
+  The event-sensitivity mode already rides with the cached model bundle; it now
+  also survives a second deflate/inflate round trip, and the model bundle
+  records which etas enter a dosing expression so the fit can tell a model that
+  needs the jumps from one that does not (#1016).
+
 - `foceiControl(fast=TRUE)` no longer converges to a non-stationary point when
   an external likelihood contribution is registered (`nlmixrRegisterLikContrib`,
   e.g. from `nlmixr2nn`).  The analytic outer gradient re-derives
