@@ -837,11 +837,23 @@
 #'
 #' The analytic (simulation) FIM reliably covers theta + diagonal Omega + additive
 #' residuals, but not off-diagonal Omega covariances or proportional/combined residual
-#' error (the complete-data Louis correction is unstable when BSV dominates).  For those
-#' models this keeps the simulation-based structural-theta block and takes the full
-#' variance block (all Omega variances/covariances + residual parameters) from linFim's
-#' `calc.COV` (blocB), which handles them correctly via the marginal covariance.  Models
-#' the analytic FIM already covers in full are returned unchanged.
+#' error: `src/saem.cpp` gives a non-additive endpoint's residual slot an exactly-zero
+#' row (`.saemFimToCov` drops it), so those parameters are taken from linFim's
+#' `calc.COV` (blocB), which handles them via the marginal covariance.  Filling a
+#' dropped slot from linFim is the intended design, not a leak (#1022).
+#'
+#' How much is taken depends on whether Omega is diagonal, because the Louis score
+#' divides by the DIAGONAL of `Gamma2_phi1` only (`d1_loggamma2_phi1`, `src/saem.cpp`):
+#'
+#' * a declared Omega block -- the analytic Omega information ignores the
+#'   off-diagonals, so only the structural-theta block is kept and the WHOLE variance
+#'   block comes from linFim.
+#' * a diagonal Omega -- the analytic FIM covers every Omega variance correctly, so
+#'   only the variance parameters it could not supply are spliced in.  Replacing the
+#'   whole block here used to hand back linFim's marginal Omega SEs instead, which a
+#'   near-singular residual pair inflates by orders of magnitude (#1022).
+#'
+#' Models the analytic FIM already covers in full are returned unchanged.
 #' @param .cov analytic fim/sa covariance (theta + whatever variance params it covers)
 #' @param env saem fit environment
 #' @return covariance with the linFim variance block spliced in, or `.cov` unchanged
@@ -855,9 +867,20 @@
   .vc <- attr(.cm, "varCov")
   if (is.null(.vc) || !is.matrix(.vc) || !all(is.finite(.vc))) return(.cov)
   .vn <- colnames(.vc)
-  if (all(.vn %in% rownames(.cov))) return(.cov)     # analytic already covers the variance block
-  # keep the simulation structural-theta block; take the whole variance block from linFim
   .rn <- rownames(.cov)
+  .miss <- .vn[!(.vn %in% .rn)]
+  if (length(.miss) == 0L) return(.cov)     # analytic already covers the variance block
+  if (!any(grepl("^cov\\.", .vn))) {
+    # diagonal Omega: keep the analytic block (and its theta cross-terms) and splice
+    # only the missing residual parameters, as a block, the same way
+    # .saemSplicePhi0Theta splices a missing theta
+    .fn <- c(.rn, .miss)
+    .full <- matrix(0, length(.fn), length(.fn), dimnames = list(.fn, .fn))
+    .full[.rn, .rn] <- .cov
+    .full[.miss, .miss] <- .vc[.miss, .miss, drop = FALSE]
+    return(.full)
+  }
+  # keep the simulation structural-theta block; take the whole variance block from linFim
   .th <- .rn[!(.rn %in% .vn) & !grepl("^om\\.|^cov\\.", .rn)]
   .fn <- c(.th, .vn)
   .full <- matrix(0, length(.fn), length(.fn), dimnames = list(.fn, .fn))

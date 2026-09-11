@@ -2,6 +2,16 @@
 
 ## Bug fixes
 
+- `saemControl(covMethod="sa"|"fim")` keeps its own Omega standard errors on a
+  diagonal-Omega model.  The variance parameters the analytic FIM cannot cover
+  (a non-additive endpoint's residual error) are still taken from the
+  linearized FIM, but that splice replaced the WHOLE variance block, so a
+  near-singular residual pair propagated into the Omega rows -- on a
+  two-endpoint `add()+prop()` / `add()` model `om.eta.ka` reported an SE of 560
+  against an estimate of 1.1, where the analytic FIM gives 0.51.  A declared
+  Omega block still takes the whole block from the linearized FIM, because the
+  Louis score only ever sees the diagonal of Omega (#1022).
+
 - `foceiControl(fast=TRUE)` no longer converges to a non-stationary point when
   an external likelihood contribution is registered (`nlmixrRegisterLikContrib`,
   e.g. from `nlmixr2nn`).  The analytic outer gradient re-derives

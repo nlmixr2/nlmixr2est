@@ -146,7 +146,11 @@ nmTest({
     # The analytic FIM cannot reliably do off-diagonal Omega or non-additive residuals;
     # those variance params are spliced from linFim's blocB.  On a block-Omega model the
     # sa covariance must include cov.<eta>.<eta>, and every variance-block SE must equal
-    # linFim's varCov computed on the same fit (theta stays simulation-based).
+    # linFim's varCov computed on the same fit (theta stays simulation-based) -- a
+    # declared Omega block replaces the WHOLE variance block, because the Louis score
+    # divides by the diagonal of Gamma2_phi1 only and so never saw the off-diagonals.
+    # A diagonal-Omega model keeps its analytic Omega block instead (#1022); that half
+    # is asserted in the multi-endpoint (#893) test below.
     blk <- function() {
       ini({
         tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- 0.7
@@ -468,9 +472,9 @@ nmTest({
       # Which slots the ANALYTIC FIM itself can supply is what the dropped
       # zero row decides, and that is deterministic: assert it on the
       # pre-splice matrix.  The reported $cov is not the place for this --
-      # .saemSpliceLinFimVar replaces the whole variance block from linFim
-      # whenever calc.COV succeeds, which puts add.sd/prop.sd back, so
-      # asserting their ABSENCE there was really asserting that the splice
+      # .saemSpliceLinFimVar fills the dropped slot from linFim whenever
+      # calc.COV succeeds, which puts add.sd/prop.sd back (by design, #1022),
+      # so asserting their ABSENCE there was really asserting that the splice
       # had failed.
       .an <- .saemFimToCov(f2$saem$HaSa, f2$env)
       expect_true("add2.sd" %in% rownames(.an))
@@ -478,6 +482,27 @@ nmTest({
       expect_false("prop.sd" %in% rownames(.an))
       # the pure-additive slot survives into the reported cov either way
       expect_true("add2.sd" %in% rownames(f2$cov))
+
+      # #1022: Omega is DIAGONAL here, so the splice must supply ONLY the two
+      # residual parameters the analytic FIM could not (the zeroed cp slot) and
+      # leave the analytic Omega block alone.  Taking the whole variance block
+      # from linFim instead -- what it used to do -- propagates the
+      # near-singular (add.sd, prop.sd) pair into the Omega rows: om.eta.ka's
+      # SE read 560 against an Omega estimate of 1.1, where the analytic FIM
+      # says 0.51.
+      .saem <- f2$saem
+      attr(.saem, "env") <- f2$env
+      .vc <- attr(suppressWarnings(suppressMessages(calc.COV(.saem))), "varCov")
+      .om <- c("om.eta.ka", "om.eta.cl", "om.eta.v")
+      expect_true(all(.om %in% rownames(.an)) && all(.om %in% rownames(.vc)))
+      .seRep <- sqrt(diag(f2$cov))
+      # the mechanism: Omega SEs are the ANALYTIC ones, the spliced residuals
+      # are linFim's
+      expect_equal(unname(.seRep[.om]), unname(sqrt(diag(.an))[.om]), tolerance = 1e-8)
+      expect_equal(unname(.seRep[c("add.sd", "prop.sd")]),
+                   unname(sqrt(diag(.vc))[c("add.sd", "prop.sd")]), tolerance = 1e-8)
+      # and a bound the pre-fix value (SE 560 on an Omega of 1.1) fails outright
+      expect_true(all(.seRep[.om] < 5 * diag(f2$omega)[c("eta.ka", "eta.cl", "eta.v")]))
     }
     # the pure-additive endpoint's SE is real regardless (its slot was never
     # dropped); the combined endpoint's SE depends on the linFim splice
