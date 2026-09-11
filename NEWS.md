@@ -13,6 +13,17 @@
   own; they now agree.  On an additive model, where the two methods must
   coincide, the `foce+` and FOCEI observed informations agreed to 1.2e-2 at the
   same EBEs and now agree to 1.1e-13 (#1056).
+- `est="focep"` (`foce="foce+"`) converges at the default `sigdig`.  FOCE+ polishes
+  the inner optimizer's eta onto the truncated-score root it defines its EBE by, and
+  that polish stops once the score reaches the noise floor the solve tolerance buys --
+  near `1e-3` at the default `sigdig=3`, well above the `1e-9` it asked for.  A
+  subject that stalled there reported its likelihood as `NA`, which the outer search
+  read as a cliff: on `theo_sd` it stopped 4.8 objective units high (121.560 against
+  116.804) with the omegas barely off their starting values, and the observed
+  information at that point had a negative eigenvalue so `covMethod="analytic"`
+  refused to install it.  The polish is now best-effort -- the eta it was handed is
+  the inner optimizer's own answer and is always usable, so every exit path keeps the
+  best point found and evaluates the likelihood there (#1069).
 - `saem` refuses a model whose random effect has no population parameter of its
   own -- added to none, or sharing one with another random effect -- naming the
   random effects, instead of fitting the model without them and then failing

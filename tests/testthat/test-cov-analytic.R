@@ -1326,14 +1326,14 @@ nmTest({
   test_that("est='focep' installs the full analytic covariance", {
     skip_on_cran()
     skip_if_not_installed("nlmixr2data")
-    # sigdig is pinned because the DEFAULT (3) does not converge here: bobyqa stalls at
-    # objf 121.560 against 116.804 at sigdig 4+, and the fit says so ("last objective
-    # function was not at minimum").  The observed information there has a real negative
-    # eigenvalue, so the PD gate refuses to install it -- correctly.  This test is about the
-    # analytic route being reachable from est="focep", not about that optimizer stall
-    # (#1069), so it asks at a point that IS a minimum.
+    # Runs at the DEFAULT sigdig on purpose: #1069 stalled here at objf 121.560 (against
+    # 116.804) because a FOCE+ EBE polish that reached the solve's noise floor reported the
+    # subject's likelihood as NA, and the observed information at that stalled point had a
+    # real negative eigenvalue, so the PD gate refused to install it.  Pinning sigdig would
+    # hide a return of that.
     fit <- suppressWarnings(suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focep",
-              focepControl(print = 0L, covMethod = "analytic", covFull = TRUE, sigdig = 4))))
+              focepControl(print = 0L, covMethod = "analytic", covFull = TRUE))))
+    expect_lt(fit$objf, 118)
     expect_identical(.covBaseName(fit$covMethod), "analytic")
     expect_true(any(grepl("^om\\.", rownames(fit$cov))))
     .se <- sqrt(diag(fit$cov))
