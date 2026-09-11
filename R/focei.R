@@ -887,13 +887,28 @@ attr(rxUiGet.foceiModel0ll, "rstudio") <- quote(rxModelVars({}))
     assign("..mtime", character(0), envir = env)
     return(invisible(NULL))
   }
+  # Expand in a CHILD of the symengine environment, never in it: one mtime may
+  # reference an earlier one, and rxS() left those variables unbound (it drops
+  # the assignment, not just its value), so bind them to themselves here rather
+  # than adding them to the environment every other generated model reads.
+  .e <- new.env(parent = env)
+  for (.v in names(.rhs)) {
+    assign(.v, symengine::S(.v), envir = .e)
+  }
+  .expand <- function(.i) {
+    .se <- rxode2::.rxToSE(str2lang(.rhs[[.i]]))
+    .val <- eval(parse(text = paste0("with(.e, ", .se, ")")))
+    .txt <- paste(.val)
+    rxode2::rxFromSE(.txt)
+  }
   .lines <- vapply(seq_along(.rhs), function(.i) {
-    .se <- rxode2::.rxToSE(str2lang(.rhs[.i]))
-    .expr <- eval(parse(text = paste0("with(env, ", .se, ")")))
-    .txt <- paste(.expr)
+    # An expression symengine cannot take falls back to the text it was parsed
+    # from -- already in this model's namespace (it came out of the pruned
+    # model), just not expanded.  Losing the declaration entirely is worse.
+    .one <- tryCatch(.expand(.i), error = function(e) .rhs[[.i]])
     # `~` not `=`: the modeled time is not read back, and an extra output
     # column would shift the positional lhs layout inner.cpp reads
-    paste0("mtime(", names(.rhs)[.i], ")~", rxode2::rxFromSE(.txt))
+    paste0("mtime(", names(.rhs)[.i], ")~", .one)
   }, character(1), USE.NAMES = FALSE)
   assign("..mtime", .lines, envir = env)
   invisible(NULL)
