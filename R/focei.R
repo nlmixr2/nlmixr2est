@@ -2190,23 +2190,49 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
   ## correct and the finite-difference fallback must be turned OFF -- otherwise
   ## the jump-corrected sensitivity is computed but never used.  Leaving the
   ## flags at zero routes every parameter through the analytic innerOde sensitivity.
-  if (!identical(.eventSens, "jump")) {
-    for (.v in s$..eventVars) {
-      .vars <- as.character(get(.v, envir = s))
-      .vars <- rxode2::rxGetModel(paste0("rx_lhs=", rxode2::rxFromSE(.vars)))$params
-      for (.v2 in .vars) {
-        .reg <- rex::rex(start, "ETA[", capture(any_numbers), "]", end)
-        if (regexpr(.reg, .v2) != -1) {
-          .num <- as.numeric(sub(.reg, "\\1", .v2))
-          .eventEta[.num] <- 1L
-        }
-        .reg <- rex::rex(start, "THETA[", capture(any_numbers), "]", end)
-        if (regexpr(.reg, .v2) != -1) {
-          .num <- as.numeric(sub(.reg, "\\1", .v2))
-          .eventTheta[.num] <- 1L
+  ##
+  ## The flags are computed in BOTH modes.  `eventEtaAll` records which etas enter
+  ## a dosing expression at all, independent of the mode, so the fit can tell
+  ## "this model needs the jump sensitivities" from "this model has no dosing
+  ## etas" and refuse to run a jump fit silently without them (#1016).  Only
+  ## `eventEta`/`eventTheta` -- the finite-difference switches C++ reads -- are
+  ## zeroed under "jump".
+  ##
+  ## Under "jump" this scan is new work that used to be skipped, so it must not
+  ## be able to turn a building model into a failing one: a scan error there
+  ## leaves the flags at zero, which is exactly what the guarded code did.  In
+  ## "fd" the flags ARE the fallback switches, so an error still propagates.
+  .scan <- try(
+    {
+      for (.v in s$..eventVars) {
+        .vars <- as.character(get(.v, envir = s))
+        .vars <- rxode2::rxGetModel(paste0("rx_lhs=", rxode2::rxFromSE(.vars)))$params
+        for (.v2 in .vars) {
+          .reg <- rex::rex(start, "ETA[", capture(any_numbers), "]", end)
+          if (regexpr(.reg, .v2) != -1) {
+            .num <- as.numeric(sub(.reg, "\\1", .v2))
+            .eventEta[.num] <- 1L
+          }
+          .reg <- rex::rex(start, "THETA[", capture(any_numbers), "]", end)
+          if (regexpr(.reg, .v2) != -1) {
+            .num <- as.numeric(sub(.reg, "\\1", .v2))
+            .eventTheta[.num] <- 1L
+          }
         }
       }
-    }
+      TRUE
+    },
+    silent = TRUE
+  )
+  if (inherits(.scan, "try-error")) {
+    if (!identical(.eventSens, "jump")) stop(attr(.scan, "condition"))
+    .eventEta[] <- 0L
+    .eventTheta[] <- 0L
+  }
+  .eventEtaAll <- .eventEta
+  if (identical(.eventSens, "jump")) {
+    .eventEta[] <- 0L
+    .eventTheta[] <- 0L
   }
   pred.opt <- NULL
   ## Build the inner (sensitivity) model with the requested event-sensitivity
@@ -2365,7 +2391,9 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
     log.etas = .nullInt(s$..extraEta[["exp"]]),
     extraProps = s$..extraTheta,
     eventTheta = .eventTheta,
-    eventEta = .eventEta
+    eventEta = .eventEta,
+    ## which etas enter a dosing expression, regardless of eventSens mode (#1016)
+    eventEtaAll = .eventEtaAll
     ## ,
     ## cache.file=cache.file
   )
@@ -2551,7 +2579,8 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
   ## before the event-sensitivity mode was recorded rehydrates every
   ## sensitivity model in "fd" mode -- silently zeroing the dosing-parameter
   ## sensitivities.  Version 2: .foceiModelCacheDeflate() stores eventSens.
-  .cacheFormat <- 2L
+  ## Version 3: the bundle gained eventEtaAll (#1016), which a v2 entry lacks.
+  .cacheFormat <- 3L
   digest::digest(c(
     all(is.na(.iniDf$neta1)), .combSens, .linCmtCarry, .pkgVersion, .cacheFormat,
     rxode2::rxGetControl(.ui, "interaction", 1L),
@@ -2614,13 +2643,18 @@ attr(rxUiGet.foceiModelCache, "rstudio") <- "file"
 .foceiModelCacheInflate <- function(el) {
   if (inherits(el, "nlmixr2estFoceiNorm")) {
     .es <- el$eventSens
-    return(suppressMessages(suppressWarnings(
+    .mod <- suppressMessages(suppressWarnings(
       if (is.null(.es)) {
         rxode2::rxode2(el$norm)
       } else {
         rxode2::rxode2(el$norm, eventSens = .es)
       }
-    )))
+    ))
+    ## Replay the tag too, so an inflated bundle deflates back to the same
+    ## thing; without it a re-deflate would store eventSens = NULL and the
+    ## next inflate would drop the mode again (#1016).
+    if (!is.null(.es)) attr(.mod, "nlmixr2estEventSens") <- .es
+    return(.mod)
   }
   if (inherits(el, "rxode2")) {
     return(rxode2::rxLoad(el))
@@ -3596,6 +3630,19 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       rxode2::rxEventSensLoadModel(.ret$model$inner),
       error = function(e) FALSE
     )
+    ## A model whose f()/alag()/rate()/dur() depends on an eta gets that eta's
+    ## sensitivity ONLY from the jump injection.  If the shape does not install,
+    ## the sensitivity is exactly zero and nothing errors: the eta never leaves
+    ## its initial value while its omega stays finite (#1016).  That was a
+    ## rehydrated inner model built in "fd" mode; the mode now rides with the
+    ## cached bundle, so this is a tripwire -- say it instead of returning a
+    ## silently wrong fit.
+    if (!isTRUE(.esLoaded) &&
+      isTRUE(any(.ret$model$eventEtaAll == 1L))) {
+      warning("dosing-parameter (f/alag) event sensitivities not loaded",
+        call. = FALSE
+      )
+    }
     if (isTRUE(.esLoaded)) {
       ## Tell the C++ core which model the event path is now bound to.  handle_evid
       ## sizes its scratch from the effective neq but calls the INSTALLED model's
