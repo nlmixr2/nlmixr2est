@@ -153,7 +153,7 @@ extern "C" SEXP _nlmixr2est_likContribPtrs(void) {
 // test-only contributor (tests/testthat/test-lik-contrib.R): records per-obs
 // values to confirm the hook fires with correct f/dv/r and dLL/df.  Uses global
 // accumulators, so the test runs single-threaded.
-static double _testSumDLLdf, _testSumErr, _testSumF, _testAddLL, _testAddLLf;
+static double _testSumDLLdf, _testSumErr, _testSumF, _testAddLL, _testAddLLf, _testAddDEta;
 static int _testNObs, _testNBegin, _testNEnd;
 static void _testBegin(const nlmixrLikSubj *s) { (void)s; _testNBegin++; }
 static void _testEnd(const nlmixrLikSubj *s) { (void)s; _testNEnd++; }
@@ -173,6 +173,12 @@ static void _testObs(nlmixrLikObs *o) {
       for (int q = 0; q < o->neta; ++q) o->dLL_deta[q] += _testAddLLf * o->df_deta[q];
     }
   }
+  // d(LL)/d(eta) with NO llik term: exercises the other half of the #1051
+  // detector (llAdd == 0.0, dLL_deta != 0), which moves eta* off the base
+  // problem's stationary point and so breaks the analytic gradient just the same.
+  if (_testAddDEta != 0.0 && o->df_deta != NULL && o->dLL_deta != NULL) {
+    for (int q = 0; q < o->neta; ++q) o->dLL_deta[q] += _testAddDEta * o->df_deta[q];
+  }
 }
 // Both setters change what the bundle DOES, so what was observed of it no longer
 // applies (#1051) -- the same invalidation a registry change gets.
@@ -186,9 +192,14 @@ extern "C" SEXP _nlmixr2est_setTestContribAddLLf(SEXP v) {
   nlmixrContribResetObserved();
   return R_NilValue;
 }
+extern "C" SEXP _nlmixr2est_setTestContribAddDEta(SEXP v) {
+  _testAddDEta = Rf_asReal(v);
+  nlmixrContribResetObserved();
+  return R_NilValue;
+}
 static const nlmixrLikContrib _testContribBundle = { _testBegin, _testObs, _testEnd };
 extern "C" SEXP _nlmixr2est_registerTestContrib(void) {
-  _testSumDLLdf = _testSumErr = _testSumF = _testAddLL = _testAddLLf = 0.0;
+  _testSumDLLdf = _testSumErr = _testSumF = _testAddLL = _testAddLLf = _testAddDEta = 0.0;
   _testNObs = _testNBegin = _testNEnd = 0;
   nlmixrRegisterLikContrib(&_testContribBundle);
   nlmixrContribResetObserved();   // re-register with the adds zeroed

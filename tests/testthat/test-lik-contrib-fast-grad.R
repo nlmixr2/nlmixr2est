@@ -34,10 +34,11 @@ test_that("fast=TRUE declines the analytic gradient for a theta-dependent contri
     })
   }
 
-  .run <- function(fast, cc) {
+  .run <- function(fast, cc, dEta = 0) {
     .Call("_nlmixr2est_registerTestContrib", PACKAGE = "nlmixr2est")
     on.exit(.Call("_nlmixr2est_removeTestContrib", PACKAGE = "nlmixr2est"), add = TRUE)
     .Call("_nlmixr2est_setTestContribAddLLf", cc, PACKAGE = "nlmixr2est")
+    .Call("_nlmixr2est_setTestContribAddDEta", dEta, PACKAGE = "nlmixr2est")
     suppressWarnings(.nlmixr(mod, d, est = "focei",
                              control = foceiControl(print = 0L, fast = fast,
                                                     calcTables = FALSE)))
@@ -66,4 +67,16 @@ test_that("fast=TRUE declines the analytic gradient for a theta-dependent contri
 
   ## the contribution really did move the optimum (so the comparison is not vacuous)
   expect_gt(abs(unname(fixef(.cF)["level"]) - unname(fixef(.obsF)["level"])), 1e-3)
+
+  ## the OTHER half of the detector: d(LL)/d(eta) with no llik term.  llAdd stays
+  ## exactly 0.0, so this is caught only by the dLL_deta scan -- and it still
+  ## breaks the analytic gradient, which assumes eta* is stationary for the base
+  ## problem.  Only the decline is asserted: a gradient with no matching objective
+  ## leaves the inner problem ill-posed (the reported inner objective is not the
+  ## one the inner score belongs to), so eta* depends on which inner optimizer ran
+  ## -- and `fast=` selects that too, via innerOpt="auto".  Comparing the two arms'
+  ## estimates would be measuring the inner optimizer, not the gradient.
+  .eT <- .run(TRUE, 0, dEta = 0.25)
+  expect_equal(as.integer(.eT$env$nAnalyticGradDirect), 0L)
+  expect_gt(as.integer(.eT$env$nFDGradFast), 0L)
 })
