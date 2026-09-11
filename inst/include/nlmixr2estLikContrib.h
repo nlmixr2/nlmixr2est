@@ -13,6 +13,15 @@
 // solve outputs and cotangents are READ-ONLY; the contributor MAY add an extra
 // log-likelihood term and extra d(LL)/d(eta) (both optional -- leave untouched
 // to only observe, e.g. to record d(LL)/d(f) for an adjoint sweep).
+//
+// Writing back costs the analytic outer gradient (#1051).  foceiControl(fast=TRUE)
+// re-derives d(objective)/d(theta) from the MODEL sensitivities alone, so it cannot
+// see a contributed term's own theta dependence; nlmixr2est detects a bundle that
+// writes llik or dLL_deta and falls back to the finite-difference gradient for the
+// rest of the session (correct, slower).  A bundle that only OBSERVES keeps the
+// fast path, where it is already exact.  Carrying the term instead would need
+// d(C)/d(f) and d(C)/d(r) back from the contributor, which this ABI does not
+// return.
 
 #ifdef __cplusplus
 extern "C" {

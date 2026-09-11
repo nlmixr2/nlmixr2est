@@ -245,14 +245,362 @@ is.latex <- function() {
     "scale.inti", "diff.g"
   )]
   .ctl$trace <- 0
-  .ret <- stats::nlminb(
-    start = par, objective = fn, gradient = gr, hessian = NULL, control = .ctl,
+  hessianCalls <- 0L
+  hessianFailed <- FALSE
+  hessian <- NULL
+  if (isTRUE(control$fast) && is.function(control$hessian)) {
+    hessian <- function(x) {
+      hessianCalls <<- hessianCalls+1L
+      tryCatch(control$hessian(x), error = function(e) {
+        hessianFailed <<- TRUE
+        stop(e)
+      })
+    }
+  }
+  run <- function(hessian) stats::nlminb(
+    start = par, objective = fn, gradient = gr, hessian = hessian, control = .ctl,
     lower = lower, upper = upper
   )
+  .ret <- tryCatch(run(hessian), error = function(e) {
+    if (!hessianFailed) stop(e)
+    warning("Outer Hessian unavailable; restarting gradient-only nlminb", call. = FALSE)
+    run(NULL)
+  })
+  .ret$hessianEvaluations <- hessianCalls
+  .ret$hessianFallback <- hessianFailed
   .ret$x <- .ret$par
   ## .ret$message   already there.
   ## .ret$convergence already there.
   .ret
+}
+
+#' Damped-BFGS curvature for the outer trust region
+#'
+#' Returns the updater.  `trust_solve_c()` calls the objective at every TRIAL
+#' point, accepted or not, so the secant pair is consecutive CALLS -- the same
+#' convention `nlmTrustObjfun()` uses for the analogous outer problem
+#' (`src/nlm.cpp`).
+#' @param n number of parameters
+#' @return function(x, gradient) returning the current Hessian estimate
+#' @noRd
+.trustOuterBfgs <- function(n) {
+  .b <- diag(n)
+  .xPrev <- NULL
+  .gPrev <- NULL
+  function(x, g) {
+    if (!is.null(.xPrev)) {
+      .s <- x - .xPrev
+      .y <- g - .gPrev
+      .bs <- drop(.b %*% .s)
+      .sBs <- sum(.s * .bs)
+      .sy <- sum(.s * .y)
+      if (is.finite(.sBs) && .sBs > 0 && all(is.finite(.y))) {
+        # Damped BFGS (Nocedal & Wright, Numerical Optimization 2nd ed,
+        # Procedure 18.2): keeps the update positive definite when the outer
+        # objective's curvature along s is not.
+        .r <- if (.sy >= 0.2 * .sBs) {
+          .y
+        } else {
+          .th <- 0.8 * .sBs / (.sBs - .sy)
+          .th * .y + (1 - .th) * .bs
+        }
+        .sr <- sum(.s * .r)
+        # Same near-zero-denominator skip as trustHessianUpdate() (src/
+        # trustHessianUpdate.h): a reject-then-shrink step gives a secant pair
+        # whose rank-2 correction is enormous and meaningless.
+        if (is.finite(.sr) &&
+              .sr > 1e-10 * sqrt(sum(.s^2)) * sqrt(sum(.r^2))) {
+          .b <<- .b - outer(.bs, .bs) / .sBs + outer(.r, .r) / .sr
+        }
+      }
+    }
+    .xPrev <<- x
+    .gPrev <<- g
+    .b
+  }
+}
+
+#' Finite-difference curvature for the outer trust region
+#'
+#' Differences the outer gradient, costing `length(lower)` extra population
+#' objective+gradient evaluations per call -- which is why it is not the default
+#' when the analytic Hessian is available.  A direction is reflected at an upper
+#' bound and the whole Hessian declined (`NULL`) when neither side fits in the
+#' box; the point is re-settled on the way out, so the supplier leaves the
+#' engine where it found it just as the analytic entry does.
+#'
+#' `fn` before every `gr` is load bearing, not defensive: the gradient callback
+#' warm-starts the inner problem from whatever etas the last evaluation left, so
+#' reading it at a point the objective has not settled returns a gradient at a
+#' stale conditional mode.  Measured on `theo_sd`, the two differ by ~9e-4 on
+#' gradient components of order 200 -- which a 1e-3 difference step turns into
+#' an O(1) error in the Hessian entries.
+#' @param fn,gr outer objective and gradient
+#' @param relStep relative difference step
+#' @param lower,upper box the outer problem optimizes in
+#' @return function(x, gradient) returning a symmetric Hessian, or `NULL`
+#' @noRd
+.trustOuterFd <- function(fn, gr, relStep, lower, upper) {
+  .n <- length(lower)
+  function(x, g0) {
+    .h <- matrix(0.0, .n, .n)
+    for (.j in seq_len(.n)) {
+      .step <- relStep * max(abs(x[.j]), 1.0)
+      if (x[.j] + .step > upper[.j]) .step <- -.step
+      if (x[.j] + .step < lower[.j]) {
+        fn(x)
+        return(NULL)
+      }
+      .xp <- x
+      .xp[.j] <- x[.j] + .step
+      fn(.xp)
+      .h[, .j] <- (gr(.xp) - g0) / .step
+    }
+    fn(x)
+    0.5 * (.h + t(.h))
+  }
+}
+
+#' Resolve the trust region's radii and tolerances
+#'
+#' `rinit` mirrors `minqa::bobyqa()`'s own default-rhobeg formula so swapping
+#' `outerOpt="bobyqa"` for `"trust"` starts from a comparable region; `rmax`
+#' reuses the 8x growth ceiling of the other `RcppTrust` solves in this package.
+#' A scaled start of all zeros would give a zero (never-stepping) radius.
+#' @param par scaled starting vector
+#' @param control the foceiControl list
+#' @return list of `rinit`, `rmax`, `fterm`, `mterm`
+#' @noRd
+.trustOuterRegion <- function(par, control) {
+  .rinit <- control$outerTrustRinit
+  if (is.null(.rinit)) .rinit <- min(0.95, 0.2 * max(abs(par)))
+  if (!is.finite(.rinit) || .rinit <= 0) .rinit <- 0.2
+  .rmax <- control$outerTrustRmax
+  if (is.null(.rmax)) .rmax <- 8 * .rinit
+  .fterm <- control$outerTrustFterm
+  if (is.null(.fterm)) {
+    .sigdig <- control$sigdig
+    if (length(.sigdig) != 1L || !is.finite(.sigdig)) .sigdig <- 3
+    .fterm <- 10^(-.sigdig - 2)
+  }
+  .mterm <- control$outerTrustMterm
+  if (is.null(.mterm)) .mterm <- .fterm
+  list(rinit = .rinit, rmax = .rmax, fterm = .fterm, mterm = .mterm)
+}
+
+#' Newton decrement of an `RcppTrust::trust()` result
+#'
+#' `0.5 * g' H^-1 g` -- the objective decrease a full Newton step from the
+#' reported point would predict, directly comparable to `fterm`.  `NA` when the
+#' Hessian is not positive definite, which at a reported minimum is itself a
+#' failure to converge.
+#' @param result the list `RcppTrust::trust()` returned
+#' @return the decrement, or `NA_real_`
+#' @noRd
+.trustOuterDecrement <- function(result) {
+  .h <- result$hessian
+  .g <- result$gradient
+  if (is.null(.h) || is.null(.g) || !all(is.finite(.h)) || !all(is.finite(.g))) {
+    return(NA_real_)
+  }
+  .ch <- try(chol(.h), silent = TRUE)
+  if (inherits(.ch, "try-error")) return(NA_real_)
+  0.5 * sum(backsolve(.ch, .g, transpose = TRUE)^2)
+}
+
+#' Run the outer trust region, re-entering it while it stops short
+#'
+#' `trust_solve_c()` reports `converged=TRUE` off its own step/model tolerance,
+#' which a collapsing trust region satisfies at a point that is not stationary
+#' at all (measured: a fit exited at 133.34 whose full Newton step still
+#' predicted a 530 decrease).  Re-entering from that point restores the initial
+#' radius, which is what lets it move again.
+#' @param objfun the value/gradient/hessian function
+#' @param par starting vector
+#' @param region `.trustOuterRegion()` output
+#' @param iterlim TOTAL iteration budget, across restarts
+#' @param restarts maximum number of re-entries
+#' @return the `RcppTrust::trust()` result, with `iterations` totalled and
+#'   `restarts`, `newtonDecrement` and `underConverged` added
+#' @noRd
+.trustOuterRun <- function(objfun, par, region, iterlim, restarts) {
+  .x <- par
+  .left <- iterlim
+  .used <- 0L
+  .nRestart <- 0L
+  repeat {
+    .ret <- RcppTrust::trust(objfun,
+      parinit = .x, rinit = region$rinit, rmax = region$rmax,
+      iterlim = .left, fterm = region$fterm, mterm = region$mterm,
+      minimize = TRUE, blather = FALSE
+    )
+    .used <- .used + .ret$iterations
+    .left <- .left - .ret$iterations
+    .decr <- .trustOuterDecrement(.ret)
+    .under <- is.na(.decr) || .decr > region$fterm
+    .again <- .under && isTRUE(.ret$converged) && .nRestart < restarts &&
+      .left >= 1L && max(abs(.ret$argument - .x)) > 0
+    if (!.again) break
+    .x <- .ret$argument
+    .nRestart <- .nRestart + 1L
+  }
+  .ret$iterations <- .used
+  .ret$restarts <- .nRestart
+  .ret$newtonDecrement <- .decr
+  .ret$underConverged <- .under
+  .ret
+}
+
+#' Which curvature source `outerOpt="trust"` starts from
+#'
+#' `fast=` is not settled when `foceiControl()` validates it -- a `linCmt()`
+#' model has it downgraded later -- so an explicit `"analytic"` that the fit
+#' cannot serve is reported here and demoted, rather than aborting the fit.
+#' @param control the foceiControl list
+#' @return one of `"analytic"`, `"bfgs"`, `"fd"`
+#' @noRd
+.trustOuterMethod <- function(control) {
+  .method <- control$outerTrustHessian
+  if (is.null(.method)) .method <- "auto"
+  .analytic <- isTRUE(control$fast) && is.function(control$hessian)
+  if (!.analytic) {
+    if (.method == "analytic") {
+      warning("analytic outer Hessian needs fast=TRUE; trust uses BFGS",
+        call. = FALSE
+      )
+    }
+    if (.method %in% c("analytic", "auto")) .method <- "bfgs"
+  } else if (.method == "auto") {
+    .method <- "analytic"
+  }
+  .method
+}
+
+#' Curvature supplier for `outerOpt="trust"`
+#'
+#' Serves the requested source and falls back to the damped-BFGS update when it
+#' cannot answer.  Support for the analytic Hessian is a property of the model,
+#' not of the point, so one refusal switches the run for good rather than paying
+#' the failed probe again every iteration.
+#' The BFGS update runs on every call whatever source serves it, so its secant
+#' pairs stay consecutive and the fallback starts from a matrix that already
+#' knows the problem rather than the identity.
+#' @param control the foceiControl list
+#' @param fn,gr outer objective and gradient
+#' @param relStep relative step, for both the analytic entry and the difference
+#' @param lower,upper box the outer problem optimizes in
+#' @return environment with `hessian(x, gradient)`, `calls` and `fallback`
+#' @noRd
+.trustOuterCurvature <- function(control, fn, gr, relStep, lower, upper) {
+  .method <- .trustOuterMethod(control)
+  .bfgs <- .trustOuterBfgs(length(lower))
+  .fd <- .trustOuterFd(fn, gr, relStep, lower, upper)
+  .state <- new.env(parent = emptyenv())
+  .state$calls <- 0L
+  .state$fallback <- FALSE
+  .state$hessian <- function(x, g) {
+    .qn <- .bfgs(x, g)
+    .h <- NULL
+    if (.method == "analytic") {
+      .state$calls <- .state$calls + 1L
+      .h <- tryCatch(control$hessian(x, relStep = relStep), error = function(e) {
+        .state$fallback <- TRUE
+        .method <<- "bfgs"
+        warning("analytic outer Hessian unavailable; trust continues with BFGS",
+          call. = FALSE
+        )
+        NULL
+      })
+    } else if (.method == "fd") {
+      .h <- .fd(x, g)
+    }
+    if (is.null(.h)) .h <- .qn
+    .h
+  }
+  .state
+}
+
+#' The value/gradient/Hessian function `RcppTrust::trust()` calls
+#'
+#' `trust` is unbounded, so a point outside the box -- or one the inner problem
+#' could not evaluate -- is reported as an infinite objective: the region
+#' shrinks rather than the step being projected, and the analytic Hessian
+#' (which refuses an out-of-bounds theta) is never asked for one.
+#' @param fn,gr outer objective and gradient
+#' @param curvature `.trustOuterCurvature()` output
+#' @param lower,upper box the outer problem optimizes in
+#' @return function(x) returning `list(value=, gradient=, hessian=)`
+#' @noRd
+.trustOuterObjfun <- function(fn, gr, curvature, lower, upper) {
+  .n <- length(lower)
+  .reject <- list(value = Inf, gradient = rep(0.0, .n), hessian = diag(.n))
+  function(x) {
+    if (any(x < lower) || any(x > upper)) return(.reject)
+    .v <- fn(x)
+    if (!is.finite(.v)) return(.reject)
+    .g <- gr(x)
+    if (length(.g) != .n || !all(is.finite(.g))) return(.reject)
+    .h <- curvature$hessian(x, .g)
+    if (is.null(.h) || !all(is.finite(.h))) return(.reject)
+    list(value = .v, gradient = .g, hessian = .h)
+  }
+}
+
+#' Trust-region Newton outer optimizer (`outerOpt="trust"`)
+#'
+#' Drives the outer (population theta) problem with `RcppTrust`'s port of
+#' Geyer's trust-region algorithm, using the analytic outer Hessian when
+#' `fast=TRUE` makes it available (see `outerTrustHessian`).
+#' @noRd
+.trustOuter <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
+  rxode2::rxReq("RcppTrust")
+  .n <- length(par)
+  .lower <- rep_len(lower, .n)
+  .upper <- rep_len(upper, .n)
+  .relStep <- control$outerTrustRelStep
+  if (is.null(.relStep)) .relStep <- 1e-3
+  .curvature <- .trustOuterCurvature(control, fn, gr, .relStep, .lower, .upper)
+  .ret <- .trustOuterRun(
+    .trustOuterObjfun(fn, gr, .curvature, .lower, .upper), par,
+    .trustOuterRegion(par, control),
+    .trustOuterCount(control$maxOuterIterations, 1L),
+    .trustOuterCount(control$outerTrustRestarts, 0L)
+  )
+  if (isTRUE(.ret$converged) && .ret$underConverged) {
+    warning("outer trust stopped short of a stationary point", call. = FALSE)
+  }
+  .ret$x <- .ret$argument
+  .ret$par <- .ret$argument
+  # trust reports convergence as a logical; focei expects optim()'s 0/1.
+  .ret$convergence <- if (isTRUE(.ret$converged)) 0L else 1L
+  .ret$message <- .trustOuterMessage(.ret)
+  .ret$hessianEvaluations <- .curvature$calls
+  .ret$hessianFallback <- .curvature$fallback
+  .ret
+}
+
+#' A non-negative integer control value, or its floor
+#' @param value the control value
+#' @param floor the smallest value the caller can use
+#' @return an integer, at least `floor`
+#' @noRd
+.trustOuterCount <- function(value, floor) {
+  .v <- suppressWarnings(as.integer(value))
+  if (length(.v) != 1L || is.na(.v) || .v < floor) floor else .v
+}
+
+#' Translate a trust result into focei's minimization message
+#' @param ret `.trustOuterRun()` output
+#' @return the message string
+#' @noRd
+.trustOuterMessage <- function(ret) {
+  if (!isTRUE(ret$converged)) {
+    "iteration limit reached without convergence (RcppTrust::trust)"
+  } else if (isTRUE(ret$underConverged)) {
+    "converged without a stationary point (RcppTrust::trust)"
+  } else {
+    "relative convergence (RcppTrust::trust)"
+  }
 }
 
 .nloptr <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ..., nloptrAlgoritm = "NLOPT_LD_MMA") {
@@ -1466,7 +1814,7 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
 #' Add `..HdEta2`/`..sens2` to a symengine env that already carries the first-order
 #' eta sensitivities (i.e. the output of [rxUiGet.foceiHdEta]/[rxUiGet.foceiEtaS]).
 #' @noRd
-.foceiAddHdEta2 <- function(.s) {
+.foceiAddHdEta2 <- function(.s, conditional = FALSE) {
   .neta <- .s$..maxEta
   .etaVars <- paste0("ETA_", seq_len(.neta), "_")
   .st <- rxode2::rxStateOde(.s)
@@ -1496,6 +1844,15 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
     }
   }
   .s$..HdEta2 <- .lines
+  if (conditional) {
+    .variance <- get("rx_r_", .s)
+    .lines <- character()
+    for (.j in seq_len(.neta)) for (.i in seq_len(.j)) {
+      .lines <- c(.lines, paste0("rx__d2r_", .i, "_", .j, "__=",
+        .toRx(.g2(.variance, .etaVars[.i], .etaVars[.j]))))
+    }
+    .s$..RdEta2 <- .lines
+  }
   .s$..sens2 <- .s2
   .s
 }
@@ -1508,11 +1865,17 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
 #' (interaction=1) and FOCE (interaction=0 -- the `ll()`/generalized path) inner builders.
 #' @noRd
 .foceiMaybeAddHdEta2 <- function(x, .s) {
+  .conditional <- identical(rxode2::rxGetControl(x[[1]], "innerHessian", "focei"), "conditional")
   # linCmt() sensitivity carry (3b.3): no second-order carry exists, so a
   # model with a carry-eligible pair keeps the Shi21 finite-difference
   # inner Hessian (which differentiates the carry-corrected gradient).
   if (!is.null(.s$..linCmtCarryPairs)) {
+    if (.conditional) stop("Conditional inner Hessian does not support this sensitivity carry", call. = FALSE)
     return(.s)
+  }
+  if (.conditional) {
+    if (.foceiLLGradInScope(x[[1]])) stop("Conditional inner Hessian requires Gaussian endpoints", call. = FALSE)
+    return(.foceiAddHdEta2(.s, conditional = TRUE))
   }
   if (isTRUE(as.logical(rxode2::rxGetControl(x[[1]], "fast", FALSE))) &&
     .foceiLLGradInScope(x[[1]])) {
@@ -1752,6 +2115,7 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
       .s$..REta,
       .adjLhs,
       .s$..HdEta2,
+      .s$..RdEta2,
       .s$..stateInfo["statef"],
       .s$..stateInfo["dvid"],
       ""
@@ -2190,23 +2554,57 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
   ## correct and the finite-difference fallback must be turned OFF -- otherwise
   ## the jump-corrected sensitivity is computed but never used.  Leaving the
   ## flags at zero routes every parameter through the analytic innerOde sensitivity.
-  if (!identical(.eventSens, "jump")) {
-    for (.v in s$..eventVars) {
-      .vars <- as.character(get(.v, envir = s))
-      .vars <- rxode2::rxGetModel(paste0("rx_lhs=", rxode2::rxFromSE(.vars)))$params
-      for (.v2 in .vars) {
-        .reg <- rex::rex(start, "ETA[", capture(any_numbers), "]", end)
-        if (regexpr(.reg, .v2) != -1) {
-          .num <- as.numeric(sub(.reg, "\\1", .v2))
-          .eventEta[.num] <- 1L
-        }
-        .reg <- rex::rex(start, "THETA[", capture(any_numbers), "]", end)
-        if (regexpr(.reg, .v2) != -1) {
-          .num <- as.numeric(sub(.reg, "\\1", .v2))
-          .eventTheta[.num] <- 1L
+  ##
+  ## The flags are computed in BOTH modes.  `eventEtaAll` records which etas enter
+  ## a dosing expression at all, independent of the mode, so the fit can tell
+  ## "this model needs the jump sensitivities" from "this model has no dosing
+  ## etas" and refuse to run a jump fit silently without them (#1016).  Only
+  ## `eventEta`/`eventTheta` -- the finite-difference switches C++ reads -- are
+  ## zeroed under "jump".
+  ##
+  ## Under "jump" this scan is new work that used to be skipped, so it must not
+  ## be able to turn a building model into a failing one: a scan error there
+  ## leaves the C++ flags at zero, which is exactly what the guarded code did,
+  ## and records eventEtaAll as unknown rather than as "none" (below).  In "fd"
+  ## the flags ARE the fallback switches, so an error still propagates.
+  .scanErr <- tryCatch(
+    {
+      for (.v in s$..eventVars) {
+        .vars <- as.character(get(.v, envir = s))
+        .vars <- rxode2::rxGetModel(paste0("rx_lhs=", rxode2::rxFromSE(.vars)))$params
+        for (.v2 in .vars) {
+          .reg <- rex::rex(start, "ETA[", capture(any_numbers), "]", end)
+          if (regexpr(.reg, .v2) != -1) {
+            .num <- as.numeric(sub(.reg, "\\1", .v2))
+            .eventEta[.num] <- 1L
+          }
+          .reg <- rex::rex(start, "THETA[", capture(any_numbers), "]", end)
+          if (regexpr(.reg, .v2) != -1) {
+            .num <- as.numeric(sub(.reg, "\\1", .v2))
+            .eventTheta[.num] <- 1L
+          }
         }
       }
-    }
+      NULL
+    },
+    error = function(e) e
+  )
+  .eventEtaAll <- .eventEta
+  if (!is.null(.scanErr)) {
+    ## The loop only runs when the model HAS dosing modifiers, so an error here
+    ## means "this model doses through f()/alag()/rate()/dur() and which etas
+    ## reach them could not be resolved" -- NOT "no dosing etas".  Recording it
+    ## as zeros would let the fit-time tripwire conclude the jumps do not matter
+    ## and stay silent, which is the very thing it exists to prevent, so it is
+    ## recorded as unknown instead.
+    if (!identical(.eventSens, "jump")) stop(.scanErr)
+    .eventEta[] <- 0L
+    .eventTheta[] <- 0L
+    .eventEtaAll[] <- NA_integer_
+  }
+  if (identical(.eventSens, "jump")) {
+    .eventEta[] <- 0L
+    .eventTheta[] <- 0L
   }
   pred.opt <- NULL
   ## Build the inner (sensitivity) model with the requested event-sensitivity
@@ -2365,7 +2763,9 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
     log.etas = .nullInt(s$..extraEta[["exp"]]),
     extraProps = s$..extraTheta,
     eventTheta = .eventTheta,
-    eventEta = .eventEta
+    eventEta = .eventEta,
+    ## which etas enter a dosing expression, regardless of eventSens mode (#1016)
+    eventEtaAll = .eventEtaAll
     ## ,
     ## cache.file=cache.file
   )
@@ -2551,8 +2951,11 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
   ## before the event-sensitivity mode was recorded rehydrates every
   ## sensitivity model in "fd" mode -- silently zeroing the dosing-parameter
   ## sensitivities.  Version 2: .foceiModelCacheDeflate() stores eventSens.
-  .cacheFormat <- 2L
+  ## Version 3: the bundle gained eventEtaAll (#1016), which a v2 entry lacks.
+  .cacheFormat <- 3L
+  .innerHessian <- rxode2::rxGetControl(.ui, "innerHessian", "focei")
   digest::digest(c(
+    if (.innerHessian == "conditional") "conditionalInner1",
     all(is.na(.iniDf$neta1)), .combSens, .linCmtCarry, .pkgVersion, .cacheFormat,
     rxode2::rxGetControl(.ui, "interaction", 1L),
     .iniDf$name,
@@ -2614,13 +3017,18 @@ attr(rxUiGet.foceiModelCache, "rstudio") <- "file"
 .foceiModelCacheInflate <- function(el) {
   if (inherits(el, "nlmixr2estFoceiNorm")) {
     .es <- el$eventSens
-    return(suppressMessages(suppressWarnings(
+    .mod <- suppressMessages(suppressWarnings(
       if (is.null(.es)) {
         rxode2::rxode2(el$norm)
       } else {
         rxode2::rxode2(el$norm, eventSens = .es)
       }
-    )))
+    ))
+    ## Replay the tag too, so an inflated bundle deflates back to the same
+    ## thing; without it a re-deflate would store eventSens = NULL and the
+    ## next inflate would drop the mode again (#1016).
+    if (!is.null(.es)) attr(.mod, "nlmixr2estEventSens") <- .es
+    return(.mod)
   }
   if (inherits(el, "rxode2")) {
     return(rxode2::rxLoad(el))
@@ -3556,6 +3964,53 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
 }
 
 .thetaReset <- new.env(parent = emptyenv())
+#' Warn when a "jump" fit could not install the event-sensitivity shape
+#'
+#' A model whose `f()`/`alag()`/`rate()`/`dur()` depends on an eta gets that
+#' eta's sensitivity ONLY from rxode2's jump injection.  When the shape does
+#' not install the sensitivity is exactly zero and nothing errors: the eta
+#' never leaves its initial value while its omega stays finite, which is the
+#' nlmixr2est#1016 symptom.  That came from a rehydrated inner model built in
+#' "fd" mode; the mode now rides with the cached bundle, so this is a tripwire
+#' -- say it rather than return a silently wrong fit.
+#'
+#' Silent when the model has no dosing etas (nothing depends on the jumps) or
+#' when the shape did install.
+#'
+#' @param esLoaded What `rxEventSensLoadModel()` returned.
+#' @param model The focei model bundle (for `eventEtaAll`).
+#' @param eventSens The fit's resolved `eventSens`.  Only `"jump"` asks for the
+#'   analytic sensitivities, so only `"jump"` can be missing them -- an `"fd"`
+#'   fit never installs a shape and its dosing etas go through the C++
+#'   finite-difference fallback instead.  The mode is checked here rather than
+#'   only at the call site so the helper cannot be reused into a false alarm.
+#' @return invisibly `TRUE` when it warned, `FALSE` otherwise
+#' @noRd
+.foceiEventSensWarn <- function(esLoaded, model, eventSens = "jump") {
+  if (!identical(eventSens, "jump")) return(invisible(FALSE))
+  if (isTRUE(esLoaded)) return(invisible(FALSE))
+  .eta <- model$eventEtaAll
+  ## NULL: a bundle from before the field existed, so nothing is established --
+  ## stay silent rather than warn about every model without dosing etas.  NA:
+  ## the scan that builds it failed on a model that DOES dose through
+  ## f()/alag()/rate()/dur(), so a dosing eta cannot be ruled out -- warn.
+  ##
+  ## ETAS ONLY, deliberately.  A dosing expression built from THETAs alone is
+  ## NOT affected by a missing inner shape: the inner model carries eta
+  ## sensitivities only, a theta gradient comes from the outer re-solve (or from
+  ## the separately built augmented model, whose shape C++ installs itself), and
+  ## the bundle's eventTheta is read nowhere in src/.  Measured: poisoning the
+  ## stored mode for a model with f()/alag() on thetas alone reproduces the fit
+  ## exactly -- same objective, every theta to the last digit.  Warning on it
+  ## would be a false alarm.
+  if (is.null(.eta)) return(invisible(FALSE))
+  if (!anyNA(.eta) && !any(.eta == 1L)) return(invisible(FALSE))
+  warning("dosing-parameter (f/alag) event sensitivities not loaded",
+    call. = FALSE
+  )
+  invisible(TRUE)
+}
+
 #' Internal focei fit function in R
 #'
 #' @param .ret Internal focei environment
@@ -3596,6 +4051,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       rxode2::rxEventSensLoadModel(.ret$model$inner),
       error = function(e) FALSE
     )
+    .foceiEventSensWarn(.esLoaded, .ret$model, .eventSens)
     if (isTRUE(.esLoaded)) {
       ## Tell the C++ core which model the event path is now bound to.  handle_evid
       ## sizes its scratch from the effective neq but calls the INSTALLED model's

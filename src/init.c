@@ -111,6 +111,7 @@ SEXP _nlmixr2est_foceiSetup_(SEXP, SEXP, SEXP, SEXP, SEXP,
 
 SEXP _nlmixr2est_foceiOuterF(SEXP);
 SEXP _nlmixr2est_foceiOuterG(SEXP);
+SEXP _nlmixr2est_foceiOuterH(SEXP, SEXP);
 SEXP _nlmixr2est_foceiOuter(SEXP);
 SEXP _nlmixr2est_sqrtm(SEXP);
 SEXP _nlmixr2est_foceiCalcCov(SEXP);
@@ -219,6 +220,8 @@ SEXP _nlmixr2est_registerTestContrib(void);
 SEXP _nlmixr2est_removeTestContrib(void);
 SEXP _nlmixr2est_getTestContrib(void);
 SEXP _nlmixr2est_setTestContribAddLL(SEXP);
+SEXP _nlmixr2est_setTestContribAddLLf(SEXP);
+SEXP _nlmixr2est_setTestContribAddDEta(SEXP);
 SEXP _nlmixr2est_setNnOuterFn(SEXP);
 SEXP _nlmixr2est_likContribPtrs(void);
 SEXP _nlmixr2est_foceiPtrs(void);
@@ -236,6 +239,8 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_removeTestContrib", (DL_FUNC) &_nlmixr2est_removeTestContrib, 0},
   {"_nlmixr2est_getTestContrib", (DL_FUNC) &_nlmixr2est_getTestContrib, 0},
   {"_nlmixr2est_setTestContribAddLL", (DL_FUNC) &_nlmixr2est_setTestContribAddLL, 1},
+  {"_nlmixr2est_setTestContribAddLLf", (DL_FUNC) &_nlmixr2est_setTestContribAddLLf, 1},
+  {"_nlmixr2est_setTestContribAddDEta", (DL_FUNC) &_nlmixr2est_setTestContribAddDEta, 1},
   {"_nlmixr2est_setNnOuterFn", (DL_FUNC) &_nlmixr2est_setNnOuterFn, 1},
   {"_nlmixr2est_impPropKernel_", (DL_FUNC) &_nlmixr2est_impPropKernel_, 7},
   {"_nlmixr2est_impQrPoints_", (DL_FUNC) &_nlmixr2est_impQrPoints_, 5},
@@ -351,6 +356,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_foceiSetup_", (DL_FUNC) &_nlmixr2est_foceiSetup_, 11},
   {"_nlmixr2est_foceiOuterF", (DL_FUNC) &_nlmixr2est_foceiOuterF, 1},
   {"_nlmixr2est_foceiOuterG", (DL_FUNC) &_nlmixr2est_foceiOuterG, 1},
+  {"_nlmixr2est_foceiOuterH", (DL_FUNC) &_nlmixr2est_foceiOuterH, 2},
   {"_nlmixr2est_foceiOuter", (DL_FUNC) &_nlmixr2est_foceiOuter, 1},
   {"_nlmixr2est_sqrtm", (DL_FUNC) &_nlmixr2est_sqrtm, 1},
   {"_nlmixr2est_foceiCalcCov", (DL_FUNC) &_nlmixr2est_foceiCalcCov, 1},

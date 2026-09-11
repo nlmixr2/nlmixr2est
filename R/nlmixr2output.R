@@ -530,7 +530,7 @@
   .env <- obj
   if (!is.null(obj$saem)) {
     .tmp <- obj$saem
-    .curObj <- get("objective", .env)
+    .curObj <- get("objective", .env, inherits = FALSE)
     if (is.na(.curObj)) {
       # the quadrature settings live on the fit's saemControl; the fit
       # environment itself never held them, so both lookups always missed and
@@ -642,7 +642,7 @@ VarCorr.nlmixr2FitCoreSilent <- VarCorr.nlmixr2FitCore
 .sigma <- function(x) {
   .ret <- x$nlme
   if (is.null(.ret)) {
-    if (exists("ui", envir = x$env)) {
+    if (exists("ui", envir = x$env, inherits = FALSE)) {
       .df <- as.data.frame(x$uif$ini)
       .errs <- paste(.df[which(!is.na(.df$err)), "name"])
       return(fixef(x)[.errs])

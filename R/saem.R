@@ -661,6 +661,32 @@
 .saemSaCov <- function(env) {
   .saemFimToCov(env$saem$HaSa, env)
 }
+#' Kernel FIM slots belonging to a `fix()`ed additive residual
+#'
+#' `src/saem.cpp` fills an endpoint's log-sigma2 slot whether or not that
+#' endpoint's residual is `fix()`ed, but a fixed value is not estimated, so the
+#' slot is dropped before inverting the same way a fixed theta's row is
+#' (`calc.COV`'s variance block excludes it too).
+#'
+#' `nb_param = nphi1 + nlambda + nResidEp` with the residual slots LAST, so the
+#' block starts at `.np - nendpnt` -- taken from the matrix itself rather than
+#' from a theta+Omega row count, because dropping the wrong row here would
+#' silently remove an Omega row instead.
+#' @param .idf model `iniDf`
+#' @param .predDf model `predDf`
+#' @param .np FIM dimension
+#' @return integer FIM positions to drop, possibly empty
+#' @noRd
+.saemFimFixedResidSlots <- function(.idf, .predDf, .np) {
+  .nEp <- length(.predDf$cond)
+  if (.nEp == 0L || .np <= .nEp) return(integer(0))
+  .base <- .np - .nEp
+  .base + which(vapply(seq_len(.nEp), function(.i) {
+    .rows <- .idf[which(.idf$condition == paste(.predDf$cond[.i]) & !is.na(.idf$err)), ,
+                  drop = FALSE]
+    nrow(.rows) == 1L && isTRUE(.rows$fix)
+  }, logical(1)))
+}
 #' Invert a SAEM Fisher Information Matrix into a reported-scale covariance
 #'
 #' Shared by `covMethod="sa"` (converged FIM `saem$HaSa`) and `covMethod="fim"`
@@ -733,30 +759,36 @@
   #    1/gamma2_phi0 -> Inf.  The caller splices a real SE in from the
   #    linearized FIM (.saemSplicePhi0Theta).
   #  - the fixed theta rows: nothing to report for a known, not estimated,
-  #    value.
+  #    value.  A fix()ed additive residual's slot goes with them
+  #    (.saemFimFixedResidSlots) -- the kernel fills it whether or not the
+  #    value is estimated, so left in it both reported an SE (and a CI) for a
+  #    fixed parameter and gave every other parameter the marginal instead of
+  #    the conditional information.
   #  - any all-zero row: src/saem.cpp gives a non-additive endpoint's
   #    residual slot (and a general-log-likelihood endpoint) an exactly-zero
   #    row/col in every entry, which would make the full matrix singular
   #    (its column is zero too: Ha/HaSa is symmetric and d2logk/D11 never
   #    write a cross term into an excluded slot).
+  .idf <- .ui$iniDf
+  .predDf <- .ui$predDf
+  .etaN <- tryCatch(.foceiEtaThetaMap(.ui)$etaNames, error = function(e) NULL)
+  .nEta <- length(.etaN)
   .zeroRows <- which(apply(.H, 1L, function(.r) all(.r == 0)))
-  .drop <- Reduce(union, list(which(.fx), match(.phi0Nm, .tn), .zeroRows))
+  .drop <- Reduce(union, list(which(.fx), match(.phi0Nm, .tn), .zeroRows,
+                              .saemFimFixedResidSlots(.idf, .predDf, .np)))
   .keep <- if (length(.drop) > 0L) seq_len(.np)[-.drop] else seq_len(.np)
   if (length(.keep) == 0L) return(NULL)
   .C <- suppressWarnings(tryCatch(solve(.H[.keep, .keep, drop = FALSE]), error = function(e) NULL))
   if (is.null(.C) || !all(is.finite(.C))) return(NULL)
   .orig2sub <- rep(NA_integer_, .np)
   .orig2sub[.keep] <- seq_along(.keep)
-  .idf <- .ui$iniDf
   # structural theta block (natural scale; H[1:nth] rows are .tn)
   .ini <- .idf[is.na(.idf$err) & !is.na(.idf$ntheta) & !.idf$fix, "name"]
   if (length(.ui$mixProbs) > 0) .ini <- .ini[!(.ini %in% .ui$mixProbs)]
   .ini <- .ini[.ini %in% .tn]
   .idx <- match(.ini, .tn); .nm <- .ini; .jac <- rep(1, length(.ini))
   # diagonal Omega block: log-variance -> variance, d(var)/d(log var) = var
-  .etaN <- tryCatch(.foceiEtaThetaMap(.ui)$etaNames, error = function(e) NULL)
   .omVar <- tryCatch(diag(as.matrix(.saem$Gamma2_phi1)), error = function(e) NULL)
-  .nEta <- length(.etaN)
   if (.nEta > 0L && !is.null(.omVar) && length(.omVar) >= .nEta &&
         .np >= .nth + .nEta) {
     .idx <- c(.idx, .nth + seq_len(.nEta))
@@ -764,15 +796,15 @@
     .jac <- c(.jac, .omVar[seq_len(.nEta)])
   }
   # per-endpoint additive residual: src/saem.cpp lays out one log-sigma2 slot per
-  # endpoint (in .predDf$cond order, matching resMat's rows), right after the
-  # theta+Omega-diag block -- d(sd)/d(log sigma2) = 0.5 sd.  Only a PURE additive
-  # endpoint (a single iniDf residual row with err=="add") has a real slot; any
-  # other endpoint's slot was dropped above (all-zero row) and simply has no
-  # surviving column to select here.
-  .predDf <- .ui$predDf
+  # endpoint (in .predDf$cond order, matching resMat's rows) as the LAST nendpnt
+  # rows of nb_param -- d(sd)/d(log sigma2) = 0.5 sd.  Only a PURE additive,
+  # estimated endpoint has a real slot; any other endpoint's slot was dropped above
+  # (all-zero row, or fix()ed) and simply has no surviving column to select here.
+  # The base comes from .np, the same way .saemFimFixedResidSlots derives it, so
+  # the row dropped and the row read are always the same one.
   .nEp <- length(.predDf$cond)
-  if (.nEp > 0L && .np >= .nth + .nEta + .nEp) {
-    .base <- .nth + .nEta
+  if (.nEp > 0L && .np > .nEp) {
+    .base <- .np - .nEp
     for (.i in seq_len(.nEp)) {
       .sub <- .orig2sub[.base + .i]
       if (is.na(.sub)) next
@@ -827,38 +859,132 @@
   dimnames(.cm) <- list(.tn, .tn)
   .miss <- .miss[.miss %in% .tn]
   if (length(.miss) == 0L) return(.cov)
+  .saemSpliceBlock(.cov, .cm, .miss)
+}
+#' Append parameters a SAEM covariance does not have as their own block
+#'
+#' Both splices add the parameters the analytic FIM could not supply from the
+#' linearized FIM block-diagonally, with zero cross-terms to the rows already
+#' present (the linearized FIM is itself block-diagonal between the fixed-effect
+#' and variance blocks, so no cross-term is discarded within a block).
+#' @param .cov covariance to extend
+#' @param .src covariance carrying the missing rows
+#' @param .miss names to splice in (all present in `.src`)
+#' @return `.cov` extended by the `.miss` block
+#' @noRd
+.saemSpliceBlock <- function(.cov, .src, .miss) {
+  .rn <- rownames(.cov)
   .fn <- c(.rn, .miss)
   .full <- matrix(0, length(.fn), length(.fn), dimnames = list(.fn, .fn))
   .full[.rn, .rn] <- .cov
-  .full[.miss, .miss] <- .cm[.miss, .miss, drop = FALSE]
+  .full[.miss, .miss] <- .src[.miss, .miss, drop = FALSE]
   .full
+}
+#' The linearized FIM's variance block (blocB), or `NULL`
+#'
+#' `calc.COV()` returns the structural-theta covariance with the inverted
+#' variance block (all Omega variances/covariances + residual parameters) as its
+#' `varCov` attribute.  This is the guarded accessor: `NULL` whenever `covFull`
+#' is off, the linearization fails, or the block is missing/non-finite.
+#' @param env saem fit environment
+#' @return named variance covariance matrix, or `NULL`
+#' @noRd
+.saemLinFimVarBlock <- function(env) {
+  if (!isTRUE(rxode2::rxGetControl(env$ui, "covFull", TRUE))) return(NULL)
+  .saem <- env$saem
+  attr(.saem, "env") <- env
+  .cm <- suppressWarnings(tryCatch(calc.COV(.saem), error = function(e) NULL))
+  if (is.null(.cm) || inherits(.cm, "try-error")) return(NULL)
+  .vc <- attr(.cm, "varCov")
+  if (is.null(.vc) || !is.matrix(.vc) || !all(is.finite(.vc))) return(NULL)
+  .vc
+}
+#' Reported row order for a SAEM fim/sa covariance
+#'
+#' Structural thetas in `iniDf` order, then the Omega rows, then the residual
+#' parameters in `iniDf` order, so the order does not depend on which rows the
+#' splices happened to append.  Each name is classified from `iniDf` FIRST: a
+#' theta or residual a user named `cov.tka`/`om.err` matches the Omega name
+#' prefix as well, and a name landing in two groups would duplicate its row and
+#' column and hand back a singular matrix.  Names no group claims keep their
+#' original position, at the end.
+#' @param .rn current covariance rownames
+#' @param .idf model `iniDf`
+#' @return `.rn` permuted -- the same set, each name exactly once
+#' @noRd
+.saemCovRowOrder <- function(.rn, .idf) {
+  .thOrd <- .idf$name[!is.na(.idf$ntheta) & is.na(.idf$err)]
+  .thOrd <- .thOrd[.thOrd %in% .rn]
+  .resOrd <- .idf$name[!is.na(.idf$err)]
+  .resOrd <- .resOrd[.resOrd %in% .rn]
+  .omOrd <- .rn[grepl("^om\\.|^cov\\.", .rn) & !(.rn %in% c(.thOrd, .resOrd))]
+  .ord <- unique(c(.thOrd, .omOrd, .resOrd))
+  c(.ord, .rn[!(.rn %in% .ord)])
+}
+#' Is the fitted Omega diagonal (so the Louis Omega score is valid)?
+#'
+#' `d1_loggamma2_phi1` (`src/saem.cpp`) divides element-wise by the DIAGONAL of
+#' `Gamma2_phi1`, so the analytic FIM's Omega information only describes a
+#' diagonal Omega.  Asked of the fitted matrix rather than of the names
+#' `calc.COV` built, because a `fix()`ed off-diagonal carries no `cov.` name
+#' (`.foceiOmegaPairs` drops fixed elements) yet still invalidates the score.  An
+#' unreadable Omega answers `FALSE`, which keeps the wholesale splice.
+#' @param env saem fit environment
+#' @return `TRUE` only when Omega is known to be diagonal
+#' @noRd
+.saemOmegaIsDiagonal <- function(env) {
+  .om <- tryCatch(as.matrix(env$saem$Gamma2_phi1), error = function(e) NULL)
+  if (!is.matrix(.om) || nrow(.om) == 0L || nrow(.om) != ncol(.om) ||
+        !all(is.finite(.om))) {
+    return(FALSE)
+  }
+  nrow(.om) == 1L || !any(.om[upper.tri(.om)] != 0)
 }
 #' Splice the linearized-FIM variance block into a fim/sa covariance
 #'
 #' The analytic (simulation) FIM reliably covers theta + diagonal Omega + additive
 #' residuals, but not off-diagonal Omega covariances or proportional/combined residual
-#' error (the complete-data Louis correction is unstable when BSV dominates).  For those
-#' models this keeps the simulation-based structural-theta block and takes the full
-#' variance block (all Omega variances/covariances + residual parameters) from linFim's
-#' `calc.COV` (blocB), which handles them correctly via the marginal covariance.  Models
-#' the analytic FIM already covers in full are returned unchanged.
+#' error: `src/saem.cpp` gives a non-additive endpoint's residual slot an exactly-zero
+#' row (`.saemFimToCov` drops it), so those parameters are taken from linFim's
+#' `calc.COV` (blocB), which handles them via the marginal covariance.  Filling a
+#' dropped slot from linFim is the intended design, not a leak (#1022).
+#'
+#' How much is taken depends on whether Omega is diagonal
+#' (`.saemOmegaIsDiagonal`), because the Louis score divides by the DIAGONAL of
+#' `Gamma2_phi1` only (`d1_loggamma2_phi1`, `src/saem.cpp`):
+#'
+#' * a non-diagonal Omega -- the analytic Omega information ignores the
+#'   off-diagonals, so only the structural-theta block is kept and the WHOLE variance
+#'   block comes from linFim.
+#' * a diagonal Omega -- the analytic FIM covers every Omega variance correctly, so
+#'   only the variance parameters it could not supply are spliced in.  Replacing the
+#'   whole block here used to hand back linFim's marginal Omega SEs instead, which a
+#'   near-singular residual pair inflates by orders of magnitude (#1022).
+#'
+#' Models the analytic FIM already covers in full are returned unchanged.
 #' @param .cov analytic fim/sa covariance (theta + whatever variance params it covers)
 #' @param env saem fit environment
 #' @return covariance with the linFim variance block spliced in, or `.cov` unchanged
 #' @noRd
 .saemSpliceLinFimVar <- function(.cov, env) {
-  if (!isTRUE(rxode2::rxGetControl(env$ui, "covFull", TRUE))) return(.cov)
-  .saem <- env$saem
-  attr(.saem, "env") <- env
-  .cm <- suppressWarnings(tryCatch(calc.COV(.saem), error = function(e) NULL))
-  if (is.null(.cm) || inherits(.cm, "try-error")) return(.cov)
-  .vc <- attr(.cm, "varCov")
-  if (is.null(.vc) || !is.matrix(.vc) || !all(is.finite(.vc))) return(.cov)
+  .vc <- .saemLinFimVarBlock(env)
+  if (is.null(.vc)) return(.cov)
   .vn <- colnames(.vc)
-  if (all(.vn %in% rownames(.cov))) return(.cov)     # analytic already covers the variance block
-  # keep the simulation structural-theta block; take the whole variance block from linFim
   .rn <- rownames(.cov)
-  .th <- .rn[!(.rn %in% .vn) & !grepl("^om\\.|^cov\\.", .rn)]
+  .miss <- .vn[!(.vn %in% .rn)]
+  if (length(.miss) == 0L) return(.cov)     # analytic already covers the variance block
+  if (.saemOmegaIsDiagonal(env)) {
+    # diagonal Omega: keep the analytic block (and its theta cross-terms) and splice
+    # only the missing residual parameters
+    return(.saemSpliceBlock(.cov, .vc, .miss))
+  }
+  # keep the simulation structural-theta block; take the whole variance block from
+  # linFim.  Which rows are thetas comes from iniDf, not from an "om./cov." name
+  # prefix: a structural theta a user happened to name cov.tka matches that prefix
+  # and would be dropped from the reported covariance entirely.
+  .idf <- env$ui$iniDf
+  .thNm <- .idf$name[!is.na(.idf$ntheta) & is.na(.idf$err)]
+  .th <- .rn[.rn %in% .thNm & !(.rn %in% .vn)]
   .fn <- c(.th, .vn)
   .full <- matrix(0, length(.fn), length(.fn), dimnames = list(.fn, .fn))
   if (length(.th) > 0L) .full[.th, .th] <- .cov[.th, .th, drop = FALSE]
@@ -913,11 +1039,11 @@
       # [phi1 mu][phi0 mu], not iniDf/model order -- reorder the reported theta
       # block back to iniDf order so it does not depend on which parameters
       # happen to be mu-referenced (names carry identity everywhere this cov
-      # is consumed, but a predictable row order is still worth keeping)
-      .thOrd <- .ui$iniDf$name[!is.na(.ui$iniDf$ntheta) & is.na(.ui$iniDf$err)]
-      .thOrd <- .thOrd[.thOrd %in% rownames(.cov)]
-      .rest <- rownames(.cov)[!(rownames(.cov) %in% .thOrd)]
-      .cov <- .cov[c(.thOrd, .rest), c(.thOrd, .rest), drop = FALSE]
+      # is consumed, but a predictable row order is still worth keeping).  The
+      # variance rows are ordered the same way, so the order does not depend on
+      # which rows the two splices happened to append either.
+      .ord <- .saemCovRowOrder(rownames(.cov), .ui$iniDf)
+      .cov <- .cov[.ord, .ord, drop = FALSE]
       # finalization needs a structural-theta cov; stash the full matrix and install
       # it after the fit is built (.saemInstallFullCov).  The control covMethod is reset
       # to its default during finalization, so record the intended label separately.

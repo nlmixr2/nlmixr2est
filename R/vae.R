@@ -711,12 +711,12 @@ nmObjHandleControlObject.vaeControl <- function(control, env) {
 #' @export
 nmObjGetControl.vae <- function(x, ...) {
   .env <- x[[1]]
-  if (exists("vaeControl", .env)) {
-    .control <- get("vaeControl", .env)
+  if (exists("vaeControl", .env, inherits = FALSE)) {
+    .control <- get("vaeControl", .env, inherits = FALSE)
     if (inherits(.control, "vaeControl")) return(.control)
   }
-  if (exists("control", .env)) {
-    .control <- get("control", .env)
+  if (exists("control", .env, inherits = FALSE)) {
+    .control <- get("control", .env, inherits = FALSE)
     if (inherits(.control, "vaeControl")) return(.control)
   }
   stop("cannot find vae related control object", call. = FALSE)

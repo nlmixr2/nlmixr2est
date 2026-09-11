@@ -159,7 +159,7 @@ print.nlmixr2FitCore <- function(x, ...) {
     }
   }
   .nb <- TRUE
-  if (!is.na(get("objective", x$env))) {
+  if (!is.na(get("objective", x$env, inherits = FALSE))) {
     .nb <- .pagedPrint(x$objDf, "Objective", .bound)
   }
   if (.nb) .nb <- .pagedPrint(x$time, "Time (sec)", .bound)
@@ -211,7 +211,7 @@ print.nlmixr2FitCore <- function(x, ...) {
         .bound <- .bound[1]
       }
     }
-    if (is.na(get("objective", x$env))) {
+    if (is.na(get("objective", x$env, inherits = FALSE))) {
       cat(sprintf(
         " Gaussian/Laplacian Likelihoods: AIC(%s) or %s etc.",
         crayon::yellow(.bound),
@@ -274,18 +274,24 @@ print.nlmixr2FitCore <- function(x, ...) {
         crayon::bold(x$covMethod), "\n"
       ))
     }
-    if (exists("covList", x$env) && length(x$env$covList) > 0L) {
+    if (exists("covList", x$env, inherits = FALSE) &&
+          length(x$env$covList) > 0L) {
       cat("    other calculated covs (", crayon::bold$blue("setCov()"), "): ",
         paste(crayon::bold(names(x$env$covList)), collapse = ", "),
         "\n",
         sep = ""
       )
     }
-    if (exists("cor", x$env)) {
-      .tmp <- .getR(x$cor)
+    # $cor is NULL when there is no covariance (covMethod=""); testing
+    # exists("cor", x$env) instead found stats::cor on a reloaded fit (#1038)
+    .cor <- x$cor
+    # .getR() passes NULL through and drops zero and NA entries, so a fit with
+    # no covariance -- or a single estimated theta -- leaves nothing to point at
+    .tmp <- .getR(.cor)
+    if (length(.tmp) > 0) {
       if (any(abs(.tmp) >= getOption("nlmixr2.strong.corr", 0.7))) {
         cat(paste0("  Some strong fixed parameter correlations exist (", crayon::yellow(.bound), crayon::bold$blue("$cor"), ") :\n"))
-        .getCorPrint(x$cor)
+        .getCorPrint(.cor)
       } else {
         cat(paste0("  Fixed parameter correlations in ", crayon::yellow(.bound), crayon::bold$blue("$cor"), "\n"))
       }
@@ -427,7 +433,7 @@ print.nlmixr2FitCore <- function(x, ...) {
       x$covMethod
     ))
   }
-  if (is.na(get("objective", x$env))) {
+  if (is.na(get("objective", x$env, inherits = FALSE))) {
     .c <- c(
       .c,
       "Missing Objective function; Can add by:",

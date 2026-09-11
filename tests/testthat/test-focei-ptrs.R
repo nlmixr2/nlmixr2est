@@ -30,10 +30,10 @@
 
 test_that("the foceiPtrs table has the documented shape (#937 + #955)", {
   .p <- .nlmixr2estFoceiPtrs()
-  expect_length(.p, 10L)
+  expect_length(.p, 11L)
   expect_equal(names(.p), c("apiVersion", "dims", "setTheta", "condBatch",
                             "setOmegaInv", "thetaSensIdx", "condThetaGrad",
-                            "nMix", "iterPrintRow", "condBatchThetaGrad"))
+                            "nMix", "iterPrintRow", "condBatchThetaGrad", "outerHessian"))
   for (.i in seq_along(.p)) expect_true(inherits(.p[[.i]], "externalptr"))
 })
 

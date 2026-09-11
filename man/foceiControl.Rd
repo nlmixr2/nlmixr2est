@@ -81,14 +81,22 @@ foceiControl(
   fo = FALSE,
   covTryHarder = FALSE,
   outerOpt = c("bobyqa", "nlminb", "lbfgsb3c", "L-BFGS-B", "mma", "lbfgsbLG", "slsqp",
-    "uobyqa", "newuoa"),
+    "uobyqa", "newuoa", "trust"),
   innerOpt = c("auto", "trust", "n1qn1", "BFGS"),
+  innerHessian = c("focei", "conditional"),
   hessianMethod = c("fd", "bfgs", "sr1", "bofill"),
   trustConf = 0.975,
   trustRinit = NULL,
   trustRmax = NULL,
   trustFterm = NULL,
   trustMterm = NULL,
+  outerTrustHessian = c("auto", "analytic", "bfgs", "fd"),
+  outerTrustRinit = NULL,
+  outerTrustRmax = NULL,
+  outerTrustFterm = NULL,
+  outerTrustMterm = NULL,
+  outerTrustRelStep = 0.001,
+  outerTrustRestarts = 3L,
   rhobeg = 0.2,
   rhoend = NULL,
   npt = NULL,
@@ -615,21 +623,15 @@ instead of FOCE (FALSE)}
     \itemize{
 
     \item \code{"nonmem"} freezes R at the \code{eta = 0} population
-    prediction and holds it constant across the inner optimization, matching
-    NONMEM's FOCE.  Advantage: reproduces NONMEM FOCE objective and standard
-    errors, and an ODE model agrees with its closed-form (\code{linCmt})
-    equivalent.  Disadvantage: R ignores the individual (conditional)
-    heteroscedasticity, so it can be slightly less accurate than
-    \code{"foce+"} for proportional/combined error.
+    prediction and holds it constant across the inner optimization. This
+    follows NONMEM's residual-variance convention for FOCE without interaction.
 
     \item \code{"foce+"} evaluates R at the current conditional
     \code{eta} (the live variance), keeping the truncated FOCE
-    inner gradient.  Advantage: uses the conditional variance and
-    is a bit more accurate than NONMEM's FOCE in some cases.
-    Disadvantage: does not match NONMEM FOCE.  This was the FOCE
-    behavior in \pkg{nlmixr2est} 6.0.1 and earlier. This does not
-    use the gradient of \code{eta} like the full \code{focei}
-    method, so it is not as accurate as \code{focei}.
+    inner score, which is refined before evaluating the marginal objective.
+    It retains the live-variance convention used in \pkg{nlmixr2est} 6.0.1
+    and earlier. It differs from NONMEM's FOCE without interaction and
+    omits the variance derivatives included in FOCEI.
 
     }}
 
@@ -673,7 +675,13 @@ should be used while calculating the Covariance Matrix.}
 cannot be corrected to be non-positive definite try estimating
 the Hessian on the unscaled parameter space.}
 
-\item{outerOpt}{optimization method for the outer problem}
+\item{outerOpt}{optimization method for the outer problem
+Fast \code{"nlminb"} fits automatically use the analytical outer Hessian
+for supported Gaussian FOCE/FOCE+/FOCEI/AGQ models, restarting with gradients only if
+curvature is unavailable.  \code{"trust"} is a trust-region Newton method
+(\pkg{RcppTrust}) built on that same Hessian; see
+\code{outerTrustHessian}.  It is unbounded, so a trial point outside the
+box is reported as an infinite objective and the region shrinks instead.}
 
 \item{innerOpt}{optimization method for the inner (per-subject eta)
     problem: `"auto"` (default), `"trust"` (RcppTrust trust-region Newton,
@@ -689,6 +697,13 @@ the Hessian on the unscaled parameter space.}
     costs 2*neta inner solves each time, while `"n1qn1"` builds it once as a
     warm-start seed and corrects it with its own quasi-Newton updates.  On
     everything else `"trust"` is typically the faster of the two.}
+
+\item{innerHessian}{Inner optimization curvature: `"focei"` (default) or
+`"conditional"`. Full conditional curvature requires fast Gaussian FOCEI.
+Inner trust uses it at each trial; n1qn1 uses it with `warm="calc"`.
+Value, gradient and full curvature share one sensitivity solve.
+The marginal objective's FOCEI curvature is unchanged.  It is not
+supported with registered external likelihood contributions.}
 
 \item{hessianMethod}{For a non-normal-endpoint model (any distribution
     other than \code{norm}), the per-subject inner Hessian has no
@@ -761,6 +776,38 @@ Deliberately NOT derived from `epsilon` (`"n1qn1"`'s own, unrelated
 criterion to a value picked for a different optimizer is exactly the
 coupling these parameters exist to remove. Has no effect unless
 `innerOpt="trust"`.}
+
+\item{outerTrustHessian}{Curvature source for \code{outerOpt="trust"}.
+\code{"auto"} (default) uses the analytical outer Hessian when
+\code{fast=TRUE} makes it available and the damped-BFGS update otherwise,
+and falls back to that update if the Hessian is refused mid-fit.
+\code{"analytic"} requires \code{fast=TRUE}.  \code{"bfgs"} is the
+damped BFGS update (Nocedal & Wright, Numerical Optimization 2nd ed.,
+Procedure 18.2) built from consecutive gradients, so it adds no
+evaluations.  \code{"fd"} differences the outer gradient, costing one
+extra population gradient per parameter per iteration.}
+
+\item{outerTrustRinit, outerTrustRmax}{Initial and maximum trust-region
+radius for \code{outerOpt="trust"}, in the scaled-parameter space the
+outer problem optimizes in.  \code{NULL} (default) derives
+\code{outerTrustRinit} from \code{minqa::bobyqa()}'s own default-rhobeg
+formula and \code{outerTrustRmax} as \code{8 * outerTrustRinit}.}
+
+\item{outerTrustFterm, outerTrustMterm}{Function-value and predicted-decrease
+convergence tolerances for \code{outerOpt="trust"}.  \code{NULL}
+(default) uses \code{10^(-sigdig-2)}; \code{outerTrustMterm} defaults to
+\code{outerTrustFterm}.}
+
+\item{outerTrustRelStep}{Relative step handed to the analytical outer
+Hessian, and used for the \code{outerTrustHessian="fd"} gradient
+difference.}
+
+\item{outerTrustRestarts}{How many times \code{outerOpt="trust"} may
+re-enter the trust region from its own reported solution when the Newton
+decrement there says the point is not stationary.  A collapsing trust
+region satisfies the solver's own convergence test at a point that is not
+a minimum; re-entering restores the initial radius.
+\code{maxOuterIterations} is the total across restarts, not per restart.}
 
 \item{rhobeg}{Initial trust region radius for the bobyqa outer optimizer
 (with `rhoend`, must satisfy `0 < rhoend < rhobeg`). Default `0.2`
@@ -1120,6 +1167,17 @@ The control object that changes the options for the FOCEi
 Control Options for FOCEi
 }
 \details{
+Custom outer optimizers receive \code{control$hessian(par, relStep=1e-3)}.
+  It settles the requested point and assembles the reported objective's
+  Hessian in the existing C++ sensitivity pool. Third-order terms are obtained
+  by differencing second-order sensitivities in ETA directions. The result uses
+  optimizer coordinates and objective scaling and retains negative curvature.
+  This requires \code{fast=TRUE}. M2/M3/M4 censoring uses the analytical-SE
+  \code{censOption="gauss"} convention. Censored \code{"laplace"} curvature,
+  priors, clipped AGQ and estimated transformations are unsupported.
+  Unsuccessful inner solves and an
+  active variance floor also make curvature unavailable.
+
 Uses R's L-BFGS-B (\code{\link{optim}}) for the outer problem and BFGS
 \code{\link[n1qn1]{n1qn1}} (restoring the prior individual Hessian) for
 the inner problem, which is left unscaled since eta estimates start near
