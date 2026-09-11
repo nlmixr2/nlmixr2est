@@ -2411,7 +2411,7 @@ public:
       // Fall back to soft-EM (regularized) when fixed membership cannot work:
       //  (a) SPLIT-ETA mixtures -- each component owns a distinct eta, so
       //      omegaShareSubpop has >= 2 distinct non-zero subpop values (a
-      //      shared-eta mixture has just one).  Components start identical and
+      //      shared-eta mixture has none).  Components start identical and
       //      must differentiate during the fit; a hard split at the symmetric
       //      init is arbitrary and never separates.
       //  (b) a degenerate classification that leaves a component empty (its
@@ -4326,6 +4326,12 @@ public:
       lambda = lres;
       if (nMix > 1) { mixProb = _savMixProb; mixWeights = _savMixWeights; }
     }
+    // Report the proportion at the score-zero point: one exact M-step at the final
+    // responsibilities, so sum_i (r_i - p) == 0 holds for every mixProbMethod.  The
+    // annealed step size and the Dirichlet-style regularization above stabilize the
+    // TRAJECTORY; leaving their shrinkage in the reported value makes the proportion
+    // disagree with the fit's own per-subject probabilities (#1058).
+    if (nMix > 1 && arma::accu(mixWeights) > 0.0) mixProb = mean(mixWeights, 0).t();
     phiFile.close();
   }
 
@@ -4907,16 +4913,24 @@ private:
     return result;
   }
 
-  // Model-aware naive classification for MSAEM's stratified init (run once before iteration 1):
-  // for each subject/hypothesis, shift phi1's owned columns toward/away from that hypothesis
-  // (pertSd BSV-SD) and evaluate the compiled model's actual fit. Returns the per-subject
-  // argmin-hypothesis classification (1-indexed).
+  // Model-aware naive classification, used for mixProbMethod="regress" membership and for
+  // MSAEM's stratified init (both run once before iteration 1): for each
+  // subject/hypothesis, shift phi1's owned columns toward/away from that hypothesis
+  // (pertSd BSV-SD) and evaluate the compiled model's actual fit.  Returns the
+  // per-subject argmin-hypothesis classification (1-indexed).
   uvec mixNaiveClassify(double pertSd) {
     double double_xmin = 1.0e-200;
     double xmax = 1e300;
     mat lossByHyp(N, nMix, fill::zeros);
+    // phi0 columns (fixed-effect-only parameters) carry a search variance of 1 in
+    // phiM, not a real BSV, so a subject's draw sits e-fold off the population value
+    // and swamps the between-component signal the classification is measuring.  Judge
+    // every hypothesis at the population value instead (#1058); the phi1 (eta) columns
+    // stay at their draws, which are genuine subject-level values.
+    mat basePhi = phiM;
+    if (nphi0 > 0) basePhi.cols(i0) = repmat(mprior_phi0, nmc, 1);
     for (int mHyp = 0; mHyp < nMix; mHyp++) {
-      mat cand = phiM;
+      mat cand = basePhi;
       if (omegaShareSubpop.n_elem == (unsigned int)nphi1) {
         for (unsigned int c = 0; c < (unsigned int)nphi1; c++) {
           unsigned int subpop = omegaShareSubpop(c);

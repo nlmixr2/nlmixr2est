@@ -54,4 +54,27 @@ nmTest({
     expect_true(is.na(f4$foceiControl$etaMat))
 
   })
+
+  test_that("etaMat drops the mixture bookkeeping columns", {
+    ## $eta carries ID, and for a mixture fit nmObjGet.ranef merges in a mixnum
+    ## column.  Neither is an eta.  Letting either reach an etaMat trips
+    ## foceiSetup_'s column check ("The etaMat must have the same number of ETAs
+    ## (cols) as the model"), which is what broke every mixture refit -- $cov,
+    ## addCwres, .setOfvFo and nlmixr2(fit, ...) all round-trip fit$etaMat.
+    .eta <- data.frame(ID = 1:3, eta.ka = c(0.1, -0.2, 0.3),
+                       eta.cl = c(-0.1, 0.2, 0.0), mixnum = c(1L, 2L, 1L))
+    expect_equal(colnames(.nmDropNonEtaCols(.eta)), c("eta.ka", "eta.cl"))
+    ## the accessor itself, with and without the mixture column
+    expect_equal(colnames(nmObjGet.etaMat(list(list(eta = .eta, iov = NULL)))),
+                 c("eta.ka", "eta.cl"))
+    expect_equal(colnames(nmObjGet.etaMat(list(list(eta = .eta[, 1:3], iov = NULL)))),
+                 c("eta.ka", "eta.cl"))
+    ## MIXEST is the same bookkeeping under its focei spelling
+    .eta2 <- .eta
+    names(.eta2)[4] <- "MIXEST"
+    expect_equal(colnames(.nmDropNonEtaCols(.eta2)), c("eta.ka", "eta.cl"))
+    ## an ordinary eta whose name merely contains "mix" is NOT dropped
+    .eta3 <- data.frame(ID = 1:2, eta.mixup = c(0.1, 0.2))
+    expect_equal(colnames(.nmDropNonEtaCols(.eta3)), "eta.mixup")
+  })
 })

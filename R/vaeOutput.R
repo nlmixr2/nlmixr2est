@@ -107,6 +107,33 @@
   if (length(.m) == 0L) .own else .m[1L]
 }
 
+#' Write a mixture model's fitted proportions back into `ini()`
+#'
+#' `fit$mixProb` is the full simplex (nMix entries); `ini()` carries the first
+#' nMix-1 on the PROBABILITY scale.  Clamped and renormalized so a proportion
+#' that reached the boundary still passes the ui's own validation (each in
+#' [0,1], summing to under 1) instead of failing `assertRxUi`.
+#'
+#' @param ui2 ui being updated
+#' @param ui original ui (carries `mixProbs`)
+#' @param fit vae fit list
+#' @param setIni the caller's `ini()` setter
+#' @return the updated ui
+#' @noRd
+#' @author Matthew L. Fidler
+.vaeSetIniMixProb <- function(ui2, ui, fit, setIni) {
+  .nm <- tryCatch(ui$mixProbs, error = function(e) character(0))
+  if (is.null(.nm) || length(.nm) == 0L) return(ui2)
+  .p <- fit$mixProb
+  if (is.null(.p) || length(.p) != length(.nm) + 1L || !all(is.finite(.p))) return(ui2)
+  .p <- pmin(pmax(.p, 1e-6), 1 - 1e-6)
+  .p <- .p / sum(.p)
+  for (.k in seq_along(.nm)) {
+    ui2 <- setIni(ui2, paste0(.nm[.k], " <- ", signif(.p[.k], 12)))
+  }
+  ui2
+}
+
 #' Update a ui with the VAE's selected covariate effects and fitted estimates.
 #'
 #' Continuous covariates enter as `beta*log(COV/center)`, categorical as
@@ -234,6 +261,8 @@
       if (is.finite(.rv)) ui2 <- .setIni(ui2, paste0(rn, " <- ", signif(.rv, 12)))
     }
   }
+  ## 3b. mixture proportions (never regressed -- see .vaeNonMuThetas)
+  ui2 <- .vaeSetIniMixProb(ui2, ui, fit, .setIni)
   ## The incremental model()/ini() edits above leave the ui's cached `covariates`
   ## stale: an injected covariate-coefficient theta (beta.<par>.<cov>) is added to
   ## the iniDf as a theta but ALSO stays listed as a covariate.  The augmented
@@ -304,6 +333,8 @@
       if (is.finite(.rv)) ui2 <- .setIni(ui2, paste0(rn, " <- ", signif(.rv, 12)))
     }
   }
+  ## 5. mixture proportions (never regressed -- see .vaeNonMuThetas)
+  ui2 <- .vaeSetIniMixProb(ui2, ui, fit, .setIni)
   rxode2::assertRxUi(ui2$fun)
 }
 

@@ -56,12 +56,12 @@ getValidNlmixrCtl.foce <- function(control) {
 #' @export
 nmObjGetControl.foce <- function(x, ...) {
   .env <- x[[1]]
-  if (exists("foceControl", .env)) {
-    .control <- get("foceControl", .env)
+  if (exists("foceControl", .env, inherits = FALSE)) {
+    .control <- get("foceControl", .env, inherits = FALSE)
     if (inherits(.control, "foceControl")) return(.control)
   }
-  if (exists("control", .env)) {
-    .control <- get("control", .env)
+  if (exists("control", .env, inherits = FALSE)) {
+    .control <- get("control", .env, inherits = FALSE)
     if (inherits(.control, "foceControl")) return(.control)
   }
   stop("cannot find foce related control object", call.=FALSE)

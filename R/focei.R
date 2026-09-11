@@ -2225,23 +2225,57 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
   ## correct and the finite-difference fallback must be turned OFF -- otherwise
   ## the jump-corrected sensitivity is computed but never used.  Leaving the
   ## flags at zero routes every parameter through the analytic innerOde sensitivity.
-  if (!identical(.eventSens, "jump")) {
-    for (.v in s$..eventVars) {
-      .vars <- as.character(get(.v, envir = s))
-      .vars <- rxode2::rxGetModel(paste0("rx_lhs=", rxode2::rxFromSE(.vars)))$params
-      for (.v2 in .vars) {
-        .reg <- rex::rex(start, "ETA[", capture(any_numbers), "]", end)
-        if (regexpr(.reg, .v2) != -1) {
-          .num <- as.numeric(sub(.reg, "\\1", .v2))
-          .eventEta[.num] <- 1L
-        }
-        .reg <- rex::rex(start, "THETA[", capture(any_numbers), "]", end)
-        if (regexpr(.reg, .v2) != -1) {
-          .num <- as.numeric(sub(.reg, "\\1", .v2))
-          .eventTheta[.num] <- 1L
+  ##
+  ## The flags are computed in BOTH modes.  `eventEtaAll` records which etas enter
+  ## a dosing expression at all, independent of the mode, so the fit can tell
+  ## "this model needs the jump sensitivities" from "this model has no dosing
+  ## etas" and refuse to run a jump fit silently without them (#1016).  Only
+  ## `eventEta`/`eventTheta` -- the finite-difference switches C++ reads -- are
+  ## zeroed under "jump".
+  ##
+  ## Under "jump" this scan is new work that used to be skipped, so it must not
+  ## be able to turn a building model into a failing one: a scan error there
+  ## leaves the C++ flags at zero, which is exactly what the guarded code did,
+  ## and records eventEtaAll as unknown rather than as "none" (below).  In "fd"
+  ## the flags ARE the fallback switches, so an error still propagates.
+  .scanErr <- tryCatch(
+    {
+      for (.v in s$..eventVars) {
+        .vars <- as.character(get(.v, envir = s))
+        .vars <- rxode2::rxGetModel(paste0("rx_lhs=", rxode2::rxFromSE(.vars)))$params
+        for (.v2 in .vars) {
+          .reg <- rex::rex(start, "ETA[", capture(any_numbers), "]", end)
+          if (regexpr(.reg, .v2) != -1) {
+            .num <- as.numeric(sub(.reg, "\\1", .v2))
+            .eventEta[.num] <- 1L
+          }
+          .reg <- rex::rex(start, "THETA[", capture(any_numbers), "]", end)
+          if (regexpr(.reg, .v2) != -1) {
+            .num <- as.numeric(sub(.reg, "\\1", .v2))
+            .eventTheta[.num] <- 1L
+          }
         }
       }
-    }
+      NULL
+    },
+    error = function(e) e
+  )
+  .eventEtaAll <- .eventEta
+  if (!is.null(.scanErr)) {
+    ## The loop only runs when the model HAS dosing modifiers, so an error here
+    ## means "this model doses through f()/alag()/rate()/dur() and which etas
+    ## reach them could not be resolved" -- NOT "no dosing etas".  Recording it
+    ## as zeros would let the fit-time tripwire conclude the jumps do not matter
+    ## and stay silent, which is the very thing it exists to prevent, so it is
+    ## recorded as unknown instead.
+    if (!identical(.eventSens, "jump")) stop(.scanErr)
+    .eventEta[] <- 0L
+    .eventTheta[] <- 0L
+    .eventEtaAll[] <- NA_integer_
+  }
+  if (identical(.eventSens, "jump")) {
+    .eventEta[] <- 0L
+    .eventTheta[] <- 0L
   }
   pred.opt <- NULL
   ## Build the inner (sensitivity) model with the requested event-sensitivity
@@ -2400,7 +2434,9 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
     log.etas = .nullInt(s$..extraEta[["exp"]]),
     extraProps = s$..extraTheta,
     eventTheta = .eventTheta,
-    eventEta = .eventEta
+    eventEta = .eventEta,
+    ## which etas enter a dosing expression, regardless of eventSens mode (#1016)
+    eventEtaAll = .eventEtaAll
     ## ,
     ## cache.file=cache.file
   )
@@ -2586,7 +2622,8 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
   ## before the event-sensitivity mode was recorded rehydrates every
   ## sensitivity model in "fd" mode -- silently zeroing the dosing-parameter
   ## sensitivities.  Version 2: .foceiModelCacheDeflate() stores eventSens.
-  .cacheFormat <- 2L
+  ## Version 3: the bundle gained eventEtaAll (#1016), which a v2 entry lacks.
+  .cacheFormat <- 3L
   .innerHessian <- rxode2::rxGetControl(.ui, "innerHessian", "focei")
   digest::digest(c(
     if (.innerHessian == "conditional") "conditionalInner1",
@@ -2651,13 +2688,18 @@ attr(rxUiGet.foceiModelCache, "rstudio") <- "file"
 .foceiModelCacheInflate <- function(el) {
   if (inherits(el, "nlmixr2estFoceiNorm")) {
     .es <- el$eventSens
-    return(suppressMessages(suppressWarnings(
+    .mod <- suppressMessages(suppressWarnings(
       if (is.null(.es)) {
         rxode2::rxode2(el$norm)
       } else {
         rxode2::rxode2(el$norm, eventSens = .es)
       }
-    )))
+    ))
+    ## Replay the tag too, so an inflated bundle deflates back to the same
+    ## thing; without it a re-deflate would store eventSens = NULL and the
+    ## next inflate would drop the mode again (#1016).
+    if (!is.null(.es)) attr(.mod, "nlmixr2estEventSens") <- .es
+    return(.mod)
   }
   if (inherits(el, "rxode2")) {
     return(rxode2::rxLoad(el))
@@ -3280,11 +3322,10 @@ rxUiGet.foceiSkipCov <- function(x, ...) {
     if (length(.uiIovEnv$iovVars) > 0) {
       .skipCov[which(.theta$name %in% .uiIovEnv$iovVars)] <- TRUE
     }
-    # Mixture probability parameters are estimated on the mlogit scale; their
-    # covariance cannot be meaningfully interpreted, so skip them.
-    if (length(.ui$mixProbs) > 0) {
-      .skipCov[which(.theta$name %in% .ui$mixProbs)] <- TRUE
-    }
+    # Mixture probability parameters ARE part of the covariance.  They are
+    # estimated on the mlogit scale, but the installed covariance is rotated to
+    # the probability scale with the full mexpit Jacobian (.mixCovToProbScale),
+    # so the reported SE sits on the same scale as the reported estimate.
     .skipCov
   }
 }
@@ -3594,6 +3635,53 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
 }
 
 .thetaReset <- new.env(parent = emptyenv())
+#' Warn when a "jump" fit could not install the event-sensitivity shape
+#'
+#' A model whose `f()`/`alag()`/`rate()`/`dur()` depends on an eta gets that
+#' eta's sensitivity ONLY from rxode2's jump injection.  When the shape does
+#' not install the sensitivity is exactly zero and nothing errors: the eta
+#' never leaves its initial value while its omega stays finite, which is the
+#' nlmixr2est#1016 symptom.  That came from a rehydrated inner model built in
+#' "fd" mode; the mode now rides with the cached bundle, so this is a tripwire
+#' -- say it rather than return a silently wrong fit.
+#'
+#' Silent when the model has no dosing etas (nothing depends on the jumps) or
+#' when the shape did install.
+#'
+#' @param esLoaded What `rxEventSensLoadModel()` returned.
+#' @param model The focei model bundle (for `eventEtaAll`).
+#' @param eventSens The fit's resolved `eventSens`.  Only `"jump"` asks for the
+#'   analytic sensitivities, so only `"jump"` can be missing them -- an `"fd"`
+#'   fit never installs a shape and its dosing etas go through the C++
+#'   finite-difference fallback instead.  The mode is checked here rather than
+#'   only at the call site so the helper cannot be reused into a false alarm.
+#' @return invisibly `TRUE` when it warned, `FALSE` otherwise
+#' @noRd
+.foceiEventSensWarn <- function(esLoaded, model, eventSens = "jump") {
+  if (!identical(eventSens, "jump")) return(invisible(FALSE))
+  if (isTRUE(esLoaded)) return(invisible(FALSE))
+  .eta <- model$eventEtaAll
+  ## NULL: a bundle from before the field existed, so nothing is established --
+  ## stay silent rather than warn about every model without dosing etas.  NA:
+  ## the scan that builds it failed on a model that DOES dose through
+  ## f()/alag()/rate()/dur(), so a dosing eta cannot be ruled out -- warn.
+  ##
+  ## ETAS ONLY, deliberately.  A dosing expression built from THETAs alone is
+  ## NOT affected by a missing inner shape: the inner model carries eta
+  ## sensitivities only, a theta gradient comes from the outer re-solve (or from
+  ## the separately built augmented model, whose shape C++ installs itself), and
+  ## the bundle's eventTheta is read nowhere in src/.  Measured: poisoning the
+  ## stored mode for a model with f()/alag() on thetas alone reproduces the fit
+  ## exactly -- same objective, every theta to the last digit.  Warning on it
+  ## would be a false alarm.
+  if (is.null(.eta)) return(invisible(FALSE))
+  if (!anyNA(.eta) && !any(.eta == 1L)) return(invisible(FALSE))
+  warning("dosing-parameter (f/alag) event sensitivities not loaded",
+    call. = FALSE
+  )
+  invisible(TRUE)
+}
+
 #' Internal focei fit function in R
 #'
 #' @param .ret Internal focei environment
@@ -3634,6 +3722,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       rxode2::rxEventSensLoadModel(.ret$model$inner),
       error = function(e) FALSE
     )
+    .foceiEventSensWarn(.esLoaded, .ret$model, .eventSens)
     if (isTRUE(.esLoaded)) {
       ## Tell the C++ core which model the event path is now bound to.  handle_evid
       ## sizes its scratch from the effective neq but calls the INSTALLED model's
@@ -4403,8 +4492,19 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       assign("control", .control, envir = .ret)
     }
     .foceiInstallAnalyticCov(.ret)
-    .foceiInstallFdFullCov(.ret)
+    # Installing the FD-full covariance replaces $cov with a matrix spanning
+    # theta AND omega, but the C++ step has already derived popDf$SE from the
+    # native theta-only covariance it discards.  Left alone the fit reports SEs
+    # that are not sqrt(diag(fit$cov)), and a setCov() round trip then silently
+    # changes them (nlmixr2extra#125).
+    .fdFullInstalled <- .foceiInstallFdFullCov(.ret)
+    # both installers replace $cov with a matrix on the mlogit estimation scale;
+    # rotate the mixture block before .updateParFixed() derives SEs from it
+    .mixInstallProbScaleCov(.ret)
     .updateParFixed(.ret)
+    if (isTRUE(.fdFullInstalled)) {
+      .updateParFixedRefreshSeFromCov(.ret, .ret$cov)
+    }
     if (!exists("table", .ret)) {
       .ret$table <- tableControl()
     }
@@ -4443,7 +4543,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     if (inherits(.tmp, "try-error")) {
       warning("error calculating tables, returning without table step", call. = FALSE)
     } else {
-      .ret <- .mixFixTable(.tmp, .env, ui)
+      .ret <- .tmp
     }
   }
   assign("sessioninfo", .sessionInfo(), envir = .env)

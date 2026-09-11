@@ -915,6 +915,12 @@
   if (!length(.dist)) .dist <- tryCatch(as.character(ui$predDf$distribution), error = function(e) character(0))
   if (length(.dist) && !all(.dist %in% c("norm", "dnorm")))
     return(.foceiAnalyticFallback("a non-normal likelihood endpoint"))
+  # Mixture models: the augmented sensitivity model differentiates ONE component's
+  # conditional likelihood, not the marginal log(sum_m p_m L_m) the fit optimizes,
+  # and there is no mixture-proportion block at all.  Assembling it anyway would
+  # report a single-component observed information as "analytic".
+  if (length(tryCatch(ui$mixProbs, error = function(e) NULL)) > 0L)
+    return(.foceiAnalyticFallback("a mixture (mix()) model"))
   # Multiple modeled endpoints: rx_pred_ and rx_r_ are single dvid-conditional
   # expressions that already select the right endpoint per observation when solved
   # against the dataset, so the (f,R) path handles them -- but the single-endpoint
@@ -2612,8 +2618,13 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
   onm <- etaNames                                            # Omega named by the eta (om.eta.cl)
   nm <- c(thStruct, .dir$sgName, .foceiOmegaCovNames(pairs, onm))
   dimnames(R) <- dimnames(cov) <- list(nm, nm)
+  # `pd` is the caller's install gate: an observed information with a negative eigenvalue
+  # (the outer optimizer stopped at a point that is not a local minimum) inverts to
+  # negative variances and NaN SEs.  Report it rather than making each caller re-decide.
+  .ev <- suppressWarnings(eigen(cov, symmetric = TRUE, only.values = TRUE)$values)
   list(cov = cov, se = setNames(suppressWarnings(sqrt(diag(cov))), nm),  # NaN flags non-PD
-       R = R, params = nm, method = "analytic")
+       R = R, params = nm, method = "analytic",
+       pd = all(is.finite(.ev)) && all(diag(cov) > 0) && min(.ev) > 0)
 }
 
 #' Full analytic FOCEI covariance (theta + sigma + Omega) for a fitted object, or
@@ -2622,15 +2633,30 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
 #' The result is cached on the fit environment (`.covAnalytic`) and its `$cov` is
 #' installed as the fit's `$cov` on the first call, so repeated calls -- and
 #' `getVarCov()` -- return the stored covariance instead of recomputing the
-#' augmented sensitivity solve every time.
+#' augmented sensitivity solve every time.  A covariance that is not positive
+#' definite is still returned (the caller asked for the analytic pieces) but is
+#' NOT installed -- see the `$pd` gate.  The warning that says so is repeated on
+#' the cached path: a second call hands back the same indefinite matrix, and
+#' saying it once would leave that one silent.
 #' @param fit a fitted nlmixr2 focei object
-#' @return list(cov, se, R, params, method) or `NULL`
+#' @return list(cov, se, R, params, method, pd) or `NULL`
 #' @noRd
 foceiCovAnalytic <- function(fit) {
   .env <- fit
   if (rxode2::rxIs(fit, "nlmixr2FitData")) .env <- fit$env
+  # PD guard, as in .foceiInstallAnalyticCov and .covInstallResult: an indefinite
+  # observed information inverts to negative variances and NaN SEs, so installing it
+  # would replace a usable covariance with an unusable one.
+  .notPd <- function(.r) !is.null(.r) && is.matrix(.r$cov) && !isTRUE(.r$pd)
   if (exists(".covAnalytic", envir = .env, inherits = FALSE)) {
-    return(get(".covAnalytic", envir = .env))
+    .cached <- get(".covAnalytic", envir = .env)
+    # only warn here -- do NOT re-install, so a covariance the caller replaced since
+    # (setCov(), a refit) is left as they set it
+    if (.notPd(.cached)) {
+      warning("analytic covariance is not positive definite; fit$cov unchanged",
+              call. = FALSE)
+    }
+    return(.cached)
   }
   # Match the live covType="analytic" hook (.foceiCalcRanalytic), which wraps the whole assembly
   # in tryCatch and returns NULL on any error -> FD fallback.  A direct foceiCovAnalytic()/
@@ -2638,7 +2664,10 @@ foceiCovAnalytic <- function(fit) {
   # near-zero-prediction branch can hit an NA), never throw.
   .ret <- tryCatch(.foceiCovAnalyticCalc(fit), error = .foceiAnalyticErrWarn(2L))
   assign(".covAnalytic", .ret, envir = .env)   # cache (incl. NULL) -- do not recompute
-  if (!is.null(.ret) && is.matrix(.ret$cov)) {
+  if (.notPd(.ret)) {
+    warning("analytic covariance is not positive definite; fit$cov unchanged",
+            call. = FALSE)
+  } else if (!is.null(.ret) && is.matrix(.ret$cov)) {
     .env$cov <- .ret$cov                        # install so getVarCov()/$cov reuse it
     .env$covMethod <- "analytic"                # report the analytic observed information
   }

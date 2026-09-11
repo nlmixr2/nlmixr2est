@@ -64,6 +64,33 @@
   return(NULL)
 }
 
+#' Extract ETA names referenced outside any mix() component expression
+#'
+#' The component expressions of a `mix()` call are skipped (they are scanned
+#' per-component elsewhere); everything else, including a `mix()` call's
+#' probability arguments, counts as outside.  An ETA found here applies to every
+#' mixture component, so it is shared no matter which component also uses it.
+#'
+#' @param expr A parsed expression (or sub-expression) from `ui$lstExpr`
+#' @param etas Character vector of all known ETA names to match against
+#' @return Character vector of ETA names found outside a component (deduplicated)
+#' @noRd
+#' @author Matthew L. Fidler
+.extractEtasOutsideMix <- function(expr, etas) {
+  if (is.name(expr)) {
+    .n <- as.character(expr)
+    if (.n %in% etas) return(.n)
+  } else if (is.call(expr)) {
+    if (identical(expr[[1]], quote(mix))) {
+      .args <- as.list(expr)[-1]
+      .probs <- .args[seq_along(.args) %% 2L == 0L]
+      return(unique(unlist(lapply(.probs, .extractEtasOutsideMix, etas = etas))))
+    }
+    return(unique(unlist(lapply(as.list(expr)[-1], .extractEtasOutsideMix, etas = etas))))
+  }
+  NULL
+}
+
 #' Process mixture model information after a focei fit
 #'
 #' After the C++ focei fit, strips the MIXEST column from ranef, computes
@@ -178,8 +205,8 @@
 #'
 #' SAEM analogue of `.mixFix()`: builds `mixList` (per-mixture ID/ETA/
 #' probability), `mixNum` (best mixture assignment), `mixIcov` (for rxode2's
-#' mixture fixing during solve/table calc), and `mixProbabilities` (full
-#' nMix-length vector for `.mixFixTable()`), all from the `mixWeights` matrix
+#' mixture fixing during solve/table calc), and `mixProbabilities` (the full
+#' nMix-length vector), all from the `mixWeights` matrix
 #' already computed by the SAEM C++ engine (`env$saem$mixWeights`) -- unlike
 #' `.mixFix()`, no `etaObfFull` is needed.
 #'
@@ -217,7 +244,9 @@
   .bestMix <- apply(.mixWeights, 1L, which.max)
 
   # Final mixture probabilities (full simplex, nMix elements)
-  .mixProb <- .saem$mixProb
+  # .saem$mixProb comes back from armadillo as an n x 1 matrix; keep
+  # env$mixProbabilities a plain vector, as the focei side already is.
+  .mixProb <- as.vector(.saem$mixProb)
   if (length(.mixProb) == .nMix - 1L) {
     .mixProbabilities <- c(.mixProb, 1.0 - sum(.mixProb))
   } else if (length(.mixProb) == .nMix) {
@@ -393,13 +422,377 @@
   parHist
 }
 
+#' Jacobian of the mexpit (softmax) map, d(p_j)/d(t_l)
+#'
+#' `p = mexpit(t)` is a softmax over the `K-1` free coordinates, so
+#' `d(p_j)/d(t_l) = p_j*(delta_jl - p_l)`, i.e. `diag(p) - p p'`.  It is the
+#' same matrix wherever a mixture quantity moves between the mlogit scale the
+#' proportions are estimated on and the probability scale they are reported on,
+#' so it is defined once here.
+#'
+#' @param p the free mixture probabilities
+#' @return the `(K-1) x (K-1)` Jacobian
+#' @noRd
+#' @author Matthew L. Fidler
+.mixProbJacobian <- function(p) {
+  diag(p, nrow = length(p)) - outer(p, p)
+}
+
+#' Rotate a covariance's mixture-proportion block onto the probability scale
+#'
+#' The proportions are estimated as a multinomial logit, so the covariance a
+#' covariance method produces is on that scale while the reported estimate is a
+#' probability.  \code{p = mexpit(t)} is a softmax over the \code{K-1} free
+#' coordinates, whose Jacobian is \code{dp_j/dt_l = p_j*(delta_jl - p_l)}, i.e.
+#' \code{J = diag(p) - p \%*\% t(p)}.  The FULL Jacobian is used, not its
+#' diagonal: the off-diagonal terms are what carry the proportions'
+#' cross-covariances -- with each other and with the structural thetas -- onto
+#' the reported scale.
+#'
+#' Same principle as \code{covFull}, which reports Omega on the natural
+#' variance scale rather than the \code{chol(solve(omega))} estimation scale.
+#'
+#' @param cov covariance matrix with dimnames
+#' @param mixNames mixture-proportion parameter names, in THETA-slot order
+#' @param p free mixture probabilities, in \code{mixNames} order
+#' @return \code{cov} with the mixture rows/columns on the probability scale;
+#'   unchanged when there is no mixture block to rotate
+#' @noRd
+#' @author Matthew L. Fidler
+.mixCovToProbScale <- function(cov, mixNames, p) {
+  if (!is.matrix(cov) || length(mixNames) == 0L) return(cov)
+  if (is.null(rownames(cov))) return(cov)
+  .i <- match(mixNames, rownames(cov))
+  if (length(p) != length(.i) || !all(is.finite(p))) return(cov)
+  # A proportion can be absent from THIS matrix while others are present -- a
+  # fix()ed proportion is dropped by skipCov, and covR/covS can drop a singular
+  # direction.  Rotate the subset that IS here rather than bailing on the whole
+  # matrix: aborting left the remaining proportions reported on the mlogit
+  # scale (measured 0.265 where the probability scale is 0.063).  Holding the
+  # absent coordinates fixed makes the correct Jacobian exactly the submatrix.
+  .keep <- !is.na(.i)
+  if (!any(.keep)) return(cov)
+  .J <- .mixProbJacobian(p)[.keep, .keep, drop = FALSE]
+  .A <- diag(1, nrow(cov))
+  .A[.i[.keep], .i[.keep]] <- .J
+  .out <- .A %*% cov %*% t(.A)
+  dimnames(.out) <- dimnames(cov)
+  .out
+}
+
+#' Rotate a fit's installed covariance onto the probability scale
+#'
+#' The pre-final table hook rotates \code{env$cov}, but the \code{covFull} and
+#' analytic installers (\code{.foceiInstallFdFullCov} /
+#' \code{.foceiInstallAnalyticCov}) then REPLACE it wholesale with a matrix
+#' still on the mlogit estimation scale, so the hook's rotation is gone by the
+#' time \code{.updateParFixed()} reads it.  This runs between the two and covers
+#' whichever matrix ended up installed, plus the \code{covR}/\code{covS}/
+#' \code{covRS} diagnostics so they stay on one scale.
+#'
+#' This is the ONLY fit-time rotation, so no matrix is rotated twice: the native
+#' C++ covariance and both installers' output all arrive here on the mlogit
+#' scale.  Post-fit \code{setCov()} installs rotate separately, in
+#' \code{.covInstallResult()}, on a matrix the recompute engine produced.
+#'
+#' @param env fit environment
+#' @return invisible \code{NULL}; called for its side effects on \code{env}
+#' @noRd
+#' @author Matthew L. Fidler
+.mixInstallProbScaleCov <- function(env) {
+  # a covariance handed in by the caller is already on the reported scale
+  if (isTRUE(tryCatch(get(".mixCovPreRotated", envir = env, inherits = FALSE),
+                      error = function(e) FALSE))) {
+    return(invisible(NULL))
+  }
+  .mix <- .mixEnvPieces(env)
+  if (is.null(.mix)) return(invisible(NULL))
+  .mp <- .mix$names
+  .p <- .mix$p
+  for (.n in c("cov", "covR", "covS", "covRS")) {
+    if (!exists(.n, envir = env, inherits = FALSE)) next
+    .cur <- get(.n, envir = env)
+    if (!is.matrix(.cur)) next
+    assign(.n, .mixCovToProbScale(.cur, .mp, .p), envir = env)
+  }
+  .mixRefreshSeFromCov(env, .mp, .mix$idx)
+  .mixWarnBoundary(.mix$pi)
+  invisible(NULL)
+}
+
+#' Refresh the mixture rows of se/popDf from the rotated covariance
+#'
+#' \code{foceiFinalizeTables} fills \code{se}/\code{popDf} from the covariance
+#' as it stood BEFORE the probability-scale rotation, and
+#' \code{.updateParFixed()} reads \code{popDf} -- so without this the reported
+#' SE stays on the mlogit estimation scale while the estimate beside it is a
+#' probability.
+#'
+#' @param env fit environment
+#' @param mixNames mixture-proportion parameter names, in THETA-slot order
+#' @param mixIdx their positions in the theta vector, same order as
+#'   \code{mixNames}
+#' @return invisible \code{NULL}; called for its side effects on \code{env}
+#' @noRd
+#' @author Matthew L. Fidler
+.mixRefreshSeFromCov <- function(env, mixNames, mixIdx) {
+  .cov <- tryCatch(get("cov", envir = env, inherits = FALSE), error = function(e) NULL)
+  .mixIdx <- mixIdx
+  if (!is.matrix(.cov) || is.null(rownames(.cov)) ||
+        is.null(.mixIdx) || length(.mixIdx) != length(mixNames)) {
+    return(invisible(NULL))
+  }
+  .w <- match(mixNames, rownames(.cov))
+  # refresh the proportions that ARE in this covariance; one can be absent (a
+  # fix()ed proportion is dropped by skipCov) without invalidating the rest
+  .keep <- !is.na(.w)
+  if (!any(.keep)) return(invisible(NULL))
+  .w <- .w[.keep]
+  .mixIdx <- .mixIdx[.keep]
+  .newSe <- sqrt(diag(.cov))[.w]
+  if (exists("se", envir = env, inherits = FALSE)) {
+    .se <- get("se", envir = env)
+    if (length(.se) >= max(.mixIdx)) {
+      .se[.mixIdx] <- .newSe
+      assign("se", .se, envir = env)
+    }
+  }
+  if (!exists("popDf", envir = env, inherits = FALSE)) return(invisible(NULL))
+  .pd <- get("popDf", envir = env)
+  if (!is.data.frame(.pd) || nrow(.pd) < max(.mixIdx) || !("SE" %in% names(.pd))) {
+    return(invisible(NULL))
+  }
+  .pd[["SE"]][.mixIdx] <- .newSe
+  if ("%RSE" %in% names(.pd)) {
+    .e <- .pd[["Estimate"]][.mixIdx]
+    .pd[["%RSE"]][.mixIdx] <-
+      ifelse(is.finite(.e) & .e != 0, abs(.newSe / .e) * 100, NA_real_)
+  }
+  assign("popDf", .pd, envir = env)
+  invisible(NULL)
+}
+
+#' Put a mixture proportion's confidence interval on the logit scale
+#'
+#' A proportion's reported estimate IS a probability, so the generic
+#' \code{backTransform(est +/- z*SE)} interval is symmetric on (0, 1) and walks
+#' straight out of it -- a fit reported \code{p1 = 0.648 (-0.045, 1.34)}.  It is
+#' also built from the covariance as it stood BEFORE the probability-scale
+#' rotation, so it does not even agree with the SE printed beside it.
+#'
+#' Both are fixed by taking the interval where the parameter is actually
+#' estimated: \code{expit(logit(p) +/- z*SE_p/(p(1-p)))}, using the REPORTED SE
+#' so the two columns are consistent.  The result is inside (0, 1) by
+#' construction and asymmetric, which is the honest shape near a boundary.
+#'
+#' @param ui the fit's rxode2 ui
+#' @param popDf parameter table carrying Estimate/SE/CI columns
+#' @param ci confidence level
+#' @return \code{popDf} with the mixture rows' CI columns replaced
+#' @noRd
+#' @author Matthew L. Fidler
+.mixParFixedCi <- function(ui, popDf, ci = 0.95) {
+  .mp <- tryCatch(ui$mixProbs, error = function(e) NULL)
+  if (is.null(.mp) || length(.mp) == 0L) return(popDf)
+  if (!is.data.frame(popDf) || is.null(rownames(popDf))) return(popDf)
+  if (!all(c("Estimate", "SE", "CI Lower", "CI Upper") %in% names(popDf))) return(popDf)
+  if (!(length(ci) == 1L && is.numeric(ci) && is.finite(ci))) ci <- 0.95
+  .qn <- stats::qnorm(1 - (1 - ci) / 2)
+  for (.n in intersect(.mp, rownames(popDf))) {
+    .p <- popDf[.n, "Estimate"]
+    .s <- popDf[.n, "SE"]
+    if (!is.finite(.p) || !is.finite(.s) || .p <= 0 || .p >= 1) next
+    .j <- .p * (1 - .p)                       # dp/d(logit p)
+    if (!is.finite(.j) || .j <= 0) next
+    .sl <- .s / .j                            # SE on the logit scale
+    popDf[.n, "CI Lower"] <- rxode2::expit(rxode2::logit(.p) - .qn * .sl)
+    popDf[.n, "CI Upper"] <- rxode2::expit(rxode2::logit(.p) + .qn * .sl)
+  }
+  popDf
+}
+
+#' Note when a mixture proportion sits near 0 or 1
+#'
+#' The probability-scale SE is \code{J Sigma J'} with \code{J = diag(p) - p p'},
+#' so it is scaled by \code{p(1-p)} and goes to ZERO as a proportion approaches
+#' a boundary.  That is the correct delta-method answer but it reads as
+#' certainty, when in truth the Wald approximation has simply stopped being
+#' meaningful there (the real interval is strongly asymmetric).  Say so rather
+#' than let a vanishing SE be taken for precision.
+#'
+#' @param p the mixture probabilities to check
+#' @return invisible \code{NULL}; called for the warning
+#' @noRd
+#' @author Matthew L. Fidler
+.mixWarnBoundary <- function(p) {
+  .p <- p[is.finite(p)]
+  if (length(.p) == 0L || !any(.p < 0.01 | .p > 0.99)) return(invisible(NULL))
+  warning("mixture proportion near 0/1; its SE is shrunk by the p(1-p) scale",
+          call. = FALSE)
+  invisible(NULL)
+}
+
+#' Read a fit environment's mixture pieces, or NULL if it has none usable
+#'
+#' Both covariance consumers need the same three things off a fit env -- the
+#' proportion parameter names, the free probabilities, and the per-subject
+#' responsibility matrix -- with the same consistency checks between them.
+#'
+#' @param env fit environment
+#' @param needResp when \code{TRUE} also require \code{$mixList} and return the
+#'   responsibility matrix
+#' @return list with \code{names}, \code{p} (free probabilities) and, when
+#'   requested, \code{r} (subjects x components); \code{NULL} if unavailable
+#' @noRd
+#' @author Matthew L. Fidler
+.mixEnvPieces <- function(env, needResp = FALSE) {
+  .ui <- tryCatch(env$ui, error = function(e) NULL)
+  if (is.null(.ui)) return(NULL)
+  .idx <- tryCatch(.ui$thetaMixIndex, error = function(e) NULL)
+  if (is.null(.idx) || length(.idx) == 0L) return(NULL)
+  # Name the proportions by their THETA slot, not by ui$mixProbs.  The two are
+  # the same set but NOT the same order: mixProbs follows the mix() call while
+  # thetaMixIndex follows ini(), and everything downstream -- the covariance's
+  # rows, op_focei.mixProb, $mixProbabilities, and the se/popDf rows -- is keyed
+  # on the theta slot.  Using mixProbs to index a theta-ordered covariance puts
+  # the Jacobian on the wrong rows whenever ini() lists them in a different
+  # order than mix() uses them.
+  .mp <- tryCatch(names(.ui$theta)[.idx], error = function(e) NULL)
+  if (is.null(.mp) || length(.mp) != length(.idx) || anyNA(.mp)) return(NULL)
+  .pi <- tryCatch(env$mixProbabilities, error = function(e) NULL)
+  if (is.null(.pi) || length(.pi) != length(.mp) + 1L || !all(is.finite(.pi))) return(NULL)
+  # which of them were actually ESTIMATED: a fix()ed proportion is still in
+  # thetaMixIndex, but it has no covariance row and must not be given one
+  .fx <- tryCatch({
+    .idf <- .ui$iniDf
+    .w <- match(.mp, .idf$name)
+    .v <- if (is.null(.idf$fix)) rep(FALSE, length(.w)) else .idf$fix[.w]
+    .v[is.na(.v)] <- FALSE
+    .v
+  }, error = function(e) rep(FALSE, length(.mp)))
+  .ret <- list(names = .mp, idx = .idx, p = .pi[seq_along(.mp)], pi = .pi,
+               fixed = .fx)
+  if (!needResp) return(.ret)
+  .ml <- tryCatch(env$mixList, error = function(e) NULL)
+  if (is.null(.ml) || length(.ml) != length(.pi)) return(NULL)
+  .r <- try(do.call(cbind, lapply(.ml, function(.z) .z$prob)), silent = TRUE)
+  if (inherits(.r, "try-error") || !is.matrix(.r) || ncol(.r) != length(.pi)) return(NULL)
+  .ret$r <- .r
+  .ret
+}
+
+#' Probability-scale covariance of the mixture proportions from responsibilities
+#'
+#' NONMEM 7 Technical Guide eq. (7.51): the mixture parameters' information is
+#' the outer product of the per-subject scores, \code{sum_i (r_i - p)(r_i - p)'}
+#' on the mlogit scale.  Its inverse is rotated onto the probability scale with
+#' the same full Jacobian every other method uses.
+#'
+#' @param r matrix of per-subject responsibilities, one column per FREE component
+#' @param p free mixture probabilities
+#' @return the probability-scale covariance block, or \code{NULL} if it is not
+#'   invertible / not a usable covariance
+#' @noRd
+#' @author Matthew L. Fidler
+.mixProbCovBlock <- function(r, p) {
+  .d <- sweep(r, 2, p, "-")
+  .blk <- try(solve(t(.d) %*% .d), silent = TRUE)
+  if (inherits(.blk, "try-error") || !all(is.finite(.blk))) return(NULL)
+  .j <- .mixProbJacobian(p)
+  .blk <- .j %*% .blk %*% t(.j)
+  if (!all(is.finite(.blk)) || any(diag(.blk) <= 0)) return(NULL)
+  .blk
+}
+
+#' Append a mixture-proportion block to a covariance that has none
+#'
+#' \code{saem} excludes the mixture proportions from its kernel parameter vector
+#' (they are updated by a separate EM step), so its Louis/linFim covariance has
+#' no mixture rows at all and \code{p1} reports \code{SE = NA}.
+#'
+#' The block is NONMEM 7 Technical Guide eq. (7.51): the mixture parameters'
+#' information is the outer product of the per-subject scores,
+#' \code{sum_i (r_i - p)(r_i - p)'} on the mlogit scale, with \code{r_i} the
+#' subject's posterior responsibilities -- which the fit already carries in
+#' \code{$mixList}.  Its inverse is rotated onto the probability scale with the
+#' same full Jacobian every other method uses.
+#'
+#' The cross terms (7.52)-(7.54) are NOT formed: they need per-subject scores for
+#' the other parameters on the same footing, which the SAEM covariance does not
+#' expose.  The appended block is therefore uncorrelated with the structural
+#' parameters, so these SEs ignore that correlation and are mildly optimistic.
+#' Measured against a focei fit of the same data, where the cross terms ARE
+#' available, the difference is a couple of percent.
+#'
+#' @param env fit environment
+#' @return invisible \code{NULL}; called for its side effects on \code{env}
+#' @noRd
+#' @author Matthew L. Fidler
+.mixCovAppendBlock <- function(env) {
+  .mix <- .mixEnvPieces(env, needResp = TRUE)
+  if (is.null(.mix)) return(invisible(NULL))
+  .pi <- .mix$pi
+  .r <- .mix$r
+  .cov <- tryCatch(get("cov", envir = env, inherits = FALSE), error = function(e) NULL)
+  if (!is.matrix(.cov) || is.null(rownames(.cov))) return(invisible(NULL))
+  if (any(.mix$names %in% rownames(.cov))) return(invisible(NULL))   # already covered
+  # only the ESTIMATED proportions get a row: a fix()ed one has no uncertainty
+  # to report, and appending one would give a parameter that was never estimated
+  # a non-zero SE
+  .free <- which(!.mix$fixed)
+  if (length(.free) == 0L) return(invisible(NULL))
+  .mp <- .mix$names[.free]
+  # An information matrix reports the precision of a MAXIMUM-likelihood estimate.
+  # The mixture score is s_l = sum_i (r_il - p_l), so the fixed point is s == 0;
+  # away from it the block is a confident-looking number attached to an estimate
+  # that is not an MLE.  Refuse rather than report it, and say why -- saem can
+  # land far off this (its proportions are updated by a separate EM step,
+  # outside the kernel that converged everything else).
+  #
+  # Judge it by the SCORE STATISTIC s' solve(I) s, not by |mean(r) - p|: the
+  # score is N*(mean(r) - p), so any absolute tolerance on the mean silently
+  # loosens with the number of subjects (0.01 is a score of 1 at N=100 and 100
+  # at N=10000).  s' I^-1 s is on a chi-square scale and does not drift with N.
+  .d <- sweep(.r[, .free, drop = FALSE], 2, .pi[.free], "-")
+  .s <- colSums(.d)
+  .stat <- tryCatch(as.numeric(crossprod(.s, solve(crossprod(.d), .s))),
+                    error = function(e) NA_real_)
+  if (!is.finite(.stat) || .stat > 1e-3) {
+    # warning() IS how a note reaches the fit's $runInfo -- every warning raised
+    # during a run is collected there.  Assigning env$runInfo directly instead
+    # does NOT work: the later table assembly overwrites it.  Kept under 75
+    # characters so it renders on one line, and unprefixed (the fit already
+    # reports which method was run).
+    warning("mixture proportion SE skipped; not at the score-zero point",
+            call. = FALSE)
+    return(invisible(NULL))
+  }
+  .blk <- .mixProbCovBlock(.r[, .free, drop = FALSE], .pi[.free])
+  if (is.null(.blk)) return(invisible(NULL))
+  .n <- nrow(.cov)
+  .out <- matrix(0, .n + length(.mp), .n + length(.mp))
+  .out[seq_len(.n), seq_len(.n)] <- .cov
+  # .free indexes the FULL mixture set; the appended block is only the estimated
+  # subset, so place it by its own position
+  .out[.n + seq_along(.mp), .n + seq_along(.mp)] <- .blk
+  .nm <- c(rownames(.cov), .mp)
+  dimnames(.out) <- list(.nm, .nm)
+  assign("cov", .out, envir = env)
+  .updateParFixedRefreshSeFromCov(env, .out, onlyMissing = TRUE)
+  .mixWarnBoundary(.pi)
+  invisible(NULL)
+}
+
 #' Pre-final parameter table hook: back-transform mixture probability parameters
 #'
 #' Registered via \code{preFinalParTableHooksAdd()}; converts mixture
 #' probability parameters from mlogit scale to natural probability scale in
-#' \code{env$theta$theta}. SE/\%RSE stay \code{NA} (skipCov already set for
-#' these indices); the full probability vector (including the implicit last
-#' component) is stored in \code{env$mixProbabilities} for \code{.mixFix()}.
+#' \code{env$theta$theta}. The full probability vector (including the implicit
+#' last component) is stored in \code{env$mixProbabilities}, which
+#' \code{.mixFix()} and \code{.mixInstallProbScaleCov()} both read.  The
+#' covariance is rotated onto the probability scale later, by
+#' \code{.mixInstallProbScaleCov()} -- not here, because the covFull/analytic
+#' installers replace \code{env$cov} after this hook runs.
 #'
 #' @param env Fit environment containing \code{mixIdx} and \code{theta}
 #' @return invisible \code{NULL}; called for its side effects on \code{env}
@@ -409,6 +802,10 @@
   .mixIdx <- try(get("mixIdx", envir=env), silent=TRUE)
   if (inherits(.mixIdx, "try-error")) return(invisible(NULL))
   if (length(.mixIdx) == 0L) return(invisible(NULL))
+  # saem reports the proportions already on the natural scale (env$mixProbNatural,
+  # set by .getSaemTheta()); mexpit()-ing them again silently reports
+  # expit(p) instead of p and breaks the p == mean_i r_i identity (#1058).
+  if (isTRUE(env$mixProbNatural)) return(invisible(NULL))
 
   .thetaDf <- env$theta
   if (is.null(.thetaDf) || !is.data.frame(.thetaDf)) return(invisible(NULL))
@@ -433,39 +830,6 @@
 }
 preFinalParTableHooksAdd(".aaaPostEstimationMixBacktransform", .aaaPostEstimationMixBacktransform)
 
-#' Fix mixture LHS variables in the assembled fit table
-#'
-#' Safety fallback: replaces me/mn/mu with values from mixNum (me/mn) and
-#' 1/nMix (mu), since older rxode2 versions silently reject iCov's mixest
-#' and leave these columns as 0.
-#'
-#' @param fit nlmixr2FitData object (after addTable)
-#' @param env fit environment
-#' @param ui rxode2 UI object
-#' @return modified fit (or fit unchanged for non-mixture models)
-#' @noRd
-#' @author Matthew L. Fidler
-.mixFixTable <- function(fit, env, ui) {
-  if (!inherits(fit, "nlmixr2FitData")) return(fit)
-  if (!exists("mixNum", envir=env)) return(fit)
-  .mn <- get("mixNum", envir=env)
-  if (is.null(.mn) || nrow(.mn) == 0L) return(fit)
-  .nMix <- length(ui$mixProbs) + 1L  # nMix = n_explicit_probs + 1
-  # me and mn: best-fit mixture per individual (1-indexed)
-  if ("me" %in% names(fit)) {
-    .meMap <- setNames(as.integer(.mn$mixnum), as.integer(.mn$ID))
-    fit[["me"]] <- .meMap[as.integer(fit[["ID"]])]
-  }
-  if ("mn" %in% names(fit)) {
-    .meMap <- setNames(as.integer(.mn$mixnum), as.integer(.mn$ID))
-    fit[["mn"]] <- .meMap[as.integer(fit[["ID"]])]
-  }
-  # mu: uniform mixture probability = 1/nMix (constant)
-  if ("mu" %in% names(fit) && .nMix > 0L) {
-    fit[["mu"]] <- 1.0 / .nMix
-  }
-  fit
-}
 
 #' @export
 rxUiGet.thetaIniMix <- function(x, ...) {
@@ -492,11 +856,18 @@ attr(rxUiGet.thetaIniMix, "rstudio") <- stats::setNames(1, "a")
 #' @export
 rxUiGet.thetaMixIndex <- function(x, ...) {
   .ui <- x[[1]]
-  .theta <- .ui$theta
-  if (length(.ui$mixProbs) > 0) {
-    which(names(.ui$theta) %in% .ui$mixProbs)
-  } else {
-    integer(0)
-  }
+  if (length(.ui$mixProbs) == 0) return(integer(0))
+  # COMPONENT order (the order the proportions appear in the mix() call), not
+  # ini() order.  Every consumer reads mixIdx[m] as "component m's theta slot":
+  # op_focei.mixProb[m] is component m's proportion, .getMixFromLog() maps the
+  # slots through mexpit() positionally, and .aaaPostEstimationMixBacktransform
+  # writes probs[m] back to slot mixIdx[m].
+  #
+  # which(names %in% mixProbs) returns ASCENDING theta positions, i.e. ini()
+  # order, so declaring the proportions in a different order than mix() uses
+  # them silently attached each component's proportion to the other's name --
+  # mix(a, p1, b, p2, c) with ini({p2; p1}) reported fixef()["p1"] as
+  # component 2's proportion.  match() keeps mixProbs' own (component) order.
+  match(.ui$mixProbs, names(.ui$theta))
 }
 attr(rxUiGet.thetaMixIndex, "rstudio") <- 1L

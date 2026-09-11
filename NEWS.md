@@ -1,5 +1,63 @@
 # nlmixr2est 7.0.3
 
+## Bug fixes
+
+- `fit$cor` returns `NULL` instead of erroring when the fit has no covariance
+  (`covMethod=""`), matching `fit$cov` (#1038).
+
+- Fit accessors, the control getters, `setCov()` and `print()` look items up
+  only in the fit environment itself.  A fit reloaded by `nlmixr2save` is
+  parented on the global environment, so `fit$cov` resolved to `stats::cov`
+  (which broke `print()`), `fit$ranef` to `nlme::ranef`, and `$mixNum`,
+  `$mixList` or `$parHist` to a variable of that name in the user's workspace
+  (#1038).
+
+- `print()` on a fit shows the fixed-parameter correlation line again.  It was
+  gated on `exists("cor", fit$env)`, which is never true for a fit that has not
+  been through a save/load round trip, so a strong theta correlation was never
+  reported (#1038).
+- A focei fit of a model whose dosing depends on an eta -- `f()`, `alag()`,
+  `rate()`, `dur()` -- now says so when rxode2's analytic event ("jump")
+  sensitivities cannot be installed, instead of silently returning a fit whose
+  dosing etas never left their initial values while their omegas stayed finite.
+  The event-sensitivity mode already rides with the cached model bundle; it now
+  also survives a second deflate/inflate round trip, and the model bundle
+  records which etas enter a dosing expression so the fit can tell a model that
+  needs the jumps from one that does not (#1016).
+- `saemControl(covMethod="sa"|"fim")` keeps its own Omega standard errors on a
+  diagonal-Omega model.  The variance parameters the analytic FIM cannot cover
+  (a non-additive endpoint's residual error) are still taken from the
+  linearized FIM, but that splice replaced the WHOLE variance block, so a
+  near-singular residual pair propagated into the Omega rows -- on a
+  two-endpoint `add()+prop()` / `add()` model `om.eta.ka` reported an SE of 560
+  against an estimate of 1.1, where the analytic FIM gives 0.51.  A declared
+  Omega block still takes the whole block from the linearized FIM, because the
+  Louis score only ever sees the diagonal of Omega (#1022).
+
+- `saemControl(covMethod="sa"|"fim")` no longer reports a standard error for a
+  `fix()`ed additive residual error.  The SAEM kernel fills an endpoint's
+  residual slot whether or not the value is estimated, so a fixed `add.sd` came
+  back with a covariance row -- printed as a back-transformed 95% interval on a
+  value the fit never estimated -- and the remaining parameters were given the
+  marginal instead of the conditional information.  Found while fixing #1022.
+
+- `foceiControl(fast=TRUE)` no longer converges to a non-stationary point when
+  an external likelihood contribution is registered (`nlmixrRegisterLikContrib`,
+  e.g. from `nlmixr2nn`).  The analytic outer gradient re-derives
+  d(objective)/d(theta) from the model sensitivities alone, so a contributor
+  that adds a theta-dependent log-likelihood term left the objective right and
+  the gradient wrong.  It now declines to the finite-difference gradient for a
+  contributor that writes back `llik` or `d(LL)/d(eta)`; a pure observer changes
+  nothing and stays on the fast path (#1051).
+
+- A focei fit reports standard errors that match its own covariance again.
+  `.foceiInstallFdFullCov()` replaces `$cov` with the full theta+omega matrix
+  after the C++ step has already derived `popDf$SE` from the native theta-only
+  covariance it discards, so `parFixedDf$SE` described a matrix the fit no
+  longer held and a `setCov()` round trip silently changed the reported SEs.
+  The parameter table is now refreshed from the covariance actually installed
+  (nlmixr2extra#125).
+
 ## New features
 
 - Added a native analytical outer Hessian for fast Gaussian FOCE/FOCE+/FOCEI/AGQ fits, using
@@ -141,6 +199,251 @@
   being conservative.
 
 ## Bug fixes
+
+- `foceiControl(fast=)` no longer moves a `maxOuterIterations = 0` fit's ETAs.
+  That fit evaluates the analytic outer gradient once so `.foceiGradDirect()`
+  has something to report, and the evaluation ran an extra inner optimization
+  pass per subject before the final one; under the default warm start
+  (`mceta < 0` keeps the last eta) the inner solve converges only to its own
+  tolerance, so the extra pass shifted the reported ETAs and everything derived
+  from them.  On `theo_sd` at `sigdig = 4` the `covMethod = "analytic"`
+  standard errors differed by 1.8e-4 relative between `fast = TRUE` and
+  `fast = FALSE`; they now agree to 2.7e-12.
+
+### Mixture models
+
+- A mixture proportion now binds to the `mix()` component it was written for,
+  whatever order `ini()` declares the proportions in.  `mix(a, p1, b, p2, c)`
+  means `p1` is component 1's share, but the theta slots were collected with
+  `which(names(theta) %in% mixProbs)`, which returns ascending theta positions
+  -- `ini()` order.  Every consumer reads that index as "component m's slot"
+  (`op_focei.mixProb[m]`, `.getMixFromLog()`, the back-transform that writes the
+  estimates back), so declaring the proportions in a different order than
+  `mix()` uses them ran component 1 on `p2`'s value and reported each
+  component's proportion under the other's name.  Measured at zero iterations
+  with `ini({p2 <- 0.20; p1 <- 0.70})`: `$mixProbabilities` came back
+  `0.2 0.7 0.1` instead of `0.7 0.2 0.1`.  A model whose `ini()` order already
+  matched its `mix()` order -- which is the usual way to write one -- was never
+  affected.
+
+- Mixture proportions now get standard errors, under every covariance method
+  that supports them: `covMethod="r"`, `"s"`, `"r,s"` and `"imp"`.  They were
+  forced out of the covariance entirely (`skipCov`), so `p1` reported `SE = NA`
+  no matter what was asked for.  This is the NONMEM 7 Technical Guide's own
+  construction, eq. (7.51)-(7.54): the mixture parameters' information is the
+  outer product of the same per-subject scores `g_ia` that give the gradient,
+  and `nlmixr2est`'s S matrix already IS that outer product, so the block drops
+  in once the per-subject score exists.  The per-subject mixture score is taken
+  analytically rather than by finite difference, so it costs no extra solves.
+
+  The reported covariance is rotated onto the probability scale with the FULL
+  mexpit Jacobian `J = diag(p) - p p'` -- so `$cov`, the SE, the %RSE and the CI
+  for `p1` all sit on the same scale as the estimate, and the proportions'
+  cross-covariances (with each other and with the structural thetas) are carried
+  across rather than dropped.  Same principle as `covFull` reporting Omega on the
+  natural variance scale instead of `chol(solve(omega))`.
+
+  The confidence interval is taken on the logit scale,
+  `expit(logit(p) +/- z*SE/(p(1-p)))`, from the SE actually reported.  The
+  generic symmetric `est +/- z*SE` interval walks out of `(0, 1)` for a
+  proportion (a fit reported `p1 = 0.648 (-0.045, 1.34)`) and was built from the
+  covariance before the rotation, so it did not agree with the SE beside it.
+
+  That rotation carries a factor of `p(1-p)`, so a proportion sitting near 0 or
+  1 gets an SE that shrinks toward zero.  It is the right delta-method answer
+  but it reads as certainty, when in fact the symmetric Wald interval has
+  stopped being meaningful there, so the fit's `$runInfo` now says when a
+  proportion is at a boundary.
+
+- The S matrix is no longer singular for mixture models, so `covMethod="r,s"`
+  stops silently degrading to `"r"`.  `foceiS()` built each subject's score by
+  finite-differencing component 0's likelihood instead of the marginal
+  `log(sum_m p_m L_im)`, so a parameter entering only another component got an
+  exactly-zero score.  Measured on a 3-component fit, two of six diagonal
+  entries came out at 1.9e-18 and 6.6e-10, the S matrix was reported
+  non-positive-definite, and the sandwich was dropped.  Each perturbation now
+  re-optimizes every component before combining, in the components-serial /
+  subjects-parallel order the rest of the mixture code uses.
+
+- `covMethod="imp"` builds its Monte-Carlo proposals for every mixture
+  component rather than component 0 alone, so the importance-sampling objective
+  it differences is the mixture marginal.  Without this the proportions'
+  directions were exactly flat and their SEs came back as 0.
+
+- `covMethod="analytic"` now declines a mixture model and falls back, instead of
+  reporting a single-component observed information as if it were the mixture's.
+  The augmented sensitivity model differentiates one component's conditional
+  likelihood and has no mixture-proportion block at all.
+
+- `est="saem"` mixture fits can report a mixture-proportion SE as well.  `saem`
+  leaves the proportions out of the parameter vector its kernel converges (they
+  are updated by a separate EM step), so its `linFim`/`fim`/`sa` covariance has
+  no mixture rows to extend; the (7.51) block is appended from the fit's own
+  posterior responsibilities.  The cross terms (7.52)-(7.54) are NOT formed --
+  they need per-subject scores for the other parameters on the same footing,
+  which that covariance does not expose -- so the block is uncorrelated with the
+  structural parameters and its SEs are mildly optimistic.
+
+  The block is only reported when the fit is actually at the mixture's fixed
+  point, judged by the score statistic `s' I^-1 s` (which is on a chi-square
+  scale, so unlike a tolerance on `mean(r) - p` it does not loosen as the number
+  of subjects grows).  An information matrix describes the precision of a
+  maximum-likelihood estimate, and away from that point it is a
+  confident-looking number attached to something that is not one; instead the
+  fit's `$runInfo` says the SE was skipped.  `est="saem"` currently lands far from it (nlmixr2/nlmixr2est#1058), so
+  in practice this declines today and will start reporting once that is fixed.
+
+- `est="focei"` estimates the mixture proportions under a gradient-based
+  `outerOpt`.  `mixGrad()` supplies an analytic value that short-circuits the
+  finite difference in `numericGrad()`, and it chained the per-subject
+  responsibility sum through the *diagonal* of the `mexpit` Jacobian
+  (`dmexpit()` returns only the diagonal) while dropping the `-2` of the
+  objective scale.  That flipped the sign at every number of components, so the
+  line search rejected the first step and the proportions never moved off their
+  initial values; from three components up the magnitude was wrong too.  The
+  full Jacobian collapses to `-2 * sum_i (r_il - pi_l)`, which is what it now
+  uses -- checked against a central difference of the objective to eight
+  significant digits at three components, and equal to a literal evaluation of
+  the NONMEM 7 Technical Guide's own equations (1.194) and (1.197) for the
+  mixture-proportion gradient.  Fits left on the default
+  derivative-free `outerOpt="bobyqa"` never reached this code and are
+  unchanged, as are the reported standard errors (a mixture proportion is
+  `skipCov`).
+
+- `fit$etaMat` no longer carries the `mixnum` column that `$eta` gains for a
+  mixture fit.  Every consumer that hands it back as `foceiControl(etaMat=)`
+  compared `neta + 1` columns against the model's `neta` and stopped with "The
+  etaMat must have the same number of ETAs (cols) as the model" -- so `$cov`,
+  `addCwres()`, the FO objective and re-fitting a fit were all failing for
+  every mixture fit, in most cases inside a `try()` that swallowed it.
+
+- A mixture fit's `$ui` now carries the mixture probability on the probability
+  scale rather than the mlogit scale it is estimated on.  `fullTheta` is left
+  on the estimation scale and only `$theta` was back-transformed, so `$ui`
+  reported `p1 = -0.847` where `fixef()` reported `0.3`, and re-fitting the fit
+  failed its own `ini()` validation ("the probabilities in a mixture must sum
+  to a number between 0 and 1").
+
+- `est="vae"` can fit a mixture (`mix()`) model.  It could not before: the
+  two defects above stopped every such fit during assembly, so only the
+  training loop had ever run with a mixture.
+
+- `est="vae"` estimates the mixture proportions.  They were read once from
+  `ini()` and never updated, so the reported proportion was whatever the model
+  started at.  They are now estimated on the mlogit scale through their own
+  analytic gradient -- the same closed form `focei`'s corrected `mixGrad()`
+  uses, each component's summed responsibility against its expected count --
+  consumed by the same Adam loop that trains the encoder.
+  The gradient agrees with finite differences to 1e-4 at two components and at
+  three.  On simulated data with
+  a 3:1 split started from 0.5, the fitted proportion comes back at 0.74.
+
+- `est="vae"` no longer treats a mixture proportion as an ordinary structural
+  theta.  `p1` appears inside `mix(a, p1, b)`, so it passed the "does this
+  theta appear in a model expression" filter and became a `nonMuTheta`
+  regression parameter, moved by `bobyqa` against the `(-Inf, Inf)` bounds it
+  carries in `iniDf` -- writing values like `p1 <- 10.6` back into `ini()`.
+  `est="npag"` already excluded them for the same reason.
+
+- `est="vae"`'s mixture objective is the marginal -2LL.  It exponentiated
+  `-obj/2` and negated the result twice, so it marginalized a *square root*
+  likelihood and carried a spurious `-log` of the winning component's
+  proportion.  Both errors cancel exactly when there is one component, and
+  again when the components are identical under a uniform proportion, so no
+  existing test could see it.  The prediction-model M-step scored candidate
+  thetas the same wrong way, and the two must agree or the M-step optimizes a
+  different function than the reported ELBO.
+
+- `est="vae"`'s encoder now characterizes every subject-component pair, each
+  at its own random effect, the way the other mixture methods do.  It produced
+  a single posterior per subject which was then reused for every component, so
+  the components were compared at a random effect that had been fitted to none
+  of them.  The component enters the encoder at its head, alongside the
+  covariates, so a mixture model's encoder head is `nMix` inputs wider.
+  Everything reported per subject -- the random effect, the predictions, the
+  residual variance -- comes from the selected component.
+
+- `est="vae"`'s encoder is trained on the gradient of the objective it
+  optimizes.  The objective was the marginal over components but the gradient
+  handed to the encoder was the single best component's; it is now the
+  responsibility-weighted mean.  Predictions and the residual variance stay on
+  the best component, since the closed-form residual step is a moment
+  estimator.
+
+- A subject whose components all fail to solve no longer *improves*
+  `est="vae"`'s objective.  It contributed nothing at all; it is now charged
+  the same bad-solve penalty the `focei` mixture likelihood charges.
+
+- `est="vae"` reads the mixture proportion on the scale the inner problem
+  reads it on.  The prepared theta vector held the raw `ini()` probability
+  while the inner problem passes that slot through `mexpit()`, so `p1 = 0.3`
+  was used as `mexpit(0.3) = 0.574`.
+
+- A mixture fit's table reported `mixest`, `mixnum` and the result of `mix()`
+  itself as 0 for every row, and `PRED`/`IPRED` were computed from those zeros
+  -- silently wrong predictions rather than an error (#1041).  The prediction
+  model is built through symengine, which expands the `mix()` call away, and
+  rxode2 then no longer read the model as a mixture at all, so the
+  per-individual component never reached the solve.  Fixed in rxode2
+  (nlmixr2/rxode2#1358); this release stops working around it.
+
+- A theta that `saem` does not estimate as a parameter of its own, declared
+  before a mu-referenced population parameter, shifted every eta after it onto
+  the wrong parameter in the model `saem` solves for its table.  The eta to
+  theta map is an index into the SAEM estimation parameter vector, and it was
+  used to subscript the model text built in `ini()` order; the two differ by
+  exactly those thetas.  This is not mixture-specific -- a mu-referenced
+  COVARIATE parameter is dropped from that vector as well, so an ordinary
+  covariate model that declares `tcl.wt` before `tv` had the volume's eta land
+  on `tcl.wt` and the volume get none, and its table lost the volume's
+  between-subject variability entirely (`v` came back constant, and `IPRED`
+  with it).  Now paired by name.
+
+- The `mixest`/`mixnum` iCov handed to the table step is rejected by rxode2
+  when its `ID` is a factor, which it always was: it is built as an integer and
+  output creation re-levels every `ID` in the fit environment afterwards.  The
+  whole table step was then dropped and the fit came back without a table.
+
+- A rejected iCov no longer takes the table step down with it -- the retry
+  without it now covers the rxode2 messages that can actually be raised, and
+  the retry says so in the fit's `$runInfo` rather than quietly handing back a
+  table whose mixture columns are all 0 (which is what happens on an rxode2
+  without nlmixr2/rxode2#1358).
+
+- The post-hoc correction of the `mixest`/`mixnum`/`mixunif` output columns is
+  removed.  It only ever fired for columns literally named `me`, `mn` and `mu`,
+  so a model that named them anything else kept the zeros; and now that the
+  solve is right it was corrupting correct values -- it wrote the per-subject
+  component into the column holding `mixnum`, which is the component *count*.
+  A model that reads `mixunif` in an expanded prediction model gets the
+  supplied component back rather than a fabricated `1/nMix`; use `mixest`.
+
+- `est="saem"` now reports a mixture proportion that agrees with the fit's own
+  posterior responsibilities (`sum_i (r_i - p) == 0`) and with what the data
+  identifies.  Three things were wrong: the shared parameter-table hook mlogit
+  back-transformed `saem`'s proportions, which are already on the natural
+  scale, so the reported value was `expit(p)` and could not equal the
+  responsibilities it was averaged from; `mixProbMethod="regress"` classified
+  each subject at that subject's `phiM` draw, whose fixed-effect-only columns
+  carry a search variance of 1 rather than a real BSV, so the draw swamped the
+  between-component signal and misclassified a fifth of the subjects even with
+  8-fold separated components; and an eta shared by every mixture component was
+  marked as owned by whichever component mentioned it last, sending shared-eta
+  mixtures down the split-ETA code paths.  Every `mixProbMethod` now reports
+  the proportion at the score-zero point: one exact M-step at the final
+  responsibilities, rather than a value still carrying the annealing or
+  Dirichlet-style shrinkage that stabilizes the trajectory.
+
+### Estimation
+
+- The standalone analytic-covariance entry point no longer installs a covariance
+  that is not positive definite.  An outer optimizer that stops short of a local
+  minimum leaves an observed information with a negative eigenvalue, which
+  inverts to negative variances and `NaN` standard errors -- and once installed
+  as the fit's `$cov` that is what every later `getVarCov()` returns.  The fit's
+  existing covariance is now kept and a warning says why.  The live
+  `covMethod="analytic"` seam, `setCov()` and the `saem` installer already
+  guarded this; the standalone entry was the one that did not.
 
 - Corrected objective scaling of the fast outer gradient.
 

@@ -57,7 +57,17 @@ nmTest({
              foceiControl(print = 0L, calcTables = FALSE, outerOpt = "nlminb", covMethod = ""))))
     expect_true(is.finite(fit$objective))
     expect_equal(fit$objective, ref$objective, tolerance = 1e-3)
-    # Mu variants can reach a different conditional basin from the plain fit.
+    # The mu-profiled variants are NOT expected to match the plain fit here: the foce+
+    # per-subject inner problem is multi-modal, so the three land in different conditional
+    # basins.  They must agree with EACH OTHER, and stay in the same neighbourhood as the
+    # plain fit -- which is a sanity check, not a precision claim, so the bound is loose.
+    #
+    # An earlier revision of this file recorded 116.63 for "foce+ / focep" and sized the
+    # neighbourhood bound at 3 around it.  That number dates from when est="foce" WAS the
+    # foce+ variant, so it describes a code state that no longer exists and is not a target
+    # to restore.  Do not re-tighten this bound to fit it.  warm="save" (self-init inner
+    # Hessian) is still pinned: the default warm="calc" recalculates the eta Hessian at the
+    # mu-regression's restarted theta/eta and moves this fixture again.
     fM <- suppressWarnings(suppressMessages(
       nlmixr(one.cmt, d, "mfocep",
              foceiControl(print = 0L, calcTables = FALSE, outerOpt = "nlminb", covMethod = "", warm = "save"))))
@@ -71,7 +81,10 @@ nmTest({
     # future change to the mu-referenced inner path shows up here.
     expect_equal(fM$objective, 107.341169, tolerance = 1e-3)
     expect_equal(fI$objective, 107.341169, tolerance = 1e-3)
-    # Keep the mu variants in the same objective neighbourhood.
+    # ... and keep them in the same neighbourhood as the plain fit.  The gap is
+    # between two different conditional basins, so it moves whenever either inner
+    # path does; the bound is a tripwire for unrelated changes, not a claim about
+    # this one.
     expect_lt(abs(fM$objective - ref$objective), 8)
     expect_lt(abs(fI$objective - ref$objective), 8)
   })

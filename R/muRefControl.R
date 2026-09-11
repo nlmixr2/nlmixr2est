@@ -70,12 +70,12 @@ getValidNlmixrCtl.mfocei <- function(control) {
 #' @export
 nmObjGetControl.mfocei <- function(x, ...) {
   .env <- x[[1]]
-  if (exists("mfoceiControl", .env)) {
-    .control <- get("mfoceiControl", .env)
+  if (exists("mfoceiControl", .env, inherits = FALSE)) {
+    .control <- get("mfoceiControl", .env, inherits = FALSE)
     if (inherits(.control, "mfoceiControl")) return(.control)
   }
-  if (exists("control", .env)) {
-    .control <- get("control", .env)
+  if (exists("control", .env, inherits = FALSE)) {
+    .control <- get("control", .env, inherits = FALSE)
     if (inherits(.control, "mfoceiControl")) return(.control)
   }
   stop("cannot find mfocei related control object", call.=FALSE)
@@ -152,12 +152,12 @@ getValidNlmixrCtl.ifocei <- function(control) {
 #' @export
 nmObjGetControl.ifocei <- function(x, ...) {
   .env <- x[[1]]
-  if (exists("ifoceiControl", .env)) {
-    .control <- get("ifoceiControl", .env)
+  if (exists("ifoceiControl", .env, inherits = FALSE)) {
+    .control <- get("ifoceiControl", .env, inherits = FALSE)
     if (inherits(.control, "ifoceiControl")) return(.control)
   }
-  if (exists("control", .env)) {
-    .control <- get("control", .env)
+  if (exists("control", .env, inherits = FALSE)) {
+    .control <- get("control", .env, inherits = FALSE)
     if (inherits(.control, "ifoceiControl")) return(.control)
   }
   stop("cannot find ifocei related control object", call.=FALSE)
@@ -237,12 +237,12 @@ getValidNlmixrCtl.mfoce <- function(control) {
 #' @export
 nmObjGetControl.mfoce <- function(x, ...) {
   .env <- x[[1]]
-  if (exists("mfoceControl", .env)) {
-    .control <- get("mfoceControl", .env)
+  if (exists("mfoceControl", .env, inherits = FALSE)) {
+    .control <- get("mfoceControl", .env, inherits = FALSE)
     if (inherits(.control, "mfoceControl")) return(.control)
   }
-  if (exists("control", .env)) {
-    .control <- get("control", .env)
+  if (exists("control", .env, inherits = FALSE)) {
+    .control <- get("control", .env, inherits = FALSE)
     if (inherits(.control, "mfoceControl")) return(.control)
   }
   stop("cannot find mfoce related control object", call.=FALSE)
@@ -328,12 +328,12 @@ getValidNlmixrCtl.ifoce <- function(control) {
 #' @export
 nmObjGetControl.ifoce <- function(x, ...) {
   .env <- x[[1]]
-  if (exists("ifoceControl", .env)) {
-    .control <- get("ifoceControl", .env)
+  if (exists("ifoceControl", .env, inherits = FALSE)) {
+    .control <- get("ifoceControl", .env, inherits = FALSE)
     if (inherits(.control, "ifoceControl")) return(.control)
   }
-  if (exists("control", .env)) {
-    .control <- get("control", .env)
+  if (exists("control", .env, inherits = FALSE)) {
+    .control <- get("control", .env, inherits = FALSE)
     if (inherits(.control, "ifoceControl")) return(.control)
   }
   stop("cannot find ifoce related control object", call.=FALSE)
@@ -417,12 +417,12 @@ getValidNlmixrCtl.magq <- function(control) {
 #' @export
 nmObjGetControl.magq <- function(x, ...) {
   .env <- x[[1]]
-  if (exists("magqControl", .env)) {
-    .control <- get("magqControl", .env)
+  if (exists("magqControl", .env, inherits = FALSE)) {
+    .control <- get("magqControl", .env, inherits = FALSE)
     if (inherits(.control, "magqControl")) return(.control)
   }
-  if (exists("control", .env)) {
-    .control <- get("control", .env)
+  if (exists("control", .env, inherits = FALSE)) {
+    .control <- get("control", .env, inherits = FALSE)
     if (inherits(.control, "magqControl")) return(.control)
   }
   stop("cannot find magq related control object", call.=FALSE)
@@ -506,12 +506,12 @@ getValidNlmixrCtl.iagq <- function(control) {
 #' @export
 nmObjGetControl.iagq <- function(x, ...) {
   .env <- x[[1]]
-  if (exists("iagqControl", .env)) {
-    .control <- get("iagqControl", .env)
+  if (exists("iagqControl", .env, inherits = FALSE)) {
+    .control <- get("iagqControl", .env, inherits = FALSE)
     if (inherits(.control, "iagqControl")) return(.control)
   }
-  if (exists("control", .env)) {
-    .control <- get("control", .env)
+  if (exists("control", .env, inherits = FALSE)) {
+    .control <- get("control", .env, inherits = FALSE)
     if (inherits(.control, "iagqControl")) return(.control)
   }
   stop("cannot find iagq related control object", call.=FALSE)
@@ -592,12 +592,12 @@ getValidNlmixrCtl.mlaplace <- function(control) {
 #' @export
 nmObjGetControl.mlaplace <- function(x, ...) {
   .env <- x[[1]]
-  if (exists("mlaplaceControl", .env)) {
-    .control <- get("mlaplaceControl", .env)
+  if (exists("mlaplaceControl", .env, inherits = FALSE)) {
+    .control <- get("mlaplaceControl", .env, inherits = FALSE)
     if (inherits(.control, "mlaplaceControl")) return(.control)
   }
-  if (exists("control", .env)) {
-    .control <- get("control", .env)
+  if (exists("control", .env, inherits = FALSE)) {
+    .control <- get("control", .env, inherits = FALSE)
     if (inherits(.control, "mlaplaceControl")) return(.control)
   }
   stop("cannot find mlaplace related control object", call.=FALSE)
@@ -672,12 +672,12 @@ getValidNlmixrCtl.ilaplace <- function(control) {
 #' @export
 nmObjGetControl.ilaplace <- function(x, ...) {
   .env <- x[[1]]
-  if (exists("ilaplaceControl", .env)) {
-    .control <- get("ilaplaceControl", .env)
+  if (exists("ilaplaceControl", .env, inherits = FALSE)) {
+    .control <- get("ilaplaceControl", .env, inherits = FALSE)
     if (inherits(.control, "ilaplaceControl")) return(.control)
   }
-  if (exists("control", .env)) {
-    .control <- get("control", .env)
+  if (exists("control", .env, inherits = FALSE)) {
+    .control <- get("control", .env, inherits = FALSE)
     if (inherits(.control, "ilaplaceControl")) return(.control)
   }
   stop("cannot find ilaplace related control object", call.=FALSE)

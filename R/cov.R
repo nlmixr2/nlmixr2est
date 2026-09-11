@@ -59,7 +59,7 @@
 #' @noRd
 .nlmixr2CovConditionUpdate <- function(env) {
   if (!exists("cov", envir = env, inherits = FALSE)) return(invisible(FALSE))
-  .cov <- get("cov", envir = env)
+  .cov <- get("cov", envir = env, inherits = FALSE)
   if (!inherits(.cov, "matrix") || nrow(.cov) == 0L) return(invisible(FALSE))
   .cn <- .cnr <- NA_real_
   .good <- which(!is.na(diag(.cov)))
@@ -98,10 +98,10 @@
   if (rxode2::rxIs(obj, "nlmixr2FitData")) {
     .env <- obj$env
   }
-  if (exists("cov", .env)) {
+  if (exists("cov", .env, inherits = FALSE)) {
     .cur <- list(.env$cov)
     names(.cur) <- .env$covMethod
-    if (exists("covList", .env)) {
+    if (exists("covList", .env, inherits = FALSE)) {
       if (is.null(.env$covList[[.env$covMethod]])) {
         .covList <- c(.env$covList, .cur)
       } else {
@@ -137,6 +137,12 @@
     } else if (inherits(.lst$covMethod, "matrix")) {
       .env2$cov <- as.matrix(.lst$covMethod)
       .env2$ui <- obj$ui
+      # A caller-supplied covariance -- setCov() with a matrix, and the cached
+      # covList entry setCov() re-installs -- is ALREADY on the reported scale.
+      # Without this the mixture block is rotated by the mexpit Jacobian a
+      # second time on the refit, which silently shrinks the proportion's SE
+      # by a factor of p(1-p) every round trip.
+      .env2$.mixCovPreRotated <- TRUE
       .control$covMethod <- 0L
     } else if (length(.lst$covMethod) == 1) {
       if (.lst$covMethod == "") {
@@ -281,8 +287,7 @@
   }
   .eta <- tryCatch(fit$eta, error = function(e) NULL)
   if (!is.null(.eta)) {
-    .etaCols <- setdiff(names(.eta), "ID")
-    .control$etaMat <- as.matrix(.eta[, .etaCols, drop = FALSE])
+    .control$etaMat <- as.matrix(.nmDropNonEtaCols(.eta))
   }
   # the nested re-fit resets mu-referencing global state (.muRefTrans$cur); save + restore.
   .savedMuRef <- .muRefTrans$cur
@@ -389,7 +394,7 @@ setCov <- function(fit, method) {
       call. = FALSE
     )
   }
-  if (exists("covList", .env)) {
+  if (exists("covList", .env, inherits = FALSE)) {
     .covList <- .env$covList
     .cov <- .covList[[method]]
     if (!is.null(.cov)) {
@@ -444,7 +449,7 @@ getVarCov.nlmixr2FitCore <- function(obj, ...) {
   if (!is.null(.args$force)) {
     .force <- .args$force
   }
-  if (exists("cov", envir = .env) && !.force) {
+  if (exists("cov", envir = .env, inherits = FALSE) && !.force) {
     if (rxode2::rxIs(.env$cov, "matrix")) {
       return(.env$cov)
     }
