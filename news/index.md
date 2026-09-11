@@ -83,6 +83,16 @@
   nothing and stays on the fast path
   ([\#1051](https://github.com/nlmixr2/nlmixr2est/issues/1051)).
 
+- `covMethod="analytic"` judges positive definiteness on the full
+  theta + sigma
+
+  - Omega matrix even when only the structural-theta block is installed.
+    A submatrix of the inverse of an indefinite observed information can
+    look positive definite on its own, so a `covFull = FALSE` fit (or
+    `setCov(fit, "analytic")`) could install a covariance derived from a
+    point that is not a local minimum
+    ([\#1055](https://github.com/nlmixr2/nlmixr2est/issues/1055)).
+
 - A focei fit reports standard errors that match its own covariance
   again. `.foceiInstallFdFullCov()` replaces `$cov` with the full
   theta+omega matrix after the C++ step has already derived `popDf$SE`
@@ -128,6 +138,24 @@
   conditional inner curvature (`fast=TRUE`,
   `innerHessian="conditional"`). They report as
   `Full Laplace`/`Full AGQ`, and require Gaussian endpoints.
+
+- Both shapes of a focei covariance are named and cached, so
+  [`setCov()`](https://nlmixr2.github.io/nlmixr2est/reference/setCov.md)
+  can swap between them. `foceiControl(covFull=)` decides whether
+  `fit$cov` is the structural-theta block or the full theta + residual
+  sigma + Omega matrix; the full shape is now reported as
+  `"r,s (full)"`, `"r (full)"`, `"s (full)"` or `"analytic (full)"`, and
+  the theta-only shape keeps the unqualified name. A fit computes both,
+  so the shape it does not install is kept in `fit$covList` and
+  [`setCov()`](https://nlmixr2.github.io/nlmixr2est/reference/setCov.md)
+  reinstalls it directly rather than recomputing it. On the
+  finite-difference path the two are different estimators – `"s"`
+  inverts the theta block of the cross-product while `"s (full)"` takes
+  the theta block of the full inverse, which also carries the `Omega`
+  estimation uncertainty – so their standard errors differ; on the
+  analytic path the assembly is always full and the theta standard
+  errors agree. A default focei fit now reports `"r,s (full)"` where it
+  reported `"r,s"`.
 
 - `impmapControl(proposal=)` selects the importance-sampling proposal
   family for `est="imp"`, `"impmap"` and `"qrpem"`: `"normal"` and `"t"`
@@ -939,9 +967,10 @@
 - [`ini()`](https://nlmixr2.github.io/rxode2/reference/ini.html) on a
   fit now calls
   [`rxode2::.iniHandleLine()`](https://nlmixr2.github.io/rxode2/reference/dot-iniHandleLine.html)
-  rather than the `rxode2::.iniHandleFixOrUnfix()` alias for it. They
-  are the same function; this was the last caller of the old name
-  anywhere in the ecosystem, so rxode2 can now drop it
+  rather than the
+  [`rxode2::.iniHandleFixOrUnfix()`](https://nlmixr2.github.io/rxode2/reference/dot-iniHandleLine.html)
+  alias for it. They are the same function; this was the last caller of
+  the old name anywhere in the ecosystem, so rxode2 can now drop it
   (nlmixr2/rxode2#1250).
 
 - `est="npb"`’s Gibbs sampler

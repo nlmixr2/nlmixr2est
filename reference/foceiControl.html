@@ -401,7 +401,10 @@ parameter set otherwise).  For the finite-difference methods it follows
 <code>covMethod</code>: <code>"r,s"</code> is the full sandwich
 <code>solve(Rfull) %*% Sfull %*% solve(Rfull)</code>, <code>"s"</code> is
 <code>solve(Sfull)</code>, <code>"r"</code> is <code>solve(Rfull)</code>.  <code>FALSE</code>
-installs only the structural-theta block (the historical shape).</p></dd>
+installs only the structural-theta block (the historical shape).  The
+installed shape is named by <code>fit$covMethod</code> – <code>"r,s (full)"</code>
+versus <code>"r,s"</code> – and the other shape is cached, so
+<code><a href="setCov.html">setCov()</a></code> swaps between them without recomputing either.</p></dd>
 
 
 <dt id="arg-fast">fast<a class="anchor" aria-label="anchor" href="#arg-fast"></a></dt>

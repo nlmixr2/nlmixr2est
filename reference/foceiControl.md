@@ -356,7 +356,11 @@ foceiControl(
   `covMethod`: `"r,s"` is the full sandwich
   `solve(Rfull) %*% Sfull %*% solve(Rfull)`, `"s"` is `solve(Sfull)`,
   `"r"` is `solve(Rfull)`. `FALSE` installs only the structural-theta
-  block (the historical shape).
+  block (the historical shape). The installed shape is named by
+  `fit$covMethod` – `"r,s (full)"` versus `"r,s"` – and the other shape
+  is cached, so
+  [`setCov()`](https://nlmixr2.github.io/nlmixr2est/reference/setCov.md)
+  swaps between them without recomputing either.
 
 - fast:
 

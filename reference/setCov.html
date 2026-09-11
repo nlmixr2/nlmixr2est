@@ -84,6 +84,24 @@ options for the choices)</p></dd>
     <p>Fit object with covariance updated</p>
     </div>
     <div class="section level2">
+    <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
+    <p>Every focei covariance comes in two shapes (see <code>covFull</code> in
+<code><a href="foceiControl.html">foceiControl()</a></code>), and both are named: <code>"r,s"</code>, <code>"r"</code>,
+<code>"s"</code> and <code>"analytic"</code> are the structural-theta block, while
+<code>"r,s (full)"</code>, <code>"r (full)"</code>, <code>"s (full)"</code> and
+<code>"analytic (full)"</code> are the full theta + residual sigma + Omega matrix.
+A focei fit computes both and caches the one it does not install, so swapping
+between them costs nothing.  The shapes are not submatrices of one another on
+the finite-difference path – <code>"s"</code> inverts the theta block of the
+cross-product while <code>"s (full)"</code> takes the theta block of the full
+inverse, which also carries the Omega estimation uncertainty – so the
+standard errors differ.  On the analytic path the assembly is always full and
+<code>"analytic"</code> is a submatrix of <code>"analytic (full)"</code>, so the theta
+standard errors agree.</p>
+<p><code>fit$covMethod</code> names the installed covariance and
+<code>names(fit$covList)</code> the cached alternatives (the fit print shows both).</p>
+    </div>
+    <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
     <div class="dont-index"><p><code><a href="foceiControl.html">foceiControl()</a></code>, <code><a href="saemControl.html">saemControl()</a></code></p></div>
     </div>
