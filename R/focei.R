@@ -360,7 +360,11 @@ is.latex <- function() {
   .rmax <- control$outerTrustRmax
   if (is.null(.rmax)) .rmax <- 8 * .rinit
   .fterm <- control$outerTrustFterm
-  if (is.null(.fterm)) .fterm <- 10^(-control$sigdig - 2)
+  if (is.null(.fterm)) {
+    .sigdig <- control$sigdig
+    if (length(.sigdig) != 1L || !is.finite(.sigdig)) .sigdig <- 3
+    .fterm <- 10^(-.sigdig - 2)
+  }
   .mterm <- control$outerTrustMterm
   if (is.null(.mterm)) .mterm <- .fterm
   list(rinit = .rinit, rmax = .rmax, fterm = .fterm, mterm = .mterm)
@@ -431,6 +435,9 @@ is.latex <- function() {
 
 #' Which curvature source `outerOpt="trust"` starts from
 #'
+#' `fast=` is not settled when `foceiControl()` validates it -- a `linCmt()`
+#' model has it downgraded later -- so an explicit `"analytic"` that the fit
+#' cannot serve is reported here and demoted, rather than aborting the fit.
 #' @param control the foceiControl list
 #' @return one of `"analytic"`, `"bfgs"`, `"fd"`
 #' @noRd
@@ -438,12 +445,16 @@ is.latex <- function() {
   .method <- control$outerTrustHessian
   if (is.null(.method)) .method <- "auto"
   .analytic <- isTRUE(control$fast) && is.function(control$hessian)
-  if (.method == "analytic" && !.analytic) {
-    stop("outerTrustHessian=\"analytic\" requires foceiControl(fast=TRUE)",
-      call. = FALSE
-    )
+  if (!.analytic) {
+    if (.method == "analytic") {
+      warning("analytic outer Hessian needs fast=TRUE; trust uses BFGS",
+        call. = FALSE
+      )
+    }
+    if (.method %in% c("analytic", "auto")) .method <- "bfgs"
+  } else if (.method == "auto") {
+    .method <- "analytic"
   }
-  if (.method == "auto") .method <- if (.analytic) "analytic" else "bfgs"
   .method
 }
 

@@ -29,6 +29,48 @@ test_that("the Newton decrement gate reads a trust result", {
                                               hessian = NULL))))
 })
 
+test_that("the curvature supplier falls back when the analytic Hessian declines", {
+  .gr <- function(x) c(2 * x[1], 2 * x[2])
+  .box <- c(-Inf, -Inf)
+  .hi <- c(Inf, Inf)
+  # fast=FALSE: the analytic Hessian is not available at all.  foceiControl()
+  # refuses the pinned request, but `fast` can still be downgraded after that, so
+  # the runtime demotes with a warning rather than aborting the fit.
+  expect_warning(
+    .c <- .trustOuterCurvature(
+      list(outerTrustHessian = "analytic", fast = FALSE, hessian = function(x) diag(2)),
+      .gr, 1e-3, .box, .hi
+    ),
+    "needs fast"
+  )
+  expect_equal(.c$hessian(c(1, 1), .gr(c(1, 1))), diag(2))
+  expect_equal(.c$calls, 0L)
+  expect_false(.c$fallback)
+
+  # available, then refused mid-run: one warning, and every later call goes to
+  # BFGS rather than paying the failed probe again
+  .n <- 0L
+  .ctl <- list(outerTrustHessian = "analytic", fast = TRUE,
+               hessian = function(x) {
+                 .n <<- .n + 1L
+                 stop("analytical outer Hessian unavailable (status -4)")
+               })
+  .c <- .trustOuterCurvature(.ctl, .gr, 1e-3, .box, .hi)
+  expect_warning(.c$hessian(c(1, 1), .gr(c(1, 1))), "continues with BFGS")
+  expect_true(.c$fallback)
+  expect_equal(.c$calls, 1L)
+  expect_silent(.c$hessian(c(1.1, 1), .gr(c(1.1, 1))))
+  expect_equal(.n, 1L)
+  expect_equal(.c$calls, 1L)
+
+  # "fd" declines when neither difference direction fits in the box; the
+  # supplier answers from BFGS instead of returning NULL to the optimizer
+  .c <- .trustOuterCurvature(
+    list(outerTrustHessian = "fd", fast = FALSE), .gr, 1e-3, c(1, 1), c(1, 1)
+  )
+  expect_equal(.c$hessian(c(1, 1), .gr(c(1, 1))), diag(2))
+})
+
 test_that("outerOpt='trust' fits and consumes the analytic outer Hessian", {
   skip_on_cran()
   model <- function() {

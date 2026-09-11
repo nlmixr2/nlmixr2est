@@ -1721,6 +1721,8 @@ foceiControl <- function(sigdig = 3, #
   if (outerTrustHessian == "analytic" && .outerOptTxt == "trust" && !isTRUE(fast)) {
     stop("outerTrustHessian=\"analytic\" requires fast=TRUE", call. = FALSE)
   }
+  # `fast` can still be downgraded AFTER this (a linCmt() model has no 2nd-order
+  # sensitivities); .trustOuterMethod() demotes to BFGS with a warning there.
   checkmate::assertNumeric(trustConf, lower = 0, upper = 1, finite = TRUE, any.missing = FALSE, len = 1)
   if (trustConf <= 0 || trustConf >= 1) {
     # qchisq(0, df)==0 (zero trust-region radius, no step ever taken) and
