@@ -8,6 +8,11 @@
   the global environment, where `fit$cov` used to resolve to `stats::cov` and
   break `print()` (#1038).
 
+- `print()` on a fit shows the fixed-parameter correlation line again.  It was
+  gated on `exists("cor", fit$env)`, which is never true for a fit that has not
+  been through a save/load round trip, so a strong theta correlation was never
+  reported (#1038).
+
 - `foceiControl(fast=TRUE)` no longer converges to a non-stationary point when
   an external likelihood contribution is registered (`nlmixrRegisterLikContrib`,
   e.g. from `nlmixr2nn`).  The analytic outer gradient re-derives
