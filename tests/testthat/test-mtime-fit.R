@@ -86,6 +86,58 @@ nmTest({
     expect_error(.ui$focei, "assigns again after it")
   })
 
+  test_that("an emitted mtime() line resolves in every generated model", {
+    # Structural invariant: every name in an emitted mtime() line must be a
+    # declared parameter of that model, or assigned on an EARLIER line of it.
+    # The declaration is re-emitted near the top, so a right hand side naming
+    # something the model only defines further down would read it unset.
+    .resolves <- function(txt, label) {
+      .lines <- strsplit(paste(txt, collapse="\n"), "\n")[[1]]
+      .w <- grep("^mtime", .lines)
+      expect_true(length(.w) > 0L, info=paste(label, "emits an mtime"))
+      .pw <- grep("^params?\\(", .lines)
+      .pars <- if (length(.pw) > 0L) {
+        all.vars(str2lang(sub(";$", "", .lines[.pw[1]])))
+      } else character(0)
+      .lhs <- .rxLineLhs(.lines)
+      for (.i in .w) {
+        .rhs <- sub(";$", "", sub("^mtime\\([^)]*\\)[=~]", "", .lines[.i]))
+        for (.v in setdiff(all.vars(str2lang(.rhs)), c("t", "time"))) {
+          .ok <- .v %in% .pars ||
+            any(!is.na(.lhs) & .lhs == .v & seq_along(.lhs) < .i) ||
+            any(grepl(paste0("^mtime\\(", .v, "\\)"), .lines[seq_len(.i - 1L)]))
+          expect_true(.ok, info=paste0(label, ": '", .v, "' in ", .lines[.i]))
+        }
+      }
+    }
+    .mkTheta <- function() {
+      eval(parse(text=paste0(
+        "function() {\n ini({tka <- 0.45; tcl <- -3.2; tv <- -1; tsw <- 1.6;",
+        " eta.ka ~ 0.1; add.sd <- 0.7})\n model({\n",
+        paste(c("ka <- exp(tka + eta.ka)", "cl <- exp(tcl)", "v <- exp(tv)",
+                "mtime(tsw5) <- exp(tsw)",
+                "kmult <- ifelse(t < tsw5, 1.0, 2.0)",
+                "d/dt(depot) <- -ka * depot",
+                "d/dt(center) <- ka * depot - kmult * cl / v * center",
+                "cp <- center / v", "cp ~ add(add.sd)"), collapse="\n"),
+        "\n })\n}")))
+    }
+    .norm <- function(m) rxode2::rxModelVars(m)$model["normModel"]
+    # a FRESH ui per builder: building one bundle caches its own predDf on the ui
+    .f <- rxode2::rxUiDecompress(.mkTheta()())$focei
+    for (.m in c("inner", "predOnly", "predNoLhs")) {
+      .resolves(.norm(.f[[.m]]), paste0("focei$", .m))
+    }
+    .resolves(rxode2::rxUiDecompress(.mkTheta()())$saemModel, "saemModel")
+    .resolves(.norm(rxode2::rxUiDecompress(.mkTheta()())$saemModelPred$predOnly),
+              "saemModelPred")
+    .resolves(.norm(rxode2::rxUiDecompress(.mkTheta()())$nlmRxModel$predOnly),
+              "nlmRxModel")
+    .resolves(.norm(rxode2::rxUiDecompress(.mkTheta()())$nlsRxModel$predOnly),
+              "nlsRxModel")
+    .resolves(.norm(rxode2::rxUiDecompress(.mkTheta()())$nlmeRxModel), "nlmeRxModel")
+  })
+
   test_that("mtime() does not cost the table its ADDL doses", {
     # the extra mtime rows are dropped from a table solve; an ADDL-expanded dose
     # also has no source data row and must NOT be dropped with them
