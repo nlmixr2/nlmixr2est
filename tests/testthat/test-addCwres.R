@@ -110,4 +110,46 @@ nmTest({
     expect_equal(sum(rownames(fit2$objDf) == "FOCEi"), 1L)
     expect_equal(fit2$objDf["FOCEi", "OBJF"], fit$objDf["FOCEi", "OBJF"])
   })
+
+  test_that("addCwres() still works after setOfv(fit, 'focei')", {
+    # setOfv() adds the focei objective function row WITHOUT the residual
+    # columns (calcTables=FALSE), which used to leave addCwres() no way to add
+    # them afterwards.  A fresh fit, not a shared fixture: setOfv() writes into
+    # the fit environment in place.
+    one.compartment <- function() {
+      ini({
+        tka <- log(1.57)
+        tcl <- log(2.72)
+        tv <- log(31.5)
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd)
+      })
+    }
+    fit <- .nlmixr(one.compartment, theo_sd, est = "saem",
+                   control = saemControlFast)
+    expect_false("CWRES" %in% names(fit))
+
+    suppressMessages(setOfv(fit, "focei"))
+    # now a CALCULATED focei objective function row with no CWRES
+    expect_true("FOCEi" %in% rownames(fit$objDf))
+    .objf <- fit$objDf["FOCEi", "OBJF"]
+    expect_false(is.na(.objf))
+    expect_false("CWRES" %in% names(fit))
+
+    fit2 <- suppressMessages(addCwres(fit, updateObject = FALSE))
+    expect_true("CWRES" %in% names(fit2))
+    expect_equal(sum(rownames(fit2$objDf) == "FOCEi"), 1L)
+    expect_equal(fit2$objDf["FOCEi", "OBJF"], .objf)
+  })
 })
