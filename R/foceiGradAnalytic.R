@@ -263,7 +263,7 @@
   nom <- length(dOiEst); np <- nth + nsg + nom
   ae <- a[, ei, drop = FALSE]
   # Phi_eta (nonzero at the FOCE eta*): rho_f df/deta + rho_R dR0/deta (aRe=0 for nonmem)
-  gPhi <- as.numeric(Oi %*% ehat)
+  gPhi <- as.numeric(Oi %*% ehat)     # Phi_eta in full -- see .foceiAnalyticSubjectGradFoce
   for (l in ei) gPhi[l] <- gPhi[l] + sum(rho_f * a[, l] + rho_R * aRe[, l])
   # FOCE inner Hessian Hf (interaction-free), its Nf, and the determinant Ht = Oi + sum(a a/R0)
   Hf <- Oi; Nf <- matrix(0, neta, ndir); Ht <- Oi
@@ -373,6 +373,10 @@
   a0 <- if (.cf0) E0$a else NULL
   fq <- if (.cf0) list(qf0 = evf(.fc$f0$qf0), pFf0 = evf(.fc$f0$pFf0), rhof0 = evf(.fc$f0$rhof0)) else NULL
   # Phi_eta (nonzero at the FOCE eta*), FOCE inner Hessian Hf, its Nf, determinant Ht
+  # Phi_eta in FULL, deliberately.  The covariance kernel subtracts the inner score S_FOCE
+  # (zero at the EBE, so it only injects the inner tolerance -- #1056); the outer gradient is
+  # evaluated DURING the search, against an inner solve on a bounded iteration budget, so it
+  # keeps Phi_eta as the objective's own finite differences see it.
   gPhi <- as.numeric(Oi %*% ehat); for (l in ei) gPhi[l] <- gPhi[l] + sum(rd$r1 * a[, l])
   Hf <- Oi; for (l in ei) for (m in ei) Hf[l, m] <- Hf[l, m] + sum(qd$q1 * a[, l] * a[, m] + qd$q0 * A[, l, m])
   HfInv <- solve(Hf)

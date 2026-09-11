@@ -7,7 +7,22 @@
   `fit$env$nInnerRerank`, which nothing reads unprompted, so a fit that spent
   every retry on a subject still looked exactly like one where every inner
   solve converged (#1044).
-
+- `covMethod="analytic"` for FOCE and `foce="foce+"` no longer carries the inner
+  solver's residual score into the observed information.  The FOCE kernel uses
+  the general total-derivative form, whose last term is `Phi_eta . eta_ab`; it
+  evaluated `Phi_eta` in full, but the FOCE inner problem zeroes
+  `S_FOCE = Omega^-1 eta + sum(q0 a)` by construction, so only the interaction
+  remainder `Phi_f - q0` belongs there.  The rest was the inner tolerance
+  multiplied by a term that is not small.  The FOCE assemblers also re-solved
+  each subject's EBE before building R, where the FOCEI assembler uses the fit's
+  own; they now agree.  On an additive model, where the two methods must
+  coincide, the `foce+` and FOCEI observed informations agreed to 1.2e-2 at the
+  same EBEs and now agree to 1.1e-13 (#1056).
+- `saem` refuses a model whose random effect has no population parameter of its
+  own -- added to none, or sharing one with another random effect -- naming the
+  random effects, instead of fitting the model without them and then failing
+  with "subscript out of bounds" while assembling the reported omega at the end
+  of the run (#1047).
 - A model containing `mtime()` can be fit again, with every estimation method.
   `etTrans()` materializes the modeled times as `EVID` 10-99 records (`TIME=0`,
   `AMT=NA`) and `$dataSav` persisted them, so re-translating it for each
@@ -17,6 +32,18 @@
   modeled times survive estimation and the mtime variable stays defined.  The
   extra records the solve regenerates are also kept out of the fit's output
   table and out of the `nlme` objective (#919).
+- An `mtime()` whose time depends on an estimated parameter (a boundary that
+  moves with a theta or an eta) now contributes to the sensitivities.  The
+  declaration is loaded into `symengine` as an ordinary assignment, so the
+  switch time is differentiated like the same branch written in place
+  (`ifelse(t < exp(tsw), ...)`); it used to reach `symengine` as a free symbol,
+  which made every derivative through the boundary zero -- the EBEs for an eta
+  the boundary depends on stayed pinned at their initial values, and
+  `foceiControl(fast=TRUE)` reported a gradient of exactly `0` for the theta.
+- A model that declares `mtime(v)` and also assigns `v` as an ordinary variable
+  is refused instead of silently using the declared value.  The declaration is
+  re-emitted at the top of every generated model, so a later `mtime()` reading
+  `v` got the declared value where `rxode2` gives it the reassigned one.
 - `fit$cor` returns `NULL` instead of erroring when the fit has no covariance
   (`covMethod=""`), matching `fit$cov` (#1038).
 

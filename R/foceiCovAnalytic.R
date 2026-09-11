@@ -337,22 +337,25 @@
     return(.foceiAnalyticFallback("an augmented model without rx_r_"))
   np <- ndirP + omd$nom; Oi <- solve(Om)
   etav <- paste0("ETA_", seq_len(neta), "_")
-  .foce <- identical(as.integer(interaction), 0L)      # FOCE re-solves EBEs to S_FOCE=0
+  # FOCE (interaction=0).  Like FOCEI, the covariance is formed at the FIT's EBEs: they are
+  # part of its solution (fit$objf was evaluated at them), and re-optimizing them here would
+  # give the curvature of an idealized objective the reported fit does not sit on.
+  .foce <- identical(as.integer(interaction), 0L)
   .fp <- identical(as.integer(foceType), 1L)           # foce+ keeps the live conditional R
   .byId <- split(data, as.character(data$ID))
   .idCode <- if (is.factor(ids)) as.integer(ids) else match(ids, sort(unique(ids)))
   R <- matrix(0, np, np)
   if (.foce) {
-    # FOCE cov: the per-subject eta=0 population solve + EBE re-solve + 3rd-order Shi FD3 stay
-    # in R (inherently per-subject), then ONE OpenMP C++ call (foceiRAllFoceFR_) sums the
+    # FOCE cov: the per-subject eta=0 population solve + 3rd-order Shi FD3 stay in R
+    # (inherently per-subject), then ONE OpenMP C++ call (foceiRAllFoceFR_) sums the
     # observed information over subjects.  The frozen-R0 sensitivities are resolved per subject
     # (nonmem: aRe/ARe=0, aRc/ARc/R0 from E0; foce+: all from the eta-hat solve E).
     nsub <- length(ids); Elist <- vector("list", nsub); E0list <- vector("list", nsub)
     eta0list <- vector("list", nsub); nobsAll <- integer(nsub)
     # BATCHED (f,R) FOCE/foce+ solves: the eta=0 population solve (nonmem frozen R0) is batched,
-    # the EBE re-solve stays per-subject (Newton), then ONE batched SolveAllFD3 delivers f/a/A/Ath
-    # AND R/aR/AR for all subjects (withR=FALSE: FOCE reads R/aR/AR from the base solve + Ath, but
-    # never AthR).  foce+ (foceType=1) keeps the live R (no eta=0 solve).  Per-subject Shi fallback.
+    # then ONE batched SolveAllFD3 delivers f/a/A/Ath AND R/aR/AR for all subjects
+    # (withR=FALSE: FOCE reads R/aR/AR from the base solve + Ath, but never AthR).
+    # foce+ (foceType=1) keeps the live R (no eta=0 solve).  Per-subject Shi fallback.
     .obsAll <- lapply(seq_len(nsub), function(i) { .s <- .byId[[as.character(.idCode[i])]]
       if (is.null(.s) || nrow(.s) == 0L) NULL else .s[.s$EVID == 0, , drop = FALSE] })
     if (any(vapply(.obsAll, is.null, logical(1L))))
@@ -365,10 +368,7 @@
       .ns0 <- ncol(E0all[[1L]]$Rsig)
       if (!is.null(.ns0) && .ns0 > 0L) E0all <- lapply(E0all, function(.E0) .foceiAnalyticExpandSigma(.E0, .ns0, neta, NULL, NULL, .sigSel))
     }
-    eta0Mat <- .foceiAnalyticFoceEbeBatch(am, th, ebes, .idCode, data, .obsAll, .obsT, etav, Oi, neta,
-                                          solveTol, foceType = foceType, E0all = E0all)   # batched EBE re-solve
-    if (is.null(eta0Mat))
-      return(.foceiAnalyticFallback("an EBE re-solve that will not solve"))
+    eta0Mat <- ebes                                    # the fit's own EBEs -- see .foce above
     .batch <- !nzchar(Sys.getenv("FOCEI_NO_FD3_BATCH"))
     .EsAll <- if (.batch) .foceiAnalyticSolveAllFD3(am, th, eta0Mat, .idCode, data, .obsT, tol = solveTol, withR = FALSE,
                                                    sigSel = .sigSel) else NULL
@@ -533,7 +533,8 @@
   .ag <- if (.nAGQ > 1L) .agq(neta, .nAGQ) else NULL
   np <- nth + nsg + omd$nom
   etav <- paste0("ETA_", seq_len(neta), "_")
-  .foce <- identical(as.integer(interaction), 0L)     # FOCE re-solves EBEs to S_FOCE=0
+  # FOCE (interaction=0); the covariance uses the fit's own EBEs -- see .foceiAnalyticAssembleRFR
+  .foce <- identical(as.integer(interaction), 0L)
   # IOV reparameterization to xi = w * eta (unit occasion eta -> variance w^2): the
   # augmented model is solved at the ACTUAL (Param A) EBEs, then the occasion-eta
   # sensitivities are rescaled by 1/w (iovDirScale) and their EBEs by w (etaScale)
@@ -548,9 +549,8 @@
   .idCode <- if (is.factor(ids)) as.integer(ids) else match(ids, sort(unique(ids)))
   # Batch the 3rd-order solve across ALL subjects (FOCEI *and* FOCE, no IOV rescale) so both take
   # the IDENTICAL method and both get the speedup (1 + 2*neta population solves vs the per-subject
-  # Shi's O(nsub*neta)).  CORRECTED FOCE freezes R0 at the eta=0 population solve (batched) and
-  # re-solves each EBE (per-subject Newton, censoring-aware) to S_FOCE=0; that eta0 matrix feeds
-  # the batched FD3.  foce+ keeps the live R (no eta=0 solve).  Per-subject Shi is the fallback.
+  # Shi's O(nsub*neta)).  CORRECTED FOCE freezes R0 at the eta=0 population solve (batched);
+  # foce+ keeps the live R (no eta=0 solve).  Per-subject Shi is the fallback.
   .obsAll <- lapply(seq_along(ids), function(i) { .s <- .byId[[as.character(.idCode[i])]]
     if (is.null(.s) || nrow(.s) == 0L) NULL else .s[.s$EVID == 0, , drop = FALSE] })
   if (any(vapply(.obsAll, is.null, logical(1L)))) return(NULL)   # unmatched subject -> caller FD
@@ -561,15 +561,7 @@
     E0List <- .foceiAnalyticSolveAll(am, th, matrix(0, length(ids), neta), .idCode, data, .obsT, solveTol)
     if (is.null(E0List)) return(NULL)
   }
-  eta0Mat <- ebes
-  if (.foce) for (i in seq_along(ids)) {              # FOCE EBE re-solve (per-subject Newton)
-    .o <- .obsAll[[i]]
-    .e0 <- .foceiAnalyticFoceEbe(am, th, ebes[i, ], .byId[[as.character(.idCode[i])]], .o$TIME, .o$DV, etav,
-                                 if (is.null(E0List[[i]])) NULL else E0List[[i]]$R, Oi, neta, solveTol,
-                                 foceType = foceType, cens = .o$CENS, limit = .o$LIMIT)
-    if (is.null(.e0)) return(NULL)
-    eta0Mat[i, ] <- .e0
-  }
+  eta0Mat <- ebes                                      # the fit's own EBEs -- see .foce above
   .batch <- !rescale && !nzchar(Sys.getenv("FOCEI_NO_FD3_BATCH"))
   .EsAll <- NULL
   if (.batch) {
@@ -1847,7 +1839,10 @@
   ae <- a[, ei, drop = FALSE]
   isD <- function(p) p <= ndirP; dOf <- function(p) dirP[p]; omc <- function(p) p - ndirP
   # ---- Phi (data) tensors: H=Phi_etaeta, gPhi=Phi_eta (aRe eta-block) ----
-  gPhi <- as.numeric(Oi %*% ehat); for (l in ei) gPhi[l] <- gPhi[l] + sum(rf * a[, l] + rR * aRe[, l])
+  # Phi_eta MINUS the inner score S_FOCE = Omega^-1 eta + sum(q0 a) (q0 = rf), which the
+  # inner problem zeroes: subtracting it symbolically keeps the residual out of R (#1056).
+  # Zero for frozen-R FOCE (aRe=0) and any eta-independent R -> the FOCEI envelope form.
+  gPhi <- vapply(ei, function(l) sum(rR * aRe[, l]), numeric(1))
   H <- Oi; for (l in ei) for (m in ei)
     H[l, m] <- H[l, m] + sum(rff * a[, l] * a[, m] + rfR * (a[, l] * aRe[, m] + aRe[, l] * a[, m]) +
                               rRR * aRe[, l] * aRe[, m] + rf * A[, l, m] + rR * E_ARelm(E, l, m, .fp))
@@ -2250,7 +2245,11 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
   # ---- Phi (data) pieces: FULL rho derivatives ----
   H <- Oi; for (l in ei) for (m in ei) H[l, m] <- H[l, m] + sum(rd$r2 * a[, l] * a[, m] + rd$r1 * A[, l, m])  # Phi_etaeta
   Ndat <- matrix(0, neta, ndir); for (l in ei) for (d in di) Ndat[l, d] <- sum(rd$r2 * a[, l] * a[, d] + rd$r1 * A[, l, d])  # Phi_(eta,theta)
-  gPhi <- as.numeric(Oi %*% ehat); for (l in ei) gPhi[l] <- gPhi[l] + sum(rd$r1 * a[, l])  # Phi_eta (nonzero at eta-hat_FOCE)
+  # Phi_eta MINUS the inner score S_FOCE = Omega^-1 eta + sum(q0 a), which the inner problem
+  # zeroes: subtracting it symbolically leaves the interaction remainder Phi_f - q0 and keeps
+  # the inner solver's residual (which multiplies a not-small eta_ab) out of R (#1056).  Zero
+  # for frozen-R FOCE and any eta-independent R (additive) -> the FOCEI envelope form exactly.
+  gPhi <- vapply(ei, function(l) sum((rd$r1 - qd$q0) * a[, l]), numeric(1))
 
   # ---- FOCE inner (EBE) pieces: q-based Jacobian S_eta = Hf and its 3-tensor ----
   Hf <- Oi; for (l in ei) for (m in ei) Hf[l, m] <- Hf[l, m] + sum(qd$q1 * a[, l] * a[, m] + qd$q0 * A[, l, m])  # S_eta = Hf
@@ -2386,8 +2385,8 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
 }
 
 #' Base subject solve: `f` plus the 1st/2nd analytic sensitivities (`a`, `A`), no
-#' 3rd-order Shi tensor.  Shared by [.foceiAnalyticSolveSubjectFD3] (which adds `Ath`)
-#' and the FOCE EBE re-solve (which needs only `a`/`A`).  Muffles benign solver
+#' 3rd-order Shi tensor.  Shared by [.foceiAnalyticSolveSubjectFD3] (which adds `Ath`),
+#' the AGQ node solves and the VAE decoder.  Muffles benign solver
 #' warnings (a real error returns `NULL` -> FD fallback); the nrow guard bails when an
 #' EVID==2/covariate-update row shares an obs timestamp (would misalign f against y).
 #' @noRd
@@ -2455,104 +2454,6 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
   if (isTRUE(aug$hasTrans))
     .out$trans <- list(yj = .d$rx_tyj_, lambda = .d$rx_tlambda_, low = .d$rx_tlow_, hi = .d$rx_thi_)
   .out
-}
-
-#' Re-solve one subject's EBE to the FOCE inner stationary point S_FOCE = sum(q a)
-#' + Omega^-1 eta = 0 (q = -eps/R) via Newton on the FOCE inner Hessian
-#' Hf = sum(q' a a' + q A) + Omega^-1, starting from the stored eta `eta0`.
-#' nlmixr's stored FOCE-combined EBEs do NOT satisfy S_FOCE=0 (an estimation-side
-#' inconsistency), so R must be formed at the re-solved eta.  For additive/FOCEI the
-#' stored eta is already stationary (|S_FOCE| < `skip`) -> returns `eta0` unchanged
-#' (byte no-op).  `NULL` on a solve/Newton failure -> caller falls back to FD.
-#' @noRd
-.foceiAnalyticFoceEbe <- function(aug, th, eta0, s, times, y, etav, R0, Oi, neta, tol,
-                                  maxit = 30L, skip = 1e-3, conv = 1e-9,
-                                  foceType = 0L, cens = NULL, limit = NULL) {
-  ei <- seq_len(neta)
-  # interaction-free FOCE inner gradient/curvature from (f,R0): q0 = -(y-f)/R0 = rho_f,
-  # q1 = 1/R0 = rho_ff.  For censored (M2/M3/M4) observations q0/q1 are the EXACT censored
-  # rho_f/rho_ff at the frozen R0 (censNormalPartials_) so the re-solved eta* is the censored
-  # FOCE stationary point.  foce+ (foceType=1) uses the live conditional R at the trial eta;
-  # nonmem freezes R0 at the eta=0 population value passed in.
-  .fp <- identical(as.integer(foceType), 1L) || is.null(R0)
-  # censored (M2/M3/M4) per-obs CENS + LIMIT (NA/NULL -> uncensored) and the censored-obs index
-  .cv <- if (is.null(cens)) integer(length(y)) else as.integer(ifelse(is.na(cens), 0L, cens))
-  .lv <- if (is.null(limit)) rep(NA_real_, length(y)) else as.numeric(limit)
-  .cw <- which(.cv != 0 | is.finite(.lv))              # censored observations
-  .SH <- function(eta) {                               # FOCE S_FOCE and its Jacobian Hf at eta
-    E <- .foceiAnalyticSolveFA(aug, c(th, setNames(eta, etav)), s, times, tol = tol)
-    if (is.null(E)) return(NULL)
-    yt <- .foceiAnalyticTbsY(y, E$trans)               # DV -> rx_pred_ (transformed) scale; no-op if untransformed
-    R0e <- if (.fp) E$R else R0
-    q0 <- -(yt - E$f) / R0e; q1 <- 1 / R0e
-    if (length(.cw)) {                                 # censored: exact rho_f/rho_ff at frozen R0
-      .limt <- .foceiAnalyticTbsY(.lv, E$trans)        # transform the censoring bound like the DV
-      .cp <- censNormalPartials_(.cv, yt, .limt, E$f, R0e, 2L)
-      q0[.cw] <- .cp[.cw, 1]; q1[.cw] <- .cp[.cw, 3]   # cp[,1]=rho_f, cp[,3]=rho_ff
-    }
-    S <- as.numeric(Oi %*% eta); for (l in ei) S[l] <- S[l] + sum(q0 * E$a[, l])
-    Hf <- Oi; for (l in ei) for (m in ei) Hf[l, m] <- Hf[l, m] + sum(q1 * E$a[, l] * E$a[, m] + q0 * E$A[, l, m])
-    list(S = S, Hf = Hf)
-  }
-  eta <- eta0
-  sh <- .SH(eta); if (is.null(sh)) return(NULL)
-  if (!all(is.finite(sh$S))) return(NULL)              # unsolvable subject -> non-finite score
-  if (max(abs(sh$S)) < skip) return(eta0)              # already FOCE-stationary (additive/FOCEI) -> no-op
-  for (it in seq_len(maxit)) {
-    step <- tryCatch(solve(sh$Hf, sh$S), error = function(e) NULL)
-    if (is.null(step)) return(NULL)
-    eta <- eta - step
-    sh <- .SH(eta); if (is.null(sh)) return(NULL)
-    if (!all(is.finite(sh$S))) return(NULL)            # unsolvable subject -> non-finite score
-    if (max(abs(sh$S)) < conv) break
-  }
-  if (max(abs(sh$S)) >= conv) return(NULL)               # Newton did not converge -> FD fallback
-  eta
-}
-
-#' Batched FOCE/foce+ EBE re-solve: the same interaction-free Newton as
-#' [.foceiAnalyticFoceEbe] but over ALL subjects at once via [.foceiAnalyticSolveAll]
-#' (one batched solve per Newton iteration instead of per-subject SolveFA).  Bit-identical
-#' to the per-subject Newton; avoids the per-subject solve entirely (needed for the shared
-#' `dirs` model, which solves batched but not per-subject in the fit's cov-hook context) and
-#' is faster.  Returns the nsub x neta eta-hat matrix, or NULL if any subject fails to converge.
-#' @noRd
-.foceiAnalyticFoceEbeBatch <- function(am, th, ebes, ids, data, obsAll, obsTimes, etav, Oi, neta, tol,
-                                       foceType = 0L, E0all = NULL, maxit = 30L, skip = 1e-3, conv = 1e-9) {
-  nsub <- nrow(ebes); ei <- seq_len(neta)
-  .fp <- identical(as.integer(foceType), 1L) || is.null(E0all)
-  Y  <- lapply(obsAll, function(.o) .o$DV)
-  CV <- lapply(obsAll, function(.o) if (is.null(.o$CENS)) integer(length(.o$DV)) else as.integer(ifelse(is.na(.o$CENS), 0L, .o$CENS)))
-  LV <- lapply(obsAll, function(.o) if (is.null(.o$LIMIT)) rep(NA_real_, length(.o$DV)) else as.numeric(.o$LIMIT))
-  .SHi <- function(E, eta_i, i) {                        # S_FOCE + Hf for subject i (censored-aware)
-    yt <- .foceiAnalyticTbsY(Y[[i]], E$trans)
-    R0e <- if (.fp) E$R else E0all[[i]]$R
-    q0 <- -(yt - E$f) / R0e; q1 <- 1 / R0e
-    .cw <- which(CV[[i]] != 0 | is.finite(LV[[i]]))
-    if (length(.cw)) { .limt <- .foceiAnalyticTbsY(LV[[i]], E$trans)
-      .cp <- censNormalPartials_(CV[[i]], yt, .limt, E$f, R0e, 2L); q0[.cw] <- .cp[.cw, 1]; q1[.cw] <- .cp[.cw, 3] }
-    S <- as.numeric(Oi %*% eta_i); for (l in ei) S[l] <- S[l] + sum(q0 * E$a[, l])
-    Hf <- Oi; for (l in ei) for (m in ei) Hf[l, m] <- Hf[l, m] + sum(q1 * E$a[, l] * E$a[, m] + q0 * E$A[, l, m])
-    list(S = S, Hf = Hf)
-  }
-  eta <- ebes; active <- rep(TRUE, nsub)
-  for (it in seq_len(maxit + 1L)) {                      # it=1 evaluates at eta0 (skip test), then Newton steps
-    Es <- .foceiAnalyticSolveAll(am, th, eta, ids, data, obsTimes, tol)
-    if (is.null(Es)) return(NULL)
-    for (i in which(active)) {
-      sh <- .SHi(Es[[i]], eta[i, ], i)
-      # a subject that cannot be solved gives a non-finite score; max(abs(S)) is then NA
-      # and the test below would error rather than fall back
-      if (!all(is.finite(sh$S))) return(NULL)
-      if (max(abs(sh$S)) < (if (it == 1L) skip else conv)) { active[i] <- FALSE; next }
-      if (it == maxit + 1L) return(NULL)                 # did not converge -> FD fallback
-      step <- tryCatch(solve(sh$Hf, sh$S), error = function(e) NULL); if (is.null(step)) return(NULL)
-      eta[i, ] <- eta[i, ] - step
-    }
-    if (!any(active)) break
-  }
-  if (any(active)) return(NULL)
-  eta
 }
 
 #' Compute the full analytic FOCEI covariance (theta + sigma + Omega) for a fitted

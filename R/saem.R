@@ -567,6 +567,55 @@
   invisible()
 }
 
+#' Random effects that saem has no population parameter for
+#'
+#' saem parameterizes a random effect by the phi (population) parameter it is
+#' added to and gives that phi ONE Gamma2_phi1 column, so a random effect has
+#' no column of its own in two cases: it is paired with no phi at all, or it
+#' shares a phi with an earlier random effect.  Either way it is silently
+#' dropped from `model$omega` -- an `NA` or repeated index in a matrix
+#' assignment writes nothing new -- and the model is fitted without it.
+#'
+#' @param ui rxode2 ui
+#' @return character vector of the diagonal eta names with no phi column
+#' @author Matthew L. Fidler
+#' @noRd
+.saemEtaNoPhi <- function(ui) {
+  .iniDf <- ui$iniDf
+  .etas <- .iniDf[!is.na(.iniDf$neta1), ]
+  .etas <- .etas$name[.etas$neta1 == .etas$neta2]
+  .tr <- ui$saemEtaTrans
+  # Report the WHOLE colliding group, not just the repeats: which eta of the
+  # group the kernel keeps is not well defined -- `saemEtaNames` labels the
+  # shared column with the LAST of them while `saemOmegaTrans` maps the FIRST
+  # onto it -- so blaming one of the two would name an arbitrary half.
+  .shared <- .tr %in% .tr[duplicated(.tr)]
+  .etas[is.na(.tr) | .shared]
+}
+
+#' Refuse a model whose random effect saem has no parameter for
+#'
+#' saem parameterizes a random effect by the population parameter it is added
+#' to (`theta + eta`), or carries it through `nonMuEtas`, and gives that phi
+#' one phi1 column.  An eta paired with no phi, or sharing one with another
+#' eta, owns no column, so it is silently dropped from the kernel's
+#' `model$omega` and never sampled -- the model that gets fitted is not the
+#' model that was written, and the only symptom is a "subscript out of bounds"
+#' when the reported omega is assembled at the very end of the run (#1047).
+#'
+#' @param ui rxode2 ui
+#' @return Nothing, called for the error side effect
+#' @author Matthew L. Fidler
+#' @noRd
+.saemAssertEtaPhi <- function(ui) {
+  .bad <- .saemEtaNoPhi(ui)
+  if (length(.bad) == 0L) return(invisible())
+  stop("random effect(s) have no population parameter of their own, so 'saem' ",
+       "cannot sample them: ", paste(.bad, collapse=", "),
+       "\nas a work-around put each on its own simple 'theta + eta' line",
+       call.=FALSE)
+}
+
 #' Get SAEM omega
 #'
 #' @param env Environment that has ui and saem in it
@@ -588,6 +637,17 @@
   # Gamma2_phi1Report is the reporting-only pooled BSV for split ETAs; falls
   # back to Gamma2_phi1 for older cached fits without the field.
   .curOme <- if (!is.null(.saem$Gamma2_phi1Report)) .saem$Gamma2_phi1Report else .saem$Gamma2_phi1
+  # Backstop for #1047: .saemAssertEtaPhi() refuses such a model up front, so
+  # reaching here means the UI's etas and the kernel's phi1 block disagree.
+  # A missing Gamma2_phi1 has to be counted as zero columns: `x > nrow(NULL)`
+  # is logical(0), so comparing against it would make every eta look in range.
+  .nOme <- if (is.matrix(.curOme)) nrow(.curOme) else 0L
+  .off <- is.na(.etaTrans) | .etaTrans > .nOme
+  if (any(.off)) {
+    stop("saem reported no variance for random effect(s): ",
+         paste(.etaNames[.off], collapse=", "),
+         call.=FALSE)
+  }
   .mat <- nlme::random.effects(.saem)
   .mat2 <- .mat[, .etaTrans, drop = FALSE]
   colnames(.mat2) <- .etaNames
@@ -1671,6 +1731,7 @@ nlmixr2Est.saem <- function(env, ...) {
   rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'saem'",
                              .var.name=.ui$modelName)
   rxode2::assertRxUiMixedOnly(.ui, .noRandomEffectMsg("saem"), .var.name=.ui$modelName)
+  .saemAssertEtaPhi(.ui)
   rxode2::warnRxBounded(.ui, " which are ignored in 'saem'", .var.name=.ui$modelName)
   if (length(.ui$mixProbs) > 0) {
     message("mixture SAEM computation scales with the number of sub-populations")

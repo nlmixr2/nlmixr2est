@@ -1001,8 +1001,11 @@ arma::mat foceiRSubjectFoceFR_(const arma::mat& a, const arma::cube& A, const ar
       v += rff[o] * a(o, l) * a(o, m) + rfR[o] * (a(o, l) * aRe(o, m) + aRe(o, l) * a(o, m)) +
         rRR[o] * aRe(o, l) * aRe(o, m) + rf[o] * A(o, l, m) + rR[o] * ARe(o, l, m);
     H(l, m) += v; }
-  vec gPhi = Oi * ehat;
-  for (int l = 0; l < neta; l++) { double v = 0.0; for (int o = 0; o < nobs; o++) v += rf[o] * a(o, l) + rR[o] * aRe(o, l); gPhi[l] += v; }
+  // Phi_eta MINUS the inner score S_FOCE = Omega^-1 eta + sum(q0 a) (q0 = rf), which the
+  // inner problem zeroes: subtracting it symbolically keeps the residual out of R (#1056).
+  // Zero for frozen-R FOCE (aRe=0) and any eta-independent R -> the FOCEI envelope form.
+  vec gPhi(neta, fill::zeros);
+  for (int l = 0; l < neta; l++) { double v = 0.0; for (int o = 0; o < nobs; o++) v += rR[o] * aRe(o, l); gPhi[l] = v; }
   // ---- FOCE inner (EBE) tensors: interaction-free q-based Hf/Nf/Tnf ----
   mat Hf = Oi; mat Nf(neta, ndir, fill::zeros);
   for (int l = 0; l < neta; l++) {

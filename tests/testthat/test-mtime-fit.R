@@ -84,6 +84,14 @@ nmTest({
     .ui <- rxode2::rxUiDecompress(.mk(c(.base, "t1 <- 10", "mtime(tx) <- t1",
       "t1 <- 20", "kmult <- ifelse(t < tx, 1.0, 2.0) * t1 / 20", .tail))())
     expect_error(.ui$focei, "assigns again after it")
+
+    # ...and an mtime VARIABLE the model also assigns as an ordinary variable
+    # has two values, only one of which reaches the top of the generated model:
+    # plain rxode2 gives the second mtime 101 here, the hoisted declaration
+    # would give it 3
+    .ui <- rxode2::rxUiDecompress(.mk(c(.base, "mtime(t5) <- 2", "t5 <- 100",
+      "mtime(t6) <- t5 + 1", "kmult <- ifelse(t < t6, 1.0, 2.0)", .tail))())
+    expect_error(.ui$focei, "also assigned as an ordinary variable")
   })
 
   test_that("an emitted mtime() line resolves in every generated model", {
@@ -222,5 +230,91 @@ nmTest({
     # and the modeled time has not moved the answer much off the plain model
     .ref <- nlmixr2(.mk(FALSE), .theo, est="nlme", control=.ctl)
     expect_equal(.fit$objf, .ref$objf, tolerance=1e-2)
+  })
+
+  test_that("a moving boundary: mtime() sensitivities match the in-place switch", {
+    skip_on_cran()
+    # An mtime() whose time depends on an estimated parameter is a moving
+    # discontinuity in the right hand side.  rxS() drops the declaration, so the
+    # switch time reached symengine as a free symbol and the boundary term was
+    # silently lost -- the eta sensitivity came back identically zero and every
+    # EBE for that eta stayed pinned at its initial value.  The reference is the
+    # same switch written in place, which has always carried the term.
+    .mkSw <- function(useMtime) {
+      .bdy <- c("ka <- exp(tka)", "cl <- exp(tcl)", "v <- exp(tv)",
+                if (useMtime) c("mtime(tsw5) <- exp(tsw + eta.sw)",
+                                "kmult <- ifelse(t < tsw5, 1.0, 2.0)")
+                else "kmult <- ifelse(t < exp(tsw + eta.sw), 1.0, 2.0)",
+                "d/dt(depot) <- -ka * depot",
+                "d/dt(center) <- ka * depot - kmult * cl / v * center",
+                "cp <- center / v", "cp ~ add(add.sd)")
+      eval(parse(text=paste0(
+        "function() {\n ini({tka <- 0.45; tcl <- -3.2; tv <- -1; tsw <- ", log(4),
+        "; eta.sw ~ 0.2; add.sd <- 0.7})\n model({\n",
+        paste(.bdy, collapse="\n"), "\n })\n}")))
+    }
+    .grid <- seq(0, 12, by=0.25)
+    .ev <- rxode2::et(rxode2::et(amt=4.02, cmt="depot"), .grid)
+    .th <- c(0.45, -3.2, -1, log(4), 0.7)
+    # d(pred)/d(eta) off the generated inner model, against central differences
+    # of the same model's prediction
+    .sens <- function(useMtime, h=1e-4) {
+      .inner <- rxode2::rxUiDecompress(.mkSw(useMtime)())$focei$inner
+      # loading the declaration as an assignment must not turn the modeled time
+      # into an output column: that would shift the positional lhs layout
+      # inner.cpp reads
+      if (useMtime) expect_false("tsw5" %in% rxode2::rxModelVars(.inner)$lhs)
+      .at <- function(.e) {
+        .p <- stats::setNames(c(.th, .e),
+                              c(paste0("THETA[", 1:5, "]"), "ETA[1]"))
+        .s <- suppressWarnings(
+          rxode2::rxSolve(.inner, .p, .ev, returnType="data.frame",
+                          atol=1e-10, rtol=1e-10))
+        # the mtime record is an extra row whose time MOVES with the eta, so
+        # keep the requested grid to compare like with like
+        .s <- .s[.s$time %in% .grid, ]
+        .s[!duplicated(.s$time, fromLast=TRUE), ]
+      }
+      .s0 <- .at(0); .sp <- .at(h); .sm <- .at(-h)
+      data.frame(time=.s0$time,
+                 analytic=.s0[["rx__sens_rx_pred__BY_ETA_1___"]],
+                 fd=(.sp$rx_pred_ - .sm$rx_pred_) / (2 * h))
+    }
+    .mt <- .sens(TRUE)
+    .ref <- .sens(FALSE)
+    # the boundary term is there at all
+    expect_gt(max(abs(.mt$analytic)), 1)
+    # ...and is the same term the in-place switch gets
+    expect_equal(.mt$analytic, .ref$analytic, tolerance=1e-8)
+    # ...and it is the right term: agrees with central differences away from the
+    # smoothing window symengine puts around the branch
+    .w <- .mt$time >= 4 + 0.25          # the switch is at exp(tsw) = 4
+    expect_equal(.mt$analytic[.w], .mt$fd[.w], tolerance=0.01)
+  })
+
+  test_that("a moving boundary: the EBEs match the in-place switch", {
+    skip_on_cran()
+    .mkSw <- function(useMtime) {
+      .bdy <- c("ka <- exp(tka + eta.ka)", "cl <- exp(tcl)", "v <- exp(tv)",
+                if (useMtime) c("mtime(tsw5) <- exp(tsw + eta.sw)",
+                                "kmult <- ifelse(t < tsw5, 1.0, 2.0)")
+                else "kmult <- ifelse(t < exp(tsw + eta.sw), 1.0, 2.0)",
+                "d/dt(depot) <- -ka * depot",
+                "d/dt(center) <- ka * depot - kmult * cl / v * center",
+                "cp <- center / v", "cp ~ add(add.sd)")
+      eval(parse(text=paste0(
+        "function() {\n ini({tka <- 0.45; tcl <- -3.2; tv <- -1; tsw <- ", log(4),
+        "; eta.ka ~ 0.1; eta.sw ~ 0.2; add.sd <- 0.7})\n model({\n",
+        paste(.bdy, collapse="\n"), "\n })\n}")))
+    }
+    .ctl <- foceiControl(print=0L, covMethod="", sigdig=4, calcTables=FALSE,
+                         maxOuterIterations=0L, maxInnerIterations=300L)
+    .fit <- nlmixr2(.mkSw(TRUE), .theo, est="focei", control=.ctl)
+    .ref <- nlmixr2(.mkSw(FALSE), .theo, est="focei", control=.ctl)
+    # the inner problem can move the eta the boundary depends on: a zero
+    # sensitivity leaves every one of these at 0
+    expect_gt(max(abs(.fit$eta$eta.sw)), 0.05)
+    expect_equal(.fit$eta$eta.sw, .ref$eta$eta.sw, tolerance=0.01)
+    expect_equal(.fit$objf, .ref$objf, tolerance=1e-5)
   })
 })

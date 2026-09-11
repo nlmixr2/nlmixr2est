@@ -366,40 +366,101 @@ nmTest({
     expect_true(any(grepl("^om\\.", rownames(fit$cov))))
   })
 
-  test_that("foce+ (live-R) additive analytic R equals the FOCEI analytic R at the same theta", {
+  test_that("FOCE and foce+ additive analytic R equal the FOCEI analytic R at the same EBEs", {
     skip_on_cran()
     skip_if_not_installed("nlmixr2data")
     # Additive error: R = sa^2 is constant, so live vs frozen R and the FOCEI interaction
-    # term all coincide.  maxOuterIterations=0 evaluates both at the identical initial
-    # theta, and the two fits' EBEs agree to 6.9e-09, so what is left is the two KERNELS.
+    # term all coincide, and the FOCE inner problem IS the FOCEI one.  At the same EBEs all
+    # three kernels must therefore agree to machine precision -- see #1056, where the live-R
+    # (foce+) one did not.
     #
-    # They do not agree entrywise, and cannot: the FOCE/foce+ kernel uses the general
-    # total-derivative form, which carries sum(gPhi . eta_ab), while the FOCEI kernel uses
-    # the envelope/Schur form, which drops that term because it assumes Phi_eta = 0.  The
-    # fit's stored EBEs sit at |Phi_eta| ~ 2e-3 (the inner solver's own tolerance), so the
-    # dropped term is exactly what separates the two.  Both kernels are right about their
-    # own assumption; the gap MEASURES how far the stored EBEs are from stationary, and it
-    # closes only when the inner solve gets tighter -- not something the covariance step
-    # should paper over by re-solving the fit's EBEs.
+    # Two things separated them, both now fixed.  The FOCE kernel's general total-derivative
+    # form ends in Phi_eta . eta_ab; Phi_eta was evaluated in full, but the inner problem
+    # zeroes S_FOCE by construction, so only the interaction remainder Phi_f - q0 belongs
+    # there (identically zero here) and the S part was the inner solver's own residual times
+    # a not-small eta_ab.  And the FOCE assembler re-solved the EBEs while the FOCEI one used
+    # the fit's; the covariance now uses the fit's on both routes.
     #
-    # So assert what a user sees -- the standard errors -- and bound the raw R difference at
-    # what it measures.  Measured: the raw R gap is 1.2e-2, on the numerically small
-    # [add.sd, tka] entry; the theta and sigma SEs agree to ~1e-5, and the loosest SE
-    # (om.eta.ka, 0.41166 vs 0.41211) to 1.1e-3.
-    fitP <- suppressWarnings(suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
-              foceiControl(sigdig = 4, print = 0L, covMethod = "", maxOuterIterations = 0L,
-                           interaction = FALSE, foce = "foce+"))))
+    # etaMat + maxInnerIterations=0 pins the foce+ fit to the FOCEI fit's EBEs, which is what
+    # isolates the KERNELS.  Two independent fits would not do it: foce+ refines its EBEs to
+    # the truncated-score root during estimation (focePlusRefinementRequired, src/inner.cpp)
+    # and FOCEI does not, so at sigdig=4 the two fits sit 1.2e-3 apart in eta (plain FOCE,
+    # which does not refine, sits 6.9e-09 away) -- estimation side, not the kernels.
     fitI <- suppressWarnings(suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
               foceiControl(sigdig = 4, print = 0L, covMethod = "", maxOuterIterations = 0L))))
+    .em <- as.matrix(fitI$eta[, -1, drop = FALSE]); dimnames(.em) <- NULL
+    fitP <- suppressWarnings(suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
+              foceiControl(sigdig = 4, print = 0L, covMethod = "", maxOuterIterations = 0L,
+                           interaction = FALSE, foce = "foce+",
+                           etaMat = .em, maxInnerIterations = 0L))))
+    # the pinning has to have worked, or the comparison below is not about the kernels
+    expect_equal(as.matrix(fitP$eta[, -1, drop = FALSE]), as.matrix(fitI$eta[, -1, drop = FALSE]))
+    # the frozen-R ("nonmem") FOCE variant takes the same kernel with aRe = 0, so pin it too
+    fitF <- suppressWarnings(suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
+              foceiControl(sigdig = 4, print = 0L, covMethod = "", maxOuterIterations = 0L,
+                           interaction = FALSE, etaMat = .em, maxInnerIterations = 0L))))
+    expect_equal(as.matrix(fitF$eta[, -1, drop = FALSE]), as.matrix(fitI$eta[, -1, drop = FALSE]))
     # not positive definite on this model+point, so the PD gate warns and leaves fit$cov
     # alone; the R matrix (what this compares) is returned either way
     rP <- suppressWarnings(foceiCovAnalytic(fitP)); rI <- suppressWarnings(foceiCovAnalytic(fitI))
+    rF <- suppressWarnings(foceiCovAnalytic(fitF))
     expect_false(is.null(rP)); expect_identical(rP$method, "analytic")
-    expect_false(is.null(rI))
+    expect_false(is.null(rI)); expect_identical(rF$method, "analytic")
     .fin <- is.finite(rP$se) & is.finite(rI$se)
     expect_gt(sum(.fin), 3L)
-    expect_equal(unname(rP$se[.fin]), unname(rI$se[.fin]), tolerance = 2e-3)
-    expect_lt(max(abs(rP$R - rI$R) / (abs(rI$R) + 1e-8)), 2e-2)
+    expect_equal(unname(rP$se[.fin]), unname(rI$se[.fin]), tolerance = 1e-10)
+    expect_lt(max(abs(rP$R - rI$R) / (abs(rI$R) + 1e-8)), 1e-10)
+    expect_lt(max(abs(rF$R - rI$R) / (abs(rI$R) + 1e-8)), 1e-10)
+  })
+
+  test_that("foce+ and FOCEI additive analytic R converge as the inner solve tightens", {
+    skip_on_cran()
+    skip_if_not_installed("nlmixr2data")
+    # The companion to the test above: two INDEPENDENT fits do not land on the same EBEs, so
+    # their observed informations differ by whatever that eta gap buys.  It is foce+ that
+    # moves -- at the same theta, plain FOCE's EBEs match FOCEI's to 6.9e-09 while foce+'s
+    # differ by 1.2e-03, because foce+ alone refines its EBEs to the truncated-score root
+    # during estimation (focePlusRefinementRequired, src/inner.cpp).  What must hold is that
+    # the gap is the inner tolerance and nothing structural -- i.e. it shrinks with sigdig.
+    # Measured 1.1e-2 (sigdig 4) -> 7.5e-5 (sigdig 7) on the raw R, 1.1e-3 -> 4.7e-6 on SEs.
+    .fitBoth <- function(sd) {
+      .p <- suppressWarnings(suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
+             foceiControl(sigdig = sd, print = 0L, covMethod = "", maxOuterIterations = 0L,
+                          interaction = FALSE, foce = "foce+"))))
+      .i <- suppressWarnings(suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
+             foceiControl(sigdig = sd, print = 0L, covMethod = "", maxOuterIterations = 0L))))
+      .rp <- suppressWarnings(foceiCovAnalytic(.p)); .ri <- suppressWarnings(foceiCovAnalytic(.i))
+      .f <- is.finite(.rp$se) & is.finite(.ri$se)
+      c(R = max(abs(.rp$R - .ri$R) / (abs(.ri$R) + 1e-8)),
+        se = max(abs(.rp$se[.f] - .ri$se[.f]) / (abs(.ri$se[.f]) + 1e-8)))
+    }
+    .g4 <- .fitBoth(4); .g7 <- .fitBoth(7)
+    expect_lt(.g4[["R"]], 2e-2)
+    expect_lt(.g7[["R"]], 5e-4)          # measured 7.5e-5
+    expect_lt(.g7[["se"]], 5e-5)         # measured 4.7e-6
+    expect_lt(.g7[["R"]], .g4[["R"]])
+  })
+
+  test_that("foce+ and FOCEI agree on the censored additive (f,R) cov at the same EBEs", {
+    skip_on_cran()
+    skip_if_not_installed("nlmixr2data")
+    # The companion to the test above for the OTHER assembler: censoring routes both FOCEI
+    # and foce+ to the general (f,R) path and its C++ kernel (foceiRSubjectFoceFR_), which
+    # carried the same Phi_eta term.  The error is still additive, so R does not depend on
+    # eta (aRe = 0) and the two observed informations must coincide at the same EBEs.
+    .d <- nlmixr2data::theo_sd
+    .d$CENS <- ifelse(.d$DV < 2 & .d$EVID == 0, 1L, 0L); .d$DV[.d$CENS == 1] <- 2
+    fitI <- suppressWarnings(suppressMessages(nlmixr(.cov_one_cmt, .d, "focei",
+              foceiControl(sigdig = 4, print = 0L, covMethod = "", maxOuterIterations = 0L))))
+    .em <- as.matrix(fitI$eta[, -1, drop = FALSE]); dimnames(.em) <- NULL
+    fitP <- suppressWarnings(suppressMessages(nlmixr(.cov_one_cmt, .d, "focei",
+              foceiControl(sigdig = 4, print = 0L, covMethod = "", maxOuterIterations = 0L,
+                           interaction = FALSE, foce = "foce+",
+                           etaMat = .em, maxInnerIterations = 0L))))
+    expect_equal(as.matrix(fitP$eta[, -1, drop = FALSE]), as.matrix(fitI$eta[, -1, drop = FALSE]))
+    rP <- suppressWarnings(foceiCovAnalytic(fitP)); rI <- suppressWarnings(foceiCovAnalytic(fitI))
+    expect_identical(rP$method, "analytic"); expect_identical(rI$method, "analytic")
+    expect_lt(max(abs(rP$R - rI$R) / (abs(rI$R) + 1e-8)), 1e-8)
   })
 
   # Wang 2007 monoexponential IV bolus: predictions 10*exp(-ke*t) are bounded away from
@@ -1008,9 +1069,11 @@ nmTest({
   # comparing a FOCEI fit's R against a gold built at a DIFFERENT (FOCE) fit's estimates -- a
   # convergence confound, not an assembly defect.  At one common point the FOCEI and FOCE
   # analytic R agree to 1.3e-5 with identical eigenvalues, and both reproduce the gold.  The
-  # residual FOCEI error that did survive (3.9e-3) was the stored EBEs solving Phi_eta = 0 only
-  # to the fit's inner tolerance, which the envelope/Schur data term assumes exactly; the engine
-  # now re-solves them and the error drops to 7.7e-5.  This is the acceptance gate for that.
+  # residual FOCEI error that did survive was the stored EBEs solving Phi_eta = 0 only to the
+  # fit's inner tolerance, which the envelope/Schur data term assumes exactly.  That is an
+  # estimation-side gap and the covariance does not paper over it by re-optimizing the fit's
+  # EBEs (PR #1060); the gold below re-solves at every perturbed psi, so the agreement this
+  # asserts is the acceptance gate at a sigdig where the two are close.
   #
   # 12 subjects (theo_sd unreplicated) do not identify the off-diagonal, so a couple of SEs are
   # NaN in BOTH the analytic and the gold -- as in the FOCE gold test below, the criterion is
@@ -1263,8 +1326,14 @@ nmTest({
   test_that("est='focep' installs the full analytic covariance", {
     skip_on_cran()
     skip_if_not_installed("nlmixr2data")
+    # sigdig is pinned because the DEFAULT (3) does not converge here: bobyqa stalls at
+    # objf 121.560 against 116.804 at sigdig 4+, and the fit says so ("last objective
+    # function was not at minimum").  The observed information there has a real negative
+    # eigenvalue, so the PD gate refuses to install it -- correctly.  This test is about the
+    # analytic route being reachable from est="focep", not about that optimizer stall
+    # (#1069), so it asks at a point that IS a minimum.
     fit <- suppressWarnings(suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focep",
-              focepControl(print = 0L, covMethod = "analytic", covFull = TRUE))))
+              focepControl(print = 0L, covMethod = "analytic", covFull = TRUE, sigdig = 4))))
     expect_identical(.covBaseName(fit$covMethod), "analytic")
     expect_true(any(grepl("^om\\.", rownames(fit$cov))))
     .se <- sqrt(diag(fit$cov))
