@@ -431,6 +431,28 @@ nmTest({
     expect_lt(.g7[["R"]], .g4[["R"]])
   })
 
+  test_that("foce+ and FOCEI agree on the censored additive (f,R) cov at the same EBEs", {
+    skip_on_cran()
+    skip_if_not_installed("nlmixr2data")
+    # The companion to the test above for the OTHER assembler: censoring routes both FOCEI
+    # and foce+ to the general (f,R) path and its C++ kernel (foceiRSubjectFoceFR_), which
+    # carried the same Phi_eta term.  The error is still additive, so R does not depend on
+    # eta (aRe = 0) and the two observed informations must coincide at the same EBEs.
+    .d <- nlmixr2data::theo_sd
+    .d$CENS <- ifelse(.d$DV < 2 & .d$EVID == 0, 1L, 0L); .d$DV[.d$CENS == 1] <- 2
+    fitI <- suppressWarnings(suppressMessages(nlmixr(.cov_one_cmt, .d, "focei",
+              foceiControl(sigdig = 4, print = 0L, covMethod = "", maxOuterIterations = 0L))))
+    .em <- as.matrix(fitI$eta[, -1, drop = FALSE]); dimnames(.em) <- NULL
+    fitP <- suppressWarnings(suppressMessages(nlmixr(.cov_one_cmt, .d, "focei",
+              foceiControl(sigdig = 4, print = 0L, covMethod = "", maxOuterIterations = 0L,
+                           interaction = FALSE, foce = "foce+",
+                           etaMat = .em, maxInnerIterations = 0L))))
+    expect_equal(as.matrix(fitP$eta[, -1, drop = FALSE]), as.matrix(fitI$eta[, -1, drop = FALSE]))
+    rP <- suppressWarnings(foceiCovAnalytic(fitP)); rI <- suppressWarnings(foceiCovAnalytic(fitI))
+    expect_identical(rP$method, "analytic"); expect_identical(rI$method, "analytic")
+    expect_lt(max(abs(rP$R - rI$R) / (abs(rI$R) + 1e-8)), 1e-8)
+  })
+
   # Wang 2007 monoexponential IV bolus: predictions 10*exp(-ke*t) are bounded away from
   # zero at every observation, so pure proportional error is genuinely in analytic scope.
   .cov_wang_prop <- function() {

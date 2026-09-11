@@ -373,11 +373,10 @@
   a0 <- if (.cf0) E0$a else NULL
   fq <- if (.cf0) list(qf0 = evf(.fc$f0$qf0), pFf0 = evf(.fc$f0$pFf0), rhof0 = evf(.fc$f0$rhof0)) else NULL
   # Phi_eta (nonzero at the FOCE eta*), FOCE inner Hessian Hf, its Nf, determinant Ht
-  # Phi_eta in FULL, deliberately: unlike the covariance kernel (which subtracts the inner
-  # score S_FOCE symbolically, since it is zero at the EBE and only injects the inner
-  # tolerance into R -- #1056), the outer gradient is evaluated DURING the search, where the
-  # inner problem has a bounded iteration budget and the outer optimizer's own finite
-  # differences see Phi_eta as it actually is.  Keep it.
+  # Phi_eta in FULL, deliberately.  The covariance kernel subtracts the inner score S_FOCE
+  # (zero at the EBE, so it only injects the inner tolerance -- #1056); the outer gradient is
+  # evaluated DURING the search, against an inner solve on a bounded iteration budget, so it
+  # keeps Phi_eta as the objective's own finite differences see it.
   gPhi <- as.numeric(Oi %*% ehat); for (l in ei) gPhi[l] <- gPhi[l] + sum(rd$r1 * a[, l])
   Hf <- Oi; for (l in ei) for (m in ei) Hf[l, m] <- Hf[l, m] + sum(qd$q1 * a[, l] * a[, m] + qd$q0 * A[, l, m])
   HfInv <- solve(Hf)

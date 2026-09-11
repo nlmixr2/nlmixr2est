@@ -1001,12 +1001,10 @@ arma::mat foceiRSubjectFoceFR_(const arma::mat& a, const arma::cube& A, const ar
       v += rff[o] * a(o, l) * a(o, m) + rfR[o] * (a(o, l) * aRe(o, m) + aRe(o, l) * a(o, m)) +
         rRR[o] * aRe(o, l) * aRe(o, m) + rf[o] * A(o, l, m) + rR[o] * ARe(o, l, m);
     H(l, m) += v; }
-  // The inner problem zeroes S_FOCE = Omega^-1 eta + sum(q0 a) (q0 = rf), so all that
-  // survives Phi_eta at the FOCE EBE is the variance chain sum(rR aRe).  Subtracting S
-  // symbolically keeps this term free of the inner solver's residual, which is only at
-  // its tolerance yet multiplies eta_ab.  Zero for frozen-R FOCE (aRe=0) and for any
-  // eta-independent R, where this reduces EXACTLY to the FOCEI envelope form.
-  vec gPhi(neta, fill::zeros);                        // Phi_eta - S_FOCE
+  // Phi_eta MINUS the inner score S_FOCE = Omega^-1 eta + sum(q0 a) (q0 = rf), which the
+  // inner problem zeroes: subtracting it symbolically keeps the residual out of R (#1056).
+  // Zero for frozen-R FOCE (aRe=0) and any eta-independent R -> the FOCEI envelope form.
+  vec gPhi(neta, fill::zeros);
   for (int l = 0; l < neta; l++) { double v = 0.0; for (int o = 0; o < nobs; o++) v += rR[o] * aRe(o, l); gPhi[l] = v; }
   // ---- FOCE inner (EBE) tensors: interaction-free q-based Hf/Nf/Tnf ----
   mat Hf = Oi; mat Nf(neta, ndir, fill::zeros);

@@ -353,8 +353,9 @@
     nsub <- length(ids); Elist <- vector("list", nsub); E0list <- vector("list", nsub)
     eta0list <- vector("list", nsub); nobsAll <- integer(nsub)
     # BATCHED (f,R) FOCE/foce+ solves: the eta=0 population solve (nonmem frozen R0) is batched,
-    # then ONE batched SolveAllFD3 delivers f/a/A/Ath AND R/aR/AR for all subjects (withR=FALSE: FOCE reads R/aR/AR from the base solve + Ath, but
-    # never AthR).  foce+ (foceType=1) keeps the live R (no eta=0 solve).  Per-subject Shi fallback.
+    # then ONE batched SolveAllFD3 delivers f/a/A/Ath AND R/aR/AR for all subjects
+    # (withR=FALSE: FOCE reads R/aR/AR from the base solve + Ath, but never AthR).
+    # foce+ (foceType=1) keeps the live R (no eta=0 solve).  Per-subject Shi fallback.
     .obsAll <- lapply(seq_len(nsub), function(i) { .s <- .byId[[as.character(.idCode[i])]]
       if (is.null(.s) || nrow(.s) == 0L) NULL else .s[.s$EVID == 0, , drop = FALSE] })
     if (any(vapply(.obsAll, is.null, logical(1L))))
@@ -1838,13 +1839,10 @@
   ae <- a[, ei, drop = FALSE]
   isD <- function(p) p <= ndirP; dOf <- function(p) dirP[p]; omc <- function(p) p - ndirP
   # ---- Phi (data) tensors: H=Phi_etaeta, gPhi=Phi_eta (aRe eta-block) ----
-  # The inner problem zeroes S_FOCE = Omega^-1 eta + sum(q0 a) (q0 = rf), so all that
-  # survives Phi_eta at the FOCE EBE is the variance chain sum(rR aRe).  Subtract S
-  # SYMBOLICALLY instead of evaluating Phi_eta and leaning on the inner residual being
-  # small: it is only at the inner solver's tolerance and it multiplies eta_ab, which is
-  # not small.  Zero for frozen-R FOCE (aRe=0) and for any eta-independent R (additive),
-  # where this kernel then reduces EXACTLY to the FOCEI envelope form.
-  gPhi <- vapply(ei, function(l) sum(rR * aRe[, l]), numeric(1))   # Phi_eta - S_FOCE
+  # Phi_eta MINUS the inner score S_FOCE = Omega^-1 eta + sum(q0 a) (q0 = rf), which the
+  # inner problem zeroes: subtracting it symbolically keeps the residual out of R (#1056).
+  # Zero for frozen-R FOCE (aRe=0) and any eta-independent R -> the FOCEI envelope form.
+  gPhi <- vapply(ei, function(l) sum(rR * aRe[, l]), numeric(1))
   H <- Oi; for (l in ei) for (m in ei)
     H[l, m] <- H[l, m] + sum(rff * a[, l] * a[, m] + rfR * (a[, l] * aRe[, m] + aRe[, l] * a[, m]) +
                               rRR * aRe[, l] * aRe[, m] + rf * A[, l, m] + rR * E_ARelm(E, l, m, .fp))
@@ -2247,13 +2245,11 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
   # ---- Phi (data) pieces: FULL rho derivatives ----
   H <- Oi; for (l in ei) for (m in ei) H[l, m] <- H[l, m] + sum(rd$r2 * a[, l] * a[, m] + rd$r1 * A[, l, m])  # Phi_etaeta
   Ndat <- matrix(0, neta, ndir); for (l in ei) for (d in di) Ndat[l, d] <- sum(rd$r2 * a[, l] * a[, d] + rd$r1 * A[, l, d])  # Phi_(eta,theta)
-  # Phi_eta at the FOCE EBE.  The inner problem zeroes S_FOCE = Omega^-1 eta + sum(q0 a),
-  # so all that survives Phi_eta is the interaction remainder Phi_f - q0.  Subtract it
-  # SYMBOLICALLY rather than evaluating Phi_eta and leaning on the inner residual being
-  # small: the residual is only at the inner solver's tolerance and it multiplies eta_ab,
-  # which is not small.  Identically zero for frozen-R FOCE and for any eta-independent R
-  # (additive), where this kernel then reduces EXACTLY to the FOCEI envelope form.
-  gPhi <- vapply(ei, function(l) sum((rd$r1 - qd$q0) * a[, l]), numeric(1))  # Phi_eta - S_FOCE
+  # Phi_eta MINUS the inner score S_FOCE = Omega^-1 eta + sum(q0 a), which the inner problem
+  # zeroes: subtracting it symbolically leaves the interaction remainder Phi_f - q0 and keeps
+  # the inner solver's residual (which multiplies a not-small eta_ab) out of R (#1056).  Zero
+  # for frozen-R FOCE and any eta-independent R (additive) -> the FOCEI envelope form exactly.
+  gPhi <- vapply(ei, function(l) sum((rd$r1 - qd$q0) * a[, l]), numeric(1))
 
   # ---- FOCE inner (EBE) pieces: q-based Jacobian S_eta = Hf and its 3-tensor ----
   Hf <- Oi; for (l in ei) for (m in ei) Hf[l, m] <- Hf[l, m] + sum(qd$q1 * a[, l] * a[, m] + qd$q0 * A[, l, m])  # S_eta = Hf
