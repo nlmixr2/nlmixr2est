@@ -366,12 +366,13 @@ nmTest({
     expect_true(any(grepl("^om\\.", rownames(fit$cov))))
   })
 
-  test_that("foce+ (live-R) additive analytic R equals the FOCEI analytic R at the same EBEs", {
+  test_that("FOCE and foce+ additive analytic R equal the FOCEI analytic R at the same EBEs", {
     skip_on_cran()
     skip_if_not_installed("nlmixr2data")
     # Additive error: R = sa^2 is constant, so live vs frozen R and the FOCEI interaction
-    # term all coincide, and the FOCE inner problem IS the FOCEI one.  At the same EBEs the
-    # two kernels must therefore agree to machine precision -- see #1056, where they did not.
+    # term all coincide, and the FOCE inner problem IS the FOCEI one.  At the same EBEs all
+    # three kernels must therefore agree to machine precision -- see #1056, where the live-R
+    # (foce+) one did not.
     #
     # Two things separated them, both now fixed.  The FOCE kernel's general total-derivative
     # form ends in Phi_eta . eta_ab; Phi_eta was evaluated in full, but the inner problem
@@ -394,15 +395,22 @@ nmTest({
                            etaMat = .em, maxInnerIterations = 0L))))
     # the pinning has to have worked, or the comparison below is not about the kernels
     expect_equal(as.matrix(fitP$eta[, -1, drop = FALSE]), as.matrix(fitI$eta[, -1, drop = FALSE]))
+    # the frozen-R ("nonmem") FOCE variant takes the same kernel with aRe = 0, so pin it too
+    fitF <- suppressWarnings(suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
+              foceiControl(sigdig = 4, print = 0L, covMethod = "", maxOuterIterations = 0L,
+                           interaction = FALSE, etaMat = .em, maxInnerIterations = 0L))))
+    expect_equal(as.matrix(fitF$eta[, -1, drop = FALSE]), as.matrix(fitI$eta[, -1, drop = FALSE]))
     # not positive definite on this model+point, so the PD gate warns and leaves fit$cov
     # alone; the R matrix (what this compares) is returned either way
     rP <- suppressWarnings(foceiCovAnalytic(fitP)); rI <- suppressWarnings(foceiCovAnalytic(fitI))
+    rF <- suppressWarnings(foceiCovAnalytic(fitF))
     expect_false(is.null(rP)); expect_identical(rP$method, "analytic")
-    expect_false(is.null(rI))
+    expect_false(is.null(rI)); expect_identical(rF$method, "analytic")
     .fin <- is.finite(rP$se) & is.finite(rI$se)
     expect_gt(sum(.fin), 3L)
     expect_equal(unname(rP$se[.fin]), unname(rI$se[.fin]), tolerance = 1e-10)
     expect_lt(max(abs(rP$R - rI$R) / (abs(rI$R) + 1e-8)), 1e-10)
+    expect_lt(max(abs(rF$R - rI$R) / (abs(rI$R) + 1e-8)), 1e-10)
   })
 
   test_that("foce+ and FOCEI additive analytic R converge as the inner solve tightens", {
