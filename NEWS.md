@@ -2,6 +2,14 @@
 
 ## Bug fixes
 
+- A focei fit of a model whose dosing depends on an eta -- `f()`, `alag()`,
+  `rate()`, `dur()` -- now says so when rxode2's analytic event ("jump")
+  sensitivities cannot be installed, instead of silently returning a fit whose
+  dosing etas never left their initial values while their omegas stayed finite.
+  The event-sensitivity mode already rides with the cached model bundle; it now
+  also survives a second deflate/inflate round trip, and the model bundle
+  records which etas enter a dosing expression so the fit can tell a model that
+  needs the jumps from one that does not (#1016).
 - `saemControl(covMethod="sa"|"fim")` keeps its own Omega standard errors on a
   diagonal-Omega model.  The variance parameters the analytic FIM cannot cover
   (a non-additive endpoint's residual error) are still taken from the
