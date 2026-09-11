@@ -488,7 +488,42 @@
 #' @param outerOpt optimization method for the outer problem
 #'   Fast \code{"nlminb"} fits automatically use the analytical outer Hessian
 #'   for supported Gaussian FOCE/FOCE+/FOCEI/AGQ models, restarting with gradients only if
-#'   curvature is unavailable.
+#'   curvature is unavailable.  \code{"trust"} is a trust-region Newton method
+#'   (\pkg{RcppTrust}) built on that same Hessian; see
+#'   \code{outerTrustHessian}.  It is unbounded, so a trial point outside the
+#'   box is reported as an infinite objective and the region shrinks instead.
+#'
+#' @param outerTrustHessian Curvature source for \code{outerOpt="trust"}.
+#'   \code{"auto"} (default) uses the analytical outer Hessian when
+#'   \code{fast=TRUE} makes it available and the damped-BFGS update otherwise,
+#'   and falls back to that update if the Hessian is refused mid-fit.
+#'   \code{"analytic"} requires \code{fast=TRUE}.  \code{"bfgs"} is the
+#'   damped BFGS update (Nocedal & Wright, Numerical Optimization 2nd ed.,
+#'   Procedure 18.2) built from consecutive gradients, so it adds no
+#'   evaluations.  \code{"fd"} differences the outer gradient, costing one
+#'   extra population gradient per parameter per iteration.
+#'
+#' @param outerTrustRinit,outerTrustRmax Initial and maximum trust-region
+#'   radius for \code{outerOpt="trust"}, in the scaled-parameter space the
+#'   outer problem optimizes in.  \code{NULL} (default) derives
+#'   \code{outerTrustRinit} from \code{minqa::bobyqa()}'s own default-rhobeg
+#'   formula and \code{outerTrustRmax} as \code{8 * outerTrustRinit}.
+#'
+#' @param outerTrustFterm,outerTrustMterm Function-value and predicted-decrease
+#'   convergence tolerances for \code{outerOpt="trust"}.  \code{NULL}
+#'   (default) uses \code{10^(-sigdig-2)}; \code{outerTrustMterm} defaults to
+#'   \code{outerTrustFterm}.
+#'
+#' @param outerTrustRelStep Relative step handed to the analytical outer
+#'   Hessian, and used for the \code{outerTrustHessian="fd"} gradient
+#'   difference.
+#'
+#' @param outerTrustRestarts How many times \code{outerOpt="trust"} may
+#'   re-enter the trust region from its own reported solution when the Newton
+#'   decrement there says the point is not stationary.  A collapsing trust
+#'   region satisfies the solver's own convergence test at a point that is not
+#'   a minimum; re-entering restores the initial radius.
+#'   \code{maxOuterIterations} is the total across restarts, not per restart.
 #'
 #' @details Custom outer optimizers receive \code{control$hessian(par, relStep=1e-3)}.
 #'   It settles the requested point and assembles the reported objective's
@@ -1132,7 +1167,8 @@ foceiControl <- function(sigdig = 3, #
                            "lbfgsbLG",
                            "slsqp",
                            "uobyqa",
-                           "newuoa"
+                           "newuoa",
+                           "trust"
                          ), #
                          innerOpt = c("auto", "trust", "n1qn1", "BFGS"), #
                          innerHessian = c("focei", "conditional"), #
@@ -1143,6 +1179,14 @@ foceiControl <- function(sigdig = 3, #
                          trustRmax = NULL, # NULL -> derived from trustConf/neta
                          trustFterm = NULL, # NULL -> 10^(-sigdig), NOT epsilon
                          trustMterm = NULL, # NULL -> 10^(-sigdig), NOT epsilon
+                         ## trust-region OUTER optimizer (outerOpt="trust")
+                         outerTrustHessian = c("auto", "analytic", "bfgs", "fd"),
+                         outerTrustRinit = NULL, # NULL -> min(0.95, 0.2*max(abs(par)))
+                         outerTrustRmax = NULL, # NULL -> 8*outerTrustRinit
+                         outerTrustFterm = NULL, # NULL -> 10^(-sigdig-2)
+                         outerTrustMterm = NULL, # NULL -> outerTrustFterm
+                         outerTrustRelStep = 1e-3,
+                         outerTrustRestarts = 3L,
                          ##
                          rhobeg = .2, #
                          rhoend = NULL, #
@@ -1611,6 +1655,10 @@ foceiControl <- function(sigdig = 3, #
     } else if (outerOpt == "newuoa") {
       outerOptFun <- .newuoa
       outerOpt <- -1L
+    } else if (outerOpt == "trust") {
+      rxode2::rxReq("RcppTrust")
+      outerOptFun <- .trustOuter
+      outerOpt <- -1L
     } else {
       if (checkmate::testIntegerish(outerOpt, lower = 0, upper = 1, len = 1)) {
         outerOpt <- as.integer(outerOpt)
@@ -1648,6 +1696,31 @@ foceiControl <- function(sigdig = 3, #
   }
   .foceiAssertHessianMethod(hessianMethod, innerOpt)
   innerHessian <- match.arg(innerHessian)
+  outerTrustHessian <- match.arg(outerTrustHessian)
+  # Same strict-bound handling as the inner trustRinit/trustRmax below:
+  # checkmate's lower= is inclusive, and a zero radius can never step.
+  checkmate::assertNumeric(outerTrustRinit, lower = 0, finite = TRUE, null.ok = TRUE, len = 1)
+  checkmate::assertNumeric(outerTrustRmax, lower = 0, finite = TRUE, null.ok = TRUE, len = 1)
+  if (!is.null(outerTrustRinit) && outerTrustRinit <= 0) {
+    stop("'outerTrustRinit' must be > 0", call. = FALSE)
+  }
+  if (!is.null(outerTrustRmax) && outerTrustRmax <= 0) {
+    stop("'outerTrustRmax' must be > 0", call. = FALSE)
+  }
+  if (!is.null(outerTrustRinit) && !is.null(outerTrustRmax) &&
+        outerTrustRinit > outerTrustRmax) {
+    stop("'outerTrustRinit' cannot be larger than 'outerTrustRmax'", call. = FALSE)
+  }
+  checkmate::assertNumeric(outerTrustFterm, lower = 0, finite = TRUE, null.ok = TRUE, len = 1)
+  checkmate::assertNumeric(outerTrustMterm, lower = 0, finite = TRUE, null.ok = TRUE, len = 1)
+  checkmate::assertNumeric(outerTrustRelStep, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
+  if (outerTrustRelStep <= 0) {
+    stop("'outerTrustRelStep' must be > 0", call. = FALSE)
+  }
+  checkmate::assertIntegerish(outerTrustRestarts, lower = 0, any.missing = FALSE, len = 1)
+  if (outerTrustHessian == "analytic" && .outerOptTxt == "trust" && !isTRUE(fast)) {
+    stop("outerTrustHessian=\"analytic\" requires fast=TRUE", call. = FALSE)
+  }
   checkmate::assertNumeric(trustConf, lower = 0, upper = 1, finite = TRUE, any.missing = FALSE, len = 1)
   if (trustConf <= 0 || trustConf >= 1) {
     # qchisq(0, df)==0 (zero trust-region radius, no step ever taken) and
@@ -1935,6 +2008,14 @@ foceiControl <- function(sigdig = 3, #
     trustRmax = trustRmax,
     trustFterm = trustFterm,
     trustMterm = trustMterm,
+    ## trust-region outer optimizer (outerOpt="trust")
+    outerTrustHessian = outerTrustHessian,
+    outerTrustRinit = outerTrustRinit,
+    outerTrustRmax = outerTrustRmax,
+    outerTrustFterm = outerTrustFterm,
+    outerTrustMterm = outerTrustMterm,
+    outerTrustRelStep = as.double(outerTrustRelStep),
+    outerTrustRestarts = as.integer(outerTrustRestarts),
     ## BFGS
     abstol = abstol,
     reltol = reltol,

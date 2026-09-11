@@ -274,6 +274,302 @@ is.latex <- function() {
   .ret
 }
 
+#' Damped-BFGS curvature for the outer trust region
+#'
+#' Returns the updater.  `trust_solve_c()` calls the objective at every TRIAL
+#' point, accepted or not, so the secant pair is consecutive CALLS -- the same
+#' convention `nlmTrustObjfun()` uses for the analogous outer problem
+#' (`src/nlm.cpp`).
+#' @param n number of parameters
+#' @return function(x, gradient) returning the current Hessian estimate
+#' @noRd
+.trustOuterBfgs <- function(n) {
+  .b <- diag(n)
+  .xPrev <- NULL
+  .gPrev <- NULL
+  function(x, g) {
+    if (!is.null(.xPrev)) {
+      .s <- x - .xPrev
+      .y <- g - .gPrev
+      .bs <- drop(.b %*% .s)
+      .sBs <- sum(.s * .bs)
+      .sy <- sum(.s * .y)
+      if (is.finite(.sBs) && .sBs > 0 && all(is.finite(.y))) {
+        # Damped BFGS (Nocedal & Wright, Numerical Optimization 2nd ed,
+        # Procedure 18.2): keeps the update positive definite when the outer
+        # objective's curvature along s is not.
+        .r <- if (.sy >= 0.2 * .sBs) {
+          .y
+        } else {
+          .th <- 0.8 * .sBs / (.sBs - .sy)
+          .th * .y + (1 - .th) * .bs
+        }
+        .sr <- sum(.s * .r)
+        if (is.finite(.sr) && .sr > 0) {
+          .b <<- .b - outer(.bs, .bs) / .sBs + outer(.r, .r) / .sr
+        }
+      }
+    }
+    .xPrev <<- x
+    .gPrev <<- g
+    .b
+  }
+}
+
+#' Finite-difference curvature for the outer trust region
+#'
+#' Differences the outer gradient, costing `length(lower)` extra population
+#' gradient evaluations per call -- which is why it is not the default when the
+#' analytic Hessian is available.  A direction is reflected at an upper bound
+#' and the whole Hessian declined (`NULL`) when neither side fits in the box.
+#' @param gr outer gradient function
+#' @param relStep relative difference step
+#' @param lower,upper box the outer problem optimizes in
+#' @return function(x, gradient) returning a symmetric Hessian, or `NULL`
+#' @noRd
+.trustOuterFd <- function(gr, relStep, lower, upper) {
+  .n <- length(lower)
+  function(x, g0) {
+    .h <- matrix(0.0, .n, .n)
+    for (.j in seq_len(.n)) {
+      .step <- relStep * max(abs(x[.j]), 1.0)
+      if (x[.j] + .step > upper[.j]) .step <- -.step
+      if (x[.j] + .step < lower[.j]) return(NULL)
+      .xp <- x
+      .xp[.j] <- x[.j] + .step
+      .h[, .j] <- (gr(.xp) - g0) / .step
+    }
+    0.5 * (.h + t(.h))
+  }
+}
+
+#' Resolve the trust region's radii and tolerances
+#'
+#' `rinit` mirrors `minqa::bobyqa()`'s own default-rhobeg formula so swapping
+#' `outerOpt="bobyqa"` for `"trust"` starts from a comparable region; `rmax`
+#' reuses the 8x growth ceiling of the other `RcppTrust` solves in this package.
+#' A scaled start of all zeros would give a zero (never-stepping) radius.
+#' @param par scaled starting vector
+#' @param control the foceiControl list
+#' @return list of `rinit`, `rmax`, `fterm`, `mterm`
+#' @noRd
+.trustOuterRegion <- function(par, control) {
+  .rinit <- control$outerTrustRinit
+  if (is.null(.rinit)) .rinit <- min(0.95, 0.2 * max(abs(par)))
+  if (!is.finite(.rinit) || .rinit <= 0) .rinit <- 0.2
+  .rmax <- control$outerTrustRmax
+  if (is.null(.rmax)) .rmax <- 8 * .rinit
+  .fterm <- control$outerTrustFterm
+  if (is.null(.fterm)) .fterm <- 10^(-control$sigdig - 2)
+  .mterm <- control$outerTrustMterm
+  if (is.null(.mterm)) .mterm <- .fterm
+  list(rinit = .rinit, rmax = .rmax, fterm = .fterm, mterm = .mterm)
+}
+
+#' Newton decrement of an `RcppTrust::trust()` result
+#'
+#' `0.5 * g' H^-1 g` -- the objective decrease a full Newton step from the
+#' reported point would predict, directly comparable to `fterm`.  `NA` when the
+#' Hessian is not positive definite, which at a reported minimum is itself a
+#' failure to converge.
+#' @param result the list `RcppTrust::trust()` returned
+#' @return the decrement, or `NA_real_`
+#' @noRd
+.trustOuterDecrement <- function(result) {
+  .h <- result$hessian
+  .g <- result$gradient
+  if (is.null(.h) || is.null(.g) || !all(is.finite(.h)) || !all(is.finite(.g))) {
+    return(NA_real_)
+  }
+  .ch <- try(chol(.h), silent = TRUE)
+  if (inherits(.ch, "try-error")) return(NA_real_)
+  0.5 * sum(backsolve(.ch, .g, transpose = TRUE)^2)
+}
+
+#' Run the outer trust region, re-entering it while it stops short
+#'
+#' `trust_solve_c()` reports `converged=TRUE` off its own step/model tolerance,
+#' which a collapsing trust region satisfies at a point that is not stationary
+#' at all (measured: a fit exited at 133.34 whose full Newton step still
+#' predicted a 530 decrease).  Re-entering from that point restores the initial
+#' radius, which is what lets it move again.
+#' @param objfun the value/gradient/hessian function
+#' @param par starting vector
+#' @param region `.trustOuterRegion()` output
+#' @param iterlim TOTAL iteration budget, across restarts
+#' @param restarts maximum number of re-entries
+#' @return the `RcppTrust::trust()` result, with `iterations` totalled and
+#'   `restarts`, `newtonDecrement` and `underConverged` added
+#' @noRd
+.trustOuterRun <- function(objfun, par, region, iterlim, restarts) {
+  .x <- par
+  .left <- iterlim
+  .used <- 0L
+  .nRestart <- 0L
+  repeat {
+    .ret <- RcppTrust::trust(objfun,
+      parinit = .x, rinit = region$rinit, rmax = region$rmax,
+      iterlim = .left, fterm = region$fterm, mterm = region$mterm,
+      minimize = TRUE, blather = FALSE
+    )
+    .used <- .used + .ret$iterations
+    .left <- .left - .ret$iterations
+    .decr <- .trustOuterDecrement(.ret)
+    .under <- is.na(.decr) || .decr > region$fterm
+    .again <- .under && isTRUE(.ret$converged) && .nRestart < restarts &&
+      .left >= 1L && max(abs(.ret$argument - .x)) > 0
+    if (!.again) break
+    .x <- .ret$argument
+    .nRestart <- .nRestart + 1L
+  }
+  .ret$iterations <- .used
+  .ret$restarts <- .nRestart
+  .ret$newtonDecrement <- .decr
+  .ret$underConverged <- .under
+  .ret
+}
+
+#' Which curvature source `outerOpt="trust"` starts from
+#'
+#' @param control the foceiControl list
+#' @return one of `"analytic"`, `"bfgs"`, `"fd"`
+#' @noRd
+.trustOuterMethod <- function(control) {
+  .method <- control$outerTrustHessian
+  if (is.null(.method)) .method <- "auto"
+  .analytic <- isTRUE(control$fast) && is.function(control$hessian)
+  if (.method == "analytic" && !.analytic) {
+    stop("outerTrustHessian=\"analytic\" requires foceiControl(fast=TRUE)",
+      call. = FALSE
+    )
+  }
+  if (.method == "auto") .method <- if (.analytic) "analytic" else "bfgs"
+  .method
+}
+
+#' Curvature supplier for `outerOpt="trust"`
+#'
+#' Serves the requested source and falls back to the damped-BFGS update when it
+#' cannot answer.  Support for the analytic Hessian is a property of the model,
+#' not of the point, so one refusal switches the run for good rather than paying
+#' the failed probe again every iteration.
+#' @param control the foceiControl list
+#' @param gr outer gradient function
+#' @param relStep relative difference step
+#' @param lower,upper box the outer problem optimizes in
+#' @return environment with `hessian(x, gradient)`, `calls` and `fallback`
+#' @noRd
+.trustOuterCurvature <- function(control, gr, relStep, lower, upper) {
+  .method <- .trustOuterMethod(control)
+  .bfgs <- .trustOuterBfgs(length(lower))
+  .fd <- .trustOuterFd(gr, relStep, lower, upper)
+  .state <- new.env(parent = emptyenv())
+  .state$calls <- 0L
+  .state$fallback <- FALSE
+  .state$hessian <- function(x, g) {
+    .h <- NULL
+    if (.method == "analytic") {
+      .state$calls <- .state$calls + 1L
+      .h <- tryCatch(control$hessian(x), error = function(e) {
+        .state$fallback <- TRUE
+        .method <<- "bfgs"
+        warning("analytic outer Hessian unavailable; trust continues with BFGS",
+          call. = FALSE
+        )
+        NULL
+      })
+    } else if (.method == "fd") {
+      .h <- .fd(x, g)
+    }
+    if (is.null(.h)) .h <- .bfgs(x, g)
+    .h
+  }
+  .state
+}
+
+#' The value/gradient/Hessian function `RcppTrust::trust()` calls
+#'
+#' `trust` is unbounded, so a point outside the box -- or one the inner problem
+#' could not evaluate -- is reported as an infinite objective: the region
+#' shrinks rather than the step being projected, and the analytic Hessian
+#' (which refuses an out-of-bounds theta) is never asked for one.
+#' @param fn,gr outer objective and gradient
+#' @param curvature `.trustOuterCurvature()` output
+#' @param lower,upper box the outer problem optimizes in
+#' @return function(x) returning `list(value=, gradient=, hessian=)`
+#' @noRd
+.trustOuterObjfun <- function(fn, gr, curvature, lower, upper) {
+  .n <- length(lower)
+  .reject <- list(value = Inf, gradient = rep(0.0, .n), hessian = diag(.n))
+  function(x) {
+    if (any(x < lower) || any(x > upper)) return(.reject)
+    .v <- fn(x)
+    if (!is.finite(.v)) return(.reject)
+    .g <- gr(x)
+    if (length(.g) != .n || !all(is.finite(.g))) return(.reject)
+    .h <- curvature$hessian(x, .g)
+    if (is.null(.h) || !all(is.finite(.h))) return(.reject)
+    list(value = .v, gradient = .g, hessian = .h)
+  }
+}
+
+#' Trust-region Newton outer optimizer (`outerOpt="trust"`)
+#'
+#' Drives the outer (population theta) problem with `RcppTrust`'s port of
+#' Geyer's trust-region algorithm, using the analytic outer Hessian when
+#' `fast=TRUE` makes it available (see `outerTrustHessian`).
+#' @noRd
+.trustOuter <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
+  rxode2::rxReq("RcppTrust")
+  .n <- length(par)
+  .lower <- rep_len(lower, .n)
+  .upper <- rep_len(upper, .n)
+  .relStep <- control$outerTrustRelStep
+  if (is.null(.relStep)) .relStep <- 1e-3
+  .curvature <- .trustOuterCurvature(control, gr, .relStep, .lower, .upper)
+  .ret <- .trustOuterRun(
+    .trustOuterObjfun(fn, gr, .curvature, .lower, .upper), par,
+    .trustOuterRegion(par, control),
+    .trustOuterCount(control$maxOuterIterations, 1L),
+    .trustOuterCount(control$outerTrustRestarts, 0L)
+  )
+  if (isTRUE(.ret$converged) && .ret$underConverged) {
+    warning("outer trust stopped short of a stationary point", call. = FALSE)
+  }
+  .ret$x <- .ret$argument
+  .ret$par <- .ret$argument
+  # trust reports convergence as a logical; focei expects optim()'s 0/1.
+  .ret$convergence <- if (isTRUE(.ret$converged)) 0L else 1L
+  .ret$message <- .trustOuterMessage(.ret)
+  .ret$hessianEvaluations <- .curvature$calls
+  .ret$hessianFallback <- .curvature$fallback
+  .ret
+}
+
+#' A non-negative integer control value, or its floor
+#' @param value the control value
+#' @param floor the smallest value the caller can use
+#' @return an integer, at least `floor`
+#' @noRd
+.trustOuterCount <- function(value, floor) {
+  .v <- suppressWarnings(as.integer(value))
+  if (length(.v) != 1L || is.na(.v) || .v < floor) floor else .v
+}
+
+#' Translate a trust result into focei's minimization message
+#' @param ret `.trustOuterRun()` output
+#' @return the message string
+#' @noRd
+.trustOuterMessage <- function(ret) {
+  if (!isTRUE(ret$converged)) {
+    "iteration limit reached without convergence (RcppTrust::trust)"
+  } else if (isTRUE(ret$underConverged)) {
+    "converged without a stationary point (RcppTrust::trust)"
+  } else {
+    "relative convergence (RcppTrust::trust)"
+  }
+}
+
 .nloptr <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ..., nloptrAlgoritm = "NLOPT_LD_MMA") {
   rxode2::rxReq("nloptr")
   .ctl <- list(

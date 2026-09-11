@@ -70,6 +70,24 @@
 - Evaluated the conditional inner value, gradient and full curvature jointly
   in one pooled sensitivity solve, including M2/M3/M4 censoring.
 
+- Added `foceiControl(outerOpt="trust")`, a trust-region Newton outer optimizer
+  (`RcppTrust`) driven by the analytical outer Hessian.  `outerTrustHessian=`
+  selects the curvature -- the analytical Hessian under `fast=TRUE`, a damped
+  BFGS update, or a finite difference of the outer gradient -- with
+  `outerTrustRinit`/`outerTrustRmax`, `outerTrustFterm`/`outerTrustMterm`,
+  `outerTrustRelStep` and `outerTrustRestarts` controlling the region, its
+  tolerances and the step handed to the Hessian.  Because the solver's own
+  convergence test is satisfied by a collapsing trust region, the reported
+  point is checked with its Newton decrement and the region re-entered when it
+  is not stationary.  On `theo_sd` a fast FOCEi fit reached a marginally lower
+  objective than `outerOpt="nlminb"` in roughly a fifth of the time.
+
+- Added `est="flaplace"`, `"mflaplace"`, `"iflaplace"`, `"fagq"`, `"mfagq"` and
+  `"ifagq"` -- the Laplace and adaptive-quadrature methods (plus their
+  mu-referenced `"lin"`/`"irls"` variants) run with the full conditional inner
+  curvature (`fast=TRUE`, `innerHessian="conditional"`).  They report as
+  `Full Laplace`/`Full AGQ`, and require Gaussian endpoints.
+
 - `impmapControl(proposal=)` selects the importance-sampling proposal family for
   `est="imp"`, `"impmap"` and `"qrpem"`: `"normal"` and `"t"` as `df` already
   reached, plus `"laplace"` (a spherical multivariate Laplace, whose exponential

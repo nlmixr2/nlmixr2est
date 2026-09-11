@@ -12642,12 +12642,16 @@ void foceiFinalizeTables(Environment e){
     // quadrature label wins over interaction so laplace/agq fits (whose controls
     // default interaction=TRUE) do not print as "FOCEi"; ofvType is the
     // lowercased row label so broom/setOfv row matching works
+    // innerHessian="conditional" (est="flaplace"/"fagq" and their mu variants)
+    // replaces the Gauss-Newton inner curvature with the full conditional one, so
+    // the row says so rather than looking like an ordinary Laplace/AGQ fit.
+    std::string full = op_focei.conditionalHessianRequested ? "Full " : "";
     if (_nagq == 1) {
-      objDf.attr("row.names") = CharacterVector::create("Laplace");
-      e["ofvType"] = "laplace";
+      objDf.attr("row.names") = CharacterVector::create(full + "Laplace");
+      e["ofvType"] = full.empty() ? "laplace" : "full laplace";
     } else {
-      objDf.attr("row.names") = CharacterVector::create("AGQ" + std::to_string(_nagq));
-      e["ofvType"] = "agq" + std::to_string(_nagq);
+      objDf.attr("row.names") = CharacterVector::create(full + "AGQ" + std::to_string(_nagq));
+      e["ofvType"] = (full.empty() ? "agq" : "full agq") + std::to_string(_nagq);
     }
     addLlikObs(e);
   } else if (op_focei.interaction){
@@ -12675,7 +12679,8 @@ void foceiFinalizeTables(Environment e){
       // objective is a FOCEi evaluation at the EM estimates.
       e["method"] = op_focei.isImp ? "imp" : (op_focei.isQrpem ? "qrpem" : "impmap");
     } else if (_aqn > 0) {
-      e["method"] ="AGQ";
+      e["method"] = op_focei.conditionalHessianRequested ?
+        (_nagq == 1 ? "Full Laplace" : "Full AGQ") : "AGQ";
     } else if (op_focei.neta == 0){
       e["method"] = "Population Only";
     } else if (op_focei.fo == 1){
