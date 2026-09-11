@@ -57,6 +57,17 @@ nmTest({
       "kmult <- ifelse(t < tw, 1.0, 2.0)", .tail))())
     expect_equal(.mtimeLines(.ui$focei$inner), "mtime(tw)~0.1*WT;")
 
+    # a branch in the right hand side: .foceiPrune() rewrites ifelse() to
+    # arithmetic before symengine sees it, so it expands like anything else
+    # and agrees with what plain rxode2 computes in place
+    .ui <- rxode2::rxUiDecompress(.mk(c(.base, "kbase <- 5",
+      "mtime(tb) <- ifelse(kbase > 1, 3, 4)",
+      "kmult <- ifelse(t < tb, 1.0, 2.0)", .tail))())
+    expect_equal(.mtimeLines(.ui$focei$inner), "mtime(tb)~3;")
+    .ref <- rxode2::rxode2("kbase=5;mtime(tb)=ifelse(kbase>1,3,4);d/dt(x)=-x;")
+    expect_equal(unique(as.data.frame(
+      rxode2::rxSolve(.ref, rxode2::et(amt=1) |> rxode2::et(0:5)))$tb), 3)
+
     # rxS() keeps only a variable's FINAL value, so a right hand side whose
     # dependency is assigned again after the declaration would expand to the
     # later value -- rxode2 evaluates the declaration in place, so refuse

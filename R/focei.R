@@ -967,10 +967,14 @@ attr(rxUiGet.foceiModel0ll, "rstudio") <- quote(rxModelVars({}))
     rxode2::rxFromSE(.txt)
   }
   .lines <- vapply(seq_along(.rhs), function(.i) {
-    # An expression symengine cannot take falls back to the text it was parsed
-    # from -- already in this model's namespace (it came out of the pruned
-    # model), just not expanded.  Losing the declaration entirely is worse.
-    .one <- tryCatch(.expand(.i), error = function(e) .rhs[[.i]])
+    # Refuse an expression symengine cannot take rather than emitting the text
+    # it was parsed from: the declaration is re-emitted at the TOP of the
+    # generated model, so unexpanded text naming a model lhs would read that
+    # variable before the model assigns it.
+    .one <- tryCatch(.expand(.i), error = function(e) {
+      stop("mtime(", names(.rhs)[.i], ") right hand side cannot be expanded: ",
+           conditionMessage(e), call. = FALSE)
+    })
     # `~` not `=`: the modeled time is not read back, and an extra output
     # column would shift the positional lhs layout inner.cpp reads
     paste0("mtime(", names(.rhs)[.i], ")~", .one)
