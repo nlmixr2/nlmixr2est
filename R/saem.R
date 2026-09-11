@@ -667,15 +667,20 @@
 #' endpoint's residual is `fix()`ed, but a fixed value is not estimated, so the
 #' slot is dropped before inverting the same way a fixed theta's row is
 #' (`calc.COV`'s variance block excludes it too).
+#'
+#' `nb_param = nphi1 + nlambda + nResidEp` with the residual slots LAST, so the
+#' block starts at `.np - nendpnt` -- taken from the matrix itself rather than
+#' from a theta+Omega row count, because dropping the wrong row here would
+#' silently remove an Omega row instead.
 #' @param .idf model `iniDf`
 #' @param .predDf model `predDf`
-#' @param .base number of FIM rows ahead of the residual block (theta + Omega diag)
 #' @param .np FIM dimension
 #' @return integer FIM positions to drop, possibly empty
 #' @noRd
-.saemFimFixedResidSlots <- function(.idf, .predDf, .base, .np) {
+.saemFimFixedResidSlots <- function(.idf, .predDf, .np) {
   .nEp <- length(.predDf$cond)
-  if (.nEp == 0L || .np < .base + .nEp) return(integer(0))
+  if (.nEp == 0L || .np <= .nEp) return(integer(0))
+  .base <- .np - .nEp
   .base + which(vapply(seq_len(.nEp), function(.i) {
     .rows <- .idf[which(.idf$condition == paste(.predDf$cond[.i]) & !is.na(.idf$err)), ,
                   drop = FALSE]
@@ -770,7 +775,7 @@
   .nEta <- length(.etaN)
   .zeroRows <- which(apply(.H, 1L, function(.r) all(.r == 0)))
   .drop <- Reduce(union, list(which(.fx), match(.phi0Nm, .tn), .zeroRows,
-                              .saemFimFixedResidSlots(.idf, .predDf, .nth + .nEta, .np)))
+                              .saemFimFixedResidSlots(.idf, .predDf, .np)))
   .keep <- if (length(.drop) > 0L) seq_len(.np)[-.drop] else seq_len(.np)
   if (length(.keep) == 0L) return(NULL)
   .C <- suppressWarnings(tryCatch(solve(.H[.keep, .keep, drop = FALSE]), error = function(e) NULL))
@@ -791,13 +796,15 @@
     .jac <- c(.jac, .omVar[seq_len(.nEta)])
   }
   # per-endpoint additive residual: src/saem.cpp lays out one log-sigma2 slot per
-  # endpoint (in .predDf$cond order, matching resMat's rows), right after the
-  # theta+Omega-diag block -- d(sd)/d(log sigma2) = 0.5 sd.  Only a PURE additive,
+  # endpoint (in .predDf$cond order, matching resMat's rows) as the LAST nendpnt
+  # rows of nb_param -- d(sd)/d(log sigma2) = 0.5 sd.  Only a PURE additive,
   # estimated endpoint has a real slot; any other endpoint's slot was dropped above
   # (all-zero row, or fix()ed) and simply has no surviving column to select here.
+  # The base comes from .np, the same way .saemFimFixedResidSlots derives it, so
+  # the row dropped and the row read are always the same one.
   .nEp <- length(.predDf$cond)
-  if (.nEp > 0L && .np >= .nth + .nEta + .nEp) {
-    .base <- .nth + .nEta
+  if (.nEp > 0L && .np > .nEp) {
+    .base <- .np - .nEp
     for (.i in seq_len(.nEp)) {
       .sub <- .orig2sub[.base + .i]
       if (is.na(.sub)) next
@@ -892,6 +899,47 @@
   if (is.null(.vc) || !is.matrix(.vc) || !all(is.finite(.vc))) return(NULL)
   .vc
 }
+#' Reported row order for a SAEM fim/sa covariance
+#'
+#' Structural thetas in `iniDf` order, then the Omega rows, then the residual
+#' parameters in `iniDf` order, so the order does not depend on which rows the
+#' splices happened to append.  Each name is classified from `iniDf` FIRST: a
+#' theta or residual a user named `cov.tka`/`om.err` matches the Omega name
+#' prefix as well, and a name landing in two groups would duplicate its row and
+#' column and hand back a singular matrix.  Names no group claims keep their
+#' original position, at the end.
+#' @param .rn current covariance rownames
+#' @param .idf model `iniDf`
+#' @return `.rn` permuted -- the same set, each name exactly once
+#' @noRd
+.saemCovRowOrder <- function(.rn, .idf) {
+  .thOrd <- .idf$name[!is.na(.idf$ntheta) & is.na(.idf$err)]
+  .thOrd <- .thOrd[.thOrd %in% .rn]
+  .resOrd <- .idf$name[!is.na(.idf$err)]
+  .resOrd <- .resOrd[.resOrd %in% .rn]
+  .omOrd <- .rn[grepl("^om\\.|^cov\\.", .rn) & !(.rn %in% c(.thOrd, .resOrd))]
+  .ord <- unique(c(.thOrd, .omOrd, .resOrd))
+  c(.ord, .rn[!(.rn %in% .ord)])
+}
+#' Is the fitted Omega diagonal (so the Louis Omega score is valid)?
+#'
+#' `d1_loggamma2_phi1` (`src/saem.cpp`) divides element-wise by the DIAGONAL of
+#' `Gamma2_phi1`, so the analytic FIM's Omega information only describes a
+#' diagonal Omega.  Asked of the fitted matrix rather than of the names
+#' `calc.COV` built, because a `fix()`ed off-diagonal carries no `cov.` name
+#' (`.foceiOmegaPairs` drops fixed elements) yet still invalidates the score.  An
+#' unreadable Omega answers `FALSE`, which keeps the wholesale splice.
+#' @param env saem fit environment
+#' @return `TRUE` only when Omega is known to be diagonal
+#' @noRd
+.saemOmegaIsDiagonal <- function(env) {
+  .om <- tryCatch(as.matrix(env$saem$Gamma2_phi1), error = function(e) NULL)
+  if (!is.matrix(.om) || nrow(.om) == 0L || nrow(.om) != ncol(.om) ||
+        !all(is.finite(.om))) {
+    return(FALSE)
+  }
+  nrow(.om) == 1L || !any(.om[upper.tri(.om)] != 0)
+}
 #' Splice the linearized-FIM variance block into a fim/sa covariance
 #'
 #' The analytic (simulation) FIM reliably covers theta + diagonal Omega + additive
@@ -901,10 +949,11 @@
 #' `calc.COV` (blocB), which handles them via the marginal covariance.  Filling a
 #' dropped slot from linFim is the intended design, not a leak (#1022).
 #'
-#' How much is taken depends on whether Omega is diagonal, because the Louis score
-#' divides by the DIAGONAL of `Gamma2_phi1` only (`d1_loggamma2_phi1`, `src/saem.cpp`):
+#' How much is taken depends on whether Omega is diagonal
+#' (`.saemOmegaIsDiagonal`), because the Louis score divides by the DIAGONAL of
+#' `Gamma2_phi1` only (`d1_loggamma2_phi1`, `src/saem.cpp`):
 #'
-#' * a declared Omega block -- the analytic Omega information ignores the
+#' * a non-diagonal Omega -- the analytic Omega information ignores the
 #'   off-diagonals, so only the structural-theta block is kept and the WHOLE variance
 #'   block comes from linFim.
 #' * a diagonal Omega -- the analytic FIM covers every Omega variance correctly, so
@@ -924,13 +973,18 @@
   .rn <- rownames(.cov)
   .miss <- .vn[!(.vn %in% .rn)]
   if (length(.miss) == 0L) return(.cov)     # analytic already covers the variance block
-  if (!any(grepl("^cov\\.", .vn))) {
+  if (.saemOmegaIsDiagonal(env)) {
     # diagonal Omega: keep the analytic block (and its theta cross-terms) and splice
     # only the missing residual parameters
     return(.saemSpliceBlock(.cov, .vc, .miss))
   }
-  # keep the simulation structural-theta block; take the whole variance block from linFim
-  .th <- .rn[!(.rn %in% .vn) & !grepl("^om\\.|^cov\\.", .rn)]
+  # keep the simulation structural-theta block; take the whole variance block from
+  # linFim.  Which rows are thetas comes from iniDf, not from an "om./cov." name
+  # prefix: a structural theta a user happened to name cov.tka matches that prefix
+  # and would be dropped from the reported covariance entirely.
+  .idf <- env$ui$iniDf
+  .thNm <- .idf$name[!is.na(.idf$ntheta) & is.na(.idf$err)]
+  .th <- .rn[.rn %in% .thNm & !(.rn %in% .vn)]
   .fn <- c(.th, .vn)
   .full <- matrix(0, length(.fn), length(.fn), dimnames = list(.fn, .fn))
   if (length(.th) > 0L) .full[.th, .th] <- .cov[.th, .th, drop = FALSE]
@@ -988,14 +1042,7 @@
       # is consumed, but a predictable row order is still worth keeping).  The
       # variance rows are ordered the same way, so the order does not depend on
       # which rows the two splices happened to append either.
-      .rn0 <- rownames(.cov)
-      .thOrd <- .ui$iniDf$name[!is.na(.ui$iniDf$ntheta) & is.na(.ui$iniDf$err)]
-      .thOrd <- .thOrd[.thOrd %in% .rn0]
-      .omOrd <- .rn0[grepl("^om\\.|^cov\\.", .rn0)]
-      .resOrd <- .ui$iniDf$name[!is.na(.ui$iniDf$err)]
-      .resOrd <- .resOrd[.resOrd %in% .rn0]
-      .ord <- c(.thOrd, .omOrd, .resOrd)
-      .ord <- c(.ord, .rn0[!(.rn0 %in% .ord)])
+      .ord <- .saemCovRowOrder(rownames(.cov), .ui$iniDf)
       .cov <- .cov[.ord, .ord, drop = FALSE]
       # finalization needs a structural-theta cov; stash the full matrix and install
       # it after the fit is built (.saemInstallFullCov).  The control covMethod is reset

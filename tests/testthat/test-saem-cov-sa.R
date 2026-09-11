@@ -511,6 +511,74 @@ nmTest({
     expect_true(is.finite(f2$parFixedDf["add2.sd", "SE"]) && f2$parFixedDf["add2.sd", "SE"] > 0)
   })
 
+  test_that(".saemCovRowOrder never duplicates a row (theta/Omega name clash)", {
+    # The Omega rows are recognized by an "om."/"cov." name prefix, which a
+    # structural theta or residual parameter is free to match.  A name counted in
+    # two groups would appear twice in the ordering vector, and cov[.ord, .ord]
+    # would then duplicate its row AND column -- a bigger, singular matrix.
+    .idf <- data.frame(name = c("cov.tka", "tcl", "add.sd"),
+                       ntheta = c(1L, 2L, 3L),
+                       err = c(NA_character_, NA_character_, "add"),
+                       stringsAsFactors = FALSE)
+    .rn <- c("tcl", "om.eta.cl", "add.sd", "cov.tka")
+    .ord <- .saemCovRowOrder(.rn, .idf)
+    expect_equal(anyDuplicated(.ord), 0L)
+    expect_equal(sort(.ord), sort(.rn))
+    # theta (iniDf order) -> Omega -> residual; cov.tka stays a theta
+    expect_equal(.ord, c("cov.tka", "tcl", "om.eta.cl", "add.sd"))
+    # ... and a residual named om.err stays with the residuals
+    .idf2 <- data.frame(name = c("tka", "om.err"), ntheta = c(1L, 2L),
+                        err = c(NA_character_, "add"), stringsAsFactors = FALSE)
+    expect_equal(.saemCovRowOrder(c("om.eta.ka", "om.err", "tka"), .idf2),
+                 c("tka", "om.eta.ka", "om.err"))
+    # a name no group claims keeps its place, at the end
+    expect_equal(.saemCovRowOrder(c("tka", "zz"), .idf2), c("tka", "zz"))
+  })
+
+  test_that(".saemOmegaIsDiagonal asks the fitted Omega, not linFim's names", {
+    # Which splice branch runs is decided here.  It must read the fitted
+    # Gamma2_phi1: .foceiOmegaPairs drops FIXED Omega elements, so a model with a
+    # fix()ed off-diagonal produces no "cov." name in calc.COV's variance block
+    # while still breaking the Louis score's diagonal-only assumption.
+    # A plain list stands in for the fit environment ($ resolves the same way).
+    expect_true(.saemOmegaIsDiagonal(list(saem = list(Gamma2_phi1 = diag(c(0.3, 0.1))))))
+    expect_true(.saemOmegaIsDiagonal(list(saem = list(Gamma2_phi1 = matrix(0.3, 1, 1)))))
+    expect_false(.saemOmegaIsDiagonal(
+      list(saem = list(Gamma2_phi1 = matrix(c(0.3, 0.05, 0.05, 0.1), 2, 2)))))
+    # unreadable Omega -> FALSE, which keeps the (previous) wholesale splice
+    expect_false(.saemOmegaIsDiagonal(list(saem = list(Gamma2_phi1 = NULL))))
+    expect_false(.saemOmegaIsDiagonal(list()))
+    expect_false(.saemOmegaIsDiagonal(list(saem = list(Gamma2_phi1 = matrix(NA_real_, 2, 2)))))
+  })
+
+  test_that(".saemFimFixedResidSlots takes the residual block from the END of nb_param", {
+    # nb_param = nphi1 + nlambda + nendpnt with the residual slots LAST, so the
+    # base is derived from the matrix size.  Getting it from a theta+Omega row
+    # count instead would drop an Omega row when the two disagree.
+    .idf <- data.frame(name = c("tka", "add.sd", "add2.sd"),
+                       condition = c(NA_character_, "cp", "pca"),
+                       err = c(NA_character_, "add", "add"),
+                       fix = c(FALSE, TRUE, FALSE),
+                       stringsAsFactors = FALSE)
+    .predDf <- data.frame(cond = c("cp", "pca"), stringsAsFactors = FALSE)
+    # 4 theta + 3 eta + 2 endpoints: the residual slots are 8 and 9, cp is fixed
+    expect_equal(.saemFimFixedResidSlots(.idf, .predDf, 9L), 8L)
+    .idf$fix <- c(FALSE, FALSE, TRUE)
+    expect_equal(.saemFimFixedResidSlots(.idf, .predDf, 9L), 9L)
+    .idf$fix <- c(FALSE, TRUE, TRUE)
+    expect_equal(.saemFimFixedResidSlots(.idf, .predDf, 9L), c(8L, 9L))
+    .idf$fix <- c(FALSE, FALSE, FALSE)
+    expect_equal(.saemFimFixedResidSlots(.idf, .predDf, 9L), integer(0))
+    # a combined endpoint has two iniDf rows: not a single fixed additive slot
+    .idf2 <- rbind(.idf, data.frame(name = "prop.sd", condition = "cp", err = "prop",
+                                    fix = TRUE, stringsAsFactors = FALSE))
+    expect_equal(.saemFimFixedResidSlots(.idf2, .predDf, 9L), integer(0))
+    # degenerate sizes are no-ops rather than negative indices
+    expect_equal(.saemFimFixedResidSlots(.idf, .predDf, 2L), integer(0))
+    expect_equal(.saemFimFixedResidSlots(.idf, data.frame(cond = character(0)), 9L),
+                 integer(0))
+  })
+
   test_that("a fix()ed additive residual gets no fim/sa covariance row", {
     # src/saem.cpp fills an endpoint's log-sigma2 slot whether or not that
     # endpoint's residual is estimated, and only the all-zero (non-additive) and
@@ -539,6 +607,34 @@ nmTest({
     # the estimated parameters still get real SEs from the reduced matrix
     expect_true(all(sqrt(diag(f$cov))[c("tka", "tcl", "tv")] > 1e-3))
     expect_true(all(c("om.eta.ka", "om.eta.cl", "om.eta.v") %in% rownames(f$cov)))
+
+    # multi-endpoint: dropping the FIRST endpoint's slot must not move the
+    # SECOND endpoint's.  The residual block is the last nendpnt rows of
+    # nb_param, so both the drop and the read derive their base from the matrix
+    # size; taking it from a theta+Omega row count instead could disagree and
+    # report one endpoint's variance under the other's name.
+    pkpdFix <- function() {
+      ini({
+        tka <- 0.45; tcl <- 1; tv <- 3.45; tslope <- 1
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        add.sd <- fix(0.7); add2.sd <- 5
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        slope <- exp(tslope); cp <- linCmt(); pca <- slope * cp
+        cp ~ add(add.sd)
+        pca ~ add(add2.sd)
+      })
+    }
+    fm <- .nlmixr(pkpdFix, warfarin, est = "saem",
+                  control = saemControl(nBurn = 150, nEm = 200, print = 0, seed = 1L,
+                                        covMethod = "sa", nSaCov = 300))
+    skip_if_not(identical(fm$covMethod, "sa"))
+    expect_false("add.sd" %in% rownames(fm$cov))
+    expect_true("add2.sd" %in% rownames(fm$cov))
+    expect_true(is.finite(fm$parFixedDf["add2.sd", "SE"]) &&
+                  fm$parFixedDf["add2.sd", "SE"] > 0)
+    expect_true(is.na(fm$parFixedDf["add.sd", "SE"]))
   })
 
   test_that(".saemLlObsMask refuses to guess rather than mis-score (#871)", {
