@@ -45,7 +45,7 @@ nmTest({
       nlmixr(.dde_focei_mod, .dat, "focei",
              foceiControl(print = 0L, fast = TRUE, covMethod = "analytic", sigdig = 6))))
     # the augmented delayed-sensitivity solve fed the covariance without diverging
-    expect_equal(fit$covMethod, "analytic")
+    expect_equal(.covBaseName(fit$covMethod), "analytic")
     expect_true(all(is.finite(fit$parFixedDf$SE)))
     expect_true(all(fit$parFixedDf$SE > 0))
     # structural theta recovered near truth (tk=log(0.3), ta=log(2))

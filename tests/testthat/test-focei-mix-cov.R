@@ -280,9 +280,11 @@ nmTest({
     ## without this the round-trip check passes vacuously against the old code,
     ## where the SE was NA at both ends and NA == NA
     expect_true(is.finite(.se0) && .se0 > 0)
-    setCov(.f, "s")
-    expect_true("r,s" %in% names(.f$env$covList))
-    setCov(.f, "r,s")                       # served from covList, not recomputed
+    setCov(.f, "s")                         # the cached theta-only shape
+    .seS <- .f$parFixedDf["p1", "SE"]
+    expect_true(is.finite(.seS) && .seS > 0)
+    expect_true("r,s (full)" %in% names(.f$env$covList))
+    setCov(.f, "r,s (full)")                # served from covList, not recomputed
     .se1 <- .f$parFixedDf["p1", "SE"]
     expect_true(is.finite(.se1) && .se1 > 0)
     expect_equal(unname(.se1), unname(.se0), tolerance = 1e-10)
@@ -295,7 +297,7 @@ nmTest({
                    maxInnerIterations = 100L, covMethod = "r,s", calcTables = FALSE)))
     ## "r,s" is honoured rather than degraded to "r" by a non-PD S
     expect_true(isTRUE(.f$env$S.pd))
-    expect_equal(.f$covMethod, "r,s")
+    expect_equal(.f$covMethod, "r,s (full)")
     ## no structurally-zero score direction
     expect_true(all(diag(.f$env$S0) > 1e-6))
 
@@ -420,7 +422,7 @@ nmTest({
       foceiControl(print = 0, outerOpt = "lbfgsb3c", maxOuterIterations = 200L,
                    maxInnerIterations = 100L, covMethod = "analytic",
                    calcTables = FALSE)))
-    expect_false(identical(.f$covMethod, "analytic"))
+    expect_false(identical(.covBaseName(.f$covMethod), "analytic"))
     ## and the fallback still reports the proportion
     expect_true(is.finite(.f$parFixedDf["p1", "SE"]))
   })

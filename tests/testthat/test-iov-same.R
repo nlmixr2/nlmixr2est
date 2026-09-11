@@ -245,7 +245,7 @@ test_that("analytic covariance bows out for an 'omega' IOV fit", {
   .fit <- suppressWarnings(suppressMessages(
     nlmixr2est::nlmixr2(.corMod(), .d, "focei",
                         foceiControl(print = 0, covMethod = "analytic"))))
-  expect_false(identical(.fit$covMethod, "analytic"))
+  expect_false(identical(.covBaseName(.fit$covMethod), "analytic"))
   # the occasion variances are the ESTIMATED ones, not the theta's 1
   expect_true(all(diag(.fit$omega$occ) != 1))
 })
@@ -330,7 +330,7 @@ test_that("analytic covariance bows out for a FIXED single-occasion block", {
   .fit <- suppressWarnings(suppressMessages(
     nlmixr2est::nlmixr2(.f(), .d, "focei",
                         foceiControl(print = 0, covMethod = "analytic"))))
-  expect_false(identical(.fit$covMethod, "analytic"))
+  expect_false(identical(.covBaseName(.fit$covMethod), "analytic"))
   # the block is reported at the values it was fixed to
   expect_equal(unname(diag(.fit$omega$occ)), c(0.1, 0.2))
 })

@@ -515,6 +515,15 @@
     if (!is.matrix(.cur)) next
     assign(.n, .mixCovToProbScale(.cur, .mp, .p), envir = env)
   }
+  # the covFull/analytic installers cache the shape they did not install; those
+  # entries were taken before this rotation, and setCov() reinstalls them as-is
+  if (exists("covList", envir = env, inherits = FALSE)) {
+    .cl <- get("covList", envir = env)
+    for (.n in names(.cl)) {
+      if (is.matrix(.cl[[.n]])) .cl[[.n]] <- .mixCovToProbScale(.cl[[.n]], .mp, .p)
+    }
+    assign("covList", .cl, envir = env)
+  }
   .mixRefreshSeFromCov(env, .mp, .mix$idx)
   .mixWarnBoundary(.mix$pi)
   invisible(NULL)

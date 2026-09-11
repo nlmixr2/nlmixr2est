@@ -104,7 +104,7 @@ nmTest({
     expect_true(r$pd)
     expect_true(all(eigen(r$cov, symmetric = TRUE, only.values = TRUE)$values > 0))
     # installed on the fit (the PD gate passed), so getVarCov() reuses it
-    expect_identical(fit$covMethod, "analytic")
+    expect_identical(.covBaseName(fit$covMethod), "analytic")
     expect_equal(unname(fit$cov), unname(r$cov))
   })
 
@@ -176,9 +176,9 @@ nmTest({
     skip_if_not_installed("nlmixr2data")
     fit <- suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
                                    foceiControl(sigdig = 4, print = 0L, covMethod = "r,s")))
-    expect_false(identical(fit$covMethod, "analytic"))
+    expect_false(identical(.covBaseName(fit$covMethod), "analytic"))
     fit <- suppressMessages(suppressWarnings(setCov(fit, "analytic")))
-    expect_identical(fit$covMethod, "analytic")
+    expect_identical(.covBaseName(fit$covMethod), "analytic")
     expect_true(all(is.finite(sqrt(diag(fit$cov)))))
     # issue #816: the displayed $parFixed must track the installed covariance,
     # not just the numeric $parFixedDf
@@ -267,7 +267,7 @@ nmTest({
     expect_true(is.matrix(fit$cov))
     # analytic bowed out (laplace determinant is out of scope) -> the finite-difference
     # sandwich; with covFull=TRUE (default) that fallback now carries the full cov (om. rows)
-    expect_false(identical(fit$covMethod, "analytic"))
+    expect_false(identical(.covBaseName(fit$covMethod), "analytic"))
     expect_true(any(grepl("^om\\.", rownames(fit$cov))))
   })
 
@@ -290,7 +290,7 @@ nmTest({
     # FOCEI + gauss: full analytic cov (theta+sigma+Omega), close to the FD Hessian cov
     fitA <- suppressWarnings(suppressMessages(nlmixr(cm, dM3, "focei",
                                                      foceiControl(print = 0L, covMethod = "analytic", sigdig = 6))))
-    expect_identical(fitA$covMethod, "analytic")
+    expect_identical(.covBaseName(fitA$covMethod), "analytic")
     expect_true(any(grepl("^om\\.", rownames(fitA$cov))))
     expect_true(all(is.finite(sqrt(diag(fitA$cov)))))
     ## cached FD reference -- see helper-gradref.R
@@ -314,13 +314,13 @@ nmTest({
     for (dd in list(dM2, dM4)) {
       f <- suppressWarnings(suppressMessages(nlmixr(cm, dd, "focei",
                                                     foceiControl(sigdig = 4, print = 0L, covMethod = "analytic"))))
-      expect_identical(f$covMethod, "analytic")
+      expect_identical(.covBaseName(f$covMethod), "analytic")
       expect_true(any(grepl("^om\\.", rownames(f$cov))))
     }
     # FOCE (gauss) censored is in scope too: full analytic cov, theta/sigma SEs close to FD
     fF <- suppressWarnings(suppressMessages(nlmixr(cm, dM3, "focei",
                                                    foceiControl(print = 0L, covMethod = "analytic", interaction = FALSE, sigdig = 6))))
-    expect_identical(fF$covMethod, "analytic")
+    expect_identical(.covBaseName(fF$covMethod), "analytic")
     expect_true(any(grepl("^om\\.", rownames(fF$cov))))
     ## cached FD reference -- see helper-gradref.R
     seFr <- .numRef("cov-cens-m3-foce", function()
@@ -332,13 +332,13 @@ nmTest({
     fFp <- suppressWarnings(suppressMessages(nlmixr(cm, dM3, "focei",
                                                     foceiControl(sigdig = 4, print = 0L, covMethod = "analytic",
                                                                  interaction = FALSE, foceType = "foce+"))))
-    expect_identical(fFp$covMethod, "analytic")
+    expect_identical(.covBaseName(fFp$covMethod), "analytic")
     expect_true(any(grepl("^om\\.", rownames(fFp$cov))))
     # the laplace censored determinant is out of analytic scope -> the finite-difference
     # sandwich; with covFull=TRUE (default) that fallback carries the full cov (om. rows)
     fL <- suppressWarnings(suppressMessages(nlmixr(cm, dM3, "focei",
                                                    foceiControl(sigdig = 4, print = 0L, covMethod = "analytic", censOption = "laplace"))))
-    expect_false(identical(fL$covMethod, "analytic"))
+    expect_false(identical(.covBaseName(fL$covMethod), "analytic"))
     expect_true(any(grepl("^om\\.", rownames(fL$cov))))
   })
 
@@ -362,7 +362,7 @@ nmTest({
     expect_true(is.matrix(fit$cov))
     # the near-zero-prediction guard drops to the finite-difference fallback; covFull=TRUE
     # (default) makes it the full theta+sigma+Omega cov
-    expect_false(identical(fit$covMethod, "analytic"))
+    expect_false(identical(.covBaseName(fit$covMethod), "analytic"))
     expect_true(any(grepl("^om\\.", rownames(fit$cov))))
   })
 
@@ -458,7 +458,7 @@ nmTest({
       ctlA <- do.call(foceiControl, c(list(print = 0L, covMethod = "analytic", covFull = TRUE, fast = TRUE, sigdig = 6), ctlExtra))
       ctlR <- do.call(foceiControl, c(list(print = 0L, covMethod = "r", covFull = TRUE, fast = TRUE, sigdig = 6), ctlExtra))
       fitA <- suppressMessages(nlmixr2(mBox, d, est, ctlA))
-      expect_identical(fitA$covMethod, "analytic")       # analytic ran (not an FD fallback)
+      expect_identical(.covBaseName(fitA$covMethod), "analytic")       # analytic ran (not an FD fallback)
       seA <- sqrt(diag(fitA$cov))
       ## The covMethod="r" reference is a property of the model/data/theta, not of the
       ## analytic implementation under test -- cache it (see helper-gradref.R).  Only its
@@ -509,7 +509,7 @@ nmTest({
       ctlA <- foceiControl(print = 0L, covMethod = "analytic", covFull = TRUE, fast = TRUE, sigdig = 6)
       ctlR <- foceiControl(print = 0L, covMethod = "r", covFull = TRUE, fast = TRUE, sigdig = 6)
       fitA <- suppressMessages(nlmixr2(m, dat, est, ctlA))
-      expect_identical(fitA$covMethod, "analytic")       # analytic ran (not an FD fallback)
+      expect_identical(.covBaseName(fitA$covMethod), "analytic")       # analytic ran (not an FD fallback)
       seA <- sqrt(diag(fitA$cov))
       ## cached FD reference -- see helper-gradref.R
       seR <- .numRef(paste0("cov-", key, "-", est), function()
@@ -554,7 +554,7 @@ nmTest({
     chk <- function(m, coefName) {
       fit <- suppressMessages(nlmixr2(m, d, "focei",
                                       foceiControl(print = 0L, covMethod = "analytic", covFull = TRUE, fast = TRUE, sigdig = 5)))
-      expect_identical(fit$covMethod, "analytic")             # analytic ran (covariate reuse in the aug model)
+      expect_identical(.covBaseName(fit$covMethod), "analytic")             # analytic ran (covariate reuse in the aug model)
       se <- sqrt(diag(fit$cov))
       expect_true(all(is.finite(se)) && all(se > 0))          # finite, positive SEs
       expect_true(isSymmetric(unclass(fit$cov), tol = 1e-6))
@@ -580,7 +580,7 @@ nmTest({
     ctlA <- foceiControl(print = 0L, covMethod = "analytic", covFull = TRUE, fast = TRUE, sigdig = 4)
     ctlFd <- foceiControl(print = 0L, covMethod = "r", covType = "fd", covFull = TRUE, fast = TRUE, sigdig = 4)
     fitA <- suppressMessages(nlmixr2(mShared, nlmixr2data::theo_sd, "focei", ctlA))
-    expect_identical(fitA$covMethod, "analytic")           # stayed analytic (theta got its own direction)
+    expect_identical(.covBaseName(fitA$covMethod), "analytic")           # stayed analytic (theta got its own direction)
     seA <- sqrt(diag(fitA$cov))
     ## cached FD reference -- see helper-gradref.R
     seFd <- .numRef("cov-shared-eta", function()
@@ -708,7 +708,7 @@ nmTest({
     dat <- nlmixr2data::theo_sd
     fitA <- suppressWarnings(suppressMessages(nlmixr(cvm, dat, "focei",
                 foceiControl(print = 0L, covMethod = "analytic", covFull = TRUE, fast = TRUE, sigdig = 6))))
-    expect_identical(fitA$covMethod, "analytic")            # reused tv's direction, not an FD fallback
+    expect_identical(.covBaseName(fitA$covMethod), "analytic")            # reused tv's direction, not an FD fallback
     expect_true("wt_v" %in% rownames(fitA$cov))             # covariate theta present in the full cov
     .seA <- sqrt(diag(fitA$cov))
     expect_true(all(is.finite(.seA)) && all(.seA > 0))
@@ -843,7 +843,7 @@ nmTest({
     # would not, since the analytic can also run and then be rejected by its own
     # PD guard without ever setting covMethod.
     expect_false(exists(".analyticCov", envir = fit$env, inherits = FALSE))
-    expect_false(identical(fit$covMethod, "analytic"))
+    expect_false(identical(.covBaseName(fit$covMethod), "analytic"))
     # Do NOT assert the absence of "om." rows: whether the covFull FD cov is ALSO
     # installed turns on the positive-definiteness guard in
     # .foceiInstallFdFullCov(), and this deliberately over-parameterized model
@@ -936,7 +936,7 @@ nmTest({
     # the seam: iovXform="var" must NOT take the analytic path.  It falls back to a
     # finite-difference covariance -- which under covFull=TRUE can itself carry `om.`
     # rows -- so the analytic-vs-FD seam is the covMethod, not the presence of om. rows.
-    expect_false(identical(fVAR$covMethod, "analytic"))
+    expect_false(identical(.covBaseName(fVAR$covMethod), "analytic"))
   })
 
   test_that("covMethod selects the analytic-vs-FD seam and the reporting formula", {
@@ -1265,7 +1265,7 @@ nmTest({
     skip_if_not_installed("nlmixr2data")
     fit <- suppressWarnings(suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focep",
               focepControl(print = 0L, covMethod = "analytic", covFull = TRUE))))
-    expect_identical(fit$covMethod, "analytic")
+    expect_identical(.covBaseName(fit$covMethod), "analytic")
     expect_true(any(grepl("^om\\.", rownames(fit$cov))))
     .se <- sqrt(diag(fit$cov))
     expect_true(all(is.finite(.se)) && all(.se > 0))
@@ -1353,7 +1353,7 @@ nmTest({
       .f <- suppressMessages(suppressWarnings(nlmixr2(.f0$finalUi, .d, "focei",
               foceiControl(print = 0L, covMethod = "analytic", fast = fast, sigdig = 4,
                            maxOuterIterations = 0L))))
-      expect_equal(.f$covMethod, "analytic")   # a fallback would compare the wrong thing
+      expect_equal(.covBaseName(.f$covMethod), "analytic")   # a fallback would compare the wrong thing
       .i <- .odeSwapInfo()
       list(se = sqrt(diag(.f$cov)), pooled = .i$pooledSolveN - .n0,
            bailed = .foceiOuterFlagged$n - .b0, cores = .i$pooledSolveCores,

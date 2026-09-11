@@ -60,11 +60,8 @@
     .req <- switch(as.character(as.integer(.code)), "1" = "r,s", "2" = "r", "3" = "s", "")
     if (nzchar(.req)) .cm <- .req
   }
-  # native covMethod strings: r|r+||r| , s|s+||s| , and "<r>,<s>" for the sandwich.
-  .type <- if (grepl("^(r\\+?|\\|r\\|),(s\\+?|\\|s\\|)$", .cm)) "r,s"
-    else if (grepl("^(r\\+?|\\|r\\|)$", .cm)) "r"
-    else if (grepl("^(s\\+?|\\|s\\|)$", .cm)) "s"
-    else return(invisible(FALSE))   # analytic / failed / "" / boundary -> keep the native cov
+  .type <- .covFdType(.cm)
+  if (!nzchar(.type)) return(invisible(FALSE))  # analytic / failed / "" / boundary -> keep native
   .Rinv <- get(".fdFullCov", envir = .ret)
   if (!is.matrix(.Rinv) || !all(is.finite(.Rinv))) return(invisible(FALSE))
   .S <- if (exists(".fdFullS", envir = .ret, inherits = FALSE)) get(".fdFullS", envir = .ret) else NULL
@@ -78,14 +75,26 @@
   # PD guard: reject an indefinite cov (negative variances -> NaN SEs), keep the native cov.
   .ev <- suppressWarnings(eigen(.cov, symmetric = TRUE, only.values = TRUE)$values)
   if (any(diag(.cov) <= 0) || !all(is.finite(.ev)) || min(.ev) <= 0) return(invisible(FALSE))
+  # The theta-only covariance the native step produced -- and the r/s/sandwich pieces
+  # behind it -- are about to be replaced.  Cache them first so setCov() can swap back
+  # to the theta-only shape without recomputing anything (they are already in hand).
+  .nat <- lapply(stats::setNames(c("covR", "covS", "covRS"), c("r", "s", "r,s")),
+                 function(.n) {
+                   if (exists(.n, envir = .ret, inherits = FALSE)) get(.n, envir = .ret) else NULL
+                 })
+  # covMethod="s"/"r" write only e["cov"] -- the chosen covariance is not always
+  # mirrored into covR/covS/covRS -- so cache the installed native under its own type too
+  .envType <- .covFdType(.env)
+  if (nzchar(.envType) && is.null(.nat[[.envType]]) &&
+        exists("cov", envir = .ret, inherits = FALSE)) {
+    .nat[[.envType]] <- get("cov", envir = .ret)
+  }
   .ret$cov <- .cov
   # Keep the reported covMethod consistent with what was installed: routing on the
   # requested control can install a sandwich where the env still says "s".  Only rewrite
-  # when the TYPE differs, so the env's "r+"/"|r|" decorations survive when they agree.
-  .envType <- if (grepl("^(r\\+?|\\|r\\|),(s\\+?|\\|s\\|)$", .env)) "r,s"
-    else if (grepl("^(r\\+?|\\|r\\|)$", .env)) "r"
-    else if (grepl("^(s\\+?|\\|s\\|)$", .env)) "s" else ""
-  if (!identical(.type, .envType)) .ret$covMethod <- .type
+  # the TYPE when it differs, so the env's "r+"/"|r|" decorations survive when they
+  # agree; either way the name carries the " (full)" scope suffix.
+  .ret$covMethod <- .covFullName(if (identical(.type, .envType)) .env else .type)
   .ret$covR <- .Rinv
   if (!is.null(.covS)) {
     dimnames(.covS) <- dimnames(.Rinv)
@@ -95,6 +104,12 @@
     dimnames(.covRS) <- dimnames(.Rinv)
     .ret$covRS <- .covRS
   }
+  for (.n in names(.nat)) .covCacheAdd(.ret, .n, .nat[[.n]])
+  .covCacheAdd(.ret, .covFullName("r"), .Rinv)
+  .covCacheAdd(.ret, .covFullName("s"), .covS)
+  .covCacheAdd(.ret, .covFullName("r,s"), .covRS)
+  .covCacheDrop(.ret, .ret$covMethod)
+  .covCacheDrop(.ret, .covFullName(.type))
   .foceiCovCondition(.ret, .cov, .ev)
   # Report the swap: the SEs the C++ step derived from the native theta-only
   # covariance describe a matrix that is no longer $cov, so the caller must

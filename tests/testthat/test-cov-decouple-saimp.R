@@ -51,7 +51,8 @@ nmTest({
   test_that("setCov() switches any completed fit to sa/imp", {
     .f <- suppressWarnings(nlmixr2(.lc, .d, est = "focei",
                                    control = foceiControl(print = 0L)))
-    expect_equal(.f$covMethod, "r,s")
+    expect_equal(.f$covMethod, "r,s (full)")
+    .cov0 <- .f$cov
     suppressMessages(setCov(.f, "sa"))
     expect_equal(.f$covMethod, "sa")
     expect_true(.isPdFinite(.f$cov))
@@ -60,6 +61,10 @@ nmTest({
     expect_equal(.f$covMethod, "imp")
     .expectParFixedTracksCov(.f)
     # the original r,s covariance stays recoverable from the cache
+    suppressMessages(setCov(.f, "r,s (full)"))
+    expect_equal(.f$covMethod, "r,s (full)")
+    expect_equal(unname(.f$cov), unname(.cov0))
+    # ... and so does the theta-only shape the fit cached alongside it
     suppressMessages(setCov(.f, "r,s"))
     expect_equal(.f$covMethod, "r,s")
   })

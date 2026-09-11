@@ -1512,7 +1512,12 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
     assign("covList", .cl, envir = .env)
   }
   .env$cov <- .cov
-  .env$covMethod <- "analytic"
+  # the analytic assembly is always the full theta + sigma + Omega matrix
+  .env$covMethod <- .covFullName("analytic")
+  # cache the structural-theta shape so setCov(fit, "analytic") can swap to it
+  .covCacheAdd(.env, "analytic",
+               .covToReportedScale(.env, .covAnalyticScope(.env, .cov, FALSE)))
+  .covCacheDrop(.env, .env$covMethod)
   assign(".covAnalytic", .r, envir = .env)                 # getVarCov()/$cov reuse it
   # overwrite the parameter-table SEs from the analytic covariance
   .updateParFixedRefreshSeFromCov(.env, .cov)
