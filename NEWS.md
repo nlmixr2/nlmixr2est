@@ -2,6 +2,17 @@
 
 ## Bug fixes
 
+- `covMethod="analytic"` for FOCE and `foce="foce+"` no longer carries the inner
+  solver's residual score into the observed information.  The FOCE kernel uses
+  the general total-derivative form, whose last term is `Phi_eta . eta_ab`; it
+  evaluated `Phi_eta` in full, but the FOCE inner problem zeroes
+  `S_FOCE = Omega^-1 eta + sum(q0 a)` by construction, so only the interaction
+  remainder `Phi_f - q0` belongs there.  The rest was the inner tolerance
+  multiplied by a term that is not small.  The FOCE assemblers also re-solved
+  each subject's EBE before building R, where the FOCEI assembler uses the fit's
+  own; they now agree.  On an additive model, where the two methods must
+  coincide, the `foce+` and FOCEI observed informations agreed to 1.2e-2 at the
+  same EBEs and now agree to 1.1e-13 (#1056).
 - `saem` refuses a model whose random effect has no population parameter of its
   own -- added to none, or sharing one with another random effect -- naming the
   random effects, instead of fitting the model without them and then failing
