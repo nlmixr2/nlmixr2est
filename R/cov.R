@@ -616,7 +616,10 @@ setCov <- function(fit, method) {
 .setCovAnalytic <- function(fit, env, method) {
   .full <- .covIsFull(method)
   .r <- tryCatch(.foceiCovAnalyticCalc(fit), error = function(e) NULL)
-  .cov <- if (is.null(.r)) NULL else .covAnalyticScope(env, .r$cov, .full)
+  # `pd` judges the FULL matrix, which is the right gate for either shape: a
+  # submatrix of the inverse of an indefinite information can look positive
+  # definite on its own (#1055)
+  .cov <- if (is.null(.r) || !isTRUE(.r$pd)) NULL else .covAnalyticScope(env, .r$cov, .full)
   if (is.null(.cov) || !is.matrix(.cov) || !all(is.finite(.cov)) ||
         !isTRUE(.covInstallResult(env, list(cov = .cov, covMethod = method)))) {
     stop("covMethod=\"", method, "\" could not be computed for this fit; the covariance is left unchanged",

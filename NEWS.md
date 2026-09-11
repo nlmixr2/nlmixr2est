@@ -2,6 +2,13 @@
 
 ## Bug fixes
 
+- `covMethod="analytic"` judges positive definiteness on the full theta + sigma
+  + Omega matrix even when only the structural-theta block is installed.  A
+  submatrix of the inverse of an indefinite observed information can look
+  positive definite on its own, so a `covFull = FALSE` fit (or
+  `setCov(fit, "analytic")`) could install a covariance derived from a point
+  that is not a local minimum (#1055).
+
 - A focei fit reports standard errors that match its own covariance again.
   `.foceiInstallFdFullCov()` replaces `$cov` with the full theta+omega matrix
   after the C++ step has already derived `popDf$SE` from the native theta-only

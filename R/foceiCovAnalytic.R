@@ -74,8 +74,10 @@
   .cov <- if (.full) .covF else .covT
   # PD guard: an indefinite (near-boundary) inverse installs negative variances ->
   # NaN SEs.  Reject and keep the native/FD cov rather than a plausible-looking wrong one.
-  .ev <- suppressWarnings(eigen(.cov, symmetric = TRUE, only.values = TRUE)$values)
-  if (any(diag(.cov) <= 0) || !all(is.finite(.ev)) || min(.ev) <= 0) {
+  # Judge the FULL matrix even when installing the theta block -- a submatrix of the
+  # inverse of an indefinite information can look positive definite on its own (#1055).
+  .ev <- suppressWarnings(eigen(.covF, symmetric = TRUE, only.values = TRUE)$values)
+  if (any(diag(.covF) <= 0) || !all(is.finite(.ev)) || min(.ev) <= 0) {
     warning("analytic covariance is not positive definite; keeping the finite-difference covariance",
             call. = FALSE)
     return(invisible())
