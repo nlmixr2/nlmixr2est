@@ -92,6 +92,104 @@
   invisible(TRUE)
 }
 
+# --- covariance scope naming -------------------------------------------------
+# A focei covariance comes in two shapes (`foceiControl(covFull=)`): the
+# structural-theta block, and the full theta + residual sigma + Omega matrix.
+# Both are named by the estimator behind them ("r", "s", "r,s", "analytic"); the
+# full shape carries a " (full)" suffix so `$covMethod` and the covList/setCov()
+# cache can hold -- and swap between -- both at once.
+.covFullSuffix <- " (full)"
+
+#' Is `x` the name of a full (theta + sigma + Omega) covariance?
+#' @param x covariance-method name
+#' @return single logical
+#' @noRd
+.covIsFull <- function(x) {
+  length(x) == 1L && is.character(x) && !is.na(x) && endsWith(x, .covFullSuffix)
+}
+
+#' Covariance-method name without the " (full)" scope suffix
+#' @param x covariance-method name
+#' @return `x` with the suffix removed
+#' @noRd
+.covBaseName <- function(x) {
+  if (!.covIsFull(x)) return(x)
+  substr(x, 1L, nchar(x) - nchar(.covFullSuffix))
+}
+
+#' Covariance-method name carrying the " (full)" scope suffix
+#' @param x covariance-method name
+#' @return `x` with the suffix added (idempotent)
+#' @noRd
+.covFullName <- function(x) {
+  if (length(x) != 1L || !is.character(x) || is.na(x) || !nzchar(x)) return(x)
+  if (.covIsFull(x)) x else paste0(x, .covFullSuffix)
+}
+
+#' Canonical FD covariance type behind a (possibly decorated) covMethod string
+#'
+#' The native strings carry correction decorations -- `r+`/`|r|`, `s+`/`|s|`, and
+#' `"<r>,<s>"` for the sandwich -- which all name the same estimator.
+#' @param x covariance-method name (any scope suffix is ignored)
+#' @return "r,s", "r", "s", or "" when `x` is not an FD method
+#' @noRd
+.covFdType <- function(x) {
+  x <- .covBaseName(x)
+  if (length(x) != 1L || !is.character(x) || is.na(x)) return("")
+  if (grepl("^(r\\+?|\\|r\\|),(s\\+?|\\|s\\|)$", x)) return("r,s")
+  if (grepl("^(r\\+?|\\|r\\|)$", x)) return("r")
+  if (grepl("^(s\\+?|\\|s\\|)$", x)) return("s")
+  ""
+}
+
+#' Cache a computed covariance under `name` for `setCov()` to reinstall
+#'
+#' Never overwrites an existing entry; the caller is responsible for not caching
+#' the covariance that is installed as `$cov`.
+#' @param env fit environment
+#' @param name covariance-method name
+#' @param cov covariance matrix
+#' @return invisibly TRUE when an entry was added
+#' @noRd
+.covCacheAdd <- function(env, name, cov) {
+  if (!is.environment(env) || !is.matrix(cov)) return(invisible(FALSE))
+  if (length(name) != 1L || !is.character(name) || is.na(name) || !nzchar(name)) {
+    return(invisible(FALSE))
+  }
+  .cl <- if (exists("covList", envir = env, inherits = FALSE)) {
+    get("covList", envir = env)
+  } else {
+    NULL
+  }
+  if (!is.null(.cl[[name]])) return(invisible(FALSE))
+  .cl[[name]] <- cov
+  assign("covList", .cl, envir = env)
+  invisible(TRUE)
+}
+
+#' Drop `name` from the fit's covariance cache (it is the installed `$cov`)
+#' @param env fit environment
+#' @param name covariance-method name
+#' @return invisibly TRUE when an entry was dropped
+#' @noRd
+.covCacheDrop <- function(env, name) {
+  if (!is.environment(env) || !exists("covList", envir = env, inherits = FALSE)) {
+    return(invisible(FALSE))
+  }
+  .cl <- get("covList", envir = env)
+  if (length(name) != 1L || !is.character(name) || is.na(name) ||
+        is.null(.cl[[name]])) {
+    return(invisible(FALSE))
+  }
+  .cl[[name]] <- NULL
+  if (length(.cl) == 0L) {
+    rm(list = "covList", envir = env)
+  } else {
+    assign("covList", .cl, envir = env)
+  }
+  invisible(TRUE)
+}
+
 .setCov <- function(obj, ...) {
   .pt <- proc.time()
   .env <- obj
@@ -358,6 +456,20 @@
   invisible(TRUE)
 }
 
+#' Do two covariance-method names refer to the same estimator and shape?
+#'
+#' Ignores the `r+`/`|r|`/`s+`/`|s|` correction decorations the native strings
+#' carry, so `"s"` matches `"|s|"` but not `"s (full)"`.
+#' @param a,b covariance-method names
+#' @return single logical
+#' @noRd
+.covSameName <- function(a, b) {
+  if (identical(a, b)) return(TRUE)
+  .ta <- .covFdType(a)
+  nzchar(.ta) && identical(.ta, .covFdType(b)) &&
+    identical(.covIsFull(a), .covIsFull(b))
+}
+
 #' Set the covariance type based on prior calculated covariances
 #'
 #' Switches a completed fit's covariance to \code{method}.  A previously
@@ -368,6 +480,25 @@
 #' recompute engine (the latter two require a mixed-effects fit).  When
 #' \code{"sa"}/\code{"imp"}/\code{"analytic"} cannot be computed the covariance
 #' is left unchanged (it is never silently downgraded to \code{"r,s"}).
+#'
+#' @details
+#'
+#' Every focei covariance comes in two shapes (see \code{covFull} in
+#' \code{\link{foceiControl}()}), and both are named: \code{"r,s"}, \code{"r"},
+#' \code{"s"} and \code{"analytic"} are the structural-theta block, while
+#' \code{"r,s (full)"}, \code{"r (full)"}, \code{"s (full)"} and
+#' \code{"analytic (full)"} are the full theta + residual sigma + Omega matrix.
+#' A focei fit computes both and caches the one it does not install, so swapping
+#' between them costs nothing.  The shapes are not submatrices of one another on
+#' the finite-difference path -- \code{"s"} inverts the theta block of the
+#' cross-product while \code{"s (full)"} takes the theta block of the full
+#' inverse, which also carries the Omega estimation uncertainty -- so the
+#' standard errors differ.  On the analytic path the assembly is always full and
+#' \code{"analytic"} is a submatrix of \code{"analytic (full)"}, so the theta
+#' standard errors agree.
+#'
+#' \code{fit$covMethod} names the installed covariance and
+#' \code{names(fit$covList)} the cached alternatives (the fit print shows both).
 #'
 #' @param fit nlmixr2 fit
 #' @param method covariance method (see the `covMethod` argument for the control
@@ -382,41 +513,57 @@ setCov <- function(fit, method) {
   if (rxode2::rxIs(fit, "nlmixr2FitData")) {
     .env <- fit$env
   }
-  if (method == .env$covMethod) {
+  if (.covSameName(method, .env$covMethod)) {
     stop("no need to switch covariance methods, already set to '",
       method,
       "'",
       call. = FALSE
     )
   }
-  if (exists("covList", .env)) {
-    .covList <- .env$covList
-    .cov <- .covList[[method]]
-    if (!is.null(.cov)) {
-      .setCov(fit, covMethod = .cov)
-      .env$covMethod <- method
-      return(invisible(fit))
-    }
+  # already calculated: re-install from the cache -- no refit, no recompute
+  .cov <- if (exists("covList", envir = .env, inherits = FALSE)) {
+    .env$covList[[method]]
+  } else {
+    NULL
   }
+  if (!is.null(.cov)) {
+    if (!isTRUE(.covInstallResult(.env, list(cov = .cov, covMethod = method)))) {
+      stop("the cached covMethod=\"", method,
+           "\" covariance is not positive definite; the covariance is left unchanged",
+           call. = FALSE)
+    }
+    .covCacheDrop(.env, method)
+    .env$time$covariance <- (proc.time() - .pt)["elapsed"]
+    return(invisible(fit))
+  }
+  .base <- .covBaseName(method)
+  .full <- .covIsFull(method)
   # analytic: compute the EXACT analytic observed information; on any failure the
   # covariance is left UNCHANGED -- it is never silently downgraded to the "r,s"
   # finite-difference covariance (which the C++ cov chain would otherwise fall
   # back to and mislabel "analytic").
-  if (identical(method, "analytic")) {
+  if (identical(.base, "analytic")) {
     .r <- tryCatch(.foceiCovAnalyticCalc(fit), error = function(e) NULL)
-    if (is.null(.r) || !is.matrix(.r$cov) || !all(is.finite(.r$cov)) ||
-          !isTRUE(.covInstallResult(.env, list(cov = .r$cov, covMethod = "analytic")))) {
-      stop("covMethod=\"analytic\" could not be computed for this fit; the covariance is left unchanged",
+    .cov <- if (is.null(.r)) NULL else .covAnalyticScope(.env, .r$cov, .full)
+    if (is.null(.cov) || !is.matrix(.cov) || !all(is.finite(.cov)) ||
+          !isTRUE(.covInstallResult(.env, list(cov = .cov, covMethod = method)))) {
+      stop("covMethod=\"", method, "\" could not be computed for this fit; the covariance is left unchanged",
            call. = FALSE)
     }
     assign(".covAnalytic", .r, envir = .env)
+    # the assembly produced both shapes; keep the other one swappable
+    .covCacheAdd(.env, if (.full) "analytic" else .covFullName("analytic"),
+                 .covAnalyticScope(.env, .r$cov, !.full))
+    .covCacheDrop(.env, method)
+    .env$time$covariance <- (proc.time() - .pt)["elapsed"]
     return(invisible(fit))
   }
   # not cached: the finite-difference methods can be recomputed on the full model
   # at the converged estimates (.setCov refits with est="none")
-  if (method %in% c("r,s", "r", "s")) {
-    .setCov(fit, covMethod = method)
+  if (.base %in% c("r,s", "r", "s")) {
+    .setCov(fit, covMethod = .base, covFull = .full)
     .env$covMethod <- method
+    .covCacheDrop(.env, method)
     return(invisible(fit))
   }
   # sa/imp: decoupled recompute at the converged estimates (mixed-effects fits)
@@ -426,6 +573,7 @@ setCov <- function(fit, method) {
       stop("covMethod=\"", method, "\" could not be computed for this fit; the covariance is left unchanged",
            call. = FALSE)
     }
+    .covCacheDrop(.env, method)
     return(invisible(fit))
   }
   stop("different covariance types have not been calculated",

@@ -12,24 +12,66 @@
 #' Install the stashed analytic covariance as `fit$cov` (the native path fills
 #' only the theta block).  No-op on the FD fallback (which foceiCalcR already
 #' warned about).  `covFull=TRUE` (default) installs the full theta+sigma+Omega
-#' matrix (identical theta SEs); `covFull=FALSE` installs the structural-theta
-#' submatrix (NONMEM-matched theta cov, backwards-compatible shape) -- the assembly
-#' is always full.
+#' matrix as `covMethod="analytic (full)"`; `covFull=FALSE` installs the
+#' structural-theta submatrix (NONMEM-matched theta cov, backwards-compatible
+#' shape) as `covMethod="analytic"` -- the assembly is always full, so the theta
+#' SEs agree.  Both shapes are cached, so `setCov()` swaps between them without
+#' reassembling.
 #' @param .ret focei fit environment
 #' @noRd
+#' Structural + residual theta names of an analytic covariance
+#'
+#' Prefers the enumeration the assembly recorded (`.analyticThetaNames`); falls
+#' back to the free thetas in the fit's `iniDf` (the same set) for an
+#' environment that no longer carries it.
+#' @param env fit environment
+#' @param cov analytic covariance (named)
+#' @return character vector of names present in `cov`
+#' @noRd
+.covAnalyticThetaNames <- function(env, cov) {
+  .th <- NULL
+  if (is.environment(env) && exists(".analyticThetaNames", envir = env, inherits = FALSE)) {
+    .th <- get(".analyticThetaNames", envir = env)
+  }
+  if (is.null(.th)) {
+    .ini <- tryCatch(as.data.frame(env$ui$iniDf), error = function(e) NULL)
+    if (is.null(.ini)) return(character(0))
+    .fix <- if (is.null(.ini$fix)) rep(FALSE, nrow(.ini)) else .ini$fix
+    .fix[is.na(.fix)] <- FALSE
+    .th <- .ini$name[!is.na(.ini$ntheta) & !.fix]
+  }
+  .th[.th %in% rownames(cov)]
+}
+
+#' The requested shape of an analytic covariance
+#'
+#' The analytic assembly is always full; the theta-only shape is its structural +
+#' residual theta submatrix (a submatrix of the inverse, so the theta SEs match
+#' the full matrix -- unlike the FD path, which inverts the theta submatrix).
+#' @param env fit environment
+#' @param cov full analytic covariance
+#' @param full `TRUE` for the full matrix, `FALSE` for the theta block
+#' @return the covariance, or `NULL` when the theta block cannot be identified
+#' @noRd
+.covAnalyticScope <- function(env, cov, full) {
+  if (!is.matrix(cov)) return(NULL)
+  if (full) return(cov)
+  .th <- .covAnalyticThetaNames(env, cov)
+  if (length(.th) == 0L) return(NULL)
+  cov[.th, .th, drop = FALSE]
+}
+
 .foceiInstallAnalyticCov <- function(.ret) {
   # only covMethod="r" installs the analytic R^-1; "r,s"/"s" keep the native
   # sandwich / S-matrix cov (which the analytic R already fed via covR).
   if (!identical(as.integer(rxode2::rxGetControl(.ret$ui, "covMethod", 2L)), 2L)) return(invisible())
   if (!exists(".analyticCov", envir = .ret, inherits = FALSE)) return(invisible())
-  .cov <- get(".analyticCov", envir = .ret)
-  if (!is.matrix(.cov) || !all(is.finite(.cov))) return(invisible())
+  .covF <- get(".analyticCov", envir = .ret)
+  if (!is.matrix(.covF) || !all(is.finite(.covF))) return(invisible())
   .full <- isTRUE(rxode2::rxGetControl(.ret$ui, "covFull", TRUE))
-  if (!.full && exists(".analyticThetaNames", envir = .ret, inherits = FALSE)) {
-    .th <- get(".analyticThetaNames", envir = .ret)          # structural cov-theta block only
-    .th <- .th[.th %in% rownames(.cov)]
-    if (length(.th) > 0L) .cov <- .cov[.th, .th, drop = FALSE]
-  }
+  .covT <- .covAnalyticScope(.ret, .covF, FALSE)
+  if (is.null(.covT)) .full <- TRUE                          # no theta block -> only one shape
+  .cov <- if (.full) .covF else .covT
   # PD guard: an indefinite (near-boundary) inverse installs negative variances ->
   # NaN SEs.  Reject and keep the native/FD cov rather than a plausible-looking wrong one.
   .ev <- suppressWarnings(eigen(.cov, symmetric = TRUE, only.values = TRUE)$values)
@@ -39,7 +81,12 @@
     return(invisible())
   }
   .ret$cov <- .cov                       # analytic-tier cov already carries dimnames
-  .ret$covMethod <- "analytic"           # report the analytic observed information (not "r")
+  # report the analytic observed information (not "r"), naming the installed shape
+  .ret$covMethod <- if (.full) .covFullName("analytic") else "analytic"
+  # both shapes are in hand; cache the one not installed so setCov() can swap to it
+  .covCacheAdd(.ret, "analytic", .covT)
+  .covCacheAdd(.ret, .covFullName("analytic"), .covF)
+  .covCacheDrop(.ret, .ret$covMethod)
   # covFull=TRUE swaps in a larger matrix than C++ foceiFinalizeTables saw, so its
   # condition numbers (computed from the theta-only native cov) are stale -- recompute.
   if (.full) .foceiCovCondition(.ret, .cov, .ev)
@@ -2623,8 +2670,16 @@ foceiCovAnalytic <- function(fit) {
   .ret <- tryCatch(.foceiCovAnalyticCalc(fit), error = .foceiAnalyticErrWarn(2L))
   assign(".covAnalytic", .ret, envir = .env)   # cache (incl. NULL) -- do not recompute
   if (!is.null(.ret) && is.matrix(.ret$cov)) {
-    .env$cov <- .ret$cov                        # install so getVarCov()/$cov reuse it
-    .env$covMethod <- "analytic"                # report the analytic observed information
+    .full <- isTRUE(tryCatch(rxode2::rxGetControl(.env$ui, "covFull", TRUE),
+                             error = function(e) TRUE))
+    .covT <- .covAnalyticScope(.env, .ret$cov, FALSE)
+    if (is.null(.covT)) .full <- TRUE
+    .env$cov <- if (.full) .ret$cov else .covT  # install so getVarCov()/$cov reuse it
+    # report the analytic observed information, naming the installed shape
+    .env$covMethod <- if (.full) .covFullName("analytic") else "analytic"
+    .covCacheAdd(.env, "analytic", .covT)       # the other shape stays swappable
+    .covCacheAdd(.env, .covFullName("analytic"), .ret$cov)
+    .covCacheDrop(.env, .env$covMethod)
   }
   .ret
 }
