@@ -827,11 +827,45 @@
   dimnames(.cm) <- list(.tn, .tn)
   .miss <- .miss[.miss %in% .tn]
   if (length(.miss) == 0L) return(.cov)
+  .saemSpliceBlock(.cov, .cm, .miss)
+}
+#' Append parameters a SAEM covariance does not have as their own block
+#'
+#' Both splices add the parameters the analytic FIM could not supply from the
+#' linearized FIM block-diagonally, with zero cross-terms to the rows already
+#' present (the linearized FIM is itself block-diagonal between the fixed-effect
+#' and variance blocks, so no cross-term is discarded within a block).
+#' @param .cov covariance to extend
+#' @param .src covariance carrying the missing rows
+#' @param .miss names to splice in (all present in `.src`)
+#' @return `.cov` extended by the `.miss` block
+#' @noRd
+.saemSpliceBlock <- function(.cov, .src, .miss) {
+  .rn <- rownames(.cov)
   .fn <- c(.rn, .miss)
   .full <- matrix(0, length(.fn), length(.fn), dimnames = list(.fn, .fn))
   .full[.rn, .rn] <- .cov
-  .full[.miss, .miss] <- .cm[.miss, .miss, drop = FALSE]
+  .full[.miss, .miss] <- .src[.miss, .miss, drop = FALSE]
   .full
+}
+#' The linearized FIM's variance block (blocB), or `NULL`
+#'
+#' `calc.COV()` returns the structural-theta covariance with the inverted
+#' variance block (all Omega variances/covariances + residual parameters) as its
+#' `varCov` attribute.  This is the guarded accessor: `NULL` whenever `covFull`
+#' is off, the linearization fails, or the block is missing/non-finite.
+#' @param env saem fit environment
+#' @return named variance covariance matrix, or `NULL`
+#' @noRd
+.saemLinFimVarBlock <- function(env) {
+  if (!isTRUE(rxode2::rxGetControl(env$ui, "covFull", TRUE))) return(NULL)
+  .saem <- env$saem
+  attr(.saem, "env") <- env
+  .cm <- suppressWarnings(tryCatch(calc.COV(.saem), error = function(e) NULL))
+  if (is.null(.cm) || inherits(.cm, "try-error")) return(NULL)
+  .vc <- attr(.cm, "varCov")
+  if (is.null(.vc) || !is.matrix(.vc) || !all(is.finite(.vc))) return(NULL)
+  .vc
 }
 #' Splice the linearized-FIM variance block into a fim/sa covariance
 #'
@@ -859,26 +893,16 @@
 #' @return covariance with the linFim variance block spliced in, or `.cov` unchanged
 #' @noRd
 .saemSpliceLinFimVar <- function(.cov, env) {
-  if (!isTRUE(rxode2::rxGetControl(env$ui, "covFull", TRUE))) return(.cov)
-  .saem <- env$saem
-  attr(.saem, "env") <- env
-  .cm <- suppressWarnings(tryCatch(calc.COV(.saem), error = function(e) NULL))
-  if (is.null(.cm) || inherits(.cm, "try-error")) return(.cov)
-  .vc <- attr(.cm, "varCov")
-  if (is.null(.vc) || !is.matrix(.vc) || !all(is.finite(.vc))) return(.cov)
+  .vc <- .saemLinFimVarBlock(env)
+  if (is.null(.vc)) return(.cov)
   .vn <- colnames(.vc)
   .rn <- rownames(.cov)
   .miss <- .vn[!(.vn %in% .rn)]
   if (length(.miss) == 0L) return(.cov)     # analytic already covers the variance block
   if (!any(grepl("^cov\\.", .vn))) {
     # diagonal Omega: keep the analytic block (and its theta cross-terms) and splice
-    # only the missing residual parameters, as a block, the same way
-    # .saemSplicePhi0Theta splices a missing theta
-    .fn <- c(.rn, .miss)
-    .full <- matrix(0, length(.fn), length(.fn), dimnames = list(.fn, .fn))
-    .full[.rn, .rn] <- .cov
-    .full[.miss, .miss] <- .vc[.miss, .miss, drop = FALSE]
-    return(.full)
+    # only the missing residual parameters
+    return(.saemSpliceBlock(.cov, .vc, .miss))
   }
   # keep the simulation structural-theta block; take the whole variance block from linFim
   .th <- .rn[!(.rn %in% .vn) & !grepl("^om\\.|^cov\\.", .rn)]
