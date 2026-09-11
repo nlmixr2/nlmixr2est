@@ -3443,9 +3443,37 @@ public:
       // the SA floor above is per-element, so it can pull a pooled group apart
       // again; restore the constraint after it
       poolOmegaGroups(Gamma2_phi1);
-      // Split-ETA components sharing an omegaShare group are pooled into a single BSV term
-      // (law of total variance) for *reporting only*, into Gamma2_phi1Report; the live
-      // Gamma2_phi1 feeding IGamma2_phi1/D1Gamma21 stays untouched so tcl1/tcl2 stay uncoupled.
+      // "msaem" split-ETA columns: generic Gmin/minv floor (1e-20) isn't tight enough to stop
+      // IGamma2_phi1 exploding and locking MCMC proposals to zero; floor at a fraction of ini() variance instead.
+      if (nMix > 1 && mixSampleMethod == 1 && omegaShareSubpop.n_elem == (unsigned int)nphi1) {
+        for (unsigned int c = 0; c < (unsigned int)nphi1; c++) {
+          if (omegaShareSubpop(c) < 1) continue;
+          double floorVar = 0.1 * Gamma2_phi1Init(c, c);
+          if (std::isfinite(floorVar) && floorVar > 0 && Gamma2_phi1(c, c) < floorVar) {
+            Gamma2_phi1(c, c) = floorVar;
+          }
+        }
+      }
+      vec Gmin=minv(i1);
+      uvec jDmin=find(Gamma2_phi1.diag()<Gmin);
+      for(unsigned int jm=0; jm<jDmin.n_elem; jm++) {
+        Gamma2_phi1(jDmin(jm),jDmin(jm))=Gmin(jDmin(jm));
+      }
+      // fix before diagonals are enforced
+      if (Gamma2_phi1fixed==1 && kiter > (unsigned int)(nb_fixOmega)) {
+        Gamma2_phi1.elem(Gamma2_phi1fixedIx) = Gamma2_phi1fixedValues(Gamma2_phi1fixedIx);
+      }
+
+      if (kiter<=(unsigned int)(nb_correl)) {
+        Gamma2_phi1 = diagmat(Gamma2_phi1);
+      }
+
+      // Reporting snapshot.  Taken AFTER the floors, the fix()ed-value restore and
+      // the diagonal enforcement (#1073) so a fix()ed or floored variance reports the
+      // value actually used, not the raw M-step estimate.
+      // Split-ETA components sharing an omegaShare group are then pooled into a single
+      // BSV term (law of total variance) for *reporting only*; the live Gamma2_phi1
+      // feeding IGamma2_phi1/D1Gamma21 stays untouched so tcl1/tcl2 stay uncoupled.
       Gamma2_phi1Report = Gamma2_phi1;
       if (nMix > 1 && omegaShare.n_elem == (unsigned int)nphi1) {
         unsigned int max_group = 0;
@@ -3499,30 +3527,6 @@ public:
             }
           }
         }
-      }
-      // "msaem" split-ETA columns: generic Gmin/minv floor (1e-20) isn't tight enough to stop
-      // IGamma2_phi1 exploding and locking MCMC proposals to zero; floor at a fraction of ini() variance instead.
-      if (nMix > 1 && mixSampleMethod == 1 && omegaShareSubpop.n_elem == (unsigned int)nphi1) {
-        for (unsigned int c = 0; c < (unsigned int)nphi1; c++) {
-          if (omegaShareSubpop(c) < 1) continue;
-          double floorVar = 0.1 * Gamma2_phi1Init(c, c);
-          if (std::isfinite(floorVar) && floorVar > 0 && Gamma2_phi1(c, c) < floorVar) {
-            Gamma2_phi1(c, c) = floorVar;
-          }
-        }
-      }
-      vec Gmin=minv(i1);
-      uvec jDmin=find(Gamma2_phi1.diag()<Gmin);
-      for(unsigned int jm=0; jm<jDmin.n_elem; jm++) {
-        Gamma2_phi1(jDmin(jm),jDmin(jm))=Gmin(jDmin(jm));
-      }
-      // fix before diagonals are enforced
-      if (Gamma2_phi1fixed==1 && kiter > (unsigned int)(nb_fixOmega)) {
-        Gamma2_phi1.elem(Gamma2_phi1fixedIx) = Gamma2_phi1fixedValues(Gamma2_phi1fixedIx);
-      }
-
-      if (kiter<=(unsigned int)(nb_correl)) {
-        Gamma2_phi1 = diagmat(Gamma2_phi1);
       }
 
       if (nphi0>0) {

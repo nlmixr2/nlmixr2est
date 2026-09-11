@@ -13,6 +13,11 @@
   own; they now agree.  On an additive model, where the two methods must
   coincide, the `foce+` and FOCEI observed informations agreed to 1.2e-2 at the
   same EBEs and now agree to 1.1e-13 (#1056).
+- `saem` reports a `fix()`ed eta variance as the value that was fixed.  The
+  reporting snapshot of the omega M-step was taken before the variance floors,
+  the `fix()`ed-value restore and the diagonal enforcement, so `fit$omega`
+  carried the unconstrained M-step estimate even though the sampler had used
+  the fixed value (#1073).
 - `saem` refuses a model whose random effect has no population parameter of its
   own -- added to none, or sharing one with another random effect -- naming the
   random effects, instead of fitting the model without them and then failing
