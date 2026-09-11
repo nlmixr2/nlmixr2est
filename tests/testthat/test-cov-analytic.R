@@ -1037,9 +1037,11 @@ nmTest({
   # comparing a FOCEI fit's R against a gold built at a DIFFERENT (FOCE) fit's estimates -- a
   # convergence confound, not an assembly defect.  At one common point the FOCEI and FOCE
   # analytic R agree to 1.3e-5 with identical eigenvalues, and both reproduce the gold.  The
-  # residual FOCEI error that did survive (3.9e-3) was the stored EBEs solving Phi_eta = 0 only
-  # to the fit's inner tolerance, which the envelope/Schur data term assumes exactly; the engine
-  # now re-solves them and the error drops to 7.7e-5.  This is the acceptance gate for that.
+  # residual FOCEI error that did survive was the stored EBEs solving Phi_eta = 0 only to the
+  # fit's inner tolerance, which the envelope/Schur data term assumes exactly.  That is an
+  # estimation-side gap and the covariance does not paper over it by re-optimizing the fit's
+  # EBEs (PR #1060); the gold below re-solves at every perturbed psi, so the agreement this
+  # asserts is the acceptance gate at a sigdig where the two are close.
   #
   # 12 subjects (theo_sd unreplicated) do not identify the off-diagonal, so a couple of SEs are
   # NaN in BOTH the analytic and the gold -- as in the FOCE gold test below, the criterion is
@@ -1292,8 +1294,14 @@ nmTest({
   test_that("est='focep' installs the full analytic covariance", {
     skip_on_cran()
     skip_if_not_installed("nlmixr2data")
+    # sigdig is pinned because the DEFAULT (3) does not converge here: bobyqa stalls at
+    # objf 121.560 against 116.804 at sigdig 4+, and the fit says so ("last objective
+    # function was not at minimum").  The observed information there has a real negative
+    # eigenvalue, so the PD gate refuses to install it -- correctly.  This test is about the
+    # analytic route being reachable from est="focep", not about that optimizer stall
+    # (#1069), so it asks at a point that IS a minimum.
     fit <- suppressWarnings(suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focep",
-              focepControl(print = 0L, covMethod = "analytic", covFull = TRUE))))
+              focepControl(print = 0L, covMethod = "analytic", covFull = TRUE, sigdig = 4))))
     expect_identical(.covBaseName(fit$covMethod), "analytic")
     expect_true(any(grepl("^om\\.", rownames(fit$cov))))
     .se <- sqrt(diag(fit$cov))

@@ -346,15 +346,14 @@
   .idCode <- if (is.factor(ids)) as.integer(ids) else match(ids, sort(unique(ids)))
   R <- matrix(0, np, np)
   if (.foce) {
-    # FOCE cov: the per-subject eta=0 population solve + EBE re-solve + 3rd-order Shi FD3 stay
-    # in R (inherently per-subject), then ONE OpenMP C++ call (foceiRAllFoceFR_) sums the
+    # FOCE cov: the per-subject eta=0 population solve + 3rd-order Shi FD3 stay in R
+    # (inherently per-subject), then ONE OpenMP C++ call (foceiRAllFoceFR_) sums the
     # observed information over subjects.  The frozen-R0 sensitivities are resolved per subject
     # (nonmem: aRe/ARe=0, aRc/ARc/R0 from E0; foce+: all from the eta-hat solve E).
     nsub <- length(ids); Elist <- vector("list", nsub); E0list <- vector("list", nsub)
     eta0list <- vector("list", nsub); nobsAll <- integer(nsub)
     # BATCHED (f,R) FOCE/foce+ solves: the eta=0 population solve (nonmem frozen R0) is batched,
-    # the EBE re-solve stays per-subject (Newton), then ONE batched SolveAllFD3 delivers f/a/A/Ath
-    # AND R/aR/AR for all subjects (withR=FALSE: FOCE reads R/aR/AR from the base solve + Ath, but
+    # then ONE batched SolveAllFD3 delivers f/a/A/Ath AND R/aR/AR for all subjects (withR=FALSE: FOCE reads R/aR/AR from the base solve + Ath, but
     # never AthR).  foce+ (foceType=1) keeps the live R (no eta=0 solve).  Per-subject Shi fallback.
     .obsAll <- lapply(seq_len(nsub), function(i) { .s <- .byId[[as.character(.idCode[i])]]
       if (is.null(.s) || nrow(.s) == 0L) NULL else .s[.s$EVID == 0, , drop = FALSE] })
@@ -549,9 +548,8 @@
   .idCode <- if (is.factor(ids)) as.integer(ids) else match(ids, sort(unique(ids)))
   # Batch the 3rd-order solve across ALL subjects (FOCEI *and* FOCE, no IOV rescale) so both take
   # the IDENTICAL method and both get the speedup (1 + 2*neta population solves vs the per-subject
-  # Shi's O(nsub*neta)).  CORRECTED FOCE freezes R0 at the eta=0 population solve (batched) and
-  # re-solves each EBE (per-subject Newton, censoring-aware) to S_FOCE=0; that eta0 matrix feeds
-  # the batched FD3.  foce+ keeps the live R (no eta=0 solve).  Per-subject Shi is the fallback.
+  # Shi's O(nsub*neta)).  CORRECTED FOCE freezes R0 at the eta=0 population solve (batched);
+  # foce+ keeps the live R (no eta=0 solve).  Per-subject Shi is the fallback.
   .obsAll <- lapply(seq_along(ids), function(i) { .s <- .byId[[as.character(.idCode[i])]]
     if (is.null(.s) || nrow(.s) == 0L) NULL else .s[.s$EVID == 0, , drop = FALSE] })
   if (any(vapply(.obsAll, is.null, logical(1L)))) return(NULL)   # unmatched subject -> caller FD
@@ -2391,8 +2389,8 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
 }
 
 #' Base subject solve: `f` plus the 1st/2nd analytic sensitivities (`a`, `A`), no
-#' 3rd-order Shi tensor.  Shared by [.foceiAnalyticSolveSubjectFD3] (which adds `Ath`)
-#' and the FOCE EBE re-solve (which needs only `a`/`A`).  Muffles benign solver
+#' 3rd-order Shi tensor.  Shared by [.foceiAnalyticSolveSubjectFD3] (which adds `Ath`),
+#' the AGQ node solves and the VAE decoder.  Muffles benign solver
 #' warnings (a real error returns `NULL` -> FD fallback); the nrow guard bails when an
 #' EVID==2/covariate-update row shares an obs timestamp (would misalign f against y).
 #' @noRd
