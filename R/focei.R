@@ -3590,6 +3590,32 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
 }
 
 .thetaReset <- new.env(parent = emptyenv())
+#' Warn when a "jump" fit could not install the event-sensitivity shape
+#'
+#' A model whose `f()`/`alag()`/`rate()`/`dur()` depends on an eta gets that
+#' eta's sensitivity ONLY from rxode2's jump injection.  When the shape does
+#' not install the sensitivity is exactly zero and nothing errors: the eta
+#' never leaves its initial value while its omega stays finite, which is the
+#' nlmixr2est#1016 symptom.  That came from a rehydrated inner model built in
+#' "fd" mode; the mode now rides with the cached bundle, so this is a tripwire
+#' -- say it rather than return a silently wrong fit.
+#'
+#' Silent when the model has no dosing etas (nothing depends on the jumps) or
+#' when the shape did install.
+#'
+#' @param esLoaded What `rxEventSensLoadModel()` returned.
+#' @param model The focei model bundle (for `eventEtaAll`).
+#' @return invisibly `TRUE` when it warned, `FALSE` otherwise
+#' @noRd
+.foceiEventSensWarn <- function(esLoaded, model) {
+  if (isTRUE(esLoaded)) return(invisible(FALSE))
+  if (!isTRUE(any(model$eventEtaAll == 1L))) return(invisible(FALSE))
+  warning("dosing-parameter (f/alag) event sensitivities not loaded",
+    call. = FALSE
+  )
+  invisible(TRUE)
+}
+
 #' Internal focei fit function in R
 #'
 #' @param .ret Internal focei environment
@@ -3630,19 +3656,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       rxode2::rxEventSensLoadModel(.ret$model$inner),
       error = function(e) FALSE
     )
-    ## A model whose f()/alag()/rate()/dur() depends on an eta gets that eta's
-    ## sensitivity ONLY from the jump injection.  If the shape does not install,
-    ## the sensitivity is exactly zero and nothing errors: the eta never leaves
-    ## its initial value while its omega stays finite (#1016).  That was a
-    ## rehydrated inner model built in "fd" mode; the mode now rides with the
-    ## cached bundle, so this is a tripwire -- say it instead of returning a
-    ## silently wrong fit.
-    if (!isTRUE(.esLoaded) &&
-      isTRUE(any(.ret$model$eventEtaAll == 1L))) {
-      warning("dosing-parameter (f/alag) event sensitivities not loaded",
-        call. = FALSE
-      )
-    }
+    .foceiEventSensWarn(.esLoaded, .ret$model)
     if (isTRUE(.esLoaded)) {
       ## Tell the C++ core which model the event path is now bound to.  handle_evid
       ## sizes its scratch from the effective neq but calls the INSTALLED model's
