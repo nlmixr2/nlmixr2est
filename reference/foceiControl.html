@@ -119,14 +119,22 @@
 <span>  fo <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  covTryHarder <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  outerOpt <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"bobyqa"</span>, <span class="st">"nlminb"</span>, <span class="st">"lbfgsb3c"</span>, <span class="st">"L-BFGS-B"</span>, <span class="st">"mma"</span>, <span class="st">"lbfgsbLG"</span>, <span class="st">"slsqp"</span>,</span>
-<span>    <span class="st">"uobyqa"</span>, <span class="st">"newuoa"</span><span class="op">)</span>,</span>
+<span>    <span class="st">"uobyqa"</span>, <span class="st">"newuoa"</span>, <span class="st">"trust"</span><span class="op">)</span>,</span>
 <span>  innerOpt <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"trust"</span>, <span class="st">"n1qn1"</span>, <span class="st">"BFGS"</span><span class="op">)</span>,</span>
+<span>  innerHessian <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"focei"</span>, <span class="st">"conditional"</span><span class="op">)</span>,</span>
 <span>  hessianMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"fd"</span>, <span class="st">"bfgs"</span>, <span class="st">"sr1"</span>, <span class="st">"bofill"</span><span class="op">)</span>,</span>
 <span>  trustConf <span class="op">=</span> <span class="fl">0.975</span>,</span>
 <span>  trustRinit <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  trustRmax <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  trustFterm <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  trustMterm <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  outerTrustHessian <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"analytic"</span>, <span class="st">"bfgs"</span>, <span class="st">"fd"</span><span class="op">)</span>,</span>
+<span>  outerTrustRinit <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  outerTrustRmax <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  outerTrustFterm <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  outerTrustMterm <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  outerTrustRelStep <span class="op">=</span> <span class="fl">0.001</span>,</span>
+<span>  outerTrustRestarts <span class="op">=</span> <span class="fl">3L</span>,</span>
 <span>  rhobeg <span class="op">=</span> <span class="fl">0.2</span>,</span>
 <span>  rhoend <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  npt <span class="op">=</span> <span class="cn">NULL</span>,</span>
@@ -768,20 +776,14 @@ instead of FOCE (FALSE)</p></dd>
     residual variance R in the inner objective; ignored for FOCEi.  Either
     <code>"nonmem"</code> (default) or <code>"foce+"</code>:</p>
 <p></p><ul><li><p><code>"nonmem"</code> freezes R at the <code>eta = 0</code> population
-    prediction and holds it constant across the inner optimization, matching
-    NONMEM's FOCE.  Advantage: reproduces NONMEM FOCE objective and standard
-    errors, and an ODE model agrees with its closed-form (<code>linCmt</code>)
-    equivalent.  Disadvantage: R ignores the individual (conditional)
-    heteroscedasticity, so it can be slightly less accurate than
-    <code>"foce+"</code> for proportional/combined error.</p></li>
+    prediction and holds it constant across the inner optimization. This
+    follows NONMEM's residual-variance convention for FOCE without interaction.</p></li>
 <li><p><code>"foce+"</code> evaluates R at the current conditional
     <code>eta</code> (the live variance), keeping the truncated FOCE
-    inner gradient.  Advantage: uses the conditional variance and
-    is a bit more accurate than NONMEM's FOCE in some cases.
-    Disadvantage: does not match NONMEM FOCE.  This was the FOCE
-    behavior in <span class="pkg">nlmixr2est</span> 6.0.1 and earlier. This does not
-    use the gradient of <code>eta</code> like the full <code>focei</code>
-    method, so it is not as accurate as <code>focei</code>.</p></li>
+    inner score, which is refined before evaluating the marginal objective.
+    It retains the live-variance convention used in <span class="pkg">nlmixr2est</span> 6.0.1
+    and earlier. It differs from NONMEM's FOCE without interaction and
+    omits the variance derivatives included in FOCEI.</p></li>
 </ul></dd>
 
 
@@ -848,7 +850,13 @@ the Hessian on the unscaled parameter space.</p></dd>
 
 
 <dt id="arg-outeropt">outerOpt<a class="anchor" aria-label="anchor" href="#arg-outeropt"></a></dt>
-<dd><p>optimization method for the outer problem</p></dd>
+<dd><p>optimization method for the outer problem
+Fast <code>"nlminb"</code> fits automatically use the analytical outer Hessian
+for supported Gaussian FOCE/FOCE+/FOCEI/AGQ models, restarting with gradients only if
+curvature is unavailable.  <code>"trust"</code> is a trust-region Newton method
+(<span class="pkg">RcppTrust</span>) built on that same Hessian; see
+<code>outerTrustHessian</code>.  It is unbounded, so a trial point outside the
+box is reported as an infinite objective and the region shrinks instead.</p></dd>
 
 
 <dt id="arg-inneropt">innerOpt<a class="anchor" aria-label="anchor" href="#arg-inneropt"></a></dt>
@@ -865,6 +873,15 @@ the Hessian on the unscaled parameter space.</p></dd>
     costs 2*neta inner solves each time, while `"n1qn1"` builds it once as a
     warm-start seed and corrects it with its own quasi-Newton updates.  On
     everything else `"trust"` is typically the faster of the two.</p></dd>
+
+
+<dt id="arg-innerhessian">innerHessian<a class="anchor" aria-label="anchor" href="#arg-innerhessian"></a></dt>
+<dd><p>Inner optimization curvature: `"focei"` (default) or
+`"conditional"`. Full conditional curvature requires fast Gaussian FOCEI.
+Inner trust uses it at each trial; n1qn1 uses it with `warm="calc"`.
+Value, gradient and full curvature share one sensitivity solve.
+The marginal objective's FOCEI curvature is unchanged.  It is not
+supported with registered external likelihood contributions.</p></dd>
 
 
 <dt id="arg-hessianmethod">hessianMethod<a class="anchor" aria-label="anchor" href="#arg-hessianmethod"></a></dt>
@@ -946,6 +963,48 @@ Deliberately NOT derived from `epsilon` (`"n1qn1"`'s own, unrelated
 criterion to a value picked for a different optimizer is exactly the
 coupling these parameters exist to remove. Has no effect unless
 `innerOpt="trust"`.</p></dd>
+
+
+<dt id="arg-outertrusthessian">outerTrustHessian<a class="anchor" aria-label="anchor" href="#arg-outertrusthessian"></a></dt>
+<dd><p>Curvature source for <code>outerOpt="trust"</code>.
+<code>"auto"</code> (default) uses the analytical outer Hessian when
+<code>fast=TRUE</code> makes it available and the damped-BFGS update otherwise,
+and falls back to that update if the Hessian is refused mid-fit.
+<code>"analytic"</code> requires <code>fast=TRUE</code>.  <code>"bfgs"</code> is the
+damped BFGS update (Nocedal &amp; Wright, Numerical Optimization 2nd ed.,
+Procedure 18.2) built from consecutive gradients, so it adds no
+evaluations.  <code>"fd"</code> differences the outer gradient, costing one
+extra population gradient per parameter per iteration.</p></dd>
+
+
+<dt id="arg-outertrustrinit-outertrustrmax">outerTrustRinit, outerTrustRmax<a class="anchor" aria-label="anchor" href="#arg-outertrustrinit-outertrustrmax"></a></dt>
+<dd><p>Initial and maximum trust-region
+radius for <code>outerOpt="trust"</code>, in the scaled-parameter space the
+outer problem optimizes in.  <code>NULL</code> (default) derives
+<code>outerTrustRinit</code> from <code><a href="https://rdrr.io/pkg/minqa/man/bobyqa.html" class="external-link">minqa::bobyqa()</a></code>'s own default-rhobeg
+formula and <code>outerTrustRmax</code> as <code>8 * outerTrustRinit</code>.</p></dd>
+
+
+<dt id="arg-outertrustfterm-outertrustmterm">outerTrustFterm, outerTrustMterm<a class="anchor" aria-label="anchor" href="#arg-outertrustfterm-outertrustmterm"></a></dt>
+<dd><p>Function-value and predicted-decrease
+convergence tolerances for <code>outerOpt="trust"</code>.  <code>NULL</code>
+(default) uses <code>10^(-sigdig-2)</code>; <code>outerTrustMterm</code> defaults to
+<code>outerTrustFterm</code>.</p></dd>
+
+
+<dt id="arg-outertrustrelstep">outerTrustRelStep<a class="anchor" aria-label="anchor" href="#arg-outertrustrelstep"></a></dt>
+<dd><p>Relative step handed to the analytical outer
+Hessian, and used for the <code>outerTrustHessian="fd"</code> gradient
+difference.</p></dd>
+
+
+<dt id="arg-outertrustrestarts">outerTrustRestarts<a class="anchor" aria-label="anchor" href="#arg-outertrustrestarts"></a></dt>
+<dd><p>How many times <code>outerOpt="trust"</code> may
+re-enter the trust region from its own reported solution when the Newton
+decrement there says the point is not stationary.  A collapsing trust
+region satisfies the solver's own convergence test at a point that is not
+a minimum; re-entering restores the initial radius.
+<code>maxOuterIterations</code> is the total across restarts, not per restart.</p></dd>
 
 
 <dt id="arg-rhobeg">rhobeg<a class="anchor" aria-label="anchor" href="#arg-rhobeg"></a></dt>
@@ -1461,7 +1520,17 @@ skips the final back-transform.</p></dd>
     </div>
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
-    <p>Uses R's L-BFGS-B (<code><a href="https://rdrr.io/r/stats/optim.html" class="external-link">optim</a></code>) for the outer problem and BFGS
+    <p>Custom outer optimizers receive <code>control$hessian(par, relStep=1e-3)</code>.
+  It settles the requested point and assembles the reported objective's
+  Hessian in the existing C++ sensitivity pool. Third-order terms are obtained
+  by differencing second-order sensitivities in ETA directions. The result uses
+  optimizer coordinates and objective scaling and retains negative curvature.
+  This requires <code>fast=TRUE</code>. M2/M3/M4 censoring uses the analytical-SE
+  <code>censOption="gauss"</code> convention. Censored <code>"laplace"</code> curvature,
+  priors, clipped AGQ and estimated transformations are unsupported.
+  Unsuccessful inner solves and an
+  active variance floor also make curvature unavailable.</p>
+<p>Uses R's L-BFGS-B (<code><a href="https://rdrr.io/r/stats/optim.html" class="external-link">optim</a></code>) for the outer problem and BFGS
 <code><a href="https://nlmixr2.github.io/n1qn1c/reference/n1qn1.html" class="external-link">n1qn1</a></code> (restoring the prior individual Hessian) for
 the inner problem, which is left unscaled since eta estimates start near
 zero. The covariance step is performed on the unscaled problem, so its

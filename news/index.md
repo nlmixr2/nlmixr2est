@@ -82,6 +82,40 @@
 
 ### New features
 
+- Added a native analytical outer Hessian for fast Gaussian
+  FOCE/FOCE+/FOCEI/AGQ fits, using the existing sensitivity pool. Fast
+  `nlminb` fits used it automatically.
+
+- Added optional full conditional inner curvature for fast Gaussian
+  FOCEI via `innerHessian="conditional"`, used by inner trust and
+  n1qn1’s `warm="calc"` seed. The FOCEI marginal objective was
+  unchanged.
+
+- Evaluated the conditional inner value, gradient and full curvature
+  jointly in one pooled sensitivity solve, including M2/M3/M4 censoring.
+
+- Added `foceiControl(outerOpt="trust")`, a trust-region Newton outer
+  optimizer (`RcppTrust`) driven by the analytical outer Hessian.
+  `outerTrustHessian=` selects the curvature – the analytical Hessian
+  under `fast=TRUE`, a damped BFGS update, or a finite difference of the
+  outer gradient – with `outerTrustRinit`/`outerTrustRmax`,
+  `outerTrustFterm`/`outerTrustMterm`, `outerTrustRelStep` and
+  `outerTrustRestarts` controlling the region, its tolerances and the
+  step handed to the Hessian. Because the solver’s own convergence test
+  is satisfied by a collapsing trust region, the reported point is
+  checked with its Newton decrement and the region re-entered when it is
+  not stationary. Measured on one model only (`theo_sd`, a fast FOCEi
+  fit of the one-compartment ODE): 116.807191 against
+  `outerOpt="nlminb"`’s 116.808709, at comparable cost once the model
+  cache is warm.
+
+- Added `est="flaplace"`, `"mflaplace"`, `"iflaplace"`, `"fagq"`,
+  `"mfagq"` and `"ifagq"` – the Laplace and adaptive-quadrature methods
+  (plus their mu-referenced `"lin"`/`"irls"` variants) run with the full
+  conditional inner curvature (`fast=TRUE`,
+  `innerHessian="conditional"`). They report as
+  `Full Laplace`/`Full AGQ`, and require Gaussian endpoints.
+
 - `impmapControl(proposal=)` selects the importance-sampling proposal
   family for `est="imp"`, `"impmap"` and `"qrpem"`: `"normal"` and `"t"`
   as `df` already reached, plus `"laplace"` (a spherical multivariate
@@ -505,6 +539,17 @@
   [`setCov()`](https://nlmixr2.github.io/nlmixr2est/reference/setCov.md)
   and the `saem` installer already guarded this; the standalone entry
   was the one that did not.
+
+- Corrected objective scaling of the fast outer gradient.
+
+- Corrected FOCE curvature’s row stride when solves included bookkeeping
+  rows.
+
+- Aligned FOCE+ objectives and derivatives with the live-variance ETA
+  score root.
+
+- Included M2/M3/M4 censoring in the analytical AGQ gradient and the
+  FOCE/FOCE+/FOCEI/AGQ outer Hessian with `censOption="gauss"`.
 
 - A `focei`-family fit now reports whether its inner solves actually
   converged. `fit$env$nTrustInner` breaks the `innerOpt="trust"`

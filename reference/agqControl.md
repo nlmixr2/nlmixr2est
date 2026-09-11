@@ -312,7 +312,7 @@ agqControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x5610ecf5bb78>
+#> <bytecode: 0x5650bfd18948>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -342,6 +342,9 @@ agqControl()
 #> $hessianMethod
 #> [1] 1
 #> 
+#> $innerHessian
+#> [1] "focei"
+#> 
 #> $trustConf
 #> [1] 0.975
 #> 
@@ -356,6 +359,27 @@ agqControl()
 #> 
 #> $trustMterm
 #> [1] 1e-05
+#> 
+#> $outerTrustHessian
+#> [1] "auto"
+#> 
+#> $outerTrustRinit
+#> NULL
+#> 
+#> $outerTrustRmax
+#> NULL
+#> 
+#> $outerTrustFterm
+#> NULL
+#> 
+#> $outerTrustMterm
+#> NULL
+#> 
+#> $outerTrustRelStep
+#> [1] 0.001
+#> 
+#> $outerTrustRestarts
+#> [1] 3
 #> 
 #> $abstol
 #> [1] 0.001

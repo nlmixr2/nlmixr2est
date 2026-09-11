@@ -59,6 +59,24 @@ getValidNlmixrCtl(control)
 # S3 method for class 'iagqf'
 getValidNlmixrCtl(control)
 
+# S3 method for class 'flaplace'
+getValidNlmixrCtl(control)
+
+# S3 method for class 'mflaplace'
+getValidNlmixrCtl(control)
+
+# S3 method for class 'iflaplace'
+getValidNlmixrCtl(control)
+
+# S3 method for class 'fagq'
+getValidNlmixrCtl(control)
+
+# S3 method for class 'mfagq'
+getValidNlmixrCtl(control)
+
+# S3 method for class 'ifagq'
+getValidNlmixrCtl(control)
+
 # S3 method for class 'focep'
 getValidNlmixrCtl(control)
 
