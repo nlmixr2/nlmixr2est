@@ -99,13 +99,12 @@ nmObjGetFoceiControl <- function(x, ...) {
 #' @export
 nmObjGetFoceiControl.default <- function(x, ...) {
   .env <- x[[1]]
-  if (exists("foceiControl0", .env, inherits = FALSE)) {
-    return(get("foceiControl0", .env, inherits = FALSE))
-  } else {
+  if (!exists("foceiControl0", .env, inherits = FALSE)) {
     stop("cannot figure out how to make/retrieve the focei control\nmissing 'nmObjGetFoceiControl.",
          class(x)[1], "'",
          call.=FALSE)
   }
+  get("foceiControl0", .env, inherits = FALSE)
 }
 
 #' Get control object from fit

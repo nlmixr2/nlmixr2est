@@ -773,10 +773,10 @@ nmObjGet.simInfo <- function(x, ...) {
 #' @export
 nmObjGet.seed <- function(x, ...) {
   .env <- x[[1]]
-  if (exists("saem", .env, inherits = FALSE)) {
-    attr(get("saem", .env, inherits = FALSE), "saem.cfg")$seed
+  if (!exists("saem", .env, inherits = FALSE)) {
+    return(NULL)
   }
-  NULL
+  attr(get("saem", .env, inherits = FALSE), "saem.cfg")$seed
 }
 attr(nmObjGet.seed, "rstudio") <- 123456
 
@@ -784,9 +784,10 @@ attr(nmObjGet.seed, "rstudio") <- 123456
 #' @export
 nmObjGet.saemCfg <- function(x, ...) {
   .env <- x[[1]]
-  if (exists("saem", .env, inherits = FALSE)) {
-    return(attr(get("saem", .env, inherits = FALSE), "saem.cfg"))
+  if (!exists("saem", .env, inherits = FALSE)) {
+    return(NULL)
   }
+  attr(get("saem", .env, inherits = FALSE), "saem.cfg")
 }
 
 #' @export

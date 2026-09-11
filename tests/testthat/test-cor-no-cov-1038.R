@@ -151,4 +151,12 @@ nmTest({
     expect_null(.re$parHist)
     expect_false(any(grepl("bogus", capture.output(print(.re)))))
   })
+
+  test_that("$seed returns the saem seed it looked up", {
+    fit <- .nlmixr(one.cmt, nlmixr2data::theo_sd,
+      est = "saem", control = saemControlFast
+    )
+    expect_equal(fit$seed, attr(fit$env$saem, "saem.cfg")$seed)
+    expect_false(is.null(fit$seed))
+  })
 })
