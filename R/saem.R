@@ -936,11 +936,18 @@
       # [phi1 mu][phi0 mu], not iniDf/model order -- reorder the reported theta
       # block back to iniDf order so it does not depend on which parameters
       # happen to be mu-referenced (names carry identity everywhere this cov
-      # is consumed, but a predictable row order is still worth keeping)
+      # is consumed, but a predictable row order is still worth keeping).  The
+      # variance rows are ordered the same way, so the order does not depend on
+      # which rows the two splices happened to append either.
+      .rn0 <- rownames(.cov)
       .thOrd <- .ui$iniDf$name[!is.na(.ui$iniDf$ntheta) & is.na(.ui$iniDf$err)]
-      .thOrd <- .thOrd[.thOrd %in% rownames(.cov)]
-      .rest <- rownames(.cov)[!(rownames(.cov) %in% .thOrd)]
-      .cov <- .cov[c(.thOrd, .rest), c(.thOrd, .rest), drop = FALSE]
+      .thOrd <- .thOrd[.thOrd %in% .rn0]
+      .omOrd <- .rn0[grepl("^om\\.|^cov\\.", .rn0)]
+      .resOrd <- .ui$iniDf$name[!is.na(.ui$iniDf$err)]
+      .resOrd <- .resOrd[.resOrd %in% .rn0]
+      .ord <- c(.thOrd, .omOrd, .resOrd)
+      .ord <- c(.ord, .rn0[!(.rn0 %in% .ord)])
+      .cov <- .cov[.ord, .ord, drop = FALSE]
       # finalization needs a structural-theta cov; stash the full matrix and install
       # it after the fit is built (.saemInstallFullCov).  The control covMethod is reset
       # to its default during finalization, so record the intended label separately.
