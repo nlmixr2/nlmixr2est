@@ -376,11 +376,16 @@ test_that("no declared theta comes back holding another parameter's start value"
 
 test_that("focei's M-step honors etaDistEvery and fires once per outer evaluation", {
   skip_on_cran()
-  expect_equal(nlmixr2est::foceiControl()$etaDistEvery, 20L)
+  # 1, NOT saem's 20: saem runs hundreds of iterations and focei tens of outer
+  # evaluations.  At 20, Bauer's g4 arm got ONE attempt, the spread guard needs
+  # two, and the copula was never written (MARE 6.4% -> 88.8%).  The knob is
+  # opt-in; the default must not change existing behaviour.
+  expect_equal(nlmixr2est::foceiControl()$etaDistEvery, 1L)
   expect_equal(nlmixr2est::foceiControl(etaDistEvery = 5L)$etaDistEvery, 5L)
-  # saem's cadence and focei's should agree by default -- they are the same knob
-  expect_equal(nlmixr2est::foceiControl()$etaDistEvery,
-               nlmixr2est::saemControl()$etaDistEvery)
+  expect_equal(nlmixr2est::foceiControl(etaDistEvery = 20L)$etaDistEvery, 20L)
+  # deliberately DIFFERENT from saem's, so pin the difference rather than let
+  # one drift onto the other
+  expect_equal(nlmixr2est::saemControl()$etaDistEvery, 20L)
 })
 
 test_that("a coarser cadence fires the M-step far less often", {

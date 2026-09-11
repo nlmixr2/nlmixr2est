@@ -453,8 +453,25 @@
 #'   single-endpoint models a declared distribution is written on today, the two
 #'   are the same.)
 #' @param etaDistEvery Run the declared-distribution M-step every `etaDistEvery`
-#'   OUTER objective evaluations, and at most once per evaluation.  Mirrors
-#'   `saemControl(etaDistEvery=)`, and defaults to the same 20.
+#'   OUTER objective evaluations, and at most once per evaluation.  The knob
+#'   mirrors `saemControl(etaDistEvery=)`, but the default is `1`, NOT saem's 20
+#'   -- saem runs hundreds of iterations and focei tens of outer evaluations, so
+#'   the same number means very different things.
+#'
+#'   Coarsening it is a real trade and both directions have been measured, so
+#'   pick with the model in mind rather than by taste.  On Bauer's g4 arm
+#'   (relative variance 2.0, the heaviest tail), focei:
+#'
+#'   \tabular{lrrrr}{
+#'     etaDistEvery \tab CL \tab V1 \tab MARE \tab copula writes \cr
+#'     1  \tab 4.981 \tab  4.179 \tab  6.4% \tab 42 \cr
+#'     5  \tab 4.869 \tab  4.122 \tab  7.1% \tab  9 \cr
+#'     20 \tab 6.281 \tab 21.066 \tab 88.8% \tab  0
+#'   }
+#'
+#'   against a truth of CL 5.10 and V1 4.71.  At 20 that fit gets ONE attempt,
+#'   the spread guard needs two (it compares consecutive attempts), so the
+#'   copula is never written at all and V1 is four times truth.
 #'
 #'   The step rewrites the thetas it owns, so firing it inside the objective
 #'   makes the objective at the SAME theta differ between calls and the outer
@@ -1360,7 +1377,7 @@ foceiControl <- function(sigdig = 3, #
                          etaDistSdHi = 5.0, #
                          etaDistSdTol = 0.10, #
                          etaDistSupportEps = 0, #
-                         etaDistEvery = 20L, #
+                         etaDistEvery = 1L, #
                          etaDistCorSuff = TRUE, #
                          repeatGillMax = 1, #
                          stickyRecalcN = 4, #

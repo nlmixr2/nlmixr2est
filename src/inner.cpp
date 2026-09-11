@@ -1036,10 +1036,12 @@ struct focei_options {
   // (historical), 1 = saem's standardized sufficient statistic on the RAW
   // latents, ungated by the spread guard.  See foceiEtaDistMstep().
   int etaDistCorSuff = 0;
-  // Cadence, mirroring saem's etaDistEvery.  The step rewrites the thetas it
-  // owns, so running it inside the objective makes the outer surface MOVE
-  // between evaluations; see the note at the call site.
-  int etaDistEvery = 20;
+  // Cadence, mirroring saem's etaDistEvery -- but defaulting to 1, not saem's
+  // 20: saem runs hundreds of iterations and focei tens of outer evaluations.
+  // A cadence of 20 left one of Bauer's arms with a SINGLE attempt, and the
+  // spread guard needs two, so the copula was never written and V1 came back at
+  // four times truth.  See foceiControl(etaDistEvery=).
+  int etaDistEvery = 1;
   std::vector<double> etaDistSdPrev, etaDistSdCur;
 };
 
