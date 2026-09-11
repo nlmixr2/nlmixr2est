@@ -11,6 +11,18 @@
   modeled times survive estimation and the mtime variable stays defined.  The
   extra records the solve regenerates are also kept out of the fit's output
   table and out of the `nlme` objective (#919).
+- An `mtime()` whose time depends on an estimated parameter (a boundary that
+  moves with a theta or an eta) now contributes to the sensitivities.  The
+  declaration is loaded into `symengine` as an ordinary assignment, so the
+  switch time is differentiated like the same branch written in place
+  (`ifelse(t < exp(tsw), ...)`); it used to reach `symengine` as a free symbol,
+  which made every derivative through the boundary zero -- the EBEs for an eta
+  the boundary depends on stayed pinned at their initial values, and
+  `foceiControl(fast=TRUE)` reported a gradient of exactly `0` for the theta.
+- A model that declares `mtime(v)` and also assigns `v` as an ordinary variable
+  is refused instead of silently using the declared value.  The declaration is
+  re-emitted at the top of every generated model, so a later `mtime()` reading
+  `v` got the declared value where `rxode2` gives it the reassigned one.
 - `fit$cor` returns `NULL` instead of erroring when the fit has no covariance
   (`covMethod=""`), matching `fit$cov` (#1038).
 
