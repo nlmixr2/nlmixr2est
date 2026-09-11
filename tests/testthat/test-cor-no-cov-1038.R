@@ -79,4 +79,33 @@ nmTest({
     # exists("cor", x$env), which is never true for a locally fit model
     expect_true(any(grepl("\\$cor", capture.output(print(.re)))))
   })
+
+  test_that("$cor keeps a zero-variance row out of cov2cor (#1038)", {
+    .env <- new.env(parent = emptyenv())
+    .nm <- list(c("a", "b", "c"), c("a", "b", "c"))
+    assign("cov", matrix(c(
+      4, 1, 0,
+      1, 9, 0,
+      0, 0, 0
+    ), 3, 3, dimnames = .nm), envir = .env)
+    .lst <- list(.env, FALSE)
+    class(.lst) <- c("cor", "nmObjGet")
+
+    expect_warning(.cor <- nmObjGet(.lst), NA)
+    expect_equal(diag(.cor), c(a = 2, b = 3, c = 0))
+    expect_equal(.cor["a", "b"], 1 / 6)
+    expect_true(all(is.na(.cor["c", c("a", "b")])))
+    # .getR() drops the NA row, so print() sees only the real correlation
+    expect_equal(unname(.getR(.cor)), 1 / 6)
+  })
+
+  test_that("$cor is NULL for a non-matrix $cov (#1038)", {
+    .lst <- list(new.env(parent = emptyenv()), FALSE)
+    class(.lst) <- c("cor", "nmObjGet")
+    for (.v in list(NULL, stats::cov, "a", data.frame(a = 1), matrix(numeric(0), 0, 0),
+                    matrix(1:6, 2, 3))) {
+      assign("cov", .v, envir = .lst[[1]])
+      expect_null(nmObjGet(.lst))
+    }
+  })
 })

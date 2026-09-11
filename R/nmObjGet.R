@@ -287,16 +287,14 @@ nmObjGet.cor <- function(x, ...) {
         nrow(.cov) != ncol(.cov) || nrow(.cov) == 0L) {
     return(NULL)
   }
-  .sd2 <- sqrt(diag(.cov))
-  .cor <- stats::cov2cor(.cov)
-  dimnames(.cor) <- dimnames(.cov)
-  diag(.cor) <- .sd2
-  .cor
+  # same construction as $omegaR: off-diagonal correlations, SDs on the
+  # diagonal, and NA for a row whose variance is zero (cov2cor errors there)
+  .corFromCov(.cov)
 }
 attr(nmObjGet.cor, "desc") <- "correlation matrix of theta, calculated from covariance of theta"
 attr(nmObjGet.cor, "rstudio") <- lotri::lotri(a + b ~ c(1, 0.1, 1))
 
-.omegaR <- function(.cov) {
+.corFromCov <- function(.cov) {
   .sd2 <- sqrt(diag(.cov))
   if (all(dim(.cov) == c(1, 1))) {
     .cor <- .cov
@@ -327,12 +325,12 @@ nmObjGet.omegaR <- function(x, ...) {
       if (is.null(.covi)) {
         return(NULL)
       }
-      .omegaR(.covi)
+      .corFromCov(.covi)
     })
     names(.ret) <- .n
     .ret
   } else {
-    .omegaR(.cov)
+    .corFromCov(.cov)
   }
 }
 attr(nmObjGet.omegaR, "desc") <- "correlation matrix of omega"
