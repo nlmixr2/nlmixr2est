@@ -19,7 +19,7 @@
 #' @param env Environment for the fit information
 nmObjHandleModelObject <- function(model, env) {
   on.exit({
-    if (exists("model", envir=env)){
+    if (exists("model", envir=env, inherits=FALSE)){
       rm("model", envir=env)
     }})
   UseMethod("nmObjHandleModelObject")
@@ -54,7 +54,7 @@ nmObjHandleModelObject.default <- function(model, env) {
 #' @export
 nmObjHandleControlObject <- function(control, env) {
   on.exit({
-    if (exists("control", envir=env)) {
+    if (exists("control", envir=env, inherits=FALSE)) {
       rm("control", envir=env)
     }
   })

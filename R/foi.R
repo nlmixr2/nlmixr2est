@@ -71,8 +71,8 @@ nmObjGetControl.foi <- function(x, ...) {
   for (.name in c("foiControl", "control",
                   "foControl", "foceControl",
                   "foceiControl", "foceiControl0")) {
-    if (exists(.name, .env)) {
-      .control <- get(.name, .env)
+    if (exists(.name, .env, inherits = FALSE)) {
+      .control <- get(.name, .env, inherits = FALSE)
       if (inherits(.control, "foiControl")) return(.control)
       .ret <- try(suppressMessages(getValidNlmixrCtl.foi(list(.control))), silent=TRUE)
       if (inherits(.ret, "foiControl")) return(.ret)

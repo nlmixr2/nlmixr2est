@@ -204,12 +204,12 @@ getValidNlmixrCtl.agq <- function(control) {
 #' @export
 nmObjGetControl.agq <- function(x, ...) {
   .env <- x[[1]]
-  if (exists("agqControl", .env)) {
-    .control <- get("agqControl", .env)
+  if (exists("agqControl", .env, inherits = FALSE)) {
+    .control <- get("agqControl", .env, inherits = FALSE)
     if (inherits(.control, "agqControl")) return(.control)
   }
-  if (exists("control", .env)) {
-    .control <- get("control", .env)
+  if (exists("control", .env, inherits = FALSE)) {
+    .control <- get("control", .env, inherits = FALSE)
     if (inherits(.control, "agqControl")) return(.control)
   }
   stop("cannot find agq related control object", call.=FALSE)

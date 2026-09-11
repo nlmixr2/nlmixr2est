@@ -7,8 +7,8 @@
 #' @noRd
 .addFoceiInfoToFit <- function(env, newFit) {
   for (.v in c("phiC", "phiH", "llikObs")) {
-    if (exists(.v, envir=newFit$env)) {
-      assign(.v, get(.v, envir=newFit$env), envir=env)
+    if (exists(.v, envir=newFit$env, inherits=FALSE)) {
+      assign(.v, get(.v, envir=newFit$env, inherits=FALSE), envir=env)
     }
   }
 }

@@ -133,22 +133,58 @@ nmTest({
       )
     )
 
-    # stands in for the user workspace a reloaded fit is parented on
+    # stands in for the user workspace a reloaded fit is parented on.  Every
+    # name here is one a fit accessor looks up, and each is dropped from the
+    # copy so the lookup genuinely misses locally -- which is what nlmixr2save
+    # does to "model", and what covMethod="" does to "cov".
+    .decoy <- c(
+      "cov", "covList", "ranef", "mixNum", "mixList", "parHistData",
+      "dataSav", "idLvl", "covLvl", "model", "foceiModel", "saemModel",
+      "saem", "saem0", "llikObs"
+    )
     .shadow <- new.env(parent = emptyenv())
     assign("cov", matrix(1, 1, 1, dimnames = list("bogus", "bogus")), envir = .shadow)
     assign("covList", list(bogus = matrix(1, 1, 1)), envir = .shadow)
-    assign("ranef", "bogus", envir = .shadow)
-    assign("mixNum", "bogus", envir = .shadow)
-    assign("parHistData", "bogus", envir = .shadow)
+    for (.n in setdiff(.decoy, c("cov", "covList"))) {
+      assign(.n, "bogus", envir = .shadow)
+    }
 
-    .re <- .asReloaded(fit, parent = .shadow,
-      drop = c("cov", "ranef", "mixNum", "parHistData")
-    )
+    .re <- .asReloaded(fit, parent = .shadow, drop = .decoy)
     expect_null(.re$cov)
     expect_null(.re$cor)
     expect_null(.re$ranef)
     expect_null(.re$mixNum)
+    expect_null(.re$mixList)
     expect_null(.re$parHist)
+    expect_null(.re$innerModel)
+    expect_null(.re$saem)
+    expect_null(.re$saemCfg)
+    # these recompute from the fit rather than returning NULL, but must not
+    # come from the parent either
+    for (.a in c("dataSav", "idLvl", "covLvl")) {
+      expect_false(identical(.re[[.a]], "bogus"))
+    }
+    # nothing the fit reports may come from the parent environment
     expect_false(any(grepl("bogus", capture.output(print(.re)))))
+  })
+
+  test_that("a reloaded fit's control does not come from its parent (#1038)", {
+    fit <- .nlmixr(one.cmt, nlmixr2data::theo_sd,
+      est = "focei",
+      control = foceiControl(
+        print = 0, maxInnerIterations = 1, maxOuterIterations = 1,
+        eval.max = 1, covMethod = ""
+      )
+    )
+    .shadow <- new.env(parent = emptyenv())
+    assign("control", "bogus", envir = .shadow)
+    assign("foceiControl0", "bogus", envir = .shadow)
+
+    .re <- .asReloaded(fit, parent = .shadow,
+      drop = c("control", "foceiControl0")
+    )
+    # with no local control the accessor must fail, not hand back the decoy
+    expect_error(.re$control)
+    expect_error(.re$foceiControl)
   })
 })

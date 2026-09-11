@@ -5,10 +5,12 @@
 - `fit$cor` returns `NULL` instead of erroring when the fit has no covariance
   (`covMethod=""`), matching `fit$cov` (#1038).
 
-- Fit accessors and `print()` look items up only in the fit environment itself.
-  A fit reloaded by `nlmixr2save` is parented on the global environment, so
-  `fit$cov` resolved to `stats::cov` (which broke `print()`) and other items
-  such as `$ranef` or `$mixNum` could come from the user's workspace (#1038).
+- Fit accessors, the control getters, `setCov()` and `print()` look items up
+  only in the fit environment itself.  A fit reloaded by `nlmixr2save` is
+  parented on the global environment, so `fit$cov` resolved to `stats::cov`
+  (which broke `print()`), `fit$ranef` to `nlme::ranef`, and `$mixNum`,
+  `$mixList` or `$parHist` to a variable of that name in the user's workspace
+  (#1038).
 
 - `print()` on a fit shows the fixed-parameter correlation line again.  It was
   gated on `exists("cor", fit$env)`, which is never true for a fit that has not
