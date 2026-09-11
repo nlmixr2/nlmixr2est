@@ -713,9 +713,6 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
                            optExpression = TRUE, cores = 0L,
                            interpLines = "") {
   interpLines <- interpLines[interpLines != ""]
-  # mtime() lines are re-emitted here (#919); see .mtimeLinesStr()
-  interpLines <- c(interpLines, .mtimeLinesStr(.s))
-  interpLines <- interpLines[interpLines != ""]
   # see focei.R's .rxFinalizeInner(): do not re-flatten a matExp-native ..ddt (#860)
   if (!isTRUE(.s$..matExpNative)) .rxInjectMatExpDdt(.s)
   if (isTRUE(.s$..matExpNative)) {
@@ -804,6 +801,9 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
     .s$..nlmS <- rxode2::rxOptExpr(.s$..nlmS, "nlm llik gradient", parallel = cores)
     .s$..pred.nolhs <- rxode2::rxOptExpr(.s$..pred.nolhs, "nlm pred-only", parallel = cores)
   }
+  # mtime() lines go in AFTER the optimization, which cannot parse them (#919)
+  .s$..nlmS <- .addMtimeLines(.s$..nlmS, .s)
+  .s$..pred.nolhs <- .addMtimeLines(.s$..pred.nolhs, .s)
 }
 
 #' @export

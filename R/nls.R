@@ -719,9 +719,6 @@ attr(rxUiGet.nlsHdTheta, "rstudio") <- emptyenv()
                            optExpression = TRUE, cores = 0L,
                            interpLines = "") {
   interpLines <- interpLines[interpLines != ""]
-  # mtime() lines are re-emitted here (#919); see .mtimeLinesStr()
-  interpLines <- c(interpLines, .mtimeLinesStr(.s))
-  interpLines <- interpLines[interpLines != ""]
   if (isTRUE(.s$..matExpNative)) {
     # see focei.R's .rxFinalizeInner(): rxSumProdModel()/rxOptExpr() do not
     # support "indLin(state) <- expr" (Michaelis-Menten forcing)
@@ -788,6 +785,9 @@ attr(rxUiGet.nlsHdTheta, "rstudio") <- emptyenv()
     .s$..nlsS <- rxode2::rxOptExpr(.s$..nlsS, "nls gradient", parallel = cores)
     .s$..pred.nolhs <- rxode2::rxOptExpr(.s$..pred.nolhs, "nls pred-only", parallel = cores)
   }
+  # mtime() lines go in AFTER the optimization, which cannot parse them (#919)
+  .s$..nlsS <- .addMtimeLines(.s$..nlsS, .s)
+  .s$..pred.nolhs <- .addMtimeLines(.s$..pred.nolhs, .s)
 }
 
 #' @export

@@ -74,7 +74,7 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
   ),
   # batch 3
   c(
-    "focei-wang2007-boxcox-half", "nlm-cens", "focei-cens-t-fit",
+    "focei-wang2007-boxcox-half", "nlm-cens", "focei-cens-t-fit", "mtime-fit",
     "issue-429", "issue-470",
     "focei-wang2007-bounded", "saem-loglik", "mu-timevarying", "saem-nearpd",
     "saem-nonmutheta", "focei-theta-reset-bounds",

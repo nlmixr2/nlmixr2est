@@ -928,6 +928,37 @@ attr(rxUiGet.foceiModel0ll, "rstudio") <- quote(rxModelVars({}))
   paste(.m, collapse = "\n")
 }
 
+#' Splice a model's `mtime()` lines into already-assembled model text
+#'
+#' `rxode2::rxOptExpr()` does not know the `mtime()` lhs form and stops with
+#' "stopped optimizing duplicate expressions", so a model whose text is
+#' optimized in place has to get its mtime lines afterwards.  They are put
+#' after the leading declaration block (`param()`/`cmt()`/interpolation), since
+#' a trailing endpoint `cmt()` must stay last.
+#'
+#' @param txt assembled (and optimized) rxode2 model text
+#' @param .s symengine environment loaded by `.loadSymengine()`
+#' @return `txt` with the mtime lines spliced in, unchanged when there are none
+#' @author Matthew L. Fidler
+#' @noRd
+.addMtimeLines <- function(txt, .s) {
+  .m <- .s$..mtime
+  if (is.null(.m) || length(.m) == 0L) {
+    return(txt)
+  }
+  .lines <- unlist(strsplit(paste(txt, collapse = "\n"), "\n", fixed = TRUE))
+  .isDecl <- function(.l) {
+    !nzchar(trimws(.l)) ||
+      grepl("^[ \t]*(params?|cmt|linear|locf|nocb|midpoint)[ \t]*\\(", .l)
+  }
+  .i <- 0L
+  while (.i < length(.lines) && .isDecl(.lines[.i + 1L])) .i <- .i + 1L
+  if (.i == 0L) {
+    return(paste(c(.m, .lines), collapse = "\n"))
+  }
+  paste(c(.lines[seq_len(.i)], .m, .lines[-seq_len(.i)]), collapse = "\n")
+}
+
 #' Append the model prologue lines that are not always present
 #'
 #' @param cmt compartment/parameter prologue built so far
