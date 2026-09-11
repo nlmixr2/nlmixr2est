@@ -30,6 +30,7 @@ test_that("the Newton decrement gate reads a trust result", {
 })
 
 test_that("the curvature supplier falls back when the analytic Hessian declines", {
+  .fn <- function(x) sum(x^2)
   .gr <- function(x) c(2 * x[1], 2 * x[2])
   .box <- c(-Inf, -Inf)
   .hi <- c(Inf, Inf)
@@ -38,8 +39,9 @@ test_that("the curvature supplier falls back when the analytic Hessian declines"
   # the runtime demotes with a warning rather than aborting the fit.
   expect_warning(
     .c <- .trustOuterCurvature(
-      list(outerTrustHessian = "analytic", fast = FALSE, hessian = function(x) diag(2)),
-      .gr, 1e-3, .box, .hi
+      list(outerTrustHessian = "analytic", fast = FALSE,
+           hessian = function(x, relStep) diag(2)),
+      .fn, .gr, 1e-3, .box, .hi
     ),
     "needs fast"
   )
@@ -51,11 +53,11 @@ test_that("the curvature supplier falls back when the analytic Hessian declines"
   # BFGS rather than paying the failed probe again
   .n <- 0L
   .ctl <- list(outerTrustHessian = "analytic", fast = TRUE,
-               hessian = function(x) {
+               hessian = function(x, relStep) {
                  .n <<- .n + 1L
                  stop("analytical outer Hessian unavailable (status -4)")
                })
-  .c <- .trustOuterCurvature(.ctl, .gr, 1e-3, .box, .hi)
+  .c <- .trustOuterCurvature(.ctl, .fn, .gr, 1e-3, .box, .hi)
   expect_warning(.c$hessian(c(1, 1), .gr(c(1, 1))), "continues with BFGS")
   expect_true(.c$fallback)
   expect_equal(.c$calls, 1L)
@@ -66,9 +68,48 @@ test_that("the curvature supplier falls back when the analytic Hessian declines"
   # "fd" declines when neither difference direction fits in the box; the
   # supplier answers from BFGS instead of returning NULL to the optimizer
   .c <- .trustOuterCurvature(
-    list(outerTrustHessian = "fd", fast = FALSE), .gr, 1e-3, c(1, 1), c(1, 1)
+    list(outerTrustHessian = "fd", fast = FALSE), .fn, .gr, 1e-3, c(1, 1), c(1, 1)
   )
   expect_equal(.c$hessian(c(1, 1), .gr(c(1, 1))), diag(2))
+
+  # outerTrustRelStep must actually reach the analytic entry -- foceiOuterH()
+  # takes it as `relStep` and silently keeps its own default otherwise
+  .seen <- NULL
+  .c <- .trustOuterCurvature(
+    list(outerTrustHessian = "analytic", fast = TRUE,
+         hessian = function(x, relStep) { .seen <<- relStep; diag(2) }),
+    .fn, .gr, 5e-4, .box, .hi
+  )
+  .c$hessian(c(1, 1), .gr(c(1, 1)))
+  expect_equal(.seen, 5e-4)
+})
+
+test_that("the finite-difference curvature settles every point it reads", {
+  # the gradient callback warm-starts from the last evaluation, so a probe read
+  # without settling it first returns the gradient at a stale conditional mode
+  .seen <- character()
+  .fn <- function(x) {
+    .seen <<- c(.seen, paste0("fn:", paste(signif(x, 8), collapse = ",")))
+    sum(x^2)
+  }
+  .gr <- function(x) {
+    .seen <<- c(.seen, paste0("gr:", paste(signif(x, 8), collapse = ",")))
+    c(2 * x[1], 2 * x[2])
+  }
+  .fd <- .trustOuterFd(.fn, .gr, 1e-3, c(-Inf, -Inf), c(Inf, Inf))
+  .g0 <- .gr(c(1, 1))
+  .seen <- character()
+  .h <- .fd(c(1, 1), .g0)
+  expect_equal(.h, diag(c(2, 2)), tolerance = 1e-6)
+  # every gr the difference took was preceded by an fn at the SAME point
+  .at <- which(startsWith(.seen, "gr:"))
+  expect_length(.at, 2L)
+  for (.i in .at) {
+    expect_gt(.i, 1L)
+    expect_identical(sub("^fn:", "", .seen[.i - 1L]), sub("^gr:", "", .seen[.i]))
+  }
+  # ... and the point is settled again on the way out
+  expect_identical(.seen[length(.seen)], "fn:1,1")
 })
 
 test_that("outerOpt='trust' fits and consumes the analytic outer Hessian", {

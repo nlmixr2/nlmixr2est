@@ -305,7 +305,11 @@ is.latex <- function() {
           .th * .y + (1 - .th) * .bs
         }
         .sr <- sum(.s * .r)
-        if (is.finite(.sr) && .sr > 0) {
+        # Same near-zero-denominator skip as trustHessianUpdate() (src/
+        # trustHessianUpdate.h): a reject-then-shrink step gives a secant pair
+        # whose rank-2 correction is enormous and meaningless.
+        if (is.finite(.sr) &&
+              .sr > 1e-10 * sqrt(sum(.s^2)) * sqrt(sum(.r^2))) {
           .b <<- .b - outer(.bs, .bs) / .sBs + outer(.r, .r) / .sr
         }
       }
@@ -319,26 +323,40 @@ is.latex <- function() {
 #' Finite-difference curvature for the outer trust region
 #'
 #' Differences the outer gradient, costing `length(lower)` extra population
-#' gradient evaluations per call -- which is why it is not the default when the
-#' analytic Hessian is available.  A direction is reflected at an upper bound
-#' and the whole Hessian declined (`NULL`) when neither side fits in the box.
-#' @param gr outer gradient function
+#' objective+gradient evaluations per call -- which is why it is not the default
+#' when the analytic Hessian is available.  A direction is reflected at an upper
+#' bound and the whole Hessian declined (`NULL`) when neither side fits in the
+#' box; the point is re-settled on the way out, so the supplier leaves the
+#' engine where it found it just as the analytic entry does.
+#'
+#' `fn` before every `gr` is load bearing, not defensive: the gradient callback
+#' warm-starts the inner problem from whatever etas the last evaluation left, so
+#' reading it at a point the objective has not settled returns a gradient at a
+#' stale conditional mode.  Measured on `theo_sd`, the two differ by ~9e-4 on
+#' gradient components of order 200 -- which a 1e-3 difference step turns into
+#' an O(1) error in the Hessian entries.
+#' @param fn,gr outer objective and gradient
 #' @param relStep relative difference step
 #' @param lower,upper box the outer problem optimizes in
 #' @return function(x, gradient) returning a symmetric Hessian, or `NULL`
 #' @noRd
-.trustOuterFd <- function(gr, relStep, lower, upper) {
+.trustOuterFd <- function(fn, gr, relStep, lower, upper) {
   .n <- length(lower)
   function(x, g0) {
     .h <- matrix(0.0, .n, .n)
     for (.j in seq_len(.n)) {
       .step <- relStep * max(abs(x[.j]), 1.0)
       if (x[.j] + .step > upper[.j]) .step <- -.step
-      if (x[.j] + .step < lower[.j]) return(NULL)
+      if (x[.j] + .step < lower[.j]) {
+        fn(x)
+        return(NULL)
+      }
       .xp <- x
       .xp[.j] <- x[.j] + .step
+      fn(.xp)
       .h[, .j] <- (gr(.xp) - g0) / .step
     }
+    fn(x)
     0.5 * (.h + t(.h))
   }
 }
@@ -464,24 +482,28 @@ is.latex <- function() {
 #' cannot answer.  Support for the analytic Hessian is a property of the model,
 #' not of the point, so one refusal switches the run for good rather than paying
 #' the failed probe again every iteration.
+#' The BFGS update runs on every call whatever source serves it, so its secant
+#' pairs stay consecutive and the fallback starts from a matrix that already
+#' knows the problem rather than the identity.
 #' @param control the foceiControl list
-#' @param gr outer gradient function
-#' @param relStep relative difference step
+#' @param fn,gr outer objective and gradient
+#' @param relStep relative step, for both the analytic entry and the difference
 #' @param lower,upper box the outer problem optimizes in
 #' @return environment with `hessian(x, gradient)`, `calls` and `fallback`
 #' @noRd
-.trustOuterCurvature <- function(control, gr, relStep, lower, upper) {
+.trustOuterCurvature <- function(control, fn, gr, relStep, lower, upper) {
   .method <- .trustOuterMethod(control)
   .bfgs <- .trustOuterBfgs(length(lower))
-  .fd <- .trustOuterFd(gr, relStep, lower, upper)
+  .fd <- .trustOuterFd(fn, gr, relStep, lower, upper)
   .state <- new.env(parent = emptyenv())
   .state$calls <- 0L
   .state$fallback <- FALSE
   .state$hessian <- function(x, g) {
+    .qn <- .bfgs(x, g)
     .h <- NULL
     if (.method == "analytic") {
       .state$calls <- .state$calls + 1L
-      .h <- tryCatch(control$hessian(x), error = function(e) {
+      .h <- tryCatch(control$hessian(x, relStep = relStep), error = function(e) {
         .state$fallback <- TRUE
         .method <<- "bfgs"
         warning("analytic outer Hessian unavailable; trust continues with BFGS",
@@ -492,7 +514,7 @@ is.latex <- function() {
     } else if (.method == "fd") {
       .h <- .fd(x, g)
     }
-    if (is.null(.h)) .h <- .bfgs(x, g)
+    if (is.null(.h)) .h <- .qn
     .h
   }
   .state
@@ -537,7 +559,7 @@ is.latex <- function() {
   .upper <- rep_len(upper, .n)
   .relStep <- control$outerTrustRelStep
   if (is.null(.relStep)) .relStep <- 1e-3
-  .curvature <- .trustOuterCurvature(control, gr, .relStep, .lower, .upper)
+  .curvature <- .trustOuterCurvature(control, fn, gr, .relStep, .lower, .upper)
   .ret <- .trustOuterRun(
     .trustOuterObjfun(fn, gr, .curvature, .lower, .upper), par,
     .trustOuterRegion(par, control),
