@@ -84,6 +84,14 @@ nmTest({
     .ui <- rxode2::rxUiDecompress(.mk(c(.base, "t1 <- 10", "mtime(tx) <- t1",
       "t1 <- 20", "kmult <- ifelse(t < tx, 1.0, 2.0) * t1 / 20", .tail))())
     expect_error(.ui$focei, "assigns again after it")
+
+    # ...and an mtime VARIABLE the model also assigns as an ordinary variable
+    # has two values, only one of which reaches the top of the generated model:
+    # plain rxode2 gives the second mtime 101 here, the hoisted declaration
+    # would give it 3
+    .ui <- rxode2::rxUiDecompress(.mk(c(.base, "mtime(t5) <- 2", "t5 <- 100",
+      "mtime(t6) <- t5 + 1", "kmult <- ifelse(t < t6, 1.0, 2.0)", .tail))())
+    expect_error(.ui$focei, "also assigned as an ordinary variable")
   })
 
   test_that("an emitted mtime() line resolves in every generated model", {

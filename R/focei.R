@@ -1326,6 +1326,15 @@ attr(rxUiGet.foceiModel0ll, "rstudio") <- quote(rxModelVars({}))
   .lines <- unlist(strsplit(paste(newmod, collapse = "\n"), "\n", fixed = TRUE))
   .lhs <- .rxLineLhs(.lines)
   .mtIdx <- grep(.rxMtimeRe, .lines)
+  # An mtime VARIABLE that the model also assigns as an ordinary variable has
+  # two values, and only the declaration's reaches the top of the generated
+  # model -- a later `mtime()` reading it would silently get the declared value
+  # where rxode2 gives it the reassigned one.  Refuse, same as above.
+  .reAssigned <- names(.rhs)[names(.rhs) %in% .lhs[!is.na(.lhs)]]
+  if (length(.reAssigned) > 0L) {
+    stop("mtime(", .reAssigned[1L], ") is also assigned as an ordinary ",
+         "variable; rename one", call. = FALSE)
+  }
   for (.i in seq_along(.rhs)) {
     .dep <- .rxMtimeDeps(.lines, .lhs, .mtIdx[.i], .rhs[[.i]])
     .bad <- unique(.lhs[!is.na(.lhs) & .lhs %in% .dep &

@@ -19,6 +19,10 @@
   which made every derivative through the boundary zero -- the EBEs for an eta
   the boundary depends on stayed pinned at their initial values, and
   `foceiControl(fast=TRUE)` reported a gradient of exactly `0` for the theta.
+- A model that declares `mtime(v)` and also assigns `v` as an ordinary variable
+  is refused instead of silently using the declared value.  The declaration is
+  re-emitted at the top of every generated model, so a later `mtime()` reading
+  `v` got the declared value where `rxode2` gives it the reassigned one.
 - `fit$cor` returns `NULL` instead of erroring when the fit has no covariance
   (`covMethod=""`), matching `fit$cov` (#1038).
 
