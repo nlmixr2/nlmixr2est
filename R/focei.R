@@ -860,14 +860,61 @@ attr(rxUiGet.foceiModel0ll, "rstudio") <- quote(rxModelVars({}))
 #'   right hand side model text; `character(0)` when the model has no mtime
 #' @author Matthew L. Fidler
 #' @noRd
+.rxMtimeRe <-
+  "^\\s*mtime\\s*\\(\\s*([A-Za-z._][A-Za-z0-9._]*)\\s*\\)\\s*(=|<-|~)\\s*(.*?);?\\s*$"
+
 .rxMtimeRhs <- function(newmod) {
   .lines <- unlist(strsplit(paste(newmod, collapse = "\n"), "\n", fixed = TRUE))
-  .re <- "^\\s*mtime\\s*\\(\\s*([A-Za-z._][A-Za-z0-9._]*)\\s*\\)\\s*(=|<-|~)\\s*(.*?);?\\s*$"
-  .w <- grep(.re, .lines)
+  .w <- grep(.rxMtimeRe, .lines)
   if (length(.w) == 0L) {
     return(character(0))
   }
-  stats::setNames(sub(.re, "\\3", .lines[.w]), sub(.re, "\\1", .lines[.w]))
+  stats::setNames(sub(.rxMtimeRe, "\\3", .lines[.w]),
+                  sub(.rxMtimeRe, "\\1", .lines[.w]))
+}
+
+#' Plain-name assignment target of each normalized model line
+#'
+#' @param lines character vector of normalized rxode2 model lines
+#' @return character vector the same length, the assigned name or `NA` for a
+#'   line that does not assign to a plain name (`d/dt(x)=`, `mtime(x)=`, ...)
+#' @author Matthew L. Fidler
+#' @noRd
+.rxLineLhs <- function(lines) {
+  .t <- trimws(sub("[ \t]*(<-|~|=(?!=)).*$", "", lines, perl = TRUE))
+  ifelse(grepl("^[A-Za-z._][A-Za-z0-9._]*$", .t), .t, NA_character_)
+}
+
+#' Names an `mtime()` right hand side depends on, through the model text
+#'
+#' Walks the assignments that PRECEDE the declaration, so the answer is the set
+#' of names whose value at that point the expansion relies on.
+#'
+#' @param lines normalized model lines
+#' @param lhs `.rxLineLhs(lines)`
+#' @param idx line index of the mtime declaration
+#' @param rhs its right hand side model text
+#' @return character vector of names
+#' @author Matthew L. Fidler
+#' @noRd
+.rxMtimeDeps <- function(lines, lhs, idx, rhs) {
+  .vars <- function(.txt) {
+    .p <- try(str2lang(.txt), silent = TRUE)
+    if (inherits(.p, "try-error")) character(0) else all.vars(.p)
+  }
+  .seen <- character(0)
+  .todo <- .vars(rhs)
+  while (length(.todo) > 0L) {
+    .v <- .todo[1L]
+    .todo <- .todo[-1L]
+    if (.v %in% .seen) next
+    .seen <- c(.seen, .v)
+    .w <- which(!is.na(lhs) & lhs == .v & seq_along(lhs) < idx)
+    if (length(.w) > 0L) {
+      .todo <- c(.todo, .vars(sub(";[ \t]*$", "", sub("^[^=~]*(=|~)", "", lines[max(.w)]))))
+    }
+  }
+  .seen
 }
 
 #' Store the model's `mtime()` declarations on its symengine environment
@@ -891,6 +938,24 @@ attr(rxUiGet.foceiModel0ll, "rstudio") <- quote(rxModelVars({}))
   # reference an earlier one, and rxS() left those variables unbound (it drops
   # the assignment, not just its value), so bind them to themselves here rather
   # than adding them to the environment every other generated model reads.
+  # rxS() keeps only each variable's FINAL value, so expanding against it is the
+  # value at the END of the model.  That is the value at the declaration only
+  # while nothing the right hand side depends on is assigned again afterwards --
+  # rxode2 itself evaluates the declaration in place, so refuse rather than
+  # silently emit the later value.
+  .lines <- unlist(strsplit(paste(newmod, collapse = "\n"), "\n", fixed = TRUE))
+  .lhs <- .rxLineLhs(.lines)
+  .mtIdx <- grep(.rxMtimeRe, .lines)
+  for (.i in seq_along(.rhs)) {
+    .dep <- .rxMtimeDeps(.lines, .lhs, .mtIdx[.i], .rhs[[.i]])
+    .bad <- unique(.lhs[!is.na(.lhs) & .lhs %in% .dep &
+                          seq_along(.lhs) >= .mtIdx[.i]])
+    if (length(.bad) > 0L) {
+      stop("mtime(", names(.rhs)[.i], ") uses '", .bad[1L],
+           "', which the model assigns again after it; rename or move it",
+           call. = FALSE)
+    }
+  }
   .e <- new.env(parent = env)
   for (.v in names(.rhs)) {
     assign(.v, symengine::S(.v), envir = .e)

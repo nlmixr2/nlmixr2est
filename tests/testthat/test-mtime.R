@@ -41,6 +41,16 @@ nmTest({
     expect_equal(.addMtimeLines("d/dt(x)=-a*x", .s), "d/dt(x)=-a*x")
   })
 
+  test_that(".rxMtimeDeps() walks back through the preceding assignments", {
+    .lines <- c("a=1;", "b=a+2;", "mtime(tx)=b;", "c=3;")
+    .lhs <- .rxLineLhs(.lines)
+    expect_equal(.lhs, c("a", "b", NA, "c"))
+    # tx depends on b, and b on a -- but not on c, which comes after it
+    expect_setequal(.rxMtimeDeps(.lines, .lhs, 3L, "b"), c("a", "b"))
+    # a name with no preceding assignment is a leaf (a parameter or covariate)
+    expect_setequal(.rxMtimeDeps(.lines, .lhs, 3L, "WT/10"), "WT")
+  })
+
   test_that("$dataSav keeps no mtime (EVID 10-99) records", {
     .ui <- rxode2::rxode2(.mkMtime(TRUE))
     # the mtime records DO come out of etTrans(), which is what used to be saved

@@ -56,6 +56,13 @@ nmTest({
     .ui <- rxode2::rxUiDecompress(.mk(c(.base, "mtime(tw) <- WT / 10",
       "kmult <- ifelse(t < tw, 1.0, 2.0)", .tail))())
     expect_equal(.mtimeLines(.ui$focei$inner), "mtime(tw)~0.1*WT;")
+
+    # rxS() keeps only a variable's FINAL value, so a right hand side whose
+    # dependency is assigned again after the declaration would expand to the
+    # later value -- rxode2 evaluates the declaration in place, so refuse
+    .ui <- rxode2::rxUiDecompress(.mk(c(.base, "t1 <- 10", "mtime(tx) <- t1",
+      "t1 <- 20", "kmult <- ifelse(t < tx, 1.0, 2.0) * t1 / 20", .tail))())
+    expect_error(.ui$focei, "assigns again after it")
   })
 
   test_that("mtime() does not cost the table its ADDL doses", {
