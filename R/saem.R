@@ -570,26 +570,30 @@
 #' Random effects that saem has no population parameter for
 #'
 #' saem parameterizes a random effect by the phi (population) parameter it is
-#' added to, so an eta paired with none has no phi1 column at all.  It is then
-#' silently dropped from `model$omega` -- an `NA` index in a matrix assignment
-#' is a no-op in R -- and the model is fitted without that random effect.
+#' added to and gives that phi ONE Gamma2_phi1 column, so a random effect has
+#' no column of its own in two cases: it is paired with no phi at all, or it
+#' shares a phi with an earlier random effect.  Either way it is silently
+#' dropped from `model$omega` -- an `NA` or repeated index in a matrix
+#' assignment writes nothing new -- and the model is fitted without it.
 #'
 #' @param ui rxode2 ui
-#' @return character vector of the diagonal eta names with no phi parameter
+#' @return character vector of the diagonal eta names with no phi column
 #' @author Matthew L. Fidler
 #' @noRd
 .saemEtaNoPhi <- function(ui) {
   .iniDf <- ui$iniDf
   .etas <- .iniDf[!is.na(.iniDf$neta1), ]
   .etas <- .etas$name[.etas$neta1 == .etas$neta2]
-  .etas[is.na(ui$saemEtaTrans)]
+  .tr <- ui$saemEtaTrans
+  .etas[is.na(.tr) | duplicated(.tr)]
 }
 
 #' Refuse a model whose random effect saem has no parameter for
 #'
 #' saem parameterizes a random effect by the population parameter it is added
-#' to (`theta + eta`), or carries it through `nonMuEtas`.  An eta paired with
-#' neither owns no phi1 column, so it is silently dropped from the kernel's
+#' to (`theta + eta`), or carries it through `nonMuEtas`, and gives that phi
+#' one phi1 column.  An eta paired with no phi, or sharing one with another
+#' eta, owns no column, so it is silently dropped from the kernel's
 #' `model$omega` and never sampled -- the model that gets fitted is not the
 #' model that was written, and the only symptom is a "subscript out of bounds"
 #' when the reported omega is assembled at the very end of the run (#1047).
@@ -601,9 +605,9 @@
 .saemAssertEtaPhi <- function(ui) {
   .bad <- .saemEtaNoPhi(ui)
   if (length(.bad) == 0L) return(invisible())
-  stop("random effect(s) are not added to any population parameter, so 'saem' ",
+  stop("random effect(s) have no population parameter of their own, so 'saem' ",
        "cannot sample them: ", paste(.bad, collapse=", "),
-       "\nas a work-around put the random effect on a simple 'theta + eta' line",
+       "\nas a work-around put each on its own simple 'theta + eta' line",
        call.=FALSE)
 }
 

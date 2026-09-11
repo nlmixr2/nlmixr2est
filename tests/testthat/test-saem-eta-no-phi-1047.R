@@ -70,6 +70,34 @@ nmTest({
     expect_error(nlmixr2Est.saem(.env), "eta.occ")
   })
 
+  # Two random effects mu-referenced to the SAME population parameter: saem
+  # gives a phi one Gamma2_phi1 column, so only the first is sampled.
+  .sharedPhiMod <- function() {
+    ini({
+      tka <- 0.45
+      tv <- 3.45
+      eta.ka ~ 0.6
+      eta.cl ~ 0.3
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tka + eta.cl)
+      v <- exp(tv)
+      linCmt() ~ add(add.sd)
+    })
+  }
+
+  test_that("two etas on one population parameter are refused, not silently merged", {
+    .ui <- rxode2::rxUiDecompress(rxode2::rxode2(.sharedPhiMod))
+    # both map to tka, so the model gets ONE phi1 column for the two of them
+    expect_equal(.ui$saemEtaTrans, c(1L, 1L))
+    expect_equal(sum(diag(.ui$saemModelOmega)), 1)
+    # the second is the one with no column of its own
+    expect_equal(.saemEtaNoPhi(.ui), "eta.cl")
+    expect_error(.saemAssertEtaPhi(.ui), "eta.cl")
+  })
+
   test_that("the gate does not refuse a model whose eta simply is not mu-referenced", {
     # Every one of these fits today: rxode2 records an eta that is not
     # `theta + eta` in `nonMuEtas`, which `saemParamsToEstimate()` appends to
