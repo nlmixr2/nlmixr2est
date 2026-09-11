@@ -567,6 +567,28 @@
   invisible()
 }
 
+#' Refuse a model whose random effect saem has no parameter for
+#'
+#' saem parameterizes a random effect by the population parameter it is added
+#' to (`theta + eta`), or carries it through `nonMuEtas`.  An eta paired with
+#' neither owns no phi1 column, so it is silently dropped from the kernel's
+#' `model$omega` and never sampled -- the model that gets fitted is not the
+#' model that was written, and the only symptom is a "subscript out of bounds"
+#' when the reported omega is assembled at the very end of the run (#1047).
+#'
+#' @param ui rxode2 ui
+#' @return Nothing, called for the error side effect
+#' @author Matthew L. Fidler
+#' @noRd
+.saemAssertEtaPhi <- function(ui) {
+  .bad <- .saemEtaNoPhi(ui)
+  if (length(.bad) == 0L) return(invisible())
+  stop("random effect(s) are not added to any population parameter, so 'saem' ",
+       "cannot sample them: ", paste(.bad, collapse=", "),
+       "\nas a work-around put the random effect on a simple 'theta + eta' line",
+       call.=FALSE)
+}
+
 #' Get SAEM omega
 #'
 #' @param env Environment that has ui and saem in it
@@ -588,6 +610,14 @@
   # Gamma2_phi1Report is the reporting-only pooled BSV for split ETAs; falls
   # back to Gamma2_phi1 for older cached fits without the field.
   .curOme <- if (!is.null(.saem$Gamma2_phi1Report)) .saem$Gamma2_phi1Report else .saem$Gamma2_phi1
+  # Backstop for #1047: .saemAssertEtaPhi() refuses such a model up front, so
+  # reaching here means the UI's etas and the kernel's phi1 block disagree.
+  .off <- is.na(.etaTrans) | .etaTrans > nrow(.curOme)
+  if (any(.off)) {
+    stop("saem reported no variance for random effect(s): ",
+         paste(.etaNames[.off], collapse=", "),
+         call.=FALSE)
+  }
   .mat <- nlme::random.effects(.saem)
   .mat2 <- .mat[, .etaTrans, drop = FALSE]
   colnames(.mat2) <- .etaNames
@@ -1671,6 +1701,7 @@ nlmixr2Est.saem <- function(env, ...) {
   rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'saem'",
                              .var.name=.ui$modelName)
   rxode2::assertRxUiMixedOnly(.ui, .noRandomEffectMsg("saem"), .var.name=.ui$modelName)
+  .saemAssertEtaPhi(.ui)
   rxode2::warnRxBounded(.ui, " which are ignored in 'saem'", .var.name=.ui$modelName)
   if (length(.ui$mixProbs) > 0) {
     message("mixture SAEM computation scales with the number of sub-populations")

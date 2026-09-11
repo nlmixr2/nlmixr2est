@@ -222,6 +222,9 @@ rxUiGet.saemOmegaTrans <- function(x, ...) {
   .etaTrans2 <- .etaTrans
   .c <- 1
   for (i in .o) {
+    # An eta with no phi parameter (NA) owns no Gamma2_phi1 column, so it gets
+    # no slot either; handing it one indexes past the matrix (#1047).
+    if (is.na(.etaTrans[i])) next
     .etaTrans2[i] <- .c
     .c <- .c + 1
   }
@@ -229,6 +232,24 @@ rxUiGet.saemOmegaTrans <- function(x, ...) {
 }
 #attr(rxUiGet.saemOmegaTrans, "desc") <- "Get the saem omega to UI omega translation"
 attr(rxUiGet.saemOmegaTrans, "rstudio") <- c(1L, 3L)
+
+#' Random effects that saem has no population parameter for
+#'
+#' saem parameterizes a random effect by the phi (population) parameter it is
+#' added to, so an eta paired with none has no phi1 column at all.  It is then
+#' silently dropped from `model$omega` -- an `NA` index in a matrix assignment
+#' is a no-op in R -- and the model is fitted without that random effect.
+#'
+#' @param ui rxode2 ui
+#' @return character vector of the diagonal eta names with no phi parameter
+#' @author Matthew L. Fidler
+#' @noRd
+.saemEtaNoPhi <- function(ui) {
+  .iniDf <- ui$iniDf
+  .etas <- .iniDf[!is.na(.iniDf$neta1), ]
+  .etas <- .etas$name[.etas$neta1 == .etas$neta2]
+  .etas[is.na(ui$saemEtaTrans)]
+}
 
 
 #' @export
