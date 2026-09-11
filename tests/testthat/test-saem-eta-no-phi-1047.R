@@ -158,6 +158,70 @@ nmTest({
     }
   })
 
+  # Two mixture components' random effects on ONE population parameter.  This
+  # is the shape that reproduced #1047 end to end: saem ran every iteration and
+  # then died with "subscript out of bounds" assembling the reported omega.
+  .mixOnePhiMod <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      p1 <- 0.5
+      eta.cl1 ~ 0.3
+      eta.cl2 ~ 0.3
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka)
+      cl <- mix(exp(tcl + eta.cl1), p1, exp(tcl + eta.cl2))
+      v <- exp(tv)
+      linCmt() ~ add(add.sd)
+    })
+  }
+
+  # The spelling saem DOES support: one population parameter per component, so
+  # each random effect owns a phi1 column and the pooled reporting omega
+  # (Gamma2_phi1Report) has something to pool.
+  .mixSplitMod <- function() {
+    ini({
+      tka <- 0.45
+      tcl1 <- 1
+      tcl2 <- 1.6
+      tv <- 3.45
+      p1 <- 0.5
+      eta.cl1 ~ 0.3
+      eta.cl2 ~ 0.3
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka)
+      cl <- mix(exp(tcl1 + eta.cl1), p1, exp(tcl2 + eta.cl2))
+      v <- exp(tv)
+      linCmt() ~ add(add.sd)
+    })
+  }
+
+  test_that("the #1047 model is refused before it fits, and its working twin is not", {
+    skip_on_cran()
+    skip_if_not_installed("nlmixr2data")
+    .ctl <- saemControl(nBurn = 5, nEm = 5, print = 0, calcTables = FALSE,
+                        covMethod = "")
+    # saemEtaNames() collapses the two onto one slot, so the kernel only ever
+    # knew about the second -- the first was never sampled
+    .ui <- rxode2::rxUiDecompress(rxode2::rxode2(.mixOnePhiMod))
+    expect_equal(.ui$saemEtaTrans, c(2L, 2L))
+    expect_equal(.ui$saemEtaNames, "eta.cl2")
+    expect_error(
+      suppressMessages(nlmixr2(.mixOnePhiMod, nlmixr2data::theo_sd, "saem", .ctl)),
+      "eta.cl2")
+
+    .ui2 <- rxode2::rxUiDecompress(rxode2::rxode2(.mixSplitMod))
+    expect_equal(.ui2$saemEtaTrans, c(2L, 3L))
+    expect_equal(.saemEtaNoPhi(.ui2), character(0))
+    .fit <- suppressMessages(nlmixr2(.mixSplitMod, nlmixr2data::theo_sd, "saem", .ctl))
+    expect_s3_class(.fit, "nlmixr2FitCore")
+  })
+
   test_that(".getSaemOmega() reports the mismatch instead of running off the end", {
     # Gamma2_phi1 one column short of the UI's etas: the backstop for a
     # disagreement the up-front check did not catch.
