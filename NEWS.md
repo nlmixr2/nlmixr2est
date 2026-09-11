@@ -10,9 +10,6 @@
   `fit$cov` resolved to `stats::cov` (which broke `print()`) and other items
   such as `$ranef` or `$mixNum` could come from the user's workspace (#1038).
 
-- `fit$seed` returns the saem seed instead of always `NULL`; the accessor
-  discarded the value it looked up.
-
 - `print()` on a fit shows the fixed-parameter correlation line again.  It was
   gated on `exists("cor", fit$env)`, which is never true for a fit that has not
   been through a save/load round trip, so a strong theta correlation was never
