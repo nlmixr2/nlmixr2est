@@ -102,6 +102,14 @@
   The parameter table is now refreshed from the covariance actually installed
   (nlmixr2extra#125).
 
+- `addCwres()` works on a fit whose objective function already is the focei (or
+  foce) one and that has no CWRES, instead of stopping with "objective function
+  'FOCEi' already present".  It now adds the residual columns and leaves the
+  objective function row the fit already carries alone.  The table step also
+  calculates CWRES for any fit reporting that objective function, since
+  `addCwres()` is the only way to add them later and the estimation methods
+  sharing the focei objective function have to supply them up front.
+
 ## New features
 
 - Added a native analytical outer Hessian for fast Gaussian FOCE/FOCE+/FOCEI/AGQ fits, using
