@@ -366,31 +366,34 @@ nmTest({
     expect_true(any(grepl("^om\\.", rownames(fit$cov))))
   })
 
-  test_that("foce+ (live-R) additive analytic R equals the FOCEI analytic R at the same theta", {
+  test_that("foce+ (live-R) additive analytic R equals the FOCEI analytic R at the same EBEs", {
     skip_on_cran()
     skip_if_not_installed("nlmixr2data")
     # Additive error: R = sa^2 is constant, so live vs frozen R and the FOCEI interaction
-    # term all coincide.  maxOuterIterations=0 evaluates both at the identical initial
-    # theta, and the two fits' EBEs agree to 6.9e-09, so what is left is the two KERNELS.
+    # term all coincide, and the FOCE inner problem IS the FOCEI one.  At the same EBEs the
+    # two kernels must therefore agree to machine precision -- see #1056, where they did not.
     #
-    # They do not agree entrywise, and cannot: the FOCE/foce+ kernel uses the general
-    # total-derivative form, which carries sum(gPhi . eta_ab), while the FOCEI kernel uses
-    # the envelope/Schur form, which drops that term because it assumes Phi_eta = 0.  The
-    # fit's stored EBEs sit at |Phi_eta| ~ 2e-3 (the inner solver's own tolerance), so the
-    # dropped term is exactly what separates the two.  Both kernels are right about their
-    # own assumption; the gap MEASURES how far the stored EBEs are from stationary, and it
-    # closes only when the inner solve gets tighter -- not something the covariance step
-    # should paper over by re-solving the fit's EBEs.
+    # Two things separated them, both now fixed.  The FOCE kernel's general total-derivative
+    # form ends in Phi_eta . eta_ab; Phi_eta was evaluated in full, but the inner problem
+    # zeroes S_FOCE by construction, so only the interaction remainder Phi_f - q0 belongs
+    # there (identically zero here) and the S part was the inner solver's own residual times
+    # a not-small eta_ab.  And the FOCE assembler re-solved the EBEs while the FOCEI one used
+    # the fit's; the covariance now uses the fit's on both routes.
     #
-    # So assert what a user sees -- the standard errors -- and bound the raw R difference at
-    # what it measures.  Measured: the raw R gap is 1.2e-2, on the numerically small
-    # [add.sd, tka] entry; the theta and sigma SEs agree to ~1e-5, and the loosest SE
-    # (om.eta.ka, 0.41166 vs 0.41211) to 1.1e-3.
-    fitP <- suppressWarnings(suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
-              foceiControl(sigdig = 4, print = 0L, covMethod = "", maxOuterIterations = 0L,
-                           interaction = FALSE, foce = "foce+"))))
+    # etaMat + maxInnerIterations=0 pins the foce+ fit to the FOCEI fit's EBEs, which is what
+    # isolates the KERNELS.  Two independent fits would not do it: foce+ refines its EBEs to
+    # the truncated-score root during estimation (focePlusRefinementRequired, src/inner.cpp)
+    # and FOCEI does not, so at sigdig=4 the two fits sit 1.2e-3 apart in eta -- an
+    # estimation-side difference that has nothing to do with the covariance kernels.
     fitI <- suppressWarnings(suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
               foceiControl(sigdig = 4, print = 0L, covMethod = "", maxOuterIterations = 0L))))
+    .em <- as.matrix(fitI$eta[, -1, drop = FALSE]); dimnames(.em) <- NULL
+    fitP <- suppressWarnings(suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
+              foceiControl(sigdig = 4, print = 0L, covMethod = "", maxOuterIterations = 0L,
+                           interaction = FALSE, foce = "foce+",
+                           etaMat = .em, maxInnerIterations = 0L))))
+    # the pinning has to have worked, or the comparison below is not about the kernels
+    expect_equal(as.matrix(fitP$eta[, -1, drop = FALSE]), as.matrix(fitI$eta[, -1, drop = FALSE]))
     # not positive definite on this model+point, so the PD gate warns and leaves fit$cov
     # alone; the R matrix (what this compares) is returned either way
     rP <- suppressWarnings(foceiCovAnalytic(fitP)); rI <- suppressWarnings(foceiCovAnalytic(fitI))
@@ -398,8 +401,34 @@ nmTest({
     expect_false(is.null(rI))
     .fin <- is.finite(rP$se) & is.finite(rI$se)
     expect_gt(sum(.fin), 3L)
-    expect_equal(unname(rP$se[.fin]), unname(rI$se[.fin]), tolerance = 2e-3)
-    expect_lt(max(abs(rP$R - rI$R) / (abs(rI$R) + 1e-8)), 2e-2)
+    expect_equal(unname(rP$se[.fin]), unname(rI$se[.fin]), tolerance = 1e-10)
+    expect_lt(max(abs(rP$R - rI$R) / (abs(rI$R) + 1e-8)), 1e-10)
+  })
+
+  test_that("foce+ and FOCEI additive analytic R converge as the inner solve tightens", {
+    skip_on_cran()
+    skip_if_not_installed("nlmixr2data")
+    # The companion to the test above: two INDEPENDENT fits do not land on the same EBEs
+    # (foce+ refines its own, FOCEI does not), so their observed informations differ by
+    # whatever that eta gap buys.  What must hold is that the gap is the inner tolerance and
+    # nothing structural -- i.e. it shrinks with sigdig.  Measured 1.1e-2 (sigdig 4) ->
+    # 7.5e-5 (sigdig 7) on the raw R, 1.1e-3 -> 4.7e-6 on the SEs.
+    .fitBoth <- function(sd) {
+      .p <- suppressWarnings(suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
+             foceiControl(sigdig = sd, print = 0L, covMethod = "", maxOuterIterations = 0L,
+                          interaction = FALSE, foce = "foce+"))))
+      .i <- suppressWarnings(suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
+             foceiControl(sigdig = sd, print = 0L, covMethod = "", maxOuterIterations = 0L))))
+      .rp <- suppressWarnings(foceiCovAnalytic(.p)); .ri <- suppressWarnings(foceiCovAnalytic(.i))
+      .f <- is.finite(.rp$se) & is.finite(.ri$se)
+      c(R = max(abs(.rp$R - .ri$R) / (abs(.ri$R) + 1e-8)),
+        se = max(abs(.rp$se[.f] - .ri$se[.f]) / (abs(.ri$se[.f]) + 1e-8)))
+    }
+    .g4 <- .fitBoth(4); .g7 <- .fitBoth(7)
+    expect_lt(.g4[["R"]], 2e-2)
+    expect_lt(.g7[["R"]], 5e-4)          # measured 7.5e-5
+    expect_lt(.g7[["se"]], 5e-5)         # measured 4.7e-6
+    expect_lt(.g7[["R"]], .g4[["R"]])
   })
 
   # Wang 2007 monoexponential IV bolus: predictions 10*exp(-ke*t) are bounded away from
