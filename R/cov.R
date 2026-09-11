@@ -59,7 +59,7 @@
 #' @noRd
 .nlmixr2CovConditionUpdate <- function(env) {
   if (!exists("cov", envir = env, inherits = FALSE)) return(invisible(FALSE))
-  .cov <- get("cov", envir = env)
+  .cov <- get("cov", envir = env, inherits = FALSE)
   if (!inherits(.cov, "matrix") || nrow(.cov) == 0L) return(invisible(FALSE))
   .cn <- .cnr <- NA_real_
   .good <- which(!is.na(diag(.cov)))
@@ -98,10 +98,10 @@
   if (rxode2::rxIs(obj, "nlmixr2FitData")) {
     .env <- obj$env
   }
-  if (exists("cov", .env)) {
+  if (exists("cov", .env, inherits = FALSE)) {
     .cur <- list(.env$cov)
     names(.cur) <- .env$covMethod
-    if (exists("covList", .env)) {
+    if (exists("covList", .env, inherits = FALSE)) {
       if (is.null(.env$covList[[.env$covMethod]])) {
         .covList <- c(.env$covList, .cur)
       } else {
@@ -394,7 +394,7 @@ setCov <- function(fit, method) {
       call. = FALSE
     )
   }
-  if (exists("covList", .env)) {
+  if (exists("covList", .env, inherits = FALSE)) {
     .covList <- .env$covList
     .cov <- .covList[[method]]
     if (!is.null(.cov)) {
@@ -449,7 +449,7 @@ getVarCov.nlmixr2FitCore <- function(obj, ...) {
   if (!is.null(.args$force)) {
     .force <- .args$force
   }
-  if (exists("cov", envir = .env) && !.force) {
+  if (exists("cov", envir = .env, inherits = FALSE) && !.force) {
     if (rxode2::rxIs(.env$cov, "matrix")) {
       return(.env$cov)
     }

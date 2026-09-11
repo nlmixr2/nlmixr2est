@@ -63,12 +63,12 @@ getValidNlmixrCtl.focep <- function(control) {
 #' @export
 nmObjGetControl.focep <- function(x, ...) {
   .env <- x[[1]]
-  if (exists("focepControl", .env)) {
-    .control <- get("focepControl", .env)
+  if (exists("focepControl", .env, inherits = FALSE)) {
+    .control <- get("focepControl", .env, inherits = FALSE)
     if (inherits(.control, "focepControl")) return(.control)
   }
-  if (exists("control", .env)) {
-    .control <- get("control", .env)
+  if (exists("control", .env, inherits = FALSE)) {
+    .control <- get("control", .env, inherits = FALSE)
     if (inherits(.control, "focepControl")) return(.control)
   }
   stop("cannot find focep related control object", call.=FALSE)

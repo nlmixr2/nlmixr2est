@@ -268,7 +268,7 @@
   # FOCE inner Hessian Hf (interaction-free), its Nf, and the determinant Ht = Oi + sum(a a/R0)
   Hf <- Oi; Nf <- matrix(0, neta, ndir); Ht <- Oi
   for (l in ei) {
-    for (m in ei) { Hf[l, m] <- Hf[l, m] + sum(q1 * a[, l] * a[, m] + q0 * A[, l, m])
+    for (m in ei) { Hf[l, m] <- Hf[l, m] + sum(q1*a[,l]*a[,m]+q0*A[,l,m]+res/R0^2*a[,l]*aRe[,m])
       Ht[l, m] <- Ht[l, m] + sum(a[, l] * a[, m] / R0) }
     for (d in di) Nf[l, d] <- sum(q1 * a[, l] * a[, d] + q0 * A[, l, d])
   }

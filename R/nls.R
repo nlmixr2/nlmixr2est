@@ -289,14 +289,14 @@ nmObjHandleControlObject.nlsControl <- function(control, env) {
 #' @export
 nmObjGetControl.nls <- function(x, ...) {
   .env <- x[[1]]
-  if (exists("nlsControl", .env)) {
-    .control <- get("nlsControl", .env)
+  if (exists("nlsControl", .env, inherits = FALSE)) {
+    .control <- get("nlsControl", .env, inherits = FALSE)
     if (inherits(.control, "nlsControl")) {
       return(.control)
     }
   }
-  if (exists("control", .env)) {
-    .control <- get("control", .env)
+  if (exists("control", .env, inherits = FALSE)) {
+    .control <- get("control", .env, inherits = FALSE)
     if (inherits(.control, "nlsControl")) {
       return(.control)
     }

@@ -73,20 +73,20 @@ cp = central/v", function(i) {
   etaO <- as.matrix(fO$eta[, -1])
   expect_lt(max(abs(etaC - etaO)), 2e-3)
   # This used to run two independent 200-iteration fits and compare their
-  # converged objectives.  That comparison is not restorable: the ODE
-  # reference is only trustworthy as the FIRST ODE fit in an R session.
-  # Every later one loses its f()/alag() eta sensitivities -- the event
-  # etas collapse to ~1e-9 and it converges elsewhere (nlmixr2est#1016),
-  # deterministically by position in the session (nlmixr2est#1015).  Both
-  # are pre-existing and unrelated to the carry (bisected across the
-  # linCmt stack).  So `fO` above is the one ODE reference this test may
-  # use, and what replaces the converged comparison is a FIXED-POINT
-  # surface check that needs no reference and no optimizer at all: freeze
+  # converged objectives.  That comparison was dropped when the ODE
+  # reference was only trustworthy as the FIRST ODE fit in an R session:
+  # every later one lost its f()/alag() eta sensitivities and converged
+  # elsewhere (nlmixr2est#1016).  #1016 is fixed -- the event-sensitivity
+  # mode now rides with the cached model bundle, so repeated ODE fits in
+  # one session agree (test-focei-event-eta-1016.R pins that) -- but the
+  # fixed-point check that replaced it is the better test and stays: it
+  # needs no reference and no optimizer at all.  Freeze
   # theta+omega (finalUi) and eta (etaMat) with both iteration caps at 0.
   # FOCEi's objective carries a Laplace log|H| term built from the eta
   # sensitivities, so the carry still moves it with the etas held --
   # which is exactly what this PR is responsible for.  Do not reinstate
-  # the converged-objective comparison.
+  # the converged-objective comparison: it was a weaker check even before
+  # #1016 made it unusable.
   .fixedObj <- function(ui, carry) {
     .em <- as.matrix(fC$eta[, setdiff(names(fC$eta), "ID"), drop = FALSE])
     .ctl <- nlmixr2est::foceiControl(

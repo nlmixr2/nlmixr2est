@@ -458,12 +458,12 @@ nmObjHandleControlObject.nlmeControl <- function(control, env) {
 #' @export
 nmObjGetControl.nlme <- function(x, ...) {
   .env <- x[[1]]
-  if (exists("nlmeControl", .env)) {
-    .control <- get("nlmeControl", .env)
+  if (exists("nlmeControl", .env, inherits = FALSE)) {
+    .control <- get("nlmeControl", .env, inherits = FALSE)
     if (inherits(.control, "nlmeControl")) return(.control)
   }
-  if (exists("control", .env)) {
-    .control <- get("control", .env)
+  if (exists("control", .env, inherits = FALSE)) {
+    .control <- get("control", .env, inherits = FALSE)
     if (inherits(.control, "nlmeControl")) return(.control)
   }
   stop("cannot find nlme related control object", call.=FALSE)

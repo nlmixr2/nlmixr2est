@@ -367,12 +367,12 @@ nmObjHandleControlObject.trustControl <- function(control, env) {
 #' @export
 nmObjGetControl.trust <- function(x, ...) {
   .env <- x[[1]]
-  if (exists("trustControl", .env)) {
-    .control <- get("trustControl", .env)
+  if (exists("trustControl", .env, inherits = FALSE)) {
+    .control <- get("trustControl", .env, inherits = FALSE)
     if (inherits(.control, "trustControl")) return(.control)
   }
-  if (exists("control", .env)) {
-    .control <- get("control", .env)
+  if (exists("control", .env, inherits = FALSE)) {
+    .control <- get("control", .env, inherits = FALSE)
     if (inherits(.control, "trustControl")) return(.control)
   }
   stop("cannot find trust related control object", call.=FALSE)

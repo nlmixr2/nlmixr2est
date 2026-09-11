@@ -1804,11 +1804,19 @@
                               rRR * aRe[, l] * aRe[, m] + rf * A[, l, m] + rR * E_ARelm(E, l, m, .fp))
   # ---- FOCE inner (EBE) tensors: interaction-free q-based Hf/Nf/Tnf ----
   Hf <- Oi; Nf <- matrix(0, neta, ndir)
-  for (l in ei) { for (m in ei) Hf[l, m] <- Hf[l, m] + sum(q1 * a[, l] * a[, m] + q0 * A[, l, m])
+  for (l in ei) { for (m in ei) Hf[l, m] <- Hf[l,m]+sum(q1*a[,l]*a[,m]+q0*A[,l,m]+rfR*a[,l]*aRe[,m])
     for (d in di) Nf[l, d] <- sum(q1 * a[, l] * a[, d] + q0 * A[, l, d]) }
   HfInv <- solve(Hf)
-  Tnf <- array(0, c(neta, ndir, ndir)); for (l in ei) for (s in di) for (t in di)
-    Tnf[l, s, t] <- sum(q1 * (A[, l, s] * a[, t] + A[, l, t] * a[, s] + A[, s, t] * a[, l]) + q0 * Ath[, l, s, t])
+  aRe2 <- if (.fp) E$AR else array(0, c(nobs, ndir, ndir))
+  scoreSecond <- function(l, s, t, rs, rt, rst) {
+    qs <- q1*a[,s]+rfR*rs[,s]; qt <- q1*a[,t]+rfR*rt[,t]
+    qst <- -(a[,s]*rt[,t]+rs[,s]*a[,t])/R0^2-2*res*rs[,s]*rt[,t]/R0^3+
+      q1*A[,s,t]+rfR*rst[,s,t]
+    sum(qst*a[,l]+qs*A[,l,t]+qt*A[,l,s]+q0*Ath[,l,s,t])
+  }
+  Tnf <- array(0, c(neta, ndir, ndir))
+  for (l in ei) for (s in di) for (t in di)
+    Tnf[l,s,t] <- scoreSecond(l,s,t,aRe,aRe,aRe2)
   # ---- determinant Ht = Oi + sum(a a / R0) (interaction-free) + its derivatives ----
   # dHtDir/d2HtDir are parameterized by the R0-sensitivity of each direction: the eta-block
   # uses aRe (frozen, 0 for nonmem), the parameter columns use aRc (E0's dR0/ddir), so a
@@ -1832,26 +1840,34 @@
   # ---- R0 theta-chains for the parameter accessors (aRc/ARc); sigma is a direction ----
   chQ <- function(d) (res / R0^2) * aRc[, d]                       # d(q0)/dtheta via R0
   # Phi_(eta,p) and S_p share the (res/R0^2) aRc chain (q0 = Phi_f for FOCE)
-  McolData <- function(p) { if (!isD(p)) return(as.numeric(omd$dOi[[omc(p)]] %*% ehat))
+  McolEBE <- function(p) { if (!isD(p)) return(as.numeric(omd$dOi[[omc(p)]] %*% ehat))
     d <- dOf(p); Nf[, d] + as.numeric(crossprod(ae, chQ(d))) }
-  McolEBE <- McolData
+  McolData <- function(p) {
+    value <- McolEBE(p)
+    if (isD(p)) for (l in ei) {
+      d <- dOf(p)
+      value[l] <- value[l]+sum(rfR*aRe[,l]*a[,d]+rRR*aRe[,l]*aRc[,d]+rR*aRe2[,l,d])
+    }
+    value
+  }
   d2Phi <- function(aa, bb) { if (!isD(aa) && !isD(bb))
       return(0.5 * as.numeric(t(ehat) %*% omd$d2Oi[[omc(aa)]][[omc(bb)]] %*% ehat) + 0.5 * omd$d2LD[omc(aa), omc(bb)])
     if (!isD(aa) || !isD(bb)) return(0)
     da <- dOf(aa); db <- dOf(bb)
     sum(rff * a[, da] * a[, db] + rf * A[, da, db] + rfR * (a[, da] * aRc[, db] + aRc[, da] * a[, db]) +
           rRR * aRc[, da] * aRc[, db] + rR * ARc[, da, db]) }
-  # S_(p,eta) row (SmatEBE): Tnf plus the theta chain -aRc/R0^2 a a + (res/R0^2) aRc A
-  SmatEBE <- function(p) { if (!isD(p)) return(omd$dOi[[omc(p)]])
-    d <- dOf(p); M <- matrix(0, neta, ndir); for (l in ei) for (s in di)
-      M[l, s] <- Tnf[l, d, s] + sum(-aRc[, d] * iR2 * a[, s] * a[, l] + (res * iR2) * aRc[, d] * A[, l, s]); M }
-  # S_(p,p') vector (SvecEBE): Tnf + the combined 2nd-order R0 chain (R0'A0 cancels)
-  SvecEBE <- function(aa, bb) { ta <- isD(aa); tb <- isD(bb)
-    if (!ta && !tb) return(as.numeric(omd$d2Oi[[omc(aa)]][[omc(bb)]] %*% ehat))
-    if (!ta || !tb) return(rep(0, neta))
-    da <- dOf(aa); db <- dOf(bb); v <- Tnf[, da, db]
-    w <- -(a[, da] * aRc[, db] + aRc[, da] * a[, db]) * iR2 + (res * iR2) * ARc[, da, db] - 2 * res * aRc[, da] * aRc[, db] * iR3
-    for (l in ei) v[l] <- v[l] + sum(w * a[, l] + (res * iR2) * (aRc[, da] * A[, l, db] + aRc[, db] * A[, l, da])); v }
+  SmatEBE <- function(p) {
+    if (!isD(p)) return(omd$dOi[[omc(p)]])
+    value <- matrix(0,neta,ndir)
+    for (l in ei) for (s in di) value[l,s] <- scoreSecond(l,s,dOf(p),aRe,aRc,aRe2)
+    value
+  }
+  SvecEBE <- function(p,q) {
+    if (!isD(p) && !isD(q)) return(as.numeric(omd$d2Oi[[omc(p)]][[omc(q)]] %*% ehat))
+    value <- numeric(neta)
+    if (isD(p) && isD(q)) for (l in ei) value[l] <- scoreSecond(l,dOf(p),dOf(q),aRc,aRc,ARc)
+    value
+  }
   # determinant d2Ht/(deta_l dp) uses aRc for the theta-direction, aRe for the eta; the mixed
   # d2R0/(deta dtheta) is 0 for nonmem (R0 frozen w.r.t. eta) and E$AR for foce+.
   d2HtEtaP <- function(p, l) { if (!isD(p)) return(matrix(0, neta, neta))

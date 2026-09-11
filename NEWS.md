@@ -11,6 +11,44 @@
   modeled times survive estimation and the mtime variable stays defined.  The
   extra records the solve regenerates are also kept out of the fit's output
   table and out of the `nlme` objective (#919).
+- `fit$cor` returns `NULL` instead of erroring when the fit has no covariance
+  (`covMethod=""`), matching `fit$cov` (#1038).
+
+- Fit accessors, the control getters, `setCov()` and `print()` look items up
+  only in the fit environment itself.  A fit reloaded by `nlmixr2save` is
+  parented on the global environment, so `fit$cov` resolved to `stats::cov`
+  (which broke `print()`), `fit$ranef` to `nlme::ranef`, and `$mixNum`,
+  `$mixList` or `$parHist` to a variable of that name in the user's workspace
+  (#1038).
+
+- `print()` on a fit shows the fixed-parameter correlation line again.  It was
+  gated on `exists("cor", fit$env)`, which is never true for a fit that has not
+  been through a save/load round trip, so a strong theta correlation was never
+  reported (#1038).
+- A focei fit of a model whose dosing depends on an eta -- `f()`, `alag()`,
+  `rate()`, `dur()` -- now says so when rxode2's analytic event ("jump")
+  sensitivities cannot be installed, instead of silently returning a fit whose
+  dosing etas never left their initial values while their omegas stayed finite.
+  The event-sensitivity mode already rides with the cached model bundle; it now
+  also survives a second deflate/inflate round trip, and the model bundle
+  records which etas enter a dosing expression so the fit can tell a model that
+  needs the jumps from one that does not (#1016).
+- `saemControl(covMethod="sa"|"fim")` keeps its own Omega standard errors on a
+  diagonal-Omega model.  The variance parameters the analytic FIM cannot cover
+  (a non-additive endpoint's residual error) are still taken from the
+  linearized FIM, but that splice replaced the WHOLE variance block, so a
+  near-singular residual pair propagated into the Omega rows -- on a
+  two-endpoint `add()+prop()` / `add()` model `om.eta.ka` reported an SE of 560
+  against an estimate of 1.1, where the analytic FIM gives 0.51.  A declared
+  Omega block still takes the whole block from the linearized FIM, because the
+  Louis score only ever sees the diagonal of Omega (#1022).
+
+- `saemControl(covMethod="sa"|"fim")` no longer reports a standard error for a
+  `fix()`ed additive residual error.  The SAEM kernel fills an endpoint's
+  residual slot whether or not the value is estimated, so a fixed `add.sd` came
+  back with a covariance row -- printed as a back-transformed 95% interval on a
+  value the fit never estimated -- and the remaining parameters were given the
+  marginal instead of the conditional information.  Found while fixing #1022.
 
 - `foceiControl(fast=TRUE)` no longer converges to a non-stationary point when
   an external likelihood contribution is registered (`nlmixrRegisterLikContrib`,
@@ -30,6 +68,35 @@
   (nlmixr2extra#125).
 
 ## New features
+
+- Added a native analytical outer Hessian for fast Gaussian FOCE/FOCE+/FOCEI/AGQ fits, using
+  the existing sensitivity pool. Fast `nlminb` fits used it automatically.
+
+- Added optional full conditional inner curvature for fast Gaussian FOCEI via
+  `innerHessian="conditional"`, used by inner trust and n1qn1's `warm="calc"`
+  seed. The FOCEI marginal objective was unchanged.
+
+- Evaluated the conditional inner value, gradient and full curvature jointly
+  in one pooled sensitivity solve, including M2/M3/M4 censoring.
+
+- Added `foceiControl(outerOpt="trust")`, a trust-region Newton outer optimizer
+  (`RcppTrust`) driven by the analytical outer Hessian.  `outerTrustHessian=`
+  selects the curvature -- the analytical Hessian under `fast=TRUE`, a damped
+  BFGS update, or a finite difference of the outer gradient -- with
+  `outerTrustRinit`/`outerTrustRmax`, `outerTrustFterm`/`outerTrustMterm`,
+  `outerTrustRelStep` and `outerTrustRestarts` controlling the region, its
+  tolerances and the step handed to the Hessian.  Because the solver's own
+  convergence test is satisfied by a collapsing trust region, the reported
+  point is checked with its Newton decrement and the region re-entered when it
+  is not stationary.  Measured on one model only (`theo_sd`, a fast FOCEi fit of
+  the one-compartment ODE): 116.807191 against `outerOpt="nlminb"`'s 116.808709,
+  at comparable cost once the model cache is warm.
+
+- Added `est="flaplace"`, `"mflaplace"`, `"iflaplace"`, `"fagq"`, `"mfagq"` and
+  `"ifagq"` -- the Laplace and adaptive-quadrature methods (plus their
+  mu-referenced `"lin"`/`"irls"` variants) run with the full conditional inner
+  curvature (`fast=TRUE`, `innerHessian="conditional"`).  They report as
+  `Full Laplace`/`Full AGQ`, and require Gaussian endpoints.
 
 - `impmapControl(proposal=)` selects the importance-sampling proposal family for
   `est="imp"`, `"impmap"` and `"qrpem"`: `"normal"` and `"t"` as `df` already
@@ -405,6 +472,15 @@
   existing covariance is now kept and a warning says why.  The live
   `covMethod="analytic"` seam, `setCov()` and the `saem` installer already
   guarded this; the standalone entry was the one that did not.
+
+- Corrected objective scaling of the fast outer gradient.
+
+- Corrected FOCE curvature's row stride when solves included bookkeeping rows.
+
+- Aligned FOCE+ objectives and derivatives with the live-variance ETA score root.
+
+- Included M2/M3/M4 censoring in the analytical AGQ gradient and the
+  FOCE/FOCE+/FOCEI/AGQ outer Hessian with `censOption="gauss"`.
 
 - A `focei`-family fit now reports whether its inner solves actually
   converged.  `fit$env$nTrustInner` breaks the `innerOpt="trust"` per-subject

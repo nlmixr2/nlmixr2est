@@ -337,14 +337,14 @@ nmObjHandleControlObject.nlmControl <- function(control, env) {
 #' @export
 nmObjGetControl.nlm <- function(x, ...) {
   .env <- x[[1]]
-  if (exists("nlmControl", .env)) {
-    .control <- get("nlmControl", .env)
+  if (exists("nlmControl", .env, inherits = FALSE)) {
+    .control <- get("nlmControl", .env, inherits = FALSE)
     if (inherits(.control, "nlmControl")) {
       return(.control)
     }
   }
-  if (exists("control", .env)) {
-    .control <- get("control", .env)
+  if (exists("control", .env, inherits = FALSE)) {
+    .control <- get("control", .env, inherits = FALSE)
     if (inherits(.control, "nlmControl")) {
       return(.control)
     }
