@@ -79,8 +79,9 @@
   tolerances and the step handed to the Hessian.  Because the solver's own
   convergence test is satisfied by a collapsing trust region, the reported
   point is checked with its Newton decrement and the region re-entered when it
-  is not stationary.  On `theo_sd` a fast FOCEi fit reached a marginally lower
-  objective than `outerOpt="nlminb"` in roughly a fifth of the time.
+  is not stationary.  Measured on one model only (`theo_sd`, a fast FOCEi fit of
+  the one-compartment ODE): 116.807191 against `outerOpt="nlminb"`'s 116.808709,
+  at comparable cost once the model cache is warm.
 
 - Added `est="flaplace"`, `"mflaplace"`, `"iflaplace"`, `"fagq"`, `"mfagq"` and
   `"ifagq"` -- the Laplace and adaptive-quadrature methods (plus their
