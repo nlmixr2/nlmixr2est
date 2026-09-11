@@ -113,10 +113,10 @@ print(f)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.9579141 4.1808e-05 0.01600773      0.081     0.819 6.283       0.896
+#>            setup  optimize covariance preprocess configure saem postprocess
+#> elapsed 1.014965 3.295e-05 0.01500896      0.079     0.969 6.34       0.883
 #>         table compress     other
-#> elapsed 0.071    0.132 0.5640364
+#> elapsed 0.069    0.136 0.6079936
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -127,6 +127,7 @@ print(f)
 #> add.sd           0.700 0.0502 7.18    0.700 (0.601, 0.798)                     
 #>  
 #>   Covariance Type ($covMethod): linFim
+#>   Fixed parameter correlations in $cor
 #>   No correlations in between subject variability (BSV) matrix
 #>   Full BSV covariance ($omega) or correlation ($omegaR; diagonals=SDs) 
 #>   Distribution stats (mean/skewness/kurtosis/p-value) available in $shrink 
@@ -180,10 +181,10 @@ if (!inherits(f, "try-error")) {
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.9579141 4.1808e-05 0.01600773      0.081     0.819 6.283       0.896
+#>            setup  optimize covariance preprocess configure saem postprocess
+#> elapsed 1.014965 3.295e-05 0.01500896      0.079     0.969 6.34       0.883
 #>         table compress     other
-#> elapsed 0.071    0.132 0.5640364
+#> elapsed 0.069    0.136 0.6079936
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -194,6 +195,7 @@ if (!inherits(f, "try-error")) {
 #> add.sd           0.700 0.0502 7.18    0.700 (0.601, 0.798)                     
 #>  
 #>   Covariance Type ($covMethod): linFim
+#>   Fixed parameter correlations in $cor
 #>   No correlations in between subject variability (BSV) matrix
 #>   Full BSV covariance ($omega) or correlation ($omegaR; diagonals=SDs) 
 #>   Distribution stats (mean/skewness/kurtosis/p-value) available in $shrink 

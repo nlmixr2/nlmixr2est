@@ -4,6 +4,40 @@
 
 ### Bug fixes
 
+- `fit$cor` returns `NULL` instead of erroring when the fit has no
+  covariance (`covMethod=""`), matching `fit$cov`
+  ([\#1038](https://github.com/nlmixr2/nlmixr2est/issues/1038)).
+
+- Fit accessors, the control getters,
+  [`setCov()`](https://nlmixr2.github.io/nlmixr2est/reference/setCov.md)
+  and [`print()`](https://rdrr.io/r/base/print.html) look items up only
+  in the fit environment itself. A fit reloaded by `nlmixr2save` is
+  parented on the global environment, so `fit$cov` resolved to
+  [`stats::cov`](https://rdrr.io/r/stats/cor.html) (which broke
+  [`print()`](https://rdrr.io/r/base/print.html)), `fit$ranef` to
+  [`nlme::ranef`](https://rdrr.io/pkg/nlme/man/random.effects.html), and
+  `$mixNum`, `$mixList` or `$parHist` to a variable of that name in the
+  user’s workspace
+  ([\#1038](https://github.com/nlmixr2/nlmixr2est/issues/1038)).
+
+- [`print()`](https://rdrr.io/r/base/print.html) on a fit shows the
+  fixed-parameter correlation line again. It was gated on
+  `exists("cor", fit$env)`, which is never true for a fit that has not
+  been through a save/load round trip, so a strong theta correlation was
+  never reported
+  ([\#1038](https://github.com/nlmixr2/nlmixr2est/issues/1038)).
+
+- A focei fit of a model whose dosing depends on an eta – `f()`,
+  `alag()`, `rate()`, `dur()` – now says so when rxode2’s analytic event
+  (“jump”) sensitivities cannot be installed, instead of silently
+  returning a fit whose dosing etas never left their initial values
+  while their omegas stayed finite. The event-sensitivity mode already
+  rides with the cached model bundle; it now also survives a second
+  deflate/inflate round trip, and the model bundle records which etas
+  enter a dosing expression so the fit can tell a model that needs the
+  jumps from one that does not
+  ([\#1016](https://github.com/nlmixr2/nlmixr2est/issues/1016)).
+
 - `saemControl(covMethod="sa"|"fim")` keeps its own Omega standard
   errors on a diagonal-Omega model. The variance parameters the analytic
   FIM cannot cover (a non-additive endpoint’s residual error) are still

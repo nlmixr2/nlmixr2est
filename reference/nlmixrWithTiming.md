@@ -107,10 +107,10 @@ print(fit)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup   optimize covariance preprocess configure saem postprocess
-#> elapsed 0.1017582 2.9375e-05 0.01400469      0.083      0.17 6.32       0.315
+#>              setup   optimize covariance preprocess configure  saem postprocess
+#> elapsed 0.09732059 2.7551e-05 0.01100518      0.074      0.14 6.285       0.271
 #>         table compress     other time2 time1
-#> elapsed 0.057    0.134 0.1462077 1.002 1.002
+#> elapsed 0.051    0.133 0.1286467 1.002 1.002
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -121,6 +121,7 @@ print(fit)
 #> add.sd           0.700 0.0502 7.18    0.700 (0.601, 0.798)                     
 #>  
 #>   Covariance Type ($covMethod): linFim
+#>   Fixed parameter correlations in $cor
 #>   No correlations in between subject variability (BSV) matrix
 #>   Full BSV covariance ($omega) or correlation ($omegaR; diagonals=SDs) 
 #>   Distribution stats (mean/skewness/kurtosis/p-value) available in $shrink 

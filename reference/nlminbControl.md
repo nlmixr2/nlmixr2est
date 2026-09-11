@@ -431,9 +431,9 @@ print(fit2)
 #> ── Time (sec $time): ──
 #> 
 #>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.1646192 0.3017133  7.234e-06      0.054       0.006 0.022    0.012
-#>             other
-#> elapsed 0.1016603
+#> elapsed 0.1444085 0.2818006  5.979e-06      0.059       0.006 0.021    0.011
+#>            other
+#> elapsed 0.090785
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
@@ -444,6 +444,11 @@ print(fit2)
 #> g    2.00 FIXED FIXED                    2.00
 #>  
 #>   Covariance Type ($covMethod): r (nlminb)
+#>   Some strong fixed parameter correlations exist ($cor) :
+#>      cor:Em,E0 cor:E50,E0 cor:E50,Em 
+#>     0.173       0.621      0.813  
+#>  
+#> 
 #>   Censoring ($censInformation): No censoring
 #>   Minimization message ($message):  
 #>     relative convergence (4) 
