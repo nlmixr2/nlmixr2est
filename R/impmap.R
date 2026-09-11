@@ -818,12 +818,12 @@ getValidNlmixrCtl.impmap <- function(control) {
 #' @export
 nmObjGetControl.impmap <- function(x, ...) {
   .env <- x[[1]]
-  if (exists("impmapControl", .env)) {
-    .control <- get("impmapControl", .env)
+  if (exists("impmapControl", .env, inherits = FALSE)) {
+    .control <- get("impmapControl", .env, inherits = FALSE)
     if (inherits(.control, "impmapControl")) return(.control)
   }
-  if (exists("control", .env)) {
-    .control <- get("control", .env)
+  if (exists("control", .env, inherits = FALSE)) {
+    .control <- get("control", .env, inherits = FALSE)
     if (inherits(.control, "impmapControl")) return(.control)
   }
   stop("cannot find impmap related control object", call.=FALSE)

@@ -2,6 +2,20 @@
 
 ## Bug fixes
 
+- `fit$cor` returns `NULL` instead of erroring when the fit has no covariance
+  (`covMethod=""`), matching `fit$cov` (#1038).
+
+- Fit accessors, the control getters, `setCov()` and `print()` look items up
+  only in the fit environment itself.  A fit reloaded by `nlmixr2save` is
+  parented on the global environment, so `fit$cov` resolved to `stats::cov`
+  (which broke `print()`), `fit$ranef` to `nlme::ranef`, and `$mixNum`,
+  `$mixList` or `$parHist` to a variable of that name in the user's workspace
+  (#1038).
+
+- `print()` on a fit shows the fixed-parameter correlation line again.  It was
+  gated on `exists("cor", fit$env)`, which is never true for a fit that has not
+  been through a save/load round trip, so a strong theta correlation was never
+  reported (#1038).
 - A focei fit of a model whose dosing depends on an eta -- `f()`, `alag()`,
   `rate()`, `dur()` -- now says so when rxode2's analytic event ("jump")
   sensitivities cannot be installed, instead of silently returning a fit whose

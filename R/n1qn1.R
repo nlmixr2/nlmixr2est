@@ -242,12 +242,12 @@ nmObjHandleControlObject.n1qn1Control <- function(control, env) {
 #' @export
 nmObjGetControl.n1qn1 <- function(x, ...) {
   .env <- x[[1]]
-  if (exists("n1qn1Control", .env)) {
-    .control <- get("n1qn1Control", .env)
+  if (exists("n1qn1Control", .env, inherits = FALSE)) {
+    .control <- get("n1qn1Control", .env, inherits = FALSE)
     if (inherits(.control, "n1qn1Control")) return(.control)
   }
-  if (exists("control", .env)) {
-    .control <- get("control", .env)
+  if (exists("control", .env, inherits = FALSE)) {
+    .control <- get("control", .env, inherits = FALSE)
     if (inherits(.control, "n1qn1Control")) return(.control)
   }
   stop("cannot find n1qn1 related control object", call.=FALSE)
