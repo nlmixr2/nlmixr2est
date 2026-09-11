@@ -284,8 +284,10 @@ print.nlmixr2FitCore <- function(x, ...) {
     # $cor is NULL when there is no covariance (covMethod=""); testing
     # exists("cor", x$env) instead found stats::cor on a reloaded fit (#1038)
     .cor <- x$cor
-    if (!is.null(.cor)) {
-      .tmp <- .getR(.cor)
+    .tmp <- if (is.null(.cor)) numeric(0) else .getR(.cor)
+    # .getR() drops zero and NA entries, so a single estimated theta (or a
+    # diagonal covariance) leaves nothing to point at
+    if (length(.tmp) > 0) {
       if (any(abs(.tmp) >= getOption("nlmixr2.strong.corr", 0.7))) {
         cat(paste0("  Some strong fixed parameter correlations exist (", crayon::yellow(.bound), crayon::bold$blue("$cor"), ") :\n"))
         .getCorPrint(.cor)

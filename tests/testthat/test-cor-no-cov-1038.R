@@ -45,6 +45,7 @@ nmTest({
     expect_null(fit$cov)
     expect_null(fit$cor)
     expect_error(capture.output(print(fit)), NA)
+    expect_false(any(grepl("\\$cor", capture.output(print(fit)))))
 
     .re <- .asReloaded(fit)
     # without the local lookup these pick up stats::cov / stats::cor
@@ -73,11 +74,21 @@ nmTest({
       stats::cov2cor(fit$cov)[lower.tri(.cor)]
     )
 
+    # The correlation line is reachable again.  It has to be asserted on the
+    # LOCAL fit: the gate it replaced, exists("cor", x$env), is never true for
+    # a locally fit model but IS true for a reloaded one (it finds stats::cor),
+    # so a reloaded-only assertion passes with the fix reverted.
+    expect_true(any(grepl("\\$cor", capture.output(print(fit)))))
+
     .re <- .asReloaded(fit)
     expect_equal(.re$cor, .cor)
-    # the correlation line is reachable again; it was gated on
-    # exists("cor", x$env), which is never true for a locally fit model
     expect_true(any(grepl("\\$cor", capture.output(print(.re)))))
+
+    # the strong-correlation branch calls .getCorPrint(), which was unreachable
+    # for a local fit before this change
+    withr::local_options(list(nlmixr2.strong.corr = 0))
+    .out <- capture.output(print(fit))
+    expect_true(any(grepl("strong fixed parameter correlations", .out)))
   })
 
   test_that("$cor keeps a zero-variance row out of cov2cor (#1038)", {
