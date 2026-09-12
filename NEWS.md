@@ -2,6 +2,10 @@
 
 ## Bug fixes
 
+- `saem` reports a `fix()`ed eta variance as the value it was fixed at. The
+  reported omega was snapshotted before the fixed values were restored, so it
+  carried the M-step's unconstrained estimate instead -- `fix(0.3)` came back as
+  0.318 while the fit itself correctly sampled with 0.3 (#1073).
 - `covMethod="analytic"` for FOCE and `foce="foce+"` no longer carries the inner
   solver's residual score into the observed information.  The FOCE kernel uses
   the general total-derivative form, whose last term is `Phi_eta . eta_ab`; it
