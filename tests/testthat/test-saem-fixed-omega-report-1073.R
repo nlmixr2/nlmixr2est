@@ -69,21 +69,23 @@ nmTest({
   test_that("the SA covariance phase does not undo the fixed report", {
     skip_on_cran()
     skip_if_not_installed("nlmixr2data")
-    # covMethod="sa" (the default) runs nSaCov extra iterations after the fit
-    # and restores the converged estimate from a snapshot afterwards.
-    # Gamma2_phi1Report is part of that snapshot, so the restore is a second
-    # way the reported fixed value could be lost; covMethod="" skips the phase
-    # entirely and would never exercise it.
+    # covMethod="sa" is the default, and it runs nSaCov extra iterations after
+    # the fit; covMethod="" skips them entirely, so the other tests here never
+    # see that phase at all.
+    #
+    # This does NOT exercise the _savGamma2_phi1Report snapshot/restore around
+    # the phase: the gain is frozen at zero there (`pas`/`pash` are zero-padded,
+    # src/saem.cpp), so the sufficient statistics and hence Gamma2_phi1 do not
+    # move, and neutering the restore leaves both assertions below passing
+    # (measured).  What it does establish is the user-visible invariant -- the
+    # phase must not change the reported omega, fixed cell or otherwise.
     .fit <- suppressWarnings(suppressMessages(
       nlmixr2(.fixMuMod, nlmixr2data::theo_sd, "saem",
               saemControl(nBurn = 20, nEm = 20, print = 0, seed = 42,
                           calcTables = FALSE, covMethod = "sa", nSaCov = 20L))))
     expect_equal(unname(.fit$omega["eta.ka", "eta.ka"]), 0.3)
-    # ... and the whole reported matrix still comes from the snapshot, not from
-    # the covariance phase's fluctuating iterations.  Checking only the fixed
-    # cell would pass even with the snapshot/restore of Gamma2_phi1Report
-    # dropped, because the M-step rewrites that cell every iteration anyway --
-    # it is the ESTIMATED entries that would drift.
+    # ... and the estimated entries are untouched by the phase too, not just
+    # the fixed one.
     .noCov <- suppressWarnings(suppressMessages(
       nlmixr2(.fixMuMod, nlmixr2data::theo_sd, "saem",
               saemControl(nBurn = 20, nEm = 20, print = 0, seed = 42,
