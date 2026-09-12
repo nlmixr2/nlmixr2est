@@ -79,6 +79,16 @@ nmTest({
               saemControl(nBurn = 20, nEm = 20, print = 0, seed = 42,
                           calcTables = FALSE, covMethod = "sa", nSaCov = 20L))))
     expect_equal(unname(.fit$omega["eta.ka", "eta.ka"]), 0.3)
+    # ... and the whole reported matrix still comes from the snapshot, not from
+    # the covariance phase's fluctuating iterations.  Checking only the fixed
+    # cell would pass even with the snapshot/restore of Gamma2_phi1Report
+    # dropped, because the M-step rewrites that cell every iteration anyway --
+    # it is the ESTIMATED entries that would drift.
+    .noCov <- suppressWarnings(suppressMessages(
+      nlmixr2(.fixMuMod, nlmixr2data::theo_sd, "saem",
+              saemControl(nBurn = 20, nEm = 20, print = 0, seed = 42,
+                          calcTables = FALSE, covMethod = ""))))
+    expect_equal(unname(.fit$omega), unname(.noCov$omega))
   })
 
   test_that("a non-mu-referenced eta's fix()ed variance is reported too", {
