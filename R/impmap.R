@@ -611,34 +611,39 @@
 #'   keeps the step finite but does NOT rescue the fit.
 #'
 #'   Measured end to end on that arm (g4: declared gamma, relative variance 2.0,
-#'   shape 0.5, CV 141%), at `isample = 300` from Bauer's own starting values.
-#'   READ THE CAVEAT BELOW THE TABLE before drawing a conclusion from it: these
-#'   are one run per row, and this arm's run-to-run spread is as large as the
-#'   differences shown.
+#'   shape 0.5, CV 141%) at `isample = 300`, three `impSeed` values per level so
+#'   the comparison is not read off a single run.  MARE against the simulated
+#'   truth (CL 5.105, V1 4.715, rv 2.0/2.0):
 #'
-#'   | `mceta` | CL | V1 | rvCL | rvV1 | MARE | objf |
-#'   | --- | --- | --- | --- | --- | --- | --- |
-#'   | -2 (default) | 6.95 | 3.64 | 0.86 | 0.33 | 49.9% | 236 |
-#'   | 10 | 99.58 | 29.57 | 0.80 | 0.76 | 625.0% | 2.98e9 |
-#'   | 100 | 56.39 | 30.06 | 0.82 | 0.75 | 415.9% | 1.01e9 |
+#'   | `impSeed` | `mceta = -2` (default) | `mceta = 10` | `mceta = 100` |
+#'   | --- | --- | --- | --- |
+#'   | 42 | 49.9% | 625.0% | 415.9% |
+#'   | 43 | 484.1% | 606.4% | 565.8% |
+#'   | 44 | 416.3% | 406.5% | 456.0% |
+#'   | median | 416.3% | 606.4% | 456.0% |
+#'
+#'   Two things follow, and only the first is firm.
+#'
+#'   **Raising `mceta` does not rescue this arm.**  No cell at any `mceta`,
+#'   `isample` or starting value lands near truth; the one run that does
+#'   (49.9%) is the default at seed 42, and re-running it reproduces 49.9% and
+#'   objf 236.4 bit-for-bit, so it is a lucky draw rather than a property of
+#'   those settings.  `nMcetaStart` confirms the draws were genuinely explored
+#'   rather than the setting ignored -- sampled starts won 600/600 in most
+#'   cells.
+#'
+#'   **It also appears mildly harmful, but the effect is small next to the
+#'   arm's own failure.**  Compared WITHIN a seed, `mceta = 100` is worse than
+#'   the default in 3 of 3 seeds (+366, +82 and +40 points) and `mceta = 10` in
+#'   2 of 3.  With three seeds that is a direction, not a magnitude -- and the
+#'   between-seed spread at fixed settings (49.9% to 484.1%) dwarfs it.
 #'
 #'   Raising `isample` does not rescue it either -- `mceta = 100` at
-#'   `isample = 1000` reaches MARE 283.4% (objf 3.00e8) in 4946s against 2411s,
-#'   so it is still 5.7x worse than the default at twice the cost.
+#'   `isample = 1000` reaches MARE 283.4% (objf 3.00e8) in 4946s against 2411s.
 #'
-#'   (truth CL 5.105, V1 4.715, rv 2.0/2.0.)  `nMcetaStart` confirms the draws
-#'   were explored rather than the setting ignored -- sampled starts won 595/600
-#'   and 600/600.
-#'
-#'   **The caveat.**  Holding everything fixed and changing only `impSeed`, the
-#'   default row above gives MARE 49.9%, 484.1% and 416.3% at seeds 42, 43 and
-#'   44.  So the 49.9% is a lucky draw, and the raised-`mceta` numbers sit
-#'   inside the band the seed alone produces.  What this table supports is that
-#'   raising `mceta` does NOT rescue the arm; it does not establish that raising
-#'   it is worse.  Any comparison on g4 needs replicates across `impSeed`.  The mechanism is NOT the M-step Hessian: the count of
-#'   iterations that could not update the structural thetas is 89/100 at the
-#'   default against 96/100 and 71/77, so the ill-conditioning belongs to the arm
-#'   rather than to `mceta`.
+#'   The mechanism is NOT the M-step Hessian: the count of iterations that could
+#'   not update the structural thetas is 89/100 at the default against 96/100
+#'   and 71/77, so the ill-conditioning belongs to the arm.
 #'
 #'   Note also that Bauer's own control stream for this arm puts `MCETA=100` on
 #'   its `$EST METHOD=ITS` warm-up step; the `$EST METHOD=IMP` step carries no
