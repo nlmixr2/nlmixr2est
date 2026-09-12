@@ -351,6 +351,21 @@
                  mate = prep$covNames[.nt$mate],
                  delta = as.numeric(.nt$delta))
     }
+  ## Cross-parameter refinement: counters and the sticky pair adjacency, straight
+  ## from C++ (omOff is reported rather than re-derived so it cannot disagree
+  ## with the gate that actually ran).
+  .nPhiPair <- if (is.null(.fit$nPhiPair)) 0L else as.integer(.fit$nPhiPair)
+  .nPhiTest <- if (is.null(.fit$nPhiTest)) 0L else as.integer(.fit$nPhiTest)
+  .nPhiMove <- if (is.null(.fit$nPhiMove)) 0L else as.integer(.fit$nPhiMove)
+  .nPhiSkipBig <- if (is.null(.fit$nPhiSkipBig)) 0L else as.integer(.fit$nPhiSkipBig)
+  .nPhiSkipDiag <- if (is.null(.fit$nPhiSkipDiag)) 0L else as.integer(.fit$nPhiSkipDiag)
+  .nPhiClamp <- if (is.null(.fit$nPhiClamp)) 0L else as.integer(.fit$nPhiClamp)
+  .omOff <- if (is.null(.fit$omOff)) FALSE else as.logical(.fit$omOff)
+  .phiPairOn <- .fit$phiPairOn
+  if (!is.null(.phiPairOn)) dimnames(.phiPairOn) <- list(prep$etaNames, prep$etaNames)
+  for (.m in .vaePhiDiagMsg(.nPhiPair, .omOff, any(.selected))) {
+    warning(.m, call. = FALSE)
+  }
   .omMat <- .fit$omegaMat
   dimnames(.omMat) <- list(prep$etaNames, prep$etaNames)
   list(params = .fit$params, zPop = as.numeric(.fit$zPop), omega = as.numeric(.fit$omega),
@@ -365,6 +380,14 @@
        covSelectMethodUsed = .modes$used,
        covNearTie = .covNearTie,
        nCovHysteresis = if (is.null(.fit$nCovHysteresis)) 0L else as.integer(.fit$nCovHysteresis),
+       nPhiPair = .nPhiPair,
+       nPhiTest = .nPhiTest,
+       nPhiMove = .nPhiMove,
+       nPhiSkipBig = .nPhiSkipBig,
+       nPhiSkipDiag = .nPhiSkipDiag,
+       nPhiClamp = .nPhiClamp,
+       omOff = .omOff,
+       phiPairOn = .phiPairOn,
        nMix = nMix,
        ## the FITTED proportions, not the ini() ones: they are estimated on the
        ## mlogit scale by their own analytic gradient (Adam), so the value that
