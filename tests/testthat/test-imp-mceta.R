@@ -15,7 +15,7 @@
 # The estimates are no evidence either way: the EM is stochastic, so mceta=0 and
 # mceta=10 differ a little whether or not the draws were ever explored.
 nmTest({
-  test_that("impmapControl(mceta=) survives the down-conversion to foceiControl", {
+  test_that("impmapControl(mceta=) survives the focei down-conversion", {
     # A pure control-level assertion, so it fails on the mapping rather than on
     # anything a fit happens to do.
     expect_false("mceta" %in% nlmixr2est:::.impmapIsControlNames)
@@ -29,8 +29,9 @@ nmTest({
   })
 
   test_that("no foceiControl() user knob is stripped by the down-conversion", {
-    # The general form of the mceta defect.  .impmapIsControlNames exists to drop
-    # names foceiControl() does not accept; listing one it DOES accept silently
+    # The general form of the mceta defect.  .impmapIsControlNames exists
+    # to drop names foceiControl() does not accept; listing one it DOES
+    # accept silently
     # replaces the user's value with foceiControl()'s default in every consumer
     # of the down-converted control.  That is invisible whenever the two
     # defaults agree and wrong whenever they do not -- etaDistCorSuff is TRUE on
@@ -60,10 +61,10 @@ nmTest({
         linCmt() ~ add(add.sd)
       })
     }
+    .ctl <- impmapControl(nIter = 2L, isample = 50L, print = 0L,
+                          mceta = 10L, covMethod = "")
     .f <- suppressMessages(
-      nlmixr2(.mod, nlmixr2data::theo_sd, est = "imp",
-              control = impmapControl(nIter = 2L, isample = 50L, print = 0L,
-                                      mceta = 10L, covMethod = "")))
+      nlmixr2(.mod, nlmixr2data::theo_sd, est = "imp", control = .ctl))
     .ns <- .f$env$nMcetaStart
     expect_false(is.null(.ns))
     expect_true(sum(.ns) > 0)
@@ -72,10 +73,10 @@ nmTest({
     expect_true(.ns[["sample"]] > 0)
 
     # control: the counter is gated on mceta >= 1, so mceta=0 must not stamp it
+    .ctl0 <- impmapControl(nIter = 2L, isample = 50L, print = 0L,
+                           mceta = 0L, covMethod = "")
     .f0 <- suppressMessages(
-      nlmixr2(.mod, nlmixr2data::theo_sd, est = "imp",
-              control = impmapControl(nIter = 2L, isample = 50L, print = 0L,
-                                      mceta = 0L, covMethod = "")))
+      nlmixr2(.mod, nlmixr2data::theo_sd, est = "imp", control = .ctl0))
     expect_null(.f0$env$nMcetaStart)
   })
 })
