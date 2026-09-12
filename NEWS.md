@@ -180,6 +180,14 @@
   random effects, instead of fitting the model without them and then failing
   with "subscript out of bounds" while assembling the reported omega at the end
   of the run (#1047).
+- Swapping a peer model into the shared FOCEi solve pool (the augmented
+  outer-gradient model for every analytic gradient, the outer Hessian's probes,
+  the AGQ node model) installs its event-sensitivity shape from the registry
+  with a C call.  The model's shape is read once when it is registered; before,
+  every swap called back into R (`rxEventSensLoadModel()`) to re-derive it,
+  which kept every batch boundary on the R side of the derivative passes.
+  `.odeSwapInfo()` reports `esInstallC`/`esInstallR`.
+
 - A model containing `mtime()` can be fit again, with every estimation method.
   `etTrans()` materializes the modeled times as `EVID` 10-99 records (`TIME=0`,
   `AMT=NA`) and `$dataSav` persisted them, so re-translating it for each

@@ -336,6 +336,15 @@ nmTest({
     .i <- .odeSwapInfo()
     expect_true(all(.i$models$parLayoutOk[.i$models$loaded]))
     expect_equal(.i$probeDenyN, .d0)
+    ## Swapping the augmented model in installs its event-sensitivity shape from the
+    ## registry with a C call, not through R's rxEventSensLoadModel(): the model was
+    ## loaded once, the batches only swap.  The counter is the only evidence -- a
+    ## batch that fell back to R gives the same numbers.
+    .e0 <- .odeSwapInfo()[c("esInstallC", "esInstallR")]
+    gPool2 <- .foceiGradDirect(f)
+    .e1 <- .odeSwapInfo()[c("esInstallC", "esInstallR")]
+    expect_gt(.e1$esInstallC, .e0$esInstallC)
+    expect_equal(.e1$esInstallR, .e0$esInstallR)
     ## This used to also compare against .foceiAnalyticGradViaRxSolve(), the same gradient
     ## forced through rxode2::rxSolve instead of the pool.  That route was the R gradient
     ## implementation, which is gone -- the pooled solve is now the only one -- so the
