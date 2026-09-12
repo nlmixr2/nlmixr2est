@@ -3789,6 +3789,20 @@ static bool focePlusBacktrack(arma::vec &x, arma::vec &g, const arma::vec &step,
   return false;
 }
 
+// Newton on the truncated score, starting from `x`/`g`.  Every way out is the
+// same way out: stop iterating and leave `x` at the last accepted iterate.
+static void focePlusNewton(arma::vec &x, arma::vec &g, int id) {
+  for (int iteration = 0; iteration < std::min(100,op_focei.maxInnerIterations); ++iteration) {
+    double norm = arma::abs(g).max();
+    if (norm < 1e-9) return;                                  // at the root
+    arma::mat jacobian(x.n_elem,x.n_elem);
+    if (!focePlusScoreJacobian(x,jacobian,id)) return;        // a probe would not solve
+    arma::vec step;
+    if (!arma::solve(step,jacobian,g) || !step.is_finite()) return;
+    if (!focePlusBacktrack(x,g,step,norm,id)) return;         // at the noise floor
+  }
+}
+
 // Polishing only: the eta handed in is the inner optimizer's own answer and is
 // always usable.  Refusing to drive the score any closer to zero is therefore
 // not a failure -- `focePlusBacktrack` accepts nothing but a strict decrease in
@@ -3804,26 +3818,13 @@ static bool refineFocePlusEta(double *eta, int id) {
   if (!focePlusRefinementRequired()) return true;
   auto *ind = &inds_focei[id];
   arma::vec x(eta,op_focei.neta), g(op_focei.neta);
-  auto finish = [&]() {
-    std::copy(x.begin(),x.end(),eta); ind->setup = 0;
-    return R_FINITE(likInner0(eta,id));
-  };
   try {
-    if (focePlusScore(x,g,id)) {
-      for (int iteration = 0; iteration < std::min(100,op_focei.maxInnerIterations); ++iteration) {
-        double norm = arma::abs(g).max();
-        if (norm < 1e-9) break;
-        arma::mat jacobian(x.n_elem,x.n_elem);
-        if (!focePlusScoreJacobian(x,jacobian,id)) break;
-        arma::vec step;
-        if (!arma::solve(step,jacobian,g) || !step.is_finite()) break;
-        if (!focePlusBacktrack(x,g,step,norm,id)) break;
-      }
-    }
+    if (focePlusScore(x,g,id)) focePlusNewton(x,g,id);
   } catch (...) {
   }
   try {
-    return finish();
+    std::copy(x.begin(),x.end(),eta); ind->setup = 0;
+    return R_FINITE(likInner0(eta,id));
   } catch (...) {
     return false;
   }
