@@ -611,9 +611,10 @@
 #'   keeps the step finite but does NOT rescue the fit.
 #'
 #'   Measured end to end on that arm (g4: declared gamma, relative variance 2.0,
-#'   shape 0.5, CV 141%), at `isample = 300` from Bauer's own starting values,
-#'   raising `mceta` is 8-12x WORSE on mean absolute relative error against the
-#'   simulated truth:
+#'   shape 0.5, CV 141%), at `isample = 300` from Bauer's own starting values.
+#'   READ THE CAVEAT BELOW THE TABLE before drawing a conclusion from it: these
+#'   are one run per row, and this arm's run-to-run spread is as large as the
+#'   differences shown.
 #'
 #'   | `mceta` | CL | V1 | rvCL | rvV1 | MARE | objf |
 #'   | --- | --- | --- | --- | --- | --- | --- |
@@ -627,7 +628,14 @@
 #'
 #'   (truth CL 5.105, V1 4.715, rv 2.0/2.0.)  `nMcetaStart` confirms the draws
 #'   were explored rather than the setting ignored -- sampled starts won 595/600
-#'   and 600/600.  The mechanism is NOT the M-step Hessian: the count of
+#'   and 600/600.
+#'
+#'   **The caveat.**  Holding everything fixed and changing only `impSeed`, the
+#'   default row above gives MARE 49.9%, 484.1% and 416.3% at seeds 42, 43 and
+#'   44.  So the 49.9% is a lucky draw, and the raised-`mceta` numbers sit
+#'   inside the band the seed alone produces.  What this table supports is that
+#'   raising `mceta` does NOT rescue the arm; it does not establish that raising
+#'   it is worse.  Any comparison on g4 needs replicates across `impSeed`.  The mechanism is NOT the M-step Hessian: the count of
 #'   iterations that could not update the structural thetas is 89/100 at the
 #'   default against 96/100 and 71/77, so the ill-conditioning belongs to the arm
 #'   rather than to `mceta`.
