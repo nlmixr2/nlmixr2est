@@ -3429,6 +3429,41 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
 #' @return positive-definite matrix with the dimnames of `om`
 #' @author Matthew L. Fidler
 #' @noRd
+#' Restore a declared omega off-diagonal that came back exactly zero
+#'
+#' `rxSymInvCholCreate()` reads the block structure off the matrix's zero
+#' pattern, so an ESTIMATED off-diagonal that happens to come back as exactly 0
+#' reads as structure and the cholesky parameter vector no longer matches
+#' ("theta has to have N elements").  Put the declared pattern back with a
+#' negligible correlation.
+#'
+#' @param om omega matrix
+#' @param ui rxode2 UI object (the `iniDf` says which entries are estimated)
+#' @return `om` with every declared-but-zero off-diagonal set to a negligible
+#'   nonzero value
+#' @author Matthew L. Fidler
+#' @noRd
+.foceiUnzeroDeclaredOffDiag <- function(om, ui) {
+  .iniDf <- ui$iniDf
+  .eta <- .iniDf[!is.na(.iniDf$neta1), ]
+  .off <- .eta[.eta$neta1 != .eta$neta2, ]
+  if (nrow(.off) == 0L) return(om)
+  for (.i in seq_len(nrow(.off))) {
+    .r <- .off$neta1[.i]
+    .c <- .off$neta2[.i]
+    if (.r > nrow(om) || .c > ncol(om)) next
+    if (om[.r, .c] != 0) next
+    # scale to the two variances so the added correlation is 1e-6 and the
+    # matrix stays positive definite
+    if (!is.finite(om[.r, .r]) || !is.finite(om[.c, .c]) ||
+          om[.r, .r] <= 0 || om[.c, .c] <= 0) next
+    .tiny <- 1e-6 * sqrt(om[.r, .r] * om[.c, .c])
+    om[.r, .c] <- .tiny
+    om[.c, .r] <- .tiny
+  }
+  om
+}
+
 .foceiRepairOmega <- function(om) {
   .om <- om
   .bad <- !is.finite(.om)
@@ -3442,13 +3477,26 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
     }
     return(.r)
   }
-  .d <- diag(.om)
+  warning("singular omega; used a floored diagonal for tables", call. = FALSE)
+  .foceiFloorOmegaDiagonal(.om)
+}
+
+#' Drop an omega to a floored diagonal
+#'
+#' A diagonal matrix always has a structure `rxSymInvCholCreate()` can build,
+#' so this is the last-resort repair.
+#'
+#' @param om omega matrix
+#' @return diagonal matrix with every non-finite/too-small variance floored
+#' @author Matthew L. Fidler
+#' @noRd
+.foceiFloorOmegaDiagonal <- function(om) {
+  .d <- diag(om)
   .pos <- .d[is.finite(.d) & .d > 0]
   .floor <- if (length(.pos) > 0L) max(1e-8, 1e-6 * max(.pos)) else 1e-6
   .d[!is.finite(.d) | .d < .floor] <- .floor
   .ret <- diag(.d, nrow = length(.d))
   dimnames(.ret) <- dimnames(om)
-  warning("singular omega; used a floored diagonal for tables", call. = FALSE)
   .ret
 }
 
@@ -3537,9 +3585,29 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
       # the wrong ones
       .sameMap <- NULL
     }
-    env$rxInv <- rxode2::rxSymInvCholCreate(mat = .om0,
-                                            diag.xform = .diagXform,
-                                            same = .sameMap)
+    .rxInv <- try(rxode2::rxSymInvCholCreate(mat = .om0,
+                                             diag.xform = .diagXform,
+                                             same = .sameMap), silent = TRUE)
+    if (inherits(.rxInv, "try-error")) {
+      # An omega that chol()s fine can still carry an estimated off-diagonal
+      # that came back exactly 0, which rxSymInvCholCreate reads as structure
+      # (#1073).  Restore the declared pattern and try once more.
+      .om0 <- .foceiUnzeroDeclaredOffDiag(.om0, ui)
+      .rxInv <- try(rxode2::rxSymInvCholCreate(mat = .om0,
+                                               diag.xform = .diagXform,
+                                               same = .sameMap), silent = TRUE)
+    }
+    if (inherits(.rxInv, "try-error")) {
+      # last resort: a floored diagonal, which always has a representable
+      # structure; post-fit diagnostics still run
+      .repaired <- TRUE
+      .sameMap <- NULL
+      .om0 <- .foceiFloorOmegaDiagonal(.om0)
+      .rxInv <- rxode2::rxSymInvCholCreate(mat = .om0,
+                                           diag.xform = .diagXform,
+                                           same = .sameMap)
+    }
+    env$rxInv <- .rxInv
     env$xType <- env$rxInv$xType
     .om0a <- .om0
     .om0a <- .om0a / rxode2::rxGetControl(ui, "diagOmegaBoundLower", 100)

@@ -18,6 +18,11 @@
   the `fix()`ed-value restore and the diagonal enforcement, so `fit$omega`
   carried the unconstrained M-step estimate even though the sampler had used
   the fixed value (#1073).
+- A fit whose omega comes back with an ESTIMATED off-diagonal at exactly 0 no
+  longer aborts at the residual/table step with "theta has to have N elements".
+  `rxSymInvCholCreate()` reads the matrix's zero pattern as block structure, so
+  the declared pattern is restored with a negligible correlation before the
+  sym-inv-chol environment is built (#1073).
 - `saem` refuses a model whose random effect has no population parameter of its
   own -- added to none, or sharing one with another random effect -- naming the
   random effects, instead of fitting the model without them and then failing

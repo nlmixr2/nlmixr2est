@@ -92,4 +92,65 @@ nmTest({
                  matrix(c(0.3, 0.02, 0.02, 0.1), 2, 2),
                  tolerance = 1e-12)
   })
+
+  # Reporting the constrained matrix means a floored variance now reaches
+  # post-fit setup as a genuinely tiny (not negative) number, which can leave an
+  # ESTIMATED off-diagonal at exactly 0.  rxSymInvCholCreate() reads that zero as
+  # block structure and refuses the full cholesky parameter vector, so the omega
+  # handed to it has to keep the declared pattern.
+  .blockUi <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      add.sd <- 0.7
+      eta.ka + eta.cl + eta.v ~ c(0.3, 0.02, 0.1, 0.01, 0.01, 0.1)
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv + eta.v)
+      linCmt() ~ add(add.sd)
+    })
+  }
+
+  test_that("a declared omega off-diagonal that came back 0 stays representable (#1073)", {
+    .ui <- rxode2::rxode2(.blockUi)
+    .om <- .ui$omega
+    .om[2, 3] <- .om[3, 2] <- 0
+    expect_error(rxode2::rxSymInvCholCreate(mat = .om, diag.xform = "sqrt"))
+    .fixed <- .foceiUnzeroDeclaredOffDiag(.om, .ui)
+    expect_true(.fixed[2, 3] > 0)
+    expect_equal(.fixed[2, 3], .fixed[3, 2])
+    # every declared entry is back, so the cholesky vector matches again
+    expect_equal(length(rxode2::rxSymInvCholCreate(mat = .fixed,
+                                                   diag.xform = "sqrt")$theta), 6L)
+    # still positive definite
+    expect_false(inherits(try(chol(.fixed), silent = TRUE), "try-error"))
+  })
+
+  # A zero the model never declared is structure, not a degenerate estimate, and
+  # must be left alone.
+  .diagMod <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      add.sd <- 0.7
+      eta.ka ~ 0.3
+      eta.cl ~ 0.1
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv)
+      linCmt() ~ add(add.sd)
+    })
+  }
+
+  test_that("a structural omega zero is not nudged (#1073)", {
+    .diagUi <- rxode2::rxode2(.diagMod)
+    .om <- .diagUi$omega
+    expect_equal(.foceiUnzeroDeclaredOffDiag(.om, .diagUi), .om)
+  })
 })
