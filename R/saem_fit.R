@@ -623,10 +623,14 @@
       .cvAll <- NULL
       if (length(.needCov) > 0L) {
         .dd <- data$data
-        .have <- .needCov[.needCov %in% names(.dd)]
+        ## `data$data` is a MATRIX (as.matrix() above), so names() on it is
+        ## NULL and this lookup could never match -- the declared M-step's
+        ## covariate support has never resolved a column.  colnames() is the
+        ## accessor a matrix answers.
+        .have <- .needCov[.needCov %in% colnames(.dd)]
         if (length(.have) > 0L) {
-          .ag <- stats::aggregate(.dd[, .have, drop = FALSE], list(id = id),
-                                  function(.z) .z[1])
+          .ag <- stats::aggregate(as.data.frame(.dd[, .have, drop = FALSE]),
+                                  list(id = id), function(.z) .z[1])
           .ag <- .ag[order(.ag$id), , drop = FALSE]
           .cvAll <- as.matrix(.ag[, .have, drop = FALSE])
           colnames(.cvAll) <- .have
