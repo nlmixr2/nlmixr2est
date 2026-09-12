@@ -506,6 +506,31 @@ nmTest({
     expect_equal(.gateFit(3, 4L)$objf, .on$objf)
   })
 
+  test_that("the Omega restart draws are keyed on foceiControl(seed=) (#1044)", {
+    skip_on_cran()
+    # The draws must come from the fit's own seed, not from rxode2's
+    # getRxSeed1(): that call ADVANCES rxode2's global rxSeed by its argument
+    # (rxode2 src/seed.cpp), so reading it would shift the seed every later
+    # consumer in the fit gets -- and with no rxode2 seed in force it takes the
+    # value from R's own RNG.  Either would make a fit that never restarts
+    # anything differ from the same fit with the fallback off.  Two seeds have
+    # to give two different sets of draws, and one seed the same set twice.
+    .dat <- .gateData()
+    .fit <- function(seed) {
+      suppressWarnings(suppressMessages(
+        nlmixr2(.gateMod(3), .dat, "focei",
+                foceiControl(print = 0L, covMethod = "", maxOuterIterations = 0L,
+                             maxInnerIterations = 5000L, calcTables = FALSE,
+                             etaRestart = 4L, seed = seed, innerOpt = "trust"))))
+    }
+    .a <- .fit(42L)
+    .b <- .fit(7L)
+    expect_gt(.a$env$nTrustInner[["omegaRestart"]], 0L)
+    expect_gt(.b$env$nTrustInner[["omegaRestart"]], 0L)
+    expect_false(isTRUE(all.equal(.a$objf, .b$objf)))
+    expect_equal(.fit(42L)$objf, .a$objf)
+  })
+
   test_that("the Omega-draw fallback costs a converging fit nothing (#1044)", {
     skip_on_cran()
     # It is only reached after an inner solve has already failed, so a fit whose
