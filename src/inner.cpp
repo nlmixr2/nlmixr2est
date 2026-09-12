@@ -1786,7 +1786,8 @@ static std::vector<double> _updateThetaOmegaTail;
 static std::vector<int> _omFastRow, _omFastCol, _omFastXf; // xf: 0 id, 1 sqrt, 2 log, -1 offdiag
 static int _omFastNeta = 0;
 static int _omFastState = 0; // 0 untried, 1 ok, -1 unavailable
-void foceiOmegaFastReset(void) { _omFastState = 0; }
+static int _omGradFastState = 0;   // gradDirectOmega's own verified/unavailable flag
+void foceiOmegaFastReset(void) { _omFastState = 0; _omGradFastState = 0; }
 
 // Under the fast path updateTheta() no longer pushes the tail into the
 // _rxInv env each evaluation, so any argument-less env read (the "omega"
@@ -18434,9 +18435,67 @@ static bool gradDirectEbes(int nsub, int neta, arma::mat &ebes) {
   return true;
 }
 
+// Omega^-1 and its estimation-scale derivatives from the verified native Cholesky map
+// (foceiOmegaFastCompute): Omega^-1 = U'U, dOmega^-1/dtheta_k = dU_k'U + U'dU_k with
+// dU_k a single entry, tr28_k = 0.5 tr(dOmega^-1_k Omega).  The same construction the
+// outer Hessian uses (foceiHessianOmega).  The R handle's lists are the fallback, and
+// the first use checks this against them so a mismatch falls back for the fit.
+// _omGradFastState: 0 untried, 1 verified, -1 unavailable (declared with the fast map)
+static bool gradDirectOmegaFast(int neta, int nom, arma::mat &Oi, arma::cube &dOiEst, arma::vec &tr28) {
+  if (_omFastState != 1 || nom != (int)op_focei.omegan || _omFastNeta != neta) return false;
+  const arma::mat &u = op_focei.cholOmegaInv;
+  Oi = op_focei.omegaInv;
+  arma::mat omega;
+  if (!arma::inv_sympd(omega, Oi)) return false;
+  dOiEst.zeros(neta, neta, nom > 0 ? nom : 1);
+  tr28.zeros(nom > 0 ? nom : 0);
+  for (int k = 0; k < nom; ++k) {
+    double x = op_focei.fullTheta[op_focei.ntheta + k], first = 1;
+    if (_omFastXf[k] == 1) first = 2 * x;
+    else if (_omFastXf[k] == 2) first = std::exp(x);
+    arma::mat du(neta, neta, arma::fill::zeros);
+    du(_omFastRow[k], _omFastCol[k]) = first;
+    dOiEst.slice(k) = du.t() * u + u.t() * du;
+    tr28[k] = 0.5 * arma::trace(dOiEst.slice(k) * omega);
+  }
+  return dOiEst.is_finite() && tr28.is_finite();
+}
+
 // Omega and its estimation-scale derivatives, from the inner problem's own handle
 static bool gradDirectOmega(const FoceiGradPooledSetup &G, int neta, arma::mat &Oi,
                             arma::cube &dOiEst, arma::vec &tr28) {
+  if (_omGradFastState >= 0) {
+    arma::mat OiF; arma::cube dF; arma::vec tF;
+    if (gradDirectOmegaFast(neta, G.nom, OiF, dF, tF)) {
+      if (_omGradFastState == 1) { Oi = OiF; dOiEst = dF; tr28 = tF; return true; }
+      // first use: verify against the R handle before trusting it for the fit
+      arma::mat OiR; arma::cube dR; arma::vec tR;
+      bool okR = false;
+      try {
+        foceiOmegaEnvSyncFromTail();
+        OiR = getOmegaInv();
+        List dOiL = getDOmegaInvL();
+        NumericVector tr = getTr28V();
+        if ((int)dOiL.size() == G.nom && (int)tr.size() == G.nom) {
+          dR.zeros(neta, neta, G.nom > 0 ? G.nom : 1); tR.zeros(G.nom > 0 ? G.nom : 0);
+          okR = true;
+          for (int k = 0; k < G.nom; ++k) {
+            arma::mat dk = as<arma::mat>(dOiL[k]);
+            if ((int)dk.n_rows != neta || (int)dk.n_cols != neta) { okR = false; break; }
+            dR.slice(k) = dk; tR[k] = tr[k];
+          }
+        }
+      } catch (...) { okR = false; }
+      bool same = okR && arma::approx_equal(OiF, OiR, "absdiff", 1e-8) &&
+        arma::approx_equal(arma::vectorise(dF), arma::vectorise(dR), "absdiff", 1e-8) &&
+        arma::approx_equal(tF, tR, "absdiff", 1e-8);
+      _omGradFastState = same ? 1 : -1;
+      if (same) { Oi = OiF; dOiEst = dF; tr28 = tF; return true; }
+      if (okR) { Oi = OiR; dOiEst = dR; tr28 = tR; return true; }
+    } else if (_omGradFastState == 0 && _omFastState == -1) {
+      _omGradFastState = -1;
+    }
+  }
   try {
     foceiOmegaEnvSyncFromTail(); // fast omega path leaves the env theta stale
     Oi = getOmegaInv();
