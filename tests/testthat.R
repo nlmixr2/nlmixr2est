@@ -123,7 +123,8 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
   c(
     "vae-encoder", "vae-train", "vae-decoder", "vae-elbo", "vae-inner",
     "vae-fixbounds", "vae-parhist", "vae-iov", "vae-grad-fit", "vae-ll-grad-fit",
-    "vae-l0learn-fit", "vae-hockey-fit", "split", "unary-mu", "timing", "bounded-transform"
+    "vae-l0learn-fit", "vae-hockey-fit", "vae-colinear-fit", "split", "unary-mu",
+    "timing", "bounded-transform"
   ),
   # batch 9 -- emvi/fbvi (variational inference) multi-iteration fits, plus the
   # cross-method omega off-diagonal fit checks (vae/emvi/npag/npb)

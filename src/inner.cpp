@@ -23037,6 +23037,66 @@ static VaeSubsetFit vaeFinishSubset(VaeBnbCtx& c, const arma::vec& y) {
   return out;
 }
 
+// ---- colinearity hysteresis and the near-tie diagnostic --------------------
+// Score ONE support through the same leaf evaluator the search uses, so the
+// feasibility rules, the OLS and the score can never drift from the search's.
+// An infeasible support scores infinity, which makes every comparison below
+// fail closed: the incumbent is not adopted, the mate is not reported.
+static double vaeScoreSupport(const arma::vec& y, const arma::mat& X,
+                              double omega, double penalty,
+                              const std::vector<int>* grp,
+                              const std::vector<int>* blk,
+                              const std::vector<int>& sel,
+                              arma::vec* coefOut) {
+  VaeBnbCtx c;
+  c.X = &X; c.y = &y; c.omega = omega; c.penalty = penalty;
+  c.strategy = VAE_BNB_LIFO;
+  c.grp = grp;
+  vaeBnbSetBlocks(c, blk, (int)X.n_cols - 1);
+  c.bestScore = std::numeric_limits<double>::infinity();
+  vaeBnbLeaf(c, sel);
+  if (coefOut != nullptr) *coefOut = c.bestCoef;
+  return c.bestScore;
+}
+
+// Do two supports differ ONLY by exchanging columns for cluster mates?  That is
+// the sole difference hysteresis may veto -- it must never keep a covariate the
+// search wanted to drop, nor drop one it wanted to add.  Compared as MULTISETS
+// of cluster ids rather than position by position, because a swap can move a
+// column past a common one (\{1,5\} -> \{5,7\}) and still be a pure exchange.
+static bool vaeClusterSwapOnly(const std::vector<int>& a, const std::vector<int>& b,
+                               const std::vector<int>& clu) {
+  if (a.size() != b.size() || a == b) return false;
+  std::vector<int> ca(a.size()), cb(b.size());
+  for (size_t s = 0; s < a.size(); ++s) {
+    const size_t ja = (size_t)a[s], jb = (size_t)b[s];
+    if (ja >= clu.size() || jb >= clu.size()) return false;
+    if (clu[ja] < 0 || clu[jb] < 0) return false;
+    ca[s] = clu[ja]; cb[s] = clu[jb];
+  }
+  std::sort(ca.begin(), ca.end());
+  std::sort(cb.begin(), cb.end());
+  return ca == cb;
+}
+
+// Test-only window onto the hysteresis pass's decision.  The pass leaves no
+// trace a fit can be asserted against -- it changes WHICH of two interchangeable
+// columns is selected, never the fit -- and it only ever acts when the search
+// actually flips between mates, which no fixture can be relied on to produce
+// (measured: identical selection even at cor = 1).  So the decision is tested
+// directly.  Internal, like every other _-suffixed export here: testthat runs
+// inside the namespace, so it needs no NAMESPACE entry.
+// [[Rcpp::export]]
+bool vaeClusterSwapOnly_(Rcpp::IntegerVector a, Rcpp::IntegerVector b,
+                         Rcpp::IntegerVector clu) {
+  std::vector<int> av(a.begin(), a.end()), bv(b.begin(), b.end()),
+    cv(clu.begin(), clu.end());
+  for (size_t j = 0; j < cv.size(); ++j) {
+    if (Rcpp::IntegerVector::is_na(clu[(R_xlen_t)j])) cv[j] = -1;
+  }
+  return vaeClusterSwapOnly(av, bv, cv);
+}
+
 static VaeSubsetFit vaeBestSubsetL0(const arma::vec& y, const arma::mat& X,
                                     double omega, double penalty,
                                     VaeBnbStrategy strategy = VAE_BNB_LIFO,
@@ -23683,6 +23743,18 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       if (Rcpp::IntegerVector::is_na(g[(R_xlen_t)j])) covBlock[j] = -1;
     }
   }
+  // covCluster: colinearity cluster per covariate column.  Sent only when a
+  // cluster actually MERGES two covariate groups (.vaeClusterBinds() in R), so
+  // an empty vector here means "no near-interchangeable covariates" and both
+  // the hysteresis pass and the near-tie record stay switched off.
+  std::vector<int> covCluster;
+  if (prep.containsElementNamed("covCluster") && !Rf_isNull(prep["covCluster"])) {
+    Rcpp::IntegerVector g = as<Rcpp::IntegerVector>(prep["covCluster"]);
+    covCluster.assign(g.begin(), g.end());
+    for (size_t j = 0; j < covCluster.size(); ++j) {
+      if (Rcpp::IntegerVector::is_na(g[(R_xlen_t)j])) covCluster[j] = -1;
+    }
+  }
   // covSelectMethod: per-latent-dim search mode, 0 = exact branch-and-bound,
   // 1 = L0Learn-proposed candidates scored/polished by the same exact objective.
   // Resolved in R (that is where the suggested-package check and the $runInfo
@@ -23775,6 +23847,9 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
   if (!covBlock.empty() && (int)covBlock.size() != nCov) {
     Rcpp::stop("prep$covBlock must have one entry per covariate column (%d)", nCov);
   }
+  if (!covCluster.empty() && (int)covCluster.size() != nCov) {
+    Rcpp::stop("prep$covCluster must have one entry per covariate column (%d)", nCov);
+  }
 
   // ---- Adam state (zeros, per block) ----
   VaeAdamBlk aWih{arma::zeros(Wih.n_rows, Wih.n_cols), arma::zeros(Wih.n_rows, Wih.n_cols)};
@@ -23856,6 +23931,19 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
   arma::vec intercept = zPop;
   arma::mat beta(zDim, nCov, arma::fill::zeros);
   arma::umat selected(zDim, nCov, arma::fill::zeros);
+  // Colinearity hysteresis: the previous M-step's support per latent dim, in the
+  // REDUCED (per-dim allowed) index space the search itself works in -- the
+  // allow-mask is fixed for the whole fit, so those indices stay comparable.
+  // The near-tie record is refreshed every M-step, so what survives at the end
+  // describes the FINAL selection rather than some intermediate one.
+  std::vector<std::vector<int> > selPrev((size_t)zDim);
+  std::vector<char> selPrevSet((size_t)zDim, 0);
+  std::vector<std::vector<int> > tieSel((size_t)zDim), tieMate((size_t)zDim);
+  std::vector<std::vector<double> > tieDelta((size_t)zDim);
+  // how often the incumbent was kept, per dim -- the hysteresis pass has no
+  // other visible trace (it changes WHICH of two interchangeable columns is
+  // selected, not the fit), so a test cannot otherwise prove it ran
+  std::vector<int> hystN((size_t)zDim, 0);
   arma::mat zPopArg(N, zDim); zPopArg.each_row() = zPop.t();
   bool isCovStep = false;
   arma::vec elboTrace(iters, arma::fill::zeros);
@@ -24059,6 +24147,17 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
           }
         }
         const std::vector<int>* blkP = blkK.empty() ? nullptr : &blkK;
+        // cluster ids follow the design actually searched, exactly as the groups
+        // and blocks do
+        std::vector<int> cluK;
+        if (!covCluster.empty()) {
+          if (haveCovAllow) {
+            cluK.resize(allowedG.n_elem);
+            for (size_t s = 0; s < allowedG.n_elem; ++s) cluK[s] = covCluster[(size_t)allowedG[s]];
+          } else {
+            cluK = covCluster;
+          }
+        }
         VaeSubsetFit fit = (haveL0 && covSelMode[k] == 1)
           // covVar[k] (not omega[k]): the GLS conditional variance 1/P_kk for a
           // correlated block, which reduces to omega[k] when Omega is diagonal.
@@ -24066,14 +24165,70 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
           ? vaeCandidateSubsetL0(yk, Xuse, covVar[k], covPenalty, cands[(size_t)k], true,
                                  grpP, blkP)
           : vaeBestSubsetL0(yk, Xuse, covVar[k], covPenalty, bnbStrategy, grpP, blkP);
-        arma::vec bestCoef = fit.coef;
+        std::vector<int> useSel = fit.sel;
+        arma::vec useCoef = fit.coef;
+        if (!cluK.empty()) {
+          // "Clearly beats" is measured in the search's OWN currency: one
+          // covariate's L0 cost.  An exchange between two columns the design
+          // cannot tell apart (abs(cor) at or above the cut) has to be worth as
+          // much as admitting a covariate before it displaces the incumbent.
+          // That needs no threshold of its own, and it can only ever veto a
+          // SWAP -- never an addition or a removal -- so a real covariate
+          // effect still enters and leaves on the search's terms.
+          const double margin = covPenalty;
+          double useScore = vaeScoreSupport(yk, Xuse, covVar[k], covPenalty,
+                                            grpP, blkP, useSel, nullptr);
+          if (selPrevSet[(size_t)k] &&
+              vaeClusterSwapOnly(useSel, selPrev[(size_t)k], cluK)) {
+            arma::vec incCoef;
+            const double incScore =
+              vaeScoreSupport(yk, Xuse, covVar[k], covPenalty, grpP, blkP,
+                              selPrev[(size_t)k], &incCoef);
+            if (R_FINITE(incScore) && incScore - useScore <= margin) {
+              useSel = selPrev[(size_t)k];
+              useCoef = incCoef;
+              useScore = incScore;
+              ++hystN[(size_t)k];
+            }
+          }
+          // Near ties: which cluster mates would have come within the same
+          // margin had they been chosen instead?  One single-column exchange at
+          // a time, scored through the leaf evaluator, so an exchange that is
+          // infeasible (two shapes of one covariate, half a hockey stick) drops
+          // out on its own.  Recorded against GLOBAL covariate columns.
+          std::vector<int>& tS = tieSel[(size_t)k];
+          std::vector<int>& tM = tieMate[(size_t)k];
+          std::vector<double>& tD = tieDelta[(size_t)k];
+          tS.clear(); tM.clear(); tD.clear();
+          std::vector<char> inSup(cluK.size(), 0);
+          for (size_t s = 0; s < useSel.size(); ++s) inSup[(size_t)useSel[s]] = 1;
+          for (size_t s = 0; s < useSel.size(); ++s) {
+            const int j = useSel[s];
+            if ((size_t)j >= cluK.size() || cluK[(size_t)j] < 0) continue;
+            for (size_t m = 0; m < cluK.size(); ++m) {
+              if ((int)m == j || inSup[m] != 0 || cluK[m] != cluK[(size_t)j]) continue;
+              std::vector<int> t = useSel;
+              t[s] = (int)m;
+              std::sort(t.begin(), t.end());
+              const double sc = vaeScoreSupport(yk, Xuse, covVar[k], covPenalty,
+                                                grpP, blkP, t, nullptr);
+              if (!R_FINITE(sc) || sc - useScore > margin) continue;
+              tS.push_back(haveCovAllow ? (int)allowedG[(size_t)j] : j);
+              tM.push_back(haveCovAllow ? (int)allowedG[m] : (int)m);
+              tD.push_back(sc - useScore);
+            }
+          }
+        }
+        selPrev[(size_t)k] = useSel;
+        selPrevSet[(size_t)k] = 1;
+        arma::vec bestCoef = useCoef;
         double ic = bestCoef[0];
         if (R_FINITE(zPopLower[k]) && ic < zPopLower[k]) ic = zPopLower[k];
         if (R_FINITE(zPopUpper[k]) && ic > zPopUpper[k]) ic = zPopUpper[k];
         intercept[k] = ic; bestCoef[0] = ic;
-        arma::uvec bestCols = vaeSubsetCols(fit.sel);
-        for (size_t s = 0; s < fit.sel.size(); ++s) {
-          int gj = haveCovAllow ? (int)allowedG[fit.sel[s]] : fit.sel[s];
+        arma::uvec bestCols = vaeSubsetCols(useSel);
+        for (size_t s = 0; s < useSel.size(); ++s) {
+          int gj = haveCovAllow ? (int)allowedG[useSel[s]] : useSel[s];
           beta(k, gj) = bestCoef[s + 1]; selected(k, gj) = 1;
         }
         zPopMat.col(k) = Xuse.cols(bestCols) * bestCoef;
@@ -24434,6 +24589,26 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
   arma::mat zPopMatOut(N, zDim);
   if (isCovStep) zPopMatOut = zPopArg; else zPopMatOut.each_row() = zPop.t();
 
+  // Near-tie record, flattened across latent dims: the cluster mate that would
+  // have scored within one covariate's L0 cost of the column actually chosen.
+  // 1-based dim and covariate indices, ready for R.  Empty unless a cluster
+  // bound two covariate groups.
+  int nTie = 0;
+  for (int k = 0; k < zDim; ++k) nTie += (int)tieSel[(size_t)k].size();
+  IntegerVector tieDim(nTie), tieCol(nTie), tieAlt(nTie);
+  NumericVector tieDel(nTie);
+  for (int k = 0, t = 0; k < zDim; ++k) {
+    for (size_t s = 0; s < tieSel[(size_t)k].size(); ++s, ++t) {
+      tieDim[t] = k + 1;
+      tieCol[t] = tieSel[(size_t)k][s] + 1;
+      tieAlt[t] = tieMate[(size_t)k][s] + 1;
+      tieDel[t] = tieDelta[(size_t)k][s];
+    }
+  }
+  List nearTieOut = List::create(_["dim"] = tieDim, _["covariate"] = tieCol,
+                                 _["mate"] = tieAlt, _["delta"] = tieDel);
+  int nHyst = 0;
+  for (int k = 0; k < zDim; ++k) nHyst += hystN[(size_t)k];
   List paramsOut = List::create(_["Wih"] = Wih, _["Whh"] = Whh, _["bih"] = bih,
                                 _["bhh"] = bhh, _["fcW"] = fcW, _["fcB"] = fcB);
   IntegerVector mixnumOut(N);
@@ -24447,7 +24622,9 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
                       _["mixnum"] = mixnumOut, _["regressTheta"] = regressThetaOut,
                       _["nRegGrad"] = nRegGrad, _["nRegFallback"] = nRegFallback,
                       _["nStage2"] = nStage2,
-                      _["mixProb"] = mixProbFinal, _["nMixThetaStep"] = nMixThStep);
+                      _["mixProb"] = mixProbFinal, _["nMixThetaStep"] = nMixThStep,
+                      _["covNearTie"] = nearTieOut,
+                      _["nCovHysteresis"] = nHyst);
 }
 
 // Test-facing entry point for the exact L0/BIC best-subset kernel used by the VAE

@@ -112,6 +112,38 @@ nmTest({
     expect_identical(length(unique(res$group)), 1L)
   })
 
+  test_that("a pure cluster-mate swap is recognized, anything else is not", {
+    ## clu: columns 0,1 in cluster 1; columns 2,3 in cluster 2 (0-based supports)
+    clu <- c(1L, 1L, 2L, 2L)
+    expect_true(vaeClusterSwapOnly_(c(0L), c(1L), clu))
+    expect_true(vaeClusterSwapOnly_(c(0L, 2L), c(1L, 3L), clu))
+    ## the case that forced a MULTISET comparison rather than position by
+    ## position: the swap moves a column past one the two supports share
+    clu2 <- c(1L, 2L, 3L, 1L)          # columns 0 and 3 are mates
+    expect_true(vaeClusterSwapOnly_(c(0L, 1L), c(1L, 3L), clu2))
+    ## not a swap: identical, different sizes, or a cross-cluster exchange
+    expect_false(vaeClusterSwapOnly_(c(0L, 2L), c(0L, 2L), clu))
+    expect_false(vaeClusterSwapOnly_(c(0L), c(0L, 2L), clu))
+    expect_false(vaeClusterSwapOnly_(c(0L), c(2L), clu))
+    ## an unclustered column (negative id) never swaps -- hysteresis must not
+    ## veto a change the search made for a real reason
+    expect_false(vaeClusterSwapOnly_(c(0L), c(1L), c(-1L, -1L, 2L, 2L)))
+    expect_false(vaeClusterSwapOnly_(c(0L), c(1L), c(NA_integer_, 1L, 2L, 2L)))
+    ## an out-of-range index is refused rather than read past the vector
+    expect_false(vaeClusterSwapOnly_(c(0L), c(9L), clu))
+    expect_false(vaeClusterSwapOnly_(integer(0), integer(0), clu))
+  })
+
+  test_that("vaeControl carries covSelectColinearCut and validates it", {
+    expect_identical(vaeControl()$covSelectColinearCut, .vaeColinearCut)
+    expect_identical(vaeControl(covSelectColinearCut = 0.75)$covSelectColinearCut,
+                     0.75)
+    ## a cut outside [0, 1] is not an abs(cor), and a vector is not a cut
+    expect_error(vaeControl(covSelectColinearCut = 1.5))
+    expect_error(vaeControl(covSelectColinearCut = -0.1))
+    expect_error(vaeControl(covSelectColinearCut = c(0.5, 0.6)))
+  })
+
   test_that("vaeCovariates reports the cluster and honors colinearCut", {
     ## both covariates must be constant WITHIN subject or they are excluded as
     ## time-varying and never reach the search at all

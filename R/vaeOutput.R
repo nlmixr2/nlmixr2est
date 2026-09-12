@@ -438,6 +438,8 @@
                    covNames = fit$covNames, zPop = fit$zPop, omega = fit$omega,
                    omegaMat = fit$omegaMat, a = fit$a,
                    covSelectMethodUsed = fit$covSelectMethodUsed,
+                   covNearTie = fit$covNearTie,
+                   nCovHysteresis = fit$nCovHysteresis,
                    seed = .control$seed)
   ## the VAE optimization walk (standard parHistData -> $parHist accessor)
   if (!is.null(fit$parHist)) .ret$parHistData <- fit$parHist

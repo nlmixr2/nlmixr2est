@@ -470,6 +470,10 @@ vaeDecoderElboStep_ <- function(params, prep, zPopR, omegaR, aVecR, alphaKL, eps
     .Call(`_nlmixr2est_vaeDecoderElboStep_`, params, prep, zPopR, omegaR, aVecR, alphaKL, epsR, solveFn, yListR, withGrad, tol, maxRecalc, recalcFactor, fdFallback)
 }
 
+vaeClusterSwapOnly_ <- function(a, b, clu) {
+    .Call(`_nlmixr2est_vaeClusterSwapOnly_`, a, b, clu)
+}
+
 vaeTrainCpp_ <- function(params, prep, control, nMix, mixProbR, cores, row0, parNames, iterPrintControl, xform, structIdx0) {
     .Call(`_nlmixr2est_vaeTrainCpp_`, params, prep, control, nMix, mixProbR, cores, row0, parNames, iterPrintControl, xform, structIdx0)
 }

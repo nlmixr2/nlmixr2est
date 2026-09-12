@@ -2,10 +2,17 @@
 
 ## New features
 
-- `vaeCovariates()` gained a `cluster` column and a `colinearCut`
-  argument.  A cluster names covariates that are near-interchangeable
-  (`abs(cor)` at or above the cut); it is always a coarsening of `group`,
-  so two shapes of one covariate never cluster together.
+- `est="vae"` groups near-interchangeable covariates into colinearity
+  clusters, controlled by the new `vaeControl(covSelectColinearCut=)`
+  (default `0.9`).  A cluster never restricts what may be selected.  It
+  does two things: the covariate M-step keeps the previous iteration's
+  choice unless a cluster mate beats it by a full covariate's L0 cost, so
+  the selection stops chattering between columns the design cannot tell
+  apart; and the mates that came within that margin are reported in the
+  fit's `$covNearTie`.  Clusters are a coarsening of the mutual-exclusion
+  groups, so two shapes of one covariate never cluster together.
+- `vaeCovariates()` reports the same clustering in a new `cluster` column
+  and takes the threshold as `colinearCut`.
 
 ## Bug fixes
 
