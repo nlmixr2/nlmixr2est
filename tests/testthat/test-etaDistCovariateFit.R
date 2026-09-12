@@ -15,6 +15,14 @@
 #   * focei DOES recover the coefficient -- 0.7353 against a true 0.75 -- but
 #     only from a non-zero slope start and with the residual variance bounded
 #     below.  From a start of exactly 0 it returns 0.0017 and stops.
+#
+#     Replicated at 120 subjects over independent simulations (truth 0.75):
+#     with the covariate FIXED per subject the mean is 0.7132 (sd 0.061, n=5),
+#     i.e. unbiased; with it varying WITHIN subject the mean is 0.6767
+#     (sd 0.100, n=12), about 10% low at 2.5 standard errors of the mean.  So
+#     the time-varying path carries a mild downward attenuation, and single
+#     realizations scatter widely -- 0.44 and 0.80 both occur -- which is worth
+#     knowing before reading any one fit as evidence of a defect.
 #   * saem, on the zero-effect arm with the other thetas displaced, INVENTS an
 #     effect: bWT = -1.0876, and pushes lclrv from -2.0 to -1.4139 (away from
 #     the true -2.4).  On the arm where the effect is real it instead freezes
