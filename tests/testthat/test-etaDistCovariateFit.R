@@ -179,6 +179,45 @@ nmTest({
     expect_true(.p[["bWT"]] > 0.3)
   })
 
+  test_that("T4: an observation-count imbalance does not move the coefficient", {
+    # The record-weighting assertion.  The declared M-step weights a record by
+    # 1/n_i so each SUBJECT contributes one unit however often it was observed;
+    # a per-record weighting would instead let the observation count pull the
+    # coefficient.  Choosing the weighting proves nothing -- this measures it,
+    # by fitting the SAME subjects and the same etas twice, once as simulated
+    # and once thinned so the obs/subject ratio roughly doubles.
+    #
+    # Measured on the full 120-subject arm: balanced bWT 0.4088 (SE 0.1342) at
+    # 1.8:1, thinned 0.3784 (SE 0.4464) at 3.5:1 -- a difference of 0.0305, or
+    # 0.07 pooled standard errors.
+    .d <- .edT5Data(bWT = 0.75)
+    # thin by POSITION within subject, after the assay limit, so the retained
+    # records are not selected by time (which would confound the comparison)
+    .keep <- unlist(lapply(split(seq_len(nrow(.d)), .d$ID), function(.i) {
+      .obs <- .i[.d$EVID[.i] == 0]
+      .dose <- .i[.d$EVID[.i] != 0]
+      if (length(.obs) <= 2L) return(.i)
+      c(.dose, .obs[seq(1L, length(.obs), by = 2L)])
+    }), use.names = FALSE)
+    .thin <- .d[sort(.keep), ]
+
+    .fit <- function(.dat) {
+      .f <- suppressMessages(suppressWarnings(
+        nlmixr2(.edT5ModelBounded(), .dat, est = "focei",
+                control = foceiControl(print = 0L, covMethod = ""))))
+      unname(.f$parFixedDf["bWT", "Estimate"])
+    }
+    .b1 <- .fit(.d)
+    .b2 <- .fit(.thin)
+
+    # both must have escaped the trapped region, or "they agree" is vacuous --
+    # two fits both stuck near 0 would also "agree"
+    expect_true(.b1 > 0.2)
+    expect_true(.b2 > 0.2)
+    # and then they must actually agree despite the different record counts
+    expect_equal(.b2, .b1, tolerance = 0.35)
+  })
+
   test_that("the coefficient is at least IN the outer problem, not frozen", {
     # Weaker than recovery but still worth pinning: a coefficient that never
     # moves at all is a different (and worse) defect than one whose search
