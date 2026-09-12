@@ -3758,10 +3758,6 @@ static bool focePlusRefinementRequired() {
       op_focei.freezeOde || op_focei.neta == 0);
 }
 
-static bool focePlusSmallStep(double norm, double decrement) {
-  return norm < 1e-3 && decrement >= 0 && decrement <= 1e-9;
-}
-
 static bool focePlusScore(arma::vec &at, arma::vec &out, int id) {
   auto *ind = &inds_focei[id];
   ind->setup = 0; ++ind->nInnerF; ++ind->nInnerG;
@@ -3793,34 +3789,45 @@ static bool focePlusBacktrack(arma::vec &x, arma::vec &g, const arma::vec &step,
   return false;
 }
 
+// Newton on the truncated score, starting from `x`/`g`.  Every way out is the
+// same way out: stop iterating and leave `x` at the last accepted iterate.
+static void focePlusNewton(arma::vec &x, arma::vec &g, int id) {
+  for (int iteration = 0; iteration < std::min(100,op_focei.maxInnerIterations); ++iteration) {
+    double norm = arma::abs(g).max();
+    if (norm < 1e-9) return;                                  // at the root
+    arma::mat jacobian(x.n_elem,x.n_elem);
+    if (!focePlusScoreJacobian(x,jacobian,id)) return;        // a probe would not solve
+    arma::vec step;
+    if (!arma::solve(step,jacobian,g) || !step.is_finite()) return;
+    if (!focePlusBacktrack(x,g,step,norm,id)) return;         // at the noise floor
+  }
+}
+
+// Polishing only: the eta handed in is the inner optimizer's own answer and is
+// always usable.  Refusing to drive the score any closer to zero is therefore
+// not a failure -- `focePlusBacktrack` accepts nothing but a strict decrease in
+// the score norm, so it stops exactly when the score has reached the noise floor
+// the solve tolerance buys, and `x` is the best ITERATE the search accepted on
+// every exit path.  (Not the best point EVALUATED: `focePlusScoreJacobian`'s
+// x +/- h probes are derivative samples taken at a fixed step, not candidate
+// steps, so one that happens to score lower is not adopted.)
+// Reporting a stall as NA instead poisoned the objective (#1069): at the default
+// sigdig=3 the floor sits near 1e-3, so every subject that reached it lost its
+// likelihood and the outer search read a spurious cliff.
 static bool refineFocePlusEta(double *eta, int id) {
   if (!focePlusRefinementRequired()) return true;
   auto *ind = &inds_focei[id];
   arma::vec x(eta,op_focei.neta), g(op_focei.neta);
-  auto score = [&](arma::vec &at, arma::vec &out) {
-    return focePlusScore(at,out,id);
-  };
-  auto finish = [&]() {
+  try {
+    if (focePlusScore(x,g,id)) focePlusNewton(x,g,id);
+  } catch (...) {
+  }
+  try {
     std::copy(x.begin(),x.end(),eta); ind->setup = 0;
     return R_FINITE(likInner0(eta,id));
-  };
-  try {
-    if (!score(x,g)) return false;
-    for (int iteration = 0; iteration < std::min(100,op_focei.maxInnerIterations); ++iteration) {
-      double norm = arma::abs(g).max();
-      if (norm < 1e-9) return finish();
-      arma::mat jacobian(x.n_elem,x.n_elem);
-      if (!focePlusScoreJacobian(x,jacobian,id)) return false;
-      arma::vec step;
-      if (!arma::solve(step,jacobian,g) || !step.is_finite()) return false;
-      bool accepted = focePlusBacktrack(x,g,step,norm,id);
-      if (!accepted) {
-        double decrement = arma::dot(g,step);
-        return focePlusSmallStep(norm,decrement) && finish();
-      }
-    }
-    return arma::abs(g).max() < 1e-9 && finish();
-  } catch (...) { return false; }
+  } catch (...) {
+    return false;
+  }
 }
 
 double LikInner2(double *eta, int likId, int id) {

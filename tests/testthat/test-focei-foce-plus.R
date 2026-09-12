@@ -88,4 +88,35 @@ nmTest({
     expect_lt(abs(fM$objective - ref$objective), 8)
     expect_lt(abs(fI$objective - ref$objective), 8)
   })
+
+  test_that("a stalled FOCE+ EBE polish does not poison the objective (#1069)", {
+    # FOCE+ polishes the inner optimizer's eta onto the truncated-score root it
+    # defines its EBE by.  That polish stops once the score reaches the noise floor
+    # the solve tolerance buys -- near 1e-3 at the DEFAULT sigdig=3 -- and used to
+    # report the subject's likelihood as NA when it did.  Run at the default on
+    # purpose: pinning sigdig is what hid this.
+    .m <- function() {
+      ini({ tka <- log(1.5); tcl <- log(2.7); tv <- log(31.5)
+            eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1; add.sd <- 0.7 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        d/dt(depot)  <- -ka * depot
+        d/dt(center) <-  ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd) })
+    }
+    fit <- suppressWarnings(suppressMessages(
+      nlmixr(.m, d, "focep", focepControl(print = 0L, calcTables = FALSE, covMethod = ""))))
+    # The stall cost 4.8 objective units: bobyqa stopped at 121.560 with the omegas
+    # barely off their starting values, against 116.80 here and 116.82 for est="foce".
+    expect_lt(fit$objf, 118)
+    # The mechanism, not just the answer.  A subject whose likelihood came back NA
+    # was penalized to ~300 while its neighbourhood sat near 130, and the cliff that
+    # left in the outer objective is what stopped the search.  Nothing the search
+    # sees may be worse than its own starting point by that kind of margin.
+    .o <- fit$parHist$objf
+    expect_lt(max(.o), .o[1] + 25)
+    # ... and the omegas have to have actually moved (the stall left eta.ka at 0.56
+    # against 0.40 here, because every probe that raised it read as a cliff).
+    expect_lt(fit$omega[["eta.ka", "eta.ka"]], 0.5)
+  })
 })
