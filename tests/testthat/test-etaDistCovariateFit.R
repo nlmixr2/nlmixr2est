@@ -8,12 +8,24 @@
 # T5 simulates a covariate whose true coefficient is EXACTLY zero.  The obvious
 # test -- fit it and assert bWT ~ 0 -- is WORTHLESS on its own, and that is the
 # main thing this file records: the coefficient's start is also 0, so an
-# estimator that never moves it passes.  Measured on the T4 arm, where the true
-# coefficient is 0.75, focei returns 0.0010 from a start of 0 and 0.4313 from a
-# start of 0.5.  It is in the outer problem, it moves, and it moves the wrong
-# way.  So this file asserts what actually holds, pins the weaker
-# "not frozen" property, and leaves the recovery assertion skipped with its
-# measurement rather than passing it vacuously.
+# estimator that never moves it passes.
+#
+# What the arm shows once the starts are displaced instead:
+#
+#   * focei's coefficient is in the outer problem and moves, but its search
+#     stalls near wherever it started and drifts the WRONG way.  On T4 (true
+#     bWT = 0.75) it returns 0.0010 from a start of 0 and 0.4313 from 0.5.
+#   * saem moves the coefficient a long way and INVENTS an effect: starting
+#     from bWT = 0 on this zero-effect arm with the other thetas displaced, it
+#     returns bWT = -1.0876, and pushes lclrv from -2.0 to -1.4139 (away from
+#     the true -2.4).
+#
+# The second is exactly the failure the arm exists to catch -- a method that
+# reports an effect here selects spurious covariates on real data -- and it is
+# invisible when every parameter starts at its true value, where saem instead
+# reproduces its ini() to four decimals.  So this file asserts what actually
+# holds, pins the weaker "not frozen" property, and leaves the recovery
+# assertion skipped with its measurement rather than passing it vacuously.
 #
 # The data is built inline from a fixed seed rather than read from
 # inst/sim/simCovT45.R's output, so the test is self-contained.  It is the same
