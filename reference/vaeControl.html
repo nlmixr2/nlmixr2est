@@ -80,6 +80,7 @@ simultaneous population-parameter estimation and covariate selection.</p>
 <span>  inputScale <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"reference"</span>, <span class="st">"observed"</span><span class="op">)</span>,</span>
 <span>  covSelectMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"bnb"</span>, <span class="st">"l0learn"</span><span class="op">)</span>,</span>
 <span>  covSelectMaxExact <span class="op">=</span> <span class="fl">17L</span>,</span>
+<span>  covSelectColinearCut <span class="op">=</span> <span class="va">.vaeColinearCut</span>,</span>
 <span>  bnbStrategy <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"lifo"</span>, <span class="st">"fifo"</span>, <span class="st">"lc"</span><span class="op">)</span>,</span>
 <span>  parEncoderBackward <span class="op">=</span> <span class="op">!</span><span class="fu"><a href="https://rdrr.io/r/base/Logic.html" class="external-link">isTRUE</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/options.html" class="external-link">getOption</a></span><span class="op">(</span><span class="st">"nlmixr2.identical"</span>, <span class="cn">FALSE</span><span class="op">)</span><span class="op">)</span>,</span>
 <span>  nonMuTheta <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"regress"</span>, <span class="st">"grad"</span>, <span class="st">"eta"</span>, <span class="st">"fix"</span>, <span class="st">"none"</span><span class="op">)</span>,</span>
@@ -455,6 +456,18 @@ run.  One shape per covariate costs exactly 1 bit, so with `shapes` set to a
 single shape this is a plain candidate count; two shape families of one
 covariate cost `log2(3)`, keeping the exact search's worst-case node budget
 the same either way.  `Inf` forces the exact branch-and-bound everywhere.</p></dd>
+
+
+<dt id="arg-covselectcolinearcut">covSelectColinearCut<a class="anchor" aria-label="anchor" href="#arg-covselectcolinearcut"></a></dt>
+<dd><p>`abs(cor)` at or above which two covariates are
+treated as near-interchangeable and put in one colinearity cluster (default
+`0.9`).  A cluster never restricts what may be selected.  It does two
+things: the covariate M-step keeps the previous iteration's choice unless a
+cluster mate beats it by a full covariate's L0 cost, which stops the
+selection chattering between columns the design cannot tell apart; and the
+mates that came within that margin are reported in `$covNearTie`.  Clusters
+are built at the mutual-exclusion group level, so two shapes of one
+covariate never cluster together.</p></dd>
 
 
 <dt id="arg-bnbstrategy">bnbStrategy<a class="anchor" aria-label="anchor" href="#arg-bnbstrategy"></a></dt>

@@ -19,7 +19,8 @@ vaeCovariates(
   shapes = c("power", "lin", "log", "identity", "center", "hockey"),
   covCenterType = c("median", "mean"),
   covCenter = NULL,
-  catCutoff = 0.05
+  catCutoff = 0.05,
+  colinearCut = .vaeColinearCut
 )
 ```
 
@@ -40,14 +41,21 @@ vaeCovariates(
   as in \[vaeControl()\]; control which shapes are explored and how
   covariates are centered
 
+- colinearCut:
+
+  as \`covSelectColinearCut\` in \[vaeControl()\]; \`abs(cor)\` at or
+  above which two covariates form a colinearity cluster
+
 ## Value
 
 a data frame with one row per candidate search column and columns
 \`covariate\` (the column name), \`raw\` (upper-cased data column it
 comes from), \`shape\`, \`level\` (for categorical indicators),
 \`group\` (mutual exclusion group), \`block\` (columns selected
-all-or-none, i.e. the two arms of a \`"hockey"\` relationship), \`type\`
-and \`center\`; zero rows when nothing qualifies
+all-or-none, i.e. the two arms of a \`"hockey"\` relationship),
+\`cluster\` (near-interchangeable covariates; always a coarsening of
+\`group\`, so two shapes of one covariate never cluster together),
+\`type\` and \`center\`; zero rows when nothing qualifies
 
 ## Author
 
@@ -60,16 +68,16 @@ d <- data.frame(id = rep(1:3, each = 2), time = rep(0:1, 3), dv = rnorm(6),
                 wt = rep(c(70, 80, 60), each = 2),
                 sex = rep(c(0, 1, 0), each = 2))
 vaeCovariates(d)
-#>      covariate raw     shape level group block        type center
-#> 1     WT_power  WT     power  <NA>     1     1  continuous     70
-#> 2       WT_lin  WT       lin  <NA>     1     2  continuous     70
-#> 3 WT_hockeyLow  WT hockeyLow  <NA>     1     3  continuous     70
-#> 4  WT_hockeyHi  WT  hockeyHi  <NA>     1     3  continuous     70
-#> 5          SEX SEX       cat  <NA>     2     4 categorical      0
+#>      covariate raw     shape level group block cluster        type center
+#> 1     WT_power  WT     power  <NA>     1     1       1  continuous     70
+#> 2       WT_lin  WT       lin  <NA>     1     2       1  continuous     70
+#> 3 WT_hockeyLow  WT hockeyLow  <NA>     1     3       1  continuous     70
+#> 4  WT_hockeyHi  WT  hockeyHi  <NA>     1     3       1  continuous     70
+#> 5          SEX SEX       cat  <NA>     2     4       1 categorical      0
 
 # restrict the explored shapes
 vaeCovariates(d, shapes = "power")
-#>   covariate raw shape level group block        type center
-#> 1  WT_power  WT power  <NA>     1     1  continuous     70
-#> 2       SEX SEX   cat  <NA>     2     2 categorical      0
+#>   covariate raw shape level group block cluster        type center
+#> 1  WT_power  WT power  <NA>     1     1       1  continuous     70
+#> 2       SEX SEX   cat  <NA>     2     2       2 categorical      0
 ```
