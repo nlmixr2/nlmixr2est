@@ -4605,11 +4605,21 @@ static inline int innerOpt1(int id, int likId) {
             (arma::uword)id < op_focei.etaRestartSamples.n_slices &&
             op_focei.etaRestartSamples.n_rows == (arma::uword)fop->neta) {
           int nres = (int)op_focei.etaRestartSamples.n_cols;
+          // A draw that comes back NA with nothing kept in THIS pass has to
+          // take the pass-level exit the nudge levels above take -- and those
+          // are not inside a loop of their own, so their break/continue bind
+          // to the starting-point loop.  Here they would bind to this draw
+          // loop instead, so the exit is deferred to after it.
+          bool _restartNa = false;
           for (int _k = 0; _k < nres && tryAgain; _k++) {
             const double *_start = op_focei.etaRestartSamples.slice(id).colptr(_k);
             fInd->mode = 1;
             fInd->uzm = 1;
             op_focei.didHessianReset.store(1, std::memory_order_relaxed);
+            // mode=1 unconditionally (the nudge levels above only force it
+            // under warm=1): a draw is an unrelated point, so the previous
+            // attempt's quasi-Newton Hessian does not describe it -- the same
+            // reason the trust arm clears fInd->etaHasPrevQN per attempt.
             mode = 1;
             maxInnerIterations = fop->maxInnerIterations;
             nsim = fop->nsim;
@@ -4622,11 +4632,7 @@ static inline int innerOpt1(int id, int likId) {
                    &mode, &maxInnerIterations, &nsim,
                    &imp, fInd->zm, &izs, &rzs, &dzs, &id);
             if (ISNA(f)) {
-              if (!haveBest) {
-                if (!candEta.empty()) break;
-                if (_lastStart) return 0;
-                continue;
-              }
+              if (!haveBest) { _restartNa = true; break; }
               restoreBest();
             } else { keepBest(); keepCand(fInd->badSolve == 0); }
             tryAgain = true;
@@ -4634,6 +4640,11 @@ static inline int innerOpt1(int id, int likId) {
               if (fInd->x[i] != _start[i]) { tryAgain = false; break; }
             }
             std::fill_n(&fInd->var[0], fop->neta, 0.1);
+          }
+          if (_restartNa) {
+            if (!candEta.empty()) break;
+            if (_lastStart) return 0;
+            continue;
           }
         }
       }
@@ -5888,14 +5899,21 @@ void innerOpt() {
   // above: rxRmvn consumes R's OWN RNG, so making these draws unconditional
   // through it would shift every later R-level draw in the fit (the residual
   // simulations behind npde, for one) on a fit that never restarts anything.
-  if (op_focei.nEtaRestart > 0 && op_focei.maxInnerIterations > 0 &&
-      !op_focei.freezeOde && op_focei.neta > 0) {
+  //
+  // The cube is released only when the fallback is OFF, never on a pass that
+  // merely cannot draw (maxInnerIterations<=0 / freezeOde): releasing it there
+  // would have the next real pass re-draw MID-FIT, and the seed a re-draw
+  // would use is not guaranteed to still be the one the first draw used.
+  // foceiSetup_ clears it per fit, so this fills it at most once.
+  if (op_focei.nEtaRestart <= 0 || op_focei.neta == 0) {
+    op_focei.etaRestartSamples.reset();
+  } else if (op_focei.maxInnerIterations > 0 && !op_focei.freezeOde) {
     int nsubAll = (int)getRxNsubAndMix(rx);
     int nres = op_focei.nEtaRestart;
     if (op_focei.etaRestartSamples.n_rows   != (arma::uword)op_focei.neta ||
         op_focei.etaRestartSamples.n_cols   != (arma::uword)nres ||
         op_focei.etaRestartSamples.n_slices != (arma::uword)nsubAll) {
-      arma::mat om = as<arma::mat>(getOmega());
+      arma::mat om = getOmegaMat();
       arma::mat L;
       bool haveL = (om.n_rows == (arma::uword)op_focei.neta &&
                     om.n_cols == (arma::uword)op_focei.neta &&
@@ -5921,19 +5939,17 @@ void innerOpt() {
         s = s * 2654435761u + 0x65746152u;   // "etaR" namespace tag
         nmSetSeedEng1(s);
       }
-      arma::vec z((arma::uword)op_focei.neta);
+      arma::vec z((arma::uword)op_focei.neta), draw((arma::uword)op_focei.neta);
       for (int id = 0; id < nsubAll; ++id) {
         for (int k = 0; k < nres; ++k) {
           for (int j = 0; j < op_focei.neta; ++j) z[j] = rxNormEng(0.0, 1.0);
-          arma::vec draw = L * z;
+          draw = L * z;
           std::copy(draw.begin(), draw.end(),
                     op_focei.etaRestartSamples.slice(id).colptr(k));
         }
       }
       setRxThreadId(-1);
     }
-  } else {
-    op_focei.etaRestartSamples.reset();
   }
   // freezeOde: evaluate each subject's density at its (restored) base EBE with a
   // single innerEval -- no eta re-optimization -- reusing the frozen ODE states.
