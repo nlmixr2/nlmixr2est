@@ -66,6 +66,21 @@ nmTest({
     expect_equal(.fit$saem$Gamma2_phi1Report[.w, .w], .fit$saem$Gamma2_phi1[.w, .w])
   })
 
+  test_that("the SA covariance phase does not undo the fixed report", {
+    skip_on_cran()
+    skip_if_not_installed("nlmixr2data")
+    # covMethod="sa" (the default) runs nSaCov extra iterations after the fit
+    # and restores the converged estimate from a snapshot afterwards.
+    # Gamma2_phi1Report is part of that snapshot, so the restore is a second
+    # way the reported fixed value could be lost; covMethod="" skips the phase
+    # entirely and would never exercise it.
+    .fit <- suppressWarnings(suppressMessages(
+      nlmixr2(.fixMuMod, nlmixr2data::theo_sd, "saem",
+              saemControl(nBurn = 20, nEm = 20, print = 0, seed = 42,
+                          calcTables = FALSE, covMethod = "sa", nSaCov = 20L))))
+    expect_equal(unname(.fit$omega["eta.ka", "eta.ka"]), 0.3)
+  })
+
   test_that("a non-mu-referenced eta's fix()ed variance is reported too", {
     skip_on_cran()
     skip_if_not_installed("nlmixr2data")
