@@ -284,6 +284,31 @@ ini({
   and takes the threshold as `colinearCut`.
 
 ## Bug fixes
+- `est="saem"` now estimates a covariate on a `dist()` declaration instead of
+  returning zero for it.  saem's non-mu theta refinement has two routes, and
+  only one can carry such a coefficient.  The default, `nonMuTheta = "regress"`,
+  regresses the individual parameters on the covariates, which needs a
+  `theta + eta` mu reference to regress against.  A declared random effect has
+  none -- it enters as `Q(phiU(z); args)` -- so the coefficient has nothing to
+  be regressed from and the update writes it to **zero**, even from a non-zero
+  starting value.  A model with such a declaration now uses
+  `nonMuTheta = "eta"`, and says so.
+
+  Measured on a simulated arm whose true coefficient is `0.75`: the GLS route
+  returns `0.00000` at objf 6811 and drives a coefficient started at `0.1` back
+  to zero, while the likelihood route returns `0.5809` at objf 4603 -- better on
+  both counts.  `est="focei"` independently returns `0.602` on the same data.
+
+  Two things this is NOT, both checked: the coefficient is not in the `MCOV`
+  matrix (a covariate reaching the model only through a declaration never forms
+  a mu reference, so `saemCovars` is empty and it is passed as an input
+  parameter), and it is not the FOCEi zero-start trap (it is zeroed from a
+  non-zero start).  It is a plain `phi0` theta in the free set the whole time.
+
+  The switch fires only for a declaration that actually carries a covariate: a
+  declared model without one, and an ordinary mu-referenced model, are
+  untouched.
+
 - The warning about a covariate on a `dist()` declaration now says what the
   chosen estimator actually does, because the behavior differs per estimator and
   the previous wording handed all of them FOCEi's advice.  Measured on a known

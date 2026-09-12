@@ -652,3 +652,4 @@ test_that("a covariate elsewhere in the model does not warn", {
   .d <- nlmixr2est:::.rxUiEtaDists(.u)
   expect_silent(nlmixr2est:::.etaDistWarnCovAliased(.d, .u))
 })
+

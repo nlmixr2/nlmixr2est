@@ -448,6 +448,45 @@
                           rxode2::rxGetControl(ui, "iovMethod", "twoLevel"),
                           "collapsed")))
     .cfg$nonMuTheta <- rxode2::rxGetControl(ui, "nonMuTheta", "regress")
+    ## A covariate on a dist() declaration cannot go through the GLS route.
+    ##
+    ## "regress" regresses the individual parameters on the covariates, which
+    ## needs a `theta + eta` mu reference to regress.  A declared random effect
+    ## has none -- it enters as Q(phiU(z); args) -- so the coefficient has
+    ## nothing to be regressed from and the update writes it to ZERO.  Measured
+    ## on a known allometric effect (true 0.75): "regress" returns 0.00000 at
+    ## objf 6945.61 and drives a coefficient STARTED at 0.1 back to zero, while
+    ## "eta" returns 0.54511 at objf 4659.82 (focei, for reference, gets 0.602).
+    ##
+    ## The coefficient is a phi0 theta and is correctly absent from MCOV -- a
+    ## covariate reaching the model only through a declaration never enters a mu
+    ## reference, so `saemCovars` is empty and it is passed as an input
+    ## parameter instead.  The GLS route is the one thing that mishandles it.
+    ## Read the STASH, not rxUiEtaDists(): by the time saem sees this ui the
+    ## expansion has run and the declarations are gone from iniDf -- they
+    ## survive only in ui$meta.
+    .edCovDecl <- tryCatch({
+      .st <- .etaDistDeclGet(ui)
+      .dcl <- if (!is.null(.st)) .st$etaDist else {
+        .dd <- .rxUiEtaDists(rxode2::rxUiDecompress(ui))
+        if (nrow(.dd) == 0L) character(0) else .dd$etaDist
+      }
+      if (length(.dcl) == 0L) FALSE else {
+        .thn <- rxode2::rxUiDecompress(ui)$iniDf$name
+        any(vapply(.dcl, function(.t) {
+          .cl <- try(str2lang(.t), silent = TRUE)
+          if (inherits(.cl, "try-error")) return(FALSE)
+          length(setdiff(all.vars(.cl), .thn)) > 0L
+        }, logical(1)))
+      }
+    }, error = function(e) FALSE)
+    if (isTRUE(.edCovDecl) && identical(.cfg$nonMuTheta, "regress")) {
+      .cfg$nonMuTheta <- "eta"
+      .minfo(paste0("a covariate on a dist() declaration cannot use the GLS ",
+                    "non-mu route (it has no mu reference to regress, and the ",
+                    "update writes the coefficient to 0); using ",
+                    "saemControl(nonMuTheta=\"eta\") for this fit"))
+    }
     # integer gate the SAEM C++ reads: when 1, non-mu (phi0) thetas are
     # estimated by the bounded direct optimizer (bounds from phi0Lower/Upper)
     # for normal models too, not just general-likelihood.

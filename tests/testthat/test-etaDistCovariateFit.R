@@ -317,3 +317,49 @@ nmTest({
     expect_false(isTRUE(all.equal(.b, 0.1, tolerance = 1e-6)))
   })
 })
+
+nmTest({
+  test_that("saem estimates a covariate on a declaration, not zero", {
+    skip_on_cran()
+    # saem's non-mu theta refinement has two routes and only one can carry a
+    # covariate on a declaration.  "regress" (the default) regresses the
+    # individual parameters on the covariates, which needs a `theta + eta` mu
+    # reference to regress against; a declared random effect has none -- it
+    # enters as Q(phiU(z); args) -- so the coefficient has nothing to be
+    # regressed from and the update writes it to ZERO.  It does so even from a
+    # non-zero start, which is what separates this from the focei zero-start
+    # trap.  Measured on the full arm (true 0.75): "regress" returns 0.00000 at
+    # objf 6811 and "eta" 0.5809 at 4603, with focei getting 0.602 on the same
+    # data.
+    #
+    # The detection has to read the declaration STASH: by the time saem sees
+    # the ui the expansion has run and the declarations are gone from iniDf, so
+    # a check against rxUiEtaDists() there silently never fires.
+    .d <- .edT5Data(bWT = 0.75)
+    .m <- function() {
+      ini({
+        lclm <- 1.63; lv1m <- 1.55
+        lclrv <- -2.4; lv1rv <- -2.4
+        bWT <- 0.1
+        eta.cl + eta.v1 ~ c(1, 0.5, 1)
+        dist(eta.cl) ~ dgamma(shape = 1 / exp(lclrv),
+                              rate = 1 / (exp(lclrv) *
+                                          exp(lclm + bWT * log(WT / 70))))
+        dist(eta.v1) ~ dgamma(shape = 1 / exp(lv1rv),
+                              rate = 1 / (exp(lv1rv) * exp(lv1m)))
+        prop.sd <- 0.1
+      })
+      model({
+        cl <- eta.cl; v <- eta.v1
+        linCmt() ~ prop(prop.sd)
+      })
+    }
+    .f <- suppressMessages(suppressWarnings(
+      nlmixr2(.m, .d, est = "saem",
+              control = saemControl(print = 0L, nBurn = 60L, nEm = 60L))))
+    .b <- unname(.f$parFixedDf["bWT", "Estimate"])
+    # the failure this guards is an exact zero, from a start of 0.1
+    expect_false(isTRUE(all.equal(.b, 0, tolerance = 1e-4)))
+    expect_true(abs(.b) > 0.05)
+  })
+})
