@@ -9113,6 +9113,11 @@ NumericVector foceiSetup_(const RObject &obj,
   // every LATER consumer in the fit gets, and when no rxode2 seed is in force
   // it draws the value from R's own RNG.  Either one would make a fit that
   // takes no restart at all differ from the same fit with etaRestart=0.
+  // The 42u floor is defensive, not a policy: a fit cannot actually reach here
+  // with seed=NULL, because .foceiFitInternal() wraps the run in
+  // rxode2::rxWithSeed(), which rejects a NULL seed outright ("'seed' must be
+  // an integer of length 1").  It covers the entry points that reach
+  // foceiSetup_ without that wrapper.
   {
     SEXP _seedS = foceiO.containsElementNamed("seed") ? (SEXP)foceiO["seed"] : R_NilValue;
     op_focei.etaRestartSeed = 42u;
