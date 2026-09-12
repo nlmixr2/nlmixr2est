@@ -5768,69 +5768,10 @@ static inline double updateMuGroups() {
   return maxDelta;
 }
 
-void innerOpt() {
-  rx = getRxSolve_();
-  rx_solving_options *op = getSolvingOptions(rx);
-  int cores = getOpCores(op);
-  if (op_focei.neta > 0 && !op_focei.covFdDirect) {   // covFdDirect: keep the FD-perturbed Omega
-    foceiOmegaEnvSyncFromTail(); // fast omega path leaves the env theta stale
-    op_focei.omegaInv=getOmegaInv();
-    op_focei.logDetOmegaInv5 = getOmegaDet();
-    if (op_focei.innerOpt == 3) {
-      // trust-region parscale needs Omega (not just its inverse) refreshed on
-      // the same cadence as omegaInv -- op_focei.omega is otherwise only kept
-      // current for est="fo" (foceiOmegaFromTheta only refreshes it on that
-      // branch). getOmegaMat() is a real computation, not free, so this stays
-      // gated: unconditionally refreshing it every outer iteration for EVERY
-      // fit (including the n1qn1 default) would pay that cost on the hot path
-      // for every innerOpt/est combination that never reads op_focei.omega.
-      op_focei.omega = getOmegaMat();
-    }
-  }
-  // Pre-draw per-subject ETA samples serially before the parallel for-loop so
-  // workers only do memory access (no R API calls), making mceta safe under cores > 1.
-  //
-  // Drawn ONCE per fit (the cube is cleared in foceiSetup_).  Redrawing them on
-  // every innerOpt() call made the objective a different random function at every
-  // evaluation: the outer optimizer's finite differences then compared two
-  // different functions, and two evaluations at the SAME theta disagreed (#1040).
-  // The draws come from the omega in force at the first evaluation -- they are
-  // starting points, not part of the likelihood.
-  if (op_focei.mceta >= 1 && op_focei.maxInnerIterations > 0 && !op_focei.freezeOde) {
-    int nsubAll = (int)getRxNsubAndMix(rx);
-    int nmc = op_focei.mceta - 1;
-    if (nmc > 0 && op_focei.neta > 0) {
-      if (op_focei.mcetaSamples.n_rows   != (arma::uword)op_focei.neta ||
-          op_focei.mcetaSamples.n_cols   != (arma::uword)nmc ||
-          op_focei.mcetaSamples.n_slices != (arma::uword)nsubAll) {
-        op_focei.mcetaSamples.set_size(op_focei.neta, nmc, nsubAll);
-        NumericMatrix omega = getOmega();
-        Function loadNamespace("loadNamespace", R_BaseNamespace);
-        Environment nlmixr2 = loadNamespace("nlmixr2est");
-        Function fSample = as<Function>(nlmixr2[".sampleOmega"]);
-        for (int id = 0; id < nsubAll; ++id) {
-          for (int k = 0; k < nmc; ++k) {
-            NumericMatrix samp = fSample(omega);
-            // The destination column is exactly neta wide and .sampleOmega is an
-            // R function, so bound the copy by the destination rather than by
-            // what R handed back.  A short draw leaves the tail at zero (an
-            // eta=0 candidate), which is a starting point, not a wrong answer --
-            // so this needs no error, and must not raise one: innerOpt() unwinds
-            // into the caller of the per-subject parallel region.
-            int nCopy = (int)samp.size();
-            if (nCopy > op_focei.neta) nCopy = op_focei.neta;
-            double *dest = op_focei.mcetaSamples.slice(id).colptr(k);
-            std::copy(samp.begin(), samp.begin() + nCopy, dest);
-            if (nCopy < op_focei.neta) {
-              std::fill(dest + nCopy, dest + op_focei.neta, 0.0);
-            }
-          }
-        }
-      }
-    } else {
-      op_focei.mcetaSamples.reset();
-    }
-  }
+// Fill the per-subject Omega draws the inner restart cascade falls back on.
+// Kept out of innerOpt() so that function does not carry the extra branching:
+// this is a self-contained, serial, once-per-fit step.
+static void fillEtaRestartSamples(rx_solve *rx) {
   // Restart draws for the inner cascade.  Drawn ONCE per fit for the same
   // reason the mceta cube is (a fresh draw per evaluation would make the
   // objective a different random function every time the outer optimizer
@@ -5902,6 +5843,72 @@ void innerOpt() {
       setRxThreadId(-1);
     }
   }
+}
+
+void innerOpt() {
+  rx = getRxSolve_();
+  rx_solving_options *op = getSolvingOptions(rx);
+  int cores = getOpCores(op);
+  if (op_focei.neta > 0 && !op_focei.covFdDirect) {   // covFdDirect: keep the FD-perturbed Omega
+    foceiOmegaEnvSyncFromTail(); // fast omega path leaves the env theta stale
+    op_focei.omegaInv=getOmegaInv();
+    op_focei.logDetOmegaInv5 = getOmegaDet();
+    if (op_focei.innerOpt == 3) {
+      // trust-region parscale needs Omega (not just its inverse) refreshed on
+      // the same cadence as omegaInv -- op_focei.omega is otherwise only kept
+      // current for est="fo" (foceiOmegaFromTheta only refreshes it on that
+      // branch). getOmegaMat() is a real computation, not free, so this stays
+      // gated: unconditionally refreshing it every outer iteration for EVERY
+      // fit (including the n1qn1 default) would pay that cost on the hot path
+      // for every innerOpt/est combination that never reads op_focei.omega.
+      op_focei.omega = getOmegaMat();
+    }
+  }
+  // Pre-draw per-subject ETA samples serially before the parallel for-loop so
+  // workers only do memory access (no R API calls), making mceta safe under cores > 1.
+  //
+  // Drawn ONCE per fit (the cube is cleared in foceiSetup_).  Redrawing them on
+  // every innerOpt() call made the objective a different random function at every
+  // evaluation: the outer optimizer's finite differences then compared two
+  // different functions, and two evaluations at the SAME theta disagreed (#1040).
+  // The draws come from the omega in force at the first evaluation -- they are
+  // starting points, not part of the likelihood.
+  if (op_focei.mceta >= 1 && op_focei.maxInnerIterations > 0 && !op_focei.freezeOde) {
+    int nsubAll = (int)getRxNsubAndMix(rx);
+    int nmc = op_focei.mceta - 1;
+    if (nmc > 0 && op_focei.neta > 0) {
+      if (op_focei.mcetaSamples.n_rows   != (arma::uword)op_focei.neta ||
+          op_focei.mcetaSamples.n_cols   != (arma::uword)nmc ||
+          op_focei.mcetaSamples.n_slices != (arma::uword)nsubAll) {
+        op_focei.mcetaSamples.set_size(op_focei.neta, nmc, nsubAll);
+        NumericMatrix omega = getOmega();
+        Function loadNamespace("loadNamespace", R_BaseNamespace);
+        Environment nlmixr2 = loadNamespace("nlmixr2est");
+        Function fSample = as<Function>(nlmixr2[".sampleOmega"]);
+        for (int id = 0; id < nsubAll; ++id) {
+          for (int k = 0; k < nmc; ++k) {
+            NumericMatrix samp = fSample(omega);
+            // The destination column is exactly neta wide and .sampleOmega is an
+            // R function, so bound the copy by the destination rather than by
+            // what R handed back.  A short draw leaves the tail at zero (an
+            // eta=0 candidate), which is a starting point, not a wrong answer --
+            // so this needs no error, and must not raise one: innerOpt() unwinds
+            // into the caller of the per-subject parallel region.
+            int nCopy = (int)samp.size();
+            if (nCopy > op_focei.neta) nCopy = op_focei.neta;
+            double *dest = op_focei.mcetaSamples.slice(id).colptr(k);
+            std::copy(samp.begin(), samp.begin() + nCopy, dest);
+            if (nCopy < op_focei.neta) {
+              std::fill(dest + nCopy, dest + op_focei.neta, 0.0);
+            }
+          }
+        }
+      }
+    } else {
+      op_focei.mcetaSamples.reset();
+    }
+  }
+  fillEtaRestartSamples(rx);
   // freezeOde: evaluate each subject's density at its (restored) base EBE with a
   // single innerEval -- no eta re-optimization -- reusing the frozen ODE states.
   if (op_focei.maxInnerIterations <= 0 || op_focei.freezeOde){
