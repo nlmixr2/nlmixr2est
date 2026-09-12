@@ -3793,8 +3793,11 @@ static bool focePlusBacktrack(arma::vec &x, arma::vec &g, const arma::vec &step,
 // always usable.  Refusing to drive the score any closer to zero is therefore
 // not a failure -- `focePlusBacktrack` accepts nothing but a strict decrease in
 // the score norm, so it stops exactly when the score has reached the noise floor
-// the solve tolerance buys, and `x` is the best point seen on every exit.
-// Reporting that as NA instead poisoned the objective (#1069): at the default
+// the solve tolerance buys, and `x` is the best ITERATE the search accepted on
+// every exit path.  (Not the best point EVALUATED: `focePlusScoreJacobian`'s
+// x +/- h probes are derivative samples taken at a fixed step, not candidate
+// steps, so one that happens to score lower is not adopted.)
+// Reporting a stall as NA instead poisoned the objective (#1069): at the default
 // sigdig=3 the floor sits near 1e-3, so every subject that reached it lost its
 // likelihood and the outer search read a spurious cliff.
 static bool refineFocePlusEta(double *eta, int id) {

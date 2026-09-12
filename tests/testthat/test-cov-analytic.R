@@ -1321,6 +1321,12 @@ nmTest({
     # can be identified (in BOTH the analytic and the gold FD), so >= not >
     expect_gte(sum(fin), 4L)
     expect_equal(unname(seA[fin]), unname(seG[fin]), tolerance = 5e-3)
+    # This bound is also what guards `refineFocePlusEta()` (src/inner.cpp), the Newton
+    # polish that puts the fit's EBEs on the truncated-score root the gold FD re-solves
+    # to 1e-12.  Measured with the polish disabled, the same comparison gives relBig
+    # 0.252 and an SE gap of 7.5% (and one direction stops being identified), against
+    # 5.9e-06 and 3.1e-06 with it -- three orders of margin, so deleting the polish
+    # fails here rather than passing quietly.
   })
 
   test_that("est='focep' installs the full analytic covariance", {
@@ -1331,6 +1337,12 @@ nmTest({
     # subject's likelihood as NA, and the observed information at that stalled point had a
     # real negative eigenvalue, so the PD gate refused to install it.  Pinning sigdig would
     # hide a return of that.
+    #
+    # The polish stops at the solve's noise floor at this sigdig, so the score it leaves
+    # is ~1e-3 rather than 0, and the analytic assemblers drop it as if it were 0.  That
+    # costs what the tolerance buys and no more: against the gold FD above, this model
+    # gives 2.7e-3 relative on the significant entries of R and 2.5e-4 on the SEs at
+    # sigdig 3, 1.0e-4 / 1.4e-5 at 4, and 5.9e-6 / 3.1e-6 at 6.
     fit <- suppressWarnings(suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focep",
               focepControl(print = 0L, covMethod = "analytic", covFull = TRUE))))
     expect_lt(fit$objf, 118)
