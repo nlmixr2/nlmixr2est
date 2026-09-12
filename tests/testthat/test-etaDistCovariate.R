@@ -176,7 +176,7 @@ test_that("a theta is not shadowed by a covariate of the same name", {
   }
 }
 
-test_that("the covariate lands in the decoder line, per record", {
+test_that("the covariate lands on the role anchor, per record", {
   skip_on_cran()
   .ui <- rxode2::rxUiDecompress(nlmixr2est::nlmixr2(.edcCovModel()))
   expect_true("WT" %in% .ui$allCovs)
@@ -185,12 +185,25 @@ test_that("the covariate lands in the decoder line, per record", {
                 character(1))
   .dec <- .ln[grepl("^eta.cl <-", .ln)]
   expect_length(.dec, 1L)
-  # this is what makes a covariate on a declaration need NO M-step machinery:
-  # the solve evaluates the argument per record, covariate and all
-  expect_true(grepl("WT", .dec, fixed = TRUE))
+  # This is what makes a covariate on a declaration need NO M-step machinery:
+  # the solve evaluates the argument per record, covariate and all.  The
+  # expansion hoists each family argument onto its own `rxEdA.<eta>.<role>`
+  # line, so the covariate is on the ANCHOR and the decoder refers to it --
+  # which is the point of the anchors, since adding a covariate to a role
+  # group is then an edit to one named line.
+  .anc <- .ln[grepl("^rxEdA[.]eta[.]cl[.]", .ln)]
+  expect_true(length(.anc) > 0L)
+  expect_true(any(grepl("WT", .anc, fixed = TRUE)))
+  # it is on the RATE, which is the role the model puts it on
+  expect_true(any(grepl("WT", .anc[grepl("[.]rate <-", .anc)], fixed = TRUE)))
+  # the decoder still does the inverse-CDF, now through the anchors
   expect_true(grepl("gammapInv", .dec, fixed = TRUE))
-  # and the declaration WITHOUT the covariate does not acquire one
+  expect_true(grepl("rxEdA.eta.cl.shape", .dec, fixed = TRUE))
+  # and the declaration WITHOUT the covariate does not acquire one, on either
+  # its decoder line or its anchors
   expect_false(grepl("WT", .ln[grepl("^eta.v <-", .ln)], fixed = TRUE))
+  expect_false(any(grepl("WT", .ln[grepl("^rxEdA[.]eta[.]v[.]", .ln)],
+                         fixed = TRUE)))
 })
 
 test_that("through the real path, only the plain declaration is held out", {
