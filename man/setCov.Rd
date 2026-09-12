@@ -25,6 +25,24 @@ recompute engine (the latter two require a mixed-effects fit).  When
 \code{"sa"}/\code{"imp"}/\code{"analytic"} cannot be computed the covariance
 is left unchanged (it is never silently downgraded to \code{"r,s"}).
 }
+\details{
+Every focei covariance comes in two shapes (see \code{covFull} in
+\code{\link{foceiControl}()}), and both are named: \code{"r,s"}, \code{"r"},
+\code{"s"} and \code{"analytic"} are the structural-theta block, while
+\code{"r,s (full)"}, \code{"r (full)"}, \code{"s (full)"} and
+\code{"analytic (full)"} are the full theta + residual sigma + Omega matrix.
+A focei fit computes both and caches the one it does not install, so swapping
+between them costs nothing.  The shapes are not submatrices of one another on
+the finite-difference path -- \code{"s"} inverts the theta block of the
+cross-product while \code{"s (full)"} takes the theta block of the full
+inverse, which also carries the Omega estimation uncertainty -- so the
+standard errors differ.  On the analytic path the assembly is always full and
+\code{"analytic"} is a submatrix of \code{"analytic (full)"}, so the theta
+standard errors agree.
+
+\code{fit$covMethod} names the installed covariance and
+\code{names(fit$covList)} the cached alternatives (the fit print shows both).
+}
 \seealso{
 \code{\link{foceiControl}()}, \code{\link{saemControl}()}
 }

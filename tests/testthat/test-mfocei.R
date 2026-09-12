@@ -34,7 +34,7 @@ nmTest({
       # "r,s"); the mu recompute freezes the inner problem, and for the analytic
       # observed information that reproduces the same value as a normal fit.
       .fM <- .nlmixr(mfun, theo_sd2, muEst, muCtl(print = 0, covMethod = "analytic"))
-      expect_equal(.fM$covMethod, "analytic")
+      expect_equal(.covBaseName(.fM$covMethod), "analytic")
       expect_false(is.na(suppressWarnings(as.numeric(.fM$parFixed["tcl", "SE"]))))
       # the recomputed cov's condition numbers are added to objDf post-install
       expect_true(all(c("Condition#(Cov)", "Condition#(Cor)") %in% names(.fM$objDf)))
@@ -80,7 +80,7 @@ nmTest({
       .ctl <- if (.est == "mfocei") mfoceiControl else ifoceiControl
       .fB <- .nlmixr(modOde, theo_sd2, "focei", foceiControl(print = 0, covMethod = "analytic"))
       .fM <- .nlmixr(modOde, theo_sd2, .est, .ctl(print = 0, covMethod = "analytic"))
-      expect_equal(.fM$covMethod, "analytic")
+      expect_equal(.covBaseName(.fM$covMethod), "analytic")
       expect_false(is.na(suppressWarnings(as.numeric(.fM$parFixed["allo.cl", "SE"]))))
       expect_false(is.na(suppressWarnings(as.numeric(.fM$parFixed["tcl", "SE"]))))
       .sM <- sqrt(diag(.fM$cov)); .sB <- sqrt(diag(.fB$cov))

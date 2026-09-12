@@ -209,9 +209,28 @@ nlmeControl <- nlmixr2NlmeControl
   .pars <- .pars[!duplicated(.pars$ID),]
   .pars$ID <- seq_along(.pars$ID)
   row.names(.pars) <- NULL
-  .retF <- do.call(rxode2::rxSolve, c(list(object=nlmixr2global$nlmeFitRxModel, params=.pars, events=.datF),
-                                      nlmixr2global$nlmeFitRxControl))
+  .args <- c(list(object=nlmixr2global$nlmeFitRxModel, params=.pars, events=.datF),
+             nlmixr2global$nlmeFitRxControl)
+  # mtime() records are model output, not data: the solve adds one row per
+  # subject per mtime, and nlme has no observation to match it to (#919).  Keep
+  # the source row number so those rows can be told apart -- dose rows are not
+  # in the output, so an NA there is an mtime record.
+  .hasMtime <- isTRUE(nlmixr2global$nlmeFitHasMtime)
+  if (.hasMtime) .args$keep <- unique(c(.args$keep, "nlmixrRowNums"))
+  .retF <- do.call(rxode2::rxSolve, .args)
   .ret <- .retF$rx_pred_
+  if (.hasMtime) {
+    # Prefer the solve's own EVID when it is there (it is whenever dose rows
+    # are kept); the row-number test alone only tells mtime records apart while
+    # the doses are left out, since an ADDL-expanded dose has no source row either.
+    .evidW <- which(tolower(names(.retF)) == "evid")
+    if (length(.evidW) == 1L) {
+      .ev <- .retF[[.evidW]]
+      .ret <- .ret[!(!is.na(.ev) & .ev >= 10 & .ev <= 99)]
+    } else if (!is.null(.retF$nlmixrRowNums)) {
+      .ret <- .ret[!is.na(.retF$nlmixrRowNums)]
+    }
+  }
   .ret
 }
 
@@ -229,6 +248,10 @@ nlmeControl <- nlmixr2NlmeControl
 .nlmeFitModel <- function(ui, dataSav, timeVaryingCovariates) {
   .nlmeFitDataSetup(dataSav)
   nlmixr2global$nlmeFitRxModel <- .nlmixr2estRxode2(ui$nlmeRxModel, "rxNlme")
+  # read once, not per objective evaluation (see .nlmixrNlmeFun())
+  nlmixr2global$nlmeFitHasMtime <-
+    tryCatch(rxode2::rxModelVars(nlmixr2global$nlmeFitRxModel)$nMtime > 0L,
+             error=function(e) FALSE)
   nlmixr2global$nlmeFitRxControl <- rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())
 
   .ctl <- ui$control
@@ -435,12 +458,12 @@ nmObjHandleControlObject.nlmeControl <- function(control, env) {
 #' @export
 nmObjGetControl.nlme <- function(x, ...) {
   .env <- x[[1]]
-  if (exists("nlmeControl", .env)) {
-    .control <- get("nlmeControl", .env)
+  if (exists("nlmeControl", .env, inherits = FALSE)) {
+    .control <- get("nlmeControl", .env, inherits = FALSE)
     if (inherits(.control, "nlmeControl")) return(.control)
   }
-  if (exists("control", .env)) {
-    .control <- get("control", .env)
+  if (exists("control", .env, inherits = FALSE)) {
+    .control <- get("control", .env, inherits = FALSE)
     if (inherits(.control, "nlmeControl")) return(.control)
   }
   stop("cannot find nlme related control object", call.=FALSE)

@@ -232,12 +232,12 @@ nmObjHandleControlObject.newuoaControl <- function(control, env) {
 #' @export
 nmObjGetControl.newuoa <- function(x, ...) {
   .env <- x[[1]]
-  if (exists("newuoaControl", .env)) {
-    .control <- get("newuoaControl", .env)
+  if (exists("newuoaControl", .env, inherits = FALSE)) {
+    .control <- get("newuoaControl", .env, inherits = FALSE)
     if (inherits(.control, "newuoaControl")) return(.control)
   }
-  if (exists("control", .env)) {
-    .control <- get("control", .env)
+  if (exists("control", .env, inherits = FALSE)) {
+    .control <- get("control", .env, inherits = FALSE)
     if (inherits(.control, "newuoaControl")) return(.control)
   }
   stop("cannot find newuoa related control object", call.=FALSE)

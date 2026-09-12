@@ -62,9 +62,16 @@ nmTest({
         linCmt() ~ add(add.sd)
       })
     }
-    fit_r  <- .nlmixr(one.cmt, theo_sd, "focei", foceiControl(covMethod = "r",   print = 0))
-    fit_s  <- .nlmixr(one.cmt, theo_sd, "focei", foceiControl(covMethod = "s",   print = 0))
-    fit_rs <- .nlmixr(one.cmt, theo_sd, "focei", foceiControl(covMethod = "r,s", print = 0))
+    # covFull = FALSE pins this to the NATIVE theta-only covariance, which is the
+    # thing the ratios below are about.  With the FD-full covariance installed the
+    # theta SEs come from inverting the JOINT theta+omega matrix instead, a
+    # different quantity (it carries the omega estimation uncertainty), and
+    # se_s/se_rs runs ~5 -- into the range this test reads as the old constant
+    # factor returning.  Keep the guard on the estimator it was written for; the
+    # SE/cov invariant under covFull is asserted separately below.
+    fit_r  <- .nlmixr(one.cmt, theo_sd, "focei", foceiControl(covMethod = "r",   print = 0, covFull = FALSE))
+    fit_s  <- .nlmixr(one.cmt, theo_sd, "focei", foceiControl(covMethod = "s",   print = 0, covFull = FALSE))
+    fit_rs <- .nlmixr(one.cmt, theo_sd, "focei", foceiControl(covMethod = "r,s", print = 0, covFull = FALSE))
 
     p <- c("tka", "tcl", "tv")
     se_r  <- fit_r$parFixedDf[p,  "SE"]
@@ -89,6 +96,33 @@ nmTest({
     # ~1 this test says to expect.  3.5 still leaves clear room under the ~4.5 a
     # return of the constant factor would produce, which is what this guards.
     expect_true(all(se_s  / se_rs < 3.5), label = "covMethod='s' SE not inflated by the old 2x constant factor")
+  })
+
+  test_that("reported SE matches sqrt(diag(fit$cov)) (nlmixr2extra#125)", {
+    # .foceiInstallFdFullCov() replaces $cov after the C++ step has already
+    # derived popDf$SE from the covariance it discards.  Without a refresh the
+    # fit reports SEs describing a matrix it no longer holds, and a setCov()
+    # round trip silently changes them.
+    one.cmt <- function() {
+      ini({
+        tka <- log(1.5); tcl <- log(2.7); tv <- log(31.5)
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    for (.full in c(TRUE, FALSE)) {
+      .fit <- .nlmixr(one.cmt, theo_sd, "focei",
+                      foceiControl(print = 0, covFull = .full))
+      .p <- intersect(rownames(.fit$parFixedDf), rownames(.fit$cov))
+      expect_true(length(.p) > 0)
+      expect_equal(unname(.fit$parFixedDf[.p, "SE"]),
+                   unname(sqrt(diag(.fit$cov))[.p]),
+                   label = paste0("covFull=", .full, " SE == sqrt(diag(cov))"))
+    }
   })
 
   test_that("covariance with many omegas fixed will not crash focei", {

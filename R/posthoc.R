@@ -53,12 +53,12 @@ getValidNlmixrCtl.posthoc <- function(control) {
 #' @export
 nmObjGetControl.posthoc <- function(x, ...) {
   .env <- x[[1]]
-  if (exists("posthocControl", .env)) {
-    .control <- get("posthocControl", .env)
+  if (exists("posthocControl", .env, inherits = FALSE)) {
+    .control <- get("posthocControl", .env, inherits = FALSE)
     if (inherits(.control, "posthocControl")) return(.control)
   }
-  if (exists("control", .env)) {
-    .control <- get("control", .env)
+  if (exists("control", .env, inherits = FALSE)) {
+    .control <- get("control", .env, inherits = FALSE)
     if (inherits(.control, "posthocControl")) return(.control)
   }
   stop("cannot find posthoc related control object", call.=FALSE)

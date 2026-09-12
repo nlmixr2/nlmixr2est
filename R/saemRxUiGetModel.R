@@ -463,10 +463,8 @@ rxUiGet.saemModel <- function(x, ...) {
      .msuccess("done")
   }
   .cmt <-  rxUiGet.foceiCmtPreModel(x, ...)
-  .interp <- rxUiGet.interpLinesStr(x, ...)
-  if (.interp != "") {
-    .cmt <-paste0(.cmt, "\n", .interp)
-  }
+  # mtime() lines are re-emitted here (#919); see .mtimeLinesStr()
+  .cmt <- .addPreModelLines(.cmt, rxUiGet.interpLinesStr(x, ...), .mtimeLinesStr(.s))
   ## no splitBolus() here -- saem solves the pre-split $dataSav, so declaring it
   ## would split the doses twice (see .foceiPreProcessData())
   paste(c(rxUiGet.saemParams(x, ...), .cmt,
@@ -499,6 +497,15 @@ rxUiGet.saemModelPredReplaceLst <- function(x, ...) {
   }
   .thetaValue <- c(.thetaValue, .thetaValueErr)
   .etaTrans <- rxUiGet.saemEtaTransPred(x, ...)
+  # .etaTrans indexes the SAEM ESTIMATION parameter vector; .thetaValue is in
+  # iniDf order.  The two differ by every theta saem does not estimate as its
+  # own parameter -- the mixture probabilities and the mu-referenced covariate
+  # parameters -- so the position has to be turned back into a name before it
+  # is used here.  Indexing .thetaValue by the raw position pairs each eta with
+  # whatever theta happens to sit at that spot, shifting every eta declared
+  # after one of those onto the wrong parameter (nlmixr2/nlmixr2est#1041).
+  .etaTransNames <- rxUiGet.saemParamsToEstimateCov(x, ...)
+  .etaTransNames <- .etaTransNames[!(.etaTransNames %in% .ui$nonMuEtas)]
   for (.e in seq_along(.etaTrans)) {
     .eta <- paste0("ETA[", .e, "]")
     .tn <- .etaTrans[.e]
@@ -516,10 +523,18 @@ rxUiGet.saemModelPredReplaceLst <- function(x, ...) {
     } else if (.tn < 0) {
       .thetaValue[.etas[-.tn]] <- .eta
     } else {
-      if (.thetaValue[.tn] == "") {
-        .thetaValue[.tn] <- .eta
+      .tnName <- .etaTransNames[.tn]
+      # stop() rather than falling back to the position: the position is what
+      # was wrong in the first place, so a silent fallback would put the eta
+      # back on the wrong parameter in exactly the case this resolves
+      if (is.na(.tnName) || !(.tnName %in% names(.thetaValue))) {
+        stop("cannot pair '", .etas[.e], "' with a population parameter ",
+             "while building the saem prediction model", call. = FALSE)
+      }
+      if (.thetaValue[.tnName] == "") {
+        .thetaValue[.tnName] <- .eta
       } else {
-        .thetaValue[.tn] <- paste0(.thetaValue[.tn], " + ", .eta)
+        .thetaValue[.tnName] <- paste0(.thetaValue[.tnName], " + ", .eta)
       }
     }
   }
@@ -706,6 +721,12 @@ rxUiGet.saemModelPred <- function(x, ...) {
             .interp,
             "rx_pred_=NA\nrx_r_=NA\n",
             .replaceLines,
+            # mtime() lines are re-emitted here (#919); see .mtimeLinesStr().
+            # AFTER the mu-reference replacement block, not with the other
+            # declarations: this model's body is in the NATURAL names, which
+            # only those lines define, so an mtime right hand side naming a
+            # theta would otherwise read it before it is assigned.
+            .mtimeLinesStr(.s),
             .ret,
             .thetaEtaLines,
             .foceiToCmtLinesAndDvid(x[[1]]))

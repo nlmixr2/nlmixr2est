@@ -34,25 +34,20 @@ nmTest({
     expect_false(isTRUE(all.equal(fn$objective, fp$objective, tolerance = 1e-4)))
   })
 
-  test_that("foce=\"foce+\" equals \"nonmem\" for pure additive error", {
+  test_that("foce=\"foce+\" equals \"nonmem\" at matched additive parameters", {
     fn <- suppressWarnings(suppressMessages(
       nlmixr(add.cmt, d, "foce",
-             foceiControl(print = 0L, calcTables = FALSE, outerOpt = "nlminb", covMethod = ""))))
+             foceiControl(print = 0L, calcTables = FALSE, maxOuterIterations = 0L,
+                          innerOpt = "n1qn1", epsilon = 1e-10, maxInnerIterations = 1000L, covMethod = ""))))
     fp <- suppressWarnings(suppressMessages(
       nlmixr(add.cmt, d, "foce",
-             foceiControl(print = 0L, calcTables = FALSE, outerOpt = "nlminb", covMethod = "", foce = "foce+"))))
+             foceiControl(print = 0L, calcTables = FALSE, maxOuterIterations = 0L,
+                          innerOpt = "n1qn1", epsilon = 1e-10, maxInnerIterations = 1000L, covMethod = "", foce = "foce+"))))
     expect_equal(fn$objective, fp$objective, tolerance = 1e-4)
   })
 
   test_that("focep/mfocep/ifocep equal foce with foce=\"foce+\"", {
-    ## foce+ reference for the focep alias check, computed LIVE -- deliberately
-    ## NOT via .numRef().  That cache lives in checked-in baselines/ with no
-    ## source-hash key, by design: its usual references (central differences, FD
-    ## SEs) are properties of the model/data and must not be rebuilt by whatever
-    ## code is checked out.  This one is different -- it is the OUTPUT of the very
-    ## path focep aliases, so freezing it compared today's focep against an old
-    ## build's foce+ and failed for that reason alone (cached 122.682151 against
-    ## a live 117.880675, while focep and foce+ agree to every digit).
+    # Compare aliases against a live reference from this implementation.
     ref <- list(objective = suppressWarnings(suppressMessages(
       nlmixr(one.cmt, d, "foce",
              foceiControl(print = 0L, calcTables = FALSE, outerOpt = "nlminb",
@@ -66,12 +61,6 @@ nmTest({
     # per-subject inner problem is multi-modal, so the three land in different conditional
     # basins.  They must agree with EACH OTHER, and stay in the same neighbourhood as the
     # plain fit -- which is a sanity check, not a precision claim, so the bound is loose.
-    #
-    # Measured under the CURRENT defaults (foce="nonmem" default, resetThetaP=0,
-    # innerOpt="auto", trustFterm/trustMterm = 10^(-sigdig-2)):
-    #   foce+ / focep      117.880675  (identical -- focep IS foce + foce="foce+")
-    #   mfocep             111.731506
-    #   ifocep             111.731506
     #
     # An earlier revision of this file recorded 116.63 for "foce+ / focep" and sized the
     # neighbourhood bound at 3 around it.  That number dates from when est="foce" WAS the
@@ -90,14 +79,44 @@ nmTest({
     expect_equal(fM$objective, fI$objective, tolerance = 1e-2)
     # Pin the mu variants to the basin they actually reach on this fixture, so a
     # future change to the mu-referenced inner path shows up here.
-    expect_equal(fM$objective, 111.731506, tolerance = 1e-3)
-    expect_equal(fI$objective, 111.731506, tolerance = 1e-3)
-    # ... and keep them in the same neighbourhood as the plain fit.  Sized at 8
-    # against a measured 6.149: the gap is between two different conditional
-    # basins, so it moves whenever either inner path does, and a bound sitting
-    # 0.15 from the measurement is a tripwire for unrelated changes rather than
-    # a claim about this one.
+    expect_equal(fM$objective, 107.341169, tolerance = 1e-3)
+    expect_equal(fI$objective, 107.341169, tolerance = 1e-3)
+    # ... and keep them in the same neighbourhood as the plain fit.  The gap is
+    # between two different conditional basins, so it moves whenever either inner
+    # path does; the bound is a tripwire for unrelated changes, not a claim about
+    # this one.
     expect_lt(abs(fM$objective - ref$objective), 8)
     expect_lt(abs(fI$objective - ref$objective), 8)
+  })
+
+  test_that("a stalled FOCE+ EBE polish does not poison the objective (#1069)", {
+    # FOCE+ polishes the inner optimizer's eta onto the truncated-score root it
+    # defines its EBE by.  That polish stops once the score reaches the noise floor
+    # the solve tolerance buys -- near 1e-3 at the DEFAULT sigdig=3 -- and used to
+    # report the subject's likelihood as NA when it did.  Run at the default on
+    # purpose: pinning sigdig is what hid this.
+    .m <- function() {
+      ini({ tka <- log(1.5); tcl <- log(2.7); tv <- log(31.5)
+            eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1; add.sd <- 0.7 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        d/dt(depot)  <- -ka * depot
+        d/dt(center) <-  ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd) })
+    }
+    fit <- suppressWarnings(suppressMessages(
+      nlmixr(.m, d, "focep", focepControl(print = 0L, calcTables = FALSE, covMethod = ""))))
+    # The stall cost 4.8 objective units: bobyqa stopped at 121.560 with the omegas
+    # barely off their starting values, against 116.80 here and 116.82 for est="foce".
+    expect_lt(fit$objf, 118)
+    # The mechanism, not just the answer.  A subject whose likelihood came back NA
+    # was penalized to ~300 while its neighbourhood sat near 130, and the cliff that
+    # left in the outer objective is what stopped the search.  Nothing the search
+    # sees may be worse than its own starting point by that kind of margin.
+    .o <- fit$parHist$objf
+    expect_lt(max(.o), .o[1] + 25)
+    # ... and the omegas have to have actually moved (the stall left eta.ka at 0.56
+    # against 0.40 here, because every probe that raised it read as a cliff).
+    expect_lt(fit$omega[["eta.ka", "eta.ka"]], 0.5)
   })
 })

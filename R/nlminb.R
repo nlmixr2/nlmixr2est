@@ -358,12 +358,12 @@ nmObjHandleControlObject.nlminbControl <- function(control, env) {
 #' @export
 nmObjGetControl.nlminb <- function(x, ...) {
   .env <- x[[1]]
-  if (exists("nlminbControl", .env)) {
-    .control <- get("nlminbControl", .env)
+  if (exists("nlminbControl", .env, inherits = FALSE)) {
+    .control <- get("nlminbControl", .env, inherits = FALSE)
     if (inherits(.control, "nlminbControl")) return(.control)
   }
-  if (exists("control", .env)) {
-    .control <- get("control", .env)
+  if (exists("control", .env, inherits = FALSE)) {
+    .control <- get("control", .env, inherits = FALSE)
     if (inherits(.control, "nlminbControl")) return(.control)
   }
   stop("cannot find nlminb related control object", call.=FALSE)

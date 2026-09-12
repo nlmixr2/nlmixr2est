@@ -12,11 +12,15 @@
 #     gold-FD Hessian solves at a fixed 1e-12 and the analytic augmented solve is
 #     10^-(sigdig+6), which is why those fits pin sigdig = 6 (449d18c49) rather
 #     than 4.  Do not "simplify" them to one value.
-#   * The observed information here is near-singular.  At sigdig = 3 the optimizer
-#     stops ~7.5e-3 away in theta and the smallest eigenvalue of the block-Omega
-#     covariance goes NEGATIVE (focei -3.07e-04, foce -3.62e-02), giving NaN SEs
-#     under BOTH methods.  Every sigdig >= 4 is positive-definite.  That is a
-#     converged-point effect, not an error in the covariance engine.
+#   * The observed information here is near-singular, and on the BLOCK-Omega model the
+#     outer optimizer does not reach a local minimum below sigdig = 5: the objective at
+#     the stopping point is 436.25 (sigdig 3) / 435.22 (sigdig 4) against 432.37
+#     (sigdig 5), and the smallest eigenvalue of the observed information is negative
+#     there (-4.8e+03 / -6.7e+02), so two SEs are NaN.  That is the point, not the
+#     engine: an independent brute-force central-FD Hessian of the same objective at the
+#     same estimates has the SAME negative eigenvalue (-671.23 at sigdig 4, against the
+#     analytic -671.5) and the same NaN SEs.  See nlmixr2est#1055.  The block-Omega
+#     tests therefore pin sigdig = 6.
 #
 # The unpinned fits previously inherited the package default, which moved 4 -> 3 in
 # 7d3c7b62d and silently invalidated them.  sigdig = 4 restores what they were
@@ -38,9 +42,32 @@ nmTest({
     })
   }
 
+  # Same one-compartment model with a declared block between eta.cl and eta.v -- the only
+  # coverage of an off-diagonal Omega element.  theo_sd replicated 4x (48 subjects) so the
+  # block is estimable.
+  .cov_blk_omega <- function() {
+    ini({
+      tka <- log(1.5); tcl <- log(2.7); tv <- log(31.5)
+      eta.ka ~ 0.6
+      eta.cl + eta.v ~ c(0.3, 0.03, 0.1)
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+      d/dt(depot)  <- -ka * depot
+      d/dt(center) <-  ka * depot - cl / v * center
+      cp <- center / v
+      cp ~ add(add.sd)
+    })
+  }
+
+  .cov_blk_data <- function(n = 4L) {
+    d0 <- nlmixr2data::theo_sd
+    do.call(rbind, lapply(seq_len(n), function(k) { .x <- d0; .x$ID <- .x$ID + (k - 1) * 100; .x }))
+  }
+
   test_that("foceiCov returns the full theta+sigma+Omega analytic covariance", {
     skip_on_cran()
-    skip_on_ci()
     fit <- suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
                                    foceiControl(sigdig = 4, print = 0L, covMethod = "")))
     r <- foceiCovAnalytic(fit)
@@ -59,39 +86,53 @@ nmTest({
 
   test_that("block Omega is handled analytically, with off-diagonal covariance SEs", {
     skip_on_cran()
-    skip_on_ci()
     skip_if_not_installed("nlmixr2data")
-    blk <- function() {
-      ini({
-        tka <- log(1.5); tcl <- log(2.7); tv <- log(31.5)
-        eta.ka ~ 0.6
-        eta.cl + eta.v ~ c(0.3, 0.03, 0.1)            # block between eta.cl and eta.v
-        add.sd <- 0.7
-      })
-      model({
-        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
-        d/dt(depot)  <- -ka * depot
-        d/dt(center) <-  ka * depot - cl / v * center
-        cp <- center / v
-        cp ~ add(add.sd)
-      })
-    }
-    # theo_sd alone (12 subjects) does not identify the off-diagonal covariance:
-    # its full observed information is genuinely indefinite (the exact analytic R and
-    # a finite-difference R agree on a small negative eigenvalue), so cov(eta.cl,eta.v)
-    # has a negative variance and a NaN SE under BOTH methods.  Replicate the data so
-    # the block is estimable and the full covariance is positive-definite -- then the
-    # analytic engine yields a real off-diagonal covariance SE.
-    d0 <- nlmixr2data::theo_sd
-    dat <- do.call(rbind, lapply(1:4, function(k) { .x <- d0; .x$ID <- .x$ID + (k - 1) * 100; .x }))
-    fit <- suppressMessages(nlmixr(blk, dat, "focei",
-                                   foceiControl(sigdig = 4, print = 0L, covMethod = "")))
+    # theo_sd alone (12 subjects) does not identify the off-diagonal covariance: its full
+    # observed information is genuinely indefinite (the exact analytic R and a
+    # finite-difference R agree on a small negative eigenvalue), so cov(eta.cl,eta.v) has a
+    # negative variance and a NaN SE under BOTH methods.  Replicate the data so the block is
+    # estimable.  sigdig = 6 (not 4) is load-bearing -- see the header: below sigdig = 5 the
+    # outer optimizer stops short of a local minimum on this model and the observed
+    # information is legitimately indefinite there, as a brute-force FD Hessian confirms.
+    fit <- suppressMessages(nlmixr(.cov_blk_omega, .cov_blk_data(), "focei",
+                                   foceiControl(sigdig = 6, print = 0L, covMethod = "")))
     r <- foceiCovAnalytic(fit)
     expect_false(is.null(r))
     expect_identical(r$method, "analytic")             # block Omega via the E-basis derivatives
     expect_true(any(grepl("^cov\\.", r$params)))       # an off-diagonal Omega covariance SE
     expect_true(all(is.finite(r$se)) && all(r$se > 0))
+    expect_true(r$pd)
     expect_true(all(eigen(r$cov, symmetric = TRUE, only.values = TRUE)$values > 0))
+    # installed on the fit (the PD gate passed), so getVarCov() reuses it
+    expect_identical(.covBaseName(fit$covMethod), "analytic")
+    expect_equal(unname(fit$cov), unname(r$cov))
+  })
+
+  test_that("an indefinite analytic covariance is reported but not installed (#1055)", {
+    skip_on_cran()
+    skip_if_not_installed("nlmixr2data")
+    # sigdig = 4 stops this model short of a local minimum: the observed information has a
+    # negative eigenvalue and two SEs are NaN, under the analytic engine AND under an
+    # independent brute-force FD Hessian of the same objective at the same estimates.  The
+    # analytic pieces are still returned (the caller asked for them) but must not overwrite
+    # the fit's usable covariance.
+    fit <- suppressMessages(nlmixr(.cov_blk_omega, .cov_blk_data(), "focei",
+                                   foceiControl(sigdig = 4, print = 0L, covMethod = "r,s",
+                                                covFull = TRUE)))
+    .cov0 <- fit$cov
+    .m0 <- fit$covMethod
+    r <- suppressWarnings(foceiCovAnalytic(fit))
+    expect_false(is.null(r))
+    expect_false(r$pd)                                 # the point is not a local minimum
+    expect_true(anyNA(r$se))
+    expect_lt(min(eigen(r$R, symmetric = TRUE, only.values = TRUE)$values), 0)
+    expect_equal(fit$cov, .cov0)                       # the FD covariance survives
+    expect_identical(fit$covMethod, .m0)
+    # setCov() is the supported way to ask for the same thing; its own PD gate must
+    # refuse and leave the covariance alone rather than install the indefinite one
+    expect_error(setCov(fit, "analytic"), "left unchanged")
+    expect_equal(fit$cov, .cov0)
+    expect_identical(fit$covMethod, .m0)
   })
 
   test_that("single random-effect model is handled analytically (no sapply collapse)", {
@@ -135,9 +176,9 @@ nmTest({
     skip_if_not_installed("nlmixr2data")
     fit <- suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
                                    foceiControl(sigdig = 4, print = 0L, covMethod = "r,s")))
-    expect_false(identical(fit$covMethod, "analytic"))
+    expect_false(identical(.covBaseName(fit$covMethod), "analytic"))
     fit <- suppressMessages(suppressWarnings(setCov(fit, "analytic")))
-    expect_identical(fit$covMethod, "analytic")
+    expect_identical(.covBaseName(fit$covMethod), "analytic")
     expect_true(all(is.finite(sqrt(diag(fit$cov)))))
     # issue #816: the displayed $parFixed must track the installed covariance,
     # not just the numeric $parFixedDf
@@ -226,7 +267,7 @@ nmTest({
     expect_true(is.matrix(fit$cov))
     # analytic bowed out (laplace determinant is out of scope) -> the finite-difference
     # sandwich; with covFull=TRUE (default) that fallback now carries the full cov (om. rows)
-    expect_false(identical(fit$covMethod, "analytic"))
+    expect_false(identical(.covBaseName(fit$covMethod), "analytic"))
     expect_true(any(grepl("^om\\.", rownames(fit$cov))))
   })
 
@@ -249,7 +290,7 @@ nmTest({
     # FOCEI + gauss: full analytic cov (theta+sigma+Omega), close to the FD Hessian cov
     fitA <- suppressWarnings(suppressMessages(nlmixr(cm, dM3, "focei",
                                                      foceiControl(print = 0L, covMethod = "analytic", sigdig = 6))))
-    expect_identical(fitA$covMethod, "analytic")
+    expect_identical(.covBaseName(fitA$covMethod), "analytic")
     expect_true(any(grepl("^om\\.", rownames(fitA$cov))))
     expect_true(all(is.finite(sqrt(diag(fitA$cov)))))
     ## cached FD reference -- see helper-gradref.R
@@ -273,13 +314,13 @@ nmTest({
     for (dd in list(dM2, dM4)) {
       f <- suppressWarnings(suppressMessages(nlmixr(cm, dd, "focei",
                                                     foceiControl(sigdig = 4, print = 0L, covMethod = "analytic"))))
-      expect_identical(f$covMethod, "analytic")
+      expect_identical(.covBaseName(f$covMethod), "analytic")
       expect_true(any(grepl("^om\\.", rownames(f$cov))))
     }
     # FOCE (gauss) censored is in scope too: full analytic cov, theta/sigma SEs close to FD
     fF <- suppressWarnings(suppressMessages(nlmixr(cm, dM3, "focei",
                                                    foceiControl(print = 0L, covMethod = "analytic", interaction = FALSE, sigdig = 6))))
-    expect_identical(fF$covMethod, "analytic")
+    expect_identical(.covBaseName(fF$covMethod), "analytic")
     expect_true(any(grepl("^om\\.", rownames(fF$cov))))
     ## cached FD reference -- see helper-gradref.R
     seFr <- .numRef("cov-cens-m3-foce", function()
@@ -291,13 +332,13 @@ nmTest({
     fFp <- suppressWarnings(suppressMessages(nlmixr(cm, dM3, "focei",
                                                     foceiControl(sigdig = 4, print = 0L, covMethod = "analytic",
                                                                  interaction = FALSE, foceType = "foce+"))))
-    expect_identical(fFp$covMethod, "analytic")
+    expect_identical(.covBaseName(fFp$covMethod), "analytic")
     expect_true(any(grepl("^om\\.", rownames(fFp$cov))))
     # the laplace censored determinant is out of analytic scope -> the finite-difference
     # sandwich; with covFull=TRUE (default) that fallback carries the full cov (om. rows)
     fL <- suppressWarnings(suppressMessages(nlmixr(cm, dM3, "focei",
                                                    foceiControl(sigdig = 4, print = 0L, covMethod = "analytic", censOption = "laplace"))))
-    expect_false(identical(fL$covMethod, "analytic"))
+    expect_false(identical(.covBaseName(fL$covMethod), "analytic"))
     expect_true(any(grepl("^om\\.", rownames(fL$cov))))
   })
 
@@ -321,26 +362,105 @@ nmTest({
     expect_true(is.matrix(fit$cov))
     # the near-zero-prediction guard drops to the finite-difference fallback; covFull=TRUE
     # (default) makes it the full theta+sigma+Omega cov
-    expect_false(identical(fit$covMethod, "analytic"))
+    expect_false(identical(.covBaseName(fit$covMethod), "analytic"))
     expect_true(any(grepl("^om\\.", rownames(fit$cov))))
   })
 
-  test_that("foce+ (live-R) additive analytic R equals the FOCEI analytic R at the same theta", {
+  test_that("FOCE and foce+ additive analytic R equal the FOCEI analytic R at the same EBEs", {
     skip_on_cran()
     skip_if_not_installed("nlmixr2data")
-    # additive error: R = sa^2 is constant, so live vs frozen R and the FOCEI interaction
-    # term all coincide -- the foce+ analytic R must reproduce FOCEI's.  maxOuterIterations=0
-    # evaluates both at the identical initial theta, so the comparison is tight (the only
-    # slack is the inner EBE tolerance).
-    fitP <- suppressWarnings(suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
-              foceiControl(sigdig = 4, print = 0L, covMethod = "", maxOuterIterations = 0L,
-                           interaction = FALSE, foce = "foce+"))))
+    # Additive error: R = sa^2 is constant, so live vs frozen R and the FOCEI interaction
+    # term all coincide, and the FOCE inner problem IS the FOCEI one.  At the same EBEs all
+    # three kernels must therefore agree to machine precision -- see #1056, where the live-R
+    # (foce+) one did not.
+    #
+    # Two things separated them, both now fixed.  The FOCE kernel's general total-derivative
+    # form ends in Phi_eta . eta_ab; Phi_eta was evaluated in full, but the inner problem
+    # zeroes S_FOCE by construction, so only the interaction remainder Phi_f - q0 belongs
+    # there (identically zero here) and the S part was the inner solver's own residual times
+    # a not-small eta_ab.  And the FOCE assembler re-solved the EBEs while the FOCEI one used
+    # the fit's; the covariance now uses the fit's on both routes.
+    #
+    # etaMat + maxInnerIterations=0 pins the foce+ fit to the FOCEI fit's EBEs, which is what
+    # isolates the KERNELS.  Two independent fits would not do it: foce+ refines its EBEs to
+    # the truncated-score root during estimation (focePlusRefinementRequired, src/inner.cpp)
+    # and FOCEI does not, so at sigdig=4 the two fits sit 1.2e-3 apart in eta (plain FOCE,
+    # which does not refine, sits 6.9e-09 away) -- estimation side, not the kernels.
     fitI <- suppressWarnings(suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
               foceiControl(sigdig = 4, print = 0L, covMethod = "", maxOuterIterations = 0L))))
-    rP <- foceiCovAnalytic(fitP); rI <- foceiCovAnalytic(fitI)
+    .em <- as.matrix(fitI$eta[, -1, drop = FALSE]); dimnames(.em) <- NULL
+    fitP <- suppressWarnings(suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
+              foceiControl(sigdig = 4, print = 0L, covMethod = "", maxOuterIterations = 0L,
+                           interaction = FALSE, foce = "foce+",
+                           etaMat = .em, maxInnerIterations = 0L))))
+    # the pinning has to have worked, or the comparison below is not about the kernels
+    expect_equal(as.matrix(fitP$eta[, -1, drop = FALSE]), as.matrix(fitI$eta[, -1, drop = FALSE]))
+    # the frozen-R ("nonmem") FOCE variant takes the same kernel with aRe = 0, so pin it too
+    fitF <- suppressWarnings(suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
+              foceiControl(sigdig = 4, print = 0L, covMethod = "", maxOuterIterations = 0L,
+                           interaction = FALSE, etaMat = .em, maxInnerIterations = 0L))))
+    expect_equal(as.matrix(fitF$eta[, -1, drop = FALSE]), as.matrix(fitI$eta[, -1, drop = FALSE]))
+    # not positive definite on this model+point, so the PD gate warns and leaves fit$cov
+    # alone; the R matrix (what this compares) is returned either way
+    rP <- suppressWarnings(foceiCovAnalytic(fitP)); rI <- suppressWarnings(foceiCovAnalytic(fitI))
+    rF <- suppressWarnings(foceiCovAnalytic(fitF))
     expect_false(is.null(rP)); expect_identical(rP$method, "analytic")
-    expect_false(is.null(rI))
-    expect_lt(max(abs(rP$R - rI$R) / (abs(rI$R) + 1e-8)), 1e-3)
+    expect_false(is.null(rI)); expect_identical(rF$method, "analytic")
+    .fin <- is.finite(rP$se) & is.finite(rI$se)
+    expect_gt(sum(.fin), 3L)
+    expect_equal(unname(rP$se[.fin]), unname(rI$se[.fin]), tolerance = 1e-10)
+    expect_lt(max(abs(rP$R - rI$R) / (abs(rI$R) + 1e-8)), 1e-10)
+    expect_lt(max(abs(rF$R - rI$R) / (abs(rI$R) + 1e-8)), 1e-10)
+  })
+
+  test_that("foce+ and FOCEI additive analytic R converge as the inner solve tightens", {
+    skip_on_cran()
+    skip_if_not_installed("nlmixr2data")
+    # The companion to the test above: two INDEPENDENT fits do not land on the same EBEs, so
+    # their observed informations differ by whatever that eta gap buys.  It is foce+ that
+    # moves -- at the same theta, plain FOCE's EBEs match FOCEI's to 6.9e-09 while foce+'s
+    # differ by 1.2e-03, because foce+ alone refines its EBEs to the truncated-score root
+    # during estimation (focePlusRefinementRequired, src/inner.cpp).  What must hold is that
+    # the gap is the inner tolerance and nothing structural -- i.e. it shrinks with sigdig.
+    # Measured 1.1e-2 (sigdig 4) -> 7.5e-5 (sigdig 7) on the raw R, 1.1e-3 -> 4.7e-6 on SEs.
+    .fitBoth <- function(sd) {
+      .p <- suppressWarnings(suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
+             foceiControl(sigdig = sd, print = 0L, covMethod = "", maxOuterIterations = 0L,
+                          interaction = FALSE, foce = "foce+"))))
+      .i <- suppressWarnings(suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
+             foceiControl(sigdig = sd, print = 0L, covMethod = "", maxOuterIterations = 0L))))
+      .rp <- suppressWarnings(foceiCovAnalytic(.p)); .ri <- suppressWarnings(foceiCovAnalytic(.i))
+      .f <- is.finite(.rp$se) & is.finite(.ri$se)
+      c(R = max(abs(.rp$R - .ri$R) / (abs(.ri$R) + 1e-8)),
+        se = max(abs(.rp$se[.f] - .ri$se[.f]) / (abs(.ri$se[.f]) + 1e-8)))
+    }
+    .g4 <- .fitBoth(4); .g7 <- .fitBoth(7)
+    expect_lt(.g4[["R"]], 2e-2)
+    expect_lt(.g7[["R"]], 5e-4)          # measured 7.5e-5
+    expect_lt(.g7[["se"]], 5e-5)         # measured 4.7e-6
+    expect_lt(.g7[["R"]], .g4[["R"]])
+  })
+
+  test_that("foce+ and FOCEI agree on the censored additive (f,R) cov at the same EBEs", {
+    skip_on_cran()
+    skip_if_not_installed("nlmixr2data")
+    # The companion to the test above for the OTHER assembler: censoring routes both FOCEI
+    # and foce+ to the general (f,R) path and its C++ kernel (foceiRSubjectFoceFR_), which
+    # carried the same Phi_eta term.  The error is still additive, so R does not depend on
+    # eta (aRe = 0) and the two observed informations must coincide at the same EBEs.
+    .d <- nlmixr2data::theo_sd
+    .d$CENS <- ifelse(.d$DV < 2 & .d$EVID == 0, 1L, 0L); .d$DV[.d$CENS == 1] <- 2
+    fitI <- suppressWarnings(suppressMessages(nlmixr(.cov_one_cmt, .d, "focei",
+              foceiControl(sigdig = 4, print = 0L, covMethod = "", maxOuterIterations = 0L))))
+    .em <- as.matrix(fitI$eta[, -1, drop = FALSE]); dimnames(.em) <- NULL
+    fitP <- suppressWarnings(suppressMessages(nlmixr(.cov_one_cmt, .d, "focei",
+              foceiControl(sigdig = 4, print = 0L, covMethod = "", maxOuterIterations = 0L,
+                           interaction = FALSE, foce = "foce+",
+                           etaMat = .em, maxInnerIterations = 0L))))
+    expect_equal(as.matrix(fitP$eta[, -1, drop = FALSE]), as.matrix(fitI$eta[, -1, drop = FALSE]))
+    rP <- suppressWarnings(foceiCovAnalytic(fitP)); rI <- suppressWarnings(foceiCovAnalytic(fitI))
+    expect_identical(rP$method, "analytic"); expect_identical(rI$method, "analytic")
+    expect_lt(max(abs(rP$R - rI$R) / (abs(rI$R) + 1e-8)), 1e-8)
   })
 
   # Wang 2007 monoexponential IV bolus: predictions 10*exp(-ke*t) are bounded away from
@@ -380,7 +500,6 @@ nmTest({
 
   test_that("estimated boxCox lambda: analytic cov (FOCEI/FOCE/foce+) matches the r estimator", {
     skip_on_cran()
-    skip_on_ci()
     skip_if_not_installed("nlmixr2data")
     # compare against covMethod="r" (the FD observed information, the same estimand as the
     # analytic R).  covMethod="s" was used historically only because the full-cov install
@@ -400,7 +519,7 @@ nmTest({
       ctlA <- do.call(foceiControl, c(list(print = 0L, covMethod = "analytic", covFull = TRUE, fast = TRUE, sigdig = 6), ctlExtra))
       ctlR <- do.call(foceiControl, c(list(print = 0L, covMethod = "r", covFull = TRUE, fast = TRUE, sigdig = 6), ctlExtra))
       fitA <- suppressMessages(nlmixr2(mBox, d, est, ctlA))
-      expect_identical(fitA$covMethod, "analytic")       # analytic ran (not an FD fallback)
+      expect_identical(.covBaseName(fitA$covMethod), "analytic")       # analytic ran (not an FD fallback)
       seA <- sqrt(diag(fitA$cov))
       ## The covMethod="r" reference is a property of the model/data/theta, not of the
       ## analytic implementation under test -- cache it (see helper-gradref.R).  Only its
@@ -419,7 +538,6 @@ nmTest({
 
   test_that("lnorm and logitNorm transforms run the analytic cov (FOCEI and FOCE)", {
     skip_on_cran()
-    skip_on_ci()
     skip_if_not_installed("nlmixr2data")
     # needs the rxode2 .rxFromSEnum empty-operand fix (nlmixr2/rxode2#1109) for the 2nd-order
     # sensitivities of a log/logit-transformed prediction; older rxode2 falls back to FD
@@ -452,7 +570,7 @@ nmTest({
       ctlA <- foceiControl(print = 0L, covMethod = "analytic", covFull = TRUE, fast = TRUE, sigdig = 6)
       ctlR <- foceiControl(print = 0L, covMethod = "r", covFull = TRUE, fast = TRUE, sigdig = 6)
       fitA <- suppressMessages(nlmixr2(m, dat, est, ctlA))
-      expect_identical(fitA$covMethod, "analytic")       # analytic ran (not an FD fallback)
+      expect_identical(.covBaseName(fitA$covMethod), "analytic")       # analytic ran (not an FD fallback)
       seA <- sqrt(diag(fitA$cov))
       ## cached FD reference -- see helper-gradref.R
       seR <- .numRef(paste0("cov-", key, "-", est), function()
@@ -469,7 +587,6 @@ nmTest({
 
   test_that("mu-referenced covariate coefficients reuse eta sensitivities (bare + algebraic)", {
     skip_on_cran()
-    skip_on_ci()
     skip_if_not_installed("nlmixr2data")
     # A subject-constant mu-ref covariate coefficient's sensitivities are the linked eta's scaled
     # by the covariate, so its state-sensitivity ODEs are skipped and its columns emitted as scaled
@@ -498,7 +615,7 @@ nmTest({
     chk <- function(m, coefName) {
       fit <- suppressMessages(nlmixr2(m, d, "focei",
                                       foceiControl(print = 0L, covMethod = "analytic", covFull = TRUE, fast = TRUE, sigdig = 5)))
-      expect_identical(fit$covMethod, "analytic")             # analytic ran (covariate reuse in the aug model)
+      expect_identical(.covBaseName(fit$covMethod), "analytic")             # analytic ran (covariate reuse in the aug model)
       se <- sqrt(diag(fit$cov))
       expect_true(all(is.finite(se)) && all(se > 0))          # finite, positive SEs
       expect_true(isSymmetric(unclass(fit$cov), tol = 1e-6))
@@ -510,7 +627,6 @@ nmTest({
 
   test_that("a mu-referenced parameter with a shared eta stays analytic (own direction)", {
     skip_on_cran()
-    skip_on_ci()
     skip_if_not_installed("nlmixr2data")
     # eta.cl is shared across cl and v, so df/dtcl (cl only) != df/deta.cl (cl and v).  The mu-ref
     # theta must NOT reuse eta.cl's sensitivity (that gave a wrong gradient/covariance for tcl);
@@ -525,7 +641,7 @@ nmTest({
     ctlA <- foceiControl(print = 0L, covMethod = "analytic", covFull = TRUE, fast = TRUE, sigdig = 4)
     ctlFd <- foceiControl(print = 0L, covMethod = "r", covType = "fd", covFull = TRUE, fast = TRUE, sigdig = 4)
     fitA <- suppressMessages(nlmixr2(mShared, nlmixr2data::theo_sd, "focei", ctlA))
-    expect_identical(fitA$covMethod, "analytic")           # stayed analytic (theta got its own direction)
+    expect_identical(.covBaseName(fitA$covMethod), "analytic")           # stayed analytic (theta got its own direction)
     seA <- sqrt(diag(fitA$cov))
     ## cached FD reference -- see helper-gradref.R
     seFd <- .numRef("cov-shared-eta", function()
@@ -537,7 +653,6 @@ nmTest({
 
   test_that("the standalone analytic covariance declines gracefully out of scope (FO fit)", {
     skip_on_cran()
-    skip_on_ci()
     skip_if_not_installed("nlmixr2data")
     # FO/FOI is out of the analytic (FOCEI/FOCE) scope.  The runtime `fo` flag is not persisted to
     # fit$finalUi, so the standalone entry keys on the persisted estimation method -- otherwise an FO
@@ -654,7 +769,7 @@ nmTest({
     dat <- nlmixr2data::theo_sd
     fitA <- suppressWarnings(suppressMessages(nlmixr(cvm, dat, "focei",
                 foceiControl(print = 0L, covMethod = "analytic", covFull = TRUE, fast = TRUE, sigdig = 6))))
-    expect_identical(fitA$covMethod, "analytic")            # reused tv's direction, not an FD fallback
+    expect_identical(.covBaseName(fitA$covMethod), "analytic")            # reused tv's direction, not an FD fallback
     expect_true("wt_v" %in% rownames(fitA$cov))             # covariate theta present in the full cov
     .seA <- sqrt(diag(fitA$cov))
     expect_true(all(is.finite(.seA)) && all(.seA > 0))
@@ -789,7 +904,7 @@ nmTest({
     # would not, since the analytic can also run and then be rejected by its own
     # PD guard without ever setting covMethod.
     expect_false(exists(".analyticCov", envir = fit$env, inherits = FALSE))
-    expect_false(identical(fit$covMethod, "analytic"))
+    expect_false(identical(.covBaseName(fit$covMethod), "analytic"))
     # Do NOT assert the absence of "om." rows: whether the covFull FD cov is ALSO
     # installed turns on the positive-definiteness guard in
     # .foceiInstallFdFullCov(), and this deliberately over-parameterized model
@@ -882,7 +997,7 @@ nmTest({
     # the seam: iovXform="var" must NOT take the analytic path.  It falls back to a
     # finite-difference covariance -- which under covFull=TRUE can itself carry `om.`
     # rows -- so the analytic-vs-FD seam is the covMethod, not the presence of om. rows.
-    expect_false(identical(fVAR$covMethod, "analytic"))
+    expect_false(identical(.covBaseName(fVAR$covMethod), "analytic"))
   })
 
   test_that("covMethod selects the analytic-vs-FD seam and the reporting formula", {
@@ -949,26 +1064,104 @@ nmTest({
     expect_equal(unname(seF), unname(seI), tolerance = 1e-4)
   })
 
-  # Verified NOT the cause (do not re-investigate): the direction set (ndir/dirTh are
-  # identical, .foceiAnalyticDirections has no interaction dependence); the ODE pool
-  # (every counter zero -- it is not exercised -- and both OdeSwapScope/OdeSwapCmtScope
-  # guards span the calc_lhs reads); the compartment basis (the augmented model APPENDS
-  # sensitivity states, so depot/center keep indices 1/2 and etTrans'd CMT values land
-  # correctly); Ath/Tn (identical, and Tn == Tnf for additive error); and EBE stationarity
-  # (|Phi_eta| at fit$eta is 2e-06..5e-05, so the envelope's dropped gPhi term is ~1e-06
-  # relative -- six orders below the observed error).
-  # KNOWN FAILING (documented, not yet fixed): the FOCEI analytic R disagrees with an
-  # independent brute-force FD Hessian -- irregular errors from 1.2% to 377%, on BOTH
-  # theta-theta ([tcl,tv] 21.7%) and Omega ([om.eta.v,om.eta.cl] 377%) entries.  The FOCE
-  # sibling matches the SAME gold to 6.2e-5, and on an additive-error model the two
-  # objectives are identical (dR/deta = 0), so they must agree.  Three causes were tried
-  # and disproved: the exact-vs-first-order Hessian in the envelope (~13% of the error),
-  # porting FOCE's general data term (the envelope is valid for FOCEI, whose EBE solves
-  # Phi_eta = 0), and an ehat divergence (a tracing artifact).  Left skipped rather than
-  # deleted: this is the only gold coverage of an off-diagonal Omega element, and it is
-  # the acceptance test for a fix -- a correct FOCEI R drops max rel err to ~1e-4.
+  # RESOLVED (nlmixr2est#1055).  This test was skipped as "FOCEI analytic R is wrong", on the
+  # strength of 1.2%-377% disagreements against a brute-force FD Hessian.  Those came from
+  # comparing a FOCEI fit's R against a gold built at a DIFFERENT (FOCE) fit's estimates -- a
+  # convergence confound, not an assembly defect.  At one common point the FOCEI and FOCE
+  # analytic R agree to 1.3e-5 with identical eigenvalues, and both reproduce the gold.  The
+  # residual FOCEI error that did survive was the stored EBEs solving Phi_eta = 0 only to the
+  # fit's inner tolerance, which the envelope/Schur data term assumes exactly.  That is an
+  # estimation-side gap and the covariance does not paper over it by re-optimizing the fit's
+  # EBEs (PR #1060); the gold below re-solves at every perturbed psi, so the agreement this
+  # asserts is the acceptance gate at a sigdig where the two are close.
+  #
+  # 12 subjects (theo_sd unreplicated) do not identify the off-diagonal, so a couple of SEs are
+  # NaN in BOTH the analytic and the gold -- as in the FOCE gold test below, the criterion is
+  # that the analytic R MATRIX reproduces the gold-FD Hessian, not that it inverts.
   test_that("FOCEI analytic R matches the gold FD (block Omega)", {
-    skip("FOCEI analytic R is wrong; see the comment above -- gold harness retained as the acceptance test")
+    skip_on_cran()
+    skip_if_not_installed("nlmixr2data")
+    theo <- nlmixr2data::theo_sd
+    fit <- suppressMessages(nlmixr(.cov_blk_omega, theo, "focei",
+             foceiControl(print = 0L, covMethod = "", sigdig = 6)))
+    r <- suppressWarnings(foceiCovAnalytic(fit))
+    expect_false(is.null(r)); expect_identical(r$method, "analytic")
+
+    # gold standard: central-FD Hessian of the FOCEI objective (Phi + 0.5 log|H~|, additive
+    # error so H~ = Omega^-1 + sum a a'/R), EBEs re-solved to Phi_eta = 0 at every perturbed
+    # parameter vector.  Independent of the covariance engine: only the augmented SOLVE is
+    # shared, and the batched solver is used because the per-subject one makes this ~10x
+    # slower for the same numbers.
+    ui <- fit$finalUi; neta <- 3L; etav <- paste0("ETA_", 1:neta, "_")
+    am <- .foceiAnalyticAugModelDirs(ui, etav)
+    thNames <- names(fit$theta)
+    thBase <- setNames(as.numeric(fit$theta[thNames]), paste0("THETA_", seq_along(thNames), "_"))
+    iTh <- match(c("tka", "tcl", "tv", "add.sd"), thNames)
+    Om0 <- fit$omega
+    byId <- split(fit$dataSav, as.character(fit$dataSav$ID))
+    idCode <- as.integer(fit$eta$ID); nsub <- length(idCode)
+    obsL <- lapply(idCode, function(k) { s <- byId[[as.character(k)]]; s[s$EVID == 0, , drop = FALSE] })
+    obsT <- lapply(obsL, function(.o) .o$TIME); Yl <- lapply(obsL, function(.o) .o$DV)
+    eta0m <- as.matrix(fit$eta[, c("eta.ka", "eta.cl", "eta.v")])
+    .sa <- function(th, etaM) .foceiAnalyticSolveAll(am, th, etaM, idCode, fit$dataSav, obsT, 1e-12)
+    mkOm <- function(p) { M <- matrix(0, 3, 3); M[1, 1] <- p[1]; M[2, 2] <- p[2]
+                          M[3, 2] <- M[2, 3] <- p[3]; M[3, 3] <- p[4]; M }
+    objFOCEI <- function(psi) {
+      th <- thBase; th[iTh] <- psi[1:4]; sa <- psi[4]
+      Om <- mkOm(psi[5:8]); Oi <- tryCatch(solve(Om), error = function(e) NULL)
+      if (is.null(Oi)) return(NA_real_)
+      dOm <- det(Om); if (!is.finite(dOm) || dOm <= 0) return(NA_real_)
+      ldOm <- log(dOm); eta <- eta0m
+      for (it in 1:50) {                         # Newton to Phi_eta = 0 (additive: no interaction)
+        Es <- .sa(th, eta); if (is.null(Es)) return(NA_real_)
+        mx <- 0
+        for (i in seq_len(nsub)) {
+          E <- Es[[i]]; y <- Yl[[i]]; R0 <- rep(sa^2, length(y))
+          q0 <- -(y - E$f) / R0
+          S <- as.numeric(Oi %*% eta[i, ]); for (l in 1:neta) S[l] <- S[l] + sum(q0 * E$a[, l])
+          mx <- max(mx, max(abs(S)))
+          if (max(abs(S)) < 1e-12) next
+          Hf <- Oi; for (l in 1:neta) for (m in 1:neta)
+            Hf[l, m] <- Hf[l, m] + sum((1 / R0) * E$a[, l] * E$a[, m] + q0 * E$A[, l, m])
+          eta[i, ] <- eta[i, ] - solve(Hf, S)
+        }
+        if (mx < 1e-12) break
+      }
+      Es <- .sa(th, eta); if (is.null(Es)) return(NA_real_)
+      tot <- 0
+      for (i in seq_len(nsub)) {
+        E <- Es[[i]]; y <- Yl[[i]]; R0 <- rep(sa^2, length(y))
+        Phi <- 0.5 * sum((y - E$f)^2 / R0 + log(R0)) +
+          0.5 * as.numeric(t(eta[i, ]) %*% Oi %*% eta[i, ]) + 0.5 * ldOm
+        Ht <- Oi; for (l in 1:neta) for (m in 1:neta) Ht[l, m] <- Ht[l, m] + sum((1 / R0) * E$a[, l] * E$a[, m])
+        tot <- tot + Phi + 0.5 * log(det(Ht))
+      }
+      tot
+    }
+    psi0 <- c(as.numeric(fit$theta[c("tka", "tcl", "tv", "add.sd")]),
+              Om0[1, 1], Om0[2, 2], Om0[3, 2], Om0[3, 3])
+    np <- length(psi0); h <- pmax(abs(psi0), 0.5) * 5e-5; H <- matrix(0, np, np); f0 <- objFOCEI(psi0)
+    for (i in 1:np) { ei <- numeric(np); ei[i] <- h[i]
+      H[i, i] <- (objFOCEI(psi0 + 2*ei) - 2*f0 + objFOCEI(psi0 - 2*ei)) / (4 * h[i]^2) }
+    for (i in 1:(np-1)) for (j in (i+1):np) { ei <- numeric(np); ei[i] <- h[i]; ej <- numeric(np); ej[j] <- h[j]
+      H[i, j] <- H[j, i] <- (objFOCEI(psi0+ei+ej) - objFOCEI(psi0+ei-ej) - objFOCEI(psi0-ei+ej) +
+                             objFOCEI(psi0-ei-ej)) / (4 * h[i] * h[j]) }
+    pn <- c("tka", "tcl", "tv", "add.sd", "om.eta.ka", "om.eta.cl", "cov.eta.v.eta.cl", "om.eta.v")
+    dimnames(H) <- list(pn, pn)
+    expect_setequal(r$params, pn)
+    Ran <- r$R[pn, pn]
+    # exact on every numerically significant entry -- the off-diagonal Omega row included
+    big <- abs(H) > 0.01 * max(abs(H))
+    expect_lt(max(abs(Ran[big] - H[big]) / abs(H[big])), 3e-4)
+    # and at central-FD accuracy on the matrix-norm scale everywhere else
+    expect_lt(max(abs(Ran - H)), 1e-4 * max(abs(H)))   # measured 2.1e-5
+    # the off-diagonal Omega element is really in the comparison, not a zero row
+    .cv <- which(pn == "cov.eta.v.eta.cl")
+    expect_gt(max(abs(H[.cv, ])), 0.01 * max(abs(H)))
+    # same eigen-spectrum (an indefinite gold must be reproduced as indefinite)
+    expect_equal(eigen(Ran, symmetric = TRUE, only.values = TRUE)$values,
+                 eigen(H, symmetric = TRUE, only.values = TRUE)$values,
+                 tolerance = 1e-3)
   })
 
   test_that("FOCE (interaction=FALSE) combined analytic cov matches the corrected-FOCE gold FD", {
@@ -1068,7 +1261,7 @@ nmTest({
     theo <- nlmixr2data::theo_sd
     fitP <- suppressMessages(nlmixr(.cov_combined, theo, "focei",
               foceiControl(print = 0L, covMethod = "", interaction = FALSE, foce = "foce+", sigdig = 6)))
-    rP <- foceiCovAnalytic(fitP)
+    rP <- suppressWarnings(foceiCovAnalytic(fitP))   # indefinite here -- the PD gate warns
     expect_false(is.null(rP)); expect_identical(rP$method, "analytic")
 
     ui <- fitP$finalUi; neta <- 3L; etav <- paste0("ETA_", 1:neta, "_")
@@ -1128,14 +1321,32 @@ nmTest({
     # can be identified (in BOTH the analytic and the gold FD), so >= not >
     expect_gte(sum(fin), 4L)
     expect_equal(unname(seA[fin]), unname(seG[fin]), tolerance = 5e-3)
+    # This bound is also what guards `refineFocePlusEta()` (src/inner.cpp), the Newton
+    # polish that puts the fit's EBEs on the truncated-score root the gold FD re-solves
+    # to 1e-12.  Measured with the polish disabled, the same comparison gives relBig
+    # 0.252 and an SE gap of 7.5% (and one direction stops being identified), against
+    # 5.9e-06 and 3.1e-06 with it -- three orders of margin, so deleting the polish
+    # fails here rather than passing quietly.
   })
 
   test_that("est='focep' installs the full analytic covariance", {
     skip_on_cran()
     skip_if_not_installed("nlmixr2data")
+    # Runs at the DEFAULT sigdig on purpose: #1069 stalled here at objf 121.560 (against
+    # 116.804) because a FOCE+ EBE polish that reached the solve's noise floor reported the
+    # subject's likelihood as NA, and the observed information at that stalled point had a
+    # real negative eigenvalue, so the PD gate refused to install it.  Pinning sigdig would
+    # hide a return of that.
+    #
+    # The polish stops at the solve's noise floor at this sigdig, so the score it leaves
+    # is ~1e-3 rather than 0, and the analytic assemblers drop it as if it were 0.  That
+    # costs what the tolerance buys and no more: against the gold FD above, this model
+    # gives 2.7e-3 relative on the significant entries of R and 2.5e-4 on the SEs at
+    # sigdig 3, 1.0e-4 / 1.4e-5 at 4, and 5.9e-6 / 3.1e-6 at 6.
     fit <- suppressWarnings(suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focep",
               focepControl(print = 0L, covMethod = "analytic", covFull = TRUE))))
-    expect_identical(fit$covMethod, "analytic")
+    expect_lt(fit$objf, 118)
+    expect_identical(.covBaseName(fit$covMethod), "analytic")
     expect_true(any(grepl("^om\\.", rownames(fit$cov))))
     .se <- sqrt(diag(fit$cov))
     expect_true(all(is.finite(.se)) && all(.se > 0))
@@ -1192,12 +1403,20 @@ nmTest({
     # pool is only available with fast=TRUE, `fast=` moved the standard errors.  Both
     # routes now solve at solveTol.
     #
-    # On THIS model at sigdig = 4 the defect is 1.16e-5 relative and what is left after
-    # the fix is 5.6e-8 (two different code paths integrating the same quantity at the
-    # same tolerance), so 1e-6 below has ~18x margin under it and ~12x over it.  Do not
-    # loosen it without re-measuring: the gap TRACKS the fit tolerance, and at sigdig = 3
-    # the defect is only 1.9e-4, so a tolerance chosen off the 1.7e-2 seen on a 5-ETA
-    # 2-compartment model would pass with the bug still in.
+    # On THIS model at sigdig = 4 that defect is 1.16e-5 relative; at sigdig = 3 it is only
+    # 1.9e-4, so a tolerance chosen off the 1.7e-2 seen on a 5-ETA 2-compartment model
+    # would pass with the bug still in.  Do not loosen 1e-8 below without re-measuring.
+    #
+    # #1057: a SECOND way `fast=` moved the SEs, unrelated to the tolerance.  With
+    # maxOuterIterations = 0, fast=TRUE evaluates the analytic gradient once (so
+    # .foceiGradDirect() has something to report), and that evaluation ran one more inner
+    # optimization pass per subject before foceiOuterFinal re-solved the inner problem.
+    # Under the default warm start (mceta < 0 keeps the last eta) the inner solve converges
+    # only to its own tolerance, so the extra pass left different ETAs and the SEs followed:
+    # 1.8e-4 relative on om.eta.ka.  With the diagnostic evaluation guarded, the two routes
+    # agree to 2.7e-12 -- so 1e-8 sits ~3700x above what is left and ~100x below what a
+    # tolerance regression costs (measured: solving the augmented model at the fit's 1e-4
+    # instead of its own moves the SEs 1.4e-6).
     .m <- function() {
       ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- 0.7
             eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1 })
@@ -1215,10 +1434,11 @@ nmTest({
       .f <- suppressMessages(suppressWarnings(nlmixr2(.f0$finalUi, .d, "focei",
               foceiControl(print = 0L, covMethod = "analytic", fast = fast, sigdig = 4,
                            maxOuterIterations = 0L))))
-      expect_equal(.f$covMethod, "analytic")   # a fallback would compare the wrong thing
+      expect_equal(.covBaseName(.f$covMethod), "analytic")   # a fallback would compare the wrong thing
       .i <- .odeSwapInfo()
       list(se = sqrt(diag(.f$cov)), pooled = .i$pooledSolveN - .n0,
-           bailed = .foceiOuterFlagged$n - .b0, cores = .i$pooledSolveCores)
+           bailed = .foceiOuterFlagged$n - .b0, cores = .i$pooledSolveCores,
+           eta = as.matrix(.f$eta[, -1, drop = FALSE]), objf = .f$objf)
     }
     .rT <- .se(TRUE); .rF <- .se(FALSE)
     # Without this the comparison is vacuous: if fast=TRUE stopped reaching the pool the
@@ -1234,8 +1454,13 @@ nmTest({
     # threads -> min2(cores, getOpCores(op)) -> doParallel.  Measured 11 with the fix and
     # 1 without, on a host reporting 11 threads.
     if (rxode2::getRxThreads() > 1L) expect_gt(.rT$cores, 1L)
+    # The SEs are a function of the EBEs, so compare the INPUT before the output: this is
+    # what #1057 actually broke, and it fails first and says so, instead of leaving a
+    # tolerance on the SEs to be blamed.  0.0003 apart with the bug in.
+    expect_equal(unname(.rT$eta), unname(.rF$eta), tolerance = 1e-8)
+    expect_equal(.rT$objf, .rF$objf, tolerance = 1e-8)
     .n <- intersect(names(.rT$se), names(.rF$se))
     expect_gt(length(.n), 0L)
-    expect_equal(unname(.rT$se[.n]), unname(.rF$se[.n]), tolerance = 1e-6)
+    expect_equal(unname(.rT$se[.n]), unname(.rF$se[.n]), tolerance = 1e-8)
   })
 })

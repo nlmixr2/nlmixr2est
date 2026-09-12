@@ -70,11 +70,11 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
   # batch 2
   c(
     "focei-wang2007-lognormal", "cov-analytic", "focei-wang2007-power",
-    "cov-condition", "agq-cov", "cov-decouple-saimp"
+    "cov-condition", "agq-cov", "cov-decouple-saimp", "cov-scope-swap"
   ),
   # batch 3
   c(
-    "focei-wang2007-boxcox-half", "nlm-cens", "focei-cens-t-fit",
+    "focei-wang2007-boxcox-half", "nlm-cens", "focei-cens-t-fit", "mtime-fit",
     "issue-429", "issue-470",
     "focei-wang2007-bounded", "saem-loglik", "mu-timevarying", "saem-nearpd",
     "saem-nonmutheta", "focei-theta-reset-bounds",
@@ -102,7 +102,9 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
   c(
     "focei-wang2007-boxcox-lnorm", "nlme-cov", "agq-fast-grad",
     "focei-ll-fast-grad-fit", "focei-fast-methods-fit", "odeswap-fit",
-    "focei-factr-fit", "focei-reproducible", "focei-hessian-etastep"
+    "focei-factr-fit", "focei-reproducible", "focei-hessian-etastep",
+    "focei-outer-hessian-fit", "focei-outer-hessian-nlminb-fit", "focei-outer-hessian-family",
+    "focei-outer-hessian-censor"
   ),
   # batch 6
   c(
@@ -121,7 +123,8 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
   c(
     "vae-encoder", "vae-train", "vae-decoder", "vae-elbo", "vae-inner",
     "vae-fixbounds", "vae-parhist", "vae-iov", "vae-grad-fit", "vae-ll-grad-fit",
-    "vae-l0learn-fit", "vae-hockey-fit", "split", "unary-mu", "timing", "bounded-transform"
+    "vae-l0learn-fit", "vae-hockey-fit", "vae-colinear-fit", "split", "unary-mu",
+    "timing", "bounded-transform"
   ),
   # batch 9 -- emvi/fbvi (variational inference) multi-iteration fits, plus the
   # cross-method omega off-diagonal fit checks (vae/emvi/npag/npb)

@@ -262,12 +262,12 @@ nmObjHandleControlObject.lbfgsb3cControl <- function(control, env) {
 #' @export
 nmObjGetControl.lbfgsb3c <- function(x, ...) {
   .env <- x[[1]]
-  if (exists("lbfgsb3cControl", .env)) {
-    .control <- get("lbfgsb3cControl", .env)
+  if (exists("lbfgsb3cControl", .env, inherits = FALSE)) {
+    .control <- get("lbfgsb3cControl", .env, inherits = FALSE)
     if (inherits(.control, "lbfgsb3cControl")) return(.control)
   }
-  if (exists("control", .env)) {
-    .control <- get("control", .env)
+  if (exists("control", .env, inherits = FALSE)) {
+    .control <- get("control", .env, inherits = FALSE)
     if (inherits(.control, "lbfgsb3cControl")) return(.control)
   }
   stop("cannot find lbfgsb3c related control object", call.=FALSE)

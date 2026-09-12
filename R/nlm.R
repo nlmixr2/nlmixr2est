@@ -337,14 +337,14 @@ nmObjHandleControlObject.nlmControl <- function(control, env) {
 #' @export
 nmObjGetControl.nlm <- function(x, ...) {
   .env <- x[[1]]
-  if (exists("nlmControl", .env)) {
-    .control <- get("nlmControl", .env)
+  if (exists("nlmControl", .env, inherits = FALSE)) {
+    .control <- get("nlmControl", .env, inherits = FALSE)
     if (inherits(.control, "nlmControl")) {
       return(.control)
     }
   }
-  if (exists("control", .env)) {
-    .control <- get("control", .env)
+  if (exists("control", .env, inherits = FALSE)) {
+    .control <- get("control", .env, inherits = FALSE)
     if (inherits(.control, "nlmControl")) {
       return(.control)
     }
@@ -613,10 +613,8 @@ rxUiGet.nlmRxModel <- function(x, ...) {
     .msuccess("done")
   }
   .cmt <- rxUiGet.foceiCmtPreModel(x, ...)
-  .interp <- rxUiGet.interpLinesStr(x, ...)
-  if (.interp != "") {
-    .cmt <- paste0(.cmt, "\n", .interp)
-  }
+  # mtime() lines are re-emitted here (#919); see .mtimeLinesStr()
+  .cmt <- .addPreModelLines(.cmt, rxUiGet.interpLinesStr(x, ...), .mtimeLinesStr(.s))
   ## no splitBolus() here -- this model solves the pre-split events, so
   ## declaring it would split the doses twice (see .foceiPreProcessData())
   list(
@@ -803,6 +801,9 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
     .s$..nlmS <- rxode2::rxOptExpr(.s$..nlmS, "nlm llik gradient", parallel = cores)
     .s$..pred.nolhs <- rxode2::rxOptExpr(.s$..pred.nolhs, "nlm pred-only", parallel = cores)
   }
+  # mtime() lines go in AFTER the optimization, which cannot parse them (#919)
+  .s$..nlmS <- .addMtimeLines(.s$..nlmS, .s)
+  .s$..pred.nolhs <- .addMtimeLines(.s$..pred.nolhs, .s)
 }
 
 #' @export

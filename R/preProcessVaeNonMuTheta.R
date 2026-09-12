@@ -102,7 +102,14 @@
   ## "invalid second argument of length 0".  Estimating it in the M-step is what
   ## the omega-fixed-at-1 parameterization expects.
   .iov <- if (is.null(.uiIovEnv$iovVars)) character(0) else .uiIovEnv$iovVars
-  .cand <- setdiff(.th$name, setdiff(c(.mu, .cov, .covCoef), .iov))
+  ## a mixture proportion (ui$mixProbs) is not a candidate: it is estimated on
+  ## the mlogit scale through its own analytic gradient, not injected as an eta
+  ## and not moved by the regress M-step (which would run it unbounded, against
+  ## the (-Inf, Inf) it carries in iniDf, and on the wrong scale).  Mirrors the
+  ## same exclusion in .npMuExpand().
+  .mix <- tryCatch(ui$mixProbs, error = function(e) character(0))
+  if (is.null(.mix)) .mix <- character(0)
+  .cand <- setdiff(.th$name, c(setdiff(c(.mu, .cov, .covCoef), .iov), .mix))
   if (length(.cand) == 0L) return(character(0))
   ## keep only thetas that actually appear in a model expression (so an eta can be
   ## attached to a structural line)

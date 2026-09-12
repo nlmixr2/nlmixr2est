@@ -355,6 +355,15 @@
 #'   single shape this is a plain candidate count; two shape families of one
 #'   covariate cost `log2(3)`, keeping the exact search's worst-case node budget
 #'   the same either way.  `Inf` forces the exact branch-and-bound everywhere.
+#' @param covSelectColinearCut `abs(cor)` at or above which two covariates are
+#'   treated as near-interchangeable and put in one colinearity cluster (default
+#'   `0.9`).  A cluster never restricts what may be selected.  It does two
+#'   things: the covariate M-step keeps the previous iteration's choice unless a
+#'   cluster mate beats it by a full covariate's L0 cost, which stops the
+#'   selection chattering between columns the design cannot tell apart; and the
+#'   mates that came within that margin are reported in `$covNearTie`.  Clusters
+#'   are built at the mutual-exclusion group level, so two shapes of one
+#'   covariate never cluster together.
 #' @param bnbStrategy Frontier discipline for the exact branch-and-bound covariate
 #'   selection: `"lifo"` (default, last-in-first-out depth-first search),
 #'   `"fifo"` (first-in-first-out) or `"lc"` (least cost / best-first).  The
@@ -443,6 +452,7 @@ vaeControl <- function(seed = 42L,
                        inputScale = c("reference", "observed"),
                        covSelectMethod = c("auto", "bnb", "l0learn"),
                        covSelectMaxExact = 17L,
+                       covSelectColinearCut = .vaeColinearCut,
                        bnbStrategy = c("lifo", "fifo", "lc"),
                        parEncoderBackward = !isTRUE(getOption("nlmixr2.identical", FALSE)),
                        nonMuTheta = c("regress", "grad", "eta", "fix", "none"),
@@ -540,6 +550,8 @@ vaeControl <- function(seed = 42L,
     checkmate::assertIntegerish(covSelectMaxExact, lower = 1, len = 1, any.missing = FALSE)
     covSelectMaxExact <- as.integer(covSelectMaxExact)
   }
+  checkmate::assertNumeric(covSelectColinearCut, lower = 0, upper = 1, len = 1,
+                           any.missing = FALSE)
   bnbStrategy <- match.arg(bnbStrategy)
   checkmate::assertLogical(parEncoderBackward, len = 1, any.missing = FALSE)
   nonMuTheta <- match.arg(nonMuTheta)
@@ -663,6 +675,7 @@ vaeControl <- function(seed = 42L,
                inputScale = inputScale,
                covSelectMethod = covSelectMethod,
                covSelectMaxExact = covSelectMaxExact,
+               covSelectColinearCut = covSelectColinearCut,
                bnbStrategy = bnbStrategy,
                parEncoderBackward = parEncoderBackward,
                nonMuTheta = nonMuTheta,
@@ -723,12 +736,12 @@ nmObjHandleControlObject.vaeControl <- function(control, env) {
 #' @export
 nmObjGetControl.vae <- function(x, ...) {
   .env <- x[[1]]
-  if (exists("vaeControl", .env)) {
-    .control <- get("vaeControl", .env)
+  if (exists("vaeControl", .env, inherits = FALSE)) {
+    .control <- get("vaeControl", .env, inherits = FALSE)
     if (inherits(.control, "vaeControl")) return(.control)
   }
-  if (exists("control", .env)) {
-    .control <- get("control", .env)
+  if (exists("control", .env, inherits = FALSE)) {
+    .control <- get("control", .env, inherits = FALSE)
     if (inherits(.control, "vaeControl")) return(.control)
   }
   stop("cannot find vae related control object", call. = FALSE)

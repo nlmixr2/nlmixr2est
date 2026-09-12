@@ -240,12 +240,12 @@ nmObjHandleControlObject.bobyqaControl <- function(control, env) {
 #' @export
 nmObjGetControl.bobyqa <- function(x, ...) {
   .env <- x[[1]]
-  if (exists("bobyqaControl", .env)) {
-    .control <- get("bobyqaControl", .env)
+  if (exists("bobyqaControl", .env, inherits = FALSE)) {
+    .control <- get("bobyqaControl", .env, inherits = FALSE)
     if (inherits(.control, "bobyqaControl")) return(.control)
   }
-  if (exists("control", .env)) {
-    .control <- get("control", .env)
+  if (exists("control", .env, inherits = FALSE)) {
+    .control <- get("control", .env, inherits = FALSE)
     if (inherits(.control, "bobyqaControl")) return(.control)
   }
   stop("cannot find bobyqa related control object", call.=FALSE)

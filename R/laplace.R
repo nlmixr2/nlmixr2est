@@ -125,12 +125,12 @@ getValidNlmixrCtl.laplace <- function(control) {
 #' @export
 nmObjGetControl.laplace <- function(x, ...) {
   .env <- x[[1]]
-  if (exists("laplaceControl", .env)) {
-    .control <- get("laplaceControl", .env)
+  if (exists("laplaceControl", .env, inherits = FALSE)) {
+    .control <- get("laplaceControl", .env, inherits = FALSE)
     if (inherits(.control, "laplaceControl")) return(.control)
   }
-  if (exists("control", .env)) {
-    .control <- get("control", .env)
+  if (exists("control", .env, inherits = FALSE)) {
+    .control <- get("control", .env, inherits = FALSE)
     if (inherits(.control, "laplaceControl")) return(.control)
   }
   stop("cannot find laplace related control object", call.=FALSE)

@@ -403,12 +403,12 @@ nmObjHandleControlObject.optimControl <- function(control, env) {
 #' @export
 nmObjGetControl.optim <- function(x, ...) {
   .env <- x[[1]]
-  if (exists("optimControl", .env)) {
-    .control <- get("optimControl", .env)
+  if (exists("optimControl", .env, inherits = FALSE)) {
+    .control <- get("optimControl", .env, inherits = FALSE)
     if (inherits(.control, "optimControl")) return(.control)
   }
-  if (exists("control", .env)) {
-    .control <- get("control", .env)
+  if (exists("control", .env, inherits = FALSE)) {
+    .control <- get("control", .env, inherits = FALSE)
     if (inherits(.control, "optimControl")) return(.control)
   }
   stop("cannot find optim related control object", call.=FALSE)

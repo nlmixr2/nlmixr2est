@@ -164,7 +164,13 @@
                       parInfo = NULL) {
   ## RNG is seeded ONCE for the whole estimation in nlmixr2Est.vae (rxWithSeed),
   ## which also covers the model's own random draws and restores the caller's seed
-  zDim <- prep$zDim; hDim <- control$hiddenDim; nCov <- ncol(prep$covIn); N <- prep$N
+  zDim <- prep$zDim
+  hDim <- control$hiddenDim
+  ## The encoder is conditioned on the mixture component: it characterizes every
+  ## (subject, component) pair, with the component entering the FC head as a
+  ## one-hot appended to the covariate block (see vaeTileEncoderInputs in
+  ## src/inner.cpp).  So the head is nMix wider for a mixture model.
+  nCov <- ncol(prep$covIn) + if (nMix > 1L) as.integer(nMix) else 0L
   ## the FC head is [outDim x (hDim + nCov)]; a width mismatch reaches armadillo
   ## as a std::logic_error and aborts the session, so check it here
   .vaeCheckEncoderDims <- function(params) {
@@ -240,6 +246,20 @@
   prepC$covBlock <- NULL
   if (!is.null(prep$covBlock) && anyDuplicated(prep$covBlock) > 0L) {
     prepC$covBlock <- as.integer(prep$covBlock)
+  }
+  ## Colinearity clusters.  The gate is .vaeClusterBinds(), NOT the
+  ## anyDuplicated() idiom the two above use: a cluster id repeats on every
+  ## multi-shape covariate even when nothing is colinear, so anyDuplicated()
+  ## would switch the hysteresis and the near-tie scoring on for ordinary
+  ## designs.  Only a cluster that MERGES two groups is worth sending.
+  prepC$covCluster <- NULL
+  if (!is.null(prep$covMat) && ncol(prep$covMat) > 0L && !is.null(prep$covGroup)) {
+    ## a control serialized before this option existed has no cut; fall back to
+    ## the shared default rather than passing NULL into the assert
+    .cut <- control$covSelectColinearCut
+    if (is.null(.cut)) .cut <- .vaeColinearCut
+    .clu <- .vaeCovCluster(prep$covMat, prep$covGroup, .cut)
+    if (.vaeClusterBinds(.clu, prep$covGroup)) prepC$covCluster <- as.integer(.clu)
   }
 
   ## covSelectMethod: pick the search per latent dimension from the number of
@@ -319,6 +339,20 @@
                        parInfo$xform, as.integer(parInfo$structIdx) - 1L)
 
   .selected <- matrix(as.logical(.fit$selected), zDim, ncol(prep$covMat))
+  ## Near ties: cluster mates that would have scored within one covariate's L0
+  ## cost of the column actually chosen.  Zero rows unless a colinearity cluster
+  ## bound two covariate groups, which is the only case C++ scores them in.
+  .nt <- .fit$covNearTie
+  .covNearTie <-
+    if (is.null(.nt)) {
+      data.frame(eta = character(0), covariate = character(0),
+                 mate = character(0), delta = numeric(0))
+    } else {
+      data.frame(eta = prep$etaNames[.nt$dim],
+                 covariate = prep$covNames[.nt$covariate],
+                 mate = prep$covNames[.nt$mate],
+                 delta = as.numeric(.nt$delta))
+    }
   .omMat <- .fit$omegaMat
   dimnames(.omMat) <- list(prep$etaNames, prep$etaNames)
   list(params = .fit$params, zPop = as.numeric(.fit$zPop), omega = as.numeric(.fit$omega),
@@ -331,7 +365,15 @@
        nRegGrad = as.integer(.fit$nRegGrad), nRegFallback = as.integer(.fit$nRegFallback),
        nStage2 = as.integer(.fit$nStage2),
        covSelectMethodUsed = .modes$used,
-       nMix = nMix, mixProb = mixProb, mixnum = as.integer(.fit$mixnum))
+       covNearTie = .covNearTie,
+       nCovHysteresis = if (is.null(.fit$nCovHysteresis)) 0L else as.integer(.fit$nCovHysteresis),
+       nMix = nMix,
+       ## the FITTED proportions, not the ini() ones: they are estimated on the
+       ## mlogit scale by their own analytic gradient (Adam), so the value that
+       ## comes back from training is the one to report and write into ini()
+       mixProb = if (is.null(.fit$mixProb)) mixProb else as.numeric(.fit$mixProb),
+       nMixThetaStep = .fit$nMixThetaStep,
+       mixnum = as.integer(.fit$mixnum))
 }
 
 #' Fit entry: prepare data, set up the FOCEi inner problem once, train.
@@ -345,8 +387,9 @@
   if (is.na(.nMix) || .nMix < 1L) .nMix <- 1L
   .mixProb <- 1
   if (.nMix > 1L) {
-    .p <- as.numeric(.prep$th[.ui$thetaMixIndex])
-    .mixProb <- c(.p, 1 - sum(.p))
+    ## prep$th holds the mlogit values (see .vaeDataPrep); mexpit them back to
+    ## the simplex, exactly as the inner problem does
+    .mixProb <- .getMixFromLog(.prep$th, .ui$thetaMixIndex)
   }
   ## parameter-history / iteration-print names: structural typical values on the
   ## mu-referenced etas, the omega diagonal, and the residual error params

@@ -44,7 +44,7 @@ nmObjGet <- function(x, ...) {
 #' @export
 nmObjGet.iniUi <- function(x, ...) {
   .env <- x[[1]]
-  .iniDf0 <- get("iniDf0", envir = .env)
+  .iniDf0 <- get("iniDf0", envir = .env, inherits = FALSE)
   if (is.null(.iniDf0)) {
     return(NULL)
   }
@@ -56,7 +56,7 @@ nmObjGet.iniUi <- function(x, ...) {
     .ui <- rxode2::rxUiDecompress(.iniDf0)
     return(if (nlmixr2global$finalUiCompressed) rxode2::rxUiCompress(.ui) else .ui)
   }
-  .ui <- .cloneEnv(rxode2::rxUiDecompress(get("ui", .env)))
+  .ui <- .cloneEnv(rxode2::rxUiDecompress(get("ui", .env, inherits = FALSE)))
   assign("iniDf", .iniDf0, envir = .ui)
   rxode2::rxUiCompress(.ui)
 }
@@ -69,7 +69,7 @@ nmObjGet.uiIni <- nmObjGet.iniUi
 #' @export
 nmObjGet.iniDf0 <- function(x, ...) {
   .env <- x[[1]]
-  .iniDf0 <- get("iniDf0", envir = .env)
+  .iniDf0 <- get("iniDf0", envir = .env, inherits = FALSE)
   if (is.null(.iniDf0)) {
     return(NULL)
   }
@@ -104,7 +104,7 @@ nmObjUiSetCompressed <- function(type) {
 #' @export
 nmObjGet.finalUi <- function(x, ...) {
   .env <- x[[1]]
-  .ui <- .cloneEnv(rxode2::rxUiDecompress(get("ui", .env)))
+  .ui <- .cloneEnv(rxode2::rxUiDecompress(get("ui", .env, inherits = FALSE)))
   if (nlmixr2global$finalUiCompressed) {
     rxode2::rxUiCompress(.ui)
   } else {
@@ -117,7 +117,7 @@ attr(nmObjGet.finalUi, "rstudio") <- NA # passthrough for completion of $ui
 #' @export
 nmObjGet.finalUiEnv <- function(x, ...) {
   .env <- x[[1]]
-  .cloneEnv(rxode2::rxUiDecompress(get("ui", .env)))
+  .cloneEnv(rxode2::rxUiDecompress(get("ui", .env, inherits = FALSE)))
 }
 attr(nmObjGet.finalUiEnv, "rstudio") <- NA
 
@@ -234,8 +234,10 @@ nmObjGetData.default <- function(x, ...) {
 nmObjGet.default <- function(x, ...) {
   .arg <- class(x)[1]
   .env <- x[[1]]
-  if (exists(.arg, envir = .env)) {
-    .ret <- get(.arg, envir = .env)
+  # inherits=FALSE: a deserialized fit environment can be parented on
+  # globalenv(), where a name like "cov" resolves to stats::cov (#1038)
+  if (exists(.arg, envir = .env, inherits = FALSE)) {
+    .ret <- get(.arg, envir = .env, inherits = FALSE)
     if (inherits(.ret, "raw")) {
       .type <- rxode2::rxGetSerialType_(.ret)
       .ret <- try(.deserializeRaw(.ret, .type), silent = TRUE)
@@ -249,7 +251,7 @@ nmObjGet.default <- function(x, ...) {
     return(.ret)
   }
   # Now get the ui, install the control object temporarily and use `rxUiGet`
-  .ui <- get("ui", envir = .env)
+  .ui <- get("ui", envir = .env, inherits = FALSE)
   .ui <- rxode2::rxUiDecompress(.ui)
   on.exit({
     assign("ui", rxode2::rxUiCompress(.ui), envir = .env)
@@ -269,7 +271,7 @@ nmObjGet.default <- function(x, ...) {
 #' @export
 nmObjGet.modelName <- function(x, ...) {
   .obj <- x[[1]]
-  .ui <- get("ui", .obj)
+  .ui <- get("ui", .obj, inherits = FALSE)
   .ui$modelName
 }
 attr(nmObjGet.modelName, "desc") <- "name of the model used for nlmixr2 model fit"
@@ -280,16 +282,18 @@ attr(nmObjGet.modelName, "rstudio") <- "modelName"
 nmObjGet.cor <- function(x, ...) {
   .obj <- x[[1]]
   .cov <- .obj$cov
-  .sd2 <- sqrt(diag(.cov))
-  .cor <- stats::cov2cor(.cov)
-  dimnames(.cor) <- dimnames(.cov)
-  diag(.cor) <- .sd2
-  .cor
+  # no covariance (covMethod="") gives no correlation; match what $cov returns
+  if (!is.matrix(.cov) || !is.numeric(.cov) || nrow(.cov) != ncol(.cov)) {
+    return(NULL)
+  }
+  # same construction as $omegaR: off-diagonal correlations, SDs on the
+  # diagonal, and NA for a row whose variance is zero (cov2cor errors there)
+  .corFromCov(.cov)
 }
 attr(nmObjGet.cor, "desc") <- "correlation matrix of theta, calculated from covariance of theta"
 attr(nmObjGet.cor, "rstudio") <- lotri::lotri(a + b ~ c(1, 0.1, 1))
 
-.omegaR <- function(.cov) {
+.corFromCov <- function(.cov) {
   .sd2 <- sqrt(diag(.cov))
   if (all(dim(.cov) == c(1, 1))) {
     .cor <- .cov
@@ -320,12 +324,12 @@ nmObjGet.omegaR <- function(x, ...) {
       if (is.null(.covi)) {
         return(NULL)
       }
-      .omegaR(.covi)
+      .corFromCov(.covi)
     })
     names(.ret) <- .n
     .ret
   } else {
-    .omegaR(.cov)
+    .corFromCov(.cov)
   }
 }
 attr(nmObjGet.omegaR, "desc") <- "correlation matrix of omega"
@@ -452,8 +456,8 @@ attr(nmObjGet.phiCI, "desc") <- "confidence interval of each individual's eta (i
 nmObjGet.dataSav <- function(x, ...) {
   .obj <- x[[1]]
   .objEnv <- .obj$env
-  if (exists("dataSav", .objEnv)) {
-    return(get("dataSav", envir = .objEnv))
+  if (exists("dataSav", .objEnv, inherits = FALSE)) {
+    return(get("dataSav", envir = .objEnv, inherits = FALSE))
   }
   .data <- .obj$origData
   .env <- new.env(emptyenv())
@@ -473,8 +477,8 @@ attr(nmObjGet.foceiControl, "desc") <- "Get the focei control required for creat
 nmObjGet.idLvl <- function(x, ...) {
   .obj <- x[[1]]
   .objEnv <- .obj$env
-  if (exists("idLvl", .objEnv)) {
-    return(get("idLvl", envir = .objEnv))
+  if (exists("idLvl", .objEnv, inherits = FALSE)) {
+    return(get("idLvl", envir = .objEnv, inherits = FALSE))
   }
   .data <- .obj$origData
   .env <- new.env(emptyenv())
@@ -487,8 +491,8 @@ nmObjGet.idLvl <- function(x, ...) {
 nmObjGet.covLvl <- function(x, ...) {
   .obj <- x[[1]]
   .objEnv <- .obj$env
-  if (exists("covLvl", .objEnv)) {
-    return(get("covLvl", envir = .objEnv))
+  if (exists("covLvl", .objEnv, inherits = FALSE)) {
+    return(get("covLvl", envir = .objEnv, inherits = FALSE))
   }
   .data <- .obj$origData
   .env <- new.env(emptyenv())
@@ -503,7 +507,7 @@ nmObjGet.covLvl <- function(x, ...) {
   .origData$nlmixrRowNums <- seq_len(nrow(.origData))
   # add llikObs
   .llikObs <- FALSE
-  if (exists("llikObs", obj$env)) {
+  if (exists("llikObs", obj$env, inherits = FALSE)) {
     if (length(obj$env$llikObs) == length(.origData$nlmixrRowNums)) {
       .origData$nlmixrLlikObs <- obj$env$llikObs
       .llikObs <- TRUE
@@ -682,7 +686,7 @@ attr(nmObjGetData.fitMergeFull, "rstudio") <- data.frame(
 nmObjGet.parHist <- function(x, ...) {
   .obj <- x[[1]]
   .env <- .obj$env
-  if (exists("parHistData", envir = .env)) {
+  if (exists("parHistData", envir = .env, inherits = FALSE)) {
     return(.parHistCalc(.env))
   }
   NULL
@@ -694,7 +698,7 @@ attr(nmObjGet.parHist, "desc") <- "Parameter History"
 nmObjGet.parHistStacked <- function(x, ...) {
   .obj <- x[[1]]
   .env <- .obj$env
-  if (exists("parHistData", envir = .env)) {
+  if (exists("parHistData", envir = .env, inherits = FALSE)) {
     .parHist <- .parHistCalc(.env)
     .iter <- .parHist$iter
     .ret <- data.frame(iter = .iter, stack(.parHist[, -1]))
@@ -769,8 +773,8 @@ nmObjGet.simInfo <- function(x, ...) {
 #' @export
 nmObjGet.seed <- function(x, ...) {
   .env <- x[[1]]
-  if (exists("saem", .env)) {
-    attr(get("saem", .env), "saem.cfg")$seed
+  if (exists("saem", .env, inherits = FALSE)) {
+    attr(get("saem", .env, inherits = FALSE), "saem.cfg")$seed
   }
   NULL
 }
@@ -780,20 +784,21 @@ attr(nmObjGet.seed, "rstudio") <- 123456
 #' @export
 nmObjGet.saemCfg <- function(x, ...) {
   .env <- x[[1]]
-  if (exists("saem", .env)) {
-    return(attr(get("saem", .env), "saem.cfg"))
+  if (!exists("saem", .env, inherits = FALSE)) {
+    return(NULL)
   }
+  attr(get("saem", .env, inherits = FALSE), "saem.cfg")
 }
 
 #' @export
 nmObjGet.saemNmc <- function(x, ...) {
   .obj <- x[[1]]
   .env <- .obj$env
-  if (exists("saemControl", envir = .env)) {
-    .saemControl <- get("saemControl", envir = .env)
+  if (exists("saemControl", envir = .env, inherits = FALSE)) {
+    .saemControl <- get("saemControl", envir = .env, inherits = FALSE)
     return(.saemControl$mcmc$nmc)
-  } else if (exists("control", envir = .env)) {
-    .saemControl <- get("control", envir = .env)
+  } else if (exists("control", envir = .env, inherits = FALSE)) {
+    .saemControl <- get("control", envir = .env, inherits = FALSE)
     if (any(names(.saemControl) == "mcmc")) {
       return(.saemControl$mcmc$nmc)
     }
@@ -841,7 +846,7 @@ attr(nmObjGet.saemEvtM, "rstudio") <- lotri::lotri(a + b ~ c(1, 0.1, 1))
 #' @export
 nmObjGet.saem <- function(x, ...) {
   .obj <- x[[1]]
-  if (!exists("saem0", .obj)) {
+  if (!exists("saem0", .obj, inherits = FALSE)) {
     return(NULL)
   }
   .saem <- .obj$saem0
@@ -855,10 +860,10 @@ nmObjGet.saem <- function(x, ...) {
 nmObjGet.innerModel <- function(x, ...) {
   .obj <- x[[1]]
   .env <- .obj$env
-  if (exists("foceiModel", envir = .env)) {
-    .model <- get("foceiModel", envir = .env)
-  } else if (exists("model", envir = .env)) {
-    .model <- get("model", envir = .env)
+  if (exists("foceiModel", envir = .env, inherits = FALSE)) {
+    .model <- get("foceiModel", envir = .env, inherits = FALSE)
+  } else if (exists("model", envir = .env, inherits = FALSE)) {
+    .model <- get("model", envir = .env, inherits = FALSE)
   } else {
     return(NULL)
   }
@@ -920,10 +925,10 @@ nmObjGetPredOnly <- function(x) {
 nmObjGetPredOnly.saem <- function(x) {
   .env <- x[[1]]
   .model <- NULL
-  if (exists("saemModel", envir = .env)) {
-    .model <- get("saemModel", envir = .env)
-  } else if (exists("model", envir = .env)) {
-    .model <- get("model", envir = .env)
+  if (exists("saemModel", envir = .env, inherits = FALSE)) {
+    .model <- get("saemModel", envir = .env, inherits = FALSE)
+  } else if (exists("model", envir = .env, inherits = FALSE)) {
+    .model <- get("model", envir = .env, inherits = FALSE)
   } else {
     stop("cannot find saem model components", call. = FALSE)
   }
@@ -935,10 +940,10 @@ nmObjGetPredOnly.saem <- function(x) {
 nmObjGetPredOnly.default <- function(x) {
   .env <- x[[1]]
   .model <- NULL
-  if (exists("foceiModel", envir = .env)) {
-    .model <- get("foceiModel", envir = .env)
-  } else if (exists("model", envir = .env)) {
-    .model <- get("model", envir = .env)
+  if (exists("foceiModel", envir = .env, inherits = FALSE)) {
+    .model <- get("foceiModel", envir = .env, inherits = FALSE)
+  } else if (exists("model", envir = .env, inherits = FALSE)) {
+    .model <- get("model", envir = .env, inherits = FALSE)
   }
   .model$predOnly
 }
@@ -962,10 +967,10 @@ nmObjGetIpredModel <- function(x) {
 nmObjGetIpredModel.saem <- function(x) {
   .env <- x[[1]]
   .model <- NULL
-  if (exists("saemModel", envir = .env)) {
-    .model <- get("saemModel", envir = .env)
-  } else if (exists("model", envir = .env)) {
-    .model <- get("model", envir = .env)
+  if (exists("saemModel", envir = .env, inherits = FALSE)) {
+    .model <- get("saemModel", envir = .env, inherits = FALSE)
+  } else if (exists("model", envir = .env, inherits = FALSE)) {
+    .model <- get("model", envir = .env, inherits = FALSE)
   } else {
     stop("cannot find saem model components", call. = FALSE)
   }
@@ -977,10 +982,10 @@ nmObjGetIpredModel.saem <- function(x) {
 nmObjGetIpredModel.default <- function(x) {
   .env <- x[[1]]
   .model <- NULL
-  if (exists("foceiModel", envir = .env)) {
-    .model <- get("foceiModel", envir = .env)
-  } else if (exists("model", envir = .env)) {
-    .model <- get("model", envir = .env)
+  if (exists("foceiModel", envir = .env, inherits = FALSE)) {
+    .model <- get("foceiModel", envir = .env, inherits = FALSE)
+  } else if (exists("model", envir = .env, inherits = FALSE)) {
+    .model <- get("model", envir = .env, inherits = FALSE)
   }
   .inner <- .model$inner
   if (is.null(.inner)) {
@@ -1027,10 +1032,10 @@ nmObjGetEstimationModel.saem <- function(x) {
 nmObjGetEstimationModel.default <- function(x) {
   .env <- x[[1]]
   .model <- NULL
-  if (exists("foceiModel", envir = .env)) {
-    .model <- get("foceiModel", envir = .env)
-  } else if (exists("model", envir = .env)) {
-    .model <- get("model", envir = .env)
+  if (exists("foceiModel", envir = .env, inherits = FALSE)) {
+    .model <- get("foceiModel", envir = .env, inherits = FALSE)
+  } else if (exists("model", envir = .env, inherits = FALSE)) {
+    .model <- get("model", envir = .env, inherits = FALSE)
   }
   .inner <- .model$inner
   if (is.null(.inner)) {
@@ -1050,8 +1055,8 @@ nmObjGetEstimationModel.default <- function(x) {
   } else {
     .env <- x
   }
-  if (exists("est", envir = .env)) {
-    .est <- get("est", envir = .env)
+  if (exists("est", envir = .env, inherits = FALSE)) {
+    .est <- get("est", envir = .env, inherits = FALSE)
     .ret <- list(.env)
     class(.ret) <- .est
     return(.ret)
@@ -1189,8 +1194,8 @@ nmObjGet.rxControl <- function(x, ...) {
 nmObjGet.mixList <- function(x, ...) {
   .obj <- x[[1]]
   .env <- .obj$env
-  if (exists("mixList", envir = .env)) {
-    return(get("mixList", envir = .env))
+  if (exists("mixList", envir = .env, inherits = FALSE)) {
+    return(get("mixList", envir = .env, inherits = FALSE))
   }
   NULL
 }
@@ -1202,8 +1207,8 @@ attr(nmObjGet.mixList, "rstudio") <- list(mix1 = data.frame(ID = 1L, prob = 0.8)
 nmObjGet.mixNum <- function(x, ...) {
   .obj <- x[[1]]
   .env <- .obj$env
-  if (exists("mixNum", envir = .env)) {
-    return(get("mixNum", envir = .env))
+  if (exists("mixNum", envir = .env, inherits = FALSE)) {
+    return(get("mixNum", envir = .env, inherits = FALSE))
   }
   NULL
 }
@@ -1214,15 +1219,15 @@ attr(nmObjGet.mixNum, "rstudio") <- data.frame(ID = 1L, mixnum = 1L)
 #' @export
 nmObjGet.ranef <- function(x, ...) {
   .env <- x[[1]]
-  if (!exists("ranef", envir = .env)) {
+  if (!exists("ranef", envir = .env, inherits = FALSE)) {
     return(NULL)
   }
-  .ret <- get("ranef", envir = .env)
+  .ret <- get("ranef", envir = .env, inherits = FALSE)
   if (is.null(.ret)) {
     return(NULL)
   }
-  if (exists("mixNum", envir = .env)) {
-    .mn <- get("mixNum", envir = .env)
+  if (exists("mixNum", envir = .env, inherits = FALSE)) {
+    .mn <- get("mixNum", envir = .env, inherits = FALSE)
     if (!is.null(.mn) && "mixnum" %in% names(.mn)) {
       .ret <- merge(.ret, .mn[, c("ID", "mixnum"), drop = FALSE],
         by = "ID", all.x = TRUE, sort = FALSE

@@ -497,6 +497,10 @@ vaeDecoderElboStep_ <- function(params, prep, zPopR, omegaR, aVecR, alphaKL, eps
     .Call(`_nlmixr2est_vaeDecoderElboStep_`, params, prep, zPopR, omegaR, aVecR, alphaKL, epsR, solveFn, yListR, withGrad, tol, maxRecalc, recalcFactor, fdFallback)
 }
 
+vaeClusterSwapOnly_ <- function(a, b, clu) {
+    .Call(`_nlmixr2est_vaeClusterSwapOnly_`, a, b, clu)
+}
+
 vaeTrainCpp_ <- function(params, prep, control, nMix, mixProbR, cores, row0, parNames, iterPrintControl, xform, structIdx0) {
     .Call(`_nlmixr2est_vaeTrainCpp_`, params, prep, control, nMix, mixProbR, cores, row0, parNames, iterPrintControl, xform, structIdx0)
 }
@@ -515,6 +519,10 @@ boxCox_ <- function(x = 1L, lambda = 1, yj = 0L) {
 
 iBoxCox_ <- function(x = 1L, lambda = 1, yj = 0L) {
     .Call(`_nlmixr2est_iBoxCox_`, x, lambda, yj)
+}
+
+foceiOuterH <- function(theta, relStep = 1e-3) {
+    .Call(`_nlmixr2est_foceiOuterH`, theta, relStep)
 }
 
 nmNearPD_ <- function(x, keepDiag = FALSE, do2eigen = TRUE, doDykstra = TRUE, only_values = FALSE, eig_tol = 1e-6, conv_tol = 1e-7, posd_tol = 1e-8, maxit = 100L, trace = FALSE) {

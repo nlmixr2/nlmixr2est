@@ -33,6 +33,7 @@ vaeControl(
   inputScale = c("reference", "observed"),
   covSelectMethod = c("auto", "bnb", "l0learn"),
   covSelectMaxExact = 17L,
+  covSelectColinearCut = .vaeColinearCut,
   bnbStrategy = c("lifo", "fifo", "lc"),
   parEncoderBackward = !isTRUE(getOption("nlmixr2.identical", FALSE)),
   nonMuTheta = c("regress", "grad", "eta", "fix", "none"),
@@ -365,6 +366,16 @@ run.  One shape per covariate costs exactly 1 bit, so with `shapes` set to a
 single shape this is a plain candidate count; two shape families of one
 covariate cost `log2(3)`, keeping the exact search's worst-case node budget
 the same either way.  `Inf` forces the exact branch-and-bound everywhere.}
+
+\item{covSelectColinearCut}{`abs(cor)` at or above which two covariates are
+treated as near-interchangeable and put in one colinearity cluster (default
+`0.9`).  A cluster never restricts what may be selected.  It does two
+things: the covariate M-step keeps the previous iteration's choice unless a
+cluster mate beats it by a full covariate's L0 cost, which stops the
+selection chattering between columns the design cannot tell apart; and the
+mates that came within that margin are reported in `$covNearTie`.  Clusters
+are built at the mutual-exclusion group level, so two shapes of one
+covariate never cluster together.}
 
 \item{bnbStrategy}{Frontier discipline for the exact branch-and-bound covariate
 selection: `"lifo"` (default, last-in-first-out depth-first search),

@@ -82,3 +82,68 @@ test_that("no .fdFullCov stashed is a no-op", {
   .foceiInstallFdFullCov(.e)
   expect_false(exists("cov", envir = .e, inherits = FALSE))
 })
+
+# --- covariance scope naming + the covList cache the install populates --------
+
+test_that("covariance scope names round-trip", {
+  expect_identical(.covFullName("s"), "s (full)")
+  expect_identical(.covFullName("r,s"), "r,s (full)")
+  expect_identical(.covFullName("analytic"), "analytic (full)")
+  expect_identical(.covFullName("s (full)"), "s (full)")       # idempotent
+  expect_identical(.covBaseName("r,s (full)"), "r,s")
+  expect_identical(.covBaseName("r,s"), "r,s")
+  expect_true(.covIsFull("analytic (full)"))
+  expect_false(.covIsFull("analytic"))
+  expect_false(.covIsFull(character(0)))
+  expect_false(.covIsFull(NA_character_))
+})
+
+test_that("decorated native covMethod strings resolve to their FD type", {
+  expect_identical(.covFdType("|r|,s+"), "r,s")
+  expect_identical(.covFdType("|s| (full)"), "s")
+  expect_identical(.covFdType("r+"), "r")
+  expect_identical(.covFdType("analytic"), "")
+  expect_identical(.covFdType("failed"), "")
+})
+
+test_that(".covSameName ignores decorations but not the scope", {
+  expect_true(.covSameName("s", "|s|"))
+  expect_true(.covSameName("r,s (full)", "r+,s (full)"))
+  expect_false(.covSameName("s", "s (full)"))
+  expect_false(.covSameName("r", "s"))
+})
+
+test_that("the FD-full install names the full shape and caches the others", {
+  .e <- .mkFdEnv("r,s", .Rinv, .S)
+  expect_true(.foceiInstallFdFullCov(.e))
+  expect_identical(.e$covMethod, "r,s (full)")
+  # the installed shape is never left in the cache; the other full shapes are
+  expect_false("r,s (full)" %in% names(.e$covList))
+  expect_setequal(names(.e$covList), c("r (full)", "s (full)"))
+  expect_equal(unname(.e$covList[["s (full)"]]), unname(solve(.S)))
+})
+
+test_that("the native theta-only covariance is cached under its own type", {
+  # covMethod="s" writes only e$cov in C++ (no e$covS), so the installed native
+  # covariance is the only copy of the theta-only shape -- cache it before the swap
+  .e <- .mkFdEnv("s", .Rinv, .S)
+  .native <- matrix(c(0.25, 0.01, 0.01, 0.16), 2, dimnames = list(c("tka", "om.eta.ka"),
+                                                                  c("tka", "om.eta.ka")))
+  .e$cov <- .native
+  expect_true(.foceiInstallFdFullCov(.e))
+  expect_identical(.e$covMethod, "s (full)")
+  expect_equal(.e$covList[["s"]], .native)
+  expect_false("s (full)" %in% names(.e$covList))
+})
+
+test_that("a decorated native covMethod keeps its decoration under the suffix", {
+  .e <- .mkFdEnv("|s|", .Rinv, .S)
+  expect_true(.foceiInstallFdFullCov(.e))
+  expect_identical(.e$covMethod, "|s| (full)")
+})
+
+test_that("a no-op install caches nothing", {
+  .e <- .mkFdEnv("analytic", .Rinv, .S)
+  expect_false(.foceiInstallFdFullCov(.e))
+  expect_false(exists("covList", envir = .e, inherits = FALSE))
+})

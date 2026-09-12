@@ -146,7 +146,11 @@ nmTest({
     # The analytic FIM cannot reliably do off-diagonal Omega or non-additive residuals;
     # those variance params are spliced from linFim's blocB.  On a block-Omega model the
     # sa covariance must include cov.<eta>.<eta>, and every variance-block SE must equal
-    # linFim's varCov computed on the same fit (theta stays simulation-based).
+    # linFim's varCov computed on the same fit (theta stays simulation-based) -- a
+    # declared Omega block replaces the WHOLE variance block, because the Louis score
+    # divides by the diagonal of Gamma2_phi1 only and so never saw the off-diagonals.
+    # A diagonal-Omega model keeps its analytic Omega block instead (#1022); that half
+    # is asserted in the multi-endpoint (#893) test below.
     blk <- function() {
       ini({
         tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- 0.7
@@ -468,9 +472,9 @@ nmTest({
       # Which slots the ANALYTIC FIM itself can supply is what the dropped
       # zero row decides, and that is deterministic: assert it on the
       # pre-splice matrix.  The reported $cov is not the place for this --
-      # .saemSpliceLinFimVar replaces the whole variance block from linFim
-      # whenever calc.COV succeeds, which puts add.sd/prop.sd back, so
-      # asserting their ABSENCE there was really asserting that the splice
+      # .saemSpliceLinFimVar fills the dropped slot from linFim whenever
+      # calc.COV succeeds, which puts add.sd/prop.sd back (by design, #1022),
+      # so asserting their ABSENCE there was really asserting that the splice
       # had failed.
       .an <- .saemFimToCov(f2$saem$HaSa, f2$env)
       expect_true("add2.sd" %in% rownames(.an))
@@ -478,12 +482,159 @@ nmTest({
       expect_false("prop.sd" %in% rownames(.an))
       # the pure-additive slot survives into the reported cov either way
       expect_true("add2.sd" %in% rownames(f2$cov))
+
+      # #1022: Omega is DIAGONAL here, so the splice must supply ONLY the two
+      # residual parameters the analytic FIM could not (the zeroed cp slot) and
+      # leave the analytic Omega block alone.  Taking the whole variance block
+      # from linFim instead -- what it used to do -- propagates the
+      # near-singular (add.sd, prop.sd) pair into the Omega rows: om.eta.ka's
+      # SE read 560 against an Omega estimate of 1.1, where the analytic FIM
+      # says 0.51.
+      .saem <- f2$saem
+      attr(.saem, "env") <- f2$env
+      .vc <- attr(suppressWarnings(suppressMessages(calc.COV(.saem))), "varCov")
+      .om <- c("om.eta.ka", "om.eta.cl", "om.eta.v")
+      expect_true(all(.om %in% rownames(.an)) && all(.om %in% rownames(.vc)))
+      .seRep <- sqrt(diag(f2$cov))
+      # the mechanism: Omega SEs are the ANALYTIC ones, the spliced residuals
+      # are linFim's
+      expect_equal(unname(.seRep[.om]), unname(sqrt(diag(.an))[.om]), tolerance = 1e-8)
+      expect_equal(unname(.seRep[c("add.sd", "prop.sd")]),
+                   unname(sqrt(diag(.vc))[c("add.sd", "prop.sd")]), tolerance = 1e-8)
+      # and a bound the pre-fix value (SE 560 on an Omega of 1.1) fails outright
+      expect_true(all(.seRep[.om] < 5 * diag(f2$omega)[c("eta.ka", "eta.cl", "eta.v")]))
     }
     # the pure-additive endpoint's SE is real regardless (its slot was never
     # dropped); the combined endpoint's SE depends on the linFim splice
     # succeeding, which is a convergence question unrelated to this fix and
     # already covered by the "fim/sa splice" test above
     expect_true(is.finite(f2$parFixedDf["add2.sd", "SE"]) && f2$parFixedDf["add2.sd", "SE"] > 0)
+  })
+
+  test_that(".saemCovRowOrder never duplicates a row (theta/Omega name clash)", {
+    # The Omega rows are recognized by an "om."/"cov." name prefix, which a
+    # structural theta or residual parameter is free to match.  A name counted in
+    # two groups would appear twice in the ordering vector, and cov[.ord, .ord]
+    # would then duplicate its row AND column -- a bigger, singular matrix.
+    .idf <- data.frame(name = c("cov.tka", "tcl", "add.sd"),
+                       ntheta = c(1L, 2L, 3L),
+                       err = c(NA_character_, NA_character_, "add"),
+                       stringsAsFactors = FALSE)
+    .rn <- c("tcl", "om.eta.cl", "add.sd", "cov.tka")
+    .ord <- .saemCovRowOrder(.rn, .idf)
+    expect_equal(anyDuplicated(.ord), 0L)
+    expect_equal(sort(.ord), sort(.rn))
+    # theta (iniDf order) -> Omega -> residual; cov.tka stays a theta
+    expect_equal(.ord, c("cov.tka", "tcl", "om.eta.cl", "add.sd"))
+    # ... and a residual named om.err stays with the residuals
+    .idf2 <- data.frame(name = c("tka", "om.err"), ntheta = c(1L, 2L),
+                        err = c(NA_character_, "add"), stringsAsFactors = FALSE)
+    expect_equal(.saemCovRowOrder(c("om.eta.ka", "om.err", "tka"), .idf2),
+                 c("tka", "om.eta.ka", "om.err"))
+    # a name no group claims keeps its place, at the end
+    expect_equal(.saemCovRowOrder(c("tka", "zz"), .idf2), c("tka", "zz"))
+  })
+
+  test_that(".saemOmegaIsDiagonal asks the fitted Omega, not linFim's names", {
+    # Which splice branch runs is decided here.  It must read the fitted
+    # Gamma2_phi1: .foceiOmegaPairs drops FIXED Omega elements, so a model with a
+    # fix()ed off-diagonal produces no "cov." name in calc.COV's variance block
+    # while still breaking the Louis score's diagonal-only assumption.
+    # A plain list stands in for the fit environment ($ resolves the same way).
+    expect_true(.saemOmegaIsDiagonal(list(saem = list(Gamma2_phi1 = diag(c(0.3, 0.1))))))
+    expect_true(.saemOmegaIsDiagonal(list(saem = list(Gamma2_phi1 = matrix(0.3, 1, 1)))))
+    expect_false(.saemOmegaIsDiagonal(
+      list(saem = list(Gamma2_phi1 = matrix(c(0.3, 0.05, 0.05, 0.1), 2, 2)))))
+    # unreadable Omega -> FALSE, which keeps the (previous) wholesale splice
+    expect_false(.saemOmegaIsDiagonal(list(saem = list(Gamma2_phi1 = NULL))))
+    expect_false(.saemOmegaIsDiagonal(list()))
+    expect_false(.saemOmegaIsDiagonal(list(saem = list(Gamma2_phi1 = matrix(NA_real_, 2, 2)))))
+  })
+
+  test_that(".saemFimFixedResidSlots takes the residual block from the END of nb_param", {
+    # nb_param = nphi1 + nlambda + nendpnt with the residual slots LAST, so the
+    # base is derived from the matrix size.  Getting it from a theta+Omega row
+    # count instead would drop an Omega row when the two disagree.
+    .idf <- data.frame(name = c("tka", "add.sd", "add2.sd"),
+                       condition = c(NA_character_, "cp", "pca"),
+                       err = c(NA_character_, "add", "add"),
+                       fix = c(FALSE, TRUE, FALSE),
+                       stringsAsFactors = FALSE)
+    .predDf <- data.frame(cond = c("cp", "pca"), stringsAsFactors = FALSE)
+    # 4 theta + 3 eta + 2 endpoints: the residual slots are 8 and 9, cp is fixed
+    expect_equal(.saemFimFixedResidSlots(.idf, .predDf, 9L), 8L)
+    .idf$fix <- c(FALSE, FALSE, TRUE)
+    expect_equal(.saemFimFixedResidSlots(.idf, .predDf, 9L), 9L)
+    .idf$fix <- c(FALSE, TRUE, TRUE)
+    expect_equal(.saemFimFixedResidSlots(.idf, .predDf, 9L), c(8L, 9L))
+    .idf$fix <- c(FALSE, FALSE, FALSE)
+    expect_equal(.saemFimFixedResidSlots(.idf, .predDf, 9L), integer(0))
+    # a combined endpoint has two iniDf rows: not a single fixed additive slot
+    .idf2 <- rbind(.idf, data.frame(name = "prop.sd", condition = "cp", err = "prop",
+                                    fix = TRUE, stringsAsFactors = FALSE))
+    expect_equal(.saemFimFixedResidSlots(.idf2, .predDf, 9L), integer(0))
+    # degenerate sizes are no-ops rather than negative indices
+    expect_equal(.saemFimFixedResidSlots(.idf, .predDf, 2L), integer(0))
+    expect_equal(.saemFimFixedResidSlots(.idf, data.frame(cond = character(0)), 9L),
+                 integer(0))
+  })
+
+  test_that("a fix()ed additive residual gets no fim/sa covariance row", {
+    # src/saem.cpp fills an endpoint's log-sigma2 slot whether or not that
+    # endpoint's residual is estimated, and only the all-zero (non-additive) and
+    # fixed-theta rows were dropped before inverting.  So a fix()ed add.sd came
+    # back with an SE -- printed as a back-transformed 95% CI on a value the fit
+    # never estimated -- and every other parameter got the marginal rather than
+    # the conditional information.
+    m <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- fix(0.7)
+            eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+              linCmt() ~ add(add.sd) })
+    }
+    f <- .nlmixr(m, theo_sd, est = "saem",
+                 control = saemControl(nBurn = 100, nEm = 120, print = 0, seed = 1L,
+                                       covMethod = "sa", nSaCov = 200))
+    skip_if_not(identical(f$covMethod, "sa"))
+    # dropped before inverting, so it is in neither the pre-splice analytic
+    # matrix nor the reported covariance
+    expect_false("add.sd" %in% rownames(.saemFimToCov(f$saem$HaSa, f$env)))
+    expect_false("add.sd" %in% rownames(f$cov))
+    expect_true(is.na(f$parFixedDf["add.sd", "SE"]))
+    expect_equal(unname(f$parFixed["add.sd", "SE"]), "FIXED")
+    # printed as the point value alone -- no interval
+    expect_false(grepl("(", f$parFixed["add.sd", "Back-transformed(95%CI)"], fixed = TRUE))
+    # the estimated parameters still get real SEs from the reduced matrix
+    expect_true(all(sqrt(diag(f$cov))[c("tka", "tcl", "tv")] > 1e-3))
+    expect_true(all(c("om.eta.ka", "om.eta.cl", "om.eta.v") %in% rownames(f$cov)))
+
+    # multi-endpoint: dropping the FIRST endpoint's slot must not move the
+    # SECOND endpoint's.  The residual block is the last nendpnt rows of
+    # nb_param, so both the drop and the read derive their base from the matrix
+    # size; taking it from a theta+Omega row count instead could disagree and
+    # report one endpoint's variance under the other's name.
+    pkpdFix <- function() {
+      ini({
+        tka <- 0.45; tcl <- 1; tv <- 3.45; tslope <- 1
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        add.sd <- fix(0.7); add2.sd <- 5
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        slope <- exp(tslope); cp <- linCmt(); pca <- slope * cp
+        cp ~ add(add.sd)
+        pca ~ add(add2.sd)
+      })
+    }
+    fm <- .nlmixr(pkpdFix, warfarin, est = "saem",
+                  control = saemControl(nBurn = 150, nEm = 200, print = 0, seed = 1L,
+                                        covMethod = "sa", nSaCov = 300))
+    skip_if_not(identical(fm$covMethod, "sa"))
+    expect_false("add.sd" %in% rownames(fm$cov))
+    expect_true("add2.sd" %in% rownames(fm$cov))
+    expect_true(is.finite(fm$parFixedDf["add2.sd", "SE"]) &&
+                  fm$parFixedDf["add2.sd", "SE"] > 0)
+    expect_true(is.na(fm$parFixedDf["add.sd", "SE"]))
   })
 
   test_that(".saemLlObsMask refuses to guess rather than mis-score (#871)", {

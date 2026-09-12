@@ -128,10 +128,35 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   }
   if (is.environment(.env) && exists("mixIcov", envir=.env, inherits = FALSE)) {
     .iCov <- get("mixIcov", envir=.env, inherits = FALSE)
+    # ID has to match the type of the data's ID column.  It is built as an
+    # integer, but output creation re-levels every ID column in the fit
+    # environment to a factor afterwards, so coerce at the point of use.
+    if (!is.null(.iCov) && !is.null(.iCov$ID)) {
+      .iCov$ID <- if (is.factor(.iCov$ID)) {
+        as.integer(as.character(.iCov$ID))
+      } else {
+        as.integer(.iCov$ID)
+      }
+      if (anyNA(.iCov$ID)) .iCov <- NULL
+    }
   }
-  # Fallback flag: if rxode2 rejects iCov (older versions), retry without
-  # it; .mixFixTable() post-corrects me/mn/mu from mixNum.
+  # Fallback flag: an rxode2 that predates per-individual mixest for an
+  # expanded mix() rejects the iCov; retry without it rather than losing the
+  # whole table step.  The retry SAYS SO -- mixest/mixnum and everything
+  # mix() feeds read 0 without it, and that is the silently-wrong table this
+  # whole path exists to stop producing.
   .iCovOK <- !is.null(.iCov)
+  if (.iCovOK) {
+    # An rxode2 without nlmixr2/rxode2#1358 does not reject the iCov, it just
+    # never reads a mixture out of a model whose mix() symengine expanded away.
+    # Nothing errors, so say so here or the zeros are silent.
+    .predFlags <- try(rxode2::rxModelVars(model)$flags, silent=TRUE)
+    if (!inherits(.predFlags, "try-error") && !is.null(.predFlags) &&
+          "mix" %in% names(.predFlags) && .predFlags[["mix"]] == 0L) {
+      warning("mixture not passed to table; mixest/mixnum read 0", call.=FALSE)
+      .iCovOK <- FALSE
+    }
+  }
   while (recalc & length(odeMethods) > 0) {
     recalcN <- 0
     currentOdeMethod <- odeMethods[[1]]
@@ -155,8 +180,11 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
                             iCov = .iCov,
                             keep=keep, addDosing=addDosing, subsetNonmem=subsetNonmem, addCov=addCov),
           error = function(e) {
-            if (grepl("time.varying|mixest must be", conditionMessage(e), ignore.case=TRUE)) {
+            if (grepl("iCov|mixest|mixunif|time.varying", conditionMessage(e),
+                      ignore.case=TRUE)) {
               .iCovOK <<- FALSE
+              warning("mixture not passed to table; mixest/mixnum read 0",
+                      call.=FALSE)
               .foceiSolveWithId(model, pars, fit$dataSav,
                                 returnType = returnType,
                                 atol = .atol, rtol = .rtol,
@@ -205,6 +233,31 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
     warning("Problems solving ", what, " with ", paste(failedMethods, collapse = ", "), ", returning results from the first method")
   } else if (length(failedMethods) > 0) {
     warning("Problems solving ", what, " with ", paste(failedMethods, collapse = ", "), ", returning results from ", currentOdeMethod)
+  }
+  # mtime() records are model output, not data (#919): the solve emits one extra
+  # row per subject per mtime, which is not an observation and has no source row
+  # in the input dataset, so it would land in the fit table as a DV=NA row.  Only
+  # looked for when the solved model actually declares an mtime.
+  .hasMtime <- tryCatch(rxode2::rxModelVars(model)$nMtime > 0L,
+                        error = function(e) FALSE)
+  if (isTRUE(.hasMtime)) {
+    .evidW <- which(tolower(names(.res)) == "evid")
+    if (length(.evidW) == 1L) {
+      # addDosing: dose rows are in the output, so the EVID is too -- use it.
+      .ev <- .res[[.evidW]]
+      .drop <- !is.na(.ev) & .ev >= 10 & .ev <= 99
+    } else if (!is.null(.res$nlmixrRowNums)) {
+      # No EVID column means dose rows were left out, so the only rows with no
+      # source row left are the mtime ones.  Do NOT use this when doses are kept:
+      # an ADDL-expanded dose also has no source row and must stay.
+      .drop <- is.na(.res$nlmixrRowNums)
+    } else {
+      .drop <- FALSE
+    }
+    if (any(.drop)) {
+      .res <- .res[!.drop, , drop = FALSE]
+      rownames(.res) <- NULL
+    }
   }
   .res
 }
@@ -460,13 +513,42 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   data
 }
 
+#' Does the fit already report a calculated focei-family objective function?
+#'
+#' `addCwres()` attaches the CWRES columns together with the objective function
+#' row it calculates ("FOCEi", or "FOCE"/"lFOCEi" for `focei=FALSE`) and cannot
+#' add a row the fit already has, so a fit reporting one has to calculate CWRES
+#' in its own table step.  An uncalculated (NA) objective function is replaced
+#' rather than appended, so it does not count.
+#'
+#' @param fit fit environment
+#' @return `TRUE` when `addCwres()` could not add CWRES to this fit later
+#' @author Matthew L. Fidler
+#' @noRd
+.foceiObjfWithoutCwres <- function(fit) {
+  # read the fit environment directly; the `$` fallback for a name the
+  # environment does not have re-derives it from the ui, which is not free
+  .objDf <- if (is.environment(fit)) {
+    if (exists("objDf", envir=fit, inherits=FALSE)) {
+      get("objDf", envir=fit, inherits=FALSE)
+    } else {
+      NULL
+    }
+  } else {
+    fit$objDf
+  }
+  if (!is.data.frame(.objDf)) return(FALSE)
+  if (!any(rownames(.objDf) %in% c("FOCEi", "lFOCEi", "FOCE"))) return(FALSE)
+  any(!is.na(.objDf$OBJF))
+}
+
 .calcTables <- function(fit, data=fit$dataSav, thetaEtaParameters=fit$foceiThetaEtaParameters,
                         table=tableControl(), keep=NULL) {
   keep <- unique(c(keep, "nlmixrRowNums"))
 
   if (!inherits(table, "tableControl")) table <- do.call(tableControl, table)
   if (is.null(table$cwres)) {
-    table$cwres <- !is.null(fit$innerModel)
+    table$cwres <- !is.null(fit$innerModel) || .foceiObjfWithoutCwres(fit)
   }
   if (table$cwres) {
     fit$innerModelForce

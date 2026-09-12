@@ -231,12 +231,12 @@ nmObjHandleControlObject.uobyqaControl <- function(control, env) {
 #' @export
 nmObjGetControl.uobyqa <- function(x, ...) {
   .env <- x[[1]]
-  if (exists("uobyqaControl", .env)) {
-    .control <- get("uobyqaControl", .env)
+  if (exists("uobyqaControl", .env, inherits = FALSE)) {
+    .control <- get("uobyqaControl", .env, inherits = FALSE)
     if (inherits(.control, "uobyqaControl")) return(.control)
   }
-  if (exists("control", .env)) {
-    .control <- get("control", .env)
+  if (exists("control", .env, inherits = FALSE)) {
+    .control <- get("control", .env, inherits = FALSE)
     if (inherits(.control, "uobyqaControl")) return(.control)
   }
   stop("cannot find uobyqa related control object", call.=FALSE)

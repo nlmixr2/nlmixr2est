@@ -242,7 +242,6 @@ rxUiGet.saemOmegaTrans <- function(x, ...) {
 #attr(rxUiGet.saemOmegaTrans, "desc") <- "Get the saem omega to UI omega translation"
 attr(rxUiGet.saemOmegaTrans, "rstudio") <- c(1L, 3L)
 
-
 #' @export
 rxUiGet.saemOmegaShare <- function(x, ...) {
   .ui <- x[[1]]
@@ -287,17 +286,30 @@ rxUiGet.saemOmegaShareSubpop <- function(x, ...) {
   .mixCalls <- do.call(c, lapply(.ui$lstExpr, .findMixCalls))
   if (length(.mixCalls) == 0L) return(.ret)
 
+  # Collect, for each eta, every component index it is referenced from, across
+  # ALL of the model's mix() calls.  An eta seen from more than one component --
+  # or used anywhere outside a component, where it applies to every component --
+  # is SHARED, not owned: marking it as a component (the assignment below used
+  # to take whichever mix() call mentioned it last) sends a shared-eta mixture
+  # down the split-ETA code paths, which weight that eta's theta/omega update by
+  # a single component's responsibilities.
+  .outside <- unique(unlist(lapply(.ui$lstExpr, .extractEtasOutsideMix,
+                                   etas = .allEtas)))
+  .compsOf <- list()
   for (.mc in .mixCalls) {
     .args <- as.list(.mc)[-1]
     .comps <- .args[seq(1, length(.args), by = 2)]
     for (.j in seq_along(.comps)) {
-      .grpEtas <- .extractEtas(.comps[[.j]], etas = .allEtas)
-      for (.eta in .grpEtas) {
-        .w <- which(.eta == .etaNames)
-        if (length(.w) == 1L) {
-          .ret[.w] <- .j
-        }
+      for (.eta in .extractEtas(.comps[[.j]], etas = .allEtas)) {
+        .compsOf[[.eta]] <- unique(c(.compsOf[[.eta]], .j))
       }
+    }
+  }
+  for (.eta in names(.compsOf)) {
+    if (length(.compsOf[[.eta]]) != 1L || .eta %in% .outside) next
+    .w <- which(.eta == .etaNames)
+    if (length(.w) == 1L) {
+      .ret[.w] <- .compsOf[[.eta]]
     }
   }
   .ret

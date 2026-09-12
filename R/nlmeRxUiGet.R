@@ -149,10 +149,8 @@ rxUiGet.nlmeRxModelFD <- function(x, ...) {
      .msuccess("done")
   }
   .cmt <-  rxUiGet.foceiCmtPreModel(x, ...)
-  .interp <- rxUiGet.interpLinesStr(x, ...)
-  if (.interp != "") {
-    .cmt <-paste0(.cmt, "\n", .interp)
-  }
+  # mtime() lines are re-emitted here (#919); see .mtimeLinesStr()
+  .cmt <- .addPreModelLines(.cmt, rxUiGet.interpLinesStr(x, ...), .mtimeLinesStr(.s))
   ## no splitBolus() here -- the doses were already split when the data was
   ## translated (see .foceiPreProcessData())
   paste(c(rxUiGet.saemParams(x, ...), .cmt,
