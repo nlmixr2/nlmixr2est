@@ -3519,6 +3519,12 @@ public:
       // fix before diagonals are enforced
       if (Gamma2_phi1fixed==1 && kiter > (unsigned int)(nb_fixOmega)) {
         Gamma2_phi1.elem(Gamma2_phi1fixedIx) = Gamma2_phi1fixedValues(Gamma2_phi1fixedIx);
+        // Gamma2_phi1Report is what the fit REPORTS, and it was snapshotted
+        // above -- before this restore -- so a fix()ed variance came back as
+        // the M-step's unconstrained estimate: fix(0.3) reported as 0.318
+        // while the sampler correctly used 0.3 (#1073).  Only the fixed cells
+        // are touched; every other reported value stays exactly as it was.
+        Gamma2_phi1Report.elem(Gamma2_phi1fixedIx) = Gamma2_phi1fixedValues(Gamma2_phi1fixedIx);
       }
 
       if (kiter<=(unsigned int)(nb_correl)) {
