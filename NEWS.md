@@ -566,6 +566,22 @@ ini({
 
 ## Bug fixes
 
+- `fit$env$nMcetaStart` is now reported for `est="imp"`/`"impmap"` too.  It
+  counts how many inner MAP solves started from `eta = 0` against how many
+  started from one of the `mceta` omega draws, and it was written only on the
+  non-EM side of `foceiFinalizeTables()` -- the EM estimators take the
+  `isImpmap` branch, so an imp fit reported nothing no matter what `mceta` was
+  set to.  `mceta` was always in force there (imp drives the same FOCEi inner
+  problem), but the one observable that could show it was missing, so a real
+  lever was indistinguishable from an ignored one.
+
+- `impmapControl(mceta=)` also survives the down-conversion to a plain
+  `foceiControl()`.  `mceta` is a genuine `foceiControl()` argument, so listing
+  it among the importance-sampling-only control names dropped it: estimation
+  reads it off the `impmapControl` directly and was unaffected, but the
+  consumers of the down-converted control (`.setOfvFo()`, the
+  general-likelihood tables) silently fell back to the package default.
+
 - A mu-referenced random effect whose variance is declared zero is no longer
   removed from the model, and no longer contributes to the objective.
 

@@ -24,7 +24,7 @@
                            "ctol", "nConvWindow", "impSeed", "impCov",
                            "proposal", "propMixScale", "propMixWeight",
                            "zeroOmegaDirect", "zeroOmegaMaxEval", "etaDistMstep",
-                           "etaDistWarmStart", "mceta",
+                           "etaDistWarmStart",
                            "etaDistSdLo", "etaDistSdHi", "etaDistSdTol",
                            "etaDistCorSuff", "etaDistSupportEps",
                            "qr", "qrShift", "qrRefresh", "qrScramble",
@@ -580,10 +580,20 @@
 #' @param muModel Mu-referencing variant for the MAP inner problem; for
 #'   `impmapControl()` this is always `"lin"` and cannot be changed.
 #' @param mceta Monte Carlo samples for the best initial ETA of the inner
-#'   MAP, as in [foceiControl()].  imp has always USED this -- it goes through
-#'   the shared FOCEi inner problem and reaches the C++ at the same place focei
-#'   does -- but it was reachable only through `...`, so it was neither
-#'   validated nor documented here.
+#'   MAP, as in [foceiControl()].  imp uses it through the shared FOCEi inner
+#'   problem, reaching the C++ at the same place focei does.
+#'
+#'   `fit$env$nMcetaStart` is the observable -- it counts how many inner solves
+#'   started from `eta = 0` against one of the omega draws, and is stamped
+#'   whenever the inner problem sees `mceta >= 1`.  It used to be written only
+#'   on the non-EM side of `foceiFinalizeTables()`, so an imp fit reported
+#'   nothing whatever `mceta` was set to; absence of the counter was NOT
+#'   evidence that imp had ignored the setting.  `mceta` also belongs in the
+#'   `foceiControl()` down-conversion (`.impmapControlToFoceiControl()`), which
+#'   had stripped it as though it were an IS-only name.  Estimation reads it
+#'   off the `impmapControl` directly and so was unaffected; the consumers of
+#'   the down-converted control (`.setOfvFo()`, the general-likelihood tables)
+#'   were the ones seeing `foceiControl()`'s default instead.
 #'
 #'   It matters more for imp than the default suggests.  The Newton M-step on
 #'   non-mu structural thetas is only as good as its IS-weighted Gauss-Newton
