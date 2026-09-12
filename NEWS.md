@@ -16,6 +16,10 @@
 
 ## Bug fixes
 
+- `saem` reports a `fix()`ed eta variance as the value it was fixed at. The
+  reported omega was snapshotted before the fixed values were restored, so it
+  carried the M-step's unconstrained estimate instead -- `fix(0.3)` came back as
+  0.318 while the fit itself correctly sampled with 0.3 (#1073).
 - `covMethod="analytic"` for FOCE and `foce="foce+"` no longer carries the inner
   solver's residual score into the observed information.  The FOCE kernel uses
   the general total-derivative form, whose last term is `Phi_eta . eta_ab`; it
@@ -115,6 +119,18 @@
   longer held and a `setCov()` round trip silently changed the reported SEs.
   The parameter table is now refreshed from the covariance actually installed
   (nlmixr2extra#125).
+
+- `addCwres()` works on a fit that already reports the focei (or foce)
+  objective function and has no CWRES, instead of stopping with "objective
+  function 'FOCEi' already present".  `setOfv(fit, "focei")` adds that
+  objective function row without the residual columns, so
+  `setOfv(fit, "focei")` followed by `addCwres(fit)` -- and any estimation
+  method that reports the focei objective function of its own, such as the
+  `nlmixr2bayes` methods run with `ofv="focei"` -- had no way to add CWRES at
+  all.  `addCwres()` now adds the residual columns and leaves the objective
+  function row the fit already carries alone.  The table step also calculates
+  CWRES for any fit whose own objective function is already the focei one,
+  since there is no way to add them afterwards.
 
 ## New features
 
