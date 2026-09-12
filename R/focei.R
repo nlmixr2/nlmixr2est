@@ -3387,7 +3387,12 @@ rxUiGet.foceiModel <- function(x, ...) {
   .cacheFile <- rxUiGet.foceiModelCache(x, ...)
   if (file.exists(.cacheFile)) {
     .ret <- readRDS(.cacheFile)
+    # the combined build's outer IS the inner: alias rather than rebuild the same
+    # model twice (its event-sensitivity derivation is the expensive part)
+    .comb <- isTRUE(.ret$outerComb)
+    if (.comb) .ret$outer <- NULL
     .ret[] <- lapply(.ret, .foceiModelCacheInflate)
+    if (.comb) .ret$outer <- .ret$inner
     return(.ret)
   }
   .ui <- x[[1]]
