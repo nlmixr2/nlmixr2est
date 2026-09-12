@@ -426,7 +426,7 @@ npagControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x55f3248a3750>
+#> <bytecode: 0x56329159e508>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -620,6 +620,9 @@ npagControl()
 #> 
 #> $etaNudge2
 #> [1] 1.518182
+#> 
+#> $etaRestart
+#> [1] 4
 #> 
 #> $maxOdeRecalc
 #> [1] 5

@@ -20,6 +20,23 @@
 
 ### Bug fixes
 
+- A focei inner ETA solve that has spent every `etaNudge`/`etaNudge2`
+  restart and still failed now falls back on draws from Omega
+  (`foceiControl(etaRestart=)`, 4 by default, 0 to disable). Every nudge
+  sets every ETA to the same constant, which explores poorly once the
+  inner problem has more than one basin; the draws are starting points
+  from the distribution the ETAs come from. Measured on
+  [\#1044](https://github.com/nlmixr2/nlmixr2est/issues/1044)’s model at
+  a displaced parameter set, subjects that ended with every attempt
+  spent fell from 45 to 25 of 300 and the objective from 687874
+  to 139103. The draws are taken once per fit from rxode2’s seeded
+  engine, so the objective stays a function of theta alone, and they are
+  read only after a solve has already failed – a fit whose inner solves
+  converge is bit-identical with the fallback on and off. This applies
+  to `innerOpt="trust"`, which reports a convergence verdict per solve;
+  `n1qn1` reports none, so its own restart cascade is unchanged
+  ([\#1044](https://github.com/nlmixr2/nlmixr2est/issues/1044)).
+
 - `saem` reports a [`fix()`](https://rdrr.io/r/utils/fix.html)ed eta
   variance as the value it was fixed at. The reported omega was
   snapshotted before the fixed values were restored, so it carried the

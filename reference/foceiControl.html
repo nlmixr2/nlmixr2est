@@ -182,6 +182,7 @@
 <span>  gradCalcCentralLarge <span class="op">=</span> <span class="fl">10000</span>,</span>
 <span>  etaNudge <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">qnorm</a></span><span class="op">(</span><span class="fl">1</span> <span class="op">-</span> <span class="fl">0.05</span><span class="op">/</span><span class="fl">2</span><span class="op">)</span><span class="op">/</span><span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">sqrt</a></span><span class="op">(</span><span class="fl">3</span><span class="op">)</span>,</span>
 <span>  etaNudge2 <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">qnorm</a></span><span class="op">(</span><span class="fl">1</span> <span class="op">-</span> <span class="fl">0.05</span><span class="op">/</span><span class="fl">2</span><span class="op">)</span> <span class="op">*</span> <span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">sqrt</a></span><span class="op">(</span><span class="fl">3</span><span class="op">/</span><span class="fl">5</span><span class="op">)</span>,</span>
+<span>  etaRestart <span class="op">=</span> <span class="fl">4L</span>,</span>
 <span>  nRetries <span class="op">=</span> <span class="fl">3</span>,</span>
 <span>  seed <span class="op">=</span> <span class="fl">42</span>,</span>
 <span>  resetThetaCheckPer <span class="op">=</span> <span class="fl">0.1</span>,</span>
@@ -1291,6 +1292,22 @@ zero (stop optimizing) if unsuccessful.</p></dd>
 <dd><p>This is the second eta nudge.  By default it is
 qnorm(1-0.05/2)*sqrt(3/5), which is the n=3 quadrature point
 (excluding zero) times by the 0.95% normal region</p></dd>
+
+
+<dt id="arg-etarestart">etaRestart<a class="anchor" aria-label="anchor" href="#arg-etarestart"></a></dt>
+<dd><p>Number of Omega draws the inner restart cascade tries
+once the `etaNudge`/`etaNudge2` restarts are spent and the ETA solve is
+still not converged.  Every nudge sets EVERY ETA to the same constant,
+which explores poorly when the inner problem has more than one basin; a
+draw from Omega is a starting point from the distribution the ETAs
+actually come from.  The draws are taken once per fit, seeded from
+`seed` (so the objective stays a function of theta alone and the fit
+stays reproducible), and are only read after an inner solve has already
+failed – a fit whose inner solves converge never pays for them.  Use 0
+to disable.</p>
+<p>This applies to `innerOpt="trust"` (the default for a normal endpoint),
+which reports a convergence verdict per solve.  `n1qn1` reports none, so
+its own restart cascade is unchanged.</p></dd>
 
 
 <dt id="arg-nretries">nRetries<a class="anchor" aria-label="anchor" href="#arg-nretries"></a></dt>
