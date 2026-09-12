@@ -30,6 +30,7 @@ foceiControl(
   covSolveTol = NULL,
   covFull = TRUE,
   fast = FALSE,
+  outerCombine = TRUE,
   priorMethod = c("auto", "general", "nwpri", "tnpri"),
   fdOutlierZ = 3.5,
   fdOutlierScale = TRUE,
@@ -337,6 +338,12 @@ the outer optimizer defaults to \code{"lbfgsb3c"} (vs \code{"bobyqa"} for
 \code{fast=FALSE}); pairing \code{fast=TRUE} with a derivative-free
 \code{outerOpt} reverts to \code{fast=FALSE}.  The \code{*f} methods (e.g.
 \code{foceif}) default this to \code{TRUE}.}
+
+\item{outerCombine}{When \code{TRUE} (the default) a \code{fast=TRUE} fit
+carries the outer-gradient sensitivities on the inner model itself, so
+one solve pool model serves the inner problem, the analytic outer
+gradient and the analytic outer Hessian with no peer-model swapping.
+\code{FALSE} compiles and solves the separate augmented outer model.}
 
 \item{priorMethod}{Which of the shared prior kernel's three omega
 conventions (nlmixr2/rxode2#1270) to evaluate an \code{ini({})}

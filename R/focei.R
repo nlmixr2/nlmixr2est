@@ -2099,6 +2099,81 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
   .s
 }
 
+#' Does the installed rxode2 support solving the leading block of a model?
+#' @return logical
+#' @noRd
+.rxode2DydtCompact <- function() {
+  .f <- get0("rxDydtCompact", envir = asNamespace("rxode2"), mode = "function", inherits = FALSE)
+  !is.null(.f) && isTRUE(tryCatch(.f(), error = function(e) FALSE))
+}
+
+#' Carry the outer-gradient sensitivities on the inner model itself
+#'
+#' `fast=TRUE`: the augmented outer model (`rxUiGet.foceiOuter`) is the inner
+#' model plus second-order (and non-mu theta) sensitivity states and the
+#' `rx_f1_`/`rx_f2_`/`rx_rvar*`/`rx_rsig*` output columns.  Appending those
+#' lines to the inner model makes it ONE compiled model in the solve pool: the
+#' inner solve at eta-hat already holds every column the outer gradient and
+#' Hessian read, so they never swap a peer model in (odeSwap) or re-solve.
+#' Same pattern as the combined eta+theta build (#958).  No-op unless the
+#' analytic gradient is in scope; `.s$..outerLines`/`.s$..outerMeta` are read
+#' by `.rxFinalizeInner()` and `.innerInternal()`.
+#' @noRd
+.foceiMaybeAddOuterLines <- function(x, .s) {
+  .ui <- x[[1]]
+  .s$..outerLines <- NULL
+  .s$..outerMeta <- NULL
+  if (!identical(.analyticGradCaller(.ui), "focei")) return(.s)
+  if (!isTRUE(rxode2::rxGetControl(.ui, "outerCombine", TRUE))) return(.s)
+  # the inner solves of the combined model are compacted to the inner block, which
+  # needs an rxode2 whose generated code honors the compacted width
+  if (!.rxode2DydtCompact()) return(.s)
+  # the outer model is always a "jump" build; a different inner mode cannot share it
+  if (!identical(rxode2::rxGetControl(.ui, "eventSens", "jump"), "jump")) return(.s)
+  if (isTRUE(rxode2::rxGetControl(.ui, "combSens", FALSE))) return(.s)
+  if (isTRUE(.s$..matExpNative)) return(.s)
+  # ll()/generalized endpoints keep the separate outer model (a different column set)
+  if (.foceiLLGradInScope(.ui)) return(.s)
+  .dir <- tryCatch(.foceiOuterDirs(.ui), error = function(e) NULL)
+  if (is.null(.dir)) return(.s)
+  .p <- tryCatch(.foceiAnalyticAugModelDirs(.ui, .dir$dirs, pieces = TRUE), error = function(e) NULL)
+  if (is.null(.p)) return(.s)
+  # what the inner model already declares; the augmented build re-emits the base
+  # ODEs, the eta sensitivities, dosing modifiers and state ICs
+  .have <- c(.s$..ddt, .s$..sens, .s$..pastLines)
+  .have <- unlist(strsplit(as.character(.have), "\n"))
+  .lhsOf <- function(.l) trimws(sub("=.*$", "", sub("<-.*$", "", .l)))
+  .haveLhs <- .lhsOf(.have)
+  .new <- function(.l) .l[!(.lhsOf(.l) %in% .haveLhs)]
+  # DDE pre-history lines cannot sit inside the switch block; keep the separate model
+  if (length(.p$past) > 0L && any(nzchar(.p$past))) return(.s)
+  # The outer block is switched by the rx_outer_ parameter (1 on a full-width
+  # solve, 0 on a compacted inner iteration), so a compacted solve neither
+  # integrates nor evaluates the second-order lines; the state ICs stay outside.
+  .blk <- c(.new(.p$ode), .p$lhs)
+  if (isTRUE(rxode2::rxGetControl(.ui, "optExpression", TRUE))) {
+    .opt <- tryCatch(rxode2::rxOptExpr(paste(.blk, collapse = "\n"), "FOCEi outer block",
+                                       parallel = .optExprCores(.ui)),
+                     error = function(e) NULL)
+    # rxOptExpr numbers its temporaries from 0 in every call; keep the block's
+    # apart from the inner model's
+    if (!is.null(.opt)) .blk <- gsub("\\brx_expr_([0-9]+)\\b", "rx_oexpr_\\1", strsplit(.opt, "\n", fixed = TRUE)[[1]])
+  }
+  .s$..outerLines <- c("if (rx_outer_ == 1) {", .blk, "}", .new(.p$ic))
+  .s$..outerMeta <- .p[setdiff(names(.p), c("ode", "ic", "past", "lhs"))]
+  # The compacted width: the inner model's states plus EVERY first-order
+  # sensitivity state the outer block adds (a non-mu theta direction).  rxode2's
+  # event ("jump") sensitivities key on the whole first-order block being present
+  # (ns*(1+np) <= neq), so a compacted solve that cut into it would lose the
+  # dosing jumps of the inner problem itself.  The block is a prefix of the state
+  # order: the outer lines emit first-order states before second-order ones.
+  .stateOf <- function(.l) sub("^d/dt\\(([^)]+)\\).*$", "\\1", grep("^d/dt\\(", .l, value = TRUE))
+  .first <- .stateOf(.lhsOf(.new(.p$ode)))
+  .first <- .first[!grepl("_BY_.*_BY_", .first)]
+  .s$..innerNeq <- length(unique(.stateOf(.haveLhs))) + length(unique(.first))
+  .s
+}
+
 #' Add the second-order eta expansion ([.foceiAddHdEta2]) to an inner-model symengine env
 #' when the fit is a `fast=TRUE` log-likelihood / generalized endpoint, so the inner model
 #' carries `d2(logLik)/deta2` (`rx__d2pred_i_j__`) and `calcEtaHessian` assembles the exact
@@ -2416,6 +2491,17 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
       ))
     }
   }
+  # Outer-gradient sensitivities carried on the inner model (fast=TRUE, see
+  # .foceiMaybeAddOuterLines).  Spliced in AFTER the optimization pass: the block
+  # arrives already optimized under its own temporaries, and rxOptExpr() emits an
+  # `if` block in a form the parser does not take back.  It goes before the
+  # endpoint cmt()/dvid() lines so the endpoint keeps its number after every
+  # state; the FOCEi block above is read arithmetically and these columns by name.
+  if (!is.null(.s$..outerLines)) {
+    .l <- strsplit(.s$..inner, "\n", fixed = TRUE)[[1]]
+    .tail <- grepl("^\\s*(cmt|dvid)\\(", .l)
+    .s$..inner <- paste(c(.l[!.tail], .s$..outerLines, .l[.tail], ""), collapse = "\n")
+  }
 }
 
 #' Generate the `rx__sens_rx_r__BY_ETA_n___` (d(R)/d(eta)) model lines
@@ -2525,6 +2611,7 @@ rxUiGet.foceiEnv <- function(x, ...) {
   # the ordinary inner model is untouched; the model cache keys on `fast`
   # (rxUiGet.foceiModelDigest) so a fast and a non-fast fit get distinct model bundles.
   .s <- .foceiMaybeAddHdEta2(x, .s)
+  .s <- .foceiMaybeAddOuterLines(x, .s)
   .sumProd <- rxode2::rxGetControl(x[[1]], "sumProd", FALSE)
   .optExpression <- rxode2::rxGetControl(x[[1]], "optExpression", TRUE)
   .cores <- .optExprCores(x[[1]])
@@ -2550,6 +2637,7 @@ rxUiGet.foceEnv <- function(x, ...) {
     character(0)
   }
   .s <- .foceiMaybeAddHdEta2(x, .s) # ll()/generalized (interaction=0) fast fits route through foce
+  .s <- .foceiMaybeAddOuterLines(x, .s)
   ## FOCE leaves rx_r_ untouched (a clean single-linCmt inner model with correct
   ## d(f)/d(eta)) for both `foce` modes; the choice of R happens at runtime in C++
   ## (likInner0), not by rewriting the model here.  `foce = "nonmem"` freezes R at
@@ -2752,6 +2840,11 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
   # disappear from the inner/pred/outer models and the variable is undefined.
   .cmt <- .addPreModelLines(.cmt, ui$interpLinesStr, .mtimeLinesStr(s))
   .paramStr <- .uiGetThetaEtaParams(ui, TRUE)
+  if (!is.null(s$..outerMeta)) {
+    # the combined build's outer-block switch; declared LAST so every peer's
+    # positional theta/eta/covariate layout is unchanged
+    .paramStr <- if (grepl("\\(\\s*\\)$", .paramStr)) sub("\\(\\s*\\)$", "(rx_outer_)", .paramStr) else sub("\\)$", ", rx_outer_)", .paramStr)
+  }
   if (.getRxPredLlikOption()) {
     # DV is not an ordinary covariate (rxode2's etTran.cpp excludes any
     # "dv"-named column from covariate matching -- see CLAUDE.md), and a
@@ -2919,7 +3012,10 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
   # Augmented outer-gradient model (fast=TRUE): built here, once, with the compiled
   # rxode2 model at top level (`outer`) so rxUiGet.foceiModel's rxLoad reloads
   # it; the direction metadata travels separately in `outerMeta`.
-  .outerAm <- tryCatch(rxUiGet.foceiOuter(list(ui)), error = function(e) NULL)
+  # Combined build (.foceiMaybeAddOuterLines): the inner model IS the outer model.
+  .outerComb <- !is.null(s$..outerMeta) && !is.null(inner)
+  .outerAm <- if (.outerComb) c(list(augMod = inner), s$..outerMeta) else
+    tryCatch(rxUiGet.foceiOuter(list(ui)), error = function(e) NULL)
   # AGQ (nAGQ>1) only: the 1st-order model the nodes solve on, built here so it rides in the
   # disk cache next to `outer` rather than re-paying the symengine+gcc pass each session.
   .nodeAm <- tryCatch(rxUiGet.foceiOuterNode(list(ui)), error = function(e) NULL)
@@ -2951,6 +3047,10 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
     # solve/assembly needs fDirs/P2r/hasRvar/sigTh/hasTrans/cols/cores too -- a
     # subset breaks the live gradient (E$R/E$aR never filled)
     outerMeta = if (is.null(.outerAm)) NULL else .outerAm[setdiff(names(.outerAm), "augMod")],
+    # TRUE when `outer` is the inner model itself (its columns ride on the inner solve)
+    outerComb = .outerComb,
+    # the inner problem's state count within that model (0 when not combined)
+    innerNeq = if (.outerComb) as.integer(s$..innerNeq) else 0L,
     # May the augmented outer model be POOLED (size the shared solve and run
     # through vaeOuterSolve_)?  Data flag only -- consumed by foceiFitCpp_.
     #
@@ -3194,7 +3294,9 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
   ## sensitivity model in "fd" mode -- silently zeroing the dosing-parameter
   ## sensitivities.  Version 2: .foceiModelCacheDeflate() stores eventSens.
   ## Version 3: the bundle gained eventEtaAll (#1016), which a v2 entry lacks.
-  .cacheFormat <- 3L
+  ## Version 4: fast=TRUE carries the outer sensitivities on the inner model
+  ## (outerComb); a v3 inner model lacks those columns.
+  .cacheFormat <- 4L
   .innerHessian <- rxode2::rxGetControl(.ui, "innerHessian", "focei")
   digest::digest(c(
     if (.innerHessian == "conditional") "conditionalInner1",
@@ -3203,6 +3305,7 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
     .iniDf$name,
     .sumProd, .optExpression, .predMinusDv,
     .eventSens, .sensMethod, .rxMethod, .fast, .foceType, .agqNodes,
+    rxode2::rxGetControl(.ui, "outerCombine", TRUE), .rxode2DydtCompact(),
     .constCovs, Sys.getenv("FOCEI_NO_SIGMA_SKIP"),
     rxode2::rxGetControl(.ui, "addProp", getOption("rxode2.addProp", "combined2")),
     .ui$lstExpr

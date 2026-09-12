@@ -661,6 +661,8 @@
   pars <- data.frame(ID = ids)
   for (k in seq_len(neta)) pars[[etav[k]]] <- ebes[, k]
   for (.nm in names(thv)) pars[[.nm]] <- thv[[.nm]]
+  # the combined build's outer-block switch: a standalone solve wants the full width
+  if ("rx_outer_" %in% rxode2::rxModelVars(am$augMod)$params) pars[["rx_outer_"]] <- 1
   .ev <- .foceiAnalyticEvents(am, data)                    # reuse the pre-translated event table
   .nc <- if (is.null(am$cores)) 0L else am$cores           # fit's rxControl thread count (parallel)
   # DDE: force pure dop853 (dense, no Jacobian) -- its 8th-order dense history reproduces the

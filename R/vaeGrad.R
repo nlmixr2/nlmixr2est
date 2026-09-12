@@ -44,7 +44,10 @@
   .o <- list(predf = .predf, f1 = .f1, f2 = .f2,
              iiF = as.integer(.cm$iiF - 1L), jjF = as.integer(.cm$jjF - 1L),
              fDirIdx = as.integer(.cm$fDirIdx - 1L),
-             nd = length(.dirs), hasR = .hasR, hasT = .hasT)
+             nd = length(.dirs), hasR = .hasR, hasT = .hasT,
+             # the names behind the indices, so C++ can re-resolve them against
+             # whichever compile of these columns is registered (colsFromList)
+             lhsNames = .lhs)
   if (.hasR) {
     .rvarf <- .ix("rx_rvarf_"); .rvar1 <- .ix(.cm$rvar1); .rvar2 <- .ix(.cm$rvar2)
     if (is.null(.rvarf) || is.null(.rvar1) || is.null(.rvar2)) return(NULL)

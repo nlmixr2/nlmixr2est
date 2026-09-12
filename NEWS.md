@@ -91,6 +91,22 @@
 - Added a native analytical outer Hessian for fast Gaussian FOCE/FOCE+/FOCEI/AGQ fits, using
   the existing sensitivity pool. Fast `nlminb` fits used it automatically.
 
+- A `fast=TRUE` fit now carries the outer-gradient sensitivities on the inner
+  model itself (`foceiControl(outerCombine=TRUE)`, the default), the way the
+  combined eta+theta build does for `impmap`.  The solve pool then holds ONE
+  model and nothing is swapped during a fit: the inner iterations integrate only
+  the inner block of it (`ind->neqOverride`, the outer block switched off by
+  the `rx_outer_` model parameter), the derivative passes run one full-width
+  solve per subject at the EBEs, and the analytic outer gradient and the outer
+  Hessian's base solve read that solve instead of solving the augmented outer
+  model themselves.  A plain objective evaluation is the same function
+  `fast=FALSE` evaluates.  Needs an rxode2 whose generated code
+  honors a compacted state count (`rxode2::rxDydtCompact()`); an older rxode2
+  keeps the separate outer model.  `fit$env$outerComb` reports the build,
+  `nInnerSolveCompact`/`nInnerSolveFull` and `nOuterSolveReused`/
+  `nOuterSolveRun` count the solves.  `outerCombine=FALSE` keeps the separate
+  outer model.
+
 - Added optional full conditional inner curvature for fast Gaussian FOCEI via
   `innerHessian="conditional"`, used by inner trust and n1qn1's `warm="calc"`
   seed. The FOCEI marginal objective was unchanged.

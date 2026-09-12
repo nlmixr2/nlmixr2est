@@ -546,6 +546,19 @@ struct focei_options {
   // difference.  "Relaxation saved it" and "it was finite-differenced" are different
   // outcomes that otherwise both look like silence.
   int nOuterSolveRelaxed = 0;
+  // Combined build (model$outerComb): the inner model carries the outer sensitivity
+  // columns, so an outer solve at a subject's cached inner point is a read, not a solve.
+  bool outerComb = false;
+  // The inner problem's own state count in the combined model.  Inner solves
+  // are compacted to it (ind->neqOverride); only the objective's final solve at
+  // eta-hat runs the outer block, and that is the solve the outer derivatives read.
+  int combInnerNeq = 0;
+  int combOuterFlag = -1;      // par_ptr slot of rx_outer_, the outer-block switch (-1: none)
+  int outerDerivPass = 0;      // set while the outer Hessian settles the inner problem
+  std::atomic<int> nInnerSolveCompact{0};  // inner solves integrated at combInnerNeq
+  std::atomic<int> nInnerSolveFull{0};     // inner solves integrated at full width
+  std::atomic<int> nOuterSolveReused{0};   // outer solves answered from the inner solve
+  std::atomic<int> nOuterSolveRun{0};      // outer solves that had to integrate
   // Per-subject ANALYTIC slopes for the subjects that DID solve, full-theta indexed, row
   // per solved subject.  This is the reference distribution the FD outlier pass tests
   // against: judging the finite-differenced subjects only against each other would let a
@@ -1225,6 +1238,9 @@ struct focei_ind {
   // F and varaibility
   unsigned int nobs;
   unsigned int setup;
+  // Combined build: was the solve ind->solve holds compacted to the inner block?
+  // The eta*-unchanged short-circuit has to read it back at the same stride.
+  int solveCompact;
 
   double *saveEta; // Saved when lik[0] is saved.
   double *oldEta;
@@ -1363,6 +1379,18 @@ static inline int foceiIndSetupN(rx_solve* rxl) {
 // and only read inside that region, so no locking is needed.
 static std::vector<arma::vec> _foceRPopCache;
 static std::vector<long> _foceRPopGen;
+// Combined build (op_focei.outerComb): which point each subject's ind->solve holds.
+// likInner0 records the eta and theta generation of every inner solve it runs; an
+// outer solve asked for at that same point is then a read of ind->solve, not a solve.
+// Anything else that writes ind->solve for a subject marks the entry stale.
+static std::vector<long> _innerSolveGen;      // _foceRPopCurGen at the solve, -1 = stale
+static std::vector<double> _innerSolveEta;    // [nsub x neta] eta of that solve
+static inline void innerSolveMarkStale(int id) {
+  if (id >= 0 && id < (int)_innerSolveGen.size()) _innerSolveGen[(size_t)id] = -1L;
+}
+static inline void innerSolveMarkAll() {
+  std::fill(_innerSolveGen.begin(), _innerSolveGen.end(), -1L);
+}
 static long _foceRPopCurGen = 0;
 
 // Parameter table
@@ -2720,6 +2748,47 @@ static inline double focei_tCensDll(bool lhsOk, int dist, int cens, double dv,
   return dCensNormal1((double)cens, dv, limit, dll, fT, r, df, dr);
 }
 
+// Does the installed rxode2 generate a dydt that writes only the first _neq[0]
+// derivatives and reads no state beyond them?  Without that, compacting a model
+// against its own wider code overruns the integrator's buffers.
+static bool rxode2DydtHonorsNeq() {
+  static int cached = -1;
+  if (cached < 0) {
+    cached = 0;
+    try {
+      Environment rx = Environment::namespace_env("rxode2");
+      if (rx.exists("rxDydtCompact")) {
+        Function f = as<Function>(rx["rxDydtCompact"]);
+        cached = as<bool>(f()) ? 1 : 0;
+      }
+    } catch (...) { cached = 0; }
+  }
+  return cached == 1;
+}
+
+// Combined build: the objective's final evaluation at eta-hat (LikInner2, likId 0)
+// asks likInner0 for a FULL-width solve, so the outer block is integrated exactly
+// once per subject per objective and the outer derivatives can read it.  Every
+// other inner solve is compacted to the inner block.  thread_local: LikInner2 runs
+// inside the per-subject parallel loop.
+static thread_local int _innerWantFull = 0;
+struct InnerWantFullScope {
+  int prev;
+  explicit InnerWantFullScope(int want) : prev(_innerWantFull) { _innerWantFull = want; }
+  ~InnerWantFullScope() { _innerWantFull = prev; }
+};
+// Compact one subject's solve AND the reads of it to `neq` states for a scope.
+struct InnerCompactScope {
+  rx_solving_options_ind *ind; int saved; bool armed;
+  InnerCompactScope(rx_solving_options_ind *i, int neq) : ind(i), saved(-1), armed(false) {
+    if (ind == NULL || neq <= 0) return;
+    saved = getIndNeqOverride(ind);
+    setIndNeqOverride(ind, neq);
+    armed = true;
+  }
+  ~InnerCompactScope() { if (armed) setIndNeqOverride(ind, saved); }
+};
+
 double likInner0(double *eta, int id) {
   rx = getRxSolve_();
   rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
@@ -2748,6 +2817,15 @@ double likInner0(double *eta, int id) {
   // freezeOde: force the density recompute (with the current residual params) but
   // reuse the states already in ind->solve -- see the guarded solve below.
   if (op_focei.freezeOde) recalc = true;
+  // Combined build: which width does THIS call run at?  A full solve is wanted
+  // (and a compact cache must not satisfy it); otherwise a re-solve is compact and
+  // a cache hit is read at the width it was solved at.
+  const bool canCompact = op_focei.outerComb && op_focei.combInnerNeq > 0 &&
+    !op_focei.freezeOde && fInd->doFD == 0;
+  if (canCompact && _innerWantFull && !recalc && fInd->solveCompact) recalc = true;
+  const bool compactSolve = canCompact && (recalc ? !_innerWantFull : fInd->solveCompact != 0);
+  InnerCompactScope _compact(ind, compactSolve ? op_focei.combInnerNeq : -1);
+  if (op_focei.combOuterFlag >= 0) setIndParPtr(ind, op_focei.combOuterFlag, compactSolve ? 0.0 : 1.0);
   arma::vec rPopVec;  // FOCE: per-obs eta=0 population R (empty for FOCEI)
   if (recalc){
     if (op_focei.mixIdxN != 0) {
@@ -2823,6 +2901,17 @@ double likInner0(double *eta, int id) {
     // sized the pool.  Strides are untouched; only the scan bound changes.
     bool isBadSolve = odeSwapIndBadSolveSlot(op, ind,
                                              predSolve ? odeSlotPred : odeSlotInner);
+    if (op_focei.outerComb && id < (int)_innerSolveGen.size()) {
+      fInd->solveCompact = compactSolve ? 1 : 0;
+      if (compactSolve) op_focei.nInnerSolveCompact.fetch_add(1, std::memory_order_relaxed);
+      else op_focei.nInnerSolveFull.fetch_add(1, std::memory_order_relaxed);
+      // only a full-width solve can answer an outer read
+      if (isBadSolve || predSolve || op_focei.freezeOde || compactSolve) innerSolveMarkStale(id);
+      else {
+        _innerSolveGen[(size_t)id] = _foceRPopCurGen;
+        std::copy(eta, eta + op_focei.neta, &_innerSolveEta[(size_t)id * (size_t)op_focei.neta]);
+      }
+    }
     if (isBadSolve){
       return NA_REAL;
       //throw std::runtime_error("bad solve");
@@ -3457,6 +3546,7 @@ static bool calcModelEtaHessian(double *eta, int id, focei_ind *fInd,
   // for this subject to re-solve the inner model (do not let the eta*-unchanged short-circuit
   // read the rxHess2 buffer as the inner solve) -- mirrors impThetaSensCollect.
   fInd->setup = 0;
+  innerSolveMarkStale(id);
   OdeSwapScope _h2Guard(odeSlotHess2, ind, op);
   for (int j = 0; j < ne; ++j) setIndParPtr(ind, op_focei.etaTrans[j], eta[j]);
   setIndSolve(ind, -1);
@@ -3837,7 +3927,14 @@ double LikInner2(double *eta, int likId, int id) {
     lik = fInd->llik;
   } else {
     // print(wrap(op_focei.logDetOmegaInv5));
-    lik = -likInner0(eta, id);
+    {
+      // Full width only when an outer derivative is about to read this solve: the
+      // gradient's own re-optimization pass (calcGrad) and the Hessian's.  A plain
+      // objective evaluation stays compact, so its value is the same function
+      // fast=FALSE evaluates.
+      InnerWantFullScope _full((likId == 0 && (op_focei.calcGrad || op_focei.outerDerivPass)) ? 1 : 0);
+      lik = -likInner0(eta, id);
+    }
     // print(wrap(lik));
     rx = getRxSolve_();
     rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
@@ -7166,27 +7263,44 @@ static bool outerColsWithin(const OuterCols &C, int nlhs) {
 
 // Flatten an R lhs column map into the POD.  Shared by the per-fit cache below and by
 // vaeOuterSolve_, which still receives its map from R.
-static void colsFromList(List cols, OuterCols &C) {
+static void colsFromList(List cols, OuterCols &C, int slot = -1) {
+  // The map was resolved in R against the model it was built from.  When the
+  // registered model is a different compile of the same columns (the combined
+  // build registers the inner model as the outer), re-resolve every index by NAME
+  // against the registry; a name it lacks becomes -1, which outerColsWithin rejects.
+  std::vector<std::string> nm;
+  if (slot >= 0 && odeSwapLoaded(slot) && cols.containsElementNamed("lhsNames")) {
+    CharacterVector _n = as<CharacterVector>(cols["lhsNames"]);
+    bool same = _n.size() == odeSwapNlhs(slot);
+    for (int i = 0; same && i < _n.size(); ++i)
+      same = odeSwapLhsIndex(slot, as<std::string>(_n[i]).c_str()) == i;
+    if (!same) for (int i = 0; i < _n.size(); ++i) nm.push_back(as<std::string>(_n[i]));
+  }
+  auto remap = [&](int i) -> int {
+    if (nm.empty() || i < 0) return i;
+    return i < (int)nm.size() ? odeSwapLhsIndex(slot, nm[(size_t)i].c_str()) : -1;
+  };
+  auto remapV = [&](std::vector<int> v) { for (auto &i : v) i = remap(i); return v; };
   C.nd = as<int>(cols["nd"]);
   C.hasR = as<bool>(cols["hasR"]); C.hasT = as<bool>(cols["hasT"]);
-  C.predf = as<int>(cols["predf"]);
-  C.f1 = _ivFrom(cols["f1"]); C.f2 = _ivFrom(cols["f2"]);
+  C.predf = remap(as<int>(cols["predf"]));
+  C.f1 = remapV(_ivFrom(cols["f1"])); C.f2 = remapV(_ivFrom(cols["f2"]));
   C.iiF = _ivFrom(cols["iiF"]); C.jjF = _ivFrom(cols["jjF"]);
   C.fDirIdx = _ivFrom(cols["fDirIdx"]);
   if (C.hasR) {
-    C.rvarf = as<int>(cols["rvarf"]);
-    C.rvar1 = _ivFrom(cols["rvar1"]); C.rvar2 = _ivFrom(cols["rvar2"]);
+    C.rvarf = remap(as<int>(cols["rvarf"]));
+    C.rvar1 = remapV(_ivFrom(cols["rvar1"])); C.rvar2 = remapV(_ivFrom(cols["rvar2"]));
     C.ii = _ivFrom(cols["ii"]); C.jj = _ivFrom(cols["jj"]);
-    C.rsig = _ivFrom(cols["rsig"]); C.rsig2 = _ivFrom(cols["rsig2"]);
+    C.rsig = remapV(_ivFrom(cols["rsig"])); C.rsig2 = remapV(_ivFrom(cols["rsig2"]));
     C.sigA = _ivFrom(cols["sigA"]); C.sigB = _ivFrom(cols["sigB"]);
     C.nsig = (int)C.rsig.size();
     if (cols.containsElementNamed("rsig1")) {
       List r1 = as<List>(cols["rsig1"]);
       C.rsig1.resize((size_t)r1.size());
-      for (int t = 0; t < r1.size(); ++t) C.rsig1[(size_t)t] = _ivFrom(r1[t]);
+      for (int t = 0; t < r1.size(); ++t) C.rsig1[(size_t)t] = remapV(_ivFrom(r1[t]));
     }
   }
-  if (C.hasT) C.tr = _ivFrom(cols["trans"]);
+  if (C.hasT) C.tr = remapV(_ivFrom(cols["trans"]));
 }
 
 // Read the per-fit setup from the list .foceiGradPooledSetup() builds.  Split out of the
@@ -7203,7 +7317,7 @@ static void loadGradPooledSetupList(List st) {
   G.nLam = as<int>(st["nLam"]); G.censOpt = as<int>(st["censOpt"]);
   G.dirTh = _ivFrom(st["dirTh"]); G.sigCol = _ivFrom(st["sigCol"]);
   G.lamDir = _ivFrom(st["lamDir"]);
-  colsFromList(cols, G);
+  colsFromList(cols, G, odeSlotOuter);
   // Shape.  Absent fields keep the struct's FOCEI defaults, so an older setup list still
   // loads as the FOCEI shape it described.
   if (st.containsElementNamed("isLL"))       G.isLL = as<bool>(st["isLL"]);
@@ -7223,7 +7337,7 @@ static void loadGradPooledSetupList(List st) {
   if (st.containsElementNamed("thPos"))      G.thPos = _ivFrom(st["thPos"]);
   if (st.containsElementNamed("gMap"))       G.gMap  = _ivFrom(st["gMap"]);
   if (st.containsElementNamed("colsNode") && !Rf_isNull(st["colsNode"])) {
-    colsFromList(as<List>(st["colsNode"]), G.colsNode);
+    colsFromList(as<List>(st["colsNode"]), G.colsNode, odeSlotOuterNode);
     G.hasNode = true;
   }
   // The (f,R) kernels contract a variance model; an ll() endpoint has none, because its
@@ -7986,6 +8100,8 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
   _foceRPopCache.assign(getRxNsubAndMix(rx), arma::vec());
   _foceRPopGen.assign(getRxNsubAndMix(rx), -1L);
   _foceRPopCurGen = 0;
+  _innerSolveGen.assign(getRxNsubAndMix(rx), -1L);
+  _innerSolveEta.assign((size_t)getRxNsubAndMix(rx) * (size_t)op_focei.neta, 0.0);
   RObject etaMat0s = transpose(etaMat0);
   double *etaMat0d = REAL(etaMat0s);
   {
@@ -8879,6 +8995,24 @@ NumericVector foceiSetup_(const RObject &obj,
         p2[n0 + (int)q] = params[addFrom[q]];
         n2[n0 + (int)q] = addNm[q];
       }
+      params = p2; paramsNames = n2;
+    }
+  }
+  // Combined build: the inner model's outer-block switch rx_outer_ is a model
+  // parameter, so the pool needs a column for it (1 = full width; per-subject
+  // solves set it before integrating).
+  if (!Rf_isNull(obj)) {
+    CharacterVector _op = as<CharacterVector>(as<List>(rxode2::rxModelVars_(RObject(obj)))["params"]);
+    bool _has = false, _have = false;
+    for (int q = 0; q < _op.size(); ++q) if (as<std::string>(_op[q]) == "rx_outer_") _has = true;
+    for (int q = 0; q < paramsNames.size(); ++q) if (as<std::string>(paramsNames[q]) == "rx_outer_") _have = true;
+    if (_has && !_have) {
+      int n0 = params.size();
+      List p2(n0 + 1);
+      CharacterVector n2(n0 + 1);
+      for (int q = 0; q < n0; ++q) { p2[q] = params[q]; n2[q] = paramsNames[q]; }
+      p2[n0] = NumericVector(expected_nsub, 1.0);
+      n2[n0] = "rx_outer_";
       params = p2; paramsNames = n2;
     }
   }
@@ -9909,6 +10043,10 @@ Environment foceiOuter(Environment e){
   op_focei.nDeclineOther=0;
   op_focei.nOuterFdInd=0;
   op_focei.nOuterSolveRelaxed=0;
+  op_focei.nOuterSolveReused.store(0, std::memory_order_relaxed);
+  op_focei.nOuterSolveRun.store(0, std::memory_order_relaxed);
+  op_focei.nInnerSolveCompact.store(0, std::memory_order_relaxed);
+  op_focei.nInnerSolveFull.store(0, std::memory_order_relaxed);
   op_focei.outerFdIds.clear();
   op_focei.outerFdStep.clear();
   op_focei.outerFdStepIds.clear();
@@ -12729,6 +12867,12 @@ void foceiFinalizeTables(Environment e){
         // nAnalyticGradDirect == 0 shows, and the two used to be indistinguishable.
         e["nOuterFdInd"] = IntegerVector::create(op_focei.nOuterFdInd);
         e["nOuterSolveRelaxed"] = IntegerVector::create(op_focei.nOuterSolveRelaxed);
+        e["outerComb"] = LogicalVector::create(op_focei.outerComb);
+        e["nOuterSolveReused"] = IntegerVector::create(op_focei.nOuterSolveReused.load());
+        e["nOuterSolveRun"] = IntegerVector::create(op_focei.nOuterSolveRun.load());
+        e["combInnerNeq"] = IntegerVector::create(op_focei.combInnerNeq);
+        e["nInnerSolveCompact"] = IntegerVector::create(op_focei.nInnerSolveCompact.load());
+        e["nInnerSolveFull"] = IntegerVector::create(op_focei.nInnerSolveFull.load());
         e["nGradDecline"] = IntegerVector::create(
           _["newton"] = op_focei.nDeclineNewton,
           _["e0"] = op_focei.nDeclineE0,
@@ -13993,6 +14137,21 @@ Environment foceiFitCpp_(Environment e){
         odeSwapRegister(odeSlotOuter, "outer", model["outer"], &rxVaeOuter);
         op_focei.vaeOuterNeq = odeSwapNeq(odeSlotOuter);
         op_focei.vaeOuterNlhs = odeSwapNlhs(odeSlotOuter);
+        // AFTER foceiSetup_ (which resets op_focei): the combined build's outer IS
+        // the inner model, and only then may an outer solve read the inner's cache.
+        op_focei.outerComb = model.containsElementNamed("outerComb") &&
+          as<bool>(model["outerComb"]) && odeSwapSameModel(odeSlotOuter, odeSlotInner);
+        op_focei.combInnerNeq = 0;
+        op_focei.combOuterFlag = -1;
+        if (op_focei.outerComb) {
+          CharacterVector _pn = as<CharacterVector>(as<List>(rxode2::rxModelVars_(RObject(model["outer"])))["params"]);
+          for (int q = 0; q < _pn.size(); ++q) if (as<std::string>(_pn[q]) == "rx_outer_") op_focei.combOuterFlag = q;
+        }
+        if (op_focei.outerComb && model.containsElementNamed("innerNeq")) {
+          int _n = as<int>(model["innerNeq"]);
+          // compaction needs an rxode2 whose generated dydt honors _neq[0]
+          if (_n > 0 && _n < odeSwapNeq(odeSlotInner) && rxode2DydtHonorsNeq()) op_focei.combInnerNeq = _n;
+        }
         // The AGQ node model was DECLARED above (metadata only, so odeSwapPlan could
         // size the pool for it) but never bound.  Binding has to wait until here: a
         // sensitivity model rxDynLoad-ed before rxSolve_ builds the pool rebinds
@@ -16733,11 +16892,29 @@ static NumericMatrix foceiOuterFdIndCore(IntegerVector ids0, NumericMatrix analy
 // FOCE eta=0 solve is the same with a zero `ebes`; the AGQ node solve is
 // (odeSlotOuterNode, &rxOuterNode, G.colsNode).  2nd-order blocks are allocated and read
 // only when the map has those columns, so an order-1 model costs neither.
+// Combined build: is this subject's cached inner solve already the outer solve at
+// (theta, eta)?  The inner model carries the outer columns, so likInner0's last solve
+// at that point is the answer and nothing has to be integrated or swapped.
+static inline bool outerSolveCached(int id, rx_solving_options_ind *ind,
+                                    const std::vector<double> &thVals, const arma::mat &ebes, int neta) {
+  if (!op_focei.outerComb || id < 0 || id >= (int)_innerSolveGen.size()) return false;
+  if (_innerSolveGen[(size_t)id] != _foceRPopCurGen) return false;
+  // the solve is at op_focei.fullTheta (updateTheta bumps the generation), so the
+  // requested theta has to be that one too
+  for (int t = 0; t < (int)op_focei.ntheta && t < (int)thVals.size(); ++t)
+    if (thVals[(size_t)t] != op_focei.fullTheta[t]) return false;
+  const double *se = &_innerSolveEta[(size_t)id * (size_t)neta];
+  for (int j = 0; j < neta; ++j) if (se[j] != ebes(id, j)) return false;
+  double *solve = getIndSolve(ind);
+  return solve != NULL && !ISNA(solve[0]);
+}
+
 static void outerSolveFill(int slot, rxSolveF *fns,
                            const std::vector<double> &thVals, const arma::mat &ebes,
                            const OuterCols &C,
                            int cores, rx_solving_options *op, int nsub, int neta,
-                           std::vector<VaeOuterE> &Es, int subject = -1) {
+                           std::vector<VaeOuterE> &Es, int subject = -1,
+                           bool reuseInner = false) {
   // The column map comes from the per-fit POD, so no SEXP is touched here -- that is
   // what lets the outer gradient run without any R interaction per iteration.
   const int nd = C.nd, predf = C.predf, rvarf = C.rvarf, nsig = C.nsig;
@@ -16786,8 +16963,13 @@ static void outerSolveFill(int slot, rxSolveF *fns,
       setIndParPtr(ind, op_focei.thetaTrans[t], thVals[(size_t)t]);
     for (int j = 0; j < neta; ++j)
       setIndParPtr(ind, op_focei.etaTrans[j], ebes(id, j));
+    if (op_focei.combOuterFlag >= 0 && slot == odeSlotOuter) setIndParPtr(ind, op_focei.combOuterFlag, 1.0);
     // the pool is sized for THIS model; the inner MAP's neqOverride must not apply
     OdeSwapScope neqGuard(slot, ind, op);
+    const bool cached = reuseInner && slot == odeSlotOuter &&
+      outerSolveCached(id, ind, thVals, ebes, neta);
+    if (cached) op_focei.nOuterSolveReused.fetch_add(1, std::memory_order_relaxed);
+    else { op_focei.nOuterSolveRun.fetch_add(1, std::memory_order_relaxed); innerSolveMarkStale(id); }
     // Two things have to hold before this subject is solved, and BOTH are needed:
     //   1. the eta installed above is the BEST eta the inner problem found (what
     //      the caller passes in `ebes`), not whatever eta its optimiser happened
@@ -16799,6 +16981,14 @@ static void outerSolveFill(int slot, rxSolveF *fns,
     //      nothing, since the solve is cached.
     // Every other solve site here already resets (likInner0, shi21ThetaGeneral,
     // getPopR); this one did not.
+    if (cached) {
+      // No solve, but the subject still has to be bound to THIS thread before its
+      // lhs slice is taken below: ind->lhs still points at the slice of whichever
+      // inner-loop thread solved it, and two subjects from one inner thread read on
+      // two outer threads would otherwise write the same slice (measured: run-to-run
+      // gradient drift under cores > 1).  inLhs = 1 leaves ind->solve alone.
+      iniSubjectE(_rxId, 1, ind, op, rx, fns->update_inis);
+    } else {
     setIndSolve(ind, -1);
     iniSubjectE(_rxId, 1, ind, op, rx, fns->update_inis);
     // Loosen THIS subject's tolerance and retry rather than failing it straight
@@ -16812,6 +17002,7 @@ static void outerSolveFill(int slot, rxSolveF *fns,
         op_focei.outerStickyRecalcN2Per[(size_t)id] : _outerRetryScratch;
       odeSwapSolveRetry(op, ind, _perN, [&]{ odeSwapSolveInd(slot, _rxId); },
                         foceiOuterRetryOpts(), _ohk);
+    }
     }
     double *solve0 = getIndSolve(ind);
     // Count the observations BEFORE the bad-solve exit.  A flagged subject still needs
@@ -17055,7 +17246,7 @@ RObject vaeOuterSolve_(NumericVector thVals, NumericMatrix ebes, List cols, int 
   if (ebes.nrow() != nsub) return R_NilValue;
   const int neta = (int)op_focei.neta;
   std::vector<VaeOuterE> Es((size_t)nsub);
-  FoceiGradPooledSetup _gcols; colsFromList(cols, _gcols);
+  FoceiGradPooledSetup _gcols; colsFromList(cols, _gcols, odeSlotOuter);
   // ... and the map R just handed us must name columns this model actually has
   if (!outerColsWithin(_gcols, op_focei.vaeOuterNlhs)) return R_NilValue;
   std::vector<double> _thv((size_t)thVals.size());
@@ -17886,7 +18077,7 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
   const arma::mat &ebesUse = isFoce ? foceEta : ebes;
 
   std::vector<VaeOuterE> Es((size_t)nsub);
-  outerSolveFill(odeSlotOuter, &rxVaeOuter, thVals, ebesUse, G, cores, op, nsub, neta, Es);
+  outerSolveFill(odeSlotOuter, &rxVaeOuter, thVals, ebesUse, G, cores, op, nsub, neta, Es, -1, true);
 
   // Swap the pool outer -> inner for the failed subjects.  The augmented solve ran under
   // the OUTER event-sensitivity shape; the difference needs the INNER problem, and the
@@ -24619,6 +24810,7 @@ struct FoceiHessianProbes {
     }
   }
   void reset() {
+    innerSolveMarkAll();
     op_focei.outerStickyRecalcN2Per = retries;
     for (int id = 0; id < (int)tolerance.size(); ++id) {
       auto *ind = getSolvingOptionsInd(rx,getRxId(id));
@@ -24695,6 +24887,7 @@ struct FoceiHessianCall {
 static void foceiHessianPrepare(void *ptr) {
   auto &d = *static_cast<FoceiHessianCall*>(ptr);
   try {
+    struct DerivPass { DerivPass() { op_focei.outerDerivPass = 1; } ~DerivPass() { op_focei.outerDerivPass = 0; } } _pass;
     if (!std::isfinite(foceiOfv0(d.x.memptr()))) return;
     for (int id = 0; id < getRxNsub(rx); ++id)
       if (!R_FINITE(inds_focei[id].lik[0])) return;
@@ -24799,10 +24992,12 @@ struct FoceiHessianModel {
   const std::vector<double> &theta;
   bool frozen;
 
-  bool solve(const arma::mat &eta, std::vector<VaeOuterE> &e) {
+  // `first`: the base solve, before any probe has moved a subject -- nothing to reset,
+  // and the reset would discard the inner solve the combined build answers it from.
+  bool solve(const arma::mat &eta, std::vector<VaeOuterE> &e, bool first = false) {
     auto *op = getSolvingOptions(rx);
-    d.probes->reset();
-    outerSolveFill(odeSlotOuter,&rxVaeOuter,theta,eta,g,getOpCores(op),op,getRxNsub(rx),g.neta,e);
+    if (!first) d.probes->reset();
+    outerSolveFill(odeSlotOuter,&rxVaeOuter,theta,eta,g,getOpCores(op),op,getRxNsub(rx),g.neta,e,-1,true);
     for (auto &one : e) if (!foceiHessianExpand(one,g,!frozen)) return false;
     return true;
   }
@@ -24847,7 +25042,7 @@ static void foceiHessianAssemble(void *ptr) {
       return model.solve(eta,e);
     };
     std::vector<VaeOuterE> base(ns);
-    if (!solve(d.eta,base)) return;
+    if (!model.solve(d.eta,base,true)) return;
     std::vector<VaeOuterE> population(frozen ? ns : 0);
     if (frozen && !model.population(population)) return;
     std::vector<arma::cube> third(ns), thirdR(ns);

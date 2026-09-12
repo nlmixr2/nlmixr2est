@@ -182,8 +182,12 @@ nmTest({
                        maxOuterIterations = 0L, maxInnerIterations = 100L))))
     g <- .foceiGradDirect(ph)
     expect_false(is.null(g))
-    ## the mechanism: a multi-endpoint model really does pool now
-    expect_identical(.odeSwapInfo()$poolName, "outer")
+    ## the mechanism: a multi-endpoint model really does pool now (the combined
+    ## build makes the inner model the pool and the outer slot the same model)
+    .i <- .odeSwapInfo()
+    expect_true(.i$poolName %in% c("outer", "inner"))
+    expect_equal(.i$models$deny[.i$models$name %in% "outer"], 0L)
+    expect_true(isTRUE(ph$env$outerComb))
     base <- fixef(ph)
     ofvAt <- function(nm, val) {
       ui2 <- do.call(rxode2::ini, c(list(ph$finalUi), setNames(list(val), nm)))

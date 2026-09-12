@@ -1268,10 +1268,11 @@
 #'   `P2`/`P2r` are empty, so `cols$f2`/`cols$rvar2` are `character(0)` and the A/AR fill
 #'   loops never execute.
 #' @noRd
-.foceiAnalyticAugModelDirs <- function(ui, dirs, order = 2L) {
+.foceiAnalyticAugModelDirs <- function(ui, dirs, order = 2L, pieces = FALSE) {
   order <- as.integer(order)
   .key <- tryCatch(paste0(rxUiGet.foceiModelDigest(list(ui)), "|", paste(dirs, collapse = ","),
                           "|o", order,                                  # sensitivity tier -> distinct cached model
+                          if (pieces) "|pieces",                        # raw lines, not a compiled model
                           "|sk", Sys.getenv("FOCEI_NO_SIGMA_SKIP"),     # skip flag -> distinct cached model
                           # subject-constant covariate set -> which covariate directions get eta-scaling reuse
                           "|cc", paste(sort(tryCatch(rxode2::rxGetControl(ui, "foceiConstCovs", NULL),
@@ -1494,6 +1495,17 @@
     # NULL (no delay()) for ordinary models.
     .pastLines <- .s$..pastLines
     if (is.null(.pastLines)) .pastLines <- character(0)
+    .meta <- list(dirs = dirs, ndir = length(dirs), fDirs = .fDirs,
+                  st = .st, P2 = .P2, P2r = .P2r, hasRvar = !is.null(.rvar), sigTh = .sigTh, hasTrans = .hasTrans,
+                  cols = .foceiAnalyticCols(dirs, .fDirs, .P2, .P2r, .sigTh), cores = .optExprCores(ui), key = .key)
+    # pieces = TRUE: the raw lines for the combined inner+outer build (.foceiMaybeAddOuterLines),
+    # still in the inner model's ETA[k]/THETA[k] form, with the metadata the reader needs.
+    if (pieces) {
+      return(c(list(ode = unname(c(.baseOde, .dose, unlist(strsplit(as.character(c(.s1, .s2)), "\n")))),
+                    ic = .icL, past = .pastLines,
+                    lhs = c(paste0("rx_predf_=", .toRx(.pred)), .fL1, .fL2, .rvarL, .sigL, .tvarL)),
+               .meta))
+    }
     .modTxt <- paste(c(.baseOde, .dose, .s1, .s2, .icL, .pastLines, paste0("rx_predf_=", .toRx(.pred)), .fL1, .fL2, .rvarL, .sigL, .tvarL), collapse = "\n")
     .modTxt <- gsub("ETA\\[([0-9]+)\\]", "ETA_\\1_", .modTxt); .modTxt <- gsub("THETA\\[([0-9]+)\\]", "THETA_\\1_", .modTxt)
     # Optimize common subexpressions (as the inner model does): the augmented model
@@ -1553,10 +1565,7 @@
     # (forward variational jumps at dose times) for the sensitivity compartments.  `cols`
     # precomputes solve-output column names/index maps; `cores` carries the fit's rxControl thread
     # count so the batched solves run parallel; `key` seeds the per-fit event-table reuse cache.
-    list(augMod = .nlmixr2estRxode2(.modTxt, "rxOuter", eventSens = "jump"),
-         dirs = dirs, ndir = length(dirs), fDirs = .fDirs,
-         st = .st, P2 = .P2, P2r = .P2r, hasRvar = !is.null(.rvar), sigTh = .sigTh, hasTrans = .hasTrans,
-         cols = .foceiAnalyticCols(dirs, .fDirs, .P2, .P2r, .sigTh), cores = .cores, key = .key)
+    c(list(augMod = .nlmixr2estRxode2(.modTxt, "rxOuter", eventSens = "jump")), .meta)
   }, error = function(e) NULL)
   if (!is.null(.key) && !is.null(.res)) {
     if (length(ls(.foceiAnalyticAugCache, all.names = TRUE)) >= 64L)    # bound retained compiled models

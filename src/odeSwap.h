@@ -84,6 +84,8 @@ void odeSwapClear(int slot);
 void odeSwapClearAll();          // clears every slot and releases preserved SEXPs
 
 bool odeSwapLoaded(int slot);
+// Do two slots hold the same compiled model (by parsed md5)?
+bool odeSwapSameModel(int a, int b);
 // ---- event-sensitivity (jump) shape ---------------------------------------
 // rxode2 keeps the ES shape in PROCESS GLOBALS (_rxEsActive/_rxEsNState/
 // _rxEsNParam/_rxEsNParam2), installed through the registered C-callable

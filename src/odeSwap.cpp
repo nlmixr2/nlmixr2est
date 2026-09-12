@@ -48,6 +48,11 @@ struct OdeModelReg {
   // near-zero, iteration-old d(pred)/d(eta) from a sibling peer's cache).
   int ndiff = 0;
   bool ndiffSet = false;  // false if $flags carries no "ndiff" element (older rxode2)
+  // rxModelVars$md5["parsed_md5"]: two slots holding the SAME compiled model (the
+  // combined inner+outer build registers the inner model as the outer peer too) are
+  // told apart from two different models by this, not by SEXP identity, which a
+  // cache round trip breaks.
+  std::string md5;
   // event-sensitivity shape (see OdeSwapEsBatch); esActive == 0 for a model
   // with no jump sensitivities, e.g. rxPred
   int esActive = 0;   // does this model carry event ("jump") sensitivities?
@@ -90,6 +95,15 @@ bool odeSwapDeclare(int slot, const char *name, SEXP obj) {
   m.neq = as<CharacterVector>(mv["state"]).size();
   m.nlhs = lhs.size();
   m.npars = as<CharacterVector>(mv["params"]).size();
+  m.md5.clear();
+  if (mv.containsElementNamed("md5")) {
+    CharacterVector _md5 = as<CharacterVector>(mv["md5"]);
+    CharacterVector _mn = _md5.names();
+    if (!_mn.isNULL()) {
+      for (int i = 0; i < _md5.size(); ++i)
+        if (as<std::string>(_mn[i]) == "parsed_md5") m.md5 = as<std::string>(_md5[i]);
+    }
+  }
   m.lhsNames.resize((size_t)lhs.size());
   for (int i = 0; i < lhs.size(); ++i) m.lhsNames[(size_t)i] = as<std::string>(lhs[i]);
   // CMT rebasing inputs (see the struct comment and odeSwapCmtRebase)
@@ -250,6 +264,10 @@ OdeSwapEsBatch::OdeSwapEsBatch(int slot)
   // odeEsOuter role but are DIFFERENT compiled models with different ES shapes, so a
   // role match would skip installing the one we are about to solve.
   if (slot == _odeEsSlotIdx) return;                       // already this model
+  // The combined build registers the inner model as the outer peer too, and the
+  // inner's shape is the one the fit installed: nothing to swap.
+  if (slot != odeSlotInner && odeSwapSameModel(slot, odeSlotInner) &&
+      _odeEsSlot == odeEsInner) return;
   saveLive();                        // BEFORE anything is installed over it
   bool esOk = true;
   if (odeSwapHasEs(slot)) {
@@ -303,6 +321,7 @@ void odeSwapClear(int slot) {
   if (m.fns != NULL) rxClearFuns(m.fns);
   m.fns = NULL; m.name = NULL; m.neq = 0; m.nlhs = 0; m.loaded = false;
   m.nSens = 0; m.cmtPar = -1; m.npars = 0; m.ndiff = 0; m.ndiffSet = false;
+  m.md5.clear();
   m.lhsNames.clear();
   m.parNames.clear();
   if (_odeModels != R_NilValue) SET_VECTOR_ELT(_odeModels, slot, R_NilValue);
@@ -320,6 +339,10 @@ void odeSwapClearAll() {
 }
 
 bool odeSwapLoaded(int slot) { return odeSlotOk(slot) && _odeReg[slot].loaded; }
+bool odeSwapSameModel(int a, int b) {
+  if (!odeSwapLoaded(a) || !odeSwapLoaded(b)) return false;
+  return !_odeReg[a].md5.empty() && _odeReg[a].md5 == _odeReg[b].md5;
+}
 int  odeSwapNSens(int slot)  { return odeSwapLoaded(slot) ? _odeReg[slot].nSens : 0; }
 int  odeSwapCmtPar(int slot) { return odeSwapLoaded(slot) ? _odeReg[slot].cmtPar : -1; }
 int  odeSwapNdiff(int slot)  { return odeSwapLoaded(slot) ? _odeReg[slot].ndiff : 0; }

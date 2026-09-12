@@ -229,6 +229,11 @@
 #'     \code{fast=FALSE}); pairing \code{fast=TRUE} with a derivative-free
 #'     \code{outerOpt} reverts to \code{fast=FALSE}.  The \code{*f} methods (e.g.
 #'     \code{foceif}) default this to \code{TRUE}.
+#' @param outerCombine When \code{TRUE} (the default) a \code{fast=TRUE} fit
+#'     carries the outer-gradient sensitivities on the inner model itself, so
+#'     one solve pool model serves the inner problem, the analytic outer
+#'     gradient and the analytic outer Hessian with no peer-model swapping.
+#'     \code{FALSE} compiles and solves the separate augmented outer model.
 #' @param priorMethod Which of the shared prior kernel's three omega
 #'     conventions (nlmixr2/rxode2#1270) to evaluate an \code{ini({})}
 #'     \code{prior()} under -- \code{"general"} (textbook Bayesian),
@@ -1100,6 +1105,7 @@ foceiControl <- function(sigdig = 3, #
                          covSolveTol = NULL, #
                          covFull = TRUE, #
                          fast = FALSE, #
+                         outerCombine = TRUE, #
                          priorMethod = c("auto", "general", "nwpri", "tnpri"), #
                          fdOutlierZ = 3.5, #
                          fdOutlierScale = TRUE, #
@@ -1602,6 +1608,7 @@ foceiControl <- function(sigdig = 3, #
   }
   checkmate::assertFlag(covFull)
   checkmate::assertFlag(fast)
+  checkmate::assertFlag(outerCombine)
   priorMethod <- match.arg(priorMethod)
   .xtra <- list(...)
   .bad <- names(.xtra)
@@ -1940,6 +1947,7 @@ foceiControl <- function(sigdig = 3, #
     covSolveTol = covSolveTol,
     covFull = covFull,
     fast = fast,
+    outerCombine = outerCombine,
     priorMethod = priorMethod,
     fdOutlierZ = as.double(fdOutlierZ),
     # Kept as the CHARACTER name, and read as a string in C++.  Storing the integer code
