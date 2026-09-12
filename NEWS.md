@@ -1,6 +1,28 @@
 # nlmixr2est 7.0.3
 
 ## New features
+- `.etaDistAddCovariate()` adds a covariate to one ROLE of one `dist()`
+  declaration (plan phase 3.4's applier).  rxode2's expansion hoists each family
+  argument onto its own `rxEdA.<eta>.<role>` line, so this adds the term at the
+  source -- the declaration -- and the anchor picks it up; both spellings and
+  every downstream consumer then see it.
+
+  The term is multiplicative on the argument, `arg * exp(beta * f(cov))`, which
+  is the one form that means something for every role.  It is also why `rate` is
+  a separate role from `scale`: a gamma's rate is `1/(rv*mean)`, so an effect
+  that is `+b` on the mean reads as `-b` on the rate.  Measured on a simulated
+  arm whose true mean-scale effect is `+0.75`, adding the covariate to the rate
+  returns `-0.6010` where the hand-written mean-scale model returns `+0.6020`,
+  at the same objective function value (157.79) -- the same fit, reached by
+  adding one term to a role.  dOFV against the covariate-free model is `-21.2`.
+
+  The coefficient is seeded at `0.1` rather than `0`, because a slope started at
+  exactly zero has no magnitude for the outer search to scale by.
+
+  Covariate shapes are `.vaeShapeExpr()`'s, so a declaration and a structural
+  covariate are spelled the same way; roles that mark a support endpoint refuse
+  a covariate, since a subject-varying bound makes the density discontinuous.
+
 - A covariate that enters BOTH a `dist()` declaration and the structural
   expression for the same parameter is now warned about, naming both places.
   With the same functional form on each side the two coefficients are not

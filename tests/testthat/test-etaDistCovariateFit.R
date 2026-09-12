@@ -240,3 +240,80 @@ nmTest({
     expect_false(isTRUE(all.equal(.b, 0.5, tolerance = 1e-6)))
   })
 })
+
+# .etaDistAddCovariate(): adding a covariate to one ROLE of one declaration
+# (plan phase 3.4).  rxode2's expansion hoists each family argument onto its own
+# rxEdA.<eta>.<role> line, so this only has to add a term at the source -- the
+# declaration -- and the anchor picks it up.
+nmTest({
+  .edcBase <- function() {
+    ini({
+      lclm <- 1.63; lclrv <- -2.4; prop.sd <- 0.1
+      eta.cl ~ 1
+      dist(eta.cl) ~ dgamma(shape = 1 / exp(lclrv),
+                            rate = 1 / (exp(lclrv) * exp(lclm)))
+    })
+    model({
+      cl <- eta.cl; v <- 5
+      linCmt() ~ prop(prop.sd)
+    })
+  }
+
+  test_that("a covariate is added to the requested role's anchor", {
+    .u <- nlmixr2est:::.etaDistAddCovariate(
+      suppressMessages(nlmixr2est::nlmixr2(.edcBase)),
+      "eta.cl", "rate", "WT", shape = "power", center = 70)
+    .ln <- vapply(.u$lstExpr, function(.z) paste(deparse(.z), collapse = " "),
+                  character(1))
+    .rate <- .ln[grepl("^rxEdA[.]eta[.]cl[.]rate", .ln)]
+    .shape <- .ln[grepl("^rxEdA[.]eta[.]cl[.]shape", .ln)]
+    # exactly one of each: re-expanding a ui that already carries the expansion
+    # would give two sets of anchors and two decoders for one eta
+    expect_length(.rate, 1L)
+    expect_length(.shape, 1L)
+    expect_length(.ln[grepl("^eta.cl <- gammapInv", .ln)], 1L)
+    # the covariate is on the RATE and nowhere else
+    expect_true(grepl("WT", .rate, fixed = TRUE))
+    expect_false(grepl("WT", .shape, fixed = TRUE))
+    # the coefficient exists and does NOT start at 0 -- a slope started at
+    # exactly 0 has no magnitude for the outer search to scale by
+    .b <- .u$iniDf[.u$iniDf$name == "beta.eta.cl.rate.WT", ]
+    expect_equal(nrow(.b), 1L)
+    expect_true(.b$est != 0)
+  })
+
+  test_that(".etaDistAddCovariate refuses what it cannot do", {
+    .u <- suppressMessages(nlmixr2est::nlmixr2(.edcBase))
+    # a role the family does not have
+    expect_error(nlmixr2est:::.etaDistAddCovariate(.u, "eta.cl", "df", "WT"),
+                 "has no role")
+    # not a declared random effect
+    expect_error(nlmixr2est:::.etaDistAddCovariate(.u, "eta.nope", "rate", "WT"),
+                 "not a declared random effect")
+    # the same covariate twice on the same role
+    .u2 <- nlmixr2est:::.etaDistAddCovariate(.u, "eta.cl", "rate", "WT",
+                                             center = 70)
+    expect_error(nlmixr2est:::.etaDistAddCovariate(.u2, "eta.cl", "rate", "WT",
+                                                   center = 70),
+                 "already")
+  })
+
+  test_that("an added covariate is estimated, with the role's sign", {
+    # The arm's true effect is +0.75 on the gamma MEAN.  This adds the term to
+    # the RATE, and rate = 1/(rv*mean), so the same effect reads as -0.75 there
+    # -- which is why `rate` is a separate role from `scale` rather than folded
+    # into it.  Measured on the full 120-subject arm: -0.6010 against the
+    # hand-written mean-scale model's +0.6020, same objective (157.79).
+    .d <- .edT5Data(bWT = 0.75)
+    .u <- nlmixr2est:::.etaDistAddCovariate(
+      suppressMessages(nlmixr2est::nlmixr2(.edT5ModelBounded())),
+      "eta.v1", "rate", "WT", shape = "power", center = 70)
+    .f <- suppressMessages(suppressWarnings(
+      nlmixr2(.u, .d, est = "focei",
+              control = foceiControl(print = 0L, covMethod = ""))))
+    expect_true("beta.eta.v1.rate.WT" %in% rownames(.f$parFixedDf))
+    # it moved off its 0.1 start rather than sitting there
+    .b <- unname(.f$parFixedDf["beta.eta.v1.rate.WT", "Estimate"])
+    expect_false(isTRUE(all.equal(.b, 0.1, tolerance = 1e-6)))
+  })
+})
