@@ -621,6 +621,10 @@
 #'   | 10 | 99.58 | 29.57 | 0.80 | 0.76 | 625.0% | 2.98e9 |
 #'   | 100 | 56.39 | 30.06 | 0.82 | 0.75 | 415.9% | 1.01e9 |
 #'
+#'   Raising `isample` does not rescue it either -- `mceta = 100` at
+#'   `isample = 1000` reaches MARE 283.4% (objf 3.00e8) in 4946s against 2411s,
+#'   so it is still 5.7x worse than the default at twice the cost.
+#'
 #'   (truth CL 5.105, V1 4.715, rv 2.0/2.0.)  `nMcetaStart` confirms the draws
 #'   were explored rather than the setting ignored -- sampled starts won 595/600
 #'   and 600/600.  The mechanism is NOT the M-step Hessian: the count of
