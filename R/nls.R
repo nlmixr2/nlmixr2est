@@ -10,6 +10,28 @@
 #' @param returnNls logical; when TRUE, will return the nls object
 #'   instead of the nlmixr object
 #' @return nls control object
+#'
+#' @section Pooled (population-only) estimation:
+#'
+#' `est="nls"` is a *pooled* estimation method.  It estimates population
+#' parameters only; there is no eta-conditional inner problem, and
+#' sensitivities are taken with respect to the population parameters alone.
+#'
+#' A model carrying any random effect is therefore refused before fitting
+#' rather than being fit to something other than what it says -- it stops
+#' with `can only have population estimates for the estimation routine
+#' 'nls', try 'focei'`.
+#'
+#' A successful `nls` fit consequently has no `$omega`, no empirical Bayes
+#' estimates and no shrinkage, and its objective function table carries a
+#' single `Pop` row.  Use a mixed effects routine -- `est="focei"`,
+#' `est="saem"` and so on -- for any model with between-subject variability.
+#'
+#' Note that this help page inherits its parameter list from
+#' `foceiControl()`, `saemControl()` and `nlmControl()`, because `nls`
+#' shares many options with them.  Inherited options that only have meaning
+#' for random effects do not apply to `nls`.
+#'
 #' @export
 #' @author Matthew L. Fidler
 #' @examples
@@ -29,6 +51,9 @@
 #'     linCmt() ~ add(add.sd)
 #'   })
 #' }
+#'
+#' # Note that `one.cmt` declares no random effects: `nls` is a pooled
+#' # method and refuses a model that has any.
 #'
 #' # Uses nlsLM from minpack.lm if available
 #'
