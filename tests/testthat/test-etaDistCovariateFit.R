@@ -5,10 +5,15 @@
 # the right thetas are held out.  None of them fits anything, so none of them
 # would notice the estimator recovering a covariate effect that is not there.
 #
-# T5 simulates a covariate whose true coefficient is EXACTLY zero and requires
-# the fit to say so.  That is the assertion a covariate search needs most: a
-# method that reports an effect here would select spurious covariates on real
-# data, and nothing structural can catch it.
+# T5 simulates a covariate whose true coefficient is EXACTLY zero.  The obvious
+# test -- fit it and assert bWT ~ 0 -- is WORTHLESS on its own, and that is the
+# main thing this file records: the coefficient's start is also 0, so an
+# estimator that never moves it passes.  Measured on the T4 arm, where the true
+# coefficient is 0.75, focei returns 0.0010 from a start of 0 and 0.4313 from a
+# start of 0.5.  It is in the outer problem, it moves, and it moves the wrong
+# way.  So this file asserts what actually holds, pins the weaker
+# "not frozen" property, and leaves the recovery assertion skipped with its
+# measurement rather than passing it vacuously.
 #
 # The data is built inline from a fixed seed rather than read from
 # inst/sim/simCovT45.R's output, so the test is self-contained.  It is the same
@@ -78,28 +83,56 @@
 }
 
 nmTest({
-  test_that("T5: a truly zero covariate effect is estimated as zero (focei)", {
+  test_that("T5: the degenerate arm fits, and prop.sd stays inside its bound", {
     .d <- .edT5Data()
     .f <- suppressMessages(suppressWarnings(
       nlmixr2(.edT5Model(), .d, est = "focei",
               control = foceiControl(print = 0L, covMethod = ""))))
     .p <- setNames(.f$parFixedDf$Estimate, rownames(.f$parFixedDf))
 
-    # the point of the arm: truth is exactly 0, and a real effect on this design
-    # is 0.75 (T4), so 0.15 separates "found nothing" from "found something"
-    expect_true(abs(.p[["bWT"]]) < 0.15)
-
-    # prop.sd has lower=0 and a true value of 0.10.  It is asserted separately
-    # because the recorded failure on an earlier version of this design was
-    # prop.sd driven NEGATIVE (-0.889) and then a bounds violation -- a bounded
-    # parameter leaving its bound is a defect whatever the covariate does.
+    # prop.sd carries lower = 0 and a true value of 0.10.  An earlier version of
+    # this design drove it to -0.889 and then failed on a bounds violation; a
+    # bounded parameter leaving its bound is a defect whatever else happens, so
+    # this is asserted on its own.
     expect_true(.p[["prop.sd"]] > 0)
     expect_equal(.p[["prop.sd"]], 0.10, tolerance = 0.5)
 
-    # and the rest of the model still lands on truth, so the zero above is a
-    # real fit rather than an estimator that moved nothing
+    # the structural parameters do land on truth, so the model is being fitted
     expect_equal(.p[["lclm"]], 1.63, tolerance = 0.15)
     expect_equal(.p[["lv1m"]], 1.55, tolerance = 0.15)
     expect_true(.p[["lclrv"]] < -1.5)
+
+    # NOTE: bWT is deliberately NOT asserted here.  Its start and its truth are
+    # both 0, so an estimator that never moves it "recovers" it perfectly --
+    # which is exactly what happens today (see the skipped test below).  Reading
+    # bWT ~ 0 on this arm as evidence that the covariate machinery works is the
+    # trap this file exists to avoid.
+  })
+
+  test_that("a covariate coefficient on a declaration is recovered", {
+    skip(paste("the coefficient is in the outer problem but its search stalls:",
+               "on the T4 arm (true bWT = 0.75) focei returns 0.0010 from a",
+               "start of 0, and 0.4313 from a start of 0.5 -- it moves, and",
+               "moves the wrong way.  Enable when the outer search reaches the",
+               "coefficient; the objective itself is minimized at truth."))
+    # The assertion this arm is for, kept here so it is enabled rather than
+    # rewritten once the search is fixed:
+    #   .d <- .edT5Data(bWT = 0.75)
+    #   .f <- nlmixr2(.edT5Model(), .d, est = "focei", ...)
+    #   expect_equal(.p[["bWT"]], 0.75, tolerance = 0.2)
+  })
+
+  test_that("the coefficient is at least IN the outer problem, not frozen", {
+    # Weaker than recovery but still worth pinning: a coefficient that never
+    # moves at all is a different (and worse) defect than one whose search
+    # stalls, and the two are indistinguishable on the degenerate arm.
+    .d <- .edT5Data()
+    .m <- .edT5Model()
+    .m <- rxode2::ini(.m, bWT = 0.5)
+    .f <- suppressMessages(suppressWarnings(
+      nlmixr2(.m, .d, est = "focei",
+              control = foceiControl(print = 0L, covMethod = ""))))
+    .b <- .f$parFixedDf$Estimate[match("bWT", rownames(.f$parFixedDf))]
+    expect_false(isTRUE(all.equal(.b, 0.5, tolerance = 1e-6)))
   })
 })
