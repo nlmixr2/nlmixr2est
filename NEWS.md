@@ -1,5 +1,12 @@
 # nlmixr2est 7.0.3
 
+## New features
+
+- `vaeCovariates()` gained a `cluster` column and a `colinearCut`
+  argument.  A cluster names covariates that are near-interchangeable
+  (`abs(cor)` at or above the cut); it is always a coarsening of `group`,
+  so two shapes of one covariate never cluster together.
+
 ## Bug fixes
 
 - `covMethod="analytic"` for FOCE and `foce="foce+"` no longer carries the inner

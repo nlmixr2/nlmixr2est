@@ -1,47 +1,16 @@
-# nlmixr2est 7.0.2
+# nlmixr2est 7.0.3
 
-## Submitted together with rxode2 5.1.6
+## Requires rxode2 5.1.7
 
-`rxode2` 5.1.6 is being submitted at the same time as this package.  **This
-submission does not depend on it.**  `nlmixr2est` builds and runs against the
-currently published `rxode2` 5.1.5 as well as 5.1.6, and `DESCRIPTION` requires
-only `rxode2 (>= 5.1.5)`, so the two can be reviewed and published in either
-order.
-
-`rxode2` 5.1.6 adds entry points to its linked C function-pointer table.  Where
-they are present this package uses them; where they are not it uses the code it
-shipped in 7.0.1.  Which path is taken is decided twice, deliberately:
-
-* at compile time, by `configure` probing the installed `rxode2ptr.h`, so the
-  newer calls are only compiled when the header declares them; and
-* at run time, by checking the function pointer is non-`NULL` before it is
-  called, because a binary compiled against 5.1.6 may later be loaded against
-  5.1.5, where those table slots are absent.
-
-We verified both directions on our own machines: the package builds and its test
-suite passes against 5.1.5 and against 5.1.6, with identical numerical results.
-
-## Previous Windows lazy-loading failure
-
-The 7.0.1 submission failed on the Windows builder while preparing the package
-for lazy loading, in `stringfish`:
-
-```
-unable to load shared object '.../stringfish/libs/x64/stringfish.dll':
-  LoadLibrary failure:  Das angegebene Modul wurde nicht gefunden.
-ERROR: lazy loading failed for package 'nlmixr2est'
-```
-
-That was not this package's code -- `stringfish` was reached through
-`rxode2` -> `qs2` -> `stringfish`, and the failure happened before any of our
-code ran.  It is resolved rather than worked around: the `qs2` dependency (and
-with it `stringfish`) has been **dropped**.  The compiled-model disk cache now
-uses RDS files, and compressed fit components use base R serialization.  Neither
-`qs2` nor `stringfish` appears in `DESCRIPTION` any more.
+`DESCRIPTION` requires `rxode2 (>= 5.1.7)`.  The version currently published on
+CRAN is 5.1.6, so **this submission should be reviewed after `rxode2` 5.1.7**.
+This differs from the 7.0.2 submission, which was deliberately written to build
+and run against either of two `rxode2` versions; 7.0.3 uses entry points that
+5.1.7 adds and does not carry a fallback for them.
 
 ## Test environments
 
-* local: Ubuntu 24.04, R 4.6.1 (x86_64-pc-linux-gnu)
+* local: Ubuntu 24.04, R 4.6.1 (x86_64-pc-linux-gnu), gcc/g++ 14.2.0
 * GitHub Actions: Windows, macOS and Linux, R release and devel
 
 ## R CMD check results
@@ -59,11 +28,19 @@ the check (it is in that platform's `Makeconf` `CFLAGS`), so it reflects the loc
 build environment rather than anything in `src/Makevars`.  We expect it not to
 appear on CRAN's builders.
 
-There are no other NOTEs, WARNINGs or ERRORs; `checking CRAN incoming feasibility`,
-`checking compiled code`, `checking examples` and `checking examples with
---run-donttest` [119s] are all OK.
+There are no other NOTEs, WARNINGs or ERRORs.  `checking CRAN incoming
+feasibility`, `checking compiled code`, `checking examples`, `checking examples
+with --run-donttest`, `checking tests`, `checking package vignettes` and
+`checking re-building of vignette outputs` are all OK.
 
 ## Reverse dependencies
 
-We checked the reverse dependencies of `nlmixr2est`; see
-`revdep/` for the results.
+All 16 CRAN reverse dependencies were checked against this version: `admixr2`,
+`babelmixr2`, `ggPMX`, `nlmixr2`, `nlmixr2auto`, `nlmixr2autoinit`,
+`nlmixr2extra`, `nlmixr2lib`, `nlmixr2plot`, `nlmixr2rpt`, `nlmixr2save`,
+`nlmixr2targets`, `nlmixr2utils`, `shinyMixR`, `xpose.nlmixr2` and
+`xpose.xtras`.
+
+None of them broke.  The few NOTEs and WARNINGs seen are properties of those
+packages' own sources or of how our harness invoked the check (it builds and
+checks without vignettes), not of this update.
