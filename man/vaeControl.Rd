@@ -386,18 +386,23 @@ dimensions is computed from when grouping them for the cross-parameter
 covariate refinement: `"suffStat"` (default, the smoothed EMA sufficient
 statistic the selection itself regresses), `"mu"` (the raw posterior means)
 or `"resid"` (the posterior means less the fitted covariate centers).
-`"resid"` runs systematically higher than the other two, so raise
-`covSelectPhiJoin` if you select it.}
+`"resid"` runs systematically higher than the other two -- measured one
+bracket higher on the same fit -- so raise `covSelectPhiJoin` if you
+select it.}
 
 \item{covSelectPhiJoin, covSelectPhiLeave}{`abs(cor)` at which two latent
 dimensions join a correlated group, and the lower value at which one leaves
 again (defaults `0.9` and `0.8`).  Membership is re-evaluated every
 iteration; the gap between the two stops a pair whose correlation wanders
 around the threshold from joining and leaving repeatedly.
-`covSelectPhiLeave` must not exceed `covSelectPhiJoin`.  The default is
-measured rather than conventional: an ordinary one-compartment model shows
-about `0.82` between its clearance and volume dimensions, so `0.8` would
-group a well-identified fit -- see `tools/vaeColinearPreflight.R`.}
+`covSelectPhiLeave` must not exceed `covSelectPhiJoin`.  The defaults are
+measured rather than conventional: on an ordinary, well-identified
+one-compartment model the clearance and volume dimensions correlate
+between `0.75` and `0.80` under the default `covSelectPhiCor="suffStat"`
+(and between `0.80` and `0.85` under `"resid"`), so a join threshold at
+`0.8` would group a fit that has nothing wrong with it -- see
+`tools/vaeColinearPreflight.R`, which measures this through the shipped
+gate.}
 
 \item{covSelectPhiMaxDim}{Largest correlated group the cross-parameter
 refinement will attempt (default `4`).  A larger group is skipped rather

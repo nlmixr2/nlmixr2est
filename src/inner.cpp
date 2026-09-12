@@ -24680,216 +24680,227 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
             // separable, so there is provably nothing a cross-dim move could win
             nPhiSkipDiag += nGrp2;
           } else {
-          VaeBnbCtx fc;                    // feasibility only: no search runs
-          fc.X = nullptr; fc.y = nullptr; fc.omega = 1; fc.penalty = 0;
-          fc.strategy = VAE_BNB_LIFO;
-          fc.grp = covGroup.empty() ? nullptr : &covGroup;
-          vaeBnbSetBlocks(fc, covBlock.empty() ? nullptr : &covBlock, nCov);
-          arma::mat respAll = covSelectSmooth ? s1 : last.mu;
-          arma::mat rBase = respAll - zPopMat;   // snapshot: never mutated below
-          VaeJointCtx jc;
-          jc.covMat = &covMat; jc.resp = &respAll; jc.rBase = &rBase; jc.P = &Pom;
-          jc.allow = &covAllow; jc.haveAllow = haveCovAllow;
-          jc.zPopLower = &zPopLower; jc.zPopUpper = &zPopUpper;
-          jc.penalty = covPenalty; jc.nCov = nCov;
-          // Parallel over GROUPS.  This is only safe because the components
-          // PARTITION the dims -- group g writes solely row/column k of the
-          // shared buffers for its own k -- so verify that rather than trusting
-          // it, since the whole argument rests on it.  Everything read inside
-          // the loop is either iteration-constant or the rBase snapshot taken
-          // above, so no group can observe another's writes and the result is
-          // identical to running the groups serially in any order.
-          const int nG = (int)groups.size();
-          {
-            std::vector<char> seen((size_t)zDim, 0);
-            for (int g2 = 0; g2 < nG; ++g2) {
-              for (size_t t = 0; t < groups[(size_t)g2].size(); ++t) {
-                const int k = groups[(size_t)g2][t];
-                if (seen[(size_t)k]) Rcpp::stop("vae: phi groups are not disjoint");
-                seen[(size_t)k] = 1;
-              }
-            }
-          }
-          // Counters go to per-group slots summed serially afterward: no
-          // atomics, and no reduction whose order could vary with thread count.
-          arma::ivec gTest((arma::uword)std::max(nG, 1), arma::fill::zeros);
-          arma::ivec gMove((arma::uword)std::max(nG, 1), arma::fill::zeros);
-          arma::ivec gClamp((arma::uword)std::max(nG, 1), arma::fill::zeros);
-          arma::ivec gBig((arma::uword)std::max(nG, 1), arma::fill::zeros);
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(cores) schedule(dynamic) if(cores > 1 && nG > 1)
-#endif
-          for (int gi = 0; gi < nG; ++gi) {
-            const std::vector<int>& G = groups[(size_t)gi];
-            if (G.size() < 2) continue;
-            if ((int)G.size() > phiMaxDim) { gBig[gi] = 1; continue; }
-            // an exception must never cross an OpenMP region; a group that
-            // fails numerically simply does nothing, which is the conservative
-            // answer anyway
-            try {
-            // current supports, and the blocks in play anywhere in the group
-            std::vector<std::vector<int> > sup(G.size());
-            std::vector<int> bag;
-            for (size_t a = 0; a < G.size(); ++a) {
-              for (int j = 0; j < nCov; ++j) {
-                if (selected(G[a], j)) {
-                  sup[a].push_back(j);
-                  const int bb = fc.blockOf[(size_t)j];
-                  if (std::find(bag.begin(), bag.end(), bb) == bag.end()) bag.push_back(bb);
+            VaeBnbCtx fc;                    // feasibility only: no search runs
+            fc.X = nullptr; fc.y = nullptr; fc.omega = 1; fc.penalty = 0;
+            fc.strategy = VAE_BNB_LIFO;
+            fc.grp = covGroup.empty() ? nullptr : &covGroup;
+            vaeBnbSetBlocks(fc, covBlock.empty() ? nullptr : &covBlock, nCov);
+            arma::mat respAll = covSelectSmooth ? s1 : last.mu;
+            arma::mat rBase = respAll - zPopMat;   // snapshot: never mutated below
+            VaeJointCtx jc;
+            jc.covMat = &covMat; jc.resp = &respAll; jc.rBase = &rBase; jc.P = &Pom;
+            jc.allow = &covAllow; jc.haveAllow = haveCovAllow;
+            jc.zPopLower = &zPopLower; jc.zPopUpper = &zPopUpper;
+            jc.penalty = covPenalty; jc.nCov = nCov;
+            // Parallel over GROUPS.  This is only safe because the components
+            // PARTITION the dims -- group g writes solely row/column k of the
+            // shared buffers for its own k -- so verify that rather than trusting
+            // it, since the whole argument rests on it.  Everything read inside
+            // the loop is either iteration-constant or the rBase snapshot taken
+            // above, so no group can observe another's writes and the result is
+            // identical to running the groups serially in any order.
+            const int nG = (int)groups.size();
+            {
+              std::vector<char> seen((size_t)zDim, 0);
+              for (int g2 = 0; g2 < nG; ++g2) {
+                for (size_t t = 0; t < groups[(size_t)g2].size(); ++t) {
+                  const int k = groups[(size_t)g2][t];
+                  if (seen[(size_t)k]) Rcpp::stop("vae: phi groups are not disjoint");
+                  seen[(size_t)k] = 1;
                 }
               }
             }
-            std::sort(bag.begin(), bag.end());
-            if (bag.empty()) continue;
-            // a candidate support must be block-complete, group-feasible and
-            // allowed on the dim it lands on
-            auto feasible = [&](int k, const std::vector<int>& s) {
-              if (!vaeGroupOk(fc, s) || !vaeBlockOk(fc, s)) return false;
-              if (haveCovAllow) {
-                for (size_t t = 0; t < s.size(); ++t) {
-                  if (covAllow(k, s[t]) != 1) return false;
+            // Counters go to per-group slots summed serially afterward: no
+            // atomics, and no reduction whose order could vary with thread count.
+            arma::ivec gTest((arma::uword)std::max(nG, 1), arma::fill::zeros);
+            arma::ivec gMove((arma::uword)std::max(nG, 1), arma::fill::zeros);
+            arma::ivec gClamp((arma::uword)std::max(nG, 1), arma::fill::zeros);
+            arma::ivec gBig((arma::uword)std::max(nG, 1), arma::fill::zeros);
+  #ifdef _OPENMP
+  #pragma omp parallel for num_threads(cores) schedule(dynamic) if(cores > 1 && nG > 1)
+  #endif
+            for (int gi = 0; gi < nG; ++gi) {
+              const std::vector<int>& G = groups[(size_t)gi];
+              if (G.size() < 2) continue;
+              if ((int)G.size() > phiMaxDim) { gBig[gi] = 1; continue; }
+              // an exception must never cross an OpenMP region; a group that
+              // fails numerically simply does nothing, which is the conservative
+              // answer anyway
+              try {
+              // current supports, and the blocks in play anywhere in the group
+              std::vector<std::vector<int> > sup(G.size());
+              std::vector<int> bag;
+              for (size_t a = 0; a < G.size(); ++a) {
+                for (int j = 0; j < nCov; ++j) {
+                  if (selected(G[a], j)) {
+                    sup[a].push_back(j);
+                    const int bb = fc.blockOf[(size_t)j];
+                    if (std::find(bag.begin(), bag.end(), bb) == bag.end()) bag.push_back(bb);
+                  }
                 }
               }
-              return true;
-            };
-            auto addBlk = [&](std::vector<int> s, int b) {
-              const std::vector<int>& cols = fc.blocks[(size_t)b];
-              s.insert(s.end(), cols.begin(), cols.end());
-              std::sort(s.begin(), s.end());
-              return s;
-            };
-            auto dropBlk = [&](const std::vector<int>& s, int b) {
-              std::vector<int> t;
-              for (size_t u2 = 0; u2 < s.size(); ++u2) {
-                if (fc.blockOf[(size_t)s[u2]] != b) t.push_back(s[u2]);
+              std::sort(bag.begin(), bag.end());
+              if (bag.empty()) continue;
+              // a candidate support must be block-complete, group-feasible and
+              // allowed on the dim it lands on
+              auto feasible = [&](int k, const std::vector<int>& s) {
+                if (!vaeGroupOk(fc, s) || !vaeBlockOk(fc, s)) return false;
+                if (haveCovAllow) {
+                  for (size_t t = 0; t < s.size(); ++t) {
+                    if (covAllow(k, s[t]) != 1) return false;
+                  }
+                }
+                return true;
+              };
+              auto addBlk = [&](std::vector<int> s, int b) {
+                const std::vector<int>& cols = fc.blocks[(size_t)b];
+                s.insert(s.end(), cols.begin(), cols.end());
+                std::sort(s.begin(), s.end());
+                return s;
+              };
+              auto dropBlk = [&](const std::vector<int>& s, int b) {
+                std::vector<int> t;
+                for (size_t u2 = 0; u2 < s.size(); ++u2) {
+                  if (fc.blockOf[(size_t)s[u2]] != b) t.push_back(s[u2]);
+                }
+                return t;
+              };
+              auto hasBlk = [&](const std::vector<int>& s, int b) {
+                for (size_t u2 = 0; u2 < s.size(); ++u2) {
+                  if (fc.blockOf[(size_t)s[u2]] == b) return true;
+                }
+                return false;
+              };
+              // score an assignment, re-scoring with any binding intercept HELD:
+              // the per-dim path clamps after scoring, so without this a move
+              // could win on a score its written parameters never achieve
+              auto scoreOf = [&](const std::vector<std::vector<int> >& s,
+                                 std::vector<arma::vec>* th) {
+                bool cl = false;
+                double q = vaeJointScore(jc, G, s, th, nullptr, &cl);
+                if (!cl || !R_FINITE(q)) return q;
+                std::vector<arma::vec> t0;
+                vaeJointScore(jc, G, s, &t0, nullptr, nullptr);
+                std::vector<double> fixv(G.size(), NA_REAL);
+                for (size_t a = 0; a < G.size(); ++a) {
+                  const int k = G[a];
+                  if (t0.size() <= a || t0[a].n_elem == 0) continue;
+                  if (R_FINITE(zPopLower[k]) && t0[a][0] < zPopLower[k]) fixv[a] = zPopLower[k];
+                  else if (R_FINITE(zPopUpper[k]) && t0[a][0] > zPopUpper[k]) fixv[a] = zPopUpper[k];
+                }
+                ++gClamp[gi];
+                return vaeJointScore(jc, G, s, th, &fixv, nullptr);
+              };
+              std::vector<arma::vec> thCur;
+              double best = scoreOf(sup, &thCur);
+              if (!R_FINITE(best)) continue;
+              bool moved = false;
+              for (int pass = 0; pass < 20; ++pass) {
+                double bestScore = best;
+                std::vector<std::vector<int> > bestSup;
+                std::vector<arma::vec> bestTh;
+                bool have = false;
+                // MOVE b from k to k', ADD b to k', DROP b from k -- a fixed
+                // enumeration, with best-improvement acceptance so the winner does
+                // not depend on that order
+                for (size_t a = 0; a < G.size(); ++a) {
+                  for (size_t t = 0; t < bag.size(); ++t) {
+                    const int b = bag[t];
+                    const bool inA = hasBlk(sup[a], b);
+                    for (size_t c2 = 0; c2 < G.size(); ++c2) {
+                      if (c2 == a || !inA) continue;
+                      if (hasBlk(sup[c2], b)) continue;
+                      std::vector<std::vector<int> > cand = sup;
+                      cand[a] = dropBlk(sup[a], b);
+                      cand[c2] = addBlk(sup[c2], b);
+                      if (!feasible(G[a], cand[a]) || !feasible(G[c2], cand[c2])) continue;
+                      std::vector<arma::vec> th;
+                      ++gTest[gi];
+                      double q = scoreOf(cand, &th);
+                      if (R_FINITE(q) && (q < bestScore ||
+                                          (q == bestScore && have && vaeJointSelLess(cand, bestSup)))) {
+                        have = true; bestScore = q; bestSup = cand; bestTh = th;
+                      }
+                    }
+                    if (!inA) {                                  // ADD
+                      std::vector<std::vector<int> > cand = sup;
+                      cand[a] = addBlk(sup[a], b);
+                      if (feasible(G[a], cand[a])) {
+                        std::vector<arma::vec> th;
+                        ++gTest[gi];
+                        double q = scoreOf(cand, &th);
+                        if (R_FINITE(q) && (q < bestScore ||
+                                            (q == bestScore && have && vaeJointSelLess(cand, bestSup)))) {
+                          have = true; bestScore = q; bestSup = cand; bestTh = th;
+                        }
+                      }
+                    } else {                                     // DROP
+                      std::vector<std::vector<int> > cand = sup;
+                      cand[a] = dropBlk(sup[a], b);
+                      if (feasible(G[a], cand[a])) {
+                        std::vector<arma::vec> th;
+                        ++gTest[gi];
+                        double q = scoreOf(cand, &th);
+                        if (R_FINITE(q) && (q < bestScore ||
+                                            (q == bestScore && have && vaeJointSelLess(cand, bestSup)))) {
+                          have = true; bestScore = q; bestSup = cand; bestTh = th;
+                        }
+                      }
+                    }
+                  }
+                }
+                if (!have || !(bestScore < best)) break;
+                sup = bestSup; thCur = bestTh; best = bestScore;
+                moved = true; ++gMove[gi];
               }
-              return t;
-            };
-            auto hasBlk = [&](const std::vector<int>& s, int b) {
-              for (size_t u2 = 0; u2 < s.size(); ++u2) {
-                if (fc.blockOf[(size_t)s[u2]] == b) return true;
-              }
-              return false;
-            };
-            // score an assignment, re-scoring with any binding intercept HELD:
-            // the per-dim path clamps after scoring, so without this a move
-            // could win on a score its written parameters never achieve
-            auto scoreOf = [&](const std::vector<std::vector<int> >& s,
-                               std::vector<arma::vec>* th) {
-              bool cl = false;
-              double q = vaeJointScore(jc, G, s, th, nullptr, &cl);
-              if (!cl || !R_FINITE(q)) return q;
-              std::vector<arma::vec> t0;
-              vaeJointScore(jc, G, s, &t0, nullptr, nullptr);
-              std::vector<double> fixv(G.size(), NA_REAL);
+              // Write back ONLY when something was accepted.  The joint refit is a
+              // GLS solve, not the per-dim OLS the loop ran, so re-deriving "the
+              // same" answer would differ in the last bits and perturb every
+              // downstream fit.  Only not writing guarantees the no-op.
+              if (!moved) continue;
               for (size_t a = 0; a < G.size(); ++a) {
                 const int k = G[a];
-                if (t0.size() <= a || t0[a].n_elem == 0) continue;
-                if (R_FINITE(zPopLower[k]) && t0[a][0] < zPopLower[k]) fixv[a] = zPopLower[k];
-                else if (R_FINITE(zPopUpper[k]) && t0[a][0] > zPopUpper[k]) fixv[a] = zPopUpper[k];
-              }
-              ++gClamp[gi];
-              return vaeJointScore(jc, G, s, th, &fixv, nullptr);
-            };
-            std::vector<arma::vec> thCur;
-            double best = scoreOf(sup, &thCur);
-            if (!R_FINITE(best)) continue;
-            bool moved = false;
-            for (int pass = 0; pass < 20; ++pass) {
-              double bestScore = best;
-              std::vector<std::vector<int> > bestSup;
-              std::vector<arma::vec> bestTh;
-              bool have = false;
-              // MOVE b from k to k', ADD b to k', DROP b from k -- a fixed
-              // enumeration, with best-improvement acceptance so the winner does
-              // not depend on that order
-              for (size_t a = 0; a < G.size(); ++a) {
-                for (size_t t = 0; t < bag.size(); ++t) {
-                  const int b = bag[t];
-                  const bool inA = hasBlk(sup[a], b);
-                  for (size_t c2 = 0; c2 < G.size(); ++c2) {
-                    if (c2 == a || !inA) continue;
-                    if (hasBlk(sup[c2], b)) continue;
-                    std::vector<std::vector<int> > cand = sup;
-                    cand[a] = dropBlk(sup[a], b);
-                    cand[c2] = addBlk(sup[c2], b);
-                    if (!feasible(G[a], cand[a]) || !feasible(G[c2], cand[c2])) continue;
-                    std::vector<arma::vec> th;
-                    ++gTest[gi];
-                    double q = scoreOf(cand, &th);
-                    if (R_FINITE(q) && (q < bestScore ||
-                                        (q == bestScore && have && vaeJointSelLess(cand, bestSup)))) {
-                      have = true; bestScore = q; bestSup = cand; bestTh = th;
-                    }
-                  }
-                  if (!inA) {                                  // ADD
-                    std::vector<std::vector<int> > cand = sup;
-                    cand[a] = addBlk(sup[a], b);
-                    if (feasible(G[a], cand[a])) {
-                      std::vector<arma::vec> th;
-                      ++gTest[gi];
-                      double q = scoreOf(cand, &th);
-                      if (R_FINITE(q) && (q < bestScore ||
-                                          (q == bestScore && have && vaeJointSelLess(cand, bestSup)))) {
-                        have = true; bestScore = q; bestSup = cand; bestTh = th;
-                      }
-                    }
-                  } else {                                     // DROP
-                    std::vector<std::vector<int> > cand = sup;
-                    cand[a] = dropBlk(sup[a], b);
-                    if (feasible(G[a], cand[a])) {
-                      std::vector<arma::vec> th;
-                      ++gTest[gi];
-                      double q = scoreOf(cand, &th);
-                      if (R_FINITE(q) && (q < bestScore ||
-                                          (q == bestScore && have && vaeJointSelLess(cand, bestSup)))) {
-                        have = true; bestScore = q; bestSup = cand; bestTh = th;
-                      }
-                    }
-                  }
+                if (thCur.size() <= a || thCur[a].n_elem == 0) continue;
+                double ic = thCur[a][0];
+                if (R_FINITE(zPopLower[k]) && ic < zPopLower[k]) ic = zPopLower[k];
+                if (R_FINITE(zPopUpper[k]) && ic > zPopUpper[k]) ic = zPopUpper[k];
+                arma::vec th = thCur[a];
+                th[0] = ic;
+                intercept[k] = ic;
+                beta.row(k).zeros();
+                selected.row(k).zeros();
+                for (size_t s2 = 0; s2 < sup[a].size(); ++s2) {
+                  beta(k, sup[a][s2]) = th[s2 + 1];
+                  selected(k, sup[a][s2]) = 1;
                 }
+                zPopMat.col(k) = vaeJointZ(jc, sup[a]) * th;
+                // the near-tie report was computed against the support the
+                // per-dim pass chose; this dim no longer has that support, and a
+                // stale alternative is worse than none
+                tieSel[(size_t)k].clear();
+                tieMate[(size_t)k].clear();
+                tieDelta[(size_t)k].clear();
+                // Same staleness, stronger consequence: selPrev is the hysteresis
+                // INCUMBENT, and it still holds the support this pass just
+                // overruled.  Left alone, the next iteration could adopt it back
+                // -- a report going stale only misinforms, an incumbent going
+                // stale changes the selection.  Dropping it (rather than
+                // translating sup[a] into the per-dim REDUCED index space, whose
+                // allow-mask and block-dropping map is local to that loop) means
+                // the next iteration simply re-seeds from whatever it chooses,
+                // which is the same path the first iteration takes.
+                selPrev[(size_t)k].clear();
+                selPrevSet[(size_t)k] = 0;
               }
-              if (!have || !(bestScore < best)) break;
-              sup = bestSup; thCur = bestTh; best = bestScore;
-              moved = true; ++gMove[gi];
-            }
-            // Write back ONLY when something was accepted.  The joint refit is a
-            // GLS solve, not the per-dim OLS the loop ran, so re-deriving "the
-            // same" answer would differ in the last bits and perturb every
-            // downstream fit.  Only not writing guarantees the no-op.
-            if (!moved) continue;
-            for (size_t a = 0; a < G.size(); ++a) {
-              const int k = G[a];
-              if (thCur.size() <= a || thCur[a].n_elem == 0) continue;
-              double ic = thCur[a][0];
-              if (R_FINITE(zPopLower[k]) && ic < zPopLower[k]) ic = zPopLower[k];
-              if (R_FINITE(zPopUpper[k]) && ic > zPopUpper[k]) ic = zPopUpper[k];
-              arma::vec th = thCur[a];
-              th[0] = ic;
-              intercept[k] = ic;
-              beta.row(k).zeros();
-              selected.row(k).zeros();
-              for (size_t s2 = 0; s2 < sup[a].size(); ++s2) {
-                beta(k, sup[a][s2]) = th[s2 + 1];
-                selected(k, sup[a][s2]) = 1;
+              } catch (...) {
+                // leave this group exactly as the per-dim pass left it
               }
-              zPopMat.col(k) = vaeJointZ(jc, sup[a]) * th;
-              // the near-tie report was computed against the support the
-              // per-dim pass chose; this dim no longer has that support, and a
-              // stale alternative is worse than none
-              tieSel[(size_t)k].clear();
-              tieMate[(size_t)k].clear();
-              tieDelta[(size_t)k].clear();
             }
-            } catch (...) {
-              // leave this group exactly as the per-dim pass left it
+            nPhiTest += (int)arma::accu(gTest);
+            nPhiMove += (int)arma::accu(gMove);
+            nPhiClamp += (int)arma::accu(gClamp);
+            nPhiSkipBig += (int)arma::accu(gBig);
             }
-          }
-          nPhiTest += (int)arma::accu(gTest);
-          nPhiMove += (int)arma::accu(gMove);
-          nPhiClamp += (int)arma::accu(gClamp);
-          nPhiSkipBig += (int)arma::accu(gBig);
-          }
         }
       }
       arma::vec omegaCur(zDim);
