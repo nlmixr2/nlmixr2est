@@ -621,6 +621,7 @@ struct focei_options {
   double trustFterm;
   double trustMterm;
   std::atomic<int> nTrustInner{0}; // per-fit count of trust_solve_c calls (test evidence)
+  std::atomic<int> nTrustRestart{0}; // Omega-draw restarts taken after the nudges
   // innerOpt="trust" per-fit OUTCOME counts (#1044).  nTrustInner counts CALLS,
   // so a fit whose inner solves all converged and one where every one of them
   // failed look identical from the fit object; these separate the two.
@@ -920,6 +921,11 @@ struct focei_options {
   bool zeroGradBobyqaRun=false;
   int nEstOmega=0;
   int mceta= -1; // number of mc samples of ETA
+  // Omega draws the inner restart cascade tries once the fixed nudges are
+  // spent (0 = the historical nudges-only cascade), and foceiControl(seed=)
+  // as the base of their threefry stream.
+  int nEtaRestart = 0;
+  uint32_t etaRestartSeed = 42u;
 
   // Almquist Eq-48 warm-start extrapolation (fast=TRUE): per-subject d eta*/d(theta)
   // in the SCALED optimizer parameterization (etaP columns pre-multiplied by
@@ -933,6 +939,11 @@ struct focei_options {
   // Pre-drawn ETA samples for mceta >= 1 (neta x (mceta-1) x nsub); filled
   // serially before the parallel for-loop so workers avoid R API calls.
   arma::cube mcetaSamples;
+  // Pre-drawn Omega draws the inner RESTART cascade falls back on
+  // (neta x nEtaRestart x nsub), filled the same way and for the same reason.
+  // Unlike mcetaSamples these are not starting points for a healthy solve --
+  // they are only read after an inner solve has already failed (#1044).
+  arma::cube etaRestartSamples;
 
   unsigned int mixIdxN = 0;
   int *mixIdx = NULL;
@@ -4724,8 +4735,10 @@ static inline int innerOpt1(int id, int likId) {
       trust_result_t *r;
       ~TresGuard() { trust_result_free_ptr(r); }
     };
-    auto trustSolveAt = [&](bool fill, double startVal) {
-      if (fill) std::fill_n(fInd->x, npar, startVal);
+    // start == NULL: keep whatever eta fInd->x already holds (the warm/radius
+    // re-solves).  Otherwise it is npar wide and the attempt restarts there.
+    auto trustSolveAtVec = [&](const double *start) {
+      if (start != NULL) std::copy(start, start + npar, fInd->x);
       // Reset per attempt (mirrors n1qn1's cascade, which clears this before
       // every restart): a mid-solve NA from trustInnerObjfun latches
       // fInd->badSolve, and trustInnerObjfun's own guard then short-circuits
@@ -4826,6 +4839,12 @@ static inline int innerOpt1(int id, int likId) {
       if (!conv) op_focei.nTrustNoConv.fetch_add(1, std::memory_order_relaxed);
       return conv;
     };
+    std::vector<double> startBuf((size_t)npar, 0.0);
+    auto trustSolveAt = [&](bool fill, double startVal) {
+      if (!fill) return trustSolveAtVec(NULL);
+      std::fill(startBuf.begin(), startBuf.end(), startVal);
+      return trustSolveAtVec(startBuf.data());
+    };
 
     bool converged = trustSolveAt(false, 0.0);
     if (!converged && pushDist >= 0.0 && pushDist <= curRmax) {
@@ -4862,6 +4881,21 @@ static inline int innerOpt1(int id, int likId) {
       for (int _n = 0; _n < 4 && !converged; _n++) {
         op_focei.nTrustNudge.fetch_add(1, std::memory_order_relaxed);
         converged = trustSolveAt(true, nudges[_n]);
+      }
+    }
+    // The nudges are all spent and the subject is still unconverged.  Every one
+    // of them fills EVERY eta with the same constant, which is a poor
+    // exploration set on an inner problem with more than one basin -- measured
+    // on #1044's model, restarting from a draw out of Omega (the distribution
+    // the etas actually come from) recovers subjects the constants never do.
+    // Only reached after a failure, so a healthy fit never pays for it.
+    if (!converged && op_focei.nEtaRestart > 0 &&
+        (arma::uword)id < op_focei.etaRestartSamples.n_slices &&
+        op_focei.etaRestartSamples.n_rows == (arma::uword)npar) {
+      int nres = (int)op_focei.etaRestartSamples.n_cols;
+      for (int _k = 0; _k < nres && !converged; _k++) {
+        op_focei.nTrustRestart.fetch_add(1, std::memory_order_relaxed);
+        converged = trustSolveAtVec(op_focei.etaRestartSamples.slice(id).colptr(_k));
       }
     }
     // Every attempt this subject got is spent and none of them converged --
@@ -5741,6 +5775,83 @@ static inline double updateMuGroups() {
   return maxDelta;
 }
 
+// Fill the per-subject Omega draws the inner restart cascade falls back on.
+// Kept out of innerOpt() so that function does not carry the extra branching:
+// this is a self-contained, serial, once-per-fit step.
+static void fillEtaRestartSamples(rx_solve *rx) {
+  // Restart draws for the inner cascade.  Drawn ONCE per fit for the same
+  // reason the mceta cube is (a fresh draw per evaluation would make the
+  // objective a different random function every time the outer optimizer
+  // looked at it, #1040), and serially here so the per-subject workers only
+  // read memory.  Unconditional on mceta: the cascade runs whenever an inner
+  // solve fails, which is independent of how it was started (#1044).
+  //
+  // Drawn with rxode2's seeded threefry engine (Omega's lower Cholesky times
+  // iid standard normals), NOT through .sampleOmega/rxRmvn like the mceta cube
+  // above: rxRmvn consumes R's OWN RNG, so making these draws unconditional
+  // through it would shift every later R-level draw in the fit (the residual
+  // simulations behind npde, for one) on a fit that never restarts anything.
+  //
+  // The cube is released only when the fallback is OFF, never on a pass that
+  // merely cannot draw (maxInnerIterations<=0 / freezeOde): releasing it there
+  // would have the next real pass re-draw MID-FIT, and the seed a re-draw
+  // would use is not guaranteed to still be the one the first draw used.
+  // foceiSetup_ clears it per fit, so this fills it at most once.
+  if (op_focei.nEtaRestart <= 0 || op_focei.neta == 0) {
+    op_focei.etaRestartSamples.reset();
+  } else if (op_focei.maxInnerIterations > 0 && !op_focei.freezeOde) {
+    int nsubAll = (int)getRxNsubAndMix(rx);
+    int nres = op_focei.nEtaRestart;
+    if (op_focei.etaRestartSamples.n_rows   != (arma::uword)op_focei.neta ||
+        op_focei.etaRestartSamples.n_cols   != (arma::uword)nres ||
+        op_focei.etaRestartSamples.n_slices != (arma::uword)nsubAll) {
+      arma::mat om = getOmegaMat();
+      arma::mat L;
+      bool haveL = (om.n_rows == (arma::uword)op_focei.neta &&
+                    om.n_cols == (arma::uword)op_focei.neta &&
+                    arma::chol(L, om, "lower"));
+      if (!haveL) {
+        // Singular/indefinite Omega: fall back to independent draws scaled by
+        // the diagonal.  These are restart POINTS, so a correlation the
+        // fallback drops costs exploration, never correctness.
+        L.zeros(op_focei.neta, op_focei.neta);
+        for (int j = 0; j < op_focei.neta; ++j) {
+          double v = (om.n_rows > (arma::uword)j && om.n_cols > (arma::uword)j) ?
+            om(j, j) : 1.0;
+          L(j, j) = (v > 0) ? std::sqrt(v) : 1.0;
+        }
+      }
+      op_focei.etaRestartSamples.set_size(op_focei.neta, nres, nsubAll);
+      // One serial batch, so one seeding is enough -- nothing re-seeds the
+      // shared engine between the draws below (see nmMcmcRng.h).  Seeded from
+      // foceiControl(seed=), so the draws depend on that and nothing else.
+      //
+      // setSeedEng1(), NOT nmSetSeedEng1(): the latter also records the value
+      // as the current sampling-block seed, which would clobber a block that
+      // is live across this call (imp.cpp's E-step restores its own seed after
+      // every inner-likelihood call and would restore ours instead).  Leaving
+      // the engine's own state advanced is harmless -- every rxode2 solve
+      // reseeds it per subject on entry.
+      setRxThreadId(0);
+      {
+        uint32_t s = op_focei.etaRestartSeed;
+        s = s * 2654435761u + 0x65746152u;   // "etaR" namespace tag
+        setSeedEng1(s);
+      }
+      arma::vec z((arma::uword)op_focei.neta), draw((arma::uword)op_focei.neta);
+      for (int id = 0; id < nsubAll; ++id) {
+        for (int k = 0; k < nres; ++k) {
+          for (int j = 0; j < op_focei.neta; ++j) z[j] = rxNormEng(0.0, 1.0);
+          draw = L * z;
+          std::copy(draw.begin(), draw.end(),
+                    op_focei.etaRestartSamples.slice(id).colptr(k));
+        }
+      }
+      setRxThreadId(-1);
+    }
+  }
+}
+
 void innerOpt() {
   rx = getRxSolve_();
   rx_solving_options *op = getSolvingOptions(rx);
@@ -5804,6 +5915,7 @@ void innerOpt() {
       op_focei.mcetaSamples.reset();
     }
   }
+  fillEtaRestartSamples(rx);
   // freezeOde: evaluate each subject's density at its (restored) base EBE with a
   // single innerEval -- no eta re-optimization -- reusing the frozen ODE states.
   if (op_focei.maxInnerIterations <= 0 || op_focei.freezeOde){
@@ -8558,6 +8670,7 @@ NumericVector foceiSetup_(const RObject &obj,
   // are cleared here as well as in foceiOuter(), which the EM/nonparametric methods
   // never reach -- otherwise those fits would report the previous fit's counts.
   op_focei.mcetaSamples.reset();
+  op_focei.etaRestartSamples.reset();
   op_focei.nMcetaZero.store(0, std::memory_order_relaxed);
   op_focei.nMcetaSample.store(0, std::memory_order_relaxed);
   op_focei.nInnerRanked.store(0, std::memory_order_relaxed);
@@ -9005,6 +9118,28 @@ NumericVector foceiSetup_(const RObject &obj,
     op_focei.trustFterm = as<double>(foceiO["trustFterm"]);
     op_focei.trustMterm = as<double>(foceiO["trustMterm"]);
   }
+  op_focei.nEtaRestart = foceiO.containsElementNamed("etaRestart") ?
+    as<int>(foceiO["etaRestart"]) : 0;
+  // The base of the restart draws' threefry stream.  Taken from
+  // foceiControl(seed=) rather than rxode2's getRxSeed1(): that is NOT a
+  // getter -- it advances rxode2's global rxSeed by its argument on every
+  // call (rxode2's src/seed.cpp), so reading it here would shift the seed
+  // every LATER consumer in the fit gets, and when no rxode2 seed is in force
+  // it draws the value from R's own RNG.  Either one would make a fit that
+  // takes no restart at all differ from the same fit with etaRestart=0.
+  // The 42u floor is defensive, not a policy: a fit cannot actually reach here
+  // with seed=NULL, because .foceiFitInternal() wraps the run in
+  // rxode2::rxWithSeed(), which rejects a NULL seed outright ("'seed' must be
+  // an integer of length 1").  It covers the entry points that reach
+  // foceiSetup_ without that wrapper.
+  {
+    SEXP _seedS = foceiO.containsElementNamed("seed") ? (SEXP)foceiO["seed"] : R_NilValue;
+    op_focei.etaRestartSeed = 42u;
+    if (!Rf_isNull(_seedS) && Rf_length(_seedS) >= 1) {
+      double _sd = as<NumericVector>(_seedS)[0];
+      if (R_FINITE(_sd) && _sd >= 0) op_focei.etaRestartSeed = (uint32_t)_sd;
+    }
+  }
   op_focei.nTrustInner.store(0, std::memory_order_relaxed);
   op_focei.nConditionalInnerHessian.store(0, std::memory_order_relaxed);
   op_focei.nTrustError.store(0, std::memory_order_relaxed);
@@ -9014,6 +9149,7 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.nTrustRetry.store(0, std::memory_order_relaxed);
   op_focei.nTrustWarm.store(0, std::memory_order_relaxed);
   op_focei.nTrustNudge.store(0, std::memory_order_relaxed);
+  op_focei.nTrustRestart.store(0, std::memory_order_relaxed);
   op_focei.nTrustFail.store(0, std::memory_order_relaxed);
   op_focei.nHessianQN.store(0, std::memory_order_relaxed);
   op_focei.nsim=as<int>(foceiO["n1qn1nsim"]);
@@ -12809,6 +12945,8 @@ void foceiFinalizeTables(Environment e){
           _["warmRetry"] = op_focei.nTrustWarm.load(std::memory_order_relaxed),
           _["radiusRetry"] = op_focei.nTrustRetry.load(std::memory_order_relaxed),
           _["nudge"] = op_focei.nTrustNudge.load(std::memory_order_relaxed),
+          // Omega-draw restarts taken after the fixed nudges were spent.
+          _["omegaRestart"] = op_focei.nTrustRestart.load(std::memory_order_relaxed),
           // Subjects whose whole cascade -- first solve, radius escalation and
           // all four nudges -- ended without a converged attempt.
           _["failed"] = op_focei.nTrustFail.load(std::memory_order_relaxed));
