@@ -12,7 +12,9 @@
   the objective from 687874 to 272736.  The draws are taken once per fit from
   rxode2's seeded engine, so the objective stays a function of theta alone, and
   they are read only after a solve has already failed -- a fit whose inner
-  solves converge is bit-identical with the fallback on and off (#1044).
+  solves converge is bit-identical with the fallback on and off.  This applies
+  to `innerOpt="trust"`, which reports a convergence verdict per solve; `n1qn1`
+  reports none, so its own restart cascade is unchanged (#1044).
 - A focei fit whose inner ETA solves failed now says so in `$runInfo`.  The
   per-outcome counters added for #1044 live on `fit$env$nTrustInner` /
   `fit$env$nInnerRerank`, which nothing reads unprompted, so a fit that spent

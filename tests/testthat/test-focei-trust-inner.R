@@ -549,10 +549,8 @@ nmTest({
     expect_equal(as.data.frame(.on$eta), as.data.frame(.off$eta),
                  tolerance = 1e-10)
 
-    # The n1qn1 arm reports its own fallback count, and trust does not (its
-    # count rides with the rest of the trust outcomes instead).
-    .n1 <- .mk(4L, "n1qn1")
-    expect_equal(.n1$env$nEtaRestartRun, 0L)
-    expect_null(.on$env$nEtaRestartRun)
+    # n1qn1 has no convergence verdict per solve, so the fallback does not
+    # reach its cascade at all: the control changes nothing there.
+    expect_equal(.mk(4L, "n1qn1")$objf, .mk(0L, "n1qn1")$objf, tolerance = 1e-10)
   })
 })

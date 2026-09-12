@@ -622,8 +622,6 @@ struct focei_options {
   double trustMterm;
   std::atomic<int> nTrustInner{0}; // per-fit count of trust_solve_c calls (test evidence)
   std::atomic<int> nTrustRestart{0}; // Omega-draw restarts taken after the nudges
-  // Same, for the n1qn1 arm's nudge cascade (reported as $env$nEtaRestartRun).
-  std::atomic<int> nEtaRestartRun{0};
   // innerOpt="trust" per-fit OUTCOME counts (#1044).  nTrustInner counts CALLS,
   // so a fit whose inner solves all converged and one where every one of them
   // failed look identical from the fit object; these separate the two.
@@ -4591,71 +4589,6 @@ static inline int innerOpt1(int id, int likId) {
                 std::fill_n(&fInd->var[0], fop->neta, 0.1);
               }
             }
-          }
-        }
-        // Every fixed nudge is spent and the optimizer STILL has not moved this
-        // subject's ETA off the restart it was handed -- the n1qn1 arm's own
-        // definition of a failed inner solve.  The nudges all set every ETA to
-        // the same constant; a draw out of Omega is a starting point from the
-        // distribution the ETAs actually come from (#1044).  Only reached once
-        // the whole nudge cascade has failed, so a healthy fit never pays for
-        // it.  Unlike the nudge levels above, each restart is handed a FRESH
-        // iteration/simulation budget: n1qn1_ takes these by pointer and writes
-        // back what it used, so a restart inheriting a spent budget cannot
-        // optimize anything.
-        if (tryAgain && op_focei.nEtaRestart > 0 &&
-            (arma::uword)id < op_focei.etaRestartSamples.n_slices &&
-            op_focei.etaRestartSamples.n_rows == (arma::uword)fop->neta) {
-          int nres = (int)op_focei.etaRestartSamples.n_cols;
-          // A draw that comes back NA with nothing kept in THIS pass has to
-          // take the pass-level exit the nudge levels above take -- and those
-          // are not inside a loop of their own, so their break/continue bind
-          // to the starting-point loop.  Here they would bind to this draw
-          // loop instead, so the exit is deferred to after it.
-          bool _restartNa = false;
-          for (int _k = 0; _k < nres && tryAgain; _k++) {
-            const double *_start = op_focei.etaRestartSamples.slice(id).colptr(_k);
-            fInd->mode = 1;
-            fInd->uzm = 1;
-            op_focei.didHessianReset.store(1, std::memory_order_relaxed);
-            // mode=1 unconditionally (the nudge levels above only force it
-            // under warm=1): a draw is an unrelated point, so the previous
-            // attempt's quasi-Newton Hessian does not describe it -- the same
-            // reason the trust arm clears fInd->etaHasPrevQN per attempt.
-            mode = 1;
-            maxInnerIterations = fop->maxInnerIterations;
-            nsim = fop->nsim;
-            imp = fop->imp;
-            std::copy(_start, _start + fop->neta, fInd->x);
-            op_focei.nEtaRestartRun.fetch_add(1, std::memory_order_relaxed);
-            fInd->badSolve = 0;
-            n1qn1_(innerCost, &npar, fInd->x, &f, fInd->g,
-                   fInd->var, &epsilon,
-                   &mode, &maxInnerIterations, &nsim,
-                   &imp, fInd->zm, &izs, &rzs, &dzs, &id);
-            if (ISNA(f)) {
-              if (!haveBest) { _restartNa = true; break; }
-              // This draw produced nothing, which says nothing about whether
-              // the optimizer can move -- so go to the next draw rather than
-              // letting the moved-off-the-restart test below read the restored
-              // best (which never equals the draw) as "it moved" and end the
-              // cascade.  The fixed nudge levels above have that same quirk;
-              // they are left as they are.
-              restoreBest();
-              std::fill_n(&fInd->var[0], fop->neta, 0.1);
-              continue;
-            }
-            keepBest(); keepCand(fInd->badSolve == 0);
-            tryAgain = true;
-            for (int i = fop->neta; i--;) {
-              if (fInd->x[i] != _start[i]) { tryAgain = false; break; }
-            }
-            std::fill_n(&fInd->var[0], fop->neta, 0.1);
-          }
-          if (_restartNa) {
-            if (!candEta.empty()) break;
-            if (_lastStart) return 0;
-            continue;
           }
         }
       }
@@ -9198,7 +9131,6 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.nTrustWarm.store(0, std::memory_order_relaxed);
   op_focei.nTrustNudge.store(0, std::memory_order_relaxed);
   op_focei.nTrustRestart.store(0, std::memory_order_relaxed);
-  op_focei.nEtaRestartRun.store(0, std::memory_order_relaxed);
   op_focei.nTrustFail.store(0, std::memory_order_relaxed);
   op_focei.nHessianQN.store(0, std::memory_order_relaxed);
   op_focei.nsim=as<int>(foceiO["n1qn1nsim"]);
@@ -12974,13 +12906,6 @@ void foceiFinalizeTables(Environment e){
         // ... and solves where a failed attempt WAS dropped because a
         // succeeded one was available.
         _["dropped"] = op_focei.nInnerDropped.load(std::memory_order_relaxed));
-      // Omega-draw restarts the n1qn1 arm's nudge cascade took once every fixed
-      // nudge was spent and the ETA still had not moved (the trust arm reports
-      // its own as nTrustInner[["omegaRestart"]]).
-      if (op_focei.innerOpt != 3) {
-        e["nEtaRestartRun"] = IntegerVector::create(
-          op_focei.nEtaRestartRun.load(std::memory_order_relaxed));
-      }
       e["nConditionalInnerHessian"] = op_focei.nConditionalInnerHessian.load(std::memory_order_relaxed);
       if (op_focei.innerOpt == 3) {
         // innerOpt="trust" outcomes.  "calls" is what .nTrustInner() reports;

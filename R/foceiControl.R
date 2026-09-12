@@ -855,16 +855,19 @@
 #'   (excluding zero) times by the 0.95\% normal region
 #'
 #' @param etaRestart Number of Omega draws the inner restart cascade tries
-#'   once the `etaNudge`/`etaNudge2` restarts are spent and the ETA solve has
-#'   still failed -- not converged for `innerOpt="trust"`, or never moved off
-#'   the restart it was handed for `n1qn1`.  Every nudge sets EVERY ETA to the
-#'   same constant, which explores poorly when the inner problem has more than
-#'   one basin; a draw from Omega is a starting point from the distribution the
-#'   ETAs actually come from.  The draws are taken once per fit, with rxode2's
-#'   seeded engine (so the objective stays a function of theta alone and the
-#'   fit stays reproducible), and are only read after an inner solve has
-#'   already failed -- a fit whose inner solves converge never pays for them.
-#'   Use 0 to disable.
+#'   once the `etaNudge`/`etaNudge2` restarts are spent and the ETA solve is
+#'   still not converged.  Every nudge sets EVERY ETA to the same constant,
+#'   which explores poorly when the inner problem has more than one basin; a
+#'   draw from Omega is a starting point from the distribution the ETAs
+#'   actually come from.  The draws are taken once per fit, seeded from
+#'   `seed` (so the objective stays a function of theta alone and the fit
+#'   stays reproducible), and are only read after an inner solve has already
+#'   failed -- a fit whose inner solves converge never pays for them.  Use 0
+#'   to disable.
+#'
+#'   This applies to `innerOpt="trust"` (the default for a normal endpoint),
+#'   which reports a convergence verdict per solve.  `n1qn1` reports none, so
+#'   its own restart cascade is unchanged.
 #'
 #' @param maxOdeRecalc Maximum number of times to reduce the ODE
 #'     tolerances and try to resolve the system if there was a bad
