@@ -273,12 +273,11 @@ attr(rxUiGet.saemModel0, "rstudio") <- quote(rxModelVars({}))
 #'@export
 rxUiGet.saemModelPred0 <- function(x, ...) {
   .f <- x[[1]]
-  # see rxUiGet.saemModel0's comment -- same reasoning applies to the
-  # FOCEi-style predOnly model used for residuals/covariance.
-  if (.saemGeneralLik(.f)) {
-    nlmixr2global$rxPredLlik <- TRUE
-    on.exit(nlmixr2global$rxPredLlik <- FALSE, add=TRUE)
-  }
+  # The table predOnly keeps the mean/variance form (as rxUiGet.focei's does);
+  # forcing rxPredLlik reported a dnorm()/t()/cauchy() log-density as IPRED (#1084)
+  .oldLlik <- nlmixr2global$rxPredLlik
+  nlmixr2global$rxPredLlik <- FALSE
+  on.exit(nlmixr2global$rxPredLlik <- .oldLlik, add=TRUE)
   rxode2::rxCombineErrorLines(.f, errLines=rxGetDistributionFoceiLines(.f),
                               paramsLine=NA, #.uiGetThetaEtaParams(.f),
                               modelVars=TRUE,
