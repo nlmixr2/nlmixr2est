@@ -44,10 +44,7 @@
   .idOf <- function(x) match(x, unique(x))
   ## Nothing to join: hand back the groups themselves, which is the identity
   ## coarsening and makes .vaeClusterBinds() FALSE.
-  if (.n < 2L || nrow(covMat) < 3L || length(unique(.g)) < 2L ||
-        !is.finite(cut) || !all(is.finite(covMat))) {
-    return(.idOf(.g))
-  }
+  if (!.vaeCanCluster(covMat, .g, cut)) return(.idOf(.g))
   ## a constant column correlates with nothing; excluding it here also keeps
   ## stats::cor from emitting a zero-variance warning at the user
   .sd <- apply(covMat, 2, stats::sd)
@@ -56,22 +53,47 @@
   .r <- abs(stats::cor(covMat[, .ok, drop = FALSE]))
   .r[!is.finite(.r)] <- 0
   .gu <- unique(.g)
-  .comp <- seq_along(.gu)
-  .gok <- .g[.ok]
-  for (.a in seq_along(.ok)) {
+  .idOf(.vaeGroupLink(.r, .g[.ok], .gu, cut)[match(.g, .gu)])
+}
+
+#' Is there anything for the correlation pass to join?
+#'
+#' Fewer than two columns, fewer than three rows, a single group or a
+#' non-finite cut/design all mean the identity coarsening is the answer.
+#'
+#' @inheritParams .vaeCovCluster
+#' @param g integer `group`
+#' @return single logical
+#' @noRd
+.vaeCanCluster <- function(covMat, g, cut) {
+  ncol(covMat) >= 2L && nrow(covMat) >= 3L && length(unique(g)) >= 2L &&
+    is.finite(cut) && all(is.finite(covMat))
+}
+
+#' Single-linkage components over the covariate GROUPS.
+#'
+#' Only cross-group pairs are edges, so a group never links to itself.  A union
+#' relabels the whole component rather than one entry, which is what makes the
+#' result independent of the order the edges are visited.
+#'
+#' @param r `abs(cor)` among the usable columns
+#' @param gok group id of each usable column
+#' @param gu unique group ids, first-appearance order
+#' @param cut `abs(cor)` at which two groups join
+#' @return component id, one per entry of `gu`
+#' @noRd
+.vaeGroupLink <- function(r, gok, gu, cut) {
+  .comp <- seq_along(gu)
+  for (.a in seq_along(gok)) {
     for (.b in seq_len(.a - 1L)) {
-      if (.gok[.a] == .gok[.b] || .r[.a, .b] < cut) next
-      .ia <- .comp[match(.gok[.a], .gu)]
-      .ib <- .comp[match(.gok[.b], .gu)]
+      if (gok[.a] == gok[.b] || r[.a, .b] < cut) next
+      .ia <- .comp[match(gok[.a], gu)]
+      .ib <- .comp[match(gok[.b], gu)]
       if (.ia == .ib) next
-      ## relabel the whole component, so repeated unions give the connected
-      ## components regardless of the order the edges are visited
-      .lo <- min(.ia, .ib)
-      .hi <- max(.ia, .ib)
-      .comp[.comp == .hi] <- .lo
+      .comp[.comp == max(.ia, .ib)] <- min(.ia, .ib)
     }
   }
-  .idOf(.comp[match(.g, .gu)])
+  .comp
 }
 
 #' Does any cluster actually merge two covariate groups?
