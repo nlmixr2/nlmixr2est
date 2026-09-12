@@ -1222,6 +1222,32 @@
 #'   is within the bounds an error is raised.  Fixed parameters
 #'   (including those fixed at `0`) are left untouched.
 #'
+#' @param zeroThetaRetry Factor (default `100`) by which `zeroTheta` is
+#'   raised for ONE re-fit when a zero-initialized `theta` comes back sitting on
+#'   its nudge.  `1` disables the retry.
+#'
+#'   The nudge is also the magnitude the outer search assumes for the parameter
+#'   (FOCEi scales a linear theta by `1/|init|`), so a small `zeroTheta` means
+#'   the search explores in small steps and stops on the nudge -- the reported
+#'   estimate is then the nudge value rather than an estimate.  No single nudge
+#'   avoids this: measured, a coefficient on `log(WT/70)` whose true value is
+#'   `0.90` needs `0.1` (it returns `0.0009` at `0.001`), while a coefficient on
+#'   untransformed `WT` whose true value is `0.03` needs `0.001` (it returns
+#'   `0.0043` at `0.1`).  The two want scales 30x apart and a zero initial
+#'   estimate says nothing about which.
+#'
+#'   So the stall is detected instead of guessed at.  The fit is re-run once
+#'   from `zeroTheta * zeroThetaRetry` and the better objective function value
+#'   wins, which makes the retry safe: one that does not help is discarded (with
+#'   a warning, since those estimates are then not estimates).  It costs a
+#'   second fit only when the signature fires -- a parameter that moved off its
+#'   nudge never triggers it.
+#'
+#' @param zeroThetaRetryTol Multiple of `zeroTheta` (default `3`) within which a
+#'   final estimate counts as "still on the nudge" for `zeroThetaRetry`.  The
+#'   measured separation is wide: a stalled coefficient returns about 0.9x its
+#'   nudge, a healthy one 31x.
+#'
 #' @param eventSens Controls how dosing/event-parameter (`alag`, `F`,
 #'   `rate`, `dur`) sensitivities are computed for THETA/ETA gradients:
 #'   `"jump"` (default) uses rxode2's analytic event sensitivities; `"fd"`
@@ -1484,6 +1510,8 @@ foceiControl <- function(sigdig = 3, #
                          sensMethod = c("default", "forward"),
                          linCmtSensCarry = c("auto", "none"),
                          zeroTheta = 0.001,
+                         zeroThetaRetry = 100,
+                         zeroThetaRetryTol = 3,
                          boundedTransform = TRUE) { #
   ## sensMethod: forward (variational) ODE parameter sensitivities.
   sensMethod <- match.arg(sensMethod)
@@ -2118,6 +2146,8 @@ foceiControl <- function(sigdig = 3, #
   checkmate::assertIntegerish(shi21maxInnerCov, lower = 0, len = 1, any.missing = FALSE)
   checkmate::assertIntegerish(shi21maxFD, lower = 0, len = 1, any.missing = FALSE)
   checkmate::assertNumber(zeroTheta, lower = 0, finite = TRUE)
+  checkmate::assertNumber(zeroThetaRetry, lower = 1, finite = TRUE)
+  checkmate::assertNumber(zeroThetaRetryTol, lower = 0, finite = TRUE)
   if (zeroTheta <= 0) {
     stop("'zeroTheta' must be a positive number", call. = FALSE)
   }
@@ -2336,7 +2366,9 @@ foceiControl <- function(sigdig = 3, #
     sensMethod = sensMethod,
     linCmtSensCarry = linCmtSensCarry,
     boundedTransform = boundedTransform,
-    zeroTheta = zeroTheta
+    zeroTheta = zeroTheta,
+    zeroThetaRetry = zeroThetaRetry,
+    zeroThetaRetryTol = zeroThetaRetryTol
   )
   if (!is.null(.xtra$est)) {
     .ret$est <- .xtra$est

@@ -176,19 +176,17 @@
   if (length(.hit) == 0L) return(invisible())
   warning("a covariate-carrying declaration has a parameter starting at ",
           "exactly 0: ", paste(.hit, collapse = ", "),
-          ".  The outer search cannot move a coefficient off 0 here -- it ",
-          "takes one step of about 1e-3, the objective change falls under ",
-          "tolerance and it stops, so the coefficient comes back at its ",
-          "start.  Measured on a known effect of +0.75 the estimate is 0.0017 ",
-          "from a start of 0 and 0.7353 from a start of 0.1.  Seed the slope ",
-          "at a small non-zero value (0.1 works) instead.  A coefficient that ",
-          "was trapped this way is recognizable after the fact by an absurd ",
-          "relative standard error -- 26619% measured, against 18.5% for the ",
-          "same coefficient recovered from a start of 0.1 (estimate 0.602, ",
-          "95% CI 0.384-0.820, covering the true 0.75).  Note also that the ",
-          "objective is discontinuous in such a coefficient under prop() ",
-          "alone; bound the residual variance (a FIXED add() alongside it).",
-          call. = FALSE)
+          ".  A zero start carries no magnitude for the outer search to scale ",
+          "by, so such a coefficient can come back sitting on its ",
+          "foceiControl(zeroTheta=) nudge rather than estimated.  The FOCEi ",
+          "family detects that and re-fits once from a larger nudge ",
+          "(foceiControl(zeroThetaRetry=)), keeping the better objective, so ",
+          "no action is usually needed -- but check the estimate against its ",
+          "relative standard error, which is extreme for a coefficient that ",
+          "is still on the nudge.  One thing the retry cannot fix: under ",
+          "prop() alone the objective is not continuous in such a ",
+          "coefficient, so bound the residual variance with a FIXED add() ",
+          "alongside it.", call. = FALSE)
   invisible()
 }
 

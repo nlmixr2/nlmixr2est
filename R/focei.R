@@ -5274,6 +5274,11 @@ nlmixr2Est.focei <- function(env, ...) {
   })
   .ui <- env$ui
   .ret <- .foceiFamilyReturn(env, .ui, ..., est = "focei")
+  # A theta initialized at exactly 0 can come back sitting on the zeroTheta
+  # nudge, which is not an estimate -- re-fit once from a larger nudge and keep
+  # the better objective (see R/foceiZeroThetaRetry.R).
+  .ret <- tryCatch(.foceiZeroThetaRetry(env, .ret, env$control),
+                   error = function(e) .ret)
   .ret
 }
 attr(nlmixr2Est.focei, "nlmixr2Priors") <- "general"

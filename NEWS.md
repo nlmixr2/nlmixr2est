@@ -250,6 +250,41 @@ ini({
   and takes the threshold as `colinearCut`.
 
 ## Bug fixes
+- A `theta` initialized at exactly `0` is no longer reported at its
+  `foceiControl(zeroTheta=)` nudge instead of estimated.  Such a parameter has no
+  native magnitude, and FOCEi scales a linear theta by `1/|init|`, so
+  `.preProcessZeroTheta()` moves it off zero before estimation -- which makes the
+  nudge double as the magnitude the outer search assumes.  At the default nudge
+  of `0.001` the search explores in steps that size and stops on the nudge, and
+  the reported "estimate" is the nudge value.  For a covariate coefficient that
+  is indistinguishable from a correct null result, which is how it went
+  unnoticed.
+
+  On `theo_sd` with a coefficient on `log(WT/70)` whose true value is `0.90`,
+  the fit returned `0.00090` (objf 130.288) where the optimum is `0.899` at
+  128.902.
+
+  No single nudge fixes this: that model needs `0.1`, while the coefficient on
+  untransformed `WT` in `test-focei-zero-init-scale.R` (true value `0.03`) needs
+  `0.001` and returns `0.0043` at `0.1`.  The two want scales 30x apart and a
+  zero initial estimate says nothing about which.  So the stall is now detected
+  rather than guessed at -- a first fit still within `zeroThetaRetryTol`
+  multiples of the nudge is re-fit once from `zeroTheta * zeroThetaRetry`, and
+  the better objective function value wins.  The comparison is what makes it
+  safe; a retry that does not help is discarded with a warning, because those
+  estimates are then not estimates.  It costs a second fit only when the
+  signature fires, and the measured separation is wide (a stalled coefficient
+  returns ~0.9x its nudge, a healthy one 31x), so healthy fits are untouched.
+
+  Measured at default settings, true value in brackets: `theo_sd` on
+  `log(WT/70)` 0.0009 -> 0.9196 [0.90]; a declared-gamma arm with the covariate
+  in its rate 0.0009 -> 0.6007 [0.75]; the same arm with a true coefficient of
+  0 gives -0.1325 against a standard error of 0.11, i.e. a real estimate rather
+  than the nudge; and the untransformed-`WT` fixture is unchanged at 0.0311
+  [0.03] because it never triggers the retry.  New controls
+  `foceiControl(zeroThetaRetry=)` (default `100`, `1` disables) and
+  `zeroThetaRetryTol=` (default `3`).
+
 - A covariate coefficient on a `dist()` declaration is warned about when it
   starts at exactly `0`.  That is the conventional start for a slope and the one
   value the outer search cannot leave: on a known effect of +0.75 the estimate
