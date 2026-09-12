@@ -23,15 +23,21 @@
                            "nBurn", "burnFreezeOmega",
                            "ctol", "nConvWindow", "impSeed", "impCov",
                            "proposal", "propMixScale", "propMixWeight",
-                           "zeroOmegaDirect", "zeroOmegaMaxEval", "etaDistMstep",
-                           "etaDistWarmStart",
-                           "etaDistSdLo", "etaDistSdHi", "etaDistSdTol",
-                           "etaDistCorSuff", "etaDistSupportEps",
+                           "zeroOmegaDirect", "zeroOmegaMaxEval",
                            "qr", "qrShift", "qrRefresh", "qrScramble",
                            "sir", "sirSample",
-                           # internal M-step index maps added in .impmapFamilyFit;
-                           # not foceiControl() arguments, so they must be dropped
-                           # when down-converting (e.g. .setOfvFo's do.call(foceiControl))
+                           # internal M-step index maps stamped on the RUNTIME
+                           # control by .impmapFamilyFit, so they must be dropped
+                           # when down-converting (e.g. .setOfvFo's
+                           # do.call(foceiControl)).  flatEtaIdx is the one
+                           # exception that IS a foceiControl() argument; it is
+                           # dropped anyway because the value here is imp's
+                           # runtime index map, not a user setting.  Anything
+                           # foceiControl() accepts AS A USER KNOB must NOT be
+                           # listed: stripping it silently substitutes
+                           # foceiControl()'s default for the user's value, and
+                           # the two defaults need not agree (etaDistCorSuff is
+                           # TRUE on focei and FALSE here).
                            .impmapIdxMapNames, "flatEtaIdx",
                            # declared-distribution M-step metadata (family
                            # codes, current native parameters, index maps and
@@ -602,8 +608,32 @@
 #'   variance from -2.46 to +60.3 in a single iteration -- a relative variance
 #'   of 1.6e26 and a garbage objective -- where the same fit at `mceta = 0` was
 #'   fine (see the Levenberg-Marquardt damping in `src/imp.cpp`).  The damping
-#'   contains that now, but the sensitivity is real: hold `mceta` fixed when
-#'   comparing runs, and report it.
+#'   keeps the step finite but does NOT rescue the fit.
+#'
+#'   Measured end to end on that arm (g4: declared gamma, relative variance 2.0,
+#'   shape 0.5, CV 141%), at `isample = 300` from Bauer's own starting values,
+#'   raising `mceta` is 8-12x WORSE on mean absolute relative error against the
+#'   simulated truth:
+#'
+#'   | `mceta` | CL | V1 | rvCL | rvV1 | MARE | objf |
+#'   | --- | --- | --- | --- | --- | --- | --- |
+#'   | -2 (default) | 6.95 | 3.64 | 0.86 | 0.33 | 49.9% | 236 |
+#'   | 10 | 99.58 | 29.57 | 0.80 | 0.76 | 625.0% | 2.98e9 |
+#'   | 100 | 56.39 | 30.06 | 0.82 | 0.75 | 415.9% | 1.01e9 |
+#'
+#'   (truth CL 5.105, V1 4.715, rv 2.0/2.0.)  `nMcetaStart` confirms the draws
+#'   were explored rather than the setting ignored -- sampled starts won 595/600
+#'   and 600/600.  The mechanism is NOT the M-step Hessian: the count of
+#'   iterations that could not update the structural thetas is 89/100 at the
+#'   default against 96/100 and 71/77, so the ill-conditioning belongs to the arm
+#'   rather than to `mceta`.
+#'
+#'   Note also that Bauer's own control stream for this arm puts `MCETA=100` on
+#'   its `$EST METHOD=ITS` warm-up step; the `$EST METHOD=IMP` step carries no
+#'   `MCETA` and `MAPITER=0`.  It is not a precedent for importance sampling.
+#'
+#'   So: leave `mceta` at its default under `est="imp"` on a heavy-tailed
+#'   declared distribution, hold it fixed when comparing runs, and report it.
 #'
 #' @param impSeed Base seed for the per-subject thread-safe (threefry) RNG
 #'   streams; results are reproducible and independent of the thread count.

@@ -575,12 +575,20 @@ ini({
   problem), but the one observable that could show it was missing, so a real
   lever was indistinguishable from an ignored one.
 
-- `impmapControl(mceta=)` also survives the down-conversion to a plain
-  `foceiControl()`.  `mceta` is a genuine `foceiControl()` argument, so listing
-  it among the importance-sampling-only control names dropped it: estimation
-  reads it off the `impmapControl` directly and was unaffected, but the
-  consumers of the down-converted control (`.setOfvFo()`, the
-  general-likelihood tables) silently fell back to the package default.
+- Controls that `foceiControl()` also accepts now survive `impmapControl()`'s
+  down-conversion to a plain `foceiControl()`: `mceta`, `etaDistMstep`,
+  `etaDistWarmStart`, `etaDistSdLo`, `etaDistSdHi`, `etaDistSdTol`,
+  `etaDistCorSuff` and `etaDistSupportEps`.  The list they were on exists to
+  drop names `foceiControl()` does not accept, and dropping one it DOES accept
+  substitutes the package default for the user's value in every consumer of the
+  down-converted control (`.setOfvFo()`, the general-likelihood tables).  That
+  is invisible while the two defaults agree and wrong when they do not --
+  `etaDistCorSuff` is `TRUE` on `foceiControl()` and `FALSE` on
+  `impmapControl()`, so the output path was handed the opposite of what an imp
+  user asked for.  Estimation reads these off the `impmapControl` directly and
+  was never affected.  `flatEtaIdx` stays dropped on purpose: it is a
+  `foceiControl()` argument, but its value on an impmap control is imp's runtime
+  index map rather than a user setting.  A test now pins the invariant.
 
 - A mu-referenced random effect whose variance is declared zero is no longer
   removed from the model, and no longer contributes to the objective.

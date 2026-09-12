@@ -28,6 +28,23 @@ nmTest({
     expect_silent(do.call(foceiControl, .fc))
   })
 
+  test_that("no foceiControl() user knob is stripped by the down-conversion", {
+    # The general form of the mceta defect.  .impmapIsControlNames exists to drop
+    # names foceiControl() does not accept; listing one it DOES accept silently
+    # replaces the user's value with foceiControl()'s default in every consumer
+    # of the down-converted control.  That is invisible whenever the two
+    # defaults agree and wrong whenever they do not -- etaDistCorSuff is TRUE on
+    # foceiControl() and FALSE on impmapControl(), so stripping it handed the
+    # output path the opposite of what an imp user asked for.
+    .strip <- nlmixr2est:::.impmapIsControlNames
+    .fc <- names(formals(nlmixr2est::foceiControl))
+    # flatEtaIdx is the one deliberate exception: it is a foceiControl argument,
+    # but the value on an impmap control is imp's runtime index map rather than
+    # a user setting, so it is dropped on purpose.
+    .bad <- setdiff(intersect(.strip, .fc), "flatEtaIdx")
+    expect_equal(.bad, character(0))
+  })
+
   test_that("est=\"imp\" actually reaches the inner MAP with mceta >= 1", {
     .mod <- function() {
       ini({
