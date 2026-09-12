@@ -81,6 +81,10 @@ simultaneous population-parameter estimation and covariate selection.</p>
 <span>  covSelectMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"bnb"</span>, <span class="st">"l0learn"</span><span class="op">)</span>,</span>
 <span>  covSelectMaxExact <span class="op">=</span> <span class="fl">17L</span>,</span>
 <span>  covSelectColinearCut <span class="op">=</span> <span class="va">.vaeColinearCut</span>,</span>
+<span>  covSelectPhiCor <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"suffStat"</span>, <span class="st">"mu"</span>, <span class="st">"resid"</span><span class="op">)</span>,</span>
+<span>  covSelectPhiJoin <span class="op">=</span> <span class="fl">0.9</span>,</span>
+<span>  covSelectPhiLeave <span class="op">=</span> <span class="fl">0.8</span>,</span>
+<span>  covSelectPhiMaxDim <span class="op">=</span> <span class="fl">4L</span>,</span>
 <span>  bnbStrategy <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"lifo"</span>, <span class="st">"fifo"</span>, <span class="st">"lc"</span><span class="op">)</span>,</span>
 <span>  parEncoderBackward <span class="op">=</span> <span class="op">!</span><span class="fu"><a href="https://rdrr.io/r/base/Logic.html" class="external-link">isTRUE</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/options.html" class="external-link">getOption</a></span><span class="op">(</span><span class="st">"nlmixr2.identical"</span>, <span class="cn">FALSE</span><span class="op">)</span><span class="op">)</span>,</span>
 <span>  nonMuTheta <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"regress"</span>, <span class="st">"grad"</span>, <span class="st">"eta"</span>, <span class="st">"fix"</span>, <span class="st">"none"</span><span class="op">)</span>,</span>
@@ -468,6 +472,41 @@ selection chattering between columns the design cannot tell apart; and the
 mates that came within that margin are reported in `$covNearTie`.  Clusters
 are built at the mutual-exclusion group level, so two shapes of one
 covariate never cluster together.</p></dd>
+
+
+<dt id="arg-covselectphicor">covSelectPhiCor<a class="anchor" aria-label="anchor" href="#arg-covselectphicor"></a></dt>
+<dd><p>Which quantity the correlation between latent
+dimensions is computed from when grouping them for the cross-parameter
+covariate refinement: `"suffStat"` (default, the smoothed EMA sufficient
+statistic the selection itself regresses), `"mu"` (the raw posterior means)
+or `"resid"` (the posterior means less the fitted covariate centers).
+`"resid"` runs systematically higher than the other two – measured one
+bracket higher on the same fit – so raise `covSelectPhiJoin` if you
+select it.</p></dd>
+
+
+<dt id="arg-covselectphijoin-covselectphileave">covSelectPhiJoin, covSelectPhiLeave<a class="anchor" aria-label="anchor" href="#arg-covselectphijoin-covselectphileave"></a></dt>
+<dd><p>`abs(cor)` at which two latent
+dimensions join a correlated group, and the lower value at which one leaves
+again (defaults `0.9` and `0.8`).  Membership is re-evaluated every
+iteration; the gap between the two stops a pair whose correlation wanders
+around the threshold from joining and leaving repeatedly.
+`covSelectPhiLeave` must not exceed `covSelectPhiJoin`.  The defaults are
+measured rather than conventional: on an ordinary, well-identified
+one-compartment model the clearance and volume dimensions correlate
+between `0.75` and `0.80` under the default `covSelectPhiCor="suffStat"`
+(and between `0.80` and `0.85` under `"resid"`), so a join threshold at
+`0.8` would group a fit that has nothing wrong with it – see
+`tools/vaeColinearPreflight.R`, which measures this through the shipped
+gate.</p></dd>
+
+
+<dt id="arg-covselectphimaxdim">covSelectPhiMaxDim<a class="anchor" aria-label="anchor" href="#arg-covselectphimaxdim"></a></dt>
+<dd><p>Largest correlated group the cross-parameter
+refinement will attempt (default `4`).  A larger group is skipped rather
+than split: a latent space that entangled is not something per-covariate
+moves should be arbitrating, and splitting it would need an arbitrary
+tie-break on a near-tied graph.</p></dd>
 
 
 <dt id="arg-bnbstrategy">bnbStrategy<a class="anchor" aria-label="anchor" href="#arg-bnbstrategy"></a></dt>
