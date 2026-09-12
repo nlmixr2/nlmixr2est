@@ -553,7 +553,7 @@ struct focei_options {
   // are compacted to it (ind->neqOverride); only the objective's final solve at
   // eta-hat runs the outer block, and that is the solve the outer derivatives read.
   int combInnerNeq = 0;
-  int combOuterFlag = -1;      // par_ptr slot of rx_outer_, the outer-block switch (-1: none)
+  int combOuterFlag = -1;      // par_ptr slot of rxOuterBlock, the outer-block switch (-1: none)
   int outerDerivPass = 0;      // set while the outer Hessian settles the inner problem
   std::atomic<int> nInnerSolveCompact{0};  // inner solves integrated at combInnerNeq
   std::atomic<int> nInnerSolveFull{0};     // inner solves integrated at full width
@@ -8998,21 +8998,21 @@ NumericVector foceiSetup_(const RObject &obj,
       params = p2; paramsNames = n2;
     }
   }
-  // Combined build: the inner model's outer-block switch rx_outer_ is a model
+  // Combined build: the inner model's outer-block switch rxOuterBlock is a model
   // parameter, so the pool needs a column for it (1 = full width; per-subject
   // solves set it before integrating).
   if (!Rf_isNull(obj)) {
     CharacterVector _op = as<CharacterVector>(as<List>(rxode2::rxModelVars_(RObject(obj)))["params"]);
     bool _has = false, _have = false;
-    for (int q = 0; q < _op.size(); ++q) if (as<std::string>(_op[q]) == "rx_outer_") _has = true;
-    for (int q = 0; q < paramsNames.size(); ++q) if (as<std::string>(paramsNames[q]) == "rx_outer_") _have = true;
+    for (int q = 0; q < _op.size(); ++q) if (as<std::string>(_op[q]) == "rxOuterBlock") _has = true;
+    for (int q = 0; q < paramsNames.size(); ++q) if (as<std::string>(paramsNames[q]) == "rxOuterBlock") _have = true;
     if (_has && !_have) {
       int n0 = params.size();
       List p2(n0 + 1);
       CharacterVector n2(n0 + 1);
       for (int q = 0; q < n0; ++q) { p2[q] = params[q]; n2[q] = paramsNames[q]; }
       p2[n0] = NumericVector(expected_nsub, 1.0);
-      n2[n0] = "rx_outer_";
+      n2[n0] = "rxOuterBlock";
       params = p2; paramsNames = n2;
     }
   }
@@ -14145,7 +14145,7 @@ Environment foceiFitCpp_(Environment e){
         op_focei.combOuterFlag = -1;
         if (op_focei.outerComb) {
           CharacterVector _pn = as<CharacterVector>(as<List>(rxode2::rxModelVars_(RObject(model["outer"])))["params"]);
-          for (int q = 0; q < _pn.size(); ++q) if (as<std::string>(_pn[q]) == "rx_outer_") op_focei.combOuterFlag = q;
+          for (int q = 0; q < _pn.size(); ++q) if (as<std::string>(_pn[q]) == "rxOuterBlock") op_focei.combOuterFlag = q;
         }
         if (op_focei.outerComb && model.containsElementNamed("innerNeq")) {
           int _n = as<int>(model["innerNeq"]);

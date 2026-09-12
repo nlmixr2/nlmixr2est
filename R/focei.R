@@ -2147,7 +2147,7 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
   .new <- function(.l) .l[!(.lhsOf(.l) %in% .haveLhs)]
   # DDE pre-history lines cannot sit inside the switch block; keep the separate model
   if (length(.p$past) > 0L && any(nzchar(.p$past))) return(.s)
-  # The outer block is switched by the rx_outer_ parameter (1 on a full-width
+  # The outer block is switched by the rxOuterBlock parameter (1 on a full-width
   # solve, 0 on a compacted inner iteration), so a compacted solve neither
   # integrates nor evaluates the second-order lines; the state ICs stay outside.
   .blk <- c(.new(.p$ode), .p$lhs)
@@ -2159,7 +2159,13 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
     # apart from the inner model's
     if (!is.null(.opt)) .blk <- gsub("\\brx_expr_([0-9]+)\\b", "rx_oexpr_\\1", strsplit(.opt, "\n", fixed = TRUE)[[1]])
   }
-  .s$..outerLines <- c("if (rx_outer_ == 1) {", .blk, "}", .new(.p$ic))
+  # `rxOuterBlock = 1` declares the switch WITH a default, so a standalone solve
+  # of this model (tables, npde, the R covariance route) runs the full model
+  # without having to know about it; a plain name (no rx_.._ form) is what makes
+  # rxode2 read that line as a parameter default rather than an output column.
+  # Not put in param(): it is discovered after the declared theta/eta/covariate
+  # list, so every peer's positional layout is unchanged.
+  .s$..outerLines <- c("rxOuterBlock = 1", "if (rxOuterBlock == 1) {", .blk, "}", .new(.p$ic))
   .s$..outerMeta <- .p[setdiff(names(.p), c("ode", "ic", "past", "lhs"))]
   # The compacted width: the inner model's states plus EVERY first-order
   # sensitivity state the outer block adds (a non-mu theta direction).  rxode2's
@@ -2840,11 +2846,6 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
   # disappear from the inner/pred/outer models and the variable is undefined.
   .cmt <- .addPreModelLines(.cmt, ui$interpLinesStr, .mtimeLinesStr(s))
   .paramStr <- .uiGetThetaEtaParams(ui, TRUE)
-  if (!is.null(s$..outerMeta)) {
-    # the combined build's outer-block switch; declared LAST so every peer's
-    # positional theta/eta/covariate layout is unchanged
-    .paramStr <- if (grepl("\\(\\s*\\)$", .paramStr)) sub("\\(\\s*\\)$", "(rx_outer_)", .paramStr) else sub("\\)$", ", rx_outer_)", .paramStr)
-  }
   if (.getRxPredLlikOption()) {
     # DV is not an ordinary covariate (rxode2's etTran.cpp excludes any
     # "dv"-named column from covariate matching -- see CLAUDE.md), and a

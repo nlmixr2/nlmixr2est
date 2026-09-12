@@ -96,7 +96,7 @@
   combined eta+theta build does for `impmap`.  The solve pool then holds ONE
   model and nothing is swapped during a fit: the inner iterations integrate only
   the inner block of it (`ind->neqOverride`, the outer block switched off by
-  the `rx_outer_` model parameter), the derivative passes run one full-width
+  the `rxOuterBlock` model parameter), the derivative passes run one full-width
   solve per subject at the EBEs, and the analytic outer gradient and the outer
   Hessian's base solve read that solve instead of solving the augmented outer
   model themselves.  A plain objective evaluation is the same function
