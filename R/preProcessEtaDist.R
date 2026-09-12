@@ -135,6 +135,59 @@
 #' @return list with the expanded `ui`, or NULL when there is nothing to do
 #' @noRd
 #' @author Matthew L. Fidler
+#' Warn when a covariate coefficient on a declaration starts at exactly zero
+#'
+#' A covariate coefficient conventionally starts at 0, and on a declared
+#' distribution that is the one starting value the outer search cannot leave.
+#' Measured on a known allometric effect (true coefficient 0.75, gamma CL with
+#' the covariate in its rate): focei returns 0.0017 from a start of 0 and
+#' 0.7353 from a start of 0.1.  The objective is not flat there -- its central
+#' difference at 0 is -53.4 -- but from 0 the search takes one step of about
+#' 1e-3, the objective change falls under tolerance, and it stops.  Every start
+#' from 0.1 to 0.5 converges to the same optimum, nine objective units better.
+#'
+#' Warning rather than adjusting the value: the start is the user's, and a
+#' coefficient nudged off zero behind their back would change a reported
+#' estimate with no record of why.
+#'
+#' @param d declaration table from `.rxUiEtaDists()`
+#' @param ui rxode2 ui
+#' @return nothing, called for the warning
+#' @noRd
+.etaDistWarnZeroSlope <- function(d, ui) {
+  .iniDf <- try(ui$iniDf, silent = TRUE)
+  if (inherits(.iniDf, "try-error") || is.null(.iniDf)) return(invisible())
+  .th <- .iniDf[!is.na(.iniDf$ntheta), c("name", "est"), drop = FALSE]
+  if (nrow(.th) == 0L) return(invisible())
+  .hit <- character(0)
+  for (.i in seq_len(nrow(d))) {
+    .cl <- try(str2lang(d$etaDist[.i]), silent = TRUE)
+    if (inherits(.cl, "try-error")) next
+    .v <- all.vars(.cl)
+    ## a symbol in the declaration that is not a theta is a covariate; with no
+    ## covariate there is no slope to be trapped
+    if (length(setdiff(.v, .th$name)) == 0L) next
+    .own <- intersect(.v, .th$name)
+    .z <- .own[.th$est[match(.own, .th$name)] == 0]
+    if (length(.z)) {
+      .hit <- c(.hit, paste0(.z, " (in dist(", d$name[.i], "))"))
+    }
+  }
+  if (length(.hit) == 0L) return(invisible())
+  warning("a covariate-carrying declaration has a parameter starting at ",
+          "exactly 0: ", paste(.hit, collapse = ", "),
+          ".  The outer search cannot move a coefficient off 0 here -- it ",
+          "takes one step of about 1e-3, the objective change falls under ",
+          "tolerance and it stops, so the coefficient comes back at its ",
+          "start.  Measured on a known effect of +0.75 the estimate is 0.0017 ",
+          "from a start of 0 and 0.7353 from a start of 0.1.  Seed the slope ",
+          "at a small non-zero value (0.1 works) instead.  Note also that the ",
+          "objective is discontinuous in such a coefficient under prop() ",
+          "alone; bound the residual variance (a FIXED add() alongside it).",
+          call. = FALSE)
+  invisible()
+}
+
 .preProcessEtaDist <- function(ui, est, data, control) {
   if (is.null(ui)) return(NULL)
   .d <- .rxUiEtaDists(ui)
@@ -150,6 +203,7 @@
   ## a method that translates the declaration itself has to see it
   ## unexpanded (see `.etaDistMethodAttr()`)
   if (identical(.etaDistMethodAttr(est, control), "native")) return(NULL)
+  .etaDistWarnZeroSlope(.d, ui)
   ## Warm start, before the expansion and after the refusal.
   ##
   ## A declared family is very largely a STARTING VALUE problem: the E-step

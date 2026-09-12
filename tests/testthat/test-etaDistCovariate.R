@@ -448,3 +448,73 @@ test_that("the support rejection is tunable on both controls", {
                        .c[names(.c) %in% names(formals(nlmixr2est::impmapControl))]
                        )$etaDistSupportEps, 1e-300)
 })
+
+# A covariate coefficient conventionally starts at 0, and on a declared
+# distribution that is the one start the outer search cannot leave: measured on a
+# true effect of +0.75, focei returns 0.0017 from a start of 0 and 0.7353 from a
+# start of 0.1.  The warning exists because nothing else about the fit says so --
+# the coefficient simply comes back at its starting value.
+test_that("a covariate coefficient starting at exactly 0 is warned about", {
+  .m <- function() {
+    ini({
+      lclm <- 1.9; lclrv <- -2.0
+      bWT <- 0
+      eta.cl ~ 1
+      dist(eta.cl) ~ dgamma(shape = 1 / exp(lclrv),
+                            rate = 1 / (exp(lclrv) *
+                                        exp(lclm + bWT * log(WT / 70))))
+      prop.sd <- 0.1
+    })
+    model({
+      cl <- eta.cl; v <- 5
+      linCmt() ~ prop(prop.sd)
+    })
+  }
+  .u <- suppressMessages(nlmixr2est::nlmixr2(.m))
+  .d <- nlmixr2est:::.rxUiEtaDists(.u)
+  expect_warning(nlmixr2est:::.etaDistWarnZeroSlope(.d, .u),
+                 "starting at\\s+exactly 0")
+})
+
+test_that("a non-zero coefficient start is not warned about", {
+  .m <- function() {
+    ini({
+      lclm <- 1.9; lclrv <- -2.0
+      bWT <- 0.1
+      eta.cl ~ 1
+      dist(eta.cl) ~ dgamma(shape = 1 / exp(lclrv),
+                            rate = 1 / (exp(lclrv) *
+                                        exp(lclm + bWT * log(WT / 70))))
+      prop.sd <- 0.1
+    })
+    model({
+      cl <- eta.cl; v <- 5
+      linCmt() ~ prop(prop.sd)
+    })
+  }
+  .u <- suppressMessages(nlmixr2est::nlmixr2(.m))
+  .d <- nlmixr2est:::.rxUiEtaDists(.u)
+  expect_silent(nlmixr2est:::.etaDistWarnZeroSlope(.d, .u))
+})
+
+test_that("a declaration with NO covariate is never warned about", {
+  # a theta at exactly 0 is perfectly ordinary when there is no covariate to
+  # carry a slope, so the warning must not fire on it
+  .m <- function() {
+    ini({
+      lclm <- 0
+      lclrv <- -2.0
+      eta.cl ~ 1
+      dist(eta.cl) ~ dgamma(shape = 1 / exp(lclrv),
+                            rate = 1 / (exp(lclrv) * exp(lclm)))
+      prop.sd <- 0.1
+    })
+    model({
+      cl <- eta.cl; v <- 5
+      linCmt() ~ prop(prop.sd)
+    })
+  }
+  .u <- suppressMessages(nlmixr2est::nlmixr2(.m))
+  .d <- nlmixr2est:::.rxUiEtaDists(.u)
+  expect_silent(nlmixr2est:::.etaDistWarnZeroSlope(.d, .u))
+})

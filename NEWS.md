@@ -250,6 +250,27 @@ ini({
   and takes the threshold as `colinearCut`.
 
 ## Bug fixes
+- A covariate coefficient on a `dist()` declaration is warned about when it
+  starts at exactly `0`.  That is the conventional start for a slope and the one
+  value the outer search cannot leave: on a known effect of +0.75 the estimate
+  comes back as 0.0017 from a start of 0 and 0.7353 from a start of 0.1.  The
+  objective is not flat there -- its central difference at 0 is -53.4 -- but
+  from 0 the search takes a step of about 1e-3, the objective change falls under
+  the convergence tolerance, and it stops with the coefficient at its starting
+  value.  Every start from 0.1 to 0.5 converges to the same optimum, nine
+  objective units better.  The warning names the parameter and says what to do;
+  the value is not adjusted, because a coefficient nudged off zero silently
+  would change a reported estimate with no record of why.
+
+  The same warning notes the second trap on such a model: under `prop()` alone
+  the objective is not continuous in the coefficient.  A subject's inner MAP
+  switches mode, its prediction collapses (measured to ~6e-6), and because the
+  proportional variance is `(prop.sd*IPRED)^2` the log-variance term rewards the
+  collapse -- objf 20370 at a slope of 0.09 against 25278 at 0.10 on identical
+  records.  Bounding the residual variance fixes it, but only with a FIXED
+  `add()`: left free the optimizer drives the additive term to 0 and recreates
+  the degeneracy.
+
 
 - A focei inner ETA solve that has spent every `etaNudge`/`etaNudge2` restart
   and still failed now falls back on draws from Omega
