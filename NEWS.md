@@ -1,6 +1,18 @@
 # nlmixr2est 7.0.3
 
 ## New features
+- A covariate that enters BOTH a `dist()` declaration and the structural
+  expression for the same parameter is now warned about, naming both places.
+  With the same functional form on each side the two coefficients are not
+  separately identifiable -- only their sum is -- and a fit reports both,
+  trading them off against each other; nothing else about the model says so.
+
+  It warns rather than refusing.  Deciding "exactly aliased" means comparing the
+  two functional forms, and doing that on expression text is guesswork:
+  `log(WT/70)` and `log(WT) - log(70)` are the same shape spelled two ways,
+  while genuinely different shapes can look alike.  A false warning costs a line
+  of output; a false refusal blocks a model outright.
+
 
 - `saemControl(rwOmega=)` is back, and **off**.  It proposes the mode-2 MCMC
   random walk from `lambda * Omega` -- NONMEM's eq. 1.139, Monolix's kernel 4

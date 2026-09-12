@@ -574,3 +574,81 @@ test_that("the covariate warning says something different per estimator", {
   expect_match(.msg("vae"), "has not been verified")
   expect_false(grepl("0.032", .msg("vae"), fixed = TRUE))
 })
+
+# A covariate on a declaration AND on the structural expression that consumes
+# that random effect are two ways of saying the same thing about one parameter.
+# With the same functional form the two coefficients are not separately
+# identifiable -- only their sum is -- and a fit reports both, trading them off.
+# Nothing else in the model says so, which is why this is worth a diagnostic.
+test_that("a covariate on both the declaration and the structural model warns", {
+  .m <- function() {
+    ini({
+      lclm <- 1.63; lclrv <- -2.4
+      bWT <- 0.1; bWT2 <- 0.1
+      prop.sd <- 0.1
+      eta.cl ~ 1
+      dist(eta.cl) ~ dgamma(shape = 1 / exp(lclrv),
+                            rate = 1 / (exp(lclrv) *
+                                        exp(lclm + bWT * log(WT / 70))))
+    })
+    model({
+      cl <- eta.cl * exp(bWT2 * log(WT / 70))
+      v <- 5
+      linCmt() ~ prop(prop.sd)
+    })
+  }
+  .u <- suppressMessages(nlmixr2est::nlmixr2(.m))
+  .d <- nlmixr2est:::.rxUiEtaDists(.u)
+  expect_warning(nlmixr2est:::.etaDistWarnCovAliased(.d, .u),
+                 "enters both a declared distribution and the structural")
+  # and it names WHERE, so the reader can judge whether the forms differ
+  .w <- tryCatch({nlmixr2est:::.etaDistWarnCovAliased(.d, .u); ""},
+                 warning = function(w) conditionMessage(w))
+  expect_match(.w, "WT")
+  expect_match(.w, "dist(eta.cl)", fixed = TRUE)
+})
+
+test_that("a covariate on the declaration ALONE does not warn", {
+  # the ordinary case this must not fire on: the covariate is only on the
+  # declaration, and the structural line just uses the random effect
+  .m <- function() {
+    ini({
+      lclm <- 1.63; lclrv <- -2.4; bWT <- 0.1; prop.sd <- 0.1
+      eta.cl ~ 1
+      dist(eta.cl) ~ dgamma(shape = 1 / exp(lclrv),
+                            rate = 1 / (exp(lclrv) *
+                                        exp(lclm + bWT * log(WT / 70))))
+    })
+    model({
+      cl <- eta.cl
+      v <- 5
+      linCmt() ~ prop(prop.sd)
+    })
+  }
+  .u <- suppressMessages(nlmixr2est::nlmixr2(.m))
+  .d <- nlmixr2est:::.rxUiEtaDists(.u)
+  expect_silent(nlmixr2est:::.etaDistWarnCovAliased(.d, .u))
+})
+
+test_that("a covariate elsewhere in the model does not warn", {
+  # a covariate on a DIFFERENT parameter is not aliased with the declaration,
+  # so the check must key on the declared eta rather than on the covariate
+  .m <- function() {
+    ini({
+      lclm <- 1.63; lclrv <- -2.4; bWT <- 0.1; tv <- 1.6; bWTv <- 0.1
+      prop.sd <- 0.1
+      eta.cl ~ 1
+      dist(eta.cl) ~ dgamma(shape = 1 / exp(lclrv),
+                            rate = 1 / (exp(lclrv) *
+                                        exp(lclm + bWT * log(WT / 70))))
+    })
+    model({
+      cl <- eta.cl
+      v <- exp(tv + bWTv * log(WT / 70))
+      linCmt() ~ prop(prop.sd)
+    })
+  }
+  .u <- suppressMessages(nlmixr2est::nlmixr2(.m))
+  .d <- nlmixr2est:::.rxUiEtaDists(.u)
+  expect_silent(nlmixr2est:::.etaDistWarnCovAliased(.d, .u))
+})

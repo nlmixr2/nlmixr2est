@@ -247,6 +247,67 @@
   invisible()
 }
 
+#' Warn when a covariate enters both a declaration and the structural model
+#'
+#' A covariate on a declaration's role anchor and the SAME covariate on the
+#' structural expression that consumes that random effect are two ways of
+#' saying the same thing about the same parameter.  When they enter with the
+#' same functional form the two coefficients are not separately identifiable --
+#' only their sum is -- and the fit will happily report both, trading them off
+#' against each other run to run.
+#'
+#' Warns rather than refusing, deliberately, even though the plan called for
+#' refusing the exactly-aliased case.  Deciding "exactly aliased" needs the two
+#' functional forms compared, and doing that on expression text is guesswork:
+#' `log(WT/70)` against `log(WT)-log(70)` is the same shape spelled two ways,
+#' while a genuinely different shape can look similar.  A false warning costs a
+#' line of output; a false refusal blocks a model the user cannot then fit at
+#' all.  The message names both locations so the reader can judge.
+#'
+#' @param d declaration table from `.rxUiEtaDists()`
+#' @param ui rxode2 ui (unexpanded -- this runs before the expansion)
+#' @return nothing, called for the warning
+#' @noRd
+.etaDistWarnCovAliased <- function(d, ui) {
+  .cov <- try(ui$allCovs, silent = TRUE)
+  if (inherits(.cov, "try-error") || length(.cov) == 0L) return(invisible())
+  .lst <- try(ui$lstExpr, silent = TRUE)
+  if (inherits(.lst, "try-error") || length(.lst) == 0L) return(invisible())
+  .hit <- character(0)
+  for (.i in seq_len(nrow(d))) {
+    .cl <- try(str2lang(d$etaDist[.i]), silent = TRUE)
+    if (inherits(.cl, "try-error")) next
+    .declCov <- intersect(all.vars(.cl), .cov)
+    if (length(.declCov) == 0L) next
+    .eta <- d$name[.i]
+    for (.e in .lst) {
+      .v <- all.vars(.e)
+      if (!(.eta %in% .v)) next
+      ## the line that ASSIGNS the eta is the declaration's own decoder, not a
+      ## structural use of it
+      if (is.call(.e) && length(.e) > 2L && identical(.e[[1]], quote(`<-`)) &&
+            is.name(.e[[2]]) && identical(as.character(.e[[2]]), .eta)) {
+        next
+      }
+      .both <- intersect(.declCov, .v)
+      if (length(.both) > 0L) {
+        .hit <- c(.hit, paste0(paste(.both, collapse = ", "),
+                               " (on dist(", .eta, ") and on `",
+                               deparse1(.e), "`)"))
+      }
+    }
+  }
+  if (length(.hit) == 0L) return(invisible())
+  warning("a covariate enters both a declared distribution and the structural ",
+          "model for the same parameter: ", paste(unique(.hit), collapse = "; "),
+          ".  If the two enter with the same functional form their ",
+          "coefficients are not separately identifiable -- only their sum is -- ",
+          "and a fit will trade them off against each other.  Keep the ",
+          "covariate in one place, or check that the two forms really are ",
+          "different.", call. = FALSE)
+  invisible()
+}
+
 .preProcessEtaDist <- function(ui, est, data, control) {
   if (is.null(ui)) return(NULL)
   .d <- .rxUiEtaDists(ui)
@@ -263,6 +324,7 @@
   ## unexpanded (see `.etaDistMethodAttr()`)
   if (identical(.etaDistMethodAttr(est, control), "native")) return(NULL)
   .etaDistWarnZeroSlope(.d, ui, est)
+  .etaDistWarnCovAliased(.d, ui)
   ## Warm start, before the expansion and after the refusal.
   ##
   ## A declared family is very largely a STARTING VALUE problem: the E-step
