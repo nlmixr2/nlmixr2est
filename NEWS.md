@@ -250,6 +250,30 @@ ini({
   and takes the threshold as `colinearCut`.
 
 ## Bug fixes
+- The warning about a covariate on a `dist()` declaration now says what the
+  chosen estimator actually does, because the behavior differs per estimator and
+  the previous wording handed all of them FOCEi's advice.  Measured on a known
+  allometric effect (true coefficient `0.75`, covariate in a gamma rate) from
+  displaced starting values:
+
+  * `focei` recovers it, once the slope is not started at exactly `0` --
+    which `foceiControl(zeroThetaRetry=)` now arranges.
+  * `saem` does not estimate it at all.  The declaration's own thetas AND the
+    coefficient come back bit-exactly at their `ini()` values, because the
+    family M-step holds a covariate-carrying declaration out and no other route
+    owns it -- not `etaDistLoglik = TRUE`, and not
+    `nonMuTheta = "regress"`/`"eta"` (all four checked).  The other
+    declarations in the same model are estimated normally, which is what makes
+    it easy to miss; the parameters do appear in `saemParamsToEstimate`, so
+    nothing else about the fit reports it.
+  * `imp` moves them -- the declaration's own thetas travel toward truth
+    (`lclm` 1.9 to 1.71, `lclrv` -2.0 to -2.25) -- but the coefficient stalls
+    at `0.032` against a true `0.75`.  The `zeroTheta` nudge and its retry are
+    FOCEi-family only.
+
+  An estimator that has not been run on this arm gets a message that claims no
+  measurement rather than borrowing another's numbers.
+
 - A `theta` initialized at exactly `0` is no longer reported at its
   `foceiControl(zeroTheta=)` nudge instead of estimated.  Such a parameter has no
   native magnitude, and FOCEi scales a linear theta by `1/|init|`, so

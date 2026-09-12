@@ -154,7 +154,7 @@
 #' @param ui rxode2 ui
 #' @return nothing, called for the warning
 #' @noRd
-.etaDistWarnZeroSlope <- function(d, ui) {
+.etaDistWarnZeroSlope <- function(d, ui, est = "") {
   .iniDf <- try(ui$iniDf, silent = TRUE)
   if (inherits(.iniDf, "try-error") || is.null(.iniDf)) return(invisible())
   .th <- .iniDf[!is.na(.iniDf$ntheta), c("name", "est"), drop = FALSE]
@@ -171,6 +171,63 @@
     .z <- .own[.th$est[match(.own, .th$name)] == 0]
     if (length(.z)) {
       .hit <- c(.hit, paste0(.z, " (in dist(", d$name[.i], "))"))
+    }
+  }
+  # Three estimators, three different behaviors, all measured on a known
+  # allometric effect (true coefficient 0.75, covariate in a gamma rate) from
+  # displaced starts.  Do not hand any of them another's advice.
+  #
+  #   focei  recovers it, given a non-zero slope start -- which
+  #          foceiControl(zeroThetaRetry=) now arranges.  Falls through below.
+  #   saem   estimates it with NOTHING: the family M-step holds a
+  #          covariate-carrying declaration out (a coefficient has no phi0
+  #          column to write back through) and neither etaDistLoglik=TRUE nor
+  #          nonMuTheta="regress"/"eta" picks it up.  lclm, lclrv and the
+  #          coefficient all come back BIT-EXACTLY at ini() while the other
+  #          declaration's thetas are estimated correctly in the same fit.
+  #   imp    moves them -- lclm 1.9 -> 1.71 and lclrv -2.0 -> -2.25, both
+  #          toward truth -- but the coefficient stalls at 0.032 against 0.75.
+  #          It gets neither the zeroTheta nudge nor the retry, both of which
+  #          are FOCEi-family only.
+  if (!identical(est, "") && !grepl("^(focei|foce|foi|posthoc)", est)) {
+    .cov <- character(0)
+    for (.i in seq_len(nrow(d))) {
+      .cl <- try(str2lang(d$etaDist[.i]), silent = TRUE)
+      if (inherits(.cl, "try-error")) next
+      if (length(setdiff(all.vars(.cl), .th$name)) > 0L) {
+        .cov <- c(.cov, paste0("dist(", d$name[.i], ")"))
+      }
+    }
+    if (length(.cov) > 0L) {
+      .what <- if (grepl("^saem", est)) {
+        paste0("does not estimate them at all -- they come back BIT-EXACTLY ",
+               "at their ini() values, because the family M-step holds a ",
+               "covariate-carrying declaration out and no other route owns ",
+               "it (a coefficient has no phi0 column to write back through). ",
+               " Other declarations in the same model are estimated normally,",
+               " which is what makes this easy to miss")
+      } else if (grepl("^(imp|impmap|qrpem)", est)) {
+        paste0("moves them but does not reach the coefficient: measured, the ",
+               "declaration's own thetas travel toward truth while the ",
+               "coefficient stalls near its starting value (0.032 against a ",
+               "true 0.75).  The zeroTheta nudge and its retry, which fix ",
+               "this for FOCEi, are FOCEi-family only")
+      } else {
+        # deliberately makes no measured claim: only focei, saem and imp have
+        # been run on this arm, and quoting one of their numbers here would
+        # attribute a measurement to an estimator that never produced it
+        paste0("has not been verified to estimate a covariate on a ",
+               "declaration.  The zeroTheta nudge and its retry, which make ",
+               "this work for FOCEi, are FOCEi-family only, and saem is known ",
+               "not to estimate such parameters at all.  Check the ",
+               "coefficient against its starting value and standard error ",
+               "before trusting it")
+      }
+      warning("est=\"", est, "\" ", .what, ": ",
+              paste(.cov, collapse = ", "),
+              ".  Use est=\"focei\" for a covariate on a declaration, where ",
+              "the coefficient is recovered.", call. = FALSE)
+      return(invisible())
     }
   }
   if (length(.hit) == 0L) return(invisible())
@@ -205,7 +262,7 @@
   ## a method that translates the declaration itself has to see it
   ## unexpanded (see `.etaDistMethodAttr()`)
   if (identical(.etaDistMethodAttr(est, control), "native")) return(NULL)
-  .etaDistWarnZeroSlope(.d, ui)
+  .etaDistWarnZeroSlope(.d, ui, est)
   ## Warm start, before the expansion and after the refusal.
   ##
   ## A declared family is very largely a STARTING VALUE problem: the E-step

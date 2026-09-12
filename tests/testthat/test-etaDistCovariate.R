@@ -518,3 +518,46 @@ test_that("a declaration with NO covariate is never warned about", {
   .d <- nlmixr2est:::.rxUiEtaDists(.u)
   expect_silent(nlmixr2est:::.etaDistWarnZeroSlope(.d, .u))
 })
+
+
+# The covariate-on-a-declaration warning is estimator-specific because the
+# BEHAVIOR is, all measured on a known allometric effect (true coefficient 0.75)
+# from displaced starts: focei recovers it once the slope is not started at 0;
+# saem estimates it with nothing at all (bit-exact ini() values, while the other
+# declaration in the same fit is estimated correctly); imp moves the
+# declaration's own thetas toward truth but its coefficient stalls at 0.032.
+# Handing one estimator another's advice is the failure these tests guard.
+test_that("the covariate warning says something different per estimator", {
+  .m <- function() {
+    ini({
+      lclm <- 1.9; lclrv <- -2.0
+      bWT <- 0
+      eta.cl ~ 1
+      dist(eta.cl) ~ dgamma(shape = 1 / exp(lclrv),
+                            rate = 1 / (exp(lclrv) *
+                                        exp(lclm + bWT * log(WT / 70))))
+      prop.sd <- 0.1
+    })
+    model({
+      cl <- eta.cl; v <- 5
+      linCmt() ~ prop(prop.sd)
+    })
+  }
+  .u <- suppressMessages(nlmixr2est::nlmixr2(.m))
+  .d <- nlmixr2est:::.rxUiEtaDists(.u)
+  .msg <- function(.e) {
+    tryCatch({nlmixr2est:::.etaDistWarnZeroSlope(.d, .u, .e); ""},
+             warning = function(w) conditionMessage(w))
+  }
+  # focei: the zero-start message, and it must mention the retry that fixes it
+  expect_match(.msg("focei"), "starting at\\s+exactly 0")
+  expect_match(.msg("focei"), "zeroThetaRetry")
+  # saem: not estimated at all.  Must NOT offer the FOCEi retry as a remedy.
+  expect_match(.msg("saem"), "does not estimate them at all")
+  expect_false(grepl("zeroThetaRetry", .msg("saem")))
+  # imp: moves them, coefficient stalls
+  expect_match(.msg("imp"), "does not reach the coefficient")
+  # an estimator nobody measured must claim no measurement
+  expect_match(.msg("vae"), "has not been verified")
+  expect_false(grepl("0.032", .msg("vae"), fixed = TRUE))
+})
