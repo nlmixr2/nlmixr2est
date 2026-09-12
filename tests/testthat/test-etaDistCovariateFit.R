@@ -65,10 +65,14 @@
 
 .edT5Model <- function() {
   ini({
-    lclm <- 1.63; lv1m <- 1.55
-    lclrv <- -2.4; lv1rv <- -2.4
+    # DISPLACED from the simulated truth (1.63, 1.55, -2.4, -2.4, rho 0.5) on
+    # purpose: starting a parameter at its true value makes "the fit recovers
+    # it" pass without the estimator moving anything, which is the same trap
+    # bWT falls into below.
+    lclm <- 1.9; lv1m <- 1.8
+    lclrv <- -2.0; lv1rv <- -2.0
     bWT <- 0
-    eta.cl + eta.v1 ~ c(1, 0.5, 1)
+    eta.cl + eta.v1 ~ c(1, 0.3, 1)
     dist(eta.cl) ~ dgamma(shape = 1 / exp(lclrv),
                           rate = 1 / (exp(lclrv) *
                                       exp(lclm + bWT * log(WT / 70))))
@@ -97,10 +101,16 @@ nmTest({
     expect_true(.p[["prop.sd"]] > 0)
     expect_equal(.p[["prop.sd"]], 0.10, tolerance = 0.5)
 
-    # the structural parameters do land on truth, so the model is being fitted
+    # The structural parameters are started away from truth and must come back
+    # to it, so these cannot pass on a frozen fit.  Measured at 120 subjects:
+    # lclm 1.9 -> 1.6228, lv1m 1.8 -> 1.5440, lclrv -2.0 -> -2.2394,
+    # rxCor 0.3 -> 0.6017, against truth 1.63, 1.55, -2.4 and 0.5.
     expect_equal(.p[["lclm"]], 1.63, tolerance = 0.15)
     expect_equal(.p[["lv1m"]], 1.55, tolerance = 0.15)
-    expect_true(.p[["lclrv"]] < -1.5)
+    # directional rather than tight: the relative variances move toward truth
+    # from -2.0 but do not arrive, and the copula moves well off its 0.3 start
+    expect_true(.p[["lclrv"]] < -2.05)
+    expect_true(.p[["rxCor.eta.v1.eta.cl"]] > 0.4)
 
     # NOTE: bWT is deliberately NOT asserted here.  Its start and its truth are
     # both 0, so an estimator that never moves it "recovers" it perfectly --
