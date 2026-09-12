@@ -449,12 +449,12 @@ nmTest({
     expect_equal(.f2$objf, .f1$objf, tolerance = 1e-8)
     expect_equal(as.data.frame(.f1$eta), as.data.frame(.f2$eta), tolerance = 1e-8)
   })
-  test_that("a fit with failed inner solves says so in $runInfo (#1044)", {
+  test_that("failed inner solves are reported on $env, NOT in $runInfo (#1044)", {
     skip_on_cran()
-    # The outcome counters are on $env, which nothing reads unprompted, so a
-    # fit whose inner solves failed still looked -- to anyone holding the fit
-    # -- exactly like one where they all converged.  $runInfo is where a
-    # run-time note actually reaches.
+    # Some inner solves failing is ordinary for a nonlinear mixed-effects fit,
+    # so this is NOT a run-time note: a $runInfo entry would fire on most fits
+    # and say nothing.  The counts belong on $env, where whoever is actually
+    # diagnosing a fit can read them.
     .bad <- suppressWarnings(suppressMessages(
       nlmixr2(.oneCmt, nlmixr2data::theo_sd, est = "focei",
               control = foceiControl(innerOpt = "trust", maxOuterIterations = 5,
@@ -462,14 +462,8 @@ nmTest({
                                      calcTables = FALSE, print = 0))))
     expect_gt(.bad$env$nTrustInner[["failed"]], 0L)
     expect_gt(.bad$env$nInnerRerank[["noGood"]], 0L)
-    expect_true(any(grepl("inner solves spent every retry", .bad$runInfo)))
-    expect_true(any(grepl("come from a failed inner solve", .bad$runInfo)))
-
-    # ... and a fit whose inner solves converge stays quiet, or the note says
-    # nothing.
-    .ok <- .fitTrustCmp("trust")
-    expect_equal(.ok$env$nTrustInner[["failed"]], 0L)
-    expect_false(any(grepl("inner solve", .ok$runInfo)))
+    # ... and none of that reaches $runInfo, on the fit that HAS failures.
+    expect_false(any(grepl("inner solve", .bad$runInfo)))
   })
 
   test_that("the inner cascade falls back on Omega draws (#1044)", {

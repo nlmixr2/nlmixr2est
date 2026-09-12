@@ -8,18 +8,13 @@
   every ETA to the same constant, which explores poorly once the inner problem
   has more than one basin; the draws are starting points from the distribution
   the ETAs come from.  Measured on #1044's model at a displaced parameter set,
-  subjects that ended with every attempt spent fell from 45 to 24 of 300 and
-  the objective from 687874 to 272736.  The draws are taken once per fit from
+  subjects that ended with every attempt spent fell from 45 to 25 of 300 and
+  the objective from 687874 to 139103.  The draws are taken once per fit from
   rxode2's seeded engine, so the objective stays a function of theta alone, and
   they are read only after a solve has already failed -- a fit whose inner
   solves converge is bit-identical with the fallback on and off.  This applies
   to `innerOpt="trust"`, which reports a convergence verdict per solve; `n1qn1`
   reports none, so its own restart cascade is unchanged (#1044).
-- A focei fit whose inner ETA solves failed now says so in `$runInfo`.  The
-  per-outcome counters added for #1044 live on `fit$env$nTrustInner` /
-  `fit$env$nInnerRerank`, which nothing reads unprompted, so a fit that spent
-  every retry on a subject still looked exactly like one where every inner
-  solve converged (#1044).
 - `covMethod="analytic"` for FOCE and `foce="foce+"` no longer carries the inner
   solver's residual score into the observed information.  The FOCE kernel uses
   the general total-derivative form, whose last term is `Phi_eta . eta_ab`; it
