@@ -181,7 +181,11 @@
           "tolerance and it stops, so the coefficient comes back at its ",
           "start.  Measured on a known effect of +0.75 the estimate is 0.0017 ",
           "from a start of 0 and 0.7353 from a start of 0.1.  Seed the slope ",
-          "at a small non-zero value (0.1 works) instead.  Note also that the ",
+          "at a small non-zero value (0.1 works) instead.  A coefficient that ",
+          "was trapped this way is recognizable after the fact by an absurd ",
+          "relative standard error -- 26619% measured, against 18.5% for the ",
+          "same coefficient recovered from a start of 0.1 (estimate 0.602, ",
+          "95% CI 0.384-0.820, covering the true 0.75).  Note also that the ",
           "objective is discontinuous in such a coefficient under prop() ",
           "alone; bound the residual variance (a FIXED add() alongside it).",
           call. = FALSE)

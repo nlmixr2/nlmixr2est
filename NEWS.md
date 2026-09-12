@@ -262,6 +262,12 @@ ini({
   the value is not adjusted, because a coefficient nudged off zero silently
   would change a reported estimate with no record of why.
 
+  A coefficient trapped this way is recognizable after the fit by an absurd
+  relative standard error: 26619% against 18.5% for the same coefficient
+  started at 0.1, which lands at 0.602 with a 95% confidence interval of
+  0.384-0.820 -- covering the true 0.75.  That matters because the trapped
+  estimate itself (0.0009) is indistinguishable from a correct null result.
+
   The same warning notes the second trap on such a model: under `prop()` alone
   the objective is not continuous in the coefficient.  A subject's inner MAP
   switches mode, its prediction collapses (measured to ~6e-6), and because the
