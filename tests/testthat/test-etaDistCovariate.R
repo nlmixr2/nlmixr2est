@@ -653,3 +653,55 @@ test_that("a covariate elsewhere in the model does not warn", {
   expect_silent(nlmixr2est:::.etaDistWarnCovAliased(.d, .u))
 })
 
+
+# THE INVARIANT: a covariate that reaches the model only through a dist()
+# declaration must never enter saem's mu-referencing MCOV matrix.
+#
+# It cannot be mu-referenced: a declared random effect has no `theta + eta`
+# form -- it enters as Q(phiU(z); args) -- so there is no mu reference for a
+# covariate on it to attach to.  If one ever did reach MCOV, the GLS update
+# would own the coefficient and write it to zero (the failure that made saem
+# report exactly 0.0 for a known effect of 0.75).  The coefficient must stay an
+# ordinary phi0 theta instead.
+test_that("a declaration covariate never enters the mu-referencing MCOV", {
+  .m <- function() {
+    ini({
+      lclm <- 1.63; lclrv <- -2.4; bWT <- 0.1; prop.sd <- 0.1
+      eta.cl ~ 1
+      dist(eta.cl) ~ dgamma(shape = 1 / exp(lclrv),
+                            rate = 1 / (exp(lclrv) *
+                                        exp(lclm + bWT * log(WT / 70))))
+    })
+    model({
+      cl <- eta.cl; v <- 5
+      linCmt() ~ prop(prop.sd)
+    })
+  }
+  .u <- rxode2::rxUiDecompress(suppressMessages(nlmixr2est::nlmixr2(.m)))
+  # no mu-referenced covariate anywhere, so nothing reaches MCOV
+  expect_equal(nrow(.u$muRefCovariateDataFrame), 0L)
+  expect_equal(nrow(.u$saemMuRefCovariateDataFrame), 0L)
+  expect_true(length(.u$saemCovars) == 0L || !nzchar(.u$saemCovars[1]))
+  # and the coefficient is still a real estimated parameter, not dropped
+  expect_true("bWT" %in% .u$saemParamsToEstimate)
+})
+
+test_that("an ORDINARY mu-referenced covariate still does enter MCOV", {
+  # the positive control: without this the test above would pass whenever the
+  # accessors happened to return nothing, which would make it worthless
+  .m <- function() {
+    ini({
+      tcl <- 1; tv <- 3.45; bWT <- 0.1
+      eta.cl ~ 0.3
+      add.sd <- 0.7
+    })
+    model({
+      cl <- exp(tcl + bWT * WT + eta.cl)
+      v <- exp(tv)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  .u <- rxode2::rxUiDecompress(suppressMessages(nlmixr2est::nlmixr2(.m)))
+  expect_true(nrow(.u$muRefCovariateDataFrame) > 0L)
+  expect_true("bWT" %in% .u$muRefCovariateDataFrame$covariateParameter)
+})
