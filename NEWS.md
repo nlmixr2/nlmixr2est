@@ -13,6 +13,19 @@
   groups, so two shapes of one covariate never cluster together.
 - `vaeCovariates()` reports the same clustering in a new `cluster` column
   and takes the threshold as `colinearCut`.
+- `est="vae"` now refines covariate attribution across correlated latent
+  dimensions.  Each dim's covariate search only sees the other dims through
+  a frozen Gauss-Seidel offset, so it cannot notice that a covariate on one
+  dim would be better explained on a correlated one.  A new pass groups the
+  dims by the empirical correlation of the posterior means, scores
+  joint moves through an exact group-restricted GLS, and only writes back a
+  move that strictly improves the group.  It is gated on a correlated omega:
+  with a diagonal omega the objective is separable and each per-dim search is
+  already exact, so the pass reports the correlated dims in `$runInfo`
+  (advising you to declare the omega block) instead of running.  Controlled by
+  `vaeControl(covSelectPhiCor=, covSelectPhiJoin=, covSelectPhiLeave=,
+  covSelectPhiMaxDim=)`; the counters and the sticky pair adjacency are
+  reported in the fit's `$vae`.
 
 ## Bug fixes
 

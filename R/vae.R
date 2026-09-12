@@ -356,6 +356,32 @@
 #'   mates that came within that margin are reported in `$covNearTie`.  Clusters
 #'   are built at the mutual-exclusion group level, so two shapes of one
 #'   covariate never cluster together.
+#' @param covSelectPhiCor Which quantity the correlation between latent
+#'   dimensions is computed from when grouping them for the cross-parameter
+#'   covariate refinement: `"suffStat"` (default, the smoothed EMA sufficient
+#'   statistic the selection itself regresses), `"mu"` (the raw posterior means)
+#'   or `"resid"` (the posterior means less the fitted covariate centers).
+#'   `"resid"` runs systematically higher than the other two -- measured one
+#'   bracket higher on the same fit -- so raise `covSelectPhiJoin` if you
+#'   select it.
+#' @param covSelectPhiJoin,covSelectPhiLeave `abs(cor)` at which two latent
+#'   dimensions join a correlated group, and the lower value at which one leaves
+#'   again (defaults `0.9` and `0.8`).  Membership is re-evaluated every
+#'   iteration; the gap between the two stops a pair whose correlation wanders
+#'   around the threshold from joining and leaving repeatedly.
+#'   `covSelectPhiLeave` must not exceed `covSelectPhiJoin`.  The defaults are
+#'   measured rather than conventional: on an ordinary, well-identified
+#'   one-compartment model the clearance and volume dimensions correlate
+#'   between `0.75` and `0.80` under the default `covSelectPhiCor="suffStat"`
+#'   (and between `0.80` and `0.85` under `"resid"`), so a join threshold at
+#'   `0.8` would group a fit that has nothing wrong with it -- see
+#'   `tools/vaeColinearPreflight.R`, which measures this through the shipped
+#'   gate.
+#' @param covSelectPhiMaxDim Largest correlated group the cross-parameter
+#'   refinement will attempt (default `4`).  A larger group is skipped rather
+#'   than split: a latent space that entangled is not something per-covariate
+#'   moves should be arbitrating, and splitting it would need an arbitrary
+#'   tie-break on a near-tied graph.
 #' @param bnbStrategy Frontier discipline for the exact branch-and-bound covariate
 #'   selection: `"lifo"` (default, last-in-first-out depth-first search),
 #'   `"fifo"` (first-in-first-out) or `"lc"` (least cost / best-first).  The
@@ -445,6 +471,10 @@ vaeControl <- function(seed = 42L,
                        covSelectMethod = c("auto", "bnb", "l0learn"),
                        covSelectMaxExact = 17L,
                        covSelectColinearCut = .vaeColinearCut,
+                       covSelectPhiCor = c("suffStat", "mu", "resid"),
+                       covSelectPhiJoin = 0.9,
+                       covSelectPhiLeave = 0.8,
+                       covSelectPhiMaxDim = 4L,
                        bnbStrategy = c("lifo", "fifo", "lc"),
                        parEncoderBackward = !isTRUE(getOption("nlmixr2.identical", FALSE)),
                        nonMuTheta = c("regress", "grad", "eta", "fix", "none"),
@@ -543,6 +573,19 @@ vaeControl <- function(seed = 42L,
   }
   checkmate::assertNumeric(covSelectColinearCut, lower = 0, upper = 1, len = 1,
                            any.missing = FALSE)
+  covSelectPhiCor <- match.arg(covSelectPhiCor)
+  checkmate::assertNumeric(covSelectPhiJoin, lower = 0, upper = 1, len = 1,
+                           any.missing = FALSE)
+  checkmate::assertNumeric(covSelectPhiLeave, lower = 0, upper = 1, len = 1,
+                           any.missing = FALSE)
+  ## leaving above joining is not a schedule, it is a pair that joins and leaves
+  ## on alternate iterations
+  if (covSelectPhiLeave > covSelectPhiJoin) {
+    stop("'covSelectPhiLeave' must be <= 'covSelectPhiJoin'", call. = FALSE)
+  }
+  checkmate::assertIntegerish(covSelectPhiMaxDim, lower = 2, len = 1,
+                              any.missing = FALSE)
+  covSelectPhiMaxDim <- as.integer(covSelectPhiMaxDim)
   bnbStrategy <- match.arg(bnbStrategy)
   checkmate::assertLogical(parEncoderBackward, len = 1, any.missing = FALSE)
   nonMuTheta <- match.arg(nonMuTheta)
@@ -665,6 +708,10 @@ vaeControl <- function(seed = 42L,
                covSelectMethod = covSelectMethod,
                covSelectMaxExact = covSelectMaxExact,
                covSelectColinearCut = covSelectColinearCut,
+               covSelectPhiCor = covSelectPhiCor,
+               covSelectPhiJoin = covSelectPhiJoin,
+               covSelectPhiLeave = covSelectPhiLeave,
+               covSelectPhiMaxDim = covSelectPhiMaxDim,
                bnbStrategy = bnbStrategy,
                parEncoderBackward = parEncoderBackward,
                nonMuTheta = nonMuTheta,
