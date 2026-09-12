@@ -854,6 +854,18 @@
 #'   qnorm(1-0.05/2)*sqrt(3/5), which is the n=3 quadrature point
 #'   (excluding zero) times by the 0.95\% normal region
 #'
+#' @param etaRestart Number of Omega draws the inner restart cascade tries
+#'   once the `etaNudge`/`etaNudge2` restarts are spent and the ETA solve has
+#'   still failed -- not converged for `innerOpt="trust"`, or never moved off
+#'   the restart it was handed for `n1qn1`.  Every nudge sets EVERY ETA to the
+#'   same constant, which explores poorly when the inner problem has more than
+#'   one basin; a draw from Omega is a starting point from the distribution the
+#'   ETAs actually come from.  The draws are taken once per fit, with rxode2's
+#'   seeded engine (so the objective stays a function of theta alone and the
+#'   fit stays reproducible), and are only read after an inner solve has
+#'   already failed -- a fit whose inner solves converge never pays for them.
+#'   Use 0 to disable.
+#'
 #' @param maxOdeRecalc Maximum number of times to reduce the ODE
 #'     tolerances and try to resolve the system if there was a bad
 #'     ODE solve.
@@ -1243,6 +1255,7 @@ foceiControl <- function(sigdig = 3, #
                          gradCalcCentralLarge = 1e4, #
                          etaNudge = qnorm(1 - 0.05 / 2) / sqrt(3), #
                          etaNudge2 = qnorm(1 - 0.05 / 2) * sqrt(3 / 5), #
+                         etaRestart = 4L, #
                          nRetries = 3, #
                          seed = 42, #
                          resetThetaCheckPer = 0.1, #
@@ -1883,6 +1896,7 @@ foceiControl <- function(sigdig = 3, #
   checkmate::assertNumeric(gradCalcCentralLarge, len = 1, lower = 0, any.missing = FALSE, finite = TRUE)
   checkmate::assertNumeric(etaNudge, len = 1, lower = 0, any.missing = FALSE, finite = TRUE)
   checkmate::assertNumeric(etaNudge2, len = 1, lower = 0, any.missing = FALSE, finite = TRUE)
+  checkmate::assertIntegerish(etaRestart, len = 1, lower = 0, any.missing = FALSE)
   checkmate::assertIntegerish(nRetries, lower = 0, any.missing = FALSE)
   if (!is.null(seed)) {
     checkmate::assertIntegerish(seed, any.missing = FALSE, min.len = 1)
@@ -2064,6 +2078,7 @@ foceiControl <- function(sigdig = 3, #
     gradCalcCentralLarge = as.double(gradCalcCentralLarge),
     etaNudge = as.double(etaNudge),
     etaNudge2 = as.double(etaNudge2),
+    etaRestart = as.integer(etaRestart),
     maxOdeRecalc = as.integer(maxOdeRecalc),
     odeRecalcFactor = as.double(odeRecalcFactor),
     nRetries = nRetries,
