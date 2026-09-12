@@ -12,20 +12,18 @@
 #
 # What the arm shows once the starts are displaced instead:
 #
-#   * focei's coefficient is in the outer problem and moves, but its search
-#     stalls near wherever it started and drifts the WRONG way.  On T4 (true
-#     bWT = 0.75) it returns 0.0010 from a start of 0 and 0.4313 from 0.5.
-#   * saem moves the coefficient a long way and INVENTS an effect: starting
-#     from bWT = 0 on this zero-effect arm with the other thetas displaced, it
-#     returns bWT = -1.0876, and pushes lclrv from -2.0 to -1.4139 (away from
-#     the true -2.4).
+#   * focei DOES recover the coefficient -- 0.7353 against a true 0.75 -- but
+#     only from a non-zero slope start and with the residual variance bounded
+#     below.  From a start of exactly 0 it returns 0.0017 and stops.
+#   * saem, on the zero-effect arm with the other thetas displaced, INVENTS an
+#     effect: bWT = -1.0876, and pushes lclrv from -2.0 to -1.4139 (away from
+#     the true -2.4).  On the arm where the effect is real it instead freezes
+#     that declaration's thetas bit-exactly at their starts.
 #
-# The second is exactly the failure the arm exists to catch -- a method that
-# reports an effect here selects spurious covariates on real data -- and it is
-# invisible when every parameter starts at its true value, where saem instead
-# reproduces its ini() to four decimals.  So this file asserts what actually
-# holds, pins the weaker "not frozen" property, and leaves the recovery
-# assertion skipped with its measurement rather than passing it vacuously.
+# The saem behavior is the failure this arm exists to catch -- a method that
+# reports an effect where there is none selects spurious covariates on real
+# data -- and it is invisible when every parameter starts at its true value,
+# where saem reproduces its ini() to four decimals and looks perfect.
 #
 # The data is built inline from a fixed seed rather than read from
 # inst/sim/simCovT45.R's output, so the test is self-contained.  It is the same
@@ -98,6 +96,32 @@
   })
 }
 
+# A variant with the residual variance bounded from below.  `prop()` alone makes
+# the objective DISCONTINUOUS in the coefficient on this arm: a subject's inner
+# MAP switches mode, its prediction collapses to ~6e-6, and since the
+# proportional variance is (prop.sd*IPRED)^2 the log-variance term REWARDS the
+# collapse -- objf 20370 at bWT 0.09 against 25278 at 0.10, on identical
+# records.  add.sd is FIXED rather than estimated because a free additive term
+# is driven to 0 and the degeneracy comes straight back.
+.edT5ModelBounded <- function() {
+  ini({
+    lclm <- 1.9; lv1m <- 1.8
+    lclrv <- -2.0; lv1rv <- -2.0
+    bWT <- 0.1
+    eta.cl + eta.v1 ~ c(1, 0.3, 1)
+    dist(eta.cl) ~ dgamma(shape = 1 / exp(lclrv),
+                          rate = 1 / (exp(lclrv) *
+                                      exp(lclm + bWT * log(WT / 70))))
+    dist(eta.v1) ~ dgamma(shape = 1 / exp(lv1rv),
+                          rate = 1 / (exp(lv1rv) * exp(lv1m)))
+    add.sd <- fix(0.01); prop.sd <- 0.1
+  })
+  model({
+    cl <- eta.cl; v <- eta.v1
+    linCmt() ~ add(add.sd) + prop(prop.sd)
+  })
+}
+
 nmTest({
   test_that("T5: the degenerate arm fits, and prop.sd stays inside its bound", {
     .d <- .edT5Data()
@@ -131,17 +155,28 @@ nmTest({
     # trap this file exists to avoid.
   })
 
-  test_that("a covariate coefficient on a declaration is recovered", {
-    skip(paste("the coefficient is in the outer problem but its search stalls:",
-               "on the T4 arm (true bWT = 0.75) focei returns 0.0010 from a",
-               "start of 0, and 0.4313 from a start of 0.5 -- it moves, and",
-               "moves the wrong way.  Enable when the outer search reaches the",
-               "coefficient; the objective itself is minimized at truth."))
-    # The assertion this arm is for, kept here so it is enabled rather than
-    # rewritten once the search is fixed:
-    #   .d <- .edT5Data(bWT = 0.75)
-    #   .f <- nlmixr2(.edT5Model(), .d, est = "focei", ...)
-    #   expect_equal(.p[["bWT"]], 0.75, tolerance = 0.2)
+  test_that("a covariate coefficient IS recovered, given a non-zero slope start", {
+    # The arm with a real effect.  Two things have to be right for this to work,
+    # and both were mistaken for the feature being broken:
+    #
+    #   1. the slope must not start at exactly 0.  Measured on this arm, focei
+    #      returns 0.0017 from a start of 0 and 0.7353 from a start of 0.1 --
+    #      the objective's central difference at 0 is -53, so the gradient is
+    #      there; from 0 the search takes one ~0.001 step, the objective change
+    #      falls under tolerance, and it declares convergence.  A coefficient
+    #      conventionally starts at 0, which is the one value that traps it.
+    #   2. the residual variance must be bounded below (see
+    #      .edT5ModelBounded), or the objective is not even continuous in the
+    #      coefficient.
+    .d <- .edT5Data(bWT = 0.75)
+    .f <- suppressMessages(suppressWarnings(
+      nlmixr2(.edT5ModelBounded(), .d, est = "focei",
+              control = foceiControl(print = 0L, covMethod = ""))))
+    .p <- setNames(.f$parFixedDf$Estimate, rownames(.f$parFixedDf))
+    # recovery, not merely movement
+    expect_equal(.p[["bWT"]], 0.75, tolerance = 0.25)
+    # and it must have left the trapped region entirely
+    expect_true(.p[["bWT"]] > 0.3)
   })
 
   test_that("the coefficient is at least IN the outer problem, not frozen", {
