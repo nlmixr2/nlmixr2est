@@ -174,7 +174,40 @@ nmGetDistributionSaemLines.LL <- function(line) {
   # internally, so one forwarding body covers all of them.
   .ui <- line[[1]]
   .errNum <- line[[3]]
-  rxGetDistributionFoceiLines(.createFoceiLineObject(.ui, .errNum))
+  .saemAddTbsJacobian(rxGetDistributionFoceiLines(.createFoceiLineObject(.ui, .errNum)),
+                      line[[2]])
+}
+
+#' Is this generated line `rx_pred_ ~ llik*(...)`?
+#'
+#' @param l a model line
+#' @return logical
+#' @noRd
+.saemIsLlikLine <- function(l) {
+  if (!is.call(l) || !identical(l[[1]], as.name("~"))) return(FALSE)
+  if (!identical(l[[2]], as.name("rx_pred_")) || !is.call(l[[3]])) return(FALSE)
+  is.name(l[[3]][[1]]) && startsWith(as.character(l[[3]][[1]]), "llik")
+}
+
+#' Add the transform's log-Jacobian to a generated likelihood line
+#'
+#' rxode2 scores the transformed DV (`llikNorm(rxTBS(DV, ...), ...)`) and FOCEi adds the
+#' Jacobian afterwards (`tbsLik`).  saem uses the line itself as the observation
+#' log-likelihood, so it has to carry `log|d rxTBS / d DV|`, or a transform parameter
+#' such as a boxCox lambda is estimated from the wrong density.
+#'
+#' @param lines generated error lines
+#' @param pred1 the endpoint's `predDf` row
+#' @return lines with the Jacobian added to the `rx_pred_ ~ llik*()` line
+#' @noRd
+.saemAddTbsJacobian <- function(lines, pred1) {
+  if (paste(pred1$transform) == "untransformed") return(lines)
+  if (!(paste(pred1$distribution) %in% c("norm", "dnorm", "t", "cauchy"))) return(lines)
+  for (.i in which(vapply(lines, .saemIsLlikLine, logical(1)))) {
+    lines[[.i]][[3]] <- call("+", lines[[.i]][[3]],
+                             quote(log(rxTBSd(DV, rx_lambda_, rx_yj_, rx_low_, rx_hi_))))
+  }
+  lines
 }
 
 #' @rdname nmGetDistributionSaemLines

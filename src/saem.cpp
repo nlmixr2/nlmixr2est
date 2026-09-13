@@ -1530,6 +1530,10 @@ public:
     for (unsigned int j = 0; j < fixedIx1.n_elem; ++j) {
       if (fixedIx1(j) < (unsigned int)nphi1) phi1Fix[(size_t)fixedIx1(j)] = true;
     }
+    // a temporary eta's theta is left to the sampled-mean update (see skipStochPhi1)
+    for (unsigned int j = 0; j < pseudoIx1.n_elem; ++j) {
+      if (pseudoIx1(j) < (unsigned int)nphi1) phi1Fix[(size_t)pseudoIx1(j)] = true;
+    }
     gPhi1FreeIx.clear();
     for (int c = 0; c < nphi1; ++c) {
       if (!phi1Fix[(size_t)c]) gPhi1FreeIx.push_back(c);
@@ -2043,6 +2047,7 @@ public:
     }
     fixedIx0 = as<uvec>(x["fixed.i0"]);
     fixedIx1 = as<uvec>(x["fixed.i1"]);
+    if (x.containsElementNamed("pseudo.i1")) pseudoIx1 = as<uvec>(x["pseudo.i1"]);
 
     nlambda1 = as<int>(x["nlambda1"]);
     nlambda0 = as<int>(x["nlambda0"]);
@@ -3364,6 +3369,13 @@ public:
       bool skipStochPhi1 = _saemPhi1PoolReady && (kiter >= (unsigned int)niter_phi0);
       if (!skipStochPhi1) {
         mprior_phi1=COV1*MCOV1;
+      } else if (pseudoIx1.n_elem > 0) {
+        // Refining a temporary eta's mu here splits the sampler's prior mean from
+        // the reported theta and keeps its omega from shrinking.
+        mat mp = COV1*MCOV1;
+        for (unsigned int j = 0; j < pseudoIx1.n_elem; ++j) {
+          if (pseudoIx1(j) < (unsigned int)nphi1) mprior_phi1.col(pseudoIx1(j)) = mp.col(pseudoIx1(j));
+        }
       }
       // nonMuTheta="regress": once the direct phi0 optimizer owns phi0
       // (kiter>=niter_phi0), do NOT overwrite mprior_phi0 with the stochastic
@@ -4385,7 +4397,7 @@ private:
 
   int nphi0, nphi1, nphi;
   mat covstruct1;
-  uvec i1, i0, fixedIx1, fixedIx0;
+  uvec i1, i0, fixedIx1, fixedIx0, pseudoIx1;
   umat Gamma2_phi1fixedIxIn;
   uvec Gamma2_phi1fixedIx;
   int Gamma2_phi1fixed;
@@ -5301,6 +5313,11 @@ static void saemReadRowsPooled(mat &g, int &elt, bool &hasNan, int nInd) {
       double curT = getTime(kk, ind);
       rxPred.calc_lhs(i, curT, getOpIndSolve(op, ind, j), lhs);
       double cur = lhs[_saemPhi1PredOffset];
+      // The pooled pred model is FOCEi's, whose log-density leaves the transform's
+      // log-Jacobian to tbsLik; saem scores this row directly, so add it here.
+      // calc_lhs has just set this row's rx_lambda_/rx_yj_/rx_low_/rx_hi_.
+      cur += _powerL(getIndDv(ind, kk), getIndLambda(ind), getIndLambdaYj(ind),
+                     getIndLogitLow(ind), getIndLogitHi(ind));
       if (std::isnan(cur)) { cur = 1.0e99; rowNan[i] = 1; }
       obs.push_back(cur);
     }
