@@ -183,6 +183,12 @@ static inline void ensureSaemFixedTransformCache() {
   _saemCacheHi = _saemHi;
 }
 
+// -2 log|d h/d y| of observation i: turns the transformed-scale density into the
+// DV's, and depends on lambda, so the lambda objectives need it
+static inline double saemTbsJac2(int i, double lambda) {
+  return 2.0*_powerL(_saemYptr[i], lambda, _saemYj, _saemLow, _saemHi);
+}
+
 #define toLambda(x) _powerDi(x, 1.0, 4, -_saemLambdaR, _saemLambdaR)
 #define toLambdaEst(x) _powerD((x < -0.99*_saemLambdaR ? -0.99*_saemLambdaR : (x > 0.99*_saemLambdaR ? 0.99*_saemLambdaR : x)), 1.0, 4, -_saemLambdaR, _saemLambdaR)
 
@@ -330,6 +336,7 @@ void objE(double *ab, double *fx) {
     if (g > xmax) g = xmax;
     cur = (ytr-ft)/g;
     sum += cur * cur + 2*log(g);
+    sum -= saemTbsJac2(i, lambda);
   }
   *fx = sum;
 }
@@ -363,6 +370,7 @@ void objF(double *ab, double *fx) {
     if (g > xmax) g = xmax;
     cur = (ytr-ft)/g;
     sum += cur * cur + 2*log(g);
+    sum -= saemTbsJac2(i, lambda);
   }
   *fx = sum;
 }
@@ -402,6 +410,7 @@ void objG(double *ab, double *fx) {
     if (g > xmax) g = xmax;
     cur = (ytr-ft)/g;
     sum += cur * cur + 2*log(g);
+    sum -= saemTbsJac2(i, lambda);
   }
   *fx = sum;
 }
@@ -447,6 +456,7 @@ void objH(double *ab, double *fx) {
     if (g > xmax) g = xmax;
     cur = (ytr-ft)/g;
     sum += cur*cur + 2*log(g);
+    sum -= saemTbsJac2(i, lambda);
   }
   *fx = sum;
 }
@@ -498,6 +508,7 @@ void objI(double *ab, double *fx) {
     if (g > xmax) g = xmax;
     cur = (ytr-ft)/g;
     sum += cur*cur + 2*log(g);
+    sum -= saemTbsJac2(i, lambda);
   }
   *fx = sum;
 }

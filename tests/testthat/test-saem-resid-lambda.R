@@ -37,6 +37,21 @@ nmTest({
     expect_true(all(is.finite(fit$parFixedDf$Estimate)))
   })
 
+  # 1-cmt IV bolus observed on a boxCox(lam) scale with additive error sd
+  .bcAddData <- function(n, lam, sd) {
+    .dose <- 320; .v <- 70; .times <- c(0.5, 1, 2, 4, 7, 12, 24)
+    .bcF <- function(y, l) (y^l - 1) / l
+    .bcI <- function(x, l) (l * x + 1)^(1 / l)
+    .eta <- rnorm(n, 0, sqrt(0.09))
+    do.call(rbind, lapply(seq_len(n), function(i) {
+      .f <- .dose / .v * exp(-exp(log(4) + .eta[i]) / .v * .times)
+      rbind(data.frame(ID = i, TIME = 0, DV = NA_real_, AMT = .dose, EVID = 1),
+            data.frame(ID = i, TIME = .times,
+                       DV = .bcI(.bcF(.f, lam) + rnorm(length(.times), 0, sd), lam),
+                       AMT = 0, EVID = 0))
+    }))
+  }
+
   # #914: a fixed boxCox lambda never reached the transform (saem.cpp's `lambda`
   # member was never synced from `lres`, so every kernel _powerD() call ran at
   # lambda=1) and the pure add+lambda residual model (rmAddLam) never zeroed
@@ -45,18 +60,7 @@ nmTest({
   # against simulated truth is asserted here rather than just finiteness.
   test_that("SAEM add + boxCox (rmAddLam) with a fixed lambda recovers truth", {
     set.seed(914)
-    .dose <- 320; .v <- 70; .times <- c(0.5, 1, 2, 4, 7, 12, 24)
-    .bcF <- function(y, l) (y^l - 1) / l
-    .bcI <- function(x, l) (l * x + 1)^(1 / l)
-    .n <- 20; .lam <- 0.5
-    .eta <- rnorm(.n, 0, sqrt(0.09))
-    .d <- do.call(rbind, lapply(seq_len(.n), function(i) {
-      .f <- .dose / .v * exp(-exp(log(4) + .eta[i]) / .v * .times)
-      rbind(data.frame(ID = i, TIME = 0, DV = NA_real_, AMT = .dose, EVID = 1),
-            data.frame(ID = i, TIME = .times,
-                       DV = .bcI(.bcF(.f, .lam) + rnorm(length(.times), 0, 0.15), .lam),
-                       AMT = 0, EVID = 0))
-    }))
+    .d <- .bcAddData(20L, 0.5, 0.15)
     f <- function() {
       ini({ tcl <- log(4); eta.cl ~ 0.09; add.sd <- 0.15; lambda <- fixed(0.5) })
       model({ cl <- exp(tcl + eta.cl); v <- 70; linCmt() ~ add(add.sd) + boxCox(lambda) })
@@ -67,6 +71,24 @@ nmTest({
     expect_equal(unname(fit$saem$transMat[1, 1]), 0.5)
     expect_lt(abs(fit$theta[["tcl"]] - log(4)), 0.3)
     expect_lt(fit$parFixedDf["add.sd", "Estimate"], 0.3)
+  })
+
+  # The closed-form residual step scored lambda without the transform's
+  # log-Jacobian, so an estimated lambda was fit to the wrong density.
+  test_that("SAEM add + boxCox (rmAddLam) estimates lambda", {
+    .testSeed(915)
+    .d <- .bcAddData(40L, 0.5, 0.15)
+    f <- function() {
+      ini({ tcl <- log(4); eta.cl ~ 0.09; add.sd <- 0.3; lambda <- 1 })
+      model({ cl <- exp(tcl + eta.cl); v <- 70; linCmt() ~ add(add.sd) + boxCox(lambda) })
+    }
+    fit <- .nlmixr(f, .d, est = "saem",
+                   control = saemControl(nBurn = 100, nEm = 100, print = 0L, nmc = 2))
+    .lam <- unname(fit$parFixedDf["lambda", "Estimate"])
+    expect_lt(abs(.lam - 0.5), 0.25)
+    # the kernel transformed with the lambda it reports
+    expect_equal(unname(fit$saem$transMat[1, 1]), .lam, tolerance = 1e-6)
+    expect_lt(abs(fit$parFixedDf["add.sd", "Estimate"] - 0.15), 0.1)
   })
 
   # same defect as rmAddLam above, but for the complementary component: a pure

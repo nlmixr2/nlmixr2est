@@ -44,11 +44,12 @@
 
 ## Bug fixes
 
-- `est="saem"` estimated the transform of a `boxCox()`, `yeoJohnson()`, `lnorm()`,
-  `logitNorm()` or `probitNorm()` endpoint with a general likelihood (`dnorm()`,
-  `t()`, `cauchy()`) without the transform's log-Jacobian, so a lambda and the
-  residual SD were fit to the wrong density; the reported objective also used the
-  starting lambda.
+- `est="saem"` estimated a `boxCox()`/`yeoJohnson()` lambda without the
+  transform's log-Jacobian, both in the closed-form residual step and with a
+  general likelihood (`dnorm()`, `t()`, `cauchy()`, also covering `lnorm()`,
+  `logitNorm()` and `probitNorm()`), so lambda and the residual SD were fit to
+  the wrong density; the reported objective of a general-likelihood fit also
+  used the starting lambda.
 - `est="saem"` fits with a `dnorm()`, `t()` or `cauchy()` endpoint reported the
   log-density instead of the prediction as `PRED`/`IPRED` (and the residuals
   derived from them) in the fit table (#1084).
