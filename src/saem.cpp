@@ -669,11 +669,28 @@ static const double *gEdRec = NULL, *gEdEta = NULL, *gEdWt = NULL;
 // convention gPhi0RefObjR uses in this file.
 static double gEdBest = R_PosInf;
 static std::vector<double> gEdBestPar;
+// PAIR mode: when gEdRpn2 is set the objective is the JOINT copula density of
+// two declarations rather than one marginal.  Under a copula the marginals'
+// joint MLE is not the two separate marginal MLEs, so a correlated pair has to
+// be one optimization problem, not two.  gEdRhoIdx >= 0 additionally puts
+// atanh(rho) in the parameter vector, which is what makes the correlation
+// estimated by the copula's own density instead of by a moment statistic.
+static int gEdFam2 = -1;
+static const std::vector< std::vector<etaDistTok> > *gEdRpn2 = NULL;
+static const double *gEdEta2 = NULL;
+static double gEdRho = 0.0;
+static int gEdRhoIdx = -1;
+static inline bool gEdIsPair() { return gEdRpn2 != NULL; }
 static double gEdObj(double *p) {
   double v = 0.0;
-  if (gEdRpn == NULL ||
-      !rxEtaDistLoglikObj(gEdFam, *gEdRpn, gEdNth, gEdNSym, p,
-                          gEdRec, gEdEta, gEdWt, gEdNRec, &v)) return 1e300;
+  if (gEdRpn == NULL) return 1e300;
+  bool ok = gEdIsPair() ?
+    rxEtaDistPairLoglikObj(gEdFam, *gEdRpn, gEdFam2, *gEdRpn2, gEdNth, gEdNSym,
+                           p, gEdRec, gEdEta, gEdEta2, gEdRho, gEdRhoIdx,
+                           gEdWt, gEdNRec, &v) :
+    rxEtaDistLoglikObj(gEdFam, *gEdRpn, gEdNth, gEdNSym, p,
+                       gEdRec, gEdEta, gEdWt, gEdNRec, &v);
+  if (!ok) return 1e300;
   return -v;   // the optimizers here minimize
 }
 
@@ -689,9 +706,14 @@ static void gEdN1Cost(int *ind, int *n, double *x, double *f, double *g,
   (void)ti; (void)tr; (void)td; (void)id; (void)n;
   double v = 0.0;
   std::vector<double> gr((size_t)gEdNth, 0.0);
-  if (gEdRpn == NULL ||
-      !rxEtaDistLoglikGrad(gEdFam, *gEdRpn, gEdNth, gEdNSym, x,
-                           gEdRec, gEdEta, gEdWt, gEdNRec, &v, gr.data())) {
+  bool okg = gEdRpn != NULL &&
+    (gEdIsPair() ?
+     rxEtaDistPairLoglikGrad(gEdFam, *gEdRpn, gEdFam2, *gEdRpn2, gEdNth, gEdNSym,
+                             x, gEdRec, gEdEta, gEdEta2, gEdRho, gEdRhoIdx,
+                             gEdWt, gEdNRec, &v, gr.data()) :
+     rxEtaDistLoglikGrad(gEdFam, *gEdRpn, gEdNth, gEdNSym, x,
+                         gEdRec, gEdEta, gEdWt, gEdNRec, &v, gr.data()));
+  if (!okg) {
     gEdN1Bad = 1;
     if (*ind == 2 || *ind == 4) *f = 1e300;
     if (*ind == 3 || *ind == 4) for (int t = 0; t < gEdNth; ++t) g[t] = 0.0;
@@ -7545,6 +7567,28 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
       // record per sampled draw, equal weights.  That is design test T1 -- it
       // must reproduce the MLE-plus-inversion answer, which is the check that
       // the objective is right before the per-record plumbing is added on top.
+      // A copula-linked PAIR is one joint problem, taken once.
+      //
+      // Scoring the two marginals separately and carrying a correlation
+      // alongside them is a different estimator -- the marginals' MLE from the
+      // joint likelihood equals the separate marginal MLEs only at rho == 0 --
+      // and it leaves rho to a moment statistic rather than to the copula's own
+      // density.  etaDistQ2PairStep() does both together, with atanh(rho) in
+      // the same parameter vector.
+      //
+      // Entered from the LOWER member so the pair is handled once whichever
+      // order the loop reaches them in, and `continue` because the joint step
+      // has already written back everything the per-declaration step below
+      // would have.
+      {
+        double rhoPair = 0.0;
+        int part = etaDistPartnerOf(k, &rhoPair);
+        if (part > k && spreadOk && etaDistAllQ2(k) && etaDistAllQ2(part)) {
+          if (etaDistQ2PairStep(k, part, kiter, pas)) { moved = true; continue; }
+        } else if (part >= 0 && part < k && etaDistAllQ2(k) && etaDistAllQ2(part)) {
+          continue;   // already done from the lower member
+        }
+      }
       // Q2: the eta-density objective.  Reached either because the user asked
       // for it (etaDistLoglik) or because the PARTITION says this declaration's
       // thetas are prior-only and nothing else can identify them.
@@ -7947,6 +7991,153 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
     double u = R::pnorm5(z, 0.0, 1.0, 1, 0);
     if (u < 1e-15) u = 1e-15; else if (u > 1.0 - 1e-15) u = 1.0 - 1e-15;
     return u;
+  }
+
+  // -------------------------------------------------------------------------
+  // Q2 for a copula-linked PAIR: one joint problem, not two marginal ones.
+  // -------------------------------------------------------------------------
+
+  // The union of two declarations' theta names, and where each one writes back.
+  // Union rather than concatenation so two declarations may SHARE a theta -- a
+  // common dispersion, say -- and still be one optimization vector.
+  bool etaDistPairUnion(int k, int j, std::vector<std::string> &uni,
+                        std::vector<int> &col) const {
+    uni.clear(); col.clear();
+    if (k >= (int)etaDistExprThetas.size() || j >= (int)etaDistExprThetas.size()) {
+      return false;
+    }
+    for (int pass = 0; pass < 2; ++pass) {
+      int d = (pass == 0) ? k : j;
+      const std::vector<std::string> &nm = etaDistExprThetas[(size_t)d];
+      for (size_t t = 0; t < nm.size(); ++t) {
+        bool dup = false;
+        for (size_t q = 0; q < uni.size(); ++q) if (uni[q] == nm[t]) { dup = true; break; }
+        if (dup) continue;
+        int c = etaDistPhi0Col(d, (int)t);
+        if (c < 0 || c >= nphi0) return false;   // cannot write it back
+        uni.push_back(nm[t]);
+        col.push_back(c);
+      }
+    }
+    return !uni.empty();
+  }
+
+  // One joint step for the pair (k, j).  Returns true when it moved something.
+  //
+  // Restricted to the no-covariate case for now: the objective itself takes
+  // per-record symbols, but two declarations may name DIFFERENT covariates and
+  // the shared record matrix would have to be their union, built once and
+  // indexed consistently from both expression sets.  A covariate on a
+  // correlated pair falls back to the per-declaration step, which is the
+  // pre-existing behavior rather than a new gap.
+  bool etaDistQ2PairStep(int k, int j, unsigned int kiter, const vec &pas) {
+    if (!etaDistDirectOn()) return false;          // eta sample, not a latent
+    if (!etaDistAllQ2(k) || !etaDistAllQ2(j)) return false;
+    if (k >= (int)etaDistExprs.size() || j >= (int)etaDistExprs.size()) return false;
+    int ck = etaDistLatent(k), cj = etaDistLatent(j);
+    if (ck < 0 || cj < 0 || ck >= (int)phiM.n_cols || cj >= (int)phiM.n_cols) return false;
+    // a covariate on either member routes to the per-declaration step
+    if ((k < (int)etaDistCov.size() && etaDistCov[(size_t)k].n_cols > 0) ||
+        (j < (int)etaDistCov.size() && etaDistCov[(size_t)j].n_cols > 0)) return false;
+    std::vector<std::string> uni; std::vector<int> col;
+    if (!etaDistPairUnion(k, j, uni, col)) return false;
+    // rho joins the vector on the atanh scale, LAST
+    double rho0 = ((int)etaDistRho.n_elem == etaDistNdist) ? etaDistRho(k) : 0.0;
+    if (!std::isfinite(rho0)) rho0 = 0.0;
+    if (rho0 > 0.99) rho0 = 0.99; else if (rho0 < -0.99) rho0 = -0.99;
+    int nUni = (int)uni.size();
+    int nth = nUni + 1;
+    int rhoIdx = nUni;
+    std::vector<std::string> pvars = uni;
+    pvars.push_back("rxEdRho");     // never appears in an expression; a slot only
+    std::vector< std::vector<etaDistTok> > rpn1, rpn2;
+    if (!rxEtaDistLoglikParse(etaDistExprs[(size_t)k], pvars, rpn1)) return false;
+    if (!rxEtaDistLoglikParse(etaDistExprs[(size_t)j], pvars, rpn2)) return false;
+    // ONE loop, dropped TOGETHER: a record is usable only when BOTH etas are,
+    // or the two columns silently shift relative to each other.
+    int fk = etaDistFam(k), fj = etaDistFam(j);
+    const int nak = (int)etaDistArgs.n_cols;
+    std::vector<double> ak((size_t)nak), aj((size_t)nak);
+    for (int t = 0; t < nak; ++t) { ak[(size_t)t] = etaDistArgs(k, t); aj[(size_t)t] = etaDistArgs(j, t); }
+    double lok, hik, loj, hij;
+    rxEtaDistBounds(fk, &ak[0], &lok, &hik);
+    rxEtaDistBounds(fj, &aj[0], &loj, &hij);
+    std::vector<double> e1, e2;
+    e1.reserve(phiM.n_rows); e2.reserve(phiM.n_rows);
+    for (unsigned int r = 0; r < phiM.n_rows; ++r) {
+      double x1 = phiM(r, (unsigned int)ck), x2 = phiM(r, (unsigned int)cj);
+      if (!std::isfinite(x1) || !std::isfinite(x2)) continue;
+      if ((R_finite(lok) && x1 <= lok) || (R_finite(hik) && x1 >= hik)) continue;
+      if ((R_finite(loj) && x2 <= loj) || (R_finite(hij) && x2 >= hij)) continue;
+      e1.push_back(x1); e2.push_back(x2);
+    }
+    if (e1.size() < 2) return false;
+    std::vector<double> wt(e1.size(), 1.0);
+    gEdFam = fk; gEdRpn = &rpn1; gEdFam2 = fj; gEdRpn2 = &rpn2;
+    gEdNth = nth; gEdNSym = 0; gEdNRec = (int)e1.size();
+    gEdRec = NULL; gEdEta = e1.data(); gEdEta2 = e2.data(); gEdWt = wt.data();
+    gEdRho = rho0; gEdRhoIdx = rhoIdx;
+    std::vector<double> st((size_t)nth);
+    for (int t = 0; t < nUni; ++t) st[(size_t)t] = mprior_phi0(0, col[(size_t)t]);
+    st[(size_t)rhoIdx] = std::atanh(rho0);
+    bool moved = false;
+    double f0 = gEdObj(st.data());
+    if (f0 < 1e299) {
+      gEdBest = R_PosInf; gEdBestPar.assign(st.begin(), st.end());
+      gEdN1Bad = 0; gEdN1Evals = 0;
+      std::vector<double> gg((size_t)nth, 0.0);
+      std::vector<double> zm((size_t)(nth*(nth+13)/2 + 1), 0.0);
+      std::vector<double> var((size_t)nth, 0.1);
+      double fN = 0.0, eps = 1e-8;
+      int nn = nth, mode = 1, niter = 200, nsim = 200, impr = 0,
+        izs = 0, idz = 0; float rzs = 0; double dzs = 0;
+      if (n1qn1_ != NULL) {
+        n1qn1_(gEdN1Cost, &nn, st.data(), &fN, gg.data(), var.data(),
+               &eps, &mode, &niter, &nsim, &impr, zm.data(),
+               &izs, &rzs, &dzs, &idz);
+      }
+      if (!gEdN1Bad && gEdN1Evals > 0 && gEdBest < f0) {
+        for (int t = 0; t < nUni; ++t) {
+          double xv = gEdBestPar[(size_t)t];
+          if (!std::isfinite(xv)) continue;
+          int c = col[(size_t)t];
+          double cur = mprior_phi0(0, c);
+          double v = cur + pas(kiter) * (xv - cur);
+          if (std::isfinite(v)) { mprior_phi0.col(c).fill(v); moved = true; }
+        }
+        // rho, damped on the atanh scale like every other coordinate
+        double an = gEdBestPar[(size_t)rhoIdx];
+        if (std::isfinite(an)) {
+          double a0 = std::atanh(rho0);
+          double av = a0 + pas(kiter) * (an - a0);
+          double rv = std::tanh(av);
+          if (std::isfinite(rv)) {
+            if (rv > 0.99) rv = 0.99; else if (rv < -0.99) rv = -0.99;
+            if ((int)etaDistRho.n_elem == etaDistNdist) etaDistRho(k) = rv;
+            // ...and to its own theta where one exists.  On the direct route it
+            // does not (the correlation stays in the omega), which is what
+            // .etaDistWarnCorFrozen() reports.
+            int cc = corCol(k);
+            if (cc >= 0 && cc < nphi0) {
+              double aa = std::atanh(rv);
+              if (std::isfinite(aa)) {
+                mprior_phi0.col(cc).fill(aa);
+                std::vector<int> one(1, cc);
+                writeBackPhi0(one);
+              }
+            }
+            etaDistCorFired = true;
+            moved = true;
+          }
+        }
+        if ((int)etaDistFiredK.size() == etaDistNdist) {
+          etaDistFiredK[(size_t)k] = 1; etaDistFiredK[(size_t)j] = 1;
+        }
+      }
+    }
+    gEdRpn = NULL; gEdRpn2 = NULL; gEdEta = NULL; gEdEta2 = NULL; gEdWt = NULL;
+    gEdRhoIdx = -1; gEdFam2 = -1;
+    return moved;
   }
 
   // -------------------------------------------------------------------------

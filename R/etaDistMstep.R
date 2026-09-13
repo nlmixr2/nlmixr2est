@@ -956,13 +956,25 @@
   list(q1 = setdiff(thetas, .q2), q2 = .q2)
 }
 
-#' Say that a declared copula correlation is used but not estimated
+#' Say that a declared copula correlation is estimated but not REPORTED
 #'
-#' Only on the direct route, and only once per fit.  The rho reaches the prior
-#' (the copula term in `rxEtaDistPairLogD`) but nothing updates it, because the
-#' update is written back through a phi0 column and this route has no `rxCor.*`
-#' theta to own one.  A frozen rho reported without comment is indistinguishable
-#' from a converged one.
+#' Only on the direct route, and only once per fit.
+#'
+#' This message used to say the correlation was "held at its ini() value", and
+#' that was wrong.  It is estimated and it is used: the copula loop is gated on
+#' `etaDistCorOn` -- the etaDistCorMstep control -- not on the family M-step, so
+#' it runs on this route, and `etaDistQ2PairStep()` additionally maximizes the
+#' copula density over atanh(rho).  Measured on a correlated gamma pair started
+#' at a latent rho of 0.30 and simulated at 0.60, the fitted etas came back with
+#' an empirical correlation of 0.568, which is what a latent 0.60 induces for
+#' that pairing.  It moved.
+#'
+#' What is true is that it never reaches a REPORTABLE parameter.  The write-back
+#' goes through a phi0 column and this route has no `rxCor.*` theta to own one
+#' (`corCol()` returns -1), so the value the fit prints is not the value the fit
+#' used.  Worse, on this route the printed omega for a declared eta is not
+#' meaningful at all -- measured, every cell of a 2x2 came back 180.6704 where
+#' the diagonal is a placeholder FIXED at 1.
 #'
 #' @param etas the declared random effects whose correlation is affected
 #' @return nothing, called for the message
@@ -970,11 +982,13 @@
 #' @author Matthew L. Fidler
 .etaDistWarnCorFrozen <- function(etas) {
   message("the declared copula correlation for '", paste(etas, collapse="', '"),
-          "' is used by the prior but held at its ini() value\n",
+          "' is estimated and used, but is NOT reported\n",
           "  etaDistParam=\"direct\" keeps the correlation in the omega rather ",
-          "than in an rxCor.* theta, and the copula update writes back through ",
-          "a theta\n",
-          "  use etaDistParam=\"cdf\" to estimate it")
+          "than in an rxCor.* theta, and the update writes back through a ",
+          "theta -- so the fit used a correlation you cannot read off it\n",
+          "  the printed omega for a declared eta is not meaningful on this ",
+          "route either; its diagonal is a fixed placeholder\n",
+          "  use etaDistParam=\"cdf\" if you need the correlation reported")
   invisible()
 }
 
