@@ -37,7 +37,17 @@
 # inst/sim/simCovT45.R's output, so the test is self-contained.  It is the same
 # construction at a smaller subject count: gamma CL and V1 through a Gaussian
 # copula, the covariate entering the RATE of the cl declaration per record.
-.edT5Data <- function(nSub = 60L, bWT = 0.0, seed = 20260912L) {
+#
+# `timeVarying` picks which of the two arms is generated, and they behave very
+# differently: with the covariate constant within a subject saem recovers the
+# coefficient, and with it varying within a subject saem freezes the whole
+# declaration.  Both arms carry essentially the SAME information about the
+# coefficient -- measured on 120 subjects, log(WT/70) has a between-subject sd
+# of 0.185 (constant arm) against 0.174 (time-varying arm), while the
+# time-varying arm's WITHIN-subject sd is only 0.022 -- so the difference
+# between the two is structural, not statistical.
+.edT5Data <- function(nSub = 60L, bWT = 0.0, seed = 20260912L,
+                      timeVarying = TRUE) {
   set.seed(seed)
   .lclm <- 1.63; .lv1m <- 1.55; .lclrv <- -2.4; .lv1rv <- -2.4; .rho <- 0.5
   .tim <- c(0.25, 0.5, 1, 2, 4, 8, 12, 24)
@@ -45,8 +55,13 @@
   .z1 <- stats::rnorm(nSub); .z2 <- stats::rnorm(nSub)
   .w2 <- .rho * .z1 + sqrt(1 - .rho^2) * .z2
   .wtBase <- stats::rnorm(nSub, 70, 12)
-  .wtRec <- lapply(seq_len(nSub), function(i)
+  ## the random walk is drawn either way so the two arms consume the SAME
+  ## stream and differ ONLY in whether the covariate moves within a subject
+  .wtWalk <- lapply(seq_len(nSub), function(i)
     round(.wtBase[i] + cumsum(stats::rnorm(length(.tim), 0, 1.5)), 1))
+  .wtRec <- if (timeVarying) .wtWalk else {
+    lapply(seq_len(nSub), function(i) rep(round(.wtBase[i], 1), length(.tim)))
+  }
   .shCL <- 1 / exp(.lclrv); .shV1 <- 1 / exp(.lv1rv)
   .V1 <- stats::qgamma(.u(.w2), shape = .shV1,
                        rate = 1 / (exp(.lv1rv) * exp(.lv1m)))
@@ -319,7 +334,30 @@ nmTest({
 })
 
 nmTest({
-  test_that("saem estimates a covariate on a declaration, not zero", {
+  # Shared by both saem arms below.  `bWT` starts at 0.35, which is neither the
+  # truth (0.75) nor zero: a fit that never moves it lands on a value that
+  # "is not zero" and "is not the truth", so neither of those assertions alone
+  # can be satisfied by inertia.
+  .edT5SaemModel <- function() {
+    ini({
+      lclm <- 1.63; lv1m <- 1.55
+      lclrv <- -2.4; lv1rv <- -2.4
+      bWT <- 0.35
+      eta.cl + eta.v1 ~ c(1, 0.5, 1)
+      dist(eta.cl) ~ dgamma(shape = 1 / exp(lclrv),
+                            rate = 1 / (exp(lclrv) *
+                                        exp(lclm + bWT * log(WT / 70))))
+      dist(eta.v1) ~ dgamma(shape = 1 / exp(lv1rv),
+                            rate = 1 / (exp(lv1rv) * exp(lv1m)))
+      prop.sd <- 0.1
+    })
+    model({
+      cl <- eta.cl; v <- eta.v1
+      linCmt() ~ prop(prop.sd)
+    })
+  }
+
+  test_that("saem estimates a SUBJECT-CONSTANT covariate on a declaration", {
     skip_on_cran()
     # saem's non-mu theta refinement has two routes and only one can carry a
     # covariate on a declaration.  "regress" (the default) regresses the
@@ -328,38 +366,66 @@ nmTest({
     # enters as Q(phiU(z); args) -- so the coefficient has nothing to be
     # regressed from and the update writes it to ZERO.  It does so even from a
     # non-zero start, which is what separates this from the focei zero-start
-    # trap.  Measured on the full arm (true 0.75): "regress" returns 0.00000 at
-    # objf 6811 and "eta" 0.5809 at 4603, with focei getting 0.602 on the same
-    # data.
+    # trap.  Measured on the 120-subject SUBJECT-CONSTANT arm (true 0.75):
+    # "regress" returns 0.00000 at objf 6811 and "eta" 0.5809 at 4603, with
+    # focei getting 0.602 on the same data.
     #
     # The detection has to read the declaration STASH: by the time saem sees
     # the ui the expansion has run and the declarations are gone from iniDf, so
     # a check against rxUiEtaDists() there silently never fires.
-    .d <- .edT5Data(bWT = 0.75)
-    .m <- function() {
-      ini({
-        lclm <- 1.63; lv1m <- 1.55
-        lclrv <- -2.4; lv1rv <- -2.4
-        bWT <- 0.1
-        eta.cl + eta.v1 ~ c(1, 0.5, 1)
-        dist(eta.cl) ~ dgamma(shape = 1 / exp(lclrv),
-                              rate = 1 / (exp(lclrv) *
-                                          exp(lclm + bWT * log(WT / 70))))
-        dist(eta.v1) ~ dgamma(shape = 1 / exp(lv1rv),
-                              rate = 1 / (exp(lv1rv) * exp(lv1m)))
-        prop.sd <- 0.1
-      })
-      model({
-        cl <- eta.cl; v <- eta.v1
-        linCmt() ~ prop(prop.sd)
-      })
-    }
+    #
+    # This arm is deliberately the subject-constant one.  The time-varying arm
+    # is a separate test below because it does NOT work, and running the
+    # recovery assertion on it is what let this test pass while recovering
+    # nothing (see that test for the measurement).
+    .d <- .edT5Data(bWT = 0.75, timeVarying = FALSE)
     .f <- suppressMessages(suppressWarnings(
-      nlmixr2(.m, .d, est = "saem",
+      nlmixr2(.edT5SaemModel(), .d, est = "saem",
               control = saemControl(print = 0L, nBurn = 60L, nEm = 60L))))
     .b <- unname(.f$parFixedDf["bWT", "Estimate"])
-    # the failure this guards is an exact zero, from a start of 0.1
+    # the coefficient must have MOVED off its start.  "not zero" is not enough:
+    # the start is 0.35, so a frozen declaration satisfies it.
+    expect_false(isTRUE(all.equal(.b, 0.35, tolerance = 1e-6)))
+    # and the GLS failure this guards is a write to exact zero
     expect_false(isTRUE(all.equal(.b, 0, tolerance = 1e-4)))
-    expect_true(abs(.b) > 0.05)
+    # and it must have moved TOWARD the truth, not merely moved
+    expect_true(abs(.b - 0.75) < abs(0.35 - 0.75))
+  })
+
+  test_that("saem FREEZES a time-varying covariate declaration (known gap)", {
+    skip_on_cran()
+    # The ownership gap, pinned rather than papered over.  With the covariate
+    # varying WITHIN a subject the family MLE declines the declaration
+    # (rxEtaDistMle takes one population argument set and a per-record
+    # declaration has none) and the observation-likelihood route does not pick
+    # it up either, so nothing owns lclm/lclrv/bWT and all three come back
+    # BIT-EXACTLY at their ini() values.
+    #
+    # Measured, all bit-exact returns of the start:
+    #   60 subjects,  nBurn/nEm 60/60,  bWT start 0.10 -> 0.100000 (objf 59755)
+    #   60 subjects,  nBurn/nEm 60/60,  bWT start 0.35 -> 0.350000 (objf 18592)
+    #   120 subjects, nBurn/nEm 60/60,  bWT start 0.50 -> 0.500000
+    #   120 subjects, nBurn/nEm 100/100, bWT start 0.50 -> 0.500000
+    # against 0.5809 at objf 4603 on the subject-constant arm above.  So it is
+    # not the iteration count, not the subject count and not the start.  It is
+    # also not an information problem: the two arms' between-subject sd of
+    # log(WT/70) is 0.185 and 0.174, and the time-varying arm's WITHIN-subject
+    # sd is only 0.022.
+    #
+    # This test asserts the CURRENT behavior on purpose, so that fixing the
+    # ownership gap breaks it and forces this comment to be rewritten.  Flip it
+    # to the recovery assertions from the test above when that happens.
+    .d <- .edT5Data(bWT = 0.75, timeVarying = TRUE)
+    .f <- suppressMessages(suppressWarnings(
+      nlmixr2(.edT5SaemModel(), .d, est = "saem",
+              control = saemControl(print = 0L, nBurn = 60L, nEm = 60L))))
+    .p <- setNames(.f$parFixedDf$Estimate, rownames(.f$parFixedDf))
+    expect_equal(unname(.p[["bWT"]]), 0.35, tolerance = 1e-6)
+    # and it takes the whole declaration with it, not just the coefficient
+    expect_equal(unname(.p[["lclm"]]), 1.63, tolerance = 1e-6)
+    expect_equal(unname(.p[["lclrv"]]), -2.4, tolerance = 1e-6)
+    # while the OTHER declaration is not frozen -- that is what makes this a
+    # per-declaration ownership gap rather than saem failing to run at all
+    expect_false(isTRUE(all.equal(unname(.p[["lv1rv"]]), -2.4, tolerance = 1e-6)))
   })
 })
