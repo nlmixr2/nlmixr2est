@@ -96,13 +96,20 @@ nmTest({
     ## `nonMuEtas` (to silence a warning), which left saem with no parameter
     ## for them at all.
     expect_true(.isEtaDistMethod("saem"))
-    ## vae does too, and the ELBO needed no change for it: the expansion leaves
-    ## the LATENT standard normal (`rxz.* ~ fix(1)`, block off-diagonals
-    ## dropped), which is exactly what the prior term and the KL are written
-    ## for, while the non-normality sits in a decoder line inside the inner
-    ## problem.  The old refusal was on the reading that its ELBO "hardcodes
-    ## the normal family"; what it hardcodes is a normal LATENT, correctly.
-    expect_true(.isEtaDistMethod("vae"))
+    ## vae does NOT, and this assertion used to say the opposite.
+    ##
+    ## The structural argument for enabling it was sound as far as it went: the
+    ## expansion leaves the LATENT standard normal (`rxz.* ~ fix(1)`, block
+    ## off-diagonals dropped), which is what the prior term and the KL are
+    ## written for, with the non-normality in a decoder line inside the inner
+    ## problem.  Nothing in the ELBO had to change, and nothing did.
+    ##
+    ## It was enabled on that argument and then measured on all four Bauer arms,
+    ## and it did not work -- see the comment block in R/vae.R, which carries
+    ## the numbers.  An ELBO optimizer is a poor fit for this construction, and
+    ## "the derivation permits it" is not the same claim as "it estimates the
+    ## model".  The attribute was removed rather than left on with a caveat.
+    expect_false(.isEtaDistMethod("vae"))
     ## a nonparametric random effect distribution contradicts a declared one;
     ## nlme/nls are Gaussian by construction; emvi/fbvi each still need their
     ## own audit before the same claim can be made for them
