@@ -333,40 +333,62 @@ nmTest({
     expect_true(abs(.b - 0.75) < abs(0.35 - 0.75))
   })
 
-  test_that("saem FREEZES a time-varying covariate declaration (known gap)", {
+  test_that("saem estimates a TIME-VARYING covariate declaration too", {
     skip_on_cran()
-    # The ownership gap, pinned rather than papered over.  With the covariate
-    # varying WITHIN a subject the family MLE declines the declaration
-    # (rxEtaDistMle takes one population argument set and a per-record
-    # declaration has none) and the observation-likelihood route does not pick
-    # it up either, so nothing owns lclm/lclrv/bWT and all three come back
-    # BIT-EXACTLY at their ini() values.
+    # This test previously pinned the opposite -- that the whole declaration
+    # froze bit-exactly at ini() -- and was written so that closing the gap
+    # would break it.  It did.  Kept as the recovery assertion it became.
     #
-    # Measured, all bit-exact returns of the start:
-    #   60 subjects,  nBurn/nEm 60/60,  bWT start 0.10 -> 0.100000 (objf 59755)
-    #   60 subjects,  nBurn/nEm 60/60,  bWT start 0.35 -> 0.350000 (objf 18592)
-    #   120 subjects, nBurn/nEm 60/60,  bWT start 0.50 -> 0.500000
-    #   120 subjects, nBurn/nEm 100/100, bWT start 0.50 -> 0.500000
-    # against 0.5809 at objf 4603 on the subject-constant arm above.  So it is
-    # not the iteration count, not the subject count and not the start.  It is
-    # also not an information problem: the two arms' between-subject sd of
-    # log(WT/70) is 0.185 and 0.174, and the time-varying arm's WITHIN-subject
-    # sd is only 0.022.
+    # The cause was NOT that a per-record family MLE was missing.
+    # `rxEtaDistMle()` does take one population argument set and no per-record
+    # term, so it declines here, but the OBSERVATION-likelihood objective sits
+    # beside it, maximizes over the thetas directly with each record's
+    # covariate supplied, and already handled this.  It was gated behind
+    # `etaDistLoglik`, which defaulted FALSE, so nothing ever asked for it.
+    # That control is now tri-state with NA = auto, and a covariate-carrying
+    # declaration turns it on.
     #
-    # This test asserts the CURRENT behavior on purpose, so that fixing the
-    # ownership gap breaks it and forces this comment to be rewritten.  Flip it
-    # to the recovery assertions from the test above when that happens.
+    # Measured on the 120-subject time-varying arm (truth 0.75, start 0.5),
+    # same data and settings, the flag the only difference:
+    #
+    #   off : bWT 0.5000 bit-exact, lclm 1.6300, lclrv -2.4000, objf 597.99
+    #   on  : bWT 0.4299,           lclm 1.6055, lclrv -2.2900, objf 502.46
+    #
+    # focei gets 0.4313 on the same data, so the two estimators now agree to
+    # 0.3%.  The subject-constant arm is bit-identical either way -- its
+    # coefficient is owned by the phi0 route, not by this one.
     .d <- .edT5Data(bWT = 0.75, timeVarying = TRUE)
     .f <- suppressMessages(suppressWarnings(
       nlmixr2(.edT5SaemModel(), .d, est = "saem",
               control = saemControl(print = 0L, nBurn = 60L, nEm = 60L))))
     .p <- setNames(.f$parFixedDf$Estimate, rownames(.f$parFixedDf))
+    # the coefficient MOVED off its start -- the freeze this arm existed for
+    expect_false(isTRUE(all.equal(unname(.p[["bWT"]]), 0.35, tolerance = 1e-6)))
+    # and so did the rest of that declaration, which went with it before
+    expect_false(isTRUE(all.equal(unname(.p[["lclm"]]), 1.63, tolerance = 1e-6)))
+    expect_false(isTRUE(all.equal(unname(.p[["lclrv"]]), -2.4, tolerance = 1e-6)))
+  })
+
+  test_that("etaDistLoglik=FALSE is honored, and says what it costs", {
+    skip_on_cran()
+    # The auto rule must not silently reverse a setting somebody typed.  With a
+    # FALSE default there was no way to tell "asked for FALSE" from "said
+    # nothing", which is why the control is tri-state: NA is auto, TRUE and
+    # FALSE are taken as given.  An explicit FALSE that will freeze a
+    # declaration is allowed -- and reported, because a frozen declaration is
+    # otherwise indistinguishable from a converged one.
+    .d <- .edT5Data(bWT = 0.75, timeVarying = TRUE)
+    .msg <- character(0)
+    .f <- withCallingHandlers(
+      suppressWarnings(nlmixr2(.edT5SaemModel(), .d, est = "saem",
+                               control = saemControl(print = 0L, nBurn = 60L,
+                                                     nEm = 60L,
+                                                     etaDistLoglik = FALSE))),
+      message = function(m) {
+        .msg <<- c(.msg, conditionMessage(m)); invokeRestart("muffleMessage")
+      })
+    .p <- setNames(.f$parFixedDf$Estimate, rownames(.f$parFixedDf))
     expect_equal(unname(.p[["bWT"]]), 0.35, tolerance = 1e-6)
-    # and it takes the whole declaration with it, not just the coefficient
-    expect_equal(unname(.p[["lclm"]]), 1.63, tolerance = 1e-6)
-    expect_equal(unname(.p[["lclrv"]]), -2.4, tolerance = 1e-6)
-    # while the OTHER declaration is not frozen -- that is what makes this a
-    # per-declaration ownership gap rather than saem failing to run at all
-    expect_false(isTRUE(all.equal(unname(.p[["lv1rv"]]), -2.4, tolerance = 1e-6)))
+    expect_true(any(grepl("have no owner", .msg)))
   })
 })

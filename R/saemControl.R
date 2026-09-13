@@ -258,8 +258,17 @@
 #'
 #' @param etaDistLoglik Estimate a `dist()`-declared random effect's own
 #'   parameters from the OBSERVATION likelihood rather than by fitting the
-#'   declared family to the sampled etas.  Opt-in; `FALSE` leaves
-#'   `etaDistMstep`'s route in place.
+#'   declared family to the sampled etas.
+#'
+#'   `NA` (default) is AUTO: on when a declaration carries a covariate, off
+#'   otherwise.  A covariate-carrying declaration has no single population
+#'   argument set for the family MLE to fit or to invert, so with this off its
+#'   thetas are owned by nothing and come back at their `ini()` values; the
+#'   observation-likelihood route maximizes over the thetas directly, with each
+#'   record's covariate supplied, and is the only route that can carry them.
+#'   Measured on a time-varying covariate arm: frozen at its start bit-exactly
+#'   with this off, and objf 597.99 -> 502.46 with it on.  `TRUE` and `FALSE`
+#'   are both honored as given, so an explicit `FALSE` is never overridden.
 #'
 #'   This is the M-step the construction implies.  The complete data is
 #'   `(y, z)` with `z` the latent standard normal, so
@@ -938,7 +947,7 @@ saemControl <- function(seed = 99,
                         etaDistSdTol = 0.10,
                         etaDistCorTrust = 1.5,
                         etaDistCorMstep = TRUE,
-                        etaDistLoglik = FALSE,
+                        etaDistLoglik = NA,
                         stepsizeRw = 0.4,
                         coefSa = 0.95,
                         coefPhi0 = 0.9638,
@@ -1200,8 +1209,13 @@ saemControl <- function(seed = 99,
   checkmate::assertNumeric(etaDistCorTrust, len=1, lower=0, any.missing=FALSE,
                            .var.name="etaDistCorTrust")
   checkmate::assertLogical(rwOmega, len=1, any.missing=FALSE, .var.name="rwOmega")
-  checkmate::assertLogical(etaDistLoglik, len=1, any.missing=FALSE,
-                           .var.name="etaDistLoglik")
+  ## NA is the AUTO setting, not a missing value: a covariate on a dist()
+  ## declaration turns this on because nothing else can own its thetas, and
+  ## every other model leaves it off.  Allowing NA here is what keeps an
+  ## explicit FALSE meaningful -- without it, "the user asked for FALSE" and
+  ## "the user said nothing" are the same value and the auto rule has to
+  ## override both, silently reversing a setting somebody typed.
+  checkmate::assertLogical(etaDistLoglik, len=1, .var.name="etaDistLoglik")
   checkmate::assertLogical(etaDistWarmStart, len=1, any.missing=FALSE,
                            .var.name="etaDistWarmStart")
   checkmate::assertIntegerish(nu1B, len=1, lower=0, any.missing=FALSE, .var.name="nu1B")

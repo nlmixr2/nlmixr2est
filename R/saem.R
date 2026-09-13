@@ -504,7 +504,44 @@
     # (see the gate in src/saem.cpp for the 3.8x measurement), and each step is
     # damped by pas(kiter) anyway.
     .cfg$etaDistEvery <- as.integer(rxode2::rxGetControl(ui, "etaDistEvery", 20L))
-    .cfg$etaDistLoglik <- as.integer(isTRUE(rxode2::rxGetControl(ui, "etaDistLoglik", FALSE)))
+    .edLoglikUser <- rxode2::rxGetControl(ui, "etaDistLoglik", NA)
+    ## Tri-state: NA is AUTO, TRUE/FALSE are honored as given.
+    ##
+    ## The family MLE fits a declaration's NATIVE parameters and inverts them
+    ## back to the thetas, and a covariate-carrying declaration has no single
+    ## population argument set to fit or to invert -- `rxEtaDistMle()` takes one
+    ## `a0` and no per-record term, so it declines and the declaration's thetas
+    ## are then owned by nothing and return BIT-EXACTLY at ini().
+    ##
+    ## The observation-likelihood route is what can carry them: it maximizes the
+    ## family log-likelihood over the THETAS directly with each record's
+    ## covariate row supplied (`rxEtaDistLoglikObj`'s rec/nSym/wt), so there is
+    ## nothing to invert.  It was already written and already handled nSym > 0;
+    ## it was simply never switched on, because this defaulted to FALSE and
+    ## nothing asked for it.  Measured on the time-varying arm (truth 0.75,
+    ## start 0.5): frozen at 0.5000 bit-exact before, 0.4299 after -- which
+    ## agrees with focei's 0.4313 on the same data -- and objf 597.99 -> 502.46.
+    ## The subject-constant arm is bit-identical either way, since its
+    ## coefficient is owned by the phi0 route rather than by this one.
+    ##
+    ## AUTO rather than an unconditional force: with a FALSE default there is no
+    ## way to tell "the user asked for FALSE" from "the user said nothing", so
+    ## forcing would silently reverse a setting somebody typed.
+    if (is.na(.edLoglikUser)) {
+      .cfg$etaDistLoglik <- as.integer(isTRUE(.edCovDecl))
+      if (isTRUE(.edCovDecl)) {
+        .minfo(paste0("a covariate on a dist() declaration has no population ",
+                      "argument set for the family MLE to fit; using ",
+                      "saemControl(etaDistLoglik=TRUE) for this fit"))
+      }
+    } else {
+      .cfg$etaDistLoglik <- as.integer(isTRUE(.edLoglikUser))
+      if (isTRUE(.edCovDecl) && !isTRUE(.edLoglikUser)) {
+        .minfo(paste0("etaDistLoglik=FALSE with a covariate on a dist() ",
+                      "declaration: that declaration's parameters have no ",
+                      "owner and will stay at their ini() values"))
+      }
+    }
     # etaDistOn must mean "the FAMILY M-step is wanted", not "the metadata
     # resolved".  .configsaem() sets it to 1 whenever etaDistInfo builds, and
     # that info builds when EITHER etaDistMstep or etaDistCorMstep is on -- so

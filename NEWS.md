@@ -32,6 +32,22 @@
 
 ## New features
 
+- A covariate that varies WITHIN a subject no longer freezes its `dist()`
+  declaration.  The family MLE fits a declaration's native parameters and
+  inverts them back to the thetas, and a covariate-carrying declaration has no
+  single population argument set to fit or to invert, so it declined and those
+  thetas were owned by nothing -- they came back bit-exactly at their `ini()`
+  values.  The observation-likelihood route maximizes over the thetas directly
+  with each record's covariate supplied and can carry them; it was simply never
+  switched on.  `saemControl(etaDistLoglik=)` is now tri-state: `NA` (the new
+  default) is auto -- on when a declaration carries a covariate, off otherwise
+  -- while `TRUE` and `FALSE` are honored as given, and a `FALSE` that will
+  freeze a declaration says so.  Measured on a 120-subject time-varying arm
+  (truth 0.75, start 0.5): `bWT` 0.5000 bit-exact and objf 597.99 before,
+  0.4299 and 502.46 after, against focei's 0.4313 on the same data.  A
+  subject-constant covariate is unaffected -- its coefficient is owned by the
+  phi0 route.
+
 - `etaDistCovarSearch()` selects covariates on `dist()` declaration arguments by
   forward selection then backward elimination on dOFV.  The unit of search is a
   (declared eta, family argument ROLE) pair -- gamma's `shape` against its
