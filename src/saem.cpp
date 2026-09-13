@@ -2325,23 +2325,6 @@ public:
         // a family argument into a theta the declaration has no claim on -- and
         // that is invisible in the parameter table, which just shows an
         // unrelated theta having moved.
-        if (etaDistNdist > 0 && (int)etaDistThetaPhi0.n_rows == etaDistNdist) {
-          std::string tp;
-          for (int k = 0; k < etaDistNdist; ++k) {
-            for (int t = 0; t < etaDistNth(k) && t < (int)etaDistThetaPhi0.n_cols; ++t) {
-              char b[32];
-              snprintf(b, sizeof(b), "%d:%d ", k, (int)etaDistThetaPhi0(k, t));
-              tp += b;
-            }
-          }
-          RSprintf("[phi0map] ndist=%d nth={", etaDistNdist);
-          for (int k = 0; k < etaDistNdist; ++k) RSprintf("%d ", etaDistNth(k));
-          RSprintf("} thetaPhi0={%s} corPhi0={", tp.c_str());
-          for (int k = 0; k < etaDistNdist && k < (int)etaDistCorPhi0.n_elem; ++k) {
-            RSprintf("%d ", (int)etaDistCorPhi0(k));
-          }
-          RSprintf("}\n");
-        }
       }
     }
     // optimize phi0 with the BOUNDED bobyqa (.boundedResidOpt), honoring the
@@ -7354,6 +7337,23 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
                  (int)kiter, k, lsd, sdPrevWas, relCh, etaDistSdTol,
                  etaDistSdLo, etaDistSdHi,
                  etaDistSpreadGuard, (int)spreadOk, (int)mleOk);
+        // The phi0 column each of THIS declaration's thetas writes into, printed
+        // where the loop actually runs.  An earlier version of this sat beside
+        // the [phi0] trace, which is emitted BEFORE the control is read, so it
+        // reported zeros for everything and said the machinery was off while
+        // this loop was plainly running.
+        {
+          std::string tp;
+          for (int t = 0; t < etaDistNth(k); ++t) {
+            char b[32];
+            snprintf(b, sizeof(b), "%d ", etaDistPhi0Col(k, t));
+            tp += b;
+          }
+          RSprintf("[phi0map] k=%d nth=%d thetaPhi0Rows=%d cols=%d cols={%s} "
+                   "famUsable=%d\n",
+                   k, etaDistNth(k), (int)etaDistThetaPhi0.n_rows,
+                   (int)etaDistThetaPhi0.n_cols, tp.c_str(), (int)famUsable);
+        }
       }
       if (etaDistDebug && (kiter % 10 == 0 || kiter < 2)) {
         double ws = 0, ws2 = 0, es = 0, es2 = 0;
