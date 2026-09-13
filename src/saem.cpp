@@ -43,56 +43,6 @@ extern "C" void nelder_fn(fn_ptr func, int n, double *start, double *step,
 			  int *iprint);
 
 double *_saemYptr;
-
-// ===== TEMPORARY SAEM PHASE INSTRUMENTATION (remove before merge) =====
-// Enabled at runtime by env var NLMIXR2_SAEM_TIME=1.  Slots (per phase):
-//   0 mcmc  1 refinePhi0Lik  2 residErrOpt  3 mstepTotal  4 fisher  5 iterTotal
-//   6 user_function (ODE solve)
-// Phase 0 = estimation (kiter<niter), phase 1 = SA covariance (kiter>=niter).
-#define _SAEM_NSLOT 8
-static double _saemTAcc[2*_SAEM_NSLOT];
-static long   _saemTCnt[2*_SAEM_NSLOT];
-static double _saemTT0[2*_SAEM_NSLOT];
-static int    _saemTPhase = 0;
-static int    _saemTOn = -1;
-static inline int _saemTEnabled() {
-  if (_saemTOn < 0) { const char *e = getenv("NLMIXR2_SAEM_TIME"); _saemTOn = (e && e[0]=='1') ? 1 : 0; }
-  return _saemTOn;
-}
-static inline double _saemNow() {
-  return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
-}
-static inline void _saemTB(int s) { if (_saemTEnabled()) _saemTT0[s + _SAEM_NSLOT*_saemTPhase] = _saemNow(); }
-static inline void _saemTE(int s) {
-  if (!_saemTEnabled()) return;
-  int i = s + _SAEM_NSLOT*_saemTPhase;
-  _saemTAcc[i] += _saemNow() - _saemTT0[i];
-  _saemTCnt[i]++;
-}
-// A/B toggle for the phi0GainFrozen skip (measurement only, removed with the
-// instrumentation): NLMIXR2_SAEM_NOSKIP=1 restores the pre-fix behaviour so both
-// arms can be timed from one binary.
-static int _saemNoSkip = -1;
-static inline int _saemSkipDisabled() {
-  if (_saemNoSkip < 0) { const char *e = getenv("NLMIXR2_SAEM_NOSKIP"); _saemNoSkip = (e && e[0]=='1') ? 1 : 0; }
-  return _saemNoSkip;
-}
-static void _saemTReset() { for (int i=0;i<2*_SAEM_NSLOT;i++){_saemTAcc[i]=0.0;_saemTCnt[i]=0;} }
-static void _saemTReport() {
-  if (!_saemTEnabled()) return;
-  static const char *nm[_SAEM_NSLOT] = {"mcmc","refinePhi0Lik","residErrOpt","mstepTotal",
-                                        "fisher","iterTotal","user_function","(unused)"};
-  REprintf("\n==== SAEM PHASE TIMING (s) ====\n");
-  REprintf("%-16s %12s %10s %12s %10s\n", "slot", "EST(s)", "EST(n)", "SACOV(s)", "SACOV(n)");
-  for (int s=0; s<7; s++) {
-    REprintf("%-16s %12.3f %10ld %12.3f %10ld\n", nm[s],
-             _saemTAcc[s], _saemTCnt[s],
-             _saemTAcc[s+_SAEM_NSLOT], _saemTCnt[s+_SAEM_NSLOT]);
-  }
-  REprintf("==== END SAEM PHASE TIMING ====\n");
-}
-// ===== END TEMPORARY SAEM PHASE INSTRUMENTATION =====
-
 double *_saemFptr;
 int _saemLen;
 int _saemYj;
@@ -1203,7 +1153,7 @@ public:
     // along with the ODE re-solve it spends on every objective evaluation.  The MCOV0
     // back-solve and the fixed-entry restore below still run, so every value this
     // function writes is unchanged.
-    bool phi0GainFrozen = (pas(kiter) == 0.0) && !_saemSkipDisabled();
+    bool phi0GainFrozen = (pas(kiter) == 0.0);
     if (phi0GainFrozen) {
       for (int c = 0; c < nphi0; c++) xmin[c] = par0[c];
     } else if (localTrust) {
@@ -2429,7 +2379,6 @@ public:
     double double_xmin = 1.0e-200; //FIXME hard-coded xmin, also in neldermean.hpp
     double xmax = 1e300;
     ofstream phiFile;
-    _saemTReset();
     _warnAtolRtol = false;
     phiFile.open(phiMFile[0].c_str());
 
@@ -2527,7 +2476,6 @@ public:
     }
     if (nSaCov > 0) { HaSa = zeros<mat>(nb_param, nb_param); covCount = 0; }
     for (unsigned int kiter=0; kiter<(unsigned int)(niter + nSaCov); kiter++) {
-      _saemTPhase = (kiter >= (unsigned int)niter) ? 1 : 0; _saemTB(5);
       // entering the SA covariance phase: snapshot the converged estimate so it can be
       // restored afterward (the cov-phase iterations fluctuate the parameters).
       if (nSaCov > 0 && kiter == (unsigned int)niter) {
@@ -2554,7 +2502,6 @@ public:
       D2Gamma20=D1Gamma20*LCOV0.t();
       CGamma20=COV20%D2Gamma20;
 
-      _saemTB(0);
       //    MCMC
       mcmcphi mphi1, mphi0;
       set_mcmcphi(mphi1, i1, nphi1, Gamma2_phi1, IGamma2_phi1, mprior_phi1);
@@ -3350,7 +3297,6 @@ public:
         statrese[b]=statrese[b]+pas(kiter)*(statr[b]/nmc-statrese[b]);
       }
 
-      _saemTE(0); _saemTB(3);
       // update parameters
       vec Plambda1, Plambda0;
       Plambda1=inv_sympd(CGamma21)*sum((D1Gamma21%(COV1.t()*statphi11)),1);
@@ -3455,7 +3401,7 @@ public:
       if ((distribution == 4 || nonMuThetaRegress) &&
           nphi0 > 0 && kiter >= (unsigned int)niter_phi0 &&
           (kiter - (unsigned int)niter_phi0) % (unsigned int)nonMuThetaEvery == 0) {
-        _saemTB(1); refinePhi0Lik(kiter, pas); _saemTE(1);
+        refinePhi0Lik(kiter, pas);
       }
       mprior_phi0.set_size(N, nphi0);                              // deal w/ nphi0=0
       if (nphi0 > 0) {
@@ -3612,7 +3558,6 @@ public:
       }
       //CHECK the following seg on b & yptr & fptr
       // general log-likelihood (distribution==4): no residual error params to update
-      _saemTB(2);
       if (distribution != 4)
       for(int b=0; b<nendpnt; ++b) {
         // AR(1): update the correlation from this iteration's residual pairs
@@ -4241,13 +4186,11 @@ public:
         if (sigma2[b]>1.0e99) sigma2[b] = 1.0e99;
         if (std::isnan(sigma2[b])) sigma2[b] = 1.0e99;
       }
-      _saemTE(2);
       vecares = ares(ix_endpnt);
       vecbres = bres(ix_endpnt);
       veccres = cres(ix_endpnt);
       if (DEBUG>0) Rcout << "par update successful\n";
 
-      _saemTE(3); _saemTB(4);
       //    Fisher information
       DDa=(D1/nmc)*(D1/nmc).t()-D11/nmc-D2/nmc;
       DDb=-D11/nmc-D2/nmc;
@@ -4274,7 +4217,6 @@ public:
           HaSa += (DDa - HaSa) / (double)covCount;
         }
       }
-      _saemTE(4);
       cube phi2 = phi%phi;
       mat sphi1 = sum(phi ,2);
       mat sphi2 = sum(phi2,2);
@@ -4389,7 +4331,6 @@ public:
       }
       // SA covariance phase (kiter >= niter): theta is frozen and HaSa is accumulated
       // above; nothing is recorded to par_hist and no printing happens.
-      _saemTE(5);
     }//kiter
     // restore the converged estimate after the SA covariance phase (the reported fit
     // must be the converged value, not a cov-phase iterate)
@@ -4407,7 +4348,6 @@ public:
     // TRAJECTORY; leaving their shrinkage in the reported value makes the proportion
     // disagree with the fit's own per-subject probabilities (#1058).
     if (nMix > 1 && arma::accu(mixWeights) > 0.0) mixProb = mean(mixWeights, 0).t();
-    _saemTReport();
     phiFile.close();
   }
 
@@ -5392,8 +5332,6 @@ static void saemReadRowsPooled(mat &g, int &elt, bool &hasNan, int nInd) {
 }
 
 mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
-  _saemTB(6);
-  struct _UfnGuard { ~_UfnGuard(){ _saemTE(6); } } _ufnGuard;
   // yp has all the observations in the dataset
   rx_solving_options_ind *ind;
   rx_solving_options *op = getSolvingOptions(_rx);
