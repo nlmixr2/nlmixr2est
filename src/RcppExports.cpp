@@ -71,6 +71,23 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// rxEtaDistKernelTest_
+Rcpp::NumericVector rxEtaDistKernelTest_(int fam, Rcpp::NumericVector a, int n, int kernel, double s, double start, int seed);
+RcppExport SEXP _nlmixr2est_rxEtaDistKernelTest_(SEXP famSEXP, SEXP aSEXP, SEXP nSEXP, SEXP kernelSEXP, SEXP sSEXP, SEXP startSEXP, SEXP seedSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< int >::type fam(famSEXP);
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type a(aSEXP);
+    Rcpp::traits::input_parameter< int >::type n(nSEXP);
+    Rcpp::traits::input_parameter< int >::type kernel(kernelSEXP);
+    Rcpp::traits::input_parameter< double >::type s(sSEXP);
+    Rcpp::traits::input_parameter< double >::type start(startSEXP);
+    Rcpp::traits::input_parameter< int >::type seed(seedSEXP);
+    rcpp_result_gen = Rcpp::wrap(rxEtaDistKernelTest_(fam, a, n, kernel, s, start, seed));
+    return rcpp_result_gen;
+END_RCPP
+}
 // nlmixrExpandFdParNlme_
 List nlmixrExpandFdParNlme_(CharacterVector state, CharacterVector vars);
 static SEXP _nlmixr2est_nlmixrExpandFdParNlme__try(SEXP stateSEXP, SEXP varsSEXP) {

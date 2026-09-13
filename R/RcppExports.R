@@ -43,6 +43,29 @@ rxEtaDistEtaScaleTest_ <- function(fam, x, a) {
     .Call(`_nlmixr2est_rxEtaDistEtaScaleTest_`, fam, x, a)
 }
 
+#' Test hook: sample a declared eta with the direct kernels
+#'
+#' Runs `n` sweeps of the requested kernel against a FLAT likelihood, so the
+#' stationary distribution must be the family itself.  That is the property
+#' worth testing -- it says the proposal, the bijector and the Jacobian agree
+#' with each other, independently of any model, and it fails loudly if the
+#' Jacobian is dropped (the chain then concentrates wherever the map
+#' compresses rather than matching the family's moments).
+#'
+#' @param fam family code
+#' @param a family arguments
+#' @param n number of sweeps
+#' @param kernel 1 = independence from the prior, 2 = bijected random walk
+#' @param s random-walk scale (kernel 2 only)
+#' @param start starting value
+#' @param seed RNG seed
+#' @return the chain, length `n`
+#' @keywords internal
+#' @export
+rxEtaDistKernelTest_ <- function(fam, a, n, kernel, s, start, seed) {
+    .Call(`_nlmixr2est_rxEtaDistKernelTest_`, fam, a, n, kernel, s, start, seed)
+}
+
 #' Expand Gradient for nlme
 #'
 #' @param state is the state to expand

@@ -806,3 +806,48 @@ Rcpp::NumericVector rxEtaDistEtaScaleTest_(int fam, double x,
     Rcpp::_["dlogp"] = rxEtaDistLogDdx(fam, x, a.begin()),
     Rcpp::_["d2logp"] = rxEtaDistLogD2dx(fam, x, a.begin()));
 }
+
+#include "etaDistKernel.h"
+
+//' Test hook: sample a declared eta with the direct kernels
+//'
+//' Runs `n` sweeps of the requested kernel against a FLAT likelihood, so the
+//' stationary distribution must be the family itself.  That is the property
+//' worth testing -- it says the proposal, the bijector and the Jacobian agree
+//' with each other, independently of any model, and it fails loudly if the
+//' Jacobian is dropped (the chain then concentrates wherever the map
+//' compresses rather than matching the family's moments).
+//'
+//' @param fam family code
+//' @param a family arguments
+//' @param n number of sweeps
+//' @param kernel 1 = independence from the prior, 2 = bijected random walk
+//' @param s random-walk scale (kernel 2 only)
+//' @param start starting value
+//' @param seed RNG seed
+//' @return the chain, length `n`
+//' @keywords internal
+//' @export
+// [[Rcpp::export]]
+Rcpp::NumericVector rxEtaDistKernelTest_(int fam, Rcpp::NumericVector a,
+                                         int n, int kernel, double s,
+                                         double start, int seed) {
+  Rcpp::RNGScope scope;
+  if (seed >= 0) Rcpp::Environment::global_env();  // R's stream is seeded by the caller
+  Rcpp::NumericVector out(n);
+  double eta = start;
+  // flat likelihood: every eta equally supported by the "data"
+  std::function<double(double)> negLL = [](double) { return 0.0; };
+  double cur = 0.0;
+  for (int i = 0; i < n; ++i) {
+    if (kernel == 1) {
+      eta = rxEtaDistKern1(fam, a.begin(), eta, unif_rand(), unif_rand(),
+                           negLL, &cur);
+    } else {
+      eta = rxEtaDistKern2(fam, a.begin(), eta, norm_rand(), s, unif_rand(),
+                           negLL, &cur);
+    }
+    out[i] = eta;
+  }
+  return out;
+}
