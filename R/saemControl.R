@@ -189,6 +189,24 @@
 #'   declared family than the model's own starting values, so a bad surrogate
 #'   leaves the fit where it was rather than moving it somewhere worse.
 #'
+#' @param etaDistParam How a `dist()`-declared random effect is represented
+#'   for estimation.
+#'
+#'   `"cdf"` (default) is Bauer's construction: a standard normal latent,
+#'   `phiU()`, the family's inverse CDF, and a Gaussian copula.  The estimator
+#'   then sees an ordinary model with a fixed identity omega and the
+#'   non-normality lives in a decoder line.
+#'
+#'   `"direct"` leaves the declared random effect alone -- no latent, no
+#'   decoder -- and carries the declared family as its prior.  A correlated
+#'   PAIR is carried through the copula density on the eta scale; a block of
+#'   three or more is refused.
+#'
+#'   The two are provided so they can be COMPARED on the same model rather than
+#'   one being chosen by argument.  They differ in where the inverse CDF runs:
+#'   `"cdf"` decodes once per OBSERVATION inside the solve, `"direct"` evaluates
+#'   a CDF once per eta per SUBJECT, which is far fewer calls -- so the routes
+#'   are expected to differ in speed as well as in what they estimate.
 #' @param etaDistMstep Opt-in, and `FALSE` by default.  Estimate a
 #'   `dist()`-declared random effect's distribution parameters by a fit to the
 #'   sampled etas, rather than through the data likelihood.
@@ -963,6 +981,7 @@ saemControl <- function(seed = 99,
                         nb1B = 10L,
                         etaDistWarmStart = TRUE,
                         etaDistMstep = FALSE,
+                        etaDistParam = c("cdf", "direct"),
                         etaDistStart = NULL,
                         etaDistEvery = 20L,
                         etaDistCor = c("observed", "analytic", "optimize", "posterior"),
@@ -1241,6 +1260,7 @@ saemControl <- function(seed = 99,
   ## explicit FALSE meaningful -- without it, "the user asked for FALSE" and
   ## "the user said nothing" are the same value and the auto rule has to
   ## override both, silently reversing a setting somebody typed.
+  etaDistParam <- match.arg(etaDistParam)
   checkmate::assertLogical(etaDistLoglik, len=1, .var.name="etaDistLoglik")
   checkmate::assertLogical(etaDistWarmStart, len=1, any.missing=FALSE,
                            .var.name="etaDistWarmStart")
@@ -1287,6 +1307,7 @@ saemControl <- function(seed = 99,
     etaDistCorMstep = etaDistCorMstep,
     rwOmega = rwOmega,
     etaDistLoglik = etaDistLoglik,
+    etaDistParam = etaDistParam,
     stepsizeRw = stepsizeRw,
     coefSa = coefSa,
     coefPhi0 = coefPhi0,

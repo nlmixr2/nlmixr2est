@@ -370,7 +370,19 @@
   ## Decompress BEFORE stashing: rxUiDecompress() on a compressed ui returns a
   ## new object, so assigning into it would write to a temporary and the stash
   ## would never reach the ui that is returned.
-  .ui <- rxode2::rxUiDecompress(rxode2::rxEtaDistExpand(ui))
+  ## Which representation the estimator asked for.  Read from the control
+  ## rather than assumed, and defaulted to "cdf" so a method that has never
+  ## heard of the argument (or an older control round-tripped through
+  ## do.call) gets exactly the behaviour it had before.
+  .param <- tryCatch({
+    .p <- rxode2::rxGetControl(ui, "etaDistParam", "cdf")
+    if (is.character(.p) && length(.p) >= 1L && .p[1] %in% c("cdf", "direct")) {
+      .p[1]
+    } else {
+      "cdf"
+    }
+  }, error = function(e) "cdf")
+  .ui <- rxode2::rxUiDecompress(rxode2::rxEtaDistExpand(ui, param = .param))
   ## In `meta`, which is the ONLY container that survives to the estimators.
   ## Measured, on a real saem fit, by planting a probe in each candidate and
   ## seeing which arrived: the ui environment, the control and an extra iniDf

@@ -560,6 +560,26 @@
 #'   collapsed outright.  Not a calibration, and not a way to tune when the step
 #'   runs; that is `etaDistSdTol`.
 #'
+#' @param etaDistParam How a `dist()`-declared random effect is represented
+#'   for estimation.
+#'
+#'   `"cdf"` (default) is Bauer's construction: a standard normal latent,
+#'   `phiU()`, the family's inverse CDF, and a Gaussian copula.  The inner
+#'   problem is then over a GAUSSIAN latent, which is why the Laplace expansion
+#'   FOCEi rests on is well posed even for a family with no interior mode.
+#'
+#'   `"direct"` leaves the declared random effect alone and carries the family
+#'   as its prior, so the inner problem's quadratic `eta' Omega^-1 eta` and its
+#'   curvature `Omega^-1` become `-2 log p` and `-d2 log p/d(eta)2`.  Read the
+#'   caution before using it: at a gamma shape below 1 the log density is
+#'   CONVEX -- measured d2 log p/d(eta)2 = +0.78 at shape 0.5 -- so the prior
+#'   contributes negative curvature and there is no interior mode for a Laplace
+#'   expansion to sit on.  That is why Pumas cautions against non-Gaussian
+#'   random effects under FOCEi, and why NoLimits.jl routes them to
+#'   Laplace/quadrature/SAEM instead.
+#'
+#'   Provided so the two can be COMPARED on the same model rather than one
+#'   being chosen by argument.
 #' @param etaDistMstep Opt-in.  Estimate a `dist()`-declared random effect's
 #'   family parameters (and any Gaussian-copula correlation between declared
 #'   effects) with their own optimizer, instead of through the outer problem.
@@ -1476,6 +1496,7 @@ foceiControl <- function(sigdig = 3, #
                          etaMat = NULL, #
                          etaDistWarmStart = TRUE, #
                          etaDistMstep = FALSE, #
+                         etaDistParam = c("cdf", "direct"), #
                          etaDistNsamp = 50L, #
                          etaDistSdLo = 0.2, #
                          etaDistSdHi = 5.0, #
@@ -1514,6 +1535,7 @@ foceiControl <- function(sigdig = 3, #
                          zeroThetaRetryTol = 3,
                          boundedTransform = TRUE) { #
   ## sensMethod: forward (variational) ODE parameter sensitivities.
+  etaDistParam <- match.arg(etaDistParam)
   sensMethod <- match.arg(sensMethod)
   linCmtSensCarry <- match.arg(linCmtSensCarry)
   if (!is.null(sigdig)) {
@@ -2315,6 +2337,7 @@ foceiControl <- function(sigdig = 3, #
     etaMat = etaMat,
     etaDistWarmStart = as.logical(etaDistWarmStart),
     etaDistMstep = as.logical(etaDistMstep),
+    etaDistParam = etaDistParam,
     etaDistNsamp = as.integer(etaDistNsamp),
     etaDistSdLo = as.numeric(etaDistSdLo),
     etaDistSdHi = as.numeric(etaDistSdHi),
