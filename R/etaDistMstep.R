@@ -653,7 +653,8 @@
   if (is.null(.c)) return(NULL)
   ## the expansion renames the declared eta's latent `rxz.<eta>`; saem indexes
   ## its phi columns through etaTrans rather than by eta number
-  .lat <- vapply(paste0("rxz.", .c$etas), function(.z) {
+  .pfx <- .etaDistEtaPrefix(ui)
+  .lat <- vapply(paste0(.pfx, .c$etas), function(.z) {
     .w <- which(etaNames == .z)
     if (length(.w) == 1L) as.integer(etaTrans[.w]) - 1L else -1L
   }, integer(1))
@@ -790,6 +791,7 @@
     })
   }
   list(latent = .lat, fam = .c$fam, corWith = .c$corWith,
+       direct = as.integer(.etaDistIsDirect(ui)),
        usable = as.integer(.c$usable), cov = .covK,
        exprs = .exprs, exprThetas = .c$thetas,
        args = .c$args, rho = .c$rho,
@@ -813,6 +815,50 @@
     if (!exists(".etaDistDecl", envir = .m, inherits = FALSE)) return(NULL)
     get(".etaDistDecl", envir = .m, inherits = FALSE)
   }, error = function(e) NULL)
+}
+
+#' Which parameterization the expansion used
+#'
+#' `rxEtaDistExpand()` records it on `etaDistInfo$param`.  It is absent on a ui
+#' expanded before the option existed, and on an UNEXPANDED one -- both mean the
+#' CDF construction, which is the default and was the only route.
+#'
+#' This is read rather than the control, deliberately: the control says what was
+#' ASKED for and the ui says what was BUILT, and an estimator that samples a
+#' direct prior against a cdf-expanded model (or the reverse) is fitting the
+#' wrong model silently.  Only the second question has a right answer here.
+#'
+#' @param ui rxode2 ui
+#' @return `TRUE` when the model was expanded on the direct route
+#' @noRd
+#' @author Matthew L. Fidler
+.etaDistIsDirect <- function(ui) {
+  ## The STASH first.  `etaDistInfo` is where the expansion records it, but that
+  ## is a ui environment variable and it does not survive to the estimator --
+  ## saem.R read FALSE off a ui whose eta was already renamed `rxd.eta.cl`.  The
+  ## stash lives in `ui$meta` and does survive.
+  .st <- .etaDistDeclGet(ui)
+  if (!is.null(.st) && !is.null(.st$param)) return(identical(.st$param, "direct"))
+  tryCatch({
+    .u <- rxode2::rxUiDecompress(ui)
+    if (!exists("etaDistInfo", envir = .u, inherits = FALSE)) return(FALSE)
+    .i <- get("etaDistInfo", envir = .u, inherits = FALSE)
+    identical(.i$param, "direct")
+  }, error = function(e) FALSE)
+}
+
+#' The eta-name prefix the expansion gave the declared random effect
+#'
+#' `rxz.` on the cdf route (the latent normal), `rxd.` on the direct route (the
+#' declared eta itself).  Both are non-mu-referenced and both are renamed, so
+#' the only thing an index map needs is which prefix to look for.
+#'
+#' @param ui rxode2 ui
+#' @return the prefix, with its trailing dot
+#' @noRd
+#' @author Matthew L. Fidler
+.etaDistEtaPrefix <- function(ui) {
+  if (.etaDistIsDirect(ui)) "rxd." else "rxz."
 }
 
 #' Write the declaration stash where it will survive
@@ -852,7 +898,8 @@
   if (is.null(.st)) {
     .d <- rxode2::rxUiEtaDists(.ui)
     if (nrow(.d) == 0L) return(NULL)
-    .st <- .etaDistDeclStash(.ui, .d)
+    .st <- .etaDistDeclStash(.ui, .d,
+                             param = if (.etaDistIsDirect(.ui)) "direct" else "cdf")
     if (is.null(.st)) return(NULL)
   }
   .n <- length(.st$name)
@@ -900,7 +947,35 @@
   .cw <- as.integer(.st$corWith)
   .rho <- rep(0, .n)
   .corTheta <- rep(NA_character_, .n)
+  ## On the DIRECT route there is no `rxCor.*` theta to read: the expansion
+  ## leaves the correlation in the omega where the user wrote it, because
+  ## nothing in the model text needs it (on the cdf route the theta exists
+  ## precisely because the decoder BUILDS the latent from it).  Reading the
+  ## missing theta returns NULL from this function, which reads downstream as
+  ## "no declarations" -- so a correlated direct model would silently lose both
+  ## the copula AND the family M-step, with no error.
+  ##
+  ## Both declared variances are fixed at the placeholder 1, so the off-diagonal
+  ## IS the correlation.
+  .direct <- .etaDistIsDirect(.ui)
+  if (.direct) {
+    .off <- .ini[!is.na(.ini$neta1) & .ini$neta1 != .ini$neta2, , drop = FALSE]
+    .etaRow <- .ini[!is.na(.ini$neta1) & .ini$neta1 == .ini$neta2, , drop = FALSE]
+    .etaNum <- stats::setNames(.etaRow$neta1, .etaRow$name)
+    for (.i in seq_len(.n)) {
+      if (.cw[.i] < 0L) next
+      .n1 <- .etaNum[[paste0("rxd.", .st$name[.i])]]
+      .n2 <- .etaNum[[paste0("rxd.", .st$name[.cw[.i] + 1L])]]
+      if (is.null(.n1) || is.null(.n2)) return(NULL)
+      .w <- which((.off$neta1 == .n1 & .off$neta2 == .n2) |
+                    (.off$neta1 == .n2 & .off$neta2 == .n1))
+      ## no off-diagonal row means the block was declared correlated but the
+      ## covariance is zero -- an independent pair, not a failure
+      .rho[.i] <- if (length(.w) == 1L) .off$est[.w] else 0
+    }
+  }
   for (.i in seq_len(.n)) {
+    if (.direct) break
     if (.cw[.i] < 0L) next
     .nm <- .st$corTheta[.i]
     if (is.na(.nm)) return(NULL)
@@ -945,7 +1020,7 @@
   .th <- .ini[!is.na(.ini$ntheta), , drop = FALSE]
   .thNames <- .th[order(.th$ntheta), "name"]
   ## the expansion renames the declared eta's latent `rxz.<eta>`
-  .lat <- as.integer(match(paste0("rxz.", .c$etas), .etaNames) - 1L)
+  .lat <- as.integer(match(paste0(.etaDistEtaPrefix(ui), .c$etas), .etaNames) - 1L)
   if (anyNA(.lat)) return(NULL)
   .ti <- lapply(seq_len(.c$n), function(.k) {
     as.integer(match(.c$thetas[[.k]], .thNames) - 1L)
@@ -1007,6 +1082,7 @@
   .own <- unique(unlist(.c$thetas[.c$usable]))
   .foreign <- unique(unlist(.c$thetas[!.c$usable]))
   list(latent = .lat, fam = as.integer(.c$fam), corWith = as.integer(.c$corWith),
+       direct = as.integer(.etaDistIsDirect(ui)),
        args = .c$args, rho = as.numeric(.c$rho),
        usable = as.integer(.c$usable),
        exprs = .exprs, exprThetas = .c$thetas,

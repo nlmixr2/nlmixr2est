@@ -558,6 +558,20 @@
 #'   collapsed outright.  Not a calibration, and not a way to tune when the step
 #'   runs; that is `etaDistSdTol`.
 #'
+#' @param etaDistParam How a `dist()`-declared random effect is represented for
+#'   estimation; see [foceiControl()] for the full description.
+#'
+#'   `imp` accepts only `"cdf"` (the default).  `"direct"` is refused, and not
+#'   merely because it is unwritten: the inner MAP adds the prior's curvature to
+#'   the Hessian, and in the direct parameterization that is
+#'   `d2 log p/d(eta)2`, which is POSITIVE wherever the declared density is
+#'   convex.  On gamma with shape 0.5 and a residual sd of 0.3 the inner Hessian
+#'   `1/s^2 + (shape-1)/eta^2` is negative for `eta < 0.212`, which is 35.5% of
+#'   the prior mass -- those subjects have no interior mode, so there is no
+#'   Laplace expansion to make.  The `"cdf"` route expands around the standard
+#'   normal latent instead and does not have the problem.  `saem` does support
+#'   `"direct"`, because an MCMC needs a density and not a mode.
+#'
 #' @param etaDistMstep Opt-in.  Estimate a `dist()`-declared random effect's
 #'   family parameters (and any Gaussian-copula correlation between declared
 #'   effects) by a weighted maximum-likelihood fit to the E-step's importance
@@ -773,6 +787,7 @@ impmapControl <- function(sigdig=3,
                           zeroOmegaMaxEval=25L,
                           etaDistWarmStart=TRUE,
                           etaDistMstep=FALSE,
+                          etaDistParam=c("cdf", "direct"),
                           etaDistSdLo=0.2,
                           etaDistSdHi=5.0,
                           etaDistSdTol=0.10,
@@ -933,8 +948,10 @@ impmapControl <- function(sigdig=3,
                            .var.name="etaDistMstep")
   checkmate::assertLogical(etaDistWarmStart, len=1, any.missing=FALSE,
                            .var.name="etaDistWarmStart")
+  etaDistParam <- match.arg(etaDistParam)
   .control$etaDistWarmStart <- etaDistWarmStart
   .control$etaDistMstep <- etaDistMstep
+  .control$etaDistParam <- etaDistParam
   checkmate::assertNumeric(etaDistSdLo, len=1, lower=0, any.missing=FALSE,
                            .var.name="etaDistSdLo")
   checkmate::assertNumeric(etaDistSdHi, len=1, lower=0, any.missing=FALSE,

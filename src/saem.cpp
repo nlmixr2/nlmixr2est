@@ -42,6 +42,9 @@ using namespace Rcpp;
 // likelihood M-step live in their own translation unit so saem and imp share
 // one implementation -- see src/etaDistFam.h.
 #include "etaDistFam.h"
+// eta-scale primitives: bounds, bijectors, the copula joint density.  Only the
+// direct parameterization reaches these; the cdf route never does.
+#include "etaDistEtaScale.h"
 
 typedef void (*fn_ptr) (double *, double *);
 
@@ -1019,8 +1022,29 @@ public:
       }
       double zjj = 0, zkk = 0, zjk = 0;
       unsigned int nr = phiM.n_rows;
+      // On the DIRECT route phiM holds the ETAS, not the latents, and this
+      // statistic is written for latents throughout -- it standardizes them and
+      // compares S_z against the identity.  Two gammas have neither unit
+      // variance nor zero mean, so the raw second moments would report
+      // structure that is the MARGINALS and not the dependence.
+      //
+      // z = qnorm(F_k(eta_k)) is the latent the copula is defined on, which is
+      // exactly what rxEtaDistCopulaZ() computes for the prior term, so the
+      // same transform serves both and they cannot drift apart.
+      const bool edEtaScale = etaDistDirectOn();
+      const int naC = (int)etaDistArgs.n_cols;
+      std::vector<double> aJ((size_t)naC), aK((size_t)naC);
+      if (edEtaScale) {
+        for (int t = 0; t < naC; ++t) {
+          aJ[(size_t)t] = etaDistArgs(j, t); aK[(size_t)t] = etaDistArgs(k, t);
+        }
+      }
       for (unsigned int r = 0; r < nr; ++r) {
         double a = phiM(r, cj), b = phiM(r, ck);
+        if (edEtaScale) {
+          a = rxEtaDistCopulaZ(etaDistFam(j), a, &aJ[0]);
+          b = rxEtaDistCopulaZ(etaDistFam(k), b, &aK[0]);
+        }
         if (!std::isfinite(a) || !std::isfinite(b)) continue;
         zjj += a*a; zkk += b*b; zjk += a*b;
       }
@@ -3616,6 +3640,8 @@ public:
     if ((etaDistOn || etaDistCorOn) && x.containsElementNamed("etaDistLatent")) {
       etaDistLatent  = as<ivec>(x["etaDistLatent"]);
       etaDistFam     = as<ivec>(x["etaDistFam"]);
+      etaDistDirect  = x.containsElementNamed("etaDistDirect") ?
+        as<int>(x["etaDistDirect"]) : 0;
       etaDistCorWith = as<ivec>(x["etaDistCorWith"]);
       if (x.containsElementNamed("etaDistUsable")) {
         etaDistUsable = as<ivec>(x["etaDistUsable"]);
@@ -3697,6 +3723,22 @@ public:
     nM = N*nmc;
 
     nMix = x.containsElementNamed("nMix") ? as<int>(x["nMix"]) : 1;
+    // A MIXTURE plus the direct parameterization is refused rather than run.
+    //
+    // The mixture E-step has its own kernel (do_mcmc_msaem), and it scores every
+    // proposal with the Gaussian quadratic.  Teaching it the family prior is not
+    // hard, but nothing exercises the combination and an untested prior in an
+    // MCMC acceptance is exactly the kind of defect that shows up as slightly
+    // wrong estimates rather than as an error.  So say so instead: on the cdf
+    // route a mixture works as it always has, because there the sampled column
+    // genuinely IS standard normal.
+    if (nMix > 1 && etaDistDirect != 0 && etaDistNdist > 0) {
+      Rf_error("a mixture model cannot use etaDistParam=\"direct\" yet\n"
+               "  the mixture MCMC kernel scores its proposals with the Gaussian "
+               "prior, which is not this model's prior\n"
+               "  use etaDistParam=\"cdf\", where the sampled random effect really "
+               "is standard normal");
+    }
     if (nMix > 1) {
       mixProb = as<vec>(x["mixProb"]);
       mixProbInit = mixProb;
@@ -4303,16 +4345,14 @@ public:
         if (nphi1 > 0) {
           vec U_phi;
           do_mcmc_msaem(1, nu1, mx, mphi1, phiM, U_y, U_phi, (int)kiter, &rwScale1, &rwLam1);
-          mat dphi = phiM.cols(i1) - mphi1.mprior_phiM;
-          U_phi = 0.5 * sum(dphi % (dphi * IGamma2_phi1), 1);
+          U_phi = etaDistSeedUphi(mphi1, phiM);
           do_mcmc_msaem(2, nu2, mx, mphi1, phiM, U_y, U_phi, (int)kiter, &rwScale1, &rwLam1);
           do_mcmc_msaem(3, nu3, mx, mphi1, phiM, U_y, U_phi, (int)kiter, &rwScale1, &rwLam1, &rwScale1b, &rwLam1b);
         }
         if (nphi0 > 0) {
           vec U_phi;
           do_mcmc_msaem(1, nu1, mx, mphi0, phiM, U_y, U_phi, (int)kiter, &rwScale0, &rwLam0);
-          mat dphi = phiM.cols(i0) - mphi0.mprior_phiM;
-          U_phi = 0.5 * sum(dphi % (dphi * IGamma2_phi0), 1);
+          U_phi = etaDistSeedUphi(mphi0, phiM);
           do_mcmc_msaem(2, nu2, mx, mphi0, phiM, U_y, U_phi, (int)kiter, &rwScale0, &rwLam0);
           do_mcmc_msaem(3, nu3, mx, mphi0, phiM, U_y, U_phi, (int)kiter, &rwScale0, &rwLam0, &rwScale0b, &rwLam0b);
         }
@@ -4592,16 +4632,14 @@ public:
           if (nphi1 > 0) {
             vec U_phi;
             do_mcmc(1, nu1, mx, mphi1, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter, jMix + 1, &rwScale1, &rwLam1);
-            mat dphi = cur_phiM.cols(i1) - mphi1.mprior_phiM;
-            U_phi = 0.5 * sum(dphi % (dphi * IGamma2_phi1), 1);
+            U_phi = etaDistSeedUphi(mphi1, cur_phiM);
             do_mcmc(2, nu2, mx, mphi1, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter, jMix + 1, &rwScale1, &rwLam1);
             do_mcmc(3, nu3, mx, mphi1, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter, jMix + 1, &rwScale1, &rwLam1, &rwScale1b, &rwLam1b);
           }
           if (nphi0 > 0) {
             vec U_phi;
             do_mcmc(1, nu1, mx, mphi0, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter, jMix + 1, &rwScale0, &rwLam0);
-            mat dphi = cur_phiM.cols(i0) - mphi0.mprior_phiM;
-            U_phi = 0.5 * sum(dphi % (dphi * IGamma2_phi0), 1);
+            U_phi = etaDistSeedUphi(mphi0, cur_phiM);
             do_mcmc(2, nu2, mx, mphi0, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter, jMix + 1, &rwScale0, &rwLam0);
             do_mcmc(3, nu3, mx, mphi0, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter, jMix + 1, &rwScale0, &rwLam0, &rwScale0b, &rwLam0b);
           }
@@ -4901,8 +4939,7 @@ public:
         if(nphi1>0) {
           vec U_phi;
           do_mcmc(1, nu1, mx, mphi1, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter, 0, &rwScale1, &rwLam1);
-          mat dphi = phiM.cols(i1)-mphi1.mprior_phiM;
-          U_phi    = 0.5*sum(dphi%(dphi*IGamma2_phi1),1);
+          U_phi    = etaDistSeedUphi(mphi1, phiM);
           // NONMEM runs mode 1B directly after mode 1, once each subject's
           // conditional moments have had time to accumulate
           if (buildMode1B(i1, kiter)) {
@@ -4914,8 +4951,7 @@ public:
         if(nphi0>0) {
           vec U_phi;
           do_mcmc(1, nu1, mx, mphi0, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter, 0, &rwScale0, &rwLam0);
-          mat dphi = phiM.cols(i0)-mphi0.mprior_phiM;
-          U_phi    = 0.5*sum(dphi%(dphi*IGamma2_phi0),1);
+          U_phi    = etaDistSeedUphi(mphi0, phiM);
           do_mcmc(2, nu2, mx, mphi0, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter, 0, &rwScale0, &rwLam0);
           do_mcmc(3, nu3, mx, mphi0, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter, 0, &rwScale0, &rwLam0, &rwScale0b, &rwLam0b);
         }
@@ -6695,6 +6731,17 @@ private:
   int etaDistNdist = 0;          // number of declared random effects
   ivec etaDistLatent;            // phi column of each one's OWN latent normal
   ivec etaDistFam;               // family code (rxEtaDistQ/rxEtaDistLogD)
+  // saemControl(etaDistParam="direct"): the declared eta IS the random effect
+  // and carries its family as its prior, rather than being a standard normal
+  // latent that a decoder turns into one.  The two routes fit the SAME model by
+  // different parameterizations, so they are comparable -- which is the point
+  // of having both -- but the MCMC has to score them differently: on the cdf
+  // route the sampled phi column really is N(0,1) and the Gaussian quadratic is
+  // exact, while here it is (say) Gamma(0.5, 0.5) and the quadratic is simply a
+  // different prior.  Reading one as the other is what "fits the wrong model
+  // silently" means, so the flag comes from what the EXPANSION built, not from
+  // what the control asked for (see .etaDistIsDirect()).
+  int etaDistDirect = 0;
   // Per-declaration covariate values, one row per SUBJECT in saem's own subject
   // order (phiM row r is subject r % N -- see the mixture weighting at
   // phiM_weighted).  Empty for a declaration with no covariate, which is the
@@ -7187,9 +7234,17 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
       if (ck < 0 || ck >= (int)phiM.n_cols) return false;
       int j = etaDistCorWith(k);
       w[(size_t)k].resize(phiM.n_rows);
+      // On the DIRECT route phiM ALREADY holds the eta, and there is no latent
+      // to combine: the correlation lives in the prior's copula term
+      // (rxEtaDistPairLogD), not in a linear combination of normals.  Forming
+      // rho*z_j + sqrt(1-rho^2)*z_k out of two gamma draws would hand the MLE a
+      // mixture of two subjects' clearances and call it one subject's.  The
+      // MARGINAL is what the family MLE wants, and a copula's marginal is the
+      // marginal.
+      const bool edEtaScale = etaDistDirectOn();
       for (unsigned int r = 0; r < phiM.n_rows; ++r) {
         double zk = phiM(r, ck);
-        if (j < 0) { w[(size_t)k][r] = zk; continue; }
+        if (j < 0 || edEtaScale) { w[(size_t)k][r] = zk; continue; }
         int cj = etaDistLatent(j);
         if (cj < 0 || cj >= (int)phiM.n_cols) return false;
         double rho = etaDistRho(k);
@@ -7270,6 +7325,16 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
         // leave it empty rather than fabricating one from NA arguments.
         if (!perRec) nSym = 0;
       }
+      // On the DIRECT route the sample is ALREADY on the eta scale -- there is
+      // no latent and no decoder -- so `w` must be taken as it stands.
+      //
+      // Decoding it anyway is not a small error.  Q(Phi(eta)) on a gamma sample
+      // whose mean is 5.1 evaluates Phi(5.1) = 1 - 1.7e-7, which the guard below
+      // clamps to 1 - 1e-15, and the inverse CDF there is the extreme upper
+      // tail: measured, the M-step came back with lclm = 16.93 against a truth
+      // of 1.63 while the eta SAMPLE it was fitted to had mean 5.098 against a
+      // truth of 5.104.  The sample was right and the fit to it was not.
+      const bool edSampleIsEta = etaDistDirectOn();
       for (size_t r = 0; r < w[(size_t)k].size(); ++r) {
         // same boundary guard phiU() applies: pnorm saturates to 0/1 in double
         // precision and an inverse CDF there is +/-Inf
@@ -7291,7 +7356,7 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
           if (!okA) continue;
           aUse = aR;
         }
-        double e = rxEtaDistQ(fam, u, aUse);
+        double e = edSampleIsEta ? w[(size_t)k][r] : rxEtaDistQ(fam, u, aUse);
         if (!std::isfinite(e)) continue;
         // ONE loop, dropped TOGETHER.  Pushing the covariate in a second pass
         // over the same range would keep every record that this one skips and
@@ -7767,6 +7832,237 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
   static constexpr double _saemGenLikCeiling = 700.0;
   static constexpr double _saemGenLikBadSolvePenalty = -1.0e10;
 
+  // Phi(z), clamped off 0 and 1 exactly as the decoder's phiU() is: a draw in
+  // the far tail otherwise saturates in double precision and the quantile
+  // function returns the support endpoint for a z the model is happy with.
+  //
+  // Named for the normal CDF explicitly.  etaDistKernel.h already has an
+  // rxEtaDistUPhi(), and it is the FAMILY cdf F(x) -- a different function with
+  // a compatible-looking call.
+  static double etaDistNormCdf(double z) {
+    double u = R::pnorm5(z, 0.0, 1.0, 1, 0);
+    if (u < 1e-15) u = 1e-15; else if (u > 1.0 - 1e-15) u = 1.0 - 1e-15;
+    return u;
+  }
+
+  // -------------------------------------------------------------------------
+  // The DIRECT route's prior, on the eta scale.
+  //
+  // Everything here is a no-op unless rxEtaDistExpand(param="direct") built the
+  // model, so the cdf route's arithmetic is untouched to the bit.
+  // -------------------------------------------------------------------------
+
+  bool etaDistDirectOn() const {
+    return etaDistDirect != 0 && etaDistNdist > 0 &&
+      (int)etaDistLatent.n_elem == etaDistNdist &&
+      (int)etaDistFam.n_elem == etaDistNdist &&
+      (int)etaDistArgs.n_rows == etaDistNdist;
+  }
+
+  // Which declaration, if any, owns each column of a sampled block.  `i` holds
+  // the block's PHI columns; the answer is indexed by the block's own column
+  // position, which is what phiM.cols(i) and dphi are indexed by.
+  void etaDistDirectLocal(const uvec &i, std::vector<int> &declOf) const {
+    declOf.assign(i.n_elem, -1);
+    if (!etaDistDirectOn()) return;
+    for (unsigned int c = 0; c < i.n_elem; ++c) {
+      for (int k = 0; k < etaDistNdist; ++k) {
+        if ((int)i(c) == etaDistLatent(k)) { declOf[c] = k; break; }
+      }
+    }
+  }
+
+  // Is any column of this block declared?  Cheap guard so a model that mixes a
+  // declared eta with ordinary ones still pays nothing on the ordinary blocks.
+  static bool etaDistAnyLocal(const std::vector<int> &declOf) {
+    for (size_t c = 0; c < declOf.size(); ++c) if (declOf[c] >= 0) return true;
+    return false;
+  }
+
+  // -log p(eta) for the declared columns of one block, per row.
+  //
+  // A correlated PAIR is scored ONCE, jointly, through the Gaussian copula --
+  // scoring each marginal separately would drop the dependence entirely, and
+  // scoring it twice would double-count both marginals.  `seen` is what keeps
+  // that straight when both members are in the same block, which is the normal
+  // case (they are correlated, so they share an omega block).
+  //
+  // A pair whose partner is NOT in this block falls back to its marginal: that
+  // is the correct conditional up to a factor not depending on this column only
+  // when rho == 0, so it is also flagged -- see etaDistDirectSplitPair.
+  arma::vec etaDistDirectU(const mat &phiCols,
+                           const std::vector<int> &declOf) const {
+    arma::vec out(phiCols.n_rows, arma::fill::zeros);
+    if (!etaDistDirectOn()) return out;
+    const int na = (int)etaDistArgs.n_cols;
+    std::vector<char> seen(declOf.size(), 0);
+    // local column of each declaration, so a partner can be found
+    std::vector<int> colOf((size_t)etaDistNdist, -1);
+    for (size_t c = 0; c < declOf.size(); ++c) {
+      if (declOf[c] >= 0) colOf[(size_t)declOf[c]] = (int)c;
+    }
+    std::vector<double> a1((size_t)na), a2((size_t)na);
+    for (size_t c = 0; c < declOf.size(); ++c) {
+      int k = declOf[c];
+      if (k < 0 || seen[c]) continue;
+      for (int t = 0; t < na; ++t) a1[(size_t)t] = etaDistArgs(k, t);
+      int j = ((int)etaDistCorWith.n_elem == etaDistNdist) ? etaDistCorWith(k) : -1;
+      int cj = (j >= 0 && j < etaDistNdist) ? colOf[(size_t)j] : -1;
+      double rho = ((int)etaDistRho.n_elem == etaDistNdist) ? etaDistRho(k) : 0.0;
+      if (cj >= 0 && rho != 0.0) {
+        for (int t = 0; t < na; ++t) a2[(size_t)t] = etaDistArgs(j, t);
+        seen[c] = 1; seen[(size_t)cj] = 1;
+        for (unsigned int r = 0; r < phiCols.n_rows; ++r) {
+          double l = rxEtaDistPairLogD(etaDistFam(k), phiCols(r, c), &a1[0],
+                                       etaDistFam(j), phiCols(r, (unsigned int)cj),
+                                       &a2[0], rho);
+          out(r) += R_finite(l) ? -l : std::numeric_limits<double>::infinity();
+        }
+      } else {
+        seen[c] = 1;
+        for (unsigned int r = 0; r < phiCols.n_rows; ++r) {
+          double l = rxEtaDistLogD(etaDistFam(k), phiCols(r, c), &a1[0]);
+          out(r) += R_finite(l) ? -l : std::numeric_limits<double>::infinity();
+        }
+      }
+    }
+    return out;
+  }
+
+  // The Gaussian half, with the declared columns removed.
+  //
+  // Zeroing dphi's declared columns rather than slicing IGamma2_phi down to the
+  // undeclared ones: those agree only when omega is block diagonal between the
+  // two sets, because a sub-block of an INVERSE is not the inverse of the
+  // sub-block.  rxEtaDistExpand(param="direct") refuses to build a model where
+  // a declared eta shares an omega block with an ordinary one, so the two are
+  // block diagonal wherever this runs and the cheap form is the exact one.
+  arma::vec etaDistDirectSplitU(const mat &dphi, const mat &iG,
+                                const std::vector<int> &declOf) const {
+    mat d = dphi;
+    for (size_t c = 0; c < declOf.size(); ++c) {
+      if (declOf[c] >= 0) d.col((unsigned int)c).zeros();
+    }
+    return 0.5*sum(d % (d*iG), 1);
+  }
+
+  // The CURRENT point's prior for a block, which is what U_phi is seeded with
+  // before each random-walk kernel.  One call site per block instead of the
+  // quadratic written out six times: the seed and the candidate MUST use the
+  // same prior, and six copies of one of them is how they drift apart.
+  arma::vec etaDistSeedUphi(const mcmcphi &mphi, const mat &phiM) const {
+    mat dphi = phiM.cols(mphi.i) - mphi.mprior_phiM;
+    std::vector<int> declOf;
+    etaDistDirectLocal(mphi.i, declOf);
+    return etaDistDirectPriorU(phiM.cols(mphi.i), dphi, mphi.IGamma2_phi, declOf);
+  }
+
+  // The whole prior for a block: family for the declared columns, Gaussian for
+  // the rest.  Identical to the plain quadratic when nothing is declared.
+  arma::vec etaDistDirectPriorU(const mat &phiCols, const mat &dphi,
+                                const mat &iG,
+                                const std::vector<int> &declOf) const {
+    if (!etaDistAnyLocal(declOf)) return 0.5*sum(dphi % (dphi*iG), 1);
+    return etaDistDirectSplitU(dphi, iG, declOf) + etaDistDirectU(phiCols, declOf);
+  }
+
+  // Draw a block's declared columns FROM THE PRIOR, which is what makes kernel
+  // 1 an independence sampler whose proposal density cancels out of the
+  // acceptance ratio.  A correlated pair is drawn through the Gaussian copula:
+  // two correlated standard normals decoded by each marginal's quantile
+  // function, which is what the copula IS -- so kernel 1 on the direct route
+  // and the cdf construction draw the same law, as they must.
+  // `_saemUE` (the uninformed-eta mask) is deliberately NOT applied here.
+  //
+  // On the Gaussian path masking a coordinate leaves it at mprior_phi, which is
+  // that coordinate's prior MEAN -- the right answer for a subject whose data
+  // say nothing about it.  Here mprior is 0 and 0 is outside a gamma's support,
+  // so the same masking would put the row at zero prior density and keep it
+  // there.  A draw from the prior is what "uninformed" means; it is what the
+  // Gaussian mask is approximating, and on this route it is available exactly.
+  void etaDistDirectDraw(mat &phiCols, const std::vector<int> &declOf) {
+    if (!etaDistDirectOn() || !etaDistAnyLocal(declOf)) return;
+    const int na = (int)etaDistArgs.n_cols;
+    const unsigned int nr = phiCols.n_rows;
+    std::vector<char> seen(declOf.size(), 0);
+    std::vector<int> colOf((size_t)etaDistNdist, -1);
+    for (size_t c = 0; c < declOf.size(); ++c) {
+      if (declOf[c] >= 0) colOf[(size_t)declOf[c]] = (int)c;
+    }
+    std::vector<double> a1((size_t)na), a2((size_t)na);
+    for (size_t c = 0; c < declOf.size(); ++c) {
+      int k = declOf[c];
+      if (k < 0 || seen[c]) continue;
+      for (int t = 0; t < na; ++t) a1[(size_t)t] = etaDistArgs(k, t);
+      int j = ((int)etaDistCorWith.n_elem == etaDistNdist) ? etaDistCorWith(k) : -1;
+      int cj = (j >= 0 && j < etaDistNdist) ? colOf[(size_t)j] : -1;
+      double rho = ((int)etaDistRho.n_elem == etaDistNdist) ? etaDistRho(k) : 0.0;
+      arma::vec z1(nr); _saemFillNormEng(z1);
+      if (cj >= 0 && rho != 0.0) {
+        for (int t = 0; t < na; ++t) a2[(size_t)t] = etaDistArgs(j, t);
+        arma::vec z2(nr); _saemFillNormEng(z2);
+        double sr = std::sqrt(1.0 - rho*rho);
+        seen[c] = 1; seen[(size_t)cj] = 1;
+        for (unsigned int r = 0; r < nr; ++r) {
+          double w2 = rho*z1(r) + sr*z2(r);
+          phiCols(r, (unsigned int)c)  = rxEtaDistQ(etaDistFam(k), etaDistNormCdf(z1(r)), &a1[0]);
+          phiCols(r, (unsigned int)cj) = rxEtaDistQ(etaDistFam(j), etaDistNormCdf(w2),    &a2[0]);
+        }
+      } else {
+        seen[c] = 1;
+        for (unsigned int r = 0; r < nr; ++r) {
+          phiCols(r, (unsigned int)c) = rxEtaDistQ(etaDistFam(k), etaDistNormCdf(z1(r)), &a1[0]);
+        }
+      }
+    }
+  }
+
+  // A bijected random-walk step for the declared columns, and the log-Jacobian
+  // the acceptance ratio then owes.
+  //
+  // A declared eta is usually bounded (gamma is positive), so an unbijected
+  // Gaussian step proposes outside the support and the chain simply rejects --
+  // which is not a bias but is an efficiency floor that gets worse the closer
+  // the chain sits to the bound.  Walking on u = log(x - lo) instead proposes
+  // inside the support always; the target in u carries |dx/du|, so the
+  // acceptance needs log|dx/du|(new) - log|dx/du|(cur).  Returned rather than
+  // folded in, because kernels 2 and 3 add it at different points.
+  //
+  // `scaleCol` is PER COLUMN and `lamRow` per row (iacceptPerId).  Per column
+  // and not per sweep: kernel 2 moves every coordinate at once, so its outer
+  // index k1 is the sweep counter and has nothing to do with which column this
+  // is -- scaling a declared column by another column's step size is a silent
+  // mis-tuning that only shows up as a bad acceptance rate.
+  arma::vec etaDistDirectRwCols(mat &phiCols, const mat &phiCur,
+                                const std::vector<int> &declOf,
+                                const arma::mat &noise,
+                                const arma::vec &scaleCol,
+                                const arma::vec &lamRow) {
+    arma::vec logJ(phiCols.n_rows, arma::fill::zeros);
+    if (!etaDistDirectOn() || !etaDistAnyLocal(declOf)) return logJ;
+    const int na = (int)etaDistArgs.n_cols;
+    std::vector<double> a((size_t)na);
+    for (size_t c = 0; c < declOf.size(); ++c) {
+      int k = declOf[c];
+      if (k < 0) continue;
+      for (int t = 0; t < na; ++t) a[(size_t)t] = etaDistArgs(k, t);
+      int fam = etaDistFam(k);
+      for (unsigned int r = 0; r < phiCols.n_rows; ++r) {
+        double xc = phiCur(r, (unsigned int)c);
+        double uc = rxEtaDistToU(fam, xc, &a[0]);
+        if (!R_finite(uc)) { phiCols(r, (unsigned int)c) = xc; continue; }
+        double un = uc + scaleCol((unsigned int)c)*lamRow(r)*noise(r, (unsigned int)c);
+        double xn = rxEtaDistFromU(fam, un, &a[0]);
+        if (!R_finite(xn)) { phiCols(r, (unsigned int)c) = xc; continue; }
+        phiCols(r, (unsigned int)c) = xn;
+        double jn = rxEtaDistLogJac(fam, un, &a[0]);
+        double jc = rxEtaDistLogJac(fam, uc, &a[0]);
+        if (R_finite(jn) && R_finite(jc)) logJ(r) += jn - jc;
+      }
+    }
+    return logJ;
+  }
+
   void do_mcmc(const int method,
                const int nu,
                const mcmcaux &mx,
@@ -7805,11 +8101,20 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
     arma::vec accU(mx.nM);   // per-block threefry acceptance uniforms
 
     uvec i=mphi.i;
+    // Which of this block's columns are declared random effects on the DIRECT
+    // route, and therefore scored by their family rather than by omega.  All
+    // -1, and every branch below inert, on the cdf route.
+    std::vector<int> etaDistDecl;
+    etaDistDirectLocal(i, etaDistDecl);
+    const bool edDirect = etaDistDirectOn() && etaDistAnyLocal(etaDistDecl);
+    // the log-Jacobian a bijected proposal owes the acceptance ratio
+    arma::vec edLogJ;
     double double_xmin = 1.0e-200;                               //FIXME hard-coded xmin, also in neldermean.hpp
     double xmax = 1e300;
     for (int u=0; u<nu; u++)
       for (int k1=0; k1<mphi.nphi; k1++) {
         mat phiMc=phiM;
+        edLogJ = arma::vec(mx.nM, arma::fill::zeros);
         // iteration-indexed threefry stream: proposal noise + the acceptance
         // uniform are drawn here (before the solve) from one seeded stream
         _saemSeedDoMcmc((uint32_t)saemSeed, kiter, method, u, k1, mixIdx);
@@ -7818,6 +8123,18 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
           mat noise(mx.nM, mphi.nphi); _saemFillNormEng(noise);
           phiMc.cols(i)=noise*mphi.Gamma_phi % current_saem_state->_saemUE.cols(i) +
             mphi.mprior_phiM;
+          // The declared columns are OVERWRITTEN with a draw from the declared
+          // family, so kernel 1 stays an independence sampler whose proposal is
+          // the prior -- which is exactly what lets the acceptance below keep
+          // using deltu = Uc_y - U_y with no prior term at all.  Left as the
+          // Gaussian draw it would still be a valid proposal, but the ratio
+          // would then need a correction that the shared code path does not
+          // apply, and the chain would target the wrong distribution.
+          if (edDirect) {
+            mat pc = phiMc.cols(i);
+            etaDistDirectDraw(pc, etaDistDecl);
+            phiMc.cols(i) = pc;
+          }
           break;
         }
         case 2: {
@@ -7832,6 +8149,29 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
           }
           if (perId) step.each_col() %= lamRow;
           phiMc.cols(i)=phiM.cols(i) + step % current_saem_state->_saemUE.cols(i);
+          // ...then REPLACE the declared columns with a bijected step, since an
+          // additive one proposes outside a bounded support and is rejected on
+          // sight.  The step size is the one this kernel already adapted, read
+          // per row so iacceptPerId still applies.
+          if (edDirect) {
+            // the same per-coordinate step this kernel just used additively:
+            // Gdiag is diagonal, so (noise*Gdiag)(r,c) = noise(r,c)*Gdiag(c,c),
+            // and the bijected move reproduces its magnitude exactly.  rwOmega's
+            // full-matrix step has no bijected analogue -- a correlated move
+            // between a bounded and an unbounded coordinate is not one step --
+            // so a declared column takes the diagonal step either way.
+            arma::vec scCol((unsigned int)mphi.nphi);
+            for (int c = 0; c < mphi.nphi; ++c) {
+              double sc2 = (rwScale != nullptr &&
+                            rwScale->n_elem == (unsigned int)mphi.nphi)
+                ? (*rwScale)(c) : 1.0;
+              scCol((unsigned int)c) = mphi.Gdiag_phi(c, c)*sc2;
+            }
+            mat pc = phiMc.cols(i);
+            edLogJ += etaDistDirectRwCols(pc, phiM.cols(i), etaDistDecl, noise,
+                                          scCol, lamRow);
+            phiMc.cols(i) = pc;
+          }
           break;
         }
         case 3: {
@@ -7842,6 +8182,19 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
           if (perId) step %= lamRow;
           phiMc.col(i(k1))=phiM.col(i(k1))+
             step % current_saem_state->_saemUE.col(i(k1));
+          // kernel 3 moves ONE coordinate, so it only bijects when that
+          // coordinate is the declared one
+          if (edDirect && etaDistDecl[(size_t)k1] >= 0) {
+            std::vector<int> one(etaDistDecl.size(), -1);
+            one[(size_t)k1] = etaDistDecl[(size_t)k1];
+            arma::mat n1(mx.nM, mphi.nphi, arma::fill::zeros);
+            n1.col((unsigned int)k1) = noise;
+            arma::vec scCol((unsigned int)mphi.nphi, arma::fill::zeros);
+            scCol((unsigned int)k1) = mphi.Gdiag_phi(k1, k1)*s3;
+            mat pc = phiMc.cols(i);
+            edLogJ += etaDistDirectRwCols(pc, phiM.cols(i), one, n1, scCol, lamRow);
+            phiMc.cols(i) = pc;
+          }
           break;
         }
         case 4: {
@@ -7973,15 +8326,34 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
           //   deltu = (Uc_y-U_y) + (Uc_phi-U_phi) - (Q_new - Q_cur)
           // and the existing `deltu < -log(u)` test applies unchanged.
           mat dphic=phiMc.cols(i)-mphi.mprior_phiM;
-          Uc_phi=0.5*sum(dphic%(dphic*mphi.IGamma2_phi),1);
+          // the same prior split as the random-walk kernels; the mode-1B
+          // proposal correction (Qn - Qc) is a separate term and unaffected
+          Uc_phi = etaDistDirectPriorU(phiMc.cols(i), dphic,
+                                       mphi.IGamma2_phi, etaDistDecl);
           vec Qn = mode1BQ(phiMc.cols(i));
           vec Qc = mode1BQ(phiM.cols(i));
           deltu=Uc_y-U_y+Uc_phi-U_phi-(Qn-Qc);
         }
         else {
           mat dphic=phiMc.cols(i)-mphi.mprior_phiM;
-          Uc_phi=0.5*sum(dphic%(dphic*mphi.IGamma2_phi),1);
-          deltu=Uc_y-U_y+Uc_phi-U_phi;
+          if (edDirect) {
+            // Prior on the DIRECT route: the family for the declared columns,
+            // the Gaussian quadratic for the rest.  U_phi comes in already
+            // computed the same way (see the etaDistDirectPriorU() calls that
+            // seed it before each random-walk kernel), so both sides of the
+            // difference are on the same footing.
+            //
+            // `- edLogJ` and not `+`: the proposal walks on u and the target in
+            // u is p(x(u))|dx/du|, so U_u = -log p - log|dx/du|.  U here is a
+            // NEGATIVE log density, hence the Jacobian enters with the opposite
+            // sign to the one it has in the log-density form.
+            Uc_phi = etaDistDirectPriorU(phiMc.cols(i), dphic,
+                                         mphi.IGamma2_phi, etaDistDecl);
+            deltu = Uc_y - U_y + Uc_phi - U_phi - edLogJ;
+          } else {
+            Uc_phi=0.5*sum(dphic%(dphic*mphi.IGamma2_phi),1);
+            deltu=Uc_y-U_y+Uc_phi-U_phi;
+          }
         }
 
         // Accept, with a rescue for a chain that has latched.
@@ -8001,6 +8373,25 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
         arma::uvec accHit = (deltu < -log(accU));
         for (unsigned int _q = 0; _q < U_y.n_elem && _q < accHit.n_elem; ++_q) {
           if (!std::isfinite(U_y(_q)) && std::isfinite(Uc_y(_q))) accHit(_q) = 1;
+        }
+        // The same rescue for a non-finite PRIOR, which only the direct route
+        // can produce.  phiM is initialized on the Gaussian scale, so a
+        // positive-support family (gamma) starts some rows at or below 0, where
+        // -log p is +Inf; deltu is then NaN, `deltu < threshold` is false, and
+        // that row cannot accept from a random-walk kernel at all.  Kernel 1
+        // repairs it -- its proposal IS the prior, so it carries no prior term
+        // and accepts on the likelihood alone -- but only on the next sweep,
+        // and observed at the first seed some rows were still at phi = -1.39.
+        //
+        // A row whose current point has zero prior density accepts any
+        // candidate with positive density.  That is the Metropolis limit, not a
+        // fudge, and it is the same argument the U_y rescue above makes.
+        if (edDirect && Uc_phi.n_elem == accHit.n_elem &&
+            U_phi.n_elem == accHit.n_elem) {
+          for (unsigned int _q = 0; _q < accHit.n_elem; ++_q) {
+            if (!std::isfinite(U_phi(_q)) && std::isfinite(Uc_phi(_q)) &&
+                std::isfinite(Uc_y(_q))) accHit(_q) = 1;
+          }
         }
         ind = find(accHit);
         mcmcRecordAccept(method, ind, mx.nM);

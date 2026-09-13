@@ -545,6 +545,12 @@
   ## mprior_phi0/MCOV0 are indexed by.  Anything that does not land in phi0
   ## disables the C++ step and leaves the R fallback.
   etaDistOn <- 0L
+  ## 1 when rxEtaDistExpand() built the DIRECT parameterization: the declared
+  ## eta is itself the random effect and carries its family as a prior, so the
+  ## MCMC must not score it with the Gaussian quadratic.  0 is the cdf route,
+  ## where the sampled phi column is a standard normal latent and the quadratic
+  ## is exactly right.
+  etaDistDirect <- 0L
   etaDistLatent <- etaDistFam <- etaDistCorWith <- integer(0)
   ## 1 where this M-step owns the declaration's family, 0 where it must stand
   ## down for that declaration alone (a covariate on an argument, or a family
@@ -597,6 +603,8 @@
       etaDistExprThetas <- etaDistInfo$exprThetas
       etaDistLatent  <- as.integer(etaDistInfo$latent)
       etaDistFam     <- as.integer(etaDistInfo$fam)
+      etaDistDirect  <- if (is.null(etaDistInfo$direct)) 0L
+                        else as.integer(etaDistInfo$direct)
       etaDistCorWith <- as.integer(etaDistInfo$corWith)
       etaDistUsable  <- if (is.null(etaDistInfo$usable)) rep(1L, .nd)
                         else as.integer(etaDistInfo$usable)
@@ -1026,6 +1034,7 @@
     etaDistExprs = etaDistExprs,
     etaDistExprThetas = etaDistExprThetas,
     etaDistLatent = etaDistLatent,
+    etaDistDirect = etaDistDirect,
     etaDistFam = etaDistFam,
     etaDistCorWith = etaDistCorWith,
     etaDistUsable = etaDistUsable,

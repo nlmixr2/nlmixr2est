@@ -360,7 +360,20 @@
                           ## closed form (etaDistCorMstep) wants it -- the latter is
                           ## on by default, so a declared copula gets its bounded
                           ## closed-form update even on an otherwise ordinary fit.
-                          if (!isTRUE(rxode2::rxGetControl(ui, "etaDistMstep", FALSE)) &&
+                          ##
+                          ## ...and ALWAYS on the direct route, where this is not an
+                          ## M-step's metadata at all: it carries the family, its
+                          ## arguments and the copula rho, which on that route ARE
+                          ## the random effect's prior.  Without it the MCMC falls
+                          ## back to the Gaussian quadratic on a column whose omega
+                          ## is a fixed placeholder 1, i.e. fits a standard normal
+                          ## where a gamma was declared -- silently, and with
+                          ## plausible-looking estimates.  Measured before this
+                          ## gate was widened: etaDistMstep=FALSE gave a fitted eta
+                          ## ranging [-0.199, 1.977], and a gamma eta cannot be
+                          ## negative.
+                          if (!.etaDistIsDirect(ui) &&
+                              !isTRUE(rxode2::rxGetControl(ui, "etaDistMstep", FALSE)) &&
                               !isTRUE(rxode2::rxGetControl(ui, "etaDistCorMstep", TRUE))) {
                             NULL
                           } else {
@@ -377,6 +390,19 @@
                             if (is.null(.edi) &&
                                 isTRUE(rxode2::rxGetControl(ui, "etaDistMstep", FALSE))) {
                               .etaDistMstepWarnInert("saem")
+                            }
+                            ## On the direct route a NULL here is not a degraded
+                            ## M-step, it is the wrong model.  Refuse.
+                            if (is.null(.edi) && .etaDistIsDirect(ui)) {
+                              stop("etaDistParam=\"direct\" could not resolve the ",
+                                   "declared distributions to saem's parameters\n",
+                                   "  the family, its arguments and the copula ",
+                                   "correlation ARE the random effect's prior on ",
+                                   "this route, so there is nothing to fall back ",
+                                   "on -- a fit would silently use a standard ",
+                                   "normal instead\n",
+                                   "  use etaDistParam=\"cdf\" for this model",
+                                   call. = FALSE)
                             }
                             .edi
                           }

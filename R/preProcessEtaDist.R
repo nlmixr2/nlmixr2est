@@ -366,10 +366,6 @@
   ## and the declarations are unrecoverable.  Everything downstream that needs
   ## to know a random effect WAS declared (the ODE-free M-step in particular)
   ## reads this stash instead.
-  .decl <- .etaDistDeclStash(ui, .d)
-  ## Decompress BEFORE stashing: rxUiDecompress() on a compressed ui returns a
-  ## new object, so assigning into it would write to a temporary and the stash
-  ## would never reach the ui that is returned.
   ## Which representation the estimator asked for.  Read from the control
   ## rather than assumed, and defaulted to "cdf" so a method that has never
   ## heard of the argument (or an older control round-tripped through
@@ -379,6 +375,13 @@
   ## on the ui at this point -- so the route silently stayed "cdf" however it
   ## was set.  Measured: a fit with etaDistParam="direct" completed normally
   ## with no refusal and no expansion change.
+  ## The control argument first, then the ui.  The hook is HANDED `control`, and
+  ## reading only rxGetControl(ui, ...) finds nothing at this point -- which is
+  ## how etaDistParam silently stayed "cdf" however it was set.
+  .etaDistCtlGet <- function(control, ui, nm, default) {
+    if (!is.null(control) && !is.null(control[[nm]])) return(control[[nm]])
+    tryCatch(rxode2::rxGetControl(ui, nm, default), error = function(e) default)
+  }
   .param <- tryCatch({
     .p <- if (!is.null(control) && !is.null(control$etaDistParam)) {
       control$etaDistParam
@@ -391,32 +394,89 @@
       "cdf"
     }
   }, error = function(e) "cdf")
-  ## REFUSE "direct" until an estimator actually consumes it.
+  ## REFUSE "direct" for every estimator that does not consume it.
   ##
-  ## The expansion does its half correctly -- no latent, no decoder, the eta
-  ## kept with a FIXED placeholder omega -- but no estimator reads the route
-  ## yet: nothing consults `etaDistInfo$param`, saem's MCMC acceptance still
-  ## uses the Gaussian quadratic for every phi column, and the eta-scale
-  ## primitives (rxEtaDistPairLogD, the kernels, d/d(eta)) are referenced
-  ## nowhere in saem.cpp.
+  ## The expansion does its half for all of them -- no latent, no decoder, the
+  ## eta kept with a FIXED placeholder omega -- but an estimator that does not
+  ## read the route reads that placeholder 1 as a Gaussian VARIANCE and
+  ## completes normally, having fitted a standard normal random effect where a
+  ## gamma was declared.  The wrong model, no error, no warning.  So the list is
+  ## of estimators that have been TAUGHT the route, and everything else is
+  ## refused by name.
   ##
-  ## So a fit would read that placeholder 1 as a Gaussian VARIANCE and complete
-  ## normally, having fitted a standard normal random effect where a gamma was
-  ## declared -- the wrong model, no error, no warning.  The expansion's own
-  ## documentation says the route has to be opt-in per estimator for exactly
-  ## this reason; this is that opt-in, and it is currently opt-in for nobody.
+  ## saem consumes it: `etaDistDirect` reaches saem.cpp, kernel 1 draws from the
+  ## declared family (through the Gaussian copula for a correlated pair),
+  ## kernels 2 and 3 walk on the bijected scale and pay the log-Jacobian, and
+  ## the acceptance scores the declared columns with rxEtaDistLogD /
+  ## rxEtaDistPairLogD instead of the quadratic.
   ##
-  ## Remove the estimator from this list as it gains real support, and give it
-  ## a test that FAILS if the Gaussian prior is still being used.
+  ## focei and imp do NOT, and there is a mathematical reason beyond "not
+  ## written yet" -- see the message below.
+  ##
+  ## Add an estimator here only WITH a test that fails if the Gaussian prior is
+  ## still in use; "it ran and the numbers look plausible" is exactly what the
+  ## broken version does.
+  .directOk <- c("saem")
   if (identical(.param, "direct")) {
     .est <- if (is.character(est) && length(est) == 1L) est else "this method"
-    stop("etaDistParam=\"direct\" is not implemented for est=\"", .est, "\"\n",
-         "  the model expansion supports it, but no estimator reads the route ",
-         "yet, so the declared random effect would be fitted as a standard ",
-         "normal -- the wrong model, silently\n",
-         "  use etaDistParam=\"cdf\" (the default)",
-         call. = FALSE)
+    if (!(.est %in% .directOk)) {
+      .why <- if (.est %in% c("focei", "foce", "posthoc", "imp", "impmap")) {
+        paste0(
+          "  this is not only unimplemented.  The inner MAP adds the prior's ",
+          "curvature to the Hessian, and for the direct parameterization that ",
+          "is d2 log p/d(eta)2, which is POSITIVE wherever the declared density ",
+          "is convex -- every family with an interior-mode-free shape, gamma ",
+          "with shape < 1 among them.  Measured on gamma(0.5, 0.5) with a ",
+          "residual sd of 0.3, the inner Hessian 1/s^2 + (shape-1)/eta^2 is ",
+          "negative for eta < 0.212, which is 35.5% of the prior mass: those ",
+          "subjects have no interior mode and so no Laplace expansion at all\n",
+          "  the cdf route does not have this problem, because the quantity it ",
+          "expands around is the standard normal latent")
+      } else {
+        paste0(
+          "  the declared random effect would be fitted as a standard normal ",
+          "-- the wrong model, silently")
+      }
+      stop("etaDistParam=\"direct\" is not supported for est=\"", .est, "\"\n",
+           .why, "\n",
+           "  use etaDistParam=\"cdf\" (the default)",
+           call. = FALSE)
+    }
+    ## On the direct route the family M-step is REQUIRED, not optional.
+    ##
+    ## The declared thetas reach the model only through the `rxEdA.*` argument
+    ## anchors, and on this route nothing reads them -- `cl <- eta.cl` and
+    ## `eta.cl <- rxd.eta.cl`, so the observation likelihood does not depend on
+    ## lclm or lclrv at all.  They parameterize the PRIOR and nothing else.  On
+    ## the cdf route the same thetas sit inside the decoder, which is why
+    ## etaDistMstep=FALSE means "estimate them from the data" there and works.
+    ##
+    ## So with the M-step off there is simply no route that can move them, and
+    ## the fit does not fail -- it returns them at their ini() values while the
+    ## residual and the structural thetas converge normally.  Measured on a
+    ## gamma(shape 2) arm: lclm came back 1.3901 from a start of log(4)=1.3863
+    ## having never moved, while prop.sd landed on 0.1518 against a truth of
+    ## 0.15 and the eta sample matched the true gamma to two figures.  Nothing
+    ## about that output says the declaration was not estimated.
+    ##
+    ## (This is also why NoLimits.jl needs no such step and we do: it puts the
+    ## population parameters in the same objective as the random effects, so
+    ## its prior parameters are estimated by the sampler itself.)
+    if (identical(.est, "saem") &&
+          !isTRUE(.etaDistCtlGet(control, ui, "etaDistMstep", FALSE))) {
+      stop("etaDistParam=\"direct\" requires etaDistMstep=TRUE\n",
+           "  on this route the declared thetas parameterize the PRIOR and ",
+           "nothing else -- the observation likelihood does not depend on them, ",
+           "so with the M-step off nothing can move them and they are returned ",
+           "at their ini() values while the rest of the fit converges normally\n",
+           "  pass saemControl(etaDistParam=\"direct\", etaDistMstep=TRUE)",
+           call. = FALSE)
+    }
   }
+  .decl <- .etaDistDeclStash(ui, .d, param = .param)
+  ## Decompress BEFORE stashing: rxUiDecompress() on a compressed ui returns a
+  ## new object, so assigning into it would write to a temporary and the stash
+  ## would never reach the ui that is returned.
   .ui <- rxode2::rxUiDecompress(rxode2::rxEtaDistExpand(ui, param = .param))
   ## In `meta`, which is the ONLY container that survives to the estimators.
   ## Measured, on a real saem fit, by planting a probe in each candidate and
@@ -448,7 +508,7 @@
 #' @param d declared random effects, as `rxUiEtaDists()` returns them
 #' @return a list, or `NULL` when the block is not one this can describe
 #' @noRd
-.etaDistDeclStash <- function(ui, d) {
+.etaDistDeclStash <- function(ui, d, param = "cdf") {
   .ini <- rxode2::rxUiDecompress(ui)$iniDf
   .n <- nrow(d)
   .netaOf <- function(.nm) {
@@ -471,8 +531,22 @@
       .ct[.hi] <- paste0("rxCor.", d$name[.hi], ".", d$name[.lo])
     }
   }
+  ## `param` rides along HERE, and not on `etaDistInfo` where the expansion
+  ## also records it.
+  ##
+  ## `etaDistInfo` is an environment variable on the ui and it does NOT reach
+  ## the estimator: measured on a direct fit, saem.R saw the expanded model
+  ## (its eta was `rxd.eta.cl`) while `.etaDistIsDirect()` read FALSE off the
+  ## same ui, so the eta-name lookup went looking for `rxz.eta.cl`, found
+  ## nothing, and returned no metadata at all -- which the C++ side then read as
+  ## "no declarations" and sampled a standard normal.  Marking it sticky is not
+  ## enough; saem rebuilds the ui more than once.
+  ##
+  ## This stash lives in `ui$meta`, which is the one container already proven to
+  ## survive that (see the comment at the end of .preProcessEtaDist()), so the
+  ## route travels with the declarations it describes rather than separately.
   list(name = as.character(d$name), etaDist = as.character(d$etaDist),
-       corWith = .cw, corTheta = .ct)
+       corWith = .cw, corTheta = .ct, param = as.character(param)[1])
 }
 
 
