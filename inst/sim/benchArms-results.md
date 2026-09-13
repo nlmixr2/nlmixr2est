@@ -46,10 +46,27 @@ truth: CL 5.104, V1 4.711, rho 0.500.
 with rv out by 4701% and rho drifting to 0.932. Performance on the easy arms
 does not predict g4.
 
-**g4 (CV 141%) defeats every method.** Best mean is vae's 100% -- which is what
-an estimate near zero scores, not a good fit -- and the best rv is imp's 64.9%.
-Nothing here recovers this arm, which is why it is the arm this work kept
-returning to.
+**g4 (CV 141%) defeats every method here -- and NONMEM recovers it easily.**
+This was first written up as "g4 is the hard arm". That is WRONG, and Bauer's
+own outputs in `gamma_indpar/*.ext` say so: on the same dataset, every one of
+his six methods lands close to truth, and they agree with each other to within
+0.016 on theta1, so the arm is well identified rather than flat.
+
+| run | MAREmean | MARErv |
+|---|---|---|
+| NONMEM nuts | 4.2% | 1.4% |
+| NONMEM imp / saem / bayes | 9.0% | 5.9-6.6% |
+| NONMEM its / lap | 9.6-10.0% | 6.1-6.3% |
+| ours: vae | 100.0% | 662.6% |
+| ours: saem | 265.5% | 4701.5% |
+| ours: imp | 2358.5% | 64.9% |
+| ours: focei | 2590.3% | 66.3% |
+
+So g4 is not a hard arm, it is a GAP: four independent routes of ours fail an
+arm that six independent routes of NONMEM's fit to within 10%. That makes it
+the most actionable single result in this table, and it is the arm to chase
+next -- with the NONMEM estimates above as a known-reachable target rather than
+as an open question.
 
 **No method is uniformly best.** saem wins g1 and g3, focei wins g2's means
 (2.3% against saem's 7.2%) while losing its variances, and the ordering
@@ -89,3 +106,7 @@ established by this table:
 
 Single realizations, one seed, no replication -- these are one dataset per arm,
 so a cell is an observation, not an estimate of a method's expected error.
+
+The NONMEM comparison above is the exception worth trusting without replication:
+six different algorithms on the same data agreeing to three digits is not a
+seed effect.
