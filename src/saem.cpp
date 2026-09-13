@@ -2177,7 +2177,7 @@ public:
         if ((int)etaDistFiredK.size() == etaDistNdist &&
             etaDistFiredK[(size_t)k] == 0) continue;
         for (int t = 0; t < etaDistNth(k) && t < (int)etaDistThetaPhi0.n_cols; ++t) {
-          int c = etaDistThetaPhi0(k, t);
+          int c = etaDistPhi0Col(k, t);
           if (c >= 0 && c < nphi0) phi0Dist[(size_t)c] = true;
         }
       }
@@ -2219,7 +2219,7 @@ public:
       std::vector<bool> phi0Decl((size_t)nphi0, false);
       for (int k = 0; k < etaDistNdist; ++k) {
         for (int t = 0; t < etaDistNth(k) && t < (int)etaDistThetaPhi0.n_cols; ++t) {
-          int c = etaDistThetaPhi0(k, t);
+          int c = etaDistPhi0Col(k, t);
           if (c >= 0 && c < nphi0) phi0Decl[(size_t)c] = true;
         }
       }
@@ -2320,6 +2320,28 @@ public:
                  nphi0, (int)gPhi0FreeIx.size(), fx.c_str(),
                  (int)phi0ObsLikRoute(), nonMuThetaRegress, (int)(distribution == 4),
                  (int)doFreeze, nonMuThetaOptType, (int)_saemThetaSensActive);
+        // Which phi0 COLUMN each declared theta writes into.  The family M-step
+        // writes back through etaDistThetaPhi0(k,t), so a wrong entry here puts
+        // a family argument into a theta the declaration has no claim on -- and
+        // that is invisible in the parameter table, which just shows an
+        // unrelated theta having moved.
+        if (etaDistNdist > 0 && (int)etaDistThetaPhi0.n_rows == etaDistNdist) {
+          std::string tp;
+          for (int k = 0; k < etaDistNdist; ++k) {
+            for (int t = 0; t < etaDistNth(k) && t < (int)etaDistThetaPhi0.n_cols; ++t) {
+              char b[32];
+              snprintf(b, sizeof(b), "%d:%d ", k, (int)etaDistThetaPhi0(k, t));
+              tp += b;
+            }
+          }
+          RSprintf("[phi0map] ndist=%d nth={", etaDistNdist);
+          for (int k = 0; k < etaDistNdist; ++k) RSprintf("%d ", etaDistNth(k));
+          RSprintf("} thetaPhi0={%s} corPhi0={", tp.c_str());
+          for (int k = 0; k < etaDistNdist && k < (int)etaDistCorPhi0.n_elem; ++k) {
+            RSprintf("%d ", (int)etaDistCorPhi0(k));
+          }
+          RSprintf("}\n");
+        }
       }
     }
     // optimize phi0 with the BOUNDED bobyqa (.boundedResidOpt), honoring the
@@ -2641,7 +2663,7 @@ public:
     gPhi0FreeIx.clear();
     for (int k = 0; k < etaDistNdist; ++k) {
       for (int t = 0; t < etaDistNth(k) && t < (int)etaDistThetaPhi0.n_cols; ++t) {
-        int c = etaDistThetaPhi0(k, t);
+        int c = etaDistPhi0Col(k, t);
         if (c < 0 || c >= nphi0 || isFix[(size_t)c]) continue;
         bool dup = false;
         for (size_t q = 0; q < gPhi0FreeIx.size(); ++q)
@@ -5188,7 +5210,7 @@ public:
                 (int)etaDistFiredK.size() == etaDistNdist &&
                 etaDistFiredK[(size_t)k] == 0) continue;   // GLS: see below
             for (int t = 0; t < etaDistNth(k); ++t) {
-              int c = etaDistThetaPhi0(k, t);
+              int c = etaDistPhi0Col(k, t);
               if (c < 0 || c >= nphi0) continue;
               uvec li = arma::find(LCOV0.col(c) == 1);
               for (unsigned int q = 0; q < li.n_elem; ++q) {
@@ -5289,7 +5311,7 @@ public:
                   (int)etaDistExprThetas[(size_t)k].size() == nth && nth > 0) {
                 std::vector<double> st((size_t)nth), got2((size_t)nth);
                 for (int t = 0; t < nth; ++t) {
-                  int c = etaDistThetaPhi0(k, t);
+                  int c = etaDistPhi0Col(k, t);
                   st[(size_t)t] = (c >= 0 && c < nphi0) ? mprior_phi0(0, c) : 0.0;
                 }
                 if (rxEtaDistArgsToThetas(etaDistExprs[(size_t)k],
@@ -5297,7 +5319,7 @@ public:
                                           st.data(), av.begin(), got2.data())) {
                 if (getenv("NLMIXR2_ETADIST_OPT") != NULL) _saemEtaDistCppMap++;
                   for (int t = 0; t < nth; ++t) {
-                    int c = etaDistThetaPhi0(k, t);
+                    int c = etaDistPhi0Col(k, t);
                     if (c < 0 || c >= nphi0 || !std::isfinite(got2[(size_t)t])) continue;
                     mprior_phi0.col(c).fill(got2[(size_t)t]);
                   }
@@ -5310,7 +5332,7 @@ public:
               NumericVector th(got);
               if ((int)th.size() != nth) { _saemEtaDistMapFail++; continue; }
               for (int t = 0; t < nth; ++t) {
-                int c = etaDistThetaPhi0(k, t);
+                int c = etaDistPhi0Col(k, t);
                 if (c < 0 || c >= nphi0 || !std::isfinite(th[t])) continue;
                 mprior_phi0.col(c).fill(th[t]);
               }
@@ -6707,6 +6729,23 @@ private:
   mat etaDistArgs;               // current NATIVE parameters, ndist x maxNarg
   vec etaDistRho;                // current copula correlation per declared eta
   imat etaDistThetaPhi0;         // phi0 COLUMN of each declared theta
+  // The ONLY way to read etaDistThetaPhi0.  It is a 0x0 matrix whenever the R
+  // side could not match a declared theta to a phi0 column (saem_fit.R leaves
+  // the `matrix(-1L, 0, 0)` it starts with), which is a real state and not an
+  // error -- but this package builds with -DNDEBUG, so armadillo's bounds
+  // checking is OFF and `etaDistThetaPhi0(k, t)` on an empty matrix reads out
+  // of bounds and returns garbage.  That garbage then passed the
+  // `0 <= c < nphi0` test at the call sites and a family argument was written
+  // into whichever theta the garbage named -- on a 3-theta model, a 1-in-3
+  // chance of landing on a theta the declaration has no claim on, showing up
+  // only as an unrelated parameter having moved.
+  int etaDistPhi0Col(int k, int t) const {
+    if (etaDistNdist <= 0) return -1;
+    if ((int)etaDistThetaPhi0.n_rows != etaDistNdist) return -1;
+    if (k < 0 || k >= (int)etaDistThetaPhi0.n_rows) return -1;
+    if (t < 0 || t >= (int)etaDistThetaPhi0.n_cols) return -1;
+    return etaDistThetaPhi0(k, t);
+  }
   ivec etaDistNth;               // how many thetas each declared eta has
   // phi0 column of each declared family's copula correlation theta, -1 where
   // that family has no partner.  A VECTOR, not a scalar: a model with two
@@ -7236,7 +7275,7 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
           if (rxEtaDistLoglikParse(etaDistExprs[(size_t)k], pv, rpnQ)) {
             stQ.assign((size_t)nthQ, 0.0);
             for (int t = 0; t < nthQ; ++t) {
-              int c = etaDistThetaPhi0(k, t);
+              int c = etaDistPhi0Col(k, t);
               stQ[(size_t)t] = (c >= 0 && c < nphi0) ? mprior_phi0(0, c) : 0.0;
             }
             valsQ.assign((size_t)(nthQ + nSym), 0.0);
@@ -7368,7 +7407,7 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
             std::vector<double> st((size_t)nth), step((size_t)nth),
               xmin((size_t)nth);
             for (int t = 0; t < nth; ++t) {
-              int c = etaDistThetaPhi0(k, t);
+              int c = etaDistPhi0Col(k, t);
               st[(size_t)t] = (c >= 0 && c < nphi0) ? mprior_phi0(0, c) : 0.0;
               double a = std::fabs(st[(size_t)t]);
               step[(size_t)t] = (a > 1e-8) ? 0.2 * a : 0.1;
@@ -7399,7 +7438,7 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
               if (!gEdN1Bad && gEdN1Evals > 0 && ynew < f0) {
 
                 for (int t = 0; t < nth; ++t) {
-                  int c = etaDistThetaPhi0(k, t);
+                  int c = etaDistPhi0Col(k, t);
                   if (c < 0 || c >= nphi0 || !std::isfinite(xmin[(size_t)t])) continue;
                   double cur = mprior_phi0(0, c);
                   double v = cur + pas(kiter) * (xmin[(size_t)t] - cur);
