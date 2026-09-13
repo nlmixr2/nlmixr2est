@@ -69,6 +69,14 @@ static inline void _saemTE(int s) {
   _saemTAcc[i] += _saemNow() - _saemTT0[i];
   _saemTCnt[i]++;
 }
+// A/B toggle for the phi0GainFrozen skip (measurement only, removed with the
+// instrumentation): NLMIXR2_SAEM_NOSKIP=1 restores the pre-fix behaviour so both
+// arms can be timed from one binary.
+static int _saemNoSkip = -1;
+static inline int _saemSkipDisabled() {
+  if (_saemNoSkip < 0) { const char *e = getenv("NLMIXR2_SAEM_NOSKIP"); _saemNoSkip = (e && e[0]=='1') ? 1 : 0; }
+  return _saemNoSkip;
+}
 static void _saemTReset() { for (int i=0;i<2*_SAEM_NSLOT;i++){_saemTAcc[i]=0.0;_saemTCnt[i]=0;} }
 static void _saemTReport() {
   if (!_saemTEnabled()) return;
@@ -1188,7 +1196,17 @@ public:
       }
     }
     Rcpp::NumericVector xmin(nphi0);
-    if (localTrust) {
+    // SA covariance phase (covMethod="sa"): the gain pas(kiter) is frozen at 0 there, so
+    // the closing update below is mprior_phi0 <- cur + 0*(xmin[c] - cur), i.e. cur, for
+    // any finite xmin -- the entire result of this optimization is discarded.  Take
+    // xmin == par0 == cur, which reproduces that write exactly, and skip the optimizer
+    // along with the ODE re-solve it spends on every objective evaluation.  The MCOV0
+    // back-solve and the fixed-entry restore below still run, so every value this
+    // function writes is unchanged.
+    bool phi0GainFrozen = (pas(kiter) == 0.0) && !_saemSkipDisabled();
+    if (phi0GainFrozen) {
+      for (int c = 0; c < nphi0; c++) xmin[c] = par0[c];
+    } else if (localTrust) {
       // Normal-model phi0 objective is extremely ill-conditioned (a tiny
       // proportional-error SD makes it change by orders of magnitude over a
       // small phi0 step), which breaks bobyqa's quadratic model.  Two
