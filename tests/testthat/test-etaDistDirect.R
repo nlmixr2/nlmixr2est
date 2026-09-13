@@ -329,3 +329,152 @@ test_that("a COVARIATE on a cdf declaration is Q1, not Q2", {
   expect_equal(.s$q2, character(0))
   expect_true("bWT" %in% .s$q1)
 })
+
+test_that("a directly-parameterized eta is not reported as a variance", {
+  ## On this route the declared eta carries its FAMILY as its prior, so it has
+  ## no variance in the ordinary sense -- rxEtaDistExpand() fixes its omega
+  ## entry at a placeholder 1 precisely because it is machinery, not a
+  ## parameter.  What the fit printed was neither: measured on a correlated
+  ## gamma pair, every cell of the 2x2 came back 180.6704, so $omegaR reported a
+  ## correlation of 1.000 with an SD of 13.44, while the iniDf still carried
+  ## fix = TRUE on those rows.
+  ##
+  ## Reporting the placeholder correctly would not fix the real problem: a
+  ## reader takes a printed omega for the dispersion, and the dispersion is in
+  ## the family's own parameters, which are already in parFixed.  NoLimits.jl
+  ## has no omega concept at all for this reason and omits any quantity a family
+  ## cannot supply rather than emitting a placeholder.  This is that rule.
+  skip_on_cran()
+  .fit <- suppressMessages(suppressWarnings(nlmixr2(
+    .edDirectModel(), .edDirectData(n = 40), "saem",
+    saemControl(nBurn = 15, nEm = 15, nmc = 3, print = 0, seed = 99,
+                etaDistParam = "direct", etaDistMstep = FALSE))))
+  ## the declared eta appears in NEITHER table
+  expect_false(any(grepl("^rxd[.]", rownames(.fit$parFixedDf))))
+  expect_false(any(grepl("^rxd[.]", rownames(.fit$omega))))
+  ## the family's own parameters ARE reported -- that is where the dispersion is
+  expect_true(all(c("lclm", "lclrv") %in% rownames(.fit$parFixedDf)))
+  ## and this model declares its only random effect, so nothing is left
+  expect_equal(nrow(.fit$omega), 0L)
+})
+
+test_that("an ORDINARY eta beside a declared one is still reported", {
+  ## The case a blanket suppression gets wrong.  Only the declared random
+  ## effect loses its omega row; a plain eta in the same model keeps its
+  ## variance, because for that one the variance IS the parameter.
+  skip_on_cran()
+  .f <- function() {
+    ini({
+      lclm <- log(4)
+      lv <- log(45)
+      lclrv <- log(0.8)
+      prop.sd <- c(0, 0.2)
+      eta.v ~ 0.1
+      dist(eta.cl) ~ dgamma(shape = 1/exp(lclrv),
+                            rate = 1/(exp(lclrv)*exp(lclm)))
+    })
+    model({
+      cl <- eta.cl
+      v <- exp(lv + eta.v)
+      d/dt(centr) <- -cl/v*centr
+      cp <- centr/v
+      cp ~ prop(prop.sd)
+    })
+  }
+  set.seed(11)
+  .n <- 40
+  .cl <- stats::rgamma(.n, 2, 2/5.104)
+  .v <- 50*exp(stats::rnorm(.n, 0, 0.3))
+  .obs <- do.call(rbind, lapply(seq_len(.n), function(.i) {
+    .t <- c(0.25, 1, 2, 4, 8, 12, 24)
+    data.frame(ID = .i, TIME = .t,
+               DV = 100/.v[.i]*exp(-.cl[.i]/.v[.i]*.t)*
+                 exp(stats::rnorm(length(.t), 0, 0.15)),
+               AMT = 0, EVID = 0)
+  }))
+  .d <- rbind(data.frame(ID = seq_len(.n), TIME = 0, DV = 0, AMT = 100, EVID = 1),
+              .obs)
+  .d <- .d[order(.d$ID, .d$TIME, -.d$EVID), ]
+  .fit <- suppressMessages(suppressWarnings(nlmixr2(
+    .f, .d, "saem",
+    saemControl(nBurn = 15, nEm = 15, nmc = 3, print = 0, seed = 99,
+                etaDistParam = "direct", etaDistMstep = FALSE))))
+  expect_equal(rownames(.fit$omega), "eta.v")
+  expect_gt(.fit$omega[1, 1], 0)
+  expect_false(any(grepl("^rxd[.]", rownames(.fit$parFixedDf))))
+})
+
+test_that("the declared copula correlation is estimated AND reported", {
+  ## Both halves matter, and each was broken separately.
+  ##
+  ## The correlation lives in the omega on this route, not in an rxCor.* theta,
+  ## so nothing carried it out of the sampler and the fit could not show it.
+  ## Then, once saem returned it, it still read 0.3 -- the start -- because
+  ## etaDistCorWith is recorded only on the HIGHER-indexed member of a pair,
+  ## which is the slot every reader consults, while etaDistQ2PairStep() is
+  ## entered from the LOWER member and wrote there.
+  ##
+  ## Do NOT substitute the correlation of the fitted etas for this check.  That
+  ## is what misled me: the etas correlate because the DATA do, whatever the
+  ## prior's rho is, so a fitted eta correlation near the truth says nothing
+  ## about whether rho was estimated.  Read the parameter.
+  skip_on_cran()
+  .rho <- 0.6
+  set.seed(7)
+  .n <- 60
+  .z <- matrix(stats::rnorm(2*.n), .n, 2)
+  .z[, 2] <- .rho*.z[, 1] + sqrt(1 - .rho^2)*.z[, 2]
+  .cl <- stats::qgamma(stats::pnorm(.z[, 1]), 2, 2/5.104)
+  .v <- stats::qgamma(stats::pnorm(.z[, 2]), 3, 3/50)
+  .obs <- do.call(rbind, lapply(seq_len(.n), function(.i) {
+    .t <- c(0.25, 1, 2, 4, 8, 12, 24)
+    data.frame(ID = .i, TIME = .t,
+               DV = 100/.v[.i]*exp(-.cl[.i]/.v[.i]*.t)*
+                 exp(stats::rnorm(length(.t), 0, 0.15)),
+               AMT = 0, EVID = 0)
+  }))
+  .d <- rbind(data.frame(ID = seq_len(.n), TIME = 0, DV = 0, AMT = 100, EVID = 1),
+              .obs)
+  .d <- .d[order(.d$ID, .d$TIME, -.d$EVID), ]
+  .f <- function() {
+    ini({
+      lclm <- log(4)
+      lvm <- log(45)
+      lclrv <- log(0.8)
+      lvrv <- log(0.5)
+      prop.sd <- c(0, 0.2)
+      eta.cl + eta.v ~ c(1, 0.3, 1)
+      dist(eta.cl) ~ dgamma(shape = 1/exp(lclrv),
+                            rate = 1/(exp(lclrv)*exp(lclm)))
+      dist(eta.v) ~ dgamma(shape = 1/exp(lvrv),
+                           rate = 1/(exp(lvrv)*exp(lvm)))
+    })
+    model({
+      cl <- eta.cl
+      v <- eta.v
+      d/dt(centr) <- -cl/v*centr
+      cp <- centr/v
+      cp ~ prop(prop.sd)
+    })
+  }
+  .fit <- suppressMessages(suppressWarnings(nlmixr2(
+    .f, .d, "saem",
+    saemControl(nBurn = 60, nEm = 60, nmc = 3, print = 0, seed = 99,
+                etaDistParam = "direct", etaDistMstep = FALSE))))
+  ## reported at all
+  .c <- .fit$etaDistCor
+  expect_false(is.null(.c))
+  expect_equal(length(.c), 1L)
+  .R <- .c[[1]]
+  expect_equal(dim(.R), c(2L, 2L))
+  expect_equal(unname(diag(.R)), c(1, 1))
+  ## MOVED off its 0.3 start -- reading 0.3 is the slot bug's signature
+  expect_gt(abs(.R[1, 2] - 0.3), 0.1)
+  ## and toward the truth
+  expect_lt(abs(.R[1, 2] - .rho), 0.2)
+  ## and it is in parFixed, matching
+  .cr <- grep("^cor\\(", rownames(.fit$parFixedDf), value = TRUE)
+  expect_equal(length(.cr), 1L)
+  expect_equal(unname(.fit$parFixedDf[.cr, "Estimate"]), unname(.R[1, 2]),
+               tolerance = 1e-8)
+})

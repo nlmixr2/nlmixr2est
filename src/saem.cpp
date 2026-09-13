@@ -3492,6 +3492,15 @@ public:
   int get_etaDistMapFail() { return _saemEtaDistMapFail; }
   // declared correlations the data do not identify, for the $runInfo warning
   int get_etaDistCorNotEst() { return etaDistCorNotEstimable(); }
+  // The declared copula correlations as the sampler last had them.
+  //
+  // On the cdf route these also live in `rxCor.*` thetas and the fit rebuilds
+  // them from there; on the DIRECT route there is no such theta, so without
+  // this the value the sampler used is simply lost -- the fit reported a
+  // correlation it never used, and .etaDistWarnCorFrozen() had to say so.
+  // Returned alongside `etaDistCorWith` so R knows which pair each one joins.
+  vec get_etaDistRho()     { return etaDistRho; }
+  ivec get_etaDistCorWith(){ return etaDistCorWith; }
   mat get_mcmcAccTrace()   { return mcmcAccTrace; }
   mat get_mcmcStuckTrace() { return mcmcStuckTrace; }
   mat get_phiSdTrace()     { return phiSdTrace; }
@@ -8113,7 +8122,17 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
           double rv = std::tanh(av);
           if (std::isfinite(rv)) {
             if (rv > 0.99) rv = 0.99; else if (rv < -0.99) rv = -0.99;
-            if ((int)etaDistRho.n_elem == etaDistNdist) etaDistRho(k) = rv;
+            // BOTH slots, and that is not belt-and-braces.
+            //
+            // `etaDistCorWith` is recorded only on the HIGHER-indexed member of
+            // a pair, so that is the slot every reader looks in -- while this
+            // step is entered from the LOWER member.  Writing only etaDistRho(k)
+            // put the estimate somewhere nothing reads: the fit reported the
+            // ini() value 0.3 while the sampler had moved on.
+            if ((int)etaDistRho.n_elem == etaDistNdist) {
+              etaDistRho(k) = rv;
+              if (j >= 0 && j < etaDistNdist) etaDistRho(j) = rv;
+            }
             // ...and to its own theta where one exists.  On the direct route it
             // does not (the correlation stays in the omega), which is what
             // .etaDistWarnCorFrozen() reports.
@@ -10163,7 +10182,9 @@ SEXP saem_fit(SEXP xSEXP) {
     Named("mcmcAccept") = saem.get_mcmcAccTrace(),
     Named("mcmcStuck") = saem.get_mcmcStuckTrace(),
     Named("mcmcPhiSd") = saem.get_phiSdTrace(),
-    Named("mcmcPhiAcf") = saem.get_phiAcfTrace()
+    Named("mcmcPhiAcf") = saem.get_phiAcfTrace(),
+    Named("etaDistRho") = wrap(saem.get_etaDistRho()),
+    Named("etaDistCorWith") = wrap(saem.get_etaDistCorWith())
   );
   current_saem_state = nullptr;
   out.attr("saem.cfg") = x;

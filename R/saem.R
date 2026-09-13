@@ -961,6 +961,20 @@
   ## Reorder based on translation
   .saem <- env$saem
   .ui <- env$ui
+  ## Keep the declared copula correlations the SAMPLER used.
+  ##
+  ## On the cdf route they also live in `rxCor.*` thetas and `$etaDistCor`
+  ## rebuilds them from there.  On the DIRECT route there is no such theta, so
+  ## the value the sampler used was simply lost at the end of the fit -- which
+  ## is why the fit could report a correlation it never used.  Stashed on the
+  ## fit environment, which is what nmObjGet.etaDistCor() and the parFixed hook
+  ## read.
+  if (!is.null(.saem$etaDistRho)) {
+    assign(".etaDistRhoFit", as.numeric(.saem$etaDistRho), envir = env)
+    assign(".etaDistCorWithFit",
+           if (is.null(.saem$etaDistCorWith)) integer(0)
+           else as.integer(.saem$etaDistCorWith), envir = env)
+  }
   .etaTrans <- .ui$saemOmegaTrans
   ## saem eta ->  ui eta
   .df <- .ui$iniDf

@@ -956,25 +956,37 @@
   list(q1 = setdiff(thetas, .q2), q2 = .q2)
 }
 
-#' Say that a declared copula correlation is estimated but not REPORTED
+#' Note that a declared copula correlation is on the LATENT scale
 #'
 #' Only on the direct route, and only once per fit.
 #'
-#' This message used to say the correlation was "held at its ini() value", and
-#' that was wrong.  It is estimated and it is used: the copula loop is gated on
-#' `etaDistCorOn` -- the etaDistCorMstep control -- not on the family M-step, so
-#' it runs on this route, and `etaDistQ2PairStep()` additionally maximizes the
-#' copula density over atanh(rho).  Measured on a correlated gamma pair started
-#' at a latent rho of 0.30 and simulated at 0.60, the fitted etas came back with
-#' an empirical correlation of 0.568, which is what a latent 0.60 induces for
-#' that pairing.  It moved.
+#' This message has been wrong twice, in opposite directions, and the history is
+#' worth keeping because both errors were about asserting more than had been
+#' measured.
 #'
-#' What is true is that it never reaches a REPORTABLE parameter.  The write-back
-#' goes through a phi0 column and this route has no `rxCor.*` theta to own one
-#' (`corCol()` returns -1), so the value the fit prints is not the value the fit
-#' used.  Worse, on this route the printed omega for a declared eta is not
-#' meaningful at all -- measured, every cell of a 2x2 came back 180.6704 where
-#' the diagonal is a placeholder FIXED at 1.
+#' It first said the correlation was "held at its ini() value".  Then a fit
+#' showed the fitted etas correlating at 0.568 where 0.30 was the start, and I
+#' rewrote it to say the correlation was estimated but not reported.  That
+#' inference was invalid: the ETAS correlate because the DATA do (simulated at
+#' 0.60), whatever the prior says.  Plumbing the value out and printing it
+#' showed rho sitting at exactly 0.3 -- unmoved -- so the original wording had
+#' been right and the "correction" was not.
+#'
+#' The actual defect was a slot mismatch: `etaDistCorWith` is recorded only on
+#' the HIGHER-indexed member of a pair, which is the slot every reader consults,
+#' while `etaDistQ2PairStep()` is entered from the LOWER member and wrote there.
+#' The estimate went somewhere nothing read.  With that fixed the correlation is
+#' estimated by the copula density AND reported: 0.6115 from a 0.30 start on a
+#' pair simulated at 0.60, in `$etaDistCor` and as a `cor(a,b)` row in
+#' `parFixed`.
+#'
+#' So what remains to say is not that it is missing, but what SCALE it is on.
+#' The reported value is the Gaussian copula's parameter -- the correlation of
+#' the latent normals -- and for non-normal marginals that is not the Pearson
+#' correlation of the random effects.  Measured, a latent 0.50 induces 0.437
+#' (gamma shape 2 with gamma shape 0.5), 0.454 (gamma with lognormal), 0.474
+#' (two gammas), and 0.500 only for normal with normal.  A user who writes 0.5
+#' and measures 0.44 on their own etas has not found a bug.
 #'
 #' @param etas the declared random effects whose correlation is affected
 #' @return nothing, called for the message
@@ -982,13 +994,14 @@
 #' @author Matthew L. Fidler
 .etaDistWarnCorFrozen <- function(etas) {
   message("the declared copula correlation for '", paste(etas, collapse="', '"),
-          "' is estimated and used, but is NOT reported\n",
-          "  etaDistParam=\"direct\" keeps the correlation in the omega rather ",
-          "than in an rxCor.* theta, and the update writes back through a ",
-          "theta -- so the fit used a correlation you cannot read off it\n",
-          "  the printed omega for a declared eta is not meaningful on this ",
-          "route either; its diagonal is a fixed placeholder\n",
-          "  use etaDistParam=\"cdf\" if you need the correlation reported")
+          "' is reported on the LATENT scale\n",
+          "  it is the Gaussian copula's parameter -- the correlation of the ",
+          "latent normals -- and for non-normal marginals that is NOT the ",
+          "correlation you will measure on the random effects themselves\n",
+          "  measured, a latent 0.50 induces 0.437 (gamma with gamma, shapes 2 ",
+          "and 0.5), 0.454 (gamma with lognormal), 0.474 (two gammas), and ",
+          "0.500 only for normal with normal\n",
+          "  see $etaDistCor and the cor() row in $parFixed")
   invisible()
 }
 

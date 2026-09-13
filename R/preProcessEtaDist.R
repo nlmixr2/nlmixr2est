@@ -608,7 +608,10 @@ nmObjGet.etaDistCor <- function(x, ...) {
     ## recovered from the fit itself -- see .etaDistBlocksFromFit()
     .blocks <- .etaDistBlocksFromFit(x[[1]])
   }
-  if (length(.blocks) == 0L) return(NULL)
+  ## No blocks recovered does not mean no correlation: the recovery keys on
+  ## `rxz.*` names and `rxCor.*` thetas, and the DIRECT route has neither.
+  ## Falling through to NULL here is what made the fallback below unreachable.
+  if (length(.blocks) == 0L) return(.etaDistCorFromSampler(.env))
   .cor <- lapply(.blocks, function(.nms) {
     .need <- unlist(lapply(seq_along(.nms), function(.i) {
       if (.i == 1L) return(NULL)
@@ -620,8 +623,113 @@ nmObjGet.etaDistCor <- function(x, ...) {
   names(.cor) <- vapply(.blocks, function(.n) .n[1], character(1),
                         USE.NAMES=FALSE)
   .cor <- .cor[!vapply(.cor, is.null, logical(1))]
-  if (length(.cor) == 0L) return(NULL)
+  if (length(.cor) == 0L) return(.etaDistCorFromSampler(.env))
   .cor
+}
+
+#' The declared copula correlations the SAMPLER used, for a route with no
+#' `rxCor.*` theta
+#'
+#' `etaDistParam="direct"` keeps the correlation in the omega rather than in a
+#' theta, so there is nothing for the `rxCor.*` rebuild above to read and the
+#' value the fit USED was previously unavailable to the user at all -- it is
+#' estimated (measured moving from a 0.30 start to 0.60 on a pair simulated at
+#' 0.60) and then discarded at the end of the fit.
+#'
+#' saem now returns it, `.getSaemOmega()` stashes it, and this assembles the
+#' same per-block correlation matrices the cdf route reports.
+#'
+#' The value is on the LATENT scale -- it is the Gaussian copula's parameter,
+#' not the Pearson correlation of the random effects.  Those differ whenever the
+#' marginals are not normal: measured, a latent 0.50 induces an eta-scale
+#' correlation of 0.437 for gamma(shape 2) with gamma(shape 0.5), 0.454 with a
+#' lognormal, 0.474 for two gammas, and 0.500 only for normal with normal.
+#'
+#' @param env fit environment
+#' @return named list of correlation matrices, or NULL
+#' @noRd
+#' @author Matthew L. Fidler
+.etaDistCorFromSampler <- function(env) {
+  .rho <- try(get(".etaDistRhoFit", envir=env), silent=TRUE)
+  if (inherits(.rho, "try-error") || is.null(.rho) || length(.rho) == 0L) {
+    return(NULL)
+  }
+  .cw <- try(get(".etaDistCorWithFit", envir=env), silent=TRUE)
+  if (inherits(.cw, "try-error") || length(.cw) != length(.rho)) return(NULL)
+  .st <- try(.etaDistDeclGet(env$ui), silent=TRUE)
+  if (inherits(.st, "try-error") || is.null(.st)) return(NULL)
+  .nm <- .st$name
+  if (length(.nm) != length(.rho)) return(NULL)
+  .out <- list()
+  for (.i in seq_along(.rho)) {
+    .j <- .cw[.i]
+    if (is.na(.j) || .j < 0L) next
+    .p <- c(.nm[.j + 1L], .nm[.i])
+    .R <- matrix(c(1, .rho[.i], .rho[.i], 1), 2, 2, dimnames=list(.p, .p))
+    .out[[.p[1]]] <- .R
+  }
+  if (length(.out) == 0L) return(NULL)
+  .out
+}
+
+#' Put the declared copula correlation in `parFixed`
+#'
+#' On the cdf route the correlation is already there: it is an `rxCor.*` theta
+#' with `backTransform("tanh")`, so its back-transformed column IS the
+#' correlation and it carries a standard error like any other row.
+#'
+#' On the direct route there is no such theta, so the correlation appeared
+#' nowhere in the printed fit even though it was estimated and used.  This adds
+#' it as a row named for the pair it joins, with no standard error -- there is
+#' no theta to have one, and inventing a blank column entry is better than
+#' implying the value is not an estimate at all.
+#'
+#' Labelled as the LATENT correlation, because for non-normal marginals it is
+#' not the correlation of the random effects: a latent 0.50 induces 0.437 to
+#' 0.474 across the family pairings measured, and 0.500 only for normal with
+#' normal.
+#'
+#' @param ret fit object
+#' @return `ret`, with the copula rows appended to `parFixed`
+#' @noRd
+#' @author Matthew L. Fidler
+.postFinalEtaDistCorParFixed <- function(ret) {
+  .env <- try(ret$env, silent=TRUE)
+  if (inherits(.env, "try-error") || is.null(.env)) return(ret)
+  .cor <- try(.etaDistCorFromSampler(.env), silent=TRUE)
+  if (inherits(.cor, "try-error") || is.null(.cor) || length(.cor) == 0L) {
+    return(ret)
+  }
+  .pfd <- try(get("parFixedDf", envir=.env), silent=TRUE)
+  if (inherits(.pfd, "try-error") || is.null(.pfd)) return(ret)
+  .rows <- NULL; .nms <- character(0)
+  for (.R in .cor) {
+    .p <- rownames(.R)
+    if (length(.p) != 2L) next
+    .nms <- c(.nms, paste0("cor(", .p[1], ",", .p[2], ")"))
+    .r <- .pfd[1, , drop=FALSE]
+    .r[1, ] <- NA
+    if ("Estimate" %in% names(.r)) .r[1, "Estimate"] <- .R[1, 2]
+    if ("Back-transformed" %in% names(.r)) {
+      .r[1, "Back-transformed"] <- .R[1, 2]
+    }
+    .rows <- rbind(.rows, .r)
+  }
+  if (is.null(.rows)) return(ret)
+  rownames(.rows) <- .nms
+  assign("parFixedDf", rbind(.pfd, .rows), envir=.env)
+  .pf <- try(get("parFixed", envir=.env), silent=TRUE)
+  if (!inherits(.pf, "try-error") && !is.null(.pf) && ncol(.pf) > 0L) {
+    .r2 <- .pf[rep(1, length(.nms)), , drop=FALSE]
+    .r2[] <- ""
+    .ec <- intersect(c("Estimate", "Back-transformed"), names(.pf))
+    for (.k in seq_along(.nms)) {
+      for (.c in .ec) .r2[.k, .c] <- format(signif(.rows[.k, "Estimate"], 4))
+    }
+    rownames(.r2) <- .nms
+    assign("parFixed", rbind(.pf, .r2), envir=.env)
+  }
+  ret
 }
 attr(nmObjGet.etaDistCor, "desc") <-
   "The Gaussian copula correlation of each declared random effect block"
@@ -665,16 +773,68 @@ attr(nmObjGet.etaDistCor, "desc") <-
   if (inherits(.env, "try-error") || is.null(.env)) return(ret)
   .pfd <- try(get("parFixedDf", envir=.env), silent=TRUE)
   if (inherits(.pfd, "try-error") || is.null(.pfd)) return(ret)
+  ## `rxd.` as well as `rxz.`: the DIRECT route's declared eta is not a latent,
+  ## but it is not an estimate either.  Its omega entry is a placeholder the
+  ## expansion fixes at 1 because the FAMILY carries the dispersion, so there is
+  ## nothing about it to report -- and a printed variance for a gamma-distributed
+  ## random effect invites exactly the wrong reading.
   .nm <- rownames(.pfd)
-  if (is.null(.nm) || !any(grepl("^rxz[.]", .nm))) return(ret)
-  assign("parFixedDf", .pfd[!grepl("^rxz[.]", .nm), , drop=FALSE], envir=.env)
+  if (is.null(.nm) || !any(grepl("^rx[zd][.]", .nm))) return(ret)
+  assign("parFixedDf", .pfd[!grepl("^rx[zd][.]", .nm), , drop=FALSE], envir=.env)
   .pf <- try(get("parFixed", envir=.env), silent=TRUE)
   if (!inherits(.pf, "try-error") && !is.null(.pf)) {
     .nm2 <- rownames(.pf)
-    if (!is.null(.nm2) && any(grepl("^rxz[.]", .nm2))) {
-      assign("parFixed", .pf[!grepl("^rxz[.]", .nm2), , drop=FALSE], envir=.env)
+    if (!is.null(.nm2) && any(grepl("^rx[zd][.]", .nm2))) {
+      assign("parFixed", .pf[!grepl("^rx[zd][.]", .nm2), , drop=FALSE], envir=.env)
     }
   }
+  ret
+}
+
+#' Drop a directly-parameterized declared random effect from `$omega`
+#'
+#' On `etaDistParam="direct"` the declared eta IS the random effect and carries
+#' its family as its prior, so it has no variance in the ordinary sense -- the
+#' family holds the dispersion.  `rxEtaDistExpand()` fixes its omega entry at a
+#' placeholder 1 for exactly that reason: it is machinery, not a parameter.
+#'
+#' What the fit printed instead was neither.  Measured on a correlated gamma
+#' pair, every cell of the 2x2 came back 180.6704 -- so `$omegaR` reported a
+#' correlation of 1.000 with an SD of 13.44 -- while the iniDf still carried
+#' `fix = TRUE` on those rows.  Everything upstream is correct (the ui omega,
+#' `saemModelOmegaFixed` and its values all hold 1.0/0.3), so a reporting path
+#' writes into a row it knows is fixed.  That line has NOT been found.
+#'
+#' This does not paper over that.  Even with the placeholder reported correctly,
+#' printing `omega = 1` for a gamma-distributed random effect is the wrong thing
+#' to show: a reader takes it for the dispersion, and the dispersion is in the
+#' family's own parameters, which are already in `parFixed`.
+#'
+#' NoLimits.jl has no omega concept at all for this reason -- a declared random
+#' effect's distribution parameters are ordinary fixed effects, tagged with a
+#' role -- and its governing rule where a family cannot supply a quantity is to
+#' OMIT the row with a warning rather than emit a placeholder.  This is that
+#' rule.
+#'
+#' The correlation is a separate loss and is NOT recovered here: on this route
+#' it never reaches a theta, so the fit does not contain it (see
+#' `.etaDistWarnCorFrozen()`).  Reporting it needs the value plumbed out of the
+#' sampler first.
+#'
+#' @param ret fit object
+#' @return `ret`, with the directly-parameterized rows removed from `$omega`
+#' @noRd
+#' @author Matthew L. Fidler
+.postFinalEtaDistDirectOmega <- function(ret) {
+  .env <- try(ret$env, silent=TRUE)
+  if (inherits(.env, "try-error") || is.null(.env)) return(ret)
+  .om <- try(get("omega", envir=.env), silent=TRUE)
+  if (inherits(.om, "try-error") || is.null(.om) || !is.matrix(.om)) return(ret)
+  .nm <- rownames(.om)
+  if (is.null(.nm)) return(ret)
+  .drop <- grepl("^rxd[.]", .nm)
+  if (!any(.drop)) return(ret)
+  assign("omega", .om[!.drop, !.drop, drop=FALSE], envir=.env)
   ret
 }
 
@@ -732,6 +892,12 @@ attr(nmObjGet.etaDistCor, "desc") <-
 postFinalObjectHooksAdd(".postFinalEtaDistOmega", .postFinalEtaDistOmega)
 
 postFinalObjectHooksAdd(".postFinalEtaDistParFixed", .postFinalEtaDistParFixed)
+
+postFinalObjectHooksAdd(".postFinalEtaDistDirectOmega",
+                        .postFinalEtaDistDirectOmega)
+
+postFinalObjectHooksAdd(".postFinalEtaDistCorParFixed",
+                        .postFinalEtaDistCorParFixed)
 
 #' Recover the declared correlation blocks from the fit itself
 #'
