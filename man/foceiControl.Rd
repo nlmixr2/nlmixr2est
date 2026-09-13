@@ -149,6 +149,15 @@ foceiControl(
   seed = 42,
   resetThetaCheckPer = 0.1,
   etaMat = NULL,
+  etaDistWarmStart = TRUE,
+  etaDistMstep = FALSE,
+  etaDistNsamp = 50L,
+  etaDistSdLo = 0.2,
+  etaDistSdHi = 5,
+  etaDistSdTol = 0.1,
+  etaDistSupportEps = 0,
+  etaDistEvery = 1L,
+  etaDistCorSuff = TRUE,
   repeatGillMax = 1,
   stickyRecalcN = 4,
   outerMaxOdeRecalc = 5,
@@ -176,6 +185,8 @@ foceiControl(
   sensMethod = c("default", "forward"),
   linCmtSensCarry = c("auto", "none"),
   zeroTheta = 0.001,
+  zeroThetaRetry = 100,
+  zeroThetaRetryTol = 3,
   boundedTransform = TRUE
 )
 }
@@ -1034,6 +1045,191 @@ whose final ETAs are then used as initial values. By default, uses the
 last fit's ETAs if supplied, else all ETAs start at zero (`NULL`).
 `NA` disables reuse from a prior fit.}
 
+\item{etaDistWarmStart}{Solve a log-normal surrogate first and hand its answer
+  to the declared families as starting values (`etaDistInit()`).  `TRUE` by
+  default for any model carrying a `dist()` declaration; models without one
+  ignore it entirely.
+
+  A declared family is very largely a STARTING VALUE problem.  The E-step
+  draws etas under the current family, the M-step fits the family to those
+  draws, and from a poor start the two walk off together to an answer they
+  agree on and the data do not support.
+
+  Note the surrogate is fitted with `est="saem"` whatever method is being
+  warm started -- it is an ordinary, well-conditioned fit of a log-normal
+  stand-in, used only to produce starting values.  Set `FALSE` to fit from
+  the model's own `ini()`.}
+
+\item{etaDistMstep}{Opt-in.  Estimate a `dist()`-declared random effect's
+  family parameters (and any Gaussian-copula correlation between declared
+  effects) with their own optimizer, instead of through the outer problem.
+
+  Those parameters appear only in `log p(eta | theta)`, never in
+  `log p(y | eta)`, so fitting them is a distribution fit to the current
+  etas -- no data term and no ODE solve.  `rxEtaDistExpand()` obscures this
+  by rewriting `eta = Q(phi(z))` with `z ~ N(0, 1)`, which moves them into
+  the data likelihood and makes them ordinary outer parameters, each costing
+  a finite-difference gradient over full-population solves.
+
+  FOCEi has no sampler, so the etas come from each subject's Laplace
+  posterior `N(mode, H^-1)` -- the inner Hessian the objective already
+  computes, and the same proposal `impmap` uses.  The conditional modes
+  alone would not do: they are shrunk toward the population, badly enough to
+  collapse the fitted spread.  The draws are recomputed from the current
+  thetas every outer iteration; this never uses `etaMat`, which is reserved
+  for user-supplied initial etas that override the defaults.
+
+  Unlike the `saem` and `impmap` versions -- which read a sampler's draws
+  and so add no solves at all -- this one is not quite free: the draws need
+  each subject's inner Hessian, and reading it re-establishes that subject's
+  solve at its mode.  That is one population's worth of solves per update,
+  against a finite-difference gradient over the full population for each of
+  these thetas on every outer iteration if they are left in the outer
+  problem, and the draws and the distribution fit themselves cost nothing.
+
+  These thetas are held out of the outer optimizer -- no gradient, no column
+  in the free-parameter vector -- exactly as a covariate mu-group theta is.
+  The hold-out is on the SEARCH only: they remain estimated parameters, and
+  the covariance step puts them back into the free-parameter vector so their
+  standard errors are reported like any other theta's.
+
+  Ignored for a model with no `dist()` declaration, and for a declared
+  family the C++ dispatch does not implement (the fit then estimates those
+  thetas in the outer problem as before).}
+
+\item{etaDistNsamp}{Draws per subject per `etaDistMstep` update.  Each is a
+multivariate normal draw from that subject's already-formed Laplace
+posterior, so raising this costs arithmetic only -- no extra solves.}
+
+\item{etaDistSdLo, etaDistSdHi}{A DIVERGENCE CAP on the pooled latent standard
+deviation, outside which the declared-distribution M-step will not act.
+Deliberately loose -- these only exclude a latent that has run away or
+collapsed outright.  Not a calibration, and not a way to tune when the step
+runs; that is `etaDistSdTol`.}
+
+\item{etaDistSdTol}{Relative change in the pooled latent standard deviation,
+  between consecutive declared-distribution M-step attempts, below which the
+  latent is treated as settled and the M-step is allowed to run.  This, not
+  `etaDistSdLo`/`etaDistSdHi`, is the real test.
+
+  A LEVEL threshold cannot do this job, which is why the `[0.5, 1.0]` band
+  this used to hardcode is gone.  Under a wrong family a fully mixed chain
+  sits well away from 1 -- 1.40 on Bauer's g1 -- and that spread is exactly
+  the information the M-step consumes; a still-burning chain passes through
+  the same 1.40 on its way down from 2.6, where acting on it diverges.
+  Indistinguishable by value, obvious by trajectory.  Across Bauer's four
+  gamma arms the old band admitted exactly ONE (g3, settled spread 0.880), so
+  this M-step effectively never ran.  `0` disables the test, leaving the cap.}
+
+\item{etaDistSupportEps}{Reject a decoded random effect at or below this
+  value when the declared family has strictly positive support (gamma,
+  Weibull, ...).  The draw is dropped from the eta sample rather than handed
+  to a density that is undefined there.
+
+  This exists because the two inverse routes disagree at the extreme: Rmath's
+  `qgamma`, which decodes the eta sample, returns EXACTLY 0 below about
+  `u = 1e-6` once the shape is small, while the Boost `gammapInv` the model's
+  own decoder uses floors at `DBL_MIN` and stays positive.  Measured at a
+  state the M-step drifts to on Bauer's heaviest-tailed arm (shape 0.0170,
+  rate 32437) the first gives 0 and the second 6.86e-313; the zero reached
+  `gamma_lpdf`, which requires a strictly positive variate, and the fit died.
+
+  Raising it above `0` also rejects a merely SUBNORMAL draw, which is not a
+  draw either.  It is applied ONLY when every observation is strictly
+  positive: data containing zeros or negatives is not asserting a
+  positive-support model, and thinning the eta sample on its behalf would be
+  acting for a model the user did not write.  (The check spans all endpoints,
+  because the quantile it guards has no endpoint context; for the
+  single-endpoint models a declared distribution is written on today, the two
+  are the same.)}
+
+\item{etaDistEvery}{Run the declared-distribution M-step every `etaDistEvery`
+  OUTER objective evaluations, and at most once per evaluation.  The knob
+  mirrors `saemControl(etaDistEvery=)`, but the default is `1`, NOT saem's 20
+  -- saem runs hundreds of iterations and focei tens of outer evaluations, so
+  the same number means very different things.
+
+  Coarsening it is a real trade and both directions have been measured, so
+  pick with the model in mind rather than by taste.  On Bauer's g4 arm
+  (relative variance 2.0, the heaviest tail), focei:
+
+  \tabular{lrrrr}{
+    etaDistEvery \tab CL \tab V1 \tab MARE \tab copula writes \cr
+    1  \tab 4.981 \tab  4.179 \tab  6.4% \tab 42 \cr
+    5  \tab 4.869 \tab  4.122 \tab  7.1% \tab  9 \cr
+    20 \tab 6.281 \tab 21.066 \tab 88.8% \tab  0
+  }
+
+  against a truth of CL 5.10 and V1 4.71.  At 20 that fit gets ONE attempt,
+  the spread guard needs two (it compares consecutive attempts), so the
+  copula is never written at all and V1 is four times truth.
+
+  The step rewrites the thetas it owns, so firing it inside the objective
+  makes the objective at the SAME theta differ between calls and the outer
+  optimizer is then searching a surface that moves under it.  It used to run
+  once per pass of the inner `{re-optimize etas, update}` loop, which on a
+  covariate model was ~200 firings in an 11 second fit.  Measured there
+  (truth `bWT` +0.75, log-normal reference +0.574): from a poor start bobyqa
+  returned -0.027, `lbfgsb3c` -0.272 and `nlminb` -0.545, while with the step
+  off every one of them returned +0.59.  The gradient-based optimizers doing
+  WORSE is the signature of a moving objective rather than a hard surface --
+  and started AT truth the step holds +0.549, so the objective was never
+  wrong, the search was.
+
+  Counted FROM THE FIRST outer evaluation, like saem's
+  `(kiter - etaDistStart) %% etaDistEvery`: evaluation 1 fires, then every
+  `etaDistEvery`-th.  Counting from 20 instead would let a short fit finish
+  without ever engaging the step.
+
+  `1` fires on every outer evaluation (the old cadence, minus the inner
+  repeats); `0` or less is treated as 1.
+
+  Note the interaction with the trajectory spread guard, which compares
+  CONSECUTIVE attempts: the first attempt has no baseline and can never pass,
+  so the step needs at least TWO attempts within the fit to move anything.
+  A short fit at a coarse cadence -- three outer iterations at the default 20
+  -- gets one attempt and the step correctly does nothing.  Lower this (or
+  run longer) when the step is wanted on a short fit.  Finite-difference perturbations
+  never fire it and never advance the count, or the step would move a theta
+  in the middle of a derivative.}
+
+\item{etaDistCorSuff}{Estimate the declared copula correlation from the
+  standardized SUFFICIENT STATISTIC of the raw latents (saem's route) instead
+  of a product-moment correlation of the copula-combined ones.
+
+  The combined latent `w_k = rho*z_j + sqrt(1 - rho^2)*z_k` is built FROM the
+  current `rho`, so correlating it against `w_j` returns the value it was
+  handed whenever the latent second moments are equal -- a fixed point at the
+  current estimate rather than at the data's.  All the information about the
+  correlation is in the departure of the latent second-moment matrix from the
+  identity, so this route reads that instead, and is not gated on the
+  trajectory spread guard: the guard exists because a FAMILY fit to a
+  mid-flight eta sample fits the wrong thing, which does not apply to a second
+  moment of the latents.
+
+  `TRUE` is the default for focei, on measurement.  Across Bauer's four
+  declared-gamma arms (300 subjects, truth rho 0.50 started from 0.30) it is
+  better or equal in every one, and the gap is widest exactly where the
+  product-moment route is predicted to fail -- on g1, whose latent spread is
+  the smallest (relative variance 0.081/0.047), it reports rho +0.691 where
+  the sufficient statistic reports +0.540:
+
+  \tabular{lrrrr}{
+    arm \tab MARE FALSE \tab MARE TRUE \tab rho FALSE \tab rho TRUE \cr
+    g1  \tab 40.7% \tab 28.3% \tab +0.691 \tab +0.540 \cr
+    g2  \tab 11.3% \tab 10.0% \tab +0.466 \tab +0.456 \cr
+    g3  \tab 17.3% \tab 11.2% \tab +0.473 \tab +0.461 \cr
+    g4  \tab  6.4% \tab  6.4% \tab +0.515 \tab +0.514
+  }
+
+  It also writes the correlation on every M-step attempt, where the
+  product-moment route is blocked by the spread guard on some.
+
+  Note `impmapControl()` keeps `FALSE`: on the same arms this route leaves
+  imp's copula correlation accurate but sends the LOCATION parameters away
+  (g2 CL 1823 and g3 CL 306204 against a truth of 5.10), which is not
+  understood yet.  Set it explicitly there if you want to measure it.}
+
 \item{repeatGillMax}{If the tolerances were reduced when
 calculating the initial Gill differences, the Gill difference
 is repeated up to a maximum number of times defined by this
@@ -1169,6 +1365,32 @@ initial estimate, so the parameter is moved to `+zeroTheta` when it
 is within the parameter's bounds, otherwise `-zeroTheta`; if neither
 is within the bounds an error is raised.  Fixed parameters
 (including those fixed at `0`) are left untouched.}
+
+\item{zeroThetaRetry}{Factor (default `100`) by which `zeroTheta` is
+  raised for ONE re-fit when a zero-initialized `theta` comes back sitting on
+  its nudge.  `1` disables the retry.
+
+  The nudge is also the magnitude the outer search assumes for the parameter
+  (FOCEi scales a linear theta by `1/|init|`), so a small `zeroTheta` means
+  the search explores in small steps and stops on the nudge -- the reported
+  estimate is then the nudge value rather than an estimate.  No single nudge
+  avoids this: measured, a coefficient on `log(WT/70)` whose true value is
+  `0.90` needs `0.1` (it returns `0.0009` at `0.001`), while a coefficient on
+  untransformed `WT` whose true value is `0.03` needs `0.001` (it returns
+  `0.0043` at `0.1`).  The two want scales 30x apart and a zero initial
+  estimate says nothing about which.
+
+  So the stall is detected instead of guessed at.  The fit is re-run once
+  from `zeroTheta * zeroThetaRetry` and the better objective function value
+  wins, which makes the retry safe: one that does not help is discarded (with
+  a warning, since those estimates are then not estimates).  It costs a
+  second fit only when the signature fires -- a parameter that moved off its
+  nudge never triggers it.}
+
+\item{zeroThetaRetryTol}{Multiple of `zeroTheta` (default `3`) within which a
+final estimate counts as "still on the nudge" for `zeroThetaRetry`.  The
+measured separation is wide: a stalled coefficient returns about 0.9x its
+nudge, a healthy one 31x.}
 
 \item{boundedTransform}{When `TRUE` (default), bounded parameters are
 transformed for unbounded optimization methods and back-transformed

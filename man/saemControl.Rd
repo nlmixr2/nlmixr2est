@@ -11,7 +11,26 @@ saemControl(
   zeroOmegaAnneal = 0,
   zeroOmegaDirect = FALSE,
   rmcmc = 0.5,
-  iaccept = 0.4,
+  iaccept = 0.234,
+  iacceptSingle = 0.44,
+  iacceptPerId = TRUE,
+  rwOmega = FALSE,
+  nonMuThetaBhhh = FALSE,
+  nu1B = 0L,
+  nb1B = 10L,
+  etaDistWarmStart = TRUE,
+  etaDistMstep = TRUE,
+  etaDistStart = NULL,
+  etaDistEvery = 20L,
+  etaDistCor = c("observed", "analytic", "optimize", "posterior"),
+  etaDistCorMethod = NULL,
+  etaDistSpreadGuard = TRUE,
+  etaDistSdLo = 0.2,
+  etaDistSdHi = 5,
+  etaDistSdTol = 0.1,
+  etaDistCorTrust = 1.5,
+  etaDistCorMstep = TRUE,
+  etaDistLoglik = FALSE,
   stepsizeRw = 0.4,
   coefSa = 0.95,
   coefPhi0 = 0.9638,
@@ -47,7 +66,7 @@ saemControl(
   perFixResid = 0.1,
   compress = TRUE,
   rxControl = NULL,
-  sigdig = NULL,
+  sigdig = 3,
   sigdigTable = NULL,
   ci = 0.95,
   muRefCov = TRUE,
@@ -63,7 +82,10 @@ saemControl(
   mixProbPriorN = 20,
   mixSampleMethod = c("parallel", "msaem"),
   nonMuTheta = c("regress", "eta"),
-  nonMuThetaOpt = c("newuoa", "optimize", "nelderMead"),
+  nonMuThetaStart = NULL,
+  nonMuThetaGrad = FALSE,
+  nonMuThetaGradEvery = 1L,
+  nonMuThetaOpt = c("newuoa", "optimize", "nelderMead", "n1qn1"),
   nonMuThetaSweeps = 2L,
   nonMuThetaMaxEval = 25L,
   nonMuThetaTol = .Machine$double.eps^0.25,
@@ -165,8 +187,10 @@ hardcoded at 0.5 and is saemix's `rw.init` -- documented there as the
 and never ported the adaptation, so the step was fixed for the whole fit;
 see `iaccept`.}
 
-\item{iaccept}{Target Metropolis acceptance rate for the random-walk
-  kernels.  Defaults to `0.4`, matching saemix's `proba.mcmc`.
+\item{iaccept}{Target acceptance rate for the MULTIDIMENSIONAL random-walk
+  kernel (kernel 2, which moves every coordinate at once).  Defaults to
+  `0.234`, the asymptotically optimal rate for a symmetric random walk
+  proposal in high dimension (Roberts, Gelman and Gilks 1997).
 
   **Set `iaccept = 0` to disable adaptation entirely and reproduce results
   from nlmixr2est 7.0.3 and earlier bit-for-bit** (verified: with
@@ -190,8 +214,338 @@ see `iaccept`.}
   size, and NONMEM does not adapt its mode 1 either), and is clamped to a
   factor of [0.5, 2] per iteration and [1e-3, 1e3] overall.}
 
-\item{stepsizeRw}{Robbins-Monro rate for the `iaccept` adaptation
-(saemix `stepsize.rw`, default 0.4).  Ignored when `iaccept = 0`.}
+\item{iacceptSingle}{Target acceptance rate for the COORDINATE-WISE
+  random-walk kernel, which `iaccept` does not cover.  A TARGET the
+  adaptation aims at, not the speed of the adaptation -- that is
+  `stepsizeRw`, whose default 0.4 is easily misread as this parameter's
+  0.44.
+
+  The optimal acceptance rate depends on the proposal's dimension: about
+  0.234 for a multidimensional symmetric random walk (kernel 2, which moves
+  every coordinate at once), rising to about 0.44 for a one-at-a-time
+  Metropolis-within-Gibbs update (kernel 3).  saemix applies a single
+  `proba.mcmc = 0.4` to both, which is close to right for the coordinate-wise
+  kernel and too HIGH for the multidimensional one -- and targeting too high
+  an acceptance rate forces the step too SMALL.
+
+  Defaults to `0.44`, the optimal rate in dimension one.  Together with
+  `iaccept = 0.234` this is the standard pairing --- Vihola's Grapham states
+  it directly: *"The default values for a* are 0.44 in dimension one and
+  0.234 otherwise following Roberts and Rosenthal (2009)."*
+
+  saemix instead applies a single `proba.mcmc = 0.4` to both kernels; set
+  `iaccept = 0.4, iacceptSingle = 0.4` to reproduce that exactly.  Set
+  either to `0` to leave that kernel unadapted.}
+
+\item{rwOmega}{OFF, and measured that way.  Propose the mode-2 MCMC random
+  walk from `lambda * Omega` -- NONMEM's `Z = lambda*Omega` (technical guide
+  eq. 1.139), Monolix's kernel 4 -- instead of the per-coordinate diagonal
+  step saemix uses and this package inherited.
+
+  The theoretical case is the strongest one the reference comparison makes
+  (see `vignette("saemComparison")`): on strongly correlated random effects
+  -- exactly what a `dist()` copula or a two-compartment CL/V pair produces
+  -- a diagonal walk mixes slowly along the correlated direction while the
+  acceptance rate looks perfectly healthy, and nothing reports it.
+
+  It does not show up in the fits.  On Bauer's four gamma-copula datasets it
+  changes the mean absolute relative error by -0.10 percentage points on
+  average -- g1 +0.2, g2 -0.6, g3 +0.1 -- with the estimated correlation
+  agreeing to three digits on every arm.  That was first measured while the
+  declared thetas were frozen at their `ini()` values (see NEWS), which
+  could not have shown an effect; it was re-measured afterwards with those
+  thetas demonstrably moving and came out the same.
+
+  Kept, disabled, for two reasons: the null result is now reproducible in
+  one line rather than reconstructible from `git log`, and the theory is
+  untouched -- these models have one state and a 2x2 copula, and may simply
+  not stress a diagonal proposal.  A model that does would be worth trying
+  it on.}
+
+\item{nu1B}{Number of sweeps of NONMEM's proposal kernel **mode 1B** per
+  iteration.  `0` (the default) disables it, which is the historical
+  behaviour.
+
+  saem's three existing kernels propose either from the population prior
+  (kernel 1) or by a random walk around the current point (kernels 2 and 3).
+  Neither uses what the sampler has already learned about the individual.
+  Mode 1B does: it proposes from a Gaussian built out of each subject's OWN
+  accumulated conditional mean and variance, which NONMEM's technical guide
+  describes as "a type of importance sampling kernel for SAEM".  Because the
+  proposal approximates the individual posterior it can JUMP to a
+  well-supported region, where a random walk can only diffuse there.
+
+  This is an independence sampler whose proposal is not the prior, so its
+  Metropolis-Hastings ratio carries a proposal-density correction (the prior
+  terms do not cancel as they do for kernel 1).
+
+  Each sweep costs one full-population solve.}
+
+\item{nb1B}{Iteration at which `nu1B` starts.  The per-subject conditional
+moments have to accumulate first; NONMEM starts after the 10th iteration,
+which is the default here.  Ignored when `nu1B = 0`.}
+
+\item{etaDistWarmStart}{Solve a log-normal surrogate first and hand its
+  answer to the declared families as starting values (`etaDistInit()`).
+  `TRUE` by default for any model with a `dist()` declaration; ignored
+  entirely by models without one.
+
+  A declared family is very largely a STARTING VALUE problem.  The E-step
+  draws etas under the current family, the M-step fits the family to those
+  draws, and from a poor start the two walk off together to an answer they
+  agree on and the data do not support.  On Bauer's g4 the cold fit walks CL
+  from 4.48 to 8.59 against a truth of 5.10; warm-started it lands at 5.46.
+
+  Measured on Bauer's four gamma arms (`nBurn=300`, `nEm=150`; mean absolute
+  relative error over CL, V1, both relative variances and the copula
+  correlation):
+
+  \tabular{lrrrrr}{
+         \tab g1    \tab g2   \tab g3   \tab g4    \tab mean  \cr
+    cold \tab 10.6\% \tab 9.6\% \tab 5.1\% \tab 25.9\% \tab 12.8\% \cr
+    warm \tab  6.9\% \tab 6.4\% \tab 5.9\% \tab  7.6\% \tab  6.7\% \cr
+  }
+
+  It costs something only on g3, the arm that already fits best -- least to
+  gain, most to disturb.  Set `FALSE` to fit from the model's own `ini()`.
+
+  The surrogate is refused rather than used when it is no closer to the
+  declared family than the model's own starting values, so a bad surrogate
+  leaves the fit where it was rather than moving it somewhere worse.}
+
+\item{etaDistMstep}{Opt-in.  Estimate a `dist()`-declared random effect's
+  distribution parameters by a fit to the sampled etas, rather than through
+  the data likelihood.
+
+  In the `(y, eta)` augmentation the complete-data likelihood factors as
+  `log p(y | eta) + log p(eta | theta)`, and the distribution parameters
+  appear only in the second term -- so their M-step is a pure distribution
+  fit: no data term and no ODE solve, exactly like the residual-error step.
+  `rxEtaDistExpand()` breaks that by rewriting `eta = Q(phi(z))`, which moves
+  those parameters into the data likelihood and hands them to
+  `refinePhi0Lik()`'s derivative-free search.
+
+  Measured on Bauer's gamma data, that search is not the limiting factor: a
+  12-fold larger evaluation budget moves CL from 6.471 to 6.467, and 2.5x
+  the iterations moves it to 6.401, against a truth of 5.03.
+
+  With this on, those thetas leave `refinePhi0Lik()`'s remit entirely -- two
+  optimizers on one parameter against different objectives is the problem,
+  not the solution.
+
+  The step does not run for the whole fit.  The latent normals are standard
+  normal by construction, so the only reason a pooled sample departs from
+  that is information about the declared family -- or a chain that has not
+  settled, which the step cannot distinguish and would act on just the same.
+  It therefore waits until the latent omega has been pinned to its declared
+  unit value (`perFixOmega`), and skips any iteration whose pooled latent
+  spread is outside `[0.5, 1]`.  The upper bound is 1 on principle rather
+  than by tuning: the latent's prior is exactly `N(0, 1)`, and a posterior is
+  not wider than its prior, so a pooled spread above 1 means the chain has
+  not settled -- it is never evidence that the declared family is too
+  narrow.
+
+  Both guards are there because the failure is not graceful.  Measured on
+  Bauer's gamma data, the M-step run from iteration 0 saw a pooled spread of
+  2.15 and drove the gamma's shape from 7.39 to 1.74 and then 0.51, each
+  shrink widening the mapped etas and feeding the next, with the copula
+  correlation pinned at its clamp.  A looser bound of 1.5 was not enough --
+  the spread is still 1.43 at iteration 10 and 1.25 at 20, and acting on
+  those diverged just as surely, only slower.  It reaches 1.04 at 30 and
+  settles near 0.85, where the step recovers a mean of 4.8 against a
+  simulation truth of 5.03 -- the ordinary route lands at 6.4 to 7.5.}
+
+\item{etaDistEvery}{Run the declared-distribution M-step every `etaDistEvery`
+  OUTER objective evaluations, and at most once per evaluation.  The knob
+  mirrors `saemControl(etaDistEvery=)`, but the default is `1`, NOT saem's 20
+  -- saem runs hundreds of iterations and focei tens of outer evaluations, so
+  the same number means very different things.
+
+  Coarsening it is a real trade and both directions have been measured, so
+  pick with the model in mind rather than by taste.  On Bauer's g4 arm
+  (relative variance 2.0, the heaviest tail), focei:
+
+  \tabular{lrrrr}{
+    etaDistEvery \tab CL \tab V1 \tab MARE \tab copula writes \cr
+    1  \tab 4.981 \tab  4.179 \tab  6.4% \tab 42 \cr
+    5  \tab 4.869 \tab  4.122 \tab  7.1% \tab  9 \cr
+    20 \tab 6.281 \tab 21.066 \tab 88.8% \tab  0
+  }
+
+  against a truth of CL 5.10 and V1 4.71.  At 20 that fit gets ONE attempt,
+  the spread guard needs two (it compares consecutive attempts), so the
+  copula is never written at all and V1 is four times truth.
+
+  The step rewrites the thetas it owns, so firing it inside the objective
+  makes the objective at the SAME theta differ between calls and the outer
+  optimizer is then searching a surface that moves under it.  It used to run
+  once per pass of the inner `{re-optimize etas, update}` loop, which on a
+  covariate model was ~200 firings in an 11 second fit.  Measured there
+  (truth `bWT` +0.75, log-normal reference +0.574): from a poor start bobyqa
+  returned -0.027, `lbfgsb3c` -0.272 and `nlminb` -0.545, while with the step
+  off every one of them returned +0.59.  The gradient-based optimizers doing
+  WORSE is the signature of a moving objective rather than a hard surface --
+  and started AT truth the step holds +0.549, so the objective was never
+  wrong, the search was.
+
+  Counted FROM THE FIRST outer evaluation, like saem's
+  `(kiter - etaDistStart) %% etaDistEvery`: evaluation 1 fires, then every
+  `etaDistEvery`-th.  Counting from 20 instead would let a short fit finish
+  without ever engaging the step.
+
+  `1` fires on every outer evaluation (the old cadence, minus the inner
+  repeats); `0` or less is treated as 1.
+
+  Note the interaction with the trajectory spread guard, which compares
+  CONSECUTIVE attempts: the first attempt has no baseline and can never pass,
+  so the step needs at least TWO attempts within the fit to move anything.
+  A short fit at a coarse cadence -- three outer iterations at the default 20
+  -- gets one attempt and the step correctly does nothing.  Lower this (or
+  run longer) when the step is wanted on a short fit.  Finite-difference perturbations
+  never fire it and never advance the count, or the step would move a theta
+  in the middle of a derivative.}
+
+\item{etaDistCor}{How a `dist()`-declared Gaussian copula's correlation is
+  updated.  Always AFTER the declared distribution's own thetas have moved,
+  so it reads latents implied by the current parameters rather than the
+  previous ones.
+
+  * `"observed"` (default, and what this has always done): the product-moment
+    correlation of the latent pair.  Closed form, one line of arithmetic.  It
+    is sensitive to the latent SPREAD -- an over-dispersed latent drives it to
+    its clamp, which collapses the copula partner onto its partner and turns
+    two declared random effects into one.
+  * `"analytic"`: the Gaussian-copula identity from the RANKS.  Spearman's
+    rank correlation is invariant under the monotone marginal transform
+    `eta = Q(phiU(z))`, and for a Gaussian copula `rho_S = (6/pi)*asin(rho/2)`
+    exactly, so `rho = 2*sin(pi*rho_S/6)`.  Also a closed form, and being
+    rank-based the spread cannot reach it.
+  * `"optimize"`: a bounded one-dimensional search of the OBSERVATION
+    objective within a local trust region (`etaDistCorTrust`).  Available only
+    for a model with ONE correlation -- with two the stationarity condition is
+    a system, and optimizing one coordinate at a time does not solve it.
+
+    Use this one knowingly.  Maximizing the observation likelihood
+    CONDITIONAL on the current draws has no interior optimum on every model:
+    collapsing the two latents onto one can always fit the current draws
+    better, and on Bauer's `g1` the search walks to the clamp one trust radius
+    at a time and sits at 0.995.  On a richer model (four declared etas, two
+    correlated pairs) it stays interior and lands near truth.  The trust
+    region bounds the step, not the objective.}
+
+\item{etaDistSpreadGuard}{Apply the spread guard at all.  `FALSE` skips
+  both the settling test (`etaDistSdTol`) and the divergence cap
+  (`etaDistSdLo`/`etaDistSdHi`), which is not the same as loosening either
+  one.  Measured on Bauer's g1 (`nBurn=300`, `nEm=150`), the guard's original
+  `[0.5, 1.0]` band rejected every attempt and cost more than half the
+  available accuracy:
+
+  \tabular{lrr}{
+    guard              \tab 300 + 150 \tab 60 + 30 \cr
+    level band [0.5,1] \tab 19.7\%    \tab 61.0\%  \cr
+    level band [0.5,3] \tab  9.2\%    \tab 255.1\% \cr
+  }
+
+  which is why the test is now on the spread's TRAJECTORY rather than its
+  level: no single threshold can admit g1's settled 1.40 while rejecting the
+  short run's still-falling 2.2, because the transient passes through 1.40 on
+  its way down.}
+
+\item{etaDistSdLo, etaDistSdHi}{A DIVERGENCE CAP on the pooled latent
+  standard deviation, outside which the declared-distribution M-step will not
+  act.  Deliberately loose: the real test is `etaDistSdTol`, and these only
+  exclude a latent that has run away or collapsed outright.
+
+  They are not a calibration, and widening or narrowing them is not a way to
+  tune when the step runs.  The latent IS standard normal by construction,
+  but only once the family parameters are right -- so a settled spread away
+  from 1 measures how wrong they still are, which is the very information the
+  M-step consumes.  These bounds were `[0.5, 1.0]` and unreachable from R,
+  and that band was the wrong shape twice over: a perfectly specified,
+  converged model gives a spread of exactly 1, its upper edge, so the band
+  admitted only UNDER-dispersed latents; and the sample SD of a standard
+  normal is 1 +/- 1/sqrt(2n), so an upper bound of exactly 1 rejects about
+  half of a perfectly mixed sample by chance.  On Bauer's four gamma arms
+  only one settled spread fell inside it.}
+
+\item{etaDistSdTol}{Relative change in the pooled latent standard
+  deviation, between consecutive M-step attempts, below which the latent is
+  treated as settled and the declared-distribution M-step is allowed to run.
+  This, not `etaDistSdLo`/`etaDistSdHi`, is the real test.  A LEVEL cannot do
+  the job: under a wrong family a fully mixed chain sits well away from 1
+  (sd 1.40 on Bauer's g1) and that spread is exactly the information the
+  M-step needs, while a still-burning chain passes through the same 1.40 on
+  its way down and acting there diverges.  Indistinguishable by value,
+  obvious by trajectory.  `0` disables the test, leaving the cap alone.
+
+  The test watches the pooled latent SPREAD only.  Extending it to the latent
+  MEAN as well was tried and measured worse -- see the revert commit -- so the
+  apparent asymmetry is deliberate, not an oversight.}
+
+\item{etaDistCorMstep}{Update a `dist()`-declared Gaussian copula's
+  correlation from its closed form -- the sample correlation of the latent
+  pair -- instead of leaving it to the general non-mu theta refinement.  On
+  by default, and independent of `etaDistMstep`: the correlation needs this
+  even when the family's own parameters are estimated the ordinary way.
+
+  `rxEtaDistExpand()` carries the correlation as `atanh(rho)`, and a
+  refinement that maximizes the observation likelihood CONDITIONAL on the
+  current draws has no prior term to penalize `rho -> 1`.  At that boundary
+  the copula partner's latent collapses onto its partner's and two declared
+  random effects become one -- a genuine optimum of the conditional
+  objective, and a nonsense model.  Measured on Bauer's gamma data, `rho`
+  pinned at 1.000 in 3 of 7 fits across seeds and refinement start points,
+  contributing 128% of one of the eight relative errors by itself.
+
+  A sample correlation cannot do that: it is bounded by construction.  It is
+  damped by `pas(kiter)` like every other M-step here, and the damped value
+  is what the refinement warm-starts from -- so this narrows the search
+  rather than fighting it.}
+
+\item{etaDistLoglik}{Estimate a `dist()`-declared random effect's own
+  parameters from the OBSERVATION likelihood rather than by fitting the
+  declared family to the sampled etas.  Opt-in; `FALSE` leaves
+  `etaDistMstep`'s route in place.
+
+  This is the M-step the construction implies.  The complete data is
+  `(y, z)` with `z` the latent standard normal, so
+  `log p(y, z | theta) = log p(y | z, theta) + log p(z)` and `log p(z)` is
+  theta-free.  `eta = Q(phiU(z); args(theta))` is a deterministic transform,
+  not observed data, so the declared family's density never enters the
+  Q-function -- its parameters are structural parameters of the mean
+  function and belong to the observation likelihood like any other non-mu
+  theta.  Fitting the family to the eta sample is a heuristic; it measures
+  well (see `etaDistMstep`), but it is a different thing.
+
+  Practically this hands the declared thetas to the same
+  observation-likelihood refinement the non-mu thetas already use, and
+  stands the family M-step down for them.  Two things follow.  A covariate
+  on a distribution parameter needs no special handling at all, because the
+  model recomputes `eta` per record from the candidate thetas -- fixed and
+  time-varying alike.  And no spread guard is needed: a theta that makes the
+  PREDICTIONS worse is rejected whatever the latents look like, so an
+  over-dispersed latent cannot drive a runaway the way it can when the
+  family is fitted to the etas it produces.
+
+  The copula M-step (`etaDistCorMstep`) still runs.  A correlation between
+  latents is not a property of the mean function, and no
+  observation-likelihood term identifies it.}
+
+\item{stepsizeRw}{Robbins-Monro LEARNING RATE for the acceptance-rate
+  adaptation (saemix `stepsize.rw`, default 0.4) -- how fast the random-walk
+  scale moves, not a rate that is being targeted.  The rule is
+
+  \preformatted{  scale <- scale * (1 + stepsizeRw * (observed - target))}
+
+  so `stepsizeRw` is the multiplier on the error, while the TARGET is
+  `iaccept` for kernel 2 and `iacceptSingle` for kernel 3.  One learning
+  rate is shared by both kernels; only the targets are per kernel.
+
+  Do not confuse `stepsizeRw = 0.4` with `iacceptSingle = 0.44`.  They are
+  adjacent numbers meaning unrelated things, and reading one for the other
+  makes the adaptation look far more (or less) aggressive than it is.
+
+  Ignored when `iaccept = 0`.}
 
 \item{coefSa}{Simulated-annealing coefficient on the estimated omega
 diagonals: `Gamma2 <- max(Gamma2*coefSa, G1)` during the annealing phase.
@@ -208,20 +562,38 @@ you increase the number of chains the numerical integration by
 MC method will be more accurate at the cost of more
 computation.  In Monolix this is equivalent to \code{L}.}
 
-\item{nu}{This is a vector of 3 integers. They represent the
-    numbers of transitions of the three different kernels used in
-    the Hasting-Metropolis algorithm.  The default value is \code{c(2,2,2)},
-    representing 40 for each transition initially (each value is
-    multiplied by 20).
+\item{nu}{Vector of 3 integers: the number of transitions performed
+    per iteration by each of the three Hastings-Metropolis kernels.
+    Default \code{c(2,2,2)}.
 
-    The first value represents the initial number of multi-variate
-    Gibbs samples are taken from a normal distribution.
+    \strong{The x20 applies to the FIRST iteration only.}  On
+    \code{kiter == 0} each element is multiplied by 20 (so the default
+    runs 40 transitions per kernel), and on \emph{every} iteration
+    afterwards the value is used as given -- 2 transitions per kernel for
+    the default, not 40.  This mirrors saemix, which likewise boosts only
+    the opening iteration to place the chain before estimation begins; see
+    \code{src/saem.cpp}, the \code{if (kiter==0)} branch.  Earlier wording
+    here said "representing 40 for each transition initially", which reads
+    as the steady-state count and is not.
 
-    The second value represents the number of uni-variate, or multi-
-    dimensional random walk Gibbs samples are taken.
+    Raising \code{nu} is the most direct control over how far each chain
+    travels between M-steps, and costs proportionally more time per
+    iteration.  It is worth reaching for when the sampler is mixing slowly
+    rather than when it needs more iterations -- notably for a
+    \code{dist()}-declared random effect whose family is heavy-tailed,
+    where \code{eta = Q(phi(z))} is strongly curved and one random-walk
+    scale serves the range poorly (see \code{etaDistSdTol}).
 
-    The third value represents the number of bootstrap/reshuffling or
-    uni-dimensional random samples are taken.}
+    The first value is the number of multivariate Gibbs samples drawn from
+    a normal distribution.
+
+    The second value is the number of univariate, or multidimensional,
+    random-walk Gibbs samples drawn.  Its acceptance rate is adapted toward
+    \code{iaccept}.
+
+    The third value is the number of bootstrap/reshuffling, or
+    unidimensional, random samples drawn.  Its acceptance rate is adapted
+    toward \code{iacceptSingle}.}
 
 \item{print}{Either a scalar print-frequency (`0` = suppress, `1`
 (default) = every evaluation, `N` = every Nth), OR a pre-built
@@ -383,42 +755,19 @@ exploration of the likelihood surface.}
 
 \item{rxControl}{`rxode2` ODE solving options during fitting, created with `rxControl()`}
 
-\item{sigdig}{Specifies the "significant digits" that the ODE
-solving requests.  This is \code{NULL} by default, and while it is
-\code{NULL} it has no effect at all: \code{rxSolve()} uses the standard
-\code{atol}/\code{rtol} (and the standard sensitivity and steady-state
-tolerances).  \code{sigdig} only changes a tolerance when you ask for
-it explicitly.
-
-When it is supplied, the tolerances are derived with one
-solver-independent formula -- the same for stiff, non-stiff and
-auto-switching solvers.  The \code{rtol} exponent IS \code{sigdig} and
-\code{atol} sits three orders below it:
-\itemize{
-\item \code{rtol = 10^(-sigdig)}, \code{atol = 10^(-sigdig-3)}
-\item the sensitivity tolerances match the main solve, so
-\code{rtolSens = rtol} and \code{atolSens = atol} (gradients and
-covariances are built from them)
-\item the steady-state tolerances run one order looser than the
-corresponding main tolerance, so \code{ssRtol = ssRtolSens = 10*rtol}
-and \code{ssAtol = ssAtolSens = 10*atol}
-}
-
-Each of these is set only when you did not pass that tolerance
-yourself; a tolerance you supply always wins.  Because they are
-resolved independently, an explicit \code{atol}/\code{rtol} overrides the
-main solve but does \emph{not} propagate to the sensitivity or
-steady-state tolerances -- set those directly if you need them
-changed too.
-
-This mapping matches how \code{nlmixr2est} derives solver tolerances
-from its optimization \code{sigdig}, so a \code{sigdig} used for estimation
-and the same \code{sigdig} used for a plain \code{rxSolve()} mean the same
-thing.  Note it is keyed to \code{sigdig} as a request for that many
-significant digits, and is looser than the \code{atol}/\code{rtol} defaults
-for small \code{sigdig} -- at \code{sigdig = 4} it gives \code{rtol = 1e-4}
-against a default \code{rtol = 1e-6}.  Raise \code{sigdig}, or set
-\code{atol}/\code{rtol} directly, when you want a tighter solve.}
+\item{sigdig}{Optimization significant digits.  One value drives, with a single
+consistent formula, the inner/outer optimizer convergence tolerance
+(\code{10^-sigdig}), the boundary check tolerance (\code{5*10^(-sigdig+1)}),
+and the ODE solver tolerances: the \code{rtol} exponent IS \code{sigdig} and
+\code{atol} sits three orders below, so \code{rtol = 10^-sigdig},
+\code{atol = 10^(-sigdig-3)} for every solver (stiff, non-stiff or
+auto-switching).  The sensitivity (\code{atolSens}/\code{rtolSens})
+tolerances match the main solve (the outer gradient and covariance are built
+from them); the steady-state (\code{ssAtol}/\code{ssRtol}) tolerances run one
+order looser.
+Keying the optimizer to the same \code{10^-sigdig} means it converges to
+exactly the precision the solve supports.  At the default \code{sigdig = 3}
+this is \code{atol = 1e-6}, \code{rtol = 1e-3}.}
 
 \item{sigdigTable}{Significant digits in the final output table.
 If not specified (`NULL`), it defaults to `sigdig`.}
@@ -590,6 +939,113 @@ the estimate more and need more `nBurn`/`nEm`. Default 20.}
   * `"eta"`: the historic SAEM treatment (the parameter is carried through
     the stochastic `phi0` block).}
 
+\item{nonMuThetaStart}{First iteration at which the `nonMuTheta="regress"`
+  refinement -- direct maximization of the observation likelihood in the
+  non-mu thetas -- may run.
+
+  `NULL` (the default) is **saemix's rule: half the burn-in**,
+  `round(nBurn/2)`.  saemix gates its equivalent step (`optim(compute.Uy)`
+  over `ind.fix10`, R/main_mstep.R:57) on `kiter >= nbiter.sa`, whose default
+  is `nbiter.saemix[1]/2`.  `-2` restores the historical nlmixr2 value,
+  `round((nBurn + nEm)/2)`.
+
+  The placement matters because of the step size it lands on.  saemix's
+  `stepsize` is 1 throughout burn-in, so its direct optimization gets the
+  whole second half of burn-in at full steps.  The historical nlmixr2 value
+  -- half the TOTAL -- lands, for the common `nEm ~ nBurn`, exactly on the
+  burn-in/EM boundary where `pas` collapses (1.0 at iteration 200, 0.5 at
+  201, 0.02 at 250), giving the refinement ONE full-step iteration instead of
+  roughly `nBurn/2` of them.
+
+  That matters for a model whose non-mu thetas start far from their optimum.
+  Measured on Bauer's gamma data (`~/src/gamma_indpar`): the stochastic phi0
+  update parks CL at 7.51 within 24 iterations, this refinement cannot run
+  until iteration 200, and by then the stochastic-approximation step
+  `pas(kiter)` is small enough that it travels 0.03 over the remaining 200
+  iterations.  The thetas are effectively frozen for 376 of 400 iterations,
+  which is why enlarging `nonMuThetaMaxEval` twelve-fold moves the answer by
+  0.004 -- the search was never the binding constraint.
+
+  Measured on that model (`nBurn = nEm = 200`):
+
+  | `nonMuThetaStart` | CL | V1 | cor | MARE |
+  | --- | --- | --- | --- | --- |
+  | `-2` (historical, iteration 200) | 7.472 | 6.851 | 0.343 | 19.9% |
+  | `0` | 4.445 | 4.491 | 0.406 | 10.3% |
+  | NONMEM 7.5.1 SAEM | 4.786 | 4.606 | 0.411 | 3.8% |
+  | simulation truth | 5.03 | 4.66 | 0.438 | -- |
+
+  Both reference implementations update these thetas well before the
+  historical nlmixr2 gate: NONMEM from the first iteration (technical guide
+  eqs. 1.47-1.52), saemix from half the burn-in.}
+
+\item{nonMuThetaGrad}{Precede the `nonMuTheta="regress"` refinement with an
+  exact-gradient Gauss-Newton step.  `TRUE` (the default); set `FALSE` to get
+  the search alone.
+
+  The refinement is otherwise a derivative-free search that spends a full
+  population solve on every objective evaluation -- `nonMuThetaMaxEval` of
+  them per call -- with no derivative information at all.  nlmixr2 already
+  emits exact symbolic sensitivities, so ONE solve of the theta-sensitivity
+  model yields `d(f)/d(theta)` for every theta at once, through the same
+  pooled and threaded solve path the fit already uses.  A Gauss-Newton step
+  off that is both far cheaper than the search and better directed than
+  anything a finite search budget recovers.
+
+  The two are a hedge rather than an either/or: the gradient step moves along
+  the local quadratic model, and the search then runs warm-started from there
+  and corrects wherever that model was poor.  Because the search starts from
+  a much better point, `nonMuThetaMaxEval` can usually come DOWN rather than
+  up.
+
+  The step is damped by Levenberg-Marquardt gated on the *conditioning* of
+  the information matrix, not on how large the step is: `arma::solve()`
+  succeeds on a near-singular Hessian and returns a finite but astronomically
+  large step, so "solved and finite" is not a guard.  A well-conditioned
+  iteration takes the exact undamped step.
+
+
+  Default `FALSE`.  The step is verified correct -- its analytic score agrees
+  with a central difference of the objective the search itself minimizes to
+  1e-8 or better -- but on Bauer's gamma data it makes the fit converge
+  FASTER to a WORSE answer, so it is opt-in.
+
+  Measured, `nBurn = nEm = 100`, `etaDistMstep = FALSE`, three seeds:
+
+  | seed | MARE off -> on | cor off -> on (truth 0.438) | time |
+  |---|---|---|---|
+  | 99 | 45.8% -> 45.8% | 0.892 -> 0.915 | -29% |
+  | 7 | 30.3% -> 46.9% | 0.597 -> 0.831 | -31% |
+  | 2024 | 29.7% -> 43.2% | 0.556 -> 0.887 | -30% |
+
+  The ~30% speedup is consistent and is the warm start working as intended:
+  the derivative-free search that follows needs fewer of its
+  `nonMuThetaMaxEval` evaluations.  The accuracy loss is driven entirely by
+  the copula correlation, which moves toward 1 and away from the truth on
+  every seed.
+
+  That is diagnostic rather than a reason to distrust the gradient.  The
+  gradient is correct, so it is faithfully descending an objective that
+  prefers a high correlation; the derivative-free search was only protective
+  by being too imprecise to get there.  The fix belongs in the objective or
+  in how `rxCor` is parameterized -- or in letting the distribution M-step
+  own that theta (`etaDistCorMstep`) -- not in the optimizer.}
+
+\item{nonMuThetaGradEvery}{Run the exact-gradient step every
+  `nonMuThetaGradEvery` iterations (default 1, i.e. every iteration).
+
+  The two halves of the refinement have very different costs, so they want
+  different schedules.  The gradient step is ONE pooled, threaded solve that
+  yields every theta's derivative at once, so it is affordable every
+  iteration.  The derivative-free search is `nonMuThetaMaxEval` full
+  population solves per call -- 25 by default -- so it is not.
+
+  That inverts the sensible cadence: run the cheap directed step often and
+  the expensive undirected one rarely.  With `nonMuThetaGrad = TRUE` the
+  search is also starting from a much better point, so `nonMuThetaEvery` can
+  be raised and `nonMuThetaMaxEval` lowered from the values that made sense
+  when the search was doing all the work alone.}
+
 \item{nonMuThetaOpt}{Optimizer for the `nonMuTheta="regress"` refinement.
 `"newuoa"` (default) and `"nelderMead"` each run one clamped multivariate
 optimization over all free `phi0` coordinates under the `nonMuThetaMaxEval`
@@ -672,6 +1128,30 @@ List of options to be used in \code{\link{nlmixr2}} fit for
 Control Options for SAEM
 }
 \references{
+Roberts GO, Gelman A, Gilks WR (1997).  Weak convergence and optimal
+scaling of random walk Metropolis algorithms.  *The Annals of Applied
+Probability* **7**(1):110-120.  \doi{10.1214/aoap/1034625254}
+(the 0.234 result).
+
+Roberts GO, Rosenthal JS (2001).  Optimal scaling for various
+Metropolis-Hastings algorithms.  *Statistical Science* **16**(4):351-367.
+\doi{10.1214/ss/1015346320}
+
+Roberts GO, Rosenthal JS (2009).  Examples of Adaptive MCMC.  *Journal of
+Computational and Graphical Statistics* **18**(2):349-367.
+\doi{10.1198/jcgs.2009.06134} (adaptive Metropolis-within-Gibbs; the source
+Vihola attributes the 0.44/0.234 defaults to).
+
+Vihola M (2010).  Grapham: Graphical models with adaptive random walk
+Metropolis algorithms.  *Computational Statistics & Data Analysis*
+**54**(1):49-54.  \doi{10.1016/j.csda.2009.09.001} (states the 0.44
+dimension-one / 0.234 otherwise pairing verbatim).
+
+Panhard X, Samson A (2008).  Extension of the SAEM algorithm for nonlinear
+mixed models with 2 levels of random effects.  *Biostatistics*
+**10**(1):121-135.  \doi{10.1093/biostatistics/kxn020} (the two-level SAEM
+this package's IOV support follows; it targets "around 30%").
+
 Kuhn E, Lavielle M (2005). "Maximum likelihood estimation in nonlinear mixed
 effects models." Computational Statistics & Data Analysis, 49(4), 1020-1038.
 \doi{10.1016/j.csda.2004.07.002}

@@ -29,6 +29,14 @@ impmapControl(
   nConvWindow = 10L,
   zeroOmegaDirect = FALSE,
   zeroOmegaMaxEval = 25L,
+  etaDistWarmStart = TRUE,
+  etaDistMstep = FALSE,
+  etaDistSdLo = 0.2,
+  etaDistSdHi = 5,
+  etaDistSdTol = 0.1,
+  etaDistCorSuff = FALSE,
+  etaDistSupportEps = 0,
+  mceta = -2L,
   impSeed = 42L,
   covMethod = c("imp", "analytic", "r,s", "r", "s", "sa", ""),
   qr = FALSE,
@@ -477,6 +485,162 @@ the objective-function change for convergence (NONMEM-style CTYPE).}
 
 \item{zeroOmegaMaxEval}{Objective-evaluation budget per `zeroOmegaDirect`
 step.  Each evaluation is a full-population solve.}
+
+\item{etaDistWarmStart}{Solve a log-normal surrogate first and hand its answer
+  to the declared families as starting values (`etaDistInit()`).  `TRUE` by
+  default for any model carrying a `dist()` declaration; models without one
+  ignore it entirely.
+
+  A declared family is very largely a STARTING VALUE problem.  The E-step
+  draws etas under the current family, the M-step fits the family to those
+  draws, and from a poor start the two walk off together to an answer they
+  agree on and the data do not support.
+
+  Note the surrogate is fitted with `est="saem"` whatever method is being
+  warm started -- it is an ordinary, well-conditioned fit of a log-normal
+  stand-in, used only to produce starting values.  Set `FALSE` to fit from
+  the model's own `ini()`.}
+
+\item{etaDistMstep}{Opt-in.  Estimate a `dist()`-declared random effect's
+  family parameters (and any Gaussian-copula correlation between declared
+  effects) by a weighted maximum-likelihood fit to the E-step's importance
+  samples, instead of through the data likelihood.
+
+  The family's parameters appear only in `log p(eta | theta_dist)`, never in
+  `log p(y | eta)`, so their M-step is a pure distribution fit -- no data
+  term and, decisively, no ODE solve.  `rxEtaDistExpand()` obscures this by
+  rewriting `eta = Q(phi(z))` with `z ~ N(0, 1)`, which moves those
+  parameters into the data likelihood and lands them in the Newton M-step's
+  theta-sensitivity model, the most expensive route available.  EM lets the
+  augmentation be chosen freely: sample in `z`-space, take this M-step in
+  eta-space.
+
+  The thetas so estimated are removed from the Newton step, but stay
+  ordinary estimated thetas in every other respect -- in particular the
+  covariance step still differentiates the objective in them and reports
+  their standard errors.
+
+  Ignored for a model with no `dist()` declaration, and silently ignored for
+  a declared family the C++ dispatch does not implement (the fit then takes
+  the ordinary sensitivity route).}
+
+\item{etaDistSdLo, etaDistSdHi}{A DIVERGENCE CAP on the pooled latent standard
+deviation, outside which the declared-distribution M-step will not act.
+Deliberately loose -- these only exclude a latent that has run away or
+collapsed outright.  Not a calibration, and not a way to tune when the step
+runs; that is `etaDistSdTol`.}
+
+\item{etaDistSdTol}{Relative change in the pooled latent standard deviation,
+  between consecutive declared-distribution M-step attempts, below which the
+  latent is treated as settled and the M-step is allowed to run.  This, not
+  `etaDistSdLo`/`etaDistSdHi`, is the real test.
+
+  A LEVEL threshold cannot do this job, which is why the `[0.5, 1.0]` band
+  this used to hardcode is gone.  Under a wrong family a fully mixed chain
+  sits well away from 1 -- 1.40 on Bauer's g1 -- and that spread is exactly
+  the information the M-step consumes; a still-burning chain passes through
+  the same 1.40 on its way down from 2.6, where acting on it diverges.
+  Indistinguishable by value, obvious by trajectory.  Across Bauer's four
+  gamma arms the old band admitted exactly ONE (g3, settled spread 0.880), so
+  this M-step effectively never ran.  `0` disables the test, leaving the cap.}
+
+\item{etaDistCorSuff}{Estimate the declared copula correlation from the
+  standardized SUFFICIENT STATISTIC of the raw latents (saem's route) instead
+  of a product-moment correlation of the copula-combined ones.
+
+  The combined latent `w_k = rho*z_j + sqrt(1 - rho^2)*z_k` is built FROM the
+  current `rho`, so correlating it against `w_j` returns the value it was
+  handed whenever the latent second moments are equal -- a fixed point at the
+  current estimate rather than at the data's.  All the information about the
+  correlation is in the departure of the latent second-moment matrix from the
+  identity, so this route reads that instead, and is not gated on the
+  trajectory spread guard: the guard exists because a FAMILY fit to a
+  mid-flight eta sample fits the wrong thing, which does not apply to a second
+  moment of the latents.
+
+  `FALSE` is the default for imp, on measurement -- unlike `foceiControl()`,
+  which defaults to `TRUE`.  On Bauer's declared-gamma arms this route leaves
+  imp's copula correlation accurate (g2 +0.502, g3 +0.453 against a truth of
+  0.50) and its relative variances sane, but sends the LOCATION parameters
+  away: CL 1823 on g2 and 306204 on g3, against a truth of 5.10.  focei is
+  fine on the same arms with the same estimator, and the estimator itself is
+  pinned against the `S_n = L S_z L'` definition in
+  `test-etaDistCorSuff.R`, so this is a property of imp's fit rather than of
+  the correlation.  Set it to `TRUE` explicitly to measure it.}
+
+\item{etaDistSupportEps}{Reject a decoded random effect at or below this
+value when the declared family has strictly positive support.  See
+[foceiControl()] for why this exists (Rmath's `qgamma` returns exactly 0
+where the model's own Boost decoder floors at `DBL_MIN`, and the zero
+reached a density that is undefined there).  Applied only when every
+observation is strictly positive.}
+
+\item{mceta}{Monte Carlo samples for the best initial ETA of the inner
+  MAP, as in [foceiControl()].  imp uses it through the shared FOCEi inner
+  problem, reaching the C++ at the same place focei does.
+
+  `fit$env$nMcetaStart` is the observable -- it counts how many inner solves
+  started from `eta = 0` against one of the omega draws, and is stamped
+  whenever the inner problem sees `mceta >= 1`.  It used to be written only
+  on the non-EM side of `foceiFinalizeTables()`, so an imp fit reported
+  nothing whatever `mceta` was set to; absence of the counter was NOT
+  evidence that imp had ignored the setting.  `mceta` also belongs in the
+  `foceiControl()` down-conversion (`.impmapControlToFoceiControl()`), which
+  had stripped it as though it were an IS-only name.  Estimation reads it
+  off the `impmapControl` directly and so was unaffected; the consumers of
+  the down-converted control (`.setOfvFo()`, the general-likelihood tables)
+  were the ones seeing `foceiControl()`'s default instead.
+
+  It matters more for imp than the default suggests.  The Newton M-step on
+  non-mu structural thetas is only as good as its IS-weighted Gauss-Newton
+  Hessian, and `mceta` changes which mode the inner search starts from.
+  Measured on Bauer's declared-gamma model, `mceta = 10` moved log relative
+  variance from -2.46 to +60.3 in a single iteration -- a relative variance
+  of 1.6e26 and a garbage objective -- where the same fit at `mceta = 0` was
+  fine (see the Levenberg-Marquardt damping in `src/imp.cpp`).  The damping
+  keeps the step finite but does NOT rescue the fit.
+
+  Measured end to end on that arm (g4: declared gamma, relative variance 2.0,
+  shape 0.5, CV 141%) at `isample = 300`, three `impSeed` values per level so
+  the comparison is not read off a single run.  MARE against the simulated
+  truth (CL 5.105, V1 4.715, rv 2.0/2.0):
+
+  | `impSeed` | `mceta = -2` (default) | `mceta = 10` | `mceta = 100` |
+  | --- | --- | --- | --- |
+  | 42 | 49.9% | 625.0% | 415.9% |
+  | 43 | 484.1% | 606.4% | 565.8% |
+  | 44 | 416.3% | 406.5% | 456.0% |
+  | median | 416.3% | 606.4% | 456.0% |
+
+  Two things follow, and only the first is firm.
+
+  **Raising `mceta` does not rescue this arm.**  No cell at any `mceta`,
+  `isample` or starting value lands near truth; the one run that does
+  (49.9%) is the default at seed 42, and re-running it reproduces 49.9% and
+  objf 236.4 bit-for-bit, so it is a lucky draw rather than a property of
+  those settings.  `nMcetaStart` confirms the draws were genuinely explored
+  rather than the setting ignored -- sampled starts won 600/600 in most
+  cells.
+
+  **It also appears mildly harmful, but the effect is small next to the
+  arm's own failure.**  Compared WITHIN a seed, `mceta = 100` is worse than
+  the default in 3 of 3 seeds (+366, +82 and +40 points) and `mceta = 10` in
+  2 of 3.  With three seeds that is a direction, not a magnitude -- and the
+  between-seed spread at fixed settings (49.9% to 484.1%) dwarfs it.
+
+  Raising `isample` does not rescue it either -- `mceta = 100` at
+  `isample = 1000` reaches MARE 283.4% (objf 3.00e8) in 4946s against 2411s.
+
+  The mechanism is NOT the M-step Hessian: the count of iterations that could
+  not update the structural thetas is 89/100 at the default against 96/100
+  and 71/77, so the ill-conditioning belongs to the arm.
+
+  Note also that Bauer's own control stream for this arm puts `MCETA=100` on
+  its `$EST METHOD=ITS` warm-up step; the `$EST METHOD=IMP` step carries no
+  `MCETA` and `MAPITER=0`.  It is not a precedent for importance sampling.
+
+  So: leave `mceta` at its default under `est="imp"` on a heavy-tailed
+  declared distribution, hold it fixed when comparing runs, and report it.}
 
 \item{impSeed}{Base seed for the per-subject thread-safe (threefry) RNG
 streams; results are reproducible and independent of the thread count.}

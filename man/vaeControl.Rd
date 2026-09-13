@@ -42,6 +42,7 @@ vaeControl(
   parEncoderBackward = !isTRUE(getOption("nlmixr2.identical", FALSE)),
   nonMuTheta = c("regress", "grad", "eta", "fix", "none"),
   nonMuEtaOmega = 0.01,
+  etaDistWarmStart = TRUE,
   mStepObjective = c("outer", "elbo"),
   likelihood = c("focei", "foce", "focep", "laplace"),
   objf = c("importanceSampling", "linear"),
@@ -482,6 +483,15 @@ results.}
 (starting value for `nonMuTheta="eta"`, fixed value for `nonMuTheta="fix"`;
 unused for `"regress"`).}
 
+\item{etaDistWarmStart}{Solve a log-normal surrogate first and hand its answer
+  to the declared families as starting values (`etaDistInit()`).  `TRUE` by
+  default for any model carrying a `dist()` declaration; models without one
+  ignore it entirely.
+
+  A declared family is very largely a STARTING VALUE problem, and the warm
+  start costs one extra nested fit.  Set `FALSE` to pay only for the fit you
+  asked for -- or when the surrogate itself is the thing under test.}
+
 \item{mStepObjective}{Objective the non-mu-referenced theta M-step
   (`nonMuTheta = "regress"` or `"grad"`) is optimized against.  It has no
   effect when there is no non-mu-referenced structural theta, and it never
@@ -574,42 +584,19 @@ function.  By default this is \code{TRUE}}
 \item{ci}{Confidence level for some tables.  By default this is
 0.95 or 95\% confidence.}
 
-\item{sigdig}{Specifies the "significant digits" that the ODE
-solving requests.  This is \code{NULL} by default, and while it is
-\code{NULL} it has no effect at all: \code{rxSolve()} uses the standard
-\code{atol}/\code{rtol} (and the standard sensitivity and steady-state
-tolerances).  \code{sigdig} only changes a tolerance when you ask for
-it explicitly.
-
-When it is supplied, the tolerances are derived with one
-solver-independent formula -- the same for stiff, non-stiff and
-auto-switching solvers.  The \code{rtol} exponent IS \code{sigdig} and
-\code{atol} sits three orders below it:
-\itemize{
-\item \code{rtol = 10^(-sigdig)}, \code{atol = 10^(-sigdig-3)}
-\item the sensitivity tolerances match the main solve, so
-\code{rtolSens = rtol} and \code{atolSens = atol} (gradients and
-covariances are built from them)
-\item the steady-state tolerances run one order looser than the
-corresponding main tolerance, so \code{ssRtol = ssRtolSens = 10*rtol}
-and \code{ssAtol = ssAtolSens = 10*atol}
-}
-
-Each of these is set only when you did not pass that tolerance
-yourself; a tolerance you supply always wins.  Because they are
-resolved independently, an explicit \code{atol}/\code{rtol} overrides the
-main solve but does \emph{not} propagate to the sensitivity or
-steady-state tolerances -- set those directly if you need them
-changed too.
-
-This mapping matches how \code{nlmixr2est} derives solver tolerances
-from its optimization \code{sigdig}, so a \code{sigdig} used for estimation
-and the same \code{sigdig} used for a plain \code{rxSolve()} mean the same
-thing.  Note it is keyed to \code{sigdig} as a request for that many
-significant digits, and is looser than the \code{atol}/\code{rtol} defaults
-for small \code{sigdig} -- at \code{sigdig = 4} it gives \code{rtol = 1e-4}
-against a default \code{rtol = 1e-6}.  Raise \code{sigdig}, or set
-\code{atol}/\code{rtol} directly, when you want a tighter solve.}
+\item{sigdig}{Optimization significant digits.  One value drives, with a single
+consistent formula, the inner/outer optimizer convergence tolerance
+(\code{10^-sigdig}), the boundary check tolerance (\code{5*10^(-sigdig+1)}),
+and the ODE solver tolerances: the \code{rtol} exponent IS \code{sigdig} and
+\code{atol} sits three orders below, so \code{rtol = 10^-sigdig},
+\code{atol = 10^(-sigdig-3)} for every solver (stiff, non-stiff or
+auto-switching).  The sensitivity (\code{atolSens}/\code{rtolSens})
+tolerances match the main solve (the outer gradient and covariance are built
+from them); the steady-state (\code{ssAtol}/\code{ssRtol}) tolerances run one
+order looser.
+Keying the optimizer to the same \code{10^-sigdig} means it converges to
+exactly the precision the solve supports.  At the default \code{sigdig = 3}
+this is \code{atol = 1e-6}, \code{rtol = 1e-3}.}
 
 \item{sigdigTable}{Significant digits in the final output table.
 If not specified (`NULL`), it defaults to `sigdig`.}

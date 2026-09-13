@@ -29,10 +29,6 @@ tableControl(
 \item{cwres}{When TRUE, request CWRES and FOCEi likelihood
 regardless of the algorithm used.}
 
-\item{nsim}{represents the number of simulations.  For rxode2, if
-you supply single subject event tables (created with
-\verb{[eventTable()]})}
-
 \item{ties}{When `TRUE` jitter prediction-discrepancy points to discourage ties in cdf.}
 
 \item{censMethod}{Handle censoring method:
@@ -43,9 +39,6 @@ you supply single subject event tables (created with
 
  - `"omit"` omit the residuals for censoring}
 
-\item{seed}{an object specifying if and how the random number
-generator should be initialized}
-
 \item{cholSEtol}{The tolerance for the `rxode2::choleSE` function}
 
 \item{state}{is a Boolean indicating if `state` values will be included (default `TRUE`)}
@@ -55,36 +48,6 @@ generator should be initialized}
 \item{eta}{is a Boolean indicating if `eta` values will be included (default `TRUE`)}
 
 \item{covariates}{is a Boolean indicating if covariates will be included (default `TRUE`)}
-
-\item{addDosing}{Boolean indicating if the solve should add rxode2
-EVID and related columns.  This will also include dosing
-information and estimates at the doses.  Be default, rxode2
-only includes estimates at the observations. (default
-\code{FALSE}). When \code{addDosing} is \code{NULL}, only
-include \code{EVID=0} on solve and exclude any model-times or
-\code{EVID=2}. If \code{addDosing} is \code{NA} the classic
-\code{rxode2} EVID events are returned. When \code{addDosing} is \code{TRUE}
-add the event information in NONMEM-style format; If
-\code{subsetNonmem=FALSE} rxode2 will also include extra event types
-(\code{EVID}) for ending infusion and modeled times:
-\itemize{
-\item \code{EVID=-1} when the modeled rate infusions are turned
-off (matches \code{rate=-1})
-\item \code{EVID=-2} When the modeled duration infusions are
-turned off (matches \code{rate=-2})
-\item \code{EVID=-10} When the specified \code{rate} infusions are
-turned off (matches \code{rate>0})
-\item \code{EVID=-20} When the specified \code{dur} infusions are
-turned off (matches \code{dur>0})
-\item \verb{EVID=101,102,103,...} Modeled time where 101 is the
-first model time, 102 is the second etc.
-}}
-
-\item{subsetNonmem}{subset to NONMEM compatible EVIDs only.  By
-default \code{TRUE}.}
-
-\item{cores}{Number of cores used in parallel ODE solving.  This
-is equivalent to calling \code{\link[rxode2:setRxThreads]{setRxThreads()}}}
 
 \item{keep}{is the keep sent to the table}
 
