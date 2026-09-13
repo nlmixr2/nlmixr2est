@@ -177,7 +177,7 @@ preFinalParTableHooks <- function(name=NULL) {
   # assembly; hooks should check objects exist before modifying them.
   for (name in preFinalParTableHooks()) {
     .fun <- get(name, envir=.preFinalParTableHooks)
-    .ret <- .fun(env)
+    .fun(env)
   }
   invisible(NULL)
 }
