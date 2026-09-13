@@ -263,7 +263,9 @@ wrapping. `NULL` (default) uses `floor((getOption("width") - 23) / 12)`.}
 
  Neither is used for a general log-likelihood endpoint (\code{ll()}), which has
  no residual error to anchor the complete-data correction; such a model goes
- straight to \code{linFim} with a message.
+ straight to \code{linFim} with a message.  This includes a residual error with
+ modeled components (\code{a <- add.sd*exp(eta.sd); cp ~ add(a)}), which saem
+ fits as \code{cp ~ add(a) + dnorm()}.
 
  "\code{r,s}" Uses the sandwich matrix to calculate the covariance, that is: \eqn{R^-1 \times S \times R^-1}
 

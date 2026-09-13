@@ -152,7 +152,6 @@ nmGetDistributionSaemLines.rxUi <- function(line) {
 #' @rdname nmGetDistributionSaemLines
 #' @export
 nmGetDistributionSaemLines.norm <- function(line) {
-  .rx <- line[[1]]
   .pred1 <- line[[2]]
   if (.pred1[["linCmt"]]) {
     .var <- quote(linCmt())
@@ -273,12 +272,11 @@ attr(rxUiGet.saemModel0, "rstudio") <- quote(rxModelVars({}))
 #'@export
 rxUiGet.saemModelPred0 <- function(x, ...) {
   .f <- x[[1]]
-  # see rxUiGet.saemModel0's comment -- same reasoning applies to the
-  # FOCEi-style predOnly model used for residuals/covariance.
-  if (.saemGeneralLik(.f)) {
-    nlmixr2global$rxPredLlik <- TRUE
-    on.exit(nlmixr2global$rxPredLlik <- FALSE, add=TRUE)
-  }
+  # The table predOnly keeps the mean/variance form (as rxUiGet.focei's does);
+  # forcing rxPredLlik reported a dnorm()/t()/cauchy() log-density as IPRED (#1084)
+  .oldLlik <- nlmixr2global$rxPredLlik
+  nlmixr2global$rxPredLlik <- FALSE
+  on.exit(nlmixr2global$rxPredLlik <- .oldLlik, add=TRUE)
   rxode2::rxCombineErrorLines(.f, errLines=rxGetDistributionFoceiLines(.f),
                               paramsLine=NA, #.uiGetThetaEtaParams(.f),
                               modelVars=TRUE,
@@ -571,7 +569,6 @@ attr(rxUiGet.saemModelPredReplaceLst, "rstudio") <- c(tka="THETA[1] + ETA[1]")
 
 #' @export
 rxUiGet.interpLinesStr <- function(x, ...) {
-  .ui <- x[[1]]
   .interp <- x[[1]]$interpLines
   if (is.null(.interp)) {
     .interp <- ""
@@ -614,7 +611,6 @@ attr(rxUiGet.interpLinesStr, "rstudio") <- ""
 
 #' @export
 rxUiGet.saemModelPred <- function(x, ...) {
-  .ui0 <- x[[1]]
   ## No levels() lines are emitted: .foceiPreProcessData() turns the string
   ## covariates into factors with the model's level order, so the solve sees
   ## the numeric codes directly.
@@ -636,8 +632,6 @@ rxUiGet.saemModelPred <- function(x, ...) {
   .low <- paste(get("rx_low_", envir = .s))
   .low <- paste0("rx_low_~", rxode2::rxFromSE(.low))
   ## if (is.null(.lhs0)) .lhs0 <- ""
-  .ui <- x[[1]]
-  .lhsIn <- .ui$mv0$lhs
   .ddt <- .s$..ddt
   if (is.null(.ddt)) .ddt <- ""
 

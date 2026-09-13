@@ -2492,7 +2492,7 @@ public:
       for (int c = 0; c < nphi0; c++) xmin[c] = gPhi0Work[c];
     } else {
       Rcpp::Environment nlmixr2 = Rcpp::Environment::namespace_env("nlmixr2est");
-      Rcpp::Function boundedOpt = nlmixr2[".boundedResidOpt"];
+      Rcpp::Function boundedOpt = nlmixr2[".saemBoundedResidOpt"];
       Rcpp::InternalFunction fn(&gPhi0ObjR);
       // Optimize only the free coordinates: gPhi0ObjR expands them back into
       // gPhi0Full, which holds the FIXED coordinates at their ini values.
@@ -3139,7 +3139,7 @@ public:
       hiFree[fi] = par0[c] + trust;
     }
     Rcpp::Environment nlmixr2 = Rcpp::Environment::namespace_env("nlmixr2est");
-    Rcpp::Function boundedOpt = nlmixr2[".boundedResidOpt"];
+    Rcpp::Function boundedOpt = nlmixr2[".saemBoundedResidOpt"];
     Rcpp::InternalFunction fn(&gPhi1ObjR);
     Rcpp::List ctl = Rcpp::List::create(Rcpp::_["maxfun"] = phi1ThetaMaxEval);
     Rcpp::List ret = boundedOpt(Rcpp::_["par"] = parFree, Rcpp::_["fn"] = fn,

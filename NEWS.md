@@ -32,6 +32,23 @@
 
 ## New features
 
+- `est="saem"` estimates every theta without an eta that informs a
+  general likelihood (`dnorm()`, `t()`, `cauchy()`, the discrete and
+  continuous densities, and `ll()`) through a temporary mu-referenced eta on
+  the scale of its range: `exp()` for a positive parameter such as a standard
+  deviation or degrees of freedom, `expit()` for a probability, additive when
+  unbounded.  The theta is reported as its back-transformed
+  `theta + mean(eta)`, the temporary eta is removed from the fit, and
+  `$runInfo` lists the thetas that received one.  These parameters were
+  previously left near their initial values.
+
+- `est="saem"` now fits residual error components that are modeled rather
+  than estimated directly, such as `a <- add.sd*exp(eta.sd); cp ~ add(a)` or
+  `a <- add.sd + WT*cov.sd; cp ~ add(a)`.  These endpoints are fit as the
+  equivalent `cp ~ add(a) + dnorm()` log-likelihood, and `$runInfo` notes the
+  promotion.  A modeled residual on a `boxCox()`/`yeoJohnson()` endpoint is
+  refused, since `dnorm()` omits the lambda-dependent Jacobian.
+
 - A covariate that varies WITHIN a subject no longer freezes its `dist()`
   declaration.  The family MLE fits a declaration's native parameters and
   inverts them back to the thetas, and a covariate-carrying declaration has no
@@ -952,6 +969,10 @@ ini({
   handles this mix -- no `distribution()`-family limitation remains.
 
 ## Bug fixes
+
+- `est="saem"` fits with a `dnorm()`, `t()` or `cauchy()` endpoint reported the
+  log-density instead of the prediction as `PRED`/`IPRED` (and the residuals
+  derived from them) in the fit table (#1084).
 
 - `est="saem"` now estimates a covariate on a `dist()` declaration instead of
   returning zero for it.  saem's non-mu theta refinement has two routes, and
