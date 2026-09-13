@@ -330,7 +330,10 @@ emviControl(
 
   Neither is used for a general log-likelihood endpoint (`ll()`), which
   has no residual error to anchor the complete-data correction; such a
-  model goes straight to `linFim` with a message.
+  model goes straight to `linFim` with a message. This includes a
+  residual error with modeled components
+  (`a <- add.sd*exp(eta.sd); cp ~ add(a)`), which saem fits as
+  `cp ~ add(a) + dnorm()`.
 
   "`r,s`" Uses the sandwich matrix to calculate the covariance, that is:
   \\R^-1 \times S \times R^-1\\

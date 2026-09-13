@@ -31,8 +31,37 @@
   `vaeControl(covSelectPhiCor=, covSelectPhiJoin=, covSelectPhiLeave=, covSelectPhiMaxDim=)`;
   the counters and the sticky pair adjacency are reported in the fit’s
   `$vae`.
+- `est="saem"` now fits residual error components that are modeled
+  rather than estimated directly, such as
+  `a <- add.sd*exp(eta.sd); cp ~ add(a)` or
+  `a <- add.sd + WT*cov.sd; cp ~ add(a)`. These endpoints are fit as the
+  equivalent `cp ~ add(a) + dnorm()` log-likelihood, and `$runInfo`
+  notes the promotion. A modeled residual on a
+  [`boxCox()`](https://nlmixr2.github.io/nlmixr2est/reference/boxCox.md)/[`yeoJohnson()`](https://nlmixr2.github.io/nlmixr2est/reference/boxCox.md)
+  endpoint is refused, since
+  [`dnorm()`](https://rdrr.io/r/stats/Normal.html) omits the
+  lambda-dependent Jacobian.
+- `est="saem"` estimates every theta without an eta that informs a
+  general likelihood ([`dnorm()`](https://rdrr.io/r/stats/Normal.html),
+  [`t()`](https://rdrr.io/r/base/t.html), `cauchy()`, the discrete and
+  continuous densities, and `ll()`) through a temporary mu-referenced
+  eta on the scale of its range:
+  [`exp()`](https://rdrr.io/r/base/Log.html) for a positive parameter
+  such as a standard deviation or degrees of freedom,
+  [`expit()`](https://nlmixr2.github.io/rxode2/reference/logit.html) for
+  a probability, additive when unbounded. The theta is reported as its
+  back-transformed `theta + mean(eta)`, the temporary eta is removed
+  from the fit, and `$runInfo` lists the thetas that received one. These
+  parameters were previously left near their initial values.
 
 ### Bug fixes
+
+- `est="saem"` fits with a
+  [`dnorm()`](https://rdrr.io/r/stats/Normal.html),
+  [`t()`](https://rdrr.io/r/base/t.html) or `cauchy()` endpoint reported
+  the log-density instead of the prediction as `PRED`/`IPRED` (and the
+  residuals derived from them) in the fit table
+  ([\#1084](https://github.com/nlmixr2/nlmixr2est/issues/1084)).
 
 - A focei inner ETA solve that has spent every `etaNudge`/`etaNudge2`
   restart and still failed now falls back on draws from Omega
