@@ -530,6 +530,10 @@
   .trLhs <- lapply(seq_along(transforms), function(i) {
     str2lang(transforms[[i]]$name)
   })
+  # saem's temporary etas (.saemAddPseudoEtas) also add a helper line and an eta
+  .pseudo <- vapply(transforms, function(tr) isTRUE(tr$pseudoEta), logical(1))
+  .pseudoNames <- vapply(transforms[.pseudo], function(tr) tr$name, character(1))
+  .trLhs <- c(.trLhs, lapply(paste0("rx.l.", .pseudoNames), str2lang))
 
   .keep <- which(vapply(ui$lstExpr,
                         function(expr) {
@@ -572,10 +576,21 @@
     # Restore original parameter name
     .iniDf$name[.w] <- .tr$name
   }
+  if (length(.pseudoNames) > 0L) {
+    .iniDf <- .iniDf[!(.iniDf$name %in% paste0("rx.eta.", .pseudoNames)), , drop = FALSE]
+    .e <- !is.na(.iniDf$neta1)
+    if (any(.e)) {
+      .lev <- sort(unique(c(.iniDf$neta1[.e], .iniDf$neta2[.e])))
+      .iniDf$neta1[.e] <- match(.iniDf$neta1[.e], .lev)
+      .iniDf$neta2[.e] <- match(.iniDf$neta2[.e], .lev)
+    }
+  }
 
   .ini <- as.expression(lotri::as.lotri(.iniDf))
   .ini[[1]] <- quote(`ini`)
-  rm("boundedTransforms", envir=ui$meta)
+  if (exists("boundedTransforms", envir=ui$meta, inherits=FALSE)) {
+    rm("boundedTransforms", envir=ui$meta)
+  }
   .newUi <- .getUiFunFromIniAndModel(ui, .ini, .model)
   .newUi <- .newUi()
   assign("ui", .newUi, envir = env)

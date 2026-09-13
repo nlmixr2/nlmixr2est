@@ -46,6 +46,13 @@
                            rhoend = rhoend, npt = npt)))
 }
 
+# Bounded refinement of the saem general-likelihood phi0/phi1 thetas.  Warnings are
+# suppressed for the same reason as .saemPhi0Newuoa: minqa's small-maxfun advice
+# would otherwise reach $runInfo on every iteration.
+.saemBoundedResidOpt <- function(par, fn, lower = -Inf, upper = Inf, control = list()) {
+  suppressWarnings(.boundedResidOpt(par, fn, lower = lower, upper = upper, control = control))
+}
+
 .saemCheckCfg <- function(cfg) {
   checkmate::assertIntegerish(cfg$itmax, lower=1, len=1, .var.name="saem.cfg$itmax")
   checkmate::assertNumeric(cfg$tol, lower=0, len=1, .var.name="saem.cfg$tol")
@@ -1664,6 +1671,7 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
     nmObjHandleControlObject(.ret$control, .ret)
     .getSaemTheta(.ret)
     .getSaemOmega(.ret)
+    .saemFoldPseudoEtas(.ret)
     # Must run against the un-pooled omega, before .saemMixFix() pools split
     # ETAs, or ui$theta silently falls back to ini() values for every param.
     .nlmixr2FitUpdateParams(.ret)

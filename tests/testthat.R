@@ -79,7 +79,8 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
     "focei-wang2007-bounded", "saem-loglik", "mu-timevarying", "saem-nearpd",
     "saem-nonmutheta", "focei-theta-reset-bounds",
     "saem-cov-analytic", "focei-shi21-bounds", "splitbolus-interp",
-    "optexpression-saem-nlme", "saem-cov-multi-endpoint-904"
+    "optexpression-saem-nlme", "saem-cov-multi-endpoint-904",
+    "saem-modeled-resid-fit"
   ),
 
   # batches 4-7 -- the former batches 4 (13 files) and 5 (15 files), each split

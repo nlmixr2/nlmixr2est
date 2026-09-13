@@ -152,7 +152,6 @@ nmGetDistributionSaemLines.rxUi <- function(line) {
 #' @rdname nmGetDistributionSaemLines
 #' @export
 nmGetDistributionSaemLines.norm <- function(line) {
-  .rx <- line[[1]]
   .pred1 <- line[[2]]
   if (.pred1[["linCmt"]]) {
     .var <- quote(linCmt())
@@ -570,7 +569,6 @@ attr(rxUiGet.saemModelPredReplaceLst, "rstudio") <- c(tka="THETA[1] + ETA[1]")
 
 #' @export
 rxUiGet.interpLinesStr <- function(x, ...) {
-  .ui <- x[[1]]
   .interp <- x[[1]]$interpLines
   if (is.null(.interp)) {
     .interp <- ""
@@ -613,7 +611,6 @@ attr(rxUiGet.interpLinesStr, "rstudio") <- ""
 
 #' @export
 rxUiGet.saemModelPred <- function(x, ...) {
-  .ui0 <- x[[1]]
   ## No levels() lines are emitted: .foceiPreProcessData() turns the string
   ## covariates into factors with the model's level order, so the solve sees
   ## the numeric codes directly.
@@ -636,7 +633,6 @@ rxUiGet.saemModelPred <- function(x, ...) {
   .low <- paste0("rx_low_~", rxode2::rxFromSE(.low))
   ## if (is.null(.lhs0)) .lhs0 <- ""
   .ui <- x[[1]]
-  .lhsIn <- .ui$mv0$lhs
   .ddt <- .s$..ddt
   if (is.null(.ddt)) .ddt <- ""
 
