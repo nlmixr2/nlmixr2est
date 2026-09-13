@@ -5322,6 +5322,18 @@ static void saemReadRowsPooled(mat &g, int &elt, bool &hasNan, int nInd) {
 }
 
 mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
+  // The solve below re-seeds this thread's threefry engine once per subject
+  // (rxode2's par_*() loops do setSeedEng1(getRxSeed1() + id)), so on return the
+  // engine holds the seed of whichever subject this thread happened to solve
+  // LAST -- which is decided by the solve order, i.e. by rx->ordId.  Every
+  // sampling draw that follows (do_mcmc proposals, augmentCensY()'s
+  // rxTruncNorm()) reads that same per-thread engine, so without this restore a
+  // change of solve order silently changes the random stream and the fit stops
+  // being reproducible.  Taken here rather than at the call sites: two of the
+  // eighteen callers wrapped themselves in nmRngGuard() and the rest did not.
+  struct _SaemMcmcSeedGuard {
+    ~_SaemMcmcSeedGuard() { nmRestoreMcmcSeed(); }
+  } _saemMcmcSeedGuard;
   // yp has all the observations in the dataset
   rx_solving_options_ind *ind;
   rx_solving_options *op = getSolvingOptions(_rx);
