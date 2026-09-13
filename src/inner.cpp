@@ -24239,13 +24239,10 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       // only disjoint cells (intercept[k], beta.row(k), selected.row(k),
       // zPopMat.col(k)); vaeBestSubsetL0 keeps all state in a per-call VaeBnbCtx
       // (no globals, no RNG, no rxode2), so parallelizing over k is bit-identical.
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(cores) schedule(dynamic) if(cores > 1)
-#endif
-      for (int k = 0; k < zDim; ++k) {
-        if (isFreeR[k]) continue;
+      nmForEach(zDim, cores, cores > 1, [&](int k) {
+        if (isFreeR[k]) return;
         // fixed structural theta: hold the intercept at ini, add no covariates
-        if (zPopFixR[k]) { intercept[k] = zPop[k]; zPopMat.col(k).fill(zPop[k]); continue; }
+        if (zPopFixR[k]) { intercept[k] = zPop[k]; zPopMat.col(k).fill(zPop[k]); return; }
         // GLS offset response + conditional variance (both no-ops when diagonal)
         arma::vec yk = (covSelectSmooth ? s1.col(k) : last.mu.col(k)) + covOffset.col(k);
         // pinCovariates: restrict this dim's candidate columns to its allowed
@@ -24389,7 +24386,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
           beta(k, gj) = bestCoef[s + 1]; selected(k, gj) = 1;
         }
         zPopMat.col(k) = Xuse.cols(bestCols) * bestCoef;
-      }
+      });
       // ---- cross-parameter refinement over correlated latent dims -----------
       // Only meaningful under a correlated Omega: with a diagonal one the
       // objective is separable across dims and each per-dim search already
@@ -24494,13 +24491,10 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
             arma::ivec gMove((arma::uword)std::max(nG, 1), arma::fill::zeros);
             arma::ivec gClamp((arma::uword)std::max(nG, 1), arma::fill::zeros);
             arma::ivec gBig((arma::uword)std::max(nG, 1), arma::fill::zeros);
-  #ifdef _OPENMP
-  #pragma omp parallel for num_threads(cores) schedule(dynamic) if(cores > 1 && nG > 1)
-  #endif
-            for (int gi = 0; gi < nG; ++gi) {
+            nmForEach(nG, cores, cores > 1 && nG > 1, [&](int gi) {
               const std::vector<int>& G = groups[(size_t)gi];
-              if (G.size() < 2) continue;
-              if ((int)G.size() > phiMaxDim) { gBig[gi] = 1; continue; }
+              if (G.size() < 2) return;
+              if ((int)G.size() > phiMaxDim) { gBig[gi] = 1; return; }
               // an exception must never cross an OpenMP region; a group that
               // fails numerically simply does nothing, which is the conservative
               // answer anyway
@@ -24518,7 +24512,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
                 }
               }
               std::sort(bag.begin(), bag.end());
-              if (bag.empty()) continue;
+              if (bag.empty()) return;
               // a candidate support must be block-complete, group-feasible and
               // allowed on the dim it lands on
               auto feasible = [&](int k, const std::vector<int>& s) {
@@ -24571,7 +24565,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
               };
               std::vector<arma::vec> thCur;
               double best = scoreOf(sup, &thCur);
-              if (!R_FINITE(best)) continue;
+              if (!R_FINITE(best)) return;
               bool moved = false;
               for (int pass = 0; pass < 20; ++pass) {
                 double bestScore = best;
@@ -24635,7 +24629,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
               // GLS solve, not the per-dim OLS the loop ran, so re-deriving "the
               // same" answer would differ in the last bits and perturb every
               // downstream fit.  Only not writing guarantees the no-op.
-              if (!moved) continue;
+              if (!moved) return;
               for (size_t a = 0; a < G.size(); ++a) {
                 const int k = G[a];
                 if (thCur.size() <= a || thCur[a].n_elem == 0) continue;
@@ -24673,7 +24667,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
               } catch (...) {
                 // leave this group exactly as the per-dim pass left it
               }
-            }
+            });
             nPhiTest += (int)arma::accu(gTest);
             nPhiMove += (int)arma::accu(gMove);
             nPhiClamp += (int)arma::accu(gClamp);
