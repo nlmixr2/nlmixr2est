@@ -17,6 +17,7 @@
 #include <cstring>
 #include <cstdint>
 #include "odeSwap.h"
+#include "nmParallel.h"
 #include "imp.h"
 #include "np.h"
 #include "rxomp.h"
@@ -5981,28 +5982,9 @@ void innerOpt() {
     // mixture-safe. Non-mixture models (nMix == 1) keep the single fully
     // parallel subject loop.
     for (int jMix = 0; jMix < nMix; jMix++) {
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(cores) schedule(dynamic) if(_doParallel)
-#endif
-      for (int i = 0; i < nsub_orig; i++) {
-        int _id0 = _doParallel ? (foceiOrdId(rx, i) - 1) : i;
-        int _id = _id0 + jMix * nsub_orig;
-#ifdef _OPENMP
-        if (_doParallel) {
-          setRxThreadId(omp_get_thread_num());
-          try {
-            innerOptId(_id);
-          } catch (...) {
-            inds_focei[_id].parErrorNoEta = 1;
-          }
-          setRxThreadId(-1);
-        } else {
-#endif
-          innerOptId(_id);
-#ifdef _OPENMP
-        }
-#endif
-      }
+      nmForEachSubject(rx, nsub_orig, cores, _doParallel,
+                       [&](int base) { innerOptId(base + jMix * nsub_orig); },
+                       [&](int base) { inds_focei[base + jMix * nsub_orig].parErrorNoEta = 1; });
     }
     _innerParallel.store(0, std::memory_order_release);
     if (_doParallel) {
@@ -11113,15 +11095,9 @@ static void foceiSInnerAll(int slot, std::vector<int> &res) {
     std::fill(ok.begin(), ok.end(), 0);
     if (doParallel) sortIds(rx, 2);
     _innerParallel.store(1, std::memory_order_release);
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
-#endif
-    for (int i = 0; i < nsub; i++) {
-      int gid = doParallel ? (foceiOrdId(rx, i) - 1) : i;
-      setRxThreadId(omp_get_thread_num());
+    nmForEachSubject(rx, nsub, cores, doParallel, [&](int gid) {
       ok[(size_t)gid] = innerOpt1(gid + m*nsub, slot);
-      setRxThreadId(-1);
-    }
+    });
     _innerParallel.store(0, std::memory_order_release);
     if (doParallel) sortIds(rx, 0);
     for (int i = 0; i < nsub; ++i) if (!ok[(size_t)i]) res[(size_t)i] = 0;
@@ -21676,15 +21652,10 @@ extern "C" int nlmixr2FoceiCondBatch(const double *etaIn, int nid, int neta,
       const int nsub = (int)getRxNsub(rx);
       const int nMix = op_focei.mixIdxN + 1;
       for (int m = 0; m < nMix; ++m) {
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
-#endif
-        for (int ii = 0; ii < nsub; ++ii) {
-          int id = (doParallel ? (foceiOrdId(rx, ii) - 1) : ii) + m * nsub;
-          foceiCondEnterThread(doParallel);
-          bad[id] = foceiCondBatchOne(id, etaIn, neta, omInv, value, grad);
-          foceiCondLeaveThread(doParallel);
-        }
+        nmForEachSubject(rx, nsub, cores, doParallel, [&](int base) {
+          bad[base + m * nsub] =
+            foceiCondBatchOne(base + m * nsub, etaIn, neta, omInv, value, grad);
+        });
       }
     }
     int nbad = 0;
