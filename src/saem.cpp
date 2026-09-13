@@ -552,6 +552,22 @@ static inline void _saemOpt(int n, double *pxmin) {
   }
 }
 
+// Run the residual-error optimizer, unless the stochastic-approximation gain is frozen
+// at zero.  Every endpoint's M-step writes this result back as
+//     x = x + pas(kiter)*(g(pxmin) - x),
+// so where pas(kiter) is zero -- the dedicated SA covariance phase, which holds theta at
+// theta_hat while the MCMC E-step resimulates phi -- the optimization is discarded in
+// full.  Seeding pxmin from the start point (_saemStart, the very values _saemOpt itself
+// would start from) reproduces that write exactly: 0*(g(start) - x) is 0 for finite
+// g(start), so x is left at x.  n == 0 writes nothing, matching _saemOpt's own no-op.
+static inline void _saemOptOrSkip(int n, double *pxmin, bool gainFrozen) {
+  if (gainFrozen) {
+    for (int i = 0; i < n; i++) pxmin[i] = _saemStart[i];
+    return;
+  }
+  _saemOpt(n, pxmin);
+}
+
 extern "C" SEXP _saemResidF(SEXP v) {
   SEXP ret = PROTECT(Rf_allocVector(REALSXP, 1));
   _saemFn(REAL(v),REAL(ret));
@@ -3566,6 +3582,9 @@ public:
         Gamma2_phi0=diagmat(dGamma2_phi0);                         //CHK
       }
       //CHECK the following seg on b & yptr & fptr
+      // SA covariance phase (covMethod="sa"): the gain is frozen at zero, so each
+      // endpoint's residual-error optimization below is discarded.  See _saemOptOrSkip().
+      bool residGainFrozen = (pas(kiter) == 0.0);
       // general log-likelihood (distribution==4): no residual error params to update
       if (distribution != 4)
       for(int b=0; b<nendpnt; ++b) {
@@ -3648,7 +3667,7 @@ public:
             _saemFn = obj;
             _saemStep = step;
             _saemStart=start;
-            _saemOpt(n, pxmin);
+            _saemOptOrSkip(n, pxmin, residGainFrozen);
             // Adjust back
             if (kiter > (unsigned int)(nb_fixResid)) {
               int curi = 0;
@@ -3727,7 +3746,7 @@ public:
             _saemStep = step;
             _saemStart = start;
             _saemFn = objC;
-            _saemOpt(n, pxmin);
+            _saemOptOrSkip(n, pxmin, residGainFrozen);
             // REprintf("\tares: %f bres: %f cres: %f\n", pxmin[0], pxmin[1], pxmin[2]);
             if (kiter > (unsigned int)(nb_fixResid)) {
               int curi = 0;
@@ -3796,7 +3815,7 @@ public:
             _saemStep = step;
             _saemStart = start;
             _saemFn = objD;
-            _saemOpt(n, pxmin);
+            _saemOptOrSkip(n, pxmin, residGainFrozen);
             if (kiter > (unsigned int)(nb_fixResid)) {
               int curi = 0;
               if (resFixed[offsetR] == 0) {
@@ -3860,7 +3879,7 @@ public:
             _saemStep = step;
             _saemStart = start;
             _saemFn = objE;
-            _saemOpt(n, pxmin);
+            _saemOptOrSkip(n, pxmin, residGainFrozen);
             if (kiter > (unsigned int)(nb_fixResid)) {
               int curi = 0;
               if (resFixed[offsetR] == 0) {
@@ -3925,7 +3944,7 @@ public:
             _saemStep = step;
             _saemStart = start;
             _saemFn = objF;
-            _saemOpt(n, pxmin);
+            _saemOptOrSkip(n, pxmin, residGainFrozen);
             if (kiter > (unsigned int)(nb_fixResid)) {
               int curi = 0;
               if (resFixed[offsetR] == 0) {
@@ -3998,7 +4017,7 @@ public:
             _saemStep = step;
             _saemStart = start;
             _saemFn = objG;
-            _saemOpt(n, pxmin);
+            _saemOptOrSkip(n, pxmin, residGainFrozen);
             if (kiter > (unsigned int)(nb_fixResid)) {
               int curi = 0;
               if (resFixed[offsetR] == 0) {
@@ -4076,7 +4095,7 @@ public:
             _saemStep = step;
             _saemStart = start;
             _saemFn = objH;
-            _saemOpt(n, pxmin);
+            _saemOptOrSkip(n, pxmin, residGainFrozen);
             if (kiter > (unsigned int)(nb_fixResid)) {
               int curi = 0;
               if (resFixed[offsetR] == 0) {
@@ -4162,7 +4181,7 @@ public:
             _saemStep = step;
             _saemStart = start;
             _saemFn = objI;
-            _saemOpt(n, pxmin);
+            _saemOptOrSkip(n, pxmin, residGainFrozen);
             if (kiter > (unsigned int)(nb_fixResid)) {
               int curi = 0;
               if (resFixed[offsetR] == 0) {
