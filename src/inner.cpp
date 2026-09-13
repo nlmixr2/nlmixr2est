@@ -1184,6 +1184,22 @@ static inline int getRxId(int id) {
   return id % getRxNsub(rx);
 }
 
+// Position -> subject id for the per-subject parallel loops.
+//
+// rx->ordId is a permutation of the nsub*nsim subject-SOLVES, written by
+// rxode2's sortIds().  Every loop here walks SUBJECTS and bounds itself by
+// getRxNsub(rx), so the permutation means what those loops read it as only
+// when there is exactly one simulation per subject.  With nsim > 1 its first
+// nsub entries are an arbitrary subset of 1..nsub*nsim: reading them would
+// visit some subjects twice, skip others, and index the per-subject arrays
+// (inds_focei, ebes, Hb, ...) past nsub.  Fall back to the canonical order
+// there -- unordered is slower, mixed up is wrong.
+//
+// Returns a 1-BASED id, like rxode2 getOrdId(); callers subtract one.
+static inline int foceiOrdId(rx_solve *rxIn, int pos) {
+  return (getRxNsim(rxIn) == 1) ? getOrdId(rxIn, pos) : pos + 1;
+}
+
 // Per-subject offsets into llikObsFull.  Unlike the other per-subject blocks,
 // llikObsFull is handed to R as one contiguous block in record order, so its
 // offsets must follow the subject order rather than the (backwards) order the
@@ -5969,7 +5985,7 @@ void innerOpt() {
 #pragma omp parallel for num_threads(cores) schedule(dynamic) if(_doParallel)
 #endif
       for (int i = 0; i < nsub_orig; i++) {
-        int _id0 = _doParallel ? (getOrdId(rx, i) - 1) : i;
+        int _id0 = _doParallel ? (foceiOrdId(rx, i) - 1) : i;
         int _id = _id0 + jMix * nsub_orig;
 #ifdef _OPENMP
         if (_doParallel) {
@@ -11101,7 +11117,7 @@ static void foceiSInnerAll(int slot, std::vector<int> &res) {
 #pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
 #endif
     for (int i = 0; i < nsub; i++) {
-      int gid = doParallel ? (getOrdId(rx, i) - 1) : i;
+      int gid = doParallel ? (foceiOrdId(rx, i) - 1) : i;
       setRxThreadId(omp_get_thread_num());
       ok[(size_t)gid] = innerOpt1(gid + m*nsub, slot);
       setRxThreadId(-1);
@@ -11304,7 +11320,7 @@ int foceiS(double *theta, Environment e, bool &hasZero){
 #pragma omp parallel for num_threads(_cores) schedule(dynamic) if(_doParallel)
 #endif
       for (int _i = 0; _i < _nsub; _i++) {
-        int _gid = _doParallel ? (getOrdId(rx, _i) - 1) : _i;
+        int _gid = _doParallel ? (foceiOrdId(rx, _i) - 1) : _i;
         focei_ind *fIndL = &(inds_focei[_gid]);
         fIndL->thetaGrad[cpar] = NA_REAL;
         // Set thread id for windows
@@ -11353,7 +11369,7 @@ int foceiS(double *theta, Environment e, bool &hasZero){
 #pragma omp parallel for num_threads(_cores) schedule(dynamic) if(_doParallel)
 #endif
         for (int _i = 0; _i < _nsub; _i++) {
-          int _gid = _doParallel ? (getOrdId(rx, _i) - 1) : _i;
+          int _gid = _doParallel ? (foceiOrdId(rx, _i) - 1) : _i;
           focei_ind *fIndL = &(inds_focei[_gid]);
           if (ISNA(fIndL->thetaGrad[cpar])) {
             setRxThreadId(omp_get_thread_num());
@@ -15032,7 +15048,7 @@ static void vaeInnerLikCore(const arma::mat& etaMat, int cores, bool grad, bool 
 #pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
 #endif
     for (int i = 0; i < nsub; ++i) {
-      int base = doParallel ? (getOrdId(rx, i) - 1) : i;
+      int base = doParallel ? (foceiOrdId(rx, i) - 1) : i;
 #ifdef _OPENMP
       if (doParallel) setRxThreadId(omp_get_thread_num());
 #endif
@@ -16919,7 +16935,7 @@ static void outerSolveFill(int slot, rxSolveF *fns,
 #pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
 #endif
   for (int i = 0; i < (subject < 0 ? nsub : 1); ++i) {
-    int id = subject >= 0 ? subject : (doParallel ? (getOrdId(rx, i) - 1) : i);
+    int id = subject >= 0 ? subject : (doParallel ? (foceiOrdId(rx, i) - 1) : i);
 #ifdef _OPENMP
     if (doParallel) setRxThreadId(omp_get_thread_num());
 #endif
@@ -17515,7 +17531,7 @@ static bool llHblockFill(bool useHess2, const FoceiGradPooledSetup &G,
 #pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
 #endif
   for (int i = 0; i < nsub; ++i) {
-    int id = doParallel ? (getOrdId(rx, i) - 1) : i;
+    int id = doParallel ? (foceiOrdId(rx, i) - 1) : i;
 #ifdef _OPENMP
     if (doParallel) setRxThreadId(omp_get_thread_num());
 #endif
@@ -19233,7 +19249,7 @@ void npMixEMUpdate(const arma::mat& etaPoints, const arma::vec& lam, int cores) 
 #pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
 #endif
     for (int i = 0; i < nsub; ++i) {
-      int base = doParallel ? (getOrdId(rx, i) - 1) : i;
+      int base = doParallel ? (foceiOrdId(rx, i) - 1) : i;
 #ifdef _OPENMP
       if (doParallel) setRxThreadId(omp_get_thread_num());
 #endif
@@ -19313,7 +19329,7 @@ void npbSampleMixProbs(const arma::mat& subEta, double alpha0, uint32_t seed) {
 #pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
 #endif
   for (int i = 0; i < nsub; ++i) {
-    int base = doParallel ? (getOrdId(rx, i) - 1) : i;
+    int base = doParallel ? (foceiOrdId(rx, i) - 1) : i;
 #ifdef _OPENMP
     if (doParallel) setRxThreadId(omp_get_thread_num());
 #endif
@@ -19399,7 +19415,7 @@ void npBuildPsiCore(const arma::mat& etaPoints, int cores, arma::mat& psi) {
 #pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
 #endif
     for (int i = 0; i < nsub; ++i) {
-      int base = doParallel ? (getOrdId(rx, i) - 1) : i;
+      int base = doParallel ? (foceiOrdId(rx, i) - 1) : i;
 #ifdef _OPENMP
       if (doParallel) setRxThreadId(omp_get_thread_num());
 #endif
@@ -19444,7 +19460,7 @@ void npbSupportMHContrib(const std::vector<int>& z, const std::vector<char>& occ
 #pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
 #endif
   for (int i = 0; i < nsub; ++i) {
-    int base = doParallel ? (getOrdId(rx, i) - 1) : i;
+    int base = doParallel ? (foceiOrdId(rx, i) - 1) : i;
 #ifdef _OPENMP
     if (doParallel) setRxThreadId(omp_get_thread_num());
 #endif
@@ -19508,7 +19524,7 @@ void npBuildPsiCoreScaled(const arma::mat& etaPoints, int cores, double gamma,
 #pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
 #endif
     for (int i = 0; i < nsub; ++i) {
-      int base = doParallel ? (getOrdId(rx, i) - 1) : i;
+      int base = doParallel ? (foceiOrdId(rx, i) - 1) : i;
 #ifdef _OPENMP
       if (doParallel) setRxThreadId(omp_get_thread_num());
 #endif
@@ -19576,7 +19592,7 @@ void npFreezeBuild(const arma::mat& etaPoints, int cores) {
 #pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
 #endif
     for (int i = 0; i < nsub; ++i) {
-      int base = doParallel ? (getOrdId(rx, i) - 1) : i;
+      int base = doParallel ? (foceiOrdId(rx, i) - 1) : i;
 #ifdef _OPENMP
       if (doParallel) setRxThreadId(omp_get_thread_num());
 #endif
@@ -19617,7 +19633,7 @@ void npFreezePsiScaled(const arma::mat& etaPoints, int cores, arma::mat& psi, do
 #pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
 #endif
     for (int i = 0; i < nsub; ++i) {
-      int base = doParallel ? (getOrdId(rx, i) - 1) : i;
+      int base = doParallel ? (foceiOrdId(rx, i) - 1) : i;
 #ifdef _OPENMP
       if (doParallel) setRxThreadId(omp_get_thread_num());
 #endif
@@ -20169,7 +20185,7 @@ static double adviElboGradCore(NumericMatrix mu, NumericMatrix omega, NumericVec
 #pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
 #endif
   for (int ii = 0; ii < nsub; ++ii) {
-    int i = doParallel ? (getOrdId(rx, ii) - 1) : ii;
+    int i = doParallel ? (foceiOrdId(rx, ii) - 1) : ii;
 #ifdef _OPENMP
     if (doParallel) setRxThreadId(omp_get_thread_num());
 #endif
@@ -20485,7 +20501,7 @@ static double adviElboGradCoreFR(NumericMatrix mu, NumericMatrix Lpack, NumericV
 #pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
 #endif
   for (int ss = 0; ss < nsub; ++ss) {
-    int s = doParallel ? (getOrdId(rx, ss) - 1) : ss;
+    int s = doParallel ? (foceiOrdId(rx, ss) - 1) : ss;
 #ifdef _OPENMP
     if (doParallel) setRxThreadId(omp_get_thread_num());
 #endif
@@ -21321,7 +21337,7 @@ NumericVector foceiLikEval_(NumericMatrix etaMat, int cores, int retType) {
 #pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
 #endif
     for (int i = 0; i < nsub; ++i) {
-      int base = doParallel ? (getOrdId(rx, i) - 1) : i;
+      int base = doParallel ? (foceiOrdId(rx, i) - 1) : i;
 #ifdef _OPENMP
       if (doParallel) setRxThreadId(omp_get_thread_num());
 #endif
@@ -21664,7 +21680,7 @@ extern "C" int nlmixr2FoceiCondBatch(const double *etaIn, int nid, int neta,
 #pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
 #endif
         for (int ii = 0; ii < nsub; ++ii) {
-          int id = (doParallel ? (getOrdId(rx, ii) - 1) : ii) + m * nsub;
+          int id = (doParallel ? (foceiOrdId(rx, ii) - 1) : ii) + m * nsub;
           foceiCondEnterThread(doParallel);
           bad[id] = foceiCondBatchOne(id, etaIn, neta, omInv, value, grad);
           foceiCondLeaveThread(doParallel);
@@ -21762,7 +21778,7 @@ extern "C" int nlmixr2FoceiCondThetaGrad(const double *etaIn, int nid, int neta,
 #pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
 #endif
         for (int ii = 0; ii < nsub; ++ii) {
-          int id = (doParallel ? (getOrdId(rx, ii) - 1) : ii) + m * nsub;
+          int id = (doParallel ? (foceiOrdId(rx, ii) - 1) : ii) + m * nsub;
           foceiCondEnterThread(doParallel);
           bad[id] = foceiCondThetaGradOne(id, etaIn, neta, ntheta, nSens,
                                           dTheta);
@@ -21964,7 +21980,7 @@ extern "C" int nlmixr2FoceiCondBatchThetaGrad(const double *etaIn, int nid,
 #pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
 #endif
         for (int ii = 0; ii < nsub; ++ii) {
-          int id = (doParallel ? (getOrdId(rx, ii) - 1) : ii) + m * nsub;
+          int id = (doParallel ? (foceiOrdId(rx, ii) - 1) : ii) + m * nsub;
           foceiCondEnterThread(doParallel);
           bad[id] = foceiCondBatchThetaGradOne(id, etaIn, neta, ntheta,
                                                nSens, omInv, value, gradEta,
