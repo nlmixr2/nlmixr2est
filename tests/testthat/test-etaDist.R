@@ -46,7 +46,7 @@ nmTest({
     ## with no data that warns ("need data") and leaves the starting values
     ## alone.  Harmless, but this test is about the EXPANSION, so turn the warm
     ## start off rather than assert around its warning.
-    .r <- nlmixr2est:::.preProcessEtaDist(
+    .r <- .preProcessEtaDist(
       rxode2::rxUiDecompress(rxode2::rxode2(.u)), "focei", NULL,
       list(etaDistWarmStart = FALSE))
     expect_true(is.list(.r))
@@ -69,7 +69,7 @@ nmTest({
         cp ~ add(add.sd)
       })
     }
-    expect_null(nlmixr2est:::.preProcessEtaDist(.p(), "focei", NULL, NULL))
+    expect_null(.preProcessEtaDist(.p(), "focei", NULL, NULL))
   })
 
   test_that("the expansion hook runs before the bounded transform", {
@@ -87,7 +87,7 @@ nmTest({
     ## the FOCEi family, posthoc and simulation do
     for (.m in c("focei", "foce", "fo", "laplace", "agq", "imp", "impmap",
                  "saem", "posthoc", "rxSolve", "simulate")) {
-      expect_true(nlmixr2est:::.isEtaDistMethod(.m), info=.m)
+      expect_true(.isEtaDistMethod(.m), info=.m)
     }
     ## saem does too.  A declared random effect has no `theta + eta` form, so
     ## it is carried through `nonMuEtas` and sampled like any other non-mu
@@ -95,21 +95,21 @@ nmTest({
     ## latents were filtered out of the set that mu-cov-downgrade records into
     ## `nonMuEtas` (to silence a warning), which left saem with no parameter
     ## for them at all.
-    expect_true(nlmixr2est:::.isEtaDistMethod("saem"))
+    expect_true(.isEtaDistMethod("saem"))
     ## vae does too, and the ELBO needed no change for it: the expansion leaves
     ## the LATENT standard normal (`rxz.* ~ fix(1)`, block off-diagonals
     ## dropped), which is exactly what the prior term and the KL are written
     ## for, while the non-normality sits in a decoder line inside the inner
     ## problem.  The old refusal was on the reading that its ELBO "hardcodes
     ## the normal family"; what it hardcodes is a normal LATENT, correctly.
-    expect_true(nlmixr2est:::.isEtaDistMethod("vae"))
+    expect_true(.isEtaDistMethod("vae"))
     ## a nonparametric random effect distribution contradicts a declared one;
     ## nlme/nls are Gaussian by construction; emvi/fbvi each still need their
     ## own audit before the same claim can be made for them
     for (.m in c("npag", "npb", "nlme", "nls", "emvi", "fbvi")) {
-      expect_false(nlmixr2est:::.isEtaDistMethod(.m), info=.m)
+      expect_false(.isEtaDistMethod(.m), info=.m)
     }
-    expect_false(nlmixr2est:::.isEtaDistMethod("notAMethod"))
+    expect_false(.isEtaDistMethod("notAMethod"))
   })
 
   test_that("an unsupported method refuses before doing any work", {
@@ -118,11 +118,11 @@ nmTest({
     ## pre-processing first -- for est="npag" that is the whole
     ## nonparametric mu-expansion, minutes of it, to arrive at an error
     .t0 <- proc.time()
-    expect_error(nlmixr2est:::.preProcessEtaDist(.declMod(), "npag", NULL, NULL),
+    expect_error(.preProcessEtaDist(.declMod(), "npag", NULL, NULL),
                  "npag")
     expect_lt((proc.time() - .t0)[["elapsed"]], 5)
     ## a supported method is not refused
-    expect_silent(nlmixr2est:::.etaDistRefuse(
+    expect_silent(.etaDistRefuse(
       rxode2::rxUiEtaDists(.declMod()), "focei", NULL))
   })
 
@@ -131,10 +131,10 @@ nmTest({
     assign("ui", .declMod(), envir=.env)
     assign("control", NULL, envir=.env)
     class(.env) <- c("npag", "nlmixr2Est")
-    expect_error(nlmixr2est:::.nlmixr2AssertEtaDist(.env), "eta.cl")
-    expect_error(nlmixr2est:::.nlmixr2AssertEtaDist(.env), "npag")
+    expect_error(.nlmixr2AssertEtaDist(.env), "eta.cl")
+    expect_error(.nlmixr2AssertEtaDist(.env), "npag")
     class(.env) <- c("focei", "nlmixr2Est")
-    expect_silent(nlmixr2est:::.nlmixr2AssertEtaDist(.env))
+    expect_silent(.nlmixr2AssertEtaDist(.env))
   })
 
   test_that("the copula correlation is recovered from the rxCor thetas", {
@@ -142,14 +142,14 @@ nmTest({
     ## rxode2 writes -> back again
     .R <- matrix(c(1, 0.5, 0.5, 1), 2, 2)
     .y <- rxode2:::.rxEtaDistCorToY(.R)
-    .back <- nlmixr2est:::.etaDistCorFromY(c("a", "b"), list(rxCor.b.a=.y[2, 1]))
+    .back <- .etaDistCorFromY(c("a", "b"), list(rxCor.b.a=.y[2, 1]))
     expect_equal(unname(.back), .R, tolerance=1e-10)
     ## and a 3x3, where the parameters are partial correlations
     .R3 <- matrix(c(1, 0.5, 0.2,
                     0.5, 1, -0.3,
                     0.2, -0.3, 1), 3, 3)
     .y3 <- rxode2:::.rxEtaDistCorToY(.R3)
-    .back3 <- nlmixr2est:::.etaDistCorFromY(c("a", "b", "c"),
+    .back3 <- .etaDistCorFromY(c("a", "b", "c"),
                                list(rxCor.b.a=.y3[2, 1],
                                     rxCor.c.a=.y3[3, 1],
                                     rxCor.c.b=.y3[3, 2]))

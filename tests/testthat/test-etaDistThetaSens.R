@@ -52,9 +52,9 @@
 ## expansion would otherwise destroy
 .edTsUi <- function(f) {
   .ui <- rxode2::rxUiDecompress(nlmixr2est::nlmixr2(f))
-  .st <- nlmixr2est:::.etaDistDeclStash(.ui, rxode2::rxUiEtaDists(.ui))
+  .st <- .etaDistDeclStash(.ui, rxode2::rxUiEtaDists(.ui))
   .u2 <- rxode2::rxUiDecompress(rxode2::rxEtaDistExpand(.ui))
-  nlmixr2est:::.etaDistDeclSet(.u2, .st)
+  .etaDistDeclSet(.u2, .st)
   .u2
 }
 
@@ -70,8 +70,8 @@ test_that("the eta-routed construction computes the same columns", {
   ## parameter sensitivities and the two must agree EXACTLY.  That is the
   ## check that this is a reparameterization of one derivative rather than a
   ## different derivative that happens to look similar.
-  .a <- nlmixr2est:::rxUiGet.saemThetaSens(list(.edTsUi(.edTsGammaLinCmt())))
-  .b <- nlmixr2est:::rxUiGet.etaDistThetaSens(list(.edTsUi(.edTsGammaLinCmt())))
+  .a <- rxUiGet.saemThetaSens(list(.edTsUi(.edTsGammaLinCmt())))
+  .b <- rxUiGet.etaDistThetaSens(list(.edTsUi(.edTsGammaLinCmt())))
   expect_false(is.null(.a))
   expect_false(is.null(.b))
   .ca <- .edTsCols(.a$thetaSens)
@@ -93,8 +93,8 @@ test_that("the eta-routed construction needs fewer sensitivity ODEs", {
   ## route one per state per declared ETA.  Two states, two declared etas and
   ## five structural thetas gives 4 against 10.
   .u <- .edTsUi(.edTsGammaOde())
-  .a <- nlmixr2est:::rxUiGet.saemThetaSens(list(.u))
-  .b <- nlmixr2est:::rxUiGet.etaDistThetaSens(list(.edTsUi(.edTsGammaOde())))
+  .a <- rxUiGet.saemThetaSens(list(.u))
+  .b <- rxUiGet.etaDistThetaSens(list(.edTsUi(.edTsGammaOde())))
   expect_false(is.null(.a))
   expect_false(is.null(.b))
   .nOde <- function(txt) {
@@ -117,5 +117,5 @@ test_that("it declines, rather than guessing, when nothing is declared", {
             linCmt() ~ add(add.sd) })
   }
   .ui <- rxode2::rxUiDecompress(nlmixr2est::nlmixr2(.one))
-  expect_null(nlmixr2est:::rxUiGet.etaDistThetaSens(list(.ui)))
+  expect_null(rxUiGet.etaDistThetaSens(list(.ui)))
 })

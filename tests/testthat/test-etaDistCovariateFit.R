@@ -275,7 +275,7 @@ nmTest({
   }
 
   test_that("a covariate is added to the requested role's anchor", {
-    .u <- nlmixr2est:::.etaDistAddCovariate(
+    .u <- .etaDistAddCovariate(
       suppressMessages(nlmixr2est::nlmixr2(.edcBase)),
       "eta.cl", "rate", "WT", shape = "power", center = 70)
     .ln <- vapply(.u$lstExpr, function(.z) paste(deparse(.z), collapse = " "),
@@ -300,15 +300,15 @@ nmTest({
   test_that(".etaDistAddCovariate refuses what it cannot do", {
     .u <- suppressMessages(nlmixr2est::nlmixr2(.edcBase))
     # a role the family does not have
-    expect_error(nlmixr2est:::.etaDistAddCovariate(.u, "eta.cl", "df", "WT"),
+    expect_error(.etaDistAddCovariate(.u, "eta.cl", "df", "WT"),
                  "has no role")
     # not a declared random effect
-    expect_error(nlmixr2est:::.etaDistAddCovariate(.u, "eta.nope", "rate", "WT"),
+    expect_error(.etaDistAddCovariate(.u, "eta.nope", "rate", "WT"),
                  "not a declared random effect")
     # the same covariate twice on the same role
-    .u2 <- nlmixr2est:::.etaDistAddCovariate(.u, "eta.cl", "rate", "WT",
+    .u2 <- .etaDistAddCovariate(.u, "eta.cl", "rate", "WT",
                                              center = 70)
-    expect_error(nlmixr2est:::.etaDistAddCovariate(.u2, "eta.cl", "rate", "WT",
+    expect_error(.etaDistAddCovariate(.u2, "eta.cl", "rate", "WT",
                                                    center = 70),
                  "already")
   })
@@ -320,7 +320,7 @@ nmTest({
     # into it.  Measured on the full 120-subject arm: -0.6010 against the
     # hand-written mean-scale model's +0.6020, same objective (157.79).
     .d <- .edT5Data(bWT = 0.75)
-    .u <- nlmixr2est:::.etaDistAddCovariate(
+    .u <- .etaDistAddCovariate(
       suppressMessages(nlmixr2est::nlmixr2(.edT5ModelBounded())),
       "eta.v1", "rate", "WT", shape = "power", center = 70)
     .f <- suppressMessages(suppressWarnings(

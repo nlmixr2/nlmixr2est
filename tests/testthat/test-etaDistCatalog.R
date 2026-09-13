@@ -28,27 +28,27 @@ test_that("the family name -> code table is exactly what the C++ #defines assume
   expect_identical(.t$name, names(.expect))
   # and the code each family resolves to is its position in that list
   .got <- vapply(names(.expect),
-                 function(.n) nlmixr2est:::.etaDistFamilyCode(str2lang(paste0(.n, "()"))),
+                 function(.n) .etaDistFamilyCode(str2lang(paste0(.n, "()"))),
                  integer(1))
   expect_identical(.got, .expect)
 })
 
 test_that("an unknown family takes code 0 and falls back to the R path", {
-  expect_identical(nlmixr2est:::.etaDistFamilyCode(str2lang("dNotAFamily()")), 0L)
+  expect_identical(.etaDistFamilyCode(str2lang("dNotAFamily()")), 0L)
 })
 
 test_that("roles come back in the family's own argument order", {
   .edCat()
-  expect_identical(nlmixr2est:::.etaDistRoles(str2lang("dgamma()")),
+  expect_identical(.etaDistRoles(str2lang("dgamma()")),
                    c("shape", "rate"))
-  expect_identical(nlmixr2est:::.etaDistRoles(str2lang("dnorm()")),
+  expect_identical(.etaDistRoles(str2lang("dnorm()")),
                    c("location", "scale"))
-  expect_identical(nlmixr2est:::.etaDistRoles(str2lang("studentT()")),
+  expect_identical(.etaDistRoles(str2lang("studentT()")),
                    c("df", "location", "scale"))
   # rate is deliberately NOT folded into scale -- a covariate coefficient has
   # the opposite sign on the two, so grouping them would silently flip a slope
-  expect_identical(nlmixr2est:::.etaDistRoles(str2lang("dexp()")), "rate")
-  expect_identical(nlmixr2est:::.etaDistRoles(str2lang("rayleigh()")), "scale")
+  expect_identical(.etaDistRoles(str2lang("dexp()")), "rate")
+  expect_identical(.etaDistRoles(str2lang("rayleigh()")), "scale")
 })
 
 test_that("every family's roles line up with its parNames and are unique", {
@@ -56,7 +56,7 @@ test_that("every family's roles line up with its parNames and are unique", {
   if (is.null(.t$roles)) testthat::skip("lotri too old to carry roles")
   for (.i in seq_len(nrow(.t))) {
     .nm <- .t$name[.i]
-    .roles <- nlmixr2est:::.etaDistRoles(str2lang(paste0(.nm, "()")))
+    .roles <- .etaDistRoles(str2lang(paste0(.nm, "()")))
     .pars <- strsplit(.t$parNames[.i], ",", fixed = TRUE)[[1]]
     .pars <- .pars[nzchar(.pars)]
     expect_identical(length(.roles), length(.pars),
@@ -70,39 +70,39 @@ test_that("every family's roles line up with its parNames and are unique", {
 
 test_that("role groups map back to argument positions", {
   .edCat()
-  .g <- nlmixr2est:::.etaDistRoleGroups(str2lang("dgamma()"))
+  .g <- .etaDistRoleGroups(str2lang("dgamma()"))
   expect_identical(names(.g), c("shape", "rate"))
   expect_identical(.g$shape, 1L)
   expect_identical(.g$rate, 2L)
-  .g3 <- nlmixr2est:::.etaDistRoleGroups(str2lang("studentT()"))
+  .g3 <- .etaDistRoleGroups(str2lang("studentT()"))
   expect_identical(sort(unlist(.g3, use.names = FALSE)), 1:3)
 })
 
 test_that("unknown roles DECLINE rather than grouping everything together", {
   # the contract callers rely on: character(0)/NULL means "no role information",
   # which must not be read as "one big group"
-  expect_identical(nlmixr2est:::.etaDistRoles(str2lang("dNotAFamily()")),
+  expect_identical(.etaDistRoles(str2lang("dNotAFamily()")),
                    character(0))
-  expect_null(nlmixr2est:::.etaDistRoleGroups(str2lang("dNotAFamily()")))
+  expect_null(.etaDistRoleGroups(str2lang("dNotAFamily()")))
 })
 
 test_that("support endpoints are the roles that refuse a covariate", {
   .edCat()
-  expect_true(all(c("lower", "upper") %in% nlmixr2est:::.etaDistRoleNoCovariate))
+  expect_true(all(c("lower", "upper") %in% .etaDistRoleNoCovariate))
   # dunif is bounds-only, so BOTH of its roles refuse a covariate
-  expect_true(all(nlmixr2est:::.etaDistRoles(str2lang("dunif()")) %in%
-                    nlmixr2est:::.etaDistRoleNoCovariate))
+  expect_true(all(.etaDistRoles(str2lang("dunif()")) %in%
+                    .etaDistRoleNoCovariate))
   # pareto's minimum is a support endpoint; its shape is not
-  .p <- nlmixr2est:::.etaDistRoles(str2lang("pareto()"))
+  .p <- .etaDistRoles(str2lang("pareto()"))
   expect_true("lower" %in% .p)
-  expect_false("shape" %in% nlmixr2est:::.etaDistRoleNoCovariate)
+  expect_false("shape" %in% .etaDistRoleNoCovariate)
 })
 
 test_that("support is reported for picking the warm-start surrogate", {
   .edCat()
-  expect_identical(nlmixr2est:::.etaDistSupport(str2lang("dgamma()")), "positive")
-  expect_identical(nlmixr2est:::.etaDistSupport(str2lang("dnorm()")), "real")
-  expect_identical(nlmixr2est:::.etaDistSupport(str2lang("dbeta()")), "unit")
-  expect_identical(nlmixr2est:::.etaDistSupport(str2lang("dNotAFamily()")),
+  expect_identical(.etaDistSupport(str2lang("dgamma()")), "positive")
+  expect_identical(.etaDistSupport(str2lang("dnorm()")), "real")
+  expect_identical(.etaDistSupport(str2lang("dbeta()")), "unit")
+  expect_identical(.etaDistSupport(str2lang("dNotAFamily()")),
                    NA_character_)
 })

@@ -18,10 +18,10 @@ nmTest({
   test_that("impmapControl(mceta=) survives the focei down-conversion", {
     # A pure control-level assertion, so it fails on the mapping rather than on
     # anything a fit happens to do.
-    expect_false("mceta" %in% nlmixr2est:::.impmapIsControlNames)
+    expect_false("mceta" %in% .impmapIsControlNames)
     .e <- new.env(parent = emptyenv())
     .e$impmapControl <- impmapControl(mceta = 7L)
-    .fc <- nlmixr2est:::.impmapControlToFoceiControl(.e, assign = FALSE)
+    .fc <- .impmapControlToFoceiControl(.e, assign = FALSE)
     expect_true("mceta" %in% names(.fc))
     expect_equal(.fc$mceta, 7L)
     # and the down-converted list is still something foceiControl() accepts
@@ -37,7 +37,7 @@ nmTest({
     # defaults agree and wrong whenever they do not -- etaDistCorSuff is TRUE on
     # foceiControl() and FALSE on impmapControl(), so stripping it handed the
     # output path the opposite of what an imp user asked for.
-    .strip <- nlmixr2est:::.impmapIsControlNames
+    .strip <- .impmapIsControlNames
     .fc <- names(formals(nlmixr2est::foceiControl))
     # flatEtaIdx is the one deliberate exception: it is a foceiControl argument,
     # but the value on an impmap control is imp's runtime index map rather than

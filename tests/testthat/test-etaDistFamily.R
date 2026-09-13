@@ -36,7 +36,7 @@ nmTest({
   test_that("every catalog family is in the C++ dispatch", {
     expect_true(all(.tab$name %in% names(.ref)))
     for (.i in seq_len(nrow(.tab))) {
-      expect_false(is.null(nlmixr2est:::rxEtaDistTest_(.i, .u, .ref[[.tab$name[.i]]]$a)),
+      expect_false(is.null(rxEtaDistTest_(.i, .u, .ref[[.tab$name[.i]]]$a)),
                    info = .tab$name[.i])
     }
   })
@@ -44,7 +44,7 @@ nmTest({
   test_that("the C++ quantile and log density match R for every family", {
     for (.i in seq_len(nrow(.tab))) {
       .nm <- .tab$name[.i]; .r <- .ref[[.nm]]
-      .got <- nlmixr2est:::rxEtaDistTest_(.i, .u, .r$a)
+      .got <- rxEtaDistTest_(.i, .u, .r$a)
       .qr <- .r$q(.u, .r$a)
       expect_equal(.got$q, .qr, tolerance = 1e-8, info = paste(.nm, "quantile"))
       expect_equal(.got$logd, .r$d(.qr, .r$a), tolerance = 1e-8,
@@ -55,10 +55,10 @@ nmTest({
 
   test_that("the family code is the catalog row, and unknown falls back", {
     for (.i in seq_len(nrow(.tab))) {
-      expect_equal(nlmixr2est:::.etaDistFamilyCode(paste0(.tab$name[.i], "(1,2)")),
+      expect_equal(.etaDistFamilyCode(paste0(.tab$name[.i], "(1,2)")),
                    .i, info = .tab$name[.i])
     }
     # anything not in the catalog gets 0, which selects the R fallback
-    expect_equal(nlmixr2est:::.etaDistFamilyCode("dnotafamily(1,2)"), 0L)
+    expect_equal(.etaDistFamilyCode("dnotafamily(1,2)"), 0L)
   })
 })

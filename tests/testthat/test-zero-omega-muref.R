@@ -35,7 +35,7 @@ nmTest({
   }
 
   test_that("a mu-referenced variance declared as zero is detected", {
-    expect_setequal(nlmixr2est:::.zeroOmegaMuRefEtas(.helperMod()),
+    expect_setequal(.zeroOmegaMuRefEtas(.helperMod()),
                     c("eta.mu.tka", "eta.mu.tv"))
   })
 
@@ -56,7 +56,7 @@ nmTest({
         linCmt() ~ add(add.sd)
       })
     }
-    expect_equal(length(nlmixr2est:::.zeroOmegaMuRefEtas(.m())), 0L)
+    expect_equal(length(.zeroOmegaMuRefEtas(.m())), 0L)
   })
 
   test_that("saem moves the theta and still reports the declared zero", {

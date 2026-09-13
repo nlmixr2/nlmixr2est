@@ -18,7 +18,7 @@ nmTest({
   }
 
   test_that("est=vae declares IOV support and theta+eta+iov stays mu-referenced", {
-    expect_true(isTRUE(attr(nlmixr2est:::nlmixr2Est.vae, "iov")))
+    expect_true(isTRUE(attr(nlmixr2Est.vae, "iov")))
     ## the id-level eta pairs with its theta even with the extra iov term
     ui <- rxode2::assertRxUi(.vaeIovMod())
     m <- .foceiEtaThetaMap(ui)
@@ -30,10 +30,10 @@ nmTest({
     skip_on_cran()
     dat <- nlmixr2data::theo_md; dat$occ <- 1L; dat$occ[dat$TIME >= 144] <- 2L
     ## the IOV hook produces per-occasion fixed-variance(1) free etas
-    res <- nlmixr2est:::.uiApplyIov(rxode2::assertRxUi(.vaeIovMod()), "vae", dat, vaeControl())
+    res <- .uiApplyIov(rxode2::assertRxUi(.vaeIovMod()), "vae", dat, vaeControl())
     .eta <- res$ui$iniDf[!is.na(res$ui$iniDf$neta1), ]
     expect_true(all(.eta$fix[grepl("^rx\\.iov", .eta$name)]))            # variance fixed
-    prep <- nlmixr2est:::.vaeDataPrep(res$ui, dat)
+    prep <- .vaeDataPrep(res$ui, dat)
     expect_true(all(prep$isFree[grepl("^rx\\.iov", prep$etaNames)]))     # theta forced to 0
 
     ctl <- vaeControl(itersBurnIn = 15L, iters = 40L, klWarmup = 12L, gammaIter = 25L,

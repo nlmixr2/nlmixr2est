@@ -20,7 +20,7 @@ nmTest({
     .m <- exp(1.63)
     .b <- .a / .m
     .d <- sprintf("dgamma(shape = %.17g, rate = %.17g)", .a, .b)
-    .mv <- nlmixr2est:::.etaDistMoments(.d, list(), nlmixr2est:::.etaDistGh(60L))
+    .mv <- .etaDistMoments(.d, list(), .etaDistGh(60L))
     expect_false(is.null(.mv))
     # arithmetic pair, unchanged behaviour
     expect_equal(.mv[["mean"]], .m, tolerance = 1e-3)
@@ -36,9 +36,9 @@ nmTest({
     .w <- 4.2386
     .dist <- "dgamma(shape = 1/exp(lclrv), rate = 1/(exp(lclrv) * exp(lclm)))"
     .start <- c(lclm = 1.5, lclrv = 0.7)
-    .gh <- nlmixr2est:::.etaDistGh(60L)
+    .gh <- .etaDistGh(60L)
 
-    .sol <- nlmixr2est:::.etaDistSolveThetas(
+    .sol <- .etaDistSolveThetas(
       .dist, c("lclm", "lclrv"), .start,
       c(mean = exp(.mu + 0.5 * .w), var = (exp(.w) - 1) * exp(2 * .mu + .w),
         meanlog = .mu, varlog = .w), .gh)
@@ -60,11 +60,11 @@ nmTest({
     # implausible parameter -- which matters, since dist() takes any family and a
     # relative variance of 68 can be honest for some of them
     .dist <- "dgamma(shape = 1/exp(lclrv), rate = 1/(exp(lclrv) * exp(lclm)))"
-    .gh <- nlmixr2est:::.etaDistGh(60L)
+    .gh <- .etaDistGh(60L)
     # mirrors the guard in etaDistInit(): Inf when the family cannot report
     # log-scale moments at all, which is itself a rejection
     .fitTo <- function(v, mu, w) {
-      .mm <- nlmixr2est:::.etaDistMoments(.dist, as.list(v), .gh)
+      .mm <- .etaDistMoments(.dist, as.list(v), .gh)
       if (is.null(.mm) || !all(is.finite(.mm[c("meanlog", "varlog")])) ||
             .mm[["varlog"]] <= 0) return(Inf)
       (.mm[["meanlog"]] - mu)^2 + (log(.mm[["varlog"]] / w))^2

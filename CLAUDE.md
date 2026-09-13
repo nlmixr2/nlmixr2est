@@ -243,6 +243,32 @@ When adding tests for an estimation method, split them by cost:
   `.someInternalFn(...)`. `:::` is unnecessary and CodeFactor's
   `lintr-undesirable_operator_linter` flags it on every PR that introduces one. See
   `b04d89c78` and PR #998 for prior fixes of this exact pattern.
+- **`could not find function ".someInternal"` in a test run means YOUR RUNNER is wrong,
+  not the test.** This is the same fact as the rule above, stated as the symptom,
+  because the symptom is what you will actually meet and it is very convincing.
+  `tests/testthat.R` runs `test_check("nlmixr2est")`, which evaluates every test file
+  in an environment whose parent is the package NAMESPACE, so internals resolve.
+  `testthat::test_dir("tests/testthat", ...)` and `test_file(...)` do NOT: they parent
+  to `globalenv()`, where only exported objects are visible, so every test that calls
+  an internal errors. Measured on one file, same build:
+
+      test_file("test-saem-cov-analytic.R")                              -> 1 error
+      test_file(..., env = new.env(parent = asNamespace("nlmixr2est")))  -> 0 errors
+
+  So when running the suite by hand, ALWAYS pass the namespace-parented env:
+
+      test_dir("tests/testthat", env = new.env(parent = asNamespace("nlmixr2est")), ...)
+
+  Two failure modes this has actually caused here, both expensive:
+  1. Reporting a clean branch as having ~10 failures, and re-deriving that "baseline"
+     against a pristine `origin/main` worktree -- which reproduced the same artifact,
+     because the runner was wrong both times. A baseline taken with a broken runner
+     confirms nothing; it is not an independent check.
+  2. "Fixing" the tests to suit the broken runner by adding `:::` (commits `ae0e13752`,
+     `15a66802f`, `6d267b641`), which violates the rule above and reports the dead
+     assertions it "revived" as a discovery. They were never dead.
+  These errors are also indistinguishable from a genuinely missing function, so check
+  the runner BEFORE concluding a function is missing or a test is broken.
 - `mu2` referencing (`R/mu2.R`) detects and validates mu-referenced parameters; violations produce warnings, not errors, for SAEM
 - IOV (inter-occasion variability) support is in `R/iov.R` with special handling in the mu-referencing hooks
 - The `sharedControl()` function (`R/sharedControl.R`) defines options common across all estimation methods

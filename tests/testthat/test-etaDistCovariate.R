@@ -50,14 +50,14 @@
 ## that only expansion creates, and the stash that only the hook preserves)
 .edcUi <- function(f) {
   .ui <- rxode2::rxUiDecompress(nlmixr2est::nlmixr2(f))
-  .st <- nlmixr2est:::.etaDistDeclStash(.ui, rxode2::rxUiEtaDists(.ui))
+  .st <- .etaDistDeclStash(.ui, rxode2::rxUiEtaDists(.ui))
   .u2 <- rxode2::rxUiDecompress(rxode2::rxEtaDistExpand(.ui))
-  nlmixr2est:::.etaDistDeclSet(.u2, .st)
+  .etaDistDeclSet(.u2, .st)
   .u2
 }
 
-.edcCore <- function(f) nlmixr2est:::.etaDistMstepCore(.edcUi(f))
-.edcInfo <- function(f) nlmixr2est:::.etaDistMstepInfoFocei(.edcUi(f))
+.edcCore <- function(f) .etaDistMstepCore(.edcUi(f))
+.edcInfo <- function(f) .etaDistMstepInfoFocei(.edcUi(f))
 
 .edcPlainCl <- "1/(exp(lclrv)*exp(lclm))"
 .edcCovCl   <- "1/(exp(lclrv)*exp(lclm + bWT*(WT - 70)))"
@@ -119,13 +119,13 @@ test_that("ALL declarations covariate-carrying still stands the M-step down", {
 
 test_that("the warm start NAMES the covariate instead of refusing silently", {
   .ui <- rxode2::rxUiDecompress(nlmixr2est::nlmixr2(.edcModel(.edcCovCl, .edcPlainV1)))
-  expect_warning(.s <- nlmixr2est:::.etaDistSurrogate(.ui), "WT")
+  expect_warning(.s <- .etaDistSurrogate(.ui), "WT")
   expect_null(.s)
 })
 
 test_that("covRef lets the warm start proceed", {
   .ui <- rxode2::rxUiDecompress(nlmixr2est::nlmixr2(.edcModel(.edcCovCl, .edcPlainV1)))
-  expect_silent(.s <- nlmixr2est:::.etaDistSurrogate(.ui, covRef = list(WT = 70)))
+  expect_silent(.s <- .etaDistSurrogate(.ui, covRef = list(WT = 70)))
   expect_false(is.null(.s))
 })
 
@@ -135,20 +135,20 @@ test_that("covRef evaluates the moments AT the reference", {
   .cov <- "dgamma(shape = 1/exp(lclrv), rate = 1/(exp(lclrv)*exp(lclm + bWT*(WT - 70))))"
   .plain <- "dgamma(shape = 1/exp(lclrv), rate = 1/(exp(lclrv)*exp(lclm)))"
   .tv <- list(lclrv = -2.0, lclm = 1.5, bWT = 0.1)
-  .a <- nlmixr2est:::.etaDistMoments(.cov, .tv, covRef = list(WT = 70))
-  .b <- nlmixr2est:::.etaDistMoments(.plain, .tv)
+  .a <- .etaDistMoments(.cov, .tv, covRef = list(WT = 70))
+  .b <- .etaDistMoments(.plain, .tv)
   expect_equal(.a[["mean"]], .b[["mean"]], tolerance = 1e-10)
   expect_equal(.a[["var"]], .b[["var"]], tolerance = 1e-10)
   # and a DIFFERENT reference must move it, or the argument is being dropped
-  .c <- nlmixr2est:::.etaDistMoments(.cov, .tv, covRef = list(WT = 90))
+  .c <- .etaDistMoments(.cov, .tv, covRef = list(WT = 90))
   expect_false(isTRUE(all.equal(.a[["mean"]], .c[["mean"]])))
 })
 
 test_that("a theta is not shadowed by a covariate of the same name", {
   .tv <- list(lclrv = -2.0, lclm = 1.5)
   .plain <- "dgamma(shape = 1/exp(lclrv), rate = 1/(exp(lclrv)*exp(lclm)))"
-  .a <- nlmixr2est:::.etaDistMoments(.plain, .tv)
-  .b <- nlmixr2est:::.etaDistMoments(.plain, .tv, covRef = list(lclm = 99))
+  .a <- .etaDistMoments(.plain, .tv)
+  .b <- .etaDistMoments(.plain, .tv, covRef = list(lclm = 99))
   expect_equal(.a[["mean"]], .b[["mean"]], tolerance = 1e-12)
 })
 
@@ -209,13 +209,13 @@ test_that("the covariate lands on the role anchor, per record", {
 test_that("through the real path, only the plain declaration is held out", {
   skip_on_cran()
   .ui <- rxode2::rxUiDecompress(nlmixr2est::nlmixr2(.edcCovModel()))
-  .st <- nlmixr2est:::.etaDistDeclStash(.ui, rxode2::rxUiEtaDists(.ui))
+  .st <- .etaDistDeclStash(.ui, rxode2::rxUiEtaDists(.ui))
   .e <- rxode2::rxUiDecompress(rxode2::rxEtaDistExpand(.ui))
-  nlmixr2est:::.etaDistDeclSet(.e, .st)
-  .c <- nlmixr2est:::.etaDistMstepCore(.e)
+  .etaDistDeclSet(.e, .st)
+  .c <- .etaDistMstepCore(.e)
   expect_false(is.null(.c))
   expect_identical(.c$hasCov, c(TRUE, FALSE))
-  .i <- nlmixr2est:::.etaDistMstepInfoFocei(.e)
+  .i <- .etaDistMstepInfoFocei(.e)
   expect_false(is.null(.i))
   # the covariate declaration's thetas stay estimable by the outer optimizer
   for (.t in c("lclm", "lclrv", "bWT")) expect_false(.t %in% .i$thetaNames)
@@ -235,30 +235,30 @@ test_that("the M-step warns rather than silently mis-estimating a covariate", {
   # covariate names are passed to it (nSym/rec, already accepted by
   # rxEtaDistLoglikObj), this route must SAY so rather than return a number.
   .ui <- rxode2::rxUiDecompress(nlmixr2est::nlmixr2(.edcModel(.edcCovCl, .edcPlainV1)))
-  .st <- nlmixr2est:::.etaDistDeclStash(.ui, rxode2::rxUiEtaDists(.ui))
+  .st <- .etaDistDeclStash(.ui, rxode2::rxUiEtaDists(.ui))
   .u2 <- rxode2::rxUiDecompress(rxode2::rxEtaDistExpand(.ui))
-  nlmixr2est:::.etaDistDeclSet(.u2, .st)
+  .etaDistDeclSet(.u2, .st)
   rxode2::rxAssignControlValue(.u2, "etaDistMstep", TRUE)
-  expect_warning(nlmixr2est:::.foceiEtaDistSetup(.u2), "covariate coefficient")
-  expect_warning(nlmixr2est:::.foceiEtaDistSetup(.u2), "eta.cl")
-  expect_warning(nlmixr2est:::.foceiEtaDistSetup(.u2), "etaDistMstep=FALSE")
+  expect_warning(.foceiEtaDistSetup(.u2), "covariate coefficient")
+  expect_warning(.foceiEtaDistSetup(.u2), "eta.cl")
+  expect_warning(.foceiEtaDistSetup(.u2), "etaDistMstep=FALSE")
 })
 
 test_that("no covariate means no warning", {
   skip_on_cran()
   .ui <- rxode2::rxUiDecompress(nlmixr2est::nlmixr2(.edcModel(.edcPlainCl, .edcPlainV1)))
-  .st <- nlmixr2est:::.etaDistDeclStash(.ui, rxode2::rxUiEtaDists(.ui))
+  .st <- .etaDistDeclStash(.ui, rxode2::rxUiEtaDists(.ui))
   .u2 <- rxode2::rxUiDecompress(rxode2::rxEtaDistExpand(.ui))
-  nlmixr2est:::.etaDistDeclSet(.u2, .st)
+  .etaDistDeclSet(.u2, .st)
   rxode2::rxAssignControlValue(.u2, "etaDistMstep", TRUE)
   # every declaration usable -> the guard must stay quiet
-  expect_no_warning(nlmixr2est:::.foceiEtaDistSetup(.u2))
+  expect_no_warning(.foceiEtaDistSetup(.u2))
 })
 
 test_that("the argument parser is what cannot see the covariate", {
   # pins the exact mechanism, so a fix is visible here first: the grammar
   # already handles the expression -- only the SYMBOL is unknown
-  .f <- nlmixr2est:::rxEtaDistArgsToThetasTest_
+  .f <- rxEtaDistArgsToThetasTest_
   .plain <- .f(c("1/exp(lclrv)", "1/(exp(lclrv)*exp(lclm))"),
                c("lclrv", "lclm"), c(-2, 1.5), c(11, 2.2))
   expect_false(is.null(.plain))
@@ -287,7 +287,7 @@ test_that("the argument parser is what cannot see the covariate", {
 test_that("the per-record objective recovers a covariate from the EBEs", {
   skip_on_cran()
   set.seed(7)
-  .f <- nlmixr2est:::rxEtaDistLoglikTest_
+  .f <- rxEtaDistLoglikTest_
   .GAMMA <- 13L
   .n <- 4000L; .lclrv <- -2.4; .lclm <- 1.63; .bWT <- 0.75
   .WT <- stats::runif(.n, 40, 100)
@@ -314,7 +314,7 @@ test_that("the per-record objective recovers a covariate from the EBEs", {
 test_that("the objective declines when the covariate symbol is not supplied", {
   # same contract as the parser: an unresolvable symbol falls back rather than
   # guessing, which is what silently cost the covariate before
-  .f <- nlmixr2est:::rxEtaDistLoglikTest_
+  .f <- rxEtaDistLoglikTest_
   .v <- .f(13L, c("1/exp(lclrv)", "1/(exp(lclrv)*exp(lclm + bWT*log(WT/70)))"),
            c("lclrv", "lclm", "bWT"), c(-2.4, 1.63, 0.75),
            matrix(0, nrow = 3L, ncol = 0L), c(1, 2, 3), c(1, 1, 1))
@@ -322,7 +322,7 @@ test_that("the objective declines when the covariate symbol is not supplied", {
 })
 
 test_that("nSym == 0 still works, so no-covariate models are unchanged", {
-  .f <- nlmixr2est:::rxEtaDistLoglikTest_
+  .f <- rxEtaDistLoglikTest_
   .eta <- c(2.0, 3.0, 5.0, 7.0)
   .v <- .f(13L, c("1/exp(lclrv)", "1/(exp(lclrv)*exp(lclm))"),
            c("lclrv", "lclm"), c(-2.4, 1.63),
@@ -434,7 +434,7 @@ test_that("a coarser cadence fires the M-step far less often", {
                                          calcTables = FALSE, etaDistMstep = TRUE,
                                          etaDistEvery = .every)))), silent = TRUE)
     if (inherits(.f, "try-error")) return(NA_integer_)
-    tryCatch(nlmixr2est:::foceiEtaDistN_(), error = function(e) NA_integer_)
+    tryCatch(foceiEtaDistN_(), error = function(e) NA_integer_)
   }
   .n1 <- .fire(1L)
   .n20 <- .fire(20L)
@@ -484,8 +484,8 @@ test_that("a covariate coefficient starting at exactly 0 is warned about", {
     })
   }
   .u <- suppressMessages(nlmixr2est::nlmixr2(.m))
-  .d <- nlmixr2est:::.rxUiEtaDists(.u)
-  expect_warning(nlmixr2est:::.etaDistWarnZeroSlope(.d, .u),
+  .d <- .rxUiEtaDists(.u)
+  expect_warning(.etaDistWarnZeroSlope(.d, .u),
                  "starting at\\s+exactly 0")
 })
 
@@ -506,8 +506,8 @@ test_that("a non-zero coefficient start is not warned about", {
     })
   }
   .u <- suppressMessages(nlmixr2est::nlmixr2(.m))
-  .d <- nlmixr2est:::.rxUiEtaDists(.u)
-  expect_silent(nlmixr2est:::.etaDistWarnZeroSlope(.d, .u))
+  .d <- .rxUiEtaDists(.u)
+  expect_silent(.etaDistWarnZeroSlope(.d, .u))
 })
 
 test_that("a declaration with NO covariate is never warned about", {
@@ -528,8 +528,8 @@ test_that("a declaration with NO covariate is never warned about", {
     })
   }
   .u <- suppressMessages(nlmixr2est::nlmixr2(.m))
-  .d <- nlmixr2est:::.rxUiEtaDists(.u)
-  expect_silent(nlmixr2est:::.etaDistWarnZeroSlope(.d, .u))
+  .d <- .rxUiEtaDists(.u)
+  expect_silent(.etaDistWarnZeroSlope(.d, .u))
 })
 
 
@@ -557,9 +557,9 @@ test_that("the covariate warning says something different per estimator", {
     })
   }
   .u <- suppressMessages(nlmixr2est::nlmixr2(.m))
-  .d <- nlmixr2est:::.rxUiEtaDists(.u)
+  .d <- .rxUiEtaDists(.u)
   .msg <- function(.e) {
-    tryCatch({nlmixr2est:::.etaDistWarnZeroSlope(.d, .u, .e); ""},
+    tryCatch({.etaDistWarnZeroSlope(.d, .u, .e); ""},
              warning = function(w) conditionMessage(w))
   }
   # focei: the zero-start message, and it must mention the retry that fixes it
@@ -598,11 +598,11 @@ test_that("a covariate on both the declaration and the structural model warns", 
     })
   }
   .u <- suppressMessages(nlmixr2est::nlmixr2(.m))
-  .d <- nlmixr2est:::.rxUiEtaDists(.u)
-  expect_warning(nlmixr2est:::.etaDistWarnCovAliased(.d, .u),
+  .d <- .rxUiEtaDists(.u)
+  expect_warning(.etaDistWarnCovAliased(.d, .u),
                  "enters both a declared distribution and the structural")
   # and it names WHERE, so the reader can judge whether the forms differ
-  .w <- tryCatch({nlmixr2est:::.etaDistWarnCovAliased(.d, .u); ""},
+  .w <- tryCatch({.etaDistWarnCovAliased(.d, .u); ""},
                  warning = function(w) conditionMessage(w))
   expect_match(.w, "WT")
   expect_match(.w, "dist(eta.cl)", fixed = TRUE)
@@ -626,8 +626,8 @@ test_that("a covariate on the declaration ALONE does not warn", {
     })
   }
   .u <- suppressMessages(nlmixr2est::nlmixr2(.m))
-  .d <- nlmixr2est:::.rxUiEtaDists(.u)
-  expect_silent(nlmixr2est:::.etaDistWarnCovAliased(.d, .u))
+  .d <- .rxUiEtaDists(.u)
+  expect_silent(.etaDistWarnCovAliased(.d, .u))
 })
 
 test_that("a covariate elsewhere in the model does not warn", {
@@ -649,8 +649,8 @@ test_that("a covariate elsewhere in the model does not warn", {
     })
   }
   .u <- suppressMessages(nlmixr2est::nlmixr2(.m))
-  .d <- nlmixr2est:::.rxUiEtaDists(.u)
-  expect_silent(nlmixr2est:::.etaDistWarnCovAliased(.d, .u))
+  .d <- .rxUiEtaDists(.u)
+  expect_silent(.etaDistWarnCovAliased(.d, .u))
 })
 
 

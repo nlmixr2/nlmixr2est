@@ -70,7 +70,7 @@ nmTest({
     skip_on_cran()
     fit <- suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
                                    foceiControl(sigdig = 4, print = 0L, covMethod = "")))
-    r <- nlmixr2est:::foceiCovAnalytic(fit)
+    r <- foceiCovAnalytic(fit)
     expect_false(is.null(r))
     expect_identical(r$method, "analytic")
     # every population parameter present: 3 theta + 1 sigma + 3 Omega variances
@@ -96,7 +96,7 @@ nmTest({
     # information is legitimately indefinite there, as a brute-force FD Hessian confirms.
     fit <- suppressMessages(nlmixr(.cov_blk_omega, .cov_blk_data(), "focei",
                                    foceiControl(sigdig = 6, print = 0L, covMethod = "")))
-    r <- nlmixr2est:::foceiCovAnalytic(fit)
+    r <- foceiCovAnalytic(fit)
     expect_false(is.null(r))
     expect_identical(r$method, "analytic")             # block Omega via the E-basis derivatives
     expect_true(any(grepl("^cov\\.", r$params)))       # an off-diagonal Omega covariance SE
@@ -128,7 +128,7 @@ nmTest({
                                                 covFull = TRUE)))
     .cov0 <- fit$cov
     .m0 <- fit$covMethod
-    r <- suppressWarnings(nlmixr2est:::foceiCovAnalytic(fit))
+    r <- suppressWarnings(foceiCovAnalytic(fit))
     expect_false(is.null(r))
     expect_false(r$pd)                                 # the point is not a local minimum
     expect_true(anyNA(r$se))
@@ -157,7 +157,7 @@ nmTest({
     }
     fit <- suppressMessages(nlmixr(one.eta, nlmixr2data::theo_sd, "focei",
                                    foceiControl(sigdig = 4, print = 0L, covMethod = "")))
-    r <- nlmixr2est:::foceiCovAnalytic(fit)
+    r <- foceiCovAnalytic(fit)
     expect_false(is.null(r))
     expect_setequal(r$params, c("tcl", "add.sd", "om.eta.cl"))
     expect_true(all(is.finite(r$se)) && all(r$se > 0))
@@ -409,8 +409,8 @@ nmTest({
     expect_equal(as.matrix(fitF$eta[, -1, drop = FALSE]), as.matrix(fitI$eta[, -1, drop = FALSE]))
     # not positive definite on this model+point, so the PD gate warns and leaves fit$cov
     # alone; the R matrix (what this compares) is returned either way
-    rP <- suppressWarnings(nlmixr2est:::foceiCovAnalytic(fitP)); rI <- suppressWarnings(nlmixr2est:::foceiCovAnalytic(fitI))
-    rF <- suppressWarnings(nlmixr2est:::foceiCovAnalytic(fitF))
+    rP <- suppressWarnings(foceiCovAnalytic(fitP)); rI <- suppressWarnings(foceiCovAnalytic(fitI))
+    rF <- suppressWarnings(foceiCovAnalytic(fitF))
     expect_false(is.null(rP)); expect_identical(rP$method, "analytic")
     expect_false(is.null(rI)); expect_identical(rF$method, "analytic")
     .fin <- is.finite(rP$se) & is.finite(rI$se)
@@ -436,7 +436,7 @@ nmTest({
                           interaction = FALSE, foce = "foce+"))))
       .i <- suppressWarnings(suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
              foceiControl(sigdig = sd, print = 0L, covMethod = "", maxOuterIterations = 0L))))
-      .rp <- suppressWarnings(nlmixr2est:::foceiCovAnalytic(.p)); .ri <- suppressWarnings(nlmixr2est:::foceiCovAnalytic(.i))
+      .rp <- suppressWarnings(foceiCovAnalytic(.p)); .ri <- suppressWarnings(foceiCovAnalytic(.i))
       .f <- is.finite(.rp$se) & is.finite(.ri$se)
       c(R = max(abs(.rp$R - .ri$R) / (abs(.ri$R) + 1e-8)),
         se = max(abs(.rp$se[.f] - .ri$se[.f]) / (abs(.ri$se[.f]) + 1e-8)))
@@ -465,7 +465,7 @@ nmTest({
                            interaction = FALSE, foce = "foce+",
                            etaMat = .em, maxInnerIterations = 0L))))
     expect_equal(as.matrix(fitP$eta[, -1, drop = FALSE]), as.matrix(fitI$eta[, -1, drop = FALSE]))
-    rP <- suppressWarnings(nlmixr2est:::foceiCovAnalytic(fitP)); rI <- suppressWarnings(nlmixr2est:::foceiCovAnalytic(fitI))
+    rP <- suppressWarnings(foceiCovAnalytic(fitP)); rI <- suppressWarnings(foceiCovAnalytic(fitI))
     expect_identical(rP$method, "analytic"); expect_identical(rI$method, "analytic")
     expect_lt(max(abs(rP$R - rI$R) / (abs(rI$R) + 1e-8)), 1e-8)
   })
@@ -490,7 +490,7 @@ nmTest({
     for (est in c("focei", "foce")) {
       fit <- suppressMessages(nlmixr(.cov_wang_prop, dat, est,
                                      foceiControl(sigdig = 4, print = 0L, covMethod = "analytic", covFull = TRUE)))
-      r <- nlmixr2est:::foceiCovAnalytic(fit)
+      r <- foceiCovAnalytic(fit)
       expect_false(is.null(r))                                   # in scope, not an FD fallback
       expect_identical(r$method, "analytic")
       expect_setequal(r$params, c("tke", "prop.sd", "om.eta.ke"))
@@ -671,7 +671,7 @@ nmTest({
               cp <- center / v; cp ~ add(add.sd) })
     }
     fitFo <- suppressMessages(nlmixr2(m, nlmixr2data::theo_sd, "fo", foceiControl(sigdig = 4, print = 0L, covMethod = "")))
-    expect_null(nlmixr2est:::foceiCovAnalytic(fitFo))   # not a FOCE cov mislabelled "analytic"
+    expect_null(foceiCovAnalytic(fitFo))   # not a FOCE cov mislabelled "analytic"
   })
 
   test_that("covMethod='analytic' emits an informative message when it falls back to FD", {
@@ -866,7 +866,7 @@ nmTest({
     # one block, so its covariance parameter is not silently dropped from the cov
     Om <- diag(3); Om[2, 3] <- Om[3, 2] <- 1e-12
     idf <- data.frame(neta1 = c(1, 2, 3, 2), neta2 = c(1, 2, 3, 3))
-    blk <- nlmixr2est:::.omegaBlocks(Om, idf) # nolint: undesirable_operator_linter.
+    blk <- .omegaBlocks(Om, idf) # nolint: undesirable_operator_linter.
     expect_length(blk, 2L)
     expect_true(any(vapply(blk, function(b) all(c(2L, 3L) %in% b), logical(1))))
   })
@@ -914,7 +914,7 @@ nmTest({
     expect_false(identical(.covBaseName(fit$covMethod), "analytic"))
     # Do NOT assert the absence of "om." rows: whether the covFull FD cov is ALSO
     # installed turns on the positive-definiteness guard in
-    # nlmixr2est:::.foceiInstallFdFullCov(), and this deliberately over-parameterized model
+    # .foceiInstallFdFullCov(), and this deliberately over-parameterized model
     # (tcl shared by two etas) sits right at that boundary -- its min eigenvalue
     # straddles 0, so the outcome varies run to run.
   })
@@ -1091,7 +1091,7 @@ nmTest({
     theo <- nlmixr2data::theo_sd
     fit <- suppressMessages(nlmixr(.cov_blk_omega, theo, "focei",
              foceiControl(print = 0L, covMethod = "", sigdig = 6)))
-    r <- suppressWarnings(nlmixr2est:::foceiCovAnalytic(fit))
+    r <- suppressWarnings(foceiCovAnalytic(fit))
     expect_false(is.null(r)); expect_identical(r$method, "analytic")
 
     # gold standard: central-FD Hessian of the FOCEI objective (Phi + 0.5 log|H~|, additive
@@ -1100,7 +1100,7 @@ nmTest({
     # shared, and the batched solver is used because the per-subject one makes this ~10x
     # slower for the same numbers.
     ui <- fit$finalUi; neta <- 3L; etav <- paste0("ETA_", 1:neta, "_")
-    am <- nlmixr2est:::.foceiAnalyticAugModelDirs(ui, etav)
+    am <- .foceiAnalyticAugModelDirs(ui, etav)
     thNames <- names(fit$theta)
     thBase <- setNames(as.numeric(fit$theta[thNames]), paste0("THETA_", seq_along(thNames), "_"))
     iTh <- match(c("tka", "tcl", "tv", "add.sd"), thNames)
@@ -1110,7 +1110,7 @@ nmTest({
     obsL <- lapply(idCode, function(k) { s <- byId[[as.character(k)]]; s[s$EVID == 0, , drop = FALSE] })
     obsT <- lapply(obsL, function(.o) .o$TIME); Yl <- lapply(obsL, function(.o) .o$DV)
     eta0m <- as.matrix(fit$eta[, c("eta.ka", "eta.cl", "eta.v")])
-    .sa <- function(th, etaM) nlmixr2est:::.foceiAnalyticSolveAll(am, th, etaM, idCode, fit$dataSav, obsT, 1e-12)
+    .sa <- function(th, etaM) .foceiAnalyticSolveAll(am, th, etaM, idCode, fit$dataSav, obsT, 1e-12)
     mkOm <- function(p) { M <- matrix(0, 3, 3); M[1, 1] <- p[1]; M[2, 2] <- p[2]
                           M[3, 2] <- M[2, 3] <- p[3]; M[3, 3] <- p[4]; M }
     objFOCEI <- function(psi) {
@@ -1189,7 +1189,7 @@ nmTest({
               foceiControl(print = 0L, covMethod = "", interaction = FALSE, sigdig = 6)))
     fitI <- suppressMessages(nlmixr(.cov_combined, theo, "focei",
               foceiControl(print = 0L, covMethod = "", sigdig = 6)))
-    rF <- nlmixr2est:::foceiCovAnalytic(fitF); rI <- nlmixr2est:::foceiCovAnalytic(fitI)
+    rF <- foceiCovAnalytic(fitF); rI <- foceiCovAnalytic(fitI)
     expect_false(is.null(rF)); expect_identical(rF$method, "analytic")
     # FOCE combined != FOCEI combined (the interaction term is non-zero for prop error)
     expect_false(isTRUE(all.equal(unname(rF$R), unname(rI$R), tolerance = 1e-2)))
@@ -1197,7 +1197,7 @@ nmTest({
     # gold standard: central-FD Hessian of the CORRECTED FOCE objective (R0 = eta=0
     # population variance), EBEs re-solved to S_FOCE=0 at each perturbed parameter vector.
     ui <- fitF$finalUi; neta <- 3L; etav <- paste0("ETA_", 1:neta, "_")
-    am <- nlmixr2est:::.foceiAnalyticAugModelDirs(ui, etav)
+    am <- .foceiAnalyticAugModelDirs(ui, etav)
     thNames <- names(fitF$theta)
     thBase <- setNames(as.numeric(fitF$theta[thNames]), paste0("THETA_", seq_along(thNames), "_"))
     iTh <- match(c("tka", "tcl", "tv", "add.sd", "prop.sd"), thNames)
@@ -1208,7 +1208,7 @@ nmTest({
     subj <- lapply(seq_along(ids), function(i) {
       s <- byId[[as.character(idCode[i])]]; obs <- s[s$EVID == 0, , drop = FALSE]
       list(s = s, times = obs$TIME, y = obs$DV, eta0 = eta0m[i, ]) })
-    .fa <- function(th, eta, s, times) nlmixr2est:::.foceiAnalyticSolveFA(am, c(th, setNames(eta, etav)), s, times, tol = 1e-12)
+    .fa <- function(th, eta, s, times) .foceiAnalyticSolveFA(am, c(th, setNames(eta, etav)), s, times, tol = 1e-12)
     objFOCE <- function(psi) {
       th <- thBase; th[iTh] <- psi[1:5]; sa <- psi[4]; sp <- psi[5]
       Om <- Om0; diag(Om) <- psi[6:8]; Oi <- solve(Om); ldOm <- log(det(Om)); tot <- 0
@@ -1268,11 +1268,11 @@ nmTest({
     theo <- nlmixr2data::theo_sd
     fitP <- suppressMessages(nlmixr(.cov_combined, theo, "focei",
               foceiControl(print = 0L, covMethod = "", interaction = FALSE, foce = "foce+", sigdig = 6)))
-    rP <- suppressWarnings(nlmixr2est:::foceiCovAnalytic(fitP))   # indefinite here -- the PD gate warns
+    rP <- suppressWarnings(foceiCovAnalytic(fitP))   # indefinite here -- the PD gate warns
     expect_false(is.null(rP)); expect_identical(rP$method, "analytic")
 
     ui <- fitP$finalUi; neta <- 3L; etav <- paste0("ETA_", 1:neta, "_")
-    am <- nlmixr2est:::.foceiAnalyticAugModelDirs(ui, etav)
+    am <- .foceiAnalyticAugModelDirs(ui, etav)
     thNames <- names(fitP$theta)
     thBase <- setNames(as.numeric(fitP$theta[thNames]), paste0("THETA_", seq_along(thNames), "_"))
     iTh <- match(c("tka", "tcl", "tv", "add.sd", "prop.sd"), thNames)
@@ -1283,7 +1283,7 @@ nmTest({
     subj <- lapply(seq_along(ids), function(i) {
       s <- byId[[as.character(idCode[i])]]; obs <- s[s$EVID == 0, , drop = FALSE]
       list(s = s, times = obs$TIME, y = obs$DV, eta0 = eta0m[i, ]) })
-    .fa <- function(th, eta, s, times) nlmixr2est:::.foceiAnalyticSolveFA(am, c(th, setNames(eta, etav)), s, times, tol = 1e-12)
+    .fa <- function(th, eta, s, times) .foceiAnalyticSolveFA(am, c(th, setNames(eta, etav)), s, times, tol = 1e-12)
     objFOCEP <- function(psi) {
       th <- thBase; th[iTh] <- psi[1:5]; sa <- psi[4]; sp <- psi[5]
       Om <- Om0; diag(Om) <- psi[6:8]; Oi <- solve(Om); ldOm <- log(det(Om)); tot <- 0
@@ -1385,7 +1385,7 @@ nmTest({
     }
     ui <- rxode2::rxUiDecompress(rxode2::assertRxUi(.icMod))
     neta <- 5L
-    am <- nlmixr2est:::.foceiAnalyticAugModelDirs(ui, paste0("ETA_", seq_len(neta), "_"))
+    am <- .foceiAnalyticAugModelDirs(ui, paste0("ETA_", seq_len(neta), "_"))
     expect_false(is.null(am))
     expect_false(is.null(am$augMod))
     # solve at t = 0 with eta = 0: the prediction MUST equal the IC A0 = exp(lA0) = 5.
@@ -1396,7 +1396,7 @@ nmTest({
     .params <- c(stats::setNames(.thr$est, paste0("THETA_", .thr$ntheta, "_")),
                  stats::setNames(rep(0, neta), paste0("ETA_", seq_len(neta), "_")))
     .ev <- data.frame(ID = 1L, TIME = c(0, 0.5, 1), EVID = 0L, AMT = 0, DV = 0)
-    E <- nlmixr2est:::.foceiAnalyticSolveFA(am, .params, .ev, times = c(0, 0.5, 1))
+    E <- .foceiAnalyticSolveFA(am, .params, .ev, times = c(0, 0.5, 1))
     expect_false(is.null(E))
     expect_equal(E$f[1], 5, tolerance = 1e-4)   # A(0) = A0
     expect_true(E$f[2] < E$f[1])                # the ODE evolves away from the IC
@@ -1416,7 +1416,7 @@ nmTest({
     #
     # #1057: a SECOND way `fast=` moved the SEs, unrelated to the tolerance.  With
     # maxOuterIterations = 0, fast=TRUE evaluates the analytic gradient once (so
-    # nlmixr2est:::.foceiGradDirect() has something to report), and that evaluation ran one more inner
+    # .foceiGradDirect() has something to report), and that evaluation ran one more inner
     # optimization pass per subject before foceiOuterFinal re-solved the inner problem.
     # Under the default warm start (mceta < 0 keeps the last eta) the inner solve converges
     # only to its own tolerance, so the extra pass left different ETAs and the SEs followed:
@@ -1457,7 +1457,7 @@ nmTest({
     expect_equal(.rF$pooled, 0L)
     # ... and that the pooled solve is actually threaded.  pooledSolveCores is the count
     # its subject loop ran with AFTER every clamp, so this covers the whole chain the
-    # unit test on nlmixr2est:::.foceiPoolCores() cannot reach: rxControl(cores = 0) -> rxode2's
+    # unit test on .foceiPoolCores() cannot reach: rxControl(cores = 0) -> rxode2's
     # threads -> min2(cores, getOpCores(op)) -> doParallel.  Measured 11 with the fix and
     # 1 without, on a host reporting 11 threads.
     if (rxode2::getRxThreads() > 1L) expect_gt(.rT$cores, 1L)

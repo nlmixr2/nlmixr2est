@@ -60,11 +60,11 @@ nmTest({
     # signature is "still on the nudge", and a healthy coefficient lands orders
     # of magnitude away from it.  Asserted on the control level so it does not
     # depend on a second fit's timing.
-    expect_equal(nlmixr2est:::.foceiZeroThetaStalled(
+    expect_equal(.foceiZeroThetaStalled(
       structure(list(), class = "try-error"), 0.001, 3), character(0))
     # a non-positive or non-finite magnitude disables the check entirely
-    expect_equal(nlmixr2est:::.foceiZeroThetaStalled(NULL, 0, 3), character(0))
-    expect_equal(nlmixr2est:::.foceiZeroThetaStalled(NULL, NA_real_, 3),
+    expect_equal(.foceiZeroThetaStalled(NULL, 0, 3), character(0))
+    expect_equal(.foceiZeroThetaStalled(NULL, NA_real_, 3),
                  character(0))
   })
 

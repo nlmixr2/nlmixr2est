@@ -28,7 +28,7 @@ nmTest({
     expect_true(is.finite(.cnBefore))
 
     # converting to a different covariance must refresh the condition numbers
-    invisible(nlmixr2est:::.setCov(fit, covMethod = "s", covType = "fd"))
+    invisible(.setCov(fit, covMethod = "s", covType = "fd"))
     .cnAfter <- fit$objDf[["Condition#(Cov)"]][1]
     expect_true(is.finite(.cnAfter))
     expect_true(abs(.cnAfter - .cnBefore) > 1e-4)

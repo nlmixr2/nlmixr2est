@@ -83,7 +83,7 @@ nmTest({
                                      etaDistEvery = 1L,
                                      etaDistWarmStart = FALSE,
                                      mceta = 0L)))
-    expect_gt(nlmixr2est:::foceiEtaDistN_(), 0)
+    expect_gt(foceiEtaDistN_(), 0)
     # and it must not have silently declined into the inert path
     expect_false(any(grepl("etaDistMstep=TRUE was requested",
                            as.character(.f$runInfo), fixed = TRUE)))

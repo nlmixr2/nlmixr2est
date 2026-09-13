@@ -70,7 +70,7 @@ nmTest({
     # identical underlying points across subjects ...
     expect_equal(.z1, .z2, tolerance = 1e-8)
     # ... equal to the raw Sobol N(0,1) point set itself
-    expect_equal(unname(.z1), unname(nlmixr2est:::impQrPoints_(256L, 2L, NULL)),
+    expect_equal(unname(.z1), unname(impQrPoints_(256L, 2L, NULL)),
                  tolerance = 1e-8)
   })
 

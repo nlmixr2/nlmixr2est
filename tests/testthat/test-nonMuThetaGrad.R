@@ -33,7 +33,7 @@ nmTest({
         .b <- if (.k %% 2 == 0) runif(1, 0.05, 0.3) else 0
         .d <- rnorm(3)
         .g <- .a + .b * abs(.f0)
-        .r <- nlmixr2est:::nonMuGradAccumTest_(0L, .y, .f0, .g, .b * sign(.f0), .d, 1)
+        .r <- nonMuGradAccumTest_(0L, .y, .f0, .g, .b * sign(.f0), .d, 1)
         .num <- .fd(.obj(.y, .f0, .a, .b, .d), rep(0, 3))
         expect_equal(as.numeric(.r$score), .num, tolerance = 1e-5)
       }
@@ -43,7 +43,7 @@ nmTest({
   test_that("the log-likelihood score is -d(loglik)/d(theta)", {
     # f IS the per-observation loglik and the objective is -sum(f)
     .d <- c(1.5, -2.5, 0.75)
-    .r <- nlmixr2est:::nonMuGradAccumTest_(2L, 0, 1.23, 0, 0, .d, 1)
+    .r <- nonMuGradAccumTest_(2L, 0, 1.23, 0, 0, .d, 1)
     expect_equal(as.numeric(.r$score), -.d)
     # BHHH information is the outer product of that per-observation score
     expect_equal(as.numeric(.r$info), as.numeric(outer(.d, .d)))
@@ -51,7 +51,7 @@ nmTest({
 
   test_that("the information matrix is symmetric and non-negative definite", {
     .d <- c(0.4, -1.1, 2.0)
-    .r <- nlmixr2est:::nonMuGradAccumTest_(0L, 4.0, 3.5, 0.3, 0.1, .d, 1)
+    .r <- nonMuGradAccumTest_(0L, 4.0, 3.5, 0.3, 0.1, .d, 1)
     .i <- matrix(as.numeric(.r$info), 3, 3)
     expect_equal(.i, t(.i))
     expect_true(all(eigen(.i, only.values = TRUE)$values >= -1e-10))
@@ -59,10 +59,10 @@ nmTest({
 
   test_that("a non-finite observation contributes nothing", {
     .d <- c(1, 2, 3)
-    .r <- nlmixr2est:::nonMuGradAccumTest_(0L, NA_real_, 3.5, 0.3, 0.0, .d, 1)
+    .r <- nonMuGradAccumTest_(0L, NA_real_, 3.5, 0.3, 0.0, .d, 1)
     expect_equal(as.numeric(.r$score), rep(0, 3))
     # a zero or negative residual SD is not a valid Gaussian either
-    .r0 <- nlmixr2est:::nonMuGradAccumTest_(0L, 4.0, 3.5, 0.0, 0.0, .d, 1)
+    .r0 <- nonMuGradAccumTest_(0L, 4.0, 3.5, 0.0, 0.0, .d, 1)
     expect_equal(as.numeric(.r0$score), rep(0, 3))
   })
 })

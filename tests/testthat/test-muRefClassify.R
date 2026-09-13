@@ -26,7 +26,7 @@ nmTest({
     }
 
     ui <- rxode2::rxode2(mod)
-    .cls <- nlmixr2est:::.muRefClassify(ui)
+    .cls <- .muRefClassify(ui)
 
     # theta+eta+covariate -> mu-ref covariate eligible
     expect_true("tcl" %in% .cls$muCovThetas)
@@ -88,7 +88,7 @@ nmTest({
     }
 
     ui <- rxode2::rxode2(mod)
-    .cls <- nlmixr2est:::.muRefClassify(ui)
+    .cls <- .muRefClassify(ui)
 
     expect_length(.cls$muCovThetas, 0L)
     expect_length(.cls$muCovEtas, 0L)
@@ -114,7 +114,7 @@ nmTest({
     }
 
     ui <- rxode2::rxode2(mod)
-    .cls <- nlmixr2est:::.muRefClassify(ui)
+    .cls <- .muRefClassify(ui)
 
     expect_setequal(.cls$muCovThetas, "tcl")
     expect_setequal(.cls$muCovEtas, "eta.cl")
@@ -151,7 +151,7 @@ nmTest({
       })
     }
     ui <- rxode2::rxode2(mod)
-    expect_warning(.groups <- nlmixr2est:::.muRefGroups(ui), "allo\\.cl.*boundar")
+    expect_warning(.groups <- .muRefGroups(ui), "allo\\.cl.*boundar")
     expect_length(.groups, 1L)
     expect_equal(.groups[[1]]$theta, "tcl")
     expect_true(.groups[[1]]$covariates$bounded[.groups[[1]]$covariates$covariateParameter == "allo.cl"])
@@ -177,7 +177,7 @@ nmTest({
       })
     }
     ui <- rxode2::rxode2(mod)
-    expect_warning(.groups <- nlmixr2est:::.muRefGroups(ui), "tcl.*boundar")
+    expect_warning(.groups <- .muRefGroups(ui), "tcl.*boundar")
     expect_length(.groups, 0L)
   })
 
@@ -201,7 +201,7 @@ nmTest({
       })
     }
     ui <- rxode2::rxode2(mod)
-    expect_warning(.groups <- nlmixr2est:::.muRefGroups(ui), NA)
+    expect_warning(.groups <- .muRefGroups(ui), NA)
     expect_length(.groups, 1L)
     expect_equal(.groups[[1]]$theta, "tcl")
   })
@@ -227,7 +227,7 @@ nmTest({
       })
     }
     ui <- rxode2::rxode2(mod)
-    expect_warning(.groups <- nlmixr2est:::.muRefGroups(ui), "allo\\.cl2.*boundar")
+    expect_warning(.groups <- .muRefGroups(ui), "allo\\.cl2.*boundar")
     # the group (population theta + the *unbounded* covariate) stays
     # mu-ref eligible; only the bounded covariate is carved out
     expect_length(.groups, 1L)
@@ -258,7 +258,7 @@ nmTest({
       })
     }
     ui <- rxode2::rxode2(mod)
-    expect_warning(.groups <- nlmixr2est:::.muRefGroups(ui, clamp = TRUE), NA)
+    expect_warning(.groups <- .muRefGroups(ui, clamp = TRUE), NA)
     expect_length(.groups, 1L)
     expect_equal(.groups[[1]]$theta, "tcl")
     expect_equal(.groups[[1]]$thetaLower, 0)
@@ -268,7 +268,7 @@ nmTest({
     expect_equal(.cv$lower[.cv$covariateParameter == "allo.cl"], -1)
     expect_equal(.cv$upper[.cv$covariateParameter == "allo.cl"], 2)
     # the flattened setup keeps the bounded coefficient in the arrays
-    .s <- nlmixr2est:::.muRefCppGroupSetup(ui, clamp = TRUE)
+    .s <- .muRefCppGroupSetup(ui, clamp = TRUE)
     .thNames <- ui$iniDf$name[!is.na(ui$iniDf$ntheta)]
     expect_equal(.thNames[.s$muGroupCovTheta + 1L], "allo.cl")
     expect_equal(.s$muGroupCovLower, -1)
@@ -296,7 +296,7 @@ nmTest({
       })
     }
     ui <- rxode2::rxode2(mod)
-    suppressWarnings(.s <- nlmixr2est:::.muRefCppGroupSetup(ui))
+    suppressWarnings(.s <- .muRefCppGroupSetup(ui))
     .thNames <- ui$iniDf$name[!is.na(ui$iniDf$ntheta)]
     # allo.cl2 stays an ordinary bounded outer parameter: not flattened,
     # so the C++ regression neither skips nor updates it
@@ -312,13 +312,13 @@ nmTest({
       logWT = log(c(80, 80, 60, 60) / 70)
     )
     # bare columns still subset directly
-    .m <- nlmixr2est:::.muRefCppCovData(c("logWT", "WT"), dataSav)
+    .m <- .muRefCppCovData(c("logWT", "WT"), dataSav)
     expect_equal(dim(.m), c(2L, 2L))
     expect_equal(.m[, 1], log(c(60, 80) / 70))
     expect_equal(.m[, 2], c(60, 80))
     # expression names (e.g. from >=2 mu-ref covariate expressions) are
     # evaluated against the baseline rows instead of erroring
-    .m2 <- nlmixr2est:::.muRefCppCovData(c("log(WT/70)", "log(WT/70)", "WT"), dataSav)
+    .m2 <- .muRefCppCovData(c("log(WT/70)", "log(WT/70)", "WT"), dataSav)
     expect_equal(dim(.m2), c(2L, 3L))
     expect_equal(.m2[, 1], log(c(60, 80) / 70))
     expect_equal(.m2[, 2], .m2[, 1])
