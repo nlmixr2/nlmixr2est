@@ -177,7 +177,7 @@ preFinalParTableHooks <- function(name=NULL) {
   # assembly; hooks should check objects exist before modifying them.
   for (name in preFinalParTableHooks()) {
     .fun <- get(name, envir=.preFinalParTableHooks)
-    .ret <- .fun(env)
+    .fun(env)
   }
   invisible(NULL)
 }
@@ -326,5 +326,7 @@ preProcessHooks <- function(name=NULL) {
   # Per-call copy of the VAE-injected non-mu etas so concurrent fits in one R
   # session cannot overwrite each other's record before the output collapse reads it
   env$vaeNonMuEtas <- nlmixr2global$nlmixr2EstEnv$vaeNonMuEtas
+  # Per-call copy of saem's temporary-eta transforms (.preProcessSaemModeledResid)
+  env$saemPseudoTransforms <- nlmixr2global$nlmixr2EstEnv$saemPseudoTransforms
   .ret[[1]]
 }

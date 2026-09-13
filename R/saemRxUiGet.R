@@ -13,7 +13,6 @@ rxUiGet.saemMuRefCovariateDataFrame <- function(x, ...) {
   .rm <- NULL
   for (.i in seq_along(.cov$covariateParameter)) {
     .cp <- .cov$covariateParameter[.i]
-    .cv <- .cov$covariate[.i]
     .w <- which(.iniDf$name == .cp)
     if (.iniDf$fix[.w]) {
       .rm <- c(.rm, -.i)
@@ -21,6 +20,11 @@ rxUiGet.saemMuRefCovariateDataFrame <- function(x, ...) {
   }
   if (!is.null(.rm)) {
     .cov <- .cov[.rm,]
+  }
+  if (.saemGeneralLik(.ui) && length(.cov$theta) > 0L) {
+    # refinePhi0Lik only refines an intercept-only phi0, so a covariate on a
+    # theta without an eta (a <- add.sd + WT*cov.sd) stays in the model instead
+    .cov <- .cov[.cov$theta %in% .ui$muRefDataFrame$theta, , drop = FALSE]
   }
   .cov
 }
@@ -145,7 +149,6 @@ rxUiGet.saemFixed <- function(x, ...) {
   .ui <- x[[1]]
   .df <- .ui$iniDf
   .dft <- .df[!is.na(.df$ntheta), ]
-  .fixError <- .dft[!is.na(.dft$err), ]
   .dft <- .dft[.saemIsEstimableThetaRow(.ui, .dft), ]
   if (length(.ui$mixProbs) > 0) {
     .dft <- .dft[!(.dft$name %in%.ui$mixProbs), ]
@@ -649,7 +652,6 @@ attr(rxUiGet.saemParHistOmegaKeep, "rstudio") <- c("eta.ka"=1)
 
 #' @export
 rxUiGet.saemParHistEtaNames <- function(x, ...) {
-  .ui <- x[[1]]
   .names <- rxUiGet.saemParHistOmegaKeep(x, ...)
   .names <- .names[.names == 1L]
   if (length(.names) == 0) return(NULL)

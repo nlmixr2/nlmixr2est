@@ -46,6 +46,13 @@
                            rhoend = rhoend, npt = npt)))
 }
 
+# Bounded refinement of the saem general-likelihood phi0/phi1 thetas.  Warnings are
+# suppressed for the same reason as .saemPhi0Newuoa: minqa's small-maxfun advice
+# would otherwise reach $runInfo on every iteration.
+.saemBoundedResidOpt <- function(par, fn, lower = -Inf, upper = Inf, control = list()) {
+  suppressWarnings(.boundedResidOpt(par, fn, lower = lower, upper = upper, control = control))
+}
+
 .saemCheckCfg <- function(cfg) {
   checkmate::assertIntegerish(cfg$itmax, lower=1, len=1, .var.name="saem.cfg$itmax")
   checkmate::assertNumeric(cfg$tol, lower=0, len=1, .var.name="saem.cfg$tol")
@@ -56,7 +63,6 @@
   checkmate::assertNumeric(cfg$odeRecalcFactor, lower=0, len=1, .var.name="saem.cfg$odeRecalcFactor")
   # nmc number of mc interations
   checkmate::assertIntegerish(cfg$nmc, lower=0, len=1, .var.name="saem.cfg$nmc")
-  .nmc <- cfg$nmc
   # nu is the number of selection for each probability type.
   checkmate::assertIntegerish(cfg$nu, lower=0, len=3, .var.name="saem.cfg$nu")
   # Overall number of iterations
@@ -84,7 +90,6 @@
   checkmate::assertNumeric(cfg$minv, lower=0, len=.nphi, .var.name="saem.cfg$minv")
   # N is the number of IDs
   checkmate::assertIntegerish(cfg$N, lower=0, len=1, .var.name="saem.cfg$N")
-  .N <- cfg$N
   # Total number of items in the dataset
   checkmate::assertIntegerish(cfg$ntotal, lower=0, len=1, .var.name="saem.cfg$ntotal")
   .ntotal <- cfg$ntotal
@@ -99,7 +104,6 @@
   checkmate::assertIntegerish(cfg$mlen,  lower=1, len=1, .var.name="saem.cfg$mlen")
 
   # maximum number of measurments for an indiviaul
-  .mlen <- cfg$mlen
 
   checkmate::assertIntegerish(cfg$indio, min.len=1, .var.name="saem.cfg$indio")
 
@@ -631,7 +635,6 @@
   .df <- .ui$iniDf
   .eta <- .df[!is.na(.df$neta1), ]
   .etaNames <- .eta[.eta$neta1 == .eta$neta2, "name"]
-  .neta <- length(.etaNames)
   .len <- length(.etaNames)
   .ome <- matrix(rep(0, .len * .len), .len, .len, dimnames=list(.etaNames, .etaNames))
   # Gamma2_phi1Report is the reporting-only pooled BSV for split ETAs; falls
@@ -1351,7 +1354,6 @@
   # compresses large object
   env$phiM <- .phiM
   try(unlink(.saemCfg$phiMFile), silent=TRUE)
-  .rn <- ""
   .likTime <- 0
   .obf <- rxode2::rxGetControl(.ui, "logLik", FALSE)
   .nnodesGq <- rxode2::rxGetControl(.ui, "nnodesGq", 3)
@@ -1388,7 +1390,6 @@
 #' @author Matthew L. Fidler
 #' @noRd
 .saemGetCalcCwres <- function(env) {
-  .ui <- env$ui
   .table <- env$table
   .calcResid <- .table$cwres
   if (is.null(.calcResid)) {
@@ -1664,6 +1665,7 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
     nmObjHandleControlObject(.ret$control, .ret)
     .getSaemTheta(.ret)
     .getSaemOmega(.ret)
+    .saemFoldPseudoEtas(.ret)
     # Must run against the un-pooled omega, before .saemMixFix() pools split
     # ETAs, or ui$theta silently falls back to ini() values for every param.
     .nlmixr2FitUpdateParams(.ret)
@@ -1682,6 +1684,9 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
     .ret$message <- "" # no message for now
     .ret$est <- "saem"
     .saemControlToFoceiControl(.ret)
+    # later hooks (IOV, bounded transforms) can drop the temporary-eta transforms
+    .ui <- .saemRestorePseudoTransforms(.ui, env$saemPseudoTransforms)
+    .ret$ui <- .ui
     .ret <- .saemCreateOutput(.ret)
     # covFull/sa: swap in the stashed full theta+residual+Omega covariance now that
     # the theta-dimensioned fit table has been built.
