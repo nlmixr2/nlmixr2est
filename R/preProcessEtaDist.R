@@ -374,14 +374,49 @@
   ## rather than assumed, and defaulted to "cdf" so a method that has never
   ## heard of the argument (or an older control round-tripped through
   ## do.call) gets exactly the behaviour it had before.
+  ## From the CONTROL ARGUMENT first.  The hook is handed `control` directly,
+  ## and reading only `rxGetControl(ui, ...)` found nothing -- the value is not
+  ## on the ui at this point -- so the route silently stayed "cdf" however it
+  ## was set.  Measured: a fit with etaDistParam="direct" completed normally
+  ## with no refusal and no expansion change.
   .param <- tryCatch({
-    .p <- rxode2::rxGetControl(ui, "etaDistParam", "cdf")
+    .p <- if (!is.null(control) && !is.null(control$etaDistParam)) {
+      control$etaDistParam
+    } else {
+      rxode2::rxGetControl(ui, "etaDistParam", "cdf")
+    }
     if (is.character(.p) && length(.p) >= 1L && .p[1] %in% c("cdf", "direct")) {
       .p[1]
     } else {
       "cdf"
     }
   }, error = function(e) "cdf")
+  ## REFUSE "direct" until an estimator actually consumes it.
+  ##
+  ## The expansion does its half correctly -- no latent, no decoder, the eta
+  ## kept with a FIXED placeholder omega -- but no estimator reads the route
+  ## yet: nothing consults `etaDistInfo$param`, saem's MCMC acceptance still
+  ## uses the Gaussian quadratic for every phi column, and the eta-scale
+  ## primitives (rxEtaDistPairLogD, the kernels, d/d(eta)) are referenced
+  ## nowhere in saem.cpp.
+  ##
+  ## So a fit would read that placeholder 1 as a Gaussian VARIANCE and complete
+  ## normally, having fitted a standard normal random effect where a gamma was
+  ## declared -- the wrong model, no error, no warning.  The expansion's own
+  ## documentation says the route has to be opt-in per estimator for exactly
+  ## this reason; this is that opt-in, and it is currently opt-in for nobody.
+  ##
+  ## Remove the estimator from this list as it gains real support, and give it
+  ## a test that FAILS if the Gaussian prior is still being used.
+  if (identical(.param, "direct")) {
+    .est <- if (is.character(est) && length(est) == 1L) est else "this method"
+    stop("etaDistParam=\"direct\" is not implemented for est=\"", .est, "\"\n",
+         "  the model expansion supports it, but no estimator reads the route ",
+         "yet, so the declared random effect would be fitted as a standard ",
+         "normal -- the wrong model, silently\n",
+         "  use etaDistParam=\"cdf\" (the default)",
+         call. = FALSE)
+  }
   .ui <- rxode2::rxUiDecompress(rxode2::rxEtaDistExpand(ui, param = .param))
   ## In `meta`, which is the ONLY container that survives to the estimators.
   ## Measured, on a real saem fit, by planting a probe in each candidate and
