@@ -59,7 +59,20 @@
   }
   .call <- str2lang(.iniDf$etaDist[.w])
   .fam <- as.character(.call[[1]])
-  .tab <- lotri::lotriEtaDists()
+  ## Feature-detected, never version-detected: the lotri that carries this
+  ## reports the SAME 1.0.5 as the CRAN one that does not, so a DESCRIPTION
+  ## requirement cannot express it and a version test would pass while the call
+  ## still failed.  Without the guard this died on lotri's own namespace error,
+  ## which names neither what was wanted nor what to install.
+  .tab <- try(lotri::lotriEtaDists(), silent = TRUE)
+  if (inherits(.tab, "try-error") || is.null(.tab$name)) {
+    stop("adding a covariate to a dist() declaration needs a 'lotri' that ",
+         "describes declared distributions, and the installed one does not ",
+         "provide 'lotriEtaDists()'\n",
+         "  install the development 'lotri':\n",
+         "    remotes::install_github(\"nlmixr2/lotri\")",
+         call. = FALSE)
+  }
   .f <- which(.tab$name == .fam)
   if (length(.f) != 1L || !any(names(.tab) == "roles") ||
         !nzchar(.tab$roles[.f])) {
