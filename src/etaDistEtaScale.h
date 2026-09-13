@@ -138,4 +138,61 @@ static inline double rxEtaDistLogD2dx(int fam, double x, const double *a) {
   return (f1 - 2.0*fc + f0)/(h*h);
 }
 
+// ---------------------------------------------------------------------------
+// The JOINT density of a declared pair, on the eta scale, under a Gaussian
+// copula.
+//
+// This is what lets the direct route carry a CORRELATED declared block, which
+// it otherwise has to refuse: a Gaussian copula over non-normal marginals is
+// exactly `eta = Q(phi(z))`, so refusing the block was refusing the only thing
+// that gives the correlation meaning.  Written on the eta scale it is just
+// another prior term:
+//
+//   log p(eta1, eta2) = log f1(eta1) + log f2(eta2) + log c_rho(u1, u2)
+//   u_i = F_i(eta_i),  z_i = qnorm(u_i)
+//   log c_rho = -0.5 log(1-rho^2)
+//               - (rho^2 (z1^2 + z2^2) - 2 rho z1 z2) / (2 (1-rho^2))
+//
+// The point of writing it here rather than decoding in the model: the inverse
+// CDF then runs once per ETA PER SUBJECT instead of once per OBSERVATION, and
+// the correlation is estimated from the etas' own u values rather than from
+// "combined latents", which is a biased estimator with a fixed point at the
+// current rho.
+
+// log of the bivariate Gaussian copula density at the two marginal z values.
+static inline double rxEtaDistCopulaLogC(double z1, double z2, double rho) {
+  if (!R_finite(z1) || !R_finite(z2)) return R_NegInf;
+  double r2 = rho*rho;
+  double om = 1.0 - r2;
+  if (om <= 0.0) return R_NegInf;          // a degenerate copula has no density
+  return -0.5*std::log(om) - (r2*(z1*z1 + z2*z2) - 2.0*rho*z1*z2)/(2.0*om);
+}
+
+// The marginal z the copula uses: z = qnorm(F(eta)).  Clamped off 0 and 1 the
+// same way the decoder clamps phiU(), because an eta in the far tail otherwise
+// saturates the CDF in double precision and returns +/-Inf for a value the
+// model is perfectly happy with.
+static inline double rxEtaDistCopulaZ(int fam, double x, const double *a) {
+  double u = rxEtaDistP(fam, x, a);
+  if (!R_finite(u)) return R_NaN;
+  if (u < 1e-15) u = 1e-15; else if (u > 1.0 - 1e-15) u = 1.0 - 1e-15;
+  return R::qnorm(u, 0.0, 1.0, 1, 0);
+}
+
+// Joint log density of a declared PAIR on the eta scale.  `fam1`/`a1` and
+// `fam2`/`a2` are the two marginals; `rho` the copula correlation.
+static inline double rxEtaDistPairLogD(int fam1, double x1, const double *a1,
+                                       int fam2, double x2, const double *a2,
+                                       double rho) {
+  double l1 = rxEtaDistLogD(fam1, x1, a1);
+  double l2 = rxEtaDistLogD(fam2, x2, a2);
+  if (!R_finite(l1) || !R_finite(l2)) return R_NegInf;
+  if (rho == 0.0) return l1 + l2;          // independent: no copula term at all
+  double z1 = rxEtaDistCopulaZ(fam1, x1, a1);
+  double z2 = rxEtaDistCopulaZ(fam2, x2, a2);
+  double lc = rxEtaDistCopulaLogC(z1, z2, rho);
+  if (!R_finite(lc)) return R_NegInf;
+  return l1 + l2 + lc;
+}
+
 #endif // __ETADIST_ETASCALE_H__

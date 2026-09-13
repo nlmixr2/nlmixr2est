@@ -183,6 +183,62 @@ static inline double rxEtaDistQ_(int fam, double u, const double *a) {
   }
 }
 
+// CDF at an eta value -- the exact inverse of rxEtaDistQ_() above, family by
+// family and parameterization by parameterization.
+//
+// Needed to evaluate a declared random effect's joint density ON THE ETA SCALE
+// under a Gaussian copula:
+//
+//   log p(eta) = sum_i log f_i(eta_i) - 0.5 log|R| - 0.5 z'(R^-1 - I) z
+//   with       z_i = qnorm(F_i(eta_i))
+//
+// The quantile function is what SIMULATES a declared eta; this is what EVALUATES
+// one.  Keeping both means the inverse CDF no longer has to sit in the model,
+// where it runs once per OBSERVATION; here it is once per eta per subject.
+//
+// Every branch mirrors rxEtaDistQ_ exactly, including the reversed-tail forms
+// (invChiSquare, scaledInvChiSquare, invGamma, pareto) where a naive P is the
+// complement of what the Q says.  A mismatch between the two is silent -- it
+// shows up only as a wrong copula -- so they are pinned against each other by
+// a round-trip test rather than read side by side.
+static inline double rxEtaDistP(int fam, double x, const double *a) {
+  switch (fam) {
+  case RXETADIST_NORM:      return R::pnorm(x, a[0], a[1], 1, 0);
+  case RXETADIST_STDNORMAL: return R::pnorm(x, 0.0, 1.0, 1, 0);
+  case RXETADIST_STUDENTT:  return R::pt((x - a[1])/a[2], a[0], 1, 0);
+  case RXETADIST_CAUCHY:    return R::pcauchy(x, a[0], a[1], 1, 0);
+  case RXETADIST_DBLEXP: {
+    double z = (x - a[0])/a[1];
+    return (z < 0) ? 0.5*std::exp(z) : 1.0 - 0.5*std::exp(-z);
+  }
+  case RXETADIST_LOGIS:     return R::plogis(x, a[0], a[1], 1, 0);
+  case RXETADIST_GUMBEL:    return std::exp(-std::exp(-(x - a[0])/a[1]));
+  case RXETADIST_LNORM:     return R::plnorm(x, a[0], a[1], 1, 0);
+  case RXETADIST_CHISQ:     return R::pchisq(x, a[0], 1, 0);
+  case RXETADIST_INVCHISQ:
+    return (x > 0) ? 1.0 - R::pchisq(1.0/x, a[0], 1, 0) : 0.0;
+  case RXETADIST_SCINVCHISQ:
+    return (x > 0) ? 1.0 - R::pchisq(a[0]*a[1]*a[1]/x, a[0], 1, 0) : 0.0;
+  case RXETADIST_EXP:       return R::pexp(x, 1.0/a[0], 1, 0);
+  case RXETADIST_GAMMA:     return R::pgamma(x, a[0], 1.0/a[1], 1, 0);
+  case RXETADIST_INVGAMMA:
+    return (x > 0) ? 1.0 - R::pgamma(a[1]/x, a[0], 1.0, 1, 0) : 0.0;
+  case RXETADIST_WEIBULL:   return R::pweibull(x, a[0], a[1], 1, 0);
+  case RXETADIST_FRECHET:
+    return (x > 0) ? std::exp(-std::pow(x/a[1], -a[0])) : 0.0;
+  case RXETADIST_RAYLEIGH:
+    return (x > 0) ? -std::expm1(-x*x/(2.0*a[0]*a[0])) : 0.0;
+  case RXETADIST_PARETO:
+    return (x >= a[0]) ? 1.0 - std::pow(x/a[0], -a[1]) : 0.0;
+  case RXETADIST_PARETO2:
+    return (x >= a[0]) ? 1.0 - std::pow(1.0 + (x - a[0])/a[1], -a[2]) : 0.0;
+  case RXETADIST_BETA:      return R::pbeta(x, a[0], a[1], 1, 0);
+  case RXETADIST_BETAPROP:  return R::pbeta(x, a[0]*a[1], (1.0 - a[0])*a[1], 1, 0);
+  case RXETADIST_UNIF:      return R::punif(x, a[0], a[1], 1, 0);
+  default:                  return NA_REAL;
+  }
+}
+
 // log density at an eta value
 static inline double rxEtaDistLogD(int fam, double x, const double *a) {
   switch (fam) {

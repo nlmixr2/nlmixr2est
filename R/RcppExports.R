@@ -66,6 +66,35 @@ rxEtaDistKernelTest_ <- function(fam, a, n, kernel, s, start, seed) {
     .Call(`_nlmixr2est_rxEtaDistKernelTest_`, fam, a, n, kernel, s, start, seed)
 }
 
+#' Test hook: the CDF against the quantile function, family by family
+#'
+#' `P(Q(u))` must be `u`.  A reversed tail -- the inverse families and pareto,
+#' where a naive CDF is the complement of what the quantile says -- is
+#' otherwise silent: it produces a wrong copula, not an error.
+#'
+#' @param fam family code
+#' @param u probability
+#' @param a family arguments
+#' @return named numeric: q, pBack, and the marginal z the copula would use
+#' @keywords internal
+#' @export
+rxEtaDistPTest_ <- function(fam, u, a) {
+    .Call(`_nlmixr2est_rxEtaDistPTest_`, fam, u, a)
+}
+
+#' Test hook: the joint density of a declared pair on the eta scale
+#'
+#' @param fam1,fam2 family codes
+#' @param x1,x2 the two random-effect values
+#' @param a1,a2 family arguments
+#' @param rho copula correlation
+#' @return the joint log density
+#' @keywords internal
+#' @export
+rxEtaDistPairLogDTest_ <- function(fam1, x1, a1, fam2, x2, a2, rho) {
+    .Call(`_nlmixr2est_rxEtaDistPairLogDTest_`, fam1, x1, a1, fam2, x2, a2, rho)
+}
+
 #' Expand Gradient for nlme
 #'
 #' @param state is the state to expand

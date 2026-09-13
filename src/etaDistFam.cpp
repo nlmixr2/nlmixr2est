@@ -851,3 +851,41 @@ Rcpp::NumericVector rxEtaDistKernelTest_(int fam, Rcpp::NumericVector a,
   }
   return out;
 }
+
+//' Test hook: the CDF against the quantile function, family by family
+//'
+//' `P(Q(u))` must be `u`.  A reversed tail -- the inverse families and pareto,
+//' where a naive CDF is the complement of what the quantile says -- is
+//' otherwise silent: it produces a wrong copula, not an error.
+//'
+//' @param fam family code
+//' @param u probability
+//' @param a family arguments
+//' @return named numeric: q, pBack, and the marginal z the copula would use
+//' @keywords internal
+//' @export
+// [[Rcpp::export]]
+Rcpp::NumericVector rxEtaDistPTest_(int fam, double u, Rcpp::NumericVector a) {
+  double q = rxEtaDistQ(fam, u, a.begin());
+  double pb = rxEtaDistP(fam, q, a.begin());
+  return Rcpp::NumericVector::create(
+    Rcpp::_["q"] = q,
+    Rcpp::_["pBack"] = pb,
+    Rcpp::_["z"] = R::qnorm(pb, 0.0, 1.0, 1, 0));
+}
+
+//' Test hook: the joint density of a declared pair on the eta scale
+//'
+//' @param fam1,fam2 family codes
+//' @param x1,x2 the two random-effect values
+//' @param a1,a2 family arguments
+//' @param rho copula correlation
+//' @return the joint log density
+//' @keywords internal
+//' @export
+// [[Rcpp::export]]
+double rxEtaDistPairLogDTest_(int fam1, double x1, Rcpp::NumericVector a1,
+                              int fam2, double x2, Rcpp::NumericVector a2,
+                              double rho) {
+  return rxEtaDistPairLogD(fam1, x1, a1.begin(), fam2, x2, a2.begin(), rho);
+}
