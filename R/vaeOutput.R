@@ -440,6 +440,14 @@
                    covSelectMethodUsed = fit$covSelectMethodUsed,
                    covNearTie = fit$covNearTie,
                    nCovHysteresis = fit$nCovHysteresis,
+                   nPhiPair = fit$nPhiPair,
+                   nPhiTest = fit$nPhiTest,
+                   nPhiMove = fit$nPhiMove,
+                   nPhiSkipBig = fit$nPhiSkipBig,
+                   nPhiSkipDiag = fit$nPhiSkipDiag,
+                   nPhiClamp = fit$nPhiClamp,
+                   omOff = fit$omOff,
+                   phiPairOn = fit$phiPairOn,
                    seed = .control$seed)
   ## the VAE optimization walk (standard parHistData -> $parHist accessor)
   if (!is.null(fit$parHist)) .ret$parHistData <- fit$parHist

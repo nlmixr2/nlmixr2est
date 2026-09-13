@@ -111,13 +111,20 @@ nmTest({
   test_that("an indefinite analytic covariance is reported but not installed (#1055)", {
     skip_on_cran()
     skip_if_not_installed("nlmixr2data")
-    # sigdig = 4 stops this model short of a local minimum: the observed information has a
+    # sigdig = 3 stops this model short of a local minimum: the observed information has a
     # negative eigenvalue and two SEs are NaN, under the analytic engine AND under an
     # independent brute-force FD Hessian of the same objective at the same estimates.  The
     # analytic pieces are still returned (the caller asked for them) but must not overwrite
     # the fit's usable covariance.
+    #
+    # This asked at sigdig = 4 until 2026-09-12, when the inner-solver rework in #1044/#1069
+    # made that point converge -- measured on this model, min eigenvalue of R goes
+    # -3698 at sigdig 3 to +108 at sigdig 4 (and -6394 at 2, -1816 at
+    # maxOuterIterations = 1).  Better fits are the point of that work; what this test needs
+    # is a point that is genuinely NOT a minimum, so it asks one sigdig earlier rather than
+    # giving up the indefinite path.  The margin here is large, not marginal.
     fit <- suppressMessages(nlmixr(.cov_blk_omega, .cov_blk_data(), "focei",
-                                   foceiControl(sigdig = 4, print = 0L, covMethod = "r,s",
+                                   foceiControl(sigdig = 3, print = 0L, covMethod = "r,s",
                                                 covFull = TRUE)))
     .cov0 <- fit$cov
     .m0 <- fit$covMethod
