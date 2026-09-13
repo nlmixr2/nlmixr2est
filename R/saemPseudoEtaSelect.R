@@ -107,6 +107,9 @@
   .pred <- ui$predDf
   .lines <- vapply(ui$lstExpr, deparse1, character(1))
   .lhs <- .rxLineLhs(.lines)
+  # an error model `cp ~ add(a)` is not an assignment to cp; treating it as one
+  # pulls one endpoint's residual thetas into a later endpoint's prediction
+  .lhs[.pred$line] <- NA_character_
   .all <- list(resid = character(0), predDeps = character(0), skip = character(0),
                argRange = list(), ll = character(0))
   for (i in seq_along(.pred$cond)) {

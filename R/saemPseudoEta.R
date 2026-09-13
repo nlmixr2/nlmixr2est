@@ -82,6 +82,27 @@
   .newUi
 }
 
+#' Put saem's temporary-eta transforms back on its ui
+#'
+#' A later hook can drop them: an IOV rebuild loses the whole list, and the
+#' bounded-transform hook replaces it with the user's own bounded thetas.  Add
+#' back whichever specs are missing.
+#'
+#' @param ui rxode2 ui
+#' @param stash the transform specs `.preProcessSaemModeledResid()` added
+#' @return the ui carrying every spec
+#' @noRd
+.saemRestorePseudoTransforms <- function(ui, stash) {
+  if (length(stash) == 0L) return(ui)
+  .ui <- rxode2::rxUiDecompress(ui)
+  .have <- vapply(.ui$boundedTransforms, function(tr) tr$internalName, character(1))
+  .missing <- Filter(function(tr) !(tr$internalName %in% .have), stash)
+  if (length(.missing) == 0L) return(ui)
+  # assign(), not $<-: rxode2 refuses to replace an existing component on a compressed ui
+  assign("boundedTransforms", c(.ui$boundedTransforms, .missing), envir = .ui)
+  .ui
+}
+
 #' Fold saem's temporary etas back into their thetas
 #'
 #' An eta-less theta is fit as `transform(rxBoundedTr.theta + rx.eta.theta)`

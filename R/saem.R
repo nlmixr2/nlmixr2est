@@ -1684,11 +1684,9 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
     .ret$message <- "" # no message for now
     .ret$est <- "saem"
     .saemControlToFoceiControl(.ret)
-    # the IOV hooks rebuild the ui after the temporary etas were added, which drops
-    # the transforms the back-transform needs
-    if (is.null(.ui$boundedTransforms) && length(env$saemPseudoTransforms) > 0L) {
-      .ui$boundedTransforms <- env$saemPseudoTransforms
-    }
+    # later hooks (IOV, bounded transforms) can drop the temporary-eta transforms
+    .ui <- .saemRestorePseudoTransforms(.ui, env$saemPseudoTransforms)
+    .ret$ui <- .ui
     .ret <- .saemCreateOutput(.ret)
     # covFull/sa: swap in the stashed full theta+residual+Omega covariance now that
     # the theta-dimensioned fit table has been built.

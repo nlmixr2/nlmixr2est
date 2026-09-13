@@ -171,6 +171,66 @@ nmTest({
     expect_length(.new$nonMuEtas, 0L)
   })
 
+  test_that("each modeled endpoint's residual theta gets a temporary eta", {
+    .u <- rxode2::rxode2(function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add1 <- 0.1; add2 <- 0.2
+            eta.ka ~ 0.6; eta.cl ~ 0.3; eta1 ~ 0.1; eta2 ~ 0.1 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+              cp <- linCmt(); cp2 <- 2 * cp
+              a1 <- add1 * exp(eta1)
+              cp ~ add(a1)
+              a2 <- add2 * exp(eta2)
+              cp2 ~ add(a2) })
+    })
+    .new <- .hook(.u)
+    expect_equal(as.character(.new$predDf$distribution), c("dnorm", "dnorm"))
+    expect_equal(sum(grepl("~.*dnorm\\(\\)", .lines(.new))), 2L)
+    # the first error line must not read as an assignment that hides add1
+    expect_true(all(c("rx.eta.add1", "rx.eta.add2") %in% .new$iniDf$name))
+  })
+
+  test_that("temporary-eta transforms survive the bounded-transform hook", {
+    .u <- rxode2::rxode2(function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; t1 <- c(0, 1, 2); add.sd <- 0.1
+            eta.ka ~ 0.6; eta.cl ~ 0.3; eta.sd ~ 0.1 })
+      model({ ka <- exp(tka + eta.ka) * t1; cl <- exp(tcl + eta.cl); v <- exp(tv)
+              cp <- linCmt(); a <- add.sd * exp(eta.sd); cp ~ add(a) })
+    })
+    .new <- .hook(.u)
+    .stash <- .new$boundedTransforms
+    .bt <- suppressWarnings(.preProcessBoundedTransform(.new, "saem", NULL, saemControl())$ui)
+    .names <- function(ui) vapply(ui$boundedTransforms, function(tr) tr$name, character(1))
+    # the bounded-transform hook keeps only the user's bounded theta ...
+    expect_false("add.sd" %in% .names(.bt))
+    # ... so saem adds its own back without losing the user's
+    .bt <- .saemRestorePseudoTransforms(.bt, .stash)
+    expect_setequal(.names(.bt), c("t1", "add.sd"))
+    .bt <- .saemRestorePseudoTransforms(.bt, .stash)
+    expect_length(.bt$boundedTransforms, 2L)
+    # a ui that already carries the component (set directly, as nlmixr2Est0 does) and is
+    # then compressed must still accept the merge
+    .d <- rxode2::rxUiDecompress(suppressWarnings(
+      .preProcessBoundedTransform(.new, "saem", NULL, saemControl())$ui))
+    .d$boundedTransforms <- .d$boundedTransforms
+    .d <- .saemRestorePseudoTransforms(rxode2::rxUiCompress(.d), .stash)
+    expect_setequal(.names(.d), c("t1", "add.sd"))
+  })
+
+  test_that("a bounded structural theta and a temporary eta are both back-transformed", {
+    .m <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; t1 <- c(0, 1, 2); add.sd <- 0.7
+            eta.ka ~ 0.6; eta.cl ~ 0.3; eta.sd ~ 0.1 })
+      model({ ka <- exp(tka + eta.ka) * t1; cl <- exp(tcl + eta.cl); v <- exp(tv)
+              cp <- linCmt(); a <- add.sd * exp(eta.sd); cp ~ add(a) })
+    }
+    .f <- suppressWarnings(.nlmixr(.m, nlmixr2data::theo_sd, est = "saem",
+      control = saemControl(nBurn = 10, nEm = 10, seed = 42L, print = 0L, covMethod = "",
+                            calcTables = FALSE)))
+    expect_true(all(c("t1", "add.sd") %in% names(fixef(.f))))
+    expect_false(any(grepl("^rx", names(fixef(.f)))))
+    expect_true(fixef(.f)[["t1"]] > 0 && fixef(.f)[["t1"]] < 2)
+  })
+
   test_that("dnorm() is inserted before a | condition", {
     expect_equal(.saemAddDnormToErrLine(quote(cp ~ add(a) | cp)),
                  quote(cp ~ add(a) + dnorm() | cp))
