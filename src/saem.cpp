@@ -8,6 +8,7 @@
 #include <RcppArmadillo.h>
 #include <rxode2ptr.h>
 #include "nmMcmcRng.h"
+#include "nmParallel.h"
 #include "utilc.h"
 #include "censEst.h"
 #include "nearPD.h"
@@ -1434,13 +1435,7 @@ public:
     // load) gets explicitly deactivated rather than silently reused with the wrong
     // dimensions on this solve's dosing events.  Always construct one, for `slot`.
     std::unique_ptr<OdeSwapEsBatch> phi1EsBatch(new OdeSwapEsBatch(slot));
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
-#endif
-    for (int i = 0; i < nM; ++i) {
-#ifdef _OPENMP
-      if (doParallel) setRxThreadId(omp_get_thread_num());
-#endif
+    nmForEachSubject(_rx, nM, cores, doParallel, [&](int i) {
       int subj = i % N;
       rx_solving_options_ind *ind = getSolvingOptionsInd(_rx, i);
       OdeSwapScope neqGuard(slot, ind, op);
@@ -1466,7 +1461,7 @@ public:
         rowPred = phi1PredAt(i, ind, op, neqGuard, nH2Theta, eta0, bad);
       } else if (_saemPhi1UseAnalyticHess) {
         if (!phi1AnalyticHessAt(i, ind, op, neqGuard, nH2Theta, eta0, rowPred, H)) {
-          rowBad[i] = 1; continue;
+          rowBad[i] = 1; return;
         }
       } else {
         rowPred = phi1PredAt(i, ind, op, neqGuard, nH2Theta, eta0, bad);
@@ -1477,14 +1472,14 @@ public:
         // next, an independent peer/solve buffer.
         if (!bad) phi1FDHessAt(i, ind, op, neqGuard, nH2Theta, fdH, eta0, rowPred, H, bad);
       }
-      if (bad) { rowBad[i] = 1; continue; }
+      if (bad) { rowBad[i] = 1; return; }
       if (!_saemPhi1WantHessian) {
-        if (!R_finite(rowPred)) { rowBad[i] = 1; continue; }
+        if (!R_finite(rowPred)) { rowBad[i] = 1; return; }
         rowScore[i] = -2.0 * rowPred;
-        continue;
+        return;
       }
-      if (!phi1LaplaceScore(rowPred, H, rowScore[i])) { rowBad[i] = 1; continue; }
-    }
+      if (!phi1LaplaceScore(rowPred, H, rowScore[i])) { rowBad[i] = 1; return; }
+    });
     double total = 0.0;
     for (int i = 0; i < nM; ++i) {
       if (rowBad[i]) return 1e300;
@@ -5241,19 +5236,13 @@ static void saemSolveIndividualsPooled(int nInd) {
   // -- see its contract in src/odeSwap.cpp.  Must be constructed outside the
   // OpenMP region below, matching every other peer solve's own batch.
   OdeSwapEsBatch predEsBatch(odeSlotPred);
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
-#endif
-  for (int i = 0; i < nInd; ++i) {
-#ifdef _OPENMP
-    if (doParallel) setRxThreadId(omp_get_thread_num());
-#endif
+  nmForEachSubject(_rx, nInd, cores, doParallel, [&](int i) {
     rx_solving_options_ind *ind = getSolvingOptionsInd(_rx, i);
     OdeSwapScope neqGuard(odeSlotPred, ind, op);
     OdeSwapCmtScope cmtGuard(odeSlotPred, op, ind);
     setIndSolve(ind, -1);
     odeSwapSolveInd(odeSlotPred, i);
-  }
+  });
 }
 
 // Phase 4: read rx_pred_ back from the odeSlotPred solve above, ONE g row
@@ -5272,13 +5261,7 @@ static void saemReadRowsPooled(mat &g, int &elt, bool &hasNan, int nInd) {
   bool hasCens = hasRxCens(_rx), hasLimit = hasRxLimit(_rx);
   std::vector<std::vector<double> > rowObs((size_t)nInd);
   std::vector<int> rowNan((size_t)nInd, 0);
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
-#endif
-  for (int i = 0; i < nInd; ++i) {
-#ifdef _OPENMP
-    if (doParallel) setRxThreadId(omp_get_thread_num());
-#endif
+  nmForEachSubject(_rx, nInd, cores, doParallel, [&](int i) {
     rx_solving_options_ind *ind = getSolvingOptionsInd(_rx, i);
     OdeSwapScope neqGuard(odeSlotPred, ind, op);
     OdeSwapCmtScope cmtGuard(odeSlotPred, op, ind);
@@ -5290,7 +5273,7 @@ static void saemReadRowsPooled(mat &g, int &elt, bool &hasNan, int nInd) {
         if (getIndEvid(ind, getIndIx(ind, j)) == 0) obs.push_back(1.0e99);
       }
       rowNan[i] = 1;
-      continue;
+      return;
     }
     iniSubjectE(i, 1, ind, op, _rx, rxPred.update_inis);
     double *lhs = neqGuard.lhs();
@@ -5304,7 +5287,7 @@ static void saemReadRowsPooled(mat &g, int &elt, bool &hasNan, int nInd) {
       if (std::isnan(cur)) { cur = 1.0e99; rowNan[i] = 1; }
       obs.push_back(cur);
     }
-  }
+  });
   for (int i = 0; i < nInd; ++i) {
     rx_solving_options_ind *ind = getSolvingOptionsInd(_rx, i);
     const std::vector<double> &obs = rowObs[(size_t)i];

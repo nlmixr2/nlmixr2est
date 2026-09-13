@@ -20,6 +20,7 @@
 #include <boost/math/distributions/gamma.hpp>
 #include <ctime>
 #include "nmMcmcRng.h"
+#include "nmParallel.h"
 #include "impQrng.h"
 #include "imp.h"
 #include "logSumExp.h"
@@ -668,13 +669,7 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
   // its components concurrently would race on that solve buffer -- keeping them on
   // one thread avoids the race while preserving nsub-way parallelism.  For Nm == 1
   // this is the same nsub-iteration loop as before (bit-identical, same seeds).
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(cores) if(doPar)
-#endif
-  for (int i = 0; i < nsub; ++i) {
-#ifdef _OPENMP
-    if (doPar) setRxThreadId(omp_get_thread_num());
-#endif
+  nmForEachSubject(rx, nsub, cores, doPar, [&](int i) {
     for (int j = 0; j < Nm; ++j) {
       int id = i + j * nsub;
       // fresh per-(iter, expanded-subject) stream, independent of thread count
@@ -866,7 +861,7 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
 #ifdef _OPENMP
     if (doPar) setRxThreadId(-1);
 #endif
-  }
+  });
 
   // Combine over mixture components per base subject.  For a single component
   // (Nm == 1) this is bit-identical to the non-mixture E-step.
