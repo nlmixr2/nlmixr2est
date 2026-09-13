@@ -377,12 +377,28 @@ nmTest({
     # FALSE are taken as given.  An explicit FALSE that will freeze a
     # declaration is allowed -- and reported, because a frozen declaration is
     # otherwise indistinguishable from a converged one.
+    #
+    # `etaDistMstep = TRUE` is passed EXPLICITLY, and that is the whole content
+    # of this arm.  When this test was written it was the default, so the
+    # combination under test was implicit; 7a6b772b1 made the M-step opt-in and
+    # the test silently started exercising a different cell and reading 0.2551
+    # where it asserts a bit-frozen 0.35.  Measured on this data, all four:
+    #
+    #   mstep  loglik    bWT      lclm     lclrv   "no owner"
+    #   FALSE  FALSE   0.2551   1.9820  -2.7840      TRUE
+    #   TRUE   FALSE   0.3500   1.6300  -2.4000      TRUE     <- this arm
+    #   FALSE  auto    0.2551   1.9820  -2.7840      FALSE
+    #   TRUE   auto    0.7764   1.6239  -2.2480      FALSE    <- truth 0.75
+    #
+    # A default is not a thing to assert through: the point here is that an
+    # explicit FALSE is honored, so every setting it depends on is explicit too.
     .d <- .edT5Data(bWT = 0.75, timeVarying = TRUE)
     .msg <- character(0)
     .f <- withCallingHandlers(
       suppressWarnings(nlmixr2(.edT5SaemModel(), .d, est = "saem",
                                control = saemControl(print = 0L, nBurn = 60L,
                                                      nEm = 60L,
+                                                     etaDistMstep = TRUE,
                                                      etaDistLoglik = FALSE))),
       message = function(m) {
         .msg <<- c(.msg, conditionMessage(m)); invokeRestart("muffleMessage")
