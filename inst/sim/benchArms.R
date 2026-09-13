@@ -17,6 +17,13 @@
 ## Run:  Rscript benchArms.R <arm> <method>   (one cell, so a cell that hangs
 ## costs one cell)  or  Rscript benchArms.R table   to print what has finished.
 ##
+## `objf` is comparable DOWN a column, not across a row.  focei reports its own
+## FOCEi objective and saem's comes from Gaussian quadrature (nnodes=3) at the
+## end -- both approximate the same -2LL with different bias, so a small
+## cross-method gap means nothing.  The cross-method comparison is the MARE
+## columns.  (A gap of tens of thousands is still a real difference: on g1 the
+## spread is -22221 to +1898, which no quadrature bias explains.)
+##
 ## `mceta` is held FIXED and reported in every row: imp inherits its effect
 ## through the shared FOCEi inner MAP, and it is recorded as blowing up one
 ## iteration of exactly this model (src/imp.cpp), so a table that let it vary
