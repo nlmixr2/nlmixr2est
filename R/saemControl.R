@@ -189,9 +189,33 @@
 #'   declared family than the model's own starting values, so a bad surrogate
 #'   leaves the fit where it was rather than moving it somewhere worse.
 #'
-#' @param etaDistMstep Opt-in.  Estimate a `dist()`-declared random effect's
-#'   distribution parameters by a fit to the sampled etas, rather than through
-#'   the data likelihood.
+#' @param etaDistMstep Opt-in, and `FALSE` by default.  Estimate a
+#'   `dist()`-declared random effect's distribution parameters by a fit to the
+#'   sampled etas, rather than through the data likelihood.
+#'
+#'   It defaulted to `TRUE` while this paragraph already called it opt-in, and
+#'   the measurement agrees with the paragraph.  On a single declared gamma at
+#'   relative variance 2 (shape 0.5), 300 subjects, data simulated from the
+#'   fitted model, the only difference being this argument:
+#'
+#'   |             | CL (truth 5.104) | rv (truth 2.0) | V (truth 4.711) |
+#'   |-------------|------------------|----------------|-----------------|
+#'   | `TRUE`      | 149.881          | 7.42           | **18370**       |
+#'   | `FALSE`     | 0.791            | 0.196          | 5.538           |
+#'
+#'   `V` is an ordinary theta with no declaration and no eta, so a fit that
+#'   sends it to 18370 has not merely mis-estimated the declaration -- the
+#'   M-step destabilizes the whole problem.  The mechanism is visible in the
+#'   `[fam]` trace: the latent is standard normal BY CONSTRUCTION, it sits at
+#'   `sd = 2.18`, the spread guard's cap of `[0.20, 5.00]` is far too loose to
+#'   catch that, and the M-step then fits the family to etas decoded from a
+#'   latent twice as dispersed as it can legitimately be.
+#'
+#'   Neither setting recovers this arm, so `FALSE` is the less wrong default
+#'   rather than a fix.  It is also what the comparable implementations do:
+#'   NoLimits.jl has no separate family M-step at all -- the random-effect
+#'   distribution's parameters are ordinary parameters of the joint
+#'   optimization.
 #'
 #'   In the `(y, eta)` augmentation the complete-data likelihood factors as
 #'   `log p(y | eta) + log p(eta | theta)`, and the distribution parameters
@@ -938,7 +962,7 @@ saemControl <- function(seed = 99,
                         nu1B = 0L,
                         nb1B = 10L,
                         etaDistWarmStart = TRUE,
-                        etaDistMstep = TRUE,
+                        etaDistMstep = FALSE,
                         etaDistStart = NULL,
                         etaDistEvery = 20L,
                         etaDistCor = c("observed", "analytic", "optimize", "posterior"),
