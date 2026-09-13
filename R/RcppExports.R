@@ -24,6 +24,21 @@ rxEtaDistLoglikTest_ <- function(fam, exprs, vars, theta, rec, etaAt, wt) {
     .Call(`_nlmixr2est_rxEtaDistLoglikTest_`, fam, exprs, vars, theta, rec, etaAt, wt)
 }
 
+#' Evaluate the joint copula log-likelihood of a declared PAIR from R
+#'
+#' Test hook for rxEtaDistPairLoglikObj()/Grad().  `exprs1` and `exprs2` are the
+#' two declarations argument expressions, both resolved against `vars`, which
+#' is the UNION of their thetas followed by any per-record symbols.  When
+#' `rhoIdx` is >= 0 (0-based) that element of `theta` carries atanh(rho) and
+#' `rho` is ignored, which is how the correlation becomes estimable by the
+#' copula density rather than by a moment statistic.
+#'
+#' Returns the objective, with the gradient attached as the "grad" attribute,
+#' or a zero-length vector when the expressions fall outside the grammar.
+rxEtaDistPairLoglikTest_ <- function(fam1, fam2, exprs1, exprs2, vars, theta, rec, eta1, eta2, rho, rhoIdx, wt) {
+    .Call(`_nlmixr2est_rxEtaDistPairLoglikTest_`, fam1, fam2, exprs1, exprs2, vars, theta, rec, eta1, eta2, rho, rhoIdx, wt)
+}
+
 #' Test hook for the eta-scale primitives
 #'
 #' Exposes the bounds, the bijector round trip, its log-Jacobian, and the two

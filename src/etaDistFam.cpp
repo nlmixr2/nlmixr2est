@@ -775,6 +775,211 @@ bool rxEtaDistLoglikGrad(int fam,
 
 #include "etaDistEtaScale.h"
 
+// One record's joint log density for a copula-linked pair.  Shared by the
+// objective and its gradient so the two cannot disagree about what is being
+// maximized -- the defect this whole area keeps rediscovering.
+static inline bool rxEtaDistPairRec(int fam1,
+                                    const std::vector< std::vector<etaDistTok> > &rpn1,
+                                    int fam2,
+                                    const std::vector< std::vector<etaDistTok> > &rpn2,
+                                    const double *vals, int nVals,
+                                    double x1, double x2, double rho,
+                                    double *out) {
+  double a1[4], a2[4];
+  int na1 = (int)rpn1.size(), na2 = (int)rpn2.size();
+  if (na1 <= 0 || na1 > 4 || na2 <= 0 || na2 > 4) return false;
+  for (int k = 0; k < na1; ++k) {
+    a1[k] = etaDistExprEval(rpn1[(size_t)k], vals, nVals);
+    if (!std::isfinite(a1[k])) return false;
+  }
+  for (int k = 0; k < na2; ++k) {
+    a2[k] = etaDistExprEval(rpn2[(size_t)k], vals, nVals);
+    if (!std::isfinite(a2[k])) return false;
+  }
+  double l = rxEtaDistPairLogD(fam1, x1, a1, fam2, x2, a2, rho);
+  if (!R_finite(l)) return false;
+  *out = l;
+  return true;
+}
+
+bool rxEtaDistPairLoglikObj(int fam1,
+                            const std::vector< std::vector<etaDistTok> > &rpn1,
+                            int fam2,
+                            const std::vector< std::vector<etaDistTok> > &rpn2,
+                            int nth, int nSym,
+                            const double *theta,
+                            const double *rec,
+                            const double *eta1, const double *eta2,
+                            double rho, int rhoIdx,
+                            const double *wt, int nRec,
+                            double *out) {
+  if (nRec <= 0 || nth < 0 || nSym < 0) return false;
+  std::vector<double> vals((size_t)(nth + nSym), 0.0);
+  for (int t = 0; t < nth; ++t) {
+    if (!std::isfinite(theta[t])) return false;
+    vals[(size_t)t] = theta[t];
+  }
+  double rhoUse = rho;
+  if (rhoIdx >= 0) {
+    if (rhoIdx >= nth) return false;
+    rhoUse = std::tanh(theta[rhoIdx]);
+  }
+  if (!std::isfinite(rhoUse) || rhoUse <= -1.0 || rhoUse >= 1.0) return false;
+  double tot = 0.0;
+  for (int r = 0; r < nRec; ++r) {
+    for (int c = 0; c < nSym; ++c) {
+      double v = rec[(size_t)r * (size_t)nSym + (size_t)c];
+      if (!std::isfinite(v)) return false;
+      vals[(size_t)(nth + c)] = v;
+    }
+    if (!std::isfinite(eta1[r]) || !std::isfinite(eta2[r])) return false;
+    double l = 0.0;
+    if (!rxEtaDistPairRec(fam1, rpn1, fam2, rpn2, vals.data(), nth + nSym,
+                          eta1[r], eta2[r], rhoUse, &l)) return false;
+    tot += wt[r] * l;
+  }
+  if (!std::isfinite(tot)) return false;
+  *out = tot;
+  return true;
+}
+
+bool rxEtaDistPairLoglikGrad(int fam1,
+                             const std::vector< std::vector<etaDistTok> > &rpn1,
+                             int fam2,
+                             const std::vector< std::vector<etaDistTok> > &rpn2,
+                             int nth, int nSym,
+                             const double *theta,
+                             const double *rec,
+                             const double *eta1, const double *eta2,
+                             double rho, int rhoIdx,
+                             const double *wt, int nRec,
+                             double *out, double *grad) {
+  if (nRec <= 0 || nth <= 0 || nSym < 0) return false;
+  std::vector<double> vals((size_t)(nth + nSym), 0.0);
+  for (int t = 0; t < nth; ++t) {
+    if (!std::isfinite(theta[t])) return false;
+    vals[(size_t)t] = theta[t];
+  }
+  // per-theta relative step, the same rule rxEtaDistLoglikGrad() uses
+  std::vector<double> h((size_t)nth);
+  for (int t = 0; t < nth; ++t) {
+    double a = std::fabs(theta[t]);
+    h[(size_t)t] = 1e-6 * ((a > 1e-8) ? a : 1.0);
+  }
+  // rho, when it is one of the free parameters, is read from theta[rhoIdx] on
+  // the atanh scale.  The differencing loop below perturbs vals[t] for every t,
+  // and for t == rhoIdx that perturbation has to reach RHO rather than an
+  // argument expression -- which is what this closure over `vals` arranges,
+  // since rxEtaDistPairRec() takes rho separately.
+  double rhoUse = rho;
+  if (rhoIdx >= 0) {
+    if (rhoIdx >= nth) return false;
+    rhoUse = std::tanh(theta[rhoIdx]);
+  }
+  if (!std::isfinite(rhoUse) || rhoUse <= -1.0 || rhoUse >= 1.0) return false;
+  double tot = 0.0;
+  for (int t = 0; t < nth; ++t) grad[t] = 0.0;
+  for (int r = 0; r < nRec; ++r) {
+    for (int c = 0; c < nSym; ++c) {
+      double v = rec[(size_t)r * (size_t)nSym + (size_t)c];
+      if (!std::isfinite(v)) return false;
+      vals[(size_t)(nth + c)] = v;
+    }
+    if (!std::isfinite(eta1[r]) || !std::isfinite(eta2[r])) return false;
+    double l = 0.0;
+    if (!rxEtaDistPairRec(fam1, rpn1, fam2, rpn2, vals.data(), nth + nSym,
+                          eta1[r], eta2[r], rhoUse, &l)) return false;
+    tot += wt[r] * l;
+    // Central difference of the ASSEMBLED joint density.  The copula term
+    // reaches the arguments through z = qnorm(F(x; a)) and there is no analytic
+    // dF/da to chain through, so the single-family split (exact d(log p)/d(a)
+    // times a differenced d(a)/d(theta)) does not carry over.  Differencing the
+    // whole thing is exact to the same order and still touches no solve.
+    for (int t = 0; t < nth; ++t) {
+      double th0 = vals[(size_t)t], step = h[(size_t)t];
+      double lp = 0.0, lm = 0.0;
+      double rp = rhoUse, rm = rhoUse;
+      if (t == rhoIdx) {
+        rp = std::tanh(th0 + step); rm = std::tanh(th0 - step);
+        if (!std::isfinite(rp) || !std::isfinite(rm)) return false;
+      } else {
+        vals[(size_t)t] = th0 + step;
+      }
+      bool ok = rxEtaDistPairRec(fam1, rpn1, fam2, rpn2, vals.data(), nth + nSym,
+                                 eta1[r], eta2[r], rp, &lp);
+      if (t != rhoIdx) vals[(size_t)t] = th0 - step;
+      ok = ok && rxEtaDistPairRec(fam1, rpn1, fam2, rpn2, vals.data(), nth + nSym,
+                                  eta1[r], eta2[r], rm, &lm);
+      vals[(size_t)t] = th0;
+      if (!ok) return false;
+      grad[t] += wt[r] * (lp - lm) / (2.0 * step);
+    }
+  }
+  if (!std::isfinite(tot)) return false;
+  for (int t = 0; t < nth; ++t) if (!std::isfinite(grad[t])) return false;
+  *out = tot;
+  return true;
+}
+
+//' Evaluate the joint copula log-likelihood of a declared PAIR from R
+//'
+//' Test hook for rxEtaDistPairLoglikObj()/Grad().  `exprs1` and `exprs2` are the
+//' two declarations argument expressions, both resolved against `vars`, which
+//' is the UNION of their thetas followed by any per-record symbols.  When
+//' `rhoIdx` is >= 0 (0-based) that element of `theta` carries atanh(rho) and
+//' `rho` is ignored, which is how the correlation becomes estimable by the
+//' copula density rather than by a moment statistic.
+//'
+//' Returns the objective, with the gradient attached as the "grad" attribute,
+//' or a zero-length vector when the expressions fall outside the grammar.
+//[[Rcpp::export]]
+Rcpp::NumericVector rxEtaDistPairLoglikTest_(int fam1, int fam2,
+                                             Rcpp::CharacterVector exprs1,
+                                             Rcpp::CharacterVector exprs2,
+                                             Rcpp::CharacterVector vars,
+                                             Rcpp::NumericVector theta,
+                                             Rcpp::NumericMatrix rec,
+                                             Rcpp::NumericVector eta1,
+                                             Rcpp::NumericVector eta2,
+                                             double rho, int rhoIdx,
+                                             Rcpp::NumericVector wt) {
+  std::vector<std::string> e1, e2, vn;
+  for (int i = 0; i < exprs1.size(); ++i) e1.push_back(Rcpp::as<std::string>(exprs1[i]));
+  for (int i = 0; i < exprs2.size(); ++i) e2.push_back(Rcpp::as<std::string>(exprs2[i]));
+  for (int i = 0; i < vars.size(); ++i) vn.push_back(Rcpp::as<std::string>(vars[i]));
+  std::vector< std::vector<etaDistTok> > rpn1, rpn2;
+  if (!rxEtaDistLoglikParse(e1, vn, rpn1)) return Rcpp::NumericVector(0);
+  if (!rxEtaDistLoglikParse(e2, vn, rpn2)) return Rcpp::NumericVector(0);
+  int nth = theta.size();
+  int nSym = (int)vn.size() - nth;
+  if (nSym < 0) return Rcpp::NumericVector(0);
+  int nRec = eta1.size();
+  if (eta2.size() != nRec || wt.size() != nRec) return Rcpp::NumericVector(0);
+  if (nSym > 0 && (rec.nrow() != nRec || rec.ncol() != nSym)) return Rcpp::NumericVector(0);
+  std::vector<double> flat((size_t)(nRec > 0 && nSym > 0 ? nRec * nSym : 0), 0.0);
+  for (int r = 0; r < nRec && nSym > 0; ++r) {
+    for (int c = 0; c < nSym; ++c) flat[(size_t)(r * nSym + c)] = rec(r, c);
+  }
+  double out = 0.0;
+  std::vector<double> grad((size_t)(nth > 0 ? nth : 1), 0.0);
+  if (!rxEtaDistPairLoglikObj(fam1, rpn1, fam2, rpn2, nth, nSym, theta.begin(),
+                              nSym > 0 ? flat.data() : NULL,
+                              eta1.begin(), eta2.begin(), rho, rhoIdx,
+                              wt.begin(), nRec, &out)) {
+    return Rcpp::NumericVector(0);
+  }
+  Rcpp::NumericVector r = Rcpp::NumericVector::create(out);
+  double og = 0.0;
+  if (nth > 0 &&
+      rxEtaDistPairLoglikGrad(fam1, rpn1, fam2, rpn2, nth, nSym, theta.begin(),
+                              nSym > 0 ? flat.data() : NULL,
+                              eta1.begin(), eta2.begin(), rho, rhoIdx,
+                              wt.begin(), nRec, &og, grad.data())) {
+    r.attr("grad") = Rcpp::NumericVector(grad.begin(), grad.begin() + nth);
+  }
+  return r;
+}
+
 //' Test hook for the eta-scale primitives
 //'
 //' Exposes the bounds, the bijector round trip, its log-Jacobian, and the two

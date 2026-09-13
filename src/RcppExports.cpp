@@ -58,6 +58,28 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// rxEtaDistPairLoglikTest_
+Rcpp::NumericVector rxEtaDistPairLoglikTest_(int fam1, int fam2, Rcpp::CharacterVector exprs1, Rcpp::CharacterVector exprs2, Rcpp::CharacterVector vars, Rcpp::NumericVector theta, Rcpp::NumericMatrix rec, Rcpp::NumericVector eta1, Rcpp::NumericVector eta2, double rho, int rhoIdx, Rcpp::NumericVector wt);
+RcppExport SEXP _nlmixr2est_rxEtaDistPairLoglikTest_(SEXP fam1SEXP, SEXP fam2SEXP, SEXP exprs1SEXP, SEXP exprs2SEXP, SEXP varsSEXP, SEXP thetaSEXP, SEXP recSEXP, SEXP eta1SEXP, SEXP eta2SEXP, SEXP rhoSEXP, SEXP rhoIdxSEXP, SEXP wtSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< int >::type fam1(fam1SEXP);
+    Rcpp::traits::input_parameter< int >::type fam2(fam2SEXP);
+    Rcpp::traits::input_parameter< Rcpp::CharacterVector >::type exprs1(exprs1SEXP);
+    Rcpp::traits::input_parameter< Rcpp::CharacterVector >::type exprs2(exprs2SEXP);
+    Rcpp::traits::input_parameter< Rcpp::CharacterVector >::type vars(varsSEXP);
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type theta(thetaSEXP);
+    Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type rec(recSEXP);
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type eta1(eta1SEXP);
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type eta2(eta2SEXP);
+    Rcpp::traits::input_parameter< double >::type rho(rhoSEXP);
+    Rcpp::traits::input_parameter< int >::type rhoIdx(rhoIdxSEXP);
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type wt(wtSEXP);
+    rcpp_result_gen = Rcpp::wrap(rxEtaDistPairLoglikTest_(fam1, fam2, exprs1, exprs2, vars, theta, rec, eta1, eta2, rho, rhoIdx, wt));
+    return rcpp_result_gen;
+END_RCPP
+}
 // rxEtaDistEtaScaleTest_
 Rcpp::NumericVector rxEtaDistEtaScaleTest_(int fam, double x, Rcpp::NumericVector a);
 RcppExport SEXP _nlmixr2est_rxEtaDistEtaScaleTest_(SEXP famSEXP, SEXP xSEXP, SEXP aSEXP) {

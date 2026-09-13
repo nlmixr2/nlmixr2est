@@ -363,6 +363,66 @@ bool rxEtaDistLoglikGrad(int fam,
                          const double *wt, int nRec,
                          double *out, double *grad);
 
+// The JOINT objective for a copula-linked PAIR, and its gradient.
+//
+// Why a separate entry point rather than calling rxEtaDistLoglikObj() twice:
+// under a copula the marginal parameters' MLE from the JOINT likelihood is not
+// the two separate marginal MLEs.  They coincide only at rho == 0.  Fitting the
+// marginals separately and carrying a correlation alongside them therefore
+// answers a different question than the model asks.
+//
+// `rpn1` and `rpn2` are BOTH indexed into one shared value vector, so the
+// caller parses them against the UNION of the two declarations' theta names
+// followed by the shared covariate symbols.  That is what lets the two
+// declarations share a theta -- a common dispersion, say -- and still be
+// optimized as one problem.
+//
+// `rhoIdx` makes the CORRELATION itself estimable by this objective: >= 0 means
+// theta[rhoIdx] carries atanh(rho) and the `rho` argument is ignored; -1 means
+// rho is held at the `rho` argument.
+//
+// That is the point of the entry point as much as the joint marginals are.  The
+// copula's dependence parameter is today estimated by MOMENTS -- a
+// product-moment correlation of the latents, or a sufficient statistic derived
+// from their second moments -- and a moment estimator is not the MLE.  One
+// variant of it was measured biased, with a fixed point at whatever rho it was
+// handed.  Maximizing the copula's own density over rho is the estimator the
+// model actually specifies, and it applies on BOTH routes: the eta sample
+// exists either way, decoded on the cdf route and sampled on the direct one.
+//
+// atanh rather than rho itself so the optimizer works unconstrained; (-1, 1) is
+// exactly the interval tanh covers.
+//
+// The gradient is a central difference of the whole joint density with respect
+// to each theta, NOT the analytic-times-numeric chain rxEtaDistLoglikGrad()
+// uses.  The copula term depends on the arguments through z = qnorm(F(x; a)),
+// and no analytic dF/da is available here; differencing the assembled density
+// is exact to the same order and still costs only arithmetic, since there is no
+// solve anywhere behind it.
+bool rxEtaDistPairLoglikObj(int fam1,
+                            const std::vector< std::vector<etaDistTok> > &rpn1,
+                            int fam2,
+                            const std::vector< std::vector<etaDistTok> > &rpn2,
+                            int nth, int nSym,
+                            const double *theta,
+                            const double *rec,
+                            const double *eta1, const double *eta2,
+                            double rho, int rhoIdx,
+                            const double *wt, int nRec,
+                            double *out);
+
+bool rxEtaDistPairLoglikGrad(int fam1,
+                             const std::vector< std::vector<etaDistTok> > &rpn1,
+                             int fam2,
+                             const std::vector< std::vector<etaDistTok> > &rpn2,
+                             int nth, int nSym,
+                             const double *theta,
+                             const double *rec,
+                             const double *eta1, const double *eta2,
+                             double rho, int rhoIdx,
+                             const double *wt, int nRec,
+                             double *out, double *grad);
+
 // Parse a declaration's argument expressions for rxEtaDistLoglikObj().
 // `names` must be the thetas followed by the per-record symbols, in the same
 // order the `theta`/`rec` arrays supply them.  Returns false when any
