@@ -375,13 +375,6 @@
   ## on the ui at this point -- so the route silently stayed "cdf" however it
   ## was set.  Measured: a fit with etaDistParam="direct" completed normally
   ## with no refusal and no expansion change.
-  ## The control argument first, then the ui.  The hook is HANDED `control`, and
-  ## reading only rxGetControl(ui, ...) finds nothing at this point -- which is
-  ## how etaDistParam silently stayed "cdf" however it was set.
-  .etaDistCtlGet <- function(control, ui, nm, default) {
-    if (!is.null(control) && !is.null(control[[nm]])) return(control[[nm]])
-    tryCatch(rxode2::rxGetControl(ui, nm, default), error = function(e) default)
-  }
   .param <- tryCatch({
     .p <- if (!is.null(control) && !is.null(control$etaDistParam)) {
       control$etaDistParam
