@@ -58,6 +58,19 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// rxEtaDistEtaScaleTest_
+Rcpp::NumericVector rxEtaDistEtaScaleTest_(int fam, double x, Rcpp::NumericVector a);
+RcppExport SEXP _nlmixr2est_rxEtaDistEtaScaleTest_(SEXP famSEXP, SEXP xSEXP, SEXP aSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< int >::type fam(famSEXP);
+    Rcpp::traits::input_parameter< double >::type x(xSEXP);
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type a(aSEXP);
+    rcpp_result_gen = Rcpp::wrap(rxEtaDistEtaScaleTest_(fam, x, a));
+    return rcpp_result_gen;
+END_RCPP
+}
 // nlmixrExpandFdParNlme_
 List nlmixrExpandFdParNlme_(CharacterVector state, CharacterVector vars);
 static SEXP _nlmixr2est_nlmixrExpandFdParNlme__try(SEXP stateSEXP, SEXP varsSEXP) {

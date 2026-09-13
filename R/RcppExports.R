@@ -24,6 +24,25 @@ rxEtaDistLoglikTest_ <- function(fam, exprs, vars, theta, rec, etaAt, wt) {
     .Call(`_nlmixr2est_rxEtaDistLoglikTest_`, fam, exprs, vars, theta, rec, etaAt, wt)
 }
 
+#' Test hook for the eta-scale primitives
+#'
+#' Exposes the bounds, the bijector round trip, its log-Jacobian, and the two
+#' derivatives of the log density with respect to the ETA.  A hook rather than
+#' a test in C++ because the properties worth pinning are numerical -- that the
+#' round trip is the identity, that the Jacobian matches a difference of the
+#' inverse map, and that the differenced derivatives match a closed form where
+#' one is known -- and those are cheaper to write and to read in R.
+#'
+#' @param fam family code
+#' @param x value of the random effect
+#' @param a family arguments
+#' @return named numeric: lo, hi, u, xBack, logJac, dlogp, d2logp
+#' @keywords internal
+#' @export
+rxEtaDistEtaScaleTest_ <- function(fam, x, a) {
+    .Call(`_nlmixr2est_rxEtaDistEtaScaleTest_`, fam, x, a)
+}
+
 #' Expand Gradient for nlme
 #'
 #' @param state is the state to expand

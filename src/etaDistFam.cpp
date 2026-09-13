@@ -772,3 +772,37 @@ bool rxEtaDistLoglikGrad(int fam,
   *out = tot;
   return true;
 }
+
+#include "etaDistEtaScale.h"
+
+//' Test hook for the eta-scale primitives
+//'
+//' Exposes the bounds, the bijector round trip, its log-Jacobian, and the two
+//' derivatives of the log density with respect to the ETA.  A hook rather than
+//' a test in C++ because the properties worth pinning are numerical -- that the
+//' round trip is the identity, that the Jacobian matches a difference of the
+//' inverse map, and that the differenced derivatives match a closed form where
+//' one is known -- and those are cheaper to write and to read in R.
+//'
+//' @param fam family code
+//' @param x value of the random effect
+//' @param a family arguments
+//' @return named numeric: lo, hi, u, xBack, logJac, dlogp, d2logp
+//' @keywords internal
+//' @export
+// [[Rcpp::export]]
+Rcpp::NumericVector rxEtaDistEtaScaleTest_(int fam, double x,
+                                           Rcpp::NumericVector a) {
+  double lo, hi;
+  rxEtaDistBounds(fam, a.begin(), &lo, &hi);
+  double u = rxEtaDistToU(fam, x, a.begin());
+  return Rcpp::NumericVector::create(
+    Rcpp::_["lo"] = lo,
+    Rcpp::_["hi"] = hi,
+    Rcpp::_["u"] = u,
+    Rcpp::_["xBack"] = rxEtaDistFromU(fam, u, a.begin()),
+    Rcpp::_["logJac"] = rxEtaDistLogJac(fam, u, a.begin()),
+    Rcpp::_["logp"] = rxEtaDistLogD(fam, x, a.begin()),
+    Rcpp::_["dlogp"] = rxEtaDistLogDdx(fam, x, a.begin()),
+    Rcpp::_["d2logp"] = rxEtaDistLogD2dx(fam, x, a.begin()));
+}
