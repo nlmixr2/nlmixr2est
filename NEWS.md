@@ -32,6 +32,19 @@
 
 ## New features
 
+- `etaDistCovarSearch()` selects covariates on `dist()` declaration arguments by
+  forward selection then backward elimination on dOFV.  The unit of search is a
+  (declared eta, family argument ROLE) pair -- gamma's `shape` against its
+  `rate` -- since that is what a covariate can enter and what the sign of a
+  coefficient means.  Candidate columns, shapes, centering and mutual exclusion
+  come from the VAE covariate machinery rather than a second discovery pass, and
+  every model scored is built as base-plus-relation-set, so backward elimination
+  is the exact inverse of forward selection.  A support endpoint (`dunif`'s
+  bounds) is never offered, a family whose roles are unknown yields no
+  candidates rather than a guessed grouping, and a candidate that cannot be
+  fitted is reported with its reason instead of silently ranking last.
+  Subject-level covariates only.
+
 - `.etaDistAddCovariate()` adds a covariate to one ROLE of one `dist()`
   declaration (plan phase 3.4's applier).  rxode2's expansion hoists each family
   argument onto its own `rxEdA.<eta>.<role>` line, so this adds the term at the
