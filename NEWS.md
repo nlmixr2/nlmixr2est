@@ -1,6 +1,37 @@
 # nlmixr2est 7.0.3
 
+## Breaking changes
+
+- `saemControl(lbfgsLmm=, lbfgsFactr=, lbfgsPgtol=, lbfgsMaxIter=)` have been
+  removed and now error as unused arguments.  They were announced in 7.0.2 as
+  controlling a bounded L-BFGS-B refinement of the fixed-effect-only (`phi0`)
+  parameters of a general log-likelihood model, but no such refinement was ever
+  implemented: the options were validated and stored and then read by nothing.
+  That `phi0` step is optimized by the bounded derivative-free routine (`bobyqa`,
+  or `stats::optimize` for a single parameter), which honors the `ini`-block
+  bounds and takes no L-BFGS-B settings.  Passing any of the four never changed a
+  fit, so removing them changes no result.
+
+## Changed defaults
+
+- `est="saem"` now refines a population theta that carries no random effect with
+  `newuoa` over all such thetas at once, under a budget of 25 objective
+  evaluations per iteration (`saemControl(nonMuThetaOpt="newuoa",
+  nonMuThetaMaxEval=25)`), rather than with sweeps of golden-section coordinate
+  descent.  That refinement is where such a model spends most of its time -- each
+  of its evaluations re-solves every subject and chain -- and the sweeps solved it
+  far more precisely than a stochastic-approximation step that then moves a
+  fraction of the way there can use.  Fits of models that have a non-mu theta
+  will report slightly different estimates.  Measured by the FOCEi conditional
+  objective at each run's converged estimates: on the nimotuzumab target-mediated
+  model 1.6x faster at an indistinguishable objective (143.53 vs 143.48), and on
+  the mavoglurant PBPK model 1.9x faster at a clearly better one (1977.0 vs
+  2055.8), where the cheaper refinement escapes a poor additive-error basin the
+  old default settles into.  Pass `saemControl(nonMuThetaOpt="optimize")` for the
+  previous behavior.
+
 ## New features
+
 - `.etaDistAddCovariate()` adds a covariate to one ROLE of one `dist()`
   declaration (plan phase 3.4's applier).  rxode2's expansion hoists each family
   argument onto its own `rxEdA.<eta>.<role>` line, so this adds the term at the
@@ -296,7 +327,603 @@ ini({
   covSelectPhiMaxDim=)`; the counters and the sticky pair adjacency are
   reported in the fit's `$vae`.
 
+
+- Added a native analytical outer Hessian for fast Gaussian FOCE/FOCE+/FOCEI/AGQ fits, using
+  the existing sensitivity pool. Fast `nlminb` fits used it automatically.
+
+- Added optional full conditional inner curvature for fast Gaussian FOCEI via
+  `innerHessian="conditional"`, used by inner trust and n1qn1's `warm="calc"`
+  seed. The FOCEI marginal objective was unchanged.
+
+- Evaluated the conditional inner value, gradient and full curvature jointly
+  in one pooled sensitivity solve, including M2/M3/M4 censoring.
+
+- Added `foceiControl(outerOpt="trust")`, a trust-region Newton outer optimizer
+  (`RcppTrust`) driven by the analytical outer Hessian.  `outerTrustHessian=`
+  selects the curvature -- the analytical Hessian under `fast=TRUE`, a damped
+  BFGS update, or a finite difference of the outer gradient -- with
+  `outerTrustRinit`/`outerTrustRmax`, `outerTrustFterm`/`outerTrustMterm`,
+  `outerTrustRelStep` and `outerTrustRestarts` controlling the region, its
+  tolerances and the step handed to the Hessian.  Because the solver's own
+  convergence test is satisfied by a collapsing trust region, the reported
+  point is checked with its Newton decrement and the region re-entered when it
+  is not stationary.  Measured on one model only (`theo_sd`, a fast FOCEi fit of
+  the one-compartment ODE): 116.807191 against `outerOpt="nlminb"`'s 116.808709,
+  at comparable cost once the model cache is warm.
+
+- Added `est="flaplace"`, `"mflaplace"`, `"iflaplace"`, `"fagq"`, `"mfagq"` and
+  `"ifagq"` -- the Laplace and adaptive-quadrature methods (plus their
+  mu-referenced `"lin"`/`"irls"` variants) run with the full conditional inner
+  curvature (`fast=TRUE`, `innerHessian="conditional"`).  They report as
+  `Full Laplace`/`Full AGQ`, and require Gaussian endpoints.
+
+- Both shapes of a focei covariance are named and cached, so `setCov()` can swap
+  between them.  `foceiControl(covFull=)` decides whether `fit$cov` is the
+  structural-theta block or the full theta + residual sigma + Omega matrix; the
+  full shape is now reported as `"r,s (full)"`, `"r (full)"`, `"s (full)"` or
+  `"analytic (full)"`, and the theta-only shape keeps the unqualified name.  A
+  fit computes both, so the shape it does not install is kept in `fit$covList`
+  and `setCov()` reinstalls it directly rather than recomputing it.  On the
+  finite-difference path the two are different estimators -- `"s"` inverts the
+  theta block of the cross-product while `"s (full)"` takes the theta block of
+  the full inverse, which also carries the `Omega` estimation uncertainty -- so
+  their standard errors differ; on the analytic path the assembly is always full
+  and the theta standard errors agree.  A default focei fit now reports
+  `"r,s (full)"` where it reported `"r,s"`.
+
+- `impmapControl(proposal=)` selects the importance-sampling proposal family for
+  `est="imp"`, `"impmap"` and `"qrpem"`: `"normal"` and `"t"` as `df` already
+  reached, plus `"laplace"` (a spherical multivariate Laplace, whose exponential
+  tail dominates the joint target's so the importance weights are bounded by
+  construction) and `"mixture"` (a defensive scale mixture about the same mode,
+  set by `propMixScale`/`propMixWeight`).  The default `"auto"` resolves to the
+  historical `df` behaviour, so existing fits are unchanged.  The resolved
+  family is reported in `fit$env$impProposal` and per subject in
+  `fit$env$impPropInd`.
+
+- `impmapControl(qrScramble = "owen" | "lms")` scrambles the QRPEM Sobol point
+  set (`qr = TRUE`).  The Cranley-Patterson shift randomizes the set but leaves
+  the correlation structure between the sequence's high-order dimensions
+  intact, so it helps least on the many-random-effect models that need it most;
+  a nested uniform (Owen) or linear matrix scramble permutes the digits and
+  breaks it.  Scrambling replaces the shift rather than composing with it, and
+  its key is derived arithmetically from `impSeed` and the (iteration, subject,
+  dimension) indices, so it draws nothing from the RNG and the fit stays
+  reproducible and independent of the thread count.  Defaults to `"none"`.
+
+- `impmapControl(nBurn=, burnFreezeOmega=)` add burn-in EM iterations to the
+  importance-sampling family (`est="imp"`, `"impmap"`, `"qrpem"`).  They run
+  before the `nIter` budget rather than out of it, let the `gamma` and `auto`
+  controllers settle, and can hold `Omega` at its starting value while the
+  structural and residual-error thetas update.  Convergence is not tested until
+  the whole trailing `nConvWindow` lies past the burn-in, so a frozen `Omega`
+  cannot be mistaken for a settled one.  Both default off.
+
+- `saemControl(iovMethod = "twoLevel")` estimates inter-occasion variability
+  the way the rest of `saem` estimates a variance.  The shared pre-processing
+  rewrite that every estimation method uses carries the occasion magnitude as a
+  population parameter multiplying per-occasion unit-variance etas, which makes
+  it non-mu-referenced -- so `saem` had to estimate a *variance* through its
+  fixed-effect-only path, a stochastic sampled mean over draws whose
+  pseudo-variance is deliberately annealed followed by a bounded direct
+  optimization, while every other variance component gets a closed-form M-step.
+  In practice the estimate collapsed toward zero.  `"twoLevel"` writes the
+  occasion term out as a second variance component instead, following Panhard
+  and Samson (2009): one zero-mean eta per occasion level entering additively,
+  with the per-occasion variances constrained equal so they estimate the single
+  inter-occasion variance the model declares.  A model the newer handling does
+  not cover (more than one occasion variable, a correlated occasion term, an
+  occasion parameter that is not mu-referenced) falls back to the shared
+  rewrite and says so in the fit's `$runInfo`.  Either way the fit presents the
+  same: `$omega` split into `$id` and `$occ`, the `iov.x ~ v | occ` row restored
+  in `$ui`, and an `$iov` table of the per-occasion deviations.  `$cov` carries
+  one row for the occasion variance, `om.iov.x`, rather than one per occasion
+  level under an internal name -- the per-occasion columns estimate a single
+  variance, so they are contracted by averaging (the delta method for
+  `Psi = mean(v_1, ..., v_K)`).
+
+  `iovMethod = "collapsed"` is a third, opt-in setting that additionally uses the
+  paper's own sampler: one parameter per occasion carrying `mu + b_i + c_ik`
+  together under a compound-symmetric prior, rather than sampling `b_i` and
+  `c_ik` separately.  It targets the same estimates -- the shared mean and the
+  compound-symmetric block are both imposed exactly, not by projection -- and
+  differs only in how the chain mixes.  Note the Gaussian-quadrature objective
+  is unreliable for it when the inter-occasion variance is much smaller than the
+  between-subject one, because the prior is then nearly degenerate along `b` and
+  an axis-aligned grid covers that badly; compare fits on the estimates rather
+  than on `objf`.
+
+  On the paper's own design (n = 24, 1000 replicates) `"collapsed"` recovers
+  the inter-occasion variances less accurately than the default -- mean
+  absolute relative bias 7.5% against 4.2%, and -16.1% on one component
+  where the default gets -6.8% -- which is why it is opt-in.  It does run
+  somewhat faster.
+
+  **`"twoLevel"` is now the default, so `saem` IOV estimates change.**  They
+  were biased toward zero, badly.  On the paper's own simulation design
+  (n = 24, inter-occasion variances of 0.0025/0.01/0.01, 1000 replicates each)
+  the shared rewrite recovers them with -94.7%/-89.0%/-43.6% relative bias --
+  it collapses them toward zero, and the variance it does not capture instead
+  inflates the residual error by 25%.  The two-level handling gets
+  -2.2%/-6.8%/-3.6%, less biased than the figures Panhard and Samson report
+  for their own implementation (-8.7%/-10.9%/-5.4%), and leaves the residual
+  error 2.9% high.  `iovMethod = "theta"` restores the old behavior.
+
+
+- Inter-occasion variability can now be **correlated**.  `iov.cl + iov.v ~
+  c(0.1, 0.03, 0.2) | occ` estimates the occasion covariance instead of
+  erroring with "correlated inter-occasion random effects are not
+  supported".
+
+  This adds `foceiControl(iovMethod=)`, one of `"auto"` (default),
+  `"theta"` or `"omega"`:
+
+  - `"theta"` is the long-standing expansion -- one magnitude theta per
+    occasion parameter, with unit-variance per-occasion etas fixed to it.
+    That shape provably cannot carry a correlation between two occasion
+    parameters, so it still refuses one.
+  - `"omega"` fixes the magnitude theta at one and estimates the
+    per-occasion eta blocks instead: occasion one *is* the block, and each
+    later occasion repeats it.  That is NONMEM's `$OMEGA BLOCK(n) SAME`,
+    and the correlation lives in the estimated block.
+  - `"auto"` picks `"omega"` when the occasion block has any off-diagonal
+    element and `"theta"` otherwise, per LEVEL of variability -- a
+    correlation on `occ` does not change how an unrelated diagonal
+    `occ2` is expanded.
+  - `"auto"` only reaches for `"omega"` on an estimation method that
+    honours the repeated block -- the FOCEi family.  `saem`, the
+    variational (`vae`, `fbvi`, `emvi`), nonparametric (`npag`, ...) and
+    importance-sampling (`imp`, `impmap`, `qrpem`) methods estimate
+    omega elsewhere and still refuse a correlated occasion block, since
+    they would otherwise estimate each occasion independently and report
+    only the first.
+
+  The two expansions are the same statistical model, verified exactly: with
+  the occasion variance at 1 (where the two parameterizations coincide) they
+  agree on the objective to machine precision, and evaluated at matched
+  random effects they agree to ~2e-8 at any variance.  They are *not*
+  interchangeable in practice, though -- `"theta"` presents unit-scale etas
+  to FOCEi's inner optimizer, which converges the inner problem better when
+  the occasion variance is far from 1 (on `theo_sd` with a variance of 0.1,
+  `"theta"` reaches an inner optimum 0.059 lower and `"omega"` stops short
+  of it).  That is why `"auto"` keeps `"theta"` for a diagonal block and
+  reaches for `"omega"` only when a correlation makes it necessary.
+
+  `iovXform` parameterizes the `"theta"` magnitude and is inert under
+  `"omega"`, where the magnitude is fixed at one; asking for a non-`"sd"`
+  value under `"omega"` now says so once.
+
+  Analytic covariance falls back to finite differences for a repeated
+  (`SAME`) omega block: its IOV special case reads the magnitude theta as
+  the occasion standard deviation, which is 1 in this mode, and would have
+  overwritten the estimated per-occasion variances rather than merely
+  being conservative.
+
+
+- `foceiControl(innerOpt=)` adds a trust-region Newton inner (per-subject eta)
+  optimizer backed by the `RcppTrust` package, `"trust"`. Unlike `n1qn1`, which
+  gets an approximate Hessian only once as a warm-start seed, the trust-region
+  step is supplied a fresh exact Gauss-Newton+Omega^-1 Hessian every iteration.
+  Each eta is scaled by `sqrt(diag(Omega))`, with the trust-region radius
+  derived from the eta confidence region (`foceiControl(trustConf=)`, default
+  0.975); `trustRinit`/`trustRmax` override the derived radius directly.
+  `est="vae"` does not use `foceiControl()`'s inner loop and is unaffected.
+
+- `foceiControl(innerOpt=)` gains `"auto"`, and **it is now the default** for
+  every FOCEi-family method (`focei`/`foce`/`foi`/`fo`, and `impmap`'s MAP
+  inner problem). It picks `"n1qn1"` for a generalized log-likelihood endpoint
+  (`dnorm()`, `ll()`, `dpois()`, ...) and `"trust"` for everything else, which
+  is where each is faster: such an endpoint has no Gauss-Newton inner Hessian,
+  so `"trust"` must finite-difference one (2*neta inner solves) at every trial
+  point where `"n1qn1"` builds it once as a warm-start seed. On a
+  1-compartment oral model (120 subjects) as a `dnorm()` endpoint `"trust"`
+  took 26.5s against `n1qn1`'s 16.3s, while on the same model with a normal
+  endpoint it took 1.1s against 4.6s. `"trust"` and `"n1qn1"` remain
+  selectable explicitly.
+
+  This changes the exact numeric result of every FOCEi-family fit that does
+  not pin `innerOpt=` explicitly (typically by a few objf units at most; see
+  `inst/benchmarks/results/` for a broad benchmark against `n1qn1`), though
+  usually faster and comparably accurate. Pin `foceiControl(innerOpt="n1qn1")`
+  to keep exact bit-for-bit reproducibility with prior releases.
+
+- New nlm-family estimation method, `est="trust"` (`trustControl()`), a
+  trust-region Newton optimizer for the population theta vector backed by
+  the `RcppTrust` package -- unrelated to `foceiControl(innerOpt="trust")`
+  above, which optimizes per-subject eta instead. Unlike every other
+  nlm-family method (`nlm`/`nlminb`/`bobyqa`/`newuoa`/`uobyqa`/`n1qn1`/
+  `lbfgsb3c`/`optim`), whose optimization loop lives in R and calls back
+  into C++ once per iteration, `trust`'s entire loop runs inside a single
+  C++ call -- `RcppTrust` needs no R API, so there is no per-iteration R
+  round-trip. It optimizes in the same scaled-parameter space every
+  nlm-family method (`bobyqa` included) already uses, and supplies a full
+  gradient and a full Hessian every iteration. By default
+  (`trustControl(hessianMethod="fd")`) this Hessian is a fresh
+  finite-difference-of-the-gradient every outer iteration (there is no
+  analytic outer-theta Hessian in this package, so this costs roughly
+  `ntheta` extra full population-gradient solves per outer iteration -- the
+  price of true Newton-trust behavior). `hessianMethod` can instead build the
+  Hessian as a quasi-Newton update from consecutive outer iterations'
+  gradients (already computed regardless of `hessianMethod`, so these add no
+  extra evaluations): `"bfgs"` (damped BFGS, always positive definite),
+  `"sr1"` (Symmetric Rank-1, not forced positive definite), or `"bofill"`
+  (Bofill's SR1/Powell-Symmetric-Broyden blend, the standard
+  Berny/transition-state-search Hessian update) -- see `?trustControl` for
+  full references. `trust` is unbounded, like `n1qn1`/`nlm`.
+  `trustControl(fterm=, mterm=)`, the Newton loop's own function-value and
+  predicted-decrease convergence tolerances, default to `10^(-sigdig-2)` --
+  two orders tighter than every other nlm-family tolerance here uses,
+  matching `foceiControl(trustFterm=, trustMterm=)` (the analogous tolerance
+  for the OTHER `RcppTrust`-backed solve in this package, the per-subject eta
+  problem inside FOCEi) rather than the plain `10^(-sigdig)` `bobyqaControl()`
+  and `foceiControl()`'s own `epsilon` use.
+
+- `foceiControl(hessianMethod=)` extends the same idea to FOCEi's INNER
+  (per-subject eta) problem: for a non-normal-endpoint model (any
+  distribution other than `norm`), the per-subject inner Hessian has no
+  Gaussian Gauss-Newton shortcut and falls back to a finite difference of
+  the gradient every `innerOpt="trust"` Newton step (`calcEtaHessian()`).
+  `"fd"` (default) keeps this original finite difference; `"bfgs"`/`"sr1"`/
+  `"bofill"` build the Hessian instead as a quasi-Newton update from
+  consecutive Newton steps' already-computed gradients (no extra
+  evaluations) -- the same three update formulas `trustControl()` above
+  uses. Since this loop runs per subject, per Newton step, per outer
+  iteration, avoiding a fresh finite difference at every one compounds into
+  a much larger speedup than the outer-theta case: `bfgs`/`sr1`/`bofill` ran
+  roughly 2.7-19x faster than `"fd"` on this package's own small benchmark (a
+  Poisson and a general `ll()` model,
+  `inst/benchmarks/benchmark-focei-hessian-method.R`). `"fd"` stays the
+  default: unlike the outer-theta case, this inner Hessian's log-determinant
+  is added directly into the reported objective (`LikInner2()`), and on a
+  real one-compartment PK model fit as a general `ll()` endpoint every
+  quasi-Newton option converged to the same wrong parameter estimate with a
+  *worse* reported objective than `"fd"`'s correct answer -- see the Bug
+  fixes section below. Has no effect on normal-endpoint models. Only
+  meaningful with `innerOpt="trust"`: asking for `"bfgs"`/`"sr1"`/`"bofill"`
+  under any other inner optimizer is now an error rather than a silent no-op,
+  so a request that could not be honored is not lost. Since `innerOpt="auto"`
+  (the default) sends exactly the non-normal-endpoint models this applies to
+  to `"n1qn1"`, using it means pinning `innerOpt="trust"` as well.
+
+- `impmapControl()`/`impControl()` gain `combSens` (default `TRUE`): when
+  `est="impmap"`/`"imp"`/`"qrpem"` has non-mu (structural or residual-error)
+  thetas to estimate, `combSens=TRUE` carries their sensitivity columns on the
+  INNER model itself instead of a second, dedicated model, and the E-step's
+  own per-sample inner solve now supplies the M-step's Newton step directly
+  (no second solve) whenever `sir=FALSE` (the default) -- roughly halving the
+  ODE solving the M-step's theta gradient costs. Pass `combSens=FALSE` for the
+  previous two-model behavior.
+
+- A pure-linear `matExp()` model now solves natively through rxode2's
+  matrix-exponential driver (`rxControl(method="indLin")`) under SAEM instead
+  of being flattened to an equivalent `d/dt()` ODE first.  SAEM has no
+  analytic-sensitivity consumer of the state derivatives, so native solving
+  is all that changes; `focei`/`nlm`/`nls` are unaffected, and a model with
+  an `indLin()` forcing term (e.g. Michaelis-Menten) still flattens (issue
+  #859).
+
+- A `linCmt()` parameter driven by both an eta and a time-varying covariate
+  (for example `cl <- tcl*(wt/70)^0.75*exp(eta.cl)` with `wt` changing over a
+  subject's records) now gets an exact FOCEi-family eta gradient.  The
+  analytic `linCmt()` sensitivity reconstructs each row's carried state as if
+  the parameter had been constant over the subject, so a covariate that
+  changes it between rows silently conflated the interval sensitivities
+  (objective-function and converged-eta differences against the equivalent
+  ODE model).  The generated inner model now carries the exact sensitivity
+  across rows through rxode2's `linCmtB()` carry sentinels for every eligible
+  (parameter, eta) pair; models without such a pair generate identical code.
+  `foceiControl(linCmtSensCarry=)` opts out (`"none"`).  Data with
+  steady-state (`ss > 0`) or `evid = 2` records fall back to the previous
+  gradient with a note in `$runInfo`, and `"linear"` covariate interpolation
+  on such a covariate is an error (a `linCmt()` model evaluates each interval
+  at its row-end covariate value, so only a piecewise-constant interpolation
+  is representable).  The carry also covers the two ways an eta reaches the
+  state through an event: a modeled `f()` whose `d(ln F)/d(eta)` depends on
+  a covariate and a modeled `alag()` on a time-varying kernel each get a
+  per-row jump contribution (`#920`'s row-local terms are exact only while
+  the parameters are constant), and every `linCmt()` parameterization
+  (`trans`) is handled, with the observation-scaling term taken from
+  rxode2's own micro-constant translation.  Data whose doses enter another
+  compartment than the modified one, or an infusion with an `alag()` /
+  covariate `f()` channel, fall back like `ss` records do.  A generalized
+  `ll()` endpoint (or any prediction that wraps the `linCmt()` value in a
+  larger expression) is carried too: the concentration is read back once as
+  `rx_lcConc_`, the carry supplies its eta sensitivity and symengine the
+  outer chain rule, including any eta dependence the likelihood has with
+  the concentration held fixed (#1004).  The same carry also serves the
+  population methods' theta gradients (#1003): a theta on a
+  covariate-driven `linCmt()` parameter gets the carried score in the
+  `nlm` family and `nls`
+  (`nlmControl(linCmtSensCarry=)` / `nlsControl(linCmtSensCarry=)`),
+  with the concentration factored out of the wrapped log-likelihood;
+  SAEM's linearized FIM needs no change (it perturbs `phi` and
+  re-solves values, which is exact under a time-varying covariate).
+  Requires an rxode2 with the carry sentinels (the event channels need its
+  `which1 = -8` pin); older versions keep the previous behavior.  The
+  candidate detection itself is memoized by the focei model digest and
+  persisted as a sidecar in rxode2's cache directory (`rxCreateCache()`),
+  so repeated fits -- and, with a persistent cache, fresh sessions -- skip
+  the symbolic pass.  The focei model-cache bundle itself now stores each
+  generated model as its `rxode2::rxNorm()` text instead of a serialized
+  model object (about 1 kb instead of 1 Mb; rebuilding from the text hits
+  rxode2's compiled-model cache); bundles written by an earlier version
+  still load.
+
+- `focei`/`foce`/`agq`/`laplace`/`nlm` now compute a `matExp()` model's eta/
+  theta sensitivities natively via `rxode2::rxSensMatExp()`, instead of
+  flattening the model to an equivalent `d/dt()` ODE first and differentiating
+  that.  A pure-linear `matExp()` model always takes this path; a model with
+  an `indLin()` forcing term (e.g. Michaelis-Menten) takes it under `focei`
+  and `focep`, and falls back to the ODE flatten (unchanged prior behavior)
+  under `foce` (non-interaction), the mu-referenced/IRLS family (`mfocei`/
+  `ifocei`/`mfoce`/`ifoce`), and `nlm` -- those combinations' gradient/
+  covariance machinery is not yet compatible with the native forcing
+  sensitivities and is tracked separately (issue #860; follow-up work in
+  #861/#862).  `foceiControl(fast=TRUE)` is automatically downgraded to
+  `fast=FALSE` for a `matExp()` model taking the native path, since the
+  analytic outer-gradient/covariance model (`foceiCovAnalytic.R`) is still
+  ODE-flattened.
+
+- A modeled `alag()` or `f()` on a `linCmt()` compartment now gets an exact
+  FOCEi/FOCE eta gradient instead of a silently incomplete one.  The
+  structural `linCmt()` Jacobian only covers `p1`/`v1`/`ka`/...; the
+  moving-boundary (dose-time) contribution of a modeled `alag()` is now added
+  via rxode2's `linCmtB(which1=-3)` (nlmixr2/rxode2#1235), and the
+  bioavailability contribution via the exact `d(pred)/dF = pred/F` identity
+  (issue #920).
+
+  Both corrections require every dose reaching the linear system to share the
+  same `alag()`/`f()` (rxode2/rxode2#1237); a model declaring more than one
+  is left as before.  This cannot be checked for a regimen that doses an
+  *unlagged/unscaled* compartment alongside the lagged/scaled one (a common
+  design for estimating `f()` from paired IV+oral data) -- that combination
+  returns a biased, not obviously wrong, gradient.  An infused dose into the
+  lagged/scaled compartment also cannot be checked, and returns `NA`
+  (rxode2/rxode2#1236).  `foceiControl(eventSens="fd")` opts out of both.
+
+- A prior distribution given in the `ini({})` block is no longer silently
+  ignored.  `nlmixr2Est()` now refuses any prior the estimation method
+  cannot use before dispatching, so a model carrying one fails with an
+  explanation naming the parameter and the `est=` instead of being fit to
+  something other than what it says.
+
+  A method declares what it supports with an attribute on itself, so it
+  can opt in as it gains support:
+
+  ```r
+  attr(nlmixr2Est.myMethod, "nlmixr2Priors") <- "general"
+  ```
+
+  The levels are `"none"` (the default when the attribute is absent),
+  `"theta"` (population parameters only), `"general"` (everything the
+  shared kernel supports, including a prior on an omega element under
+  any convention), `"nwpri"` (NONMEM's own `$PRIOR NWPRI` omega
+  convention) and `"tnpri"` (Monolix's/NONMEM's own-estimation
+  joint-normal convention, including a normal prior directly on an omega
+  element) -- see `?nlmixr2Est` for what each accepts -- and `"all"`.
+  Because the check happens in the generic, methods registered by other
+  packages -- `babelmixr2`'s `nonmem`, `monolix`, `saemix` and the rest
+  -- are covered without any change of their own.
+
+- `est="focei"` and every method in its family (`foce`, `focep`, `fo`,
+  `foi`, the mu-referenced `mfoce*`/IRLS `ifoce*` variants, `laplace`,
+  `agq` and their quadrature/`*f` fast-path siblings) now honours a
+  prior on a population parameter AND on an omega element -- under any
+  of the kernel's three conventions (`"general"`, NONMEM's `"nwpri"`,
+  Monolix's/NONMEM's-own-estimation `"tnpri"`), auto-detected from what
+  the model's own `ini({})` actually wrote -- added to the objective as
+  `-2*log p(theta, omega)` (nlmixr2/rxode2#1270, issue #929, issue #931)
+  -- declared `nlmixr2Priors = "general"`.
+
+  The convention is auto-detected by default (`foceiControl(priorMethod=
+  "auto")`), but can be forced with `foceiControl(priorMethod="general"/
+  "nwpri"/"tnpri")`. Forcing a convention the model's priors are not
+  representable under (e.g. `priorMethod="tnpri"` on an `invWishart()`
+  prior) errors before any estimation starts, naming the parameter and
+  which method it needs instead.
+
+  `foceiControl(fast=TRUE)`'s analytic outer gradient has a real
+  `d/dtheta log p(theta)` term (a straight fold into the same
+  natural-scale accumulator the outer FD substitution already uses) and
+  a real `d/d(chol(Omega^-1)) log p(omega)` term (chain-ruled through the
+  SAME estimation-scale derivative data -- `d.omegaInv`/`tr.28` from the
+  model's `rxSymInvCholEnv` handle -- FOCEi's own, non-prior omega
+  gradient already relies on), so a prior no longer downgrades it: this
+  package uses symbolic/analytic derivatives throughout, not finite
+  differences, wherever one is available. (A prior referencing a theta a
+  mu-referenced family profiles out of the outer problem entirely is the
+  one case that first term cannot attribute; that specific fit declines
+  to finite differences instead of silently under-counting, detected
+  once at setup, not per evaluation.) `covMethod="analytic"` is still
+  downgraded to a finite-difference covariance, since the analytic
+  Hessian has no prior term yet -- a finite difference of the (now
+  prior-inclusive) objective picks the prior term up automatically.
+
+  Fixed along the way: `.nlmixr2FitUpdateParams()` rebuilt a fit's omega
+  rows of `iniDf` from the raw Omega matrix whenever an mixed-effects
+  model estimate was pinned back onto the model (piping, `.setOfvFo()`'s
+  post-fit re-entry for `setOfv()`/`addCwres()`), and that rebuild had no
+  way to carry the `prior` column lotri itself does not know about -- a
+  prior on an omega element silently vanished the first time a
+  prior-carrying fit was re-entered, which is every fit's own finalize
+  step. `rxUiPriors(fit$ui)` now still reports it afterward.
+
+- `est="imp"`, `est="impmap"` and `est="qrpem"` now honour a prior on a
+  population parameter AND on an omega element, declared
+  `nlmixr2Priors = "general"` individually on each of the three (issue
+  #932). Their shared M-step is an importance-sampling EM, not FOCEi's
+  outer optimizer, so the objective already picking up the prior (via
+  #931's plumbing) was not enough on its own -- the estimates it reported
+  would otherwise still be the maximum-likelihood ones. Each M-step update
+  now folds in the prior's own score/curvature before taking its step:
+
+  - the non-mu structural/residual-error Newton step, the mu-referenced
+    covariate regression (`updateMuGroups()`), and the plain mu-intercept
+    mean-shift each fold in an FD-Hessian one-step Newton correction --
+    exact for a Gaussian prior (a quadratic log-density has no Taylor
+    truncation error), a reasonable one-step approximation otherwise
+    (Cauchy, `multiNormal()`).
+  - the Omega EM moment-average update gets the EXACT joint posterior mode
+    for a conjugate `invWishart()` term (NONMEM's own `"nwpri"` convention
+    or the textbook `"general"` one), and a one-step Fisher-scoring
+    (One-Step-Late) correction, reusing the same `Abar` construction
+    FOCEi's own omega-prior gradient already computes, for a normal prior
+    directly on an omega element (`"tnpri"`) or a `multiNormal()` block
+    mixing omega with theta.
+
+- A prior may now be placed directly on a single omega COVARIANCE
+  (off-diagonal) element -- `prior(eta.cl, eta.v) ~ dnorm(0, 0.1)` on a
+  model with a correlated BSV block -- a marginal, independent prior on
+  that one cell, distinct from a whole-block `invWishart()`/
+  `multiNormal()` prior. NONMEM has no direct mechanism for this specific
+  marginal form; it fills the same ergonomic gap this package's `om.<eta>`
+  shorthand already fills for one individual variance. This is entirely a
+  new capability in the shared upstream kernel (rxode2/lotri, see their
+  own NEWS) -- FOCEi's `foceiPriorOmegaGradAdd()` and imp/impmap/qrpem's
+  `impPriorOmegaCorrect()` already operated on the full `gradOmega`/`Omega`
+  matrices generically, so both pick this up with no nlmixr2est source
+  changes at all, confirmed by new tests in `test-focei-prior.R` and
+  `test-imp-prior.R` that pass unmodified against the upgraded
+  dependencies.
+
+
+- `est="saem"` gained controls for the cost of the `nonMuTheta="regress"`
+  refinement, which estimates population thetas that carry no random effect:
+  `saemControl(nonMuThetaOpt=, nonMuThetaSweeps=, nonMuThetaMaxEval=,
+  nonMuThetaTol=, nonMuThetaEvery=)`.  That refinement runs every iteration of
+  the second half of the fit, and when the non-mu thetas are structural (they
+  drive the ODE) each of its objective evaluations is a full re-solve of every
+  subject and chain, so it can cost more than the rest of the algorithm put
+  together -- on the nimotuzumab target-mediated example and the mavoglurant
+  PBPK example (both with five non-mu thetas) it is around 60% of the run time.
+  `nonMuThetaOpt="newuoa"` (the new default, see **Changed defaults**) and
+  `nonMuThetaOpt="nelderMead"` run one clamped multivariate optimization over
+  all free `phi0` coordinates under a fixed evaluation budget
+  (`nonMuThetaMaxEval`); both see the coupling between those coordinates, which
+  the previous coordinate descent (`nonMuThetaOpt="optimize"`, still available)
+  cannot.  `nonMuThetaEvery` additionally runs the refinement only every k-th
+  iteration.
+
+- An estimated transform-both-sides `lambda` (`boxCox()`/`yeoJohnson()`) now
+  carries a real theta-sensitivity column instead of a silent zero (#949).
+  The conditional depends on `lambda` through both sides of the residual
+  `h(y; lambda) - h(f; lambda)`: the prediction side now comes from the
+  sensitivity model (the direct partial is taken for residual-error thetas
+  too, not hard-coded to zero, so `rx_pred_`'s `rxTBS()` is differentiated),
+  and the DV side from a new `d(lambda)/d(theta)` output multiplied by the
+  analytic `d(h(y; lambda))/d(lambda)` where the DV transform is applied.
+  The censored (M2/M3/M4) score picks up the matching DV and `LIMIT` partials.
+  The column agrees with central differences to ~1e-9 relative on Box-Cox and
+  Yeo-Johnson fixtures where it was previously identically zero -- the failure
+  mode that made an estimated `lambda` an imp/advi M-step no-op and gave
+  gradient-based callers a wrong direction.
+
+- Dose-handling (`alag()`/`f()`/`dur()`/`rate()`) theta sensitivities are no
+  longer silently zero (#946).  The theta-sensitivity model is now compiled
+  with rxode2's analytic event ("jump") sensitivities (following the
+  control's `eventSens`, the same source the inner model uses), and its
+  solves run under its own event shape (`OdeSwapEsBatch(odeSlotThetaSens)`
+  brackets the batch; the shape is a process global whose installer calls
+  into R, so it cannot be swapped inside the parallel region).  The inner
+  batch in the conditional-likelihood C API likewise installs the inner
+  model's shape, so an eta entering dose handling gets its jump too.  An
+  estimated `alag` theta's derivative now agrees with central differences
+  (~1e-5 relative, ODE-tolerance-limited) where it previously came back
+  identically zero -- the failure mode that made an `alag`-estimating
+  imp/advi theta update a no-op and broke gradient-based samplers.
+
+- New FOCEi conditional-likelihood C API (#937): a plain-C, non-throwing,
+  gradient-returning entry-point table over the `foceiLikLoad()`-ed problem,
+  exposed to downstream packages through `_nlmixr2est_foceiPtrs()` /
+  `.nlmixr2estFoceiPtrs()` with the caller side in
+  `inst/include/nlmixr2estFoceiPtr.h` -- the same external-pointer idiom as
+  the likelihood-contribution registry.  Seven entries: an ABI version,
+  dimensions plus capability/hazard flags (so `focep`/`fo`/finite-difference
+  etas/mixtures are refused at load rather than sampled wrongly), a
+  return-code `setTheta`, the batched per-subject conditional
+  `log p(y_i | eta_i)` with its `d/d(eta)` (subject-parallel, deterministic:
+  the sticky solve-tolerance relaxation is reset every call so the value is a
+  pure function of `(theta, eta)`), a global `Omega^-1` conditioning knob,
+  and the theta-sensitivity index/score pair for `d/d(theta)` of the
+  conditional at fixed eta.  The eta gradient is assembled inside nlmixr2est
+  as `Omega^-1 eta - fInd->lp` -- the same identity the ADVI outer gradient
+  uses -- so no caller ever reconstructs the sign convention.  Built for the
+  Stan linkage in `nlmixr2/nlmixr2stan`.
+
+- `foceiLikLoad()` gains three arguments for external callers (#939):
+  `scale="natural"` pins the parameter scaling to the identity so
+  `foceiLikRun()`'s `theta` is directly comparable with `ui$iniDf$est`
+  (no more re-implementing `nlmUnscalePar()` downstream); `thetaSens=TRUE`
+  builds and wires the theta-sensitivity model (the `d(f)/d(theta)` /
+  `d(V)/d(theta)` forward sensitivities the imp/advi engines use), reported
+  on the handle as `thetaSens`/`thetaSensIdx`; and `est=` names the
+  estimation method whose capability attributes the pre-process hooks
+  consult, turning "the bounds survive preprocessing" from an accident of
+  focei's attributes into a guarantee the caller can request.
+
+- `nlmUnscalePar()` is now exported (#940).  External engines that drive the
+  nlm-family objective (e.g. `babelmixr2`'s FME-based methods) previously had
+  to reach it with `get("nlmUnscalePar", envir = asNamespace("nlmixr2est"))`.
+
+- Requires `rxode2` (>= 5.1.7).  The compatibility layer that also let this
+  package build and run against 5.1.5 has been removed, so the event-sensitivity
+  shape swap and the CMT re-basing of the shared solve pool always go through
+  rxode2's C API instead of writing its structures by field.
+  
+- `est="npag"` / `est="npb"` now support a hand-written general likelihood
+  (`ll()`) properly.  A model whose `ll()` is written as the exact normal
+  log-density now agrees with the equivalent `add()` model to the known
+  `0.5*log(2*pi)` per observation, at every grid size.  Requires rxode2 5.1.7 for
+  the `safeLog=2` log-domain mode.
+
+- `foceiControl(fast = TRUE)` now keeps the analytic outer gradient when a
+  subject's augmented sensitivity solve fails, instead of sending the whole
+  gradient evaluation to finite differences.  Such a subject is finite-differenced
+  on its own and folded into the otherwise-analytic sum, covering the omega
+  directions as well as theta and sigma.  The per-subject machinery was present
+  but could never apply: a failed solve left the subject with no observation count,
+  and the assembly declined the whole evaluation before reaching the substitution.
+  `fit$env$nOuterFdInd` counts the substitutions applied, so "one subject was
+  finite-differenced and the rest stayed analytic" is now distinguishable from
+  "the gradient declined" -- the two previously looked identical.
+
+- `foceiControl(fast = TRUE)` now uses the analytic outer gradient for
+  general-likelihood models with **more than one endpoint**, which previously
+  fell back to finite differences.  It was gated off as unverifiable, but what
+  did not verify was the objective below rather than the gradient; against
+  central differences of the corrected objective it agrees to 8e-3 relative.
+
+- `saemControl(revisitUninformativeEtas=)` (default `FALSE`) re-runs the
+  uninformative-eta test at the end of burn-in and replaces the verdict reached
+  at the initial estimates.  The test asks whether perturbing an eta moves that
+  subject's prediction, and is otherwise only run once, before the fit -- so the
+  initial estimates decide, for the whole fit, which etas `saem` may sample.  The
+  second test reuses the fit's own model evaluation, so it adds a few solves at
+  one iteration and leaves the random number stream alone: where it changes no
+  verdict the fit is identical.  It is off by default because the two verdicts
+  only disagree when `theta` moved a long way during burn-in, which usually means
+  it has not settled, and the second verdict can freeze an eta for the rest of
+  the fit.
+
+- `est="saem"` now recognizes `t()`/`cauchy()` residual-error endpoints as
+  general-likelihood models, the same way a literal `ll()` endpoint already
+  was, instead of erroring (`"t isn't supported yet"` / `"Distribution not
+  supported"`).  rxode2's own FOCEi line generator already reduces these to
+  the same shape (`rx_pred_` an explicit log-density, `rx_r_ ~ 0`), so
+  `saem` now dispatches through the same path.
+
+- `est="saem"` now recognizes a general-likelihood model with **any number of
+  endpoints**, including a genuine **mix of `norm` and general-likelihood
+  endpoints in the same fit** (e.g. one `add()` condition alongside a `t()`,
+  `cauchy()`, or literal `ll()` condition), instead of silently scoring the
+  whole fit as if every endpoint were normally distributed.  A `norm`
+  condition mixed with a general-likelihood one is transparently expressed as
+  the equivalent `llikNorm()` general likelihood (the same normal log-density,
+  sharing the same variance-formula machinery), mirroring how FOCEi already
+  handles this mix -- no `distribution()`-family limitation remains.
+
 ## Bug fixes
+
 - `est="saem"` now estimates a covariate on a `dist()` declaration instead of
   returning zero for it.  saem's non-mu theta refinement has two routes, and
   only one can carry such a coefficient.  The default, `nonMuTheta = "regress"`,
@@ -549,180 +1176,6 @@ ini({
   CWRES for any fit whose own objective function is already the focei one,
   since there is no way to add them afterwards.
 
-## New features
-
-- Added a native analytical outer Hessian for fast Gaussian FOCE/FOCE+/FOCEI/AGQ fits, using
-  the existing sensitivity pool. Fast `nlminb` fits used it automatically.
-
-- Added optional full conditional inner curvature for fast Gaussian FOCEI via
-  `innerHessian="conditional"`, used by inner trust and n1qn1's `warm="calc"`
-  seed. The FOCEI marginal objective was unchanged.
-
-- Evaluated the conditional inner value, gradient and full curvature jointly
-  in one pooled sensitivity solve, including M2/M3/M4 censoring.
-
-- Added `foceiControl(outerOpt="trust")`, a trust-region Newton outer optimizer
-  (`RcppTrust`) driven by the analytical outer Hessian.  `outerTrustHessian=`
-  selects the curvature -- the analytical Hessian under `fast=TRUE`, a damped
-  BFGS update, or a finite difference of the outer gradient -- with
-  `outerTrustRinit`/`outerTrustRmax`, `outerTrustFterm`/`outerTrustMterm`,
-  `outerTrustRelStep` and `outerTrustRestarts` controlling the region, its
-  tolerances and the step handed to the Hessian.  Because the solver's own
-  convergence test is satisfied by a collapsing trust region, the reported
-  point is checked with its Newton decrement and the region re-entered when it
-  is not stationary.  Measured on one model only (`theo_sd`, a fast FOCEi fit of
-  the one-compartment ODE): 116.807191 against `outerOpt="nlminb"`'s 116.808709,
-  at comparable cost once the model cache is warm.
-
-- Added `est="flaplace"`, `"mflaplace"`, `"iflaplace"`, `"fagq"`, `"mfagq"` and
-  `"ifagq"` -- the Laplace and adaptive-quadrature methods (plus their
-  mu-referenced `"lin"`/`"irls"` variants) run with the full conditional inner
-  curvature (`fast=TRUE`, `innerHessian="conditional"`).  They report as
-  `Full Laplace`/`Full AGQ`, and require Gaussian endpoints.
-
-- Both shapes of a focei covariance are named and cached, so `setCov()` can swap
-  between them.  `foceiControl(covFull=)` decides whether `fit$cov` is the
-  structural-theta block or the full theta + residual sigma + Omega matrix; the
-  full shape is now reported as `"r,s (full)"`, `"r (full)"`, `"s (full)"` or
-  `"analytic (full)"`, and the theta-only shape keeps the unqualified name.  A
-  fit computes both, so the shape it does not install is kept in `fit$covList`
-  and `setCov()` reinstalls it directly rather than recomputing it.  On the
-  finite-difference path the two are different estimators -- `"s"` inverts the
-  theta block of the cross-product while `"s (full)"` takes the theta block of
-  the full inverse, which also carries the `Omega` estimation uncertainty -- so
-  their standard errors differ; on the analytic path the assembly is always full
-  and the theta standard errors agree.  A default focei fit now reports
-  `"r,s (full)"` where it reported `"r,s"`.
-
-- `impmapControl(proposal=)` selects the importance-sampling proposal family for
-  `est="imp"`, `"impmap"` and `"qrpem"`: `"normal"` and `"t"` as `df` already
-  reached, plus `"laplace"` (a spherical multivariate Laplace, whose exponential
-  tail dominates the joint target's so the importance weights are bounded by
-  construction) and `"mixture"` (a defensive scale mixture about the same mode,
-  set by `propMixScale`/`propMixWeight`).  The default `"auto"` resolves to the
-  historical `df` behaviour, so existing fits are unchanged.  The resolved
-  family is reported in `fit$env$impProposal` and per subject in
-  `fit$env$impPropInd`.
-
-- `impmapControl(qrScramble = "owen" | "lms")` scrambles the QRPEM Sobol point
-  set (`qr = TRUE`).  The Cranley-Patterson shift randomizes the set but leaves
-  the correlation structure between the sequence's high-order dimensions
-  intact, so it helps least on the many-random-effect models that need it most;
-  a nested uniform (Owen) or linear matrix scramble permutes the digits and
-  breaks it.  Scrambling replaces the shift rather than composing with it, and
-  its key is derived arithmetically from `impSeed` and the (iteration, subject,
-  dimension) indices, so it draws nothing from the RNG and the fit stays
-  reproducible and independent of the thread count.  Defaults to `"none"`.
-
-- `impmapControl(nBurn=, burnFreezeOmega=)` add burn-in EM iterations to the
-  importance-sampling family (`est="imp"`, `"impmap"`, `"qrpem"`).  They run
-  before the `nIter` budget rather than out of it, let the `gamma` and `auto`
-  controllers settle, and can hold `Omega` at its starting value while the
-  structural and residual-error thetas update.  Convergence is not tested until
-  the whole trailing `nConvWindow` lies past the burn-in, so a frozen `Omega`
-  cannot be mistaken for a settled one.  Both default off.
-
-- `saemControl(iovMethod = "twoLevel")` estimates inter-occasion variability
-  the way the rest of `saem` estimates a variance.  The shared pre-processing
-  rewrite that every estimation method uses carries the occasion magnitude as a
-  population parameter multiplying per-occasion unit-variance etas, which makes
-  it non-mu-referenced -- so `saem` had to estimate a *variance* through its
-  fixed-effect-only path, a stochastic sampled mean over draws whose
-  pseudo-variance is deliberately annealed followed by a bounded direct
-  optimization, while every other variance component gets a closed-form M-step.
-  In practice the estimate collapsed toward zero.  `"twoLevel"` writes the
-  occasion term out as a second variance component instead, following Panhard
-  and Samson (2009): one zero-mean eta per occasion level entering additively,
-  with the per-occasion variances constrained equal so they estimate the single
-  inter-occasion variance the model declares.  A model the newer handling does
-  not cover (more than one occasion variable, a correlated occasion term, an
-  occasion parameter that is not mu-referenced) falls back to the shared
-  rewrite and says so in the fit's `$runInfo`.  Either way the fit presents the
-  same: `$omega` split into `$id` and `$occ`, the `iov.x ~ v | occ` row restored
-  in `$ui`, and an `$iov` table of the per-occasion deviations.  `$cov` carries
-  one row for the occasion variance, `om.iov.x`, rather than one per occasion
-  level under an internal name -- the per-occasion columns estimate a single
-  variance, so they are contracted by averaging (the delta method for
-  `Psi = mean(v_1, ..., v_K)`).
-
-  `iovMethod = "collapsed"` is a third, opt-in setting that additionally uses the
-  paper's own sampler: one parameter per occasion carrying `mu + b_i + c_ik`
-  together under a compound-symmetric prior, rather than sampling `b_i` and
-  `c_ik` separately.  It targets the same estimates -- the shared mean and the
-  compound-symmetric block are both imposed exactly, not by projection -- and
-  differs only in how the chain mixes.  Note the Gaussian-quadrature objective
-  is unreliable for it when the inter-occasion variance is much smaller than the
-  between-subject one, because the prior is then nearly degenerate along `b` and
-  an axis-aligned grid covers that badly; compare fits on the estimates rather
-  than on `objf`.
-
-  On the paper's own design (n = 24, 1000 replicates) `"collapsed"` recovers
-  the inter-occasion variances less accurately than the default -- mean
-  absolute relative bias 7.5% against 4.2%, and -16.1% on one component
-  where the default gets -6.8% -- which is why it is opt-in.  It does run
-  somewhat faster.
-
-  **`"twoLevel"` is now the default, so `saem` IOV estimates change.**  They
-  were biased toward zero, badly.  On the paper's own simulation design
-  (n = 24, inter-occasion variances of 0.0025/0.01/0.01, 1000 replicates each)
-  the shared rewrite recovers them with -94.7%/-89.0%/-43.6% relative bias --
-  it collapses them toward zero, and the variance it does not capture instead
-  inflates the residual error by 25%.  The two-level handling gets
-  -2.2%/-6.8%/-3.6%, less biased than the figures Panhard and Samson report
-  for their own implementation (-8.7%/-10.9%/-5.4%), and leaves the residual
-  error 2.9% high.  `iovMethod = "theta"` restores the old behavior.
-
-
-- Inter-occasion variability can now be **correlated**.  `iov.cl + iov.v ~
-  c(0.1, 0.03, 0.2) | occ` estimates the occasion covariance instead of
-  erroring with "correlated inter-occasion random effects are not
-  supported".
-
-  This adds `foceiControl(iovMethod=)`, one of `"auto"` (default),
-  `"theta"` or `"omega"`:
-
-  - `"theta"` is the long-standing expansion -- one magnitude theta per
-    occasion parameter, with unit-variance per-occasion etas fixed to it.
-    That shape provably cannot carry a correlation between two occasion
-    parameters, so it still refuses one.
-  - `"omega"` fixes the magnitude theta at one and estimates the
-    per-occasion eta blocks instead: occasion one *is* the block, and each
-    later occasion repeats it.  That is NONMEM's `$OMEGA BLOCK(n) SAME`,
-    and the correlation lives in the estimated block.
-  - `"auto"` picks `"omega"` when the occasion block has any off-diagonal
-    element and `"theta"` otherwise, per LEVEL of variability -- a
-    correlation on `occ` does not change how an unrelated diagonal
-    `occ2` is expanded.
-  - `"auto"` only reaches for `"omega"` on an estimation method that
-    honours the repeated block -- the FOCEi family.  `saem`, the
-    variational (`vae`, `fbvi`, `emvi`), nonparametric (`npag`, ...) and
-    importance-sampling (`imp`, `impmap`, `qrpem`) methods estimate
-    omega elsewhere and still refuse a correlated occasion block, since
-    they would otherwise estimate each occasion independently and report
-    only the first.
-
-  The two expansions are the same statistical model, verified exactly: with
-  the occasion variance at 1 (where the two parameterizations coincide) they
-  agree on the objective to machine precision, and evaluated at matched
-  random effects they agree to ~2e-8 at any variance.  They are *not*
-  interchangeable in practice, though -- `"theta"` presents unit-scale etas
-  to FOCEi's inner optimizer, which converges the inner problem better when
-  the occasion variance is far from 1 (on `theo_sd` with a variance of 0.1,
-  `"theta"` reaches an inner optimum 0.059 lower and `"omega"` stops short
-  of it).  That is why `"auto"` keeps `"theta"` for a diagonal block and
-  reaches for `"omega"` only when a correlation makes it necessary.
-
-  `iovXform` parameterizes the `"theta"` magnitude and is inert under
-  `"omega"`, where the magnitude is fixed at one; asking for a non-`"sd"`
-  value under `"omega"` now says so once.
-
-  Analytic covariance falls back to finite differences for a repeated
-  (`SAME`) omega block: its IOV special case reads the magnitude theta as
-  the occasion standard deviation, which is 1 in this mode, and would have
-  overwritten the estimated per-occasion variances rather than merely
-  being conservative.
-
-## Bug fixes
 
 - `fit$env$nMcetaStart` is now reported for `est="imp"`/`"impmap"` too.  It
   counts how many inner MAP solves started from `eta = 0` against how many
@@ -1371,379 +1824,6 @@ ini({
   these).  Each length now comes from the allocation itself, and a restore whose
   saved length does not match the current one errors instead of copying.
 
-## Internal
-
-- The SAEM `predOnly` model (used for residuals, tables and the covariance
-  step) no longer emits a THETA/ETA alias assignment that exactly duplicates
-  one the mu-reference replacement block already emitted.  These were trailing
-  dead stores that rxode2 repeated in both `dydt` and `calc_lhs`; the emitted
-  model, its solve column layout, and every value it produces are unchanged.
-
-- `getBaseSimModelFit()` for the focei family (`focei`, `foce`, `focep`, `fo`,
-  `foi`, `posthoc`) no longer does three times the work for the same answer.
-  The method built a `predOnly`-based simulation model expression and then
-  discarded it, and called `getBaseSimModelFit.default()` twice -- once with
-  the result thrown away -- so lowering a focei fit to a simulation model
-  lowered it three times, one of those through a `rxNorm()` of the focei
-  `predOnly` model.  These methods are now aliases of the default, which is
-  what they already amounted to.
-- `rxode2::rxSolve()` on a fit no longer re-derives the model on every call
-  (nlmixr2/rxode2#1289).  Each call used to lower the fit to an rxode2
-  simulation model *and* re-run the pre-process hooks to build `$simInfo`;
-  for an ODE model that was most of the ~0.1 s per call, and it grew process
-  memory by a couple of MB per call that neither `gc()` nor
-  `rxode2::rxUnloadAll()` gave back, so simulating from a fit in a loop
-  eventually exhausted memory.  The lowered simulation model is now cached
-  (keyed on the fitted model itself, so a piped or refit model gets its own;
-  set `options(nlmixr2.simModelCache = FALSE)` to disable), and `$simInfo` is
-  only derived when the simulation actually uses the model's uncertainty --
-  which a plain `rxSolve(fit, events)` does not.  On the issue's reprex
-  (one-compartment ODE fit of `theo_sd`) repeated `rxSolve(fit, ev)` went from
-  0.106 s and +2.0 MB per call to 0.008 s and no measurable growth; the solved
-  results are unchanged, seed for seed.
-
-- A covariate whose value is carried on the model in `rxode2::rxForcedPars()` is
-  no longer required to be a column of the data.  Such a covariate is supplied
-  by the model itself, so demanding it from the data rejected a well-specified
-  fit and forced the caller to add a placeholder column.  This is the same rule
-  rxode2 applies when resolving solve parameters, and it lets a model own
-  parameters the user never sees -- for example neural-network weights.
-
-- `ini()` on a fit now calls `rxode2::.iniHandleLine()` rather than the
-  `rxode2::.iniHandleFixOrUnfix()` alias for it.  They are the same
-  function; this was the last caller of the old name anywhere in the
-  ecosystem, so rxode2 can now drop it (nlmixr2/rxode2#1250).
-
-- `est="npb"`'s Gibbs sampler (support-point/stick-breaking/mixture-proportion
-  draws) and the shared `npbSampleMixProbs()` mixture Dirichlet step now draw
-  from rxode2's per-thread threefry engine instead of R's own RNG
-  (`R::rnorm`/`R::unif_rand`/`R::rbeta`/`R::rgamma`, seeded via an R-level
-  `set.seed()` call). A distribution the engine does not cover directly
-  (Beta, Gamma) is drawn by inverse-CDF from a threefry uniform, the same
-  technique already used for `est="impmap"`'s chi-square proposal scale. This
-  is the convention every other estimation method already follows, and it
-  means `npbControl(seed=)` reproducibility no longer depends on R's ambient
-  RNG state; a fit's exact draws (and so its reported values, given the same
-  seed) change as a result.
-## New features
-
-- `foceiControl(innerOpt=)` adds a trust-region Newton inner (per-subject eta)
-  optimizer backed by the `RcppTrust` package, `"trust"`. Unlike `n1qn1`, which
-  gets an approximate Hessian only once as a warm-start seed, the trust-region
-  step is supplied a fresh exact Gauss-Newton+Omega^-1 Hessian every iteration.
-  Each eta is scaled by `sqrt(diag(Omega))`, with the trust-region radius
-  derived from the eta confidence region (`foceiControl(trustConf=)`, default
-  0.975); `trustRinit`/`trustRmax` override the derived radius directly.
-  `est="vae"` does not use `foceiControl()`'s inner loop and is unaffected.
-
-- `foceiControl(innerOpt=)` gains `"auto"`, and **it is now the default** for
-  every FOCEi-family method (`focei`/`foce`/`foi`/`fo`, and `impmap`'s MAP
-  inner problem). It picks `"n1qn1"` for a generalized log-likelihood endpoint
-  (`dnorm()`, `ll()`, `dpois()`, ...) and `"trust"` for everything else, which
-  is where each is faster: such an endpoint has no Gauss-Newton inner Hessian,
-  so `"trust"` must finite-difference one (2*neta inner solves) at every trial
-  point where `"n1qn1"` builds it once as a warm-start seed. On a
-  1-compartment oral model (120 subjects) as a `dnorm()` endpoint `"trust"`
-  took 26.5s against `n1qn1`'s 16.3s, while on the same model with a normal
-  endpoint it took 1.1s against 4.6s. `"trust"` and `"n1qn1"` remain
-  selectable explicitly.
-
-  This changes the exact numeric result of every FOCEi-family fit that does
-  not pin `innerOpt=` explicitly (typically by a few objf units at most; see
-  `inst/benchmarks/results/` for a broad benchmark against `n1qn1`), though
-  usually faster and comparably accurate. Pin `foceiControl(innerOpt="n1qn1")`
-  to keep exact bit-for-bit reproducibility with prior releases.
-
-- New nlm-family estimation method, `est="trust"` (`trustControl()`), a
-  trust-region Newton optimizer for the population theta vector backed by
-  the `RcppTrust` package -- unrelated to `foceiControl(innerOpt="trust")`
-  above, which optimizes per-subject eta instead. Unlike every other
-  nlm-family method (`nlm`/`nlminb`/`bobyqa`/`newuoa`/`uobyqa`/`n1qn1`/
-  `lbfgsb3c`/`optim`), whose optimization loop lives in R and calls back
-  into C++ once per iteration, `trust`'s entire loop runs inside a single
-  C++ call -- `RcppTrust` needs no R API, so there is no per-iteration R
-  round-trip. It optimizes in the same scaled-parameter space every
-  nlm-family method (`bobyqa` included) already uses, and supplies a full
-  gradient and a full Hessian every iteration. By default
-  (`trustControl(hessianMethod="fd")`) this Hessian is a fresh
-  finite-difference-of-the-gradient every outer iteration (there is no
-  analytic outer-theta Hessian in this package, so this costs roughly
-  `ntheta` extra full population-gradient solves per outer iteration -- the
-  price of true Newton-trust behavior). `hessianMethod` can instead build the
-  Hessian as a quasi-Newton update from consecutive outer iterations'
-  gradients (already computed regardless of `hessianMethod`, so these add no
-  extra evaluations): `"bfgs"` (damped BFGS, always positive definite),
-  `"sr1"` (Symmetric Rank-1, not forced positive definite), or `"bofill"`
-  (Bofill's SR1/Powell-Symmetric-Broyden blend, the standard
-  Berny/transition-state-search Hessian update) -- see `?trustControl` for
-  full references. `trust` is unbounded, like `n1qn1`/`nlm`.
-  `trustControl(fterm=, mterm=)`, the Newton loop's own function-value and
-  predicted-decrease convergence tolerances, default to `10^(-sigdig-2)` --
-  two orders tighter than every other nlm-family tolerance here uses,
-  matching `foceiControl(trustFterm=, trustMterm=)` (the analogous tolerance
-  for the OTHER `RcppTrust`-backed solve in this package, the per-subject eta
-  problem inside FOCEi) rather than the plain `10^(-sigdig)` `bobyqaControl()`
-  and `foceiControl()`'s own `epsilon` use.
-
-- `foceiControl(hessianMethod=)` extends the same idea to FOCEi's INNER
-  (per-subject eta) problem: for a non-normal-endpoint model (any
-  distribution other than `norm`), the per-subject inner Hessian has no
-  Gaussian Gauss-Newton shortcut and falls back to a finite difference of
-  the gradient every `innerOpt="trust"` Newton step (`calcEtaHessian()`).
-  `"fd"` (default) keeps this original finite difference; `"bfgs"`/`"sr1"`/
-  `"bofill"` build the Hessian instead as a quasi-Newton update from
-  consecutive Newton steps' already-computed gradients (no extra
-  evaluations) -- the same three update formulas `trustControl()` above
-  uses. Since this loop runs per subject, per Newton step, per outer
-  iteration, avoiding a fresh finite difference at every one compounds into
-  a much larger speedup than the outer-theta case: `bfgs`/`sr1`/`bofill` ran
-  roughly 2.7-19x faster than `"fd"` on this package's own small benchmark (a
-  Poisson and a general `ll()` model,
-  `inst/benchmarks/benchmark-focei-hessian-method.R`). `"fd"` stays the
-  default: unlike the outer-theta case, this inner Hessian's log-determinant
-  is added directly into the reported objective (`LikInner2()`), and on a
-  real one-compartment PK model fit as a general `ll()` endpoint every
-  quasi-Newton option converged to the same wrong parameter estimate with a
-  *worse* reported objective than `"fd"`'s correct answer -- see the Bug
-  fixes section below. Has no effect on normal-endpoint models. Only
-  meaningful with `innerOpt="trust"`: asking for `"bfgs"`/`"sr1"`/`"bofill"`
-  under any other inner optimizer is now an error rather than a silent no-op,
-  so a request that could not be honored is not lost. Since `innerOpt="auto"`
-  (the default) sends exactly the non-normal-endpoint models this applies to
-  to `"n1qn1"`, using it means pinning `innerOpt="trust"` as well.
-
-- `impmapControl()`/`impControl()` gain `combSens` (default `TRUE`): when
-  `est="impmap"`/`"imp"`/`"qrpem"` has non-mu (structural or residual-error)
-  thetas to estimate, `combSens=TRUE` carries their sensitivity columns on the
-  INNER model itself instead of a second, dedicated model, and the E-step's
-  own per-sample inner solve now supplies the M-step's Newton step directly
-  (no second solve) whenever `sir=FALSE` (the default) -- roughly halving the
-  ODE solving the M-step's theta gradient costs. Pass `combSens=FALSE` for the
-  previous two-model behavior.
-
-- A pure-linear `matExp()` model now solves natively through rxode2's
-  matrix-exponential driver (`rxControl(method="indLin")`) under SAEM instead
-  of being flattened to an equivalent `d/dt()` ODE first.  SAEM has no
-  analytic-sensitivity consumer of the state derivatives, so native solving
-  is all that changes; `focei`/`nlm`/`nls` are unaffected, and a model with
-  an `indLin()` forcing term (e.g. Michaelis-Menten) still flattens (issue
-  #859).
-
-- A `linCmt()` parameter driven by both an eta and a time-varying covariate
-  (for example `cl <- tcl*(wt/70)^0.75*exp(eta.cl)` with `wt` changing over a
-  subject's records) now gets an exact FOCEi-family eta gradient.  The
-  analytic `linCmt()` sensitivity reconstructs each row's carried state as if
-  the parameter had been constant over the subject, so a covariate that
-  changes it between rows silently conflated the interval sensitivities
-  (objective-function and converged-eta differences against the equivalent
-  ODE model).  The generated inner model now carries the exact sensitivity
-  across rows through rxode2's `linCmtB()` carry sentinels for every eligible
-  (parameter, eta) pair; models without such a pair generate identical code.
-  `foceiControl(linCmtSensCarry=)` opts out (`"none"`).  Data with
-  steady-state (`ss > 0`) or `evid = 2` records fall back to the previous
-  gradient with a note in `$runInfo`, and `"linear"` covariate interpolation
-  on such a covariate is an error (a `linCmt()` model evaluates each interval
-  at its row-end covariate value, so only a piecewise-constant interpolation
-  is representable).  The carry also covers the two ways an eta reaches the
-  state through an event: a modeled `f()` whose `d(ln F)/d(eta)` depends on
-  a covariate and a modeled `alag()` on a time-varying kernel each get a
-  per-row jump contribution (`#920`'s row-local terms are exact only while
-  the parameters are constant), and every `linCmt()` parameterization
-  (`trans`) is handled, with the observation-scaling term taken from
-  rxode2's own micro-constant translation.  Data whose doses enter another
-  compartment than the modified one, or an infusion with an `alag()` /
-  covariate `f()` channel, fall back like `ss` records do.  A generalized
-  `ll()` endpoint (or any prediction that wraps the `linCmt()` value in a
-  larger expression) is carried too: the concentration is read back once as
-  `rx_lcConc_`, the carry supplies its eta sensitivity and symengine the
-  outer chain rule, including any eta dependence the likelihood has with
-  the concentration held fixed (#1004).  The same carry also serves the
-  population methods' theta gradients (#1003): a theta on a
-  covariate-driven `linCmt()` parameter gets the carried score in the
-  `nlm` family and `nls`
-  (`nlmControl(linCmtSensCarry=)` / `nlsControl(linCmtSensCarry=)`),
-  with the concentration factored out of the wrapped log-likelihood;
-  SAEM's linearized FIM needs no change (it perturbs `phi` and
-  re-solves values, which is exact under a time-varying covariate).
-  Requires an rxode2 with the carry sentinels (the event channels need its
-  `which1 = -8` pin); older versions keep the previous behavior.  The
-  candidate detection itself is memoized by the focei model digest and
-  persisted as a sidecar in rxode2's cache directory (`rxCreateCache()`),
-  so repeated fits -- and, with a persistent cache, fresh sessions -- skip
-  the symbolic pass.  The focei model-cache bundle itself now stores each
-  generated model as its `rxode2::rxNorm()` text instead of a serialized
-  model object (about 1 kb instead of 1 Mb; rebuilding from the text hits
-  rxode2's compiled-model cache); bundles written by an earlier version
-  still load.
-
-- `focei`/`foce`/`agq`/`laplace`/`nlm` now compute a `matExp()` model's eta/
-  theta sensitivities natively via `rxode2::rxSensMatExp()`, instead of
-  flattening the model to an equivalent `d/dt()` ODE first and differentiating
-  that.  A pure-linear `matExp()` model always takes this path; a model with
-  an `indLin()` forcing term (e.g. Michaelis-Menten) takes it under `focei`
-  and `focep`, and falls back to the ODE flatten (unchanged prior behavior)
-  under `foce` (non-interaction), the mu-referenced/IRLS family (`mfocei`/
-  `ifocei`/`mfoce`/`ifoce`), and `nlm` -- those combinations' gradient/
-  covariance machinery is not yet compatible with the native forcing
-  sensitivities and is tracked separately (issue #860; follow-up work in
-  #861/#862).  `foceiControl(fast=TRUE)` is automatically downgraded to
-  `fast=FALSE` for a `matExp()` model taking the native path, since the
-  analytic outer-gradient/covariance model (`foceiCovAnalytic.R`) is still
-  ODE-flattened.
-
-- A modeled `alag()` or `f()` on a `linCmt()` compartment now gets an exact
-  FOCEi/FOCE eta gradient instead of a silently incomplete one.  The
-  structural `linCmt()` Jacobian only covers `p1`/`v1`/`ka`/...; the
-  moving-boundary (dose-time) contribution of a modeled `alag()` is now added
-  via rxode2's `linCmtB(which1=-3)` (nlmixr2/rxode2#1235), and the
-  bioavailability contribution via the exact `d(pred)/dF = pred/F` identity
-  (issue #920).
-
-  Both corrections require every dose reaching the linear system to share the
-  same `alag()`/`f()` (rxode2/rxode2#1237); a model declaring more than one
-  is left as before.  This cannot be checked for a regimen that doses an
-  *unlagged/unscaled* compartment alongside the lagged/scaled one (a common
-  design for estimating `f()` from paired IV+oral data) -- that combination
-  returns a biased, not obviously wrong, gradient.  An infused dose into the
-  lagged/scaled compartment also cannot be checked, and returns `NA`
-  (rxode2/rxode2#1236).  `foceiControl(eventSens="fd")` opts out of both.
-
-- A prior distribution given in the `ini({})` block is no longer silently
-  ignored.  `nlmixr2Est()` now refuses any prior the estimation method
-  cannot use before dispatching, so a model carrying one fails with an
-  explanation naming the parameter and the `est=` instead of being fit to
-  something other than what it says.
-
-  A method declares what it supports with an attribute on itself, so it
-  can opt in as it gains support:
-
-  ```r
-  attr(nlmixr2Est.myMethod, "nlmixr2Priors") <- "general"
-  ```
-
-  The levels are `"none"` (the default when the attribute is absent),
-  `"theta"` (population parameters only), `"general"` (everything the
-  shared kernel supports, including a prior on an omega element under
-  any convention), `"nwpri"` (NONMEM's own `$PRIOR NWPRI` omega
-  convention) and `"tnpri"` (Monolix's/NONMEM's own-estimation
-  joint-normal convention, including a normal prior directly on an omega
-  element) -- see `?nlmixr2Est` for what each accepts -- and `"all"`.
-  Because the check happens in the generic, methods registered by other
-  packages -- `babelmixr2`'s `nonmem`, `monolix`, `saemix` and the rest
-  -- are covered without any change of their own.
-
-- `est="focei"` and every method in its family (`foce`, `focep`, `fo`,
-  `foi`, the mu-referenced `mfoce*`/IRLS `ifoce*` variants, `laplace`,
-  `agq` and their quadrature/`*f` fast-path siblings) now honours a
-  prior on a population parameter AND on an omega element -- under any
-  of the kernel's three conventions (`"general"`, NONMEM's `"nwpri"`,
-  Monolix's/NONMEM's-own-estimation `"tnpri"`), auto-detected from what
-  the model's own `ini({})` actually wrote -- added to the objective as
-  `-2*log p(theta, omega)` (nlmixr2/rxode2#1270, issue #929, issue #931)
-  -- declared `nlmixr2Priors = "general"`.
-
-  The convention is auto-detected by default (`foceiControl(priorMethod=
-  "auto")`), but can be forced with `foceiControl(priorMethod="general"/
-  "nwpri"/"tnpri")`. Forcing a convention the model's priors are not
-  representable under (e.g. `priorMethod="tnpri"` on an `invWishart()`
-  prior) errors before any estimation starts, naming the parameter and
-  which method it needs instead.
-
-  `foceiControl(fast=TRUE)`'s analytic outer gradient has a real
-  `d/dtheta log p(theta)` term (a straight fold into the same
-  natural-scale accumulator the outer FD substitution already uses) and
-  a real `d/d(chol(Omega^-1)) log p(omega)` term (chain-ruled through the
-  SAME estimation-scale derivative data -- `d.omegaInv`/`tr.28` from the
-  model's `rxSymInvCholEnv` handle -- FOCEi's own, non-prior omega
-  gradient already relies on), so a prior no longer downgrades it: this
-  package uses symbolic/analytic derivatives throughout, not finite
-  differences, wherever one is available. (A prior referencing a theta a
-  mu-referenced family profiles out of the outer problem entirely is the
-  one case that first term cannot attribute; that specific fit declines
-  to finite differences instead of silently under-counting, detected
-  once at setup, not per evaluation.) `covMethod="analytic"` is still
-  downgraded to a finite-difference covariance, since the analytic
-  Hessian has no prior term yet -- a finite difference of the (now
-  prior-inclusive) objective picks the prior term up automatically.
-
-  Fixed along the way: `.nlmixr2FitUpdateParams()` rebuilt a fit's omega
-  rows of `iniDf` from the raw Omega matrix whenever an mixed-effects
-  model estimate was pinned back onto the model (piping, `.setOfvFo()`'s
-  post-fit re-entry for `setOfv()`/`addCwres()`), and that rebuild had no
-  way to carry the `prior` column lotri itself does not know about -- a
-  prior on an omega element silently vanished the first time a
-  prior-carrying fit was re-entered, which is every fit's own finalize
-  step. `rxUiPriors(fit$ui)` now still reports it afterward.
-
-- `est="imp"`, `est="impmap"` and `est="qrpem"` now honour a prior on a
-  population parameter AND on an omega element, declared
-  `nlmixr2Priors = "general"` individually on each of the three (issue
-  #932). Their shared M-step is an importance-sampling EM, not FOCEi's
-  outer optimizer, so the objective already picking up the prior (via
-  #931's plumbing) was not enough on its own -- the estimates it reported
-  would otherwise still be the maximum-likelihood ones. Each M-step update
-  now folds in the prior's own score/curvature before taking its step:
-
-  - the non-mu structural/residual-error Newton step, the mu-referenced
-    covariate regression (`updateMuGroups()`), and the plain mu-intercept
-    mean-shift each fold in an FD-Hessian one-step Newton correction --
-    exact for a Gaussian prior (a quadratic log-density has no Taylor
-    truncation error), a reasonable one-step approximation otherwise
-    (Cauchy, `multiNormal()`).
-  - the Omega EM moment-average update gets the EXACT joint posterior mode
-    for a conjugate `invWishart()` term (NONMEM's own `"nwpri"` convention
-    or the textbook `"general"` one), and a one-step Fisher-scoring
-    (One-Step-Late) correction, reusing the same `Abar` construction
-    FOCEi's own omega-prior gradient already computes, for a normal prior
-    directly on an omega element (`"tnpri"`) or a `multiNormal()` block
-    mixing omega with theta.
-
-- A prior may now be placed directly on a single omega COVARIANCE
-  (off-diagonal) element -- `prior(eta.cl, eta.v) ~ dnorm(0, 0.1)` on a
-  model with a correlated BSV block -- a marginal, independent prior on
-  that one cell, distinct from a whole-block `invWishart()`/
-  `multiNormal()` prior. NONMEM has no direct mechanism for this specific
-  marginal form; it fills the same ergonomic gap this package's `om.<eta>`
-  shorthand already fills for one individual variance. This is entirely a
-  new capability in the shared upstream kernel (rxode2/lotri, see their
-  own NEWS) -- FOCEi's `foceiPriorOmegaGradAdd()` and imp/impmap/qrpem's
-  `impPriorOmegaCorrect()` already operated on the full `gradOmega`/`Omega`
-  matrices generically, so both pick this up with no nlmixr2est source
-  changes at all, confirmed by new tests in `test-focei-prior.R` and
-  `test-imp-prior.R` that pass unmodified against the upgraded
-  dependencies.
-
-## Changed defaults
-
-- `est="saem"` now refines a population theta that carries no random effect with
-  `newuoa` over all such thetas at once, under a budget of 25 objective
-  evaluations per iteration (`saemControl(nonMuThetaOpt="newuoa",
-  nonMuThetaMaxEval=25)`), rather than with sweeps of golden-section coordinate
-  descent.  That refinement is where such a model spends most of its time -- each
-  of its evaluations re-solves every subject and chain -- and the sweeps solved it
-  far more precisely than a stochastic-approximation step that then moves a
-  fraction of the way there can use.  Fits of models that have a non-mu theta
-  will report slightly different estimates.  Measured by the FOCEi conditional
-  objective at each run's converged estimates: on the nimotuzumab target-mediated
-  model 1.6x faster at an indistinguishable objective (143.53 vs 143.48), and on
-  the mavoglurant PBPK model 1.9x faster at a clearly better one (1977.0 vs
-  2055.8), where the cheaper refinement escapes a poor additive-error basin the
-  old default settles into.  Pass `saemControl(nonMuThetaOpt="optimize")` for the
-  previous behavior.
-
-## Breaking changes
-
-- `saemControl(lbfgsLmm=, lbfgsFactr=, lbfgsPgtol=, lbfgsMaxIter=)` have been
-  removed and now error as unused arguments.  They were announced in 7.0.2 as
-  controlling a bounded L-BFGS-B refinement of the fixed-effect-only (`phi0`)
-  parameters of a general log-likelihood model, but no such refinement was ever
-  implemented: the options were validated and stored and then read by nothing.
-  That `phi0` step is optimized by the bounded derivative-free routine (`bobyqa`,
-  or `stats::optimize` for a single parameter), which honors the `ini`-block
-  bounds and takes no L-BFGS-B settings.  Passing any of the four never changed a
-  fit, so removing them changes no result.
-
-## Bug fixes
 
 - The FOCEi family (`focei`, `foce`, `focep`, `laplace`, `agq`, `posthoc`, and
   their `i`/`m` prefixed variants) now applies the M2/M3/M4 censoring
@@ -2046,144 +2126,6 @@ ini({
   restored `indLin()`/matrix-exponential correctness, which was the reason
   for the exclusion.
 
-## New features
-
-- `est="saem"` gained controls for the cost of the `nonMuTheta="regress"`
-  refinement, which estimates population thetas that carry no random effect:
-  `saemControl(nonMuThetaOpt=, nonMuThetaSweeps=, nonMuThetaMaxEval=,
-  nonMuThetaTol=, nonMuThetaEvery=)`.  That refinement runs every iteration of
-  the second half of the fit, and when the non-mu thetas are structural (they
-  drive the ODE) each of its objective evaluations is a full re-solve of every
-  subject and chain, so it can cost more than the rest of the algorithm put
-  together -- on the nimotuzumab target-mediated example and the mavoglurant
-  PBPK example (both with five non-mu thetas) it is around 60% of the run time.
-  `nonMuThetaOpt="newuoa"` (the new default, see **Changed defaults**) and
-  `nonMuThetaOpt="nelderMead"` run one clamped multivariate optimization over
-  all free `phi0` coordinates under a fixed evaluation budget
-  (`nonMuThetaMaxEval`); both see the coupling between those coordinates, which
-  the previous coordinate descent (`nonMuThetaOpt="optimize"`, still available)
-  cannot.  `nonMuThetaEvery` additionally runs the refinement only every k-th
-  iteration.
-
-- An estimated transform-both-sides `lambda` (`boxCox()`/`yeoJohnson()`) now
-  carries a real theta-sensitivity column instead of a silent zero (#949).
-  The conditional depends on `lambda` through both sides of the residual
-  `h(y; lambda) - h(f; lambda)`: the prediction side now comes from the
-  sensitivity model (the direct partial is taken for residual-error thetas
-  too, not hard-coded to zero, so `rx_pred_`'s `rxTBS()` is differentiated),
-  and the DV side from a new `d(lambda)/d(theta)` output multiplied by the
-  analytic `d(h(y; lambda))/d(lambda)` where the DV transform is applied.
-  The censored (M2/M3/M4) score picks up the matching DV and `LIMIT` partials.
-  The column agrees with central differences to ~1e-9 relative on Box-Cox and
-  Yeo-Johnson fixtures where it was previously identically zero -- the failure
-  mode that made an estimated `lambda` an imp/advi M-step no-op and gave
-  gradient-based callers a wrong direction.
-
-- Dose-handling (`alag()`/`f()`/`dur()`/`rate()`) theta sensitivities are no
-  longer silently zero (#946).  The theta-sensitivity model is now compiled
-  with rxode2's analytic event ("jump") sensitivities (following the
-  control's `eventSens`, the same source the inner model uses), and its
-  solves run under its own event shape (`OdeSwapEsBatch(odeSlotThetaSens)`
-  brackets the batch; the shape is a process global whose installer calls
-  into R, so it cannot be swapped inside the parallel region).  The inner
-  batch in the conditional-likelihood C API likewise installs the inner
-  model's shape, so an eta entering dose handling gets its jump too.  An
-  estimated `alag` theta's derivative now agrees with central differences
-  (~1e-5 relative, ODE-tolerance-limited) where it previously came back
-  identically zero -- the failure mode that made an `alag`-estimating
-  imp/advi theta update a no-op and broke gradient-based samplers.
-
-- New FOCEi conditional-likelihood C API (#937): a plain-C, non-throwing,
-  gradient-returning entry-point table over the `foceiLikLoad()`-ed problem,
-  exposed to downstream packages through `_nlmixr2est_foceiPtrs()` /
-  `.nlmixr2estFoceiPtrs()` with the caller side in
-  `inst/include/nlmixr2estFoceiPtr.h` -- the same external-pointer idiom as
-  the likelihood-contribution registry.  Seven entries: an ABI version,
-  dimensions plus capability/hazard flags (so `focep`/`fo`/finite-difference
-  etas/mixtures are refused at load rather than sampled wrongly), a
-  return-code `setTheta`, the batched per-subject conditional
-  `log p(y_i | eta_i)` with its `d/d(eta)` (subject-parallel, deterministic:
-  the sticky solve-tolerance relaxation is reset every call so the value is a
-  pure function of `(theta, eta)`), a global `Omega^-1` conditioning knob,
-  and the theta-sensitivity index/score pair for `d/d(theta)` of the
-  conditional at fixed eta.  The eta gradient is assembled inside nlmixr2est
-  as `Omega^-1 eta - fInd->lp` -- the same identity the ADVI outer gradient
-  uses -- so no caller ever reconstructs the sign convention.  Built for the
-  Stan linkage in `nlmixr2/nlmixr2stan`.
-
-- `foceiLikLoad()` gains three arguments for external callers (#939):
-  `scale="natural"` pins the parameter scaling to the identity so
-  `foceiLikRun()`'s `theta` is directly comparable with `ui$iniDf$est`
-  (no more re-implementing `nlmUnscalePar()` downstream); `thetaSens=TRUE`
-  builds and wires the theta-sensitivity model (the `d(f)/d(theta)` /
-  `d(V)/d(theta)` forward sensitivities the imp/advi engines use), reported
-  on the handle as `thetaSens`/`thetaSensIdx`; and `est=` names the
-  estimation method whose capability attributes the pre-process hooks
-  consult, turning "the bounds survive preprocessing" from an accident of
-  focei's attributes into a guarantee the caller can request.
-
-- `nlmUnscalePar()` is now exported (#940).  External engines that drive the
-  nlm-family objective (e.g. `babelmixr2`'s FME-based methods) previously had
-  to reach it with `get("nlmUnscalePar", envir = asNamespace("nlmixr2est"))`.
-
-- Requires `rxode2` (>= 5.1.7).  The compatibility layer that also let this
-  package build and run against 5.1.5 has been removed, so the event-sensitivity
-  shape swap and the CMT re-basing of the shared solve pool always go through
-  rxode2's C API instead of writing its structures by field.
-  
-- `est="npag"` / `est="npb"` now support a hand-written general likelihood
-  (`ll()`) properly.  A model whose `ll()` is written as the exact normal
-  log-density now agrees with the equivalent `add()` model to the known
-  `0.5*log(2*pi)` per observation, at every grid size.  Requires rxode2 5.1.7 for
-  the `safeLog=2` log-domain mode.
-
-- `foceiControl(fast = TRUE)` now keeps the analytic outer gradient when a
-  subject's augmented sensitivity solve fails, instead of sending the whole
-  gradient evaluation to finite differences.  Such a subject is finite-differenced
-  on its own and folded into the otherwise-analytic sum, covering the omega
-  directions as well as theta and sigma.  The per-subject machinery was present
-  but could never apply: a failed solve left the subject with no observation count,
-  and the assembly declined the whole evaluation before reaching the substitution.
-  `fit$env$nOuterFdInd` counts the substitutions applied, so "one subject was
-  finite-differenced and the rest stayed analytic" is now distinguishable from
-  "the gradient declined" -- the two previously looked identical.
-
-- `foceiControl(fast = TRUE)` now uses the analytic outer gradient for
-  general-likelihood models with **more than one endpoint**, which previously
-  fell back to finite differences.  It was gated off as unverifiable, but what
-  did not verify was the objective below rather than the gradient; against
-  central differences of the corrected objective it agrees to 8e-3 relative.
-
-- `saemControl(revisitUninformativeEtas=)` (default `FALSE`) re-runs the
-  uninformative-eta test at the end of burn-in and replaces the verdict reached
-  at the initial estimates.  The test asks whether perturbing an eta moves that
-  subject's prediction, and is otherwise only run once, before the fit -- so the
-  initial estimates decide, for the whole fit, which etas `saem` may sample.  The
-  second test reuses the fit's own model evaluation, so it adds a few solves at
-  one iteration and leaves the random number stream alone: where it changes no
-  verdict the fit is identical.  It is off by default because the two verdicts
-  only disagree when `theta` moved a long way during burn-in, which usually means
-  it has not settled, and the second verdict can freeze an eta for the rest of
-  the fit.
-
-- `est="saem"` now recognizes `t()`/`cauchy()` residual-error endpoints as
-  general-likelihood models, the same way a literal `ll()` endpoint already
-  was, instead of erroring (`"t isn't supported yet"` / `"Distribution not
-  supported"`).  rxode2's own FOCEi line generator already reduces these to
-  the same shape (`rx_pred_` an explicit log-density, `rx_r_ ~ 0`), so
-  `saem` now dispatches through the same path.
-
-- `est="saem"` now recognizes a general-likelihood model with **any number of
-  endpoints**, including a genuine **mix of `norm` and general-likelihood
-  endpoints in the same fit** (e.g. one `add()` condition alongside a `t()`,
-  `cauchy()`, or literal `ll()` condition), instead of silently scoring the
-  whole fit as if every endpoint were normally distributed.  A `norm`
-  condition mixed with a general-likelihood one is transparently expressed as
-  the equivalent `llikNorm()` general likelihood (the same normal log-density,
-  sharing the same variance-formula machinery), mirroring how FOCEi already
-  handles this mix -- no `distribution()`-family limitation remains.
-
-## Bug fixes
 
 ### Estimation
 
@@ -2561,6 +2503,61 @@ ini({
   there is a lone scale per endpoint, estimated) one endpoint's residual SD from
   another endpoint's residuals.  Anything dropped this way is now reported in
   `$runInfo` rather than being silent.
+
+## Internal
+
+- The SAEM `predOnly` model (used for residuals, tables and the covariance
+  step) no longer emits a THETA/ETA alias assignment that exactly duplicates
+  one the mu-reference replacement block already emitted.  These were trailing
+  dead stores that rxode2 repeated in both `dydt` and `calc_lhs`; the emitted
+  model, its solve column layout, and every value it produces are unchanged.
+
+- `getBaseSimModelFit()` for the focei family (`focei`, `foce`, `focep`, `fo`,
+  `foi`, `posthoc`) no longer does three times the work for the same answer.
+  The method built a `predOnly`-based simulation model expression and then
+  discarded it, and called `getBaseSimModelFit.default()` twice -- once with
+  the result thrown away -- so lowering a focei fit to a simulation model
+  lowered it three times, one of those through a `rxNorm()` of the focei
+  `predOnly` model.  These methods are now aliases of the default, which is
+  what they already amounted to.
+- `rxode2::rxSolve()` on a fit no longer re-derives the model on every call
+  (nlmixr2/rxode2#1289).  Each call used to lower the fit to an rxode2
+  simulation model *and* re-run the pre-process hooks to build `$simInfo`;
+  for an ODE model that was most of the ~0.1 s per call, and it grew process
+  memory by a couple of MB per call that neither `gc()` nor
+  `rxode2::rxUnloadAll()` gave back, so simulating from a fit in a loop
+  eventually exhausted memory.  The lowered simulation model is now cached
+  (keyed on the fitted model itself, so a piped or refit model gets its own;
+  set `options(nlmixr2.simModelCache = FALSE)` to disable), and `$simInfo` is
+  only derived when the simulation actually uses the model's uncertainty --
+  which a plain `rxSolve(fit, events)` does not.  On the issue's reprex
+  (one-compartment ODE fit of `theo_sd`) repeated `rxSolve(fit, ev)` went from
+  0.106 s and +2.0 MB per call to 0.008 s and no measurable growth; the solved
+  results are unchanged, seed for seed.
+
+- A covariate whose value is carried on the model in `rxode2::rxForcedPars()` is
+  no longer required to be a column of the data.  Such a covariate is supplied
+  by the model itself, so demanding it from the data rejected a well-specified
+  fit and forced the caller to add a placeholder column.  This is the same rule
+  rxode2 applies when resolving solve parameters, and it lets a model own
+  parameters the user never sees -- for example neural-network weights.
+
+- `ini()` on a fit now calls `rxode2::.iniHandleLine()` rather than the
+  `rxode2::.iniHandleFixOrUnfix()` alias for it.  They are the same
+  function; this was the last caller of the old name anywhere in the
+  ecosystem, so rxode2 can now drop it (nlmixr2/rxode2#1250).
+
+- `est="npb"`'s Gibbs sampler (support-point/stick-breaking/mixture-proportion
+  draws) and the shared `npbSampleMixProbs()` mixture Dirichlet step now draw
+  from rxode2's per-thread threefry engine instead of R's own RNG
+  (`R::rnorm`/`R::unif_rand`/`R::rbeta`/`R::rgamma`, seeded via an R-level
+  `set.seed()` call). A distribution the engine does not cover directly
+  (Beta, Gamma) is drawn by inverse-CDF from a threefry uniform, the same
+  technique already used for `est="impmap"`'s chi-square proposal scale. This
+  is the convention every other estimation method already follows, and it
+  means `npbControl(seed=)` reproducibility no longer depends on R's ambient
+  RNG state; a fit's exact draws (and so its reported values, given the same
+  seed) change as a result.
 
 # nlmixr2est 7.0.2
 
