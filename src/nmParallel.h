@@ -33,6 +33,7 @@
 //
 // Requires rxode2ptr.h (setRxThreadId, getOrdId, getRxNsim) to be included first.
 #include "rxomp.h"
+#include <cstdint>  // int64_t in nmOrdId
 
 // Position -> subject id.  Returns a 1-BASED id, like rxode2's getOrdId().
 //
@@ -44,7 +45,14 @@
 // past nsub.  Fall back to the data order there; unordered is slower, mixed up
 // is wrong.
 static inline int nmOrdId(rx_solve *rxIn, int pos, int n) {
-  return (n == getRxNsub(rxIn) * getRxNsim(rxIn)) ? getOrdId(rxIn, pos) : pos + 1;
+  // 64-bit: nsub and nsim are both int, and their product is only guaranteed to
+  // fit one because rxode2's sortIds() refuses a solve where it would not --
+  // a guarantee from the other side of the package boundary, so do not rely on
+  // it for a signed multiply here, where overflow would be undefined.
+  const int64_t nall = (int64_t)getRxNsub(rxIn) * (int64_t)getRxNsim(rxIn);
+  // pos is bounded by n, so this also keeps getOrdId()'s unchecked
+  // rx->ordId[pos] in range: it is only reached when n IS that length.
+  return ((int64_t)n == nall) ? getOrdId(rxIn, pos) : pos + 1;
 }
 
 // Flags.  Both exist because a region can need them, not as style knobs:
