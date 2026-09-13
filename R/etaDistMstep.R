@@ -880,30 +880,62 @@
 #' @return a list with `q1` and `q2`, character vectors
 #' @noRd
 #' @author Matthew L. Fidler
+#' The name an assignment binds, or NA
+#'
+#' @param e a model expression
+#' @return the lhs symbol as a string, or `NA_character_`
+#' @noRd
+#' @author Matthew L. Fidler
+.etaDistAssignLhs <- function(e) {
+  if (is.call(e) && length(e) >= 3L && is.name(e[[2]]) &&
+        (identical(e[[1]], quote(`<-`)) || identical(e[[1]], quote(`=`)))) {
+    as.character(e[[2]])
+  } else {
+    NA_character_
+  }
+}
+
+#' The symbols a model expression READS
+#'
+#' The right-hand side for an assignment, the whole expression otherwise -- so
+#' `x <- f(y)` reads `y` and not `x`.  That distinction is the whole partition:
+#' an anchor nothing READS carries no observation-side dependence.
+#'
+#' @param e a model expression
+#' @return character vector of symbols
+#' @noRd
+#' @author Matthew L. Fidler
+.etaDistReadVars <- function(e) {
+  if (is.call(e) && length(e) >= 3L &&
+        (identical(e[[1]], quote(`<-`)) || identical(e[[1]], quote(`=`)))) {
+    all.vars(e[[3]])
+  } else {
+    all.vars(e)
+  }
+}
+
+#' Every declared theta, from the stash
+#'
+#' @param ui decompressed rxode2 ui
+#' @return character vector, possibly empty
+#' @noRd
+#' @author Matthew L. Fidler
+.etaDistAllDeclThetas <- function(ui) {
+  .st <- .etaDistDeclGet(ui)
+  if (is.null(.st)) return(character(0))
+  .tn <- ui$iniDf$name[!is.na(ui$iniDf$ntheta)]
+  unique(unlist(lapply(.st$etaDist, function(.d)
+    intersect(all.vars(str2lang(.d)), .tn))))
+}
+
 .etaDistThetaSplit <- function(ui, thetas = NULL) {
   .empty <- list(q1 = character(0), q2 = character(0))
   .ui <- tryCatch(rxode2::rxUiDecompress(ui), error = function(e) NULL)
   if (is.null(.ui)) return(.empty)
   .expr <- tryCatch(.ui$lstExpr, error = function(e) NULL)
   if (!is.list(.expr) || length(.expr) == 0L) return(.empty)
-  .lhsOf <- function(.e) {
-    if (is.call(.e) && length(.e) >= 3L && is.name(.e[[2]]) &&
-          (identical(.e[[1]], quote(`<-`)) || identical(.e[[1]], quote(`=`)))) {
-      as.character(.e[[2]])
-    } else {
-      NA_character_
-    }
-  }
-  .rhsVars <- function(.e) {
-    if (is.call(.e) && length(.e) >= 3L &&
-          (identical(.e[[1]], quote(`<-`)) || identical(.e[[1]], quote(`=`)))) {
-      all.vars(.e[[3]])
-    } else {
-      all.vars(.e)
-    }
-  }
-  .lhs <- vapply(.expr, .lhsOf, character(1))
-  .rhs <- lapply(.expr, .rhsVars)
+  .lhs <- vapply(.expr, .etaDistAssignLhs, character(1))
+  .rhs <- lapply(.expr, .etaDistReadVars)
   .isAnchor <- !is.na(.lhs) & grepl("^rxEdA[.]", .lhs)
   if (!any(.isAnchor)) return(.empty)
   ## every symbol read anywhere on a NON-anchor line is observation-side
@@ -915,15 +947,7 @@
   ## thetas feeding a READ anchor are in the observation path through it
   .viaRead <- unique(unlist(.rhs[.isAnchor][.anchorRead]))
   .viaDead <- unique(unlist(.rhs[.isAnchor][!.anchorRead]))
-  if (is.null(thetas)) {
-    .st <- .etaDistDeclGet(.ui)
-    .all <- if (is.null(.st)) character(0) else {
-      .tn <- .ui$iniDf$name[!is.na(.ui$iniDf$ntheta)]
-      unique(unlist(lapply(.st$etaDist, function(.d)
-        intersect(all.vars(str2lang(.d)), .tn))))
-    }
-    thetas <- .all
-  }
+  if (is.null(thetas)) thetas <- .etaDistAllDeclThetas(.ui)
   if (length(thetas) == 0L) return(.empty)
   ## Q2: reaches the model ONLY through an anchor nothing reads, and appears
   ## nowhere observation-side in its own right.
