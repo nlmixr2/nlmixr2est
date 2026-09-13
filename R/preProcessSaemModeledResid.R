@@ -10,7 +10,8 @@
 .saemModeledResidualCond <- function(ui) {
   .pred <- ui$predDf
   if (is.null(.pred) || length(.pred$cond) == 0L) return(character(0))
-  .cols <- intersect(c("a", "b", "c", "d", "e", "f", "lambda"), names(.pred))
+  # `f` is propF()/powF()'s prediction variable, always a name, not a residual parameter
+  .cols <- intersect(c("a", "b", "c", "d", "e", "lambda"), names(.pred))
   if (length(.cols) == 0L) return(character(0))
   .modeled <- vapply(seq_along(.pred$cond), function(i) {
     .pred$distribution[i] == "norm" &&

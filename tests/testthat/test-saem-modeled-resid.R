@@ -82,6 +82,13 @@ nmTest({
                  "boxCox()/yeoJohnson()", fixed = TRUE)
   })
 
+  test_that("propF()/powF() prediction variables do not promote the endpoint", {
+    .ui <- .modeledResidUi("cp ~ propF(prop.sd, f2)", "f2 <- 1")
+    expect_equal(.saemModeledResidualCond(.ui), character(0))
+    .ui <- .modeledResidUi("cp ~ powF(prop.sd, pw, f2)", "f2 <- 1")
+    expect_equal(.saemModeledResidualCond(.ui), character(0))
+  })
+
   test_that("the temporary eta scale follows the likelihood argument's range", {
     # a theta that IS the argument takes the argument's range
     .s <- .saemPseudoEtaThetas(.modeledResidUi("cp ~ add(add.sd) + dnorm()"))
