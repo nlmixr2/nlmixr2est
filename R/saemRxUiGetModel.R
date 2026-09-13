@@ -632,7 +632,6 @@ rxUiGet.saemModelPred <- function(x, ...) {
   .low <- paste(get("rx_low_", envir = .s))
   .low <- paste0("rx_low_~", rxode2::rxFromSE(.low))
   ## if (is.null(.lhs0)) .lhs0 <- ""
-  .ui <- x[[1]]
   .ddt <- .s$..ddt
   if (is.null(.ddt)) .ddt <- ""
 

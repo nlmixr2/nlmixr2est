@@ -63,7 +63,6 @@
   checkmate::assertNumeric(cfg$odeRecalcFactor, lower=0, len=1, .var.name="saem.cfg$odeRecalcFactor")
   # nmc number of mc interations
   checkmate::assertIntegerish(cfg$nmc, lower=0, len=1, .var.name="saem.cfg$nmc")
-  .nmc <- cfg$nmc
   # nu is the number of selection for each probability type.
   checkmate::assertIntegerish(cfg$nu, lower=0, len=3, .var.name="saem.cfg$nu")
   # Overall number of iterations
@@ -91,7 +90,6 @@
   checkmate::assertNumeric(cfg$minv, lower=0, len=.nphi, .var.name="saem.cfg$minv")
   # N is the number of IDs
   checkmate::assertIntegerish(cfg$N, lower=0, len=1, .var.name="saem.cfg$N")
-  .N <- cfg$N
   # Total number of items in the dataset
   checkmate::assertIntegerish(cfg$ntotal, lower=0, len=1, .var.name="saem.cfg$ntotal")
   .ntotal <- cfg$ntotal
@@ -106,7 +104,6 @@
   checkmate::assertIntegerish(cfg$mlen,  lower=1, len=1, .var.name="saem.cfg$mlen")
 
   # maximum number of measurments for an indiviaul
-  .mlen <- cfg$mlen
 
   checkmate::assertIntegerish(cfg$indio, min.len=1, .var.name="saem.cfg$indio")
 
@@ -638,7 +635,6 @@
   .df <- .ui$iniDf
   .eta <- .df[!is.na(.df$neta1), ]
   .etaNames <- .eta[.eta$neta1 == .eta$neta2, "name"]
-  .neta <- length(.etaNames)
   .len <- length(.etaNames)
   .ome <- matrix(rep(0, .len * .len), .len, .len, dimnames=list(.etaNames, .etaNames))
   # Gamma2_phi1Report is the reporting-only pooled BSV for split ETAs; falls
@@ -1358,7 +1354,6 @@
   # compresses large object
   env$phiM <- .phiM
   try(unlink(.saemCfg$phiMFile), silent=TRUE)
-  .rn <- ""
   .likTime <- 0
   .obf <- rxode2::rxGetControl(.ui, "logLik", FALSE)
   .nnodesGq <- rxode2::rxGetControl(.ui, "nnodesGq", 3)
@@ -1395,7 +1390,6 @@
 #' @author Matthew L. Fidler
 #' @noRd
 .saemGetCalcCwres <- function(env) {
-  .ui <- env$ui
   .table <- env$table
   .calcResid <- .table$cwres
   if (is.null(.calcResid)) {
@@ -1690,6 +1684,11 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
     .ret$message <- "" # no message for now
     .ret$est <- "saem"
     .saemControlToFoceiControl(.ret)
+    # the IOV hooks rebuild the ui after the temporary etas were added, which drops
+    # the transforms the back-transform needs
+    if (is.null(.ui$boundedTransforms) && length(env$saemPseudoTransforms) > 0L) {
+      .ui$boundedTransforms <- env$saemPseudoTransforms
+    }
     .ret <- .saemCreateOutput(.ret)
     # covFull/sa: swap in the stashed full theta+residual+Omega covariance now that
     # the theta-dimensioned fit table has been built.
