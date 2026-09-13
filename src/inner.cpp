@@ -15379,20 +15379,11 @@ static void fdThetaLikAll(const arma::vec &tk, std::vector<double> &out) {
   const int nid = (int)_fdThIds.size();
   out.assign((size_t)nid, NA_REAL);
   arma::vec tw = tk;                 // shi21LikTheta takes a non-const reference
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(_fdThCores) schedule(dynamic) if(_fdThParallel)
-#endif
-  for (int k = 0; k < nid; ++k) {
-#ifdef _OPENMP
-    if (_fdThParallel) setRxThreadId(omp_get_thread_num());
-#endif
+  nmForEachSubject(rx, nid, _fdThCores, _fdThParallel, [&](int k) {
     _fdRefEta = _fdThRefEta[(size_t)k];
     { std::unique_ptr<OmegaScope> _om = fdThOmegaScope();
       out[(size_t)k] = shi21LikTheta(tw, _fdThIds[(size_t)k])(0); }
-#ifdef _OPENMP
-    if (_fdThParallel) setRxThreadId(-1);
-#endif
-  }
+  });
   // Serial retry, as the omega legs and foceiS do: the parallel and serial routes do not
   // pick the same inner buffers, so a failure above is not necessarily one here.
   for (int k = 0; k < nid; ++k) {
@@ -15436,13 +15427,7 @@ static void fdThetaStepPer(const arma::vec &theta, int j,
                            std::vector<double> &hPerOut) {
   const int nid = (int)_fdThIds.size();
   hPerOut.assign((size_t)nid, 0.0);
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(_fdThCores) schedule(dynamic) if(_fdThParallel)
-#endif
-  for (int k = 0; k < nid; ++k) {
-#ifdef _OPENMP
-    if (_fdThParallel) setRxThreadId(omp_get_thread_num());
-#endif
+  nmForEachSubject(rx, nid, _fdThCores, _fdThParallel, [&](int k) {
     _fdRefEta = _fdThRefEta[(size_t)k];
     arma::vec tw = theta, gr(1), f0(1);
     f0(0) = f0Ind[(size_t)k];
@@ -15458,10 +15443,7 @@ static void fdThetaStepPer(const arma::vec &theta, int j,
                                       std::pow(DBL_EPSILON, 0.25),
                                       1.5, 4.5, 3.0, op_focei.shi21maxFD,
                                       op_focei.shi21hMax, op_focei.shi21hMin);
-#ifdef _OPENMP
-    if (_fdThParallel) setRxThreadId(-1);
-#endif
-  }
+  });
 }
 
 // One leg at PER-SUBJECT steps: subject k is evaluated at theta[j] + sign*hPer[k].
@@ -15470,13 +15452,7 @@ static void fdThetaLegPer(const arma::vec &theta, int j,
                           std::vector<double> &out) {
   const int nid = (int)_fdThIds.size();
   out.assign((size_t)nid, NA_REAL);
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(_fdThCores) schedule(dynamic) if(_fdThParallel)
-#endif
-  for (int k = 0; k < nid; ++k) {
-#ifdef _OPENMP
-    if (_fdThParallel) setRxThreadId(omp_get_thread_num());
-#endif
+  nmForEachSubject(rx, nid, _fdThCores, _fdThParallel, [&](int k) {
     if (hPer[(size_t)k] > 0.0) {
       _fdRefEta = _fdThRefEta[(size_t)k];
       std::unique_ptr<OmegaScope> _om = fdThOmegaScope();
@@ -15484,10 +15460,7 @@ static void fdThetaLegPer(const arma::vec &theta, int j,
       if (j >= 0 && j < (int)tk.size()) tk[(unsigned int)j] += sign * hPer[(size_t)k];
       out[(size_t)k] = shi21LikTheta(tk, _fdThIds[(size_t)k])(0);
     }
-#ifdef _OPENMP
-    if (_fdThParallel) setRxThreadId(-1);
-#endif
-  }
+  });
   // Serial retry, as the omega legs and foceiS do: the parallel and serial routes do not
   // pick the same inner buffers, so a failure above is not necessarily one here.
   for (int k = 0; k < nid; ++k) {
@@ -15954,18 +15927,9 @@ arma::vec shi21LikOmegaSum(arma::vec &om, int) {
   if (!fdOmegaBuild(blk, oi, ld)) return ret;
   const int nid = (int)_fdOmIds.size();
   std::vector<double> v((size_t)nid, NA_REAL);
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(_fdThCores) schedule(dynamic) if(_fdThParallel)
-#endif
-  for (int k = 0; k < nid; ++k) {
-#ifdef _OPENMP
-    if (_fdThParallel) setRxThreadId(omp_get_thread_num());
-#endif
+  nmForEachSubject(rx, nid, _fdThCores, _fdThParallel, [&](int k) {
     v[(size_t)k] = fdOmegaLikOne(_fdOmIds[(size_t)k], oi, ld, _fdOmRefEta[(size_t)k]);
-#ifdef _OPENMP
-    if (_fdThParallel) setRxThreadId(-1);
-#endif
-  }
+  });
   for (int k = 0; k < nid; ++k) {
     if (R_finite(v[(size_t)k])) continue;
     v[(size_t)k] = fdOmegaLikOne(_fdOmIds[(size_t)k], oi, ld, _fdOmRefEta[(size_t)k]);
@@ -15990,18 +15954,9 @@ static void fdOmegaLeg(int j, double delta, int fdCores, bool fdParallel,
   arma::mat oi; double ld;
   if (!fdOmegaBuild(blk, oi, ld)) return;
   const int nid = (int)_fdOmIds.size();
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(fdCores) schedule(dynamic) if(fdParallel)
-#endif
-  for (int k = 0; k < nid; ++k) {
-#ifdef _OPENMP
-    if (fdParallel) setRxThreadId(omp_get_thread_num());
-#endif
+  nmForEachSubject(rx, nid, fdCores, fdParallel, [&](int k) {
     out[(size_t)k] = fdOmegaLikOne(_fdOmIds[(size_t)k], oi, ld, _fdOmRefEta[(size_t)k]);
-#ifdef _OPENMP
-    if (fdParallel) setRxThreadId(-1);
-#endif
-  }
+  });
   // Serial retry, as foceiS does for its own parallel pass: the parallel and serial routes
   // pick different inner buffers, so a failure above is not necessarily a failure here.
   for (int k = 0; k < nid; ++k) {
@@ -18014,11 +17969,8 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
   for (size_t q = 0; q < G.dirTh.size(); ++q) dirThV[q] = G.dirTh[q];
   for (size_t q = 0; q < G.sigCol.size(); ++q) sigColV[q] = G.sigCol[q];
   int kcores = cores < 1 ? 1 : cores;
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(kcores)
-#endif
-  for (int i = 0; i < nsub; ++i) {
-    if (!Es[(size_t)i].ok) continue;
+  nmForEachSubject(rx, nsub, kcores, kcores > 1, [&](int i) {
+    if (!Es[(size_t)i].ok) return;
     try {
       int o0 = off[i], o1 = off[i + 1] - 1;
       arma::mat ai = B.a.rows(o0, o1), aRi = B.aR.rows(o0, o1);
@@ -18078,7 +18030,7 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
     } catch (...) {
       gmat.col(i).fill(arma::datum::nan); etaPOut.slice(i).fill(arma::datum::nan);
     }
-  }
+  });
   // A flagged subject's column stays ZERO here; the whole column is supplied in
   // analyticOuterGradDirect from foceiOuterFdInd_, which covers the omega block too.
   //
@@ -18676,11 +18628,8 @@ static void gradPooledKernelRun(const std::vector<VaeOuterE> &Es, const GradPool
                                 const arma::ivec &sigCol, int censOpt, int cores,
                                 arma::mat &gmat, arma::cube &etaPall) {
   int kcores = cores; if (kcores < 1) kcores = 1;
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(kcores)
-#endif
-  for (int i = 0; i < nsub; ++i) {
-    if (!Es[(size_t)i].ok) continue;        // finite-differenced; leave the column zero
+  nmForEachSubject(rx, nsub, kcores, kcores > 1, [&](int i) {
+    if (!Es[(size_t)i].ok) return;        // finite-differenced; leave the column zero
     try {
       int o0 = S.off[i], o1 = S.off[i + 1] - 1;
       arma::mat ai = S.aB.rows(o0, o1), aRi = S.aRB.rows(o0, o1);
@@ -18700,7 +18649,7 @@ static void gradPooledKernelRun(const std::vector<VaeOuterE> &Es, const GradPool
     } catch (...) {
       gmat.col(i).fill(arma::datum::nan); etaPall.slice(i).fill(arma::datum::nan);
     }
-  }
+  });
 }
 
 // Substitute the finite-differenced subjects.

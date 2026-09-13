@@ -572,13 +572,7 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
   arma::mat impOmega;
   if (isImp) impGetOmega(impOmega);
   bool doParProp = (cores > 1);
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(cores) if(doParProp)
-#endif
-  for (int id = 0; id < nExp; ++id) {
-#ifdef _OPENMP
-    if (doParProp) setRxThreadId(omp_get_thread_num());
-#endif
+  nmForEachSubject(rx, nExp, cores, doParProp, [&](int id) {
     double gammaId = gammaVec[id];
     if (isImp) {
       arma::vec eta(neta);
@@ -616,10 +610,7 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
         }
       }
     }
-#ifdef _OPENMP
-    if (doParProp) setRxThreadId(-1);
-#endif
-  }
+  });
 
   // Per-expanded-subject E-step results (combined per base subject below).
   arma::mat cmExp(nExp, neta, arma::fill::zeros);
@@ -1155,13 +1146,7 @@ static void impComputeCov(Environment e, const arma::vec& gammaVec,
     double negHalfLogDetOmega = impLogDetOmegaInv5();
     std::fill(objBuf.begin(), objBuf.end(), 0.0);
     std::fill(objGood.begin(), objGood.end(), 0);
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(cores) if(doParCov)
-#endif
-    for (int id = 0; id < nExp; ++id) {
-#ifdef _OPENMP
-      if (doParCov) setRxThreadId(omp_get_thread_num());
-#endif
+    nmForEachSubject(rx, nExp, cores, doParCov, [&](int id) {
       if (ok[id]) {
         impForceResolve(id);
         // This subject's converged proposal scale (all equal under "global").
@@ -1186,10 +1171,7 @@ static void impComputeCov(Environment e, const arma::vec& gammaVec,
           objGood[id] = 1;
         }
       }
-#ifdef _OPENMP
-      if (doParCov) setRxThreadId(-1);
-#endif
-    }
+    });
     // Reduce in id order so the sum is bit-identical to a serial accumulation.
     // For a mixture each physical subject's contribution is the marginal
     // log(sum_m p_m L_im) over its components, which is what makes the mixture
@@ -1862,13 +1844,7 @@ void impOuter(Environment e) {
         // already carries the mixture / pool-sizing serial guard (forced to 1).
         bool doParM = (cores > 1) && impMStepParallelOk();
         if (doParM) impInnerParallelOn();
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(cores) schedule(static) if(doParM)
-#endif
-        for (int eid = 0; eid < nExp; ++eid) {
-#ifdef _OPENMP
-          if (doParM) setRxThreadId(omp_get_thread_num());
-#endif
+        nmForEachSubject(rx, nExp, cores, doParM, nmStatic, [&](int eid) {
           if (sampS[eid].n_rows != 0) {
             if (sir && sirN < (int)sampS[eid].n_rows) {
               // SIR acceleration: an equal-weight systematic resample stands in
@@ -1895,10 +1871,7 @@ void impOuter(Environment e) {
               useSub[eid] = 1;
             }
           }
-#ifdef _OPENMP
-          if (doParM) setRxThreadId(-1);
-#endif
-        }
+        });
         if (doParM) impInnerParallelOff();
         // Serial accumulation in eid order -- bit-identical to the serial theta score.
         for (int eid = 0; eid < nExp; ++eid) {
