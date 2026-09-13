@@ -79,8 +79,17 @@ nmTest({
     .testSeed(915)
     .d <- .bcAddData(40L, 0.5, 0.15)
     f <- function() {
-      ini({ tcl <- log(4); eta.cl ~ 0.09; add.sd <- 0.3; lambda <- 1 })
-      model({ cl <- exp(tcl + eta.cl); v <- 70; linCmt() ~ add(add.sd) + boxCox(lambda) })
+      ini({
+        tcl <- log(4)
+        eta.cl ~ 0.09
+        add.sd <- 0.3
+        lambda <- 1
+      })
+      model({
+        cl <- exp(tcl + eta.cl)
+        v <- 70
+        linCmt() ~ add(add.sd) + boxCox(lambda)
+      })
     }
     fit <- .nlmixr(f, .d, est = "saem",
                    control = saemControl(nBurn = 100, nEm = 100, print = 0L, nmc = 2))

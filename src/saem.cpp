@@ -189,6 +189,12 @@ static inline double saemTbsJac2(int i, double lambda) {
   return 2.0*_powerL(_saemYptr[i], lambda, _saemYj, _saemLow, _saemHi);
 }
 
+// -2 log-likelihood of observation i for the lambda objectives, on the DV's scale
+static inline double saemLamTerm(int i, double ytr, double ft, double g, double lambda) {
+  double cur = (ytr - ft)/g;
+  return cur*cur + 2*log(g) - saemTbsJac2(i, lambda);
+}
+
 #define toLambda(x) _powerDi(x, 1.0, 4, -_saemLambdaR, _saemLambdaR)
 #define toLambdaEst(x) _powerD((x < -0.99*_saemLambdaR ? -0.99*_saemLambdaR : (x > 0.99*_saemLambdaR ? 0.99*_saemLambdaR : x)), 1.0, 4, -_saemLambdaR, _saemLambdaR)
 
@@ -312,7 +318,7 @@ void objD(double *ab, double *fx) {
 // add+_saemLambda only
 void objE(double *ab, double *fx) {
   int i;
-  double g, sum, cur, ft, ytr;
+  double g, sum, ft, ytr;
   double xmin = 1.0e-200, xmax = 1e300;
   double ab02, ab12;
   int curi = 0;
@@ -334,9 +340,7 @@ void objE(double *ab, double *fx) {
     g = ab02*ab02;
     if (g < xmin) g = xmin;
     if (g > xmax) g = xmax;
-    cur = (ytr-ft)/g;
-    sum += cur * cur + 2*log(g);
-    sum -= saemTbsJac2(i, lambda);
+    sum += saemLamTerm(i, ytr, ft, g, lambda);
   }
   *fx = sum;
 }
@@ -344,7 +348,7 @@ void objE(double *ab, double *fx) {
 // prop+_saemLambda only
 void objF(double *ab, double *fx) {
   int i;
-  double g, sum, cur, ft, ytr, fa;
+  double g, sum, ft, ytr, fa;
   double xmin = 1.0e-200, xmax = 1e300;
   double ab02, ab12;
   int curi = 0;
@@ -368,9 +372,7 @@ void objF(double *ab, double *fx) {
     if (g == 0) g = 1;
     if (g < xmin) g = xmin;
     if (g > xmax) g = xmax;
-    cur = (ytr-ft)/g;
-    sum += cur * cur + 2*log(g);
-    sum -= saemTbsJac2(i, lambda);
+    sum += saemLamTerm(i, ytr, ft, g, lambda);
   }
   *fx = sum;
 }
@@ -378,7 +380,7 @@ void objF(double *ab, double *fx) {
 // pow+_saemLambda only
 void objG(double *ab, double *fx) {
   int i;
-  double g, sum, cur, ft, ytr, fa;
+  double g, sum, ft, ytr, fa;
   double xmin = 1.0e-200, xmax = 1e300;
   double ab02, ab12, ab22;
   int curi = 0;
@@ -408,9 +410,7 @@ void objG(double *ab, double *fx) {
     if (g == 0) g = 1.0;
     if (g < xmin) g = xmin;
     if (g > xmax) g = xmax;
-    cur = (ytr-ft)/g;
-    sum += cur * cur + 2*log(g);
-    sum -= saemTbsJac2(i, lambda);
+    sum += saemLamTerm(i, ytr, ft, g, lambda);
   }
   *fx = sum;
 }
@@ -418,7 +418,7 @@ void objG(double *ab, double *fx) {
 // add + prop + _saemLambda
 void objH(double *ab, double *fx) {
   int i;
-  double g, sum, cur, fa;
+  double g, sum, fa;
   double xmin = 1.0e-200, xmax = 1e300, ft, ytr;
   double ab02, ab12, ab22;
   int curi = 0;
@@ -454,9 +454,7 @@ void objH(double *ab, double *fx) {
     }
     if (g < xmin) g = xmin;
     if (g > xmax) g = xmax;
-    cur = (ytr-ft)/g;
-    sum += cur*cur + 2*log(g);
-    sum -= saemTbsJac2(i, lambda);
+    sum += saemLamTerm(i, ytr, ft, g, lambda);
   }
   *fx = sum;
 }
@@ -464,7 +462,7 @@ void objH(double *ab, double *fx) {
 // add + pow + _saemLambda
 void objI(double *ab, double *fx) {
   int i;
-  double g, sum, cur, fa=1.0;
+  double g, sum, fa=1.0;
   double xmin = 1.0e-200, xmax = 1e300, ft, ytr;
   double ab02, ab12, ab22, ab32;
   int curi = 0;
@@ -506,9 +504,7 @@ void objI(double *ab, double *fx) {
     }
     if (g < xmin) g = xmin;
     if (g > xmax) g = xmax;
-    cur = (ytr-ft)/g;
-    sum += cur*cur + 2*log(g);
-    sum -= saemTbsJac2(i, lambda);
+    sum += saemLamTerm(i, ytr, ft, g, lambda);
   }
   *fx = sum;
 }
@@ -1535,20 +1531,27 @@ public:
     }
   }
 
-  void refinePhi1Lik(unsigned int kiter, const vec &pas) {
-    if (!_saemPhi1PoolReady || nphi1 <= 0) return;
+  static void phi1MarkIx(std::vector<bool> &mark, const uvec &ix, int n) {
+    for (unsigned int j = 0; j < ix.n_elem; ++j) {
+      if (ix(j) < (unsigned int)n) mark[(size_t)ix(j)] = true;
+    }
+  }
+
+  // phi1 columns refinePhi1Lik may move: not fixed, and not a temporary eta's theta,
+  // which keeps the sampled-mean update (see skipStochPhi1)
+  void phi1SetFreeIx() {
     std::vector<bool> phi1Fix((size_t)nphi1, false);
-    for (unsigned int j = 0; j < fixedIx1.n_elem; ++j) {
-      if (fixedIx1(j) < (unsigned int)nphi1) phi1Fix[(size_t)fixedIx1(j)] = true;
-    }
-    // a temporary eta's theta is left to the sampled-mean update (see skipStochPhi1)
-    for (unsigned int j = 0; j < pseudoIx1.n_elem; ++j) {
-      if (pseudoIx1(j) < (unsigned int)nphi1) phi1Fix[(size_t)pseudoIx1(j)] = true;
-    }
+    phi1MarkIx(phi1Fix, fixedIx1, nphi1);
+    phi1MarkIx(phi1Fix, pseudoIx1, nphi1);
     gPhi1FreeIx.clear();
     for (int c = 0; c < nphi1; ++c) {
       if (!phi1Fix[(size_t)c]) gPhi1FreeIx.push_back(c);
     }
+  }
+
+  void refinePhi1Lik(unsigned int kiter, const vec &pas) {
+    if (!_saemPhi1PoolReady || nphi1 <= 0) return;
+    phi1SetFreeIx();
     if (gPhi1FreeIx.empty()) return;
 
     gPhi1Self = this;
@@ -2058,7 +2061,7 @@ public:
     }
     fixedIx0 = as<uvec>(x["fixed.i0"]);
     fixedIx1 = as<uvec>(x["fixed.i1"]);
-    if (x.containsElementNamed("pseudo.i1")) pseudoIx1 = as<uvec>(x["pseudo.i1"]);
+    pseudoIx1 = as<uvec>(x["pseudo.i1"]);
 
     nlambda1 = as<int>(x["nlambda1"]);
     nlambda0 = as<int>(x["nlambda0"]);
