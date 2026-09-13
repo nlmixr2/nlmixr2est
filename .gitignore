@@ -104,5 +104,12 @@ tests/testthat/_problems/
 *.tgz
 inst/tools/*.Rout
 src/Makevars.win
-.habit-hooks/
+# The CONTENTS, not the directory: git cannot re-include a file whose parent
+# directory is excluded, and the config below has to be tracked.  rxode2 tracks
+# its copy; this repo ignored the whole directory, so there was no config here
+# and habit-hooks reported "no [files] are configured -- nothing scanned" and
+# printed a pass on every run.  A check that cannot fail is worse than no check,
+# because it reads as one that succeeded.  snooze.json stays ignored: local state.
+.habit-hooks/*
+!.habit-hooks/config.toml
 compile_commands.json
