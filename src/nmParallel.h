@@ -34,14 +34,17 @@
 // Requires rxode2ptr.h (setRxThreadId, getOrdId, getRxNsim) to be included first.
 #include "rxomp.h"
 
-// Position -> subject id.  rx->ordId is a permutation of the nsub*nsim
-// subject-SOLVES; these regions walk SUBJECTS and bound themselves by
-// getRxNsub(rx), so it means what they read it as only at nsim == 1.  With
-// nsim > 1 its first nsub entries are an arbitrary subset, which would visit
-// some subjects twice and skip others -- fall back to the data order there.
-// Returns a 1-BASED id, like rxode2's getOrdId().
-static inline int nmOrdId(rx_solve *rxIn, int pos) {
-  return (getRxNsim(rxIn) == 1) ? getOrdId(rxIn, pos) : pos + 1;
+// Position -> subject id.  Returns a 1-BASED id, like rxode2's getOrdId().
+//
+// rx->ordId is a permutation of the nsub*nsim subject-SOLVES, so reading it
+// means what a loop takes it to mean only when the loop covers all of them --
+// `n` is the loop's own bound, and that is the test.  A loop over nsub when
+// nsim > 1 would otherwise read an arbitrary subset of 1..nsub*nsim: some
+// subjects visited twice, others skipped, and the per-subject arrays indexed
+// past nsub.  Fall back to the data order there; unordered is slower, mixed up
+// is wrong.
+static inline int nmOrdId(rx_solve *rxIn, int pos, int n) {
+  return (n == getRxNsub(rxIn) * getRxNsim(rxIn)) ? getOrdId(rxIn, pos) : pos + 1;
 }
 
 // Run `body(id)` once per subject.  `n` is a subject count (getRxNsub(rx) or a
@@ -56,7 +59,7 @@ static inline void nmForEachSubject(rx_solve *rxIn, int n, int cores, bool par,
       setRxThreadId(omp_get_thread_num());
 #pragma omp for schedule(dynamic)
       for (int pos = 0; pos < n; ++pos) {
-        body(nmOrdId(rxIn, pos) - 1);
+        body(nmOrdId(rxIn, pos, n) - 1);
       }
       setRxThreadId(-1);
     }

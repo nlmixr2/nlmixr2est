@@ -1185,21 +1185,6 @@ static inline int getRxId(int id) {
   return id % getRxNsub(rx);
 }
 
-// Position -> subject id for the per-subject parallel loops.
-//
-// rx->ordId is a permutation of the nsub*nsim subject-SOLVES, written by
-// rxode2's sortIds().  Every loop here walks SUBJECTS and bounds itself by
-// getRxNsub(rx), so the permutation means what those loops read it as only
-// when there is exactly one simulation per subject.  With nsim > 1 its first
-// nsub entries are an arbitrary subset of 1..nsub*nsim: reading them would
-// visit some subjects twice, skip others, and index the per-subject arrays
-// (inds_focei, ebes, Hb, ...) past nsub.  Fall back to the canonical order
-// there -- unordered is slower, mixed up is wrong.
-//
-// Returns a 1-BASED id, like rxode2 getOrdId(); callers subtract one.
-static inline int foceiOrdId(rx_solve *rxIn, int pos) {
-  return (getRxNsim(rxIn) == 1) ? getOrdId(rxIn, pos) : pos + 1;
-}
 
 // Per-subject offsets into llikObsFull.  Unlike the other per-subject blocks,
 // llikObsFull is handed to R as one contiguous block in record order, so its
@@ -11292,21 +11277,14 @@ int foceiS(double *theta, Environment e, bool &hasZero){
       std::vector<int> _opt1Res(_nsub, 0);
       if (_doParallel) sortIds(rx, 2);
       _innerParallel.store(1, std::memory_order_release);
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(_cores) schedule(dynamic) if(_doParallel)
-#endif
-      for (int _i = 0; _i < _nsub; _i++) {
-        int _gid = _doParallel ? (foceiOrdId(rx, _i) - 1) : _i;
+      nmForEachSubject(rx, _nsub, _cores, _doParallel, [&](int _gid) {
         focei_ind *fIndL = &(inds_focei[_gid]);
         fIndL->thetaGrad[cpar] = NA_REAL;
-        // Set thread id for windows
-        setRxThreadId(omp_get_thread_num());
         _opt1Res[_gid] = innerOpt1(_gid, 2);
-        setRxThreadId(-1);
         if (_opt1Res[_gid] && doForward) {
           fIndL->thetaGrad[cpar] = (fIndL->lik[2] - op_focei.likSav[_gid]) / delta;
         }
-      }
+      });
       _innerParallel.store(0, std::memory_order_release);
       if (_doParallel) sortIds(rx, 0);
       // Serial fallback for subjects where innerOpt1(gid, 2) failed
@@ -11341,14 +11319,9 @@ int foceiS(double *theta, Environment e, bool &hasZero){
         bool _doParallel = (_cores > 1) && solveMethodThreadSafe(_op);
         if (_doParallel) sortIds(rx, 2);
         _innerParallel.store(1, std::memory_order_release);
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(_cores) schedule(dynamic) if(_doParallel)
-#endif
-        for (int _i = 0; _i < _nsub; _i++) {
-          int _gid = _doParallel ? (foceiOrdId(rx, _i) - 1) : _i;
+        nmForEachSubject(rx, _nsub, _cores, _doParallel, [&](int _gid) {
           focei_ind *fIndL = &(inds_focei[_gid]);
           if (ISNA(fIndL->thetaGrad[cpar])) {
-            setRxThreadId(omp_get_thread_num());
             if (!innerOpt1(_gid, 1)) {
               // forward only
               fIndL->thetaGrad[cpar] = (fIndL->lik[2] - op_focei.likSav[_gid]) / delta;
@@ -11356,9 +11329,8 @@ int foceiS(double *theta, Environment e, bool &hasZero){
               // central
               fIndL->thetaGrad[cpar] = (fIndL->lik[2] - fIndL->lik[1]) / (2*delta);
             }
-            setRxThreadId(-1);
           }
-        }
+        });
         _innerParallel.store(0, std::memory_order_release);
         if (_doParallel) sortIds(rx, 0);
       }
@@ -15020,14 +14992,7 @@ static void vaeInnerLikCore(const arma::mat& etaMat, int cores, bool grad, bool 
     _innerParallel.store(1, std::memory_order_release);
   }
   for (int m = 0; m < nMix; ++m) {
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
-#endif
-    for (int i = 0; i < nsub; ++i) {
-      int base = doParallel ? (foceiOrdId(rx, i) - 1) : i;
-#ifdef _OPENMP
-      if (doParallel) setRxThreadId(omp_get_thread_num());
-#endif
+    nmForEachSubject(rx, nsub, cores, doParallel, [&](int base) {
       int id = base + m * nsub;
       std::vector<double> eta(neta);
       for (int j = 0; j < neta; ++j) eta[j] = etaMat(id, j);
@@ -15061,10 +15026,7 @@ static void vaeInnerLikCore(const arma::mat& etaMat, int cores, bool grad, bool 
         // ELS residual step needs (f, r) per observation, not f alone.
         if (pr != NULL) (*pr)[id].assign(rf.colptr(1), rf.colptr(1) + rf.n_rows);
       }
-#ifdef _OPENMP
-      if (doParallel) setRxThreadId(-1);
-#endif
-    }
+    });
   }
   if (doParallel) {
     _innerParallel.store(0, std::memory_order_release);
@@ -16911,7 +16873,7 @@ static void outerSolveFill(int slot, rxSolveF *fns,
 #pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
 #endif
   for (int i = 0; i < (subject < 0 ? nsub : 1); ++i) {
-    int id = subject >= 0 ? subject : (doParallel ? (foceiOrdId(rx, i) - 1) : i);
+    int id = subject >= 0 ? subject : (nmOrdId(rx, i, nsub) - 1);
 #ifdef _OPENMP
     if (doParallel) setRxThreadId(omp_get_thread_num());
 #endif
@@ -17503,14 +17465,7 @@ static bool llHblockFill(bool useHess2, const FoceiGradPooledSetup &G,
   const bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
   std::vector<int> okv((size_t)nsub, 0);
   if (doParallel) { sortIds(rx, 2); _innerParallel.store(1, std::memory_order_release); }
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
-#endif
-  for (int i = 0; i < nsub; ++i) {
-    int id = doParallel ? (foceiOrdId(rx, i) - 1) : i;
-#ifdef _OPENMP
-    if (doParallel) setRxThreadId(omp_get_thread_num());
-#endif
+  nmForEachSubject(rx, nsub, cores, doParallel, [&](int id) {
     int _rxId = getRxId(id);
     rx_solving_options_ind *ind = getSolvingOptionsInd(rx, _rxId);
     // innerHess2 is a peer of the INNER model, so theta/eta go in through the same
@@ -17530,7 +17485,7 @@ static bool llHblockFill(bool useHess2, const FoceiGradPooledSetup &G,
                         foceiOuterRetryOpts(), _ohk);
     }
     double *solve0 = getIndSolve(ind);
-    if (getOpNeq(op) > 0 && ISNA(solve0[0])) continue;   // okv stays 0 -> decline
+    if (getOpNeq(op) > 0 && ISNA(solve0[0])) return;     // okv stays 0 -> decline
     arma::mat H(neta, neta, arma::fill::zeros);
     double *lhs = neqGuard.lhs();   // private buffer, this model's width
     // pooled table -> hess2's own CMT basis (no-op when it is itself the pool)
@@ -17550,10 +17505,7 @@ static bool llHblockFill(bool useHess2, const FoceiGradPooledSetup &G,
       for (int ic = 0; ic < jc; ++ic) H(jc, ic) = H(ic, jc);
     Hb[(size_t)id] = H;
     okv[(size_t)id] = H.is_finite() ? 1 : 0;
-#ifdef _OPENMP
-    if (doParallel) setRxThreadId(-1);
-#endif
-  }
+  });
   if (doParallel) { _innerParallel.store(0, std::memory_order_release); sortIds(rx, 0); }
   for (int i = 0; i < nsub; ++i) if (!okv[(size_t)i]) return false;
   return true;
@@ -19221,14 +19173,7 @@ void npMixEMUpdate(const arma::mat& etaPoints, const arma::vec& lam, int cores) 
     std::vector<double> eta(neta);
     for (int j = 0; j < neta; ++j) eta[j] = etaPoints(k, j);
     double logLam = std::log(std::max(1e-300, lam[k]));
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
-#endif
-    for (int i = 0; i < nsub; ++i) {
-      int base = doParallel ? (foceiOrdId(rx, i) - 1) : i;
-#ifdef _OPENMP
-      if (doParallel) setRxThreadId(omp_get_thread_num());
-#endif
+    nmForEachSubject(rx, nsub, cores, doParallel, [&](int base) {
       for (int m = 0; m < nMix; ++m) {
         double cl = npEvalCondLik(&eta[0], base + m * nsub);
         if (!std::isfinite(cl)) continue;
@@ -19241,10 +19186,7 @@ void npMixEMUpdate(const arma::mat& etaPoints, const arma::vec& lam, int cores) 
           runSum(base, m) += std::exp(val - rMax);
         }
       }
-#ifdef _OPENMP
-      if (doParallel) setRxThreadId(-1);
-#endif
-    }
+    });
   }
   }
   // responsibilities -> mean over subjects -> new proportions
@@ -19301,14 +19243,7 @@ void npbSampleMixProbs(const arma::mat& subEta, double alpha0, uint32_t seed) {
   const bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
   {
   NpInnerParallelScope npScope(rx, doParallel);
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
-#endif
-  for (int i = 0; i < nsub; ++i) {
-    int base = doParallel ? (foceiOrdId(rx, i) - 1) : i;
-#ifdef _OPENMP
-    if (doParallel) setRxThreadId(omp_get_thread_num());
-#endif
+  nmForEachSubject(rx, nsub, cores, doParallel, [&](int base) {
     std::vector<double> eta(neta);
     for (int j = 0; j < neta; ++j) eta[j] = subEta(base, j);
     double gm = R_NegInf;
@@ -19319,10 +19254,7 @@ void npbSampleMixProbs(const arma::mat& subEta, double alpha0, uint32_t seed) {
       if (std::isfinite(g) && g > gm) gm = g;
     }
     gmaxv[base] = gm;
-#ifdef _OPENMP
-    if (doParallel) setRxThreadId(-1);
-#endif
-  }
+  });
   }
   // Serial categorical draw per subject (unchanged draw order), then Dirichlet.
   // Reseed thread-0's engine now: the parallel solve above may have touched that
@@ -19387,20 +19319,10 @@ void npBuildPsiCore(const arma::mat& etaPoints, int cores, arma::mat& psi) {
   for (int k = 0; k < nPoint; ++k) {
     std::vector<double> eta(neta);
     for (int j = 0; j < neta; ++j) eta[j] = etaPoints(k, j);
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
-#endif
-    for (int i = 0; i < nsub; ++i) {
-      int base = doParallel ? (foceiOrdId(rx, i) - 1) : i;
-#ifdef _OPENMP
-      if (doParallel) setRxThreadId(omp_get_thread_num());
-#endif
+    nmForEachSubject(rx, nsub, cores, doParallel, [&](int base) {
       double ll = npMixCondLik(&eta[0], base, nsub, nMix);
       psi(base, k) = std::exp(ll);
-#ifdef _OPENMP
-      if (doParallel) setRxThreadId(-1);
-#endif
-    }
+    });
   }
   if (doParallel) {
     _innerParallel.store(0, std::memory_order_release);
@@ -19432,14 +19354,7 @@ void npbSupportMHContrib(const std::vector<int>& z, const std::vector<char>& occ
   const bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
   {
   NpInnerParallelScope npScope(rx, doParallel);
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
-#endif
-  for (int i = 0; i < nsub; ++i) {
-    int base = doParallel ? (foceiOrdId(rx, i) - 1) : i;
-#ifdef _OPENMP
-    if (doParallel) setRxThreadId(omp_get_thread_num());
-#endif
+  nmForEachSubject(rx, nsub, cores, doParallel, [&](int base) {
     int k = (base >= 0 && base < (int)z.size()) ? z[base] : -1;
     if (k >= 0 && k < K && occ[k]) {
       // Local per-thread copies: npEvalCondLik takes double* and shared clusters
@@ -19449,10 +19364,7 @@ void npbSupportMHContrib(const std::vector<int>& z, const std::vector<char>& occ
       curContrib[base] = npEvalCondLik(&curEta[0], base);
       propContrib[base] = npEvalCondLik(&propEta[0], base);
     }
-#ifdef _OPENMP
-    if (doParallel) setRxThreadId(-1);
-#endif
-  }
+  });
   }
 }
 
@@ -19496,19 +19408,9 @@ void npBuildPsiCoreScaled(const arma::mat& etaPoints, int cores, double gamma,
   for (int k = 0; k < nPoint; ++k) {
     std::vector<double> eta(neta);
     for (int j = 0; j < neta; ++j) eta[j] = etaPoints(k, j);
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
-#endif
-    for (int i = 0; i < nsub; ++i) {
-      int base = doParallel ? (foceiOrdId(rx, i) - 1) : i;
-#ifdef _OPENMP
-      if (doParallel) setRxThreadId(omp_get_thread_num());
-#endif
+    nmForEachSubject(rx, nsub, cores, doParallel, [&](int base) {
       lp(base, k) = npMixCondLik(&eta[0], base, nsub, nMix);
-#ifdef _OPENMP
-      if (doParallel) setRxThreadId(-1);
-#endif
-    }
+    });
   }
   }
   op_focei.npResidScale = savedScale;
@@ -19564,14 +19466,7 @@ void npFreezeBuild(const arma::mat& etaPoints, int cores) {
   for (int k = 0; k < nPoint; ++k) {
     std::vector<double> eta(neta);
     for (int j = 0; j < neta; ++j) eta[j] = etaPoints(k, j);
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
-#endif
-    for (int i = 0; i < nsub; ++i) {
-      int base = doParallel ? (foceiOrdId(rx, i) - 1) : i;
-#ifdef _OPENMP
-      if (doParallel) setRxThreadId(omp_get_thread_num());
-#endif
+    nmForEachSubject(rx, nsub, cores, doParallel, [&](int base) {
       // each mixture component's solve shares the physical subject's buffer, so
       // solve + cache them serially per subject (parallel over subjects).
       for (int m = 0; m < nMix; ++m) {
@@ -19581,10 +19476,7 @@ void npFreezeBuild(const arma::mat& etaPoints, int cores) {
         double *s = getIndSolve(ind);
         gFreezeCache[((size_t)k * nsub + base) * nMix + m].assign(s, s + npIndSolveSize(op, ind));
       }
-#ifdef _OPENMP
-      if (doParallel) setRxThreadId(-1);
-#endif
-    }
+    });
   }
   if (doParallel) { _innerParallel.store(0, std::memory_order_release); sortIds(rx, 0); }
 }
@@ -19605,14 +19497,7 @@ void npFreezePsiScaled(const arma::mat& etaPoints, int cores, arma::mat& psi, do
   for (int k = 0; k < nPoint; ++k) {
     std::vector<double> eta(neta);
     for (int j = 0; j < neta; ++j) eta[j] = etaPoints(k, j);
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
-#endif
-    for (int i = 0; i < nsub; ++i) {
-      int base = doParallel ? (foceiOrdId(rx, i) - 1) : i;
-#ifdef _OPENMP
-      if (doParallel) setRxThreadId(omp_get_thread_num());
-#endif
+    nmForEachSubject(rx, nsub, cores, doParallel, [&](int base) {
       std::vector<double> llm(gFreezeNmix);
       for (int m = 0; m < gFreezeNmix; ++m) {
         int id = base + m * nsub;
@@ -19623,10 +19508,7 @@ void npFreezePsiScaled(const arma::mat& etaPoints, int cores, arma::mat& psi, do
         llm[m] = npEvalCondLik(&eta[0], id);         // frozen: no integration
       }
       lp(base, k) = npMixLogSumExp(llm);             // mixture-marginalized
-#ifdef _OPENMP
-      if (doParallel) setRxThreadId(-1);
-#endif
-    }
+    });
   }
   if (doParallel) { _innerParallel.store(0, std::memory_order_release); sortIds(rx, 0); }
   op_focei.freezeOde = false;
@@ -20157,14 +20039,7 @@ static double adviElboGradCore(NumericMatrix mu, NumericMatrix omega, NumericVec
   const bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
   {
   NpInnerParallelScope npScope(rx, doParallel);
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
-#endif
-  for (int ii = 0; ii < nsub; ++ii) {
-    int i = doParallel ? (foceiOrdId(rx, ii) - 1) : ii;
-#ifdef _OPENMP
-    if (doParallel) setRxThreadId(omp_get_thread_num());
-#endif
+  nmForEachSubject(rx, nsub, cores, doParallel, [&](int i) {
     // reparameterized draw eta_i = mu_i + exp(omega_i) .* eps_i
     std::vector<double> eta(neta);
     arma::vec etav(neta);
@@ -20226,10 +20101,7 @@ static double adviElboGradCore(NumericMatrix mu, NumericMatrix omega, NumericVec
         if (th >= 0 && th < ntheta) gThetaBuf(i, th) += g[s];
       }
     }
-#ifdef _OPENMP
-    if (doParallel) setRxThreadId(-1);
-#endif
-  }
+  });
   }
   // serial reduction in id order (thread-count invariant, matches serial code)
   double elbo = 0.0;
@@ -20473,14 +20345,7 @@ static double adviElboGradCoreFR(NumericMatrix mu, NumericMatrix Lpack, NumericV
   const bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
   {
   NpInnerParallelScope npScope(rx, doParallel);
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
-#endif
-  for (int ss = 0; ss < nsub; ++ss) {
-    int s = doParallel ? (foceiOrdId(rx, ss) - 1) : ss;
-#ifdef _OPENMP
-    if (doParallel) setRxThreadId(omp_get_thread_num());
-#endif
+  nmForEachSubject(rx, nsub, cores, doParallel, [&](int s) {
     // eta_i = mu_i + L_i eps_i (L_i lower-tri, packed)
     std::vector<double> eta(neta);
     arma::vec etav(neta);
@@ -20532,10 +20397,7 @@ static double adviElboGradCoreFR(NumericMatrix mu, NumericMatrix Lpack, NumericV
         if (th >= 0 && th < ntheta) gThetaBuf(s, th) += g[t];
       }
     }
-#ifdef _OPENMP
-    if (doParallel) setRxThreadId(-1);
-#endif
-  }
+  });
   }
   double elbo = 0.0;
   for (int i = 0; i < N; ++i) {
@@ -21309,14 +21171,7 @@ NumericVector foceiLikEval_(NumericMatrix etaMat, int cores, int retType) {
     _innerParallel.store(1, std::memory_order_release);
   }
   for (int m = 0; m < nMix; ++m) {
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
-#endif
-    for (int i = 0; i < nsub; ++i) {
-      int base = doParallel ? (foceiOrdId(rx, i) - 1) : i;
-#ifdef _OPENMP
-      if (doParallel) setRxThreadId(omp_get_thread_num());
-#endif
+    nmForEachSubject(rx, nsub, cores, doParallel, [&](int base) {
       int id = base + m * nsub;
       std::vector<double> eta(neta);
       for (int j = 0; j < neta; ++j) eta[j] = etaMat(id, j);
@@ -21329,10 +21184,7 @@ NumericVector foceiLikEval_(NumericMatrix etaMat, int cores, int retType) {
         v += -0.5 * q + op_focei.logDetOmegaInv5 - (double)neta * M_LN_SQRT_2PI;
       }
       out[id] = v;
-#ifdef _OPENMP
-      if (doParallel) setRxThreadId(-1);
-#endif
-    }
+    });
   }
   if (doParallel) {
     _innerParallel.store(0, std::memory_order_release);
@@ -21745,16 +21597,11 @@ extern "C" int nlmixr2FoceiCondThetaGrad(const double *etaIn, int nid, int neta,
       const int nsub = (int)getRxNsub(rx);
       const int nMix = op_focei.mixIdxN + 1;
       for (int m = 0; m < nMix; ++m) {
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
-#endif
-        for (int ii = 0; ii < nsub; ++ii) {
-          int id = (doParallel ? (foceiOrdId(rx, ii) - 1) : ii) + m * nsub;
-          foceiCondEnterThread(doParallel);
+        nmForEachSubject(rx, nsub, cores, doParallel, [&](int _nmBase) {
+          int id = _nmBase + m * nsub;
           bad[id] = foceiCondThetaGradOne(id, etaIn, neta, ntheta, nSens,
                                           dTheta);
-          foceiCondLeaveThread(doParallel);
-        }
+        });
       }
     }
     int nbad = 0;
@@ -21947,17 +21794,12 @@ extern "C" int nlmixr2FoceiCondBatchThetaGrad(const double *etaIn, int nid,
       const int nsub = (int)getRxNsub(rx);
       const int nMix = op_focei.mixIdxN + 1;
       for (int m = 0; m < nMix; ++m) {
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
-#endif
-        for (int ii = 0; ii < nsub; ++ii) {
-          int id = (doParallel ? (foceiOrdId(rx, ii) - 1) : ii) + m * nsub;
-          foceiCondEnterThread(doParallel);
+        nmForEachSubject(rx, nsub, cores, doParallel, [&](int _nmBase) {
+          int id = _nmBase + m * nsub;
           bad[id] = foceiCondBatchThetaGradOne(id, etaIn, neta, ntheta,
                                                nSens, omInv, value, gradEta,
                                                dTheta);
-          foceiCondLeaveThread(doParallel);
-        }
+        });
       }
     }
     int nbad = 0;
