@@ -289,3 +289,43 @@ test_that("a prior-only theta is estimated with the family M-step OFF", {
   ## and it moved toward the truth, not merely away from the start
   expect_lt(abs(.p[["lclm"]] - log(5.104)), 0.25)
 })
+
+test_that("a COVARIATE on a cdf declaration is Q1, not Q2", {
+  ## The trickier partition case, and one I got wrong in planning: I expected Q2
+  ## to take over `bWT` on the covariate arm and lift it from 0.2551 toward the
+  ## 0.7764 that only etaDistMstep=TRUE reaches.  It must not, and does not.
+  ##
+  ## That arm is a CDF model.  The decoder reads the rxEdA.* anchors, so every
+  ## theta the declaration mentions -- the covariate coefficient included -- is
+  ## in the observation path and the data identify it.  Q2 has nothing to own,
+  ## and this arm must be UNCHANGED by the partition.  Measured: bWT 0.7764 /
+  ## 0.2551 for etaDistMstep TRUE / FALSE, bit-identical before and after.
+  ##
+  ## (The 0.2551-vs-0.7764 gap is real but belongs to the etaDistMstep default,
+  ## not to Q2.)
+  .f <- function() {
+    ini({
+      lclm <- 1.63
+      lclrv <- -2.4
+      bWT <- 0.35
+      lv <- log(50)
+      prop.sd <- 0.1
+      dist(eta.cl) ~ dgamma(shape = 1/exp(lclrv),
+                            rate = 1/(exp(lclrv)*exp(lclm + bWT*log(WT/70))))
+    })
+    model({
+      cl <- eta.cl
+      v <- exp(lv)
+      d/dt(centr) <- -cl/v*centr
+      cp <- centr/v
+      cp ~ prop(prop.sd)
+    })
+  }
+  .ui <- rxode2::rxUiDecompress(
+    .preProcessEtaDist(rxode2::as.rxUi(.f), est = "saem",
+                       control = saemControl(etaDistMstep = TRUE,
+                                             etaDistWarmStart = FALSE))$ui)
+  .s <- .etaDistThetaSplit(.ui, c("lclm", "lclrv", "bWT", "lv", "prop.sd"))
+  expect_equal(.s$q2, character(0))
+  expect_true("bWT" %in% .s$q1)
+})
