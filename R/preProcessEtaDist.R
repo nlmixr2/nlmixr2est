@@ -442,36 +442,23 @@
            "  use etaDistParam=\"cdf\" (the default)",
            call. = FALSE)
     }
-    ## On the direct route the family M-step is REQUIRED, not optional.
+    ## The direct route USED to require etaDistMstep=TRUE here, and that
+    ## refusal named the wrong cause.
     ##
-    ## The declared thetas reach the model only through the `rxEdA.*` argument
-    ## anchors, and on this route nothing reads them -- `cl <- eta.cl` and
-    ## `eta.cl <- rxd.eta.cl`, so the observation likelihood does not depend on
-    ## lclm or lclrv at all.  They parameterize the PRIOR and nothing else.  On
-    ## the cdf route the same thetas sit inside the decoder, which is why
-    ## etaDistMstep=FALSE means "estimate them from the data" there and works.
+    ## What is true: on this route the declared thetas reach the model only
+    ## through the `rxEdA.*` anchors, which nothing reads, so the observation
+    ## likelihood does not depend on them -- they parameterize the prior and
+    ## nothing else.  What was WRONG was concluding that the family M-step is
+    ## therefore mandatory.  The objective that identifies them is the eta
+    ## DENSITY, sum_i log p(eta_i | theta), and saem has had that objective all
+    ## along (src/saem.cpp, the etaDistLoglik block) -- it was simply trapped
+    ## inside `etaDistMstep()`, whose loop is gated on the etaDistMstep control,
+    ## so switching the family MLE off took the density objective with it.
     ##
-    ## So with the M-step off there is simply no route that can move them, and
-    ## the fit does not fail -- it returns them at their ini() values while the
-    ## residual and the structural thetas converge normally.  Measured on a
-    ## gamma(shape 2) arm: lclm came back 1.3901 from a start of log(4)=1.3863
-    ## having never moved, while prop.sd landed on 0.1518 against a truth of
-    ## 0.15 and the eta sample matched the true gamma to two figures.  Nothing
-    ## about that output says the declaration was not estimated.
-    ##
-    ## (This is also why NoLimits.jl needs no such step and we do: it puts the
-    ## population parameters in the same objective as the random effects, so
-    ## its prior parameters are estimated by the sampler itself.)
-    if (identical(.est, "saem") &&
-          !isTRUE(.etaDistCtlGet(control, ui, "etaDistMstep", FALSE))) {
-      stop("etaDistParam=\"direct\" requires etaDistMstep=TRUE\n",
-           "  on this route the declared thetas parameterize the PRIOR and ",
-           "nothing else -- the observation likelihood does not depend on them, ",
-           "so with the M-step off nothing can move them and they are returned ",
-           "at their ini() values while the rest of the fit converges normally\n",
-           "  pass saemControl(etaDistParam=\"direct\", etaDistMstep=TRUE)",
-           call. = FALSE)
-    }
+    ## It is now owned by the Q1/Q2 partition instead (.etaDistThetaSplit),
+    ## which is NoLimits.jl's rule: a parameter appearing in a random-effect
+    ## distribution and in no observation-side expression is identified by the
+    ## prior alone and gets its own M-step.  So there is nothing left to refuse.
   }
   .decl <- .etaDistDeclStash(ui, .d, param = .param)
   ## Decompress BEFORE stashing: rxUiDecompress() on a compressed ui returns a

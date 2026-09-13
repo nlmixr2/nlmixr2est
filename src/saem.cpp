@@ -3642,6 +3642,8 @@ public:
       etaDistFam     = as<ivec>(x["etaDistFam"]);
       etaDistDirect  = x.containsElementNamed("etaDistDirect") ?
         as<int>(x["etaDistDirect"]) : 0;
+      etaDistQ2 = x.containsElementNamed("etaDistQ2") ?
+        as<imat>(x["etaDistQ2"]) : imat();
       etaDistCorWith = as<ivec>(x["etaDistCorWith"]);
       if (x.containsElementNamed("etaDistUsable")) {
         etaDistUsable = as<ivec>(x["etaDistUsable"]);
@@ -5303,9 +5305,22 @@ public:
       // nonMuThetaEvery: each step is damped by pas(kiter) anyway, so running
       // it every k-th iteration keeps most of the benefit for a fraction of the
       // cost.
-      if ((etaDistOn || etaDistCorOn) && etaDistNdist > 0 && nphi0 > 0 &&
+      // The cadence exists because the FAMILY MLE is expensive -- the comment
+      // above measures 184.9s -> 700.8s -- and because each step is damped by
+      // pas(kiter) anyway.  Neither applies to the eta-density objective: it
+      // does no ODE work at all, which is the same reason etaDistCorSuffStat()
+      // runs every iteration.  Starving it is not free: at etaDistEvery=20 it
+      // fires ~15 times across 300 iterations and lclrv crawled from -0.2231 to
+      // -0.3349 against a truth of -0.6931 (MARE 19.26%), where the MLE route
+      // reached -0.6169 (3.71%).
+      //
+      // So a model whose declared thetas are prior-only runs every iteration;
+      // everything else keeps the cadence it had.
+      const bool edQ2Every = etaDistAnyQ2();
+      if ((etaDistOn || etaDistCorOn || edQ2Every) && etaDistNdist > 0 && nphi0 > 0 &&
           kiter >= (unsigned int)etaDistStart &&
-          ((int)(kiter - (unsigned int)etaDistStart) % etaDistEvery) == 0) {
+          (edQ2Every ||
+           ((int)(kiter - (unsigned int)etaDistStart) % etaDistEvery) == 0)) {
         if (etaDistMstep(kiter, pas)) {
           _saemEtaDistN++;
           // Map the updated NATIVE parameters back onto the user's thetas.
@@ -6742,6 +6757,49 @@ private:
   // silently" means, so the flag comes from what the EXPANSION built, not from
   // what the control asked for (see .etaDistIsDirect()).
   int etaDistDirect = 0;
+  // Per declaration x theta slot: 1 where the PRIOR identifies that theta and
+  // the observation likelihood does not.  NoLimits.jl's Q1/Q2 partition
+  // (_partition_q1_q2_names, src/estimation/common.jl:4557), computed on the R
+  // side by .etaDistThetaSplit() from the model text.
+  //
+  // All zero on the cdf route: there the declared thetas sit inside the decoder
+  // and DO reach the prediction, so the observation likelihood identifies them
+  // and the existing steps own them.  Non-zero only where an `rxEdA.*` anchor
+  // is read by nothing, which is the direct route's signature.
+  imat etaDistQ2;
+  // Is theta t of declaration k in the Q2 set?  Bounds-checked for the same
+  // reason etaDistPhi0Col() is: this package builds with -DNDEBUG, so armadillo
+  // does not check, and an empty matrix reads out of bounds and returns garbage
+  // that happens to pass a 0/1 test.
+  bool etaDistIsQ2(int k, int t) const {
+    if (etaDistNdist <= 0) return false;
+    if ((int)etaDistQ2.n_rows != etaDistNdist) return false;
+    if (k < 0 || k >= (int)etaDistQ2.n_rows) return false;
+    if (t < 0 || t >= (int)etaDistQ2.n_cols) return false;
+    return etaDistQ2(k, t) != 0;
+  }
+  // Are ALL of declaration k's thetas prior-only?
+  //
+  // All, not any.  A declaration mixing prior-only and observation-path thetas
+  // is the NON-SEPARABLE case: the complete-data likelihood does not split into
+  // a piece each owner can maximize alone, so it stays with the
+  // observation-likelihood steps entirely.  NoLimits does the same thing, from
+  // the same reasoning -- it empties its whole Q2 set when `extra_objective`
+  // couples the two (saem.jl:3204-3211).
+  //
+  // It also keeps the optimization vector whole: Q2 can vary every theta of the
+  // declaration rather than a subset with the rest pinned.
+  bool etaDistAllQ2(int k) const {
+    int n = etaDistNth(k);
+    if (n <= 0) return false;
+    for (int t = 0; t < n; ++t) if (!etaDistIsQ2(k, t)) return false;
+    return true;
+  }
+  // Does any declaration qualify?  Cheap gate so a model with none pays nothing.
+  bool etaDistAnyQ2() const {
+    for (int k = 0; k < etaDistNdist; ++k) if (etaDistAllQ2(k)) return true;
+    return false;
+  }
   // Per-declaration covariate values, one row per SUBJECT in saem's own subject
   // order (phiM row r is subject r % N -- see the mixture weighting at
   // phiM_weighted).  Empty for a declaration with no covariate, which is the
@@ -7261,7 +7319,15 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
     // declared theta at its ini() value while the step still counted as having
     // run.  famOff now guards only the MLE-and-inversion half, which is what
     // the comment above it always described.
-    for (int k = 0; etaDistOn && k < etaDistNdist; ++k) {
+    // `etaDistOn` is the etaDistMstep CONTROL (R/saem.R:589), so this loop used
+    // to vanish entirely when the family M-step was switched off -- taking the
+    // eta-density objective below with it, even though that objective is not
+    // the family M-step and is the ONLY thing that identifies a prior-only
+    // theta.  Measured: on the direct route with etaDistMstep=FALSE, lclm came
+    // back 1.3901 from a start of 1.3863, never having moved, while the rest of
+    // the fit converged normally.
+    const bool edQ2 = etaDistAnyQ2();
+    for (int k = 0; (etaDistOn || edQ2) && k < etaDistNdist; ++k) {
       // Per DECLARATION, and it guards the MLE-and-inversion half ONLY.
       //
       // It used to `continue` here, which also skipped the general objective
@@ -7275,8 +7341,23 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
       // The copula loop further down is deliberately not gated on this either:
       // the correlation is a property of the raw latent block, which a
       // covariate on a family argument does not touch.
-      bool famUsable = !(etaDistUsable.n_elem == (unsigned int)etaDistNdist &&
-                         etaDistUsable(k) == 0);
+      // ...and the family MLE half still obeys its own control: entering the
+      // loop for Q2's sake must not switch the MLE back on.
+      //
+      // It also stands down for a declaration Q2 OWNS, whatever the control
+      // says.  The PARTITION decides ownership, not the flag -- that is the
+      // whole point -- and two owners on one parameter is named at the bottom
+      // of this file as "the fight this whole area keeps losing".  Measured
+      // when both were allowed to run: direct went from MARE 3.71% (MLE alone,
+      // cadence 20) to 17.98%, while Q2 alone reaches 3.27%.
+      //
+      // This is not a loss of capability.  On the direct route the family MLE
+      // fits NATIVE parameters and inverts them onto the thetas; Q2 maximizes
+      // the same likelihood over the thetas directly, with no inversion and no
+      // spread guard to satisfy.  It is the better instrument for the same job.
+      bool famUsable = etaDistOn && !etaDistAllQ2(k) &&
+        !(etaDistUsable.n_elem == (unsigned int)etaDistNdist &&
+          etaDistUsable(k) == 0);
       int fam = etaDistFam(k);
       int na = rxEtaDistNarg(fam);
       if (na <= 0) continue;
@@ -7358,6 +7439,26 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
         }
         double e = edSampleIsEta ? w[(size_t)k][r] : rxEtaDistQ(fam, u, aUse);
         if (!std::isfinite(e)) continue;
+        // ...and, on the DIRECT route, in the family's SUPPORT.
+        //
+        // A decoded eta is in support by construction -- rxEtaDistQ is the
+        // family's own quantile function -- so the finiteness test above was
+        // sufficient while the cdf route was the only one.  A sampled eta is
+        // not: phiM is initialized on the Gaussian scale, so a positive-support
+        // family starts some rows at or below zero, and a NEGATIVE FINITE value
+        // passes the test above unchanged.  It then reaches rxode2ll's density,
+        // which THROWS rather than returning -Inf:
+        //
+        //   gamma_lpdf: Random variable is -0.951673, but must be positive finite!
+        //
+        // killing the fit.  Dropping the record is the same treatment a
+        // non-finite one already gets, and it is the right one: a draw outside
+        // the support carries no information about the family's parameters.
+        if (edSampleIsEta) {
+          double lo, hi;
+          rxEtaDistBounds(fam, aUse, &lo, &hi);
+          if ((R_finite(lo) && e <= lo) || (R_finite(hi) && e >= hi)) continue;
+        }
         // ONE loop, dropped TOGETHER.  Pushing the covariate in a second pass
         // over the same range would keep every record that this one skips and
         // shift the whole column by however many etas came back non-finite --
@@ -7444,7 +7545,10 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
       // record per sampled draw, equal weights.  That is design test T1 -- it
       // must reproduce the MLE-plus-inversion answer, which is the check that
       // the objective is right before the per-record plumbing is added on top.
-      if (etaDistLoglik && spreadOk && !ev.empty()) {
+      // Q2: the eta-density objective.  Reached either because the user asked
+      // for it (etaDistLoglik) or because the PARTITION says this declaration's
+      // thetas are prior-only and nothing else can identify them.
+      if ((etaDistLoglik || etaDistAllQ2(k)) && spreadOk && !ev.empty()) {
         int nth = etaDistNth(k);
         if (nth > 0 && k < (int)etaDistExprs.size() &&
             (int)etaDistExprThetas[(size_t)k].size() == nth) {
@@ -7859,6 +7963,34 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
       (int)etaDistArgs.n_rows == etaDistNdist;
   }
 
+  // The declaration k is copula-paired with, and their rho, looked up in BOTH
+  // directions.
+  //
+  // `etaDistCorWith` is ASYMMETRIC by construction: the R side records the pair
+  // on the higher-indexed member only (`.cw[.hi] <- .lo - 1L`), leaving the
+  // lower one at -1 with rho 0.  A loop that asks only `etaDistCorWith(k)`
+  // therefore sees the lower member as unpaired -- and since columns are walked
+  // in order, it scores that member's MARGINAL first and then scores the pair,
+  // counting the lower marginal twice.
+  int etaDistPartnerOf(int k, double *rho) const {
+    *rho = 0.0;
+    if (k < 0 || k >= etaDistNdist ||
+        (int)etaDistCorWith.n_elem != etaDistNdist) return -1;
+    int j = etaDistCorWith(k);
+    if (j >= 0 && j < etaDistNdist) {
+      if ((int)etaDistRho.n_elem == etaDistNdist) *rho = etaDistRho(k);
+      return j;
+    }
+    // k is the LOWER member: find whoever names it
+    for (int q = 0; q < etaDistNdist; ++q) {
+      if (etaDistCorWith(q) == k) {
+        if ((int)etaDistRho.n_elem == etaDistNdist) *rho = etaDistRho(q);
+        return q;
+      }
+    }
+    return -1;
+  }
+
   // Which declaration, if any, owns each column of a sampled block.  `i` holds
   // the block's PHI columns; the answer is indexed by the block's own column
   // position, which is what phiM.cols(i) and dphi are indexed by.
@@ -7906,9 +8038,9 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
       int k = declOf[c];
       if (k < 0 || seen[c]) continue;
       for (int t = 0; t < na; ++t) a1[(size_t)t] = etaDistArgs(k, t);
-      int j = ((int)etaDistCorWith.n_elem == etaDistNdist) ? etaDistCorWith(k) : -1;
+      double rho = 0.0;
+      int j = etaDistPartnerOf(k, &rho);
       int cj = (j >= 0 && j < etaDistNdist) ? colOf[(size_t)j] : -1;
-      double rho = ((int)etaDistRho.n_elem == etaDistNdist) ? etaDistRho(k) : 0.0;
       if (cj >= 0 && rho != 0.0) {
         for (int t = 0; t < na; ++t) a2[(size_t)t] = etaDistArgs(j, t);
         seen[c] = 1; seen[(size_t)cj] = 1;
@@ -7994,9 +8126,9 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
       int k = declOf[c];
       if (k < 0 || seen[c]) continue;
       for (int t = 0; t < na; ++t) a1[(size_t)t] = etaDistArgs(k, t);
-      int j = ((int)etaDistCorWith.n_elem == etaDistNdist) ? etaDistCorWith(k) : -1;
+      double rho = 0.0;
+      int j = etaDistPartnerOf(k, &rho);
       int cj = (j >= 0 && j < etaDistNdist) ? colOf[(size_t)j] : -1;
-      double rho = ((int)etaDistRho.n_elem == etaDistNdist) ? etaDistRho(k) : 0.0;
       arma::vec z1(nr); _saemFillNormEng(z1);
       if (cj >= 0 && rho != 0.0) {
         for (int t = 0; t < na; ++t) a2[(size_t)t] = etaDistArgs(j, t);

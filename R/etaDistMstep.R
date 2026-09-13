@@ -653,6 +653,7 @@
   if (is.null(.c)) return(NULL)
   ## the expansion renames the declared eta's latent `rxz.<eta>`; saem indexes
   ## its phi columns through etaTrans rather than by eta number
+  .direct <- .etaDistIsDirect(ui)
   .pfx <- .etaDistEtaPrefix(ui)
   .lat <- vapply(paste0(.pfx, .c$etas), function(.z) {
     .w <- which(etaNames == .z)
@@ -712,7 +713,23 @@
   ## of every pair sharing one.
   .rpf <- rep(NA_integer_, .c$n)
   .ck <- which(.c$corWith >= 0L)
-  if (!is.null(paramsToEstimate) && length(.ck) > 0L) {
+  ## On the DIRECT route there is no `rxCor.*` theta to find: the expansion
+  ## leaves the correlation in the omega, and `.etaDistMstepCore()` reads it
+  ## from there.  Looking for the theta anyway returns NULL from this whole
+  ## function, which downstream is indistinguishable from "no declarations" --
+  ## so a correlated declared PAIR on the direct route was refused outright by
+  ## the guard in saem.R, reporting that the distributions could not be
+  ## resolved when in fact only their correlation's OWNER could not.
+  ##
+  ## Leaving the map empty is the right answer rather than a workaround: the
+  ## copula M-step writes its update back through a phi0 column, and with no
+  ## theta there is no column to write to.  The correlation is therefore used
+  ## (the prior's copula term reads etaDistRho) but not ESTIMATED on this route
+  ## -- .etaDistWarnCorFrozen() says so, because a rho sitting at its ini()
+  ## value is otherwise indistinguishable from a converged one.
+  if (.direct && length(.ck) > 0L) {
+    .etaDistWarnCorFrozen(.c$etas[.ck])
+  } else if (!is.null(paramsToEstimate) && length(.ck) > 0L) {
     .rc <- .c$corTheta[.ck]
     .m <- match(.rc, paramsToEstimate)
     if (anyNA(.m)) return(NULL)
@@ -790,8 +807,15 @@
               .thAll)
     })
   }
+  ## Which of each declaration's thetas the PRIOR identifies rather than the
+  ## data -- NoLimits' Q1/Q2 partition, see .etaDistThetaSplit().  Per
+  ## declaration and per theta slot, so the C++ side can hold exactly those
+  ## columns out of the observation-likelihood steps and give them to Q2.
+  .split <- .etaDistThetaSplit(ui, unique(unlist(.c$thetas)))
+  .q2 <- lapply(.c$thetas, function(.nm) as.integer(.nm %in% .split$q2))
   list(latent = .lat, fam = .c$fam, corWith = .c$corWith,
        direct = as.integer(.etaDistIsDirect(ui)),
+       q2 = .q2, q2Names = .split$q2,
        usable = as.integer(.c$usable), cov = .covK,
        exprs = .exprs, exprThetas = .c$thetas,
        args = .c$args, rho = .c$rho,
@@ -815,6 +839,119 @@
     if (!exists(".etaDistDecl", envir = .m, inherits = FALSE)) return(NULL)
     get(".etaDistDecl", envir = .m, inherits = FALSE)
   }, error = function(e) NULL)
+}
+
+#' Split the declared thetas into the ones the data identify and the ones the
+#' PRIOR identifies
+#'
+#' NoLimits.jl's Q1/Q2 partition (`_partition_q1_q2_names`,
+#' `src/estimation/common.jl:4557`), applied to our model text:
+#'
+#'   q2_candidates = setdiff(re_fe_syms, obs_fe)
+#'
+#' A parameter belongs to Q2 when it appears in a random-effect distribution
+#' expression and in NO observation-side block.  The complete-data likelihood
+#' `E[log p(y|eta,theta)] + E[log p(eta|theta)]` is then separable in it: it
+#' enters only the second term, so its M-step needs no ODE and no observation
+#' likelihood at all.
+#'
+#' Here the RE distribution expressions are the `rxEdA.<eta>.<role>` anchors the
+#' expansion emits, so the test becomes: is this anchor READ by anything?
+#'
+#'   cdf     the decoder reads it (`gammapInv(rxEdA..., phiU(rxz...))/rxEdA...`)
+#'           -> the theta is in the observation path        -> Q1
+#'   direct  nothing reads it, the eta IS the random effect
+#'           -> the theta parameterizes the prior and nothing else -> Q2
+#'
+#' One rule, no route-specific branching, and it is CORRECT rather than merely
+#' convenient on both: on the cdf route the latent is a fixed N(0,1), so
+#' `log p(z)` is theta-free and there is no prior term to maximize -- Q1 is the
+#' whole story.  Measured, using the eta-prior objective on a cdf model instead
+#' costs MARE 2.34% -> 17.57%, because the sample it scores was produced by
+#' decoding with the current theta and the objective has a fixed point there.
+#'
+#' A theta appearing BOTH in an anchor and in the observation model is Q1.  That
+#' is the non-separable case, and NoLimits does the same -- it empties the Q2 set
+#' entirely when `extra_objective` couples the two (`saem.jl:3204-3211`).
+#'
+#' @param ui rxode2 ui, already expanded
+#' @param thetas character vector of the declared thetas to classify; when
+#'   missing every declared theta the stash names is classified
+#' @return a list with `q1` and `q2`, character vectors
+#' @noRd
+#' @author Matthew L. Fidler
+.etaDistThetaSplit <- function(ui, thetas = NULL) {
+  .empty <- list(q1 = character(0), q2 = character(0))
+  .ui <- tryCatch(rxode2::rxUiDecompress(ui), error = function(e) NULL)
+  if (is.null(.ui)) return(.empty)
+  .expr <- tryCatch(.ui$lstExpr, error = function(e) NULL)
+  if (!is.list(.expr) || length(.expr) == 0L) return(.empty)
+  .lhsOf <- function(.e) {
+    if (is.call(.e) && length(.e) >= 3L && is.name(.e[[2]]) &&
+          (identical(.e[[1]], quote(`<-`)) || identical(.e[[1]], quote(`=`)))) {
+      as.character(.e[[2]])
+    } else {
+      NA_character_
+    }
+  }
+  .rhsVars <- function(.e) {
+    if (is.call(.e) && length(.e) >= 3L &&
+          (identical(.e[[1]], quote(`<-`)) || identical(.e[[1]], quote(`=`)))) {
+      all.vars(.e[[3]])
+    } else {
+      all.vars(.e)
+    }
+  }
+  .lhs <- vapply(.expr, .lhsOf, character(1))
+  .rhs <- lapply(.expr, .rhsVars)
+  .isAnchor <- !is.na(.lhs) & grepl("^rxEdA[.]", .lhs)
+  if (!any(.isAnchor)) return(.empty)
+  ## every symbol read anywhere on a NON-anchor line is observation-side
+  .obsSide <- unique(unlist(.rhs[!.isAnchor]))
+  ## an anchor that nothing reads contributes no observation-side dependence
+  .anchorRead <- vapply(.lhs[.isAnchor], function(.a) {
+    any(vapply(.rhs, function(.v) .a %in% .v, logical(1)))
+  }, logical(1))
+  ## thetas feeding a READ anchor are in the observation path through it
+  .viaRead <- unique(unlist(.rhs[.isAnchor][.anchorRead]))
+  .viaDead <- unique(unlist(.rhs[.isAnchor][!.anchorRead]))
+  if (is.null(thetas)) {
+    .st <- .etaDistDeclGet(.ui)
+    .all <- if (is.null(.st)) character(0) else {
+      .tn <- .ui$iniDf$name[!is.na(.ui$iniDf$ntheta)]
+      unique(unlist(lapply(.st$etaDist, function(.d)
+        intersect(all.vars(str2lang(.d)), .tn))))
+    }
+    thetas <- .all
+  }
+  if (length(thetas) == 0L) return(.empty)
+  ## Q2: reaches the model ONLY through an anchor nothing reads, and appears
+  ## nowhere observation-side in its own right.
+  .q2 <- thetas[thetas %in% .viaDead & !(thetas %in% .viaRead) &
+                  !(thetas %in% .obsSide)]
+  list(q1 = setdiff(thetas, .q2), q2 = .q2)
+}
+
+#' Say that a declared copula correlation is used but not estimated
+#'
+#' Only on the direct route, and only once per fit.  The rho reaches the prior
+#' (the copula term in `rxEtaDistPairLogD`) but nothing updates it, because the
+#' update is written back through a phi0 column and this route has no `rxCor.*`
+#' theta to own one.  A frozen rho reported without comment is indistinguishable
+#' from a converged one.
+#'
+#' @param etas the declared random effects whose correlation is affected
+#' @return nothing, called for the message
+#' @noRd
+#' @author Matthew L. Fidler
+.etaDistWarnCorFrozen <- function(etas) {
+  message("the declared copula correlation for '", paste(etas, collapse="', '"),
+          "' is used by the prior but held at its ini() value\n",
+          "  etaDistParam=\"direct\" keeps the correlation in the omega rather ",
+          "than in an rxCor.* theta, and the copula update writes back through ",
+          "a theta\n",
+          "  use etaDistParam=\"cdf\" to estimate it")
+  invisible()
 }
 
 #' Which parameterization the expansion used

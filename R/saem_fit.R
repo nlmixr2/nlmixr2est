@@ -551,6 +551,12 @@
   ## where the sampled phi column is a standard normal latent and the quadratic
   ## is exactly right.
   etaDistDirect <- 0L
+  ## Per declaration x theta slot: 1 where that theta is identified by the PRIOR
+  ## alone (NoLimits' Q2 set) and so must be owned by the eta-density step
+  ## rather than by any observation-likelihood step.  All zero on the cdf route,
+  ## where the declared thetas sit inside the decoder and the data DO identify
+  ## them -- which is why one rule serves both routes.
+  etaDistQ2 <- matrix(0L, 0, 0)
   etaDistLatent <- etaDistFam <- etaDistCorWith <- integer(0)
   ## 1 where this M-step owns the declaration's family, 0 where it must stand
   ## down for that declaration alone (a covariate on an argument, or a family
@@ -605,6 +611,13 @@
       etaDistFam     <- as.integer(etaDistInfo$fam)
       etaDistDirect  <- if (is.null(etaDistInfo$direct)) 0L
                         else as.integer(etaDistInfo$direct)
+      etaDistQ2 <- matrix(0L, nrow = .nd, ncol = .mx)
+      if (!is.null(etaDistInfo$q2)) {
+        for (.k in seq_len(.nd)) {
+          .v <- etaDistInfo$q2[[.k]]
+          if (length(.v) > 0L) etaDistQ2[.k, seq_along(.v)] <- as.integer(.v)
+        }
+      }
       etaDistCorWith <- as.integer(etaDistInfo$corWith)
       etaDistUsable  <- if (is.null(etaDistInfo$usable)) rep(1L, .nd)
                         else as.integer(etaDistInfo$usable)
@@ -1035,6 +1048,7 @@
     etaDistExprThetas = etaDistExprThetas,
     etaDistLatent = etaDistLatent,
     etaDistDirect = etaDistDirect,
+    etaDistQ2 = etaDistQ2,
     etaDistFam = etaDistFam,
     etaDistCorWith = etaDistCorWith,
     etaDistUsable = etaDistUsable,

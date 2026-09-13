@@ -585,7 +585,25 @@
     # And etaDistCorOn was never passed at all -- C++ declares it 0 and R never
     # set it -- so the copula closed form has in fact never run.  The C++ driver
     # already splits the two correctly; only this plumbing was wrong.
-    if (!is.null(.cfg$etaDistOn) && .cfg$etaDistOn == 1L) {
+    ## ...and on the DIRECT route the family MLE has nothing to do, so
+    ## etaDistMstep is inert there rather than selecting a second, worse path.
+    ##
+    ## That M-step fits NATIVE family parameters to the eta sample and inverts
+    ## them onto the user's thetas.  When the partition says every declared
+    ## theta is prior-only, the eta-density step (Q2) maximizes the same
+    ## likelihood over those thetas DIRECTLY -- no native parameters, no
+    ## inversion, no spread guard to satisfy -- so the MLE is not a second
+    ## option, it is a worse route to the same place.  Measured with both
+    ## reachable: MARE 17.98% against Q2's 3.27%.
+    ##
+    ## Forced here rather than refused, because there is nothing for the user to
+    ## fix: the control simply does not apply to this parameterization.
+    .directQ2 <- tryCatch(.etaDistIsDirect(ui), error = function(e) FALSE)
+    if (!is.null(.cfg$etaDistOn) && .cfg$etaDistOn == 1L && .directQ2) {
+      .cfg$etaDistOn <- 0L
+      .cfg$etaDistCorOn <-
+        as.integer(isTRUE(rxode2::rxGetControl(ui, "etaDistCorMstep", TRUE)))
+    } else if (!is.null(.cfg$etaDistOn) && .cfg$etaDistOn == 1L) {
       .cfg$etaDistOn <-
         as.integer(isTRUE(rxode2::rxGetControl(ui, "etaDistMstep", FALSE)))
       .cfg$etaDistCorOn <-

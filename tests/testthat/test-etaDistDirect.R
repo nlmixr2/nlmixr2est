@@ -134,28 +134,45 @@ test_that("focei and imp refuse the direct route, and say why", {
                NA)
 })
 
-test_that("the direct route requires the family M-step", {
-  ## Not a preference.  The declared thetas reach the model only through the
-  ## `rxEdA.*` anchors, and on this route nothing reads them -- so the
-  ## observation likelihood does not depend on them and, with the M-step off,
-  ## nothing can move them.  The fit does NOT fail; it returns them at their
-  ## ini() values while everything else converges, which is why this is a
-  ## refusal and not a warning.
+test_that("etaDistMstep does not apply to the direct route", {
+  ## This test used to assert a REFUSAL ("direct requires etaDistMstep=TRUE").
+  ## That refusal named the wrong cause and has been removed.
   ##
-  ## Measured before the guard: lclm came back 1.3901 from a start of
-  ## log(4) = 1.3863, while prop.sd landed on 0.1518 against a truth of 0.15.
-  .u0 <- rxode2::as.rxUi(.edDirectModel())
-  expect_error(.preProcessEtaDist(.u0, est = "saem",
-                                  control = saemControl(etaDistParam = "direct",
-                                                        etaDistMstep = FALSE,
-                                     etaDistWarmStart = FALSE)),
-               "requires etaDistMstep=TRUE")
-  ## the cdf route is unaffected: there the same thetas sit inside the decoder,
-  ## so etaDistMstep=FALSE genuinely is the observation-likelihood route
-  expect_error(.preProcessEtaDist(.u0, est = "saem",
+  ## What is true: on this route the declared thetas reach the model only
+  ## through the `rxEdA.*` anchors, which nothing reads, so the observation
+  ## likelihood does not depend on them.  What was wrong was concluding the
+  ## family M-step is therefore mandatory.  The objective that DOES identify
+  ## them is the eta density, and saem has had it all along -- it was trapped
+  ## inside `etaDistMstep()`, whose loop is gated on that control.
+  ##
+  ## So the control now selects nothing here: the family MLE fits native
+  ## parameters and inverts them, while Q2 maximizes the same likelihood over
+  ## the thetas directly.  Letting both run measured MARE 17.98% against Q2's
+  ## 3.27%, so `etaDistMstep` is forced inert on this route and the two settings
+  ## must agree EXACTLY.
+  skip_on_cran()
+  .d <- .edDirectData(n = 40)
+  .est <- function(.ms) {
+    .f <- suppressWarnings(nlmixr2(
+      .edDirectModel(), .d, "saem",
+      saemControl(nBurn = 15, nEm = 15, nmc = 3, print = 0, seed = 99,
+                  etaDistParam = "direct", etaDistMstep = .ms)))
+    setNames(.f$parFixedDf$Estimate, rownames(.f$parFixedDf))
+  }
+  .on <- .est(TRUE)
+  .off <- .est(FALSE)
+  for (.n in c("lclm", "lclrv", "lv", "prop.sd")) {
+    expect_equal(unname(.on[[.n]]), unname(.off[[.n]]), tolerance = 1e-10,
+                 info = .n)
+  }
+  ## and neither is frozen at ini()
+  expect_gt(abs(.on[["lclm"]] - log(4)), 0.05)
+  ## the cdf route is unaffected -- there etaDistMstep still selects a real
+  ## alternative, and the two settings must NOT agree
+  expect_error(.preProcessEtaDist(rxode2::as.rxUi(.edDirectModel()), est = "saem",
                                   control = saemControl(etaDistParam = "cdf",
                                                         etaDistMstep = FALSE,
-                                     etaDistWarmStart = FALSE)),
+                                                        etaDistWarmStart = FALSE)),
                NA)
 })
 
@@ -206,4 +223,69 @@ test_that("rxEtaDistExpand refuses what the direct prior cannot express", {
                "cannot correlate the declared")
   ## and the cdf route takes it, since there both really are normal latents
   expect_error(rxode2::rxEtaDistExpand(rxode2::as.rxUi(.g), param = "cdf"), NA)
+})
+
+test_that("the Q1/Q2 partition sends each route's thetas to the right owner", {
+  ## NoLimits.jl's rule (_partition_q1_q2_names, src/estimation/common.jl:4557)
+  ## applied to our model text: a theta is Q2 when it appears in a random-effect
+  ## distribution expression and in NO observation-side one.
+  ##
+  ## The two routes land on OPPOSITE sides of it, which is the whole reason one
+  ## rule serves both:
+  ##
+  ##   cdf     the decoder reads the rxEdA.* anchors  -> thetas are in the
+  ##           observation path                       -> Q1
+  ##   direct  nothing reads them                     -> prior-only  -> Q2
+  ##
+  ## An empty Q2 set on the cdf route is the assertion that matters most.  There
+  ## the latent is a fixed N(0,1), so log p(z) is theta-free and the eta-density
+  ## objective has a fixed point at the current theta -- measured, using it on a
+  ## cdf model costs MARE 2.34% -> 17.57%.
+  .u0 <- rxode2::as.rxUi(.edDirectModel())
+  .all <- c("lclm", "lv", "lclrv", "prop.sd")
+  for (.p in c("cdf", "direct")) {
+    .ui <- rxode2::rxUiDecompress(
+      .preProcessEtaDist(.u0, est = "saem",
+                         control = saemControl(etaDistParam = .p,
+                                               etaDistMstep = TRUE,
+                                               etaDistWarmStart = FALSE))$ui)
+    .s <- .etaDistThetaSplit(.ui, .all)
+    if (.p == "cdf") {
+      expect_equal(.s$q2, character(0))
+      expect_setequal(.s$q1, .all)
+    } else {
+      expect_setequal(.s$q2, c("lclm", "lclrv"))
+      expect_setequal(.s$q1, c("lv", "prop.sd"))
+    }
+    ## and it reaches the estimator's metadata, not just the helper
+    .en <- .ui$iniDf$name[!is.na(.ui$iniDf$neta1) &
+                            .ui$iniDf$neta1 == .ui$iniDf$neta2]
+    .edi <- .etaDistMstepInfo(.ui, .ui$saemEtaTrans, .en, .ui$saemParamsToEstimate)
+    expect_false(is.null(.edi))
+    expect_equal(sum(unlist(.edi$q2)), if (.p == "direct") 2L else 0L)
+  }
+})
+
+test_that("a prior-only theta is estimated with the family M-step OFF", {
+  ## The engagement test for Q2, and the one that fails if it is inert.
+  ##
+  ## On the direct route the declared thetas reach the model only through the
+  ## rxEdA.* anchors, which nothing reads, so the observation likelihood does
+  ## not depend on them.  Before Q2 was reachable independently of
+  ## etaDistMstep, this fit returned lclm at 1.3901 from a start of
+  ## log(4) = 1.3863 -- frozen -- while prop.sd landed on 0.1518 against a truth
+  ## of 0.15 and the eta sample matched the true gamma.  Nothing in that output
+  ## said the declaration had not been estimated, which is why the assertion is
+  ## on MOVEMENT and not only on closeness.
+  skip_on_cran()
+  .fit <- suppressWarnings(nlmixr2(
+    .edDirectModel(), .edDirectData(n = 60), "saem",
+    saemControl(nBurn = 60, nEm = 60, nmc = 3, print = 0, seed = 99,
+                etaDistParam = "direct", etaDistMstep = FALSE)))
+  .p <- setNames(.fit$parFixedDf$Estimate, rownames(.fit$parFixedDf))
+  ## it MOVED off ini() -- 0.004 was the frozen signature
+  expect_gt(abs(.p[["lclm"]] - log(4)), 0.05)
+  expect_gt(abs(.p[["lclrv"]] - log(0.8)), 0.05)
+  ## and it moved toward the truth, not merely away from the start
+  expect_lt(abs(.p[["lclm"]] - log(5.104)), 0.25)
 })
