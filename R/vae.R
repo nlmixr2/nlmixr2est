@@ -862,12 +862,32 @@ attr(nlmixr2Est.vae, "iov") <- TRUE
 ## mu2/mu3 data, not re-applied by the VAE covariate search -- gated on muRefCovAlg
 attr(nlmixr2Est.vae, "mu") <- function(control) isTRUE(control$muRefCovAlg)
 ## enable declared non-normal between-subject distributions (`dist(cl) ~ dgamma(...)`).
-## The ELBO needs no change.  `rxEtaDistExpand()` leaves the LATENT standard normal
-## -- `rxz.cl ~ fix(1)` has no `theta + eta` form, so `.vaeDataPrep()` marks it
-## `isFree` (zPop 0, held there) and reads `omegaFix` from the ini() `fix`, which is
-## exactly the N(0,1) the prior term and the KL are written for.  The non-normality
-## lives in a decoder line inside the inner problem, and rxode2 differentiates the
-## inverse CDF exactly (`.rxD$gammapInv` gives `dq/dp = 1/gammapDer(...)`), so both
-## the inner gradient (`lpInner()`) and the outer gradient (`.vaeGradEval`) already
-## carry `d(eta.declared)/d(eta.latent)`.
-attr(nlmixr2Est.vae, "etaDist") <- TRUE
+## NOT given attr(, "etaDist"): `est="vae"` REFUSES a declared non-normal random
+## effect, and the refusal is empirical rather than structural.
+##
+## The structural argument for allowing it was sound as far as it went --
+## `rxEtaDistExpand()` leaves the LATENT standard normal, which is exactly what
+## the prior term and the KL are written for, and rxode2 differentiates the
+## inverse CDF exactly, so both gradients carry d(eta.declared)/d(eta.latent).
+## Every one of those statements is still true.  The fits are still wrong.
+##
+## Measured on Bauer's four arms (inst/sim/benchArms-results.md), vae is the one
+## method whose failure does not improve as the declared dispersion rises:
+##
+##   arm   CV     MARE mean   MARE rv   rho (truth 0.5)
+##   g1    30%      127.8%      99.8%    0.998
+##   g3    71%       37.7%     100.0%    0.998
+##   g2   100%       52.7%      90.2%   -0.999
+##   g4   141%      100.0%     662.6%   -0.999
+##
+## The copula is pinned at |rho| = 1 on all four arms and SIGN-FLIPS between g3
+## and g2; the declared relative variance is driven to ~1e-4 (rvCL 9.96e-05 on
+## g1, 7.16e-05 on g3) with the residual inflating to 3-4x truth to absorb it.
+## That is the ELBO relocating the between-subject variability rather than
+## estimating it, and a Gaussian variational posterior over a latent whose
+## decoder is violently nonlinear (gamma shape 1/rv = 0.5 at g4) is the wrong
+## approximating family for the job.
+##
+## Re-enable by restoring the attribute, but only behind a fit that recovers
+## these arms -- the structural argument above already passed review once and
+## the arms still failed.

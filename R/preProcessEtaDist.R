@@ -23,14 +23,15 @@
 ## through `phiU()` and the inverse CDF), SAEM (a declared eta has no
 ## `theta + eta` form, so it lands in the already-exercised `nonMuEtas`
 ## path and is still Gibbs/Metropolis sampled with the same sample
-## covariance update), simulation, and `vae` -- whose ELBO needs no change,
-## because the expansion leaves the LATENT standard normal and that is
-## exactly what its prior term and KL are written for, while the
-## non-normality sits in a decoder line inside the inner problem.
+## covariance update), and simulation.
 ## Refused: `npag`/`npb`, which model the random effect distribution
 ## nonparametrically, so a declared one contradicts them outright; `nlme`
-## and `nls`, which are Gaussian by construction; and `emvi`/`fbvi`, each
-## of which needs its own audit before the same claim can be made.
+## and `nls`, which are Gaussian by construction; `emvi`/`fbvi`, each of
+## which needs its own audit before the same claim can be made; and `vae`,
+## which was allowed on a structural argument and is refused again on a
+## measured one -- see the block above `attr(nlmixr2Est.vae, ...)` in
+## R/vae.R.  Its ELBO relocates the between-subject variability into the
+## residual instead of estimating it, on every arm and at every dispersion.
 
 #' The `"etaDist"` attribute of the dispatched estimation method
 #'
