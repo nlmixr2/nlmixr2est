@@ -212,6 +212,19 @@ mu2env$expit <- rxode2::expit
              warning(.txt, call.=FALSE)
            }
            if (!inherits(.tmp, "try-error")) {
+             ## Record the substitution where the declared-distribution M-step
+             ## can find it.  mu2 rewrites `bWT * log(WT/70)` to
+             ## `nlmixrMuDerCov1 * bWT` and the raw covariate then never reaches
+             ## the fit data, so a declaration reading that covariate has to be
+             ## rewritten the same way or its expression names a column that
+             ## does not exist.  `ui$mu2RefCovariateReplaceDataFrame` cannot be
+             ## used for that downstream: the etaDist expansion rebuilds the ui
+             ## and the table comes back empty (measured: 1 row here, 0 rows by
+             ## the time the metadata is built).  `ui$meta` survives it -- it is
+             ## what already carries the declaration stash.
+             .etaDistMu2Record(ui, ui$mu2RefCovariateReplaceDataFrame$modelExpression[i],
+                               ui$mu2RefCovariateReplaceDataFrame$covariateParameter[i],
+                               paste0("nlmixrMuDerCov", i))
              .datEnv$data[[paste0("nlmixrMuDerCov", i)]] <- .tmp
              .new <- str2lang(paste0("nlmixrMuDerCov", i, "*",
                                      ui$mu2RefCovariateReplaceDataFrame$covariateParameter[i]))

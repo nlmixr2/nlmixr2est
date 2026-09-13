@@ -746,12 +746,29 @@
   ## model from drifting.
   .mu2 <- tryCatch(rxode2::rxUiDecompress(ui)$mu2RefCovariateReplaceDataFrame,
                    error = function(e) NULL)
+  ## The table is EMPTY on the ui this receives -- the etaDist expansion
+  ## rebuilds the ui and it does not survive (measured: 1 row while mu2 hoists,
+  ## 0 rows here).  `.etaDistMu2Record()` puts the same substitution on
+  ## `ui$meta`, which does survive, so fall back to that.  Without it the
+  ## rewrite below silently never fires and the declaration keeps naming a
+  ## covariate the fit data no longer has.
+  if (is.null(.mu2) || NROW(.mu2) == 0L) {
+    .st2 <- .etaDistMu2Get(ui)
+    if (!is.null(.st2) && NROW(.st2) > 0L) {
+      .mu2 <- data.frame(covariateParameter = .st2$covariateParameter,
+                         modelExpression = .st2$modelExpression,
+                         derived = .st2$derived,
+                         stringsAsFactors = FALSE)
+    }
+  }
   .covK <- .c$cov
   if (!is.null(.mu2) && NROW(.mu2) > 0L) {
     .sub <- function(.txt) {
       for (.i in seq_len(NROW(.mu2))) {
         .o <- .mu2$modelExpression[.i]
-        .n <- paste0("nlmixrMuDerCov", .i, " * ", .mu2$covariateParameter[.i])
+        .n <- paste0(if (!is.null(.mu2$derived)) .mu2$derived[.i]
+                     else paste0("nlmixrMuDerCov", .i),
+                     " * ", .mu2$covariateParameter[.i])
         .txt <- gsub(.o, .n, .txt, fixed = TRUE)
         ## deparse() spacing need not match the recorded text exactly, so fall
         ## back to a whitespace-insensitive match rather than silently missing it
@@ -1102,4 +1119,58 @@
                  "unimplemented family, or a copula block wider than a pair)"),
           call. = FALSE)
   NULL
+}
+
+#' Record and read mu2's covariate substitution for the declared M-step
+#'
+#' mu2 rewrites a covariate term into a generated `nlmixrMuDerCov#` column and
+#' the raw covariate then never reaches the fit data.  A `dist()` declaration
+#' that reads the same covariate has to be rewritten the same way, or the
+#' expression the M-step parses names a column that is not there.
+#'
+#' `ui$mu2RefCovariateReplaceDataFrame` cannot serve that downstream: the
+#' etaDist expansion rebuilds the ui, and the table that has a row while the
+#' hoist runs has none by the time the M-step metadata is built.  `ui$meta` is
+#' an environment that survives the rebuild -- it already carries the
+#' declaration stash -- so the substitution is recorded there instead.
+#'
+#' @param ui rxode2 ui
+#' @param modelExpression the text mu2 replaced
+#' @param covariateParameter the coefficient it replaced it with
+#' @param derived the generated column name
+#' @return nothing, called for the side effect
+#' @noRd
+.etaDistMu2Record <- function(ui, modelExpression, covariateParameter, derived) {
+  tryCatch({
+    .m <- rxode2::rxUiDecompress(ui)$meta
+    if (!is.environment(.m)) return(invisible())
+    .cur <- if (exists(".etaDistMu2Map", envir = .m, inherits = FALSE)) {
+      get(".etaDistMu2Map", envir = .m, inherits = FALSE)
+    } else {
+      data.frame(modelExpression = character(0), covariateParameter = character(0),
+                 derived = character(0), stringsAsFactors = FALSE)
+    }
+    if (derived %in% .cur$derived) return(invisible())
+    assign(".etaDistMu2Map",
+           rbind(.cur, data.frame(modelExpression = as.character(modelExpression),
+                                  covariateParameter = as.character(covariateParameter),
+                                  derived = as.character(derived),
+                                  stringsAsFactors = FALSE)),
+           envir = .m)
+  }, error = function(e) NULL)
+  invisible()
+}
+
+#' Read back what `.etaDistMu2Record()` stored
+#'
+#' @param ui rxode2 ui
+#' @return the recorded substitution table, or `NULL` when there is none
+#' @noRd
+.etaDistMu2Get <- function(ui) {
+  tryCatch({
+    .m <- rxode2::rxUiDecompress(ui)$meta
+    if (!is.environment(.m)) return(NULL)
+    if (!exists(".etaDistMu2Map", envir = .m, inherits = FALSE)) return(NULL)
+    get(".etaDistMu2Map", envir = .m, inherits = FALSE)
+  }, error = function(e) NULL)
 }
