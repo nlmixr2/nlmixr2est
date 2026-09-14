@@ -5458,6 +5458,9 @@ public:
       // The copula's sufficient statistic, EVERY iteration.  Second moments
       // over phiM -- no solve, so no reason to put it on a cadence -- and it is
       // what the parameter adjustment below reads.
+      // the prior needs the parsed covariate expressions as much as the M-step
+      // does; parsing is arithmetic, so once per iteration costs nothing
+      etaDistBuildCovRpn();
       etaDistCorSuffStat(kiter, pas);
       // The declared thetas' own step: ONE solve, exact gradient, one damped
       // move -- from iteration 0, on nonMuThetaGradEvery, independent of the
@@ -7358,6 +7361,7 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
     // back 1.3901 from a start of 1.3863, never having moved, while the rest of
     // the fit converged normally.
     const bool edQ2 = etaDistAnyQ2();
+    etaDistBuildCovRpn();
     for (int k = 0; (etaDistOn || edQ2) && k < etaDistNdist; ++k) {
       // Per DECLARATION, and it guards the MLE-and-inversion half ONLY.
       //
@@ -8166,6 +8170,94 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
   // model, so the cdf route's arithmetic is untouched to the bit.
   // -------------------------------------------------------------------------
 
+  // Per-declaration parsed argument expressions, for a declaration whose
+  // arguments depend on a COVARIATE.
+  //
+  // etaDistArgs holds one population argument set per declaration, and for a
+  // covariate declaration there is no such thing -- the R side leaves it NA on
+  // purpose.  The M-step already recomputes per record; the PRIOR did not, so
+  // every draw scored -Inf and a covariate on a declared eta could not be
+  // sampled at all on this route.  Parsed once per iteration (pure arithmetic,
+  // no solve) and reused across every row.
+  mutable std::vector< std::vector< std::vector<etaDistTok> > > etaDistRpnCov;
+  mutable std::vector<char> etaDistRpnCovOk;
+  void etaDistBuildCovRpn() const {
+    etaDistRpnCov.assign((size_t)(etaDistNdist > 0 ? etaDistNdist : 0),
+                         std::vector< std::vector<etaDistTok> >());
+    etaDistRpnCovOk.assign((size_t)(etaDistNdist > 0 ? etaDistNdist : 0), 0);
+    for (int k = 0; k < etaDistNdist; ++k) {
+      if (k >= (int)etaDistCov.size() || etaDistCov[(size_t)k].n_cols == 0) continue;
+      int nth = etaDistNth(k);
+      if (nth <= 0 || k >= (int)etaDistExprs.size()) continue;
+      if ((int)etaDistExprThetas[(size_t)k].size() != nth) continue;
+      std::vector<std::string> pv = etaDistExprThetas[(size_t)k];
+      for (size_t c = 0; c < etaDistCovNames[(size_t)k].size(); ++c) {
+        pv.push_back(etaDistCovNames[(size_t)k][c]);
+      }
+      std::vector< std::vector<etaDistTok> > rpn;
+      if (rxEtaDistLoglikParse(etaDistExprs[(size_t)k], pv, rpn)) {
+        etaDistRpnCov[(size_t)k] = rpn;
+        etaDistRpnCovOk[(size_t)k] = 1;
+      }
+    }
+  }
+
+  // This declaration's arguments for the subject owning phiM row `r`.
+  //
+  // Falls back to the population set when there is no covariate, so every
+  // caller can use one path.  Returns false when the arguments cannot be built,
+  // which the callers treat the way they treat a non-finite density: reject,
+  // never guess.
+  // Does this declaration have covariate-dependent arguments at all?
+  bool etaDistArgsHaveCov(int k) const {
+    return k < (int)etaDistRpnCovOk.size() && etaDistRpnCovOk[(size_t)k] == 1 &&
+      k < (int)etaDistCov.size() && etaDistCov[(size_t)k].n_cols > 0;
+  }
+
+  // The population argument set, which is what a declaration without a
+  // covariate has and always had.
+  bool etaDistArgsPop(int k, double *a, int na) const {
+    for (int t = 0; t < na; ++t) {
+      a[t] = etaDistArgs(k, t);
+      if (!std::isfinite(a[t])) return false;
+    }
+    return true;
+  }
+
+  // The argument set for the SUBJECT owning phiM row `r`: the declaration's
+  // thetas read from phi0, this subject's covariates, and the parsed argument
+  // expressions evaluated on the two together.
+  bool etaDistArgsCovRow(int k, unsigned int r, double *a, int na) const {
+    const arma::mat &cv = etaDistCov[(size_t)k];
+    unsigned int subj = (N > 0) ? (r % (unsigned int)N) : 0;
+    if (subj >= cv.n_rows) return false;
+    int nth = etaDistNth(k);
+    int nSym = (int)cv.n_cols;
+    std::vector<double> vals((size_t)(nth + nSym), 0.0);
+    for (int t = 0; t < nth; ++t) {
+      int c = etaDistPhi0Col(k, t);
+      if (c < 0 || c >= nphi0) return false;
+      vals[(size_t)t] = mprior_phi0(0, c);
+      if (!std::isfinite(vals[(size_t)t])) return false;
+    }
+    for (int c = 0; c < nSym; ++c) {
+      vals[(size_t)(nth + c)] = cv(subj, (unsigned int)c);
+      if (!std::isfinite(vals[(size_t)(nth + c)])) return false;
+    }
+    const std::vector< std::vector<etaDistTok> > &rpn = etaDistRpnCov[(size_t)k];
+    if ((int)rpn.size() != na) return false;
+    for (int t = 0; t < na; ++t) {
+      a[t] = etaDistExprEval(rpn[(size_t)t], vals.data(), nth + nSym);
+      if (!std::isfinite(a[t])) return false;
+    }
+    return true;
+  }
+
+  bool etaDistArgsFor(int k, unsigned int r, double *a, int na) const {
+    if (!etaDistArgsHaveCov(k)) return etaDistArgsPop(k, a, na);
+    return etaDistArgsCovRow(k, r, a, na);
+  }
+
   bool etaDistDirectOn() const {
     return etaDistDirect != 0 && etaDistNdist > 0 &&
       (int)etaDistLatent.n_elem == etaDistNdist &&
@@ -8247,28 +8339,56 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
     for (size_t c = 0; c < declOf.size(); ++c) {
       int k = declOf[c];
       if (k < 0 || seen[c]) continue;
-      for (int t = 0; t < na; ++t) a1[(size_t)t] = etaDistArgs(k, t);
       double rho = 0.0;
       int j = etaDistPartnerOf(k, &rho);
       int cj = (j >= 0 && j < etaDistNdist) ? colOf[(size_t)j] : -1;
+      // The arguments are resolved PER ROW, because a covariate on a
+      // declaration makes them subject-specific.  With no covariate
+      // etaDistArgsFor() returns the population set and this is the same
+      // arithmetic it always was.
       if (cj >= 0 && rho != 0.0) {
-        for (int t = 0; t < na; ++t) a2[(size_t)t] = etaDistArgs(j, t);
         seen[c] = 1; seen[(size_t)cj] = 1;
-        for (unsigned int r = 0; r < phiCols.n_rows; ++r) {
-          double l = rxEtaDistPairLogD(etaDistFam(k), phiCols(r, c), &a1[0],
-                                       etaDistFam(j), phiCols(r, (unsigned int)cj),
-                                       &a2[0], rho);
-          out(r) += R_finite(l) ? -l : std::numeric_limits<double>::infinity();
-        }
+        etaDistDirectUPair(phiCols, k, (unsigned int)c, j, (unsigned int)cj,
+                           rho, na, &a1[0], &a2[0], out);
       } else {
         seen[c] = 1;
-        for (unsigned int r = 0; r < phiCols.n_rows; ++r) {
-          double l = rxEtaDistLogD(etaDistFam(k), phiCols(r, c), &a1[0]);
-          out(r) += R_finite(l) ? -l : std::numeric_limits<double>::infinity();
-        }
+        etaDistDirectUOne(phiCols, k, (unsigned int)c, na, &a1[0], out);
       }
     }
     return out;
+  }
+
+  // One declaration's contribution to the negative log prior, accumulated over
+  // every row.  A row whose arguments cannot be built contributes +Inf: the
+  // same treatment a non-finite density gets, so an unbuildable argument set is
+  // rejected rather than guessed at.
+  void etaDistDirectUOne(const mat &phiCols, int k, unsigned int c, int na,
+                         double *a1, arma::vec &out) const {
+    for (unsigned int r = 0; r < phiCols.n_rows; ++r) {
+      if (!etaDistArgsFor(k, r, a1, na)) {
+        out(r) += std::numeric_limits<double>::infinity();
+        continue;
+      }
+      double l = rxEtaDistLogD(etaDistFam(k), phiCols(r, c), a1);
+      out(r) += R_finite(l) ? -l : std::numeric_limits<double>::infinity();
+    }
+  }
+
+  // A copula-linked PAIR's contribution, scored jointly.  Both members are
+  // resolved for the same row, so a covariate on either moves the joint density
+  // for that subject alone.
+  void etaDistDirectUPair(const mat &phiCols, int k, unsigned int c,
+                          int j, unsigned int cj, double rho, int na,
+                          double *a1, double *a2, arma::vec &out) const {
+    for (unsigned int r = 0; r < phiCols.n_rows; ++r) {
+      if (!etaDistArgsFor(k, r, a1, na) || !etaDistArgsFor(j, r, a2, na)) {
+        out(r) += std::numeric_limits<double>::infinity();
+        continue;
+      }
+      double l = rxEtaDistPairLogD(etaDistFam(k), phiCols(r, c), a1,
+                                   etaDistFam(j), phiCols(r, cj), a2, rho);
+      out(r) += R_finite(l) ? -l : std::numeric_limits<double>::infinity();
+    }
   }
 
   // The Gaussian half, with the declared columns removed.
@@ -8335,17 +8455,21 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
     for (size_t c = 0; c < declOf.size(); ++c) {
       int k = declOf[c];
       if (k < 0 || seen[c]) continue;
-      for (int t = 0; t < na; ++t) a1[(size_t)t] = etaDistArgs(k, t);
       double rho = 0.0;
       int j = etaDistPartnerOf(k, &rho);
       int cj = (j >= 0 && j < etaDistNdist) ? colOf[(size_t)j] : -1;
       arma::vec z1(nr); _saemFillNormEng(z1);
+      // per-row arguments, for the same reason etaDistDirectU() resolves them
+      // per row: a covariate makes each subject's prior its own distribution.
+      // A row whose arguments cannot be built is LEFT ALONE rather than drawn
+      // from a fabricated one.
       if (cj >= 0 && rho != 0.0) {
-        for (int t = 0; t < na; ++t) a2[(size_t)t] = etaDistArgs(j, t);
         arma::vec z2(nr); _saemFillNormEng(z2);
         double sr = std::sqrt(1.0 - rho*rho);
         seen[c] = 1; seen[(size_t)cj] = 1;
         for (unsigned int r = 0; r < nr; ++r) {
+          if (!etaDistArgsFor(k, r, &a1[0], na) ||
+              !etaDistArgsFor(j, r, &a2[0], na)) continue;
           double w2 = rho*z1(r) + sr*z2(r);
           phiCols(r, (unsigned int)c)  = rxEtaDistQ(etaDistFam(k), etaDistNormCdf(z1(r)), &a1[0]);
           phiCols(r, (unsigned int)cj) = rxEtaDistQ(etaDistFam(j), etaDistNormCdf(w2),    &a2[0]);
@@ -8353,6 +8477,7 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
       } else {
         seen[c] = 1;
         for (unsigned int r = 0; r < nr; ++r) {
+          if (!etaDistArgsFor(k, r, &a1[0], na)) continue;
           phiCols(r, (unsigned int)c) = rxEtaDistQ(etaDistFam(k), etaDistNormCdf(z1(r)), &a1[0]);
         }
       }
@@ -8387,22 +8512,43 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
     for (size_t c = 0; c < declOf.size(); ++c) {
       int k = declOf[c];
       if (k < 0) continue;
-      for (int t = 0; t < na; ++t) a[(size_t)t] = etaDistArgs(k, t);
       int fam = etaDistFam(k);
       for (unsigned int r = 0; r < phiCols.n_rows; ++r) {
+        // per-row: the BIJECTOR depends on the support, and with a covariate on
+        // a bound-carrying argument the support is this subject's own
         double xc = phiCur(r, (unsigned int)c);
-        double uc = rxEtaDistToU(fam, xc, &a[0]);
-        if (!R_finite(uc)) { phiCols(r, (unsigned int)c) = xc; continue; }
-        double un = uc + scaleCol((unsigned int)c)*lamRow(r)*noise(r, (unsigned int)c);
-        double xn = rxEtaDistFromU(fam, un, &a[0]);
-        if (!R_finite(xn)) { phiCols(r, (unsigned int)c) = xc; continue; }
+        double xn = xc;
+        double dj = 0.0;
+        if (etaDistArgsFor(k, r, &a[0], na)) {
+          dj = etaDistRwOne(fam, &a[0], xc,
+                            scaleCol((unsigned int)c)*lamRow(r)*noise(r, (unsigned int)c),
+                            &xn);
+        }
         phiCols(r, (unsigned int)c) = xn;
-        double jn = rxEtaDistLogJac(fam, un, &a[0]);
-        double jc = rxEtaDistLogJac(fam, uc, &a[0]);
-        if (R_finite(jn) && R_finite(jc)) logJ(r) += jn - jc;
+        logJ(r) += dj;
       }
     }
     return logJ;
+  }
+
+  // One coordinate's random walk, taken in BIJECTOR space: map to u, step,
+  // map back, and return the log-Jacobian difference the acceptance ratio
+  // needs.  Any non-finite intermediate leaves the coordinate where it was and
+  // contributes nothing -- a step that cannot be described is not taken, rather
+  // than taken and then corrected.
+  double etaDistRwOne(int fam, const double *a, double xc, double step,
+                      double *xOut) const {
+    *xOut = xc;
+    double uc = rxEtaDistToU(fam, xc, a);
+    if (!R_finite(uc)) return 0.0;
+    double un = uc + step;
+    double xn = rxEtaDistFromU(fam, un, a);
+    if (!R_finite(xn)) return 0.0;
+    *xOut = xn;
+    double jn = rxEtaDistLogJac(fam, un, a);
+    double jc = rxEtaDistLogJac(fam, uc, a);
+    if (!R_finite(jn) || !R_finite(jc)) return 0.0;
+    return jn - jc;
   }
 
   void do_mcmc(const int method,
@@ -8657,6 +8803,34 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
         if (method==1) {
           // proposal IS the prior, so the prior terms cancel out of the ratio
           deltu=Uc_y-U_y;
+          // ...which holds only while the CURRENT point has positive prior
+          // density.  On the direct route it need not: phiM is initialized on
+          // the Gaussian scale, so a bounded family starts some rows outside
+          // its own support, where the prior is zero and the cancelled ratio is
+          // not the ratio at all.  Such a row then accepts on likelihood alone,
+          // and if the likelihood does not object it stays outside forever.
+          //
+          // Measured on dunif(1, 12): the fitted etas ran to 0.6272, below the
+          // declared lower bound.  Gamma hid this because a negative clearance
+          // wrecks the likelihood; for a uniform an eta of 0.627 is a perfectly
+          // good clearance, so nothing pushed it back in.
+          //
+          // A point with zero prior density must accept any candidate with
+          // positive density -- the same Metropolis limit the U_y rescue below
+          // rests on.
+          if (edDirect) {
+            mat dphiC = phiM.cols(i) - mphi.mprior_phiM;
+            vec uCur = etaDistDirectPriorU(phiM.cols(i), dphiC,
+                                           mphi.IGamma2_phi, etaDistDecl);
+            mat dphiP = phiMc.cols(i) - mphi.mprior_phiM;
+            vec uPro = etaDistDirectPriorU(phiMc.cols(i), dphiP,
+                                           mphi.IGamma2_phi, etaDistDecl);
+            for (unsigned int _q = 0; _q < deltu.n_elem && _q < uCur.n_elem; ++_q) {
+              if (!std::isfinite(uCur(_q)) && std::isfinite(uPro(_q))) {
+                deltu(_q) = R_NegInf;   // accept: the current point is impossible
+              }
+            }
+          }
         }
         else if (method==4) {
           // Mode 1B is an INDEPENDENCE sampler whose proposal is not the

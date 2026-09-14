@@ -478,3 +478,120 @@ test_that("the declared copula correlation is estimated AND reported", {
   expect_equal(unname(.fit$parFixedDf[.cr, "Estimate"]), unname(.R[1, 2]),
                tolerance = 1e-8)
 })
+
+test_that("the warm start cannot violate fix()", {
+  ## The surrogate writes starting values for a declaration's thetas.  It was
+  ## writing FIXED ones too, and for a SUPPORT parameter that is not a bad start
+  ## -- it changes which values are admissible.
+  ##
+  ## Measured on dist(eta.cl) ~ dunif(lo, hi) with lo <- fix(0.5) and
+  ## hi <- fix(20): the warm start returned lo = 0.0000 and hi = 9.2049.  With
+  ## the support silently widened to (0, 9.2) the sampler produced etas as low
+  ## as 0.31 -- legal under the support it was handed, and indistinguishable
+  ## from a broken MCMC.  It cost three wrong diagnoses before the fixed thetas
+  ## themselves were printed.
+  skip_on_cran()
+  .f <- function() {
+    ini({
+      lv <- log(50)
+      prop.sd <- c(0, 0.2)
+      lo <- fix(0.5)
+      hi <- fix(20)
+      dist(eta.cl) ~ dunif(lo, hi)
+    })
+    model({
+      cl <- eta.cl
+      v <- exp(lv)
+      d/dt(centr) <- -cl/v*centr
+      cp <- centr/v
+      cp ~ prop(prop.sd)
+    })
+  }
+  .fit <- suppressMessages(suppressWarnings(nlmixr2(
+    .f, .edDirectData(n = 40), "saem",
+    saemControl(nBurn = 20, nEm = 20, nmc = 3, print = 0, seed = 99,
+                etaDistParam = "direct", etaDistMstep = FALSE,
+                etaDistWarmStart = TRUE))))
+  .p <- setNames(.fit$parFixedDf$Estimate, rownames(.fit$parFixedDf))
+  ## the bounds came back EXACTLY as fixed
+  expect_equal(unname(.p[["lo"]]), 0.5, tolerance = 1e-12)
+  expect_equal(unname(.p[["hi"]]), 20, tolerance = 1e-12)
+  ## ...and with the support intact, every eta is inside it.  This is the
+  ## assertion that would have caught the whole thing: a bounded family on the
+  ## direct route must sample within its own support.
+  .e <- .fit$eta[[2]]
+  expect_true(all(.e > 0.5 & .e < 20),
+              info = paste0("eta outside dunif(0.5, 20): [",
+                            min(.e), ", ", max(.e), "]"))
+})
+
+test_that("a covariate on a declaration is RECOVERED on the direct route", {
+  ## This test asserted a refusal two revisions ago, and the refusal was real --
+  ## but its cause was not the one the message implied.
+  ##
+  ## rxode2's mu2 scan read `lclm + bWT*log(WT/70)` out of the `rxEdA.*`
+  ## ARGUMENT ANCHOR and claimed bWT as a covariate coefficient of lclm.  There
+  ## is no `theta + eta` on that line: lclm is not mu-referenced, and the anchor
+  ## is a distribution parameter, not a typical value.  nlmixr2est's mu2 hook
+  ## then executed the claim -- rewriting the line to `nlmixrMuDerCov1 * bWT`
+  ## and moving bWT into the COV/MCOV design machinery, which took away its phi
+  ## column.  Measured, the parameter list went
+  ##
+  ##   lclm, lv, lclrv, bWT, rxd.eta.cl   ->   lclm, bWT, lv, lclrv, rxd.eta.cl
+  ##
+  ## with bWT interleaved where a phi parameter is not.  With no column to write
+  ## back through, the declared-distribution M-step stood down and the metadata
+  ## resolved to NULL.
+  ##
+  ## The coefficient never needed a column ADDED -- it needed one to stop being
+  ## taken away.  The mu2 scan now skips a declaration's anchor.
+  skip_on_cran()
+  .bTrue <- 0.75
+  .lclmTrue <- log(5.104)
+  .rv <- 0.5
+  set.seed(21)
+  .n <- 120
+  .wt <- stats::runif(.n, 45, 110)
+  .mu <- exp(.lclmTrue + .bTrue*log(.wt/70))
+  .cl <- stats::rgamma(.n, shape = 1/.rv, rate = 1/(.rv*.mu))
+  .obs <- do.call(rbind, lapply(seq_len(.n), function(.i) {
+    .t <- c(0.25, 0.5, 1, 2, 4, 6, 8, 12, 24)
+    data.frame(ID = .i, TIME = .t, WT = .wt[.i],
+               DV = 100/50*exp(-.cl[.i]/50*.t)*
+                 exp(stats::rnorm(length(.t), 0, 0.15)),
+               AMT = 0, EVID = 0)
+  }))
+  .d <- rbind(data.frame(ID = seq_len(.n), TIME = 0, WT = .wt, DV = 0,
+                         AMT = 100, EVID = 1), .obs)
+  .d <- .d[order(.d$ID, .d$TIME, -.d$EVID), ]
+  .f <- function() {
+    ini({
+      lclm <- log(4)
+      lv <- log(50)
+      lclrv <- log(0.8)
+      bWT <- 0.3
+      prop.sd <- c(0, 0.2)
+      dist(eta.cl) ~ dgamma(shape = 1/exp(lclrv),
+                            rate = 1/(exp(lclrv)*exp(lclm + bWT*log(WT/70))))
+    })
+    model({
+      cl <- eta.cl
+      v <- exp(lv)
+      d/dt(centr) <- -cl/v*centr
+      cp <- centr/v
+      cp ~ prop(prop.sd)
+    })
+  }
+  .fit <- suppressMessages(suppressWarnings(nlmixr2(
+    .f, .d, "saem",
+    saemControl(nBurn = 100, nEm = 100, nmc = 3, print = 0, seed = 99,
+                etaDistParam = "direct", etaDistMstep = FALSE))))
+  .p <- setNames(.fit$parFixedDf$Estimate, rownames(.fit$parFixedDf))
+  ## RECOVERED, not merely moved.  Measured: bWT 0.7441 against a truth of 0.75,
+  ## from a start of 0.3.  Asserting recovery rather than movement because
+  ## "it ran and something changed" is the standard that kept being wrong here.
+  expect_lt(abs(.p[["bWT"]] - .bTrue), 0.15)
+  expect_lt(abs(.p[["lclm"]] - .lclmTrue), 0.25)
+  ## and the prior is still the declared one
+  expect_true(all(.fit$eta[[2]] > 0))
+})

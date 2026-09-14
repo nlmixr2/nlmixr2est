@@ -112,9 +112,25 @@ test_that("the map closure declines LOUDLY for a declaration it does not own", {
   expect_false(is.null(.i$map(2L, as.numeric(.i$args[2, seq_len(2)]))))
 })
 
-test_that("ALL declarations covariate-carrying still stands the M-step down", {
+test_that("ALL declarations covariate-carrying stands the family MLE down, but
+           still yields metadata", {
+  ## This asserted `.c` was NULL.  That conflated two things.
+  ##
+  ## The family MLE genuinely cannot own a covariate-carrying declaration --
+  ## there is no single population `a` to fit and invert -- and `usable` still
+  ## says so, per declaration.  But returning NULL threw away the metadata
+  ## ENTIRELY, and the eta-density route needs it: that objective takes
+  ## per-record arguments and was written for exactly this case.
+  ##
+  ## So the contract is now the weaker, correct one: metadata comes back, and
+  ## every declaration is marked unusable BY THE MLE.
   .c <- .edcCore(.edcModel(.edcCovCl, .edcCovV1))
-  expect_null(.c)
+  expect_false(is.null(.c))
+  expect_true(all(!.c$usable))
+  expect_true(all(.c$hasCov))
+  ## and the family codes resolved, which is what makes the metadata worth
+  ## keeping -- the density can be evaluated even where the MLE cannot run
+  expect_true(all(.c$fam > 0L))
 })
 
 test_that("the warm start NAMES the covariate instead of refusing silently", {
@@ -565,9 +581,18 @@ test_that("the covariate warning says something different per estimator", {
   # focei: the zero-start message, and it must mention the retry that fixes it
   expect_match(.msg("focei"), "starting at\\s+exactly 0")
   expect_match(.msg("focei"), "zeroThetaRetry")
-  # saem: not estimated at all.  Must NOT offer the FOCEi retry as a remedy.
-  expect_match(.msg("saem"), "does not estimate them at all")
+  # saem: it DOES estimate these now.  This asserted "does not estimate them at
+  # all", matching a warning that blamed a coefficient having no phi0 column to
+  # write back through.  The column was always there -- rxode2's mu2 scan was
+  # claiming the coefficient out of the `rxEdA.*` role anchor -- and with that
+  # separated by route the direct route recovers 0.7441 against a true 0.75.
+  # So the message is now about MAGNITUDE, not about nothing happening.
+  expect_match(.msg("saem"), "estimates them")
+  expect_false(grepl("does not estimate them at all", .msg("saem")))
+  # still must NOT offer the FOCEi retry as a remedy
   expect_false(grepl("zeroThetaRetry", .msg("saem")))
+  # nor send the user to focei for something saem now does
+  expect_false(grepl("Use est=\"focei\"", .msg("saem"), fixed = TRUE))
   # imp: moves them, coefficient stalls
   expect_match(.msg("imp"), "does not reach the coefficient")
   # an estimator nobody measured must claim no measurement

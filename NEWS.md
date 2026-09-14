@@ -49,6 +49,28 @@
   promotion.  A modeled residual on a `boxCox()`/`yeoJohnson()` endpoint is
   refused, since `dnorm()` omits the lambda-dependent Jacobian.
 
+- `saemControl(etaDistParam="direct")` now estimates a covariate on a `dist()`
+  declaration.  The direct route makes the declared random effect itself the
+  random effect, so its `dist()` arguments are its prior; those arguments are
+  now resolved per subject rather than once for the population, and the prior,
+  the proposal draw and the random walk all read the subject's own values.
+  Measured on a 120-subject arm with a true coefficient of 0.75 from a start of
+  0.30: `bWT` 0.7441, `lclm` 1.5611 (truth 1.6300), `prop.sd` 0.1531 (truth
+  0.15), with every sampled eta inside the gamma's support.
+
+- The warning `est="saem"` gives for a covariate on a `dist()` declaration no
+  longer says the coefficient is "not estimated at all" and no longer sends the
+  user to `est="focei"`.  That claim was asserted rather than measured and is
+  false on both routes; the warning now reports the measured accuracy instead
+  (direct 0.7441, cdf 0.5526 subject-constant and 0.4299 time-varying, against
+  a true 0.75, with focei at 0.4313 on the time-varying arm).
+
+- `etaDistInit()`'s warm start no longer overwrites a `fix()`ed parameter.  On
+  `dist(eta.cl) ~ dunif(lo, hi)` with `lo <- fix(0.5)` and `hi <- fix(20)` the
+  surrogate was returning `lo` 0.0000 and `hi` 9.2049; for a bounded family
+  those arguments ARE the support, so the fit was then sampling legally from a
+  support the model never declared.  A discarded starting value is reported.
+
 - A covariate that varies WITHIN a subject no longer freezes its `dist()`
   declaration.  The family MLE fits a declaration's native parameters and
   inverts them back to the thetas, and a covariate-carrying declaration has no

@@ -393,7 +393,27 @@
                             }
                             ## On the direct route a NULL here is not a degraded
                             ## M-step, it is the wrong model.  Refuse.
-                            if (is.null(.edi) && .etaDistIsDirect(ui)) {
+                            ##
+                            ## ...but only for a ui the direct expansion was
+                            ## actually applied to.  The warm-start surrogate is
+                            ## derived from the same ui, so it carries the
+                            ## route on the stash, while its etas are renamed
+                            ## `rxWs.*` -- the `rxd.` lookup then finds nothing,
+                            ## the metadata is legitimately NULL, and this guard
+                            ## refused the whole fit.  Measured: a covariate on
+                            ## a declared eta failed with "could not resolve the
+                            ## declared distributions" and the covariate was
+                            ## blameless -- turning the warm start off made the
+                            ## same model fit.
+                            ##
+                            ## So ask the ui in front of us, not the stash:
+                            ## does it have a `rxd.*` eta?
+                            .hasRxd <- tryCatch({
+                              .idf <- rxode2::rxUiDecompress(ui)$iniDf
+                              any(!is.na(.idf$neta1) &
+                                    grepl("^rxd[.]", .idf$name))
+                            }, error = function(e) FALSE)
+                            if (is.null(.edi) && .etaDistIsDirect(ui) && .hasRxd) {
                               stop("etaDistParam=\"direct\" could not resolve the ",
                                    "declared distributions to saem's parameters\n",
                                    "  the family, its arguments and the copula ",

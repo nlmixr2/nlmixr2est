@@ -1126,7 +1126,37 @@
   ## disabled the M-step for every OTHER declaration in the model too -- and
   ## silently, since a NULL here just means "no metadata" downstream.
   .usable <- .fam > 0L & !.hasCov & !vapply(.args, anyNA, logical(1))
-  if (!any(.usable)) return(NULL)
+  ## `usable` is the FAMILY MLE's ownership, and a covariate-carrying
+  ## declaration is correctly not usable by it -- there is no single population
+  ## argument set to fit and invert.  But returning NULL here threw away the
+  ## metadata ENTIRELY, and the eta-density route (which takes per-record
+  ## arguments, and was written for exactly this case) needs it.
+  ##
+  ## Measured before this: a covariate on a declared eta with
+  ## etaDistParam="direct" failed with "could not resolve the declared
+  ## distributions to saem's parameters" -- the guard firing on metadata that
+  ## had been discarded one declaration at a time.
+  ##
+  ## So the early exit now asks the weaker question it should always have asked:
+  ## is there ANY declaration with a family we can evaluate?  Per-declaration
+  ## ownership is still carried by `usable` for whoever reads it.
+  if (!any(.usable) && !any(.fam > 0L)) return(NULL)
+  ## A NOTE here used to say that a covariate COEFFICIENT "still has no phi0
+  ## column", that saem structurally carries coefficients through COV/MCOV
+  ## rather than as phi parameters, and that the direct route therefore had to
+  ## refuse such a model.  That was wrong, and it was asserted as a structural
+  ## fact rather than measured -- a test was even written pinning the refusal.
+  ##
+  ## The coefficient always HAD a column.  rxode2's mu2 scan took it away:
+  ## `rxEdA.eta.cl.rate <- 1/(exp(lclrv)*exp(lclm + bWT*log(WT/70)))` reads
+  ## locally like `theta + coefficient*covariate`, so the scan claimed bWT and
+  ## nlmixr2est's mu2 hook moved it into COV/MCOV -- which is exactly RIGHT on
+  ## the cdf route (the decoder reads that anchor, so it is in the observation
+  ## path) and wrong on the direct route (the anchor feeds the prior alone).
+  ## rxode2's `.muRefAnchorIsDirect()` now tells the two apart.
+  ##
+  ## Measured on the direct route with that in place, truth 0.75 from a start
+  ## of 0.30: bWT 0.7441, lclm 1.5611, prop.sd 0.1531, eta min 0.3601.
   ## Current copula correlation.  Read from the rxCor.* theta the expansion
   ## created, not from the declaration's ini() value: that theta is what the
   ## model actually uses, and it moves during the fit.  It carries atanh(rho)

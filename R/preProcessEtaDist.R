@@ -180,12 +180,23 @@
   #
   #   focei  recovers it, given a non-zero slope start -- which
   #          foceiControl(zeroThetaRetry=) now arranges.  Falls through below.
-  #   saem   estimates it with NOTHING: the family M-step holds a
-  #          covariate-carrying declaration out (a coefficient has no phi0
-  #          column to write back through) and neither etaDistLoglik=TRUE nor
-  #          nonMuTheta="regress"/"eta" picks it up.  lclm, lclrv and the
-  #          coefficient all come back BIT-EXACTLY at ini() while the other
-  #          declaration's thetas are estimated correctly in the same fit.
+  #   saem   ESTIMATES it, on both routes.  This said the opposite -- "estimates
+  #          it with NOTHING", the thetas back BIT-EXACTLY at ini(), blamed on a
+  #          coefficient having "no phi0 column to write back through".  The
+  #          coefficient always had a column; rxode2's mu2 scan was claiming it
+  #          out of the `rxEdA.*` role anchor and moving it into COV/MCOV, which
+  #          is right on the cdf route (the decoder reads that anchor) and wrong
+  #          on the direct route (the anchor feeds the prior alone).  rxode2's
+  #          `.muRefAnchorIsDirect()` now separates the two.  Measured, true
+  #          coefficient 0.75 throughout:
+  #
+  #            direct route, start 0.30              -> 0.7441
+  #            cdf, subject-constant cov, start 0.35 -> 0.5526
+  #            cdf, time-varying cov,     start 0.35 -> 0.4299
+  #
+  #          On the time-varying arm focei gets 0.4313 on the same data, so the
+  #          two agree to 0.3% there.  The subject-constant cdf arm is the one
+  #          that lands furthest from truth, which is what the warning is for.
   #   imp    moves them -- lclm 1.9 -> 1.71 and lclrv -2.0 -> -2.25, both
   #          toward truth -- but the coefficient stalls at 0.032 against 0.75.
   #          It gets neither the zeroTheta nudge nor the retry, both of which
@@ -201,12 +212,14 @@
     }
     if (length(.cov) > 0L) {
       .what <- if (grepl("^saem", est)) {
-        paste0("does not estimate them at all -- they come back BIT-EXACTLY ",
-               "at their ini() values, because the family M-step holds a ",
-               "covariate-carrying declaration out and no other route owns ",
-               "it (a coefficient has no phi0 column to write back through). ",
-               " Other declarations in the same model are estimated normally,",
-               " which is what makes this easy to miss")
+        paste0("estimates them, but check the coefficient against its ",
+               "standard error before trusting its magnitude.  Measured on a ",
+               "120-subject arm with a true coefficient of 0.75: the direct ",
+               "route (saemControl(etaDistParam=\"direct\")) returned 0.7441 ",
+               "from a start of 0.30, while the cdf route returned 0.5526 ",
+               "(subject-constant covariate) and 0.4299 (time-varying) from a ",
+               "start of 0.35 -- focei gets 0.4313 on that last arm, so the ",
+               "two agree there and differ most on the subject-constant one")
       } else if (grepl("^(imp|impmap|qrpem)", est)) {
         paste0("moves them but does not reach the coefficient: measured, the ",
                "declaration's own thetas travel toward truth while the ",
@@ -224,10 +237,17 @@
                "coefficient against its starting value and standard error ",
                "before trusting it")
       }
+      ## The FOCEi recommendation is not advice to give saem any more -- saem
+      ## estimates these now -- so it is per-branch rather than appended to
+      ## every message.
+      .use <- if (grepl("^saem", est)) {
+        ""
+      } else {
+        paste0("  Use est=\"focei\" for a covariate on a declaration, where ",
+               "the coefficient is recovered.")
+      }
       warning("est=\"", est, "\" ", .what, ": ",
-              paste(.cov, collapse = ", "),
-              ".  Use est=\"focei\" for a covariate on a declaration, where ",
-              "the coefficient is recovered.", call. = FALSE)
+              paste(.cov, collapse = ", "), ".", .use, call. = FALSE)
       return(invisible())
     }
   }
