@@ -397,7 +397,30 @@ etaDistInit <- function(object, data, control = saemControl(nBurn = 100, nEm = 1
               "than the model's own; they are unchanged", call. = FALSE)
       next
     }
-    for (.t in .tn) .ini$est[.ini$name == .t] <- .sol[[.t]]
+    ## A FIXED theta is not a starting value, and the surrogate must not write
+    ## one.
+    ##
+    ## Measured on `dist(eta.cl) ~ dunif(lo, hi)` with `lo <- fix(0.5)` and
+    ## `hi <- fix(20)`: the warm start returned lo = 0.0000 and hi = 9.2049, and
+    ## with the support silently widened to (0, 9.2) the sampler then produced
+    ## etas as low as 0.31 -- legal under the support it was handed, and looking
+    ## exactly like a support violation in the direct route's MCMC.  It cost
+    ## three wrong diagnoses before the fixed thetas were printed.
+    ##
+    ## It matters most for a bound: `lo`/`hi` ARE the support, so overwriting
+    ## them changes which values are admissible rather than merely where the
+    ## search starts.  But it is wrong for any fixed parameter -- fix() means
+    ## fixed.
+    for (.t in .tn) {
+      .wt <- which(.ini$name == .t)
+      if (length(.wt) != 1L) next
+      if (isTRUE(.ini$fix[.wt])) {
+        warning("the surrogate's starting value for the FIXED parameter '", .t,
+                "' was discarded; fix() is honored", call. = FALSE)
+        next
+      }
+      .ini$est[.wt] <- .sol[[.t]]
+    }
   }
   ## The copula correlation of a Gaussian copula IS the correlation of the
   ## latent normals, and for a log-normal surrogate the log-scale correlation is
@@ -422,7 +445,11 @@ etaDistInit <- function(object, data, control = saemControl(nBurn = 100, nEm = 1
                        .ini$neta1 != .ini$neta2 &
                        ((.ini$name == paste0("(", .en[.a], ",", .en[.b], ")")) |
                           (.ini$name == paste0("(", .en[.b], ",", .en[.a], ")"))))
-        if (length(.w2) == 1L) .ini$est[.w2] <- .r
+        ## fix() applies here too.  The off-diagonal between two DECLARED
+        ## random effects is pinned by the direct expansion (it is the copula's
+        ## correlation, not a covariance), and the surrogate has no standing to
+        ## overwrite a constraint the model states.
+        if (length(.w2) == 1L && !isTRUE(.ini$fix[.w2])) .ini$est[.w2] <- .r
       }
     }
   }
