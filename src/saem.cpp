@@ -9742,6 +9742,35 @@ static double gPhi1ObjR(Rcpp::NumericVector p) {
 //[[Rcpp::export]]
 long saemPhi1RefineN_() { return _saemPhi1RefineN; }
 
+// `n` consecutive seed offsets starting at `first`.
+static void seedLayoutPush(uint64_t first, uint64_t n, std::vector<double> &out) {
+  for (uint64_t i = 0; i < n; ++i) out.push_back((double)(first + i));
+}
+
+// One phi block's MCMC step offsets, in the kernel's order.
+static void seedLayoutPushBlock(const saemSeedLayout &L, int kiter, int comp, int block,
+                                std::vector<double> &out) {
+  const uint64_t f = kiter == 0 ? 20u : 1u;
+  const uint64_t count[4] = {f * L.nu[0], f * L.nu[1], f * L.nu[2], L.nu1B};
+  for (int m = 1; m <= 4; ++m) {
+    const int nk1 = m == 3 ? (int)L.nphi[block] : 1;
+    for (uint64_t u = 0; u < count[m - 1]; ++u) {
+      for (int k1 = 0; k1 < nk1; ++k1) {
+        seedLayoutPush(L.step(kiter, comp, block, m, (int)u, k1), L.nM, out);
+      }
+    }
+  }
+}
+
+// One iteration's censored-value offsets, in the kernel's order.
+static void seedLayoutPushCens(const saemSeedLayout &L, int kiter, std::vector<double> &out) {
+  for (uint64_t c = 0; c < L.nComp; ++c) {
+    for (uint64_t k = 0; k < L.nmc; ++k) {
+      seedLayoutPush(L.cens(kiter, (int)c, (int)k), L.ntotal, out);
+    }
+  }
+}
+
 // Test hook: every draw's seed offset, in the kernel's draw order.
 //[[Rcpp::export]]
 Rcpp::NumericVector saemSeedLayoutTest_(Rcpp::IntegerVector nu, int nu1B, int nphi1,
@@ -9758,18 +9787,11 @@ Rcpp::NumericVector saemSeedLayoutTest_(Rcpp::IntegerVector nu, int nu1B, int np
   L.ntotal = (uint64_t)ntotal;
   std::vector<double> out;
   for (int kiter = 0; kiter < niter; ++kiter) {
-    int f = kiter == 0 ? 20 : 1;
-    for (int c = 0; c < (int)L.nComp; ++c)
-      for (int b = 0; b < 2; ++b)
-        for (int m = 1; m <= 4; ++m)
-          for (int u = 0; u < (m == 4 ? nu1B : f * nu[m - 1]); ++u)
-            for (int k1 = 0; k1 < (m == 3 ? (int)L.nphi[b] : 1); ++k1)
-              for (int r = 0; r < nM; ++r)
-                out.push_back((double)(L.step(kiter, c, b, m, u, k1) + r));
-    for (int c = 0; c < (int)L.nComp; ++c)
-      for (int k = 0; k < nmc; ++k)
-        for (int i = 0; i < ntotal; ++i)
-          out.push_back((double)(L.cens(kiter, c, k) + i));
+    for (int c = 0; c < (int)L.nComp; ++c) {
+      seedLayoutPushBlock(L, kiter, c, 0, out);
+      seedLayoutPushBlock(L, kiter, c, 1, out);
+    }
+    seedLayoutPushCens(L, kiter, out);
   }
   return Rcpp::wrap(out);
 }
