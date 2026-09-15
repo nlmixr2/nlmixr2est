@@ -22,14 +22,20 @@ static inline void nmSeqSeedSet(int seed, uint64_t offset, uint64_t i) {
   nmSetSeedEng1(nmSeqSeed(seed, offset + i));
 }
 
-// Restart rxode2's own per-subject solve seeds in the other half of the 32-bit
-// range, after setup: a solve never shares a seed with a sampler's draw, and the
-// setup solve's thread-count-dependent advance does not carry over.  It also
-// keeps getRxSeed1() off R's RNG.  The caller runs inside rxWithSeed(), which
-// restores the ambient seed afterward.
-static inline void nmSeqSeedStart(int seed) {
+// Continue rxode2's own per-subject solve seeds right after a sampler's block:
+// the sampler owns [seed, seed + reserved) and the solves take the sequence from
+// seed + reserved, so no key is shared.  Called after setup, whose rxSolve_()
+// advanced the sequence by the thread count.  It also keeps getRxSeed1() off
+// R's RNG.  The caller runs inside rxWithSeed(), which restores the ambient seed.
+static inline void nmSeqSeedStart(int seed, uint64_t reserved) {
   Rcpp::Function rxSetSeed = Rcpp::Environment::namespace_env("rxode2")["rxSetSeed"];
-  rxSetSeed((double)nmSeqSeed(seed, 0x80000000u));
+  rxSetSeed((double)nmSeqSeed(seed, reserved));
+}
+
+// Whether rxode2's seed sequence is in force (rxWithSeed(rxseed=) or rxSetSeed()).
+static inline bool nmSeqSeedActive() {
+  Rcpp::Function rxGetSeed = Rcpp::Environment::namespace_env("rxode2")["rxGetSeed"];
+  return Rcpp::as<int>(rxGetSeed()) != -1;
 }
 
 #endif // __NM_SEQ_SEED_H__

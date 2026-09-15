@@ -141,9 +141,11 @@ inside an OpenMP-parallel region -- R's RNG API is not safe to call from a non-m
   at an iteration draws exactly what it would have. Never take seeds from a running counter
   (`getRxSeed1()`), and never hash or fold indices into a seed: distinct threefry keys are
   already independent streams, and a hash only adds birthday collisions (the old folded
-  SAEM seeds gave the phi1 and phi0 MCMC blocks the same stream). `nmSeqSeedStart(seed)`
-  restarts rxode2's own solve seeds after setup in the other half of the 32-bit range, so a
-  solve never shares a sampler's seed and a seeded fit does not depend on the thread count.
+  SAEM seeds gave the phi1 and phi0 MCMC blocks the same stream). After setup, a sampler that
+  owns the seeds `[seed, seed + reserved)` (`reserved` computed exactly from its layout, never
+  guessed) calls `nmSeqSeedStart(seed, reserved)` so rxode2's own solve seeds continue from
+  `seed + reserved`: a solve never shares a sampler's seed and a seeded fit does not depend on
+  the thread count.
   Seeding each item right before its draws also means no draw depends on what a solve did
   to the shared engine in between.
 

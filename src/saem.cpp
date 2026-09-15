@@ -2356,7 +2356,6 @@ public:
   }
 
   void saem_fit() {
-    nmSeqSeedStart(saemSeed);
     _seedLayout.nu[0] = (uint64_t)nu(0);
     _seedLayout.nu[1] = (uint64_t)nu(1);
     _seedLayout.nu[2] = (uint64_t)nu(2);
@@ -2366,9 +2365,12 @@ public:
     _seedLayout.nM = (uint64_t)nM;
     _seedLayout.nmc = (uint64_t)nmc;
     _seedLayout.ntotal = (uint64_t)ntotal;
-    if (_seedLayout.iterBase(niter + nSaCov) > 0x80000000ull) {
+    // the draws own every iteration's seeds; the solves take the sequence after
+    const uint64_t seedReserved = _seedLayout.iterBase(niter + nSaCov);
+    if (seedReserved > 0xFFFFFFFFull) {
       Rcpp::warning("random draws exceed the seed range; some seeds repeat");
     }
+    nmSeqSeedStart(saemSeed, seedReserved);
     double double_xmin = 1.0e-200; //FIXME hard-coded xmin, also in neldermean.hpp
     double xmax = 1e300;
     ofstream phiFile;
