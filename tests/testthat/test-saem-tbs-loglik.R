@@ -192,4 +192,18 @@ nmTest({
     expect_true(is.finite(.got))
     expect_equal(.got, as.numeric(.ref), tolerance = 1e-4)
   })
+
+  test_that("more than 25 quadrature nodes is capped rather than crashing", {
+    # gqg.mlx() tabulates at most 25 nodes; a larger request used to hand
+    # rxProgress() a NULL node count and segfault
+    expect_equal(.saemGqNodes(30, 1), 25)
+    expect_error(saemControl(nnodesGq = 30))
+    .d <- .mkBolus(7L, 4L, 0.04, 0.08, seq(0.25, 40, length.out = 20L))
+    .f <- .fitBolus(.d)
+    .g25 <- suppressMessages(calc.2LL(.f$saem, nnodes.gq = 25, nsd.gq = 3, .f$phiM))
+    expect_warning(.g30 <- suppressMessages(calc.2LL(.f$saem, nnodes.gq = 30,
+                                                     nsd.gq = 3, .f$phiM)),
+                   "used nnodesGq=25")
+    expect_equal(.g30, .g25)
+  })
 })

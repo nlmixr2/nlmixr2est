@@ -183,7 +183,7 @@ calculate by Gaussian quadrature.}
 
 \item{nnodesGq}{number of nodes to use for the Gaussian
 quadrature when computing the likelihood with this method
-(defaults to 1, equivalent to the Laplacian likelihood)}
+(defaults to 3; 1 is the Laplacian likelihood; at most 25)}
 
 \item{nsdGq}{span (in SD) over which to integrate when computing
 the likelihood by Gaussian quadrature. Defaults to 3 (eg 3

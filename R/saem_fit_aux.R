@@ -69,14 +69,17 @@
 #' two occasions already makes `3^9 = 19683`.  Step the node count down until
 #' the grid fits a budget rather than silently running an astronomically large
 #' one.  1 is the Laplace route, which `calc.2LL()` already names in its message.
+#' `gqg.mlx()` only tabulates up to 25 nodes; above that it returns an empty
+#' grid, which crashed `calc.2LL()`, so the count is capped there too.
 #'
 #' @param nnodes requested nodes per dimension
 #' @param nphi1 number of mu-referenced (random-effect) phi columns
 #' @param maxNodes grid budget; `getOption("nlmixr2.saemGqMaxNodes", 50000)`
-#' @return the node count to use, never above `nnodes` and never below 1
+#' @return the node count to use, never above `nnodes` or 25 and never below 1
 #' @noRd
 .saemGqNodes <- function(nnodes, nphi1,
                          maxNodes = getOption("nlmixr2.saemGqMaxNodes", 50000)) {
+  nnodes <- min(nnodes, 25)
   if (nnodes <= 1 || nphi1 <= 0) return(nnodes)
   if (nnodes^nphi1 <= maxNodes) return(nnodes)
   max(1, min(nnodes, floor(maxNodes^(1 / nphi1))))

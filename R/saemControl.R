@@ -108,7 +108,7 @@
 #'
 #' @param nnodesGq number of nodes to use for the Gaussian
 #'     quadrature when computing the likelihood with this method
-#'     (defaults to 1, equivalent to the Laplacian likelihood)
+#'     (defaults to 3; 1 is the Laplacian likelihood; at most 25)
 #'
 #' @param nsdGq span (in SD) over which to integrate when computing
 #'     the likelihood by Gaussian quadrature. Defaults to 3 (eg 3
@@ -466,7 +466,7 @@ saemControl <- function(seed = 99,
   checkmate::assertIntegerish(trace, any.missing=FALSE, lower=0, upper=1, len=1) # nolint
   checkmate::assertLogical(calcTables, any.missing=FALSE, len=1)
   checkmate::assertLogical(logLik, any.missing=FALSE, len=1)
-  checkmate::assertIntegerish(nnodesGq, any.missing=FALSE, lower=1, len=1)
+  checkmate::assertIntegerish(nnodesGq, any.missing=FALSE, lower=1, upper=25, len=1)
   checkmate::assertNumeric(nsdGq, any.missing=FALSE, lower=1, len=1, finite=TRUE)
   checkmate::assertLogical(optExpression, any.missing=FALSE, len=1)
   checkmate::assertLogical(literalFix, any.missing=FALSE, len=1)
