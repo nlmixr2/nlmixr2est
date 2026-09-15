@@ -323,9 +323,14 @@ test_that("a COVARIATE on a cdf declaration is Q1, not Q2", {
   }
   .ui <- rxode2::rxUiDecompress(
     .preProcessEtaDist(rxode2::as.rxUi(.f), est = "saem",
-                       control = saemControl(etaDistMstep = TRUE,
+                       control = saemControl(etaDistParam = "cdf",
+                                             etaDistMstep = TRUE,
                                              etaDistWarmStart = FALSE))$ui)
   .s <- .etaDistThetaSplit(.ui, c("lclm", "lclrv", "bWT", "lv", "prop.sd"))
+  ## `etaDistParam = "cdf"` is now explicit: this test is ABOUT the cdf
+  ## partition -- the decoder reads the anchors, so every declared theta is in
+  ## the observation path and Q2 is empty.  The default is "auto", which picks
+  ## direct for this model, where the same thetas are Q2.
   expect_equal(.s$q2, character(0))
   expect_true("bWT" %in% .s$q1)
 })

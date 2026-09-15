@@ -401,12 +401,48 @@
     } else {
       rxode2::rxGetControl(ui, "etaDistParam", "cdf")
     }
-    if (is.character(.p) && length(.p) >= 1L && .p[1] %in% c("cdf", "direct")) {
+    if (is.character(.p) && length(.p) >= 1L &&
+          .p[1] %in% c("auto", "cdf", "direct")) {
       .p[1]
     } else {
-      "cdf"
+      "auto"
     }
-  }, error = function(e) "cdf")
+  }, error = function(e) "auto")
+  ## "auto" -- the default -- means DIRECT wherever direct can express the
+  ## model, and cdf where it cannot.
+  ##
+  ## The two routes are not equally good at a covariate on a declaration, and
+  ## the difference is not close.  A covariate there is a parameter of the
+  ## PRIOR, and only the direct route's etas are a genuine sample from that
+  ## prior, so only there does an objective identify it.  Measured on a
+  ## 120-subject arm, true coefficient 0.75, three seeds, mean |error|:
+  ##
+  ##   direct (prior/Q2)                     0.044
+  ##   cdf, coefficient as a plain theta     0.382
+  ##   cdf, coefficient through MCOV         0.237   (and erratic: 0.47-0.98)
+  ##
+  ## On the cdf route the declared eta is decoded from a latent USING THE
+  ## CURRENT parameters, so the density of those decoded etas is stationary
+  ## wherever the fit already is -- measured, the objective peaks at the
+  ## current value with drift within one standard error at every value tried.
+  ## No amount of work on that side recovers the coefficient.
+  ##
+  ## direct cannot express every model, and says so by name: a correlated block
+  ## of more than two declared etas, and a declared eta correlated with an
+  ## ordinary one.  Those fall back to cdf rather than erroring, which is why
+  ## this is a trial rather than a flag.
+  if (identical(.param, "auto")) {
+    .estNm <- if (is.character(est) && length(est) == 1L) est else ""
+    .param <- if (!grepl("^saem", .estNm)) {
+      ## every other estimator refuses "direct" below; do not hand it one
+      "cdf"
+    } else if (inherits(tryCatch(rxode2::rxEtaDistExpand(ui, param = "direct"),
+                                 error = function(e) e), "error")) {
+      "cdf"
+    } else {
+      "direct"
+    }
+  }
   ## REFUSE "direct" for every estimator that does not consume it.
   ##
   ## The expansion does its half for all of them -- no latent, no decoder, the

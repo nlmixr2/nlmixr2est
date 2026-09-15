@@ -398,6 +398,7 @@ nmTest({
       suppressWarnings(nlmixr2(.edT5SaemModel(), .d, est = "saem",
                                control = saemControl(print = 0L, nBurn = 60L,
                                                      nEm = 60L,
+                                                     etaDistParam = "cdf",
                                                      etaDistMstep = TRUE,
                                                      etaDistLoglik = FALSE))),
       message = function(m) {

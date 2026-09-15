@@ -124,7 +124,13 @@ nmTest({
       # settle a latent chain, so the default settling test would (correctly)
       # decline and the test would assert nothing about what it means to.  The
       # settling policy has its own test below.
+      # etaDistParam="cdf" EXPLICITLY.  This asserts cdf-route semantics -- the
+      # family M-step running, and etaDistMstep changing the answer -- and the
+      # default is now "auto", which picks direct for this model.  On direct the
+      # family MLE has nothing to do and the flag is inert by design, so without
+      # pinning the route this would assert the opposite of what it means to.
       saemControl(nBurn = 5, nEm = 5, print = 0, covMethod = "",
+                  etaDistParam = "cdf",
                   etaDistMstep = on, etaDistCorMstep = on,
                   etaDistSdTol = 0)
     }
@@ -296,7 +302,9 @@ nmTest({
       })
     }
     .f <- suppressWarnings(nlmixr2(.mod, nlmixr2data::theo_sd, est = "saem",
+      # cdf route explicitly; see the note above -- the default is now "auto"
       control = saemControl(nBurn = 5, nEm = 5, print = 0, covMethod = "",
+                            etaDistParam = "cdf",
                             etaDistMstep = TRUE, etaDistCorMstep = TRUE)))
     # never a silent no-op: refusing to act is reported
     expect_equal(saemEtaDistN_(), 0)
