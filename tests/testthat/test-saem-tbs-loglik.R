@@ -178,7 +178,9 @@ nmTest({
     .d <- .mkBolus(7L, 4L, 0.04, 0.08, seq(0.25, 40, length.out = 500L))
     .obs <- .d[.d$EVID == 0, ]
     .f <- .fitBolus(.d)
-    .got <- suppressMessages(calc.2LL(.f$saem, nnodes.gq = 9, nsd.gq = 3,
+    # 9 nodes left a quadrature error of 1 in 3078 at some fitted omegas; 25
+    # nodes resolves the integrand to 1e-6 whichever draws the fit took
+    .got <- suppressMessages(calc.2LL(.f$saem, nnodes.gq = 25, nsd.gq = 3,
                                       .f$phiM))
     .ref <- .refM2ll(.obs, .f$theta[["tcl"]], .f$omega[1, 1],
                      .f$theta[["lnorm.sd"]])
