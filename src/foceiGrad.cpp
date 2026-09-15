@@ -740,6 +740,114 @@ struct FoceiAgqHessianWork {
   }
 };
 
+// The (f,R) density chain shared by the observed-information kernel and the
+// full-determinant gradient: G(s,t) = d2 l/(ds dt) over every direction (the eta block
+// is H - Omega^-1, the eta rows are N), Tn(l,s,t) = d3 l/(d eta_l ds dt) from the probed
+// Ath/AthR (Ai(T,o,l,s,t) = T(o,l,s+t*ndir)), and the first-order score partials.
+//
+// Censored (M2/M3/M4) SCORE partials overwrite the Gaussian rho derivs (rfff is 0 for a
+// normal obs).  DV-transform chain (estimated boxCox/yeoJohnson lambda): the residual
+// pred sensitivity ra = a - dy'/dlambda (dvSens, lambda column only) enters the RHO
+// residual terms; the lambda-lambda 2nd derivative also carries d2y'/dlambda2 (dvSens2).
+// All-zero (no-op) for non-transform models; Ath/AthR are DV-free.
+struct FoceiDensityChain {
+  vec rf, rR;
+  mat G, N;
+  cube Tn;
+};
+static FoceiDensityChain foceiDensityChain(const mat &a, const cube &A, const cube &Ath,
+                                           const mat &aR, const cube &AR, const cube &AthR,
+                                           const mat &dvSens, const mat &dvSens2,
+                                           const ivec &censv, const vec &limv,
+                                           const vec &fv, const vec &yv, const vec &Rv,
+                                           int neta, int ndir) {
+  const int nobs = (int)a.n_rows;
+  FoceiDensityChain C;
+  vec res = yv - fv;
+  vec rf = -res / Rv, rR = 0.5 * (1.0 / Rv - square(res) / square(Rv));
+  vec rff = 1.0 / Rv, rfR = res / square(Rv), rRR = 0.5 * (-1.0 / square(Rv) + 2.0 * square(res) / pow(Rv, 3));
+  vec rffR = -1.0 / square(Rv), rfRR = -2.0 * res / pow(Rv, 3), rRRR = 0.5 * (2.0 / pow(Rv, 3) - 6.0 * square(res) / pow(Rv, 4));
+  vec rfff;
+  censScoreCoefs(censv, limv, fv, yv, Rv, nobs, rf, rR, rff, rfR, rRR, rffR, rfRR, rRRR, rfff);
+  auto Ai = [&](const arma::cube& T, int o, int l, int s, int t) { return T(o, l, s + t * ndir); };
+  const bool hasDv = (dvSens.n_cols == (unsigned) ndir && dvSens.n_rows == (unsigned) nobs);
+  auto ra = [&](int o, int d) { return hasDv ? a(o, d) - dvSens(o, d) : a(o, d); };
+  auto dvY = [&](int o, int d) { return hasDv ? dvSens2(o, d) : 0.0; };  // d2y'/dlambda2 (lambda col)
+  C.G.zeros(ndir, ndir);
+  for (int da = 0; da < ndir; da++) for (int db = 0; db < ndir; db++) {
+    double s = 0.0;
+    for (int o = 0; o < nobs; o++) {
+      s += rff[o] * ra(o, da) * ra(o, db) + rfR[o] * (ra(o, da) * aR(o, db) + aR(o, da) * ra(o, db)) +
+        rRR[o] * aR(o, da) * aR(o, db) + rf[o] * A(o, da, db) + rR[o] * AR(o, da, db);
+      if (da == db) s += -rf[o] * dvY(o, da);         // (r/R) d2y'/dlambda2, lambda-lambda only
+    }
+    C.G(da, db) = s;
+  }
+  C.N = C.G.rows(0, neta - 1);
+  // Tn[l,s,t] = d2(rf a_l + rR aR_l)/ddir_s ddir_t  -> cube(neta, ndir, ndir), Tn(l,s,t)=Tn.slice(t)(l,s)
+  C.Tn.zeros(neta, ndir, ndir);
+  for (int l = 0; l < neta; l++) for (int s = 0; s < ndir; s++) for (int t = 0; t < ndir; t++) {
+    double v = 0.0;
+    for (int o = 0; o < nobs; o++) {
+      double ras = ra(o, s), rat = ra(o, t), Yst = (s == t) ? dvY(o, s) : 0.0;  // DV residual sens + d2y'/dl2
+      double us = rff[o] * ras + rfR[o] * aR(o, s), ut = rff[o] * rat + rfR[o] * aR(o, t);
+      double ust = rfff[o] * ras * rat + rffR[o] * (ras * aR(o, t) + aR(o, s) * rat) + rfRR[o] * aR(o, s) * aR(o, t) +
+        rff[o] * A(o, s, t) - rff[o] * Yst + rfR[o] * AR(o, s, t);
+      double ws = rfR[o] * ras + rRR[o] * aR(o, s), wt = rfR[o] * rat + rRR[o] * aR(o, t);
+      double wst = rffR[o] * ras * rat + rfRR[o] * (ras * aR(o, t) + aR(o, s) * rat) +
+        rRRR[o] * aR(o, s) * aR(o, t) + rfR[o] * A(o, s, t) - rfR[o] * Yst + rRR[o] * AR(o, s, t);
+      v += ust * a(o, l) + us * A(o, l, t) + ut * A(o, l, s) + rf[o] * Ai(Ath, o, l, s, t) +
+        wst * aR(o, l) + ws * AR(o, l, t) + wt * AR(o, l, s) + rR[o] * Ai(AthR, o, l, s, t);
+    }
+    C.Tn(l, s, t) = v;
+  }
+  C.rf = std::move(rf); C.rR = std::move(rR);
+  return C;
+}
+
+// Full-determinant FOCEI gradient (detHessian="conditional").  Mirrors foceiGradSubjectFR_
+// with Ht = H: dH/d(dir s) is the 3rd total derivative of the density, which needs the
+// probed Ath/AthR.  Sigmas are directions here (a = 0, aR = Rsig), so every parameter
+// but omega is one direction of the expanded layout.
+void foceiGradSubjectFullFR_(const arma::mat& a, const arma::cube& A, const arma::cube& Ath,
+                             const arma::mat& aR, const arma::cube& AR, const arma::cube& AthR,
+                             const arma::ivec& censv, const arma::vec& limv,
+                             const arma::vec& fv, const arma::vec& yv, const arma::vec& Rv,
+                             const arma::vec& ehat, const arma::mat& Oi,
+                             const arma::cube& dOiEst, const arma::vec& tr28,
+                             int neta, int ndir, int ndirP, int nom, const arma::ivec& dirP,
+                             arma::vec& g_out, arma::mat& etaP_out) {
+  const int nobs = (int)a.n_rows;
+  const int np = ndirP + nom;
+  arma::mat noDv(nobs, 0);
+  FoceiDensityChain C = foceiDensityChain(a, A, Ath, aR, AR, AthR, noDv, noDv, censv, limv,
+                                          fv, yv, Rv, neta, ndir);
+  mat H = Oi + C.G.submat(0, 0, neta - 1, neta - 1);
+  mat HiM = inv(H);
+  // dH/d(dir t) is the eta-eta block of Tn; the same H drives etaP and the determinant
+  auto dHD = [&](int t) { mat D(neta, neta); for (int l = 0; l < neta; l++)
+      for (int s = 0; s < neta; s++) D(l, s) = C.Tn(l, s, t); return D; };
+  mat etaP(neta, np, fill::zeros);
+  for (int pp = 0; pp < np; pp++) {
+    vec m = (pp < ndirP) ? vec(C.N.col(dirP[pp] - 1)) : vec(dOiEst.slice(pp - ndirP) * ehat);
+    etaP.col(pp) = -HiM * m;
+  }
+  vec g(np, fill::zeros);
+  for (int pp = 0; pp < np; pp++) {
+    mat dHStar; double dPhi;
+    if (pp < ndirP) {
+      int d = dirP[pp] - 1; dHStar = dHD(d);
+      dPhi = dot(C.rf, a.col(d)) + dot(C.rR, aR.col(d));
+    } else {
+      int k = pp - ndirP; dHStar = dOiEst.slice(k);
+      dPhi = 0.5 * as_scalar(ehat.t() * dOiEst.slice(k) * ehat) - tr28[k];
+    }
+    for (int l = 0; l < neta; l++) dHStar += etaP(l, pp) * dHD(l);
+    g[pp] = 2.0 * dPhi + trace(HiM * dHStar);
+  }
+  g_out = g; etaP_out = etaP;
+}
+
 static void foceiHessianDeterminant(const mat &a, const cube &A, const cube &Ath,
                                     const mat &aR, const cube &AR, const cube &AthR,
                                     const vec &Rv, const mat &Oi, int neta, int ndir,
@@ -789,53 +897,12 @@ arma::mat foceiRSubjectFR_(const arma::mat& a, const arma::cube& A, const arma::
                            const FoceiHessianQuadrature *quadrature) {
   const int nobs = (int)a.n_rows;
   const int np = ndirP + nom;
-  vec res = yv - fv;
-  vec rf = -res / Rv, rR = 0.5 * (1.0 / Rv - square(res) / square(Rv));
-  vec rff = 1.0 / Rv, rfR = res / square(Rv), rRR = 0.5 * (-1.0 / square(Rv) + 2.0 * square(res) / pow(Rv, 3));
-  vec rffR = -1.0 / square(Rv), rfRR = -2.0 * res / pow(Rv, 3), rRRR = 0.5 * (2.0 / pow(Rv, 3) - 6.0 * square(res) / pow(Rv, 4));
-  // censored (M2/M3/M4) SCORE partials overwrite the Gaussian rho derivs (rfff is 0 for a
-  // normal obs); the determinant below stays Gauss-Newton (censOption="gauss").
-  vec rfff;
-  censScoreCoefs(censv, limv, fv, yv, Rv, nobs, rf, rR, rff, rfR, rRR, rffR, rfRR, rRRR, rfff);
-  auto Ai = [&](const arma::cube& T, int o, int l, int s, int t) { return T(o, l, s + t * ndir); };
-  // DV-transform chain (estimated boxCox/yeoJohnson lambda): the residual pred sensitivity
-  // ra = a - dy'/dlambda (dvSens, lambda column only) enters the RHO residual terms; the
-  // lambda-lambda 2nd derivative also carries d2y'/dlambda2 (dvSens2).  The determinant
-  // (Gauss-Newton, no residual) and the eta-block keep the pure pred a.  All-zero (no-op)
-  // for non-transform models; the 3rd-order Ath/AthR are DV-free (the DV has no eta chain).
-  const bool hasDv = (dvSens.n_cols == (unsigned) ndir && dvSens.n_rows == (unsigned) nobs);
-  auto ra = [&](int o, int d) { return hasDv ? a(o, d) - dvSens(o, d) : a(o, d); };
-  auto dvY = [&](int o, int d) { return hasDv ? dvSens2(o, d) : 0.0; };  // d2y'/dlambda2 (lambda col)
-  // Gdd: (f,R) 2nd total derivative of the density between two directions
-  auto Gdd = [&](int da, int db) {
-    double s = 0.0;
-    for (int o = 0; o < nobs; o++) {
-      s += rff[o] * ra(o, da) * ra(o, db) + rfR[o] * (ra(o, da) * aR(o, db) + aR(o, da) * ra(o, db)) +
-        rRR[o] * aR(o, da) * aR(o, db) + rf[o] * A(o, da, db) + rR[o] * AR(o, da, db);
-      if (da == db) s += -rf[o] * dvY(o, da);         // (r/R) d2y'/dlambda2, lambda-lambda only
-    }
-    return s;
-  };
-  mat H = Oi; for (int l = 0; l < neta; l++) for (int m = 0; m < neta; m++) H(l, m) += Gdd(l, m);
+  FoceiDensityChain C = foceiDensityChain(a, A, Ath, aR, AR, AthR, dvSens, dvSens2, censv, limv,
+                                          fv, yv, Rv, neta, ndir);
+  const mat &N = C.N; const cube &Tn = C.Tn;
+  auto Gdd = [&](int da, int db) { return C.G(da, db); };
+  mat H = Oi + C.G.submat(0, 0, neta - 1, neta - 1);
   mat HiM = inv(H);
-  mat N(neta, ndir, fill::zeros); for (int l = 0; l < neta; l++) for (int d = 0; d < ndir; d++) N(l, d) = Gdd(l, d);
-  // Tn[l,s,t] = d2(rf a_l + rR aR_l)/ddir_s ddir_t  -> cube(neta, ndir, ndir), Tn(l,s,t)=Tn.slice(t)(l,s)
-  cube Tn(neta, ndir, ndir, fill::zeros);
-  for (int l = 0; l < neta; l++) for (int s = 0; s < ndir; s++) for (int t = 0; t < ndir; t++) {
-    double v = 0.0;
-    for (int o = 0; o < nobs; o++) {
-      double ras = ra(o, s), rat = ra(o, t), Yst = (s == t) ? dvY(o, s) : 0.0;  // DV residual sens + d2y'/dl2
-      double us = rff[o] * ras + rfR[o] * aR(o, s), ut = rff[o] * rat + rfR[o] * aR(o, t);
-      double ust = rfff[o] * ras * rat + rffR[o] * (ras * aR(o, t) + aR(o, s) * rat) + rfRR[o] * aR(o, s) * aR(o, t) +
-        rff[o] * A(o, s, t) - rff[o] * Yst + rfR[o] * AR(o, s, t);
-      double ws = rfR[o] * ras + rRR[o] * aR(o, s), wt = rfR[o] * rat + rRR[o] * aR(o, t);
-      double wst = rffR[o] * ras * rat + rfRR[o] * (ras * aR(o, t) + aR(o, s) * rat) +
-        rRRR[o] * aR(o, s) * aR(o, t) + rfR[o] * A(o, s, t) - rfR[o] * Yst + rRR[o] * AR(o, s, t);
-      v += ust * a(o, l) + us * A(o, l, t) + ut * A(o, l, s) + rf[o] * Ai(Ath, o, l, s, t) +
-        wst * aR(o, l) + ws * AR(o, l, t) + wt * AR(o, l, s) + rR[o] * Ai(AthR, o, l, s, t);
-    }
-    Tn(l, s, t) = v;
-  }
   mat Ht;
   std::vector<mat> dHtD;
   std::vector<std::vector<mat>> d2HtDD;

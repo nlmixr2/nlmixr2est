@@ -588,6 +588,13 @@
 #'   Value, gradient and full curvature share one sensitivity solve.
 #'   The marginal objective's FOCEI curvature is unchanged.  It is not
 #'   supported with registered external likelihood contributions.
+#' @param detHessian Curvature entering the objective's Laplace
+#'   log-determinant: `"focei"` (default), the Gauss-Newton expected
+#'   information, or `"conditional"`, the full conditional Hessian (the
+#'   observed information at the conditional mode, as NONMEM's LAPLACE).
+#'   `"conditional"` requires fast Gaussian FOCEI; the analytic outer
+#'   gradient then carries the matching third-order terms, and the
+#'   analytic covariance falls back to finite differences.
 #' @param hessianMethod For a non-normal-endpoint model (any distribution
 #'     other than \code{norm}), the per-subject inner Hessian has no
 #'     Gaussian Gauss-Newton shortcut and falls back to a finite difference
@@ -1175,6 +1182,7 @@ foceiControl <- function(sigdig = 3, #
                          ), #
                          innerOpt = c("auto", "trust", "n1qn1", "BFGS"), #
                          innerHessian = c("focei", "conditional"), #
+                         detHessian = c("focei", "conditional"), #
                          hessianMethod = c("fd", "bfgs", "sr1", "bofill"), #
                          ## trust-region inner optimizer (RcppTrust)
                          trustConf = 0.975, # confidence level defining the trust-region radius
@@ -1699,6 +1707,7 @@ foceiControl <- function(sigdig = 3, #
   }
   .foceiAssertHessianMethod(hessianMethod, innerOpt)
   innerHessian <- match.arg(innerHessian)
+  detHessian <- match.arg(detHessian)
   outerTrustHessian <- match.arg(outerTrustHessian)
   # Same strict-bound handling as the inner trustRinit/trustRmax below:
   # checkmate's lower= is inclusive, and a zero radius can never step.
@@ -1777,6 +1786,9 @@ foceiControl <- function(sigdig = 3, #
       stop("innerHessian=\"conditional\" with innerOpt=\"n1qn1\" requires warm=\"calc\"",
            call. = FALSE)
     }
+  }
+  if (detHessian == "conditional" && (!isTRUE(fast) || !isTRUE(as.logical(interaction)))) {
+    stop("detHessian=\"conditional\" requires fast FOCEI", call. = FALSE)
   }
   if (!is.null(.xtra$resetEtaSize)) {
     .resetEtaSize <- .xtra$resetEtaSize
@@ -2007,6 +2019,7 @@ foceiControl <- function(sigdig = 3, #
     innerOpt = innerOpt,
     hessianMethod = hessianMethod,
     innerHessian = innerHessian,
+    detHessian = detHessian,
     ## trust-region inner optimizer (RcppTrust)
     trustConf = as.double(trustConf),
     trustRinit = trustRinit,

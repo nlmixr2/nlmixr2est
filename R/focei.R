@@ -2107,7 +2107,8 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
 #' (interaction=1) and FOCE (interaction=0 -- the `ll()`/generalized path) inner builders.
 #' @noRd
 .foceiMaybeAddHdEta2 <- function(x, .s) {
-  .conditional <- identical(rxode2::rxGetControl(x[[1]], "innerHessian", "focei"), "conditional")
+  .conditional <- identical(rxode2::rxGetControl(x[[1]], "innerHessian", "focei"), "conditional") ||
+    identical(rxode2::rxGetControl(x[[1]], "detHessian", "focei"), "conditional")
   # linCmt() sensitivity carry (3b.3): no second-order carry exists, so a
   # model with a carry-eligible pair keeps the Shi21 finite-difference
   # inner Hessian (which differentiates the carry-corrected gradient).
@@ -3195,9 +3196,10 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
   ## sensitivities.  Version 2: .foceiModelCacheDeflate() stores eventSens.
   ## Version 3: the bundle gained eventEtaAll (#1016), which a v2 entry lacks.
   .cacheFormat <- 3L
-  .innerHessian <- rxode2::rxGetControl(.ui, "innerHessian", "focei")
+  .conditional <- rxode2::rxGetControl(.ui, "innerHessian", "focei") == "conditional" ||
+    rxode2::rxGetControl(.ui, "detHessian", "focei") == "conditional"
   digest::digest(c(
-    if (.innerHessian == "conditional") "conditionalInner1",
+    if (.conditional) "conditionalInner1",
     all(is.na(.iniDf$neta1)), .combSens, .linCmtCarry, .pkgVersion, .cacheFormat,
     rxode2::rxGetControl(.ui, "interaction", 1L),
     .iniDf$name,

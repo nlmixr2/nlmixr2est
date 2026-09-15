@@ -95,6 +95,15 @@
   `innerHessian="conditional"`, used by inner trust and n1qn1's `warm="calc"`
   seed. The FOCEI marginal objective was unchanged.
 
+- Added `foceiControl(detHessian="conditional")`: the objective's Laplace
+  log-determinant uses the full conditional Hessian (the observed information at
+  the conditional mode) instead of FOCEI's Gauss-Newton expected information.  The
+  analytic outer gradient carries the matching third-order term, probed the way the
+  analytic outer Hessian already does (2 solves per eta); the analytic covariance
+  and outer Hessian fall back to finite differences under it.  On `theo_sd` this
+  objective sits 0.4 above the exact (AGQ) marginal -2 log-likelihood where FOCEI
+  sits 1.3 below, at about 1.75x the FOCEI fit time (#1068).
+
 - Evaluated the conditional inner value, gradient and full curvature jointly
   in one pooled sensitivity solve, including M2/M3/M4 censoring.
 
