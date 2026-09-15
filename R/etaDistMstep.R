@@ -818,7 +818,7 @@
        q2 = .q2, q2Names = .split$q2,
        usable = as.integer(.c$usable), cov = .covK,
        exprs = .exprs, exprThetas = .c$thetas,
-       args = .c$args, rho = .c$rho,
+       args = .c$args, rho = .c$rho, anchor = .c$anchor,
        dist = .c$dist, thetas = .c$thetas, thetaPhi = .tp,
        corName = .rn, corPhi = .rp, corPhiByFam = .rpf, etas = .c$etas)
 }
@@ -1210,10 +1210,76 @@
   }
   .am <- matrix(0, nrow = .n, ncol = max(1L, .maxA))
   for (.i in seq_len(.n)) .am[.i, seq_along(.args[[.i]])] <- .args[[.i]]
+  ## WHERE the model computes each argument.  `rxEtaDistExpand()` hoists every
+  ## family argument onto its own model line, `rxEdA.<eta>.<role>`, so the
+  ## compiled model already evaluates them per observation -- covariates
+  ## included, through the ordinary covariate machinery, inside the ODE model
+  ## pool.  Carrying the NAMES lets the estimator read those values out of the
+  ## solve instead of evaluating the same argument expressions a second time in
+  ## its own code, which is both a duplicate source of truth and a second setup.
+  ##
+  ## Same order as `args`' columns: rxode2 normalizes a declaration's argument
+  ## order at the storage point, so element t is argument t on both sides.  NA
+  ## means the family emitted no line for that argument.
+  ## The declarations MUST be handed in: `rxEtaDistExpand()` removes `etaDist`
+  ## from the iniDf, so an expanded ui -- which is what this sees -- reports no
+  ## declarations and the anchors would come back empty.  `.st` is the stash
+  ## taken before expanding, which is the only surviving record.
+  .ancL <- tryCatch(rxode2::rxUiEtaDistAnchors(.ui, .st), error = function(e) NULL)
+  .anc <- matrix(NA_character_, nrow = .n, ncol = max(1L, .maxA))
+  if (is.list(.ancL) && length(.ancL) > 0L) {
+    for (.i in seq_len(.n)) {
+      .v <- .ancL[[.st$name[.i]]]
+      if (is.null(.v)) next
+      .v <- as.character(.v)
+      .k <- min(length(.v), ncol(.anc))
+      if (.k > 0L) .anc[.i, seq_len(.k)] <- .v[seq_len(.k)]
+    }
+  }
   list(n = .n, fam = .fam, corWith = .cw, args = .am, rho = .rho,
        corTheta = .corTheta, dist = .st$etaDist, thetas = .tn,
-       hasCov = .hasCov, usable = .usable, cov = .cov,
+       hasCov = .hasCov, usable = .usable, cov = .cov, anchor = .anc,
        etas = .st$name, iniDf = .ini)
+}
+
+#' The lhs index of each declared-distribution argument anchor
+#'
+#' `rxEtaDistExpand()` hoists every family argument onto its own model line,
+#' `rxEdA.<eta>.<role>`, so the compiled model computes them per observation --
+#' covariates included, through rxode2's ordinary covariate machinery, inside
+#' the ODE model pool.  This says WHERE in the solve's `lhs` vector each one
+#' lands, so the estimator reads the value instead of evaluating the argument
+#' expression a second time in its own code.
+#'
+#' Done in R, at setup, because this is where saem's model is in hand.  Doing it
+#' in C++ through `odeSwapLhsIndex()` does not work: saem drives its own solve
+#' (`saem_lhs = rxInner.calc_lhs`) and, measured at the point the sampler first
+#' asks, no odeSwap slot is loaded at all -- every name resolved to -1.
+#'
+#' @param anchor character matrix of anchor names, one row per declaration and
+#'   one column per family argument; `NA` where the family emits no line
+#' @param model the compiled saem model
+#' @return integer matrix the same shape, 0-based, `-1` where there is no
+#'   anchor or the model does not compute it
+#' @author Matthew L. Fidler
+#' @noRd
+.etaDistAnchorIndex <- function(anchor, model) {
+  .out <- matrix(-1L, nrow = nrow(anchor), ncol = ncol(anchor))
+  if (length(anchor) == 0L) return(.out)
+  ## `saem_mod` is a FUNCTION; its `rx` attribute is the rxode2 model, and that
+  ## is what has the lhs.  rxModelVars() on the function itself returns nothing,
+  ## which is how this silently resolved every anchor to -1 the first time.
+  .lhs <- NULL
+  for (.m in list(attr(model$saem_mod, "rx"), model$saem_mod, model)) {
+    if (is.null(.m)) next
+    .mv <- tryCatch(rxode2::rxModelVars(.m), error = function(e) NULL)
+    if (!is.null(.mv) && length(.mv$lhs) > 0L) { .lhs <- as.character(.mv$lhs); break }
+  }
+  if (is.null(.lhs)) return(.out)
+  .w <- match(as.character(anchor), .lhs)
+  .w[is.na(.w)] <- 0L
+  .out[] <- as.integer(.w) - 1L
+  .out
 }
 
 #' Declared-distribution M-step metadata for the FOCEi-family estimators

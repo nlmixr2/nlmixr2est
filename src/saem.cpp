@@ -771,6 +771,14 @@ static void gZeroOmNmFn(double *p, double *fx);
 // sibling of gPhi0Self/gPhi0ObjR above, same bounded-bobyqa/.boundedResidOpt
 // wiring.  Defined after the class body.
 static SAEM* gPhi1Self = nullptr;
+// Reached from the solve passes, which are static free functions, to
+// harvest the declared-distribution argument anchors out of each
+// individual's lhs.  Same pattern as gPhi0Self/gPhi1Self above.
+static SAEM* gAnchorSelf = nullptr;
+// Set per solve request: is this the state solve, or a candidate evaluation
+// from the phi0 search?  The pooled read path is a separate function and cannot
+// see user_function's local, so the decision is shared here.
+static bool gAnchorAtState = false;
 static double gPhi1ObjR(Rcpp::NumericVector p);
 static arma::vec gPhi1Full;
 static std::vector<int> gPhi1FreeIx;
@@ -1008,10 +1016,17 @@ class SAEM {
 public:
 
   SAEM() {
+    // Point the harvest's file-static at this fit.  It used to be set inside the
+    // declared-distribution branch of inits(), so a later fit on a model with no
+    // declaration left it pointing at a destroyed object -- measured as
+    // "double free or corruption (out)" part-way through a test file.
+    gAnchorSelf = this;
     user_fn = NULL;
   }
 
-  ~SAEM() {}
+  ~SAEM() {
+    if (gAnchorSelf == this) gAnchorSelf = nullptr;
+  }
 
   // Total observation -log-likelihood at candidate fixed-effect (phi0) values p,
   // holding the current phi1 samples fixed (general-likelihood / distribution==4:
@@ -3702,6 +3717,38 @@ public:
         }
       }
       etaDistArgs    = as<mat>(x["etaDistArgs"]);
+      // WHERE the model computes each argument: `rxEdA.<eta>.<role>`, one model
+      // line per family argument, in the same column order as etaDistArgs.  The
+      // compiled model evaluates these per observation -- covariates included,
+      // through rxode2's ordinary covariate machinery, inside the ODE model
+      // pool -- so the arguments are READ from the solve rather than evaluated a
+      // second time here.
+      //
+      // R resolves the names to lhs indices, because that is where saem's model
+      // is in hand.  Resolving them here through odeSwapLhsIndex() does not
+      // work: saem drives its own solve (saem_lhs = rxInner.calc_lhs) and, at
+      // the point the sampler first asks, no odeSwap slot is loaded at all --
+      // every name came back -1.
+      //
+      // -1 means no anchor: the family emitted no line for that argument (a
+      // normal-based family collapses onto its latent), and it keeps its
+      // population value.
+      etaDistAnchorNlhs = x.containsElementNamed("etaDistAnchorNlhs") ?
+        as<int>(x["etaDistAnchorNlhs"]) : 0;
+      etaDistAnchorIdx.clear();
+      if (x.containsElementNamed("etaDistAnchorIdx")) {
+        Rcpp::IntegerMatrix ai(x["etaDistAnchorIdx"]);
+        int nr = ai.nrow(), nc = ai.ncol();
+        etaDistAnchorIdx.resize((size_t)nr);
+        for (int r = 0; r < nr; ++r) {
+          etaDistAnchorIdx[(size_t)r].assign((size_t)nc, -1);
+          for (int c = 0; c < nc; ++c) {
+            int v = ai(r, c);
+            etaDistAnchorIdx[(size_t)r][(size_t)c] =
+              (v == NA_INTEGER || v < 0) ? -1 : v;
+          }
+        }
+      }
       etaDistRho     = as<vec>(x["etaDistRho"]);
       etaDistThetaPhi0 = as<imat>(x["etaDistThetaPhi0"]);
       etaDistNth     = as<ivec>(x["etaDistNth"]);
@@ -6842,6 +6889,23 @@ private:
   // and their names, in the same order as the matrix columns -- the parser
   // needs the symbol, the objective needs the value.
   std::vector< std::vector<std::string> > etaDistCovNames;
+  // The lhs index of each declaration argument's `rxEdA.<eta>.<role>` line,
+  // resolved in R at setup against saem's own model.  -1 = no anchor.
+  std::vector< std::vector<int> > etaDistAnchorIdx;
+  // Harvested anchor values, one row per SUBJECT and one column per (k, arg).
+  // This is the subject's FIRST record, which is the whole story when the
+  // declaration's covariates do not vary within a subject.
+  mutable arma::mat etaDistAnchorVal;
+  mutable std::vector<char> etaDistAnchorHave;
+  // EVERY record's anchors, per subject: a flat nrec x (ndist*na) block.  Kept
+  // because a declaration whose covariates vary WITHIN a subject has no single
+  // argument set, and its prior is a weighted per-observation likelihood rather
+  // than one density at one record.
+  mutable std::vector< std::vector<double> > etaDistAnchorRows;
+  mutable std::vector<int> etaDistAnchorNrec;
+  // Per declaration: do this declaration's anchors vary within any subject?
+  // 0 = not yet computed for this pass, 1 = varies, 2 = constant.
+  mutable std::vector<char> etaDistVariesK;
   // 1 where this M-step owns the declaration's family; 0 where it stands down
   // for that declaration alone -- an argument that varies by subject has no
   // single population value to fit.  Empty means every declaration is usable,
@@ -8253,10 +8317,217 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
     return true;
   }
 
-  bool etaDistArgsFor(int k, unsigned int r, double *a, int na) const {
-    if (!etaDistArgsHaveCov(k)) return etaDistArgsPop(k, a, na);
-    return etaDistArgsCovRow(k, r, a, na);
+  // Does the model compute ANY of this declaration's arguments?
+  bool etaDistAnchorOn(int k) const {
+    if (k < 0 || k >= (int)etaDistAnchorIdx.size()) return false;
+    for (size_t t = 0; t < etaDistAnchorIdx[(size_t)k].size(); ++t) {
+      if (etaDistAnchorIdx[(size_t)k][t] >= 0) return true;
+    }
+    return false;
   }
+
+  // This declaration's arguments for the subject owning phiM row `r`.
+  //
+  // Preference order, and each step is a fallback for exactly one reason:
+  //
+  //   1. the values HARVESTED from the solve -- the model computed them per
+  //      observation, so a covariate is already in them;
+  //   2. the population set, for an argument the model emits no line for.
+  //
+  // Reading the solve rather than re-evaluating the argument expressions is
+  // what keeps one source of truth: the same arithmetic, in the pooled model,
+  // done once.
+  bool etaDistArgsFor(int k, unsigned int r, double *a, int na) const {
+    // No anchors -- the model does not compute this declaration's arguments, or
+    // their lhs indices did not resolve -- so use the expression evaluator.
+    if (!etaDistAnchorOn(k)) {
+      if (!etaDistArgsHaveCov(k)) return etaDistArgsPop(k, a, na);
+      return etaDistArgsCovRow(k, r, a, na);
+    }
+    unsigned int subj = (N > 0) ? (r % (unsigned int)N) : 0;
+    bool harvested = (subj < etaDistAnchorHave.size() && etaDistAnchorHave[subj]);
+    if (!harvested) {
+      // the harvest has not run for this subject yet this pass
+      if (etaDistArgsHaveCov(k)) return etaDistArgsCovRow(k, r, a, na);
+      return etaDistArgsPop(k, a, na);
+    }
+    // Seed from the population set WITHOUT requiring it to be finite, then let
+    // the harvested values overwrite.
+    //
+    // Requiring it finite first is wrong and was measured to be: a
+    // covariate-carrying argument has NO population value -- the R side leaves
+    // it NA on purpose, and the trace shows `pop(shape,rate) = 1.25 nan`.
+    // `etaDistArgsPop()` therefore failed, this returned false, the prior became
+    // +Inf and the sampler degenerated: the gamma's etas went NEGATIVE at every
+    // seed and bWT scattered (0.1234 / 0.4962 / 0.4425 against a truth of 0.75,
+    // where the evaluator path gives 0.7441 / 0.7432 / 0.7618).  It looked for a
+    // long time like "any second lhs in saem's model breaks the fit"; it was
+    // this, tripped by the anchors resolving.
+    for (int t = 0; t < na; ++t) a[t] = etaDistArgs(k, t);
+    const std::vector<int> &ix = etaDistAnchorIdx[(size_t)k];
+    for (int t = 0; t < na && t < (int)ix.size(); ++t) {
+      if (ix[(size_t)t] < 0) continue;            // no line; keep population
+      a[t] = etaDistAnchorVal(subj, (unsigned int)etaDistAnchorCol(k, t));
+    }
+    // now every argument must be usable, whatever supplied it
+    for (int t = 0; t < na; ++t) if (!std::isfinite(a[t])) return false;
+    return true;
+  }
+
+  // Flat column for (declaration, argument) in etaDistAnchorVal
+  int etaDistAnchorCol(int k, int t) const {
+    int na = (int)etaDistArgs.n_cols;
+    return k*na + t;
+  }
+
+public:
+  // Is this solve at the CURRENT STATE, or is it a candidate evaluation?
+  //
+  // saem solves many times per iteration and not all of them are the state: the
+  // phi0 search (newuoa/bobyqa, reached through R) re-solves once per candidate,
+  // with phi0 set to the candidate rather than to the fit's current value.
+  // Harvesting indiscriminately captured those -- measured, a solve arrived with
+  // phi0 = 2.29335, 3.65121, 0.358568, -1.36372 where the state was 1.38629,
+  // 3.91202, -0.223144, 0.3, and `rxd.eta.cl` came through NEGATIVE, which a
+  // gamma random effect cannot be.
+  //
+  // The test is the thing we actually care about rather than a proxy for it: a
+  // state solve carries the state's phi0.  A candidate differs in at least the
+  // coordinate being searched, so it is rejected by construction.
+  bool etaDistAnchorAtState(const arma::mat &phi) const {
+    if (nphi0 <= 0 || phi.n_rows == 0) return false;
+    if ((int)i0.n_elem != nphi0 || (int)mprior_phi0.n_cols < nphi0) return false;
+    for (int c = 0; c < nphi0; ++c) {
+      unsigned int col = (unsigned int)i0(c);
+      if (col >= phi.n_cols) return false;
+      double a = phi(0, col), b = mprior_phi0(0, c);
+      if (!std::isfinite(a) || !std::isfinite(b)) return false;
+      if (fabs(a - b) > 1e-8*(1.0 + fabs(b))) return false;
+    }
+    return true;
+  }
+
+  // Start a fresh harvest.  Called once per solve pass: the anchors are
+  // functions of the thetas and the subject's covariates, so they change when
+  // the thetas move and are constant across the chains and across the MCMC
+  // sweep that follows.
+  void etaDistAnchorReset() const {
+    int na = (int)etaDistArgs.n_cols;
+    if (etaDistNdist <= 0 || etaDistAnchorIdx.empty() || N <= 0 || na <= 0) {
+      etaDistAnchorHave.clear();
+      return;
+    }
+    if ((int)etaDistAnchorVal.n_rows != N ||
+        (int)etaDistAnchorVal.n_cols != etaDistNdist*na) {
+      etaDistAnchorVal.set_size((unsigned int)N, (unsigned int)(etaDistNdist*na));
+    }
+    etaDistAnchorVal.fill(NA_REAL);
+    etaDistAnchorHave.assign((size_t)N, 0);
+    etaDistAnchorRows.assign((size_t)N, std::vector<double>());
+    etaDistAnchorNrec.assign((size_t)N, 0);
+    etaDistVariesK.clear();
+  }
+
+  // Take one individual's anchor values out of its lhs buffer.
+  //
+  // Only `id < N` -- the FIRST chain -- writes.  phiM stacks the chains, so
+  // every subject appears nmc times and the anchors are identical across them
+  // (they depend on the thetas and the covariates, not on eta); restricting to
+  // one chain makes the writer unique, which matters because the pooled solve
+  // runs this under OpenMP.
+  // `nlhs` of the model actually being solved.  The harvest is called from more
+  // than one solve path and they do NOT all solve the same model, so an index
+  // resolved against saem's own model can point past a shorter model's lhs
+  // buffer.  Measured: reading lhs[1] on such a path segfaulted.
+  mutable int etaDistAnchorNlhs = 0;
+  void etaDistAnchorHarvest(int id, const double *lhs) const {
+    if (etaDistAnchorHave.empty() || lhs == NULL) return;
+    if (id < 0 || id >= N) return;
+    if (etaDistAnchorNlhs <= 0) return;
+    int na = (int)etaDistArgs.n_cols;
+    int ncol = etaDistNdist*na;
+    if (ncol <= 0) return;
+    // EVERY record, appended in record order.  The first one also fills the
+    // per-subject row, which is what a declaration with no within-subject
+    // variation uses.
+    std::vector<double> &rows = etaDistAnchorRows[(size_t)id];
+    size_t base = rows.size();
+    rows.resize(base + (size_t)ncol, NA_REAL);
+    for (int k = 0; k < etaDistNdist && k < (int)etaDistAnchorIdx.size(); ++k) {
+      const std::vector<int> &ix = etaDistAnchorIdx[(size_t)k];
+      for (int t = 0; t < na && t < (int)ix.size(); ++t) {
+        if (ix[(size_t)t] < 0 || ix[(size_t)t] >= etaDistAnchorNlhs) continue;
+        double v = lhs[ix[(size_t)t]];
+        rows[base + (size_t)etaDistAnchorCol(k, t)] = v;
+        if (!etaDistAnchorHave[(size_t)id]) {
+          etaDistAnchorVal((unsigned int)id,
+                           (unsigned int)etaDistAnchorCol(k, t)) = v;
+        }
+      }
+    }
+    etaDistAnchorNrec[(size_t)id]++;
+    etaDistAnchorHave[(size_t)id] = 1;
+  }
+
+  // Does this declaration's argument set vary WITHIN a subject?
+  //
+  // Decided from the harvested records rather than declared up front: a
+  // covariate that is constant in the data behaves as constant whatever its
+  // column could in principle do, and a declaration with no covariate at all
+  // must not pay for the weighted path.  Computed once per harvest pass.
+  bool etaDistVaries(int k) const {
+    if (k < 0 || k >= etaDistNdist) return false;
+    int na = (int)etaDistArgs.n_cols;
+    int ncol = etaDistNdist*na;
+    if (ncol <= 0) return false;
+    if ((int)etaDistVariesK.size() != etaDistNdist) {
+      etaDistVariesK.assign((size_t)etaDistNdist, 2);
+      for (int kk = 0; kk < etaDistNdist; ++kk) {
+        for (size_t sj = 0; sj < etaDistAnchorRows.size(); ++sj) {
+          int nrec = etaDistAnchorNrec[sj];
+          if (nrec <= 1) continue;
+          const std::vector<double> &rows = etaDistAnchorRows[sj];
+          bool diff = false;
+          for (int t = 0; t < na && !diff; ++t) {
+            double v0 = rows[(size_t)etaDistAnchorCol(kk, t)];
+            for (int r = 1; r < nrec; ++r) {
+              double v = rows[(size_t)r*(size_t)ncol +
+                              (size_t)etaDistAnchorCol(kk, t)];
+              if (v != v0 && (std::isfinite(v) || std::isfinite(v0))) {
+                diff = true; break;
+              }
+            }
+          }
+          if (diff) { etaDistVariesK[(size_t)kk] = 1; break; }
+        }
+      }
+    }
+    return etaDistVariesK[(size_t)k] == 1;
+  }
+
+  // This declaration's arguments at ONE harvested record of a subject.
+  bool etaDistArgsAtRec(int k, unsigned int subj, int rec,
+                        double *a, int na) const {
+    if (subj >= etaDistAnchorRows.size()) return false;
+    int ncol = etaDistNdist*na;
+    const std::vector<double> &rows = etaDistAnchorRows[subj];
+    if (rec < 0 || (size_t)(rec + 1)*(size_t)ncol > rows.size()) return false;
+    for (int t = 0; t < na; ++t) a[t] = etaDistArgs(k, t);
+    const std::vector<int> &ix = etaDistAnchorIdx[(size_t)k];
+    for (int t = 0; t < na && t < (int)ix.size(); ++t) {
+      if (ix[(size_t)t] < 0) continue;
+      a[t] = rows[(size_t)rec*(size_t)ncol + (size_t)etaDistAnchorCol(k, t)];
+    }
+    for (int t = 0; t < na; ++t) if (!std::isfinite(a[t])) return false;
+    return true;
+  }
+
+  int etaDistNrec(unsigned int subj) const {
+    if (subj >= etaDistAnchorNrec.size()) return 0;
+    return etaDistAnchorNrec[subj];
+  }
+
+private:
 
   bool etaDistDirectOn() const {
     return etaDistDirect != 0 && etaDistNdist > 0 &&
@@ -8364,14 +8635,57 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
   // rejected rather than guessed at.
   void etaDistDirectUOne(const mat &phiCols, int k, unsigned int c, int na,
                          double *a1, arma::vec &out) const {
+    bool varies = etaDistVaries(k);
     for (unsigned int r = 0; r < phiCols.n_rows; ++r) {
-      if (!etaDistArgsFor(k, r, a1, na)) {
-        out(r) += std::numeric_limits<double>::infinity();
-        continue;
+      double l;
+      if (varies) {
+        l = etaDistWeightedLogD(k, r, phiCols(r, c), a1, na);
+      } else {
+        if (!etaDistArgsFor(k, r, a1, na)) {
+          out(r) += std::numeric_limits<double>::infinity();
+          continue;
+        }
+        l = rxEtaDistLogD(etaDistFam(k), phiCols(r, c), a1);
       }
-      double l = rxEtaDistLogD(etaDistFam(k), phiCols(r, c), a1);
       out(r) += R_finite(l) ? -l : std::numeric_limits<double>::infinity();
     }
+  }
+
+  // The WEIGHTED PER-OBSERVATION log density for a declaration whose arguments
+  // vary within the subject.
+  //
+  //   sum_r wt_r * log p(eta_i | args_r),   wt_r = 1/n_i
+  //
+  // A within-subject-varying covariate gives the declaration no single argument
+  // set, so there is no one density to evaluate: the first record's answer
+  // would be an arbitrary choice among n_i of them.  Weighting by 1/n_i keeps
+  // the result on the scale of ONE density, so a subject with more records does
+  // not thereby get a sharper prior -- which is what `rxEtaDistLoglikObj`'s
+  // `wt` argument has documented as `1/n_i` all along.
+  //
+  // Any record whose arguments cannot be built makes the whole subject
+  // non-finite, the same treatment a single unbuildable set gets: rejected,
+  // never averaged around.
+  double etaDistWeightedLogD(int k, unsigned int r, double x,
+                             double *a, int na) const {
+    unsigned int subj = (N > 0) ? (r % (unsigned int)N) : 0;
+    int nrec = etaDistNrec(subj);
+    if (nrec <= 0) {
+      if (!etaDistArgsFor(k, r, a, na)) {
+        return std::numeric_limits<double>::quiet_NaN();
+      }
+      return rxEtaDistLogD(etaDistFam(k), x, a);
+    }
+    double acc = 0.0, w = 1.0/(double)nrec;
+    for (int rec = 0; rec < nrec; ++rec) {
+      if (!etaDistArgsAtRec(k, subj, rec, a, na)) {
+        return std::numeric_limits<double>::quiet_NaN();
+      }
+      double l = rxEtaDistLogD(etaDistFam(k), x, a);
+      if (!R_finite(l)) return std::numeric_limits<double>::quiet_NaN();
+      acc += w*l;
+    }
+    return acc;
   }
 
   // A copula-linked PAIR's contribution, scored jointly.  Both members are
@@ -8380,13 +8694,42 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
   void etaDistDirectUPair(const mat &phiCols, int k, unsigned int c,
                           int j, unsigned int cj, double rho, int na,
                           double *a1, double *a2, arma::vec &out) const {
+    bool varies = etaDistVaries(k) || etaDistVaries(j);
     for (unsigned int r = 0; r < phiCols.n_rows; ++r) {
-      if (!etaDistArgsFor(k, r, a1, na) || !etaDistArgsFor(j, r, a2, na)) {
-        out(r) += std::numeric_limits<double>::infinity();
-        continue;
+      double l;
+      if (varies) {
+        // weighted per observation, as for a single declaration -- the pair is
+        // scored JOINTLY at each record, so a covariate on either member moves
+        // the joint density for that record
+        unsigned int subj = (N > 0) ? (r % (unsigned int)N) : 0;
+        int nrec = etaDistNrec(subj);
+        if (nrec <= 0) {
+          out(r) += std::numeric_limits<double>::infinity();
+          continue;
+        }
+        double acc = 0.0, w = 1.0/(double)nrec;
+        bool ok = true;
+        for (int rec = 0; rec < nrec && ok; ++rec) {
+          if (!etaDistArgsAtRec(k, subj, rec, a1, na) ||
+              !etaDistArgsAtRec(j, subj, rec, a2, na)) { ok = false; break; }
+          double lr = rxEtaDistPairLogD(etaDistFam(k), phiCols(r, c), a1,
+                                        etaDistFam(j), phiCols(r, cj), a2, rho);
+          if (!R_finite(lr)) { ok = false; break; }
+          acc += w*lr;
+        }
+        if (!ok) {
+          out(r) += std::numeric_limits<double>::infinity();
+          continue;
+        }
+        l = acc;
+      } else {
+        if (!etaDistArgsFor(k, r, a1, na) || !etaDistArgsFor(j, r, a2, na)) {
+          out(r) += std::numeric_limits<double>::infinity();
+          continue;
+        }
+        l = rxEtaDistPairLogD(etaDistFam(k), phiCols(r, c), a1,
+                              etaDistFam(j), phiCols(r, cj), a2, rho);
       }
-      double l = rxEtaDistPairLogD(etaDistFam(k), phiCols(r, c), a1,
-                                   etaDistFam(j), phiCols(r, cj), a2, rho);
       out(r) += R_finite(l) ? -l : std::numeric_limits<double>::infinity();
     }
   }
@@ -9760,6 +10103,11 @@ static void saemReadRowsPooled(mat &g, int &elt, bool &hasNan, int nInd) {
         rowNan[i] = 1;
         continue;
       }
+      // Only i < N writes (the first chain), so the writer is unique per
+      // subject and this is safe under the OpenMP loop above.
+      if (gAnchorSelf != nullptr && gAnchorAtState) {
+        gAnchorSelf->etaDistAnchorHarvest(i, lhs);
+      }
       double cur = lhs[(_saemReadSlot == odeSlotThetaSens)
                        ? _saemThetaSensPredOffset : _saemOwnPredOffset];
       if (std::isnan(cur)) { cur = 1.0e99; rowNan[i] = 1; }
@@ -9890,6 +10238,26 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
   mat g(getRxNsim(_rx) * getRxNobs2(_rx), 3); // nobs across all chains
   int elt=0;
   bool hasNan = false;
+  // The declared-distribution argument anchors are ordinary model lhs, computed
+  // per observation by the compiled model.  Harvest them from this pass rather
+  // than evaluating the argument expressions again elsewhere.
+  // OFF by default.  Two reasons, both measured, and both have to be fixed
+  // before this can be switched on:
+  //
+  //   * saem's model does not receive the declaration's thetas correctly.  With
+  //     `rxEdA.eta.cl.shape=exp(-lclrv)` emitted, the model computed 0.698676
+  //     where lclrv = -0.223144 gives exp(0.223144) = 1.25.  Nothing read those
+  //     params before, so the defect was invisible.
+  //   * `gAnchorSelf` is a file-static set during one fit's control ingestion
+  //     and is not cleared when that SAEM object dies, so a later fit on a
+  //     model with no declaration used a dangling pointer -- measured as
+  //     "double free or corruption (out)" part-way through a test file, while a
+  //     single-fit script was fine.
+  bool _edAtState = (gAnchorSelf != nullptr) && gAnchorSelf->etaDistAnchorAtState(_phi);
+  gAnchorAtState = _edAtState;
+  if (gAnchorSelf != nullptr && _edAtState) {
+    gAnchorSelf->etaDistAnchorReset();
+  }
   if (_saemOwnSolveSlot >= 0) {
     saemReadRowsPooled(g, elt, hasNan, _Nnlmixr2);
   } else {
@@ -9908,6 +10276,9 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
       } else if (getIndEvid(ind,kk) == 0) {
         saem_lhs((int)id, curT,
                  getOpIndSolve(op, ind, j), lhs);
+        if (gAnchorSelf != nullptr && _edAtState) {
+          gAnchorSelf->etaDistAnchorHarvest((int)id, lhs);
+        }
         double cur = lhs[0];
         if (std::isnan(cur)) {
           cur = 1.0e99;

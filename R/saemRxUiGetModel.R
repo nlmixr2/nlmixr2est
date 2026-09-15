@@ -435,6 +435,29 @@ rxUiGet.saemModel <- function(x, ...) {
     if (is.null(.lhs)) .lhs <- character(0)
     .preLhs <- sub("^([^=]+)=", "\\1~", .lhs)
   }
+  ## KEEP the declared-distribution argument anchors as model lhs.
+  ##
+  ## `rxEtaDistExpand()` hoists every family argument onto its own line,
+  ## `rxEdA.<eta>.<role>`, so the model computes a declaration's arguments per
+  ## observation -- covariates included, through the ordinary covariate
+  ## machinery, inside the ODE model pool.  On the direct route nothing in the
+  ## observation path reads them, so this model emitted only `rx_pred_` and the
+  ## anchors never reached the solve: measured, saem's model had exactly one
+  ## lhs, `rx_pred_`, and every anchor resolved to index -1.
+  ##
+  ## They survive symengine's prune -- they are in `.s$..lhs` as
+  ## `rxEdA.eta.cl.rate=exp(-(lclm+lclrv+bWT*log(0.0142857142857143*WT)))` --
+  ## they were simply never written out.  Emitted with `=` rather than `~` so
+  ## they are kept lhs and land in `rxModelVars()$lhs`, which is what the
+  ## estimator indexes to read them.
+  .anchorLhs <- character(0)
+  .allLhs <- .s$..lhs
+  if (!is.null(.allLhs)) .anchorLhs <- .allLhs[grepl("^rxEdA[.]", .allLhs)]
+  if (length(.anchorLhs) > 0L && length(.preLhs) > 0L) {
+    ## a matExp model already emitted every lhs as `~` (computed, not kept);
+    ## drop the anchors from there so the `=` form below is the only copy
+    .preLhs <- .preLhs[!grepl("^rxEdA[.]", .preLhs)]
+  }
   .ret <- paste(c(
     #.s$..stateInfo["state"],
     #.lhs0,
@@ -444,7 +467,15 @@ rxUiGet.saemModel <- function(x, ...) {
     ## gradient-free and builds .s without sensitivities, so re-inject the history
     ## (which the symengine interception dropped) from the stored rx__pastRhs_.
     rxode2::.rxPastBaseLinesFromEnv(.s),
+    ## AFTER rx_pred_, never before: the serial solve path reads the prediction
+    ## as `lhs[0]` (src/saem.cpp), so an lhs emitted ahead of it silently
+    ## becomes the prediction.  Measured with the anchors emitted first --
+    ## rx_pred_ moved to index 2 and the fit read a gamma shape as its
+    ## prediction: bWT 0.3 -> -0.1050 against a truth of 0.75, with sampled
+    ## etas outside the family's support.
     .prd,
+    .anchorLhs,
+
     #.s$..stateInfo["statef"],
     #.s$..stateInfo["dvid"],
     ""

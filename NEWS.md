@@ -49,6 +49,22 @@
   promotion.  A modeled residual on a `boxCox()`/`yeoJohnson()` endpoint is
   refused, since `dnorm()` omits the lambda-dependent Jacobian.
 
+- A `dist()` declaration's arguments are now READ from the solve rather than
+  evaluated a second time inside saem.  `rxEtaDistExpand()` hoists each family
+  argument onto its own model line, `rxEdA.<eta>.<role>`, so the compiled model
+  already computes them per observation -- covariates included, through
+  rxode2's ordinary covariate machinery, inside the ODE model pool.  saem had
+  been re-deriving the same arithmetic in a private expression evaluator, which
+  is a second source of truth for it.  The expression evaluator remains as the
+  fallback for a declaration whose arguments the model does not compute.
+
+- A declaration whose covariates vary WITHIN a subject now gets a weighted
+  per-observation prior, `sum_r log p(eta_i | args_r)/n_i`, instead of one
+  density at an arbitrarily chosen record.  Where nothing varies within a
+  subject the first record is used and results are unchanged.  Measured on a
+  120-subject arm with a true coefficient of 0.75 and a monotonically ramped
+  covariate: `bWT` 0.7365 taking the first record, 0.7419 weighted.
+
 - `saemControl(etaDistParam="direct")` now estimates a covariate on a `dist()`
   declaration.  The direct route makes the declared random effect itself the
   random effect, so its `dist()` arguments are its prior; those arguments are

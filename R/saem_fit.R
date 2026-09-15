@@ -569,6 +569,13 @@
   ## means no covariate and reproduces the previous behaviour exactly.
   etaDistCov <- list(); etaDistCovN <- integer(0)
   etaDistArgs <- matrix(0, 0, 0); etaDistRho <- numeric(0)
+  ## The model variable holding each declaration argument,
+  ## `rxEdA.<eta>.<role>`, in the same column order as etaDistArgs.  The
+  ## compiled model computes these per observation, so the estimator reads
+  ## them from the solve rather than re-evaluating the argument expressions.
+  ## NA where the family emitted no line for that argument.
+  etaDistAnchor <- matrix(NA_character_, 0, 0)
+  etaDistAnchorIdx <- matrix(-1L, 0, 0)
   etaDistThetaPhi0 <- matrix(-1L, 0, 0); etaDistNth <- integer(0)
   ## aligned with the declared families; empty when there are none
   etaDistCorPhi0 <- integer(0)
@@ -622,6 +629,26 @@
       etaDistUsable  <- if (is.null(etaDistInfo$usable)) rep(1L, .nd)
                         else as.integer(etaDistInfo$usable)
       etaDistArgs    <- as.matrix(etaDistInfo$args)
+      etaDistAnchor  <- if (is.null(etaDistInfo$anchor)) {
+                          matrix(NA_character_, .nd, max(1L, ncol(etaDistArgs)))
+                        } else {
+                          matrix(as.character(etaDistInfo$anchor),
+                                 nrow = nrow(etaDistInfo$anchor))
+                        }
+      ## Resolve each anchor NAME to its lhs index here, in R, where the model
+      ## saem is about to solve is in hand.  C++ then receives integers and does
+      ## no lookup of its own.
+      ##
+      ## It was tried the other way first -- C++ resolving the names through
+      ## `odeSwapLhsIndex(odeSlotPred, ...)` -- and that cannot work: saem drives
+      ## its own solve (`saem_lhs = rxInner.calc_lhs`), and measured at the point
+      ## the sampler first asks, NO odeSwap slot is loaded at all, so every name
+      ## resolved to -1 and a resolve-once cache would have kept that answer for
+      ## the whole fit.
+      ##
+      ## 0-based for C++; -1 means "no anchor", which is also what an argument
+      ## the model does not compute gets.
+      etaDistAnchorIdx <- .etaDistAnchorIndex(etaDistAnchor, model)
       etaDistRho     <- as.numeric(etaDistInfo$rho)
       etaDistThetaPhi0 <- .tp
       etaDistNth     <- .nth
@@ -1055,6 +1082,10 @@
     etaDistCov = etaDistCov,
     etaDistCovN = etaDistCovN,
     etaDistArgs = etaDistArgs,
+    etaDistAnchorIdx = etaDistAnchorIdx,
+    ## the lhs buffer bound for the harvest: an index resolved against
+    ## saem's own model must never be read out of a shorter model's buffer
+    etaDistAnchorNlhs = as.integer(nlhs)[1],
     etaDistRho = etaDistRho,
     etaDistThetaPhi0 = etaDistThetaPhi0,
     etaDistNth = etaDistNth,
