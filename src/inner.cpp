@@ -17941,6 +17941,39 @@ static bool foceiHessianThird(double step, const arma::mat &etaAt, const FoceiGr
   return true;
 }
 
+// One expanded 2nd-order solve of every subject at a given eta matrix, the base of
+// every 3rd-order probe (outer Hessian and full-determinant gradient alike).
+struct FoceiHessianModel {
+  FoceiHessianProbes &probes;
+  const FoceiGradPooledSetup &g;
+  const std::vector<double> &theta;
+  bool frozen;
+  int cores;
+
+  bool solve(const arma::mat &eta, std::vector<VaeOuterE> &e) {
+    auto *op = getSolvingOptions(rx);
+    probes.reset();
+    outerSolveFill(odeSlotOuter,&rxVaeOuter,theta,eta,g,cores,op,getRxNsub(rx),g.neta,e);
+    for (auto &one : e) if (!foceiHessianExpand(one,g,!frozen)) return false;
+    return true;
+  }
+
+  bool population(std::vector<VaeOuterE> &e) {
+    arma::mat zero(getRxNsub(rx),g.neta,arma::fill::zeros);
+    if (!solve(zero,e)) return false;
+    for (const auto &one : e) if (one.R.min() <= std::sqrt(DBL_EPSILON)) return false;
+    return true;
+  }
+};
+
+// 1-based direction of every (theta, sigma) parameter in the expanded layout.
+static arma::ivec foceiHessianDirs(const FoceiGradPooledSetup &g) {
+  arma::ivec dirs(g.nth+g.nsg);
+  for (int k = 0; k < g.nth; ++k) dirs[k] = g.dirTh[k];
+  for (int k = 0; k < g.nsg; ++k) dirs[g.nth+k] = g.nd+k+1;
+  return dirs;
+}
+
 static bool gradPooledCore(const FoceiGradPooledSetup &G,
                            const std::vector<double> &thVals, const arma::mat &ebes,
                            const arma::mat &Oi, const arma::cube &dOiEst,
@@ -18043,21 +18076,15 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
       if (!foceiHessianExpand(Es[(size_t)i], G)) return declineHere(28);
     Ath.resize((size_t)nsub); AthR.resize((size_t)nsub);
     FoceiHessianProbes probes;
-    auto solve = [&](const arma::mat &eta, std::vector<VaeOuterE> &e) {
-      probes.reset();
-      outerSolveFill(odeSlotOuter, &rxVaeOuter, thVals, eta, G, cores, op, nsub, neta, e);
-      for (auto &one : e) if (!foceiHessianExpand(one, G)) return false;
-      return true;
-    };
+    FoceiHessianModel model{probes, G, thVals, false, cores};
+    auto solve = [&](const arma::mat &eta, std::vector<VaeOuterE> &e) { return model.solve(eta, e); };
     if (!foceiHessianThird(op_focei.outerThirdStep, ebes, G, Es, false, solve, Ath, AthR, 2)) {
       op_focei.nDeclineThird++;
       return declineHere(29);
     }
     for (int i = 0; i < nsub; ++i)
       if (!Ath[(size_t)i].is_finite() || !AthR[(size_t)i].is_finite()) return declineHere(30);
-    dirP.set_size(nth + nsg);
-    for (int k = 0; k < nth; ++k) dirP[k] = G.dirTh[(size_t)k];
-    for (int k = 0; k < nsg; ++k) dirP[nth + k] = nd + k + 1;
+    dirP = foceiHessianDirs(G);
   }
 
   // ---- kernel -----------------------------------------------------------------------
@@ -24857,28 +24884,6 @@ struct FoceiHessianSubjects {
   }
 };
 
-struct FoceiHessianModel {
-  FoceiHessianCall &d;
-  const FoceiGradPooledSetup &g;
-  const std::vector<double> &theta;
-  bool frozen;
-
-  bool solve(const arma::mat &eta, std::vector<VaeOuterE> &e) {
-    auto *op = getSolvingOptions(rx);
-    d.probes->reset();
-    outerSolveFill(odeSlotOuter,&rxVaeOuter,theta,eta,g,getOpCores(op),op,getRxNsub(rx),g.neta,e);
-    for (auto &one : e) if (!foceiHessianExpand(one,g,!frozen)) return false;
-    return true;
-  }
-
-  bool population(std::vector<VaeOuterE> &e) {
-    arma::mat zero(d.eta.n_rows,g.neta,arma::fill::zeros);
-    if (!solve(zero,e)) return false;
-    for (const auto &one : e) if (one.R.min() <= std::sqrt(DBL_EPSILON)) return false;
-    return true;
-  }
-};
-
 static void foceiHessianScale(FoceiHessianCall &d, const FoceiGradPooledSetup &g,
                                const arma::mat &information) {
   double scale = op_focei.scaleObjective == 2 ? op_focei.scaleObjectiveTo/op_focei.initObjective : 1;
@@ -24906,7 +24911,7 @@ static void foceiHessianAssemble(void *ptr) {
     arma::mat d2ld;
     if (!foceiHessianOmega(doi,d2oi,d2ld)) return;
     std::vector<double> theta(op_focei.fullTheta,op_focei.fullTheta+op_focei.ntheta);
-    FoceiHessianModel model{d,g,theta,frozen};
+    FoceiHessianModel model{*d.probes,g,theta,frozen,getOpCores(getSolvingOptions(rx))};
     auto solve = [&](const arma::mat &eta, std::vector<VaeOuterE> &e) {
       return model.solve(eta,e);
     };
@@ -24916,9 +24921,7 @@ static void foceiHessianAssemble(void *ptr) {
     if (frozen && !model.population(population)) return;
     std::vector<arma::cube> third(ns), thirdR(ns);
     if (!foceiHessianThird(d.step,d.eta,g,base,foce,solve,third,thirdR)) return;
-    arma::ivec dirs(g.nth+g.nsg);
-    for (int k = 0; k < g.nth; ++k) dirs[k] = g.dirTh[k];
-    for (int k = 0; k < g.nsg; ++k) dirs[g.nth+k] = g.nd+k+1;
+    arma::ivec dirs = foceiHessianDirs(g);
     arma::mat information(np,np,arma::fill::zeros);
     FoceiHessianSubjects subjects{d,g,base,population,third,thirdR,doi,d2oi,d2ld,dirs,theta};
     for (int id = 0; id < ns; ++id) if (!subjects.add(id,information)) return;
