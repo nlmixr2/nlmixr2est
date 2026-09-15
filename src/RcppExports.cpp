@@ -1953,6 +1953,24 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// saemSeedLayoutTest_
+Rcpp::NumericVector saemSeedLayoutTest_(Rcpp::IntegerVector nu, int nphi1, int nphi0, int nMix, int nM, int nmc, int ntotal, int niter);
+RcppExport SEXP _nlmixr2est_saemSeedLayoutTest_(SEXP nuSEXP, SEXP nphi1SEXP, SEXP nphi0SEXP, SEXP nMixSEXP, SEXP nMSEXP, SEXP nmcSEXP, SEXP ntotalSEXP, SEXP niterSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Rcpp::IntegerVector >::type nu(nuSEXP);
+    Rcpp::traits::input_parameter< int >::type nphi1(nphi1SEXP);
+    Rcpp::traits::input_parameter< int >::type nphi0(nphi0SEXP);
+    Rcpp::traits::input_parameter< int >::type nMix(nMixSEXP);
+    Rcpp::traits::input_parameter< int >::type nM(nMSEXP);
+    Rcpp::traits::input_parameter< int >::type nmc(nmcSEXP);
+    Rcpp::traits::input_parameter< int >::type ntotal(ntotalSEXP);
+    Rcpp::traits::input_parameter< int >::type niter(niterSEXP);
+    rcpp_result_gen = Rcpp::wrap(saemSeedLayoutTest_(nu, nphi1, nphi0, nMix, nM, nmc, ntotal, niter));
+    return rcpp_result_gen;
+END_RCPP
+}
 // saem_do_pred
 SEXP saem_do_pred(SEXP in_phi, SEXP in_evt, SEXP in_opt);
 RcppExport SEXP _nlmixr2est_saem_do_pred(SEXP in_phiSEXP, SEXP in_evtSEXP, SEXP in_optSEXP) {

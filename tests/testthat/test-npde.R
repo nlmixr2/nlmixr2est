@@ -27,6 +27,15 @@ nmTest({
     fit <- .nlmixr(one.cmt, theo_sd, est="saem")
 
     expect_false(all(c("EPRED","ERES","NPDE","NPD", "PDE", "PD") %in% names(fit)))
+    # npde's uniforms are seeded per observation, so the thread count cannot move them
+    .cols <- c("EPRED", "ERES", "NPDE", "NPD", "PDE", "PD")
+    .old <- rxode2::getRxThreads(verbose = FALSE)
+    rxode2::setRxThreads(1L)
+    .t1 <- as.data.frame(suppressMessages(addNpde(fit, updateObject = FALSE)))[, .cols]
+    rxode2::setRxThreads(2L)
+    .t2 <- as.data.frame(suppressMessages(addNpde(fit, updateObject = FALSE)))[, .cols]
+    rxode2::setRxThreads(.old)
+    expect_identical(.t1, .t2)
     suppressMessages(expect_error(addNpde(fit), NA))
     expect_true(all(c("EPRED","ERES","NPDE","NPD", "PDE", "PD") %in% names(fit)))
     .range1 <- range(fit$PDE)
