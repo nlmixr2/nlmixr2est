@@ -337,14 +337,23 @@ nmTest({
     expect_true(all(.i$models$parLayoutOk[.i$models$loaded]))
     expect_equal(.i$probeDenyN, .d0)
     ## Swapping the augmented model in installs its event-sensitivity shape from the
-    ## registry with a C call, not through R's rxEventSensLoadModel(): the model was
-    ## loaded once, the batches only swap.  The counter is the only evidence -- a
-    ## batch that fell back to R gives the same numbers.
+    ## registry with a C call, not through R's rxEventSensLoadModel(): only the first
+    ## swap of a registered model goes through R (.foceiGradDirect re-registers, so
+    ## its one swap is that first one; a fit's later gradients swap from C).  The
+    ## counter is the only evidence -- a batch that fell back to R gives the same
+    ## numbers.
     .e0 <- .odeSwapInfo()[c("esInstallC", "esInstallR")]
     gPool2 <- .foceiGradDirect(f)
     .e1 <- .odeSwapInfo()[c("esInstallC", "esInstallR")]
-    expect_gt(.e1$esInstallC, .e0$esInstallC)
-    expect_equal(.e1$esInstallR, .e0$esInstallR)
+    expect_equal(.e1$esInstallR, .e0$esInstallR + 1)
+    fitC <- suppressMessages(suppressWarnings(
+      nlmixr2(one, nlmixr2data::theo_sd, "focei",
+              foceiControl(print = 0L, covMethod = "", fast = TRUE,
+                           maxOuterIterations = 3L, maxInnerIterations = 100L,
+                           calcTables = FALSE))))
+    .e2 <- .odeSwapInfo()[c("esInstallC", "esInstallR")]
+    expect_gt(.e2$esInstallC, .e1$esInstallC)
+    expect_equal(.e2$esInstallR, .e1$esInstallR + 1)
     ## This used to also compare against .foceiAnalyticGradViaRxSolve(), the same gradient
     ## forced through rxode2::rxSolve instead of the pool.  That route was the R gradient
     ## implementation, which is gone -- the pooled solve is now the only one -- so the

@@ -48,12 +48,12 @@ struct OdeModelReg {
   // near-zero, iteration-old d(pred)/d(eta) from a sibling peer's cache).
   int ndiff = 0;
   bool ndiffSet = false;  // false if $flags carries no "ndiff" element (older rxode2)
-  // The event ("jump") sensitivity SHAPE, read from model$eventSensInfo ONCE at
-  // declare time so a batch can install it from C++ (rxode2EventSensLoadFull on the
-  // model's `trans`) instead of calling R's rxEventSensLoadModel() at every swap.
-  // `trans` is kept alongside the model in _odeTrans, so a cleared/unloaded slot can
-  // never install a stale pointer set: rxode2 re-resolves the model's functions from
-  // `trans` by name on every install.
+  // The event ("jump") sensitivity SHAPE dims, read back with
+  // rxode2EventSensGetDims() after the slot's FIRST install through R, so every
+  // later swap can install them from C++ (rxode2EventSensLoadFull on the model's
+  // `trans`).  `trans` is kept alongside the model in _odeTrans, so a cleared or
+  // unloaded slot can never install a stale pointer set: rxode2 re-resolves the
+  // model's functions from `trans` by name on every install.
   bool esDims = false;
   int esNState = 0, esNParam = 0, esNParam2 = 0, esNParam3 = 0, esUseCalcJac = 0;
   // event-sensitivity shape (see OdeSwapEsBatch); esActive == 0 for a model
@@ -88,36 +88,6 @@ static void odeSwapModelsInit() {
     UNPROTECT(1);
     _odeTrans = t;
   }
-}
-
-// The six dims rxode2EventSensLoadFull() wants, exactly as rxEventSensLoadModel()
-// derives them: nState = map$nState, nParam = length(map$sensParams),
-// nParam2 = length(unique(map$map2$q)), nParam3 = length(unique(map$map3$r)),
-// useCalcJac = length(rxModelVars(obj)$indLin) > 0.
-static bool odeSwapEsDimsFrom(List info, List mv, OdeModelReg &m) {
-  if (!info.containsElementNamed("map")) return false;
-  List map = as<List>(info["map"]);
-  if (!map.containsElementNamed("nState") || !map.containsElementNamed("sensParams")) return false;
-  m.esNState = as<int>(map["nState"]);
-  m.esNParam = Rf_length(map["sensParams"]);
-  auto uniqueN = [&](const char *tbl, const char *col) -> int {
-    if (!map.containsElementNamed(tbl)) return 0;
-    RObject t = map[tbl];
-    if (t.isNULL()) return 0;
-    List tl(t);
-    if (!tl.containsElementNamed(col)) return 0;
-    CharacterVector v = as<CharacterVector>(tl[col]);
-    std::vector<std::string> seen;
-    for (int i = 0; i < v.size(); ++i) {
-      std::string x = as<std::string>(v[i]);
-      if (std::find(seen.begin(), seen.end(), x) == seen.end()) seen.push_back(x);
-    }
-    return (int)seen.size();
-  };
-  m.esNParam2 = uniqueN("map2", "q");
-  m.esNParam3 = uniqueN("map3", "r");
-  m.esUseCalcJac = (mv.containsElementNamed("indLin") && Rf_length(mv["indLin"]) > 0) ? 1 : 0;
-  return m.esNState > 0 && m.esNParam > 0;
 }
 
 static inline bool odeSlotOk(int slot) { return slot >= 0 && slot < odeSlotN; }
@@ -197,15 +167,12 @@ bool odeSwapDeclare(int slot, const char *name, SEXP obj) {
       List _e(_v);
       bool _fd = _e.containsElementNamed("mode") &&
         as<std::string>(_e["mode"]) == "fd";
-      if (!_fd && _e.containsElementNamed("map")) {
-        m.esActive = 1;
-        m.esDims = odeSwapEsDimsFrom(_e, mv, m);
-      }
+      if (!_fd && _e.containsElementNamed("map")) m.esActive = 1;
     }
   } catch (...) {
     m.esActive = 0;
-    m.esDims = false;
   }
+  m.esDims = false;
   m.loaded = true;
   odeSwapModelsInit();
   SET_VECTOR_ELT(_odeModels, slot, obj);
@@ -260,19 +227,20 @@ void odeSwapEsNoteInstalled(int esModel) { _odeEsSlot = esModel; _odeEsSlotIdx =
 
 // Install a slot's ES shape.
 //
-// The model is loaded once (odeSwapDeclare reads its six shape dims out of
-// model$eventSensInfo, the way rxEventSensLoadModel() does) and every batch after
-// that installs it with a C call, rxode2EventSensLoadFull() on the model's `trans`.
-// No R runs at a swap, which is what lets a derivative pass -- the outer gradient,
-// the outer Hessian's probes, the AGQ node solves -- run entirely in C++.
+// A slot's FIRST install goes through R (rxEventSensLoadModel(), which owns the
+// derivation of the six shape dims from model$eventSensInfo); the dims it installed
+// are read back with rxode2EventSensGetDims() and every batch after that installs
+// them with a C call, rxode2EventSensLoadFull() on the model's `trans`.  No R runs
+// at a swap, which is what lets a derivative pass -- the outer gradient, the outer
+// Hessian's probes, the AGQ node solves -- run entirely in C++.
 //
 // This is not a cached shape BUFFER (those were tried and removed: a saved shape
 // holds pointers into the model's shared library, and rxUnload() is driven from R
 // without going through odeSwapClear(), so a buffer could outlive the library it
 // points into).  rxode2EventSensLoadFull() re-resolves the model's functions from
 // `trans` by name on every install, exactly as the R entry point does, so it is as
-// safe as the R route and only skips the R call.  The R route stays as the fallback
-// for a model whose dims could not be read (older rxode2, or no `trans`).
+// safe as the R route and only skips the R call.  The R route stays for a model
+// whose dims cannot be read back (older rxode2, or no `trans`).
 //
 // The RESTORE is on the C API too (rxode2 5.1.6, PR #1175): see OdeSwapEsBatch,
 // which snapshots the live shape with rxode2EventSensShapeSave().
@@ -280,15 +248,12 @@ static bool odeSwapEsInstall(int slot) {
   if (!odeSlotOk(slot) || !_odeReg[slot].loaded) return false;
   SEXP _m = odeSwapModelSEXP(slot);
   if (_m == R_NilValue) return false;
-  // The model was loaded once; the swap is a C call on its recorded shape.
-  const OdeModelReg &m = _odeReg[slot];
-  if (m.esDims && _odeTrans != R_NilValue && rxode2EventSensLoadFull != NULL) {
-    SEXP _t = VECTOR_ELT(_odeTrans, slot);
-    if (_t != R_NilValue) {
-      rxode2EventSensLoadFull(_t, 1, m.esNState, m.esNParam, m.esNParam2, m.esNParam3, m.esUseCalcJac);
-      _odeEsInstallC++;
-      return true;
-    }
+  OdeModelReg &m = _odeReg[slot];
+  SEXP _t = _odeTrans == R_NilValue ? R_NilValue : VECTOR_ELT(_odeTrans, slot);
+  if (m.esDims && _t != R_NilValue && rxode2EventSensLoadFull != NULL) {
+    rxode2EventSensLoadFull(_t, 1, m.esNState, m.esNParam, m.esNParam2, m.esNParam3, m.esUseCalcJac);
+    _odeEsInstallC++;
+    return true;
   }
   _odeEsInstallR++;
   try {
@@ -298,6 +263,13 @@ static bool odeSwapEsInstall(int slot) {
   } catch (...) {
     // leave the shape as it was; the caller falls back rather than mis-solving
     return false;
+  }
+  // record what R installed so the next swap of this slot is the C call above
+  if (!m.esDims && _t != R_NilValue && rxode2EventSensGetDims != NULL) {
+    int active = 0;
+    rxode2EventSensGetDims(&active, &m.esNState, &m.esNParam, &m.esNParam2, &m.esNParam3,
+                           &m.esUseCalcJac);
+    m.esDims = active != 0 && m.esNState > 0 && m.esNParam > 0;
   }
   return true;
 }

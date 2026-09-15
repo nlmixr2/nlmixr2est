@@ -183,9 +183,10 @@
 - Swapping a peer model into the shared FOCEi solve pool (the augmented
   outer-gradient model for every analytic gradient, the outer Hessian's probes,
   the AGQ node model) installs its event-sensitivity shape from the registry
-  with a C call.  The model's shape is read once when it is registered; before,
-  every swap called back into R (`rxEventSensLoadModel()`) to re-derive it,
-  which kept every batch boundary on the R side of the derivative passes.
+  with a C call.  Only the first swap of a model goes through R
+  (`rxEventSensLoadModel()`); the shape it installed is read back and reused.
+  Before, every swap re-derived it in R, which kept every batch boundary on
+  the R side of the derivative passes.
   `.odeSwapInfo()` reports `esInstallC`/`esInstallR`.
 
 - A model containing `mtime()` can be fit again, with every estimation method.
