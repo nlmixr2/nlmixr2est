@@ -49,6 +49,12 @@
   known from its position.  The phi1 and phi0 SAEM MCMC blocks used to draw
   from the same seed, as could neighboring mixture components.  Seeded fits
   give different, still reproducible, results.
+- `predict(fit, newdata)` solves with the fit's own `rxControl`, the same
+  options `nlmixr2(fit, data, "predict")` uses; options passed to `predict()`
+  still override it.  The two gave different predictions for an ODE model.
+- `addNpde()` and `vpcSim()` give the same result on every call and at any
+  thread count, even when an earlier `rxSetSeed()` left rxode2's own seed
+  sequence in force.
 - `est="saem"` estimated a `boxCox()`/`yeoJohnson()` lambda without the
   transform's log-Jacobian, both in the closed-form residual step and with a
   general likelihood (`dnorm()`, `t()`, `cauchy()`, also covering `lnorm()`,
