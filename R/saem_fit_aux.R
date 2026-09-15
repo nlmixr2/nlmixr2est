@@ -217,8 +217,12 @@ calc.2LL <- function(fit, nnodes.gq = 8, nsd.gq = 4, phiM) {
   # log-Jacobian (what powerL returns, e.g. -log(y) for lnorm) is ADDED to get
   # the likelihood of the original data -- the same convention FOCEi uses when
   # it accumulates tbsLik (#903)
+  # An ll() row already carries its Jacobian in the log-density (.saemAddTbsJacobian);
+  # adding powerL there would count it twice with the kernel's stale starting lambda.
+  .g <- !.isLL
   ll2 <- 2 * sum(lQ + rowSums(log(b))) - N * log(det(Omega)) - (N * nphi1 + .nGauss) * log(2 * pi) +
-    2 * .Call(`_nlmixr2est_powerL`, ysave, lambda, as.integer(yj), as.double(low), as.double(hi))
+    2 * .Call(`_nlmixr2est_powerL`, ysave[.g], lambda[.g], as.integer(yj[.g]),
+              as.double(low[.g]), as.double(hi[.g]))
   -ll2
 }
 gqg.mlx <- function(dim, nnodes.gq) {

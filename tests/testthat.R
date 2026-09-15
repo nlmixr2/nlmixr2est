@@ -79,7 +79,8 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
     "focei-wang2007-bounded", "saem-loglik", "mu-timevarying", "saem-nearpd",
     "saem-nonmutheta", "focei-theta-reset-bounds",
     "saem-cov-analytic", "focei-shi21-bounds", "splitbolus-interp",
-    "optexpression-saem-nlme", "saem-cov-multi-endpoint-904"
+    "optexpression-saem-nlme", "saem-cov-multi-endpoint-904",
+    "saem-modeled-resid-fit"
   ),
 
   # batches 4-7 -- the former batches 4 (13 files) and 5 (15 files), each split
@@ -123,7 +124,8 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
   c(
     "vae-encoder", "vae-train", "vae-decoder", "vae-elbo", "vae-inner",
     "vae-fixbounds", "vae-parhist", "vae-iov", "vae-grad-fit", "vae-ll-grad-fit",
-    "vae-l0learn-fit", "vae-hockey-fit", "split", "unary-mu", "timing", "bounded-transform"
+    "vae-l0learn-fit", "vae-hockey-fit", "vae-colinear-fit", "split", "unary-mu",
+    "timing", "bounded-transform"
   ),
   # batch 9 -- emvi/fbvi (variational inference) multi-iteration fits, plus the
   # cross-method omega off-diagonal fit checks (vae/emvi/npag/npb)

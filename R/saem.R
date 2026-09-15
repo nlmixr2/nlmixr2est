@@ -46,6 +46,13 @@
                            rhoend = rhoend, npt = npt)))
 }
 
+# Bounded refinement of the saem general-likelihood phi0/phi1 thetas.  Warnings are
+# suppressed for the same reason as .saemPhi0Newuoa: minqa's small-maxfun advice
+# would otherwise reach $runInfo on every iteration.
+.saemBoundedResidOpt <- function(par, fn, lower = -Inf, upper = Inf, control = list()) {
+  suppressWarnings(.boundedResidOpt(par, fn, lower = lower, upper = upper, control = control))
+}
+
 .saemCheckCfg <- function(cfg) {
   checkmate::assertIntegerish(cfg$itmax, lower=1, len=1, .var.name="saem.cfg$itmax")
   checkmate::assertNumeric(cfg$tol, lower=0, len=1, .var.name="saem.cfg$tol")
@@ -56,7 +63,6 @@
   checkmate::assertNumeric(cfg$odeRecalcFactor, lower=0, len=1, .var.name="saem.cfg$odeRecalcFactor")
   # nmc number of mc interations
   checkmate::assertIntegerish(cfg$nmc, lower=0, len=1, .var.name="saem.cfg$nmc")
-  .nmc <- cfg$nmc
   # nu is the number of selection for each probability type.
   checkmate::assertIntegerish(cfg$nu, lower=0, len=3, .var.name="saem.cfg$nu")
   # Overall number of iterations
@@ -84,7 +90,6 @@
   checkmate::assertNumeric(cfg$minv, lower=0, len=.nphi, .var.name="saem.cfg$minv")
   # N is the number of IDs
   checkmate::assertIntegerish(cfg$N, lower=0, len=1, .var.name="saem.cfg$N")
-  .N <- cfg$N
   # Total number of items in the dataset
   checkmate::assertIntegerish(cfg$ntotal, lower=0, len=1, .var.name="saem.cfg$ntotal")
   .ntotal <- cfg$ntotal
@@ -99,7 +104,6 @@
   checkmate::assertIntegerish(cfg$mlen,  lower=1, len=1, .var.name="saem.cfg$mlen")
 
   # maximum number of measurments for an indiviaul
-  .mlen <- cfg$mlen
 
   checkmate::assertIntegerish(cfg$indio, min.len=1, .var.name="saem.cfg$indio")
 
@@ -264,6 +268,7 @@
                           if (is.null(.oi)) matrix(integer(0), ncol=2L) else .oi$pairs
                         },
                         seed=rxode2::rxGetControl(ui, "seed", 99),
+                        pseudoI1=.saemPseudoPhi1Ix(ui),
                         DEBUG=rxode2::rxGetControl(ui, "DEBUG", 0),
                         tol=rxode2::rxGetControl(ui, "tol", 1e-6),
                         itmax=rxode2::rxGetControl(ui, "itmax", 30),
@@ -567,6 +572,55 @@
   invisible()
 }
 
+#' Random effects that saem has no population parameter for
+#'
+#' saem parameterizes a random effect by the phi (population) parameter it is
+#' added to and gives that phi ONE Gamma2_phi1 column, so a random effect has
+#' no column of its own in two cases: it is paired with no phi at all, or it
+#' shares a phi with an earlier random effect.  Either way it is silently
+#' dropped from `model$omega` -- an `NA` or repeated index in a matrix
+#' assignment writes nothing new -- and the model is fitted without it.
+#'
+#' @param ui rxode2 ui
+#' @return character vector of the diagonal eta names with no phi column
+#' @author Matthew L. Fidler
+#' @noRd
+.saemEtaNoPhi <- function(ui) {
+  .iniDf <- ui$iniDf
+  .etas <- .iniDf[!is.na(.iniDf$neta1), ]
+  .etas <- .etas$name[.etas$neta1 == .etas$neta2]
+  .tr <- ui$saemEtaTrans
+  # Report the WHOLE colliding group, not just the repeats: which eta of the
+  # group the kernel keeps is not well defined -- `saemEtaNames` labels the
+  # shared column with the LAST of them while `saemOmegaTrans` maps the FIRST
+  # onto it -- so blaming one of the two would name an arbitrary half.
+  .shared <- .tr %in% .tr[duplicated(.tr)]
+  .etas[is.na(.tr) | .shared]
+}
+
+#' Refuse a model whose random effect saem has no parameter for
+#'
+#' saem parameterizes a random effect by the population parameter it is added
+#' to (`theta + eta`), or carries it through `nonMuEtas`, and gives that phi
+#' one phi1 column.  An eta paired with no phi, or sharing one with another
+#' eta, owns no column, so it is silently dropped from the kernel's
+#' `model$omega` and never sampled -- the model that gets fitted is not the
+#' model that was written, and the only symptom is a "subscript out of bounds"
+#' when the reported omega is assembled at the very end of the run (#1047).
+#'
+#' @param ui rxode2 ui
+#' @return Nothing, called for the error side effect
+#' @author Matthew L. Fidler
+#' @noRd
+.saemAssertEtaPhi <- function(ui) {
+  .bad <- .saemEtaNoPhi(ui)
+  if (length(.bad) == 0L) return(invisible())
+  stop("random effect(s) have no population parameter of their own, so 'saem' ",
+       "cannot sample them: ", paste(.bad, collapse=", "),
+       "\nas a work-around put each on its own simple 'theta + eta' line",
+       call.=FALSE)
+}
+
 #' Get SAEM omega
 #'
 #' @param env Environment that has ui and saem in it
@@ -582,12 +636,22 @@
   .df <- .ui$iniDf
   .eta <- .df[!is.na(.df$neta1), ]
   .etaNames <- .eta[.eta$neta1 == .eta$neta2, "name"]
-  .neta <- length(.etaNames)
   .len <- length(.etaNames)
   .ome <- matrix(rep(0, .len * .len), .len, .len, dimnames=list(.etaNames, .etaNames))
   # Gamma2_phi1Report is the reporting-only pooled BSV for split ETAs; falls
   # back to Gamma2_phi1 for older cached fits without the field.
   .curOme <- if (!is.null(.saem$Gamma2_phi1Report)) .saem$Gamma2_phi1Report else .saem$Gamma2_phi1
+  # Backstop for #1047: .saemAssertEtaPhi() refuses such a model up front, so
+  # reaching here means the UI's etas and the kernel's phi1 block disagree.
+  # A missing Gamma2_phi1 has to be counted as zero columns: `x > nrow(NULL)`
+  # is logical(0), so comparing against it would make every eta look in range.
+  .nOme <- if (is.matrix(.curOme)) nrow(.curOme) else 0L
+  .off <- is.na(.etaTrans) | .etaTrans > .nOme
+  if (any(.off)) {
+    stop("saem reported no variance for random effect(s): ",
+         paste(.etaNames[.off], collapse=", "),
+         call.=FALSE)
+  }
   .mat <- nlme::random.effects(.saem)
   .mat2 <- .mat[, .etaTrans, drop = FALSE]
   colnames(.mat2) <- .etaNames
@@ -1291,7 +1355,6 @@
   # compresses large object
   env$phiM <- .phiM
   try(unlink(.saemCfg$phiMFile), silent=TRUE)
-  .rn <- ""
   .likTime <- 0
   .obf <- rxode2::rxGetControl(.ui, "logLik", FALSE)
   .nnodesGq <- rxode2::rxGetControl(.ui, "nnodesGq", 3)
@@ -1328,7 +1391,6 @@
 #' @author Matthew L. Fidler
 #' @noRd
 .saemGetCalcCwres <- function(env) {
-  .ui <- env$ui
   .table <- env$table
   .calcResid <- .table$cwres
   if (is.null(.calcResid)) {
@@ -1604,6 +1666,7 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
     nmObjHandleControlObject(.ret$control, .ret)
     .getSaemTheta(.ret)
     .getSaemOmega(.ret)
+    .saemFoldPseudoEtas(.ret)
     # Must run against the un-pooled omega, before .saemMixFix() pools split
     # ETAs, or ui$theta silently falls back to ini() values for every param.
     .nlmixr2FitUpdateParams(.ret)
@@ -1622,6 +1685,9 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
     .ret$message <- "" # no message for now
     .ret$est <- "saem"
     .saemControlToFoceiControl(.ret)
+    # later hooks (IOV, bounded transforms) can drop the temporary-eta transforms
+    .ui <- .saemRestorePseudoTransforms(.ui, env$saemPseudoTransforms)
+    .ret$ui <- .ui
     .ret <- .saemCreateOutput(.ret)
     # covFull/sa: swap in the stashed full theta+residual+Omega covariance now that
     # the theta-dimensioned fit table has been built.
@@ -1671,6 +1737,7 @@ nlmixr2Est.saem <- function(env, ...) {
   rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'saem'",
                              .var.name=.ui$modelName)
   rxode2::assertRxUiMixedOnly(.ui, .noRandomEffectMsg("saem"), .var.name=.ui$modelName)
+  .saemAssertEtaPhi(.ui)
   rxode2::warnRxBounded(.ui, " which are ignored in 'saem'", .var.name=.ui$modelName)
   if (length(.ui$mixProbs) > 0) {
     message("mixture SAEM computation scales with the number of sub-populations")

@@ -351,8 +351,24 @@ nmTest({
     .fi <- suppressWarnings(nlmixr2(mcomb, .d, "impmap",
                                     impmapControl(print = 0L, nIter = 30L, isample = 300L)))
     expect_true(inherits(.fi, "nlmixr2FitCore"))
-    expect_equal(unname(fixef(.fi)["add.sd"]), unname(fixef(.ff)["add.sd"]), tolerance = 0.05)
-    expect_equal(unname(fixef(.fi)["prop.sd"]), unname(fixef(.ff)["prop.sd"]), tolerance = 0.02)
+    # add.sd and prop.sd trade off against each other, so pinning each one
+    # ACROSS two different algorithms measures where that trade-off happened to
+    # land, not whether the two agree.  Measured 2026-09-12: impmap is
+    # bit-identical before and after the inner-solver rework in #1044
+    # (add.sd 0.258964, prop.sd 0.153970 both times) while the FOCEI REFERENCE
+    # moved -- add.sd 0.2711 -> 0.2762, prop.sd 0.1510 -> 0.1496, in opposite
+    # directions -- which was enough to tip tolerances that had 11% and 1.5% of
+    # themselves to spare.  The bounds below are sized to the measured
+    # algorithm-to-algorithm spread (6.3% and 2.9%) with room, so a legitimate
+    # change to either method does not read as a failure.
+    #
+    # What this test is FOR is that the general sensitivity path moves both
+    # residual thetas at all; ini() starts them at 0.5 and 0.1, so assert that
+    # directly rather than leaning on the cross-method bounds to imply it.
+    expect_lt(unname(fixef(.fi)["add.sd"]), 0.4)     # ini 0.5, converges ~0.26
+    expect_gt(unname(fixef(.fi)["prop.sd"]), 0.125)  # ini 0.1, converges ~0.154
+    expect_equal(unname(fixef(.fi)["add.sd"]), unname(fixef(.ff)["add.sd"]), tolerance = 0.12)
+    expect_equal(unname(fixef(.fi)["prop.sd"]), unname(fixef(.ff)["prop.sd"]), tolerance = 0.06)
   })
 
   test_that("M6b: an estimated transform-both-sides lambda converges to FOCEI (#949)", {

@@ -1,7 +1,103 @@
-# nlmixr2est 7.0.3
+# nlmixr2est 7.1.0
+
+## New features
+
+- `est="vae"` groups near-interchangeable covariates into colinearity
+  clusters, controlled by the new `vaeControl(covSelectColinearCut=)`
+  (default `0.9`).  A cluster never restricts what may be selected.  It
+  does two things: the covariate M-step keeps the previous iteration's
+  choice unless a cluster mate beats it by a full covariate's L0 cost, so
+  the selection stops chattering between columns the design cannot tell
+  apart; and the mates that came within that margin are reported in the
+  fit's `$covNearTie`.  Clusters are a coarsening of the mutual-exclusion
+  groups, so two shapes of one covariate never cluster together.
+- `vaeCovariates()` reports the same clustering in a new `cluster` column
+  and takes the threshold as `colinearCut`.
+- `est="vae"` now refines covariate attribution across correlated latent
+  dimensions.  Each dim's covariate search only sees the other dims through
+  a frozen Gauss-Seidel offset, so it cannot notice that a covariate on one
+  dim would be better explained on a correlated one.  A new pass groups the
+  dims by the empirical correlation of the posterior means, scores
+  joint moves through an exact group-restricted GLS, and only writes back a
+  move that strictly improves the group.  It is gated on a correlated omega:
+  with a diagonal omega the objective is separable and each per-dim search is
+  already exact, so the pass reports the correlated dims in `$runInfo`
+  (advising you to declare the omega block) instead of running.  Controlled by
+  `vaeControl(covSelectPhiCor=, covSelectPhiJoin=, covSelectPhiLeave=,
+  covSelectPhiMaxDim=)`; the counters and the sticky pair adjacency are
+  reported in the fit's `$vae`.
+- `est="saem"` now fits residual error components that are modeled rather
+  than estimated directly, such as `a <- add.sd*exp(eta.sd); cp ~ add(a)` or
+  `a <- add.sd + WT*cov.sd; cp ~ add(a)`.  These endpoints are fit as the
+  equivalent `cp ~ add(a) + dnorm()` log-likelihood, and `$runInfo` notes the
+  promotion.
+- `est="saem"` estimates every theta without an eta that informs a
+  general likelihood (`dnorm()`, `t()`, `cauchy()`, the discrete and
+  continuous densities, and `ll()`), including a `boxCox()`/`yeoJohnson()`
+  lambda, through a temporary mu-referenced eta on
+  the scale of its range: `exp()` for a positive parameter such as a standard
+  deviation or degrees of freedom, `expit()` for a probability, additive when
+  unbounded.  The theta is reported as its back-transformed
+  `theta + mean(eta)`, the temporary eta is removed from the fit, and
+  `$runInfo` lists the thetas that received one.  These parameters were
+  previously left near their initial values.
 
 ## Bug fixes
 
+- `est="saem"` estimated a `boxCox()`/`yeoJohnson()` lambda without the
+  transform's log-Jacobian, both in the closed-form residual step and with a
+  general likelihood (`dnorm()`, `t()`, `cauchy()`, also covering `lnorm()`,
+  `logitNorm()` and `probitNorm()`), so lambda and the residual SD were fit to
+  the wrong density; the reported objective of a general-likelihood fit also
+  used the starting lambda.
+- `est="saem"` fits with a `dnorm()`, `t()` or `cauchy()` endpoint reported the
+  log-density instead of the prediction as `PRED`/`IPRED` (and the residuals
+  derived from them) in the fit table (#1084).
+
+- A focei inner ETA solve that has spent every `etaNudge`/`etaNudge2` restart
+  and still failed now falls back on draws from Omega
+  (`foceiControl(etaRestart=)`, 4 by default, 0 to disable).  Every nudge sets
+  every ETA to the same constant, which explores poorly once the inner problem
+  has more than one basin; the draws are starting points from the distribution
+  the ETAs come from.  Measured on #1044's model at a displaced parameter set,
+  subjects that ended with every attempt spent fell from 45 to 25 of 300 and
+  the objective from 687874 to 139103.  The draws are taken once per fit from
+  rxode2's seeded engine, so the objective stays a function of theta alone, and
+  they are read only after a solve has already failed -- a fit whose inner
+  solves converge is bit-identical with the fallback on and off.  This applies
+  to `innerOpt="trust"`, which reports a convergence verdict per solve; `n1qn1`
+  reports none, so its own restart cascade is unchanged (#1044).
+- `saem` reports a `fix()`ed eta variance as the value it was fixed at. The
+  reported omega was snapshotted before the fixed values were restored, so it
+  carried the M-step's unconstrained estimate instead -- `fix(0.3)` came back as
+  0.318 while the fit itself correctly sampled with 0.3 (#1073).
+- `covMethod="analytic"` for FOCE and `foce="foce+"` no longer carries the inner
+  solver's residual score into the observed information.  The FOCE kernel uses
+  the general total-derivative form, whose last term is `Phi_eta . eta_ab`; it
+  evaluated `Phi_eta` in full, but the FOCE inner problem zeroes
+  `S_FOCE = Omega^-1 eta + sum(q0 a)` by construction, so only the interaction
+  remainder `Phi_f - q0` belongs there.  The rest was the inner tolerance
+  multiplied by a term that is not small.  The FOCE assemblers also re-solved
+  each subject's EBE before building R, where the FOCEI assembler uses the fit's
+  own; they now agree.  On an additive model, where the two methods must
+  coincide, the `foce+` and FOCEI observed informations agreed to 1.2e-2 at the
+  same EBEs and now agree to 1.1e-13 (#1056).
+- `est="focep"` (`foce="foce+"`) converges at the default `sigdig`.  FOCE+ polishes
+  the inner optimizer's eta onto the truncated-score root it defines its EBE by, and
+  that polish stops once the score reaches the noise floor the solve tolerance buys --
+  near `1e-3` at the default `sigdig=3`, well above the `1e-9` it asked for.  A
+  subject that stalled there reported its likelihood as `NA`, which the outer search
+  read as a cliff: on `theo_sd` it stopped 4.8 objective units high (121.560 against
+  116.804) with the omegas barely off their starting values, and the observed
+  information at that point had a negative eigenvalue so `covMethod="analytic"`
+  refused to install it.  The polish is now best-effort -- the eta it was handed is
+  the inner optimizer's own answer and is always usable, so every exit path keeps the
+  best point found and evaluates the likelihood there (#1069).
+- `saem` refuses a model whose random effect has no population parameter of its
+  own -- added to none, or sharing one with another random effect -- naming the
+  random effects, instead of fitting the model without them and then failing
+  with "subscript out of bounds" while assembling the reported omega at the end
+  of the run (#1047).
 - A model containing `mtime()` can be fit again, with every estimation method.
   `etTrans()` materializes the modeled times as `EVID` 10-99 records (`TIME=0`,
   `AMT=NA`) and `$dataSav` persisted them, so re-translating it for each
@@ -85,6 +181,18 @@
   longer held and a `setCov()` round trip silently changed the reported SEs.
   The parameter table is now refreshed from the covariance actually installed
   (nlmixr2extra#125).
+
+- `addCwres()` works on a fit that already reports the focei (or foce)
+  objective function and has no CWRES, instead of stopping with "objective
+  function 'FOCEi' already present".  `setOfv(fit, "focei")` adds that
+  objective function row without the residual columns, so
+  `setOfv(fit, "focei")` followed by `addCwres(fit)` -- and any estimation
+  method that reports the focei objective function of its own, such as the
+  `nlmixr2bayes` methods run with `ofv="focei"` -- had no way to add CWRES at
+  all.  `addCwres()` now adds the residual columns and leaves the objective
+  function row the fit already carries alone.  The table step also calculates
+  CWRES for any fit whose own objective function is already the focei one,
+  since there is no way to add them afterwards.
 
 ## New features
 
@@ -1572,7 +1680,7 @@
   package build and run against 5.1.5 has been removed, so the event-sensitivity
   shape swap and the CMT re-basing of the shared solve pool always go through
   rxode2's C API instead of writing its structures by field.
-  
+
 - `est="npag"` / `est="npb"` now support a hand-written general likelihood
   (`ll()`) properly.  A model whose `ll()` is written as the exact normal
   log-density now agrees with the equivalent `add()` model to the known

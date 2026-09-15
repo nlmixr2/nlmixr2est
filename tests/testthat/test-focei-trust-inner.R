@@ -44,6 +44,15 @@ nmTest({
     expect_error(foceiControl(trustFterm = -1))
     expect_error(foceiControl(trustMterm = -1))
 
+    # etaRestart: Omega draws the inner restart cascade falls back on once the
+    # fixed nudges are spent (#1044).  0 disables it; a negative count is not a
+    # count.
+    expect_equal(foceiControl()$etaRestart, 4L)
+    expect_equal(foceiControl(etaRestart = 0)$etaRestart, 0L)
+    expect_equal(foceiControl(etaRestart = 2L)$etaRestart, 2L)
+    expect_error(foceiControl(etaRestart = -1))
+    expect_error(foceiControl(etaRestart = c(1, 2)))
+
     .ctl <- foceiControl(innerOpt = "trust", trustConf = 0.9,
                          trustFterm = 0.5, trustMterm = 0.25)
     expect_equal(do.call(foceiControl, .ctl)$innerOpt, 3L)
@@ -222,7 +231,7 @@ nmTest({
     expect_equal(sort(names(.cnt)),
                  sort(c("calls", "error", "notConverged", "solverFail",
                         "newtonGate", "warmRetry", "radiusRetry", "nudge",
-                        "failed")))
+                        "omegaRestart", "failed")))
     expect_gt(.cnt[["calls"]], 0L)
     # This fit converges cleanly, so nothing below "calls" fires.  That is the
     # half of the diagnostic that has to stay quiet or it says nothing.
@@ -439,5 +448,103 @@ nmTest({
 
     expect_equal(.f2$objf, .f1$objf, tolerance = 1e-8)
     expect_equal(as.data.frame(.f1$eta), as.data.frame(.f2$eta), tolerance = 1e-8)
+  })
+  test_that("failed inner solves are reported on $env, NOT in $runInfo (#1044)", {
+    skip_on_cran()
+    # Some inner solves failing is ordinary for a nonlinear mixed-effects fit,
+    # so this is NOT a run-time note: a $runInfo entry would fire on most fits
+    # and say nothing.  The counts belong on $env, where whoever is actually
+    # diagnosing a fit can read them.
+    .bad <- suppressWarnings(suppressMessages(
+      nlmixr2(.oneCmt, nlmixr2data::theo_sd, est = "focei",
+              control = foceiControl(innerOpt = "trust", maxOuterIterations = 5,
+                                     maxInnerIterations = 2, covMethod = "",
+                                     calcTables = FALSE, print = 0))))
+    expect_gt(.bad$env$nTrustInner[["failed"]], 0L)
+    expect_gt(.bad$env$nInnerRerank[["noGood"]], 0L)
+    # ... and none of that reaches $runInfo, on the fit that HAS failures.
+    expect_false(any(grepl("inner solve", .bad$runInfo)))
+  })
+
+  test_that("the inner cascade falls back on Omega draws (#1044)", {
+    skip_on_cran()
+    # Each etaNudge/etaNudge2 restart sets EVERY eta to the same constant, which
+    # explores poorly once the inner problem has more than one basin -- the
+    # regime #1044's model is in.  A draw out of Omega is a starting point from
+    # the distribution the etas actually come from.
+    .dat <- .gateData()
+    .gateFit <- function(d, etaRestart, inner = "trust") {
+      suppressWarnings(suppressMessages(
+        nlmixr2(.gateMod(d), .dat, "focei",
+                foceiControl(print = 0L, covMethod = "", maxOuterIterations = 0L,
+                             maxInnerIterations = 5000L, calcTables = FALSE,
+                             etaRestart = etaRestart, innerOpt = inner))))
+    }
+
+    .off <- .gateFit(3, 0L)
+    .on <- .gateFit(3, 4L)
+    # The counter is the evidence the fallback RAN; the objective alone cannot
+    # tell "the draws rescued these subjects" from "there was nothing to
+    # rescue".
+    expect_equal(.off$env$nTrustInner[["omegaRestart"]], 0L)
+    expect_gt(.on$env$nTrustInner[["omegaRestart"]], 0L)
+    # ... and it has to actually help: fewer subjects end with every attempt
+    # spent, and the objective cannot come out worse (every restart is a
+    # candidate, never a replacement).
+    expect_lt(.on$env$nTrustInner[["failed"]],
+              .off$env$nTrustInner[["failed"]])
+    expect_lte(.on$objf, .off$objf)
+
+    # Drawn once per fit from rxode2's seeded engine, so the same fit twice is
+    # the same number -- the objective stays a function of theta alone.
+    expect_equal(.gateFit(3, 4L)$objf, .on$objf)
+  })
+
+  test_that("the Omega restart draws are keyed on foceiControl(seed=) (#1044)", {
+    skip_on_cran()
+    # The draws must come from the fit's own seed, not from rxode2's
+    # getRxSeed1(): that call ADVANCES rxode2's global rxSeed by its argument
+    # (rxode2 src/seed.cpp), so reading it would shift the seed every later
+    # consumer in the fit gets -- and with no rxode2 seed in force it takes the
+    # value from R's own RNG.  Either would make a fit that never restarts
+    # anything differ from the same fit with the fallback off.  Two seeds have
+    # to give two different sets of draws, and one seed the same set twice.
+    .dat <- .gateData()
+    .fit <- function(seed) {
+      suppressWarnings(suppressMessages(
+        nlmixr2(.gateMod(3), .dat, "focei",
+                foceiControl(print = 0L, covMethod = "", maxOuterIterations = 0L,
+                             maxInnerIterations = 5000L, calcTables = FALSE,
+                             etaRestart = 4L, seed = seed, innerOpt = "trust"))))
+    }
+    .a <- .fit(42L)
+    .b <- .fit(7L)
+    expect_gt(.a$env$nTrustInner[["omegaRestart"]], 0L)
+    expect_gt(.b$env$nTrustInner[["omegaRestart"]], 0L)
+    expect_false(isTRUE(all.equal(.a$objf, .b$objf)))
+    expect_equal(.fit(42L)$objf, .a$objf)
+  })
+
+  test_that("the Omega-draw fallback costs a converging fit nothing (#1044)", {
+    skip_on_cran()
+    # It is only reached after an inner solve has already failed, so a fit whose
+    # inner solves converge must be bit-identical with it on and off.
+    .mk <- function(etaRestart, inner) {
+      suppressWarnings(suppressMessages(
+        nlmixr2(.oneCmt, nlmixr2data::theo_sd, est = "focei",
+                control = foceiControl(innerOpt = inner, maxOuterIterations = 20,
+                                       etaRestart = etaRestart, covMethod = "",
+                                       calcTables = FALSE, print = 0))))
+    }
+    .off <- .mk(0L, "trust")
+    .on <- .mk(4L, "trust")
+    expect_equal(.on$env$nTrustInner[["omegaRestart"]], 0L)
+    expect_equal(.on$objf, .off$objf, tolerance = 1e-10)
+    expect_equal(as.data.frame(.on$eta), as.data.frame(.off$eta),
+                 tolerance = 1e-10)
+
+    # n1qn1 has no convergence verdict per solve, so the fallback does not
+    # reach its cascade at all: the control changes nothing there.
+    expect_equal(.mk(4L, "n1qn1")$objf, .mk(0L, "n1qn1")$objf, tolerance = 1e-10)
   })
 })

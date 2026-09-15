@@ -624,6 +624,7 @@ struct focei_options {
   double trustFterm;
   double trustMterm;
   std::atomic<int> nTrustInner{0}; // per-fit count of trust_solve_c calls (test evidence)
+  std::atomic<int> nTrustRestart{0}; // Omega-draw restarts taken after the nudges
   // innerOpt="trust" per-fit OUTCOME counts (#1044).  nTrustInner counts CALLS,
   // so a fit whose inner solves all converged and one where every one of them
   // failed look identical from the fit object; these separate the two.
@@ -923,6 +924,11 @@ struct focei_options {
   bool zeroGradBobyqaRun=false;
   int nEstOmega=0;
   int mceta= -1; // number of mc samples of ETA
+  // Omega draws the inner restart cascade tries once the fixed nudges are
+  // spent (0 = the historical nudges-only cascade), and foceiControl(seed=)
+  // as the base of their threefry stream.
+  int nEtaRestart = 0;
+  uint32_t etaRestartSeed = 42u;
 
   // Almquist Eq-48 warm-start extrapolation (fast=TRUE): per-subject d eta*/d(theta)
   // in the SCALED optimizer parameterization (etaP columns pre-multiplied by
@@ -936,6 +942,11 @@ struct focei_options {
   // Pre-drawn ETA samples for mceta >= 1 (neta x (mceta-1) x nsub); filled
   // serially before the parallel for-loop so workers avoid R API calls.
   arma::cube mcetaSamples;
+  // Pre-drawn Omega draws the inner RESTART cascade falls back on
+  // (neta x nEtaRestart x nsub), filled the same way and for the same reason.
+  // Unlike mcetaSamples these are not starting points for a healthy solve --
+  // they are only read after an inner solve has already failed (#1044).
+  arma::cube etaRestartSamples;
 
   unsigned int mixIdxN = 0;
   int *mixIdx = NULL;
@@ -3766,10 +3777,6 @@ static bool focePlusRefinementRequired() {
       op_focei.freezeOde || op_focei.neta == 0);
 }
 
-static bool focePlusSmallStep(double norm, double decrement) {
-  return norm < 1e-3 && decrement >= 0 && decrement <= 1e-9;
-}
-
 static bool focePlusScore(arma::vec &at, arma::vec &out, int id) {
   auto *ind = &inds_focei[id];
   ind->setup = 0; ++ind->nInnerF; ++ind->nInnerG;
@@ -3801,34 +3808,45 @@ static bool focePlusBacktrack(arma::vec &x, arma::vec &g, const arma::vec &step,
   return false;
 }
 
+// Newton on the truncated score, starting from `x`/`g`.  Every way out is the
+// same way out: stop iterating and leave `x` at the last accepted iterate.
+static void focePlusNewton(arma::vec &x, arma::vec &g, int id) {
+  for (int iteration = 0; iteration < std::min(100,op_focei.maxInnerIterations); ++iteration) {
+    double norm = arma::abs(g).max();
+    if (norm < 1e-9) return;                                  // at the root
+    arma::mat jacobian(x.n_elem,x.n_elem);
+    if (!focePlusScoreJacobian(x,jacobian,id)) return;        // a probe would not solve
+    arma::vec step;
+    if (!arma::solve(step,jacobian,g) || !step.is_finite()) return;
+    if (!focePlusBacktrack(x,g,step,norm,id)) return;         // at the noise floor
+  }
+}
+
+// Polishing only: the eta handed in is the inner optimizer's own answer and is
+// always usable.  Refusing to drive the score any closer to zero is therefore
+// not a failure -- `focePlusBacktrack` accepts nothing but a strict decrease in
+// the score norm, so it stops exactly when the score has reached the noise floor
+// the solve tolerance buys, and `x` is the best ITERATE the search accepted on
+// every exit path.  (Not the best point EVALUATED: `focePlusScoreJacobian`'s
+// x +/- h probes are derivative samples taken at a fixed step, not candidate
+// steps, so one that happens to score lower is not adopted.)
+// Reporting a stall as NA instead poisoned the objective (#1069): at the default
+// sigdig=3 the floor sits near 1e-3, so every subject that reached it lost its
+// likelihood and the outer search read a spurious cliff.
 static bool refineFocePlusEta(double *eta, int id) {
   if (!focePlusRefinementRequired()) return true;
   auto *ind = &inds_focei[id];
   arma::vec x(eta,op_focei.neta), g(op_focei.neta);
-  auto score = [&](arma::vec &at, arma::vec &out) {
-    return focePlusScore(at,out,id);
-  };
-  auto finish = [&]() {
+  try {
+    if (focePlusScore(x,g,id)) focePlusNewton(x,g,id);
+  } catch (...) {
+  }
+  try {
     std::copy(x.begin(),x.end(),eta); ind->setup = 0;
     return R_FINITE(likInner0(eta,id));
-  };
-  try {
-    if (!score(x,g)) return false;
-    for (int iteration = 0; iteration < std::min(100,op_focei.maxInnerIterations); ++iteration) {
-      double norm = arma::abs(g).max();
-      if (norm < 1e-9) return finish();
-      arma::mat jacobian(x.n_elem,x.n_elem);
-      if (!focePlusScoreJacobian(x,jacobian,id)) return false;
-      arma::vec step;
-      if (!arma::solve(step,jacobian,g) || !step.is_finite()) return false;
-      bool accepted = focePlusBacktrack(x,g,step,norm,id);
-      if (!accepted) {
-        double decrement = arma::dot(g,step);
-        return focePlusSmallStep(norm,decrement) && finish();
-      }
-    }
-    return arma::abs(g).max() < 1e-9 && finish();
-  } catch (...) { return false; }
+  } catch (...) {
+    return false;
+  }
 }
 
 double LikInner2(double *eta, int likId, int id) {
@@ -4725,8 +4743,10 @@ static inline int innerOpt1(int id, int likId) {
       trust_result_t *r;
       ~TresGuard() { trust_result_free_ptr(r); }
     };
-    auto trustSolveAt = [&](bool fill, double startVal) {
-      if (fill) std::fill_n(fInd->x, npar, startVal);
+    // start == NULL: keep whatever eta fInd->x already holds (the warm/radius
+    // re-solves).  Otherwise it is npar wide and the attempt restarts there.
+    auto trustSolveAtVec = [&](const double *start) {
+      if (start != NULL) std::copy(start, start + npar, fInd->x);
       // Reset per attempt (mirrors n1qn1's cascade, which clears this before
       // every restart): a mid-solve NA from trustInnerObjfun latches
       // fInd->badSolve, and trustInnerObjfun's own guard then short-circuits
@@ -4827,6 +4847,12 @@ static inline int innerOpt1(int id, int likId) {
       if (!conv) op_focei.nTrustNoConv.fetch_add(1, std::memory_order_relaxed);
       return conv;
     };
+    std::vector<double> startBuf((size_t)npar, 0.0);
+    auto trustSolveAt = [&](bool fill, double startVal) {
+      if (!fill) return trustSolveAtVec(NULL);
+      std::fill(startBuf.begin(), startBuf.end(), startVal);
+      return trustSolveAtVec(startBuf.data());
+    };
 
     bool converged = trustSolveAt(false, 0.0);
     if (!converged && pushDist >= 0.0 && pushDist <= curRmax) {
@@ -4863,6 +4889,21 @@ static inline int innerOpt1(int id, int likId) {
       for (int _n = 0; _n < 4 && !converged; _n++) {
         op_focei.nTrustNudge.fetch_add(1, std::memory_order_relaxed);
         converged = trustSolveAt(true, nudges[_n]);
+      }
+    }
+    // The nudges are all spent and the subject is still unconverged.  Every one
+    // of them fills EVERY eta with the same constant, which is a poor
+    // exploration set on an inner problem with more than one basin -- measured
+    // on #1044's model, restarting from a draw out of Omega (the distribution
+    // the etas actually come from) recovers subjects the constants never do.
+    // Only reached after a failure, so a healthy fit never pays for it.
+    if (!converged && op_focei.nEtaRestart > 0 &&
+        (arma::uword)id < op_focei.etaRestartSamples.n_slices &&
+        op_focei.etaRestartSamples.n_rows == (arma::uword)npar) {
+      int nres = (int)op_focei.etaRestartSamples.n_cols;
+      for (int _k = 0; _k < nres && !converged; _k++) {
+        op_focei.nTrustRestart.fetch_add(1, std::memory_order_relaxed);
+        converged = trustSolveAtVec(op_focei.etaRestartSamples.slice(id).colptr(_k));
       }
     }
     // Every attempt this subject got is spent and none of them converged --
@@ -5742,6 +5783,83 @@ static inline double updateMuGroups() {
   return maxDelta;
 }
 
+// Fill the per-subject Omega draws the inner restart cascade falls back on.
+// Kept out of innerOpt() so that function does not carry the extra branching:
+// this is a self-contained, serial, once-per-fit step.
+static void fillEtaRestartSamples(rx_solve *rx) {
+  // Restart draws for the inner cascade.  Drawn ONCE per fit for the same
+  // reason the mceta cube is (a fresh draw per evaluation would make the
+  // objective a different random function every time the outer optimizer
+  // looked at it, #1040), and serially here so the per-subject workers only
+  // read memory.  Unconditional on mceta: the cascade runs whenever an inner
+  // solve fails, which is independent of how it was started (#1044).
+  //
+  // Drawn with rxode2's seeded threefry engine (Omega's lower Cholesky times
+  // iid standard normals), NOT through .sampleOmega/rxRmvn like the mceta cube
+  // above: rxRmvn consumes R's OWN RNG, so making these draws unconditional
+  // through it would shift every later R-level draw in the fit (the residual
+  // simulations behind npde, for one) on a fit that never restarts anything.
+  //
+  // The cube is released only when the fallback is OFF, never on a pass that
+  // merely cannot draw (maxInnerIterations<=0 / freezeOde): releasing it there
+  // would have the next real pass re-draw MID-FIT, and the seed a re-draw
+  // would use is not guaranteed to still be the one the first draw used.
+  // foceiSetup_ clears it per fit, so this fills it at most once.
+  if (op_focei.nEtaRestart <= 0 || op_focei.neta == 0) {
+    op_focei.etaRestartSamples.reset();
+  } else if (op_focei.maxInnerIterations > 0 && !op_focei.freezeOde) {
+    int nsubAll = (int)getRxNsubAndMix(rx);
+    int nres = op_focei.nEtaRestart;
+    if (op_focei.etaRestartSamples.n_rows   != (arma::uword)op_focei.neta ||
+        op_focei.etaRestartSamples.n_cols   != (arma::uword)nres ||
+        op_focei.etaRestartSamples.n_slices != (arma::uword)nsubAll) {
+      arma::mat om = getOmegaMat();
+      arma::mat L;
+      bool haveL = (om.n_rows == (arma::uword)op_focei.neta &&
+                    om.n_cols == (arma::uword)op_focei.neta &&
+                    arma::chol(L, om, "lower"));
+      if (!haveL) {
+        // Singular/indefinite Omega: fall back to independent draws scaled by
+        // the diagonal.  These are restart POINTS, so a correlation the
+        // fallback drops costs exploration, never correctness.
+        L.zeros(op_focei.neta, op_focei.neta);
+        for (int j = 0; j < op_focei.neta; ++j) {
+          double v = (om.n_rows > (arma::uword)j && om.n_cols > (arma::uword)j) ?
+            om(j, j) : 1.0;
+          L(j, j) = (v > 0) ? std::sqrt(v) : 1.0;
+        }
+      }
+      op_focei.etaRestartSamples.set_size(op_focei.neta, nres, nsubAll);
+      // One serial batch, so one seeding is enough -- nothing re-seeds the
+      // shared engine between the draws below (see nmMcmcRng.h).  Seeded from
+      // foceiControl(seed=), so the draws depend on that and nothing else.
+      //
+      // setSeedEng1(), NOT nmSetSeedEng1(): the latter also records the value
+      // as the current sampling-block seed, which would clobber a block that
+      // is live across this call (imp.cpp's E-step restores its own seed after
+      // every inner-likelihood call and would restore ours instead).  Leaving
+      // the engine's own state advanced is harmless -- every rxode2 solve
+      // reseeds it per subject on entry.
+      setRxThreadId(0);
+      {
+        uint32_t s = op_focei.etaRestartSeed;
+        s = s * 2654435761u + 0x65746152u;   // "etaR" namespace tag
+        setSeedEng1(s);
+      }
+      arma::vec z((arma::uword)op_focei.neta), draw((arma::uword)op_focei.neta);
+      for (int id = 0; id < nsubAll; ++id) {
+        for (int k = 0; k < nres; ++k) {
+          for (int j = 0; j < op_focei.neta; ++j) z[j] = rxNormEng(0.0, 1.0);
+          draw = L * z;
+          std::copy(draw.begin(), draw.end(),
+                    op_focei.etaRestartSamples.slice(id).colptr(k));
+        }
+      }
+      setRxThreadId(-1);
+    }
+  }
+}
+
 void innerOpt() {
   rx = getRxSolve_();
   rx_solving_options *op = getSolvingOptions(rx);
@@ -5805,6 +5923,7 @@ void innerOpt() {
       op_focei.mcetaSamples.reset();
     }
   }
+  fillEtaRestartSamples(rx);
   // freezeOde: evaluate each subject's density at its (restored) base EBE with a
   // single innerEval -- no eta re-optimization -- reusing the frozen ODE states.
   if (op_focei.maxInnerIterations <= 0 || op_focei.freezeOde){
@@ -8559,6 +8678,7 @@ NumericVector foceiSetup_(const RObject &obj,
   // are cleared here as well as in foceiOuter(), which the EM/nonparametric methods
   // never reach -- otherwise those fits would report the previous fit's counts.
   op_focei.mcetaSamples.reset();
+  op_focei.etaRestartSamples.reset();
   op_focei.nMcetaZero.store(0, std::memory_order_relaxed);
   op_focei.nMcetaSample.store(0, std::memory_order_relaxed);
   op_focei.nInnerRanked.store(0, std::memory_order_relaxed);
@@ -9006,6 +9126,28 @@ NumericVector foceiSetup_(const RObject &obj,
     op_focei.trustFterm = as<double>(foceiO["trustFterm"]);
     op_focei.trustMterm = as<double>(foceiO["trustMterm"]);
   }
+  op_focei.nEtaRestart = foceiO.containsElementNamed("etaRestart") ?
+    as<int>(foceiO["etaRestart"]) : 0;
+  // The base of the restart draws' threefry stream.  Taken from
+  // foceiControl(seed=) rather than rxode2's getRxSeed1(): that is NOT a
+  // getter -- it advances rxode2's global rxSeed by its argument on every
+  // call (rxode2's src/seed.cpp), so reading it here would shift the seed
+  // every LATER consumer in the fit gets, and when no rxode2 seed is in force
+  // it draws the value from R's own RNG.  Either one would make a fit that
+  // takes no restart at all differ from the same fit with etaRestart=0.
+  // The 42u floor is defensive, not a policy: a fit cannot actually reach here
+  // with seed=NULL, because .foceiFitInternal() wraps the run in
+  // rxode2::rxWithSeed(), which rejects a NULL seed outright ("'seed' must be
+  // an integer of length 1").  It covers the entry points that reach
+  // foceiSetup_ without that wrapper.
+  {
+    SEXP _seedS = foceiO.containsElementNamed("seed") ? (SEXP)foceiO["seed"] : R_NilValue;
+    op_focei.etaRestartSeed = 42u;
+    if (!Rf_isNull(_seedS) && Rf_length(_seedS) >= 1) {
+      double _sd = as<NumericVector>(_seedS)[0];
+      if (R_FINITE(_sd) && _sd >= 0) op_focei.etaRestartSeed = (uint32_t)_sd;
+    }
+  }
   op_focei.nTrustInner.store(0, std::memory_order_relaxed);
   op_focei.nConditionalInnerHessian.store(0, std::memory_order_relaxed);
   op_focei.nTrustError.store(0, std::memory_order_relaxed);
@@ -9015,6 +9157,7 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.nTrustRetry.store(0, std::memory_order_relaxed);
   op_focei.nTrustWarm.store(0, std::memory_order_relaxed);
   op_focei.nTrustNudge.store(0, std::memory_order_relaxed);
+  op_focei.nTrustRestart.store(0, std::memory_order_relaxed);
   op_focei.nTrustFail.store(0, std::memory_order_relaxed);
   op_focei.nHessianQN.store(0, std::memory_order_relaxed);
   op_focei.nsim=as<int>(foceiO["n1qn1nsim"]);
@@ -12818,6 +12961,8 @@ void foceiFinalizeTables(Environment e){
           _["warmRetry"] = op_focei.nTrustWarm.load(std::memory_order_relaxed),
           _["radiusRetry"] = op_focei.nTrustRetry.load(std::memory_order_relaxed),
           _["nudge"] = op_focei.nTrustNudge.load(std::memory_order_relaxed),
+          // Omega-draw restarts taken after the fixed nudges were spent.
+          _["omegaRestart"] = op_focei.nTrustRestart.load(std::memory_order_relaxed),
           // Subjects whose whole cascade -- first solve, radius escalation and
           // all four nudges -- ended without a converged attempt.
           _["failed"] = op_focei.nTrustFail.load(std::memory_order_relaxed));
@@ -23212,6 +23357,269 @@ static VaeSubsetFit vaeFinishSubset(VaeBnbCtx& c, const arma::vec& y) {
   return out;
 }
 
+// ---- cross-parameter (joint) covariate refinement ---------------------------
+//
+// Each latent dim runs its own covariate search, and the only coupling between
+// them -- the Gauss-Seidel GLS offset -- is FROZEN from the previous iteration
+// while a dim searches.  So no per-dim search can see that a covariate assigned
+// to dim k would be better explained on the correlated dim k'.  This pass looks.
+//
+// It is only meaningful under a CORRELATED Omega.  With a diagonal Omega the
+// objective sum_k RSS_k/omega_k + penalty*|S| is separable across dims and each
+// per-dim search already returns its exact minimum, so no cross-dim move can
+// strictly improve anything -- the caller gates on that rather than doing the
+// work and finding nothing.
+struct VaeJointCtx {
+  const arma::mat* covMat;
+  const arma::mat* resp;    // raw per-dim response, N x zDim (no frozen offset)
+  const arma::mat* rBase;   // residual snapshot, N x zDim, never mutated
+  const arma::mat* P;       // precision matrix, zDim x zDim
+  const arma::imat* allow;  // covAllow, or empty
+  bool haveAllow;
+  const arma::vec* zPopLower;
+  const arma::vec* zPopUpper;
+  double penalty;
+  int nCov;
+};
+
+// Design [1 | covMat.cols(sup)] for one dim.
+static arma::mat vaeJointZ(const VaeJointCtx& jc, const std::vector<int>& sup) {
+  arma::mat Z(jc.covMat->n_rows, 1 + sup.size());
+  Z.col(0).ones();
+  for (size_t s = 0; s < sup.size(); ++s) Z.col(s + 1) = jc.covMat->col((arma::uword)sup[s]);
+  return Z;
+}
+
+// Is dim `a` of the group having its intercept held at a bound?
+static inline bool vaeJointHeld(const std::vector<double>* icFix, size_t a) {
+  return icFix != nullptr && R_FINITE((*icFix)[a]);
+}
+
+// Drop the intercept column when it is being held.  An intercept-only support
+// leaves NO columns, and Armadillo's cols(1, 0) is out of bounds rather than
+// empty -- which would throw into the caller's catch-all and silently disable a
+// whole refinement group.
+static arma::mat vaeJointStripIc(const arma::mat& Z, bool held) {
+  if (!held) return arma::mat(Z);
+  if (Z.n_cols <= 1) return arma::mat(Z.n_rows, 0);
+  return arma::mat(Z.cols(1, Z.n_cols - 1));
+}
+
+// Per-dim designs and the block offsets of the joint system; a held intercept
+// costs one column.  Returns the total width.
+static int vaeJointBlocks(const VaeJointCtx& jc,
+                          const std::vector<std::vector<int> >& sup,
+                          const std::vector<double>* icFix,
+                          std::vector<arma::mat>* Z, std::vector<int>* off) {
+  const size_t m = sup.size();
+  Z->resize(m);
+  off->assign(m + 1, 0);
+  for (size_t a = 0; a < m; ++a) {
+    (*Z)[a] = vaeJointZ(jc, sup[a]);
+    const int nc = (int)(*Z)[a].n_cols - (vaeJointHeld(icFix, a) ? 1 : 0);
+    (*off)[a + 1] = (*off)[a] + nc;
+  }
+  return (*off)[m];
+}
+
+// u_k: what the dims OUTSIDE the group leave for dim k to explain.  Read from
+// the frozen residual snapshot, never from live state.
+static std::vector<arma::vec> vaeJointOuter(const VaeJointCtx& jc,
+                                            const std::vector<int>& G) {
+  std::vector<arma::vec> u(G.size());
+  for (size_t a = 0; a < G.size(); ++a) {
+    arma::vec uk(jc.rBase->n_rows, arma::fill::zeros);
+    for (int j = 0; j < (int)jc.P->n_cols; ++j) {
+      if (std::find(G.begin(), G.end(), j) != G.end()) continue;
+      uk += (*jc.P)(G[a], j) * jc.rBase->col((arma::uword)j);
+    }
+    u[a] = uk;
+  }
+  return u;
+}
+
+// Normal equations of the group-restricted GLS:
+//   sum_l P_kl Z_k'Z_l theta_l = Z_k'( sum_l P_kl y_l + u_k )
+static void vaeJointAssemble(const VaeJointCtx& jc, const std::vector<int>& G,
+                             const std::vector<arma::mat>& Z,
+                             const std::vector<int>& off,
+                             const std::vector<arma::vec>& u,
+                             const std::vector<double>* icFix,
+                             arma::mat* A, arma::vec* b) {
+  const size_t m = G.size();
+  for (size_t a = 0; a < m; ++a) {
+    const int k = G[a];
+    arma::mat Za = vaeJointStripIc(Z[a], vaeJointHeld(icFix, a));
+    arma::vec rhs = u[a];
+    for (size_t c2 = 0; c2 < m; ++c2) {
+      const int l = G[c2];
+      rhs += (*jc.P)(k, l) * jc.resp->col((arma::uword)l);
+      const bool fc = vaeJointHeld(icFix, c2);
+      if (fc) {
+        // a held intercept is known, so its column moves to the other side
+        rhs -= (*jc.P)(k, l) * (*icFix)[c2] * arma::ones<arma::vec>(jc.resp->n_rows);
+      }
+      arma::mat Zc = vaeJointStripIc(Z[c2], fc);
+      if (Za.n_cols == 0 || Zc.n_cols == 0) continue;
+      A->submat(off[a], off[c2], off[a + 1] - 1, off[c2 + 1] - 1) =
+        (*jc.P)(k, l) * (Za.t() * Zc);
+    }
+    if (Za.n_cols > 0) b->subvec(off[a], off[a + 1] - 1) = Za.t() * rhs;
+  }
+}
+
+// Rebuild each dim's full coefficient vector (held intercept reinstated) and its
+// residual; reports whether any FREE intercept landed outside its bounds, and
+// returns the total number of selected columns.
+static int vaeJointUnpack(const VaeJointCtx& jc, const std::vector<int>& G,
+                          const std::vector<std::vector<int> >& sup,
+                          const std::vector<arma::mat>& Z,
+                          const std::vector<int>& off, const arma::vec& th,
+                          const std::vector<double>* icFix,
+                          std::vector<arma::vec>* r,
+                          std::vector<arma::vec>* thetaOut, bool* clamped) {
+  const size_t m = G.size();
+  r->resize(m);
+  if (thetaOut != nullptr) thetaOut->resize(m);
+  if (clamped != nullptr) *clamped = false;
+  int nSel = 0;
+  for (size_t a = 0; a < m; ++a) {
+    const int k = G[a];
+    arma::vec full(Z[a].n_cols, arma::fill::zeros);
+    if (vaeJointHeld(icFix, a)) {
+      full[0] = (*icFix)[a];
+      if (Z[a].n_cols > 1) full.subvec(1, Z[a].n_cols - 1) = th.subvec(off[a], off[a + 1] - 1);
+    } else {
+      full = th.subvec(off[a], off[a + 1] - 1);
+      if (clamped != nullptr &&
+          ((R_FINITE((*jc.zPopLower)[k]) && full[0] < (*jc.zPopLower)[k]) ||
+           (R_FINITE((*jc.zPopUpper)[k]) && full[0] > (*jc.zPopUpper)[k]))) {
+        *clamped = true;
+      }
+    }
+    (*r)[a] = jc.resp->col((arma::uword)k) - Z[a] * full;
+    if (thetaOut != nullptr) (*thetaOut)[a] = full;
+    nSel += (int)sup[a].size();
+  }
+  return nSel;
+}
+
+static double vaeJointScore(const VaeJointCtx& jc, const std::vector<int>& G,
+                            const std::vector<std::vector<int> >& sup,
+                            std::vector<arma::vec>* thetaOut,
+                            const std::vector<double>* icFix,
+                            bool* clamped) {
+  const size_t m = G.size();
+  std::vector<arma::mat> Z;
+  std::vector<int> off;
+  const int M = vaeJointBlocks(jc, sup, icFix, &Z, &off);
+  // M == 0 is legitimate, not a failure: every dim in the group has an empty
+  // support AND a held intercept, so there is nothing left to solve for but the
+  // score is still well defined.
+  if (M < 0) return std::numeric_limits<double>::infinity();
+  std::vector<arma::vec> u = vaeJointOuter(jc, G);
+  arma::mat A(M, M, arma::fill::zeros);
+  arma::vec b(M, arma::fill::zeros);
+  vaeJointAssemble(jc, G, Z, off, u, icFix, &A, &b);
+  arma::vec th;
+  if (M > 0) {
+    bool ok = arma::solve(th, A, b);
+    if (!ok) ok = arma::solve(th, A, b, arma::solve_opts::force_approx);
+    if (!ok || !th.is_finite()) return std::numeric_limits<double>::infinity();
+  }
+  std::vector<arma::vec> r;
+  const int nSel = vaeJointUnpack(jc, G, sup, Z, off, th, icFix, &r, thetaOut, clamped);
+  // Q = sum_kl P_kl r_k'r_l + 2 sum_k r_k'u_k
+  double Q = 0;
+  for (size_t a = 0; a < m; ++a) {
+    for (size_t c2 = 0; c2 < m; ++c2) Q += (*jc.P)(G[a], G[c2]) * arma::dot(r[a], r[c2]);
+    Q += 2.0 * arma::dot(r[a], u[a]);
+  }
+  if (!R_FINITE(Q)) return std::numeric_limits<double>::infinity();
+  return Q + jc.penalty * (double)nSel;
+}
+
+// Group-level analogue of vaeSelLess: an order-independent tie-break, so an
+// exact score tie does not resolve to whichever move happened to be enumerated
+// first.  Supports are flattened with a separator per dim boundary.
+static bool vaeJointSelLess(const std::vector<std::vector<int> >& a,
+                            const std::vector<std::vector<int> >& b) {
+  std::vector<int> fa, fb;
+  for (size_t i = 0; i < a.size(); ++i) {
+    std::vector<int> t = a[i];
+    std::sort(t.begin(), t.end());
+    fa.insert(fa.end(), t.begin(), t.end());
+    fa.push_back(-1);
+  }
+  for (size_t i = 0; i < b.size(); ++i) {
+    std::vector<int> t = b[i];
+    std::sort(t.begin(), t.end());
+    fb.insert(fb.end(), t.begin(), t.end());
+    fb.push_back(-1);
+  }
+  return fa < fb;
+}
+
+// ---- colinearity hysteresis and the near-tie diagnostic --------------------
+// Score ONE support through the same leaf evaluator the search uses, so the
+// feasibility rules, the OLS and the score can never drift from the search's.
+// An infeasible support scores infinity, which makes every comparison below
+// fail closed: the incumbent is not adopted, the mate is not reported.
+static double vaeScoreSupport(const arma::vec& y, const arma::mat& X,
+                              double omega, double penalty,
+                              const std::vector<int>* grp,
+                              const std::vector<int>* blk,
+                              const std::vector<int>& sel,
+                              arma::vec* coefOut) {
+  VaeBnbCtx c;
+  c.X = &X; c.y = &y; c.omega = omega; c.penalty = penalty;
+  c.strategy = VAE_BNB_LIFO;
+  c.grp = grp;
+  vaeBnbSetBlocks(c, blk, (int)X.n_cols - 1);
+  c.bestScore = std::numeric_limits<double>::infinity();
+  vaeBnbLeaf(c, sel);
+  if (coefOut != nullptr) *coefOut = c.bestCoef;
+  return c.bestScore;
+}
+
+// Do two supports differ ONLY by exchanging columns for cluster mates?  That is
+// the sole difference hysteresis may veto -- it must never keep a covariate the
+// search wanted to drop, nor drop one it wanted to add.  Compared as MULTISETS
+// of cluster ids rather than position by position, because a swap can move a
+// column past a common one (\{1,5\} -> \{5,7\}) and still be a pure exchange.
+static bool vaeClusterSwapOnly(const std::vector<int>& a, const std::vector<int>& b,
+                               const std::vector<int>& clu) {
+  if (a.size() != b.size() || a == b) return false;
+  std::vector<int> ca(a.size()), cb(b.size());
+  for (size_t s = 0; s < a.size(); ++s) {
+    const size_t ja = (size_t)a[s], jb = (size_t)b[s];
+    if (ja >= clu.size() || jb >= clu.size()) return false;
+    if (clu[ja] < 0 || clu[jb] < 0) return false;
+    ca[s] = clu[ja]; cb[s] = clu[jb];
+  }
+  std::sort(ca.begin(), ca.end());
+  std::sort(cb.begin(), cb.end());
+  return ca == cb;
+}
+
+// Test-only window onto the hysteresis pass's decision.  The pass leaves no
+// trace a fit can be asserted against -- it changes WHICH of two interchangeable
+// columns is selected, never the fit -- and it only ever acts when the search
+// actually flips between mates, which no fixture can be relied on to produce
+// (measured: identical selection even at cor = 1).  So the decision is tested
+// directly.  Internal, like every other _-suffixed export here: testthat runs
+// inside the namespace, so it needs no NAMESPACE entry.
+// [[Rcpp::export]]
+bool vaeClusterSwapOnly_(Rcpp::IntegerVector a, Rcpp::IntegerVector b,
+                         Rcpp::IntegerVector clu) {
+  std::vector<int> av(a.begin(), a.end()), bv(b.begin(), b.end()),
+    cv(clu.begin(), clu.end());
+  for (size_t j = 0; j < cv.size(); ++j) {
+    if (Rcpp::IntegerVector::is_na(clu[(R_xlen_t)j])) cv[j] = -1;
+  }
+  return vaeClusterSwapOnly(av, bv, cv);
+}
+
 static VaeSubsetFit vaeBestSubsetL0(const arma::vec& y, const arma::mat& X,
                                     double omega, double penalty,
                                     VaeBnbStrategy strategy = VAE_BNB_LIFO,
@@ -23858,6 +24266,18 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       if (Rcpp::IntegerVector::is_na(g[(R_xlen_t)j])) covBlock[j] = -1;
     }
   }
+  // covCluster: colinearity cluster per covariate column.  Sent only when a
+  // cluster actually MERGES two covariate groups (.vaeClusterBinds() in R), so
+  // an empty vector here means "no near-interchangeable covariates" and both
+  // the hysteresis pass and the near-tie record stay switched off.
+  std::vector<int> covCluster;
+  if (prep.containsElementNamed("covCluster") && !Rf_isNull(prep["covCluster"])) {
+    Rcpp::IntegerVector g = as<Rcpp::IntegerVector>(prep["covCluster"]);
+    covCluster.assign(g.begin(), g.end());
+    for (size_t j = 0; j < covCluster.size(); ++j) {
+      if (Rcpp::IntegerVector::is_na(g[(R_xlen_t)j])) covCluster[j] = -1;
+    }
+  }
   // covSelectMethod: per-latent-dim search mode, 0 = exact branch-and-bound,
   // 1 = L0Learn-proposed candidates scored/polished by the same exact objective.
   // Resolved in R (that is where the suggested-package check and the $runInfo
@@ -23924,6 +24344,22 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
   // assigns it; "blend" is the historic gain-blended update.  Missing -> blend.
   const bool omegaSuffStat = control.containsElementNamed("omegaUpdate") &&
     as<std::string>(control["omegaUpdate"]) == "suffStat";
+  // Cross-parameter refinement knobs.  0 = smoothed sufficient statistic,
+  // 1 = raw posterior means, 2 = posterior means less the fitted covariate
+  // centers; missing -> "suffStat" (the selection's own regression response).
+  const std::string phiCorStr = control.containsElementNamed("covSelectPhiCor") ?
+    as<std::string>(control["covSelectPhiCor"]) : std::string("suffStat");
+  const int phiCorSrc = (phiCorStr == "mu") ? 1 : ((phiCorStr == "resid") ? 2 :
+    ((phiCorStr == "suffStat") ? 0 : -1));
+  if (phiCorSrc < 0) {
+    Rcpp::stop("covSelectPhiCor must be one of 'suffStat', 'mu', 'resid'");
+  }
+  const double phiJoin = control.containsElementNamed("covSelectPhiJoin") ?
+    as<double>(control["covSelectPhiJoin"]) : 2.0;
+  const double phiLeave = control.containsElementNamed("covSelectPhiLeave") ?
+    as<double>(control["covSelectPhiLeave"]) : 2.0;
+  const int phiMaxDim = control.containsElementNamed("covSelectPhiMaxDim") ?
+    as<int>(control["covSelectPhiMaxDim"]) : 0;
   // addProp: the VAE error M-step must estimate on the SAME sigma scale the
   // inner FOCEi likelihood uses (vaeInner.R passes addProp to foceiControl).
   const bool errCombined1 = control.containsElementNamed("addProp") &&
@@ -23949,6 +24385,9 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
   }
   if (!covBlock.empty() && (int)covBlock.size() != nCov) {
     Rcpp::stop("prep$covBlock must have one entry per covariate column (%d)", nCov);
+  }
+  if (!covCluster.empty() && (int)covCluster.size() != nCov) {
+    Rcpp::stop("prep$covCluster must have one entry per covariate column (%d)", nCov);
   }
 
   // ---- Adam state (zeros, per block) ----
@@ -24031,6 +24470,25 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
   arma::vec intercept = zPop;
   arma::mat beta(zDim, nCov, arma::fill::zeros);
   arma::umat selected(zDim, nCov, arma::fill::zeros);
+  // Colinearity hysteresis: the previous M-step's support per latent dim, in the
+  // REDUCED (per-dim allowed) index space the search itself works in -- the
+  // allow-mask is fixed for the whole fit, so those indices stay comparable.
+  // The near-tie record is refreshed every M-step, so what survives at the end
+  // describes the FINAL selection rather than some intermediate one.
+  std::vector<std::vector<int> > selPrev((size_t)zDim);
+  std::vector<char> selPrevSet((size_t)zDim, 0);
+  std::vector<std::vector<int> > tieSel((size_t)zDim), tieMate((size_t)zDim);
+  std::vector<std::vector<double> > tieDelta((size_t)zDim);
+  // how often the incumbent was kept, per dim -- the hysteresis pass has no
+  // other visible trace (it changes WHICH of two interchangeable columns is
+  // selected, not the fit), so a test cannot otherwise prove it ran
+  std::vector<int> hystN((size_t)zDim, 0);
+  // Cross-parameter refinement state.  phiPairOn is the sticky adjacency and
+  // persists across iterations; the counters separate "the pass ran" from "the
+  // pass changed something", and record WHY it did nothing when it did nothing.
+  arma::umat phiPairOn(zDim, zDim, arma::fill::zeros);
+  int nPhiPair = 0, nPhiTest = 0, nPhiMove = 0;
+  int nPhiSkipBig = 0, nPhiSkipDiag = 0, nPhiClamp = 0;
   arma::mat zPopArg(N, zDim); zPopArg.each_row() = zPop.t();
   bool isCovStep = false;
   arma::vec elboTrace(iters, arma::fill::zeros);
@@ -24071,7 +24529,10 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
     }
     // sufficient-statistic EMA, updated with the same gain as the M-step and
     // seeded (not blended) on the first pass so it starts AT the posterior means
-    if (covSelectSmooth || omegaSuffStat) {
+    // The default phi-correlation source IS s1, so it must be maintained even
+    // when neither of the two options that historically drove it is on --
+    // otherwise cor() would be taken of an all-zero matrix.
+    if (covSelectSmooth || omegaSuffStat || (phiMaxDim >= 2 && phiCorSrc == 0)) {
       arma::vec s2Cur(zDim, arma::fill::zeros), s3Cur(zDim, arma::fill::zeros);
       arma::mat s2MCur(zDim, zDim, arma::fill::zeros), s3MCur(zDim, zDim, arma::fill::zeros);
       if (omegaSuffStat) {
@@ -24125,9 +24586,15 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       // diagonal Omega c_ik = 0 and 1/P_kk = omega_k -- exactly the old code.
       arma::mat covOffset(N, zDim, arma::fill::zeros);
       arma::vec covVar = omega;
+      // Kept outside the `if` so the cross-phi refinement can score against the
+      // SAME precision matrix the offsets were built from; havePom is what gates
+      // it, since a failed inv_sympd leaves the coupling undefined.
+      arma::mat Pom;
+      bool havePom = false;
       if (omOff) {
-        arma::mat P;
+        arma::mat& P = Pom;
         if (arma::inv_sympd(P, arma::symmatu(omFull()))) {
+          havePom = true;
           arma::mat resp = covSelectSmooth ? s1 : last.mu;
           arma::mat rPrev = resp - zPopArg;       // previous-iteration residuals
           for (int k = 0; k < zDim; ++k) {
@@ -24234,6 +24701,17 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
           }
         }
         const std::vector<int>* blkP = blkK.empty() ? nullptr : &blkK;
+        // cluster ids follow the design actually searched, exactly as the groups
+        // and blocks do
+        std::vector<int> cluK;
+        if (!covCluster.empty()) {
+          if (haveCovAllow) {
+            cluK.resize(allowedG.n_elem);
+            for (size_t s = 0; s < allowedG.n_elem; ++s) cluK[s] = covCluster[(size_t)allowedG[s]];
+          } else {
+            cluK = covCluster;
+          }
+        }
         VaeSubsetFit fit = (haveL0 && covSelMode[k] == 1)
           // covVar[k] (not omega[k]): the GLS conditional variance 1/P_kk for a
           // correlated block, which reduces to omega[k] when Omega is diagonal.
@@ -24241,17 +24719,364 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
           ? vaeCandidateSubsetL0(yk, Xuse, covVar[k], covPenalty, cands[(size_t)k], true,
                                  grpP, blkP)
           : vaeBestSubsetL0(yk, Xuse, covVar[k], covPenalty, bnbStrategy, grpP, blkP);
-        arma::vec bestCoef = fit.coef;
+        std::vector<int> useSel = fit.sel;
+        arma::vec useCoef = fit.coef;
+        if (!cluK.empty()) {
+          // "Clearly beats" is measured in the search's OWN currency: one
+          // covariate's L0 cost.  An exchange between two columns the design
+          // cannot tell apart (abs(cor) at or above the cut) has to be worth as
+          // much as admitting a covariate before it displaces the incumbent.
+          // That needs no threshold of its own, and it can only ever veto a
+          // SWAP -- never an addition or a removal -- so a real covariate
+          // effect still enters and leaves on the search's terms.
+          const double margin = covPenalty;
+          double useScore = vaeScoreSupport(yk, Xuse, covVar[k], covPenalty,
+                                            grpP, blkP, useSel, nullptr);
+          if (selPrevSet[(size_t)k] &&
+              vaeClusterSwapOnly(useSel, selPrev[(size_t)k], cluK)) {
+            arma::vec incCoef;
+            const double incScore =
+              vaeScoreSupport(yk, Xuse, covVar[k], covPenalty, grpP, blkP,
+                              selPrev[(size_t)k], &incCoef);
+            if (R_FINITE(incScore) && incScore - useScore <= margin) {
+              useSel = selPrev[(size_t)k];
+              useCoef = incCoef;
+              useScore = incScore;
+              ++hystN[(size_t)k];
+            }
+          }
+          // Near ties: which cluster mates would have come within the same
+          // margin had they been chosen instead?  One single-column exchange at
+          // a time, scored through the leaf evaluator, so an exchange that is
+          // infeasible (two shapes of one covariate, half a hockey stick) drops
+          // out on its own.  Recorded against GLOBAL covariate columns.
+          std::vector<int>& tS = tieSel[(size_t)k];
+          std::vector<int>& tM = tieMate[(size_t)k];
+          std::vector<double>& tD = tieDelta[(size_t)k];
+          tS.clear(); tM.clear(); tD.clear();
+          std::vector<char> inSup(cluK.size(), 0);
+          for (size_t s = 0; s < useSel.size(); ++s) inSup[(size_t)useSel[s]] = 1;
+          for (size_t s = 0; s < useSel.size(); ++s) {
+            const int j = useSel[s];
+            if ((size_t)j >= cluK.size() || cluK[(size_t)j] < 0) continue;
+            for (size_t m = 0; m < cluK.size(); ++m) {
+              if ((int)m == j || inSup[m] != 0 || cluK[m] != cluK[(size_t)j]) continue;
+              std::vector<int> t = useSel;
+              t[s] = (int)m;
+              std::sort(t.begin(), t.end());
+              const double sc = vaeScoreSupport(yk, Xuse, covVar[k], covPenalty,
+                                                grpP, blkP, t, nullptr);
+              if (!R_FINITE(sc) || sc - useScore > margin) continue;
+              tS.push_back(haveCovAllow ? (int)allowedG[(size_t)j] : j);
+              tM.push_back(haveCovAllow ? (int)allowedG[m] : (int)m);
+              tD.push_back(sc - useScore);
+            }
+          }
+        }
+        selPrev[(size_t)k] = useSel;
+        selPrevSet[(size_t)k] = 1;
+        arma::vec bestCoef = useCoef;
         double ic = bestCoef[0];
         if (R_FINITE(zPopLower[k]) && ic < zPopLower[k]) ic = zPopLower[k];
         if (R_FINITE(zPopUpper[k]) && ic > zPopUpper[k]) ic = zPopUpper[k];
         intercept[k] = ic; bestCoef[0] = ic;
-        arma::uvec bestCols = vaeSubsetCols(fit.sel);
-        for (size_t s = 0; s < fit.sel.size(); ++s) {
-          int gj = haveCovAllow ? (int)allowedG[fit.sel[s]] : fit.sel[s];
+        arma::uvec bestCols = vaeSubsetCols(useSel);
+        for (size_t s = 0; s < useSel.size(); ++s) {
+          int gj = haveCovAllow ? (int)allowedG[useSel[s]] : useSel[s];
           beta(k, gj) = bestCoef[s + 1]; selected(k, gj) = 1;
         }
         zPopMat.col(k) = Xuse.cols(bestCols) * bestCoef;
+      }
+      // ---- cross-parameter refinement over correlated latent dims -----------
+      // Only meaningful under a correlated Omega: with a diagonal one the
+      // objective is separable across dims and each per-dim search already
+      // returned its exact minimum, so no cross-dim move can improve anything.
+      // Also held off while the off-diagonals are still pinned at zero, and
+      // until the penalty ramp has finished.
+      const bool phiWanted = phiMaxDim >= 2 && zDim > 1 &&
+        !covRamp && it > klWarmup;
+      const bool phiOn = phiWanted && omOff && havePom && it > nbCorrel;
+      // grouping is computed whenever it is WANTED, not only when it can be
+      // acted on, so a diagonal-omega model can still be told its dims are
+      // entangled instead of silently getting nothing
+      if (phiWanted) {
+        arma::mat src = (phiCorSrc == 1) ? last.mu
+          : ((phiCorSrc == 2) ? arma::mat(last.mu - zPopArg) : s1);
+        arma::mat Rc;
+        bool haveR = false;
+        if (src.n_rows > 2) {
+          Rc = arma::abs(arma::cor(src));
+          // a constant column gives NaN, which means "correlated with nothing"
+          Rc.replace(arma::datum::nan, 0.0);
+          haveR = Rc.is_finite();
+        }
+        if (haveR) {
+          // sticky membership: join high, leave only below the lower threshold,
+          // so a pair whose correlation wanders around the cut does not join and
+          // leave on alternate iterations
+          for (int a = 0; a < zDim; ++a) {
+            for (int b2 = a + 1; b2 < zDim; ++b2) {
+              const bool elig = !isFreeR[a] && !zPopFixR[a] && !isFreeR[b2] && !zPopFixR[b2];
+              if (!elig) { phiPairOn(a, b2) = phiPairOn(b2, a) = 0; continue; }
+              const double rv = Rc(a, b2);
+              if (rv >= phiJoin) phiPairOn(a, b2) = phiPairOn(b2, a) = 1;
+              else if (rv < phiLeave) phiPairOn(a, b2) = phiPairOn(b2, a) = 0;
+            }
+          }
+          // connected components: a PARTITION of the dims, which is what makes
+          // the write sets disjoint
+          std::vector<int> comp((size_t)zDim, -1);
+          std::vector<std::vector<int> > groups;
+          for (int a = 0; a < zDim; ++a) {
+            if (comp[(size_t)a] >= 0 || isFreeR[a] || zPopFixR[a]) continue;
+            std::vector<int> stack(1, a), g;
+            comp[(size_t)a] = (int)groups.size();
+            while (!stack.empty()) {
+              int cur = stack.back(); stack.pop_back();
+              g.push_back(cur);
+              for (int b2 = 0; b2 < zDim; ++b2) {
+                if (phiPairOn(cur, b2) && comp[(size_t)b2] < 0) {
+                  comp[(size_t)b2] = (int)groups.size();
+                  stack.push_back(b2);
+                }
+              }
+            }
+            std::sort(g.begin(), g.end());
+            groups.push_back(g);
+          }
+          int nGrp2 = 0;
+          for (size_t gi = 0; gi < groups.size(); ++gi) {
+            if (groups[gi].size() < 2) continue;
+            ++nGrp2;
+            nPhiPair += (int)(groups[gi].size() * (groups[gi].size() - 1) / 2);
+          }
+          if (!phiOn) {
+            // correlated dims exist, but a diagonal Omega leaves the objective
+            // separable, so there is provably nothing a cross-dim move could win
+            nPhiSkipDiag += nGrp2;
+          } else {
+            VaeBnbCtx fc;                    // feasibility only: no search runs
+            fc.X = nullptr; fc.y = nullptr; fc.omega = 1; fc.penalty = 0;
+            fc.strategy = VAE_BNB_LIFO;
+            fc.grp = covGroup.empty() ? nullptr : &covGroup;
+            vaeBnbSetBlocks(fc, covBlock.empty() ? nullptr : &covBlock, nCov);
+            arma::mat respAll = covSelectSmooth ? s1 : last.mu;
+            arma::mat rBase = respAll - zPopMat;   // snapshot: never mutated below
+            VaeJointCtx jc;
+            jc.covMat = &covMat; jc.resp = &respAll; jc.rBase = &rBase; jc.P = &Pom;
+            jc.allow = &covAllow; jc.haveAllow = haveCovAllow;
+            jc.zPopLower = &zPopLower; jc.zPopUpper = &zPopUpper;
+            jc.penalty = covPenalty; jc.nCov = nCov;
+            // Parallel over GROUPS.  This is only safe because the components
+            // PARTITION the dims -- group g writes solely row/column k of the
+            // shared buffers for its own k -- so verify that rather than trusting
+            // it, since the whole argument rests on it.  Everything read inside
+            // the loop is either iteration-constant or the rBase snapshot taken
+            // above, so no group can observe another's writes and the result is
+            // identical to running the groups serially in any order.
+            const int nG = (int)groups.size();
+            {
+              std::vector<char> seen((size_t)zDim, 0);
+              for (int g2 = 0; g2 < nG; ++g2) {
+                for (size_t t = 0; t < groups[(size_t)g2].size(); ++t) {
+                  const int k = groups[(size_t)g2][t];
+                  if (seen[(size_t)k]) Rcpp::stop("vae: phi groups are not disjoint");
+                  seen[(size_t)k] = 1;
+                }
+              }
+            }
+            // Counters go to per-group slots summed serially afterward: no
+            // atomics, and no reduction whose order could vary with thread count.
+            arma::ivec gTest((arma::uword)std::max(nG, 1), arma::fill::zeros);
+            arma::ivec gMove((arma::uword)std::max(nG, 1), arma::fill::zeros);
+            arma::ivec gClamp((arma::uword)std::max(nG, 1), arma::fill::zeros);
+            arma::ivec gBig((arma::uword)std::max(nG, 1), arma::fill::zeros);
+  #ifdef _OPENMP
+  #pragma omp parallel for num_threads(cores) schedule(dynamic) if(cores > 1 && nG > 1)
+  #endif
+            for (int gi = 0; gi < nG; ++gi) {
+              const std::vector<int>& G = groups[(size_t)gi];
+              if (G.size() < 2) continue;
+              if ((int)G.size() > phiMaxDim) { gBig[gi] = 1; continue; }
+              // an exception must never cross an OpenMP region; a group that
+              // fails numerically simply does nothing, which is the conservative
+              // answer anyway
+              try {
+              // current supports, and the blocks in play anywhere in the group
+              std::vector<std::vector<int> > sup(G.size());
+              std::vector<int> bag;
+              for (size_t a = 0; a < G.size(); ++a) {
+                for (int j = 0; j < nCov; ++j) {
+                  if (selected(G[a], j)) {
+                    sup[a].push_back(j);
+                    const int bb = fc.blockOf[(size_t)j];
+                    if (std::find(bag.begin(), bag.end(), bb) == bag.end()) bag.push_back(bb);
+                  }
+                }
+              }
+              std::sort(bag.begin(), bag.end());
+              if (bag.empty()) continue;
+              // a candidate support must be block-complete, group-feasible and
+              // allowed on the dim it lands on
+              auto feasible = [&](int k, const std::vector<int>& s) {
+                if (!vaeGroupOk(fc, s) || !vaeBlockOk(fc, s)) return false;
+                if (haveCovAllow) {
+                  for (size_t t = 0; t < s.size(); ++t) {
+                    if (covAllow(k, s[t]) != 1) return false;
+                  }
+                }
+                return true;
+              };
+              auto addBlk = [&](std::vector<int> s, int b) {
+                const std::vector<int>& cols = fc.blocks[(size_t)b];
+                s.insert(s.end(), cols.begin(), cols.end());
+                std::sort(s.begin(), s.end());
+                return s;
+              };
+              auto dropBlk = [&](const std::vector<int>& s, int b) {
+                std::vector<int> t;
+                for (size_t u2 = 0; u2 < s.size(); ++u2) {
+                  if (fc.blockOf[(size_t)s[u2]] != b) t.push_back(s[u2]);
+                }
+                return t;
+              };
+              auto hasBlk = [&](const std::vector<int>& s, int b) {
+                for (size_t u2 = 0; u2 < s.size(); ++u2) {
+                  if (fc.blockOf[(size_t)s[u2]] == b) return true;
+                }
+                return false;
+              };
+              // score an assignment, re-scoring with any binding intercept HELD:
+              // the per-dim path clamps after scoring, so without this a move
+              // could win on a score its written parameters never achieve
+              auto scoreOf = [&](const std::vector<std::vector<int> >& s,
+                                 std::vector<arma::vec>* th) {
+                bool cl = false;
+                double q = vaeJointScore(jc, G, s, th, nullptr, &cl);
+                if (!cl || !R_FINITE(q)) return q;
+                std::vector<arma::vec> t0;
+                vaeJointScore(jc, G, s, &t0, nullptr, nullptr);
+                std::vector<double> fixv(G.size(), NA_REAL);
+                for (size_t a = 0; a < G.size(); ++a) {
+                  const int k = G[a];
+                  if (t0.size() <= a || t0[a].n_elem == 0) continue;
+                  if (R_FINITE(zPopLower[k]) && t0[a][0] < zPopLower[k]) fixv[a] = zPopLower[k];
+                  else if (R_FINITE(zPopUpper[k]) && t0[a][0] > zPopUpper[k]) fixv[a] = zPopUpper[k];
+                }
+                ++gClamp[gi];
+                return vaeJointScore(jc, G, s, th, &fixv, nullptr);
+              };
+              std::vector<arma::vec> thCur;
+              double best = scoreOf(sup, &thCur);
+              if (!R_FINITE(best)) continue;
+              bool moved = false;
+              for (int pass = 0; pass < 20; ++pass) {
+                double bestScore = best;
+                std::vector<std::vector<int> > bestSup;
+                std::vector<arma::vec> bestTh;
+                bool have = false;
+                // MOVE b from k to k', ADD b to k', DROP b from k -- a fixed
+                // enumeration, with best-improvement acceptance so the winner does
+                // not depend on that order
+                for (size_t a = 0; a < G.size(); ++a) {
+                  for (size_t t = 0; t < bag.size(); ++t) {
+                    const int b = bag[t];
+                    const bool inA = hasBlk(sup[a], b);
+                    for (size_t c2 = 0; c2 < G.size(); ++c2) {
+                      if (c2 == a || !inA) continue;
+                      if (hasBlk(sup[c2], b)) continue;
+                      std::vector<std::vector<int> > cand = sup;
+                      cand[a] = dropBlk(sup[a], b);
+                      cand[c2] = addBlk(sup[c2], b);
+                      if (!feasible(G[a], cand[a]) || !feasible(G[c2], cand[c2])) continue;
+                      std::vector<arma::vec> th;
+                      ++gTest[gi];
+                      double q = scoreOf(cand, &th);
+                      if (R_FINITE(q) && (q < bestScore ||
+                                          (q == bestScore && have && vaeJointSelLess(cand, bestSup)))) {
+                        have = true; bestScore = q; bestSup = cand; bestTh = th;
+                      }
+                    }
+                    if (!inA) {                                  // ADD
+                      std::vector<std::vector<int> > cand = sup;
+                      cand[a] = addBlk(sup[a], b);
+                      if (feasible(G[a], cand[a])) {
+                        std::vector<arma::vec> th;
+                        ++gTest[gi];
+                        double q = scoreOf(cand, &th);
+                        if (R_FINITE(q) && (q < bestScore ||
+                                            (q == bestScore && have && vaeJointSelLess(cand, bestSup)))) {
+                          have = true; bestScore = q; bestSup = cand; bestTh = th;
+                        }
+                      }
+                    } else {                                     // DROP
+                      std::vector<std::vector<int> > cand = sup;
+                      cand[a] = dropBlk(sup[a], b);
+                      if (feasible(G[a], cand[a])) {
+                        std::vector<arma::vec> th;
+                        ++gTest[gi];
+                        double q = scoreOf(cand, &th);
+                        if (R_FINITE(q) && (q < bestScore ||
+                                            (q == bestScore && have && vaeJointSelLess(cand, bestSup)))) {
+                          have = true; bestScore = q; bestSup = cand; bestTh = th;
+                        }
+                      }
+                    }
+                  }
+                }
+                if (!have || !(bestScore < best)) break;
+                sup = bestSup; thCur = bestTh; best = bestScore;
+                moved = true; ++gMove[gi];
+              }
+              // Write back ONLY when something was accepted.  The joint refit is a
+              // GLS solve, not the per-dim OLS the loop ran, so re-deriving "the
+              // same" answer would differ in the last bits and perturb every
+              // downstream fit.  Only not writing guarantees the no-op.
+              if (!moved) continue;
+              for (size_t a = 0; a < G.size(); ++a) {
+                const int k = G[a];
+                if (thCur.size() <= a || thCur[a].n_elem == 0) continue;
+                double ic = thCur[a][0];
+                if (R_FINITE(zPopLower[k]) && ic < zPopLower[k]) ic = zPopLower[k];
+                if (R_FINITE(zPopUpper[k]) && ic > zPopUpper[k]) ic = zPopUpper[k];
+                arma::vec th = thCur[a];
+                th[0] = ic;
+                intercept[k] = ic;
+                beta.row(k).zeros();
+                selected.row(k).zeros();
+                for (size_t s2 = 0; s2 < sup[a].size(); ++s2) {
+                  beta(k, sup[a][s2]) = th[s2 + 1];
+                  selected(k, sup[a][s2]) = 1;
+                }
+                zPopMat.col(k) = vaeJointZ(jc, sup[a]) * th;
+                // the near-tie report was computed against the support the
+                // per-dim pass chose; this dim no longer has that support, and a
+                // stale alternative is worse than none
+                tieSel[(size_t)k].clear();
+                tieMate[(size_t)k].clear();
+                tieDelta[(size_t)k].clear();
+                // Same staleness, stronger consequence: selPrev is the hysteresis
+                // INCUMBENT, and it still holds the support this pass just
+                // overruled.  Left alone, the next iteration could adopt it back
+                // -- a report going stale only misinforms, an incumbent going
+                // stale changes the selection.  Dropping it (rather than
+                // translating sup[a] into the per-dim REDUCED index space, whose
+                // allow-mask and block-dropping map is local to that loop) means
+                // the next iteration simply re-seeds from whatever it chooses,
+                // which is the same path the first iteration takes.
+                selPrev[(size_t)k].clear();
+                selPrevSet[(size_t)k] = 0;
+              }
+              } catch (...) {
+                // leave this group exactly as the per-dim pass left it
+              }
+            }
+            nPhiTest += (int)arma::accu(gTest);
+            nPhiMove += (int)arma::accu(gMove);
+            nPhiClamp += (int)arma::accu(gClamp);
+            nPhiSkipBig += (int)arma::accu(gBig);
+            }
+        }
       }
       arma::vec omegaCur(zDim);
       for (int k = 0; k < zDim; ++k) {
@@ -24609,6 +25434,26 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
   arma::mat zPopMatOut(N, zDim);
   if (isCovStep) zPopMatOut = zPopArg; else zPopMatOut.each_row() = zPop.t();
 
+  // Near-tie record, flattened across latent dims: the cluster mate that would
+  // have scored within one covariate's L0 cost of the column actually chosen.
+  // 1-based dim and covariate indices, ready for R.  Empty unless a cluster
+  // bound two covariate groups.
+  int nTie = 0;
+  for (int k = 0; k < zDim; ++k) nTie += (int)tieSel[(size_t)k].size();
+  IntegerVector tieDim(nTie), tieCol(nTie), tieAlt(nTie);
+  NumericVector tieDel(nTie);
+  for (int k = 0, t = 0; k < zDim; ++k) {
+    for (size_t s = 0; s < tieSel[(size_t)k].size(); ++s, ++t) {
+      tieDim[t] = k + 1;
+      tieCol[t] = tieSel[(size_t)k][s] + 1;
+      tieAlt[t] = tieMate[(size_t)k][s] + 1;
+      tieDel[t] = tieDelta[(size_t)k][s];
+    }
+  }
+  List nearTieOut = List::create(_["dim"] = tieDim, _["covariate"] = tieCol,
+                                 _["mate"] = tieAlt, _["delta"] = tieDel);
+  int nHyst = 0;
+  for (int k = 0; k < zDim; ++k) nHyst += hystN[(size_t)k];
   List paramsOut = List::create(_["Wih"] = Wih, _["Whh"] = Whh, _["bih"] = bih,
                                 _["bhh"] = bhh, _["fcW"] = fcW, _["fcB"] = fcB);
   IntegerVector mixnumOut(N);
@@ -24622,7 +25467,22 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
                       _["mixnum"] = mixnumOut, _["regressTheta"] = regressThetaOut,
                       _["nRegGrad"] = nRegGrad, _["nRegFallback"] = nRegFallback,
                       _["nStage2"] = nStage2,
-                      _["mixProb"] = mixProbFinal, _["nMixThetaStep"] = nMixThStep);
+                      _["mixProb"] = mixProbFinal, _["nMixThetaStep"] = nMixThStep,
+                      _["covNearTie"] = nearTieOut,
+                      _["nCovHysteresis"] = nHyst,
+                      _["nPhiPair"] = nPhiPair,
+                      _["nPhiTest"] = nPhiTest,
+                      _["nPhiMove"] = nPhiMove,
+                      _["nPhiSkipBig"] = nPhiSkipBig,
+                      _["nPhiSkipDiag"] = nPhiSkipDiag,
+                      _["nPhiClamp"] = nPhiClamp,
+                      // reported rather than re-derived in R: _vaeOmHasOff
+                      // comes from the omega SELECTION structure, so a
+                      // declared block whose ini covariance is exactly 0
+                      // would make an R-side check disagree with the gate
+                      // that actually ran
+                      _["omOff"] = (int)omOff,
+                      _["phiPairOn"] = phiPairOn);
 }
 
 // Test-facing entry point for the exact L0/BIC best-subset kernel used by the VAE

@@ -230,10 +230,14 @@ nlmixr2Est0 <- function(env, ...) {
   }
   if (inherits(env$ui, "rxUi")) {
     .modelName <- env$ui$modelName
+    # rebuilding from ui$fun() drops the bounded-transform specs; the table step of a
+    # fit (saem's output call) still needs them to back-transform its parameters
+    .boundedTransforms <- env$ui$boundedTransforms
     assign("ui",
            .rxUiDecompressModelFun(env$ui),
            envir=env) # re-evaluate so it doesn't overwrite inital ui
     assign("modelName", .modelName, envir=env$ui)
+    if (!is.null(.boundedTransforms)) env$ui$boundedTransforms <- .boundedTransforms
   }
   .doIt <- TRUE
   if (is.null(get("missingTable", envir=env))) {

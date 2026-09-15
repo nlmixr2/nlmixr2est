@@ -99,7 +99,14 @@ addCwres <- function(fit, focei=TRUE, updateObject = TRUE, envir = parent.frame(
     .addFoceiInfoToFit(.env, .newFit)
     .objDf <- .newFit$objDf
     .type <- rownames(.objDf)
-    nlmixrAddObjectiveFunctionDataFrame(.new, .objDf, .type)
+    .curObjDf <- .new$objDf
+    # A fit that already reports this objective function (an estimation method
+    # whose own objective function is the focei/foce one) only needs the columns;
+    # asking for the row again is an error.  An uncalculated row is replaced.
+    if (!any(rownames(.curObjDf) == .type) ||
+          (nrow(.curObjDf) == 1L && is.na(.curObjDf$OBJF[[1]]))) {
+      nlmixrAddObjectiveFunctionDataFrame(.new, .objDf, .type)
+    }
     if (updateObject) {
       nlmixrUpdateObject(.new, .objName, envir, .origFitEnv)
     }

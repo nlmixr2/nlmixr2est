@@ -247,6 +247,20 @@
   if (!is.null(prep$covBlock) && anyDuplicated(prep$covBlock) > 0L) {
     prepC$covBlock <- as.integer(prep$covBlock)
   }
+  ## Colinearity clusters.  The gate is .vaeClusterBinds(), NOT the
+  ## anyDuplicated() idiom the two above use: a cluster id repeats on every
+  ## multi-shape covariate even when nothing is colinear, so anyDuplicated()
+  ## would switch the hysteresis and the near-tie scoring on for ordinary
+  ## designs.  Only a cluster that MERGES two groups is worth sending.
+  prepC$covCluster <- NULL
+  if (!is.null(prep$covMat) && ncol(prep$covMat) > 0L && !is.null(prep$covGroup)) {
+    ## a control serialized before this option existed has no cut; fall back to
+    ## the shared default rather than passing NULL into the assert
+    .cut <- control$covSelectColinearCut
+    if (is.null(.cut)) .cut <- .vaeColinearCut
+    .clu <- .vaeCovCluster(prep$covMat, prep$covGroup, .cut)
+    if (.vaeClusterBinds(.clu, prep$covGroup)) prepC$covCluster <- as.integer(.clu)
+  }
 
   ## covSelectMethod: pick the search per latent dimension from the number of
   ## candidates that dimension actually has (after any pinCovariates trimming),
@@ -323,6 +337,35 @@
                        parInfo$xform, as.integer(parInfo$structIdx) - 1L)
 
   .selected <- matrix(as.logical(.fit$selected), zDim, ncol(prep$covMat))
+  ## Near ties: cluster mates that would have scored within one covariate's L0
+  ## cost of the column actually chosen.  Zero rows unless a colinearity cluster
+  ## bound two covariate groups, which is the only case C++ scores them in.
+  .nt <- .fit$covNearTie
+  .covNearTie <-
+    if (is.null(.nt)) {
+      data.frame(eta = character(0), covariate = character(0),
+                 mate = character(0), delta = numeric(0))
+    } else {
+      data.frame(eta = prep$etaNames[.nt$dim],
+                 covariate = prep$covNames[.nt$covariate],
+                 mate = prep$covNames[.nt$mate],
+                 delta = as.numeric(.nt$delta))
+    }
+  ## Cross-parameter refinement: counters and the sticky pair adjacency, straight
+  ## from C++ (omOff is reported rather than re-derived so it cannot disagree
+  ## with the gate that actually ran).
+  .nPhiPair <- if (is.null(.fit$nPhiPair)) 0L else as.integer(.fit$nPhiPair)
+  .nPhiTest <- if (is.null(.fit$nPhiTest)) 0L else as.integer(.fit$nPhiTest)
+  .nPhiMove <- if (is.null(.fit$nPhiMove)) 0L else as.integer(.fit$nPhiMove)
+  .nPhiSkipBig <- if (is.null(.fit$nPhiSkipBig)) 0L else as.integer(.fit$nPhiSkipBig)
+  .nPhiSkipDiag <- if (is.null(.fit$nPhiSkipDiag)) 0L else as.integer(.fit$nPhiSkipDiag)
+  .nPhiClamp <- if (is.null(.fit$nPhiClamp)) 0L else as.integer(.fit$nPhiClamp)
+  .omOff <- if (is.null(.fit$omOff)) FALSE else as.logical(.fit$omOff)
+  .phiPairOn <- .fit$phiPairOn
+  if (!is.null(.phiPairOn)) dimnames(.phiPairOn) <- list(prep$etaNames, prep$etaNames)
+  for (.m in .vaePhiDiagMsg(.nPhiPair, .omOff, any(.selected))) {
+    warning(.m, call. = FALSE)
+  }
   .omMat <- .fit$omegaMat
   dimnames(.omMat) <- list(prep$etaNames, prep$etaNames)
   list(params = .fit$params, zPop = as.numeric(.fit$zPop), omega = as.numeric(.fit$omega),
@@ -335,6 +378,16 @@
        nRegGrad = as.integer(.fit$nRegGrad), nRegFallback = as.integer(.fit$nRegFallback),
        nStage2 = as.integer(.fit$nStage2),
        covSelectMethodUsed = .modes$used,
+       covNearTie = .covNearTie,
+       nCovHysteresis = if (is.null(.fit$nCovHysteresis)) 0L else as.integer(.fit$nCovHysteresis),
+       nPhiPair = .nPhiPair,
+       nPhiTest = .nPhiTest,
+       nPhiMove = .nPhiMove,
+       nPhiSkipBig = .nPhiSkipBig,
+       nPhiSkipDiag = .nPhiSkipDiag,
+       nPhiClamp = .nPhiClamp,
+       omOff = .omOff,
+       phiPairOn = .phiPairOn,
        nMix = nMix,
        ## the FITTED proportions, not the ini() ones: they are estimated on the
        ## mlogit scale by their own analytic gradient (Adam), so the value that

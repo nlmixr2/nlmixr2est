@@ -1393,6 +1393,19 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// vaeClusterSwapOnly_
+bool vaeClusterSwapOnly_(Rcpp::IntegerVector a, Rcpp::IntegerVector b, Rcpp::IntegerVector clu);
+RcppExport SEXP _nlmixr2est_vaeClusterSwapOnly_(SEXP aSEXP, SEXP bSEXP, SEXP cluSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Rcpp::IntegerVector >::type a(aSEXP);
+    Rcpp::traits::input_parameter< Rcpp::IntegerVector >::type b(bSEXP);
+    Rcpp::traits::input_parameter< Rcpp::IntegerVector >::type clu(cluSEXP);
+    rcpp_result_gen = Rcpp::wrap(vaeClusterSwapOnly_(a, b, clu));
+    return rcpp_result_gen;
+END_RCPP
+}
 // vaeTrainCpp_
 List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector mixProbR, int cores, NumericVector row0, CharacterVector parNames, List iterPrintControl, RObject xform, IntegerVector structIdx0);
 RcppExport SEXP _nlmixr2est_vaeTrainCpp_(SEXP paramsSEXP, SEXP prepSEXP, SEXP controlSEXP, SEXP nMixSEXP, SEXP mixProbRSEXP, SEXP coresSEXP, SEXP row0SEXP, SEXP parNamesSEXP, SEXP iterPrintControlSEXP, SEXP xformSEXP, SEXP structIdx0SEXP) {

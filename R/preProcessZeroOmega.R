@@ -199,7 +199,10 @@ rmEta <- function(ui, eta) {
   .ui <- ui
   .zeroEtas <- .getZeroEtasFromModel(.ui)
   if (length(.zeroEtas) > 0) {
-    nlmixr2global$nlmixr2EstEnv$nlmixrPureInputUi <- rxode2::rxUiDecompress(.ui)
+    # an earlier hook may already have saved the user's own model
+    if (is.null(nlmixr2global$nlmixr2EstEnv$nlmixrPureInputUi)) {
+      nlmixr2global$nlmixr2EstEnv$nlmixrPureInputUi <- rxode2::rxUiDecompress(.ui)
+    }
     .minfo(paste0("the following etas are removed from the model since their initial estimates are zero: ",
                   paste(.zeroEtas, collapse=", ")))
     .ui <- .downgradeEtas(.ui, zeroEtas=.zeroEtas)

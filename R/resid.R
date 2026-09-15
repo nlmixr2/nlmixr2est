@@ -513,13 +513,42 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   data
 }
 
+#' Does the fit already report a calculated focei-family objective function?
+#'
+#' `addCwres()` attaches the CWRES columns together with the objective function
+#' row it calculates ("FOCEi", or "FOCE"/"lFOCEi" for `focei=FALSE`) and cannot
+#' add a row the fit already has, so a fit reporting one has to calculate CWRES
+#' in its own table step.  An uncalculated (NA) objective function is replaced
+#' rather than appended, so it does not count.
+#'
+#' @param fit fit environment
+#' @return `TRUE` when `addCwres()` could not add CWRES to this fit later
+#' @author Matthew L. Fidler
+#' @noRd
+.foceiObjfWithoutCwres <- function(fit) {
+  # read the fit environment directly; the `$` fallback for a name the
+  # environment does not have re-derives it from the ui, which is not free
+  .objDf <- if (is.environment(fit)) {
+    if (exists("objDf", envir=fit, inherits=FALSE)) {
+      get("objDf", envir=fit, inherits=FALSE)
+    } else {
+      NULL
+    }
+  } else {
+    fit$objDf
+  }
+  if (!is.data.frame(.objDf)) return(FALSE)
+  if (!any(rownames(.objDf) %in% c("FOCEi", "lFOCEi", "FOCE"))) return(FALSE)
+  any(!is.na(.objDf$OBJF))
+}
+
 .calcTables <- function(fit, data=fit$dataSav, thetaEtaParameters=fit$foceiThetaEtaParameters,
                         table=tableControl(), keep=NULL) {
   keep <- unique(c(keep, "nlmixrRowNums"))
 
   if (!inherits(table, "tableControl")) table <- do.call(tableControl, table)
   if (is.null(table$cwres)) {
-    table$cwres <- !is.null(fit$innerModel)
+    table$cwres <- !is.null(fit$innerModel) || .foceiObjfWithoutCwres(fit)
   }
   if (table$cwres) {
     fit$innerModelForce

@@ -152,7 +152,6 @@ nmGetDistributionSaemLines.rxUi <- function(line) {
 #' @rdname nmGetDistributionSaemLines
 #' @export
 nmGetDistributionSaemLines.norm <- function(line) {
-  .rx <- line[[1]]
   .pred1 <- line[[2]]
   if (.pred1[["linCmt"]]) {
     .var <- quote(linCmt())
@@ -175,7 +174,40 @@ nmGetDistributionSaemLines.LL <- function(line) {
   # internally, so one forwarding body covers all of them.
   .ui <- line[[1]]
   .errNum <- line[[3]]
-  rxGetDistributionFoceiLines(.createFoceiLineObject(.ui, .errNum))
+  .saemAddTbsJacobian(rxGetDistributionFoceiLines(.createFoceiLineObject(.ui, .errNum)),
+                      line[[2]])
+}
+
+#' Is this generated line `rx_pred_ ~ llik*(...)`?
+#'
+#' @param l a model line
+#' @return logical
+#' @noRd
+.saemIsLlikLine <- function(l) {
+  if (!is.call(l) || !identical(l[[1]], as.name("~"))) return(FALSE)
+  if (!identical(l[[2]], as.name("rx_pred_")) || !is.call(l[[3]])) return(FALSE)
+  is.name(l[[3]][[1]]) && startsWith(as.character(l[[3]][[1]]), "llik")
+}
+
+#' Add the transform's log-Jacobian to a generated likelihood line
+#'
+#' rxode2 scores the transformed DV (`llikNorm(rxTBS(DV, ...), ...)`) and FOCEi adds the
+#' Jacobian afterwards (`tbsLik`).  saem uses the line itself as the observation
+#' log-likelihood, so it has to carry `log|d rxTBS / d DV|`, or a transform parameter
+#' such as a boxCox lambda is estimated from the wrong density.
+#'
+#' @param lines generated error lines
+#' @param pred1 the endpoint's `predDf` row
+#' @return lines with the Jacobian added to the `rx_pred_ ~ llik*()` line
+#' @noRd
+.saemAddTbsJacobian <- function(lines, pred1) {
+  if (paste(pred1$transform) == "untransformed") return(lines)
+  if (!(paste(pred1$distribution) %in% c("norm", "dnorm", "t", "cauchy"))) return(lines)
+  for (.i in which(vapply(lines, .saemIsLlikLine, logical(1)))) {
+    lines[[.i]][[3]] <- call("+", lines[[.i]][[3]],
+                             quote(log(rxTBSd(DV, rx_lambda_, rx_yj_, rx_low_, rx_hi_))))
+  }
+  lines
 }
 
 #' @rdname nmGetDistributionSaemLines
@@ -273,12 +305,11 @@ attr(rxUiGet.saemModel0, "rstudio") <- quote(rxModelVars({}))
 #'@export
 rxUiGet.saemModelPred0 <- function(x, ...) {
   .f <- x[[1]]
-  # see rxUiGet.saemModel0's comment -- same reasoning applies to the
-  # FOCEi-style predOnly model used for residuals/covariance.
-  if (.saemGeneralLik(.f)) {
-    nlmixr2global$rxPredLlik <- TRUE
-    on.exit(nlmixr2global$rxPredLlik <- FALSE, add=TRUE)
-  }
+  # The table predOnly keeps the mean/variance form (as rxUiGet.focei's does);
+  # forcing rxPredLlik reported a dnorm()/t()/cauchy() log-density as IPRED (#1084)
+  .oldLlik <- nlmixr2global$rxPredLlik
+  nlmixr2global$rxPredLlik <- FALSE
+  on.exit(nlmixr2global$rxPredLlik <- .oldLlik, add=TRUE)
   rxode2::rxCombineErrorLines(.f, errLines=rxGetDistributionFoceiLines(.f),
                               paramsLine=NA, #.uiGetThetaEtaParams(.f),
                               modelVars=TRUE,
@@ -571,7 +602,6 @@ attr(rxUiGet.saemModelPredReplaceLst, "rstudio") <- c(tka="THETA[1] + ETA[1]")
 
 #' @export
 rxUiGet.interpLinesStr <- function(x, ...) {
-  .ui <- x[[1]]
   .interp <- x[[1]]$interpLines
   if (is.null(.interp)) {
     .interp <- ""
@@ -614,7 +644,6 @@ attr(rxUiGet.interpLinesStr, "rstudio") <- ""
 
 #' @export
 rxUiGet.saemModelPred <- function(x, ...) {
-  .ui0 <- x[[1]]
   ## No levels() lines are emitted: .foceiPreProcessData() turns the string
   ## covariates into factors with the model's level order, so the solve sees
   ## the numeric codes directly.
@@ -636,8 +665,6 @@ rxUiGet.saemModelPred <- function(x, ...) {
   .low <- paste(get("rx_low_", envir = .s))
   .low <- paste0("rx_low_~", rxode2::rxFromSE(.low))
   ## if (is.null(.lhs0)) .lhs0 <- ""
-  .ui <- x[[1]]
-  .lhsIn <- .ui$mv0$lhs
   .ddt <- .s$..ddt
   if (is.null(.ddt)) .ddt <- ""
 
