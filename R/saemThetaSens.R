@@ -107,6 +107,19 @@ attr(rxUiGet.saemThetaSensPlan, "rstudio") <- emptyenv()
   ## anything beyond THETA[]/ETA[]/DV means the phi translation below would be
   ## guessing at what to put in the extra slots
   .other <- .pars[!(grepl("^(THETA|ETA)\\[", .pars) | .pars == "DV")]
+  ## A COVARIATE is not an extra slot to guess at: it is supplied per record
+  ## from the data, exactly as it is for every other model, and the translation
+  ## below never touches it -- that loop walks THETA[k] and ETA[k] only.
+  ##
+  ## Refusing on its account is what kept this refinement away from the models
+  ## that need it most.  Measured on a declared-gamma model with one covariate
+  ## in the distribution, the sensitivity model's parameters are
+  ## `THETA[1..5] ETA[1] WT`, so `WT` alone made the plan return NULL, the
+  ## peer was never built, `_saemThetaSensActive` stayed 0 and
+  ## `etaDistGradStep()` -- the declared thetas' exact-gradient owner -- could
+  ## not run at all.
+  .covs <- tryCatch(ui$allCovs, error = function(e) character(0))
+  if (length(.covs) > 0) .other <- setdiff(.other, .covs)
   if (length(.other) > 0) return(NULL)
   ## DV is a model INPUT only for a general-likelihood model, where the
   ## likelihood expression names it.  A normal-error model (`prop()`, `add()`,

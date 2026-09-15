@@ -2649,7 +2649,24 @@ public:
   // opposite of what src/nonMuThetaGrad.h prescribes: "run the cheap directed
   // step often, the expensive undirected one rarely".
   bool etaDistGradStep(unsigned int kiter, const vec &pas) {
-    if (!etaDistObsLik() || !_saemThetaSensActive || nphi0 <= 0) return false;
+    // The declared thetas' OBSERVATION-likelihood owner, which does not depend
+    // on the family MLE being switched on.  `etaDistObsLik()` requires
+    // `etaDistOn`, and that flag means "the FAMILY M-step is wanted" (see
+    // R/saem.R) -- a different route entirely, on the prior side.  Requiring it
+    // here made the gradient step unreachable under `etaDistMstep = FALSE`,
+    // which is both the default and the setting the documentation recommends:
+    // measured, `loglik=1 on=0 ndist=1 nphi0=4` and the step never ran, leaving
+    // a declared theta on the cdf route with no owner that carries derivative
+    // information.
+    if (!etaDistLoglik || etaDistNdist <= 0) return false;
+    // ...but ONLY for declarations whose thetas are in the observation path.
+    // A declaration whose thetas are prior-only is owned by the Q2 step, and
+    // letting this one at them too is two owners on one parameter -- the
+    // failure this area keeps relearning.  Measured on the direct route, where
+    // every declared theta is Q2: with this step also running, bWT went 0.7099
+    // -> 0.5854 and prop.sd 0.1519 -> 0.2936 against truths of 0.75 and 0.15.
+    if (!etaDistAnyQ1()) return false;
+    if (!_saemThetaSensActive || nphi0 <= 0) return false;
     if (etaDistThetaPhi0.n_rows != (unsigned int)etaDistNdist) return false;
     // CADENCE.  This is the declared-distribution M-step, so it runs on that
     // step's own schedule (etaDistStart / etaDistEvery, default 20) rather
@@ -6869,6 +6886,14 @@ private:
     return true;
   }
   // Does any declaration qualify?  Cheap gate so a model with none pays nothing.
+  // Is any declaration's theta set in the OBSERVATION path?  The complement of
+  // etaDistAllQ2() over declarations: cdf puts every declared theta there (the
+  // decoder reads the anchors), direct puts none.
+  bool etaDistAnyQ1() const {
+    for (int k = 0; k < etaDistNdist; ++k) if (!etaDistAllQ2(k)) return true;
+    return false;
+  }
+
   bool etaDistAnyQ2() const {
     for (int k = 0; k < etaDistNdist; ++k) if (etaDistAllQ2(k)) return true;
     return false;
