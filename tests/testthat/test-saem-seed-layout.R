@@ -9,6 +9,10 @@ nmTest({
       expect_false(grepl("2654435761", .txt, fixed = TRUE), info = .f)
       expect_true(grepl("nmSeqSeedStart(", .txt, fixed = TRUE), info = .f)
     }
+    # FOCEi's etaRestart draws take sequential seeds too
+    .inner <- paste(readLines(file.path(.src, "inner.cpp"), warn = FALSE), collapse = "\n")
+    expect_false(grepl("2654435761", .inner, fixed = TRUE))
+    expect_true(grepl("nmSeqSeed(", .inner, fixed = TRUE))
   })
 
   test_that("saem seeds are sequential by iteration, step and individual", {
