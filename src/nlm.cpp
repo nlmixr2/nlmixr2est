@@ -8,6 +8,7 @@
 #include "shi21.h"
 #include "inner.h"
 #include "odeSwap.h"
+#include "nmParallel.h"
 #include "rxomp.h"
 #include "../inst/include/nlmixr2estLikContrib.h"
 #include "likContribUtil.h"
@@ -563,14 +564,9 @@ arma::vec nlmSolveF(arma::vec &theta) {
   double *retD = ret.memptr();
   rx_solving_options *op = getSolvingOptions(rx);
   int cores = getOpCores(op);
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(cores)
-#endif
-  for (int id = 0; id < getRxNsub(rx); ++id) {
-    setRxThreadId(omp_get_thread_num());
+  nmForEachSubject(rx, getRxNsub(rx), cores, cores > 1, [&](int id) {
     nlmSolveFid(retD + nlmOp.idS[id], nlmOp.nobs[id], theta, id);
-    setRxThreadId(-1);
-  }
+  });
   return ret;
 }
 
@@ -743,14 +739,9 @@ arma::mat nlmSolveGrad(arma::vec &theta) {
   arma::mat ret(nlmOp.nobsTot, nlmOp.ntheta+1);
   rx_solving_options *op = getSolvingOptions(rx);
   int cores = getOpCores(op);
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(cores)
-#endif
-  for (int id = 0; id < getRxNsub(rx); ++id) {
-    setRxThreadId(omp_get_thread_num());
+  nmForEachSubject(rx, getRxNsub(rx), cores, cores > 1, [&](int id) {
     ret.rows(nlmOp.idS[id], nlmOp.idF[id]) = nlmSolveGradId(theta, id);
-    setRxThreadId(-1);
-  }
+  });
   return ret;
 }
 
@@ -800,15 +791,10 @@ RObject nlmerSolveGrad(arma::mat &thetaMat, bool record=false) {
   arma::mat ret(nlmOp.nobsTot, nlmOp.ntheta+1);
   rx_solving_options *op = getSolvingOptions(rx);
   int cores = getOpCores(op);
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(cores)
-#endif
-  for (int id = 0; id < nsub; ++id) {
-    setRxThreadId(omp_get_thread_num());
+  nmForEachSubject(rx, nsub, cores, cores > 1, [&](int id) {
     arma::vec th = thetaMat.row(id).t();
     ret.rows(nlmOp.idS[id], nlmOp.idF[id]) = nlmSolveGradId(th, id);
-    setRxThreadId(-1);
-  }
+  });
   if (record) {
     // Population parameter estimate = column means of the per-subject phi.
     // No objective is available here (lme4 owns the deviance), so record the

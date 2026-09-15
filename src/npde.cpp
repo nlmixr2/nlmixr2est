@@ -1,6 +1,10 @@
 #define STRICT_R_HEADER
 #include "npde.h"
 #include "rxProtect.h"
+#include <rxode2ptr.h>
+#include "nmMcmcRng.h"
+#include "nmSeqSeed.h"
+#include "nmParallelCore.h"
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -407,9 +411,18 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
     }
   }
 
-  arma::vec ru = randu(simLen); // Pre-fill uniform random numbers to make sure independent
-  arma::vec ru2 = randu(simLen);
-  arma::vec ru3 = randu(simLen);
+  // threefry uniforms, one seed per observation (tableControl(seed=) + row),
+  // drawn serially before the parallel per-subject loop
+  const int npdeSeed = opt.containsElementNamed("seed") ? as<int>(opt["seed"]) : 1009;
+  const int nObs = idLoc[idLoc.size() - 1];
+  arma::vec ru(nObs), ru2(nObs), ru3(nObs);
+  for (int i = 0; i < nObs; ++i) {
+    nmSeqSeedSet(npdeSeed, 0u, (uint64_t)i);
+    ru[i] = rxUnifEng(0.0, 1.0);
+    ru2[i] = rxUnifEng(0.0, 1.0);
+    ru3[i] = rxUnifEng(0.0, 1.0);
+  }
+  setRxThreadId(-1);
 
   SEXP npdeSEXP = rx_protect.protect(Rf_allocVector(REALSXP, dvLen));
   SEXP npdSEXP = rx_protect.protect(Rf_allocVector(REALSXP, dvLen));
@@ -438,14 +451,15 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
 
   {
     int _nid = (int)(idLoc.size() - 1);
+    int _cores = 1;
+    bool _doParallel = false;
 #ifdef _OPENMP
     // Get rxode2 thread count; called here in R context, before any OMP region
     Rcpp::Function _rxGetThreads = Rcpp::Environment::namespace_env("rxode2")["getRxThreads"];
-    int _cores = Rcpp::as<int>(_rxGetThreads(false));
-    bool _doParallel = (_cores > 1);
-#pragma omp parallel for num_threads(_cores) schedule(dynamic) if(_doParallel)
+    _cores = Rcpp::as<int>(_rxGetThreads(false));
+    _doParallel = (_cores > 1);
 #endif
-    for (int _curid = 0; _curid < _nid; ++_curid) {
+    nmForEach(_nid, _cores, _doParallel, [&](int _curid) {
       unsigned int curid = (unsigned int)_curid;
       // A C++ exception must never escape this OMP region -- doing so calls
       // std::terminate() and aborts R. Any per-subject numerical failure (e.g. a
@@ -472,7 +486,7 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
         eres(span(idLoc[curid], idLoc[curid+1]-1)).fill(NA_REAL);
         warn[curid] = NPDE_NPD;
       }
-    }
+    });
   }
   std::string sCholPinv = "";
   int nCholPinv = 0;

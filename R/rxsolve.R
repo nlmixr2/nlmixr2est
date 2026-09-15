@@ -336,7 +336,15 @@ predict.nlmixr2FitCore <- function(object, ...,
   if (!is.environment(.env)) {
     .env <- parent.frame(1)
   }
-  .rxControl <- do.call(rxode2::rxControl, .both$ctl)
+  # start from the fit's own solving options -- what nlmixr2(fit, data,
+  # "predict") solves with -- and put the options passed to predict() on top
+  .ctl <- .both$ctl
+  .base <- object$rxControl
+  if (inherits(.base, "rxControl")) {
+    .base[names(.ctl)] <- .ctl
+    .ctl <- .base
+  }
+  .rxControl <- do.call(rxode2::rxControl, .ctl)
   .rxControl$envir <- .env
   .data <- getData(object)
 

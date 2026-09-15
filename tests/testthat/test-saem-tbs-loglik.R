@@ -178,7 +178,9 @@ nmTest({
     .d <- .mkBolus(7L, 4L, 0.04, 0.08, seq(0.25, 40, length.out = 500L))
     .obs <- .d[.d$EVID == 0, ]
     .f <- .fitBolus(.d)
-    .got <- suppressMessages(calc.2LL(.f$saem, nnodes.gq = 9, nsd.gq = 3,
+    # 9 nodes left a quadrature error of 1 in 3078 at some fitted omegas; 25
+    # nodes resolves the integrand to 1e-6 whichever draws the fit took
+    .got <- suppressMessages(calc.2LL(.f$saem, nnodes.gq = 25, nsd.gq = 3,
                                       .f$phiM))
     .ref <- .refM2ll(.obs, .f$theta[["tcl"]], .f$omega[1, 1],
                      .f$theta[["lnorm.sd"]])
@@ -189,5 +191,19 @@ nmTest({
                 0.5 * log(2 * pi) * max(table(.obs$ID)), 709)
     expect_true(is.finite(.got))
     expect_equal(.got, as.numeric(.ref), tolerance = 1e-4)
+  })
+
+  test_that("more than 25 quadrature nodes is capped rather than crashing", {
+    # gqg.mlx() tabulates at most 25 nodes; a larger request used to hand
+    # rxProgress() a NULL node count and segfault
+    expect_equal(.saemGqNodes(30, 1), 25)
+    expect_error(saemControl(nnodesGq = 30))
+    .d <- .mkBolus(7L, 4L, 0.04, 0.08, seq(0.25, 40, length.out = 20L))
+    .f <- .fitBolus(.d)
+    .g25 <- suppressMessages(calc.2LL(.f$saem, nnodes.gq = 25, nsd.gq = 3, .f$phiM))
+    expect_warning(.g30 <- suppressMessages(calc.2LL(.f$saem, nnodes.gq = 30,
+                                                     nsd.gq = 3, .f$phiM)),
+                   "used nnodesGq=25")
+    expect_equal(.g30, .g25)
   })
 })
