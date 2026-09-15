@@ -39,7 +39,7 @@ nmTest({
       skip_if(!file.exists(.f))
       .txt <- paste(readLines(.f, warn = FALSE), collapse = "\n")
       expect_false(grepl("2654435761", .txt, fixed = TRUE), info = .f)
-      expect_true(grepl("nmSeqSeedReserve(", .txt, fixed = TRUE), info = .f)
+      expect_true(grepl("nmSeqSeedSet(", .txt, fixed = TRUE), info = .f)
       expect_true(grepl("nmSeqSeedStart(", .txt, fixed = TRUE), info = .f)
     }
   })

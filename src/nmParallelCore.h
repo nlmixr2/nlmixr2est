@@ -7,10 +7,9 @@
 // keeping an exception off the OpenMP boundary.  It is split out from
 // nmParallel.h so that a translation unit with no rxode2 dependency can still
 // share one implementation of all of that -- foceiGrad.cpp, npde.cpp and
-// vaeEncoder.cpp do arma over pre-computed matrices and include not one rxode2
-// header, and making them take rxode2's pointer API to gain a subject mapping
-// that cannot apply to them would be a worse trade than the duplication it
-// removes.
+// vaeEncoder.cpp do arma over pre-computed matrices, and giving them rxode2's
+// subject mapping, which cannot apply to them, would be a worse trade than the
+// duplication it removes.
 //
 // nmParallel.h adds the rxode2 obligations on top: the rx->ordId position ->
 // subject id mapping and the thread-id handoff.
