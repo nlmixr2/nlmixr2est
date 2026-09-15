@@ -3676,7 +3676,19 @@ public:
     _saemEtaDistObsLik = (etaDistLoglik && etaDistOn && etaDistNdist > 0) ? 1 : 0;
     if (etaDistNdist > 0) etaDistFiredK.assign((size_t)etaDistNdist, 0);
     etaDistCorFired = false;
-    if ((etaDistOn || etaDistCorOn) && x.containsElementNamed("etaDistLatent")) {
+    // Ingest the declaration metadata whenever R SENT it.  Not gated on either
+    // M-step flag: those say which OWNER is wanted, and the declarations exist
+    // regardless of who updates their parameters.
+    //
+    // It used to read `(etaDistOn || etaDistCorOn) && ...`, which made the whole
+    // feature ride on `etaDistCorMstep` defaulting TRUE: on the direct route
+    // `etaDistOn` is 0 by construction (the family MLE has nothing to do
+    // there), so `saemControl(etaDistParam="direct", etaDistCorMstep=FALSE)`
+    // ingested no latent, no family and no route, and the sampler fell back to
+    // a standard normal without saying so.  Measured on the covariate arm:
+    // bWT -0.2081 against a truth of 0.75 where the baseline is 0.7099, and
+    // sampled etas at -0.4370 -- outside a gamma's support.
+    if (x.containsElementNamed("etaDistLatent")) {
       etaDistLatent  = as<ivec>(x["etaDistLatent"]);
       etaDistFam     = as<ivec>(x["etaDistFam"]);
       etaDistDirect  = x.containsElementNamed("etaDistDirect") ?
@@ -7385,7 +7397,15 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
   // Returns true when anything moved, in which case the caller maps the new
   // NATIVE parameters back onto the user's thetas.
   bool etaDistMstep(unsigned int kiter, const vec &pas) {
-    if ((!etaDistOn && !etaDistCorOn) || etaDistNdist <= 0) return false;
+    // Q2 counts as a reason to be here.  This function hosts THREE owners --
+    // the family MLE (etaDistOn), the copula closed form (etaDistCorOn) and the
+    // prior-only Q2 step -- and bailing on the first two left Q2, which needs
+    // neither, unreachable.  Measured on the direct route, where every declared
+    // theta is Q2-owned and etaDistOn is 0 by construction:
+    // `etaDistCorMstep=FALSE` returned bWT 0.1382 against a truth of 0.75
+    // where the default path gives 0.7099, because nothing owned the thetas.
+    if ((!etaDistOn && !etaDistCorOn && !etaDistAnyQ2()) ||
+        etaDistNdist <= 0) return false;
     if (etaDistArgs.n_rows != (unsigned int)etaDistNdist) return false;
     // Per ATTEMPT, not per fit.  Left standing from the previous attempt, an
     // entry for a family neither loop visits this time would be copied into the
