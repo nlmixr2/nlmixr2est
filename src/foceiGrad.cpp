@@ -755,6 +755,67 @@ struct FoceiDensityChain {
   mat G, N;
   cube Tn;
 };
+
+// rho(f,R) partials up to 3rd order; censored observations overwrite the score partials.
+struct FoceiRhoCoefs {
+  vec rf, rR, rff, rfR, rRR, rffR, rfRR, rRRR, rfff;
+};
+static FoceiRhoCoefs foceiRhoCoefs(const ivec &censv, const vec &limv, const vec &fv,
+                                   const vec &yv, const vec &Rv, int nobs) {
+  FoceiRhoCoefs c;
+  vec res = yv - fv;
+  c.rf = -res / Rv; c.rR = 0.5 * (1.0 / Rv - square(res) / square(Rv));
+  c.rff = 1.0 / Rv; c.rfR = res / square(Rv); c.rRR = 0.5 * (-1.0 / square(Rv) + 2.0 * square(res) / pow(Rv, 3));
+  c.rffR = -1.0 / square(Rv); c.rfRR = -2.0 * res / pow(Rv, 3); c.rRRR = 0.5 * (2.0 / pow(Rv, 3) - 6.0 * square(res) / pow(Rv, 4));
+  censScoreCoefs(censv, limv, fv, yv, Rv, nobs, c.rf, c.rR, c.rff, c.rfR, c.rRR, c.rffR, c.rfRR, c.rRRR, c.rfff);
+  return c;
+}
+
+// Pred sensitivity entering the residual: a - dy'/dlambda under an estimated DV transform.
+struct FoceiResidSens {
+  const mat &a, &dvSens, &dvSens2;
+  bool hasDv;
+  double ra(int o, int d) const { return hasDv ? a(o, d) - dvSens(o, d) : a(o, d); }
+  double dvY(int o, int d) const { return hasDv ? dvSens2(o, d) : 0.0; }  // d2y'/dlambda2 (lambda col)
+};
+
+static mat foceiDensityG(const FoceiRhoCoefs &c, const FoceiResidSens &r, const cube &A,
+                         const mat &aR, const cube &AR, int ndir) {
+  const int nobs = (int)aR.n_rows;
+  mat G(ndir, ndir, fill::zeros);
+  for (int da = 0; da < ndir; da++) for (int db = 0; db < ndir; db++) {
+    double s = 0.0;
+    for (int o = 0; o < nobs; o++) {
+      s += c.rff[o] * r.ra(o, da) * r.ra(o, db) + c.rfR[o] * (r.ra(o, da) * aR(o, db) + aR(o, da) * r.ra(o, db)) +
+        c.rRR[o] * aR(o, da) * aR(o, db) + c.rf[o] * A(o, da, db) + c.rR[o] * AR(o, da, db);
+      if (da == db) s += -c.rf[o] * r.dvY(o, da);         // (r/R) d2y'/dlambda2, lambda-lambda only
+    }
+    G(da, db) = s;
+  }
+  return G;
+}
+
+// Tn(l,s,t) = d2(rf a_l + rR aR_l)/ddir_s ddir_t
+static double foceiDensityTn(const FoceiRhoCoefs &c, const FoceiResidSens &r, const cube &A,
+                             const cube &Ath, const mat &aR, const cube &AR, const cube &AthR,
+                             int l, int s, int t, int ndir) {
+  const int nobs = (int)aR.n_rows;
+  const mat &a = r.a;
+  double v = 0.0;
+  for (int o = 0; o < nobs; o++) {
+    double ras = r.ra(o, s), rat = r.ra(o, t), Yst = (s == t) ? r.dvY(o, s) : 0.0;  // DV residual sens + d2y'/dl2
+    double us = c.rff[o] * ras + c.rfR[o] * aR(o, s), ut = c.rff[o] * rat + c.rfR[o] * aR(o, t);
+    double ust = c.rfff[o] * ras * rat + c.rffR[o] * (ras * aR(o, t) + aR(o, s) * rat) + c.rfRR[o] * aR(o, s) * aR(o, t) +
+      c.rff[o] * A(o, s, t) - c.rff[o] * Yst + c.rfR[o] * AR(o, s, t);
+    double ws = c.rfR[o] * ras + c.rRR[o] * aR(o, s), wt = c.rfR[o] * rat + c.rRR[o] * aR(o, t);
+    double wst = c.rffR[o] * ras * rat + c.rfRR[o] * (ras * aR(o, t) + aR(o, s) * rat) +
+      c.rRRR[o] * aR(o, s) * aR(o, t) + c.rfR[o] * A(o, s, t) - c.rfR[o] * Yst + c.rRR[o] * AR(o, s, t);
+    v += ust * a(o, l) + us * A(o, l, t) + ut * A(o, l, s) + c.rf[o] * Ath(o, l, s + t * ndir) +
+      wst * aR(o, l) + ws * AR(o, l, t) + wt * AR(o, l, s) + c.rR[o] * AthR(o, l, s + t * ndir);
+  }
+  return v;
+}
+
 static FoceiDensityChain foceiDensityChain(const mat &a, const cube &A, const cube &Ath,
                                            const mat &aR, const cube &AR, const cube &AthR,
                                            const mat &dvSens, const mat &dvSens2,
@@ -762,46 +823,16 @@ static FoceiDensityChain foceiDensityChain(const mat &a, const cube &A, const cu
                                            const vec &fv, const vec &yv, const vec &Rv,
                                            int neta, int ndir) {
   const int nobs = (int)a.n_rows;
+  FoceiRhoCoefs c = foceiRhoCoefs(censv, limv, fv, yv, Rv, nobs);
+  const FoceiResidSens r{a, dvSens, dvSens2,
+                         dvSens.n_cols == (unsigned) ndir && dvSens.n_rows == (unsigned) nobs};
   FoceiDensityChain C;
-  vec res = yv - fv;
-  vec rf = -res / Rv, rR = 0.5 * (1.0 / Rv - square(res) / square(Rv));
-  vec rff = 1.0 / Rv, rfR = res / square(Rv), rRR = 0.5 * (-1.0 / square(Rv) + 2.0 * square(res) / pow(Rv, 3));
-  vec rffR = -1.0 / square(Rv), rfRR = -2.0 * res / pow(Rv, 3), rRRR = 0.5 * (2.0 / pow(Rv, 3) - 6.0 * square(res) / pow(Rv, 4));
-  vec rfff;
-  censScoreCoefs(censv, limv, fv, yv, Rv, nobs, rf, rR, rff, rfR, rRR, rffR, rfRR, rRRR, rfff);
-  auto Ai = [&](const arma::cube& T, int o, int l, int s, int t) { return T(o, l, s + t * ndir); };
-  const bool hasDv = (dvSens.n_cols == (unsigned) ndir && dvSens.n_rows == (unsigned) nobs);
-  auto ra = [&](int o, int d) { return hasDv ? a(o, d) - dvSens(o, d) : a(o, d); };
-  auto dvY = [&](int o, int d) { return hasDv ? dvSens2(o, d) : 0.0; };  // d2y'/dlambda2 (lambda col)
-  C.G.zeros(ndir, ndir);
-  for (int da = 0; da < ndir; da++) for (int db = 0; db < ndir; db++) {
-    double s = 0.0;
-    for (int o = 0; o < nobs; o++) {
-      s += rff[o] * ra(o, da) * ra(o, db) + rfR[o] * (ra(o, da) * aR(o, db) + aR(o, da) * ra(o, db)) +
-        rRR[o] * aR(o, da) * aR(o, db) + rf[o] * A(o, da, db) + rR[o] * AR(o, da, db);
-      if (da == db) s += -rf[o] * dvY(o, da);         // (r/R) d2y'/dlambda2, lambda-lambda only
-    }
-    C.G(da, db) = s;
-  }
+  C.G = foceiDensityG(c, r, A, aR, AR, ndir);
   C.N = C.G.rows(0, neta - 1);
-  // Tn[l,s,t] = d2(rf a_l + rR aR_l)/ddir_s ddir_t  -> cube(neta, ndir, ndir), Tn(l,s,t)=Tn.slice(t)(l,s)
-  C.Tn.zeros(neta, ndir, ndir);
-  for (int l = 0; l < neta; l++) for (int s = 0; s < ndir; s++) for (int t = 0; t < ndir; t++) {
-    double v = 0.0;
-    for (int o = 0; o < nobs; o++) {
-      double ras = ra(o, s), rat = ra(o, t), Yst = (s == t) ? dvY(o, s) : 0.0;  // DV residual sens + d2y'/dl2
-      double us = rff[o] * ras + rfR[o] * aR(o, s), ut = rff[o] * rat + rfR[o] * aR(o, t);
-      double ust = rfff[o] * ras * rat + rffR[o] * (ras * aR(o, t) + aR(o, s) * rat) + rfRR[o] * aR(o, s) * aR(o, t) +
-        rff[o] * A(o, s, t) - rff[o] * Yst + rfR[o] * AR(o, s, t);
-      double ws = rfR[o] * ras + rRR[o] * aR(o, s), wt = rfR[o] * rat + rRR[o] * aR(o, t);
-      double wst = rffR[o] * ras * rat + rfRR[o] * (ras * aR(o, t) + aR(o, s) * rat) +
-        rRRR[o] * aR(o, s) * aR(o, t) + rfR[o] * A(o, s, t) - rfR[o] * Yst + rRR[o] * AR(o, s, t);
-      v += ust * a(o, l) + us * A(o, l, t) + ut * A(o, l, s) + rf[o] * Ai(Ath, o, l, s, t) +
-        wst * aR(o, l) + ws * AR(o, l, t) + wt * AR(o, l, s) + rR[o] * Ai(AthR, o, l, s, t);
-    }
-    C.Tn(l, s, t) = v;
-  }
-  C.rf = std::move(rf); C.rR = std::move(rR);
+  C.Tn.zeros(neta, ndir, ndir);  // Tn(l,s,t) = Tn.slice(t)(l,s)
+  for (int l = 0; l < neta; l++) for (int s = 0; s < ndir; s++) for (int t = 0; t < ndir; t++)
+    C.Tn(l, s, t) = foceiDensityTn(c, r, A, Ath, aR, AR, AthR, l, s, t, ndir);
+  C.rf = std::move(c.rf); C.rR = std::move(c.rR);
   return C;
 }
 

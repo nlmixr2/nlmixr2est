@@ -18041,11 +18041,6 @@ static bool foceiHessianExpand(VaeOuterE &e, const FoceiGradPooledSetup &g, bool
   return e.AR.is_finite();
 }
 
-// 3rd-order sensitivities by central differences of the expanded 2nd-order solve along
-// each eta at a tightened tolerance: third[id](o, l, a + b*nd) = d A(o,a,b)/d eta_l.
-// Shared by the outer Hessian (points = 4, the (h, h/2) Richardson rule) and the
-// full-determinant gradient (points = 2, plain central: a search direction does not
-// need 4th-order accuracy and the probes are the gradient's whole extra cost).
 // One column of the probed difference: the 2-point central rule or the 4-point
 // (h, h/2) Richardson rule over probes ordered +h, -h, +h/2, -h/2.
 static arma::vec foceiHessianThirdDiff(const std::vector<std::vector<VaeOuterE>> &probe,
@@ -18058,6 +18053,34 @@ static arma::vec foceiHessianThirdDiff(const std::vector<std::vector<VaeOuterE>>
   return (8*(sl(2)-sl(3))-(sl(0)-sl(1)))/(6*h);
 }
 
+// Solve every probe of eta column l; false when a solve fails or drops observations.
+template <typename Solve>
+static bool foceiHessianProbeEta(const arma::mat &etaAt, int l, double h,
+                                 const std::vector<VaeOuterE> &base, Solve &solve,
+                                 std::vector<std::vector<VaeOuterE>> &probe) {
+  for (size_t k = 0; k < probe.size(); ++k) {
+    arma::mat eta = etaAt;
+    eta.col(l) += (k%2 ? -1 : 1)*h*(k < 2 ? 1 : 0.5);
+    if (!solve(eta,probe[k])) return false;
+    for (size_t id = 0; id < base.size(); ++id) if (probe[k][id].nobs != base[id].nobs) return false;
+  }
+  return true;
+}
+
+static void foceiHessianThirdFill(const std::vector<std::vector<VaeOuterE>> &probe, int ns, int l,
+                                  double h, int nd, bool foce, std::vector<arma::cube> &third,
+                                  std::vector<arma::cube> &thirdR) {
+  for (int id = 0; id < ns; ++id) for (int a = 0; a < nd; ++a) for (int b = 0; b < nd; ++b) {
+    third[id].slice(a+b*nd).col(l) = foceiHessianThirdDiff(probe,id,false,a,b,h);
+    if (!foce) thirdR[id].slice(a+b*nd).col(l) = foceiHessianThirdDiff(probe,id,true,a,b,h);
+  }
+}
+
+// 3rd-order sensitivities by central differences of the expanded 2nd-order solve along
+// each eta at a tightened tolerance: third[id](o, l, a + b*nd) = d A(o,a,b)/d eta_l.
+// Shared by the outer Hessian (points = 4, the (h, h/2) Richardson rule) and the
+// full-determinant gradient (points = 2, plain central: a search direction does not
+// need 4th-order accuracy and the probes are the gradient's whole extra cost).
 template <typename Solve>
 static bool foceiHessianThird(double step, const arma::mat &etaAt, const FoceiGradPooledSetup &g,
                                const std::vector<VaeOuterE> &base, bool foce, Solve &solve,
@@ -18072,16 +18095,8 @@ static bool foceiHessianThird(double step, const arma::mat &etaAt, const FoceiGr
   for (int l = 0; l < ne; ++l) {
     double h = step*std::max(1.0,arma::abs(etaAt.col(l)).max());
     std::vector<std::vector<VaeOuterE>> probe(points,std::vector<VaeOuterE>(ns));
-    for (int k = 0; k < points; ++k) {
-      arma::mat eta = etaAt;
-      eta.col(l) += (k%2 ? -1 : 1)*h*(k < 2 ? 1 : 0.5);
-      if (!solve(eta,probe[k])) return false;
-      for (int id = 0; id < ns; ++id) if (probe[k][id].nobs != base[id].nobs) return false;
-    }
-    for (int id = 0; id < ns; ++id) for (int a = 0; a < nd; ++a) for (int b = 0; b < nd; ++b) {
-      third[id].slice(a+b*nd).col(l) = foceiHessianThirdDiff(probe,id,false,a,b,h);
-      if (!foce) thirdR[id].slice(a+b*nd).col(l) = foceiHessianThirdDiff(probe,id,true,a,b,h);
-    }
+    if (!foceiHessianProbeEta(etaAt,l,h,base,solve,probe)) return false;
+    foceiHessianThirdFill(probe,ns,l,h,nd,foce,third,thirdR);
   }
   return true;
 }
