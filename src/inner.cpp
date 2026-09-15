@@ -12953,6 +12953,8 @@ void foceiFinalizeTables(Environment e){
         // failed at its tightened tolerance and was retried a rung looser instead of
         // sending the whole Hessian to finite differences.
         e["nHessTolRelax"] = IntegerVector::create(op_focei.nHessTolRelax);
+        // 1: omega derivatives came from the native map, -1: from the R handle
+        e["omegaGradFast"] = _omGradFastState;
         e["nNewtonFail"] = IntegerVector::create(
           _["maxit"] = op_focei.nNewtonMaxit,
           _["solve"] = op_focei.nNewtonSolve,
@@ -18435,29 +18437,46 @@ static bool gradDirectEbes(int nsub, int neta, arma::mat &ebes) {
   return true;
 }
 
-// Omega^-1 and its estimation-scale derivatives from the verified native Cholesky map
-// (foceiOmegaFastCompute): Omega^-1 = U'U, dOmega^-1/dtheta_k = dU_k'U + U'dU_k with
-// dU_k a single entry, tr28_k = 0.5 tr(dOmega^-1_k Omega).  The same construction the
-// outer Hessian uses (foceiHessianOmega).  The R handle's lists are the fallback, and
-// the first use checks this against them so a mismatch falls back for the fit.
+// The verified native Cholesky map also supplies its second derivatives.
+static bool foceiHessianOmega(arma::cube &dOi, arma::cube &d2Oi, arma::mat &d2LD) {
+  int ne = _gradPooled.neta, no = _gradPooled.nom;
+  if (_omFastState != 1 || no != (int)op_focei.omegan) return false;
+  const arma::mat &u = op_focei.cholOmegaInv;
+  arma::mat omega;
+  if (!arma::inv_sympd(omega,op_focei.omegaInv)) return false;
+  std::vector<arma::mat> du(no), ddu(no);
+  dOi.zeros(ne,ne,std::max(no,1)); d2Oi.zeros(ne,ne,std::max(no*no,1));
+  d2LD.zeros(no,no);
+  for (int k = 0; k < no; ++k) {
+    double x = op_focei.fullTheta[op_focei.ntheta+k], first = 1, second = 0;
+    if (_omFastXf[k] == 1) { first = 2*x; second = 2; }
+    else if (_omFastXf[k] == 2) first = second = std::exp(x);
+    du[k].zeros(ne,ne); ddu[k].zeros(ne,ne);
+    du[k](_omFastRow[k],_omFastCol[k]) = first;
+    ddu[k](_omFastRow[k],_omFastCol[k]) = second;
+    dOi.slice(k) = du[k].t()*u+u.t()*du[k];
+  }
+  for (int k = 0; k < no; ++k) for (int l = 0; l < no; ++l) {
+    arma::mat second = du[k].t()*du[l]+du[l].t()*du[k];
+    if (k == l) second += ddu[k].t()*u+u.t()*ddu[k];
+    d2Oi.slice(k*no+l) = second;
+    d2LD(k,l) = arma::trace(omega*dOi.slice(l)*omega*dOi.slice(k)-omega*second);
+  }
+  return d2Oi.is_finite() && d2LD.is_finite();
+}
+
+// Omega^-1 and its first derivatives from the same map, plus tr28_k =
+// 0.5 tr(dOmega^-1_k Omega).  The R handle's lists are the fallback, and the first
+// use checks this against them so a mismatch falls back for the fit.
 // _omGradFastState: 0 untried, 1 verified, -1 unavailable (declared with the fast map)
 static bool gradDirectOmegaFast(int neta, int nom, arma::mat &Oi, arma::cube &dOiEst, arma::vec &tr28) {
-  if (_omFastState != 1 || nom != (int)op_focei.omegan || _omFastNeta != neta) return false;
-  const arma::mat &u = op_focei.cholOmegaInv;
+  if (_gradPooled.neta != neta || _gradPooled.nom != nom) return false;
+  arma::cube d2Oi; arma::mat d2LD, omega;
+  if (!foceiHessianOmega(dOiEst, d2Oi, d2LD)) return false;
   Oi = op_focei.omegaInv;
-  arma::mat omega;
   if (!arma::inv_sympd(omega, Oi)) return false;
-  dOiEst.zeros(neta, neta, nom > 0 ? nom : 1);
   tr28.zeros(nom > 0 ? nom : 0);
-  for (int k = 0; k < nom; ++k) {
-    double x = op_focei.fullTheta[op_focei.ntheta + k], first = 1;
-    if (_omFastXf[k] == 1) first = 2 * x;
-    else if (_omFastXf[k] == 2) first = std::exp(x);
-    arma::mat du(neta, neta, arma::fill::zeros);
-    du(_omFastRow[k], _omFastCol[k]) = first;
-    dOiEst.slice(k) = du.t() * u + u.t() * du;
-    tr28[k] = 0.5 * arma::trace(dOiEst.slice(k) * omega);
-  }
+  for (int k = 0; k < nom; ++k) tr28[k] = 0.5 * arma::trace(dOiEst.slice(k) * omega);
   return dOiEst.is_finite() && tr28.is_finite();
 }
 
@@ -25627,34 +25646,6 @@ void restoreFromEnvironment(Environment e) {
   arma::vec gillDf = e[".gillDf"];
   foceiCheckRestoreN(gillDf.n_elem, op_focei.nGillDf, "gill forward difference buffer");
   std::copy(gillDf.begin(), gillDf.end(), op_focei.gillDf);
-}
-
-// The verified native Cholesky map also supplies its second derivatives.
-static bool foceiHessianOmega(arma::cube &dOi, arma::cube &d2Oi, arma::mat &d2LD) {
-  int ne = _gradPooled.neta, no = _gradPooled.nom;
-  if (_omFastState != 1 || no != (int)op_focei.omegan) return false;
-  const arma::mat &u = op_focei.cholOmegaInv;
-  arma::mat omega;
-  if (!arma::inv_sympd(omega,op_focei.omegaInv)) return false;
-  std::vector<arma::mat> du(no), ddu(no);
-  dOi.zeros(ne,ne,std::max(no,1)); d2Oi.zeros(ne,ne,std::max(no*no,1));
-  d2LD.zeros(no,no);
-  for (int k = 0; k < no; ++k) {
-    double x = op_focei.fullTheta[op_focei.ntheta+k], first = 1, second = 0;
-    if (_omFastXf[k] == 1) { first = 2*x; second = 2; }
-    else if (_omFastXf[k] == 2) first = second = std::exp(x);
-    du[k].zeros(ne,ne); ddu[k].zeros(ne,ne);
-    du[k](_omFastRow[k],_omFastCol[k]) = first;
-    ddu[k](_omFastRow[k],_omFastCol[k]) = second;
-    dOi.slice(k) = du[k].t()*u+u.t()*du[k];
-  }
-  for (int k = 0; k < no; ++k) for (int l = 0; l < no; ++l) {
-    arma::mat second = du[k].t()*du[l]+du[l].t()*du[k];
-    if (k == l) second += ddu[k].t()*u+u.t()*ddu[k];
-    d2Oi.slice(k*no+l) = second;
-    d2LD(k,l) = arma::trace(omega*dOi.slice(l)*omega*dOi.slice(k)-omega*second);
-  }
-  return d2Oi.is_finite() && d2LD.is_finite();
 }
 
 struct FoceiHessianCall {

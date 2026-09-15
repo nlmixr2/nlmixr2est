@@ -266,6 +266,9 @@ nmTest({
     expect_equal(sum(.gt %in% c("Gill83 Gradient", "Mixed Gradient",
                                 "Forward Difference", "Central Difference")), 0)
     expect_match(fF$extra, "grad: analytic")
+    # ... with the omega derivatives from the native Cholesky map, verified against
+    # the rxSymInvChol handle on first use (-1 would be the handle fallback)
+    expect_identical(fF$env$omegaGradFast, 1L)
   })
 
   test_that("modeled dosing parameters (f/lag) use jump sensitivities and match FD", {
