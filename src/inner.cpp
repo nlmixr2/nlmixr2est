@@ -13,6 +13,7 @@
 #include "logSumExp.h"
 #include "inner.h"
 #include "nmMcmcRng.h"
+#include "nmSeqSeed.h"
 #include <cfloat>
 #include <cstring>
 #include <cstdint>
@@ -5824,9 +5825,10 @@ static void fillEtaRestartSamples(rx_solve *rx) {
         }
       }
       op_focei.etaRestartSamples.set_size(op_focei.neta, nres, nsubAll);
-      // One serial batch, so one seeding is enough -- nothing re-seeds the
-      // shared engine between the draws below (see nmMcmcRng.h).  Seeded from
-      // foceiControl(seed=), so the draws depend on that and nothing else.
+      // Sequential seeds (nmSeqSeed.h): restart point k of subject id draws
+      // from foceiControl(seed=) + id*nres + k, in the upper half of the
+      // 32-bit range so no key is shared with the fit's own per-subject solve
+      // seeds, which start at that same seed.
       //
       // setSeedEng1(), NOT nmSetSeedEng1(): the latter also records the value
       // as the current sampling-block seed, which would clobber a block that
@@ -5835,14 +5837,11 @@ static void fillEtaRestartSamples(rx_solve *rx) {
       // the engine's own state advanced is harmless -- every rxode2 solve
       // reseeds it per subject on entry.
       setRxThreadId(0);
-      {
-        uint32_t s = op_focei.etaRestartSeed;
-        s = s * 2654435761u + 0x65746152u;   // "etaR" namespace tag
-        setSeedEng1(s);
-      }
       arma::vec z((arma::uword)op_focei.neta), draw((arma::uword)op_focei.neta);
       for (int id = 0; id < nsubAll; ++id) {
         for (int k = 0; k < nres; ++k) {
+          setSeedEng1(nmSeqSeed((int)op_focei.etaRestartSeed,
+                                0x80000000ull + (uint64_t)id * (uint64_t)nres + (uint64_t)k));
           for (int j = 0; j < op_focei.neta; ++j) z[j] = rxNormEng(0.0, 1.0);
           draw = L * z;
           std::copy(draw.begin(), draw.end(),
