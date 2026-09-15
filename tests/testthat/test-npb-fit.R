@@ -65,6 +65,19 @@ nmTest({
     expect_true(all(is.finite(.rhat)) && all(.rhat >= sqrt(149 / 150) - 1e-8) && all(.rhat < 1.3))
   })
 
+  test_that("est='npb' draws do not depend on the thread count", {
+    .fitAt <- function(threads) {
+      .old <- rxode2::getRxThreads(verbose = FALSE)
+      on.exit(rxode2::setRxThreads(.old))
+      rxode2::setRxThreads(threads)
+      nlmixr2(.npbMod, nlmixr2data::theo_sd, est = "npb", control = .ctl())
+    }
+    f1 <- .fitAt(1L)
+    f2 <- .fitAt(2L)
+    expect_equal(as.numeric(f1$objf), as.numeric(f2$objf))
+    expect_equal(f1$env$npbSupport, f2$env$npbSupport)
+  })
+
   test_that("mu-referenced sugar est='mnpb' fits", {
     f <- nlmixr2(.npbMod, nlmixr2data::theo_sd, est = "mnpb", control = .ctl())
     expect_s3_class(f, "nlmixr2FitData")
