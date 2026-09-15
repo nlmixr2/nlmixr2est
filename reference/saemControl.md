@@ -221,8 +221,8 @@ saemControl(
 - nnodesGq:
 
   number of nodes to use for the Gaussian quadrature when computing the
-  likelihood with this method (defaults to 1, equivalent to the
-  Laplacian likelihood)
+  likelihood with this method (defaults to 3; 1 is the Laplacian
+  likelihood; at most 25)
 
 - nsdGq:
 

@@ -53,6 +53,27 @@
 
 ### Bug fixes
 
+- `est="saem"` and `est="npb"` seed their random draws sequentially, one
+  seed per individual per step, computed from the iteration so any
+  draw’s seed is known from its position. The phi1 and phi0 SAEM MCMC
+  blocks used to draw from the same seed, as could neighboring mixture
+  components. Seeded fits give different, still reproducible, results.
+
+- `predict(fit, newdata)` solves with the fit’s own `rxControl`, the
+  same options `nlmixr2(fit, data, "predict")` uses; options passed to
+  [`predict()`](https://rdrr.io/r/stats/predict.html) still override it.
+  The two gave different predictions for an ODE model.
+
+- [`addNpde()`](https://nlmixr2.github.io/nlmixr2est/reference/addNpde.md)
+  and
+  [`vpcSim()`](https://nlmixr2.github.io/nlmixr2est/reference/vpcSim.md)
+  give the same result on every call and at any thread count, even when
+  an earlier `rxSetSeed()` left rxode2’s own seed sequence in force.
+
+- The SAEM Gaussian-quadrature objective caps its grid at 25 nodes per
+  dimension instead of crashing R, and `saemControl(nnodesGq=)` rejects
+  a value above 25.
+
 - `est="saem"` estimated a
   [`boxCox()`](https://nlmixr2.github.io/nlmixr2est/reference/boxCox.md)/[`yeoJohnson()`](https://nlmixr2.github.io/nlmixr2est/reference/boxCox.md)
   lambda without the transform’s log-Jacobian, both in the closed-form
