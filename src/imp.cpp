@@ -1287,7 +1287,11 @@ void impOuter(Environment e) {
   int nBurn = impNburn();
   if (nBurn < 0) nBurn = 0;
   const bool burnFreezeOmega = impBurnFreezeOmega();
-  const int nIterTotal = nBurn + nIter;
+  // nIter = 0 is an E-step-only evaluation at the supplied parameters (NONMEM
+  // EONLY=1): one E-step, no M-step, and no burn-in (it would move the parameters).
+  const bool eOnly = (nIter <= 0);
+  if (eOnly) nBurn = 0;
+  const int nIterTotal = eOnly ? 1 : nBurn + nIter;
 
   arma::mat condMean;
   std::vector<arma::mat> condVar;
@@ -1810,6 +1814,12 @@ void impOuter(Environment e) {
     xiTrace.push_back(xiMean);
     iterRun = iter + 1;
 
+    if (eOnly) {
+      arma::vec parNow; impGetEstPar(parNow);
+      impIterPrintRow(parNow, obj);
+      break;
+    }
+
     // M-step.  First a Newton step on the non-mu structural thetas from the
     // IS-weighted score and Gauss-Newton Hessian accumulated over subjects/samples
     // -- done before the mu updates (which shift thetas/etas) so it sees the
@@ -2266,12 +2276,13 @@ void impOuter(Environment e) {
     ((impQrScramble() == impQrScrambleLms) ? "lms" : "none");
   e["impSir"]      = impSirEnabled();
   e["impSirSample"] = impSirN();
-  e["impNiter"]    = nIterTotal;   // includes nBurn: the budget impIter is measured against
+  e["impNiter"]    = eOnly ? 0 : nIterTotal;   // includes nBurn: the budget impIter is measured against
+  e["impEonly"]    = eOnly;
   e["impMapIter"]  = isImp ? 0 : mapIter;   // 0 under est="imp": no re-centering at all
   // Burn-in iterations are the FIRST nBurn rows of every trace and of $parHist.
   e["impNburn"]    = nBurn;
   e["impBurnFreezeOmega"] = burnFreezeOmega;
-  e["impIter"]     = iterRun;
+  e["impIter"]     = eOnly ? 0 : iterRun;
   e["impConverged"] = converged;
   e["impObjTrace"] = wrap(objTrace);
   e["impGammaTrace"] = wrap(gammaTrace);
