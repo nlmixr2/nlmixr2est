@@ -6049,9 +6049,8 @@ static void fillEtaRestartSamples(rx_solve *rx) {
       }
       op_focei.etaRestartSamples.set_size(op_focei.neta, nres, nsubAll);
       // Sequential seeds (nmSeqSeed.h): restart point k of subject id draws
-      // from foceiControl(seed=) + id*nres + k, in the upper half of the
-      // 32-bit range so no key is shared with the fit's own per-subject solve
-      // seeds, which start at that same seed.
+      // from foceiControl(seed=) + id*nres + k.  foceiSetup_ starts the fit's
+      // own per-subject solve seeds right after this block.
       //
       // setSeedEng1(), NOT nmSetSeedEng1(): the latter also records the value
       // as the current sampling-block seed, which would clobber a block that
@@ -6064,7 +6063,7 @@ static void fillEtaRestartSamples(rx_solve *rx) {
       for (int id = 0; id < nsubAll; ++id) {
         for (int k = 0; k < nres; ++k) {
           setSeedEng1(nmSeqSeed((int)op_focei.etaRestartSeed,
-                                0x80000000ull + (uint64_t)id * (uint64_t)nres + (uint64_t)k));
+                                (uint64_t)id * (uint64_t)nres + (uint64_t)k));
           for (int j = 0; j < op_focei.neta; ++j) z[j] = rxNormEng(0.0, 1.0);
           draw = L * z;
           std::copy(draw.begin(), draw.end(),
@@ -9513,6 +9512,12 @@ NumericVector foceiSetup_(const RObject &obj,
       double _sd = as<NumericVector>(_seedS)[0];
       if (R_FINITE(_sd) && _sd >= 0) op_focei.etaRestartSeed = (uint32_t)_sd;
     }
+  }
+  // The restart draws own the seeds [seed, seed + nsub*nEtaRestart) (innerOpt);
+  // the fit's per-subject solve seeds continue right after them.
+  if (op_focei.nEtaRestart > 0 && op_focei.neta > 0 && nmSeqSeedActive()) {
+    nmSeqSeedStart((int)op_focei.etaRestartSeed,
+                   (uint64_t)getRxNsubAndMix(getRxSolve_()) * (uint64_t)op_focei.nEtaRestart);
   }
   op_focei.nTrustInner.store(0, std::memory_order_relaxed);
   op_focei.nConditionalInnerHessian.store(0, std::memory_order_relaxed);

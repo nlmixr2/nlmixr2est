@@ -212,13 +212,14 @@ void npbOuter(Environment e) {
   // Closed-form sequential seeds (nmSeqSeed.h): sweep `it` of a chain owns
   // seedStride seeds -- one per subject's assignment, the mixture draws, then one
   // per support point for the stick weights and for the MH step; the initial
-  // support points use the it = -1 slot.
-  nmSeqSeedStart(seed);
+  // support points use the it = -1 slot.  rxode2's solve seeds follow the last
+  // chain's block.
   const uint64_t nMixSeed = (uint64_t)std::max(nMix, 1);
   const uint64_t seedStride = 2u * (uint64_t)nsub + nMixSeed + 2u * (uint64_t)K;
   auto seedBase = [&](int chain, int it) {
     return ((uint64_t)chain * (uint64_t)(total + 1) + (uint64_t)(it + 1)) * seedStride;
   };
+  nmSeqSeedStart(seed, seedBase(nchains, -1));
   for (int chain = 0; chain < nchains; ++chain) {
   // initialize support points from G_0 (one seed per point), uniform weights
   arma::mat phi(K, neta);

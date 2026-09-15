@@ -13,6 +13,11 @@ nmTest({
     .inner <- paste(readLines(file.path(.src, "inner.cpp"), warn = FALSE), collapse = "\n")
     expect_false(grepl("2654435761", .inner, fixed = TRUE))
     expect_true(grepl("nmSeqSeed(", .inner, fixed = TRUE))
+    # a sampler reserves an exact block; no guessed offset keeps draws and solves apart
+    for (.f in file.path(.src, c("nmSeqSeed.h", "inner.cpp", "saem.cpp", "npb.cpp"))) {
+      expect_false(grepl("0x80000000", paste(readLines(.f, warn = FALSE), collapse = "\n"),
+                         fixed = TRUE), info = .f)
+    }
   })
 
   test_that("saem seeds are sequential by iteration, step and individual", {
