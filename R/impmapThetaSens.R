@@ -262,13 +262,32 @@ attr(rxUiGet.saemThetaSens, "rstudio") <- emptyenv()
   ##
   ## Falls back silently to the ordinary construction: it is a cheaper way to
   ## compute the same columns, never different ones, so declining is safe.
-  .s <- NULL
-  if (!isTRUE(needVar)) {
-    .s <- tryCatch(ui$etaDistThetaSens, error = function(e) NULL)
-  }
-  if (is.null(.s)) {
-    .s <- if (isTRUE(needVar)) ui$impmapThetaSens else ui$saemThetaSens
-  }
+  ## The eta-routed construction (`ui$etaDistThetaSens`) is NOT used here.
+  ##
+  ## It differentiates by the DECODED eta name, and `loadPruneSens()` has
+  ## already inlined that name into the ODE by then -- `eta.cl` is bound to its
+  ## decoder definition, not to a symbol.  `D(f, eta.cl)` is therefore 0, the
+  ## state sensitivity ODE comes out HOMOGENEOUS (`dS/dt = -(cl/v)*S`), and
+  ## with `S(0) = 0` the whole system is identically zero.  Measured: every
+  ## declared theta's score was exactly `0 0 0`, so `nonMuGradPhi0()` rejected
+  ## its step on all 700 firings and the declared thetas had no owner able to
+  ## move them.
+  ##
+  ## This is NOT the two-stage approach being wrong.  focei/imp take their
+  ## inner sensitivity with respect to the LATENT eta (`ETA[k]`), which is a
+  ## real model parameter and survives inlining -- verified on the same
+  ## declared model, where the inner sensitivity carries its forcing term
+  ## `-exp(...)*centr*1/gammapDer(...)` and differentiates correctly through
+  ## the decoder.  Two stages are right there, and cheaper, because an inner
+  ## eta sensitivity is computed anyway.  Only the choice of variable was
+  ## wrong here.
+  ##
+  ## The builder is left in place rather than deleted: routing saem's theta
+  ## sensitivities through the LATENT would give the same column-count saving,
+  ## and is worth exploring.  It cannot simply be handed to impmap either --
+  ## it emits the lean, saem-shaped model with no `d(V)/d(theta)` columns,
+  ## which `needVar = TRUE` requires.
+  .s <- if (isTRUE(needVar)) ui$impmapThetaSens else ui$saemThetaSens
   if (is.null(.s)) return(NULL)
   ## Interpolation is carried like the inner model does; splitBolus() is not --
   ## this model solves the pre-split events, so declaring it would split the
