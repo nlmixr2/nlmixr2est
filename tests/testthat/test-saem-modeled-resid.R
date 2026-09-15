@@ -73,13 +73,27 @@ nmTest({
     expect_true("a <- add.sd + WT * cov.sd" %in% .lines(.new))
   })
 
-  test_that("a modeled residual with a lambda transform is refused", {
-    .ui <- .modeledResidUi("cp ~ add(add.sd) + boxCox(l2)", "l2 <- lam + WT * cov.sd")
-    expect_error(.preProcessSaemModeledResid(.ui, "saem", NULL, NULL),
-                 "boxCox()/yeoJohnson()", fixed = TRUE)
-    .ui <- .modeledResidUi("cp ~ add(a) + yeoJohnson(lam)", "a <- add.sd * exp(eta.sd)")
-    expect_error(.preProcessSaemModeledResid(.ui, "saem", NULL, NULL),
-                 "boxCox()/yeoJohnson()", fixed = TRUE)
+  test_that("a transform lambda gets an unbounded temporary eta", {
+    .spec <- .saemPseudoEtaThetas(.modeledResidUi("cp ~ add(add.sd) + boxCox(lam) + dnorm()"))
+    expect_equal(.spec$lower[.spec$theta == "lam"], -Inf)
+    expect_equal(.spec$upper[.spec$theta == "lam"], Inf)
+    .ui <- .hook(.modeledResidUi("cp ~ add(add.sd) + boxCox(l2)", "l2 <- lam + WT * cov.sd"))
+    expect_true("rx.eta.lam" %in% .ui$iniDf$name)
+    .ui <- .hook(.modeledResidUi("cp ~ add(a) + yeoJohnson(lam)", "a <- add.sd * exp(eta.sd)"))
+    expect_true("rx.eta.lam" %in% .ui$iniDf$name)
+  })
+
+  test_that("temporary-eta thetas are named for the saem kernel", {
+    .ui <- .hook(.modeledResidUi("cp ~ add(add.sd) + boxCox(lam) + dnorm()"))
+    expect_setequal(.saemPseudoEtaThetaNames(.ui), c("rxBoundedTr.add.sd", "rxBoundedTr.lam"))
+    expect_equal(.saemPseudoEtaThetaNames(.modeledResidUi("cp ~ add(add.sd)")), character(0))
+  })
+
+  test_that("temporary-eta phi1 columns are indexed for the saem kernel", {
+    .ui <- .hook(.modeledResidUi("cp ~ add(add.sd) + boxCox(lam) + dnorm()"))
+    # phi1 is tka, tcl, then the two temporary-eta thetas
+    expect_equal(.saemPseudoPhi1Ix(.ui), c(2L, 3L))
+    expect_length(.saemPseudoPhi1Ix(.modeledResidUi("cp ~ add(add.sd)")), 0L)
   })
 
   test_that("propF()/powF() prediction variables do not promote the endpoint", {
@@ -236,6 +250,20 @@ nmTest({
     expect_true(all(c("t1", "add.sd") %in% names(fixef(.f))))
     expect_false(any(grepl("^rx", names(fixef(.f)))))
     expect_true(fixef(.f)[["t1"]] > 0 && fixef(.f)[["t1"]] < 2)
+  })
+
+  test_that("a transformed likelihood endpoint carries its log-Jacobian in saem", {
+    # deparse() wraps long lines, so compare without whitespace
+    .jac <- "log(rxTBSd(DV,rx_lambda_,rx_yj_,rx_low_,rx_hi_))"
+    .txt <- function(ui) gsub("[[:space:]]+", "", paste(deparse(ui$saemModel0), collapse = ""))
+    .ub <- .modeledResidUi("cp ~ add(add.sd) + boxCox(lam) + dnorm()")
+    expect_match(.txt(.ub), .jac, fixed = TRUE)
+    .ul <- .modeledResidUi("cp ~ lnorm(add.sd) + dnorm()")
+    expect_match(.txt(.ul), .jac, fixed = TRUE)
+    # an untransformed endpoint has no Jacobian to add
+    expect_false(grepl("rxTBSd", .txt(.modeledResidUi("cp ~ add(add.sd) + dnorm()")), fixed = TRUE))
+    # the table model keeps the mean form (#1084), so no likelihood term there
+    expect_false(grepl("rxTBSd", paste(deparse(.ub$saemModelPred0), collapse = "\n"), fixed = TRUE))
   })
 
   test_that("dnorm() is inserted before a | condition", {

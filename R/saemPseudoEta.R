@@ -129,3 +129,27 @@
   }
   invisible()
 }
+
+#' Internal theta names that carry a temporary eta
+#'
+#' @param ui rxode2 ui
+#' @return `rxBoundedTr.<name>` for each `rx.eta.<name>` in the model
+#' @noRd
+.saemPseudoEtaThetaNames <- function(ui) {
+  .n <- ui$iniDf$name
+  .t <- paste0("rxBoundedTr.", sub("^rx[.]eta[.]", "", grep("^rx[.]eta[.]", .n, value = TRUE)))
+  .t[.t %in% .n]
+}
+
+#' Kernel phi1 columns (0-based) whose theta carries a temporary eta
+#'
+#' Uses the phi1 order of `.saemPhi1TargetMap()`; `ui$saemInit` carries no theta names.
+#'
+#' @param ui rxode2 ui
+#' @return integer vector
+#' @noRd
+.saemPseudoPhi1Ix <- function(ui) {
+  .pars <- rxUiGet.saemParamsToEstimateCov(list(ui))
+  .phi1 <- .pars[.pars %in% ui$muRefDataFrame$theta]
+  which(.phi1 %in% .saemPseudoEtaThetaNames(ui)) - 1L
+}

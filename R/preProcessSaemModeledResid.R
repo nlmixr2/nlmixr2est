@@ -55,12 +55,6 @@
   .orig <- ui
   .conds <- .saemModeledResidualCond(ui)
   .pred <- ui$predDf
-  # dnorm() scores the transformed DV without the lambda-dependent Jacobian
-  .lam <- .pred$cond %in% .conds & grepl("boxCox|yeoJohnson", paste(.pred$transform))
-  if (any(.lam)) {
-    stop("saem cannot fit a modeled residual error with a boxCox()/yeoJohnson() transform ('",
-         paste(.pred$cond[.lam], collapse = "', '"), "')", call. = FALSE)
-  }
   for (.cond in .conds) {
     .new <- .saemAddDnormToErrLine(ui$lstExpr[[.pred$line[.pred$cond == .cond]]])
     ui <- eval(bquote(rxode2::model(ui, .(.new))))

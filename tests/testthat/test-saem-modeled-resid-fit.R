@@ -76,6 +76,23 @@ nmTest({
                  unname(fixef(.f$focei)[c("add.sd", "cov.sd")]), tolerance = 0.2)
   })
 
+  test_that("saem recovers a boxCox lambda under + dnorm()", {
+    mTrue <- .base("add.sd <- 0.3; lam <- 0.5", "cp ~ add(add.sd) + boxCox(lam) + dnorm()")
+    .d <- .simModeledResid(mTrue)
+    .d <- .d[.d$EVID == 1 | .d$DV > 0, ]
+    mFit <- do.call(rxode2::ini, c(list(mTrue), .starts, list(add.sd = 0.5, lam = 1)))
+    .f <- .nlmixr(mFit, .d, est = "saem",
+                  control = saemControl(seed = 42L, print = 0L, covMethod = ""))
+    .noTemporaryEta(.f)
+    expect_equal(unname(fixef(.f)[c("add.sd", "lam")]), c(0.3, 0.5), tolerance = 0.3)
+    # the temporary etas' own mean update: their variance shrinks, and the reported
+    # theta is the kernel's (refining their mu split the two and gave lam ~ 1)
+    .ph <- .f$parHistData[.f$parHistData$type == "Unscaled", ]
+    .last <- .ph[nrow(.ph), ]
+    expect_lt(.last[["V(rx.eta.lam)"]], 0.1)
+    expect_equal(unname(fixef(.f)[["lam"]]), .last[["lam"]], tolerance = 0.05)
+  })
+
   test_that("saem recovers an ll() residual SD", {
     mTrue <- .base("lsd <- log(0.5)",
                    "sd <- exp(lsd); ll(err) ~ -log(sd) - 0.5 * log(2 * pi) - 0.5 * ((DV - cp) / sd)^2")
