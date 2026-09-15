@@ -55,6 +55,9 @@
 - `addNpde()` and `vpcSim()` give the same result on every call and at any
   thread count, even when an earlier `rxSetSeed()` left rxode2's own seed
   sequence in force.
+- The SAEM Gaussian-quadrature objective caps its grid at 25 nodes per
+  dimension instead of crashing R, and `saemControl(nnodesGq=)` rejects a value
+  above 25.
 - `est="saem"` estimated a `boxCox()`/`yeoJohnson()` lambda without the
   transform's log-Jacobian, both in the closed-form residual step and with a
   general likelihood (`dnorm()`, `t()`, `cauchy()`, also covering `lnorm()`,
