@@ -53,6 +53,37 @@ test_that("the full conditional determinant matches its closed form and its grad
   expect_true(all(abs(.foceiGradDirect(converged)) < 0.05))
 })
 
+test_that("the full determinant's sigma and omega gradients match central differences", {
+  skip_on_cran()
+  model <- function() {
+    ini({ level <- 0.2; error <- 0.2; etaLevel ~ 0.2 })
+    model({ prediction <- exp(level+etaLevel); prediction ~ prop(error) })
+  }
+  data <- data.frame(ID = rep(1:3, each = 3), TIME = rep(1:3, 3),
+    DV = c(1.5,1.7,1.6,0.8,1,1.1,2,2.1,1.9), AMT = 0, EVID = 0)
+  .ctl <- foceiControl(fast = TRUE, detHessian = "conditional", diagXform = "sqrt",
+    maxOuterIterations = 0L, maxInnerIterations = 1000L, epsilon = 1e-10,
+    trustFterm = 1e-12, trustMterm = 1e-12, print = 0, covMethod = "",
+    calcTables = FALSE, compress = FALSE)
+  fit <- .nlmixr(model, data, "focei", control = .ctl)
+  expect_gt(fit$env$nAnalyticGradDirect, 0)
+  gradient <- .foceiGradDirect(fit)
+  objAt <- function(ui) .nlmixr(ui, data, "focei", control = .ctl)$objf
+  h <- 1e-4
+  central <- function(up, down) (objAt(up) - objAt(down)) / (2*h)
+  ui <- fit$finalUi
+  expect_equal(gradient[["level"]],
+               central(rxode2::ini(ui, level = 0.2 + h), rxode2::ini(ui, level = 0.2 - h)),
+               tolerance = 1e-4)
+  expect_equal(gradient[["error"]],
+               central(rxode2::ini(ui, error = 0.2 + h), rxode2::ini(ui, error = 0.2 - h)),
+               tolerance = 1e-4)
+  # om.chol is var^(-1/4) under diagXform="sqrt", so d var/d om.chol = -4 var^(5/4)
+  dVar <- central(eval(bquote(rxode2::ini(ui, etaLevel ~ .(0.2 + h)))),
+                  eval(bquote(rxode2::ini(ui, etaLevel ~ .(0.2 - h)))))
+  expect_equal(gradient[["om.chol.1"]], dVar * -4 * 0.2^1.25, tolerance = 1e-4)
+})
+
 test_that("the full determinant sends the analytic covariance and outer Hessian to FD", {
   skip_on_cran()
   model <- function() {
