@@ -587,7 +587,7 @@ fbviControl()
 #> [1] 5
 #> 
 #> $useLinCmt
-#> [1] TRUE
+#> [1] FALSE
 #> 
 #> $file
 #> NULL

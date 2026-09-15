@@ -1,6 +1,6 @@
 # Changelog
 
-## nlmixr2est 7.0.3
+## nlmixr2est 7.1.0
 
 ### New features
 

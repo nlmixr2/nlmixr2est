@@ -855,7 +855,7 @@ nlmeControl()
 #> [1] 5
 #> 
 #> $useLinCmt
-#> [1] TRUE
+#> [1] FALSE
 #> 
 #> $file
 #> NULL
@@ -1414,7 +1414,7 @@ nlmixr2NlmeControl()
 #> [1] 5
 #> 
 #> $useLinCmt
-#> [1] TRUE
+#> [1] FALSE
 #> 
 #> $file
 #> NULL

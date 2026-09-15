@@ -324,7 +324,7 @@ mfocepControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x55afe870cc48>
+#> <bytecode: 0x5602df8ed548>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -965,7 +965,7 @@ mfocepControl()
 #> [1] 5
 #> 
 #> $useLinCmt
-#> [1] TRUE
+#> [1] FALSE
 #> 
 #> $file
 #> NULL
