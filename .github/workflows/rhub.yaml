@@ -62,6 +62,7 @@ jobs:
           job-config: ${{ matrix.config.job-config }}
           # See R-CMD-check.yaml: qs2/stringfish must link RcppParallel >= 6.0.0
           extra-packages: |
+            nlmixr2/rxode2lincmt
             nlmixr2/rxode2
             qs2=?source
             stringfish=?source
@@ -103,6 +104,7 @@ jobs:
           token: ${{ secrets.RHUB_TOKEN }}
           # See R-CMD-check.yaml: qs2/stringfish must link RcppParallel >= 6.0.0
           extra-packages: |
+            nlmixr2/rxode2lincmt
             nlmixr2/rxode2
             qs2=?source
             stringfish=?source

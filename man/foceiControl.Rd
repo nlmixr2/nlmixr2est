@@ -84,6 +84,7 @@ foceiControl(
     "uobyqa", "newuoa", "trust"),
   innerOpt = c("auto", "trust", "n1qn1", "BFGS"),
   innerHessian = c("focei", "conditional"),
+  detHessian = c("focei", "conditional"),
   hessianMethod = c("fd", "bfgs", "sr1", "bofill"),
   trustConf = 0.975,
   trustRinit = NULL,
@@ -705,6 +706,14 @@ Inner trust uses it at each trial; n1qn1 uses it with `warm="calc"`.
 Value, gradient and full curvature share one sensitivity solve.
 The marginal objective's FOCEI curvature is unchanged.  It is not
 supported with registered external likelihood contributions.}
+
+\item{detHessian}{Curvature entering the objective's Laplace
+log-determinant: `"focei"` (default), the Gauss-Newton expected
+information, or `"conditional"`, the full conditional Hessian (the
+observed information at the conditional mode, as NONMEM's LAPLACE).
+`"conditional"` requires fast Gaussian FOCEI; the analytic outer
+gradient then carries the matching third-order terms, and the
+analytic covariance falls back to finite differences.}
 
 \item{hessianMethod}{For a non-normal-endpoint model (any distribution
     other than \code{norm}), the per-subject inner Hessian has no
