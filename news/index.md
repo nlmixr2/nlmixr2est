@@ -36,18 +36,15 @@
   `a <- add.sd*exp(eta.sd); cp ~ add(a)` or
   `a <- add.sd + WT*cov.sd; cp ~ add(a)`. These endpoints are fit as the
   equivalent `cp ~ add(a) + dnorm()` log-likelihood, and `$runInfo`
-  notes the promotion. A modeled residual on a
-  [`boxCox()`](https://nlmixr2.github.io/nlmixr2est/reference/boxCox.md)/[`yeoJohnson()`](https://nlmixr2.github.io/nlmixr2est/reference/boxCox.md)
-  endpoint is refused, since
-  [`dnorm()`](https://rdrr.io/r/stats/Normal.html) omits the
-  lambda-dependent Jacobian.
+  notes the promotion.
 - `est="saem"` estimates every theta without an eta that informs a
   general likelihood ([`dnorm()`](https://rdrr.io/r/stats/Normal.html),
   [`t()`](https://rdrr.io/r/base/t.html), `cauchy()`, the discrete and
-  continuous densities, and `ll()`) through a temporary mu-referenced
-  eta on the scale of its range:
-  [`exp()`](https://rdrr.io/r/base/Log.html) for a positive parameter
-  such as a standard deviation or degrees of freedom,
+  continuous densities, and `ll()`), including a
+  [`boxCox()`](https://nlmixr2.github.io/nlmixr2est/reference/boxCox.md)/[`yeoJohnson()`](https://nlmixr2.github.io/nlmixr2est/reference/boxCox.md)
+  lambda, through a temporary mu-referenced eta on the scale of its
+  range: [`exp()`](https://rdrr.io/r/base/Log.html) for a positive
+  parameter such as a standard deviation or degrees of freedom,
   [`expit()`](https://nlmixr2.github.io/rxode2/reference/logit.html) for
   a probability, additive when unbounded. The theta is reported as its
   back-transformed `theta + mean(eta)`, the temporary eta is removed
@@ -55,6 +52,16 @@
   parameters were previously left near their initial values.
 
 ### Bug fixes
+
+- `est="saem"` estimated a
+  [`boxCox()`](https://nlmixr2.github.io/nlmixr2est/reference/boxCox.md)/[`yeoJohnson()`](https://nlmixr2.github.io/nlmixr2est/reference/boxCox.md)
+  lambda without the transform’s log-Jacobian, both in the closed-form
+  residual step and with a general likelihood
+  ([`dnorm()`](https://rdrr.io/r/stats/Normal.html),
+  [`t()`](https://rdrr.io/r/base/t.html), `cauchy()`, also covering
+  `lnorm()`, `logitNorm()` and `probitNorm()`), so lambda and the
+  residual SD were fit to the wrong density; the reported objective of a
+  general-likelihood fit also used the starting lambda.
 
 - `est="saem"` fits with a
   [`dnorm()`](https://rdrr.io/r/stats/Normal.html),
