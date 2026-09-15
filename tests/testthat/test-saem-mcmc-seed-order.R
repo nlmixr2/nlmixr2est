@@ -90,6 +90,48 @@ nmTest({
     expect_equal(.f1$theta, .f2$theta)
   })
 
+  test_that("seeded saem censored-value draws do not depend on the thread count", {
+    skip_on_cran()
+    one.compartment <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    # M3: observations below 3 are censored, so augmentCensY() simulates them
+    .d <- nlmixr2data::theo_sd
+    .d$CENS <- ifelse(.d$EVID == 0 & .d$DV < 3, 1L, 0L)
+    .d$DV[.d$CENS == 1L] <- 3
+    .fitAt <- function(threads, data) {
+      .old <- rxode2::getRxThreads(verbose = FALSE)
+      on.exit(rxode2::setRxThreads(.old))
+      rxode2::setRxThreads(threads)
+      if (threads > 1L) skip_if(rxode2::getRxThreads(verbose = FALSE) < threads)
+      suppressMessages(nlmixr2(one.compartment, data, est = "saem",
+                               control = saemControl(print = 0, nBurn = 10, nEm = 10,
+                                                     seed = 42L, calcTables = FALSE,
+                                                     covMethod = "")))
+    }
+    .f1 <- .fitAt(1L, .d)
+    .f2 <- .fitAt(2L, .d)
+    expect_gt(sum(.d$CENS), 0L)
+    # the censoring is live: the same fit without it lands elsewhere
+    expect_false(isTRUE(all.equal(.f1$objf, .fitAt(1L, nlmixr2data::theo_sd)$objf)))
+    expect_equal(.f1$objf, .f2$objf)
+    expect_equal(.f1$theta, .f2$theta)
+  })
+
   test_that("saem seeds are sequential by iteration, step and individual", {
     # (nphi1, nphi0, nMix, nM, nmc, ntotal): no mixture, and a 3-component
     # mixture with no phi0 block
