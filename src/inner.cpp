@@ -17901,6 +17901,18 @@ static bool foceiHessianExpand(VaeOuterE &e, const FoceiGradPooledSetup &g, bool
 // Shared by the outer Hessian (points = 4, the (h, h/2) Richardson rule) and the
 // full-determinant gradient (points = 2, plain central: a search direction does not
 // need 4th-order accuracy and the probes are the gradient's whole extra cost).
+// One column of the probed difference: the 2-point central rule or the 4-point
+// (h, h/2) Richardson rule over probes ordered +h, -h, +h/2, -h/2.
+static arma::vec foceiHessianThirdDiff(const std::vector<std::vector<VaeOuterE>> &probe,
+                                       int id, bool ofR, int a, int b, double h) {
+  auto sl = [&](int k) -> arma::vec {
+    const VaeOuterE &e = probe[k][id];
+    return ofR ? arma::vec(e.AR.slice(b).col(a)) : arma::vec(e.A.slice(b).col(a));
+  };
+  if (probe.size() == 2) return (sl(0)-sl(1))/(2*h);
+  return (8*(sl(2)-sl(3))-(sl(0)-sl(1)))/(6*h);
+}
+
 template <typename Solve>
 static bool foceiHessianThird(double step, const arma::mat &etaAt, const FoceiGradPooledSetup &g,
                                const std::vector<VaeOuterE> &base, bool foce, Solve &solve,
@@ -17911,29 +17923,19 @@ static bool foceiHessianThird(double step, const arma::mat &etaAt, const FoceiGr
     third[id].zeros(base[id].nobs,ne,nd*nd);
     if (!foce) thirdR[id].zeros(base[id].nobs,ne,nd*nd);
   }
-  {
-    OdeSolveTolGuard tolerance(std::min(1e-12,std::min(op_focei.fitAtol,op_focei.fitRtol)));
-    for (int l = 0; l < ne; ++l) {
-      double h = step*std::max(1.0,arma::abs(etaAt.col(l)).max());
-      std::vector<std::vector<VaeOuterE>> probe(points,std::vector<VaeOuterE>(ns));
-      for (int k = 0; k < points; ++k) {
-        arma::mat eta = etaAt;
-        eta.col(l) += (k%2 ? -1 : 1)*h*(k < 2 ? 1 : 0.5);
-        if (!solve(eta,probe[k])) return false;
-        for (int id = 0; id < ns; ++id) if (probe[k][id].nobs != base[id].nobs) return false;
-      }
-      auto diff = [&](int id, bool ofR, int a, int b) -> arma::vec {
-        auto sl = [&](int k) -> arma::vec {
-          const VaeOuterE &e = probe[k][id];
-          return ofR ? arma::vec(e.AR.slice(b).col(a)) : arma::vec(e.A.slice(b).col(a));
-        };
-        if (points == 2) return (sl(0)-sl(1))/(2*h);
-        return (8*(sl(2)-sl(3))-(sl(0)-sl(1)))/(6*h);
-      };
-      for (int id = 0; id < ns; ++id) for (int a = 0; a < nd; ++a) for (int b = 0; b < nd; ++b) {
-        third[id].slice(a+b*nd).col(l) = diff(id,false,a,b);
-        if (!foce) thirdR[id].slice(a+b*nd).col(l) = diff(id,true,a,b);
-      }
+  OdeSolveTolGuard tolerance(std::min(1e-12,std::min(op_focei.fitAtol,op_focei.fitRtol)));
+  for (int l = 0; l < ne; ++l) {
+    double h = step*std::max(1.0,arma::abs(etaAt.col(l)).max());
+    std::vector<std::vector<VaeOuterE>> probe(points,std::vector<VaeOuterE>(ns));
+    for (int k = 0; k < points; ++k) {
+      arma::mat eta = etaAt;
+      eta.col(l) += (k%2 ? -1 : 1)*h*(k < 2 ? 1 : 0.5);
+      if (!solve(eta,probe[k])) return false;
+      for (int id = 0; id < ns; ++id) if (probe[k][id].nobs != base[id].nobs) return false;
+    }
+    for (int id = 0; id < ns; ++id) for (int a = 0; a < nd; ++a) for (int b = 0; b < nd; ++b) {
+      third[id].slice(a+b*nd).col(l) = foceiHessianThirdDiff(probe,id,false,a,b,h);
+      if (!foce) thirdR[id].slice(a+b*nd).col(l) = foceiHessianThirdDiff(probe,id,true,a,b,h);
     }
   }
   return true;

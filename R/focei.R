@@ -1735,9 +1735,9 @@ attr(rxUiGet.loadPrune, "rstudio") <- emptyenv()
                             matExpForcing = TRUE) {
   .etaVars <- NULL
   if (theta && exists("..maxTheta", s)) {
-    .etaVars <- paste0("THETA_", seq(1, s$..maxTheta), "_")
+    .etaVars <- paste0("THETA_", seq_len(s$..maxTheta), "_")
   } else if (exists("..maxEta", s)) {
-    .etaVars <- paste0("ETA_", seq(1, s$..maxEta), "_")
+    .etaVars <- paste0("ETA_", seq_len(s$..maxEta), "_")
   }
   if (length(.etaVars) == 0L) {
     stop("cannot identify parameters for sensitivity analysis\n   with nlmixr2 an 'eta' initial estimate must use '~'", call. = FALSE)
@@ -3626,7 +3626,7 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
   if (.len > .lenC) {
     .scaleC <- c(.scaleC, rep(NA_real_, .len - .lenC))
   } else if (.len < .lenC) {
-    .scaleC <- .scaleC[seq(1, .lenC)]
+    .scaleC <- .scaleC[seq_len(.lenC)]
     warning("'scaleC' control option has more options than estimated population parameters, please check",
       call. = FALSE
     )
