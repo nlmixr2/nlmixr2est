@@ -67,3 +67,26 @@ test_that("the full determinant sends the analytic covariance and outer Hessian 
   expect_false(grepl("analytic", fit$covMethod))
   expect_true(isTRUE(fit$env$optReturn$hessianFallback))
 })
+
+test_that("the full determinant's gradient stays consistent with censored observations", {
+  skip_on_cran()
+  model <- function() {
+    ini({ level <- 0.2; error <- fix(0.2); etaLevel ~ 0.2 })
+    model({ prediction <- exp(level+etaLevel); prediction ~ prop(error) })
+  }
+  data <- data.frame(ID = rep(1:3, each = 3), TIME = rep(1:3, 3),
+    DV = c(1.5,1.7,1.6,0.8,1,1.1,2,2.1,1.9), AMT = 0, EVID = 0,
+    CENS = c(0,0,0,1,0,1,0,0,0))
+  .ctl <- foceiControl(fast = TRUE, detHessian = "conditional",
+    maxOuterIterations = 0L, maxInnerIterations = 1000L, epsilon = 1e-10,
+    trustFterm = 1e-12, trustMterm = 1e-12, print = 0, covMethod = "",
+    calcTables = FALSE, compress = FALSE)
+  fit <- .nlmixr(model, data, "focei", control = .ctl)
+  expect_gt(fit$env$nAnalyticGradDirect, 0)
+  gradient <- .foceiGradDirect(fit)
+  objAt <- function(level) {
+    .nlmixr(rxode2::ini(fit$finalUi, level = level), data, "focei", control = .ctl)$objf
+  }
+  h <- 1e-4
+  expect_equal(unname(gradient[1]), (objAt(0.2 + h) - objAt(0.2 - h)) / (2*h), tolerance = 1e-4)
+})
