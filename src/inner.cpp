@@ -20194,11 +20194,10 @@ void npMixEMUpdate(const arma::mat& etaPoints, const arma::vec& lam, int cores) 
 // eta (subEta, nsub x neta), sample its mix() component from the posterior
 // responsibility mixProb_m * p(y_i | eta_i, component m), then draw the proportions
 // from Dirichlet(alpha0 + component counts) and install them via impSetMixThetas.
-// Mirrors npMixEMUpdate but SAMPLES (Bayes) rather than taking the mean.  `seed`
-// (from npb.cpp's npbSeedEng) reseeds the thread-0 threefry engine right before
-// the serial draws below, undoing whatever the parallel solve above did to that
-// slot -- see npb.cpp's npbSeedEng comment.  No-op for a non-mixture.
-void npbSampleMixProbs(const arma::mat& subEta, double alpha0, uint32_t seed) {
+// Mirrors npMixEMUpdate but SAMPLES (Bayes) rather than taking the mean.  `seed0`
+// is the first of the nsub + nMix sequential seeds this sweep gives the mixture
+// draws.  No-op for a non-mixture.
+void npbSampleMixProbs(const arma::mat& subEta, double alpha0, uint32_t seed0) {
   int nMix = impNmix();
   if (nMix <= 1 || op_focei.mixIdxN == 0) return;
   int nsub = (int)subEta.n_rows;
@@ -20238,14 +20237,12 @@ void npbSampleMixProbs(const arma::mat& subEta, double alpha0, uint32_t seed) {
 #endif
   }
   }
-  // Serial categorical draw per subject (unchanged draw order), then Dirichlet.
-  // Reseed thread-0's engine now: the parallel solve above may have touched that
-  // slot via its own per-subject mid-solve reseeding, and every draw below must
-  // come from the fresh, caller-supplied stream regardless of what happened there.
+  // Serial draws: subject i's categorical draw from seed0 + i, then component m's
+  // Gamma draw from seed0 + nsub + m.
   setRxThreadId(0);
-  nmSetSeedEng1(seed);
   std::vector<double> counts(nMix, alpha0);       // Dirichlet prior concentration
   for (int i = 0; i < nsub; ++i) {
+    nmSetSeedEng1(seed0 + (uint32_t)i);
     int mi = 0;
     if (std::isfinite(gmaxv[i])) {
       std::vector<double> g(nMix); double gsum = 0.0;
@@ -20262,6 +20259,7 @@ void npbSampleMixProbs(const arma::mat& subEta, double alpha0, uint32_t seed) {
   // thread-safe engine -- same technique as imp.cpp's impChisqQuantile()).
   arma::vec p(nMix); double psum = 0.0;
   for (int m = 0; m < nMix; ++m) {
+    nmSetSeedEng1(seed0 + (uint32_t)(nsub + m));
     double u = rxUnifEng(0.0, 1.0);
     if (u <= 0.0) u = 1e-12;
     if (u >= 1.0) u = 1.0 - 1e-12;

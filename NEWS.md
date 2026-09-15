@@ -1008,6 +1008,11 @@ ini({
 
 ## Bug fixes
 
+- `est="saem"` and `est="npb"` seed their random draws sequentially, one seed
+  per individual per step, computed from the iteration so any draw's seed is
+  known from its position.  The phi1 and phi0 SAEM MCMC blocks used to draw
+  from the same seed.  Seeded fits give different, still reproducible,
+  results.
 - `est="saem"` fits with a `dnorm()`, `t()` or `cauchy()` endpoint reported the
   log-density instead of the prediction as `PRED`/`IPRED` (and the residuals
   derived from them) in the fit table (#1084).

@@ -19,45 +19,12 @@
 #include <RcppArmadillo.h>
 #include <rxode2ptr.h>
 #include "nmMcmcRng.h"
+#include "nmSeqSeed.h"
 #include "np.h"
 #include "npCommon.h"
 #include "imp.h"
 
 using namespace Rcpp;
-
-// Iteration/group-indexed threefry stream seed for the NPB Gibbs sampler's
-// serial draw groups (categorical z_i, mixture proportions, stick-breaking
-// v_k, MH proposal/prior/acceptU) -- same mixing scheme as saem.cpp's
-// _saemSeedDoMcmc/_saemSeedCensAug.  Reseeding fresh before every group
-// (rather than letting one stream free-run across the whole chain) means a
-// solve's per-subject mid-solve reseed of the shared threefry engine
-// (npBuildPsiCore/npbSupportMHContrib, both called BETWEEN groups) can never
-// desync this sampler's draws from run to run: the next group's draws never
-// depend on where a prior solve happened to leave the engine.
-static inline uint32_t npbGroupSeed(uint32_t baseSeed, int chain, int it, int group) {
-  // Injective bit-packed stream index rather than a hash chain, matching
-  // _saemSeedDoMcmc()/_saemSeedCensAug() (src/saem.cpp).  threefry is
-  // counter-based and decorrelates distinct seeds on its own -- sitmo's
-  // "uniform_rng_with_sitmo" vignette measures exactly that -- so the stream
-  // index only has to be UNIQUE, not hashed.  Packing the fields into disjoint
-  // bit ranges makes uniqueness structural instead of probabilistic; the
-  // multiply-fold this replaces was collision-free in practice but only
-  // because the multiplier happens to spread consecutive values far apart.
-  //
-  // Field widths: group 5 bits (a phase tag, 0..3 in use), chain 6, it+1 15
-  // (`it` is -1 for the pre-iteration draw).  Masked rather than overflowed,
-  // so an out-of-range index cannot corrupt a neighbouring field.
-  uint32_t ns = baseSeed * 2654435761u + 0x6e706200u;  // "npb" namespace
-  uint32_t idx =
-    (((uint32_t)(it + 1) & 0x7FFFu) << 11) |
-    (((uint32_t)chain    & 0x3Fu)   <<  5) |
-    ( (uint32_t)group    & 0x1Fu);
-  return ns + idx;
-}
-static inline void npbSeedEng(uint32_t baseSeed, int chain, int it, int group) {
-  setRxThreadId(0);
-  nmSetSeedEng1(npbGroupSeed(baseSeed, chain, it, group));
-}
 
 // Beta(a,b) draw via inverse-CDF from a single threefry uniform -- only
 // rxNormEng/rxUnifEng are on the thread-safe per-fit engine, so this is the
@@ -242,13 +209,26 @@ void npbOuter(Environment e) {
   // shared scale.h iteration printer + parameter history (chain 0 sweeps).
   impIterPrintStart();
 
-  // Independent chains (seed offset per chain) for Gelman-Rubin R-hat.
+  // Closed-form sequential seeds (nmSeqSeed.h): sweep `it` of a chain owns
+  // seedStride seeds -- one per subject's assignment, the mixture draws, then one
+  // per support point for the stick weights and for the MH step; the initial
+  // support points use the it = -1 slot.
+  nmSeqSeedStart(seed);
+  const uint64_t nMixSeed = (uint64_t)std::max(nMix, 1);
+  const uint64_t seedStride = 2u * (uint64_t)nsub + nMixSeed + 2u * (uint64_t)K;
+  auto seedBase = [&](int chain, int it) {
+    return ((uint64_t)chain * (uint64_t)(total + 1) + (uint64_t)(it + 1)) * seedStride;
+  };
   for (int chain = 0; chain < nchains; ++chain) {
-  // initialize support points from G_0, uniform weights
-  npbSeedEng((uint32_t)seed, chain, -1, 0);
+  // initialize support points from G_0 (one seed per point), uniform weights
   arma::mat phi(K, neta);
-  for (int k = 0; k < K; ++k)
-    for (int j = 0; j < neta; ++j) phi(k, j) = rxNormEng(0.0, g0sd[j]);
+  {
+    const uint64_t initOff = seedBase(chain, -1);
+    for (int k = 0; k < K; ++k) {
+      nmSeqSeedSet(seed, initOff, k);
+      for (int j = 0; j < neta; ++j) phi(k, j) = rxNormEng(0.0, g0sd[j]);
+    }
+  }
   arma::vec w(K); w.fill(1.0 / K);
   std::vector<int> z(nsub, 0);
   arma::mat chainMd(nSamp, neta, arma::fill::zeros);
@@ -275,12 +255,11 @@ void npbOuter(Environment e) {
       arma::vec par; impGetEstPar(par);
       impIterPrintRow(par, -2.0 * llit);
     }
-    // Reseed before this sweep's first draw group: npBuildPsiCore's parallel
-    // solve above may have touched thread-0's engine slot via its own
-    // per-subject mid-solve reseeding (see npbSeedEng's comment).
-    npbSeedEng((uint32_t)seed, chain, it, 0);
+    // cluster assignments, one seed per subject
+    const uint64_t sweepOff = seedBase(chain, it);
     std::vector<int> nk(K, 0);
     for (int i = 0; i < nsub; ++i) {
+      nmSeqSeedSet(seed, sweepOff, i);
       arma::rowvec p = psi.row(i) % w.t();
       double s = arma::accu(p);
       int zi = 0;
@@ -298,28 +277,27 @@ void npbOuter(Environment e) {
     if (mixOpt && nMix > 1) {
       arma::mat subEta(nsub, neta);
       for (int i = 0; i < nsub; ++i) subEta.row(i) = phi.row(z[i]);
-      npbSampleMixProbs(subEta, mixAlpha0, npbGroupSeed((uint32_t)seed, chain, it, 1));
+      npbSampleMixProbs(subEta, mixAlpha0, nmSeqSeed(seed, sweepOff + (uint64_t)nsub));
     }
     // (b) stick-breaking weights  v_k ~ Beta(1 + n_k, alpha + sum_{j>k} n_j)
-    npbSeedEng((uint32_t)seed, chain, it, 2);
     std::vector<int> tail(K, 0);
     { int acc = 0; for (int k = K - 1; k >= 0; --k) { tail[k] = acc; acc += nk[k]; } }
     double cumLog1mV = 0.0;
     for (int k = 0; k < K; ++k) {
+      nmSeqSeedSet(seed, sweepOff + 2u * (uint64_t)nsub + nMixSeed, k);
       double vv = (k == K - 1) ? 1.0 : npbRbeta(1.0 + nk[k], alpha + (double)tail[k]);
       w[k] = std::exp(cumLog1mV) * vv;
       cumLog1mV += std::log(std::max(1e-300, 1.0 - vv));
     }
     // (c) support locations: MH for occupied clusters, fresh G_0 draw otherwise.
-    // The proposal + accept/reject draws stay serial and in their original order
-    // (so the draw stream, and thus reproducibility, is unchanged); only the
-    // per-subject conditional-likelihood solves are parallelized
-    // (npbSupportMHContrib).  Serial pre-pass draws the proposals and priors:
-    npbSeedEng((uint32_t)seed, chain, it, 3);
+    // Serial pre-pass, one seed per support point, draws the proposals, priors and
+    // acceptance uniforms; only the per-subject conditional-likelihood solves are
+    // parallelized (npbSupportMHContrib).
     std::vector<char> occ(K, 0);
     std::vector<std::vector<double> > curLoc(K), propLoc(K);
     std::vector<double> curPrior(K, 0.0), propPrior(K, 0.0), acceptU(K, 0.0);
     for (int k = 0; k < K; ++k) {
+      nmSeqSeedSet(seed, sweepOff + 2u * (uint64_t)nsub + nMixSeed + (uint64_t)K, k);
       if (nk[k] == 0) {
         for (int j = 0; j < neta; ++j) phi(k, j) = rxNormEng(0.0, g0sd[j]);
         continue;

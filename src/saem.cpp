@@ -8,6 +8,7 @@
 #include <RcppArmadillo.h>
 #include <rxode2ptr.h>
 #include "nmMcmcRng.h"
+#include "nmSeqSeed.h"
 #include "utilc.h"
 #include "censEst.h"
 #include "nearPD.h"
@@ -573,6 +574,7 @@ extern "C" SEXP _saemResidF(SEXP v) {
 
 struct mcmcphi {
   int nphi;
+  int block;  // 0 phi1, 1 phi0 (seed layout)
   uvec i;
   mat Gamma_phi;
   mat Gdiag_phi;
@@ -802,87 +804,58 @@ static int _saemEtaDistObsLik = 0;
 // declared correlations the sufficient statistic says the data do not identify
 static int _saemEtaDistCorNotEst = 0;
 
-// Fill an armadillo mat/vec from rxode2's threefry engine (the current seeded
-// stream).  Used for the MCMC proposals; the saem ODE solve does not draw from
-// the engine, so these do not interfere with user_fn.
-static inline void _saemFillNormEng(arma::mat &m) {
-  for (arma::uword ii = 0; ii < m.n_elem; ++ii) m(ii) = rxNormEng(0.0, 1.0);
-}
-static inline void _saemFillNormEng(arma::vec &v) {
-  for (arma::uword ii = 0; ii < v.n_elem; ++ii) v(ii) = rxNormEng(0.0, 1.0);
-}
-static inline void _saemFillUnifEng(arma::vec &v) {
-  for (arma::uword ii = 0; ii < v.n_elem; ++ii) v(ii) = rxUnifEng(0.0, 1.0);
-}
-// Iteration-indexed threefry stream seed for a do_mcmc proposal block: a pure
-// mixing function of (baseSeed, kiter, method, u, k1) so every iteration's RNG
-// is independent of the total iteration count (dynamic phase extension) and
-// independent of thread scheduling.  Pins thread 0 (serial draw).  `mixIdx`
-// (0 for non-mixture / a 1-based component index for parallel per-component
-// chains) offsets the seed so each mixture component draws an independent
-// threefry stream instead of the identical proposals that collapse the mixture;
-// a bare add suffices since threefry streams for distinct seeds are independent.
-static inline void _saemSeedDoMcmc(uint32_t baseSeed, int kiter, int method, int u, int k1,
-                                   int mixIdx = 0) {
-  setRxThreadId(0);
-  // threefry is COUNTER-based, and sitmo's own guidance for parallel streams is
-  // simply to seed separate engines with distinct seeds -- distinct seeds are
-  // uncorrelated by construction (see the sitmo "uniform_rng_with_sitmo"
-  // vignette, which measures exactly that).  So the stream index does not need
-  // to be hashed; it needs to be UNIQUE.  Packing the fields into disjoint bit
-  // ranges makes it injective by construction.
-  //
-  // The Knuth-multiply chain this replaces was not injective.  Its last step
-  // was a bare `s += mixIdx` after `s = s*M + k1`, so the seed depended on
-  // k1 + mixIdx rather than on the pair: HALF of all combinations collided
-  // (measured: 108 duplicate seeds out of 216 (kiter,method,u,k1,mixIdx)
-  // combinations).  In a mixture fit under kernel 3 -- the only kernel that
-  // loops k1 -- component m at coordinate j drew the IDENTICAL proposal noise
-  // as component m-1 at coordinate j+1, which is the very failure the mixIdx
-  // offset exists to prevent.  The sibling _saemSeedCensAug() had the same bug
-  // found and fixed; this one was missed.
-  //
-  // Field widths: kiter 14 bits (< 16384), method 3, u 4, k1 6, mixIdx 5.
-  // Values are masked rather than allowed to overflow into a neighbouring
-  // field, so an out-of-range index degrades to a collision within its own
-  // field instead of silently corrupting another one.
-  uint32_t ns = baseSeed * 2654435761u + 0x00006D0Cu;  // "do_mcmc" namespace
-  uint32_t idx =
-    (((uint32_t)kiter  & 0x3FFFu) << 18) |
-    (((uint32_t)method & 0x7u)    << 15) |
-    (((uint32_t)u      & 0xFu)    << 11) |
-    (((uint32_t)k1     & 0x3Fu)   <<  5) |
-    ( (uint32_t)mixIdx & 0x1Fu);
-  nmSetSeedEng1(ns + idx);
-}
+// Closed-form sequential seed layout of one SAEM fit (nmSeqSeed.h).  Per
+// iteration: every mixture component's MCMC steps -- phi1 then phi0, methods 1,
+// 2 and 3 (3 once per phi column), nu times each, then mode 1B nu1B times -- one
+// seed per chain row, then every component's censored-value draws, one seed per
+// observation.  With nu1B = 0 this is the layout of the branch without mode 1B.
+struct saemSeedLayout {
+  uint64_t nu[3] = {0, 0, 0}, nu1B = 0, nphi[2] = {0, 0};
+  uint64_t nComp = 1, nM = 0, nmc = 0, ntotal = 0;
+  // MCMC steps of one phi block; nu (not nu1B) is 20x at kiter 0
+  uint64_t blockSteps(int kiter, int block) const {
+    uint64_t f = kiter == 0 ? 20u : 1u;
+    return f * (nu[0] + nu[1] + nu[2] * nphi[block]) + nu1B;
+  }
+  uint64_t steps(int kiter) const {
+    return blockSteps(kiter, 0) + blockSteps(kiter, 1);
+  }
+  uint64_t stride(int kiter) const {
+    return nComp * (steps(kiter) * nM + nmc * ntotal);
+  }
+  uint64_t iterBase(int kiter) const {
+    return kiter == 0 ? 0u : stride(0) + (uint64_t)(kiter - 1) * stride(1);
+  }
+  // first seed of a step; block 0 is phi1, 1 is phi0; method 4 is mode 1B
+  uint64_t step(int kiter, int comp, int block, int method, int u, int k1) const {
+    uint64_t f = kiter == 0 ? 20u : 1u;
+    uint64_t s = (uint64_t)comp * steps(kiter);
+    if (block == 1) s += blockSteps(kiter, 0);
+    if (method == 1) s += (uint64_t)u;
+    else if (method == 2) s += f * nu[0] + (uint64_t)u;
+    else if (method == 3) s += f * (nu[0] + nu[1]) + (uint64_t)u * nphi[block] + (uint64_t)k1;
+    else s += f * (nu[0] + nu[1] + nu[2] * nphi[block]) + (uint64_t)u;
+    return iterBase(kiter) + s * nM;
+  }
+  // first seed of chain k's observations
+  uint64_t cens(int kiter, int comp, int k) const {
+    return iterBase(kiter) + nComp * steps(kiter) * nM +
+      ((uint64_t)comp * nmc + (uint64_t)k) * ntotal;
+  }
+};
 
-// Iteration-indexed threefry stream seed for the censored-DV data-augmentation
-// draw (see simCensDv()/augmentCensY() below), independent of the do_mcmc
-// proposal streams above.  Keyed by (kiter, chain k, endpoint b, mixIdx) so
-// every (iteration, chain, endpoint, component) combination gets its own
-// stream; a fit is reproducible given saemControl(seed=).
-static inline void _saemSeedCensAug(uint32_t baseSeed, int kiter, int k, int b,
-                                    int mixIdx) {
-  setRxThreadId(0);
-  // Injective bit-packed stream index, for the same reason as
-  // _saemSeedDoMcmc(): threefry decorrelates distinct seeds on its own (see the
-  // sitmo "uniform_rng_with_sitmo" vignette), so the index only has to be
-  // UNIQUE -- it does not have to be hashed, and hashing it is what let a
-  // collision in here in the first place.  The multiply-fold this replaces was
-  // a fix for a bare `+=` that collided whenever b and mixIdx+1 summed alike;
-  // multiply-folding made collisions unlikely rather than impossible.  Packing
-  // makes them impossible.
-  //
-  // Field widths: kiter 14 bits (< 16384), k (chain) 4, b (endpoint) 6
-  // (MAXENDPNT is 40), mixIdx+1 5 (mixIdx can be -1).  Masked, not overflowed,
-  // so an out-of-range index cannot corrupt a neighbouring field.
-  uint32_t ns = baseSeed * 2654435761u + 0x63656E73u;  // "cens" namespace
-  uint32_t idx =
-    (((uint32_t)kiter      & 0x3FFFu) << 15) |
-    (((uint32_t)k          & 0xFu)    << 11) |
-    (((uint32_t)b          & 0x3Fu)   <<  5) |
-    ( (uint32_t)(mixIdx + 1) & 0x1Fu);
-  nmSetSeedEng1(ns + idx);
+// Draw one MCMC step, chain row r (k*N + subject) from seed + offset + r: its
+// noise columns, any `extra` normals, then its acceptance uniform.
+static inline void _saemDrawRows(int seed, uint64_t offset, arma::mat &noise,
+                                 arma::vec &accU, arma::mat *extra = nullptr) {
+  for (arma::uword r = 0; r < noise.n_rows; ++r) {
+    nmSeqSeedSet(seed, offset, r);
+    for (arma::uword c = 0; c < noise.n_cols; ++c) noise(r, c) = rxNormEng(0.0, 1.0);
+    if (extra != nullptr) {
+      for (arma::uword c = 0; c < extra->n_cols; ++c) (*extra)(r, c) = rxNormEng(0.0, 1.0);
+    }
+    accU(r) = rxUnifEng(0.0, 1.0);
+  }
 }
 
 // Simulate the "true" value of a censored (M3/M4) observation from the
@@ -3427,7 +3400,9 @@ public:
                     int kiter, int k, int mixIdx) {
     if (!arma::any(cens_cur != 0.0)) return y_cur;
     vec y_aug = y_cur;
-    _saemSeedCensAug((uint32_t)saemSeed, kiter, k, b, mixIdx);
+    // one seed per observation: this chain's rows, endpoint b's span
+    const uint64_t seedOff = _seedLayout.cens(kiter, mixIdx < 0 ? 0 : mixIdx, k) +
+      (uint64_t)y_offset(b);
     const double double_xmin = 1.0e-200, xmax = 1e300;
     for (unsigned int i = 0; i < y_aug.n_elem; i++) {
       if (cens_cur[i] == 0.0) continue;
@@ -3441,6 +3416,7 @@ public:
       double limT = _powerD(limit_cur[i], lambda(b), yj(b), low(b), hi(b));
       double limDvT = hasFixedObsTransform ? y_cur[i] :
         _powerD(y_cur[i], lambda(b), yj(b), low(b), hi(b));
+      nmSeqSeedSet(saemSeed, seedOff, i);
       double simT = simCensDv(cens_cur[i], limDvT, limT, ft, sd);
       y_aug[i] = hasFixedObsTransform ? simT :
         _powerDi(simT, lambda(b), yj(b), low(b), hi(b));
@@ -4236,9 +4212,20 @@ public:
   }
 
   void saem_fit() {
-    // (arma_rng::set_seed removed -- arma::randn uses R's RNG under
-    // RcppArmadillo, seeded by set.seed(seed); the explicit arma seed was a
-    // no-op that is under test as a determinism-cycle suspect.)
+    nmSeqSeedStart(saemSeed);
+    _seedLayout.nu[0] = (uint64_t)nu(0);
+    _seedLayout.nu[1] = (uint64_t)nu(1);
+    _seedLayout.nu[2] = (uint64_t)nu(2);
+    _seedLayout.nu1B = (uint64_t)nu1B;
+    _seedLayout.nphi[0] = (uint64_t)nphi1;
+    _seedLayout.nphi[1] = (uint64_t)nphi0;
+    _seedLayout.nComp = (uint64_t)std::max(nMix, 1);
+    _seedLayout.nM = (uint64_t)nM;
+    _seedLayout.nmc = (uint64_t)nmc;
+    _seedLayout.ntotal = (uint64_t)ntotal;
+    if (_seedLayout.iterBase(niter + nSaCov) > 0x80000000ull) {
+      Rcpp::warning("random draws exceed the seed range; some seeds repeat");
+    }
     double double_xmin = 1.0e-200; //FIXME hard-coded xmin, also in neldermean.hpp
     double xmax = 1e300;
     ofstream phiFile;
@@ -4383,6 +4370,8 @@ public:
       mcmcphi mphi1, mphi0;
       set_mcmcphi(mphi1, i1, nphi1, Gamma2_phi1, IGamma2_phi1, mprior_phi1, rwScale1, rwScale1b);
       set_mcmcphi(mphi0, i0, nphi0, Gamma2_phi0, IGamma2_phi0, mprior_phi0, rwScale0, rwScale0b);
+      mphi1.block = 0;
+      mphi0.block = 1;
 
       // CHG hard coded 20
       int nu1, nu2, nu3;
@@ -6507,6 +6496,7 @@ private:
   uvec nu;
   int niter;
   int saemSeed = 99;
+  saemSeedLayout _seedLayout;
   int nPhase1;
   // uninformative-eta revisit: re-run the informativeness test at the end of burn-in
   // (see revisitUninformativeEtas).  ueRevisitIter < 0 disables it.
@@ -8796,7 +8786,8 @@ private:
   // so the same masking would put the row at zero prior density and keep it
   // there.  A draw from the prior is what "uninformed" means; it is what the
   // Gaussian mask is approximating, and on this route it is available exactly.
-  void etaDistDirectDraw(mat &phiCols, const std::vector<int> &declOf) {
+  // `edZ` holds each row's normals, two per phi column, drawn from its row seed.
+  void etaDistDirectDraw(mat &phiCols, const std::vector<int> &declOf, const mat &edZ) {
     if (!etaDistDirectOn() || !etaDistAnyLocal(declOf)) return;
     const int na = (int)etaDistArgs.n_cols;
     const unsigned int nr = phiCols.n_rows;
@@ -8812,13 +8803,13 @@ private:
       double rho = 0.0;
       int j = etaDistPartnerOf(k, &rho);
       int cj = (j >= 0 && j < etaDistNdist) ? colOf[(size_t)j] : -1;
-      arma::vec z1(nr); _saemFillNormEng(z1);
+      const arma::vec z1 = edZ.col((unsigned int)(2 * c));
       // per-row arguments, for the same reason etaDistDirectU() resolves them
       // per row: a covariate makes each subject's prior its own distribution.
       // A row whose arguments cannot be built is LEFT ALONE rather than drawn
       // from a fabricated one.
       if (cj >= 0 && rho != 0.0) {
-        arma::vec z2(nr); _saemFillNormEng(z2);
+        const arma::vec z2 = edZ.col((unsigned int)(2 * c + 1));
         double sr = std::sqrt(1.0 - rho*rho);
         seen[c] = 1; seen[(size_t)cj] = 1;
         for (unsigned int r = 0; r < nr; ++r) {
@@ -8957,12 +8948,15 @@ private:
       for (int k1=0; k1<mphi.nphi; k1++) {
         mat phiMc=phiM;
         edLogJ = arma::vec(mx.nM, arma::fill::zeros);
-        // iteration-indexed threefry stream: proposal noise + the acceptance
-        // uniform are drawn here (before the solve) from one seeded stream
-        _saemSeedDoMcmc((uint32_t)saemSeed, kiter, method, u, k1, mixIdx);
+        // proposal noise and acceptance uniforms, drawn before the solve
+        const uint64_t seedOff = _seedLayout.step(kiter, mixIdx > 0 ? mixIdx - 1 : 0,
+                                                  mphi.block, method, u, k1);
         switch (method) {
         case 1: {
-          mat noise(mx.nM, mphi.nphi); _saemFillNormEng(noise);
+          mat noise(mx.nM, mphi.nphi);
+          // the declared-family draw's normals, from the same row seeds
+          mat edZ(mx.nM, edDirect ? 2 * mphi.nphi : 0);
+          _saemDrawRows(saemSeed, seedOff, noise, accU, &edZ);
           phiMc.cols(i)=noise*mphi.Gamma_phi % current_saem_state->_saemUE.cols(i) +
             mphi.mprior_phiM;
           // The declared columns are OVERWRITTEN with a draw from the declared
@@ -8974,13 +8968,13 @@ private:
           // apply, and the chain would target the wrong distribution.
           if (edDirect) {
             mat pc = phiMc.cols(i);
-            etaDistDirectDraw(pc, etaDistDecl);
+            etaDistDirectDraw(pc, etaDistDecl, edZ);
             phiMc.cols(i) = pc;
           }
           break;
         }
         case 2: {
-          mat noise(mx.nM, mphi.nphi); _saemFillNormEng(noise);
+          mat noise(mx.nM, mphi.nphi); _saemDrawRows(saemSeed, seedOff, noise, accU);
           // rwOmega: NONMEM's Z = lambda*Omega (eq. 1.139).  Otherwise the
           // historical diagonal, which is also what saemix uses.
           mat step = rwOmega ? (noise * mphi.Gfull_phi)
@@ -9017,7 +9011,8 @@ private:
           break;
         }
         case 3: {
-          vec noise(mx.nM); _saemFillNormEng(noise);
+          mat noiseM(mx.nM, 1); _saemDrawRows(saemSeed, seedOff, noiseM, accU);
+          vec noise = noiseM.col(0);
           double s3 = (rwScale3 != nullptr && rwScale3->n_elem == (unsigned int)mphi.nphi)
             ? (*rwScale3)(k1) : 1.0;
           vec step = noise*(mphi.Gdiag_phi(k1,k1) * s3);
@@ -9042,7 +9037,7 @@ private:
         case 4: {
           // NONMEM mode 1B: independence proposal from each subject's own
           // accumulated conditional mean/variance (see buildMode1B()).
-          mat noise(mx.nM, mphi.nphi); _saemFillNormEng(noise);
+          mat noise(mx.nM, mphi.nphi); _saemDrawRows(saemSeed, seedOff, noise, accU);
           mat step = m1bFull ? mode1BNoise(noise) : (noise % m1bSd);
           // UE masks the NOISE, not the mean -- matching mode 1, so a masked
           // coordinate stays at its proposal centre rather than collapsing to 0
@@ -9050,7 +9045,6 @@ private:
           break;
         }
         }
-        _saemFillUnifEng(accU);   // acceptance uniforms from the same stream
 
         fcMat = nmRngGuard([&]{ return user_fn(phiMc, mx.evtM, mx.optM); });
         cur_limit = fcMat.col(2);
@@ -9636,18 +9630,16 @@ private:
     for (int u = 0; u < nu; u++)
       for (int k1 = 0; k1 < mphi.nphi; k1++) {
         phiMc = phiM;
-        // iteration-indexed threefry stream (msaem tag = method + 16 so it does
-        // not collide with the plain do_mcmc streams)
-        _saemSeedDoMcmc((uint32_t)saemSeed, kiter, method + 16, u, k1);
+        const uint64_t seedOff = _seedLayout.step(kiter, 0, mphi.block, method, u, k1);
         switch (method) {
         case 1: {
-          mat noise(mx.nM, mphi.nphi); _saemFillNormEng(noise);
+          mat noise(mx.nM, mphi.nphi); _saemDrawRows(saemSeed, seedOff, noise, accU);
           phiMc.cols(i) = noise * mphi.Gamma_phi % current_saem_state->_saemUE.cols(i) +
             mphi.mprior_phiM;
           break;
         }
         case 2: {
-          mat noise(mx.nM, mphi.nphi); _saemFillNormEng(noise);
+          mat noise(mx.nM, mphi.nphi); _saemDrawRows(saemSeed, seedOff, noise, accU);
           // rwOmega: NONMEM's Z = lambda*Omega (eq. 1.139).  Otherwise the
           // historical diagonal, which is also what saemix uses.
           mat step = rwOmega ? (noise * mphi.Gfull_phi)
@@ -9661,7 +9653,8 @@ private:
           break;
         }
         case 3: {
-          vec noise(mx.nM); _saemFillNormEng(noise);
+          mat noiseM(mx.nM, 1); _saemDrawRows(saemSeed, seedOff, noiseM, accU);
+          vec noise = noiseM.col(0);
           double s3 = (rwScale3 != nullptr && rwScale3->n_elem == (unsigned int)mphi.nphi)
             ? (*rwScale3)(k1) : 1.0;
           vec step = noise * (mphi.Gdiag_phi(k1, k1) * s3);
@@ -9671,8 +9664,6 @@ private:
           break;
         }
         }
-        _saemFillUnifEng(accU);
-
         Uc_y = mixObsLoss(phiMc, mx);
 
         if (method == 1) {
@@ -9750,6 +9741,38 @@ static double gPhi1ObjR(Rcpp::NumericVector p) {
 
 //[[Rcpp::export]]
 long saemPhi1RefineN_() { return _saemPhi1RefineN; }
+
+// Test hook: every draw's seed offset, in the kernel's draw order.
+//[[Rcpp::export]]
+Rcpp::NumericVector saemSeedLayoutTest_(Rcpp::IntegerVector nu, int nu1B, int nphi1,
+                                        int nphi0, int nMix, int nM, int nmc,
+                                        int ntotal, int niter) {
+  saemSeedLayout L;
+  for (int j = 0; j < 3; ++j) L.nu[j] = (uint64_t)nu[j];
+  L.nu1B = (uint64_t)nu1B;
+  L.nphi[0] = (uint64_t)nphi1;
+  L.nphi[1] = (uint64_t)nphi0;
+  L.nComp = (uint64_t)std::max(nMix, 1);
+  L.nM = (uint64_t)nM;
+  L.nmc = (uint64_t)nmc;
+  L.ntotal = (uint64_t)ntotal;
+  std::vector<double> out;
+  for (int kiter = 0; kiter < niter; ++kiter) {
+    int f = kiter == 0 ? 20 : 1;
+    for (int c = 0; c < (int)L.nComp; ++c)
+      for (int b = 0; b < 2; ++b)
+        for (int m = 1; m <= 4; ++m)
+          for (int u = 0; u < (m == 4 ? nu1B : f * nu[m - 1]); ++u)
+            for (int k1 = 0; k1 < (m == 3 ? (int)L.nphi[b] : 1); ++k1)
+              for (int r = 0; r < nM; ++r)
+                out.push_back((double)(L.step(kiter, c, b, m, u, k1) + r));
+    for (int c = 0; c < (int)L.nComp; ++c)
+      for (int k = 0; k < nmc; ++k)
+        for (int i = 0; i < ntotal; ++i)
+          out.push_back((double)(L.cens(kiter, c, k) + i));
+  }
+  return Rcpp::wrap(out);
+}
 
 //[[Rcpp::export]]
 long saemEtaDistN_() { return _saemEtaDistN; }

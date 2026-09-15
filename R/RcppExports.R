@@ -921,6 +921,10 @@ saemPhi1RefineN_ <- function() {
     .Call(`_nlmixr2est_saemPhi1RefineN_`)
 }
 
+saemSeedLayoutTest_ <- function(nu, nu1B, nphi1, nphi0, nMix, nM, nmc, ntotal, niter) {
+    .Call(`_nlmixr2est_saemSeedLayoutTest_`, nu, nu1B, nphi1, nphi0, nMix, nM, nmc, ntotal, niter)
+}
+
 saemEtaDistN_ <- function() {
     .Call(`_nlmixr2est_saemEtaDistN_`)
 }

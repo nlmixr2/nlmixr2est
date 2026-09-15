@@ -132,19 +132,21 @@ inside an OpenMP-parallel region -- R's RNG API is not safe to call from a non-m
   no RNG state touched) are fine everywhere, including inside OpenMP regions -- only `R::r*`
   (draws) and `GetRNGstate()`/`PutRNGstate()` are banned. See `imp.cpp`'s `impChisqQuantile()`
   and `npb.cpp`'s `npbRbeta()` for the pattern.
-- Seed a fresh, iteration/chain/group-mixed value (`setRxThreadId(0)` + `nmSetSeedEng1(seed)`,
-  `nmMcmcRng.h`) before every SERIAL batch of draws, rather than letting one engine stream
-  free-run across a whole fit. A subject solve reseeds the SAME shared engine mid-solve
-  (`setSeedEng1(getRxSeed1()+id)` per subject -- `nmMcmcRng.h`'s own top comment) whenever it
-  runs between two draw batches, so unconditionally reseeding before every batch means no
-  batch's draws depend on what a solve did to the engine in between, without having to
-  track/restore state. See `saem.cpp`'s `_saemSeedDoMcmc`/`_saemSeedCensAug` and `npb.cpp`'s
-  `npbSeedEng` for the seed-mixing convention -- multiplicatively fold EVERY index that
-  identifies the batch (a bare `+=` between two indices collides whenever they sum to the
-  same value; this has caused a real bug, see `_saemSeedCensAug`'s history). `nmMcmcRng.h`'s
-  `nmRngGuard()`/`nmRestoreMcmcSeed()` are the alternative when a stream must survive ACROSS
-  an inner-likelihood call rather than being freshly reseeded after it (e.g. `do_mcmc`'s
-  proposal + acceptance-uniform draws, drawn before the candidate is solved).
+- Seed SEQUENTIALLY with a closed form (`src/nmSeqSeed.h`), the way `par_solve` seeds its
+  subjects (`seed0 + id`): lay a sampler's draws out as a fixed number of seeds per iteration
+  and seed item `i` of a step (a subject, chain row, observation or support point) with
+  `nmSeqSeedSet(seed, offset, i)` immediately before that item's draws, where `offset` is
+  computed from the iteration and step alone (`saem.cpp`'s `saemSeedLayout`, `npb.cpp`'s
+  `seedBase`). Any draw's seed then follows from its position, so a fit stopped and resumed
+  at an iteration draws exactly what it would have. Never take seeds from a running counter
+  (`getRxSeed1()`), and never hash, fold or bit-pack indices into a seed: distinct threefry
+  keys are already independent streams, a hash only adds birthday collisions (the old folded
+  SAEM seeds gave the phi1 and phi0 MCMC blocks the same stream), and packed fields silently
+  collide once an index outgrows its width. `nmSeqSeedStart(seed)` restarts rxode2's own solve
+  seeds after setup in the other half of the 32-bit range, so a solve never shares a
+  sampler's seed and a seeded fit does not depend on the thread count. Seeding each item
+  right before its draws also means no draw depends on what a solve did to the shared engine
+  in between.
 
 **Truncated-normal draws -- `src/truncNorm.h`.** A truncated-normal draw (SAEM's censored-DV
 data augmentation, `saem.cpp`'s `simCensDv()`; CWRES's censored-observation simulation,
