@@ -84,7 +84,7 @@
   .idx <- .pred$line[i]
   .ret <- list(resid = character(0), skip = character(0), argRange = list(),
                predDeps = .rxMtimeDeps(lines, lhs, .idx, paste(.pred$var[i])))
-  for (.c in intersect(c("a", "b", "c", "d", "e", "f"), names(.pred))) {
+  for (.c in intersect(c("a", "b", "c", "d", "e", "f", "lambda"), names(.pred))) {
     .v <- .pred[[.c]][i]
     if (is.na(.v)) next
     .ret$resid <- c(.ret$resid, .rxMtimeDeps(lines, lhs, .idx, .v))
@@ -92,7 +92,7 @@
                              .pred[i, , drop = FALSE], .c)
   }
   .err <- which(!is.na(.iniDf$err) & .iniDf$condition == .pred$cond[i])
-  .bad <- grepl("boxCox|yeoJohnson|^ar$|^binom$", .iniDf$err[.err])
+  .bad <- grepl("^ar$|^binom$", .iniDf$err[.err])
   .ret$skip <- c(.ret$skip, .iniDf$name[.err[.bad]])
   .ret$resid <- c(.ret$resid, .iniDf$name[.err[!.bad]])
   .ret
@@ -135,8 +135,8 @@
 #' likelihood parameter near its initial value; these thetas get a temporary
 #' eta.  A theta that is the likelihood argument itself uses that argument's
 #' range; any other theta uses its own `ini()` bounds.  Thetas that feed a
-#' prediction (outside `ll()`), count arguments, transform lambdas, ordinal
-#' endpoints and covariate coefficients on a theta with an eta are left alone.
+#' prediction (outside `ll()`), count arguments, ordinal endpoints and
+#' covariate coefficients on a theta with an eta are left alone.
 #'
 #' @param ui rxode2 ui
 #' @return data frame with `theta`, `lower` and `upper`
