@@ -8440,33 +8440,60 @@ public:
   // resolved against saem's own model can point past a shorter model's lhs
   // buffer.  Measured: reading lhs[1] on such a path segfaulted.
   mutable int etaDistAnchorNlhs = 0;
-  void etaDistAnchorHarvest(int id, const double *lhs) const {
-    if (etaDistAnchorHave.empty() || lhs == NULL) return;
-    if (id < 0 || id >= N) return;
-    if (etaDistAnchorNlhs <= 0) return;
+  // One record's anchor values, appended to this subject's block.  The first
+  // record also fills the per-subject row, which is what a declaration with no
+  // within-subject variation reads.
+  void etaDistAnchorAppend(int id, const double *lhs, std::vector<double> &rows,
+                           size_t base, bool first) const {
     int na = (int)etaDistArgs.n_cols;
-    int ncol = etaDistNdist*na;
-    if (ncol <= 0) return;
-    // EVERY record, appended in record order.  The first one also fills the
-    // per-subject row, which is what a declaration with no within-subject
-    // variation uses.
-    std::vector<double> &rows = etaDistAnchorRows[(size_t)id];
-    size_t base = rows.size();
-    rows.resize(base + (size_t)ncol, NA_REAL);
     for (int k = 0; k < etaDistNdist && k < (int)etaDistAnchorIdx.size(); ++k) {
       const std::vector<int> &ix = etaDistAnchorIdx[(size_t)k];
       for (int t = 0; t < na && t < (int)ix.size(); ++t) {
         if (ix[(size_t)t] < 0 || ix[(size_t)t] >= etaDistAnchorNlhs) continue;
         double v = lhs[ix[(size_t)t]];
         rows[base + (size_t)etaDistAnchorCol(k, t)] = v;
-        if (!etaDistAnchorHave[(size_t)id]) {
+        if (first) {
           etaDistAnchorVal((unsigned int)id,
                            (unsigned int)etaDistAnchorCol(k, t)) = v;
         }
       }
     }
+  }
+
+  void etaDistAnchorHarvest(int id, const double *lhs) const {
+    if (etaDistAnchorHave.empty() || lhs == NULL) return;
+    if (id < 0 || id >= N || etaDistAnchorNlhs <= 0) return;
+    int ncol = etaDistNdist*(int)etaDistArgs.n_cols;
+    if (ncol <= 0) return;
+    std::vector<double> &rows = etaDistAnchorRows[(size_t)id];
+    size_t base = rows.size();
+    rows.resize(base + (size_t)ncol, NA_REAL);
+    etaDistAnchorAppend(id, lhs, rows, base, !etaDistAnchorHave[(size_t)id]);
     etaDistAnchorNrec[(size_t)id]++;
     etaDistAnchorHave[(size_t)id] = 1;
+  }
+
+  // Does this declaration's argument set vary WITHIN a subject?
+  //
+  // Decided from the harvested records rather than declared up front: a
+  // covariate that is constant in the data behaves as constant whatever its
+  // column could in principle do, and a declaration with no covariate at all
+  // must not pay for the weighted path.  Computed once per harvest pass.
+  // Does declaration kk's argument set differ across any subject's records?
+  bool etaDistVariesOne(int kk, int na, int ncol) const {
+    for (size_t sj = 0; sj < etaDistAnchorRows.size(); ++sj) {
+      int nrec = etaDistAnchorNrec[sj];
+      if (nrec <= 1) continue;
+      const std::vector<double> &rows = etaDistAnchorRows[sj];
+      for (int t = 0; t < na; ++t) {
+        double v0 = rows[(size_t)etaDistAnchorCol(kk, t)];
+        for (int r = 1; r < nrec; ++r) {
+          double v = rows[(size_t)r*(size_t)ncol + (size_t)etaDistAnchorCol(kk, t)];
+          if (v != v0 && (std::isfinite(v) || std::isfinite(v0))) return true;
+        }
+      }
+    }
+    return false;
   }
 
   // Does this declaration's argument set vary WITHIN a subject?
@@ -8483,23 +8510,7 @@ public:
     if ((int)etaDistVariesK.size() != etaDistNdist) {
       etaDistVariesK.assign((size_t)etaDistNdist, 2);
       for (int kk = 0; kk < etaDistNdist; ++kk) {
-        for (size_t sj = 0; sj < etaDistAnchorRows.size(); ++sj) {
-          int nrec = etaDistAnchorNrec[sj];
-          if (nrec <= 1) continue;
-          const std::vector<double> &rows = etaDistAnchorRows[sj];
-          bool diff = false;
-          for (int t = 0; t < na && !diff; ++t) {
-            double v0 = rows[(size_t)etaDistAnchorCol(kk, t)];
-            for (int r = 1; r < nrec; ++r) {
-              double v = rows[(size_t)r*(size_t)ncol +
-                              (size_t)etaDistAnchorCol(kk, t)];
-              if (v != v0 && (std::isfinite(v) || std::isfinite(v0))) {
-                diff = true; break;
-              }
-            }
-          }
-          if (diff) { etaDistVariesK[(size_t)kk] = 1; break; }
-        }
+        if (etaDistVariesOne(kk, na, ncol)) etaDistVariesK[(size_t)kk] = 1;
       }
     }
     return etaDistVariesK[(size_t)k] == 1;
@@ -8666,6 +8677,28 @@ private:
   // Any record whose arguments cannot be built makes the whole subject
   // non-finite, the same treatment a single unbuildable set gets: rejected,
   // never averaged around.
+  // The same weighting for a copula-linked PAIR, scored JOINTLY at each record,
+  // so a covariate on either member moves the joint density for that record.
+  double etaDistWeightedPairLogD(int k, int j, unsigned int r,
+                                 double xk, double xj, double rho,
+                                 double *a1, double *a2, int na) const {
+    unsigned int subj = (N > 0) ? (r % (unsigned int)N) : 0;
+    int nrec = etaDistNrec(subj);
+    if (nrec <= 0) return std::numeric_limits<double>::quiet_NaN();
+    double acc = 0.0, w = 1.0/(double)nrec;
+    for (int rec = 0; rec < nrec; ++rec) {
+      if (!etaDistArgsAtRec(k, subj, rec, a1, na) ||
+          !etaDistArgsAtRec(j, subj, rec, a2, na)) {
+        return std::numeric_limits<double>::quiet_NaN();
+      }
+      double lr = rxEtaDistPairLogD(etaDistFam(k), xk, a1,
+                                    etaDistFam(j), xj, a2, rho);
+      if (!R_finite(lr)) return std::numeric_limits<double>::quiet_NaN();
+      acc += w*lr;
+    }
+    return acc;
+  }
+
   double etaDistWeightedLogD(int k, unsigned int r, double x,
                              double *a, int na) const {
     unsigned int subj = (N > 0) ? (r % (unsigned int)N) : 0;
@@ -8698,30 +8731,8 @@ private:
     for (unsigned int r = 0; r < phiCols.n_rows; ++r) {
       double l;
       if (varies) {
-        // weighted per observation, as for a single declaration -- the pair is
-        // scored JOINTLY at each record, so a covariate on either member moves
-        // the joint density for that record
-        unsigned int subj = (N > 0) ? (r % (unsigned int)N) : 0;
-        int nrec = etaDistNrec(subj);
-        if (nrec <= 0) {
-          out(r) += std::numeric_limits<double>::infinity();
-          continue;
-        }
-        double acc = 0.0, w = 1.0/(double)nrec;
-        bool ok = true;
-        for (int rec = 0; rec < nrec && ok; ++rec) {
-          if (!etaDistArgsAtRec(k, subj, rec, a1, na) ||
-              !etaDistArgsAtRec(j, subj, rec, a2, na)) { ok = false; break; }
-          double lr = rxEtaDistPairLogD(etaDistFam(k), phiCols(r, c), a1,
-                                        etaDistFam(j), phiCols(r, cj), a2, rho);
-          if (!R_finite(lr)) { ok = false; break; }
-          acc += w*lr;
-        }
-        if (!ok) {
-          out(r) += std::numeric_limits<double>::infinity();
-          continue;
-        }
-        l = acc;
+        l = etaDistWeightedPairLogD(k, j, r, phiCols(r, c), phiCols(r, cj),
+                                    rho, a1, a2, na);
       } else {
         if (!etaDistArgsFor(k, r, a1, na) || !etaDistArgsFor(j, r, a2, na)) {
           out(r) += std::numeric_limits<double>::infinity();
