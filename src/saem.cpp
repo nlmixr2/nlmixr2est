@@ -8190,6 +8190,35 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
     return !uni.empty();
   }
 
+  // The covariate symbols of BOTH members of a pair, deduplicated by name,
+  // each remembering which declaration's matrix supplies its column.  Split out
+  // of etaDistQ2PairStep so that function stays readable; the union is the
+  // whole reason a covariate can be scored jointly with the copula at all --
+  // two declarations may name different covariates and the shared record
+  // matrix has to be indexed consistently from both expression sets.
+  bool etaDistPairCovUnion(int k, int j, std::vector<std::string> &uni,
+                           std::vector<int> &decl,
+                           std::vector<int> &col) const {
+    uni.clear(); decl.clear(); col.clear();
+    for (int pass = 0; pass < 2; ++pass) {
+      int d = (pass == 0) ? k : j;
+      if (d >= (int)etaDistCovNames.size() || d >= (int)etaDistCov.size()) continue;
+      const std::vector<std::string> &nm = etaDistCovNames[(size_t)d];
+      if (nm.size() != (size_t)etaDistCov[(size_t)d].n_cols) return false;
+      for (size_t c = 0; c < nm.size(); ++c) {
+        bool dup = false;
+        for (size_t q = 0; q < uni.size(); ++q) {
+          if (uni[q] == nm[c]) { dup = true; break; }
+        }
+        if (dup) continue;
+        uni.push_back(nm[c]);
+        decl.push_back(d);
+        col.push_back((int)c);
+      }
+    }
+    return true;
+  }
+
   // One joint step for the pair (k, j).  Returns true when it moved something.
   //
   // COVARIATES INCLUDED.  A coefficient on a declared distribution is a
@@ -8208,26 +8237,9 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
     if (ck < 0 || cj < 0 || ck >= (int)phiM.n_cols || cj >= (int)phiM.n_cols) return false;
     std::vector<std::string> uni; std::vector<int> col;
     if (!etaDistPairUnion(k, j, uni, col)) return false;
-    // The covariate symbols of BOTH members, deduplicated by name, each
-    // remembering which declaration's matrix supplies its column.
     std::vector<std::string> covUni;
     std::vector<int> covDecl, covCol;
-    for (int pass = 0; pass < 2; ++pass) {
-      int d = (pass == 0) ? k : j;
-      if (d >= (int)etaDistCovNames.size() || d >= (int)etaDistCov.size()) continue;
-      const std::vector<std::string> &nm = etaDistCovNames[(size_t)d];
-      if (nm.size() != (size_t)etaDistCov[(size_t)d].n_cols) return false;
-      for (size_t c = 0; c < nm.size(); ++c) {
-        bool dup = false;
-        for (size_t q = 0; q < covUni.size(); ++q) {
-          if (covUni[q] == nm[c]) { dup = true; break; }
-        }
-        if (dup) continue;
-        covUni.push_back(nm[c]);
-        covDecl.push_back(d);
-        covCol.push_back((int)c);
-      }
-    }
+    if (!etaDistPairCovUnion(k, j, covUni, covDecl, covCol)) return false;
     const int nSymP = (int)covUni.size();
     // rho joins the vector on the atanh scale, LAST
     double rho0 = ((int)etaDistRho.n_elem == etaDistNdist) ? etaDistRho(k) : 0.0;
