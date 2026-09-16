@@ -93,6 +93,68 @@ nmTest({
     expect_true(all(eigen(.H1, symmetric = TRUE, only.values = TRUE)$values > 0))
   })
 
+  test_that("nIter=0 is an E-step-only evaluation (#1091)", {
+    expect_identical(impmapControl(nIter = 0L)$nIter, 0L)
+    expect_error(impmapControl(nIter = -1L), "nIter")
+    one.cmt <- function() {
+      ini({
+        tka <- 0.45; tcl <- 1; tv <- 3.45
+        eta.ka ~ 0.6; eta.cl ~ 0.3
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .dat <- nlmixr2data::theo_sd
+    .ini <- c(tka = 0.45, tcl = 1, tv = 3.45, add.sd = 0.7)
+    .fit0 <- suppressWarnings(
+      nlmixr2(one.cmt, .dat, "impmap", impmapControl(print = 0L, nIter = 0L)))
+    .fit1 <- suppressWarnings(
+      nlmixr2(one.cmt, .dat, "impmap", impmapControl(print = 0L, nIter = 1L)))
+    expect_true(isTRUE(.fit0$env$impEonly))
+    expect_false(isTRUE(.fit1$env$impEonly))
+    expect_equal(.fit0$env$impIter, 0L)
+    expect_equal(.fit0$theta[names(.ini)], .ini)
+    expect_equal(unname(diag(.fit0$omega)), c(0.6, 0.3))
+    expect_true(is.finite(.fit0$env$impObj))
+    # the same first E-step, at the same parameters and seed, as a 1-iteration fit
+    expect_equal(.fit0$env$impObj, .fit1$env$impObjTrace[1])
+    expect_true(any(grepl("E-step only (nIter=0): fixed parameters, etas 0",
+                          .fit0$runInfo, fixed = TRUE)))
+
+    .fitE <- suppressWarnings(
+      nlmixr2(.fit1, est = "impmap", control = impmapControl(print = 0L, nIter = 0L)))
+    expect_true(any(grepl("E-step only (nIter=0): fixed parameters, etas from the last fit",
+                          .fitE$runInfo, fixed = TRUE)))
+    expect_equal(.fitE$theta, .fit1$theta)
+
+    for (.est in c("imp", "qrpem")) {
+      .f <- suppressWarnings(
+        nlmixr2(one.cmt, .dat, .est, list(print = 0L, nIter = 0L)))
+      expect_equal(.f$env$impIter, 0L)
+      expect_equal(.f$theta[names(.ini)], .ini)
+    }
+
+    # setOfv() adds the same E-step-only objective to a fit
+    .fitF <- suppressWarnings(
+      nlmixr2(one.cmt, .dat, "focei",
+              foceiControl(print = 0L, maxOuterIterations = 0L, covMethod = "")))
+    .ref <- suppressWarnings(
+      nlmixr2(.fitF, .dat, "imp",
+              impmapControl(print = 0L, nIter = 0L, covMethod = "", calcTables = FALSE)))
+    suppressWarnings(setOfv(.fitF, "imp"))
+    expect_true("IMP" %in% rownames(.fitF$objDf))
+    expect_identical(getOfvType(.fitF), "IMP")
+    expect_equal(.fitF$objf, .ref$env$impObj)
+    expect_equal(.fitF$objDf["IMP", "OBJF"], .ref$env$impObj)
+    # a second call reuses the row
+    expect_error(suppressWarnings(setOfv(.fitF, "imp")), NA)
+  })
+
   test_that("M2: threefry proposal sampler matches N(mode, gamma*H^-1)", {
     one.cmt <- function() {
       ini({

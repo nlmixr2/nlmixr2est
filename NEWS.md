@@ -2,6 +2,13 @@
 
 ## New features
 
+- `est="imp"`, `"impmap"` and `"qrpem"` with `nIter=0` evaluate the fit at the
+  supplied parameters: one E-step and no M-step (like NONMEM `EONLY=1`), with
+  the importance-sampling objective in `$impObj`.  `$runInfo` notes the
+  E-step-only run and where the starting etas came from (#1091, #1092).
+- `setOfv(fit, "imp")` and `setOfv(fit, "impmap")` add an importance-sampling
+  objective to any fit through that E-step-only run at the fit's estimates.
+
 - `est="vae"` groups near-interchangeable covariates into colinearity
   clusters, controlled by the new `vaeControl(covSelectColinearCut=)`
   (default `0.9`).  A cluster never restricts what may be selected.  It
@@ -44,6 +51,8 @@
 
 ## Bug fixes
 
+- `nIter=0` in `impmapControl()`, `impControl()` and `qrpemControl()` crashed R
+  at fit time; it now runs an E-step-only evaluation (#1091).
 - `est="saem"` and `est="npb"` seed their random draws sequentially, one seed
   per individual per step, computed from the iteration so any draw's seed is
   known from its position.  The phi1 and phi0 SAEM MCMC blocks used to draw

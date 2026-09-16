@@ -13,7 +13,8 @@ getOfvType(x)
 \item{x}{nlmixr2 fit object}
 
 \item{type}{Type of objective function to use for AIC, BIC, and
-$objective}
+$objective.  \code{"imp"} and \code{"impmap"} add an importance-sampling
+objective from an E-step-only run (\code{nIter=0}) at the fit's estimates.}
 }
 \value{
 Nothing

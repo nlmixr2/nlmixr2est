@@ -98,11 +98,11 @@
 #' converged estimates.
 #'
 #' Runs the impmap kernel (already `maxOuterIterations=0`) with a single frozen
-#' EM step (`nIter=1, mapIter=0`; the kernel requires >=1 iteration) at the
+#' EM step (`nIter=1, mapIter=0`) at the
 #' pinned converged estimates, so the MAP pass + `impComputeCov` evaluate the
 #' Monte-Carlo observed information essentially at the converged point.
 #' @param fit completed nlmixr2 fit
-#' @param nIter frozen EM iterations (default 1; kernel segfaults at 0)
+#' @param nIter frozen EM iterations (default 1; 0 is an E-step-only evaluation)
 #' @return list(cov, covMethod, extras) or NULL
 #' @noRd
 .covRecomputeImp <- function(fit, nIter = 1L) {
