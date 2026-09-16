@@ -1297,14 +1297,31 @@ public:
         etaDistPeerPar.push_back(e);
       }
     }
-    for (std::map<std::string, int>::const_iterator it = etaDistCovPoolIx.begin();
-         it != etaDistCovPoolIx.end(); ++it) {
-      int pi = odeSwapParIndex(odeSlotEtaDist, it->first.c_str());
-      if (pi < 0 || pi >= npeer) continue;     // this covariate is not read here
-      EtaDistPeerPar e; e.peerIx = pi; e.fromPool = it->second;
-      etaDistPeerPar.push_back(e);
-    }
     return true;
+  }
+
+  // Each subject's OBSERVATION record indices, built once.
+  //
+  // The per-observation Q2 objective sums over these, so they have to be the
+  // record indices calc_lhs is advanced to -- observations only.  Dose records
+  // are excluded here rather than filtered later: the peer has no states and no
+  // linCmt(), so a dose record has nothing to act on, and the exclusion is part
+  // of what the objective MEANS rather than a safety check bolted on.
+  mutable std::vector< std::vector<int> > etaDistObsIdx;
+  void etaDistBuildObsIdx() const {
+    if ((int)etaDistObsIdx.size() == N) return;
+    etaDistObsIdx.assign((size_t)std::max(0, N), std::vector<int>());
+    if (N <= 0 || _rx == NULL) return;
+    for (int i = 0; i < N; ++i) {
+      rx_solving_options_ind *ind = getSolvingOptionsInd(_rx, i);
+      if (ind == NULL) continue;
+      int na = getIndNallTimes(ind);
+      std::vector<int> &v = etaDistObsIdx[(size_t)i];
+      v.reserve((size_t)na);
+      for (int j = 0; j < na; ++j) {
+        if (getIndEvid(ind, getIndIx(ind, j)) == 0) v.push_back(j);
+      }
+    }
   }
 
   // Evaluate the PEER at one record, at a candidate theta.
@@ -3930,21 +3947,6 @@ public:
             etaDistAnchorIdx[(size_t)r][(size_t)c] =
               (v == NA_INTEGER || v < 0) ? -1 : v;
           }
-        }
-      }
-      // name -> position in SAEM's own parameter vector, for every covariate
-      // the data carries.  The peer is filled from getIndParPtr() at these
-      // positions, so a time-varying covariate contributes the value rxode2
-      // interpolated for the record being evaluated.
-      etaDistCovPoolIx.clear();
-      if (x.containsElementNamed("etaDistCovParIdx") &&
-          x.containsElementNamed("etaDistCovParName") &&
-          !Rf_isNull(x["etaDistCovParIdx"])) {
-        Rcpp::IntegerVector ci(x["etaDistCovParIdx"]);
-        Rcpp::CharacterVector cn(x["etaDistCovParName"]);
-        for (int i = 0; i < ci.size() && i < cn.size(); ++i) {
-          if (ci[i] == NA_INTEGER || ci[i] < 0) continue;
-          etaDistCovPoolIx[std::string(Rcpp::as<std::string>(cn[i]))] = ci[i];
         }
       }
       etaDistAnchorName.clear();
@@ -7132,8 +7134,6 @@ private:
   std::vector< std::vector<int> > etaDistAnchorIdx;
   // anchor NAMES, for resolving positions in the PEER model by name
   std::vector< std::vector<std::string> > etaDistAnchorName;
-  // covariate name -> position in SAEM's parameter vector (the pool side)
-  std::map<std::string, int> etaDistCovPoolIx;
   // The peer's OWN parameter slots, and where each one's value comes from:
   //   fromPool >= 0  a covariate, read with getIndParPtr(ind, fromPool)
   //   thetaOf  >= 0  a declared theta, taken from the candidate vector

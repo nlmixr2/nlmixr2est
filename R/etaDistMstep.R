@@ -1396,54 +1396,6 @@
   tryCatch(rxode2::rxode2(.txt), error = function(e) NULL)
 }
 
-#' Where each declared covariate sits in saem's OWN parameter vector
-#'
-#' The argument/derivative peer is evaluated with its own `par_ptr`, filled from
-#' two places: the candidate thetas come from the optimizer, and the covariates
-#' have to come from THE POOL -- `getIndParPtr(ind, i)` at the record being
-#' evaluated, so a time-varying covariate contributes the value rxode2 actually
-#' interpolated for that record rather than a value re-derived here.
-#'
-#' That needs the covariate's position in saem's own parameter layout, which is
-#' resolved here and passed as an integer, the same way the anchor lhs positions
-#' are.  Resolving it against whichever slot happens to be `poolSlot` would be
-#' fragile: saem drives its own solve and the pool membership varies by fit.
-#'
-#' The PEER-side position is resolved in C++ with `odeSwapParIndex()`, against
-#' the peer's own layout -- the two orders are unrelated and need not match,
-#' since generated `calc_lhs` indexes `par_ptr` in its own model's order.
-#'
-#' ALL data covariates, not just the declared ones.  Which covariates the peer
-#' reads is decided by its OWN parameter list -- whatever symbols its argument
-#' expressions happen to reference -- so this map has to cover every covariate
-#' the data carries and let the consumer pick.  Built from the declared set
-#' instead, it would mis-fill the moment an expression referenced a covariate
-#' that set did not anticipate.
-#'
-#' @param covNames candidate covariate names; every one that is also a
-#'   parameter of saem's model is located
-#' @param model the saem model
-#' @return named integer vector, 0-based, -1 where a name does not resolve
-#' @noRd
-#' @author Matthew L. Fidler
-.etaDistCovParIndex <- function(covNames, model) {
-  .out <- setNames(rep(-1L, length(covNames)), covNames)
-  if (length(covNames) == 0L) return(.out)
-  .pars <- NULL
-  for (.m in list(attr(model$saem_mod, "rx"), model$saem_mod, model)) {
-    if (is.null(.m)) next
-    .mv <- tryCatch(rxode2::rxModelVars(.m), error = function(e) NULL)
-    if (!is.null(.mv) && length(.mv$params) > 0L) {
-      .pars <- as.character(.mv$params); break
-    }
-  }
-  if (is.null(.pars)) return(.out)
-  .w <- match(covNames, .pars)
-  .w[is.na(.w)] <- 0L
-  .out[] <- as.integer(.w) - 1L
-  .out
-}
-
 #' Declared-distribution M-step metadata for the FOCEi-family estimators
 #'
 #' The imp/impmap flavour of [.etaDistMstepInfo()].  imp numbers its random

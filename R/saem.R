@@ -268,7 +268,8 @@
   ## is available in this function and nowhere later, while PINNING the peer's
   ## parameter order needs saem's own parameter vector, which only exists once
   ## .configsaem() has a `model`.  So the lines travel and .configsaem compiles.
-  .edl <- try(.saemEtaDistDerivLines(ui), silent = TRUE)
+  .edl <- if (nzchar(Sys.getenv("NLMIXR2_NOPEER"))) NULL else
+    try(.saemEtaDistDerivLines(ui), silent = TRUE)
   if (!inherits(.edl, "try-error") && !is.null(.edl)) {
     .model$saemEtaDistDerivLines <- .edl
   }
