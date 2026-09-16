@@ -582,6 +582,12 @@ int odeSwapLhsIndex(int slot, const char *nm) {
 // hands it over is correct regardless of what the pool's layout is -- which is
 // why odeSwapParLayoutMatch does not apply to such a peer.  That guard is for
 // peers that index the shared vector.
+const char *odeSwapParName(int slot, int i) {
+  if (!odeSwapLoaded(slot) || i < 0) return "";
+  const std::vector<std::string> &v = _odeReg[slot].parNames;
+  return (i < (int)v.size()) ? v[(size_t)i].c_str() : "";
+}
+
 int odeSwapParIndex(int slot, const char *nm) {
   if (!odeSwapLoaded(slot) || nm == NULL) return -1;
   const std::vector<std::string> &v = _odeReg[slot].parNames;
@@ -597,14 +603,27 @@ int odeSwapParIndex(int slot, const char *nm) {
 // solved-form (linCmt) or purely algebraic model has zero ODE states but real
 // lhs outputs, and skipping it would under-report maxNlhs and silently drop the
 // scratch buffer it needs.
-OdePoolPlan odeSwapPlanFor(const std::vector<int> &neq, const std::vector<int> &nlhs) {
+OdePoolPlan odeSwapPlanFor(const std::vector<int> &neq, const std::vector<int> &nlhs,
+                           const std::vector<char> *neverSolved) {
   OdePoolPlan p;
   size_t n = std::min(neq.size(), nlhs.size());
   for (size_t i = 0; i < n; ++i) {
     if (neq[i] <= 0 && nlhs[i] <= 0) continue;
     p.nLoaded++;
-    if (p.poolSlot < 0 || neq[i] > p.poolNeq ||
-        (neq[i] == p.poolNeq && nlhs[i] > p.poolNlhs)) {
+    // A NEVER-SOLVED slot is not a pool candidate.  The pool exists to size the
+    // solve, and a slot nothing solves has no business describing it -- a
+    // zero-state peer would otherwise WIN the tie-break whenever it is the only
+    // thing registered (max neq is 0 for everyone, then max nlhs, and it is the
+    // widest), leaving op->neq and op->nlhs describing a model no solver ever
+    // touches.  Measured on a plain direct-route fit: poolSlot came out as the
+    // declared-distribution peer.
+    //
+    // It still counts toward maxNlhs below, which is the point: that is what
+    // gives it a private read buffer through scratchNlhs.
+    bool ns = (neverSolved != NULL && i < neverSolved->size() &&
+               (*neverSolved)[i]);
+    if (!ns && (p.poolSlot < 0 || neq[i] > p.poolNeq ||
+                (neq[i] == p.poolNeq && nlhs[i] > p.poolNlhs))) {
       p.poolSlot = (int)i; p.poolNeq = neq[i]; p.poolNlhs = nlhs[i];
     }
     if (p.maxNlhsSlot < 0 || nlhs[i] > p.maxNlhs) {
@@ -631,7 +650,10 @@ const OdePoolPlan &odeSwapPlan() {
       neq[(size_t)s] = _odeReg[s].neq;
       nlhs[(size_t)s] = _odeReg[s].nlhs;
     }
-    _odePlan = odeSwapPlanFor(neq, nlhs);
+    // the declared-distribution peer is calc_lhs-only and never solved
+    std::vector<char> ns((size_t)odeSlotN, 0);
+    ns[(size_t)odeSlotEtaDist] = 1;
+    _odePlan = odeSwapPlanFor(neq, nlhs, &ns);
     _odePlanStale = false;
   }
   return _odePlan;

@@ -150,6 +150,8 @@ int  odeSwapNpars(int slot);     // 0 when unloaded; the model's own parameter c
 // correct whatever the pool's layout is.  odeSwapParLayoutMatch guards the
 // other case -- a peer that indexes the SHARED vector -- and does not apply.
 int  odeSwapParIndex(int slot, const char *nm);
+// the slot's i-th parameter name, "" when out of range -- diagnostics only
+const char *odeSwapParName(int slot, int i);
 int  odeSwapNSens(int slot);     // length($sens): sensitivity compartments
 int  odeSwapCmtPar(int slot);    // index of "CMT" in $params, -1 when absent
 int  odeSwapNdiff(int slot);     // $flags["ndiff"] (linCmtB Jacobian-cache selector); 0 when unloaded or unset
@@ -247,7 +249,11 @@ const OdePoolPlan &odeSwapPlan();
 SEXP odeSwapPoolModelSEXP();
 
 // Pure form, so the tie-break and the scratch inversion are testable without a fit.
-OdePoolPlan odeSwapPlanFor(const std::vector<int> &neq, const std::vector<int> &nlhs);
+// `neverSolved`, when given, marks slots that may NOT be the pool model: a
+// calc_lhs-only peer still raises maxNlhs (so scratchNlhs gives it a private
+// read buffer) but must never describe the solve.
+OdePoolPlan odeSwapPlanFor(const std::vector<int> &neq, const std::vector<int> &nlhs,
+                           const std::vector<char> *neverSolved = NULL);
 
 // May a peer whose parameters are `m` index a parameter vector laid out for `pool`?
 // Pure, for the same reason.  An empty `m` is readable (it indexes nothing); a
