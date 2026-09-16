@@ -1580,6 +1580,7 @@ rxSolveF rxInner;
 rxSolveF rxPred;
 rxSolveF rxThetaSens; // est="impmap": d(f)/d(theta) model (peer of rxInner/rxPred)
 rxSolveF rxHess2;     // fast=TRUE ll(): 2nd-order model d2(logLik)/deta2 (peer of rxInner), re-solved at eta*
+rxSolveF rxEtaDist;   // declared dist() arguments and d(arg)/d(theta); state-free, calc_lhs only, never solved
 rxSolveF rxOuterNode; // analytic gradient: order-1 augmented model for AGQ nodes
 rxSolveF rxOuterCov;  // analytic covariance: augmented model over the cov direction set
 rxSolveF rxVaeOuter;  // est="vae" nonMuTheta="grad": augmented outer-gradient model

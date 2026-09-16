@@ -1282,6 +1282,168 @@
   .out
 }
 
+#' The declared-distribution ARGUMENT/DERIVATIVE model
+#'
+#' A separate, state-free rxode2 model holding nothing but
+#'
+#'     rxEdA.<eta>.<role>          <- <argument expression>
+#'     rxEdD.<eta>.<role>.<theta>  <- d(<argument expression>)/d(<theta>)
+#'
+#' It is registered as an ODE-pool peer and NEVER SOLVED -- only `calc_lhs()` is
+#' called, which is what drives a pred-only model.  Three properties follow, and
+#' together they are why the derivatives live here rather than on the expanded
+#' model:
+#'
+#' * `neq == 0`.  There is no `linCmt()` and no `d/dt()`, so there is nothing
+#'   for a dose record to act on and no solve to skip -- the dosing hazard is
+#'   absent by construction rather than filtered against.
+#' * It can be evaluated at ANY candidate theta.  The argument anchors on the
+#'   main model are pinned to the current theta by `etaDistAnchorAtState()`
+#'   (deliberately: saem re-solves per candidate during the phi0 search), so
+#'   they cannot serve an n1qn1 search.  This model has no such gating: set the
+#'   parameters, call `calc_lhs`, read the row.
+#' * The ODE pool is left alone.  Widening the EXPANDED model's lhs instead was
+#'   measured to regress the direct route outright -- Bauer's gamma4 lclm
+#'   1.898 -> 5.261 and a covariate arm bWT 1.0028 -> -0.2307 -- because
+#'   rxode2's per-thread lhs slice is exactly `op->nlhs` wide and the pool was
+#'   sized for a different model.  As a PEER the same situation is the case
+#'   `odeSwapPlan()` already handles: more lhs, fewer states, so it never sizes
+#'   the pool and only raises `scratchNlhs`, for which `OdeSwapScope::lhs()`
+#'   hands back a private buffer.
+#'
+#' @param ui the rxode2 ui, before expansion, so the declarations are still in
+#'   `iniDf` -- see `rxUiEtaDists()`
+#' @return a compiled rxode2 model, or NULL when there is nothing to build
+#' @noRd
+#' @author Matthew L. Fidler
+.saemEtaDistDerivLines <- function(ui) {
+  .u <- rxode2::rxUiDecompress(ui)
+  ## THE STASH, not rxUiEtaDists() alone.  By the time saem builds its peers the
+  ## ui has been through rxEtaDistExpand(), which removes the declarations from
+  ## iniDf -- so the fallback returns nothing and the peer is silently never
+  ## attached.  Measured: the slot reported "NOT loaded" for the whole fit.
+  ## .etaDistMstepCore() reads it the same way, for the same reason.
+  .d <- .etaDistDeclGet(.u)
+  if (is.null(.d)) {
+    .d <- tryCatch(rxode2::rxUiEtaDists(.u), error = function(e) NULL)
+  }
+  if (is.null(.d) || length(.d$name) == 0L) return(NULL)
+  ## The thetas come from the ui's OWN ini, and that is correct even after
+  ## expansion: what `rxEtaDistExpand()` removes is the `dist()` ROWS, while the
+  ## declaration's thetas (lclm, lclrv, bWT ...) stay -- the `rxEdA.*` anchors
+  ## reference them, so rxode2 would refuse the model otherwise.  The stash
+  ## carries name/etaDist/corWith/corTheta/param and no ini, so there is nothing
+  ## else to read them from.
+  .th <- .u$iniDf$name[!is.na(.u$iniDf$ntheta)]
+  .lines <- character(0)
+
+  for (.i in seq_along(.d$name)) {
+    .anc <- tryCatch(rxode2::.rxEtaDistAnchors(.d$etaDist[.i], .d$name[.i],
+                                               latent = NULL),
+                     error = function(e) NULL)
+    if (is.null(.anc)) return(NULL)
+    .lines <- c(.lines, attr(.anc, "lines"),
+                rxode2::.rxEtaDistDerivLines(.anc, .th))
+  }
+  if (length(.lines) == 0L) return(NULL)
+  .lines
+}
+
+#' Compile the argument/derivative peer with its parameter order pinned
+#'
+#' Split from [.saemEtaDistDerivLines()] because the two halves need different
+#' things and they are not available in the same place: the LINES come from the
+#' ui (only `.saemFitModel()` has it), while PINNING the parameter order needs
+#' saem's own parameter vector (only `.configsaem()` has that, through
+#' `model$saem_mod`).  `.configsaem()` does not receive the ui at all -- it
+#' takes `etaDistInfo` -- which is what made a single-function version fail with
+#' "object 'ui' not found".
+#'
+#' @param lines the peer's model lines, from [.saemEtaDistDerivLines()]
+#' @param poolPars saem's own parameter names, in order
+#' @return a compiled rxode2 model, or NULL
+#' @noRd
+#' @author Matthew L. Fidler
+.saemEtaDistDerivCompile <- function(lines, poolPars = NULL) {
+  if (is.null(lines) || length(lines) == 0L) return(NULL)
+  .lines <- lines
+  ## PIN THE PARAMETER ORDER to a prefix of the pool's.
+  ##
+  ## Generated `calc_lhs` reads the SHARED individual's par_ptr --
+  ## `_ind = &(_solveData->subjects[_cSub]); #define _PP (_ind->par_ptr)` -- and
+  ## indexes it in its OWN model's order.  A peer whose order differs therefore
+  ## reads the pool's values through the wrong positions, which is exactly what
+  ## `odeSwapParLayoutMatch()` guards against.
+  ##
+  ## Declaring the peer's parameters as the pool's leading run makes the layouts
+  ## agree, and that buys the covariates for free: `WT` sits at the SAME index
+  ## in both, already interpolated by the pool for the record being evaluated,
+  ## so nothing has to be mapped or copied.  Only the candidate thetas are
+  ## written (and restored afterwards), which is a small fixed set rather than
+  ## the whole vector.
+  if (!is.null(poolPars) && length(poolPars) > 0L) {
+    .need <- unique(unlist(lapply(.lines,
+                                  function(.l) all.vars(str2lang(.l)))))
+    .need <- setdiff(.need, sub("^(.*?) <-.*$", "\\1", .lines))
+    .w <- match(.need, poolPars)
+    if (anyNA(.w)) return(NULL)      # a symbol the pool does not carry
+    .n <- max(.w)
+    .lines <- c(paste0("param(", paste(poolPars[seq_len(.n)], collapse = ", "),
+                       ")"),
+                .lines)
+  }
+  .txt <- paste(.lines, collapse = "\n")
+  tryCatch(rxode2::rxode2(.txt), error = function(e) NULL)
+}
+
+#' Where each declared covariate sits in saem's OWN parameter vector
+#'
+#' The argument/derivative peer is evaluated with its own `par_ptr`, filled from
+#' two places: the candidate thetas come from the optimizer, and the covariates
+#' have to come from THE POOL -- `getIndParPtr(ind, i)` at the record being
+#' evaluated, so a time-varying covariate contributes the value rxode2 actually
+#' interpolated for that record rather than a value re-derived here.
+#'
+#' That needs the covariate's position in saem's own parameter layout, which is
+#' resolved here and passed as an integer, the same way the anchor lhs positions
+#' are.  Resolving it against whichever slot happens to be `poolSlot` would be
+#' fragile: saem drives its own solve and the pool membership varies by fit.
+#'
+#' The PEER-side position is resolved in C++ with `odeSwapParIndex()`, against
+#' the peer's own layout -- the two orders are unrelated and need not match,
+#' since generated `calc_lhs` indexes `par_ptr` in its own model's order.
+#'
+#' ALL data covariates, not just the declared ones.  Which covariates the peer
+#' reads is decided by its OWN parameter list -- whatever symbols its argument
+#' expressions happen to reference -- so this map has to cover every covariate
+#' the data carries and let the consumer pick.  Built from the declared set
+#' instead, it would mis-fill the moment an expression referenced a covariate
+#' that set did not anticipate.
+#'
+#' @param covNames candidate covariate names; every one that is also a
+#'   parameter of saem's model is located
+#' @param model the saem model
+#' @return named integer vector, 0-based, -1 where a name does not resolve
+#' @noRd
+#' @author Matthew L. Fidler
+.etaDistCovParIndex <- function(covNames, model) {
+  .out <- setNames(rep(-1L, length(covNames)), covNames)
+  if (length(covNames) == 0L) return(.out)
+  .pars <- NULL
+  for (.m in list(attr(model$saem_mod, "rx"), model$saem_mod, model)) {
+    if (is.null(.m)) next
+    .mv <- tryCatch(rxode2::rxModelVars(.m), error = function(e) NULL)
+    if (!is.null(.mv) && length(.mv$params) > 0L) {
+      .pars <- as.character(.mv$params); break
+    }
+  }
+  if (is.null(.pars)) return(.out)
+  .w <- match(covNames, .pars)
+  .w[is.na(.w)] <- 0L
+  .out[] <- as.integer(.w) - 1L
+  .out
+}
+
 #' Declared-distribution M-step metadata for the FOCEi-family estimators
 #'
 #' The imp/impmap flavour of [.etaDistMstepInfo()].  imp numbers its random

@@ -4,6 +4,7 @@
 #include <thread>
 #include <chrono>
 #include <vector>
+#include <map>
 #include <R_ext/Rdynload.h>
 #include <RcppArmadillo.h>
 #include <rxode2ptr.h>
@@ -977,6 +978,29 @@ extern arma::uvec _saemPhi1I1;
 // A parameter the likelihood is not defined at is precisely what a bad solve
 // already means, and every caller here handles that by rejecting the proposal.
 // So catch it and report it as one, rather than letting it kill the session.
+// Register the declared-distribution peer at whichever branch's post-sizing
+// point runs.  Idempotent, and both branches call it because either can be the
+// branch that executes: the pooled one when the phi1 machinery is active, the
+// ordinary one otherwise.
+static int _saemEtaDistPeerActive = 0;
+static void etaDistPeerRegister(const List &opt) {
+  if (!_saemEtaDistPeerActive) return;
+  // "Already registered" is fns != NULL, NOT odeSwapLoaded().  odeSwapLoaded()
+  // is true once a slot is DECLARED -- it means "neq > 0 || nlhs > 0", and
+  // odeSwapDeclare records neq/nlhs/lhs names without loading the DLL.  Using
+  // it here made this function return before ever registering: measured, the
+  // trace showed declared=1 ten times and register= not once.
+  if (odeSwapFns(odeSlotEtaDist) != NULL) return;  // already registered
+  bool ok = odeSwapRegister(odeSlotEtaDist, "etaDist",
+                            opt["saemEtaDistDeriv"], &rxEtaDist);
+  if (getenv("NLMIXR2_PEERDBG") != NULL) {
+    REprintf("[peer] register=%d neq=%d nlhs=%d npars=%d\n", (int)ok,
+             odeSwapNeq(odeSlotEtaDist), odeSwapNlhs(odeSlotEtaDist),
+             odeSwapNpars(odeSlotEtaDist));
+  }
+  if (!ok) _saemEtaDistPeerActive = 0;
+}
+
 template <typename F>
 static inline bool saemNoThrow(F &&f) {
   try { f(); return true; } catch (...) { return false; }
@@ -1179,6 +1203,160 @@ public:
     for (int k = 0; k < (int)etaDistCorEstim.n_elem; ++k)
       if (etaDistCorEstim(k) == 0) n++;
     return n;
+  }
+
+  // Resolve every argument and derivative name against the PEER model.
+  //
+  // By name and against odeSlotEtaDist, never by reusing saem's own indices:
+  // the peer is a different model with its own lhs layout, and an index
+  // resolved against one model then read out of another's buffer is exactly
+  // the failure that widening the expanded model's lhs produced.
+  //
+  // An ARGUMENT that does not resolve is fatal -- the step cannot evaluate the
+  // family without it.  A DERIVATIVE that does not resolve is an exact zero,
+  // because the expansion emits no line for a theta an argument expression
+  // does not mention; it is recorded as -1 and read as 0.
+  // Resolved once, on first use.  Returns whether the peer can be read.
+  bool etaDistPeerReady() {
+    if (_saemEtaDistDerivOk >= 0) return _saemEtaDistDerivOk == 1;
+    bool dbg = (getenv("NLMIXR2_PEERDBG") != NULL);
+    // Same distinction: the peer is usable only once its entry points are
+    // BOUND, which is register, not declare.
+    if (odeSwapFns(odeSlotEtaDist) == NULL) {
+      if (dbg) REprintf("[peer] not registered (fns unbound)\n");
+      _saemEtaDistDerivOk = 0; return false;
+    }
+    _saemEtaDistNlhs = odeSwapNlhs(odeSlotEtaDist);
+    _saemEtaDistDerivOk = etaDistResolveDerivLhs() ? 1 : 0;
+    if (dbg) {
+      REprintf("[peer] loaded=1 nlhs=%d resolved=%d\n",
+               _saemEtaDistNlhs, _saemEtaDistDerivOk);
+      for (int k = 0; k < (int)etaDistPeerArgIx.size(); ++k) {
+        for (size_t t = 0; t < etaDistPeerArgIx[(size_t)k].size(); ++t) {
+          std::string ds;
+          for (size_t q = 0; q < etaDistPeerDerivIx[(size_t)k][t].size(); ++q) {
+            ds += " " + std::to_string(etaDistPeerDerivIx[(size_t)k][t][q]);
+          }
+          REprintf("[peer] k=%d arg=%d argIx=%d deriv=%s\n", k, (int)t,
+                   etaDistPeerArgIx[(size_t)k][t], ds.c_str());
+        }
+      }
+    }
+    return _saemEtaDistDerivOk == 1;
+  }
+
+  bool etaDistResolveDerivLhs() {
+    etaDistPeerArgIx.clear();
+    etaDistPeerDerivIx.clear();
+    if (etaDistNdist <= 0 || (int)etaDistAnchorName.size() < etaDistNdist) {
+      return false;
+    }
+    int na = (int)etaDistArgs.n_cols;
+    if (na <= 0) return false;
+    etaDistPeerArgIx.resize((size_t)etaDistNdist);
+    etaDistPeerDerivIx.resize((size_t)etaDistNdist);
+    for (int k = 0; k < etaDistNdist; ++k) {
+      const std::vector<std::string> &nm = etaDistAnchorName[(size_t)k];
+      const std::vector<std::string> &th =
+        (k < (int)etaDistExprThetas.size()) ? etaDistExprThetas[(size_t)k] :
+        std::vector<std::string>();
+      etaDistPeerArgIx[(size_t)k].assign((size_t)na, -1);
+      etaDistPeerDerivIx[(size_t)k].resize((size_t)na);
+      for (int t = 0; t < na; ++t) {
+        etaDistPeerDerivIx[(size_t)k][(size_t)t].assign(th.size(), -1);
+        if (t >= (int)nm.size() || nm[(size_t)t].empty()) continue;
+        int ai = odeSwapLhsIndex(odeSlotEtaDist, nm[(size_t)t].c_str());
+        if (ai < 0) return false;          // cannot read the argument at all
+        etaDistPeerArgIx[(size_t)k][(size_t)t] = ai;
+        // rxEdA.<eta>.<role> -> rxEdD.<eta>.<role>.<theta>
+        std::string base = nm[(size_t)t];
+        if (base.compare(0, 6, "rxEdA.") == 0) base = "rxEdD." + base.substr(6);
+        for (size_t q = 0; q < th.size(); ++q) {
+          std::string dn = base + "." + th[q];
+          etaDistPeerDerivIx[(size_t)k][(size_t)t][q] =
+            odeSwapLhsIndex(odeSlotEtaDist, dn.c_str());
+        }
+      }
+    }
+    // Now the PARAMETER side: every slot in the peer's own layout is either a
+    // declared theta (filled from the candidate vector) or a covariate (read
+    // out of the pool at the record being evaluated).  Resolved by NAME in the
+    // peer's order, which is unrelated to the pool's -- generated calc_lhs
+    // indexes par_ptr in its own model's order, so filling an array in that
+    // order is correct whatever the pool's layout is.
+    etaDistPeerPar.clear();
+    int npeer = odeSwapNpars(odeSlotEtaDist);
+    for (int k = 0; k < etaDistNdist; ++k) {
+      const std::vector<std::string> &th =
+        (k < (int)etaDistExprThetas.size()) ? etaDistExprThetas[(size_t)k] :
+        std::vector<std::string>();
+      for (size_t q = 0; q < th.size(); ++q) {
+        int pi = odeSwapParIndex(odeSlotEtaDist, th[q].c_str());
+        if (pi < 0 || pi >= npeer) continue;   // this theta is not read here
+        EtaDistPeerPar e; e.peerIx = pi; e.thetaOf = (int)q;
+        etaDistPeerPar.push_back(e);
+      }
+    }
+    for (std::map<std::string, int>::const_iterator it = etaDistCovPoolIx.begin();
+         it != etaDistCovPoolIx.end(); ++it) {
+      int pi = odeSwapParIndex(odeSlotEtaDist, it->first.c_str());
+      if (pi < 0 || pi >= npeer) continue;     // this covariate is not read here
+      EtaDistPeerPar e; e.peerIx = pi; e.fromPool = it->second;
+      etaDistPeerPar.push_back(e);
+    }
+    return true;
+  }
+
+  // Evaluate the PEER at one record, at a candidate theta.
+  //
+  // NEVER SOLVED -- calc_lhs only, which is what drives a pred-only model and
+  // is safe here because the peer has no states (neq == 0).
+  //
+  // Three things make this correct, and none of them is obvious:
+  //
+  //  * `calc_lhs` reads the SHARED individual's par_ptr
+  //    (`_ind = &(_solveData->subjects[_cSub]); #define _PP (_ind->par_ptr)`),
+  //    indexed in the PEER's own order.  The peer is compiled with `param()`
+  //    pinned to a prefix of saem's layout, so those indices ARE saem's -- and
+  //    a covariate therefore sits at the same slot in both, needing no map.
+  //  * the generated calc_lhs interpolates covariates itself
+  //    (`_update_par_ptr(__t, _cSub, _solveData, _idx)`), so setting the record
+  //    index is the whole of "advance it to this observation".  It writes only
+  //    covariate slots, so it cannot clobber the candidate thetas written here.
+  //  * only the THETA slots are saved and restored.  That is the small fixed
+  //    set; copying the whole parameter vector per record would cost far more
+  //    and buy nothing.
+  //
+  // Returns false when the peer is unusable, in which case the caller must fall
+  // back rather than read `lhsOut`.
+  bool etaDistPeerEvalRec(int cSub, int recIdx,
+                          const std::vector<int> &thetaIx,
+                          const double *cand, int nCand,
+                          double *lhsOut) {
+    if (!etaDistPeerReady() || lhsOut == NULL) return false;
+    rx_solving_options_ind *ind = getSolvingOptionsInd(_rx, cSub);
+    if (ind == NULL) return false;
+    rx_solving_options *op = getSolvingOptions(_rx);
+    setIndIdx(ind, recIdx);
+    int kk = getIndIx(ind, recIdx);
+    double t = getTime(kk, ind);
+    // save exactly the slots about to be overwritten
+    double saved[32];
+    int ns = (int)thetaIx.size();
+    if (ns > 32 || ns > nCand) return false;
+    for (int q = 0; q < ns; ++q) {
+      if (thetaIx[(size_t)q] < 0) { saved[q] = NA_REAL; continue; }
+      saved[q] = getIndParPtr(ind, thetaIx[(size_t)q]);
+      setIndParPtr(ind, thetaIx[(size_t)q], cand[q]);
+    }
+    bool ok = saemNoThrow([&]{
+      rxEtaDist.calc_lhs(cSub, t, getOpIndSolve(op, ind, recIdx), lhsOut);
+    });
+    for (int q = 0; q < ns; ++q) {
+      if (thetaIx[(size_t)q] < 0) continue;
+      setIndParPtr(ind, thetaIx[(size_t)q], saved[q]);
+    }
+    return ok;
   }
 
   // ONE complete-system solve per step, shared.
@@ -3751,6 +3929,37 @@ public:
             int v = ai(r, c);
             etaDistAnchorIdx[(size_t)r][(size_t)c] =
               (v == NA_INTEGER || v < 0) ? -1 : v;
+          }
+        }
+      }
+      // name -> position in SAEM's own parameter vector, for every covariate
+      // the data carries.  The peer is filled from getIndParPtr() at these
+      // positions, so a time-varying covariate contributes the value rxode2
+      // interpolated for the record being evaluated.
+      etaDistCovPoolIx.clear();
+      if (x.containsElementNamed("etaDistCovParIdx") &&
+          x.containsElementNamed("etaDistCovParName") &&
+          !Rf_isNull(x["etaDistCovParIdx"])) {
+        Rcpp::IntegerVector ci(x["etaDistCovParIdx"]);
+        Rcpp::CharacterVector cn(x["etaDistCovParName"]);
+        for (int i = 0; i < ci.size() && i < cn.size(); ++i) {
+          if (ci[i] == NA_INTEGER || ci[i] < 0) continue;
+          etaDistCovPoolIx[std::string(Rcpp::as<std::string>(cn[i]))] = ci[i];
+        }
+      }
+      etaDistAnchorName.clear();
+      if (x.containsElementNamed("etaDistAnchorName") &&
+          !Rf_isNull(x["etaDistAnchorName"])) {
+        Rcpp::CharacterMatrix an(x["etaDistAnchorName"]);
+        int nr = an.nrow(), nc = an.ncol();
+        etaDistAnchorName.resize((size_t)nr);
+        for (int r = 0; r < nr; ++r) {
+          etaDistAnchorName[(size_t)r].resize((size_t)nc);
+          for (int c = 0; c < nc; ++c) {
+            SEXP e = an(r, c);
+            etaDistAnchorName[(size_t)r][(size_t)c] =
+              (e == NA_STRING) ? std::string("") :
+              std::string(Rcpp::as<std::string>(e));
           }
         }
       }
@@ -6921,6 +7130,33 @@ private:
   // The lhs index of each declaration argument's `rxEdA.<eta>.<role>` line,
   // resolved in R at setup against saem's own model.  -1 = no anchor.
   std::vector< std::vector<int> > etaDistAnchorIdx;
+  // anchor NAMES, for resolving positions in the PEER model by name
+  std::vector< std::vector<std::string> > etaDistAnchorName;
+  // covariate name -> position in SAEM's parameter vector (the pool side)
+  std::map<std::string, int> etaDistCovPoolIx;
+  // The peer's OWN parameter slots, and where each one's value comes from:
+  //   fromPool >= 0  a covariate, read with getIndParPtr(ind, fromPool)
+  //   thetaOf  >= 0  a declared theta, taken from the candidate vector
+  // Anything that is neither stays at the value the model was compiled with.
+  struct EtaDistPeerPar {
+    int peerIx = -1;
+    int fromPool = -1;
+    int thetaOf = -1;
+  };
+  std::vector<EtaDistPeerPar> etaDistPeerPar;
+  // The peer model's lhs width, and whether every argument/derivative index
+  // resolved against it.  Both come from odeSlotEtaDist, never from saem's own
+  // model -- see the registration in setupRx().
+  int _saemEtaDistNlhs = 0;
+  // -1 not yet attempted, 0 unavailable, 1 resolved
+  int _saemEtaDistDerivOk = -1;
+  // [declaration][argument] -> peer lhs index of rxEdA.<eta>.<role>
+  std::vector< std::vector<int> > etaDistPeerArgIx;
+  // [declaration][argument][theta] -> peer lhs index of
+  // rxEdD.<eta>.<role>.<theta>, or -1 when that derivative is exactly ZERO.
+  // A missing line is a true zero, not a failure: the expansion emits none for
+  // a theta an argument expression does not mention.
+  std::vector< std::vector< std::vector<int> > > etaDistPeerDerivIx;
   // Harvested anchor values, one row per SUBJECT and one column per (k, arg).
   // This is the subject's FIRST record, which is the whole story when the
   // declaration's covariates do not vary within a subject.
@@ -7407,6 +7643,15 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
     if ((!etaDistOn && !etaDistCorOn && !etaDistAnyQ2()) ||
         etaDistNdist <= 0) return false;
     if (etaDistArgs.n_rows != (unsigned int)etaDistNdist) return false;
+    // Resolve the peer's lhs/parameter positions once per attempt, HERE.
+    //
+    // Not inside the per-declaration loop below: the pair block there
+    // `continue`s for BOTH members of a correlated all-Q2 pair -- the lower one
+    // after running the joint step, the higher one as "already done" -- so a
+    // touch placed after it is unreachable on exactly the models that need it
+    // most.  Measured on Bauer's gamma4, which is that shape: no resolve ever
+    // happened.
+    (void)etaDistPeerReady();
     // Per ATTEMPT, not per fit.  Left standing from the previous attempt, an
     // entry for a family neither loop visits this time would be copied into the
     // baseline below as though it had just been measured.
@@ -10577,6 +10822,28 @@ void setupRx(List &opt, SEXP evt, int nmc, int N) {
       _saemThetaSensActive = false;
     }
   }
+  // The declared-distribution argument/derivative peer, on exactly the same
+  // terms and for the same reason: it belongs to ANY model that declares a
+  // distribution, not to a general-likelihood fit.  Declared inside the phi1
+  // pool's branch instead, it went unregistered on a plain direct-route fit --
+  // measured, the slot reported "NOT loaded" for the whole run.
+  //
+  // Declaring it HERE is also what makes it safe.  It has no ODE states and
+  // more lhs than the pool model, which is the one shape odeSwap warns about:
+  // rxode2's per-thread lhs slice is op->nlhs wide, so a wider peer read
+  // through it would run off the end.  Seen by odeSwapPlan() at this point, it
+  // raises scratchNlhs and OdeSwapScope::lhs() hands back a private buffer.
+  // Widening the pooled model's own lhs instead is what regressed the direct
+  // route (rxode2 faf0853f5).
+  _saemEtaDistPeerActive = (opt.containsElementNamed("saemEtaDistDeriv") &&
+                            !Rf_isNull(opt["saemEtaDistDeriv"])) ? 1 : 0;
+  if (_saemEtaDistPeerActive &&
+      !odeSwapDeclare(odeSlotEtaDist, "etaDist", opt["saemEtaDistDeriv"])) {
+    _saemEtaDistPeerActive = 0;
+  }
+  if (getenv("NLMIXR2_PEERDBG") != NULL) {
+    REprintf("[peer] declared=%d\n", _saemEtaDistPeerActive);
+  }
   if (_saemThetaSensActive) {
     _saemThetaSensPhi0Col = as<arma::ivec>(opt["saemThetaSensPhi0Col"]);
     _saemThetaSensTheta = as<arma::ivec>(opt["saemThetaSensTheta"]);
@@ -10667,6 +10934,9 @@ void setupRx(List &opt, SEXP evt, int nmc, int N) {
     // globals and corrupts the solve (see odeSwap.h).
     if (haveHess2) odeSwapRegister(odeSlotHess2, "hess2", opt["saemPhi1Hess2"], &rxHess2);
     if (_saemPhi1PoolActive) odeSwapRegister(odeSlotPred, "pred", opt["saemPhi1Pred"], &rxPred);
+    // The declared-distribution peer.  Registered from the shared helper so the
+    // ordinary (non-pooled) branch registers it too -- see etaDistPeerRegister.
+    etaDistPeerRegister(opt);
     if (_saemThetaSensActive) {
       if (!odeSwapRegister(odeSlotThetaSens, "thetaSens", opt["saemThetaSens"],
                            &rxThetaSens)) {
@@ -10785,6 +11055,7 @@ void setupRx(List &opt, SEXP evt, int nmc, int N) {
         _saemThetaSensActive = false;
       }
     }
+    etaDistPeerRegister(opt);
     if (_saemThetaSensActive) {
       if (!odeSwapRegister(odeSlotThetaSens, "thetaSens", opt["saemThetaSens"],
                            &rxThetaSens)) {

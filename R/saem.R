@@ -264,6 +264,14 @@
       .model$saemThetaSens <- NULL
     }
   }
+  ## The declared-distribution peer's model LINES.  Only the lines here: the ui
+  ## is available in this function and nowhere later, while PINNING the peer's
+  ## parameter order needs saem's own parameter vector, which only exists once
+  ## .configsaem() has a `model`.  So the lines travel and .configsaem compiles.
+  .edl <- try(.saemEtaDistDerivLines(ui), silent = TRUE)
+  if (!inherits(.edl, "try-error") && !is.null(.edl)) {
+    .model$saemEtaDistDerivLines <- .edl
+  }
   if (.saemGeneralLik(ui)) {
     .p1 <- nlmixrWithTiming("configure", ui$saemPhi1Inner)
     if (!is.null(.p1) && isTRUE(.p1$ok)) {

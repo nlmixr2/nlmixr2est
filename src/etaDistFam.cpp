@@ -709,7 +709,8 @@ bool rxEtaDistLoglikGrad(int fam,
                          const double *theta,
                          const double *rec, const double *etaAt,
                          const double *wt, int nRec,
-                         double *out, double *grad) {
+                         double *out, double *grad,
+                         const double *dAdT) {
   int na = (int)rpn.size();
   if (na <= 0 || na > 4 || nRec <= 0 || nth <= 0 || nSym < 0) return false;
   std::vector<double> vals((size_t)(nth + nSym), 0.0);
@@ -740,6 +741,27 @@ bool rxEtaDistLoglikGrad(int fam,
     if (!rxEtaDistGradD(fam, etaAt[r], a, &ll, g)) return false;
     if (!std::isfinite(ll)) return false;
     tot += wt[r] * ll;
+    // EXACT d(args)/d(theta), read straight off the record when the caller
+    // supplied it.  `dAdT` is nRec x (na*nth), row major, filled from the
+    // `rxEdD.<eta>.<role>.<theta>` model lines that SymEngine produced at
+    // expansion time -- so the chain rule below is exact rather than 1e-6
+    // accurate, and the 2*nth*na interpreted evaluations per record disappear.
+    //
+    // NULL keeps the central difference, which is not dead code: focei and imp
+    // call this with no solve to read the derivative lines from.
+    if (dAdT != NULL) {
+      for (int t = 0; t < nth; ++t) {
+        double acc = 0.0;
+        for (int k = 0; k < na; ++k) {
+          if (!std::isfinite(g[k])) return false;
+          double d = dAdT[(size_t)r*(size_t)(na*nth) + (size_t)(k*nth + t)];
+          if (!std::isfinite(d)) return false;
+          acc += g[k] * d;
+        }
+        grad[t] += wt[r] * acc;
+      }
+      continue;
+    }
     // d(args)/d(theta) for THIS record: the expressions mix thetas with this
     // record's own symbols, so it cannot be hoisted out of the loop.
     for (int t = 0; t < nth; ++t) {

@@ -574,6 +574,21 @@ int odeSwapLhsIndex(int slot, const char *nm) {
   return -1;
 }
 
+// A peer's own parameter position for `nm`, or -1.
+//
+// The counterpart to odeSwapLhsIndex for a peer that supplies its OWN par_ptr
+// rather than reading the pool's.  Generated calc_lhs reads par_ptr by index in
+// the model's own order, so a caller that fills an array in THIS order and
+// hands it over is correct regardless of what the pool's layout is -- which is
+// why odeSwapParLayoutMatch does not apply to such a peer.  That guard is for
+// peers that index the shared vector.
+int odeSwapParIndex(int slot, const char *nm) {
+  if (!odeSwapLoaded(slot) || nm == NULL) return -1;
+  const std::vector<std::string> &v = _odeReg[slot].parNames;
+  for (size_t i = 0; i < v.size(); ++i) if (v[i] == nm) return (int)i;
+  return -1;
+}
+
 // Pure: pick the pool model and decide whether a private lhs buffer is needed.
 // Tie-break is max neq, then max nlhs (minimizing the scratch), then lowest slot
 // -- deterministic, unlike the source-order "last writer wins" it replaces.

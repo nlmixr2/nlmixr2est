@@ -487,6 +487,37 @@
     opt$saemPhi1DvCol <- model$saemPhi1DvCol
     opt$saemPhi1DvColHess2 <- model$saemPhi1DvColHess2
   }
+  ## The declared-distribution argument/derivative peer.  BUILT HERE, not in
+  ## .saemFitModel(), because it has to be compiled with its parameter order
+  ## pinned to a prefix of saem's own -- generated calc_lhs reads the shared
+  ## individual's par_ptr by its own model's indices, so the two layouts have
+  ## to agree.  saem's parameter vector is only knowable once `model` exists,
+  ## which is here.
+  ##
+  ## Independent of both the phi1 machinery and the theta-sensitivity peer: any
+  ## model that declares a distribution gets one, because the Q2 step reads it
+  ## at every candidate theta whatever other peers the fit carries.
+  .poolPars <- NULL
+  for (.m in list(attr(model$saem_mod, "rx"), model$saem_mod)) {
+    if (is.null(.m)) next
+    .mv <- tryCatch(rxode2::rxModelVars(.m), error = function(e) NULL)
+    if (!is.null(.mv) && length(.mv$params) > 0L) {
+      .poolPars <- as.character(.mv$params); break
+    }
+  }
+  .edm <- try(.saemEtaDistDerivCompile(model$saemEtaDistDerivLines, .poolPars),
+              silent = TRUE)
+  if (!inherits(.edm, "try-error") && !is.null(.edm)) {
+    opt$saemEtaDistDeriv <- .edm
+  }
+  if (nzchar(Sys.getenv("NLMIXR2_PEERDBG"))) {
+    cat(sprintf("[peerR] poolPars=%d model=%s\n",
+                length(.poolPars),
+                if (inherits(.edm, "try-error"))
+                  paste0("ERR:", sub("\n.*", "", conditionMessage(attr(.edm, "condition"))))
+                else if (is.null(.edm)) "NULL" else "built"),
+        file = stderr())
+  }
   ## The theta-sensitivity peer is independent of the phi1 (general-likelihood)
   ## machinery: a plain normal model wants the exact gradient for its non-mu
   ## theta refinement just as much (src/nonMuThetaGrad.h).
@@ -576,6 +607,7 @@
   ## NA where the family emitted no line for that argument.
   etaDistAnchor <- matrix(NA_character_, 0, 0)
   etaDistAnchorIdx <- matrix(-1L, 0, 0)
+  etaDistCovParIdx <- integer(0)
   etaDistThetaPhi0 <- matrix(-1L, 0, 0); etaDistNth <- integer(0)
   ## aligned with the declared families; empty when there are none
   etaDistCorPhi0 <- integer(0)
@@ -649,6 +681,16 @@
       ## 0-based for C++; -1 means "no anchor", which is also what an argument
       ## the model does not compute gets.
       etaDistAnchorIdx <- .etaDistAnchorIndex(etaDistAnchor, model)
+      ## EVERY covariate the data carries, not just the declared ones: which
+      ## ones the peer reads is decided by its own parameter list, and a map
+      ## built from the declared set would mis-fill the moment an expression
+      ## referenced something that set did not anticipate.
+      .allCovNm <- setdiff(colnames(data$data),
+                           c("ID", "TIME", "AMT", "RATE", "EVID", "DV", "MDV",
+                             "CMT", "DVID", "SS", "II", "ADDL", "CENS",
+                             "LIMIT", "IPRED", "IPREDP"))
+      etaDistCovParIdx <- .etaDistCovParIndex(.allCovNm, model)
+      etaDistCovParIdx <- etaDistCovParIdx[etaDistCovParIdx >= 0L]
       etaDistRho     <- as.numeric(etaDistInfo$rho)
       etaDistThetaPhi0 <- .tp
       etaDistNth     <- .nth
@@ -1083,6 +1125,15 @@
     etaDistCovN = etaDistCovN,
     etaDistArgs = etaDistArgs,
     etaDistAnchorIdx = etaDistAnchorIdx,
+    ## the anchor NAMES as well as their indices in saem's own model: the
+    ## argument/derivative peer is a DIFFERENT model, so its lhs positions have
+    ## to be resolved by name against odeSlotEtaDist, not reused from here
+    etaDistAnchorName = etaDistAnchor,
+    ## each declared covariate's 0-based position in saem's OWN parameter
+    ## vector, so the peer's par_ptr can be filled from getIndParPtr() at the
+    ## record being evaluated rather than from a value re-derived here
+    etaDistCovParIdx = etaDistCovParIdx,
+    etaDistCovParName = names(etaDistCovParIdx),
     ## the lhs buffer bound for the harvest: an index resolved against
     ## saem's own model must never be read out of a shorter model's buffer
     etaDistAnchorNlhs = as.integer(nlhs)[1],

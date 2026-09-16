@@ -355,13 +355,21 @@ bool rxEtaDistLoglikObj(int fam,
 //
 // Same contract as rxEtaDistLoglikObj(): false when any record cannot be
 // evaluated, since a partial sum silently drops subjects.
+//
+// `dAdT`, when non-NULL, is nRec x (na*nth) row major: each record's EXACT
+// d(arg_k)/d(theta_t), read from the `rxEdD.<eta>.<role>.<theta>` model lines
+// SymEngine produced at expansion time.  Supplying it makes the chain rule
+// exact and removes 2*nth*na interpreted expression evaluations per record.
+// NULL keeps the central difference, which focei and imp still need: they call
+// this with no solve to read the derivative lines from.
 bool rxEtaDistLoglikGrad(int fam,
                          const std::vector< std::vector<etaDistTok> > &rpn,
                          int nth, int nSym,
                          const double *theta,
                          const double *rec, const double *etaAt,
                          const double *wt, int nRec,
-                         double *out, double *grad);
+                         double *out, double *grad,
+                         const double *dAdT = NULL);
 
 // The JOINT objective for a copula-linked PAIR, and its gradient.
 //

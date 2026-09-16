@@ -45,6 +45,13 @@ enum OdeSwapSlot {
   odeSlotOuter,       // rxVaeOuter:     augmented outer-gradient model (order 2)
   odeSlotOuterNode,   // rxOuterNode:    same directions at order 1, for AGQ nodes
   odeSlotOuterCov,    // rxOuterCov:     covariance model over its own direction set
+  odeSlotEtaDist,     // rxEtaDist:   declared-distribution arguments and their
+                      //              d/d(theta).  STATE-FREE (neq == 0) and
+                      //              NEVER SOLVED -- only calc_lhs is called,
+                      //              which is what drives a pred-only model.
+                      //              It therefore never sizes the pool and only
+                      //              raises maxNlhs, which is exactly the
+                      //              scratchNlhs case above.
   odeSlotN
 };
 
@@ -137,6 +144,12 @@ bool odeSwapHasEs(int slot);
 int  odeSwapNeq(int slot);       // 0 when unloaded; matches rxode2's op->neq
 int  odeSwapNlhs(int slot);      // 0 when unloaded
 int  odeSwapNpars(int slot);     // 0 when unloaded; the model's own parameter count
+// A peer's OWN parameter position for a name, or -1.  For a peer that supplies
+// its own par_ptr instead of reading the pool's: generated calc_lhs indexes
+// par_ptr in the model's own order, so filling an array in THIS order is
+// correct whatever the pool's layout is.  odeSwapParLayoutMatch guards the
+// other case -- a peer that indexes the SHARED vector -- and does not apply.
+int  odeSwapParIndex(int slot, const char *nm);
 int  odeSwapNSens(int slot);     // length($sens): sensitivity compartments
 int  odeSwapCmtPar(int slot);    // index of "CMT" in $params, -1 when absent
 int  odeSwapNdiff(int slot);     // $flags["ndiff"] (linCmtB Jacobian-cache selector); 0 when unloaded or unset
