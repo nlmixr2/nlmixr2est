@@ -134,7 +134,9 @@ this is <code>atol = 1e-6</code>, <code>rtol = 1e-3</code>.</p></dd>
 
 
 <dt id="arg-niter">nIter<a class="anchor" aria-label="anchor" href="#arg-niter"></a></dt>
-<dd><p>Maximum number of importance-sampling EM iterations.</p></dd>
+<dd><p>Maximum number of importance-sampling EM iterations.  <code>0</code>
+evaluates at the supplied parameters: one E-step with no M-step (like
+NONMEM <code>EONLY=1</code>); <code>nBurn</code> is ignored.</p></dd>
 
 
 <dt id="arg-mapiter">mapIter<a class="anchor" aria-label="anchor" href="#arg-mapiter"></a></dt>
@@ -870,7 +872,7 @@ two now agree on every fixture measured, so `TRUE` is the default.)</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span>     .ret$value &lt;- .ret$fval</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>     .ret</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> }</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;bytecode: 0x556d37f5bbf8&gt;</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;bytecode: 0x561ce1411998&gt;</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> &lt;environment: namespace:nlmixr2est&gt;</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $rhobeg</span>

@@ -4,6 +4,17 @@
 
 ### New features
 
+- `est="imp"`, `"impmap"` and `"qrpem"` with `nIter=0` evaluate the fit
+  at the supplied parameters: one E-step and no M-step (like NONMEM
+  `EONLY=1`), with the importance-sampling objective in `$impObj`.
+  `$runInfo` notes the E-step-only run and where the starting etas came
+  from ([\#1091](https://github.com/nlmixr2/nlmixr2est/issues/1091),
+  [\#1092](https://github.com/nlmixr2/nlmixr2est/issues/1092)).
+
+- `setOfv(fit, "imp")` and `setOfv(fit, "impmap")` add an
+  importance-sampling objective to any fit through that E-step-only run
+  at the fit’s estimates.
+
 - `est="vae"` groups near-interchangeable covariates into colinearity
   clusters, controlled by the new `vaeControl(covSelectColinearCut=)`
   (default `0.9`). A cluster never restricts what may be selected. It
@@ -14,9 +25,11 @@
   the fit’s `$covNearTie`. Clusters are a coarsening of the
   mutual-exclusion groups, so two shapes of one covariate never cluster
   together.
+
 - [`vaeCovariates()`](https://nlmixr2.github.io/nlmixr2est/reference/vaeCovariates.md)
   reports the same clustering in a new `cluster` column and takes the
   threshold as `colinearCut`.
+
 - `est="vae"` now refines covariate attribution across correlated latent
   dimensions. Each dim’s covariate search only sees the other dims
   through a frozen Gauss-Seidel offset, so it cannot notice that a
@@ -31,12 +44,14 @@
   `vaeControl(covSelectPhiCor=, covSelectPhiJoin=, covSelectPhiLeave=, covSelectPhiMaxDim=)`;
   the counters and the sticky pair adjacency are reported in the fit’s
   `$vae`.
+
 - `est="saem"` now fits residual error components that are modeled
   rather than estimated directly, such as
   `a <- add.sd*exp(eta.sd); cp ~ add(a)` or
   `a <- add.sd + WT*cov.sd; cp ~ add(a)`. These endpoints are fit as the
   equivalent `cp ~ add(a) + dnorm()` log-likelihood, and `$runInfo`
   notes the promotion.
+
 - `est="saem"` estimates every theta without an eta that informs a
   general likelihood ([`dnorm()`](https://rdrr.io/r/stats/Normal.html),
   [`t()`](https://rdrr.io/r/base/t.html), `cauchy()`, the discrete and
@@ -52,6 +67,14 @@
   parameters were previously left near their initial values.
 
 ### Bug fixes
+
+- `nIter=0` in
+  [`impmapControl()`](https://nlmixr2.github.io/nlmixr2est/reference/impmapControl.md),
+  [`impControl()`](https://nlmixr2.github.io/nlmixr2est/reference/impControl.md)
+  and
+  [`qrpemControl()`](https://nlmixr2.github.io/nlmixr2est/reference/qrpemControl.md)
+  crashed R at fit time; it now runs an E-step-only evaluation
+  ([\#1091](https://github.com/nlmixr2/nlmixr2est/issues/1091)).
 
 - `est="saem"` and `est="npb"` seed their random draws sequentially, one
   seed per individual per step, computed from the iteration so any
