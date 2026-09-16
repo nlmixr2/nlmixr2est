@@ -7622,6 +7622,22 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
       // reports the spread even on an iteration that rejects, and so the
       // trajectory is recorded on every attempt rather than only on the ones
       // that pass.  Running unguarded should not also mean running blind.
+      //
+      // ON THE SCALE THE BAND IS WRITTEN FOR.  etaDistSdLo/etaDistSdHi bound a
+      // LATENT -- the comment above says so: "the latent is standard normal BY
+      // CONSTRUCTION".  On the direct route `ev` holds the ETAS, which are
+      // standard normal by no construction at all, so a positive-support
+      // family with a mean of 5 measures 35-45 against a band that ends at 5.
+      // Every attempt then rejects, and what rejects with it is not just the
+      // family MLE but etaDistQ2PairStep -- the joint maximization over the
+      // pair's marginals AND atanh(rho) together, which is the only step that
+      // estimates a declared copula properly.  Measured on Bauer's gamma4:
+      // 250 iterations, okK=0 okJ=0 every one, rxCor returned its ini().
+      //
+      // z = qnorm(F(eta)) is the latent, and it is the same transform
+      // rxEtaDistPairLogD uses for the copula term.  The copula loop below
+      // measures the same way, which matters: both read etaDistSdPrev, so a
+      // baseline set on one scale and compared on the other spans nothing.
       rxEtaDistSpreadOk(w[(size_t)k], 0.0, R_PosInf, &lsd);
       double sdPrevWas = (k < (int)etaDistSdPrev.n_elem) ? etaDistSdPrev(k) : NA_REAL;
       bool spreadOk = (etaDistSpreadGuard == 0) ||
@@ -7697,7 +7713,22 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
       {
         double rhoPair = 0.0;
         int part = etaDistPartnerOf(k, &rhoPair);
-        if (part > k && spreadOk && etaDistAllQ2(k) && etaDistAllQ2(part)) {
+        // NOT gated on spreadOk.  That guard exists for ONE consumer: the
+        // family MLE, which fits native parameters to the sample and then
+        // INVERTS them onto the user's thetas, consulting no objective on the
+        // way -- a bad sample there maps straight to an extreme theta.  This
+        // step is not that.  It is an n1qn1 maximization of the declared
+        // prior that accepts only on `gEdBest < f0` and then damps by
+        // pas(kiter), so a sample not worth fitting simply fails to improve
+        // and nothing moves.  NoLimits guards its equivalent step with
+        // nothing but isfinite on the optimizer's result, for the same reason.
+        //
+        // And on the direct route the family MLE cannot run at all --
+        // famUsable is `etaDistOn && !etaDistAllQ2(k)`, and every declared
+        // theta there is Q2 -- so spreadOk was gating only steps that do not
+        // need it.  That is what blocked Bauer's gamma2 and gamma4 for entire
+        // fits (lclm 1.244 and 5.269 against a truth of 1.630).
+        if (part > k && etaDistAllQ2(k) && etaDistAllQ2(part)) {
           if (etaDistQ2PairStep(k, part, kiter, pas)) { moved = true; continue; }
         } else if (part >= 0 && part < k && etaDistAllQ2(k) && etaDistAllQ2(part)) {
           continue;   // already done from the lower member
@@ -7706,7 +7737,9 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
       // Q2: the eta-density objective.  Reached either because the user asked
       // for it (etaDistLoglik) or because the PARTITION says this declaration's
       // thetas are prior-only and nothing else can identify them.
-      if ((etaDistLoglik || etaDistAllQ2(k)) && spreadOk && !ev.empty()) {
+      // spreadOk dropped here too, and for the same reason: this block
+      // accepts only on `ynew < f0` and damps the accepted step.
+      if ((etaDistLoglik || etaDistAllQ2(k)) && !ev.empty()) {
         int nth = etaDistNth(k);
         if (nth > 0 && k < (int)etaDistExprs.size() &&
             (int)etaDistExprThetas[(size_t)k].size() == nth) {
@@ -7842,8 +7875,29 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
       // etaDistCorMstep=TRUE, and the observation-likelihood mode (famOff).
       bool okK = etaDistSpreadSettled(k, lsdK);
       bool okJ = etaDistSpreadSettled(j, lsdJ);
-      bool corSpreadOk = (etaDistSpreadGuard == 0) || (etaDistCorMethod == 3) ||
-        (okK && okJ);
+      // The DIRECT route is exempt, because on it this guard protects nothing.
+      //
+      // The guard exists for the family MLE -- fit native parameters to the
+      // sample, then invert them onto the user's thetas, consulting no
+      // objective on the way.  That step cannot run here at all: famUsable is
+      // `etaDistOn && !etaDistAllQ2(k)` and on the direct route every declared
+      // theta is Q2.  There is no MLE to protect, and NoLimits, which has no
+      // fit-then-invert step anywhere, has no spread guard anywhere either --
+      // its M-step skips on isfinite alone.
+      //
+      // What the guard DID do here was block the estimators, all of which are
+      // already safe by construction: each closed form is clamped into
+      // [-0.999, 0.999] and the accepted value is damped by pas(kiter).  The
+      // runaway that motivated it -- Bauer's g1 reaching 0.999 -- was the RAW
+      // product moment on over-dispersed LATENTS, on the cdf route, which is
+      // also why method 3 was already exempt on the same reasoning.
+      //
+      // Measured: `w` holds the etas here, so a positive-support family with a
+      // mean of 5 reports a spread of 35-45 against a band ending at 5, okK
+      // and okJ were 0 on every one of 250 iterations, and rxCor returned its
+      // ini() value of 0.600 with truth 0.500.
+      bool corSpreadOk = (etaDistSpreadGuard == 0) || etaDistDirectOn() ||
+        (etaDistCorMethod == 3) || (okK && okJ);
       if (getenv("NLMIXR2_ETADIST_OPT") != NULL) {
         int cj2 = etaDistLatent(j), ck2 = etaDistLatent(k);
         if (cj2 >= 0 && ck2 >= 0 && cj2 < (int)phiM.n_cols &&
@@ -8138,23 +8192,43 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
 
   // One joint step for the pair (k, j).  Returns true when it moved something.
   //
-  // Restricted to the no-covariate case for now: the objective itself takes
-  // per-record symbols, but two declarations may name DIFFERENT covariates and
-  // the shared record matrix would have to be their union, built once and
-  // indexed consistently from both expression sets.  A covariate on a
-  // correlated pair falls back to the per-declaration step, which is the
-  // pre-existing behavior rather than a new gap.
+  // COVARIATES INCLUDED.  A coefficient on a declared distribution is a
+  // parameter of that joint distribution exactly as rho is, so it belongs in
+  // the same vector: the two declarations' covariate symbols are unioned,
+  // built once into a shared per-subject record matrix, and indexed
+  // consistently from both expression sets.  rxEtaDistPairLoglikObj already
+  // took `nSym`/`rec` per record -- only this caller declined to fill them,
+  // which left a covariate coefficient and the copula estimated by two
+  // different owners against two different objectives.
   bool etaDistQ2PairStep(int k, int j, unsigned int kiter, const vec &pas) {
     if (!etaDistDirectOn()) return false;          // eta sample, not a latent
     if (!etaDistAllQ2(k) || !etaDistAllQ2(j)) return false;
     if (k >= (int)etaDistExprs.size() || j >= (int)etaDistExprs.size()) return false;
     int ck = etaDistLatent(k), cj = etaDistLatent(j);
     if (ck < 0 || cj < 0 || ck >= (int)phiM.n_cols || cj >= (int)phiM.n_cols) return false;
-    // a covariate on either member routes to the per-declaration step
-    if ((k < (int)etaDistCov.size() && etaDistCov[(size_t)k].n_cols > 0) ||
-        (j < (int)etaDistCov.size() && etaDistCov[(size_t)j].n_cols > 0)) return false;
     std::vector<std::string> uni; std::vector<int> col;
     if (!etaDistPairUnion(k, j, uni, col)) return false;
+    // The covariate symbols of BOTH members, deduplicated by name, each
+    // remembering which declaration's matrix supplies its column.
+    std::vector<std::string> covUni;
+    std::vector<int> covDecl, covCol;
+    for (int pass = 0; pass < 2; ++pass) {
+      int d = (pass == 0) ? k : j;
+      if (d >= (int)etaDistCovNames.size() || d >= (int)etaDistCov.size()) continue;
+      const std::vector<std::string> &nm = etaDistCovNames[(size_t)d];
+      if (nm.size() != (size_t)etaDistCov[(size_t)d].n_cols) return false;
+      for (size_t c = 0; c < nm.size(); ++c) {
+        bool dup = false;
+        for (size_t q = 0; q < covUni.size(); ++q) {
+          if (covUni[q] == nm[c]) { dup = true; break; }
+        }
+        if (dup) continue;
+        covUni.push_back(nm[c]);
+        covDecl.push_back(d);
+        covCol.push_back((int)c);
+      }
+    }
+    const int nSymP = (int)covUni.size();
     // rho joins the vector on the atanh scale, LAST
     double rho0 = ((int)etaDistRho.n_elem == etaDistNdist) ? etaDistRho(k) : 0.0;
     if (!std::isfinite(rho0)) rho0 = 0.0;
@@ -8164,6 +8238,10 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
     int rhoIdx = nUni;
     std::vector<std::string> pvars = uni;
     pvars.push_back("rxEdRho");     // never appears in an expression; a slot only
+    // Symbols come AFTER every theta, because that is the layout the objective
+    // reads: vals[0..nth) are the candidate parameters -- rho among them -- and
+    // vals[nth..nth+nSym) this record's symbols.
+    for (size_t c = 0; c < covUni.size(); ++c) pvars.push_back(covUni[c]);
     std::vector< std::vector<etaDistTok> > rpn1, rpn2;
     if (!rxEtaDistLoglikParse(etaDistExprs[(size_t)k], pvars, rpn1)) return false;
     if (!rxEtaDistLoglikParse(etaDistExprs[(size_t)j], pvars, rpn2)) return false;
@@ -8176,20 +8254,42 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
     double lok, hik, loj, hij;
     rxEtaDistBounds(fk, &ak[0], &lok, &hik);
     rxEtaDistBounds(fj, &aj[0], &loj, &hij);
-    std::vector<double> e1, e2;
+    std::vector<double> e1, e2, recP;
     e1.reserve(phiM.n_rows); e2.reserve(phiM.n_rows);
+    if (nSymP > 0) recP.reserve(phiM.n_rows * (size_t)nSymP);
     for (unsigned int r = 0; r < phiM.n_rows; ++r) {
       double x1 = phiM(r, (unsigned int)ck), x2 = phiM(r, (unsigned int)cj);
       if (!std::isfinite(x1) || !std::isfinite(x2)) continue;
       if ((R_finite(lok) && x1 <= lok) || (R_finite(hik) && x1 >= hik)) continue;
       if ((R_finite(loj) && x2 <= loj) || (R_finite(hij) && x2 >= hij)) continue;
+      // The covariate row FIRST, so a record with an unusable one is dropped
+      // before either eta is pushed -- the objective refuses the whole sample
+      // on a single non-finite symbol, and a partial push would misalign every
+      // column after it.
+      if (nSymP > 0) {
+        if (N <= 0) return false;
+        unsigned int subj = (unsigned int)(r % (size_t)N);
+        bool okc = true;
+        double buf[32];
+        if (nSymP > 32) return false;
+        for (int c = 0; c < nSymP; ++c) {
+          const arma::mat &cm = etaDistCov[(size_t)covDecl[(size_t)c]];
+          if (subj >= cm.n_rows) { okc = false; break; }
+          double v = cm(subj, (unsigned int)covCol[(size_t)c]);
+          if (!std::isfinite(v)) { okc = false; break; }
+          buf[c] = v;
+        }
+        if (!okc) continue;
+        for (int c = 0; c < nSymP; ++c) recP.push_back(buf[c]);
+      }
       e1.push_back(x1); e2.push_back(x2);
     }
     if (e1.size() < 2) return false;
     std::vector<double> wt(e1.size(), 1.0);
     gEdFam = fk; gEdRpn = &rpn1; gEdFam2 = fj; gEdRpn2 = &rpn2;
-    gEdNth = nth; gEdNSym = 0; gEdNRec = (int)e1.size();
-    gEdRec = NULL; gEdEta = e1.data(); gEdEta2 = e2.data(); gEdWt = wt.data();
+    gEdNth = nth; gEdNSym = nSymP; gEdNRec = (int)e1.size();
+    gEdRec = (nSymP > 0) ? recP.data() : NULL;
+    gEdEta = e1.data(); gEdEta2 = e2.data(); gEdWt = wt.data();
     gEdRho = rho0; gEdRhoIdx = rhoIdx;
     std::vector<double> st((size_t)nth);
     for (int t = 0; t < nUni; ++t) st[(size_t)t] = mprior_phi0(0, col[(size_t)t]);

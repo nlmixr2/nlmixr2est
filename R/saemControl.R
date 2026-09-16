@@ -412,6 +412,12 @@
 #'     correlated pairs) it stays interior and lands near truth.  The trust
 #'     region bounds the step, not the objective.
 #'
+#'   * `"posterior"`: the normalized sufficient statistic of the latent pair,
+#'     `rho = (l21 + l22*rz)/sqrt(1 + 2*l21*l22*rz)`, applied every iteration on
+#'     the same stochastic-approximation series everything else uses.  It cannot
+#'     be driven by the diagonal the way `"observed"` can, and it is exempt from
+#'     the spread guard for that reason.
+#'
 #' @param etaDistCorMstep Update a `dist()`-declared Gaussian copula's
 #'   correlation from its closed form -- the sample correlation of the latent
 #'   pair -- instead of leaving it to the general non-mu theta refinement.  On
