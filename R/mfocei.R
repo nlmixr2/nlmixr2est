@@ -18,6 +18,7 @@ nlmixr2Est.mfocei <- function(env, ...) {
 attr(nlmixr2Est.mfocei, "nlmixr2Priors") <- "general"
 attr(nlmixr2Est.mfocei, "covPresent") <- TRUE
 attr(nlmixr2Est.mfocei, "unbounded") <- .foUnbounded
+attr(nlmixr2Est.mfocei, "iov") <- TRUE
 # Activates the mu2/mu3/mu4 covariate-rewriting hook (.uiApplyMu2hook,
 # R/mu2.R) for this family only, gated on muModel/muRefCovAlg.
 attr(nlmixr2Est.mfocei, "mu") <- function(control) {

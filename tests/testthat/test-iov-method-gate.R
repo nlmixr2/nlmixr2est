@@ -55,3 +55,45 @@ test_that("the shared rewrite runs, or does not, according to iovMethod", {
   expect_true(is.list(.ui$omega))
   expect_true(all(c("id", "occ") %in% names(.ui$omega)))
 })
+
+# A FOCEi family method that honours a repeated (`same()`) occasion block must
+# also declare the "iov" attribute -- otherwise .uiApplyIov() stands down and
+# nothing expands the occasion parameters, which is how est="ifocei" and
+# est="mfocei" came to error on every IOV model (#1083).
+test_that("every .iovSameMethods method declares the 'iov' attribute", {
+  .missing <- .iovSameMethods[!vapply(.iovSameMethods,
+                                      function(.e) .isIovMethod(.e, foceiControl()),
+                                      logical(1), USE.NAMES = FALSE)]
+  expect_equal(.missing, character(0))
+  # the two that were missing it, named so a regression is unambiguous
+  expect_true(.isIovMethod("ifocei", foceiControl()))
+  expect_true(.isIovMethod("mfocei", foceiControl()))
+})
+
+test_that("the shared IOV rewrite runs for ifocei/mfocei (#1083)", {
+  .d <- nlmixr2data::theo_sd
+  .d$occ <- 1 + (.d$TIME >= 5)
+  .mod <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      add.sd <- 0.7
+      eta.ka ~ 0.6
+      iov.cl ~ 0.1 | occ
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + iov.cl)
+      v <- exp(tv)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  for (.est in c("ifocei", "mfocei", "focei")) {
+    .ui <- rxode2::rxUiDecompress(.mod())
+    .rw <- .uiApplyIov(.ui, .est, .d, foceiControl())
+    expect_true(is.list(.rw), info = .est)
+    .ini <- .rw$ui$iniDf
+    expect_true(all(c("rx.iov.cl.1", "rx.iov.cl.2") %in% .ini$name), info = .est)
+  }
+})
