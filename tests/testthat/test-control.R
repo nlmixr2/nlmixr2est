@@ -110,3 +110,18 @@ nmTest({
     expect_error(nlmeControl(covMethod=0L), NA)
   })
 })
+
+nmTest({
+  test_that("saemControl(nu=) survives the plain-list rebuild saem does", {
+    ## .saemFamilyControl() rebuilds the control with
+    ## do.call(saemControl, <plain list>), which routes `mcmc` through the
+    ## `.xtra$mcmc` branch.  That branch copied nBurn, nEm and nmc out of it but
+    ## only VALIDATED nu, so every saemControl(nu = ...) silently fitted with
+    ## the default c(2, 2, 2).
+    .c <- saemControl(nBurn = 7, nEm = 9, nmc = 4, nu = c(10, 11, 12))
+    .r <- do.call(saemControl, unclass(.c))
+    expect_equal(.r$mcmc$nu, c(10, 11, 12))
+    expect_equal(.r$mcmc$niter, c(7, 9))
+    expect_equal(.r$mcmc$nmc, 4)
+  })
+})
