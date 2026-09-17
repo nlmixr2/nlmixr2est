@@ -9,6 +9,8 @@ test_that("the f* sugar methods force the full conditional inner Hessian", {
     .c <- .ctl(est)
     expect_true(.c$fast, info = est)
     expect_identical(.c$innerHessian, "conditional", info = est)
+    # "Full" is the DETERMINANT: the same H0 also sets AGQ's node spread
+    expect_identical(.c$detHessian, "conditional", info = est)
   }
   expect_equal(.ctl("flaplace")$nAGQ, 1L)
   expect_gt(.ctl("fagq")$nAGQ, 1)
@@ -47,13 +49,15 @@ test_that("a full conditional Laplace/AGQ fit says so", {
   expect_identical(fitA$env$ofvType, tolower(rownames(fitA$objDf)[1]))
   expect_gt(fitA$env$nConditionalInnerHessian, 0L)
 
-  # the base methods are untouched, and the conditional curvature does not move
-  # the marginal objective it is curvature FOR
+  # the base methods are untouched; the full determinant DOES move the marginal
+  # objective (that is what "Full" means), so it must not match plain laplace
   base <- .nlmixr(model, d, "laplace", do.call(laplaceControl, .ctl()))
   expect_identical(base$method, "AGQ")
   expect_identical(rownames(base$objDf)[1], "Laplace")
   expect_identical(base$env$nConditionalInnerHessian, 0L)
-  expect_equal(fitL$objf, base$objf, tolerance = 1e-4)
+  expect_identical(fitL$control$detHessian, "conditional")
+  expect_identical(base$control$detHessian, "focei")
+  expect_false(isTRUE(all.equal(fitL$objf, base$objf)))
 })
 
 test_that("the full conditional inner Hessian refuses a generalized likelihood", {

@@ -590,6 +590,10 @@ struct focei_options {
   int nDeclineE0 = 0;       // the eta=0 (frozen R0) solve failed
   int nDeclineOther = 0;    // everything else (pool/shape/solve/finite checks)
   int nDeclineThird = 0;    // detHessian="conditional": a 3rd-order probe solve failed
+  // Rungs the outer Hessian's 3rd-order probes were loosened by before they solved (or
+  // gave up).  The probes run tighter than the fit, so a failure there is retried a rung
+  // looser rather than dropping the whole Hessian to finite differences.
+  int nHessTolRelax = 0;
   // Which way the Newton failed, so the fix is chosen from evidence rather than guessed.
   int nNewtonMaxit = 0;     // ran out of iterations at convTol
   int nNewtonSolve = 0;     // an augmented solve inside the Newton failed
@@ -10065,6 +10069,7 @@ Environment foceiOuter(Environment e){
   op_focei.nDeclineE0=0;
   op_focei.nDeclineOther=0;
   op_focei.nDeclineThird=0;
+  op_focei.nHessTolRelax=0;
   op_focei.nOuterFdInd=0;
   op_focei.nOuterSolveRelaxed=0;
   op_focei.outerFdIds.clear();
@@ -12892,6 +12897,10 @@ void foceiFinalizeTables(Environment e){
           _["e0"] = op_focei.nDeclineE0,
           _["third"] = op_focei.nDeclineThird,
           _["other"] = op_focei.nDeclineOther);
+        // Nonzero means the outer Hessian's probe tolerance escalation ran: a probe
+        // failed at its tightened tolerance and was retried a rung looser instead of
+        // sending the whole Hessian to finite differences.
+        e["nHessTolRelax"] = IntegerVector::create(op_focei.nHessTolRelax);
         e["nNewtonFail"] = IntegerVector::create(
           _["maxit"] = op_focei.nNewtonMaxit,
           _["solve"] = op_focei.nNewtonSolve,
@@ -18082,16 +18091,17 @@ static void foceiHessianThirdFill(const std::vector<std::vector<VaeOuterE>> &pro
 // full-determinant gradient (points = 2, plain central: a search direction does not
 // need 4th-order accuracy and the probes are the gradient's whole extra cost).
 template <typename Solve>
-static bool foceiHessianThird(double step, const arma::mat &etaAt, const FoceiGradPooledSetup &g,
-                               const std::vector<VaeOuterE> &base, bool foce, Solve &solve,
-                               std::vector<arma::cube> &third, std::vector<arma::cube> &thirdR,
-                               int points = 4) {
+static bool foceiHessianThirdAttempt(double tol, double step, const arma::mat &etaAt,
+                                     const FoceiGradPooledSetup &g,
+                                     const std::vector<VaeOuterE> &base, bool foce, Solve &solve,
+                                     std::vector<arma::cube> &third,
+                                     std::vector<arma::cube> &thirdR, int points) {
   int ns = base.size(), ne = g.neta, nd = g.nd+g.nsg;
   for (int id = 0; id < ns; ++id) {
     third[id].zeros(base[id].nobs,ne,nd*nd);
     if (!foce) thirdR[id].zeros(base[id].nobs,ne,nd*nd);
   }
-  OdeSolveTolGuard tolerance(std::min(1e-12,std::min(op_focei.fitAtol,op_focei.fitRtol)));
+  OdeSolveTolGuard tolerance(tol);
   for (int l = 0; l < ne; ++l) {
     double h = step*std::max(1.0,arma::abs(etaAt.col(l)).max());
     std::vector<std::vector<VaeOuterE>> probe(points,std::vector<VaeOuterE>(ns));
@@ -18099,6 +18109,42 @@ static bool foceiHessianThird(double step, const arma::mat &etaAt, const FoceiGr
     foceiHessianThirdFill(probe,ns,l,h,nd,foce,third,thirdR);
   }
   return true;
+}
+
+// TEST HOOK (removable): fail the first N probe ATTEMPTS of every call, so the tolerance
+// escalation below is exercised deterministically -- no model-level knob reaches the
+// state where a probe fails at 1e-12 but solves a rung looser.  Mirrors
+// NLMIXR2EST_OUTER_FAIL_ID; test-focei-outer-hessian-tol.R is the only consumer.
+static int foceiHessianProbeFailN() {
+  const char *e_ = getenv("NLMIXR2EST_HESS_PROBE_FAIL");
+  if (e_ == NULL || e_[0] == '\0') return 0;
+  long v = strtol(e_, NULL, 10);
+  return v > 0 ? (int)v : 0;
+}
+
+// The probes are finite differences of the sensitivity solve, so they run TIGHTER than
+// the fit (1e-12).  A probe that fails there is not necessarily hopeless: loosen a rung
+// at a time (outerOdeRecalcFactor, up to outerMaxOdeRecalc rungs, never looser than the
+// fit's own tolerance) and retry before dropping the whole Hessian to finite differences
+// -- the same escalation the inner problem takes on a bad solve (maxOdeRecalc).
+template <typename Solve>
+static bool foceiHessianThird(double step, const arma::mat &etaAt, const FoceiGradPooledSetup &g,
+                               const std::vector<VaeOuterE> &base, bool foce, Solve &solve,
+                               std::vector<arma::cube> &third, std::vector<arma::cube> &thirdR,
+                               int points = 4) {
+  const double fitTol = std::min(op_focei.fitAtol,op_focei.fitRtol);
+  const double factor = op_focei.outerOdeRecalcFactor > 1.0 ? op_focei.outerOdeRecalcFactor : 1.0;
+  const int rungs = factor > 1.0 ? op_focei.outerMaxOdeRecalc : 0;
+  int forced = foceiHessianProbeFailN();
+  double tol = std::min(1e-12,fitTol);
+  for (int attempt = 0; ; ++attempt) {
+    if (forced > 0) forced--;
+    else if (foceiHessianThirdAttempt(tol,step,etaAt,g,base,foce,solve,third,thirdR,points))
+      return true;
+    if (attempt >= rungs || tol >= fitTol) return false;
+    tol = std::min(tol*factor,fitTol);
+    op_focei.nHessTolRelax++;
+  }
 }
 
 // One expanded 2nd-order solve of every subject at a given eta matrix, the base of
