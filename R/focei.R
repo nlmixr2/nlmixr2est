@@ -3420,6 +3420,23 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
   }
 }
 
+#' The floored diagonal of `om`: the one omega shape that is always both
+#' positive definite and block-decomposable, so every repair can end here.
+#'
+#' @param om omega matrix
+#' @param dn dimnames to carry onto the result
+#' @return diagonal matrix
+#' @noRd
+.foceiFlooredDiagOmega <- function(om, dn = dimnames(om)) {
+  .d <- diag(om)
+  .pos <- .d[is.finite(.d) & .d > 0]
+  .floor <- if (length(.pos) > 0L) max(1e-8, 1e-6 * max(.pos)) else 1e-6
+  .d[!is.finite(.d) | .d < .floor] <- .floor
+  .ret <- diag(.d, nrow = length(.d))
+  dimnames(.ret) <- dn
+  .ret
+}
+
 #' Repair a non-positive-definite omega so post-fit processing can continue
 #'
 #' `nmNearPD()` itself fails (and errors) on the fully degenerate cases -- an
@@ -3444,14 +3461,8 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
     }
     return(.r)
   }
-  .d <- diag(.om)
-  .pos <- .d[is.finite(.d) & .d > 0]
-  .floor <- if (length(.pos) > 0L) max(1e-8, 1e-6 * max(.pos)) else 1e-6
-  .d[!is.finite(.d) | .d < .floor] <- .floor
-  .ret <- diag(.d, nrow = length(.d))
-  dimnames(.ret) <- dimnames(om)
   warning("singular omega; used a floored diagonal for tables", call. = FALSE)
-  .ret
+  .foceiFlooredDiagOmega(.om, dimnames(om))
 }
 
 #' Build the sym-inv-chol env, repairing the omega when the call refuses it
@@ -3480,39 +3491,27 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
   .ret <- function(rxInv, mat, sameMap) list(rxInv = rxInv, mat = mat, same = sameMap)
   .r <- .try(om, same)
   if (!is.null(.r)) return(.ret(.r, om, same))
-  # A covariance of exactly 0 INSIDE a correlated block cannot be held at 0 by
-  # this parameterization, so it becomes a free parameter starting at ~0 --
-  # the same semantics as a 0 element of a NONMEM $OMEGA BLOCK.
-  .idx <- .omegaBlockZeros(om)
+  # Rungs, in order.  A covariance of exactly 0 INSIDE a correlated block cannot
+  # be held at 0 by this parameterization, so it becomes a free parameter
+  # starting at ~0 -- the same semantics as a 0 element of a NONMEM $OMEGA
+  # BLOCK.  Then `same()` sharing, which can itself be what the call refuses.
+  # Then the floored diagonal, which is always acceptable.
   .fill <- .omegaFillBlockZeros(om)
-  if (!is.null(.fill)) {
-    for (.s in list(same, NULL)) {
-      .r <- .try(.fill, .s)
-      if (!is.null(.r)) {
-        if (warn) {
-          warning("omega block zero cov is estimated: ",
-                  .omegaBlockZeroNames(om, .idx), call. = FALSE)
-        }
-        return(.ret(.r, .fill, .s))
-      }
-    }
-  }
-  # the `same()` sharing itself can be what the call refuses
-  .r <- .try(om, NULL)
-  if (!is.null(.r)) return(.ret(.r, om, NULL))
-  # last resort: the diagonal, which is always block-decomposable
-  .d <- diag(om)
-  .pos <- .d[is.finite(.d) & .d > 0]
-  .floor <- if (length(.pos) > 0L) max(1e-8, 1e-6 * max(.pos)) else 1e-6
-  .d[!is.finite(.d) | .d < .floor] <- .floor
-  .diag <- diag(.d, nrow = length(.d))
-  dimnames(.diag) <- dimnames(om)
-  .r <- .try(.diag, NULL)
-  if (!is.null(.r)) {
-    if (warn) {
-      warning("omega refused; used a floored diagonal instead", call. = FALSE)
-    }
-    return(.ret(.r, .diag, NULL))
+  .msg <- paste0("omega block zero cov is estimated: ",
+                 .omegaBlockZeroNames(om, .omegaBlockZeros(om)))
+  .rungs <- list(
+    list(mat = .fill, same = same, msg = .msg),
+    list(mat = .fill, same = NULL, msg = .msg),
+    list(mat = om, same = NULL, msg = NULL),
+    list(mat = .foceiFlooredDiagOmega(om), same = NULL,
+         msg = "omega refused; used a floored diagonal instead")
+  )
+  for (.rung in .rungs) {
+    if (is.null(.rung$mat)) next
+    .r <- .try(.rung$mat, .rung$same)
+    if (is.null(.r)) next
+    if (warn && !is.null(.rung$msg)) warning(.rung$msg, call. = FALSE)
+    return(.ret(.r, .rung$mat, .rung$same))
   }
   .nm <- colnames(om)
   if (is.null(.nm)) .nm <- paste0("eta", seq_len(nrow(om)))
