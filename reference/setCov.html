@@ -5,15 +5,15 @@ recomputed at the converged estimates: &quot;r,s&quot;/&quot;r&quot;/&quot;s&quo
 &quot;analytic&quot; on a zero-iteration FOCEI model, and &quot;sa&quot; (SAEM
 Louis FIM) / &quot;imp&quot; (importance-sampling Monte-Carlo) via the decoupled
 recompute engine (the latter two require a mixed-effects fit).  When
-&quot;sa&quot;/&quot;imp&quot;/&quot;analytic&quot; cannot be computed the covariance
-is left unchanged (it is never silently downgraded to &quot;r,s&quot;)."><meta property="og:description" content="Switches a completed fit's covariance to method.  A previously
+a covariance cannot be computed it is left unchanged (it is never silently
+downgraded to &quot;r,s&quot;)."><meta property="og:description" content="Switches a completed fit's covariance to method.  A previously
 computed covariance is re-installed from the cache; otherwise it is
 recomputed at the converged estimates: &quot;r,s&quot;/&quot;r&quot;/&quot;s&quot; and
 &quot;analytic&quot; on a zero-iteration FOCEI model, and &quot;sa&quot; (SAEM
 Louis FIM) / &quot;imp&quot; (importance-sampling Monte-Carlo) via the decoupled
 recompute engine (the latter two require a mixed-effects fit).  When
-&quot;sa&quot;/&quot;imp&quot;/&quot;analytic&quot; cannot be computed the covariance
-is left unchanged (it is never silently downgraded to &quot;r,s&quot;)."><meta property="og:image" content="https://nlmixr2.github.io/nlmixr2est/logo.png"></head><body>
+a covariance cannot be computed it is left unchanged (it is never silently
+downgraded to &quot;r,s&quot;)."><meta property="og:image" content="https://nlmixr2.github.io/nlmixr2est/logo.png"></head><body>
     <a href="#main" class="visually-hidden-focusable">Skip to contents</a>
 
 
@@ -57,13 +57,34 @@ recomputed at the converged estimates: <code>"r,s"</code>/<code>"r"</code>/<code
 <code>"analytic"</code> on a zero-iteration FOCEI model, and <code>"sa"</code> (SAEM
 Louis FIM) / <code>"imp"</code> (importance-sampling Monte-Carlo) via the decoupled
 recompute engine (the latter two require a mixed-effects fit).  When
-<code>"sa"</code>/<code>"imp"</code>/<code>"analytic"</code> cannot be computed the covariance
-is left unchanged (it is never silently downgraded to <code>"r,s"</code>).</p>
+a covariance cannot be computed it is left unchanged (it is never silently
+downgraded to <code>"r,s"</code>).</p>
     </div>
 
     <div class="section level2">
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
-    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">setCov</span><span class="op">(</span><span class="va">fit</span>, <span class="va">method</span><span class="op">)</span></span></code></pre></div>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">setCov</span><span class="op">(</span><span class="va">fit</span>, <span class="va">method</span>, <span class="va">...</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># Default S3 method</span></span>
+<span><span class="fu">setCov</span><span class="op">(</span><span class="va">fit</span>, <span class="va">method</span>, <span class="va">...</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># S3 method for class 'analytic'</span></span>
+<span><span class="fu">setCov</span><span class="op">(</span><span class="va">fit</span>, <span class="va">method</span>, <span class="va">...</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># S3 method for class '`r,s`'</span></span>
+<span><span class="fu">setCov</span><span class="op">(</span><span class="va">fit</span>, <span class="va">method</span>, control <span class="op">=</span> <span class="fu"><a href="rsControl.html">rsControl</a></span><span class="op">(</span><span class="op">)</span>, <span class="va">...</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># S3 method for class 'r'</span></span>
+<span><span class="fu">setCov</span><span class="op">(</span><span class="va">fit</span>, <span class="va">method</span>, control <span class="op">=</span> <span class="fu"><a href="rsControl.html">rsControl</a></span><span class="op">(</span><span class="op">)</span>, <span class="va">...</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># S3 method for class 's'</span></span>
+<span><span class="fu">setCov</span><span class="op">(</span><span class="va">fit</span>, <span class="va">method</span>, control <span class="op">=</span> <span class="fu"><a href="rsControl.html">rsControl</a></span><span class="op">(</span><span class="op">)</span>, <span class="va">...</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># S3 method for class 'sa'</span></span>
+<span><span class="fu">setCov</span><span class="op">(</span><span class="va">fit</span>, <span class="va">method</span>, control <span class="op">=</span> <span class="fu"><a href="saControl.html">saControl</a></span><span class="op">(</span><span class="op">)</span>, <span class="va">...</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># S3 method for class 'imp'</span></span>
+<span><span class="fu">setCov</span><span class="op">(</span><span class="va">fit</span>, <span class="va">method</span>, control <span class="op">=</span> <span class="fu"><a href="impCovControl.html">impCovControl</a></span><span class="op">(</span><span class="op">)</span>, <span class="va">...</span><span class="op">)</span></span></code></pre></div>
     </div>
 
     <div class="section level2">
@@ -75,8 +96,19 @@ is left unchanged (it is never silently downgraded to <code>"r,s"</code>).</p>
 
 
 <dt id="arg-method">method<a class="anchor" aria-label="anchor" href="#arg-method"></a></dt>
-<dd><p>covariance method (see the `covMethod` argument for the control
-options for the choices)</p></dd>
+<dd><p>covariance method (see the <code>covMethod</code> argument of the
+control options for the choices)</p></dd>
+
+
+<dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
+<dd><p>arguments passed to the covariance method</p></dd>
+
+
+<dt id="arg-control">control<a class="anchor" aria-label="anchor" href="#arg-control"></a></dt>
+<dd><p>options for the covariance method itself, only needed to
+change its defaults: <code><a href="rsControl.html">rsControl()</a></code> for <code>"r,s"</code>, <code>"r"</code>
+and <code>"s"</code>, <code><a href="saControl.html">saControl()</a></code> for <code>"sa"</code> and
+<code><a href="impCovControl.html">impCovControl()</a></code> for <code>"imp"</code></p></dd>
 
 </dl></div>
     <div class="section level2">
@@ -100,6 +132,40 @@ standard errors differ.  On the analytic path the assembly is always full and
 standard errors agree.</p>
 <p><code>fit$covMethod</code> names the installed covariance and
 <code>names(fit$covList)</code> the cached alternatives (the fit print shows both).</p>
+    </div>
+    <div class="section level2">
+    <h2 id="adding-a-covariance-method">Adding a covariance method<a class="anchor" aria-label="anchor" href="#adding-a-covariance-method"></a></h2>
+
+
+
+<p><code>setCov()</code> is an S3 generic dispatched on <code>method</code> (without any
+<code>" (full)"</code> suffix), so another package (for example SIR or a bootstrap)
+can add a covariance by registering a method:</p>
+<div class="sourceCode"><pre><code><span></span>
+<span><span class="co"># registered with S3method(nlmixr2est::setCov, sir) in NAMESPACE</span></span>
+<span><span class="va">setCov.sir</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">fit</span>, <span class="va">method</span>, <span class="va">control</span> <span class="op">=</span> <span class="fu">sirControl</span><span class="op">(</span><span class="op">)</span>, <span class="va">...</span><span class="op">)</span> <span class="op">{</span></span>
+<span>  <span class="co"># compute on the estimation scale, named like fit$cov</span></span>
+<span>  <span class="fu">mySirCovariance</span><span class="op">(</span><span class="va">fit</span>, <span class="va">control</span><span class="op">)</span></span>
+<span><span class="op">}</span></span></code></pre></div>
+
+<p>A method that has options declares its own <code>control</code> holding only those
+options, so <code>setCov(fit, "sir")</code> uses the defaults and
+<code>setCov(fit, "sir", control = sirControl(...))</code> changes them.  The
+method receives the fit and <code>method</code> (carrying dispatch classes; use
+<code>unclass(method)</code> for the plain name) and either returns a named
+covariance matrix, which <code>setCov()</code> checks for positive definiteness and
+installs as <code>method</code> (updating the standard errors and keeping the prior
+covariance in <code>fit$covList</code>), or installs the covariance itself and
+returns <code>NULL</code>.  A mixture fit's matrix is rotated onto the probability
+scale unless it carries <code>attr(, "mixRotated")</code> set to <code>TRUE</code>.  A
+method that cannot compute the covariance should <code><a href="https://rdrr.io/r/base/stop.html" class="external-link">stop()</a></code>.
+<code><a href="setCovAllMethods.html">setCovAllMethods()</a></code> lists the available methods.</p>
+<p>Each covariance remembers the options it was computed with (in
+<code>fit$env$covOptions</code>).  A covariance already on the fit is reinstalled
+from <code>fit$covList</code> only when the requested options – the supplied
+<code>control</code>, or the method's default one – are the same; otherwise it is
+recomputed.  A covariance computed during estimation used the fit's own
+settings.</p>
     </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>

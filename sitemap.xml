@@ -85,6 +85,7 @@
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/ifocepControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/ilaplaceControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/impControl.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/impCovControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/impmapControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/index.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/iterPrintControl.html</loc></url>
@@ -170,13 +171,16 @@
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/registerEstInterceptor.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/residuals.nlmixr2FitData.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/rmEta.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/rsControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/rxGetDistributionFoceiLines.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/rxGetDistributionNlmeLines.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/rxGetDistributionNlsLines.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/rxUiGet.foceiHdEta2.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/rxode2stateOde.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/saControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/saemControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/setCov.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/setCovAllMethods.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/setOfv.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/sqrtm.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/summary.saemFit.html</loc></url>
