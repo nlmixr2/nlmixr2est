@@ -3465,6 +3465,41 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
   .foceiFlooredDiagOmega(.om, dimnames(om))
 }
 
+#' The omegas `.foceiSymInvCholCreate()` tries, in order, each with the note it
+#' owes the user.
+#'
+#' A covariance of exactly 0 INSIDE a correlated block cannot be held at 0 by
+#' this parameterization, so it becomes a free parameter starting at ~0 -- the
+#' same semantics as a 0 element of a NONMEM $OMEGA BLOCK.  Then `same()`
+#' sharing, which can itself be what the call refuses.  Then the floored
+#' diagonal, which is always acceptable.
+#'
+#' @inheritParams .foceiSymInvCholCreate
+#' @return list of `list(mat, same, msg)`; a NULL `mat` is a rung that does not
+#'   apply
+#' @noRd
+.foceiSymInvCholRungs <- function(om, same, fallback) {
+  .ret <- list(list(mat = om, same = same, msg = NULL))
+  .fill <- .omegaFillBlockZeros(om)
+  .msg <- paste0("omega block zero cov is estimated: ",
+                 .omegaBlockZeroNames(om, .omegaBlockZeros(om)))
+  # dropping the sharing changes what is ESTIMATED (the repeated blocks stop
+  # mirroring their master), so it is always said out loud
+  .dropped <- if (isTRUE(any(same > 0L))) {
+    "omega same() sharing dropped to build the inverse"
+  }
+  .ret <- c(.ret, list(list(mat = .fill, same = same, msg = .msg)))
+  if (!fallback) {
+    return(.ret)
+  }
+  c(.ret, list(
+    list(mat = .fill, same = NULL, msg = c(.msg, .dropped)),
+    list(mat = om, same = NULL, msg = .dropped),
+    list(mat = .foceiFlooredDiagOmega(om), same = NULL,
+         msg = c("omega refused; used a floored diagonal instead", .dropped))
+  ))
+}
+
 #' Build the sym-inv-chol env, repairing the omega when the call refuses it
 #'
 #' `rxSymInvCholCreate()` needs more than positive-definiteness: every
@@ -3493,39 +3528,14 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
                                         same = sameMap),
              error = function(e) NULL)
   }
-  .ret <- function(rxInv, mat, sameMap) list(rxInv = rxInv, mat = mat, same = sameMap)
-  .r <- .try(om, same)
-  if (!is.null(.r)) return(.ret(.r, om, same))
-  # Rungs, in order.  A covariance of exactly 0 INSIDE a correlated block cannot
-  # be held at 0 by this parameterization, so it becomes a free parameter
-  # starting at ~0 -- the same semantics as a 0 element of a NONMEM $OMEGA
-  # BLOCK.  Then `same()` sharing, which can itself be what the call refuses.
-  # Then the floored diagonal, which is always acceptable.
-  .fill <- .omegaFillBlockZeros(om)
-  .msg <- paste0("omega block zero cov is estimated: ",
-                 .omegaBlockZeroNames(om, .omegaBlockZeros(om)))
-  # dropping the sharing changes what is ESTIMATED (the repeated blocks stop
-  # mirroring their master), so it is always said out loud
-  .dropped <- if (isTRUE(any(same > 0L))) {
-    "omega same() sharing dropped to build the inverse"
-  }
-  .rungs <- list(list(mat = .fill, same = same, msg = .msg))
-  if (fallback) {
-    .rungs <- c(.rungs, list(
-      list(mat = .fill, same = NULL, msg = c(.msg, .dropped)),
-      list(mat = om, same = NULL, msg = .dropped),
-      list(mat = .foceiFlooredDiagOmega(om), same = NULL,
-           msg = c("omega refused; used a floored diagonal instead", .dropped))
-    ))
-  }
-  for (.rung in .rungs) {
+  for (.rung in .foceiSymInvCholRungs(om, same, fallback)) {
     if (is.null(.rung$mat)) next
     .r <- .try(.rung$mat, .rung$same)
     if (is.null(.r)) next
     if (warn) {
       for (.m in .rung$msg) warning(.m, call. = FALSE)
     }
-    return(.ret(.r, .rung$mat, .rung$same))
+    return(list(rxInv = .r, mat = .rung$mat, same = .rung$same))
   }
   .nm <- colnames(om)
   if (is.null(.nm)) .nm <- paste0("eta", seq_len(nrow(om)))
