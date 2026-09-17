@@ -144,7 +144,12 @@ nlmixr2iovVarSd <- function(val) {
                      "ifoce", "ifocep", "ifocei", "ilaplace", "iagq",
                      "ifoceif", "ifocef", "ifocepf", "iagqf",
                      "mfoce", "mfocep", "mfocei", "mlaplace", "magq",
-                     "mfoceif", "mfocef", "mfocepf", "magqf")
+                     "mfoceif", "mfocef", "mfocepf", "magqf",
+                     ## the "full" conditional-Hessian delegates (R/foceiFull.R)
+                     ## dispatch to the base Laplace/AGQ method listed above, so
+                     ## they honour the block for the same reason it does
+                     "flaplace", "mflaplace", "iflaplace",
+                     "fagq", "mfagq", "ifagq")
 
 #' Does this estimation method honour a repeated (`same()`) omega block?
 #'

@@ -24,16 +24,31 @@ test_that("IOV models fit with ifocei and mfocei (#1083)", {
   theoIov <- nlmixr2data::theo_sd
   theoIov$occ <- 1L + (theoIov$TIME >= 5)
 
-  for (.est in c("ifocei", "mfocei")) {
-    .fit <- suppressMessages(suppressWarnings(
-      nlmixr2(one.cmt, theoIov, est = .est,
+  .fitIt <- function(est) {
+    suppressMessages(suppressWarnings(
+      nlmixr2(one.cmt, theoIov, est = est,
               control = list(print = 0L, maxOuterIterations = 0L,
                              covMethod = "", calcTables = FALSE))))
+  }
+
+  # the "*f" delegate is the SAME method with foceiControl(fast=TRUE): it only
+  # changes how the outer gradient is computed, so at a fixed starting point the
+  # objective must agree exactly.  That is the assertion that the expansion is
+  # right -- the restored iniDf shape below would look fine either way, and
+  # ifoceif/mfoceif already fitted this model before the fix.
+  for (.est in c("ifocei", "mfocei")) {
+    .fit <- .fitIt(.est)
     # calcTables=FALSE, so the fit is the core object rather than the data frame
     expect_s3_class(.fit, "nlmixr2FitCore")
+    expect_equal(.fit$objf, .fitIt(paste0(.est, "f"))$objf, info = .est)
     # the occasion parameter is expanded for the fit and restored afterwards
     expect_true("iov.ka" %in% .fit$ui$iniDf$name, info = .est)
     expect_equal(.fit$ui$iniDf$condition[.fit$ui$iniDf$name == "iov.ka"], "occ",
                  info = .est)
+    # and the model line is the user's again, with no rewrite residue
+    .txt <- paste(vapply(.fit$ui$lstExpr,
+                         function(x) paste(deparse(x), collapse = " "),
+                         character(1)), collapse = " ")
+    expect_false(grepl("rx.iov.", .txt, fixed = TRUE), info = .est)
   }
 })
