@@ -87,4 +87,13 @@ nmTest({
     ## and it said so, naming the random effects
     expect_true(any(grepl("omega block zero cov is estimated", .fit$runInfo)))
   })
+
+  test_that("est='vae' survives the same omega (#1079)", {
+    .fit <- suppressMessages(
+      nlmixr2(.blockZeroMod, nlmixr2data::theo_sd, est="vae",
+              control=vaeControl(iters=3, itersBurnIn=2, calcTables=FALSE)))
+    expect_true(inherits(.fit, "nlmixr2FitCore"))
+    expect_equal(dim(.fit$omega), c(3L, 3L))
+  })
+
 })

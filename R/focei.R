@@ -3466,10 +3466,12 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
 #' @param om omega matrix
 #' @param diagXform `diagXform` control value
 #' @param same `omegaSameMap`, or `NULL`
+#' @param warn note a repair; `FALSE` for a repeat build that has already been
+#'   reported once
 #' @return list with `rxInv`, the `mat` it was built from, and the `same` map
 #'   that survived
 #' @noRd
-.foceiSymInvCholCreate <- function(om, diagXform, same) {
+.foceiSymInvCholCreate <- function(om, diagXform, same, warn = TRUE) {
   .try <- function(mat, sameMap) {
     tryCatch(rxode2::rxSymInvCholCreate(mat = mat, diag.xform = diagXform,
                                         same = sameMap),
@@ -3487,8 +3489,10 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
     for (.s in list(same, NULL)) {
       .r <- .try(.fill, .s)
       if (!is.null(.r)) {
-        warning("omega block zero cov is estimated: ",
-                .omegaBlockZeroNames(om, .idx), call. = FALSE)
+        if (warn) {
+          warning("omega block zero cov is estimated: ",
+                  .omegaBlockZeroNames(om, .idx), call. = FALSE)
+        }
         return(.ret(.r, .fill, .s))
       }
     }
@@ -3505,7 +3509,9 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
   dimnames(.diag) <- dimnames(om)
   .r <- .try(.diag, NULL)
   if (!is.null(.r)) {
-    warning("omega refused; used a floored diagonal instead", call. = FALSE)
+    if (warn) {
+      warning("omega refused; used a floored diagonal instead", call. = FALSE)
+    }
     return(.ret(.r, .diag, NULL))
   }
   .nm <- colnames(om)

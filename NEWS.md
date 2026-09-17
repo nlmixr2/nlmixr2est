@@ -51,6 +51,14 @@
 
 ## Bug fixes
 
+- An omega block declaring one of its covariances at exactly `0` (for example
+  `eta.ka + eta.cl + eta.v ~ c(0.1, 0.01, 0.1, 0, 0.01, 0.1)`) no longer aborts
+  the fit with `theta has to have N elements`.  The block's cholesky factor is
+  dense, so that `0` cannot be held; it is now estimated from ~0, as a `0`
+  element of a NONMEM `$OMEGA BLOCK` is, and `$runInfo` names the random
+  effects involved.  The FOCEi family, `est="vae"` and the general-likelihood
+  inner driver all took the same route (#1079, rxode2#1365).
+
 - `nlmixr2()` names a model the way `rxode2()` does, through
   `rxode2::rxModelNameFromExpr()`: a symbol keeps its name, a call becomes its
   text or the name its `rxModelName()` method gives, and an anonymous model
