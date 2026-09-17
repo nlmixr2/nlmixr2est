@@ -799,6 +799,9 @@
     # only the laplace censored determinant stays on the FD cov; gauss (default) is analytic
     if (.hasCensD && as.integer(rxode2::rxGetControl(ui, "censOption", 0L)) == 1L)
       return(.foceiAnalyticFallback("censoring with censOption='laplace'"))
+    # the analytic R matrix differentiates the Gauss-Newton determinant
+    if (identical(rxode2::rxGetControl(ui, "detHessian", "focei"), "conditional"))
+      return(.foceiAnalyticFallback("detHessian='conditional'"))
 
     # AGQ scope.  The node terms live only in .foceiAnalyticSubjectR, so every route that
     # leaves it returns the nAGQ=1 Laplace cov stamped covMethod="analytic" -- finite, no
@@ -2503,6 +2506,8 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
     (!is.null(fit$dataSav$LIMIT) && any(is.finite(fit$dataSav$LIMIT)))
   if (.hasCens && as.integer(rxode2::rxGetControl(ui, "censOption", 0L)) == 1L)
     return(.foceiAnalyticFallback("censoring with censOption='laplace'"))
+  if (identical(rxode2::rxGetControl(ui, "detHessian", "focei"), "conditional"))
+    return(.foceiAnalyticFallback("detHessian='conditional'"))
   ef <- .foceiAnalyticErrFull(ui)
   if (is.null(ef)) return(NULL)                     # unsupported error model -> errFull already messaged
 

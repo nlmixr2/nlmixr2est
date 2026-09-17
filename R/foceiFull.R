@@ -1,7 +1,13 @@
 # Convenience "f*" estimation methods: each is exactly its base Laplace/AGQ
-# method with foceiControl(fast = TRUE, innerHessian = "conditional") as the
-# default -- the full analytic conditional inner Hessian rather than the
-# Gauss-Newton FOCEI one.  They are thin delegates, like the "*f" fast methods
+# method with foceiControl(fast = TRUE, innerHessian = "conditional",
+# detHessian = "conditional") as the default -- the full analytic conditional
+# Hessian rather than the Gauss-Newton FOCEI one, both as the inner optimizer's
+# curvature and in the objective's Laplace log-determinant.  The determinant is
+# what "Full" names: AGQ's node spread comes from that same H0, so the objective
+# and its quadrature cannot disagree.  The analytic outer gradient carries the
+# matching third-order term for Laplace; under AGQ it declines to the
+# finite-difference gradient, which still needs the node spread's derivative.
+# They are thin delegates, like the "*f" fast methods
 # in R/foceiFast.R: the control validator forces both options through the base
 # control constructor and the estimator dispatches to the base method.  The fit
 # reports "Full Laplace"/"Full AGQ" because the label is driven by the
@@ -15,8 +21,8 @@
 #'
 #' @param control the `getValidNlmixrControl` wrapper list
 #' @param ctlFun the base control constructor (e.g. `laplaceControl`)
-#' @return a base control object with `fast = TRUE` and
-#'   `innerHessian = "conditional"`
+#' @return a base control object with `fast = TRUE`,
+#'   `innerHessian = "conditional"` and `detHessian = "conditional"`
 #' @noRd
 .foceiFullCtl <- function(control, ctlFun) {
   .ctl <- control[[1]]
@@ -31,6 +37,7 @@
   }
   .l$fast <- TRUE
   .l$innerHessian <- "conditional"
+  .l$detHessian <- "conditional"
   do.call(ctlFun, .l)
 }
 

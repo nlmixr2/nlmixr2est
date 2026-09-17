@@ -241,6 +241,15 @@
   `innerHessian="conditional"`, used by inner trust and n1qn1's `warm="calc"`
   seed. The FOCEI marginal objective was unchanged.
 
+- Added `foceiControl(detHessian="conditional")`: the objective's Laplace
+  log-determinant uses the full conditional Hessian (the observed information at
+  the conditional mode) instead of FOCEI's Gauss-Newton expected information.  The
+  analytic outer gradient carries the matching third-order term, probed the way the
+  analytic outer Hessian already does (2 solves per eta); the analytic covariance
+  and outer Hessian fall back to finite differences under it.  On `theo_sd` this
+  objective sits 0.4 above the exact (AGQ) marginal -2 log-likelihood where FOCEI
+  sits 1.3 below, at about 1.75x the FOCEI fit time (#1068).
+
 - Evaluated the conditional inner value, gradient and full curvature jointly
   in one pooled sensitivity solve, including M2/M3/M4 censoring.
 
@@ -259,9 +268,15 @@
 
 - Added `est="flaplace"`, `"mflaplace"`, `"iflaplace"`, `"fagq"`, `"mfagq"` and
   `"ifagq"` -- the Laplace and adaptive-quadrature methods (plus their
-  mu-referenced `"lin"`/`"irls"` variants) run with the full conditional inner
-  curvature (`fast=TRUE`, `innerHessian="conditional"`).  They report as
-  `Full Laplace`/`Full AGQ`, and require Gaussian endpoints.
+  mu-referenced `"lin"`/`"irls"` variants) run with the full conditional
+  curvature (`fast=TRUE`, `innerHessian="conditional"`,
+  `detHessian="conditional"`): both the inner optimizer's curvature and the
+  objective's Laplace log-determinant, which is what `Full` names.  AGQ places
+  its nodes with that same curvature, so the quadrature and the determinant
+  cannot disagree.  They report as `Full Laplace`/`Full AGQ`, and require
+  Gaussian endpoints.  The analytic outer gradient carries the determinant's
+  third-order term for Laplace; under AGQ it declines to the finite-difference
+  gradient, which still needs the node spread's derivative.
 
 - Both shapes of a focei covariance are named and cached, so `setCov()` can swap
   between them.  `foceiControl(covFull=)` decides whether `fit$cov` is the
@@ -406,6 +421,15 @@
   being conservative.
 
 ## Bug fixes
+
+- The analytic outer Hessian no longer drops to a finite-difference Hessian the
+  first time a 3rd-order probe fails to solve.  The probes run tighter than the
+  fit (1e-12), which is where they fail, so the probe tolerance is now loosened
+  a rung at a time (`foceiControl(outerOdeRecalcFactor=)`, up to
+  `outerMaxOdeRecalc` rungs, never looser than the fit's own tolerance) and
+  retried before falling back -- the escalation the inner problem already takes
+  on a bad solve (`maxOdeRecalc`).  The rungs taken are reported as the fit's
+  `$nHessTolRelax`.
 
 - `foceiControl(fast=)` no longer moves a `maxOuterIterations = 0` fit's ETAs.
   That fit evaluates the analytic outer gradient once so `.foceiGradDirect()`
@@ -3203,8 +3227,10 @@
 - `focep`/`mfocep`/`ifocep`: the `foce`/`mfoce`/`ifoce` methods with
   `foce = "foce+"` forced.
 
-- `*f` convenience methods (`focef`, `foceif`, `focepf` and the mu/irls
-  variants): the base method with `foceiControl(fast = TRUE)` as the default.
+- `*f` convenience methods (`focef`, `foceif`, `focepf`, `agqf` and the mu/irls
+  variants `mfocef`/`mfoceif`/`mfocepf`/`magqf` and
+  `ifocef`/`ifoceif`/`ifocepf`/`iagqf`): the base method with
+  `foceiControl(fast = TRUE)` as the default.
 
 ### FOCEI / FOCE
 
