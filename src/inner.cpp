@@ -8747,7 +8747,10 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.nInnerReranked.store(0, std::memory_order_relaxed);
   op_focei.nInnerNoGood.store(0, std::memory_order_relaxed);
   op_focei.nInnerDropped.store(0, std::memory_order_relaxed);
-  op_focei.warm = foceiO.containsElementNamed("warm") ? as<int>(foceiO["warm"]) : 0;
+  // Fallback 2 ("none") for a control list that predates/omits warm=: 0 ("save")
+  // used to BE self-init because updateZm() was a no-op (#1043), so "none" is what
+  // keeps such a list behaving the way it always did.
+  op_focei.warm = foceiO.containsElementNamed("warm") ? as<int>(foceiO["warm"]) : 2;
   op_focei.maxOdeRecalc = as<int>(foceiO["maxOdeRecalc"]);
   op_focei.objfRecalN=0;
   op_focei.odeRecalcFactor = as<double>(foceiO["odeRecalcFactor"]);
