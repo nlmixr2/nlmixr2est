@@ -1149,9 +1149,8 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   if (is.null(.ui)) return(invisible(FALSE))
   .sigdig <- tryCatch(fit$foceiControl$sigdig, error=function(e) NULL)
   # A nested nlmixr2() calls .nlmixr2globalReset(), which clears nlmixr2global --
-  # including the timing environment (dropping the outer fit's "other" timing row)
-  # and nlmixr2objectName (which would report ".ui" instead of the user's symbol).
-  # Snapshot and restore the whole thing, plus the mu-referencing global.
+  # including the timing environment (dropping the outer fit's "other" timing
+  # row).  Snapshot and restore the whole thing, plus the mu-referencing global.
   .savedMuRef <- .muRefTrans$cur
   on.exit(.muRefTrans$cur <- .savedMuRef, add=TRUE)
   .savedGlobal <- as.list(nlmixr2global, all.names=TRUE)

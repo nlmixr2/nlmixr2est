@@ -20,10 +20,6 @@ nlmixr2global <- new.env(parent = emptyenv())
   nlmixr2global$toRxParam <- "" # string of the params() + cmt() for rx model in focei
   nlmixr2global$toRxDvidCmt <- "" # string of dvid() spec in rxode2 focei model
 
-  nlmixr2global$nlmixr2objectName <- NULL # Allows external methods
-                                          # (like those in nlmixr2) to
-                                          # assign object name
-
   nlmixr2global$lastPredSimulationInfo <- NULL # to get observation dataset with pred attached for pred_corr
 
   nlmixr2global$nlmixrEvalEnv <- new.env(parent=emptyenv()) # evaluate environment for udf
