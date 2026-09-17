@@ -96,6 +96,10 @@ nmTest({
     expect_error(setCov(.fit, "r,s (full)", control = saControl()), "rsControl")
     expect_error(setCov(.fit, "sa", control = rsControl()), "saControl")
     expect_error(setCov(.fit, "imp", control = saControl()), "impCovControl")
+    expect_error(setCov(.fit, "sa (full)"), "not supported")
+    .register("testCovNothing", function(fit, method, ...) NULL)
+    expect_error(setCov(.fit, "testCovNothing"), "without installing")
+    expect_null(.fit$env$covOptions$testCovNothing)
   })
 
   test_that("covariance controls hold only their own options", {
@@ -178,7 +182,8 @@ nmTest({
       list(cov = .cov, covMethod = if (est == "saem") "sa" else "imp",
            mixRotated = TRUE)
     })
-    suppressMessages(setCov(.fit, "sa", control = saControl(nSaCov = 50)))
+    # a positional control is recorded just as a named one
+    suppressMessages(setCov(.fit, "sa", saControl(nSaCov = 50)))
     expect_length(.ctl, 1L)
     expect_equal(.ctl[[1]]$nSaCov, 50L)
     expect_identical(.ctl[[1]]$covMethod, "sa")

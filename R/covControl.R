@@ -136,7 +136,10 @@ impCovControl <- function(nIter = 1L, isample = 300L, impSeed = 42L) {
   if (is.null(.m) || !("control" %in% names(formals(.m)))) {
     return(list(options = list(), explicit = FALSE))
   }
-  .ctl <- args$control
+  # match the arguments the way the method will, so a positional control counts
+  .cl <- as.call(c(list(as.name("setCov"), fit = quote(fit), method = quote(method)),
+                   args))
+  .ctl <- as.list(match.call(.m, .cl))$control
   .explicit <- !is.null(.ctl)
   if (!.explicit) {
     .ctl <- eval(formals(.m)$control, list(fit = fit, method = method),

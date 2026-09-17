@@ -735,7 +735,13 @@ setCov.imp <- function(fit, method, control = impCovControl(), ...) {
 #' @return invisibly `TRUE`
 #' @noRd
 .setCovInstall <- function(env, method, cov) {
-  if (is.null(cov)) return(invisible(TRUE))
+  if (is.null(cov)) {
+    if (!.covSameName(method, env$covMethod)) {
+      stop("setCov() method '", method, "' returned NULL without installing '",
+           method, "'", call. = FALSE)
+    }
+    return(invisible(TRUE))
+  }
   if (!is.matrix(cov) || nrow(cov) != ncol(cov) || is.null(rownames(cov)) ||
         !identical(rownames(cov), colnames(cov))) {
     stop("setCov() method '", method,
