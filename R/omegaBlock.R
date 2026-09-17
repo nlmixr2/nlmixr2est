@@ -109,20 +109,41 @@
   .comp
 }
 
-#' Zeros sitting INSIDE a correlated block of `mat`'s nonzero pattern.
+#' Zeros `rxSymInvCholCreate()` cannot hold at zero.
 #'
-#' `rxSymInvCholCreate()` counts its parameters from omega's zero pattern but
-#' fills them from each block's cholesky factor, which is dense -- so a zero
-#' inside a block makes the two disagree and the theta setter refuses the
-#' matrix with "theta has to have N elements" (rxode2#1365).
+#' It counts its parameters from omega's zero pattern but fills them from each
+#' block's cholesky factor, and it takes a block to be the whole index SPAN of
+#' a correlated group.  So the patterns it accepts are exactly those whose
+#' connected components are contiguous index ranges, each one dense
+#' (rxode2#1365); anything else makes the two counts disagree and the theta
+#' setter refuses the matrix with "theta has to have N elements".
+#'
+#' Measured over every 4x4 pattern: "components are contiguous and dense"
+#' matches which matrices the call accepts 64/64, where "dense components"
+#' alone misses 7 of them.
+#'
+#' Closing each component up to its span can merge components (spans overlap),
+#' so grow the pattern to a fixed point.
 #'
 #' @param mat symmetric matrix
-#' @return two-column (row, col) matrix of upper-triangle positions, empty when
-#'   the pattern is block-decomposable
+#' @return two-column (row, col) matrix of upper-triangle positions that have
+#'   to become nonzero, empty when the pattern is already acceptable
 #' @noRd
 .omegaBlockZeros <- function(mat) {
-  .comp <- .omegaBlockIds(mat != 0)
-  which(upper.tri(mat) & outer(.comp, .comp, "==") & mat == 0, arr.ind = TRUE)
+  .adj <- mat != 0
+  .adj[is.na(.adj)] <- FALSE
+  repeat {
+    .comp <- .omegaBlockIds(.adj)
+    .new <- .adj
+    for (.c in unique(.comp)) {
+      .idx <- which(.comp == .c)
+      .span <- seq.int(min(.idx), max(.idx))
+      .new[.span, .span] <- TRUE
+    }
+    if (identical(.new, .adj)) break
+    .adj <- .new
+  }
+  which(upper.tri(mat) & .adj & mat == 0, arr.ind = TRUE)
 }
 
 #' Fill the block-internal zeros of `mat` with a negligible covariance.

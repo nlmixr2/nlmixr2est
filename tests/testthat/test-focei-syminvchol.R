@@ -96,4 +96,23 @@ nmTest({
     expect_equal(dim(.fit$omega), c(3L, 3L))
   })
 
+
+  test_that("a non-contiguous correlated block is filled, not flattened", {
+    ## eta1 correlates with eta3 and eta2 sits between them: every component is
+    ## dense, so a component-only rule calls this fine -- but the call refuses
+    ## it, and the repair ladder would then have dropped the 0.5 covariance for
+    ## a floored diagonal.
+    .nm <- c("eta.a", "eta.b", "eta.c")
+    .om <- matrix(c(0.1, 0, 0.05, 0, 0.1, 0, 0.05, 0, 0.1), 3, 3,
+                  dimnames=list(.nm, .nm))
+    expect_error(rxode2::rxSymInvCholCreate(mat=.om, diag.xform="sqrt"))
+    expect_warning(.r <- .foceiSymInvCholCreate(.om, "sqrt", NULL),
+                   "omega block zero cov is estimated")
+    ## the covariance SURVIVED -- this is the check a floored-diagonal fallback
+    ## would fail
+    expect_equal(.r$mat[1, 3], 0.05)
+    expect_equal(diag(.r$mat), diag(.om))
+    expect_equal(length(.r$rxInv$theta), 6L)
+  })
+
 })
