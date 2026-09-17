@@ -208,4 +208,82 @@ nmTest({
                  "eta1, eta2")
   })
 
+
+  test_that("a repeated same() block keeps its sharing through the fill", {
+    ## The fill is the SAME rule in every block (cor * sqrt(d_i d_j)), so
+    ## identical repeated blocks stay identical and the same() map survives --
+    ## which it must, or the bound matrices below it no longer mirror the
+    ## right rows.
+    .d <- nlmixr2data::theo_sd
+    .d$occ <- 1 + (.d$TIME >= 5)
+    .f <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        add.sd <- 0.7
+        eta.ka ~ 0.6
+        iov.ka + iov.cl + iov.v ~ c(0.1,
+                                    0.02, 0.2,
+                                    0.01, 0.03, 0.3) | occ
+      })
+      model({
+        ka <- exp(tka + eta.ka + iov.ka)
+        cl <- exp(tcl + iov.cl)
+        v <- exp(tv + iov.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .ui <- .uiApplyIov(rxode2::rxode2(.f()), "focei", .d,
+                       foceiControl(iovMethod="omega"))$ui
+    .om <- .ui$omega
+    .sm <- .ui$omegaSameMap
+    ## eta.ka plus two repeated 3x3 blocks, sharing 7 parameters
+    expect_equal(dim(.om), c(7L, 7L))
+    expect_equal(.sm, c(0L, 0L, 0L, 0L, 2L, 3L, 4L))
+    .nTheta <- length(rxode2::rxSymInvCholCreate(.om, "sqrt", same=.sm)$theta)
+    expect_equal(.nTheta, 7L)
+    ## zero the SAME within-block cell in both repeats
+    .z <- .om
+    .z[2, 4] <- .z[4, 2] <- 0
+    .z[5, 7] <- .z[7, 5] <- 0
+    expect_equal(nrow(.omegaBlockZeros(.z)), 2L)
+    expect_warning(.r <- .foceiSymInvCholCreate(.z, "sqrt", .sm),
+                   "omega block zero cov is estimated")
+    ## the sharing survived: same map kept, parameter count unchanged, and the
+    ## two blocks are still identical after the fill
+    expect_equal(.r$same, .sm)
+    expect_equal(length(.r$rxInv$theta), .nTheta)
+    expect_equal(unname(.r$mat[2:4, 2:4]), unname(.r$mat[5:7, 5:7]))
+    ## with same(), only the MASTER block's pattern is parameterized, so a zero
+    ## in a REPEAT alone needs no repair at all
+    .one <- .om
+    .one[5, 7] <- .one[7, 5] <- 0
+    expect_warning(.r2 <- .foceiSymInvCholCreate(.one, "sqrt", .sm), NA)
+    expect_equal(.r2$same, .sm)
+    expect_equal(length(.r2$rxInv$theta), .nTheta)
+  })
+
+  test_that("dropping same() sharing is never silent", {
+    ## The ladder may estimate the repeated blocks independently to get an
+    ## inverse at all.  That changes what is estimated, so it has to be said --
+    ## a non-PD omega runs out to the floored diagonal, which cannot share.
+    .nm <- paste0("eta", 1:4)
+    .om <- matrix(0, 4, 4, dimnames=list(.nm, .nm))
+    diag(.om) <- 1
+    .om[1, 2] <- .om[2, 1] <- 2
+    .om[3, 4] <- .om[4, 3] <- 2
+    .sm <- c(0L, 0L, 1L, 2L)
+    .w <- NULL
+    withCallingHandlers(.foceiSymInvCholCreate(.om, "sqrt", .sm),
+                        warning=function(w) {
+                          .w <<- c(.w, conditionMessage(w))
+                          invokeRestart("muffleWarning")
+                        })
+    expect_true(any(grepl("floored diagonal", .w, fixed=TRUE)))
+    expect_true(any(grepl("same() sharing dropped", .w, fixed=TRUE)))
+    ## and every note stays on one $runInfo line
+    expect_true(all(nchar(.w) < 75L))
+  })
+
 })

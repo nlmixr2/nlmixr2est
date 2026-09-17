@@ -3504,20 +3504,27 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
   .fill <- .omegaFillBlockZeros(om)
   .msg <- paste0("omega block zero cov is estimated: ",
                  .omegaBlockZeroNames(om, .omegaBlockZeros(om)))
+  # dropping the sharing changes what is ESTIMATED (the repeated blocks stop
+  # mirroring their master), so it is always said out loud
+  .dropped <- if (isTRUE(any(same > 0L))) {
+    "omega same() sharing dropped to build the inverse"
+  }
   .rungs <- list(list(mat = .fill, same = same, msg = .msg))
   if (fallback) {
     .rungs <- c(.rungs, list(
-      list(mat = .fill, same = NULL, msg = .msg),
-      list(mat = om, same = NULL, msg = NULL),
+      list(mat = .fill, same = NULL, msg = c(.msg, .dropped)),
+      list(mat = om, same = NULL, msg = .dropped),
       list(mat = .foceiFlooredDiagOmega(om), same = NULL,
-           msg = "omega refused; used a floored diagonal instead")
+           msg = c("omega refused; used a floored diagonal instead", .dropped))
     ))
   }
   for (.rung in .rungs) {
     if (is.null(.rung$mat)) next
     .r <- .try(.rung$mat, .rung$same)
     if (is.null(.r)) next
-    if (warn && !is.null(.rung$msg)) warning(.rung$msg, call. = FALSE)
+    if (warn) {
+      for (.m in .rung$msg) warning(.m, call. = FALSE)
+    }
     return(.ret(.r, .rung$mat, .rung$same))
   }
   .nm <- colnames(om)
