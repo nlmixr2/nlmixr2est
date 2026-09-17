@@ -41,29 +41,32 @@ nmTest({
     .txt <- paste(readLines(.f, warn = FALSE), collapse = "\n")
     # rx->ordId is a permutation of the nsub*nsim solves, so a loop bounded by
     # anything else must fall back to the data order rather than read a subset
-    expect_true(grepl("(n == getRxNsub(rxIn) * getRxNsim(rxIn)) ? getOrdId(rxIn, pos) : pos + 1",
+    expect_true(grepl("((int64_t)n == nall) ? getOrdId(rxIn, pos) : pos + 1",
                       .txt, fixed = TRUE))
   })
 
   test_that("the thread id is set once per thread, not once per subject", {
     skip_if(!dir.exists(.src), "source tree not available (installed package)")
-    .f <- file.path(.src, "nmParallel.h")
+    .f <- file.path(.src, "nmParallelCore.h")
     skip_if(!file.exists(.f))
     .l <- readLines(.f, warn = FALSE)
     # it cannot change within a thread inside one region, so the `parallel` and
-    # the `for` are separated to hoist it out of the iteration
+    # the `for` are separated and the per-thread scope sits between them
     .par <- grep("^#pragma omp parallel num_threads", .l)
     .for <- grep("^#pragma omp for", .l)
-    .set <- grep("setRxThreadId(omp_get_thread_num())", .l, fixed = TRUE)
-    expect_equal(length(.par), 1L)
-    expect_equal(length(.for), 1L)
-    expect_equal(length(.set), 1L)
-    expect_true(.par < .set && .set < .for)
+    .scope <- grep("Scope _nmScope;", .l, fixed = TRUE)
+    expect_gt(length(.par), 0L)
+    expect_equal(length(.for), length(.par))
+    expect_equal(length(.scope), length(.par))
+    expect_true(all(.par < .scope & .scope < .for))
+    # nmParallel.h's scope is the one place the thread id is handed to rxode2
+    .h <- readLines(file.path(.src, "nmParallel.h"), warn = FALSE)
+    expect_equal(length(grep("setRxThreadId(omp_get_thread_num())", .h, fixed = TRUE)), 1L)
   })
 
   test_that("an escaping exception cannot reach the OpenMP boundary", {
     skip_if(!dir.exists(.src), "source tree not available (installed package)")
-    .f <- file.path(.src, "nmParallel.h")
+    .f <- file.path(.src, "nmParallelCore.h")
     skip_if(!file.exists(.f))
     .txt <- paste(readLines(.f, warn = FALSE), collapse = "\n")
     expect_true(grepl("catch (...) {", .txt, fixed = TRUE))

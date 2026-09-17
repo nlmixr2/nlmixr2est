@@ -561,6 +561,28 @@ static inline void _saemOpt(int n, double *pxmin) {
   }
 }
 
+// Diagnostic: optimizations skipped because the SA gain was frozen at zero
+// (phi0 refinement, residual-error optimization).
+static long _saemSkipPhi0N = 0;
+static long _saemSkipResidN = 0;
+
+// Run the residual-error optimizer, unless the stochastic-approximation gain is frozen
+// at zero.  Every endpoint's M-step writes this result back as
+//     x = x + pas(kiter)*(g(pxmin) - x),
+// so where pas(kiter) is zero -- the dedicated SA covariance phase, which holds theta at
+// theta_hat while the MCMC E-step resimulates phi -- the optimization is discarded in
+// full.  Seeding pxmin from the start point (_saemStart, the very values _saemOpt itself
+// would start from) reproduces that write exactly: 0*(g(start) - x) is 0 for finite
+// g(start), so x is left at x.  n == 0 writes nothing, matching _saemOpt's own no-op.
+static inline void _saemOptOrSkip(int n, double *pxmin, bool gainFrozen) {
+  if (gainFrozen) {
+    for (int i = 0; i < n; i++) pxmin[i] = _saemStart[i];
+    if (n > 0) _saemSkipResidN++;
+    return;
+  }
+  _saemOpt(n, pxmin);
+}
+
 extern "C" SEXP _saemResidF(SEXP v) {
   SEXP ret = PROTECT(Rf_allocVector(REALSXP, 1));
   _saemFn(REAL(v),REAL(ret));
@@ -1149,7 +1171,18 @@ public:
       }
     }
     Rcpp::NumericVector xmin(nphi0);
-    if (localTrust) {
+    // SA covariance phase (covMethod="sa"): the gain pas(kiter) is frozen at 0 there, so
+    // the closing update below is mprior_phi0 <- cur + 0*(xmin[c] - cur), i.e. cur, for
+    // any finite xmin -- the entire result of this optimization is discarded.  Take
+    // xmin == par0 == cur, which reproduces that write exactly, and skip the optimizer
+    // along with the ODE re-solve it spends on every objective evaluation.  The MCOV0
+    // back-solve and the fixed-entry restore below still run, so every value this
+    // function writes is unchanged.
+    bool phi0GainFrozen = (pas(kiter) == 0.0);
+    if (phi0GainFrozen) {
+      for (int c = 0; c < nphi0; c++) xmin[c] = par0[c];
+      _saemSkipPhi0N++;
+    } else if (localTrust) {
       // Normal-model phi0 objective is extremely ill-conditioned (a tiny
       // proportional-error SD makes it change by orders of magnitude over a
       // small phi0 step), which breaks bobyqa's quadratic model.  Two
@@ -3580,6 +3613,9 @@ public:
         Gamma2_phi0=diagmat(dGamma2_phi0);                         //CHK
       }
       //CHECK the following seg on b & yptr & fptr
+      // SA covariance phase (covMethod="sa"): the gain is frozen at zero, so each
+      // endpoint's residual-error optimization below is discarded.  See _saemOptOrSkip().
+      bool residGainFrozen = (pas(kiter) == 0.0);
       // general log-likelihood (distribution==4): no residual error params to update
       if (distribution != 4)
       for(int b=0; b<nendpnt; ++b) {
@@ -3662,7 +3698,7 @@ public:
             _saemFn = obj;
             _saemStep = step;
             _saemStart=start;
-            _saemOpt(n, pxmin);
+            _saemOptOrSkip(n, pxmin, residGainFrozen);
             // Adjust back
             if (kiter > (unsigned int)(nb_fixResid)) {
               int curi = 0;
@@ -3741,7 +3777,7 @@ public:
             _saemStep = step;
             _saemStart = start;
             _saemFn = objC;
-            _saemOpt(n, pxmin);
+            _saemOptOrSkip(n, pxmin, residGainFrozen);
             // REprintf("\tares: %f bres: %f cres: %f\n", pxmin[0], pxmin[1], pxmin[2]);
             if (kiter > (unsigned int)(nb_fixResid)) {
               int curi = 0;
@@ -3810,7 +3846,7 @@ public:
             _saemStep = step;
             _saemStart = start;
             _saemFn = objD;
-            _saemOpt(n, pxmin);
+            _saemOptOrSkip(n, pxmin, residGainFrozen);
             if (kiter > (unsigned int)(nb_fixResid)) {
               int curi = 0;
               if (resFixed[offsetR] == 0) {
@@ -3874,7 +3910,7 @@ public:
             _saemStep = step;
             _saemStart = start;
             _saemFn = objE;
-            _saemOpt(n, pxmin);
+            _saemOptOrSkip(n, pxmin, residGainFrozen);
             if (kiter > (unsigned int)(nb_fixResid)) {
               int curi = 0;
               if (resFixed[offsetR] == 0) {
@@ -3939,7 +3975,7 @@ public:
             _saemStep = step;
             _saemStart = start;
             _saemFn = objF;
-            _saemOpt(n, pxmin);
+            _saemOptOrSkip(n, pxmin, residGainFrozen);
             if (kiter > (unsigned int)(nb_fixResid)) {
               int curi = 0;
               if (resFixed[offsetR] == 0) {
@@ -4012,7 +4048,7 @@ public:
             _saemStep = step;
             _saemStart = start;
             _saemFn = objG;
-            _saemOpt(n, pxmin);
+            _saemOptOrSkip(n, pxmin, residGainFrozen);
             if (kiter > (unsigned int)(nb_fixResid)) {
               int curi = 0;
               if (resFixed[offsetR] == 0) {
@@ -4090,7 +4126,7 @@ public:
             _saemStep = step;
             _saemStart = start;
             _saemFn = objH;
-            _saemOpt(n, pxmin);
+            _saemOptOrSkip(n, pxmin, residGainFrozen);
             if (kiter > (unsigned int)(nb_fixResid)) {
               int curi = 0;
               if (resFixed[offsetR] == 0) {
@@ -4176,7 +4212,7 @@ public:
             _saemStep = step;
             _saemStart = start;
             _saemFn = objI;
-            _saemOpt(n, pxmin);
+            _saemOptOrSkip(n, pxmin, residGainFrozen);
             if (kiter > (unsigned int)(nb_fixResid)) {
               int curi = 0;
               if (resFixed[offsetR] == 0) {
@@ -5135,6 +5171,12 @@ static double gPhi1ObjR(Rcpp::NumericVector p) {
 
 //[[Rcpp::export]]
 long saemPhi1RefineN_() { return _saemPhi1RefineN; }
+
+//[[Rcpp::export]]
+Rcpp::NumericVector saemGainFrozenSkipN_() {
+  return Rcpp::NumericVector::create(Rcpp::_["phi0"] = (double)_saemSkipPhi0N,
+                                     Rcpp::_["resid"] = (double)_saemSkipResidN);
+}
 
 // `n` consecutive seed offsets starting at `first`.
 static void seedLayoutPush(uint64_t first, uint64_t n, std::vector<double> &out) {
