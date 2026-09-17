@@ -448,6 +448,13 @@ saemControl <- function(seed = 99,
     checkmate::assertIntegerish(.xtra$mcmc$nmc, len=1, lower=1, any.missing=FALSE, .var.name="mcmc$nmc")
     nmc <- .xtra$mcmc$nmc
     checkmate::assertIntegerish(.xtra$mcmc$nu, len=3, lower=1, any.missing=FALSE, .var.name="mcmc$nu")
+    ## ASSIGNED, not only validated.  saem rebuilds its control from a plain
+    ## list through do.call(saemControl, ...) (.saemFamilyControl), which lands
+    ## here; without this line nBurn, nEm and nmc survived the rebuild and `nu`
+    ## silently reverted to c(2, 2, 2) -- measured, saemControl(nu = c(10, 11,
+    ## 12)) reached .configsaem as c(2, 2, 2) and fitted identically to the
+    ## default.
+    nu <- .xtra$mcmc$nu
   }
   checkmate::assertIntegerish(nBurn, any.missing=FALSE, len=1, lower=0)
   checkmate::assertIntegerish(nEm, any.missing=FALSE, len=1, lower=0)
