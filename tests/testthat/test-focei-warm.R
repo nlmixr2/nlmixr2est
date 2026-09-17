@@ -112,9 +112,19 @@ nmTest({
     # The reconstruction also had `if (n == 1) H = D` with D still zeroed, so a
     # one-eta model could not have been seeded even with the fill removed.
     .m <- function() {
-      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- 0.7; eta.cl ~ 0.3 })
-      model({ ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv)
-        linCmt() ~ add(add.sd) })
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        add.sd <- 0.7
+        eta.cl ~ 0.3
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv)
+        linCmt() ~ add(add.sd)
+      })
     }
     .f <- suppressWarnings(suppressMessages(
       nlmixr(.m, nlmixr2data::theo_sd, "focei",

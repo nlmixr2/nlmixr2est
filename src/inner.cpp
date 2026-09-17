@@ -4489,7 +4489,7 @@ static inline int innerOpt1(int id, int likId) {
         fInd->mode = 1;
         fInd->uzm = 1;
         op_focei.didHessianReset.store(1, std::memory_order_relaxed);
-        mode = 1; // carry the reset above into the retry (zm now holds n1qn1's factorization, not a Hessian)
+        mode = 1; // carry the reset into the retry (zm holds a factorization)
         std::fill_n(fInd->x, fop->neta, op_focei.etaNudge);
         //nF = fInd->nInnerF;
         fInd->badSolve = 0;
@@ -4528,7 +4528,7 @@ static inline int innerOpt1(int id, int likId) {
           fInd->mode = 1;
           fInd->uzm = 1;
           op_focei.didHessianReset.store(1, std::memory_order_relaxed);
-          mode = 1; // carry the reset above into the retry (zm now holds n1qn1's factorization, not a Hessian)
+          mode = 1; // carry the reset into the retry (zm holds a factorization)
           std::fill_n(fInd->x, fop->neta, -op_focei.etaNudge);
           nF = fInd->nInnerF;
           fInd->badSolve = 0;
@@ -4562,7 +4562,7 @@ static inline int innerOpt1(int id, int likId) {
             fInd->mode = 1;
             fInd->uzm = 1;
             op_focei.didHessianReset.store(1, std::memory_order_relaxed);
-            mode = 1; // carry the reset above into the retry (zm now holds n1qn1's factorization, not a Hessian)
+            mode = 1; // carry the reset into the retry (zm holds a factorization)
             std::fill_n(fInd->x, fop->neta, -op_focei.etaNudge2);
             nF = fInd->nInnerF;
             fInd->badSolve = 0;
@@ -4596,7 +4596,7 @@ static inline int innerOpt1(int id, int likId) {
               fInd->mode = 1;
               fInd->uzm = 1;
               op_focei.didHessianReset.store(1, std::memory_order_relaxed);
-              mode = 1; // carry the reset above into the retry (zm now holds n1qn1's factorization, not a Hessian)
+              mode = 1; // carry the reset into the retry (zm holds a factorization)
               std::fill_n(fInd->x, fop->neta, +op_focei.etaNudge2);
               nF = fInd->nInnerF;
               fInd->badSolve = 0;
