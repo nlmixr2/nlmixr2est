@@ -6,8 +6,8 @@ nmTest({
 
     fit <- one.compartment.fit.focei
 
-    # nlmixr2(fit, "predict") solves with the fit's rxControl (rtol=1e-3) while
-    # predict() defaults to rxControl(), so compare each at matched tolerances
+    # given no solving options both entry points inherit the fit's own rxControl
+    # (rtol=1e-3); pass it explicitly here so the pairing is visible
     md <- suppressMessages(do.call("predict", c(list(fit, theo_md), fit$control$rxControl)))
 
     md2 <- .nlmixr(fit, theo_md, "predict")
@@ -22,8 +22,6 @@ nmTest({
     # so comparing against rxControl() defaults needs them passed on both sides
     md <- suppressMessages(
       do.call("predict", c(list(fit, theo_md), rxode2::rxControl())))
-
-    md2 <- .nlmixr(fit, theo_md, "predict", control = rxode2::rxControl())
 
     md2 <- .nlmixr(fit, theo_md, "predict", control = rxode2::rxControl())
 
