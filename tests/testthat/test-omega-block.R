@@ -83,4 +83,69 @@ nmTest({
     expect_equal(.u2$omega[c("eta.ka", "eta.cl", "eta.v"),
                            c("eta.ka", "eta.cl", "eta.v")], .om)
   })
+
+  test_that(".omegaBlockIds finds the connected components", {
+    ## fully diagonal -> one block per eta
+    expect_equal(.omegaBlockIds(diag(3)), c(1L, 2L, 3L))
+    ## 4x4 as two 2x2 blocks
+    .m <- matrix(0, 4, 4)
+    diag(.m) <- 1
+    .m[1, 2] <- .m[2, 1] <- 0.1
+    .m[3, 4] <- .m[4, 3] <- 0.1
+    expect_equal(.omegaBlockIds(.m), c(1L, 1L, 2L, 2L))
+    ## a chain 1-2-3 is ONE block even though (1,3) is zero
+    .c <- matrix(c(1, .1, 0, .1, 1, .1, 0, .1, 1), 3, 3)
+    expect_equal(.omegaBlockIds(.c), c(1L, 1L, 1L))
+  })
+
+  test_that(".omegaBlockZeros names the zeros rxSymInvCholCreate cannot hold", {
+    ## block-decomposable patterns have none
+    expect_equal(nrow(.omegaBlockZeros(diag(3))), 0L)
+    .two <- matrix(0, 4, 4)
+    diag(.two) <- 1
+    .two[1, 2] <- .two[2, 1] <- 0.1
+    .two[3, 4] <- .two[4, 3] <- 0.1
+    expect_equal(nrow(.omegaBlockZeros(.two)), 0L)
+    ## the rxode2#1365 matrix: (2,3) is zero INSIDE the 1-2-3 block
+    .bad <- matrix(c(1, .1, .1, .1, 1, 0, .1, 0, 1), 3, 3)
+    expect_equal(unname(.omegaBlockZeros(.bad)), matrix(c(2L, 3L), 1, 2))
+    ## and that is exactly the matrix rxSymInvCholCreate refuses
+    expect_error(rxode2::rxSymInvCholCreate(mat=.bad, diag.xform="sqrt"))
+  })
+
+  test_that(".omegaFillBlockZeros makes the pattern acceptable", {
+    .bad <- matrix(c(1, .1, .1, .1, 1, 0, .1, 0, 1), 3, 3,
+                   dimnames=list(c("a", "b", "c"), c("a", "b", "c")))
+    .fill <- .omegaFillBlockZeros(.bad)
+    expect_false(is.null(.fill))
+    ## only the offending cell moved, and it moved by a negligible amount
+    expect_true(.fill[2, 3] > 0)
+    expect_true(.fill[2, 3] < 1e-9)
+    ## every other cell is untouched
+    .chk <- .fill
+    .chk[2, 3] <- .chk[3, 2] <- 0
+    expect_equal(.chk, .bad)
+    expect_equal(nrow(.omegaBlockZeros(.fill)), 0L)
+    ## the mechanism: the filled matrix is one rxSymInvCholCreate accepts, and
+    ## it carries the full dense-block parameter count
+    .r <- rxode2::rxSymInvCholCreate(mat=.fill, diag.xform="sqrt")
+    expect_equal(length(.r$theta), 6L)
+    ## nothing to fill -> NULL, so the caller knows this rung does not apply
+    expect_null(.omegaFillBlockZeros(diag(3)))
+    ## a non-positive diagonal cannot be scaled into a covariance
+    .zero <- .bad
+    .zero[2, 2] <- 0
+    expect_null(.omegaFillBlockZeros(.zero))
+  })
+
+  test_that(".omegaBlockZeroNames names the random effects, truncated", {
+    .bad <- matrix(c(1, .1, .1, .1, 1, 0, .1, 0, 1), 3, 3,
+                   dimnames=list(c("eta.cl", "eta.v", "eta.ka"),
+                                 c("eta.cl", "eta.v", "eta.ka")))
+    expect_equal(.omegaBlockZeroNames(.bad, .omegaBlockZeros(.bad)),
+                 "eta.v, eta.ka")
+    expect_true(nchar(.omegaBlockZeroNames(.bad, .omegaBlockZeros(.bad),
+                                           width=8L)) <= 8L)
+  })
+
 })
