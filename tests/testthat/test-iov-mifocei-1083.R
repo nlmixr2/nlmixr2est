@@ -29,7 +29,8 @@ test_that("IOV models fit with ifocei and mfocei (#1083)", {
       nlmixr2(one.cmt, theoIov, est = .est,
               control = list(print = 0L, maxOuterIterations = 0L,
                              covMethod = "", calcTables = FALSE))))
-    expect_s3_class(.fit, "nlmixr2FitData")
+    # calcTables=FALSE, so the fit is the core object rather than the data frame
+    expect_s3_class(.fit, "nlmixr2FitCore")
     # the occasion parameter is expanded for the fit and restored afterwards
     expect_true("iov.ka" %in% .fit$ui$iniDf$name, info = .est)
     expect_equal(.fit$ui$iniDf$condition[.fit$ui$iniDf$name == "iov.ka"], "occ",
