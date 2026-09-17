@@ -70,8 +70,7 @@ nmTest({
 
   test_that("the sa covariance phase skips the optimizations its zero gain discards", {
     # tka is not mu-referenced, so nonMuTheta="regress" refines phi0 every iteration;
-    # add+prop runs the residual-error optimizer.  The phi1 refinement is general-
-    # likelihood only, and those fits never run an sa phase, so it is not reachable here.
+    # add+prop runs the residual-error optimizer.
     m <- function() {
       ini({
         tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- 0.7; prop.sd <- 0.1
@@ -88,13 +87,12 @@ nmTest({
     }
     .n0 <- saemGainFrozenSkipN_()
     fL <- .nlmixr(m, theo_sd, est = "saem", control = .ctl("linFim"))
-    expect_equal(unname(saemGainFrozenSkipN_() - .n0), c(0, 0, 0))
+    expect_equal(unname(saemGainFrozenSkipN_() - .n0), c(0, 0))
 
     .n0 <- saemGainFrozenSkipN_()
     fS <- .nlmixr(m, theo_sd, est = "saem", control = .ctl("sa"))
     .d <- saemGainFrozenSkipN_() - .n0
     expect_equal(unname(.d[["phi0"]]), 15)
-    expect_equal(unname(.d[["phi1"]]), 0)
     expect_equal(unname(.d[["resid"]]), 15)
     # skipping leaves the estimate exactly where the frozen-gain update would
     expect_equal(unname(fS$theta), unname(fL$theta), tolerance = 1e-6)

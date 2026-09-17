@@ -562,9 +562,8 @@ static inline void _saemOpt(int n, double *pxmin) {
 }
 
 // Diagnostic: optimizations skipped because the SA gain was frozen at zero
-// (phi0 refinement, phi1 refinement, residual-error optimization).
+// (phi0 refinement, residual-error optimization).
 static long _saemSkipPhi0N = 0;
-static long _saemSkipPhi1N = 0;
 static long _saemSkipResidN = 0;
 
 // Run the residual-error optimizer, unless the stochastic-approximation gain is frozen
@@ -1601,28 +1600,17 @@ public:
       loFree[fi] = par0[c] - trust;
       hiFree[fi] = par0[c] + trust;
     }
+    Rcpp::Environment nlmixr2 = Rcpp::Environment::namespace_env("nlmixr2est");
+    Rcpp::Function boundedOpt = nlmixr2[".saemBoundedResidOpt"];
+    Rcpp::InternalFunction fn(&gPhi1ObjR);
+    Rcpp::List ctl = Rcpp::List::create(Rcpp::_["maxfun"] = phi1ThetaMaxEval);
+    Rcpp::List ret = boundedOpt(Rcpp::_["par"] = parFree, Rcpp::_["fn"] = fn,
+                                Rcpp::_["lower"] = loFree, Rcpp::_["upper"] = hiFree,
+                                Rcpp::_["control"] = ctl);
+    Rcpp::NumericVector rxOpt = ret["x"];
     Rcpp::NumericVector xmin(nphi1);
     for (int c = 0; c < nphi1; ++c) xmin[c] = par0[c];
-    // SA covariance phase (covMethod="sa"): the gain pas(kiter) is frozen at 0 there, so
-    // the update below is mprior_phi1 <- cur + 0*(xmin[c] - cur), i.e. cur, for any finite
-    // xmin -- the entire result of this optimization is discarded.  Leaving xmin at
-    // par0 == cur reproduces that write exactly and skips the optimizer, whose every
-    // objective evaluation solves innerHess2 over all nM rows.  phi1BackSolveMCOV() and
-    // the refine counter below still run, so every value this function writes is
-    // unchanged.  The same reasoning as refinePhi0Lik's own phi0GainFrozen skip.
-    if (pas(kiter) != 0.0) {
-      Rcpp::Environment nlmixr2 = Rcpp::Environment::namespace_env("nlmixr2est");
-      Rcpp::Function boundedOpt = nlmixr2[".saemBoundedResidOpt"];
-      Rcpp::InternalFunction fn(&gPhi1ObjR);
-      Rcpp::List ctl = Rcpp::List::create(Rcpp::_["maxfun"] = phi1ThetaMaxEval);
-      Rcpp::List ret = boundedOpt(Rcpp::_["par"] = parFree, Rcpp::_["fn"] = fn,
-                                  Rcpp::_["lower"] = loFree, Rcpp::_["upper"] = hiFree,
-                                  Rcpp::_["control"] = ctl);
-      Rcpp::NumericVector rxOpt = ret["x"];
-      for (int fi = 0; fi < nFree; ++fi) xmin[gPhi1FreeIx[(size_t)fi]] = rxOpt[fi];
-    } else {
-      _saemSkipPhi1N++;
-    }
+    for (int fi = 0; fi < nFree; ++fi) xmin[gPhi1FreeIx[(size_t)fi]] = rxOpt[fi];
 
     for (int c = 0; c < nphi1; ++c) {
       double cur = mprior_phi1(0, c);
@@ -5187,7 +5175,6 @@ long saemPhi1RefineN_() { return _saemPhi1RefineN; }
 //[[Rcpp::export]]
 Rcpp::NumericVector saemGainFrozenSkipN_() {
   return Rcpp::NumericVector::create(Rcpp::_["phi0"] = (double)_saemSkipPhi0N,
-                                     Rcpp::_["phi1"] = (double)_saemSkipPhi1N,
                                      Rcpp::_["resid"] = (double)_saemSkipResidN);
 }
 
