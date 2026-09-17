@@ -152,7 +152,7 @@
 #' The random effects named by `.omegaBlockZeros()` positions, comma separated
 #' and truncated so the warning stays on one line.
 #' @noRd
-.omegaBlockZeroNames <- function(mat, idx, width = 40L) {
+.omegaBlockZeroNames <- function(mat, idx, width = 35L) {
   .nm <- colnames(mat)
   if (is.null(.nm)) .nm <- paste0("eta", seq_len(nrow(mat)))
   .use <- unique(as.vector(idx))

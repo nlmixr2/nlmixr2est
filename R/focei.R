@@ -3479,10 +3479,15 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
 #' @param same `omegaSameMap`, or `NULL`
 #' @param warn note a repair; `FALSE` for a repeat build that has already been
 #'   reported once
+#' @param fallback also try the repairs that CHANGE the omega (dropping
+#'   `same()`, the floored diagonal).  `FALSE` keeps only the block-zero fill,
+#'   which reproduces the omega to a 1e-10 correlation, and errors otherwise --
+#'   for a repeat build that must not silently swap the matrix out.
 #' @return list with `rxInv`, the `mat` it was built from, and the `same` map
 #'   that survived
 #' @noRd
-.foceiSymInvCholCreate <- function(om, diagXform, same, warn = TRUE) {
+.foceiSymInvCholCreate <- function(om, diagXform, same, warn = TRUE,
+                                   fallback = TRUE) {
   .try <- function(mat, sameMap) {
     tryCatch(rxode2::rxSymInvCholCreate(mat = mat, diag.xform = diagXform,
                                         same = sameMap),
@@ -3499,13 +3504,15 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
   .fill <- .omegaFillBlockZeros(om)
   .msg <- paste0("omega block zero cov is estimated: ",
                  .omegaBlockZeroNames(om, .omegaBlockZeros(om)))
-  .rungs <- list(
-    list(mat = .fill, same = same, msg = .msg),
-    list(mat = .fill, same = NULL, msg = .msg),
-    list(mat = om, same = NULL, msg = NULL),
-    list(mat = .foceiFlooredDiagOmega(om), same = NULL,
-         msg = "omega refused; used a floored diagonal instead")
-  )
+  .rungs <- list(list(mat = .fill, same = same, msg = .msg))
+  if (fallback) {
+    .rungs <- c(.rungs, list(
+      list(mat = .fill, same = NULL, msg = .msg),
+      list(mat = om, same = NULL, msg = NULL),
+      list(mat = .foceiFlooredDiagOmega(om), same = NULL,
+           msg = "omega refused; used a floored diagonal instead")
+    ))
+  }
   for (.rung in .rungs) {
     if (is.null(.rung$mat)) next
     .r <- .try(.rung$mat, .rung$same)

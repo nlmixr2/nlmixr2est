@@ -147,8 +147,11 @@
   .om <- if (is.matrix(omega)) omega else diag(omega, length(omega))
   .nm <- env$etaNames
   if (!is.null(.nm) && length(.nm) == nrow(.om)) dimnames(.om) <- list(.nm, .nm)
-  ## reported once at setup; this runs every VI step
-  .sic <- .foceiSymInvCholCreate(.om, diagXform, NULL, warn = FALSE)
+  ## Reported once at setup, and this runs every VI step -- so no message, and
+  ## no fallback either: only the block-zero fill (a 1e-10 correlation) may run
+  ## here, a genuinely bad omega still errors rather than silently flooring.
+  .sic <- .foceiSymInvCholCreate(.om, diagXform, NULL, warn = FALSE,
+                                 fallback = FALSE)
   .om <- .sic$mat
   env$rxInv <- .sic$rxInv
   .selMat <- upper.tri(.om, diag = TRUE) & .om != 0
