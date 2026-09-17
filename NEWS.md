@@ -51,6 +51,14 @@
 
 ## Bug fixes
 
+- `nlmixr2()` names a model the way `rxode2()` does, through
+  `rxode2::rxModelNameFromExpr()`: a symbol keeps its name, a call becomes its
+  text or the name its `rxModelName()` method gives, and an anonymous model
+  function is unnamed (`NULL`).  It used to name the model with
+  `as.character(substitute(object))`, one element per part of the call, so
+  `$modelName` was `"function"` for an anonymous model function and
+  `"readModelDb"` for `nlmixr2(readModelDb("PK_1cmt"))`.  The internal
+  `.nlmixr2objectNameAssign()` that carried that name is removed.
 - `nIter=0` in `impmapControl()`, `impControl()` and `qrpemControl()` crashed R
   at fit time; it now runs an E-step-only evaluation (#1091).
 - `est="saem"` and `est="npb"` seed their random draws sequentially, one seed

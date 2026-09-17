@@ -42,18 +42,6 @@ nlmixr2Version <- function() {
   nlmixr2Logo()
 }
 
-#' Allows external methods (like those in nlmixr2) to assign object name
-#'
-#' @param x String or null for assigning a nlmixr object name
-#' @return nothing called for side effects
-#' @author Matthew L. Fidler
-#' @export
-#' @keywords internal
-.nlmixr2objectNameAssign <- function(x) {
-  nlmixr2global$nlmixr2objectName <- x
-  invisible()
-}
-
 #' nlmixr2 fits population PK and PKPD non-linear mixed effects models.
 #'
 #' nlmixr2 is an R package for fitting population pharmacokinetic (PK)
@@ -134,11 +122,6 @@ nlmixr2 <- function(object, data, est = NULL, control = list(),
   } else {
     nlmixr2global$etaMat <- NULL
   }
-  .objectName <- try(as.character(substitute(object)), silent=TRUE)
-  if (inherits(.objectName, "try-error")) .objectName <- "object"
-  if (!identical(.objectName, "object")) {
-    nlmixr2global$nlmixr2objectName <- .objectName
-  }
   on.exit(.finalizeOverallTiming(), add=TRUE)
   nmSuppressMsg()
   rxode2::rxSuppressMsg()
@@ -207,11 +190,10 @@ nlmixr2.function <- function(object, data=NULL, est = NULL, control = NULL, tabl
   .args <- as.list(match.call(expand.dots = TRUE))[-1]
   .uif <- rxode2::rxode2(object)
   .uif <- rxode2::rxUiDecompress(.uif)
-  if (!is.null(nlmixr2global$nlmixr2objectName)) {
-    if (!identical(nlmixr2global$nlmixr2objectName, "object")) {
-      assign("modelName", nlmixr2global$nlmixr2objectName, envir=.uif)
-    }
-  }
+  # `rxode2(object)` sees only the symbol `object`; name the model from the
+  # expression the user wrote, the way `rxode2()` itself would
+  assign("modelName", rxode2::rxModelNameFromExpr(substitute(object), envir=envir),
+         envir=.uif)
   .missingData <- FALSE
   if (is.null(data)) {
     .missingData <- TRUE
@@ -267,8 +249,7 @@ nlmixr2.function <- function(object, data=NULL, est = NULL, control = NULL, tabl
 nlmixr2.rxUi <- function(object, data=NULL, est = NULL, control = NULL, table = tableControl(), ...,
                          save = NULL, envir = parent.frame()) {
   .args <- as.list(match.call(expand.dots = TRUE))[-1]
-  .modelName <- try(as.character(substitute(object)), silent=TRUE)
-  if (inherits(.modelName, "try-error")) .modelName <- NULL
+  .modelName <- rxode2::rxModelNameFromExpr(substitute(object), envir=envir)
   .uif <- object
   .uif <- rxode2::rxUiDecompress(.uif)
   if (is.null(.uif$modelName)) assign("modelName", .modelName, envir=.uif)
