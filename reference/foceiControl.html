@@ -122,6 +122,7 @@
 <span>    <span class="st">"uobyqa"</span>, <span class="st">"newuoa"</span>, <span class="st">"trust"</span><span class="op">)</span>,</span>
 <span>  innerOpt <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"trust"</span>, <span class="st">"n1qn1"</span>, <span class="st">"BFGS"</span><span class="op">)</span>,</span>
 <span>  innerHessian <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"focei"</span>, <span class="st">"conditional"</span><span class="op">)</span>,</span>
+<span>  detHessian <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"focei"</span>, <span class="st">"conditional"</span><span class="op">)</span>,</span>
 <span>  hessianMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"fd"</span>, <span class="st">"bfgs"</span>, <span class="st">"sr1"</span>, <span class="st">"bofill"</span><span class="op">)</span>,</span>
 <span>  trustConf <span class="op">=</span> <span class="fl">0.975</span>,</span>
 <span>  trustRinit <span class="op">=</span> <span class="cn">NULL</span>,</span>
@@ -886,6 +887,16 @@ Inner trust uses it at each trial; n1qn1 uses it with `warm="calc"`.
 Value, gradient and full curvature share one sensitivity solve.
 The marginal objective's FOCEI curvature is unchanged.  It is not
 supported with registered external likelihood contributions.</p></dd>
+
+
+<dt id="arg-dethessian">detHessian<a class="anchor" aria-label="anchor" href="#arg-dethessian"></a></dt>
+<dd><p>Curvature entering the objective's Laplace
+log-determinant: `"focei"` (default), the Gauss-Newton expected
+information, or `"conditional"`, the full conditional Hessian (the
+observed information at the conditional mode, as NONMEM's LAPLACE).
+`"conditional"` requires fast Gaussian FOCEI; the analytic outer
+gradient then carries the matching third-order terms, and the
+analytic covariance falls back to finite differences.</p></dd>
 
 
 <dt id="arg-hessianmethod">hessianMethod<a class="anchor" aria-label="anchor" href="#arg-hessianmethod"></a></dt>

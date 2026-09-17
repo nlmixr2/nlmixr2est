@@ -296,7 +296,7 @@ laplaceControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x560e141e4948>
+#> <bytecode: 0x5604d8bd8948>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -327,6 +327,9 @@ laplaceControl()
 #> [1] 1
 #> 
 #> $innerHessian
+#> [1] "focei"
+#> 
+#> $detHessian
 #> [1] "focei"
 #> 
 #> $trustConf
