@@ -68,6 +68,13 @@
 
 ### Bug fixes
 
+- `saemControl(nu=)` was silently ignored. saem rebuilds its control
+  from a plain list, and that path copied `nBurn`, `nEm` and `nmc` out
+  of `mcmc` but only validated `nu`, so every fit ran the default
+  `c(2, 2, 2)` kernel iterations whatever was asked for. Measured,
+  `saemControl(nu = c(10, 11, 12))` reached the estimator as
+  `c(2, 2, 2)` and fitted identically to the default.
+
 - `nIter=0` in
   [`impmapControl()`](https://nlmixr2.github.io/nlmixr2est/reference/impmapControl.md),
   [`impControl()`](https://nlmixr2.github.io/nlmixr2est/reference/impControl.md)
