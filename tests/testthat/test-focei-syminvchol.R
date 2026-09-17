@@ -115,4 +115,72 @@ nmTest({
     expect_equal(length(.r$rxInv$theta), 6L)
   })
 
+
+  test_that("a 2x2 block declaring a 0 covariance is left alone", {
+    ## Two etas whose covariance is declared at exactly 0 are structurally
+    ## uncorrelated -- the call accepts that, and the repair must not decide it
+    ## knows better and start estimating a covariance the model did not ask for.
+    .nm <- c("eta.ka", "eta.cl")
+    .om <- matrix(c(0.1, 0, 0, 0.1), 2, 2, dimnames=list(.nm, .nm))
+    expect_equal(nrow(.omegaBlockZeros(.om)), 0L)
+    expect_warning(.r <- .foceiSymInvCholCreate(.om, "sqrt", NULL), NA)
+    expect_equal(.r$mat, .om)
+    expect_equal(length(.r$rxInv$theta), 2L)
+  })
+
+  test_that("the vae omega position list follows the FILLED omega (#1079)", {
+    ## vaeOmegaSel is the 0-based position list the C++ fast path packs
+    ## chol(Omega^-1) into, and it has to match rxSymInvCholCreate's parameter
+    ## order.  Building it from the unrepaired omega would give 5 positions for
+    ## a 6-parameter inverse.
+    .theoZ <- function() {
+      ini({
+        lka <- log(1.8)
+        lke <- log(0.086)
+        lV <- log(32)
+        eta.ka + eta.ke + eta.V ~ c(0.3,
+                                    0.00, 0.03,
+                                    0.02, 0.005, 0.03)
+        add.err <- 0.7
+      })
+      model({
+        ka <- exp(lka + eta.ka)
+        ke <- exp(lke + eta.ke)
+        V <- exp(lV + eta.V)
+        d/dt(depot) = -ka * depot
+        d/dt(central) = ka * depot - ke * central
+        cp <- central / V
+        cp ~ add(add.err)
+      })
+    }
+    .ui <- rxode2::assertRxUi(.theoZ)
+    ## the declared omega really needs the repair
+    expect_equal(nrow(.omegaBlockZeros(.ui$omega)), 1L)
+    .ctl <- vaeControl()
+    .n <- length(unique(nlmixr2data::theo_sd$ID))
+    set.seed(3)
+    .etaMat <- matrix(rnorm(.n * 3, 0, 0.1), .n, 3)
+    .prep <- .vaeDataPrep(.ui, nlmixr2data::theo_sd)
+    .env <- .vaeInnerSetup(.ui, nlmixr2data::theo_sd, .etaMat, .ctl)
+    on.exit(.vaeInnerFree(), add=TRUE)
+    expect_equal(nrow(.env$vaeOmegaSel), length(.env$rxInv$theta))
+    expect_equal(length(.env$rxInv$theta), 6L)
+    ## the C++ fast path packs the OUTER (unrepaired) omega; it must still land
+    ## where the repaired full re-setup does
+    vaeInnerUpdatePar_(as.numeric(.prep$th), .prep$omegaMat)
+    .fast <- .vaeInnerEval(.etaMat, .ctl, grad=TRUE)
+    .vaeInnerUpdate(.env, .prep$th, .prep$omegaMat, .etaMat)
+    .ref <- .vaeInnerEval(.etaMat, .ctl, grad=TRUE)
+    expect_lt(max(abs(.fast$obj - .ref$obj)), 1e-8)
+    expect_lt(max(abs(.fast$lp - .ref$lp)), 1e-8)
+    ## and the 1e-10 fill is inert: declaring that covariance explicitly gives
+    ## the same objective as leaving it at 0
+    .omTiny <- .prep$omegaMat
+    .omTiny[1, 3] <- .omTiny[3, 1] <-
+      1e-10 * sqrt(.omTiny[1, 1] * .omTiny[3, 3])
+    .vaeInnerUpdate(.env, .prep$th, .omTiny, .etaMat)
+    .tiny <- .vaeInnerEval(.etaMat, .ctl, grad=TRUE)
+    expect_equal(.ref$obj, .tiny$obj, tolerance=1e-10)
+  })
+
 })

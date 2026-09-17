@@ -54,7 +54,7 @@
                     error = function(e) NULL)
   .adj <- if (is.null(.decl)) omegaMat != 0 else (.decl != 0 | omegaMat != 0)
   .comp <- .omegaBlockIds(.adj)
-  for (.b in seq_len(max(.comp))) {
+  for (.b in unique(.comp)) {
     .idx <- which(.comp == .b)
     if (length(.idx) == 1L) {
       .expr <- paste0(.nm[.idx], " ~ ", signif(omegaMat[.idx, .idx], 12))
