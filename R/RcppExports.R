@@ -804,6 +804,10 @@ saemPhi1RefineN_ <- function() {
     .Call(`_nlmixr2est_saemPhi1RefineN_`)
 }
 
+saemGainFrozenSkipN_ <- function() {
+    .Call(`_nlmixr2est_saemGainFrozenSkipN_`)
+}
+
 saemSeedLayoutTest_ <- function(nu, nphi1, nphi0, nMix, nM, nmc, ntotal, niter) {
     .Call(`_nlmixr2est_saemSeedLayoutTest_`, nu, nphi1, nphi0, nMix, nM, nmc, ntotal, niter)
 }

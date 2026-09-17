@@ -561,6 +561,12 @@ static inline void _saemOpt(int n, double *pxmin) {
   }
 }
 
+// Diagnostic: optimizations skipped because the SA gain was frozen at zero
+// (phi0 refinement, phi1 refinement, residual-error optimization).
+static long _saemSkipPhi0N = 0;
+static long _saemSkipPhi1N = 0;
+static long _saemSkipResidN = 0;
+
 // Run the residual-error optimizer, unless the stochastic-approximation gain is frozen
 // at zero.  Every endpoint's M-step writes this result back as
 //     x = x + pas(kiter)*(g(pxmin) - x),
@@ -572,6 +578,7 @@ static inline void _saemOpt(int n, double *pxmin) {
 static inline void _saemOptOrSkip(int n, double *pxmin, bool gainFrozen) {
   if (gainFrozen) {
     for (int i = 0; i < n; i++) pxmin[i] = _saemStart[i];
+    if (n > 0) _saemSkipResidN++;
     return;
   }
   _saemOpt(n, pxmin);
@@ -1175,6 +1182,7 @@ public:
     bool phi0GainFrozen = (pas(kiter) == 0.0);
     if (phi0GainFrozen) {
       for (int c = 0; c < nphi0; c++) xmin[c] = par0[c];
+      _saemSkipPhi0N++;
     } else if (localTrust) {
       // Normal-model phi0 objective is extremely ill-conditioned (a tiny
       // proportional-error SD makes it change by orders of magnitude over a
@@ -1612,6 +1620,8 @@ public:
                                   Rcpp::_["control"] = ctl);
       Rcpp::NumericVector rxOpt = ret["x"];
       for (int fi = 0; fi < nFree; ++fi) xmin[gPhi1FreeIx[(size_t)fi]] = rxOpt[fi];
+    } else {
+      _saemSkipPhi1N++;
     }
 
     for (int c = 0; c < nphi1; ++c) {
@@ -5173,6 +5183,13 @@ static double gPhi1ObjR(Rcpp::NumericVector p) {
 
 //[[Rcpp::export]]
 long saemPhi1RefineN_() { return _saemPhi1RefineN; }
+
+//[[Rcpp::export]]
+Rcpp::NumericVector saemGainFrozenSkipN_() {
+  return Rcpp::NumericVector::create(Rcpp::_["phi0"] = (double)_saemSkipPhi0N,
+                                     Rcpp::_["phi1"] = (double)_saemSkipPhi1N,
+                                     Rcpp::_["resid"] = (double)_saemSkipResidN);
+}
 
 // `n` consecutive seed offsets starting at `first`.
 static void seedLayoutPush(uint64_t first, uint64_t n, std::vector<double> &out) {

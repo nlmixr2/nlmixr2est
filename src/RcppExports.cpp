@@ -1953,6 +1953,16 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// saemGainFrozenSkipN_
+Rcpp::NumericVector saemGainFrozenSkipN_();
+RcppExport SEXP _nlmixr2est_saemGainFrozenSkipN_() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(saemGainFrozenSkipN_());
+    return rcpp_result_gen;
+END_RCPP
+}
 // saemSeedLayoutTest_
 Rcpp::NumericVector saemSeedLayoutTest_(Rcpp::IntegerVector nu, int nphi1, int nphi0, int nMix, int nM, int nmc, int ntotal, int niter);
 RcppExport SEXP _nlmixr2est_saemSeedLayoutTest_(SEXP nuSEXP, SEXP nphi1SEXP, SEXP nphi0SEXP, SEXP nMixSEXP, SEXP nMSEXP, SEXP nmcSEXP, SEXP ntotalSEXP, SEXP niterSEXP) {
