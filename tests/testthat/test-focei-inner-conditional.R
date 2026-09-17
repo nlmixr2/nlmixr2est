@@ -54,6 +54,8 @@ test_that("conditional curvature requires a compatible optimizer", {
   # when warm="calc" -- the combination below used to be accepted and silently ignored
   expect_error(foceiControl(fast = TRUE, innerOpt = "n1qn1",
     innerHessian = "conditional", warm = "save"), "requires warm")
+  expect_error(foceiControl(fast = TRUE, innerOpt = "n1qn1",
+    innerHessian = "conditional", warm = "none"), "requires warm")
   # trust uses the curvature at every trial, so warm is irrelevant to it
   expect_no_error(foceiControl(fast = TRUE, innerOpt = "trust",
     innerHessian = "conditional", warm = "save"))

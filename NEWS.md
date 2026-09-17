@@ -51,6 +51,18 @@
 
 ## Bug fixes
 
+- `foceiControl(warm="save")` now restarts the n1qn1 inner problem from the
+  curvature the subject's previous inner solve left, as it was always meant
+  to.  It reconstructed that Hessian from a buffer it had just zeroed, so
+  n1qn1 was handed an all-zero factorization and self-initialized on every
+  inner solve -- the option reused nothing since FOCEi was first imported
+  (#1043).  A single-eta model was additionally unseedable because the
+  one-by-one case multiplied the factorization back out as a zero matrix.
+  The n1qn1 Hessian reset in the `etaNudge`/`etaNudge2` cascade also reaches
+  the optimizer now instead of only under `warm="calc"`.  The previous
+  self-initialized behavior is available as the new `foceiControl(warm="none")`,
+  and `warm="save"` reuse is reported in the fit's `$nWarmSave`.
+
 - `nlmixr2()` names a model the way `rxode2()` does, through
   `rxode2::rxModelNameFromExpr()`: a symbol keeps its name, a call becomes its
   text or the name its `rxModelName()` method gives, and an anonymous model

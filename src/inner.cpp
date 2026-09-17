@@ -614,7 +614,10 @@ struct focei_options {
 
   int nsim;
   unsigned int nzm;
-  int warm; // 1 = seed zm from calculated eta Hessian, 0 = classic behavior
+  // n1qn1 inner-Hessian seed: 1 = "calc" (eta Hessian recalculated at the starting
+  // eta), 0 = "save" (the previous inner solve's curvature), 2 = "none" (n1qn1's own
+  // self-init).  See warmZm(), updateZm() and selfInitZm().
+  int warm;
 
   // innerOpt: 1 = n1qn1, 2 = BFGS (unimplemented -- see #927, falls back to
   // n1qn1: lbfgsb3C's C++ wrapper keeps shared mutable Rcpp state, not
@@ -646,6 +649,12 @@ struct focei_options {
   // quasi-Newton update (as opposed to a fresh FD pass) -- test evidence the
   // mechanism actually ran, not just that the numbers happen to agree.
   std::atomic<int> nHessianQN{0};
+  // warm="save" (#1043): inner solves seeded with the previous solve's
+  // reconstructed curvature, and those that had to fall back to n1qn1's
+  // self-init because that curvature was not usable.  Test evidence the reuse
+  // actually happens -- it silently did not for the option's whole life.
+  std::atomic<int> nWarmSaveZm{0};
+  std::atomic<int> nWarmSaveSelfInit{0};
 
   int imp;
   // int printInner;
@@ -1554,30 +1563,60 @@ uvec lowerTri(mat H, bool diag = false){
   }
 }
 
+// warm="none": n1qn1 initializes the inner Hessian itself (mode=1) from `var`.
+void selfInitZm(focei_ind *indF){
+  std::fill(&indF->zm[0], &indF->zm[0]+op_focei.nzm, 0.0);
+  indF->uzm = 1;
+  indF->mode = 1;
+}
+
+// warm="save": turn the curvature n1qn1 left in zm back into a Hessian so the next
+// inner solve restarts from it (mode=2).
+//
+// n1qn1 keeps its Hessian approximation in the first neta*(neta+1)/2 doubles of zm,
+// packed as the columns of the lower triangle, and FACTORIZED in place: the diagonal
+// holds D and packed position (i,j), i>j, holds L(i,j) of H = L*D*L' (see n1qn1a_'s
+// L60 block and majour_).  mode=2 wants the Hessian itself, so it has to be
+// multiplied back out.  Everything past that prefix is n1qn1's own scratch (d, w,
+// xa, ga, xb, gb) and is zeroed -- but the prefix must be READ BEFORE anything is
+// zeroed.  Zeroing first (the #1043 bug, present since the 2018 FOCEi import) handed
+// mode=2 an all-zero factorization, so n1qn1 found a non-positive diagonal and fell
+// back to self-init on every inner solve: warm="save" reused nothing.
 void updateZm(focei_ind *indF){
-  std::fill(&indF->zm[0], &indF->zm[0]+op_focei.nzm,0.0);
-  if (!indF->uzm){
-    // Udate the curvature to Hessian to restart n1qn1
-    int n = op_focei.neta;
+  if (indF->uzm){
+    // No saved curvature to reuse (a reset, or the first solve).
+    std::fill(&indF->zm[0], &indF->zm[0]+op_focei.nzm, 0.0);
+    return;
+  }
+  int n = op_focei.neta;
+  unsigned int l_n = n * (n + 1)/2;
+  vec zmV(l_n);
+  std::copy(&indF->zm[0], &indF->zm[0]+l_n, zmV.begin());
+  mat H = mat(n, n, fill::zeros);
+  H.elem(lowerTri(H, true)) = zmV;
+  // n1qn1 zeroes a pivot it could not use, so a non-positive D says it gave up on
+  // that direction and L*D*L' would come back singular -- mode=2 would then only
+  // make it re-factorize, fail and self-init.  Gate on D, not on the rebuilt
+  // diagonal: diag(L*D*L')_j stays positive even with D_j == 0.
+  bool usable = zmV.is_finite() && H.diag().min() > 0.0;
+  if (usable && n > 1) {
+    // L is unit lower triangular, D = diag(H); for n == 1 H already IS the Hessian.
     mat L = eye(n, n);
     mat D = mat(n, n, fill::zeros);
-    mat H = mat(n, n);
-    unsigned int l_n = n * (n + 1)/2;
-    vec zmV(l_n);
-    std::copy(&indF->zm[0], &indF->zm[0]+l_n, zmV.begin());
-    H.elem(lowerTri(H, true)) = zmV;
-    if (n == 1) H = D;
-    else{
-      L.elem(lowerTri(H,false)) = H.elem(lowerTri(H,0));
-      D.diag() = H.diag();
-      H = L*D*L.t();
-    }
-    // Hessian -> c.hess
-    vec hessV = H.elem(lowerTri(H, true));
-    std::copy(hessV.begin(),hessV.end(),&indF->zm[0]);
-    indF->uzm = 1;
-    indF->mode=2;
+    L.elem(lowerTri(H, false)) = H.elem(lowerTri(H, false));
+    D.diag() = H.diag();
+    H = L*D*L.t();
   }
+  vec hessV = H.elem(lowerTri(H, true));
+  std::fill(&indF->zm[0], &indF->zm[0]+op_focei.nzm, 0.0);
+  if (usable) {
+    std::copy(hessV.begin(), hessV.end(), &indF->zm[0]);
+    op_focei.nWarmSaveZm.fetch_add(1, std::memory_order_relaxed);
+  } else {
+    op_focei.nWarmSaveSelfInit.fetch_add(1, std::memory_order_relaxed);
+  }
+  indF->uzm = 1;
+  indF->mode = usable ? 2 : 1;
 }
 
 static inline double getScaleC(int i){
@@ -4286,9 +4325,17 @@ static inline int innerOpt1(int id, int likId) {
     }
   }
   if (n1qn1Inner) {
-    if (op_focei.warm == 1) warmZm(fInd, id);
-    else updateZm(fInd);
+    if (op_focei.warm == 1) warmZm(fInd, id);      // "calc"
+    else if (op_focei.warm == 0) updateZm(fInd);   // "save"
+    else selfInitZm(fInd);                         // "none"
     std::fill_n(&fInd->var[0], fop->neta, 0.1);
+  }
+  // The n1qn1 seed just installed, kept only when the mceta eta=0 floor pass below
+  // will need to be re-seeded with it (n1qn1_ overwrites zm in place).
+  std::vector<double> zmSeed;
+  int zmSeedMode = fInd->mode;
+  if (n1qn1Inner && mcetaSampleStart) {
+    zmSeed.assign(&fInd->zm[0], &fInd->zm[0] + op_focei.nzm);
   }
   int npar = fop->neta;
   std::copy(&fInd->eta[0], &fInd->eta[0]+fop->neta, fInd->x);
@@ -4383,7 +4430,14 @@ static inline int innerOpt1(int id, int likId) {
     // the run it must not come out above.
     std::fill(&fInd->eta[0], &fInd->eta[0] + fop->neta, 0.0);
     if (op_focei.warm == 1) warmZm(fInd, id);
-    else { fInd->mode = 1; fInd->uzm = 1; }
+    else if (!zmSeed.empty()) {
+      // Put back the seed the FIRST pass was given.  n1qn1 overwrote zm with its own
+      // factorization, so without this the floor pass would self-init while the run
+      // it must reproduce -- mceta=0, one pass -- got the warm="save" curvature.
+      std::copy(zmSeed.begin(), zmSeed.end(), &fInd->zm[0]);
+      fInd->mode = zmSeedMode;
+      fInd->uzm = 1;
+    } else { fInd->mode = 1; fInd->uzm = 1; }
     mode = fInd->mode;
     std::fill_n(&fInd->var[0], fop->neta, 0.1);
     std::fill_n(fInd->x, fop->neta, 0.0);
@@ -4435,7 +4489,7 @@ static inline int innerOpt1(int id, int likId) {
         fInd->mode = 1;
         fInd->uzm = 1;
         op_focei.didHessianReset.store(1, std::memory_order_relaxed);
-        if (op_focei.warm == 1) mode = 1;
+        mode = 1; // carry the reset above into the retry (zm now holds n1qn1's factorization, not a Hessian)
         std::fill_n(fInd->x, fop->neta, op_focei.etaNudge);
         //nF = fInd->nInnerF;
         fInd->badSolve = 0;
@@ -4474,7 +4528,7 @@ static inline int innerOpt1(int id, int likId) {
           fInd->mode = 1;
           fInd->uzm = 1;
           op_focei.didHessianReset.store(1, std::memory_order_relaxed);
-          if (op_focei.warm == 1) mode = 1;
+          mode = 1; // carry the reset above into the retry (zm now holds n1qn1's factorization, not a Hessian)
           std::fill_n(fInd->x, fop->neta, -op_focei.etaNudge);
           nF = fInd->nInnerF;
           fInd->badSolve = 0;
@@ -4508,7 +4562,7 @@ static inline int innerOpt1(int id, int likId) {
             fInd->mode = 1;
             fInd->uzm = 1;
             op_focei.didHessianReset.store(1, std::memory_order_relaxed);
-            if (op_focei.warm == 1) mode = 1;
+            mode = 1; // carry the reset above into the retry (zm now holds n1qn1's factorization, not a Hessian)
             std::fill_n(fInd->x, fop->neta, -op_focei.etaNudge2);
             nF = fInd->nInnerF;
             fInd->badSolve = 0;
@@ -4542,7 +4596,7 @@ static inline int innerOpt1(int id, int likId) {
               fInd->mode = 1;
               fInd->uzm = 1;
               op_focei.didHessianReset.store(1, std::memory_order_relaxed);
-              if (op_focei.warm == 1) mode = 1;
+              mode = 1; // carry the reset above into the retry (zm now holds n1qn1's factorization, not a Hessian)
               std::fill_n(fInd->x, fop->neta, +op_focei.etaNudge2);
               nF = fInd->nInnerF;
               fInd->badSolve = 0;
@@ -9140,6 +9194,8 @@ NumericVector foceiSetup_(const RObject &obj,
                    (uint64_t)getRxNsubAndMix(getRxSolve_()) * (uint64_t)op_focei.nEtaRestart);
   }
   op_focei.nTrustInner.store(0, std::memory_order_relaxed);
+  op_focei.nWarmSaveZm.store(0, std::memory_order_relaxed);
+  op_focei.nWarmSaveSelfInit.store(0, std::memory_order_relaxed);
   op_focei.nConditionalInnerHessian.store(0, std::memory_order_relaxed);
   op_focei.nTrustError.store(0, std::memory_order_relaxed);
   op_focei.nTrustNoConv.store(0, std::memory_order_relaxed);
@@ -12919,6 +12975,14 @@ void foceiFinalizeTables(Environment e){
         // succeeded one was available.
         _["dropped"] = op_focei.nInnerDropped.load(std::memory_order_relaxed));
       e["nConditionalInnerHessian"] = op_focei.nConditionalInnerHessian.load(std::memory_order_relaxed);
+      if (op_focei.warm == 0) {
+        // warm="save" reuse (#1043): "reused" counts inner solves entered with the
+        // previous solve's curvature, "selfInit" the ones whose saved curvature was
+        // not a usable Hessian so n1qn1 initialized its own.
+        e["nWarmSave"] = IntegerVector::create(
+          _["reused"] = op_focei.nWarmSaveZm.load(std::memory_order_relaxed),
+          _["selfInit"] = op_focei.nWarmSaveSelfInit.load(std::memory_order_relaxed));
+      }
       if (op_focei.innerOpt == 3) {
         // innerOpt="trust" outcomes.  "calls" is what .nTrustInner() reports;
         // the rest say whether those calls actually converged -- a fit whose
