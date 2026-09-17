@@ -52,3 +52,43 @@ test_that("IOV models fit with ifocei and mfocei (#1083)", {
     expect_false(grepl("rx.iov.", .txt, fixed = TRUE), info = .est)
   }
 })
+
+# The same registry drift one file over: the "full" conditional-Hessian
+# delegates refused a correlated occasion block that the base method they
+# dispatch to fits (#1083).
+test_that("a correlated occasion block fits under a full Laplace/AGQ delegate", {
+  skip_on_cran()
+
+  corr.cmt <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      eta.ka ~ 0.6
+      iov.cl + iov.v ~ c(0.1, 0.03, 0.2) | occ
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + iov.cl)
+      v <- exp(tv + iov.v)
+      linCmt() ~ add(add.sd)
+    })
+  }
+
+  theoIov <- nlmixr2data::theo_sd
+  theoIov$occ <- 1L + (theoIov$TIME >= 5)
+
+  for (.est in c("laplace", "flaplace", "fagq")) {
+    .fit <- suppressMessages(suppressWarnings(
+      nlmixr2(corr.cmt, theoIov, est = .est,
+              control = list(print = 0L, maxOuterIterations = 0L,
+                             covMethod = "", calcTables = FALSE))))
+    expect_s3_class(.fit, "nlmixr2FitCore")
+    expect_true(is.finite(.fit$objf), info = .est)
+    # both occasion parameters come back on their own `| occ` rows
+    expect_equal(.fit$ui$iniDf$condition[.fit$ui$iniDf$name %in%
+                                           c("iov.cl", "iov.v")],
+                 c("occ", "occ"), info = .est)
+  }
+})
