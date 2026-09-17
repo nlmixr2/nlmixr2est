@@ -57,11 +57,25 @@ nmTest({
                  control = npbControl(points = 20L, burnin = 100L, nsamp = 150L,
                                       nchains = 3L, seed = 42L))
     expect_equal(f$env$npbNchains, 3L)
-    # pooled draws across chains, and one R-hat per eta near 1 at convergence
+    # pooled draws across chains, and one R-hat per eta near 1 at convergence;
+    # the plain estimator bottoms out at sqrt((n - 1)/n), just below 1
     expect_equal(nrow(f$env$npbMeanDraws), 3L * 150L)
     .rhat <- f$env$npbRhat
     expect_equal(length(.rhat), 3L)
-    expect_true(all(is.finite(.rhat)) && all(.rhat >= 1 - 1e-8) && all(.rhat < 1.3))
+    expect_true(all(is.finite(.rhat)) && all(.rhat >= sqrt(149 / 150) - 1e-8) && all(.rhat < 1.3))
+  })
+
+  test_that("est='npb' draws do not depend on the thread count", {
+    .fitAt <- function(threads) {
+      .old <- rxode2::getRxThreads(verbose = FALSE)
+      on.exit(rxode2::setRxThreads(.old))
+      rxode2::setRxThreads(threads)
+      nlmixr2(.npbMod, nlmixr2data::theo_sd, est = "npb", control = .ctl())
+    }
+    f1 <- .fitAt(1L)
+    f2 <- .fitAt(2L)
+    expect_equal(as.numeric(f1$objf), as.numeric(f2$objf))
+    expect_equal(f1$env$npbSupport, f2$env$npbSupport)
   })
 
   test_that("mu-referenced sugar est='mnpb' fits", {

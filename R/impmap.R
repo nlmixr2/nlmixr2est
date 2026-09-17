@@ -92,7 +92,9 @@
 #'   the symptom rather than the cause -- more draws from a proposal whose
 #'   tails are too light still gives weights with infinite variance, which
 #'   `fit$env$impPsisK` will show.  See `df` for the shape-based remedy.
-#' @param nIter Maximum number of importance-sampling EM iterations.
+#' @param nIter Maximum number of importance-sampling EM iterations.  `0`
+#'   evaluates at the supplied parameters: one E-step with no M-step (like
+#'   NONMEM `EONLY=1`); `nBurn` is ignored.
 #' @param mapIter MAP-assist period, in EM iterations.  `1` (default)
 #'   re-centers the proposal at each subject's MAP mode every iteration; `k > 1`
 #'   re-centers every `k`th iteration; `0` never re-centers after the startup
@@ -698,6 +700,8 @@ impmapControl <- function(sigdig=3,
     if (!is.null(.impIdxMaps[[.nm]])) .control[[.nm]] <- .impIdxMaps[[.nm]]
   }
   .control$isample <- .isampleAll
+  checkmate::assertIntegerish(nIter, lower=0, len=1, any.missing=FALSE,
+                              .var.name="nIter")
   .control$nIter <- as.integer(nIter)
   checkmate::assertIntegerish(mapIter, lower=0, len=1, any.missing=FALSE,
                               .var.name="mapIter")
@@ -1008,11 +1012,22 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   warning(.impmapGammaRunInfo(.control$gammaMethod, .gmUser,
                               .control$iaccept),
           call.=FALSE)
+  if (identical(.control$nIter, 0L)) {
+    .etaSrc <- if (inherits(nlmixr2global$etaMat, "nlmixr2FitCore") &&
+                     identical(.control$etaMat, nlmixr2global$etaMat$etaMat)) {
+      "etas from the last fit"
+    } else if (!is.null(.control$etaMat)) {
+      "etas from etaMat"
+    } else {
+      "etas 0"
+    }
+    warning("E-step only (nIter=0): fixed parameters, ", .etaSrc, call.=FALSE)
+  }
   # 0-based index maps for the SIMPLE mu-referenced intercepts (theta = population
   # mean of an eta, no covariates): impOuter's M-step shifts each such theta by
   # the mean conditional eta.  Covariate mu-groups are excluded here because they
   # are handled by the regression update (updateMuGroups) instead.
-  .env <- ui$foceiOptEnv  # builds foceiMuGroupTheta (the covariate-group thetas)
+  ui$foceiOptEnv  # builds foceiMuGroupTheta (the covariate-group thetas)
   .iniDf <- ui$iniDf
   .th <- .iniDf[!is.na(.iniDf$ntheta), ]
   .thNames <- .th[order(.th$ntheta), "name"]
