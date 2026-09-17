@@ -1611,6 +1611,9 @@ void updateZm(focei_ind *indF){
     H = L*D*L.t();
   }
   vec hessV = H.elem(lowerTri(H, true));
+  // L*D*L' can overflow even from finite factors when L carries large entries,
+  // and n1qn1's own factorization only tests the pivots for sign.
+  if (!hessV.is_finite()) usable = false;
   std::fill(&indF->zm[0], &indF->zm[0]+op_focei.nzm, 0.0);
   if (usable) {
     std::copy(hessV.begin(), hessV.end(), &indF->zm[0]);
@@ -5175,6 +5178,14 @@ static inline int innerOpt1(int id, int likId) {
   // In parallel mode: etaM/etaS accumulated after the parallel region
   fInd->llik = f;
   // Use saved Hessian on next opimization.
+  //
+  // zm is whatever the LAST n1qn1 call left, which under a multi-attempt solve
+  // (the mceta floor pass, the nudge cascade) is not necessarily the attempt the
+  // candidate selection above chose: candEta/candF track eta and the objective,
+  // not curvature.  That is deliberate.  Under warm="save" the seed is an
+  // approximation n1qn1 re-factorizes and corrects from real gradients, and it
+  // already comes from a previous OUTER theta, so pairing it exactly with the
+  // reported eta buys nothing worth a per-candidate zm snapshot.
   fInd->mode=2;
   fInd->uzm =0;
   // The shi21 steps (etahf/etahr for the eta gradient, etahh for the FD Hessian) are
