@@ -183,4 +183,29 @@ nmTest({
     expect_equal(.ref$obj, .tiny$obj, tolerance=1e-10)
   })
 
+
+  test_that("the last rungs: a floored diagonal, then an actionable error", {
+    ## A structurally acceptable but NON positive-definite omega: there is
+    ## nothing to fill, so the ladder has to run out to the floored diagonal.
+    .nm <- c("eta1", "eta2")
+    .om <- matrix(c(1, 2, 2, 1), 2, 2, dimnames=list(.nm, .nm))
+    expect_true(any(eigen(.om)$values < 0))
+    expect_equal(nrow(.omegaBlockZeros(.om)), 0L)
+    expect_null(.omegaFillBlockZeros(.om))
+    expect_warning(.r <- .foceiSymInvCholCreate(.om, "sqrt", NULL),
+                   "floored diagonal")
+    ## the diagonal is kept (it is already above the floor), the covariance goes
+    expect_equal(diag(.r$mat), c(eta1=1, eta2=1))
+    expect_equal(.r$mat[1, 2], 0)
+    ## a non-finite omega floors to the minimum instead of erroring
+    .nan <- matrix(NaN, 2, 2, dimnames=list(.nm, .nm))
+    expect_warning(.rn <- .foceiSymInvCholCreate(.nan, "sqrt", NULL),
+                   "floored diagonal")
+    expect_equal(unname(diag(.rn$mat)), c(1e-6, 1e-6))
+    ## with fallback=FALSE (the per-step vae rebuild) only the fill may run, so
+    ## the same omega errors -- and the message names the random effects
+    expect_error(.foceiSymInvCholCreate(.om, "sqrt", NULL, fallback=FALSE),
+                 "eta1, eta2")
+  })
+
 })
