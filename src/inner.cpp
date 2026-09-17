@@ -655,6 +655,9 @@ struct focei_options {
   // actually happens -- it silently did not for the option's whole life.
   std::atomic<int> nWarmSaveZm{0};
   std::atomic<int> nWarmSaveSelfInit{0};
+  // mceta eta=0 floor passes re-seeded with the Hessian the sampled pass was
+  // given, rather than self-initialized (n1qn1 overwrites zm in place).
+  std::atomic<int> nWarmSaveFloor{0};
 
   int imp;
   // int printInner;
@@ -4437,6 +4440,7 @@ static inline int innerOpt1(int id, int likId) {
       std::copy(zmSeed.begin(), zmSeed.end(), &fInd->zm[0]);
       fInd->mode = zmSeedMode;
       fInd->uzm = 1;
+      if (zmSeedMode == 2) op_focei.nWarmSaveFloor.fetch_add(1, std::memory_order_relaxed);
     } else { fInd->mode = 1; fInd->uzm = 1; }
     mode = fInd->mode;
     std::fill_n(&fInd->var[0], fop->neta, 0.1);
@@ -4468,6 +4472,14 @@ static inline int innerOpt1(int id, int likId) {
     nF = fInd->nInnerF-nF;
     // REprintf("innerCost id: %d, fInd->nInnerF: %d", id, fInd->nInnerF);
     // If stays at zero try another point?
+    //
+    // `mode` is what n1qn1 actually reads (it takes it by pointer), so the reset
+    // below has to reach the local copy, not just fInd->mode.  Gating that on
+    // warm=="calc" is enough: doEtaNudge is cleared at the end of this function
+    // ("only nudge once"), and it is cleared in the same block that sets uzm=0,
+    // so a subject reaching the cascade has never completed an inner solve and
+    // has no saved curvature -- warm="save" and warm="none" are both still at
+    // the mode=1 they were set up with.  Only warmZm() can have left mode=2.
     if (fInd->doEtaNudge == 1 && op_focei.etaNudge != 0.0){
       bool tryAgain=false;
       // if (nF <= 3) tryAgain = true;
@@ -4489,7 +4501,7 @@ static inline int innerOpt1(int id, int likId) {
         fInd->mode = 1;
         fInd->uzm = 1;
         op_focei.didHessianReset.store(1, std::memory_order_relaxed);
-        mode = 1; // carry the reset into the retry (zm holds a factorization)
+        if (op_focei.warm == 1) mode = 1; // only "calc" can have left mode=2 here
         std::fill_n(fInd->x, fop->neta, op_focei.etaNudge);
         //nF = fInd->nInnerF;
         fInd->badSolve = 0;
@@ -4528,7 +4540,7 @@ static inline int innerOpt1(int id, int likId) {
           fInd->mode = 1;
           fInd->uzm = 1;
           op_focei.didHessianReset.store(1, std::memory_order_relaxed);
-          mode = 1; // carry the reset into the retry (zm holds a factorization)
+          if (op_focei.warm == 1) mode = 1; // only "calc" can have left mode=2 here
           std::fill_n(fInd->x, fop->neta, -op_focei.etaNudge);
           nF = fInd->nInnerF;
           fInd->badSolve = 0;
@@ -4562,7 +4574,7 @@ static inline int innerOpt1(int id, int likId) {
             fInd->mode = 1;
             fInd->uzm = 1;
             op_focei.didHessianReset.store(1, std::memory_order_relaxed);
-            mode = 1; // carry the reset into the retry (zm holds a factorization)
+            if (op_focei.warm == 1) mode = 1; // only "calc" can have left mode=2 here
             std::fill_n(fInd->x, fop->neta, -op_focei.etaNudge2);
             nF = fInd->nInnerF;
             fInd->badSolve = 0;
@@ -4596,7 +4608,7 @@ static inline int innerOpt1(int id, int likId) {
               fInd->mode = 1;
               fInd->uzm = 1;
               op_focei.didHessianReset.store(1, std::memory_order_relaxed);
-              mode = 1; // carry the reset into the retry (zm holds a factorization)
+              if (op_focei.warm == 1) mode = 1; // only "calc" can have left mode=2 here
               std::fill_n(fInd->x, fop->neta, +op_focei.etaNudge2);
               nF = fInd->nInnerF;
               fInd->badSolve = 0;
@@ -9196,6 +9208,7 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.nTrustInner.store(0, std::memory_order_relaxed);
   op_focei.nWarmSaveZm.store(0, std::memory_order_relaxed);
   op_focei.nWarmSaveSelfInit.store(0, std::memory_order_relaxed);
+  op_focei.nWarmSaveFloor.store(0, std::memory_order_relaxed);
   op_focei.nConditionalInnerHessian.store(0, std::memory_order_relaxed);
   op_focei.nTrustError.store(0, std::memory_order_relaxed);
   op_focei.nTrustNoConv.store(0, std::memory_order_relaxed);
@@ -12981,7 +12994,9 @@ void foceiFinalizeTables(Environment e){
         // not a usable Hessian so n1qn1 initialized its own.
         e["nWarmSave"] = IntegerVector::create(
           _["reused"] = op_focei.nWarmSaveZm.load(std::memory_order_relaxed),
-          _["selfInit"] = op_focei.nWarmSaveSelfInit.load(std::memory_order_relaxed));
+          _["selfInit"] = op_focei.nWarmSaveSelfInit.load(std::memory_order_relaxed),
+          // mceta eta=0 floor passes handed the sampled pass's seed back.
+          _["floorReseed"] = op_focei.nWarmSaveFloor.load(std::memory_order_relaxed));
       }
       if (op_focei.innerOpt == 3) {
         // innerOpt="trust" outcomes.  "calls" is what .nTrustInner() reports;

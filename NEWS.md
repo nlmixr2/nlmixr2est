@@ -58,10 +58,11 @@
   inner solve -- the option reused nothing since FOCEi was first imported
   (#1043).  A single-eta model was additionally unseedable because the
   one-by-one case multiplied the factorization back out as a zero matrix.
-  The n1qn1 Hessian reset in the `etaNudge`/`etaNudge2` cascade also reaches
-  the optimizer now instead of only under `warm="calc"`.  The previous
-  self-initialized behavior is available as the new `foceiControl(warm="none")`,
-  and `warm="save"` reuse is reported in the fit's `$nWarmSave`.
+  With `mceta` sampling the `eta=0` floor pass now gets that same seed rather
+  than self-initializing, so it stays the run `mceta=0` would have made.  The
+  previous self-initialized behavior is available as the new
+  `foceiControl(warm="none")`, and `warm="save"` reuse is reported in the fit's
+  `$nWarmSave`.
 
 - `nlmixr2()` names a model the way `rxode2()` does, through
   `rxode2::rxModelNameFromExpr()`: a symbol keeps its name, a call becomes its

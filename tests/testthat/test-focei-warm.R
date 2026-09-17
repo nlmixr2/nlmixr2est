@@ -108,6 +108,23 @@ nmTest({
     expect_equal(.s$objf, .n$objf, tolerance=1e-2)
   })
 
+  test_that("the mceta eta=0 floor pass keeps the warm='save' seed (#1043)", {
+    # mceta>=1 runs a second, eta=0 "floor" pass whose job is to be exactly the
+    # run mceta=0 would have made.  n1qn1 overwrites zm in place, so that pass
+    # has to be handed the seed the first pass got back; it used to self-init
+    # while the mceta=0 run it must reproduce got the saved curvature.
+    # $nWarmSave["floorReseed"] counts the floor passes that really got a
+    # mode=2 seed.
+    .f <- suppressWarnings(suppressMessages(
+      nlmixr(one.cmt, nlmixr2data::theo_sd, "focei",
+             foceiControl(maxOuterIterations=5L, covMethod="", calcTables=FALSE,
+                          print=0, innerOpt="n1qn1", warm="save", mceta=5L))))
+    expect_true(is.finite(.f$objf))
+    # a sampled eta beat eta=0 somewhere, so the floor pass ran at all
+    expect_gt(.f$env$nMcetaStart[["sample"]], 0L)
+    expect_gt(.f$env$nWarmSave[["floorReseed"]], 0L)
+  })
+
   test_that("warm='save' seeds a single-eta model too (#1043)", {
     # The reconstruction also had `if (n == 1) H = D` with D still zeroed, so a
     # one-eta model could not have been seeded even with the fill removed.
