@@ -2,6 +2,8 @@
 # also writes the vignette index to build/vignette.rds.  Excluding the whole
 # directory dropped that index and left a 'VignetteBuilder field but no prebuilt
 # vignette index' NOTE, so exclude the contents and keep vignette.rds.
+^man-roxygen$
+^nlmixr2est-bisect$
 ^build/(?!vignette\.rds$).*$
 ^nlmixr2est/man-roxygen$
 ^nlmixr2est/tests/testthat/_snaps$

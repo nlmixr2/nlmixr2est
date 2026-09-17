@@ -1,6 +1,13 @@
-# nlmixr2est 7.0.3
+# nlmixr2est 7.1.0
 
 ## New features
+
+- `est="imp"`, `"impmap"` and `"qrpem"` with `nIter=0` evaluate the fit at the
+  supplied parameters: one E-step and no M-step (like NONMEM `EONLY=1`), with
+  the importance-sampling objective in `$impObj`.  `$runInfo` notes the
+  E-step-only run and where the starting etas came from (#1091, #1092).
+- `setOfv(fit, "imp")` and `setOfv(fit, "impmap")` add an importance-sampling
+  objective to any fit through that E-step-only run at the fit's estimates.
 
 - `est="vae"` groups near-interchangeable covariates into colinearity
   clusters, controlled by the new `vaeControl(covSelectColinearCut=)`
@@ -30,11 +37,11 @@
   than estimated directly, such as `a <- add.sd*exp(eta.sd); cp ~ add(a)` or
   `a <- add.sd + WT*cov.sd; cp ~ add(a)`.  These endpoints are fit as the
   equivalent `cp ~ add(a) + dnorm()` log-likelihood, and `$runInfo` notes the
-  promotion.  A modeled residual on a `boxCox()`/`yeoJohnson()` endpoint is
-  refused, since `dnorm()` omits the lambda-dependent Jacobian.
+  promotion.
 - `est="saem"` estimates every theta without an eta that informs a
   general likelihood (`dnorm()`, `t()`, `cauchy()`, the discrete and
-  continuous densities, and `ll()`) through a temporary mu-referenced eta on
+  continuous densities, and `ll()`), including a `boxCox()`/`yeoJohnson()`
+  lambda, through a temporary mu-referenced eta on
   the scale of its range: `exp()` for a positive parameter such as a standard
   deviation or degrees of freedom, `expit()` for a probability, additive when
   unbounded.  The theta is reported as its back-transformed
@@ -44,6 +51,28 @@
 
 ## Bug fixes
 
+- `nIter=0` in `impmapControl()`, `impControl()` and `qrpemControl()` crashed R
+  at fit time; it now runs an E-step-only evaluation (#1091).
+- `est="saem"` and `est="npb"` seed their random draws sequentially, one seed
+  per individual per step, computed from the iteration so any draw's seed is
+  known from its position.  The phi1 and phi0 SAEM MCMC blocks used to draw
+  from the same seed, as could neighboring mixture components.  Seeded fits
+  give different, still reproducible, results.
+- `predict(fit, newdata)` solves with the fit's own `rxControl`, the same
+  options `nlmixr2(fit, data, "predict")` uses; options passed to `predict()`
+  still override it.  The two gave different predictions for an ODE model.
+- `addNpde()` and `vpcSim()` give the same result on every call and at any
+  thread count, even when an earlier `rxSetSeed()` left rxode2's own seed
+  sequence in force.
+- The SAEM Gaussian-quadrature objective caps its grid at 25 nodes per
+  dimension instead of crashing R, and `saemControl(nnodesGq=)` rejects a value
+  above 25.
+- `est="saem"` estimated a `boxCox()`/`yeoJohnson()` lambda without the
+  transform's log-Jacobian, both in the closed-form residual step and with a
+  general likelihood (`dnorm()`, `t()`, `cauchy()`, also covering `lnorm()`,
+  `logitNorm()` and `probitNorm()`), so lambda and the residual SD were fit to
+  the wrong density; the reported objective of a general-likelihood fit also
+  used the starting lambda.
 - `est="saem"` fits with a `dnorm()`, `t()` or `cauchy()` endpoint reported the
   log-density instead of the prediction as `PRED`/`IPRED` (and the residuals
   derived from them) in the fit table (#1084).
@@ -1665,7 +1694,7 @@
   package build and run against 5.1.5 has been removed, so the event-sensitivity
   shape swap and the CMT re-basing of the shared solve pool always go through
   rxode2's C API instead of writing its structures by field.
-  
+
 - `est="npag"` / `est="npb"` now support a hand-written general likelihood
   (`ll()`) properly.  A model whose `ll()` is written as the exact normal
   log-density now agrees with the equivalent `add()` model to the known

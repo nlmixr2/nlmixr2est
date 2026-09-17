@@ -20,6 +20,7 @@
 #include <boost/math/distributions/gamma.hpp>
 #include <ctime>
 #include "nmMcmcRng.h"
+#include "nmParallel.h"
 #include "impQrng.h"
 #include "imp.h"
 #include "logSumExp.h"
@@ -571,13 +572,7 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
   arma::mat impOmega;
   if (isImp) impGetOmega(impOmega);
   bool doParProp = (cores > 1);
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(cores) if(doParProp)
-#endif
-  for (int id = 0; id < nExp; ++id) {
-#ifdef _OPENMP
-    if (doParProp) setRxThreadId(omp_get_thread_num());
-#endif
+  nmForEachSubject(rx, nExp, cores, doParProp, [&](int id) {
     double gammaId = gammaVec[id];
     if (isImp) {
       arma::vec eta(neta);
@@ -615,10 +610,7 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
         }
       }
     }
-#ifdef _OPENMP
-    if (doParProp) setRxThreadId(-1);
-#endif
-  }
+  });
 
   // Per-expanded-subject E-step results (combined per base subject below).
   arma::mat cmExp(nExp, neta, arma::fill::zeros);
@@ -668,13 +660,7 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
   // its components concurrently would race on that solve buffer -- keeping them on
   // one thread avoids the race while preserving nsub-way parallelism.  For Nm == 1
   // this is the same nsub-iteration loop as before (bit-identical, same seeds).
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(cores) if(doPar)
-#endif
-  for (int i = 0; i < nsub; ++i) {
-#ifdef _OPENMP
-    if (doPar) setRxThreadId(omp_get_thread_num());
-#endif
+  nmForEachSubject(rx, nsub, cores, doPar, [&](int i) {
     for (int j = 0; j < Nm; ++j) {
       int id = i + j * nsub;
       // fresh per-(iter, expanded-subject) stream, independent of thread count
@@ -866,7 +852,7 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
 #ifdef _OPENMP
     if (doPar) setRxThreadId(-1);
 #endif
-  }
+  });
 
   // Combine over mixture components per base subject.  For a single component
   // (Nm == 1) this is bit-identical to the non-mixture E-step.
@@ -1160,13 +1146,7 @@ static void impComputeCov(Environment e, const arma::vec& gammaVec,
     double negHalfLogDetOmega = impLogDetOmegaInv5();
     std::fill(objBuf.begin(), objBuf.end(), 0.0);
     std::fill(objGood.begin(), objGood.end(), 0);
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(cores) if(doParCov)
-#endif
-    for (int id = 0; id < nExp; ++id) {
-#ifdef _OPENMP
-      if (doParCov) setRxThreadId(omp_get_thread_num());
-#endif
+    nmForEachSubject(rx, nExp, cores, doParCov, [&](int id) {
       if (ok[id]) {
         impForceResolve(id);
         // This subject's converged proposal scale (all equal under "global").
@@ -1191,10 +1171,7 @@ static void impComputeCov(Environment e, const arma::vec& gammaVec,
           objGood[id] = 1;
         }
       }
-#ifdef _OPENMP
-      if (doParCov) setRxThreadId(-1);
-#endif
-    }
+    });
     // Reduce in id order so the sum is bit-identical to a serial accumulation.
     // For a mixture each physical subject's contribution is the marginal
     // log(sum_m p_m L_im) over its components, which is what makes the mixture
@@ -1287,7 +1264,11 @@ void impOuter(Environment e) {
   int nBurn = impNburn();
   if (nBurn < 0) nBurn = 0;
   const bool burnFreezeOmega = impBurnFreezeOmega();
-  const int nIterTotal = nBurn + nIter;
+  // nIter = 0 is an E-step-only evaluation at the supplied parameters (NONMEM
+  // EONLY=1): one E-step, no M-step, and no burn-in (it would move the parameters).
+  const bool eOnly = (nIter <= 0);
+  if (eOnly) nBurn = 0;
+  const int nIterTotal = eOnly ? 1 : nBurn + nIter;
 
   arma::mat condMean;
   std::vector<arma::mat> condVar;
@@ -1810,6 +1791,12 @@ void impOuter(Environment e) {
     xiTrace.push_back(xiMean);
     iterRun = iter + 1;
 
+    if (eOnly) {
+      arma::vec parNow; impGetEstPar(parNow);
+      impIterPrintRow(parNow, obj);
+      break;
+    }
+
     // M-step.  First a Newton step on the non-mu structural thetas from the
     // IS-weighted score and Gauss-Newton Hessian accumulated over subjects/samples
     // -- done before the mu updates (which shift thetas/etas) so it sees the
@@ -1867,13 +1854,7 @@ void impOuter(Environment e) {
         // already carries the mixture / pool-sizing serial guard (forced to 1).
         bool doParM = (cores > 1) && impMStepParallelOk();
         if (doParM) impInnerParallelOn();
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(cores) schedule(static) if(doParM)
-#endif
-        for (int eid = 0; eid < nExp; ++eid) {
-#ifdef _OPENMP
-          if (doParM) setRxThreadId(omp_get_thread_num());
-#endif
+        nmForEachSubject(rx, nExp, cores, doParM, nmStatic, [&](int eid) {
           if (sampS[eid].n_rows != 0) {
             if (sir && sirN < (int)sampS[eid].n_rows) {
               // SIR acceleration: an equal-weight systematic resample stands in
@@ -1900,10 +1881,7 @@ void impOuter(Environment e) {
               useSub[eid] = 1;
             }
           }
-#ifdef _OPENMP
-          if (doParM) setRxThreadId(-1);
-#endif
-        }
+        });
         if (doParM) impInnerParallelOff();
         // Serial accumulation in eid order -- bit-identical to the serial theta score.
         for (int eid = 0; eid < nExp; ++eid) {
@@ -2266,12 +2244,13 @@ void impOuter(Environment e) {
     ((impQrScramble() == impQrScrambleLms) ? "lms" : "none");
   e["impSir"]      = impSirEnabled();
   e["impSirSample"] = impSirN();
-  e["impNiter"]    = nIterTotal;   // includes nBurn: the budget impIter is measured against
+  e["impNiter"]    = eOnly ? 0 : nIterTotal;   // includes nBurn: the budget impIter is measured against
+  e["impEonly"]    = eOnly;
   e["impMapIter"]  = isImp ? 0 : mapIter;   // 0 under est="imp": no re-centering at all
   // Burn-in iterations are the FIRST nBurn rows of every trace and of $parHist.
   e["impNburn"]    = nBurn;
   e["impBurnFreezeOmega"] = burnFreezeOmega;
-  e["impIter"]     = iterRun;
+  e["impIter"]     = eOnly ? 0 : iterRun;
   e["impConverged"] = converged;
   e["impObjTrace"] = wrap(objTrace);
   e["impGammaTrace"] = wrap(gammaTrace);

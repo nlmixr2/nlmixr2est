@@ -169,6 +169,7 @@
                        parHistThetaKeep=NULL,
                        parHistOmegaKeep=NULL,
                        parHistOmegaOffPairs=matrix(integer(0), ncol=2L),
+                       pseudoI1=integer(0),
                        DEBUG = 0,
                        tol = 1e-4, itmax = 100L, type = c("newuoa", "nelder-mead"),
                        lambdaRange = 3, powRange = 10,
@@ -216,7 +217,6 @@
   distribution.idx <- c("normal" = 1, "poisson" = 2, "binomial" = 3, "general" = 4)
   distribution <- match.arg(distribution)
   distribution <- distribution.idx[distribution]
-  .data <- data
   ## rxode2::rxTrans(data, model)
   data <- list(nmdat = data)
 
@@ -370,9 +370,7 @@
     }
   }
   nb_measures <- table(id)
-  ncov <- data$N.covar + 1
   nmc <- mcmc$nmc
-  nM <- mcmc$nmc * N
   mlen <- max(nb_measures)
   io <- t(sapply(nb_measures, function(x) rep(1:0, c(x, mlen - x))))
   indio <- grep(1, t(io)) - 1
@@ -382,7 +380,6 @@
     stop("'CMT' has NA(s)")
   }
   ## CHECKME
-  form <- attr(model$saem_mod, "form")
   .nobs <- 0
   dat <- rxode2::etTrans(data$nmdat, attr(model$saem_mod, "rx"), addCmt=TRUE, dropUnits=TRUE, allTimeVar=TRUE,
                          addlKeepsCov = rxControl$addlKeepsCov, addlDropSs = rxControl$addlDropSs,
@@ -454,12 +451,6 @@
   nlambda1 <- sum(mcov[, i1])
   nlambda0 <- sum(mcov[, i0])
   nlambda <- nlambda1 + nlambda0
-  nd1 <- nphi1 + nlambda1 + 1
-  nd2 <- nphi1 + nlambda1 + nlambda0
-  # one FIM residual slot per endpoint, none for a general log-likelihood
-  # model (distribution==4) -- must stay in sync with src/saem.cpp's nb_param
-  nResidEp <- if (distribution == 4) 0L else model$nendpnt
-  nb_param <- nd2 + nResidEp
   Mcovariables <- cbind(rep(1, N), covariables)[, 1:nrow(mcov)]
   dim(Mcovariables) <- c(length(Mcovariables) / nrow(mcov), nrow(mcov)) # FIXME
 
@@ -473,19 +464,14 @@
   fixed.i0 <- (1:len)[wh] - 1
 
   jlog1 <- grep(TRUE, model$log.eta)
-  jcov <- grep(TRUE, apply(mcov, 1, sum) > 0)
   covstruct1 <- covstruct[i1, i1]
   dim(covstruct1) <- c(nphi1, nphi1)
-  ind_cov <- grep(1, mcov[mcov > 0])
 
   mcov1 <- matrix(mcov[, i1], ncol = length(i1))
   mcov0 <- matrix(mcov[, i0], nrow = nrow(mcov), ncol = length(i0))
   ind_cov1 <- grep(1, mcov1[mcov1 > 0]) - 1
   ind_cov0 <- grep(1, mcov0[mcov0 > 0]) - 1
 
-  pc <- apply(mcov, 2, sum)
-  ipc <- cumsum(c(0, pc[1:(nphi - 1)])) + 1
-  ipcl1 <- ipc[jlog1]
   for (x in jlog1) inits$theta[1, x] <- log(inits$theta[1, x])
 
   idx <- as.vector(mcov1 > 0)
@@ -741,6 +727,8 @@
     seed = seed,
     fixed.i1 = fixed.i1,
     fixed.i0 = fixed.i0,
+    # temporary-eta phi1 columns keep saem's own mean update (see refinePhi1Lik)
+    pseudo.i1 = as.integer(pseudoI1),
     ilambda1 = as.integer(ilambda1),
     ilambda0 = as.integer(ilambda0),
     nobs = .nobs,

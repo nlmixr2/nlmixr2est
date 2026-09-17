@@ -69,14 +69,17 @@
 #' two occasions already makes `3^9 = 19683`.  Step the node count down until
 #' the grid fits a budget rather than silently running an astronomically large
 #' one.  1 is the Laplace route, which `calc.2LL()` already names in its message.
+#' `gqg.mlx()` only tabulates up to 25 nodes; above that it returns an empty
+#' grid, which crashed `calc.2LL()`, so the count is capped there too.
 #'
 #' @param nnodes requested nodes per dimension
 #' @param nphi1 number of mu-referenced (random-effect) phi columns
 #' @param maxNodes grid budget; `getOption("nlmixr2.saemGqMaxNodes", 50000)`
-#' @return the node count to use, never above `nnodes` and never below 1
+#' @return the node count to use, never above `nnodes` or 25 and never below 1
 #' @noRd
 .saemGqNodes <- function(nnodes, nphi1,
                          maxNodes = getOption("nlmixr2.saemGqMaxNodes", 50000)) {
+  nnodes <- min(nnodes, 25)
   if (nnodes <= 1 || nphi1 <= 0) return(nnodes)
   if (nnodes^nphi1 <= maxNodes) return(nnodes)
   max(1, min(nnodes, floor(maxNodes^(1 / nphi1))))
@@ -217,8 +220,12 @@ calc.2LL <- function(fit, nnodes.gq = 8, nsd.gq = 4, phiM) {
   # log-Jacobian (what powerL returns, e.g. -log(y) for lnorm) is ADDED to get
   # the likelihood of the original data -- the same convention FOCEi uses when
   # it accumulates tbsLik (#903)
+  # An ll() row already carries its Jacobian in the log-density (.saemAddTbsJacobian);
+  # adding powerL there would count it twice with the kernel's stale starting lambda.
+  .g <- !.isLL
   ll2 <- 2 * sum(lQ + rowSums(log(b))) - N * log(det(Omega)) - (N * nphi1 + .nGauss) * log(2 * pi) +
-    2 * .Call(`_nlmixr2est_powerL`, ysave, lambda, as.integer(yj), as.double(low), as.double(hi))
+    2 * .Call(`_nlmixr2est_powerL`, ysave[.g], lambda[.g], as.integer(yj[.g]),
+              as.double(low[.g]), as.double(hi[.g]))
   -ll2
 }
 gqg.mlx <- function(dim, nnodes.gq) {

@@ -6,13 +6,24 @@ nmTest({
 
     fit <- one.compartment.fit.focei
 
-    md <- suppressMessages(do.call("predict", c(list(fit, theo_md), fit$control)))
+    # nlmixr2(fit, "predict") solves with the fit's rxControl (rtol=1e-3) while
+    # predict() defaults to rxControl(), so compare each at matched tolerances
+    md <- suppressMessages(do.call("predict", c(list(fit, theo_md), fit$control$rxControl)))
 
     md2 <- .nlmixr(fit, theo_md, "predict")
 
     expect_equal(as.data.frame(md), as.data.frame(md2), tolerance = 1e-4)
 
-    md <- suppressMessages(predict(fit, theo_md))
+    # with no solving options both entry points use the fit's own rxControl
+    expect_equal(as.data.frame(suppressMessages(predict(fit, theo_md))),
+                 as.data.frame(.nlmixr(fit, theo_md, "predict")),
+                 tolerance = 1e-4)
+
+    # so comparing against rxControl() defaults needs them passed on both sides
+    md <- suppressMessages(
+      do.call("predict", c(list(fit, theo_md), rxode2::rxControl())))
+
+    md2 <- .nlmixr(fit, theo_md, "predict", control = rxode2::rxControl())
 
     expect_equal(as.data.frame(md), as.data.frame(md2), tolerance = 1e-4)
 

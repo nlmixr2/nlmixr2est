@@ -11,6 +11,7 @@
 // [[Rcpp::depends(RcppArmadillo)]]
 #include <RcppArmadillo.h>
 #include "rxomp.h"
+#include "nmParallelCore.h"
 #include "foceiGrad.h"
 #include "censEst.h"   // censNormalPartials: exact censored rho(f,R) partials (M2/M3/M4)
 using namespace arma;
@@ -415,8 +416,7 @@ Rcpp::List foceiGradAllFR_(const arma::mat& a, const arma::cube& A,
   // runs.  (innerOpt in inner.cpp wraps its region for exactly this reason.)  Catch per
   // subject and poison it: the result carries NaN and the R driver's is.finite() gate
   // degrades to finite differences, which is the intended behaviour.
-#pragma omp parallel for num_threads(ncores)
-  for (int i = 0; i < nsub; i++) {
+  nmForEach(nsub, ncores, ncores > 1, nmStatic, [&](int i) {
     try {
       int o0 = obsOffset[i], o1 = obsOffset[i + 1] - 1;
       mat ai = a.rows(o0, o1), aRi = aR.rows(o0, o1);
@@ -434,7 +434,7 @@ Rcpp::List foceiGradAllFR_(const arma::mat& a, const arma::cube& A,
     } catch (...) {
       gmat.col(i).fill(datum::nan); etaPall.slice(i).fill(datum::nan);
     }
-  }
+  });
   vec g = sum(gmat, 1);
   return Rcpp::List::create(Rcpp::Named("g") = g, Rcpp::Named("etaP") = etaPall);
 }
@@ -564,8 +564,7 @@ Rcpp::List foceiGradAllFoceFR_(const arma::mat& a, const arma::cube& A,
   // runs.  (innerOpt in inner.cpp wraps its region for exactly this reason.)  Catch per
   // subject and poison it: the result carries NaN and the R driver's is.finite() gate
   // degrades to finite differences, which is the intended behaviour.
-#pragma omp parallel for num_threads(ncores)
-  for (int i = 0; i < nsub; i++) {
+  nmForEach(nsub, ncores, ncores > 1, nmStatic, [&](int i) {
     try {
       int o0 = obsOffset[i], o1 = obsOffset[i + 1] - 1;
       mat ai = a.rows(o0, o1), aRei = aRe.rows(o0, o1), aRci = aRc.rows(o0, o1);
@@ -582,7 +581,7 @@ Rcpp::List foceiGradAllFoceFR_(const arma::mat& a, const arma::cube& A,
     } catch (...) {
       gmat.col(i).fill(datum::nan); etaPall.slice(i).fill(datum::nan);
     }
-  }
+  });
   vec g = sum(gmat, 1);
   return Rcpp::List::create(Rcpp::Named("g") = g, Rcpp::Named("etaP") = etaPall);
 }
@@ -934,8 +933,7 @@ arma::mat foceiRAllFR_(const arma::mat& a, const arma::cube& A, const arma::cube
   // runs.  (innerOpt in inner.cpp wraps its region for exactly this reason.)  Catch per
   // subject and poison it: the result carries NaN and the R driver's is.finite() gate
   // degrades to finite differences, which is the intended behaviour.
-#pragma omp parallel for num_threads(ncores)
-  for (int i = 0; i < nsub; i++) {
+  nmForEach(nsub, ncores, ncores > 1, nmStatic, [&](int i) {
     try {
       int o0 = obsOffset[i], o1 = obsOffset[i + 1] - 1;
       mat dvi = hasDv ? mat(dvSens.rows(o0, o1)) : mat(o1 - o0 + 1, 0);
@@ -950,7 +948,7 @@ arma::mat foceiRAllFR_(const arma::mat& a, const arma::cube& A, const arma::cube
     } catch (...) {
       Rall.slice(i).fill(datum::nan);
     }
-  }
+  });
   mat R = sum(Rall, 2);
   return R;
 }
@@ -1157,8 +1155,7 @@ arma::mat foceiRAllFoceFR_(const arma::mat& a, const arma::cube& A, const arma::
   // runs.  (innerOpt in inner.cpp wraps its region for exactly this reason.)  Catch per
   // subject and poison it: the result carries NaN and the R driver's is.finite() gate
   // degrades to finite differences, which is the intended behaviour.
-#pragma omp parallel for num_threads(ncores)
-  for (int i = 0; i < nsub; i++) {
+  nmForEach(nsub, ncores, ncores > 1, nmStatic, [&](int i) {
     try {
       int o0 = obsOffset[i], o1 = obsOffset[i + 1] - 1;
       mat dvi = hasDv ? mat(dvSens.rows(o0, o1)) : mat(o1 - o0 + 1, 0);
@@ -1173,7 +1170,7 @@ arma::mat foceiRAllFoceFR_(const arma::mat& a, const arma::cube& A, const arma::
     } catch (...) {
       Rall.slice(i).fill(datum::nan);
     }
-  }
+  });
   mat R = sum(Rall, 2);
   return R;
 }
@@ -1429,8 +1426,7 @@ Rcpp::List foceiGradAllAgqFR_(const arma::mat& a, const arma::cube& A,
   // PROCESS dies (see foceiGradAllFR_).  The subject kernel uses the non-throwing inv()/chol()
   // bool forms for its designed singular-matrix failures (-> ok=false -> FD), but catch any
   // unexpected throw per subject and poison it: NaN + okv=0 both route the R driver to FD.
-#pragma omp parallel for num_threads(ncores)
-  for (int i = 0; i < nsub; i++) {
+  nmForEach(nsub, ncores, ncores > 1, nmStatic, [&](int i) {
     try {
     int o0 = obsOffset[i], o1 = obsOffset[i + 1] - 1, no = o1 - o0 + 1;
     mat ai = a.rows(o0, o1), aRi = aR.rows(o0, o1);
@@ -1459,7 +1455,7 @@ Rcpp::List foceiGradAllAgqFR_(const arma::mat& a, const arma::cube& A,
     } catch (...) {
       gmat.col(i).fill(datum::nan); etaPall.slice(i).fill(datum::nan); okv[i] = 0;
     }
-  }
+  });
   vec g = sum(gmat, 1);
   return Rcpp::List::create(Rcpp::Named("g") = g, Rcpp::Named("etaP") = etaPall,
                             Rcpp::Named("ok") = okv);

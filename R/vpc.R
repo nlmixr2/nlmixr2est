@@ -67,9 +67,23 @@ vpcSim <- function(object, ..., keep=NULL, n=300,
   checkmate::assertLogical(normRelated, len=1, any.missing=FALSE)
   checkmate::assertCharacter(keep, null.ok=TRUE, pattern="^[.]*[a-zA-Z]+[a-zA-Z0-9._]*$")
   checkmate::assertIntegerish(seed)
+  # seed R's RNG and switch rxode2's own seed sequence off for the simulation: a
+  # sequence left in force by an earlier rxSetSeed() advances by the thread
+  # count per solve, which would make the simulations thread dependent
+  rxode2::rxWithSeed(seed, rxseed = -1,
+                     .vpcSimSeeded(object, ..., keep = keep, n = n, pred = pred,
+                                   nretry = nretry, minN = minN,
+                                   normRelated = normRelated))
+}
+
+#' Run the vpcSim() simulation once its seeds are in force
+#'
+#' @inheritParams vpcSim
+#' @return data frame of the VPC simulation
+#' @noRd
+.vpcSimSeeded <- function(object, ..., keep, n, pred, nretry, minN, normRelated) {
   nlmixr2global$finalUiCompressed <- FALSE
   on.exit(nlmixr2global$finalUiCompressed <- TRUE)
-  set.seed(seed)
   .si <- object$simInfo
   .env <- new.env(parent=emptyenv())
   .env$ui <- object$ui

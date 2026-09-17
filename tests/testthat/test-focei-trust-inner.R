@@ -260,6 +260,28 @@ nmTest({
     expect_true(is.finite(.bad$objf))
   })
 
+  test_that("the etaRestart draws do not depend on the thread count", {
+    skip_on_cran()
+    # maxInnerIterations=2 makes subjects exhaust the cascade, so the Omega
+    # restarts (seed + id*nres + k) actually run
+    .fitAt <- function(threads) {
+      .old <- rxode2::getRxThreads(verbose = FALSE)
+      on.exit(rxode2::setRxThreads(.old))
+      rxode2::setRxThreads(threads)
+      if (threads > 1L) skip_if(rxode2::getRxThreads(verbose = FALSE) < threads)
+      suppressWarnings(suppressMessages(
+        nlmixr2(.oneCmt, nlmixr2data::theo_sd, est = "focei",
+                control = foceiControl(innerOpt = "trust", maxOuterIterations = 5,
+                                       maxInnerIterations = 2, covMethod = "",
+                                       calcTables = FALSE, print = 0))))
+    }
+    .f1 <- .fitAt(1L)
+    .f2 <- .fitAt(2L)
+    expect_gt(.f1$env$nTrustInner[["omegaRestart"]], 0L)
+    expect_equal(.f1$objf, .f2$objf)
+    expect_equal(.f1$env$nTrustInner, .f2$env$nTrustInner)
+  })
+
   test_that("a failed inner attempt cannot win the marginal re-rank (#1044)", {
     skip_on_cran()
     # The restart candidates the marginal re-rank chooses from carried no record
