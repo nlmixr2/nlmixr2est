@@ -237,11 +237,11 @@
     assign("covList", .covList, .env)
   }
   .control <- .env$foceiControl
+  .lst <- list(...)
   .control$maxInnerIterations <- 0L
   .control$maxOuterIterations <- 0L
   .control$boundTol <- 0 # turn off boundary
   .control$calcTables <- FALSE
-  .lst <- list(...)
   .env2 <- new.env(parent = emptyenv())
   for (.n in names(.lst)) {
     .control[[.n]] <- .lst[[.n]]
@@ -509,8 +509,8 @@
 #' \code{"analytic"} on a zero-iteration FOCEI model, and \code{"sa"} (SAEM
 #' Louis FIM) / \code{"imp"} (importance-sampling Monte-Carlo) via the decoupled
 #' recompute engine (the latter two require a mixed-effects fit).  When
-#' \code{"sa"}/\code{"imp"}/\code{"analytic"} cannot be computed the covariance
-#' is left unchanged (it is never silently downgraded to \code{"r,s"}).
+#' a covariance cannot be computed it is left unchanged (it is never silently
+#' downgraded to \code{"r,s"}).
 #'
 #' @details
 #'
@@ -531,31 +531,226 @@
 #' \code{fit$covMethod} names the installed covariance and
 #' \code{names(fit$covList)} the cached alternatives (the fit print shows both).
 #'
+#' @section Adding a covariance method:
+#'
+#' \code{setCov()} is an S3 generic dispatched on \code{method} (without any
+#' \code{" (full)"} suffix), so another package (for example SIR or a bootstrap)
+#' can add a covariance by registering a method:
+#'
+#' \preformatted{
+#' # registered with S3method(nlmixr2est::setCov, sir) in NAMESPACE
+#' setCov.sir <- function(fit, method, control = sirControl(), ...) {
+#'   # compute on the estimation scale, named like fit$cov
+#'   mySirCovariance(fit, control)
+#' }
+#' }
+#'
+#' A method that has options declares its own \code{control} holding only those
+#' options, so \code{setCov(fit, "sir")} uses the defaults and
+#' \code{setCov(fit, "sir", control = sirControl(...))} changes them.  The
+#' method receives the fit and \code{method} (carrying dispatch classes; use
+#' \code{unclass(method)} for the plain name) and either returns a named
+#' covariance matrix, which \code{setCov()} checks for positive definiteness and
+#' installs as \code{method} (updating the standard errors and keeping the prior
+#' covariance in \code{fit$covList}), or installs the covariance itself and
+#' returns \code{NULL}.  A mixture fit's matrix is rotated onto the probability
+#' scale unless it carries \code{attr(, "mixRotated")} set to \code{TRUE}.  A
+#' method that cannot compute the covariance should \code{stop()}.
+#' \code{setCovAllMethods()} lists the available methods.
+#'
+#' Each covariance remembers the options it was computed with (in
+#' \code{fit$env$covOptions}).  A covariance already on the fit is reinstalled
+#' from \code{fit$covList} only when the requested options -- the supplied
+#' \code{control}, or the method's default one -- are the same; otherwise it is
+#' recomputed.  A covariance computed during estimation used the fit's own
+#' settings.
+#'
 #' @param fit nlmixr2 fit
-#' @param method covariance method (see the `covMethod` argument for the control
-#'   options for the choices)
+#' @param method covariance method (see the \code{covMethod} argument of the
+#'   control options for the choices)
+#' @param ... arguments passed to the covariance method
+#' @param control options for the covariance method itself, only needed to
+#'   change its defaults: \code{\link{rsControl}()} for \code{"r,s"}, \code{"r"}
+#'   and \code{"s"}, \code{\link{saControl}()} for \code{"sa"} and
+#'   \code{\link{impCovControl}()} for \code{"imp"}
 #' @return Fit object with covariance updated
 #' @author Matt Fidler
 #' @seealso \code{\link{foceiControl}()}, \code{\link{saemControl}()}
 #' @export
-setCov <- function(fit, method) {
+setCov <- function(fit, method, ...) {
+  if (inherits(method, "nlmixr2SetCov")) UseMethod("setCov", method)
+  if (!inherits(fit, "nlmixr2FitCore")) {
+    stop("'fit' must be a nlmixr2 fit", call. = FALSE)
+  }
+  if (!.covIsName(method)) {
+    stop("'method' must be a single covariance method name", call. = FALSE)
+  }
   .pt <- proc.time()
   .env <- fit
   if (rxode2::rxIs(fit, "nlmixr2FitData")) {
     .env <- fit$env
   }
-  if (.covSameName(method, .env$covMethod)) {
+  # a covariance on the fit is reused only when computed with the same options
+  .r <- .covOptionsRequested(fit, .env, method, list(...))
+  .req <- .r$options
+  .explicit <- .r$explicit
+  if (.covSameName(method, .env$covMethod) &&
+        .covOptionsMatch(.env, .env$covMethod, .req, .explicit)) {
     stop("no need to switch covariance methods, already set to '",
       method,
       "'",
       call. = FALSE
     )
   }
-  if (!.setCovFromCache(fit, .env, method)) {
-    .setCovRecompute(fit, .env, method)
+  .cached <- !is.null(.covCacheGet(.env)[[method]]) &&
+    .covOptionsMatch(.env, method, .req, .explicit)
+  if (!.cached || !.setCovFromCache(fit, .env, method)) {
+    .m <- structure(method, class = c(.covBaseName(method), "nlmixr2SetCov"))
+    .setCovInstall(.env, method, setCov(fit, .m, ...))
+    # a method that installed itself may have left an older copy in the cache
+    if (.covSameName(method, .env$covMethod)) .covCacheDrop(.env, method)
+    .covOptionsSet(.env, method, .req)
   }
   .env$time$covariance <- (proc.time() - .pt)["elapsed"]
   invisible(fit)
+}
+
+#' List the covariance methods setCov() can compute
+#'
+#' @return character vector of methods, including those registered by other
+#'   packages
+#' @examples
+#' setCovAllMethods()
+#' @export
+setCovAllMethods <- function() {
+  .m <- as.character(utils::methods("setCov"))
+  .m <- substr(.m, 8L, nchar(.m))
+  .m[!(.m %in% c("default", "nlmixr2SetCov"))]
+}
+
+#' @rdname setCov
+#' @export
+setCov.default <- function(fit, method, ...) {
+  stop("covariance method '", unclass(method), "' not supported; can be one of: ",
+       paste(setCovAllMethods(), collapse = "; "),
+       call. = FALSE)
+}
+
+#' @rdname setCov
+#' @export
+setCov.analytic <- function(fit, method, ...) {
+  .setCovAnalytic(fit, .setCovEnv(fit), unclass(method))
+  invisible(NULL)
+}
+
+#' @rdname setCov
+#' @export
+`setCov.r,s` <- function(fit, method, control = rsControl(), ...) {
+  .setCovFdMethod(fit, method, "r,s", control)
+}
+
+#' @rdname setCov
+#' @export
+setCov.r <- function(fit, method, control = rsControl(), ...) {
+  .setCovFdMethod(fit, method, "r", control)
+}
+
+#' @rdname setCov
+#' @export
+setCov.s <- function(fit, method, control = rsControl(), ...) {
+  .setCovFdMethod(fit, method, "s", control)
+}
+
+#' @rdname setCov
+#' @export
+setCov.sa <- function(fit, method, control = saControl(), ...) {
+  .setCovDecoupledMethod(fit, method, control, "saControl")
+}
+
+#' @rdname setCov
+#' @export
+setCov.imp <- function(fit, method, control = impCovControl(), ...) {
+  .setCovDecoupledMethod(fit, method, control, "impCovControl")
+}
+
+#' The environment of a fit
+#' @param fit nlmixr2 fit (data or environment)
+#' @return fit environment
+#' @noRd
+.setCovEnv <- function(fit) {
+  if (rxode2::rxIs(fit, "nlmixr2FitData")) fit$env else fit
+}
+
+#' Error unless `control` came from the constructor `ctl`
+#' @param method covariance-method name
+#' @param control control object
+#' @param ctl constructor (and class) name
+#' @return invisibly `TRUE`
+#' @noRd
+.setCovAssertControl <- function(method, control, ctl) {
+  if (!inherits(control, ctl)) {
+    stop("covariance method '", method, "' needs 'control' from ", ctl, "()",
+         call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
+#' Shared body of the "r,s"/"r"/"s" `setCov()` methods
+#' @param fit nlmixr2 fit
+#' @param method covariance-method name (with dispatch classes)
+#' @param base `method` without its scope suffix
+#' @param control `rsControl()` object
+#' @return `NULL`; installs on the fit
+#' @noRd
+.setCovFdMethod <- function(fit, method, base, control) {
+  method <- unclass(method)
+  .setCovAssertControl(method, control, "rsControl")
+  .setCovFd(fit, .setCovEnv(fit), method, base, control)
+  invisible(NULL)
+}
+
+#' Shared body of the "sa"/"imp" `setCov()` methods
+#' @param fit nlmixr2 fit
+#' @param method covariance-method name (with dispatch classes)
+#' @param control covariance control object
+#' @param ctl control constructor name
+#' @return `NULL`; installs on the fit
+#' @noRd
+.setCovDecoupledMethod <- function(fit, method, control, ctl) {
+  method <- unclass(method)
+  if (.covIsFull(method)) {
+    stop("covariance method '", method, "' not supported", call. = FALSE)
+  }
+  .setCovAssertControl(method, control, ctl)
+  .setCovDecoupled(fit, .setCovEnv(fit), method, control)
+  invisible(NULL)
+}
+
+#' Install what a `setCov()` method returned
+#'
+#' `NULL` means the method installed the covariance itself.
+#' @param env fit environment
+#' @param method covariance-method name
+#' @param cov covariance matrix returned by the method, or `NULL`
+#' @return invisibly `TRUE`
+#' @noRd
+.setCovInstall <- function(env, method, cov) {
+  if (is.null(cov)) return(invisible(TRUE))
+  if (!is.matrix(cov) || nrow(cov) != ncol(cov) || is.null(rownames(cov)) ||
+        !identical(rownames(cov), colnames(cov))) {
+    stop("setCov() method '", method,
+         "' must return a square covariance matrix with matching dimnames or NULL",
+         call. = FALSE)
+  }
+  .rotated <- isTRUE(attr(cov, "mixRotated"))
+  attr(cov, "mixRotated") <- NULL
+  if (!isTRUE(.covInstallResult(env, list(cov = cov, covMethod = method,
+                                          mixRotated = .rotated)))) {
+    stop("covMethod=\"", method, "\" could not be computed for this fit; the covariance is left unchanged",
+         call. = FALSE)
+  }
+  .covCacheDrop(env, method)
+  invisible(TRUE)
 }
 
 #' Re-install an already-calculated covariance from the fit's cache
@@ -585,32 +780,15 @@ setCov <- function(fit, method) {
   TRUE
 }
 
-#' Compute a covariance `method` the fit does not already hold
-#'
-#' Errors (leaving the covariance unchanged) when `method` is unknown or cannot
-#' be computed -- it is never silently downgraded to another method.
-#' @param fit nlmixr2 fit
-#' @param env fit environment
-#' @param method covariance-method name
-#' @return invisibly `TRUE`; called for its side effects on `env`
-#' @noRd
-.setCovRecompute <- function(fit, env, method) {
-  .base <- .covBaseName(method)
-  if (identical(.base, "analytic")) return(.setCovAnalytic(fit, env, method))
-  if (.base %in% c("r,s", "r", "s")) return(.setCovFd(fit, env, method, .base))
-  if (method %in% c("sa", "imp")) return(.setCovDecoupled(fit, env, method))
-  stop("different covariance types have not been calculated",
-    call. = FALSE
-  )
-}
-
 #' Assemble the exact analytic observed information and install the shape
 #' `method` names
 #'
 #' On any failure the covariance is left UNCHANGED -- it is never silently
 #' downgraded to the "r,s" finite-difference covariance (which the C++ cov chain
 #' would otherwise fall back to and mislabel "analytic").
-#' @inheritParams .setCovRecompute
+#' @param fit nlmixr2 fit
+#' @param env fit environment
+#' @param method covariance-method name
 #' @return invisibly `TRUE`
 #' @noRd
 .setCovAnalytic <- function(fit, env, method) {
@@ -637,23 +815,32 @@ setCov <- function(fit, method) {
 #'
 #' `.setCov()` refits with `est="none"`; `covFull` selects the shape `method`
 #' names.
-#' @inheritParams .setCovRecompute
+#' @param fit nlmixr2 fit
+#' @param env fit environment
+#' @param method covariance-method name
 #' @param base `method` without its scope suffix
+#' @param control `rsControl()` object, or `NULL` for the fit's own settings
 #' @return invisibly `TRUE`
 #' @noRd
-.setCovFd <- function(fit, env, method, base) {
-  .setCov(fit, covMethod = base, covFull = .covIsFull(method))
+.setCovFd <- function(fit, env, method, base, control = NULL) {
+  do.call(.setCov, c(list(fit, covMethod = base, covFull = .covIsFull(method)),
+                     unclass(control)))
   env$covMethod <- method
   .covCacheDrop(env, method)
   invisible(TRUE)
 }
 
 #' Recompute a decoupled covariance ("sa"/"imp") at the converged estimates
-#' @inheritParams .setCovRecompute
+#' @param fit nlmixr2 fit
+#' @param env fit environment
+#' @param method covariance-method name
+#' @param control covariance control, or `NULL` for the defaults
 #' @return invisibly `TRUE`
 #' @noRd
-.setCovDecoupled <- function(fit, env, method) {
-  .r <- tryCatch(.covRecompute(fit, method), error = function(e) NULL)
+.setCovDecoupled <- function(fit, env, method, control = NULL) {
+  # an invalid control is the caller's error, not a failed computation
+  .covEngineControl(method, control)
+  .r <- tryCatch(.covRecompute(fit, method, control), error = function(e) NULL)
   if (!isTRUE(.covInstallResult(env, .r))) {
     stop("covMethod=\"", method, "\" could not be computed for this fit; the covariance is left unchanged",
          call. = FALSE)

@@ -2,6 +2,16 @@
 
 ## New features
 
+- `setCov()` is now an S3 generic dispatched on the covariance method, so
+  other packages (for example SIR or bootstrap) can add a method with
+  `setCov.<method>()`; `setCovAllMethods()` lists them.  A method's own
+  options are changed with `control=`, holding only covariance options:
+  `rsControl()` for `"r,s"`/`"r"`/`"s"`, `saControl()` for `"sa"` and
+  `impCovControl()` for `"imp"`.  Each covariance records the options it
+  was computed with (`fit$env$covOptions`), and `setCov()` reuses a cached
+  covariance only when the requested options match, recomputing otherwise.
+- The fit print separates the other calculated covariances with `;`, since
+  `"r,s"` contains a comma.
 - `est="imp"`, `"impmap"` and `"qrpem"` with `nIter=0` evaluate the fit at the
   supplied parameters: one E-step and no M-step (like NONMEM `EONLY=1`), with
   the importance-sampling objective in `$impObj`.  `$runInfo` notes the
