@@ -45,6 +45,10 @@ test_that("IOV models fit with ifocei and mfocei (#1083)", {
     expect_true("iov.ka" %in% .fit$ui$iniDf$name, info = .est)
     expect_equal(.fit$ui$iniDf$condition[.fit$ui$iniDf$name == "iov.ka"], "occ",
                  info = .est)
+    # and with its value, not a placeholder: maxOuterIterations=0 leaves the
+    # occasion variance at the ini() estimate
+    expect_equal(.fit$ui$iniDf$est[.fit$ui$iniDf$name == "iov.ka"], 0.1,
+                 info = .est)
     # and the model line is the user's again, with no rewrite residue
     .txt <- paste(vapply(.fit$ui$lstExpr,
                          function(x) paste(deparse(x), collapse = " "),
@@ -90,5 +94,12 @@ test_that("a correlated occasion block fits under a full Laplace/AGQ delegate", 
     expect_equal(.fit$ui$iniDf$condition[.fit$ui$iniDf$name %in%
                                            c("iov.cl", "iov.v")],
                  c("occ", "occ"), info = .est)
+    # the whole block comes back, covariance included -- an `iovMethod="omega"`
+    # expansion that lost the off diagonal would still restore the conditions
+    .blk <- .fit$ui$iniDf[.fit$ui$iniDf$name %in%
+                            c("iov.cl", "iov.v", "(iov.cl,iov.v)"), ]
+    expect_equal(.blk$est[match(c("iov.cl", "(iov.cl,iov.v)", "iov.v"),
+                                .blk$name)],
+                 c(0.1, 0.03, 0.2), info = .est)
   }
 })

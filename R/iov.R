@@ -1041,6 +1041,11 @@ nlmixr2iovVarSd <- function(val) {
               nlmixr2iovSdCv(sqrt(.finIni$est[.wv]))
             }, double(1), USE.NAMES=FALSE)
         }
+        # the CV stays in the NUMERIC `Back-transformed` column (pinned by
+        # test-iov-same.R); only the printed table below moves it under BSV,
+        # where a CV reads naturally.  The chained assignment is just how
+        # `.valCharPrep` picks the value up -- the numeric BSV cell is a theta
+        # row's, so it goes back to NA.
         .valCharPrep <-
           .parFixedDf[.uiIovEnv$iovVars,.bsv] <-
           .parFixedDf[.uiIovEnv$iovVars, .bck]
