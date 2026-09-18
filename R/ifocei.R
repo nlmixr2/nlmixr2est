@@ -18,6 +18,7 @@ nlmixr2Est.ifocei <- function(env, ...) {
 attr(nlmixr2Est.ifocei, "nlmixr2Priors") <- "general"
 attr(nlmixr2Est.ifocei, "covPresent") <- TRUE
 attr(nlmixr2Est.ifocei, "unbounded") <- .foUnbounded
+attr(nlmixr2Est.ifocei, "iov") <- TRUE
 # Activates mu2/mu3/mu4 covariate rewriting (R/mu2.R); gated on
 # muModel/muRefCovAlg for bit-identical behavior when muModel="none".
 attr(nlmixr2Est.ifocei, "mu") <- function(control) {

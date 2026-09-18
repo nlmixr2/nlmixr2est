@@ -144,7 +144,12 @@ nlmixr2iovVarSd <- function(val) {
                      "ifoce", "ifocep", "ifocei", "ilaplace", "iagq",
                      "ifoceif", "ifocef", "ifocepf", "iagqf",
                      "mfoce", "mfocep", "mfocei", "mlaplace", "magq",
-                     "mfoceif", "mfocef", "mfocepf", "magqf")
+                     "mfoceif", "mfocef", "mfocepf", "magqf",
+                     ## the "full" conditional-Hessian delegates (R/foceiFull.R)
+                     ## dispatch to the base Laplace/AGQ method listed above, so
+                     ## they honour the block for the same reason it does
+                     "flaplace", "mflaplace", "iflaplace",
+                     "fagq", "mfagq", "ifagq")
 
 #' Does this estimation method honour a repeated (`same()`) omega block?
 #'
@@ -1036,6 +1041,11 @@ nlmixr2iovVarSd <- function(val) {
               nlmixr2iovSdCv(sqrt(.finIni$est[.wv]))
             }, double(1), USE.NAMES=FALSE)
         }
+        # the CV stays in the NUMERIC `Back-transformed` column (pinned by
+        # test-iov-same.R); only the printed table below moves it under BSV,
+        # where a CV reads naturally.  The chained assignment is just how
+        # `.valCharPrep` picks the value up -- the numeric BSV cell is a theta
+        # row's, so it goes back to NA.
         .valCharPrep <-
           .parFixedDf[.uiIovEnv$iovVars,.bsv] <-
           .parFixedDf[.uiIovEnv$iovVars, .bck]

@@ -122,6 +122,16 @@
   `logitNorm()` and `probitNorm()`), so lambda and the residual SD were fit to
   the wrong density; the reported objective of a general-likelihood fit also
   used the starting lambda.
+- `est="ifocei"` and `est="mfocei"` fit models with inter-occasion
+  variability.  They were the only two FOCEi family methods that did not
+  declare IOV support, so the occasion parameters were never expanded and
+  the fit errored with `default method not implemented for type 'list'`
+  (#1083).
+- `est="flaplace"`, `"mflaplace"`, `"iflaplace"`, `"fagq"`, `"mfagq"` and
+  `"ifagq"` fit a correlated inter-occasion block.  These are thin delegates
+  to the base Laplace/AGQ methods, but were missing from the list of methods
+  that honour a repeated (`SAME`) omega block, so they refused a model their
+  own base method fits (#1083).
 - `est="saem"` fits with a `dnorm()`, `t()` or `cauchy()` endpoint reported the
   log-density instead of the prediction as `PRED`/`IPRED` (and the residuals
   derived from them) in the fit table (#1084).
