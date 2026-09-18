@@ -18511,13 +18511,15 @@ static bool gradDirectOmega(const FoceiGradPooledSetup &G, int neta, arma::mat &
     arma::mat OiF; arma::cube dF; arma::vec tF;
     if (gradDirectOmegaFast(neta, G.nom, OiF, dF, tF)) {
       if (_omGradFastState == 1) { Oi = OiF; dOiEst = dF; tr28 = tF; return true; }
-      bool okR = gradDirectOmegaHandle(G, neta, Oi, dOiEst, tr28) == 0;
-      bool same = okR && arma::approx_equal(OiF, Oi, "absdiff", 1e-8) &&
+      // a failed handle proves nothing about the native map: decline, stay untried
+      int codeR = gradDirectOmegaHandle(G, neta, Oi, dOiEst, tr28);
+      if (codeR != 0) return declineHere(codeR);
+      bool same = arma::approx_equal(OiF, Oi, "absdiff", 1e-8) &&
         arma::approx_equal(arma::vectorise(dF), arma::vectorise(dOiEst), "absdiff", 1e-8) &&
         arma::approx_equal(tF, tr28, "absdiff", 1e-8);
       _omGradFastState = same ? 1 : -1;
       if (same) { Oi = OiF; dOiEst = dF; tr28 = tF; }
-      if (okR) return true;
+      return true;
     } else if (_omGradFastState == 0 && _omFastState == -1) {
       _omGradFastState = -1;
     }
