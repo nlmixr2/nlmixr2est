@@ -51,12 +51,13 @@ nmTest({
     ui <- rxode2::assertRxUi(.odeMod())
     ## like "regress", the hook leaves the model alone (only warns)
     expect_null(suppressWarnings(suppressMessages(
-      .preProcessVaeNonMuTheta(ui, "vae", NULL, vaeControl(nonMuTheta = "grad")))))
+      .preProcessVaeNonMuTheta(ui, "vae", NULL, vaeControl(nonMuTheta = "grad"))
+    )))
   })
 
   test_that("the caller policy resolves and only relaxes bounded transforms", {
     ui <- rxode2::assertRxUi(.odeMod())
-    expect_true(is.na(.analyticGradCaller(ui)))                    # nobody asked
+    expect_true(is.na(.analyticGradCaller(ui))) # nobody asked
     expect_true(.analyticGradAllowsBoundedTr(ui, "vae"))
     ## a recorded bounded transform blocks focei (it reports a natural-scale
     ## gradient) but not the vae (it consumes the internal scale it steps on)
@@ -91,8 +92,13 @@ nmTest({
     ## exact-Hessian one, which wrote past the end of inds_focei.
     ui <- rxode2::rxUiDecompress(rxode2::assertRxUi(.llMod()))
     ctl <- vaeControl(nonMuTheta = "grad", print = 0L, covariateSelection = FALSE)
-    d <- data.frame(ID = rep(1:2, each = 3), TIME = rep(c(1, 4, 12), 2),
-                    DV = c(20, 30, 15, 22, 28, 16), EVID = 0L, AMT = 0)
+    d <- data.frame(
+      ID = rep(1:2, each = 3),
+      TIME = rep(c(1, 4, 12), 2),
+      DV = c(20, 30, 15, 22, 28, 16),
+      EVID = 0L,
+      AMT = 0
+    )
     prep <- .vaeDataPrep(ui, d, ctl)
     env <- .vaeInnerSetup(ui, d, matrix(0, prep$N, prep$zDim), ctl)
     on.exit(.vaeInnerFree(), add = TRUE)
@@ -124,11 +130,22 @@ nmTest({
     ## fully in analytic scope, so only the objective can trigger this.
     expect_true(.vaeGradInScope(rxode2::assertRxUi(.odeMod())))
     f <- suppressWarnings(suppressMessages(
-      nlmixr2(.odeMod(), nlmixr2data::theo_sd, est = "vae",
-              control = vaeControl(nonMuTheta = "grad", mStepObjective = "elbo",
-                                   print = 0L, calcTables = FALSE,
-                                   itersBurnIn = 10L, iters = 20L, klWarmup = 5L,
-                                   gammaIter = 15L))))
+      nlmixr2(
+        .odeMod(),
+        nlmixr2data::theo_sd,
+        est = "vae",
+        control = vaeControl(
+          nonMuTheta = "grad",
+          mStepObjective = "elbo",
+          print = 0L,
+          calcTables = FALSE,
+          itersBurnIn = 10L,
+          iters = 20L,
+          klWarmup = 5L,
+          gammaIter = 15L
+        )
+      )
+    ))
     expect_equal(f$control$nonMuTheta, "regress")
     expect_true(any(grepl("mStepObjective", f$runInfo)))
   })
@@ -136,10 +153,21 @@ nmTest({
   test_that("an out-of-scope model downgrades to 'regress' and says so", {
     skip_on_cran()
     f <- suppressWarnings(suppressMessages(
-      nlmixr2(.linMod(), nlmixr2data::theo_sd, est = "vae",
-              control = vaeControl(nonMuTheta = "grad", print = 0L, calcTables = FALSE,
-                                   itersBurnIn = 10L, iters = 20L, klWarmup = 5L,
-                                   gammaIter = 15L))))
+      nlmixr2(
+        .linMod(),
+        nlmixr2data::theo_sd,
+        est = "vae",
+        control = vaeControl(
+          nonMuTheta = "grad",
+          print = 0L,
+          calcTables = FALSE,
+          itersBurnIn = 10L,
+          iters = 20L,
+          klWarmup = 5L,
+          gammaIter = 15L
+        )
+      )
+    ))
     expect_equal(f$control$nonMuTheta, "regress")
     expect_true(any(grepl("analytic gradient out of scope", f$runInfo)))
   })
@@ -159,8 +187,7 @@ nmTest({
     ## regression: with +-Inf bounds nothing constrained the M-step and an
     ## unbounded tv ran away to ~1e68 (7.9e306 with a wider run).  The fallback is
     ## ini(est) +- max(.vaeNonMuThetaBound, |est| * .vaeNonMuThetaRel).
-    p <- .vaeDataPrep(rxode2::assertRxUi(.unboundedMod()), nlmixr2data::theo_sd,
-                      vaeControl(nonMuTheta = "regress"))
+    p <- .vaeDataPrep(rxode2::assertRxUi(.unboundedMod()), nlmixr2data::theo_sd, vaeControl(nonMuTheta = "regress"))
     i <- match("tv", p$regressNames)
     expect_false(is.na(i))
     expect_true(is.finite(p$regressLower[i]))
@@ -169,8 +196,7 @@ nmTest({
     expect_lt(p$regressLower[i], 3.4293)
     expect_gt(p$regressUpper[i], 3.4293)
     ## a user ini() bound still wins
-    p2 <- .vaeDataPrep(rxode2::assertRxUi(.odeMod()), nlmixr2data::theo_sd,
-                       vaeControl(nonMuTheta = "regress"))
+    p2 <- .vaeDataPrep(rxode2::assertRxUi(.odeMod()), nlmixr2data::theo_sd, vaeControl(nonMuTheta = "regress"))
     j <- match("tv", p2$regressNames)
     expect_equal(p2$regressLower[j], 2)
     expect_equal(p2$regressUpper[j], 5)
@@ -178,10 +204,15 @@ nmTest({
 
   test_that("an unbounded non-mu theta converges instead of diverging", {
     skip_on_cran()
-    v <- suppressWarnings(suppressMessages(rxode2::rxWithSeed(42,
-      nlmixr2(.unboundedMod(), nlmixr2data::theo_sd, est = "vae",
-              control = vaeControl(nonMuTheta = "regress", print = 0L,
-                                   calcTables = FALSE)))))
+    v <- suppressWarnings(suppressMessages(rxode2::rxWithSeed(
+      42,
+      nlmixr2(
+        .unboundedMod(),
+        nlmixr2data::theo_sd,
+        est = "vae",
+        control = vaeControl(nonMuTheta = "regress", print = 0L, calcTables = FALSE)
+      )
+    )))
     ## before the fix this was ~1e68; the FOCEi MLE is 3.4293
     expect_true(is.finite(v$theta[["tv"]]))
     expect_lt(abs(v$theta[["tv"]] - 3.4293), 0.5)
@@ -213,17 +244,20 @@ nmTest({
     withJ <- vaeInnerLik(matrix(0, length(ids), 2L), 1L, FALSE, FALSE)$obj
     ## same quantity with the Jacobian removed, computed from the reference
     .flr <- sqrt(.Machine$double.eps)
-    tbs <- vapply(ids, function(i) {
-      y <- d$DV[d$ID == i & d$EVID == 0]
-      -sum(log(pmax(y, .flr)))
-    }, numeric(1))
+    tbs <- vapply(
+      ids,
+      function(i) {
+        y <- d$DV[d$ID == i & d$EVID == 0]
+        -sum(log(pmax(y, .flr)))
+      },
+      numeric(1)
+    )
     ## obj = likInner0 - tbsLik, so removing the term must shift each subject by
     ## exactly its own Jacobian; assert the TOTAL identity to a tight tolerance
     expect_equal(sum(tbs), -18.6516, tolerance = 1e-3)
     expect_true(all(is.finite(withJ)))
     ## and the add-error model must be untouched (tbsLik == 0 there)
-    e2 <- .vaeInnerSetup(rxode2::assertRxUi(.odeMod()), nlmixr2data::theo_sd, NULL,
-                         vaeControl(nonMuTheta = "regress"))
+    e2 <- .vaeInnerSetup(rxode2::assertRxUi(.odeMod()), nlmixr2data::theo_sd, NULL, vaeControl(nonMuTheta = "regress"))
     o2 <- vaeInnerLik(matrix(0, length(ids), 2L), 1L, FALSE, FALSE)$obj
     .vaeInnerFree()
     ## Absolute regression pin, so it tracks the DEFAULT solver tolerance: the value
@@ -242,14 +276,29 @@ nmTest({
     ## route; both fits now reach the pool through foceiGradPooledDirect_.)
     .n0 <- .odeSwapInfo()$pooledSolveN
     .ref <- suppressMessages(
-      nlmixr2(.odeMod(), nlmixr2data::theo_sd, est = "focei",
-              control = foceiControl(print = 0L, covMethod = "", fast = TRUE,
-                                     calcTables = FALSE)))
+      nlmixr2(
+        .odeMod(),
+        nlmixr2data::theo_sd,
+        est = "focei",
+        control = foceiControl(print = 0L, covMethod = "", fast = TRUE, calcTables = FALSE)
+      )
+    )
     suppressWarnings(suppressMessages(
-      nlmixr2(.odeMod(), nlmixr2data::theo_sd, est = "vae",
-              control = vaeControl(nonMuTheta = "grad", print = 0L, calcTables = FALSE,
-                                   itersBurnIn = 10L, iters = 25L, klWarmup = 5L,
-                                   gammaIter = 18L))))
+      nlmixr2(
+        .odeMod(),
+        nlmixr2data::theo_sd,
+        est = "vae",
+        control = vaeControl(
+          nonMuTheta = "grad",
+          print = 0L,
+          calcTables = FALSE,
+          itersBurnIn = 10L,
+          iters = 25L,
+          klWarmup = 5L,
+          gammaIter = 18L
+        )
+      )
+    ))
     ## The pooled solve must actually have RUN -- it and the rxSolve fallback are
     ## numerically equivalent, so equality alone cannot tell them apart, and a
     ## dead pooled path is exactly the bug this counter exists to catch.
@@ -258,9 +307,13 @@ nmTest({
     .n1 <- .odeSwapInfo()$pooledSolveN
     .n2 <- .odeSwapInfo()$pooledSolveN
     .after <- suppressMessages(
-      nlmixr2(.odeMod(), nlmixr2data::theo_sd, est = "focei",
-              control = foceiControl(print = 0L, covMethod = "", fast = TRUE,
-                                     calcTables = FALSE)))
+      nlmixr2(
+        .odeMod(),
+        nlmixr2data::theo_sd,
+        est = "focei",
+        control = foceiControl(print = 0L, covMethod = "", fast = TRUE, calcTables = FALSE)
+      )
+    )
     expect_equal(.after$objf, .ref$objf, tolerance = 1e-4)
     expect_equal(unname(.after$theta), unname(.ref$theta), tolerance = 1e-4)
     ## The focei fast fit now pools its OWN augmented model (single-endpoint),
@@ -278,8 +331,7 @@ nmTest({
     ## mismatched model decline safely crashed instead.  The fit path always solves
     ## first, which is why only this sequence reached it.
     ui <- rxode2::rxUiDecompress(rxode2::assertRxUi(.odeMod()))
-    ctl <- vaeControl(nonMuTheta = "grad", print = 0L, calcTables = FALSE,
-                      covariateSelection = FALSE)
+    ctl <- vaeControl(nonMuTheta = "grad", print = 0L, calcTables = FALSE, covariateSelection = FALSE)
     d <- nlmixr2data::theo_sd
     prep <- .vaeDataPrep(ui, d, ctl)
     env <- .vaeInnerSetup(ui, d, matrix(0, prep$N, prep$zDim), ctl)
@@ -314,20 +366,32 @@ nmTest({
     skip_if(is.null(.cols))
     expect_false(is.null(vaeOuterSolve_(as.numeric(ui$theta), ebes, .cols, 1L)))
     .bad <- .cols
-    .bad$predf <- 10000L                       # far past any real lhs width
+    .bad$predf <- 10000L # far past any real lhs width
     expect_null(vaeOuterSolve_(as.numeric(ui$theta), ebes, .bad, 1L))
     .bad2 <- .cols
-    .bad2$predf <- -1L                         # "absent", read unconditionally as lhs[-1]
+    .bad2$predf <- -1L # "absent", read unconditionally as lhs[-1]
     expect_null(vaeOuterSolve_(as.numeric(ui$theta), ebes, .bad2, 1L))
   })
 
   test_that("in scope, the gradient path is actually taken", {
     skip_on_cran()
     r <- suppressWarnings(suppressMessages(
-      nlmixr2(.odeMod(), nlmixr2data::theo_sd, est = "vae",
-              control = vaeControl(nonMuTheta = "grad", print = 0L, calcTables = FALSE,
-                                   returnVae = TRUE, itersBurnIn = 10L, iters = 30L,
-                                   klWarmup = 5L, gammaIter = 20L))))
+      nlmixr2(
+        .odeMod(),
+        nlmixr2data::theo_sd,
+        est = "vae",
+        control = vaeControl(
+          nonMuTheta = "grad",
+          print = 0L,
+          calcTables = FALSE,
+          returnVae = TRUE,
+          itersBurnIn = 10L,
+          iters = 30L,
+          klWarmup = 5L,
+          gammaIter = 20L
+        )
+      )
+    ))
     ## the mechanism assertion: M-steps past the KL warmup used the gradient and
     ## none silently fell back to bobyqa
     expect_true(r$nRegGrad > 0L)

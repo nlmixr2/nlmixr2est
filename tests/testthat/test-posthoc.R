@@ -40,22 +40,21 @@ nmTest({
       })
     }
     # Calculations required by the model of interest
-    funcion_transf_logaritmica<-function(nombre_dataframe){
-      nombre_dataframe$LWT    <-  log(nombre_dataframe$WT)
-      nombre_dataframe$LW65   <-  log(nombre_dataframe$WT/65)
-      nombre_dataframe$LALB41 <-  log(nombre_dataframe$ALB/4.1)
+    funcion_transf_logaritmica <- function(nombre_dataframe) {
+      nombre_dataframe$LWT <- log(nombre_dataframe$WT)
+      nombre_dataframe$LW65 <- log(nombre_dataframe$WT / 65)
+      nombre_dataframe$LALB41 <- log(nombre_dataframe$ALB / 4.1)
       nombre_dataframe <- data.frame(nombre_dataframe)
     }
 
     d <- funcion_transf_logaritmica(d)
 
-    f <- .nlmixr(mod.dos.cmpt, d, "posthoc", control=list(calcTables=FALSE))
+    f <- .nlmixr(mod.dos.cmpt, d, "posthoc", control = list(calcTables = FALSE))
 
     f2 <- suppressMessages(addTable(f))
 
     expect_false(all(f2$eta.cl == 0.0))
     expect_false(all(f2$eta.v1 == 0.0))
     expect_false(all(f2$eta.v2 == 0.0))
-
   })
 })

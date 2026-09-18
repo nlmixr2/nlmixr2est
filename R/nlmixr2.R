@@ -19,7 +19,21 @@
 
 rex::register_shortcuts("nlmixr2est")
 ## GGplot use and other issues...
-utils::globalVariables(c("DV", "ID", "IPRED", "IRES", "PRED", "TIME", "grp", "initCondition", "values", "nlmixr2_pred", "iter", "val", "EVID"))
+utils::globalVariables(c(
+  "DV",
+  "ID",
+  "IPRED",
+  "IRES",
+  "PRED",
+  "TIME",
+  "grp",
+  "initCondition",
+  "values",
+  "nlmixr2_pred",
+  "iter",
+  "val",
+  "EVID"
+))
 
 nlmixr2.logo <- "         _             _             \n        | | %9s (_) %s\n  _ __  | | _ __ ___   _ __  __ _ __\n | '_ \\ | || '_ ` _ \\ | |\\ \\/ /| '__|\n | | | || || | | | | || | >  < | |\n |_| |_||_||_| |_| |_||_|/_/\\_\\|_|\n"
 
@@ -104,9 +118,16 @@ nlmixr2Version <- function() {
 #' }
 #'
 #' @export
-nlmixr2 <- function(object, data, est = NULL, control = list(),
-                    table = tableControl(), ..., save = NULL,
-                    envir = parent.frame()) {
+nlmixr2 <- function(
+  object,
+  data,
+  est = NULL,
+  control = list(),
+  table = tableControl(),
+  ...,
+  save = NULL,
+  envir = parent.frame()
+) {
   # `nlmixr2()` with no model prints the available estimation methods
   if (missing(object)) {
     return(.nlmixr2EstTypePrint())
@@ -116,13 +137,15 @@ nlmixr2 <- function(object, data, est = NULL, control = list(),
   nlmixr2global$nlmixr2Time <- proc.time()
   nlmixr2global$finalUiCompressed <- FALSE
   nlmixr2global$nlmixrEvalEnv$envir <- envir
-  if (inherits(object, "nlmixr2FitCore") &&
-        !is.null(object$eta)) {
+  if (
+    inherits(object, "nlmixr2FitCore") &&
+      !is.null(object$eta)
+  ) {
     nlmixr2global$etaMat <- object
   } else {
     nlmixr2global$etaMat <- NULL
   }
-  on.exit(.finalizeOverallTiming(), add=TRUE)
+  on.exit(.finalizeOverallTiming(), add = TRUE)
   nmSuppressMsg()
   rxode2::rxSuppressMsg()
   rxode2::rxSolveFree() # rxSolveFree unlocks evaluation environment
@@ -184,16 +207,23 @@ nlmixr <- nlmixr2
 
 #' @rdname nlmixr2
 #' @export
-nlmixr2.function <- function(object, data=NULL, est = NULL, control = NULL, table = tableControl(), ...,
-                             save = NULL, envir = parent.frame()) {
+nlmixr2.function <- function(
+  object,
+  data = NULL,
+  est = NULL,
+  control = NULL,
+  table = tableControl(),
+  ...,
+  save = NULL,
+  envir = parent.frame()
+) {
   on.exit(.nlmixr2clearPipe())
   .args <- as.list(match.call(expand.dots = TRUE))[-1]
   .uif <- rxode2::rxode2(object)
   .uif <- rxode2::rxUiDecompress(.uif)
   # `rxode2(object)` sees only the symbol `object`; name the model from the
   # expression the user wrote, the way `rxode2()` itself would
-  assign("modelName", rxode2::rxModelNameFromExpr(substitute(object), envir=envir),
-         envir=.uif)
+  assign("modelName", rxode2::rxModelNameFromExpr(substitute(object), envir = envir), envir = .uif)
   .missingData <- FALSE
   if (is.null(data)) {
     .missingData <- TRUE
@@ -202,7 +232,7 @@ nlmixr2.function <- function(object, data=NULL, est = NULL, control = NULL, tabl
   if (.missingData && missing(est)) {
     return(.uif)
   }
-  .env <- new.env(parent=emptyenv())
+  .env <- new.env(parent = emptyenv())
   .env$ui <- .uif
   ## extra named arguments (e.g. `nn=` for nlmixr2nn) are stashed on the env so
   ## an estimation interceptor can read them; standard estimation ignores them.
@@ -211,7 +241,7 @@ nlmixr2.function <- function(object, data=NULL, est = NULL, control = NULL, tabl
     .env$data <- .nlmixr2pipeData
     .minfo("use {.code data} from pipeline")
   } else if (.missingData) {
-    stop("need data", call.=FALSE)
+    stop("need data", call. = FALSE)
   } else {
     .env$data <- data
   }
@@ -246,17 +276,27 @@ nlmixr2.function <- function(object, data=NULL, est = NULL, control = NULL, tabl
 
 #' @rdname nlmixr2
 #' @export
-nlmixr2.rxUi <- function(object, data=NULL, est = NULL, control = NULL, table = tableControl(), ...,
-                         save = NULL, envir = parent.frame()) {
+nlmixr2.rxUi <- function(
+  object,
+  data = NULL,
+  est = NULL,
+  control = NULL,
+  table = tableControl(),
+  ...,
+  save = NULL,
+  envir = parent.frame()
+) {
   .args <- as.list(match.call(expand.dots = TRUE))[-1]
-  .modelName <- rxode2::rxModelNameFromExpr(substitute(object), envir=envir)
+  .modelName <- rxode2::rxModelNameFromExpr(substitute(object), envir = envir)
   .uif <- object
   .uif <- rxode2::rxUiDecompress(.uif)
-  if (is.null(.uif$modelName)) assign("modelName", .modelName, envir=.uif)
+  if (is.null(.uif$modelName)) {
+    assign("modelName", .modelName, envir = .uif)
+  }
   if (is.null(data) && missing(est)) {
     return(.uif)
   }
-  .env <- new.env(parent=emptyenv())
+  .env <- new.env(parent = emptyenv())
   .env$ui <- .uif
   .missingData <- FALSE
   if (is.null(data)) {
@@ -269,7 +309,7 @@ nlmixr2.rxUi <- function(object, data=NULL, est = NULL, control = NULL, table = 
     .env$data <- .uif$nonmemData
     .minfo("use {.code data} from $nonmemData")
   } else if (.missingData) {
-    stop("need data", call.=FALSE)
+    stop("need data", call. = FALSE)
   } else {
     .env$data <- data
   }
@@ -330,8 +370,16 @@ nlmixr2.rxUi <- function(object, data=NULL, est = NULL, control = NULL, table = 
 
 #' @rdname nlmixr2
 #' @export
-nlmixr2.nlmixr2FitCore <- function(object, data=NULL, est = NULL, control = NULL, table = tableControl(), ...,
-                                   save = NULL, envir = parent.frame()) {
+nlmixr2.nlmixr2FitCore <- function(
+  object,
+  data = NULL,
+  est = NULL,
+  control = NULL,
+  table = tableControl(),
+  ...,
+  save = NULL,
+  envir = parent.frame()
+) {
   on.exit({
     .nlmixr2clearPipe()
     nlmixr2global$nlmixr2SimInfo <- NULL
@@ -348,9 +396,7 @@ nlmixr2.nlmixr2FitCore <- function(object, data=NULL, est = NULL, control = NULL
       .minfo(paste0("infer estimation {.code ", est, "} from control"))
     }
   }
-  if (is.character(data) && length(data) == 1 &&
-        data %in% nlmixr2AllEst() &&
-        is.null(est)) {
+  if (is.character(data) && length(data) == 1 && data %in% nlmixr2AllEst() && is.null(est)) {
     est <- data
     data <- NULL
   } else {
@@ -370,7 +416,7 @@ nlmixr2.nlmixr2FitCore <- function(object, data=NULL, est = NULL, control = NULL
     .minfo("use {.code data} from pipeline")
   } else if (missing(data)) {
     data <- object$origData
-   .minfo("use {.code data} from prior/supplied fit")
+    .minfo("use {.code data} from prior/supplied fit")
   }
   if (!inherits(data, "data.frame")) {
     data <- object$origData
@@ -383,7 +429,7 @@ nlmixr2.nlmixr2FitCore <- function(object, data=NULL, est = NULL, control = NULL
     .minfo("use {.code est} from prior/supplied fit")
     est <- object$est
   }
-  .env <- new.env(parent=emptyenv())
+  .env <- new.env(parent = emptyenv())
   .env$control <- control
   if (!is.null(est)) {
     .env$missingEst <- FALSE

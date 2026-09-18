@@ -7,16 +7,20 @@ nmTest({
   .dde_focei_data <- function() {
     # method-of-steps reference DDE: y' = -k*delay(y, 1), constant history y = a.
     .testSeed(42)
-    .tk <- log(0.3); .ta <- log(2)
+    .tk <- log(0.3)
+    .ta <- log(2)
     .etak <- stats::rnorm(8, 0, sqrt(0.03))
-    do.call(rbind, lapply(seq_len(8), function(id) {
-      .k <- exp(.tk + .etak[id]); .a <- exp(.ta)
-      .m <- rxode2::rxode2(sprintf(
+    do.call(
+      rbind,
+      lapply(seq_len(8), function(id) {
+        .k <- exp(.tk + .etak[id])
+        .a <- exp(.ta)
+        .m <- rxode2::rxode2(sprintf(
         "k=%.10g\na=%.10g\ny(0)<-a\nd/dt(y)<- -k*delay(y,1)\npast(y,1)<-a\n", .k, .a))
-      .s <- rxode2::rxSolve(.m, rxode2::et(seq(0.5, 5, by = 0.5)),
-                            atol = 1e-9, rtol = 1e-9)
-      data.frame(id = id, time = .s$time, dv = .s$y + stats::rnorm(nrow(.s), 0, 0.05))
-    }))
+        .s <- rxode2::rxSolve(.m, rxode2::et(seq(0.5, 5, by = 0.5)), atol = 1e-9, rtol = 1e-9)
+        data.frame(id = id, time = .s$time, dv = .s$y + stats::rnorm(nrow(.s), 0, 0.05))
+      })
+    )
   }
 
   .dde_focei_mod <- function() {
@@ -42,14 +46,13 @@ nmTest({
     # the observed information PD; at the sigdig=4 default it diverges enough to
     # fall back to the "r" covariance, so pin sigdig=6 to exercise the analytic path.
     fit <- suppressWarnings(suppressMessages(
-      nlmixr(.dde_focei_mod, .dat, "focei",
-             foceiControl(print = 0L, fast = TRUE, covMethod = "analytic", sigdig = 6))))
+      nlmixr(.dde_focei_mod, .dat, "focei", foceiControl(print = 0L, fast = TRUE, covMethod = "analytic", sigdig = 6))
+    ))
     # the augmented delayed-sensitivity solve fed the covariance without diverging
     expect_equal(.covBaseName(fit$covMethod), "analytic")
     expect_true(all(is.finite(fit$parFixedDf$SE)))
     expect_true(all(fit$parFixedDf$SE > 0))
     # structural theta recovered near truth (tk=log(0.3), ta=log(2))
-    expect_equal(unname(fit$theta[c("tk", "ta")]),
-                 c(log(0.3), log(2)), tolerance = 0.15)
+    expect_equal(unname(fit$theta[c("tk", "ta")]), c(log(0.3), log(2)), tolerance = 0.15)
   })
 })

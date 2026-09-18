@@ -3,16 +3,25 @@ rxUiGet.transUE <- function(x, ...) {
   .ui <- x[[1]]
   .iniDf <- .ui$iniDf
   .w <- which(.iniDf$neta1 == .iniDf$neta2)
-  if (length(.w) == 0L) return(NULL)
+  if (length(.w) == 0L) {
+    return(NULL)
+  }
   .n <- .iniDf$name[.w]
   .muRef <- .ui$muRefDataFrame
-  vapply(.n, function(cur) {
-    .w <- which(.muRef$eta == cur)
-    if (length(.w) == 0L) return(cur)
-    .muRef$theta[.w]
-  }, character(1), USE.NAMES = TRUE)
+  vapply(
+    .n,
+    function(cur) {
+      .w <- which(.muRef$eta == cur)
+      if (length(.w) == 0L) {
+        return(cur)
+      }
+      .muRef$theta[.w]
+    },
+    character(1),
+    USE.NAMES = TRUE
+  )
 }
-attr(rxUiGet.transUE, "rstudio")  <- c(eta.ka="tka")
+attr(rxUiGet.transUE, "rstudio") <- c(eta.ka = "tka")
 
 #' Get the parameter values for uninformative eta calculation
 #'
@@ -28,9 +37,11 @@ attr(rxUiGet.transUE, "rstudio")  <- c(eta.ka="tka")
 #' @noRd
 #'
 #' @author Matthew L. Fidler
-.getMuValForUE <- function(name, trans, ui, pm, plus=TRUE, saem=TRUE, retName=FALSE) {
+.getMuValForUE <- function(name, trans, ui, pm, plus = TRUE, saem = TRUE, retName = FALSE) {
   if (!saem || name %in% ui$nonMuEtas) {
-    if (retName) return(name)
+    if (retName) {
+      return(name)
+    }
     if (is.na(plus)) {
       return(setNames(0, name))
     } else if (plus) {
@@ -41,7 +52,9 @@ attr(rxUiGet.transUE, "rstudio")  <- c(eta.ka="tka")
   }
   .n2 <- trans[name]
   .v0 <- ui$theta[.n2]
-  if (retName) return(.n2)
+  if (retName) {
+    return(.n2)
+  }
   if (is.na(plus)) {
     setNames(.v0, .n2)
   } else if (plus) {
@@ -64,8 +77,7 @@ attr(rxUiGet.transUE, "rstudio")  <- c(eta.ka="tka")
 #'
 #' @noRd
 #' @author Matthew L. Fidler
-.uninformativeEtasExpand <- function(ui, data, trans, alpha=0.05,
-                               saem=TRUE, q=sqrt(3/5)) {
+.uninformativeEtasExpand <- function(ui, data, trans, alpha = 0.05, saem = TRUE, q = sqrt(3 / 5)) {
   .trans <- rxode2::etTrans(data, ui)
   .lst <- attr(class(.trans), ".rxode2.lst")
   .n <- .lst$nid
@@ -78,61 +90,113 @@ attr(rxUiGet.transUE, "rstudio")  <- c(eta.ka="tka")
 
   .nn <- trans
 
-  .p <- do.call("rbind", lapply(seq_len(.n), function(i) {
-    as.data.frame(t(vapply(names(.pm), .getMuValForUE, ui=ui, pm=.pm, plus=TRUE, saem=saem, trans=trans,
-                           double(1), USE.NAMES=FALSE)))
-  }))
+  .p <- do.call(
+    "rbind",
+    lapply(seq_len(.n), function(i) {
+      as.data.frame(t(vapply(
+        names(.pm),
+        .getMuValForUE,
+        ui = ui,
+        pm = .pm,
+        plus = TRUE,
+        saem = saem,
+        trans = trans,
+        double(1),
+        USE.NAMES = FALSE
+      )))
+    })
+  )
   names(.p) <- .nn
 
-  .m <- do.call("rbind", lapply(seq_len(.n), function(i) {
-    as.data.frame(t(vapply(names(.pm), .getMuValForUE, ui=ui, pm=.pm, plus=FALSE, saem=saem, trans=trans,
-                           double(1), USE.NAMES = FALSE)))
-  }))
+  .m <- do.call(
+    "rbind",
+    lapply(seq_len(.n), function(i) {
+      as.data.frame(t(vapply(
+        names(.pm),
+        .getMuValForUE,
+        ui = ui,
+        pm = .pm,
+        plus = FALSE,
+        saem = saem,
+        trans = trans,
+        double(1),
+        USE.NAMES = FALSE
+      )))
+    })
+  )
   names(.m) <- .nn
 
-  .z <- do.call("rbind", lapply(seq_len(.n), function(i) {
-    as.data.frame(t(vapply(names(.pm), .getMuValForUE, ui=ui, pm=.pm, plus=NA, saem=saem, trans=trans,
-                           double(1), USE.NAMES = FALSE)))
-  }))
+  .z <- do.call(
+    "rbind",
+    lapply(seq_len(.n), function(i) {
+      as.data.frame(t(vapply(
+        names(.pm),
+        .getMuValForUE,
+        ui = ui,
+        pm = .pm,
+        plus = NA,
+        saem = saem,
+        trans = trans,
+        double(1),
+        USE.NAMES = FALSE
+      )))
+    })
+  )
   names(.z) <- .nn
-  .env <- new.env(parent=emptyenv())
+  .env <- new.env(parent = emptyenv())
   .env$sim.id <- 1L
-  .etas <- do.call("rbind", lapply(.nn, function(nm) {
-    .df <- rbind(.m, .z, .p)
-    for (cur in .nn) {
-      if (cur == nm) next
-      .df[[cur]] <- c(.z[[cur]], .z[[cur]], .z[[cur]])
-    }
-    .df$rxW <- which(nm == .nn)
-    .df$rxPmz <- c(rep(-1L, .n), rep(0L, .n), rep(1L, .n))
-    .df$id <- c(seq_len(.n), seq_len(.n), seq_len(.n))
-    .df$sim.id <- .env$sim.id
-    .tmp <- rep(.env$sim.id, .n)
-    .env$sim.id <- .env$sim.id + 1L
-    .tmp <- c(.tmp, rep(.env$sim.id, .n))
-    .env$sim.id <-.env$sim.id  + 1L
-    .tmp <- c(.tmp, rep(.env$sim.id, .n))
-    .env$sim.id <- .env$sim.id + 1L
-    .df$sim.id <- .tmp
-    .df
-  }))
+  .etas <- do.call(
+    "rbind",
+    lapply(.nn, function(nm) {
+      .df <- rbind(.m, .z, .p)
+      for (cur in .nn) {
+        if (cur == nm) {
+          next
+        }
+        .df[[cur]] <- c(.z[[cur]], .z[[cur]], .z[[cur]])
+      }
+      .df$rxW <- which(nm == .nn)
+      .df$rxPmz <- c(rep(-1L, .n), rep(0L, .n), rep(1L, .n))
+      .df$id <- c(seq_len(.n), seq_len(.n), seq_len(.n))
+      .df$sim.id <- .env$sim.id
+      .tmp <- rep(.env$sim.id, .n)
+      .env$sim.id <- .env$sim.id + 1L
+      .tmp <- c(.tmp, rep(.env$sim.id, .n))
+      .env$sim.id <- .env$sim.id + 1L
+      .tmp <- c(.tmp, rep(.env$sim.id, .n))
+      .env$sim.id <- .env$sim.id + 1L
+      .df$sim.id <- .tmp
+      .df
+    })
+  )
 
   .fullN <- unique(c(names(.etas), names(ui$theta)))
   .full <- .etas
   for (n in .fullN) {
-    if (n %in% names(.full)) next
+    if (n %in% names(.full)) {
+      next
+    }
     .full[[n]] <- ui$theta[n]
   }
 
-  list(trans=setNames(names(.pm), .nn), dat=.trans, param=.full, n=.n,
-       neta=.neta)
+  list(trans = setNames(names(.pm), .nn), dat = .trans, param = .full, n = .n, neta = .neta)
 }
 
-.uninformativeEtas <- function(ui, handleUninformativeEtas=TRUE, data, model, alpha=0.05,
-                               saem=TRUE, q=sqrt(3/5),
-                               rxControl=NULL, tol=1e-7) {
+.uninformativeEtas <- function(
+  ui,
+  handleUninformativeEtas = TRUE,
+  data,
+  model,
+  alpha = 0.05,
+  saem = TRUE,
+  q = sqrt(3 / 5),
+  rxControl = NULL,
+  tol = 1e-7
+) {
   .rxControl <- rxControl
-  if (is.null(rxControl)) .rxControl <- rxode2::rxControl()
+  if (is.null(rxControl)) {
+    .rxControl <- rxode2::rxControl()
+  }
   if (saem) {
     ui <- rxode2::assertRxUi(ui)
     if (length(ui$mixProbs) > 0) {
@@ -146,14 +210,16 @@ attr(rxUiGet.transUE, "rstudio")  <- c(eta.ka="tka")
       }
     }
     .trans <- rxUiGet.transUE(list(ui))
-    .pars <- .uninformativeEtasExpand(ui, data, trans=.trans, alpha=alpha, saem=TRUE, q=q)
+    .pars <- .uninformativeEtasExpand(ui, data, trans = .trans, alpha = alpha, saem = TRUE, q = q)
     if (!handleUninformativeEtas) {
       .lst <- attr(class(.pars$dat), ".rxode2.lst")
       .n <- .lst$nid
-      .mat <- matrix(rep(1L, .n*length(.pars$trans)),
-                     nrow=.n,
-                     ncol=length(.pars$trans),
-                     dimnames=list(NULL, .pars$trans))
+      .mat <- matrix(
+        rep(1L, .n * length(.pars$trans)),
+        nrow = .n,
+        ncol = length(.pars$trans),
+        dimnames = list(NULL, .pars$trans)
+      )
       return(.mat)
     }
     .minfo("calculate uninformed etas")
@@ -165,8 +231,7 @@ attr(rxUiGet.transUE, "rstudio")  <- c(eta.ka="tka")
       data$mymixest <- data$mixest
 
       # Build pruned model and replace mix() with mymixest expression
-      .prunedStr <- paste(c(.foceiPrune(list(ui)), "tad=tad()", "dosenum=dosenum()", ""),
-                          collapse="\n")
+      .prunedStr <- paste(c(.foceiPrune(list(ui)), "tad=tad()", "dosenum=dosenum()", ""), collapse = "\n")
       parsed <- as.list(parse(text = .prunedStr))
 
       .replaceMix <- function(expr) {
@@ -181,13 +246,15 @@ attr(rxUiGet.transUE, "rstudio")  <- c(eta.ka="tka")
               if (is.null(.sumExpr)) {
                 .sumExpr <- .mixestTerm
               } else {
-                .sumExpr <- bquote(.(.sumExpr) + .( .mixestTerm))
+                .sumExpr <- bquote(.(.sumExpr) + .(.mixestTerm))
               }
             }
             return(.sumExpr)
           } else {
             for (i in seq_len(length(expr))) {
-              if (i == 1) next
+              if (i == 1) {
+                next
+              }
               expr[[i]] <- .replaceMix(expr[[i]])
             }
             return(expr)
@@ -198,7 +265,7 @@ attr(rxUiGet.transUE, "rstudio")  <- c(eta.ka="tka")
       }
 
       replaced <- lapply(parsed, .replaceMix)
-      modelCode <- paste(vapply(replaced, deparse1, character(1)), collapse="\n")
+      modelCode <- paste(vapply(replaced, deparse1, character(1)), collapse = "\n")
       modelCode <- gsub("~", "=", modelCode)
 
       modelPruned <- .nlmixr2estRxode2(modelCode, "rxPruned")
@@ -235,7 +302,7 @@ attr(rxUiGet.transUE, "rstudio")  <- c(eta.ka="tka")
       .val <- merge(.val[, c("id", "sim.id", "rx_pred_")], .ind)
     }
 
-    .env <- new.env(parent=emptyenv())
+    .env <- new.env(parent = emptyenv())
     .env$nid <- .pars$n
     .env$neta <- .pars$neta
     .env$simId <- .val[["sim.id"]]

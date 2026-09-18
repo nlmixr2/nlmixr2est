@@ -21,8 +21,8 @@ nmTest({
       })
     }
     fit <- suppressWarnings(suppressMessages(
-      nlmixr(one.cmt, nlmixr2data::theo_sd, "focei",
-             foceiControl(mceta = 10, maxInnerIterations = 0))))
+      nlmixr(one.cmt, nlmixr2data::theo_sd, "focei", foceiControl(mceta = 10, maxInnerIterations = 0))
+    ))
     expect_true(inherits(fit, "nlmixr2FitData"))
   })
 })

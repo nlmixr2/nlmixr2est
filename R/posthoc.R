@@ -14,13 +14,8 @@
 #' @examples
 #'
 #' posthocControl()
-posthocControl <- function(sigdig=3,
-                           ...,
-                           interaction=FALSE,
-                           maxOuterIterations=NULL) {
-  .control <- foceiControl(sigdig=sigdig, ...,
-                           maxOuterIterations=0L,
-                           interaction=interaction)
+posthocControl <- function(sigdig = 3, ..., interaction = FALSE, maxOuterIterations = NULL) {
+  .control <- foceiControl(sigdig = sigdig, ..., maxOuterIterations = 0L, interaction = interaction)
   class(.control) <- "posthocControl"
   .control
 }
@@ -29,7 +24,7 @@ posthocControl <- function(sigdig=3,
 #' @rdname nmObjHandleControlObject
 #' @export
 nmObjHandleControlObject.posthocControl <- function(control, env) {
-  assign("posthocControl", control, envir=env)
+  assign("posthocControl", control, envir = env)
 }
 
 #' @rdname getValidNlmixrControl
@@ -37,9 +32,12 @@ nmObjHandleControlObject.posthocControl <- function(control, env) {
 getValidNlmixrCtl.posthoc <- function(control) {
   .ctl <- control[[1]]
   .cls <- class(control)[1]
-  if (is.null(.ctl)) .ctl <- posthocControl()
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list"))
+  if (is.null(.ctl)) {
+    .ctl <- posthocControl()
+  }
+  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
     .ctl <- do.call("posthocControl", .ctl)
+  }
   if (!inherits(.ctl, "posthocControl")) {
     .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
     .ctl <- posthocControl()
@@ -61,25 +59,29 @@ nmObjGetControl.posthoc <- function(x, ...) {
     .control <- get("control", .env, inherits = FALSE)
     if (inherits(.control, "posthocControl")) return(.control)
   }
-  stop("cannot find posthoc related control object", call.=FALSE)
+  stop("cannot find posthoc related control object", call. = FALSE)
 }
 
-.posthocControlToFoceiControl <- function(env, assign=TRUE) {
+.posthocControlToFoceiControl <- function(env, assign = TRUE) {
   .posthocControl <- env$posthocControl
   .ui <- env$ui
   .n <- names(.posthocControl)
-  .foceiControl <- setNames(lapply(.n,
-                                   function(n) {
-                                     if (n == "maxOuterIterations") {
-                                       return(0L)
-                                     }
-                                     if (n == "interaction") {
-                                       return(.posthocControl$interaction)
-                                     }
-                                     .posthocControl[[n]]
-                                   }), .n)
+  .foceiControl <- setNames(
+    lapply(.n, function(n) {
+      if (n == "maxOuterIterations") {
+        return(0L)
+      }
+      if (n == "interaction") {
+        return(.posthocControl$interaction)
+      }
+      .posthocControl[[n]]
+    }),
+    .n
+  )
   class(.foceiControl) <- "foceiControl"
-  if (assign) env$control <- .foceiControl
+  if (assign) {
+    env$control <- .foceiControl
+  }
   .foceiControl
 }
 
@@ -87,27 +89,25 @@ nmObjGetControl.posthoc <- function(x, ...) {
 #' @export
 nmObjGetFoceiControl.posthoc <- function(x, ...) {
   .env <- x[[1]]
-  .posthocControlToFoceiControl(.env, assign=FALSE)
+  .posthocControlToFoceiControl(.env, assign = FALSE)
 }
 
 #'@rdname nlmixr2Est
 #'@export
 nlmixr2Est.posthoc <- function(env, ...) {
   .ui <- env$ui
-  rxode2::assertRxUiRandomOnIdOnly(.ui,
-                                   " for the estimation routine 'posthoc'",
-                                   .var.name=.ui$modelName)
+  rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'posthoc'", .var.name = .ui$modelName)
   .control <- env$control
   env$posthocControl <- .control
-  .foceiFamilyControl(env, ..., type="posthocControl")
+  .foceiFamilyControl(env, ..., type = "posthocControl")
   .posthocControlToFoceiControl(env)
   on.exit({
-    if (exists("control", envir=.ui)) {
-      rm("control", envir=.ui)
+    if (exists("control", envir = .ui)) {
+      rm("control", envir = .ui)
     }
   })
   rxode2::rxAssignControlValue(.ui, "maxOuterIterations", 0L)
-  .ret <- .foceiFamilyReturn(env, .ui, ..., est="posthoc")
+  .ret <- .foceiFamilyReturn(env, .ui, ..., est = "posthoc")
   .ret
 }
 attr(nlmixr2Est.posthoc, "covPresent") <- TRUE

@@ -10,63 +10,93 @@
 # .impmapFamilyFit.  They are neither impmapControl() nor foceiControl()
 # arguments, so both the down-conversion and impmapControl()'s own `...` have to
 # know about them.
-.impmapIdxMapNames <- c("impMuThetaIdx", "impMuEtaIdx", "impThetaSensIdx",
-                        "impOmegaFixedEta")
+.impmapIdxMapNames <- c("impMuThetaIdx", "impMuEtaIdx", "impThetaSensIdx", "impOmegaFixedEta")
 
 # Importance-sampling / EM control names -- stripped when down-converting to a
 # plain foceiControl for the MAP inner problem / output.
-.impmapIsControlNames <- c("isample", "nIter", "mapIter", "gamma",
-                           "gammaMethod", "gammaMethodUser", "gammaRule",
-                           "df", "auto", "autoNonNormal",
-                           "autoNonmemSparse", "autoDfPatience",
-                           "iscaleMin", "iscaleMax", "iaccept",
-                           "nBurn", "burnFreezeOmega",
-                           "ctol", "nConvWindow", "impSeed", "impCov",
-                           "proposal", "propMixScale", "propMixWeight",
-                           "qr", "qrShift", "qrRefresh", "qrScramble",
-                           "sir", "sirSample",
-                           # internal M-step index maps added in .impmapFamilyFit;
-                           # not foceiControl() arguments, so they must be dropped
-                           # when down-converting (e.g. .setOfvFo's do.call(foceiControl))
-                           .impmapIdxMapNames,
-                           # combined eta+theta sensitivity build (#958): an
-                           # impmap-internal request for the fused inner model;
-                           # not a foceiControl() argument either.
-                           "combSens")
+.impmapIsControlNames <- c(
+  "isample",
+  "nIter",
+  "mapIter",
+  "gamma",
+  "gammaMethod",
+  "gammaMethodUser",
+  "gammaRule",
+  "df",
+  "auto",
+  "autoNonNormal",
+  "autoNonmemSparse",
+  "autoDfPatience",
+  "iscaleMin",
+  "iscaleMax",
+  "iaccept",
+  "nBurn",
+  "burnFreezeOmega",
+  "ctol",
+  "nConvWindow",
+  "impSeed",
+  "impCov",
+  "proposal",
+  "propMixScale",
+  "propMixWeight",
+  "qr",
+  "qrShift",
+  "qrRefresh",
+  "qrScramble",
+  "sir",
+  "sirSample",
+  # internal M-step index maps added in .impmapFamilyFit;
+  # not foceiControl() arguments, so they must be dropped
+  # when down-converting (e.g. .setOfvFo's do.call(foceiControl))
+  .impmapIdxMapNames,
+  # combined eta+theta sensitivity build (#958): an
+  # impmap-internal request for the fused inner model;
+  # not a foceiControl() argument either.
+  "combSens"
+)
 
 # Validate proposal / mixture arguments.  Every test is on the VALUE rather
 # than missing(), so do.call(impmapControl, ctl) round-trips idempotently -- a
 # round-trip supplies df=0 explicitly, which is conflict-free.
 #' @noRd
 .impmapAssertProposal <- function(proposal, df, propMixScale, propMixWeight) {
-  checkmate::assertNumeric(df, len=1, any.missing=FALSE, .var.name="df")
+  checkmate::assertNumeric(df, len = 1, any.missing = FALSE, .var.name = "df")
   if (identical(proposal, "normal") && df > 0) {
-    stop("'df' > 0 contradicts proposal=\"normal\"; use proposal=\"t\" or df=0",
-         call.=FALSE)
+    stop("'df' > 0 contradicts proposal=\"normal\"; use proposal=\"t\" or df=0", call. = FALSE)
   }
   if (identical(proposal, "t") && df <= 0) {
-    stop("proposal=\"t\" needs 'df' > 0", call.=FALSE)
+    stop("proposal=\"t\" needs 'df' > 0", call. = FALSE)
   }
   if (proposal %in% c("laplace", "mixture") && df > 0) {
-    stop("'df' applies only to proposal=\"t\"", call.=FALSE)
+    stop("'df' applies only to proposal=\"t\"", call. = FALSE)
   }
-  checkmate::assertNumeric(propMixScale, min.len=2, max.len=3, any.missing=FALSE,
-                           lower=.Machine$double.eps, finite=TRUE,
-                           .var.name="propMixScale")
-  checkmate::assertNumeric(propMixWeight, len=length(propMixScale),
-                           any.missing=FALSE, lower=.Machine$double.eps,
-                           finite=TRUE, .var.name="propMixWeight")
+  checkmate::assertNumeric(
+    propMixScale,
+    min.len = 2,
+    max.len = 3,
+    any.missing = FALSE,
+    lower = .Machine$double.eps,
+    finite = TRUE,
+    .var.name = "propMixScale"
+  )
+  checkmate::assertNumeric(
+    propMixWeight,
+    len = length(propMixScale),
+    any.missing = FALSE,
+    lower = .Machine$double.eps,
+    finite = TRUE,
+    .var.name = "propMixWeight"
+  )
   # component 1 IS the Laplace-approximation covariance, which is what anchors
   # the meaning of gamma; a mixture of one is not a mixture (and would not be
   # bit-identical to "normal" anyway -- the log-sum-exp reassociates).
   if (!isTRUE(all.equal(propMixScale[1], 1))) {
-    stop("'propMixScale' must start at 1", call.=FALSE)
+    stop("'propMixScale' must start at 1", call. = FALSE)
   }
   if (any(diff(propMixScale) <= 0)) {
-    stop("'propMixScale' must be strictly increasing", call.=FALSE)
+    stop("'propMixScale' must be strictly increasing", call. = FALSE)
   }
-  list(scale=as.double(propMixScale),
-       weight=as.double(propMixWeight / sum(propMixWeight)))
+  list(scale = as.double(propMixScale), weight = as.double(propMixWeight / sum(propMixWeight)))
 }
 
 #' Control options for the impmap (importance-sampling EM) estimation method
@@ -562,39 +592,41 @@
 #' @examples
 #'
 #' impmapControl()
-impmapControl <- function(sigdig=3,
-                          ...,
-                          isample=300L,
-                          nIter=100L,
-                          mapIter=1L,
-                          nBurn=0L,
-                          burnFreezeOmega=FALSE,
-                          gamma=1.0,
-                          gammaMethod=c("auto", "global", "individual"),
-                          gammaRule=c("target", "floor"),
-                          df=0,
-                          proposal=c("auto", "normal", "t", "laplace", "mixture"),
-                          propMixScale=c(1, 9),
-                          propMixWeight=c(0.9, 0.1),
-                          auto=TRUE,
-                          autoNonmemSparse=FALSE,
-                          autoDfPatience=2L,
-                          iscaleMin=0.1,
-                          iscaleMax=10.0,
-                          iaccept=0.4,
-                          ctol=NULL,
-                          nConvWindow=10L,
-                          impSeed=42L,
-                          covMethod=c("imp", "analytic", "r,s", "r", "s", "sa", ""),
-                          qr=FALSE,
-                          qrShift=TRUE,
-                          qrRefresh=TRUE,
-                          qrScramble=c("none", "owen", "lms"),
-                          sir=FALSE,
-                          sirSample=NULL,
-                          muModel=c("lin", "none"),
-                          combSens=TRUE) {
-  checkmate::assertLogical(combSens, len=1, any.missing=FALSE)
+impmapControl <- function(
+  sigdig = 3,
+  ...,
+  isample = 300L,
+  nIter = 100L,
+  mapIter = 1L,
+  nBurn = 0L,
+  burnFreezeOmega = FALSE,
+  gamma = 1.0,
+  gammaMethod = c("auto", "global", "individual"),
+  gammaRule = c("target", "floor"),
+  df = 0,
+  proposal = c("auto", "normal", "t", "laplace", "mixture"),
+  propMixScale = c(1, 9),
+  propMixWeight = c(0.9, 0.1),
+  auto = TRUE,
+  autoNonmemSparse = FALSE,
+  autoDfPatience = 2L,
+  iscaleMin = 0.1,
+  iscaleMax = 10.0,
+  iaccept = 0.4,
+  ctol = NULL,
+  nConvWindow = 10L,
+  impSeed = 42L,
+  covMethod = c("imp", "analytic", "r,s", "r", "s", "sa", ""),
+  qr = FALSE,
+  qrShift = TRUE,
+  qrRefresh = TRUE,
+  qrScramble = c("none", "owen", "lms"),
+  sir = FALSE,
+  sirSample = NULL,
+  muModel = c("lin", "none"),
+  combSens = TRUE
+) {
+  checkmate::assertLogical(combSens, len = 1, any.missing = FALSE)
   muModel <- match.arg(muModel)
   gammaMethod <- match.arg(gammaMethod)
   gammaRule <- match.arg(gammaRule)
@@ -617,19 +649,18 @@ impmapControl <- function(sigdig=3,
   if (identical(gammaRule, "target") && missing(nConvWindow)) {
     nConvWindow <- 20L
   }
-  checkmate::assertLogical(qr, any.missing=FALSE, len=1, .var.name="qr")
-  checkmate::assertLogical(qrShift, any.missing=FALSE, len=1, .var.name="qrShift")
-  checkmate::assertLogical(qrRefresh, any.missing=FALSE, len=1, .var.name="qrRefresh")
+  checkmate::assertLogical(qr, any.missing = FALSE, len = 1, .var.name = "qr")
+  checkmate::assertLogical(qrShift, any.missing = FALSE, len = 1, .var.name = "qrShift")
+  checkmate::assertLogical(qrRefresh, any.missing = FALSE, len = 1, .var.name = "qrRefresh")
   qrScramble <- match.arg(qrScramble)
   proposal <- match.arg(proposal)
   .propMix <- .impmapAssertProposal(proposal, df, propMixScale, propMixWeight)
-  checkmate::assertLogical(sir, any.missing=FALSE, len=1, .var.name="sir")
+  checkmate::assertLogical(sir, any.missing = FALSE, len = 1, .var.name = "sir")
   # isample may be a single count or one count PER SUBJECT (NONMEM's per-subject
   # ISAMPLE): a badly covered subject can buy more samples without charging
   # every other subject for them.
-  checkmate::assertIntegerish(isample, any.missing=FALSE, min.len=1, lower=1,
-                              .var.name="isample")
-  checkmate::assertIntegerish(impSeed, any.missing=FALSE, len=1, .var.name="impSeed")
+  checkmate::assertIntegerish(isample, any.missing = FALSE, min.len = 1, lower = 1, .var.name = "isample")
+  checkmate::assertIntegerish(impSeed, any.missing = FALSE, len = 1, .var.name = "impSeed")
   .isampleAll <- as.integer(isample)
   # A per-subject vector must be exactly nsub long.  nsub is not known here, so
   # the length is checked at fit time in the kernel (it used to fall back to a
@@ -639,21 +670,19 @@ impmapControl <- function(sigdig=3,
   if (is.null(sirSample)) {
     .sirSample <- max(25L, as.integer(ceiling(.isample / 10)))
   } else {
-    checkmate::assertIntegerish(sirSample, any.missing=FALSE, len=1, lower=1,
-                                .var.name="sirSample")
+    checkmate::assertIntegerish(sirSample, any.missing = FALSE, len = 1, lower = 1, .var.name = "sirSample")
     .sirSample <- as.integer(sirSample)
   }
   if (.sirSample > .isample) {
-    stop("'sirSample' (", .sirSample, ") cannot exceed 'isample' (", .isample, ")",
-         call.=FALSE)
+    stop("'sirSample' (", .sirSample, ") cannot exceed 'isample' (", .isample, ")", call. = FALSE)
   }
   # covMethod="imp" drives the Monte-Carlo importance-sampling covariance in the
   # C++ kernel (op_focei.impCov); every other token is the post-fit FOCEI
   # covariance, so hand foceiControl a valid token (the estimation pass forces
   # covMethod=0L regardless -- see .impmapFamilyFit).
   .dots <- list(...)
-  .impCov <- isTRUE(.dots$impCov)   # may already be set on a round-tripped control
-  .dots$impCov <- NULL              # internal field; do not forward to foceiControl
+  .impCov <- isTRUE(.dots$impCov) # may already be set on a round-tripped control
+  .dots$impCov <- NULL # internal field; do not forward to foceiControl
   # gammaMethodUser is stamped on the RUNTIME control by .impmapFamilyFit (it
   # records what the user asked for before "auto" was resolved).  A control that
   # has been round-tripped therefore carries it; keep it, but do not forward it
@@ -691,40 +720,36 @@ impmapControl <- function(sigdig=3,
     # keep the impCov flag from the incoming control (read above)
     .foceiCovMethod <- covMethod
   }
-  .control <- do.call(foceiControl,
-                      c(list(sigdig=sigdig), .dots,
-                        list(covMethod=.foceiCovMethod, muModel="lin")))
+  .control <- do.call(foceiControl, c(list(sigdig = sigdig), .dots, list(covMethod = .foceiCovMethod, muModel = "lin")))
   .control$impCov <- .impCov
-  if (!is.null(.autoNonNormal)) .control$autoNonNormal <- .autoNonNormal
+  if (!is.null(.autoNonNormal)) {
+    .control$autoNonNormal <- .autoNonNormal
+  }
   for (.nm in .impmapIdxMapNames) {
     if (!is.null(.impIdxMaps[[.nm]])) .control[[.nm]] <- .impIdxMaps[[.nm]]
   }
   .control$isample <- .isampleAll
-  checkmate::assertIntegerish(nIter, lower=0, len=1, any.missing=FALSE,
-                              .var.name="nIter")
+  checkmate::assertIntegerish(nIter, lower = 0, len = 1, any.missing = FALSE, .var.name = "nIter")
   .control$nIter <- as.integer(nIter)
-  checkmate::assertIntegerish(mapIter, lower=0, len=1, any.missing=FALSE,
-                              .var.name="mapIter")
+  checkmate::assertIntegerish(mapIter, lower = 0, len = 1, any.missing = FALSE, .var.name = "mapIter")
   .control$mapIter <- as.integer(mapIter)
-  checkmate::assertIntegerish(nBurn, lower=0, len=1, any.missing=FALSE,
-                              .var.name="nBurn")
-  checkmate::assertLogical(burnFreezeOmega, len=1, any.missing=FALSE,
-                           .var.name="burnFreezeOmega")
+  checkmate::assertIntegerish(nBurn, lower = 0, len = 1, any.missing = FALSE, .var.name = "nBurn")
+  checkmate::assertLogical(burnFreezeOmega, len = 1, any.missing = FALSE, .var.name = "burnFreezeOmega")
   .control$nBurn <- as.integer(nBurn)
   .control$burnFreezeOmega <- burnFreezeOmega
   .control$gamma <- as.double(gamma)
   .control$gammaMethod <- gammaMethod
   .control$gammaRule <- gammaRule
   .control$df <- as.double(df)
-  checkmate::assertLogical(auto, any.missing=FALSE, len=1, .var.name="auto")
-  checkmate::assertLogical(autoNonmemSparse, any.missing=FALSE, len=1,
-                           .var.name="autoNonmemSparse")
-  checkmate::assertIntegerish(autoDfPatience, lower=0, len=1, any.missing=FALSE,
-                              .var.name="autoDfPatience")
+  checkmate::assertLogical(auto, any.missing = FALSE, len = 1, .var.name = "auto")
+  checkmate::assertLogical(autoNonmemSparse, any.missing = FALSE, len = 1, .var.name = "autoNonmemSparse")
+  checkmate::assertIntegerish(autoDfPatience, lower = 0, len = 1, any.missing = FALSE, .var.name = "autoDfPatience")
   .control$auto <- auto
   .control$autoNonmemSparse <- autoNonmemSparse
   .control$autoDfPatience <- as.integer(autoDfPatience)
-  if (!is.null(.gammaMethodUser)) .control$gammaMethodUser <- .gammaMethodUser
+  if (!is.null(.gammaMethodUser)) {
+    .control$gammaMethodUser <- .gammaMethodUser
+  }
   .control$iscaleMin <- as.double(iscaleMin)
   .control$iscaleMax <- as.double(iscaleMax)
   .control$iaccept <- as.double(iaccept)
@@ -748,7 +773,7 @@ impmapControl <- function(sigdig=3,
 #' @rdname nmObjHandleControlObject
 #' @export
 nmObjHandleControlObject.impmapControl <- function(control, env) {
-  assign("impmapControl", control, envir=env)
+  assign("impmapControl", control, envir = env)
 }
 
 #' @rdname getValidNlmixrControl
@@ -756,9 +781,12 @@ nmObjHandleControlObject.impmapControl <- function(control, env) {
 getValidNlmixrCtl.impmap <- function(control) {
   .ctl <- control[[1]]
   .cls <- class(control)[1]
-  if (is.null(.ctl)) .ctl <- impmapControl()
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list"))
+  if (is.null(.ctl)) {
+    .ctl <- impmapControl()
+  }
+  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
     .ctl <- do.call("impmapControl", .ctl)
+  }
   if (inherits(.ctl, "foceiControl")) {
     .minfo(paste0("converting ", class(.ctl)[1], " to impmapControl"))
     class(.ctl) <- NULL
@@ -795,25 +823,49 @@ getValidNlmixrCtl.impmap <- function(control) {
 .impmapEstWins <- function(ctl, est) {
   .src <- ctl$est
   # a freshly built control (no completed fit behind it) is the user's own
-  if (is.null(.src) || !is.character(.src) || identical(.src, est)) return(ctl)
+  if (is.null(.src) || !is.character(.src) || identical(.src, est)) {
+    return(ctl)
+  }
   .msg <- character(0)
   # est="imp" stamped mapIter = 0; every other method re-centers
-  if (identical(.src, "imp") && identical(as.integer(ctl$mapIter), 0L) &&
-        (identical(est, "impmap") || identical(est, "qrpem"))) {
+  if (
+    identical(.src, "imp") &&
+      identical(as.integer(ctl$mapIter), 0L) &&
+      (identical(est, "impmap") || identical(est, "qrpem"))
+  ) {
     ctl$mapIter <- 1L
     .msg <- c(.msg, "mapIter=1")
   }
   # est="qrpem" IS impmapControl(qr=TRUE, sir=TRUE); neither travels
   if (identical(est, "qrpem")) {
-    if (!isTRUE(ctl$qr)) { ctl$qr <- TRUE; .msg <- c(.msg, "qr=TRUE") }
-    if (!isTRUE(ctl$sir)) { ctl$sir <- TRUE; .msg <- c(.msg, "sir=TRUE") }
+    if (!isTRUE(ctl$qr)) {
+      ctl$qr <- TRUE
+      .msg <- c(.msg, "qr=TRUE")
+    }
+    if (!isTRUE(ctl$sir)) {
+      ctl$sir <- TRUE
+      .msg <- c(.msg, "sir=TRUE")
+    }
   } else if (identical(.src, "qrpem")) {
-    if (isTRUE(ctl$qr)) { ctl$qr <- FALSE; .msg <- c(.msg, "qr=FALSE") }
-    if (isTRUE(ctl$sir)) { ctl$sir <- FALSE; .msg <- c(.msg, "sir=FALSE") }
+    if (isTRUE(ctl$qr)) {
+      ctl$qr <- FALSE
+      .msg <- c(.msg, "qr=FALSE")
+    }
+    if (isTRUE(ctl$sir)) {
+      ctl$sir <- FALSE
+      .msg <- c(.msg, "sir=FALSE")
+    }
   }
   if (length(.msg) > 0L) {
-    .minfo(paste0("`est=\"", est, "\"` restores ", paste(.msg, collapse = ", "),
-                  " (inherited from an `est=\"", .src, "\"` fit)"))
+    .minfo(paste0(
+      "`est=\"",
+      est,
+      "\"` restores ",
+      paste(.msg, collapse = ", "),
+      " (inherited from an `est=\"",
+      .src,
+      "\"` fit)"
+    ))
   }
   ctl
 }
@@ -830,10 +882,10 @@ nmObjGetControl.impmap <- function(x, ...) {
     .control <- get("control", .env, inherits = FALSE)
     if (inherits(.control, "impmapControl")) return(.control)
   }
-  stop("cannot find impmap related control object", call.=FALSE)
+  stop("cannot find impmap related control object", call. = FALSE)
 }
 
-.impmapControlToFoceiControl <- function(env, assign=TRUE) {
+.impmapControlToFoceiControl <- function(env, assign = TRUE) {
   .impmapControl <- env$impmapControl
   .n <- setdiff(names(.impmapControl), .impmapIsControlNames)
   # np* internals (npBoxLower/npPoints/npResidFreeze ...) and the npag/npb user
@@ -841,13 +893,28 @@ nmObjGetControl.impmap <- function(x, ...) {
   # are nonparametric-engine control fields that foceiControl does not accept; drop
   # them so a downstream do.call(foceiControl, .) (e.g. .setOfvFo, general-likelihood
   # tables) does not error with "unused argument".
-  .npKnobs <- c("points", "cycles", "gammaOptimize", "residOptimize", "muExpand",
-                "gridWidth", "gridBounds", "dfScan",
-                "alpha", "burnin", "nsamp", "nchains", "propSd", "est")
+  .npKnobs <- c(
+    "points",
+    "cycles",
+    "gammaOptimize",
+    "residOptimize",
+    "muExpand",
+    "gridWidth",
+    "gridBounds",
+    "dfScan",
+    "alpha",
+    "burnin",
+    "nsamp",
+    "nchains",
+    "propSd",
+    "est"
+  )
   .n <- .n[!grepl("^np[A-Z]", .n) & !(.n %in% .npKnobs)]
   .foceiControl <- setNames(lapply(.n, function(n) .impmapControl[[n]]), .n)
   class(.foceiControl) <- "foceiControl"
-  if (assign) env$control <- .foceiControl
+  if (assign) {
+    env$control <- .foceiControl
+  }
   .foceiControl
 }
 
@@ -855,7 +922,7 @@ nmObjGetControl.impmap <- function(x, ...) {
 #' @export
 nmObjGetFoceiControl.impmap <- function(x, ...) {
   .env <- x[[1]]
-  .impmapControlToFoceiControl(.env, assign=FALSE)
+  .impmapControlToFoceiControl(.env, assign = FALSE)
 }
 
 #' Resolve gammaMethod="auto" against the model
@@ -881,14 +948,20 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
 #' @return "global" or "individual"
 #' @noRd
 .impmapResolveGammaMethod <- function(gammaMethod, ui) {
-  if (!identical(gammaMethod, "auto")) return(gammaMethod)
-  .dist <- tryCatch(ui$predDf$distribution, error=function(e) NULL)
+  if (!identical(gammaMethod, "auto")) {
+    return(gammaMethod)
+  }
+  .dist <- tryCatch(ui$predDf$distribution, error = function(e) NULL)
   # No usable predDf (should not happen for a fittable model): fall back to the
   # conservative choice, which is the historical behaviour.  Same for an NA
   # distribution -- `all(NA == "x")` is NA, which would error an `if`.
-  if (is.null(.dist) || length(.dist) == 0L) return("global")
+  if (is.null(.dist) || length(.dist) == 0L) {
+    return("global")
+  }
   .dist <- as.character(.dist)
-  if (anyNA(.dist)) return("global")
+  if (anyNA(.dist)) {
+    return("global")
+  }
   # Canonicalize before comparing: rxode2 spells the Gaussian family both
   # "norm" and "dnorm" and treats them as identical (rxPreferredDistributionName
   # maps both to "dnorm"), so a literal == "norm" test would send an otherwise
@@ -901,8 +974,7 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   # Note lognormal / boxCox / yeoJohnson residuals are carried in
   # predDf$transform with distribution still "norm", so they canonicalize to
   # "dnorm" here and correctly count as Gaussian.
-  .canon <- tryCatch(rxode2::rxPreferredDistributionName(.dist),
-                     error=function(e) .dist)
+  .canon <- tryCatch(rxode2::rxPreferredDistributionName(.dist), error = function(e) .dist)
   if (all(.canon == "dnorm")) "global" else "individual"
 }
 
@@ -934,20 +1006,28 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
     ""
   }
   if (identical(resolved, "individual")) {
-    paste0("gammaMethod=\"individual\"", .why,
-           ": the proposal scale is adapted per subject toward xi=", iaccept,
-           " (NONMEM IACCEPT).  Sampling efficiency for this fit is xi",
-           " ($impXi/$impXiTrace); the Kish effective-sample fraction",
-           " ($impNeffFrac) is a DIFFERENT statistic and the two are not",
-           " comparable -- nor is xi comparable across gammaMethod settings.")
+    paste0(
+      "gammaMethod=\"individual\"",
+      .why,
+      ": the proposal scale is adapted per subject toward xi=",
+      iaccept,
+      " (NONMEM IACCEPT).  Sampling efficiency for this fit is xi",
+      " ($impXi/$impXiTrace); the Kish effective-sample fraction",
+      " ($impNeffFrac) is a DIFFERENT statistic and the two are not",
+      " comparable -- nor is xi comparable across gammaMethod settings."
+    )
   } else {
-    paste0("gammaMethod=\"global\"", .why,
-           ": one shared proposal scale, adapted only when the mean Kish",
-           " effective-sample fraction falls below ", iaccept,
-           ".  Sampling efficiency for this fit is that fraction",
-           " ($impNeff/$impNeffFrac); NONMEM-style xi ($impXiTrace) is also",
-           " reported but is a DIFFERENT statistic and the two are not",
-           " comparable.")
+    paste0(
+      "gammaMethod=\"global\"",
+      .why,
+      ": one shared proposal scale, adapted only when the mean Kish",
+      " effective-sample fraction falls below ",
+      iaccept,
+      ".  Sampling efficiency for this fit is that fraction",
+      " ($impNeff/$impNeffFrac); NONMEM-style xi ($impXiTrace) is also",
+      " reported but is a DIFFERENT statistic and the two are not",
+      " comparable."
+    )
   }
 }
 
@@ -967,7 +1047,7 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   if (!inherits(.control, "impmapControl")) {
     .control <- do.call(nlmixr2est::impmapControl, .control)
   }
-  assign("control", .control, envir=.ui)
+  assign("control", .control, envir = .ui)
 }
 
 #' Fit the impmap family of models
@@ -985,7 +1065,7 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   # (it would bail on muModel="lin" anyway) -- the covariance is computed
   # post-fit on the full model at the converged estimates (.foceiRecomputeMuCov).
   .control <- ui$control
-  .covMethodUser <- .control$covMethod  # restored on the fit env control below
+  .covMethodUser <- .control$covMethod # restored on the fit env control below
   .control$maxOuterIterations <- 0L
   .control$covMethod <- 0L
   # Resolve gammaMethod="auto" here, where the ui (and therefore predDf) is in
@@ -999,8 +1079,10 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   # pin a normal model to "individual".  Keying off gammaMethodUser makes
   # resolution idempotent and re-runnable.
   .gmUser <- .control$gammaMethodUser
-  if (is.null(.gmUser)) .gmUser <- .control$gammaMethod
-  .control$gammaMethodUser <- .gmUser                # kept for $runInfo
+  if (is.null(.gmUser)) {
+    .gmUser <- .control$gammaMethod
+  }
+  .control$gammaMethodUser <- .gmUser # kept for $runInfo
   .control$gammaMethod <- .impmapResolveGammaMethod(.gmUser, ui)
   # AUTO's "or data are categorical" trigger: reuse the same transformably-normal
   # test the gammaMethod resolution uses, so there is one notion of model class.
@@ -1009,25 +1091,25 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   # always stashed but they are not the same quantity, and only one drives the
   # adaptation -- warning() here is the established route onto $runInfo
   # (collected in nlmixr2Est.R and printed under "Information about run").
-  warning(.impmapGammaRunInfo(.control$gammaMethod, .gmUser,
-                              .control$iaccept),
-          call.=FALSE)
+  warning(.impmapGammaRunInfo(.control$gammaMethod, .gmUser, .control$iaccept), call. = FALSE)
   if (identical(.control$nIter, 0L)) {
-    .etaSrc <- if (inherits(nlmixr2global$etaMat, "nlmixr2FitCore") &&
-                     identical(.control$etaMat, nlmixr2global$etaMat$etaMat)) {
+    .etaSrc <- if (
+      inherits(nlmixr2global$etaMat, "nlmixr2FitCore") &&
+        identical(.control$etaMat, nlmixr2global$etaMat$etaMat)
+    ) {
       "etas from the last fit"
     } else if (!is.null(.control$etaMat)) {
       "etas from etaMat"
     } else {
       "etas 0"
     }
-    warning("E-step only (nIter=0): fixed parameters, ", .etaSrc, call.=FALSE)
+    warning("E-step only (nIter=0): fixed parameters, ", .etaSrc, call. = FALSE)
   }
   # 0-based index maps for the SIMPLE mu-referenced intercepts (theta = population
   # mean of an eta, no covariates): impOuter's M-step shifts each such theta by
   # the mean conditional eta.  Covariate mu-groups are excluded here because they
   # are handled by the regression update (updateMuGroups) instead.
-  ui$foceiOptEnv  # builds foceiMuGroupTheta (the covariate-group thetas)
+  ui$foceiOptEnv # builds foceiMuGroupTheta (the covariate-group thetas)
   .iniDf <- ui$iniDf
   .th <- .iniDf[!is.na(.iniDf$ntheta), ]
   .thNames <- .th[order(.th$ntheta), "name"]
@@ -1037,8 +1119,7 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   .muThetaIdx <- as.integer(match(.mr$theta, .thNames) - 1L)
   .muEtaIdx <- as.integer(match(.mr$eta, .etaNames) - 1L)
   .covGroupTheta <- rxode2::rxGetControl(ui, "foceiMuGroupTheta", integer(0))
-  .keep <- !is.na(.muThetaIdx) & !is.na(.muEtaIdx) &
-    !(.muThetaIdx %in% .covGroupTheta)
+  .keep <- !is.na(.muThetaIdx) & !is.na(.muEtaIdx) & !(.muThetaIdx %in% .covGroupTheta)
   .control$impMuThetaIdx <- .muThetaIdx[.keep]
   .control$impMuEtaIdx <- .muEtaIdx[.keep]
   # 0-based theta indices of the estimated non-mu thetas (structural + residual
@@ -1077,7 +1158,7 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   # restores their rows/columns to the starting value so fix()ed variances hold.
   .etaOrd <- .etaRows[order(.etaRows$neta1), ]
   .control$impOmegaFixedEta <- as.integer(which(isTRUE(.etaOrd$fix) | .etaOrd$fix) - 1L)
-  assign("control", .control, envir=ui)
+  assign("control", .control, envir = ui)
   # Seed the importance-sampling RNG from the control (impSeed) right before the
   # fit, mirroring saem's set.seed(seed).  The E-step draws through rxode2's
   # threefry engine (getRxSeed1), so a fixed rxseed makes the fit reproducible
@@ -1086,9 +1167,8 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   .impSeed <- if (is.null(.control$impSeed)) 42L else as.integer(.control$impSeed)
   # est is "impmap" or "imp" (the no-MAP-search variant); pass it through so the
   # C++ kernel (impOuter) selects the proposal accordingly.
-  .est <- if (exists("est", envir=env)) get("est", envir=env) else "impmap"
-  .fit <- rxode2::rxWithSeed(.impSeed, rxseed=.impSeed,
-                             code=.foceiFamilyReturn(env, ui, ..., est=.est))
+  .est <- if (exists("est", envir = env)) get("est", envir = env) else "impmap"
+  .fit <- rxode2::rxWithSeed(.impSeed, rxseed = .impSeed, code = .foceiFamilyReturn(env, ui, ..., est = .est))
   # The MC covariance (impCov=TRUE) is published with theta row/column names but
   # the Omega parameters come out unnamed on this path; fill them in (defensively,
   # only when the counts line up) so vcov()/$cov and the correlation are labelled.
@@ -1099,19 +1179,25 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   # objective recompute below -- which runs a nested focei fit -- re-registers the
   # slots and the global view stops describing this fit.  Stash it here so the
   # diagnostic travels with the fit and cannot be overwritten by a later one.
-  tryCatch({
-    .fenv0 <- .fit$env
-    if (is.environment(.fenv0)) assign("odeSwapInfo", .odeSwapInfo(), envir=.fenv0)
-  }, error=function(e) NULL)
+  tryCatch(
+    {
+      .fenv0 <- .fit$env
+      if (is.environment(.fenv0)) assign("odeSwapInfo", .odeSwapInfo(), envir = .fenv0)
+    },
+    error = function(e) NULL
+  )
   .impmapRecomputeObjf(.fit)
   # Tail-sensitive companion to xi / Kish ESS: computed post-fit from the
   # stashed final-iteration weights so it costs nothing during the EM.
-  tryCatch({
-    .fenv <- .fit$env
-    if (is.environment(.fenv)) {
-      assign("impPsisK", .impPsisKAll(.fenv), envir=.fenv)
-    }
-  }, error=function(e) NULL)
+  tryCatch(
+    {
+      .fenv <- .fit$env
+      if (is.environment(.fenv)) {
+        assign("impPsisK", .impPsisKAll(.fenv), envir = .fenv)
+      }
+    },
+    error = function(e) NULL
+  )
   .fit
 }
 
@@ -1141,57 +1227,94 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
 #' @return invisibly TRUE when the objective was replaced
 #' @noRd
 .impmapRecomputeObjf <- function(fit) {
-  .env <- tryCatch(fit$env, error=function(e) NULL)
-  if (!is.environment(.env)) return(invisible(FALSE))
+  .env <- tryCatch(fit$env, error = function(e) NULL)
+  if (!is.environment(.env)) {
+    return(invisible(FALSE))
+  }
   # deep-copy the UI: the nested re-fit must not mutate THIS fit's UI
-  .ui <- tryCatch(rxode2::rxUiDecompress(unserialize(serialize(fit$ui, NULL))),
-                  error=function(e) NULL)
-  if (is.null(.ui)) return(invisible(FALSE))
-  .sigdig <- tryCatch(fit$foceiControl$sigdig, error=function(e) NULL)
+  .ui <- tryCatch(rxode2::rxUiDecompress(unserialize(serialize(fit$ui, NULL))), error = function(e) NULL)
+  if (is.null(.ui)) {
+    return(invisible(FALSE))
+  }
+  .sigdig <- tryCatch(fit$foceiControl$sigdig, error = function(e) NULL)
   # A nested nlmixr2() calls .nlmixr2globalReset(), which clears nlmixr2global --
   # including the timing environment (dropping the outer fit's "other" timing
   # row).  Snapshot and restore the whole thing, plus the mu-referencing global.
   .savedMuRef <- .muRefTrans$cur
-  on.exit(.muRefTrans$cur <- .savedMuRef, add=TRUE)
-  .savedGlobal <- as.list(nlmixr2global, all.names=TRUE)
-  on.exit({
-    rm(list=ls(nlmixr2global, all.names=TRUE), envir=nlmixr2global)
-    for (.gn in names(.savedGlobal)) assign(.gn, .savedGlobal[[.gn]], envir=nlmixr2global)
-  }, add=TRUE)
-  .ctl <- try(foceiControl(print=0L, covMethod="", maxOuterIterations=0L,
-                           calcTables=FALSE, compress=FALSE,
-                           sigdig=if (is.null(.sigdig)) 4 else .sigdig),
-              silent=TRUE)
-  if (inherits(.ctl, "try-error")) return(invisible(FALSE))
-  .f2 <- try(suppressMessages(suppressWarnings(
-    .nlmixr2PriorGateBypass(
-      nlmixr2(.ui, data=nlme::getData(fit), est="focei", control=.ctl)))),
-    silent=TRUE)
-  if (inherits(.f2, "try-error")) return(invisible(FALSE))
-  .e2 <- tryCatch(.f2$env, error=function(e) NULL)
-  if (!is.environment(.e2)) return(invisible(FALSE))
+  on.exit(.muRefTrans$cur <- .savedMuRef, add = TRUE)
+  .savedGlobal <- as.list(nlmixr2global, all.names = TRUE)
+  on.exit(
+    {
+      rm(list = ls(nlmixr2global, all.names = TRUE), envir = nlmixr2global)
+      for (.gn in names(.savedGlobal)) {
+        assign(.gn, .savedGlobal[[.gn]], envir = nlmixr2global)
+      }
+    },
+    add = TRUE
+  )
+  .ctl <- try(
+    foceiControl(
+      print = 0L,
+      covMethod = "",
+      maxOuterIterations = 0L,
+      calcTables = FALSE,
+      compress = FALSE,
+      sigdig = if (is.null(.sigdig)) 4 else .sigdig
+    ),
+    silent = TRUE
+  )
+  if (inherits(.ctl, "try-error")) {
+    return(invisible(FALSE))
+  }
+  .f2 <- try(
+    suppressMessages(suppressWarnings(
+      .nlmixr2PriorGateBypass(
+        nlmixr2(.ui, data = nlme::getData(fit), est = "focei", control = .ctl)
+      )
+    )),
+    silent = TRUE
+  )
+  if (inherits(.f2, "try-error")) {
+    return(invisible(FALSE))
+  }
+  .e2 <- tryCatch(.f2$env, error = function(e) NULL)
+  if (!is.environment(.e2)) {
+    return(invisible(FALSE))
+  }
   # carry the objective AND the per-subject quantities derived from the same
   # (correct) Hessian, so $etaObf/$phiH do not disagree with the published number
-  for (.n in c("objective", "OBJF", "objf", "logLik", "AIC", "BIC",
-               "etaObf", "etaObfFull", "phiH", "phiC", "phiR", "phiSE", "phiRSE")) {
-    if (exists(.n, envir=.e2, inherits=FALSE)) {
-      assign(.n, get(.n, envir=.e2), envir=.env)
+  for (.n in c(
+    "objective",
+    "OBJF",
+    "objf",
+    "logLik",
+    "AIC",
+    "BIC",
+    "etaObf",
+    "etaObfFull",
+    "phiH",
+    "phiC",
+    "phiR",
+    "phiSE",
+    "phiRSE"
+  )) {
+    if (exists(.n, envir = .e2, inherits = FALSE)) {
+      assign(.n, get(.n, envir = .e2), envir = .env)
     }
   }
   # objDf is MERGED, not replaced: the re-fit runs covMethod="" so its objDf has no
   # Condition#(Cov)/Condition#(Cor), and replacing wholesale would drop the columns
   # the imp covariance had already filled in.
-  if (exists("objDf", envir=.e2, inherits=FALSE)) {
-    .newObjDf <- get("objDf", envir=.e2)
-    .oldObjDf <- tryCatch(get("objDf", envir=.env, inherits=FALSE), error=function(e) NULL)
-    if (is.data.frame(.oldObjDf) && is.data.frame(.newObjDf) &&
-          nrow(.oldObjDf) == nrow(.newObjDf)) {
+  if (exists("objDf", envir = .e2, inherits = FALSE)) {
+    .newObjDf <- get("objDf", envir = .e2)
+    .oldObjDf <- tryCatch(get("objDf", envir = .env, inherits = FALSE), error = function(e) NULL)
+    if (is.data.frame(.oldObjDf) && is.data.frame(.newObjDf) && nrow(.oldObjDf) == nrow(.newObjDf)) {
       for (.c in intersect(names(.newObjDf), names(.oldObjDf))) {
         .oldObjDf[[.c]] <- .newObjDf[[.c]]
       }
-      assign("objDf", .oldObjDf, envir=.env)
+      assign("objDf", .oldObjDf, envir = .env)
     } else {
-      assign("objDf", .newObjDf, envir=.env)
+      assign("objDf", .newObjDf, envir = .env)
     }
   }
   invisible(TRUE)
@@ -1206,8 +1329,10 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
 #' @noRd
 .impRestoreCovMethod <- function(fit, covMethod) {
   .fenv <- tryCatch(fit$env, error = function(e) NULL)
-  if (is.environment(.fenv) &&
-        exists("impmapControl", envir = .fenv, inherits = FALSE)) {
+  if (
+    is.environment(.fenv) &&
+      exists("impmapControl", envir = .fenv, inherits = FALSE)
+  ) {
     .ic <- get("impmapControl", envir = .fenv)
     .ic$covMethod <- covMethod
     assign("impmapControl", .ic, envir = .fenv)
@@ -1221,24 +1346,33 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
 #' @return Nothing, called for side effects
 #' @noRd
 .impmapNameCov <- function(fit, ui) {
-  .fenv <- tryCatch(fit$env, error=function(e) NULL)
-  if (is.null(.fenv) || is.null(.fenv$cov) || !is.matrix(.fenv$cov)) return(invisible())
-  tryCatch({
-    .dn <- dimnames(.fenv$cov)[[1]]
-    if (is.null(.dn)) return(invisible())
-    .empty <- which(is.na(.dn) | .dn == "")
-    if (length(.empty) == 0L) return(invisible())
-    .etaN <- .foceiEtaThetaMap(ui)$etaNames
-    .op <- .foceiOmegaPairs(.fenv$omega, ui$iniDf)
-    .omN <- .foceiOmegaCovNames(.op, .etaN)
-    if (length(.omN) == length(.empty)) {
-      .dn[.empty] <- .omN
-      dimnames(.fenv$cov) <- list(.dn, .dn)
-      if (!is.null(.fenv$fullCor) && is.matrix(.fenv$fullCor)) {
-        dimnames(.fenv$fullCor) <- list(.dn, .dn)
+  .fenv <- tryCatch(fit$env, error = function(e) NULL)
+  if (is.null(.fenv) || is.null(.fenv$cov) || !is.matrix(.fenv$cov)) {
+    return(invisible())
+  }
+  tryCatch(
+    {
+      .dn <- dimnames(.fenv$cov)[[1]]
+      if (is.null(.dn)) {
+        return(invisible())
       }
-    }
-  }, error=function(e) NULL)
+      .empty <- which(is.na(.dn) | .dn == "")
+      if (length(.empty) == 0L) {
+        return(invisible())
+      }
+      .etaN <- .foceiEtaThetaMap(ui)$etaNames
+      .op <- .foceiOmegaPairs(.fenv$omega, ui$iniDf)
+      .omN <- .foceiOmegaCovNames(.op, .etaN)
+      if (length(.omN) == length(.empty)) {
+        .dn[.empty] <- .omN
+        dimnames(.fenv$cov) <- list(.dn, .dn)
+        if (!is.null(.fenv$fullCor) && is.matrix(.fenv$fullCor)) {
+          dimnames(.fenv$fullCor) <- list(.dn, .dn)
+        }
+      }
+    },
+    error = function(e) NULL
+  )
   invisible()
 }
 
@@ -1250,17 +1384,19 @@ nlmixr2Est.impmap <- function(env, ...) {
   # (impEvalJointLik = likInner0), so only require transformable normality when
   # the rxode2 build has no llik support -- mirrors nlmixr2Est.focei.
   if (!rxode2hasLlik()) {
-    rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'impmap'", .var.name=.ui$modelName)
+    rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'impmap'", .var.name = .ui$modelName)
   }
-  rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'impmap'",
-                             .var.name=.ui$modelName)
+  rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'impmap'", .var.name = .ui$modelName)
   .control <- env$control
-  .foceiFamilyControl(env, ..., type="impmapControl")
-  on.exit({
-    if (is.environment(.ui) && exists("control", envir=.ui, inherits=FALSE)) {
-      rm("control", envir=.ui)
-    }
-  }, add=TRUE)
+  .foceiFamilyControl(env, ..., type = "impmapControl")
+  on.exit(
+    {
+      if (is.environment(.ui) && exists("control", envir = .ui, inherits = FALSE)) {
+        rm("control", envir = .ui)
+      }
+    },
+    add = TRUE
+  )
   env$impmapControl <- .control
   env$est <- "impmap"
   .ui <- env$ui

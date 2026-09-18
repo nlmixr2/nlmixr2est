@@ -43,25 +43,27 @@ NULL
 #' @examples
 #' iterPrintControl()
 #' iterPrintControl(every = 5, headerEvery = 0)
-iterPrintControl <- function(every = 1L,
-                             ncol = NULL,
-                             headerEvery = NULL,
-                             useColor = NULL,
-                             simple = FALSE) {
-  if (is.null(ncol))        ncol        <- floor((getOption("width") - 23) / 12)
-  if (is.null(headerEvery)) headerEvery <- 10L
-  if (is.null(useColor))    useColor    <- crayon::has_color()
-  checkmate::assertIntegerish(every,       len = 1, lower = 0, any.missing = FALSE)
-  checkmate::assertIntegerish(ncol,        len = 1, lower = 1, any.missing = FALSE)
+iterPrintControl <- function(every = 1L, ncol = NULL, headerEvery = NULL, useColor = NULL, simple = FALSE) {
+  if (is.null(ncol)) {
+    ncol <- floor((getOption("width") - 23) / 12)
+  }
+  if (is.null(headerEvery)) {
+    headerEvery <- 10L
+  }
+  if (is.null(useColor)) {
+    useColor <- crayon::has_color()
+  }
+  checkmate::assertIntegerish(every, len = 1, lower = 0, any.missing = FALSE)
+  checkmate::assertIntegerish(ncol, len = 1, lower = 1, any.missing = FALSE)
   checkmate::assertIntegerish(headerEvery, len = 1, lower = 0, any.missing = FALSE)
-  checkmate::assertLogical(useColor,       len = 1, any.missing = FALSE)
-  checkmate::assertLogical(simple,         len = 1, any.missing = FALSE)
+  checkmate::assertLogical(useColor, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(simple, len = 1, any.missing = FALSE)
   .ret <- list(
-    every       = as.integer(every),
-    ncol        = as.integer(ncol),
+    every = as.integer(every),
+    ncol = as.integer(ncol),
     headerEvery = as.integer(headerEvery),
-    useColor    = as.logical(useColor),
-    simple      = as.logical(simple)
+    useColor = as.logical(useColor),
+    simple = as.logical(simple)
   )
   class(.ret) <- c("iterPrintControl", "list")
   .ret
@@ -85,7 +87,9 @@ iterPrintControl <- function(every = 1L,
 .iterPrintXParFromUi <- function(ui, printNames = NULL) {
   iniThetas <- ui$iniDf[!is.na(ui$iniDf$ntheta), c("ntheta", "name")]
   iniThetas <- iniThetas[order(iniThetas$ntheta), ]
-  if (is.null(printNames)) printNames <- iniThetas$name
+  if (is.null(printNames)) {
+    printNames <- iniThetas$name
+  }
   printNames <- as.character(printNames)
   muRef <- ui$muRefCurEval
   xPar <- integer(length(printNames))
@@ -94,22 +98,26 @@ iterPrintControl <- function(every = 1L,
   logitThetaHi <- numeric(0)
   probitThetaLow <- numeric(0)
   probitThetaHi <- numeric(0)
-  empty <- function() list(
-    xPar             = xPar,
-    probitIdx        = probitIdx,
-    logitThetaLow    = logitThetaLow,
-    logitThetaHi     = logitThetaHi,
-    probitThetaLow   = probitThetaLow,
-    probitThetaHi    = probitThetaHi,
-    logNthetas       = integer(0),
-    logitNthetas     = integer(0),
-    logitNthetasLow  = numeric(0),
-    logitNthetasHi   = numeric(0),
-    probitNthetas    = integer(0),
-    probitNthetasLow = numeric(0),
-    probitNthetasHi  = numeric(0)
-  )
-  if (is.null(muRef) || nrow(muRef) == 0L) return(empty())
+  empty <- function() {
+    list(
+      xPar = xPar,
+      probitIdx = probitIdx,
+      logitThetaLow = logitThetaLow,
+      logitThetaHi = logitThetaHi,
+      probitThetaLow = probitThetaLow,
+      probitThetaHi = probitThetaHi,
+      logNthetas = integer(0),
+      logitNthetas = integer(0),
+      logitNthetasLow = numeric(0),
+      logitNthetasHi = numeric(0),
+      probitNthetas = integer(0),
+      probitNthetasLow = numeric(0),
+      probitNthetasHi = numeric(0)
+    )
+  }
+  if (is.null(muRef) || nrow(muRef) == 0L) {
+    return(empty())
+  }
   if (!is.null(ui$boundedTransforms)) {
     for (.tr in ui$boundedTransforms) {
       .w <- which(muRef$parameter == .tr$internalName)
@@ -123,18 +131,20 @@ iterPrintControl <- function(every = 1L,
   for (i in seq_along(printNames)) {
     nm <- printNames[i]
     idx <- which(muRef$parameter == nm)
-    if (length(idx) == 0L) next
+    if (length(idx) == 0L) {
+      next
+    }
     idx <- idx[1L]
     ce <- muRef$curEval[idx]
     if (isTRUE(ce == "exp")) {
       xPar[i] <- 1L
     } else if (isTRUE(ce == "expit")) {
       logitThetaLow <- c(logitThetaLow, muRef$low[idx])
-      logitThetaHi  <- c(logitThetaHi,  muRef$hi[idx])
+      logitThetaHi <- c(logitThetaHi, muRef$hi[idx])
       xPar[i] <- -as.integer(length(logitThetaLow))
     } else if (isTRUE(ce == "probitInv")) {
       probitThetaLow <- c(probitThetaLow, muRef$low[idx])
-      probitThetaHi  <- c(probitThetaHi,  muRef$hi[idx])
+      probitThetaHi <- c(probitThetaHi, muRef$hi[idx])
       probitIdx[i] <- as.integer(length(probitThetaLow))
     }
   }
@@ -145,19 +155,19 @@ iterPrintControl <- function(every = 1L,
   tr <- merge(iniThetas, muRef, by.x = "name", by.y = "parameter")
   tr <- tr[order(tr$ntheta), ]
   list(
-    xPar             = xPar,
-    probitIdx        = probitIdx,
-    logitThetaLow    = logitThetaLow,
-    logitThetaHi     = logitThetaHi,
-    probitThetaLow   = probitThetaLow,
-    probitThetaHi    = probitThetaHi,
-    logNthetas       = as.integer(tr[which(tr$curEval == "exp"),       "ntheta"]),
-    logitNthetas     = as.integer(tr[which(tr$curEval == "expit"),     "ntheta"]),
-    logitNthetasLow  = as.double( tr[which(tr$curEval == "expit"),     "low"]),
-    logitNthetasHi   = as.double( tr[which(tr$curEval == "expit"),     "hi"]),
-    probitNthetas    = as.integer(tr[which(tr$curEval == "probitInv"), "ntheta"]),
-    probitNthetasLow = as.double( tr[which(tr$curEval == "probitInv"), "low"]),
-    probitNthetasHi  = as.double( tr[which(tr$curEval == "probitInv"), "hi"])
+    xPar = xPar,
+    probitIdx = probitIdx,
+    logitThetaLow = logitThetaLow,
+    logitThetaHi = logitThetaHi,
+    probitThetaLow = probitThetaLow,
+    probitThetaHi = probitThetaHi,
+    logNthetas = as.integer(tr[which(tr$curEval == "exp"), "ntheta"]),
+    logitNthetas = as.integer(tr[which(tr$curEval == "expit"), "ntheta"]),
+    logitNthetasLow = as.double(tr[which(tr$curEval == "expit"), "low"]),
+    logitNthetasHi = as.double(tr[which(tr$curEval == "expit"), "hi"]),
+    probitNthetas = as.integer(tr[which(tr$curEval == "probitInv"), "ntheta"]),
+    probitNthetasLow = as.double(tr[which(tr$curEval == "probitInv"), "low"]),
+    probitNthetasHi = as.double(tr[which(tr$curEval == "probitInv"), "hi"])
   )
 }
 
@@ -175,25 +185,28 @@ iterPrintControl <- function(every = 1L,
 #' @return An `iterPrintControl` list.
 #' @keywords internal
 #' @export
-.absorbIterPrintControl <- function(print = 1L,
-                                    printNcol = NULL,
-                                    useColor = NULL,
-                                    iterPrintControl = NULL) {
+.absorbIterPrintControl <- function(print = 1L, printNcol = NULL, useColor = NULL, iterPrintControl = NULL) {
   if (!is.null(iterPrintControl)) {
     if (!inherits(iterPrintControl, "iterPrintControl")) {
-      stop("`iterPrintControl` must be the result of iterPrintControl()",
-           call. = FALSE)
+      stop("`iterPrintControl` must be the result of iterPrintControl()", call. = FALSE)
     }
     return(iterPrintControl)
   }
   if (inherits(print, "iterPrintControl")) {
     .conflicts <- character(0)
-    if (!is.null(printNcol)) .conflicts <- c(.conflicts, "printNcol")
-    if (!is.null(useColor))  .conflicts <- c(.conflicts, "useColor")
+    if (!is.null(printNcol)) {
+      .conflicts <- c(.conflicts, "printNcol")
+    }
+    if (!is.null(useColor)) {
+      .conflicts <- c(.conflicts, "useColor")
+    }
     if (length(.conflicts)) {
-      warning("ignoring `", paste(.conflicts, collapse = "`, `"),
-              "` because `print` was passed as an iterPrintControl object",
-              call. = FALSE)
+      warning(
+        "ignoring `",
+        paste(.conflicts, collapse = "`, `"),
+        "` because `print` was passed as an iterPrintControl object",
+        call. = FALSE
+      )
     }
     return(print)
   }

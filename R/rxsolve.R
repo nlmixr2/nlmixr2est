@@ -44,14 +44,16 @@
     }
     if (.rxControl$dfObs == 0L & !.isPred) {
       .minfo(paste0(
-        "using `dfObs=", nlmixr2global$nlmixr2SimInfo$dfObs,
+        "using `dfObs=",
+        nlmixr2global$nlmixr2SimInfo$dfObs,
         "` from the number of observations in fitted model"
       ))
       .rxControl$dfObs <- nlmixr2global$nlmixr2SimInfo$dfObs
     }
     if (.rxControl$dfSub == 0L & !.isPred) {
       .minfo(paste0(
-        "using `dfSub=", nlmixr2global$nlmixr2SimInfo$dfSub,
+        "using `dfSub=",
+        nlmixr2global$nlmixr2SimInfo$dfSub,
         "` from the number of subjects in fitted model"
       ))
       .rxControl$dfSub <- nlmixr2global$nlmixr2SimInfo$dfSub
@@ -62,19 +64,30 @@
       .rxControl$sigma <- nlmixr2global$nlmixr2SimInfo$sigma
     }
   }
-  if (exists("table", envir = env) &&
-    !is.null(env$table)) {
+  if (
+    exists("table", envir = env) &&
+      !is.null(env$table)
+  ) {
     .table <- env$table
-    if (checkmate::testLogical(.table$covariates, any.missing = FALSE, len = 1) &&
-      !.table$covariates && .rxControl$addCov) {
+    if (
+      checkmate::testLogical(.table$covariates, any.missing = FALSE, len = 1) &&
+        !.table$covariates &&
+        .rxControl$addCov
+    ) {
       .rxControl$addCov <- FALSE
     }
-    if (checkmate::testLogical(.table$addDosing, any.missing = FALSE, len = 1) &&
-      .table$addDosing && !.rxControl$addDosing) {
+    if (
+      checkmate::testLogical(.table$addDosing, any.missing = FALSE, len = 1) &&
+        .table$addDosing &&
+        !.rxControl$addDosing
+    ) {
       .rxControl$addDosing <- TRUE
     }
-    if (checkmate::testLogical(.table$subsetNonmem, any.missing = FALSE, len = 1) &&
-      !.table$subsetNonmem && .rxControl$subsetNonmem) {
+    if (
+      checkmate::testLogical(.table$subsetNonmem, any.missing = FALSE, len = 1) &&
+        !.table$subsetNonmem &&
+        .rxControl$subsetNonmem
+    ) {
       .rxControl$subsetNonmem <- FALSE
     }
     if (checkmate::testIntegerish(.table$cores, len = 1, lower = 1, any.missing = FALSE)) {
@@ -132,13 +145,19 @@ nmObjGet.rxControlWithVar <- function(x, ...) {
 #' @export
 nlmixr2Est.rxSolve <- function(env, ...) {
   .events <- get("data", envir = env)
-  do.call(rxode2::rxSolve, c(
-    list(
-      object = get("ui", envir = env), params = NULL,
-      events = .events, inits = NULL
-    ), .rxSolveGetControlForNlmixr(env),
-    list(theta = NULL, eta = NULL)
-  ))
+  do.call(
+    rxode2::rxSolve,
+    c(
+      list(
+        object = get("ui", envir = env),
+        params = NULL,
+        events = .events,
+        inits = NULL
+      ),
+      .rxSolveGetControlForNlmixr(env),
+      list(theta = NULL, eta = NULL)
+    )
+  )
 }
 attr(nlmixr2Est.rxSolve, "covPresent") <- TRUE
 attr(nlmixr2Est.rxSolve, "unbounded") <- FALSE
@@ -149,13 +168,19 @@ attr(nlmixr2Est.rxSolve, "random") <- TRUE
 nlmixr2Est.simulate <- function(env, ...) {
   .rxControl <- .rxSolveGetControlForNlmixr(env)
   .events <- get("data", envir = env)
-  do.call(rxode2::rxSolve, c(
-    list(
-      object = get("ui", envir = env), params = NULL,
-      events = .events, inits = NULL
-    ), .rxSolveGetControlForNlmixr(env),
-    list(theta = NULL, eta = NULL)
-  ))
+  do.call(
+    rxode2::rxSolve,
+    c(
+      list(
+        object = get("ui", envir = env),
+        params = NULL,
+        events = .events,
+        inits = NULL
+      ),
+      .rxSolveGetControlForNlmixr(env),
+      list(theta = NULL, eta = NULL)
+    )
+  )
 }
 attr(nlmixr2Est.simulate, "covPresent") <- TRUE
 attr(nlmixr2Est.simulate, "unbounded") <- FALSE
@@ -173,13 +198,19 @@ nlmixr2Est.simulation <- function(env, ...) {
   .rxControl <- .rxSolveGetControlForNlmixr(env)
   env$control <- .rxControl
   .events <- get("data", envir = env)
-  do.call(rxode2::rxSolve, c(
-    list(
-      object = get("ui", envir = env), params = NULL,
-      events = .events, inits = NULL
-    ), .rxControl,
-    list(theta = NULL, eta = NULL)
-  ))
+  do.call(
+    rxode2::rxSolve,
+    c(
+      list(
+        object = get("ui", envir = env),
+        params = NULL,
+        events = .events,
+        inits = NULL
+      ),
+      .rxControl,
+      list(theta = NULL, eta = NULL)
+    )
+  )
 }
 attr(nlmixr2Est.simulation, "covPresent") <- TRUE
 attr(nlmixr2Est.simulation, "unbounded") <- FALSE
@@ -203,8 +234,10 @@ nlmixr2Est.predict <- function(env, ...) {
     .rxControl$simVariability <- FALSE
   }
   nlmixr2(
-    object = get("ui", envir = env), data = .events,
-    est = "rxSolve", control = .rxControl
+    object = get("ui", envir = env),
+    data = .events,
+    est = "rxSolve",
+    control = .rxControl
   )
 }
 attr(nlmixr2Est.predict, "covPresent") <- TRUE
@@ -221,10 +254,12 @@ attr(nlmixr2Est.predict, "random") <- TRUE
 .getNewData <- function(both) {
   .both <- both
   if (!any(names(.both$rest) == "newdata")) {
-    .w <- which(vapply(seq_along(.both$rest),
+    .w <- which(vapply(
+      seq_along(.both$rest),
       function(i) {
         inherits(.both$rest[[i]], "data.frame")
-      }, logical(1),
+      },
+      logical(1),
       USE.NAMES = FALSE
     ))
     if (length(.w) == 1L) {
@@ -289,18 +324,11 @@ attr(nlmixr2Est.predict, "random") <- TRUE
 #' ipred <- predict(fit, theo_sd, level = "individual")
 #' }
 #'
-predict.nlmixr2FitCore <- function(object, ...,
-                                   level = c("population", "individual")) {
+predict.nlmixr2FitCore <- function(object, ..., level = c("population", "individual")) {
   if (checkmate::testNumeric(level, len = 1)) {
-    level <- switch(as.character(level),
-      "0" = "population",
-      "1" = "individual",
-      "bad"
-    )
+    level <- switch(as.character(level), "0" = "population", "1" = "individual", "bad")
     if (identical(level, "bad")) {
-      stop("level numeric must be 0 (population) or 1 (individual)",
-        call. = FALSE
-      )
+      stop("level numeric must be 0 (population) or 1 (individual)", call. = FALSE)
     }
   }
   if (identical(level, "ipred")) {
@@ -360,8 +388,10 @@ predict.nlmixr2FitCore <- function(object, ...,
     )
   } else {
     nlmixr2(
-      object = object, data = .data,
-      est = .est, control = .rxControl
+      object = object,
+      data = .data,
+      est = .est,
+      control = .rxControl
     )
   }
 }
@@ -383,8 +413,10 @@ simulate.nlmixr2FitCore <- function(object, ...) {
   .rxControl$envir <- .env
   if (inherits(.both$rest$newdata, "data.frame")) {
     nlmixr2(
-      object = object, data = .both$rest$newdata,
-      est = "rxSolve", control = .rxControl
+      object = object,
+      data = .both$rest$newdata,
+      est = "rxSolve",
+      control = .rxControl
     )
   } else {
     nlmixr2(object = object, est = "rxSolve", control = .rxControl)

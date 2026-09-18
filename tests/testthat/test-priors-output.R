@@ -17,8 +17,7 @@ nmTest({
 
   test_that("posthoc runs on a model whose ini({}) declares priors (#938)", {
     skip_on_cran()
-    skip_if_not(exists("rxUiPriors", envir = asNamespace("rxode2")),
-                "rxode2 without prior support")
+    skip_if_not(exists("rxUiPriors", envir = asNamespace("rxode2")), "rxode2 without prior support")
 
     one.compartment <- function() {
       ini({
@@ -46,7 +45,8 @@ nmTest({
     # the automatic FOCEi-objective evaluation (.setOfvFo), which re-enters
     # with est="focei".
     .fit <- suppressWarnings(suppressMessages(
-      nlmixr2(one.compartment, nlmixr2data::theo_sd, est = "posthoc")))
+      nlmixr2(one.compartment, nlmixr2data::theo_sd, est = "posthoc")
+    ))
     expect_true(inherits(.fit, "nlmixr2FitData"))
     # the priors survive onto the finished fit
     .pri <- rxode2::rxUiPriors(.fit$ui)
@@ -78,8 +78,10 @@ nmTest({
     # the bypass is scoped: the gate still refuses a user-initiated saem
     expect_error(
       suppressWarnings(suppressMessages(
-        nlmixr2(saem.prior, nlmixr2data::theo_sd, est = "saem"))),
-      "prior")
+        nlmixr2(saem.prior, nlmixr2data::theo_sd, est = "saem")
+      )),
+      "prior"
+    )
     expect_false(isTRUE(nlmixr2global$nlmixr2PriorGateBypass))
 
     # posthoc/output declare nlmixr2Priors = "all" (#938); est="focei" now
@@ -109,15 +111,15 @@ nmTest({
       })
     }
     .fitOmega <- suppressWarnings(suppressMessages(
-      nlmixr2(one.compartment.omega.prior, nlmixr2data::theo_sd, est = "posthoc")))
+      nlmixr2(one.compartment.omega.prior, nlmixr2data::theo_sd, est = "posthoc")
+    ))
     expect_true(inherits(.fitOmega, "nlmixr2FitData"))
     expect_true("eta.ka" %in% rxode2::rxUiPriors(.fitOmega$ui)$name)
   })
 
   test_that("addCwres() works on a prior-carrying fit (#938)", {
     skip_on_cran()
-    skip_if_not(exists("rxUiPriors", envir = asNamespace("rxode2")),
-                "rxode2 without prior support")
+    skip_if_not(exists("rxUiPriors", envir = asNamespace("rxode2")), "rxode2 without prior support")
 
     one.compartment <- function() {
       ini({
@@ -142,8 +144,8 @@ nmTest({
     # nested est="focei" evaluation (with CWRES already present it returns
     # early and the bypass is never exercised)
     .fit <- suppressWarnings(suppressMessages(
-      nlmixr2(one.compartment, nlmixr2data::theo_sd, est = "posthoc",
-              table = tableControl(cwres = FALSE))))
+      nlmixr2(one.compartment, nlmixr2data::theo_sd, est = "posthoc", table = tableControl(cwres = FALSE))
+    ))
     expect_false("CWRES" %in% names(.fit))
     .fit2 <- suppressWarnings(suppressMessages(addCwres(.fit)))
     expect_true("CWRES" %in% names(.fit2))

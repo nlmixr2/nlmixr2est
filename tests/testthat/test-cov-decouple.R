@@ -19,22 +19,20 @@ nmTest({
   .d <- nlmixr2data::theo_sd
 
   test_that("FOCEI-family default covMethod is now r,s", {
-    .f <- suppressWarnings(nlmixr2(.lc, .d, est = "focei",
-                                   control = foceiControl(print = 0L)))
+    .f <- suppressWarnings(nlmixr2(.lc, .d, est = "focei", control = foceiControl(print = 0L)))
     # covFull=TRUE (the default) installs the full theta+sigma+Omega shape, which
     # the " (full)" suffix names; the theta-only shape is cached as "r,s"
     expect_equal(.f$covMethod, "r,s (full)")
     expect_true("r,s" %in% names(.f$env$covList))
     # foceControl / laplaceControl inherit the foceiControl default
-    expect_equal(foceiControl()$covMethod, 1L)     # "r,s" -> integer slot 1
+    expect_equal(foceiControl()$covMethod, 1L) # "r,s" -> integer slot 1
     expect_equal(foceControl()$covMethod, 1L)
     expect_equal(laplaceControl()$covMethod, 1L)
   })
 
   test_that("setCov('analytic') never silently downgrades to r,s", {
     # a linCmt() model is out of analytic-covariance scope
-    .f <- suppressWarnings(nlmixr2(.lc, .d, est = "focei",
-                                   control = foceiControl(print = 0L)))
+    .f <- suppressWarnings(nlmixr2(.lc, .d, est = "focei", control = foceiControl(print = 0L)))
     expect_equal(.f$covMethod, "r,s (full)")
     .cov0 <- .f$cov
     # analytic cannot be computed -> error, covariance left unchanged (NOT r,s

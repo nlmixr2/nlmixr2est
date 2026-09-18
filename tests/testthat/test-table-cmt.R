@@ -1,18 +1,17 @@
 nmTest({
   test_that("proper table outputs", {
-
     df <- data.frame(
       ID = c(123, 123, 123, 124, 124, 124),
-      MDV = c(0,1,0, 0,1,0),
-      CMT = c(2,1,1, 2,1,1),
-      DV = c(9,NA,15, 10,NA,14),
-      AMT = c(NA,15,NA, NA,15,NA),
-      RATE = c(NA,0,NA, NA,0,NA),
-      ADDL = c(NA,1,NA, NA,1,NA),
-      II = c(NA,NA,NA, NA,NA,NA),
-      TIME = c(0,0,1, 0,0,1),
-      PCA = c(NA,NA,32, NA,NA,32),
-      WT = c(NA,NA,2, NA,NA,2),
+      MDV = c(0, 1, 0, 0, 1, 0),
+      CMT = c(2, 1, 1, 2, 1, 1),
+      DV = c(9, NA, 15, 10, NA, 14),
+      AMT = c(NA, 15, NA, NA, 15, NA),
+      RATE = c(NA, 0, NA, NA, 0, NA),
+      ADDL = c(NA, 1, NA, NA, 1, NA),
+      II = c(NA, NA, NA, NA, NA, NA),
+      TIME = c(0, 0, 1, 0, 0, 1),
+      PCA = c(NA, NA, 32, NA, NA, 32),
+      WT = c(NA, NA, 2, NA, NA, 2),
       CRPZERO = 5
     )
 
@@ -81,24 +80,26 @@ nmTest({
     fit.s <- .nlmixr(
       object = f,
       data = df,
-      est='focei',
+      est = 'focei',
       control = foceiControl(
-        covMethod="r,s",
+        covMethod = "r,s",
         interaction = TRUE,
         maxOuterIterations = 0,
-        iter.max=0, calcTables=FALSE))
+        iter.max = 0,
+        calcTables = FALSE
+      )
+    )
 
     .addTable <- function(...) suppressMessages(suppressWarnings(addTable(...)))
 
-    tab1 <- .addTable(fit.s, table=tableControl(cwres=FALSE, npde=FALSE))
+    tab1 <- .addTable(fit.s, table = tableControl(cwres = FALSE, npde = FALSE))
 
-
-    expect_true(all(c("CMT", "CRPZERO","WT", "PCA") %in% names(tab1)))
+    expect_true(all(c("CMT", "CRPZERO", "WT", "PCA") %in% names(tab1)))
     expect_true(all(!is.na(tab1$CMT)))
     expect_s3_class(tab1$CMT, "factor")
 
-    tab2 <- .addTable(fit.s, table=tableControl(cwres=TRUE, npde=FALSE))
-    expect_true(all(c("CMT", "CRPZERO","WT", "PCA") %in% names(tab2)))
+    tab2 <- .addTable(fit.s, table = tableControl(cwres = TRUE, npde = FALSE))
+    expect_true(all(c("CMT", "CRPZERO", "WT", "PCA") %in% names(tab2)))
     expect_true(all(!is.na(tab2$CMT)))
     expect_s3_class(tab2$CMT, "factor")
 
@@ -106,42 +107,48 @@ nmTest({
     # appear in the cwres=FALSE output just as they do with cwres=TRUE.  Only the
     # cwres-specific residual columns should differ between the two tables.
     expect_true(all(c("V", "Cl", "K", "cp") %in% names(tab1)))
-    expect_setequal(setdiff(names(tab2), names(tab1)),
-                    c("WRES", "CPRED", "CRES", "CWRES"))
+    expect_setequal(setdiff(names(tab2), names(tab1)), c("WRES", "CPRED", "CRES", "CWRES"))
     expect_equal(setdiff(names(tab1), names(tab2)), character(0))
 
-    tab3 <- .addTable(fit.s, table=tableControl(cwres=FALSE, npde=TRUE))
-    expect_true(all(c("CMT", "CRPZERO","WT", "PCA") %in% names(tab3)))
+    tab3 <- .addTable(fit.s, table = tableControl(cwres = FALSE, npde = TRUE))
+    expect_true(all(c("CMT", "CRPZERO", "WT", "PCA") %in% names(tab3)))
     expect_true(all(!is.na(tab3$CMT)))
     expect_s3_class(tab3$CMT, "factor")
 
-    tab4 <- .addTable(fit.s, table=tableControl(cwres=TRUE, npde=TRUE))
-    expect_true(all(c("CMT", "CRPZERO","WT", "PCA") %in% names(tab4)))
+    tab4 <- .addTable(fit.s, table = tableControl(cwres = TRUE, npde = TRUE))
+    expect_true(all(c("CMT", "CRPZERO", "WT", "PCA") %in% names(tab4)))
     expect_true(all(!is.na(tab4$CMT)))
     expect_s3_class(tab4$CMT, "factor")
 
     df <- data.frame(
       ID = 123,
-      MDV = c(0,1,0),
-      CMT = c(2,1,1),
-      DV = c(9,NA,15),
-      AMT = c(NA,15,NA),
-      RATE = c(NA,0,NA),
-      ADDL = c(NA,1,NA),
-      II = c(NA,NA,NA),
-      TIME = c(0,0,1),
-      PCA = c(NA,NA,32),
-      WT = c(NA,NA,2),
+      MDV = c(0, 1, 0),
+      CMT = c(2, 1, 1),
+      DV = c(9, NA, 15),
+      AMT = c(NA, 15, NA),
+      RATE = c(NA, 0, NA),
+      ADDL = c(NA, 1, NA),
+      II = c(NA, NA, NA),
+      TIME = c(0, 0, 1),
+      PCA = c(NA, NA, 32),
+      WT = c(NA, NA, 2),
       CRPZERO = 5
     )
 
-    expect_error(.nlmixr(
-      object = f, data = df, est='focei',
-      control = foceiControl(
-        covMethod="r,s",
-        interaction = TRUE,
-        maxOuterIterations = 0,
-        iter.max=0, calcTables=FALSE)), NA)
-
+    expect_error(
+      .nlmixr(
+        object = f,
+        data = df,
+        est = 'focei',
+        control = foceiControl(
+          covMethod = "r,s",
+          interaction = TRUE,
+          maxOuterIterations = 0,
+          iter.max = 0,
+          calcTables = FALSE
+        )
+      ),
+      NA
+    )
   })
 })

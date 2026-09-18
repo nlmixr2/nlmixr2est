@@ -1,6 +1,5 @@
 nmTest({
   test_that("single population parameter estimation becomes optimize", {
-
     one.compartment <- function() {
       ini({
         tka <- fix(0.45)
@@ -24,11 +23,12 @@ nmTest({
 
     fit <-
       .nlmixr(
-        one.compartment, theo_sd,
-        est="focei",
-        control = foceiControl(print=0)
+        one.compartment,
+        theo_sd,
+        est = "focei",
+        control = foceiControl(print = 0)
       )
-      expect_equal(fit$message, "stats::optimize for 1 dimensional optimization")
+    expect_equal(fit$message, "stats::optimize for 1 dimensional optimization")
   })
 
   test_that("focei mixed effects works on matExp", {
@@ -89,7 +89,6 @@ nmTest({
   })
 
   test_that("all parameters fixed becomes posthoc", {
-
     one.compartment <- function() {
       ini({
         tka <- fix(0.45)
@@ -111,7 +110,7 @@ nmTest({
       })
     }
 
-    fit <- .nlmixr(one.compartment, theo_sd, est="focei", control=list(print=0))
+    fit <- .nlmixr(one.compartment, theo_sd, est = "focei", control = list(print = 0))
     expect_s3_class(fit, "nlmixr2FitData")
   })
 
@@ -134,7 +133,7 @@ nmTest({
       })
     }
 
-    fit <- .nlmixr(one.compartment, theo_sd, est = "focei", control=list(print=0))
+    fit <- .nlmixr(one.compartment, theo_sd, est = "focei", control = list(print = 0))
     expect_equal(fit$message, "stats::optimize for 1 dimensional optimization")
   })
 
@@ -158,7 +157,7 @@ nmTest({
       })
     }
     expect_error(
-      .nlmixr(one.compartment, theo_sd, est = "focei", control=list(print=0)),
+      .nlmixr(one.compartment, theo_sd, est = "focei", control = list(print = 0)),
       regexp = "no parameters to estimate"
     )
   })

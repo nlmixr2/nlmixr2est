@@ -10,24 +10,38 @@ nmTest({
   # accepts the whole family via .nlmixrIsFoceiFamilyControl().
 
   test_that(".nlmixrIsFoceiFamilyControl accepts every FOCEi-family control", {
-    .family <- c("focei", "foce", "focep", "fo", "foi",
-                 "mfocei", "ifocei", "mfoce", "ifoce",
-                 "mfocep", "ifocep",
-                 "agq", "magq", "iagq",
-                 "laplace", "mlaplace", "ilaplace")
+    .family <- c(
+      "focei",
+      "foce",
+      "focep",
+      "fo",
+      "foi",
+      "mfocei",
+      "ifocei",
+      "mfoce",
+      "ifoce",
+      "mfocep",
+      "ifocep",
+      "agq",
+      "magq",
+      "iagq",
+      "laplace",
+      "mlaplace",
+      "ilaplace"
+    )
     for (.m in .family) {
       .ctl <- do.call(paste0(.m, "Control"), list())
-      expect_true(nlmixr2est:::.nlmixrIsFoceiFamilyControl(.ctl),
-                  info = paste0(.m, "Control (class ",
-                                paste(class(.ctl), collapse = ","), ")"))
+      expect_true(
+        nlmixr2est:::.nlmixrIsFoceiFamilyControl(.ctl),
+        info = paste0(.m, "Control (class ", paste(class(.ctl), collapse = ","), ")")
+      )
     }
   })
 
   test_that(".nlmixrIsFoceiFamilyControl rejects non-FOCEi controls", {
     for (.m in c("saem", "nlme", "nlm")) {
       .ctl <- do.call(paste0(.m, "Control"), list())
-      expect_false(nlmixr2est:::.nlmixrIsFoceiFamilyControl(.ctl),
-                   info = paste0(.m, "Control"))
+      expect_false(nlmixr2est:::.nlmixrIsFoceiFamilyControl(.ctl), info = paste0(.m, "Control"))
     }
   })
 
@@ -46,7 +60,6 @@ nmTest({
     expect_error(nlmixr2est:::.nlmixrCheckFoceiEnvironment(.env), NA)
     # and it still rejects an unrelated control
     .env$control <- saemControl()
-    expect_error(nlmixr2est:::.nlmixrCheckFoceiEnvironment(.env),
-                 "focei control object")
+    expect_error(nlmixr2est:::.nlmixrCheckFoceiEnvironment(.env), "focei control object")
   })
 })

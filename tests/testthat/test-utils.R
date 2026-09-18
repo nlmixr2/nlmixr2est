@@ -5,7 +5,9 @@ nmTest({
         {
           warning("A")
           1
-        }, lst = TRUE),
+        },
+        lst = TRUE
+      ),
       list(1, warning = "A", error = NULL)
     )
     # warnings are not duplicated
@@ -15,7 +17,9 @@ nmTest({
           warning("A")
           warning("A")
           1
-        }, lst = TRUE),
+        },
+        lst = TRUE
+      ),
       list(1, warning = "A", error = NULL)
     )
     # Non-lst raises the warning
@@ -25,7 +29,8 @@ nmTest({
           warning("A")
           warning("A")
           1
-        }),
+        }
+      ),
       regexp = "A"
     )
     expect_equal(check, 1)
@@ -36,7 +41,8 @@ nmTest({
           warning("A")
           stop("B")
           1
-        }),
+        }
+      ),
       regexp = "B"
     )
     # Errors are not captured by default
@@ -46,7 +52,10 @@ nmTest({
           warning("A")
           stop("B")
           1
-        }, lst = TRUE, collectErr = TRUE),
+        },
+        lst = TRUE,
+        collectErr = TRUE
+      ),
       regexp = NA
     )
     expect_equal(check, list(NULL, warning = "A", error = "B"))
@@ -59,7 +68,10 @@ nmTest({
         {
           try(stop("internal"), silent = TRUE)
           42
-        }, lst = TRUE, collectErr = TRUE),
+        },
+        lst = TRUE,
+        collectErr = TRUE
+      ),
       list(42, warning = NULL, error = NULL)
     )
     # When the expression fails after an on.exit handler raises a second

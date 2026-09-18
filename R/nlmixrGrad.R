@@ -85,13 +85,28 @@
 ##' max(abs(exact - g$df)/(1 + abs(exact)))
 ##'
 ##' @export
-nlmixr2Gill83 <- function(what, args, envir = parent.frame(),
-                         which, gillRtol = sqrt(.Machine$double.eps), gillK = 10L, gillStep = 2, gillFtol = 0) {
+nlmixr2Gill83 <- function(
+  what,
+  args,
+  envir = parent.frame(),
+  which,
+  gillRtol = sqrt(.Machine$double.eps),
+  gillK = 10L,
+  gillStep = 2,
+  gillFtol = 0
+) {
   if (missing(which)) {
     which <- rep(TRUE, length(args))
   }
-  return(nlmixr2Gill83_(what, args, envir, which,
-    gillRtol = sqrt(.Machine$double.eps), gillK = 10L, gillStep = 2, gillFtol = 0
+  return(nlmixr2Gill83_(
+    what,
+    args,
+    envir,
+    which,
+    gillRtol = sqrt(.Machine$double.eps),
+    gillK = 10L,
+    gillStep = 2,
+    gillFtol = 0
   ))
 }
 
@@ -132,11 +147,19 @@ nlmixr2Gill83 <- function(what, args, envir = parent.frame(),
 ##' gf$hist()
 ##'
 ##' @export
-nlmixr2GradFun <- function(what, envir = parent.frame(), which, thetaNames,
-                          gillRtol = sqrt(.Machine$double.eps), gillK = 10L, gillStep = 2, gillFtol = 0,
-                          useColor = crayon::has_color(),
-                          printNcol = floor((getOption("width") - 23) / 12),
-                          print = 1) {
+nlmixr2GradFun <- function(
+  what,
+  envir = parent.frame(),
+  which,
+  thetaNames,
+  gillRtol = sqrt(.Machine$double.eps),
+  gillK = 10L,
+  gillStep = 2,
+  gillFtol = 0,
+  useColor = crayon::has_color(),
+  printNcol = floor((getOption("width") - 23) / 12),
+  print = 1
+) {
   .md5 <- digest::digest(list(what, gillRtol, gillK, gillStep, gillFtol))
   .nlmixr2GradInfo[["printNcol"]] <- printNcol
   .nlmixr2GradInfo[["useColor"]] <- useColor
@@ -155,18 +178,42 @@ nlmixr2GradFun <- function(what, envir = parent.frame(), which, thetaNames,
   .nlmixr2GradInfo[[paste0(.md5, ".k")]] <- gillK
   .nlmixr2GradInfo[[paste0(.md5, ".s")]] <- gillStep
   .nlmixr2GradInfo[[paste0(.md5, ".ftol")]] <- gillFtol
-  .eval <- eval(parse(text = paste0("function(theta){
-        nlmixr2Eval_(theta, \"", .md5, "\");
-    }")))
-  .grad <- eval(parse(text = paste0("function(theta){
-        nlmixr2Grad_(theta, \"", .md5, "\");
-    }")))
-  .hist <- eval(parse(text = paste0("function(){
-        nlmixr2ParHist_(md5=\"", .md5, "\");
-    }")))
-  .unscaled <- eval(parse(text = paste0("function(theta){
-        nlmixr2Unscaled_(theta,md5=\"", .md5, "\");
-    }")))
+  .eval <- eval(parse(
+    text = paste0(
+      "function(theta){
+        nlmixr2Eval_(theta, \"",
+      .md5,
+      "\");
+    }"
+    )
+  ))
+  .grad <- eval(parse(
+    text = paste0(
+      "function(theta){
+        nlmixr2Grad_(theta, \"",
+      .md5,
+      "\");
+    }"
+    )
+  ))
+  .hist <- eval(parse(
+    text = paste0(
+      "function(){
+        nlmixr2ParHist_(md5=\"",
+      .md5,
+      "\");
+    }"
+    )
+  ))
+  .unscaled <- eval(parse(
+    text = paste0(
+      "function(theta){
+        nlmixr2Unscaled_(theta,md5=\"",
+      .md5,
+      "\");
+    }"
+    )
+  ))
   return(list(eval = .eval, grad = .grad, hist = .hist, unscaled = .unscaled))
 }
 

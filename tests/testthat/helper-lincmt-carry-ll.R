@@ -97,6 +97,8 @@
 }
 
 .carryLlPars <- c(
-  `THETA[1]` = log(2), `THETA[2]` = log(20), `THETA[3]` = 0.5,
+  `THETA[1]` = log(2),
+  `THETA[2]` = log(20),
+  `THETA[3]` = 0.5,
   `ETA[1]` = 0.3
 )

@@ -11,17 +11,29 @@
 #' covariance parameter is retained.  Returns a list of eta-index vectors.
 #' @noRd
 .omegaBlocks <- function(Om, idf) {
-  n <- nrow(Om); adj <- diag(TRUE, n)
+  n <- nrow(Om)
+  adj <- diag(TRUE, n)
   .off <- idf[!is.na(idf$neta1) & !is.na(idf$neta2) & idf$neta1 != idf$neta2, , drop = FALSE]
   for (k in seq_len(nrow(.off))) {
-    a <- .off$neta1[k]; b <- .off$neta2[k]
+    a <- .off$neta1[k]
+    b <- .off$neta2[k]
     if (a >= 1L && a <= n && b >= 1L && b <= n) adj[a, b] <- adj[b, a] <- TRUE
   }
-  comp <- integer(n); k <- 0L
-  for (i in seq_len(n)) if (comp[i] == 0L) {
-    k <- k + 1L; q <- i
-    while (length(q)) { v <- q[1]; q <- q[-1]
-      if (comp[v] == 0L) { comp[v] <- k; q <- c(q, which(adj[v, ] & comp == 0L)) } }
+  comp <- integer(n)
+  k <- 0L
+  for (i in seq_len(n)) {
+    if (comp[i] == 0L) {
+      k <- k + 1L
+      q <- i
+      while (length(q)) {
+        v <- q[1]
+        q <- q[-1]
+        if (comp[v] == 0L) {
+          comp[v] <- k
+          q <- c(q, which(adj[v, ] & comp == 0L))
+        }
+      }
+    }
   }
   unname(split(seq_len(n), comp))
 }
@@ -32,20 +44,33 @@
 #' @noRd
 .foceiOmegaPairs <- function(Om, ini) {
   blocks <- .omegaBlocks(Om, ini)
-  pairs <- do.call(rbind, lapply(blocks, function(b)
-    do.call(rbind, lapply(seq_along(b), function(a) cbind(b[a], b[seq_len(a)])))))
+  pairs <- do.call(
+    rbind,
+    lapply(blocks, function(b) {
+      do.call(rbind, lapply(seq_along(b), function(a) cbind(b[a], b[seq_len(a)])))
+    })
+  )
   pairs[!.omegaFixed(ini, pairs), , drop = FALSE]
 }
 
 #' Which rows of `pairs` (each `c(a, b)`) are FIXED Omega elements in `idf`.
 #' @noRd
 .omegaFixed <- function(idf, pairs) {
-  if (nrow(pairs) == 0L) return(logical(0))
-  vapply(seq_len(nrow(pairs)), function(k) {
-    r <- which(!is.na(idf$neta1) & ((idf$neta1 == pairs[k, 1] & idf$neta2 == pairs[k, 2]) |
-                                    (idf$neta1 == pairs[k, 2] & idf$neta2 == pairs[k, 1])))
-    length(r) > 0L && isTRUE(idf$fix[r[1]])
-  }, logical(1))
+  if (nrow(pairs) == 0L) {
+    return(logical(0))
+  }
+  vapply(
+    seq_len(nrow(pairs)),
+    function(k) {
+      r <- which(
+        !is.na(idf$neta1) &
+          ((idf$neta1 == pairs[k, 1] & idf$neta2 == pairs[k, 2]) |
+            (idf$neta1 == pairs[k, 2] & idf$neta2 == pairs[k, 1]))
+      )
+      length(r) > 0L && isTRUE(idf$fix[r[1]])
+    },
+    logical(1)
+  )
 }
 
 #' Diagonal Omega rows and their mu-referenced structural thetas
@@ -59,8 +84,11 @@
   .idf <- ui$iniDf
   .etaRows <- .idf[!is.na(.idf$neta1) & .idf$neta1 == .idf$neta2, , drop = FALSE]
   .etaRows <- .etaRows[order(.etaRows$neta1), , drop = FALSE]
-  list(etaRows = .etaRows, etaNames = .etaRows$name,
-       thetaForEta = ui$muRefDataFrame$theta[match(.etaRows$name, ui$muRefDataFrame$eta)])
+  list(
+    etaRows = .etaRows,
+    etaNames = .etaRows$name,
+    thetaForEta = ui$muRefDataFrame$theta[match(.etaRows$name, ui$muRefDataFrame$eta)]
+  )
 }
 
 #' Which of the named parameters are fixed in an ini block
@@ -69,7 +97,9 @@
 #' @return logical vector, TRUE where the parameter is fixed
 #' @noRd
 .iniIsFixed <- function(idf, nm) {
-  if (is.null(idf$fix)) return(rep(FALSE, length(nm)))
+  if (is.null(idf$fix)) {
+    return(rep(FALSE, length(nm)))
+  }
   .i <- match(nm, idf$name)
   !is.na(.i) & !is.na(idf$fix[.i]) & idf$fix[.i]
 }
@@ -80,8 +110,13 @@
 #' @return character vector, `om.<eta>` (variance) / `cov.<eta>.<eta>` (covariance)
 #' @noRd
 .foceiOmegaCovNames <- function(pairs, onm) {
-  apply(pairs, 1, function(.pr) if (.pr[1] == .pr[2]) paste0("om.", onm[.pr[1]])
-        else paste0("cov.", onm[.pr[1]], ".", onm[.pr[2]]))
+  apply(pairs, 1, function(.pr) {
+    if (.pr[1] == .pr[2]) {
+      paste0("om.", onm[.pr[1]])
+    } else {
+      paste0("cov.", onm[.pr[1]], ".", onm[.pr[2]])
+    }
+  })
 }
 
 #' Recompute the stale objDf condition numbers after a full cov is swapped in.
@@ -94,10 +129,16 @@
 #' @param .ev optional precomputed symmetric eigenvalues of `.cov`
 #' @noRd
 .foceiCovCondition <- function(.ret, .cov, .ev = NULL) {
-  if (!exists("objDf", envir = .ret, inherits = FALSE)) return(invisible())
-  if (is.null(.ev)) .ev <- suppressWarnings(eigen(.cov, symmetric = TRUE, only.values = TRUE)$values)
+  if (!exists("objDf", envir = .ret, inherits = FALSE)) {
+    return(invisible())
+  }
+  if (is.null(.ev)) {
+    .ev <- suppressWarnings(eigen(.cov, symmetric = TRUE, only.values = TRUE)$values)
+  }
   .od <- get("objDf", envir = .ret)
-  if ("Condition#(Cov)" %in% names(.od)) .od[["Condition#(Cov)"]] <- max(.ev) / min(.ev)
+  if ("Condition#(Cov)" %in% names(.od)) {
+    .od[["Condition#(Cov)"]] <- max(.ev) / min(.ev)
+  }
   if ("Condition#(Cor)" %in% names(.od)) {
     .evc <- suppressWarnings(eigen(stats::cov2cor(.cov), symmetric = TRUE, only.values = TRUE)$values)
     .od[["Condition#(Cor)"]] <- max(.evc) / min(.evc)

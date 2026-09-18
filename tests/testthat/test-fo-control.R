@@ -1,5 +1,4 @@
 nmTest({
-
   # Regression tests for issue #517: the FO/FOI estimation path returned the
   # intermediate (est="none") linearization fit env with an empty control, so
   # .updateParFixed() saw a NULL $control and silently fell back to defaults.
@@ -35,10 +34,8 @@ nmTest({
     )
     on.exit(suppressMessages(untrace(nlmixr2est:::.updateParFixed)), add = TRUE)
 
-    fitFo <- .nlmixr(one.compartment, theo_sd, est = "fo",
-                     control = foControl(print = 0))
-    fitFoi <- .nlmixr(one.compartment, theo_sd, est = "foi",
-                      control = foiControl(print = 0))
+    fitFo <- .nlmixr(one.compartment, theo_sd, est = "fo", control = foControl(print = 0))
+    fitFoi <- .nlmixr(one.compartment, theo_sd, est = "foi", control = foiControl(print = 0))
 
     # .updateParFixed ran on both the intermediate est="none" objects and the
     # final fits; none should have carried a NULL control.
@@ -51,5 +48,4 @@ nmTest({
     expect_s3_class(fitFo$parFixed, "data.frame")
     expect_s3_class(fitFoi$parFixed, "data.frame")
   })
-
 })

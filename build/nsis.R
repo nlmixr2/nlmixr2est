@@ -209,53 +209,59 @@ DeleteRegKey HKCU \"Software\\R-core\\Rtools\\<%=rtoolsver%>\\MinRVersion\"
 DeleteRegKey HKCU \"Software\\R-core\\Rtools\\<%=rtoolsver%>\"
 SectionEnd"
 
-buildInstaller <- function(name="nlmixr"){
-    rtools <- gsub("/", "\\", rxode2:::.rxRtoolsBaseWin(), fixed=TRUE);
-    python <- gsub("/", "\\", rxode2:::.rxPythonBaseWin(), fixed=TRUE);
-    R <- gsub("/", "\\", Sys.getenv("R_HOME"), fixed=TRUE);
-    lic <- gsub("/", "\\", devtools::package_file("LICENSE"), fixed=TRUE);
-    readme <- gsub("/", "\\", devtools::package_file("build/installation-notes.rtf"), fixed=TRUE);
-    header <- gsub("/", "\\", devtools::package_file("build/nlmixr-header.bmp"), fixed=TRUE)
-    welcome <- gsub("/", "\\", devtools::package_file("build/nlmixr-welcome.bmp"), fixed=TRUE)
-    icon <- gsub("/", "\\", devtools::package_file("build/icon_red.ico"), fixed=TRUE)
-    rver <- paste(R.version$major,R.version$minor,sep=".");
-    ## rtools.curr <- utils::readRegistry("SOFTWARE\\R-core\\Rtools", hive = "HLM", view = "32-bit", maxdepth = 2);
-    full.ver <- gsub("Rtools version ", "", readLines(file.path(rxode2:::.rxRtoolsBaseWin(), "VERSION.txt")))
-    min.rver <- gsub("([0-9]+[.][0-9]+).*", "\\1", full.ver);
-    rtools.curr <- min.rver;
-    rtools.cur.ver <- rtools.curr
-    arch <- R.version$arch;
-    nlmixr.ver <- sessionInfo()$otherPkgs$nlmixr$Version;
-    archext <- ifelse(.Platform$r_arch == "i386", "32", "")
-    if (archext == "32"){
-        shortcut <- sprintf("CreateShortCut \"$DESKTOP\\nlmixr R (32 bit).lnk\" \"$INSTDIR\\nlmixr.exe\"\nCreateShortCut \"$SMPROGRAMS\\nlmixr\\nlmixr R %s (32 bit).lnk\" \"$INSTDIR\\nlmixr.exe\"", nlmixr.ver);
-        Rdir <- "i386"
-    } else {
-        shortcut <- sprintf("CreateShortCut \"$DESKTOP\\nlmixr R (64 bit).lnk\" \"$INSTDIR\\nlmixr.exe\"\nCreateShortCut \"$SMPROGRAMS\\nlmixr\\nlmixr R (64 bit).lnk\" \"$INSTDIR\\nlmixr.exe\"", nlmixr.ver);
-        Rdir <- "x64"
-    }
-    rtoolsver <- rtools.cur.ver;
-    minr <- min.rver;
-    fullr <- full.ver;
-    shortcuts <- shortcut;
-    dr <- gsub("/", "\\", devtools::package_file("build"), fixed=TRUE)
-    dir <- dr;
-    brew::brew(text=update.lauch.stub, output=file.path(dr,"update.nsi"));
-    system(sprintf("makensis %s", file.path(dr, "update.nsi")));
-    exe <- file.path(dr, "nlmixr.nsi");
-    brew::brew(text=nsi.lauch.stub, output=file.path(dr, "nlmixr.nsi"));
-    system(sprintf("makensis %s", file.path(dr, "nlmixr.nsi")));
-    icon <- gsub("/", "\\", devtools::package_file("build/shinyMixR.ico"), fixed=TRUE)
-    shiny.name <- "shinyMixR"
-    brew::brew(text = shiny.lauch.stub, output=file.path(dr, "shinyMixR.nsi"))
-    system(sprintf("makensis %s", file.path(dr, "shinyMixR.nsi")));
-    icon <- gsub("/", "\\", devtools::package_file("build/icon_red.ico"), fixed=TRUE)
-    ## unlink(file.path(dr, "nlmixr.nsi"))
-    dr <- normalizePath(file.path(dr, sprintf("%s%s.nsi", name, archext)))
-    brew::brew(text=nsi.stub, output=dr)
-    system(sprintf("makensis %s", dr));
-    ## unlink(dr)
-    ## unlink(exe)
+buildInstaller <- function(name = "nlmixr") {
+  rtools <- gsub("/", "\\", rxode2:::.rxRtoolsBaseWin(), fixed = TRUE)
+  python <- gsub("/", "\\", rxode2:::.rxPythonBaseWin(), fixed = TRUE)
+  R <- gsub("/", "\\", Sys.getenv("R_HOME"), fixed = TRUE)
+  lic <- gsub("/", "\\", devtools::package_file("LICENSE"), fixed = TRUE)
+  readme <- gsub("/", "\\", devtools::package_file("build/installation-notes.rtf"), fixed = TRUE)
+  header <- gsub("/", "\\", devtools::package_file("build/nlmixr-header.bmp"), fixed = TRUE)
+  welcome <- gsub("/", "\\", devtools::package_file("build/nlmixr-welcome.bmp"), fixed = TRUE)
+  icon <- gsub("/", "\\", devtools::package_file("build/icon_red.ico"), fixed = TRUE)
+  rver <- paste(R.version$major, R.version$minor, sep = ".")
+  ## rtools.curr <- utils::readRegistry("SOFTWARE\\R-core\\Rtools", hive = "HLM", view = "32-bit", maxdepth = 2);
+  full.ver <- gsub("Rtools version ", "", readLines(file.path(rxode2:::.rxRtoolsBaseWin(), "VERSION.txt")))
+  min.rver <- gsub("([0-9]+[.][0-9]+).*", "\\1", full.ver)
+  rtools.curr <- min.rver
+  rtools.cur.ver <- rtools.curr
+  arch <- R.version$arch
+  nlmixr.ver <- sessionInfo()$otherPkgs$nlmixr$Version
+  archext <- ifelse(.Platform$r_arch == "i386", "32", "")
+  if (archext == "32") {
+    shortcut <- sprintf(
+      "CreateShortCut \"$DESKTOP\\nlmixr R (32 bit).lnk\" \"$INSTDIR\\nlmixr.exe\"\nCreateShortCut \"$SMPROGRAMS\\nlmixr\\nlmixr R %s (32 bit).lnk\" \"$INSTDIR\\nlmixr.exe\"",
+      nlmixr.ver
+    )
+    Rdir <- "i386"
+  } else {
+    shortcut <- sprintf(
+      "CreateShortCut \"$DESKTOP\\nlmixr R (64 bit).lnk\" \"$INSTDIR\\nlmixr.exe\"\nCreateShortCut \"$SMPROGRAMS\\nlmixr\\nlmixr R (64 bit).lnk\" \"$INSTDIR\\nlmixr.exe\"",
+      nlmixr.ver
+    )
+    Rdir <- "x64"
+  }
+  rtoolsver <- rtools.cur.ver
+  minr <- min.rver
+  fullr <- full.ver
+  shortcuts <- shortcut
+  dr <- gsub("/", "\\", devtools::package_file("build"), fixed = TRUE)
+  dir <- dr
+  brew::brew(text = update.lauch.stub, output = file.path(dr, "update.nsi"))
+  system(sprintf("makensis %s", file.path(dr, "update.nsi")))
+  exe <- file.path(dr, "nlmixr.nsi")
+  brew::brew(text = nsi.lauch.stub, output = file.path(dr, "nlmixr.nsi"))
+  system(sprintf("makensis %s", file.path(dr, "nlmixr.nsi")))
+  icon <- gsub("/", "\\", devtools::package_file("build/shinyMixR.ico"), fixed = TRUE)
+  shiny.name <- "shinyMixR"
+  brew::brew(text = shiny.lauch.stub, output = file.path(dr, "shinyMixR.nsi"))
+  system(sprintf("makensis %s", file.path(dr, "shinyMixR.nsi")))
+  icon <- gsub("/", "\\", devtools::package_file("build/icon_red.ico"), fixed = TRUE)
+  ## unlink(file.path(dr, "nlmixr.nsi"))
+  dr <- normalizePath(file.path(dr, sprintf("%s%s.nsi", name, archext)))
+  brew::brew(text = nsi.stub, output = dr)
+  system(sprintf("makensis %s", dr))
+  ## unlink(dr)
+  ## unlink(exe)
 }
 
 buildInstaller()

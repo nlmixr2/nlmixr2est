@@ -5,7 +5,6 @@ nmTest({
   # skipping the shift, so a reset-heavy fit of a tightly-bounded mu-referenced
   # parameter is guaranteed to finish in range.
   test_that("theta resets keep population parameters within their bounds (#454)", {
-
     boundedReset <- function() {
       ini({
         tka <- 0.45
@@ -24,9 +23,14 @@ nmTest({
     }
 
     # aggressive reset settings so the theta-reset path is actually exercised
-    ctl <- foceiControl(resetThetaP = 0.4, resetThetaCheckPer = 1,
-                        print = 0, maxOuterIterations = 40L,
-                        covMethod = "", calcTables = FALSE)
+    ctl <- foceiControl(
+      resetThetaP = 0.4,
+      resetThetaCheckPer = 1,
+      print = 0,
+      maxOuterIterations = 40L,
+      covMethod = "",
+      calcTables = FALSE
+    )
 
     nReset <- 0L
     fit <- withCallingHandlers(
@@ -36,7 +40,8 @@ nmTest({
           nReset <<- nReset + 1L
         }
         invokeRestart("muffleMessage")
-      })
+      }
+    )
 
     # the reset machinery must have run (otherwise this is not testing #454)
     expect_gt(nReset, 0L)

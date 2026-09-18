@@ -144,7 +144,8 @@ par.3cmt.micro.oral.tlag <- function(lKE, lV, lK12, lK21, lK13, lK31, lKA, lTLAG
 
 .getParfn <- function(oral, ncmt, parameterization, tlag) {
   x <- sprintf(
-    "par.%dcmt.%s%s%s", ncmt,
+    "par.%dcmt.%s%s%s",
+    ncmt,
     c("CL", "micro")[parameterization],
     c("", ".oral")[oral + 1],
     c("", ".tlag")[tlag + 1]

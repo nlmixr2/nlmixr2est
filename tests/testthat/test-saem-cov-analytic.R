@@ -36,8 +36,8 @@ nmTest({
     skip_on_cran()
     ## the default is "sa"; request the analytic observed information explicitly
     fit <- suppressMessages(suppressWarnings(
-      nlmixr2(odeMod, nlmixr2data::theo_sd, est = "saem",
-              control = ctl(covMethod = "analytic"))))
+      nlmixr2(odeMod, nlmixr2data::theo_sd, est = "saem", control = ctl(covMethod = "analytic"))
+    ))
     expect_identical(.covBaseName(fit$covMethod), "analytic")
     expect_true(all(is.finite(fit$parFixedDf$SE)))
     expect_true(all(fit$parFixedDf$SE > 0))
@@ -50,8 +50,8 @@ nmTest({
   test_that("explicit covMethod='linFim' skips the analytic attempt", {
     skip_on_cran()
     fit <- suppressMessages(suppressWarnings(
-      nlmixr2(odeMod, nlmixr2data::theo_sd, est = "saem",
-              control = ctl(covMethod = "linFim"))))
+      nlmixr2(odeMod, nlmixr2data::theo_sd, est = "saem", control = ctl(covMethod = "linFim"))
+    ))
     expect_identical(fit$covMethod, "linFim")
   })
 
@@ -59,9 +59,10 @@ nmTest({
     skip_on_cran()
     expect_message(
       fit <<- suppressWarnings(
-        nlmixr2(linMod, nlmixr2data::theo_sd, est = "saem",
-                control = ctl(covMethod = "analytic"))),
-      "linearized FIM")
+        nlmixr2(linMod, nlmixr2data::theo_sd, est = "saem", control = ctl(covMethod = "analytic"))
+      ),
+      "linearized FIM"
+    )
     expect_identical(fit$covMethod, "linFim")
     expect_true(all(is.finite(fit$parFixedDf$SE)))
   })
@@ -70,7 +71,8 @@ nmTest({
     skip_on_cran()
     expect_identical(saemControl()$covMethod, "sa")
     fit <- suppressMessages(suppressWarnings(
-      nlmixr2(odeMod, nlmixr2data::theo_sd, est = "saem", control = ctl())))
+      nlmixr2(odeMod, nlmixr2data::theo_sd, est = "saem", control = ctl())
+    ))
     expect_identical(fit$covMethod, "sa")
     expect_true(all(is.finite(fit$parFixedDf$SE)))
   })

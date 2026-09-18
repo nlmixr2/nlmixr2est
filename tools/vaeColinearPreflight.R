@@ -36,7 +36,9 @@ library(nlmixr2est)
   for (.n in .nm) {
     ## a lazy-loaded dataset is not an export, so getFromNamespace() misses it
     .d <- try(get(.n, envir = asNamespace("nlmixr2data")), silent = TRUE)
-    if (inherits(.d, "try-error") || !is.data.frame(.d)) next
+    if (inherits(.d, "try-error") || !is.data.frame(.d)) {
+      next
+    }
     .out[[.n]] <- .d
   }
   .out
@@ -46,15 +48,17 @@ library(nlmixr2est)
 ## through it measures what the M-step would measure.
 .row <- function(name, d) {
   .res <- try(vaeCovariates(d, warn = FALSE), silent = TRUE)
-  if (inherits(.res, "try-error") || nrow(.res) == 0L) return(NULL)
-  .per <- lapply(.cuts, function(cut) vaeCovariates(d, warn = FALSE,
-                                                    colinearCut = cut))
-  data.frame(data = name, groups = length(unique(.res$group)), cut = .cuts,
-             clusters = vapply(.per, function(r) length(unique(r$cluster)),
-                               integer(1)),
-             binds = vapply(.per, function(r) .vaeClusterBinds(r$cluster,
-                                                               r$group),
-                            logical(1)))
+  if (inherits(.res, "try-error") || nrow(.res) == 0L) {
+    return(NULL)
+  }
+  .per <- lapply(.cuts, function(cut) vaeCovariates(d, warn = FALSE, colinearCut = cut))
+  data.frame(
+    data = name,
+    groups = length(unique(.res$group)),
+    cut = .cuts,
+    clusters = vapply(.per, function(r) length(unique(r$cluster)), integer(1)),
+    binds = vapply(.per, function(r) .vaeClusterBinds(r$cluster, r$group), logical(1))
+  )
 }
 
 .dat <- .dataSets()
@@ -122,37 +126,58 @@ if (is.null(.all)) {
   v <- 31 * exp(z[, 2])
   ka <- 1.5 * exp(stats::rnorm(nid, 0, 0.3))
   tms <- c(0.25, 0.5, 1, 2, 4, 6, 8, 12, 24)
-  do.call(rbind, lapply(seq_len(nid), function(i) {
-    ke <- cl[i] / v[i]
-    f <- 320 / v[i] * ka[i] / (ka[i] - ke) * (exp(-ke * tms) - exp(-ka[i] * tms))
-    rbind(data.frame(ID = i, TIME = 0, AMT = 320, EVID = 1, DV = 0, WT = wt[i]),
-          data.frame(ID = i, TIME = tms, AMT = 0, EVID = 0,
-                     DV = f + stats::rnorm(length(tms), 0, 0.25), WT = wt[i]))
-  }))
+  do.call(
+    rbind,
+    lapply(seq_len(nid), function(i) {
+      ke <- cl[i] / v[i]
+      f <- 320 / v[i] * ka[i] / (ka[i] - ke) * (exp(-ke * tms) - exp(-ka[i] * tms))
+      rbind(
+        data.frame(ID = i, TIME = 0, AMT = 320, EVID = 1, DV = 0, WT = wt[i]),
+        data.frame(ID = i, TIME = tms, AMT = 0, EVID = 0, DV = f + stats::rnorm(length(tms), 0, 0.25), WT = wt[i])
+      )
+    })
+  )
 }
 
 .phiJoined <- function(d, src, cut) {
-  f <- try(suppressMessages(suppressWarnings(
-    nlmixr2(.phiModel, d, est = "vae",
-            control = vaeControl(iters = 60L, itersBurnIn = 15L,
-                                 calcTables = FALSE, covSelectPhiCor = src,
-                                 covSelectPhiJoin = cut,
-                                 covSelectPhiLeave = cut - 0.05))))
-    , silent = TRUE)
-  if (inherits(f, "try-error") || is.null(f$vae$phiPairOn)) return(NA)
+  f <- try(
+    suppressMessages(suppressWarnings(
+      nlmixr2(
+        .phiModel,
+        d,
+        est = "vae",
+        control = vaeControl(
+          iters = 60L,
+          itersBurnIn = 15L,
+          calcTables = FALSE,
+          covSelectPhiCor = src,
+          covSelectPhiJoin = cut,
+          covSelectPhiLeave = cut - 0.05
+        )
+      )
+    )),
+    silent = TRUE
+  )
+  if (inherits(f, "try-error") || is.null(f$vae$phiPairOn)) {
+    return(NA)
+  }
   .a <- f$vae$phiPairOn
   ## the cl/v pair: the two dims sharing the declared omega block
   isTRUE(.a["eta.cl", "eta.v"] == 1L)
 }
 
 .d <- .phiSim()
-.phi <- do.call(rbind, lapply(c("suffStat", "mu", "resid"), function(src) {
-  data.frame(source = src, cut = .phiCuts,
-             joined = vapply(.phiCuts, function(cut) .phiJoined(.d, src, cut),
-                             logical(1)))
-}))
+.phi <- do.call(
+  rbind,
+  lapply(c("suffStat", "mu", "resid"), function(src) {
+    data.frame(
+      source = src,
+      cut = .phiCuts,
+      joined = vapply(.phiCuts, function(cut) .phiJoined(.d, src, cut), logical(1))
+    )
+  })
+)
 cat("\n-- cl/v pair joined, by covSelectPhiCor source and join threshold --\n")
 print(.phi, row.names = FALSE)
 cat("\n-- highest threshold at which the pair still joins --\n")
-print(stats::aggregate(cut ~ source, data = .phi[.phi$joined %in% TRUE, ],
-                       FUN = max), row.names = FALSE)
+print(stats::aggregate(cut ~ source, data = .phi[.phi$joined %in% TRUE, ], FUN = max), row.names = FALSE)

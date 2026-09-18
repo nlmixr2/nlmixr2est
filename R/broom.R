@@ -16,7 +16,9 @@ confint.nlmixr2FitCore <- function(object, parm, level = 0.95, ...) {
   .exponentiate <- ifelse(any(names(.extra) == "exponentiate"), .extra$exponentiate, FALSE)
   .ciNames <- ifelse(any(names(.extra) == "ciNames"), .extra$ciNames, TRUE)
   .df <- .fixNames(object$parFixedDf)
-  if (!missing(parm)) .df <- .df[parm, ]
+  if (!missing(parm)) {
+    .df <- .df[parm, ]
+  }
   .zv <- qnorm(1 - (1 - level) / 2)
   .low <- .df$model.est - .df$std.error * .zv
   .hi <- .df$model.est + .df$std.error * .zv
@@ -28,8 +30,16 @@ confint.nlmixr2FitCore <- function(object, parm, level = 0.95, ...) {
     .hi <- exp(.hi)
     .low <- exp(.low)
   }
-  .df <- data.frame(model.est = .df$model.est, estimate = .df$estimate, conf.low = .low, conf.high = .hi, row.names=rownames(.df))
-  if (.ciNames) names(.df)[3:4] <- paste(c((1 - level) / 2, (1 - (1 - level) / 2)) * 100, "%")
+  .df <- data.frame(
+    model.est = .df$model.est,
+    estimate = .df$estimate,
+    conf.low = .low,
+    conf.high = .hi,
+    row.names = rownames(.df)
+  )
+  if (.ciNames) {
+    names(.df)[3:4] <- paste(c((1 - level) / 2, (1 - (1 - level) / 2)) * 100, "%")
+  }
   .df
 }
 
@@ -39,14 +49,20 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
 .nlmixr2TidyFixed <- function(x, ..., .ranpar = FALSE) {
   rxode2::rxReq("tibble")
   .extra <- list(...)
-  .conf.int <- ifelse(any(names(.extra) == "conf.int"), .extra$conf.int, ifelse(any(names(.extra) == "conf.level"), TRUE, FALSE))
+  .conf.int <- ifelse(
+    any(names(.extra) == "conf.int"),
+    .extra$conf.int,
+    ifelse(any(names(.extra) == "conf.level"), TRUE, FALSE)
+  )
   .conf.level <- ifelse(any(names(.extra) == "conf.level"), .extra$conf.level, 0.95)
   .exponentiate <- ifelse(any(names(.extra) == "exponentiate"), .extra$exponentiate, FALSE)
   .quick <- ifelse(any(names(.extra) == "quick"), .extra$quick, FALSE)
   .rse <- ifelse(any(names(.extra) == "rse"), .extra$rse, FALSE)
   .bsv <- ifelse(any(names(.extra) == "bsv"), .extra$bsv, FALSE)
   .shrink <- ifelse(any(names(.extra) == "shrink"), .extra$shrink, FALSE)
-  if (.quick) warning("quick does not do anything for nlmixr2 fit objects")
+  if (.quick) {
+    warning("quick does not do anything for nlmixr2 fit objects")
+  }
   .df <- .fixNames(x$parFixedDf)
   .exp <- abs(exp(.df$model.est) - .df$estimate) < 1e-6
   if (is.na(.exponentiate)) {
@@ -83,7 +99,9 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
   ## effect   group   term            estimate std.error statistic
   .df <- data.frame(
     effect = "fixed",
-    term = row.names(.df), .df, stringsAsFactors = FALSE
+    term = row.names(.df),
+    .df,
+    stringsAsFactors = FALSE
   )
   if (!.ranpar) {
     .df <- .df[is.na(x$ui$iniDf$err[!is.na(x$ui$iniDf$ntheta)]), ]
@@ -122,8 +140,14 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
   .pars <- .getR(.omegaR, TRUE)
   if (length(.pars) > 0) {
     .p1 <- data.frame(
-      effect = "ran_pars", group = "ID", term = names(.pars), estimate = .pars, std.error = NA_real_,
-      statistic = NA_real_, p.value = NA_real_, stringsAsFactors = FALSE
+      effect = "ran_pars",
+      group = "ID",
+      term = names(.pars),
+      estimate = .pars,
+      std.error = NA_real_,
+      statistic = NA_real_,
+      p.value = NA_real_,
+      stringsAsFactors = FALSE
     ) |>
       .reorderCols()
     .p2 <- data.frame(.nlmixr2TidyFixed(x, .ranpar = TRUE), stringsAsFactors = FALSE) |>
@@ -152,12 +176,22 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
 ## https://github.com/bbolker/broom.mixed/blob/master/R/utilities.R#L238-L248
 .reorderCols <- function(x) {
   allCols <- c(
-    "response", "effect",
+    "response",
+    "effect",
     "component", ## glmmTMB, brms
-    "group", "level", "term", "index", "estimate",
-    "std.error", "statistic",
-    "df", "p.value",
-    "conf.low", "conf.high", "rhat", "ess"
+    "group",
+    "level",
+    "term",
+    "index",
+    "estimate",
+    "std.error",
+    "statistic",
+    "df",
+    "p.value",
+    "conf.low",
+    "conf.high",
+    "rhat",
+    "ess"
   )
   return(x[, intersect(allCols, names(x))])
 }
@@ -198,13 +232,17 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
         }
       } else {
         if (eta != "ID") {
-          warning(sprintf("the parameter '%s' is not mu-referenced and the coef will not be returned", eta), call.=FALSE)
+          warning(
+            sprintf("the parameter '%s' is not mu-referenced and the coef will not be returned", eta),
+            call. = FALSE
+          )
           .noMuRef <<- c(.noMuRef, eta)
         }
         .ret <- .eta[[eta]]
       }
       return(.ret)
-    })), sapply(names(.eta), function(eta) {
+    })),
+    sapply(names(.eta), function(eta) {
       .w <- which(.muRef$eta == eta)
       if (length(.w) == 1L) {
         .thetaName <- .muRef$theta[.w]
@@ -231,9 +269,7 @@ tidy.nlmixr2FitCore <- function(x, ...) {
       .effects <- c("fixed", "ran_pars")
     }
   }
-  .effects <- match.arg(.effects, c("fixed", "random", "ran_vals", "ran_pars", "ran_coef"),
-    several.ok = TRUE
-  )
+  .effects <- match.arg(.effects, c("fixed", "random", "ran_vals", "ran_pars", "ran_coef"), several.ok = TRUE)
   .ret <- list()
   if (any(.effects == "fixed")) {
     .ret$fixed <- .nlmixr2TidyFixed(x, ...)
@@ -277,8 +313,7 @@ glance.nlmixr2FitCore <- function(x, ...) {
 glance.nlmixr2FitCoreSilent <- glance.nlmixr2FitCore
 
 augment.nlmixr2FitCore <- function(x, ...) {
-  stop("augment is not yet implemented for nlmixr2 models",
-       call.=FALSE)
+  stop("augment is not yet implemented for nlmixr2 models", call. = FALSE)
 }
 
 augment.nlmixr2FitCoreSilent <- augment.nlmixr2FitCore

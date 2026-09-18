@@ -12,7 +12,7 @@
 #' @author Matthew L. Fidler
 .getMixFromLog <- function(val, idx) {
   v <- rxode2::mexpit(val[idx])
-  c(v, 1-sum(v))
+  c(v, 1 - sum(v))
 }
 #' Get the mixture gradients of the estimated log-scale parameters
 #'
@@ -104,28 +104,34 @@
 #' @noRd
 #' @author Matthew L. Fidler
 .mixFix <- function(env, ui) {
-  .mixIdx <- try(get("mixIdx", envir=env), silent=TRUE)
-  if (inherits(.mixIdx, "try-error")) return(invisible(NULL))
-  if (length(.mixIdx) == 0L) return(invisible(NULL))
-  if (!exists("etaObfFull", envir=env)) return(invisible(NULL))
+  .mixIdx <- try(get("mixIdx", envir = env), silent = TRUE)
+  if (inherits(.mixIdx, "try-error")) {
+    return(invisible(NULL))
+  }
+  if (length(.mixIdx) == 0L) {
+    return(invisible(NULL))
+  }
+  if (!exists("etaObfFull", envir = env)) {
+    return(invisible(NULL))
+  }
 
-  .etaFull <- get("etaObfFull", envir=env)
-  .etaBest <- get("etaObf", envir=env)
+  .etaFull <- get("etaObfFull", envir = env)
+  .etaBest <- get("etaObf", envir = env)
 
   # Fix ranef: remove MIXEST column so nlmixr2Parameters() gets ID + ETAs only
-  .ranef <- as.data.frame(get("ranef", envir=env))
+  .ranef <- as.data.frame(get("ranef", envir = env))
   .wMix <- which(names(.ranef) == "MIXEST")
   if (length(.wMix) > 0L) {
-    .ranef <- .ranef[, -.wMix, drop=FALSE]
-    assign("ranef", .ranef, envir=env)
+    .ranef <- .ranef[, -.wMix, drop = FALSE]
+    assign("ranef", .ranef, envir = env)
   }
 
   # Prefer env$mixProbabilities (back-transformed by preFinalParTableHook,
   # includes implicit last component); else compute from fixef (mlogit scale).
-  if (exists("mixProbabilities", envir=env)) {
-    .priorProbs <- get("mixProbabilities", envir=env)
+  if (exists("mixProbabilities", envir = env)) {
+    .priorProbs <- get("mixProbabilities", envir = env)
   } else {
-    .finalTheta <- get("fixef", envir=env)
+    .finalTheta <- get("fixef", envir = env)
     .priorProbs <- .getMixFromLog(.finalTheta, .mixIdx)
   }
   .nMix <- length(.priorProbs)
@@ -135,11 +141,11 @@
   # Rows ordered by mixture then subject; sort to ensure consistency
   .etaFull <- .etaFull[order(.etaFull$MIXEST, as.integer(.etaFull$ID)), ]
 
-  .etaCols <- grep("^ETA\\[", names(.etaFull), value=TRUE)
-  .etaNames <- names(.ranef)[-1]  # eta names from fixed ranef (no ID, no MIXEST)
+  .etaCols <- grep("^ETA\\[", names(.etaFull), value = TRUE)
+  .etaNames <- names(.ranef)[-1] # eta names from fixed ranef (no ID, no MIXEST)
 
   # Build unnormalised posterior: exp(-OBJI/2) * prior_prob for each subject x mixture
-  .llikMat <- matrix(NA_real_, nrow=.nSub, ncol=.nMix)
+  .llikMat <- matrix(NA_real_, nrow = .nSub, ncol = .nMix)
   for (k in seq_len(.nMix)) {
     .wk <- which(.etaFull$MIXEST == k)
     # Sort by subject ID to align rows correctly
@@ -149,9 +155,13 @@
   .rowTotals <- rowSums(.llikMat)
   .zeroRows <- which(.rowTotals <= 0 | !is.finite(.rowTotals))
   if (length(.zeroRows) > 0L) {
-    warning(sprintf(
-      "%d subject(s) had zero/underflowed mixture likelihood in all components; falling back to prior probabilities for those subjects",
-      length(.zeroRows)), call. = FALSE)
+    warning(
+      sprintf(
+        "%d subject(s) had zero/underflowed mixture likelihood in all components; falling back to prior probabilities for those subjects",
+        length(.zeroRows)
+      ),
+      call. = FALSE
+    )
     .rowTotals[.zeroRows] <- 1
     .llikMat[.zeroRows, ] <- matrix(.priorProbs, nrow = length(.zeroRows), ncol = .nMix, byrow = TRUE)
   }
@@ -160,9 +170,9 @@
   .mixList <- lapply(seq_len(.nMix), function(k) {
     .wk <- which(.etaFull$MIXEST == k)
     .wk <- .wk[order(as.integer(.etaFull$ID[.wk]))]
-    .df <- .etaFull[.wk, .etaCols, drop=FALSE]
+    .df <- .etaFull[.wk, .etaCols, drop = FALSE]
     .prob <- .llikMat[, k] / .rowTotals
-    .ret <- cbind(data.frame(ID=.etaFull$ID[.wk]), .df, data.frame(prob=.prob))
+    .ret <- cbind(data.frame(ID = .etaFull$ID[.wk]), .df, data.frame(prob = .prob))
     names(.ret) <- c("ID", .etaNames, "prob")
     row.names(.ret) <- NULL
     .ret
@@ -172,17 +182,21 @@
   # Create mixNum: best mixture assignment per subject (1-indexed)
   # etaObf has columns: "ID", "MIXEST"(1-indexed best mix), eta names..., "OBJI"
   .wMix2 <- which(names(.etaBest) == "MIXEST")
-  .mixNum <- data.frame(ID=.etaBest$ID,
-                        mixnum=if (length(.wMix2) > 0L) as.integer(.etaBest[[.wMix2]]) else NA_integer_)
+  .mixNum <- data.frame(
+    ID = .etaBest$ID,
+    mixnum = if (length(.wMix2) > 0L) as.integer(.etaBest[[.wMix2]]) else NA_integer_
+  )
   row.names(.mixNum) <- NULL
 
-  assign("mixList", .mixList, envir=env)
-  assign("mixNum", .mixNum, envir=env)
+  assign("mixList", .mixList, envir = env)
+  assign("mixNum", .mixNum, envir = env)
 
   # Calculate Expected ETAs for shrinkage
-  .etaExpected <- .etaFull[.etaFull$MIXEST == 1, .etaCols, drop=FALSE]
+  .etaExpected <- .etaFull[.etaFull$MIXEST == 1, .etaCols, drop = FALSE]
   names(.etaExpected) <- .etaNames
-  for (.n in names(.etaExpected)) .etaExpected[[.n]] <- 0
+  for (.n in names(.etaExpected)) {
+    .etaExpected[[.n]] <- 0
+  }
   for (.m in .mixList) {
     for (.n in names(.etaExpected)) {
       if (.n %in% names(.m)) {
@@ -190,13 +204,13 @@
       }
     }
   }
-  .etaExpected <- cbind(data.frame(ID=.etaFull$ID[.etaFull$MIXEST == 1]), .etaExpected)
-  assign("etaExpected", .etaExpected, envir=env)
+  .etaExpected <- cbind(data.frame(ID = .etaFull$ID[.etaFull$MIXEST == 1]), .etaExpected)
+  assign("etaExpected", .etaExpected, envir = env)
 
   # iCov drives rxode2's per-subject mixture fixing during solve/table calc;
   # ID must be integer to match the data's ID column type.
-  .iCov <- data.frame(ID=as.integer(.mixNum$ID), mixest=.mixNum$mixnum)
-  assign("mixIcov", .iCov, envir=env)
+  .iCov <- data.frame(ID = as.integer(.mixNum$ID), mixest = .mixNum$mixnum)
+  assign("mixIcov", .iCov, envir = env)
 
   invisible(NULL)
 }
@@ -217,17 +231,27 @@
 #' @noRd
 #' @author Matthew L. Fidler
 .saemMixFix <- function(env, ui) {
-  if (length(ui$mixProbs) == 0L) return(invisible(NULL))
+  if (length(ui$mixProbs) == 0L) {
+    return(invisible(NULL))
+  }
   .saem <- env$saem
-  if (is.null(.saem)) return(invisible(NULL))
-  .mixWeights <- .saem$mixWeights  # N x nMix matrix of posterior weights
-  if (is.null(.mixWeights) || nrow(.mixWeights) == 0L) return(invisible(NULL))
+  if (is.null(.saem)) {
+    return(invisible(NULL))
+  }
+  .mixWeights <- .saem$mixWeights # N x nMix matrix of posterior weights
+  if (is.null(.mixWeights) || nrow(.mixWeights) == 0L) {
+    return(invisible(NULL))
+  }
   .nMix <- ncol(.mixWeights)
-  if (.nMix < 2L) return(invisible(NULL))
+  if (.nMix < 2L) {
+    return(invisible(NULL))
+  }
 
   # etaObf was populated by .getSaemOmega; columns: ID, eta names, OBJI
   .etaObf <- env$etaObf
-  if (is.null(.etaObf) || nrow(.etaObf) == 0L) return(invisible(NULL))
+  if (is.null(.etaObf) || nrow(.etaObf) == 0L) {
+    return(invisible(NULL))
+  }
   .nSub <- nrow(.etaObf)
 
   # eta column names (exclude ID and OBJI)
@@ -236,8 +260,7 @@
   # mixWeights rows correspond to subject order in etaObf
   # Ensure the matrix has a row for every subject
   if (nrow(.mixWeights) != .nSub) {
-    warning("mixWeights row count doesn't match number of subjects; skipping SAEM mixFix",
-            call.=FALSE)
+    warning("mixWeights row count doesn't match number of subjects; skipping SAEM mixFix", call. = FALSE)
     return(invisible(NULL))
   }
 
@@ -259,7 +282,7 @@
   .allEtas <- ui$iniDf[!is.na(ui$iniDf$neta1), ]
   .allEtas <- .allEtas[.allEtas$neta1 == .allEtas$neta2, "name"]
   .mixCalls <- do.call(c, lapply(ui$lstExpr, .findMixCalls))
-  
+
   .etaGroups <- list()
   for (.mc in .mixCalls) {
     .args <- as.list(.mc)[-1]
@@ -273,53 +296,65 @@
   .omega <- env$omega
   .fixef <- env$fixef
   .muRef <- ui$muRefDataFrame
-  
+
   if (length(.etaGroups) > 0L) {
     for (.grp in .etaGroups) {
       .rootName <- gsub("[0-9]+$", "", .grp[1])
-      
+
       .sig02 <- .omega[.grp[1], .grp[1]]
-      .thetas <- vapply(.grp, function(e) {
-        .t <- .muRef$theta[.muRef$eta == e]
-        if (length(.t) == 1L) .t else NA_character_
-      }, character(1))
-      
+      .thetas <- vapply(
+        .grp,
+        function(e) {
+          .t <- .muRef$theta[.muRef$eta == e]
+          if (length(.t) == 1L) .t else NA_character_
+        },
+        character(1)
+      )
+
       .mus <- .fixef[.thetas]
       .mus[is.na(.mus)] <- 0.0
-      
+
       .wGroup <- .mixProbabilities
       .meanMu <- sum(.wGroup * .mus)
       .overallVar <- .sig02
-      
+
       .wIdx <- which(colnames(.omega) == .grp[1])
       if (length(.wIdx) == 1L) {
         colnames(.omega)[.wIdx] <- rownames(.omega)[.wIdx] <- .rootName
         .omega[.rootName, .rootName] <- .overallVar
       }
-      
+
       .toRemove <- .grp[-1]
-      .omega <- .omega[!(rownames(.omega) %in% .toRemove), !(colnames(.omega) %in% .toRemove), drop=FALSE]
-      
-      .etaObf[[.rootName]] <- vapply(seq_len(nrow(.etaObf)), function(i) {
-        .etaObf[i, .grp[.bestMix[i]]]
-      }, numeric(1))
-      .etaObf <- .etaObf[, !(names(.etaObf) %in% .grp), drop=FALSE]
+      .omega <- .omega[!(rownames(.omega) %in% .toRemove), !(colnames(.omega) %in% .toRemove), drop = FALSE]
+
+      .etaObf[[.rootName]] <- vapply(
+        seq_len(nrow(.etaObf)),
+        function(i) {
+          .etaObf[i, .grp[.bestMix[i]]]
+        },
+        numeric(1)
+      )
+      .etaObf <- .etaObf[, !(names(.etaObf) %in% .grp), drop = FALSE]
 
       .updateMat <- function(mat) {
         .dfMat <- as.data.frame(mat)
         .N <- nrow(.dfMat)
-        .newCol <- vapply(seq_len(.N), function(i) {
-          .subjIdx <- ((i - 1) %% .nSub) + 1
-          .dfMat[i, .grp[.bestMix[.subjIdx]]]
-        }, numeric(1))
+        .newCol <- vapply(
+          seq_len(.N),
+          function(i) {
+            .subjIdx <- ((i - 1) %% .nSub) + 1
+            .dfMat[i, .grp[.bestMix[.subjIdx]]]
+          },
+          numeric(1)
+        )
         .dfMat[[.rootName]] <- .newCol
-        .dfMat <- .dfMat[, !(names(.dfMat) %in% .grp), drop=FALSE]
+        .dfMat <- .dfMat[, !(names(.dfMat) %in% .grp), drop = FALSE]
         as.matrix(.dfMat)
       }
-      if (exists(".etaMatBase", envir=env, inherits=FALSE) && !is.null(env$.etaMatBase)) {
+      if (exists(".etaMatBase", envir = env, inherits = FALSE) && !is.null(env$.etaMatBase)) {
         env$.etaMatBase <- .updateMat(env$.etaMatBase)
       }
-      if (exists(".etaMat", envir=env, inherits=FALSE) && !is.null(env$.etaMat)) {
+      if (exists(".etaMat", envir = env, inherits = FALSE) && !is.null(env$.etaMat)) {
         env$.etaMat <- .updateMat(env$.etaMat)
       }
     }
@@ -334,11 +369,11 @@
         .funLines <- .funLines[-.etaClLines[-1]]
       }
     }
-    .funText <- paste(.funLines, collapse="\n")
-    .funNew <- eval(parse(text=.funText))
+    .funText <- paste(.funLines, collapse = "\n")
+    .funNew <- eval(parse(text = .funText))
     .uiNew <- rxode2::rxode2(.funNew)
-    if (exists("boundedTransforms", envir=ui$meta)) {
-      assign("boundedTransforms", get("boundedTransforms", envir=ui$meta), envir=.uiNew$meta)
+    if (exists("boundedTransforms", envir = ui$meta)) {
+      assign("boundedTransforms", get("boundedTransforms", envir = ui$meta), envir = .uiNew$meta)
     }
     env$ui <- .uiNew
     env$omega <- .omega
@@ -348,9 +383,9 @@
 
   # Create mixList: one data frame per mixture component
   .mixList <- lapply(seq_len(.nMix), function(k) {
-    .df <- as.data.frame(.etaObf[, .etaNames, drop=FALSE])
+    .df <- as.data.frame(.etaObf[, .etaNames, drop = FALSE])
     .prob <- .mixWeights[, k]
-    .ret <- cbind(data.frame(ID=.etaObf$ID), .df, data.frame(prob=.prob))
+    .ret <- cbind(data.frame(ID = .etaObf$ID), .df, data.frame(prob = .prob))
     names(.ret) <- c("ID", .etaNames, "prob")
     row.names(.ret) <- NULL
     .ret
@@ -358,22 +393,23 @@
   names(.mixList) <- paste0("mix", seq_len(.nMix))
 
   # Create mixNum: best mixture assignment per subject (1-indexed)
-  .mixNum <- data.frame(ID=.etaObf$ID,
-                        mixnum=as.integer(.bestMix))
+  .mixNum <- data.frame(ID = .etaObf$ID, mixnum = as.integer(.bestMix))
   row.names(.mixNum) <- NULL
 
   # Assign ranef:
-  .ranef <- as.data.frame(.etaObf[, .etaNames, drop=FALSE])
-  .ranef <- cbind(data.frame(ID=.etaObf$ID), .ranef)
+  .ranef <- as.data.frame(.etaObf[, .etaNames, drop = FALSE])
+  .ranef <- cbind(data.frame(ID = .etaObf$ID), .ranef)
   .ranef$mixnum <- as.integer(.bestMix)
-  assign("ranef", .ranef, envir=env)
+  assign("ranef", .ranef, envir = env)
 
-  assign("mixList", .mixList, envir=env)
-  assign("mixNum", .mixNum, envir=env)
+  assign("mixList", .mixList, envir = env)
+  assign("mixNum", .mixNum, envir = env)
 
   # Calculate Expected ETAs for shrinkage
-  .etaExpected <- as.data.frame(.etaObf[, .etaNames, drop=FALSE])
-  for (.n in names(.etaExpected)) .etaExpected[[.n]] <- 0
+  .etaExpected <- as.data.frame(.etaObf[, .etaNames, drop = FALSE])
+  for (.n in names(.etaExpected)) {
+    .etaExpected[[.n]] <- 0
+  }
   for (.m in .mixList) {
     for (.n in names(.etaExpected)) {
       if (.n %in% names(.m)) {
@@ -381,13 +417,13 @@
       }
     }
   }
-  .etaExpected <- cbind(data.frame(ID=.etaObf$ID), .etaExpected)
-  assign("etaExpected", .etaExpected, envir=env)
+  .etaExpected <- cbind(data.frame(ID = .etaObf$ID), .etaExpected)
+  assign("etaExpected", .etaExpected, envir = env)
 
   # Store iCov for the table/solve step: rxode2 reads 'mixest' from iCov to
   # fix each individual's mixture component during ODE solving.
-  .iCov <- data.frame(ID=as.integer(.mixNum$ID), mixest=.mixNum$mixnum)
-  assign("mixIcov", .iCov, envir=env)
+  .iCov <- data.frame(ID = as.integer(.mixNum$ID), mixest = .mixNum$mixnum)
+  assign("mixIcov", .iCov, envir = env)
 
   invisible(NULL)
 }
@@ -407,17 +443,22 @@
 .backTransformParHistMix <- function(parHist, mixColNames) {
   .mixCols <- match(mixColNames, names(parHist))
   .mixCols <- .mixCols[!is.na(.mixCols)]
-  if (length(.mixCols) == 0L) return(parHist)
+  if (length(.mixCols) == 0L) {
+    return(parHist)
+  }
   .btRows <- as.character(parHist$type) == "Back-Transformed"
-  if (!any(.btRows)) return(parHist)
-  .mlogitMat <- as.matrix(parHist[.btRows, .mixCols, drop=FALSE])
+  if (!any(.btRows)) {
+    return(parHist)
+  }
+  .mlogitMat <- as.matrix(parHist[.btRows, .mixCols, drop = FALSE])
   .nBt <- sum(.btRows)
   .nMix <- length(.mixCols)
   # matrix() with explicit dims handles single-row/single-column edge cases
   # that apply()+t() alone mishandle.
   parHist[.btRows, .mixCols] <- matrix(
     t(apply(.mlogitMat, 1L, function(.row) rxode2::mexpit(.row)[seq_len(.nMix)])),
-    nrow = .nBt, ncol = .nMix
+    nrow = .nBt,
+    ncol = .nMix
   )
   parHist
 }
@@ -460,10 +501,16 @@
 #' @noRd
 #' @author Matthew L. Fidler
 .mixCovToProbScale <- function(cov, mixNames, p) {
-  if (!is.matrix(cov) || length(mixNames) == 0L) return(cov)
-  if (is.null(rownames(cov))) return(cov)
+  if (!is.matrix(cov) || length(mixNames) == 0L) {
+    return(cov)
+  }
+  if (is.null(rownames(cov))) {
+    return(cov)
+  }
   .i <- match(mixNames, rownames(cov))
-  if (length(p) != length(.i) || !all(is.finite(p))) return(cov)
+  if (length(p) != length(.i) || !all(is.finite(p))) {
+    return(cov)
+  }
   # A proportion can be absent from THIS matrix while others are present -- a
   # fix()ed proportion is dropped by skipCov, and covR/covS can drop a singular
   # direction.  Rotate the subset that IS here rather than bailing on the whole
@@ -471,7 +518,9 @@
   # scale (measured 0.265 where the probability scale is 0.063).  Holding the
   # absent coordinates fixed makes the correct Jacobian exactly the submatrix.
   .keep <- !is.na(.i)
-  if (!any(.keep)) return(cov)
+  if (!any(.keep)) {
+    return(cov)
+  }
   .J <- .mixProbJacobian(p)[.keep, .keep, drop = FALSE]
   .A <- diag(1, nrow(cov))
   .A[.i[.keep], .i[.keep]] <- .J
@@ -501,18 +550,23 @@
 #' @author Matthew L. Fidler
 .mixInstallProbScaleCov <- function(env) {
   # a covariance handed in by the caller is already on the reported scale
-  if (isTRUE(tryCatch(get(".mixCovPreRotated", envir = env, inherits = FALSE),
-                      error = function(e) FALSE))) {
+  if (isTRUE(tryCatch(get(".mixCovPreRotated", envir = env, inherits = FALSE), error = function(e) FALSE))) {
     return(invisible(NULL))
   }
   .mix <- .mixEnvPieces(env)
-  if (is.null(.mix)) return(invisible(NULL))
+  if (is.null(.mix)) {
+    return(invisible(NULL))
+  }
   .mp <- .mix$names
   .p <- .mix$p
   for (.n in c("cov", "covR", "covS", "covRS")) {
-    if (!exists(.n, envir = env, inherits = FALSE)) next
+    if (!exists(.n, envir = env, inherits = FALSE)) {
+      next
+    }
     .cur <- get(.n, envir = env)
-    if (!is.matrix(.cur)) next
+    if (!is.matrix(.cur)) {
+      next
+    }
     assign(.n, .mixCovToProbScale(.cur, .mp, .p), envir = env)
   }
   # the covFull/analytic installers cache the shape they did not install; those
@@ -547,15 +601,16 @@
 .mixRefreshSeFromCov <- function(env, mixNames, mixIdx) {
   .cov <- tryCatch(get("cov", envir = env, inherits = FALSE), error = function(e) NULL)
   .mixIdx <- mixIdx
-  if (!is.matrix(.cov) || is.null(rownames(.cov)) ||
-        is.null(.mixIdx) || length(.mixIdx) != length(mixNames)) {
+  if (!is.matrix(.cov) || is.null(rownames(.cov)) || is.null(.mixIdx) || length(.mixIdx) != length(mixNames)) {
     return(invisible(NULL))
   }
   .w <- match(mixNames, rownames(.cov))
   # refresh the proportions that ARE in this covariance; one can be absent (a
   # fix()ed proportion is dropped by skipCov) without invalidating the rest
   .keep <- !is.na(.w)
-  if (!any(.keep)) return(invisible(NULL))
+  if (!any(.keep)) {
+    return(invisible(NULL))
+  }
   .w <- .w[.keep]
   .mixIdx <- .mixIdx[.keep]
   .newSe <- sqrt(diag(.cov))[.w]
@@ -566,7 +621,9 @@
       assign("se", .se, envir = env)
     }
   }
-  if (!exists("popDf", envir = env, inherits = FALSE)) return(invisible(NULL))
+  if (!exists("popDf", envir = env, inherits = FALSE)) {
+    return(invisible(NULL))
+  }
   .pd <- get("popDf", envir = env)
   if (!is.data.frame(.pd) || nrow(.pd) < max(.mixIdx) || !("SE" %in% names(.pd))) {
     return(invisible(NULL))
@@ -602,18 +659,30 @@
 #' @author Matthew L. Fidler
 .mixParFixedCi <- function(ui, popDf, ci = 0.95) {
   .mp <- tryCatch(ui$mixProbs, error = function(e) NULL)
-  if (is.null(.mp) || length(.mp) == 0L) return(popDf)
-  if (!is.data.frame(popDf) || is.null(rownames(popDf))) return(popDf)
-  if (!all(c("Estimate", "SE", "CI Lower", "CI Upper") %in% names(popDf))) return(popDf)
-  if (!(length(ci) == 1L && is.numeric(ci) && is.finite(ci))) ci <- 0.95
+  if (is.null(.mp) || length(.mp) == 0L) {
+    return(popDf)
+  }
+  if (!is.data.frame(popDf) || is.null(rownames(popDf))) {
+    return(popDf)
+  }
+  if (!all(c("Estimate", "SE", "CI Lower", "CI Upper") %in% names(popDf))) {
+    return(popDf)
+  }
+  if (!(length(ci) == 1L && is.numeric(ci) && is.finite(ci))) {
+    ci <- 0.95
+  }
   .qn <- stats::qnorm(1 - (1 - ci) / 2)
   for (.n in intersect(.mp, rownames(popDf))) {
     .p <- popDf[.n, "Estimate"]
     .s <- popDf[.n, "SE"]
-    if (!is.finite(.p) || !is.finite(.s) || .p <= 0 || .p >= 1) next
-    .j <- .p * (1 - .p)                       # dp/d(logit p)
-    if (!is.finite(.j) || .j <= 0) next
-    .sl <- .s / .j                            # SE on the logit scale
+    if (!is.finite(.p) || !is.finite(.s) || .p <= 0 || .p >= 1) {
+      next
+    }
+    .j <- .p * (1 - .p) # dp/d(logit p)
+    if (!is.finite(.j) || .j <= 0) {
+      next
+    }
+    .sl <- .s / .j # SE on the logit scale
     popDf[.n, "CI Lower"] <- rxode2::expit(rxode2::logit(.p) - .qn * .sl)
     popDf[.n, "CI Upper"] <- rxode2::expit(rxode2::logit(.p) + .qn * .sl)
   }
@@ -635,9 +704,10 @@
 #' @author Matthew L. Fidler
 .mixWarnBoundary <- function(p) {
   .p <- p[is.finite(p)]
-  if (length(.p) == 0L || !any(.p < 0.01 | .p > 0.99)) return(invisible(NULL))
-  warning("mixture proportion near 0/1; its SE is shrunk by the p(1-p) scale",
-          call. = FALSE)
+  if (length(.p) == 0L || !any(.p < 0.01 | .p > 0.99)) {
+    return(invisible(NULL))
+  }
+  warning("mixture proportion near 0/1; its SE is shrunk by the p(1-p) scale", call. = FALSE)
   invisible(NULL)
 }
 
@@ -656,9 +726,13 @@
 #' @author Matthew L. Fidler
 .mixEnvPieces <- function(env, needResp = FALSE) {
   .ui <- tryCatch(env$ui, error = function(e) NULL)
-  if (is.null(.ui)) return(NULL)
+  if (is.null(.ui)) {
+    return(NULL)
+  }
   .idx <- tryCatch(.ui$thetaMixIndex, error = function(e) NULL)
-  if (is.null(.idx) || length(.idx) == 0L) return(NULL)
+  if (is.null(.idx) || length(.idx) == 0L) {
+    return(NULL)
+  }
   # Name the proportions by their THETA slot, not by ui$mixProbs.  The two are
   # the same set but NOT the same order: mixProbs follows the mix() call while
   # thetaMixIndex follows ini(), and everything downstream -- the covariance's
@@ -667,25 +741,37 @@
   # the Jacobian on the wrong rows whenever ini() lists them in a different
   # order than mix() uses them.
   .mp <- tryCatch(names(.ui$theta)[.idx], error = function(e) NULL)
-  if (is.null(.mp) || length(.mp) != length(.idx) || anyNA(.mp)) return(NULL)
+  if (is.null(.mp) || length(.mp) != length(.idx) || anyNA(.mp)) {
+    return(NULL)
+  }
   .pi <- tryCatch(env$mixProbabilities, error = function(e) NULL)
-  if (is.null(.pi) || length(.pi) != length(.mp) + 1L || !all(is.finite(.pi))) return(NULL)
+  if (is.null(.pi) || length(.pi) != length(.mp) + 1L || !all(is.finite(.pi))) {
+    return(NULL)
+  }
   # which of them were actually ESTIMATED: a fix()ed proportion is still in
   # thetaMixIndex, but it has no covariance row and must not be given one
-  .fx <- tryCatch({
-    .idf <- .ui$iniDf
-    .w <- match(.mp, .idf$name)
-    .v <- if (is.null(.idf$fix)) rep(FALSE, length(.w)) else .idf$fix[.w]
-    .v[is.na(.v)] <- FALSE
-    .v
-  }, error = function(e) rep(FALSE, length(.mp)))
-  .ret <- list(names = .mp, idx = .idx, p = .pi[seq_along(.mp)], pi = .pi,
-               fixed = .fx)
-  if (!needResp) return(.ret)
+  .fx <- tryCatch(
+    {
+      .idf <- .ui$iniDf
+      .w <- match(.mp, .idf$name)
+      .v <- if (is.null(.idf$fix)) rep(FALSE, length(.w)) else .idf$fix[.w]
+      .v[is.na(.v)] <- FALSE
+      .v
+    },
+    error = function(e) rep(FALSE, length(.mp))
+  )
+  .ret <- list(names = .mp, idx = .idx, p = .pi[seq_along(.mp)], pi = .pi, fixed = .fx)
+  if (!needResp) {
+    return(.ret)
+  }
   .ml <- tryCatch(env$mixList, error = function(e) NULL)
-  if (is.null(.ml) || length(.ml) != length(.pi)) return(NULL)
+  if (is.null(.ml) || length(.ml) != length(.pi)) {
+    return(NULL)
+  }
   .r <- try(do.call(cbind, lapply(.ml, function(.z) .z$prob)), silent = TRUE)
-  if (inherits(.r, "try-error") || !is.matrix(.r) || ncol(.r) != length(.pi)) return(NULL)
+  if (inherits(.r, "try-error") || !is.matrix(.r) || ncol(.r) != length(.pi)) {
+    return(NULL)
+  }
   .ret$r <- .r
   .ret
 }
@@ -706,10 +792,14 @@
 .mixProbCovBlock <- function(r, p) {
   .d <- sweep(r, 2, p, "-")
   .blk <- try(solve(t(.d) %*% .d), silent = TRUE)
-  if (inherits(.blk, "try-error") || !all(is.finite(.blk))) return(NULL)
+  if (inherits(.blk, "try-error") || !all(is.finite(.blk))) {
+    return(NULL)
+  }
   .j <- .mixProbJacobian(p)
   .blk <- .j %*% .blk %*% t(.j)
-  if (!all(is.finite(.blk)) || any(diag(.blk) <= 0)) return(NULL)
+  if (!all(is.finite(.blk)) || any(diag(.blk) <= 0)) {
+    return(NULL)
+  }
   .blk
 }
 
@@ -739,17 +829,25 @@
 #' @author Matthew L. Fidler
 .mixCovAppendBlock <- function(env) {
   .mix <- .mixEnvPieces(env, needResp = TRUE)
-  if (is.null(.mix)) return(invisible(NULL))
+  if (is.null(.mix)) {
+    return(invisible(NULL))
+  }
   .pi <- .mix$pi
   .r <- .mix$r
   .cov <- tryCatch(get("cov", envir = env, inherits = FALSE), error = function(e) NULL)
-  if (!is.matrix(.cov) || is.null(rownames(.cov))) return(invisible(NULL))
-  if (any(.mix$names %in% rownames(.cov))) return(invisible(NULL))   # already covered
+  if (!is.matrix(.cov) || is.null(rownames(.cov))) {
+    return(invisible(NULL))
+  }
+  if (any(.mix$names %in% rownames(.cov))) {
+    return(invisible(NULL))
+  } # already covered
   # only the ESTIMATED proportions get a row: a fix()ed one has no uncertainty
   # to report, and appending one would give a parameter that was never estimated
   # a non-zero SE
   .free <- which(!.mix$fixed)
-  if (length(.free) == 0L) return(invisible(NULL))
+  if (length(.free) == 0L) {
+    return(invisible(NULL))
+  }
   .mp <- .mix$names[.free]
   # An information matrix reports the precision of a MAXIMUM-likelihood estimate.
   # The mixture score is s_l = sum_i (r_il - p_l), so the fixed point is s == 0;
@@ -764,20 +862,20 @@
   # at N=10000).  s' I^-1 s is on a chi-square scale and does not drift with N.
   .d <- sweep(.r[, .free, drop = FALSE], 2, .pi[.free], "-")
   .s <- colSums(.d)
-  .stat <- tryCatch(as.numeric(crossprod(.s, solve(crossprod(.d), .s))),
-                    error = function(e) NA_real_)
+  .stat <- tryCatch(as.numeric(crossprod(.s, solve(crossprod(.d), .s))), error = function(e) NA_real_)
   if (!is.finite(.stat) || .stat > 1e-3) {
     # warning() IS how a note reaches the fit's $runInfo -- every warning raised
     # during a run is collected there.  Assigning env$runInfo directly instead
     # does NOT work: the later table assembly overwrites it.  Kept under 75
     # characters so it renders on one line, and unprefixed (the fit already
     # reports which method was run).
-    warning("mixture proportion SE skipped; not at the score-zero point",
-            call. = FALSE)
+    warning("mixture proportion SE skipped; not at the score-zero point", call. = FALSE)
     return(invisible(NULL))
   }
   .blk <- .mixProbCovBlock(.r[, .free, drop = FALSE], .pi[.free])
-  if (is.null(.blk)) return(invisible(NULL))
+  if (is.null(.blk)) {
+    return(invisible(NULL))
+  }
   .n <- nrow(.cov)
   .out <- matrix(0, .n + length(.mp), .n + length(.mp))
   .out[seq_len(.n), seq_len(.n)] <- .cov
@@ -808,16 +906,24 @@
 #' @noRd
 #' @author Matthew L. Fidler
 .aaaPostEstimationMixBacktransform <- function(env) {
-  .mixIdx <- try(get("mixIdx", envir=env), silent=TRUE)
-  if (inherits(.mixIdx, "try-error")) return(invisible(NULL))
-  if (length(.mixIdx) == 0L) return(invisible(NULL))
+  .mixIdx <- try(get("mixIdx", envir = env), silent = TRUE)
+  if (inherits(.mixIdx, "try-error")) {
+    return(invisible(NULL))
+  }
+  if (length(.mixIdx) == 0L) {
+    return(invisible(NULL))
+  }
   # saem reports the proportions already on the natural scale (env$mixProbNatural,
   # set by .getSaemTheta()); mexpit()-ing them again silently reports
   # expit(p) instead of p and breaks the p == mean_i r_i identity (#1058).
-  if (isTRUE(env$mixProbNatural)) return(invisible(NULL))
+  if (isTRUE(env$mixProbNatural)) {
+    return(invisible(NULL))
+  }
 
   .thetaDf <- env$theta
-  if (is.null(.thetaDf) || !is.data.frame(.thetaDf)) return(invisible(NULL))
+  if (is.null(.thetaDf) || !is.data.frame(.thetaDf)) {
+    return(invisible(NULL))
+  }
 
   .mlogitVals <- .thetaDf$theta[.mixIdx]
   .probs <- rxode2::mexpit(.mlogitVals)
@@ -828,7 +934,7 @@
   # probabilities, and .mixFix uses length() as nMix.
   env$mixProbabilities <- c(.probs, 1 - sum(.probs))
 
-  if (exists("parHistData", envir=env) && exists("thetaNames", envir=env)) {
+  if (exists("parHistData", envir = env) && exists("thetaNames", envir = env)) {
     .phd <- env$parHistData
     if (is.data.frame(.phd) && nrow(.phd) > 0L) {
       env$parHistData <- .backTransformParHistMix(.phd, env$thetaNames[.mixIdx])
@@ -853,9 +959,12 @@ rxUiGet.thetaIniMix <- function(x, ...) {
       # focei's initial parameter vector on the wrong scale with a
       # confusing downstream error, and warnings are dropped by
       # .collectWarn() when the fit ultimately errors out.
-      stop("initial mixture probabilities are invalid (must each be in [0, 1] ",
-           "and sum to no more than 1): ", paste(signif(.p, 3), collapse = ", "),
-           call. = FALSE)
+      stop(
+        "initial mixture probabilities are invalid (must each be in [0, 1] ",
+        "and sum to no more than 1): ",
+        paste(signif(.p, 3), collapse = ", "),
+        call. = FALSE
+      )
     }
   }
   .theta
@@ -865,7 +974,9 @@ attr(rxUiGet.thetaIniMix, "rstudio") <- stats::setNames(1, "a")
 #' @export
 rxUiGet.thetaMixIndex <- function(x, ...) {
   .ui <- x[[1]]
-  if (length(.ui$mixProbs) == 0) return(integer(0))
+  if (length(.ui$mixProbs) == 0) {
+    return(integer(0))
+  }
   # COMPONENT order (the order the proportions appear in the mix() call), not
   # ini() order.  Every consumer reads mixIdx[m] as "component m's theta slot":
   # op_focei.mixProb[m] is component m's proportion, .getMixFromLog() maps the

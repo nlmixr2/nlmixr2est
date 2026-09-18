@@ -1,5 +1,4 @@
 nmTest({
-
   ## Standard errors for mixture proportions -- NONMEM 7 Technical Guide
   ## eq. (7.51)-(7.54), which build the mixture parameters' information matrix
   ## from the same per-subject scores g_ia as the gradient (1.194)/(1.197).
@@ -18,20 +17,24 @@ nmTest({
     .t <- c(0.3, -0.8)
     .p <- rxode2::mexpit(.t)
     ## numeric Jacobian of mexpit at .t, for comparison with diag(p) - p p'
-    .num <- vapply(seq_along(.t), function(j) {
-      .h <- 1e-6
-      .tp <- .t; .tp[j] <- .t[j] + .h
-      .tm <- .t; .tm[j] <- .t[j] - .h
-      (rxode2::mexpit(.tp) - rxode2::mexpit(.tm)) / (2 * .h)
-    }, numeric(length(.t)))
+    .num <- vapply(
+      seq_along(.t),
+      function(j) {
+        .h <- 1e-6
+        .tp <- .t
+        .tp[j] <- .t[j] + .h
+        .tm <- .t
+        .tm[j] <- .t[j] - .h
+        (rxode2::mexpit(.tp) - rxode2::mexpit(.tm)) / (2 * .h)
+      },
+      numeric(length(.t))
+    )
     .J <- diag(.p, nrow = length(.p)) - outer(.p, .p)
     expect_equal(.J, .num, tolerance = 1e-6)
 
     ## and the rotation is A cov A' with A the identity off the mixture block
     .nm <- c("tcl", "p1", "p2")
-    .cov <- matrix(c(4, 1, 2,
-                     1, 9, 3,
-                     2, 3, 16), 3, 3, dimnames = list(.nm, .nm))
+    .cov <- matrix(c(4, 1, 2, 1, 9, 3, 2, 3, 16), 3, 3, dimnames = list(.nm, .nm))
     .out <- .mixCovToProbScale(.cov, c("p1", "p2"), .p)
     .A <- diag(1, 3)
     .A[2:3, 2:3] <- .J
@@ -57,16 +60,15 @@ nmTest({
       d / dt(center) <- ka * depot - cl / v * center
       cp <- center / v
     })
-    .ev <- rxode2::et(rxode2::et(amt = 320, cmt = "depot"),
-                      c(0.25, 0.5, 1, 2, 4, 8, 12, 24))
-    .obs <- do.call(rbind, lapply(seq_len(nSub), function(i) {
-      .s <- rxode2::rxSolve(.sim, params = c(CLI = clTrue[.grp[i]]), .ev,
-                            returnType = "data.frame")
-      data.frame(ID = i, TIME = .s$time,
-                 DV = .s$cp + stats::rnorm(nrow(.s), 0, 0.05), AMT = 0, EVID = 0)
-    }))
-    .d <- rbind(data.frame(ID = seq_len(nSub), TIME = 0, DV = NA_real_,
-                           AMT = 320, EVID = 1), .obs)
+    .ev <- rxode2::et(rxode2::et(amt = 320, cmt = "depot"), c(0.25, 0.5, 1, 2, 4, 8, 12, 24))
+    .obs <- do.call(
+      rbind,
+      lapply(seq_len(nSub), function(i) {
+        .s <- rxode2::rxSolve(.sim, params = c(CLI = clTrue[.grp[i]]), .ev, returnType = "data.frame")
+        data.frame(ID = i, TIME = .s$time, DV = .s$cp + stats::rnorm(nrow(.s), 0, 0.05), AMT = 0, EVID = 0)
+      })
+    )
+    .d <- rbind(data.frame(ID = seq_len(nSub), TIME = 0, DV = NA_real_, AMT = 320, EVID = 1), .obs)
     list(data = .d[order(.d$ID, .d$TIME, -.d$EVID), ], n = nSub)
   }
 
@@ -91,9 +93,19 @@ nmTest({
   test_that("every focei covariance method gives the mixture proportion a calibrated SE", {
     .dat <- .mixCovData()
     .fits <- lapply(c("r,s", "r", "s"), function(.cm) {
-      suppressWarnings(nlmixr2(.mixCovMod, .dat$data, "focei",
-        foceiControl(print = 0, outerOpt = "lbfgsb3c", maxOuterIterations = 200L,
-                     maxInnerIterations = 100L, covMethod = .cm, calcTables = FALSE)))
+      suppressWarnings(nlmixr2(
+        .mixCovMod,
+        .dat$data,
+        "focei",
+        foceiControl(
+          print = 0,
+          outerOpt = "lbfgsb3c",
+          maxOuterIterations = 200L,
+          maxInnerIterations = 100L,
+          covMethod = .cm,
+          calcTables = FALSE
+        )
+      ))
     })
     for (.f in .fits) {
       .p <- .f$parFixedDf["p1", "Estimate"]
@@ -192,21 +204,20 @@ nmTest({
     .ui <- rxode2::rxUiDecompress(rxode2::assertRxUi(.m))
     .n <- 100L
     .k <- round(.n * 0.35)
-    .r <- cbind(rep(0.40, .n),
-                c(rep(1, .k), rep(0, .n - .k)))
+    .r <- cbind(rep(0.40, .n), c(rep(1, .k), rep(0, .n - .k)))
     .r <- cbind(.r, 1 - rowSums(.r))
     .e <- new.env(parent = emptyenv())
     .e$ui <- .ui
     .e$mixProbabilities <- c(0.40, .k / .n, 1 - 0.40 - .k / .n)
     .nm <- c("tcl", "add.sd")
-    .e$cov <- diag(c(4, 9)); dimnames(.e$cov) <- list(.nm, .nm)
+    .e$cov <- diag(c(4, 9))
+    dimnames(.e$cov) <- list(.nm, .nm)
     .e$mixList <- lapply(seq_len(3L), function(.j) data.frame(prob = .r[, .j]))
     .mixCovAppendBlock(.e)
     ## exactly one appended row, for the ESTIMATED proportion
     expect_equal(rownames(.e$cov), c("tcl", "add.sd", "p2"))
     expect_false("p1" %in% rownames(.e$cov))
-    expect_equal(unname(sqrt(diag(.e$cov))[3]),
-                 sqrt(0.35 * 0.65 / .n), tolerance = 1e-6)
+    expect_equal(unname(sqrt(diag(.e$cov))[3]), sqrt(0.35 * 0.65 / .n), tolerance = 1e-6)
   })
 
   test_that("a mixture proportion's CI stays inside (0, 1)", {
@@ -216,19 +227,23 @@ nmTest({
     ## covariance BEFORE the probability-scale rotation, so it did not even
     ## agree with the SE printed beside it.
     .ui <- rxode2::rxUiDecompress(rxode2::assertRxUi(.mixCovMod))
-    .pf <- data.frame(Estimate = c(0.648, 0.5), SE = c(0.0862, 0.30),
-                      `CI Lower` = c(-0.045, -0.1), `CI Upper` = c(1.34, 1.1),
-                      row.names = c("p1", "add.sd"), check.names = FALSE)
+    .pf <- data.frame(
+      Estimate = c(0.648, 0.5),
+      SE = c(0.0862, 0.30),
+      `CI Lower` = c(-0.045, -0.1),
+      `CI Upper` = c(1.34, 1.1),
+      row.names = c("p1", "add.sd"),
+      check.names = FALSE
+    )
     .out <- .mixParFixedCi(.ui, .pf, 0.95)
     expect_true(.out["p1", "CI Lower"] > 0 && .out["p1", "CI Upper"] < 1)
     ## it is the logit-scale interval, built from the REPORTED SE
-    .p <- 0.648; .s <- 0.0862; .j <- .p * (1 - .p)
-    expect_equal(.out["p1", "CI Lower"],
-                 rxode2::expit(rxode2::logit(.p) - 1.959964 * .s / .j),
-                 tolerance = 1e-5)
+    .p <- 0.648
+    .s <- 0.0862
+    .j <- .p * (1 - .p)
+    expect_equal(.out["p1", "CI Lower"], rxode2::expit(rxode2::logit(.p) - 1.959964 * .s / .j), tolerance = 1e-5)
     ## asymmetric about the estimate, which is the honest shape here
-    expect_false(isTRUE(all.equal(.p - .out["p1", "CI Lower"],
-                                  .out["p1", "CI Upper"] - .p)))
+    expect_false(isTRUE(all.equal(.p - .out["p1", "CI Lower"], .out["p1", "CI Upper"] - .p)))
     ## a non-mixture row is untouched
     expect_equal(.out["add.sd", "CI Lower"], -0.1)
   })
@@ -251,19 +266,21 @@ nmTest({
     ## proportions reported on the mlogit scale -- measured 0.265 where the
     ## probability scale is 0.063, a factor of 1/(p(1-p)).
     .nm <- c("p2", "add.sd")
-    .cov <- diag(c(4, 9)); dimnames(.cov) <- list(.nm, .nm)
-    .p <- c(0.40, 0.35)                       # p1 (fixed, absent) and p2
+    .cov <- diag(c(4, 9))
+    dimnames(.cov) <- list(.nm, .nm)
+    .p <- c(0.40, 0.35) # p1 (fixed, absent) and p2
     .out <- .mixCovToProbScale(.cov, c("p1", "p2"), .p)
     ## only p2's row is rotated, by its own diagonal Jacobian entry p2(1-p2)
     .j22 <- .p[2] * (1 - .p[2])
     expect_equal(unname(.out[1, 1]), .j22^2 * 4)
-    expect_equal(unname(.out[2, 2]), 9)       # add.sd untouched
+    expect_equal(unname(.out[2, 2]), 9) # add.sd untouched
     ## and it is NOT left unrotated
     expect_false(isTRUE(all.equal(unname(.out[1, 1]), 4)))
 
     ## with every name absent the matrix is returned as-is
     .nm2 <- c("tcl", "add.sd")
-    .cov2 <- diag(c(4, 9)); dimnames(.cov2) <- list(.nm2, .nm2)
+    .cov2 <- diag(c(4, 9))
+    dimnames(.cov2) <- list(.nm2, .nm2)
     expect_equal(.mixCovToProbScale(.cov2, c("p1", "p2"), .p), .cov2)
   })
 
@@ -273,18 +290,28 @@ nmTest({
     ## a second time -- shrinking the proportion's SE by p(1-p) every round trip
     ## (measured 0.0644 -> 0.0155).
     .dat <- .mixCovData()
-    .f <- suppressWarnings(nlmixr2(.mixCovMod, .dat$data, "focei",
-      foceiControl(print = 0, outerOpt = "lbfgsb3c", maxOuterIterations = 200L,
-                   maxInnerIterations = 100L, covMethod = "r,s", calcTables = FALSE)))
+    .f <- suppressWarnings(nlmixr2(
+      .mixCovMod,
+      .dat$data,
+      "focei",
+      foceiControl(
+        print = 0,
+        outerOpt = "lbfgsb3c",
+        maxOuterIterations = 200L,
+        maxInnerIterations = 100L,
+        covMethod = "r,s",
+        calcTables = FALSE
+      )
+    ))
     .se0 <- .f$parFixedDf["p1", "SE"]
     ## without this the round-trip check passes vacuously against the old code,
     ## where the SE was NA at both ends and NA == NA
     expect_true(is.finite(.se0) && .se0 > 0)
-    setCov(.f, "s")                         # the cached theta-only shape
+    setCov(.f, "s") # the cached theta-only shape
     .seS <- .f$parFixedDf["p1", "SE"]
     expect_true(is.finite(.seS) && .seS > 0)
     expect_true("r,s (full)" %in% names(.f$env$covList))
-    setCov(.f, "r,s (full)")                # served from covList, not recomputed
+    setCov(.f, "r,s (full)") # served from covList, not recomputed
     .se1 <- .f$parFixedDf["p1", "SE"]
     expect_true(is.finite(.se1) && .se1 > 0)
     expect_equal(unname(.se1), unname(.se0), tolerance = 1e-10)
@@ -292,9 +319,19 @@ nmTest({
 
   test_that("the S matrix is no longer singular for a mixture model", {
     .dat <- .mixCovData()
-    .f <- suppressWarnings(nlmixr2(.mixCovMod, .dat$data, "focei",
-      foceiControl(print = 0, outerOpt = "lbfgsb3c", maxOuterIterations = 200L,
-                   maxInnerIterations = 100L, covMethod = "r,s", calcTables = FALSE)))
+    .f <- suppressWarnings(nlmixr2(
+      .mixCovMod,
+      .dat$data,
+      "focei",
+      foceiControl(
+        print = 0,
+        outerOpt = "lbfgsb3c",
+        maxOuterIterations = 200L,
+        maxInnerIterations = 100L,
+        covMethod = "r,s",
+        calcTables = FALSE
+      )
+    ))
     ## "r,s" is honoured rather than degraded to "r" by a non-PD S
     expect_true(isTRUE(.f$env$S.pd))
     expect_equal(.f$covMethod, "r,s (full)")
@@ -315,14 +352,17 @@ nmTest({
     .free <- seq_len(length(.pi) - 1L)
     .D <- sweep(.R[, .free, drop = FALSE], 2, .pi[.free], "-")
     .i <- match(.f$ui$mixProbs, rownames(.f$cov))
-    expect_equal(unname(.f$env$S0[.i, .i, drop = FALSE]), unname(t(.D) %*% .D),
-                 tolerance = 1e-2)
+    expect_equal(unname(.f$env$S0[.i, .i, drop = FALSE]), unname(t(.D) %*% .D), tolerance = 1e-2)
   })
 
   test_that("covMethod='imp' gives the mixture proportion the same calibrated SE", {
     .dat <- .mixCovData()
-    .f <- suppressWarnings(nlmixr2(.mixCovMod, .dat$data, "imp",
-      impmapControl(print = 0, nIter = 8L, covMethod = "imp", calcTables = FALSE)))
+    .f <- suppressWarnings(nlmixr2(
+      .mixCovMod,
+      .dat$data,
+      "imp",
+      impmapControl(print = 0, nIter = 8L, covMethod = "imp", calcTables = FALSE)
+    ))
     expect_equal(.f$covMethod, "imp")
     .p <- .f$parFixedDf["p1", "Estimate"]
     .se <- .f$parFixedDf["p1", "SE"]
@@ -409,8 +449,7 @@ nmTest({
       .e <- .mkMixEnv(c(rep(1, .k), rep(0, .n - .k)), .k / .n, .n)
       .mixCovAppendBlock(.e)
       expect_true("p1" %in% rownames(.e$cov))
-      expect_equal(unname(sqrt(diag(.e$cov))[3]),
-                   sqrt(0.45 * 0.55 / .n), tolerance = 1e-6)
+      expect_equal(unname(sqrt(diag(.e$cov))[3]), sqrt(0.45 * 0.55 / .n), tolerance = 1e-6)
     }
   })
 
@@ -418,13 +457,21 @@ nmTest({
     ## The augmented sensitivity model differentiates ONE component's conditional
     ## likelihood, not the marginal, and has no mixture-proportion block at all.
     .dat <- .mixCovData()
-    .f <- suppressWarnings(nlmixr2(.mixCovMod, .dat$data, "focei",
-      foceiControl(print = 0, outerOpt = "lbfgsb3c", maxOuterIterations = 200L,
-                   maxInnerIterations = 100L, covMethod = "analytic",
-                   calcTables = FALSE)))
+    .f <- suppressWarnings(nlmixr2(
+      .mixCovMod,
+      .dat$data,
+      "focei",
+      foceiControl(
+        print = 0,
+        outerOpt = "lbfgsb3c",
+        maxOuterIterations = 200L,
+        maxInnerIterations = 100L,
+        covMethod = "analytic",
+        calcTables = FALSE
+      )
+    ))
     expect_false(identical(.covBaseName(.f$covMethod), "analytic"))
     ## and the fallback still reports the proportion
     expect_true(is.finite(.f$parFixedDf["p1", "SE"]))
   })
-
 })

@@ -38,11 +38,11 @@ nmTest({
 
     # an all-zero slot is unloaded and ignored; a 0-state slot WITH lhs is not
     p <- .odeSwapPlanFor(c(0L, 0L, 5L), c(0L, 99L, 3L))
-    expect_identical(p$poolSlot, 2L)     # only slot 2 has states
-    expect_identical(p$nLoaded, 2L)      # slots 1 and 2
-    expect_identical(p$maxNlhs, 99L)     # slot 1 is the widest
+    expect_identical(p$poolSlot, 2L) # only slot 2 has states
+    expect_identical(p$nLoaded, 2L) # slots 1 and 2
+    expect_identical(p$maxNlhs, 99L) # slot 1 is the widest
     expect_identical(p$scratchNlhs, 99L)
-    expect_true(p$overrideNeeded)        # slot 1 must compact from 5 to 0
+    expect_true(p$overrideNeeded) # slot 1 must compact from 5 to 0
 
     # nothing loaded at all
     p <- .odeSwapPlanFor(c(0L, 0L), c(0L, 0L))
@@ -89,7 +89,7 @@ nmTest({
     expect_identical(p$maxNlhs, 15L)
     expect_identical(p$scratchNlhs, 15L)
     expect_true(p$needsScratch)
-    expect_true(p$overrideNeeded)   # the 0-state model must compact the stride
+    expect_true(p$overrideNeeded) # the 0-state model must compact the stride
 
     # and a zero-state model is still a valid pool when it is all there is
     p <- .odeSwapPlanFor(c(0L), c(9L))
@@ -105,10 +105,10 @@ nmTest({
     # est="impmap" reaches this with an ordinary combined-error model: residual
     # thetas add d(V)/d(theta) lhs columns but no sensitivity states.
     p <- .odeSwapPlanFor(c(10L, 3L), c(4L, 20L))
-    expect_identical(p$poolSlot, 0L)      # 10 states sizes the pool
-    expect_identical(p$maxNlhsSlot, 1L)   # but slot 1 has the widest lhs
+    expect_identical(p$poolSlot, 0L) # 10 states sizes the pool
+    expect_identical(p$maxNlhsSlot, 1L) # but slot 1 has the widest lhs
     expect_identical(p$maxNlhs, 20L)
-    expect_identical(p$scratchNlhs, 20L)  # so the read needs our own buffer
+    expect_identical(p$scratchNlhs, 20L) # so the read needs our own buffer
     expect_true(p$overrideNeeded)
 
     # and it is not needed when the pool model is also the widest
@@ -137,23 +137,22 @@ nmTest({
     expect_identical(r$solves, 3L)
     expect_identical(r$onRetry, 2L)
     expect_identical(r$onSticky, 0L)
-    expect_equal(r$tolFactor, 1)          # restored
+    expect_equal(r$tolFactor, 1) # restored
     expect_identical(r$stickyRecalcN2, 2L)
 
     # never succeeds: retries are capped by maxOdeRecalc, not by nFail
     r <- .odeSwapRetryTest(nFail = 99L, maxOdeRecalc = 3L, stickyRecalcN = 99L)
     expect_identical(r$retries, 3L)
-    expect_identical(r$solves, 4L)        # 1 initial + 3 retries
+    expect_identical(r$solves, 4L) # 1 initial + 3 retries
 
     # budget exhausted: the loosening STAYS and onSticky latches
     r <- .odeSwapRetryTest(nFail = 99L, maxOdeRecalc = 5L, stickyRecalcN = 2L)
     expect_identical(r$onSticky, 1L)
-    expect_gt(r$tolFactor, 1)             # NOT restored
+    expect_gt(r$tolFactor, 1) # NOT restored
     expect_equal(r$tolFactor, f^r$retries)
 
     # a subject already over its sticky budget does not retry at all
-    r <- .odeSwapRetryTest(nFail = 99L, maxOdeRecalc = 5L, stickyRecalcN = 2L,
-                           sticky0 = 3L)
+    r <- .odeSwapRetryTest(nFail = 99L, maxOdeRecalc = 5L, stickyRecalcN = 2L, sticky0 = 3L)
     expect_identical(r$retries, 0L)
     expect_identical(r$solves, 1L)
     expect_identical(r$onRetry, 0L)
@@ -174,11 +173,10 @@ nmTest({
     expect_equal(r$tolFactor, 1)
 
     # nlm's policy: recovered within budget, but the loosening is kept
-    r <- .odeSwapRetryTest(nFail = 2L, relaxMode = .odeRelaxInd,
-                           restoreTolOnSuccess = FALSE)
+    r <- .odeSwapRetryTest(nFail = 2L, relaxMode = .odeRelaxInd, restoreTolOnSuccess = FALSE)
     expect_identical(r$retries, 2L)
     expect_identical(r$onSticky, 0L)
-    expect_equal(r$tolFactor, (10^0.5)^2)   # kept, not handed back
+    expect_equal(r$tolFactor, (10^0.5)^2) # kept, not handed back
   })
 
   test_that("the analytic outer solve has its own tolerance-retry controls", {
@@ -192,8 +190,7 @@ nmTest({
     expect_identical(d$outerMaxOdeRecalc, d$maxOdeRecalc)
     expect_equal(d$outerOdeRecalcFactor, d$odeRecalcFactor)
 
-    s <- foceiControl(outerMaxOdeRecalc = 9L, outerStickyRecalcN = 2L,
-                      outerOdeRecalcFactor = 4)
+    s <- foceiControl(outerMaxOdeRecalc = 9L, outerStickyRecalcN = 2L, outerOdeRecalcFactor = 4)
     expect_identical(s$outerMaxOdeRecalc, 9L)
     expect_identical(s$outerStickyRecalcN, 2L)
     expect_equal(s$outerOdeRecalcFactor, 4)
@@ -201,7 +198,7 @@ nmTest({
     expect_identical(s$maxOdeRecalc, d$maxOdeRecalc)
     expect_identical(s$stickyRecalcN, d$stickyRecalcN)
 
-    expect_error(foceiControl(outerOdeRecalcFactor = 0.5))   # must be >= 1
+    expect_error(foceiControl(outerOdeRecalcFactor = 0.5)) # must be >= 1
     expect_error(foceiControl(outerMaxOdeRecalc = -1L))
   })
 
@@ -215,12 +212,11 @@ nmTest({
     #   outer     26 states / 29 lhs   <- most ODEs, so it sizes the pool
     #   outerNode 14 / 17
     #   outerCov  20 / 23
-    p <- .odeSwapPlanFor(c(8L, 2L, 0L, 0L, 26L, 14L, 20L),
-                         c(8L, 2L, 0L, 0L, 29L, 17L, 23L))
+    p <- .odeSwapPlanFor(c(8L, 2L, 0L, 0L, 26L, 14L, 20L), c(8L, 2L, 0L, 0L, 29L, 17L, 23L))
     expect_identical(p$nLoaded, 5L)
-    expect_identical(p$poolSlot, 4L)      # the order-2 gradient model
+    expect_identical(p$poolSlot, 4L) # the order-2 gradient model
     expect_identical(p$poolNeq, 26L)
-    expect_true(p$overrideNeeded)         # every other model runs compacted
+    expect_true(p$overrideNeeded) # every other model runs compacted
     # widest lhs belongs to the pool model, so rxode2's own slice is wide enough
     expect_identical(p$maxNlhsSlot, 4L)
     expect_identical(p$scratchNlhs, 0L)
@@ -229,10 +225,9 @@ nmTest({
     # same three models, but the covariance model carries extra outputs without
     # extra states -- now the widest lhs is NOT the pool model and reads of it
     # need a private buffer
-    p <- .odeSwapPlanFor(c(8L, 2L, 0L, 0L, 26L, 14L, 20L),
-                         c(8L, 2L, 0L, 0L, 29L, 17L, 40L))
-    expect_identical(p$poolSlot, 4L)      # pool choice is unchanged: still max ODEs
-    expect_identical(p$maxNlhsSlot, 6L)   # but the cov model is the widest reader
+    p <- .odeSwapPlanFor(c(8L, 2L, 0L, 0L, 26L, 14L, 20L), c(8L, 2L, 0L, 0L, 29L, 17L, 40L))
+    expect_identical(p$poolSlot, 4L) # pool choice is unchanged: still max ODEs
+    expect_identical(p$maxNlhsSlot, 6L) # but the cov model is the widest reader
     expect_identical(p$scratchNlhs, 40L)
     expect_true(p$needsScratch)
   })
@@ -254,10 +249,12 @@ nmTest({
         cp ~ add(add.sd)
       })
     }
-    f <- suppressMessages(nlmixr2(one.cmt, nlmixr2data::theo_sd, "focei",
-                                  foceiControl(print = 0L, covMethod = "",
-                                               maxOuterIterations = 0L,
-                                               calcTables = FALSE)))
+    f <- suppressMessages(nlmixr2(
+      one.cmt,
+      nlmixr2data::theo_sd,
+      "focei",
+      foceiControl(print = 0L, covMethod = "", maxOuterIterations = 0L, calcTables = FALSE)
+    ))
     i <- .odeSwapInfo()
     m <- i$models
     expect_true(is.data.frame(m))
@@ -271,12 +268,9 @@ nmTest({
     # read independently from R.  Unloaded slots carry NA names, so match with
     # %in% (== would propagate NA into the subscript).
     mods <- f$foceiModel
-    expect_identical(m$neq[m$name %in% "inner"],
-                     length(rxode2::rxModelVars(mods$inner)$state))
-    expect_identical(m$nlhs[m$name %in% "inner"],
-                     length(rxode2::rxModelVars(mods$inner)$lhs))
-    expect_identical(m$neq[m$name %in% "pred"],
-                     length(rxode2::rxModelVars(mods$predNoLhs)$state))
+    expect_identical(m$neq[m$name %in% "inner"], length(rxode2::rxModelVars(mods$inner)$state))
+    expect_identical(m$nlhs[m$name %in% "inner"], length(rxode2::rxModelVars(mods$inner)$lhs))
+    expect_identical(m$neq[m$name %in% "pred"], length(rxode2::rxModelVars(mods$predNoLhs)$state))
 
     # first use of getOpNlhs() in this package -- assert it, do not assume it
     expect_identical(i$opNeq, i$poolNeq)
@@ -314,10 +308,20 @@ nmTest({
               cp <- center / v; cp ~ add(add.sd) })
     }
     f <- suppressMessages(suppressWarnings(
-      nlmixr2(one, nlmixr2data::theo_sd, "focei",
-              foceiControl(print = 0L, covMethod = "", fast = TRUE,
-                           maxOuterIterations = 0L, maxInnerIterations = 100L,
-                           calcTables = FALSE))))
+      nlmixr2(
+        one,
+        nlmixr2data::theo_sd,
+        "focei",
+        foceiControl(
+          print = 0L,
+          covMethod = "",
+          fast = TRUE,
+          maxOuterIterations = 0L,
+          maxInnerIterations = 100L,
+          calcTables = FALSE
+        )
+      )
+    ))
     ## fast=TRUE pools: the augmented model sizes the pool
     expect_identical(.odeSwapInfo()$poolName, "outer")
     .n0 <- .odeSwapInfo()$pooledSolveN

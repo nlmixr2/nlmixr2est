@@ -44,8 +44,7 @@ test_that(".foceiRecomputeBaseEst maps the covariance-recompute methods", {
   expect_identical(nlmixr2est:::.foceiRecomputeBaseEst("ifoce"), "foce")
   expect_identical(nlmixr2est:::.foceiRecomputeBaseEst("mfocep"), "focep")
   ## EM / nonparametric / nlme recompute on a zero-iteration focei model
-  for (e in c("imp", "impmap", "qrpem", "nlme",
-              "npag", "npb", "mnpag", "inpag", "mnpb", "inpb")) {
+  for (e in c("imp", "impmap", "qrpem", "nlme", "npag", "npb", "mnpag", "inpag", "mnpb", "inpb")) {
     expect_identical(nlmixr2est:::.foceiRecomputeBaseEst(e), "focei")
   }
   ## methods with their own covariance (or none) are not recomputed

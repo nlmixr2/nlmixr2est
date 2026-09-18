@@ -35,7 +35,9 @@
 #' @noRd
 .vaeCovCluster <- function(covMat, group, cut = .vaeColinearCut) {
   .n <- if (is.null(covMat)) 0L else ncol(covMat)
-  if (.n == 0L) return(integer(0))
+  if (.n == 0L) {
+    return(integer(0))
+  }
   .g <- as.integer(group)
   if (length(.g) != .n) {
     stop("'group' must have one entry per covariate column", call. = FALSE)
@@ -44,12 +46,16 @@
   .idOf <- function(x) match(x, unique(x))
   ## Nothing to join: hand back the groups themselves, which is the identity
   ## coarsening and makes .vaeClusterBinds() FALSE.
-  if (!.vaeCanCluster(covMat, .g, cut)) return(.idOf(.g))
+  if (!.vaeCanCluster(covMat, .g, cut)) {
+    return(.idOf(.g))
+  }
   ## a constant column correlates with nothing; excluding it here also keeps
   ## stats::cor from emitting a zero-variance warning at the user
   .sd <- apply(covMat, 2, stats::sd)
   .ok <- which(is.finite(.sd) & .sd > 0)
-  if (length(.ok) < 2L) return(.idOf(.g))
+  if (length(.ok) < 2L) {
+    return(.idOf(.g))
+  }
   .r <- abs(stats::cor(covMat[, .ok, drop = FALSE]))
   .r[!is.finite(.r)] <- 0
   .gu <- unique(.g)
@@ -66,8 +72,7 @@
 #' @return single logical
 #' @noRd
 .vaeCanCluster <- function(covMat, g, cut) {
-  ncol(covMat) >= 2L && nrow(covMat) >= 3L && length(unique(g)) >= 2L &&
-    is.finite(cut) && all(is.finite(covMat))
+  ncol(covMat) >= 2L && nrow(covMat) >= 3L && length(unique(g)) >= 2L && is.finite(cut) && all(is.finite(covMat))
 }
 
 #' Single-linkage components over the covariate GROUPS.
@@ -86,10 +91,14 @@
   .comp <- seq_along(gu)
   for (.a in seq_along(gok)) {
     for (.b in seq_len(.a - 1L)) {
-      if (gok[.a] == gok[.b] || r[.a, .b] < cut) next
+      if (gok[.a] == gok[.b] || r[.a, .b] < cut) {
+        next
+      }
       .ia <- .comp[match(gok[.a], gu)]
       .ib <- .comp[match(gok[.b], gu)]
-      if (.ia == .ib) next
+      if (.ia == .ib) {
+        next
+      }
       .comp[.comp == max(.ia, .ib)] <- min(.ia, .ib)
     }
   }
@@ -108,8 +117,12 @@
 #' @return single logical
 #' @noRd
 .vaeClusterBinds <- function(cluster, group) {
-  if (is.null(cluster) || is.null(group)) return(FALSE)
-  if (!length(cluster) || length(cluster) != length(group)) return(FALSE)
+  if (is.null(cluster) || is.null(group)) {
+    return(FALSE)
+  }
+  if (!length(cluster) || length(cluster) != length(group)) {
+    return(FALSE)
+  }
   length(unique(cluster)) < length(unique(group))
 }
 
@@ -127,7 +140,11 @@
 #' @return character(0) or a single message
 #' @noRd
 .vaePhiDiagMsg <- function(nPair, omOff, anySel) {
-  if (!length(nPair) || is.na(nPair) || nPair <= 0L) return(character(0))
-  if (isTRUE(omOff) || !isTRUE(anySel)) return(character(0))
+  if (!length(nPair) || is.na(nPair) || nPair <= 0L) {
+    return(character(0))
+  }
+  if (isTRUE(omOff) || !isTRUE(anySel)) {
+    return(character(0))
+  }
   "correlated etas found; declare an omega block to refine jointly"
 }

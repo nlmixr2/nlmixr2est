@@ -103,10 +103,13 @@ nmTest({
     # long-lived cached fixture computed independently of this feature --
     # if a Phase 2-4 change had altered default behavior even slightly,
     # this would drift.
-    fitFresh <- .nlmixr(one.compartment, theo_sd, est = "focei",
-                        control = foceiControl(print = 0, maxOuterIterations = 0L))
-    expect_equal(unname(fitFresh$theta), unname(one.compartment.fit.focei$theta),
-                 tolerance = 1e-6)
+    fitFresh <- .nlmixr(
+      one.compartment,
+      theo_sd,
+      est = "focei",
+      control = foceiControl(print = 0, maxOuterIterations = 0L)
+    )
+    expect_equal(unname(fitFresh$theta), unname(one.compartment.fit.focei$theta), tolerance = 1e-6)
     expect_equal(fitFresh$objf, one.compartment.fit.focei$objf, tolerance = 1e-6)
 
     # (b) a model that DOES have a mu-ref covariate relationship, fit with
@@ -139,16 +142,14 @@ nmTest({
     fitDefault <- .getCachedFit(
       name = "mu-family-none-default",
       fitFn = function() {
-        .nlmixr(mod, theo_sd2, "focei",
-                foceiControl(print = 0, maxOuterIterations = 0L))
+        .nlmixr(mod, theo_sd2, "focei", foceiControl(print = 0, maxOuterIterations = 0L))
       },
       cacheFile = "fit-mu-family-none-default.rds"
     )
     fitExplicitNone <- .getCachedFit(
       name = "mu-family-none-explicit",
       fitFn = function() {
-        .nlmixr(mod, theo_sd2, "focei",
-                foceiControl(print = 0, maxOuterIterations = 0L, muModel = "none"))
+        .nlmixr(mod, theo_sd2, "focei", foceiControl(print = 0, maxOuterIterations = 0L, muModel = "none"))
       },
       cacheFile = "fit-mu-family-none-explicit.rds"
     )
@@ -180,13 +181,16 @@ nmTest({
     # half the subjects get 1 observation (low information for their eta),
     # half get 8 (high information)
     nobs <- ifelse(ids <= nsub / 2, 1L, 8L)
-    d <- do.call(rbind, lapply(ids, function(i) {
-      times <- sort(c(0.25, seq_len(nobs[i] - 1) * 1.5 + 0.25))[seq_len(nobs[i])]
-      rbind(
-        data.frame(ID = i, TIME = 0, AMT = 320, DV = 0, EVID = 101, logWT = logWT[i]),
-        data.frame(ID = i, TIME = times, AMT = 0, DV = 0, EVID = 0, logWT = logWT[i])
-      )
-    }))
+    d <- do.call(
+      rbind,
+      lapply(ids, function(i) {
+        times <- sort(c(0.25, seq_len(nobs[i] - 1) * 1.5 + 0.25))[seq_len(nobs[i])]
+        rbind(
+          data.frame(ID = i, TIME = 0, AMT = 320, DV = 0, EVID = 101, logWT = logWT[i]),
+          data.frame(ID = i, TIME = times, AMT = 0, DV = 0, EVID = 0, logWT = logWT[i])
+        )
+      })
+    )
 
     simMod <- function() {
       ini({

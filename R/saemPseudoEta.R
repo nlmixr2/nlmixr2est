@@ -10,8 +10,11 @@
   if (is.finite(lo) && is.finite(hi)) {
     .eps <- (hi - lo) * 1e-6
     .e <- max(lo + .eps, min(hi - .eps, est))
-    return(list(type = "logit", init = log((.e - lo) / (hi - .e)),
-                line = paste0(t, " <- expit(", .core, ", ", lo, ", ", hi, ")")))
+    return(list(
+      type = "logit",
+      init = log((.e - lo) / (hi - .e)),
+      line = paste0(t, " <- expit(", .core, ", ", lo, ", ", hi, ")")
+    ))
   }
   if (is.finite(lo)) {
     # rxode2 does not mu-reference `a + exp(theta + eta)`, so an offset takes a helper line
@@ -23,8 +26,11 @@
     return(list(type = "lower_exp", init = log(max(est - lo, 1e-6)), line = .line))
   }
   if (is.finite(hi)) {
-    return(list(type = "upper_exp", init = log(max(hi - est, 1e-6)),
-                line = paste0(t, " <- ", hi, " - exp(", .core, ")")))
+    return(list(
+      type = "upper_exp",
+      init = log(max(hi - est, 1e-6)),
+      line = paste0(t, " <- ", hi, " - exp(", .core, ")")
+    ))
   }
   list(type = "identity", init = est, line = paste0(t, " <- ", .core))
 }
@@ -54,25 +60,58 @@
     .w <- which(.iniDf$name == .t)
     .tr <- .saemPseudoEtaLine(.t, spec$lower[.k], spec$upper[.k], .iniDf$est[.w])
     .newLines <- c(.newLines, .tr$line)
-    .transforms[[.k]] <- list(name = .t, internalName = paste0("rxBoundedTr.", .t),
-                              type = .tr$type, lower = spec$lower[.k],
-                              upper = spec$upper[.k], initTrans = .tr$init,
-                              initOrig = .iniDf$est[.w], pseudoEta = TRUE)
+    .transforms[[.k]] <- list(
+      name = .t,
+      internalName = paste0("rxBoundedTr.", .t),
+      type = .tr$type,
+      lower = spec$lower[.k],
+      upper = spec$upper[.k],
+      initTrans = .tr$init,
+      initOrig = .iniDf$est[.w],
+      pseudoEta = TRUE
+    )
     .iniDf[.w, c("name", "lower", "upper", "est", "err", "condition")] <-
       list(paste0("rxBoundedTr.", .t), -Inf, Inf, .tr$init, NA_character_, NA_character_)
     .maxEta <- .maxEta + 1
     .row <- .template
-    .row[, c("ntheta", "neta1", "neta2", "name", "lower", "upper", "est", "fix",
-             "label", "backTransform", "condition", "err")] <-
-      list(NA_integer_, .maxEta, .maxEta, paste0("rx.eta.", .t), -Inf, Inf, omega, FALSE,
-           NA_character_, NA_character_, "id", NA_character_)
-    if (any(names(.row) == "prior")) .row$prior <- NA_character_
+    .row[, c(
+      "ntheta",
+      "neta1",
+      "neta2",
+      "name",
+      "lower",
+      "upper",
+      "est",
+      "fix",
+      "label",
+      "backTransform",
+      "condition",
+      "err"
+    )] <-
+      list(
+        NA_integer_,
+        .maxEta,
+        .maxEta,
+        paste0("rx.eta.", .t),
+        -Inf,
+        Inf,
+        omega,
+        FALSE,
+        NA_character_,
+        NA_character_,
+        "id",
+        NA_character_
+      )
+    if (any(names(.row) == "prior")) {
+      .row$prior <- NA_character_
+    }
     .iniDf <- rbind(.iniDf, .row)
   }
-  .model <- str2lang(paste0("model({",
-                            paste(c(.newLines, vapply(ui$lstExpr, deparse1, character(1))),
-                                  collapse = "\n"),
-                            "})"))
+  .model <- str2lang(paste0(
+    "model({",
+    paste(c(.newLines, vapply(ui$lstExpr, deparse1, character(1))), collapse = "\n"),
+    "})"
+  ))
   .ini <- as.expression(lotri::as.lotri(.iniDf))
   .ini[[1]] <- quote(`ini`)
   .fun <- .getUiFunFromIniAndModel(ui, .ini, .model)
@@ -93,11 +132,15 @@
 #' @return the ui carrying every spec
 #' @noRd
 .saemRestorePseudoTransforms <- function(ui, stash) {
-  if (length(stash) == 0L) return(ui)
+  if (length(stash) == 0L) {
+    return(ui)
+  }
   .ui <- rxode2::rxUiDecompress(ui)
   .have <- vapply(.ui$boundedTransforms, function(tr) tr$internalName, character(1))
   .missing <- Filter(function(tr) !(tr$internalName %in% .have), stash)
-  if (length(.missing) == 0L) return(ui)
+  if (length(.missing) == 0L) {
+    return(ui)
+  }
   # assign(), not $<-: rxode2 refuses to replace an existing component on a compressed ui
   assign("boundedTransforms", c(.ui$boundedTransforms, .missing), envir = .ui)
   .ui
@@ -115,16 +158,24 @@
 #' @noRd
 .saemFoldPseudoEtas <- function(env) {
   .eta <- env$.etaMatBase
-  if (is.null(.eta) || is.null(colnames(.eta))) return(invisible())
+  if (is.null(.eta) || is.null(colnames(.eta))) {
+    return(invisible())
+  }
   .pseudo <- grep("^rx[.]eta[.]", colnames(.eta), value = TRUE)
   for (.e in .pseudo) {
     .t <- sub("^rx[.]eta[.]", "", .e)
-    if (paste0("rxBoundedTr.", .t) %in% names(env$fullTheta)) .t <- paste0("rxBoundedTr.", .t)
-    if (!(.t %in% names(env$fullTheta))) next
+    if (paste0("rxBoundedTr.", .t) %in% names(env$fullTheta)) {
+      .t <- paste0("rxBoundedTr.", .t)
+    }
+    if (!(.t %in% names(env$fullTheta))) {
+      next
+    }
     .m <- mean(.eta[, .e])
     env$fullTheta[[.t]] <- env$fullTheta[[.t]] + .m
     env$.etaMatBase[, .e] <- env$.etaMatBase[, .e] - .m
-    if (!is.null(env$.etaMat)) env$.etaMat[, .e] <- env$.etaMat[, .e] - .m
+    if (!is.null(env$.etaMat)) {
+      env$.etaMat[, .e] <- env$.etaMat[, .e] - .m
+    }
     if (!is.null(env$etaObf)) env$etaObf[[.e]] <- env$etaObf[[.e]] - .m
   }
   invisible()

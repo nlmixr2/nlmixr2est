@@ -9,14 +9,23 @@
 #' @noRd
 .saemModeledResidualCond <- function(ui) {
   .pred <- ui$predDf
-  if (is.null(.pred) || length(.pred$cond) == 0L) return(character(0))
+  if (is.null(.pred) || length(.pred$cond) == 0L) {
+    return(character(0))
+  }
   # `f` is propF()/powF()'s prediction variable, always a name, not a residual parameter
   .cols <- intersect(c("a", "b", "c", "d", "e", "lambda"), names(.pred))
-  if (length(.cols) == 0L) return(character(0))
-  .modeled <- vapply(seq_along(.pred$cond), function(i) {
-    .pred$distribution[i] == "norm" &&
-      any(!is.na(unlist(.pred[i, .cols, drop = TRUE])))
-  }, logical(1), USE.NAMES = FALSE)
+  if (length(.cols) == 0L) {
+    return(character(0))
+  }
+  .modeled <- vapply(
+    seq_along(.pred$cond),
+    function(i) {
+      .pred$distribution[i] == "norm" &&
+        any(!is.na(unlist(.pred[i, .cols, drop = TRUE])))
+    },
+    logical(1),
+    USE.NAMES = FALSE
+  )
   as.character(.pred$cond[.modeled])
 }
 
@@ -51,18 +60,21 @@
 #' @noRd
 .preProcessSaemModeledResid <- function(ui, est, data, control) {
   nlmixr2global$nlmixr2EstEnv$saemPseudoTransforms <- NULL
-  if (!identical(est, "saem")) return(NULL)
+  if (!identical(est, "saem")) {
+    return(NULL)
+  }
   .orig <- ui
   .conds <- .saemModeledResidualCond(ui)
   .pred <- ui$predDf
   for (.cond in .conds) {
     .new <- .saemAddDnormToErrLine(ui$lstExpr[[.pred$line[.pred$cond == .cond]]])
     ui <- eval(bquote(rxode2::model(ui, .(.new))))
-    warning(sprintf("modeled residual error for '%s'; fit as dnorm() likelihood", .cond),
-            call. = FALSE)
+    warning(sprintf("modeled residual error for '%s'; fit as dnorm() likelihood", .cond), call. = FALSE)
   }
   .spec <- .saemPseudoEtaThetas(ui)
-  if (length(.conds) == 0L && nrow(.spec) == 0L) return(NULL)
+  if (length(.conds) == 0L && nrow(.spec) == 0L) {
+    return(NULL)
+  }
   if (nrow(.spec) > 0L) {
     ui <- .saemAddPseudoEtas(ui, .spec)
     # a later hook can rebuild the ui (IOV) and drop these; saem puts them back

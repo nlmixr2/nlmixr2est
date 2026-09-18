@@ -16,10 +16,7 @@
 
 .carryJumpFit <- function(ui, dat, carry, maxOut = 0L) {
   suppressWarnings(suppressMessages(
-    nlmixr2est::nlmixr2(ui, dat,
-      est = "focei",
-      control = .carryFitCtl(carry, maxOut)
-    )
+    nlmixr2est::nlmixr2(ui, dat, est = "focei", control = .carryFitCtl(carry, maxOut))
   )) # nolint: object_usage_linter.
 }
 
@@ -27,10 +24,15 @@
 .carryJumpSimDv <- function(odeTxt, params, dat, nid, sd = 0.3) {
   m <- rxode2::rxode2(odeTxt)
   dv <- unlist(lapply(seq_len(nid), function(i) {
-    rxode2::rxSolve(m,
-      params = params(i), events = dat[dat$id == i, ],
-      returnType = "data.frame", covsInterpolation = "nocb",
-      useLinCmt = FALSE, atol = 1e-10, rtol = 1e-10
+    rxode2::rxSolve(
+      m,
+      params = params(i),
+      events = dat[dat$id == i, ],
+      returnType = "data.frame",
+      covsInterpolation = "nocb",
+      useLinCmt = FALSE,
+      atol = 1e-10,
+      rtol = 1e-10
     )$cp
   }))
   obs <- dat$evid == 0
@@ -47,7 +49,8 @@ test_that("f()+alag()+covariate fit matches the ODE reference only with the carr
   dat$cmt <- 1
   set.seed(17)
   et <- matrix(rnorm(18, 0, 0.3), 6)
-  dat <- .carryJumpSimDv("
+  dat <- .carryJumpSimDv(
+    "
 cl = exp(tcl)*(wt/70)^0.75*exp(eta_cl)
 v = exp(tv)
 ka = exp(tka)
@@ -55,12 +58,22 @@ f(depot) = expit(tf + eta_f + (wt-70)/70)
 alag(depot) = exp(tlag + eta_lag)
 d/dt(depot) = -ka*depot
 d/dt(central) = ka*depot - (cl/v)*central
-cp = central/v", function(i) {
-    c(
-      tcl = log(2), tv = log(20), tka = log(1.2), tf = -0.5, tlag = log(0.5),
-      eta_cl = et[i, 1], eta_f = et[i, 2], eta_lag = et[i, 3]
-    )
-  }, dat, 6L)
+cp = central/v",
+    function(i) {
+      c(
+        tcl = log(2),
+        tv = log(20),
+        tka = log(1.2),
+        tf = -0.5,
+        tlag = log(0.5),
+        eta_cl = et[i, 1],
+        eta_f = et[i, 2],
+        eta_lag = et[i, 3]
+      )
+    },
+    dat,
+    6L
+  )
   uiO <- rxode2::linToOde(rxode2::rxode2(.carryModJump))
   fO <- .carryJumpFit(uiO, dat, "none")
   fC <- .carryJumpFit(.carryModJump, dat, "auto")
@@ -90,9 +103,15 @@ cp = central/v", function(i) {
   .fixedObj <- function(ui, carry) {
     .em <- as.matrix(fC$eta[, setdiff(names(fC$eta), "ID"), drop = FALSE])
     .ctl <- nlmixr2est::foceiControl(
-      print = 0, maxOuterIterations = 0L, maxInnerIterations = 0L,
-      covMethod = "", calcTables = FALSE, sigdig = 8,
-      etaNudge = 0, etaNudge2 = 0, etaMat = .em,
+      print = 0,
+      maxOuterIterations = 0L,
+      maxInnerIterations = 0L,
+      covMethod = "",
+      calcTables = FALSE,
+      sigdig = 8,
+      etaNudge = 0,
+      etaNudge2 = 0,
+      etaMat = .em,
       rxControl = rxode2::rxControl(covsInterpolation = "nocb"),
       linCmtSensCarry = carry
     )
@@ -136,9 +155,15 @@ test_that("a 2-cmt A/B/alpha/beta model with a covariate on B fits like its ODE"
   uiO <- rxode2::linToOde(rxode2::rxode2(mod))
   odeTxt <- paste(rxode2::rxNorm(uiO), collapse = "\n")
   odeTxt <- gsub("eta.B", "eta_B", odeTxt, fixed = TRUE)
-  dat <- .carryJumpSimDv(odeTxt, function(i) {
-    c(ta = log(0.5), tb = log(0.02), tA = log(0.04), tB = log(0.01), eta_B = et[i])
-  }, dat, 6L, sd = 0.1)
+  dat <- .carryJumpSimDv(
+    odeTxt,
+    function(i) {
+      c(ta = log(0.5), tb = log(0.02), tA = log(0.04), tB = log(0.01), eta_B = et[i])
+    },
+    dat,
+    6L,
+    sd = 0.1
+  )
   fO <- .carryJumpFit(uiO, dat, "none")
   fC <- .carryJumpFit(mod, dat, "auto")
   fN <- .carryJumpFit(mod, dat, "none")

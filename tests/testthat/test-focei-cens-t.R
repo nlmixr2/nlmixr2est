@@ -7,7 +7,6 @@
 # test-focei-cens-t-fit.R.
 
 nmTest({
-
   .withCensNuFix <- function(code) {
     .old <- nlmixr2global$rxCensNuFix
     .oldLlik <- nlmixr2global$rxPredLlik
@@ -21,21 +20,25 @@ nmTest({
   }
 
   .cauchyLines <- function() {
-    list(quote(rx_yj_ ~ 122),
-         quote(rx_lambda_ ~ 1),
-         quote(rx_pred_f_ ~ cp),
-         quote(rx_pred_ ~ rx_pred_f_),
-         quote(rx_rll_ ~ sqrt((add.sd)^2)),
-         quote(rx_pred_ ~ llikCauchy(DV, rx_pred_, rx_rll_)),
-         quote(rx_r_ ~ 0))
+    list(
+      quote(rx_yj_ ~ 122),
+      quote(rx_lambda_ ~ 1),
+      quote(rx_pred_f_ ~ cp),
+      quote(rx_pred_ ~ rx_pred_f_),
+      quote(rx_rll_ ~ sqrt((add.sd)^2)),
+      quote(rx_pred_ ~ llikCauchy(DV, rx_pred_, rx_rll_)),
+      quote(rx_r_ ~ 0)
+    )
   }
 
   .tLines <- function() {
-    list(quote(rx_pred_f_ ~ cp),
-         quote(rx_pred_ ~ rx_pred_f_),
-         quote(rx_rll_ ~ sqrt((add.sd)^2)),
-         quote(rx_pred_ ~ llikT(DV, nu, rx_pred_, rx_rll_)),
-         quote(rx_r_ ~ 0))
+    list(
+      quote(rx_pred_f_ ~ cp),
+      quote(rx_pred_ ~ rx_pred_f_),
+      quote(rx_rll_ ~ sqrt((add.sd)^2)),
+      quote(rx_pred_ ~ llikT(DV, nu, rx_pred_, rx_rll_)),
+      quote(rx_r_ ~ 0)
+    )
   }
 
   test_that(".fixCensRNuLine only fires when the censoring flag is set", {
@@ -65,15 +68,12 @@ nmTest({
     # rx_rll_ is the MARGINAL sd for an AR(1) endpoint; the conditional scale
     # handed to llikCauchy() is rx_rll_*sqrt(1-phi^2), so squaring rx_rll_ back
     # into rx_r_ would feed the correction the wrong scale.
-    .lines <- c(.cauchyLines()[1:5],
-                list(quote(rx_arPhi_cp <- rx_arNf_cp * cor^rx_arDt_cp)),
-                .cauchyLines()[6:7])
+    .lines <- c(.cauchyLines()[1:5], list(quote(rx_arPhi_cp <- rx_arNf_cp * cor^rx_arDt_cp)), .cauchyLines()[6:7])
     expect_identical(.withCensNuFix(.fixCensRNuLine(.lines)), .lines)
   })
 
   test_that(".fixCensRNuLine leaves a distribution with no rx_rll_ alone", {
-    .lines <- list(quote(rx_pred_f_ ~ cp), quote(rx_pred_ ~ rx_pred_f_),
-                   quote(rx_r_ ~ 0))
+    .lines <- list(quote(rx_pred_f_ ~ cp), quote(rx_pred_ ~ rx_pred_f_), quote(rx_r_ ~ 0))
     expect_identical(.withCensNuFix(.fixCensRNuLine(.lines)), .lines)
   })
 
@@ -126,8 +126,7 @@ nmTest({
     # they are APPENDED after the FOCEi eta block, which likInner0 reads
     # arithmetically from predOffset -- rx_r_'s last eta column must still
     # precede them
-    expect_lt(regexpr("rx__sens_rx_r__BY_ETA_2___=", .on, fixed = TRUE),
-              regexpr("rx_pred_f_=", .on, fixed = TRUE))
+    expect_lt(regexpr("rx__sens_rx_r__BY_ETA_2___=", .on, fixed = TRUE), regexpr("rx_pred_f_=", .on, fixed = TRUE))
   })
 
   test_that("the FOCE llik inner model gets its own d(R)/d(eta) block (#992)", {
@@ -146,15 +145,14 @@ nmTest({
     nlmixr2global$rxPredLlik <- TRUE
     .s <- suppressMessages(rxUiGet.foceEnv(list(.cauchyUi(), TRUE)))
     expect_null(.s$..REta)
-    expect_length(.s$..censREta, 2L)   # one line per eta
+    expect_length(.s$..censREta, 2L) # one line per eta
     .inner <- .s$..inner
     expect_match(.inner, "rx__sens_rx_r__BY_ETA_1___=", fixed = TRUE)
     expect_match(.inner, "rx__sens_rx_r__BY_ETA_2___=", fixed = TRUE)
     expect_match(.inner, "rx_pred_f_=", fixed = TRUE)
     expect_match(.inner, "rx_nu_=", fixed = TRUE)
     # appended AFTER rx_r_, so the FOCE column layout ahead of it is untouched
-    expect_lt(regexpr("rx_r_=", .inner, fixed = TRUE),
-              regexpr("rx__sens_rx_r__BY_ETA_1___=", .inner, fixed = TRUE))
+    expect_lt(regexpr("rx_r_=", .inner, fixed = TRUE), regexpr("rx__sens_rx_r__BY_ETA_1___=", .inner, fixed = TRUE))
   })
 
   test_that("without the flag the llik inner model is unchanged (#992)", {
@@ -216,7 +214,8 @@ nmTest({
     .d0 <- rxUiGet.foceiModelDigest(list(.ui, TRUE))
     testthat::local_mocked_bindings(
       packageVersion = function(...) package_version("99.9.9"),
-      .package = "utils")
+      .package = "utils"
+    )
     expect_false(identical(rxUiGet.foceiModelDigest(list(.ui, TRUE)), .d0))
   })
 
@@ -292,8 +291,7 @@ nmTest({
     }
     # a method on a kernel that has no t()/cauchy() correction still warns
     for (.est in c("saem", "imp", "npag")) {
-      expect_warning(.preProcessCensDistWarn(.ui, .est, .d, NULL),
-                     "censoring ignored")
+      expect_warning(.preProcessCensDistWarn(.ui, .est, .d, NULL), "censoring ignored")
     }
   })
 })

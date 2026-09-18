@@ -14,10 +14,14 @@
   .a <- .pc$args
   # rxFromSE() deparses a non-character argument's expression
   # (substitute()-based), so hand it the repr string
-  .txt <- vapply(seq_along(.a), function(i) {
-    .r <- paste(.a[[i]])
-    rxode2::rxFromSE(.r)
-  }, character(1))
+  .txt <- vapply(
+    seq_along(.a),
+    function(i) {
+      .r <- paste(.a[[i]])
+      rxode2::rxFromSE(.r)
+    },
+    character(1)
+  )
   .callRepr <- paste(.pc$call)
   .ncmt <- as.integer(as.numeric(.txt[4]))
   .oral0 <- as.integer(as.numeric(.txt[5]))
@@ -26,17 +30,26 @@
   .anyLag <- any(!is.na(pairs$lagD))
   .m <- .ncmt + .oral0
   list(
-    ncmt = .ncmt, oral0 = .oral0, m = .m, central = .oral0,
-    trans = .txt[8], pfx = paste(.txt[1:5], collapse = ","),
-    thetas = .txt[9:15], zero = rep("0", 7), nP = .nP,
-    anyJump = .anyJump, anyLag = .anyLag,
-    aCol = 2L * .nP, lCol = 2L * .nP + 1L,
+    ncmt = .ncmt,
+    oral0 = .oral0,
+    m = .m,
+    central = .oral0,
+    trans = .txt[8],
+    pfx = paste(.txt[1:5], collapse = ","),
+    thetas = .txt[9:15],
+    zero = rep("0", 7),
+    nP = .nP,
+    anyJump = .anyJump,
+    anyLag = .anyLag,
+    aCol = 2L * .nP,
+    lCol = 2L * .nP + 1L,
     slotExpr = lapply(1:7, function(k) .a[[k + 8L]]),
     rows = seq_len(.m) - 1L,
     # an ll() endpoint embeds the concentration call in a larger
     # expression (#1004): the carry differentiates the concentration,
     # read back as rx_lcConc_, and symengine supplies the outer chain rule
-    bare = .pc$bare, predSym = .pc$predSym,
+    bare = .pc$bare,
+    predSym = .pc$predSym,
     conc = if (.pc$bare) "rx_pred_" else "rx_lcConc_",
     concLine = if (.pc$bare) {
       character(0)
@@ -56,7 +69,10 @@
   .p <- w - 1L
   .sC <- paste0("rx_lcCarryS", .p, "r", cx$central, "_")
   .vc <- .rxFoceiCarryVc(
-    cx$ncmt, cx$oral0, as.numeric(cx$trans), pairs$slot[w], # nolint: object_usage_linter.
+    cx$ncmt,
+    cx$oral0,
+    as.numeric(cx$trans),
+    pairs$slot[w], # nolint: object_usage_linter.
     cx$slotExpr
   )
   .vcRepr <- paste(.vc$vc)
@@ -78,7 +94,8 @@
   .outer <- paste(symengine::D(cx$predSym, symengine::S("rx_lcConc_")))
   .direct <- symengine::D(cx$predSym, symengine::S(pairs$eta[w]))
   .fin <- paste0(dfe, "=(", rxode2::rxFromSE(.outer), ")*(", .conc, ")")
-  if (!.rxFoceiCarryIsZero(.direct)) { # nolint: object_usage_linter.
+  if (!.rxFoceiCarryIsZero(.direct)) {
+    # nolint: object_usage_linter.
     .directRepr <- paste(.direct)
     .fin <- paste0(.fin, "+(", rxode2::rxFromSE(.directRepr), ")")
   }

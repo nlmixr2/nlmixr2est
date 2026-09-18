@@ -25,7 +25,8 @@ nmTest({
     # nIter>=3 exercises several E/M-step iterations.  imp (no MAP search) and
     # impmap (MAP proposal build) cover both proposal paths.
     .run <- function(est, nthr) {
-      rxode2::setRxThreads(nthr); rxode2::rxSetSeed(42)
+      rxode2::setRxThreads(nthr)
+      rxode2::rxSetSeed(42)
       .ctl <- if (est == "imp") {
         impControl(print = 0L, nIter = 3L, isample = 200L)
       } else {

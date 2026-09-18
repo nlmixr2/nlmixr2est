@@ -16,26 +16,32 @@ nmTest({
   .mkBolus <- function(seed, n, om, sd, times) {
     .testSeed(seed)
     .eta <- rnorm(n, 0, sqrt(om))
-    do.call(rbind, lapply(seq_len(n), function(i) {
-      .f <- .dose / .v * exp(-exp(log(4) + .eta[i]) / .v * times)
-      rbind(data.frame(ID = i, TIME = 0, DV = NA_real_, AMT = .dose, EVID = 1),
-            data.frame(ID = i, TIME = times,
-                       DV = .f * exp(rnorm(length(times), 0, sd)),
-                       AMT = 0, EVID = 0))
-    }))
+    do.call(
+      rbind,
+      lapply(seq_len(n), function(i) {
+        .f <- .dose / .v * exp(-exp(log(4) + .eta[i]) / .v * times)
+        rbind(
+          data.frame(ID = i, TIME = 0, DV = NA_real_, AMT = .dose, EVID = 1),
+          data.frame(ID = i, TIME = times, DV = .f * exp(rnorm(length(times), 0, sd)), AMT = 0, EVID = 0)
+        )
+      })
+    )
   }
 
   # additive residuals, for the untransformed control case
   .mkBolusAdd <- function(seed, n, om, sd, times) {
     .testSeed(seed)
     .eta <- rnorm(n, 0, sqrt(om))
-    do.call(rbind, lapply(seq_len(n), function(i) {
-      .f <- .dose / .v * exp(-exp(log(4) + .eta[i]) / .v * times)
-      rbind(data.frame(ID = i, TIME = 0, DV = NA_real_, AMT = .dose, EVID = 1),
-            data.frame(ID = i, TIME = times,
-                       DV = .f + rnorm(length(times), 0, sd),
-                       AMT = 0, EVID = 0))
-    }))
+    do.call(
+      rbind,
+      lapply(seq_len(n), function(i) {
+        .f <- .dose / .v * exp(-exp(log(4) + .eta[i]) / .v * times)
+        rbind(
+          data.frame(ID = i, TIME = 0, DV = NA_real_, AMT = .dose, EVID = 1),
+          data.frame(ID = i, TIME = times, DV = .f + rnorm(length(times), 0, sd), AMT = 0, EVID = 0)
+        )
+      })
+    )
   }
 
   # -2*log(marginal likelihood) of the ORIGINAL DV.  `tr` is the both-sides
@@ -50,32 +56,45 @@ nmTest({
   # miss the spike and return 0.  The per-subject modes come back in the
   # "logMax" attribute.
   .noJac <- function(y) rep(0, length(y))
-  .refM2ll <- function(obs, tcl, om, sd, tr = log,
-                       ljac = function(y) -log(y)) {
+  .refM2ll <- function(obs, tcl, om, sd, tr = log, ljac = function(y) -log(y)) {
     .mx <- numeric(0)
-    .ll <- vapply(unique(obs$ID), function(i) {
-      .d <- obs[obs$ID == i, ]
-      .lg <- function(e) {
-        .f <- .dose / .v * exp(-exp(tcl + e) / .v * .d$TIME)
-        sum(stats::dnorm(tr(.d$DV), tr(.f), sd, log = TRUE)) +
-          sum(ljac(.d$DV)) + stats::dnorm(e, 0, sqrt(om), log = TRUE)
-      }
-      .lim <- 8 * sqrt(om)
-      .grid <- seq(-.lim, .lim, length.out = 2001L)
-      .k <- which.max(vapply(.grid, .lg, numeric(1)))
-      .o <- stats::optimize(.lg,
-                            c(.grid[max(1L, .k - 1L)],
-                              .grid[min(length(.grid), .k + 1L)]),
-                            maximum = TRUE, tol = 1e-12)
-      .h <- 1e-5
-      .s <- sqrt(-.h^2 / (.lg(.o$maximum + .h) - 2 * .o$objective +
-                            .lg(.o$maximum - .h)))
-      .mx <<- c(.mx, .o$objective)
-      .o$objective + log(stats::integrate(function(eta) {
-        exp(vapply(eta, .lg, numeric(1)) - .o$objective)
-      }, max(-.lim, .o$maximum - 10 * .s), min(.lim, .o$maximum + 10 * .s),
-      rel.tol = 1e-12, subdivisions = 2000L)$value)
-    }, numeric(1))
+    .ll <- vapply(
+      unique(obs$ID),
+      function(i) {
+        .d <- obs[obs$ID == i, ]
+        .lg <- function(e) {
+          .f <- .dose / .v * exp(-exp(tcl + e) / .v * .d$TIME)
+          sum(stats::dnorm(tr(.d$DV), tr(.f), sd, log = TRUE)) +
+            sum(ljac(.d$DV)) +
+            stats::dnorm(e, 0, sqrt(om), log = TRUE)
+        }
+        .lim <- 8 * sqrt(om)
+        .grid <- seq(-.lim, .lim, length.out = 2001L)
+        .k <- which.max(vapply(.grid, .lg, numeric(1)))
+        .o <- stats::optimize(
+          .lg,
+          c(.grid[max(1L, .k - 1L)], .grid[min(length(.grid), .k + 1L)]),
+          maximum = TRUE,
+          tol = 1e-12
+        )
+        .h <- 1e-5
+        .s <- sqrt(-.h^2 / (.lg(.o$maximum + .h) - 2 * .o$objective + .lg(.o$maximum - .h)))
+        .mx <<- c(.mx, .o$objective)
+        .o$objective +
+          log(
+            stats::integrate(
+              function(eta) {
+                exp(vapply(eta, .lg, numeric(1)) - .o$objective)
+              },
+              max(-.lim, .o$maximum - 10 * .s),
+              min(.lim, .o$maximum + 10 * .s),
+              rel.tol = 1e-12,
+              subdivisions = 2000L
+            )$value
+          )
+      },
+      numeric(1)
+    )
     structure(-2 * sum(.ll), logMax = .mx)
   }
 
@@ -93,17 +112,21 @@ nmTest({
   }
 
   .fitBolus <- function(d, nBurn = 40, nEm = 40) {
-    suppressMessages(nlmixr2(.bolus, d, est = "saem",
-      control = saemControl(nBurn = nBurn, nEm = nEm, seed = 1, print = 0L,
-                            calcTables = FALSE)))
+    suppressMessages(nlmixr2(
+      .bolus,
+      d,
+      est = "saem",
+      control = saemControl(nBurn = nBurn, nEm = nEm, seed = 1, print = 0L, calcTables = FALSE)
+    ))
   }
 
   test_that(".logspaceAdd matches the naive sum and does not overflow", {
     .a <- c(-3, 0, 12.5, -Inf, -Inf, 800)
     .b <- c(2, 0, -4, 1.25, -Inf, 801)
-    expect_equal(.logspaceAdd(.a, .b),
-                 c(log(exp(-3) + exp(2)), log(2), log(exp(12.5) + exp(-4)),
-                   1.25, -Inf, log1p(exp(-1)) + 801))
+    expect_equal(
+      .logspaceAdd(.a, .b),
+      c(log(exp(-3) + exp(2)), log(2), log(exp(12.5) + exp(-4)), 1.25, -Inf, log1p(exp(-1)) + 801)
+    )
     # the naive exp() form is Inf here; the log-domain form is finite
     expect_true(is.finite(.logspaceAdd(800, 801)))
     expect_equal(.logspaceAdd(800, 801), .logspaceAdd(801, 800))
@@ -113,10 +136,8 @@ nmTest({
     .d <- .mkBolus(42L, 12L, 0.09, 0.15, c(0.5, 1, 2, 4, 7, 12, 24))
     .obs <- .d[.d$EVID == 0, ]
     .f <- .fitBolus(.d, nBurn = 60, nEm = 60)
-    .ref <- as.numeric(.refM2ll(.obs, .f$theta[["tcl"]], .f$omega[1, 1],
-                                .f$theta[["lnorm.sd"]]))
-    .got <- suppressMessages(calc.2LL(.f$saem, nnodes.gq = 25, nsd.gq = 5,
-                                      .f$phiM))
+    .ref <- as.numeric(.refM2ll(.obs, .f$theta[["tcl"]], .f$omega[1, 1], .f$theta[["lnorm.sd"]]))
+    .got <- suppressMessages(calc.2LL(.f$saem, nnodes.gq = 25, nsd.gq = 5, .f$phiM))
     # quadrature error is the only difference left (measured ~2e-3)
     expect_equal(.got, .ref, tolerance = 1e-4)
 
@@ -129,8 +150,7 @@ nmTest({
     # the transformed-scale likelihood is what the quadrature builds before the
     # Jacobian is applied; check the Jacobian moves it in the direction the
     # untransformed density requires
-    .refNoJac <- as.numeric(.refM2ll(.obs, .f$theta[["tcl"]], .f$omega[1, 1],
-                                     .f$theta[["lnorm.sd"]], ljac = .noJac))
+    .refNoJac <- as.numeric(.refM2ll(.obs, .f$theta[["tcl"]], .f$omega[1, 1], .f$theta[["lnorm.sd"]], ljac = .noJac))
     expect_equal(.ref, .refNoJac + 2 * sum(log(.obs$DV)), tolerance = 1e-4)
 
     # and the fit's own reported likelihood is the same corrected quantity (its
@@ -157,14 +177,21 @@ nmTest({
     }
     .d <- .mkBolusAdd(42L, 12L, 0.09, 0.2, c(0.5, 1, 2, 4, 7, 12, 24))
     .obs <- .d[.d$EVID == 0, ]
-    .f <- suppressMessages(nlmixr2(.addBolus, .d, est = "saem",
-      control = saemControl(nBurn = 60, nEm = 60, seed = 1, print = 0L,
-                            calcTables = FALSE)))
-    .ref <- as.numeric(.refM2ll(.obs, .f$theta[["tcl"]], .f$omega[1, 1],
-                                .f$theta[["add.sd"]], tr = identity,
-                                ljac = .noJac))
-    .got <- suppressMessages(calc.2LL(.f$saem, nnodes.gq = 25, nsd.gq = 5,
-                                      .f$phiM))
+    .f <- suppressMessages(nlmixr2(
+      .addBolus,
+      .d,
+      est = "saem",
+      control = saemControl(nBurn = 60, nEm = 60, seed = 1, print = 0L, calcTables = FALSE)
+    ))
+    .ref <- as.numeric(.refM2ll(
+      .obs,
+      .f$theta[["tcl"]],
+      .f$omega[1, 1],
+      .f$theta[["add.sd"]],
+      tr = identity,
+      ljac = .noJac
+    ))
+    .got <- suppressMessages(calc.2LL(.f$saem, nnodes.gq = 25, nsd.gq = 5, .f$phiM))
     expect_equal(.got, .ref, tolerance = 1e-5)
     # the transform is recorded as "no transform" (yj == 2), which is what makes
     # powerL return 0
@@ -180,15 +207,16 @@ nmTest({
     .f <- .fitBolus(.d)
     # 9 nodes left a quadrature error of 1 in 3078 at some fitted omegas; 25
     # nodes resolves the integrand to 1e-6 whichever draws the fit took
-    .got <- suppressMessages(calc.2LL(.f$saem, nnodes.gq = 25, nsd.gq = 3,
-                                      .f$phiM))
-    .ref <- .refM2ll(.obs, .f$theta[["tcl"]], .f$omega[1, 1],
-                     .f$theta[["lnorm.sd"]])
+    .got <- suppressMessages(calc.2LL(.f$saem, nnodes.gq = 25, nsd.gq = 3, .f$phiM))
+    .ref <- .refM2ll(.obs, .f$theta[["tcl"]], .f$omega[1, 1], .f$theta[["lnorm.sd"]])
     # the exponent the accumulation has to carry (the mode of the log integrand,
     # plus the per-observation -0.5*log(2*pi) the quadrature leaves out) is well
     # past the overflow threshold
-    expect_gt(max(attr(.ref, "logMax")) +
-                0.5 * log(2 * pi) * max(table(.obs$ID)), 709)
+    expect_gt(
+      max(attr(.ref, "logMax")) +
+        0.5 * log(2 * pi) * max(table(.obs$ID)),
+      709
+    )
     expect_true(is.finite(.got))
     expect_equal(.got, as.numeric(.ref), tolerance = 1e-4)
   })
@@ -201,9 +229,7 @@ nmTest({
     .d <- .mkBolus(7L, 4L, 0.04, 0.08, seq(0.25, 40, length.out = 20L))
     .f <- .fitBolus(.d)
     .g25 <- suppressMessages(calc.2LL(.f$saem, nnodes.gq = 25, nsd.gq = 3, .f$phiM))
-    expect_warning(.g30 <- suppressMessages(calc.2LL(.f$saem, nnodes.gq = 30,
-                                                     nsd.gq = 3, .f$phiM)),
-                   "used nnodesGq=25")
+    expect_warning(.g30 <- suppressMessages(calc.2LL(.f$saem, nnodes.gq = 30, nsd.gq = 3, .f$phiM)), "used nnodesGq=25")
     expect_equal(.g30, .g25)
   })
 })

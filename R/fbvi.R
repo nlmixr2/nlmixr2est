@@ -37,7 +37,9 @@ fbviControl <- function(..., pointEstimate = FALSE) {
 #' @export
 getValidNlmixrCtl.fbvi <- function(control) {
   .ctl <- control[[1]]
-  if (is.null(.ctl)) return(fbviControl())
+  if (is.null(.ctl)) {
+    return(fbviControl())
+  }
   # everything else -- a bare list, an emviControl(), an fbviControl() -- goes
   # through the shared validation, which normalizes it and then lets `est` force
   # pointEstimate = FALSE, announcing the override if it contradicts

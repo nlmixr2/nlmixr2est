@@ -6,7 +6,6 @@
 ## estimable.  Real fits -> weekly slow batch.
 
 nmTest({
-
   test_that("est='npag' fits proportional error and certifies optimality (gamma)", {
     .m <- function() {
       ini({ tka<-log(1.5); tv<-log(31.5); tke<-log(0.08); prop.sd<-0.1
@@ -15,8 +14,12 @@ nmTest({
         d/dt(depot)<- -ka*depot; d/dt(center)<-ka*depot-ke*center
         cp<-center/v; cp~prop(prop.sd) })
     }
-    f <- nlmixr2(.m, nlmixr2data::theo_sd, est="npag",
-                 control=npagControl(points=500L, cycles=30L, gammaOptimize=TRUE, muExpand=FALSE))
+    f <- nlmixr2(
+      .m,
+      nlmixr2data::theo_sd,
+      est = "npag",
+      control = npagControl(points = 500L, cycles = 30L, gammaOptimize = TRUE, muExpand = FALSE)
+    )
     expect_s3_class(f, "nlmixr2FitData")
     ## with the gamma-consistent certificate the NPML is reached (D(F) ~ 0)
     expect_true(is.finite(f$env$npagDF) && abs(f$env$npagDF) < 1e-2)
@@ -33,8 +36,12 @@ nmTest({
         d/dt(depot)<- -ka*depot; d/dt(center)<-ka*depot-ke*center
         cp<-center/v; cp~add(add.sd) })
     }
-    f <- nlmixr2(.m, nlmixr2data::theo_sd, est="npag",
-                 control=npagControl(points=500L, cycles=40L, gammaOptimize=TRUE, muExpand=FALSE))
+    f <- nlmixr2(
+      .m,
+      nlmixr2data::theo_sd,
+      est = "npag",
+      control = npagControl(points = 500L, cycles = 40L, gammaOptimize = TRUE, muExpand = FALSE)
+    )
     expect_s3_class(f, "nlmixr2FitData")
     ## recovered residual is far from the (wrong) ini 2.0 and near the truth
     expect_true(f$parFixedDf["add.sd", "Estimate"] < 1.2)
@@ -50,9 +57,18 @@ nmTest({
         d/dt(depot)<- -ka*depot; d/dt(center)<-ka*depot-ke*center
         cp<-center/v; cp~add(add.sd) })
     }
-    f <- nlmixr2(.m, nlmixr2data::theo_sd, est="npag",
-                 control=npagControl(points=300L, cycles=10L,
-                                     gammaOptimize=FALSE, residOptimize="none", muExpand=FALSE))
+    f <- nlmixr2(
+      .m,
+      nlmixr2data::theo_sd,
+      est = "npag",
+      control = npagControl(
+        points = 300L,
+        cycles = 10L,
+        gammaOptimize = FALSE,
+        residOptimize = "none",
+        muExpand = FALSE
+      )
+    )
     expect_equal(unname(f$parFixedDf["add.sd", "Estimate"]), 2.0, tolerance = 1e-8)
   })
 
@@ -64,8 +80,12 @@ nmTest({
         d/dt(depot)<- -ka*depot; d/dt(center)<-ka*depot-ke*center
         cp<-center/v; cp~add(add.sd)+prop(prop.sd) })
     }
-    f <- nlmixr2(.m, nlmixr2data::theo_sd, est="npag",
-                 control=npagControl(points=300L, cycles=12L, gammaOptimize=FALSE, muExpand=FALSE))
+    f <- nlmixr2(
+      .m,
+      nlmixr2data::theo_sd,
+      est = "npag",
+      control = npagControl(points = 300L, cycles = 12L, gammaOptimize = FALSE, muExpand = FALSE)
+    )
     expect_s3_class(f, "nlmixr2FitData")
     expect_true(is.finite(as.numeric(f$objf)))
   })
@@ -81,9 +101,13 @@ nmTest({
         d/dt(depot)<- -ka*depot; d/dt(center)<-ka*depot-ke*center
         cp<-center/v; cp~add(add.sd)+boxCox(lambda) })
     }
-    f <- nlmixr2(.m, nlmixr2data::theo_sd, est="npag",
-                 control=npagControl(points=400L, cycles=40L, gammaOptimize=TRUE, muExpand=FALSE))
-    expect_true(f$parFixedDf["lambda", "Estimate"] < 0.9)   # moved far from ini 1.5
+    f <- nlmixr2(
+      .m,
+      nlmixr2data::theo_sd,
+      est = "npag",
+      control = npagControl(points = 400L, cycles = 40L, gammaOptimize = TRUE, muExpand = FALSE)
+    )
+    expect_true(f$parFixedDf["lambda", "Estimate"] < 0.9) # moved far from ini 1.5
     expect_equal(unname(f$parFixedDf["lambda", "Estimate"]), 0.44, tolerance = 0.2)
   })
 
@@ -97,9 +121,13 @@ nmTest({
         d/dt(depot)<- -ka*depot; d/dt(center)<-ka*depot-ke*center
         cp<-center/v; cp~add(add.sd)+ar(ar1.cor) })
     }
-    f <- nlmixr2(.m, nlmixr2data::theo_sd, est="npag",
-                 control=npagControl(points=400L, cycles=40L, gammaOptimize=TRUE, muExpand=FALSE))
-    expect_true(f$parFixedDf["ar1.cor", "Estimate"] < 0.2)  # moved from ini 0.7 -> ~0
+    f <- nlmixr2(
+      .m,
+      nlmixr2data::theo_sd,
+      est = "npag",
+      control = npagControl(points = 400L, cycles = 40L, gammaOptimize = TRUE, muExpand = FALSE)
+    )
+    expect_true(f$parFixedDf["ar1.cor", "Estimate"] < 0.2) # moved from ini 0.7 -> ~0
   })
 
   test_that("est='npag' fits a boxCox transform-both-sides model (Jacobian)", {
@@ -110,8 +138,12 @@ nmTest({
         d/dt(depot)<- -ka*depot; d/dt(center)<-ka*depot-ke*center
         cp<-center/v; cp~add(add.sd)+boxCox(lambda) })
     }
-    f <- nlmixr2(.m, nlmixr2data::theo_sd, est="npag",
-                 control=npagControl(points=300L, cycles=12L, gammaOptimize=FALSE, muExpand=FALSE))
+    f <- nlmixr2(
+      .m,
+      nlmixr2data::theo_sd,
+      est = "npag",
+      control = npagControl(points = 300L, cycles = 12L, gammaOptimize = FALSE, muExpand = FALSE)
+    )
     expect_s3_class(f, "nlmixr2FitData")
     expect_true(is.finite(as.numeric(f$objf)))
   })
@@ -120,7 +152,7 @@ nmTest({
     ## drop the t=0 observations: the structural prediction is 0 there, and the
     ## lnorm (log) link is undefined at 0 -- see the clear-error test below
     .d <- nlmixr2data::theo_sd
-    .d <- .d[!(.d$EVID==0 & .d$TIME==0), ]
+    .d <- .d[!(.d$EVID == 0 & .d$TIME == 0), ]
     .m <- function() {
       ini({ tka<-log(1.5); tv<-log(31.5); tke<-log(0.08); add.sd<-0.5
         eta.ka~0.3; eta.ke~0.1 })
@@ -128,8 +160,12 @@ nmTest({
         d/dt(depot)<- -ka*depot; d/dt(center)<-ka*depot-ke*center
         cp<-center/v; cp~lnorm(add.sd) })
     }
-    f <- nlmixr2(.m, .d, est="npag",
-                 control=npagControl(points=300L, cycles=15L, gammaOptimize=FALSE, muExpand=FALSE))
+    f <- nlmixr2(
+      .m,
+      .d,
+      est = "npag",
+      control = npagControl(points = 300L, cycles = 15L, gammaOptimize = FALSE, muExpand = FALSE)
+    )
     expect_s3_class(f, "nlmixr2FitData")
     expect_true(is.finite(f$env$npagDF) && abs(f$env$npagDF) < 5e-2)
   })
@@ -146,8 +182,12 @@ nmTest({
     ## rxode2 floors the log-transform prediction at _eps rather than returning a
     ## non-finite density, so the fit degrades gracefully instead of erroring; npag
     ## records the non-positive-prediction note in $runInfo (not a live warning).
-    f <- suppressWarnings(nlmixr2(.m, nlmixr2data::theo_sd, est="npag",
-              control=npagControl(points=100L, cycles=3L, gammaOptimize=FALSE, muExpand=FALSE)))
+    f <- suppressWarnings(nlmixr2(
+      .m,
+      nlmixr2data::theo_sd,
+      est = "npag",
+      control = npagControl(points = 100L, cycles = 3L, gammaOptimize = FALSE, muExpand = FALSE)
+    ))
     expect_s3_class(f, "nlmixr2FitData")
     expect_true(any(grepl("<=0 prediction|0-prediction obs", f$runInfo)))
   })
@@ -179,8 +219,12 @@ nmTest({
         cp~add(add.sd)
         eff~add(eff.sd) })
     }
-    f <- nlmixr2(.m, .d, est="npag",
-                 control=npagControl(points=300L, cycles=15L, gammaOptimize=TRUE, muExpand=FALSE))
+    f <- nlmixr2(
+      .m,
+      .d,
+      est = "npag",
+      control = npagControl(points = 300L, cycles = 15L, gammaOptimize = TRUE, muExpand = FALSE)
+    )
     expect_s3_class(f, "nlmixr2FitData")
     .add <- unname(f$parFixedDf["add.sd", "Estimate"])
     .eff <- unname(f$parFixedDf["eff.sd", "Estimate"])
@@ -188,5 +232,4 @@ nmTest({
     ## every observation matched an endpoint, so nothing was dropped
     expect_false(any(grepl("match no endpoint", f$runInfo)))
   })
-
 })

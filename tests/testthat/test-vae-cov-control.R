@@ -1,8 +1,7 @@
 nmTest({
   test_that("vaeControl exposes the covariate shape settings", {
     .c <- vaeControl()
-    expect_equal(.c$shapes,
-                 c("power", "lin", "log", "identity", "center", "hockey"))
+    expect_equal(.c$shapes, c("power", "lin", "log", "identity", "center", "hockey"))
     expect_equal(.c$covCenterType, "median")
     expect_null(.c$covCenter)
     expect_equal(.c$catCutoff, 0.05)
@@ -25,9 +24,12 @@ nmTest({
   test_that("the covariate shape settings round-trip through the control", {
     ## getValidNlmixrCtl.vae re-runs do.call(vaeControl, .ctl), so an argument
     ## missing from the returned list is silently dropped
-    .c <- vaeControl(shapes = list(list(var = "cl", covar = "wt", shapes = "power")),
-                     covCenterType = "mean", covCenter = c(WT = 70),
-                     catCutoff = 0.1)
+    .c <- vaeControl(
+      shapes = list(list(var = "cl", covar = "wt", shapes = "power")),
+      covCenterType = "mean",
+      covCenter = c(WT = 70),
+      catCutoff = 0.1
+    )
     .r <- do.call(vaeControl, .c)
     expect_equal(.r$shapes, .c$shapes)
     expect_equal(.r$covCenterType, "mean")

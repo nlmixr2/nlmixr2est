@@ -21,19 +21,21 @@ nmTest({
   test_that("nonMuTheta='eta' injects estimated etas and mu-references the thetas", {
     ui <- rxode2::assertRxUi(.nmt())
     r <- suppressWarnings(suppressMessages(
-      .preProcessVaeNonMuTheta(ui, "vae", NULL, vaeControl(nonMuTheta = "eta", nonMuEtaOmega = 0.02))))
+      .preProcessVaeNonMuTheta(ui, "vae", NULL, vaeControl(nonMuTheta = "eta", nonMuEtaOmega = 0.02))
+    ))
     idf <- r$ui$iniDf
     inj <- idf[!is.na(idf$neta1) & idf$neta1 == idf$neta2 & idf$name != "eta.kout", ]
-    expect_equal(nrow(inj), 2L)                 # eta for tR0 and tIC50
-    expect_true(all(inj$est == 0.02))           # nonMuEtaOmega
-    expect_true(all(!inj$fix))                  # estimated (not fixed)
-    expect_true(all(c("tR0", "tIC50") %in% r$ui$muRefDataFrame$theta))  # now mu-referenced
+    expect_equal(nrow(inj), 2L) # eta for tR0 and tIC50
+    expect_true(all(inj$est == 0.02)) # nonMuEtaOmega
+    expect_true(all(!inj$fix)) # estimated (not fixed)
+    expect_true(all(c("tR0", "tIC50") %in% r$ui$muRefDataFrame$theta)) # now mu-referenced
   })
 
   test_that("nonMuTheta='fix' holds the injected omega AND the theta fixed", {
     ui <- rxode2::assertRxUi(.nmt())
     r <- suppressWarnings(suppressMessages(
-      .preProcessVaeNonMuTheta(ui, "vae", NULL, vaeControl(nonMuTheta = "fix", nonMuEtaOmega = 0.001))))
+      .preProcessVaeNonMuTheta(ui, "vae", NULL, vaeControl(nonMuTheta = "fix", nonMuEtaOmega = 0.001))
+    ))
     idf <- r$ui$iniDf
     inj <- idf[!is.na(idf$neta1) & idf$neta1 == idf$neta2 & idf$name != "eta.kout", ]
     expect_true(all(inj$est == 0.001))
@@ -42,8 +44,11 @@ nmTest({
     ## estimated in "fix" mode)
     expect_true(all(idf$fix[idf$name %in% c("tR0", "tIC50") & !is.na(idf$ntheta)]))
     ## prep flags those latent dims as zPopFix so the M-step holds them at ini
-    p <- .vaeDataPrep(r$ui, data.frame(ID = 1L, TIME = c(0, 1), DV = c(1, 2), AMT = c(1, 0)),
-                      vaeControl(nonMuTheta = "fix"))
+    p <- .vaeDataPrep(
+      r$ui,
+      data.frame(ID = 1L, TIME = c(0, 1), DV = c(1, 2), AMT = c(1, 0)),
+      vaeControl(nonMuTheta = "fix")
+    )
     expect_true(any(p$zPopFix))
   })
 
@@ -56,23 +61,29 @@ nmTest({
     ui <- rxode2::assertRxUi(.nmt())
     ## the hook makes no model change (the thetas are regressed later in the M-step)
     r <- suppressWarnings(suppressMessages(
-      .preProcessVaeNonMuTheta(ui, "vae", NULL, vaeControl(nonMuTheta = "regress"))))
+      .preProcessVaeNonMuTheta(ui, "vae", NULL, vaeControl(nonMuTheta = "regress"))
+    ))
     expect_null(r)
     ## no eta injected: the UI still carries only the original eta.kout
-    expect_equal(ui$iniDf[!is.na(ui$iniDf$neta1) & ui$iniDf$neta1 == ui$iniDf$neta2, "name"],
-                 "eta.kout")
+    expect_equal(ui$iniDf[!is.na(ui$iniDf$neta1) & ui$iniDf$neta1 == ui$iniDf$neta2, "name"], "eta.kout")
     ## prep exposes the regress-target theta indices + ini bounds.  Use
     ## residOptimize="moment" here so regressNames reflects ONLY the nonMuTheta
     ## structural contribution -- the default "twoStage" also folds every free
     ## residual theta (prop.err) into the regress set, which is exercised in
     ## test-vae-residopt.R, not here.
-    p <- .vaeDataPrep(ui, data.frame(ID = 1L, TIME = c(0, 1), DV = c(1, 2), AMT = c(1, 0)),
-                      vaeControl(nonMuTheta = "regress", residOptimize = "moment"))
+    p <- .vaeDataPrep(
+      ui,
+      data.frame(ID = 1L, TIME = c(0, 1), DV = c(1, 2), AMT = c(1, 0)),
+      vaeControl(nonMuTheta = "regress", residOptimize = "moment")
+    )
     expect_setequal(p$regressNames, c("tR0", "tIC50"))
     expect_equal(length(p$regressThetaIdx0), 2L)
     ## "eta" mode leaves the regress fields empty (again with residuals excluded)
-    p2 <- .vaeDataPrep(ui, data.frame(ID = 1L, TIME = c(0, 1), DV = c(1, 2), AMT = c(1, 0)),
-                       vaeControl(nonMuTheta = "eta", residOptimize = "moment"))
+    p2 <- .vaeDataPrep(
+      ui,
+      data.frame(ID = 1L, TIME = c(0, 1), DV = c(1, 2), AMT = c(1, 0)),
+      vaeControl(nonMuTheta = "eta", residOptimize = "moment")
+    )
     expect_equal(length(p2$regressNames), 0L)
   })
 
@@ -93,26 +104,45 @@ nmTest({
         d/dt(depot) = -ka * depot; d/dt(central) = ka * depot - ke * central
         cp <- central / V; cp ~ add(add.err) })
     }
-    ctl <- vaeControl(itersBurnIn = 5L, iters = 12L, klWarmup = 5L, gammaIter = 8L,
-                      nGradStep = 2L, covariateSelection = FALSE, print = 0L,
-                      nonMuTheta = "eta")
+    ctl <- vaeControl(
+      itersBurnIn = 5L,
+      iters = 12L,
+      klWarmup = 5L,
+      gammaIter = 8L,
+      nGradStep = 2L,
+      covariateSelection = FALSE,
+      print = 0L,
+      nonMuTheta = "eta"
+    )
     fit <- suppressWarnings(suppressMessages(
-      nlmixr2(theo, nlmixr2data::theo_sd, est = "vae", control = ctl)))
+      nlmixr2(theo, nlmixr2data::theo_sd, est = "vae", control = ctl)
+    ))
     ## lke and lV (no eta in the input) are now estimated (moved off their ini)
     expect_gt(abs(fit$theta[["lke"]] - log(0.086)), 1e-4)
     expect_gt(abs(fit$theta[["lV"]] - log(32)), 1e-4)
     ## the injected etas are dropped from the reported model (only eta.ka remains)
-    expect_equal(fit$iniDf[!is.na(fit$iniDf$neta1) & fit$iniDf$neta1 == fit$iniDf$neta2, "name"],
-                 "eta.ka")
+    expect_equal(fit$iniDf[!is.na(fit$iniDf$neta1) & fit$iniDf$neta1 == fit$iniDf$neta2, "name"], "eta.ka")
     ## the warning is recorded in $runInfo
     expect_true(any(grepl("non-mu-referenced", fit$runInfo)))
 
     ## nonMuTheta="none" keeps them frozen at their ini values
     fit0 <- suppressWarnings(suppressMessages(
-      nlmixr2(theo, nlmixr2data::theo_sd, est = "vae",
-              control = vaeControl(itersBurnIn = 5L, iters = 12L, klWarmup = 5L, gammaIter = 8L,
-                                   nGradStep = 2L, covariateSelection = FALSE, print = 0L,
-                                   nonMuTheta = "none"))))
+      nlmixr2(
+        theo,
+        nlmixr2data::theo_sd,
+        est = "vae",
+        control = vaeControl(
+          itersBurnIn = 5L,
+          iters = 12L,
+          klWarmup = 5L,
+          gammaIter = 8L,
+          nGradStep = 2L,
+          covariateSelection = FALSE,
+          print = 0L,
+          nonMuTheta = "none"
+        )
+      )
+    ))
     expect_equal(fit0$theta[["lke"]], log(0.086), tolerance = 1e-6)
     expect_equal(fit0$theta[["lV"]], log(32), tolerance = 1e-6)
   })
@@ -126,11 +156,19 @@ nmTest({
         d/dt(depot) = -ka * depot; d/dt(central) = ka * depot - ke * central
         cp <- central / V; cp ~ add(add.err) })
     }
-    ctl <- vaeControl(itersBurnIn = 5L, iters = 15L, klWarmup = 5L, gammaIter = 10L,
-                      nGradStep = 2L, covariateSelection = FALSE, print = 0L,
-                      nonMuTheta = "regress")
+    ctl <- vaeControl(
+      itersBurnIn = 5L,
+      iters = 15L,
+      klWarmup = 5L,
+      gammaIter = 10L,
+      nGradStep = 2L,
+      covariateSelection = FALSE,
+      print = 0L,
+      nonMuTheta = "regress"
+    )
     fit <- suppressWarnings(suppressMessages(
-      nlmixr2(theo, nlmixr2data::theo_sd, est = "vae", control = ctl)))
+      nlmixr2(theo, nlmixr2data::theo_sd, est = "vae", control = ctl)
+    ))
     ## the regression moved the non-mu thetas off their ini (evidence the M-step
     ## bobyqa step ran) ...
     expect_gt(abs(fit$theta[["lke"]] - log(0.086)), 1e-4)
@@ -139,8 +177,7 @@ nmTest({
     expect_gte(fit$theta[["lke"]], log(0.01))
     expect_lte(fit$theta[["lke"]], log(1))
     ## NO eta was injected: only the real eta.ka remains
-    expect_equal(fit$iniDf[!is.na(fit$iniDf$neta1) & fit$iniDf$neta1 == fit$iniDf$neta2, "name"],
-                 "eta.ka")
+    expect_equal(fit$iniDf[!is.na(fit$iniDf$neta1) & fit$iniDf$neta1 == fit$iniDf$neta2, "name"], "eta.ka")
     ## the regress note is recorded in $runInfo
     expect_true(any(grepl("regressing non-mu theta", fit$runInfo)))
     ## the regressed thetas are surfaced in the iteration-print / parameter history
@@ -163,11 +200,19 @@ nmTest({
         d/dt(depot) = -ka * depot; d/dt(central) = ka * depot - ke * central
         cp <- central / V; cp ~ add(add.err) })
     }
-    ctl <- vaeControl(itersBurnIn = 5L, iters = 12L, klWarmup = 5L, gammaIter = 8L,
-                      nGradStep = 2L, covariateSelection = FALSE, print = 0L,
-                      nonMuTheta = "fix")
+    ctl <- vaeControl(
+      itersBurnIn = 5L,
+      iters = 12L,
+      klWarmup = 5L,
+      gammaIter = 8L,
+      nGradStep = 2L,
+      covariateSelection = FALSE,
+      print = 0L,
+      nonMuTheta = "fix"
+    )
     fit <- suppressWarnings(suppressMessages(
-      nlmixr2(theo, nlmixr2data::theo_sd, est = "vae", control = ctl)))
+      nlmixr2(theo, nlmixr2data::theo_sd, est = "vae", control = ctl)
+    ))
     ## the fixed effects stay exactly at their ini() value (not estimated) ...
     expect_equal(fit$theta[["lke"]], log(0.086), tolerance = 1e-8)
     expect_equal(fit$theta[["lV"]], log(32), tolerance = 1e-8)

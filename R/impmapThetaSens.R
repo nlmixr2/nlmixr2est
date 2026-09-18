@@ -56,9 +56,7 @@
 .impmapChainRule <- function(s, target, j, stateVars, structIdx) {
   .terms <- paste0("D(", target, ", THETA_", j, "_)")
   if (j %in% structIdx && length(stateVars) > 0L) {
-    .terms <- c(.terms,
-                paste0("rx__sens_", stateVars, "_BY_THETA_", j, "___*D(", target, ", ",
-                       stateVars, ")"))
+    .terms <- c(.terms, paste0("rx__sens_", stateVars, "_BY_THETA_", j, "___*D(", target, ", ", stateVars, ")"))
   }
   .l <- eval(parse(text = paste0("with(s, ", paste(.terms, collapse = "+"), ")")))
   rxode2::rxFromSE(.l)
@@ -73,9 +71,13 @@
 rxUiGet.impmapThetaSens <- function(x, ...) {
   .ui <- x[[1]]
   .idx <- .impmapEstTheta(.ui)
-  if (length(.idx$all) == 0L) return(NULL)
+  if (length(.idx$all) == 0L) {
+    return(NULL)
+  }
   .s <- rxUiGet.loadPruneSens(x, ...)
-  if (!exists("..maxTheta", .s)) return(NULL)
+  if (!exists("..maxTheta", .s)) {
+    return(NULL)
+  }
   .stateVars <- .rxode2stateOdeNoOutput(.s)
   # State sensitivities only for the structural thetas.
   # paste0 recycles a zero-length struct index to "" (R >= 4.0), which
@@ -105,10 +107,12 @@ rxUiGet.impmapThetaSens <- function(x, ...) {
   .lambda <- .s$`rx_lambda_`
   .hi <- .s$`rx_hi_`
   .low <- .s$`rx_low_`
-  .tbs <- c(paste0("rx_yj_~", rxode2::rxFromSE(.yj)),
-            paste0("rx_lambda_~", rxode2::rxFromSE(.lambda)),
-            paste0("rx_hi_~", rxode2::rxFromSE(.hi)),
-            paste0("rx_low_~", rxode2::rxFromSE(.low)))
+  .tbs <- c(
+    paste0("rx_yj_~", rxode2::rxFromSE(.yj)),
+    paste0("rx_lambda_~", rxode2::rxFromSE(.lambda)),
+    paste0("rx_hi_~", rxode2::rxFromSE(.hi)),
+    paste0("rx_low_~", rxode2::rxFromSE(.low))
+  )
   # Also output the residual variance V so the M-step gradient reads f and V from
   # this one solve (no separate inner solve / context interleave).
   .rvar <- .s$`rx_r_`
@@ -118,15 +122,21 @@ rxUiGet.impmapThetaSens <- function(x, ...) {
   # usually drops out of rx_pred_, but an ESTIMATED transform-both-sides lambda
   # does not -- it enters through rx_pred_'s rxTBS(), so hard-coding 0 here made
   # its column silently zero (#949).
-  .dfOut <- vapply(.idx$all, function(j) {
-    paste0("rx__sens_rx_pred__BY_THETA_", j, "___=",
-           .impmapChainRule(.s, "rx_pred_", j, .stateVars, .idx$struct))
-  }, character(1))
+  .dfOut <- vapply(
+    .idx$all,
+    function(j) {
+      paste0("rx__sens_rx_pred__BY_THETA_", j, "___=", .impmapChainRule(.s, "rx_pred_", j, .stateVars, .idx$struct))
+    },
+    character(1)
+  )
   # d(V)/d(theta_j): chain rule (structural) or direct partial (sigma).
-  .dvOut <- vapply(.idx$all, function(j) {
-    paste0("rx__sens_rx_r__BY_THETA_", j, "___=",
-           .impmapChainRule(.s, "rx_r_", j, .stateVars, .idx$struct))
-  }, character(1))
+  .dvOut <- vapply(
+    .idx$all,
+    function(j) {
+      paste0("rx__sens_rx_r__BY_THETA_", j, "___=", .impmapChainRule(.s, "rx_r_", j, .stateVars, .idx$struct))
+    },
+    character(1)
+  )
   # d(lambda)/d(theta_j), emitted only when some column is non-zero (an estimated
   # transform-both-sides lambda).  The conditional depends on lambda through the
   # TRANSFORMED DV as well, err = h(y; lambda) - h(f; lambda), and h(y) is applied
@@ -139,18 +149,20 @@ rxUiGet.impmapThetaSens <- function(x, ...) {
   # chain rule, not the direct partial, for the same reason.
   .dlOut <- character(0)
   if (inherits(.lambda, "Basic")) {
-    .dl <- vapply(.idx$all,
-                  function(j) .impmapChainRule(.s, "rx_lambda_", j, .stateVars,
-                                               .idx$struct),
-                  character(1))
+    .dl <- vapply(.idx$all, function(j) .impmapChainRule(.s, "rx_lambda_", j, .stateVars, .idx$struct), character(1))
     if (any(!(.dl %in% c("0", "0.0", "-0")))) {
       .dlOut <- paste0("rx__sens_rx_lambda__BY_THETA_", .idx$all, "___=", .dl)
     }
   }
-  .ddt <- .s$..ddt; if (is.null(.ddt)) .ddt <- character(0)
-  .sens <- .s$..sens; if (is.null(.sens)) .sens <- character(0)
-  .s$..thetaSens <- paste(c(.ddt, .sens, .tbs, .prd, .rr, .dfOut, .dvOut, .dlOut, ""),
-                          collapse = "\n")
+  .ddt <- .s$..ddt
+  if (is.null(.ddt)) {
+    .ddt <- character(0)
+  }
+  .sens <- .s$..sens
+  if (is.null(.sens)) {
+    .sens <- character(0)
+  }
+  .s$..thetaSens <- paste(c(.ddt, .sens, .tbs, .prd, .rr, .dfOut, .dvOut, .dlOut, ""), collapse = "\n")
   .s$..thetaSensIdx <- .idx$all
   ## Return ONLY the lightweight result -- NEVER the symengine environment `.s`.
   ##
@@ -169,8 +181,7 @@ rxUiGet.impmapThetaSens <- function(x, ...) {
   ## ..mtime rides along for the same reason: the model builder cannot read it
   ## off `.s`, which is deliberately not returned (#919).  It is a short
   ## character vector, so it does not reintroduce the leak above.
-  list(thetaSens = .s$..thetaSens, thetaSensIdx = .s$..thetaSensIdx,
-       ..mtime = .s$..mtime)
+  list(thetaSens = .s$..thetaSens, thetaSensIdx = .s$..thetaSensIdx, ..mtime = .s$..mtime)
 }
 attr(rxUiGet.impmapThetaSens, "rstudio") <- emptyenv()
 
@@ -189,7 +200,9 @@ attr(rxUiGet.impmapThetaSens, "rstudio") <- emptyenv()
 #' @noRd
 .impmapThetaSensModel <- function(ui, eventSens = "fd") {
   .s <- rxUiGet.impmapThetaSens(list(ui))
-  if (is.null(.s)) return(NULL)
+  if (is.null(.s)) {
+    return(NULL)
+  }
   ## Interpolation is carried like the inner model does; splitBolus() is not --
   ## this model solves the pre-split events, so declaring it would split the
   ## doses twice (see .foceiPreProcessData())
@@ -201,6 +214,5 @@ attr(rxUiGet.impmapThetaSens, "rstudio") <- emptyenv()
   nlmixr2global$toRxDvidCmt <- .foceiToCmtLinesAndDvid(ui)
   # Role-tagged artifact name so this sensitivity model cannot share a compiled .so
   # with another build of the same text (nlmixr2/rxode2#1171).
-  .toRx(.s$thetaSens, "compiling sensitivity model...", role = "rxThetaSens",
-        eventSens = eventSens)
+  .toRx(.s$thetaSens, "compiling sensitivity model...", role = "rxThetaSens", eventSens = eventSens)
 }

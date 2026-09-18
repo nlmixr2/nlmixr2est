@@ -53,8 +53,7 @@ nmTest({
     expect_error(foceiControl(etaRestart = -1))
     expect_error(foceiControl(etaRestart = c(1, 2)))
 
-    .ctl <- foceiControl(innerOpt = "trust", trustConf = 0.9,
-                         trustFterm = 0.5, trustMterm = 0.25)
+    .ctl <- foceiControl(innerOpt = "trust", trustConf = 0.9, trustFterm = 0.5, trustMterm = 0.25)
     expect_equal(do.call(foceiControl, .ctl)$innerOpt, 3L)
     expect_equal(do.call(foceiControl, .ctl)$trustConf, 0.9)
     expect_equal(do.call(foceiControl, .ctl)$trustFterm, 0.5)
@@ -81,9 +80,18 @@ nmTest({
 
   .fitTrustCmp <- function(innerOpt) {
     suppressWarnings(suppressMessages(
-      nlmixr2(.oneCmt, nlmixr2data::theo_sd, est = "focei",
-              control = foceiControl(innerOpt = innerOpt, maxOuterIterations = 20,
-                                      covMethod = "", calcTables = FALSE, print = 0))
+      nlmixr2(
+        .oneCmt,
+        nlmixr2data::theo_sd,
+        est = "focei",
+        control = foceiControl(
+          innerOpt = innerOpt,
+          maxOuterIterations = 20,
+          covMethod = "",
+          calcTables = FALSE,
+          print = 0
+        )
+      )
     ))
   }
 
@@ -115,10 +123,19 @@ nmTest({
     # instead -- the C++ side clamps trustRinit down rather than starting the
     # trust region already past its own cap. This just has to not error/hang.
     .fit <- suppressWarnings(suppressMessages(
-      nlmixr2(.oneCmt, nlmixr2data::theo_sd, est = "focei",
-              control = foceiControl(innerOpt = "trust", trustRinit = 100,
-                                      maxOuterIterations = 20,
-                                      covMethod = "", calcTables = FALSE, print = 0))
+      nlmixr2(
+        .oneCmt,
+        nlmixr2data::theo_sd,
+        est = "focei",
+        control = foceiControl(
+          innerOpt = "trust",
+          trustRinit = 100,
+          maxOuterIterations = 20,
+          covMethod = "",
+          calcTables = FALSE,
+          print = 0
+        )
+      )
     ))
     expect_true(is.finite(.fit$objf))
   })
@@ -147,9 +164,18 @@ nmTest({
 
     .llCmt <- .oneCmt |> model(linCmt() ~ add(add.sd) + dnorm())
     .fLL <- suppressWarnings(suppressMessages(
-      nlmixr2(.llCmt, nlmixr2data::theo_sd, est = "focei",
-              control = foceiControl(innerOpt = "auto", maxOuterIterations = 20,
-                                      covMethod = "", calcTables = FALSE, print = 0))
+      nlmixr2(
+        .llCmt,
+        nlmixr2data::theo_sd,
+        est = "focei",
+        control = foceiControl(
+          innerOpt = "auto",
+          maxOuterIterations = 20,
+          covMethod = "",
+          calcTables = FALSE,
+          print = 0
+        )
+      )
     ))
     expect_equal(.nTrustInner(), 0L)
     expect_true(is.finite(.fLL$objf))
@@ -169,10 +195,19 @@ nmTest({
     # deliberately pathological model; the badSolve reset itself is a
     # one-line, easily re-verified-by-reading fix instead.
     .fit <- suppressWarnings(suppressMessages(
-      nlmixr2(.oneCmt, nlmixr2data::theo_sd, est = "focei",
-              control = foceiControl(innerOpt = "trust", maxOuterIterations = 5,
-                                      maxInnerIterations = 2,
-                                      covMethod = "", calcTables = FALSE, print = 0))
+      nlmixr2(
+        .oneCmt,
+        nlmixr2data::theo_sd,
+        est = "focei",
+        control = foceiControl(
+          innerOpt = "trust",
+          maxOuterIterations = 5,
+          maxInnerIterations = 2,
+          covMethod = "",
+          calcTables = FALSE,
+          print = 0
+        )
+      )
     ))
     expect_true(is.finite(.fit$objf))
     expect_true(.nTrustInner() > 0L)
@@ -195,19 +230,74 @@ nmTest({
     })
   }
   .poisData <- data.frame(ID = rep(1:20, each = 3), TIME = rep(c(0, 1, 2), 20))
-  .poisData$DV <- c(5L, 4L, 6L, 3L, 5L, 4L, 6L, 5L, 7L, 4L, 5L, 5L,
-                     6L, 6L, 5L, 4L, 3L, 5L, 5L, 6L, 4L, 7L, 5L, 6L,
-                     4L, 5L, 5L, 3L, 4L, 6L, 6L, 5L, 4L, 5L, 6L, 5L,
-                     4L, 4L, 6L, 5L, 7L, 5L, 6L, 5L, 4L, 3L, 5L, 6L,
-                     5L, 5L, 6L, 4L, 6L, 5L, 5L, 4L, 5L, 6L, 4L, 5L)
+  .poisData$DV <- c(
+    5L,
+    4L,
+    6L,
+    3L,
+    5L,
+    4L,
+    6L,
+    5L,
+    7L,
+    4L,
+    5L,
+    5L,
+    6L,
+    6L,
+    5L,
+    4L,
+    3L,
+    5L,
+    5L,
+    6L,
+    4L,
+    7L,
+    5L,
+    6L,
+    4L,
+    5L,
+    5L,
+    3L,
+    4L,
+    6L,
+    6L,
+    5L,
+    4L,
+    5L,
+    6L,
+    5L,
+    4L,
+    4L,
+    6L,
+    5L,
+    7L,
+    5L,
+    6L,
+    5L,
+    4L,
+    3L,
+    5L,
+    6L,
+    5L,
+    5L,
+    6L,
+    4L,
+    6L,
+    5L,
+    5L,
+    4L,
+    5L,
+    6L,
+    4L,
+    5L
+  )
 
   test_that("innerOpt='trust' converges close to n1qn1 on a non-normal (dpois) endpoint", {
     skip_on_cran()
-    .f1 <- .nlmixr(.poisMod, .poisData, est = "focei",
-                   control = foceiControl(innerOpt = "n1qn1", print = 0L))
+    .f1 <- .nlmixr(.poisMod, .poisData, est = "focei", control = foceiControl(innerOpt = "n1qn1", print = 0L))
     .n1 <- .nTrustInner()
-    .f2 <- .nlmixr(.poisMod, .poisData, est = "focei",
-                   control = foceiControl(innerOpt = "trust", print = 0L))
+    .f2 <- .nlmixr(.poisMod, .poisData, est = "focei", control = foceiControl(innerOpt = "trust", print = 0L))
     .n2 <- .nTrustInner()
 
     expect_true(is.finite(.f1$objf))
@@ -228,10 +318,21 @@ nmTest({
     .ok <- .fitTrustCmp("trust")
     .cnt <- .ok$env$nTrustInner
     expect_true(is.integer(.cnt))
-    expect_equal(sort(names(.cnt)),
-                 sort(c("calls", "error", "notConverged", "solverFail",
-                        "newtonGate", "warmRetry", "radiusRetry", "nudge",
-                        "omegaRestart", "failed")))
+    expect_equal(
+      sort(names(.cnt)),
+      sort(c(
+        "calls",
+        "error",
+        "notConverged",
+        "solverFail",
+        "newtonGate",
+        "warmRetry",
+        "radiusRetry",
+        "nudge",
+        "omegaRestart",
+        "failed"
+      ))
+    )
     expect_gt(.cnt[["calls"]], 0L)
     # This fit converges cleanly, so nothing below "calls" fires.  That is the
     # half of the diagnostic that has to stay quiet or it says nothing.
@@ -246,16 +347,25 @@ nmTest({
     # non-convergence itself (solverFail) rather than the Newton-decrement gate
     # withdrawing it, and some subjects exhaust the whole cascade.
     .bad <- suppressWarnings(suppressMessages(
-      nlmixr2(.oneCmt, nlmixr2data::theo_sd, est = "focei",
-              control = foceiControl(innerOpt = "trust", maxOuterIterations = 5,
-                                     maxInnerIterations = 2, covMethod = "",
-                                     calcTables = FALSE, print = 0))))
+      nlmixr2(
+        .oneCmt,
+        nlmixr2data::theo_sd,
+        est = "focei",
+        control = foceiControl(
+          innerOpt = "trust",
+          maxOuterIterations = 5,
+          maxInnerIterations = 2,
+          covMethod = "",
+          calcTables = FALSE,
+          print = 0
+        )
+      )
+    ))
     .bc <- .bad$env$nTrustInner
     expect_gt(.bc[["solverFail"]], 0L)
     # An attempt ends non-converged in exactly one of three ways, so the
     # breakdown has to add up or it is not a breakdown.
-    expect_equal(.bc[["notConverged"]],
-                 .bc[["error"]] + .bc[["solverFail"]] + .bc[["newtonGate"]])
+    expect_equal(.bc[["notConverged"]], .bc[["error"]] + .bc[["solverFail"]] + .bc[["newtonGate"]])
     expect_gt(.bc[["failed"]], 0L)
     expect_true(is.finite(.bad$objf))
   })
@@ -268,12 +378,24 @@ nmTest({
       .old <- rxode2::getRxThreads(verbose = FALSE)
       on.exit(rxode2::setRxThreads(.old))
       rxode2::setRxThreads(threads)
-      if (threads > 1L) skip_if(rxode2::getRxThreads(verbose = FALSE) < threads)
+      if (threads > 1L) {
+        skip_if(rxode2::getRxThreads(verbose = FALSE) < threads)
+      }
       suppressWarnings(suppressMessages(
-        nlmixr2(.oneCmt, nlmixr2data::theo_sd, est = "focei",
-                control = foceiControl(innerOpt = "trust", maxOuterIterations = 5,
-                                       maxInnerIterations = 2, covMethod = "",
-                                       calcTables = FALSE, print = 0))))
+        nlmixr2(
+          .oneCmt,
+          nlmixr2data::theo_sd,
+          est = "focei",
+          control = foceiControl(
+            innerOpt = "trust",
+            maxOuterIterations = 5,
+            maxInnerIterations = 2,
+            covMethod = "",
+            calcTables = FALSE,
+            print = 0
+          )
+        )
+      ))
     }
     .f1 <- .fitAt(1L)
     .f2 <- .fitAt(2L)
@@ -291,13 +413,22 @@ nmTest({
     # the count that shows the rule fires; equivalence of objectives cannot
     # distinguish "dropped a bad candidate" from "never had one".
     .bad <- suppressWarnings(suppressMessages(
-      nlmixr2(.oneCmt, nlmixr2data::theo_sd, est = "focei",
-              control = foceiControl(innerOpt = "trust", maxOuterIterations = 5,
-                                     maxInnerIterations = 2, covMethod = "",
-                                     calcTables = FALSE, print = 0))))
+      nlmixr2(
+        .oneCmt,
+        nlmixr2data::theo_sd,
+        est = "focei",
+        control = foceiControl(
+          innerOpt = "trust",
+          maxOuterIterations = 5,
+          maxInnerIterations = 2,
+          covMethod = "",
+          calcTables = FALSE,
+          print = 0
+        )
+      )
+    ))
     .rr <- .bad$env$nInnerRerank
-    expect_equal(sort(names(.rr)),
-                 sort(c("ranked", "flipped", "noGood", "dropped")))
+    expect_equal(sort(names(.rr)), sort(c("ranked", "flipped", "noGood", "dropped")))
     expect_gt(.rr[["dropped"]], 0L)
     # Solves where EVERY candidate failed still have to report something, so the
     # rule falls back to them rather than returning nothing.
@@ -340,7 +471,8 @@ nmTest({
   .gateMod <- function(d) {
     suppressWarnings(suppressMessages(
       rxode2::ini(.gateBase, tcl = log(4) + d, tv1 = log(30) - d,
-                  tq = log(4) + 1.5 * d, tv2 = log(40) + d)))
+                  tq = log(4) + 1.5 * d, tv2 = log(40) + d)
+    ))
   }
 
   .gateData <- function() {
@@ -349,10 +481,10 @@ nmTest({
       .ev <- rxode2::et(.ev, seq(0.5, 96, length.out = 12))
       .ev <- rxode2::et(.ev, id = 1:60)
       .d <- suppressWarnings(suppressMessages(
-        as.data.frame(rxode2::rxSolve(.gateBase, .ev, addDosing = TRUE))))
+        as.data.frame(rxode2::rxSolve(.gateBase, .ev, addDosing = TRUE))
+      ))
     })
-    .dat <- data.frame(ID = .d$id, TIME = .d$time, DV = .d$sim, EVID = .d$evid,
-                       AMT = ifelse(is.na(.d$amt), 0, .d$amt))
+    .dat <- data.frame(ID = .d$id, TIME = .d$time, DV = .d$sim, EVID = .d$evid, AMT = ifelse(is.na(.d$amt), 0, .d$amt))
     .dat$DV[.dat$EVID != 0] <- NA
     .dat
   }
@@ -362,10 +494,20 @@ nmTest({
     .dat <- .gateData()
     .gateFit <- function(d) {
       suppressWarnings(suppressMessages(
-        nlmixr2(.gateMod(d), .dat, "focei",
-                foceiControl(print = 0L, covMethod = "", maxOuterIterations = 0L,
-                             maxInnerIterations = 5000L, calcTables = FALSE,
-                             innerOpt = "trust"))))
+        nlmixr2(
+          .gateMod(d),
+          .dat,
+          "focei",
+          foceiControl(
+            print = 0L,
+            covMethod = "",
+            maxOuterIterations = 0L,
+            maxInnerIterations = 5000L,
+            calcTables = FALSE,
+            innerOpt = "trust"
+          )
+        )
+      ))
     }
 
     # Each retry stage needs its own count > 0 or it could be dead code and
@@ -415,14 +557,22 @@ nmTest({
       })
     }
     .fe <- suppressWarnings(suppressMessages(
-      nlmixr2(.negV, nlmixr2data::theo_sd, est = "focei",
-              control = foceiControl(innerOpt = "trust", maxOuterIterations = 0L,
-                                     covMethod = "", calcTables = FALSE,
-                                     print = 0))))
+      nlmixr2(
+        .negV,
+        nlmixr2data::theo_sd,
+        est = "focei",
+        control = foceiControl(
+          innerOpt = "trust",
+          maxOuterIterations = 0L,
+          covMethod = "",
+          calcTables = FALSE,
+          print = 0
+        )
+      )
+    ))
     .ce <- .fe$env$nTrustInner
     expect_gt(.ce[["error"]], 0L)
-    expect_equal(.ce[["notConverged"]],
-                 .ce[["error"]] + .ce[["solverFail"]] + .ce[["newtonGate"]])
+    expect_equal(.ce[["notConverged"]], .ce[["error"]] + .ce[["solverFail"]] + .ce[["newtonGate"]])
     # The failed attempt is recovered from rather than reported: no subject ends
     # the cascade unconverged, and the objective is a number.
     expect_equal(.ce[["failed"]], 0L)
@@ -436,11 +586,21 @@ nmTest({
     # maxInnerIterations=2 makes some of those attempts genuinely fail, so the
     # candidate set is mixed -- which is the case the rule exists for.
     .mc <- suppressWarnings(suppressMessages(
-      nlmixr2(.oneCmt, nlmixr2data::theo_sd, est = "focei",
-              control = foceiControl(innerOpt = "trust", maxOuterIterations = 5,
-                                     maxInnerIterations = 2, mceta = 5L,
-                                     covMethod = "", calcTables = FALSE,
-                                     print = 0))))
+      nlmixr2(
+        .oneCmt,
+        nlmixr2data::theo_sd,
+        est = "focei",
+        control = foceiControl(
+          innerOpt = "trust",
+          maxOuterIterations = 5,
+          maxInnerIterations = 2,
+          mceta = 5L,
+          covMethod = "",
+          calcTables = FALSE,
+          print = 0
+        )
+      )
+    ))
     expect_gt(.mc$env$nTrustInner[["solverFail"]], 0L)
     expect_gt(.mc$env$nInnerRerank[["dropped"]], 0L)
     expect_gt(.mc$env$nInnerRerank[["ranked"]], 0L)
@@ -449,10 +609,20 @@ nmTest({
     # The same fit with converging inner solves drops nothing, so mceta does not
     # pay for the rule when there is nothing to drop.
     .ok <- suppressWarnings(suppressMessages(
-      nlmixr2(.oneCmt, nlmixr2data::theo_sd, est = "focei",
-              control = foceiControl(innerOpt = "trust", maxOuterIterations = 5,
-                                     mceta = 5L, covMethod = "",
-                                     calcTables = FALSE, print = 0))))
+      nlmixr2(
+        .oneCmt,
+        nlmixr2data::theo_sd,
+        est = "focei",
+        control = foceiControl(
+          innerOpt = "trust",
+          maxOuterIterations = 5,
+          mceta = 5L,
+          covMethod = "",
+          calcTables = FALSE,
+          print = 0
+        )
+      )
+    ))
     expect_gt(.ok$env$nInnerRerank[["ranked"]], 0L)
     expect_equal(.ok$env$nInnerRerank[["dropped"]], 0L)
   })
@@ -478,10 +648,20 @@ nmTest({
     # and say nothing.  The counts belong on $env, where whoever is actually
     # diagnosing a fit can read them.
     .bad <- suppressWarnings(suppressMessages(
-      nlmixr2(.oneCmt, nlmixr2data::theo_sd, est = "focei",
-              control = foceiControl(innerOpt = "trust", maxOuterIterations = 5,
-                                     maxInnerIterations = 2, covMethod = "",
-                                     calcTables = FALSE, print = 0))))
+      nlmixr2(
+        .oneCmt,
+        nlmixr2data::theo_sd,
+        est = "focei",
+        control = foceiControl(
+          innerOpt = "trust",
+          maxOuterIterations = 5,
+          maxInnerIterations = 2,
+          covMethod = "",
+          calcTables = FALSE,
+          print = 0
+        )
+      )
+    ))
     expect_gt(.bad$env$nTrustInner[["failed"]], 0L)
     expect_gt(.bad$env$nInnerRerank[["noGood"]], 0L)
     # ... and none of that reaches $runInfo, on the fit that HAS failures.
@@ -497,10 +677,21 @@ nmTest({
     .dat <- .gateData()
     .gateFit <- function(d, etaRestart, inner = "trust") {
       suppressWarnings(suppressMessages(
-        nlmixr2(.gateMod(d), .dat, "focei",
-                foceiControl(print = 0L, covMethod = "", maxOuterIterations = 0L,
-                             maxInnerIterations = 5000L, calcTables = FALSE,
-                             etaRestart = etaRestart, innerOpt = inner))))
+        nlmixr2(
+          .gateMod(d),
+          .dat,
+          "focei",
+          foceiControl(
+            print = 0L,
+            covMethod = "",
+            maxOuterIterations = 0L,
+            maxInnerIterations = 5000L,
+            calcTables = FALSE,
+            etaRestart = etaRestart,
+            innerOpt = inner
+          )
+        )
+      ))
     }
 
     .off <- .gateFit(3, 0L)
@@ -513,8 +704,7 @@ nmTest({
     # ... and it has to actually help: fewer subjects end with every attempt
     # spent, and the objective cannot come out worse (every restart is a
     # candidate, never a replacement).
-    expect_lt(.on$env$nTrustInner[["failed"]],
-              .off$env$nTrustInner[["failed"]])
+    expect_lt(.on$env$nTrustInner[["failed"]], .off$env$nTrustInner[["failed"]])
     expect_lte(.on$objf, .off$objf)
 
     # Drawn once per fit from rxode2's seeded engine, so the same fit twice is
@@ -534,10 +724,22 @@ nmTest({
     .dat <- .gateData()
     .fit <- function(seed) {
       suppressWarnings(suppressMessages(
-        nlmixr2(.gateMod(3), .dat, "focei",
-                foceiControl(print = 0L, covMethod = "", maxOuterIterations = 0L,
-                             maxInnerIterations = 5000L, calcTables = FALSE,
-                             etaRestart = 4L, seed = seed, innerOpt = "trust"))))
+        nlmixr2(
+          .gateMod(3),
+          .dat,
+          "focei",
+          foceiControl(
+            print = 0L,
+            covMethod = "",
+            maxOuterIterations = 0L,
+            maxInnerIterations = 5000L,
+            calcTables = FALSE,
+            etaRestart = 4L,
+            seed = seed,
+            innerOpt = "trust"
+          )
+        )
+      ))
     }
     .a <- .fit(42L)
     .b <- .fit(7L)
@@ -553,17 +755,26 @@ nmTest({
     # inner solves converge must be bit-identical with it on and off.
     .mk <- function(etaRestart, inner) {
       suppressWarnings(suppressMessages(
-        nlmixr2(.oneCmt, nlmixr2data::theo_sd, est = "focei",
-                control = foceiControl(innerOpt = inner, maxOuterIterations = 20,
-                                       etaRestart = etaRestart, covMethod = "",
-                                       calcTables = FALSE, print = 0))))
+        nlmixr2(
+          .oneCmt,
+          nlmixr2data::theo_sd,
+          est = "focei",
+          control = foceiControl(
+            innerOpt = inner,
+            maxOuterIterations = 20,
+            etaRestart = etaRestart,
+            covMethod = "",
+            calcTables = FALSE,
+            print = 0
+          )
+        )
+      ))
     }
     .off <- .mk(0L, "trust")
     .on <- .mk(4L, "trust")
     expect_equal(.on$env$nTrustInner[["omegaRestart"]], 0L)
     expect_equal(.on$objf, .off$objf, tolerance = 1e-10)
-    expect_equal(as.data.frame(.on$eta), as.data.frame(.off$eta),
-                 tolerance = 1e-10)
+    expect_equal(as.data.frame(.on$eta), as.data.frame(.off$eta), tolerance = 1e-10)
 
     # n1qn1 has no convergence verdict per solve, so the fallback does not
     # reach its cascade at all: the control changes nothing there.

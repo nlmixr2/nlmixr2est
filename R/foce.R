@@ -13,11 +13,8 @@
 #' @examples
 #'
 #' foceControl()
-foceControl <- function(sigdig=3,
-                        ...,
-                        interaction=FALSE) {
-  .control <- foceiControl(sigdig=sigdig, ...,
-                           interaction=FALSE)
+foceControl <- function(sigdig = 3, ..., interaction = FALSE) {
+  .control <- foceiControl(sigdig = sigdig, ..., interaction = FALSE)
   class(.control) <- "foceControl"
   .control
 }
@@ -26,7 +23,7 @@ foceControl <- function(sigdig=3,
 #' @rdname nmObjHandleControlObject
 #' @export
 nmObjHandleControlObject.foceControl <- function(control, env) {
-  assign("foceControl", control, envir=env)
+  assign("foceControl", control, envir = env)
 }
 
 #' @rdname getValidNlmixrControl
@@ -34,12 +31,17 @@ nmObjHandleControlObject.foceControl <- function(control, env) {
 getValidNlmixrCtl.foce <- function(control) {
   .ctl <- control[[1]]
   .cls <- class(control)[1]
-  if (is.null(.ctl)) .ctl <- foceControl()
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list"))
+  if (is.null(.ctl)) {
+    .ctl <- foceControl()
+  }
+  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
     .ctl <- do.call("foceControl", .ctl)
-  if (inherits(.ctl, "foceiControl") ||
-        inherits(.ctl, "foControl") ||
-        inherits(.ctl, "foiControl")) {
+  }
+  if (
+    inherits(.ctl, "foceiControl") ||
+      inherits(.ctl, "foControl") ||
+      inherits(.ctl, "foiControl")
+  ) {
     .minfo(paste0("converting ", class(.ctl)[1], " to foceControl"))
     class(.ctl) <- NULL
     .ctl <- do.call(foceControl, .ctl)
@@ -64,22 +66,26 @@ nmObjGetControl.foce <- function(x, ...) {
     .control <- get("control", .env, inherits = FALSE)
     if (inherits(.control, "foceControl")) return(.control)
   }
-  stop("cannot find foce related control object", call.=FALSE)
+  stop("cannot find foce related control object", call. = FALSE)
 }
 
-.foceControlToFoceiControl <- function(env, assign=TRUE) {
+.foceControlToFoceiControl <- function(env, assign = TRUE) {
   .foceControl <- env$foceControl
   .ui <- env$ui
   .n <- names(.foceControl)
-  .foceiControl <- setNames(lapply(.n,
-                                   function(n) {
-                                     if (n == "interaction") {
-                                       return(.foceControl$interaction)
-                                     }
-                                     .foceControl[[n]]
-                                   }), .n)
+  .foceiControl <- setNames(
+    lapply(.n, function(n) {
+      if (n == "interaction") {
+        return(.foceControl$interaction)
+      }
+      .foceControl[[n]]
+    }),
+    .n
+  )
   class(.foceiControl) <- "foceiControl"
-  if (assign) env$control <- .foceiControl
+  if (assign) {
+    env$control <- .foceiControl
+  }
   .foceiControl
 }
 
@@ -87,27 +93,26 @@ nmObjGetControl.foce <- function(x, ...) {
 #' @export
 nmObjGetFoceiControl.foce <- function(x, ...) {
   .env <- x[[1]]
-  .foceControlToFoceiControl(.env, assign=FALSE)
+  .foceControlToFoceiControl(.env, assign = FALSE)
 }
 
 #'@rdname nlmixr2Est
 #'@export
 nlmixr2Est.foce <- function(env, ...) {
   .ui <- env$ui
-  rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'foce'",
-                             .var.name=.ui$modelName)
+  rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'foce'", .var.name = .ui$modelName)
   .control <- env$control
-  .foceiFamilyControl(env, ..., type="foceControl")
+  .foceiFamilyControl(env, ..., type = "foceControl")
   .foceControlToFoceiControl(env)
   on.exit({
-    if (exists("control", envir=.ui)) {
-      rm("control", envir=.ui)
+    if (exists("control", envir = .ui)) {
+      rm("control", envir = .ui)
     }
   })
   env$foceControl <- .control
   env$est <- "foce"
   .ui <- env$ui
-  .foceiFamilyReturn(env, .ui, ..., est="foce")
+  .foceiFamilyReturn(env, .ui, ..., est = "foce")
 }
 attr(nlmixr2Est.foce, "nlmixr2Priors") <- "general"
 attr(nlmixr2Est.foce, "iov") <- TRUE

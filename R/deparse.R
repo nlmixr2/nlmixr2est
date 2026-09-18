@@ -3,7 +3,7 @@
     .rx <- rxUiDeparse(value, "a")
     .rx <- .rx[[3]]
     paste0("rxControl = ", deparse1(.rx))
-  } else if (x == "scaleType")  {
+  } else if (x == "scaleType") {
     if (is.integer(value)) {
       .scaleTypeIdx <- c("norm" = 1L, "nlmixr2" = 2L, "mult" = 3L, "multAdd" = 4L)
       paste0("scaleType =", deparse1(names(.scaleTypeIdx[which(value == .scaleTypeIdx)])))
@@ -26,21 +26,17 @@
     }
   } else if (x == "eventType") {
     if (is.integer(value)) {
-      .eventTypeIdx <- c("central" =2L, "forward"=1L, "forward"=3L)
-      paste0("eventType = ",
-             deparse1(names(.eventTypeIdx[which(value == .eventTypeIdx)])))
+      .eventTypeIdx <- c("central" = 2L, "forward" = 1L, "forward" = 3L)
+      paste0("eventType = ", deparse1(names(.eventTypeIdx[which(value == .eventTypeIdx)])))
     } else {
-      paste0("eventType = ",
-             deparse1(value))
+      paste0("eventType = ", deparse1(value))
     }
-  } else if (x == "censMethod")  {
+  } else if (x == "censMethod") {
     if (is.integer(value)) {
-      .censMethodIdx <- c("truncated-normal"=3L, "cdf"=2L, "omit"=1L, "pred"=5L, "ipred"=4L, "epred"=6L)
-      paste0("censMethod = ",
-             deparse1(names(.censMethodIdx[which(value == .censMethodIdx)])))
+      .censMethodIdx <- c("truncated-normal" = 3L, "cdf" = 2L, "omit" = 1L, "pred" = 5L, "ipred" = 4L, "epred" = 6L)
+      paste0("censMethod = ", deparse1(names(.censMethodIdx[which(value == .censMethodIdx)])))
     } else {
-      paste0("censMethod = ",
-             deparse1(value))
+      paste0("censMethod = ", deparse1(value))
     }
   } else {
     NA_character_
@@ -71,19 +67,22 @@
 #' @export
 #' @keywords internal
 #' @author Matthew L. Fidler
-.deparseDifferent <- function(standard, new, internal=character(0)) {
-  which(vapply(names(standard),
-               function(x) {
-                 if (x %in% internal){
-                   FALSE
-                 } else if (is.function(standard[[x]])) {
-                   warning(paste0("'", x, "' as a function not supported in ",
-                                  class(standard), "() deparsing"), call.=FALSE)
-                   FALSE
-                 } else {
-                   !identical(standard[[x]], new[[x]])
-                 }
-               }, logical(1), USE.NAMES=FALSE))
+.deparseDifferent <- function(standard, new, internal = character(0)) {
+  which(vapply(
+    names(standard),
+    function(x) {
+      if (x %in% internal) {
+        FALSE
+      } else if (is.function(standard[[x]])) {
+        warning(paste0("'", x, "' as a function not supported in ", class(standard), "() deparsing"), call. = FALSE)
+        FALSE
+      } else {
+        !identical(standard[[x]], new[[x]])
+      }
+    },
+    logical(1),
+    USE.NAMES = FALSE
+  ))
 }
 
 #' Deparse finalize a control or related object into a language object
@@ -108,23 +107,28 @@
 #' @keywords internal
 #' @author Matthew L. Fidler
 #' @export
-.deparseFinal <- function(default, object, w, var, fun=NULL) {
+.deparseFinal <- function(default, object, w, var, fun = NULL) {
   .cls <- class(object)
   if (length(w) == 0) {
     return(str2lang(paste0(var, " <- ", .cls, "()")))
   }
-  .retD <- vapply(names(default)[w], function(x) {
-    .val <- .deparseShared(x, object[[x]])
-    if (!is.na(.val)) {
-      return(.val)
-    }
-    if (is.function(fun)) {
-      .val <- fun(default, x, object[[x]])
+  .retD <- vapply(
+    names(default)[w],
+    function(x) {
+      .val <- .deparseShared(x, object[[x]])
       if (!is.na(.val)) {
         return(.val)
       }
-    }
-    paste0(x, "=", deparse1(object[[x]]))
-  }, character(1), USE.NAMES=FALSE)
-  str2lang(paste(var, " <- ", .cls, "(", paste(.retD, collapse=","),")"))
+      if (is.function(fun)) {
+        .val <- fun(default, x, object[[x]])
+        if (!is.na(.val)) {
+          return(.val)
+        }
+      }
+      paste0(x, "=", deparse1(object[[x]]))
+    },
+    character(1),
+    USE.NAMES = FALSE
+  )
+  str2lang(paste(var, " <- ", .cls, "(", paste(.retD, collapse = ","), ")"))
 }

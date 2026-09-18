@@ -32,14 +32,19 @@ nmTest({
   .fakeVaeFit <- function(ui, shape = "power", control = vaeControl()) {
     prep <- .vaeDataPrep(ui, nlmixr2data::theo_sd, control)
     .j <- match(shape, prep$covShape)
-    sel <- matrix(FALSE, 3, length(prep$covNames),
-                  dimnames = list(NULL, prep$covNames))
+    sel <- matrix(FALSE, 3, length(prep$covNames), dimnames = list(NULL, prep$covNames))
     beta <- matrix(0, 3, length(prep$covNames))
     sel[c(1, 3), .j] <- TRUE
     beta[c(1, 3), .j] <- c(2.5, 0.5)
-    list(prep = prep, covNames = prep$covNames, selected = sel, beta = beta,
-         zPop = c(log(1.8), log(0.086), log(32)),
-         omega = c(0.3, 0.03, 0.03), a = c(add.err = 0.7))
+    list(
+      prep = prep,
+      covNames = prep$covNames,
+      selected = sel,
+      beta = beta,
+      zPop = c(log(1.8), log(0.086), log(32)),
+      omega = c(0.3, 0.03, 0.03),
+      a = c(add.err = 0.7)
+    )
   }
 
   test_that("vae covariate injection is flat and preserves the exp back-transform", {
@@ -123,8 +128,9 @@ nmTest({
     }
     ## the model est="vae" actually sees has lke literally fixed into the RHS
     uiF <- rxode2::rxUiDecompress(
-      rxode2::rxFixPop(rxode2::assertRxUi(theoFixKe), returnNull = TRUE))
-    expect_true(anyNA(.foceiEtaThetaMap(uiF)$thetaForEta))   # eta.ke -> NA
+      rxode2::rxFixPop(rxode2::assertRxUi(theoFixKe), returnNull = TRUE)
+    )
+    expect_true(anyNA(.foceiEtaThetaMap(uiF)$thetaForEta)) # eta.ke -> NA
 
     ## WT selected on ka and V, NOT on the free (fixed-theta) ke eta
     fit <- .fakeVaeFit(uiF)
@@ -153,10 +159,17 @@ nmTest({
     .j <- match(shape, prep$covShape)
     sel <- matrix(FALSE, 3, length(prep$covNames))
     beta <- matrix(0, 3, length(prep$covNames))
-    sel[1, .j] <- TRUE; beta[1, .j] <- 2.5
-    list(prep = prep, covNames = prep$covNames, selected = sel, beta = beta,
-         zPop = c(log(1.8), log(0.086), log(32)),
-         omega = c(0.3, 0.03, 0.03), a = c(add.err = 0.7))
+    sel[1, .j] <- TRUE
+    beta[1, .j] <- 2.5
+    list(
+      prep = prep,
+      covNames = prep$covNames,
+      selected = sel,
+      beta = beta,
+      zPop = c(log(1.8), log(0.086), log(32)),
+      omega = c(0.3, 0.03, 0.03),
+      a = c(add.err = 0.7)
+    )
   }
 
   test_that("a theta named twice in its line gets the covariate injected once", {
@@ -207,10 +220,7 @@ nmTest({
 
   test_that("generated coefficient names stay distinct", {
     expect_equal(.vaeUniqueName("beta.lka.WT.log", character(0)), "beta.lka.WT.log")
-    expect_equal(.vaeUniqueName("beta.lka.WT.log", "beta.lka.WT.log"),
-                 "beta.lka.WT.log2")
-    expect_equal(.vaeUniqueName("beta.lka.WT.log",
-                                c("beta.lka.WT.log", "beta.lka.WT.log2")),
-                 "beta.lka.WT.log3")
+    expect_equal(.vaeUniqueName("beta.lka.WT.log", "beta.lka.WT.log"), "beta.lka.WT.log2")
+    expect_equal(.vaeUniqueName("beta.lka.WT.log", c("beta.lka.WT.log", "beta.lka.WT.log2")), "beta.lka.WT.log3")
   })
 })

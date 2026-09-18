@@ -19,7 +19,9 @@
     ## single-bracket lookup: an unmatched neta number gives NA, not an error
     .i <- .idx[as.character(.etaRows$neta1[.r])]
     .j <- .idx[as.character(.etaRows$neta2[.r])]
-    if (is.na(.i) || is.na(.j)) next
+    if (is.na(.i) || is.na(.j)) {
+      next
+    }
     .v <- as.numeric(.etaRows$est[.r])
     .f <- isTRUE(as.logical(.etaRows$fix[.r]))
     .mat[.i, .j] <- .mat[.j, .i] <- .v
@@ -50,8 +52,7 @@
   ## them as separate singletons, and leave the existing covariance row sitting
   ## at its ini value -- so the reported omega would disagree with the omega the
   ## fit actually used.
-  .decl <- tryCatch(.omegaBlockFromIniDf(rxode2::rxUiDecompress(u)$iniDf, .nm)$mat,
-                    error = function(e) NULL)
+  .decl <- tryCatch(.omegaBlockFromIniDf(rxode2::rxUiDecompress(u)$iniDf, .nm)$mat, error = function(e) NULL)
   .adj <- if (is.null(.decl)) omegaMat != 0 else (.decl != 0 | omegaMat != 0)
   .comp <- .omegaBlockIds(.adj)
   for (.b in unique(.comp)) {
@@ -65,8 +66,7 @@
           .vals <- c(.vals, as.character(signif(omegaMat[.idx[.r], .idx[.s]], 12)))
         }
       }
-      .expr <- paste0(paste(.nm[.idx], collapse = " + "), " ~ c(",
-                      paste(.vals, collapse = ", "), ")")
+      .expr <- paste0(paste(.nm[.idx], collapse = " + "), " ~ c(", paste(.vals, collapse = ", "), ")")
     }
     u <- do.call(rxode2::ini, list(u, str2lang(.expr)))
   }
@@ -78,7 +78,9 @@
 #' @noRd
 .omegaFitMat <- function(fit, etaNames) {
   .om <- fit$omegaMat
-  if (is.null(.om)) .om <- diag(as.numeric(fit$omega), length(etaNames))
+  if (is.null(.om)) {
+    .om <- diag(as.numeric(fit$omega), length(etaNames))
+  }
   dimnames(.om) <- list(etaNames, etaNames)
   .om
 }
@@ -95,13 +97,17 @@
   .comp <- integer(.n)
   .c <- 0L
   for (.i in seq_len(.n)) {
-    if (.comp[.i] != 0L) next
+    if (.comp[.i] != 0L) {
+      next
+    }
     .c <- .c + 1L
     .stack <- .i
     while (length(.stack)) {
       .v <- .stack[[1L]]
       .stack <- .stack[-1L]
-      if (.comp[.v] != 0L) next
+      if (.comp[.v] != 0L) {
+        next
+      }
       .comp[.v] <- .c
       .stack <- c(.stack, which(.adj[.v, ] & .comp == 0L))
     }
@@ -140,7 +146,9 @@
       .span <- seq.int(min(.idx), max(.idx))
       .new[.span, .span] <- TRUE
     }
-    if (identical(.new, .adj)) break
+    if (identical(.new, .adj)) {
+      break
+    }
     .adj <- .new
   }
   which(upper.tri(mat) & .adj & mat == 0, arr.ind = TRUE)
@@ -156,17 +164,23 @@
 #' @noRd
 .omegaFillBlockZeros <- function(mat, cor = 1e-10) {
   .idx <- .omegaBlockZeros(mat)
-  if (nrow(.idx) == 0L) return(NULL)
+  if (nrow(.idx) == 0L) {
+    return(NULL)
+  }
   .d <- diag(mat)
   .ret <- mat
   for (.k in seq_len(nrow(.idx))) {
     .i <- .idx[.k, 1L]
     .j <- .idx[.k, 2L]
     .v <- cor * sqrt(.d[.i] * .d[.j])
-    if (!is.finite(.v) || .v <= 0) return(NULL)
+    if (!is.finite(.v) || .v <= 0) {
+      return(NULL)
+    }
     .ret[.i, .j] <- .ret[.j, .i] <- .v
   }
-  if (inherits(try(chol(.ret), silent = TRUE), "try-error")) return(NULL)
+  if (inherits(try(chol(.ret), silent = TRUE), "try-error")) {
+    return(NULL)
+  }
   .ret
 }
 
@@ -175,9 +189,13 @@
 #' @noRd
 .omegaBlockZeroNames <- function(mat, idx, width = 35L) {
   .nm <- colnames(mat)
-  if (is.null(.nm)) .nm <- paste0("eta", seq_len(nrow(mat)))
+  if (is.null(.nm)) {
+    .nm <- paste0("eta", seq_len(nrow(mat)))
+  }
   .use <- unique(as.vector(idx))
   .txt <- paste(.nm[.use], collapse = ", ")
-  if (nchar(.txt) > width) .txt <- paste0(substr(.txt, 1L, width - 3L), "...")
+  if (nchar(.txt) > width) {
+    .txt <- paste0(substr(.txt, 1L, width - 3L), "...")
+  }
   .txt
 }

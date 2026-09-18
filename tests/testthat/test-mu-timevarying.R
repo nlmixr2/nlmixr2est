@@ -32,13 +32,13 @@ nmTest({
     .ui <- rxode2::rxUiDecompress(rxode2::rxode2(mod))
     .ctl <- vaeControl()
     .d <- nlmixr2data::theo_sd
-    .testSeed(1); .d$TVCOV <- rnorm(nrow(.d))          # varies within subject
-    expect_warning(.p <- nlmixr2est:::.vaeDataPrep(.ui, .d, .ctl),
-                   "time-varying covariate.*not searched: TVCOV")
+    .testSeed(1)
+    .d$TVCOV <- rnorm(nrow(.d)) # varies within subject
+    expect_warning(.p <- nlmixr2est:::.vaeDataPrep(.ui, .d, .ctl), "time-varying covariate.*not searched: TVCOV")
     # covNames are SEARCH COLUMNS (one per shape family, <cov>_<shape>), so
     # check membership on the raw covariate each column came from
-    expect_false("TVCOV" %in% .p$covRaw)              # excluded
-    expect_true("WT" %in% .p$covRaw)                  # subject-constant kept
+    expect_false("TVCOV" %in% .p$covRaw) # excluded
+    expect_true("WT" %in% .p$covRaw) # subject-constant kept
     # subject-constant only: no warning
     expect_silent(suppressMessages(nlmixr2est:::.vaeDataPrep(.ui, nlmixr2data::theo_sd, .ctl)))
   })
@@ -49,8 +49,12 @@ nmTest({
       ini({ tka<-0.45; tcl<-1; tv<-3.45; cl.wt<-0.5; eta.ka~0.6; eta.cl~0.3; eta.v~0.1; add.sd<-0.7 })
       model({ ka<-exp(tka+eta.ka); cl<-exp(tcl+eta.cl+cl.wt*log(WT/70)); v<-exp(tv+eta.v); linCmt()~add(add.sd) })
     }
-    .f <- suppressMessages(nlmixr2(covm, nlmixr2data::theo_sd, est = "saem",
-      control = saemControl(nBurn = 200, nEm = 100, nmc = 3, seed = 5, print = 0L, calcTables = FALSE)))
+    .f <- suppressMessages(nlmixr2(
+      covm,
+      nlmixr2data::theo_sd,
+      est = "saem",
+      control = saemControl(nBurn = 200, nEm = 100, nmc = 3, seed = 5, print = 0L, calcTables = FALSE)
+    ))
     # cl.wt is estimated (WT is time-invariant -> absorbed into the phi term)
     expect_true("cl.wt" %in% names(fixef(.f)))
     expect_true(is.finite(fixef(.f)[["cl.wt"]]))
@@ -66,11 +70,15 @@ nmTest({
     }
     .ui <- rxode2::rxUiDecompress(rxode2::rxode2(tvm))
     .d <- nlmixr2data::theo_sd
-    .d$TVC <- as.numeric(scale(.d$TIME))               # varies within subject
+    .d$TVC <- as.numeric(scale(.d$TIME)) # varies within subject
     .tv <- nlmixr2est:::.nlmixrTimeVaryingCovariates(.d, .ui, rxode2::rxControl())
     expect_true("TVC" %in% .tv)
-    .f <- suppressMessages(nlmixr2(tvm, .d, est = "saem",
-      control = saemControl(nBurn = 150, nEm = 80, nmc = 3, seed = 5, print = 0L, calcTables = FALSE)))
+    .f <- suppressMessages(nlmixr2(
+      tvm,
+      .d,
+      est = "saem",
+      control = saemControl(nBurn = 150, nEm = 80, nmc = 3, seed = 5, print = 0L, calcTables = FALSE)
+    ))
     expect_true("cl.tv" %in% names(fixef(.f)))
     expect_true(is.finite(fixef(.f)[["cl.tv"]]))
   })
@@ -84,14 +92,20 @@ nmTest({
     nlmixr2est:::.nlmixrSetMuRefTimeVarying(.ui, character(0))
     on.exit(nlmixr2est:::.nlmixrRmMuRefTimeVarying(.ui), add = TRUE)
     # saem: mu-ref etas and covariates both dropped (phi model)
-    .saem <- vapply(nlmixr2est:::.saemDropMuRefFromModel(.ui, keepEtas = FALSE),
-                    function(e) paste(deparse(e), collapse = ""), character(1))
+    .saem <- vapply(
+      nlmixr2est:::.saemDropMuRefFromModel(.ui, keepEtas = FALSE),
+      function(e) paste(deparse(e), collapse = ""),
+      character(1)
+    )
     expect_true(any(grepl("cl <- exp\\(tcl\\)$", .saem)))
     # keepEtas=TRUE keeps the random effect while still absorbing the covariate
-    .inner <- vapply(nlmixr2est:::.saemDropMuRefFromModel(.ui, keepEtas = TRUE),
-                     function(e) paste(deparse(e), collapse = ""), character(1))
+    .inner <- vapply(
+      nlmixr2est:::.saemDropMuRefFromModel(.ui, keepEtas = TRUE),
+      function(e) paste(deparse(e), collapse = ""),
+      character(1)
+    )
     expect_true(any(grepl("cl <- exp\\(tcl \\+ eta.cl\\)$", .inner)))
-    expect_false(any(grepl("cl.wt", .inner)))          # covariate absorbed
+    expect_false(any(grepl("cl.wt", .inner))) # covariate absorbed
   })
 
   test_that("time-varying covariate parameters are named in the correct order", {
@@ -104,19 +118,23 @@ nmTest({
       ini({ tka<-0.45; tcl<-1; tv<-3.45; cl.tv<-0.1; eta.ka~0.3; eta.cl~0.1; eta.v~0.1; add.sd<-0.7 })
       model({ ka<-exp(tka+eta.ka); cl<-exp(tcl+eta.cl+cl.tv*TVC); v<-exp(tv+eta.v); linCmt()~add(add.sd) })
     }
-    .d <- nlmixr2data::theo_sd; .d$TVC <- as.numeric(scale(.d$TIME))
-    .f <- suppressMessages(nlmixr2(tvlin, .d, est = "saem",
-      control = saemControl(nBurn = 200, nEm = 100, nmc = 3, seed = 7, print = 0L, calcTables = FALSE)))
+    .d <- nlmixr2data::theo_sd
+    .d$TVC <- as.numeric(scale(.d$TIME))
+    .f <- suppressMessages(nlmixr2(
+      tvlin,
+      .d,
+      est = "saem",
+      control = saemControl(nBurn = 200, nEm = 100, nmc = 3, seed = 7, print = 0L, calcTables = FALSE)
+    ))
     # theo has no real time-varying CL effect: tv stays ~3.45, cl.tv ~ 0
-    expect_gt(fixef(.f)[["tv"]], 3)              # tv correctly labelled (not ~0)
-    expect_lt(abs(fixef(.f)[["cl.tv"]]), 1)      # cl.tv correctly labelled (not ~3.45)
+    expect_gt(fixef(.f)[["tv"]], 3) # tv correctly labelled (not ~0)
+    expect_lt(abs(fixef(.f)[["cl.tv"]]), 1) # cl.tv correctly labelled (not ~3.45)
     expect_true(all(c("tka", "tcl", "tv", "cl.tv") %in% names(.f$parHist)))
   })
 
   test_that("mfocei recovers non-time-varying and time-varying covariate effects", {
     skip_if_not_installed("nlmixr2data")
-    .fc <- foceiControl(print = 0L, calcTables = FALSE,
-                        maxInnerIterations = 30L, maxOuterIterations = 40L)
+    .fc <- foceiControl(print = 0L, calcTables = FALSE, maxInnerIterations = 30L, maxOuterIterations = 40L)
     # non-time-varying covariate (absorbed into the phi term via the mu2 hook)
     covm <- function() {
       ini({ tka<-0.45; tcl<-1; tv<-3.45; cl.wt<-0.5; eta.ka~0.6; eta.cl~0.3; eta.v~0.1; add.sd<-0.7 })
@@ -131,7 +149,8 @@ nmTest({
       ini({ tka<-0.45; tcl<-1; tv<-3.45; cl.tv<-0.1; eta.ka~0.6; eta.cl~0.3; eta.v~0.1; add.sd<-0.7 })
       model({ ka<-exp(tka+eta.ka); cl<-exp(tcl+eta.cl+cl.tv*TVC); v<-exp(tv+eta.v); linCmt()~add(add.sd) })
     }
-    .d <- nlmixr2data::theo_sd; .d$TVC <- as.numeric(scale(.d$TIME))
+    .d <- nlmixr2data::theo_sd
+    .d$TVC <- as.numeric(scale(.d$TIME))
     .m2 <- suppressMessages(nlmixr2(tvm, .d, est = "mfocei", control = .fc))
     expect_true("cl.tv" %in% names(fixef(.m2)))
     expect_true(is.finite(fixef(.m2)[["cl.tv"]]))

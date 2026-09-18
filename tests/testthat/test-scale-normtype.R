@@ -29,8 +29,7 @@ nmTest({
   .scaledParFor <- function(normType) {
     .ui <- rxode2::rxode2(.mod)
     .dat <- nlmixr2data::theo_sd
-    .ctl <- nlmControl(print = 0, normType = normType, scaleType = "nlmixr2",
-                       calcTables = FALSE, iterlim = 1)
+    .ctl <- nlmControl(print = 0, normType = normType, scaleType = "nlmixr2", calcTables = FALSE, iterlim = 1)
     .ret <- new.env(parent = emptyenv())
     .foceiPreProcessData(.dat, .ret, .ui, .ctl$rxControl)
     .p <- setNames(.ui$nlmParIni, .ui$nlmParName)

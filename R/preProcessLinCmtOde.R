@@ -17,15 +17,55 @@
 #' @noRd
 .linCmtOdeEstFamily <- c(
   # FOCEi family -- .foceiFamilyControl()
-  "focei", "foce", "focep", "fo", "foi", "laplace", "agq", "posthoc",
-  "impmap", "imp", "qrpem", "npb", "npag", "emvi", "fbvi",
-  "mfocei", "mfoce", "mfocep", "mlaplace", "magq", "mnpb", "mnpag",
-  "ifocei", "ifoce", "ifocep", "ilaplace", "iagq", "inpb", "inpag",
-  "foceif", "focef", "focepf", "mfoceif", "mfocef", "mfocepf",
-  "ifoceif", "ifocef", "ifocepf",
+  "focei",
+  "foce",
+  "focep",
+  "fo",
+  "foi",
+  "laplace",
+  "agq",
+  "posthoc",
+  "impmap",
+  "imp",
+  "qrpem",
+  "npb",
+  "npag",
+  "emvi",
+  "fbvi",
+  "mfocei",
+  "mfoce",
+  "mfocep",
+  "mlaplace",
+  "magq",
+  "mnpb",
+  "mnpag",
+  "ifocei",
+  "ifoce",
+  "ifocep",
+  "ilaplace",
+  "iagq",
+  "inpb",
+  "inpag",
+  "foceif",
+  "focef",
+  "focepf",
+  "mfoceif",
+  "mfocef",
+  "mfocepf",
+  "ifoceif",
+  "ifocef",
+  "ifocepf",
   # nlm family -- .nlmSetupEnv()
-  "nlm", "nlminb", "bobyqa", "newuoa", "uobyqa", "n1qn1", "lbfgsb3c",
-  "optim", "nls", "trust"
+  "nlm",
+  "nlminb",
+  "bobyqa",
+  "newuoa",
+  "uobyqa",
+  "n1qn1",
+  "lbfgsb3c",
+  "optim",
+  "nls",
+  "trust"
 )
 
 #' Does this model mix `linCmt()` with ODE states?
@@ -38,7 +78,9 @@
 #' @noRd
 #' @author Matthew L. Fidler
 .uiIsMixedLinCmtOde <- function(ui) {
-  if (is.null(ui$mvL)) return(FALSE)
+  if (is.null(ui$mvL)) {
+    return(FALSE)
+  }
   length(setdiff(ui$state, .linCmtOdeStates)) > 0L
 }
 
@@ -56,18 +98,29 @@
 #' @noRd
 #' @author Matthew L. Fidler
 .linCmtOdeRestoreStateOrder <- function(ui, state) {
-  if (identical(ui$state, state)) return(ui)
+  if (identical(ui$state, state)) {
+    return(ui)
+  }
   ui <- rxode2::rxUiDecompress(ui)
   .lst <- ui$lstExpr
-  .isDdt <- vapply(.lst, function(e) {
-    is.call(e) && length(e) >= 2L && is.call(e[[2]]) &&
-      identical(e[[2]][[1]], quote(`/`)) &&
-      identical(e[[2]][[2]], quote(d))
-  }, logical(1))
-  if (!any(.isDdt)) return(ui)
-  .ddtState <- vapply(.lst[.isDdt], function(e) as.character(e[[2]][[3]][[2]]),
-                      character(1))
-  if (!setequal(.ddtState, state)) return(ui)
+  .isDdt <- vapply(
+    .lst,
+    function(e) {
+      is.call(e) &&
+        length(e) >= 2L &&
+        is.call(e[[2]]) &&
+        identical(e[[2]][[1]], quote(`/`)) &&
+        identical(e[[2]][[2]], quote(d))
+    },
+    logical(1)
+  )
+  if (!any(.isDdt)) {
+    return(ui)
+  }
+  .ddtState <- vapply(.lst[.isDdt], function(e) as.character(e[[2]][[3]][[2]]), character(1))
+  if (!setequal(.ddtState, state)) {
+    return(ui)
+  }
   # Gather the d/dt() lines, in the target order, at the last d/dt() position.
   # They cannot simply be permuted among the slots they already occupy: the
   # `linCmt()` output assignment (e.g. C2 <- central/v) sits between them, and a
@@ -76,7 +129,7 @@
   .idx <- which(.isDdt)
   .at <- max(.idx)
   .ddt <- .lst[.idx][order(match(.ddtState, state))]
-  .lst <- append(.lst[-.idx], .ddt, after=sum(!.isDdt[seq_len(.at)]))
+  .lst <- append(.lst[-.idx], .ddt, after = sum(!.isDdt[seq_len(.at)]))
   .rebuildRxUiFromLstExpr(ui, .lst)
 }
 
@@ -90,7 +143,7 @@
 #' @noRd
 #' @author Matthew L. Fidler
 .rebuildRxUiFromLstExpr <- function(ui, expr) {
-  .ls <- ls(ui$meta, all.names=TRUE)
+  .ls <- ls(ui$meta, all.names = TRUE)
   .hasIni <- length(ui$iniDf$cond) > 0L
   .ret <- vector("list", length(.ls) + if (.hasIni) 3L else 2L)
   .ret[[1L]] <- quote(`{`)
@@ -106,7 +159,9 @@
   }
   .fun <- function() {}
   body(.fun) <- as.call(.ret)
-  if (is.function(ui$model)) environment(.fun) <- environment(ui$model)
+  if (is.function(ui$model)) {
+    environment(.fun) <- environment(ui$model)
+  }
   suppressMessages(rxode2::as.rxUi(.fun))
 }
 
@@ -128,26 +183,39 @@
 #' @export
 #' @author Matthew L. Fidler
 .preProcessLinCmtOde <- function(ui, est, data, control) {
-  if (!(est %in% .linCmtOdeEstFamily)) return(NULL)
-  if (!.uiIsMixedLinCmtOde(ui)) return(NULL)
+  if (!(est %in% .linCmtOdeEstFamily)) {
+    return(NULL)
+  }
+  if (!.uiIsMixedLinCmtOde(ui)) {
+    return(NULL)
+  }
   .state <- ui$state
   .ui <- try(rxode2::linToOde(ui), silent = TRUE)
-  if (inherits(.ui, "try-error")) return(NULL)
+  if (inherits(.ui, "try-error")) {
+    return(NULL)
+  }
   # The model no longer mixes solved and ODE compartments, which is what was
   # asked for; say so rather than quietly changing how the model is solved.
-  warning("'", est, "' cannot use the analytic 'linCmt()' in a model that also has ODEs ",
-          "(the sensitivity compartments it adds renumber the linear compartments); ",
-          "the linear compartments are solved as ODEs instead, which is slower. ",
-          "'est=\"saem\"' uses the analytic 'linCmt()'.",
-          call.=FALSE)
+  warning(
+    "'",
+    est,
+    "' cannot use the analytic 'linCmt()' in a model that also has ODEs ",
+    "(the sensitivity compartments it adds renumber the linear compartments); ",
+    "the linear compartments are solved as ODEs instead, which is slower. ",
+    "'est=\"saem\"' uses the analytic 'linCmt()'.",
+    call. = FALSE
+  )
   .ui <- .linCmtOdeRestoreStateOrder(.ui, .state)
   if (!identical(.ui$state, .state)) {
     # never renumber the data's compartments quietly
-    warning("mixed 'linCmt()'/ODE model: compartments were renumbered from '",
-            paste(.state, collapse="', '"), "' to '",
-            paste(.ui$state, collapse="', '"),
-            "'; refer to compartments by name in 'cmt' rather than by number",
-            call.=FALSE)
+    warning(
+      "mixed 'linCmt()'/ODE model: compartments were renumbered from '",
+      paste(.state, collapse = "', '"),
+      "' to '",
+      paste(.ui$state, collapse = "', '"),
+      "'; refer to compartments by name in 'cmt' rather than by number",
+      call. = FALSE
+    )
   }
   list(ui = .ui)
 }

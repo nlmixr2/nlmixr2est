@@ -2,20 +2,19 @@
 #'@export
 nlmixr2Est.mlaplace <- function(env, ...) {
   .ui <- env$ui
-  rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'mlaplace'",
-                             .var.name=.ui$modelName)
+  rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'mlaplace'", .var.name = .ui$modelName)
   .control <- env$control
-  .foceiFamilyControl(env, ..., type="mlaplaceControl")
+  .foceiFamilyControl(env, ..., type = "mlaplaceControl")
   .mlaplaceControlToFoceiControl(env)
   on.exit({
-    if (exists("control", envir=.ui)) {
-      rm("control", envir=.ui)
+    if (exists("control", envir = .ui)) {
+      rm("control", envir = .ui)
     }
   })
   env$mlaplaceControl <- .control
   env$est <- "mlaplace"
   .ui <- env$ui
-  .foceiFamilyReturn(env, .ui, ..., est="mlaplace")
+  .foceiFamilyReturn(env, .ui, ..., est = "mlaplace")
 }
 attr(nlmixr2Est.mlaplace, "nlmixr2Priors") <- "general"
 attr(nlmixr2Est.mlaplace, "iov") <- TRUE
@@ -29,5 +28,5 @@ attr(nlmixr2Est.mlaplace, "mu") <- function(control) {
 
 #' @export
 rxUiDeparse.mlaplaceControl <- function(object, var) {
-  .rxUiDeparseFoceiControl(object, var, type="mlaplaceControl")
+  .rxUiDeparseFoceiControl(object, var, type = "mlaplaceControl")
 }

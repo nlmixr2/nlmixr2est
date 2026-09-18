@@ -1,7 +1,5 @@
 nmTest({
-
   test_that("test mixture models -- focei fit", {
-
     one.cmt <- function() {
       ini({
         tka <- 0.45
@@ -23,8 +21,7 @@ nmTest({
     }
 
     withr::with_seed(42, {
-      fit <- nlmixr2(one.cmt, nlmixr2data::theo_sd, "focei",
-                     control = foceiControl(print = 0, maxOuterIterations = 5))
+      fit <- nlmixr2(one.cmt, nlmixr2data::theo_sd, "focei", control = foceiControl(print = 0, maxOuterIterations = 5))
     })
 
     # ranef should have ID + ETA columns only (no MIXEST)
@@ -46,15 +43,30 @@ nmTest({
     expect_equal(.p1, unname(fixef(fit)[["p1"]]))
 
     ## both round trips that the two fixes above unblock
-    expect_error(nlmixr2(one.cmt, nlmixr2data::theo_sd, "focei",
-                         control = foceiControl(print = 0, maxOuterIterations = 0L,
-                                                maxInnerIterations = 0L,
-                                                etaMat = fit$etaMat, covMethod = "")),
-                 NA)
-    expect_error(nlmixr2(fit, nlmixr2data::theo_sd, "focei",
-                         control = foceiControl(print = 0, maxOuterIterations = 0L,
-                                                maxInnerIterations = 0L, covMethod = "")),
-                 NA)
+    expect_error(
+      nlmixr2(
+        one.cmt,
+        nlmixr2data::theo_sd,
+        "focei",
+        control = foceiControl(
+          print = 0,
+          maxOuterIterations = 0L,
+          maxInnerIterations = 0L,
+          etaMat = fit$etaMat,
+          covMethod = ""
+        )
+      ),
+      NA
+    )
+    expect_error(
+      nlmixr2(
+        fit,
+        nlmixr2data::theo_sd,
+        "focei",
+        control = foceiControl(print = 0, maxOuterIterations = 0L, maxInnerIterations = 0L, covMethod = "")
+      ),
+      NA
+    )
 
     # mixNum: one row per subject
     mn <- fit$mixNum
@@ -81,16 +93,21 @@ nmTest({
     # "Unscaled" rows (fit$parHist) legitimately stay as mlogit (unbounded).
     phd <- fit$parHistData
     bt_rows <- as.character(phd$type) == "Back-Transformed"
-    expect_true(any(bt_rows),
-                label = "parHistData has Back-Transformed rows")
-    expect_true(all(phd$p1[bt_rows] > 0 & phd$p1[bt_rows] < 1),
-                label = "Back-Transformed rows: p1 is a valid probability in (0,1)")
+    expect_true(any(bt_rows), label = "parHistData has Back-Transformed rows")
+    expect_true(
+      all(phd$p1[bt_rows] > 0 & phd$p1[bt_rows] < 1),
+      label = "Back-Transformed rows: p1 is a valid probability in (0,1)"
+    )
 
     # Posterior mixture probabilities must sum to 1 per subject
     ml <- fit$mixList
     prob_sums <- ml[["mix1"]]$prob + ml[["mix2"]]$prob
-    expect_equal(prob_sums, rep(1, nrow(ml[["mix1"]])), tolerance = 1e-8,
-                 label = "posterior mixture probabilities sum to 1 per subject")
+    expect_equal(
+      prob_sums,
+      rep(1, nrow(ml[["mix1"]])),
+      tolerance = 1e-8,
+      label = "posterior mixture probabilities sum to 1 per subject"
+    )
   })
 
   if (rxode2hasLlik()) {
@@ -116,26 +133,30 @@ nmTest({
       }
 
       withr::with_seed(42, {
-        fit <- nlmixr2(one.cmt.ll, nlmixr2data::theo_sd, "focei",
-                       control = foceiControl(print = 0, maxOuterIterations = 5))
+        fit <- nlmixr2(
+          one.cmt.ll,
+          nlmixr2data::theo_sd,
+          "focei",
+          control = foceiControl(print = 0, maxOuterIterations = 5)
+        )
       })
 
       # Should complete without error; p1 should be a valid probability
       expect_true("CWRES" %in% names(fit))
-      expect_true(fit$fixef["p1"] > 0 & fit$fixef["p1"] < 1,
-                  label = "mixture probability p1 in (0,1) for llik model")
+      expect_true(fit$fixef["p1"] > 0 & fit$fixef["p1"] < 1, label = "mixture probability p1 in (0,1) for llik model")
 
       # Back-Transformed rows in parHistData must show probabilities
       phd <- fit$parHistData
       bt_rows <- as.character(phd$type) == "Back-Transformed"
       expect_true(any(bt_rows))
-      expect_true(all(phd$p1[bt_rows] > 0 & phd$p1[bt_rows] < 1),
-                  label = "parHistData Back-Transformed p1 in (0,1) for llik model")
+      expect_true(
+        all(phd$p1[bt_rows] > 0 & phd$p1[bt_rows] < 1),
+        label = "parHistData Back-Transformed p1 in (0,1) for llik model"
+      )
     })
   }
 
   test_that("test mixture models -- ui components", {
-
     one.cmt <- function() {
       ini({
         ## You may label each parameter with a comment
@@ -165,12 +186,19 @@ nmTest({
 
     ui <- rxode2::rxode2(one.cmt())
 
-    expect_equal(ui$thetaIniMix,
-                 c(tka = 0.45, tcl1 = 0.993251773010283, tcl2 = -2.30258509299405,
-                   tv = 3.45, p1 = -0.847297860387204, add.sd = 0.7))
+    expect_equal(
+      ui$thetaIniMix,
+      c(
+        tka = 0.45,
+        tcl1 = 0.993251773010283,
+        tcl2 = -2.30258509299405,
+        tv = 3.45,
+        p1 = -0.847297860387204,
+        add.sd = 0.7
+      )
+    )
 
     expect_equal(ui$thetaMixIndex, 5L)
-
 
     one.cmt <- function() {
       ini({
@@ -199,11 +227,9 @@ nmTest({
 
     ui <- rxode2::rxode2(one.cmt())
 
-    expect_equal(ui$thetaIniMix,
-                 c(tka = 0.45, tcl1 = log(2.7), tv = 3.45, add.sd = 0.7))
+    expect_equal(ui$thetaIniMix, c(tka = 0.45, tcl1 = log(2.7), tv = 3.45, add.sd = 0.7))
 
     expect_equal(ui$thetaMixIndex, integer(0))
-
   })
 
   test_that("nlme estimation of a mix() model errors instead of silently dropping the mixture probability", {
@@ -229,8 +255,7 @@ nmTest({
         cp ~ add(add.sd)
       })
     }
-    d <- data.frame(ID = 1, TIME = c(0, 1), AMT = c(100, 0), EVID = c(1, 0),
-                     DV = c(0, 1), CMT = c(1, 2))
+    d <- data.frame(ID = 1, TIME = c(0, 1), AMT = c(100, 0), EVID = c(1, 0), DV = c(0, 1), CMT = c(1, 2))
     expect_error(
       .nlmixr(one.compartment.mix.nlme, d, est = "nlme", control = list(verbose = FALSE)),
       "mix\\(\\) models are not supported"
@@ -260,8 +285,7 @@ nmTest({
     }
     # This should complete without error (valid probabilities pass validation)
     withr::with_seed(42, {
-      fit <- .nlmixr(valid.mix, nlmixr2data::theo_sd, est = "saem",
-                     saemControl(print = 0, nBurn = 1, nEm = 1))
+      fit <- .nlmixr(valid.mix, nlmixr2data::theo_sd, est = "saem", saemControl(print = 0, nBurn = 1, nEm = 1))
     })
     expect_true(!is.null(fit))
     # Verify the mixture probability is in valid range
@@ -325,13 +349,11 @@ nmTest({
 
     # Two probabilities, each individually invalid, but summing to a
     # plausible-looking value (0.9) -- the real-world gap this guards against.
-    ui.obj <- list(list(mixProbs = c("p1", "p2"),
-                        theta = c(tka = 0.45, p1 = 1.5, p2 = -0.6)))
+    ui.obj <- list(list(mixProbs = c("p1", "p2"), theta = c(tka = 0.45, p1 = 1.5, p2 = -0.6)))
     expect_error(rxUiGet.thetaIniMix(ui.obj), "invalid")
 
     # Two valid-individually probabilities whose sum exceeds 1
-    ui.obj <- list(list(mixProbs = c("p1", "p2"),
-                        theta = c(tka = 0.45, p1 = 0.7, p2 = 0.6)))
+    ui.obj <- list(list(mixProbs = c("p1", "p2"), theta = c(tka = 0.45, p1 = 0.7, p2 = 0.6)))
     expect_error(rxUiGet.thetaIniMix(ui.obj), "invalid")
 
     # Valid probabilities should not error, and should be mlogit-transformed
@@ -384,18 +406,25 @@ nmTest({
   test_that(".mixFix guards against a zero row total (all components underflow for a subject)", {
     .mixFix <- nlmixr2est:::.mixFix
     env <- new.env()
-    assign("mixIdx", 1L, envir = env)  # non-empty so the early-return guards pass
-    assign("etaObfFull", data.frame(
-      ID = c(1L, 2L, 1L, 2L),
-      MIXEST = c(1L, 1L, 2L, 2L),
-      `ETA[1]` = c(0.1, 0.2, 0.1, 0.2),
-      OBJI = c(1e6, 1e6, 1e6, 1e6),  # underflows exp(-0.5*OBJI) to exactly 0 for BOTH components
-      check.names = FALSE
-    ), envir = env)
-    assign("etaObf", data.frame(ID = c(1L, 2L), MIXEST = c(1L, 1L),
-                                 `ETA[1]` = c(0.1, 0.2), check.names = FALSE), envir = env)
+    assign("mixIdx", 1L, envir = env) # non-empty so the early-return guards pass
+    assign(
+      "etaObfFull",
+      data.frame(
+        ID = c(1L, 2L, 1L, 2L),
+        MIXEST = c(1L, 1L, 2L, 2L),
+        `ETA[1]` = c(0.1, 0.2, 0.1, 0.2),
+        OBJI = c(1e6, 1e6, 1e6, 1e6), # underflows exp(-0.5*OBJI) to exactly 0 for BOTH components
+        check.names = FALSE
+      ),
+      envir = env
+    )
+    assign(
+      "etaObf",
+      data.frame(ID = c(1L, 2L), MIXEST = c(1L, 1L), `ETA[1]` = c(0.1, 0.2), check.names = FALSE),
+      envir = env
+    )
     assign("ranef", data.frame(ID = c(1L, 2L), `ETA[1]` = c(0.1, 0.2), check.names = FALSE), envir = env)
-    assign("fixef", c(p1 = 0), envir = env)  # mlogit(0.5) prior when back-transformed
+    assign("fixef", c(p1 = 0), envir = env) # mlogit(0.5) prior when back-transformed
 
     expect_warning(
       nlmixr2est:::.mixFix(env, ui = NULL),
@@ -414,12 +443,16 @@ nmTest({
     ## Measured at zero iterations with ini({p2 <- 0.20; p1 <- 0.70}):
     ## $mixProbabilities came back 0.2 0.7 0.1 instead of 0.7 0.2 0.1.
     .mk <- function(.iniTxt) {
-      eval(parse(text = paste0(
-        "function() { ini({tka <- log(1.1); ", .iniTxt,
-        "; tcl1 <- log(1); tcl2 <- log(8); tcl3 <- log(30); tv <- log(20);",
-        " eta.cl ~ 0.01; add.sd <- 0.05}) ; model({ka <- exp(tka);",
-        " cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl), p2,",
-        " exp(tcl3 + eta.cl)); v <- exp(tv); linCmt() ~ add(add.sd)}) }")))
+      eval(parse(
+        text = paste0(
+          "function() { ini({tka <- log(1.1); ",
+          .iniTxt,
+          "; tcl1 <- log(1); tcl2 <- log(8); tcl3 <- log(30); tv <- log(20);",
+          " eta.cl ~ 0.01; add.sd <- 0.05}) ; model({ka <- exp(tka);",
+          " cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl), p2,",
+          " exp(tcl3 + eta.cl)); v <- exp(tv); linCmt() ~ add(add.sd)}) }"
+        )
+      ))
     }
     for (.o in c("p1 <- 0.70; p2 <- 0.20", "p2 <- 0.20; p1 <- 0.70")) {
       .ui <- rxode2::rxUiDecompress(rxode2::assertRxUi(.mk(.o)))
@@ -427,8 +460,7 @@ nmTest({
       expect_equal(names(.ui$theta)[.ui$thetaMixIndex], .ui$mixProbs)
       ## and round-tripping them through the mlogit scale the solver uses gives
       ## the proportions back against the right components
-      expect_equal(unname(rxode2::mexpit(.ui$thetaIniMix[.ui$thetaMixIndex])),
-                   c(0.70, 0.20), tolerance = 1e-8)
+      expect_equal(unname(rxode2::mexpit(.ui$thetaIniMix[.ui$thetaMixIndex])), c(0.70, 0.20), tolerance = 1e-8)
     }
     ## the reversed declaration really does reorder the theta vector -- without
     ## this the two loop passes would be the same model and prove nothing
@@ -568,5 +600,4 @@ nmTest({
     expect_equal(.outside$saemOmegaShareSubpop[.outside$saemEtaNames == "eta.cl1"], 0L)
     expect_equal(.outside$saemOmegaShareSubpop[.outside$saemEtaNames == "eta.cl2"], 2L)
   })
-
 })

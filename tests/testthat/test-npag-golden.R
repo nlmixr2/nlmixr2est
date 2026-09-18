@@ -11,9 +11,10 @@ nmTest({
     skip_if_not_installed("rxode2")
     .ref <- utils::read.csv(
       testthat::test_path("fixtures", "npag", "pmetrics_reference.csv"),
-      comment.char = "#")
+      comment.char = "#"
+    )
     .ref <- .ref[.ref$model == "theo", ]
-    .m <- setNames(.ref$pmetrics_mean, .ref$param)   # ka, v, ke
+    .m <- setNames(.ref$pmetrics_mean, .ref$param) # ka, v, ke
 
     one.cmt <- function() {
       ini({ tka <- log(1.5); tv <- log(32); tke <- log(0.08)
@@ -23,22 +24,26 @@ nmTest({
         d/dt(center) <- ka * depot - ke * center
         cp <- center / v; cp ~ add(add.sd) })
     }
-    f <- nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "npag",
-                 control = npagControl(points = 512L, cycles = 20L,
-                                       gammaOptimize = TRUE, seed = 1L,
-                                       calcTables = FALSE))
-    .sp <- f$env$npagSupport; .wt <- f$env$npagWeights
+    f <- nlmixr2(
+      one.cmt,
+      nlmixr2data::theo_sd,
+      est = "npag",
+      control = npagControl(points = 512L, cycles = 20L, gammaOptimize = TRUE, seed = 1L, calcTables = FALSE)
+    )
+    .sp <- f$env$npagSupport
+    .wt <- f$env$npagWeights
     .th <- f$theta
     # population mean of each parameter = weighted mean over the support of
     # exp(theta + eta) (npag keeps the theta at reference; the location is in the
     # support distribution).  Columns of npagSupport are ordered ka, v, ke.
     .pm <- c(
       ka = sum(.wt * exp(as.numeric(.th[["tka"]]) + .sp[, 1])),
-      v  = sum(.wt * exp(as.numeric(.th[["tv"]])  + .sp[, 2])),
-      ke = sum(.wt * exp(as.numeric(.th[["tke"]]) + .sp[, 3])))
+      v = sum(.wt * exp(as.numeric(.th[["tv"]]) + .sp[, 2])),
+      ke = sum(.wt * exp(as.numeric(.th[["tke"]]) + .sp[, 3]))
+    )
 
     # V and Ke are well-identified -> tight agreement with the oracle (~<10%).
-    expect_lt(abs(.pm[["v"]]  - .m[["v"]])  / .m[["v"]],  0.10)
+    expect_lt(abs(.pm[["v"]] - .m[["v"]]) / .m[["v"]], 0.10)
     expect_lt(abs(.pm[["ke"]] - .m[["ke"]]) / .m[["ke"]], 0.10)
     # Ka (absorption) is weakly identified in oral PK and grid-dependent, so allow a
     # looser band; it should still be the right order of magnitude.
@@ -52,7 +57,8 @@ nmTest({
     skip_if_not_installed("nlmixr2data")
     .ref <- utils::read.csv(
       testthat::test_path("fixtures", "npag", "pmetrics_reference.csv"),
-      comment.char = "#")
+      comment.char = "#"
+    )
     .ref <- .ref[.ref$model == "warfarin", ]
     .m <- setNames(.ref$pmetrics_mean, .ref$param)
 
@@ -79,17 +85,31 @@ nmTest({
         cp <- center / v; pca <- effect + e0
         cp ~ prop(prop.sd); pca ~ add(add.sd) })
     }
-    f <- nlmixr2(warf, nlmixr2data::warfarin, est = "npag",
-                 control = npagControl(points = 400L, cycles = 8L, seed = 1L,
-                                       gammaOptimize = FALSE, gridBounds = "ini",
-                                       calcTables = FALSE))
-    .sp <- f$env$npagSupport; .wt <- f$env$npagWeights; .th <- f$theta
-    .tn <- c(ktr="tktr", ka="tka", v="tv", cl="tcl", emax="temax",
-             ec50="tec50", kout="tkout", e0="te0")
-    .pm <- vapply(seq_along(.tn), function(j) {
-      .tr <- if (names(.tn)[j] == "emax") plogis else exp   # emax is on the logit scale
-      sum(.wt * .tr(as.numeric(.th[[.tn[j]]]) + .sp[, j]))
-    }, numeric(1))
+    f <- nlmixr2(
+      warf,
+      nlmixr2data::warfarin,
+      est = "npag",
+      control = npagControl(
+        points = 400L,
+        cycles = 8L,
+        seed = 1L,
+        gammaOptimize = FALSE,
+        gridBounds = "ini",
+        calcTables = FALSE
+      )
+    )
+    .sp <- f$env$npagSupport
+    .wt <- f$env$npagWeights
+    .th <- f$theta
+    .tn <- c(ktr = "tktr", ka = "tka", v = "tv", cl = "tcl", emax = "temax", ec50 = "tec50", kout = "tkout", e0 = "te0")
+    .pm <- vapply(
+      seq_along(.tn),
+      function(j) {
+        .tr <- if (names(.tn)[j] == "emax") plogis else exp # emax is on the logit scale
+        sum(.wt * .tr(as.numeric(.th[[.tn[j]]]) + .sp[, j]))
+      },
+      numeric(1)
+    )
     names(.pm) <- names(.tn)
     # a real 8-parameter nonparametric PK/PD fit is not degenerate ...
     expect_true(nrow(.sp) >= 8L)
@@ -105,8 +125,7 @@ nmTest({
     # bound once that work lands.
     .tolP <- c(ka = 0.40)
     for (.p in names(.m)) {
-      expect_lt(abs(.pm[[.p]] - .m[[.p]]) / .m[[.p]],
-                if (!is.na(.tolP[.p])) unname(.tolP[.p]) else 0.20)
+      expect_lt(abs(.pm[[.p]] - .m[[.p]]) / .m[[.p]], if (!is.na(.tolP[.p])) unname(.tolP[.p]) else 0.20)
     }
   })
 })

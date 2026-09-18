@@ -33,22 +33,24 @@
   .iniDf <- ui$iniDf
 
   if (is.null(.muRefDf) || nrow(.muRefDf) == 0L) {
-    .muRefDf <- data.frame(theta=character(0), eta=character(0),
-                            level=character(0), stringsAsFactors=FALSE)
+    .muRefDf <- data.frame(theta = character(0), eta = character(0), level = character(0), stringsAsFactors = FALSE)
   }
   if (is.null(.muRefCovDf) || nrow(.muRefCovDf) == 0L) {
-    .muRefCovDf <- data.frame(theta=character(0), covariate=character(0),
-                               covariateParameter=character(0),
-                               stringsAsFactors=FALSE)
+    .muRefCovDf <- data.frame(
+      theta = character(0),
+      covariate = character(0),
+      covariateParameter = character(0),
+      stringsAsFactors = FALSE
+    )
   }
 
   .muCovThetas <- unique(as.character(.muRefCovDf$theta))
   .muCovCovariateParams <- unique(as.character(.muRefCovDf$covariateParameter))
 
-  .muCovRows <- .muRefDf[as.character(.muRefDf$theta) %in% .muCovThetas, , drop=FALSE]
+  .muCovRows <- .muRefDf[as.character(.muRefDf$theta) %in% .muCovThetas, , drop = FALSE]
   .muCovEtas <- unique(as.character(.muCovRows$eta))
 
-  .stdMuRefRows <- .muRefDf[!(as.character(.muRefDf$theta) %in% .muCovThetas), , drop=FALSE]
+  .stdMuRefRows <- .muRefDf[!(as.character(.muRefDf$theta) %in% .muCovThetas), , drop = FALSE]
   .standardEtas <- unique(as.character(.stdMuRefRows$eta))
   if (!is.null(.nonMuEtas) && length(.nonMuEtas) > 0L) {
     .standardEtas <- unique(c(.standardEtas, as.character(.nonMuEtas)))
@@ -56,7 +58,7 @@
 
   .allThetas <- character(0)
   if (!is.null(.iniDf)) {
-    .thetaRows <- .iniDf[!is.na(.iniDf$ntheta) & is.na(.iniDf$err), , drop=FALSE]
+    .thetaRows <- .iniDf[!is.na(.iniDf$ntheta) & is.na(.iniDf$err), , drop = FALSE]
     .allThetas <- as.character(.thetaRows$name)
   }
   .standardThetas <- setdiff(.allThetas, c(.muCovThetas, .muCovCovariateParams))
@@ -66,14 +68,14 @@
   # diagonal non-IOV eta that enters the model in a single additive position
   # (.foceiEtaOccurrence; a shared eta makes the theta+eta rewrite invalid).
   if ("level" %in% names(.muRefDf)) {
-    .idRows <- .muRefDf[is.na(.muRefDf$level) | .muRefDf$level == "id", , drop=FALSE]
+    .idRows <- .muRefDf[is.na(.muRefDf$level) | .muRefDf$level == "id", , drop = FALSE]
   } else {
     .idRows <- .muRefDf
   }
   .iovVars <- as.character(.uiIovEnv$iovVars)
   .diagEtas <- character(0)
   if (!is.null(.iniDf)) {
-    .e2 <- .iniDf[is.na(.iniDf$ntheta), , drop=FALSE]
+    .e2 <- .iniDf[is.na(.iniDf$ntheta), , drop = FALSE]
     .diagEtas <- as.character(.e2$name[.e2$neta1 == .e2$neta2])
   }
   .thetaCount <- table(as.character(.muRefDf$theta))
@@ -84,13 +86,27 @@
   for (.k in seq_len(nrow(.idRows))) {
     .th <- as.character(.idRows$theta[.k])
     .et <- as.character(.idRows$eta[.k])
-    if (.th %in% .muCovThetas || .th %in% .muCovCovariateParams) next
-    if (!(.th %in% .allThetas)) next
-    if (.th %in% .iovVars || .et %in% .iovVars) next
-    if (.thetaCount[[.th]] != 1L || .etaCount[[.et]] != 1L) next
-    if (!(.et %in% .diagEtas)) next
-    if (!is.null(.nonMuEtas) && .et %in% as.character(.nonMuEtas)) next
-    if (!(.et %in% names(.etaOcc)) || .etaOcc[[.et]] != 1L) next
+    if (.th %in% .muCovThetas || .th %in% .muCovCovariateParams) {
+      next
+    }
+    if (!(.th %in% .allThetas)) {
+      next
+    }
+    if (.th %in% .iovVars || .et %in% .iovVars) {
+      next
+    }
+    if (.thetaCount[[.th]] != 1L || .etaCount[[.et]] != 1L) {
+      next
+    }
+    if (!(.et %in% .diagEtas)) {
+      next
+    }
+    if (!is.null(.nonMuEtas) && .et %in% as.character(.nonMuEtas)) {
+      next
+    }
+    if (!(.et %in% names(.etaOcc)) || .etaOcc[[.et]] != 1L) {
+      next
+    }
     .muPlainThetas <- c(.muPlainThetas, .th)
     .muPlainEtas <- c(.muPlainEtas, .et)
   }
@@ -153,8 +169,7 @@
 #'   not user-fixed
 #' @author Matthew L. Fidler
 #' @noRd
-.muRefGroups <- function(ui, plain = FALSE,
-                         clamp = !identical(rxode2::rxGetControl(ui, "muModel", "none"), "none")) {
+.muRefGroups <- function(ui, plain = FALSE, clamp = !identical(rxode2::rxGetControl(ui, "muModel", "none"), "none")) {
   .cls <- .muRefClassify(ui)
   .muRefDf <- ui$muRefDataFrame
   .muRefCovDf <- ui$muRefCovariateDataFrame
@@ -166,12 +181,18 @@
   .upperOf <- setNames(.thetaRows$upper, .thetaRows$name)
   lapply(.cls$muCovThetas, function(.theta) {
     .w <- which(as.character(.muRefDf$theta) == .theta)
-    if (length(.w) != 1L) return(NULL)
+    if (length(.w) != 1L) {
+      return(NULL)
+    }
     .eta <- as.character(.muRefDf$eta[.w])
-    if (!(.eta %in% .cls$muCovEtas)) return(NULL)
+    if (!(.eta %in% .cls$muCovEtas)) {
+      return(NULL)
+    }
     if (!clamp && .theta %in% .boundedThetas) {
       warning(
-        "mu-referenced theta '", .theta, "' has boundaries and cannot ",
+        "mu-referenced theta '",
+        .theta,
+        "' has boundaries and cannot ",
         "benefit from the mu-referenced speed gains (this method's ",
         "regression cannot respect a boundary on its population theta); ",
         "estimated as an ordinary (bounded) parameter by the outer ",
@@ -181,8 +202,7 @@
       return(NULL)
     }
     if (.theta %in% .fixedThetas) {
-      .minfo(paste0("mu-referenced theta '", .theta,
-                    "' is fixed; kept out of the mu-referenced regression"))
+      .minfo(paste0("mu-referenced theta '", .theta, "' is fixed; kept out of the mu-referenced regression"))
       return(NULL)
     }
     .wc <- which(as.character(.muRefCovDf$theta) == .theta)
@@ -197,7 +217,8 @@
         "speed gains (this method's regression cannot respect a ",
         "boundary); treated as if time-varying and excluded from the ",
         "mu-referencing -- estimated as ordinary (bounded) parameters ",
-        "by the outer optimizer instead, while '", .theta,
+        "by the outer optimizer instead, while '",
+        .theta,
         "' and any other covariate(s) on it still benefit",
         call. = FALSE
       )
@@ -218,34 +239,48 @@
     )
   }) -> .lst
   .lst <- .lst[!vapply(.lst, is.null, logical(1))]
-  if (!plain || length(.cls$muPlainThetas) == 0L) return(.lst)
-  .emptyCov <- data.frame(covariate = character(0),
-                          covariateParameter = character(0),
-                          lower = numeric(0), upper = numeric(0),
-                          bounded = logical(0),
-                          stringsAsFactors = FALSE)
+  if (!plain || length(.cls$muPlainThetas) == 0L) {
+    return(.lst)
+  }
+  .emptyCov <- data.frame(
+    covariate = character(0),
+    covariateParameter = character(0),
+    lower = numeric(0),
+    upper = numeric(0),
+    bounded = logical(0),
+    stringsAsFactors = FALSE
+  )
   .boundedPlain <- character(0)
   .plainLst <- list()
   for (.k in seq_along(.cls$muPlainThetas)) {
     .th <- .cls$muPlainThetas[.k]
-    if (.th %in% .fixedThetas) next
+    if (.th %in% .fixedThetas) {
+      next
+    }
     if (!clamp && .th %in% .boundedThetas) {
       .boundedPlain <- c(.boundedPlain, .th)
       next
     }
     .plainLst[[length(.plainLst) + 1L]] <-
-      list(theta = .th, eta = .cls$muPlainEtas[.k],
-           thetaLower = unname(.lowerOf[.th]),
-           thetaUpper = unname(.upperOf[.th]),
-           covariates = .emptyCov)
+      list(
+        theta = .th,
+        eta = .cls$muPlainEtas[.k],
+        thetaLower = unname(.lowerOf[.th]),
+        thetaUpper = unname(.upperOf[.th]),
+        covariates = .emptyCov
+      )
   }
   if (length(.boundedPlain) > 0L) {
-    .minfo(paste0("mu-referenced theta(s) ",
-                  paste0("'", .boundedPlain, "'", collapse = ", "),
-                  " have boundaries; estimated by the outer optimizer ",
-                  "instead of the mu-referenced regression"))
+    .minfo(paste0(
+      "mu-referenced theta(s) ",
+      paste0("'", .boundedPlain, "'", collapse = ", "),
+      " have boundaries; estimated by the outer optimizer ",
+      "instead of the mu-referenced regression"
+    ))
   }
-  if (length(.plainLst) == 0L) return(.lst)
+  if (length(.plainLst) == 0L) {
+    return(.lst)
+  }
   # Guard: profiling every theta out with nothing left free (no non-grouped
   # estimated theta, no estimated omega) would give the outer optimizer an
   # empty problem; drop the plain groups (covariate groups kept) instead.
@@ -256,7 +291,9 @@
   .omRows <- .iniDf[is.na(.iniDf$ntheta), , drop = FALSE]
   .freeOm <- any(!.omRows$fix)
   if (length(.freeTh) == 0L && !.freeOm) {
-    .minfo("profiling all mu-referenced thetas would leave the outer optimizer with no parameters; keeping them as ordinary parameters")
+    .minfo(
+      "profiling all mu-referenced thetas would leave the outer optimizer with no parameters; keeping them as ordinary parameters"
+    )
     return(.lst)
   }
   c(.lst, .plainLst)
@@ -287,16 +324,24 @@
 #'   dataset columns)
 #' @author Matthew L. Fidler
 #' @noRd
-.muRefCppGroupSetup <- function(ui, plain = FALSE,
-                                clamp = !identical(rxode2::rxGetControl(ui, "muModel", "none"), "none")) {
+.muRefCppGroupSetup <- function(
+  ui,
+  plain = FALSE,
+  clamp = !identical(rxode2::rxGetControl(ui, "muModel", "none"), "none")
+) {
   .groups <- .muRefGroups(ui, plain = plain, clamp = clamp)
   if (length(.groups) == 0L) {
     return(list(
-      muGroupTheta = integer(0), muGroupEta = integer(0),
-      muGroupCovStart = integer(0), muGroupCovCount = integer(0),
-      muGroupCovTheta = integer(0), muGroupCovUserFixed = integer(0),
-      muGroupThetaLower = numeric(0), muGroupThetaUpper = numeric(0),
-      muGroupCovLower = numeric(0), muGroupCovUpper = numeric(0),
+      muGroupTheta = integer(0),
+      muGroupEta = integer(0),
+      muGroupCovStart = integer(0),
+      muGroupCovCount = integer(0),
+      muGroupCovTheta = integer(0),
+      muGroupCovUserFixed = integer(0),
+      muGroupThetaLower = numeric(0),
+      muGroupThetaUpper = numeric(0),
+      muGroupCovLower = numeric(0),
+      muGroupCovUpper = numeric(0),
       muGroupCovNames = character(0)
     ))
   }
@@ -336,8 +381,7 @@
     for (.k in seq_len(nrow(.cov))) {
       .cp <- .cov$covariateParameter[.k]
       .muGroupCovTheta <- c(.muGroupCovTheta, .thetaIdxOf(.cp))
-      .muGroupCovUserFixed <- c(.muGroupCovUserFixed,
-                                 as.integer(isTRUE(.userFixed[[.cp]])))
+      .muGroupCovUserFixed <- c(.muGroupCovUserFixed, as.integer(isTRUE(.userFixed[[.cp]])))
       .muGroupCovLower <- c(.muGroupCovLower, as.numeric(.cov$lower[.k]))
       .muGroupCovUpper <- c(.muGroupCovUpper, as.numeric(.cov$upper[.k]))
       .muGroupCovNames <- c(.muGroupCovNames, .cov$covariate[.k])
@@ -375,15 +419,18 @@
 #' @author Matthew L. Fidler
 #' @noRd
 .muRefCppCovData <- function(covNames, dataSav) {
-  if (length(covNames) == 0L) return(matrix(numeric(0), nrow = 0, ncol = 0))
+  if (length(covNames) == 0L) {
+    return(matrix(numeric(0), nrow = 0, ncol = 0))
+  }
   .byId <- dataSav[!duplicated(dataSav$ID), , drop = FALSE]
   .byId <- .byId[order(.byId$ID), , drop = FALSE]
   # a name can be a covariate expression (e.g. log(WT/70)) rather than a
   # bare column; evaluate those against the baseline rows
   .cols <- lapply(covNames, function(.cn) {
-    if (.cn %in% names(.byId)) return(as.numeric(.byId[[.cn]]))
+    if (.cn %in% names(.byId)) {
+      return(as.numeric(.byId[[.cn]]))
+    }
     as.numeric(eval(parse(text = .cn), envir = .byId))
   })
-  matrix(unlist(.cols, use.names = FALSE),
-         nrow = nrow(.byId), ncol = length(covNames))
+  matrix(unlist(.cols, use.names = FALSE), nrow = nrow(.byId), ncol = length(covNames))
 }

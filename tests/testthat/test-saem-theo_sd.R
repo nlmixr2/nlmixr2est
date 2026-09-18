@@ -1,7 +1,5 @@
 if (FALSE) {
-
   nmTest({
-
     skip_if_not(file.exists(test_path("test-saem-theo_sd.rds")))
 
     mod <- function() {
@@ -134,11 +132,15 @@ if (FALSE) {
         .doIt <- FALSE
       }
       if (.doIt) {
-        ctl1 <- saemControl(print=0, nEm = n, nBurn = n, logLik = TRUE, addProp = .cur["addProp"])
-        mod2 <- eval(parse(text = paste0(
-          "mod |> model(ipre~", paste(.mod, collapse = "+"), ") |> ",
-          gsub("c[(]", "ini(", deparse1(.est))
-        )))
+        ctl1 <- saemControl(print = 0, nEm = n, nBurn = n, logLik = TRUE, addProp = .cur["addProp"])
+        mod2 <- eval(parse(
+          text = paste0(
+            "mod |> model(ipre~",
+            paste(.mod, collapse = "+"),
+            ") |> ",
+            gsub("c[(]", "ini(", deparse1(.est))
+          )
+        ))
         v <- .nlmixr(mod2, dat, est = "saem", control = ctl1)
         assign("mod2", mod2, globalenv())
         if (!inherits(v, "nlmixr2FitCore")) {
@@ -147,9 +149,12 @@ if (FALSE) {
         }
         # saveRDS(v, paste0("test-saem-theo_sd-", i, "-", n, ".rds"))
         .sum <- c(objf = v$objective, v$theta)
-        return(invisible(setNames(sapply(.nm, function(x) {
-          .sum[x]
-        }), .nm)))
+        return(invisible(setNames(
+          sapply(.nm, function(x) {
+            .sum[x]
+          }),
+          .nm
+        )))
       }
       sapply(.nm, function(x) {
         NA_real_
@@ -163,8 +168,10 @@ if (FALSE) {
     tot <- 15
 
     ops <- expand.grid(
-      add = c("", "add", "lnorm", "logitNorm", "probitNorm"), prop = c("", "prop", "pow", "powT", "propT"),
-      tbs = c("", "yeoJohnson", "boxCox"), addProp = c("combined1", "combined2"),
+      add = c("", "add", "lnorm", "logitNorm", "probitNorm"),
+      prop = c("", "prop", "pow", "powT", "propT"),
+      tbs = c("", "yeoJohnson", "boxCox"),
+      addProp = c("combined1", "combined2"),
       stringsAsFactors = FALSE
     )
     ops$id <- seq_along(ops$add)
@@ -191,19 +198,22 @@ if (FALSE) {
     for (i in seq_along(.test$add)) {
       test_that(
         with(
-          as.list(.test[3,]),
+          as.list(.test[3, ]),
           paste0(
-            "add: ", add,
-            " prop: ", prop,
-            " tbs: ", tbs,
-            " addProp: ", addProp
+            "add: ",
+            add,
+            " prop: ",
+            prop,
+            " tbs: ",
+            tbs,
+            " addProp: ",
+            addProp
           )
-        ), {
-          expect_equal(as.list(val[i, ]),
-                       as.list(.test[i, ]),
-                       tolerance=1e-3)
-        })
+        ),
+        {
+          expect_equal(as.list(val[i, ]), as.list(.test[i, ]), tolerance = 1e-3)
+        }
+      )
     }
-
   })
 }

@@ -30,10 +30,18 @@ nmTest({
       })
     }
     dat <- nlmixr2data::neonatal_wt
-    ctl <- vaeControl(itersBurnIn = 60L, iters = 120L, klWarmup = 40L, gammaIter = 90L,
-                      nGradStep = 4L, covariateSelection = TRUE, print = 0L,
-                      addProp = "combined1",
-                      sigma0 = c(1e-3, 1e-2, 1e-1, 1e-1, 1e-1), returnVae = TRUE)
+    ctl <- vaeControl(
+      itersBurnIn = 60L,
+      iters = 120L,
+      klWarmup = 40L,
+      gammaIter = 90L,
+      nGradStep = 4L,
+      covariateSelection = TRUE,
+      print = 0L,
+      addProp = "combined1",
+      sigma0 = c(1e-3, 1e-2, 1e-1, 1e-1, 1e-1),
+      returnVae = TRUE
+    )
     fit <- suppressMessages(suppressWarnings(nlmixr2(neonatal, dat, est = "vae", control = ctl)))
 
     ## all five structural params + the (combined) error estimated finite
@@ -62,7 +70,8 @@ nmTest({
     ctlRef <- ctl
     ctlRef$mStepObjective <- "elbo"
     fitRef <- suppressMessages(suppressWarnings(
-      nlmixr2(neonatal, dat, est = "vae", control = ctlRef)))
+      nlmixr2(neonatal, dat, est = "vae", control = ctlRef)
+    ))
     expect_identical(fitRef$zPop, fit$zPop)
     ## fit$selected picked up dimnames above; compare the values
     expect_identical(unname(fitRef$selected), unname(fit$selected))
@@ -72,8 +81,10 @@ nmTest({
 
   test_that("est=vae builds a full neonatal fit object (objective + tables)", {
     skip_on_cran()
-    skip_if_not(identical(Sys.getenv("NLMIXR2_VAE_SLOW"), "true"),
-                "set NLMIXR2_VAE_SLOW=true to run the full neonatal fit assembly")
+    skip_if_not(
+      identical(Sys.getenv("NLMIXR2_VAE_SLOW"), "true"),
+      "set NLMIXR2_VAE_SLOW=true to run the full neonatal fit assembly"
+    )
     neonatal <- function() {
       ini({
         lW0 <- log(3000); lkin <- log(30); lTL <- log(2); lkoutmax <- log(0.05); lT50 <- log(1)
@@ -94,10 +105,17 @@ nmTest({
         W ~ add(add.err) + prop(prop.err)
       })
     }
-    ctl <- vaeControl(itersBurnIn = 60L, iters = 120L, klWarmup = 40L, gammaIter = 90L,
-                      nGradStep = 4L, covariateSelection = TRUE, print = 0L,
-                      addProp = "combined1",
-                      sigma0 = c(1e-3, 1e-2, 1e-1, 1e-1, 1e-1))
+    ctl <- vaeControl(
+      itersBurnIn = 60L,
+      iters = 120L,
+      klWarmup = 40L,
+      gammaIter = 90L,
+      nGradStep = 4L,
+      covariateSelection = TRUE,
+      print = 0L,
+      addProp = "combined1",
+      sigma0 = c(1e-3, 1e-2, 1e-1, 1e-1, 1e-1)
+    )
     fit <- suppressMessages(suppressWarnings(nlmixr2(neonatal, nlmixr2data::neonatal_wt, est = "vae", control = ctl)))
     expect_s3_class(fit, "nlmixr2FitData")
     expect_true(is.finite(fit$objf))

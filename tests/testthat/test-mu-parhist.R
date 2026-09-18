@@ -30,14 +30,23 @@ nmTest({
     skip_on_cran()
 
     d <- nlmixr2data::theo_sd
-    out <- withr::with_options(list(width = 200), capture.output({
-      fitM <- nlmixr2est::nlmixr(.ocmt, d, "ifocei",
-                                 ifoceiControl(print = 1, maxOuterIterations = 2L,
-                                               outerOpt = "nlminb", covMethod = "", calcTables = FALSE))
-    }))
-    fitP <- .nlmixr(.ocmt, d, "focei",
-                    foceiControl(print = 0, maxOuterIterations = 2L,
-                                 outerOpt = "nlminb", covMethod = "", calcTables = FALSE))
+    out <- withr::with_options(
+      list(width = 200),
+      capture.output({
+        fitM <- nlmixr2est::nlmixr(
+          .ocmt,
+          d,
+          "ifocei",
+          ifoceiControl(print = 1, maxOuterIterations = 2L, outerOpt = "nlminb", covMethod = "", calcTables = FALSE)
+        )
+      })
+    )
+    fitP <- .nlmixr(
+      .ocmt,
+      d,
+      "focei",
+      foceiControl(print = 0, maxOuterIterations = 2L, outerOpt = "nlminb", covMethod = "", calcTables = FALSE)
+    )
 
     # same columns as plain focei on the same model, natural theta order
     expect_identical(names(fitM$parHist), names(fitP$parHist))
@@ -61,24 +70,23 @@ nmTest({
     expect_equal(exp(u$tka), b$tka)
     expect_true(all(is.finite(u$tka)))
     # final recorded mu values are the fitted thetas
-    expect_equal(unname(u$tcl[nrow(u)]), unname(fitM$theta[["tcl"]]),
-                 tolerance = 1e-6)
+    expect_equal(unname(u$tcl[nrow(u)]), unname(fitM$theta[["tcl"]]), tolerance = 1e-6)
 
     # console: standard columns, no bolt-on |mu| row, key note, blank grad cells
     expect_false(any(grepl("^\\|   mu\\|", out)))
     expect_true(any(grepl("mu-referenced thetas are regression-updated", out)))
     hdr <- grep("^\\|    #\\|", out, value = TRUE)[1]
     expect_false(is.na(hdr))
-    .pos <- vapply(c("tka", "tcl", "tv", "add\\.sd"),
-                   function(nm) as.numeric(regexpr(paste0("\\b", nm, "\\b"), hdr)),
-                   numeric(1))
+    .pos <- vapply(
+      c("tka", "tcl", "tv", "add\\.sd"),
+      function(nm) as.numeric(regexpr(paste0("\\b", nm, "\\b"), hdr)),
+      numeric(1)
+    )
     expect_true(all(.pos > 0))
     expect_true(all(diff(.pos) > 0))
     gradRows <- grep("^\\|    [GFCMSA]\\|", out, value = TRUE)
     expect_true(length(gradRows) > 0)
-    .blanks <- vapply(gradRows,
-                      function(r) sum(gregexpr(" {11}\\|", r)[[1]] > 0),
-                      numeric(1))
+    .blanks <- vapply(gradRows, function(r) sum(gregexpr(" {11}\\|", r)[[1]] > 0), numeric(1))
     expect_true(all(.blanks == 3))
 
     # plain focei is untouched: full-width columns, no NaN gradient entries
@@ -112,16 +120,18 @@ nmTest({
         linCmt() ~ add(add.sd)
       })
     }
-    fit <- .nlmixr(mod, theo_sd2, "mfocei",
-                   mfoceiControl(print = 0, maxOuterIterations = 2L,
-                                 outerOpt = "nlminb", covMethod = "", calcTables = FALSE))
+    fit <- .nlmixr(
+      mod,
+      theo_sd2,
+      "mfocei",
+      mfoceiControl(print = 0, maxOuterIterations = 2L, outerOpt = "nlminb", covMethod = "", calcTables = FALSE)
+    )
     nm <- names(fit$parHist)
     expect_true(all(c("tka", "tcl", "tv", "allo.cl", "add.sd") %in% nm))
     # natural ini order: coefficient between tv and add.sd
     expect_true(which(nm == "allo.cl") > which(nm == "tv"))
     expect_true(which(nm == "allo.cl") < which(nm == "add.sd"))
-    g <- fit$parHistData[grepl("Gradient|Difference|Sensitivity",
-                               fit$parHistData$type), ]
+    g <- fit$parHistData[grepl("Gradient|Difference|Sensitivity", fit$parHistData$type), ]
     expect_true(nrow(g) > 0)
     expect_true(all(is.nan(g$allo.cl)))
     expect_true(all(is.nan(g$tcl)))

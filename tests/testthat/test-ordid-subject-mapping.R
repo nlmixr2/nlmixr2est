@@ -19,14 +19,15 @@ nmTest({
     skip_if(!dir.exists(.src), "source tree not available (installed package)")
     .bad <- character(0)
     for (.f in .cpp()) {
-      if (basename(.f) == "nmParallel.h") next   # the one sanctioned mapping
+      if (basename(.f) == "nmParallel.h") {
+        next
+      } # the one sanctioned mapping
       .l <- readLines(.f, warn = FALSE)
       .hit <- grep("\\b(getOrdId|nmOrdId|foceiOrdId)\\s*\\(", .l)
       .hit <- .hit[!grepl("^\\s*(//|\\*|/\\*)", .l[.hit])]
       # outerSolveFill() runs one body in two modes (all subjects, or a single
       # named one), so it keeps its own loop and calls the rule directly
-      .hit <- .hit[!grepl("subject >= 0 ? subject : (nmOrdId(rx, i, nsub) - 1)",
-                          .l[.hit], fixed = TRUE)]
+      .hit <- .hit[!grepl("subject >= 0 ? subject : (nmOrdId(rx, i, nsub) - 1)", .l[.hit], fixed = TRUE)]
       if (length(.hit)) {
         .bad <- c(.bad, sprintf("%s:%d: %s", basename(.f), .hit, trimws(.l[.hit])))
       }
@@ -41,8 +42,7 @@ nmTest({
     .txt <- paste(readLines(.f, warn = FALSE), collapse = "\n")
     # rx->ordId is a permutation of the nsub*nsim solves, so a loop bounded by
     # anything else must fall back to the data order rather than read a subset
-    expect_true(grepl("((int64_t)n == nall) ? getOrdId(rxIn, pos) : pos + 1",
-                      .txt, fixed = TRUE))
+    expect_true(grepl("((int64_t)n == nall) ? getOrdId(rxIn, pos) : pos + 1", .txt, fixed = TRUE))
   })
 
   test_that("the thread id is set once per thread, not once per subject", {

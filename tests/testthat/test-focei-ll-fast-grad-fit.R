@@ -5,7 +5,6 @@
 # fits), so weekly-batched via .slowBatches in tests/testthat.R -- do NOT add skip_on_ci().
 
 nmTest({
-
   .ll_ode <- function() {
     ini({ tka <- log(1.5); tcl <- log(2.7); tv <- log(31.5)
           eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1; add.sd <- 0.7 })
@@ -24,12 +23,12 @@ nmTest({
   }
 
   test_that("ll() fast (analytic) fit matches the finite-difference fit", {
-    skip_on_cran(); skip_if_not_installed("nlmixr2data")
+    skip_on_cran()
+    skip_if_not_installed("nlmixr2data")
     d <- nlmixr2data::theo_sd
     ## cached fast=FALSE reference -- see helper-gradref.R
     fF <- .numRef("fit-fd-ll-ode", function() {
-      .f <- suppressMessages(nlmixr2(.ll_ode, d, "focei",
-              foceiControl(print = 0L, covMethod = "", fast = FALSE)))
+      .f <- suppressMessages(nlmixr2(.ll_ode, d, "focei", foceiControl(print = 0L, covMethod = "", fast = FALSE)))
       list(objf = .f$objf, theta = unname(.f$theta))
     })
     fT <- suppressMessages(nlmixr2(.ll_ode, d, "focei", foceiControl(print = 0L, covMethod = "", fast = TRUE)))
@@ -43,32 +42,37 @@ nmTest({
   })
 
   test_that("ll() with linCmt() falls back gracefully to finite differences", {
-    skip_on_cran(); skip_if_not_installed("nlmixr2data")
+    skip_on_cran()
+    skip_if_not_installed("nlmixr2data")
     # linCmt() has no 2nd-order state sensitivities (solved form), so both the exact-Hessian
     # objective and the analytic outer gradient are out of scope; fast=TRUE must transparently
     # fall back to finite differences and still converge to the same MLE (not error).
     d <- nlmixr2data::theo_sd
     ## cached fast=FALSE reference -- see helper-gradref.R
     fF <- .numRef("fit-fd-ll-lincmt", function() {
-      .f <- suppressMessages(nlmixr2(.ll_lincmt, d, "focei",
-              foceiControl(print = 0L, covMethod = "", fast = FALSE)))
+      .f <- suppressMessages(nlmixr2(.ll_lincmt, d, "focei", foceiControl(print = 0L, covMethod = "", fast = FALSE)))
       list(objf = .f$objf, theta = unname(.f$theta))
     })
     fT <- suppressMessages(nlmixr2(.ll_lincmt, d, "focei", foceiControl(print = 0L, covMethod = "", fast = TRUE)))
     expect_equal(as.numeric(fT$objf), as.numeric(fF$objf), tolerance = 1e-2)
     expect_equal(unname(fT$theta), fF$theta, tolerance = 1e-2)
-    expect_equal(as.integer(fT$env$nAnalyticGradDirect), 0L)   # out of scope: no analytic gradient
+    expect_equal(as.integer(fT$env$nAnalyticGradDirect), 0L) # out of scope: no analytic gradient
   })
 
   test_that("generalized (Poisson) ll() fast fit matches the finite-difference fit", {
     skip_on_cran()
     set.seed(42)
-    N <- 25L; nobs <- 6L
-    sim <- do.call(rbind, lapply(seq_len(N), function(i) {
-      x <- rnorm(nobs); e1 <- rnorm(1, 0, sqrt(0.4)); e2 <- rnorm(1, 0, sqrt(0.2))
-      data.frame(ID = i, TIME = seq_len(nobs),
-                 DV = rpois(nobs, exp(1.2 + e1 + (0.5 + e2) * x)), x = x, EVID = 0)
-    }))
+    N <- 25L
+    nobs <- 6L
+    sim <- do.call(
+      rbind,
+      lapply(seq_len(N), function(i) {
+        x <- rnorm(nobs)
+        e1 <- rnorm(1, 0, sqrt(0.4))
+        e2 <- rnorm(1, 0, sqrt(0.2))
+        data.frame(ID = i, TIME = seq_len(nobs), DV = rpois(nobs, exp(1.2 + e1 + (0.5 + e2) * x)), x = x, EVID = 0)
+      })
+    )
     pois <- function() {
       ini({ tint <- 1.2; tslp <- 0.5; eta.int ~ 0.4; eta.slp ~ 0.2 })
       model({ lam <- exp(tint + eta.int + (tslp + eta.slp) * x)
@@ -121,11 +125,20 @@ nmTest({
             cp ~ add(add.pk) | cp
             pca ~ add(add.pd) | pca })
   }
-  .phCtl <- function(fast) foceiControl(print = 0L, covMethod = "", fast = fast, sigdig = 4,
-                                        maxOuterIterations = 0L, maxInnerIterations = 100L)
+  .phCtl <- function(fast) {
+    foceiControl(
+      print = 0L,
+      covMethod = "",
+      fast = fast,
+      sigdig = 4,
+      maxOuterIterations = 0L,
+      maxInnerIterations = 100L
+    )
+  }
 
   test_that("multi-endpoint ll() objective matches its Gaussian twin (#838)", {
-    skip_on_cran(); skip_if_not_installed("nlmixr2data")
+    skip_on_cran()
+    skip_if_not_installed("nlmixr2data")
     d <- nlmixr2data::warfarin
     ## The twin is fitted LIVE, deliberately not cached through helper-gradref.R.  It is
     ## the reference's whole value that it is derived, not frozen: a cached twin recorded
@@ -142,8 +155,7 @@ nmTest({
     # per subject too -- a compensating error across subjects would pass the total.
     # as.numeric(): only the numbers are under test here, so do not let names/classes
     # carried by the accessor make the comparison fail for a non-numeric reason
-    expect_equal(as.numeric(ll$env$etaObf$OBJI), as.numeric(gs$env$etaObf$OBJI),
-                 tolerance = 1e-2)
+    expect_equal(as.numeric(ll$env$etaObf$OBJI), as.numeric(gs$env$etaObf$OBJI), tolerance = 1e-2)
     # and the conditional estimates agree (they differed by 0.17 while the bug was live)
     expect_equal(as.numeric(ll$eta$eta.cl), as.numeric(gs$eta$eta.cl), tolerance = 1e-2)
     # the analytic gradient really was used for the ll() arm
@@ -151,7 +163,8 @@ nmTest({
   })
 
   test_that("multi-endpoint ll() analytic gradient matches FD (#838)", {
-    skip_on_cran(); skip_if_not_installed("nlmixr2data")
+    skip_on_cran()
+    skip_if_not_installed("nlmixr2data")
     d <- nlmixr2data::warfarin
     ph <- suppressMessages(suppressWarnings(nlmixr2(.pkpdLL, d, "focei", .phCtl(TRUE))))
     g <- .foceiGradDirect(ph)
@@ -166,12 +179,11 @@ nmTest({
     ## The 2*length(theta) perturbed fits below therefore run only when the checked-in
     ## baselines/gradref-ll-multiple-endpoint.rds is regenerated deliberately
     ## (NLMIXR2EST_REGEN_GRADREF=TRUE), never on CI.
-    fd <- .gradRef("ll-multiple-endpoint", function()
-      vapply(names(base), function(nm) (ofvAt(nm, base[nm] + h) - ofvAt(nm, base[nm] - h)) / (2 * h),
-             numeric(1)))
+    fd <- .gradRef("ll-multiple-endpoint", function() {
+      vapply(names(base), function(nm) (ofvAt(nm, base[nm] + h) - ofvAt(nm, base[nm] - h)) / (2 * h), numeric(1))
+    })
     # 2% -- the reference's own step noise is ~1% on tcl (h=1e-3 vs 1e-4); before the
     # objective fix the worst component was off by 373x
     expect_equal(unname(g[names(base)]), unname(fd), tolerance = 0.02)
   })
-
 })

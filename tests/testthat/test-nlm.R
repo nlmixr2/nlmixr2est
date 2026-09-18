@@ -1,6 +1,5 @@
 nmTest({
   test_that("nlm models convert strings to numbers", {
-
     mod <- function() {
       ini({
         E0 <- 0.5
@@ -23,11 +22,9 @@ nmTest({
     m <- mod()
 
     expect_error(suppressMessages(rxode2::rxNorm(m$nlmRxModel$predOnly)), NA)
-
   })
 
   test_that("nlm models add interp", {
-
     mod <- function() {
       ini({
         E0 <- 0.5
@@ -44,8 +41,7 @@ nmTest({
 
     m <- suppressMessages(mod())
 
-    expect_false(grepl("linear\\(wt\\)",
-                       suppressMessages(rxode2::rxNorm(m$nlmRxModel$predOnly))))
+    expect_false(grepl("linear\\(wt\\)", suppressMessages(rxode2::rxNorm(m$nlmRxModel$predOnly))))
 
     mod <- function() {
       ini({
@@ -64,15 +60,13 @@ nmTest({
 
     m <- suppressMessages(mod())
 
-    expect_true(grepl("linear\\(wt\\)",
-                      suppressMessages(rxode2::rxNorm(m$nlmRxModel$predOnly))))
+    expect_true(grepl("linear\\(wt\\)", suppressMessages(rxode2::rxNorm(m$nlmRxModel$predOnly))))
   })
 
   test_that("nlm makes sense", {
-
-    dsn <- data.frame(i=1:1000)
+    dsn <- data.frame(i = 1:1000)
     dsn$time <- exp(rnorm(1000))
-    dsn$DV <- rbinom(1000,1,exp(-1+dsn$time)/(1+exp(-1+dsn$time)))
+    dsn$DV <- rbinom(1000, 1, exp(-1 + dsn$time) / (1 + exp(-1 + dsn$time)))
 
     mod <- function() {
       ini({
@@ -88,34 +82,34 @@ nmTest({
       })
     }
 
-    fit2 <- .nlmixr(mod, dsn, est="nlm", nlmControl(print=0))
+    fit2 <- .nlmixr(mod, dsn, est = "nlm", nlmControl(print = 0))
 
     expect_s3_class(fit2, "nlmixr2.nlm")
 
-    fit2 <- .nlmixr(mod, dsn, est="bobyqa", bobyqaControl(print=0))
+    fit2 <- .nlmixr(mod, dsn, est = "bobyqa", bobyqaControl(print = 0))
 
     expect_s3_class(fit2, "nlmixr2.bobyqa")
 
-    fit2 <- .nlmixr(mod, dsn, est="uobyqa", uobyqaControl(print=0))
+    fit2 <- .nlmixr(mod, dsn, est = "uobyqa", uobyqaControl(print = 0))
 
     expect_s3_class(fit2, "nlmixr2.uobyqa")
 
-    fit2 <- .nlmixr(mod, dsn, est="newuoa", newuoaControl(print=0))
+    fit2 <- .nlmixr(mod, dsn, est = "newuoa", newuoaControl(print = 0))
 
     expect_s3_class(fit2, "nlmixr2.newuoa")
 
-    fit2 <- .nlmixr(mod, dsn, est="n1qn1", n1qn1Control(print=0))
+    fit2 <- .nlmixr(mod, dsn, est = "n1qn1", n1qn1Control(print = 0))
 
     expect_s3_class(fit2, "nlmixr2.n1qn1")
 
-    fit2 <- .nlmixr(mod, dsn, est="lbfgsb3c", lbfgsb3cControl(print=0))
+    fit2 <- .nlmixr(mod, dsn, est = "lbfgsb3c", lbfgsb3cControl(print = 0))
 
     expect_s3_class(fit2, "nlmixr2.lbfgsb3c")
 
     fit3 <- suppressMessages({
       fit2 |>
         ini(g=unfix) |>
-        .nlmixr(dsn, "nlm", nlmControl(solveType="grad", print=0))
+        .nlmixr(dsn, "nlm", nlmControl(solveType = "grad", print = 0))
     })
 
     expect_s3_class(fit3, "nlmixr2.nlm")
@@ -123,7 +117,7 @@ nmTest({
     fit4 <- suppressMessages({
       fit2 |>
         ini(g=unfix) |>
-        .nlmixr(dsn, "nlm", nlmControl(solveType="fun", print=0))
+        .nlmixr(dsn, "nlm", nlmControl(solveType = "fun", print = 0))
     })
 
     expect_s3_class(fit4, "nlmixr2.nlm")
@@ -143,10 +137,14 @@ nmTest({
       })
     }
 
-    fit2 <- .nlmixr(one.cmt, nlmixr2data::theo_sd, est="nlm", list(print=0))
+    fit2 <- .nlmixr(one.cmt, nlmixr2data::theo_sd, est = "nlm", list(print = 0))
 
-    fit1 <- .nlmixr(one.cmt, nlmixr2data::theo_sd, est="nlm",
-                   nlmControl(scaleTo=0.0, scaleType="multAdd", print=0))
+    fit1 <- .nlmixr(
+      one.cmt,
+      nlmixr2data::theo_sd,
+      est = "nlm",
+      nlmControl(scaleTo = 0.0, scaleType = "multAdd", print = 0)
+    )
 
     expect_s3_class(fit1, "nlmixr2.nlm")
   })
@@ -224,7 +222,6 @@ nmTest({
   })
 
   test_that("nlm multi-subject parallel solving works", {
-
     one.cmt <- function() {
       ini({
         tka <- 0.45
@@ -242,7 +239,7 @@ nmTest({
 
     .dat <- nlmixr2data::theo_md
     .nSubjects <- length(unique(.dat$ID))
-    fit <- .nlmixr(one.cmt, .dat, est="nlm", list(print=0))
+    fit <- .nlmixr(one.cmt, .dat, est = "nlm", list(print = 0))
 
     expect_s3_class(fit, "nlmixr2.nlm")
     expect_true(.nSubjects > 1)
@@ -291,9 +288,7 @@ nmTest({
 
     .testSeed(123)
     .ev <- et(amt = 320, cmt = "depot", id = 1:6) |> et(seq(0.5, 24, by = 1.5))
-    .sim <- rxode2::rxSolve(odeMM, .ev,
-                            params = c(tka = 0.5, tvmax = log(60),
-                                       tkm = log(40), tv = 3.45))
+    .sim <- rxode2::rxSolve(odeMM, .ev, params = c(tka = 0.5, tvmax = log(60), tkm = log(40), tv = 3.45))
     .dat <- as.data.frame(.sim)[, c("id", "time", "cp")]
     .dat$cp <- .dat$cp + stats::rnorm(nrow(.dat), 0, 0.3)
     names(.dat) <- c("ID", "TIME", "DV")
@@ -326,8 +321,7 @@ nmTest({
     .h <- exp(-2 + -0.4 * .trt)
     .time <- pmin(stats::rexp(length(.trt), rate = .h), 5)
     .event <- as.integer(.time < 5)
-    .dat <- data.frame(id = seq_along(.trt), time = .time, event = .event,
-                       trt = .trt, dv = .time, evid = 0L)
+    .dat <- data.frame(id = seq_along(.trt), time = .time, event = .event, trt = .trt, dv = .time, evid = 0L)
 
     .mod <- function() {
       ini({

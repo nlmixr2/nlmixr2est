@@ -10,8 +10,7 @@
 #     kernel term for that reason;
 #   * the Ci correction is gamma-free -- that is what lets Ci factor at all.
 nmTest({
-  .K <- function(type, quad, gamma = 1, p = 2, df = 0,
-                 cs = c(1, 9), ws = c(0.9, 0.1)) {
+  .K <- function(type, quad, gamma = 1, p = 2, df = 0, cs = c(1, 9), ws = c(0.9, 0.1)) {
     impPropKernel_(type, df, cs, ws, quad, gamma, p)
   }
 
@@ -34,11 +33,9 @@ nmTest({
 
     # mixture parameters
     expect_error(impmapControl(proposal = "mixture", propMixScale = 1), "propMixScale")
-    expect_error(impmapControl(propMixScale = c(1, 4), propMixWeight = c(1, 1, 1)),
-                 "propMixWeight")
+    expect_error(impmapControl(propMixScale = c(1, 4), propMixWeight = c(1, 1, 1)), "propMixWeight")
     expect_error(impmapControl(propMixScale = c(2, 9)), "start at 1")
-    expect_error(impmapControl(propMixScale = c(1, 9, 4),
-                               propMixWeight = c(0.5, 0.3, 0.2)), "increasing")
+    expect_error(impmapControl(propMixScale = c(1, 9, 4), propMixWeight = c(0.5, 0.3, 0.2)), "increasing")
     expect_error(impmapControl(propMixScale = c(1, -3)), "propMixScale")
     # weights are normalized, not required to sum to 1
     expect_equal(impmapControl(propMixWeight = c(3, 1))$propMixWeight, c(0.75, 0.25))
@@ -46,10 +43,14 @@ nmTest({
     .ctl <- impmapControl(proposal = "laplace")
     expect_identical(do.call(impmapControl, .ctl)$proposal, "laplace")
 
-    expect_true(all(c("proposal", "propMixScale", "propMixWeight") %in%
-                      .impmapIsControlNames))
-    expect_true(all(c("proposal", "propMixScale", "propMixWeight") %in%
-                      .npInertImpCtl))
+    expect_true(all(
+      c("proposal", "propMixScale", "propMixWeight") %in%
+        .impmapIsControlNames
+    ))
+    expect_true(all(
+      c("proposal", "propMixScale", "propMixWeight") %in%
+        .npInertImpCtl
+    ))
   })
 
   test_that("the kernel is exactly zero at the peak for every family", {
@@ -67,8 +68,7 @@ nmTest({
 
   test_that("the Ci correction is gamma-free for every family", {
     for (.ty in c("normal", "t", "laplace", "mixture")) {
-      .cc <- vapply(c(0.3, 1, 5),
-                    function(g) unname(.K(.ty, 1.3, g, 4, df = 6)[2]), numeric(1))
+      .cc <- vapply(c(0.3, 1, 5), function(g) unname(.K(.ty, 1.3, g, 4, df = 6)[2]), numeric(1))
       expect_identical(diff(range(.cc)), 0)
     }
   })
@@ -82,12 +82,15 @@ nmTest({
       .logPeak <- -0.5 * p * log(2 * pi) - .corr
       .Sp <- 2 * pi^(p / 2) / gamma(p / 2)
       .f <- function(r) {
-        vapply(r, function(rr) {
-          rr^(p - 1) * exp(-unname(.K(ty, rr^2, 1, p, df)[1]))
-        }, numeric(1))
+        vapply(
+          r,
+          function(rr) {
+            rr^(p - 1) * exp(-unname(.K(ty, rr^2, 1, p, df)[1]))
+          },
+          numeric(1)
+        )
       }
-      exp(.logPeak) * .Sp *
-        integrate(.f, 0, Inf, rel.tol = 1e-10, subdivisions = 2000L)$value
+      exp(.logPeak) * .Sp * integrate(.f, 0, Inf, rel.tol = 1e-10, subdivisions = 2000L)$value
     }
     for (.p in 1:5) {
       expect_equal(.intg("normal", .p), 1, tolerance = 1e-8)
@@ -105,8 +108,7 @@ nmTest({
     # quadrature test above is what proves the value itself.
     expect_lt(unname(.K("t", 2, 1, 3, df = 4)[2]), 0)
     # monotone toward the Gaussian as the tail lightens
-    expect_gt(unname(.K("t", 2, 1, 3, df = 30)[2]),
-              unname(.K("t", 2, 1, 3, df = 4)[2]))
+    expect_gt(unname(.K("t", 2, 1, 3, df = 30)[2]), unname(.K("t", 2, 1, 3, df = 4)[2]))
     # and the normal family's correction is exactly zero, which is what makes
     # the xi normalization a no-op there
     expect_identical(unname(.K("normal", 2, 1, 3)[2]), 0)
@@ -116,8 +118,7 @@ nmTest({
     # Cov = (p+1) * S, so S = Sigma/(p+1) keeps gamma/iscaleMin/iscaleMax
     # meaning what they mean for the normal proposal
     for (.p in 1:5) {
-      expect_equal(unname(.K("laplace", 1, 1, .p)[3]), 1 / (.p + 1),
-                   tolerance = 1e-12)
+      expect_equal(unname(.K("laplace", 1, 1, .p)[3]), 1 / (.p + 1), tolerance = 1e-12)
     }
   })
 
@@ -127,7 +128,7 @@ nmTest({
     # LESS than the narrow component's kernel at large quad, because the wide
     # component carries the tail.
     .p <- 3
-    .narrow <- 1 / (2 * 1) * 20        # component 1 (c = 1) at quad = 20
+    .narrow <- 1 / (2 * 1) * 20 # component 1 (c = 1) at quad = 20
     .mix <- unname(.K("mixture", 20, 1, .p, cs = c(1, 9), ws = c(0.9, 0.1))[1])
     expect_lt(.mix, .narrow)
     # ... and strictly MORE than the wide component alone

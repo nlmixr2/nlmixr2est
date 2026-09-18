@@ -80,12 +80,10 @@
 #'
 #' }
 #'
-laplaceControl <- function(sigdig=3, ..., nAGQ=1) {
+laplaceControl <- function(sigdig = 3, ..., nAGQ = 1) {
   # interaction forces the calculation of the hessian, which is needed
   # for the adaptive Gaussian quadrature
-  .control <- foceiControl(sigdig=sigdig,
-                           ...,
-                           nAGQ=nAGQ)
+  .control <- foceiControl(sigdig = sigdig, ..., nAGQ = nAGQ)
   class(.control) <- "laplaceControl"
   .control
 }
@@ -93,7 +91,7 @@ laplaceControl <- function(sigdig=3, ..., nAGQ=1) {
 #' @rdname nmObjHandleControlObject
 #' @export
 nmObjHandleControlObject.laplaceControl <- function(control, env) {
-  assign("laplaceControl", control, envir=env)
+  assign("laplaceControl", control, envir = env)
 }
 
 #' @rdname getValidNlmixrControl
@@ -101,14 +99,19 @@ nmObjHandleControlObject.laplaceControl <- function(control, env) {
 getValidNlmixrCtl.laplace <- function(control) {
   .ctl <- control[[1]]
   .cls <- class(control)[1]
-  if (is.null(.ctl)) .ctl <- laplaceControl()
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list"))
+  if (is.null(.ctl)) {
+    .ctl <- laplaceControl()
+  }
+  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
     .ctl <- do.call("laplaceControl", .ctl)
-  if (inherits(.ctl, "foceiControl") ||
-        inherits(.ctl, "foceControl") ||
-        inherits(.ctl, "agqControl") ||
-        inherits(.ctl, "foControl") ||
-        inherits(.ctl, "foiControl")) {
+  }
+  if (
+    inherits(.ctl, "foceiControl") ||
+      inherits(.ctl, "foceControl") ||
+      inherits(.ctl, "agqControl") ||
+      inherits(.ctl, "foControl") ||
+      inherits(.ctl, "foiControl")
+  ) {
     .minfo(paste0("converting ", class(.ctl)[1], " to laplaceControl"))
     class(.ctl) <- NULL
     .ctl <- do.call(laplaceControl, .ctl)
@@ -133,22 +136,26 @@ nmObjGetControl.laplace <- function(x, ...) {
     .control <- get("control", .env, inherits = FALSE)
     if (inherits(.control, "laplaceControl")) return(.control)
   }
-  stop("cannot find laplace related control object", call.=FALSE)
+  stop("cannot find laplace related control object", call. = FALSE)
 }
 
-.laplaceControlToFoceiControl <- function(env, assign=TRUE) {
+.laplaceControlToFoceiControl <- function(env, assign = TRUE) {
   .laplaceControl <- env$laplaceControl
   .ui <- env$ui
   .n <- names(.laplaceControl)
-  .foceiControl <- setNames(lapply(.n,
-                                   function(n) {
-                                     if (n == "interaction") {
-                                       return(.laplaceControl$interaction)
-                                     }
-                                     .laplaceControl[[n]]
-                                   }), .n)
+  .foceiControl <- setNames(
+    lapply(.n, function(n) {
+      if (n == "interaction") {
+        return(.laplaceControl$interaction)
+      }
+      .laplaceControl[[n]]
+    }),
+    .n
+  )
   class(.foceiControl) <- "foceiControl"
-  if (assign) env$control <- .foceiControl
+  if (assign) {
+    env$control <- .foceiControl
+  }
   .foceiControl
 }
 
@@ -156,27 +163,26 @@ nmObjGetControl.laplace <- function(x, ...) {
 #' @export
 nmObjGetFoceiControl.laplace <- function(x, ...) {
   .env <- x[[1]]
-  .laplaceControlToFoceiControl(.env, assign=FALSE)
+  .laplaceControlToFoceiControl(.env, assign = FALSE)
 }
 
 #'@rdname nlmixr2Est
 #'@export
 nlmixr2Est.laplace <- function(env, ...) {
   .ui <- env$ui
-  rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'laplace'",
-                             .var.name=.ui$modelName)
+  rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'laplace'", .var.name = .ui$modelName)
   .control <- env$control
-  .foceiFamilyControl(env, ..., type="laplaceControl")
+  .foceiFamilyControl(env, ..., type = "laplaceControl")
   .laplaceControlToFoceiControl(env)
   on.exit({
-    if (exists("control", envir=.ui)) {
-      rm("control", envir=.ui)
+    if (exists("control", envir = .ui)) {
+      rm("control", envir = .ui)
     }
   })
   env$laplaceControl <- .control
   env$est <- "laplace"
   .ui <- env$ui
-  .foceiFamilyReturn(env, .ui, ..., est="laplace")
+  .foceiFamilyReturn(env, .ui, ..., est = "laplace")
 }
 attr(nlmixr2Est.laplace, "nlmixr2Priors") <- "general"
 attr(nlmixr2Est.laplace, "iov") <- TRUE
@@ -185,5 +191,5 @@ attr(nlmixr2Est.laplace, "unbounded") <- .foUnbounded
 
 #' @export
 rxUiDeparse.laplaceControl <- function(object, var) {
-  .rxUiDeparseFoceiControl(object, var, type="laplaceControl")
+  .rxUiDeparseFoceiControl(object, var, type = "laplaceControl")
 }

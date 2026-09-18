@@ -28,19 +28,22 @@ nmTest({
   .asReloaded <- function(fit, parent = globalenv(), drop = character(0)) {
     .env <- fit$env
     .nm <- setdiff(ls(.env, all.names = TRUE), drop)
-    .re <- list2env(mget(.nm, envir = .env),
-      envir = new.env(parent = parent)
-    )
+    .re <- list2env(mget(.nm, envir = .env), envir = new.env(parent = parent))
     class(.re) <- c("nlmixr2FitCore", paste0("nlmixr2.", fit$est))
     .re
   }
 
   test_that("$cor is NULL (not an error) when covMethod='' (#1038)", {
-    fit <- .nlmixr(one.cmt, nlmixr2data::theo_sd,
+    fit <- .nlmixr(
+      one.cmt,
+      nlmixr2data::theo_sd,
       est = "focei",
       control = foceiControl(
-        print = 0, maxInnerIterations = 1, maxOuterIterations = 1,
-        eval.max = 1, covMethod = ""
+        print = 0,
+        maxInnerIterations = 1,
+        maxOuterIterations = 1,
+        eval.max = 1,
+        covMethod = ""
       )
     )
 
@@ -58,11 +61,16 @@ nmTest({
   })
 
   test_that("$cor is still the theta correlation when a covariance exists (#1038)", {
-    fit <- .nlmixr(one.cmt, nlmixr2data::theo_sd,
+    fit <- .nlmixr(
+      one.cmt,
+      nlmixr2data::theo_sd,
       est = "focei",
       control = foceiControl(
-        print = 0, maxInnerIterations = 1, maxOuterIterations = 1,
-        eval.max = 1, covMethod = "r"
+        print = 0,
+        maxInnerIterations = 1,
+        maxOuterIterations = 1,
+        eval.max = 1,
+        covMethod = "r"
       )
     )
     skip_if(is.null(fit$cov), "no covariance was calculated")
@@ -72,9 +80,7 @@ nmTest({
     expect_equal(dimnames(.cor), dimnames(fit$cov))
     # diagonal is the standard error, off-diagonal the correlation
     expect_equal(diag(.cor), sqrt(diag(fit$cov)))
-    expect_equal(.cor[lower.tri(.cor)],
-      stats::cov2cor(fit$cov)[lower.tri(.cor)]
-    )
+    expect_equal(.cor[lower.tri(.cor)], stats::cov2cor(fit$cov)[lower.tri(.cor)])
 
     # The correlation line is reachable again.  It has to be asserted on the
     # LOCAL fit: the gate it replaced, exists("cor", x$env), is never true for
@@ -96,11 +102,26 @@ nmTest({
   test_that("$cor keeps a zero-variance row out of cov2cor (#1038)", {
     .env <- new.env(parent = emptyenv())
     .nm <- list(c("a", "b", "c"), c("a", "b", "c"))
-    assign("cov", matrix(c(
-      4, 1, 0,
-      1, 9, 0,
-      0, 0, 0
-    ), 3, 3, dimnames = .nm), envir = .env)
+    assign(
+      "cov",
+      matrix(
+        c(
+          4,
+          1,
+          0,
+          1,
+          9,
+          0,
+          0,
+          0,
+          0
+        ),
+        3,
+        3,
+        dimnames = .nm
+      ),
+      envir = .env
+    )
     .lst <- list(.env, FALSE)
     class(.lst) <- c("cor", "nmObjGet")
 
@@ -125,11 +146,16 @@ nmTest({
   })
 
   test_that("a reloaded fit does not read fit items out of its parent (#1038)", {
-    fit <- .nlmixr(one.cmt, nlmixr2data::theo_sd,
+    fit <- .nlmixr(
+      one.cmt,
+      nlmixr2data::theo_sd,
       est = "focei",
       control = foceiControl(
-        print = 0, maxInnerIterations = 1, maxOuterIterations = 1,
-        eval.max = 1, covMethod = "r"
+        print = 0,
+        maxInnerIterations = 1,
+        maxOuterIterations = 1,
+        eval.max = 1,
+        covMethod = "r"
       )
     )
 
@@ -138,9 +164,21 @@ nmTest({
     # copy so the lookup genuinely misses locally -- which is what nlmixr2save
     # does to "model", and what covMethod="" does to "cov".
     .decoy <- c(
-      "cov", "covList", "ranef", "mixNum", "mixList", "parHistData",
-      "dataSav", "idLvl", "covLvl", "model", "foceiModel", "saemModel",
-      "saem", "saem0", "llikObs"
+      "cov",
+      "covList",
+      "ranef",
+      "mixNum",
+      "mixList",
+      "parHistData",
+      "dataSav",
+      "idLvl",
+      "covLvl",
+      "model",
+      "foceiModel",
+      "saemModel",
+      "saem",
+      "saem0",
+      "llikObs"
     )
     .shadow <- new.env(parent = emptyenv())
     assign("cov", matrix(1, 1, 1, dimnames = list("bogus", "bogus")), envir = .shadow)
@@ -169,20 +207,23 @@ nmTest({
   })
 
   test_that("a reloaded fit's control does not come from its parent (#1038)", {
-    fit <- .nlmixr(one.cmt, nlmixr2data::theo_sd,
+    fit <- .nlmixr(
+      one.cmt,
+      nlmixr2data::theo_sd,
       est = "focei",
       control = foceiControl(
-        print = 0, maxInnerIterations = 1, maxOuterIterations = 1,
-        eval.max = 1, covMethod = ""
+        print = 0,
+        maxInnerIterations = 1,
+        maxOuterIterations = 1,
+        eval.max = 1,
+        covMethod = ""
       )
     )
     .shadow <- new.env(parent = emptyenv())
     assign("control", "bogus", envir = .shadow)
     assign("foceiControl0", "bogus", envir = .shadow)
 
-    .re <- .asReloaded(fit, parent = .shadow,
-      drop = c("control", "foceiControl0")
-    )
+    .re <- .asReloaded(fit, parent = .shadow, drop = c("control", "foceiControl0"))
     # with no local control the accessor must fail, not hand back the decoy
     expect_error(.re$control)
     expect_error(.re$foceiControl)

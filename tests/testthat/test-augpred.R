@@ -1,6 +1,5 @@
 nmTest({
   test_that("test augPred", {
-
     PKdata <- nlmixr2data::warfarin |>
       dplyr::filter(dvid == "cp") |>
       dplyr::select(-dvid) |>
@@ -36,22 +35,21 @@ nmTest({
 
     ap <- augPred(fitOne.comp.KA.solved_S)
 
-    expect_equal(as.character(ap[ap$id == 1 & ap$time == 120, "ind"]),
-                 c("Individual", "Population"))
+    expect_equal(as.character(ap[ap$id == 1 & ap$time == 120, "ind"]), c("Individual", "Population"))
 
-      df <-
-        tibble::tibble(
-          ID = c(rep(1, 6), rep(2, 6)),
-          TIME = c(0.00, 12.11, 18.41, 23.89, 36.00, 43.51, 0.00, 12.00, 20.00, 24.00, 36.80, 45.00),
-          AMT = c(1000, 1000, NA, 1000, 1000, NA, 1000, 2000, NA, 1000, 1000, NA),
-          DUR = c(2.5, 2.5, NA, 2.5, 2.5, NA, 2.5, 2.5, NA, 2.5, 2.5, NA),
-          DV = c(NA, NA, 3.0, NA, NA, 9.6, NA, NA, 7.0, NA, NA, 2.8),
-          WT = c(rep(55, 6), rep(48, 6))
-        ) |>
-        dplyr::mutate(EVID = ifelse(is.na(DV), 1, 0))
+    df <-
+      tibble::tibble(
+        ID = c(rep(1, 6), rep(2, 6)),
+        TIME = c(0.00, 12.11, 18.41, 23.89, 36.00, 43.51, 0.00, 12.00, 20.00, 24.00, 36.80, 45.00),
+        AMT = c(1000, 1000, NA, 1000, 1000, NA, 1000, 2000, NA, 1000, 1000, NA),
+        DUR = c(2.5, 2.5, NA, 2.5, 2.5, NA, 2.5, 2.5, NA, 2.5, 2.5, NA),
+        DV = c(NA, NA, 3.0, NA, NA, 9.6, NA, NA, 7.0, NA, NA, 2.8),
+        WT = c(rep(55, 6), rep(48, 6))
+      ) |>
+      dplyr::mutate(EVID = ifelse(is.na(DV), 1, 0))
 
-      fun <- function() {
-        ini({
+    fun <- function() {
+      ini({
           tvCl <- c(0, 4, Inf)
           tvVc <- c(0, 48, Inf)
 
@@ -59,50 +57,53 @@ nmTest({
           prop.sd <- 0.051529
 
         })
-        model({
+      model({
           Cl <- tvCl
           Vc <- tvVc*(WT/70)*exp(eta.Vc)
 
           # dynamical system
           linCmt() ~ prop(prop.sd)
         })
-      }
+    }
 
-      fit <- .nlmixr(fun, df, est = "posthoc", control = posthocControl(print = 0))
+    fit <- .nlmixr(fun, df, est = "posthoc", control = posthocControl(print = 0))
 
-      expect_error(augPred(fit), NA)
+    expect_error(augPred(fit), NA)
   })
 
   test_that("test augPred with xgxr dataset", {
-
     dat <- xgxr::case1_pkpd |>
-      dplyr::rename(DV=LIDV) |>
+      dplyr::rename(DV = LIDV) |>
       dplyr::filter(CMT %in% 1:2) |>
       dplyr::filter(TRTACT != "Placebo")
 
-      doses <- unique(dat$DOSE)
-      nid <- 3 # 7 ids per dose group
-      dat2 <- do.call("rbind",
-                      lapply(doses, function(x) {
-                        ids <- dat |>
-                          dplyr::filter(DOSE == x) |>
-                          dplyr::reframe(ids=unique(ID)) |>
-                          dplyr::pull()
-                        ids <- ids[seq(1, nid)]
-                        dat |>
-                          dplyr::filter(ID %in% ids)
-                      }))
+    doses <- unique(dat$DOSE)
+    nid <- 3 # 7 ids per dose group
+    dat2 <- do.call(
+      "rbind",
+      lapply(doses, function(x) {
+        ids <- dat |>
+          dplyr::filter(DOSE == x) |>
+          dplyr::reframe(ids = unique(ID)) |>
+          dplyr::pull()
+        ids <- ids[seq(1, nid)]
+        dat |>
+          dplyr::filter(ID %in% ids)
+      })
+    )
 
-      # Use centralized model from helper-models.R
-      cmt2 <- two.compartment
+    # Use centralized model from helper-models.R
+    cmt2 <- two.compartment
 
-      cmt2fit.logn <-
-        .nlmixr(
-          cmt2, dat2, "saem",
-          control = saemControlFast
-        )
+    cmt2fit.logn <-
+      .nlmixr(
+        cmt2,
+        dat2,
+        "saem",
+        control = saemControlFast
+      )
 
-      expect_error(augPred(cmt2fit.logn), NA)
+    expect_error(augPred(cmt2fit.logn), NA)
   })
 
   test_that("augPred with pop only data", {
@@ -123,17 +124,18 @@ nmTest({
 
     fit2 <-
       .nlmixr(
-        one.cmt, nlmixr2data::theo_sd, est="focei",
+        one.cmt,
+        nlmixr2data::theo_sd,
+        est = "focei",
         control = foceiControl(eval.max = 1)
       )
     expect_error(augPred(fit2), NA)
   })
 
   test_that("mixed pkpd with effect compartment augpred", {
-
     dat <- nlmixr2data::warfarin
 
-    mod <- function () {
+    mod <- function() {
       ini({
         tktr <- -0.0407039444259225
         tcl <- -1.94598426244892
@@ -176,7 +178,6 @@ nmTest({
   })
 
   test_that("augPred keeps the fit's original (factor/character) IDs (issue #450)", {
-
     one.cmt <- function() {
       ini({
         tka <- 0.45
@@ -198,7 +199,7 @@ nmTest({
     dat <- nlmixr2data::theo_sd
     dat$ID <- paste0("SUBJ-", dat$ID)
 
-    fit <- .nlmixr(one.cmt, dat, est="focei", control=foceiControlFast)
+    fit <- .nlmixr(one.cmt, dat, est = "focei", control = foceiControlFast)
 
     ap <- augPred(fit)
 
@@ -210,20 +211,16 @@ nmTest({
   })
 
   test_that("augPred with zero etas", {
-
     # Use centralized model from helper-models.R
     model.1compt.depot1 <- one.compartment |>
       ini(eta.ka~0)
 
-    fit1 <- .nlmixr(model.1compt.depot1, theo_sd, est="focei",
-                    foceiControlFast)
+    fit1 <- .nlmixr(model.1compt.depot1, theo_sd, est = "focei", foceiControlFast)
 
     expect_error(augPred(fit1), NA)
-
   })
 
   test_that("augPred with a zero eta used in the prediction (focei, #514)", {
-
     # #514: the zeroed eta (eta.v) appears in both the ODE and the
     # residual/prediction (cp = A1/v).  This exercised a code path that
     # failed for focei with "parameter(s) are required for solving: eta.v".
@@ -245,10 +242,8 @@ nmTest({
       })
     }
 
-    fit514 <- .nlmixr(pheno, nlmixr2data::pheno_sd, est = "focei",
-                      foceiControlFast)
+    fit514 <- .nlmixr(pheno, nlmixr2data::pheno_sd, est = "focei", foceiControlFast)
 
     expect_error(augPred(fit514), NA)
-
   })
 })

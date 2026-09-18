@@ -33,10 +33,13 @@ nmTest({
 
   test_that("a covFull focei fit names the full shape and caches the theta-only one", {
     .fit <- suppressWarnings(nlmixr2(
-      .oneCmt, nlmixr2data::theo_sd, est = "focei",
-      control = foceiControl(print = 0, covMethod = "s", calcTables = FALSE)))
+      .oneCmt,
+      nlmixr2data::theo_sd,
+      est = "focei",
+      control = foceiControl(print = 0, covMethod = "s", calcTables = FALSE)
+    ))
     expect_identical(.fit$covMethod, "s (full)")
-    expect_true(nrow(.fit$cov) > nrow(.fit$parFixedDf))   # theta + Omega
+    expect_true(nrow(.fit$cov) > nrow(.fit$parFixedDf)) # theta + Omega
     expect_true("s" %in% names(.fit$env$covList))
     .seMatchesCov(.fit)
 
@@ -51,8 +54,7 @@ nmTest({
     # the FD shapes are different estimators: solve(S_theta) vs the theta block of
     # solve(S_full), which also carries the Omega estimation uncertainty
     .thetaSe <- sqrt(diag(.fit$cov))
-    expect_false(isTRUE(all.equal(unname(.thetaSe),
-                                  unname(.fullSe[names(.thetaSe)]))))
+    expect_false(isTRUE(all.equal(unname(.thetaSe), unname(.fullSe[names(.thetaSe)]))))
 
     # ... and the full shape is now the cached one, so the round trip is exact
     expect_true("s (full)" %in% names(.fit$env$covList))
@@ -64,17 +66,22 @@ nmTest({
 
   test_that("setCov() refuses to switch to the shape already installed", {
     .fit <- suppressWarnings(nlmixr2(
-      .oneCmt, nlmixr2data::theo_sd, est = "focei",
-      control = foceiControl(print = 0, covMethod = "s", calcTables = FALSE)))
+      .oneCmt,
+      nlmixr2data::theo_sd,
+      est = "focei",
+      control = foceiControl(print = 0, covMethod = "s", calcTables = FALSE)
+    ))
     expect_error(setCov(.fit, "s (full)"), "no need to switch")
     expect_error(setCov(.fit, "nonesuch"), "not supported")
   })
 
   test_that("covFull=FALSE reports the unqualified name and caches nothing", {
     .fit <- suppressWarnings(nlmixr2(
-      .oneCmt, nlmixr2data::theo_sd, est = "focei",
-      control = foceiControl(print = 0, covMethod = "s", covFull = FALSE,
-                             calcTables = FALSE)))
+      .oneCmt,
+      nlmixr2data::theo_sd,
+      est = "focei",
+      control = foceiControl(print = 0, covMethod = "s", covFull = FALSE, calcTables = FALSE)
+    ))
     expect_identical(.fit$covMethod, "s")
     expect_equal(nrow(.fit$cov), nrow(.fit$parFixedDf))
     # only one shape was computed, so there is nothing to swap to
@@ -105,8 +112,11 @@ nmTest({
 
   test_that("the analytic shapes agree on the theta SEs and swap both ways", {
     .fit <- suppressWarnings(nlmixr2(
-      .odeCmt, nlmixr2data::theo_sd, est = "focei",
-      control = foceiControl(print = 0, calcTables = FALSE)))
+      .odeCmt,
+      nlmixr2data::theo_sd,
+      est = "focei",
+      control = foceiControl(print = 0, calcTables = FALSE)
+    ))
 
     setCov(.fit, "analytic")
     expect_identical(.fit$covMethod, "analytic")

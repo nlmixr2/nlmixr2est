@@ -1,7 +1,9 @@
 # Named vector of zeros for every random effect in an omega/sigma.  Accepts a
 # single matrix or, for IOV, a list of matrices (id + per-occasion levels).
 .vpcZeroRanef <- function(mat) {
-  if (is.null(mat)) return(NULL)
+  if (is.null(mat)) {
+    return(NULL)
+  }
   if (is.list(mat) && !is.matrix(mat)) {
     # unname() so the list names (id, occ) are not prefixed onto eta names
     return(do.call(c, unname(lapply(mat, .vpcZeroRanef))))
@@ -58,22 +60,31 @@
 #' head(vpcSim(fit, pred=TRUE))
 #'
 #' }
-vpcSim <- function(object, ..., keep=NULL, n=300,
-                   pred=FALSE, seed=1009, nretry=50, minN=10,
-                   normRelated=TRUE) {
-  checkmate::assertIntegerish(minN, len=1, any.missing=FALSE, lower=2)
-  checkmate::assertLogical(pred, len=1, any.missing=FALSE)
-  checkmate::assertIntegerish(nretry, len=1, any.missing=FALSE, lower=0)
-  checkmate::assertLogical(normRelated, len=1, any.missing=FALSE)
-  checkmate::assertCharacter(keep, null.ok=TRUE, pattern="^[.]*[a-zA-Z]+[a-zA-Z0-9._]*$")
+vpcSim <- function(
+  object,
+  ...,
+  keep = NULL,
+  n = 300,
+  pred = FALSE,
+  seed = 1009,
+  nretry = 50,
+  minN = 10,
+  normRelated = TRUE
+) {
+  checkmate::assertIntegerish(minN, len = 1, any.missing = FALSE, lower = 2)
+  checkmate::assertLogical(pred, len = 1, any.missing = FALSE)
+  checkmate::assertIntegerish(nretry, len = 1, any.missing = FALSE, lower = 0)
+  checkmate::assertLogical(normRelated, len = 1, any.missing = FALSE)
+  checkmate::assertCharacter(keep, null.ok = TRUE, pattern = "^[.]*[a-zA-Z]+[a-zA-Z0-9._]*$")
   checkmate::assertIntegerish(seed)
   # seed R's RNG and switch rxode2's own seed sequence off for the simulation: a
   # sequence left in force by an earlier rxSetSeed() advances by the thread
   # count per solve, which would make the simulations thread dependent
-  rxode2::rxWithSeed(seed, rxseed = -1,
-                     .vpcSimSeeded(object, ..., keep = keep, n = n, pred = pred,
-                                   nretry = nretry, minN = minN,
-                                   normRelated = normRelated))
+  rxode2::rxWithSeed(
+    seed,
+    rxseed = -1,
+    .vpcSimSeeded(object, ..., keep = keep, n = n, pred = pred, nretry = nretry, minN = minN, normRelated = normRelated)
+  )
 }
 
 #' Run the vpcSim() simulation once its seeds are in force
@@ -85,11 +96,11 @@ vpcSim <- function(object, ..., keep=NULL, n=300,
   nlmixr2global$finalUiCompressed <- FALSE
   on.exit(nlmixr2global$finalUiCompressed <- TRUE)
   .si <- object$simInfo
-  .env <- new.env(parent=emptyenv())
+  .env <- new.env(parent = emptyenv())
   .env$ui <- object$ui
   .env$data <- object$origData
   suppressMessages(.preProcessHooksRun(.env, "rxSolve"))
-  .si$object <- eval(.getSimModel(.env$ui, hideIpred=FALSE))
+  .si$object <- eval(.getSimModel(.env$ui, hideIpred = FALSE))
   .w <- which(names(.si) == "rx")
   .si <- .si[-.w]
   .si$nsim <- n
@@ -100,18 +111,16 @@ vpcSim <- function(object, ..., keep=NULL, n=300,
   .data$nlmixrRowNums <- seq_along(.data[, 1])
   if (normRelated) {
     .ui <- .env$ui
-    .predDf <-.ui$predDf
-    if (all(.predDf$dist %in% c("norm", "dnorm","t", "cauchy"))) {
-    } else {
+    .predDf <- .ui$predDf
+    if (all(.predDf$dist %in% c("norm", "dnorm", "t", "cauchy"))) {} else {
       if (is.null(.data$CMT)) {
         .ds <- object$dataSav
-        .data$nlmixrRowNums <- seq_along(.data[,1])
+        .data$nlmixrRowNums <- seq_along(.data[, 1])
         .ds <- .ds[, c("CMT", "nlmixrRowNums")]
-        .data <- merge(.data, .ds, by ="nlmixrRowNums")
-        .data <- .data[order(.data$nlmixrRowNums),]
+        .data <- merge(.data, .ds, by = "nlmixrRowNums")
+        .data <- .data[order(.data$nlmixrRowNums), ]
       }
-      .lst <- .Call(`_nlmixr2est_filterNormalLikeAndDoses`,
-                    .data$CMT, .predDf$distribution, .predDf$cmt)
+      .lst <- .Call(`_nlmixr2est_filterNormalLikeAndDoses`, .data$CMT, .predDf$distribution, .predDf$cmt)
       .lst$nlmixrRowNums <- .data[.lst$filter, "nlmixrRowNums"]
       if (.lst$nnorm == 0L) {
         stop("need normal data for vpcSim (or use normRelated=FALSE)")
@@ -134,10 +143,12 @@ vpcSim <- function(object, ..., keep=NULL, n=300,
   while (length(.w) > 0 && .nretry < nretry) {
     .w <- which(is.na(.sim$ipred))
     .simIds <- unique(.sim$sim.id[.w])
-    .sim <- .sim[!(.sim$sim.id %in% .simIds),, drop = FALSE]
+    .sim <- .sim[!(.sim$sim.id %in% .simIds), , drop = FALSE]
     if (length(.sim$sim.id) == 0) {
-      warning("when filtering for simulations, could not find any though some were flagged, be cautious with results",
-              call.=FALSE)
+      warning(
+        "when filtering for simulations, could not find any though some were flagged, be cautious with results",
+        call. = FALSE
+      )
       break
     }
     .sim$sim.id <- as.integer(factor(.sim$sim.id))
@@ -168,11 +179,12 @@ vpcSim <- function(object, ..., keep=NULL, n=300,
   }
   if (.nretry != 0) {
     if (length(.w) == 0) {
-      warning("'NA' values in vpc or npde simulation, re-simulated until all simulations were successful",
-              call.=FALSE)
+      warning(
+        "'NA' values in vpc or npde simulation, re-simulated until all simulations were successful",
+        call. = FALSE
+      )
     } else {
-      warning("'NA' values in vpc or npde simulation",
-              call.=FALSE)
+      warning("'NA' values in vpc or npde simulation", call. = FALSE)
     }
   }
   if (pred) {
@@ -181,7 +193,10 @@ vpcSim <- function(object, ..., keep=NULL, n=300,
     # For pred, zero out every random effect.  With IOV the omega is a
     # list of matrices (e.g. id + occ), so collect names across all of them.
     .si2$params <- c(
-      .si$params, .vpcZeroRanef(.si$omega), .vpcZeroRanef(.si$sigma))
+      .si$params,
+      .vpcZeroRanef(.si$omega),
+      .vpcZeroRanef(.si$sigma)
+    )
     .si2$omega <- NULL
     .si2$sigma <- NULL
     .si2$returnType <- "data.frame"
@@ -214,7 +229,7 @@ vpcNameDataCmts <- function(object, data) {
   on.exit(nlmixr2global$finalUiCompressed <- TRUE)
   .wdvid <- which(tolower(names(data)) == "dvid")
   .wcmt <- which(tolower(names(data)) == "cmt")
-  .env <- new.env(parent=emptyenv())
+  .env <- new.env(parent = emptyenv())
   .env$ui <- object$ui
   .env$data <- object$origData
   suppressMessages(.preProcessHooksRun(.env, "rxSolve"))
@@ -241,8 +256,10 @@ vpcNameDataCmts <- function(object, data) {
     if (inherits(data[[.wdvid]], "numeric")) {
       data[[.wdvid]] <- as.integer(data[[.wdvid]])
     }
-    if (!inherits(data[[.wdvid]], "factor") &&
-          inherits(data[[.wdvid]], "integer")) {
+    if (
+      !inherits(data[[.wdvid]], "factor") &&
+        inherits(data[[.wdvid]], "integer")
+    ) {
       .tmp <- data[[.wdvid]]
       attr(.tmp, "levels") <- .dvidF
       attr(.tmp, "class") <- "factor"
@@ -255,8 +272,10 @@ vpcNameDataCmts <- function(object, data) {
     if (inherits(data[[.wcmt]], "numeric")) {
       data[[.wcmt]] <- as.integer(data[[.wcmt]])
     }
-    if (!inherits(data[[.wcmt]], "factor") &&
-          inherits(data[[.wcmt]], "integer")) {
+    if (
+      !inherits(data[[.wcmt]], "factor") &&
+        inherits(data[[.wcmt]], "integer")
+    ) {
       .tmp <- data[[.wcmt]]
       attr(.tmp, "levels") <- .cmtF
       attr(.tmp, "class") <- "factor"
@@ -280,8 +299,10 @@ vpcNameDataCmts <- function(object, data) {
 #' @author Matthew L. Fidler
 #' @export
 #' @keywords internal
-vpcSimExpand <- function(object, sim, extra, fullData=NULL) {
-  if (is.null(extra)) return(sim)
+vpcSimExpand <- function(object, sim, extra, fullData = NULL) {
+  if (is.null(extra)) {
+    return(sim)
+  }
   if (is.null(fullData)) {
     .fullData <- object$origData
   } else {
@@ -290,25 +311,26 @@ vpcSimExpand <- function(object, sim, extra, fullData=NULL) {
   .fullData$nlmixrRowNums <- seq_len(nrow(.fullData))
   .bad <- extra[!(extra %in% c(names(.fullData), names(sim)))]
   if (length(.bad) > 0) {
-    warning("column(s) not in simulation or data: ",
-            paste(.bad, collapse=", "), call.=FALSE)
+    warning("column(s) not in simulation or data: ", paste(.bad, collapse = ", "), call. = FALSE)
   }
   .extra <- extra[extra %in% names(.fullData)]
   .extra <- .extra[!(.extra %in% names(sim))]
-  if (length(.extra) == 0) return(sim)
+  if (length(.extra) == 0) {
+    return(sim)
+  }
   .wid <- which(tolower(names(.fullData)) == "id")
   # merge in only the requested columns; other observed columns can
   # collide with the simulation's own (e.g. time.x/time.y); subset by the
   # id column's actual name before renaming so an id request cannot
   # reference a renamed column or duplicate it
   .keep <- unique(c(names(.fullData)[.wid], "nlmixrRowNums", .extra))
-  .fullData <- .fullData[, .keep, drop=FALSE]
+  .fullData <- .fullData[, .keep, drop = FALSE]
   .wid <- which(tolower(names(.fullData)) == "id")
   names(.fullData)[.wid] <- "ID"
   .sim <- sim
   .wid <- which(tolower(names(.sim)) == "id")
   names(.sim)[.wid] <- "ID"
-  .ret <- merge(.fullData, .sim, by=c("ID", "nlmixrRowNums"))
+  .ret <- merge(.fullData, .sim, by = c("ID", "nlmixrRowNums"))
   .w <- which(names(.ret) == "nlmixrRowNums")
   vpcNameDataCmts(object, .ret[, -.w])
 }

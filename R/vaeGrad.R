@@ -34,32 +34,61 @@
   .fDirs <- if (is.null(am$fDirs)) .dirs else am$fDirs
   .cm <- if (is.null(am$cols)) {
     .foceiAnalyticCols(.dirs, .fDirs, am$P2, if (is.null(am$P2r)) am$P2 else am$P2r, am$sigTh)
-  } else am$cols
-  .ix <- function(nm) { .i <- match(nm, .lhs); if (anyNA(.i)) NULL else as.integer(.i - 1L) }
+  } else {
+    am$cols
+  }
+  .ix <- function(nm) {
+    .i <- match(nm, .lhs)
+    if (anyNA(.i)) NULL else as.integer(.i - 1L)
+  }
   .hasR <- isTRUE(am$hasRvar)
   .hasT <- isTRUE(am$hasTrans)
   .predf <- .ix("rx_predf_")
-  .f1 <- .ix(.cm$f1); .f2 <- .ix(.cm$f2)
-  if (is.null(.predf) || is.null(.f1) || is.null(.f2)) return(NULL)
-  .o <- list(predf = .predf, f1 = .f1, f2 = .f2,
-             iiF = as.integer(.cm$iiF - 1L), jjF = as.integer(.cm$jjF - 1L),
-             fDirIdx = as.integer(.cm$fDirIdx - 1L),
-             nd = length(.dirs), hasR = .hasR, hasT = .hasT)
+  .f1 <- .ix(.cm$f1)
+  .f2 <- .ix(.cm$f2)
+  if (is.null(.predf) || is.null(.f1) || is.null(.f2)) {
+    return(NULL)
+  }
+  .o <- list(
+    predf = .predf,
+    f1 = .f1,
+    f2 = .f2,
+    iiF = as.integer(.cm$iiF - 1L),
+    jjF = as.integer(.cm$jjF - 1L),
+    fDirIdx = as.integer(.cm$fDirIdx - 1L),
+    nd = length(.dirs),
+    hasR = .hasR,
+    hasT = .hasT
+  )
   if (.hasR) {
-    .rvarf <- .ix("rx_rvarf_"); .rvar1 <- .ix(.cm$rvar1); .rvar2 <- .ix(.cm$rvar2)
-    if (is.null(.rvarf) || is.null(.rvar1) || is.null(.rvar2)) return(NULL)
-    .o$rvarf <- .rvarf; .o$rvar1 <- .rvar1; .o$rvar2 <- .rvar2
-    .o$ii <- as.integer(.cm$ii - 1L); .o$jj <- as.integer(.cm$jj - 1L)
-    .o$rsig <- .ix(.cm$rsig); .o$rsig2 <- .ix(.cm$rsig2)
-    if (is.null(.o$rsig) || is.null(.o$rsig2)) return(NULL)
+    .rvarf <- .ix("rx_rvarf_")
+    .rvar1 <- .ix(.cm$rvar1)
+    .rvar2 <- .ix(.cm$rvar2)
+    if (is.null(.rvarf) || is.null(.rvar1) || is.null(.rvar2)) {
+      return(NULL)
+    }
+    .o$rvarf <- .rvarf
+    .o$rvar1 <- .rvar1
+    .o$rvar2 <- .rvar2
+    .o$ii <- as.integer(.cm$ii - 1L)
+    .o$jj <- as.integer(.cm$jj - 1L)
+    .o$rsig <- .ix(.cm$rsig)
+    .o$rsig2 <- .ix(.cm$rsig2)
+    if (is.null(.o$rsig) || is.null(.o$rsig2)) {
+      return(NULL)
+    }
     .o$rsig1 <- lapply(.cm$rsig1, .ix)
-    if (any(vapply(.o$rsig1, is.null, logical(1)))) return(NULL)
+    if (any(vapply(.o$rsig1, is.null, logical(1)))) {
+      return(NULL)
+    }
     .o$sigA <- if (is.null(.cm$sigP2)) integer(0) else as.integer(.cm$sigP2$a - 1L)
     .o$sigB <- if (is.null(.cm$sigP2)) integer(0) else as.integer(.cm$sigP2$b - 1L)
   }
   if (.hasT) {
     .t <- .ix(c("rx_tyj_", "rx_tlambda_", "rx_tlow_", "rx_thi_"))
-    if (is.null(.t)) return(NULL)
+    if (is.null(.t)) {
+      return(NULL)
+    }
     .o$trans <- .t
   }
   .o
@@ -107,8 +136,8 @@
   .vaeGradEnv$data <- data
   .vaeGradEnv$ids <- unique(data$ID)
   .vaeGradEnv$regNames <- regNames
-  .vaeGradEnv$am <- NULL        # augmented model, built lazily on the first M-step
-  .vaeGradEnv$failed <- FALSE   # sticky: a declined build never re-attempts
+  .vaeGradEnv$am <- NULL # augmented model, built lazily on the first M-step
+  .vaeGradEnv$failed <- FALSE # sticky: a declined build never re-attempts
   ## Pooled-solve wiring: resolve the lhs offsets once.  NULL leaves
   ## .foceiAnalyticSolveAll on the rxSolve path (correct, just slower).
   .vaeGradEnv$outerCols <- NULL
@@ -121,10 +150,13 @@
     ## inner-sized pool this writes 26 states / 29 lhs into 6 / 6 buffers and dies
     ## with "double free or corruption".  The two switches move together.
     .vaeGradEnv$outerCols <- tryCatch(.vaeOuterCols(.am), error = function(e) NULL)
-    .vaeGradEnv$cores <- tryCatch({
-      .c <- .am$cores
-      if (is.null(.c) || is.na(.c) || .c < 1L) 1L else as.integer(.c)
-    }, error = function(e) 1L)
+    .vaeGradEnv$cores <- tryCatch(
+      {
+        .c <- .am$cores
+        if (is.null(.c) || is.na(.c) || .c < 1L) 1L else as.integer(.c)
+      },
+      error = function(e) 1L
+    )
   }
   invisible(NULL)
 }
@@ -138,47 +170,67 @@
 #'   caller fall back to the bobyqa regression for this M-step
 #' @noRd
 .vaeGradEval <- function(thVals, ebes, omega) {
-  if (isTRUE(.vaeGradEnv$failed)) return(NULL)
+  if (isTRUE(.vaeGradEnv$failed)) {
+    return(NULL)
+  }
   .ui <- .vaeGradEnv$ui
   .reg <- .vaeGradEnv$regNames
-  tryCatch({
-    .Om <- if (is.matrix(omega)) omega else diag(as.numeric(omega), nrow = length(omega))
-    .st <- .foceiAnalyticGradSetup(.ui, thVals, .Om, caller = "vae")
-    if (is.null(.st)) { .vaeGradEnv$failed <- TRUE; return(NULL) }
-    if (ncol(ebes) != .st$neta) { .vaeGradEnv$failed <- TRUE; return(NULL) }
-    ## The augmented model depends only on the model + direction set, never on
-    ## theta/eta/omega, so it is built once and reused for every M-step (the
-    ## symbolic .rxSens pass dominates otherwise).
-    if (is.null(.vaeGradEnv$am)) {
-      .am <- tryCatch(.ui$foceiOuter, error = function(e) NULL)
-      if (is.null(.am) || !inherits(.am$augMod, "rxode2")) {
+  tryCatch(
+    {
+      .Om <- if (is.matrix(omega)) omega else diag(as.numeric(omega), nrow = length(omega))
+      .st <- .foceiAnalyticGradSetup(.ui, thVals, .Om, caller = "vae")
+      if (is.null(.st)) {
         .vaeGradEnv$failed <- TRUE
         return(NULL)
       }
-      .vaeGradEnv$am <- .am
-    }
-    ## The pooled setup describes the SHAPE (lhs column maps, direction indices, which
-    ## kernel) and depends only on the model, so install it once and reuse it for every
-    ## M-step; the point itself -- theta, the encoder etas, omega -- is passed per call.
-    ## This is the same C++ core a focei fit's own gradient runs, which is the point:
-    ## the R implementation this replaced was a second, drifting copy of it.
-    if (!isTRUE(.vaeGradEnv$pooledOk)) {
-      .ps <- .foceiGradPooledSetup(.ui)
-      if (is.null(.ps) || !isTRUE(foceiGradPooledSetupLoad_(.ps))) {
+      if (ncol(ebes) != .st$neta) {
         .vaeGradEnv$failed <- TRUE
         return(NULL)
       }
-      .vaeGradEnv$pooledOk <- TRUE
-    }
-    .g <- foceiGradPooledDirect_(as.numeric(thVals), as.matrix(ebes),
-                                 solve(.Om), .st$dOiEst, as.numeric(.st$tr28),
-                                 .vaeGradEnv$cores)
-    if (is.null(.g)) return(NULL)
-    names(.g) <- c(.st$dir$thStruct, .st$ef$sgName, .st$omNames)
-    .g <- .g[.reg]
-    ## a regressed theta the gradient does not carry (not in thStruct) means the
-    ## direction set and the M-step disagree -- decline rather than step on NA
-    if (anyNA(.g) || !all(is.finite(.g))) return(NULL)
-    as.numeric(.g)
-  }, error = function(e) NULL)
+      ## The augmented model depends only on the model + direction set, never on
+      ## theta/eta/omega, so it is built once and reused for every M-step (the
+      ## symbolic .rxSens pass dominates otherwise).
+      if (is.null(.vaeGradEnv$am)) {
+        .am <- tryCatch(.ui$foceiOuter, error = function(e) NULL)
+        if (is.null(.am) || !inherits(.am$augMod, "rxode2")) {
+          .vaeGradEnv$failed <- TRUE
+          return(NULL)
+        }
+        .vaeGradEnv$am <- .am
+      }
+      ## The pooled setup describes the SHAPE (lhs column maps, direction indices, which
+      ## kernel) and depends only on the model, so install it once and reuse it for every
+      ## M-step; the point itself -- theta, the encoder etas, omega -- is passed per call.
+      ## This is the same C++ core a focei fit's own gradient runs, which is the point:
+      ## the R implementation this replaced was a second, drifting copy of it.
+      if (!isTRUE(.vaeGradEnv$pooledOk)) {
+        .ps <- .foceiGradPooledSetup(.ui)
+        if (is.null(.ps) || !isTRUE(foceiGradPooledSetupLoad_(.ps))) {
+          .vaeGradEnv$failed <- TRUE
+          return(NULL)
+        }
+        .vaeGradEnv$pooledOk <- TRUE
+      }
+      .g <- foceiGradPooledDirect_(
+        as.numeric(thVals),
+        as.matrix(ebes),
+        solve(.Om),
+        .st$dOiEst,
+        as.numeric(.st$tr28),
+        .vaeGradEnv$cores
+      )
+      if (is.null(.g)) {
+        return(NULL)
+      }
+      names(.g) <- c(.st$dir$thStruct, .st$ef$sgName, .st$omNames)
+      .g <- .g[.reg]
+      ## a regressed theta the gradient does not carry (not in thStruct) means the
+      ## direction set and the M-step disagree -- decline rather than step on NA
+      if (anyNA(.g) || !all(is.finite(.g))) {
+        return(NULL)
+      }
+      as.numeric(.g)
+    },
+    error = function(e) NULL
+  )
 }

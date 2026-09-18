@@ -21,33 +21,33 @@
 
 # est -> list(type=, description=) for the built-in, user-facing methods.
 .nlmixr2EstTypeInfo <- list(
-  fo      = list(type="Linearized", description="First-Order"),
-  foi     = list(type="Linearized", description="First-Order with Interaction"),
-  foce    = list(type="Linearized", description="First-Order Conditional Estimation"),
-  focei   = list(type="Linearized", description="FOCE with Interaction"),
-  focep   = list(type="Linearized", description="FOCE+ (residual at conditional eta)"),
-  nlme    = list(type="Linearized", description="Lindstrom-Bates alternating (nlme)"),
-  laplace = list(type="Integral approximation", description="Laplace approximation"),
-  agq     = list(type="Integral approximation", description="Adaptive Gaussian Quadrature"),
-  imp     = list(type="Integral approximation", description="Importance sampling (no MAP search)"),
-  impmap  = list(type="Integral approximation", description="Importance sampling (MAP)"),
-  saem    = list(type="Stochastic EM", description="Stochastic Approximation EM"),
-  qrpem   = list(type="Stochastic EM", description="Quasi-Random Parametric EM"),
-  npag    = list(type="Nonparametric", description="NonParametric Adaptive Grid"),
-  npb     = list(type="Nonparametric", description="Nonparametric Bayes"),
-  emvi    = list(type="Machine learning", description="Variational EM"),
-  fbvi    = list(type="Machine learning", description="Full Bayes variational inference"),
-  vae     = list(type="Machine learning", description="Variational autoencoder NLME"),
-  nlm      = list(type="Optimizer (NLM family)", description="nlm quasi-Newton"),
-  nlminb   = list(type="Optimizer (NLM family)", description="PORT nlminb"),
-  bobyqa   = list(type="Optimizer (NLM family)", description="BOBYQA (derivative-free)"),
-  newuoa   = list(type="Optimizer (NLM family)", description="NEWUOA (derivative-free)"),
-  uobyqa   = list(type="Optimizer (NLM family)", description="UOBYQA (derivative-free)"),
-  n1qn1    = list(type="Optimizer (NLM family)", description="n1qn1 (BFGS)"),
-  trust    = list(type="Optimizer (NLM family)", description="Trust-region Newton (C++-resident, RcppTrust)"),
-  lbfgsb3c = list(type="Optimizer (NLM family)", description="L-BFGS-B"),
-  optim    = list(type="Optimizer (NLM family)", description="Nelder-Mead / BFGS (optim)"),
-  nls      = list(type="Optimizer (NLM family)", description="nonlinear least squares")
+  fo = list(type = "Linearized", description = "First-Order"),
+  foi = list(type = "Linearized", description = "First-Order with Interaction"),
+  foce = list(type = "Linearized", description = "First-Order Conditional Estimation"),
+  focei = list(type = "Linearized", description = "FOCE with Interaction"),
+  focep = list(type = "Linearized", description = "FOCE+ (residual at conditional eta)"),
+  nlme = list(type = "Linearized", description = "Lindstrom-Bates alternating (nlme)"),
+  laplace = list(type = "Integral approximation", description = "Laplace approximation"),
+  agq = list(type = "Integral approximation", description = "Adaptive Gaussian Quadrature"),
+  imp = list(type = "Integral approximation", description = "Importance sampling (no MAP search)"),
+  impmap = list(type = "Integral approximation", description = "Importance sampling (MAP)"),
+  saem = list(type = "Stochastic EM", description = "Stochastic Approximation EM"),
+  qrpem = list(type = "Stochastic EM", description = "Quasi-Random Parametric EM"),
+  npag = list(type = "Nonparametric", description = "NonParametric Adaptive Grid"),
+  npb = list(type = "Nonparametric", description = "Nonparametric Bayes"),
+  emvi = list(type = "Machine learning", description = "Variational EM"),
+  fbvi = list(type = "Machine learning", description = "Full Bayes variational inference"),
+  vae = list(type = "Machine learning", description = "Variational autoencoder NLME"),
+  nlm = list(type = "Optimizer (NLM family)", description = "nlm quasi-Newton"),
+  nlminb = list(type = "Optimizer (NLM family)", description = "PORT nlminb"),
+  bobyqa = list(type = "Optimizer (NLM family)", description = "BOBYQA (derivative-free)"),
+  newuoa = list(type = "Optimizer (NLM family)", description = "NEWUOA (derivative-free)"),
+  uobyqa = list(type = "Optimizer (NLM family)", description = "UOBYQA (derivative-free)"),
+  n1qn1 = list(type = "Optimizer (NLM family)", description = "n1qn1 (BFGS)"),
+  trust = list(type = "Optimizer (NLM family)", description = "Trust-region Newton (C++-resident, RcppTrust)"),
+  lbfgsb3c = list(type = "Optimizer (NLM family)", description = "L-BFGS-B"),
+  optim = list(type = "Optimizer (NLM family)", description = "Nelder-Mead / BFGS (optim)"),
+  nls = list(type = "Optimizer (NLM family)", description = "nonlinear least squares")
 )
 
 #' Stamp the type/description attributes onto the built-in nlmixr2Est methods
@@ -63,13 +63,17 @@
 .nlmixr2EstTypeApply <- function(ns) {
   for (.est in names(.nlmixr2EstTypeInfo)) {
     .nm <- paste0("nlmixr2Est.", .est)
-    if (!exists(.nm, envir=ns, inherits=FALSE)) next
-    .fn <- get(.nm, envir=ns, inherits=FALSE)
-    if (!is.function(.fn)) next
+    if (!exists(.nm, envir = ns, inherits = FALSE)) {
+      next
+    }
+    .fn <- get(.nm, envir = ns, inherits = FALSE)
+    if (!is.function(.fn)) {
+      next
+    }
     .info <- .nlmixr2EstTypeInfo[[.est]]
     attr(.fn, "type") <- .info$type
     attr(.fn, "description") <- .info$description
-    assign(.nm, .fn, envir=ns)
+    assign(.nm, .fn, envir = ns)
   }
   invisible()
 }
@@ -85,17 +89,19 @@
   .rows <- lapply(.all, function(.est) {
     .info <- .nlmixr2EstTypeInfo[[.est]]
     if (is.null(.info)) {
-      .fn <- try(utils::getS3method("nlmixr2Est", .est), silent=TRUE)
+      .fn <- try(utils::getS3method("nlmixr2Est", .est), silent = TRUE)
       if (!inherits(.fn, "try-error")) {
         .type <- attr(.fn, "type")
         if (!is.null(.type)) {
           .desc <- attr(.fn, "description")
-          .info <- list(type=.type, description=if (is.null(.desc)) "" else .desc)
+          .info <- list(type = .type, description = if (is.null(.desc)) "" else .desc)
         }
       }
     }
-    if (is.null(.info)) return(NULL)
-    list(est=.est, type=.info$type, description=.info$description)
+    if (is.null(.info)) {
+      return(NULL)
+    }
+    list(est = .est, type = .info$type, description = .info$description)
   })
   .rows[!vapply(.rows, is.null, logical(1))]
 }
@@ -105,24 +111,34 @@
 #' @param current optional est= string typed by the user, highlighted if found
 #' @return character vector of display lines
 #' @noRd
-.nlmixr2EstTypeLines <- function(current=NULL) {
+.nlmixr2EstTypeLines <- function(current = NULL) {
   .rows <- .nlmixr2EstTypeTagged()
-  if (length(.rows) == 0L) return(character(0))
+  if (length(.rows) == 0L) {
+    return(character(0))
+  }
   .uTypes <- unique(vapply(.rows, `[[`, character(1), "type"))
-  .ord <- c(.nlmixr2EstTypeOrder[.nlmixr2EstTypeOrder %in% .uTypes],
-            sort(setdiff(.uTypes, .nlmixr2EstTypeOrder)))
-  unlist(lapply(.ord, function(.ty) {
-    .sub <- Filter(function(.r) .r$type == .ty, .rows)
-    c(paste0(cli::symbol$bullet, " ", crayon::bold(.ty)),
-      vapply(.sub, function(.r) {
-        .name <- if (!is.null(current) && identical(.r$est, current)) {
-          crayon::yellow(.r$est)
-        } else {
-          crayon::blue(.r$est)
-        }
-        paste0("   ", cli::symbol$line, " ", .name, " -- ", .r$description)
-      }, character(1)))
-  }), use.names=FALSE)
+  .ord <- c(.nlmixr2EstTypeOrder[.nlmixr2EstTypeOrder %in% .uTypes], sort(setdiff(.uTypes, .nlmixr2EstTypeOrder)))
+  unlist(
+    lapply(.ord, function(.ty) {
+      .sub <- Filter(function(.r) .r$type == .ty, .rows)
+      c(
+        paste0(cli::symbol$bullet, " ", crayon::bold(.ty)),
+        vapply(
+          .sub,
+          function(.r) {
+            .name <- if (!is.null(current) && identical(.r$est, current)) {
+              crayon::yellow(.r$est)
+            } else {
+              crayon::blue(.r$est)
+            }
+            paste0("   ", cli::symbol$line, " ", .name, " -- ", .r$description)
+          },
+          character(1)
+        )
+      )
+    }),
+    use.names = FALSE
+  )
 }
 
 #' Print the tagged, category-grouped estimation methods to the console
@@ -134,8 +150,7 @@
 .nlmixr2EstTypePrint <- function() {
   .lines <- .nlmixr2EstTypeLines()
   if (length(.lines) > 0L) {
-    message("nlmixr2 estimation methods (specify with `est=`):\n",
-            paste(.lines, collapse="\n"))
+    message("nlmixr2 estimation methods (specify with `est=`):\n", paste(.lines, collapse = "\n"))
   }
   invisible(nlmixr2AllEstType())
 }
@@ -153,13 +168,12 @@
 nlmixr2AllEstType <- function() {
   .rows <- .nlmixr2EstTypeTagged()
   .uTypes <- unique(vapply(.rows, `[[`, character(1), "type"))
-  .ord <- c(.nlmixr2EstTypeOrder[.nlmixr2EstTypeOrder %in% .uTypes],
-            sort(setdiff(.uTypes, .nlmixr2EstTypeOrder)))
+  .ord <- c(.nlmixr2EstTypeOrder[.nlmixr2EstTypeOrder %in% .uTypes], sort(setdiff(.uTypes, .nlmixr2EstTypeOrder)))
   .rows <- .rows[order(match(vapply(.rows, `[[`, character(1), "type"), .ord))]
   data.frame(
-    est=vapply(.rows, `[[`, character(1), "est"),
-    type=vapply(.rows, `[[`, character(1), "type"),
-    description=vapply(.rows, `[[`, character(1), "description"),
-    stringsAsFactors=FALSE
+    est = vapply(.rows, `[[`, character(1), "est"),
+    type = vapply(.rows, `[[`, character(1), "type"),
+    description = vapply(.rows, `[[`, character(1), "description"),
+    stringsAsFactors = FALSE
   )
 }

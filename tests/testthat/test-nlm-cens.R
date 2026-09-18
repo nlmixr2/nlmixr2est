@@ -29,7 +29,7 @@ nmTest({
   for (meth in c("nlm", "bobyqa", "lbfgsb3c", "n1qn1", "newuoa", "nlminb", "optim")) {
     if (meth == "optim") {
       fit <- suppressMessages(suppressWarnings(
-        .nlmixr(one.cmt, .dat, est = meth, list(print = 0, method="BFGS"))
+        .nlmixr(one.cmt, .dat, est = meth, list(print = 0, method = "BFGS"))
       ))
     } else {
       fit <- suppressMessages(suppressWarnings(
@@ -48,7 +48,7 @@ nmTest({
   for (meth in c("nlm", "bobyqa", "lbfgsb3c", "n1qn1", "newuoa", "nlminb", "optim")) {
     if (meth == "optim") {
       fit0 <- suppressMessages(suppressWarnings(
-        .nlmixr(one.cmt, .dat0, est = meth, list(print = 0, method="BFGS"))
+        .nlmixr(one.cmt, .dat0, est = meth, list(print = 0, method = "BFGS"))
       ))
     } else {
       fit0 <- suppressMessages(suppressWarnings(
@@ -72,13 +72,15 @@ nmTest({
   test_that("nls does not support censoring", {
     expect_error(
       suppressMessages(suppressWarnings(
-        .nlmixr(one.cmt, .datM3, est = "nls", list(print = 0)))))
+        .nlmixr(one.cmt, .datM3, est = "nls", list(print = 0))
+      ))
+    )
   })
 
   for (meth in c("nlm", "bobyqa", "lbfgsb3c", "n1qn1", "newuoa", "nlminb", "optim")) {
     if (meth == "optim") {
       fit_m3 <- suppressMessages(suppressWarnings(
-        .nlmixr(one.cmt, .datM3, est = meth, list(print = 0, method="BFGS"))
+        .nlmixr(one.cmt, .datM3, est = meth, list(print = 0, method = "BFGS"))
       ))
     } else {
       fit_m3 <- suppressMessages(suppressWarnings(
@@ -93,21 +95,21 @@ nmTest({
     })
   }
 
-
   test_that("nls does not support censoring", {
     expect_error(
       suppressMessages(suppressWarnings(
-        .nlmixr(one.cmt, .datM3, est = "nls", list(print = 0))))
+        .nlmixr(one.cmt, .datM3, est = "nls", list(print = 0))
+      ))
     )
   })
 
   for (meth in c("nlm", "bobyqa", "lbfgsb3c", "n1qn1", "newuoa", "nlminb", "optim")) {
     if (meth == "optim") {
       fit_base <- suppressMessages(suppressWarnings(
-        .nlmixr(one.cmt, .dat, est = meth, list(print = 0, method="BFGS"))
+        .nlmixr(one.cmt, .dat, est = meth, list(print = 0, method = "BFGS"))
       ))
       fit_m3 <- suppressMessages(suppressWarnings(
-        .nlmixr(one.cmt, .datM3, est = meth, list(print = 0, method="BFGS"))
+        .nlmixr(one.cmt, .datM3, est = meth, list(print = 0, method = "BFGS"))
       ))
       expect_false(isTRUE(all.equal(fit_base$objf, fit_m3$objf)))
     } else {
@@ -126,12 +128,12 @@ nmTest({
   # M2 censoring: CENS=0 with a finite LIMIT
   .datM2 <- .dat
   .datM2$CENS <- 0L
-  .datM2$LIMIT <- 0  # interval censoring: all obs have a lower bound of 0
+  .datM2$LIMIT <- 0 # interval censoring: all obs have a lower bound of 0
 
   for (meth in c("nlm", "bobyqa", "lbfgsb3c", "n1qn1", "newuoa", "nlminb", "optim")) {
     if (meth == "optim") {
       fit_m2 <- suppressMessages(suppressWarnings(
-        .nlmixr(one.cmt, .datM2, est = meth, list(print = 0, method="BFGS"))
+        .nlmixr(one.cmt, .datM2, est = meth, list(print = 0, method = "BFGS"))
       ))
     } else {
       fit_m2 <- suppressMessages(suppressWarnings(
@@ -147,10 +149,10 @@ nmTest({
   for (meth in c("nlm", "bobyqa", "lbfgsb3c", "n1qn1", "newuoa", "nlminb", "optim")) {
     if (meth == "optim") {
       fit_base <- suppressMessages(suppressWarnings(
-        .nlmixr(one.cmt, .dat, est = meth, list(print = 0, method="BFGS"))
+        .nlmixr(one.cmt, .dat, est = meth, list(print = 0, method = "BFGS"))
       ))
       fit_m2 <- suppressMessages(suppressWarnings(
-        .nlmixr(one.cmt, .datM2, est = meth, list(print = 0, method="BFGS"))
+        .nlmixr(one.cmt, .datM2, est = meth, list(print = 0, method = "BFGS"))
       ))
     } else {
       fit_base <- suppressMessages(suppressWarnings(
@@ -167,12 +169,12 @@ nmTest({
 
   # M4 censoring: CENS!=0 with a finite LIMIT
   .datM4 <- .datM3
-  .datM4$LIMIT <- 0  # add LIMIT for M4
+  .datM4$LIMIT <- 0 # add LIMIT for M4
 
   for (meth in c("nlm", "bobyqa", "lbfgsb3c", "n1qn1", "newuoa", "nlminb", "optim")) {
     if (meth == "optim") {
       fit_m4 <- suppressMessages(suppressWarnings(
-        .nlmixr(one.cmt, .datM4, est = meth, list(print = 0, method="BFGS"))
+        .nlmixr(one.cmt, .datM4, est = meth, list(print = 0, method = "BFGS"))
       ))
     } else {
       fit_m4 <- suppressMessages(suppressWarnings(
@@ -188,10 +190,10 @@ nmTest({
   for (meth in c("nlm", "bobyqa", "lbfgsb3c", "n1qn1", "newuoa", "nlminb", "optim")) {
     if (meth == "optim") {
       fit_m3 <- suppressMessages(suppressWarnings(
-        .nlmixr(one.cmt, .datM3, est = meth, list(print = 0, method="BFGS"))
+        .nlmixr(one.cmt, .datM3, est = meth, list(print = 0, method = "BFGS"))
       ))
       fit_m4 <- suppressMessages(suppressWarnings(
-        .nlmixr(one.cmt, .datM4, est = meth, list(print = 0, method="BFGS"))
+        .nlmixr(one.cmt, .datM4, est = meth, list(print = 0, method = "BFGS"))
       ))
     } else {
       fit_m3 <- suppressMessages(suppressWarnings(
@@ -222,16 +224,17 @@ nmTest({
     f.focei <- .nlmixr(one.cmt, .datM3, est = "focei", control = foceiControl(print = 0))
     for (meth in c("bobyqa", "newuoa", "uobyqa", "nlminb")) {
       fit <- .nlmixr(one.cmt, .datM3, est = meth, control = nlmControl(print = 0))
-      expect_equal(as.numeric(fit$theta[["tka"]]), as.numeric(f.focei$theta[["tka"]]),
-                   tolerance = 0.1, info = meth)
-      expect_equal(as.numeric(fit$theta[["tcl"]]), as.numeric(f.focei$theta[["tcl"]]),
-                   tolerance = 0.1, info = meth)
-      expect_equal(as.numeric(fit$theta[["tv"]]), as.numeric(f.focei$theta[["tv"]]),
-                   tolerance = 0.1, info = meth)
+      expect_equal(as.numeric(fit$theta[["tka"]]), as.numeric(f.focei$theta[["tka"]]), tolerance = 0.1, info = meth)
+      expect_equal(as.numeric(fit$theta[["tcl"]]), as.numeric(f.focei$theta[["tcl"]]), tolerance = 0.1, info = meth)
+      expect_equal(as.numeric(fit$theta[["tv"]]), as.numeric(f.focei$theta[["tv"]]), tolerance = 0.1, info = meth)
       # add.sd is the parameter the r=0 bug corrupted most (it inflated it
       # ~9x in the reproduction that motivated #976); give it a bit more room
-      expect_equal(as.numeric(fit$theta[["add.sd"]]), as.numeric(f.focei$theta[["add.sd"]]),
-                   tolerance = 0.2, info = meth)
+      expect_equal(
+        as.numeric(fit$theta[["add.sd"]]),
+        as.numeric(f.focei$theta[["add.sd"]]),
+        tolerance = 0.2,
+        info = meth
+      )
     }
   })
 
@@ -268,14 +271,9 @@ nmTest({
     }
     f.focei <- .nlmixr(one.cmt.propT, .datM3, est = "focei", control = foceiControl(print = 0))
     fit <- .nlmixr(one.cmt.propT, .datM3, est = "bobyqa", control = nlmControl(print = 0))
-    expect_equal(as.numeric(fit$theta[["tka"]]), as.numeric(f.focei$theta[["tka"]]),
-                 tolerance = 0.15)
-    expect_equal(as.numeric(fit$theta[["tcl"]]), as.numeric(f.focei$theta[["tcl"]]),
-                 tolerance = 0.15)
-    expect_equal(as.numeric(fit$theta[["tv"]]), as.numeric(f.focei$theta[["tv"]]),
-                 tolerance = 0.15)
-    expect_equal(as.numeric(fit$theta[["prop.sd"]]), as.numeric(f.focei$theta[["prop.sd"]]),
-                 tolerance = 0.15)
+    expect_equal(as.numeric(fit$theta[["tka"]]), as.numeric(f.focei$theta[["tka"]]), tolerance = 0.15)
+    expect_equal(as.numeric(fit$theta[["tcl"]]), as.numeric(f.focei$theta[["tcl"]]), tolerance = 0.15)
+    expect_equal(as.numeric(fit$theta[["tv"]]), as.numeric(f.focei$theta[["tv"]]), tolerance = 0.15)
+    expect_equal(as.numeric(fit$theta[["prop.sd"]]), as.numeric(f.focei$theta[["prop.sd"]]), tolerance = 0.15)
   })
-
 })

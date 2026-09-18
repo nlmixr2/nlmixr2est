@@ -1,7 +1,8 @@
 nmTest({
   # rxUse references every ini() parameter so each variant parses
   .modeledResidUi <- function(errLine, body = "", ini = "") {
-    .txt <- sprintf("function() {
+    .txt <- sprintf(
+      "function() {
       ini({
         tka <- 0.45; tcl <- 1; tv <- 3.45
         add.sd <- 0.7; prop.sd <- 0.1; pw <- 1; lam <- 0.5; cov.sd <- 0.001
@@ -16,7 +17,11 @@ nmTest({
         %s
         %s
       })
-    }", ini, body, errLine)
+    }",
+      ini,
+      body,
+      errLine
+    )
     rxode2::rxode2(eval(parse(text = .txt)))
   }
   .hook <- function(ui) {
@@ -50,8 +55,7 @@ nmTest({
     on.exit(nlmixr2global$nlmixr2EstEnv$nlmixrPureInputUi <- NULL, add = TRUE)
     .ui <- .modeledResidUi("cp ~ add(a)", "a <- add.sd * exp(eta.sd)")
     expect_null(.preProcessSaemModeledResid(.ui, "focei", NULL, NULL))
-    expect_warning(.new <- .preProcessSaemModeledResid(.ui, "saem", NULL, NULL)$ui,
-                   "modeled residual error for 'cp'")
+    expect_warning(.new <- .preProcessSaemModeledResid(.ui, "saem", NULL, NULL)$ui, "modeled residual error for 'cp'")
     expect_equal(as.character(.new$predDf$distribution), "dnorm")
     expect_equal(.new$saemResMod, 0L)
     expect_true("a <- add.sd * exp(eta.sd)" %in% .lines(.new))
@@ -113,16 +117,21 @@ nmTest({
     .new <- .hook(.modeledResidUi("cp ~ add(a)", "a <- add.sd"))
     expect_true("add.sd <- exp(rxBoundedTr.add.sd + rx.eta.add.sd)" %in% .lines(.new))
     expect_equal(.new$iniDf$est[.new$iniDf$name == "rxBoundedTr.add.sd"], log(0.7))
-    expect_true(any(.new$muRefDataFrame$theta == "rxBoundedTr.add.sd" &
-                      .new$muRefDataFrame$eta == "rx.eta.add.sd"))
+    expect_true(any(
+      .new$muRefDataFrame$theta == "rxBoundedTr.add.sd" &
+        .new$muRefDataFrame$eta == "rx.eta.add.sd"
+    ))
     expect_equal(.new$boundedTransforms[[1]]$type, "lower_exp")
     # a theta inside an expression uses its own bounds: unbounded -> additive
     .new <- .hook(.modeledResidUi("cp ~ add(a)", "a <- add.sd * exp(eta.sd)"))
     expect_true("add.sd <- rxBoundedTr.add.sd + rx.eta.add.sd" %in% .lines(.new))
     expect_equal(.new$boundedTransforms[[1]]$type, "identity")
     # ... and a bounded theta inside an expression uses those bounds
-    .new <- .hook(.modeledResidUi("cp ~ add(a)", "a <- add.sd * exp(eta.sd) + WT * cov2",
-                                  ini = "cov2 <- c(0, 0.01, 1)"))
+    .new <- .hook(.modeledResidUi(
+      "cp ~ add(a)",
+      "a <- add.sd * exp(eta.sd) + WT * cov2",
+      ini = "cov2 <- c(0, 0.01, 1)"
+    ))
     expect_true("cov2 <- expit(rxBoundedTr.cov2 + rx.eta.cov2, 0, 1)" %in% .lines(.new))
     # t() degrees of freedom and a binomial probability
     .ui <- .modeledResidUi("cp ~ add(add.sd) + dt(nu)", ini = "nu <- 5")
@@ -145,13 +154,18 @@ nmTest({
       expect_false("rx.eta.add.sd" %in% .new$nonMuEtas, info = paste(.r, collapse = ","))
     }
     .new <- .saemAddPseudoEtas(.ui, data.frame(theta = "add.sd", lower = 0.1, upper = Inf))
-    expect_true(all(c("rx.l.add.sd <- exp(rxBoundedTr.add.sd + rx.eta.add.sd)",
-                      "add.sd <- 0.1 + rx.l.add.sd") %in% .lines(.new)))
+    expect_true(all(
+      c("rx.l.add.sd <- exp(rxBoundedTr.add.sd + rx.eta.add.sd)", "add.sd <- 0.1 + rx.l.add.sd") %in% .lines(.new)
+    ))
   })
 
   test_that("temporary etas skip mu-referenced, fixed, count and prediction thetas", {
-    expect_equal(nrow(.saemPseudoEtaThetas(.hook(
-      .modeledResidUi("cp ~ add(a)", "a <- exp(lam + eta.sd)")))), 0L)
+    expect_equal(
+      nrow(.saemPseudoEtaThetas(.hook(
+        .modeledResidUi("cp ~ add(a)", "a <- exp(lam + eta.sd)")
+      ))),
+      0L
+    )
     .s <- .saemPseudoEtaThetas(.modeledResidUi("cp ~ add(a) + dnorm()", "a <- add.sd * cp"))
     expect_equal(.s$theta, "add.sd")
     .uf <- rxode2::rxode2(function() {
@@ -231,7 +245,8 @@ nmTest({
     # a ui that already carries the component (set directly, as nlmixr2Est0 does) and is
     # then compressed must still accept the merge
     .d <- rxode2::rxUiDecompress(suppressWarnings(
-      .preProcessBoundedTransform(.new, "saem", NULL, saemControl())$ui))
+      .preProcessBoundedTransform(.new, "saem", NULL, saemControl())$ui
+    ))
     .d$boundedTransforms <- .d$boundedTransforms
     .d <- .saemRestorePseudoTransforms(rxode2::rxUiCompress(.d), .stash)
     expect_setequal(.names(.d), c("t1", "add.sd"))
@@ -244,9 +259,12 @@ nmTest({
       model({ ka <- exp(tka + eta.ka) * t1; cl <- exp(tcl + eta.cl); v <- exp(tv)
               cp <- linCmt(); a <- add.sd * exp(eta.sd); cp ~ add(a) })
     }
-    .f <- suppressWarnings(.nlmixr(.m, nlmixr2data::theo_sd, est = "saem",
-      control = saemControl(nBurn = 10, nEm = 10, seed = 42L, print = 0L, covMethod = "",
-                            calcTables = FALSE)))
+    .f <- suppressWarnings(.nlmixr(
+      .m,
+      nlmixr2data::theo_sd,
+      est = "saem",
+      control = saemControl(nBurn = 10, nEm = 10, seed = 42L, print = 0L, covMethod = "", calcTables = FALSE)
+    ))
     expect_true(all(c("t1", "add.sd") %in% names(fixef(.f))))
     expect_false(any(grepl("^rx", names(fixef(.f)))))
     expect_true(fixef(.f)[["t1"]] > 0 && fixef(.f)[["t1"]] < 2)
@@ -267,10 +285,8 @@ nmTest({
   })
 
   test_that("dnorm() is inserted before a | condition", {
-    expect_equal(.saemAddDnormToErrLine(quote(cp ~ add(a) | cp)),
-                 quote(cp ~ add(a) + dnorm() | cp))
-    expect_equal(.saemAddDnormToErrLine(quote(cp ~ add(add.sd) + prop(b))),
-                 quote(cp ~ add(add.sd) + prop(b) + dnorm()))
+    expect_equal(.saemAddDnormToErrLine(quote(cp ~ add(a) | cp)), quote(cp ~ add(a) + dnorm() | cp))
+    expect_equal(.saemAddDnormToErrLine(quote(cp ~ add(add.sd) + prop(b))), quote(cp ~ add(add.sd) + prop(b) + dnorm()))
   })
 
   mMod <- function() {
@@ -303,16 +319,16 @@ nmTest({
     fM <- .nlmixr(mMod, nlmixr2data::theo_sd, est = "saem", control = ctl)
     fD <- .nlmixr(mDnorm, nlmixr2data::theo_sd, est = "saem", control = ctl)
     expect_true(any(grepl("modeled residual error for 'cp'", fM$runInfo, fixed = TRUE)))
-    expect_true(any(grepl("temporary eta for eta-less likelihood theta(s): add.sd",
-                          fM$runInfo, fixed = TRUE)))
+    expect_true(any(grepl("temporary eta for eta-less likelihood theta(s): add.sd", fM$runInfo, fixed = TRUE)))
     expect_equal(fixef(fM), fixef(fD))
     expect_equal(fM$omega, fD$omega)
     expect_equal(fM$objf, fD$objf)
     for (.f in list(fM, fD)) {
       # the temporary eta is gone and the model is reported as written
-      expect_false(any(grepl("^rx[.](eta|l)[.]|^rxBoundedTr", c(names(.f), names(.f$eta),
-                                                               rownames(.f$omega),
-                                                               names(fixef(.f))))))
+      expect_false(any(grepl(
+        "^rx[.](eta|l)[.]|^rxBoundedTr",
+        c(names(.f), names(.f$eta), rownames(.f$omega), names(fixef(.f)))
+      )))
       expect_true("add.sd" %in% names(fixef(.f)))
       expect_false(any(grepl("^rx", .f$finalUi$iniDf$name)))
       # the table reports the prediction, not the log-density (#1084)

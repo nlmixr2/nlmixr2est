@@ -3,7 +3,9 @@
     .cls <- class(obj)
     attr(.cls, ".foceiEnv") <- NULL
     .tmp <- list(
-      .cls, obj$uif$ini, obj$fun.txt,
+      .cls,
+      obj$uif$ini,
+      obj$fun.txt,
       obj$origControl
     )
     if (inherits(obj, "data.frame")) {

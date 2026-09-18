@@ -5,13 +5,12 @@
 ## algebra, no ODE solve: essential.
 
 nmTest({
-
   ## three groups: cols 1-2 are two shapes of one covariate, cols 3 and 4 are
   ## separate covariates
   .design <- function(N = 80L, seed = 3L) {
     .testSeed(seed)
     X <- matrix(rnorm(N * 4L), N, 4L)
-    X[, 2] <- X[, 1] * 0.99 + rnorm(N, sd = 0.05)   # shape mate of col 1
+    X[, 2] <- X[, 1] * 0.99 + rnorm(N, sd = 0.05) # shape mate of col 1
     colnames(X) <- c("A_power", "A_lin", "B", "C")
     X
   }
@@ -31,12 +30,14 @@ nmTest({
     ## group, and the mutual-exclusion machinery already arbitrates them
     expect_gt(abs(stats::cor(X[, 1], X[, 2])), 0.98)
     expect_false(.vaeClusterBinds(
-      .vaeCovCluster(X, .grp), .grp))
+      .vaeCovCluster(X, .grp),
+      .grp
+    ))
   })
 
   test_that("a colinear pair of DIFFERENT covariates merges their groups", {
     X <- .design()
-    X[, 4] <- X[, 3] * 0.97 + rnorm(nrow(X), sd = 0.1)  # B ~ C
+    X[, 4] <- X[, 3] * 0.97 + rnorm(nrow(X), sd = 0.1) # B ~ C
     cl <- .vaeCovCluster(X, .grp)
     ## groups 2 and 3 land in one cluster; group 1 stays alone
     expect_identical(length(unique(cl)), 2L)
@@ -51,8 +52,7 @@ nmTest({
     cl <- .vaeCovCluster(X, .grp)
     ## every group lies entirely inside one cluster -- the interface guarantee
     ## the C++ side relies on
-    expect_true(all(vapply(split(cl, .grp),
-                           function(z) length(unique(z)) == 1L, logical(1))))
+    expect_true(all(vapply(split(cl, .grp), function(z) length(unique(z)) == 1L, logical(1))))
   })
 
   test_that("single linkage chains a~b~c into one component", {
@@ -76,7 +76,7 @@ nmTest({
     X[, 4] <- X[, 3] * 0.97 + rnorm(nrow(X), sd = 0.1)
     ref <- .vaeCovCluster(X, .grp)
     Y <- X
-    Y[, 3] <- Y[, 3] * 1000 + 17      # affine, as a re-centering would be
+    Y[, 3] <- Y[, 3] * 1000 + 17 # affine, as a re-centering would be
     Y[, 4] <- Y[, 4] - 4
     expect_identical(.vaeCovCluster(Y, .grp), ref)
   })
@@ -84,21 +84,21 @@ nmTest({
   test_that("degenerate designs fall back to the groups without warning", {
     X <- .design()
     id <- match(.grp, unique(.grp))
-    expect_identical(.vaeCovCluster(X[1:2, ], .grp), id)   # nrow < 3
-    expect_identical(.vaeCovCluster(matrix(0, 80L, 0L), integer(0)),
-                     integer(0))
+    expect_identical(.vaeCovCluster(X[1:2, ], .grp), id) # nrow < 3
+    expect_identical(.vaeCovCluster(matrix(0, 80L, 0L), integer(0)), integer(0))
     ## a constant column correlates with nothing, and must not reach stats::cor
-    Z <- X; Z[, 4] <- 5
+    Z <- X
+    Z[, 4] <- 5
     expect_silent(zc <- .vaeCovCluster(Z, .grp))
     expect_identical(zc, id)
     ## a non-finite entry is a fallback, not an error
-    W <- X; W[1, 1] <- NA_real_
+    W <- X
+    W[1, 1] <- NA_real_
     expect_identical(.vaeCovCluster(W, .grp), id)
   })
 
   test_that("a mismatched group length is an error, not silent recycling", {
-    expect_error(.vaeCovCluster(.design(), 1:3),
-                 "one entry per covariate column")
+    expect_error(.vaeCovCluster(.design(), 1:3), "one entry per covariate column")
   })
 
   test_that("clusterBinds is not anyDuplicated -- the theo_sd regression", {
@@ -119,7 +119,7 @@ nmTest({
     expect_true(vaeClusterSwapOnly_(c(0L, 2L), c(1L, 3L), clu))
     ## the case that forced a MULTISET comparison rather than position by
     ## position: the swap moves a column past one the two supports share
-    clu2 <- c(1L, 2L, 3L, 1L)          # columns 0 and 3 are mates
+    clu2 <- c(1L, 2L, 3L, 1L) # columns 0 and 3 are mates
     expect_true(vaeClusterSwapOnly_(c(0L, 1L), c(1L, 3L), clu2))
     ## not a swap: identical, different sizes, or a cross-cluster exchange
     expect_false(vaeClusterSwapOnly_(c(0L, 2L), c(0L, 2L), clu))
@@ -136,8 +136,7 @@ nmTest({
 
   test_that("vaeControl carries covSelectColinearCut and validates it", {
     expect_identical(vaeControl()$covSelectColinearCut, .vaeColinearCut)
-    expect_identical(vaeControl(covSelectColinearCut = 0.75)$covSelectColinearCut,
-                     0.75)
+    expect_identical(vaeControl(covSelectColinearCut = 0.75)$covSelectColinearCut, 0.75)
     ## a cut outside [0, 1] is not an abs(cor), and a vector is not a cut
     expect_error(vaeControl(covSelectColinearCut = 1.5))
     expect_error(vaeControl(covSelectColinearCut = -0.1))
@@ -149,9 +148,13 @@ nmTest({
     ## time-varying and never reach the search at all
     .wt <- c(60, 70, 80, 90, 65, 75, 85, 95)
     .lbm <- .wt * 0.8 + c(1, -1, 1, -1, 1, -1, 1, -1) * 0.05
-    d <- data.frame(id = rep(1:8, each = 2), time = rep(0:1, 8),
-                    dv = rnorm(16),
-                    wt = rep(.wt, each = 2), lbm = rep(.lbm, each = 2))
+    d <- data.frame(
+      id = rep(1:8, each = 2),
+      time = rep(0:1, 8),
+      dv = rnorm(16),
+      wt = rep(.wt, each = 2),
+      lbm = rep(.lbm, each = 2)
+    )
     res <- vaeCovariates(d, warn = FALSE)
     expect_true("cluster" %in% names(res))
     expect_true(.vaeClusterBinds(res$cluster, res$group))

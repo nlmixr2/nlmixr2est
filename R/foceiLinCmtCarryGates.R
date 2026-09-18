@@ -9,10 +9,7 @@
 #' solve, so nothing may be emitted without this.
 #' @noRd
 .rxFoceiLinCmtCarryCapable <- function() {
-  exists("linCmtCarryLiveTest",
-    envir = asNamespace("rxode2"),
-    inherits = FALSE
-  )
+  exists("linCmtCarryLiveTest", envir = asNamespace("rxode2"), inherits = FALSE)
 }
 
 #' Does the loaded rxode2 have the fast-path pin (which1=-8) an event jump
@@ -92,14 +89,15 @@
   # the emission renders in-loop via rxFromSE(S(<repr>)) instead.
   # (nolint: lintr resolves cross-file helpers against the installed package)
   tryCatch(
-    .rxFoceiLinCmtCarryEligible(x, s, etaVars,
+    .rxFoceiLinCmtCarryEligible(
+      x,
+      s,
+      etaVars,
       data = NULL, # nolint: object_usage_linter.
       render = FALSE
     ),
     error = function(e) {
-      warning("linCmt() carry detection failed; standard gradient used",
-        call. = FALSE
-      )
+      warning("linCmt() carry detection failed; standard gradient used", call. = FALSE)
       NULL
     }
   )
@@ -129,11 +127,14 @@
   # two carry columns per pair (carry + tracker), plus one shared amounts
   # tracker when any pair has a jump channel and one shared lag tracker when
   # any pair has an alag() channel; RX_LINCMT_CARRY_MAXPAIRS = 8 columns
-  .need <- 2L * nrow(pairs) +
+  .need <- 2L *
+    nrow(pairs) +
     as.integer(any(!is.na(pairs$fD) | !is.na(pairs$lagD))) +
     as.integer(any(!is.na(pairs$lagD)))
   if (.need > 8L) {
-    stop("the carry-eligible (linCmt parameter, eta) pairs need ", .need,
+    stop(
+      "the carry-eligible (linCmt parameter, eta) pairs need ",
+      .need,
       " carry columns (8 available); reduce the model or use ",
       "foceiControl(linCmtSensCarry=\"none\")",
       call. = FALSE

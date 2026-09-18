@@ -32,8 +32,7 @@
 #' @keywords internal
 #'
 #' @export
-.nlmSetupEnv <- function(par, ui, data, modelInfo, control,
-                         lower=NULL, upper=NULL) {
+.nlmSetupEnv <- function(par, ui, data, modelInfo, control, lower = NULL, upper = NULL) {
   .ctl <- control
   if (!any(names(.ctl) == "gradTo")) {
     .ctl$gradTo <- 0.0
@@ -58,23 +57,25 @@
     .ctl$shi21maxHess <- 20L
   }
   if (!any(names(.ctl) == "shiErr")) {
-    .ctl$shiErr <-   (.Machine$double.eps)^(1/3)
+    .ctl$shiErr <- (.Machine$double.eps)^(1 / 3)
   }
 
   if (!any(names(.ctl) == "hessErr")) {
-    .ctl$hessErr <-   (.Machine$double.eps)^(1/3)
+    .ctl$hessErr <- (.Machine$double.eps)^(1 / 3)
   }
   # nlmSetup (nlm.cpp) reads control$iterPrintControl; external callers that
   # hand-build a control (e.g. babelmixr2 fmeMcmc) may omit it, so synthesize
   # one from the scalar print args instead of erroring in C.
   if (!inherits(.ctl$iterPrintControl, "iterPrintControl")) {
     .ctl$iterPrintControl <-
-      .absorbIterPrintControl(print = if (is.null(.ctl$print)) 1L else .ctl$print,
-                              printNcol = .ctl$printNcol,
-                              useColor = .ctl$useColor)
+      .absorbIterPrintControl(
+        print = if (is.null(.ctl$print)) 1L else .ctl$print,
+        printNcol = .ctl$printNcol,
+        useColor = .ctl$useColor
+      )
   }
 
-  .env <- new.env(parent=emptyenv())
+  .env <- new.env(parent = emptyenv())
   .env$rxControl <- .ctl$rxControl
   .env$thetaNames <- names(par)
   .f <- modelInfo
@@ -104,8 +105,7 @@
   # dydt() is a no-op stub and every solve silently free-runs a zero
   # derivative (states frozen at their post-dose values).
   .mv <- rxode2::rxModelVars(nlmixr2global$nlmEnv$model)
-  if (is.list(.mv$indLin) && length(.mv$indLin) == 4L &&
-        !isTRUE(unname(.env$rxControl$method) == 3L)) {
+  if (is.list(.mv$indLin) && length(.mv$indLin) == 4L && !isTRUE(unname(.env$rxControl$method) == 3L)) {
     .env$rxControl$method <- 3L
   }
   .env$param <- setNames(par, sprintf("THETA[%d]", seq_along(par)))
@@ -123,7 +123,8 @@
   if (!is.null(.env$thetaGrad)) {
     .env$esActive <- isTRUE(tryCatch(
       rxode2::rxEventSensLoadModel(.env$thetaGrad),
-      error = function(e) FALSE))
+      error = function(e) FALSE
+    ))
   }
   if (is.null(.ctl$scaleC) && .ctl$scaleType == 2L && .ctl$gradTo > 0) {
     .tmp <- .Call(`_nlmixr2est_nlmGetScaleC`, par, .ctl$gradTo)
@@ -149,9 +150,13 @@
       # side effect (src/nlm.cpp), so the guarded value must be re-pushed via
       # nlmSetScaleC() to actually take effect.
       .sc0 <- ui$scaleCtheta
-      .tmp <- vapply(seq_along(.tmp), function(i) {
-        .guardScaleC(.tmp[i], .sc0[i])
-      }, numeric(1))
+      .tmp <- vapply(
+        seq_along(.tmp),
+        function(i) {
+          .guardScaleC(.tmp[i], .sc0[i])
+        },
+        numeric(1)
+      )
       .ctl$scaleC <- .tmp
       .Call(`_nlmixr2est_nlmSetScaleC`, .ctl$scaleC)
     }
@@ -189,10 +194,10 @@
 #' @author Matthew L. Fidler
 #' @keywords internal
 .nlmFreeEnv <- function() {
- .Call(`_nlmixr2est_nlmFree`)
- rxode2::rxSolveFree()
- ## Deactivate any event-jump sensitivity injection from .nlmSetupEnv; no-op if never activated.
- tryCatch(rxode2::rxEventSensDeactivate(), error = function(e) NULL)
+  .Call(`_nlmixr2est_nlmFree`)
+  rxode2::rxSolveFree()
+  ## Deactivate any event-jump sensitivity injection from .nlmSetupEnv; no-op if never activated.
+  tryCatch(rxode2::rxEventSensDeactivate(), error = function(e) NULL)
 }
 #' Finalizes output list
 #'
@@ -206,8 +211,7 @@
 #' @export
 #' @author Matthew L. Fidler
 #' @keywords internal
-.nlmFinalizeList <- function(env, lst, par="par", printLine=TRUE,
-                             hessianCov=TRUE) {
+.nlmFinalizeList <- function(env, lst, par = "par", printLine = TRUE, hessianCov = TRUE) {
   .ret <- lst
   .ctl <- env$.ctl
   .ret$scaleC <- env$scaleC
@@ -248,22 +252,22 @@
       .covType <- "r"
       if (inherits(.ch, "try-error")) {
         .r2 <- .r %*% .r
-        .r2 <- try(sqrtm(.r2), silent=TRUE)
+        .r2 <- try(sqrtm(.r2), silent = TRUE)
         .covType <- "|r|"
         if (!inherits(.r2, "try-error")) {
-          .ch <- try(cholSE(.r), silent=TRUE)
+          .ch <- try(cholSE(.r), silent = TRUE)
           if (inherits(.ch, "try-error")) {
             .r2 <- .ch # switch to nearPD
           }
         }
         if (inherits(.r2, "try-error")) {
           .covType <- "r+"
-          .r2 <- try(nmNearPD(.r), silent=TRUE)
+          .r2 <- try(nmNearPD(.r), silent = TRUE)
           if (!inherits(.r2, "try-error")) {
-            .ch <- try(cholSE(.r), silent=TRUE)
+            .ch <- try(cholSE(.r), silent = TRUE)
           }
         } else {
-          .ch <- try(cholSE(.r), silent=TRUE)
+          .ch <- try(cholSE(.r), silent = TRUE)
         }
       }
       if (!inherits(.ch, "try-error")) {
@@ -308,32 +312,40 @@
 .nlmFamilyAdjustOutput <- function(ret, str) {
   .nlm <- ret[[str]]
   .censInformation <- ret$censInformation
-  if (is.null(.censInformation) &&
-        !is.null(.nlm$censInformation)) {
+  if (
+    is.null(.censInformation) &&
+      !is.null(.nlm$censInformation)
+  ) {
     .censInformation <- .nlm$censInformation
     ret[[str]][["censInformation"]] <- NULL
   }
   ret$censInformation <- .censInformation
 
   .parHistData <- ret$parHistData
-  if (is.null(.parHistData) &&
-        !is.null(.nlm$parHistData)) {
+  if (
+    is.null(.parHistData) &&
+      !is.null(.nlm$parHistData)
+  ) {
     .parHistData <- .nlm$parHistData
     ret[[str]][["parHistData"]] <- NULL
   }
   ret$parHistData <- .parHistData
 
   .cov <- ret$cov
-  if (is.null(.cov) &&
-        !is.null(.nlm$cov)) {
+  if (
+    is.null(.cov) &&
+      !is.null(.nlm$cov)
+  ) {
     .cov <- .nlm$cov
     ret[[str]][["cov"]] <- NULL
   }
   ret$cov <- .cov
 
   .covMethod <- ret$covMethod
-  if (is.null(.covMethod) &&
-        !is.null(.nlm$covMethod)) {
+  if (
+    is.null(.covMethod) &&
+      !is.null(.nlm$covMethod)
+  ) {
     .covMethod <- .nlm$covMethod
     ret[[str]][["covMethod"]] <- NULL
   }
@@ -362,10 +374,17 @@
 #' @author Matthew L. Fidler
 #' @noRd
 .nmUpcaseNonCov <- function(nms, covNames) {
-  if (is.null(covNames)) covNames <- character(0)
-  vapply(nms, function(.x) {
-    if (.x %in% covNames) .x else toupper(.x)
-  }, character(1), USE.NAMES = FALSE)
+  if (is.null(covNames)) {
+    covNames <- character(0)
+  }
+  vapply(
+    nms,
+    function(.x) {
+      if (.x %in% covNames) .x else toupper(.x)
+    },
+    character(1),
+    USE.NAMES = FALSE
+  )
 }
 
 #' Detect the time-varying covariate columns for mu-referenced estimators (SAEM/NLME)
@@ -377,10 +396,14 @@
 #' @author Matthew L. Fidler
 #' @noRd
 .nlmixrTimeVaryingCovariates <- function(dataSav, ui, rxControl) {
-  .et <- rxode2::etTrans(dataSav, ui$mv0, addCmt = TRUE,
-                         addlKeepsCov = rxControl$addlKeepsCov,
-                         addlDropSs = rxControl$addlDropSs,
-                         ssAtDoseTime = rxControl$ssAtDoseTime)
+  .et <- rxode2::etTrans(
+    dataSav,
+    ui$mv0,
+    addCmt = TRUE,
+    addlKeepsCov = rxControl$addlKeepsCov,
+    addlDropSs = rxControl$addlDropSs,
+    ssAtDoseTime = rxControl$ssAtDoseTime
+  )
   .nTv <- attr(class(.et), ".rxode2.lst")$nTv
   # nTv == 0 means no time-varying covariates; otherwise they follow the first 6 columns
   if (!is.null(.nTv) && .nTv == 0L) {
@@ -498,14 +521,20 @@
 #' @return the assembled nlmixr2 fit (or the raw optimizer result if `returnFlag`)
 #' @author Matthew L. Fidler
 #' @export
-.nlmFamilyFitGeneric <- function(env, method, fitModel, getTheta,
-                                 controlToFocei, returnFlag,
-                                 objective = NULL,
-                                 message = function(fit) fit$message,
-                                 emitFitWarnings = FALSE,
-                                 extra = "",
-                                 adjustOutput = TRUE,
-                                 postSetup = NULL) {
+.nlmFamilyFitGeneric <- function(
+  env,
+  method,
+  fitModel,
+  getTheta,
+  controlToFocei,
+  returnFlag,
+  objective = NULL,
+  message = function(fit) fit$message,
+  emitFitWarnings = FALSE,
+  extra = "",
+  adjustOutput = TRUE,
+  postSetup = NULL
+) {
   .ui <- env$ui
   .control <- .ui$control
   .data <- env$data
@@ -559,9 +588,14 @@
   .ret$ofvType <- method
   controlToFocei(.ret)
   .ret$theta <- .ret$ui$saemThetaDataFrame
-  .ret <- nlmixr2CreateOutputFromUi(.ret$ui, data = .ret$origData,
-                                    control = .ret$control, table = .ret$table,
-                                    env = .ret, est = method)
+  .ret <- nlmixr2CreateOutputFromUi(
+    .ret$ui,
+    data = .ret$origData,
+    control = .ret$control,
+    table = .ret$table,
+    env = .ret,
+    est = method
+  )
   .env <- .ret$env
   .env$method <- method
   .ret

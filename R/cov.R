@@ -58,9 +58,13 @@
 #' @return invisibly TRUE if the diagnostics were updated
 #' @noRd
 .nlmixr2CovConditionUpdate <- function(env) {
-  if (!exists("cov", envir = env, inherits = FALSE)) return(invisible(FALSE))
+  if (!exists("cov", envir = env, inherits = FALSE)) {
+    return(invisible(FALSE))
+  }
   .cov <- get("cov", envir = env, inherits = FALSE)
-  if (!inherits(.cov, "matrix") || nrow(.cov) == 0L) return(invisible(FALSE))
+  if (!inherits(.cov, "matrix") || nrow(.cov) == 0L) {
+    return(invisible(FALSE))
+  }
   .cn <- .cnr <- NA_real_
   .good <- which(!is.na(diag(.cov)))
   if (length(.good) > 0L) {
@@ -113,7 +117,9 @@
 #' @return `x` with the suffix removed
 #' @noRd
 .covBaseName <- function(x) {
-  if (!.covIsFull(x)) return(x)
+  if (!.covIsFull(x)) {
+    return(x)
+  }
   substr(x, 1L, nchar(x) - nchar(.covFullSuffix))
 }
 
@@ -122,7 +128,9 @@
 #' @return `x` with the suffix added (idempotent)
 #' @noRd
 .covFullName <- function(x) {
-  if (length(x) != 1L || !is.character(x) || is.na(x) || !nzchar(x)) return(x)
+  if (length(x) != 1L || !is.character(x) || is.na(x) || !nzchar(x)) {
+    return(x)
+  }
   if (.covIsFull(x)) x else paste0(x, .covFullSuffix)
 }
 
@@ -135,10 +143,18 @@
 #' @noRd
 .covFdType <- function(x) {
   x <- .covBaseName(x)
-  if (length(x) != 1L || !is.character(x) || is.na(x)) return("")
-  if (grepl("^(r\\+?|\\|r\\|),(s\\+?|\\|s\\|)$", x)) return("r,s")
-  if (grepl("^(r\\+?|\\|r\\|)$", x)) return("r")
-  if (grepl("^(s\\+?|\\|s\\|)$", x)) return("s")
+  if (length(x) != 1L || !is.character(x) || is.na(x)) {
+    return("")
+  }
+  if (grepl("^(r\\+?|\\|r\\|),(s\\+?|\\|s\\|)$", x)) {
+    return("r,s")
+  }
+  if (grepl("^(r\\+?|\\|r\\|)$", x)) {
+    return("r")
+  }
+  if (grepl("^(s\\+?|\\|s\\|)$", x)) {
+    return("s")
+  }
   ""
 }
 
@@ -152,9 +168,13 @@
 #' @return `cov`, rotated when the fit is a mixture
 #' @noRd
 .covToReportedScale <- function(env, cov) {
-  if (!is.matrix(cov)) return(cov)
+  if (!is.matrix(cov)) {
+    return(cov)
+  }
   .mix <- .mixEnvPieces(env)
-  if (is.null(.mix)) return(cov)
+  if (is.null(.mix)) {
+    return(cov)
+  }
   tryCatch(.mixCovToProbScale(cov, .mix$names, .mix$p), error = function(e) cov)
 }
 
@@ -180,7 +200,9 @@
     return(invisible(FALSE))
   }
   .cl <- .covCacheGet(env)
-  if (!is.null(.cl[[name]])) return(invisible(FALSE))
+  if (!is.null(.cl[[name]])) {
+    return(invisible(FALSE))
+  }
   .cl[[name]] <- cov
   assign("covList", .cl, envir = env)
   invisible(TRUE)
@@ -314,20 +336,29 @@
   .mat <- obj$etaMat # as.matrix(nlme::random.effects(obj)[, -1])
   .control$skipCov <- obj$skipCov
   .control$etaMat <- .mat
-  .fit2 <- nlmixr2CreateOutputFromUi(.ui, data=.dat, control=.control,
-                                     table=.env$table,env=.env2, est="none")
+  .fit2 <- nlmixr2CreateOutputFromUi(
+    .ui,
+    data = .dat,
+    control = .control,
+    table = .env$table,
+    env = .env2,
+    est = "none"
+  )
   .env$cov <- .fit2$cov
   .env$parFixedDf <- .fit2$parFixedDf
   .env$parFixed <- .fit2$parFixed
   .env$covMethod <- .fit2$covMethod
   .nlmixr2CovConditionUpdate(.env)
   .parent <- parent.frame(2)
-  .bound <- do.call("c", lapply(ls(.parent), function(.cur) {
-    if (identical(.parent[[.cur]], obj)) {
-      return(.cur)
-    }
-    return(NULL)
-  }))
+  .bound <- do.call(
+    "c",
+    lapply(ls(.parent), function(.cur) {
+      if (identical(.parent[[.cur]], obj)) {
+        return(.cur)
+      }
+      return(NULL)
+    })
+  )
   message(paste0("Updated original fit object ", ifelse(is.null(.bound), "", crayon::yellow(.bound))))
   .env$time$covariance <- (proc.time() - .pt)["elapsed"]
   return(.env$cov)
@@ -347,8 +378,7 @@
   # methods whose estimation pass cannot produce a covariance (EM table pass,
   # nonparametric engines, or an external engine) recompute on a
   # zero-iteration focei model
-  if (est %in% c("imp", "impmap", "qrpem", "nlme") ||
-        grepl("^(m|i)?(npag|npb)$", est)) {
+  if (est %in% c("imp", "impmap", "qrpem", "nlme") || grepl("^(m|i)?(npag|npb)$", est)) {
     return("focei")
   }
   NULL
@@ -372,25 +402,34 @@
 #' @noRd
 .foceiRecomputeMuCov <- function(fit, est) {
   .baseEst <- .foceiRecomputeBaseEst(est)
-  if (is.null(.baseEst)) return(NULL)
+  if (is.null(.baseEst)) {
+    return(NULL)
+  }
   # covMethod="imp" installed the Monte-Carlo importance-sampling covariance;
   # that explicit request wins over the recompute
   if (identical(tryCatch(fit$covMethod, error = function(e) NULL), "imp")) {
     return(NULL)
   }
   .control <- tryCatch(fit$foceiControl, error = function(e) NULL)
-  if (is.null(.control)) return(NULL)
+  if (is.null(.control)) {
+    return(NULL)
+  }
   .cm <- .control$covMethod
-  if (is.null(.cm) || identical(as.integer(.cm), 0L)) return(NULL)
+  if (is.null(.cm) || identical(as.integer(.cm), 0L)) {
+    return(NULL)
+  }
   # deep-copy the UI (an environment) so the nested re-fit cannot mutate THIS fit's UI
-  .ui <- tryCatch(rxode2::rxUiDecompress(unserialize(serialize(fit$ui, NULL))),
-                  error = function(e) NULL)
-  if (is.null(.ui)) return(NULL)
-  .control$muModel <- "none"                 # recompute the foceiModel on the full model
+  .ui <- tryCatch(rxode2::rxUiDecompress(unserialize(serialize(fit$ui, NULL))), error = function(e) NULL)
+  if (is.null(.ui)) {
+    return(NULL)
+  }
+  .control$muModel <- "none" # recompute the foceiModel on the full model
   # drop the mu-group wiring so the recompute treats every structural theta as an
   # ordinary parameter (nothing excluded/re-profiled by the mu machinery); keep `fast`
   # (and every other setting) as specified so the full model is rebuilt the same way.
-  for (.mn in grep("^foceiMu", names(.control), value = TRUE)) .control[[.mn]] <- NULL
+  for (.mn in grep("^foceiMu", names(.control), value = TRUE)) {
+    .control[[.mn]] <- NULL
+  }
   # The covariance must be evaluated AT the mu fit's converged point -- NOT re-optimized to
   # a (possibly better) nearby point.  So freeze BOTH problems: maxOuterIterations=0 (final
   # thetas) AND maxInnerIterations=0 (final etas held at etaMat).  Runs through the FULL
@@ -401,7 +440,7 @@
   .control$maxInnerIterations <- 0L
   .control$boundTol <- 0
   .control$calcTables <- FALSE
-  .control$skipCov <- NULL                   # recompute skipCov for the full model (keep mu thetas)
+  .control$skipCov <- NULL # recompute skipCov for the full model (keep mu thetas)
   # explicitly pin the final thetas (on the UI) and the final etas (etaMat)
   .th <- tryCatch(fit$theta, error = function(e) NULL)
   if (!is.null(.th)) {
@@ -420,11 +459,17 @@
   # gate bypassed (#938) -- .baseEst (e.g. "focei") declares no prior support,
   # and the try() below would otherwise silently swallow the gate error and
   # abort the covariance step of a prior-carrying fit
-  .fit2 <- try(suppressMessages(suppressWarnings(
-    .nlmixr2PriorGateBypass(
-      nlmixr2(.ui, data = getData(fit), est = .baseEst, control = .control)))),
-    silent = TRUE)
-  if (inherits(.fit2, "try-error") || is.null(.fit2$cov)) return(NULL)
+  .fit2 <- try(
+    suppressMessages(suppressWarnings(
+      .nlmixr2PriorGateBypass(
+        nlmixr2(.ui, data = getData(fit), est = .baseEst, control = .control)
+      )
+    )),
+    silent = TRUE
+  )
+  if (inherits(.fit2, "try-error") || is.null(.fit2$cov)) {
+    return(NULL)
+  }
   .env2 <- .fit2$env
   # The base-model re-fit rendered a correct parameter table (SEs computed from its
   # cov) for the SAME parameters at the SAME estimates, so carry its cov + already-
@@ -432,10 +477,30 @@
   # the mu fit's own popDf$SE is empty (its cov step bailed) and .updateParFixed only
   # reformats it, it does not recompute SEs from the cov matrix.
   .extras <- list()
-  for (.n in c("covR", "covS", "covRS", "Rinv", "Sinv", "R", "S", "covLvl", "skipCov",
-               "eigenCov", "eigenVecCov", "conditionNumberCov", "covList",
-               "fullCor", "eigenCor", "eigenVecCor", "conditionNumberCor",
-               "popDf", "popDfSig", "parFixedDf", "parFixed", "se")) {
+  for (.n in c(
+    "covR",
+    "covS",
+    "covRS",
+    "Rinv",
+    "Sinv",
+    "R",
+    "S",
+    "covLvl",
+    "skipCov",
+    "eigenCov",
+    "eigenVecCov",
+    "conditionNumberCov",
+    "covList",
+    "fullCor",
+    "eigenCor",
+    "eigenVecCor",
+    "conditionNumberCor",
+    "popDf",
+    "popDfSig",
+    "parFixedDf",
+    "parFixed",
+    "se"
+  )) {
     if (exists(.n, envir = .env2, inherits = FALSE)) .extras[[.n]] <- get(.n, envir = .env2)
   }
   list(cov = .fit2$cov, covMethod = .fit2$covMethod, extras = .extras)
@@ -449,12 +514,16 @@
 .foceiInstallMuCov <- function(fit, est) {
   .r <- tryCatch(.foceiRecomputeMuCov(fit, est), error = function(e) NULL)
   .env <- if (is.environment(fit)) fit else tryCatch(fit$env, error = function(e) NULL)
-  if (!is.environment(.env)) return(invisible(FALSE))
+  if (!is.environment(.env)) {
+    return(invisible(FALSE))
+  }
   if (is.null(.r)) {
     # message only when a recompute was requested but failed and a legacy
     # covariance (e.g. nlme's) is being kept
-    if (identical(est, "nlme") &&
-          exists("cov", envir = .env, inherits = FALSE)) {
+    if (
+      identical(est, "nlme") &&
+        exists("cov", envir = .env, inherits = FALSE)
+    ) {
       .cm <- tryCatch(fit$foceiControl$covMethod, error = function(e) 0L)
       if (!is.null(.cm) && !identical(as.integer(.cm), 0L)) {
         message("the analytic/finite-difference covariance could not be computed; keeping the \"nlme\" covariance")
@@ -465,20 +534,26 @@
   # keep the pre-existing covariance (e.g. nlme's tTable cov) recoverable via
   # covList/setCov()
   .stash <- NULL
-  if (exists("cov", envir = .env, inherits = FALSE) &&
-        exists("covMethod", envir = .env, inherits = FALSE)) {
+  if (
+    exists("cov", envir = .env, inherits = FALSE) &&
+      exists("covMethod", envir = .env, inherits = FALSE)
+  ) {
     .stash <- list(get("cov", envir = .env))
     names(.stash) <- as.character(get("covMethod", envir = .env))
   }
   assign("cov", .r$cov, envir = .env)
   assign("covMethod", .r$covMethod, envir = .env)
-  for (.n in names(.r$extras)) assign(.n, .r$extras[[.n]], envir = .env)
+  for (.n in names(.r$extras)) {
+    assign(.n, .r$extras[[.n]], envir = .env)
+  }
   if (!is.null(.stash) && !identical(names(.stash), .r$covMethod)) {
     .covList <- NULL
     if (exists("covList", envir = .env, inherits = FALSE)) {
       .covList <- get("covList", envir = .env)
     }
-    if (is.null(.covList[[names(.stash)]])) .covList <- c(.covList, .stash)
+    if (is.null(.covList[[names(.stash)]])) {
+      .covList <- c(.covList, .stash)
+    }
     assign("covList", .covList, envir = .env)
   }
   # the mu fit's objDf was rendered before any cov existed; recompute the eigen
@@ -495,10 +570,11 @@
 #' @return single logical
 #' @noRd
 .covSameName <- function(a, b) {
-  if (identical(a, b)) return(TRUE)
+  if (identical(a, b)) {
+    return(TRUE)
+  }
   .ta <- .covFdType(a)
-  nzchar(.ta) && identical(.ta, .covFdType(b)) &&
-    identical(.covIsFull(a), .covIsFull(b))
+  nzchar(.ta) && identical(.ta, .covFdType(b)) && identical(.covIsFull(a), .covIsFull(b))
 }
 
 #' Set the covariance type based on prior calculated covariances
@@ -586,7 +662,9 @@
 #' @seealso \code{\link{foceiControl}()}, \code{\link{saemControl}()}
 #' @export
 setCov <- function(fit, method, ...) {
-  if (inherits(method, "nlmixr2SetCov")) UseMethod("setCov", method)
+  if (inherits(method, "nlmixr2SetCov")) {
+    UseMethod("setCov", method)
+  }
   if (!inherits(fit, "nlmixr2FitCore")) {
     stop("'fit' must be a nlmixr2 fit", call. = FALSE)
   }
@@ -602,13 +680,11 @@ setCov <- function(fit, method, ...) {
   .r <- .covOptionsRequested(fit, .env, method, list(...))
   .req <- .r$options
   .explicit <- .r$explicit
-  if (.covSameName(method, .env$covMethod) &&
-        .covOptionsMatch(.env, .env$covMethod, .req, .explicit)) {
-    stop("no need to switch covariance methods, already set to '",
-      method,
-      "'",
-      call. = FALSE
-    )
+  if (
+    .covSameName(method, .env$covMethod) &&
+      .covOptionsMatch(.env, .env$covMethod, .req, .explicit)
+  ) {
+    stop("no need to switch covariance methods, already set to '", method, "'", call. = FALSE)
   }
   .cached <- !is.null(.covCacheGet(.env)[[method]]) &&
     .covOptionsMatch(.env, method, .req, .explicit)
@@ -616,7 +692,9 @@ setCov <- function(fit, method, ...) {
     .m <- structure(method, class = c(.covBaseName(method), "nlmixr2SetCov"))
     .setCovInstall(.env, method, setCov(fit, .m, ...))
     # a method that installed itself may have left an older copy in the cache
-    if (.covSameName(method, .env$covMethod)) .covCacheDrop(.env, method)
+    if (.covSameName(method, .env$covMethod)) {
+      .covCacheDrop(.env, method)
+    }
     .covOptionsSet(.env, method, .req)
   }
   .env$time$covariance <- (proc.time() - .pt)["elapsed"]
@@ -663,14 +741,15 @@ setCov <- function(fit, method, ...) {
   .pt <- proc.time()
   .r <- setCovValue(value, fit, method = method, ...)
   if (!is.list(.r) || !.covIsName(.r$method) || !is.matrix(.r$cov)) {
-    stop("setCovValue() must return list(cov = <matrix>, method = <name>, options = <list>)",
-         call. = FALSE)
+    stop("setCovValue() must return list(cov = <matrix>, method = <name>, options = <list>)", call. = FALSE)
   }
   .env <- .setCovEnv(fit)
   .setCovInstall(.env, .r$method, .r$cov)
   .covOptionsSet(.env, .r$method, .r$options)
   # objects the result keeps on the fit, only once the install has succeeded
-  for (.n in names(.r$extra)) assign(.n, .r$extra[[.n]], envir = .env)
+  for (.n in names(.r$extra)) {
+    assign(.n, .r$extra[[.n]], envir = .env)
+  }
   .env$time$covariance <- (proc.time() - .pt)["elapsed"]
   fit
 }
@@ -704,15 +783,21 @@ setCovValue.default <- function(value, fit, method = NULL, ...) {
   .m <- as.character(utils::methods("setCovValue"))
   .m <- substr(.m, 13L, nchar(.m))
   .m <- .m[.m != "default"]
-  stop("cannot install a '", paste(class(value), collapse = "/"),
-       "' as a covariance; supported: ", paste(.m, collapse = ", "),
-       call. = FALSE)
+  stop(
+    "cannot install a '",
+    paste(class(value), collapse = "/"),
+    "' as a covariance; supported: ",
+    paste(.m, collapse = ", "),
+    call. = FALSE
+  )
 }
 
 #' @rdname setCovValue
 #' @export
 setCovValue.matrix <- function(value, fit, method = NULL, ...) {
-  if (is.null(method)) method <- "user"
+  if (is.null(method)) {
+    method <- "user"
+  }
   list(cov = value, method = method, options = list())
 }
 
@@ -732,9 +817,13 @@ setCovAllMethods <- function() {
 #' @rdname setCov
 #' @export
 setCov.default <- function(fit, method, ...) {
-  stop("covariance method '", unclass(method), "' not supported; can be one of: ",
-       paste(setCovAllMethods(), collapse = "; "),
-       call. = FALSE)
+  stop(
+    "covariance method '",
+    unclass(method),
+    "' not supported; can be one of: ",
+    paste(setCovAllMethods(), collapse = "; "),
+    call. = FALSE
+  )
 }
 
 #' @rdname setCov
@@ -790,8 +879,7 @@ setCov.imp <- function(fit, method, control = impCovControl(), ...) {
 #' @noRd
 .setCovAssertControl <- function(method, control, ctl) {
   if (!inherits(control, ctl)) {
-    stop("covariance method '", method, "' needs 'control' from ", ctl, "()",
-         call. = FALSE)
+    stop("covariance method '", method, "' needs 'control' from ", ctl, "()", call. = FALSE)
   }
   invisible(TRUE)
 }
@@ -838,23 +926,27 @@ setCov.imp <- function(fit, method, control = impCovControl(), ...) {
 .setCovInstall <- function(env, method, cov) {
   if (is.null(cov)) {
     if (!.covSameName(method, env$covMethod)) {
-      stop("setCov() method '", method, "' returned NULL without installing '",
-           method, "'", call. = FALSE)
+      stop("setCov() method '", method, "' returned NULL without installing '", method, "'", call. = FALSE)
     }
     return(invisible(TRUE))
   }
-  if (!is.matrix(cov) || nrow(cov) != ncol(cov) || is.null(rownames(cov)) ||
-        !identical(rownames(cov), colnames(cov))) {
-    stop("setCov() method '", method,
-         "' must return a square covariance matrix with matching dimnames or NULL",
-         call. = FALSE)
+  if (!is.matrix(cov) || nrow(cov) != ncol(cov) || is.null(rownames(cov)) || !identical(rownames(cov), colnames(cov))) {
+    stop(
+      "setCov() method '",
+      method,
+      "' must return a square covariance matrix with matching dimnames or NULL",
+      call. = FALSE
+    )
   }
   .rotated <- isTRUE(attr(cov, "mixRotated"))
   attr(cov, "mixRotated") <- NULL
-  if (!isTRUE(.covInstallResult(env, list(cov = cov, covMethod = method,
-                                          mixRotated = .rotated)))) {
-    stop("covMethod=\"", method, "\" could not be computed for this fit; the covariance is left unchanged",
-         call. = FALSE)
+  if (!isTRUE(.covInstallResult(env, list(cov = cov, covMethod = method, mixRotated = .rotated)))) {
+    stop(
+      "covMethod=\"",
+      method,
+      "\" could not be computed for this fit; the covariance is left unchanged",
+      call. = FALSE
+    )
   }
   .covCacheDrop(env, method)
   invisible(TRUE)
@@ -870,13 +962,16 @@ setCov.imp <- function(fit, method, control = impCovControl(), ...) {
 #' @return `TRUE` when the cache held `method` and it was installed
 #' @noRd
 .setCovFromCache <- function(fit, env, method) {
-  if (!.covIsName(method)) return(FALSE)
+  if (!.covIsName(method)) {
+    return(FALSE)
+  }
   .cov <- .covCacheGet(env)[[method]]
-  if (is.null(.cov)) return(FALSE)
+  if (is.null(.cov)) {
+    return(FALSE)
+  }
   # a cached covariance is already on the reported scale, so it must not be
   # rotated onto the probability scale a second time
-  if (!isTRUE(.covInstallResult(env, list(cov = .cov, covMethod = method,
-                                          mixRotated = TRUE)))) {
+  if (!isTRUE(.covInstallResult(env, list(cov = .cov, covMethod = method, mixRotated = TRUE)))) {
     # .covInstallResult() PD-guards; a cached covariance that does not pass it was
     # still installed once, so hand it to the legacy re-finalization path rather
     # than refusing to switch
@@ -905,15 +1000,26 @@ setCov.imp <- function(fit, method, control = impCovControl(), ...) {
   # submatrix of the inverse of an indefinite information can look positive
   # definite on its own (#1055)
   .cov <- if (is.null(.r) || !isTRUE(.r$pd)) NULL else .covAnalyticScope(env, .r$cov, .full)
-  if (is.null(.cov) || !is.matrix(.cov) || !all(is.finite(.cov)) ||
-        !isTRUE(.covInstallResult(env, list(cov = .cov, covMethod = method)))) {
-    stop("covMethod=\"", method, "\" could not be computed for this fit; the covariance is left unchanged",
-         call. = FALSE)
+  if (
+    is.null(.cov) ||
+      !is.matrix(.cov) ||
+      !all(is.finite(.cov)) ||
+      !isTRUE(.covInstallResult(env, list(cov = .cov, covMethod = method)))
+  ) {
+    stop(
+      "covMethod=\"",
+      method,
+      "\" could not be computed for this fit; the covariance is left unchanged",
+      call. = FALSE
+    )
   }
   assign(".covAnalytic", .r, envir = env)
   # the assembly produced both shapes; keep the other one swappable
-  .covCacheAdd(env, if (.full) "analytic" else .covFullName("analytic"),
-               .covToReportedScale(env, .covAnalyticScope(env, .r$cov, !.full)))
+  .covCacheAdd(
+    env,
+    if (.full) "analytic" else .covFullName("analytic"),
+    .covToReportedScale(env, .covAnalyticScope(env, .r$cov, !.full))
+  )
   .covCacheDrop(env, method)
   invisible(TRUE)
 }
@@ -930,8 +1036,7 @@ setCov.imp <- function(fit, method, control = impCovControl(), ...) {
 #' @return invisibly `TRUE`
 #' @noRd
 .setCovFd <- function(fit, env, method, base, control = NULL) {
-  do.call(.setCov, c(list(fit, covMethod = base, covFull = .covIsFull(method)),
-                     unclass(control)))
+  do.call(.setCov, c(list(fit, covMethod = base, covFull = .covIsFull(method)), unclass(control)))
   env$covMethod <- method
   .covCacheDrop(env, method)
   invisible(TRUE)
@@ -949,8 +1054,12 @@ setCov.imp <- function(fit, method, control = impCovControl(), ...) {
   .covEngineControl(method, control)
   .r <- tryCatch(.covRecompute(fit, method, control), error = function(e) NULL)
   if (!isTRUE(.covInstallResult(env, .r))) {
-    stop("covMethod=\"", method, "\" could not be computed for this fit; the covariance is left unchanged",
-         call. = FALSE)
+    stop(
+      "covMethod=\"",
+      method,
+      "\" could not be computed for this fit; the covariance is left unchanged",
+      call. = FALSE
+    )
   }
   .covCacheDrop(env, method)
   invisible(TRUE)

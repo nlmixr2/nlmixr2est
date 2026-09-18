@@ -8,7 +8,7 @@
 #' @author Matthew L. Fidler
 #' @keywords internal
 #' @export
-nlmixrUpdateObject <- function(fit, objName, envir, origFitEnv=NULL) {
+nlmixrUpdateObject <- function(fit, objName, envir, origFitEnv = NULL) {
   .parent <- envir
   if (is.environment(origFitEnv)) {
     .env <- origFitEnv
@@ -16,12 +16,15 @@ nlmixrUpdateObject <- function(fit, objName, envir, origFitEnv=NULL) {
     .env <- fit$env
   }
   .ls <- ls(.parent, all.names = TRUE)
-  .bound <- do.call("c", lapply(.ls, function(.cur) {
-    if (.cur == objName && identical(.parent[[.cur]]$env, .env)) {
-      return(.cur)
-    }
-    return(NULL)
-  }))
+  .bound <- do.call(
+    "c",
+    lapply(.ls, function(.cur) {
+      if (.cur == objName && identical(.parent[[.cur]]$env, .env)) {
+        return(.cur)
+      }
+      return(NULL)
+    })
+  )
   if (length(.bound) == 1) {
     if (exists(.bound, envir = .parent)) {
       assign(.bound, fit, envir = .parent)

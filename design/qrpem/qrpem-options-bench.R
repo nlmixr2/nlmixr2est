@@ -94,52 +94,67 @@ datFor <- function(fx) {
 # every other row is scored against the same reference, so the comparison is
 # tuned-against-tuned rather than one option against an unrelated baseline.
 settings <- list(
-  base         = list(),
+  base = list(),
   scrambleOwen = list(qr = TRUE, qrScramble = "owen"),
-  scrambleLms  = list(qr = TRUE, qrScramble = "lms"),
-  qrOnly       = list(qr = TRUE),
-  laplace      = list(proposal = "laplace"),
-  mixture      = list(proposal = "mixture"),
-  burn5freeze  = list(nBurn = 5L, burnFreezeOmega = TRUE),
-  mapIter3     = list(mapIter = 3L)
+  scrambleLms = list(qr = TRUE, qrScramble = "lms"),
+  qrOnly = list(qr = TRUE),
+  laplace = list(proposal = "laplace"),
+  mixture = list(proposal = "mixture"),
+  burn5freeze = list(nBurn = 5L, burnFreezeOmega = TRUE),
+  mapIter3 = list(mapIter = 3L)
 )
 
-SEEDS   <- 1:8
-NPROD   <- 300L      # production sample count
-NREF    <- 8000L     # reference sample count
-NITER   <- 60L
+SEEDS <- 1:8
+NPROD <- 300L # production sample count
+NREF <- 8000L # reference sample count
+NITER <- 60L
 
 fitOne <- function(gen, dat, seed, isample, nIter, extra = list()) {
-  ctl <- do.call(impmapControl,
-                 c(list(print = 0L, nIter = nIter, isample = as.integer(isample),
-                        impSeed = as.integer(seed), covMethod = "",
-                        calcTables = FALSE), extra))
+  ctl <- do.call(
+    impmapControl,
+    c(
+      list(
+        print = 0L,
+        nIter = nIter,
+        isample = as.integer(isample),
+        impSeed = as.integer(seed),
+        covMethod = "",
+        calcTables = FALSE
+      ),
+      extra
+    )
+  )
   t0 <- proc.time()[["elapsed"]]
-  f <- try(suppressWarnings(suppressMessages(nlmixr2(gen, dat, "impmap", ctl))),
-           silent = TRUE)
-  if (inherits(f, "try-error")) return(NULL)
-  list(theta = fixef(f),
-       omega = diag(f$omega),
-       khat  = f$env$impPsisK,
-       neff  = mean(f$env$impNeffFrac),
-       iter  = f$env$impIter,
-       secs  = proc.time()[["elapsed"]] - t0)
+  f <- try(suppressWarnings(suppressMessages(nlmixr2(gen, dat, "impmap", ctl))), silent = TRUE)
+  if (inherits(f, "try-error")) {
+    return(NULL)
+  }
+  list(
+    theta = fixef(f),
+    omega = diag(f$omega),
+    khat = f$env$impPsisK,
+    neff = mean(f$env$impNeffFrac),
+    iter = f$env$impIter,
+    secs = proc.time()[["elapsed"]] - t0
+  )
 }
 
 rmse <- function(x, ref) sqrt(mean((x - ref)^2))
 
 score <- function(runs, refTheta, refOmega) {
   runs <- Filter(Negate(is.null), runs)
-  if (!length(runs)) return(NULL)
+  if (!length(runs)) {
+    return(NULL)
+  }
   data.frame(
-    n         = length(runs),
+    n = length(runs),
     thetaRMSE = mean(vapply(runs, function(r) rmse(r$theta, refTheta), numeric(1))),
     omegaRMSE = mean(vapply(runs, function(r) rmse(r$omega, refOmega), numeric(1))),
-    maxKhat   = max(vapply(runs, function(r) max(r$khat, na.rm = TRUE), numeric(1))),
-    nBadKhat  = mean(vapply(runs, function(r) sum(r$khat > 0.7, na.rm = TRUE), numeric(1))),
-    neff      = mean(vapply(runs, function(r) r$neff, numeric(1))),
-    iter      = mean(vapply(runs, function(r) r$iter, numeric(1))),
-    secs      = mean(vapply(runs, function(r) r$secs, numeric(1)))
+    maxKhat = max(vapply(runs, function(r) max(r$khat, na.rm = TRUE), numeric(1))),
+    nBadKhat = mean(vapply(runs, function(r) sum(r$khat > 0.7, na.rm = TRUE), numeric(1))),
+    neff = mean(vapply(runs, function(r) r$neff, numeric(1))),
+    iter = mean(vapply(runs, function(r) r$iter, numeric(1))),
+    secs = mean(vapply(runs, function(r) r$secs, numeric(1)))
   )
 }
 
@@ -151,23 +166,38 @@ for (fx in names(fixtures)) {
   cat("\n=== fixture:", fx, "===\n")
   cat("reference at isample =", NREF, "...\n")
   ref <- fitOne(gen, dat, 1L, NREF, NITER)
-  if (is.null(ref)) { cat("  reference FAILED, skipping fixture\n"); next }
+  if (is.null(ref)) {
+    cat("  reference FAILED, skipping fixture\n")
+    next
+  }
   for (sname in names(settings)) {
-    runs <- lapply(SEEDS, function(s)
-      fitOne(gen, dat, s, NPROD, NITER, settings[[sname]]))
+    runs <- lapply(SEEDS, function(s) {
+      fitOne(gen, dat, s, NPROD, NITER, settings[[sname]])
+    })
     sc <- score(runs, ref$theta, ref$omega)
-    if (is.null(sc)) { cat(sprintf("  %-13s ALL FAILED\n", sname)); next }
-    sc$fixture <- fx; sc$setting <- sname
+    if (is.null(sc)) {
+      cat(sprintf("  %-13s ALL FAILED\n", sname))
+      next
+    }
+    sc$fixture <- fx
+    sc$setting <- sname
     out[[length(out) + 1L]] <- sc
-    cat(sprintf("  %-13s thetaRMSE=%.5f omegaRMSE=%.5f maxK=%+.3f bad=%.2f neff=%.3f iter=%.1f %.1fs\n",
-                sname, sc$thetaRMSE, sc$omegaRMSE, sc$maxKhat, sc$nBadKhat,
-                sc$neff, sc$iter, sc$secs))
+    cat(sprintf(
+      "  %-13s thetaRMSE=%.5f omegaRMSE=%.5f maxK=%+.3f bad=%.2f neff=%.3f iter=%.1f %.1fs\n",
+      sname,
+      sc$thetaRMSE,
+      sc$omegaRMSE,
+      sc$maxKhat,
+      sc$nBadKhat,
+      sc$neff,
+      sc$iter,
+      sc$secs
+    ))
   }
 }
 
 res <- do.call(rbind, out)
-res <- res[, c("fixture", "setting", "n", "thetaRMSE", "omegaRMSE", "maxKhat",
-               "nBadKhat", "neff", "iter", "secs")]
+res <- res[, c("fixture", "setting", "n", "thetaRMSE", "omegaRMSE", "maxKhat", "nBadKhat", "neff", "iter", "secs")]
 print(res, row.names = FALSE)
 saveRDS(res, "design/qrpem/qrpem-options-bench-results.rds")
 cat("\nresults saved to design/qrpem/qrpem-options-bench-results.rds\n")

@@ -72,45 +72,58 @@
 #' # The nlm control has been modified slightly to include
 #' # extra components and name the parameters
 #' }
-nlmControl <- function(typsize = NULL,
-                       fscale = 1, print.level = 0, ndigit = NULL, gradtol = NULL,
-                       stepmax = NULL,
-                       steptol = NULL, iterlim = 10000, check.analyticals = FALSE,
-                       returnNlm = FALSE,
-                       solveType = c("hessian", "grad", "fun"),
-                       stickyRecalcN = 4,
-                       maxOdeRecalc = 5,
-                       odeRecalcFactor = 10^(0.5),
-                       indTolRelax = TRUE,
-                       eventType = c("central", "forward"),
-                       shiErr = (.Machine$double.eps)^(1 / 3),
-                       shi21maxFD = 20L,
-                       optimHessType = c("central", "forward"),
-                       hessErr = (.Machine$double.eps)^(1 / 3),
-                       shi21maxHess = 20L,
-                       censOption = c("gauss", "laplace"),
-                       eventSens = c("jump", "fd"),
-                       linCmtSensCarry = c("auto", "none"),
-                       sensMethod = c("default", "forward"),
-                       useColor = NULL,
-                       printNcol = NULL, #
-                       print = 1L, #
-                       normType = c("rescale2", "mean", "rescale", "std", "len", "constant"), #
-                       scaleType = c("nlmixr2", "norm", "mult", "multAdd"), #
-                       scaleCmax = 1e5, #
-                       scaleCmin = 1e-5, #
-                       scaleC = NULL,
-                       scaleTo = 1.0,
-                       gradTo = 1.0,
-                       rxControl = NULL,
-                       optExpression = TRUE, sumProd = FALSE,
-                       literalFix = TRUE,
-                       literalFixRes = TRUE,
-                       addProp = c("combined2", "combined1"),
-                       calcTables = TRUE, compress = FALSE,
-                       covMethod = c("r", "nlm", ""),
-                       adjObf = TRUE, ci = 0.95, sigdig = 3, sigdigTable = NULL,
-                       boundedTransform = TRUE, ...) {
+nlmControl <- function(
+  typsize = NULL,
+  fscale = 1,
+  print.level = 0,
+  ndigit = NULL,
+  gradtol = NULL,
+  stepmax = NULL,
+  steptol = NULL,
+  iterlim = 10000,
+  check.analyticals = FALSE,
+  returnNlm = FALSE,
+  solveType = c("hessian", "grad", "fun"),
+  stickyRecalcN = 4,
+  maxOdeRecalc = 5,
+  odeRecalcFactor = 10^(0.5),
+  indTolRelax = TRUE,
+  eventType = c("central", "forward"),
+  shiErr = (.Machine$double.eps)^(1 / 3),
+  shi21maxFD = 20L,
+  optimHessType = c("central", "forward"),
+  hessErr = (.Machine$double.eps)^(1 / 3),
+  shi21maxHess = 20L,
+  censOption = c("gauss", "laplace"),
+  eventSens = c("jump", "fd"),
+  linCmtSensCarry = c("auto", "none"),
+  sensMethod = c("default", "forward"),
+  useColor = NULL,
+  printNcol = NULL, #
+  print = 1L, #
+  normType = c("rescale2", "mean", "rescale", "std", "len", "constant"), #
+  scaleType = c("nlmixr2", "norm", "mult", "multAdd"), #
+  scaleCmax = 1e5, #
+  scaleCmin = 1e-5, #
+  scaleC = NULL,
+  scaleTo = 1.0,
+  gradTo = 1.0,
+  rxControl = NULL,
+  optExpression = TRUE,
+  sumProd = FALSE,
+  literalFix = TRUE,
+  literalFixRes = TRUE,
+  addProp = c("combined2", "combined1"),
+  calcTables = TRUE,
+  compress = FALSE,
+  covMethod = c("r", "nlm", ""),
+  adjObf = TRUE,
+  ci = 0.95,
+  sigdig = 3,
+  sigdigTable = NULL,
+  boundedTransform = TRUE,
+  ...
+) {
   checkmate::assertNumeric(shiErr, lower = 0, any.missing = FALSE, len = 1)
   checkmate::assertNumeric(hessErr, lower = 0, any.missing = FALSE, len = 1)
 
@@ -126,8 +139,12 @@ nlmControl <- function(typsize = NULL,
   checkmate::assertNumeric(ndigit, lower = 0, len = 1, any.missing = FALSE, null.ok = TRUE)
   # nlm gradtol/steptol keyed to the shared sigdig target (10^-sigdig), matching the
   # ODE rtol so nlm converges to the precision the solve supports; a user value wins
-  if (is.null(gradtol)) gradtol <- if (!is.null(sigdig)) .sigdigOptTol(sigdig) else 1e-6
-  if (is.null(steptol)) steptol <- if (!is.null(sigdig)) .sigdigOptTol(sigdig) else 1e-6
+  if (is.null(gradtol)) {
+    gradtol <- if (!is.null(sigdig)) .sigdigOptTol(sigdig) else 1e-6
+  }
+  if (is.null(steptol)) {
+    steptol <- if (!is.null(sigdig)) .sigdigOptTol(sigdig) else 1e-6
+  }
   checkmate::assertNumeric(gradtol, lower = 0, len = 1, any.missing = FALSE)
   checkmate::assertNumeric(steptol, lower = 0, len = 1, any.missing = FALSE)
   checkmate::assertIntegerish(iterlim, lower = 1, len = 1, any.missing = FALSE)
@@ -142,10 +159,7 @@ nlmControl <- function(typsize = NULL,
   .bad <- names(.xtra)
   .bad <- .bad[!(.bad %in% c("genRxControl", "iterPrintControl"))]
   if (length(.bad) > 0) {
-    stop("unused argument: ", paste
-    (paste0("'", .bad, "'", sep = ""), collapse = ", "),
-    call. = FALSE
-    )
+    stop("unused argument: ", paste(paste0("'", .bad, "'", sep = ""), collapse = ", "), call. = FALSE)
   }
 
   checkmate::assertIntegerish(stickyRecalcN, any.missing = FALSE, lower = 0, len = 1)
@@ -263,9 +277,13 @@ nlmControl <- function(typsize = NULL,
   .ret <- list(
     covMethod = covMethod,
     typsize = typsize,
-    fscale = fscale, print.level = print.level, ndigit = ndigit, gradtol = gradtol,
+    fscale = fscale,
+    print.level = print.level,
+    ndigit = ndigit,
+    gradtol = gradtol,
     stepmax = stepmax,
-    steptol = steptol, iterlim = iterlim,
+    steptol = steptol,
+    iterlim = iterlim,
     check.analyticals = check.analyticals,
     optExpression = optExpression,
     literalFix = literalFix,
@@ -299,7 +317,9 @@ nlmControl <- function(typsize = NULL,
     compress = compress,
     solveType = solveType,
     linCmtSensCarry = match.arg(linCmtSensCarry),
-    ci = ci, sigdig = sigdig, sigdigTable = sigdigTable,
+    ci = ci,
+    sigdig = sigdig,
+    sigdigTable = sigdigTable,
     genRxControl = .genRxControl,
     boundedTransform = boundedTransform
   )
@@ -356,8 +376,12 @@ nmObjGetControl.nlm <- function(x, ...) {
 #' @export
 getValidNlmixrCtl.nlm <- function(control) {
   .ctl <- control[[1]]
-  if (is.null(.ctl)) .ctl <- nlmControl()
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) .ctl <- do.call("nlmControl", .ctl)
+  if (is.null(.ctl)) {
+    .ctl <- nlmControl()
+  }
+  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
+    .ctl <- do.call("nlmControl", .ctl)
+  }
   if (!inherits(.ctl, "nlmControl")) {
     .minfo("invalid control for `est=\"nlm\"`, using default")
     .ctl <- nlmControl()
@@ -423,7 +447,8 @@ rxUiGet.nlmModel0 <- function(x, ...) {
   # rx_r_/rx_nu_ for the llik-forced norm/dnorm/t/cauchy path are already
   # fixed at the source (.fixCensRNuLine, R/focei.R) -- see #979.
   .errLines <- rxGetDistributionFoceiLines(.ui)
-  .ret <- rxode2::rxCombineErrorLines(.ui,
+  .ret <- rxode2::rxCombineErrorLines(
+    .ui,
     errLines = .errLines,
     prefixLines = .uiGetThetaDropFixed(.ui),
     paramsLine = NA, # .uiGetThetaEtaParams(.f),
@@ -456,10 +481,7 @@ attr(rxUiGet.nlmModel0, "rstudio") <- quote(rxModelVar({}))
   .env$.if <- NULL
   .env$.def1 <- NULL
   .malert("pruning branches ({.code if}/{.code else}) of population log-likelihood model...")
-  .ret <- rxode2::.rxPrune(.x,
-    envir = .env,
-    strAssign = rxModelVars(x[[1]])$strAssign
-  )
+  .ret <- rxode2::.rxPrune(.x, envir = .env, strAssign = rxModelVars(x[[1]])$strAssign)
   .mv <- rxode2::rxModelVars(.ret)
   ## Need to convert to a function
   if (rxode2::.rxIsLinCmt() == 1L) {
@@ -491,16 +513,28 @@ rxUiGet.nlmParams <- function(x, ...) {
   ## read by a compiled function at a fixed par_ptr index rather than by name) in
   ## the solve parameter layout so they retain a stable par_ptr slot.
   .covs <- .ui$allCovs
-  if (is.null(.covs)) .covs <- character(0)
+  if (is.null(.covs)) {
+    .covs <- character(0)
+  }
   paste0(
     "params(",
     paste(
-      c(vapply(.w, function(i) {
-        .env$t <- .env$t + 1
-        paste0("THETA[", .env$t, "]")
-      }, character(1), USE.NAMES = FALSE), "DV", .covs),
+      c(
+        vapply(
+          .w,
+          function(i) {
+            .env$t <- .env$t + 1
+            paste0("THETA[", .env$t, "]")
+          },
+          character(1),
+          USE.NAMES = FALSE
+        ),
+        "DV",
+        .covs
+      ),
       collapse = ","
-    ), ")"
+    ),
+    ")"
   )
 }
 attr(rxUiGet.nlmParams, "rstudio") <- "params()"
@@ -550,7 +584,9 @@ rxUiGet.nlmRxModel <- function(x, ...) {
   ## .lhs0 <- .s$..lhs0
   ## if (is.null(.lhs0)) .lhs0 <- ""
   .ddt <- .s$..ddt
-  if (is.null(.ddt)) .ddt <- ""
+  if (is.null(.ddt)) {
+    .ddt <- ""
+  }
   .lhs <- character(0)
   if (.isMatExp) {
     .lhs <- .s$..lhs
@@ -566,22 +602,25 @@ rxUiGet.nlmRxModel <- function(x, ...) {
   }
   # Add rx_pred_f_ and rx_r_ as lhs outputs for censoring support
   .fr <- .nlmGetFRLines(.s)
-  .ret <- paste(c(
-    # .s$..stateInfo["state"],
-    # .lhs0,
-    .lhs,
-    .ddt,
-    .lagDefs,
-    ## DDE non-constant delay() pre-history (base past(state,tau)<-expr)
-    rxode2::.rxPastBaseLinesFromEnv(.s),
-    .prd,
-    .fr$f_line,
-    .fr$r_line,
-    .fr$nu_line,
-    # .s$..stateInfo["statef"],
-    # .s$..stateInfo["dvid"],
-    ""
-  ), collapse = "\n")
+  .ret <- paste(
+    c(
+      # .s$..stateInfo["state"],
+      # .lhs0,
+      .lhs,
+      .ddt,
+      .lagDefs,
+      ## DDE non-constant delay() pre-history (base past(state,tau)<-expr)
+      rxode2::.rxPastBaseLinesFromEnv(.s),
+      .prd,
+      .fr$f_line,
+      .fr$r_line,
+      .fr$nu_line,
+      # .s$..stateInfo["statef"],
+      # .s$..stateInfo["dvid"],
+      ""
+    ),
+    collapse = "\n"
+  )
   if (exists("..maxTheta", .s)) {
     .eventTheta <- rep(0L, .s$..maxTheta)
   } else {
@@ -607,9 +646,7 @@ rxUiGet.nlmRxModel <- function(x, ...) {
     .msuccess("done")
   }
   if (.optExpression) {
-    .ret <- rxode2::rxOptExpr(.ret, "population log-likelihood model",
-      parallel = .optExprCores(x[[1]])
-    )
+    .ret <- rxode2::rxOptExpr(.ret, "population log-likelihood model", parallel = .optExprCores(x[[1]]))
     .msuccess("done")
   }
   .cmt <- rxUiGet.foceiCmtPreModel(x, ...)
@@ -619,10 +656,15 @@ rxUiGet.nlmRxModel <- function(x, ...) {
   ## declaring it would split the doses twice (see .foceiPreProcessData())
   list(
     predOnly = .nlmixr2estRxode2(
-      paste(c(
-        rxUiGet.nlmParams(x, ...), .cmt,
-        .ret, .foceiToCmtLinesAndDvid(x[[1]])
-      ), collapse = "\n"),
+      paste(
+        c(
+          rxUiGet.nlmParams(x, ...),
+          .cmt,
+          .ret,
+          .foceiToCmtLinesAndDvid(x[[1]])
+        ),
+        collapse = "\n"
+      ),
       "rxNlmPredOnly"
     ),
     eventTheta = .eventTheta
@@ -648,7 +690,8 @@ rxUiGet.nlmHdTheta <- function(x, ...) {
   .stateVars <- rxode2stateOde(.s)
   .predMinusDv <- rxode2::rxGetControl(x[[1]], "predMinusDv", TRUE)
   .grd <- rxode2::rxExpandFEta_(
-    .stateVars, .s$..maxTheta,
+    .stateVars,
+    .s$..maxTheta,
     ifelse(.predMinusDv, 1L, 2L),
     isTheta = TRUE
   )
@@ -709,12 +752,12 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
 #' @return Nothing
 #' @author Matthew L Fidler
 #' @noRd
-.rxFinalizeNlm <- function(.s, sum.prod = FALSE,
-                           optExpression = TRUE, cores = 0L,
-                           interpLines = "") {
+.rxFinalizeNlm <- function(.s, sum.prod = FALSE, optExpression = TRUE, cores = 0L, interpLines = "") {
   interpLines <- interpLines[interpLines != ""]
   # see focei.R's .rxFinalizeInner(): do not re-flatten a matExp-native ..ddt (#860)
-  if (!isTRUE(.s$..matExpNative)) .rxInjectMatExpDdt(.s)
+  if (!isTRUE(.s$..matExpNative)) {
+    .rxInjectMatExpDdt(.s)
+  }
   if (isTRUE(.s$..matExpNative)) {
     # see focei.R's .rxFinalizeInner(): rxSumProdModel()/rxOptExpr() do not
     # support "indLin(state) <- expr" (Michaelis-Menten forcing)
@@ -732,62 +775,76 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
   .low <- paste(get("rx_low_", envir = .s))
   .low <- paste0("rx_low_~", rxode2::rxFromSE(.low))
   .ddt <- .s$..ddt
-  if (is.null(.ddt)) .ddt <- character(0)
+  if (is.null(.ddt)) {
+    .ddt <- character(0)
+  }
   .lhs <- .s$..lhs
-  if (is.null(.lhs)) .lhs <- character(0)
+  if (is.null(.lhs)) {
+    .lhs <- character(0)
+  }
   # matExp-native sensitivities (#860): see focei.R's .rxFinalizeInner()
   .lhs <- .rxDropMatExpNativeLhs(.lhs, .s)
   .sens <- .s$..sens
-  if (is.null(.sens)) .sens <- character(0)
+  if (is.null(.sens)) {
+    .sens <- character(0)
+  }
   # Extract rx_pred_f_ and rx_r_ for censoring support
   .fr <- .nlmGetFRLines(.s)
-  .s$..nlmS <- paste(c(
-    .s$params,
-    .s$..stateInfo["state"],
-    interpLines,
-    .lhs,
-    .ddt,
-    .sens,
-    ## DDE non-constant delay() pre-history: base past(state,tau)<-expr + the
-    ## per-sensitivity-compartment histories (analytic nlm gradient/Hessian).
-    .s$..pastLines,
-    .yj,
-    .lambda,
-    .hi,
-    .low,
-    .prd,
-    .s$..HdTheta,
-    .fr$f_line,
-    .fr$r_line,
-    .fr$nu_line,
-    .s$..stateInfo["statef"],
-    .s$..stateInfo["dvid"],
-    ""
-  ), collapse = "\n")
+  .s$..nlmS <- paste(
+    c(
+      .s$params,
+      .s$..stateInfo["state"],
+      interpLines,
+      .lhs,
+      .ddt,
+      .sens,
+      ## DDE non-constant delay() pre-history: base past(state,tau)<-expr + the
+      ## per-sensitivity-compartment histories (analytic nlm gradient/Hessian).
+      .s$..pastLines,
+      .yj,
+      .lambda,
+      .hi,
+      .low,
+      .prd,
+      .s$..HdTheta,
+      .fr$f_line,
+      .fr$r_line,
+      .fr$nu_line,
+      .s$..stateInfo["statef"],
+      .s$..stateInfo["dvid"],
+      ""
+    ),
+    collapse = "\n"
+  )
   .lhs0 <- .s$..lhs0
-  if (is.null(.lhs0)) .lhs0 <- ""
-  .s$..pred.nolhs <- paste(c(
-    .s$params,
-    .s$..stateInfo["state"],
-    interpLines,
-    .lhs0,
-    .lhs,
-    .ddt,
-    ## DDE non-constant delay() pre-history (base past(state,tau)<-expr; the
-    ## pred-only model has no sensitivity compartments)
-    .s$..pastBaseLines,
-    .yj,
-    .lambda,
-    .hi,
-    .low,
-    .prd,
-    .fr$f_line,
-    .fr$r_line,
-    .fr$nu_line,
-    .s$..stateInfo["statef"],
-    .s$..stateInfo["dvid"],
-    ""
-  ), collapse = "\n")
+  if (is.null(.lhs0)) {
+    .lhs0 <- ""
+  }
+  .s$..pred.nolhs <- paste(
+    c(
+      .s$params,
+      .s$..stateInfo["state"],
+      interpLines,
+      .lhs0,
+      .lhs,
+      .ddt,
+      ## DDE non-constant delay() pre-history (base past(state,tau)<-expr; the
+      ## pred-only model has no sensitivity compartments)
+      .s$..pastBaseLines,
+      .yj,
+      .lambda,
+      .hi,
+      .low,
+      .prd,
+      .fr$f_line,
+      .fr$r_line,
+      .fr$nu_line,
+      .s$..stateInfo["statef"],
+      .s$..stateInfo["dvid"],
+      ""
+    ),
+    collapse = "\n"
+  )
 
   if (sum.prod) {
     .malert("stabilizing round off errors in nlm llik gradient problem...")
@@ -812,9 +869,7 @@ rxUiGet.nlmEnv <- function(x, ...) {
   .s$params <- rxUiGet.nlmParams(x, ...)
   .sumProd <- rxode2::rxGetControl(x[[1]], "sumProd", FALSE)
   .optExpression <- rxode2::rxGetControl(x[[1]], "optExpression", TRUE)
-  .rxFinalizeNlm(.s, .sumProd, .optExpression, .optExprCores(x[[1]]),
-    interpLines = rxUiGet.interpLinesStr(x, ...)
-  )
+  .rxFinalizeNlm(.s, .sumProd, .optExpression, .optExprCores(x[[1]]), interpLines = rxUiGet.interpLinesStr(x, ...))
   .s$..outer <- NULL
   if (exists("..maxTheta", .s)) {
     .eventTheta <- rep(0L, .s$..maxTheta)
@@ -882,11 +937,20 @@ rxUiGet.nlmParNameFun <- function(x, ...) {
   eval(str2lang(
     paste0(
       "function(p) {c(",
-      paste(vapply(.w, function(t) {
-        .ret <- paste0("'THETA[", .env$i, "]'=p[", .env$i, "]")
-        .env$i <- .env$i + 1
-        .ret
-      }, character(1), USE.NAMES = FALSE), collapse = ","), ")}"
+      paste(
+        vapply(
+          .w,
+          function(t) {
+            .ret <- paste0("'THETA[", .env$i, "]'=p[", .env$i, "]")
+            .env$i <- .env$i + 1
+            .ret
+          },
+          character(1),
+          USE.NAMES = FALSE
+        ),
+        collapse = ","
+      ),
+      ")}"
     )
   ))
 }
@@ -949,8 +1013,7 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
 #' @export
 #' @keywords internal
 #' @author Matthew L. Fidler
-nlmObjectiveSetup <- function(ui, data, control = NULL, gradient = FALSE,
-                              scale = c("control", "natural")) {
+nlmObjectiveSetup <- function(ui, data, control = NULL, gradient = FALSE, scale = c("control", "natural")) {
   scale <- match.arg(scale)
   ## assertRxUi accepts a model function as well as a ui; .copyUi (not
   ## rxUiDecompress) then isolates it, because decompressing an already-
@@ -1027,10 +1090,7 @@ nlmObjectiveSetup <- function(ui, data, control = NULL, gradient = FALSE,
     iterlim = .(.ctl$iterlim),
     check.analyticals = .(.ctl$check.analyticals)
   )))
-  .nlmFinalizeList(.env, .ret,
-    par = "estimate", printLine = TRUE,
-    hessianCov = TRUE
-  )
+  .nlmFinalizeList(.env, .ret, par = "estimate", printLine = TRUE, hessianCov = TRUE)
 }
 #' Get the full theta for nlm methods
 #'
@@ -1042,14 +1102,16 @@ nlmObjectiveSetup <- function(ui, data, control = NULL, gradient = FALSE,
 .nlmGetTheta <- function(nlm, ui) {
   .iniDf <- ui$iniDf
   setNames(
-    vapply(seq_along(.iniDf$name),
+    vapply(
+      seq_along(.iniDf$name),
       function(i) {
         if (.iniDf$fix[i]) {
           .iniDf$est[i]
         } else {
           nlm$estimate[.iniDf$name[i]]
         }
-      }, double(1),
+      },
+      double(1),
       USE.NAMES = FALSE
     ),
     .iniDf$name
@@ -1079,14 +1141,19 @@ nlmObjectiveSetup <- function(ui, data, control = NULL, gradient = FALSE,
     indTolRelax = .nlmControl$indTolRelax,
     eventSens = .nlmControl$eventSens
   )
-  if (assign) env$control <- .foceiControl
+  if (assign) {
+    env$control <- .foceiControl
+  }
   .foceiControl
 }
 
 
 .nlmFamilyFit <- function(env, ...) {
   .nlmFamilyFitGeneric(
-    env, "nlm", .nlmFitModel, .nlmGetTheta,
+    env,
+    "nlm",
+    .nlmFitModel,
+    .nlmGetTheta,
     objective = function(.fit) 2 * as.numeric(.fit$minimum),
     controlToFocei = .nlmControlToFoceiControl,
     returnFlag = "returnNlm",
@@ -1119,15 +1186,9 @@ nlmObjectiveSetup <- function(ui, data, control = NULL, gradient = FALSE,
 #' @export
 nlmixr2Est.nlm <- function(env, ...) {
   .ui <- env$ui
-  rxode2::assertRxUiPopulationOnly(.ui, " for the estimation routine 'nlm', try 'focei'",
-    .var.name = .ui$modelName
-  )
-  rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'nlm'",
-    .var.name = .ui$modelName
-  )
-  rxode2::warnRxBounded(.ui, " which are ignored in 'nlm'",
-    .var.name = .ui$modelName
-  )
+  rxode2::assertRxUiPopulationOnly(.ui, " for the estimation routine 'nlm', try 'focei'", .var.name = .ui$modelName)
+  rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'nlm'", .var.name = .ui$modelName)
+  rxode2::warnRxBounded(.ui, " which are ignored in 'nlm'", .var.name = .ui$modelName)
   .nlmFamilyControl(env, ...)
   on.exit(
     {
