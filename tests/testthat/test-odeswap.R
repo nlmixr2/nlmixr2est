@@ -351,10 +351,20 @@ nmTest({
     .e1 <- .odeSwapInfo()[c("esInstallC", "esInstallR")]
     expect_equal(.e1$esInstallR, .e0$esInstallR + 1)
     fitC <- suppressMessages(suppressWarnings(
-      nlmixr2(one, nlmixr2data::theo_sd, "focei",
-              foceiControl(print = 0L, covMethod = "", fast = TRUE,
-                           maxOuterIterations = 3L, maxInnerIterations = 100L,
-                           calcTables = FALSE))))
+      nlmixr2(
+        one,
+        nlmixr2data::theo_sd,
+        "focei",
+        foceiControl(
+          print = 0L,
+          covMethod = "",
+          fast = TRUE,
+          maxOuterIterations = 3L,
+          maxInnerIterations = 100L,
+          calcTables = FALSE
+        )
+      )
+    ))
     .e2 <- .odeSwapInfo()[c("esInstallC", "esInstallR")]
     expect_gt(.e2$esInstallC, .e1$esInstallC)
     expect_equal(.e2$esInstallR, .e1$esInstallR + 1)
