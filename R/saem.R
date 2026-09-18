@@ -748,6 +748,81 @@
   attr(.cls, "niter") <- env$saemControl$mcmc$niter[1]
   class(.ph) <- .cls
   assign("parHistData", .ph, envir = env)
+  .saemAddMcmcDiag(env)
+}
+
+#' Names for the per-phi-column MCMC traces
+#'
+#' `ui$saemParams` is ONE string -- `"params(tka,tcl,...)"` -- so a
+#' `length(nm) == ncol(m)` check against it never holds.
+#' `saemParamsToEstimate` is the character vector of the same names; parsing
+#' the string is the fallback for a ui that lacks it.
+#'
+#' @param env nlmixr2 estimation environment
+#' @return character vector of sampled-parameter names, or NULL
+#' @noRd
+#' @author Matthew L. Fidler
+.saemPhiTraceNames <- function(env) {
+  .nm <- tryCatch(env$ui$saemParamsToEstimate, error = function(e) NULL)
+  if (is.character(.nm)) {
+    return(.nm)
+  }
+  .s <- tryCatch(env$ui$saemParams, error = function(e) NULL)
+  if (!is.character(.s) || length(.s) != 1L) {
+    return(NULL)
+  }
+  trimws(strsplit(sub("^params\\(", "", sub("\\)$", "", trimws(.s))), ",")[[1]])
+}
+
+#' Surface saem's MCMC mixing diagnostics on the fit environment
+#'
+#' Per-iteration traces the C++ side records (`mcmcCloseIter()`, src/saem.cpp).
+#' They exist because saem computed its acceptance rate and discarded it, so a
+#' chain that had stopped moving looked exactly like one exploring properly.
+#'
+#' - `$mcmcAccept`  pooled acceptance rate per iteration, one column per kernel
+#'   (`prior`, `rw`, `coord`).
+#' - `$mcmcAcceptCol` kernel 3's acceptance rate PER SAMPLED PARAMETER.  Kernel
+#'   3 proposes one coordinate at a time, so its acceptance is already a
+#'   per-column quantity; `$mcmcAccept` pools it and hides a single parameter
+#'   behaving differently from the rest.  A column near 1 while the others sit
+#'   near their target is a coordinate whose proposals the likelihood is not
+#'   rejecting -- its chain then explores the prior rather than the posterior.
+#' - `$mcmcStuck`   fraction of SUBJECTS that accepted nothing that iteration.
+#'   The one a pooled rate cannot show: a healthy-looking 0.3 is equally
+#'   consistent with everyone at 0.3 and with half the population never moving.
+#' - `$mcmcPhiSd`   pooled SD of each sampled parameter across subjects.
+#' - `$mcmcPhiAcf`  lag-1 autocorrelation of each parameter against the previous
+#'   iteration's draws.  The direct measure: 1.0 means the chain did not move.
+#'
+#' @param env nlmixr2 estimation environment
+#' @return Nothing, called for side effects
+#' @noRd
+#' @author Matthew L. Fidler
+.saemAddMcmcDiag <- function(env) {
+  .saem <- env$saem
+  .acc <- .saem$mcmcAccept
+  if (!is.matrix(.acc) || nrow(.acc) == 0L) {
+    return(invisible())
+  }
+  colnames(.acc) <- c("prior", "rw", "coord")[seq_len(ncol(.acc))]
+  assign("mcmcAccept", .acc, envir = env)
+  .stuck <- .saem$mcmcStuck
+  if (is.matrix(.stuck) && ncol(.stuck) == 1L) {
+    assign("mcmcStuck", as.numeric(.stuck[, 1]), envir = env)
+  }
+  .nm <- .saemPhiTraceNames(env)
+  for (.f in c("mcmcPhiSd", "mcmcPhiAcf", "mcmcAcceptCol")) {
+    .m <- .saem[[.f]]
+    if (!is.matrix(.m) || nrow(.m) == 0L) {
+      next
+    }
+    if (is.character(.nm) && length(.nm) == ncol(.m)) {
+      colnames(.m) <- .nm
+    }
+    assign(.f, .m, envir = env)
+  }
+  invisible()
 }
 #' Stochastic-approximation (Louis) FIM covariance for SAEM
 #'
