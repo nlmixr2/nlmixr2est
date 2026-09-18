@@ -113,6 +113,18 @@ that cannot compute the covariance should
 [`setCovAllMethods()`](https://nlmixr2.github.io/nlmixr2est/reference/setCovAllMethods.md)
 lists the available methods.
 
+A method's options are recorded under the key
+[`setCovOptions()`](https://nlmixr2.github.io/nlmixr2est/reference/setCovOptions.md)
+gives its control, by default the control itself. A covariance that
+depends on other state on the fit – one seeded from another covariance,
+say – adds a
+[`setCovOptions()`](https://nlmixr2.github.io/nlmixr2est/reference/setCovOptions.md)
+method for its control class that puts that state in the key. A package
+can also let an already-computed result be installed with
+`setCov(fit) <- result` by adding a
+[`setCovValue()`](https://nlmixr2.github.io/nlmixr2est/reference/setCovValue.md)
+method for the result's class.
+
 Each covariance remembers the options it was computed with (in
 `fit$env$covOptions`). A covariance already on the fit is reinstalled
 from `fit$covList` only when the requested options – the supplied

@@ -216,10 +216,16 @@
   : Options for the SAEM stochastic-approximation covariance in setCov()
 - [`saemControl()`](https://nlmixr2.github.io/nlmixr2est/reference/saemControl.md)
   : Control Options for SAEM
+- [`` `setCov<-`() ``](https://nlmixr2.github.io/nlmixr2est/reference/setCov-set.md)
+  : Install an already-computed covariance result on a fit
 - [`setCov()`](https://nlmixr2.github.io/nlmixr2est/reference/setCov.md)
   : Set the covariance type based on prior calculated covariances
 - [`setCovAllMethods()`](https://nlmixr2.github.io/nlmixr2est/reference/setCovAllMethods.md)
   : List the covariance methods setCov() can compute
+- [`setCovOptions()`](https://nlmixr2.github.io/nlmixr2est/reference/setCovOptions.md)
+  : The cache key of a covariance method's options
+- [`setCovValue()`](https://nlmixr2.github.io/nlmixr2est/reference/setCovValue.md)
+  : The covariance, method name and options a result installs
 - [`setOfv()`](https://nlmixr2.github.io/nlmixr2est/reference/setOfv.md)
   [`getOfvType()`](https://nlmixr2.github.io/nlmixr2est/reference/setOfv.md)
   : Set/get Objective function type for a nlmixr2 object

@@ -22,6 +22,19 @@
   reuses a cached covariance only when the requested options match,
   recomputing otherwise.
 
+- The cache key of a covariance method’s options is the new generic
+  [`setCovOptions()`](https://nlmixr2.github.io/nlmixr2est/reference/setCovOptions.md),
+  so a method whose covariance depends on more than its control (for
+  example SIR, seeded from another covariance on the fit) can put that
+  state in the key.
+
+- `setCov(fit) <- value` installs an already-computed covariance: a
+  matrix (as `"user"`, or `setCov(fit, "name") <- matrix`), or any
+  result with a
+  [`setCovValue()`](https://nlmixr2.github.io/nlmixr2est/reference/setCovValue.md)
+  method, which also records the options that produced it and can keep
+  the result itself on the fit.
+
 - The fit print separates the other calculated covariances with `;`,
   since `"r,s"` contains a comma.
 

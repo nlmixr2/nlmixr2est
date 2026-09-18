@@ -160,6 +160,13 @@ returns <code>NULL</code>.  A mixture fit's matrix is rotated onto the probabili
 scale unless it carries <code>attr(, "mixRotated")</code> set to <code>TRUE</code>.  A
 method that cannot compute the covariance should <code><a href="https://rdrr.io/r/base/stop.html" class="external-link">stop()</a></code>.
 <code><a href="setCovAllMethods.html">setCovAllMethods()</a></code> lists the available methods.</p>
+<p>A method's options are recorded under the key <code><a href="setCovOptions.html">setCovOptions()</a></code>
+gives its control, by default the control itself.  A covariance that depends
+on other state on the fit – one seeded from another covariance, say – adds
+a <code><a href="setCovOptions.html">setCovOptions()</a></code> method for its control class that puts that state
+in the key.  A package can also let an already-computed result be installed
+with <code>setCov(fit) &lt;- result</code> by adding a <code><a href="setCovValue.html">setCovValue()</a></code>
+method for the result's class.</p>
 <p>Each covariance remembers the options it was computed with (in
 <code>fit$env$covOptions</code>).  A covariance already on the fit is reinstalled
 from <code>fit$covList</code> only when the requested options – the supplied
