@@ -63,6 +63,9 @@ test_that("IOV models fit with ifocei and mfocei (#1083)", {
 test_that("a correlated occasion block fits under a full Laplace/AGQ delegate", {
   skip_on_cran()
 
+  # written as ODEs, like test-focei-full-inner.R: the conditional inner
+  # Hessian these methods force needs a 2nd-order symengine expansion, which
+  # a solved-form linCmt() model does not have under rxode2 5.1.8
   corr.cmt <- function() {
     ini({
       tka <- 0.45
@@ -76,7 +79,10 @@ test_that("a correlated occasion block fits under a full Laplace/AGQ delegate", 
       ka <- exp(tka + eta.ka)
       cl <- exp(tcl + iov.cl)
       v <- exp(tv + iov.v)
-      linCmt() ~ add(add.sd)
+      d/dt(depot) <- -ka * depot
+      d/dt(center) <- ka * depot - cl / v * center
+      cp <- center / v
+      cp ~ add(add.sd)
     })
   }
 
