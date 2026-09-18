@@ -61,6 +61,17 @@
 
 ## Bug fixes
 
+- An omega block declaring one of its covariances at exactly `0` (for example
+  `eta.ka + eta.cl + eta.v ~ c(0.1, 0.01, 0.1, 0, 0.01, 0.1)`) no longer aborts
+  the fit with `theta has to have N elements`.  The block's cholesky factor is
+  dense, so that `0` cannot be held; it is now estimated from ~0, as a `0`
+  element of a NONMEM `$OMEGA BLOCK` is, and `$runInfo` names the random
+  effects involved.  The same applies to a correlated pair that is not adjacent
+  in eta order (`eta.a` with `eta.c`, `eta.b` between them), which used to be
+  refused as well.  The FOCEi family, `est="vae"` and the general-likelihood
+  inner driver all took the same route (#1079, rxode2#1365).  A covariance
+  declared at `0` in a two-eta block is unchanged: it leaves the two etas
+  uncorrelated, as it always has.
 - `foceiControl(warm="save")` now restarts the n1qn1 inner problem from the
   curvature the subject's previous inner solve left, as it was always meant
   to.  It reconstructed that Hessian from a buffer it had just zeroed, so

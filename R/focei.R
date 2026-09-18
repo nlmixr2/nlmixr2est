@@ -3420,6 +3420,23 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
   }
 }
 
+#' The floored diagonal of `om`: the one omega shape that is always both
+#' positive definite and block-decomposable, so every repair can end here.
+#'
+#' @param om omega matrix
+#' @param dn dimnames to carry onto the result
+#' @return diagonal matrix
+#' @noRd
+.foceiFlooredDiagOmega <- function(om, dn = dimnames(om)) {
+  .d <- diag(om)
+  .pos <- .d[is.finite(.d) & .d > 0]
+  .floor <- if (length(.pos) > 0L) max(1e-8, 1e-6 * max(.pos)) else 1e-6
+  .d[!is.finite(.d) | .d < .floor] <- .floor
+  .ret <- diag(.d, nrow = length(.d))
+  dimnames(.ret) <- dn
+  .ret
+}
+
 #' Repair a non-positive-definite omega so post-fit processing can continue
 #'
 #' `nmNearPD()` itself fails (and errors) on the fully degenerate cases -- an
@@ -3444,14 +3461,86 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
     }
     return(.r)
   }
-  .d <- diag(.om)
-  .pos <- .d[is.finite(.d) & .d > 0]
-  .floor <- if (length(.pos) > 0L) max(1e-8, 1e-6 * max(.pos)) else 1e-6
-  .d[!is.finite(.d) | .d < .floor] <- .floor
-  .ret <- diag(.d, nrow = length(.d))
-  dimnames(.ret) <- dimnames(om)
   warning("singular omega; used a floored diagonal for tables", call. = FALSE)
-  .ret
+  .foceiFlooredDiagOmega(.om, dimnames(om))
+}
+
+#' The omegas `.foceiSymInvCholCreate()` tries, in order, each with the note it
+#' owes the user.
+#'
+#' A covariance of exactly 0 INSIDE a correlated block cannot be held at 0 by
+#' this parameterization, so it becomes a free parameter starting at ~0 -- the
+#' same semantics as a 0 element of a NONMEM $OMEGA BLOCK.  Then `same()`
+#' sharing, which can itself be what the call refuses.  Then the floored
+#' diagonal, which is always acceptable.
+#'
+#' @inheritParams .foceiSymInvCholCreate
+#' @return list of `list(mat, same, msg)`; a NULL `mat` is a rung that does not
+#'   apply
+#' @noRd
+.foceiSymInvCholRungs <- function(om, same, fallback) {
+  .ret <- list(list(mat = om, same = same, msg = NULL))
+  .fill <- .omegaFillBlockZeros(om)
+  .msg <- paste0("omega block zero cov is estimated: ",
+                 .omegaBlockZeroNames(om, .omegaBlockZeros(om)))
+  # dropping the sharing changes what is ESTIMATED (the repeated blocks stop
+  # mirroring their master), so it is always said out loud
+  .dropped <- if (isTRUE(any(same > 0L))) {
+    "omega same() sharing dropped to build the inverse"
+  }
+  .ret <- c(.ret, list(list(mat = .fill, same = same, msg = .msg)))
+  if (!fallback) {
+    return(.ret)
+  }
+  c(.ret, list(
+    list(mat = .fill, same = NULL, msg = c(.msg, .dropped)),
+    list(mat = om, same = NULL, msg = .dropped),
+    list(mat = .foceiFlooredDiagOmega(om), same = NULL,
+         msg = c("omega refused; used a floored diagonal instead", .dropped))
+  ))
+}
+
+#' Build the sym-inv-chol env, repairing the omega when the call refuses it
+#'
+#' `rxSymInvCholCreate()` needs more than positive-definiteness: every
+#' correlated block of the omega's zero pattern has to be dense, or its
+#' parameter count disagrees with the (dense) cholesky factor it fills from and
+#' the theta setter aborts with "theta has to have N elements" (rxode2#1365).
+#' That is not something `chol()` can predict, so try the call and fall back
+#' through the repairs rather than guessing which one is needed.
+#'
+#' @param om omega matrix
+#' @param diagXform `diagXform` control value
+#' @param same `omegaSameMap`, or `NULL`
+#' @param warn note a repair; `FALSE` for a repeat build that has already been
+#'   reported once
+#' @param fallback also try the repairs that CHANGE the omega (dropping
+#'   `same()`, the floored diagonal).  `FALSE` keeps only the block-zero fill,
+#'   which reproduces the omega to a 1e-10 correlation, and errors otherwise --
+#'   for a repeat build that must not silently swap the matrix out.
+#' @return list with `rxInv`, the `mat` it was built from, and the `same` map
+#'   that survived
+#' @noRd
+.foceiSymInvCholCreate <- function(om, diagXform, same, warn = TRUE,
+                                   fallback = TRUE) {
+  .try <- function(mat, sameMap) {
+    tryCatch(rxode2::rxSymInvCholCreate(mat = mat, diag.xform = diagXform,
+                                        same = sameMap),
+             error = function(e) NULL)
+  }
+  for (.rung in .foceiSymInvCholRungs(om, same, fallback)) {
+    if (is.null(.rung$mat)) next
+    .r <- .try(.rung$mat, .rung$same)
+    if (is.null(.r)) next
+    if (warn) {
+      for (.m in .rung$msg) warning(.m, call. = FALSE)
+    }
+    return(list(rxInv = .r, mat = .rung$mat, same = .rung$same))
+  }
+  .nm <- colnames(om)
+  if (is.null(.nm)) .nm <- paste0("eta", seq_len(nrow(om)))
+  stop("could not build the omega inverse for: ", paste(.nm, collapse = ", "),
+       call. = FALSE)
 }
 
 #'  This sets up the initial omega/eta estimates and the boundaries for the whole system
@@ -3539,9 +3628,12 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
       # the wrong ones
       .sameMap <- NULL
     }
-    env$rxInv <- rxode2::rxSymInvCholCreate(mat = .om0,
-                                            diag.xform = .diagXform,
-                                            same = .sameMap)
+    .symInv <- .foceiSymInvCholCreate(.om0, .diagXform, .sameMap)
+    # the repair (if any) has to carry into the bound matrices below, or their
+    # theta vectors no longer line up with `env$rxInv`'s row for row
+    .om0 <- .symInv$mat
+    .sameMap <- .symInv$same
+    env$rxInv <- .symInv$rxInv
     env$xType <- env$rxInv$xType
     .om0a <- .om0
     .om0a <- .om0a / rxode2::rxGetControl(ui, "diagOmegaBoundLower", 100)

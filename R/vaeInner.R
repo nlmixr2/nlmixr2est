@@ -81,8 +81,13 @@
   ## packs chol(Omega^-1) onto the omega block of the reduced par vector, using
   ## the 0-based position list stashed here (column-major upper-tri restricted
   ## to the structure -- rxSymInvCholCreate's parameter order)
-  .om <- .ui$omega
-  .env$rxInv <- rxode2::rxSymInvCholCreate(mat = .om, diag.xform = "sqrt")
+  ## same repair ladder as focei: a 0 sitting inside a correlated block is not
+  ## representable here, so it is filled and estimated instead of aborting the
+  ## run with "theta has to have N elements" (#1079)
+  ## `.ui$foceiOptEnv` above already reported any repair
+  .sic <- .foceiSymInvCholCreate(.ui$omega, "sqrt", NULL, warn = FALSE)
+  .om <- .sic$mat
+  .env$rxInv <- .sic$rxInv
   .selMat <- upper.tri(.om, diag = TRUE) & .om != 0
   diag(.selMat) <- TRUE
   .env$vaeOmegaSel <- which(.selMat, arr.ind = TRUE) - 1L
@@ -142,7 +147,13 @@
   .om <- if (is.matrix(omega)) omega else diag(omega, length(omega))
   .nm <- env$etaNames
   if (!is.null(.nm) && length(.nm) == nrow(.om)) dimnames(.om) <- list(.nm, .nm)
-  env$rxInv <- rxode2::rxSymInvCholCreate(mat = .om, diag.xform = diagXform)
+  ## Reported once at setup, and this runs every VI step -- so no message, and
+  ## no fallback either: only the block-zero fill (a 1e-10 correlation) may run
+  ## here, a genuinely bad omega still errors rather than silently flooring.
+  .sic <- .foceiSymInvCholCreate(.om, diagXform, NULL, warn = FALSE,
+                                 fallback = FALSE)
+  .om <- .sic$mat
+  env$rxInv <- .sic$rxInv
   .selMat <- upper.tri(.om, diag = TRUE) & .om != 0
   diag(.selMat) <- TRUE
   env$vaeOmegaSel <- which(.selMat, arr.ind = TRUE) - 1L
