@@ -26,11 +26,20 @@ nmTest({
       })
     }
     ctl <- function(mceta) {
-      impmapControl(nIter = 3L, isample = 50L, print = 0L, covMethod = "",
-                    mceta = mceta)
+      impmapControl(
+        nIter = 3L,
+        isample = 50L,
+        print = 0L,
+        covMethod = "",
+        mceta = mceta
+      )
     }
-    f0 <- suppressWarnings(nlmixr2(one, nlmixr2data::theo_sd, est = "impmap",
-                                   control = ctl(0L)))
+    f0 <- suppressWarnings(nlmixr2(
+      one,
+      nlmixr2data::theo_sd,
+      est = "impmap",
+      control = ctl(0L)
+    ))
 
     # The counters exist and a healthy fit needs no rescue.
     expect_true(is.numeric(f0$env$impMStepDamped))
@@ -39,8 +48,12 @@ nmTest({
 
     expect_true(is.finite(f0$objf))
     for (mc in c(10L, 100L)) {
-      fm <- suppressWarnings(nlmixr2(one, nlmixr2data::theo_sd, est = "impmap",
-                                     control = ctl(mc)))
+      fm <- suppressWarnings(nlmixr2(
+        one,
+        nlmixr2data::theo_sd,
+        est = "impmap",
+        control = ctl(mc)
+      ))
       expect_true(is.finite(fm$objf))
       # Same model, same data, same iteration count -- only the inner MAP's
       # starting points differ, so the objective must stay in the same place.
@@ -82,9 +95,17 @@ nmTest({
         linCmt() ~ add(add.sd)
       })
     }
-    f <- suppressWarnings(nlmixr2(collinear, nlmixr2data::theo_sd, est = "impmap",
-                                  control = impmapControl(nIter = 5L, isample = 50L,
-                                                          print = 0L, covMethod = "")))
+    f <- suppressWarnings(nlmixr2(
+      collinear,
+      nlmixr2data::theo_sd,
+      est = "impmap",
+      control = impmapControl(
+        nIter = 5L,
+        isample = 50L,
+        print = 0L,
+        covMethod = ""
+      )
+    ))
     # The guard engaged on this model rather than sitting unused.
     expect_gt(f$env$impMStepDamped, 0)
     # ...and having engaged, it kept the thetas somewhere a model can live.
