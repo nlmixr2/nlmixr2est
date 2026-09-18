@@ -18503,28 +18503,36 @@ static int gradDirectOmegaHandle(const FoceiGradPooledSetup &G, int neta, arma::
   return 0;
 }
 
+// First use: read the handle and keep the native values only if they match it.  A
+// failed handle proves nothing about the native map, so the state stays untried.
+static int gradDirectOmegaVerify(const FoceiGradPooledSetup &G, int neta, const arma::mat &OiF,
+                                 const arma::cube &dF, const arma::vec &tF, arma::mat &Oi,
+                                 arma::cube &dOiEst, arma::vec &tr28) {
+  int code = gradDirectOmegaHandle(G, neta, Oi, dOiEst, tr28);
+  if (code != 0) return code;
+  bool same = arma::approx_equal(OiF, Oi, "absdiff", 1e-8) &&
+    arma::approx_equal(arma::vectorise(dF), arma::vectorise(dOiEst), "absdiff", 1e-8) &&
+    arma::approx_equal(tF, tr28, "absdiff", 1e-8);
+  _omGradFastState = same ? 1 : -1;
+  if (same) { Oi = OiF; dOiEst = dF; tr28 = tF; }
+  return 0;
+}
+
 // Omega and its estimation-scale derivatives: the native map once verified
 // against the handle (first use), else the handle.
 static bool gradDirectOmega(const FoceiGradPooledSetup &G, int neta, arma::mat &Oi,
                             arma::cube &dOiEst, arma::vec &tr28) {
+  int code;
   if (_omGradFastState >= 0) {
     arma::mat OiF; arma::cube dF; arma::vec tF;
     if (gradDirectOmegaFast(neta, G.nom, OiF, dF, tF)) {
       if (_omGradFastState == 1) { Oi = OiF; dOiEst = dF; tr28 = tF; return true; }
-      // a failed handle proves nothing about the native map: decline, stay untried
-      int codeR = gradDirectOmegaHandle(G, neta, Oi, dOiEst, tr28);
-      if (codeR != 0) return declineHere(codeR);
-      bool same = arma::approx_equal(OiF, Oi, "absdiff", 1e-8) &&
-        arma::approx_equal(arma::vectorise(dF), arma::vectorise(dOiEst), "absdiff", 1e-8) &&
-        arma::approx_equal(tF, tr28, "absdiff", 1e-8);
-      _omGradFastState = same ? 1 : -1;
-      if (same) { Oi = OiF; dOiEst = dF; tr28 = tF; }
-      return true;
-    } else if (_omGradFastState == 0 && _omFastState == -1) {
-      _omGradFastState = -1;
+      code = gradDirectOmegaVerify(G, neta, OiF, dF, tF, Oi, dOiEst, tr28);
+      return code == 0 ? true : declineHere(code);
     }
+    if (_omGradFastState == 0 && _omFastState == -1) _omGradFastState = -1;
   }
-  int code = gradDirectOmegaHandle(G, neta, Oi, dOiEst, tr28);
+  code = gradDirectOmegaHandle(G, neta, Oi, dOiEst, tr28);
   return code == 0 ? true : declineHere(code);
 }
 
