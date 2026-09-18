@@ -48,9 +48,13 @@ nmTest({
       })
     }
     .f <- suppressMessages(
-      nlmixr2(.mod, nlmixr2data::theo_sd, est = "imp",
-              control = impmapControl(nIter = 2L, isample = 50L, print = 0L,
-                                      mceta = 10L, covMethod = "")))
+      nlmixr2(
+        .mod,
+        nlmixr2data::theo_sd,
+        est = "imp",
+        control = impmapControl(nIter = 2L, isample = 50L, print = 0L, mceta = 10L, covMethod = "")
+      )
+    )
     .ns <- .f$env$nMcetaStart
     expect_false(is.null(.ns))
     expect_true(sum(.ns) > 0)
@@ -60,9 +64,13 @@ nmTest({
 
     # control: the counter is gated on mceta >= 1, so mceta=0 must not stamp it
     .f0 <- suppressMessages(
-      nlmixr2(.mod, nlmixr2data::theo_sd, est = "imp",
-              control = impmapControl(nIter = 2L, isample = 50L, print = 0L,
-                                      mceta = 0L, covMethod = "")))
+      nlmixr2(
+        .mod,
+        nlmixr2data::theo_sd,
+        est = "imp",
+        control = impmapControl(nIter = 2L, isample = 50L, print = 0L, mceta = 0L, covMethod = "")
+      )
+    )
     expect_null(.f0$env$nMcetaStart)
   })
 })
