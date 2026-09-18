@@ -44,7 +44,6 @@
 #' @noRd
 .omegaWriteIni <- function(u, omegaMat) {
   .nm <- colnames(omegaMat)
-  .n <- nrow(omegaMat)
   ## Block on the model's DECLARED structure, not on which fitted values happen
   ## to be non-zero.  An estimated covariance of exactly 0 (the correlation hold
   ## running to the end of a short fit) would otherwise disconnect the etas, emit
@@ -54,22 +53,8 @@
   .decl <- tryCatch(.omegaBlockFromIniDf(rxode2::rxUiDecompress(u)$iniDf, .nm)$mat,
                     error = function(e) NULL)
   .adj <- if (is.null(.decl)) omegaMat != 0 else (.decl != 0 | omegaMat != 0)
-  diag(.adj) <- TRUE
-  .comp <- integer(.n)
-  .c <- 0L
-  for (.i in seq_len(.n)) {
-    if (.comp[.i] != 0L) next
-    .c <- .c + 1L
-    .stack <- .i
-    while (length(.stack)) {
-      .v <- .stack[[1L]]
-      .stack <- .stack[-1L]
-      if (.comp[.v] != 0L) next
-      .comp[.v] <- .c
-      .stack <- c(.stack, which(.adj[.v, ] & .comp == 0L))
-    }
-  }
-  for (.b in seq_len(.c)) {
+  .comp <- .omegaBlockIds(.adj)
+  for (.b in unique(.comp)) {
     .idx <- which(.comp == .b)
     if (length(.idx) == 1L) {
       .expr <- paste0(.nm[.idx], " ~ ", signif(omegaMat[.idx, .idx], 12))
@@ -96,4 +81,103 @@
   if (is.null(.om)) .om <- diag(as.numeric(fit$omega), length(etaNames))
   dimnames(.om) <- list(etaNames, etaNames)
   .om
+}
+
+#' Connected-component block ids of a symmetric adjacency pattern.
+#'
+#' @param adj logical (or coercible) symmetric matrix; the diagonal is ignored
+#' @return integer vector of block ids, one per row
+#' @noRd
+.omegaBlockIds <- function(adj) {
+  .adj <- adj != 0
+  .n <- nrow(.adj)
+  diag(.adj) <- TRUE
+  .comp <- integer(.n)
+  .c <- 0L
+  for (.i in seq_len(.n)) {
+    if (.comp[.i] != 0L) next
+    .c <- .c + 1L
+    .stack <- .i
+    while (length(.stack)) {
+      .v <- .stack[[1L]]
+      .stack <- .stack[-1L]
+      if (.comp[.v] != 0L) next
+      .comp[.v] <- .c
+      .stack <- c(.stack, which(.adj[.v, ] & .comp == 0L))
+    }
+  }
+  .comp
+}
+
+#' Zeros `rxSymInvCholCreate()` cannot hold at zero.
+#'
+#' It counts its parameters from omega's zero pattern but fills them from each
+#' block's cholesky factor, and it takes a block to be the whole index SPAN of
+#' a correlated group.  So the patterns it accepts are exactly those whose
+#' connected components are contiguous index ranges, each one dense
+#' (rxode2#1365); anything else makes the two counts disagree and the theta
+#' setter refuses the matrix with "theta has to have N elements".
+#'
+#' Measured over every 4x4 pattern: "components are contiguous and dense"
+#' matches which matrices the call accepts 64/64, where "dense components"
+#' alone misses 7 of them.
+#'
+#' Closing each component up to its span can merge components (spans overlap),
+#' so grow the pattern to a fixed point.
+#'
+#' @param mat symmetric matrix
+#' @return two-column (row, col) matrix of upper-triangle positions that have
+#'   to become nonzero, empty when the pattern is already acceptable
+#' @noRd
+.omegaBlockZeros <- function(mat) {
+  .adj <- mat != 0
+  .adj[is.na(.adj)] <- FALSE
+  repeat {
+    .comp <- .omegaBlockIds(.adj)
+    .new <- .adj
+    for (.c in unique(.comp)) {
+      .idx <- which(.comp == .c)
+      .span <- seq.int(min(.idx), max(.idx))
+      .new[.span, .span] <- TRUE
+    }
+    if (identical(.new, .adj)) break
+    .adj <- .new
+  }
+  which(upper.tri(mat) & .adj & mat == 0, arr.ind = TRUE)
+}
+
+#' Fill the block-internal zeros of `mat` with a negligible covariance.
+#'
+#' @param mat symmetric positive-definite matrix
+#' @param cor correlation written into each filled cell
+#' @return the filled matrix, or `NULL` when there is nothing to fill or the
+#'   fill cannot be made (a non-positive diagonal, or a result that is no
+#'   longer cholesky-able)
+#' @noRd
+.omegaFillBlockZeros <- function(mat, cor = 1e-10) {
+  .idx <- .omegaBlockZeros(mat)
+  if (nrow(.idx) == 0L) return(NULL)
+  .d <- diag(mat)
+  .ret <- mat
+  for (.k in seq_len(nrow(.idx))) {
+    .i <- .idx[.k, 1L]
+    .j <- .idx[.k, 2L]
+    .v <- cor * sqrt(.d[.i] * .d[.j])
+    if (!is.finite(.v) || .v <= 0) return(NULL)
+    .ret[.i, .j] <- .ret[.j, .i] <- .v
+  }
+  if (inherits(try(chol(.ret), silent = TRUE), "try-error")) return(NULL)
+  .ret
+}
+
+#' The random effects named by `.omegaBlockZeros()` positions, comma separated
+#' and truncated so the warning stays on one line.
+#' @noRd
+.omegaBlockZeroNames <- function(mat, idx, width = 35L) {
+  .nm <- colnames(mat)
+  if (is.null(.nm)) .nm <- paste0("eta", seq_len(nrow(mat)))
+  .use <- unique(as.vector(idx))
+  .txt <- paste(.nm[.use], collapse = ", ")
+  if (nchar(.txt) > width) .txt <- paste0(substr(.txt, 1L, width - 3L), "...")
+  .txt
 }

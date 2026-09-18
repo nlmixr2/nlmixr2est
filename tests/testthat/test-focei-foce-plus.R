@@ -65,15 +65,18 @@ nmTest({
     # An earlier revision of this file recorded 116.63 for "foce+ / focep" and sized the
     # neighbourhood bound at 3 around it.  That number dates from when est="foce" WAS the
     # foce+ variant, so it describes a code state that no longer exists and is not a target
-    # to restore.  Do not re-tighten this bound to fit it.  warm="save" (self-init inner
-    # Hessian) is still pinned: the default warm="calc" recalculates the eta Hessian at the
-    # mu-regression's restarted theta/eta and moves this fixture again.
+    # to restore.  Do not re-tighten this bound to fit it.  warm="none" (n1qn1's own
+    # self-init inner Hessian) is still pinned: warm="calc" recalculates the eta Hessian at
+    # the mu-regression's restarted theta/eta and could move this fixture again.  It was
+    # warm="save" until #1043 (that option reused nothing, so it WAS self-init); the
+    # objective is the same either way here because innerOpt="auto" resolves to "trust",
+    # which supplies its own exact Hessian and ignores warm= entirely.
     fM <- suppressWarnings(suppressMessages(
       nlmixr(one.cmt, d, "mfocep",
-             foceiControl(print = 0L, calcTables = FALSE, outerOpt = "nlminb", covMethod = "", warm = "save"))))
+             foceiControl(print = 0L, calcTables = FALSE, outerOpt = "nlminb", covMethod = "", warm = "none"))))
     fI <- suppressWarnings(suppressMessages(
       nlmixr(one.cmt, d, "ifocep",
-             foceiControl(print = 0L, calcTables = FALSE, outerOpt = "nlminb", covMethod = "", warm = "save"))))
+             foceiControl(print = 0L, calcTables = FALSE, outerOpt = "nlminb", covMethod = "", warm = "none"))))
     expect_true(is.finite(fM$objective))
     expect_true(is.finite(fI$objective))
     expect_equal(fM$objective, fI$objective, tolerance = 1e-2)

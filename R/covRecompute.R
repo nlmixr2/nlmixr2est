@@ -83,14 +83,12 @@
 #' produces a non-finite FIM), then the dedicated `nSaCov` phase accumulates the
 #' Louis observed-information at the (essentially unchanged) converged point.
 #' @param fit completed nlmixr2 fit
-#' @param nBurn,nEm short warm-up iteration counts (default 100 each)
+#' @param control `saControl()` options, or `NULL` for the defaults
 #' @return list(cov, covMethod, extras) or NULL
 #' @noRd
-.covRecomputeSa <- function(fit, nBurn = 100L, nEm = 100L) {
+.covRecomputeSa <- function(fit, control = NULL) {
   # SAEM derives its own etaMat from the MCMC; no external eta seed
-  .covRecomputeNative(fit, "saem",
-                      saemControl(nBurn = as.integer(nBurn), nEm = as.integer(nEm),
-                                  covMethod = "sa", calcTables = FALSE),
+  .covRecomputeNative(fit, "saem", .covEngineControl("sa", control),
                       useEtaMat = FALSE)
 }
 
@@ -102,24 +100,45 @@
 #' pinned converged estimates, so the MAP pass + `impComputeCov` evaluate the
 #' Monte-Carlo observed information essentially at the converged point.
 #' @param fit completed nlmixr2 fit
-#' @param nIter frozen EM iterations (default 1; 0 is an E-step-only evaluation)
+#' @param control `impCovControl()` options, or `NULL` for the defaults
 #' @return list(cov, covMethod, extras) or NULL
 #' @noRd
-.covRecomputeImp <- function(fit, nIter = 1L) {
-  .covRecomputeNative(fit, "imp",
-                      impmapControl(nIter = as.integer(nIter), mapIter = 0L,
-                                    covMethod = "imp", calcTables = FALSE),
+.covRecomputeImp <- function(fit, control = NULL) {
+  .covRecomputeNative(fit, "imp", .covEngineControl("imp", control),
                       useEtaMat = TRUE)
+}
+
+#' Engine control for a decoupled covariance recompute
+#' @param method "sa" or "imp"
+#' @param control `saControl()`/`impCovControl()` options, or `NULL` for the
+#'   defaults
+#' @return `saemControl()` or `impmapControl()` object
+#' @noRd
+.covEngineControl <- function(method, control = NULL) {
+  if (identical(method, "sa")) {
+    if (is.null(control)) control <- saControl()
+    return(saemControl(nBurn = control$nBurn, nEm = control$nEm,
+                       nSaCov = control$nSaCov, seed = control$seed,
+                       covMethod = "sa", calcTables = FALSE))
+  }
+  if (is.null(control)) control <- impCovControl()
+  # impmap's default SIR sample (at least 25) cannot exceed a small isample
+  .sir <- min(max(25L, as.integer(ceiling(max(control$isample) / 10))),
+              min(control$isample))
+  impmapControl(nIter = control$nIter, mapIter = 0L,
+                isample = control$isample, impSeed = control$impSeed,
+                sirSample = .sir, covMethod = "imp", calcTables = FALSE)
 }
 
 #' Dispatcher: recompute a decoupled covariance ("sa"/"imp") on a completed fit.
 #' @param fit completed nlmixr2 fit
 #' @param method "sa" or "imp"
+#' @param control covariance control, or `NULL` for the defaults
 #' @return list(cov, covMethod, extras) or NULL
 #' @noRd
-.covRecompute <- function(fit, method) {
-  if (identical(method, "sa")) return(.covRecomputeSa(fit))
-  if (identical(method, "imp")) return(.covRecomputeImp(fit))
+.covRecompute <- function(fit, method, control = NULL) {
+  if (identical(method, "sa")) return(.covRecomputeSa(fit, control = control))
+  if (identical(method, "imp")) return(.covRecomputeImp(fit, control = control))
   NULL
 }
 

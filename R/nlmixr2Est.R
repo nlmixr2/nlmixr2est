@@ -398,10 +398,16 @@ nlmixr2Est0 <- function(env, ...) {
         .rEnv <- if (is.environment(.ret)) .ret else tryCatch(.ret$env, error = function(e) NULL)
         if (is.environment(.rEnv)) {
           .r <- tryCatch(.covRecompute(.ret, .def), error = function(e) NULL)
-          try(.covInstallResult(.rEnv, .r), silent = TRUE)
+          if (isTRUE(try(.covInstallResult(.rEnv, .r), silent = TRUE))) {
+            .covOptionsSet(.rEnv, .def, .covOptionsDefault(.rEnv, .def))
+          }
         }
       }
     }
+    # snapshot the options the estimation-time covariances used, so setCov()
+    # still sees them if the fit's settings change later
+    try(.covOptionsRecordEstimation(
+      if (is.environment(.ret)) .ret else .ret$env), silent = TRUE)
   }
   .ret
 }

@@ -67,7 +67,7 @@ nmTest({
       .oneCmt, nlmixr2data::theo_sd, est = "focei",
       control = foceiControl(print = 0, covMethod = "s", calcTables = FALSE)))
     expect_error(setCov(.fit, "s (full)"), "no need to switch")
-    expect_error(setCov(.fit, "nonesuch"), "have not been calculated")
+    expect_error(setCov(.fit, "nonesuch"), "not supported")
   })
 
   test_that("covFull=FALSE reports the unqualified name and caches nothing", {
