@@ -315,7 +315,7 @@ nmTest({
   test_that("setCovOptions() defaults to the control as a plain list", {
     expect_equal(setCovOptions(saControl(), NULL), unclass(saControl()))
     expect_equal(setCovOptions(list(a = 1), NULL), list(a = 1))
-    expect_equal(nlmixr2est:::.covOptionsResolve(NULL, NULL), list())
+    expect_equal(.covOptionsResolve(NULL, NULL), list())
   })
 
   test_that("setCov(fit) <- matrix installs, records options and is swappable", {
