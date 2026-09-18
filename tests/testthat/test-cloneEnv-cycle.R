@@ -10,7 +10,7 @@ nmTest({
     .a$val <- 42L
     .b$val <- 7L
 
-    .cl <- nlmixr2est:::.cloneEnv(.a)
+    .cl <- .cloneEnv(.a)
 
     expect_true(is.environment(.cl))
     expect_false(identical(.cl, .a)) # a real clone, not the original
@@ -25,7 +25,7 @@ nmTest({
     .s <- new.env(parent = emptyenv())
     .s$self <- .s
     .s$y <- "z"
-    .cs <- nlmixr2est:::.cloneEnv(.s)
+    .cs <- .cloneEnv(.s)
     expect_equal(.cs$y, "z")
     expect_identical(.cs$self, .cs)
   })

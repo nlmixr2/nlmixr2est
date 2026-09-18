@@ -37,11 +37,11 @@ nmTest({
   })
 
   test_that("impQrPoints_ produces low-discrepancy N(0,1) points", {
-    .Z <- nlmixr2est:::impQrPoints_(256L, 2L, NULL)
+    .Z <- impQrPoints_(256L, 2L, NULL)
     expect_true(is.matrix(.Z) && all(dim(.Z) == c(256L, 2L)))
     expect_true(all(is.finite(.Z)))
     # deterministic: same call, same points
-    expect_identical(.Z, nlmixr2est:::impQrPoints_(256L, 2L, NULL))
+    expect_identical(.Z, impQrPoints_(256L, 2L, NULL))
     # low-discrepancy signature: qnorm(sobol) column means are O(log N / N),
     # far below the 1/sqrt(N) = 0.0625 pseudo-random scale
     expect_true(max(abs(colMeans(.Z))) < 0.01)
@@ -58,9 +58,9 @@ nmTest({
   })
 
   test_that("impQrPoints_ Cranley-Patterson shift wraps and stays stratified", {
-    .Z0 <- nlmixr2est:::impQrPoints_(256L, 2L, NULL)
+    .Z0 <- impQrPoints_(256L, 2L, NULL)
     .sh <- c(0.371, 0.842)
-    .Z <- nlmixr2est:::impQrPoints_(256L, 2L, .sh)
+    .Z <- impQrPoints_(256L, 2L, .sh)
     expect_true(all(is.finite(.Z)))
     expect_false(identical(.Z, .Z0))
     # the shift acts mod 1 on the uniforms
@@ -73,26 +73,26 @@ nmTest({
       expect_true(all(abs(.cnt - 16L) <= 2L))
     }
     # a shift near 1 wraps rather than escaping (0,1)
-    .Zw <- nlmixr2est:::impQrPoints_(64L, 2L, c(0.999999, 0.5))
+    .Zw <- impQrPoints_(64L, 2L, c(0.999999, 0.5))
     expect_true(all(is.finite(.Zw)))
     # bad input
-    expect_error(nlmixr2est:::impQrPoints_(256L, 2L, c(0.5)))
-    expect_error(nlmixr2est:::impQrPoints_(0L, 2L, NULL))
+    expect_error(impQrPoints_(256L, 2L, c(0.5)))
+    expect_error(impQrPoints_(0L, 2L, NULL))
   })
 
   test_that("impSirIndex_ systematic resampling matches the weights", {
     # copy counts proportional to the normalized weights, each within 1 of
     # sirN * zk_norm (the systematic-resampling guarantee)
     .zk <- c(0.5, 0.25, 0.15, 0.10)
-    .idx <- nlmixr2est:::impSirIndex_(.zk, 100L, 0.37)
+    .idx <- impSirIndex_(.zk, 100L, 0.37)
     expect_length(.idx, 100L)
     expect_true(all(.idx %in% 1:4))
     .cnt <- tabulate(.idx, nbins = 4L)
     expect_true(all(abs(.cnt - 100 * .zk) <= 1))
     # unnormalized weights give the same resample
-    expect_identical(.idx, nlmixr2est:::impSirIndex_(7 * .zk, 100L, 0.37))
+    expect_identical(.idx, impSirIndex_(7 * .zk, 100L, 0.37))
     # deterministic in u0; different offset shifts the marginal picks only
-    expect_identical(.idx, nlmixr2est:::impSirIndex_(.zk, 100L, 0.37))
+    expect_identical(.idx, impSirIndex_(.zk, 100L, 0.37))
 
     # an equal-weight resample of a weighted sample reproduces its weighted
     # mean and covariance
@@ -103,22 +103,22 @@ nmTest({
     .mu <- colSums(.S * .w)
     .Sc <- sweep(.S, 2, .mu)
     .V <- t(.Sc * .w) %*% .Sc
-    .r <- nlmixr2est:::impSirIndex_(.w, 2000L, 0.5)
+    .r <- impSirIndex_(.w, 2000L, 0.5)
     .Sr <- .S[.r, ]
     expect_lt(max(abs(colMeans(.Sr) - .mu)), 0.02)
     expect_lt(max(abs(cov(.Sr) - .V)), 0.05)
 
     # degenerate: all weight on one point -> every index is that point
-    expect_true(all(nlmixr2est:::impSirIndex_(c(0, 0, 1, 0), 50L, 0.2) == 3L))
+    expect_true(all(impSirIndex_(c(0, 0, 1, 0), 50L, 0.2) == 3L))
     # uniform weights -> near-uniform coverage
-    .cu <- tabulate(nlmixr2est:::impSirIndex_(rep(1, 10), 100L, 0.9), nbins = 10L)
+    .cu <- tabulate(impSirIndex_(rep(1, 10), 100L, 0.9), nbins = 10L)
     expect_true(all(abs(.cu - 10L) <= 1L))
     # zero/non-finite weights fall back to strided coverage without error
-    expect_length(nlmixr2est:::impSirIndex_(rep(0, 5), 10L, 0.1), 10L)
+    expect_length(impSirIndex_(rep(0, 5), 10L, 0.1), 10L)
     # input validation
-    expect_error(nlmixr2est:::impSirIndex_(.zk, 0L, 0.5))
-    expect_error(nlmixr2est:::impSirIndex_(.zk, 10L, 1.0))
-    expect_error(nlmixr2est:::impSirIndex_(numeric(0), 10L, 0.5))
+    expect_error(impSirIndex_(.zk, 0L, 0.5))
+    expect_error(impSirIndex_(.zk, 10L, 1.0))
+    expect_error(impSirIndex_(numeric(0), 10L, 0.5))
   })
 
   test_that("qrpemControl is impmapControl sugar with qr/sir on", {
@@ -150,7 +150,7 @@ nmTest({
   test_that("qr/sir names are stripped when down-converting to foceiControl", {
     .env <- new.env()
     .env$impmapControl <- impmapControl(qr = TRUE, sir = TRUE)
-    .fc <- nlmixr2est:::.impmapControlToFoceiControl(.env, assign = FALSE)
+    .fc <- .impmapControlToFoceiControl(.env, assign = FALSE)
     expect_s3_class(.fc, "foceiControl")
     for (.n in c("qr", "qrShift", "qrRefresh", "sir", "sirSample")) {
       expect_null(.fc[[.n]])

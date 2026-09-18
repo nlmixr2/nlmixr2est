@@ -38,10 +38,10 @@ nmTest({
   test_that("down-conversion to foceiControl strips IS-only names", {
     .env <- new.env()
     .env$impmapControl <- impmapControl()
-    .fc <- nlmixr2est:::.impmapControlToFoceiControl(.env, assign = FALSE)
+    .fc <- .impmapControlToFoceiControl(.env, assign = FALSE)
     expect_s3_class(.fc, "foceiControl")
     # IS/EM-only names must not leak into the plain foceiControl
-    for (.n in nlmixr2est:::.impmapIsControlNames) {
+    for (.n in .impmapIsControlNames) {
       expect_null(.fc[[.n]])
     }
     # MAP-relevant focei options are preserved

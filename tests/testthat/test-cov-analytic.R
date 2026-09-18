@@ -1103,7 +1103,7 @@ nmTest({
     Om <- diag(3)
     Om[2, 3] <- Om[3, 2] <- 1e-12
     idf <- data.frame(neta1 = c(1, 2, 3, 2), neta2 = c(1, 2, 3, 3))
-    blk <- nlmixr2est:::.omegaBlocks(Om, idf) # nolint: undesirable_operator_linter.
+    blk <- .omegaBlocks(Om, idf)
     expect_length(blk, 2L)
     expect_true(any(vapply(blk, function(b) all(c(2L, 3L) %in% b), logical(1))))
   })

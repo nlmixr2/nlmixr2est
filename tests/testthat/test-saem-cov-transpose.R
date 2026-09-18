@@ -54,7 +54,7 @@ nmTest({
     .ixSingle <- .covEstIx(.cfg)
     expect_equal(sum(.ixSingle), 1L) # the reproduction condition
 
-    .covSingle <- suppressMessages(nlmixr2est:::calc.COV(.saem)) # errors on buggy code
+    .covSingle <- suppressMessages(calc.COV(.saem)) # errors on buggy code
     expect_equal(dim(.covSingle), c(1L, 1L))
 
     # Same fitted object, but pretend the (fixed) typical values are estimated too.
@@ -66,7 +66,7 @@ nmTest({
     expect_gt(sum(.ixAll), 1L) # multi-param path (no drop)
 
     .idx <- match(which(.ixSingle), which(.ixAll)) # cl.wt column in the multi cov
-    .covAll <- suppressMessages(nlmixr2est:::calc.COV(.saemAll))
+    .covAll <- suppressMessages(calc.COV(.saemAll))
     .fimAll <- solve(.covAll)
 
     expect_equal(unname(1 / .covSingle[[1L]]), unname(.fimAll[.idx, .idx]), tolerance = 1e-6)

@@ -12,7 +12,7 @@ nmTest({
     eta <- rnorm(n, 0, 0.2)
     phi <- trueTheta + trueBeta * cov$logWT + eta
 
-    res <- nlmixr2est:::.muRefLin(phi, cov)
+    res <- .muRefLin(phi, cov)
     expect_equal(res$theta, trueTheta, tolerance = 0.05)
     expect_equal(unname(res$coef["logWT"]), trueBeta, tolerance = 0.1)
 
@@ -33,7 +33,7 @@ nmTest({
     eta <- rnorm(n, 0, 0.1)
     phi <- trueTheta + fixedBeta * cov$logWT + eta
 
-    res <- nlmixr2est:::.muRefLin(phi, cov, fixedCoef = c(logWT = fixedBeta))
+    res <- .muRefLin(phi, cov, fixedCoef = c(logWT = fixedBeta))
     # the fixed coefficient is returned unchanged, not re-estimated
     expect_equal(unname(res$coef["logWT"]), fixedBeta)
     expect_equal(res$theta, trueTheta, tolerance = 0.05)
@@ -51,7 +51,7 @@ nmTest({
     eta <- rnorm(n, 0, 0.15)
     phi <- trueTheta + trueBetaFree * cov$logWT + fixedBeta * cov$sexf + eta
 
-    res <- nlmixr2est:::.muRefLin(phi, cov, fixedCoef = c(sexf = fixedBeta))
+    res <- .muRefLin(phi, cov, fixedCoef = c(sexf = fixedBeta))
     expect_equal(unname(res$coef["sexf"]), fixedBeta)
     expect_equal(unname(res$coef["logWT"]), trueBetaFree, tolerance = 0.1)
     expect_equal(res$theta, trueTheta, tolerance = 0.1)
@@ -63,8 +63,8 @@ nmTest({
     cov <- data.frame(logWT = rnorm(n, 0, 0.3))
     phi <- 1.2 + 0.6 * cov$logWT + rnorm(n, 0, 0.2)
 
-    resLin <- nlmixr2est:::.muRefLin(phi, cov)
-    resIrls <- nlmixr2est:::.muRefIrls(phi, cov, weights = rep(1, n))
+    resLin <- .muRefLin(phi, cov)
+    resIrls <- .muRefIrls(phi, cov, weights = rep(1, n))
     expect_equal(resIrls$theta, resLin$theta, tolerance = 1e-10)
     expect_equal(unname(resIrls$coef["logWT"]), unname(resLin$coef["logWT"]), tolerance = 1e-10)
     expect_equal(resIrls$eta, resLin$eta, tolerance = 1e-10)
@@ -92,8 +92,8 @@ nmTest({
     phi <- trueTheta + trueBeta * cov$logWT + eta
     weights <- 1 / sdVec^2
 
-    resLin <- nlmixr2est:::.muRefLin(phi, cov)
-    resIrls <- nlmixr2est:::.muRefIrls(phi, cov, weights = weights)
+    resLin <- .muRefLin(phi, cov)
+    resIrls <- .muRefIrls(phi, cov, weights = weights)
 
     expect_equal(resIrls$theta, trueTheta, tolerance = 0.05)
     expect_equal(unname(resIrls$coef["logWT"]), trueBeta, tolerance = 0.1)

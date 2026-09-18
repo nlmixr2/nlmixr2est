@@ -244,7 +244,7 @@ nmTest({
     # regression-updated (profiled out of the outer set)
     expect_true(
       "allo.cl" %in%
-        nlmixr2est:::.foceiMuSkipThetaNames(
+        .foceiMuSkipThetaNames(
           fitBounded$ui,
           fitBounded$ui$iniDf$name[!is.na(fitBounded$ui$iniDf$ntheta)]
         )

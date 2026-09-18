@@ -163,7 +163,7 @@ nmTest({
     envCollapsed$ui <- .ui3
     envCollapsed$saem <- .mkSaem3(c(0.7, 0.7))
     expect_warning(
-      nlmixr2est:::.getSaemTheta(envCollapsed),
+      .getSaemTheta(envCollapsed),
       "collaps|mixture probabilit"
     )
     expect_equal(unname(envCollapsed$fullTheta[c("p1", "p2")]), rep(0.7 / (1.4 + 1e-6), 2), tolerance = 1e-8)
@@ -173,7 +173,7 @@ nmTest({
     envOk <- new.env()
     envOk$ui <- .ui3
     envOk$saem <- .mkSaem3(c(0.3, 0.4))
-    expect_silent(nlmixr2est:::.getSaemTheta(envOk))
+    expect_silent(.getSaemTheta(envOk))
     expect_equal(unname(envOk$fullTheta[c("p1", "p2")]), c(0.3, 0.4))
 
     # Single component very near 0 (e.g. 1e-8): the raw estimate itself is
@@ -213,7 +213,7 @@ nmTest({
     envTinyBoundary$ui <- .ui2
     envTinyBoundary$saem <- .mkSaem2(1e-8)
     expect_warning(
-      nlmixr2est:::.getSaemTheta(envTinyBoundary),
+      .getSaemTheta(envTinyBoundary),
       "collaps|mixture probabilit"
     )
     expect_equal(unname(envTinyBoundary$fullTheta["p1"]), 1e-6, tolerance = 1e-8)
@@ -222,7 +222,7 @@ nmTest({
     envOk2 <- new.env()
     envOk2$ui <- .ui2
     envOk2$saem <- .mkSaem2(0.5)
-    expect_silent(nlmixr2est:::.getSaemTheta(envOk2))
+    expect_silent(.getSaemTheta(envOk2))
     expect_equal(unname(envOk2$fullTheta["p1"]), 0.5)
   })
 

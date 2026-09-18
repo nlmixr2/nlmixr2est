@@ -275,7 +275,7 @@ nmTest({
 
     expect_error(suppressMessages(.plainExpitModel()), NA)
     expect_s3_class(suppressMessages(.plainExpitModel()), "rxUi")
-    expect_false(nlmixr2est:::nlmixr2global$transformMu)
+    expect_false(nlmixr2global$transformMu)
   })
 
   test_that("iov + bounded transformation doesn't break", {

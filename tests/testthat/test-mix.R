@@ -404,7 +404,6 @@ nmTest({
   })
 
   test_that(".mixFix guards against a zero row total (all components underflow for a subject)", {
-    .mixFix <- nlmixr2est:::.mixFix
     env <- new.env()
     assign("mixIdx", 1L, envir = env) # non-empty so the early-return guards pass
     assign(
@@ -427,7 +426,7 @@ nmTest({
     assign("fixef", c(p1 = 0), envir = env) # mlogit(0.5) prior when back-transformed
 
     expect_warning(
-      nlmixr2est:::.mixFix(env, ui = NULL),
+      .mixFix(env, ui = NULL),
       "underflow|zero.*likelihood|posterior"
     )
     .mixList <- get("mixList", envir = env)
