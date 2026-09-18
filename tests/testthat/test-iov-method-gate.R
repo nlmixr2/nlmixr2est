@@ -61,9 +61,9 @@ test_that("the shared rewrite runs, or does not, according to iovMethod", {
 # nothing expands the occasion parameters, which is how est="ifocei" and
 # est="mfocei" came to error on every IOV model (#1083).
 test_that("every .iovSameMethods method declares the 'iov' attribute", {
-  .missing <- .iovSameMethods[!vapply(.iovSameMethods,
-                                      function(.e) .isIovMethod(.e, foceiControl()),
-                                      logical(1), USE.NAMES = FALSE)]
+  .missing <- .iovSameMethods[
+    !vapply(.iovSameMethods, function(.e) .isIovMethod(.e, foceiControl()), logical(1), USE.NAMES = FALSE)
+  ]
   expect_equal(.missing, character(0))
   # the two that were missing it, named so a regression is unambiguous
   expect_true(.isIovMethod("ifocei", foceiControl()))
@@ -106,17 +106,29 @@ test_that("the shared IOV rewrite runs for ifocei/mfocei (#1083)", {
 # delegates were missing from .iovSameMethods, so est="flaplace" refused a
 # correlated occasion block that est="laplace" fits.
 test_that("thin delegates match their base method's IOV capabilities", {
-  .delegates <- c(foceif = "focei", focef = "foce", focepf = "focep",
-                  mfoceif = "mfocei", mfocef = "mfoce", mfocepf = "mfocep",
-                  ifoceif = "ifocei", ifocef = "ifoce", ifocepf = "ifocep",
-                  agqf = "agq", magqf = "magq", iagqf = "iagq",
-                  flaplace = "laplace", mflaplace = "mlaplace",
-                  iflaplace = "ilaplace",
-                  fagq = "agq", mfagq = "magq", ifagq = "iagq")
+  .delegates <- c(
+    foceif = "focei",
+    focef = "foce",
+    focepf = "focep",
+    mfoceif = "mfocei",
+    mfocef = "mfoce",
+    mfocepf = "mfocep",
+    ifoceif = "ifocei",
+    ifocef = "ifoce",
+    ifocepf = "ifocep",
+    agqf = "agq",
+    magqf = "magq",
+    iagqf = "iagq",
+    flaplace = "laplace",
+    mflaplace = "mlaplace",
+    iflaplace = "ilaplace",
+    fagq = "agq",
+    mfagq = "magq",
+    ifagq = "iagq"
+  )
   for (.d in names(.delegates)) {
     .b <- .delegates[[.d]]
-    expect_equal(.isIovMethod(.d, foceiControl()),
-                 .isIovMethod(.b, foceiControl()), info = .d)
+    expect_equal(.isIovMethod(.d, foceiControl()), .isIovMethod(.b, foceiControl()), info = .d)
     expect_equal(.isIovSameMethod(.d), .isIovSameMethod(.b), info = .d)
   }
 })
@@ -148,7 +160,6 @@ test_that("a correlated occasion block survives a full-Laplace delegate", {
     .rw <- .uiApplyIov(.ui, .est, .d, foceiControl())
     expect_true(is.list(.rw), info = .est)
     # the repeated block is how the correlation is carried
-    expect_true(any(grepl(":same:", .rw$ui$iniDf$condition, fixed = TRUE)),
-                info = .est)
+    expect_true(any(grepl(":same:", .rw$ui$iniDf$condition, fixed = TRUE)), info = .est)
   }
 })

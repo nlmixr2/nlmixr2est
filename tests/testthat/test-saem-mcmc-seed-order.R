@@ -48,8 +48,7 @@ nmTest({
     expect_true(grepl("nmSeqSeed(", .inner, fixed = TRUE))
     # a sampler reserves an exact block; no guessed offset keeps draws and solves apart
     for (.f in file.path(.src, c("nmSeqSeed.h", "inner.cpp", "saem.cpp", "npb.cpp"))) {
-      expect_false(grepl("0x80000000", paste(readLines(.f, warn = FALSE), collapse = "\n"),
-                         fixed = TRUE), info = .f)
+      expect_false(grepl("0x80000000", paste(readLines(.f, warn = FALSE), collapse = "\n"), fixed = TRUE), info = .f)
     }
   })
 
@@ -76,11 +75,15 @@ nmTest({
       .old <- rxode2::getRxThreads(verbose = FALSE)
       on.exit(rxode2::setRxThreads(.old))
       rxode2::setRxThreads(threads)
-      if (threads > 1L) skip_if(rxode2::getRxThreads(verbose = FALSE) < threads)
-      suppressMessages(nlmixr2(one.compartment, theo_sd, est = "saem",
-                               control = saemControl(print = 0, nBurn = 10, nEm = 10,
-                                                     seed = 42L, calcTables = FALSE,
-                                                     covMethod = "")))
+      if (threads > 1L) {
+        skip_if(rxode2::getRxThreads(verbose = FALSE) < threads)
+      }
+      suppressMessages(nlmixr2(
+        one.compartment,
+        theo_sd,
+        est = "saem",
+        control = saemControl(print = 0, nBurn = 10, nEm = 10, seed = 42L, calcTables = FALSE, covMethod = "")
+      ))
     }
     .f1 <- .fit(1L)
     .f2 <- .fit(2L)
@@ -117,11 +120,15 @@ nmTest({
       .old <- rxode2::getRxThreads(verbose = FALSE)
       on.exit(rxode2::setRxThreads(.old))
       rxode2::setRxThreads(threads)
-      if (threads > 1L) skip_if(rxode2::getRxThreads(verbose = FALSE) < threads)
-      suppressMessages(nlmixr2(one.compartment, data, est = "saem",
-                               control = saemControl(print = 0, nBurn = 10, nEm = 10,
-                                                     seed = 42L, calcTables = FALSE,
-                                                     covMethod = "")))
+      if (threads > 1L) {
+        skip_if(rxode2::getRxThreads(verbose = FALSE) < threads)
+      }
+      suppressMessages(nlmixr2(
+        one.compartment,
+        data,
+        est = "saem",
+        control = saemControl(print = 0, nBurn = 10, nEm = 10, seed = 42L, calcTables = FALSE, covMethod = "")
+      ))
     }
     .f1 <- .fitAt(1L, .d)
     .f2 <- .fitAt(2L, .d)
@@ -136,13 +143,11 @@ nmTest({
     # (nphi1, nphi0, nMix, nM, nmc, ntotal): no mixture, and a 3-component
     # mixture with no phi0 block
     for (.a in list(c(3L, 2L, 1L, 4L, 2L, 5L), c(2L, 0L, 3L, 6L, 3L, 4L))) {
-      .s <- saemSeedLayoutTest_(c(2L, 2L, 2L), .a[1], .a[2], .a[3], .a[4], .a[5],
-                                .a[6], 4L)
+      .s <- saemSeedLayoutTest_(c(2L, 2L, 2L), .a[1], .a[2], .a[3], .a[4], .a[5], .a[6], 4L)
       # in draw order every seed is the next one: distinct, dense, in order
       expect_equal(.s, seq(0, length(.s) - 1))
       # an iteration's seeds do not depend on how many iterations run
-      .s2 <- saemSeedLayoutTest_(c(2L, 2L, 2L), .a[1], .a[2], .a[3], .a[4], .a[5],
-                                 .a[6], 2L)
+      .s2 <- saemSeedLayoutTest_(c(2L, 2L, 2L), .a[1], .a[2], .a[3], .a[4], .a[5], .a[6], 2L)
       expect_equal(.s[seq_along(.s2)], .s2)
     }
   })

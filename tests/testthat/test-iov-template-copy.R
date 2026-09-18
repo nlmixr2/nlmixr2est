@@ -37,8 +37,7 @@ test_that("the magnitude theta carries prior(iov.x), not theta #1's", {
       linCmt() ~ add(add.sd)
     })
   }
-  skip_if_not("prior" %in% names(rxode2::rxode2(.mod)$iniDf),
-              "this lotri has no prior support")
+  skip_if_not("prior" %in% names(rxode2::rxode2(.mod)$iniDf), "this lotri has no prior support")
   .ini <- .iovApply(.mod)$ui$iniDf
   .mag <- .ini[!is.na(.ini$ntheta) & .ini$name == "iov.cl", ]
   expect_equal(nrow(.mag), 1L)
@@ -72,8 +71,7 @@ test_that("an undeclared magnitude, and a fixed one, carry no prior", {
       linCmt() ~ add(add.sd)
     })
   }
-  skip_if_not("prior" %in% names(rxode2::rxode2(.mod)$iniDf),
-              "this lotri has no prior support")
+  skip_if_not("prior" %in% names(rxode2::rxode2(.mod)$iniDf), "this lotri has no prior support")
   .ini <- .iovApply(.mod)$ui$iniDf
   expect_true(is.na(.ini$prior[!is.na(.ini$ntheta) & .ini$name == "iov.cl"]))
 
@@ -121,8 +119,7 @@ test_that("a prior on the FIRST eta does not become the occasion etas'", {
       linCmt() ~ add(add.sd)
     })
   }
-  skip_if_not("prior" %in% names(rxode2::rxode2(.mod)$iniDf),
-              "this lotri has no prior support")
+  skip_if_not("prior" %in% names(rxode2::rxode2(.mod)$iniDf), "this lotri has no prior support")
   .ini <- .iovApply(.mod)$ui$iniDf
   # eta.cl keeps its own prior; the fixed per-occasion etas copied from it
   # get none (rxode2 refuses a prior on a fixed parameter, so inheriting it
@@ -191,8 +188,7 @@ test_that("correlated occasion random effects are refused under iovMethod='theta
   # theta and unit-variance etas, which cannot carry a correlation; the
   # off-diagonal row used to be treated as a third occasion parameter,
   # giving a syntax error from rxRename() about "rx.(iov.cl,iov.v)="
-  expect_error(.iovApply(.mod, iovMethod = "theta"),
-               "correlated inter-occasion")
+  expect_error(.iovApply(.mod, iovMethod = "theta"), "correlated inter-occasion")
   # ... and the message says how to get it
   expect_error(.iovApply(.mod, iovMethod = "theta"), "iovMethod")
   # "auto" routes a correlated block to the shared-omega expansion instead
@@ -251,8 +247,7 @@ test_that("a prior on a FIXED occasion magnitude is refused by name", {
   # already refuses the contradiction while the ui is BUILT, naming the
   # parameter the user wrote, so the rewrite never sees one and needs no
   # `fix` guard of its own when it carries the prior across.
-  expect_error(rxode2::rxode2(.mod),
-               "prior given for fixed parameter\\(s\\): 'iov.cl'")
+  expect_error(rxode2::rxode2(.mod), "prior given for fixed parameter\\(s\\): 'iov.cl'")
 })
 
 test_that("the restored occasion parameter keeps its OWN prior", {
@@ -275,15 +270,18 @@ test_that("the restored occasion parameter keeps its OWN prior", {
       linCmt() ~ add(add.sd)
     })
   }
-  skip_if_not("prior" %in% names(rxode2::rxode2(.mod)$iniDf),
-              "this lotri has no prior support")
+  skip_if_not("prior" %in% names(rxode2::rxode2(.mod)$iniDf), "this lotri has no prior support")
   # .uiFinalizeIov() rebuilds the user's `iov.cl ~ v | occ` row from a
   # template copied from the FIRST eta; it restored eight fields but not
   # `prior`, so the finished fit reported eta.cl's prior on iov.cl
   .fit <- suppressMessages(suppressWarnings(
-    nlmixr2(.mod, .iovData(), est = "focei",
-            control = foceiControl(print = 0, maxOuterIterations = 0,
-                                   maxInnerIterations = 5))))
+    nlmixr2(
+      .mod,
+      .iovData(),
+      est = "focei",
+      control = foceiControl(print = 0, maxOuterIterations = 0, maxInnerIterations = 5)
+    )
+  ))
   .ini <- .fit$ui$iniDf
   expect_equal(.ini$prior[.ini$name == "iov.cl"], "dcauchy(0, 1)")
   expect_equal(.ini$prior[.ini$name == "eta.cl"], "invWishart(4)")

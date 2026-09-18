@@ -2,20 +2,19 @@
 #'@export
 nlmixr2Est.mfoce <- function(env, ...) {
   .ui <- env$ui
-  rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'mfoce'",
-                             .var.name=.ui$modelName)
+  rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'mfoce'", .var.name = .ui$modelName)
   .control <- env$control
-  .foceiFamilyControl(env, ..., type="mfoceControl")
+  .foceiFamilyControl(env, ..., type = "mfoceControl")
   .mfoceControlToFoceiControl(env)
   on.exit({
-    if (exists("control", envir=.ui)) {
-      rm("control", envir=.ui)
+    if (exists("control", envir = .ui)) {
+      rm("control", envir = .ui)
     }
   })
   env$mfoceControl <- .control
   env$est <- "mfoce"
   .ui <- env$ui
-  .foceiFamilyReturn(env, .ui, ..., est="mfoce")
+  .foceiFamilyReturn(env, .ui, ..., est = "mfoce")
 }
 attr(nlmixr2Est.mfoce, "nlmixr2Priors") <- "general"
 attr(nlmixr2Est.mfoce, "iov") <- TRUE

@@ -1,6 +1,5 @@
 nmTest({
   test_that("focei complex event info", {
-
     pheno <- function() {
       ini({
         tcl <- log(0.008) # typical value of clearance
@@ -31,19 +30,88 @@ nmTest({
   test_that("Inner test", {
     ev <- eventTable() |>
       add.sampling(c(
-        95.99, 119.99, 143.99, 144.25, 144.5, 144.75,
-        145, 145.5, 146, 146.5, 147, 148, 150, 152, 156, 160, 164, 167.99,
-        191.99, 215.99, 216.25, 216.5, 216.75, 217, 217.5, 218, 218.5, 219,
-        220, 222, 224, 228, 232, 236, 240, 252, 264, 276, 288
+        95.99,
+        119.99,
+        143.99,
+        144.25,
+        144.5,
+        144.75,
+        145,
+        145.5,
+        146,
+        146.5,
+        147,
+        148,
+        150,
+        152,
+        156,
+        160,
+        164,
+        167.99,
+        191.99,
+        215.99,
+        216.25,
+        216.5,
+        216.75,
+        217,
+        217.5,
+        218,
+        218.5,
+        219,
+        220,
+        222,
+        224,
+        228,
+        232,
+        236,
+        240,
+        252,
+        264,
+        276,
+        288
       )) |>
       add.dosing(dose = 60000, start.time = 72, nbr.doses = 7, dosing.interval = 24)
 
     dv <- c(
-      263.6, 164.7, 287.3, 1248.7, 1211.5, 1017.7, 1690.1, 1029.8,
-      890.7, 598.4, 1009.3, 1159.8, 742.2, 724.6, 728.2, 509.7, 243.1,
-      259.9, 242.2, 281.4, 1500.1, 1281.4, 1200.2, 1378.8, 1373.2,
-      582.9, 960.2, 720.3, 852.6, 950.3, 654.7, 402.5, 456, 346.5,
-      268.2, 134.2, 42.6, 25.9, 14.6
+      263.6,
+      164.7,
+      287.3,
+      1248.7,
+      1211.5,
+      1017.7,
+      1690.1,
+      1029.8,
+      890.7,
+      598.4,
+      1009.3,
+      1159.8,
+      742.2,
+      724.6,
+      728.2,
+      509.7,
+      243.1,
+      259.9,
+      242.2,
+      281.4,
+      1500.1,
+      1281.4,
+      1200.2,
+      1378.8,
+      1373.2,
+      582.9,
+      960.2,
+      720.3,
+      852.6,
+      950.3,
+      654.7,
+      402.5,
+      456,
+      346.5,
+      268.2,
+      134.2,
+      42.6,
+      25.9,
+      14.6
     )
 
     m1 <- function() {
@@ -78,12 +146,15 @@ nmTest({
     ## reference value is unchanged; only the solve is now tight enough to
     ## reproduce it independently of whatever the default sigdig happens to be.
     fitPi <- .nlmixr(
-      m1, w7,
-      est="focei",
+      m1,
+      w7,
+      est = "focei",
       foceiControl(
         etaMat = ETA,
-        maxOuterIterations = 0, maxInnerIterations = 0,
-        covMethod = "", sigdig = 6
+        maxOuterIterations = 0,
+        maxInnerIterations = 0,
+        covMethod = "",
+        sigdig = 6
       )
     )
 
@@ -91,7 +162,6 @@ nmTest({
   })
 
   test_that("boundary value is not triggered by bounds on both sides of zero (#318)", {
-
     one.compartment <- function() {
       ini({
         tka <- c(-6, -4, 2)
@@ -113,7 +183,7 @@ nmTest({
       })
     }
 
-    fit <- .nlmixr(one.compartment, theo_sd, est = "focei", control = list(print=0))
+    fit <- .nlmixr(one.compartment, theo_sd, est = "focei", control = list(print = 0))
     # SE being present indicates that the covariance matrix was estimated
     expect_true("SE" %in% names(fit$parFixedDf))
 
@@ -127,8 +197,7 @@ nmTest({
     # the symengine round-trip, emitting sin()/cos() with no argument and
     # failing to compile ("too few arguments to function 'sin'").  Requires the
     # rxFromSE fix in rxode2; skip on an rxode2 that still drops the argument.
-    skip_if(rxode2::rxFromSE("sin((a-b)/c)") == "sin()",
-            "installed rxode2 predates the rxFromSE compound-argument fix")
+    skip_if(rxode2::rxFromSE("sin((a-b)/c)") == "sin()", "installed rxode2 predates the rxFromSE compound-argument fix")
 
     ehc <- function() {
       ini({
@@ -162,5 +231,4 @@ nmTest({
     f <- suppressMessages(ehc())
     expect_error(f$foceiModel, NA)
   })
-
 })

@@ -18,8 +18,7 @@
 #' Substitute `theta` with `(theta + eta)` inside a single model expression.
 #' @noRd
 .npSubstThetaAddEta <- function(expr, theta, eta) {
-  do.call("substitute",
-          list(expr, setNames(list(bquote(.(as.name(theta)) + .(as.name(eta)))), theta)))
+  do.call("substitute", list(expr, setNames(list(bquote(.(as.name(theta)) + .(as.name(eta)))), theta)))
 }
 
 #' Mu-expand every non-mu structural fixed-effect theta of a nonparametric-engine
@@ -29,7 +28,7 @@
 #'   gridWidth * sqrt(initVar) on the transformed scale)
 #' @noRd
 .npMuExpand <- function(ui, initVar = 0.25) {
-  nlmixr2global$npMuExpandPairs <- NULL   # clear any stale pairs from a prior fit
+  nlmixr2global$npMuExpandPairs <- NULL # clear any stale pairs from a prior fit
   .iniDf <- ui$iniDf
   .th <- .iniDf[!is.na(.iniDf$ntheta), , drop = FALSE]
   .mr <- ui$muRefDataFrame
@@ -40,15 +39,20 @@
   # proportion EM, not the grid, and must not be injected/collapsed.
   .isMix <- .th$name %in% ui$mixProbs
   .cand <- .th$name[!.isFix & !.isMu & !.isMix & !.isErr]
-  if (length(.cand) == 0L) return(ui)
+  if (length(.cand) == 0L) {
+    return(ui)
+  }
   .allNames <- .iniDf$name
-  .injEta <- character(0)   # injected pseudo-eta names
-  .injTh <- character(0)    # the theta each pairs to
+  .injEta <- character(0) # injected pseudo-eta names
+  .injTh <- character(0) # the theta each pairs to
   for (.tn in .cand) {
     # a unique pseudo-eta name for this theta
     .etaN <- paste0("eta.", .tn)
     .k <- 1L
-    while (.etaN %in% .allNames) { .etaN <- paste0("eta.", .tn, ".", .k); .k <- .k + 1L }
+    while (.etaN %in% .allNames) {
+      .etaN <- paste0("eta.", .tn, ".", .k)
+      .k <- .k + 1L
+    }
     .allNames <- c(.allNames, .etaN)
     # rewrite every model expression that uses the theta: theta -> (theta + eta)
     .le <- ui$lstExpr
@@ -69,7 +73,8 @@
       # half-width (gridWidth * sqrt(initVar)); finalization folds its support-mean
       # into the theta and collapses its reported BSV to ~0.
       ui <- eval(bquote(rxode2::ini(ui, .(as.name(.etaN)) ~ fix(.(initVar)))))
-      .injEta <- c(.injEta, .etaN); .injTh <- c(.injTh, .tn)
+      .injEta <- c(.injEta, .etaN)
+      .injTh <- c(.injTh, .tn)
     }
   }
   # record the injected (eta, theta) pairs so finalization can recover each theta as
@@ -95,13 +100,19 @@
 #' @export
 #' @author Matthew L. Fidler
 .nlmixr0preProcessNpMuExpand <- function(ui, est, data, control) {
-  if (is.null(est) || !(est %in% .npEstFamily)) return(NULL)
+  if (is.null(est) || !(est %in% .npEstFamily)) {
+    return(NULL)
+  }
   # always clear the injected-pair record so a prior muExpand fit cannot leak into a
   # muExpand=FALSE fit (which returns before .npMuExpand clears it itself).
   nlmixr2global$npMuExpandPairs <- NULL
-  if (!is.null(control) && isFALSE(control$muExpand)) return(NULL)
+  if (!is.null(control) && isFALSE(control$muExpand)) {
+    return(NULL)
+  }
   .ui2 <- .npMuExpand(ui)
-  if (identical(.ui2, ui)) return(NULL)
+  if (identical(.ui2, ui)) {
+    return(NULL)
+  }
   list(ui = .ui2)
 }
 

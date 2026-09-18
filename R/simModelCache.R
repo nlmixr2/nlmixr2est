@@ -78,11 +78,7 @@
 #' @noRd
 .simModelCacheSet <- function(ui, model) {
   .entries <- .simModelCache$entries
-  .keep <- vapply(seq_along(.entries),
-    function(i) !identical(.entries[[i]]$ui, ui),
-    logical(1),
-    USE.NAMES = FALSE
-  )
+  .keep <- vapply(seq_along(.entries), function(i) !identical(.entries[[i]]$ui, ui), logical(1), USE.NAMES = FALSE)
   .entries <- c(list(list(ui = ui, model = model)), .entries[.keep])
   if (length(.entries) > .simModelCacheMax) {
     .entries <- .entries[seq_len(.simModelCacheMax)]

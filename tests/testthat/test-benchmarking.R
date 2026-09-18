@@ -1,9 +1,14 @@
 nmTest({
   test_that("benchmark timing normalization maps estimator stages", {
-    .foceiTime <- data.frame(setup = 1, optimize = 2, covariance = 3,
-                             check.names = FALSE, row.names = "elapsed")
-    .saemTime <- data.frame(preprocess = 0.5, setup = 1.5, saem = 2.5, covariance = 0.7,
-                            check.names = FALSE, row.names = "elapsed")
+    .foceiTime <- data.frame(setup = 1, optimize = 2, covariance = 3, check.names = FALSE, row.names = "elapsed")
+    .saemTime <- data.frame(
+      preprocess = 0.5,
+      setup = 1.5,
+      saem = 2.5,
+      covariance = 0.7,
+      check.names = FALSE,
+      row.names = "elapsed"
+    )
 
     .foceiStages <- .nlmixr2BenchmarkNormalizeTime(.foceiTime)
     .saemStages <- .nlmixr2BenchmarkNormalizeTime(.saemTime)
@@ -19,9 +24,13 @@ nmTest({
         one.compartment,
         nlmixr2data::theo_sd,
         est = "focei",
-        control = foceiControl(print = 0L, maxInnerIterations = 1L,
-                               maxOuterIterations = 1L, eval.max = 1L,
-                               calcTables = FALSE)
+        control = foceiControl(
+          print = 0L,
+          maxInnerIterations = 1L,
+          maxOuterIterations = 1L,
+          eval.max = 1L,
+          calcTables = FALSE
+        )
       )
     ))
 
@@ -41,9 +50,7 @@ nmTest({
         model = one.compartment,
         data = nlmixr2data::theo_sd,
         control = function() {
-          foceiControl(print = 0L, maxInnerIterations = 1L,
-                       maxOuterIterations = 1L, eval.max = 1L,
-                       calcTables = FALSE)
+          foceiControl(print = 0L, maxInnerIterations = 1L, maxOuterIterations = 1L, eval.max = 1L, calcTables = FALSE)
         }
       )
     )

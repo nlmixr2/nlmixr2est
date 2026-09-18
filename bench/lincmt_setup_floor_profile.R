@@ -27,14 +27,13 @@ useCov <- identical(Sys.getenv("COV", "0"), "1")
 set.seed(1002003)
 simTimes <- c(0.25, 0.75, 1.5, 3, 5.5, 8, 12.5, 17, 24, 32)
 nSub <- 40L
-eta <- matrix(rnorm(nSub * 3L, 0, 0.3), nSub, 3L,
-  dimnames = list(NULL, c("ka", "cl", "v"))
-)
+eta <- matrix(rnorm(nSub * 3L, 0, 0.3), nSub, 3L, dimnames = list(NULL, c("ka", "cl", "v")))
 simMod <- rxode2::rxode2(
   "cp = central/v; d/dt(depot) = -ka*depot; d/dt(central) = ka*depot - cl/v*central"
 )
 pars <- data.frame(
-  ka = 1.2 * exp(eta[, "ka"]), cl = 4 * exp(eta[, "cl"]),
+  ka = 1.2 * exp(eta[, "ka"]),
+  cl = 4 * exp(eta[, "cl"]),
   v = 30 * exp(eta[, "v"])
 )
 ev <- rxode2::et(amt = 100, cmt = "depot") |> rxode2::et(simTimes)
@@ -44,11 +43,17 @@ simDat <- data.frame(
   ID = rep(seq_len(nSub), each = length(simTimes)),
   TIME = sim$time,
   DV = sim$cp * (1 + rnorm(nrow(sim), 0, 0.15)),
-  AMT = 0, EVID = 0, CMT = "central"
+  AMT = 0,
+  EVID = 0,
+  CMT = "central"
 )
 doseRows <- data.frame(
-  ID = seq_len(nSub), TIME = 0, DV = NA_real_,
-  AMT = 100, EVID = 1, CMT = "depot"
+  ID = seq_len(nSub),
+  TIME = 0,
+  DV = NA_real_,
+  AMT = 100,
+  EVID = 1,
+  CMT = "depot"
 )
 dat <- rbind(doseRows, simDat)
 dat <- dat[order(dat$ID, dat$TIME, -dat$EVID), ]
@@ -100,7 +105,10 @@ if (useCov) {
 }
 
 ctlPost <- nlmixr2est::foceiControl(
-  calcTables = FALSE, print = 0L, covMethod = "", maxOuterIterations = 0L,
+  calcTables = FALSE,
+  print = 0L,
+  covMethod = "",
+  maxOuterIterations = 0L,
   rxControl = rxode2::rxControl(cores = 1L, linCmtSensType = "AD")
 )
 
@@ -114,10 +122,13 @@ fitOnce <- function() {
 
 ## ---- cold vs warm wall times --------------------------------------------
 secs <- numeric(0)
-for (r in seq_len(nRep + 1L)) secs[r] <- fitOnce() # rep 1 = cold (compiles)
+for (r in seq_len(nRep + 1L)) {
+  secs[r] <- fitOnce()
+} # rep 1 = cold (compiles)
 cat(sprintf(
   "cold (rep1, incl. compile): %.3f s\nwarm reps: %s (median %.3f s)\n",
-  secs[1], paste(sprintf("%.3f", secs[-1]), collapse = ", "),
+  secs[1],
+  paste(sprintf("%.3f", secs[-1]), collapse = ", "),
   stats::median(secs[-1])
 ))
 
@@ -136,13 +147,13 @@ print(utils::head(s$by.self, 30))
 
 ## Stage aggregation: attribute by.total of DISJOINT anchor functions.
 anchor <- c(
-  uiBuild      = "rxode2::rxode2|rxUiCompress|rxUiDecompress",
+  uiBuild = "rxode2::rxode2|rxUiCompress|rxUiDecompress",
   symengineGen = "\\brxS\\b|rxFromSE|rxOptExpr|rxNorm|\\.rxFinalizeInner|sympy|symengine",
   modelCompile = "rxModelVars|rxCompile|dynLoad|rxDll",
-  etTransData  = "etTrans",
-  foceiSetup   = "foceiSetup",
-  innerEval    = "foceiInner|\\.Call.*Inner|foceiOuterF",
-  tableTear    = "focei\\.theta|nlmixr2CreateOutputFromUi|\\.foceiFitInternal"
+  etTransData = "etTrans",
+  foceiSetup = "foceiSetup",
+  innerEval = "foceiInner|\\.Call.*Inner|foceiOuterF",
+  tableTear = "focei\\.theta|nlmixr2CreateOutputFromUi|\\.foceiFitInternal"
 )
 cat("\n-- anchor by.total seconds (overlapping; interpret with the tables above) --\n")
 rn <- rownames(s$by.total)
@@ -150,7 +161,8 @@ for (a in names(anchor)) {
   hit <- grepl(anchor[[a]], rn)
   if (any(hit)) {
     cat(sprintf(
-      "%-14s max(by.total)=%6.3f s  fns: %s\n", a,
+      "%-14s max(by.total)=%6.3f s  fns: %s\n",
+      a,
       max(s$by.total$total.time[hit]),
       paste(utils::head(gsub("\"", "", rn[hit]), 3), collapse = ", ")
     ))

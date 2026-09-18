@@ -32,10 +32,7 @@ nmTest({
     ))
     expect_equal(f$objf, 115.036204209671894, tolerance = 1e-8)
     .fx <- unname(fixef(f))
-    expect_equal(.fx,
-                 c(0.454331063367426, 1.011629400082714,
-                   3.456416552020142, 0.702842211703013),
-                 tolerance = 1e-8)
+    expect_equal(.fx, c(0.454331063367426, 1.011629400082714, 3.456416552020142, 0.702842211703013), tolerance = 1e-8)
   })
 
   test_that("general-lik SAEM's odeSlotPred solve survives a prior FOCEi alag() fit's leftover ES shape (#Phase7)", {
@@ -66,9 +63,12 @@ nmTest({
         cp ~ add(add.sd)
       })
     }
-    fF <- suppressWarnings(.nlmixr(mAlag, nlmixr2data::theo_sd, est = "focei",
-      control = foceiControl(print = 0, maxOuterIterations = 3,
-                             maxInnerIterations = 10, covMethod = "")))
+    fF <- suppressWarnings(.nlmixr(
+      mAlag,
+      nlmixr2data::theo_sd,
+      est = "focei",
+      control = foceiControl(print = 0, maxOuterIterations = 3, maxInnerIterations = 10, covMethod = "")
+    ))
     expect_true(is.finite(fF$objf))
 
     mLl <- function() {
@@ -86,8 +86,7 @@ nmTest({
         ll(err) ~ -lsd - 0.5 * log(2 * pi) - 0.5 * ((DV - cp) / sd)^2
       })
     }
-    ctl <- saemControl(nBurn = 30, nEm = 30, nmc = 3, seed = 1L, print = 0L,
-                       covMethod = "", calcTables = FALSE)
+    ctl <- saemControl(nBurn = 30, nEm = 30, nmc = 3, seed = 1L, print = 0L, covMethod = "", calcTables = FALSE)
     fL <- suppressWarnings(.nlmixr(mLl, nlmixr2data::theo_sd, est = "saem", control = ctl))
     expect_true(is.finite(fL$objf))
     expect_equal(unname(fixef(fL)[["tka"]]), 0.45, tolerance = 0.2)

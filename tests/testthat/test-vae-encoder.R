@@ -7,25 +7,35 @@
 nmTest({
   test_that("vae C++ encoder forward + analytic backward match torch and FD", {
     g <- readRDS(test_path("baselines", "vae-encoder-golden.rds"))
-    m <- g$meta; ip <- g$inputs
-    zDim <- m$zDim; N <- m$N
+    m <- g$meta
+    ip <- g$inputs
+    zDim <- m$zDim
+    N <- m$N
 
     dataIn <- ip$dataIn
     lengths <- as.integer(m$lengths)
-    covIn <- ip$covIn; eps <- ip$eps
-    Wih <- ip$weight_ih; Whh <- ip$weight_hh
-    bih <- as.numeric(ip$bias_ih); bhh <- as.numeric(ip$bias_hh)
-    fcW <- ip$fc_weight; fcB <- as.numeric(ip$fc_bias)
-    zPop <- as.numeric(ip$zPop); omega <- as.numeric(ip$omega); target <- ip$target
+    covIn <- ip$covIn
+    eps <- ip$eps
+    Wih <- ip$weight_ih
+    Whh <- ip$weight_hh
+    bih <- as.numeric(ip$bias_ih)
+    bhh <- as.numeric(ip$bias_hh)
+    fcW <- ip$fc_weight
+    fcB <- as.numeric(ip$fc_bias)
+    zPop <- as.numeric(ip$zPop)
+    omega <- as.numeric(ip$omega)
+    target <- ip$target
 
     ## upstream grads from the fixture's concrete ELBO-shaped loss at fixture z
     zf <- g$forward$z
-    gZ <- matrix(0, N, zDim); gLS <- matrix(-1, N, zDim)
-    for (i in seq_len(N)) gZ[i, ] <- (zf[i, ] - target[i, ]) + (zf[i, ] - zPop) / omega
+    gZ <- matrix(0, N, zDim)
+    gLS <- matrix(-1, N, zDim)
+    for (i in seq_len(N)) {
+      gZ[i, ] <- (zf[i, ] - target[i, ]) + (zf[i, ] - zPop) / omega
+    }
 
     callEnc <- function(Wih, Whh, bih, bhh, fcW, fcB) {
-      vaeEncoderFwdBwd(dataIn, lengths, covIn, eps, Wih, Whh, bih, bhh,
-                       fcW, fcB, zDim, gZ, gLS)
+      vaeEncoderFwdBwd(dataIn, lengths, covIn, eps, Wih, Whh, bih, bhh, fcW, fcB, zDim, gZ, gLS)
     }
     r <- callEnc(Wih, Whh, bih, bhh, fcW, fcB)
     mx <- function(a, b) max(abs(as.numeric(a) - as.numeric(b)))
@@ -35,7 +45,9 @@ nmTest({
     expect_lt(mx(r$logSigma, g$forward$logSigma), 1e-5)
     expect_lt(mx(r$z, g$forward$z), 1e-5)
     Ldiff <- 0
-    for (i in seq_len(N)) Ldiff <- max(Ldiff, max(abs(r$L[, , i] - matrix(g$forward$L[i, , ], zDim, zDim))))
+    for (i in seq_len(N)) {
+      Ldiff <- max(Ldiff, max(abs(r$L[,, i] - matrix(g$forward$L[i, , ], zDim, zDim))))
+    }
     expect_lt(Ldiff, 1e-5)
 
     ## analytic backward vs torch autograd
@@ -49,7 +61,8 @@ nmTest({
     ## analytic backward vs finite differences (independent of torch)
     ln2pi <- log(2 * pi)
     lossOf <- function(rr) {
-      z <- rr$z; ls <- rr$logSigma
+      z <- rr$z
+      ls <- rr$logSigma
       val <- 0.5 * sum((z - target)^2)
       for (i in seq_len(N)) {
         val <- val + 0.5 * sum((z[i, ] - zPop)^2 / omega + log(omega) + ln2pi)
@@ -59,10 +72,14 @@ nmTest({
     }
     reshape <- function(v, tmpl) if (is.null(dim(tmpl))) v else array(v, dim(tmpl))
     fdGrad <- function(setter, tmpl) {
-      h <- 1e-5; gv <- as.numeric(tmpl); flat <- as.numeric(tmpl)
+      h <- 1e-5
+      gv <- as.numeric(tmpl)
+      flat <- as.numeric(tmpl)
       for (k in seq_along(flat)) {
-        up <- flat; up[k] <- up[k] + h
-        dn <- flat; dn[k] <- dn[k] - h
+        up <- flat
+        up[k] <- up[k] + h
+        dn <- flat
+        dn[k] <- dn[k] - h
         gv[k] <- (lossOf(setter(reshape(up, tmpl))) - lossOf(setter(reshape(dn, tmpl)))) / (2 * h)
       }
       gv

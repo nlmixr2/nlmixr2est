@@ -33,8 +33,7 @@ test_that("a full conditional Laplace/AGQ fit says so", {
   }
   d <- nlmixr2data::theo_sd
   .ctl <- function(...) {
-    list(print = 0L, calcTables = FALSE, covMethod = "",
-         maxOuterIterations = 0L, ...)
+    list(print = 0L, calcTables = FALSE, covMethod = "", maxOuterIterations = 0L, ...)
   }
   fitL <- .nlmixr(model, d, "flaplace", do.call(laplaceControl, .ctl()))
   expect_identical(fitL$method, "Full Laplace")
@@ -66,10 +65,20 @@ test_that("the full conditional inner Hessian refuses a generalized likelihood",
     ini({ tf <- 0.5; eta.f ~ 0.1 })
     model({ p <- expit(tf + eta.f); n1 <- 1; dv ~ dbinom(n1, p) })
   }
-  d <- data.frame(ID = rep(1:4, each = 3), TIME = rep(1:3, 4),
-                  dv = c(1, 0, 1, 1, 1, 0, 0, 1, 0, 1, 0, 0), AMT = 0, EVID = 0)
-  expect_error(.nlmixr(model, d, "flaplace",
-                       laplaceControl(print = 0L, calcTables = FALSE,
-                                      covMethod = "", maxOuterIterations = 0L)),
-               "Gaussian endpoints")
+  d <- data.frame(
+    ID = rep(1:4, each = 3),
+    TIME = rep(1:3, 4),
+    dv = c(1, 0, 1, 1, 1, 0, 0, 1, 0, 1, 0, 0),
+    AMT = 0,
+    EVID = 0
+  )
+  expect_error(
+    .nlmixr(
+      model,
+      d,
+      "flaplace",
+      laplaceControl(print = 0L, calcTables = FALSE, covMethod = "", maxOuterIterations = 0L)
+    ),
+    "Gaussian endpoints"
+  )
 })

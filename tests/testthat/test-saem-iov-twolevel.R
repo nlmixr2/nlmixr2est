@@ -99,12 +99,9 @@ test_that(".saemIovInfo declines what the two-level handling cannot take", {
   expect_lt(nchar(.why), 75L)
 
   # a decline is what makes the shared rewrite run after all
-  expect_equal(.iovNativeDecline(rxode2::rxUiDecompress(.two()), "saem", .d,
-                                 saemControl(iovMethod = "twoLevel")),
-               .why)
+  expect_equal(.iovNativeDecline(rxode2::rxUiDecompress(.two()), "saem", .d, saemControl(iovMethod = "twoLevel")), .why)
   # ... and no method without the attribute ever declines
-  expect_null(.iovNativeDecline(rxode2::rxUiDecompress(.two()), "focei", .d,
-                                foceiControl()))
+  expect_null(.iovNativeDecline(rxode2::rxUiDecompress(.two()), "focei", .d, foceiControl()))
 })
 
 test_that(".saemIovExpandUi writes the occasion term as a variance component", {
@@ -129,24 +126,23 @@ test_that(".saemIovExpandUi writes the occasion term as a variance component", {
   expect_true(all(.exp$saemFixed[c("rx.iov.cl.1", "rx.iov.cl.2")]))
 
   # the combination is on its own line: rxode2 refuses theta + eta1 + eta2
-  expect_true(any(vapply(.exp$lstExpr,
-                         function(l) identical(deparse1(l),
-                                               "rx.iov.cl <- (occ == 1) * rx.iov.cl.1 + (occ == 2) * rx.iov.cl.2"),
-                         logical(1))))
+  expect_true(any(vapply(
+    .exp$lstExpr,
+    function(l) identical(deparse1(l), "rx.iov.cl <- (occ == 1) * rx.iov.cl.1 + (occ == 2) * rx.iov.cl.2"),
+    logical(1)
+  )))
 })
 
 test_that("saemOmegaPool groups the occasion etas, and only those", {
   .ui <- rxode2::rxUiDecompress(.twoLevelModel())
   .exp <- .saemIovExpandUi(.ui, .saemIovInfo(.ui, .twoLevelData()))
   # saemEtaNames order is Gamma2_phi1 order, which is what the kernel indexes
-  expect_equal(.exp$saemEtaNames,
-               c("eta.ka", "eta.cl", "eta.v", "rx.iov.cl.1", "rx.iov.cl.2"))
+  expect_equal(.exp$saemEtaNames, c("eta.ka", "eta.cl", "eta.v", "rx.iov.cl.1", "rx.iov.cl.2"))
   expect_equal(rxUiGet.saemOmegaPool(list(.exp)), c(0L, 0L, 0L, 1L, 1L))
 
   # the shared rewrite's line is a PRODUCT (magnitude * sum), so it must not be
   # picked up as a pool
-  .legacy <- .uiApplyIov(.ui, "saem", .twoLevelData(),
-                         saemControl(iovMethod = "theta"))$ui
+  .legacy <- .uiApplyIov(.ui, "saem", .twoLevelData(), saemControl(iovMethod = "theta"))$ui
   expect_true(all(rxUiGet.saemOmegaPool(list(.legacy)) == 0L))
 })
 
@@ -154,11 +150,7 @@ test_that(".saemIovCollapseCov contracts the pooled occasion columns", {
   # the K per-occasion columns estimate ONE variance, so the covariance matrix
   # has to carry one row for them -- Var(mean(v_1..v_K)), not Var(v_1)
   .nm <- c("tka", "om.eta.ka", "om.rx.iov.cl.1", "om.rx.iov.cl.2")
-  .cv <- matrix(c(4, 1, 2, 3,
-                  1, 5, 6, 7,
-                  2, 6, 10, -4,
-                  3, 7, -4, 8), nrow = 4, byrow = TRUE,
-                dimnames = list(.nm, .nm))
+  .cv <- matrix(c(4, 1, 2, 3, 1, 5, 6, 7, 2, 6, 10, -4, 3, 7, -4, 8), nrow = 4, byrow = TRUE, dimnames = list(.nm, .nm))
   .out <- .saemIovCollapseCov(.cv, list(iov.cl = c("rx.iov.cl.1", "rx.iov.cl.2")))
 
   expect_equal(rownames(.out), c("tka", "om.eta.ka", "om.iov.cl"))
@@ -182,11 +174,11 @@ test_that(".saemIovCollapseCov contracts the pooled occasion columns", {
 test_that(".saemGqNodes keeps the -2LL grid affordable", {
   # the grid is nnodes^nphi1 whole-population solves, and nphi1 grows by one per
   # occasion level per IOV parameter
-  expect_equal(.saemGqNodes(3, 3), 3)      # 27
-  expect_equal(.saemGqNodes(3, 5), 3)      # 243
-  expect_equal(.saemGqNodes(3, 9), 3)      # 19683, still inside the budget
-  expect_equal(.saemGqNodes(3, 12), 2)     # 531441 -> 4096
-  expect_equal(.saemGqNodes(3, 16), 1)     # 43e6 -> Laplace
+  expect_equal(.saemGqNodes(3, 3), 3) # 27
+  expect_equal(.saemGqNodes(3, 5), 3) # 243
+  expect_equal(.saemGqNodes(3, 9), 3) # 19683, still inside the budget
+  expect_equal(.saemGqNodes(3, 12), 2) # 531441 -> 4096
+  expect_equal(.saemGqNodes(3, 16), 1) # 43e6 -> Laplace
   # never raises the requested count, and never returns less than 1
   expect_equal(.saemGqNodes(8, 3), 8)
   expect_equal(.saemGqNodes(1, 40), 1)
@@ -236,11 +228,12 @@ test_that(".saemIovCollapsedParts splits the CS block into Omega and Psi", {
   .nm <- c("rx.eta.cl.1", "rx.eta.cl.2")
   .om <- matrix(c(0.4, 0.3, 0.3, 0.4), 2, dimnames = list(.nm, .nm))
   .th <- c(rx.tcl.1 = 1.2, rx.tcl.2 = 1.2)
-  .info <- list(levels = c(1, 2),
-                pars = data.frame(iov = "iov.cl", theta = "tcl", eta = "eta.cl",
-                                  stringsAsFactors = FALSE))
+  .info <- list(
+    levels = c(1, 2),
+    pars = data.frame(iov = "iov.cl", theta = "tcl", eta = "eta.cl", stringsAsFactors = FALSE)
+  )
   .p <- .saemIovCollapsedParts(.om, .th, .info)
   expect_equal(.p$theta[["iov.cl"]], 1.2)
-  expect_equal(.p$omega[["iov.cl"]], 0.3)     # the off-diagonal IS Omega
+  expect_equal(.p$omega[["iov.cl"]], 0.3) # the off-diagonal IS Omega
   expect_equal(.p$psi[["iov.cl"]], 0.4 - 0.3) # diagonal minus off-diagonal
 })

@@ -47,18 +47,21 @@ removeEstInterceptor <- function(name) {
 
 ## Run the registered interceptors on `env`; returns a claimed fit or NULL.
 .nlmixr2RunEstInterceptors <- function(env) {
-  if (.nlmixr2EstInterceptState$depth > 0L) return(NULL)         # nested: skip
+  if (.nlmixr2EstInterceptState$depth > 0L) {
+    return(NULL)
+  } # nested: skip
   .fns <- ls(envir = .nlmixr2EstInterceptors, all.names = TRUE)
-  if (length(.fns) == 0L) return(NULL)
+  if (length(.fns) == 0L) {
+    return(NULL)
+  }
   for (.n in .fns) {
     .fn <- get(.n, envir = .nlmixr2EstInterceptors, inherits = FALSE)
     .nlmixr2EstInterceptState$depth <- .nlmixr2EstInterceptState$depth + 1L
-    .ret <- tryCatch(.fn(env),
-                     finally = {
-                       .nlmixr2EstInterceptState$depth <-
-                         .nlmixr2EstInterceptState$depth - 1L
-                     })
-    if (!is.null(.ret)) return(.ret)                             # claimed
+    .ret <- tryCatch(.fn(env), finally = {
+      .nlmixr2EstInterceptState$depth <-
+        .nlmixr2EstInterceptState$depth - 1L
+    })
+    if (!is.null(.ret)) return(.ret) # claimed
   }
   NULL
 }

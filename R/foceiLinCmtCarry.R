@@ -60,8 +60,17 @@
 #' @noRd
 .rxFoceiLinCmtCarryCall <- function(pfx, which1, which2, trans, thetas) {
   paste0(
-    "linCmtB(", pfx, ",", which1, ",", which2, ",", trans, ",",
-    paste(thetas, collapse = ","), ")"
+    "linCmtB(",
+    pfx,
+    ",",
+    which1,
+    ",",
+    which2,
+    ",",
+    trans,
+    ",",
+    paste(thetas, collapse = ","),
+    ")"
   )
 }
 # (the per-model context and the final composition live in
@@ -103,10 +112,17 @@
       .l <- c(
         .l,
         paste0(.j, "~", .rxFoceiLinCmtCarryCall(cx$pfx, .r, .kcol, cx$trans, .z7)),
-        paste0(.pv, "~", .rxFoceiLinCmtCarryCall(
-          cx$pfx, -6L, .r + cx$m * (cx$nP + .p),
-          cx$trans, .z7
-        ))
+        paste0(
+          .pv,
+          "~",
+          .rxFoceiLinCmtCarryCall(
+            cx$pfx,
+            -6L,
+            .r + cx$m * (cx$nP + .p),
+            cx$trans,
+            .z7
+          )
+        )
       )
       .terms <- c(.terms, paste0(.g, "*", .dloc))
     }
@@ -114,25 +130,48 @@
       .terms <- c(.terms, paste0("rx_lcCarryD", .r, "_*", .f))
     }
     if (!is.na(pairs$lagD[w])) {
-      .terms <- c(.terms, paste0(
-        "rx_lcCarryKP", .r, "_*", .lg,
-        "*(rx_lcCarryDel_-rx_lcCarryDelP_)"
-      ))
+      .terms <- c(
+        .terms,
+        paste0(
+          "rx_lcCarryKP",
+          .r,
+          "_*",
+          .lg,
+          "*(rx_lcCarryDel_-rx_lcCarryDelP_)"
+        )
+      )
     }
     .z7[3] <- paste(.terms, collapse = "+") # -7's added value rides in the p2 slot
-    .l <- c(.l, paste0(
-      "rx_lcCarryS", .p, "r", .r, "_~",
-      .rxFoceiLinCmtCarryCall(cx$pfx, -7L, .r + cx$m * .p, cx$trans, .z7)
-    ))
+    .l <- c(
+      .l,
+      paste0(
+        "rx_lcCarryS",
+        .p,
+        "r",
+        .r,
+        "_~",
+        .rxFoceiLinCmtCarryCall(cx$pfx, -7L, .r + cx$m * .p, cx$trans, .z7)
+      )
+    )
     if (.hasSlot) {
       .z7[3] <- .dloc
-      .l <- c(.l, paste0(
-        "rx_lcCarryU", .p, "r", .r, "_~",
-        .rxFoceiLinCmtCarryCall(
-          cx$pfx, -7L, .r + cx$m * (cx$nP + .p),
-          cx$trans, .z7
+      .l <- c(
+        .l,
+        paste0(
+          "rx_lcCarryU",
+          .p,
+          "r",
+          .r,
+          "_~",
+          .rxFoceiLinCmtCarryCall(
+            cx$pfx,
+            -7L,
+            .r + cx$m * (cx$nP + .p),
+            cx$trans,
+            .z7
+          )
         )
-      ))
+      )
     }
   }
   .l
@@ -152,10 +191,14 @@
 #' @return multi-line model text (newline-joined) replacing the naive line
 #' @noRd
 .rxFoceiLinCmtCarryEmit <- function(pairs, w, s, dfe) {
-  .cx <- .rxFoceiLinCmtCarryCtx(pairs, s) # nolint: object_usage_linter.
+  .cx <- .rxFoceiLinCmtCarryCtx(pairs, s)
   .l <- character(0)
-  if (w == 1L) .l <- c(.l, .rxFoceiLinCmtCarryPrelude(.cx), .cx$concLine) # nolint: object_usage_linter.
+  if (w == 1L) {
+    .l <- c(.l, .rxFoceiLinCmtCarryPrelude(.cx), .cx$concLine)
+  }
   .l <- c(.l, .rxFoceiLinCmtCarryPairLines(.cx, pairs, w))
-  if (w == .cx$nP) .l <- c(.l, .rxFoceiLinCmtCarryEpilogue(.cx)) # nolint: object_usage_linter.
-  paste(c(.l, .rxFoceiLinCmtCarryFinal(.cx, pairs, w, dfe)), collapse = "\n") # nolint: object_usage_linter.
+  if (w == .cx$nP) {
+    .l <- c(.l, .rxFoceiLinCmtCarryEpilogue(.cx))
+  }
+  paste(c(.l, .rxFoceiLinCmtCarryFinal(.cx, pairs, w, dfe)), collapse = "\n")
 }

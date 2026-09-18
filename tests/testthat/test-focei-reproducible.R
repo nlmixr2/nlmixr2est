@@ -29,7 +29,6 @@
 ##     id-vs-position confusion completely.
 
 nmTest({
-
   .reproModel <- function() {
     ini({
       tka <- 0.45
@@ -79,21 +78,19 @@ nmTest({
       .ev <- do.call(
         rbind,
         lapply(seq_len(nid), function(.i) {
-          rbind(data.frame(id = .i, time = 0, amt = 320, evid = 1),
-                data.frame(id = .i,
-                           time = seq(0.5, 24, length.out = 8L + 2L * .i),
-                           amt = 0, evid = 0))
-        }))
-      .sim <- rxode2::rxSolve(model, .ev,
-                              params = c(tka = 0.6, tcl = 1.1, tv = 3.6))
+          rbind(
+            data.frame(id = .i, time = 0, amt = 320, evid = 1),
+            data.frame(id = .i, time = seq(0.5, 24, length.out = 8L + 2L * .i), amt = 0, evid = 0)
+          )
+        })
+      )
+      .sim <- rxode2::rxSolve(model, .ev, params = c(tka = 0.6, tcl = 1.1, tv = 3.6))
       .dat <- as.data.frame(.sim)[, c("id", "time", "cp")]
       .dat$cp <- .dat$cp + stats::rnorm(nrow(.dat), 0, 0.3)
       names(.dat) <- c("ID", "TIME", "DV")
       .dat$AMT <- 0
       .dat$EVID <- 0
-      .dat <- rbind(data.frame(ID = seq_len(nid), TIME = 0, DV = NA,
-                               AMT = 320, EVID = 1),
-                    .dat)
+      .dat <- rbind(data.frame(ID = seq_len(nid), TIME = 0, DV = NA, AMT = 320, EVID = 1), .dat)
       .dat[order(.dat$ID, .dat$TIME, -.dat$EVID), ]
     })
   }
@@ -119,8 +116,7 @@ nmTest({
     .old <- rxode2::getRxThreads()
     on.exit(rxode2::setRxThreads(.old), add = TRUE)
     rxode2::setRxThreads(.threads)
-    skip_if(rxode2::getRxThreads() < .threads,
-            paste0("needs ", .threads, " threads (2 per subject) to reorder"))
+    skip_if(rxode2::getRxThreads() < .threads, paste0("needs ", .threads, " threads (2 per subject) to reorder"))
 
     .dat <- .reproData(model, nid)
     .ctl <- foceiControl(print = 0, covMethod = "")
@@ -138,13 +134,11 @@ nmTest({
 
     # the fit also has to have gone somewhere: the failure mode was an
     # optimizer that gave up at (or beside) the initial estimates
-    expect_false(isTRUE(all.equal(unname(fixef(.f1)[names(.ini)]),
-                                  unname(.ini), tolerance = 1e-4)))
+    expect_false(isTRUE(all.equal(unname(fixef(.f1)[names(.ini)]), unname(.ini), tolerance = 1e-4)))
     # ... and somewhere right.  Only worth asking of the full-size problem;
     # a narrow machine runs this with too few subjects to pin the estimates.
     if (nid >= 6L) {
-      expect_equal(unname(fixef(.f1)[c("tka", "tcl", "tv")]),
-                   c(0.6, 1.1, 3.6), tolerance = 0.1)
+      expect_equal(unname(fixef(.f1)[c("tka", "tcl", "tv")]), c(0.6, 1.1, 3.6), tolerance = 0.1)
     }
     invisible(.f1)
   }
@@ -156,5 +150,4 @@ nmTest({
   test_that("a linCmt() focei fit twice in one session gives the same answer", {
     .expectReproducible(.reproModelLinCmt(), .reproNid())
   })
-
 })

@@ -24,21 +24,18 @@
     .idx <- .idxDvid
   } else if (is.null(.idx) && is.null(.idxDvid)) {
     # simply append to the end.
-    .ret[[2]] <- as.call(c(list(quote(`{`)),
-                           .tmp,
-                           list(str2lang("tad <- tad()"))))
+    .ret[[2]] <- as.call(c(list(quote(`{`)), .tmp, list(str2lang("tad <- tad()"))))
     return(.ret)
-
   }
-  .ret[[2]] <- as.call(lapply(seq(1, length(.tmp)+2), function(i) {
+  .ret[[2]] <- as.call(lapply(seq_len(length(.tmp) + 2), function(i) {
     if (i == 1) {
       quote(`{`)
-    } else if (i-1 == .idx) {
+    } else if (i - 1 == .idx) {
       str2lang("tad <- tad()")
-    } else if (i-1 < .idx) {
-      .tmp[[i-1]]
+    } else if (i - 1 < .idx) {
+      .tmp[[i - 1]]
     } else {
-      .tmp[[i-2]]
+      .tmp[[i - 2]]
     }
   }))
   .ret
@@ -52,14 +49,16 @@
 #' @return quoted simulation model (simply need to evaluate it)
 #' @author Matthew L. Fidler
 #' @noRd
-.getSimModel <- function(obj, hideIpred=FALSE, tad=TRUE) {
+.getSimModel <- function(obj, hideIpred = FALSE, tad = TRUE) {
   .lines <- rxode2::getBaseSimModel(obj)
   .f <- function(x) {
     if (is.atomic(x) || is.name(x) || is.pairlist(x)) {
       return(x)
     } else if (is.call(x)) {
-      if (identical(x[[1]], quote(`<-`)) ||
-            identical(x[[1]], quote(`=`))) {
+      if (
+        identical(x[[1]], quote(`<-`)) ||
+          identical(x[[1]], quote(`=`))
+      ) {
         if (identical(x[[2]], quote(`ipredSim`))) {
           x[[2]] <- quote(`ipred`)
           if (hideIpred) {
@@ -91,11 +90,11 @@
 }
 
 .simInfo <- function(object) {
-  .env <- new.env(parent=emptyenv())
+  .env <- new.env(parent = emptyenv())
   .env$ui <- object$ui
   .env$data <- object$origData
   suppressMessages(.preProcessHooksRun(.env, "rxSolve"))
-  .mod <- .getSimModel(.env$ui, hideIpred=FALSE)
+  .mod <- .getSimModel(.env$ui, hideIpred = FALSE)
   .omega <- .env$ui$omega
   .etaN <- dimnames(.omega)[[1]]
   .params <- nlme::fixed.effects(.env$ui)
@@ -115,8 +114,14 @@
   }
   .sigma <- .env$ui$simulationSigma
   return(list(
-    rx = .mod, params = .params, events = .nlmixr2Data, thetaMat = .thetaMat,
-    omega = .omega, sigma = .sigma, dfObs = .dfObs, dfSub = .dfSub
+    rx = .mod,
+    params = .params,
+    events = .nlmixr2Data,
+    thetaMat = .thetaMat,
+    omega = .omega,
+    sigma = .sigma,
+    dfObs = .dfObs,
+    dfSub = .dfSub
   ))
 }
 

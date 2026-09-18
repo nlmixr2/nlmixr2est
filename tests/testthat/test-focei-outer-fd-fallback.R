@@ -46,8 +46,12 @@ nmTest({
   .fbGrad <- function(fit, ids = NULL, skip = FALSE) {
     .fbClearHooks()
     on.exit(.fbClearHooks(), add = TRUE)
-    if (!is.null(ids)) Sys.setenv(NLMIXR2EST_OUTER_FAIL_ID = paste(ids, collapse = ","))
-    if (skip) Sys.setenv(NLMIXR2EST_OUTER_FD_SKIP = "1")
+    if (!is.null(ids)) {
+      Sys.setenv(NLMIXR2EST_OUTER_FAIL_ID = paste(ids, collapse = ","))
+    }
+    if (skip) {
+      Sys.setenv(NLMIXR2EST_OUTER_FD_SKIP = "1")
+    }
     .foceiGradDirect(fit)
   }
 
@@ -58,9 +62,11 @@ nmTest({
     on.exit(.fbClearHooks(), add = TRUE)
 
     fit <- suppressMessages(suppressWarnings(nlmixr2(
-      .fbModel, nlmixr2data::theo_sd, "focei",
-      foceiControl(print = 0L, covMethod = "", fast = TRUE, sigdig = 3,
-                   calcTables = FALSE, maxOuterIterations = 3L))))
+      .fbModel,
+      nlmixr2data::theo_sd,
+      "focei",
+      foceiControl(print = 0L, covMethod = "", fast = TRUE, sigdig = 3, calcTables = FALSE, maxOuterIterations = 3L)
+    )))
 
     gRef <- .fbGrad(fit)
     expect_true(is.numeric(gRef))
@@ -71,7 +77,7 @@ nmTest({
 
     for (ids in list(2L, c(2L, 7L))) {
       gSkip <- .fbGrad(fit, ids, skip = TRUE)
-      gOne  <- .fbGrad(fit, ids, skip = FALSE)
+      gOne <- .fbGrad(fit, ids, skip = FALSE)
       # LENGTH first, every time.  .foceiGradDirect returns NULL when the analytic route
       # declined, and all(is.finite(NULL)) is TRUE -- so without this the finiteness and
       # subtraction assertions below pass vacuously on a gradient that was never computed,
@@ -84,8 +90,8 @@ nmTest({
       # The fallback ran and actually substituted: suppressing it must move the gradient.
       expect_false(isTRUE(all.equal(gSkip, gOne, tolerance = 1e-12)))
 
-      an <- gRef - gSkip     # exact analytic contribution of the flagged subjects
-      fd <- gOne - gSkip     # what the finite difference substituted
+      an <- gRef - gSkip # exact analytic contribution of the flagged subjects
+      fd <- gOne - gSkip # what the finite difference substituted
       expect_true(all(is.finite(an)))
       expect_true(all(is.finite(fd)))
 
@@ -96,8 +102,8 @@ nmTest({
 
       # Agreement, per block, relative to the exact analytic contribution.
       relL2 <- function(idx) sqrt(sum((fd[idx] - an[idx])^2)) / sqrt(sum(an[idx]^2))
-      expect_lt(relL2(1L:4L), 0.05)   # theta + sigma
-      expect_lt(relL2(iOm), 0.05)     # omega
+      expect_lt(relL2(1L:4L), 0.05) # theta + sigma
+      expect_lt(relL2(iOm), 0.05) # omega
     }
   })
 
@@ -111,9 +117,11 @@ nmTest({
     # shared step cache and its invalidation as the flagged set/theta move.
     Sys.setenv(NLMIXR2EST_OUTER_FAIL_ID = "2,7")
     fit <- suppressMessages(suppressWarnings(nlmixr2(
-      .fbModel, nlmixr2data::theo_sd, "focei",
-      foceiControl(print = 0L, covMethod = "", fast = TRUE, sigdig = 3,
-                   calcTables = FALSE, maxOuterIterations = 3L))))
+      .fbModel,
+      nlmixr2data::theo_sd,
+      "focei",
+      foceiControl(print = 0L, covMethod = "", fast = TRUE, sigdig = 3, calcTables = FALSE, maxOuterIterations = 3L)
+    )))
     .fbClearHooks()
 
     expect_true(is.finite(fit$objf))
@@ -141,10 +149,20 @@ nmTest({
     # behaviour) rather than the run degrading or erroring.
     Sys.setenv(NLMIXR2EST_OUTER_FAIL_ID = "2")
     fit <- suppressMessages(suppressWarnings(nlmixr2(
-      .fbModel, nlmixr2data::theo_sd, "focei",
-      foceiControl(print = 0L, covMethod = "", fast = TRUE, sigdig = 3,
-                   calcTables = FALSE, maxOuterIterations = 2L,
-                   shi21hMin = 1.9, shi21hMax = 2.0))))
+      .fbModel,
+      nlmixr2data::theo_sd,
+      "focei",
+      foceiControl(
+        print = 0L,
+        covMethod = "",
+        fast = TRUE,
+        sigdig = 3,
+        calcTables = FALSE,
+        maxOuterIterations = 2L,
+        shi21hMin = 1.9,
+        shi21hMax = 2.0
+      )
+    )))
     .fbClearHooks()
     expect_true(is.finite(fit$objf))
     # The clamp actually FIRED -- otherwise this test proves nothing about the caching of a
@@ -182,9 +200,11 @@ nmTest({
     }
 
     fit <- suppressMessages(suppressWarnings(nlmixr2(
-      .fbFixModel, nlmixr2data::theo_sd, "focei",
-      foceiControl(print = 0L, covMethod = "", fast = TRUE, sigdig = 3,
-                   calcTables = FALSE, maxOuterIterations = 3L))))
+      .fbFixModel,
+      nlmixr2data::theo_sd,
+      "focei",
+      foceiControl(print = 0L, covMethod = "", fast = TRUE, sigdig = 3, calcTables = FALSE, maxOuterIterations = 3L)
+    )))
 
     gRef <- .fbGrad(fit)
     # 3 free thetas (tka tcl add.sd) + 3 omega entries; tv is fixed and carries no column.
@@ -193,7 +213,7 @@ nmTest({
 
     ids <- 2L
     gSkip <- .fbGrad(fit, ids, skip = TRUE)
-    gOne  <- .fbGrad(fit, ids, skip = FALSE)
+    gOne <- .fbGrad(fit, ids, skip = FALSE)
     expect_true(all(is.finite(gSkip)))
     expect_true(all(is.finite(gOne)))
     expect_false(isTRUE(all.equal(gSkip, gOne, tolerance = 1e-12)))
@@ -205,10 +225,9 @@ nmTest({
     # the last component would be left at zero.
     expect_true(all(abs(fd) > 0))
     relL2 <- function(idx) sqrt(sum((fd[idx] - an[idx])^2)) / sqrt(sum(an[idx]^2))
-    expect_lt(relL2(1L:3L), 0.05)   # theta + sigma
-    expect_lt(relL2(4L:6L), 0.05)   # omega
+    expect_lt(relL2(1L:3L), 0.05) # theta + sigma
+    expect_lt(relL2(4L:6L), 0.05) # omega
   })
-
 
   test_that("the pooled/VAE M-step keeps its analytic gradient when a subject is flagged", {
     skip_on_cran()
@@ -237,13 +256,21 @@ nmTest({
         cp <- center / v
         cp ~ add(add.sd) })
     }
-    .vCtl <- vaeControl(nonMuTheta = "grad", print = 0L, calcTables = FALSE,
-                        returnVae = TRUE, itersBurnIn = 10L, iters = 30L,
-                        klWarmup = 5L, gammaIter = 20L)
+    .vCtl <- vaeControl(
+      nonMuTheta = "grad",
+      print = 0L,
+      calcTables = FALSE,
+      returnVae = TRUE,
+      itersBurnIn = 10L,
+      iters = 30L,
+      klWarmup = 5L,
+      gammaIter = 20L
+    )
 
     Sys.setenv(NLMIXR2EST_OUTER_FAIL_ID = "2,7")
     r <- suppressWarnings(suppressMessages(
-      nlmixr2(.vMod(), nlmixr2data::theo_sd, est = "vae", control = .vCtl)))
+      nlmixr2(.vMod(), nlmixr2data::theo_sd, est = "vae", control = .vCtl)
+    ))
     .fbClearHooks()
 
     # The M-steps used the analytic gradient and NONE fell back -- i.e. the entry substituted
@@ -272,10 +299,19 @@ nmTest({
       .fbClearHooks()
       on.exit(.fbClearHooks(), add = TRUE)
       fit <- suppressMessages(suppressWarnings(nlmixr2(
-        .fbModel, nlmixr2data::theo_sd, "focei",
-        foceiControl(print = 0L, covMethod = "", fast = TRUE, sigdig = 3,
-                     calcTables = FALSE, maxOuterIterations = 3L,
-                     fdIndividualStep = indiv))))
+        .fbModel,
+        nlmixr2data::theo_sd,
+        "focei",
+        foceiControl(
+          print = 0L,
+          covMethod = "",
+          fast = TRUE,
+          sigdig = 3,
+          calcTables = FALSE,
+          maxOuterIterations = 3L,
+          fdIndividualStep = indiv
+        )
+      )))
       Sys.setenv(NLMIXR2EST_OUTER_FAIL_ID = "2,7")
       .foceiGradDirect(fit)
     }
@@ -308,25 +344,35 @@ nmTest({
       on.exit(.fbClearHooks(), add = TRUE)
       Sys.setenv(NLMIXR2EST_OUTER_FAIL_ID = "2,7")
       fit <- suppressMessages(suppressWarnings(nlmixr2(
-        .fbModel, nlmixr2data::theo_sd, "focei",
-        foceiControl(print = 0L, covMethod = "", fast = TRUE, sigdig = 3,
-                     calcTables = FALSE, maxOuterIterations = 2L,
-                     fdOutlierZ = z, fdChartrand = chartrand))))
+        .fbModel,
+        nlmixr2data::theo_sd,
+        "focei",
+        foceiControl(
+          print = 0L,
+          covMethod = "",
+          fast = TRUE,
+          sigdig = 3,
+          calcTables = FALSE,
+          maxOuterIterations = 2L,
+          fdOutlierZ = z,
+          fdChartrand = chartrand
+        )
+      )))
       .fbClearHooks()
       list(objf = fit$objf, out = fit$env$nFdOutlier)
     }
 
-    hi <- .run(3.5, TRUE)          # the default: nothing flagged on this fit
+    hi <- .run(3.5, TRUE) # the default: nothing flagged on this fit
     expect_true(is.finite(hi$objf))
     expect_equal(as.integer(hi$out[["params"]]), 0L)
     expect_equal(as.integer(hi$out[["chartrandSlopes"]]), 0L)
 
-    lo <- .run(1e-8, TRUE)         # everything flagged: the pass runs
+    lo <- .run(1e-8, TRUE) # everything flagged: the pass runs
     expect_true(is.finite(lo$objf))
     expect_gt(as.integer(lo$out[["params"]]), 0L)
     expect_gt(as.integer(lo$out[["chartrandSlopes"]]), 0L)
 
-    off <- .run(1e-8, FALSE)       # detected but NOT refined
+    off <- .run(1e-8, FALSE) # detected but NOT refined
     expect_true(is.finite(off$objf))
     expect_gt(as.integer(off$out[["params"]]), 0L)
     expect_equal(as.integer(off$out[["chartrandSlopes"]]), 0L)
@@ -349,9 +395,19 @@ nmTest({
       on.exit(.fbClearHooks(), add = TRUE)
       Sys.setenv(NLMIXR2EST_OUTER_FAIL_ID = "2,7")
       fit <- suppressMessages(suppressWarnings(nlmixr2(
-        .fbModel, nlmixr2data::theo_sd, "focei",
-        foceiControl(print = 0L, covMethod = "", fast = TRUE, sigdig = 3,
-                     calcTables = FALSE, maxOuterIterations = 2L, ...))))
+        .fbModel,
+        nlmixr2data::theo_sd,
+        "focei",
+        foceiControl(
+          print = 0L,
+          covMethod = "",
+          fast = TRUE,
+          sigdig = 3,
+          calcTables = FALSE,
+          maxOuterIterations = 2L,
+          ...
+        )
+      )))
       .fbClearHooks()
       list(objf = fit$objf, out = fit$env$nFdOutlier)
     }
@@ -384,12 +440,11 @@ nmTest({
     # many refined slopes as refining only the outliers.  Both must still give a finite fit --
     # the analytic subjects are never recomputed under either setting.
     only <- .run(fdOutlierZ = 1e-8, fdChartrandAll = FALSE)
-    all  <- .run(fdOutlierZ = 1e-8, fdChartrandAll = TRUE)
+    all <- .run(fdOutlierZ = 1e-8, fdChartrandAll = TRUE)
     expect_true(is.finite(only$objf))
     expect_true(is.finite(all$objf))
     expect_gt(as.integer(only$out[["chartrandSlopes"]]), 0L)
-    expect_gte(as.integer(all$out[["chartrandSlopes"]]),
-               as.integer(only$out[["chartrandSlopes"]]))
+    expect_gte(as.integer(all$out[["chartrandSlopes"]]), as.integer(only$out[["chartrandSlopes"]]))
   })
 
   test_that("fdRefine selects richardson/lanczos/chartrand and all three refine", {
@@ -402,10 +457,9 @@ nmTest({
     expect_equal(foceiControl(fdRefine = "lanczos")$fdRefine, "lanczos")
     # A control is re-passed through foceiControl(); an integer code would come back NA from
     # match.arg() SILENTLY and fall back to the default estimator.
-    expect_equal(do.call(foceiControl, foceiControl(fdRefine = "richardson"))$fdRefine,
-                 "richardson")
+    expect_equal(do.call(foceiControl, foceiControl(fdRefine = "richardson"))$fdRefine, "richardson")
     expect_error(foceiControl(fdRefine = "spline"))
-    expect_error(foceiControl(fdRichardsonV = 1))     # v must exceed 1 to shrink the step
+    expect_error(foceiControl(fdRichardsonV = 1)) # v must exceed 1 to shrink the step
     expect_equal(vaeControl(fdRefine = "lanczos")$fdRefine, "lanczos")
 
     # Each estimator must actually run and produce a finite substituted gradient.  The cut is
@@ -416,10 +470,20 @@ nmTest({
       on.exit(.fbClearHooks(), add = TRUE)
       Sys.setenv(NLMIXR2EST_OUTER_FAIL_ID = "2,7")
       fit <- suppressMessages(suppressWarnings(nlmixr2(
-        .fbModel, nlmixr2data::theo_sd, "focei",
-        foceiControl(print = 0L, covMethod = "", fast = TRUE, sigdig = 3,
-                     calcTables = FALSE, maxOuterIterations = 2L,
-                     fdOutlierZ = 1e-8, fdRefine = meth))))
+        .fbModel,
+        nlmixr2data::theo_sd,
+        "focei",
+        foceiControl(
+          print = 0L,
+          covMethod = "",
+          fast = TRUE,
+          sigdig = 3,
+          calcTables = FALSE,
+          maxOuterIterations = 2L,
+          fdOutlierZ = 1e-8,
+          fdRefine = meth
+        )
+      )))
       .fbClearHooks()
       list(objf = fit$objf, n = as.integer(fit$env$nFdOutlier[["chartrandSlopes"]]))
     }
@@ -451,10 +515,19 @@ nmTest({
       on.exit(.fbClearHooks(), add = TRUE)
       Sys.setenv(NLMIXR2EST_OUTER_FAIL_ID = "2,7")
       f <- suppressMessages(suppressWarnings(nlmixr2(
-        .fbModel, dat, "focei",
-        foceiControl(print = 0L, covMethod = "", fast = TRUE, sigdig = 3,
-                     calcTables = FALSE, maxOuterIterations = 2L,
-                     fdOutlierScale = scale))))
+        .fbModel,
+        dat,
+        "focei",
+        foceiControl(
+          print = 0L,
+          covMethod = "",
+          fast = TRUE,
+          sigdig = 3,
+          calcTables = FALSE,
+          maxOuterIterations = 2L,
+          fdOutlierScale = scale
+        )
+      )))
       .fbClearHooks()
       list(objf = f$objf, params = as.integer(f$env$nFdOutlier[["params"]]))
     }
@@ -463,7 +536,7 @@ nmTest({
     # same number cannot change a modified z-score.  Scaling must be a no-op here -- that is
     # what makes it safe to turn on by default.
     bal <- nlmixr2data::theo_sd
-    on  <- .fit(bal, TRUE)
+    on <- .fit(bal, TRUE)
     off <- .fit(bal, FALSE)
     expect_true(is.finite(on$objf))
     expect_equal(on$objf, off$objf)
@@ -473,16 +546,19 @@ nmTest({
     # are then not draws from one distribution -- a well-sampled subject has a systematically
     # larger slope purely from carrying more data -- so the two settings must be able to
     # DISAGREE about who is an outlier.  Both must still produce a finite fit.
-    .thin <- do.call(rbind, lapply(split(bal, bal$ID), function(d) {
-      obs <- d[d$EVID == 0, , drop = FALSE]
-      dose <- d[d$EVID != 0, , drop = FALSE]
-      if (as.integer(as.character(d$ID[1])) <= 4L && nrow(obs) > 3L) {
-        obs <- obs[seq_len(3L), , drop = FALSE]
-      }
-      rbind(dose, obs)
-    }))
+    .thin <- do.call(
+      rbind,
+      lapply(split(bal, bal$ID), function(d) {
+        obs <- d[d$EVID == 0, , drop = FALSE]
+        dose <- d[d$EVID != 0, , drop = FALSE]
+        if (as.integer(as.character(d$ID[1])) <= 4L && nrow(obs) > 3L) {
+          obs <- obs[seq_len(3L), , drop = FALSE]
+        }
+        rbind(dose, obs)
+      })
+    )
     .thin <- .thin[order(.thin$ID, .thin$TIME), , drop = FALSE]
-    uOn  <- .fit(.thin, TRUE)
+    uOn <- .fit(.thin, TRUE)
     uOff <- .fit(.thin, FALSE)
     expect_true(is.finite(uOn$objf))
     expect_true(is.finite(uOff$objf))
@@ -495,23 +571,38 @@ nmTest({
       on.exit(.fbClearHooks(), add = TRUE)
       Sys.setenv(NLMIXR2EST_OUTER_FAIL_ID = "2,7")
       f <- suppressMessages(suppressWarnings(nlmixr2(
-        .fbModel, .thin, "focei",
-        foceiControl(print = 0L, covMethod = "", fast = TRUE, sigdig = 3,
-                     calcTables = FALSE, maxOuterIterations = 2L,
-                     fdOutlierZ = 0.5, fdOutlierScale = scale))))
+        .fbModel,
+        .thin,
+        "focei",
+        foceiControl(
+          print = 0L,
+          covMethod = "",
+          fast = TRUE,
+          sigdig = 3,
+          calcTables = FALSE,
+          maxOuterIterations = 2L,
+          fdOutlierZ = 0.5,
+          fdOutlierScale = scale
+        )
+      )))
       .fbClearHooks()
-      c(params = as.integer(f$env$nFdOutlier[["params"]]),
+      c(
+        params = as.integer(f$env$nFdOutlier[["params"]]),
         slopes = as.integer(f$env$nFdOutlier[["chartrandSlopes"]]),
-        objf = f$objf)
+        objf = f$objf
+      )
     }
-    cOn <- .cut(TRUE); cOff <- .cut(FALSE)
+    cOn <- .cut(TRUE)
+    cOff <- .cut(FALSE)
     expect_true(is.finite(cOn[["objf"]]))
     expect_true(is.finite(cOff[["objf"]]))
     expect_gt(cOn[["params"]], 0L)
     expect_gt(cOff[["params"]], 0L)
     # The option must CHANGE which slopes look extreme on unbalanced data -- otherwise this
     # passes even if op_focei.fdOutlierScale were ignored entirely in C++.
-    expect_false(cOn[["params"]] == cOff[["params"]] &&
-                 cOn[["slopes"]] == cOff[["slopes"]])
+    expect_false(
+      cOn[["params"]] == cOff[["params"]] &&
+        cOn[["slopes"]] == cOff[["slopes"]]
+    )
   })
 })

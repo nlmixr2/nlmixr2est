@@ -44,14 +44,25 @@
 #' @noRd
 .saemMonotonicResetTime <- function(dat) {
   .nm <- toupper(names(dat))
-  .idCol <- which(.nm == "ID")[1L]; if (is.na(.idCol)) .idCol <- 1L
-  .timeCol <- which(.nm == "TIME")[1L]; if (is.na(.timeCol)) .timeCol <- 2L
-  .evidCol <- which(.nm == "EVID")[1L]; if (is.na(.evidCol)) .evidCol <- 3L
+  .idCol <- which(.nm == "ID")[1L]
+  if (is.na(.idCol)) {
+    .idCol <- 1L
+  }
+  .timeCol <- which(.nm == "TIME")[1L]
+  if (is.na(.timeCol)) {
+    .timeCol <- 2L
+  }
+  .evidCol <- which(.nm == "EVID")[1L]
+  if (is.na(.evidCol)) {
+    .evidCol <- 3L
+  }
   .id <- dat[[.idCol]]
   .time <- dat[[.timeCol]]
   .evid <- dat[[.evidCol]]
   .n <- length(.time)
-  if (.n < 2L) return(dat)
+  if (.n < 2L) {
+    return(dat)
+  }
   # gap added past the running maximum when a reset would otherwise overlap; its
   # value does not affect predictions (the reset zeroes the system) -- it only
   # guarantees strict ordering regardless of the solver's sort stability.
@@ -74,10 +85,14 @@
       .changed <- TRUE
     }
     .adj <- .time[.i] + .offset
-    if (.adj > .runMax) .runMax <- .adj
+    if (.adj > .runMax) {
+      .runMax <- .adj
+    }
     .time[.i] <- .adj
   }
-  if (.changed) dat[[.timeCol]] <- .time
+  if (.changed) {
+    dat[[.timeCol]] <- .time
+  }
   dat
 }
 
@@ -95,8 +110,10 @@
 #' @param fixed a character vector of fixed effect only parameters (no random effects attached) to be fixed
 #' @param DEBUG Integer determining if debugging is enabled
 #' @param type indicates the type of optimization for the residuals; Can be one of c("nelder-mead", "newuoa")
-#' @param lambdaRange This indicates the range that Box-Cox and Yeo-Johnson parameters are constrained to be;  The default is 3 indicating the range (-3,3)
-#' @param powRange This indicates the range that powers can take for residual errors;  By default this is 10 indicating the range is c(1/10, 10) or c(0.1,10)
+#' @param lambdaRange This indicates the range that Box-Cox and Yeo-Johnson parameters are
+#'   constrained to be;  The default is 3 indicating the range (-3,3)
+#' @param powRange This indicates the range that powers can take for residual errors;
+#'   By default this is 10 indicating the range is c(1/10, 10) or c(0.1,10)
 #' @inheritParams saemControl
 #'
 #' @return Returns a list neede for the saem fit procedure
@@ -161,46 +178,63 @@
 #'
 #' }
 #' @noRd
-.configsaem <- function(model, data, inits,
-                       mcmc = list(niter = c(200, 300), nmc = 3, nu = c(2, 2, 2)),
-                       rxControl = list(atol = 1e-6, rtol = 1e-4, method = "lsoda", maxeval = 100000),
-                       distribution = c("normal", "poisson", "binomial", "general"),
-                       seed = 99, fixedOmega = NULL, fixedOmegaValues=NULL,
-                       parHistThetaKeep=NULL,
-                       parHistOmegaKeep=NULL,
-                       parHistOmegaOffPairs=matrix(integer(0), ncol=2L),
-                       pseudoI1=integer(0),
-                       DEBUG = 0,
-                       tol = 1e-4, itmax = 100L, type = c("newuoa", "nelder-mead"),
-                       lambdaRange = 3, powRange = 10,
-                       odeRecalcFactor=10^(0.5),
-                       maxOdeRecalc=5L,
-                       indTolRelax=TRUE,
-                       nSaCov=0L,
-                       nres,
-                       perSa=0.75,
-                       perNoCor=0.75,
-                       perFixOmega=0.5,
-                       perFixResid=0.75,
-                       resFixed,
-                       ue,
-                       revisitUninformativeEtas=FALSE,
-                       ueAlpha=0.05,
-                       ueQ=sqrt(3/5),
-                       ueTol=1e-7,
-                       mixProb = numeric(0),
-                       mixProbMethod = c("regress", "regularized", "annealed"),
-                       mixProbStepExp = 1,
-                       mixProbPriorN = 20,
-                       mixSampleMethod = c("parallel", "msaem"),
-                       omegaShare = integer(0),
-                       omegaShareSubpop = integer(0),
-                       omegaPool = integer(0),
-                       omegaPoolMean = 0L) {
-  if (is.null(fixedOmega)) stop("requires fixedOmega", call.=FALSE)
-  if (is.null(fixedOmegaValues)) stop("requires fixedOmegaValues", call.=FALSE)
-  if (is.null(parHistThetaKeep)) stop("requires parHistThetaKeep", call.=FALSE)
-  if (is.null(parHistOmegaKeep)) stop("requires parHistOmegaKeep", call.=FALSE)
+.configsaem <- function(
+  model,
+  data,
+  inits,
+  mcmc = list(niter = c(200, 300), nmc = 3, nu = c(2, 2, 2)),
+  rxControl = list(atol = 1e-6, rtol = 1e-4, method = "lsoda", maxeval = 100000),
+  distribution = c("normal", "poisson", "binomial", "general"),
+  seed = 99,
+  fixedOmega = NULL,
+  fixedOmegaValues = NULL,
+  parHistThetaKeep = NULL,
+  parHistOmegaKeep = NULL,
+  parHistOmegaOffPairs = matrix(integer(0), ncol = 2L),
+  pseudoI1 = integer(0),
+  DEBUG = 0,
+  tol = 1e-4,
+  itmax = 100L,
+  type = c("newuoa", "nelder-mead"),
+  lambdaRange = 3,
+  powRange = 10,
+  odeRecalcFactor = 10^(0.5),
+  maxOdeRecalc = 5L,
+  indTolRelax = TRUE,
+  nSaCov = 0L,
+  nres,
+  perSa = 0.75,
+  perNoCor = 0.75,
+  perFixOmega = 0.5,
+  perFixResid = 0.75,
+  resFixed,
+  ue,
+  revisitUninformativeEtas = FALSE,
+  ueAlpha = 0.05,
+  ueQ = sqrt(3 / 5),
+  ueTol = 1e-7,
+  mixProb = numeric(0),
+  mixProbMethod = c("regress", "regularized", "annealed"),
+  mixProbStepExp = 1,
+  mixProbPriorN = 20,
+  mixSampleMethod = c("parallel", "msaem"),
+  omegaShare = integer(0),
+  omegaShareSubpop = integer(0),
+  omegaPool = integer(0),
+  omegaPoolMean = 0L
+) {
+  if (is.null(fixedOmega)) {
+    stop("requires fixedOmega", call. = FALSE)
+  }
+  if (is.null(fixedOmegaValues)) {
+    stop("requires fixedOmegaValues", call. = FALSE)
+  }
+  if (is.null(parHistThetaKeep)) {
+    stop("requires parHistThetaKeep", call. = FALSE)
+  }
+  if (is.null(parHistOmegaKeep)) {
+    stop("requires parHistOmegaKeep", call. = FALSE)
+  }
   type.idx <- c("nelder-mead" = 1L, "newuoa" = 2L)
   type <- match.arg(type)
   type <- type.idx[type]
@@ -224,9 +258,7 @@
   nlhs <- attr(model$saem_mod, "nlhs")
   inPars <- attr(model$saem_mod, "inPars")
   ninputpars <- length(inPars)
-  opt <- optM <- c(list(neq = neq, nlhs = nlhs, inits = numeric(neq)),
-    ninputpars = ninputpars, inPars = inPars
-  )
+  opt <- optM <- c(list(neq = neq, nlhs = nlhs, inits = numeric(neq)), ninputpars = ninputpars, inPars = inPars)
 
   model$N.eta <- attr(model$saem_mod, "nrhs")
   model$nendpnt <- attr(model$saem_mod, "nendpnt")
@@ -269,10 +301,7 @@
   .nt <- names(inits$theta)
   .nt <- .nt[!is.na(.nt)]
   inits.save <- inits
-  inits$theta.fix <- matrix(names(inits$theta),
-    byrow = TRUE,
-    ncol = model$N.eta
-    )
+  inits$theta.fix <- matrix(names(inits$theta), byrow = TRUE, ncol = model$N.eta)
   inits$theta <- matrix(inits$theta, byrow = TRUE, ncol = model$N.eta)
   model$cov.mod <- 1 - is.na(inits$theta)
   data$N.covar <- nrow(inits$theta) - 1
@@ -302,59 +331,86 @@
   covstruct <- model$omega
 
   check <- sum((covstruct - t(covstruct)) != 0)
-  if (check) stop("illegal covstruct")
+  if (check) {
+    stop("illegal covstruct")
+  }
   check <- nphi - dim(covstruct)[1]
-  if (check) stop("nphi and covstruct dim mismatch")
+  if (check) {
+    stop("nphi and covstruct dim mismatch")
+  }
 
   check <- prod(mcov[1, ])
   if (check == 0) {
     print(mcov)
-    stop("structural parameter(s) absent", call.=FALSE)
+    stop("structural parameter(s) absent", call. = FALSE)
   }
   check <- nphi - dim(mcov)[2]
-  if (check) stop("nphi and ncol(mcov) mismatch")
+  if (check) {
+    stop("nphi and ncol(mcov) mismatch")
+  }
   check <- sum(dim(inits$theta) - dim(mcov) != 0)
-  if (check) stop("initial theta's and mcov dim mismatch")
+  if (check) {
+    stop("initial theta's and mcov dim mismatch")
+  }
   check <- data$N.covar + 1 - dim(mcov)[1]
-  if (check) stop("dim mcov and N.covar mismatch")
+  if (check) {
+    stop("dim mcov and N.covar mismatch")
+  }
 
   check <- length(model$log.eta) - nphi
-  if (check) stop("jlog length and nphi mismatch")
+  if (check) {
+    stop("jlog length and nphi mismatch")
+  }
 
   check <- length(inits$omega) - nphi
-  if (check) stop("length of omega inits and nphi mismatch")
+  if (check) {
+    stop("length of omega inits and nphi mismatch")
+  }
 
   # check = mcmc$burn.in>sum(mcmc$niter)
   # if (check) stop("#burn-in exceeds niter")
 
   check <- prod(is.element(covstruct, c(0, 1)))
-  if (check == 0) warning("non-zero value(s) in covstruct set to 1")
+  if (check == 0) {
+    warning("non-zero value(s) in covstruct set to 1")
+  }
   covstruct[covstruct != 0] <- 1
 
   check <- prod(is.element(mcov, c(0, 1)))
-  if (check == 0) warning("non-zero value(s) in mcov set to 1")
+  if (check == 0) {
+    warning("non-zero value(s) in mcov set to 1")
+  }
   mcov[mcov != 0] <- 1
 
   check <- sum(inits$theta[1, model$log.eta] <= 0)
-  if (check) stop("illegal initial theta's")
+  if (check) {
+    stop("illegal initial theta's")
+  }
   check <- sum(inits$omega <= 0)
-  if (check) stop("illegal initial omega")
+  if (check) {
+    stop("illegal initial omega")
+  }
   # check = inits$sigma2<=0
   # if (check) stop("illegal initial sigma2")
   check <- sum(diag(covstruct) == 1)
-  if (!check) stop("0 ETA's")
+  if (!check) {
+    stop("0 ETA's")
+  }
   y <- data$data[, "DV"]
   id <- data$data[, "ID"]
   check <- any(diff(unique(id)) != 1)
-  if (check) stop("saem classic UI needs sequential ID. check your data")
+  if (check) {
+    stop("saem classic UI needs sequential ID. check your data")
+  }
   ntotal <- length(id)
   N <- length(unique(id))
   if (is.null(model$covars)) {
     covariables <- NULL
   } else {
-    covariables <- unlist(stats::aggregate(as.data.frame(data$data[, model$covars, drop = FALSE]),
-                                           list(id),
-                                           unique)[, -1, drop = FALSE])
+    covariables <- unlist(stats::aggregate(as.data.frame(data$data[, model$covars, drop = FALSE]), list(id), unique)[,
+      -1,
+      drop = FALSE
+    ])
   }
   if (!is.null(covariables)) {
     if (length(covariables) == N * data$N.covar) {
@@ -365,8 +421,7 @@
       message("covars")
       print(model$covars)
       print(data$N.covar)
-      stop("internal covariate mismatch for 'saem'",
-           call.=FALSE)
+      stop("internal covariate mismatch for 'saem'", call. = FALSE)
     }
   }
   nb_measures <- table(id)
@@ -375,15 +430,24 @@
   io <- t(sapply(nb_measures, function(x) rep(1:0, c(x, mlen - x))))
   indio <- grep(1, t(io)) - 1
 
-  if (is.null(data$nmdat$CMT)) data$nmdat$CMT <- 1 ## CHECKME
+  if (is.null(data$nmdat$CMT)) {
+    data$nmdat$CMT <- 1
+  } ## CHECKME
   if (any(is.na(data$nmdat$CMT))) {
     stop("'CMT' has NA(s)")
   }
   ## CHECKME
   .nobs <- 0
-  dat <- rxode2::etTrans(data$nmdat, attr(model$saem_mod, "rx"), addCmt=TRUE, dropUnits=TRUE, allTimeVar=TRUE,
-                         addlKeepsCov = rxControl$addlKeepsCov, addlDropSs = rxControl$addlDropSs,
-                         ssAtDoseTime = rxControl$ssAtDoseTime)
+  dat <- rxode2::etTrans(
+    data$nmdat,
+    attr(model$saem_mod, "rx"),
+    addCmt = TRUE,
+    dropUnits = TRUE,
+    allTimeVar = TRUE,
+    addlKeepsCov = rxControl$addlKeepsCov,
+    addlDropSs = rxControl$addlDropSs,
+    ssAtDoseTime = rxControl$ssAtDoseTime
+  )
   .nobs <- attr(class(dat), ".rxode2.lst")$nobs
   dat <- as.data.frame(dat) # convert back evid=3 oddness...
   # Keep overlapping-time reset episodes (e.g. combined IV + depot crossover with
@@ -406,7 +470,7 @@
   # same as "not present".
   if (distribution == 4L) {
     opt$saemPhi1Hess2 <- model$saemPhi1Hess2
-    opt$saemPhi1Pred  <- model$saemPhi1Pred
+    opt$saemPhi1Pred <- model$saemPhi1Pred
     opt$saemPhi1ThetaKind <- model$saemPhi1ThetaKind
     opt$saemPhi1ThetaCol <- model$saemPhi1ThetaCol
     opt$saemPhi1ThetaFixedVal <- model$saemPhi1ThetaFixedVal
@@ -422,20 +486,28 @@
   # DV for such a model) and keep the column, exposed to the solve as "DV".
   .dvCol <- which(tolower(names(dat)) == "dv")
   if (length(.dvCol) != 1L || .dvCol != 6L) {
-    stop("internal error: unexpected etTrans column layout in .configsaem (expected 'dv' as column 6)",
-         call. = FALSE)
+    stop("internal error: unexpected etTrans column layout in .configsaem (expected 'dv' as column 6)", call. = FALSE)
   }
   .dvIsInput <- any(toupper(inPars) == "DV")
   .dvVals <- if (.dvIsInput) dat[[.dvCol]] else NULL
   dat <- as.data.frame(dat[, -.dvCol])
-  names(dat) <- vapply(names(dat), function(n) {
-    if (n %in% inPars) return(n)
-    return(toupper(n))
-  }, character(1), USE.NAMES = FALSE)
+  names(dat) <- vapply(
+    names(dat),
+    function(n) {
+      if (n %in% inPars) {
+        return(n)
+      }
+      return(toupper(n))
+    },
+    character(1),
+    USE.NAMES = FALSE
+  )
   # general-likelihood models reference DV in the solve; append it as a named
   # input at the END so the fixed ID/TIME/EVID/... column layout the kernel reads
   # positionally is unchanged, while rxode2 still supplies DV to the model by name.
-  if (.dvIsInput) dat[["DV"]] <- .dvVals
+  if (.dvIsInput) {
+    dat[["DV"]] <- .dvVals
+  }
 
   dat$ID <- as.integer(dat$ID)
 
@@ -451,7 +523,7 @@
   nlambda1 <- sum(mcov[, i1])
   nlambda0 <- sum(mcov[, i0])
   nlambda <- nlambda1 + nlambda0
-  Mcovariables <- cbind(rep(1, N), covariables)[, 1:nrow(mcov)]
+  Mcovariables <- cbind(rep(1, N), covariables)[, seq_len(nrow(mcov))]
   dim(Mcovariables) <- c(length(Mcovariables) / nrow(mcov), nrow(mcov)) # FIXME
 
   # get fixed ix
@@ -472,7 +544,9 @@
   ind_cov1 <- grep(1, mcov1[mcov1 > 0]) - 1
   ind_cov0 <- grep(1, mcov0[mcov0 > 0]) - 1
 
-  for (x in jlog1) inits$theta[1, x] <- log(inits$theta[1, x])
+  for (x in jlog1) {
+    inits$theta[1, x] <- log(inits$theta[1, x])
+  }
 
   idx <- as.vector(mcov1 > 0)
   COV1 <- Mcovariables[, row(mcov1)[idx]]
@@ -534,14 +608,19 @@
   phiM[, i0] <- mprior_phi0
   phiM <- phiM[rep(1:N, nmc), , drop = FALSE]
   .tmp <- diag(sqrt(inits$omega))
-  if (model$N.eta == 1) .tmp <- matrix(sqrt(inits$omega))
+  if (model$N.eta == 1) {
+    .tmp <- matrix(sqrt(inits$omega))
+  }
   .dim <- dimnames(ue)[[2]]
-  .ue <- do.call("cbind",
-                 lapply(names(model$log.eta),
-                        function(n) {
-                          if (n %in% .dim) return(ue[, n])
-                          rep(1L, length(ue[, 1]))
-                        }))
+  .ue <- do.call(
+    "cbind",
+    lapply(names(model$log.eta), function(n) {
+      if (n %in% .dim) {
+        return(ue[, n])
+      }
+      rep(1L, length(ue[, 1]))
+    })
+  )
   dimnames(.ue) <- list(NULL, names(model$log.eta))
   # phi columns the initial test decided (0-based), and the iteration to re-decide at.
   # Mixture models are excluded: their initial test runs through a separate pruned
@@ -558,7 +637,7 @@
   # threefry-engine draw (seeded by the rxWithSeed wrapper), so saem's RNG no
   # longer depends on R's set.seed -- all deviates come from the rxode2 engine
   .mat2 <- matrix(rxode2::rxnorm(n = length(phiM)), dim(phiM))
-  .ue <- .ue[rep(1:N, nmc),, drop = FALSE] * 1.0
+  .ue <- .ue[rep(1:N, nmc), , drop = FALSE] * 1.0
   .mat2 <- .mat2 * .ue
   phiM <- phiM + .mat2 %*% .tmp
   # now replace with what is needed inside saem sampling
@@ -632,7 +711,7 @@
   optM$rxControl <- rxControl
   cfg <- list(
     rxControl = rxControl,
-    ue=.ue,
+    ue = .ue,
     # end-of-burn-in re-run of the uninformative-eta test (src/saem.cpp
     # revisitUninformativeEtas).  ueRevisitIter < 0 disables it; the columns are the
     # 0-based phi columns the FIRST test actually decided, so a column it never
@@ -647,8 +726,8 @@
     nPhase1 = vna[1],
     nb_sa = nb_sa,
     nb_correl = nb_correl,
-    nb_fixOmega=nb_fixOmega,
-    nb_fixResid=nb_fixResid,
+    nb_fixOmega = nb_fixOmega,
+    nb_fixResid = nb_fixResid,
     niter_phi0 = niter_phi0,
     nmc = nmc,
     coef_phi0 = .9638, # FIXME
@@ -693,9 +772,9 @@
     MCOV1 = MCOV1,
     Gamma2_phi0 = Gamma2_phi0,
     Gamma2_phi1 = Gamma2_phi1,
-    Gamma2_phi1fixed=Gamma2_phi1fixed,
-    Gamma2_phi1fixedIx=Gamma2_phi1fixedIx,
-    Gamma2_phi1fixedValues=Gamma2_phi1fixedValues,
+    Gamma2_phi1fixed = Gamma2_phi1fixed,
+    Gamma2_phi1fixedIx = Gamma2_phi1fixedIx,
+    Gamma2_phi1fixedValues = Gamma2_phi1fixedValues,
     omegaShare = omegaShare,
     omegaShareSubpop = omegaShareSubpop,
     # phi1 columns sharing a non-zero group id estimate ONE variance (the
@@ -721,9 +800,9 @@
     opt = opt,
     optM = optM,
     distribution = distribution,
-    parHistThetaKeep=parHistThetaKeep,
-    parHistOmegaKeep=parHistOmegaKeep,
-    parHistOmegaOffPairs=parHistOmegaOffPairs,
+    parHistThetaKeep = parHistThetaKeep,
+    parHistOmegaKeep = parHistOmegaKeep,
+    parHistOmegaOffPairs = parHistOmegaOffPairs,
     seed = seed,
     fixed.i1 = fixed.i1,
     fixed.i0 = fixed.i0,
@@ -732,7 +811,8 @@
     ilambda1 = as.integer(ilambda1),
     ilambda0 = as.integer(ilambda0),
     nobs = .nobs,
-    resFixed=resFixed)
+    resFixed = resFixed
+  )
 
   ## CHECKME
   s <- cfg$evt[cfg$evt[, "EVID"] == 0, "CMT"]
@@ -740,15 +820,18 @@
   cfg$nendpnt <- length(unique(s))
   if (model$nendpnt != cfg$nendpnt) {
     msg <- paste0(
-      sprintf("mis-match in number of endpoints between the model (%d) and the data (%d)",
-              model$nendpnt, cfg$nendpnt),
-      sprintf("\nthe data has observations (EVID=0) in %d compartment(s): %s",
-              cfg$nendpnt, paste(cfg$opt$cmt_endpnt, collapse=", ")),
+      sprintf("mis-match in number of endpoints between the model (%d) and the data (%d)", model$nendpnt, cfg$nendpnt),
+      sprintf(
+        "\nthe data has observations (EVID=0) in %d compartment(s): %s",
+        cfg$nendpnt,
+        paste(cfg$opt$cmt_endpnt, collapse = ", ")
+      ),
       "\ncheck that the 'CMT'/'DVID' values in your dataset match the number of",
-      "\nendpoints (model error terms like 'cp ~ add(add.sd)') defined in your model")
-    stop(msg, call.=FALSE)
+      "\nendpoints (model error terms like 'cp ~ add(add.sd)') defined in your model"
+    )
+    stop(msg, call. = FALSE)
   }
-  t <- unlist(split(1L:length(s), s))
+  t <- unlist(split(seq_along(s), s))
   cfg$ys <- cfg$y[t]
   cfg$ix_sorting <- t - 1 # c-index for sorting by endpnt
   cfg$y_offset <- c(0, cumsum(table(s)))
@@ -767,9 +850,9 @@
   # (currently gated off by the saem opt-out assert).
   .arTime <- cfg$evt[cfg$evt[, "EVID"] == 0, "TIME"]
   .arGrp <- paste0(.s_id, "_", cfg$ix_endpnt)
-  .arPos <- stats::ave(seq_along(.arGrp), .arGrp,
-                FUN = function(.v) c(NA_integer_, utils::head(.v, -1L))) # prev 1-based orig idx
-  cfg$arPrev <- ifelse(is.na(.arPos), -1L, .arPos - 1L)                  # 0-based, -1 = first
+  # prev 1-based orig idx
+  .arPos <- stats::ave(seq_along(.arGrp), .arGrp, FUN = function(.v) c(NA_integer_, utils::head(.v, -1L)))
+  cfg$arPrev <- ifelse(is.na(.arPos), -1L, .arPos - 1L) # 0-based, -1 = first
   cfg$arDt <- ifelse(is.na(.arPos), 0, .arTime - .arTime[.arPos])
   cfg$arActive <- as.integer(if (is.null(model$arActive)) rep(0L, cfg$nendpnt) else model$arActive)
   cfg$arCor <- as.double(if (is.null(model$arCor)) rep(0, cfg$nendpnt) else model$arCor)
@@ -787,18 +870,21 @@
   # component's cfg value at its nonzero default (10/1) forever: the M-step
   # switch for that res.mod never assigns it (src/saem.cpp), so an unzeroed
   # bres/ares corrupts g = ares + bres*|ft| with a spurious component (#914).
-  cfg$ares[cfg$res.mod == 2] <- 0  # prop
-  cfg$ares[cfg$res.mod == 3] <- 0  # pow
-  cfg$ares[cfg$res.mod == 7] <- 0  # prop + lambda
-  cfg$ares[cfg$res.mod == 8] <- 0  # pow + lambda
-  cfg$bres[cfg$res.mod == 1] <- 0  # add
-  cfg$bres[cfg$res.mod == 6] <- 0  # add + lambda
+  cfg$ares[cfg$res.mod == 2] <- 0 # prop
+  cfg$ares[cfg$res.mod == 3] <- 0 # pow
+  cfg$ares[cfg$res.mod == 7] <- 0 # prop + lambda
+  cfg$ares[cfg$res.mod == 8] <- 0 # pow + lambda
+  cfg$bres[cfg$res.mod == 1] <- 0 # add
+  cfg$bres[cfg$res.mod == 6] <- 0 # add + lambda
   cfg$res_offset <- cumsum(c(0L, nres))
   nMix <- max(1L, length(mixProb))
   cfg$nMix <- nMix
   cfg$mixProb <- mixProb
-  cfg$par.hist <- matrix(0, cfg$niter, sum(parHistThetaKeep) + sum(parHistOmegaKeep) +
-                                        nrow(parHistOmegaOffPairs) + sum(1L - resFixed) + (nMix - 1L))
+  cfg$par.hist <- matrix(
+    0,
+    cfg$niter,
+    sum(parHistThetaKeep) + sum(parHistOmegaKeep) + nrow(parHistOmegaOffPairs) + sum(1L - resFixed) + (nMix - 1L)
+  )
 
   cfg$DEBUG <- cfg$opt$DEBUG <- cfg$optM$DEBUG <- DEBUG
   cfg$phiMFile <- tempfile("phi-", rxode2::rxTempDir(), ".phi")

@@ -17,15 +17,11 @@
 #' @examples
 #'
 #' foiControl()
-foiControl <- function(sigdig=3,
-                       ...,
-                       posthoc=TRUE,
-                       interaction=NULL,
-                       fo=NULL) {
-  checkmate::assertLogical(posthoc, len=1, any.missing=FALSE, null.ok=FALSE)
-  .control <- foceiControl(sigdig=sigdig, ..., interaction=1L, fo=TRUE)
+foiControl <- function(sigdig = 3, ..., posthoc = TRUE, interaction = NULL, fo = NULL) {
+  checkmate::assertLogical(posthoc, len = 1, any.missing = FALSE, null.ok = FALSE)
+  .control <- foceiControl(sigdig = sigdig, ..., interaction = 1L, fo = TRUE)
   class(.control) <- NULL
-  .control <- c(.control, list(posthoc=posthoc))
+  .control <- c(.control, list(posthoc = posthoc))
   class(.control) <- "foiControl"
   .control
 }
@@ -33,7 +29,7 @@ foiControl <- function(sigdig=3,
 #' @rdname nmObjHandleControlObject
 #' @export
 nmObjHandleControlObject.foiControl <- function(control, env) {
-  assign("foiControl", control, envir=env)
+  assign("foiControl", control, envir = env)
 }
 
 #' @rdname getValidNlmixrControl
@@ -41,12 +37,17 @@ nmObjHandleControlObject.foiControl <- function(control, env) {
 getValidNlmixrCtl.foi <- function(control) {
   .ctl <- control[[1]]
   .cls <- class(control)[1]
-  if (is.null(.ctl)) .ctl <- foiControl()
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list"))
+  if (is.null(.ctl)) {
+    .ctl <- foiControl()
+  }
+  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
     .ctl <- do.call("foiControl", .ctl)
-  if (inherits(.ctl, "foceiControl") ||
-        inherits(.ctl, "foceControl") ||
-        inherits(.ctl, "foControl")) {
+  }
+  if (
+    inherits(.ctl, "foceiControl") ||
+      inherits(.ctl, "foceControl") ||
+      inherits(.ctl, "foControl")
+  ) {
     .minfo(paste0("converting ", class(.ctl)[1], " to foiControl"))
     class(.ctl) <- NULL
     .ctl <- do.call(foiControl, .ctl)
@@ -68,36 +69,42 @@ getValidNlmixrCtl.foi <- function(control) {
 #' @export
 nmObjGetControl.foi <- function(x, ...) {
   .env <- x[[1]]
-  for (.name in c("foiControl", "control",
-                  "foControl", "foceControl",
-                  "foceiControl", "foceiControl0")) {
+  for (.name in c("foiControl", "control", "foControl", "foceControl", "foceiControl", "foceiControl0")) {
     if (exists(.name, .env, inherits = FALSE)) {
       .control <- get(.name, .env, inherits = FALSE)
-      if (inherits(.control, "foiControl")) return(.control)
-      .ret <- try(suppressMessages(getValidNlmixrCtl.foi(list(.control))), silent=TRUE)
+      if (inherits(.control, "foiControl")) {
+        return(.control)
+      }
+      .ret <- try(suppressMessages(getValidNlmixrCtl.foi(list(.control))), silent = TRUE)
       if (inherits(.ret, "foiControl")) return(.ret)
     }
   }
-  stop("cannot find foi related control object", call.=FALSE)
+  stop("cannot find foi related control object", call. = FALSE)
 }
 
 
-.foiControlToFoceiControl <- function(env, assign=TRUE) {
+.foiControlToFoceiControl <- function(env, assign = TRUE) {
   .foiControl <- env$foiControl
   .ui <- env$ui
   .n <- names(.foiControl)
   .w <- which(.n == "posthoc")
   .n <- .n[-.w]
-  .foceiControl <- setNames(lapply(.n,
-                                   function(n) {
-                                     if (n == "maxInnerIterations" &&
-                                           !.foiControl$posthoc) {
-                                       return(0L)
-                                     }
-                                     .foiControl[[n]]
-                                   }), .n)
+  .foceiControl <- setNames(
+    lapply(.n, function(n) {
+      if (
+        n == "maxInnerIterations" &&
+          !.foiControl$posthoc
+      ) {
+        return(0L)
+      }
+      .foiControl[[n]]
+    }),
+    .n
+  )
   class(.foceiControl) <- "foceiControl"
-  if (assign) env$control <- .foceiControl
+  if (assign) {
+    env$control <- .foceiControl
+  }
   .foceiControl
 }
 
@@ -106,11 +113,11 @@ nmObjGetControl.foi <- function(x, ...) {
 #'@export
 nlmixr2Est.foi <- function(env, ...) {
   .ui <- env$ui
-  rxode2::assertRxUiNoAutoregressive(.ui, " for the estimation routine 'foi'", .var.name=.ui$modelName)
-  rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'foi'", .var.name=.ui$modelName)
-  rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'foi'", .var.name=.ui$modelName)
-  rxode2::assertRxUiMixedOnly(.ui, .noRandomEffectMsg("foi"), .var.name=.ui$modelName)
-  .foceiFamilyControl(env, ..., type="foiControl")
+  rxode2::assertRxUiNoAutoregressive(.ui, " for the estimation routine 'foi'", .var.name = .ui$modelName)
+  rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'foi'", .var.name = .ui$modelName)
+  rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'foi'", .var.name = .ui$modelName)
+  rxode2::assertRxUiMixedOnly(.ui, .noRandomEffectMsg("foi"), .var.name = .ui$modelName)
+  .foceiFamilyControl(env, ..., type = "foiControl")
   .control <- .ui$control
   .posthoc <- .control$posthoc
   rxode2::rxAssignControlValue(.ui, "interaction", 0L)
@@ -122,8 +129,8 @@ nlmixr2Est.foi <- function(env, ...) {
   rxode2::rxAssignControlValue(.ui, "boundTol", 0)
   rxode2::rxAssignControlValue(.ui, "compress", 0L)
   on.exit({
-    if (exists("control", envir=.ui)) {
-      rm("control", envir=.ui)
+    if (exists("control", envir = .ui)) {
+      rm("control", envir = .ui)
     }
   })
   env$skipTable <- TRUE
@@ -133,7 +140,7 @@ nlmixr2Est.foi <- function(env, ...) {
 
   ## Now the posthoc/table step
   env$foiControl <- .control
-  .foceiFamilyControl(env, ..., type="foiControl")
+  .foceiFamilyControl(env, ..., type = "foiControl")
   .foiControlToFoceiControl(env)
   .ui$control <- env$control
   rxode2::rxAssignControlValue(.ui, "interaction", 1L)
@@ -147,16 +154,16 @@ nlmixr2Est.foi <- function(env, ...) {
   } else {
     rxode2::rxAssignControlValue(.ui, "maxInnerIterations", 0L)
   }
-  rm(list="skipTable", envir=env)
+  rm(list = "skipTable", envir = env)
 
   rxode2::rxAssignControlValue(.ui, "maxOuterIterations", 0L)
   rxode2::rxAssignControlValue(.ui, "calcTables", .control$calcTables)
   env$control <- .control
-  .ret <- .foceiFamilyReturn(env, .ui, ..., method="FOI", est="foi")
+  .ret <- .foceiFamilyReturn(env, .ui, ..., method = "FOI", est = "foi")
   .ret$est <- "foi"
-  assign("foiControl", .control, envir=.ret$env)
-  assign("control", env$control, envir=.ret$env)
-  rm("control", envir=.ret$env)
+  assign("foiControl", .control, envir = .ret$env)
+  assign("control", env$control, envir = .ret$env)
+  rm("control", envir = .ret$env)
   .addObjDfToReturn(.ret, .objDf)
   .ret
 }

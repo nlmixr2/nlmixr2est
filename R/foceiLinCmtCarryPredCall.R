@@ -20,7 +20,9 @@
     if (is.null(.a)) {
       return(invisible())
     }
-    for (.i in seq_along(.a)) .walk(.a[[.i]])
+    for (.i in seq_along(.a)) {
+      .walk(.a[[.i]])
+    }
     invisible()
   }
   .walk(expr)
@@ -63,7 +65,9 @@
   }
   .bare <- identical(paste(.pred), .reprs[1L])
   list(
-    call = .call, args = .args, bare = .bare,
+    call = .call,
+    args = .args,
+    bare = .bare,
     predSym = if (.bare) {
       symengine::S("rx_lcConc_")
     } else {

@@ -7,8 +7,8 @@
 #' @noRd
 .addFoceiInfoToFit <- function(env, newFit) {
   for (.v in c("phiC", "phiH", "llikObs")) {
-    if (exists(.v, envir=newFit$env, inherits=FALSE)) {
-      assign(.v, get(.v, envir=newFit$env, inherits=FALSE), envir=env)
+    if (exists(.v, envir = newFit$env, inherits = FALSE)) {
+      assign(.v, get(.v, envir = newFit$env, inherits = FALSE), envir = env)
     }
   }
 }
@@ -66,57 +66,62 @@
 #' }
 #' @author Matthew L. Fidler
 #' @export
-addCwres <- function(fit, focei=TRUE, updateObject = TRUE, envir = parent.frame(1)) {
+addCwres <- function(fit, focei = TRUE, updateObject = TRUE, envir = parent.frame(1)) {
   nlmixr2global$finalUiCompressed <- FALSE
   on.exit(nlmixr2global$finalUiCompressed <- TRUE)
   assertNlmixrFitData(fit)
-  checkmate::assertLogical(updateObject, len=1, any.missing=FALSE)
-  checkmate::assertLogical(focei, len=1, any.missing=FALSE)
+  checkmate::assertLogical(updateObject, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(focei, len = 1, any.missing = FALSE)
   if (is.null(fit$eta)) {
-    stop("cannot add CWRES to a model without etas", call.=FALSE)
+    stop("cannot add CWRES to a model without etas", call. = FALSE)
   } else if (any(names(fit) == "CWRES")) {
     return(fit)
   }
-  nlmixrWithTiming("CWRES", {
-    .objName <- as.character(substitute(fit))
-    .foceiControl <- fit$foceiControl
-    .foceiControl$maxOuterIterations <- 0L
-    .foceiControl$maxInnerIterations <- 0L
-    .foceiControl$etaMat <- fit$etaMat # as.matrix(fit$eta[, -1, drop = FALSE])
-    .foceiControl$compress <- FALSE
-    .foceiControl$covMethod <- 0L
-    .foceiControl$interaction <- focei
-    .foceiControl$nAGQ <- 0L # focei/foce objective row, not the fit's quadrature
-    .newFit <- .nlmixr2PriorGateBypass(
-      nlmixr2(fit, data=nlme::getData(fit), est="focei",
-              control = .foceiControl))
-    .extra <- setdiff(names(.newFit), names(fit))
-    .extra <- as.data.frame(.newFit)[, .extra]
-    .origFitEnv <- fit$env
-    .fit <- nlmixrClone(fit)
-    .new <- nlmixrCbind(.fit, .extra)
-    .env <-.new$env
-    .addFoceiInfoToFit(.env, .newFit)
-    .objDf <- .newFit$objDf
-    .type <- rownames(.objDf)
-    .curObjDf <- .new$objDf
-    # A fit that already reports this objective function (an estimation method
-    # whose own objective function is the focei/foce one) only needs the columns;
-    # asking for the row again is an error.  An uncalculated row is replaced.
-    if (!any(rownames(.curObjDf) == .type) ||
-          (nrow(.curObjDf) == 1L && is.na(.curObjDf$OBJF[[1]]))) {
-      nlmixrAddObjectiveFunctionDataFrame(.new, .objDf, .type)
-    }
-    if (updateObject) {
-      nlmixrUpdateObject(.new, .objName, envir, .origFitEnv)
-    }
-    invisible(.new)
-  },
-  envir=fit)
+  nlmixrWithTiming(
+    "CWRES",
+    {
+      .objName <- as.character(substitute(fit))
+      .foceiControl <- fit$foceiControl
+      .foceiControl$maxOuterIterations <- 0L
+      .foceiControl$maxInnerIterations <- 0L
+      .foceiControl$etaMat <- fit$etaMat # as.matrix(fit$eta[, -1, drop = FALSE])
+      .foceiControl$compress <- FALSE
+      .foceiControl$covMethod <- 0L
+      .foceiControl$interaction <- focei
+      .foceiControl$nAGQ <- 0L # focei/foce objective row, not the fit's quadrature
+      .newFit <- .nlmixr2PriorGateBypass(
+        nlmixr2(fit, data = nlme::getData(fit), est = "focei", control = .foceiControl)
+      )
+      .extra <- setdiff(names(.newFit), names(fit))
+      .extra <- as.data.frame(.newFit)[, .extra]
+      .origFitEnv <- fit$env
+      .fit <- nlmixrClone(fit)
+      .new <- nlmixrCbind(.fit, .extra)
+      .env <- .new$env
+      .addFoceiInfoToFit(.env, .newFit)
+      .objDf <- .newFit$objDf
+      .type <- rownames(.objDf)
+      .curObjDf <- .new$objDf
+      # A fit that already reports this objective function (an estimation method
+      # whose own objective function is the focei/foce one) only needs the columns;
+      # asking for the row again is an error.  An uncalculated row is replaced.
+      if (
+        !any(rownames(.curObjDf) == .type) ||
+          (nrow(.curObjDf) == 1L && is.na(.curObjDf$OBJF[[1]]))
+      ) {
+        nlmixrAddObjectiveFunctionDataFrame(.new, .objDf, .type)
+      }
+      if (updateObject) {
+        nlmixrUpdateObject(.new, .objName, envir, .origFitEnv)
+      }
+      invisible(.new)
+    },
+    envir = fit
+  )
 }
 #' @rdname nmObjGetData
 #' @export
 nmObjGetData.addCwres <- function(x, ...) {
-  addCwres(x[[1]], updateObject = FALSE, envir=parent.frame(2))
+  addCwres(x[[1]], updateObject = FALSE, envir = parent.frame(2))
 }
 attr(nmObjGetData.addCwres, "desc") <- "Add CWRES to object if needed"

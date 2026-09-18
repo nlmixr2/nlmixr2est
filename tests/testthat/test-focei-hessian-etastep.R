@@ -59,18 +59,27 @@ nmTest({
     .ev <- rxode2::et(amt = 10000, cmt = "depot")
     .ev <- rxode2::et(.ev, c(0.25, 0.5, 1, 2, 4, 6, 8, 12, 16, 24))
     .ev <- rxode2::et(.ev, id = seq_len(nsub))
-    .sim <- rxode2::rxSolve(.oralSim, .th, .ev,
+    .sim <- rxode2::rxSolve(
+      .oralSim,
+      .th,
+      .ev,
       omega = lotri::lotri(eta.Cl ~ 0.09, eta.Vc ~ 0.09, eta.KA ~ 0.09),
-      addDosing = FALSE, returnType = "data.frame"
+      addDosing = FALSE,
+      returnType = "data.frame"
     )
     .obs <- data.frame(
-      ID = .sim$id, TIME = .sim$time,
+      ID = .sim$id,
+      TIME = .sim$time,
       DV = .sim$cp * (1 + 0.2 * stats::rnorm(nrow(.sim))),
-      AMT = NA_real_, EVID = 0
+      AMT = NA_real_,
+      EVID = 0
     )
     .dose <- data.frame(
-      ID = seq_len(nsub), TIME = 0, DV = NA_real_,
-      AMT = 10000, EVID = 1
+      ID = seq_len(nsub),
+      TIME = 0,
+      DV = NA_real_,
+      AMT = 10000,
+      EVID = 1
     )
     rbind(.dose, .obs)
   }
@@ -88,14 +97,13 @@ nmTest({
 
     # Reference: the same statistical model with the Gauss-Newton inner Hessian
     # (a normal endpoint never reaches the needOptimHess branch).
-    .fPlain <- suppressWarnings(nlmixr2(.oral, .dat,
-      est = "focei",
-      control = foceiControl(print = 0L, covMethod = "")
-    ))
+    .fPlain <- suppressWarnings(nlmixr2(.oral, .dat, est = "focei", control = foceiControl(print = 0L, covMethod = "")))
     expect_true(is.finite(.fPlain$objf))
 
     # Default control: the step floor is on (hessEtaStepMin = 0.05).
-    .fLL <- suppressWarnings(nlmixr2(.oralLL, .dat,
+    .fLL <- suppressWarnings(nlmixr2(
+      .oralLL,
+      .dat,
       est = "focei",
       control = foceiControl(print = 0L, covMethod = "", innerOpt = "trust")
     ))
@@ -106,9 +114,7 @@ nmTest({
     # left near their starting values -- long before it shows in the objective,
     # so assert on those rather than on the objective alone.
     expect_true(max(.shrinkVar(.fLL)) < max(.shrinkVar(.fPlain)) + 20)
-    expect_equal(unname(diag(.fLL$omega)), unname(diag(.fPlain$omega)),
-      tolerance = 0.3
-    )
+    expect_equal(unname(diag(.fLL$omega)), unname(diag(.fPlain$omega)), tolerance = 0.3)
   })
 
   test_that("hessEtaStepMin is what makes that work (the floor is load bearing)", {
@@ -116,7 +122,9 @@ nmTest({
     .testSeed(2308)
     .dat <- .mkOralData()
     .oralLL <- .oral |> model(cp ~ prop(prop.err) + dnorm())
-    .fOn <- suppressWarnings(nlmixr2(.oralLL, .dat,
+    .fOn <- suppressWarnings(nlmixr2(
+      .oralLL,
+      .dat,
       est = "focei",
       control = foceiControl(print = 0L, covMethod = "", innerOpt = "trust")
     ))
@@ -124,16 +132,18 @@ nmTest({
     # behavior that produced the divergence.  Assert the floor actually changes
     # the answer, so a future change that quietly stops applying it fails here
     # rather than silently reintroducing the bias.
-    .fOff <- suppressWarnings(nlmixr2(.oralLL, .dat,
+    .fOff <- suppressWarnings(nlmixr2(
+      .oralLL,
+      .dat,
       est = "focei",
       control = foceiControl(
-        print = 0L, covMethod = "", innerOpt = "trust",
+        print = 0L,
+        covMethod = "",
+        innerOpt = "trust",
         hessEtaStepMin = 0
       )
     ))
     expect_true(is.finite(.fOff$objf))
-    expect_false(isTRUE(all.equal(unname(.fOn$theta), unname(.fOff$theta),
-      tolerance = 1e-6
-    )))
+    expect_false(isTRUE(all.equal(unname(.fOn$theta), unname(.fOff$theta), tolerance = 1e-6)))
   })
 })

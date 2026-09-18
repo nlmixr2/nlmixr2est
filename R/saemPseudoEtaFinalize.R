@@ -22,7 +22,9 @@
 .saemPseudoEtaBlankVariability <- function(env, thetas) {
   for (.slot in c("parFixedDf", "parFixed")) {
     .d <- get0(.slot, envir = env, inherits = FALSE)
-    if (!is.data.frame(.d)) next
+    if (!is.data.frame(.d)) {
+      next
+    }
     .rows <- rownames(.d) %in% thetas
     .cols <- names(.d)[startsWith(names(.d), "BSV(") | names(.d) == "Shrink(SD)%"]
     .d[.rows, .cols] <- lapply(.d[.cols], function(x) if (is.numeric(x)) NA else "")
@@ -38,7 +40,9 @@
 #' @noRd
 .saemDropFitColumns <- function(ret, drop) {
   .w <- which(names(ret) %in% drop)
-  if (!inherits(ret, "data.frame") || length(.w) == 0L) return(ret)
+  if (!inherits(ret, "data.frame") || length(.w) == 0L) {
+    return(ret)
+  }
   .cls <- class(ret)
   class(ret) <- "data.frame"
   ret <- ret[, -.w]
@@ -56,12 +60,16 @@
 #' @noRd
 .saemPseudoEtaCleanUi <- function(env) {
   .ui <- get0("ui", envir = env, inherits = FALSE)
-  if (!inherits(.ui, "rxUi")) return(invisible())
+  if (!inherits(.ui, "rxUi")) {
+    return(invisible())
+  }
   .ui <- rxode2::rxUiDecompress(.ui)
   .iniDf <- .ui$iniDf
   .used <- unique(unlist(lapply(.ui$lstExpr, all.vars)))
   .rm <- grepl("^rx[.]eta[.]", .iniDf$name) & !(.iniDf$name %in% .used)
-  if (!any(.rm)) return(invisible())
+  if (!any(.rm)) {
+    return(invisible())
+  }
   .iniDf <- .iniDf[!.rm, , drop = FALSE]
   .e <- !is.na(.iniDf$neta1)
   .lev <- sort(unique(c(.iniDf$neta1[.e], .iniDf$neta2[.e])))
@@ -84,12 +92,16 @@
 #' @return the fit
 #' @noRd
 .saemPseudoEtaFinalize <- function(ret) {
-  if (!is.environment(ret$env)) return(ret)
+  if (!is.environment(ret$env)) {
+    return(ret)
+  }
   .saemPseudoEtaCleanUi(ret$env)
   # the ui is already back-transformed here, so read the etas off the fit
   .ranef <- get0("ranef", envir = ret$env, inherits = FALSE)
   .pseudo <- unique(grep("^rx[.]eta[.]", c(names(.ranef), names(ret)), value = TRUE))
-  if (length(.pseudo) == 0L) return(ret)
+  if (length(.pseudo) == 0L) {
+    return(ret)
+  }
   .thetas <- sub("^rx[.]eta[.]", "", .pseudo)
   .drop <- c(.pseudo, paste0("rx.l.", .thetas), .thetas)
   .saemPseudoEtaDropSlots(ret$env, .drop)

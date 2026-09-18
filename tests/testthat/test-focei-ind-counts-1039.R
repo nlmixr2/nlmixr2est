@@ -18,12 +18,15 @@ nmTest({
     # unequal per-subject record counts, so a wrong stride cannot pass by
     # reading a neighbouring (identical) subject
     nObsI <- c(3, 5, 2, 7, 4, 6)
-    d <- do.call(rbind, lapply(seq_along(nObsI), function(id) {
-      rbind(data.frame(ID = id, TIME = 0, DV = NA_real_, AMT = 320, EVID = 1,
-                       CMT = 1),
-            data.frame(ID = id, TIME = seq(0.5, 12, length.out = nObsI[id]),
-                       DV = 5, AMT = 0, EVID = 0, CMT = 1))
-    }))
+    d <- do.call(
+      rbind,
+      lapply(seq_along(nObsI), function(id) {
+        rbind(
+          data.frame(ID = id, TIME = 0, DV = NA_real_, AMT = 320, EVID = 1, CMT = 1),
+          data.frame(ID = id, TIME = seq(0.5, 12, length.out = nObsI[id]), DV = 5, AMT = 0, EVID = 0, CMT = 1)
+        )
+      })
+    )
 
     m <- rxode2::rxode2({
       ka <- 1
@@ -60,18 +63,13 @@ nmTest({
 
     # garbage read out of unrelated memory: a negative count, or a dose /
     # evid=2 split that does not fit inside the subject's own records
-    expect_error(foceiCheckIndCounts_(rbind(ok, c(-1L, 0L, 0L))),
-                 "impossible event layout")
-    expect_error(foceiCheckIndCounts_(rbind(ok, c(5L, 0L, -2L))),
-                 "impossible event layout")
-    expect_error(foceiCheckIndCounts_(rbind(ok, c(4L, 3L, 2L))),
-                 "impossible event layout")
+    expect_error(foceiCheckIndCounts_(rbind(ok, c(-1L, 0L, 0L))), "impossible event layout")
+    expect_error(foceiCheckIndCounts_(rbind(ok, c(5L, 0L, -2L))), "impossible event layout")
+    expect_error(foceiCheckIndCounts_(rbind(ok, c(4L, 3L, 2L))), "impossible event layout")
     # a garbage pair that would overflow int if summed in int
-    expect_error(foceiCheckIndCounts_(rbind(ok, c(4L, 2000000000L, 2000000000L))),
-                 "impossible event layout")
+    expect_error(foceiCheckIndCounts_(rbind(ok, c(4L, 2000000000L, 2000000000L))), "impossible event layout")
     # the message names the offending subject, counting from 1
-    expect_error(foceiCheckIndCounts_(rbind(ok, c(-1L, 0L, 0L))),
-                 "subject 4")
+    expect_error(foceiCheckIndCounts_(rbind(ok, c(-1L, 0L, 0L))), "subject 4")
 
     # DELIBERATELY accepted: a subject that came back with none of its records
     # is individually plausible.  Rejecting it needs a total to compare against,
@@ -114,9 +112,13 @@ nmTest({
     }
 
     fit <- suppressMessages(suppressWarnings(
-      nlmixr(oneCompartment(), nlmixr2data::theo_sd, "focei",
-             control = foceiControl(maxOuterIterations = 0, covMethod = "",
-                                    print = 0))))
+      nlmixr(
+        oneCompartment(),
+        nlmixr2data::theo_sd,
+        "focei",
+        control = foceiControl(maxOuterIterations = 0, covMethod = "", print = 0)
+      )
+    ))
     expect_true(length(unique(fit$ID)) > 1)
     expect_true(is.finite(fit$objf))
     expect_true(all(is.finite(fit$IPRED)))

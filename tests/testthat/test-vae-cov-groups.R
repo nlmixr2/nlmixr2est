@@ -8,27 +8,33 @@ nmTest({
   ## brute force over the FEASIBLE supports only (at most one column per group)
   .oracleFeasible <- function(y, X, group, omega, penalty) {
     nCov <- ncol(X)
-    best <- NULL; bestScore <- Inf
+    best <- NULL
+    bestScore <- Inf
     for (m in 0:(2^nCov - 1)) {
       sel <- which(bitwAnd(m, 2^(seq_len(nCov) - 1L)) > 0L)
-      if (anyDuplicated(group[sel])) next
+      if (anyDuplicated(group[sel])) {
+        next
+      }
       s <- .score(y, X, sel, omega, penalty)
-      if (s < bestScore - 1e-12) { bestScore <- s; best <- sel }
+      if (s < bestScore - 1e-12) {
+        bestScore <- s
+        best <- sel
+      }
     }
     list(sel = best, score = bestScore)
   }
 
   test_that("a NULL group reproduces the unconstrained search exactly", {
     set.seed(11)
-    N <- 60L; nCov <- 8L
+    N <- 60L
+    nCov <- 8L
     X <- matrix(rnorm(N * nCov), N, nCov)
     y <- as.numeric(1 + X[, c(2, 5)] %*% c(1.5, -2) + rnorm(N))
     a <- vaeBestSubset_(matrix(y, ncol = 1), X, 0.4, FALSE, log(N))
     b <- vaeBestSubset_(matrix(y, ncol = 1), X, 0.4, FALSE, log(N), "lifo", NULL)
     expect_equal(a, b)
     ## an all-singleton group is the same thing stated explicitly
-    c3 <- vaeBestSubset_(matrix(y, ncol = 1), X, 0.4, FALSE, log(N), "lifo",
-                         seq_len(nCov))
+    c3 <- vaeBestSubset_(matrix(y, ncol = 1), X, 0.4, FALSE, log(N), "lifo", seq_len(nCov))
     expect_equal(a, c3)
   })
 
@@ -44,9 +50,9 @@ nmTest({
       X[, 2] <- X[, 1] * 0.9 + rnorm(N, sd = 0.4)
       X[, 4] <- X[, 3] * 0.9 + rnorm(N, sd = 0.4)
       y <- as.numeric(0.5 + X[, c(2, 5, 7)] %*% c(1.5, -2, 1) + rnorm(N))
-      omega <- 0.4; penalty <- log(N)
-      got <- vaeBestSubset_(matrix(y, ncol = 1), X, omega, FALSE, penalty,
-                            "lifo", group)
+      omega <- 0.4
+      penalty <- log(N)
+      got <- vaeBestSubset_(matrix(y, ncol = 1), X, omega, FALSE, penalty, "lifo", group)
       ref <- .oracleFeasible(y, X, group, omega, penalty)
       expect_equal(which(got$selected[1, ] == 1L), ref$sel, info = rep)
       ## and the constraint actually binds: never two columns of one group
@@ -56,7 +62,8 @@ nmTest({
 
   test_that("all frontier strategies find the same constrained optimum", {
     set.seed(13)
-    N <- 60L; nCov <- 6L
+    N <- 60L
+    nCov <- 6L
     group <- c(1L, 1L, 2L, 2L, 3L, 3L)
     X <- matrix(rnorm(N * nCov), N, nCov)
     X[, 2] <- X[, 1] * 0.95 + rnorm(N, sd = 0.3)
@@ -86,21 +93,20 @@ nmTest({
   test_that("candidate scoring repairs infeasible proposals", {
     set.seed(15)
     N <- 60L
-    x1 <- rnorm(N); x2 <- rnorm(N)
+    x1 <- rnorm(N)
+    x2 <- rnorm(N)
     ## column 2 is the weaker shape of covariate 1
     X <- cbind(x1, x1 * 0.5 + rnorm(N, sd = 1.5), x2)
     group <- c(1L, 1L, 2L)
     y <- as.numeric(1 + 2 * x1 - 1.5 * x2 + rnorm(N, sd = 0.3))
     ## propose an infeasible support naming BOTH shapes of covariate 1
-    got <- vaeScoreSupports_(y, X, 0.4, log(N), list(c(0L, 1L, 2L)),
-                             polish = FALSE, group = group)
+    got <- vaeScoreSupports_(y, X, 0.4, log(N), list(c(0L, 1L, 2L)), polish = FALSE, group = group)
     sel <- which(got$selected == 1L)
     expect_false(anyDuplicated(group[sel]) > 0L)
     ## the repair keeps the univariately stronger of the two shapes
     expect_true(1L %in% sel)
     ## and with polish it reaches the exact constrained optimum
-    pol <- vaeScoreSupports_(y, X, 0.4, log(N), list(c(0L, 1L, 2L)),
-                             polish = TRUE, group = group)
+    pol <- vaeScoreSupports_(y, X, 0.4, log(N), list(c(0L, 1L, 2L)), polish = TRUE, group = group)
     ref <- vaeBestSubset_(matrix(y, ncol = 1), X, 0.4, FALSE, log(N), "lifo", group)
     expect_equal(which(pol$selected == 1L), which(ref$selected[1, ] == 1L))
   })
@@ -112,10 +118,12 @@ nmTest({
     y <- rnorm(N)
     expect_error(
       vaeBestSubset_(matrix(y, ncol = 1), X, 0.4, FALSE, log(N), "lifo", 1:3),
-      "one entry per covariate column")
+      "one entry per covariate column"
+    )
     expect_error(
       vaeBestSubset_(matrix(y, ncol = 1), X, 0.4, FALSE, log(N), "lifo", NULL, 1:3),
-      "one entry per covariate column")
+      "one entry per covariate column"
+    )
   })
 
   ## ---- atomic blocks (the hockey stick's two arms) ---------------------------
@@ -126,9 +134,7 @@ nmTest({
     set.seed(seed)
     wt <- runif(N, 40, 140)
     ctr <- stats::median(wt)
-    cbind(lin = wt - ctr,
-          armLow = (wt < ctr) * (wt - ctr),
-          armHi = (wt >= ctr) * (wt - ctr))
+    cbind(lin = wt - ctr, armLow = (wt < ctr) * (wt - ctr), armHi = (wt >= ctr) * (wt - ctr))
   }
 
   test_that("singleton blocks reproduce the unconstrained search exactly", {
@@ -136,18 +142,20 @@ nmTest({
     ## change the tree, the branch order or the tie-break for anyone
     set.seed(31)
     for (rep in 1:8) {
-      N <- 70L; nCov <- sample(4:9, 1L)
+      N <- 70L
+      nCov <- sample(4:9, 1L)
       X <- matrix(rnorm(N * nCov), N, nCov)
       k <- sample(0:3, 1L)
       sel <- if (k > 0) sort(sample.int(nCov, k)) else integer(0)
-      y <- as.numeric(0.7 +
-                        (if (k > 0) X[, sel, drop = FALSE] %*% runif(k, 1, 3) else 0) +
-                        rnorm(N, sd = 0.5))
+      y <- as.numeric(
+        0.7 +
+          (if (k > 0) X[, sel, drop = FALSE] %*% runif(k, 1, 3) else 0) +
+          rnorm(N, sd = 0.5)
+      )
       grp <- sample(rep(seq_len(ceiling(nCov / 2)), each = 2), nCov)
       for (g in list(NULL, grp)) {
         a <- vaeBestSubset_(matrix(y, ncol = 1), X, 0.4, FALSE, log(N), "lifo", g)
-        b <- vaeBestSubset_(matrix(y, ncol = 1), X, 0.4, FALSE, log(N), "lifo", g,
-                            seq_len(nCov))
+        b <- vaeBestSubset_(matrix(y, ncol = 1), X, 0.4, FALSE, log(N), "lifo", g, seq_len(nCov))
         expect_equal(a, b, info = paste0("rep ", rep))
       }
     }
@@ -166,8 +174,7 @@ nmTest({
     N <- 80L
     X <- .hockeyDesign(N, 5)
     set.seed(5)
-    y <- as.numeric(1 + X[, "armLow"] * (-0.03) + X[, "armHi"] * 0.06 +
-                      rnorm(N, sd = 0.2))
+    y <- as.numeric(1 + X[, "armLow"] * (-0.03) + X[, "armHi"] * 0.06 + rnorm(N, sd = 0.2))
     grp <- c(1L, 1L, 1L)
     ## unconstrained: two columns, one of the tie-equivalent parameterizations
     free <- vaeBestSubset_(matrix(y, ncol = 1), X, 0.25, FALSE, log(N), "lifo")
@@ -176,8 +183,7 @@ nmTest({
     gOnly <- vaeBestSubset_(matrix(y, ncol = 1), X, 0.25, FALSE, log(N), "lifo", grp)
     expect_length(which(gOnly$selected[1, ] == 1L), 1L)
     ## group + block: both arms, never one, never lin beside an arm
-    blk <- vaeBestSubset_(matrix(y, ncol = 1), X, 0.25, FALSE, log(N), "lifo",
-                          grp, c(1L, 2L, 2L))
+    blk <- vaeBestSubset_(matrix(y, ncol = 1), X, 0.25, FALSE, log(N), "lifo", grp, c(1L, 2L, 2L))
     expect_equal(which(blk$selected[1, ] == 1L), c(2L, 3L))
   })
 
@@ -186,17 +192,22 @@ nmTest({
     ## support that is block-complete AND takes at most one block per group
     .oracleBlk <- function(y, X, group, block, omega, penalty) {
       nCov <- ncol(X)
-      best <- integer(0); bestScore <- Inf
+      best <- integer(0)
+      bestScore <- Inf
       for (m in 0:(2^nCov - 1)) {
         sel <- which(bitwAnd(m, 2^(seq_len(nCov) - 1L)) > 0L)
-        if (any(vapply(unique(block[sel]),
-                       function(b) !all(which(block == b) %in% sel),
-                       logical(1)))) next
+        if (any(vapply(unique(block[sel]), function(b) !all(which(block == b) %in% sel), logical(1)))) {
+          next
+        }
         bl <- unique(block[sel])
-        if (anyDuplicated(vapply(bl, function(b) group[which(block == b)[1L]],
-                                 integer(1)))) next
+        if (anyDuplicated(vapply(bl, function(b) group[which(block == b)[1L]], integer(1)))) {
+          next
+        }
         s <- .score(y, X, sel, omega, penalty)
-        if (s < bestScore - 1e-12) { bestScore <- s; best <- sel }
+        if (s < bestScore - 1e-12) {
+          bestScore <- s
+          best <- sel
+        }
       }
       best
     }
@@ -204,21 +215,22 @@ nmTest({
     group <- c(1L, 1L, 1L, 2L, 2L, 3L)
     block <- c(1L, 2L, 2L, 3L, 4L, 5L)
     for (rep in 1:8) {
-      X <- cbind(.hockeyDesign(N, 200 + rep),
-                 log(runif(N, 20, 80) / 50), runif(N, 20, 80) - 50,
-                 rbinom(N, 1, 0.4))
+      X <- cbind(.hockeyDesign(N, 200 + rep), log(runif(N, 20, 80) / 50), runif(N, 20, 80) - 50, rbinom(N, 1, 0.4))
       ## rotate the truth so hockey wins, lin wins, a plain covariate wins and
       ## nothing wins -- the last two are the no-false-positive cases
-      y <- switch(1L + (rep %% 4L),
-                  as.numeric(1 + X[, 2] * (-0.02) + X[, 3] * 0.05 + rnorm(N, sd = 0.3)),
-                  as.numeric(1 + X[, 1] * 0.02 + rnorm(N, sd = 0.3)),
-                  as.numeric(1 + X[, 6] * 0.8 + rnorm(N, sd = 0.3)),
-                  as.numeric(1 + rnorm(N, sd = 0.3)))
-      got <- vaeBestSubset_(matrix(y, ncol = 1), X, 0.25, FALSE, log(N), "lifo",
-                            group, block)
-      expect_equal(which(got$selected[1, ] == 1L),
-                   .oracleBlk(y, X, group, block, 0.25, log(N)),
-                   info = paste0("rep ", rep))
+      y <- switch(
+        1L + (rep %% 4L),
+        as.numeric(1 + X[, 2] * (-0.02) + X[, 3] * 0.05 + rnorm(N, sd = 0.3)),
+        as.numeric(1 + X[, 1] * 0.02 + rnorm(N, sd = 0.3)),
+        as.numeric(1 + X[, 6] * 0.8 + rnorm(N, sd = 0.3)),
+        as.numeric(1 + rnorm(N, sd = 0.3))
+      )
+      got <- vaeBestSubset_(matrix(y, ncol = 1), X, 0.25, FALSE, log(N), "lifo", group, block)
+      expect_equal(
+        which(got$selected[1, ] == 1L),
+        .oracleBlk(y, X, group, block, 0.25, log(N)),
+        info = paste0("rep ", rep)
+      )
     }
   })
 
@@ -229,7 +241,8 @@ nmTest({
     X <- cbind(.hockeyDesign(N, 3), matrix(rnorm(N * 2L), N, 2L))
     set.seed(3)
     y <- as.numeric(1 + X[, 2] * (-0.03) + X[, 3] * 0.06 + rnorm(N, sd = 0.2))
-    g <- c(1L, 1L, 1L, 2L, 3L); b <- c(1L, 2L, 2L, 3L, 4L)
+    g <- c(1L, 1L, 1L, 2L, 3L)
+    b <- c(1L, 2L, 2L, 3L, 4L)
     r <- lapply(c("lifo", "fifo", "lc"), function(s) {
       vaeBestSubset_(matrix(y, ncol = 1), X, 0.25, FALSE, log(N), s, g, b)
     })
@@ -244,8 +257,9 @@ nmTest({
     X <- .hockeyDesign(N, 5)
     set.seed(5)
     y <- as.numeric(1 + X[, 2] * (-0.03) + X[, 3] * 0.06 + rnorm(N, sd = 0.2))
-    g <- c(1L, 1L, 1L); b <- c(1L, 2L, 2L)
-    half <- list(integer(0), 1L)             # 0-based: the low arm alone
+    g <- c(1L, 1L, 1L)
+    b <- c(1L, 2L, 2L)
+    half <- list(integer(0), 1L) # 0-based: the low arm alone
     got <- vaeScoreSupports_(y, X, 0.25, log(N), half, polish = FALSE, g, b)
     expect_equal(which(got$selected == 1L), c(2L, 3L))
     ## without blocks the same proposal is never completed: the pair is simply
@@ -269,13 +283,12 @@ nmTest({
     X <- .hockeyDesign(N, 5)
     set.seed(5)
     y <- as.numeric(1 + X[, 2] * (-0.03) + X[, 3] * 0.06 + rnorm(N, sd = 0.2))
-    g <- c(1L, 1L, 1L); b <- c(1L, 2L, 2L)
-    got <- vaeScoreSupports_(y, X, 0.25, log(N), list(c(0L, 1L)), polish = FALSE,
-                             g, b)
+    g <- c(1L, 1L, 1L)
+    b <- c(1L, 2L, 2L)
+    got <- vaeScoreSupports_(y, X, 0.25, log(N), list(c(0L, 1L)), polish = FALSE, g, b)
     sel <- which(got$selected == 1L)
     ## whatever survives is a whole block, never a mixture of the two
-    expect_true(identical(sel, 1L) || identical(sel, c(2L, 3L)) ||
-                  identical(sel, integer(0)))
+    expect_true(identical(sel, 1L) || identical(sel, c(2L, 3L)) || identical(sel, integer(0)))
   })
 
   test_that("an NA block id makes a column its own block", {
@@ -285,8 +298,16 @@ nmTest({
     set.seed(3)
     y <- as.numeric(1 + X[, 1] * 0.03 + rnorm(N, sd = 0.2))
     free <- vaeBestSubset_(matrix(y, ncol = 1), X, 0.25, FALSE, log(N), "lifo")
-    naBlk <- vaeBestSubset_(matrix(y, ncol = 1), X, 0.25, FALSE, log(N), "lifo",
-                            NULL, c(NA_integer_, NA_integer_, NA_integer_))
+    naBlk <- vaeBestSubset_(
+      matrix(y, ncol = 1),
+      X,
+      0.25,
+      FALSE,
+      log(N),
+      "lifo",
+      NULL,
+      c(NA_integer_, NA_integer_, NA_integer_)
+    )
     expect_equal(free, naBlk)
   })
 })

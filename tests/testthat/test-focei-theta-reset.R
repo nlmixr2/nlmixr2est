@@ -8,7 +8,6 @@
 ## process.
 
 nmTest({
-
   # A model whose CL is initialized three orders of magnitude off scale, so the
   # etas drift and the reset actually fires.  A fit that converges cleanly never
   # resets at all -- the reset is a recovery path -- so exercising it requires a
@@ -48,14 +47,14 @@ nmTest({
   .fitCountingResets <- function(est, control) {
     .n <- 0L
     .fit <- withCallingHandlers(
-      suppressWarnings(nlmixr(.driftingModel(), nlmixr2data::theo_sd,
-                              est = est, control = control)),
+      suppressWarnings(nlmixr(.driftingModel(), nlmixr2data::theo_sd, est = est, control = control)),
       message = function(m) {
         if (grepl("ETA drift", conditionMessage(m), fixed = TRUE)) {
           .n <<- .n + 1L
         }
         tryInvokeRestart("muffleMessage")
-      })
+      }
+    )
     list(fit = .fit, nReset = .n)
   }
 
@@ -98,9 +97,14 @@ nmTest({
   }
 
   test_that("a focei fit that saves and restores its buffers completes", {
-    .ctl <- foceiControl(resetThetaP = 0.2, resetThetaCheckPer = 1, print = 0,
-                         maxOuterIterations = 20L, covMethod = "",
-                         calcTables = FALSE)
+    .ctl <- foceiControl(
+      resetThetaP = 0.2,
+      resetThetaCheckPer = 1,
+      print = 0,
+      maxOuterIterations = 20L,
+      covMethod = "",
+      calcTables = FALSE
+    )
     .a <- .fitCountingResets("focei", .ctl)
     .b <- .fitCountingResets("focei", .ctl)
 
@@ -124,9 +128,15 @@ nmTest({
     # refills from the fit environment on every entry -- before the restore runs
     # -- so it is deliberately left out of the save.  Pin that a reset under
     # nAGQ>0 still restores the part that matters, reproducibly.
-    .ctl <- agqControl(nAGQ = 3, resetThetaP = 0.2, resetThetaCheckPer = 1,
-                       print = 0, maxOuterIterations = 20L, covMethod = "",
-                       calcTables = FALSE)
+    .ctl <- agqControl(
+      nAGQ = 3,
+      resetThetaP = 0.2,
+      resetThetaCheckPer = 1,
+      print = 0,
+      maxOuterIterations = 20L,
+      covMethod = "",
+      calcTables = FALSE
+    )
     .a <- .fitCountingResets("agq", .ctl)
     .b <- .fitCountingResets("agq", .ctl)
 
@@ -137,5 +147,4 @@ nmTest({
     .expectWellFormed(.b$fit)
     .expectSameFit(.a$fit, .b$fit)
   })
-
 })

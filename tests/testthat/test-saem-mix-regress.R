@@ -7,16 +7,30 @@ test_that("saemControl(mixProbMethod='regress') fixes membership and separates t
   n_subj <- 30
   sub_pop <- rbinom(n_subj, 1, 0.6) + 1
   cl_sim <- ifelse(sub_pop == 1, 1.2, 6.0)
-  sim_data <- do.call(rbind, lapply(seq_len(n_subj), function(i) {
-    subj_cl <- cl_sim[i]; times <- c(0.5, 1, 2, 4, 8, 12, 24)
-    ka_val <- 1.5; v_val <- 24.0; k_val <- subj_cl / v_val
-    cp <- 100 * ka_val / (v_val * (ka_val - k_val)) *
-      (exp(-k_val * times) - exp(-ka_val * times)) + rnorm(length(times), 0, 0.05)
-    cp[cp < 0] <- 0
-    data.frame(ID = i, TIME = c(0, times), AMT = c(100, rep(0, length(times))),
-               EVID = c(1, rep(0, length(times))), DV = c(0, cp),
-               CMT = c(1, rep(2, length(times))))
-  }))
+  sim_data <- do.call(
+    rbind,
+    lapply(seq_len(n_subj), function(i) {
+      subj_cl <- cl_sim[i]
+      times <- c(0.5, 1, 2, 4, 8, 12, 24)
+      ka_val <- 1.5
+      v_val <- 24.0
+      k_val <- subj_cl / v_val
+      cp <- 100 *
+        ka_val /
+        (v_val * (ka_val - k_val)) *
+        (exp(-k_val * times) - exp(-ka_val * times)) +
+        rnorm(length(times), 0, 0.05)
+      cp[cp < 0] <- 0
+      data.frame(
+        ID = i,
+        TIME = c(0, times),
+        AMT = c(100, rep(0, length(times))),
+        EVID = c(1, rep(0, length(times))),
+        DV = c(0, cp),
+        CMT = c(1, rep(2, length(times)))
+      )
+    })
+  )
 
   mixmod <- function() {
     ini({
@@ -34,9 +48,20 @@ test_that("saemControl(mixProbMethod='regress') fixes membership and separates t
     })
   }
 
-  fit <- suppressWarnings(nlmixr2(mixmod, sim_data, est = "saem",
-    saemControl(print = 0, seed = 1234, nBurn = 250, nEm = 200,
-                calcTables = FALSE, covMethod = 0L, mixProbMethod = "regress")))
+  fit <- suppressWarnings(nlmixr2(
+    mixmod,
+    sim_data,
+    est = "saem",
+    saemControl(
+      print = 0,
+      seed = 1234,
+      nBurn = 250,
+      nEm = 200,
+      calcTables = FALSE,
+      covMethod = 0L,
+      mixProbMethod = "regress"
+    )
+  ))
 
   th <- fixef(fit)
   cls <- sort(exp(c(th[["tcl1"]], th[["tcl2"]])))
@@ -68,16 +93,15 @@ test_that("saem's mixture proportion equals its own responsibilities and the dat
     d/dt(center) <- ka * depot - cl / v * center
     cp <- center / v
   })
-  ev <- rxode2::et(rxode2::et(amt = 320, cmt = "depot"),
-                   c(0.25, 0.5, 1, 2, 4, 8, 12, 24))
-  obs <- do.call(rbind, lapply(seq_len(nSub), function(i) {
-    s <- rxode2::rxSolve(sim, params = c(CLI = clTrue[grp[i]]), ev,
-                         returnType = "data.frame")
-    data.frame(ID = i, TIME = s$time, DV = s$cp + rnorm(nrow(s), 0, 0.05),
-               AMT = 0, EVID = 0)
-  }))
-  dat <- rbind(data.frame(ID = seq_len(nSub), TIME = 0, DV = NA_real_,
-                          AMT = 320, EVID = 1), obs)
+  ev <- rxode2::et(rxode2::et(amt = 320, cmt = "depot"), c(0.25, 0.5, 1, 2, 4, 8, 12, 24))
+  obs <- do.call(
+    rbind,
+    lapply(seq_len(nSub), function(i) {
+      s <- rxode2::rxSolve(sim, params = c(CLI = clTrue[grp[i]]), ev, returnType = "data.frame")
+      data.frame(ID = i, TIME = s$time, DV = s$cp + rnorm(nrow(s), 0, 0.05), AMT = 0, EVID = 0)
+    })
+  )
+  dat <- rbind(data.frame(ID = seq_len(nSub), TIME = 0, DV = NA_real_, AMT = 320, EVID = 1), obs)
   dat <- dat[order(dat$ID, dat$TIME, -dat$EVID), ]
   pTrue <- mean(grp == 1L)
 
@@ -94,9 +118,12 @@ test_that("saem's mixture proportion equals its own responsibilities and the dat
     })
   }
 
-  fit <- suppressWarnings(nlmixr2(mixmod, dat, est = "saem",
-                                  saemControl(print = 0, nBurn = 100L, nEm = 100L,
-                                              covMethod = "", calcTables = FALSE)))
+  fit <- suppressWarnings(nlmixr2(
+    mixmod,
+    dat,
+    est = "saem",
+    saemControl(print = 0, nBurn = 100L, nEm = 100L, covMethod = "", calcTables = FALSE)
+  ))
   p1 <- fit$env$mixProbabilities[1]
   r1 <- fit$env$mixList[[1]]$prob
 
@@ -111,8 +138,7 @@ test_that("saem's mixture proportion equals its own responsibilities and the dat
 
   # ... and it is the proportion the data identifies (focei and imp both find
   # it on this dataset); saem reported expit(expit(p)) instead.
-  expect_equal(unname(fit$env$mixProbabilities), c(pTrue, 1 - pTrue),
-               tolerance = 0.05)
+  expect_equal(unname(fit$env$mixProbabilities), c(pTrue, 1 - pTrue), tolerance = 0.05)
   expect_null(dim(fit$env$mixProbabilities))
 
   # mechanism: the proportion is the fraction of a per-subject classification,
@@ -125,10 +151,12 @@ test_that("saem's mixture proportion equals its own responsibilities and the dat
   # the identity has to survive the dedicated SA covariance phase too:
   # covMethod="sa" runs nSaCov extra iterations and then restores the converged
   # snapshot, and the reported proportion is taken after that restore
-  fitSa <- suppressWarnings(nlmixr2(mixmod, dat, est = "saem",
-                                    saemControl(print = 0, nBurn = 100L, nEm = 100L,
-                                                covMethod = "sa", nSaCov = 50L,
-                                                calcTables = FALSE)))
+  fitSa <- suppressWarnings(nlmixr2(
+    mixmod,
+    dat,
+    est = "saem",
+    saemControl(print = 0, nBurn = 100L, nEm = 100L, covMethod = "sa", nSaCov = 50L, calcTables = FALSE)
+  ))
   .pSa <- fitSa$env$mixProbabilities[1]
   expect_equal(sum(fitSa$env$mixList[[1]]$prob - .pSa), 0, tolerance = 1e-6)
   expect_equal(unname(.pSa), pTrue, tolerance = 0.05)

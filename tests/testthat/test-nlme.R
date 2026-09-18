@@ -1,6 +1,5 @@
 nmTest({
   test_that("nlme will pick up interpolation", {
-
     one.compartment <- function() {
       ini({
         tka <- 0.45 # Log Ka
@@ -22,11 +21,9 @@ nmTest({
       })
     }
 
-
     f <- one.compartment()
 
-    expect_false(grepl("linear\\(wt\\)",
-                       suppressMessages(rxode2::rxNorm(f$nlmRxModel$predOnly))))
+    expect_false(grepl("linear\\(wt\\)", suppressMessages(rxode2::rxNorm(f$nlmRxModel$predOnly))))
 
     one.compartment <- function() {
       ini({
@@ -50,16 +47,12 @@ nmTest({
       })
     }
 
-
     f <- one.compartment()
 
-    expect_true(grepl("linear\\(wt\\)",
-                      suppressMessages(rxode2::rxNorm(f$nlmRxModel$predOnly))))
-
+    expect_true(grepl("linear\\(wt\\)", suppressMessages(rxode2::rxNorm(f$nlmRxModel$predOnly))))
   })
 
   test_that("nlme one compartment theo_sd", {
-
     one.compartment <- function() {
       ini({
         tka <- 0.45 # Log Ka
@@ -81,7 +74,7 @@ nmTest({
       })
     }
 
-    nlme  <- .nlmixr(one.compartment, theo_sd, "nlme", control=nlmeControl(verbose=FALSE, returnObject=TRUE))
+    nlme <- .nlmixr(one.compartment, theo_sd, "nlme", control = nlmeControl(verbose = FALSE, returnObject = TRUE))
 
     expect_true(inherits(nlme, "nlmixr2FitData"))
 
@@ -106,8 +99,12 @@ nmTest({
       })
     }
 
-    nlme  <- .nlmixr(one.compartment, theo_sd, "nlme",
-                     control=nlmeControl(maxIter=5, verbose=FALSE, returnObject=TRUE))
+    nlme <- .nlmixr(
+      one.compartment,
+      theo_sd,
+      "nlme",
+      control = nlmeControl(maxIter = 5, verbose = FALSE, returnObject = TRUE)
+    )
 
     expect_true(inherits(nlme, "nlmixr2FitData"))
 
@@ -132,15 +129,17 @@ nmTest({
       })
     }
 
-    nlme  <- .nlmixr(one.compartment, theo_sd, "nlme", control=nlmeControl(maxIter=2, verbose=FALSE, returnObject=TRUE))
+    nlme <- .nlmixr(
+      one.compartment,
+      theo_sd,
+      "nlme",
+      control = nlmeControl(maxIter = 2, verbose = FALSE, returnObject = TRUE)
+    )
 
     expect_true(inherits(nlme, "nlmixr2FitData"))
-
   })
 
-
   test_that("Other error structures", {
-
     dat <- Wang2007
     dat$DV <- dat$Y
 
@@ -162,7 +161,7 @@ nmTest({
 
     f <- mod()
 
-    nlme  <- .nlmixr(f, dat, "nlme", control=nlmeControl(verbose=FALSE, returnObject=TRUE))
+    nlme <- .nlmixr(f, dat, "nlme", control = nlmeControl(verbose = FALSE, returnObject = TRUE))
 
     expect_true(inherits(nlme, "nlmixr2FitData"))
 
@@ -185,7 +184,7 @@ nmTest({
 
     f <- mod()
 
-    nlme  <- .nlmixr(mod, dat, "nlme", control=nlmeControl(verbose=FALSE, returnObject=TRUE))
+    nlme <- .nlmixr(mod, dat, "nlme", control = nlmeControl(verbose = FALSE, returnObject = TRUE))
 
     expect_true(inherits(nlme, "nlmixr2FitData"))
 
@@ -208,7 +207,7 @@ nmTest({
 
     f <- mod()
 
-    nlme  <- .nlmixr(mod, dat, "nlme", control=nlmeControl(msMaxIter=10000, verbose=FALSE, returnObject=TRUE))
+    nlme <- .nlmixr(mod, dat, "nlme", control = nlmeControl(msMaxIter = 10000, verbose = FALSE, returnObject = TRUE))
 
     expect_true(inherits(nlme, "nlmixr2FitData"))
 
@@ -231,7 +230,7 @@ nmTest({
 
     f <- mod()
 
-    nlme  <- .nlmixr(mod, dat, "nlme", control=nlmeControl(msMaxIter=10000, verbose=FALSE, returnObject=TRUE))
+    nlme <- .nlmixr(mod, dat, "nlme", control = nlmeControl(msMaxIter = 10000, verbose = FALSE, returnObject = TRUE))
 
     expect_true(inherits(nlme, "nlmixr2FitData"))
 
@@ -255,8 +254,7 @@ nmTest({
 
     f <- mod()
 
-    nlme  <- .nlmixr(mod, dat, "nlme", control=nlmeControl(msMaxIter=10000, verbose=FALSE, returnObject=TRUE))
-
+    nlme <- .nlmixr(mod, dat, "nlme", control = nlmeControl(msMaxIter = 10000, verbose = FALSE, returnObject = TRUE))
   })
 
   test_that("nlme random effects are returned", {
@@ -282,8 +280,12 @@ nmTest({
       })
     }
 
-
-    fit_nlme <- .nlmixr(one.cmt.all.mu.ref, theo_sd, est="nlme", control=nlmeControl(verbose=FALSE, returnObject=TRUE))
+    fit_nlme <- .nlmixr(
+      one.cmt.all.mu.ref,
+      theo_sd,
+      est = "nlme",
+      control = nlmeControl(verbose = FALSE, returnObject = TRUE)
+    )
     expect_true(!all(ranef(fit_nlme)[[1]] == 0))
 
     one.cmt.one.mu.ref <- function() {
@@ -306,7 +308,12 @@ nmTest({
       })
     }
 
-    fit_nlme <- .nlmixr(one.cmt.one.mu.ref, theo_sd, est="nlme", control=nlmeControl(verbose=FALSE, returnObject=TRUE))
+    fit_nlme <- .nlmixr(
+      one.cmt.one.mu.ref,
+      theo_sd,
+      est = "nlme",
+      control = nlmeControl(verbose = FALSE, returnObject = TRUE)
+    )
     expect_true(!all(ranef(fit_nlme)[[1]] == 0))
 
     one.cmt.non.mu.ref <- function() {
@@ -329,7 +336,12 @@ nmTest({
       })
     }
 
-    fit_nlme <- .nlmixr(one.cmt.non.mu.ref, theo_sd, est="nlme", control=nlmeControl(verbose=FALSE, returnObject=TRUE))
+    fit_nlme <- .nlmixr(
+      one.cmt.non.mu.ref,
+      theo_sd,
+      est = "nlme",
+      control = nlmeControl(verbose = FALSE, returnObject = TRUE)
+    )
     expect_true(!all(ranef(fit_nlme)[[1]] == 0))
   })
 })

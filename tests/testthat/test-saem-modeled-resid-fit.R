@@ -11,30 +11,41 @@ nmTest({
     .s <- rxode2::rxSolve(model, .ev, addDosing = TRUE, returnType = "data.frame")
     # WT is only carried in the solve when the model uses it
     .s <- merge(.s[, setdiff(names(.s), "WT")], .cov, by = "id")
-    .d <- data.frame(ID = .s$id, TIME = .s$time, EVID = .s$evid,
-                     AMT = ifelse(is.na(.s$amt), 0, .s$amt),
-                     CMT = ifelse(.s$evid == 1, 1L, 2L),
-                     DV = ifelse(.s$evid == 1, 0, .s$sim), WT = .s$WT)
+    .d <- data.frame(
+      ID = .s$id,
+      TIME = .s$time,
+      EVID = .s$evid,
+      AMT = ifelse(is.na(.s$amt), 0, .s$amt),
+      CMT = ifelse(.s$evid == 1, 1L, 2L),
+      DV = ifelse(.s$evid == 1, 0, .s$sim),
+      WT = .s$WT
+    )
     .d[order(.d$ID, .d$TIME, -.d$EVID), ]
   }
   .noTemporaryEta <- function(fit) {
-    expect_false(any(grepl("^rx[.](eta|l)[.]|^rxBoundedTr",
-                           c(names(fit), names(fit$eta), rownames(fit$omega),
-                             names(fixef(fit))))))
-    expect_true(any(grepl("temporary eta for eta-less likelihood theta", fit$runInfo,
-                          fixed = TRUE)))
+    expect_false(any(grepl(
+      "^rx[.](eta|l)[.]|^rxBoundedTr",
+      c(names(fit), names(fit$eta), rownames(fit$omega), names(fixef(fit)))
+    )))
+    expect_true(any(grepl("temporary eta for eta-less likelihood theta", fit$runInfo, fixed = TRUE)))
   }
   .fitBoth <- function(mFit, d) {
-    list(saem = .nlmixr(mFit, d, est = "saem",
-                        control = saemControl(seed = 42L, print = 0L, covMethod = "")),
-         focei = .nlmixr(mFit, d, est = "focei",
-                         control = foceiControl(print = 0L, covMethod = "")))
+    list(
+      saem = .nlmixr(mFit, d, est = "saem", control = saemControl(seed = 42L, print = 0L, covMethod = "")),
+      focei = .nlmixr(mFit, d, est = "focei", control = foceiControl(print = 0L, covMethod = ""))
+    )
   }
   .base <- function(extraIni, lines) {
-    eval(parse(text = sprintf("function() {
+    eval(parse(
+      text = sprintf(
+        "function() {
       ini({ tka <- log(1.5); tcl <- log(2.7); tv <- log(30); %s; eta.ka ~ 0.2; eta.cl ~ 0.1 })
       model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv); cp <- linCmt(); %s })
-    }", extraIni, lines)))
+    }",
+        extraIni,
+        lines
+      )
+    ))
   }
   .starts <- list(tka = log(1), tcl = log(2), tv = log(25))
 
@@ -43,10 +54,12 @@ nmTest({
     .d <- .simModeledResid(mTrue)
     .f <- .fitBoth(do.call(rxode2::ini, c(list(mTrue), .starts, list(add.sd = 1, eta.sd = 0.1))), .d)
     .noTemporaryEta(.f$saem)
-    expect_equal(unname(fixef(.f$saem)[c("tka", "tcl", "tv")]),
-                 unname(fixef(.f$focei)[c("tka", "tcl", "tv")]), tolerance = 0.05)
-    expect_equal(unname(fixef(.f$saem)[["add.sd"]]),
-                 unname(fixef(.f$focei)[["add.sd"]]), tolerance = 0.15)
+    expect_equal(
+      unname(fixef(.f$saem)[c("tka", "tcl", "tv")]),
+      unname(fixef(.f$focei)[c("tka", "tcl", "tv")]),
+      tolerance = 0.05
+    )
+    expect_equal(unname(fixef(.f$saem)[["add.sd"]]), unname(fixef(.f$focei)[["add.sd"]]), tolerance = 0.15)
   })
 
   test_that("saem recovers a plain + dnorm() residual SD", {
@@ -54,8 +67,7 @@ nmTest({
     .d <- .simModeledResid(mTrue)
     .f <- .fitBoth(do.call(rxode2::ini, c(list(mTrue), .starts, list(add.sd = 1))), .d)
     .noTemporaryEta(.f$saem)
-    expect_equal(unname(fixef(.f$saem)[["add.sd"]]),
-                 unname(fixef(.f$focei)[["add.sd"]]), tolerance = 0.15)
+    expect_equal(unname(fixef(.f$saem)[["add.sd"]]), unname(fixef(.f$focei)[["add.sd"]]), tolerance = 0.15)
   })
 
   test_that("saem recovers add + prop under + dnorm()", {
@@ -63,8 +75,11 @@ nmTest({
     .d <- .simModeledResid(mTrue)
     .f <- .fitBoth(do.call(rxode2::ini, c(list(mTrue), .starts, list(add.sd = 0.5, prop.sd = 0.3))), .d)
     .noTemporaryEta(.f$saem)
-    expect_equal(unname(fixef(.f$saem)[c("add.sd", "prop.sd")]),
-                 unname(fixef(.f$focei)[c("add.sd", "prop.sd")]), tolerance = 0.2)
+    expect_equal(
+      unname(fixef(.f$saem)[c("add.sd", "prop.sd")]),
+      unname(fixef(.f$focei)[c("add.sd", "prop.sd")]),
+      tolerance = 0.2
+    )
   })
 
   test_that("saem recovers a covariate on the additive residual SD", {
@@ -72,8 +87,11 @@ nmTest({
     .d <- .simModeledResid(mTrue)
     .f <- .fitBoth(do.call(rxode2::ini, c(list(mTrue), .starts, list(add.sd = 1, cov.sd = 0.05))), .d)
     .noTemporaryEta(.f$saem)
-    expect_equal(unname(fixef(.f$saem)[c("add.sd", "cov.sd")]),
-                 unname(fixef(.f$focei)[c("add.sd", "cov.sd")]), tolerance = 0.2)
+    expect_equal(
+      unname(fixef(.f$saem)[c("add.sd", "cov.sd")]),
+      unname(fixef(.f$focei)[c("add.sd", "cov.sd")]),
+      tolerance = 0.2
+    )
   })
 
   test_that("saem recovers a boxCox lambda under + dnorm()", {
@@ -81,8 +99,7 @@ nmTest({
     .d <- .simModeledResid(mTrue)
     .d <- .d[.d$EVID == 1 | .d$DV > 0, ]
     mFit <- do.call(rxode2::ini, c(list(mTrue), .starts, list(add.sd = 0.5, lam = 1)))
-    .f <- .nlmixr(mFit, .d, est = "saem",
-                  control = saemControl(seed = 42L, print = 0L, covMethod = ""))
+    .f <- .nlmixr(mFit, .d, est = "saem", control = saemControl(seed = 42L, print = 0L, covMethod = ""))
     .noTemporaryEta(.f)
     expect_equal(unname(fixef(.f)[c("add.sd", "lam")]), c(0.3, 0.5), tolerance = 0.3)
     # the temporary etas' own mean update: their variance shrinks, and the reported
@@ -94,14 +111,15 @@ nmTest({
   })
 
   test_that("saem recovers an ll() residual SD", {
-    mTrue <- .base("lsd <- log(0.5)",
-                   "sd <- exp(lsd); ll(err) ~ -log(sd) - 0.5 * log(2 * pi) - 0.5 * ((DV - cp) / sd)^2")
+    mTrue <- .base(
+      "lsd <- log(0.5)",
+      "sd <- exp(lsd); ll(err) ~ -log(sd) - 0.5 * log(2 * pi) - 0.5 * ((DV - cp) / sd)^2"
+    )
     mSim <- .base("add.sd <- 0.5", "cp ~ add(add.sd)")
     .d <- .simModeledResid(mSim)
     .f <- .fitBoth(do.call(rxode2::ini, c(list(mTrue), .starts, list(lsd = log(1)))), .d)
     .noTemporaryEta(.f$saem)
-    expect_equal(unname(fixef(.f$saem)[["lsd"]]),
-                 unname(fixef(.f$focei)[["lsd"]]), tolerance = 0.15)
+    expect_equal(unname(fixef(.f$saem)[["lsd"]]), unname(fixef(.f$focei)[["lsd"]]), tolerance = 0.15)
   })
 
   test_that("one modeled endpoint promotes a two-endpoint fit", {

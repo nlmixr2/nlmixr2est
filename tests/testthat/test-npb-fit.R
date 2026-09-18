@@ -29,7 +29,7 @@ nmTest({
     md <- f$env$npbMeanDraws
     expect_equal(dim(md), c(100L, 3L))
     ci <- apply(md, 2, quantile, c(0.025, 0.975))
-    expect_true(all(ci[1, ] < ci[2, ]))          # non-degenerate intervals
+    expect_true(all(ci[1, ] < ci[2, ])) # non-degenerate intervals
     expect_equal(f$env$npbK, 20L)
     # eta-space outputs carry the eta names (columns for the matrices, rows for
     # the per-eta R-hat vector)
@@ -53,9 +53,12 @@ nmTest({
   })
 
   test_that("est='npb' multi-chain reports Gelman-Rubin R-hat", {
-    f <- nlmixr2(.npbMod, nlmixr2data::theo_sd, est = "npb",
-                 control = npbControl(points = 20L, burnin = 100L, nsamp = 150L,
-                                      nchains = 3L, seed = 42L))
+    f <- nlmixr2(
+      .npbMod,
+      nlmixr2data::theo_sd,
+      est = "npb",
+      control = npbControl(points = 20L, burnin = 100L, nsamp = 150L, nchains = 3L, seed = 42L)
+    )
     expect_equal(f$env$npbNchains, 3L)
     # pooled draws across chains, and one R-hat per eta near 1 at convergence;
     # the plain estimator bottoms out at sqrt((n - 1)/n), just below 1
@@ -97,12 +100,16 @@ nmTest({
         cp <- center / v
         cp ~ add(add.sd) })
     }
-    .fit <- function(mode)
-      nlmixr2(.rMod, nlmixr2data::theo_sd, est = "npb",
-              control = npbControl(points = 30L, burnin = 40L, nsamp = 30L,
-                                   residOptimize = mode, seed = 1L))
+    .fit <- function(mode) {
+      nlmixr2(
+        .rMod,
+        nlmixr2data::theo_sd,
+        est = "npb",
+        control = npbControl(points = 30L, burnin = 40L, nsamp = 30L, residOptimize = mode, seed = 1L)
+      )
+    }
     fNone <- .fit("none")
-    fAlt  <- .fit("alternate")
+    fAlt <- .fit("alternate")
     # "none" holds the regressor and the residual param at their initial values
     expect_equal(as.numeric(fNone$theta[["tke"]]), log(0.03), tolerance = 1e-6)
     expect_equal(as.numeric(fNone$theta[["add.sd"]]), 0.4, tolerance = 1e-6)

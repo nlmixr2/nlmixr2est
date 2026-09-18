@@ -30,8 +30,11 @@ test_that("a linCmt() FOCEi fit uses rxode2's forward-mode AD default", {
   }
   ctl <- function(st) {
     foceiControl(
-      print = 0, maxOuterIterations = 0L, covMethod = "",
-      calcTables = FALSE, rxControl = rxode2::rxControl(linCmtSensType = st)
+      print = 0,
+      maxOuterIterations = 0L,
+      covMethod = "",
+      calcTables = FALSE,
+      rxControl = rxode2::rxControl(linCmtSensType = st)
     )
   }
   fit <- function(st) {

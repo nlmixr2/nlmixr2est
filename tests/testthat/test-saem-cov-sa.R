@@ -18,8 +18,7 @@ nmTest({
     }
 
     ctlL <- saemControl(nBurn = 200, nEm = 300, print = 0, seed = 1L, covMethod = "linFim")
-    ctlS <- saemControl(nBurn = 200, nEm = 300, print = 0, seed = 1L, covMethod = "sa",
-                        nSaCov = 1000)
+    ctlS <- saemControl(nBurn = 200, nEm = 300, print = 0, seed = 1L, covMethod = "sa", nSaCov = 1000)
 
     fL <- .nlmixr(one.cmt, theo_sd, est = "saem", control = ctlL)
     fS <- .nlmixr(one.cmt, theo_sd, est = "saem", control = ctlS)
@@ -52,13 +51,11 @@ nmTest({
     # be blank, never garbage.
     for (.f in list(fS, fL)) {
       if ("add.sd" %in% rownames(.f$cov)) {
-        expect_equal(unname(.f$parFixedDf["add.sd", "SE"]),
-                     unname(sqrt(diag(.f$cov))["add.sd"]))
+        expect_equal(unname(.f$parFixedDf["add.sd", "SE"]), unname(sqrt(diag(.f$cov))["add.sd"]))
         .seNum <- suppressWarnings(as.numeric(.f$parFixed["add.sd", "SE"]))
         expect_true(is.finite(.seNum))
         expect_gt(.seNum, 1e-100)
-        expect_equal(.seNum, signif(unname(.f$parFixedDf["add.sd", "SE"]), 3),
-                     tolerance = 1e-2)
+        expect_equal(.seNum, signif(unname(.f$parFixedDf["add.sd", "SE"]), 3), tolerance = 1e-2)
         .rseNum <- suppressWarnings(as.numeric(.f$parFixed["add.sd", "%RSE"]))
         expect_true(is.finite(.rseNum))
         expect_gt(.rseNum, 1e-100)
@@ -82,8 +79,16 @@ nmTest({
       })
     }
     .ctl <- function(covMethod) {
-      saemControl(nBurn = 20, nEm = 20, print = 0, seed = 1L, covMethod = covMethod,
-                  nSaCov = 15L, calcTables = FALSE, nonMuTheta = "regress")
+      saemControl(
+        nBurn = 20,
+        nEm = 20,
+        print = 0,
+        seed = 1L,
+        covMethod = covMethod,
+        nSaCov = 15L,
+        calcTables = FALSE,
+        nonMuTheta = "regress"
+      )
     }
     .n0 <- saemGainFrozenSkipN_()
     fL <- .nlmixr(m, theo_sd, est = "saem", control = .ctl("linFim"))
@@ -130,8 +135,7 @@ nmTest({
     expect_true(all(c("om.eta.ka", "om.eta.cl", "om.eta.v", "add.sd") %in% rownames(fF$cov)))
 
     .cmn <- intersect(rownames(fF$cov), rownames(fL$cov))
-    expect_equal(unname(sqrt(diag(fF$cov))[.cmn]),
-                 unname(sqrt(diag(fL$cov))[.cmn]), tolerance = 0.25)
+    expect_equal(unname(sqrt(diag(fF$cov))[.cmn]), unname(sqrt(diag(fL$cov))[.cmn]), tolerance = 0.25)
 
     expect_true(is.finite(fF$parFixedDf["add.sd", "SE"]))
     expect_gt(fF$parFixedDf["add.sd", "SE"], 0)
@@ -152,13 +156,15 @@ nmTest({
         linCmt() ~ add(add.sd) + prop(prop.sd)
       })
     }
-    f <- .nlmixr(blk, theo_sd, est = "saem",
-                 control = saemControl(nBurn = 150, nEm = 200, print = 0, seed = 1L,
-                                       covMethod = "linFim"))
+    f <- .nlmixr(
+      blk,
+      theo_sd,
+      est = "saem",
+      control = saemControl(nBurn = 150, nEm = 200, print = 0, seed = 1L, covMethod = "linFim")
+    )
     ph <- f$parHistData
     expect_true("cov.eta.v.eta.cl" %in% names(ph))
-    expect_equal(ph[["cov.eta.v.eta.cl"]][nrow(ph)],
-                 unname(f$omega["eta.cl", "eta.v"]), tolerance = 0.05)
+    expect_equal(ph[["cov.eta.v.eta.cl"]][nrow(ph)], unname(f$omega["eta.cl", "eta.v"]), tolerance = 0.05)
 
     # a diagonal-Omega model must not gain any covariance columns (no regression)
     diagM <- function() {
@@ -167,8 +173,7 @@ nmTest({
       model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
         linCmt() ~ add(add.sd) })
     }
-    fd <- .nlmixr(diagM, theo_sd, est = "saem",
-                  control = saemControl(nBurn = 100, nEm = 120, print = 0, seed = 1L))
+    fd <- .nlmixr(diagM, theo_sd, est = "saem", control = saemControl(nBurn = 100, nEm = 120, print = 0, seed = 1L))
     expect_false(any(grepl("^cov\\.", names(fd$parHistData))))
   })
 
@@ -192,17 +197,19 @@ nmTest({
         linCmt() ~ add(add.sd)
       })
     }
-    fS <- .nlmixr(blk, theo_sd, est = "saem",
-                  control = saemControl(nBurn = 200, nEm = 300, print = 0, seed = 1L,
-                                        covMethod = "sa", nSaCov = 1000))
-    skip_if_not(identical(fS$covMethod, "sa"))   # near-singular fits legitimately fall back
+    fS <- .nlmixr(
+      blk,
+      theo_sd,
+      est = "saem",
+      control = saemControl(nBurn = 200, nEm = 300, print = 0, seed = 1L, covMethod = "sa", nSaCov = 1000)
+    )
+    skip_if_not(identical(fS$covMethod, "sa")) # near-singular fits legitimately fall back
     expect_true("cov.eta.v.eta.cl" %in% rownames(fS$cov))
     .saem <- fS$saem
     attr(.saem, "env") <- fS$env
     .vc <- attr(suppressWarnings(calc.COV(.saem)), "varCov")
     .vn <- colnames(.vc)
-    expect_equal(unname(sqrt(diag(fS$cov[.vn, .vn]))),
-                 unname(sqrt(diag(.vc))), tolerance = 1e-6)
+    expect_equal(unname(sqrt(diag(fS$cov[.vn, .vn]))), unname(sqrt(diag(.vc))), tolerance = 1e-6)
   })
 
   test_that("a general log-likelihood endpoint is scored by its own density (#871)", {
@@ -214,10 +221,13 @@ nmTest({
     # closed form rather than a second fit.
     .mkTte <- function(seed = 1L, n = 150L, meanT = 40) {
       .testSeed(seed)
-      do.call(rbind, lapply(seq_len(n), function(i) {
-        lami <- meanT * exp(rnorm(1, 0, sqrt(0.15)))
-        data.frame(ID = i, TIME = lami * -log(runif(1)), DV = 1, EVID = 0, CMT = 1)
-      }))
+      do.call(
+        rbind,
+        lapply(seq_len(n), function(i) {
+          lami <- meanT * exp(rnorm(1, 0, sqrt(0.15)))
+          data.frame(ID = i, TIME = lami * -log(runif(1)), DV = 1, EVID = 0, CMT = 1)
+        })
+      )
     }
     expTte <- function() {
       ini({ tlam <- log(25); eta.lam ~ 0.2 })
@@ -228,10 +238,12 @@ nmTest({
     }
     .d <- .mkTte(1L)
     # covMethod="sa" is the saemControl default; it must route to linFim here
-    .f <- .nlmixr(expTte, .d, est = "saem",
-                  control = saemControl(nBurn = 150, nEm = 80, nmc = 3, seed = 1,
-                                        print = 0L, calcTables = FALSE,
-                                        covMethod = "sa"))
+    .f <- .nlmixr(
+      expTte,
+      .d,
+      est = "saem",
+      control = saemControl(nBurn = 150, nEm = 80, nmc = 3, seed = 1, print = 0L, calcTables = FALSE, covMethod = "sa")
+    )
 
     # the per-observation ll() mask needs res.mod to survive into the trimmed
     # post-fit saem.cfg -- without it neither function can tell the rows apart
@@ -251,19 +263,32 @@ nmTest({
     .om <- .f$omega[1, 1]
     # exact marginal -2LL and its observed information, by quadrature over the eta
     .nll <- function(p) {
-      if (p[2] <= 0) return(1e10)
+      if (p[2] <= 0) {
+        return(1e10)
+      }
       .s <- sqrt(p[2])
-      -sum(vapply(.d$TIME, function(t)
-        log(integrate(function(e) {
-          .lam <- exp(p[1] + e)
-          exp(-log(.lam) - t / .lam) * dnorm(e, 0, .s)
-        }, -8 * .s, 8 * .s, rel.tol = 1e-10)$value), numeric(1)))
+      -sum(vapply(
+        .d$TIME,
+        function(t) {
+          log(
+            integrate(
+              function(e) {
+                .lam <- exp(p[1] + e)
+                exp(-log(.lam) - t / .lam) * dnorm(e, 0, .s)
+              },
+              -8 * .s,
+              8 * .s,
+              rel.tol = 1e-10
+            )$value
+          )
+        },
+        numeric(1)
+      ))
     }
 
     # objective: a fine quadrature must reproduce the exact marginal -2LL.  Before
     # the fix this read 1124 against an exact 1392.
-    expect_equal(calc.2LL(.f$saem, nnodes.gq = 13, nsd.gq = 5, .f$phiM),
-                 2 * .nll(c(.tlam, .om)), tolerance = 1e-3)
+    expect_equal(calc.2LL(.f$saem, nnodes.gq = 13, nsd.gq = 5, .f$phiM), 2 * .nll(c(.tlam, .om)), tolerance = 1e-3)
 
     # standard errors: the linearized FIM must approximate the exact observed
     # information.  Before the fix these were off by roughly the placeholder SD.
@@ -275,10 +300,12 @@ nmTest({
     expect_true(all(.got / .se > 0.5 & .got / .se < 2))
 
     # "fim" is refused for the same reason as "sa"
-    .ff <- .nlmixr(expTte, .d, est = "saem",
-                   control = saemControl(nBurn = 40, nEm = 20, nmc = 3, seed = 1,
-                                         print = 0L, calcTables = FALSE,
-                                         covMethod = "fim"))
+    .ff <- .nlmixr(
+      expTte,
+      .d,
+      est = "saem",
+      control = saemControl(nBurn = 40, nEm = 20, nmc = 3, seed = 1, print = 0L, calcTables = FALSE, covMethod = "fim")
+    )
     expect_equal(.ff$covMethod, "linFim")
   })
 
@@ -317,7 +344,7 @@ nmTest({
       .cm <- suppressWarnings(calc.COV(.saem))
       .tn <- fFim$ui$saemParamsToEstimate[!fFim$ui$saemFixed]
       dimnames(.cm) <- list(.tn, .tn)
-      seLin <- sqrt(diag(.cm))       # theta-only (calc.COV's return has no variance block)
+      seLin <- sqrt(diag(.cm)) # theta-only (calc.COV's return has no variance block)
       seFim <- sqrt(diag(fFim$cov))
       .cmn <- c("tka", "tcl", "tv", "add.sd")
       expect_true(all(c("tka", "tcl", "tv") %in% names(seLin)))
@@ -336,9 +363,16 @@ nmTest({
       for (.nm in .thn) {
         .own <- abs(seFim[[.nm]] - seLin[[.nm]])
         .other <- min(abs(seFim[[.nm]] - seLin[setdiff(.thn, .nm)]))
-        expect_true(.own < .other,
-                    info = sprintf("%s (model with phi0=%s): own diff %.4g not < nearest other %.4g",
-                                   .nm, .mod$phi0, .own, .other))
+        expect_true(
+          .own < .other,
+          info = sprintf(
+            "%s (model with phi0=%s): own diff %.4g not < nearest other %.4g",
+            .nm,
+            .mod$phi0,
+            .own,
+            .other
+          )
+        )
       }
     }
   })
@@ -350,8 +384,7 @@ nmTest({
       model({ ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
               linCmt() ~ add(add.sd) })
     }
-    ctlSa <- saemControl(nBurn = 150, nEm = 200, print = 0, seed = 1L, covMethod = "sa",
-                         nSaCov = 300)
+    ctlSa <- saemControl(nBurn = 150, nEm = 200, print = 0, seed = 1L, covMethod = "sa", nSaCov = 300)
     fSa <- .nlmixr(firstPhi0, theo_sd, est = "saem", control = ctlSa)
     skip_if_not(identical(fSa$covMethod, "sa"))
 
@@ -360,7 +393,8 @@ nmTest({
     .cm <- suppressWarnings(calc.COV(.saem))
     .tn <- fSa$ui$saemParamsToEstimate[!fSa$ui$saemFixed]
     dimnames(.cm) <- list(.tn, .tn)
-    seLin <- sqrt(diag(.cm)); seSa <- sqrt(diag(fSa$cov))
+    seLin <- sqrt(diag(.cm))
+    seSa <- sqrt(diag(fSa$cov))
 
     expect_true(all(seSa[c("tka", "tcl", "tv", "add.sd")] > 1e-3))
     expect_equal(unname(seSa[["tka"]]), unname(seLin[["tka"]]), tolerance = 1e-8)
@@ -455,10 +489,9 @@ nmTest({
         pca ~ add(add2.sd)
       })
     }
-    ctl <- saemControl(nBurn = 150, nEm = 200, print = 0, seed = 1L,
-                       covMethod = "sa", nSaCov = 500)
+    ctl <- saemControl(nBurn = 150, nEm = 200, print = 0, seed = 1L, covMethod = "sa", nSaCov = 500)
     f <- .nlmixr(pkpd, warfarin, est = "saem", control = ctl)
-    skip_if_not(identical(f$covMethod, "sa"))   # near-singular fits legitimately fall back
+    skip_if_not(identical(f$covMethod, "sa")) # near-singular fits legitimately fall back
 
     # nb_param carries one slot per endpoint: theta(4) + eta(3) + residual(2)
     expect_equal(nrow(f$saem$Ha), 4L + 3L + 2L)
@@ -488,9 +521,12 @@ nmTest({
         pca ~ add(add2.sd)
       })
     }
-    f2 <- .nlmixr(pkpd2, warfarin, est = "saem",
-                  control = saemControl(nBurn = 150, nEm = 200, print = 0, seed = 1L,
-                                        covMethod = "sa", nSaCov = 500))
+    f2 <- .nlmixr(
+      pkpd2,
+      warfarin,
+      est = "saem",
+      control = saemControl(nBurn = 150, nEm = 200, print = 0, seed = 1L, covMethod = "sa", nSaCov = 500)
+    )
     .Ha <- f2$saem$HaSa
     expect_equal(nrow(.Ha), 4L + 3L + 2L)
     # the combined endpoint's slot (cp, first endpoint) is exactly zero;
@@ -529,8 +565,11 @@ nmTest({
       # the mechanism: Omega SEs are the ANALYTIC ones, the spliced residuals
       # are linFim's
       expect_equal(unname(.seRep[.om]), unname(sqrt(diag(.an))[.om]), tolerance = 1e-8)
-      expect_equal(unname(.seRep[c("add.sd", "prop.sd")]),
-                   unname(sqrt(diag(.vc))[c("add.sd", "prop.sd")]), tolerance = 1e-8)
+      expect_equal(
+        unname(.seRep[c("add.sd", "prop.sd")]),
+        unname(sqrt(diag(.vc))[c("add.sd", "prop.sd")]),
+        tolerance = 1e-8
+      )
       # and a bound the pre-fix value (SE 560 on an Omega of 1.1) fails outright
       expect_true(all(.seRep[.om] < 5 * diag(f2$omega)[c("eta.ka", "eta.cl", "eta.v")]))
     }
@@ -546,10 +585,12 @@ nmTest({
     # structural theta or residual parameter is free to match.  A name counted in
     # two groups would appear twice in the ordering vector, and cov[.ord, .ord]
     # would then duplicate its row AND column -- a bigger, singular matrix.
-    .idf <- data.frame(name = c("cov.tka", "tcl", "add.sd"),
-                       ntheta = c(1L, 2L, 3L),
-                       err = c(NA_character_, NA_character_, "add"),
-                       stringsAsFactors = FALSE)
+    .idf <- data.frame(
+      name = c("cov.tka", "tcl", "add.sd"),
+      ntheta = c(1L, 2L, 3L),
+      err = c(NA_character_, NA_character_, "add"),
+      stringsAsFactors = FALSE
+    )
     .rn <- c("tcl", "om.eta.cl", "add.sd", "cov.tka")
     .ord <- .saemCovRowOrder(.rn, .idf)
     expect_equal(anyDuplicated(.ord), 0L)
@@ -557,10 +598,13 @@ nmTest({
     # theta (iniDf order) -> Omega -> residual; cov.tka stays a theta
     expect_equal(.ord, c("cov.tka", "tcl", "om.eta.cl", "add.sd"))
     # ... and a residual named om.err stays with the residuals
-    .idf2 <- data.frame(name = c("tka", "om.err"), ntheta = c(1L, 2L),
-                        err = c(NA_character_, "add"), stringsAsFactors = FALSE)
-    expect_equal(.saemCovRowOrder(c("om.eta.ka", "om.err", "tka"), .idf2),
-                 c("tka", "om.eta.ka", "om.err"))
+    .idf2 <- data.frame(
+      name = c("tka", "om.err"),
+      ntheta = c(1L, 2L),
+      err = c(NA_character_, "add"),
+      stringsAsFactors = FALSE
+    )
+    expect_equal(.saemCovRowOrder(c("om.eta.ka", "om.err", "tka"), .idf2), c("tka", "om.eta.ka", "om.err"))
     # a name no group claims keeps its place, at the end
     expect_equal(.saemCovRowOrder(c("tka", "zz"), .idf2), c("tka", "zz"))
   })
@@ -574,7 +618,8 @@ nmTest({
     expect_true(.saemOmegaIsDiagonal(list(saem = list(Gamma2_phi1 = diag(c(0.3, 0.1))))))
     expect_true(.saemOmegaIsDiagonal(list(saem = list(Gamma2_phi1 = matrix(0.3, 1, 1)))))
     expect_false(.saemOmegaIsDiagonal(
-      list(saem = list(Gamma2_phi1 = matrix(c(0.3, 0.05, 0.05, 0.1), 2, 2)))))
+      list(saem = list(Gamma2_phi1 = matrix(c(0.3, 0.05, 0.05, 0.1), 2, 2)))
+    ))
     # unreadable Omega -> FALSE, which keeps the (previous) wholesale splice
     expect_false(.saemOmegaIsDiagonal(list(saem = list(Gamma2_phi1 = NULL))))
     expect_false(.saemOmegaIsDiagonal(list()))
@@ -585,11 +630,13 @@ nmTest({
     # nb_param = nphi1 + nlambda + nendpnt with the residual slots LAST, so the
     # base is derived from the matrix size.  Getting it from a theta+Omega row
     # count instead would drop an Omega row when the two disagree.
-    .idf <- data.frame(name = c("tka", "add.sd", "add2.sd"),
-                       condition = c(NA_character_, "cp", "pca"),
-                       err = c(NA_character_, "add", "add"),
-                       fix = c(FALSE, TRUE, FALSE),
-                       stringsAsFactors = FALSE)
+    .idf <- data.frame(
+      name = c("tka", "add.sd", "add2.sd"),
+      condition = c(NA_character_, "cp", "pca"),
+      err = c(NA_character_, "add", "add"),
+      fix = c(FALSE, TRUE, FALSE),
+      stringsAsFactors = FALSE
+    )
     .predDf <- data.frame(cond = c("cp", "pca"), stringsAsFactors = FALSE)
     # 4 theta + 3 eta + 2 endpoints: the residual slots are 8 and 9, cp is fixed
     expect_equal(.saemFimFixedResidSlots(.idf, .predDf, 9L), 8L)
@@ -600,13 +647,14 @@ nmTest({
     .idf$fix <- c(FALSE, FALSE, FALSE)
     expect_equal(.saemFimFixedResidSlots(.idf, .predDf, 9L), integer(0))
     # a combined endpoint has two iniDf rows: not a single fixed additive slot
-    .idf2 <- rbind(.idf, data.frame(name = "prop.sd", condition = "cp", err = "prop",
-                                    fix = TRUE, stringsAsFactors = FALSE))
+    .idf2 <- rbind(
+      .idf,
+      data.frame(name = "prop.sd", condition = "cp", err = "prop", fix = TRUE, stringsAsFactors = FALSE)
+    )
     expect_equal(.saemFimFixedResidSlots(.idf2, .predDf, 9L), integer(0))
     # degenerate sizes are no-ops rather than negative indices
     expect_equal(.saemFimFixedResidSlots(.idf, .predDf, 2L), integer(0))
-    expect_equal(.saemFimFixedResidSlots(.idf, data.frame(cond = character(0)), 9L),
-                 integer(0))
+    expect_equal(.saemFimFixedResidSlots(.idf, data.frame(cond = character(0)), 9L), integer(0))
   })
 
   test_that("a fix()ed additive residual gets no fim/sa covariance row", {
@@ -622,9 +670,12 @@ nmTest({
       model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
               linCmt() ~ add(add.sd) })
     }
-    f <- .nlmixr(m, theo_sd, est = "saem",
-                 control = saemControl(nBurn = 100, nEm = 120, print = 0, seed = 1L,
-                                       covMethod = "sa", nSaCov = 200))
+    f <- .nlmixr(
+      m,
+      theo_sd,
+      est = "saem",
+      control = saemControl(nBurn = 100, nEm = 120, print = 0, seed = 1L, covMethod = "sa", nSaCov = 200)
+    )
     skip_if_not(identical(f$covMethod, "sa"))
     # dropped before inverting, so it is in neither the pre-splice analytic
     # matrix nor the reported covariance
@@ -656,24 +707,30 @@ nmTest({
         pca ~ add(add2.sd)
       })
     }
-    fm <- .nlmixr(pkpdFix, warfarin, est = "saem",
-                  control = saemControl(nBurn = 150, nEm = 200, print = 0, seed = 1L,
-                                        covMethod = "sa", nSaCov = 300))
+    fm <- .nlmixr(
+      pkpdFix,
+      warfarin,
+      est = "saem",
+      control = saemControl(nBurn = 150, nEm = 200, print = 0, seed = 1L, covMethod = "sa", nSaCov = 300)
+    )
     skip_if_not(identical(fm$covMethod, "sa"))
     expect_false("add.sd" %in% rownames(fm$cov))
     expect_true("add2.sd" %in% rownames(fm$cov))
-    expect_true(is.finite(fm$parFixedDf["add2.sd", "SE"]) &&
-                  fm$parFixedDf["add2.sd", "SE"] > 0)
+    expect_true(
+      is.finite(fm$parFixedDf["add2.sd", "SE"]) &&
+        fm$parFixedDf["add2.sd", "SE"] > 0
+    )
     expect_true(is.na(fm$parFixedDf["add.sd", "SE"]))
   })
 
   test_that(".saemLlObsMask refuses to guess rather than mis-score (#871)", {
     .ix <- c(1L, 1L, 2L, 2L)
     # res.mod present: per-observation, res.mod == 0 marks the ll() endpoint
-    expect_equal(.saemLlObsMask(list(res.mod = c(0L, 1L), opt = list(distribution = 4)), .ix),
-                 c(TRUE, TRUE, FALSE, FALSE))
-    expect_equal(.saemLlObsMask(list(res.mod = c(1L, 1L), opt = list(distribution = 1)), .ix),
-                 rep(FALSE, 4))
+    expect_equal(
+      .saemLlObsMask(list(res.mod = c(0L, 1L), opt = list(distribution = 4)), .ix),
+      c(TRUE, TRUE, FALSE, FALSE)
+    )
+    expect_equal(.saemLlObsMask(list(res.mod = c(1L, 1L), opt = list(distribution = 1)), .ix), rep(FALSE, 4))
     # res.mod missing (a fit stored before it was kept): a single endpoint can be
     # attributed from the scalar distribution, more than one cannot
     expect_equal(.saemLlObsMask(list(opt = list(distribution = 4)), c(1L, 1L)), c(TRUE, TRUE))
@@ -681,8 +738,7 @@ nmTest({
     expect_error(.saemLlObsMask(list(opt = list(distribution = 4)), .ix), "res.mod")
     # a general-likelihood cfg whose res.mod marks no ll() row is inconsistent;
     # scoring those rows as normal is the defect, so fail instead
-    expect_error(.saemLlObsMask(list(res.mod = c(1L, 1L), opt = list(distribution = 4)), .ix),
-                 "res.mod")
+    expect_error(.saemLlObsMask(list(res.mod = c(1L, 1L), opt = list(distribution = 4)), .ix), "res.mod")
     # no distribution at all (an old cfg) must not error
     expect_equal(.saemLlObsMask(list(opt = list()), .ix), rep(FALSE, 4))
   })

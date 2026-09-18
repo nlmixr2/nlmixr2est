@@ -90,13 +90,15 @@
 # nolint end
 
 .carryLlEv <- function() {
-  ev <- .carryEv() # nolint: object_usage_linter.
+  ev <- .carryEv()
   ev$dv <- 0
   ev$dv[ev$evid == 0] <- c(3, 2.5, 2, 1.5)
   ev
 }
 
 .carryLlPars <- c(
-  `THETA[1]` = log(2), `THETA[2]` = log(20), `THETA[3]` = 0.5,
+  `THETA[1]` = log(2),
+  `THETA[2]` = log(20),
+  `THETA[3]` = 0.5,
   `ETA[1]` = 0.3
 )

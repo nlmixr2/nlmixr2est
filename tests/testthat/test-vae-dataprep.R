@@ -22,7 +22,7 @@ nmTest({
     ui <- rxode2::assertRxUi(theo)
 
     d <- nlmixr2data::theo_sd
-    d <- d[d$EVID == 0, , drop = FALSE]   # observations only
+    d <- d[d$EVID == 0, , drop = FALSE] # observations only
     d$AMT <- NULL
     d$EVID <- NULL
     expect_false("AMT" %in% names(d))
@@ -30,7 +30,7 @@ nmTest({
 
     prep <- .vaeDataPrep(ui, d)
     expect_equal(prep$N, length(unique(d$ID)))
-    expect_equal(prep$Nobs, nrow(d))       # every row treated as an observation
+    expect_equal(prep$Nobs, nrow(d)) # every row treated as an observation
     expect_true(all(vapply(prep$subj, function(s) all(s$ev$EVID == 0L), logical(1))))
   })
 
@@ -61,8 +61,7 @@ nmTest({
   test_that("the ODE-invariance scan separates structural from log-density thetas", {
     ui <- rxode2::assertRxUi(.llMod())
     ## lka/lcl reach a d/dt right-hand side; lb/lsd are read only by the density
-    expect_equal(.vaeOdeFreeThetas(ui, c("lka", "lcl", "lb", "lsd")),
-                 c(FALSE, FALSE, TRUE, TRUE))
+    expect_equal(.vaeOdeFreeThetas(ui, c("lka", "lcl", "lb", "lsd")), c(FALSE, FALSE, TRUE, TRUE))
   })
 
   test_that("a variable feeding d/dt keeps its dependency through the endpoint name", {
@@ -80,8 +79,7 @@ nmTest({
       })
     }
     ui <- suppressWarnings(rxode2::assertRxUi(.trapMod()))
-    expect_equal(.vaeOdeFreeThetas(ui, c("lk", "lv", "lsd")),
-                 c(FALSE, FALSE, TRUE))
+    expect_equal(.vaeOdeFreeThetas(ui, c("lk", "lv", "lsd")), c(FALSE, FALSE, TRUE))
   })
 
   ## Three ways a theta can reach the solve that a top-level, assignment-only
@@ -98,8 +96,7 @@ nmTest({
         ll(cp) ~ -log(sd) - 0.5 * ((DV - central * exp(eta.b)) / sd)^2
       })
     })
-    expect_equal(.vaeOdeFreeThetas(ui, c("lcl", "linit", "lsd")),
-                 c(FALSE, FALSE, TRUE))
+    expect_equal(.vaeOdeFreeThetas(ui, c("lcl", "linit", "lsd")), c(FALSE, FALSE, TRUE))
   })
 
   test_that("an assignment inside if/else is a solve dependency", {
@@ -129,8 +126,7 @@ nmTest({
         ll(conc) ~ -log(sd) - 0.5 * ((DV - conc * exp(eta.b)) / sd)^2
       })
     }))
-    expect_equal(.vaeOdeFreeThetas(ui, c("lk", "lv", "lsd")),
-                 c(FALSE, FALSE, TRUE))
+    expect_equal(.vaeOdeFreeThetas(ui, c("lk", "lv", "lsd")), c(FALSE, FALSE, TRUE))
   })
 
   test_that("a linCmt() parameter is never called ODE-free", {
@@ -150,20 +146,17 @@ nmTest({
       })
     }))
     ## the whole model bails to "nothing ODE-free" -- conservative and safe
-    expect_equal(.vaeOdeFreeThetas(ui, c("tcl", "tv", "tkout")),
-                 c(FALSE, FALSE, FALSE))
+    expect_equal(.vaeOdeFreeThetas(ui, c("tcl", "tv", "tkout")), c(FALSE, FALSE, FALSE))
   })
 
   test_that("stage-2 eligibility keeps every err parameter", {
     ## the historic half of the rule: an err parameter is always stage 2, and a
     ## structural theta that reaches d/dt is not
     gui <- rxode2::assertRxUi(.gMod())
-    expect_equal(.vaeRegressStage2(gui, c("tv", "add.sd"), c(-1L, 0L)),
-                 c(0L, 1L))
+    expect_equal(.vaeRegressStage2(gui, c("tv", "add.sd"), c(-1L, 0L)), c(0L, 1L))
     ## an ll() model has no err rows, so only the structural proxy contributes
     lui <- rxode2::assertRxUi(.llMod())
-    expect_equal(.vaeRegressStage2(lui, c("lka", "lcl", "lsd"), c(-1L, -1L, -1L)),
-                 c(0L, 0L, 1L))
+    expect_equal(.vaeRegressStage2(lui, c("lka", "lcl", "lsd"), c(-1L, -1L, -1L)), c(0L, 0L, 1L))
     ## no regressed parameters at all -> empty, not an error
     expect_equal(.vaeRegressStage2(lui, character(0), integer(0)), integer(0))
   })
@@ -172,8 +165,7 @@ nmTest({
     ## Recycling would silently mis-mask: a structural theta labelled stage 2 is
     ## then optimized against a frozen ODE, which is wrong rather than slow.
     lui <- rxode2::assertRxUi(.llMod())
-    expect_error(.vaeRegressStage2(lui, c("lka", "lcl", "lsd"), c(-1L, -1L)),
-                 "must match")
+    expect_error(.vaeRegressStage2(lui, c("lka", "lcl", "lsd"), c(-1L, -1L)), "must match")
   })
 
   test_that("a model with BOTH err rows and an ll() endpoint gets both in stage 2", {
@@ -196,18 +188,21 @@ nmTest({
       })
     }
     ui <- rxode2::assertRxUi(.mixMod())
-    expect_true(sum(!is.na(ui$iniDf$err) & !is.na(ui$iniDf$ntheta)) > 0L)  # has err rows
-    expect_equal(.vaeRegressStage2(ui, c("lka", "lcl", "add.sd", "lsd"),
-                                   c(-1L, -1L, 0L, -1L)),
-                 c(0L, 0L, 1L, 1L))
+    expect_true(sum(!is.na(ui$iniDf$err) & !is.na(ui$iniDf$ntheta)) > 0L) # has err rows
+    expect_equal(.vaeRegressStage2(ui, c("lka", "lcl", "add.sd", "lsd"), c(-1L, -1L, 0L, -1L)), c(0L, 0L, 1L, 1L))
   })
 
   test_that(".vaeDataPrep surfaces the stage-2 mask for an ll() model", {
     ui <- rxode2::assertRxUi(.llMod())
-    d <- data.frame(ID = rep(1:3, each = 4), TIME = rep(c(1, 2, 4, 8), 3),
-                    DV = stats::rnorm(12, 5, 1), EVID = 0L, AMT = 0)
+    d <- data.frame(
+      ID = rep(1:3, each = 4),
+      TIME = rep(c(1, 2, 4, 8), 3),
+      DV = stats::rnorm(12, 5, 1),
+      EVID = 0L,
+      AMT = 0
+    )
     prep <- .vaeDataPrep(ui, d, vaeControl(nonMuTheta = "regress"))
-    expect_length(prep$a, 0L)                                # no err parameter
+    expect_length(prep$a, 0L) # no err parameter
     expect_equal(length(prep$regressStage2), length(prep$regressNames))
     ## lsd is the only stage-2 parameter; every structural one stays in stage 1
     expect_equal(prep$regressNames[prep$regressStage2 > 0L], "lsd")

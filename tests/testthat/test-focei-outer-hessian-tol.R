@@ -6,9 +6,14 @@ test_that("a failed 3rd-order probe loosens the tolerance before falling back", 
             d/dt(central) <- -cl/v*central
             prediction <- central/v; prediction ~ add(error) })
   }
-  data <- data.frame(ID = rep(1:2, each = 6), TIME = rep(c(0, 0.5, 1, 2, 4, 8), 2),
-                     DV = c(NA, 4.7, 4.1, 3.5, 2.7, 1.7, NA, 4.4, 4, 3.1, 2, 0.9),
-                     AMT = rep(c(100, rep(0, 5)), 2), EVID = rep(c(1, rep(0, 5)), 2), CMT = 1)
+  data <- data.frame(
+    ID = rep(1:2, each = 6),
+    TIME = rep(c(0, 0.5, 1, 2, 4, 8), 2),
+    DV = c(NA, 4.7, 4.1, 3.5, 2.7, 1.7, NA, 4.4, 4, 3.1, 2, 0.9),
+    AMT = rep(c(100, rep(0, 5)), 2),
+    EVID = rep(c(1, rep(0, 5)), 2),
+    CMT = 1
+  )
   # NLMIXR2EST_HESS_PROBE_FAIL fails the first N probe ATTEMPTS, which is the only
   # way to reach the state deterministically: no model-level knob makes a probe fail
   # at 1e-12 and solve a rung looser.
@@ -21,9 +26,20 @@ test_that("a failed 3rd-order probe loosens the tolerance before falling back", 
       .hessian <<- tryCatch(control$hessian(par), error = function(e) e)
       list(x = par, convergence = 0L, message = "probe tolerance check")
     }
-    .fit <- .nlmixr(model, data, "focei", control = foceiControl(
-      fast = TRUE, outerOpt = .optimizer, print = 0, covMethod = "",
-      calcTables = FALSE, maxInnerIterations = 1000L, epsilon = 1e-10))
+    .fit <- .nlmixr(
+      model,
+      data,
+      "focei",
+      control = foceiControl(
+        fast = TRUE,
+        outerOpt = .optimizer,
+        print = 0,
+        covMethod = "",
+        calcTables = FALSE,
+        maxInnerIterations = 1000L,
+        epsilon = 1e-10
+      )
+    )
     list(hessian = .hessian, relax = .fit$env$nHessTolRelax)
   }
   # nothing fails -> the probes solve at the tightened tolerance, nothing loosened

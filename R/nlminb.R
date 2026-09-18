@@ -74,80 +74,92 @@
 #'
 #' fit2$nlminb
 #' }
-nlminbControl <- function(eval.max=200,
-                          iter.max=150,
-                          trace=0, # nolint
-                          abs.tol=0,
-                          rel.tol=NULL,
-                          x.tol=NULL,
-                          xf.tol=2.2e-14,
-                          step.min=1,
-                          step.max=1,
-                          sing.tol=rel.tol,
-                          scale = 1,
-                          scale.init=NULL,
-                          diff.g=NULL,
-                          rxControl=NULL,
-                          optExpression=TRUE, sumProd=FALSE,
-                          literalFix=TRUE,
-                          literalFixRes=TRUE,
-                          returnNlminb=FALSE,
-                          solveType=c("hessian", "grad", "fun"),
+nlminbControl <- function(
+  eval.max = 200,
+  iter.max = 150,
+  trace = 0, # nolint
+  abs.tol = 0,
+  rel.tol = NULL,
+  x.tol = NULL,
+  xf.tol = 2.2e-14,
+  step.min = 1,
+  step.max = 1,
+  sing.tol = rel.tol,
+  scale = 1,
+  scale.init = NULL,
+  diff.g = NULL,
+  rxControl = NULL,
+  optExpression = TRUE,
+  sumProd = FALSE,
+  literalFix = TRUE,
+  literalFixRes = TRUE,
+  returnNlminb = FALSE,
+  solveType = c("hessian", "grad", "fun"),
 
-                          stickyRecalcN=4,
-                          maxOdeRecalc=5,
-                          odeRecalcFactor=10^(0.5),
-                          indTolRelax=TRUE,
+  stickyRecalcN = 4,
+  maxOdeRecalc = 5,
+  odeRecalcFactor = 10^(0.5),
+  indTolRelax = TRUE,
 
-                          eventType=c("central", "forward"),
-                          shiErr=(.Machine$double.eps)^(1/3),
-                          shi21maxFD=20L,
+  eventType = c("central", "forward"),
+  shiErr = (.Machine$double.eps)^(1 / 3),
+  shi21maxFD = 20L,
 
-                          optimHessType=c("central", "forward"),
-                          hessErr =(.Machine$double.eps)^(1/3),
-                          shi21maxHess=20L,
+  optimHessType = c("central", "forward"),
+  hessErr = (.Machine$double.eps)^(1 / 3),
+  shi21maxHess = 20L,
 
-                          useColor = NULL,
-                          printNcol = NULL, #
-                          print = 1L, #
-                          normType = c("rescale2", "mean", "rescale", "std", "len", "constant"), #
-                          scaleType = c("nlmixr2", "norm", "mult", "multAdd"), #
-                          scaleCmax = 1e5, #
-                          scaleCmin = 1e-5, #
-                          scaleC=NULL,
-                          scaleTo=1.0,
-                          gradTo=1.0,
+  useColor = NULL,
+  printNcol = NULL, #
+  print = 1L, #
+  normType = c("rescale2", "mean", "rescale", "std", "len", "constant"), #
+  scaleType = c("nlmixr2", "norm", "mult", "multAdd"), #
+  scaleCmax = 1e5, #
+  scaleCmin = 1e-5, #
+  scaleC = NULL,
+  scaleTo = 1.0,
+  gradTo = 1.0,
 
-                          addProp = c("combined2", "combined1"),
-                          eventSens = c("jump", "fd"),
-                          sensMethod = c("default", "forward"),
-                          calcTables=TRUE, compress=TRUE,
-                          covMethod=c("r", "nlminb", ""),
-                          adjObf=TRUE, ci=0.95, sigdig=3, sigdigTable=NULL, ...) {
-  checkmate::assertIntegerish(eval.max, len=1, any.missing=FALSE, lower=1)
-  checkmate::assertIntegerish(iter.max, len=1, any.missing=FALSE, lower=1)
-  checkmate::assertIntegerish(trace, len=1, any.missing=FALSE, lower=0)
+  addProp = c("combined2", "combined1"),
+  eventSens = c("jump", "fd"),
+  sensMethod = c("default", "forward"),
+  calcTables = TRUE,
+  compress = TRUE,
+  covMethod = c("r", "nlminb", ""),
+  adjObf = TRUE,
+  ci = 0.95,
+  sigdig = 3,
+  sigdigTable = NULL,
+  ...
+) {
+  checkmate::assertIntegerish(eval.max, len = 1, any.missing = FALSE, lower = 1)
+  checkmate::assertIntegerish(iter.max, len = 1, any.missing = FALSE, lower = 1)
+  checkmate::assertIntegerish(trace, len = 1, any.missing = FALSE, lower = 0)
   # nlminb convergence tolerances from sigdig (FOCEi mechanism, matches
   # foceiControl reltol/x.tol); a user value wins, sigdig=NULL keeps the defaults
-  if (is.null(rel.tol)) rel.tol <- if (!is.null(sigdig)) .sigdigOptTol(sigdig) else 1e-10
-  if (is.null(x.tol)) x.tol <- if (!is.null(sigdig)) .sigdigOptTol(sigdig) else 1.5e-8
-  checkmate::assertNumeric(rel.tol, len=1, any.missing=FALSE, lower=0)
-  checkmate::assertNumeric(x.tol, len=1, any.missing=FALSE, lower=0)
-  checkmate::assertNumeric(xf.tol, len=1, any.missing=FALSE, lower=0)
-  checkmate::assertNumeric(step.min, len=1, any.missing=FALSE, lower=0)
-  checkmate::assertNumeric(step.max, len=1, any.missing=FALSE, lower=0)
-  checkmate::assertLogical(optExpression, len=1, any.missing=FALSE)
-  checkmate::assertLogical(literalFix, len=1, any.missing=FALSE)
-  checkmate::assertLogical(literalFixRes, len=1, any.missing=FALSE)
+  if (is.null(rel.tol)) {
+    rel.tol <- if (!is.null(sigdig)) .sigdigOptTol(sigdig) else 1e-10
+  }
+  if (is.null(x.tol)) {
+    x.tol <- if (!is.null(sigdig)) .sigdigOptTol(sigdig) else 1.5e-8
+  }
+  checkmate::assertNumeric(rel.tol, len = 1, any.missing = FALSE, lower = 0)
+  checkmate::assertNumeric(x.tol, len = 1, any.missing = FALSE, lower = 0)
+  checkmate::assertNumeric(xf.tol, len = 1, any.missing = FALSE, lower = 0)
+  checkmate::assertNumeric(step.min, len = 1, any.missing = FALSE, lower = 0)
+  checkmate::assertNumeric(step.max, len = 1, any.missing = FALSE, lower = 0)
+  checkmate::assertLogical(optExpression, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(literalFix, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(literalFixRes, len = 1, any.missing = FALSE)
 
-  checkmate::assertLogical(sumProd, len=1, any.missing=FALSE)
-  checkmate::assertLogical(returnNlminb, len=1, any.missing=FALSE)
-  checkmate::assertLogical(calcTables, len=1, any.missing=FALSE)
-  checkmate::assertLogical(compress, len=1, any.missing=TRUE)
-  checkmate::assertLogical(adjObf, len=1, any.missing=TRUE)
+  checkmate::assertLogical(sumProd, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(returnNlminb, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(calcTables, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(compress, len = 1, any.missing = TRUE)
+  checkmate::assertLogical(adjObf, len = 1, any.missing = TRUE)
 
   .solveTypeIdx <- c("hessian" = 3L, "grad" = 2L, "fun" = 1L)
-  if (checkmate::testIntegerish(solveType, len=1, lower=1, upper=6, any.missing=FALSE)) {
+  if (checkmate::testIntegerish(solveType, len = 1, lower = 1, upper = 6, any.missing = FALSE)) {
     solveType <- as.integer(solveType)
   } else {
     solveType <- setNames(.solveTypeIdx[match.arg(solveType)], NULL)
@@ -159,43 +171,43 @@ nlminbControl <- function(eval.max=200,
     covMethod <- match.arg(covMethod)
   }
   if (covMethod == "nlminb" && !any(solveType == 2:3)) {
-    warning("using the Hessian function used during nlminb optimization requires a hessian or gradient solving type\n",
-            "switching to covMethod='r'")
+    warning(
+      "using the Hessian function used during nlminb optimization requires a hessian or gradient solving type\n",
+      "switching to covMethod='r'"
+    )
     covMethod <- "r"
   }
 
-  .eventTypeIdx <- c("central" =2L, "forward"=1L)
-  if (checkmate::testIntegerish(eventType, len=1, lower=1, upper=6, any.missing=FALSE)) {
+  .eventTypeIdx <- c("central" = 2L, "forward" = 1L)
+  if (checkmate::testIntegerish(eventType, len = 1, lower = 1, upper = 6, any.missing = FALSE)) {
     eventType <- as.integer(eventType)
   } else {
     eventType <- setNames(.eventTypeIdx[match.arg(eventType)], NULL)
   }
 
-  .optimHessTypeIdx <- c("central" =2L, "forward"=1L)
-  if (checkmate::testIntegerish(optimHessType, len=1, lower=1, upper=6, any.missing=FALSE)) {
+  .optimHessTypeIdx <- c("central" = 2L, "forward" = 1L)
+  if (checkmate::testIntegerish(optimHessType, len = 1, lower = 1, upper = 6, any.missing = FALSE)) {
     optimHessType <- as.integer(optimHessType)
   } else {
     optimHessType <- setNames(.optimHessTypeIdx[match.arg(optimHessType)], NULL)
   }
 
-  checkmate::assertNumeric(shiErr, lower=0, any.missing=FALSE, len=1)
-  checkmate::assertNumeric(hessErr, lower=0, any.missing=FALSE, len=1)
+  checkmate::assertNumeric(shiErr, lower = 0, any.missing = FALSE, len = 1)
+  checkmate::assertNumeric(hessErr, lower = 0, any.missing = FALSE, len = 1)
 
-  checkmate::assertIntegerish(shi21maxFD, lower=1, any.missing=FALSE, len=1)
-  checkmate::assertIntegerish(shi21maxHess, lower=1, any.missing=FALSE, len=1)
+  checkmate::assertIntegerish(shi21maxFD, lower = 1, any.missing = FALSE, len = 1)
+  checkmate::assertIntegerish(shi21maxHess, lower = 1, any.missing = FALSE, len = 1)
 
-  checkmate::assertIntegerish(stickyRecalcN, any.missing=FALSE, lower=0, len=1)
-  checkmate::assertIntegerish(maxOdeRecalc, any.missing=FALSE, len=1)
-  checkmate::assertNumeric(odeRecalcFactor, len=1, lower=1, any.missing=FALSE)
-  checkmate::assertLogical(indTolRelax, any.missing=FALSE, len=1)
+  checkmate::assertIntegerish(stickyRecalcN, any.missing = FALSE, lower = 0, len = 1)
+  checkmate::assertIntegerish(maxOdeRecalc, any.missing = FALSE, len = 1)
+  checkmate::assertNumeric(odeRecalcFactor, len = 1, lower = 1, any.missing = FALSE)
+  checkmate::assertLogical(indTolRelax, any.missing = FALSE, len = 1)
 
   .xtra <- list(...)
   .bad <- names(.xtra)
   .bad <- .bad[!(.bad %in% c("genRxControl", "iterPrintControl"))]
   if (length(.bad) > 0) {
-    stop("unused argument: ", paste
-    (paste0("'", .bad, "'", sep=""), collapse=", "),
-    call.=FALSE)
+    stop("unused argument: ", paste(paste0("'", .bad, "'", sep = ""), collapse = ", "), call. = FALSE)
   }
 
   .genRxControl <- FALSE
@@ -204,19 +216,18 @@ nlminbControl <- function(eval.max=200,
   }
   if (is.null(rxControl)) {
     if (!is.null(sigdig)) {
-      rxControl <- .rxControlScaleSigdig(rxode2::rxControl(sigdig=sigdig), sigdig)
+      rxControl <- .rxControlScaleSigdig(rxode2::rxControl(sigdig = sigdig), sigdig)
     } else {
-      rxControl <- rxode2::rxControl(atol=1e-4, rtol=1e-4)
+      rxControl <- rxode2::rxControl(atol = 1e-4, rtol = 1e-4)
     }
     .genRxControl <- TRUE
-  } else if (inherits(rxControl, "rxControl")) {
-  } else if (is.list(rxControl)) {
+  } else if (inherits(rxControl, "rxControl")) {} else if (is.list(rxControl)) {
     rxControl <- .rxControlScaleSigdig(do.call(rxode2::rxControl, rxControl), sigdig, skip = names(rxControl))
   } else {
-    stop("solving options 'rxControl' needs to be generated from 'rxode2::rxControl'", call=FALSE)
+    stop("solving options 'rxControl' needs to be generated from 'rxode2::rxControl'", call = FALSE)
   }
   if (!is.null(sigdig)) {
-    checkmate::assertNumeric(sigdig, lower=1, finite=TRUE, any.missing=TRUE, len=1)
+    checkmate::assertNumeric(sigdig, lower = 1, finite = TRUE, any.missing = TRUE, len = 1)
     if (is.null(sigdigTable)) {
       sigdigTable <- round(sigdig)
     }
@@ -224,14 +235,15 @@ nlminbControl <- function(eval.max=200,
   if (is.null(sigdigTable)) {
     sigdigTable <- 3
   }
-  checkmate::assertIntegerish(sigdigTable, lower=1, len=1, any.missing=FALSE)
+  checkmate::assertIntegerish(sigdigTable, lower = 1, len = 1, any.missing = FALSE)
 
-
-  .iterPrintControl <- .absorbIterPrintControl(print = print,
-                                               printNcol = printNcol,
-                                               useColor = useColor,
-                                               iterPrintControl = .xtra$iterPrintControl)
-  if (checkmate::testIntegerish(scaleType, len=1, lower=1, upper=4, any.missing=FALSE)) {
+  .iterPrintControl <- .absorbIterPrintControl(
+    print = print,
+    printNcol = printNcol,
+    useColor = useColor,
+    iterPrintControl = .xtra$iterPrintControl
+  )
+  if (checkmate::testIntegerish(scaleType, len = 1, lower = 1, upper = 4, any.missing = FALSE)) {
     scaleType <- as.integer(scaleType)
   } else {
     .scaleTypeIdx <- c("norm" = 1L, "nlmixr2" = 2L, "mult" = 3L, "multAdd" = 4L)
@@ -239,70 +251,74 @@ nlminbControl <- function(eval.max=200,
   }
 
   .normTypeIdx <- c("rescale2" = 1L, "rescale" = 2L, "mean" = 3L, "std" = 4L, "len" = 5L, "constant" = 6L)
-  if (checkmate::testIntegerish(normType, len=1, lower=1, upper=6, any.missing=FALSE)) {
+  if (checkmate::testIntegerish(normType, len = 1, lower = 1, upper = 6, any.missing = FALSE)) {
     normType <- as.integer(normType)
   } else {
     normType <- setNames(.normTypeIdx[match.arg(normType)], NULL)
   }
-  checkmate::assertNumeric(scaleCmax, lower=0, any.missing=FALSE, len=1)
-  checkmate::assertNumeric(scaleCmin, lower=0, any.missing=FALSE, len=1)
+  checkmate::assertNumeric(scaleCmax, lower = 0, any.missing = FALSE, len = 1)
+  checkmate::assertNumeric(scaleCmin, lower = 0, any.missing = FALSE, len = 1)
   if (!is.null(scaleC)) {
-    checkmate::assertNumeric(scaleC, lower=0, any.missing=FALSE)
+    checkmate::assertNumeric(scaleC, lower = 0, any.missing = FALSE)
   }
-  checkmate::assertNumeric(scaleTo, len=1, lower=0, any.missing=FALSE)
-  checkmate::assertNumeric(gradTo, len=1, lower=0, any.missing=FALSE)
+  checkmate::assertNumeric(scaleTo, len = 1, lower = 0, any.missing = FALSE)
+  checkmate::assertNumeric(gradTo, len = 1, lower = 0, any.missing = FALSE)
 
-  .ret <- list(eval.max=eval.max,
-               iter.max=iter.max,
-               trace=trace, # nolint
-               abs.tol=abs.tol,
-               rel.tol=rel.tol,
-               x.tol=x.tol,
-               xf.tol=xf.tol,
-               step.min=step.min,
-               step.max=step.max,
-               sing.tol=sing.tol,
-               scale.init=scale.init,
-               diff.g=diff.g,
-               scale=scale,
-               solveType=solveType,
-               stickyRecalcN=as.integer(stickyRecalcN),
-               maxOdeRecalc=as.integer(maxOdeRecalc),
-               odeRecalcFactor=odeRecalcFactor,
-               indTolRelax=indTolRelax,
+  .ret <- list(
+    eval.max = eval.max,
+    iter.max = iter.max,
+    trace = trace, # nolint
+    abs.tol = abs.tol,
+    rel.tol = rel.tol,
+    x.tol = x.tol,
+    xf.tol = xf.tol,
+    step.min = step.min,
+    step.max = step.max,
+    sing.tol = sing.tol,
+    scale.init = scale.init,
+    diff.g = diff.g,
+    scale = scale,
+    solveType = solveType,
+    stickyRecalcN = as.integer(stickyRecalcN),
+    maxOdeRecalc = as.integer(maxOdeRecalc),
+    odeRecalcFactor = odeRecalcFactor,
+    indTolRelax = indTolRelax,
 
-               eventType=eventType,
-               shiErr=shiErr,
-               shi21maxFD=as.integer(shi21maxFD),
+    eventType = eventType,
+    shiErr = shiErr,
+    shi21maxFD = as.integer(shi21maxFD),
 
-               optimHessType=optimHessType,
-               hessErr=hessErr,
-               shi21maxHess=as.integer(shi21maxHess),
+    optimHessType = optimHessType,
+    hessErr = hessErr,
+    shi21maxHess = as.integer(shi21maxHess),
 
-               iterPrintControl = .iterPrintControl,
-               scaleType=scaleType,
-               normType=normType,
+    iterPrintControl = .iterPrintControl,
+    scaleType = scaleType,
+    normType = normType,
 
-               scaleCmax=scaleCmax,
-               scaleCmin=scaleCmin,
-               scaleC=scaleC,
-               scaleTo=scaleTo,
-               gradTo=gradTo,
+    scaleCmax = scaleCmax,
+    scaleCmin = scaleCmin,
+    scaleC = scaleC,
+    scaleTo = scaleTo,
+    gradTo = gradTo,
 
-               covMethod=covMethod,
-               optExpression=optExpression,
-               literalFix=literalFix,
-               literalFixRes=literalFixRes,
-               sumProd=sumProd,
-               rxControl=rxControl,
-               returnNlminb=returnNlminb,
-               addProp=match.arg(addProp),
-               eventSens=match.arg(eventSens),
-               sensMethod=match.arg(sensMethod),
-               calcTables=calcTables,
-               compress=compress,
-               ci=ci, sigdig=sigdig, sigdigTable=sigdigTable,
-               genRxControl=.genRxControl)
+    covMethod = covMethod,
+    optExpression = optExpression,
+    literalFix = literalFix,
+    literalFixRes = literalFixRes,
+    sumProd = sumProd,
+    rxControl = rxControl,
+    returnNlminb = returnNlminb,
+    addProp = match.arg(addProp),
+    eventSens = match.arg(eventSens),
+    sensMethod = match.arg(sensMethod),
+    calcTables = calcTables,
+    compress = compress,
+    ci = ci,
+    sigdig = sigdig,
+    sigdigTable = sigdigTable,
+    genRxControl = .genRxControl
+  )
   class(.ret) <- "nlminbControl"
   .ret
 }
@@ -351,7 +367,7 @@ rxUiDeparse.nlminbControl <- function(object, var) {
 #' @rdname nmObjHandleControlObject
 #' @export
 nmObjHandleControlObject.nlminbControl <- function(control, env) {
-  assign("nlminbControl", control, envir=env)
+  assign("nlminbControl", control, envir = env)
 }
 
 #' @rdname nmObjGetControl
@@ -366,15 +382,19 @@ nmObjGetControl.nlminb <- function(x, ...) {
     .control <- get("control", .env, inherits = FALSE)
     if (inherits(.control, "nlminbControl")) return(.control)
   }
-  stop("cannot find nlminb related control object", call.=FALSE)
+  stop("cannot find nlminb related control object", call. = FALSE)
 }
 
 #' @rdname getValidNlmixrControl
 #' @export
 getValidNlmixrCtl.nlminb <- function(control) {
   .ctl <- control[[1]]
-  if (is.null(.ctl)) .ctl <- nlminbControl()
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) .ctl <- do.call("nlminbControl", .ctl)
+  if (is.null(.ctl)) {
+    .ctl <- nlminbControl()
+  }
+  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
+    .ctl <- do.call("nlminbControl", .ctl)
+  }
   if (!inherits(.ctl, "nlminbControl")) {
     .minfo("invalid control for `est=\"nlminb\"`, using default")
     .ctl <- nlminbControl()
@@ -387,63 +407,82 @@ getValidNlmixrCtl.nlminb <- function(control) {
 .nlminbFitModel <- function(ui, dataSav) {
   # Use nlmEnv and function for DRY principle
   .ctl <- ui$control
-  .keep <- c("eval.max", "iter.max", "trace", "abs.tol", "rel.tol","x.tol", "xf.tol",
-             "step.min", "step.max", "sing.tol", "diff.g", "scale.init")
+  .keep <- c(
+    "eval.max",
+    "iter.max",
+    "trace",
+    "abs.tol",
+    "rel.tol",
+    "x.tol",
+    "xf.tol",
+    "step.min",
+    "step.max",
+    "sing.tol",
+    "diff.g",
+    "scale.init"
+  )
   if (is.null(.ctl$diff.g)) {
     .keep <- .keep[.keep != "diff.g"]
   }
   if (is.null(.ctl$scale.init)) {
     .keep <- .keep[.keep != "scale.init"]
   }
-  .oCtl <- setNames(lapply(.keep, function(x) {.ctl[[x]]}), .keep)
+  .oCtl <- setNames(
+    lapply(.keep, function(x) {
+      .ctl[[x]]
+    }),
+    .keep
+  )
   class(.ctl) <- NULL
   if (.ctl$solveType == 1L) {
-    .mi <-  ui$nlmRxModel
+    .mi <- ui$nlmRxModel
   } else {
     .mi <- ui$nlmSensModel
   }
   .p <- setNames(ui$nlmParIni, ui$nlmParName)
-  .env <- .nlmSetupEnv(.p, ui, dataSav, .mi, .ctl,
-                       lower=ui$optimParLower, ui$optimParUpper)
-  on.exit({.nlmFreeEnv()})
+  .env <- .nlmSetupEnv(.p, ui, dataSav, .mi, .ctl, lower = ui$optimParLower, ui$optimParUpper)
+  on.exit({
+    .nlmFreeEnv()
+  })
   if (.ctl$solveType == 1L) {
     # pred only
     .ret <- bquote(stats::nlminb(
-      start=.(.env$par.ini),
-      objective=.(nlmixr2est::.nlmixrNlminbFunC),
+      start = .(.env$par.ini),
+      objective = .(nlmixr2est::.nlmixrNlminbFunC),
       scale = .(.ctl$scale),
       control = .(.oCtl),
-      lower=.(.env$lower),
-      upper=.(.env$upper)))
+      lower = .(.env$lower),
+      upper = .(.env$upper)
+    ))
   } else {
     # grad/hessian added
     if (.ctl$solveType == 2L) {
       # Gradient
       .ret <- bquote(stats::nlminb(
-        start=.(.env$par.ini),
-        objective=.(nlmixr2est::.nlmixrNlminbFunC),
-        gradient=.(nlmixr2est::.nlmixrNlminbGradC),
+        start = .(.env$par.ini),
+        objective = .(nlmixr2est::.nlmixrNlminbFunC),
+        gradient = .(nlmixr2est::.nlmixrNlminbGradC),
         scale = .(.ctl$scale),
         control = .(.oCtl),
-        lower=.(.env$lower),
-        upper=.(.env$upper)))
+        lower = .(.env$lower),
+        upper = .(.env$upper)
+      ))
     } else {
       # Gradient / Hessian
       .ret <- bquote(stats::nlminb(
-        start=.(.env$par.ini),
-        objective=.(nlmixr2est::.nlmixrNlminbFunC),
-        gradient=.(nlmixr2est::.nlmixrNlminbGradC),
-        hessian=.(nlmixr2est::.nlmixrNlminbHessC),
+        start = .(.env$par.ini),
+        objective = .(nlmixr2est::.nlmixrNlminbFunC),
+        gradient = .(nlmixr2est::.nlmixrNlminbGradC),
+        hessian = .(nlmixr2est::.nlmixrNlminbHessC),
         scale = .(.ctl$scale),
         control = .(.oCtl),
-        lower=.(.env$lower),
-        upper=.(.env$upper)))
-
+        lower = .(.env$lower),
+        upper = .(.env$upper)
+      ))
     }
   }
   .ret <- eval(.ret)
-  .nlmFinalizeList(.env, .ret, par="par", printLine=TRUE,
-                   hessianCov=TRUE)
+  .nlmFinalizeList(.env, .ret, par = "par", printLine = TRUE, hessianCov = TRUE)
 }
 
 #' Get the full theta for nlminb methods
@@ -455,59 +494,78 @@ getValidNlmixrCtl.nlminb <- function(control) {
 #' @noRd
 .nlminbGetTheta <- function(nlm, ui) {
   .iniDf <- ui$iniDf
-  setNames(vapply(seq_along(.iniDf$name),
-                  function(i) {
-                    if (.iniDf$fix[i]) {
-                      .iniDf$est[i]
-                    } else {
-                      nlm$par[.iniDf$name[i]]
-                    }
-                  }, double(1), USE.NAMES=FALSE),
-           .iniDf$name)
+  setNames(
+    vapply(
+      seq_along(.iniDf$name),
+      function(i) {
+        if (.iniDf$fix[i]) {
+          .iniDf$est[i]
+        } else {
+          nlm$par[.iniDf$name[i]]
+        }
+      },
+      double(1),
+      USE.NAMES = FALSE
+    ),
+    .iniDf$name
+  )
 }
-.nlminbControlToFoceiControl <- function(env, assign=TRUE) {
+.nlminbControlToFoceiControl <- function(env, assign = TRUE) {
   .nlminbControl <- env$nlminbControl
   .ui <- env$ui
-  .foceiControl <- foceiControl(rxControl=env$nlminbControl$rxControl,
-                                maxOuterIterations=0L,
-                                maxInnerIterations=0L,
-                                covMethod=0L,
-                                sumProd=.nlminbControl$sumProd,
-                                optExpression=.nlminbControl$optExpression,
-                                literalFix=.nlminbControl$literalFix,
-                                literalFixRes=.nlminbControl$literalFixRes,
-                                scaleTo=0,
-                                calcTables=.nlminbControl$calcTables,
-                                addProp=.nlminbControl$addProp,
-                                #skipCov=.ui$foceiSkipCov,
-                                interaction=0L,
-                                compress=.nlminbControl$compress,
-                                ci=.nlminbControl$ci,
-                                sigdigTable=.nlminbControl$sigdigTable,
-                                indTolRelax=.nlminbControl$indTolRelax,
-                                eventSens=.nlminbControl$eventSens,
-                                sensMethod=.nlminbControl$sensMethod)
-  if (assign) env$control <- .foceiControl
+  .foceiControl <- foceiControl(
+    rxControl = env$nlminbControl$rxControl,
+    maxOuterIterations = 0L,
+    maxInnerIterations = 0L,
+    covMethod = 0L,
+    sumProd = .nlminbControl$sumProd,
+    optExpression = .nlminbControl$optExpression,
+    literalFix = .nlminbControl$literalFix,
+    literalFixRes = .nlminbControl$literalFixRes,
+    scaleTo = 0,
+    calcTables = .nlminbControl$calcTables,
+    addProp = .nlminbControl$addProp,
+    #skipCov=.ui$foceiSkipCov,
+    interaction = 0L,
+    compress = .nlminbControl$compress,
+    ci = .nlminbControl$ci,
+    sigdigTable = .nlminbControl$sigdigTable,
+    indTolRelax = .nlminbControl$indTolRelax,
+    eventSens = .nlminbControl$eventSens,
+    sensMethod = .nlminbControl$sensMethod
+  )
+  if (assign) {
+    env$control <- .foceiControl
+  }
   .foceiControl
 }
 
 .nlminbFamilyFit <- function(env, ...) {
   .nlmFamilyFitGeneric(
-    env, "nlminb", .nlminbFitModel, .nlminbGetTheta,
+    env,
+    "nlminb",
+    .nlminbFitModel,
+    .nlminbGetTheta,
     objective = function(.fit) 2 * as.numeric(.fit$objective),
     controlToFocei = .nlminbControlToFoceiControl,
-    returnFlag = "returnNlminb")
+    returnFlag = "returnNlminb"
+  )
 }
 
 #' @rdname nlmixr2Est
 #' @export
 nlmixr2Est.nlminb <- function(env, ...) {
   .ui <- env$ui
-  rxode2::assertRxUiPopulationOnly(.ui, " for the estimation routine 'nlminb', try 'focei'", .var.name=.ui$modelName)
-  rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'nlminb'", .var.name=.ui$modelName)
+  rxode2::assertRxUiPopulationOnly(.ui, " for the estimation routine 'nlminb', try 'focei'", .var.name = .ui$modelName)
+  rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'nlminb'", .var.name = .ui$modelName)
   .nlminbFamilyControl(env, ...)
-  on.exit({if (exists("control", envir=.ui)) rm("control", envir=.ui)}, add=TRUE)
-  .nlminbFamilyFit(env,  ...)
+  on.exit(
+    {
+      if (exists("control", envir = .ui)) rm("control", envir = .ui)
+    },
+    add = TRUE
+  )
+  .nlminbFamilyFit(env, ...)
 }
 attr(nlmixr2Est.nlminb, "covPresent") <- TRUE
 attr(nlmixr2Est.nlminb, "unbounded") <- FALSE

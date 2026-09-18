@@ -58,29 +58,26 @@ nlmixr2Est <- function(env, ...) {
     .nlmixr2clearPipe()
     nlmixr2global$nlmixr2SimInfo <- NULL
   })
-  if (!exists("ui", envir=env)) {
-    stop("need 'ui' object", call.=FALSE)
-  } else if (!inherits(get("ui", envir=env), "rxUi")) {
-    stop("'ui' is not an rxode2 object", call.=FALSE)
+  if (!exists("ui", envir = env)) {
+    stop("need 'ui' object", call. = FALSE)
+  } else if (!inherits(get("ui", envir = env), "rxUi")) {
+    stop("'ui' is not an rxode2 object", call. = FALSE)
   }
   if (!inherits(env, "output")) {
-    nlmixr2global$nlmixr2EstEnv$iniDf0 <- data.frame(get("ui", envir=env)$iniDf)
+    nlmixr2global$nlmixr2EstEnv$iniDf0 <- data.frame(get("ui", envir = env)$iniDf)
   }
-  if (!exists("data", envir=env)) {
-    stop("need 'data' object", call.=FALSE)
-  } else if (!inherits(get("data", envir=env), "data.frame")) {
-    stop("'data' is not a data.frame", call.=FALSE)
+  if (!exists("data", envir = env)) {
+    stop("need 'data' object", call. = FALSE)
+  } else if (!inherits(get("data", envir = env), "data.frame")) {
+    stop("'data' is not a data.frame", call. = FALSE)
   }
-  assign("data", as.data.frame(get("data", envir=env)), envir=env)
-  if (!exists("control", envir=env)) {
-    stop("need 'control' object", call.=FALSE)
-  } else if (is.null(get("control", envir=env))) {
-  } else {
-  }
-  if (!exists("table", envir=env)) {
-    stop("need 'table' object", call.=FALSE)
-  } else if (is.null(get("table", envir=env))) {
-  }
+  assign("data", as.data.frame(get("data", envir = env)), envir = env)
+  if (!exists("control", envir = env)) {
+    stop("need 'control' object", call. = FALSE)
+  } else if (is.null(get("control", envir = env))) {} else {}
+  if (!exists("table", envir = env)) {
+    stop("need 'table' object", call. = FALSE)
+  } else if (is.null(get("table", envir = env))) {}
   ## a prior the dispatched method cannot use is an error rather than
   ## something quietly dropped; checked here so that every method,
   ## including those registered by other packages, is covered
@@ -89,7 +86,9 @@ nlmixr2Est <- function(env, ...) {
   ## embedded nn() network transparently under a standard est); if it returns
   ## non-NULL that is the fit.
   .intercepted <- .nlmixr2RunEstInterceptors(env)
-  if (!is.null(.intercepted)) return(.intercepted)
+  if (!is.null(.intercepted)) {
+    return(.intercepted)
+  }
   UseMethod("nlmixr2Est")
 }
 
@@ -100,7 +99,14 @@ nlmixr2Est <- function(env, ...) {
 #' nlmixr2AllEst()
 #' @export
 nlmixr2AllEst <- function() {
-  .ret <- vapply(as.character(utils::methods("nlmixr2Est")), function(est){substr(est,12,nchar(est))}, character(1), USE.NAMES=FALSE)
+  .ret <- vapply(
+    as.character(utils::methods("nlmixr2Est")),
+    function(est) {
+      substr(est, 12, nchar(est))
+    },
+    character(1),
+    USE.NAMES = FALSE
+  )
   .ret[!(.ret %in% c("default", "output"))]
 }
 
@@ -108,15 +114,24 @@ nlmixr2AllEst <- function() {
 #' @export
 nlmixr2Est.default <- function(env, ...) {
   .curEst <- class(env)[1]
-  .lines <- .nlmixr2EstTypeLines(current=.curEst)
+  .lines <- .nlmixr2EstTypeLines(current = .curEst)
   if (length(.lines) == 0L) {
-    stop("nlmixr2 estimation '", .curEst, "' not supported\n can be one of '",
-         paste(nlmixr2AllEst(), collapse="', '"), "'",
-         call.=FALSE)
+    stop(
+      "nlmixr2 estimation '",
+      .curEst,
+      "' not supported\n can be one of '",
+      paste(nlmixr2AllEst(), collapse = "', '"),
+      "'",
+      call. = FALSE
+    )
   }
-  stop("nlmixr2 estimation '", .curEst, "' not supported; available methods:\n",
-       paste(.lines, collapse="\n"),
-       call.=FALSE)
+  stop(
+    "nlmixr2 estimation '",
+    .curEst,
+    "' not supported; available methods:\n",
+    paste(.lines, collapse = "\n"),
+    call. = FALSE
+  )
 }
 
 #' For models with zero omega values or fixed values, update the
@@ -127,20 +142,22 @@ nlmixr2Est.default <- function(env, ...) {
 #' @return nothing, called for side effects
 #' @noRd
 #' @author Matthew L. Fidler
-.nlmixrEstUpdatesOrigModel <- function(ret, env=NULL) {
-  .ui <- try(ret$ui, silent=TRUE)
-  if (inherits(.ui, "try-error")) return(ret)
+.nlmixrEstUpdatesOrigModel <- function(ret, env = NULL) {
+  .ui <- try(ret$ui, silent = TRUE)
+  if (inherits(.ui, "try-error")) {
+    return(ret)
+  }
   # Prefer the per-call copies stashed on the estimation environment by
   # .preProcessHooksRun(); the globals are wiped by any nested nlmixr2() call
   # during estimation (setOfv/addCwres/...), which dropped zero etas from the
   # final model (issue #741).  Fall back to the globals for direct
   # nlmixr2Est() paths that did not run the pre-process hooks.
-  if (is.environment(env) && exists("nlmixrPureInputUi", envir=env, inherits=FALSE)) {
+  if (is.environment(env) && exists("nlmixrPureInputUi", envir = env, inherits = FALSE)) {
     .pureInputUi <- env$nlmixrPureInputUi
   } else {
     .pureInputUi <- nlmixr2global$nlmixr2EstEnv$nlmixrPureInputUi
   }
-  if (is.environment(env) && exists("uiUnfix", envir=env, inherits=FALSE)) {
+  if (is.environment(env) && exists("uiUnfix", envir = env, inherits = FALSE)) {
     .uiUnfix <- env$uiUnfix
   } else {
     .uiUnfix <- nlmixr2global$nlmixr2EstEnv$uiUnfix
@@ -158,7 +175,7 @@ nlmixr2Est.default <- function(env, ...) {
           .finalIni$est[.w] <- .theta$est[.i]
         }
       }
-      .etas <- .iniDf[!is.na(.iniDf$neta1),, drop = FALSE]
+      .etas <- .iniDf[!is.na(.iniDf$neta1), , drop = FALSE]
       if (length(.etas$name) > 0) {
         .etaNames <- .etas[.etas$neta1 == .etas$neta2, "name"]
         ## Only map etas that also exist in the pure input model.  A fit
@@ -167,13 +184,23 @@ nlmixr2Est.default <- function(env, ...) {
         ## variance theta); those cannot be mapped back by name and their
         ## variance is restored via the theta loop above.
         .etaNames <- .etaNames[.etaNames %in% .finalIni$name]
-        .etaFinal <- vapply(.etaNames, function(n) {
-          .finalIni[which(.finalIni$name == n), "neta1"]
-        }, double(1), USE.NAMES=TRUE)
+        .etaFinal <- vapply(
+          .etaNames,
+          function(n) {
+            .finalIni[which(.finalIni$name == n), "neta1"]
+          },
+          double(1),
+          USE.NAMES = TRUE
+        )
 
-        .etaCur <- vapply(.etaNames, function(n) {
-          .etas[which(.etas$name == n), "neta1"]
-        }, double(1), USE.NAMES=TRUE)
+        .etaCur <- vapply(
+          .etaNames,
+          function(n) {
+            .etas[which(.etas$name == n), "neta1"]
+          },
+          double(1),
+          USE.NAMES = TRUE
+        )
         for (.i in seq_along(.etas$name)) {
           .eta1 <- .etaFinal[names(.etaCur)[which(.etas$neta1[.i] == .etaCur)]]
           .eta2 <- .etaFinal[names(.etaCur)[which(.etas$neta2[.i] == .etaCur)]]
@@ -181,8 +208,8 @@ nlmixr2Est.default <- function(env, ...) {
         }
       }
       assign("iniDf", .finalIni, .final)
-      assign("ui", .final, envir=ret$env)
-      assign("omega", .final$omega, envir=ret$env)
+      assign("ui", .final, envir = ret$env)
+      assign("omega", .final$omega, envir = ret$env)
       .minfo("initial model updated with final estimates, some zero etas are excluded from output")
     }
     if (!is.null(.uiUnfix)) {
@@ -190,15 +217,21 @@ nlmixr2Est.default <- function(env, ...) {
       .final <- .uiUnfix
       .iniDf0 <- ret$env$ui$iniDf
       .iniDf2 <- .final$iniDf
-      .iniDf2$est <- vapply(.iniDf2$name,
-                            function(n) {
-                              .w <- which(.iniDf0$name == n)
-                              if (length(.w) == 1L) return(.iniDf0$est[.w])
-                              .iniDf2[.iniDf2$name == n, "est"]
-                            }, double(1), USE.NAMES = FALSE)
-      assign("iniDf", .iniDf2, envir=.final)
-      assign("ui", .final, envir=ret$env)
-      assign("fixef", .final$theta, envir=ret$env)
+      .iniDf2$est <- vapply(
+        .iniDf2$name,
+        function(n) {
+          .w <- which(.iniDf0$name == n)
+          if (length(.w) == 1L) {
+            return(.iniDf0$est[.w])
+          }
+          .iniDf2[.iniDf2$name == n, "est"]
+        },
+        double(1),
+        USE.NAMES = FALSE
+      )
+      assign("iniDf", .iniDf2, envir = .final)
+      assign("ui", .final, envir = ret$env)
+      assign("fixef", .final$theta, envir = ret$env)
     }
   }
   nlmixr2global$nlmixr2EstEnv$uiUnfix <- NULL
@@ -218,85 +251,83 @@ nlmixr2Est.default <- function(env, ...) {
 nlmixr2Est0 <- function(env, ...) {
   rxode2::rxUnloadAll()
   .ui <- rxode2::rxUiDecompress(get("ui", env))
-  assign("ui", .ui, envir=env)
-  if (!exists("missingTable", envir=env)) {
-    assign("missingTable", FALSE, envir=env)
+  assign("ui", .ui, envir = env)
+  if (!exists("missingTable", envir = env)) {
+    assign("missingTable", FALSE, envir = env)
   }
-  if (!exists("missingControl", envir=env)) {
-    assign("missingControl", FALSE, envir=env)
+  if (!exists("missingControl", envir = env)) {
+    assign("missingControl", FALSE, envir = env)
   }
-  if (!exists("missingEst", envir=env)) {
-    assign("missingEst", FALSE, envir=env)
+  if (!exists("missingEst", envir = env)) {
+    assign("missingEst", FALSE, envir = env)
   }
   if (inherits(env$ui, "rxUi")) {
     .modelName <- env$ui$modelName
     # rebuilding from ui$fun() drops the bounded-transform specs; the table step of a
     # fit (saem's output call) still needs them to back-transform its parameters
     .boundedTransforms <- env$ui$boundedTransforms
-    assign("ui",
-           .rxUiDecompressModelFun(env$ui),
-           envir=env) # re-evaluate so it doesn't overwrite inital ui
-    assign("modelName", .modelName, envir=env$ui)
+    assign("ui", .rxUiDecompressModelFun(env$ui), envir = env) # re-evaluate so it doesn't overwrite inital ui
+    assign("modelName", .modelName, envir = env$ui)
     if (!is.null(.boundedTransforms)) env$ui$boundedTransforms <- .boundedTransforms
   }
   .doIt <- TRUE
-  if (is.null(get("missingTable", envir=env))) {
-  } else if (get("missingTable", envir=env)) {
-  } else {
+  if (is.null(get("missingTable", envir = env))) {} else if (get("missingTable", envir = env)) {} else {
     .doIt <- FALSE
   }
   if (.doIt) {
-    .meta <- get("ui", envir=env)$meta
-    if (is.null(get("table", envir=env))) {
-      assign("table", tableControl(), envir=env)
+    .meta <- get("ui", envir = env)$meta
+    if (is.null(get("table", envir = env))) {
+      assign("table", tableControl(), envir = env)
     }
     if (!is.environment(.meta)) {
-      .meta <- new.env(parent=emptyenv())
+      .meta <- new.env(parent = emptyenv())
     }
-    .table <- get("table", envir=env)
+    .table <- get("table", envir = env)
     for (.elt in .tablePassthrough) {
-      if (exists(.elt, envir=.meta)) {
+      if (exists(.elt, envir = .meta)) {
         .table[[.elt]] <- .meta[[.elt]]
       }
     }
-    assign("table", .table, envir=env)
+    assign("table", .table, envir = env)
   }
-  .envReset <- new.env(parent=emptyenv())
+  .envReset <- new.env(parent = emptyenv())
   .envReset$reset <- TRUE
   if (!getOption("nlmixr2.resetCache", TRUE)) {
     .envReset$ret <- .collectWarn(nlmixr2Est(env, ...), lst = TRUE)
   } else {
     .envReset$reset <- TRUE
-    .envReset$env <- new.env(parent=emptyenv())
+    .envReset$env <- new.env(parent = emptyenv())
     lapply(ls(envir = env, all.names = TRUE), function(item) {
       assign(item, get(item, envir = env), envir = .envReset$env)
     })
     .envReset$cacheReset <- FALSE
     .envReset$unload <- FALSE
     class(.envReset) <- class(env)
-    if (length(get("reset", envir=.envReset)) != 1) assign("reset", TRUE, envir=.envReset)
-    while (get("reset", envir=.envReset)) {
-      assign("reset", FALSE, envir=.envReset)
+    if (length(get("reset", envir = .envReset)) != 1) {
+      assign("reset", TRUE, envir = .envReset)
+    }
+    while (get("reset", envir = .envReset)) {
+      assign("reset", FALSE, envir = .envReset)
       ret <- .collectWarn(nlmixr2Est(env, ...), lst = TRUE, collectErr = TRUE)
-      if (!is.null(ret[[1]]) || !exists("ret", envir=.envReset, inherits=FALSE)) {
+      if (!is.null(ret[[1]]) || !exists("ret", envir = .envReset, inherits = FALSE)) {
         # Store on first pass unconditionally; later retries only overwrite if
         # they produced a model, so a NULL retry (e.g. monolix create-only, saemix) doesn't clobber an earlier success.
-        assign("ret", ret, envir=.envReset)
+        assign("ret", ret, envir = .envReset)
       }
       if (length(ret$error) > 0) {
         if (any(regexpr(pattern = "not provided by package", text = ret$error) != -1)) {
-          if (get("cacheReset", envir=.envReset)) {
+          if (get("cacheReset", envir = .envReset)) {
             .malert("unsuccessful cache reset; try manual reset with 'rxode2::rxClean()'")
-            stop(paste(ret$error, collapse = "\n"), call.=FALSE)
+            stop(paste(ret$error, collapse = "\n"), call. = FALSE)
           } else {
             # reset
             if (is.environment(.envReset)) {
-              rm(list=ls(envir = env, all.names = TRUE), envir=env)
+              rm(list = ls(envir = env, all.names = TRUE), envir = env)
               lapply(ls(envir = .envReset, all.names = TRUE), function(item) {
                 assign(item, get(item, envir = .envReset), envir = env)
               })
             } else if (is.environment(.envReset$env)) {
-              rm(list=ls(envir = env, all.names = TRUE), envir=env)
+              rm(list = ls(envir = env, all.names = TRUE), envir = env)
               lapply(ls(envir = .envReset$env, all.names = TRUE), function(item) {
                 assign(item, get(item, envir = .envReset$env), envir = env)
               })
@@ -305,23 +336,23 @@ nlmixr2Est0 <- function(env, ...) {
             gc()
             .minfo("try resetting cache")
             rxode2::rxClean()
-            assign("cacheReset", TRUE, envir=.envReset)
-            assign("reset", TRUE, envir=.envReset)
+            assign("cacheReset", TRUE, envir = .envReset)
+            assign("reset", TRUE, envir = .envReset)
             .msuccess("done")
           }
         } else if (any(regexpr("maximal number of DLLs reached", ret$error) != -1)) {
           if (.envReset$unload) {
             .malert("Could not unload rxode2 models, try restarting R")
-            stop(paste(ret$error, collapse = "\n"), call.=FALSE)
+            stop(paste(ret$error, collapse = "\n"), call. = FALSE)
           } else {
             # reset
             if (is.environment(.envReset)) {
-              rm(list=ls(envir = env, all.names = TRUE), envir=env)
+              rm(list = ls(envir = env, all.names = TRUE), envir = env)
               lapply(ls(envir = .envReset, all.names = TRUE), function(item) {
                 assign(item, get(item, envir = .envReset), envir = env)
               })
             } else if (is.environment(.envReset$env)) {
-              rm(list=ls(envir = env, all.names = TRUE), envir=env)
+              rm(list = ls(envir = env, all.names = TRUE), envir = env)
               lapply(ls(envir = .envReset$env, all.names = TRUE), function(item) {
                 assign(item, get(item, envir = .envReset$env), envir = env)
               })
@@ -331,37 +362,39 @@ nlmixr2Est0 <- function(env, ...) {
             rxode2::rxUnloadAll(TRUE) # make sure this is actually unloading models
             try(rxode2::rxUnloadAll())
             rxode2::rxClean()
-            assign("unload", TRUE, envir=.envReset)
-            assign("reset", TRUE, envir=.envReset)
+            assign("unload", TRUE, envir = .envReset)
+            assign("reset", TRUE, envir = .envReset)
             .msuccess("done")
           }
         } else {
-          stop(paste(ret$error, collapse = "\n"), call.=FALSE)
+          stop(paste(ret$error, collapse = "\n"), call. = FALSE)
         }
       }
-      if (length(get("reset", envir=.envReset)) != 1) assign("reset", TRUE, .envReset)
+      if (length(get("reset", envir = .envReset)) != 1) assign("reset", TRUE, .envReset)
     }
   }
-  .lst <- get("ret", envir=.envReset)
+  .lst <- get("ret", envir = .envReset)
   .ret <- .lst[[1]]
   # prefer the per-call copy stashed on env (the global is wiped by nested
   # estimation calls, e.g. the vae post-fit covariance recompute)
-  .hookWarn <- if (is.environment(env) && exists("preProcessHookWarnings", envir=env, inherits=FALSE)) {
+  .hookWarn <- if (is.environment(env) && exists("preProcessHookWarnings", envir = env, inherits = FALSE)) {
     env$preProcessHookWarnings
   } else {
     nlmixr2global$preProcessHookWarnings
   }
   .warnings <- c(.hookWarn, .lst[[2]])
   .warnings <- .filterSyntheticIovMuWarnings(.warnings, get("ui", envir = env))
-  if (inherits(.ret, "nlmixr2FitCore") ||
-        inherits(.ret, "nlmixr2Fit")) {
+  if (
+    inherits(.ret, "nlmixr2FitCore") ||
+      inherits(.ret, "nlmixr2Fit")
+  ) {
     if (is.environment(.ret)) {
-      try(assign("runInfo", .warnings, .ret), silent=TRUE)
+      try(assign("runInfo", .warnings, .ret), silent = TRUE)
     } else {
-      try(assign("runInfo", .warnings, .ret$env), silent=TRUE)
+      try(assign("runInfo", .warnings, .ret$env), silent = TRUE)
     }
   } else {
-    .w <-.lst[[2]]
+    .w <- .lst[[2]]
     lapply(seq_along(.w), function(i) {
       warning(.w[[i]])
     })
@@ -379,8 +412,10 @@ nlmixr2Est0 <- function(env, ...) {
     if (length(.estName) != 1L || !nzchar(.estName)) {
       .estName <- tryCatch(as.character(.ret$est), error = function(e) "")
     }
-    if (length(.estName) == 1L &&
-          !is.null(.foceiRecomputeBaseEst(.estName))) {
+    if (
+      length(.estName) == 1L &&
+        !is.null(.foceiRecomputeBaseEst(.estName))
+    ) {
       try(.foceiInstallMuCov(.ret, .estName), silent = TRUE)
     }
     # A foreign covariance ("sa"/"imp") requested via covMethod= on a family
@@ -393,7 +428,8 @@ nlmixr2Est0 <- function(env, ...) {
       .curCov <- tryCatch(.ret$cov, error = function(e) NULL)
       .installed <-
         identical(tryCatch(.ret$covMethod, error = function(e) NULL), .def) &&
-        is.matrix(.curCov) && all(is.finite(.curCov))
+        is.matrix(.curCov) &&
+        all(is.finite(.curCov))
       if (!.installed) {
         .rEnv <- if (is.environment(.ret)) .ret else tryCatch(.ret$env, error = function(e) NULL)
         if (is.environment(.rEnv)) {
@@ -406,8 +442,12 @@ nlmixr2Est0 <- function(env, ...) {
     }
     # snapshot the options the estimation-time covariances used, so setCov()
     # still sees them if the fit's settings change later
-    try(.covOptionsRecordEstimation(
-      if (is.environment(.ret)) .ret else .ret$env), silent = TRUE)
+    try(
+      .covOptionsRecordEstimation(
+        if (is.environment(.ret)) .ret else .ret$env
+      ),
+      silent = TRUE
+    )
   }
   .ret
 }

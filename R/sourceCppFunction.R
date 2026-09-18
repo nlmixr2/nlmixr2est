@@ -6,7 +6,9 @@ sourceCppFunction <- function(func, isVoid, dll, symbol) {
     1:2,
     rep(3, length(args))
   )]
-  for (i in seq(along.with = args)) body[[i + 2]] <- as.symbol(args[i])
+  for (i in seq(along.with = args)) {
+    body[[i + 2]] <- as.symbol(args[i])
+  }
   body[[1L]] <- .Call
   body[[2L]] <- getNativeSymbolInfo(symbol, dll)$address
   if (isVoid) {

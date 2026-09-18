@@ -40,13 +40,10 @@ nmTest({
 
   ## 60 subjects on the theo_sd sampling schedule
   .omData <- local({
-    .ev <- nlmixr2data::theo_sd[nlmixr2data::theo_sd$ID == 1,
-                                c("TIME", "AMT", "EVID", "DV")]
+    .ev <- nlmixr2data::theo_sd[nlmixr2data::theo_sd$ID == 1, c("TIME", "AMT", "EVID", "DV")]
     .et <- rxode2::et(.ev)
-    .s <- rxode2::rxSolve(.omSimMod, .et, nSub = 60L, seed = 1042L,
-                          addDosing = TRUE, returnType = "data.frame")
-    .d <- data.frame(ID = .s$sim.id, TIME = .s$time, AMT = .s$amt,
-                     EVID = .s$evid, DV = .s$sim)
+    .s <- rxode2::rxSolve(.omSimMod, .et, nSub = 60L, seed = 1042L, addDosing = TRUE, returnType = "data.frame")
+    .d <- data.frame(ID = .s$sim.id, TIME = .s$time, AMT = .s$amt, EVID = .s$evid, DV = .s$sim)
     .d$AMT[is.na(.d$AMT)] <- 0
     .d$DV[.d$EVID != 0] <- NA_real_
     ## a dose row and an observation share time 0; keep only the dose there
@@ -69,9 +66,12 @@ nmTest({
   }
 
   test_that("est='vae' estimates the omega off-diagonal", {
-    f <- nlmixr2(.omCorMod, .omData, est = "vae",
-                 control = vaeControl(itersBurnIn = 50L, iters = 100L,
-                                      covariateSelection = FALSE, print = 0L))
+    f <- nlmixr2(
+      .omCorMod,
+      .omData,
+      est = "vae",
+      control = vaeControl(itersBurnIn = 50L, iters = 100L, covariateSelection = FALSE, print = 0L)
+    )
     .expectOffDiagEstimated(f)
     ## the updated model carries the whole block: the off-diagonal iniDf row
     ## holds the estimate, symmetric with $omega
@@ -82,8 +82,7 @@ nmTest({
   })
 
   test_that("est='advi' estimates the omega off-diagonal", {
-    f <- nlmixr2(.omCorMod, .omData, est = "emvi",
-                 control = emviControl(iters = 300L, print = 0L))
+    f <- nlmixr2(.omCorMod, .omData, est = "emvi", control = emviControl(iters = 300L, print = 0L))
     .expectOffDiagEstimated(f)
     .idf <- f$iniDf
     .offRow <- .idf[!is.na(.idf$neta1) & .idf$neta1 != .idf$neta2, , drop = FALSE]
@@ -116,9 +115,9 @@ nmTest({
     ## round(perNoCor * min(gammaIter, iters)) iterations, so with a SMALLER
     ## gammaIter even perNoCor = 1 leaves a tail that estimates the correlation
     ## (gammaIter = 40 of 60 iterations left 20 free and returned 0.0485, not 0).
-    .ctl <- function(p) vaeControl(itersBurnIn = 20L, iters = 60L, gammaIter = 60L,
-                                   perNoCor = p, covariateSelection = FALSE,
-                                   print = 0L)
+    .ctl <- function(p) {
+      vaeControl(itersBurnIn = 20L, iters = 60L, gammaIter = 60L, perNoCor = p, covariateSelection = FALSE, print = 0L)
+    }
     ## perNoCor = 1 holds throughout: a FREE correlation is held at ZERO (saem's
     ## diagmat() rule), NOT at its ini value.  Holding it at ini while the
     ## variances move is what left the block non-positive-definite.
@@ -128,35 +127,46 @@ nmTest({
     expect_gt(abs(fFree$omega[1L, 2L] - 0.01), 1e-6)
     ## and the default hold still leaves room to estimate on a short run
     ## (nbCorrel is a fraction of min(gammaIter, iters), not of gammaIter)
-    fDef <- nlmixr2(.omCorMod, .omData, est = "vae",
-                    control = vaeControl(itersBurnIn = 20L, iters = 60L,
-                                         covariateSelection = FALSE, print = 0L))
+    fDef <- nlmixr2(
+      .omCorMod,
+      .omData,
+      est = "vae",
+      control = vaeControl(itersBurnIn = 20L, iters = 60L, covariateSelection = FALSE, print = 0L)
+    )
     expect_gt(abs(fDef$omega[1L, 2L] - 0.01), 1e-6)
   })
 
   test_that("a FIXED omega block is held by vae and advi", {
-    fV <- nlmixr2(.omFixedMod, .omData, est = "vae",
-                  control = vaeControl(itersBurnIn = 20L, iters = 40L,
-                                       covariateSelection = FALSE, print = 0L))
+    fV <- nlmixr2(
+      .omFixedMod,
+      .omData,
+      est = "vae",
+      control = vaeControl(itersBurnIn = 20L, iters = 40L, covariateSelection = FALSE, print = 0L)
+    )
     expect_equal(unname(fV$omega[1L, 2L]), 0.01, tolerance = 1e-10)
     expect_equal(unname(diag(fV$omega)), c(0.1, 0.1), tolerance = 1e-10)
-    fA <- nlmixr2(.omFixedMod, .omData, est = "emvi",
-                  control = emviControl(iters = 50L, print = 0L))
+    fA <- nlmixr2(.omFixedMod, .omData, est = "emvi", control = emviControl(iters = 50L, print = 0L))
     expect_equal(unname(fA$omega[1L, 2L]), 0.01, tolerance = 1e-10)
     expect_equal(unname(diag(fA$omega)), c(0.1, 0.1), tolerance = 1e-10)
   })
 
   test_that("est='npag' estimates the omega off-diagonal", {
-    f <- nlmixr2(.omCorMod, .omData, est = "npag",
-                 control = npagControl(points = 256L, cycles = 15L,
-                                       gammaOptimize = FALSE))
+    f <- nlmixr2(
+      .omCorMod,
+      .omData,
+      est = "npag",
+      control = npagControl(points = 256L, cycles = 15L, gammaOptimize = FALSE)
+    )
     .expectOffDiagEstimated(f)
   })
 
   test_that("est='npb' estimates the omega off-diagonal", {
-    f <- nlmixr2(.omCorMod, .omData, est = "npb",
-                 control = npbControl(points = 50L, burnin = 100L, nsamp = 100L,
-                                      seed = 42L))
+    f <- nlmixr2(
+      .omCorMod,
+      .omData,
+      est = "npb",
+      control = npbControl(points = 50L, burnin = 100L, nsamp = 100L, seed = 42L)
+    )
     .expectOffDiagEstimated(f)
   })
 })

@@ -52,10 +52,13 @@ nmTest({
 
   test_that("est='trust' converges close to bobyqa", {
     skip_on_cran()
-    .fB <- .nlmixr(.oneCmt, nlmixr2data::theo_sd, est = "bobyqa",
-                   control = bobyqaControl(print = 0L, calcTables = FALSE))
-    .fT <- .nlmixr(.oneCmt, nlmixr2data::theo_sd, est = "trust",
-                   control = trustControl(print = 0L, calcTables = FALSE))
+    .fB <- .nlmixr(
+      .oneCmt,
+      nlmixr2data::theo_sd,
+      est = "bobyqa",
+      control = bobyqaControl(print = 0L, calcTables = FALSE)
+    )
+    .fT <- .nlmixr(.oneCmt, nlmixr2data::theo_sd, est = "trust", control = trustControl(print = 0L, calcTables = FALSE))
     .nT <- .nTrustOuter()
 
     expect_true(is.finite(.fB$objective))
@@ -71,12 +74,19 @@ nmTest({
 
   test_that("est='trust' converges close to bobyqa for every hessianMethod", {
     skip_on_cran()
-    .fB <- .nlmixr(.oneCmt, nlmixr2data::theo_sd, est = "bobyqa",
-                   control = bobyqaControl(print = 0L, calcTables = FALSE))
+    .fB <- .nlmixr(
+      .oneCmt,
+      nlmixr2data::theo_sd,
+      est = "bobyqa",
+      control = bobyqaControl(print = 0L, calcTables = FALSE)
+    )
     for (.hm in c("fd", "bfgs", "sr1", "bofill")) {
-      .fT <- .nlmixr(.oneCmt, nlmixr2data::theo_sd, est = "trust",
-                     control = trustControl(print = 0L, calcTables = FALSE,
-                                            hessianMethod = .hm))
+      .fT <- .nlmixr(
+        .oneCmt,
+        nlmixr2data::theo_sd,
+        est = "trust",
+        control = trustControl(print = 0L, calcTables = FALSE, hessianMethod = .hm)
+      )
       expect_true(is.finite(.fT$objective), info = .hm)
       expect_equal(.fT$objective, .fB$objective, tolerance = 1e-2, info = .hm)
       expect_equal(unname(.fT$theta), unname(.fB$theta), tolerance = 1e-2, info = .hm)
@@ -107,12 +117,19 @@ nmTest({
     # scaleCmax (src/nlm.cpp) and permanently corrupt every later scaled
     # gradient/Hessian entry for that dimension -- .nlmSetupEnv() now runs
     # the same .guardScaleC() safety net FOCEi already uses (R/nlmShared.R).
-    .fB <- .nlmixr(.oneCmtBounded, nlmixr2data::theo_sd, est = "bobyqa",
-                   control = bobyqaControl(print = 0L, calcTables = FALSE))
+    .fB <- .nlmixr(
+      .oneCmtBounded,
+      nlmixr2data::theo_sd,
+      est = "bobyqa",
+      control = bobyqaControl(print = 0L, calcTables = FALSE)
+    )
     for (.hm in c("fd", "bfgs", "sr1", "bofill")) {
-      .fT <- .nlmixr(.oneCmtBounded, nlmixr2data::theo_sd, est = "trust",
-                     control = trustControl(print = 0L, calcTables = FALSE,
-                                            hessianMethod = .hm))
+      .fT <- .nlmixr(
+        .oneCmtBounded,
+        nlmixr2data::theo_sd,
+        est = "trust",
+        control = trustControl(print = 0L, calcTables = FALSE, hessianMethod = .hm)
+      )
       expect_true(is.finite(.fT$objective), info = .hm)
       expect_equal(.fT$objective, .fB$objective, tolerance = 1e-2, info = .hm)
       expect_equal(unname(.fT$theta), unname(.fB$theta), tolerance = 1e-2, info = .hm)
@@ -127,20 +144,29 @@ nmTest({
     # not just that the objective/theta happen to still agree (a well-posed
     # problem can converge to the same point from several different Hessian
     # approximations).
-    .rFd <- .nlmixr(.oneCmt, nlmixr2data::theo_sd, est = "trust",
-                    control = trustControl(print = 0L, calcTables = FALSE,
-                                           returnTrust = TRUE, hessianMethod = "fd"))
-    .rSr1 <- .nlmixr(.oneCmt, nlmixr2data::theo_sd, est = "trust",
-                     control = trustControl(print = 0L, calcTables = FALSE,
-                                            returnTrust = TRUE, hessianMethod = "sr1"))
+    .rFd <- .nlmixr(
+      .oneCmt,
+      nlmixr2data::theo_sd,
+      est = "trust",
+      control = trustControl(print = 0L, calcTables = FALSE, returnTrust = TRUE, hessianMethod = "fd")
+    )
+    .rSr1 <- .nlmixr(
+      .oneCmt,
+      nlmixr2data::theo_sd,
+      est = "trust",
+      control = trustControl(print = 0L, calcTables = FALSE, returnTrust = TRUE, hessianMethod = "sr1")
+    )
     expect_true(max(abs(.rFd$hessian - .rSr1$hessian)) > 1)
   })
 
   test_that("est='trust' returnTrust=TRUE gives the raw trust_solve_c() output", {
     skip_on_cran()
-    .raw <- .nlmixr(.oneCmt, nlmixr2data::theo_sd, est = "trust",
-                    control = trustControl(print = 0L, calcTables = FALSE,
-                                           returnTrust = TRUE))
+    .raw <- .nlmixr(
+      .oneCmt,
+      nlmixr2data::theo_sd,
+      est = "trust",
+      control = trustControl(print = 0L, calcTables = FALSE, returnTrust = TRUE)
+    )
     expect_true(is.list(.raw))
     expect_true(is.logical(.raw$converged))
     expect_true(is.numeric(.raw$value))
@@ -157,8 +183,12 @@ nmTest({
       },
       .package = "nlmixr2est",
       {
-        .fT <- .nlmixr(.oneCmt, nlmixr2data::theo_sd, est = "trust",
-                       control = trustControl(print = 0L, calcTables = FALSE))
+        .fT <- .nlmixr(
+          .oneCmt,
+          nlmixr2data::theo_sd,
+          est = "trust",
+          control = trustControl(print = 0L, calcTables = FALSE)
+        )
       }
     )
     expect_false(.calledTrust)
@@ -176,8 +206,12 @@ nmTest({
       .package = "nlmixr2est",
       {
         expect_error(
-          .nlmixr(.oneCmt, nlmixr2data::theo_sd, est = "bobyqa",
-                  control = bobyqaControl(print = 0L, calcTables = FALSE))
+          .nlmixr(
+            .oneCmt,
+            nlmixr2data::theo_sd,
+            est = "bobyqa",
+            control = bobyqaControl(print = 0L, calcTables = FALSE)
+          )
         )
       }
     )

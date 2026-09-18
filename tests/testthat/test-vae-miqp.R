@@ -25,36 +25,48 @@ nmTest({
   test_that("vaeBestSubset_ matches the golden MIQP-equivalent optimum", {
     g <- readRDS(test_path("baselines", "vae-miqp-golden.rds"))
     for (nm in names(g)) {
-      ci <- g[[nm]]; ip <- ci$inputs
+      ci <- g[[nm]]
+      ip <- ci$inputs
       omega <- rep_len(ip$omega, ci$zDim)
       isFree <- rep_len(ip$isFree, ci$zDim)
       got <- vaeBestSubset_(ip$mu, ip$covMat, omega, isFree, ci$penalty)
       ## selected support must match exactly (the core selection claim)
-      expect_equal(got$selected, ci$expected$selected,
-                   info = paste0("selected mismatch in case ", ci$name))
-      if (isTRUE(ci$selectionOnly)) next
+      expect_equal(got$selected, ci$expected$selected, info = paste0("selected mismatch in case ", ci$name))
+      if (isTRUE(ci$selectionOnly)) {
+        next
+      }
       ## coefficients on the chosen support match the OLS/MIQP values
-      expect_equal(as.numeric(got$intercept), as.numeric(ci$expected$intercept),
-                   tolerance = 1e-6, info = paste0("intercept mismatch: ", ci$name))
-      expect_equal(as.numeric(got$beta), as.numeric(ci$expected$beta),
-                   tolerance = 1e-6, info = paste0("beta mismatch: ", ci$name))
+      expect_equal(
+        as.numeric(got$intercept),
+        as.numeric(ci$expected$intercept),
+        tolerance = 1e-6,
+        info = paste0("intercept mismatch: ", ci$name)
+      )
+      expect_equal(
+        as.numeric(got$beta),
+        as.numeric(ci$expected$beta),
+        tolerance = 1e-6,
+        info = paste0("beta mismatch: ", ci$name)
+      )
     }
   })
 
   test_that("branch-and-bound equals independent brute force on random problems", {
     .testSeed(11L)
     for (rep in 1:8) {
-      N <- 90L; nCov <- sample(4:11, 1L)
+      N <- 90L
+      nCov <- sample(4:11, 1L)
       X <- matrix(rnorm(N * nCov), N, nCov)
       k <- sample(0:3, 1L)
       sel <- if (k > 0) sort(sample.int(nCov, k)) else integer(0)
-      y <- 0.7 + (if (k > 0) X[, sel, drop = FALSE] %*% runif(k, 1, 3) * sample(c(-1, 1), k, TRUE) else 0) +
+      y <- 0.7 +
+        (if (k > 0) X[, sel, drop = FALSE] %*% runif(k, 1, 3) * sample(c(-1, 1), k, TRUE) else 0) +
         rnorm(N, sd = 0.5)
-      omega <- 0.4; penalty <- log(N)
+      omega <- 0.4
+      penalty <- log(N)
       ref <- bruteBestSubset(as.numeric(y), X, omega, penalty)
       got <- vaeBestSubset_(matrix(y, ncol = 1), X, omega, FALSE, penalty)
-      expect_equal(which(got$selected[1, ] == 1L), ref$sel,
-                   info = paste0("rep ", rep, " nCov ", nCov))
+      expect_equal(which(got$selected[1, ] == 1L), ref$sel, info = paste0("rep ", rep, " nCov ", nCov))
     }
   })
 
@@ -64,25 +76,25 @@ nmTest({
     ## the golden fixture (mechanism is actually wired through to the kernel).
     g <- readRDS(test_path("baselines", "vae-miqp-golden.rds"))
     for (nm in names(g)) {
-      ci <- g[[nm]]; ip <- ci$inputs
+      ci <- g[[nm]]
+      ip <- ci$inputs
       omega <- rep_len(ip$omega, ci$zDim)
       isFree <- rep_len(ip$isFree, ci$zDim)
       base <- vaeBestSubset_(ip$mu, ip$covMat, omega, isFree, ci$penalty, "lifo")
       for (strat in c("fifo", "lc")) {
         alt <- vaeBestSubset_(ip$mu, ip$covMat, omega, isFree, ci$penalty, strat)
-        expect_equal(alt, base,
-                     info = paste0("strategy ", strat, " differs from lifo in case ", ci$name))
+        expect_equal(alt, base, info = paste0("strategy ", strat, " differs from lifo in case ", ci$name))
       }
     }
   })
 
   test_that("vaeBestSubset_ rejects an unknown branch-and-bound strategy", {
     g <- readRDS(test_path("baselines", "vae-miqp-golden.rds"))
-    ci <- g[[1]]; ip <- ci$inputs
+    ci <- g[[1]]
+    ip <- ci$inputs
     omega <- rep_len(ip$omega, ci$zDim)
     isFree <- rep_len(ip$isFree, ci$zDim)
-    expect_error(vaeBestSubset_(ip$mu, ip$covMat, omega, isFree, ci$penalty, "bogus"),
-                 "lifo")
+    expect_error(vaeBestSubset_(ip$mu, ip$covMat, omega, isFree, ci$penalty, "bogus"), "lifo")
   })
 
   test_that("bnbStrategy is tunable in vaeControl and defaults to lifo", {
@@ -107,7 +119,8 @@ nmTest({
 
   test_that("nCov=32 selects the exact sparse support quickly (regresses 1u<<32 overflow)", {
     g <- readRDS(test_path("baselines", "vae-miqp-golden.rds"))
-    ci <- g$E; ip <- ci$inputs
+    ci <- g$E
+    ip <- ci$inputs
     t0 <- proc.time()[["elapsed"]]
     got <- vaeBestSubset_(ip$mu, ip$covMat, ip$omega, ip$isFree, ci$penalty)
     dt <- proc.time()[["elapsed"]] - t0

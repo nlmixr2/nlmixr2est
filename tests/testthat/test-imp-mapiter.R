@@ -44,10 +44,13 @@ nmTest({
     .dat <- nlmixr2data::theo_sd
     .run <- function(mapIter) {
       suppressWarnings(suppressMessages(
-        nlmixr2(one.cmt, .dat, "impmap",
-                impmapControl(print = 0L, nIter = 5L, isample = 100L,
-                              mapIter = mapIter, covMethod = "",
-                              calcTables = FALSE))))
+        nlmixr2(
+          one.cmt,
+          .dat,
+          "impmap",
+          impmapControl(print = 0L, nIter = 5L, isample = 100L, mapIter = mapIter, covMethod = "", calcTables = FALSE)
+        )
+      ))
     }
     .f1 <- .run(1L)
     .f3 <- .run(3L)

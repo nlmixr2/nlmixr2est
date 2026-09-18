@@ -2,20 +2,19 @@
 #'@export
 nlmixr2Est.ifoce <- function(env, ...) {
   .ui <- env$ui
-  rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'ifoce'",
-                             .var.name=.ui$modelName)
+  rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'ifoce'", .var.name = .ui$modelName)
   .control <- env$control
-  .foceiFamilyControl(env, ..., type="ifoceControl")
+  .foceiFamilyControl(env, ..., type = "ifoceControl")
   .ifoceControlToFoceiControl(env)
   on.exit({
-    if (exists("control", envir=.ui)) {
-      rm("control", envir=.ui)
+    if (exists("control", envir = .ui)) {
+      rm("control", envir = .ui)
     }
   })
   env$ifoceControl <- .control
   env$est <- "ifoce"
   .ui <- env$ui
-  .foceiFamilyReturn(env, .ui, ..., est="ifoce")
+  .foceiFamilyReturn(env, .ui, ..., est = "ifoce")
 }
 attr(nlmixr2Est.ifoce, "nlmixr2Priors") <- "general"
 attr(nlmixr2Est.ifoce, "iov") <- TRUE

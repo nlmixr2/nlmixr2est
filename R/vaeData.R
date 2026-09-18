@@ -5,8 +5,24 @@
 # Encoder-input standardization follows the reference (time/max, (DV-mean)/sd).
 
 # Data columns never treated as covariate candidates by the VAE search
-.vaeReservedCols <- c("ID", "TIME", "DV", "EVID", "AMT", "CMT", "MDV", "SS", "II",
-                      "ADDL", "RATE", "DUR", "DVID", "CENS", "LIMIT", "OCC")
+.vaeReservedCols <- c(
+  "ID",
+  "TIME",
+  "DV",
+  "EVID",
+  "AMT",
+  "CMT",
+  "MDV",
+  "SS",
+  "II",
+  "ADDL",
+  "RATE",
+  "DUR",
+  "DVID",
+  "CENS",
+  "LIMIT",
+  "OCC"
+)
 
 # Finite fallback bound (+/-) for an unbounded model-declared covariate coefficient
 # regressed by the VAE M-step; keeps the 1-D optimize() step from running away.
@@ -42,13 +58,20 @@
 .vaeCovCoefBoundVec <- function(ui, data, names) {
   .b <- setNames(rep(.vaeCovCoefBound, length(names)), names)
   .mrc <- ui$muRefCovariateDataFrame
-  if (is.null(.mrc) || nrow(.mrc) == 0L) return(.b)
-  .dd <- as.data.frame(data); colnames(.dd) <- toupper(colnames(.dd))
+  if (is.null(.mrc) || nrow(.mrc) == 0L) {
+    return(.b)
+  }
+  .dd <- as.data.frame(data)
+  colnames(.dd) <- toupper(colnames(.dd))
   for (.nm in names) {
     .w <- which(.mrc$covariateParameter == .nm)
-    if (length(.w) == 0L) next
+    if (length(.w) == 0L) {
+      next
+    }
     .cov <- toupper(.mrc$covariate[.w[1]])
-    if (is.null(.dd[[.cov]])) next
+    if (is.null(.dd[[.cov]])) {
+      next
+    }
     .mx <- max(abs(as.numeric(.dd[[.cov]])), na.rm = TRUE)
     if (is.finite(.mx) && .mx > 0) .b[.nm] <- min(.vaeCovCoefBound, .vaeCovCoefEffect / .mx)
   }
@@ -79,16 +102,16 @@
 .vaeCovLevels <- function(v, catCutoff) {
   .s <- as.character(v)
   .s <- .s[!is.na(.s)]
-  if (length(.s) == 0L) return(list(ref = NA_character_, levels = character(0),
-                                    dropped = character(0)))
+  if (length(.s) == 0L) {
+    return(list(ref = NA_character_, levels = character(0), dropped = character(0)))
+  }
   ## table() orders alphabetically and sort() is stable, so a frequency tie
   ## resolves to the alphabetically first level -- deterministic either way
   .t <- sort(table(.s), decreasing = TRUE)
   .p <- .t / sum(.t)
   .ref <- names(.t)[1L]
   .keep <- names(.p)[.p >= catCutoff & names(.p) != .ref]
-  list(ref = .ref, levels = .keep,
-       dropped = setdiff(names(.p), c(.ref, .keep)))
+  list(ref = .ref, levels = .keep, dropped = setdiff(names(.p), c(.ref, .keep)))
 }
 
 #' Families a covariate's columns must span, given the shape rules
@@ -102,9 +125,13 @@
   .sh <- unique(unlist(lapply(seq_len(nrow(shapeRules)), function(.i) {
     if (is.na(shapeRules$cov[.i]) || identical(shapeRules$cov[.i], toupper(cov))) {
       shapeRules$shapes[[.i]]
-    } else character(0)
+    } else {
+      character(0)
+    }
   })))
-  if (length(.sh) == 0L) .sh <- .vaeDefaultShapes
+  if (length(.sh) == 0L) {
+    .sh <- .vaeDefaultShapes
+  }
   ## Drop shapes that cannot be written at this center before choosing which one
   ## names each family, so a usable sibling (e.g. "lin" for "center") wins.  When
   ## NOTHING requested is writable, substitute each family's plain form rather
@@ -115,16 +142,17 @@
     if (length(.u) > 0L) {
       .sh <- .u
     } else {
-      .sh <- unname(c(log = "power", lin = "lin",
-                      hockey = "hockey")[unique(.vaeShapeFamily(.sh))])
+      .sh <- unname(c(log = "power", lin = "lin", hockey = "hockey")[unique(.vaeShapeFamily(.sh))])
       .sub <- TRUE
     }
   }
   .fam <- .vaeShapeFamily(.sh)
   .u <- unique(.fam)
-  list(family = .u, substituted = .sub,
-       repShape = vapply(.u, function(.f) .sh[which(.fam == .f)[1L]],
-                         character(1), USE.NAMES = FALSE))
+  list(
+    family = .u,
+    substituted = .sub,
+    repShape = vapply(.u, function(.f) .sh[which(.fam == .f)[1L]], character(1), USE.NAMES = FALSE)
+  )
 }
 
 #' Discover + encode subject-level covariates for the VAE search
@@ -144,11 +172,18 @@
 #'   covBlock, covMat, covType, covPop, covExpr, covCanon, tvExcl, catDropped,
 #'   logDrop, shapeSub, naExcl, hockeyDrop)
 #' @noRd
-.vaeCovariateSearch <- function(d, ids, shapeRules = NULL,
-                                covCenterType = c("median", "mean"),
-                                covCenter = NULL, catCutoff = 0.05) {
+.vaeCovariateSearch <- function(
+  d,
+  ids,
+  shapeRules = NULL,
+  covCenterType = c("median", "mean"),
+  covCenter = NULL,
+  catCutoff = 0.05
+) {
   covCenterType <- match.arg(covCenterType)
-  if (is.null(shapeRules)) shapeRules <- .vaeResolveShapes(NULL)$rules
+  if (is.null(shapeRules)) {
+    shapeRules <- .vaeResolveShapes(NULL)$rules
+  }
   N <- length(ids)
   ## auto-discover subject-level covariate candidates (constant within ID),
   ## excluding reserved data columns
@@ -180,12 +215,20 @@
   }
   ## Constant WITHIN a subject, ignoring missing entries -- an NA on one row does
   ## not make an otherwise fixed covariate time-varying.
-  .isSubjConst <- vapply(.allCand, function(nm) {
-    all(vapply(ids, function(id) {
-      .u <- unique(d[[nm]][d$ID == id])
-      length(.u[!is.na(.u)]) <= 1L
-    }, logical(1)))
-  }, logical(1))
+  .isSubjConst <- vapply(
+    .allCand,
+    function(nm) {
+      all(vapply(
+        ids,
+        function(id) {
+          .u <- unique(d[[nm]][d$ID == id])
+          length(.u[!is.na(.u)]) <= 1L
+        },
+        logical(1)
+      ))
+    },
+    logical(1)
+  )
   # The VAE covariate search absorbs covariates as subject-level (time-invariant)
   # effects, so a covariate that varies within a subject (time-varying) cannot be
   # searched.  Unlike saem/mu-focei (whose covariates are declared in the model,
@@ -200,17 +243,20 @@
   ## model has no ifelse() guard to carry an imputation to solve time.  (An NA
   ## also used to reach `all(v > 0)` and abort the whole fit with "missing value
   ## where TRUE/FALSE needed".)
-  .complete <- vapply(.raw, function(nm) {
-    v <- .subjVal(nm)
-    !anyNA(v) && (!is.numeric(v) || all(is.finite(v)))
-  }, logical(1))
+  .complete <- vapply(
+    .raw,
+    function(nm) {
+      v <- .subjVal(nm)
+      !anyNA(v) && (!is.numeric(v) || all(is.finite(v)))
+    },
+    logical(1)
+  )
   .naExcl <- .raw[!.complete]
   .raw <- .raw[.complete]
   ## A covariate with a single distinct value carries no information, and as a
   ## constant 0/1 indicator it would enter the design as a column of ones --
   ## duplicating the intercept and making the least-squares M-step singular.
-  .raw <- .raw[vapply(.raw, function(nm) length(unique(.subjVal(nm))) > 1L,
-                      logical(1))]
+  .raw <- .raw[vapply(.raw, function(nm) length(unique(.subjVal(nm))) > 1L, logical(1))]
 
   .cols <- list()
   .rawVals <- list()
@@ -224,17 +270,25 @@
   ## arms of ONE relationship and are selected all-or-none.  `block` defaults to
   ## the column's own name, so every column is its own block unless it says
   ## otherwise -- which reproduces the historic per-column search exactly.
-  .add <- function(name, raw, shape, family, level, group, values, type,
-                   center, expr, block = NULL) {
+  .add <- function(name, raw, shape, family, level, group, values, type, center, expr, block = NULL) {
     ## a level containing "_" can collide with another covariate's column name
     ## (covariate WT level "A_B" vs covariate WT_A level "B"), and a duplicate
     ## name makes the second column unreachable through match()
     name <- .vaeUniqueName(name, vapply(.cols, `[[`, character(1), "name"))
     .cols[[length(.cols) + 1L]] <<-
-      list(name = name, raw = raw, shape = shape, family = family,
-           level = level, group = group, values = values, type = type,
-           center = center, expr = expr,
-           block = if (is.null(block)) name else block)
+      list(
+        name = name,
+        raw = raw,
+        shape = shape,
+        family = family,
+        level = level,
+        group = group,
+        values = values,
+        type = type,
+        center = center,
+        expr = expr,
+        block = if (is.null(block)) name else block
+      )
   }
 
   for (nm in .raw) {
@@ -254,11 +308,9 @@
     .isInd <- .isNum && isTRUE(all(v %in% c(0, 1)))
     if (.isMuDer) {
       .ctr <- .vaeCovCenterValue(nm, v, covCenterType, covCenter)
-      .add(nm, nm, "lin", "lin", NA_character_, nm, v - .ctr, "categorical",
-           .ctr, .vaeShapeExpr("lin", nm, .ctr))
+      .add(nm, nm, "lin", "lin", NA_character_, nm, v - .ctr, "categorical", .ctr, .vaeShapeExpr("lin", nm, .ctr))
     } else if (.isInd) {
-      .add(nm, nm, "cat", "cat", NA_character_, nm, v, "categorical", 0,
-           .vaeShapeExpr("cat", nm, raw = TRUE))
+      .add(nm, nm, "cat", "cat", NA_character_, nm, v, "categorical", 0, .vaeShapeExpr("cat", nm, raw = TRUE))
     } else if (.isNum && length(unique(v)) > 2L) {
       ## continuous: one column per eligible shape family
       .ctr <- .vaeCovCenterValue(nm, v, covCenterType, covCenter)
@@ -266,7 +318,9 @@
       ## center is 0) must not name a column -- it would be written back as a
       ## division by zero with the coefficient rescaled to nothing
       .fam <- .vaeCovFamilies(shapeRules, nm, .ctr)
-      if (isTRUE(.fam$substituted)) .shapeSub <- c(.shapeSub, nm)
+      if (isTRUE(.fam$substituted)) {
+        .shapeSub <- c(.shapeSub, nm)
+      }
       .canLog <- all(v > 0) && .ctr > 0
       ## A hockey knot with (almost) nothing on one side leaves that arm a column
       ## of zeros, which makes the least-squares M-step singular.  The median
@@ -276,19 +330,28 @@
       ## documented setting ("test every level"), and against a bare proportion a
       ## knot outside the data range would pass with an EMPTY side
       .canHockey <- min(sum(v < .ctr), sum(v >= .ctr)) >= max(1, catCutoff * N)
-      .f <- .fam$family; .r <- .fam$repShape
+      .f <- .fam$family
+      .r <- .fam$repShape
       .keep <- (.f != "log" | .canLog) & (.f != "hockey" | .canHockey)
-      if (any(.f == "hockey" & !.canHockey)) .hockeyDrop <- c(.hockeyDrop, nm)
+      if (any(.f == "hockey" & !.canHockey)) {
+        .hockeyDrop <- c(.hockeyDrop, nm)
+      }
       if (!any(.keep)) {
         ## every requested family is undefined here (log shapes on a covariate
         ## with non-positive values, or a hockey knot with an empty side); fall
         ## back to the linear family rather than silently dropping the covariate
         ## from the search
-        if (any(.f == "log" & !.canLog)) .logDrop <- c(.logDrop, nm)
-        .f <- "lin"; .r <- "lin"
+        if (any(.f == "log" & !.canLog)) {
+          .logDrop <- c(.logDrop, nm)
+        }
+        .f <- "lin"
+        .r <- "lin"
       } else {
-        if (any(.f == "log" & !.canLog)) .logDrop <- c(.logDrop, nm)
-        .f <- .f[.keep]; .r <- .r[.keep]
+        if (any(.f == "log" & !.canLog)) {
+          .logDrop <- c(.logDrop, nm)
+        }
+        .f <- .f[.keep]
+        .r <- .r[.keep]
       }
       for (.i in seq_along(.f)) {
         ## every shape family of this covariate shares the covariate's key, so
@@ -301,14 +364,34 @@
           ## hockey stick.
           .blk <- paste0(nm, "|hockey")
           for (.arm in .vaeHockeyArms) {
-            .add(paste0(nm, "_", .arm), nm, .arm, "hockey", NA_character_, nm,
-                 .vaeShapeValue(.arm, v, .ctr), "continuous", .ctr,
-                 .vaeShapeExpr(.arm, nm, .ctr), block = .blk)
+            .add(
+              paste0(nm, "_", .arm),
+              nm,
+              .arm,
+              "hockey",
+              NA_character_,
+              nm,
+              .vaeShapeValue(.arm, v, .ctr),
+              "continuous",
+              .ctr,
+              .vaeShapeExpr(.arm, nm, .ctr),
+              block = .blk
+            )
           }
         } else {
           .val <- if (.f[.i] == "log") log(v / .ctr) else v - .ctr
-          .add(paste0(nm, "_", .r[.i]), nm, .r[.i], .f[.i], NA_character_, nm,
-               .val, "continuous", .ctr, .vaeShapeExpr(.r[.i], nm, .ctr))
+          .add(
+            paste0(nm, "_", .r[.i]),
+            nm,
+            .r[.i],
+            .f[.i],
+            NA_character_,
+            nm,
+            .val,
+            "continuous",
+            .ctr,
+            .vaeShapeExpr(.r[.i], nm, .ctr)
+          )
         }
       }
     } else {
@@ -322,9 +405,18 @@
       .s <- as.character(v)
       for (.l in .lv$levels) {
         ## a distinct key per level, so levels never exclude one another
-        .add(paste0(nm, "_", .l), nm, "cat", "cat", .l, paste0(nm, "|", .l),
-             as.numeric(!is.na(.s) & .s == .l), "categorical", 0,
-             .vaeShapeExpr("cat", nm, level = .vaeCovLevelValue(v, .l)))
+        .add(
+          paste0(nm, "_", .l),
+          nm,
+          "cat",
+          "cat",
+          .l,
+          paste0(nm, "|", .l),
+          as.numeric(!is.na(.s) & .s == .l),
+          "categorical",
+          0,
+          .vaeShapeExpr("cat", nm, level = .vaeCovLevelValue(v, .l))
+        )
       }
     }
   }
@@ -332,30 +424,38 @@
   .nc <- length(.cols)
   .covNames <- vapply(.cols, `[[`, character(1), "name")
   .covMat <- matrix(0, N, .nc, dimnames = list(NULL, .covNames))
-  for (.i in seq_len(.nc)) .covMat[, .i] <- .cols[[.i]]$values
+  for (.i in seq_len(.nc)) {
+    .covMat[, .i] <- .cols[[.i]]$values
+  }
   ## group ids are derived from the keys rather than counted as columns are
   ## emitted, so a covariate that contributes NO column cannot shift them
   .key <- vapply(.cols, `[[`, character(1), "group")
   .covGroup <- match(.key, unique(.key))
   .bkey <- vapply(.cols, `[[`, character(1), "block")
   .covBlock <- match(.bkey, unique(.bkey))
-  list(covNames = .covNames,
-       covRaw = vapply(.cols, `[[`, character(1), "raw"),
-       covShape = vapply(.cols, `[[`, character(1), "shape"),
-       covFamily = vapply(.cols, `[[`, character(1), "family"),
-       covLevel = vapply(.cols, `[[`, character(1), "level"),
-       covGroup = .covGroup,
-       covBlock = .covBlock,
-       covMat = .covMat,
-       covType = vapply(.cols, `[[`, character(1), "type"),
-       covPop = vapply(.cols, `[[`, numeric(1), "center"),
-       covExpr = vapply(.cols, `[[`, character(1), "expr"),
-       ## the encoder head takes one column per GROUP: alternate shapes are
-       ## near-collinear copies, but distinct factor levels are not
-       covCanon = !duplicated(.covGroup), covRawVal = .rawVals,
-       tvExcl = .tvExcl, catDropped = .catDropped, logDrop = unique(.logDrop),
-       shapeSub = unique(.shapeSub), naExcl = .naExcl,
-       hockeyDrop = unique(.hockeyDrop))
+  list(
+    covNames = .covNames,
+    covRaw = vapply(.cols, `[[`, character(1), "raw"),
+    covShape = vapply(.cols, `[[`, character(1), "shape"),
+    covFamily = vapply(.cols, `[[`, character(1), "family"),
+    covLevel = vapply(.cols, `[[`, character(1), "level"),
+    covGroup = .covGroup,
+    covBlock = .covBlock,
+    covMat = .covMat,
+    covType = vapply(.cols, `[[`, character(1), "type"),
+    covPop = vapply(.cols, `[[`, numeric(1), "center"),
+    covExpr = vapply(.cols, `[[`, character(1), "expr"),
+    ## the encoder head takes one column per GROUP: alternate shapes are
+    ## near-collinear copies, but distinct factor levels are not
+    covCanon = !duplicated(.covGroup),
+    covRawVal = .rawVals,
+    tvExcl = .tvExcl,
+    catDropped = .catDropped,
+    logDrop = unique(.logDrop),
+    shapeSub = unique(.shapeSub),
+    naExcl = .naExcl,
+    hockeyDrop = unique(.hockeyDrop)
+  )
 }
 
 #' Search column a model-declared covariate pair pins to
@@ -370,14 +470,20 @@
 #' @noRd
 .vaePinColumn <- function(cov, pair) {
   .w <- which(cov$covRaw == pair$covName)
-  if (length(.w) == 0L) return(NA_integer_)
+  if (length(.w) == 0L) {
+    return(NA_integer_)
+  }
   ## the family the coefficient was WRITTEN in, so `beta*(WT - 70)` pins to the
   ## linear column just as `beta*log(WT/70)` pins to the log one
   ## A bare linear multiplier fits either an indicator column or a mu2/mu3
   ## pre-transformed one, which the search stores as the linear family.
   .want <- if (!is.null(pair$family) && !is.na(pair$family)) {
     if (identical(pair$family, "cat")) c("cat", "lin") else pair$family
-  } else if (identical(pair$covType, "continuous")) "log" else c("lin", "cat")
+  } else if (identical(pair$covType, "continuous")) {
+    "log"
+  } else {
+    c("lin", "cat")
+  }
   .m <- .w[cov$covFamily[.w] %in% .want]
   ## A written level comparison pins to THAT level's indicator.  If the level has
   ## no column -- it was lumped into the reference by catCutoff, or is absent from
@@ -439,39 +545,63 @@
 #'
 #' # restrict the explored shapes
 #' vaeCovariates(d, shapes = "power")
-vaeCovariates <- function(data, warn = TRUE,
-                          shapes = c("power", "lin", "log", "identity", "center", "hockey"),
-                          covCenterType = c("median", "mean"),
-                          covCenter = NULL, catCutoff = 0.05,
-                          colinearCut = .vaeColinearCut) {
+vaeCovariates <- function(
+  data,
+  warn = TRUE,
+  shapes = c("power", "lin", "log", "identity", "center", "hockey"),
+  covCenterType = c("median", "mean"),
+  covCenter = NULL,
+  catCutoff = 0.05,
+  colinearCut = .vaeColinearCut
+) {
   checkmate::assertLogical(warn, len = 1, any.missing = FALSE)
-  checkmate::assertNumeric(colinearCut, lower = 0, upper = 1, len = 1,
-                           any.missing = FALSE)
+  checkmate::assertNumeric(colinearCut, lower = 0, upper = 1, len = 1, any.missing = FALSE)
   d <- as.data.frame(data)
   names(d) <- toupper(names(d))
   if (is.null(d$ID)) {
     stop("'data' must contain an ID column", call. = FALSE)
   }
-  .cov <- .vaeCovariateSearch(d, unique(d$ID), .vaeResolveShapes(shapes)$rules,
-                              match.arg(covCenterType), covCenter, catCutoff)
+  .cov <- .vaeCovariateSearch(
+    d,
+    unique(d$ID),
+    .vaeResolveShapes(shapes)$rules,
+    match.arg(covCenterType),
+    covCenter,
+    catCutoff
+  )
   if (warn && length(.cov$tvExcl) > 0L) {
-    warning("time-varying covariate(s) were excluded from automatic covariate search: ",
-            paste(.cov$tvExcl, collapse = ", "), call. = FALSE)
+    warning(
+      "time-varying covariate(s) were excluded from automatic covariate search: ",
+      paste(.cov$tvExcl, collapse = ", "),
+      call. = FALSE
+    )
   }
   if (warn && length(.cov$naExcl) > 0L) {
-    warning("covariate(s) with missing values were excluded from automatic covariate search: ",
-            paste(.cov$naExcl, collapse = ", "), call. = FALSE)
+    warning(
+      "covariate(s) with missing values were excluded from automatic covariate search: ",
+      paste(.cov$naExcl, collapse = ", "),
+      call. = FALSE
+    )
   }
   if (warn && length(.cov$hockeyDrop) > 0L) {
-    warning("hockey skipped, <5% of subjects one side of the knot: ",
-            paste(.cov$hockeyDrop, collapse = ", "), call. = FALSE)
+    warning(
+      "hockey skipped, <5% of subjects one side of the knot: ",
+      paste(.cov$hockeyDrop, collapse = ", "),
+      call. = FALSE
+    )
   }
-  data.frame(covariate = .cov$covNames, raw = .cov$covRaw, shape = .cov$covShape,
-             level = .cov$covLevel, group = .cov$covGroup,
-             block = .cov$covBlock,
-             cluster = .vaeCovCluster(.cov$covMat, .cov$covGroup, colinearCut),
-             type = .cov$covType,
-             center = .cov$covPop, row.names = NULL)
+  data.frame(
+    covariate = .cov$covNames,
+    raw = .cov$covRaw,
+    shape = .cov$covShape,
+    level = .cov$covLevel,
+    group = .cov$covGroup,
+    block = .cov$covBlock,
+    cluster = .vaeCovCluster(.cov$covMat, .cov$covGroup, colinearCut),
+    type = .cov$covType,
+    center = .cov$covPop,
+    row.names = NULL
+  )
 }
 
 #' Detect a clean `log(cov/center)` form for `cov` inside an expression.
@@ -483,15 +613,21 @@ vaeCovariates <- function(data, warn = TRUE,
 #' @noRd
 .vaeLogCenter <- function(e, cov) {
   if (is.call(e)) {
-    if (identical(e[[1L]], as.name("log")) && length(e) == 2L &&
-          cov %in% all.vars(e[[2L]])) {
+    if (identical(e[[1L]], as.name("log")) && length(e) == 2L && cov %in% all.vars(e[[2L]])) {
       .a <- e[[2L]]
       if (is.name(.a) && identical(as.character(.a), cov)) {
         return(list(inLog = TRUE, center = 1))
       }
-      if (is.call(.a) && identical(.a[[1L]], as.name("/")) && length(.a) == 3L &&
-            is.name(.a[[2L]]) && identical(as.character(.a[[2L]]), cov) &&
-            is.numeric(.a[[3L]]) && length(.a[[3L]]) == 1L && is.finite(.a[[3L]])) {
+      if (
+        is.call(.a) &&
+          identical(.a[[1L]], as.name("/")) &&
+          length(.a) == 3L &&
+          is.name(.a[[2L]]) &&
+          identical(as.character(.a[[2L]]), cov) &&
+          is.numeric(.a[[3L]]) &&
+          length(.a[[3L]]) == 1L &&
+          is.finite(.a[[3L]])
+      ) {
         return(list(inLog = TRUE, center = as.numeric(.a[[3L]])))
       }
       return(list(inLog = TRUE, center = NA_real_))
@@ -514,9 +650,16 @@ vaeCovariates <- function(data, warn = TRUE,
 .vaeCoefCov <- function(e, coef, covs) {
   if (is.call(e)) {
     if (identical(e[[1L]], as.name("*")) && length(e) == 3L) {
-      .lv <- all.vars(e[[2L]]); .rv <- all.vars(e[[3L]])
-      if (coef %in% .lv) { .c <- intersect(.rv, covs); if (length(.c) == 1L) return(.c) }
-      if (coef %in% .rv) { .c <- intersect(.lv, covs); if (length(.c) == 1L) return(.c) }
+      .lv <- all.vars(e[[2L]])
+      .rv <- all.vars(e[[3L]])
+      if (coef %in% .lv) {
+        .c <- intersect(.rv, covs)
+        if (length(.c) == 1L) return(.c)
+      }
+      if (coef %in% .rv) {
+        .c <- intersect(.lv, covs)
+        if (length(.c) == 1L) return(.c)
+      }
     }
     for (.i in seq_along(e)[-1L]) {
       .r <- .vaeCoefCov(e[[.i]], coef, covs)
@@ -544,7 +687,9 @@ vaeCovariates <- function(data, warn = TRUE,
 #' @noRd
 .vaeModelCovariatePairs <- function(ui, cov) {
   .coefThetas <- .vaeCovariateCoefThetas(ui)
-  if (length(.coefThetas) == 0L) return(NULL)
+  if (length(.coefThetas) == 0L) {
+    return(NULL)
+  }
   ## A declared pair names a RAW data column, while the search pool holds one
   ## column per shape/level.  Resolve against the raw names here and let
   ## .vaePinColumn pick the column matching the written form.
@@ -553,12 +698,16 @@ vaeCovariates <- function(data, warn = TRUE,
   .thetaForEta <- .foceiEtaThetaMap(ui)$thetaForEta
   .thetaPool <- .thetaForEta[!is.na(.thetaForEta)]
   .allCov <- ui$allCovs
-  if (is.null(.allCov)) .allCov <- character(0)
+  if (is.null(.allCov)) {
+    .allCov <- character(0)
+  }
   .mrc <- ui$muRefCovariateDataFrame
   .lst <- ui$lstExpr
   .rows <- vector("list", 0L)
   for (.coef in .coefThetas) {
-    .thName <- NA_character_; .covTok <- NA_character_; .linear <- FALSE
+    .thName <- NA_character_
+    .covTok <- NA_character_
+    .linear <- FALSE
     if (!is.null(.mrc) && nrow(.mrc) > 0L && .coef %in% .mrc$covariateParameter) {
       .r <- .mrc[.mrc$covariateParameter == .coef, , drop = FALSE][1L, ]
       .thName <- as.character(.r$theta)
@@ -574,7 +723,9 @@ vaeCovariates <- function(data, warn = TRUE,
     }
     if (is.na(.covTok)) {
       .lines <- Filter(function(e) .coef %in% all.vars(e), .lst)
-      if (length(.lines) == 0L) next
+      if (length(.lines) == 0L) {
+        next
+      }
       .vars <- all.vars(.lines[[1L]])
       if (is.na(.thName)) {
         .thHit <- intersect(.thetaPool, .vars)
@@ -606,14 +757,23 @@ vaeCovariates <- function(data, warn = TRUE,
         .cl <- Filter(function(e) .coef %in% all.vars(e), .lst)
         .dc <- if (length(.cl)) {
           .vaeDetectShape(.vaeCoefFactor(.cl[[1L]], .coef), .covTok)
-        } else list(shape = NA_character_, level = NULL)
+        } else {
+          list(shape = NA_character_, level = NULL)
+        }
         if (.linear) {
-          .userCenter <- 0; .shape <- "cat"
+          .userCenter <- 0
+          .shape <- "cat"
         } else if (identical(.dc$shape, "cat")) {
-          .userCenter <- 0; .shape <- "cat"
+          .userCenter <- 0
+          .shape <- "cat"
           if (!is.null(.dc$level)) {
-            .level <- as.character(if (is.character(.dc$level)) .dc$level
-                                   else deparse(.dc$level))
+            .level <- as.character(
+              if (is.character(.dc$level)) {
+                .dc$level
+              } else {
+                deparse(.dc$level)
+              }
+            )
           }
         } else {
           .inPool <- FALSE
@@ -628,7 +788,9 @@ vaeCovariates <- function(data, warn = TRUE,
         ## direction: the coefficient is estimated in place instead)
         .ds <- if (length(.cl)) {
           .vaeDetectShape(.vaeCoefFactor(.cl[[1L]], .coef), .covTok)
-        } else list(shape = NA_character_, center = NA_real_)
+        } else {
+          list(shape = NA_character_, center = NA_real_)
+        }
         if (!is.na(.ds$shape) && is.finite(.ds$center)) {
           .shape <- .ds$shape
           .userCenter <- .ds$center
@@ -639,15 +801,27 @@ vaeCovariates <- function(data, warn = TRUE,
     }
     .rows[[length(.rows) + 1L]] <- data.frame(
       k = if (is.na(.k)) NA_integer_ else as.integer(.k),
-      covName = if (.inPool) covNames[.j] else if (is.na(.covTok)) NA_character_ else toupper(.covTok),
-      coefName = .coef, thetaName = if (is.na(.thName)) NA_character_ else .thName,
-      shape = .shape, level = .level,
+      covName = if (.inPool) {
+        covNames[.j]
+      } else if (is.na(.covTok)) {
+        NA_character_
+      } else {
+        toupper(.covTok)
+      },
+      coefName = .coef,
+      thetaName = if (is.na(.thName)) NA_character_ else .thName,
+      shape = .shape,
+      level = .level,
       family = if (is.na(.shape)) NA_character_ else .vaeShapeFamily(.shape),
       covType = if (is.na(.ct)) NA_character_ else .ct,
-      userCenter = .userCenter, inPool = .inPool,
-      stringsAsFactors = FALSE)
+      userCenter = .userCenter,
+      inPool = .inPool,
+      stringsAsFactors = FALSE
+    )
   }
-  if (length(.rows) == 0L) return(NULL)
+  if (length(.rows) == 0L) {
+    return(NULL)
+  }
   do.call(rbind, .rows)
 }
 
@@ -677,18 +851,26 @@ vaeCovariates <- function(data, warn = TRUE,
 #' @return integer 0/1 per regressed name
 #' @noRd
 .vaeRegressStage2 <- function(ui, regressNames, regressErrIdx0) {
-  if (length(regressNames) == 0L) return(integer(0))
+  if (length(regressNames) == 0L) {
+    return(integer(0))
+  }
   ## Recycling here would silently mis-mask: a structural theta labelled stage 2
   ## gets optimized against a frozen ODE, which is wrong rather than merely slow.
   ## The two are built together in .vaeDataPrep, so a mismatch is a caller bug --
   ## fail loudly at prep time instead.
   if (length(regressErrIdx0) != length(regressNames)) {
-    stop("vae: regressErrIdx0 (", length(regressErrIdx0), ") must match ",
-         "regressNames (", length(regressNames), ")", call. = FALSE)
+    stop(
+      "vae: regressErrIdx0 (",
+      length(regressErrIdx0),
+      ") must match ",
+      "regressNames (",
+      length(regressNames),
+      ")",
+      call. = FALSE
+    )
   }
   .isErr <- regressErrIdx0 >= 0L
-  .odeFree <- tryCatch(.vaeOdeFreeThetas(ui, regressNames),
-                       error = function(e) rep(FALSE, length(regressNames)))
+  .odeFree <- tryCatch(.vaeOdeFreeThetas(ui, regressNames), error = function(e) rep(FALSE, length(regressNames)))
   as.integer(.isErr | .odeFree)
 }
 
@@ -705,9 +887,13 @@ vaeCovariates <- function(data, warn = TRUE,
 .vaeOdeFreeThetas <- function(ui, thetaNames) {
   .no <- rep(FALSE, length(thetaNames))
   .lst <- tryCatch(ui$lstExpr, error = function(e) NULL)
-  if (is.null(.lst) || length(.lst) == 0L) return(.no)
+  if (is.null(.lst) || length(.lst) == 0L) {
+    return(.no)
+  }
   .states <- tryCatch(rxode2::rxState(ui), error = function(e) character(0))
-  if (length(.states) == 0L) return(.no)
+  if (length(.states) == 0L) {
+    return(.no)
+  }
   ## A linCmt() model solves compartments from parameters read by NAME (cl, v,
   ## ka, ...) that are not syntactically connected to the linCmt() call, so the
   ## assignment-graph scan cannot trace them.  When a linCmt() appears alongside
@@ -715,16 +901,28 @@ vaeCovariates <- function(data, warn = TRUE,
   ## -- everything stays in stage 1, and an error parameter is still stage-2
   ## eligible via the err rule.  (predDf$linCmt is FALSE here because the endpoint
   ## is the ODE state, so scan the expressions.)
-  .hasLinCmt <- any(vapply(.lst, function(.e)
-    grepl("(^|[^A-Za-z0-9._])linCmt[BAC]? *\\(",
-          paste(deparse(.e), collapse = " ")), logical(1)))
-  if (.hasLinCmt) return(.no)
-  .isAssign <- function(.ex) is.call(.ex) && length(.ex) == 3L &&
-    (identical(.ex[[1]], as.name("<-")) || identical(.ex[[1]], as.name("=")) ||
-       identical(.ex[[1]], as.name("~")))
+  .hasLinCmt <- any(vapply(
+    .lst,
+    function(.e) {
+      grepl("(^|[^A-Za-z0-9._])linCmt[BAC]? *\\(", paste(deparse(.e), collapse = " "))
+    },
+    logical(1)
+  ))
+  if (.hasLinCmt) {
+    return(.no)
+  }
+  .isAssign <- function(.ex) {
+    is.call(.ex) &&
+      length(.ex) == 3L &&
+      (identical(.ex[[1]], as.name("<-")) || identical(.ex[[1]], as.name("=")) || identical(.ex[[1]], as.name("~")))
+  }
   .syms <- function(.e) {
-    if (is.name(.e)) return(as.character(.e))
-    if (is.call(.e)) return(unlist(lapply(as.list(.e)[-1L], .syms), use.names = FALSE))
+    if (is.name(.e)) {
+      return(as.character(.e))
+    }
+    if (is.call(.e)) {
+      return(unlist(lapply(as.list(.e)[-1L], .syms), use.names = FALSE))
+    }
     character(0)
   }
   ## a solve-defining left-hand side: d/dt(x), x(0), and the dosing modifiers
@@ -737,14 +935,18 @@ vaeCovariates <- function(data, warn = TRUE,
   ## condition.  It is a plain NAME, so without this it would look like an
   ## ordinary intermediate and its rhs would never seed the solve.
   .initNames <- paste0(.states, "_0")
-  .seed <- character(0); .map <- list()
+  .seed <- character(0)
+  .map <- list()
   .add <- function(.ex) {
     .rhs <- .syms(.ex[[3]])
     if (is.name(.ex[[2]])) {
       ## Key by as.character(), the SAME way .syms() renders a reference, so the
       ## fixpoint does not depend on deparse quoting.
       .nm <- as.character(.ex[[2]])
-      if (.nm %in% .initNames) { .seed <<- c(.seed, .rhs); return(invisible()) }
+      if (.nm %in% .initNames) {
+        .seed <<- c(.seed, .rhs)
+        return(invisible())
+      }
       ## Every other name assignment -- including a `~` endpoint line -- becomes a
       ## map edge.  Do NOT special-case the endpoint variable: `conc ~ central / v`
       ## can define a variable that a `d/dt()` also reads, and dropping it would
@@ -757,7 +959,9 @@ vaeCovariates <- function(data, warn = TRUE,
     .txt <- paste(deparse(.ex[[2]]), collapse = "")
     ## `ll(x) ~ <density>` is the likelihood; seeding it would make every
     ## log-density symbol look solve-reachable and defeat the whole scan.
-    if (identical(.ex[[1]], as.name("~")) && grepl("^ll *\\(", .txt)) return(invisible())
+    if (identical(.ex[[1]], as.name("~")) && grepl("^ll *\\(", .txt)) {
+      return(invisible())
+    }
     ## solve-defining, or an lhs shape not recognized here: treat the rhs as
     ## reachable rather than guess (the safe direction: stage 1)
     .seed <<- c(.seed, .rhs)
@@ -768,18 +972,29 @@ vaeCovariates <- function(data, warn = TRUE,
   ## A gating CONDITION is seeded too -- it decides whether a d/dt runs, so the
   ## solve depends on it.
   .walk <- function(.ex) {
-    if (!is.call(.ex)) return(invisible())
-    if (.isAssign(.ex)) return(.add(.ex))
-    if (identical(.ex[[1]], as.name("if")) || identical(.ex[[1]], as.name("while"))) {
-      .seed <<- c(.seed, .syms(.ex[[2]]))
-      for (.k in seq_along(.ex)[-(1:2)]) .walk(.ex[[.k]])
+    if (!is.call(.ex)) {
       return(invisible())
     }
-    for (.k in seq_along(.ex)[-1L]) .walk(.ex[[.k]])
+    if (.isAssign(.ex)) {
+      return(.add(.ex))
+    }
+    if (identical(.ex[[1]], as.name("if")) || identical(.ex[[1]], as.name("while"))) {
+      .seed <<- c(.seed, .syms(.ex[[2]]))
+      for (.k in seq_along(.ex)[-(1:2)]) {
+        .walk(.ex[[.k]])
+      }
+      return(invisible())
+    }
+    for (.k in seq_along(.ex)[-1L]) {
+      .walk(.ex[[.k]])
+    }
     invisible()
   }
-  for (.ex in .lst) .walk(.ex)
-  .seen <- unique(.seed); .todo <- .seen
+  for (.ex in .lst) {
+    .walk(.ex)
+  }
+  .seen <- unique(.seed)
+  .todo <- .seen
   while (length(.todo) > 0L) {
     .nxt <- unique(unlist(.map[intersect(.todo, names(.map))], use.names = FALSE))
     .todo <- setdiff(.nxt, .seen)
@@ -799,7 +1014,9 @@ vaeCovariates <- function(data, warn = TRUE,
   .map <- .foceiEtaThetaMap(ui)
   .etaNames <- .map$etaNames
   .neta <- length(.etaNames)
-  if (.neta == 0L) stop("est=\"vae\" requires at least one random effect", call. = FALSE)
+  if (.neta == 0L) {
+    stop("est=\"vae\" requires at least one random effect", call. = FALSE)
+  }
 
   ## full theta vector (THETA_i_ in ntheta order), from ini estimates
   .thRows <- .idf[!is.na(.idf$ntheta), , drop = FALSE]
@@ -823,7 +1040,7 @@ vaeCovariates <- function(data, warn = TRUE,
   ## covariate expression) carries its structure.
   .zPopThetaIdx <- match(.map$thetaForEta, .thRows$name)
   .isFree <- is.na(.zPopThetaIdx)
-  .zPop <- numeric(.neta)                                      # structural population means (transformed)
+  .zPop <- numeric(.neta) # structural population means (transformed)
   .zPop[!.isFree] <- as.numeric(.th[.zPopThetaIdx[!.isFree]])
   ## latent dims whose backing structural theta is FIXED (e.g. nonMuTheta="fix", or
   ## a user-fixed theta carrying an eta): the M-step holds their typical value at
@@ -833,21 +1050,30 @@ vaeCovariates <- function(data, warn = TRUE,
 
   ## omega init (diagonal) for the etas + which variances are FIXED (held by the
   ## M-step, not estimated)
-  .omega <- vapply(.etaNames, function(nm) {
-    .r <- .idf[!is.na(.idf$neta1) & .idf$neta1 == .idf$neta2 & .idf$name == nm, , drop = FALSE]
-    as.numeric(.r$est[1])
-  }, numeric(1))
-  .omegaFix <- vapply(.etaNames, function(nm) {
-    .r <- .idf[!is.na(.idf$neta1) & .idf$neta1 == .idf$neta2 & .idf$name == nm, , drop = FALSE]
-    isTRUE(as.logical(.r$fix[1]))
-  }, logical(1))
+  .omega <- vapply(
+    .etaNames,
+    function(nm) {
+      .r <- .idf[!is.na(.idf$neta1) & .idf$neta1 == .idf$neta2 & .idf$name == nm, , drop = FALSE]
+      as.numeric(.r$est[1])
+    },
+    numeric(1)
+  )
+  .omegaFix <- vapply(
+    .etaNames,
+    function(nm) {
+      .r <- .idf[!is.na(.idf$neta1) & .idf$neta1 == .idf$neta2 & .idf$name == nm, , drop = FALSE]
+      isTRUE(as.logical(.r$fix[1]))
+    },
+    logical(1)
+  )
   ## full ini omega block (declared off-diagonals included) + per-entry fix; the
   ## M-step estimates every nonzero entry of this structure
   .omBlock <- .omegaBlockFromIniDf(.idf, .etaNames)
   ## structural-theta bounds per eta (Inf/-Inf when unbounded or free): the M-step
   ## clamps the population estimate to [lower, upper], giving the constrained
   ## estimate (at the bound when the unconstrained optimum is outside).
-  .zPopLower <- rep(-Inf, .neta); .zPopUpper <- rep(Inf, .neta)
+  .zPopLower <- rep(-Inf, .neta)
+  .zPopUpper <- rep(Inf, .neta)
   .zPopLower[!.isFree] <- as.numeric(.thRows$lower[.zPopThetaIdx[!.isFree]])
   .zPopUpper[!.isFree] <- as.numeric(.thRows$upper[.zPopThetaIdx[!.isFree]])
 
@@ -869,8 +1095,7 @@ vaeCovariates <- function(data, warn = TRUE,
   .cco <- if (is.null(control$catCutoff)) 0.05 else control$catCutoff
   .csh <- if (is.null(control$shapes)) "power" else control$shapes
   .resolvedShapes <- .vaeResolveShapes(.csh)
-  .cov <- .vaeCovariateSearch(d, .ids, .resolvedShapes$rules, .cct,
-                              control$covCenter, .cco)
+  .cov <- .vaeCovariateSearch(d, .ids, .resolvedShapes$rules, .cct, control$covCenter, .cco)
   if (length(.cov$tvExcl) > 0L) {
     ## keep the $runInfo note single-line even with many covariates
     .tvPre <- "time-varying covariate(s) not searched: "
@@ -890,8 +1115,7 @@ vaeCovariates <- function(data, warn = TRUE,
   }
   if (length(.cov$hockeyDrop) > 0L) {
     .hkPre <- "<5% of subjects one side of knot, hockey skipped: "
-    warning(.hkPre, .vaeTruncList(.cov$hockeyDrop, prefix = .hkPre),
-            call. = FALSE)
+    warning(.hkPre, .vaeTruncList(.cov$hockeyDrop, prefix = .hkPre), call. = FALSE)
   }
   if (length(.cov$naExcl) > 0L) {
     .naPre <- "covariate(s) with missing values not searched: "
@@ -905,8 +1129,7 @@ vaeCovariates <- function(data, warn = TRUE,
   ## model-declared covariates there is nothing to switch off -- the full search
   ## runs.  (Explicit covariateSelection=FALSE keeps its own path below.)
   .declaredCoefs <- .vaeCovariateCoefThetas(ui)
-  .searchOff <- isFALSE(control$pinCovariates) && length(.declaredCoefs) > 0L &&
-    !isFALSE(control$covariateSelection)
+  .searchOff <- isFALSE(control$pinCovariates) && length(.declaredCoefs) > 0L && !isFALSE(control$covariateSelection)
   if (.searchOff) {
     warning("pinCovariates=FALSE: model covariates estimated in place", call. = FALSE)
     .cov$covNames <- character(0)
@@ -947,15 +1170,19 @@ vaeCovariates <- function(data, warn = TRUE,
         .claim <- rep(NA_real_, .nCov)
         .claimShape <- rep(NA_character_, .nCov)
         for (.r in seq_len(nrow(.pinPairs))) {
-          if (!.pinPairs$inPool[.r]) next
+          if (!.pinPairs$inPool[.r]) {
+            next
+          }
           .j <- .vaePinColumn(.cov, .pinPairs[.r, , drop = FALSE])
           if (is.na(.j)) {
             .pinPairs$inPool[.r] <- FALSE
           } else if (is.na(.claim[.j])) {
             .claim[.j] <- .pinPairs$userCenter[.r]
             .claimShape[.j] <- .pinPairs$shape[.r]
-          } else if (!isTRUE(all.equal(.claim[.j], .pinPairs$userCenter[.r])) ||
-                       !identical(.claimShape[.j], .pinPairs$shape[.r])) {
+          } else if (
+            !isTRUE(all.equal(.claim[.j], .pinPairs$userCenter[.r])) ||
+              !identical(.claimShape[.j], .pinPairs$shape[.r])
+          ) {
             ## same column, different center OR different written shape: only one
             ## of them can own the column, so the rest go to the regress M-step
             .pinPairs$inPool[.r] <- FALSE
@@ -989,8 +1216,7 @@ vaeCovariates <- function(data, warn = TRUE,
         for (.j in which(!is.na(.claim))) {
           .sh <- .claimShape[.j]
           .rv <- .cov$covRawVal[[.cov$covRaw[.j]]]
-          if (!is.na(.sh) && !identical(.sh, "cat") && !is.null(.rv) &&
-                is.numeric(.rv)) {
+          if (!is.na(.sh) && !identical(.sh, "cat") && !is.null(.rv) && is.numeric(.rv)) {
             ## Rebuild the column as the model's OWN expression, so the estimated
             ## slope transfers back with no correction whatever shape was written.
             .cov$covMat[, .j] <- .vaeShapeValue(.sh, .rv, .claim[.j])
@@ -1025,8 +1251,7 @@ vaeCovariates <- function(data, warn = TRUE,
   ## The same holds for fixCov: the declaration is the more specific statement,
   ## so it wins, and the disagreement is reported rather than acted on.
   if (!.searchOff && !.pinActive && length(.cov$covNames) > 0L) {
-    .shapeMask <- .vaeShapeAllowMask(.cov, .resolvedShapes, .etaNames,
-                                     .foceiEtaThetaMap(ui)$thetaForEta)
+    .shapeMask <- .vaeShapeAllowMask(.cov, .resolvedShapes, .etaNames, .foceiEtaThetaMap(ui)$thetaForEta)
     ## Only when a search is actually going to run.  With
     ## covariateSelection=FALSE there is nothing for fixCov to narrow, so the
     ## error below would fire against a user who had ALREADY done what it tells
@@ -1037,9 +1262,11 @@ vaeCovariates <- function(data, warn = TRUE,
       ## almost certainly did not intend; covariateSelection=FALSE is the way to
       ## ask for no search at all.
       if (all(.shapeMask == 0L)) {
-        stop("shapes: fixCov=TRUE leaves no covariate searchable on any parameter\n",
-             "  use covariateSelection=FALSE to turn the search off outright",
-             call. = FALSE)
+        stop(
+          "shapes: fixCov=TRUE leaves no covariate searchable on any parameter\n",
+          "  use covariateSelection=FALSE to turn the search off outright",
+          call. = FALSE
+        )
       }
       ## Grouped by RAW covariate, not by column.  A covariate restricted to one
       ## shape has its other columns masked to zero while the covariate itself is
@@ -1049,14 +1276,12 @@ vaeCovariates <- function(data, warn = TRUE,
       .fxDrop <- names(.fxBy)[.fxBy == 0]
       if (length(.fxDrop) > 0L) {
         .fxPre <- "fixCov=TRUE, covariate(s) not searched: "
-        warning(.fxPre, .vaeTruncList(.fxDrop, prefix = .fxPre),
-                call. = FALSE)
+        warning(.fxPre, .vaeTruncList(.fxDrop, prefix = .fxPre), call. = FALSE)
       }
     }
     if (any(.shapeMask == 0L)) .covAllow <- .shapeMask
   } else if (isTRUE(.resolvedShapes$fixCov) && .pinActive) {
-    warning("fixCov=TRUE ignored: the model declares covariates, which pins the search",
-            call. = FALSE)
+    warning("fixCov=TRUE ignored: the model declares covariates, which pins the search", call. = FALSE)
   }
 
   ## Fixed-effect thetas estimated directly by a bounded bobyqa regression in the
@@ -1069,7 +1294,8 @@ vaeCovariates <- function(data, warn = TRUE,
   ## plus the ini() bounds (NA -> +-Inf).
   .regressNames <- character(0)
   .regressThetaIdx0 <- integer(0)
-  .regressLower <- numeric(0); .regressUpper <- numeric(0)
+  .regressLower <- numeric(0)
+  .regressUpper <- numeric(0)
   if (.vaeNonMuIsRegress(control$nonMuTheta)) {
     .regressNames <- .vaeNonMuThetas(ui)
   }
@@ -1110,7 +1336,8 @@ vaeCovariates <- function(data, warn = TRUE,
   if (length(.regressNames) > 0L) {
     .ri <- match(.regressNames, .thRows$name)
     .regressThetaIdx0 <- as.integer(.ri - 1L)
-    .lo <- as.numeric(.thRows$lower[.ri]); .hi <- as.numeric(.thRows$upper[.ri])
+    .lo <- as.numeric(.thRows$lower[.ri])
+    .hi <- as.numeric(.thRows$upper[.ri])
     .regressLower <- ifelse(is.na(.lo), -Inf, .lo)
     .regressUpper <- ifelse(is.na(.hi), Inf, .hi)
     ## A residual SCALE parameter must not be allowed to reach zero.  The
@@ -1124,7 +1351,9 @@ vaeCovariates <- function(data, warn = TRUE,
     .errScaleRel <- as.character(.idf$name[!is.na(.idf$err) & .idf$err %in% c("prop", "pow")])
     .dvObs <- suppressWarnings(as.numeric(d$DV[d$EVID == 0]))
     .dvSpread <- stats::sd(.dvObs[is.finite(.dvObs)])
-    if (!is.finite(.dvSpread) || .dvSpread <= 0) .dvSpread <- 1
+    if (!is.finite(.dvSpread) || .dvSpread <= 0) {
+      .dvSpread <- 1
+    }
     .isAbs <- .regressNames %in% .errScaleAbs
     .isRel <- .regressNames %in% .errScaleRel
     .regressLower[.isAbs] <- pmax(.regressLower[.isAbs], 1e-4 * .dvSpread)
@@ -1134,8 +1363,10 @@ vaeCovariates <- function(data, warn = TRUE,
     ## optimizer would otherwise search a meaningless range.  Constrain it to
     ## (-2, 2); SAEM does the same thing by mapping lambda through a bounded
     ## transform (`toLambda`).  A tighter user bound still wins.
-    .lamNames <- as.character(.idf$name[!is.na(.idf$err) &
-                                        .idf$err %in% c("boxCox", "yeoJohnson")])
+    .lamNames <- as.character(.idf$name[
+      !is.na(.idf$err) &
+        .idf$err %in% c("boxCox", "yeoJohnson")
+    ])
     if (length(.lamNames) > 0L) {
       .isLam <- .regressNames %in% .lamNames
       .regressLower[.isLam] <- pmax(.regressLower[.isLam], -2)
@@ -1190,16 +1421,20 @@ vaeCovariates <- function(data, warn = TRUE,
   .regressErrIdx0 <- if (length(.regressNames) > 0L) {
     .m <- match(.regressNames, names(.a))
     as.integer(ifelse(is.na(.m), 0L, .m) - 1L)
-  } else integer(0)
+  } else {
+    integer(0)
+  }
   .errThetaIdx <- as.integer(.errRow$ntheta)
   .errType <- as.character(.errRow$err)
-  .errLower <- as.numeric(.errRow$lower); .errUpper <- as.numeric(.errRow$upper)
+  .errLower <- as.numeric(.errRow$lower)
+  .errUpper <- as.numeric(.errRow$upper)
   ## residOptimize="twoStage" stage-2 eligibility (see .vaeRegressStage2)
   .regressStage2 <- .vaeRegressStage2(ui, .regressNames, .regressErrIdx0)
 
   ## per-subject decoder inputs + gather all obs for standardization
   subj <- vector("list", N)
-  .allTime <- numeric(0); .allDv <- numeric(0)
+  .allTime <- numeric(0)
+  .allDv <- numeric(0)
   for (i in seq_len(N)) {
     .di <- d[d$ID == .ids[i], , drop = FALSE]
     .obs <- .di[.di$EVID == 0, , drop = FALSE]
@@ -1208,9 +1443,9 @@ vaeCovariates <- function(data, warn = TRUE,
     ## M2/M3/M4 censoring columns (0 / NA when absent)
     .cens <- if (is.null(.obs$CENS)) integer(length(.y)) else as.integer(.obs$CENS)
     .limit <- if (is.null(.obs$LIMIT)) rep(NA_real_, length(.y)) else as.numeric(.obs$LIMIT)
-    subj[[i]] <- list(ev = .di, times = .times, y = .y, n = length(.times),
-                      cens = .cens, limit = .limit)
-    .allTime <- c(.allTime, .times); .allDv <- c(.allDv, .y)
+    subj[[i]] <- list(ev = .di, times = .times, y = .y, n = length(.times), cens = .cens, limit = .limit)
+    .allTime <- c(.allTime, .times)
+    .allDv <- c(.allDv, .y)
   }
   Tmax <- max(vapply(subj, function(s) s$n, integer(1)))
   .tMax <- max(.allTime)
@@ -1222,17 +1457,23 @@ vaeCovariates <- function(data, warn = TRUE,
   ## observed values only.
   if (identical(.inputScale, "reference")) {
     .padded <- c(.allDv, rep(0, N * Tmax - length(.allDv)))
-    .dvMean <- mean(.padded); .dvSd <- stats::sd(.padded)
+    .dvMean <- mean(.padded)
+    .dvSd <- stats::sd(.padded)
   } else {
-    .dvMean <- mean(.allDv); .dvSd <- stats::sd(.allDv)
+    .dvMean <- mean(.allDv)
+    .dvSd <- stats::sd(.allDv)
   }
-  if (!is.finite(.dvSd) || .dvSd <= 0) .dvSd <- 1
+  if (!is.finite(.dvSd) || .dvSd <= 0) {
+    .dvSd <- 1
+  }
 
   ## encoder inputs: [N, Tmax, 2] standardized (time, DV), padded; lengths
   dataIn <- array(0, c(N, Tmax, 2L))
   lengths <- integer(N)
   for (i in seq_len(N)) {
-    s <- subj[[i]]; ni <- s$n; lengths[i] <- ni
+    s <- subj[[i]]
+    ni <- s$n
+    lengths[i] <- ni
     dataIn[i, seq_len(ni), 1L] <- s$times / .tMax
     dataIn[i, seq_len(ni), 2L] <- (s$y - .dvMean) / .dvSd
   }
@@ -1260,12 +1501,14 @@ vaeCovariates <- function(data, warn = TRUE,
   ## the allowed column of a group need not be the group's first one (a pinned
   ## log(cov/center) pair takes the log column even when `shapes=` lists a linear
   ## shape first), and intersecting the two would drop the covariate entirely.
-  covIn <- if (isFALSE(control$covariateSelection) || .searchOff ||
-                 ncol(.cov$covMat) == 0L) {
+  covIn <- if (isFALSE(control$covariateSelection) || .searchOff || ncol(.cov$covMat) == 0L) {
     matrix(0, N, 0L)
   } else {
-    .sel <- if (is.null(.covAllow)) seq_len(ncol(.cov$covMat)) else
+    .sel <- if (is.null(.covAllow)) {
+      seq_len(ncol(.cov$covMat))
+    } else {
       which(colSums(.covAllow) > 0L)
+    }
     ## Dedupe to one BLOCK per group, not one column: the arms of a hockey block
     ## are complementary halves of one relationship, so keeping only the first
     ## would hand the encoder a covariate truncated at the knot.  A block never
@@ -1276,26 +1519,60 @@ vaeCovariates <- function(data, warn = TRUE,
     .keep <- .sel[.b %in% .b[!duplicated(.g)]]
     .cov$covMat[, .keep, drop = FALSE]
   }
-  if (!is.matrix(covIn) || nrow(covIn) != N) covIn <- matrix(0, N, 0L)
+  if (!is.matrix(covIn) || nrow(covIn) != N) {
+    covIn <- matrix(0, N, 0L)
+  }
 
-  list(N = N, neta = .neta, zDim = .neta, etaNames = .etaNames,
-       th = .th, zPopThetaIdx = .zPopThetaIdx, isFree = .isFree, omegaFix = .omegaFix,
-       zPopFix = .zPopFix,
-       zPopLower = .zPopLower, zPopUpper = .zPopUpper,
-       errThetaIdx = .errThetaIdx, errType = .errType,
-       errLower = .errLower, errUpper = .errUpper,
-       regressNames = .regressNames, regressThetaIdx0 = .regressThetaIdx0,
-       regressErrIdx0 = .regressErrIdx0, regressStage2 = .regressStage2,
-       regressLower = .regressLower, regressUpper = .regressUpper,
-       zPop = .zPop, omega = .omega, a = .a,
-       omegaMat = .omBlock$mat, omegaFixMat = .omBlock$fixMat,
-       subj = subj, dataIn = dataIn, lengths = lengths, covIn = covIn,
-       covNames = .cov$covNames, covMat = .cov$covMat, covType = .cov$covType,
-       covPop = .cov$covPop, covRaw = .cov$covRaw, covShape = .cov$covShape,
-       covFamily = .cov$covFamily, covLevel = .cov$covLevel,
-       covGroup = .cov$covGroup, covBlock = .cov$covBlock,
-       covExpr = .cov$covExpr,
-       covCanon = .cov$covCanon, shapeRules = .resolvedShapes$rules,
-       pinActive = .pinActive, pinPairs = .pinPairs, covAllow = .covAllow,
-       tMax = .tMax, dvMean = .dvMean, dvSd = .dvSd, Nobs = length(.allDv))
+  list(
+    N = N,
+    neta = .neta,
+    zDim = .neta,
+    etaNames = .etaNames,
+    th = .th,
+    zPopThetaIdx = .zPopThetaIdx,
+    isFree = .isFree,
+    omegaFix = .omegaFix,
+    zPopFix = .zPopFix,
+    zPopLower = .zPopLower,
+    zPopUpper = .zPopUpper,
+    errThetaIdx = .errThetaIdx,
+    errType = .errType,
+    errLower = .errLower,
+    errUpper = .errUpper,
+    regressNames = .regressNames,
+    regressThetaIdx0 = .regressThetaIdx0,
+    regressErrIdx0 = .regressErrIdx0,
+    regressStage2 = .regressStage2,
+    regressLower = .regressLower,
+    regressUpper = .regressUpper,
+    zPop = .zPop,
+    omega = .omega,
+    a = .a,
+    omegaMat = .omBlock$mat,
+    omegaFixMat = .omBlock$fixMat,
+    subj = subj,
+    dataIn = dataIn,
+    lengths = lengths,
+    covIn = covIn,
+    covNames = .cov$covNames,
+    covMat = .cov$covMat,
+    covType = .cov$covType,
+    covPop = .cov$covPop,
+    covRaw = .cov$covRaw,
+    covShape = .cov$covShape,
+    covFamily = .cov$covFamily,
+    covLevel = .cov$covLevel,
+    covGroup = .cov$covGroup,
+    covBlock = .cov$covBlock,
+    covExpr = .cov$covExpr,
+    covCanon = .cov$covCanon,
+    shapeRules = .resolvedShapes$rules,
+    pinActive = .pinActive,
+    pinPairs = .pinPairs,
+    covAllow = .covAllow,
+    tMax = .tMax,
+    dvMean = .dvMean,
+    dvSd = .dvSd,
+    Nobs = length(.allDv)
+  )
 }

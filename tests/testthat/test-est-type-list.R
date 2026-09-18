@@ -1,5 +1,4 @@
 test_that("tagged estimation-method list (issue #750)", {
-
   # built-in methods carry type/description attributes
   expect_equal(attr(nlmixr2Est.focei, "type"), "Linearized")
   expect_equal(attr(nlmixr2Est.focei, "description"), "FOCE with Interaction")

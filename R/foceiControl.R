@@ -17,25 +17,51 @@
   if (hessianMethod == 1L || innerOpt == 3L || innerOpt == 4L) {
     return(invisible(TRUE))
   }
-  stop("hessianMethod = \"", names(.hessianMethodIdx)[hessianMethod],
-    "\" requires innerOpt = \"trust\"", note,
+  stop(
+    "hessianMethod = \"",
+    names(.hessianMethodIdx)[hessianMethod],
+    "\" requires innerOpt = \"trust\"",
+    note,
     call. = FALSE
   )
 }
 
 .foceiControlInternal <- c(
-  "genRxControl", "resetEtaSize", "foceType",
-  "resetThetaSize", "resetThetaFinalSize",
-  "outerOptFun", "outerOptTxt", "skipCov",
-  "foceiMuRef", "foceiMuCovEta", "predNeq", "nfixed", "nomega",
-  "neta", "ntheta", "nF", "printTop", "needOptimHess",
-  "iterPrintControl", "est", "foceiMuModel", "foceiMuGroupTheta",
-  "foceiMuGroupEta", "foceiMuGroupCovStart", "foceiMuGroupCovCount",
-  "foceiMuGroupCovTheta", "foceiMuGroupCovUserFixed",
-  "foceiMuGroupThetaLower", "foceiMuGroupThetaUpper",
-  "foceiMuGroupCovLower", "foceiMuGroupCovUpper",
-  "foceiMuGroupCovData", "foceiMuGroupTol",
-  "foceiMuGroupMaxCycles", "foceiMuGroupClampRetries",
+  "genRxControl",
+  "resetEtaSize",
+  "foceType",
+  "resetThetaSize",
+  "resetThetaFinalSize",
+  "outerOptFun",
+  "outerOptTxt",
+  "skipCov",
+  "foceiMuRef",
+  "foceiMuCovEta",
+  "predNeq",
+  "nfixed",
+  "nomega",
+  "neta",
+  "ntheta",
+  "nF",
+  "printTop",
+  "needOptimHess",
+  "iterPrintControl",
+  "est",
+  "foceiMuModel",
+  "foceiMuGroupTheta",
+  "foceiMuGroupEta",
+  "foceiMuGroupCovStart",
+  "foceiMuGroupCovCount",
+  "foceiMuGroupCovTheta",
+  "foceiMuGroupCovUserFixed",
+  "foceiMuGroupThetaLower",
+  "foceiMuGroupThetaUpper",
+  "foceiMuGroupCovLower",
+  "foceiMuGroupCovUpper",
+  "foceiMuGroupCovData",
+  "foceiMuGroupTol",
+  "foceiMuGroupMaxCycles",
+  "foceiMuGroupClampRetries",
   # derived from covMethod ("analytic" vs the finite-difference
   # formulas); kept internal so a built control round-trips.
   "covType",
@@ -1100,207 +1126,210 @@
 #'
 #' @family Estimation control
 #' @export
-foceiControl <- function(sigdig = 3, #
-                         ...,
-                         epsilon = NULL, # 1e-4,
-                         maxInnerIterations = 1000, #
-                         maxOuterIterations = 5000, #
-                         n1qn1nsim = NULL, #
-                         print = 1L, #
-                         printNcol = NULL, #
-                         scaleTo = 1.0, #
-                         scaleObjective = 0, #
-                         normType = c("rescale2", "mean", "rescale", "std", "len", "constant"), #
-                         scaleType = c("nlmixr2", "norm", "mult", "multAdd"), #
-                         scaleCmax = 1e5, #
-                         scaleCmin = 1e-5, #
-                         scaleCband = c(0.1, 10), #
-                         scaleC = NULL, #
-                         scaleC0 = 1e5, #
-                         derivEps = rep(20 * sqrt(.Machine$double.eps), 2), #
-                         derivMethod = c("switch", "forward", "central"), #
-                         derivSwitchTol = NULL, #
-                         covDerivMethod = c("central", "forward"), #
-                         covMethod = c("r,s", "analytic", "r", "s", "sa", "imp", ""), #
-                         covSolveTol = NULL, #
-                         covFull = TRUE, #
-                         fast = FALSE, #
-                         priorMethod = c("auto", "general", "nwpri", "tnpri"), #
-                         fdOutlierZ = 3.5, #
-                         fdOutlierScale = TRUE, #
-                         fdRefine = c("chartrand", "lanczos", "richardson"), #
-                         fdLanczosM = 2L, #
-                         fdRichardsonR = 2L, #
-                         fdRichardsonV = 2.0, #
-                         fdChartrandAll = FALSE, #
-                         fdOutlierAny = FALSE, #
-                         fdIndividualStep = TRUE, #
-                         fdChartrand = TRUE, #
-                         # norm of weights = 1/0.225
-                         # hessEps = (1/0.225*.Machine$double.eps)^(1 / 4), #
-                         foceEbeTol = NULL, #
-                         hessEps = (.Machine$double.eps)^(1 / 3),
-                         # hessEpsLlik =(1/0.225*.Machine$double.eps)^(1/4),
-                         hessEpsLlik = (.Machine$double.eps)^(1 / 3),
-                         optimHessType = c("central", "forward"),
-                         optimHessCovType = c("central", "forward"),
-                         hessEtaStepMin = 0.05,
-                         censOption = c("gauss", "laplace"),
-                         eventType = c("central", "forward"), #
-                         eventSens = c("jump", "fd"), #
-                         centralDerivEps = rep(20 * sqrt(.Machine$double.eps), 2), #
-                         lbfgsLmm = 7L, #
-                         lbfgsPgtol = 0, #
-                         lbfgsFactr = NULL, #
-                         eigen = TRUE, #
-                         diagXform = c("sqrt", "log", "identity"), #
-                         iovXform = c("sd", "var", "logsd", "logvar"), #
-                         iovMethod = c("auto", "theta", "omega"), #
-                         sumProd = FALSE, #
-                         optExpression = TRUE, #
-                         literalFix = TRUE,
-                         literalFixRes = TRUE,
-                         ci = 0.95, #
-                         useColor = NULL, #
-                         boundTol = NULL, #
-                         calcTables = TRUE, #
-                         noAbort = TRUE, #
-                         interaction = TRUE, #
-                         foce = c("nonmem", "foce+"), #
-                         cholSEtol = (.Machine$double.eps)^(1 / 3), #
-                         cholAccept = 1e-3, #
-                         resetEtaP = 0.15, #
-                         # Default OFF.  The ETA-drift theta reset re-centers a
-                         # mu-referenced theta by the mean eta and restarts.  When the
-                         # etas cannot re-center -- e.g. every omega fixed, or a model
-                         # whose misfit the etas must absorb -- the shift does not stick,
-                         # the drift returns and the reset repeats until the restart cap
-                         # errors the fit out.  Where it does converge it lands on a worse
-                         # optimum than not resetting at all.  Same failure mode as the
-                         # mu-referenced (lin/irls) families' linear centering.
-                         resetThetaP = 0, #
-                         resetThetaFinalP = 0, #
-                         diagOmegaBoundUpper = 5, # diag(omega) = diag(omega)*diagOmegaBoundUpper; =1 no upper
-                         diagOmegaBoundLower = 100, # diag(omega) = diag(omega)/diagOmegaBoundLower; = 1 no lower
-                         cholSEOpt = FALSE, #
-                         cholSECov = FALSE, #
-                         fo = FALSE, #
-                         covTryHarder = FALSE, #
-                         outerOpt = c(
-                           "bobyqa",
-                           "nlminb",
-                           "lbfgsb3c",
-                           "L-BFGS-B",
-                           "mma",
-                           "lbfgsbLG",
-                           "slsqp",
-                           "uobyqa",
-                           "newuoa",
-                           "trust"
-                         ), #
-                         innerOpt = c("auto", "trust", "n1qn1", "BFGS"), #
-                         innerHessian = c("focei", "conditional"), #
-                         detHessian = c("focei", "conditional"), #
-                         hessianMethod = c("fd", "bfgs", "sr1", "bofill"), #
-                         ## trust-region inner optimizer (RcppTrust)
-                         trustConf = 0.975, # confidence level defining the trust-region radius
-                         trustRinit = NULL, # NULL -> derived from trustConf/neta
-                         trustRmax = NULL, # NULL -> derived from trustConf/neta
-                         trustFterm = NULL, # NULL -> 10^(-sigdig), NOT epsilon
-                         trustMterm = NULL, # NULL -> 10^(-sigdig), NOT epsilon
-                         ## trust-region OUTER optimizer (outerOpt="trust")
-                         outerTrustHessian = c("auto", "analytic", "bfgs", "fd"),
-                         outerTrustRinit = NULL, # NULL -> min(0.95, 0.2*max(abs(par)))
-                         outerTrustRmax = NULL, # NULL -> 8*outerTrustRinit
-                         outerTrustFterm = NULL, # NULL -> 10^(-sigdig-2)
-                         outerTrustMterm = NULL, # NULL -> outerTrustFterm
-                         outerTrustRelStep = 1e-3,
-                         outerTrustRestarts = 3L,
-                         ##
-                         rhobeg = .2, #
-                         rhoend = NULL, #
-                         npt = NULL, #
-                         ## nlminb
-                         rel.tol = NULL, #
-                         x.tol = NULL, #
-                         eval.max = 4000, #
-                         iter.max = 2000, #
-                         abstol = NULL, #
-                         reltol = NULL, #
-                         resetHessianAndEta = FALSE, #
-                         muModel = c("none", "irls", "lin"), #
-                         muRefCovAlg = TRUE, #
-                         muModelTol = 1e-5, #
-                         muModelMaxCycles = 20L, #
-                         muModelClampRetries = 10L, #
-                         stateTrim = Inf, #
-                         shi21maxOuter = 0L,
-                         shi21maxInner = 20L,
-                         shi21maxInnerCov = 20L,
-                         shi21maxFD = 20L,
-                         shi21hMax = 2.0,
-                         shi21hMin = 1e-4,
-                         gillK = 10L, #
-                         gillStep = 4, #
-                         gillFtol = 0, #
-                         gillRtol = sqrt(.Machine$double.eps), #
-                         gillKcov = 10L, #
-                         # gillKcovLlik = 20L,
-                         gillKcovLlik = 10L,
-                         gillStepCovLlik = 4.5,
-                         # gillStepCovLlik = 2,
-                         gillStepCov = 2, #
-                         gillFtolCov = 0, #
-                         gillFtolCovLlik = 0, #
-                         rmatNorm = TRUE, #
-                         # rmatNormLlik= FALSE, #
-                         rmatNormLlik = TRUE, #
-                         smatNorm = TRUE, #
-                         ## smatNormLlik = FALSE,
-                         smatNormLlik = TRUE,
-                         covGillF = TRUE, #
-                         optGillF = TRUE, #
-                         covSmall = 1e-5, #
-                         adjLik = TRUE, ## Adjust likelihood by 2pi for FOCEi methods
-                         gradTrim = Inf, #
-                         maxOdeRecalc = 5, #
-                         odeRecalcFactor = 10^(0.5), #
-                         gradCalcCentralSmall = 1e-4, #
-                         gradCalcCentralLarge = 1e4, #
-                         etaNudge = qnorm(1 - 0.05 / 2) / sqrt(3), #
-                         etaNudge2 = qnorm(1 - 0.05 / 2) * sqrt(3 / 5), #
-                         etaRestart = 4L, #
-                         nRetries = 3, #
-                         seed = 42, #
-                         resetThetaCheckPer = 0.1, #
-                         etaMat = NULL, #
-                         repeatGillMax = 1, #
-                         stickyRecalcN = 4, #
-                         outerMaxOdeRecalc = 5, #
-                         outerOdeRecalcFactor = 10^(0.5), #
-                         outerStickyRecalcN = 4, #
-                         indTolRelax = TRUE, #
-                         gradProgressOfvTime = 10, #
-                         addProp = c("combined2", "combined1"),
-                         badSolveObjfAdj = 100, #
-                         compress = FALSE, #
-                         rxControl = NULL,
-                         sigdigTable = NULL,
-                         fallbackFD = FALSE,
-                         smatPer = 0.6,
-                         sdLowerFact = 0.001,
-                         zeroGradFirstReset = TRUE,
-                         zeroGradRunReset = TRUE,
-                         zeroGradBobyqa = TRUE,
-                         mceta = -2L,
-                         warm = c("calc", "save", "none"),
-                         nAGQ = 0,
-                         agqLow = -Inf,
-                         agqHi = Inf,
-                         sensMethod = c("default", "forward"),
-                         linCmtSensCarry = c("auto", "none"),
-                         zeroTheta = 0.001,
-                         boundedTransform = TRUE) { #
+foceiControl <- function(
+  sigdig = 3, #
+  ...,
+  epsilon = NULL, # 1e-4,
+  maxInnerIterations = 1000, #
+  maxOuterIterations = 5000, #
+  n1qn1nsim = NULL, #
+  print = 1L, #
+  printNcol = NULL, #
+  scaleTo = 1.0, #
+  scaleObjective = 0, #
+  normType = c("rescale2", "mean", "rescale", "std", "len", "constant"), #
+  scaleType = c("nlmixr2", "norm", "mult", "multAdd"), #
+  scaleCmax = 1e5, #
+  scaleCmin = 1e-5, #
+  scaleCband = c(0.1, 10), #
+  scaleC = NULL, #
+  scaleC0 = 1e5, #
+  derivEps = rep(20 * sqrt(.Machine$double.eps), 2), #
+  derivMethod = c("switch", "forward", "central"), #
+  derivSwitchTol = NULL, #
+  covDerivMethod = c("central", "forward"), #
+  covMethod = c("r,s", "analytic", "r", "s", "sa", "imp", ""), #
+  covSolveTol = NULL, #
+  covFull = TRUE, #
+  fast = FALSE, #
+  priorMethod = c("auto", "general", "nwpri", "tnpri"), #
+  fdOutlierZ = 3.5, #
+  fdOutlierScale = TRUE, #
+  fdRefine = c("chartrand", "lanczos", "richardson"), #
+  fdLanczosM = 2L, #
+  fdRichardsonR = 2L, #
+  fdRichardsonV = 2.0, #
+  fdChartrandAll = FALSE, #
+  fdOutlierAny = FALSE, #
+  fdIndividualStep = TRUE, #
+  fdChartrand = TRUE, #
+  # norm of weights = 1/0.225
+  # hessEps = (1/0.225*.Machine$double.eps)^(1 / 4), #
+  foceEbeTol = NULL, #
+  hessEps = (.Machine$double.eps)^(1 / 3),
+  # hessEpsLlik =(1/0.225*.Machine$double.eps)^(1/4),
+  hessEpsLlik = (.Machine$double.eps)^(1 / 3),
+  optimHessType = c("central", "forward"),
+  optimHessCovType = c("central", "forward"),
+  hessEtaStepMin = 0.05,
+  censOption = c("gauss", "laplace"),
+  eventType = c("central", "forward"), #
+  eventSens = c("jump", "fd"), #
+  centralDerivEps = rep(20 * sqrt(.Machine$double.eps), 2), #
+  lbfgsLmm = 7L, #
+  lbfgsPgtol = 0, #
+  lbfgsFactr = NULL, #
+  eigen = TRUE, #
+  diagXform = c("sqrt", "log", "identity"), #
+  iovXform = c("sd", "var", "logsd", "logvar"), #
+  iovMethod = c("auto", "theta", "omega"), #
+  sumProd = FALSE, #
+  optExpression = TRUE, #
+  literalFix = TRUE,
+  literalFixRes = TRUE,
+  ci = 0.95, #
+  useColor = NULL, #
+  boundTol = NULL, #
+  calcTables = TRUE, #
+  noAbort = TRUE, #
+  interaction = TRUE, #
+  foce = c("nonmem", "foce+"), #
+  cholSEtol = (.Machine$double.eps)^(1 / 3), #
+  cholAccept = 1e-3, #
+  resetEtaP = 0.15, #
+  # Default OFF.  The ETA-drift theta reset re-centers a
+  # mu-referenced theta by the mean eta and restarts.  When the
+  # etas cannot re-center -- e.g. every omega fixed, or a model
+  # whose misfit the etas must absorb -- the shift does not stick,
+  # the drift returns and the reset repeats until the restart cap
+  # errors the fit out.  Where it does converge it lands on a worse
+  # optimum than not resetting at all.  Same failure mode as the
+  # mu-referenced (lin/irls) families' linear centering.
+  resetThetaP = 0, #
+  resetThetaFinalP = 0, #
+  diagOmegaBoundUpper = 5, # diag(omega) = diag(omega)*diagOmegaBoundUpper; =1 no upper
+  diagOmegaBoundLower = 100, # diag(omega) = diag(omega)/diagOmegaBoundLower; = 1 no lower
+  cholSEOpt = FALSE, #
+  cholSECov = FALSE, #
+  fo = FALSE, #
+  covTryHarder = FALSE, #
+  outerOpt = c(
+    "bobyqa",
+    "nlminb",
+    "lbfgsb3c",
+    "L-BFGS-B",
+    "mma",
+    "lbfgsbLG",
+    "slsqp",
+    "uobyqa",
+    "newuoa",
+    "trust"
+  ), #
+  innerOpt = c("auto", "trust", "n1qn1", "BFGS"), #
+  innerHessian = c("focei", "conditional"), #
+  detHessian = c("focei", "conditional"), #
+  hessianMethod = c("fd", "bfgs", "sr1", "bofill"), #
+  ## trust-region inner optimizer (RcppTrust)
+  trustConf = 0.975, # confidence level defining the trust-region radius
+  trustRinit = NULL, # NULL -> derived from trustConf/neta
+  trustRmax = NULL, # NULL -> derived from trustConf/neta
+  trustFterm = NULL, # NULL -> 10^(-sigdig), NOT epsilon
+  trustMterm = NULL, # NULL -> 10^(-sigdig), NOT epsilon
+  ## trust-region OUTER optimizer (outerOpt="trust")
+  outerTrustHessian = c("auto", "analytic", "bfgs", "fd"),
+  outerTrustRinit = NULL, # NULL -> min(0.95, 0.2*max(abs(par)))
+  outerTrustRmax = NULL, # NULL -> 8*outerTrustRinit
+  outerTrustFterm = NULL, # NULL -> 10^(-sigdig-2)
+  outerTrustMterm = NULL, # NULL -> outerTrustFterm
+  outerTrustRelStep = 1e-3,
+  outerTrustRestarts = 3L,
+  ##
+  rhobeg = .2, #
+  rhoend = NULL, #
+  npt = NULL, #
+  ## nlminb
+  rel.tol = NULL, #
+  x.tol = NULL, #
+  eval.max = 4000, #
+  iter.max = 2000, #
+  abstol = NULL, #
+  reltol = NULL, #
+  resetHessianAndEta = FALSE, #
+  muModel = c("none", "irls", "lin"), #
+  muRefCovAlg = TRUE, #
+  muModelTol = 1e-5, #
+  muModelMaxCycles = 20L, #
+  muModelClampRetries = 10L, #
+  stateTrim = Inf, #
+  shi21maxOuter = 0L,
+  shi21maxInner = 20L,
+  shi21maxInnerCov = 20L,
+  shi21maxFD = 20L,
+  shi21hMax = 2.0,
+  shi21hMin = 1e-4,
+  gillK = 10L, #
+  gillStep = 4, #
+  gillFtol = 0, #
+  gillRtol = sqrt(.Machine$double.eps), #
+  gillKcov = 10L, #
+  # gillKcovLlik = 20L,
+  gillKcovLlik = 10L,
+  gillStepCovLlik = 4.5,
+  # gillStepCovLlik = 2,
+  gillStepCov = 2, #
+  gillFtolCov = 0, #
+  gillFtolCovLlik = 0, #
+  rmatNorm = TRUE, #
+  # rmatNormLlik= FALSE, #
+  rmatNormLlik = TRUE, #
+  smatNorm = TRUE, #
+  ## smatNormLlik = FALSE,
+  smatNormLlik = TRUE,
+  covGillF = TRUE, #
+  optGillF = TRUE, #
+  covSmall = 1e-5, #
+  adjLik = TRUE, ## Adjust likelihood by 2pi for FOCEi methods
+  gradTrim = Inf, #
+  maxOdeRecalc = 5, #
+  odeRecalcFactor = 10^(0.5), #
+  gradCalcCentralSmall = 1e-4, #
+  gradCalcCentralLarge = 1e4, #
+  etaNudge = qnorm(1 - 0.05 / 2) / sqrt(3), #
+  etaNudge2 = qnorm(1 - 0.05 / 2) * sqrt(3 / 5), #
+  etaRestart = 4L, #
+  nRetries = 3, #
+  seed = 42, #
+  resetThetaCheckPer = 0.1, #
+  etaMat = NULL, #
+  repeatGillMax = 1, #
+  stickyRecalcN = 4, #
+  outerMaxOdeRecalc = 5, #
+  outerOdeRecalcFactor = 10^(0.5), #
+  outerStickyRecalcN = 4, #
+  indTolRelax = TRUE, #
+  gradProgressOfvTime = 10, #
+  addProp = c("combined2", "combined1"),
+  badSolveObjfAdj = 100, #
+  compress = FALSE, #
+  rxControl = NULL,
+  sigdigTable = NULL,
+  fallbackFD = FALSE,
+  smatPer = 0.6,
+  sdLowerFact = 0.001,
+  zeroGradFirstReset = TRUE,
+  zeroGradRunReset = TRUE,
+  zeroGradBobyqa = TRUE,
+  mceta = -2L,
+  warm = c("calc", "save", "none"),
+  nAGQ = 0,
+  agqLow = -Inf,
+  agqHi = Inf,
+  sensMethod = c("default", "forward"),
+  linCmtSensCarry = c("auto", "none"),
+  zeroTheta = 0.001,
+  boundedTransform = TRUE
+) {
+  #
   ## sensMethod: forward (variational) ODE parameter sensitivities.
   sensMethod <- match.arg(sensMethod)
   linCmtSensCarry <- match.arg(linCmtSensCarry)
@@ -1412,13 +1441,8 @@ foceiControl <- function(sigdig = 3, #
     fdRefine <- match.arg(fdRefine)
     checkmate::assertIntegerish(fdLanczosM, lower = 1, any.missing = FALSE, len = 1)
     checkmate::assertIntegerish(fdRichardsonR, lower = 1, any.missing = FALSE, len = 1)
-    checkmate::assertNumeric(fdRichardsonV,
-      lower = 1.0000001, finite = TRUE,
-      any.missing = FALSE, len = 1
-    )
-    checkmate::assertNumeric(hessEtaStepMin,
-      lower = 0, finite = TRUE, any.missing = FALSE, len = 1
-    )
+    checkmate::assertNumeric(fdRichardsonV, lower = 1.0000001, finite = TRUE, any.missing = FALSE, len = 1)
+    checkmate::assertNumeric(hessEtaStepMin, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
     checkmate::assertLogical(fdChartrandAll, any.missing = FALSE, len = 1)
     checkmate::assertLogical(fdOutlierAny, any.missing = FALSE, len = 1)
     checkmate::assertLogical(fdIndividualStep, any.missing = FALSE, len = 1)
@@ -1429,9 +1453,7 @@ foceiControl <- function(sigdig = 3, #
   checkmate::assertNumeric(rhobeg, lower = 0, len = 1, finite = TRUE, any.missing = FALSE)
   checkmate::assertNumeric(rhoend, lower = 0, len = 1, finite = TRUE, any.missing = FALSE)
   if (rhoend >= rhobeg) {
-    stop("the trust region method needs '0 < rhoend < rhobeg'",
-      call. = FALSE
-    )
+    stop("the trust region method needs '0 < rhoend < rhobeg'", call. = FALSE)
   }
   if (!is.null(npt)) {
     checkmate::assertIntegerish(npt, lower = 1, len = 1, any.missing = FALSE)
@@ -1483,7 +1505,9 @@ foceiControl <- function(sigdig = 3, #
   # convergence target on an inner Newton, not a solve precision, and coupling it to
   # sigdig made the analytic FOCE gradient available or not depending on the requested
   # digits.  Fixed at the value the routine shipped with.
-  if (is.null(foceEbeTol)) foceEbeTol <- 1e-9
+  if (is.null(foceEbeTol)) {
+    foceEbeTol <- 1e-9
+  }
   checkmate::assertNumeric(foceEbeTol, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
   checkmate::assertNumeric(hessEps, lower = 0, any.missing = FALSE, len = 1)
   checkmate::assertNumeric(hessEpsLlik, lower = 0, any.missing = FALSE, len = 1)
@@ -1622,10 +1646,7 @@ foceiControl <- function(sigdig = 3, #
     covMethodDeferred <- list(...)$covMethodDeferred
   }
   if (!is.null(covSolveTol)) {
-    checkmate::assertNumeric(covSolveTol,
-      len = 1, lower = 0,
-      finite = TRUE, any.missing = FALSE
-    )
+    checkmate::assertNumeric(covSolveTol, len = 1, lower = 0, finite = TRUE, any.missing = FALSE)
   }
   checkmate::assertFlag(covFull)
   checkmate::assertFlag(fast)
@@ -1634,10 +1655,7 @@ foceiControl <- function(sigdig = 3, #
   .bad <- names(.xtra)
   .bad <- .bad[!(.bad %in% .foceiControlInternal)]
   if (length(.bad) > 0) {
-    stop("unused argument: ", paste
-    (paste0("'", .bad, "'", sep = ""), collapse = ", "),
-    call. = FALSE
-    )
+    stop("unused argument: ", paste(paste0("'", .bad, "'", sep = ""), collapse = ", "), call. = FALSE)
   }
   .skipCov <- NULL
   if (!is.null(.xtra$skipCov)) {
@@ -1708,7 +1726,9 @@ foceiControl <- function(sigdig = 3, #
   # A derivative-free outer optimizer never consumes the analytic 'fast' gradient,
   # so computing it is wasted work: downgrade to fast=FALSE with a warning.
   if (isTRUE(fast) && .outerOptTxt %in% c("bobyqa", "uobyqa", "newuoa")) {
-    warning("outerOpt='", .outerOptTxt,
+    warning(
+      "outerOpt='",
+      .outerOptTxt,
       "' is derivative-free; the analytic 'fast' gradient is unused -- reverting to fast=FALSE",
       call. = FALSE
     )
@@ -1738,8 +1758,7 @@ foceiControl <- function(sigdig = 3, #
   if (!is.null(outerTrustRmax) && outerTrustRmax <= 0) {
     stop("'outerTrustRmax' must be > 0", call. = FALSE)
   }
-  if (!is.null(outerTrustRinit) && !is.null(outerTrustRmax) &&
-        outerTrustRinit > outerTrustRmax) {
+  if (!is.null(outerTrustRinit) && !is.null(outerTrustRmax) && outerTrustRinit > outerTrustRmax) {
     stop("'outerTrustRinit' cannot be larger than 'outerTrustRmax'", call. = FALSE)
   }
   checkmate::assertNumeric(outerTrustFterm, lower = 0, finite = TRUE, null.ok = TRUE, len = 1)
@@ -1802,8 +1821,7 @@ foceiControl <- function(sigdig = 3, #
       stop("Conditional inner Hessian requires fast FOCEI with trust or n1qn1", call. = FALSE)
     }
     if (innerOpt == 1L && warm != 1L) {
-      stop("innerHessian=\"conditional\" with innerOpt=\"n1qn1\" requires warm=\"calc\"",
-           call. = FALSE)
+      stop("innerHessian=\"conditional\" with innerOpt=\"n1qn1\" requires warm=\"calc\"", call. = FALSE)
     }
   }
   if (detHessian == "conditional" && (!isTRUE(fast) || !isTRUE(as.logical(interaction)))) {
@@ -1813,7 +1831,7 @@ foceiControl <- function(sigdig = 3, #
     .resetEtaSize <- .xtra$resetEtaSize
   } else {
     checkmate::assertNumeric(resetEtaP, lower = 0, upper = 1, len = 1)
-    if (resetEtaP > 0 & resetEtaP < 1) {
+    if (resetEtaP > 0 && resetEtaP < 1) {
       .resetEtaSize <- qnorm(1 - (resetEtaP / 2))
     } else if (resetEtaP <= 0) {
       .resetEtaSize <- Inf
@@ -1825,7 +1843,7 @@ foceiControl <- function(sigdig = 3, #
     .resetThetaSize <- .xtra$resetThetaSize
   } else {
     checkmate::assertNumeric(resetThetaP, lower = 0, upper = 1, len = 1)
-    if (resetThetaP > 0 & resetThetaP < 1) {
+    if (resetThetaP > 0 && resetThetaP < 1) {
       .resetThetaSize <- qnorm(1 - (resetThetaP / 2))
     } else if (resetThetaP <= 0) {
       .resetThetaSize <- Inf
@@ -1837,7 +1855,7 @@ foceiControl <- function(sigdig = 3, #
     .resetThetaFinalSize <- .xtra$resetThetaFinalSize
   } else {
     checkmate::assertNumeric(resetThetaFinalP, lower = 0, upper = 1, len = 1)
-    if (resetThetaFinalP > 0 & resetThetaFinalP < 1) {
+    if (resetThetaFinalP > 0 && resetThetaFinalP < 1) {
       .resetThetaFinalSize <- qnorm(1 - (resetThetaFinalP / 2))
     } else if (resetThetaFinalP <= 0) {
       .resetThetaFinalSize <- Inf
@@ -1856,10 +1874,13 @@ foceiControl <- function(sigdig = 3, #
   } else {
     genRxControl <- FALSE
     if (is.null(rxControl)) {
-      rxControl <- .rxControlScaleSigdig(rxode2::rxControl(
-        sigdig = sigdig,
-        maxsteps = 500000L
-      ), sigdig)
+      rxControl <- .rxControlScaleSigdig(
+        rxode2::rxControl(
+          sigdig = sigdig,
+          maxsteps = 500000L
+        ),
+        sigdig
+      )
       genRxControl <- TRUE
     } else if (inherits(rxControl, "rxControl")) {
       # a fully-formed rxControl object is the user's explicit solving spec; leave
@@ -1868,9 +1889,7 @@ foceiControl <- function(sigdig = 3, #
       rxControl <- .rxControlScaleSigdig(do.call(rxode2::rxControl, rxControl), sigdig, skip = names(rxControl))
     }
     if (!inherits(rxControl, "rxControl")) {
-      stop("rxControl needs to be ode solving options from rxode2::rxControl()",
-        call. = FALSE
-      )
+      stop("rxControl needs to be ode solving options from rxode2::rxControl()", call. = FALSE)
     }
   }
   checkmate::assertNumeric(diagOmegaBoundUpper, lower = 1, len = 1, any.missing = FALSE, finite = TRUE)
@@ -2153,7 +2172,10 @@ foceiControl <- function(sigdig = 3, #
       .doWarn <- FALSE
     }
     if (.doWarn && missing(maxInnerIterations)) {
-      warning(sprintf("using 'etaMat' assuming 'maxInnerIterations=%d', set 'maxInnerIterations' explicitly to avoid this warning", maxInnerIterations))
+      warning(sprintf(
+        "using 'etaMat' assuming 'maxInnerIterations=%d', set 'maxInnerIterations' explicitly to avoid this warning",
+        maxInnerIterations
+      ))
     }
     checkmate::assertMatrix(etaMat, mode = "double", any.missing = FALSE, min.rows = 1, min.cols = 1)
     .ret$etaMat <- etaMat
@@ -2166,9 +2188,7 @@ foceiControl <- function(sigdig = 3, #
   .ret <- eval(str2lang(paste0(type, "()")))
   .outerOpt <- character(0)
   if (object$outerOpt == -1L && object$outerOptTxt == "custom") {
-    warning("functions for `outerOpt` cannot be deparsed, reset to default",
-      call. = FALSE
-    )
+    warning("functions for `outerOpt` cannot be deparsed, reset to default", call. = FALSE)
   } else if (!(object$outerOptTxt %in% c(.ret$outerOptTxt, "stats::optimize"))) {
     .outerOpt <- paste0("outerOpt = ", deparse1(object$outerOptTxt))
   }
@@ -2200,41 +2220,48 @@ foceiControl <- function(sigdig = 3, #
   # preserve the formal-argument declaration order (names(.ret)) so the covMethod
   # token lands in its natural position instead of always first
   .n <- .n[order(match(.n, names(.ret)))]
-  .retD <- c(vapply(.n, function(x) {
-    if (x == "covMethod") {
-      return(.covTok)
-    }
-    .val <- .deparseShared(x, object[[x]])
-    if (!is.na(.val)) {
-      return(.val)
-    }
-    if (x == "innerOpt") {
-      paste0("innerOpt = ", deparse1(names(.innerOptFun[which(object[[x]] == .innerOptFun)])))
-    } else if (x == "warm") {
-      .warmIdx <- c("calc" = 1L, "save" = 0L, "none" = 2L)
-      paste0("warm = ", deparse1(names(.warmIdx[which(object[[x]] == .warmIdx)])))
-    } else if (x %in% c("optimHessType", "optimHessCovType")) {
-      .methodIdx <- c("central" = 1L, "forward" = 3L)
-      paste0(x, " = ", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
-    } else if (x == "eventType") {
-      .methodIdx <- c("central" = 2L, "forward" = 3L)
-      paste0(x, " = ", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
-    } else if (x == "hessianMethod") {
-      paste0(x, " = ", deparse1(names(.hessianMethodIdx[which(object[[x]] == .hessianMethodIdx)])))
-    } else if (x %in% c("derivMethod", "covDerivMethod")) {
-      .methodIdx <- c("forward" = 0L, "central" = 1L, "switch" = 3L)
-      paste0(x, " = ", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
-    } else if (x == "covMethod") {
-      if (object[[x]] == 0L) {
-        paste0(x, " = \"\"")
-      } else {
-        .covMethodIdx <- c("r,s" = 1L, "r" = 2L, "s" = 3L)
-        paste0(x, " = ", deparse1(names(.covMethodIdx[which(object[[x]] == .covMethodIdx)])))
-      }
-    } else {
-      paste0(x, " = ", deparse1(object[[x]]))
-    }
-  }, character(1)), .outerOpt)
+  .retD <- c(
+    vapply(
+      .n,
+      function(x) {
+        if (x == "covMethod") {
+          return(.covTok)
+        }
+        .val <- .deparseShared(x, object[[x]])
+        if (!is.na(.val)) {
+          return(.val)
+        }
+        if (x == "innerOpt") {
+          paste0("innerOpt = ", deparse1(names(.innerOptFun[which(object[[x]] == .innerOptFun)])))
+        } else if (x == "warm") {
+          .warmIdx <- c("calc" = 1L, "save" = 0L, "none" = 2L)
+          paste0("warm = ", deparse1(names(.warmIdx[which(object[[x]] == .warmIdx)])))
+        } else if (x %in% c("optimHessType", "optimHessCovType")) {
+          .methodIdx <- c("central" = 1L, "forward" = 3L)
+          paste0(x, " = ", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
+        } else if (x == "eventType") {
+          .methodIdx <- c("central" = 2L, "forward" = 3L)
+          paste0(x, " = ", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
+        } else if (x == "hessianMethod") {
+          paste0(x, " = ", deparse1(names(.hessianMethodIdx[which(object[[x]] == .hessianMethodIdx)])))
+        } else if (x %in% c("derivMethod", "covDerivMethod")) {
+          .methodIdx <- c("forward" = 0L, "central" = 1L, "switch" = 3L)
+          paste0(x, " = ", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
+        } else if (x == "covMethod") {
+          if (object[[x]] == 0L) {
+            paste0(x, " = \"\"")
+          } else {
+            .covMethodIdx <- c("r,s" = 1L, "r" = 2L, "s" = 3L)
+            paste0(x, " = ", deparse1(names(.covMethodIdx[which(object[[x]] == .covMethodIdx)])))
+          }
+        } else {
+          paste0(x, " = ", deparse1(object[[x]]))
+        }
+      },
+      character(1)
+    ),
+    .outerOpt
+  )
   str2lang(paste(var, " <- ", type, "(", paste(.retD, collapse = ", "), ")"))
 }
 

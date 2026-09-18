@@ -1,5 +1,4 @@
 nmTest({
-
   ## Cheap, fit-free checks of the vae mixture plumbing.  Deliberately NOT in
   ## .slowBatches: these are the ones that must run on every push, because each
   ## of them guards a defect that produced a silently wrong number rather than
@@ -68,10 +67,7 @@ nmTest({
     expect_error(rxode2::assertRxUi(.ui3$fun), NA)
 
     ## a non-mixture fit, or a malformed mixProb, leaves the ui alone
-    expect_equal(.vaeSetIniMixProb(.ui, .ui, list(mixProb = NULL), .setIni)$iniDf$est,
-                 .ui$iniDf$est)
-    expect_equal(.vaeSetIniMixProb(.ui, .ui, list(mixProb = c(0.5, 0.3, 0.2)), .setIni)$iniDf$est,
-                 .ui$iniDf$est)
+    expect_equal(.vaeSetIniMixProb(.ui, .ui, list(mixProb = NULL), .setIni)$iniDf$est, .ui$iniDf$est)
+    expect_equal(.vaeSetIniMixProb(.ui, .ui, list(mixProb = c(0.5, 0.3, 0.2)), .setIni)$iniDf$est, .ui$iniDf$est)
   })
-
 })

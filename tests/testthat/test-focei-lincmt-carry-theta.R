@@ -9,8 +9,8 @@ test_that("theta-side carry: eligibility, emission and FD (#1003)", {
       add.sd <- 0.5
     })
     model({
-      cl <- exp(tcl) * (wt / 70)^0.75 # nolint: object_usage_linter.
-      v <- exp(tv) # nolint: object_usage_linter.
+      cl <- exp(tcl) * (wt / 70)^0.75
+      v <- exp(tv)
       cp <- linCmt()
       cp ~ add(add.sd)
     })
@@ -22,8 +22,8 @@ test_that("theta-side carry: eligibility, emission and FD (#1003)", {
       add.sd <- 0.5
     })
     model({
-      cl <- exp(tcl) # nolint: object_usage_linter.
-      v <- exp(tv) # nolint: object_usage_linter.
+      cl <- exp(tcl)
+      v <- exp(tv)
       cp <- linCmt()
       cp ~ add(add.sd)
     })
@@ -59,26 +59,27 @@ test_that("theta-side carry: eligibility, emission and FD (#1003)", {
   fdErr <- function(txt) {
     m <- suppressWarnings(rxode2::rxode2(txt))
     slv <- function(q) {
-      rxode2::rxSolve(m,
-        params = q, events = ev, returnType = "data.frame",
-        covsInterpolation = "nocb"
-      )
+      rxode2::rxSolve(m, params = q, events = ev, returnType = "data.frame", covsInterpolation = "nocb")
     }
     r0 <- slv(pars)
     h <- 1e-5
-    vapply(1:3, function(k) {
-      got <- r0[[paste0("rx__sens_rx_pred__BY_THETA_", k, "___")]]
-      if (is.null(got)) {
-        return(0)
-      } # nls carries no residual-sd column
-      tn <- paste0("THETA[", k, "]")
-      a <- pars
-      a[tn] <- a[tn] + h
-      b <- pars
-      b[tn] <- b[tn] - h
-      fd <- (slv(a)$rx_pred_ - slv(b)$rx_pred_) / (2 * h)
-      max(abs(got - fd) / (abs(fd) + 1e-8))
-    }, numeric(1))
+    vapply(
+      1:3,
+      function(k) {
+        got <- r0[[paste0("rx__sens_rx_pred__BY_THETA_", k, "___")]]
+        if (is.null(got)) {
+          return(0)
+        } # nls carries no residual-sd column
+        tn <- paste0("THETA[", k, "]")
+        a <- pars
+        a[tn] <- a[tn] + h
+        b <- pars
+        b[tn] <- b[tn] - h
+        fd <- (slv(a)$rx_pred_ - slv(b)$rx_pred_) / (2 * h)
+        max(abs(got - fd) / (abs(fd) + 1e-8))
+      },
+      numeric(1)
+    )
   }
   errC <- fdErr(txtC)
   errN <- fdErr(txtN)
@@ -106,8 +107,8 @@ test_that("theta-side carry eligibility keeps bias-to-false rules", {
       add.sd <- 0.5
     })
     model({
-      cl <- exp(tcl) * (wt / 70)^texp # nolint: object_usage_linter.
-      v <- exp(tv) # nolint: object_usage_linter.
+      cl <- exp(tcl) * (wt / 70)^texp
+      v <- exp(tv)
       cp <- linCmt()
       cp ~ add(add.sd)
     })
@@ -131,8 +132,8 @@ test_that("theta-side carry eligibility keeps bias-to-false rules", {
       add.sd <- 0.5
     })
     model({
-      cl <- exp(tcl) * (wt / 70)^texp # nolint: object_usage_linter.
-      v <- exp(tv) # nolint: object_usage_linter.
+      cl <- exp(tcl) * (wt / 70)^texp
+      v <- exp(tv)
       cp <- linCmt()
       cp ~ add(add.sd)
     })

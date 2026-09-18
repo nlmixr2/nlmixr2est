@@ -43,12 +43,16 @@
 #' @return list of chains, each a list of terms
 #' @noRd
 .saemIovPlusChains <- function(x) {
-  if (!is.call(x)) return(list())
+  if (!is.call(x)) {
+    return(list())
+  }
   if (identical(x[[1]], quote(`+`)) && length(x) == 3L) {
     return(list(.saemIovFlattenPlus(x)))
   }
   .sub <- as.list(x)[-1]
-  if (length(.sub) == 0L) return(list())
+  if (length(.sub) == 0L) {
+    return(list())
+  }
   do.call(`c`, c(list(list()), lapply(.sub, .saemIovPlusChains)))
 }
 
@@ -65,20 +69,30 @@
 #' @noRd
 .saemIovThetaFor <- function(ui, iovName) {
   .muRef <- ui$muRefDataFrame
-  .chains <- do.call(`c`, c(list(list()),
-                            lapply(ui$lstExpr, .saemIovPlusChains)))
+  .chains <- do.call(`c`, c(list(list()), lapply(ui$lstExpr, .saemIovPlusChains)))
   .hit <- NULL
   for (.ch in .chains) {
-    .nm <- vapply(.ch, function(t) {
-      if (is.name(t)) as.character(t) else ""
-    }, character(1), USE.NAMES=FALSE)
-    if (!(iovName %in% .nm)) next
+    .nm <- vapply(
+      .ch,
+      function(t) {
+        if (is.name(t)) as.character(t) else ""
+      },
+      character(1),
+      USE.NAMES = FALSE
+    )
+    if (!(iovName %in% .nm)) {
+      next
+    }
     .w <- which(.nm %in% .muRef$eta)
-    if (length(.w) != 1L) next
+    if (length(.w) != 1L) {
+      next
+    }
     .e <- .nm[.w]
     .hit <- unique(rbind(.hit, .muRef[.muRef$eta == .e, c("theta", "eta")]))
   }
-  if (is.null(.hit) || nrow(.hit) != 1L) return(NULL)
+  if (is.null(.hit) || nrow(.hit) != 1L) {
+    return(NULL)
+  }
   .hit
 }
 
@@ -94,25 +108,31 @@
 #' @noRd
 .saemIovInfo <- function(ui, data) {
   .iniDf <- ui$iniDf
-  .w <- which(!is.na(.iniDf$condition) &
-                .iniDf$condition != "id" &
-                is.na(.iniDf$err))
-  if (length(.w) == 0L) return(NULL)
+  .w <- which(
+    !is.na(.iniDf$condition) &
+      .iniDf$condition != "id" &
+      is.na(.iniDf$err)
+  )
+  if (length(.w) == 0L) {
+    return(NULL)
+  }
   .occ <- unique(.iniDf$condition[.w])
   if (length(.occ) != 1L) {
     return("two-level IOV needs one occasion variable")
   }
-  .off <- .w[which(!is.na(.iniDf$neta1[.w]) &
-                     .iniDf$neta1[.w] != .iniDf$neta2[.w])]
+  .off <- .w[which(
+    !is.na(.iniDf$neta1[.w]) &
+      .iniDf$neta1[.w] != .iniDf$neta2[.w]
+  )]
   if (length(.off) > 0L) {
     return("two-level IOV cannot do correlated occasions")
   }
   if (is.null(data[[.occ]])) {
-    stop("IOV variable '", .occ, "' is not present in the data ", call.=FALSE)
+    stop("IOV variable '", .occ, "' is not present in the data ", call. = FALSE)
   }
   .lvl <- sort(unique(data[[.occ]]))
   if (!is.numeric(.lvl)) {
-    stop("IOV variable '", .occ, "' must be numeric", call.=FALSE)
+    stop("IOV variable '", .occ, "' must be numeric", call. = FALSE)
   }
   .pars <- NULL
   for (.i in .w) {
@@ -123,19 +143,29 @@
     }
     .we <- which(.iniDf$name == .th$eta & is.na(.iniDf$ntheta))
     .wt <- which(.iniDf$name == .th$theta & is.na(.iniDf$neta1))
-    .pars <- rbind(.pars,
-                   data.frame(iov=.nm, theta=.th$theta, eta=.th$eta,
-                              est=.iniDf$est[.i], fix=.iniDf$fix[.i],
-                              # the IIV variance and the theta's own value, which
-                              # the collapsed form needs to build its blocks
-                              iiv=.iniDf$est[.we], thetaEst=.iniDf$est[.wt],
-                              thetaFix=.iniDf$fix[.wt],
-                              stringsAsFactors=FALSE))
+    .pars <- rbind(
+      .pars,
+      data.frame(
+        iov = .nm,
+        theta = .th$theta,
+        eta = .th$eta,
+        est = .iniDf$est[.i],
+        fix = .iniDf$fix[.i],
+        # the IIV variance and the theta's own value, which
+        # the collapsed form needs to build its blocks
+        iiv = .iniDf$est[.we],
+        thetaEst = .iniDf$est[.wt],
+        thetaFix = .iniDf$fix[.wt],
+        stringsAsFactors = FALSE
+      )
+    )
   }
-  list(occVar=.occ, levels=.lvl, pars=.pars,
-       etaNames=setNames(lapply(.pars$iov,
-                                function(v) paste0("rx.", v, ".", .lvl)),
-                         .pars$iov))
+  list(
+    occVar = .occ,
+    levels = .lvl,
+    pars = .pars,
+    etaNames = setNames(lapply(.pars$iov, function(v) paste0("rx.", v, ".", .lvl)), .pars$iov)
+  )
 }
 
 
@@ -164,22 +194,23 @@
   # free the user's symbol: it names an eta today and has to name the combined
   # per-record value instead
   .ui <- suppressWarnings(
-    eval(str2lang(paste0("rxode2::rxRename(.ui, ",
-                         paste(paste0("rx.", .nm, "=", .nm), collapse=", "),
-                         ")"))))
+    eval(str2lang(paste0("rxode2::rxRename(.ui, ", paste(paste0("rx.", .nm, "=", .nm), collapse = ", "), ")")))
+  )
   .iniDf <- .ui$iniDf
-  .thetas <- .iniDf[is.na(.iniDf$neta1), , drop=FALSE]
-  .etas <- .iniDf[is.na(.iniDf$ntheta), , drop=FALSE]
+  .thetas <- .iniDf[is.na(.iniDf$neta1), , drop = FALSE]
+  .etas <- .iniDf[is.na(.iniDf$ntheta), , drop = FALSE]
   .template <- .etas[1, ]
-  if (any(names(.template) == "prior")) .template$prior <- NA_character_
+  if (any(names(.template) == "prior")) {
+    .template$prior <- NA_character_
+  }
   .template$label <- NA_character_
   # drop the occasion rows (renamed above) and renumber what is left
   .drop <- paste0("rx.", .nm)
-  .etas <- .etas[!(.etas$name %in% .drop), , drop=FALSE]
+  .etas <- .etas[!(.etas$name %in% .drop), , drop = FALSE]
   .maxEta <- 0L
   if (nrow(.etas) > 0L) {
-    .etas$neta1 <- as.integer(factor(.etas$neta1, levels=sort(unique(.etas$neta1))))
-    .etas$neta2 <- as.integer(factor(.etas$neta2, levels=sort(unique(.etas$neta2))))
+    .etas$neta1 <- as.integer(factor(.etas$neta1, levels = sort(unique(.etas$neta1))))
+    .etas$neta2 <- as.integer(factor(.etas$neta2, levels = sort(unique(.etas$neta2))))
     .maxEta <- max(.etas$neta1)
   }
   for (.i in seq_along(.nm)) {
@@ -196,17 +227,20 @@
   }
   .lines <- c(
     lapply(seq_along(.nm), function(.i) {
-      str2lang(paste0("rx.", .nm[.i], " <- ",
-                      paste(paste0("(", info$occVar, " == ", info$levels, ")*",
-                                   info$etaNames[[.i]]),
-                            collapse=" + ")))
+      str2lang(paste0(
+        "rx.",
+        .nm[.i],
+        " <- ",
+        paste(paste0("(", info$occVar, " == ", info$levels, ")*", info$etaNames[[.i]]), collapse = " + ")
+      ))
     }),
     # the realized per-record value, kept as an output column so the fit's data
     # frame carries `iov.x` the way the shared rewrite's does
     # (.uiFinalizeIov() renames `iov.x.rx` back to `iov.x`)
-    lapply(.nm, function(v) str2lang(paste0(v, ".rx <- rx.", v))))
-  assign("iniDf", rbind(.thetas, .etas), envir=.ui)
-  assign("lstExpr", c(.lines, .ui$lstExpr), envir=.ui)
+    lapply(.nm, function(v) str2lang(paste0(v, ".rx <- rx.", v)))
+  )
+  assign("iniDf", rbind(.thetas, .etas), envir = .ui)
+  assign("lstExpr", c(.lines, .ui$lstExpr), envir = .ui)
   # .uiFinalizeIov() (R/iov.R) undoes the rewrite after the fit -- restoring the
   # `iov.x ~ v | occ` row, splitting $omega into $id/$occ, building $iov and the
   # shrinkage table.  All of that is shared; hand it the same state the shared
@@ -214,14 +248,13 @@
   # pooled occasion etas rather than a magnitude theta.
   .uiIovEnv$ui <- ui
   .uiIovEnv$iovVars <- .nm
-  .uiIovEnv$iovDrop <- unlist(info$etaNames, use.names=FALSE)
+  .uiIovEnv$iovDrop <- unlist(info$etaNames, use.names = FALSE)
   .uiIovEnv$lines <- .lines
   .uiIovEnv$iovTwoLevel <- info$etaNames
   .uiIovEnv$iovCollapsed <- NULL
   .uiIovEnv$muModel <- NULL
   .uiIovEnv$iovRename <-
-    str2lang(paste0("rxode2::rxRename(.ui, ",
-                    paste(paste0(.nm, "=", "rx.", .nm), collapse=", "), ")"))
+    str2lang(paste0("rxode2::rxRename(.ui, ", paste(paste0(.nm, "=", "rx.", .nm), collapse = ", "), ")"))
   rxode2::rxUiDecompress(suppressWarnings(suppressMessages(.ui$fun())))
 }
 
@@ -263,13 +296,23 @@
 #' @noRd
 .saemIovIndicatorSym <- function(term) {
   .t <- .saemIovUnparen(term)
-  if (!is.call(.t)) return(NA_character_)
-  if (!identical(.t[[1]], quote(`*`))) return(NA_character_)
-  if (length(.t) != 3L) return(NA_character_)
+  if (!is.call(.t)) {
+    return(NA_character_)
+  }
+  if (!identical(.t[[1]], quote(`*`))) {
+    return(NA_character_)
+  }
+  if (length(.t) != 3L) {
+    return(NA_character_)
+  }
   .a <- .saemIovUnparen(.t[[2]])
   .b <- .saemIovUnparen(.t[[3]])
-  if (.saemIovIsCmp(.a) && is.name(.b)) return(as.character(.b))
-  if (.saemIovIsCmp(.b) && is.name(.a)) return(as.character(.a))
+  if (.saemIovIsCmp(.a) && is.name(.b)) {
+    return(as.character(.b))
+  }
+  if (.saemIovIsCmp(.b) && is.name(.a)) {
+    return(as.character(.a))
+  }
   NA_character_
 }
 
@@ -282,14 +325,22 @@
 #' @noRd
 .saemIovIndicatorEta <- function(term, etas, ui = NULL) {
   .sym <- .saemIovIndicatorSym(term)
-  if (is.na(.sym)) return(NA_character_)
-  if (.sym %in% etas) return(.sym)
+  if (is.na(.sym)) {
+    return(NA_character_)
+  }
+  if (.sym %in% etas) {
+    return(.sym)
+  }
   # collapsed form: the indicator multiplies a VARIABLE whose own line carries
   # the occasion's mu-referenced eta (rx.cl.1 <- exp(rx.tcl.1 + rx.eta.cl.1)),
   # so follow it through to that eta
-  if (is.null(ui)) return(NA_character_)
+  if (is.null(ui)) {
+    return(NA_character_)
+  }
   .li <- .saemIovLineFor2(ui, .sym, etas)
-  if (is.na(.li)) return(NA_character_)
+  if (is.na(.li)) {
+    return(NA_character_)
+  }
   .li
 }
 
@@ -302,11 +353,19 @@
 #' @noRd
 .saemIovLineFor2 <- function(ui, sym, etas) {
   for (.l in ui$lstExpr) {
-    if (!is.call(.l)) next
-    if (!(identical(.l[[1]], quote(`<-`)) || identical(.l[[1]], quote(`=`)))) next
-    if (!is.name(.l[[2]]) || as.character(.l[[2]]) != sym) next
+    if (!is.call(.l)) {
+      next
+    }
+    if (!(identical(.l[[1]], quote(`<-`)) || identical(.l[[1]], quote(`=`)))) {
+      next
+    }
+    if (!is.name(.l[[2]]) || as.character(.l[[2]]) != sym) {
+      next
+    }
     .v <- intersect(all.vars(.l[[3]]), etas)
-    if (length(.v) == 1L) return(.v)
+    if (length(.v) == 1L) {
+      return(.v)
+    }
     return(NA_character_)
   }
   NA_character_
@@ -318,7 +377,9 @@
 #' @return the right-hand side, or `NULL` when the line is not an assignment
 #' @noRd
 .saemIovRhs <- function(line) {
-  if (!is.call(line)) return(NULL)
+  if (!is.call(line)) {
+    return(NULL)
+  }
   if (!(identical(line[[1]], quote(`<-`)) || identical(line[[1]], quote(`=`)))) {
     return(NULL)
   }
@@ -333,13 +394,20 @@
 #' @noRd
 .saemIovIndicatorSumEtas <- function(line, etas, ui = NULL) {
   .rhs <- .saemIovRhs(line)
-  if (is.null(.rhs) || !is.call(.rhs)) return(NULL)
-  if (!identical(.rhs[[1]], quote(`+`))) return(NULL)
+  if (is.null(.rhs) || !is.call(.rhs)) {
+    return(NULL)
+  }
+  if (!identical(.rhs[[1]], quote(`+`))) {
+    return(NULL)
+  }
   .terms <- .saemIovFlattenPlus(.rhs)
-  if (length(.terms) < 2L) return(NULL)
-  .e <- vapply(.terms, .saemIovIndicatorEta, character(1), etas=etas, ui=ui,
-               USE.NAMES=FALSE)
-  if (anyNA(.e) || anyDuplicated(.e) > 0L) return(NULL)
+  if (length(.terms) < 2L) {
+    return(NULL)
+  }
+  .e <- vapply(.terms, .saemIovIndicatorEta, character(1), etas = etas, ui = ui, USE.NAMES = FALSE)
+  if (anyNA(.e) || anyDuplicated(.e) > 0L) {
+    return(NULL)
+  }
   .e
 }
 
@@ -359,7 +427,7 @@
 .saemIovPoolFromModel <- function(ui) {
   .idf <- ui$iniDf
   .etas <- .idf[!is.na(.idf$neta1) & .idf$neta1 == .idf$neta2, "name"]
-  .groups <- lapply(ui$lstExpr, .saemIovIndicatorSumEtas, etas=.etas, ui=ui)
+  .groups <- lapply(ui$lstExpr, .saemIovIndicatorSumEtas, etas = .etas, ui = ui)
   .groups[!vapply(.groups, is.null, logical(1))]
 }
 
@@ -375,7 +443,9 @@ rxUiGet.saemOmegaPool <- function(x, ...) {
   .g <- 0L
   for (.grp in .groups) {
     .w <- which(.names %in% .grp)
-    if (length(.w) < 2L) next
+    if (length(.w) < 2L) {
+      next
+    }
     .g <- .g + 1L
     .ret[.w] <- .g
   }
@@ -400,13 +470,19 @@ attr(rxUiGet.saemOmegaPool, "rstudio") <- c(0L, 0L)
 #' @noRd
 #' @author Matthew L. Fidler
 .uiApplyIovTwoLevel <- function(ui, est, data, control) {
-  if (!identical(est, "saem")) return(NULL)
+  if (!identical(est, "saem")) {
+    return(NULL)
+  }
   .m <- control$iovMethod
-  if (!(identical(.m, "twoLevel") || identical(.m, "collapsed"))) return(NULL)
+  if (!(identical(.m, "twoLevel") || identical(.m, "collapsed"))) {
+    return(NULL)
+  }
   .info <- .saemIovInfo(ui, data)
   # a character is a decline; .uiApplyIov() has already fallen back to the
   # shared rewrite for it, so there is nothing left to do here
-  if (!is.list(.info)) return(NULL)
+  if (!is.list(.info)) {
+    return(NULL)
+  }
   if (identical(.m, "collapsed")) {
     return(list(ui = .saemIovExpandUiCollapsed(ui, .info)))
   }
@@ -414,7 +490,6 @@ attr(rxUiGet.saemOmegaPool, "rstudio") <- c(0L, 0L)
 }
 
 preProcessHooksAdd(".uiApplyIovTwoLevel", .uiApplyIovTwoLevel)
-
 
 
 #' Substitute symbols in an expression, dropping some from `+` chains
@@ -427,17 +502,25 @@ preProcessHooksAdd(".uiApplyIovTwoLevel", .uiApplyIovTwoLevel)
 .saemIovSubst <- function(x, sub, drop = character(0)) {
   if (is.name(x)) {
     .n <- as.character(x)
-    if (.n %in% names(sub)) return(as.name(sub[[.n]]))
+    if (.n %in% names(sub)) {
+      return(as.name(sub[[.n]]))
+    }
     return(x)
   }
-  if (!is.call(x)) return(x)
+  if (!is.call(x)) {
+    return(x)
+  }
   if (identical(x[[1]], quote(`+`)) && length(x) == 3L) {
     .terms <- .saemIovFlattenPlus(x)
     .keep <- Filter(function(t) !(is.name(t) && as.character(t) %in% drop), .terms)
     .keep <- lapply(.keep, .saemIovSubst, sub = sub, drop = drop)
-    if (length(.keep) == 0L) return(0)
+    if (length(.keep) == 0L) {
+      return(0)
+    }
     .out <- .keep[[1]]
-    for (.i in seq_along(.keep)[-1]) .out <- call("+", .out, .keep[[.i]])
+    for (.i in seq_along(.keep)[-1]) {
+      .out <- call("+", .out, .keep[[.i]])
+    }
     return(.out)
   }
   as.call(lapply(as.list(x), .saemIovSubst, sub = sub, drop = drop))
@@ -450,20 +533,19 @@ preProcessHooksAdd(".uiApplyIovTwoLevel", .uiApplyIovTwoLevel)
 #' @return the index of the line, or `NA_integer_`
 #' @noRd
 .saemIovLineFor <- function(ui, eta) {
-  .w <- which(vapply(ui$lstExpr, function(l) {
-    .rhs <- .saemIovRhs(l)
-    !is.null(.rhs) && eta %in% all.vars(.rhs)
-  }, logical(1)))
-  if (length(.w) != 1L) return(NA_integer_)
+  .w <- which(vapply(
+    ui$lstExpr,
+    function(l) {
+      .rhs <- .saemIovRhs(l)
+      !is.null(.rhs) && eta %in% all.vars(.rhs)
+    },
+    logical(1)
+  ))
+  if (length(.w) != 1L) {
+    return(NA_integer_)
+  }
   .w
 }
-
-
-
-
-
-
-
 
 
 #' Reason the collapsed sampler cannot take this model
@@ -480,7 +562,9 @@ preProcessHooksAdd(".uiApplyIovTwoLevel", .uiApplyIovTwoLevel)
 #' @return `NULL`, or a short character reason
 #' @noRd
 .saemIovCollapsedDecline <- function(ui, info) {
-  if (!is.list(info)) return(NULL)
+  if (!is.list(info)) {
+    return(NULL)
+  }
   .cov <- ui$muRefCovariateDataFrame
   if (is.data.frame(.cov) && any(.cov$theta %in% info$pars$theta)) {
     return("collapsed IOV cannot do a covariate on that theta")
@@ -506,14 +590,18 @@ preProcessHooksAdd(".uiApplyIovTwoLevel", .uiApplyIovTwoLevel)
 #' @return the contracted matrix
 #' @noRd
 .saemIovCollapseCov <- function(cv, groups) {
-  if (!is.matrix(cv) || is.null(rownames(cv)) || length(groups) == 0L) return(cv)
+  if (!is.matrix(cv) || is.null(rownames(cv)) || length(groups) == 0L) {
+    return(cv)
+  }
   .nm <- rownames(cv)
   .grp <- lapply(groups, function(g) {
     .w <- match(paste0("om.", g), .nm)
     .w[!is.na(.w)]
   })
   .grp <- .grp[vapply(.grp, length, integer(1)) >= 2L]
-  if (length(.grp) == 0L) return(cv)
+  if (length(.grp) == 0L) {
+    return(cv)
+  }
   .rows <- .saemIovCovRows(.nm, .grp)
   .a <- matrix(0, nrow = length(.rows), ncol = length(.nm))
   for (.k in seq_along(.rows)) {
@@ -537,7 +625,9 @@ preProcessHooksAdd(".uiApplyIovTwoLevel", .uiApplyIovTwoLevel)
 .saemIovCovRows <- function(nm, grp) {
   # group id of every row; 0 where the row is not pooled
   .of <- integer(length(nm))
-  for (.j in seq_along(grp)) .of[grp[[.j]]] <- .j
+  for (.j in seq_along(grp)) {
+    .of[grp[[.j]]] <- .j
+  }
   .rows <- list()
   .seen <- integer(0)
   for (.i in seq_along(nm)) {
@@ -577,34 +667,44 @@ preProcessHooksAdd(".uiApplyIovTwoLevel", .uiApplyIovTwoLevel)
   .thNames <- paste0("rx.", .th, ".", lvl)
   .etNames <- paste0("rx.", .et, ".", lvl)
   .lines <- lapply(seq_along(lvl), function(.k) {
-    call("<-", as.name(.colNames[.k]),
-         .saemIovSubst(.rhs,
-                       sub = stats::setNames(c(.thNames[.k], .etNames[.k]),
-                                             c(.th, .et)),
-                       drop = .iv))
+    call(
+      "<-",
+      as.name(.colNames[.k]),
+      .saemIovSubst(.rhs, sub = stats::setNames(c(.thNames[.k], .etNames[.k]), c(.th, .et)), drop = .iv)
+    )
   })
   .lines[[length(.lines) + 1L]] <-
-    str2lang(paste0(.lhs, " <- ",
-                    paste(paste0(.colNames, "*(", info$occVar, " == ", lvl, ")"),
-                          collapse = " + ")))
-  .theta <- do.call(rbind, lapply(seq_along(lvl), function(.k) {
-    .cur <- thetaTpl
-    .cur$name <- .thNames[.k]
-    .cur$est <- info$pars$thetaEst[i]
-    .cur$fix <- info$pars$thetaFix[i]
-    .cur$label <- NA_character_
-    .cur$lower <- -Inf
-    .cur$upper <- Inf
-    .cur$condition <- NA_character_
-    .cur$err <- NA_character_
-    .cur
-  }))
-  list(lines = .lines, dropTheta = .th, dropEta = c(.et, .iv), theta = .theta,
-       # the joint covariance of phi_i over occasions: Omega + Psi on the
-       # diagonal, Omega off it
-       etaBlock = list(names = .etNames, tpl = etaTpl,
-                       diag = info$pars$iiv[i] + info$pars$est[i],
-                       off = info$pars$iiv[i], fix = info$pars$fix[i]))
+    str2lang(paste0(.lhs, " <- ", paste(paste0(.colNames, "*(", info$occVar, " == ", lvl, ")"), collapse = " + ")))
+  .theta <- do.call(
+    rbind,
+    lapply(seq_along(lvl), function(.k) {
+      .cur <- thetaTpl
+      .cur$name <- .thNames[.k]
+      .cur$est <- info$pars$thetaEst[i]
+      .cur$fix <- info$pars$thetaFix[i]
+      .cur$label <- NA_character_
+      .cur$lower <- -Inf
+      .cur$upper <- Inf
+      .cur$condition <- NA_character_
+      .cur$err <- NA_character_
+      .cur
+    })
+  )
+  list(
+    lines = .lines,
+    dropTheta = .th,
+    dropEta = c(.et, .iv),
+    theta = .theta,
+    # the joint covariance of phi_i over occasions: Omega + Psi on the
+    # diagonal, Omega off it
+    etaBlock = list(
+      names = .etNames,
+      tpl = etaTpl,
+      diag = info$pars$iiv[i] + info$pars$est[i],
+      off = info$pars$iiv[i],
+      fix = info$pars$fix[i]
+    )
+  )
 }
 #' Rewrite a ui for the collapsed (Panhard & Samson) sampler
 #'
@@ -639,8 +739,7 @@ preProcessHooksAdd(".uiApplyIovTwoLevel", .uiApplyIovTwoLevel)
   info$origIniDf <- .ui$iniDf
   info$origLstExpr <- .ui$lstExpr
   .oe <- .ui$iniDf
-  info$etaOrder <- .oe$name[!is.na(.oe$neta1) & .oe$neta1 == .oe$neta2 &
-                              !(.oe$name %in% info$pars$iov)]
+  info$etaOrder <- .oe$name[!is.na(.oe$neta1) & .oe$neta1 == .oe$neta2 & !(.oe$name %in% info$pars$iov)]
   .iniDf <- .ui$iniDf
   .lst <- .ui$lstExpr
   .lvl <- info$levels
@@ -648,8 +747,12 @@ preProcessHooksAdd(".uiApplyIovTwoLevel", .uiApplyIovTwoLevel)
   .etas <- .iniDf[is.na(.iniDf$ntheta), , drop = FALSE]
   .thetaTpl <- .thetas[1, ]
   .etaTpl <- .etas[1, ]
-  if (any(names(.thetaTpl) == "prior")) .thetaTpl$prior <- NA_character_
-  if (any(names(.etaTpl) == "prior")) .etaTpl$prior <- NA_character_
+  if (any(names(.thetaTpl) == "prior")) {
+    .thetaTpl$prior <- NA_character_
+  }
+  if (any(names(.etaTpl) == "prior")) {
+    .etaTpl$prior <- NA_character_
+  }
 
   .built <- lapply(seq_along(info$pars$iov), function(.i) {
     .saemIovCollapsedOne(.ui, .lst, info, .i, .lvl, .thetaTpl, .etaTpl)
@@ -660,8 +763,7 @@ preProcessHooksAdd(".uiApplyIovTwoLevel", .uiApplyIovTwoLevel)
   .addTheta <- do.call(rbind, lapply(.built, function(b) b$theta))
   .addEtaBlocks <- lapply(.built, function(b) b$etaBlock)
 
-  .lst <- .lst[-vapply(info$pars$eta, function(e) .saemIovLineFor(.ui, e),
-                       integer(1))]
+  .lst <- .lst[-vapply(info$pars$eta, function(e) .saemIovLineFor(.ui, e), integer(1))]
   .thetas <- .thetas[!(.thetas$name %in% .dropTheta), , drop = FALSE]
   .etas <- .etas[!(.etas$name %in% .dropEta), , drop = FALSE]
   .thetas <- rbind(.thetas, .addTheta)
@@ -684,7 +786,9 @@ preProcessHooksAdd(".uiApplyIovTwoLevel", .uiApplyIovTwoLevel)
         .cur$fix <- .b$fix
         .cur$condition <- "id"
         .cur$label <- NA_character_
-        .cur$name <- if (.a == .c) .b$names[.a] else {
+        .cur$name <- if (.a == .c) {
+          .b$names[.a]
+        } else {
           paste0("(", .b$names[.c], ",", .b$names[.a], ")")
         }
         .etas <- rbind(.etas, .cur)
@@ -695,8 +799,7 @@ preProcessHooksAdd(".uiApplyIovTwoLevel", .uiApplyIovTwoLevel)
   assign("lstExpr", c(.newLines, .lst), envir = .ui)
   .uiIovEnv$ui <- ui
   .uiIovEnv$iovVars <- info$pars$iov
-  .uiIovEnv$iovDrop <- unlist(lapply(.addEtaBlocks, function(b) b$names),
-                              use.names = FALSE)
+  .uiIovEnv$iovDrop <- unlist(lapply(.addEtaBlocks, function(b) b$names), use.names = FALSE)
   .uiIovEnv$lines <- .newLines
   .uiIovEnv$iovTwoLevel <- NULL
   .uiIovEnv$iovCollapsed <- info
@@ -718,14 +821,15 @@ preProcessHooksAdd(".uiApplyIovTwoLevel", .uiApplyIovTwoLevel)
 #' @noRd
 .saemIovCollapsedParts <- function(om, th, info) {
   .lvl <- info$levels
-  .theta <- .omega <- .psi <- stats::setNames(rep(NA_real_, nrow(info$pars)),
-                                              info$pars$iov)
+  .theta <- .omega <- .psi <- stats::setNames(rep(NA_real_, nrow(info$pars)), info$pars$iov)
   for (.i in seq_len(nrow(info$pars))) {
     .en <- paste0("rx.", info$pars$eta[.i], ".", .lvl)
     .tn <- paste0("rx.", info$pars$theta[.i], ".", .lvl)
     .en <- .en[.en %in% rownames(om)]
     .tn <- .tn[.tn %in% names(th)]
-    if (length(.en) < 2L || length(.tn) < 1L) next
+    if (length(.en) < 2L || length(.tn) < 1L) {
+      next
+    }
     .d <- mean(diag(om[.en, .en, drop = FALSE]))
     .o <- om[.en, .en, drop = FALSE]
     .o <- mean(.o[upper.tri(.o)])
@@ -765,10 +869,10 @@ preProcessHooksAdd(".uiApplyIovTwoLevel", .uiApplyIovTwoLevel)
   # .getUiFunFromIniAndModel() hands back a model FUNCTION, not a ui -- the
   # shared finalizer only ends up with a ui because its rxRename() call
   # evaluates one.  There is no rename here, so build the ui explicitly.
-  .uiFun <- .getUiFunFromIniAndModel(.orig, .newIni,
-                                     rxode2::as.model(info$origLstExpr))
+  .uiFun <- .getUiFunFromIniAndModel(.orig, .newIni, rxode2::as.model(info$origLstExpr))
   .ui <- rxode2::rxUiDecompress(
-    suppressWarnings(suppressMessages(.uiFun())))
+    suppressWarnings(suppressMessages(.uiFun()))
+  )
   assign("ui", .ui, envir = env)
   assign("iniDf0", info$origIniDf, envir = env)
   assign("omega", .ui$omega, envir = env)
@@ -784,9 +888,12 @@ preProcessHooksAdd(".uiApplyIovTwoLevel", .uiApplyIovTwoLevel)
 #' @noRd
 .saemIovRestoreEst <- function(env, info, parts) {
   .fx <- env$fixef
-  .drop <- unlist(lapply(seq_len(nrow(info$pars)), function(i) {
-    paste0("rx.", info$pars$theta[i], ".", info$levels)
-  }), use.names = FALSE)
+  .drop <- unlist(
+    lapply(seq_len(nrow(info$pars)), function(i) {
+      paste0("rx.", info$pars$theta[i], ".", info$levels)
+    }),
+    use.names = FALSE
+  )
   .fx <- .fx[!(names(.fx) %in% .drop)]
   for (.i in seq_len(nrow(info$pars))) {
     .fx[[info$pars$theta[.i]]] <- parts$theta[[.i]]
@@ -818,10 +925,14 @@ preProcessHooksAdd(".uiApplyIovTwoLevel", .uiApplyIovTwoLevel)
 #' @noRd
 .saemIovFinalizeCollapsed <- function(ret) {
   .info <- .uiIovEnv$iovCollapsed
-  if (is.null(.info) || is.null(.uiIovEnv$ui)) return(ret)
+  if (is.null(.info) || is.null(.uiIovEnv$ui)) {
+    return(ret)
+  }
   if (is.environment(ret$env) && !is.null(ret$ui)) {
     .om <- ret$env$ui$omega
-    if (is.list(.om)) .om <- .om$id
+    if (is.list(.om)) {
+      .om <- .om$id
+    }
     .parts <- .saemIovCollapsedParts(.om, ret$env$fixef, .info)
     .saemIovRestoreUi(ret$env, .info, .parts)
     .saemIovRestoreEst(ret$env, .info, .parts)
@@ -849,19 +960,25 @@ postFinalObjectHooksAdd(".saemIovFinalizeCollapsed", .saemIovFinalizeCollapsed)
 #' @return `NULL`, or a list of the rewritten `ranef` and the `iov` tables
 #' @noRd
 .saemIovSplitRanef <- function(re, info) {
-  if (!is.data.frame(re)) return(NULL)
+  if (!is.data.frame(re)) {
+    return(NULL)
+  }
   .tab <- list()
   for (.i in seq_len(nrow(info$pars))) {
     .en <- paste0("rx.", info$pars$eta[.i], ".", info$levels)
     .en <- .en[.en %in% names(re)]
-    if (length(.en) < 2L) next
+    if (length(.en) < 2L) {
+      next
+    }
     .m <- as.matrix(re[, .en, drop = FALSE])
     .b <- rowMeans(.m)
     re[[info$pars$eta[.i]]] <- .b
     .id <- if ("ID" %in% names(re)) re$ID else seq_len(nrow(re))
-    .one <- data.frame(ID = rep(.id, times = length(info$levels)),
-                       occ = rep(info$levels, each = nrow(.m)),
-                       dev = as.vector(.m - .b))
+    .one <- data.frame(
+      ID = rep(.id, times = length(info$levels)),
+      occ = rep(info$levels, each = nrow(.m)),
+      dev = as.vector(.m - .b)
+    )
     names(.one) <- c("ID", info$occVar, info$pars$iov[.i])
     .tab[[info$pars$iov[.i]]] <- .one
     re <- re[, !(names(re) %in% .en), drop = FALSE]
@@ -869,11 +986,17 @@ postFinalObjectHooksAdd(".saemIovFinalizeCollapsed", .saemIovFinalizeCollapsed)
   # put the restored etas back in the ui's own order; appending them leaves
   # ranef in a different column order from every other path's
   .want <- intersect(c("ID", info$etaOrder), names(re))
-  if (length(.want) == length(names(re))) re <- re[, .want, drop = FALSE]
-  if (length(.tab) == 0L) return(list(ranef = re, iov = NULL))
+  if (length(.want) == length(names(re))) {
+    re <- re[, .want, drop = FALSE]
+  }
+  if (length(.tab) == 0L) {
+    return(list(ranef = re, iov = NULL))
+  }
   # one table per occasion variable, matching the shared rewrite's shape
   .one <- .tab[[1]]
-  for (.n in names(.tab)[-1]) .one[[.n]] <- .tab[[.n]][[.n]]
+  for (.n in names(.tab)[-1]) {
+    .one[[.n]] <- .tab[[.n]][[.n]]
+  }
   .one <- .one[order(.one[[1]], .one[[2]]), , drop = FALSE]
   rownames(.one) <- NULL
   list(ranef = re, iov = stats::setNames(list(.one), info$occVar))

@@ -1,10 +1,8 @@
 nmTest({
   test_that("optim makes sense", {
-
-    dsn <- data.frame(i=1:1000)
+    dsn <- data.frame(i = 1:1000)
     dsn$time <- exp(rnorm(1000))
-    dsn$DV <- rbinom(1000,1,exp(-1+dsn$time)/(1+exp(-1+dsn$time)))
-
+    dsn$DV <- rbinom(1000, 1, exp(-1 + dsn$time) / (1 + exp(-1 + dsn$time)))
 
     mod <- function() {
       ini({
@@ -19,13 +17,13 @@ nmTest({
       })
     }
 
-    fit2 <- .nlmixr(mod, dsn, est="optim")
+    fit2 <- .nlmixr(mod, dsn, est = "optim")
 
     expect_true(inherits(fit2, "nlmixr2.optim"))
 
     fit3 <- fit2 |>
       ini(g=unfix) |>
-      .nlmixr(dsn, "optim", optimControl(covMethod="optim"))
+      .nlmixr(dsn, "optim", optimControl(covMethod = "optim"))
 
     expect_true(inherits(fit3, "nlmixr2.optim"))
 
@@ -44,17 +42,15 @@ nmTest({
       })
     }
 
-    fit1 <- .nlmixr(one.cmt, nlmixr2data::theo_sd, est="optim", optimControl(method="L-BFGS-B"))
+    fit1 <- .nlmixr(one.cmt, nlmixr2data::theo_sd, est = "optim", optimControl(method = "L-BFGS-B"))
 
     expect_true(inherits(fit1, "nlmixr2.optim"))
-
   })
 
   test_that("optim sugar aliases dispatch and honor bounds", {
     # every alias is registered as an nlmixr2Est S3 method
     for (.a in c("neldermead", "bfgs", "cg", "lbfgsb", "sann", "brent")) {
-      expect_true(!is.null(utils::getS3method("nlmixr2Est", .a)),
-                  info = .a)
+      expect_true(!is.null(utils::getS3method("nlmixr2Est", .a)), info = .a)
     }
     # bounded-capable methods report unbounded=FALSE, the rest TRUE
     .unb <- function(a) attr(utils::getS3method("nlmixr2Est", a), "unbounded")(NULL)
@@ -75,5 +71,4 @@ nmTest({
     fitLB <- .nlmixr(one.cmt, nlmixr2data::theo_sd, est = "lbfgsb")
     expect_equal(fitLB$optimControl$method, "L-BFGS-B")
   })
-
 })

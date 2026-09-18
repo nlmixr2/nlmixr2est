@@ -14,11 +14,22 @@ nmObjGet <- function(x, ...) {
     stop("'", as.character(substitute(x)), "' is wrong type for 'nmObjGet'", call. = FALSE)
   }
   .arg <- class(x)[1]
-  if (any(.arg == c(
-    "logLik", "value", "obf", "ofv",
-    "objf", "OBJF", "objective", "AIC",
-    "BIC"
-  ))) {
+  if (
+    any(
+      .arg ==
+        c(
+          "logLik",
+          "value",
+          "obf",
+          "ofv",
+          "objf",
+          "OBJF",
+          "objective",
+          "AIC",
+          "BIC"
+        )
+    )
+  ) {
     .nmObjEnsureObjective(x[[1]])
   }
   if (.rstudioComplete()) {
@@ -211,7 +222,9 @@ nmObjGet.dataNormInfo <- function(x, ...) {
   }
   .ret <- .Call(
     `_nlmixr2est_filterNormalLikeAndDoses`,
-    .datSav$CMT, .predDf$distribution, .predDf$cmt
+    .datSav$CMT,
+    .predDf$distribution,
+    .predDf$cmt
   )
   .ret$nlmixrRowNums <- .datSav[.ret$filter, "nlmixrRowNums"]
   .ret
@@ -242,9 +255,7 @@ nmObjGet.default <- function(x, ...) {
       .type <- rxode2::rxGetSerialType_(.ret)
       .ret <- try(.deserializeRaw(.ret, .type), silent = TRUE)
       if (inherits(.ret, "try-error")) {
-        warning("cannot deserialize object '", .arg, "' (", .type, ")",
-          call. = FALSE
-        )
+        warning("cannot deserialize object '", .arg, "' (", .type, ")", call. = FALSE)
         .ret <- NULL
       }
     }
@@ -341,7 +352,9 @@ nmObjGet.phiR <- function(x, ...) {
   .obj <- x[[1]]
   .phi <- .obj$phiC
   if (is.null(.phi)) {
-    if (any(names(x[[1]]) != "CWRES")) warning("this requires 'CWRES' in fit (use `addCwres()`)", call. = FALSE)
+    if (any(names(x[[1]]) != "CWRES")) {
+      warning("this requires 'CWRES' in fit (use `addCwres()`)", call. = FALSE)
+    }
     return(NULL)
   }
   .ret <- lapply(seq_along(.phi), function(i) {
@@ -368,14 +381,21 @@ nmObjGet.phiSE <- function(x, ...) {
   .obj <- x[[1]]
   .phi <- .obj$phiC
   if (is.null(.phi)) {
-    if (any(names(x[[1]]) != "CWRES")) warning("this requires 'CWRES' in fit (use `addCwres()`)", call. = FALSE)
+    if (any(names(x[[1]]) != "CWRES")) {
+      warning("this requires 'CWRES' in fit (use `addCwres()`)", call. = FALSE)
+    }
     return(NULL)
   }
   .d1 <- dim(.phi[[1]])[1]
-  .ret <- vapply(seq_along(.phi), function(i) {
-    .cov <- .phi[[i]]
-    suppressWarnings(sqrt(diag(.cov)))
-  }, double(.d1), USE.NAMES = FALSE)
+  .ret <- vapply(
+    seq_along(.phi),
+    function(i) {
+      .cov <- .phi[[i]]
+      suppressWarnings(sqrt(diag(.cov)))
+    },
+    double(.d1),
+    USE.NAMES = FALSE
+  )
   dim(.ret) <- c(.d1, length(.phi))
   dimnames(.ret) <- list(paste0("se(", colnames(.phi[[1]]), ")"), names(.phi))
   .ret <- as.data.frame(t(.ret))
@@ -394,14 +414,21 @@ nmObjGet.phiRSE <- function(x, ...) {
   .phi <- .obj$phiC
   .eta <- .obj$eta[, -1, drop = FALSE]
   if (is.null(.phi)) {
-    if (any(names(x[[1]]) != "CWRES")) warning("this requires 'CWRES' in fit (use `addCwres()`)", call. = FALSE)
+    if (any(names(x[[1]]) != "CWRES")) {
+      warning("this requires 'CWRES' in fit (use `addCwres()`)", call. = FALSE)
+    }
     return(NULL)
   }
   .d1 <- dim(.phi[[1]])[1]
-  .ret <- vapply(seq_along(.phi), function(i) {
-    .cov <- .phi[[i]]
-    suppressWarnings(sqrt(diag(.cov)) / unlist(.eta[i, , drop = FALSE]) * 100)
-  }, double(.d1), USE.NAMES = FALSE)
+  .ret <- vapply(
+    seq_along(.phi),
+    function(i) {
+      .cov <- .phi[[i]]
+      suppressWarnings(sqrt(diag(.cov)) / unlist(.eta[i, , drop = FALSE]) * 100)
+    },
+    double(.d1),
+    USE.NAMES = FALSE
+  )
   dim(.ret) <- c(.d1, length(.phi))
   dimnames(.ret) <- list(paste0("rse(", colnames(.phi[[1]]), ")%"), names(.phi))
   .ret <- as.data.frame(t(.ret))
@@ -419,7 +446,9 @@ nmObjGet.phiCI <- function(x, ...) {
   .obj <- x[[1]]
   .phi <- .obj$phiC
   if (is.null(.phi)) {
-    if (any(names(x[[1]]) != "CWRES")) warning("this requires 'CWRES' in fit (use `addCwres()`)", call. = FALSE)
+    if (any(names(x[[1]]) != "CWRES")) {
+      warning("this requires 'CWRES' in fit (use `addCwres()`)", call. = FALSE)
+    }
     return(NULL)
   }
   .ci <- rxode2::rxGetControl(.obj$ui, "ci", 0.95)
@@ -520,8 +549,7 @@ nmObjGet.covLvl <- function(x, ...) {
         .origData <- .origData[order(.origData$nlmixrRowNums), ]
       } else {
         .nlmixrRowNums <- .dataSav[
-          .dataSav$EVID == 0 | .dataSav$EVID == 2 |
-            (.dataSav$EVID >= 9 & .dataSav$EVID <= 99),
+          .dataSav$EVID == 0 | .dataSav$EVID == 2 | (.dataSav$EVID >= 9 & .dataSav$EVID <= 99),
           "nlmixrRowNums"
         ]
         .llikObs <- obj$env$llikObs[!is.na(obj$env$llikObs)]
@@ -537,8 +565,12 @@ nmObjGet.covLvl <- function(x, ...) {
     }
   }
   .fitData <- as.data.frame(obj)
-  if (is.null(.fitData$EVID)) .fitData$EVID <- 0
-  if (is.null(.fitData$AMT)) .fitData$AMT <- 0
+  if (is.null(.fitData$EVID)) {
+    .fitData$EVID <- 0
+  }
+  if (is.null(.fitData$AMT)) {
+    .fitData$AMT <- 0
+  }
   .names <- tolower(names(.origData))
   .wid <- which(.names == "id")
   names(.origData)[.wid] <- "ID"
@@ -564,10 +596,14 @@ nmObjGetData.dataMergeLeft <- function(x, ...) {
   .ret <- .ret[, names(.ret) != "nlmixrRowNums"]
   .ret
 }
-attr(nmObjGetData.dataMergeLeft, "desc") <- "left join between original and fit dataset (prefer columns in original dataset)"
+attr(
+  nmObjGetData.dataMergeLeft,
+  "desc"
+) <- "left join between original and fit dataset (prefer columns in original dataset)"
 attr(nmObjGetData.dataMergeLeft, "rstudio") <- data.frame(
   data = "prefer original",
-  left = "original", right = "fit"
+  left = "original",
+  right = "fit"
 )
 
 #' @rdname nmObjGetData
@@ -579,10 +615,14 @@ nmObjGetData.dataMergeRight <- function(x, ...) {
   .ret <- .ret[, names(.ret) != "nlmixrRowNums"]
   .ret
 }
-attr(nmObjGetData.dataMergeRight, "desc") <- "right join between original and fit dataset (prefer columns in original dataset)"
+attr(
+  nmObjGetData.dataMergeRight,
+  "desc"
+) <- "right join between original and fit dataset (prefer columns in original dataset)"
 attr(nmObjGetData.dataMergeRight, "rstudio") <- data.frame(
   data = "prefer original",
-  left = "original", right = "fit"
+  left = "original",
+  right = "fit"
 )
 
 #' @rdname nmObjGetData
@@ -594,10 +634,14 @@ nmObjGetData.dataMergeInner <- function(x, ...) {
   .ret <- .ret[, names(.ret) != "nlmixrRowNums"]
   .ret
 }
-attr(nmObjGetData.dataMergeInner, "desc") <- "inner join between original and fit dataset (prefer columns in original dataset)"
+attr(
+  nmObjGetData.dataMergeInner,
+  "desc"
+) <- "inner join between original and fit dataset (prefer columns in original dataset)"
 attr(nmObjGetData.dataMergeInner, "rstudio") <- data.frame(
   data = "prefer original",
-  left = "original", right = "fit"
+  left = "original",
+  right = "fit"
 )
 
 
@@ -613,7 +657,8 @@ nmObjGetData.dataMergeFull <- function(x, ...) {
 attr(nmObjGetData.dataMergeFull, "desc") <- "full join between original and fit dataset (prefer columns in fit dataset)"
 attr(nmObjGetData.dataMergeFull, "rstudio") <- data.frame(
   data = "prefer data",
-  left = "original", right = "fit"
+  left = "original",
+  right = "fit"
 )
 
 
@@ -629,7 +674,8 @@ nmObjGetData.fitMergeLeft <- function(x, ...) {
 attr(nmObjGetData.fitMergeLeft, "desc") <- "left join between original and fit dataset (prefer columns in fit dataset)"
 attr(nmObjGetData.fitMergeLeft, "rstudio") <- data.frame(
   data = "prefer fit",
-  left = "original", right = "fit"
+  left = "original",
+  right = "fit"
 )
 
 
@@ -642,10 +688,14 @@ nmObjGetData.fitMergeRight <- function(x, ...) {
   .ret <- .ret[, names(.ret) != "nlmixrRowNums"]
   .ret
 }
-attr(nmObjGetData.fitMergeRight, "desc") <- "right join between original and fit dataset (prefer columns in fit dataset)"
+attr(
+  nmObjGetData.fitMergeRight,
+  "desc"
+) <- "right join between original and fit dataset (prefer columns in fit dataset)"
 attr(nmObjGetData.fitMergeRight, "rstudio") <- data.frame(
   data = "prefer fit",
-  left = "original", right = "fit"
+  left = "original",
+  right = "fit"
 )
 
 
@@ -658,10 +708,14 @@ nmObjGetData.fitMergeInner <- function(x, ...) {
   .ret <- .ret[, names(.ret) != "nlmixrRowNums"]
   .ret
 }
-attr(nmObjGetData.fitMergeInner, "desc") <- "inner join between original and fit dataset (prefer columns in fit dataset)"
+attr(
+  nmObjGetData.fitMergeInner,
+  "desc"
+) <- "inner join between original and fit dataset (prefer columns in fit dataset)"
 attr(nmObjGetData.fitMergeInner, "rstudio") <- data.frame(
   data = "prefer fit",
-  left = "original", right = "fit"
+  left = "original",
+  right = "fit"
 )
 
 
@@ -677,7 +731,8 @@ nmObjGetData.fitMergeFull <- function(x, ...) {
 attr(nmObjGetData.fitMergeFull, "desc") <- "full join between original and fit dataset (prefer columns in fit dataset)"
 attr(nmObjGetData.fitMergeFull, "rstudio") <- data.frame(
   data = "prefer fit",
-  left = "original", right = "fit"
+  left = "original",
+  right = "fit"
 )
 
 
@@ -703,7 +758,8 @@ nmObjGet.parHistStacked <- function(x, ...) {
     .iter <- .parHist$iter
     .ret <- data.frame(iter = .iter, stack(.parHist[, -1]))
     names(.ret) <- sub(
-      "values", "val",
+      "values",
+      "val",
       sub("ind", "par", names(.ret))
     )
     return(.ret)
@@ -828,7 +884,9 @@ nmObjGet.saemEvt <- function(x, ...) {
 #' @export
 nmObjGet.saemEvtMDf <- function(x, ...) {
   .nmc <- nmObjGet.saemNmc(x, ...)
-  if (is.na(.nmc)) stop("cannot figure out the number of mcmc simulations", call. = FALSE)
+  if (is.na(.nmc)) {
+    stop("cannot figure out the number of mcmc simulations", call. = FALSE)
+  }
   .evt <- nmObjGet.saemEvtDf(x, ...)
   .evtM <- .evt[rep(seq_len(dim(.evt)[1]), .nmc), ]
   .evtM$ID <- cumsum(c(FALSE, diff(.evtM$ID) != 0))
@@ -1229,9 +1287,7 @@ nmObjGet.ranef <- function(x, ...) {
   if (exists("mixNum", envir = .env, inherits = FALSE)) {
     .mn <- get("mixNum", envir = .env, inherits = FALSE)
     if (!is.null(.mn) && "mixnum" %in% names(.mn)) {
-      .ret <- merge(.ret, .mn[, c("ID", "mixnum"), drop = FALSE],
-        by = "ID", all.x = TRUE, sort = FALSE
-      )
+      .ret <- merge(.ret, .mn[, c("ID", "mixnum"), drop = FALSE], by = "ID", all.x = TRUE, sort = FALSE)
     }
   }
   .ret

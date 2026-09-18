@@ -22,16 +22,17 @@ nmTest({
 
   .fitOnce <- function() {
     suppressWarnings(nlmixr2(
-      .oneCmt, nlmixr2data::theo_sd, est = "focei",
-      control = foceiControl(print = 0, covMethod = "r,s", calcTables = FALSE)))
+      .oneCmt,
+      nlmixr2data::theo_sd,
+      est = "focei",
+      control = foceiControl(print = 0, covMethod = "r,s", calcTables = FALSE)
+    ))
   }
 
   .register <- function(name, fn) {
     .ns <- asNamespace("nlmixr2est")
     registerS3method("setCov", name, fn, envir = .ns)
-    withr::defer(rm(list = paste0("setCov.", name),
-                    envir = .ns[[".__S3MethodsTable__."]]),
-                 envir = parent.frame())
+    withr::defer(rm(list = paste0("setCov.", name), envir = .ns[[".__S3MethodsTable__."]]), envir = parent.frame())
   }
 
   test_that("a registered method's matrix is installed, stashed and swappable", {
@@ -104,12 +105,9 @@ nmTest({
 
   test_that("covariance controls hold only their own options", {
     expect_equal(unclass(rsControl()), setNames(list(), character(0)))
-    expect_equal(unclass(rsControl(hessEps = 1e-4, gillKcov = 3)),
-                 list(hessEps = 1e-4, gillKcov = 3L))
-    expect_equal(unclass(saControl(nSaCov = 50)),
-                 list(nBurn = 100L, nEm = 100L, nSaCov = 50L, seed = 99L))
-    expect_equal(unclass(impCovControl(isample = 10)),
-                 list(nIter = 1L, isample = 10L, impSeed = 42L))
+    expect_equal(unclass(rsControl(hessEps = 1e-4, gillKcov = 3)), list(hessEps = 1e-4, gillKcov = 3L))
+    expect_equal(unclass(saControl(nSaCov = 50)), list(nBurn = 100L, nEm = 100L, nSaCov = 50L, seed = 99L))
+    expect_equal(unclass(impCovControl(isample = 10)), list(nIter = 1L, isample = 10L, impSeed = 42L))
     expect_error(rsControl(hessEps = -1))
   })
 
@@ -121,8 +119,7 @@ nmTest({
       invisible(NULL)
     })
     setCov(.fit, "s (full)", control = rsControl(hessEps = 1e-4, covSmall = 1e-6))
-    expect_equal(.seen, list(covMethod = "s", covFull = TRUE,
-                             hessEps = 1e-4, covSmall = 1e-6))
+    expect_equal(.seen, list(covMethod = "s", covFull = TRUE, hessEps = 1e-4, covSmall = 1e-6))
     expect_identical(.fit$covMethod, "s (full)")
   })
 
@@ -179,8 +176,7 @@ nmTest({
     local_mocked_bindings(.covRecomputeNative = function(fit, est, control, useEtaMat = TRUE) {
       .ctl[[length(.ctl) + 1L]] <<- control
       .cov <- get("cov", envir = fit$env)
-      list(cov = .cov, covMethod = if (est == "saem") "sa" else "imp",
-           mixRotated = TRUE)
+      list(cov = .cov, covMethod = if (est == "saem") "sa" else "imp", mixRotated = TRUE)
     })
     # a positional control is recorded just as a named one
     suppressMessages(setCov(.fit, "sa", saControl(nSaCov = 50)))
@@ -209,8 +205,7 @@ nmTest({
     .n <- 0L
     local_mocked_bindings(.setCovAnalytic = function(fit, env, method) {
       .n <<- .n + 1L
-      .covInstallResult(env, list(cov = get("cov", envir = env),
-                                  covMethod = method, mixRotated = TRUE))
+      .covInstallResult(env, list(cov = get("cov", envir = env), covMethod = method, mixRotated = TRUE))
       invisible(TRUE)
     })
     suppressMessages(setCov(.fit, "analytic", control = rsControl(hessEps = 1e-3)))
@@ -227,8 +222,10 @@ nmTest({
     .fit <- .fitOnce()
     .register("testCovSelf", function(fit, method, control = list(k = 1L), ...) {
       .env <- fit$env
-      .covInstallResult(.env, list(cov = get("cov", envir = .env) * control$k,
-                                   covMethod = "testCovSelf", mixRotated = TRUE))
+      .covInstallResult(
+        .env,
+        list(cov = get("cov", envir = .env) * control$k, covMethod = "testCovSelf", mixRotated = TRUE)
+      )
       NULL
     })
     suppressMessages(setCov(.fit, "testCovSelf"))
@@ -270,7 +267,8 @@ nmTest({
   test_that("a scoped name dispatches to its base method with a control", {
     .fit <- .fitOnce()
     suppressWarnings(suppressMessages(
-      setCov(.fit, "s (full)", control = rsControl(hessEps = 1e-4))))
+      setCov(.fit, "s (full)", control = rsControl(hessEps = 1e-4))
+    ))
     expect_identical(.fit$covMethod, "s (full)")
     .se <- .fit$parFixedDf$SE
     names(.se) <- rownames(.fit$parFixedDf)
@@ -289,14 +287,20 @@ nmTest({
       fit$cov * control$k
     })
     .ns <- asNamespace("nlmixr2est")
-    registerS3method("setCovOptions", "testSeedCtl", function(control, fit, ...) {
-      .cm <- fit$covMethod
-      # the seed is the installed covariance, or the one recorded when it is ours
-      if (identical(.cm, "testCovSeeded")) .cm <- fit$env$covOptions$testCovSeeded$seed
-      c(unclass(control), list(seed = .cm))
-    }, envir = .ns)
-    withr::defer(rm(list = "setCovOptions.testSeedCtl",
-                    envir = .ns[[".__S3MethodsTable__."]]))
+    registerS3method(
+      "setCovOptions",
+      "testSeedCtl",
+      function(control, fit, ...) {
+        .cm <- fit$covMethod
+        # the seed is the installed covariance, or the one recorded when it is ours
+        if (identical(.cm, "testCovSeeded")) {
+          .cm <- fit$env$covOptions$testCovSeeded$seed
+        }
+        c(unclass(control), list(seed = .cm))
+      },
+      envir = .ns
+    )
+    withr::defer(rm(list = "setCovOptions.testSeedCtl", envir = .ns[[".__S3MethodsTable__."]]))
     suppressMessages(setCov(.fit, "testCovSeeded"))
     expect_equal(.calls, 1L)
     expect_equal(.fit$env$covOptions$testCovSeeded, list(k = 2L, seed = .method0))
@@ -342,12 +346,20 @@ nmTest({
   test_that("setCovValue() methods carry their own name and options", {
     .fit <- .fitOnce()
     .ns <- asNamespace("nlmixr2est")
-    registerS3method("setCovValue", "testCovResult", function(value, fit, method = NULL, ...) {
-      list(cov = value$cov, method = if (is.null(method)) "testRes" else method,
-           options = list(n = value$n), extra = list(testResObj = value))
-    }, envir = .ns)
-    withr::defer(rm(list = "setCovValue.testCovResult",
-                    envir = .ns[[".__S3MethodsTable__."]]))
+    registerS3method(
+      "setCovValue",
+      "testCovResult",
+      function(value, fit, method = NULL, ...) {
+        list(
+          cov = value$cov,
+          method = if (is.null(method)) "testRes" else method,
+          options = list(n = value$n),
+          extra = list(testResObj = value)
+        )
+      },
+      envir = .ns
+    )
+    withr::defer(rm(list = "setCovValue.testCovResult", envir = .ns[[".__S3MethodsTable__."]]))
     .register("testRes", function(fit, method, control = list(n = 3L), ...) {
       stop("should come from the installed result")
     })
@@ -357,9 +369,7 @@ nmTest({
     expect_s3_class(.fit$env$testResObj, "testCovResult")
     # a result that fails to install stores nothing
     rm("testResObj", envir = .fit$env)
-    expect_error(setCov(.fit) <- structure(list(cov = -.fit$cov, n = 3L),
-                                           class = "testCovResult"),
-                 "left unchanged")
+    expect_error(setCov(.fit) <- structure(list(cov = -.fit$cov, n = 3L), class = "testCovResult"), "left unchanged")
     expect_false(exists("testResObj", envir = .fit$env, inherits = FALSE))
     # the installed result counts as the method's default computation
     expect_error(setCov(.fit, "testRes"), "no need to switch")

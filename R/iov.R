@@ -15,8 +15,12 @@
   .method <- paste0("nlmixr2Est.", est)
   if (.method %in% .v) {
     .iov <- attr(utils::getS3method("nlmixr2Est", est), "iov")
-    if (is.null(.iov)) return(FALSE)
-    if (is.function(.iov)) return(isTRUE(.iov(control)))
+    if (is.null(.iov)) {
+      return(FALSE)
+    }
+    if (is.function(.iov)) {
+      return(isTRUE(.iov(control)))
+    }
     return(isTRUE(.iov))
   }
   FALSE
@@ -39,9 +43,13 @@
 #' @author Matthew L. Fidler
 .iovNativeDecline <- function(ui, est, data, control) {
   .v <- as.character(utils::methods("nlmixr2Est"))
-  if (!(paste0("nlmixr2Est.", est) %in% .v)) return(NULL)
+  if (!(paste0("nlmixr2Est.", est) %in% .v)) {
+    return(NULL)
+  }
   .f <- attr(utils::getS3method("nlmixr2Est", est), "iovNativeScope")
-  if (!is.function(.f)) return(NULL)
+  if (!is.function(.f)) {
+    return(NULL)
+  }
   .f(ui, data, control)
 }
 
@@ -139,17 +147,44 @@ nlmixr2iovVarSd <- function(val) {
 #' correlated occasion block is refused outright.
 #'
 #' @noRd
-.iovSameMethods <- c("focei", "foce", "focep", "laplace", "agq",
-                     "foceif", "focef", "focepf", "agqf",
-                     "ifoce", "ifocep", "ifocei", "ilaplace", "iagq",
-                     "ifoceif", "ifocef", "ifocepf", "iagqf",
-                     "mfoce", "mfocep", "mfocei", "mlaplace", "magq",
-                     "mfoceif", "mfocef", "mfocepf", "magqf",
-                     ## the "full" conditional-Hessian delegates (R/foceiFull.R)
-                     ## dispatch to the base Laplace/AGQ method listed above, so
-                     ## they honour the block for the same reason it does
-                     "flaplace", "mflaplace", "iflaplace",
-                     "fagq", "mfagq", "ifagq")
+.iovSameMethods <- c(
+  "focei",
+  "foce",
+  "focep",
+  "laplace",
+  "agq",
+  "foceif",
+  "focef",
+  "focepf",
+  "agqf",
+  "ifoce",
+  "ifocep",
+  "ifocei",
+  "ilaplace",
+  "iagq",
+  "ifoceif",
+  "ifocef",
+  "ifocepf",
+  "iagqf",
+  "mfoce",
+  "mfocep",
+  "mfocei",
+  "mlaplace",
+  "magq",
+  "mfoceif",
+  "mfocef",
+  "mfocepf",
+  "magqf",
+  ## the "full" conditional-Hessian delegates (R/foceiFull.R)
+  ## dispatch to the base Laplace/AGQ method listed above, so
+  ## they honour the block for the same reason it does
+  "flaplace",
+  "mflaplace",
+  "iflaplace",
+  "fagq",
+  "mfagq",
+  "ifagq"
+)
 
 #' Does this estimation method honour a repeated (`same()`) omega block?
 #'
@@ -158,7 +193,9 @@ nlmixr2iovVarSd <- function(val) {
 #' @noRd
 #' @author Matthew L. Fidler
 .isIovSameMethod <- function(est) {
-  if (length(est) != 1L || is.na(est)) return(FALSE)
+  if (length(est) != 1L || is.na(est)) {
+    return(FALSE)
+  }
   ## an out-of-tree method can opt in the way it declares `iov` itself
   .v <- as.character(utils::methods("nlmixr2Est"))
   if (paste0("nlmixr2Est.", est) %in% .v) {
@@ -196,31 +233,33 @@ nlmixr2iovVarSd <- function(val) {
   .nm <- function(v, n) paste0("rx.", v, ".", n)
   ## the user's block for this level, read by name
   .diagRow <- function(v) which(iniDf$name == v & is.na(iniDf$ntheta))[1]
-  .diagEst <- vapply(var, function(v) iniDf$est[.diagRow(v)],
-                     double(1), USE.NAMES = TRUE)
+  .diagEst <- vapply(var, function(v) iniDf$est[.diagRow(v)], double(1), USE.NAMES = TRUE)
   ## `iov.cl ~ fix(0.1) | occ` fixes the VARIANCE.  Under "theta" that
   ## rides on the magnitude theta; here the variance is the omega block,
   ## so the flag has to land on the block or the parameter is quietly
   ## estimated while `.uiFinalizeIov()` still reports it as fixed.
-  .diagFix <- vapply(var, function(v) isTRUE(iniDf$fix[.diagRow(v)]),
-                     logical(1), USE.NAMES = TRUE)
+  .diagFix <- vapply(var, function(v) isTRUE(iniDf$fix[.diagRow(v)]), logical(1), USE.NAMES = TRUE)
   ## `as.data.frame()` names an off diagonal "(smaller,larger)" by
   ## matrix position, so try both spellings rather than guessing
   .covRow <- function(a, b) {
-    .w <- which(iniDf$name %in% c(paste0("(", a, ",", b, ")"),
-                                  paste0("(", b, ",", a, ")")) &
-                  is.na(iniDf$ntheta))
-    if (length(.w) == 0L) return(NA_integer_)
+    .w <- which(iniDf$name %in% c(paste0("(", a, ",", b, ")"), paste0("(", b, ",", a, ")")) & is.na(iniDf$ntheta))
+    if (length(.w) == 0L) {
+      return(NA_integer_)
+    }
     .w[1]
   }
   .covEst <- function(a, b) {
     .w <- .covRow(a, b)
-    if (is.na(.w)) return(0)
+    if (is.na(.w)) {
+      return(0)
+    }
     iniDf$est[.w]
   }
   .covFix <- function(a, b) {
     .w <- .covRow(a, b)
-    if (is.na(.w)) return(FALSE)
+    if (is.na(.w)) {
+      return(FALSE)
+    }
     isTRUE(iniDf$fix[.w])
   }
   .masterOf <- character(0)
@@ -261,10 +300,11 @@ nlmixr2iovVarSd <- function(val) {
       for (.i in seq_along(var)[-1L]) {
         for (.j in seq_len(.i - 1L)) {
           .est <- .covEst(var[.i], var[.j])
-          if (.est == 0) next
+          if (.est == 0) {
+            next
+          }
           .cur <- eta1
-          .cur$name <- paste0("(", .nm(var[.j], .n), ",",
-                              .nm(var[.i], .n), ")")
+          .cur$name <- paste0("(", .nm(var[.j], .n), ",", .nm(var[.i], .n), ")")
           .cur$label <- NA_character_
           .cur$fix <- .covFix(var[.i], var[.j])
           .cur$est <- .est
@@ -273,8 +313,7 @@ nlmixr2iovVarSd <- function(val) {
           .cur$condition <- if (.oi == 1L) {
             "id"
           } else {
-            paste0("id:same:", .masterOf[[var[.j]]], ":",
-                   .masterOf[[var[.i]]])
+            paste0("id:same:", .masterOf[[var[.j]]], ":", .masterOf[[var[.i]]])
           }
           env$etas <- rbind(env$etas, .cur)
         }
@@ -311,7 +350,7 @@ nlmixr2iovVarSd <- function(val) {
       .uiIovEnv$iovMaster <- list()
       return(NULL)
     }
-    warning(.why, "; used iovMethod='theta'", call.=FALSE)
+    warning(.why, "; used iovMethod='theta'", call. = FALSE)
     control$iovMethod <- "theta"
     .fellBack <- TRUE
   }
@@ -321,7 +360,7 @@ nlmixr2iovVarSd <- function(val) {
   .uiIovEnv$iovCollapsed <- NULL
   .uiIovEnv$iovMaster <- list()
   .xform <- control$iovXform
-  if (length(.xform)  != 1) {
+  if (length(.xform) != 1) {
     .xform <- "sd"
   }
   if (!(.xform %in% c("sd", "var", "logsd", "logvar"))) {
@@ -332,11 +371,15 @@ nlmixr2iovVarSd <- function(val) {
   ## the level is the BASE condition: a repeated (`same()`) block carries a
   ## `:same:<master>` suffix, which is not a level of variability
   .baseCnd <- lotri::lotriBaseCondition(.iniDf$condition)
-  .wOcc <- which(!is.na(.iniDf$condition) &
-                   .baseCnd != "id" &
-                   is.na(.iniDf$err))
-  .wOff <- .wOcc[which(!is.na(.iniDf$neta1[.wOcc]) &
-                         .iniDf$neta1[.wOcc] != .iniDf$neta2[.wOcc])]
+  .wOcc <- which(
+    !is.na(.iniDf$condition) &
+      .baseCnd != "id" &
+      is.na(.iniDf$err)
+  )
+  .wOff <- .wOcc[which(
+    !is.na(.iniDf$neta1[.wOcc]) &
+      .iniDf$neta1[.wOcc] != .iniDf$neta2[.wOcc]
+  )]
   ## How the occasion parameters are expanded before estimation.
   ##
   ## "theta" is the long standing shape: one magnitude theta per occasion
@@ -359,15 +402,21 @@ nlmixr2iovVarSd <- function(val) {
   ## than silently downgrade, since the fit would look fine and estimate
   ## each occasion's block on its own
   if (!.sameOk && identical(control$iovMethod, "omega")) {
-    stop("'iovMethod=\"omega\"' repeats one estimated omega block per ",
-         "occasion, which the estimation method '", est, "' does not ",
-         "honour; use a FOCEi family method for correlated ",
-         "inter-occasion random effects",
-         call.=FALSE)
+    stop(
+      "'iovMethod=\"omega\"' repeats one estimated omega block per ",
+      "occasion, which the estimation method '",
+      est,
+      "' does not ",
+      "honour; use a FOCEi family method for correlated ",
+      "inter-occasion random effects",
+      call. = FALSE
+    )
   }
   .iovMethod <- if (.sameOk) control$iovMethod else "theta"
-  if (length(.iovMethod) != 1L ||
-        !(.iovMethod %in% c("auto", "theta", "omega"))) {
+  if (
+    length(.iovMethod) != 1L ||
+      !(.iovMethod %in% c("auto", "theta", "omega"))
+  ) {
     .iovMethod <- if (.sameOk) "auto" else "theta"
   }
   ## Resolved PER LEVEL of variability, not per model: a correlation on
@@ -375,34 +424,48 @@ nlmixr2iovVarSd <- function(val) {
   ## expanded, and "theta" is the better conditioned inner problem.
   .offLvls <- unique(.baseCnd[.wOff])
   .resolveLvl <- function(l1) {
-    if (.iovMethod != "auto") return(.iovMethod)
+    if (.iovMethod != "auto") {
+      return(.iovMethod)
+    }
     if (l1 %in% .offLvls && .sameOk) "omega" else "theta"
   }
   .anyOmega <- .iovMethod == "omega" ||
     (.iovMethod == "auto" && length(.offLvls) > 0L && .sameOk)
   ## a level whose expansion resolves to "theta" cannot carry a
   ## correlation, however it was chosen
-  .badOff <- .wOff[vapply(.baseCnd[.wOff], function(l1) {
-    .resolveLvl(l1) == "theta"
-  }, logical(1), USE.NAMES=FALSE)]
+  .badOff <- .wOff[vapply(
+    .baseCnd[.wOff],
+    function(l1) {
+      .resolveLvl(l1) == "theta"
+    },
+    logical(1),
+    USE.NAMES = FALSE
+  )]
   if (length(.badOff) > 0L) {
-    stop("correlated inter-occasion random effects are not supported",
-         if (.sameOk) "" else paste0(" by '", est, "'"), ": ",
-         paste0("'", .iniDf$name[.badOff], "'", collapse=", "),
-         "; give each occasion parameter its own variance",
-         if (.sameOk) ", or use `iovMethod=\"omega\"`" else "",
-         call.=FALSE)
+    stop(
+      "correlated inter-occasion random effects are not supported",
+      if (.sameOk) "" else paste0(" by '", est, "'"),
+      ": ",
+      paste0("'", .iniDf$name[.badOff], "'", collapse = ", "),
+      "; give each occasion parameter its own variance",
+      if (.sameOk) ", or use `iovMethod=\"omega\"`" else "",
+      call. = FALSE
+    )
   }
   .uiIovEnv$iovMethod <- if (.anyOmega) "omega" else "theta"
   if (.anyOmega) {
     ## the magnitude theta is fixed at one, so the way it is
     ## parameterized no longer means anything; "sd" is what the model
     ## line and the analytic covariance expect to see
-    if (!identical(control$iovXform, "sd") &&
-          !is.null(control$iovXform)) {
-      .minfo(paste0("'iovXform' is ignored when 'iovMethod=\"omega\"'; ",
-                    "the magnitude is fixed at one and the variability ",
-                    "is estimated in the omega block"))
+    if (
+      !identical(control$iovXform, "sd") &&
+        !is.null(control$iovXform)
+    ) {
+      .minfo(paste0(
+        "'iovXform' is ignored when 'iovMethod=\"omega\"'; ",
+        "the magnitude is fixed at one and the variability ",
+        "is estimated in the omega block"
+      ))
     }
   }
   # one entry per occasion VARIABLE, however many parameters ride on it
@@ -413,26 +476,28 @@ nlmixr2iovVarSd <- function(val) {
     ## DIAGONAL rows only: an occasion block may now carry covariances,
     ## and `(iov.a,iov.b)` is a cell of the block, not a parameter to
     ## rename
-    .n <- .iniDf[which(.baseCnd %in% .lvls &
-                         !is.na(.iniDf$neta1) &
-                         .iniDf$neta1 == .iniDf$neta2), "name"]
-    .ui <- suppressWarnings(eval(str2lang(paste0("rxode2::rxRename(.ui, ",
-                                paste(paste0("rx.", .n, "=", .n),
-                                      collapse=", "), ")"))))
-    .uiIovEnv$iovRename <- str2lang(paste0("rxode2::rxRename(.ui, ",
-                                          paste(paste0(.n, "=", "rx.", .n),
-                                      collapse=", "), ")"))
+    .n <- .iniDf[which(.baseCnd %in% .lvls & !is.na(.iniDf$neta1) & .iniDf$neta1 == .iniDf$neta2), "name"]
+    .ui <- suppressWarnings(eval(str2lang(paste0(
+      "rxode2::rxRename(.ui, ",
+      paste(paste0("rx.", .n, "=", .n), collapse = ", "),
+      ")"
+    ))))
+    .uiIovEnv$iovRename <- str2lang(paste0(
+      "rxode2::rxRename(.ui, ",
+      paste(paste0(.n, "=", "rx.", .n), collapse = ", "),
+      ")"
+    ))
     # For the new iniDf, we will take out all the level variables and
     # then renumber the etas
-    .thetas <- .iniDf[is.na(.iniDf$neta1),, drop=FALSE]
-    .etas <- .iniDf[is.na(.iniDf$ntheta),, drop=FALSE]
+    .thetas <- .iniDf[is.na(.iniDf$neta1), , drop = FALSE]
+    .etas <- .iniDf[is.na(.iniDf$ntheta), , drop = FALSE]
     if (length(.thetas$name) > 0) {
       .maxtheta <- max(.thetas$ntheta, na.rm = TRUE)
-      .theta1 <- .thetas[1,]
+      .theta1 <- .thetas[1, ]
       .theta1$ntheta <- .maxtheta
     } else {
       .maxtheta <- 0L
-      .theta1 <- .etas[1,]
+      .theta1 <- .etas[1, ]
       .theta1$ntheta <- 0L
       .theta1$neta1 <- NA_real_
       .theta1$neta2 <- NA_real_
@@ -446,11 +511,21 @@ nlmixr2iovVarSd <- function(val) {
     # template; a `prior` carried over from it belongs to that parameter,
     # not to the IOV magnitude / occasion eta this becomes.  The magnitude
     # gets the prior declared on the occasion eta itself below.
-    if (any(names(.theta1) == "prior")) .theta1$prior <- NA_character_
-    if (any(names(.eta1) == "prior")) .eta1$prior <- NA_character_
+    if (any(names(.theta1) == "prior")) {
+      .theta1$prior <- NA_character_
+    }
+    if (any(names(.eta1) == "prior")) {
+      .eta1$prior <- NA_character_
+    }
 
-    .etas <- .etas[which(!(lotri::lotriBaseCondition(.etas$condition) %in%
-                             .lvls)), , drop=FALSE]
+    .etas <- .etas[
+      which(
+        !(lotri::lotriBaseCondition(.etas$condition) %in%
+          .lvls)
+      ),
+      ,
+      drop = FALSE
+    ]
     if (length(.etas$name) > 0) {
       .etas$neta1 <- factor(.etas$neta1, levels = sort(unique(.etas$neta1)))
       .etas$neta2 <- factor(.etas$neta2, levels = sort(unique(.etas$neta2)))
@@ -459,22 +534,23 @@ nlmixr2iovVarSd <- function(val) {
       .maxeta <- max(.etas$neta1, na.rm = TRUE)
     } else {
       .maxeta <- 0L
-      .theta1 <- .etas[1,]
+      .theta1 <- .etas[1, ]
     }
 
     .data <- data
-    .lvls <- setNames(lapply(.lvls, function(l) {
-      .v <- sort(unique(.data[[l]]))
-      if (is.null(.v)) {
-        stop(paste0("IOV variable '", l, "' is not present in the data "),
-             call. = FALSE)
-      }
-      if (!is.numeric(.v)) {
-        stop(paste0("IOV variable '", l, "' must be numeric"),
-             call. = FALSE)
-      }
-      .v
-    }), .lvls)
+    .lvls <- setNames(
+      lapply(.lvls, function(l) {
+        .v <- sort(unique(.data[[l]]))
+        if (is.null(.v)) {
+          stop(paste0("IOV variable '", l, "' is not present in the data "), call. = FALSE)
+        }
+        if (!is.numeric(.v)) {
+          stop(paste0("IOV variable '", l, "' must be numeric"), call. = FALSE)
+        }
+        .v
+      }),
+      .lvls
+    )
     .env <- new.env(parent = emptyenv())
     .env$thetas <- .thetas
     .env$etas <- .etas
@@ -485,174 +561,199 @@ nlmixr2iovVarSd <- function(val) {
     # changed to etas on id
     .env$extraThetas <- NULL
     .env$extraEtas <- NULL
-    .lines <- lapply(names(.lvls),
-                     function(l1) {
-                       ## this LEVEL's expansion; `iovXform` parameterizes
-                       ## the "theta" magnitude and means nothing once the
-                       ## magnitude is fixed at one
-                       .m1 <- .resolveLvl(l1)
-                       .xf1 <- if (.m1 == "omega") "sd" else .xform
-                       ## again diagonal rows only -- these are the
-                       ## occasion PARAMETERS, not the cells of their block
-                       .w <- which(.baseCnd == l1 &
-                                     !is.na(.iniDf$neta1) &
-                                     .iniDf$neta1 == .iniDf$neta2)
-                       .var <- .iniDf$name[.w]
-                       .lst <- c(lapply(.var, function(v) {
-                         # Add theta to dataset; represents variance of iov,
-                         # converted below based on the xform
-                         .curTheta <- .theta1
-                         # this occasion parameter's OWN row -- `.var` can
-                         # hold several parameters riding on one occasion
-                         # variable, so every per-parameter field has to be
-                         # read from here rather than from a vector over the
-                         # whole condition
-                         .wv <- which(.iniDf$name == v & is.na(.iniDf$ntheta))
-                         if (length(.wv) != 1L) {
-                           # rxode2 does build a ui with the same occasion
-                           # parameter declared twice; every field read from
-                           # .wv below would then be a vector, and the
-                           # rewrite would die on "replacement has 2 rows,
-                           # data has 1" without naming the parameter
-                           stop("the inter-occasion parameter '", v,
-                                "' has ", length(.wv), " variance ",
-                                "declarations; it needs exactly one",
-                                call.=FALSE)
-                         }
-                         .est <- .iniDf[.wv, "est"]
-                         if (.xf1 == "var") {
-                           .curTheta$est <- .est
-                         } else if (.xf1 == "sd") {
-                           .curTheta$est <- sqrt(.est)
-                         } else if (.xf1 == "logvar") {
-                           .curTheta$est <- log(.est)
-                         } else if (.xf1 == "logsd") {
-                           .curTheta$est <- log(sqrt(.est))
-                         }
-                         if (.m1 == "omega") {
-                           ## the magnitude is carried by the omega block,
-                           ## so the theta is a constant multiplier of one.
-                           ## It is kept rather than dropped so the model
-                           ## line, `rxUiGet.foceiSkipCov` and the theta
-                           ## deletion in `.uiFinalizeIov()` all keep
-                           ## working unchanged; `foceiSetupTheta_()`
-                           ## removes a fixed theta from the optimizer.
-                           .curTheta$est <- 1
-                           .curTheta$fix <- TRUE
-                           .curTheta$lower <- -Inf
-                         }
-                         .curTheta$name <- v
-                         .uiIovEnv$iovVars <- c(.uiIovEnv$iovVars, v)
-                         if (.m1 != "omega") {
-                           ## in "omega" mode the magnitude is fixed at one
-                           ## above and the user's `fix` belongs to the
-                           ## omega block instead
-                           .curTheta$fix <- .iniDf$fix[.wv]
-                         }
-                         # the prior the user declared with `prior(iov.x)`
-                         # describes this magnitude: carry it across the
-                         # rewrite, which deletes the row it was written on.
-                         # No `fix` guard is needed -- lotri refuses a prior
-                         # on a fixed parameter while the ui is built, so a
-                         # fixed magnitude reaching here always has none.
-                         if (any(names(.curTheta) == "prior")) {
-                           .curTheta$prior <- .iniDf$prior[.wv]
-                         }
+    .lines <- lapply(names(.lvls), function(l1) {
+      ## this LEVEL's expansion; `iovXform` parameterizes
+      ## the "theta" magnitude and means nothing once the
+      ## magnitude is fixed at one
+      .m1 <- .resolveLvl(l1)
+      .xf1 <- if (.m1 == "omega") "sd" else .xform
+      ## again diagonal rows only -- these are the
+      ## occasion PARAMETERS, not the cells of their block
+      .w <- which(
+        .baseCnd == l1 &
+          !is.na(.iniDf$neta1) &
+          .iniDf$neta1 == .iniDf$neta2
+      )
+      .var <- .iniDf$name[.w]
+      .lst <- c(
+        lapply(.var, function(v) {
+          # Add theta to dataset; represents variance of iov,
+          # converted below based on the xform
+          .curTheta <- .theta1
+          # this occasion parameter's OWN row -- `.var` can
+          # hold several parameters riding on one occasion
+          # variable, so every per-parameter field has to be
+          # read from here rather than from a vector over the
+          # whole condition
+          .wv <- which(.iniDf$name == v & is.na(.iniDf$ntheta))
+          if (length(.wv) != 1L) {
+            # rxode2 does build a ui with the same occasion
+            # parameter declared twice; every field read from
+            # .wv below would then be a vector, and the
+            # rewrite would die on "replacement has 2 rows,
+            # data has 1" without naming the parameter
+            stop(
+              "the inter-occasion parameter '",
+              v,
+              "' has ",
+              length(.wv),
+              " variance ",
+              "declarations; it needs exactly one",
+              call. = FALSE
+            )
+          }
+          .est <- .iniDf[.wv, "est"]
+          if (.xf1 == "var") {
+            .curTheta$est <- .est
+          } else if (.xf1 == "sd") {
+            .curTheta$est <- sqrt(.est)
+          } else if (.xf1 == "logvar") {
+            .curTheta$est <- log(.est)
+          } else if (.xf1 == "logsd") {
+            .curTheta$est <- log(sqrt(.est))
+          }
+          if (.m1 == "omega") {
+            ## the magnitude is carried by the omega block,
+            ## so the theta is a constant multiplier of one.
+            ## It is kept rather than dropped so the model
+            ## line, `rxUiGet.foceiSkipCov` and the theta
+            ## deletion in `.uiFinalizeIov()` all keep
+            ## working unchanged; `foceiSetupTheta_()`
+            ## removes a fixed theta from the optimizer.
+            .curTheta$est <- 1
+            .curTheta$fix <- TRUE
+            .curTheta$lower <- -Inf
+          }
+          .curTheta$name <- v
+          .uiIovEnv$iovVars <- c(.uiIovEnv$iovVars, v)
+          if (.m1 != "omega") {
+            ## in "omega" mode the magnitude is fixed at one
+            ## above and the user's `fix` belongs to the
+            ## omega block instead
+            .curTheta$fix <- .iniDf$fix[.wv]
+          }
+          # the prior the user declared with `prior(iov.x)`
+          # describes this magnitude: carry it across the
+          # rewrite, which deletes the row it was written on.
+          # No `fix` guard is needed -- lotri refuses a prior
+          # on a fixed parameter while the ui is built, so a
+          # fixed magnitude reaching here always has none.
+          if (any(names(.curTheta) == "prior")) {
+            .curTheta$prior <- .iniDf$prior[.wv]
+          }
 
-                         .w <- which(ui$muRefCurEval$parameter == v)
-                         if (length(.w) == 1L) {
-                           .curEval <- ui$muRefCurEval$curEval[.w]
-                         } else {
-                           .curEval <- ""
-                         }
-                         .curTheta$backTransform <-
-                           paste0(switch(.xf1,
-                                  "sd" = "nlmixr2iovSd",
-                                  "var" = "nlmixr2iovVar",
-                                  "logsd" = "nlmixr2iovLogsd",
-                                  "logvar" = "nlmixr2iovLogvar"),
-                                  ifelse(.curEval=="exp", "Cv", "Sd"))
-                         if (.xf1 %in% c("sd", "var")) {
-                           .curTheta$lower <- 0 # doesn't work with saem
-                         }
-                         .env$maxtheta <- .curTheta$ntheta <- .env$maxtheta + 1L
-                         .env$thetas <- rbind(.env$thetas, .curTheta)
+          .w <- which(ui$muRefCurEval$parameter == v)
+          if (length(.w) == 1L) {
+            .curEval <- ui$muRefCurEval$curEval[.w]
+          } else {
+            .curEval <- ""
+          }
+          .curTheta$backTransform <-
+            paste0(
+              switch(
+                .xf1,
+                "sd" = "nlmixr2iovSd",
+                "var" = "nlmixr2iovVar",
+                "logsd" = "nlmixr2iovLogsd",
+                "logvar" = "nlmixr2iovLogvar"
+              ),
+              ifelse(.curEval == "exp", "Cv", "Sd")
+            )
+          if (.xf1 %in% c("sd", "var")) {
+            .curTheta$lower <- 0 # doesn't work with saem
+          }
+          .env$maxtheta <- .curTheta$ntheta <- .env$maxtheta + 1L
+          .env$thetas <- rbind(.env$thetas, .curTheta)
 
-                         .env$extraThetas <- c(.env$extraThetas, .curTheta)
-                         if (.m1 != "omega") {
-                           ## "theta" mode: one unit-variance eta per
-                           ## occasion, fixed, scaled by the magnitude
-                           ## theta above.  Under "omega" the etas are
-                           ## built occasion-major after this loop, since
-                           ## each occasion's parameters form one block.
-                           for (n in .lvls[[l1]]) {
-                             .curEta <- .eta1
-                             .curEta$name <- paste0("rx.", v, ".", n)
-                             .curEta$label <- paste0(v, "(", l1, "==", n, ")")
-                             .env$drop <- c(.env$drop, .curEta$name)
-                             .env$maxeta <- .curEta$neta1 <-
-                               .curEta$neta2 <- .env$maxeta + 1L
-                             .env$etas <- rbind(.env$etas, .curEta)
-                             .env$extraEtas <- c(.env$extraEtas, .curEta)
-                           }
-                         }
-                         if (.xf1 == "logsd") {
-                           str2lang(paste0("rx.", v, " <- exp(", v, ")*(",
-                                           paste(paste0("rx.", v, ".", .lvls[[l1]],
-                                                        "*(", l1,
-                                                        " == ", .lvls[[l1]], ")"),
-                                                 collapse="+"),
-                                           ")"))
-                         } else if (.xf1 == "logvar") {
-                             str2lang(paste0("rx.", v, " <- sqrt(exp(", v, "))*(",
-                                             paste(paste0("rx.", v, ".", .lvls[[l1]],
-                                                          "*(", l1,
-                                                          " == ", .lvls[[l1]], ")"),
-                                                   collapse="+"),
-                                             ")"))
-                         } else if (.xf1 == "sd") {
-                           # |theta| written as sqrt(theta^2): identical value,
-                           # but symengine differentiates it EXACTLY
-                           # (theta/sqrt(theta^2) = sign) -- abs() is rewritten
-                           # to an indicator form whose derivative is a
-                           # tanh-SMOOTHED step, making the theta-sensitivity
-                           # column wrong by a theta-dependent factor (#952)
-                           str2lang(paste0("rx.", v, " <- sqrt((", v, ")^2)*(",
-                                           paste(paste0("rx.", v, ".", .lvls[[l1]],
-                                                        "*(", l1,
-                                                        " == ", .lvls[[l1]], ")"),
-                                                 collapse="+"),
-                                           ")"))
-                         } else if (.xf1 == "var") {
-                           # sqrt(|theta|) as (theta^2)^(1/4), same reasoning
-                           # as the "sd" branch above (#952)
-                           str2lang(paste0("rx.", v, " <- ((", v, ")^2)^0.25*(",
-                                           paste(paste0("rx.", v, ".", .lvls[[l1]],
-                                                        "*(", l1,
-                                                        " == ", .lvls[[l1]], ")"),
-                                                 collapse="+"),
-                                           ")"))
-                         }
-                       }),
-                       lapply(.var, function(v) {
-                         str2lang(paste0(v, ".rx <- rx.", v))
-                       }))
-                       if (.m1 == "omega") {
-                         .uiIovOmegaEtas(.var, .lvls[[l1]], l1, .iniDf,
-                                         .eta1, .env)
-                       }
-                       .lst
-                     })
+          .env$extraThetas <- c(.env$extraThetas, .curTheta)
+          if (.m1 != "omega") {
+            ## "theta" mode: one unit-variance eta per
+            ## occasion, fixed, scaled by the magnitude
+            ## theta above.  Under "omega" the etas are
+            ## built occasion-major after this loop, since
+            ## each occasion's parameters form one block.
+            for (n in .lvls[[l1]]) {
+              .curEta <- .eta1
+              .curEta$name <- paste0("rx.", v, ".", n)
+              .curEta$label <- paste0(v, "(", l1, "==", n, ")")
+              .env$drop <- c(.env$drop, .curEta$name)
+              .env$maxeta <- .curEta$neta1 <-
+                .curEta$neta2 <- .env$maxeta + 1L
+              .env$etas <- rbind(.env$etas, .curEta)
+              .env$extraEtas <- c(.env$extraEtas, .curEta)
+            }
+          }
+          if (.xf1 == "logsd") {
+            str2lang(paste0(
+              "rx.",
+              v,
+              " <- exp(",
+              v,
+              ")*(",
+              paste(paste0("rx.", v, ".", .lvls[[l1]], "*(", l1, " == ", .lvls[[l1]], ")"), collapse = "+"),
+              ")"
+            ))
+          } else if (.xf1 == "logvar") {
+            str2lang(paste0(
+              "rx.",
+              v,
+              " <- sqrt(exp(",
+              v,
+              "))*(",
+              paste(paste0("rx.", v, ".", .lvls[[l1]], "*(", l1, " == ", .lvls[[l1]], ")"), collapse = "+"),
+              ")"
+            ))
+          } else if (.xf1 == "sd") {
+            # |theta| written as sqrt(theta^2): identical value,
+            # but symengine differentiates it EXACTLY
+            # (theta/sqrt(theta^2) = sign) -- abs() is rewritten
+            # to an indicator form whose derivative is a
+            # tanh-SMOOTHED step, making the theta-sensitivity
+            # column wrong by a theta-dependent factor (#952)
+            str2lang(paste0(
+              "rx.",
+              v,
+              " <- sqrt((",
+              v,
+              ")^2)*(",
+              paste(paste0("rx.", v, ".", .lvls[[l1]], "*(", l1, " == ", .lvls[[l1]], ")"), collapse = "+"),
+              ")"
+            ))
+          } else if (.xf1 == "var") {
+            # sqrt(|theta|) as (theta^2)^(1/4), same reasoning
+            # as the "sd" branch above (#952)
+            str2lang(paste0(
+              "rx.",
+              v,
+              " <- ((",
+              v,
+              ")^2)^0.25*(",
+              paste(paste0("rx.", v, ".", .lvls[[l1]], "*(", l1, " == ", .lvls[[l1]], ")"), collapse = "+"),
+              ")"
+            ))
+          }
+        }),
+        lapply(.var, function(v) {
+          str2lang(paste0(v, ".rx <- rx.", v))
+        })
+      )
+      if (.m1 == "omega") {
+        .uiIovOmegaEtas(.var, .lvls[[l1]], l1, .iniDf, .eta1, .env)
+      }
+      .lst
+    })
     .uiIovEnv$lines <- do.call(`c`, .lines)
     .lines <- c(.uiIovEnv$lines, .ui$lstExpr)
     .ui <- rxode2::rxUiDecompress(.ui)
     # Now the lines can be added to the model
-    assign("iniDf", rbind(.env$thetas,.env$etas), envir = .ui)
+    assign("iniDf", rbind(.env$thetas, .env$etas), envir = .ui)
     assign("lstExpr", .lines, envir = .ui)
     .uiIovEnv$ui <- ui
     .uiIovEnv$iovDrop <- .env$drop # extra variables to drop
     .ret <- list(ui = rxode2::rxUiDecompress(suppressWarnings(suppressMessages(.ui$fun()))))
-    if (.fellBack) .ret$control <- control
+    if (.fellBack) {
+      .ret$control <- control
+    }
     .ret
   } else {
     .uiIovEnv$ui <- NULL
@@ -671,59 +772,66 @@ nlmixr2iovVarSd <- function(val) {
   # R/saemIov.R): it removed the user's line entirely and has no magnitude theta,
   # so almost none of the mechanism below applies
   if (!is.null(.uiIovEnv$ui) && is.null(.uiIovEnv$iovCollapsed)) {
-    if (is.null(ret$ui)) return(ret)
+    if (is.null(ret$ui)) {
+      return(ret)
+    }
 
     if (is.environment(ret$env)) {
       #.preFinalParTableHooksRun(.uiIovEnv)
       .ui <- ret$env$ui
       .lstExpr <- .ui$lstExpr
-      .w <- which(vapply(seq_along(.lstExpr),
-             function(i) {
-               any(vapply(seq_along(.uiIovEnv$lines),
-                      function(j) {
-                        if (identical(.lstExpr[[i]], .uiIovEnv$lines[[j]])) {
-                          return(TRUE)
-                        }
-                        FALSE
-                      }, logical(1), USE.NAMES = FALSE))
-             }, logical(1), USE.NAMES = FALSE))
+      .w <- which(vapply(
+        seq_along(.lstExpr),
+        function(i) {
+          any(vapply(
+            seq_along(.uiIovEnv$lines),
+            function(j) {
+              if (identical(.lstExpr[[i]], .uiIovEnv$lines[[j]])) {
+                return(TRUE)
+              }
+              FALSE
+            },
+            logical(1),
+            USE.NAMES = FALSE
+          ))
+        },
+        logical(1),
+        USE.NAMES = FALSE
+      ))
       if (length(.w) > 0L) {
-        .lstExpr <- lapply(seq_along(.lstExpr)[-.w],
-                           function(i) {
-                             .lstExpr[[i]]
-                           })
+        .lstExpr <- lapply(seq_along(.lstExpr)[-.w], function(i) {
+          .lstExpr[[i]]
+        })
       }
       # Get the IOV variables that are present as thetas in the model
-      .iovName <- new.env(parent=emptyenv())
+      .iovName <- new.env(parent = emptyenv())
       .iovDf <- .uiIovEnv$ui$iniDf
-      .iovDf <- .iovDf[!is.na(.iovDf$neta1) & .iovDf$condition != "id",, drop=FALSE]
+      .iovDf <- .iovDf[!is.na(.iovDf$neta1) & .iovDf$condition != "id", , drop = FALSE]
       .iovName$var <- .iovDf$name
 
       getEstimateDf <- function(iniDf) {
         .iniDf <- iniDf
         # Final thetaDf & etaDf
-        .thetaDf <- .iniDf[is.na(.iniDf$neta1),, drop=FALSE]
-        .etaDf <- .iniDf[!is.na(.iniDf$neta1),, drop=FALSE]
+        .thetaDf <- .iniDf[is.na(.iniDf$neta1), , drop = FALSE]
+        .etaDf <- .iniDf[!is.na(.iniDf$neta1), , drop = FALSE]
 
         # Drop the dummy etas
-        .etaDf <- .etaDf[!(.etaDf$name %in% .uiIovEnv$iovDrop),, drop=FALSE]
+        .etaDf <- .etaDf[!(.etaDf$name %in% .uiIovEnv$iovDrop), , drop = FALSE]
         # A correlated occasion block also produced `(a,b)` covariance rows.
         # Those are not in `iovDrop` -- it names variables, and a covariance
         # is not one -- so drop whatever still points at an eta that just
         # went away, or it survives with a dangling `neta2` and the
         # regenerated `ini({})` no longer parses.
         .keptEta <- .etaDf$neta1[.etaDf$neta1 == .etaDf$neta2]
-        .etaDf <- .etaDf[.etaDf$neta1 %in% .keptEta &
-                           .etaDf$neta2 %in% .keptEta, , drop=FALSE]
+        .etaDf <- .etaDf[.etaDf$neta1 %in% .keptEta & .etaDf$neta2 %in% .keptEta, , drop = FALSE]
 
         # Renumber etas, just in case
         .etaDf$neta1 <- factor(.etaDf$neta1)
-        .etaDf$neta2 <- factor(.etaDf$neta2, levels=levels(.etaDf$neta1))
+        .etaDf$neta2 <- factor(.etaDf$neta2, levels = levels(.etaDf$neta1))
         .etaDf$neta1 <- as.integer(.etaDf$neta1)
         .etaDf$neta2 <- as.integer(.etaDf$neta2)
 
         .maxEta <- if (nrow(.etaDf) == 0L) 0L else max(.etaDf$neta1)
-
 
         # Go through each IOV variable and calculate the variance from the back-transform
         # Add it to the .etaDf afterward, and remove from .thetaDf
@@ -748,8 +856,7 @@ nlmixr2iovVarSd <- function(val) {
           .wm <- which(.iniDf$name == nm)
           ## nocov start
           if (length(.wm) != 1L) {
-            stop("cannot find the occasion master estimate '", nm, "'",
-                 call.=FALSE)
+            stop("cannot find the occasion master estimate '", nm, "'", call. = FALSE)
           }
           ## nocov end
           .iniDf$est[.wm]
@@ -763,7 +870,7 @@ nlmixr2iovVarSd <- function(val) {
         .rmTheta <- function(w) {
           # `x[-integer(0)]` is EMPTY, not everything -- never let an
           # unmatched name silently drop every theta
-          if (length(w) == 1L) .thetaDf <<- .thetaDf[-w, , drop=FALSE]
+          if (length(w) == 1L) .thetaDf <<- .thetaDf[-w, , drop = FALSE]
         }
         .fillRow <- function(i, cur) {
           cur$fix <- .iovDf$fix[i]
@@ -804,7 +911,9 @@ nlmixr2iovVarSd <- function(val) {
             # be rebuilding.  Leave it alone.
             .w <- integer(0)
             .poolEta <- .uiIovEnv$iovTwoLevel[[.v]][1]
-            if (!(.poolEta %in% .iniDf$name)) next
+            if (!(.poolEta %in% .iniDf$name)) {
+              next
+            }
             .est <- .iniDf$est[.iniDf$name == .poolEta]
           }
           .maxEta <- .maxEta + 1L
@@ -818,21 +927,20 @@ nlmixr2iovVarSd <- function(val) {
         }
         for (i in .offI) {
           .nm <- .iovDf$name[i]
-          .pair <- strsplit(substr(.nm, 2L, nchar(.nm) - 1L), ",",
-                            fixed=TRUE)[[1]]
+          .pair <- strsplit(substr(.nm, 2L, nchar(.nm) - 1L), ",", fixed = TRUE)[[1]]
           ## nocov start
           if (length(.pair) != 2L || !all(.pair %in% names(.newEta))) {
-            stop("cannot restore the occasion covariance '", .nm, "'",
-                 call.=FALSE)
+            stop("cannot restore the occasion covariance '", .nm, "'", call. = FALSE)
           }
           ## nocov end
           .ma <- .uiIovEnv$iovMaster[[.pair[1]]]
           .mb <- .uiIovEnv$iovMaster[[.pair[2]]]
           # `as.data.frame()` names an off diagonal by matrix position, so
           # accept either spelling rather than guessing the order
-          .wo <- which(.iniDf$name %in% c(paste0("(", .ma, ",", .mb, ")"),
-                                          paste0("(", .mb, ",", .ma, ")")))
-          if (length(.wo) == 0L) next
+          .wo <- which(.iniDf$name %in% c(paste0("(", .ma, ",", .mb, ")"), paste0("(", .mb, ",", .ma, ")")))
+          if (length(.wo) == 0L) {
+            next
+          }
           .e1 <- .newEta[[.pair[1]]]
           .e2 <- .newEta[[.pair[2]]]
           .cur <- .etaTemplate
@@ -886,65 +994,72 @@ nlmixr2iovVarSd <- function(val) {
       ## (`iov.v` and `iov.v2`), which silently mixed the two
       ## parameters' columns together and left the occasion NA.
       .iovOccCols <- function(d, nms) {
-        which(grepl(paste0("^rx\\.",
-                           gsub(".", "\\.", d, fixed=TRUE),
-                           "\\.[^.]+$"), nms))
+        which(grepl(paste0("^rx\\.", gsub(".", "\\.", d, fixed = TRUE), "\\.[^.]+$"), nms))
       }
       # Fix shrinkage, now split out by iov variable
       .shrink <- ret$env$shrink
       .w <- which(names(.shrink) %in% .uiIovEnv$iovDrop)
-      .shrink0 <- .shrink[,-.w]
-      .shrinkN <- cbind(data.frame(type=row.names(.shrink0)),
-                        .shrink)
+      .shrink0 <- .shrink[, -.w]
+      .shrinkN <- cbind(data.frame(type = row.names(.shrink0)), .shrink)
       .shrink1 <- lapply(.n, function(var) {
         .cur <- .omega[[var]]
         .dn <- dimnames(.cur)[[1]]
-        do.call(`cbind`,
-                lapply(.dn, function(d) {
-                  .w <- .iovOccCols(d, names(.shrinkN))
-                  ## nocov start
-                  # simply testing edge cases with warnings
-                  if(length(.w)==0L) {
-                    warning("IOV variable '", d,
-                            "' is not present in the shrinkage results, check your model and dataset",
-                            call. = FALSE)
-                    return(NULL)
-                  }
-                  if (length(.w)==1L) {
-                    warning("IOV variable '", d,
-                            "' has the same number of levels as the random effect, check your dataset",
-                            call. = FALSE)
-                  }
-                  ## nocov end
-                  .curd <- .shrinkN[,.w,  drop=FALSE]
+        do.call(
+          `cbind`,
+          lapply(.dn, function(d) {
+            .w <- .iovOccCols(d, names(.shrinkN))
+            ## nocov start
+            # simply testing edge cases with warnings
+            if (length(.w) == 0L) {
+              warning(
+                "IOV variable '",
+                d,
+                "' is not present in the shrinkage results, check your model and dataset",
+                call. = FALSE
+              )
+              return(NULL)
+            }
+            if (length(.w) == 1L) {
+              warning(
+                "IOV variable '",
+                d,
+                "' has the same number of levels as the random effect, check your dataset",
+                call. = FALSE
+              )
+            }
+            ## nocov end
+            .curd <- .shrinkN[, .w, drop = FALSE]
 
-                  # combine per-level mean/var/skewness/kurtosis by averaging
-                  .nv <- length(.curd["var",])
-                  .var <- sum(.curd["var", ])/.nv
+            # combine per-level mean/var/skewness/kurtosis by averaging
+            .nv <- length(.curd["var", ])
+            .var <- sum(.curd["var", ]) / .nv
 
-                  .mean <- sum(.curd["mean",])/.nv
-                  .sd <- sqrt(.var)
+            .mean <- sum(.curd["mean", ]) / .nv
+            .sd <- sqrt(.var)
 
-                  .tv <- .mean*sqrt(.nid*.nv)/.sd
+            .tv <- .mean * sqrt(.nid * .nv) / .sd
 
-                  .curi <- data.frame(v=c(.mean,
-                                          .var,
-                                          .sd,
-                                          sum(.curd["skewness",])/.nv,
-                                          sum(.curd["kurtosis",] + 3)/.nv - 3,
-                                          (1-.var/.est[d])*100, # var shrinkage
-                                          (1 - sqrt(.var)/sqrt(.est[d]))*100, # sd shrinkage
-                                          .tv,
-                                          2*stats::pt(-abs(.tv), df = (.nid*.nv) -1)
-                                          ),
-                                      row.names=row.names(.curd))
-                  names(.curi) <- d
-                  .curd <- cbind(.curd, .curi)
-                }))
+            .curi <- data.frame(
+              v = c(
+                .mean,
+                .var,
+                .sd,
+                sum(.curd["skewness", ]) / .nv,
+                sum(.curd["kurtosis", ] + 3) / .nv - 3,
+                (1 - .var / .est[d]) * 100, # var shrinkage
+                (1 - sqrt(.var) / sqrt(.est[d])) * 100, # sd shrinkage
+                .tv,
+                2 * stats::pt(-abs(.tv), df = (.nid * .nv) - 1)
+              ),
+              row.names = row.names(.curd)
+            )
+            names(.curi) <- d
+            .curd <- cbind(.curd, .curi)
+          })
+        )
       })
       names(.shrink1) <- .n
-      .shrink <- c(list(id=.shrink0),
-                   .shrink1)
+      .shrink <- c(list(id = .shrink0), .shrink1)
       assign("shrink", .shrink, envir = ret$env)
 
       # Now fix the random effect matrix
@@ -952,11 +1067,11 @@ nlmixr2iovVarSd <- function(val) {
 
       .w <- which(names(.ranef) %in% .uiIovEnv$iovDrop)
       .iov <- .ranef
-      .ranef <- .ranef[,-.w]
+      .ranef <- .ranef[, -.w]
       assign("ranef", .ranef, envir = ret$env)
 
       .w <- which(names(.iov) %in% c(.uiIovEnv$iovDrop, "ID"))
-      .iov <- .iov[,.w]
+      .iov <- .iov[, .w]
 
       # the shared rewrite's occasion etas are unit-variance, so they have to be
       # rescaled by the fitted SD; the two-level ones already carry c_ik
@@ -973,12 +1088,14 @@ nlmixr2iovVarSd <- function(val) {
         .dFirst <- .dn[1]
         for (d in .dn) {
           .w <- c(1L, .iovOccCols(d, names(.iov)))
-          .curd <- data.table::data.table(.iov[,.w])
-          .curd <- data.table::melt(.curd,
-                                    id.vars=names(.curd)[1],
-                                    measure.vars=names(.curd)[-1],
-                                    variable.name = var,
-                                    value.name = d)
+          .curd <- data.table::data.table(.iov[, .w])
+          .curd <- data.table::melt(
+            .curd,
+            id.vars = names(.curd)[1],
+            measure.vars = names(.curd)[-1],
+            variable.name = var,
+            value.name = d
+          )
           # rescale the derived eta (fixed to 1) by the IOV variable's sd.
           # Under the shared-block expansion the eta already carries the
           # whole magnitude -- its theta is fixed at one -- so there is
@@ -996,10 +1113,9 @@ nlmixr2iovVarSd <- function(val) {
         # strip the FIRST parameter's prefix -- `d` here is whatever the
         # loop above left behind, and with two occasion parameters that is
         # the wrong one, which silently turned every occasion into NA
-        .dt[[var]] <- as.integer(sub(paste0("rx.", .dFirst, "."), "",
-                                     as.character(.dt[[var]]), fixed=TRUE))
+        .dt[[var]] <- as.integer(sub(paste0("rx.", .dFirst, "."), "", as.character(.dt[[var]]), fixed = TRUE))
         .dt <- as.data.frame(.dt)
-        .dt <- .dt[order(.dt[[1]], .dt[[2]]), , drop=FALSE]
+        .dt <- .dt[order(.dt[[1]], .dt[[2]]), , drop = FALSE]
         rownames(.dt) <- NULL
         .dt
       })
@@ -1017,7 +1133,7 @@ nlmixr2iovVarSd <- function(val) {
       }
 
       .parFixedDf <- ret$env$parFixedDf
-      .bck <- which(grepl("Back",names(.parFixedDf)))
+      .bck <- which(grepl("Back", names(.parFixedDf)))
       .bsv <- which(grepl("BSV", names(.parFixedDf)))
       .est <- which(grepl("Est", names(.parFixedDf)))
 
@@ -1034,12 +1150,18 @@ nlmixr2iovVarSd <- function(val) {
         if (length(.omegaVars) > 0L) {
           .finIni <- ret$env$ui$iniDf
           .parFixedDf[.omegaVars, .bck] <-
-            vapply(.omegaVars, function(.v) {
-              .wv <- which(.finIni$name == .v & !is.na(.finIni$neta1) &
-                             .finIni$neta1 == .finIni$neta2)
-              if (length(.wv) != 1L) return(NA_real_)  # nocov
-              nlmixr2iovSdCv(sqrt(.finIni$est[.wv]))
-            }, double(1), USE.NAMES=FALSE)
+            vapply(
+              .omegaVars,
+              function(.v) {
+                .wv <- which(.finIni$name == .v & !is.na(.finIni$neta1) & .finIni$neta1 == .finIni$neta2)
+                if (length(.wv) != 1L) {
+                  return(NA_real_)
+                } # nocov
+                nlmixr2iovSdCv(sqrt(.finIni$est[.wv]))
+              },
+              double(1),
+              USE.NAMES = FALSE
+            )
         }
         # the CV stays in the NUMERIC `Back-transformed` column (pinned by
         # test-iov-same.R); only the printed table below moves it under BSV,
@@ -1047,18 +1169,18 @@ nlmixr2iovVarSd <- function(val) {
         # `.valCharPrep` picks the value up -- the numeric BSV cell is a theta
         # row's, so it goes back to NA.
         .valCharPrep <-
-          .parFixedDf[.uiIovEnv$iovVars,.bsv] <-
-          .parFixedDf[.uiIovEnv$iovVars, .bck]
-        .parFixedDf[.uiIovEnv$iovVars,.bsv] <- NA_real_
-        .parFixedDf[.uiIovEnv$iovVars,.est] <- NA_real_
+          .parFixedDf[.uiIovEnv$iovVars, .bsv] <-
+            .parFixedDf[.uiIovEnv$iovVars, .bck]
+        .parFixedDf[.uiIovEnv$iovVars, .bsv] <- NA_real_
+        .parFixedDf[.uiIovEnv$iovVars, .est] <- NA_real_
       }
 
-      .parFixedDf <- .parFixedDf[!grepl("^rx[.]", rownames(.parFixedDf)),]
+      .parFixedDf <- .parFixedDf[!grepl("^rx[.]", rownames(.parFixedDf)), ]
       assign("parFixedDf", .parFixedDf, envir = ret$env)
 
       .parFixed <- ret$env$parFixed
       .bck2 <- which(grepl("Back", names(.parFixed)))
-      .bsv2 <- which(grepl("BSV",  names(.parFixed)))
+      .bsv2 <- which(grepl("BSV", names(.parFixed)))
       .est2 <- which(grepl("Est", names(.parFixed)))
 
       .sigdig <- ret$control$sigdig
@@ -1067,11 +1189,13 @@ nlmixr2iovVarSd <- function(val) {
         .parFixed[.uiIovEnv$iovVars, .est2] <- ""
         .parFixed[.uiIovEnv$iovVars, .bsv2] <- formatC(
           signif(.valCharPrep, digits = .sigdig),
-          digits = .sigdig, format = "fg", flag = "#")
+          digits = .sigdig,
+          format = "fg",
+          flag = "#"
+        )
       }
-      .parFixed <- .parFixed[!grepl("^rx[.]", rownames(.parFixed)),]
-      assign("parFixed", .parFixed, envir=ret$env)
-
+      .parFixed <- .parFixed[!grepl("^rx[.]", rownames(.parFixed)), ]
+      assign("parFixed", .parFixed, envir = ret$env)
     }
     # In this approach the model is simply kept,
     # but the data drops the iovDrop
@@ -1080,16 +1204,21 @@ nlmixr2iovVarSd <- function(val) {
       .cls <- class(ret)
       if (length(.w) > 0L) {
         class(ret) <- "data.frame"
-        ret <- ret[,-.w]
+        ret <- ret[, -.w]
       }
       .rename <- paste0(.uiIovEnv$iovVars, ".rx")
-      names(ret) <- vapply(names(ret), function(n) {
-        if (n %in% .rename) {
-          sub("[.]rx$", "", n)
-        } else {
-          n
-        }
-      }, character(1), USE.NAMES = FALSE)
+      names(ret) <- vapply(
+        names(ret),
+        function(n) {
+          if (n %in% .rename) {
+            sub("[.]rx$", "", n)
+          } else {
+            n
+          }
+        },
+        character(1),
+        USE.NAMES = FALSE
+      )
       class(ret) <- .cls
     }
     .stripFastmatchHash(ret$env)

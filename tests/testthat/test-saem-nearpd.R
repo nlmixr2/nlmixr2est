@@ -10,10 +10,19 @@ nmTest({
     nid <- 30
     cov1 <- rnorm(nid, 70, 10)
     cov2 <- 0.5 * cov1 + rnorm(nid, 0, 5)
-    pk <- do.call(rbind, lapply(seq_len(nid), function(i) data.frame(
-      ID = i, TIME = c(0, 0.5, 1, 2, 4, 8), EVID = c(1, 0, 0, 0, 0, 0),
-      AMT = c(100, 0, 0, 0, 0, 0), CMT = 1,
-      DV = c(0, 5, 7, 6, 4, 2) * exp(rnorm(1, 0, 0.2)) + rnorm(6, 0, 0.2))))
+    pk <- do.call(
+      rbind,
+      lapply(seq_len(nid), function(i) {
+        data.frame(
+          ID = i,
+          TIME = c(0, 0.5, 1, 2, 4, 8),
+          EVID = c(1, 0, 0, 0, 0, 0),
+          AMT = c(100, 0, 0, 0, 0, 0),
+          CMT = 1,
+          DV = c(0, 5, 7, 6, 4, 2) * exp(rnorm(1, 0, 0.2)) + rnorm(6, 0, 0.2)
+        )
+      })
+    )
     pk$CMT[pk$EVID == 0] <- 2
     c1 <- data.frame(ID = seq_len(nid), TIME = 0, EVID = 0, AMT = 0, CMT = 3, DV = cov1)
     c2 <- data.frame(ID = seq_len(nid), TIME = 0, EVID = 0, AMT = 0, CMT = 4, DV = cov2)
@@ -43,8 +52,8 @@ nmTest({
   test_that("saem recovers from a non-positive-definite Omega via nearPD", {
     .d <- .mkDat()
     .f <- suppressWarnings(suppressMessages(
-      nlmixr2(mod, .d, est = "saem",
-              control = saemControl(nBurn = 50, nEm = 80, seed = 42, print = 0L))))
+      nlmixr2(mod, .d, est = "saem", control = saemControl(nBurn = 50, nEm = 80, seed = 42, print = 0L))
+    ))
     # the fit completes instead of erroring ...
     expect_true(inherits(.f, "nlmixr2FitData"))
     # ... and the nearPD projection is actually exercised (mechanism-used check):

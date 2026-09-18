@@ -3,17 +3,17 @@
 nlmixr2Est.ifocei <- function(env, ...) {
   .ui <- env$ui
   .control <- env$control
-  .foceiFamilyControl(env, ..., type="ifoceiControl")
+  .foceiFamilyControl(env, ..., type = "ifoceiControl")
   .ifoceiControlToFoceiControl(env)
   on.exit({
-    if (exists("control", envir=.ui)) {
-      rm("control", envir=.ui)
+    if (exists("control", envir = .ui)) {
+      rm("control", envir = .ui)
     }
   })
   env$ifoceiControl <- .control
   env$est <- "ifocei"
   .ui <- env$ui
-  .foceiFamilyReturn(env, .ui, ..., est="ifocei")
+  .foceiFamilyReturn(env, .ui, ..., est = "ifocei")
 }
 attr(nlmixr2Est.ifocei, "nlmixr2Priors") <- "general"
 attr(nlmixr2Est.ifocei, "covPresent") <- TRUE

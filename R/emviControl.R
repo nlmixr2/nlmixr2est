@@ -190,50 +190,51 @@
 #' @return variational-inference control structure (class `emviControl`)
 #' @export
 #' @author Matthew L. Fidler
-emviControl <- function(seed = 42L,
-                        iters = 300L,
-                        nMc = 1L,
-                        viFamily = c("fullRank", "meanField"),
-                        pointEstimate = NULL,
-                        optim = c("advi", "adam"),
-                        adaptEta = TRUE,
-                        perNoCor = 0.75,
-                        etaCandidates = c(0.01, 0.025, 0.05, 0.1, 0.25),
-                        tau = 1.0,
-                        alpha = 0.1,
-                        tol = NULL,
-                        evalElbo = 100L,
-                        klWarmup = 0L,
-                        temperInit = 10,
-                        likelihood = c("focei", "foce", "focep", "laplace"),
-                        returnVi = FALSE,
-                        resume = NULL,
+emviControl <- function(
+  seed = 42L,
+  iters = 300L,
+  nMc = 1L,
+  viFamily = c("fullRank", "meanField"),
+  pointEstimate = NULL,
+  optim = c("advi", "adam"),
+  adaptEta = TRUE,
+  perNoCor = 0.75,
+  etaCandidates = c(0.01, 0.025, 0.05, 0.1, 0.25),
+  tau = 1.0,
+  alpha = 0.1,
+  tol = NULL,
+  evalElbo = 100L,
+  klWarmup = 0L,
+  temperInit = 10,
+  likelihood = c("focei", "foce", "focep", "laplace"),
+  returnVi = FALSE,
+  resume = NULL,
 
-                        print = 1L,
-                        useColor = NULL,
-                        printNcol = NULL,
+  print = 1L,
+  useColor = NULL,
+  printNcol = NULL,
 
-                        covMethod = c("vi", "analytic", "r,s", "r", "s", ""),
-                        optExpression = TRUE,
-                        sumProd = FALSE,
-                        literalFix = TRUE,
-                        literalFixRes = TRUE,
-                        addProp = c("combined2", "combined1"),
-                        calcTables = TRUE,
-                        compress = FALSE,
-                        adjObf = TRUE,
-                        ci = 0.95,
-                        sigdig = 3,
-                        sigdigTable = NULL,
+  covMethod = c("vi", "analytic", "r,s", "r", "s", ""),
+  optExpression = TRUE,
+  sumProd = FALSE,
+  literalFix = TRUE,
+  literalFixRes = TRUE,
+  addProp = c("combined2", "combined1"),
+  calcTables = TRUE,
+  compress = FALSE,
+  adjObf = TRUE,
+  ci = 0.95,
+  sigdig = 3,
+  sigdigTable = NULL,
 
-                        stickyRecalcN = 4,
-                        maxOdeRecalc = 5,
-                        odeRecalcFactor = 10^(0.5),
-                        indTolRelax = TRUE,
-                        eventSens = c("jump", "fd"),
-                        rxControl = NULL,
-                        ...) {
-
+  stickyRecalcN = 4,
+  maxOdeRecalc = 5,
+  odeRecalcFactor = 10^(0.5),
+  indTolRelax = TRUE,
+  eventSens = c("jump", "fd"),
+  rxControl = NULL,
+  ...
+) {
   checkmate::assertIntegerish(seed, any.missing = FALSE, len = 1)
   checkmate::assertIntegerish(iters, lower = 1, any.missing = FALSE, len = 1)
   checkmate::assertIntegerish(nMc, lower = 1, any.missing = FALSE, len = 1)
@@ -250,8 +251,13 @@ emviControl <- function(seed = 42L,
   ## >1 is an absolute iteration count; reject a fractional one rather than
   ## silently rounding it to a schedule the user did not ask for
   if (perNoCor > 1) {
-    checkmate::assertIntegerish(perNoCor, lower = 2, len = 1, any.missing = FALSE,
-                                .var.name = "perNoCor (absolute iteration count)")
+    checkmate::assertIntegerish(
+      perNoCor,
+      lower = 2,
+      len = 1,
+      any.missing = FALSE,
+      .var.name = "perNoCor (absolute iteration count)"
+    )
   }
   checkmate::assertNumeric(alpha, lower = 0, upper = 1, any.missing = FALSE, len = 1)
   ## tol follows the package-wide sigdig convention (10^-sigdig), the same
@@ -264,8 +270,7 @@ emviControl <- function(seed = 42L,
   ## the type here too: without it emviControl(sigdig = "bad") reports a base
   ## arithmetic error from 10^-sigdig rather than the intended checkmate message.
   if (is.null(tol)) {
-    .sdOk <- !is.null(sigdig) && is.numeric(sigdig) && length(sigdig) == 1L &&
-      !is.na(sigdig)
+    .sdOk <- !is.null(sigdig) && is.numeric(sigdig) && length(sigdig) == 1L && !is.na(sigdig)
     tol <- if (.sdOk) .sigdigOptTol(sigdig) else 1e-4
   }
   checkmate::assertNumeric(tol, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
@@ -300,8 +305,7 @@ emviControl <- function(seed = 42L,
   .bad <- names(.xtra)
   .bad <- .bad[!(.bad %in% c("genRxControl", "iterPrintControl"))]
   if (length(.bad) > 0) {
-    stop("unused argument: ", paste(paste0("'", .bad, "'"), collapse = ", "),
-         call. = FALSE)
+    stop("unused argument: ", paste(paste0("'", .bad, "'"), collapse = ", "), call. = FALSE)
   }
 
   .genRxControl <- FALSE
@@ -315,12 +319,10 @@ emviControl <- function(seed = 42L,
       rxControl <- rxode2::rxControl(atol = 1e-4, rtol = 1e-4)
     }
     .genRxControl <- TRUE
-  } else if (inherits(rxControl, "rxControl")) {
-  } else if (is.list(rxControl)) {
+  } else if (inherits(rxControl, "rxControl")) {} else if (is.list(rxControl)) {
     rxControl <- .rxControlScaleSigdig(do.call(rxode2::rxControl, rxControl), sigdig, skip = names(rxControl))
   } else {
-    stop("solving options 'rxControl' needs to be generated from 'rxode2::rxControl'",
-         call. = FALSE)
+    stop("solving options 'rxControl' needs to be generated from 'rxode2::rxControl'", call. = FALSE)
   }
   if (!is.null(sigdig)) {
     checkmate::assertNumeric(sigdig, lower = 1, finite = TRUE, any.missing = TRUE, len = 1)
@@ -333,49 +335,53 @@ emviControl <- function(seed = 42L,
   }
   checkmate::assertIntegerish(sigdigTable, lower = 1, len = 1, any.missing = FALSE)
 
-  .iterPrintControl <- .absorbIterPrintControl(print = print,
-                                               printNcol = printNcol,
-                                               useColor = useColor,
-                                               iterPrintControl = .xtra$iterPrintControl)
+  .iterPrintControl <- .absorbIterPrintControl(
+    print = print,
+    printNcol = printNcol,
+    useColor = useColor,
+    iterPrintControl = .xtra$iterPrintControl
+  )
 
-  .ret <- list(seed = as.integer(seed),
-               iters = as.integer(iters),
-               nMc = as.integer(nMc),
-               viFamily = viFamily,
-               pointEstimate = pointEstimate,
-               optim = optim,
-               adaptEta = adaptEta,
-               perNoCor = perNoCor,
-               etaCandidates = as.numeric(etaCandidates),
-               tau = tau,
-               alpha = alpha,
-               tol = tol,
-               evalElbo = as.integer(evalElbo),
-               klWarmup = as.integer(klWarmup),
-               temperInit = as.numeric(temperInit),
-               likelihood = likelihood,
-               returnVi = returnVi,
-               resume = resume,
-               covMethod = covMethod,
-               optExpression = optExpression,
-               sumProd = sumProd,
-               literalFix = literalFix,
-               literalFixRes = literalFixRes,
-               addProp = addProp,
-               calcTables = calcTables,
-               compress = compress,
-               adjObf = adjObf,
-               ci = ci,
-               sigdig = sigdig,
-               sigdigTable = sigdigTable,
-               stickyRecalcN = as.integer(stickyRecalcN),
-               maxOdeRecalc = as.integer(maxOdeRecalc),
-               odeRecalcFactor = odeRecalcFactor,
-               indTolRelax = indTolRelax,
-               eventSens = eventSens,
-               iterPrintControl = .iterPrintControl,
-               rxControl = rxControl,
-               genRxControl = .genRxControl)
+  .ret <- list(
+    seed = as.integer(seed),
+    iters = as.integer(iters),
+    nMc = as.integer(nMc),
+    viFamily = viFamily,
+    pointEstimate = pointEstimate,
+    optim = optim,
+    adaptEta = adaptEta,
+    perNoCor = perNoCor,
+    etaCandidates = as.numeric(etaCandidates),
+    tau = tau,
+    alpha = alpha,
+    tol = tol,
+    evalElbo = as.integer(evalElbo),
+    klWarmup = as.integer(klWarmup),
+    temperInit = as.numeric(temperInit),
+    likelihood = likelihood,
+    returnVi = returnVi,
+    resume = resume,
+    covMethod = covMethod,
+    optExpression = optExpression,
+    sumProd = sumProd,
+    literalFix = literalFix,
+    literalFixRes = literalFixRes,
+    addProp = addProp,
+    calcTables = calcTables,
+    compress = compress,
+    adjObf = adjObf,
+    ci = ci,
+    sigdig = sigdig,
+    sigdigTable = sigdigTable,
+    stickyRecalcN = as.integer(stickyRecalcN),
+    maxOdeRecalc = as.integer(maxOdeRecalc),
+    odeRecalcFactor = odeRecalcFactor,
+    indTolRelax = indTolRelax,
+    eventSens = eventSens,
+    iterPrintControl = .iterPrintControl,
+    rxControl = rxControl,
+    genRxControl = .genRxControl
+  )
   class(.ret) <- "emviControl"
   .ret
 }
@@ -383,7 +389,7 @@ emviControl <- function(seed = 42L,
 #' @export
 rxUiDeparse.emviControl <- function(object, var) {
   .default <- emviControl()
-  object$resume <- NULL                     # not deparsable (may be a whole fit)
+  object$resume <- NULL # not deparsable (may be a whole fit)
   .w <- .deparseDifferent(.default, object, "genRxControl")
   .deparseFinal(.default, object, .w, var)
 }
@@ -426,8 +432,12 @@ nmObjGetControl.emvi <- function(x, ...) .viGetControl(x)
 #' @noRd
 .viValidCtl <- function(control, pe, est) {
   .ctl <- control[[1]]
-  if (is.null(.ctl)) .ctl <- emviControl()
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) .ctl <- do.call("emviControl", .ctl)
+  if (is.null(.ctl)) {
+    .ctl <- emviControl()
+  }
+  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
+    .ctl <- do.call("emviControl", .ctl)
+  }
   if (!inherits(.ctl, "emviControl")) {
     .minfo(paste0("invalid control for `est=\"", est, "\"`, using default"))
     .ctl <- emviControl()

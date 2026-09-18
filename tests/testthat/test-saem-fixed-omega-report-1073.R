@@ -42,15 +42,15 @@ nmTest({
   }
 
   .ctl <- function() {
-    saemControl(nBurn = 20, nEm = 20, print = 0, seed = 42, calcTables = FALSE,
-                covMethod = "")
+    saemControl(nBurn = 20, nEm = 20, print = 0, seed = 42, calcTables = FALSE, covMethod = "")
   }
 
   test_that("a fix()ed eta variance is reported as the value it was fixed at", {
     skip_on_cran()
     skip_if_not_installed("nlmixr2data")
     .fit <- suppressWarnings(suppressMessages(
-      nlmixr2(.fixMuMod, nlmixr2data::theo_sd, "saem", .ctl())))
+      nlmixr2(.fixMuMod, nlmixr2data::theo_sd, "saem", .ctl())
+    ))
     expect_equal(unname(.fit$omega["eta.ka", "eta.ka"]), 0.3)
     # the estimated one still moved, so the fit is not simply echoing ini()
     expect_false(isTRUE(all.equal(unname(.fit$omega["eta.cl", "eta.cl"]), 0.1)))
@@ -80,16 +80,24 @@ nmTest({
     # (measured).  What it does establish is the user-visible invariant -- the
     # phase must not change the reported omega, fixed cell or otherwise.
     .fit <- suppressWarnings(suppressMessages(
-      nlmixr2(.fixMuMod, nlmixr2data::theo_sd, "saem",
-              saemControl(nBurn = 20, nEm = 20, print = 0, seed = 42,
-                          calcTables = FALSE, covMethod = "sa", nSaCov = 20L))))
+      nlmixr2(
+        .fixMuMod,
+        nlmixr2data::theo_sd,
+        "saem",
+        saemControl(nBurn = 20, nEm = 20, print = 0, seed = 42, calcTables = FALSE, covMethod = "sa", nSaCov = 20L)
+      )
+    ))
     expect_equal(unname(.fit$omega["eta.ka", "eta.ka"]), 0.3)
     # ... and the estimated entries are untouched by the phase too, not just
     # the fixed one.
     .noCov <- suppressWarnings(suppressMessages(
-      nlmixr2(.fixMuMod, nlmixr2data::theo_sd, "saem",
-              saemControl(nBurn = 20, nEm = 20, print = 0, seed = 42,
-                          calcTables = FALSE, covMethod = ""))))
+      nlmixr2(
+        .fixMuMod,
+        nlmixr2data::theo_sd,
+        "saem",
+        saemControl(nBurn = 20, nEm = 20, print = 0, seed = 42, calcTables = FALSE, covMethod = "")
+      )
+    ))
     expect_equal(unname(.fit$omega), unname(.noCov$omega))
   })
 
@@ -97,7 +105,8 @@ nmTest({
     skip_on_cran()
     skip_if_not_installed("nlmixr2data")
     .fit <- suppressWarnings(suppressMessages(
-      nlmixr2(.fixNonMuMod, nlmixr2data::theo_sd, "saem", .ctl())))
+      nlmixr2(.fixNonMuMod, nlmixr2data::theo_sd, "saem", .ctl())
+    ))
     expect_equal(unname(.fit$omega["rxz.eta.ka", "rxz.eta.ka"]), 1)
     .w <- which(diag(.fit$saem$Gamma2_phi1) == 1)
     expect_equal(length(.w), 1L)

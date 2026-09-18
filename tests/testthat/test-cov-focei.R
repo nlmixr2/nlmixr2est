@@ -1,7 +1,5 @@
 nmTest({
-
   test_that("cov-focei", {
-
     dat <-
       warfarin |>
       dplyr::filter(dvid == "cp")
@@ -69,19 +67,19 @@ nmTest({
     # se_s/se_rs runs ~5 -- into the range this test reads as the old constant
     # factor returning.  Keep the guard on the estimator it was written for; the
     # SE/cov invariant under covFull is asserted separately below.
-    fit_r  <- .nlmixr(one.cmt, theo_sd, "focei", foceiControl(covMethod = "r",   print = 0, covFull = FALSE))
-    fit_s  <- .nlmixr(one.cmt, theo_sd, "focei", foceiControl(covMethod = "s",   print = 0, covFull = FALSE))
+    fit_r <- .nlmixr(one.cmt, theo_sd, "focei", foceiControl(covMethod = "r", print = 0, covFull = FALSE))
+    fit_s <- .nlmixr(one.cmt, theo_sd, "focei", foceiControl(covMethod = "s", print = 0, covFull = FALSE))
     fit_rs <- .nlmixr(one.cmt, theo_sd, "focei", foceiControl(covMethod = "r,s", print = 0, covFull = FALSE))
 
     p <- c("tka", "tcl", "tv")
-    se_r  <- fit_r$parFixedDf[p,  "SE"]
-    se_s  <- fit_s$parFixedDf[p,  "SE"]
+    se_r <- fit_r$parFixedDf[p, "SE"]
+    se_s <- fit_s$parFixedDf[p, "SE"]
     se_rs <- fit_rs$parFixedDf[p, "SE"]
 
     # Before the #666 fix: SE_r was ~sqrt(2)*SE_rs (covR was 2*Rinv) and SE_s was ~2x that again
     # (covS was 4*Sinv).  covMethod="r" (observed information) and the "r,s" sandwich obey the
     # information equality, so r/rs stays ~1 and a return of the sqrt(2) scaling would push it >1.41.
-    expect_true(all(se_r  / se_rs < 1.3), label = "covMethod='r' SE not inflated vs sandwich")
+    expect_true(all(se_r / se_rs < 1.3), label = "covMethod='r' SE not inflated vs sandwich")
     # covMethod="s" is the OPG (score cross-product) estimator.  On this 12-subject dataset it
     # legitimately disagrees with the Hessian in its off-diagonals (S corr(tcl,tv) ~0.85 vs R's
     # ~0.12), so s/rs runs ~2 for cl/v -- finite-sample OPG behaviour that collapses toward 1 on
@@ -95,7 +93,7 @@ nmTest({
     # the r leg above asserts; tightening moves that to 0.88-1.26, i.e. onto the
     # ~1 this test says to expect.  3.5 still leaves clear room under the ~4.5 a
     # return of the constant factor would produce, which is what this guards.
-    expect_true(all(se_s  / se_rs < 3.5), label = "covMethod='s' SE not inflated by the old 2x constant factor")
+    expect_true(all(se_s / se_rs < 3.5), label = "covMethod='s' SE not inflated by the old 2x constant factor")
   })
 
   test_that("reported SE matches sqrt(diag(fit$cov)) (nlmixr2extra#125)", {
@@ -115,13 +113,14 @@ nmTest({
       })
     }
     for (.full in c(TRUE, FALSE)) {
-      .fit <- .nlmixr(one.cmt, theo_sd, "focei",
-                      foceiControl(print = 0, covFull = .full))
+      .fit <- .nlmixr(one.cmt, theo_sd, "focei", foceiControl(print = 0, covFull = .full))
       .p <- intersect(rownames(.fit$parFixedDf), rownames(.fit$cov))
       expect_true(length(.p) > 0)
-      expect_equal(unname(.fit$parFixedDf[.p, "SE"]),
-                   unname(sqrt(diag(.fit$cov))[.p]),
-                   label = paste0("covFull=", .full, " SE == sqrt(diag(cov))"))
+      expect_equal(
+        unname(.fit$parFixedDf[.p, "SE"]),
+        unname(sqrt(diag(.fit$cov))[.p]),
+        label = paste0("covFull=", .full, " SE == sqrt(diag(cov))")
+      )
     }
   })
 
@@ -146,8 +145,7 @@ nmTest({
         cp ~ add(add.sd)
       })
     }
-    fit <- .nlmixr(one.compartment, theo_sd, est = "focei",
-                   control=foceiControl(print=0, maxOuterIterations=0L))
+    fit <- .nlmixr(one.compartment, theo_sd, est = "focei", control = foceiControl(print = 0, maxOuterIterations = 0L))
     expect_s3_class(fit, "nlmixr2FitCore")
   })
 })

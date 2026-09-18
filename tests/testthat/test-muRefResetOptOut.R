@@ -68,9 +68,14 @@ nmTest({
         f0,
         est = "focei",
         control = foceiControl(
-          maxOuterIterations = 0L, maxInnerIterations = 1L,
-          etaMat = etaMatDrift, resetEtaP = 0.999,
-          muModel = muModel, warm = "none", innerOpt = "n1qn1", print = 0
+          maxOuterIterations = 0L,
+          maxInnerIterations = 1L,
+          etaMat = etaMatDrift,
+          resetEtaP = 0.999,
+          muModel = muModel,
+          warm = "none",
+          innerOpt = "n1qn1",
+          print = 0
         )
       )
       fit$eta

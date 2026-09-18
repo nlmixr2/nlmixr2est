@@ -32,9 +32,12 @@
 #' @author Matthew L. Fidler
 #' @noRd
 .noRandomEffectMsg <- function(est) {
-  paste0(" for the estimation routine '", est,
-         "'; a model with no random effects (for example single-subject or 'N of 1' data) can be ",
-         "fit with 'focei', 'foce', or a population method such as 'nlminb', 'bobyqa' or 'nls'")
+  paste0(
+    " for the estimation routine '",
+    est,
+    "'; a model with no random effects (for example single-subject or 'N of 1' data) can be ",
+    "fit with 'focei', 'foce', or a population method such as 'nlminb', 'bobyqa' or 'nls'"
+  )
 }
 
 #' Cox Box, Yeo Johnson and inverse transformation
@@ -125,7 +128,7 @@ iYeoJohnson <- function(x, lambda = 1) {
 # ####################################################################### #
 
 .rbindParHistory <- function(p1, p2) {
-  .ret <- try(rbind(p1, p2), silent=TRUE)
+  .ret <- try(rbind(p1, p2), silent = TRUE)
   if (inherits(.ret, "try-error")) {
     warning("parameter history may be incomplete")
     .ret <- p2
@@ -139,7 +142,8 @@ refresh <- function() {
   ## nocov end
 }
 
-nsis <- function() { ## build installer...
+nsis <- function() {
+  ## build installer...
   ## nocov start
   source(devtools::package_file("build/nsis.R"))
   ## nocov end
@@ -251,11 +255,12 @@ nsis <- function() { ## build installer...
 #' @keywords internal
 nlmixr2Print <- function(x, ...) {
   this.env <- environment()
-  message(invisible(paste(
-    .captureOutput(assign("x", print(x, ...), this.env)),
-    collapse = "\n"
-  )),
-  appendLF = TRUE
+  message(
+    invisible(paste(
+      .captureOutput(assign("x", print(x, ...), this.env)),
+      collapse = "\n"
+    )),
+    appendLF = TRUE
   )
   invisible(x)
 }
@@ -313,7 +318,7 @@ cholSE <- function(matrix, tol = (.Machine$double.eps)^(1 / 3)) {
 nmsimplex <- function(start, fr, rho = NULL, control = list()) {
   if (!is.environment(rho)) {
     if (!is.null(rho)) {
-      warning("improper argument for 'rho'", call.=FALSE)
+      warning("improper argument for 'rho'", call. = FALSE)
     }
     rho <- environment(fr)
   }
@@ -326,8 +331,18 @@ nmsimplex <- function(start, fr, rho = NULL, control = list()) {
     warning("unknown names in control: ", paste(noNms, collapse = ", "))
   }
 
-  .Call(neldermead_wrap, fr, rho, length(start), start, step,
-    as.integer(con$maxeval), con$reltol, con$rcoeff, con$ecoeff, con$ccoeff,
+  .Call(
+    neldermead_wrap,
+    fr,
+    rho,
+    length(start),
+    start,
+    step,
+    as.integer(con$maxeval),
+    con$reltol,
+    con$rcoeff,
+    con$ecoeff,
+    con$ccoeff,
     as.integer(con$trace), # nolint
     PACKAGE = "nlmixr2est"
   )
@@ -359,12 +374,18 @@ nmSuppressMsg <- function() {
     if (!is.null(knitr::opts_knit$get("rmarkdown.pandoc.to"))) {
       return(invisible(NULL))
     } else {
-      .Call(`_nlmixr2est_setSilentErr`, as.integer(length(capture.output(message(" "), type = "message")) == 0L),
-            PACKAGE="nlmixr2est")
+      .Call(
+        `_nlmixr2est_setSilentErr`,
+        as.integer(length(capture.output(message(" "), type = "message")) == 0L),
+        PACKAGE = "nlmixr2est"
+      )
     }
   } else {
-    .Call(`_nlmixr2est_setSilentErr`, as.integer(length(capture.output(message(" "), type = "message")) == 0L),
-          PACKAGE="nlmixr2est")
+    .Call(
+      `_nlmixr2est_setSilentErr`,
+      as.integer(length(capture.output(message(" "), type = "message")) == 0L),
+      PACKAGE = "nlmixr2est"
+    )
   }
   invisible(NULL)
 }
@@ -421,26 +442,47 @@ rxModelVarsS3.nlmixr2FitCoreSilent <- function(obj) {
 #' nc  <- nmNearPD(pr)
 #'
 #' @export
-nmNearPD <- function(x, keepDiag = FALSE, do2eigen = TRUE, doDykstra = TRUE, only.values = FALSE, ensureSymmetry=!isSymmetric(x), eig.tol = 1e-6, conv.tol = 1e-7, posd.tol = 1e-8, maxit = 100L,
-                     trace = FALSE # nolint
-                     ) {
+nmNearPD <- function(
+  x,
+  keepDiag = FALSE,
+  do2eigen = TRUE,
+  doDykstra = TRUE,
+  only.values = FALSE,
+  ensureSymmetry = !isSymmetric(x),
+  eig.tol = 1e-6,
+  conv.tol = 1e-7,
+  posd.tol = 1e-8,
+  maxit = 100L,
+  trace = FALSE # nolint
+) {
   if (ensureSymmetry) {
     x <- 0.5 * (t(x) + x)
   }
-  .Call(`_nlmixr2est_nmNearPD_`, x, keepDiag, do2eigen, doDykstra, only.values, eig.tol, conv.tol, posd.tol, maxit,
-        trace # nolint
-        )
+  .Call(
+    `_nlmixr2est_nmNearPD_`,
+    x,
+    keepDiag,
+    do2eigen,
+    doDykstra,
+    only.values,
+    eig.tol,
+    conv.tol,
+    posd.tol,
+    maxit,
+    trace # nolint
+  )
 }
 
 .sampleOmega <- function(omega) {
-  rxode2::rxRmvn(1, sigma=omega)
+  rxode2::rxRmvn(1, sigma = omega)
 }
 
 # The fit's rxControl(cores=) for rxOptExpr(parallel=): chunked expression
 # optimization then parallelizes with the same thread setting the solves use
 # (0 keeps rxControl(cores=)'s meaning, the rxode2 thread setting).
 .optExprCores <- function(ui) {
-  .cores <- tryCatch(as.integer(rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())$cores),
-                     error = function(e) 0L)
+  .cores <- tryCatch(as.integer(rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())$cores), error = function(e) {
+    0L
+  })
   if (!length(.cores) || is.na(.cores)) 0L else .cores
 }

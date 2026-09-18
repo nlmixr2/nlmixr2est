@@ -118,7 +118,9 @@ test_that("a prediction wrapping the linCmt() value is carried through the outer
   expect_equal(nrow(.foceiLinCmtCarryPairs(ui)), 1L)
   skip_if_not(.rxFoceiLinCmtCarryCapable())
   pars <- c(
-    `THETA[1]` = log(2), `THETA[2]` = log(20), `THETA[3]` = 0.5,
+    `THETA[1]` = log(2),
+    `THETA[2]` = log(20),
+    `THETA[3]` = 0.5,
     `ETA[1]` = 0.3
   )
   r <- suppressWarnings(.carryJumpFd(scaled, pars, .carryEv(), "auto"))
@@ -147,9 +149,12 @@ test_that("data-independent candidate pairs are memoized by the model digest", {
   expect_false(identical(.p1, .p3))
   # a data-dependent call bypasses the memo entirely (no counter movement)
   .dat <- data.frame(
-    id = rep(1:2, each = 3), time = rep(c(0, 12, 24), 2),
-    amt = rep(c(100, 0, 0), 2), evid = rep(c(1, 0, 0), 2),
-    dv = rep(c(0, 1, 2), 2), wt = rep(c(70, 90, 90), 2)
+    id = rep(1:2, each = 3),
+    time = rep(c(0, 12, 24), 2),
+    amt = rep(c(100, 0, 0), 2),
+    evid = rep(c(1, 0, 0), 2),
+    dv = rep(c(0, 1, 2), 2),
+    wt = rep(c(70, 90, 90), 2)
   )
   .p4 <- .foceiLinCmtCarryPairs(.ui, data = .dat)
   .st4 <- .foceiLinCmtCarryMemoStats()
@@ -158,7 +163,8 @@ test_that("data-independent candidate pairs are memoized by the model digest", {
   # a control that keys the digest (covsInterpolation) invalidates the entry
   .ui2 <- .carryUiCov()
   rxode2::rxAssignControlValue(
-    .ui2, "rxControl",
+    .ui2,
+    "rxControl",
     rxode2::rxControl(covsInterpolation = "nocb")
   )
   .foceiLinCmtCarryPairs(.ui2)

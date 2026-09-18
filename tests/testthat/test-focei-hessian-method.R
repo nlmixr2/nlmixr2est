@@ -25,24 +25,87 @@ nmTest({
     })
   }
   .poisData <- data.frame(ID = rep(1:20, each = 3), TIME = rep(c(0, 1, 2), 20))
-  .poisData$DV <- c(5L, 4L, 6L, 3L, 5L, 4L, 6L, 5L, 7L, 4L, 5L, 5L,
-                     6L, 6L, 5L, 4L, 3L, 5L, 5L, 6L, 4L, 7L, 5L, 6L,
-                     4L, 5L, 5L, 3L, 4L, 6L, 6L, 5L, 4L, 5L, 6L, 5L,
-                     4L, 4L, 6L, 5L, 7L, 5L, 6L, 5L, 4L, 3L, 5L, 6L,
-                     5L, 5L, 6L, 4L, 6L, 5L, 5L, 4L, 5L, 6L, 4L, 5L)
+  .poisData$DV <- c(
+    5L,
+    4L,
+    6L,
+    3L,
+    5L,
+    4L,
+    6L,
+    5L,
+    7L,
+    4L,
+    5L,
+    5L,
+    6L,
+    6L,
+    5L,
+    4L,
+    3L,
+    5L,
+    5L,
+    6L,
+    4L,
+    7L,
+    5L,
+    6L,
+    4L,
+    5L,
+    5L,
+    3L,
+    4L,
+    6L,
+    6L,
+    5L,
+    4L,
+    5L,
+    6L,
+    5L,
+    4L,
+    4L,
+    6L,
+    5L,
+    7L,
+    5L,
+    6L,
+    5L,
+    4L,
+    3L,
+    5L,
+    6L,
+    5L,
+    5L,
+    6L,
+    4L,
+    6L,
+    5L,
+    5L,
+    4L,
+    5L,
+    6L,
+    4L,
+    5L
+  )
 
   test_that("hessianMethod converges close to fd on a non-normal endpoint", {
     skip_on_cran()
     # innerOpt is pinned: the quasi-Newton inner Hessian only engages under
     # "trust", and the default "auto" routes a non-normal endpoint to n1qn1.
-    .fFd <- .nlmixr(.poisMod, .poisData, est = "focei",
-                    control = foceiControl(print = 0L, innerOpt = "trust",
-                                           hessianMethod = "fd"))
+    .fFd <- .nlmixr(
+      .poisMod,
+      .poisData,
+      est = "focei",
+      control = foceiControl(print = 0L, innerOpt = "trust", hessianMethod = "fd")
+    )
     expect_true(is.finite(.fFd$objf))
     for (.hm in c("bfgs", "sr1", "bofill")) {
-      .fT <- .nlmixr(.poisMod, .poisData, est = "focei",
-                     control = foceiControl(print = 0L, innerOpt = "trust",
-                                            hessianMethod = .hm))
+      .fT <- .nlmixr(
+        .poisMod,
+        .poisData,
+        est = "focei",
+        control = foceiControl(print = 0L, innerOpt = "trust", hessianMethod = .hm)
+      )
       expect_true(is.finite(.fT$objf), info = .hm)
       expect_equal(.fT$objf, .fFd$objf, tolerance = 1e-2, info = .hm)
       expect_equal(unname(.fT$theta), unname(.fFd$theta), tolerance = 1e-2, info = .hm)
@@ -95,28 +158,37 @@ nmTest({
     .ev <- rxode2::et(amt = 60000, cmt = "centr")
     .ev <- rxode2::et(.ev, seq(0.25, 24, by = 2))
     .ev <- rxode2::et(.ev, id = seq_len(30))
-    .sim <- rxode2::rxSolve(.simMod, .th, .ev,
-                            omega = lotri::lotri(eta.Vc ~ 0.1, eta.Cl ~ 0.1),
-                            addDosing = FALSE, returnType = "data.frame")
-    .obs <- data.frame(ID = .sim$id, TIME = .sim$time,
-                       DV = .sim$cp * (1 + 0.1 * stats::rnorm(nrow(.sim))),
-                       AMT = NA_real_, EVID = 0)
-    .dose <- data.frame(ID = seq_len(30), TIME = 0, DV = NA_real_,
-                        AMT = 60000, EVID = 1)
+    .sim <- rxode2::rxSolve(
+      .simMod,
+      .th,
+      .ev,
+      omega = lotri::lotri(eta.Vc ~ 0.1, eta.Cl ~ 0.1),
+      addDosing = FALSE,
+      returnType = "data.frame"
+    )
+    .obs <- data.frame(
+      ID = .sim$id,
+      TIME = .sim$time,
+      DV = .sim$cp * (1 + 0.1 * stats::rnorm(nrow(.sim))),
+      AMT = NA_real_,
+      EVID = 0
+    )
+    .dose <- data.frame(ID = seq_len(30), TIME = 0, DV = NA_real_, AMT = 60000, EVID = 1)
     .dat <- rbind(.dose, .obs)
     .ivBolusLL <- .ivBolus |> model(cp ~ prop(prop.err) + dnorm())
-    .fPlain <- suppressWarnings(nlmixr2(.ivBolus, .dat, est = "focei",
-                                        control = foceiControl(print = 0L)))
-    .fLLFd <- suppressWarnings(nlmixr2(.ivBolusLL, .dat, est = "focei",
-                                       control = foceiControl(print = 0L)))
+    .fPlain <- suppressWarnings(nlmixr2(.ivBolus, .dat, est = "focei", control = foceiControl(print = 0L)))
+    .fLLFd <- suppressWarnings(nlmixr2(.ivBolusLL, .dat, est = "focei", control = foceiControl(print = 0L)))
     expect_true(is.finite(.fPlain$objf))
     expect_true(is.finite(.fLLFd$objf))
     # fd (the default) should track the plain (Gauss-Newton) focei fit closely
     expect_equal(unname(.fLLFd$theta), unname(.fPlain$theta), tolerance = 0.05)
     for (.hm in c("bfgs", "sr1", "bofill")) {
-      .fLLQn <- suppressWarnings(nlmixr2(.ivBolusLL, .dat, est = "focei",
-                                         control = foceiControl(print = 0L, innerOpt = "trust",
-                                                                hessianMethod = .hm)))
+      .fLLQn <- suppressWarnings(nlmixr2(
+        .ivBolusLL,
+        .dat,
+        est = "focei",
+        control = foceiControl(print = 0L, innerOpt = "trust", hessianMethod = .hm)
+      ))
       # A QN method drifting off is the known, not-yet-fixed bias -- assert
       # only that a caller who explicitly opts into it still gets a finite
       # result, not that it matches (it currently does not).
@@ -144,8 +216,12 @@ nmTest({
 
   test_that("hessianMethod has no effect on a normal-endpoint model (needOptimHess gates it off)", {
     skip_on_cran()
-    .fN <- .nlmixr(.oneCmt, nlmixr2data::theo_sd, est = "focei",
-                   control = foceiControl(print = 0L, hessianMethod = "sr1"))
+    .fN <- .nlmixr(
+      .oneCmt,
+      nlmixr2data::theo_sd,
+      est = "focei",
+      control = foceiControl(print = 0L, hessianMethod = "sr1")
+    )
     expect_true(is.finite(.fN$objf))
     # The Gauss-Newton inner Hessian is used unconditionally for a normal
     # endpoint -- the quasi-Newton mechanism should never engage here.
@@ -159,10 +235,8 @@ nmTest({
     # Newton-step loop the quasi-Newton state assumes.  Asking for it anyway used
     # to be a silent no-op; it is now an error, so the request cannot be lost.
     for (.hm in c("bfgs", "sr1", "bofill")) {
-      expect_error(foceiControl(innerOpt = "n1qn1", hessianMethod = .hm),
-                   "innerOpt", info = .hm)
-      expect_error(foceiControl(innerOpt = "BFGS", hessianMethod = .hm),
-                   "innerOpt", info = .hm)
+      expect_error(foceiControl(innerOpt = "n1qn1", hessianMethod = .hm), "innerOpt", info = .hm)
+      expect_error(foceiControl(innerOpt = "BFGS", hessianMethod = .hm), "innerOpt", info = .hm)
     }
     # "fd" is what every non-trust inner optimizer already does, so it is not
     # refused; nor is the combination the mechanism actually supports.
@@ -177,9 +251,10 @@ nmTest({
     skip_on_cran()
     # A generalized-likelihood endpoint sends "auto" to n1qn1, where the request
     # could not be honored -- that has to surface as an error, not a silent no-op.
-    expect_error(.nlmixr(.poisMod, .poisData, est = "focei",
-                         control = foceiControl(print = 0L, hessianMethod = "sr1")),
-                 "innerOpt")
+    expect_error(
+      .nlmixr(.poisMod, .poisData, est = "focei", control = foceiControl(print = 0L, hessianMethod = "sr1")),
+      "innerOpt"
+    )
   })
 
   test_that("foceiControl() hessEtaStepMin validation and round-trip", {
@@ -196,10 +271,18 @@ nmTest({
     # A normal endpoint uses the Gauss-Newton inner Hessian unconditionally, so
     # calcEtaHessian()'s needOptimHess finite-difference branch -- the only place
     # hessEtaStepMin is read -- is never reached.
-    .fNorm0 <- .nlmixr(.oneCmt, nlmixr2data::theo_sd, est = "focei",
-                       control = foceiControl(print = 0L, hessEtaStepMin = 0))
-    .fNorm1 <- .nlmixr(.oneCmt, nlmixr2data::theo_sd, est = "focei",
-                       control = foceiControl(print = 0L, hessEtaStepMin = 0.5))
+    .fNorm0 <- .nlmixr(
+      .oneCmt,
+      nlmixr2data::theo_sd,
+      est = "focei",
+      control = foceiControl(print = 0L, hessEtaStepMin = 0)
+    )
+    .fNorm1 <- .nlmixr(
+      .oneCmt,
+      nlmixr2data::theo_sd,
+      est = "focei",
+      control = foceiControl(print = 0L, hessEtaStepMin = 0.5)
+    )
     expect_equal(.fNorm1$objf, .fNorm0$objf, tolerance = 1e-8)
   })
 
@@ -211,12 +294,18 @@ nmTest({
     # current) rather than op_focei.omega, which innerOpt() refreshes only on
     # the trust branch.
     for (.io in c("trust", "n1qn1")) {
-      .f0 <- .nlmixr(.poisMod, .poisData, est = "focei",
-                     control = foceiControl(print = 0L, innerOpt = .io,
-                                            hessEtaStepMin = 0))
-      .f1 <- .nlmixr(.poisMod, .poisData, est = "focei",
-                     control = foceiControl(print = 0L, innerOpt = .io,
-                                            hessEtaStepMin = 0.5))
+      .f0 <- .nlmixr(
+        .poisMod,
+        .poisData,
+        est = "focei",
+        control = foceiControl(print = 0L, innerOpt = .io, hessEtaStepMin = 0)
+      )
+      .f1 <- .nlmixr(
+        .poisMod,
+        .poisData,
+        est = "focei",
+        control = foceiControl(print = 0L, innerOpt = .io, hessEtaStepMin = 0.5)
+      )
       expect_true(is.finite(.f0$objf), info = .io)
       expect_true(is.finite(.f1$objf), info = .io)
     }
@@ -226,12 +315,18 @@ nmTest({
     # exactly why the unfloored step never broke n1qn1.  Trust re-derives the
     # Hessian as its trust-region model at every trial point, with nothing to
     # correct it, so there the floor must show.
-    .fT0 <- .nlmixr(.poisMod, .poisData, est = "focei",
-                    control = foceiControl(print = 0L, innerOpt = "trust",
-                                           hessEtaStepMin = 0))
-    .fT1 <- .nlmixr(.poisMod, .poisData, est = "focei",
-                    control = foceiControl(print = 0L, innerOpt = "trust",
-                                           hessEtaStepMin = 0.5))
+    .fT0 <- .nlmixr(
+      .poisMod,
+      .poisData,
+      est = "focei",
+      control = foceiControl(print = 0L, innerOpt = "trust", hessEtaStepMin = 0)
+    )
+    .fT1 <- .nlmixr(
+      .poisMod,
+      .poisData,
+      est = "focei",
+      control = foceiControl(print = 0L, innerOpt = "trust", hessEtaStepMin = 0.5)
+    )
     expect_false(isTRUE(all.equal(.fT1$objf, .fT0$objf, tolerance = 1e-8)))
   })
 })

@@ -24,15 +24,17 @@
 #' @examples
 #'
 #' qrpemControl()
-qrpemControl <- function(..., qr=TRUE, sir=TRUE) {
-  impmapControl(..., qr=qr, sir=sir)
+qrpemControl <- function(..., qr = TRUE, sir = TRUE) {
+  impmapControl(..., qr = qr, sir = sir)
 }
 
 #' @rdname getValidNlmixrControl
 #' @export
 getValidNlmixrCtl.qrpem <- function(control) {
   .ctl <- control[[1]]
-  if (is.null(.ctl)) return(qrpemControl())
+  if (is.null(.ctl)) {
+    return(qrpemControl())
+  }
   if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
     return(do.call("qrpemControl", .ctl))
   }
@@ -60,17 +62,19 @@ nlmixr2Est.qrpem <- function(env, ...) {
   # General (dnorm/ll) likelihoods flow through the shared FOCEI inner problem,
   # so only require transformable normality when rxode2 has no llik support.
   if (!rxode2hasLlik()) {
-    rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'qrpem'", .var.name=.ui$modelName)
+    rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'qrpem'", .var.name = .ui$modelName)
   }
-  rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'qrpem'",
-                             .var.name=.ui$modelName)
-  .foceiFamilyControl(env, ..., type="impmapControl")
+  rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'qrpem'", .var.name = .ui$modelName)
+  .foceiFamilyControl(env, ..., type = "impmapControl")
   .control <- env$control
-  on.exit({
-    if (is.environment(.ui) && exists("control", envir=.ui, inherits=FALSE)) {
-      rm("control", envir=.ui)
-    }
-  }, add=TRUE)
+  on.exit(
+    {
+      if (is.environment(.ui) && exists("control", envir = .ui, inherits = FALSE)) {
+        rm("control", envir = .ui)
+      }
+    },
+    add = TRUE
+  )
   env$impmapControl <- .control
   env$est <- "qrpem"
   .ui <- env$ui

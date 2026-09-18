@@ -15,18 +15,17 @@ nmTest({
       d/dt(depot) <- -ka * depot
       d/dt(center) <- ka * depot - ke * center
       cp <- center / v
-      cp ~ add(add.sd) + dt(nu) })          # Student-t residual: a general likelihood
+      cp ~ add(add.sd) + dt(nu) }) # Student-t residual: a general likelihood
   }
 
   test_that("est='npag' fits a generalized (Student-t) likelihood and estimates its params", {
-    f <- nlmixr2(.tMod, nlmixr2data::theo_sd, est = "npag",
-                 control = npagControl(points = 48L, cycles = 8L, seed = 1L))
+    f <- nlmixr2(.tMod, nlmixr2data::theo_sd, est = "npag", control = npagControl(points = 48L, cycles = 8L, seed = 1L))
     expect_s3_class(f, "nlmixr2FitData")
     expect_true(is.finite(as.numeric(f$objf)))
     # the t-distribution parameters (err-tagged: add / t) are estimated, not held
     expect_true(as.numeric(f$theta[["add.sd"]]) > 0)
     expect_true(as.numeric(f$theta[["nu"]]) > 0)
-    expect_false(isTRUE(all.equal(as.numeric(f$theta[["nu"]]), 8)))   # moved off the start
+    expect_false(isTRUE(all.equal(as.numeric(f$theta[["nu"]]), 8))) # moved off the start
     # gamma is meaningless for a non-normal endpoint (r == 1) -> forced off
     expect_false(isTRUE(f$control$npGammaOptimize))
     # only err-tagged params are optimized (tke is fixed), so the ODE freeze is valid
@@ -37,11 +36,15 @@ nmTest({
     # npb sums the same per-observation llikObs as npag, so the Gibbs sweep handles
     # a non-normal endpoint too (it just samples the mixing distribution rather than
     # optimizing an err-tagged likelihood parameter).
-    f <- nlmixr2(.tMod, nlmixr2data::theo_sd, est = "npb",
-                 control = npbControl(points = 20L, burnin = 15L, nsamp = 15L, seed = 1L))
+    f <- nlmixr2(
+      .tMod,
+      nlmixr2data::theo_sd,
+      est = "npb",
+      control = npbControl(points = 20L, burnin = 15L, nsamp = 15L, seed = 1L)
+    )
     expect_s3_class(f, "nlmixr2FitData")
     expect_true(is.finite(as.numeric(f$objf)))
-    expect_equal(ncol(f$env$npbSupport), 2L)   # eta.ka, eta.v support dimensions
+    expect_equal(ncol(f$env$npbSupport), 2L) # eta.ka, eta.v support dimensions
   })
 
   ## ---- MULTIPLE endpoints (#850) ------------------------------------------------
@@ -81,7 +84,8 @@ nmTest({
     .f
   }
   .npPkPdData <- function(m) {
-    .testSeed(1); rxode2::rxSetSeed(1)
+    .testSeed(1)
+    rxode2::rxSetSeed(1)
     .ev <- rxode2::et(amt = 100, cmt = "depot", id = 1:12)
     .ev <- rxode2::et(.ev, seq(0.5, 24, by = 3), cmt = "center")
     .ev <- rxode2::et(.ev, seq(0.5, 24, by = 3), cmt = "effect")
@@ -90,26 +94,30 @@ nmTest({
     .dose$dv <- NA_real_
     names(.dose)[names(.dose) == "CMT"] <- "cmt"
     .obs <- .d[.d$evid == 0, c("id", "time", "CMT", "sim")]
-    .obs$amt <- 0; .obs$evid <- 0
+    .obs$amt <- 0
+    .obs$evid <- 0
     names(.obs)[names(.obs) == "CMT"] <- "cmt"
     names(.obs)[names(.obs) == "sim"] <- "dv"
-    .dat <- rbind(.dose[, c("id", "time", "dv", "cmt", "amt", "evid")],
-                  .obs[, c("id", "time", "dv", "cmt", "amt", "evid")])
+    .dat <- rbind(
+      .dose[, c("id", "time", "dv", "cmt", "amt", "evid")],
+      .obs[, c("id", "time", "dv", "cmt", "amt", "evid")]
+    )
     .dat[order(.dat$id, .dat$time, -.dat$evid), ]
   }
 
   test_that("est='npag' scores a general likelihood alongside a second endpoint (#850)", {
     skip_if_not(rxode2hasLlik(), "rxode2 build has no llik support")
-    skip_if_not(.rxode2HasSafeLogDomain(),
-                "rxode2 too old for the safeLog log-domain mode")
+    skip_if_not(.rxode2HasSafeLogDomain(), "rxode2 too old for the safeLog log-domain mode")
     .gauss <- .npMkPkPd(quote(effect ~ add(pdadd.sd) | effect))
     .ll <- .npMkPkPd(quote(ll(effect) ~ -0.5 * log(2 * pi) - log(pdadd.sd) -
                              0.5 * ((DV - effect) / pdadd.sd)^2))
     .dat <- .npPkPdData(.gauss)
     .nObs <- sum(.dat$evid == 0)
     .ctl <- function() npagControl(points = 24L, cycles = 3L, seed = 1L, print = 0L)
-    rxode2::rxSetSeed(42); .fg <- suppressWarnings(nlmixr2(.gauss, .dat, "npag", .ctl()))
-    rxode2::rxSetSeed(42); .fl <- suppressWarnings(nlmixr2(.ll, .dat, "npag", .ctl()))
+    rxode2::rxSetSeed(42)
+    .fg <- suppressWarnings(nlmixr2(.gauss, .dat, "npag", .ctl()))
+    rxode2::rxSetSeed(42)
+    .fl <- suppressWarnings(nlmixr2(.ll, .dat, "npag", .ctl()))
     .lg <- as.numeric(.fg$env$npagLogLik)
     .ll2 <- as.numeric(.fl$env$npagLogLik)
     # every scale stays in its domain -- this is what actually went wrong, and the
@@ -125,7 +133,9 @@ nmTest({
     .nPk <- sum(.dat$evid == 0 & .dat$cmt == 2)
     .nPd <- sum(.dat$evid == 0 & .dat$cmt == 3)
     expect_equal(.nPk + .nPd, .nObs)
-    .maxLL <- -.nObs * 0.5 * log(2 * pi) -
+    .maxLL <- -.nObs *
+      0.5 *
+      log(2 * pi) -
       .nPk * log(unname(fixef(.fl)["add.sd"])) -
       .nPd * log(unname(fixef(.fl)["pdadd.sd"]))
     expect_lt(.ll2, .maxLL)
@@ -135,8 +145,7 @@ nmTest({
     expect_equal(.lg - .ll2, .nObs * 0.5 * log(2 * pi), tolerance = 0.02)
     # add.sd is the PK endpoint, written `cp ~ add(add.sd)` in BOTH models, so both
     # fits score it the same way and it agrees tightly (measured 0.6359 vs 0.6352).
-    expect_equal(unname(fixef(.fl)["add.sd"]), unname(fixef(.fg)["add.sd"]),
-                 tolerance = 0.05)
+    expect_equal(unname(fixef(.fl)["add.sd"]), unname(fixef(.fg)["add.sd"]), tolerance = 0.05)
     # pdadd.sd is NOT required to agree, and asserting that it did was wrong.
     # The residual step optimizes an err-tagged parameter against the
     # extended-least-squares objective at the posterior-mean etas (npCommon.R);
@@ -173,10 +182,13 @@ nmTest({
         cp <- center / v
         ll(cp) ~ -0.5 * log(2 * pi) - log(add.sd) - 0.5 * ((DV - cp) / add.sd)^2 })
     }
-    f <- suppressWarnings(nlmixr2(.m, nlmixr2data::theo_sd, est = "npag",
-                                  control = npagControl(points = 24L, cycles = 3L,
-                                                        seed = 1L, print = 0L)))
+    f <- suppressWarnings(nlmixr2(
+      .m,
+      nlmixr2data::theo_sd,
+      est = "npag",
+      control = npagControl(points = 24L, cycles = 3L, seed = 1L, print = 0L)
+    ))
     expect_s3_class(f, "nlmixr2FitData")
-    expect_gte(unname(fixef(f)["add.sd"]), 0.05)   # the declared lower bound holds
+    expect_gte(unname(fixef(f)["add.sd"]), 0.05) # the declared lower bound holds
   })
 })

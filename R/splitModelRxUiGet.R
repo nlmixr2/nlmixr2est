@@ -19,14 +19,15 @@
   # probit
   # exp
   # ""
-  if (identical(expr[[1]], quote(`=`)) ||
-        identical(expr[[1]], quote(`<-`))) {
+  if (
+    identical(expr[[1]], quote(`=`)) ||
+      identical(expr[[1]], quote(`<-`))
+  ) {
     if (is.call(expr[[3]]) && length(expr[[2]]) == 1) {
       .call <- expr[[3]]
       .char <- as.character(expr[[2]])
       .callName <- as.character(.call[[1]])
-      if (length(.call) <= 1) {
-      } else if (length(.call[[2]]) == 1) {
+      if (length(.call) <= 1) {} else if (length(.call[[2]]) == 1) {
         .w <- which(muRefCurEval$parameter == as.character(.call[[2]]))
         if (length(.w) == 1L) {
           if (muRefCurEval$curEval[.w] == .callName) {
@@ -38,10 +39,12 @@
               return(setNames(.char, as.character(.call[[2]])))
             } else if (length(.call) == 3 && .call[[3]] == ifelse(is.na(.low), 0, .low)) {
               return(setNames(.char, as.character(.call[[2]])))
-            } else if (length(.call) == 4 &&
-                         .call[[3]] == ifelse(is.na(.low), 0, .low) &&
-                         .call[[4]] == ifelse(is.na(.hi), 1, .hi) &&
-                         TRUE) {
+            } else if (
+              length(.call) == 4 &&
+                .call[[3]] == ifelse(is.na(.low), 0, .low) &&
+                .call[[4]] == ifelse(is.na(.hi), 1, .hi) &&
+                TRUE
+            ) {
               return(setNames(.char, as.character(.call[[2]])))
             }
           }
@@ -80,14 +83,16 @@
     }
     return(expr)
   } else if (is.call(expr)) {
-    return(as.call(lapply(expr, .replaceTaint, taint=taint)))
+    return(as.call(lapply(expr, .replaceTaint, taint = taint)))
   } else {
     return(expr)
   }
 }
 
 .isCurEvalEncodedFunction <- function(curEval) {
-  if (any(curEval == c("*", "/", "^", "**", "+", "-", ""))) return(FALSE)
+  if (any(curEval == c("*", "/", "^", "**", "+", "-", ""))) {
+    return(FALSE)
+  }
   TRUE
 }
 
@@ -118,38 +123,55 @@
       .low <- NA_real_
       .hi <- NA_real_
     } else {
-      stop("duplicate/missing parameter in `muRefCurEval`", call.=FALSE)
+      stop("duplicate/missing parameter in `muRefCurEval`", call. = FALSE)
     }
   }
   .encFun <- .isCurEvalEncodedFunction(.curEval)
-  str2lang(paste0(var, "<-", ifelse(.encFun, .curEval, ""),
-                  ifelse(.encFun, "(", ""),
-                  est,
-                  ifelse(is.na(.low), "", paste0(",", .low)),
-                  ifelse(is.na(.hi), "", paste0(",", .hi)),
-                  ifelse(.encFun, ")", "")))
+  str2lang(paste0(
+    var,
+    "<-",
+    ifelse(.encFun, .curEval, ""),
+    ifelse(.encFun, "(", ""),
+    est,
+    ifelse(is.na(.low), "", paste0(",", .low)),
+    ifelse(is.na(.hi), "", paste0(",", .hi)),
+    ifelse(.encFun, ")", "")
+  ))
 }
 
 # moved from babelmixr2
 .muRefDefFix <- function(muRefDef, ui) {
   .muRefCurEval <- ui$muRefCurEval
-  .v <- setNames(lapply(ui$nonMuEtas, function(eta) {
-    .w <- which(.muRefCurEval$parameter == eta)
-    if (length(.w) == 1) {
-      .e <- try(str2lang(paste0(.muRefCurEval$curEval[.w], "(", eta, ")")), silent=TRUE)
-      if (inherits(.e, "try-error")) return(NULL)
-      return(.e)
-    }
-    NULL
-  }), ui$nonMuEtas)
+  .v <- setNames(
+    lapply(ui$nonMuEtas, function(eta) {
+      .w <- which(.muRefCurEval$parameter == eta)
+      if (length(.w) == 1) {
+        .e <- try(str2lang(paste0(.muRefCurEval$curEval[.w], "(", eta, ")")), silent = TRUE)
+        if (inherits(.e, "try-error")) {
+          return(NULL)
+        }
+        return(.e)
+      }
+      NULL
+    }),
+    ui$nonMuEtas
+  )
 
   lapply(seq_along(muRefDef), function(i) {
     .expr <- muRefDef[[i]]
-    if (length(.expr) < 3) return(.expr)
-    .w <- which(vapply(ui$nonMuEtas, function(i) {
-      identical(.v[[i]], .expr[[3]])
-    }, logical(1)))
-    if (length(.w)!=1) return(.expr)
+    if (length(.expr) < 3) {
+      return(.expr)
+    }
+    .w <- which(vapply(
+      ui$nonMuEtas,
+      function(i) {
+        identical(.v[[i]], .expr[[3]])
+      },
+      logical(1)
+    ))
+    if (length(.w) != 1) {
+      return(.expr)
+    }
     .expr[[3]] <- str2lang(ui$nonMuEtas)
     .expr
   })
@@ -184,20 +206,19 @@ rxUiGet.getSplitMuModel <- function(x, ...) {
   if (length(.taintMuRef) > 0) {
     .taintMuRef <- setNames(paste0("rx__", .taintMuRef), .taintMuRef)
     .ret <- lapply(seq_along(.ret), function(.i) {
-      .replaceTaint(.ret[[.i]], taint=.taintMuRef)
+      .replaceTaint(.ret[[.i]], taint = .taintMuRef)
     })
   }
   .muRef <- c(.pureMuRef, .taintMuRef)
-  .muRef <- lapply(seq_along(.muRef), function(.i){
+  .muRef <- lapply(seq_along(.muRef), function(.i) {
     .est <- names(.muRef)[.i]
     .var <- setNames(.muRef[.i], NULL)
     .createMuRefPkBlock(.var, .est, .ui$muRefCurEval, .taintMuRef)
   })
-  assign("getSplitModel",
-         list(muRefDef=.muRefDefFix(.muRef, .ui),
-              pureMuRef=.pureMuRef,
-              taintMuRef=.taintMuRef,
-              modelWithDrop=.ret),
-         envir=.ui)
+  assign(
+    "getSplitModel",
+    list(muRefDef = .muRefDefFix(.muRef, .ui), pureMuRef = .pureMuRef, taintMuRef = .taintMuRef, modelWithDrop = .ret),
+    envir = .ui
+  )
   get("getSplitModel", .ui)
 }

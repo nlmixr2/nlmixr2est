@@ -19,9 +19,12 @@ nmTest({
 
   test_that("the mixing traces are recorded, named and shaped", {
     skip_on_cran()
-    .f <- suppressMessages(nlmixr2(.diagMod(), theo_sd, est = "saem",
-                                   control = saemControl(print = 0, nBurn = 20, nEm = 20,
-                                                         seed = 42L, covMethod = "")))
+    .f <- suppressMessages(nlmixr2(
+      .diagMod(),
+      theo_sd,
+      est = "saem",
+      control = saemControl(print = 0, nBurn = 20, nEm = 20, seed = 42L, covMethod = "")
+    ))
     .n <- 40L
     # one row per iteration, one column per kernel
     expect_equal(dim(.f$mcmcAccept), c(.n, 3L))
@@ -52,9 +55,12 @@ nmTest({
     # everything, which is a coordinate whose proposals the likelihood is not
     # rejecting, and whose chain is then exploring the prior.
     skip_on_cran()
-    .f <- suppressMessages(nlmixr2(.diagMod(), theo_sd, est = "saem",
-                                   control = saemControl(print = 0, nBurn = 20, nEm = 20,
-                                                         seed = 42L, covMethod = "")))
+    .f <- suppressMessages(nlmixr2(
+      .diagMod(),
+      theo_sd,
+      est = "saem",
+      control = saemControl(print = 0, nBurn = 20, nEm = 20, seed = 42L, covMethod = "")
+    ))
     .col <- .f$mcmcAcceptCol
     expect_true(all(is.finite(.col)))
     expect_true(all(.col >= 0 & .col <= 1))
@@ -89,13 +95,18 @@ nmTest({
       })
     }
     .f <- suppressWarnings(suppressMessages(
-      nlmixr2(.m, nlmixr2data::theo_sd, est = "saem",
-              control = saemControl(print = 0, nBurn = 10, nEm = 10, seed = 42L,
-                                    calcTables = FALSE, covMethod = ""))))
+      nlmixr2(
+        .m,
+        nlmixr2data::theo_sd,
+        est = "saem",
+        control = saemControl(print = 0, nBurn = 10, nEm = 10, seed = 42L, calcTables = FALSE, covMethod = "")
+      )
+    ))
     expect_equal(.f$objf, 115.036204209672, tolerance = 1e-8)
-    expect_equal(unname(fixef(.f)),
-                 c(0.454331063367426, 1.011629400082714,
-                   3.456416552020142, 0.702842211703013),
-                 tolerance = 1e-8)
+    expect_equal(
+      unname(fixef(.f)),
+      c(0.454331063367426, 1.011629400082714, 3.456416552020142, 0.702842211703013),
+      tolerance = 1e-8
+    )
   })
 })

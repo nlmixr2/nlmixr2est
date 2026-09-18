@@ -108,8 +108,7 @@ nmTest({
     solveAt <- function(eta4) {
       ETA <- ETA0
       ETA[4] <- eta4
-      pars <- c(stats::setNames(THETA, paste0("THETA[", 1:6, "]")),
-                stats::setNames(ETA, paste0("ETA[", 1:4, "]")))
+      pars <- c(stats::setNames(THETA, paste0("THETA[", 1:6, "]")), stats::setNames(ETA, paste0("ETA[", 1:4, "]")))
       suppressMessages(rxode2::rxSolve(mod, pars, ev, returnType = "data.frame"))
     }
 
@@ -173,19 +172,22 @@ nmTest({
     ev <- rxode2::et(amt = 100, cmt = "depot") |>
       rxode2::et(amt = 50, cmt = "central", time = 1) |>
       rxode2::et(seq(0.1, 24, by = 0.5))
-    THETA <- c(log(1.15), log(0.135), log(8), log(1), log(10),
-               log(0.7), log(0.9), 0.15)
+    THETA <- c(log(1.15), log(0.135), log(8), log(1), log(10), log(0.7), log(0.9), 0.15)
     ETA0 <- c(0.1, -0.05, 0.02, 0.2, -0.1)
     solveAt <- function(eta) {
-      pars <- c(stats::setNames(THETA, paste0("THETA[", seq_along(THETA), "]")),
-                stats::setNames(eta, paste0("ETA[", seq_along(eta), "]")))
+      pars <- c(
+        stats::setNames(THETA, paste0("THETA[", seq_along(THETA), "]")),
+        stats::setNames(eta, paste0("ETA[", seq_along(eta), "]"))
+      )
       suppressMessages(rxode2::rxSolve(mod, pars, ev, returnType = "data.frame"))
     }
     h <- 1e-4
     s0 <- solveAt(ETA0)
     for (.k in 4:5) {
-      .p <- ETA0; .p[.k] <- .p[.k] + h
-      .m <- ETA0; .m[.k] <- .m[.k] - h
+      .p <- ETA0
+      .p[.k] <- .p[.k] + h
+      .m <- ETA0
+      .m[.k] <- .m[.k] - h
       .fd <- (solveAt(.p)$rx_pred_ - solveAt(.m)$rx_pred_) / (2 * h)
       .ana <- s0[[paste0("rx__sens_rx_pred__BY_ETA_", .k, "___")]]
       expect_false(anyNA(.ana))
@@ -253,8 +255,7 @@ nmTest({
     solveAt <- function(eta4) {
       ETA <- ETA0
       ETA[4] <- eta4
-      pars <- c(stats::setNames(THETA, paste0("THETA[", 1:6, "]")),
-                stats::setNames(ETA, paste0("ETA[", 1:4, "]")))
+      pars <- c(stats::setNames(THETA, paste0("THETA[", 1:6, "]")), stats::setNames(ETA, paste0("ETA[", 1:4, "]")))
       suppressMessages(rxode2::rxSolve(mod, pars, ev, returnType = "data.frame"))
     }
 
@@ -316,19 +317,22 @@ nmTest({
     ev <- rxode2::et(amt = 100, cmt = "depot") |>
       rxode2::et(amt = 50, cmt = "central", time = 1) |>
       rxode2::et(seq(0.1, 24, by = 0.5))
-    THETA <- c(log(1.15), log(0.135), log(8), log(1), log(10),
-               log(0.2), log(0.4), 0.15)
+    THETA <- c(log(1.15), log(0.135), log(8), log(1), log(10), log(0.2), log(0.4), 0.15)
     ETA0 <- c(0.1, -0.05, 0.02, 0.2, -0.1)
     solveAt <- function(eta) {
-      pars <- c(stats::setNames(THETA, paste0("THETA[", seq_along(THETA), "]")),
-                stats::setNames(eta, paste0("ETA[", seq_along(eta), "]")))
+      pars <- c(
+        stats::setNames(THETA, paste0("THETA[", seq_along(THETA), "]")),
+        stats::setNames(eta, paste0("ETA[", seq_along(eta), "]"))
+      )
       suppressMessages(rxode2::rxSolve(mod, pars, ev, returnType = "data.frame"))
     }
     h <- 1e-4
     s0 <- solveAt(ETA0)
     for (.k in 4:5) {
-      .p <- ETA0; .p[.k] <- .p[.k] + h
-      .m <- ETA0; .m[.k] <- .m[.k] - h
+      .p <- ETA0
+      .p[.k] <- .p[.k] + h
+      .m <- ETA0
+      .m[.k] <- .m[.k] - h
       .fd <- (solveAt(.p)$rx_pred_ - solveAt(.m)$rx_pred_) / (2 * h)
       .ana <- s0[[paste0("rx__sens_rx_pred__BY_ETA_", .k, "___")]]
       expect_false(anyNA(.ana))
@@ -403,15 +407,19 @@ nmTest({
     THETA <- c(log(1.15), log(0.135), log(8), log(0.3), log(0.7), 0.15)
     ETA0 <- c(0.1, -0.05, 0.02, 0.2, -0.1)
     solveAt <- function(eta) {
-      pars <- c(stats::setNames(THETA, paste0("THETA[", seq_along(THETA), "]")),
-                stats::setNames(eta, paste0("ETA[", seq_along(eta), "]")))
+      pars <- c(
+        stats::setNames(THETA, paste0("THETA[", seq_along(THETA), "]")),
+        stats::setNames(eta, paste0("ETA[", seq_along(eta), "]"))
+      )
       suppressMessages(rxode2::rxSolve(mod, pars, ev, returnType = "data.frame"))
     }
     h <- 1e-4
     s0 <- solveAt(ETA0)
     for (.k in 4:5) {
-      .p <- ETA0; .p[.k] <- .p[.k] + h
-      .m <- ETA0; .m[.k] <- .m[.k] - h
+      .p <- ETA0
+      .p[.k] <- .p[.k] + h
+      .m <- ETA0
+      .m[.k] <- .m[.k] - h
       .fd <- (solveAt(.p)$rx_pred_ - solveAt(.m)$rx_pred_) / (2 * h)
       .ana <- s0[[paste0("rx__sens_rx_pred__BY_ETA_", .k, "___")]]
       expect_false(anyNA(.ana))
@@ -443,9 +451,18 @@ nmTest({
       })
     }
 
-    fit <- .nlmixr(one.cmt.lag, nlmixr2data::theo_sd, est = "focei",
-                   control = foceiControl(maxOuterIterations = 5, maxInnerIterations = 50,
-                                          covMethod = "", calcTables = FALSE, print = 0))
+    fit <- .nlmixr(
+      one.cmt.lag,
+      nlmixr2data::theo_sd,
+      est = "focei",
+      control = foceiControl(
+        maxOuterIterations = 5,
+        maxInnerIterations = 50,
+        covMethod = "",
+        calcTables = FALSE,
+        print = 0
+      )
+    )
     expect_true(is.finite(fit$objDf$OBJF))
   })
 })

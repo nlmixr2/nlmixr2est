@@ -26,9 +26,13 @@ test_that("IOV models fit with ifocei and mfocei (#1083)", {
 
   .fitIt <- function(est) {
     suppressMessages(suppressWarnings(
-      nlmixr2(one.cmt, theoIov, est = est,
-              control = list(print = 0L, maxOuterIterations = 0L,
-                             covMethod = "", calcTables = FALSE))))
+      nlmixr2(
+        one.cmt,
+        theoIov,
+        est = est,
+        control = list(print = 0L, maxOuterIterations = 0L, covMethod = "", calcTables = FALSE)
+      )
+    ))
   }
 
   # the "*f" delegate is the SAME method with foceiControl(fast=TRUE): it only
@@ -43,16 +47,12 @@ test_that("IOV models fit with ifocei and mfocei (#1083)", {
     expect_equal(.fit$objf, .fitIt(paste0(.est, "f"))$objf, info = .est)
     # the occasion parameter is expanded for the fit and restored afterwards
     expect_true("iov.ka" %in% .fit$ui$iniDf$name, info = .est)
-    expect_equal(.fit$ui$iniDf$condition[.fit$ui$iniDf$name == "iov.ka"], "occ",
-                 info = .est)
+    expect_equal(.fit$ui$iniDf$condition[.fit$ui$iniDf$name == "iov.ka"], "occ", info = .est)
     # and with its value, not a placeholder: maxOuterIterations=0 leaves the
     # occasion variance at the ini() estimate
-    expect_equal(.fit$ui$iniDf$est[.fit$ui$iniDf$name == "iov.ka"], 0.1,
-                 info = .est)
+    expect_equal(.fit$ui$iniDf$est[.fit$ui$iniDf$name == "iov.ka"], 0.1, info = .est)
     # and the model line is the user's again, with no rewrite residue
-    .txt <- paste(vapply(.fit$ui$lstExpr,
-                         function(x) paste(deparse(x), collapse = " "),
-                         character(1)), collapse = " ")
+    .txt <- paste(vapply(.fit$ui$lstExpr, function(x) paste(deparse(x), collapse = " "), character(1)), collapse = " ")
     expect_false(grepl("rx.iov.", .txt, fixed = TRUE), info = .est)
   }
 })
@@ -91,21 +91,30 @@ test_that("a correlated occasion block fits under a full Laplace/AGQ delegate", 
 
   for (.est in c("laplace", "flaplace", "fagq")) {
     .fit <- suppressMessages(suppressWarnings(
-      nlmixr2(corr.cmt, theoIov, est = .est,
-              control = list(print = 0L, maxOuterIterations = 0L,
-                             covMethod = "", calcTables = FALSE))))
+      nlmixr2(
+        corr.cmt,
+        theoIov,
+        est = .est,
+        control = list(print = 0L, maxOuterIterations = 0L, covMethod = "", calcTables = FALSE)
+      )
+    ))
     expect_s3_class(.fit, "nlmixr2FitCore")
     expect_true(is.finite(.fit$objf), info = .est)
     # both occasion parameters come back on their own `| occ` rows
-    expect_equal(.fit$ui$iniDf$condition[.fit$ui$iniDf$name %in%
-                                           c("iov.cl", "iov.v")],
-                 c("occ", "occ"), info = .est)
+    expect_equal(
+      .fit$ui$iniDf$condition[
+        .fit$ui$iniDf$name %in%
+          c("iov.cl", "iov.v")
+      ],
+      c("occ", "occ"),
+      info = .est
+    )
     # the whole block comes back, covariance included -- an `iovMethod="omega"`
     # expansion that lost the off diagonal would still restore the conditions
-    .blk <- .fit$ui$iniDf[.fit$ui$iniDf$name %in%
-                            c("iov.cl", "iov.v", "(iov.cl,iov.v)"), ]
-    expect_equal(.blk$est[match(c("iov.cl", "(iov.cl,iov.v)", "iov.v"),
-                                .blk$name)],
-                 c(0.1, 0.03, 0.2), info = .est)
+    .blk <- .fit$ui$iniDf[
+      .fit$ui$iniDf$name %in%
+        c("iov.cl", "iov.v", "(iov.cl,iov.v)"),
+    ]
+    expect_equal(.blk$est[match(c("iov.cl", "(iov.cl,iov.v)", "iov.v"), .blk$name)], c(0.1, 0.03, 0.2), info = .est)
   }
 })
