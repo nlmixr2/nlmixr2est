@@ -2,6 +2,30 @@
 
 ## New features
 
+- `est="saem"` now records its MCMC mixing diagnostics on the fit instead of
+  discarding them.  saem computed an acceptance rate, used it for nothing and
+  threw it away, so a chain that had stopped moving looked exactly like one
+  exploring properly.  One row per iteration:
+
+  - `$mcmcAccept`, pooled acceptance per kernel (`prior`, `rw`, `coord`);
+  - `$mcmcAcceptCol`, kernel 3's acceptance PER SAMPLED PARAMETER.  Kernel 3 is
+    Metropolis-within-Gibbs -- it proposes one coordinate at a time -- so its
+    acceptance is already a per-column quantity, and pooling it hides one
+    parameter behaving differently from the rest.  A column near 1 while the
+    others sit near their target is a coordinate whose proposals the likelihood
+    is not rejecting, whose chain is then exploring the prior rather than the
+    posterior, and whose `omega` therefore measures the wandering;
+  - `$mcmcStuck`, the fraction of SUBJECTS that accepted nothing that
+    iteration.  A healthy-looking pooled 0.3 is equally consistent with
+    everyone at 0.3 and with half the population never moving at all;
+  - `$mcmcPhiSd` and `$mcmcPhiAcf`, the pooled SD and the lag-1
+    autocorrelation of each sampled parameter.  An autocorrelation of 1.0 means
+    the chain did not move.
+
+  Diagnostics only: they accumulate counters and read the sampled parameters,
+  and change no fitted value.  Asserted against pinned estimates.
+
+
 - `setCov()` is now an S3 generic dispatched on the covariance method, so
   other packages (for example SIR or bootstrap) can add a method with
   `setCov.<method>()`; `setCovAllMethods()` lists them.  A method's own

@@ -1923,6 +1923,12 @@ public:
 			_["res_mod"] = wrap(res_mod));
   }
 
+  mat get_mcmcAccTrace()    { return mcmcAccTrace; }
+  mat get_mcmcAccColTrace() { return mcmcAccColTrace; }
+  mat get_mcmcStuckTrace()  { return mcmcStuckTrace; }
+  mat get_phiSdTrace()      { return phiSdTrace; }
+  mat get_phiAcfTrace()     { return phiAcfTrace; }
+
   mat get_par_hist() {
     return par_hist;
   }
@@ -3209,6 +3215,9 @@ public:
           do_mcmc(3, nu3, mx, mphi0, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter);
         }
         if (DEBUG>0) Rcout << "mcmc successful\n";
+        // close this iteration's mixing diagnostics, after the whole MCMC
+        // block, so they describe the chain the M-step is about to use
+        mcmcCloseIter(kiter, (unsigned int)(niter + nSaCov), phiM);
         if (kiter < (unsigned int)niter) phiFile << phiM;
 
         //integration
@@ -4464,6 +4473,26 @@ private:
   mat COV1, COV0, LCOV1, LCOV0, COV21, COV20, MCOV1, MCOV0;
   mat Gamma2_phi1, Gamma2_phi0, mprior_phi1, mprior_phi0;
   mat Gamma2_phi1Report; // reporting-only pooled BSV for split ETAs sharing an omegaShare group; never fed back into estimation
+  // ---- MCMC mixing diagnostics -------------------------------------------
+  // saem computed its acceptance rate and threw it away, so a chain that had
+  // stopped moving looked exactly like one exploring properly.  One row per
+  // iteration each.
+  //   mcmcAccTrace    pooled acceptance, one column per kernel (1, 2, 3)
+  //   mcmcAccColTrace kernel 3's acceptance per SAMPLED PARAMETER.  Kernel 3
+  //                   is Metropolis-within-Gibbs, so its rate is already a
+  //                   per-column quantity and pooling it hides one column
+  //                   behaving differently from the rest.
+  //   mcmcStuckTrace  fraction of SUBJECTS that accepted nothing.  A healthy
+  //                   pooled 0.3 is equally consistent with everyone at 0.3
+  //                   and with half the population never moving.
+  //   phiSdTrace      pooled SD of each sampled parameter across subjects
+  //   phiAcfTrace     lag-1 autocorrelation against the previous iteration;
+  //                   1.0 means the chain did not move at all
+  mat mcmcAccTrace, mcmcAccColTrace, mcmcStuckTrace, phiSdTrace, phiAcfTrace;
+  vec mcmcAccNum, mcmcAccDen;            // per kernel, within an iteration
+  vec mcmcAccNumCol, mcmcAccDenCol;      // per phi column, kernel 3 only
+  vec mcmcAccById;                       // per subject, within an iteration
+  mat phiMprevIter;
   mat Gamma2_phi1Init; // initial (ini()) Gamma2_phi1, captured once; used as an msaem-only exploration floor for split-ETA columns (see saem_fit())
   mat IGamma2_phi1, D1Gamma21, D2Gamma21, CGamma21;
   mat IGamma2_phi0, D1Gamma20, D2Gamma20, CGamma20;
@@ -4711,6 +4740,77 @@ private:
   static constexpr double _saemGenLikCeiling = 700.0;
   static constexpr double _saemGenLikBadSolvePenalty = -1.0e10;
 
+  // Accumulate one proposal block's acceptances.  `acc` holds the accepted ROW
+  // indices; phiM stacks the nmc chains, so row r belongs to subject r % N.
+  // `phiCol` is the global phi index kernel 3 proposed, and -1 for the kernels
+  // that propose a whole block at once, where a per-column rate has no meaning.
+  void mcmcRecordAccept(int method, const uvec &acc, int nM, int phiCol = -1) {
+    if (method < 1 || method > 3 || nM <= 0) return;
+    if (mcmcAccNum.n_elem != 3) { mcmcAccNum.zeros(3); mcmcAccDen.zeros(3); }
+    mcmcAccNum(method - 1) += (double)acc.n_elem;
+    mcmcAccDen(method - 1) += (double)nM;
+    if (method == 3 && phiCol >= 0 && nphi > 0) {
+      if ((int)mcmcAccNumCol.n_elem != nphi) {
+        mcmcAccNumCol.zeros(nphi); mcmcAccDenCol.zeros(nphi);
+      }
+      if (phiCol < nphi) {
+        mcmcAccNumCol(phiCol) += (double)acc.n_elem;
+        mcmcAccDenCol(phiCol) += (double)nM;
+      }
+    }
+    if (N > 0) {
+      if ((int)mcmcAccById.n_elem != N) mcmcAccById.zeros(N);
+      for (unsigned int j = 0; j < acc.n_elem; ++j) {
+        mcmcAccById(acc(j) % (arma::uword)N) += 1.0;
+      }
+    }
+  }
+
+  // Close one iteration's diagnostics, after the whole MCMC block, so it sees
+  // the chain as the M-step will see it.
+  void mcmcCloseIter(unsigned int kiter, unsigned int niterTot, const mat &phiCur) {
+    if ((int)mcmcAccTrace.n_rows != (int)niterTot) {
+      mcmcAccTrace.set_size(niterTot, 3);              mcmcAccTrace.fill(NA_REAL);
+      mcmcStuckTrace.set_size(niterTot, 1);            mcmcStuckTrace.fill(NA_REAL);
+      phiSdTrace.set_size(niterTot, phiCur.n_cols);    phiSdTrace.fill(NA_REAL);
+      phiAcfTrace.set_size(niterTot, phiCur.n_cols);   phiAcfTrace.fill(NA_REAL);
+    }
+    if (nphi > 0 && ((int)mcmcAccColTrace.n_rows != (int)niterTot ||
+                     (int)mcmcAccColTrace.n_cols != nphi)) {
+      mcmcAccColTrace.set_size(niterTot, nphi);        mcmcAccColTrace.fill(NA_REAL);
+    }
+    if (kiter >= niterTot) return;
+    if (mcmcAccNum.n_elem == 3) {
+      for (int k = 0; k < 3; ++k) {
+        if (mcmcAccDen(k) > 0) mcmcAccTrace(kiter, k) = mcmcAccNum(k) / mcmcAccDen(k);
+      }
+    }
+    if (nphi > 0 && (int)mcmcAccDenCol.n_elem == nphi) {
+      for (int c = 0; c < nphi; ++c) {
+        if (mcmcAccDenCol(c) > 0) mcmcAccColTrace(kiter, c) = mcmcAccNumCol(c) / mcmcAccDenCol(c);
+      }
+    }
+    if ((int)mcmcAccById.n_elem == N && N > 0) {
+      double nStuck = 0.0;
+      for (int i = 0; i < N; ++i) if (mcmcAccById(i) <= 0.0) nStuck += 1.0;
+      mcmcStuckTrace(kiter, 0) = nStuck / (double)N;
+    }
+    for (unsigned int c = 0; c < phiCur.n_cols; ++c) {
+      vec col = phiCur.col(c);
+      if (col.n_elem > 1) phiSdTrace(kiter, c) = arma::stddev(col);
+      if (phiMprevIter.n_rows == phiCur.n_rows && phiMprevIter.n_cols == phiCur.n_cols) {
+        vec pv = phiMprevIter.col(c);
+        if (arma::stddev(col) > 1e-12 && arma::stddev(pv) > 1e-12) {
+          phiAcfTrace(kiter, c) = arma::as_scalar(arma::cor(pv, col));
+        }
+      }
+    }
+    phiMprevIter = phiCur;
+    mcmcAccNum.zeros(3); mcmcAccDen.zeros(3);
+    if (nphi > 0) { mcmcAccNumCol.zeros(nphi); mcmcAccDenCol.zeros(nphi); }
+    if (N > 0) mcmcAccById.zeros(N);
+  }
+
   void do_mcmc(const int method,
                const int nu,
                const mcmcaux &mx,
@@ -4871,6 +4971,9 @@ private:
         }
 
         ind=find( deltu < -log(accU) );
+        mcmcRecordAccept(method, ind, mx.nM,
+                         (method == 3 && (unsigned int)k1 < i.n_elem)
+                         ? (int)i(k1) : -1);
         phiM(ind,i)=phiMc(ind,i);
         U_y(ind)=Uc_y(ind);
         if (method>1) {
@@ -5141,6 +5244,9 @@ private:
         }
 
         ind = find(deltu < -log(accU));
+        mcmcRecordAccept(method, ind, mx.nM,
+                         (method == 3 && (unsigned int)k1 < i.n_elem)
+                         ? (int)i(k1) : -1);
         phiM(ind, i) = phiMc(ind, i);
         U_y(ind) = Uc_y(ind);
         if (method > 1) {
@@ -5770,6 +5876,12 @@ SEXP saem_fit(SEXP xSEXP) {
     Named("sig2") = saem.get_sig2(),
     Named("eta") = saem.get_eta(),
     Named("par_hist") = saem.get_par_hist(),
+    // MCMC mixing diagnostics; see the members they come from
+    Named("mcmcAccept") = saem.get_mcmcAccTrace(),
+    Named("mcmcAcceptCol") = saem.get_mcmcAccColTrace(),
+    Named("mcmcStuck") = saem.get_mcmcStuckTrace(),
+    Named("mcmcPhiSd") = saem.get_phiSdTrace(),
+    Named("mcmcPhiAcf") = saem.get_phiAcfTrace(),
     Named("ueRevisitInfo") = saem.get_ueRevisitInfo(),
     Named("HaSa") = saem.get_HaSa(),
     Named("res_info") = saem.get_resInfo(),
