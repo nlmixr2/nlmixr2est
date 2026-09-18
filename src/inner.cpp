@@ -18480,58 +18480,50 @@ static bool gradDirectOmegaFast(int neta, int nom, arma::mat &Oi, arma::cube &dO
   return dOiEst.is_finite() && tr28.is_finite();
 }
 
-// Omega and its estimation-scale derivatives, from the inner problem's own handle
-static bool gradDirectOmega(const FoceiGradPooledSetup &G, int neta, arma::mat &Oi,
-                            arma::cube &dOiEst, arma::vec &tr28) {
-  if (_omGradFastState >= 0) {
-    arma::mat OiF; arma::cube dF; arma::vec tF;
-    if (gradDirectOmegaFast(neta, G.nom, OiF, dF, tF)) {
-      if (_omGradFastState == 1) { Oi = OiF; dOiEst = dF; tr28 = tF; return true; }
-      // first use: verify against the R handle before trusting it for the fit
-      arma::mat OiR; arma::cube dR; arma::vec tR;
-      bool okR = false;
-      try {
-        foceiOmegaEnvSyncFromTail();
-        OiR = getOmegaInv();
-        List dOiL = getDOmegaInvL();
-        NumericVector tr = getTr28V();
-        if ((int)dOiL.size() == G.nom && (int)tr.size() == G.nom) {
-          dR.zeros(neta, neta, G.nom > 0 ? G.nom : 1); tR.zeros(G.nom > 0 ? G.nom : 0);
-          okR = true;
-          for (int k = 0; k < G.nom; ++k) {
-            arma::mat dk = as<arma::mat>(dOiL[k]);
-            if ((int)dk.n_rows != neta || (int)dk.n_cols != neta) { okR = false; break; }
-            dR.slice(k) = dk; tR[k] = tr[k];
-          }
-        }
-      } catch (...) { okR = false; }
-      bool same = okR && arma::approx_equal(OiF, OiR, "absdiff", 1e-8) &&
-        arma::approx_equal(arma::vectorise(dF), arma::vectorise(dR), "absdiff", 1e-8) &&
-        arma::approx_equal(tF, tR, "absdiff", 1e-8);
-      _omGradFastState = same ? 1 : -1;
-      if (same) { Oi = OiF; dOiEst = dF; tr28 = tF; return true; }
-      if (okR) { Oi = OiR; dOiEst = dR; tr28 = tR; return true; }
-    } else if (_omGradFastState == 0 && _omFastState == -1) {
-      _omGradFastState = -1;
-    }
-  }
+// Omega and its estimation-scale derivatives from the inner problem's R handle;
+// 0 on success, else the decline code.
+static int gradDirectOmegaHandle(const FoceiGradPooledSetup &G, int neta, arma::mat &Oi,
+                                 arma::cube &dOiEst, arma::vec &tr28) {
   try {
     foceiOmegaEnvSyncFromTail(); // fast omega path leaves the env theta stale
     Oi = getOmegaInv();
     List dOiL = getDOmegaInvL();
     NumericVector tr = getTr28V();
     int nom = G.nom;
-    if ((int)dOiL.size() != nom || (int)tr.size() != nom) return declineHere(106);
+    if ((int)dOiL.size() != nom || (int)tr.size() != nom) return 106;
     dOiEst.zeros(neta, neta, nom > 0 ? nom : 1);
     tr28.zeros(nom > 0 ? nom : 0);
     for (int k = 0; k < nom; ++k) {
       arma::mat dk = as<arma::mat>(dOiL[k]);
-      if ((int)dk.n_rows != neta || (int)dk.n_cols != neta) return declineHere(107);
+      if ((int)dk.n_rows != neta || (int)dk.n_cols != neta) return 107;
       dOiEst.slice(k) = dk;
       tr28[k] = tr[k];
     }
-  } catch (...) { return declineHere(108); }
-  return true;
+  } catch (...) { return 108; }
+  return 0;
+}
+
+// Omega and its estimation-scale derivatives: the native map once verified
+// against the handle (first use), else the handle.
+static bool gradDirectOmega(const FoceiGradPooledSetup &G, int neta, arma::mat &Oi,
+                            arma::cube &dOiEst, arma::vec &tr28) {
+  if (_omGradFastState >= 0) {
+    arma::mat OiF; arma::cube dF; arma::vec tF;
+    if (gradDirectOmegaFast(neta, G.nom, OiF, dF, tF)) {
+      if (_omGradFastState == 1) { Oi = OiF; dOiEst = dF; tr28 = tF; return true; }
+      bool okR = gradDirectOmegaHandle(G, neta, Oi, dOiEst, tr28) == 0;
+      bool same = okR && arma::approx_equal(OiF, Oi, "absdiff", 1e-8) &&
+        arma::approx_equal(arma::vectorise(dF), arma::vectorise(dOiEst), "absdiff", 1e-8) &&
+        arma::approx_equal(tF, tr28, "absdiff", 1e-8);
+      _omGradFastState = same ? 1 : -1;
+      if (same) { Oi = OiF; dOiEst = dF; tr28 = tF; }
+      if (okR) return true;
+    } else if (_omGradFastState == 0 && _omFastState == -1) {
+      _omGradFastState = -1;
+    }
+  }
+  int code = gradDirectOmegaHandle(G, neta, Oi, dOiEst, tr28);
+  return code == 0 ? true : declineHere(code);
 }
 
 // gradPooledCore plus the transform Jacobian term.  gv comes back in KERNEL space
