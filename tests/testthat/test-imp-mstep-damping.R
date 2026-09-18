@@ -51,3 +51,45 @@ nmTest({
     }
   })
 })
+
+nmTest({
+  test_that("an ill-conditioned M-step Hessian is damped, not solved approximately", {
+    # The reproduction the damping exists for.  `tv` and `tv2` are both non-mu
+    # structural thetas and enter only through a single sum, scaled so the pair
+    # is numerically unidentifiable -- the M-step's theta-sensitivity Hessian is
+    # then singular to working precision (measured rcond ~1e-21).
+    #
+    # Unguarded, `arma::solve()` answers that system with an approximate
+    # least-squares solution AND prints
+    #   "solve(): system is singular; rcond: 1.7998e-21; attempting approx solution"
+    # to the console, once per M-step iteration.  What makes it a bug rather
+    # than noise is that the approximate step was then taken: nothing in
+    # "solved and finite" distinguishes it from a real Newton step.
+    skip_on_cran()
+    collinear <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        tv2 <- 0.01
+        eta.cl ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + 0.001 * tv2)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    f <- suppressWarnings(nlmixr2(collinear, nlmixr2data::theo_sd, est = "impmap",
+                                  control = impmapControl(nIter = 5L, isample = 50L,
+                                                          print = 0L, covMethod = "")))
+    # The guard engaged on this model rather than sitting unused.
+    expect_gt(f$env$impMStepDamped, 0)
+    # ...and having engaged, it kept the thetas somewhere a model can live.
+    expect_true(is.finite(f$objf))
+    expect_true(all(is.finite(f$parFixedDf$Estimate)))
+    expect_true(all(abs(f$parFixedDf$Estimate) < 50))
+  })
+})
