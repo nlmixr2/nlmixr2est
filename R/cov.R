@@ -558,6 +558,14 @@
 #' method that cannot compute the covariance should \code{stop()}.
 #' \code{setCovAllMethods()} lists the available methods.
 #'
+#' A method's options are recorded under the key \code{\link{setCovOptions}()}
+#' gives its control, by default the control itself.  A covariance that depends
+#' on other state on the fit -- one seeded from another covariance, say -- adds
+#' a \code{setCovOptions()} method for its control class that puts that state
+#' in the key.  A package can also let an already-computed result be installed
+#' with \code{setCov(fit) <- result} by adding a \code{\link{setCovValue}()}
+#' method for the result's class.
+#'
 #' Each covariance remembers the options it was computed with (in
 #' \code{fit$env$covOptions}).  A covariance already on the fit is reinstalled
 #' from \code{fit$covList} only when the requested options -- the supplied
@@ -613,6 +621,99 @@ setCov <- function(fit, method, ...) {
   }
   .env$time$covariance <- (proc.time() - .pt)["elapsed"]
   invisible(fit)
+}
+
+#' Install an already-computed covariance result on a fit
+#'
+#' \code{setCov(fit) <- value} installs the covariance carried by \code{value}
+#' as the fit's covariance, the way \code{setCov(fit, method)} installs one it
+#' computes: the matrix is checked for positive definiteness, the standard
+#' errors are refreshed, and the prior covariance is kept in
+#' \code{fit$covList}.  The options that produced \code{value} are recorded
+#' too, so a later \code{setCov(fit, method, control = ...)} reuses it only
+#' when the options it asks for are the same.
+#'
+#' \code{value} is dispatched on through \code{setCovValue()}: a covariance
+#' matrix is installed as \code{method} (default \code{"user"}) with no
+#' options, and other packages add methods for their own results (for example
+#' a SIR run), returning the matrix, the method name and the options.
+#'
+#' @param fit nlmixr2 fit
+#' @param method covariance-method name to install \code{value} as;
+#'   \code{NULL} lets \code{setCovValue()} choose
+#' @param ... passed to \code{setCovValue()}
+#' @param value a covariance matrix named like \code{fit$cov}, or a result
+#'   with a \code{setCovValue()} method
+#' @return the fit, with its covariance updated
+#' @author Matt Fidler
+#' @seealso \code{\link{setCov}()}, \code{\link{setCovOptions}()}
+#' @examples
+#' \dontrun{
+#' setCov(fit) <- fit$cov * 2
+#' setCov(fit, "doubled") <- fit$cov * 2
+#' }
+#' @export
+`setCov<-` <- function(fit, method = NULL, ..., value) {
+  if (!inherits(fit, "nlmixr2FitCore")) {
+    stop("'fit' must be a nlmixr2 fit", call. = FALSE)
+  }
+  if (!is.null(method) && !.covIsName(method)) {
+    stop("'method' must be a single covariance method name", call. = FALSE)
+  }
+  .pt <- proc.time()
+  .r <- setCovValue(value, fit, method = method, ...)
+  if (!is.list(.r) || !.covIsName(.r$method) || !is.matrix(.r$cov)) {
+    stop("setCovValue() must return list(cov = <matrix>, method = <name>, options = <list>)",
+         call. = FALSE)
+  }
+  .env <- .setCovEnv(fit)
+  .setCovInstall(.env, .r$method, .r$cov)
+  .covOptionsSet(.env, .r$method, .r$options)
+  # objects the result keeps on the fit, only once the install has succeeded
+  for (.n in names(.r$extra)) assign(.n, .r$extra[[.n]], envir = .env)
+  .env$time$covariance <- (proc.time() - .pt)["elapsed"]
+  fit
+}
+
+#' The covariance, method name and options a result installs
+#'
+#' The generic behind \code{setCov(fit) <- value}.  A method returns
+#' \code{list(cov =, method =, options =)}: the covariance named like
+#' \code{fit$cov}, the covariance-method name to install it as, and the
+#' options recorded for it (the same key \code{setCovOptions()} gives the
+#' control that would compute it, so \code{setCov()} can reuse it).  It may
+#' also return \code{extra}, a named list of objects stored in the fit
+#' environment (so \code{fit$<name>} returns them) once the covariance is
+#' installed -- the full result the covariance came from, say.
+#'
+#' @param value the result to install
+#' @param fit nlmixr2 fit
+#' @param method requested covariance-method name, or \code{NULL}
+#' @param ... ignored by the built-in methods
+#' @return \code{list(cov, method, options)}, optionally with \code{extra}
+#' @author Matt Fidler
+#' @seealso \code{\link{setCov<-}}
+#' @export
+setCovValue <- function(value, fit, method = NULL, ...) {
+  UseMethod("setCovValue")
+}
+
+#' @rdname setCovValue
+#' @export
+setCovValue.default <- function(value, fit, method = NULL, ...) {
+  .m <- as.character(utils::methods("setCovValue"))
+  .m <- substr(.m, 13L, nchar(.m))
+  .m <- .m[.m != "default"]
+  stop("cannot install a '", paste(class(value), collapse = "/"),
+       "' as a covariance; supported: ", paste(.m, collapse = ", "),
+       call. = FALSE)
+}
+
+#' @rdname setCovValue
+#' @export
+setCovValue.matrix <- function(value, fit, method = NULL, ...) {
+  if (is.null(method)) method <- "user"
+  list(cov = value, method = method, options = list())
 }
 
 #' List the covariance methods setCov() can compute

@@ -10,6 +10,14 @@
   `impCovControl()` for `"imp"`.  Each covariance records the options it
   was computed with (`fit$env$covOptions`), and `setCov()` reuses a cached
   covariance only when the requested options match, recomputing otherwise.
+- The cache key of a covariance method's options is the new generic
+  `setCovOptions()`, so a method whose covariance depends on more than its
+  control (for example SIR, seeded from another covariance on the fit) can
+  put that state in the key.
+- `setCov(fit) <- value` installs an already-computed covariance: a matrix
+  (as `"user"`, or `setCov(fit, "name") <- matrix`), or any result with a
+  `setCovValue()` method, which also records the options that produced it
+  and can keep the result itself on the fit.
 - The fit print separates the other calculated covariances with `;`, since
   `"r,s"` contains a comma.
 - `est="imp"`, `"impmap"` and `"qrpem"` with `nIter=0` evaluate the fit at the
