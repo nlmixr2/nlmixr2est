@@ -1974,8 +1974,6 @@ void impOuter(Environment e) {
       //     conditioning and rotates the step toward a scaled gradient step.
       //   * The trust region is relative to each theta's own magnitude (floored
       //     at 1) so it means the same thing for a theta of 0.1 and one of 1e5.
-      // A well-conditioned iteration is accepted at lambda = 0 on the first try,
-      // so healthy fits take a bit-identical step to the unguarded code.
       // The undamped Newton step is taken whenever the Hessian behind it is
       // actually trustworthy, so a healthy iteration is bit-identical to the
       // unguarded code.  "Trustworthy" is measured directly, by conditioning --
@@ -2007,17 +2005,29 @@ void impOuter(Environment e) {
         // gradient step.
         double hscale = H.is_finite() ? arma::abs(H.diag()).max() : 0.0;
         if (!R_finite(hscale) || hscale <= 0.0) hscale = 1.0;
+        // Start AT lambda = 1e-8, not at 0.  Reaching here means H already
+        // failed the conditioning test, so an undamped try is not a cheap first
+        // guess: arma::solve() answers a singular system with an APPROXIMATE
+        // solution (and prints "system is singular; rcond: ...; attempting
+        // approx solution" to the user's console), and that approximate step is
+        // then accepted whenever it happens to land inside the trust region.
+        // The trust region bounds a step's SIZE; it says nothing about whether
+        // the Hessian behind it determined its direction.
+        lambda = 1e-8;
         for (int tryK = 0; tryK < 12; ++tryK) {
           arma::mat Hd = H;
-          if (lambda > 0.0) Hd.diag() += lambda * hscale;
+          Hd.diag() += lambda * hscale;
           arma::vec cand;
-          if (arma::solve(cand, Hd, g) && cand.is_finite() &&
+          // no_approx: a singular system must FAIL so the ridge escalates,
+          // rather than silently returning a least-squares answer.
+          if (arma::solve(cand, Hd, g, arma::solve_opts::no_approx) &&
+              cand.is_finite() &&
               impStructStepRel(cand) <= IMP_MSTEP_TRUST) {
             step = cand;
             stepOk = true;
             break;
           }
-          lambda = (lambda == 0.0) ? 1e-8 : lambda * 100.0;
+          lambda *= 100.0;
         }
         if (stepOk) {
           nMStepDamped++;
