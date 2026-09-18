@@ -29,6 +29,7 @@
 #include "utilc.h"   // RSprintf (covariance-step progress header)
 #ifdef _OPENMP
 #include <omp.h>
+#endif
 
 // Largest per-component structural-theta Newton step the M-step will take in one
 // EM iteration, relative to that theta's own magnitude (floored at 1 so a theta
@@ -45,9 +46,12 @@
 // iterations whose structural thetas could not be updated at all.  Reported once
 // at the end of the fit: a run that damps constantly has an ill-conditioned
 // theta-sensitivity Hessian and its structural estimates deserve a second look.
+//
+// NOT inside the _OPENMP guard: the M-step reads them unconditionally, and a
+// toolchain without OpenMP (macOS clang) then fails to compile with "use of
+// undeclared identifier 'nMStepDamped'".  Only <omp.h> belongs in the guard.
 static std::atomic<int> nMStepDamped(0);
 static std::atomic<int> nMStepSkipped(0);
-#endif
 
 using namespace Rcpp;
 
