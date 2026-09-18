@@ -95,17 +95,46 @@ impCovControl <- function(nIter = 1L, isample = 300L, impSeed = 42L) {
                     gillFtolCov = "double", covGillF = "logical", covSmall = "double",
                     rmatNorm = "logical", smatNorm = "logical")
 
-#' Options a covariance method is computed with, as a comparable plain list
+#' The cache key of a covariance method's options
 #'
-#' `rsControl()` entries left `NULL` are taken from the fit's `foceiControl`.
-#' @param env fit environment
-#' @param control covariance control object
-#' @return named list
-#' @noRd
-.covOptionsResolve <- function(env, control) {
+#' \code{setCov()} records the result of this generic for every covariance it
+#' computes, and reuses a cached covariance only when the key it asks for is
+#' \code{identical()} to the recorded one.  The default key is the control
+#' object itself, as a plain list.
+#'
+#' A package whose covariance depends on more than its control -- a covariance
+#' seeded from another covariance on the fit, say -- adds a method for its
+#' control class that puts that state in the key, so a change in it recomputes
+#' the covariance instead of reinstalling a stale one.  Options that do not
+#' change the result (parallel workers, say) can be left out.
+#'
+#' @param control covariance control object (for example \code{rsControl()})
+#' @param fit nlmixr2 fit, or its environment when the key of a built-in
+#'   method's defaults is taken
+#' @param ... ignored
+#' @return named list, compared with \code{identical()}
+#' @author Matt Fidler
+#' @seealso \code{\link{setCov}()}
+#' @examples
+#' setCovOptions(saControl(), NULL)
+#' @export
+setCovOptions <- function(control, fit, ...) {
+  UseMethod("setCovOptions")
+}
+
+#' @rdname setCovOptions
+#' @export
+setCovOptions.default <- function(control, fit, ...) {
   if (is.null(control)) return(list())
-  if (!inherits(control, "rsControl")) return(unclass(control))
-  .fc <- env$foceiControl
+  unclass(control)
+}
+
+#' @rdname setCovOptions
+#' @export
+setCovOptions.rsControl <- function(control, fit, ...) {
+  # entries left NULL are taken from the fit's foceiControl
+  .env <- if (is.environment(fit)) fit else .setCovEnv(fit)
+  .fc <- if (is.environment(.env)) .env$foceiControl else NULL
   .ret <- lapply(names(.rsControlMode), function(.n) {
     .v <- control[[.n]]
     if (is.null(.v)) .v <- .fc[[.n]]
@@ -117,6 +146,19 @@ impCovControl <- function(nIter = 1L, isample = 300L, impSeed = 42L) {
   })
   names(.ret) <- names(.rsControlMode)
   .ret
+}
+
+#' Options a covariance method is computed with, as a comparable plain list
+#'
+#' @param env fit environment
+#' @param control covariance control object
+#' @param fit nlmixr2 fit (the environment when no fit is at hand)
+#' @return named list
+#' @noRd
+.covOptionsResolve <- function(env, control, fit = env) {
+  if (is.null(control)) return(list())
+  .ret <- setCovOptions(control, fit)
+  if (is.null(.ret)) list() else .ret
 }
 
 #' Options `setCov()` is asked to compute `method` with
@@ -145,7 +187,7 @@ impCovControl <- function(nIter = 1L, isample = 300L, impSeed = 42L) {
     .ctl <- eval(formals(.m)$control, list(fit = fit, method = method),
                  environment(.m))
   }
-  list(options = .covOptionsResolve(env, .ctl), explicit = .explicit)
+  list(options = .covOptionsResolve(env, .ctl, fit), explicit = .explicit)
 }
 
 #' Default options of a built-in covariance method on a fit
