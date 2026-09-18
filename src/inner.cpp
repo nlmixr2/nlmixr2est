@@ -13470,6 +13470,23 @@ void impIterPrintGet(Environment e) {
 // iterations (scale.every was set from the control's print cadence; 0 = quiet).
 bool impCovProgress() { return op_focei.scale.every != 0; }
 
+// Size of a proposed M-step structural-theta step, measured relative to each
+// theta's own current magnitude (floored at 1 so a theta near zero still gets a
+// usable absolute allowance).  This is what the M-step's trust region is applied
+// to, so the same radius means the same thing whether a theta is 0.1 or 1e5.
+double impStructStepRel(const arma::vec& step) {
+  IntegerVector &thIdx = op_focei.impThetaSensIdx;
+  double worst = 0.0;
+  for (int s = 0; s < thIdx.size(); ++s) {
+    double th = op_focei.fullTheta[thIdx[s]];
+    double scale = std::max(std::fabs(th), 1.0);
+    double rel = std::fabs(step[s]) / scale;
+    if (!R_finite(rel)) return R_PosInf;
+    if (rel > worst) worst = rel;
+  }
+  return worst;
+}
+
 // Newton step on the non-mu structural thetas: add step[s] to theta
 // impThetaSensIdx[s] in fullTheta and propagate to every subject's solve.
 void impUpdateStructThetas(const arma::vec& step) {
