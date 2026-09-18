@@ -294,7 +294,7 @@ foControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x55af2e8e6980>
+#> <bytecode: 0x557d805166a0>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
