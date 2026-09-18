@@ -37,7 +37,7 @@
   .args <- list(ncmt = ncmt, oral0 = oral0, trans = trans)
   for (.i in 1:7) {
     .args[[.rxFoceiLinCmtCarrySlotNames[.i]]] <- as.name(.rxFoceiCarrySlotPh[.i])
-  } # nolint: object_usage_linter.
+  }
   .build <- utils::getFromNamespace(paste0(".linToOdeBuildMicro", ncmt), "rxode2")
   .m <- tryCatch(.build(.args), error = function(e) NULL)
   if (is.null(.m)) {
@@ -54,7 +54,7 @@
 #' Substitute the slot placeholders with the model's slot expressions
 #' @noRd
 .rxFoceiCarrySubsSlots <- function(expr, slotExpr) {
-  .free <- .rxFoceiCarryFreeSyms(expr) # nolint: object_usage_linter.
+  .free <- .rxFoceiCarryFreeSyms(expr)
   for (.i in 1:7) {
     if (.rxFoceiCarrySlotPh[.i] %in% .free) {
       expr <- symengine::subs(expr, symengine::S(.rxFoceiCarrySlotPh[.i]), slotExpr[[.i]])
@@ -76,7 +76,7 @@
   .dvc <- NULL
   if (!is.na(slot)) {
     .d <- symengine::D(.vc, symengine::S(.rxFoceiCarrySlotPh[slot]))
-    if (!.rxFoceiCarryIsZero(.d)) .dvc <- .rxFoceiCarrySubsSlots(.d, slotExpr) # nolint: object_usage_linter.
+    if (!.rxFoceiCarryIsZero(.d)) .dvc <- .rxFoceiCarrySubsSlots(.d, slotExpr)
   }
   list(vc = .rxFoceiCarrySubsSlots(.vc, slotExpr), dVc = .dvc)
 }
@@ -138,7 +138,7 @@
     return(list(f = NULL, lag = NULL))
   }
   .one <- function(kind) {
-    .rows <- .rxFoceiLinCmtEventRows(s, .lin, kind, etaVars) # nolint: object_usage_linter.
+    .rows <- .rxFoceiLinCmtEventRows(s, .lin, kind, etaVars)
     if (length(.rows) != 1L) {
       return(NULL)
     }
@@ -159,24 +159,21 @@
   if (!is.null(mods$f) && eta %in% mods$f$drivers) {
     .d <- symengine::D(mods$f$sym, symengine::S(eta))
     if (!.rxFoceiCarryIsZero(.d)) {
-      # nolint: object_usage_linter.
       .dln <- .d / mods$f$sym
       .fD <- paste(.dln)
       # every input is proportional to F, so d(pred)/d(eta) = pred * dlnF
       # is exact -- across a covariate change too -- unless dlnF itself
       # changes with the covariate (the non-multiplicative shapes)
-      .fCov <- length(intersect(.rxFoceiCarryFreeSyms(.dln), allCovs)) > 0L # nolint: object_usage_linter.
+      .fCov <- length(intersect(.rxFoceiCarryFreeSyms(.dln), allCovs)) > 0L
     }
   }
   if (!is.null(mods$lag) && eta %in% mods$lag$drivers) {
     .d <- symengine::D(mods$lag$sym, symengine::S(eta))
     if (!.rxFoceiCarryIsZero(.d)) {
-      # nolint: object_usage_linter.
       # a covariate-driven lag gives every dose its own d(lag)/d(eta); the
       # boundary terms need the entering dose's value, which a later row
       # cannot recover
       if (length(intersect(.rxFoceiCarryFreeSyms(mods$lag$sym), allCovs)) > 0L) {
-        # nolint: object_usage_linter.
         return(list(ok = FALSE))
       }
       .lagD <- paste(.d)

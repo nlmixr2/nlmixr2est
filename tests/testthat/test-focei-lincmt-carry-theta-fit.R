@@ -9,8 +9,8 @@ test_that("theta-side carry through a real est='nlm' fit (#1003)", {
       add.sd <- 0.5
     })
     model({
-      cl <- exp(tcl) * (wt / 70)^0.75 # nolint: object_usage_linter.
-      v <- exp(tv) # nolint: object_usage_linter.
+      cl <- exp(tcl) * (wt / 70)^0.75
+      v <- exp(tv)
       cp <- linCmt()
       cp ~ add(add.sd)
     })

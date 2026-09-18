@@ -157,7 +157,7 @@
   if (length(.zeroRows) > 0L) {
     warning(
       sprintf(
-        "%d subject(s) had zero/underflowed mixture likelihood in all components; falling back to prior probabilities for those subjects",
+        "%d subject(s) had zero/underflowed mixture likelihood in all components; falling back to prior probabilities for those subjects", # nolint: line_length_linter.
         length(.zeroRows)
       ),
       call. = FALSE

@@ -126,8 +126,10 @@
 #'   of iterations is itmax*number of parameters
 #'
 #' @param type indicates the type of optimization for the residuals; Can be one of c("nelder-mead", "newuoa")
-#' @param powRange This indicates the range that powers can take for residual errors;  By default this is 10 indicating the range is c(-10, 10)
-#' @param lambdaRange This indicates the range that Box-Cox and Yeo-Johnson parameters are constrained to be;  The default is 3 indicating the range c(-3,3)
+#' @param powRange This indicates the range that powers can take for residual errors;
+#'   By default this is 10 indicating the range is c(-10, 10)
+#' @param lambdaRange This indicates the range that Box-Cox and Yeo-Johnson parameters are
+#'   constrained to be;  The default is 3 indicating the range c(-3,3)
 #'
 #' @param perSa This is the percent of the time the `nBurn`
 #'   iterations in phase runs runs a simulated annealing.

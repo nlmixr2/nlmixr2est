@@ -90,7 +90,7 @@
 # nolint end
 
 .carryLlEv <- function() {
-  ev <- .carryEv() # nolint: object_usage_linter.
+  ev <- .carryEv()
   ev$dv <- 0
   ev$dv[ev$evid == 0] <- c(3, 2.5, 2, 1.5)
   ev

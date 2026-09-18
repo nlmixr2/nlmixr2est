@@ -251,7 +251,7 @@ attr(rxUiGet.transUE, "rstudio") <- c(eta.ka = "tka")
             }
             return(.sumExpr)
           } else {
-            for (i in seq_len(length(expr))) {
+            for (i in seq_along(expr)) {
               if (i == 1) {
                 next
               }

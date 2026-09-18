@@ -50,7 +50,7 @@
     .popNlmixr2Timing()
   })
   if (
-    is.environment(nlmixr2global$currentTimingEnvironment) &
+    is.environment(nlmixr2global$currentTimingEnvironment) &&
       inherits(nlmixr2global$nlmixr2Time, "proc_time")
   ) {
     .time <- .nlmixrMergeTimeWithExtraTime(get("time", envir = nlmixr2global$currentTimingEnvironment))
@@ -158,7 +158,7 @@
   if (inherits(envir, "nlmixr2FitData")) {
     envir <- envir$env
   }
-  if (is.environment(nlmixr2global$currentTimingEnvironment) & !is.environment(envir)) {
+  if (is.environment(nlmixr2global$currentTimingEnvironment) && !is.environment(envir)) {
     envir <- nlmixr2global$currentTimingEnvironment
   }
   if (is.environment(envir)) {

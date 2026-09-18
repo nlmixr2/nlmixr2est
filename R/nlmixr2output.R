@@ -144,9 +144,11 @@
 #' This gets the CV/SD for a single ETA
 #'
 #' @param .eta Eta Name
-#' @param .env Environment where the indicators of `.sdOnly`, `.cvOnly` are stored so the column name can be changed to match the data
+#' @param .env Environment where the indicators of `.sdOnly`, `.cvOnly` are stored so the column
+#'   name can be changed to match the data
 #' @param .ome Omega fixed vector
-#' @param .muRefCurEval The current mu ref evaluation.  This determines if the ETA is logit normal and %CV should be calculated.
+#' @param .muRefCurEval The current mu ref evaluation.  This determines if the ETA is logit normal
+#'   and %CV should be calculated.
 #' @param .sigdig is the number of significant digits used in the evaluation
 #' @return Data frame row with ch= the character representation and v is the vector representation of the CV or sd
 #' @author Matthew L. Fidler and Bill Denney
@@ -203,7 +205,8 @@
 #' @param .sigdig Number of significant digits for the character representation
 #' @param .muRefDataFrame `.ui$muRefDataFrame`
 #' @param .muRefCurEval `.ui$muRefCurEval`
-#' @returns A list with `popDf` (BSV column and non-mu-referenced ETA rows appended) and `bsvFixedNames` (row names whose BSV is fixed)
+#' @returns A list with `popDf` (BSV column and non-mu-referenced ETA rows appended) and
+#'   `bsvFixedNames` (row names whose BSV is fixed)
 #' @author Matthew L. Fidler
 #' @noRd
 .updateParFixedAddBsv <- function(popDf, iniDf, omega, .sigdig, .muRefDataFrame, .muRefCurEval) {

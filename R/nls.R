@@ -729,7 +729,7 @@ rxUiGet.nlsHdTheta <- function(x, ...) {
   # linCmt() sensitivity carry for a theta on a covariate-driven linCmt()
   # parameter (#1003); see foceiLinCmtCarryTheta.R
   .thetaVars <- paste0("THETA_", seq_len(.s$..maxTheta), "_")
-  .carry <- .rxCarryThetaPairsForBuild(x, .s, .thetaVars) # nolint: object_usage_linter.
+  .carry <- .rxCarryThetaPairsForBuild(x, .s, .thetaVars)
   .ret <- apply(.grd, 1, function(x) {
     .l <- x["calc"]
     .l <- eval(parse(text = .l))
@@ -737,7 +737,7 @@ rxUiGet.nlsHdTheta <- function(x, ...) {
     if (!is.null(.carry)) {
       .w <- which(.carry$pairs$eta == sub("^.*_BY_(THETA_[0-9]+)___$", "\\1_", x["dfe"]))
       if (length(.w) == 1L) {
-        .ret <- .rxCarryThetaEmit(.carry$pairs, .w, .s, x["dfe"], .carry$fp, .predMinusDv) # nolint: object_usage_linter.
+        .ret <- .rxCarryThetaEmit(.carry$pairs, .w, .s, x["dfe"], .carry$fp, .predMinusDv)
       }
     }
     .zErr <- suppressWarnings(try(as.numeric(get(x["dfe"], .s)), silent = TRUE))
@@ -893,7 +893,8 @@ attr(rxUiGet.nlsEnv, "rstudio") <- emptyenv()
 #' @export
 rxUiGet.nlsSensModel <- function(x, ...) {
   .s <- rxUiGet.nlsEnv(x, ...)
-  ## "jump" attaches rxode2's analytic event (alag/F/rate/dur) sensitivities to the residual-Jacobian model instead of using finite differences.
+  ## "jump" attaches rxode2's analytic event (alag/F/rate/dur) sensitivities to the
+  ## residual-Jacobian model instead of using finite differences.
   .eventSens <- rxode2::rxGetControl(x[[1]], "eventSens", "jump")
   list(
     thetaGrad = .nlmixr2estRxode2(.s$..nlsS, "rxNlsGrad", eventSens = .eventSens),

@@ -350,7 +350,7 @@ rxUiGet.saemModelOmega <- function(x, ...) {
   .mat
 }
 #attr(rxUiGet.saemModelOmega, "desc") <- "Get the saem model omega"
-attr(rxUiGet.saemModelOmega, "rstudio") <- lotri::lotri(a+b~c(1, 0.1, 1))
+attr(rxUiGet.saemModelOmega, "rstudio") <- lotri::lotri(a + b ~ c(1, 0.1, 1))
 
 #' @export
 rxUiGet.saemModelOmegaFixed <- function(x, ...) {
@@ -368,7 +368,7 @@ rxUiGet.saemModelOmegaFixed <- function(x, ...) {
   .mat
 }
 #attr(rxUiGet.saemModelOmegaFixed, "desc") <- "Get the indicator for saem model omega fixed components"
-attr(rxUiGet.saemModelOmegaFixed, "rstudio") <- lotri::lotri(a+b~c(1, 0.1, 1))
+attr(rxUiGet.saemModelOmegaFixed, "rstudio") <- lotri::lotri(a + b ~ c(1, 0.1, 1))
 
 #' @export
 rxUiGet.saemModelOmegaFixedValues <- function(x, ...) {
@@ -386,7 +386,7 @@ rxUiGet.saemModelOmegaFixedValues <- function(x, ...) {
   .mat
 }
 #attr(rxUiGet.saemModelOmegaFixedValues, "desc") <- "Get the omega values may be fixed"
-attr(rxUiGet.saemModelOmegaFixedValues, "rstudio") <- lotri::lotri(a+b~c(1, 0.1, 1))
+attr(rxUiGet.saemModelOmegaFixedValues, "rstudio") <- lotri::lotri(a + b ~ c(1, 0.1, 1))
 
 #' @export
 rxUiGet.saemLow <- function(x, ...) {
@@ -611,9 +611,11 @@ attr(rxUiGet.saemModResTotalResiduals, "rstudio") <- c(1, 2)
           .saemGetIniDfCResName(.iniDf, .cond, column)
         ), # add + pow = 5
 
-        c(.saemGetIniDfAResName(.iniDf, .cond, column), .saemGetIniDfLResName(.iniDf, .cond, column)), # add + lambda = 6
+        # add + lambda = 6
+        c(.saemGetIniDfAResName(.iniDf, .cond, column), .saemGetIniDfLResName(.iniDf, .cond, column)),
 
-        c(.saemGetIniDfBResName(.iniDf, .cond, column), .saemGetIniDfLResName(.iniDf, .cond, column)), # prop + lambda = 7
+        # prop + lambda = 7
+        c(.saemGetIniDfBResName(.iniDf, .cond, column), .saemGetIniDfLResName(.iniDf, .cond, column)),
 
         c(
           .saemGetIniDfBResName(.iniDf, .cond, column),

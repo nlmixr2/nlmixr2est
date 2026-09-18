@@ -1831,7 +1831,7 @@ foceiControl <- function(
     .resetEtaSize <- .xtra$resetEtaSize
   } else {
     checkmate::assertNumeric(resetEtaP, lower = 0, upper = 1, len = 1)
-    if (resetEtaP > 0 & resetEtaP < 1) {
+    if (resetEtaP > 0 && resetEtaP < 1) {
       .resetEtaSize <- qnorm(1 - (resetEtaP / 2))
     } else if (resetEtaP <= 0) {
       .resetEtaSize <- Inf
@@ -1843,7 +1843,7 @@ foceiControl <- function(
     .resetThetaSize <- .xtra$resetThetaSize
   } else {
     checkmate::assertNumeric(resetThetaP, lower = 0, upper = 1, len = 1)
-    if (resetThetaP > 0 & resetThetaP < 1) {
+    if (resetThetaP > 0 && resetThetaP < 1) {
       .resetThetaSize <- qnorm(1 - (resetThetaP / 2))
     } else if (resetThetaP <= 0) {
       .resetThetaSize <- Inf
@@ -1855,7 +1855,7 @@ foceiControl <- function(
     .resetThetaFinalSize <- .xtra$resetThetaFinalSize
   } else {
     checkmate::assertNumeric(resetThetaFinalP, lower = 0, upper = 1, len = 1)
-    if (resetThetaFinalP > 0 & resetThetaFinalP < 1) {
+    if (resetThetaFinalP > 0 && resetThetaFinalP < 1) {
       .resetThetaFinalSize <- qnorm(1 - (resetThetaFinalP / 2))
     } else if (resetThetaFinalP <= 0) {
       .resetThetaFinalSize <- Inf

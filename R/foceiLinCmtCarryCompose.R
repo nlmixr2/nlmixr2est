@@ -10,7 +10,7 @@
 #' row; cheap)
 #' @noRd
 .rxFoceiLinCmtCarryCtx <- function(pairs, s) {
-  .pc <- .rxFoceiCarryPredCall(s) # nolint: object_usage_linter.
+  .pc <- .rxFoceiCarryPredCall(s)
   .a <- .pc$args
   # rxFromSE() deparses a non-character argument's expression
   # (substitute()-based), so hand it the repr string
@@ -72,7 +72,7 @@
     cx$ncmt,
     cx$oral0,
     as.numeric(cx$trans),
-    pairs$slot[w], # nolint: object_usage_linter.
+    pairs$slot[w],
     cx$slotExpr
   )
   .vcRepr <- paste(.vc$vc)
@@ -95,7 +95,6 @@
   .direct <- symengine::D(cx$predSym, symengine::S(pairs$eta[w]))
   .fin <- paste0(dfe, "=(", rxode2::rxFromSE(.outer), ")*(", .conc, ")")
   if (!.rxFoceiCarryIsZero(.direct)) {
-    # nolint: object_usage_linter.
     .directRepr <- paste(.direct)
     .fin <- paste0(.fin, "+(", rxode2::rxFromSE(.directRepr), ")")
   }

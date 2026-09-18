@@ -110,8 +110,10 @@
 #' @param fixed a character vector of fixed effect only parameters (no random effects attached) to be fixed
 #' @param DEBUG Integer determining if debugging is enabled
 #' @param type indicates the type of optimization for the residuals; Can be one of c("nelder-mead", "newuoa")
-#' @param lambdaRange This indicates the range that Box-Cox and Yeo-Johnson parameters are constrained to be;  The default is 3 indicating the range (-3,3)
-#' @param powRange This indicates the range that powers can take for residual errors;  By default this is 10 indicating the range is c(1/10, 10) or c(0.1,10)
+#' @param lambdaRange This indicates the range that Box-Cox and Yeo-Johnson parameters are
+#'   constrained to be;  The default is 3 indicating the range (-3,3)
+#' @param powRange This indicates the range that powers can take for residual errors;
+#'   By default this is 10 indicating the range is c(1/10, 10) or c(0.1,10)
 #' @inheritParams saemControl
 #'
 #' @return Returns a list neede for the saem fit procedure
@@ -521,7 +523,7 @@
   nlambda1 <- sum(mcov[, i1])
   nlambda0 <- sum(mcov[, i0])
   nlambda <- nlambda1 + nlambda0
-  Mcovariables <- cbind(rep(1, N), covariables)[, 1:nrow(mcov)]
+  Mcovariables <- cbind(rep(1, N), covariables)[, seq_len(nrow(mcov))]
   dim(Mcovariables) <- c(length(Mcovariables) / nrow(mcov), nrow(mcov)) # FIXME
 
   # get fixed ix
@@ -829,7 +831,7 @@
     )
     stop(msg, call. = FALSE)
   }
-  t <- unlist(split(1L:length(s), s))
+  t <- unlist(split(seq_along(s), s))
   cfg$ys <- cfg$y[t]
   cfg$ix_sorting <- t - 1 # c-index for sorting by endpnt
   cfg$y_offset <- c(0, cumsum(table(s)))
@@ -848,7 +850,8 @@
   # (currently gated off by the saem opt-out assert).
   .arTime <- cfg$evt[cfg$evt[, "EVID"] == 0, "TIME"]
   .arGrp <- paste0(.s_id, "_", cfg$ix_endpnt)
-  .arPos <- stats::ave(seq_along(.arGrp), .arGrp, FUN = function(.v) c(NA_integer_, utils::head(.v, -1L))) # prev 1-based orig idx
+  # prev 1-based orig idx
+  .arPos <- stats::ave(seq_along(.arGrp), .arGrp, FUN = function(.v) c(NA_integer_, utils::head(.v, -1L)))
   cfg$arPrev <- ifelse(is.na(.arPos), -1L, .arPos - 1L) # 0-based, -1 = first
   cfg$arDt <- ifelse(is.na(.arPos), 0, .arTime - .arTime[.arPos])
   cfg$arActive <- as.integer(if (is.null(model$arActive)) rep(0L, cfg$nendpnt) else model$arActive)

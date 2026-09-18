@@ -38,11 +38,11 @@
   ## (nlmixr2/rxode2#1289)
   if (!.isPred && !is.null(nlmixr2global$nlmixr2SimInfo)) {
     .thetaMat <- nlmixr2global$nlmixr2SimInfo$thetaMat
-    if (is.null(.rxControl$thetaMat) & !.isPred) {
+    if (is.null(.rxControl$thetaMat) && !.isPred) {
       .minfo("using population uncertainty from fitted model (`thetaMat`)")
       .rxControl$thetaMat <- .thetaMat
     }
-    if (.rxControl$dfObs == 0L & !.isPred) {
+    if (.rxControl$dfObs == 0L && !.isPred) {
       .minfo(paste0(
         "using `dfObs=",
         nlmixr2global$nlmixr2SimInfo$dfObs,
@@ -50,7 +50,7 @@
       ))
       .rxControl$dfObs <- nlmixr2global$nlmixr2SimInfo$dfObs
     }
-    if (.rxControl$dfSub == 0L & !.isPred) {
+    if (.rxControl$dfSub == 0L && !.isPred) {
       .minfo(paste0(
         "using `dfSub=",
         nlmixr2global$nlmixr2SimInfo$dfSub,
@@ -59,7 +59,7 @@
       .rxControl$dfSub <- nlmixr2global$nlmixr2SimInfo$dfSub
     }
 
-    if (is.null(.rxControl$sigma) & !.isPred) {
+    if (is.null(.rxControl$sigma) && !.isPred) {
       .minfo("using diagonal `sigma` based on model")
       .rxControl$sigma <- nlmixr2global$nlmixr2SimInfo$sigma
     }

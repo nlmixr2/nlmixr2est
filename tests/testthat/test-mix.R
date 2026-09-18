@@ -143,7 +143,7 @@ nmTest({
 
       # Should complete without error; p1 should be a valid probability
       expect_true("CWRES" %in% names(fit))
-      expect_true(fit$fixef["p1"] > 0 & fit$fixef["p1"] < 1, label = "mixture probability p1 in (0,1) for llik model")
+      expect_true(fit$fixef["p1"] > 0 && fit$fixef["p1"] < 1, label = "mixture probability p1 in (0,1) for llik model")
 
       # Back-Transformed rows in parHistData must show probabilities
       phd <- fit$parHistData
@@ -289,7 +289,7 @@ nmTest({
     })
     expect_true(!is.null(fit))
     # Verify the mixture probability is in valid range
-    expect_true(fit$fixef["p1"] > 0 & fit$fixef["p1"] < 1)
+    expect_true(fit$fixef["p1"] > 0 && fit$fixef["p1"] < 1)
   })
 
   test_that("rxUiGet.saemMixProb rejects invalid mixture probabilities directly", {

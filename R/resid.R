@@ -169,14 +169,14 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
       .iCovOK <- FALSE
     }
   }
-  while (recalc & length(odeMethods) > 0) {
+  while (recalc && length(odeMethods) > 0) {
     recalcN <- 0
     currentOdeMethod <- odeMethods[[1]]
     odeMethods <- odeMethods[-1]
     .atol <- fit$atol[1]
     .rtol <- fit$rtol[1]
     ## message(currentOdeMethod)
-    while (recalc & recalcN < fit$foceiControl$stickyRecalcN) {
+    while (recalc && recalcN < fit$foceiControl$stickyRecalcN) {
       # Iterate up atol/rtol
       ## message("\t", .atol, " ", .rtol)
       .res <- if (.iCovOK) {
@@ -772,7 +772,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
     .npde1 <- FALSE
     .npde2 <- TRUE
   }
-  if ((.npde1 & table$npde) | !.npde1) {
+  if ((.npde1 && table$npde) || !.npde1) {
     .ret[[1]] <- .calcCwres(
       fit,
       data = fit$dataSav,
@@ -786,7 +786,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
       npde = .npde1
     )
   }
-  if ((.npde2 & table$npde) | !.npde2) {
+  if ((.npde2 && table$npde) || !.npde2) {
     .ret[[2]] <- .calcCwres(
       fit,
       data = fit$dataSav,
@@ -813,7 +813,8 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
 
 #' Re-insert subjects dropped during preprocessing into an output table
 #'
-#' Adds subjects dropped by `.foceiPreProcessData()` back into the table with a population `PRED` and NA individual columns.
+#' Adds subjects dropped by `.foceiPreProcessData()` back into the table with a population `PRED`
+#' and NA individual columns.
 #'
 #' @param df assembled output data.frame (one row per output record for the
 #'   subjects that were estimated)
@@ -1132,7 +1133,8 @@ addTable <- function(
 #'
 #' @param censMethod Handle censoring method:
 #'
-#'  - `"truncated-normal"` Simulates from a truncated normal distribution under the assumption of the model and censoring.
+#'  - `"truncated-normal"` Simulates from a truncated normal distribution under the assumption of
+#'    the model and censoring.
 #'
 #'  - `"cdf"` Use the cdf-method for censoring with npde and use this for any other residuals (`cwres` etc)
 #'
@@ -1218,7 +1220,7 @@ tableControl <- function(
     stop(
       "'keep' cannot contain ",
       paste(.invalidKeep, collapse = ", "),
-      "\nconsider using addDosing=TRUE or merging to original dataset\nfor a fit the merge can be called by fit$dataMergeLeft fit$dataMergeRight or fit$dataMergeInner",
+      "\nconsider using addDosing=TRUE or merging to original dataset\nfor a fit the merge can be called by fit$dataMergeLeft fit$dataMergeRight or fit$dataMergeInner", # nolint: line_length_linter.
       call. = FALSE
     )
   }

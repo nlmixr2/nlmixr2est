@@ -2083,7 +2083,7 @@ rxUiGet.foceiHdEta <- function(x, ...) {
   .carryPairs <- .rxFoceiLinCmtCarryPairsForBuild(
     x,
     .s,
-    .linCmtEtaVars, # nolint: object_usage_linter.
+    .linCmtEtaVars,
     .linCmtExtraPred
   )
   .ret <- apply(.grd, 1, function(x) {
@@ -2101,7 +2101,7 @@ rxUiGet.foceiHdEta <- function(x, ...) {
       .p <- sub("^.*_BY_(ETA_[0-9]+)___$", "\\1_", x["dfe"])
       .w <- which(.carryPairs$eta == .p)
       if (length(.w) == 1L) {
-        .ret <- .rxFoceiLinCmtCarryEmit(.carryPairs, .w, .s, x["dfe"]) # nolint: object_usage_linter.
+        .ret <- .rxFoceiLinCmtCarryEmit(.carryPairs, .w, .s, x["dfe"])
       }
     }
     .zErr <- suppressWarnings(try(as.numeric(get(x["dfe"], .s)), silent = TRUE))
@@ -5284,7 +5284,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     }
     if (!.rxFoceiLinCmtCarryCapable()) {
       return(invisible(NULL))
-    } # nolint: object_usage_linter.
+    }
     .rd <- tryCatch(as.data.frame(env$data), error = function(e) NULL)
     if (is.null(.rd)) {
       return(invisible(NULL))
@@ -5297,7 +5297,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       .s <- ui$foceiEtaS
       .rxFoceiLinCmtCarryEligible(
         list(ui),
-        .s, # nolint: object_usage_linter.
+        .s,
         paste0("ETA_", seq_len(.s$..maxEta), "_"),
         data = .rd,
         interpolation = "linear",
@@ -5310,7 +5310,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     .bad <- ("SS" %in% names(.rdUp) && any(.rdUp[["SS"]] > 0, na.rm = TRUE)) ||
       ("EVID" %in% names(.rdUp) && any(.rdUp[["EVID"]] == 2L, na.rm = TRUE))
     # only warn when the model would actually have used the carry
-    .pairs <- tryCatch(.foceiLinCmtCarryPairs(ui), error = function(e) NULL) # nolint: object_usage_linter.
+    .pairs <- tryCatch(.foceiLinCmtCarryPairs(ui), error = function(e) NULL)
     if (is.null(.pairs) || nrow(.pairs) == 0L) {
       return(invisible(NULL))
     }
@@ -5322,9 +5322,9 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       # symengine environment just for the dose-compartment check
       .oral0 <- attr(.pairs, "oral0")
       if (is.null(.oral0)) {
-        .oral0 <- .rxFoceiLinCmtCarryShape(ui$foceiEtaS)$oral0 # nolint: object_usage_linter.
+        .oral0 <- .rxFoceiLinCmtCarryShape(ui$foceiEtaS)$oral0
       }
-      .why <- .rxFoceiCarryJumpDataProblem(.pairs, .rd, .oral0) # nolint: object_usage_linter.
+      .why <- .rxFoceiCarryJumpDataProblem(.pairs, .rd, .oral0)
     }
     if (!is.null(.why)) {
       rxode2::rxAssignControlValue(ui, "linCmtSensCarry", "none")

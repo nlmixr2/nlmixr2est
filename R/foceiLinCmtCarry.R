@@ -191,14 +191,14 @@
 #' @return multi-line model text (newline-joined) replacing the naive line
 #' @noRd
 .rxFoceiLinCmtCarryEmit <- function(pairs, w, s, dfe) {
-  .cx <- .rxFoceiLinCmtCarryCtx(pairs, s) # nolint: object_usage_linter.
+  .cx <- .rxFoceiLinCmtCarryCtx(pairs, s)
   .l <- character(0)
   if (w == 1L) {
     .l <- c(.l, .rxFoceiLinCmtCarryPrelude(.cx), .cx$concLine)
-  } # nolint: object_usage_linter.
+  }
   .l <- c(.l, .rxFoceiLinCmtCarryPairLines(.cx, pairs, w))
   if (w == .cx$nP) {
     .l <- c(.l, .rxFoceiLinCmtCarryEpilogue(.cx))
-  } # nolint: object_usage_linter.
-  paste(c(.l, .rxFoceiLinCmtCarryFinal(.cx, pairs, w, dfe)), collapse = "\n") # nolint: object_usage_linter.
+  }
+  paste(c(.l, .rxFoceiLinCmtCarryFinal(.cx, pairs, w, dfe)), collapse = "\n")
 }

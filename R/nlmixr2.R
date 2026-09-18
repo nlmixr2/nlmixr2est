@@ -7,7 +7,9 @@
 #' @importFrom nlme pdDiag
 #' @importFrom rxode2 rxode2
 #' @importFrom graphics abline lines matplot plot points title
-#' @importFrom stats as.formula nlminb optimHess rnorm terms predict anova optim sd var AIC BIC asOneSidedFormula coef end fitted resid setNames start simulate nobs qnorm quantile time
+#' @importFrom stats as.formula nlminb optimHess rnorm terms predict anova optim sd var AIC BIC
+#' @importFrom stats asOneSidedFormula coef end fitted resid setNames start simulate nobs qnorm
+#' @importFrom stats quantile time
 #' @importFrom utils getFromNamespace head stack sessionInfo tail str getParseData .DollarNames
 #' @importFrom methods is
 #' @importFrom Rcpp evalCpp
@@ -35,7 +37,7 @@ utils::globalVariables(c(
   "EVID"
 ))
 
-nlmixr2.logo <- "         _             _             \n        | | %9s (_) %s\n  _ __  | | _ __ ___   _ __  __ _ __\n | '_ \\ | || '_ ` _ \\ | |\\ \\/ /| '__|\n | | | || || | | | | || | >  < | |\n |_| |_||_||_| |_| |_||_|/_/\\_\\|_|\n"
+nlmixr2.logo <- "         _             _             \n        | | %9s (_) %s\n  _ __  | | _ __ ___   _ __  __ _ __\n | '_ \\ | || '_ ` _ \\ | |\\ \\/ /| '__|\n | | | || || | | | | || | >  < | |\n |_| |_||_||_| |_| |_||_|/_/\\_\\|_|\n" # nolint: line_length_linter.
 
 #' Messages the nlmixr2 logo...
 #'

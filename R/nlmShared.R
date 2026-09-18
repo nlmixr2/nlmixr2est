@@ -118,7 +118,8 @@
   .env$data <- nlmixr2global$nlmEnv$data
   .Call(`_nlmixr2est_nlmSetup`, .env)
   ## Activate event-jump sensitivity (if eventSens="jump") now, before the
-  ## scaleC solve -- doing it after would mis-scale dosing params from a jump-less gradient. Deactivated in .nlmFreeEnv; no-op for "fd".
+  ## scaleC solve -- doing it after would mis-scale dosing params from a jump-less gradient.
+  ## Deactivated in .nlmFreeEnv; no-op for "fd".
   .env$esActive <- FALSE
   if (!is.null(.env$thetaGrad)) {
     .env$esActive <- isTRUE(tryCatch(

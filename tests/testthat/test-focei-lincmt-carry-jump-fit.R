@@ -11,13 +11,13 @@
 # and skips cleanly on a released rxode2 without them.
 
 .carryJumpFitCapable <- function() {
-  .rxFoceiLinCmtCarryCapable() && .rxFoceiLinCmtCarryJumpCapable() # nolint: object_usage_linter.
+  .rxFoceiLinCmtCarryCapable() && .rxFoceiLinCmtCarryJumpCapable()
 }
 
 .carryJumpFit <- function(ui, dat, carry, maxOut = 0L) {
   suppressWarnings(suppressMessages(
     nlmixr2est::nlmixr2(ui, dat, est = "focei", control = .carryFitCtl(carry, maxOut))
-  )) # nolint: object_usage_linter.
+  ))
 }
 
 # simulate DV from an explicitly integrated ODE truth under nocb

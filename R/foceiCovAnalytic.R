@@ -3643,7 +3643,8 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
   }
   npE <- np # full theta + sigma + Omega block
   .Mcols <- lapply(1:npE, Mcol) # Mcol(p) depends on ONE index -- cache
-  etaP <- matrix(vapply(1:npE, function(p) as.numeric(-HiM %*% .Mcols[[p]]), numeric(neta)), nrow = neta) # neta x npE (neta==1 safe)
+  # neta x npE (neta==1 safe)
+  etaP <- matrix(vapply(1:npE, function(p) as.numeric(-HiM %*% .Mcols[[p]]), numeric(neta)), nrow = neta)
   eta2 <- function(aa, bb) {
     b <- Svec(aa, bb) + Smat(aa)[, ei, drop = FALSE] %*% etaP[, bb] + Smat(bb)[, ei, drop = FALSE] %*% etaP[, aa]
     for (l in ei) {
@@ -4328,7 +4329,8 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
 
   npE <- np
   .McD <- lapply(1:npE, McolData) # Phi_(eta,p), cached
-  etaP <- matrix(vapply(1:npE, function(p) as.numeric(-HfInv %*% McolEBE(p)), numeric(neta)), nrow = neta) # eta_p = -Hf^-1 S_p
+  # eta_p = -Hf^-1 S_p
+  etaP <- matrix(vapply(1:npE, function(p) as.numeric(-HfInv %*% McolEBE(p)), numeric(neta)), nrow = neta)
   eta2 <- function(aa, bb) {
     # eta_ab (2nd EBE deriv)
     b <- SvecEBE(aa, bb) +
@@ -4345,7 +4347,8 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
     for (bb in aa:npE) {
       # R is symmetric -- fill upper, mirror
       e_ab <- eta2(aa, bb)
-      # data term (general, non-envelope): F_ab + F_aeta eta_b + F_beta eta_a + eta_a' F_etaeta eta_b + F_eta eta_ab, Phi part
+      # data term (general, non-envelope), Phi part:
+      #   F_ab + F_aeta eta_b + F_beta eta_a + eta_a' F_etaeta eta_b + F_eta eta_ab
       dat <- d2Phi(aa, bb) +
         sum(.McD[[aa]] * etaP[, bb]) +
         sum(.McD[[bb]] * etaP[, aa]) +

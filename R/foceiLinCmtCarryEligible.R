@@ -79,12 +79,12 @@
 ) {
   interpolation <- match.arg(interpolation)
   .ui <- x[[1]]
-  .empty <- .rxFoceiCarryEmpty() # nolint: object_usage_linter.
+  .empty <- .rxFoceiCarryEmpty()
   .allCovs <- .ui$allCovs
   if (length(.allCovs) == 0L) {
     return(.empty)
   }
-  .predArgs <- .rxFoceiCarryPredArgs(.ui, s) # nolint: object_usage_linter.
+  .predArgs <- .rxFoceiCarryPredArgs(.ui, s)
   if (is.null(.predArgs)) {
     return(.empty)
   }
@@ -93,7 +93,7 @@
   # per-slot free symbols (slots 9-15 of the linCmtB call are p1..ka)
   .slotExpr <- lapply(1:7, function(k) .predArgs[[k + 8L]])
   .slotFree <- lapply(.slotExpr, .rxFoceiCarryFreeSyms)
-  .mods <- .rxFoceiCarryEventMods(.ui, s, etaVars) # nolint: object_usage_linter.
+  .mods <- .rxFoceiCarryEventMods(.ui, s, etaVars)
   .ret <- .empty
   for (.e in seq_along(etaVars)) {
     .row <- .rxFoceiCarryEligibleEta(
@@ -202,7 +202,7 @@
   if (!.rxFoceiCarryEtaIdOnly(e, etaDf)) {
     return(NULL)
   }
-  .jump <- .rxFoceiCarryEtaJump(.eta, mods, allCovs) # nolint: object_usage_linter.
+  .jump <- .rxFoceiCarryEtaJump(.eta, mods, allCovs)
   if (!isTRUE(.jump$ok)) {
     return(NULL)
   }
@@ -215,7 +215,7 @@
   if (length(.why) == 0L) {
     return(NULL)
   }
-  .varying <- .rxFoceiCarryVarying(.why, data) # nolint: object_usage_linter.
+  .varying <- .rxFoceiCarryVarying(.why, data)
   if (identical(interpolation, "linear") && isTRUE(.varying)) {
     stop(
       "time-varying covariate '",
@@ -227,7 +227,7 @@
   }
   .rxFoceiCarryPairRow(
     .eta,
-    etaDf$name[which(etaDf$neta1 == e)], # nolint: object_usage_linter.
+    etaDf$name[which(etaDf$neta1 == e)],
     if (.hasSlot) .slot else NULL,
     .jump,
     mods,
@@ -247,7 +247,6 @@
     .why <- c(.why, intersect(.rxFoceiCarryFreeSyms(mods$f$sym), allCovs))
   }
   if (!is.null(jump$lagD) && .rxFoceiCarryKernelHasCov(slotFree, allCovs)) {
-    # nolint: object_usage_linter.
     .why <- c(.why, unlist(lapply(slotFree, intersect, allCovs)))
   }
   unique(.why)

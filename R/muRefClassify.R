@@ -179,7 +179,7 @@
   .boundedThetas <- .thetaRows$name[.thetaRows$lower > -Inf | .thetaRows$upper < Inf]
   .lowerOf <- setNames(.thetaRows$lower, .thetaRows$name)
   .upperOf <- setNames(.thetaRows$upper, .thetaRows$name)
-  lapply(.cls$muCovThetas, function(.theta) {
+  .lst <- lapply(.cls$muCovThetas, function(.theta) {
     .w <- which(as.character(.muRefDf$theta) == .theta)
     if (length(.w) != 1L) {
       return(NULL)
@@ -237,7 +237,7 @@
         stringsAsFactors = FALSE
       )
     )
-  }) -> .lst
+  })
   .lst <- .lst[!vapply(.lst, is.null, logical(1))]
   if (!plain || length(.cls$muPlainThetas) == 0L) {
     return(.lst)
@@ -292,7 +292,7 @@
   .freeOm <- any(!.omRows$fix)
   if (length(.freeTh) == 0L && !.freeOm) {
     .minfo(
-      "profiling all mu-referenced thetas would leave the outer optimizer with no parameters; keeping them as ordinary parameters"
+      "profiling all mu-referenced thetas would leave the outer optimizer with no parameters; keeping them as ordinary parameters" # nolint: line_length_linter.
     )
     return(.lst)
   }

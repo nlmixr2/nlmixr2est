@@ -120,12 +120,12 @@ if (FALSE) {
         .est <- c(.est, c(lambda = 1))
         if (.lnorm) {
           .doIt <- FALSE
-        } else if ((.logitNorm | .probitNorm) & .cur["tbs"] == "boxCox") {
+        } else if ((.logitNorm || .probitNorm) && .cur["tbs"] == "boxCox") {
           .doIt <- FALSE
         }
         .trans <- TRUE
       }
-      if (.addProp <= 1 & .cur["addProp"] == "combined1") {
+      if (.addProp <= 1 && .cur["addProp"] == "combined1") {
         .doIt <- FALSE
       }
       if (.doIt && !(.trans) && (.propT || .powT)) {

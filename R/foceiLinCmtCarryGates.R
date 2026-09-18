@@ -93,7 +93,7 @@
       x,
       s,
       etaVars,
-      data = NULL, # nolint: object_usage_linter.
+      data = NULL,
       render = FALSE
     ),
     error = function(e) {
@@ -106,7 +106,7 @@
 #' ncmt / oral0 / trans of the structural linCmtB() call in `rx_pred_`
 #' @noRd
 .rxFoceiLinCmtCarryShape <- function(s) {
-  .a <- .rxFoceiCarryPredCall(s)$args # nolint: object_usage_linter.
+  .a <- .rxFoceiCarryPredCall(s)$args
   .num <- function(i) suppressWarnings(as.numeric(paste(.a[[i]])))
   list(ncmt = as.integer(.num(4)), oral0 = as.integer(.num(5)), trans = .num(8))
 }
@@ -119,7 +119,7 @@
   if (any(is.na(unlist(.sh)))) {
     return(FALSE)
   }
-  !is.null(.rxFoceiCarryMicro(.sh$ncmt, .sh$oral0, .sh$trans)) # nolint: object_usage_linter.
+  !is.null(.rxFoceiCarryMicro(.sh$ncmt, .sh$oral0, .sh$trans))
 }
 
 #' @noRd

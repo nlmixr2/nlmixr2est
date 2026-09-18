@@ -7,7 +7,7 @@
 # and the jump pin (which1=-8) and skips cleanly without them.
 
 .carryJumpCapable <- function() {
-  .rxFoceiLinCmtCarryCapable() && .rxFoceiLinCmtCarryJumpCapable() # nolint: object_usage_linter.
+  .rxFoceiLinCmtCarryCapable() && .rxFoceiLinCmtCarryJumpCapable()
 }
 
 test_that("f()/alag() etas on a time-varying kernel become carry pairs", {

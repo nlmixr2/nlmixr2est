@@ -80,12 +80,12 @@
   # digest; skip the foceiEtaS symengine build on a repeat fit of the same
   # model.  Data-dependent checks never reach this memo (data = NULL only).
   .key <- if (
-    is.null(data) && # nolint: object_usage_linter.
+    is.null(data) &&
       !identical(Sys.getenv("NLMIXR2EST_CARRY_MEMO"), "off")
   ) {
     tryCatch(rxUiGet.foceiModelDigest(list(.ui)), error = function(e) NULL)
   }
-  .cached <- .foceiLinCmtCarryMemoGet(.key) # nolint: object_usage_linter.
+  .cached <- .foceiLinCmtCarryMemoGet(.key)
   if (!is.null(.cached)) {
     return(.cached)
   }
@@ -95,16 +95,16 @@
     list(.ui),
     .s,
     .etaVars,
-    data = data, # nolint: object_usage_linter.
+    data = data,
     interpolation = interpolation
   )
   # the final shape rides with the result so consumers (the fit-time
   # jump-data check) never rebuild the symengine environment for it
   attr(.ret, "oral0") <- tryCatch(
-    .rxFoceiLinCmtCarryShape(.s)$oral0, # nolint: object_usage_linter.
+    .rxFoceiLinCmtCarryShape(.s)$oral0,
     error = function(e) NULL
   )
-  .foceiLinCmtCarryMemoPut(.key, .ret) # nolint: object_usage_linter.
+  .foceiLinCmtCarryMemoPut(.key, .ret)
   .ret
 }
 
@@ -114,10 +114,10 @@
 #' render later themselves)
 #' @noRd
 .rxFoceiCarryPairRow <- function(eta, etaName, slot, jump, mods, why, varying, render) {
-  .txt <- function(x) .rxFoceiCarryTxt(x, render) # nolint: object_usage_linter.
+  .txt <- function(x) .rxFoceiCarryTxt(x, render)
   data.frame(
     slot = if (is.null(slot)) NA_integer_ else slot$k,
-    slotName = if (is.null(slot)) NA_character_ else .rxFoceiLinCmtCarrySlotNames[slot$k], # nolint: object_usage_linter.
+    slotName = if (is.null(slot)) NA_character_ else .rxFoceiLinCmtCarrySlotNames[slot$k],
     eta = eta,
     etaName = etaName,
     covs = paste(why, collapse = ","),

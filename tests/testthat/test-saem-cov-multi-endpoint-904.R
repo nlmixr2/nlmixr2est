@@ -62,7 +62,7 @@ nmTest({
     .testSeed(2)
     rxode2::rxSetSeed(2)
     .N <- 30
-    .ev <- rxode2::et(amt = 100, cmt = "depot", id = 1:.N)
+    .ev <- rxode2::et(amt = 100, cmt = "depot", id = seq_len(.N))
     .ev <- rxode2::et(.ev, seq(0.5, 24, by = 3), cmt = "cp")
     .ev <- rxode2::et(.ev, seq(0.5, 24, by = 3), cmt = "bio")
     .d <- as.data.frame(rxode2::rxSolve(twoEp, .ev, addDosing = TRUE))

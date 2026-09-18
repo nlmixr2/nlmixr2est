@@ -7,7 +7,6 @@
 #' Lines emitted once per row before any pair (with the first pair)
 #' @noRd
 .rxFoceiLinCmtCarryPrelude <- function(cx) {
-  # nolint: object_usage_linter.
   .l <- character(0)
   if (cx$anyJump) {
     # pin the full -5 advance: a jump contribution does not telescope
@@ -17,7 +16,7 @@
         "rx_lcCarryPin_~",
         .rxFoceiLinCmtCarryCall(cx$pfx, -8L, 0L, cx$trans, cx$zero)
       )
-    ) # nolint: object_usage_linter.
+    )
   }
   # once-per-row advance of every carry column (M depends only on this
   # row's theta, so one call serves every pair AND every tracker)
@@ -27,7 +26,7 @@
       "rx_lcCarryAdv_~",
       .rxFoceiLinCmtCarryCall(cx$pfx, -5L, 0L, cx$trans, cx$thetas)
     )
-  ) # nolint: object_usage_linter.
+  )
   if (!cx$anyJump) {
     return(.l)
   }
@@ -41,13 +40,13 @@
         .r,
         "_~",
         .rxFoceiLinCmtCarryCall(cx$pfx, .r, -2L, cx$trans, cx$zero)
-      ), # nolint: object_usage_linter.
+      ),
       paste0(
         "rx_lcCarryPA",
         .r,
         "_~",
         .rxFoceiLinCmtCarryCall(cx$pfx, -6L, .r + cx$m * cx$aCol, cx$trans, cx$zero)
-      ), # nolint: object_usage_linter.
+      ),
       paste0("rx_lcCarryD", .r, "_~(rx_lcCarryA", .r, "_-rx_lcCarryPA", .r, "_)")
     )
   }
@@ -63,14 +62,14 @@
         "_~",
         .rxFoceiLinCmtCarryCall(cx$pfx, -6L, .r + cx$m * cx$lCol, cx$trans, cx$zero)
       )
-    ) # nolint: object_usage_linter.
+    )
   }
   # K_r P_r: the kernel's right-hand side applied to the advanced amounts
   .kp <- .rxFoceiCarryRhsTxt(
     cx$ncmt,
     cx$oral0,
     as.numeric(cx$trans),
-    cx$slotExpr, # nolint: object_usage_linter.
+    cx$slotExpr,
     paste0("rx_lcCarryPA", cx$rows, "_")
   )
   for (.r in cx$rows) {
@@ -93,7 +92,6 @@
 #' the amounts / lag trackers at this row's values
 #' @noRd
 .rxFoceiLinCmtCarryEpilogue <- function(cx) {
-  # nolint: object_usage_linter.
   if (!cx$anyJump) {
     return(character(0))
   }
@@ -109,7 +107,7 @@
         "_~",
         .rxFoceiLinCmtCarryCall(cx$pfx, -7L, .r + cx$m * cx$aCol, cx$trans, .z7)
       )
-    ) # nolint: object_usage_linter.
+    )
     if (cx$anyLag) {
       .z7[3] <- paste0("(rx_lcCarryD", .r, "_-rx_lcCarryL", .r, "_)")
       .l <- c(
@@ -120,7 +118,7 @@
           "_~",
           .rxFoceiLinCmtCarryCall(cx$pfx, -7L, .r + cx$m * cx$lCol, cx$trans, .z7)
         )
-      ) # nolint: object_usage_linter.
+      )
     }
   }
   .l

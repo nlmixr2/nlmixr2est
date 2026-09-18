@@ -1174,7 +1174,7 @@
         nsg = as.integer(length(st$ef$sgName)),
         nom = as.integer(length(st$dOiEst)),
         dirTh = as.integer(st$dir$dirTh),
-        sigCol = as.integer(seq_len(length(st$ef$sgName))),
+        sigCol = seq_along(st$ef$sgName),
         lamDir = as.integer(st$dir$lamDir),
         nLam = as.integer(length(st$dir$lamNames)),
         censOpt = as.integer(rxode2::rxGetControl(ui, "censOption", 0L)),
@@ -1292,45 +1292,43 @@
   ## (This used to be gated by .odeSwapNoPool, a verification-only opt-out that let a
   ## test evaluate the same fit through rxSolve instead of the pool.  Its only setter was
   ## the R gradient route, which is gone, so the gate could never fire.)
-  {
-    .cols <- tryCatch(.vaeOuterCols(am), error = function(e) NULL)
-    if (!is.null(.cols)) {
-      .nc <- .foceiPoolCores(am$cores) # 0 means rxode2's threads, not one
-      ## The pooled solve takes one tolerance for atol and rtol both, while the rxSolve
-      ## fallback below reads a 2-vector as (atol, rtol).  Every caller passes a scalar;
-      ## take the tighter of a pair rather than half the request.
-      .tolP <- suppressWarnings(min(as.numeric(tol)))
-      .Ec <- tryCatch(
-        vaeOuterSolve_(
-          as.numeric(thv),
-          as.matrix(ebes),
-          .cols,
-          .nc,
-          if (length(.tolP) != 1L || !is.finite(.tolP)) NA_real_ else .tolP
-        ),
-        error = function(e) NULL
-      )
-      ## vaeOuterSolve_ flags failed subjects per individual (attr "ok") rather than
-      ## discarding the whole population.  Nothing here consumes the flags yet, so a
-      ## flagged subject falls THROUGH to the rxSolve route below -- all or nothing.
-      ##
-      ## This branch used to zero-fill a flagged subject's E and return it, on the
-      ## grounds that its column is replaced wholesale by the per-individual finite
-      ## difference in foceiGradAllFR_.  That was the R gradient, which is gone; every
-      ## caller now reads the E structures as they stand, so the zeros went straight
-      ## into the covariance as a subject with no prediction and no sensitivity -- and
-      ## a zero E is FINITE, so it did not even trip the callers' is.finite guards.
-      ##
-      ## The per-individual finite difference lives on the all-C++ route, which owns the
-      ## per-subject gradient columns; this assembly has none to substitute into.
-      if (!is.null(.Ec) && length(.Ec) > 0L) {
-        .ok <- attr(.Ec, "ok")
-        .foceiOuterFlagged$ids <- if (is.null(.ok)) integer(0) else which(.ok == 0L)
-        if (length(.foceiOuterFlagged$ids) == 0L) {
-          return(.Ec)
-        }
-        .foceiOuterFlagged$n <- .foceiOuterFlagged$n + 1L
+  .cols <- tryCatch(.vaeOuterCols(am), error = function(e) NULL)
+  if (!is.null(.cols)) {
+    .nc <- .foceiPoolCores(am$cores) # 0 means rxode2's threads, not one
+    ## The pooled solve takes one tolerance for atol and rtol both, while the rxSolve
+    ## fallback below reads a 2-vector as (atol, rtol).  Every caller passes a scalar;
+    ## take the tighter of a pair rather than half the request.
+    .tolP <- suppressWarnings(min(as.numeric(tol)))
+    .Ec <- tryCatch(
+      vaeOuterSolve_(
+        as.numeric(thv),
+        as.matrix(ebes),
+        .cols,
+        .nc,
+        if (length(.tolP) != 1L || !is.finite(.tolP)) NA_real_ else .tolP
+      ),
+      error = function(e) NULL
+    )
+    ## vaeOuterSolve_ flags failed subjects per individual (attr "ok") rather than
+    ## discarding the whole population.  Nothing here consumes the flags yet, so a
+    ## flagged subject falls THROUGH to the rxSolve route below -- all or nothing.
+    ##
+    ## This branch used to zero-fill a flagged subject's E and return it, on the
+    ## grounds that its column is replaced wholesale by the per-individual finite
+    ## difference in foceiGradAllFR_.  That was the R gradient, which is gone; every
+    ## caller now reads the E structures as they stand, so the zeros went straight
+    ## into the covariance as a subject with no prediction and no sensitivity -- and
+    ## a zero E is FINITE, so it did not even trip the callers' is.finite guards.
+    ##
+    ## The per-individual finite difference lives on the all-C++ route, which owns the
+    ## per-subject gradient columns; this assembly has none to substitute into.
+    if (!is.null(.Ec) && length(.Ec) > 0L) {
+      .ok <- attr(.Ec, "ok")
+      .foceiOuterFlagged$ids <- if (is.null(.ok)) integer(0) else which(.ok == 0L)
+      if (length(.foceiOuterFlagged$ids) == 0L) {
+        return(.Ec)
       }
+      .foceiOuterFlagged$n <- .foceiOuterFlagged$n + 1L
     }
   }
   dirs <- am$dirs

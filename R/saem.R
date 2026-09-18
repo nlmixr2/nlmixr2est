@@ -1376,7 +1376,7 @@
       env$cov <- .cov
       if (.calcCov) {
         env$covMethod <- "linFim"
-        if (.addCov & .sqrtm) {
+        if (.addCov && .sqrtm) {
           env$covMethod <- "|linFim|"
           warning("covariance matrix non-positive definite, corrected by sqrtm(linFim %*% linFim)", call. = FALSE)
         }
@@ -1384,7 +1384,7 @@
         if (.calcCov) {
           warning("linearization of FIM could not be used to calculate covariance", call. = FALSE)
         }
-        if (.addCov & .sqrtm) {
+        if (.addCov && .sqrtm) {
           env$covMethod <- "|fim|"
           warning("covariance matrix non-positive definite, corrected by sqrtm(fim %*% fim)", call. = FALSE)
         } else if (!.addCov) {
@@ -1569,7 +1569,7 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   }
   .ui <- .env$ui
   .txt <- gsub("rxode2 +", "", .ui$modelDesc)
-  #.txt <- paste0("(", crayon::italic(ifelse(is.null(.uif$nmodel$lin.solved), ifelse(.uif$predSys, "PRED", "ODE"), "Solved")), "); ")
+  #.txt <- paste0("(", crayon::italic(ifelse(is.null(.uif$nmodel$lin.solved), ifelse(.uif$predSys, "PRED", "ODE"), "Solved")), "); ") # nolint: line_length_linter.
   .txt <- ""
   if (tolower(type) == "focei") {
     .txt <- paste0(.txt, crayon::silver$italic("OBJF by FOCEi approximation"))

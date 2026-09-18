@@ -1,0 +1,68 @@
+linters: linters_with_defaults(
+    # `<<-` updates closure state (eg counters) in a few places.
+    assignment_linter(operator = c("<-", "<<-")),
+    line_length_linter(120),
+    whitespace_linter(),
+    pipe_continuation_linter(),
+    T_and_F_symbol_linter(),
+    # `lcl <- 1; label("...")` is the ini() labelling idiom.
+    semicolon_linter(allow_compound = TRUE),
+    # air formats spacing; `/` is excluded so `d/dt(cmt)` stays legal.
+    infix_spaces_linter(exclude_operators = "/"),
+    # air owns comma spacing and writes empty array indices as `x[,, k]`.
+    commas_linter = NULL,
+    # Kept off: released names cannot be renamed, ini()/model() use
+    # non-standard evaluation, and cyclocomp_linter is not a default.
+    object_name_linter = NULL,
+    object_length_linter = NULL,
+    object_usage_linter = NULL,
+    commented_code_linter = NULL,
+    return_linter = NULL,
+    pipe_consistency_linter = NULL,
+    # air owns indentation and disagrees with indentation_linter on wrapped
+    # `&&`/`||` operands.
+    indentation_linter = NULL
+  )
+exclusions: c(
+    list(
+      # Generated (Rcpp, inst/tools/workaround.R).
+      "R/RcppExports.R",
+      "R/nlmixr2_md5.R",
+      "inst",
+      "vignettes",
+      "bench",
+      "build",
+      "demo",
+      "man-roxygen",
+      "src",
+      "design",
+      "plans",
+      "tools",
+      "data-raw"
+    ),
+    # Tests write rxode2 model syntax (`=` assignment, `a*b`, `d/dt(x)`, `F`
+    # bioavailability, `if(x){`) in ini()/model()/rxode2() blocks that air
+    # leaves as written, and carry long expected-output lines.  A directory
+    # entry would drop every linter, so list the test files one by one.
+    # list.files() is relative to the working directory: lint from the package
+    # root (lintr::lint_package()), as CI does.
+    sapply(
+      list.files("tests", pattern = "[.]R$", recursive = TRUE, full.names = TRUE),
+      function(f) {
+        list(
+          assignment_linter = Inf,
+          infix_spaces_linter = Inf,
+          spaces_left_parentheses_linter = Inf,
+          brace_linter = Inf,
+          semicolon_linter = Inf,
+          spaces_inside_linter = Inf,
+          paren_body_linter = Inf,
+          quotes_linter = Inf,
+          T_and_F_symbol_linter = Inf,
+          line_length_linter = Inf
+        )
+      },
+      simplify = FALSE
+    )
+  )
+encoding: "UTF-8"

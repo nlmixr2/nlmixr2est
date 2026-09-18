@@ -173,7 +173,6 @@
 
 # max relative error of every eta's substituted gradient vs central FD
 .carryJumpFd <- function(mod, pars, ev, carry = "auto", interp = "nocb") {
-  # nolint: object_usage_linter.
   ui <- suppressMessages(nlmixr2est::nlmixr2(mod))
   u <- rxode2::.copyUi(ui)
   assign("control", nlmixr2est::foceiControl(linCmtSensCarry = carry), envir = u)

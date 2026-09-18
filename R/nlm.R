@@ -710,7 +710,7 @@ rxUiGet.nlmHdTheta <- function(x, ...) {
   # parameter (#1003): the naive line for a carry-eligible theta is replaced
   # wholesale; everything else is byte-identical (foceiLinCmtCarryTheta.R)
   .thetaVars <- paste0("THETA_", seq_len(.s$..maxTheta), "_")
-  .carry <- .rxCarryThetaPairsForBuild(x, .s, .thetaVars) # nolint: object_usage_linter.
+  .carry <- .rxCarryThetaPairsForBuild(x, .s, .thetaVars)
   .ret <- apply(.grd, 1, function(x) {
     .l <- x["calc"]
     .l <- eval(parse(text = .l))
@@ -718,7 +718,7 @@ rxUiGet.nlmHdTheta <- function(x, ...) {
     if (!is.null(.carry)) {
       .w <- which(.carry$pairs$eta == sub("^.*_BY_(THETA_[0-9]+)___$", "\\1_", x["dfe"]))
       if (length(.w) == 1L) {
-        .ret <- .rxCarryThetaEmit(.carry$pairs, .w, .s, x["dfe"], .carry$fp, .predMinusDv) # nolint: object_usage_linter.
+        .ret <- .rxCarryThetaEmit(.carry$pairs, .w, .s, x["dfe"], .carry$fp, .predMinusDv)
       }
     }
     .zErr <- suppressWarnings(try(as.numeric(get(x["dfe"], .s)), silent = TRUE))
@@ -877,7 +877,8 @@ rxUiGet.nlmEnv <- function(x, ...) {
     .eventTheta <- integer(0)
   }
   ## eventTheta flags dosing-parameter (alag/F/rate/dur) THETAs; under "fd" nlm
-  ## overrides their gradient with finite differences, under "jump" it's left analytic since rxode2 injects the jump directly.
+  ## overrides their gradient with finite differences, under "jump" it's left analytic since
+  ## rxode2 injects the jump directly.
   .eventSens <- rxode2::rxGetControl(x[[1]], "eventSens", "jump")
   if (!identical(.eventSens, "jump")) {
     for (.v in .s$..eventVars) {
@@ -1071,7 +1072,8 @@ nlmObjectiveSetup <- function(ui, data, control = NULL, gradient = FALSE, scale 
   } else {
     .mi <- ui$nlmSensModel
   }
-  ## Event ("jump") sensitivities are activated in .nlmSetupEnv and deactivated in .nlmFreeEnv; nothing extra needed here.
+  ## Event ("jump") sensitivities are activated in .nlmSetupEnv and deactivated in
+  ## .nlmFreeEnv; nothing extra needed here.
   .env <- .nlmSetupEnv(.p, ui, dataSav, .mi, .ctl)
   on.exit({
     .nlmFreeEnv()
@@ -1173,7 +1175,7 @@ nlmObjectiveSetup <- function(ui, data, control = NULL, gradient = FALSE, scale 
       } else if (.fit$code == 5) {
         c(
           "maximum step size 'stepmax' exceeded five consecutive times",
-          "either the function is unbounded below, becomes asymptotic to a finite value from above in some direction or 'stepmax' is too small"
+          "either the function is unbounded below, becomes asymptotic to a finite value from above in some direction or 'stepmax' is too small" # nolint: line_length_linter.
         )
       } else {
         ""
