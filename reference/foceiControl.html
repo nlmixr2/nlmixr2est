@@ -207,7 +207,7 @@
 <span>  zeroGradRunReset <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  zeroGradBobyqa <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  mceta <span class="op">=</span> <span class="op">-</span><span class="fl">2L</span>,</span>
-<span>  warm <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"calc"</span>, <span class="st">"save"</span><span class="op">)</span>,</span>
+<span>  warm <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"calc"</span>, <span class="st">"save"</span>, <span class="st">"none"</span><span class="op">)</span>,</span>
 <span>  nAGQ <span class="op">=</span> <span class="fl">0</span>,</span>
 <span>  agqLow <span class="op">=</span> <span class="op">-</span><span class="cn">Inf</span>,</span>
 <span>  agqHi <span class="op">=</span> <span class="cn">Inf</span>,</span>
@@ -1488,8 +1488,11 @@ pinned to the central evaluation's mode.</p></dd>
 `"calc"` (default) warm-starts each inner problem with the eta
 Hessian calculated at the starting eta and the current theta;
 since theta moves between outer evaluations it is always
-recalculated, never reused from an earlier round.  `"save"` uses
-the classic self-initialized Hessian.</p></dd>
+recalculated, never reused from an earlier round.  `"save"`
+restarts from the curvature n1qn1 built during the subject's
+previous inner solve.  `"none"` lets n1qn1 initialize its own
+diagonal Hessian.  Ignored by `innerOpt = "trust"`, which always
+supplies its own exact Hessian.</p></dd>
 
 
 <dt id="arg-nagq">nAGQ<a class="anchor" aria-label="anchor" href="#arg-nagq"></a></dt>

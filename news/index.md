@@ -89,6 +89,21 @@
 
 ### Bug fixes
 
+- `foceiControl(warm="save")` now restarts the n1qn1 inner problem from
+  the curvature the subject’s previous inner solve left, as it was
+  always meant to. It reconstructed that Hessian from a buffer it had
+  just zeroed, so n1qn1 was handed an all-zero factorization and
+  self-initialized on every inner solve – the option reused nothing
+  since FOCEi was first imported
+  ([\#1043](https://github.com/nlmixr2/nlmixr2est/issues/1043)). A
+  single-eta model was additionally unseedable because the one-by-one
+  case multiplied the factorization back out as a zero matrix. With
+  `mceta` sampling the `eta=0` floor pass now gets that same seed rather
+  than self-initializing, so it stays the run `mceta=0` would have made.
+  The previous self-initialized behavior is available as the new
+  `foceiControl(warm="none")`, and `warm="save"` reuse is reported in
+  the fit’s `$nWarmSave`.
+
 - [`nlmixr2()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2.md)
   names a model the way
   [`rxode2()`](https://nlmixr2.github.io/rxode2/reference/rxode2.html)
