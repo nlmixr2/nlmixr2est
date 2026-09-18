@@ -34,9 +34,9 @@ nmTest({
     # an explicit outerOpt still wins under fast
     expect_equal(foceiControl(fast = TRUE, outerOpt = "nlminb")$outerOpt, -1L)
     # a defaulted optimizer re-defaults under a *f wrapper; an explicit one is kept
-    expect_equal(nlmixr2est:::.foceiFastCtl(list(foceiControl()), foceiControl)$outerOptTxt, "lbfgsb3c")
+    expect_equal(.foceiFastCtl(list(foceiControl()), foceiControl)$outerOptTxt, "lbfgsb3c")
     expect_equal(
-      nlmixr2est:::.foceiFastCtl(list(foceiControl(outerOpt = "nlminb")), foceiControl)$outerOptTxt,
+      .foceiFastCtl(list(foceiControl(outerOpt = "nlminb")), foceiControl)$outerOptTxt,
       "nlminb"
     )
     # derivative-free outerOpt + fast -> fast cleared with a warning

@@ -98,7 +98,7 @@ nlmixr2Gill83 <- function(
   if (missing(which)) {
     which <- rep(TRUE, length(args))
   }
-  return(nlmixr2Gill83_(
+  nlmixr2Gill83_(
     what,
     args,
     envir,
@@ -107,7 +107,7 @@ nlmixr2Gill83 <- function(
     gillK = 10L,
     gillStep = 2,
     gillFtol = 0
-  ))
+  )
 }
 
 .nlmixr2GradInfo <- new.env(parent = emptyenv())

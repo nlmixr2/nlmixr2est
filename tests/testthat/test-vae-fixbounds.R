@@ -63,8 +63,8 @@ nmTest({
       model({ ke <- exp(lke + eta.ke); V <- exp(lV + eta.V)
         d/dt(central) = -ke * central; cp <- central / V })
     }
-    ev <- rxode2::et(amt = 320, cmt = "central") %>%
-      rxode2::et(seq(1, 24, length.out = 8)) %>%
+    ev <- rxode2::et(amt = 320, cmt = "central") |>
+      rxode2::et(seq(1, 24, length.out = 8)) |>
       rxode2::et(id = 1:30)
     bs <- rxode2::rxSolve(
       sm,

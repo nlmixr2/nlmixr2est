@@ -123,7 +123,7 @@ nmTest({
           NA,
           -17L
         ),
-        class = c("data.frame")
+        class = "data.frame"
       )
 
     nlmixr_threecmt_mm_no_add_wtcl_pdtg_kout_delay2 <- function() {

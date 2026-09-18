@@ -811,7 +811,7 @@ rxUiGet.saemAres <- function(x, ...) {
   .predDf <- .ui$predDf
   .ini <- .ui$iniDf
   .ini <- .ini[!is.na(.ini$err), ]
-  return(vapply(
+  vapply(
     .predDf$cond,
     function(x) {
       .tmp <- .ini[which(.ini$condition == x), ]
@@ -848,7 +848,7 @@ rxUiGet.saemAres <- function(x, ...) {
     },
     numeric(1),
     USE.NAMES = FALSE
-  ))
+  )
 }
 #attr(rxUiGet.saemAres, "desc") <- "ares initial estimates for saem"
 attr(rxUiGet.saemAres, "rstudio") <- 0.7
@@ -859,7 +859,7 @@ rxUiGet.saemBres <- function(x, ...) {
   .predDf <- .ui$predDf
   .ini <- .ui$iniDf
   .ini <- .ini[!is.na(.ini$err), ]
-  return(vapply(
+  vapply(
     .predDf$cond,
     function(x) {
       .tmp <- .ini[which(.ini$condition == x), ]
@@ -887,7 +887,7 @@ rxUiGet.saemBres <- function(x, ...) {
     },
     numeric(1),
     USE.NAMES = FALSE
-  ))
+  )
 }
 #attr(rxUiGet.saemBres, "desc") <- "bres initial estimates for saem"
 attr(rxUiGet.saemBres, "rstudio") <- 0.7
@@ -898,7 +898,7 @@ rxUiGet.saemCres <- function(x, ...) {
   .predDf <- .ui$predDf
   .ini <- .ui$iniDf
   .ini <- .ini[!is.na(.ini$err), ]
-  return(vapply(
+  vapply(
     .predDf$cond,
     function(x) {
       .tmp <- .ini[which(.ini$condition == x), ]
@@ -916,7 +916,7 @@ rxUiGet.saemCres <- function(x, ...) {
     },
     numeric(1),
     USE.NAMES = FALSE
-  ))
+  )
 }
 #attr(rxUiGet.saemCres, "desc") <- "cres initial estimates for saem"
 attr(rxUiGet.saemCres, "rstudio") <- 0.7
@@ -927,7 +927,7 @@ rxUiGet.saemLres <- function(x, ...) {
   .predDf <- .ui$predDf
   .ini <- .ui$iniDf
   .ini <- .ini[!is.na(.ini$err), ]
-  return(vapply(
+  vapply(
     .predDf$cond,
     function(x) {
       .tmp <- .ini[which(.ini$condition == x), ]
@@ -943,7 +943,7 @@ rxUiGet.saemLres <- function(x, ...) {
     },
     numeric(1),
     USE.NAMES = FALSE
-  ))
+  )
 }
 #attr(rxUiGet.saemLres, "desc") <- "lres (lambda) initial estimates for saem"
 attr(rxUiGet.saemLres, "rstudio") <- 0.7

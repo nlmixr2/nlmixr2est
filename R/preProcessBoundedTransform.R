@@ -48,7 +48,7 @@
     # optimizer), so leave it untransformed there.
     if (
       !is.na(.thetaDf$err[i]) &&
-        !(identical(.thetaDf$err[i], "ar") && !(est %in% c("saem")))
+        !(identical(.thetaDf$err[i], "ar") && !(est %in% "saem"))
     ) {
       next
     }

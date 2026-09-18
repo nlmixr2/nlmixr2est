@@ -455,7 +455,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
       .sim <- .sim[, -.w]
     }
     .w <- which(names(.sim) == "sim")
-    .n0 <- c(names(.sim)[seq(1, .w)], "rxLambda", "rxYj", "rxLow", "rxHi")
+    .n0 <- c(names(.sim)[seq_len(.w)], "rxLambda", "rxYj", "rxLow", "rxHi")
     .sim <- .sim[, .n0]
     .ipred <- .prdLst$ipred
     .ipred <- .ipred[.ipred$nlmixrRowNums %in% .ni$nlmixrRowNums, ]

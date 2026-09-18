@@ -27,7 +27,7 @@
     .ret[[2]] <- as.call(c(list(quote(`{`)), .tmp, list(str2lang("tad <- tad()"))))
     return(.ret)
   }
-  .ret[[2]] <- as.call(lapply(seq(1, length(.tmp) + 2), function(i) {
+  .ret[[2]] <- as.call(lapply(seq_len(length(.tmp) + 2), function(i) {
     if (i == 1) {
       quote(`{`)
     } else if (i - 1 == .idx) {

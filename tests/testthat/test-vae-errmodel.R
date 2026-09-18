@@ -13,8 +13,8 @@ nmTest({
         d/dt(depot) = -ka * depot; d/dt(central) = ka * depot - ke * central
         cp <- central / V })
     }
-    ev <- rxode2::et(amt = 320, cmt = "depot") %>%
-      rxode2::et(seq(0.5, 24, length.out = 8)) %>%
+    ev <- rxode2::et(amt = 320, cmt = "depot") |>
+      rxode2::et(seq(0.5, 24, length.out = 8)) |>
       rxode2::et(id = 1:N)
     base <- rxode2::rxSolve(
       simMod,

@@ -19,8 +19,8 @@ nmTest({
       cp = center / v
       cp ~ add(add.sd)
     })
-    keep <- c("WT")
-    drop <- c("depot")
+    keep <- "WT"
+    drop <- "depot"
   }
 
   d <- theo_sd

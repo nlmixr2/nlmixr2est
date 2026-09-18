@@ -173,7 +173,7 @@ nmTest({
       )
       omega <- runif(1, 0.2, 1)
       penalty <- log(N)
-      got <- vaeScoreSupports_(y, X, omega, penalty, nlmixr2est:::.vaeL0Supports(X, y), polish = TRUE)
+      got <- vaeScoreSupports_(y, X, omega, penalty, .vaeL0Supports(X, y), polish = TRUE)
       ref <- vaeBestSubset_(matrix(y, ncol = 1), X, omega, FALSE, penalty)
       expect_identical(
         which(got$selected == 1L),

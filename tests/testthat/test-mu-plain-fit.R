@@ -52,7 +52,7 @@ nmTest({
     }
     # only add.sd + the omegas were outer-optimized
     expect_equal(
-      nlmixr2est:::.foceiMuSkipThetaNames(fit$ui, fit$ui$iniDf$name[!is.na(fit$ui$iniDf$ntheta)]),
+      .foceiMuSkipThetaNames(fit$ui, fit$ui$iniDf$name[!is.na(fit$ui$iniDf$ntheta)]),
       c("tka", "tcl", "tv")
     )
   })
@@ -164,7 +164,7 @@ nmTest({
     # tcl is profiled out despite its bounds
     expect_true(
       "tcl" %in%
-        nlmixr2est:::.foceiMuSkipThetaNames(
+        .foceiMuSkipThetaNames(
           fit$ui,
           fit$ui$iniDf$name[!is.na(fit$ui$iniDf$ntheta)]
         )
