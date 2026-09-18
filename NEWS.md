@@ -2,6 +2,16 @@
 
 ## New features
 
+- `setCov()` is now an S3 generic dispatched on the covariance method, so
+  other packages (for example SIR or bootstrap) can add a method with
+  `setCov.<method>()`; `setCovAllMethods()` lists them.  A method's own
+  options are changed with `control=`, holding only covariance options:
+  `rsControl()` for `"r,s"`/`"r"`/`"s"`, `saControl()` for `"sa"` and
+  `impCovControl()` for `"imp"`.  Each covariance records the options it
+  was computed with (`fit$env$covOptions`), and `setCov()` reuses a cached
+  covariance only when the requested options match, recomputing otherwise.
+- The fit print separates the other calculated covariances with `;`, since
+  `"r,s"` contains a comma.
 - `est="imp"`, `"impmap"` and `"qrpem"` with `nIter=0` evaluate the fit at the
   supplied parameters: one E-step and no M-step (like NONMEM `EONLY=1`), with
   the importance-sampling objective in `$impObj`.  `$runInfo` notes the
@@ -62,6 +72,18 @@
   inner driver all took the same route (#1079, rxode2#1365).  A covariance
   declared at `0` in a two-eta block is unchanged: it leaves the two etas
   uncorrelated, as it always has.
+- `foceiControl(warm="save")` now restarts the n1qn1 inner problem from the
+  curvature the subject's previous inner solve left, as it was always meant
+  to.  It reconstructed that Hessian from a buffer it had just zeroed, so
+  n1qn1 was handed an all-zero factorization and self-initialized on every
+  inner solve -- the option reused nothing since FOCEi was first imported
+  (#1043).  A single-eta model was additionally unseedable because the
+  one-by-one case multiplied the factorization back out as a zero matrix.
+  With `mceta` sampling the `eta=0` floor pass now gets that same seed rather
+  than self-initializing, so it stays the run `mceta=0` would have made.  The
+  previous self-initialized behavior is available as the new
+  `foceiControl(warm="none")`, and `warm="save"` reuse is reported in the fit's
+  `$nWarmSave`.
 
 - `nlmixr2()` names a model the way `rxode2()` does, through
   `rxode2::rxModelNameFromExpr()`: a symbol keeps its name, a call becomes its

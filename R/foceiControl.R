@@ -1013,8 +1013,11 @@
 #'   `"calc"` (default) warm-starts each inner problem with the eta
 #'   Hessian calculated at the starting eta and the current theta;
 #'   since theta moves between outer evaluations it is always
-#'   recalculated, never reused from an earlier round.  `"save"` uses
-#'   the classic self-initialized Hessian.
+#'   recalculated, never reused from an earlier round.  `"save"`
+#'   restarts from the curvature n1qn1 built during the subject's
+#'   previous inner solve.  `"none"` lets n1qn1 initialize its own
+#'   diagonal Hessian.  Ignored by `innerOpt = "trust"`, which always
+#'   supplies its own exact Hessian.
 #'
 #' @param nAGQ Number of Gauss-Hermite adaptive quadrature points. `0`
 #'   disables AGQ; `1` is equivalent to Laplace. Cost grows quickly with
@@ -1290,7 +1293,7 @@ foceiControl <- function(sigdig = 3, #
                          zeroGradRunReset = TRUE,
                          zeroGradBobyqa = TRUE,
                          mceta = -2L,
-                         warm = c("calc", "save"),
+                         warm = c("calc", "save", "none"),
                          nAGQ = 0,
                          agqLow = -Inf,
                          agqHi = Inf,
@@ -1784,13 +1787,13 @@ foceiControl <- function(sigdig = 3, #
   if (trustMterm <= 0) {
     stop("'trustMterm' must be > 0", call. = FALSE)
   }
-  if (checkmate::testIntegerish(warm, lower = 0, upper = 1, len = 1, any.missing = FALSE)) {
+  if (checkmate::testIntegerish(warm, lower = 0, upper = 2, len = 1, any.missing = FALSE)) {
     warm <- as.integer(warm)
   } else {
-    .warmIdx <- c("calc" = 1L, "save" = 0L)
+    .warmIdx <- c("calc" = 1L, "save" = 0L, "none" = 2L)
     warm <- setNames(.warmIdx[match.arg(warm)], NULL)
   }
-  # Checked here, AFTER `warm` is normalized to 1L/0L, because n1qn1 reaches the
+  # Checked here, AFTER `warm` is normalized to an integer, because n1qn1 reaches the
   # conditional curvature only through warmZm(), which runs only when warm=="calc".
   # innerOpt="auto" resolves in C++ (needOptimHess ? n1qn1 : trust) and conditional
   # curvature already rejects needOptimHess, so auto cannot land on n1qn1 here.
@@ -1798,7 +1801,7 @@ foceiControl <- function(sigdig = 3, #
     if (!isTRUE(fast) || !isTRUE(as.logical(interaction)) || !(innerOpt %in% c(1L, 3L, 4L))) {
       stop("Conditional inner Hessian requires fast FOCEI with trust or n1qn1", call. = FALSE)
     }
-    if (innerOpt == 1L && warm == 0L) {
+    if (innerOpt == 1L && warm != 1L) {
       stop("innerHessian=\"conditional\" with innerOpt=\"n1qn1\" requires warm=\"calc\"",
            call. = FALSE)
     }
@@ -2208,7 +2211,7 @@ foceiControl <- function(sigdig = 3, #
     if (x == "innerOpt") {
       paste0("innerOpt = ", deparse1(names(.innerOptFun[which(object[[x]] == .innerOptFun)])))
     } else if (x == "warm") {
-      .warmIdx <- c("calc" = 1L, "save" = 0L)
+      .warmIdx <- c("calc" = 1L, "save" = 0L, "none" = 2L)
       paste0("warm = ", deparse1(names(.warmIdx[which(object[[x]] == .warmIdx)])))
     } else if (x %in% c("optimHessType", "optimHessCovType")) {
       .methodIdx <- c("central" = 1L, "forward" = 3L)
