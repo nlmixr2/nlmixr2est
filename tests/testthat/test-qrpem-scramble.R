@@ -30,17 +30,20 @@ nmTest({
     expect_identical(impQrPoints_(256L, 3L, NULL, "none", 999L), .Z0)
     # the shift path is likewise untouched
     .sh <- c(0.371, 0.842, 0.117)
-    expect_identical(impQrPoints_(256L, 3L, .sh, "none"),
-                     impQrPoints_(256L, 3L, .sh))
+    expect_identical(impQrPoints_(256L, 3L, .sh, "none"), impQrPoints_(256L, 3L, .sh))
   })
 
   test_that("scrambled points stay a valid stratified N(0,1) set", {
     .n <- 1024L
     .bins <- function(Z, nb = 16L) {
       .U <- pnorm(Z)
-      max(vapply(seq_len(ncol(.U)), function(j) {
-        max(abs(table(cut(.U[, j], breaks = seq(0, 1, by = 1 / nb))) - .n / nb))
-      }, numeric(1)))
+      max(vapply(
+        seq_len(ncol(.U)),
+        function(j) {
+          max(abs(table(cut(.U[, j], breaks = seq(0, 1, by = 1 / nb))) - .n / nb))
+        },
+        numeric(1)
+      ))
     }
     for (.s in c("owen", "lms")) {
       .Z <- impQrPoints_(.n, 4L, NULL, .s, 42L)
@@ -128,10 +131,13 @@ nmTest({
     .run <- function(scr, nthr) {
       rxode2::setRxThreads(nthr)
       suppressWarnings(suppressMessages(
-        nlmixr2(one.cmt, .dat, "qrpem",
-                qrpemControl(print = 0L, nIter = 3L, isample = 200L,
-                             qrScramble = scr, covMethod = "",
-                             calcTables = FALSE))))
+        nlmixr2(
+          one.cmt,
+          .dat,
+          "qrpem",
+          qrpemControl(print = 0L, nIter = 3L, isample = 200L, qrScramble = scr, covMethod = "", calcTables = FALSE)
+        )
+      ))
     }
     .none <- .run("none", 1L)
     .owen1 <- .run("owen", 1L)
@@ -141,8 +147,7 @@ nmTest({
     expect_identical(.none$env$impQrScramble, "none")
     expect_identical(.owen1$env$impQrScramble, "owen")
     # scrambling actually changed the sampler
-    expect_false(isTRUE(all.equal(.owen1$env$impObjTrace, .none$env$impObjTrace,
-                                  tolerance = 1e-8)))
+    expect_false(isTRUE(all.equal(.owen1$env$impObjTrace, .none$env$impObjTrace, tolerance = 1e-8)))
     # ... and the fit is still bit-identical across thread counts, because the
     # scramble key is arithmetic in (seed, subject, iteration, dimension) rather
     # than drawn from the RNG

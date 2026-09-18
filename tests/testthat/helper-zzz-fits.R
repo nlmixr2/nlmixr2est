@@ -30,19 +30,20 @@
 # muRefCovAlg regression this masked.
 .fitCacheSrcHash <- local({
   .pkgRoot <- normalizePath(file.path(testthat::test_path(), "..", ".."), mustWork = FALSE)
-  .srcFiles <- sort(list.files(file.path(.pkgRoot, c("R", "src")),
-                                pattern = "\\.(R|cpp|h|hpp)$",
-                                full.names = TRUE, recursive = TRUE))
+  .srcFiles <- sort(list.files(
+    file.path(.pkgRoot, c("R", "src")),
+    pattern = "\\.(R|cpp|h|hpp)$",
+    full.names = TRUE,
+    recursive = TRUE
+  ))
   if (length(.srcFiles) == 0 || !requireNamespace("digest", quietly = TRUE)) {
     ""
   } else {
-    .fileHashes <- vapply(.srcFiles, digest::digest, character(1),
-                           file = TRUE, algo = "xxhash32")
+    .fileHashes <- vapply(.srcFiles, digest::digest, character(1), file = TRUE, algo = "xxhash32")
     digest::digest(.fileHashes, algo = "xxhash32")
   }
 })
-.fitCacheVersion <- paste0("v1.0.2-nlmixr2est-", utils::packageVersion("nlmixr2est"),
-                           "-", .fitCacheSrcHash)
+.fitCacheVersion <- paste0("v1.0.2-nlmixr2est-", utils::packageVersion("nlmixr2est"), "-", .fitCacheSrcHash)
 
 # Cache directory for fit objects
 .fitCacheDir <- file.path(testthat::test_path(), "fixtures")
@@ -77,32 +78,42 @@ if (!dir.exists(.fitCacheDir)) {
 
   # Try to load from cache
   if (file.exists(cachePath)) {
-    tryCatch({
-      cached <- readRDS(cachePath)
-      if (!is.null(cached$version) && cached$version == .fitCacheVersion) {
-        message(sprintf("[ok] Loading cached fit: %s", name))
-        return(cached$fit)
-      } else {
-        message(sprintf("[warn] Cache version mismatch for %s (expected %s, got %s)",
-                       name, .fitCacheVersion, cached$version))
+    tryCatch(
+      {
+        cached <- readRDS(cachePath)
+        if (!is.null(cached$version) && cached$version == .fitCacheVersion) {
+          message(sprintf("[ok] Loading cached fit: %s", name))
+          return(cached$fit)
+        } else {
+          message(sprintf(
+            "[warn] Cache version mismatch for %s (expected %s, got %s)",
+            name,
+            .fitCacheVersion,
+            cached$version
+          ))
+        }
+      },
+      error = function(e) {
+        warning(sprintf("Failed to load cache for %s: %s", name, e$message))
       }
-    }, error = function(e) {
-      warning(sprintf("Failed to load cache for %s: %s", name, e$message))
-    })
+    )
   }
 
   # Compute fit if cache miss or invalid
   message(sprintf("[..] Computing fit: %s (this may take a while...)", name))
   fit <- fitFn()
-  AIC(fit)  # Force evaluation of AIC
+  AIC(fit) # Force evaluation of AIC
 
   # Save to cache
-  tryCatch({
-    saveRDS(list(version = .fitCacheVersion, fit = fit), cachePath)
-    message(sprintf("[ok] Cached fit saved: %s", name))
-  }, error = function(e) {
-    warning(sprintf("Failed to save cache for %s: %s", name, e$message))
-  })
+  tryCatch(
+    {
+      saveRDS(list(version = .fitCacheVersion, fit = fit), cachePath)
+      message(sprintf("[ok] Cached fit saved: %s", name))
+    },
+    error = function(e) {
+      warning(sprintf("Failed to save cache for %s: %s", name, e$message))
+    }
+  )
 
   fit
 }
@@ -130,7 +141,9 @@ one.compartment.fit.saem.cwres <- .getCachedFit(
   name = "one.compartment.fit.saem.cwres",
   fitFn = function() {
     .nlmixr(
-      one.compartment, theo_sd, est = "saem",
+      one.compartment,
+      theo_sd,
+      est = "saem",
       control = saemControlFast,
       table = tableControl(cwres = TRUE)
     )
@@ -143,8 +156,7 @@ one.compartment.fit.saem.cwres <- .getCachedFit(
 one.compartment.fit.focei <- .getCachedFit(
   name = "one.compartment.fit.focei",
   fitFn = function() {
-    .nlmixr(one.compartment, theo_sd, est = "focei",
-            control = foceiControl(print = 0, maxOuterIterations = 0L))
+    .nlmixr(one.compartment, theo_sd, est = "focei", control = foceiControl(print = 0, maxOuterIterations = 0L))
   },
   cacheFile = "fit-one-compartment-focei.rds"
 )
@@ -195,8 +207,7 @@ one.compartment.fit.posthoc <- .getCachedFit(
   name = "one.compartment.fit.posthoc",
   fitFn = function() {
     suppressMessages(suppressWarnings(
-      nlmixr(one.compartment, theo_sd, est = "posthoc",
-             control = posthocControl(covMethod = 0, calcTables = FALSE))
+      nlmixr(one.compartment, theo_sd, est = "posthoc", control = posthocControl(covMethod = 0, calcTables = FALSE))
     ))
   },
   cacheFile = "fit-one-compartment-posthoc.rds"
@@ -215,8 +226,7 @@ one.compartment.with.lag.fit.focei <- .getCachedFit(
   fitFn = function() {
     d <- nlmixr2data::warfarin |>
       dplyr::filter(dvid == "cp")
-    .nlmixr(one.compartment.with.lag, d, est = "focei",
-            control = foceiControl(print = 0))
+    .nlmixr(one.compartment.with.lag, d, est = "focei", control = foceiControl(print = 0))
   },
   cacheFile = "fit-one-compartment-lag-focei.rds"
 )

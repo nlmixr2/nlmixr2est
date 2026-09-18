@@ -5,8 +5,7 @@
 
 #' Initialize encoder parameters (RNG seeded once by the caller under rxWithSeed)
 #' @noRd
-.vaeEncoderInitParams <- function(zDim, hDim, nCov, zPop, sigma0,
-                                  sigma0Interp = c("sd", "reference")) {
+.vaeEncoderInitParams <- function(zDim, hDim, nCov, zPop, sigma0, sigma0Interp = c("sd", "reference")) {
   sigma0Interp <- match.arg(sigma0Interp)
   nOff <- as.integer(zDim * (zDim - 1L) / 2L)
   outDim <- 2L * zDim + nOff
@@ -23,17 +22,19 @@
     ## what `sigma0` says it is.  Under "reference" it is log(sigma0^2), matching
     ## the reference implementation, whose initial posterior SD is therefore
     ## sigma0 SQUARED.
-    fcB = c(zPop,
-            if (sigma0Interp == "reference") log(sigma0^2) else log(sigma0),
-            numeric(nOff))
+    fcB = c(zPop, if (sigma0Interp == "reference") log(sigma0^2) else log(sigma0), numeric(nOff))
   )
 }
 
 #' Clamp a parameter vector to [lower, upper] (elementwise; NULL bounds = no-op).
 #' @noRd
 .vaeClamp <- function(v, lower, upper) {
-  if (!is.null(lower)) v <- pmax(v, lower)
-  if (!is.null(upper)) v <- pmin(v, upper)
+  if (!is.null(lower)) {
+    v <- pmax(v, lower)
+  }
+  if (!is.null(upper)) {
+    v <- pmin(v, upper)
+  }
   v
 }
 
@@ -44,7 +45,9 @@
   ## mixture etas (NA index) keep their fixed component thetas in `th`
   .ok <- !is.na(prep$zPopThetaIdx)
   th[prep$zPopThetaIdx[.ok]] <- zPop[.ok]
-  if (length(prep$errThetaIdx) > 0L) th[prep$errThetaIdx] <- a
+  if (length(prep$errThetaIdx) > 0L) {
+    th[prep$errThetaIdx] <- a
+  }
   th
 }
 
@@ -73,9 +76,22 @@
     .foceiAnalyticSolveFA(am, c(th, setNames(e, .etav)), s$ev, s$times, tol = t)
   }
   .yList <- lapply(prep$subj, function(s) as.numeric(s$y))
-  vaeDecoderElboStep_(params, prep, zPop, as.numeric(omega), as.numeric(a),
-                      as.numeric(alphaKL), as.matrix(eps), .solve, .yList,
-                      isTRUE(withGrad), 1e-10, 5L, 10^(0.5), TRUE)
+  vaeDecoderElboStep_(
+    params,
+    prep,
+    zPop,
+    as.numeric(omega),
+    as.numeric(a),
+    as.numeric(alphaKL),
+    as.matrix(eps),
+    .solve,
+    .yList,
+    isTRUE(withGrad),
+    1e-10,
+    5L,
+    10^(0.5),
+    TRUE
+  )
 }
 
 #' Closed-form error-parameter M-step for additive / proportional / combined
@@ -88,22 +104,34 @@
 #' them correctly; only their closed-form update is unavailable).
 #' @noRd
 .vaeUpdateErr <- function(preds, prep, a) {
-  if (length(a) == 0L) return(a)
-  res <- numeric(0); f <- numeric(0)
-  for (i in seq_len(prep$N)) {
-    r <- prep$subj[[i]]$y - preds[[i]]; ff <- preds[[i]]
-    ok <- is.finite(r) & is.finite(ff)
-    res <- c(res, r[ok]); f <- c(f, ff[ok])
+  if (length(a) == 0L) {
+    return(a)
   }
-  if (length(res) == 0L) return(a)
+  res <- numeric(0)
+  f <- numeric(0)
+  for (i in seq_len(prep$N)) {
+    r <- prep$subj[[i]]$y - preds[[i]]
+    ff <- preds[[i]]
+    ok <- is.finite(r) & is.finite(ff)
+    res <- c(res, r[ok])
+    f <- c(f, ff[ok])
+  }
+  if (length(res) == 0L) {
+    return(a)
+  }
   types <- prep$errType
-  hasAdd <- which(types == "add"); hasProp <- which(types == "prop")
+  hasAdd <- which(types == "add")
+  hasProp <- which(types == "prop")
   aNew <- a
   if (length(hasAdd) && length(hasProp)) {
     ## combined: res^2 ~ a^2 + b^2 f^2 (non-negative least squares, 2 columns)
-    X <- cbind(1, f^2); cf <- tryCatch(stats::lm.fit(X, res^2)$coefficients, error = function(e) c(NA, NA))
-    v0 <- max(cf[1], .Machine$double.eps); v1 <- max(cf[2], .Machine$double.eps)
-    if (is.finite(v0)) aNew[hasAdd[1]] <- sqrt(v0)
+    X <- cbind(1, f^2)
+    cf <- tryCatch(stats::lm.fit(X, res^2)$coefficients, error = function(e) c(NA, NA))
+    v0 <- max(cf[1], .Machine$double.eps)
+    v1 <- max(cf[2], .Machine$double.eps)
+    if (is.finite(v0)) {
+      aNew[hasAdd[1]] <- sqrt(v0)
+    }
     if (is.finite(v1)) aNew[hasProp[1]] <- sqrt(v1)
   } else if (length(hasAdd)) {
     aNew[hasAdd[1]] <- sqrt(mean(res^2))
@@ -138,18 +166,31 @@
 ## objective.  0=add, 1=prop, 3=pow scale, 4=pow exponent, 5=lnorm; 2 is
 ## "not handled", which leaves the parameter at its ini() value.
 .vaeErrTypeCode <- function(errType) {
-  vapply(errType, function(t) {
-    if (identical(t, "add")) 0L
-    else if (identical(t, "prop")) 1L
-    else if (identical(t, "pow")) 3L
-    else if (identical(t, "pow2")) 4L
-    else if (identical(t, "lnorm")) 5L
-    ## boxCox / yeoJohnson lambda: the stage-2 ELS objective transforms dv with
-    ## rxode2's _powerD and carries the log-Jacobian from _powerL.  f is NOT
-    ## transformed -- it leaves the solve already on the transformed scale.
-    else if (identical(t, "boxCox") || identical(t, "yeoJohnson")) 6L
-    else 2L
-  }, integer(1), USE.NAMES = FALSE)
+  vapply(
+    errType,
+    function(t) {
+      if (identical(t, "add")) {
+        0L
+      } else if (identical(t, "prop")) {
+        1L
+      } else if (identical(t, "pow")) {
+        3L
+      } else if (identical(t, "pow2")) {
+        4L
+      } else if (identical(t, "lnorm")) {
+        5L
+      } else if (identical(t, "boxCox") || identical(t, "yeoJohnson")) {
+        ## boxCox / yeoJohnson lambda: the stage-2 ELS objective transforms dv with
+        ## rxode2's _powerD and carries the log-Jacobian from _powerL.  f is NOT
+        ## transformed -- it leaves the solve already on the transformed scale.
+        6L
+      } else {
+        2L
+      }
+    },
+    integer(1),
+    USE.NAMES = FALSE
+  )
 }
 
 #' Train the VAE: burn-in (encoder-only, tiny KL) -> main EM (KL anneal + M-step)
@@ -160,8 +201,7 @@
 #' drives it through the same likInner0/lpInner engine, per gradient step,
 #' without re-running foceiSetup_.
 #' @noRd
-.vaeTrain <- function(prep, innerEnv, control, nMix = 1L, mixProb = 1,
-                      parInfo = NULL) {
+.vaeTrain <- function(prep, innerEnv, control, nMix = 1L, mixProb = 1, parInfo = NULL) {
   ## RNG is seeded ONCE for the whole estimation in nlmixr2Est.vae (rxWithSeed),
   ## which also covers the model's own random draws and restores the caller's seed
   zDim <- prep$zDim
@@ -175,14 +215,25 @@
   ## as a std::logic_error and aborts the session, so check it here
   .vaeCheckEncoderDims <- function(params) {
     if (ncol(params$fcW) != hDim + nCov) {
-      stop("vae encoder head is ", ncol(params$fcW), " wide but needs hiddenDim + ncol(covIn) = ",
-           hDim + nCov, call. = FALSE)
+      stop(
+        "vae encoder head is ",
+        ncol(params$fcW),
+        " wide but needs hiddenDim + ncol(covIn) = ",
+        hDim + nCov,
+        call. = FALSE
+      )
     }
     invisible(TRUE)
   }
   sigma0 <- if (is.null(control$sigma0)) rep(0.1, zDim) else rep_len(control$sigma0, zDim)
-  params <- .vaeEncoderInitParams(zDim, hDim, nCov, prep$zPop, sigma0,
-                                  if (is.null(control$sigma0Interp)) "sd" else control$sigma0Interp)
+  params <- .vaeEncoderInitParams(
+    zDim,
+    hDim,
+    nCov,
+    prep$zPop,
+    sigma0,
+    if (is.null(control$sigma0Interp)) "sd" else control$sigma0Interp
+  )
   .vaeCheckEncoderDims(params)
 
   ## The parameter-history walk is ALWAYS captured (it is central to this method)
@@ -193,9 +244,13 @@
   if (is.null(parInfo)) {
     .sIdx <- which(!prep$isFree & !prep$zPopFix)
     .oIdx <- which(!prep$zPopFix)
-    parInfo <- list(structIdx = .sIdx, structNames = prep$etaNames[.sIdx],
-                    omegaIdx = .oIdx, omegaNames = paste0("o(", prep$etaNames[.oIdx], ")"),
-                    aNames = names(prep$a))
+    parInfo <- list(
+      structIdx = .sIdx,
+      structNames = prep$etaNames[.sIdx],
+      omegaIdx = .oIdx,
+      omegaNames = paste0("o(", prep$etaNames[.oIdx], ")"),
+      aNames = names(prep$a)
+    )
   }
   ## nonMuTheta="regress": surface the regressed fixed-effect thetas in the
   ## parameter-history walk.  parInfo carries only their names (metadata); their
@@ -204,17 +259,23 @@
   parInfo$regressNames <- prep$regressNames
   .regressVals0 <- if (length(prep$regressThetaIdx0)) {
     prep$th[prep$regressThetaIdx0 + 1L]
-  } else numeric(0)
+  } else {
+    numeric(0)
+  }
   .row0 <- .vaeParRow(prep$zPop, prep$omega, prep$a, parInfo, regressVals = .regressVals0)
 
   ## prep buffers the C++ loop needs, in the layout vaeTrainCpp_ unpacks: 0-based
   ## theta indices (-1 for a free/mixture eta), error-type codes, per-subject
   ## observed DV, and the plain-matrix covariate design.
-  prepC <- c(prep, list(
-    zPopThetaIdx0 = ifelse(is.na(prep$zPopThetaIdx), -1L, as.integer(prep$zPopThetaIdx) - 1L),
-    errThetaIdx0 = as.integer(prep$errThetaIdx) - 1L,
-    errTypeCode = .vaeErrTypeCode(prep$errType),
-    yList = lapply(prep$subj, function(s) as.numeric(s$y))))
+  prepC <- c(
+    prep,
+    list(
+      zPopThetaIdx0 = ifelse(is.na(prep$zPopThetaIdx), -1L, as.integer(prep$zPopThetaIdx) - 1L),
+      errThetaIdx0 = as.integer(prep$errThetaIdx) - 1L,
+      errTypeCode = .vaeErrTypeCode(prep$errType),
+      yList = lapply(prep$subj, function(s) as.numeric(s$y))
+    )
+  )
   ## nonMuTheta="regress": 0-based full-theta indices + ini bounds of the fixed
   ## thetas the C++ M-step regresses with bobyqa (empty when not in regress mode)
   prepC$regressThetaIdx0 <- as.integer(prep$regressThetaIdx0)
@@ -257,7 +318,9 @@
     ## a control serialized before this option existed has no cut; fall back to
     ## the shared default rather than passing NULL into the assert
     .cut <- control$covSelectColinearCut
-    if (is.null(.cut)) .cut <- .vaeColinearCut
+    if (is.null(.cut)) {
+      .cut <- .vaeColinearCut
+    }
     .clu <- .vaeCovCluster(prep$covMat, prep$covGroup, .cut)
     if (.vaeClusterBinds(.clu, prep$covGroup)) prepC$covCluster <- as.integer(.clu)
   }
@@ -277,11 +340,17 @@
   ## search and push a dimension onto the approximate engine too early.
   .nCov <- ncol(prep$covMat)
   .grp <- prep$covGroup
-  if (is.null(.grp) || length(.grp) != .nCov) .grp <- seq_len(.nCov)
+  if (is.null(.grp) || length(.grp) != .nCov) {
+    .grp <- seq_len(.nCov)
+  }
   .blk <- prep$covBlock
-  if (is.null(.blk) || length(.blk) != .nCov) .blk <- seq_len(.nCov)
+  if (is.null(.blk) || length(.blk) != .nCov) {
+    .blk <- seq_len(.nCov)
+  }
   .bitsOf <- function(cols) {
-    if (length(cols) == 0L) return(0)
+    if (length(cols) == 0L) {
+      return(0)
+    }
     ## one entry per distinct block, counted into that block's group
     .b <- !duplicated(.blk[cols])
     sum(log2(1 + as.numeric(table(.grp[cols][.b]))))
@@ -294,9 +363,13 @@
   }
   ## a free (mixture) or fixed dimension never runs the search
   .nCand[as.logical(prep$isFree) | as.logical(prep$zPopFix)] <- 0
-  if (!isTRUE(control$covariateSelection) || .nCov == 0L) .nCand[] <- 0
+  if (!isTRUE(control$covariateSelection) || .nCov == 0L) {
+    .nCand[] <- 0
+  }
   .modes <- .vaeCovSelectModes(.nCand, control)
-  for (.m in .modes$msg) warning(.m, call. = FALSE)
+  for (.m in .modes$msg) {
+    warning(.m, call. = FALSE)
+  }
   prepC$covSelectMode <- .modes$mode
   prepC$l0Fn <- NULL
   if (any(.modes$mode == 1L)) {
@@ -306,17 +379,19 @@
     prepC$l0Fn <- function(y) .vaeL0Candidates(y, .covMat, .mode, .allow)
   }
 
-  .cores <- tryCatch({
-    .c <- control$rxControl$cores
-    if (is.null(.c) || is.na(.c) || .c < 1L) as.integer(rxode2::getRxThreads()) else as.integer(.c)
-  }, error = function(e) 1L)
+  .cores <- tryCatch(
+    {
+      .c <- control$rxControl$cores
+      if (is.null(.c) || is.na(.c) || .c < 1L) as.integer(rxode2::getRxThreads()) else as.integer(.c)
+    },
+    error = function(e) 1L
+  )
 
   ## surface the parallel-encoder-backward non-reproducibility in $runInfo (this
   ## warning is collected into the fit's run information); only relevant when it
   ## actually parallelizes (cores > 1)
   if (isTRUE(control$parEncoderBackward) && .cores > 1L) {
-    warning("encoder: small parallel deviation; parEncoderBackward=FALSE turns off",
-            call. = FALSE)
+    warning("encoder: small parallel deviation; parEncoderBackward=FALSE turns off", call. = FALSE)
   }
 
   ## the print level lives in iterPrintControl$every (absorbed by vaeControl);
@@ -332,9 +407,19 @@
     on.exit(.vaeGradReset(), add = TRUE)
   }
 
-  .fit <- vaeTrainCpp_(params, prepC, control, as.integer(nMix), as.numeric(mixProb),
-                       .cores, .row0, names(.row0), control$iterPrintControl,
-                       parInfo$xform, as.integer(parInfo$structIdx) - 1L)
+  .fit <- vaeTrainCpp_(
+    params,
+    prepC,
+    control,
+    as.integer(nMix),
+    as.numeric(mixProb),
+    .cores,
+    .row0,
+    names(.row0),
+    control$iterPrintControl,
+    parInfo$xform,
+    as.integer(parInfo$structIdx) - 1L
+  )
 
   .selected <- matrix(as.logical(.fit$selected), zDim, ncol(prep$covMat))
   ## Near ties: cluster mates that would have scored within one covariate's L0
@@ -343,13 +428,14 @@
   .nt <- .fit$covNearTie
   .covNearTie <-
     if (is.null(.nt)) {
-      data.frame(eta = character(0), covariate = character(0),
-                 mate = character(0), delta = numeric(0))
+      data.frame(eta = character(0), covariate = character(0), mate = character(0), delta = numeric(0))
     } else {
-      data.frame(eta = prep$etaNames[.nt$dim],
-                 covariate = prep$covNames[.nt$covariate],
-                 mate = prep$covNames[.nt$mate],
-                 delta = as.numeric(.nt$delta))
+      data.frame(
+        eta = prep$etaNames[.nt$dim],
+        covariate = prep$covNames[.nt$covariate],
+        mate = prep$covNames[.nt$mate],
+        delta = as.numeric(.nt$delta)
+      )
     }
   ## Cross-parameter refinement: counters and the sticky pair adjacency, straight
   ## from C++ (omOff is reported rather than re-derived so it cannot disagree
@@ -362,39 +448,52 @@
   .nPhiClamp <- if (is.null(.fit$nPhiClamp)) 0L else as.integer(.fit$nPhiClamp)
   .omOff <- if (is.null(.fit$omOff)) FALSE else as.logical(.fit$omOff)
   .phiPairOn <- .fit$phiPairOn
-  if (!is.null(.phiPairOn)) dimnames(.phiPairOn) <- list(prep$etaNames, prep$etaNames)
+  if (!is.null(.phiPairOn)) {
+    dimnames(.phiPairOn) <- list(prep$etaNames, prep$etaNames)
+  }
   for (.m in .vaePhiDiagMsg(.nPhiPair, .omOff, any(.selected))) {
     warning(.m, call. = FALSE)
   }
   .omMat <- .fit$omegaMat
   dimnames(.omMat) <- list(prep$etaNames, prep$etaNames)
-  list(params = .fit$params, zPop = as.numeric(.fit$zPop), omega = as.numeric(.fit$omega),
-       omegaMat = .omMat,
-       a = setNames(as.numeric(.fit$a), names(prep$a)),
-       intercept = as.numeric(.fit$intercept), beta = .fit$beta, selected = .selected,
-       covNames = prep$covNames, elboTrace = as.numeric(.fit$elboTrace), parHist = .fit$parHist,
-       mu = .fit$mu, zPopMat = .fit$zPopMat, prep = prep,
-       regressTheta = setNames(as.numeric(.fit$regressTheta), prep$regressNames),
-       nRegGrad = as.integer(.fit$nRegGrad), nRegFallback = as.integer(.fit$nRegFallback),
-       nStage2 = as.integer(.fit$nStage2),
-       covSelectMethodUsed = .modes$used,
-       covNearTie = .covNearTie,
-       nCovHysteresis = if (is.null(.fit$nCovHysteresis)) 0L else as.integer(.fit$nCovHysteresis),
-       nPhiPair = .nPhiPair,
-       nPhiTest = .nPhiTest,
-       nPhiMove = .nPhiMove,
-       nPhiSkipBig = .nPhiSkipBig,
-       nPhiSkipDiag = .nPhiSkipDiag,
-       nPhiClamp = .nPhiClamp,
-       omOff = .omOff,
-       phiPairOn = .phiPairOn,
-       nMix = nMix,
-       ## the FITTED proportions, not the ini() ones: they are estimated on the
-       ## mlogit scale by their own analytic gradient (Adam), so the value that
-       ## comes back from training is the one to report and write into ini()
-       mixProb = if (is.null(.fit$mixProb)) mixProb else as.numeric(.fit$mixProb),
-       nMixThetaStep = .fit$nMixThetaStep,
-       mixnum = as.integer(.fit$mixnum))
+  list(
+    params = .fit$params,
+    zPop = as.numeric(.fit$zPop),
+    omega = as.numeric(.fit$omega),
+    omegaMat = .omMat,
+    a = setNames(as.numeric(.fit$a), names(prep$a)),
+    intercept = as.numeric(.fit$intercept),
+    beta = .fit$beta,
+    selected = .selected,
+    covNames = prep$covNames,
+    elboTrace = as.numeric(.fit$elboTrace),
+    parHist = .fit$parHist,
+    mu = .fit$mu,
+    zPopMat = .fit$zPopMat,
+    prep = prep,
+    regressTheta = setNames(as.numeric(.fit$regressTheta), prep$regressNames),
+    nRegGrad = as.integer(.fit$nRegGrad),
+    nRegFallback = as.integer(.fit$nRegFallback),
+    nStage2 = as.integer(.fit$nStage2),
+    covSelectMethodUsed = .modes$used,
+    covNearTie = .covNearTie,
+    nCovHysteresis = if (is.null(.fit$nCovHysteresis)) 0L else as.integer(.fit$nCovHysteresis),
+    nPhiPair = .nPhiPair,
+    nPhiTest = .nPhiTest,
+    nPhiMove = .nPhiMove,
+    nPhiSkipBig = .nPhiSkipBig,
+    nPhiSkipDiag = .nPhiSkipDiag,
+    nPhiClamp = .nPhiClamp,
+    omOff = .omOff,
+    phiPairOn = .phiPairOn,
+    nMix = nMix,
+    ## the FITTED proportions, not the ini() ones: they are estimated on the
+    ## mlogit scale by their own analytic gradient (Adam), so the value that
+    ## comes back from training is the one to report and write into ini()
+    mixProb = if (is.null(.fit$mixProb)) mixProb else as.numeric(.fit$mixProb),
+    nMixThetaStep = .fit$nMixThetaStep,
+    mixnum = as.integer(.fit$mixnum)
+  )
 }
 
 #' Fit entry: prepare data, set up the FOCEi inner problem once, train.
@@ -405,7 +504,9 @@
   .prep <- .vaeDataPrep(.ui, env$data, .control)
   ## mixture info from the ui: nMix components with probs (p1,...,1-sum)
   .nMix <- tryCatch(as.integer(.ui$saemNMix), error = function(e) 1L)
-  if (is.na(.nMix) || .nMix < 1L) .nMix <- 1L
+  if (is.na(.nMix) || .nMix < 1L) {
+    .nMix <- 1L
+  }
   .mixProb <- 1
   if (.nMix > 1L) {
     ## prep$th holds the mlogit values (see .vaeDataPrep); mexpit them back to
@@ -422,16 +523,20 @@
   ## from the iteration print.
   .structIdx <- which(!.prep$isFree & !.prep$zPopFix)
   .omegaIdx <- which(!.prep$zPopFix)
-  .parInfo <- list(structIdx = .structIdx,
-                   structNames = .map$thetaForEta[.structIdx],
-                   omegaIdx = .omegaIdx,
-                   omegaNames = paste0("o(", .prep$etaNames[.omegaIdx], ")"),
-                   aNames = names(.prep$a))
+  .parInfo <- list(
+    structIdx = .structIdx,
+    structNames = .map$thetaForEta[.structIdx],
+    omegaIdx = .omegaIdx,
+    omegaNames = paste0("o(", .prep$etaNames[.omegaIdx], ")"),
+    aNames = names(.prep$a)
+  )
   ## back-transform codes for the printed walk (X row: exp/expit/probit thetas).
   ## Include the nonMuTheta="regress" thetas so their column gets the right
   ## back-transform (they are appended last, matching .vaeParRow / the C++ parRow).
   .parInfo$xform <- .iterPrintXParFromUi(
-    .ui, c(.parInfo$structNames, .parInfo$omegaNames, .parInfo$aNames, .prep$regressNames))
+    .ui,
+    c(.parInfo$structNames, .parInfo$omegaNames, .parInfo$aNames, .prep$regressNames)
+  )
   ## set up the inner likelihood once (compiled model + processed data)
   .innerEnv <- .vaeInnerSetup(.ui, env$data, matrix(0, .prep$N, .prep$zDim), .control)
   on.exit(.vaeInnerFree(), add = TRUE)

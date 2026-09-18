@@ -41,7 +41,9 @@ nmTest({
           })
         }
         fit <- nlmixr2(
-          mod, nlmixr2data::theo_sd, est = "nlm",
+          mod,
+          nlmixr2data::theo_sd,
+          est = "nlm",
           control = nlmControl(iterlim = 1L, print.level = 0L)
         )
         class(fit)

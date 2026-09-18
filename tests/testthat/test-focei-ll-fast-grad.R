@@ -3,7 +3,6 @@
 # analytic objective + gradient live in the weekly-batched test-focei-ll-fast-grad-fit.R.
 
 nmTest({
-
   .ll_ode <- function() {
     ini({ tka <- log(1.5); tcl <- log(2.7); tv <- log(31.5)
           eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1; add.sd <- 0.7 })
@@ -31,9 +30,9 @@ nmTest({
 
   test_that("ll() analytic-gradient scope gates", {
     is <- function(m) .foceiLLGradInScope(rxode2::rxUiDecompress(rxode2::rxode2(m)))
-    expect_true(is(.ll_ode))                 # ODE log-likelihood endpoint -> in scope
-    expect_false(is(.gauss_ode))             # Gaussian -> the (f,R) analytic path, not the ll path
-    expect_true(is(.ll_lincmt))              # linCmt() passes the coarse gate (falls back to FD at build)
+    expect_true(is(.ll_ode)) # ODE log-likelihood endpoint -> in scope
+    expect_false(is(.gauss_ode)) # Gaussian -> the (f,R) analytic path, not the ll path
+    expect_true(is(.ll_lincmt)) # linCmt() passes the coarse gate (falls back to FD at build)
   })
 
   test_that("the augmented sensitivity model builds for an ODE-free model", {
@@ -46,7 +45,7 @@ nmTest({
               ll(cp) ~ DV * log(lam) - lam - lgamma(DV + 1) })
     }
     .ui <- suppressWarnings(rxode2::rxUiDecompress(rxode2::rxode2(.algebraic)))
-    expect_equal(length(rxode2::rxStateOde(.ui$loadPruneSens)), 0L)   # really has no states
+    expect_equal(length(rxode2::rxStateOde(.ui$loadPruneSens)), 0L) # really has no states
     .d <- .foceiOuterDirsLL(.ui)
     expect_false(is.null(.d))
     .am <- .foceiAnalyticAugModelDirs(.ui, .d$dirs)
@@ -97,5 +96,4 @@ nmTest({
     }
     expect_false(suppressWarnings(.is(.twoGauss)))
   })
-
 })

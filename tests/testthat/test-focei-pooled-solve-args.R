@@ -28,8 +28,11 @@ nmTest({
       model({ ka <- exp(tka + eta.ka); cp <- ka; cp ~ add(add.sd) })
     }
     .ui <- suppressMessages(rxode2::rxUiDecompress(nlmixr2(.m)))
-    .tol <- function(...) { .u <- .ui; .u$control <- foceiControl(...)
-      .foceiAnalyticSolveTol(.u) }
+    .tol <- function(...) {
+      .u <- .ui
+      .u$control <- foceiControl(...)
+      .foceiAnalyticSolveTol(.u)
+    }
     expect_equal(.tol(sigdig = 3), 1e-9)
     expect_equal(.tol(sigdig = 4), 1e-10)
     expect_equal(.tol(sigdig = 6), 1e-12)

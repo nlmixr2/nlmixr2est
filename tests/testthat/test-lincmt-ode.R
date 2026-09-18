@@ -64,20 +64,16 @@ nmTest({
     expect_silent(expect_null(.preProcessLinCmtOde(.pure(), "focei", NULL, NULL)))
     expect_silent(expect_null(.preProcessLinCmtOde(.pure(), "nlm", NULL, NULL)))
     # FOCEi family (eta sensitivities) and nlm family (theta sensitivities)
-    for (.e in c("focei", "foce", "fo", "laplace", "agq", "nlm", "nlminb",
-                 "bobyqa", "optim", "n1qn1")) {
-      expect_true(is.list(suppressWarnings(.preProcessLinCmtOde(.mixed(), .e, NULL, NULL))),
-                  info = .e)
+    for (.e in c("focei", "foce", "fo", "laplace", "agq", "nlm", "nlminb", "bobyqa", "optim", "n1qn1")) {
+      expect_true(is.list(suppressWarnings(.preProcessLinCmtOde(.mixed(), .e, NULL, NULL))), info = .e)
     }
   })
 
   test_that("solving the linear compartments as ODEs is warned about, not silent", {
     # the model no longer mixes a solved system with ODEs, so the user has to
     # be told the analytic linCmt() is not being used
-    expect_warning(.preProcessLinCmtOde(.mixed(), "focei", NULL, NULL),
-                   "cannot use the analytic 'linCmt\\(\\)'")
-    expect_warning(.preProcessLinCmtOde(.mixed(), "nlm", NULL, NULL),
-                   "solved as ODEs")
+    expect_warning(.preProcessLinCmtOde(.mixed(), "focei", NULL, NULL), "cannot use the analytic 'linCmt\\(\\)'")
+    expect_warning(.preProcessLinCmtOde(.mixed(), "nlm", NULL, NULL), "solved as ODEs")
     # the warning names the routine that could not use it
     expect_warning(.preProcessLinCmtOde(.mixed(), "focei", NULL, NULL), "focei")
     expect_warning(.preProcessLinCmtOde(.mixed(), "nlm", NULL, NULL), "nlm")
@@ -88,11 +84,14 @@ nmTest({
     .r <- suppressWarnings(.preProcessLinCmtOde(.ui, "focei", NULL, NULL))$ui
     # linCmt() is gone -- the compartments are real ODE states now
     expect_true(is.null(.r$mvL) || !.uiIsMixedLinCmtOde(.r))
-    expect_false(any(vapply(.r$lstExpr, function(e) {
-      any(all.vars(e) == "linCmt") ||
-        (is.call(e) && length(e) > 2L && is.call(e[[3]]) &&
-           identical(e[[3]][[1]], quote(linCmt)))
-    }, logical(1))))
+    expect_false(any(vapply(
+      .r$lstExpr,
+      function(e) {
+        any(all.vars(e) == "linCmt") ||
+          (is.call(e) && length(e) > 2L && is.call(e[[3]]) && identical(e[[3]][[1]], quote(linCmt)))
+      },
+      logical(1)
+    )))
     # the data's numeric cmt must keep meaning the same compartment; linToOde()
     # on its own would return depot,central,ce
     expect_equal(.r$state, .ui$state)
@@ -102,13 +101,20 @@ nmTest({
   test_that("the translated model keeps the linCmt() output defined before it is used", {
     .r <- suppressWarnings(.preProcessLinCmtOde(.mixed(), "focei", NULL, NULL))$ui
     .lines <- .r$lstExpr
-    .isDdtCe <- vapply(.lines, function(e) {
-      is.call(e) && is.call(e[[2]]) && identical(e[[2]][[2]], quote(d)) &&
-        as.character(e[[2]][[3]][[2]]) == "ce"
-    }, logical(1))
-    .isC2 <- vapply(.lines, function(e) {
-      is.call(e) && is.name(e[[2]]) && identical(e[[2]], quote(C2))
-    }, logical(1))
+    .isDdtCe <- vapply(
+      .lines,
+      function(e) {
+        is.call(e) && is.call(e[[2]]) && identical(e[[2]][[2]], quote(d)) && as.character(e[[2]][[3]][[2]]) == "ce"
+      },
+      logical(1)
+    )
+    .isC2 <- vapply(
+      .lines,
+      function(e) {
+        is.call(e) && is.name(e[[2]]) && identical(e[[2]], quote(C2))
+      },
+      logical(1)
+    )
     expect_true(any(.isC2))
     expect_true(any(.isDdtCe))
     # C2 <- central/v must precede d/dt(ce) <- ke0*(C2 - ce)

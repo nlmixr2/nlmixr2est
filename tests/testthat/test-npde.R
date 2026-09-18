@@ -1,5 +1,4 @@
 nmTest({
-
   test_that("npde", {
     one.cmt <- function() {
       ini({
@@ -24,9 +23,9 @@ nmTest({
     }
 
     # Don't use saemControlFast because numeric results are tested below
-    fit <- .nlmixr(one.cmt, theo_sd, est="saem")
+    fit <- .nlmixr(one.cmt, theo_sd, est = "saem")
 
-    expect_false(all(c("EPRED","ERES","NPDE","NPD", "PDE", "PD") %in% names(fit)))
+    expect_false(all(c("EPRED", "ERES", "NPDE", "NPD", "PDE", "PD") %in% names(fit)))
     # npde's uniforms are seeded per observation, so the thread count cannot move them
     .cols <- c("EPRED", "ERES", "NPDE", "NPD", "PDE", "PD")
     .old <- rxode2::getRxThreads(verbose = FALSE)
@@ -37,7 +36,7 @@ nmTest({
     rxode2::setRxThreads(.old)
     expect_identical(.t1, .t2)
     suppressMessages(expect_error(addNpde(fit), NA))
-    expect_true(all(c("EPRED","ERES","NPDE","NPD", "PDE", "PD") %in% names(fit)))
+    expect_true(all(c("EPRED", "ERES", "NPDE", "NPD", "PDE", "PD") %in% names(fit)))
     .range1 <- range(fit$PDE)
     .range2 <- range(fit$PD)
     expect_true(.range1[1] > 0)
@@ -60,17 +59,16 @@ nmTest({
     expect_true(.range4[1] > -0.1)
     expect_true(.range4[2] > 7)
 
-    fit <- .nlmixr(one.cmt, theo_sd, est="saem")
+    fit <- .nlmixr(one.cmt, theo_sd, est = "saem")
 
-    expect_false(all(c("EPRED","ERES","NPDE","NPD","PDE","PD") %in% names(fit)))
-    fit2 <- suppressMessages(addNpde(fit, updateObject=FALSE))
-    expect_false(all(c("EPRED","ERES","NPDE","NPD","PDE","PD") %in% names(fit)))
-    expect_true(all(c("EPRED","ERES","NPDE","NPD","PDE","PD") %in% names(fit2)))
+    expect_false(all(c("EPRED", "ERES", "NPDE", "NPD", "PDE", "PD") %in% names(fit)))
+    fit2 <- suppressMessages(addNpde(fit, updateObject = FALSE))
+    expect_false(all(c("EPRED", "ERES", "NPDE", "NPD", "PDE", "PD") %in% names(fit)))
+    expect_true(all(c("EPRED", "ERES", "NPDE", "NPD", "PDE", "PD") %in% names(fit2)))
 
-    fit <- .nlmixr(one.cmt, theo_sd, est = "saem", control = saemControlFast,
-                   table = tableControl(npde = TRUE))
+    fit <- .nlmixr(one.cmt, theo_sd, est = "saem", control = saemControlFast, table = tableControl(npde = TRUE))
 
-    expect_true(all(c("EPRED","ERES","NPDE","NPD", "PDE","PD") %in% names(fit)))
+    expect_true(all(c("EPRED", "ERES", "NPDE", "NPD", "PDE", "PD") %in% names(fit)))
   })
 
   test_that("pheno", {

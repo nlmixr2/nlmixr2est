@@ -71,8 +71,11 @@ dir.create(.outDir, showWarnings = FALSE, recursive = TRUE)
 .benchResults <- list()
 .benchRecord <- function(source, model, bq, trList) {
   row <- data.frame(
-    source = source, model = model,
-    bobyqa_ok = isTRUE(bq$ok), bobyqa_time = as.numeric(bq$time), bobyqa_objf = as.numeric(bq$objf),
+    source = source,
+    model = model,
+    bobyqa_ok = isTRUE(bq$ok),
+    bobyqa_time = as.numeric(bq$time),
+    bobyqa_objf = as.numeric(bq$objf),
     bobyqa_error = ifelse(is.null(bq$error), NA_character_, bq$error),
     stringsAsFactors = FALSE
   )
@@ -80,8 +83,7 @@ dir.create(.outDir, showWarnings = FALSE, recursive = TRUE)
   for (hm in .hessianMethods) {
     tr <- trList[[hm]]
     maxParDiff <- NA_real_
-    if (isTRUE(bq$ok) && isTRUE(tr$ok) &&
-          !is.null(bq$theta) && !is.null(tr$theta)) {
+    if (isTRUE(bq$ok) && isTRUE(tr$ok) && !is.null(bq$theta) && !is.null(tr$theta)) {
       common <- intersect(names(bq$theta), names(tr$theta))
       if (length(common)) maxParDiff <- max(abs(bq$theta[common] - tr$theta[common]))
     }
@@ -92,9 +94,18 @@ dir.create(.outDir, showWarnings = FALSE, recursive = TRUE)
     row[[paste0("trust_", hm, "_dObjf")]] <- as.numeric(tr$objf) - as.numeric(bq$objf)
     row[[paste0("trust_", hm, "_speedup")]] <- as.numeric(bq$time) / as.numeric(tr$time)
     row[[paste0("trust_", hm, "_maxParDiff")]] <- maxParDiff
-    logParts <- c(logParts, sprintf("trust[%s] ok=%s time=%.2fs objf=%s dObjf=%s maxParDiff=%s",
-                                    hm, tr$ok, tr$time, format(tr$objf),
-                                    format(row[[paste0("trust_", hm, "_dObjf")]]), format(maxParDiff)))
+    logParts <- c(
+      logParts,
+      sprintf(
+        "trust[%s] ok=%s time=%.2fs objf=%s dObjf=%s maxParDiff=%s",
+        hm,
+        tr$ok,
+        tr$time,
+        format(tr$objf),
+        format(row[[paste0("trust_", hm, "_dObjf")]]),
+        format(maxParDiff)
+      )
+    )
   }
   .benchResults[[length(.benchResults) + 1]] <<- row
   write.csv(do.call(rbind, .benchResults), .csvPath, row.names = FALSE)
@@ -104,8 +115,12 @@ dir.create(.outDir, showWarnings = FALSE, recursive = TRUE)
 .benchLogSkip <- function(source, model, reason) {
   .blog("[%s] %s: SKIPPED -- %s", source, model, reason)
   row <- data.frame(
-    source = source, model = model,
-    bobyqa_ok = NA, bobyqa_time = NA_real_, bobyqa_objf = NA_real_, bobyqa_error = reason,
+    source = source,
+    model = model,
+    bobyqa_ok = NA,
+    bobyqa_time = NA_real_,
+    bobyqa_objf = NA_real_,
+    bobyqa_error = reason,
     stringsAsFactors = FALSE
   )
   for (hm in .hessianMethods) {
@@ -126,29 +141,33 @@ dir.create(.outDir, showWarnings = FALSE, recursive = TRUE)
 # with a plain default control (print=0, calcTables=FALSE) for that method.
 # ---------------------------------------------------------------------------
 .benchFitOnce <- function(object, data, est, table, dots, save, envir, hessianMethod = "fd") {
-  ctl <- switch(est,
+  ctl <- switch(
+    est,
     bobyqa = nlmixr2est::bobyqaControl(print = 0L, calcTables = FALSE),
-    trust  = nlmixr2est::trustControl(print = 0L, calcTables = FALSE, hessianMethod = hessianMethod),
+    trust = nlmixr2est::trustControl(print = 0L, calcTables = FALSE, hessianMethod = hessianMethod),
     stop("unsupported est for .benchFitOnce: ", est)
   )
   t0 <- proc.time()["elapsed"]
   fit <- tryCatch(
     suppressWarnings(suppressMessages(
-      do.call(nlmixr2est::nlmixr2,
-              c(list(object = object, data = data, est = est, control = ctl,
-                     table = table, save = save, envir = envir), dots))
+      do.call(
+        nlmixr2est::nlmixr2,
+        c(list(object = object, data = data, est = est, control = ctl, table = table, save = save, envir = envir), dots)
+      )
     )),
     error = function(e) e
   )
   t1 <- proc.time()["elapsed"]
   if (inherits(fit, "error")) {
-    return(list(ok = FALSE, time = unname(t1 - t0), objf = NA_real_, theta = NULL,
-                error = conditionMessage(fit)))
+    return(list(ok = FALSE, time = unname(t1 - t0), objf = NA_real_, theta = NULL, error = conditionMessage(fit)))
   }
-  list(ok = TRUE, time = unname(t1 - t0),
-       objf = tryCatch(as.numeric(fit$objective), error = function(e) NA_real_),
-       theta = tryCatch(setNames(as.numeric(fit$theta), names(fit$theta)), error = function(e) NULL),
-       error = NA_character_)
+  list(
+    ok = TRUE,
+    time = unname(t1 - t0),
+    objf = tryCatch(as.numeric(fit$objective), error = function(e) NA_real_),
+    theta = tryCatch(setNames(as.numeric(fit$theta), names(fit$theta)), error = function(e) NULL),
+    error = NA_character_
+  )
 }
 
 # ---------------------------------------------------------------------------
@@ -170,28 +189,44 @@ dir.create(.outDir, showWarnings = FALSE, recursive = TRUE)
 
 .origNlmixr2 <- nlmixr2est::nlmixr2
 
-.benchNlmixr2Wrap <- function(object, data, est = NULL, control = list(),
-                               table = nlmixr2est::tableControl(), ..., save = NULL,
-                               envir = parent.frame()) {
+.benchNlmixr2Wrap <- function(
+  object,
+  data,
+  est = NULL,
+  control = list(),
+  table = nlmixr2est::tableControl(),
+  ...,
+  save = NULL,
+  envir = parent.frame()
+) {
   dots <- list(...)
   t0 <- proc.time()["elapsed"]
   fit <- tryCatch(
-    do.call(.origNlmixr2,
-            c(list(object = object, data = data, est = est, control = control,
-                   table = table, save = save, envir = envir), dots)),
+    do.call(
+      .origNlmixr2,
+      c(
+        list(object = object, data = data, est = est, control = control, table = table, save = save, envir = envir),
+        dots
+      )
+    ),
     error = function(e) e
   )
   t1 <- proc.time()["elapsed"]
-  if (inherits(fit, "error")) return(fit) # let the sourced file's own error handling see it
+  if (inherits(fit, "error")) {
+    return(fit)
+  } # let the sourced file's own error handling see it
   resolvedEst <- tryCatch(fit$est, error = function(e) NA_character_)
   isNlmFamily <- isTRUE(resolvedEst %in% .nlmFamilyEst)
   if (isNlmFamily) {
     label <- .nextBenchModelLabel()
     if (identical(resolvedEst, "bobyqa")) {
-      bq <- list(ok = TRUE, time = unname(t1 - t0),
-                 objf = tryCatch(as.numeric(fit$objective), error = function(e) NA_real_),
-                 theta = tryCatch(setNames(as.numeric(fit$theta), names(fit$theta)), error = function(e) NULL),
-                 error = NA_character_)
+      bq <- list(
+        ok = TRUE,
+        time = unname(t1 - t0),
+        objf = tryCatch(as.numeric(fit$objective), error = function(e) NA_real_),
+        theta = tryCatch(setNames(as.numeric(fit$theta), names(fit$theta)), error = function(e) NULL),
+        error = NA_character_
+      )
     } else {
       bq <- .benchFitOnce(object, data, "bobyqa", table, dots, save, envir)
     }
@@ -214,16 +249,24 @@ dir.create(.outDir, showWarnings = FALSE, recursive = TRUE)
   # silently discarded -- a swallowed error here means zero models were
   # intercepted, indistinguishable in the CSV from "this file legitimately has
   # no nlm-family fit" unless it is surfaced.
-  assign("test_that", function(desc, code) {
-    tryCatch(force(code), error = function(e) {
-      .blog("[%s] test_that(%s) errored: %s", .benchSourceTag, desc, conditionMessage(e))
-    })
-  }, envir = envir)
-  assign("nmTest", function(code) {
-    tryCatch(force(code), error = function(e) {
-      .blog("[%s] nmTest block errored: %s", .benchSourceTag, conditionMessage(e))
-    })
-  }, envir = envir)
+  assign(
+    "test_that",
+    function(desc, code) {
+      tryCatch(force(code), error = function(e) {
+        .blog("[%s] test_that(%s) errored: %s", .benchSourceTag, desc, conditionMessage(e))
+      })
+    },
+    envir = envir
+  )
+  assign(
+    "nmTest",
+    function(code) {
+      tryCatch(force(code), error = function(e) {
+        .blog("[%s] nmTest block errored: %s", .benchSourceTag, conditionMessage(e))
+      })
+    },
+    envir = envir
+  )
   assign("skip_on_cran", function(...) invisible(NULL), envir = envir)
   assign("skip_if_not_installed", function(...) invisible(NULL), envir = envir)
   assign("skip_on_ci", function(...) invisible(NULL), envir = envir)
@@ -242,8 +285,9 @@ dir.create(.outDir, showWarnings = FALSE, recursive = TRUE)
   helpers <- sort(list.files(helperDir, pattern = "^helper-.*\\.R$", full.names = TRUE))
   helpers <- helpers[basename(helpers) != "helper-zzz-fits.R"]
   for (h in helpers) {
-    tryCatch(source(h, local = envir, echo = FALSE),
-             error = function(e) .blog("helper source() failed for %s: %s", h, conditionMessage(e)))
+    tryCatch(source(h, local = envir, echo = FALSE), error = function(e) {
+      .blog("helper source() failed for %s: %s", h, conditionMessage(e))
+    })
   }
 }
 
@@ -253,13 +297,16 @@ dir.create(.outDir, showWarnings = FALSE, recursive = TRUE)
   env <- new.env(parent = globalenv())
   .sourceHelpers(env)
   .withBenchOverrides(env)
-  ok <- tryCatch({
-    source(path, local = env, echo = FALSE)
-    TRUE
-  }, error = function(e) {
-    .blog("[%s] source() failed: %s", sourceTag, conditionMessage(e))
-    FALSE
-  })
+  ok <- tryCatch(
+    {
+      source(path, local = env, echo = FALSE)
+      TRUE
+    },
+    error = function(e) {
+      .blog("[%s] source() failed: %s", sourceTag, conditionMessage(e))
+      FALSE
+    }
+  )
   if (ok && .benchModelCounter == 0L) {
     .benchLogSkip(sourceTag, "(whole file)", "sourced cleanly but no nlm-family fit was intercepted")
   } else if (!ok) {
@@ -276,13 +323,23 @@ dir.create(.outDir, showWarnings = FALSE, recursive = TRUE)
     .blog("test directory not found: %s -- aborting", testDir)
     return(invisible(NULL))
   }
-  files <- c("test-cens-dist-warn.R", "test-lincmt-ode-fit.R", "test-matexp.R",
-             "test-nlm-cens-t.R", "test-nlm-lik-contrib.R", "test-nlm.R",
-             "test-nlmsetup-fresh-rx.R", "test-optexpression-ebe.R",
-             "test-optim.R", "test-splitbolus-interp.R")
+  files <- c(
+    "test-cens-dist-warn.R",
+    "test-lincmt-ode-fit.R",
+    "test-matexp.R",
+    "test-nlm-cens-t.R",
+    "test-nlm-lik-contrib.R",
+    "test-nlm.R",
+    "test-nlmsetup-fresh-rx.R",
+    "test-optexpression-ebe.R",
+    "test-optim.R",
+    "test-splitbolus-interp.R"
+  )
   files <- file.path(testDir, files)
   missing <- files[!file.exists(files)]
-  for (m in missing) .blog("corpus file not found, skipping: %s", m)
+  for (m in missing) {
+    .blog("corpus file not found, skipping: %s", m)
+  }
   files <- files[file.exists(files)]
   .blog("found %d/%d corpus files", length(files), length(files) + length(missing))
   for (f in files) {
@@ -301,10 +358,24 @@ if (length(.benchResults)) {
   df <- do.call(rbind, .benchResults)
   write.csv(df, .csvPath, row.names = FALSE)
   mdPath <- file.path(.outDir, "trust-outer-benchmark.md")
-  header <- paste0("| source | model | bobyqa ok | bobyqa time | bobyqa objf | ",
-                    paste(sapply(.hessianMethods, function(hm)
-                      sprintf("trust[%s] ok | trust[%s] time | trust[%s] objf | trust[%s] dObjf | trust[%s] speedup | trust[%s] maxParDiff", hm, hm, hm, hm, hm, hm)),
-                      collapse = " | "), " |")
+  header <- paste0(
+    "| source | model | bobyqa ok | bobyqa time | bobyqa objf | ",
+    paste(
+      sapply(.hessianMethods, function(hm) {
+        sprintf(
+          "trust[%s] ok | trust[%s] time | trust[%s] objf | trust[%s] dObjf | trust[%s] speedup | trust[%s] maxParDiff",
+          hm,
+          hm,
+          hm,
+          hm,
+          hm,
+          hm
+        )
+      }),
+      collapse = " | "
+    ),
+    " |"
+  )
   sep <- paste0("|", paste(rep("---", 5 + 6 * length(.hessianMethods)), collapse = "|"), "|")
   lines <- c(
     "# est=\"trust\" hessianMethod= vs est=\"bobyqa\" benchmark",
@@ -318,17 +389,19 @@ if (length(.benchResults)) {
     dObjfCol <- ok[[paste0("trust_", hm, "_dObjf")]]
     speedupCol <- ok[[paste0("trust_", hm, "_speedup")]]
     maxParDiffCol <- ok[[paste0("trust_", hm, "_maxParDiff")]]
-    lines <- c(lines,
-      sprintf("## hessianMethod=\"%s\" (both converged: %d/%d)", hm, nrow(ok), nrow(df)),
-      "")
+    lines <- c(lines, sprintf("## hessianMethod=\"%s\" (both converged: %d/%d)", hm, nrow(ok), nrow(df)), "")
     if (nrow(ok)) {
-      lines <- c(lines,
+      lines <- c(
+        lines,
         sprintf("- Median speedup (bobyqa time / trust time): %.2fx", stats::median(speedupCol, na.rm = TRUE)),
         sprintf("- Median |objf diff|: %.4g", stats::median(abs(dObjfCol), na.rm = TRUE)),
         sprintf("- Median max |param diff|: %.4g", stats::median(maxParDiffCol, na.rm = TRUE)),
-        sprintf("- Entries with |objf diff| > 1 (likely a different local optimum, not just numeric noise): %d",
-                sum(abs(dObjfCol) > 1, na.rm = TRUE)),
-        "")
+        sprintf(
+          "- Entries with |objf diff| > 1 (likely a different local optimum, not just numeric noise): %d",
+          sum(abs(dObjfCol) > 1, na.rm = TRUE)
+        ),
+        ""
+      )
     }
   }
   lines <- c(lines, header, sep)
@@ -336,13 +409,15 @@ if (length(.benchResults)) {
     r <- df[i, ]
     cells <- c(r$source, r$model, r$bobyqa_ok, format(r$bobyqa_time), format(r$bobyqa_objf))
     for (hm in .hessianMethods) {
-      cells <- c(cells,
+      cells <- c(
+        cells,
         r[[paste0("trust_", hm, "_ok")]],
         format(r[[paste0("trust_", hm, "_time")]]),
         format(r[[paste0("trust_", hm, "_objf")]]),
         format(r[[paste0("trust_", hm, "_dObjf")]]),
         format(r[[paste0("trust_", hm, "_speedup")]]),
-        format(r[[paste0("trust_", hm, "_maxParDiff")]]))
+        format(r[[paste0("trust_", hm, "_maxParDiff")]])
+      )
     }
     lines <- c(lines, paste0("| ", paste(cells, collapse = " | "), " |"))
   }

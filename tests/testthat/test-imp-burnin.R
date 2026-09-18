@@ -47,9 +47,13 @@ nmTest({
     .dat <- nlmixr2data::theo_sd
     .run <- function(...) {
       suppressWarnings(suppressMessages(
-        nlmixr2(one.cmt, .dat, "impmap",
-                impmapControl(print = 0L, nIter = 5L, isample = 100L,
-                              covMethod = "", calcTables = FALSE, ...))))
+        nlmixr2(
+          one.cmt,
+          .dat,
+          "impmap",
+          impmapControl(print = 0L, nIter = 5L, isample = 100L, covMethod = "", calcTables = FALSE, ...)
+        )
+      ))
     }
     .f0 <- .run()
     .fb <- .run(nBurn = 3L, burnFreezeOmega = TRUE)
@@ -72,10 +76,11 @@ nmTest({
     .om <- grep("^o[0-9]+$", names(.ph), value = TRUE)
     expect_true(length(.om) > 0L)
     .omBurn <- .ph[seq_len(3L), .om, drop = FALSE]
-    for (.j in .om) expect_equal(length(unique(.omBurn[[.j]])), 1L)
+    for (.j in .om) {
+      expect_equal(length(unique(.omBurn[[.j]])), 1L)
+    }
     # ... and unfreezing actually releases it
-    expect_false(isTRUE(all.equal(unlist(.ph[4L, .om]), unlist(.ph[3L, .om]),
-                                  tolerance = 1e-8)))
+    expect_false(isTRUE(all.equal(unlist(.ph[4L, .om]), unlist(.ph[3L, .om]), tolerance = 1e-8)))
 
     # the thetas are NOT frozen -- the whole M-step still ran
     expect_false(isTRUE(all.equal(.ph$tka[3L], .ph$tka[1L], tolerance = 1e-8)))
@@ -99,11 +104,23 @@ nmTest({
     # a window of 2 with a loose ctol converges almost immediately without a
     # burn-in; with one, it cannot stop before iteration nBurn + nConvWindow
     .fb <- suppressWarnings(suppressMessages(
-      nlmixr2(one.cmt, .dat, "impmap",
-              impmapControl(print = 0L, nIter = 20L, isample = 100L,
-                            nBurn = 4L, nConvWindow = 2L, ctol = 1e-2,
-                            gammaRule = "floor", covMethod = "",
-                            calcTables = FALSE))))
+      nlmixr2(
+        one.cmt,
+        .dat,
+        "impmap",
+        impmapControl(
+          print = 0L,
+          nIter = 20L,
+          isample = 100L,
+          nBurn = 4L,
+          nConvWindow = 2L,
+          ctol = 1e-2,
+          gammaRule = "floor",
+          covMethod = "",
+          calcTables = FALSE
+        )
+      )
+    ))
     expect_gte(.fb$env$impIter, 4L + 2L + 1L)
   })
 })

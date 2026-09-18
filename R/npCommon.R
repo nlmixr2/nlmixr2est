@@ -39,9 +39,15 @@
   # does not already carry the element APPENDS it, leaving index 93 holding some other
   # control's value: a silently corrupted solve rather than a merely missing option.
   # Replacing an element that is already present keeps its position, so only that is safe.
-  if (is.null(rxControl) || !("safeLog" %in% names(rxControl))) return(rxControl)
-  if (!.npIsGeneralLik(ui)) return(rxControl)
-  if (!.rxode2HasSafeLogDomain()) return(rxControl)
+  if (is.null(rxControl) || !("safeLog" %in% names(rxControl))) {
+    return(rxControl)
+  }
+  if (!.npIsGeneralLik(ui)) {
+    return(rxControl)
+  }
+  if (!.rxode2HasSafeLogDomain()) {
+    return(rxControl)
+  }
   rxControl$safeLog <- 2L
   rxControl
 }
@@ -53,10 +59,13 @@
 .rxode2HasSafeLogDomain <- function() {
   if (is.null(nlmixr2global$rxSafeLogDomain)) {
     nlmixr2global$rxSafeLogDomain <-
-      tryCatch({
-        rxode2::rxControl(safeLog = 2L)
-        TRUE
-      }, error = function(e) FALSE)
+      tryCatch(
+        {
+          rxode2::rxControl(safeLog = 2L)
+          TRUE
+        },
+        error = function(e) FALSE
+      )
   }
   isTRUE(nlmixr2global$rxSafeLogDomain)
 }
@@ -86,10 +95,8 @@
 # value (e.g. -5) cannot silently behave like auto.
 #' @noRd
 .npAssertDfScan <- function(dfScan) {
-  if (length(dfScan) != 1L || is.na(dfScan) || !is.finite(dfScan) ||
-        as.integer(dfScan) != dfScan || dfScan < -1L) {
-    stop("'dfScan' must be a single integer: -1 (auto), 0 (skip), or a positive scan size",
-         call. = FALSE)
+  if (length(dfScan) != 1L || is.na(dfScan) || !is.finite(dfScan) || as.integer(dfScan) != dfScan || dfScan < -1L) {
+    stop("'dfScan' must be a single integer: -1 (auto), 0 (skip), or a positive scan size", call. = FALSE)
   }
   as.integer(dfScan)
 }
@@ -98,11 +105,11 @@
 # count, stored as NA) or a single positive integer thread count.
 #' @noRd
 .npAssertCores <- function(cores) {
-  if (is.null(cores)) return(NA_integer_)
-  if (length(cores) != 1L || is.na(cores) || !is.finite(cores) ||
-        as.integer(cores) != cores || cores < 1L) {
-    stop("'cores' must be NULL or a single positive integer number of threads",
-         call. = FALSE)
+  if (is.null(cores)) {
+    return(NA_integer_)
+  }
+  if (length(cores) != 1L || is.na(cores) || !is.finite(cores) || as.integer(cores) != cores || cores < 1L) {
+    stop("'cores' must be NULL or a single positive integer number of threads", call. = FALSE)
   }
   as.integer(cores)
 }
@@ -125,7 +132,8 @@
   # .impmapFamilyFit) and env$control so npagOuter (src/npag.cpp) sees them in
   # e$control while the standard foceiControl fields are preserved.
   .ctl <- get("control", envir = .ui)
-  if (!is.null(muModel)) {          # sugar variant: force mu-referencing on
+  if (!is.null(muModel)) {
+    # sugar variant: force mu-referencing on
     .ctl$muModel <- muModel
     .ctl$muRefCovAlg <- TRUE
   }
@@ -141,7 +149,9 @@
   .ctl$npPoints <-
     if (is.null(.ctl$points) || is.na(.ctl$points)) {
       .npAutoPoints(length(.box$names))
-    } else as.integer(.ctl$points)
+    } else {
+      as.integer(.ctl$points)
+    }
   .ctl$npCycles <- as.integer(if (is.null(.ctl$cycles)) 100L else .ctl$cycles)
   # global-optimality (D(F)) Sobol scan size (npag only): -1 auto
   # (max(2048, 2*npPoints)), 0 to skip the certificate, >0 for an explicit count.
@@ -152,8 +162,12 @@
   .ctl$npGammaOptimize <- !.isGenLik &&
     isTRUE(if (is.null(.ctl$gammaOptimize)) TRUE else .ctl$gammaOptimize)
   .ctl$npResidMode <- as.integer(
-    if (is.null(.ctl$residOptimize)) 1L
-    else switch(.ctl$residOptimize, none = 0L, alternate = 1L, final = 2L, 1L))
+    if (is.null(.ctl$residOptimize)) {
+      1L
+    } else {
+      switch(.ctl$residOptimize, none = 0L, alternate = 1L, final = 2L, 1L)
+    }
+  )
   # npb (stick-breaking Gibbs) knobs; npPoints doubles as the truncation level K
   .ctl$npAlpha <- as.numeric(if (is.null(.ctl$alpha)) 1.0 else .ctl$alpha)
   .ctl$npBurnin <- as.integer(if (is.null(.ctl$burnin)) 500L else .ctl$burnin)
@@ -163,11 +177,14 @@
   assign("control", .ctl, envir = .ui)
   env$control <- .ctl
   .control <- .ctl
-  on.exit({
-    if (is.environment(.ui) && exists("control", envir = .ui, inherits = FALSE)) {
-      rm("control", envir = .ui)
-    }
-  }, add = TRUE)
+  on.exit(
+    {
+      if (is.environment(.ui) && exists("control", envir = .ui, inherits = FALSE)) {
+        rm("control", envir = .ui)
+      }
+    },
+    add = TRUE
+  )
   env$impmapControl <- .control
   env$est <- est
   .ui <- env$ui
@@ -178,7 +195,9 @@
   # it afterwards; the fit results are independent of the thread count.
   .nCores <- if (is.null(.ctl$npCores) || is.na(.ctl$npCores)) {
     rxode2::getRxThreads()
-  } else as.integer(.ctl$npCores)
+  } else {
+    as.integer(.ctl$npCores)
+  }
   if (!is.na(.nCores) && .nCores >= 1L && rxode2::getRxThreads() != .nCores) {
     .oldThreads <- rxode2::getRxThreads()
     rxode2::setRxThreads(.nCores)
@@ -197,8 +216,7 @@
   .end <- match(as.character(errCond), as.character(endVar)) - 1L
   .bad <- is.na(.end)
   if (any(.bad)) {
-    warning("residual param endpoint unknown; moment warm start skipped",
-            call. = FALSE)
+    warning("residual param endpoint unknown; moment warm start skipped", call. = FALSE)
     .end[.bad] <- -1L
   }
   as.integer(.end)
@@ -218,22 +236,22 @@
   # it post-fit at the converged NP estimates via the decoupled engine
   .wantImp <- isTRUE(.control$impCov)
   .control$impCov <- FALSE
-  .covMethodUser <- .control$covMethod  # restored on the fit env control below
+  .covMethodUser <- .control$covMethod # restored on the fit env control below
   if (.wantImp) {
     # NP default: install the decoupled importance-sampling covariance post-fit
     .control$covMethodDeferred <- "imp"
-    .covMethodUser <- 0L                # no FOCEI recompute; the deferred hook installs imp
+    .covMethodUser <- 0L # no FOCEI recompute; the deferred hook installs imp
   } else if (is.null(.covMethodUser) || identical(as.integer(.covMethodUser), 0L)) {
     # an explicit non-imp request that resolved to none -> analytic FOCEI recompute
     .covMethodUser <- 2L
     .control$covType <- "analytic"
   }
   .control$maxOuterIterations <- 0L
-  .control$covMethod <- 0L  # covariance is computed post-fit (.foceiRecomputeMuCov)
+  .control$covMethod <- 0L # covariance is computed post-fit (.foceiRecomputeMuCov)
   # This is the control that reaches foceiFitCpp_ -> foceiSetup_ -> rxSolve_, so it is
   # where the log-domain request has to be made (see .npSafeLogDomain).
   .control$rxControl <- .npSafeLogDomain(.control$rxControl, ui)
-  .env <- ui$foceiOptEnv     # builds foceiMuGroupTheta (covariate mu-groups)
+  .env <- ui$foceiOptEnv # builds foceiMuGroupTheta (covariate mu-groups)
   .iniDf <- ui$iniDf
   .th <- .iniDf[!is.na(.iniDf$ntheta), ]
   .thNames <- .th[order(.th$ntheta), "name"]
@@ -246,12 +264,11 @@
   # fixed thetas are held constant: exclude them from the mean-shift (they keep
   # their ini value instead of being moved to the support-point mean).
   .thOrd <- .th[order(.th$ntheta), , drop = FALSE]
-  .thFixed <- which(!is.na(.thOrd$fix) & .thOrd$fix) - 1L   # 0-based fixed theta idx
-  .keep <- !is.na(.muThetaIdx) & !is.na(.muEtaIdx) &
-    !(.muThetaIdx %in% .covGroupTheta) & !(.muThetaIdx %in% .thFixed)
+  .thFixed <- which(!is.na(.thOrd$fix) & .thOrd$fix) - 1L # 0-based fixed theta idx
+  .keep <- !is.na(.muThetaIdx) & !is.na(.muEtaIdx) & !(.muThetaIdx %in% .covGroupTheta) & !(.muThetaIdx %in% .thFixed)
   .control$impMuThetaIdx <- .muThetaIdx[.keep]
   .control$impMuEtaIdx <- .muEtaIdx[.keep]
-  .control$impThetaSensIdx <- integer(0)   # no sensitivity model for npag/npb
+  .control$impThetaSensIdx <- integer(0) # no sensitivity model for npag/npb
   .etaOrd <- .etaRows[order(.etaRows$neta1), ]
   .control$impOmegaFixedEta <- as.integer(which(isTRUE(.etaOrd$fix) | .etaOrd$fix) - 1L)
   # 0-based theta indices of the variance-scale residual parameters (add/prop/
@@ -265,7 +282,8 @@
   # warm-start folds into.  Transform (boxCox/yeoJohnson), autocorrelation (ar)
   # and the power exponent (pw) are not variance scales.  Fixed ones are held.
   .errScale <- !is.na(.thOrd$err) &
-    !(.errType %in% c("boxCox", "yeoJohnson", "ar", "pw")) & !.isFix
+    !(.errType %in% c("boxCox", "yeoJohnson", "ar", "pw")) &
+    !.isFix
   .control$npResidScaleIdx <- as.integer(which(.errScale) - 1L)
   # ALL non-fixed residual (err-tagged) params are optimized by the residual step
   # (mixing distribution held fixed) against the extended-least-squares objective at
@@ -304,7 +322,9 @@
   .hi[.kind == 2L] <- pmin(.hi[.kind == 2L], 0.999)
   .control$npResidOptLower <- .lo
   .control$npResidOptUpper <- .hi
-  if (is.null(.control$npResidMode)) .control$npResidMode <- 1L
+  if (is.null(.control$npResidMode)) {
+    .control$npResidMode <- 1L
+  }
   .est <- if (exists("est", envir = env)) get("est", envir = env) else "npag"
   # mixture (mix()) proportions: npag estimates them via the in-cycle EM update; npb
   # samples them via a Dirichlet(alpha0 + component counts) Gibbs step.  Either way
@@ -372,8 +392,7 @@
   .env <- .fit$env
   if (is.environment(.env)) {
     .nm <- .etaNames
-    for (.o in c("npagSupport", "npagPosteriorEta",
-                 "npbSupport", "npbPosteriorEta", "npbMeanDraws")) {
+    for (.o in c("npagSupport", "npagPosteriorEta", "npbSupport", "npbPosteriorEta", "npbMeanDraws")) {
       .m <- .env[[.o]]
       if (is.matrix(.m) && ncol(.m) == length(.nm)) {
         colnames(.m) <- .nm
@@ -404,12 +423,31 @@
 # arguments) but never read.  There is no proposal density under a nonparametric
 # engine, so none of these can mean anything; silently ignoring them let someone
 # tune a fit with knobs that did nothing.  See plans/np-impmap-control-surface.md.
-.npInertImpCtl <- c("isample", "gamma", "gammaMethod", "df", "auto",
-                    "autoNonNormal", "autoNonmemSparse", "autoDfPatience",
-                    "iscaleMin", "iscaleMax", "iaccept", "mapIter",
-                    "nBurn", "burnFreezeOmega",
-                    "proposal", "propMixScale", "propMixWeight",
-                    "qr", "qrShift", "qrRefresh", "qrScramble", "sir", "sirSample")
+.npInertImpCtl <- c(
+  "isample",
+  "gamma",
+  "gammaMethod",
+  "df",
+  "auto",
+  "autoNonNormal",
+  "autoNonmemSparse",
+  "autoDfPatience",
+  "iscaleMin",
+  "iscaleMax",
+  "iaccept",
+  "mapIter",
+  "nBurn",
+  "burnFreezeOmega",
+  "proposal",
+  "propMixScale",
+  "propMixWeight",
+  "qr",
+  "qrShift",
+  "qrRefresh",
+  "qrScramble",
+  "sir",
+  "sirSample"
+)
 
 # Inert too, but with a real np counterpart worth naming.  npag has no seed of
 # its own -- its grid is Sobol-deterministic -- so impSeed only remaps under npb.
@@ -440,7 +478,9 @@
 
 .npImpDefEnv <- new.env(parent = emptyenv())
 .npImpDefaults <- function() {
-  if (is.null(.npImpDefEnv$d)) .npImpDefEnv$d <- impmapControl()
+  if (is.null(.npImpDefEnv$d)) {
+    .npImpDefEnv$d <- impmapControl()
+  }
   .npImpDefEnv$d
 }
 
@@ -456,7 +496,9 @@
 #' @return character vector of supplied argument names
 #' @noRd
 .npCallNames <- function(sc) {
-  if (is.null(sc)) return(character(0))
+  if (is.null(sc)) {
+    return(character(0))
+  }
   .n <- names(as.list(sc)[-1L])
   if (is.null(.n)) character(0) else .n[nzchar(.n)]
 }
@@ -471,8 +513,12 @@
 #' @return invisible(TRUE), or throws
 #' @noRd
 .npAssertImpCtl <- function(vals, engine = "npag", explicit = character(0)) {
-  if (length(vals) == 0L && length(explicit) == 0L) return(invisible(TRUE))
-  if (length(vals) && is.null(names(vals))) return(invisible(TRUE))
+  if (length(vals) == 0L && length(explicit) == 0L) {
+    return(invisible(TRUE))
+  }
+  if (length(vals) && is.null(names(vals))) {
+    return(invisible(TRUE))
+  }
   .isNpb <- grepl("npb$", engine)
   .map <- if (.isNpb) .npRemapImpCtlNpb else .npRemapImpCtl
   .def <- .npImpDefaults()
@@ -483,48 +529,74 @@
   # default.  A name that only arrived because a control object carries it counts
   # solely when its value differs from what the constructor would have produced.
   .asked <- function(n) {
-    if (n %in% explicit) return(TRUE)
+    if (n %in% explicit) {
+      return(TRUE)
+    }
     # resolved/stamped at fit time -- a differing value is the fit's doing, not
     # the caller's, so only an explicitly typed name counts (handled above)
-    if (n %in% .npRuntimeStamped) return(FALSE)
-    if (!n %in% names(vals)) return(FALSE)
+    if (n %in% .npRuntimeStamped) {
+      return(FALSE)
+    }
+    if (!n %in% names(vals)) {
+      return(FALSE)
+    }
     .v <- vals[[n]]
-    if (length(.v) == 1L && is.atomic(.v) && is.na(.v)) return(TRUE)  # name-only
-    if (!n %in% names(.def)) return(TRUE)
+    if (length(.v) == 1L && is.atomic(.v) && is.na(.v)) {
+      return(TRUE)
+    } # name-only
+    if (!n %in% names(.def)) {
+      return(TRUE)
+    }
     !isTRUE(all.equal(.v, .def[[n]]))
   }
   .nms <- Filter(.asked, union(names(vals), explicit))
   .bad <- intersect(.nms, .npInertImpCtl)
-  if (!.isNpb) .bad <- union(.bad, intersect(.nms, "impSeed"))
+  if (!.isNpb) {
+    .bad <- union(.bad, intersect(.nms, "impSeed"))
+  }
   .remap <- intersect(.nms, names(.map))
   # npb's own inert formals reach here too, so a raw list gets the same check
   .npbBad <- character(0)
   if (.isNpb) {
-    .npbBad <- Filter(function(n) {
-      n %in% explicit ||
-        (n %in% names(vals) && !isTRUE(all.equal(vals[[n]], .npbInertFormals[[n]])))
-    }, union(intersect(names(vals), names(.npbInertFormals)),
-             intersect(explicit, names(.npbInertFormals))))
+    .npbBad <- Filter(
+      function(n) {
+        n %in% explicit || (n %in% names(vals) && !isTRUE(all.equal(vals[[n]], .npbInertFormals[[n]])))
+      },
+      union(intersect(names(vals), names(.npbInertFormals)), intersect(explicit, names(.npbInertFormals)))
+    )
   }
   if (length(.bad) == 0L && length(.remap) == 0L && length(.npbBad) == 0L) {
     return(invisible(TRUE))
   }
   .msg <- character(0)
   if (length(.bad)) {
-    .msg <- c(.msg, paste0("'", paste(.bad, collapse="', '"),
-                           "' configure the importance-sampling proposal, which est=\"",
-                           engine, "\" does not build"))
+    .msg <- c(
+      .msg,
+      paste0(
+        "'",
+        paste(.bad, collapse = "', '"),
+        "' configure the importance-sampling proposal, which est=\"",
+        engine,
+        "\" does not build"
+      )
+    )
   }
   if (length(.remap)) {
-    .msg <- c(.msg, paste0("use ",
-                           paste(paste0("'", unname(.map[.remap]), "'"), collapse=", "),
-                           " instead of '", paste(.remap, collapse="', '"), "'"))
+    .msg <- c(
+      .msg,
+      paste0(
+        "use ",
+        paste(paste0("'", unname(.map[.remap]), "'"), collapse = ", "),
+        " instead of '",
+        paste(.remap, collapse = "', '"),
+        "'"
+      )
+    )
   }
   if (length(.npbBad)) {
-    .msg <- c(.msg, paste0("'", paste(.npbBad, collapse="', '"),
-                           "' is not used by est=\"", engine, "\""))
+    .msg <- c(.msg, paste0("'", paste(.npbBad, collapse = "', '"), "' is not used by est=\"", engine, "\""))
   }
-  stop(paste(.msg, collapse="; "), call. = FALSE)
+  stop(paste(.msg, collapse = "; "), call. = FALSE)
 }
 
 #' Reject inert controls that actually TOOK EFFECT on a built control
@@ -542,17 +614,30 @@
 .npAssertBuilt <- function(ctl, engine = "npag") {
   .def <- .npImpDefaults()
   .chk <- setdiff(union(.npInertImpCtl, names(.npRemapImpCtlNpb)), .npRuntimeStamped)
-  .bad <- Filter(function(n) {
-    n %in% names(ctl) && n %in% names(.def) &&
-      !isTRUE(all.equal(ctl[[n]], .def[[n]]))
-  }, .chk)
+  .bad <- Filter(
+    function(n) {
+      n %in% names(ctl) && n %in% names(.def) && !isTRUE(all.equal(ctl[[n]], .def[[n]]))
+    },
+    .chk
+  )
   # sirSample is DERIVED from isample, so it always travels with it; naming both
   # is noise when isample is already the thing that was set
-  if (length(.bad) > 1L && "isample" %in% .bad) .bad <- setdiff(.bad, "sirSample")
-  if (length(.bad) == 0L) return(invisible(TRUE))
-  stop(paste0("'", paste(.bad, collapse = "', '"),
-              "' configure the importance-sampling proposal, which est=\"",
-              engine, "\" does not build"), call. = FALSE)
+  if (length(.bad) > 1L && "isample" %in% .bad) {
+    .bad <- setdiff(.bad, "sirSample")
+  }
+  if (length(.bad) == 0L) {
+    return(invisible(TRUE))
+  }
+  stop(
+    paste0(
+      "'",
+      paste(.bad, collapse = "', '"),
+      "' configure the importance-sampling proposal, which est=\"",
+      engine,
+      "\" does not build"
+    ),
+    call. = FALSE
+  )
 }
 
 # Validate a control for a nonparametric engine.  The impmap validator rebuilds
@@ -563,15 +648,33 @@
   .in <- control[[1]]
   # raw lists reach here without passing through npagControl()/npbControl(), so
   # this is the path a bare list(isample = 500) would otherwise slip through
-  if (is.list(.in)) .npAssertImpCtl(.in, est)
-  .np <- list(points = NA_integer_, cycles = 100L, gammaOptimize = TRUE,
-              residOptimize = "alternate", muExpand = FALSE,
-              gridWidth = 4, gridBounds = "auto", dfScan = -1L, npCores = NA_integer_,
-              alpha = 1.0, burnin = 500L, nsamp = 500L, nchains = 1L,
-              propSd = 0.2, seed = 42L)
-  for (.n in names(.np)) if (!is.null(.in[[.n]])) .np[[.n]] <- .in[[.n]]
   if (is.list(.in)) {
-    for (.n in c(names(.np), "est")) .in[[.n]] <- NULL   # strip npag/npb-only fields
+    .npAssertImpCtl(.in, est)
+  }
+  .np <- list(
+    points = NA_integer_,
+    cycles = 100L,
+    gammaOptimize = TRUE,
+    residOptimize = "alternate",
+    muExpand = FALSE,
+    gridWidth = 4,
+    gridBounds = "auto",
+    dfScan = -1L,
+    npCores = NA_integer_,
+    alpha = 1.0,
+    burnin = 500L,
+    nsamp = 500L,
+    nchains = 1L,
+    propSd = 0.2,
+    seed = 42L
+  )
+  for (.n in names(.np)) {
+    if (!is.null(.in[[.n]])) .np[[.n]] <- .in[[.n]]
+  }
+  if (is.list(.in)) {
+    for (.n in c(names(.np), "est")) {
+      .in[[.n]] <- NULL
+    } # strip npag/npb-only fields
   }
   .ctl <- getValidNlmixrCtl.impmap(list(.in))
   .ctl$est <- est
@@ -600,22 +703,30 @@
 #' @rdname getValidNlmixrControl
 #' @export
 getValidNlmixrCtl.mnpag <- function(control) {
-  .ctl <- .npValidCtl(control, "mnpag"); .ctl$muModel <- "lin"; .ctl
+  .ctl <- .npValidCtl(control, "mnpag")
+  .ctl$muModel <- "lin"
+  .ctl
 }
 #' @rdname getValidNlmixrControl
 #' @export
 getValidNlmixrCtl.inpag <- function(control) {
-  .ctl <- .npValidCtl(control, "inpag"); .ctl$muModel <- "irls"; .ctl
+  .ctl <- .npValidCtl(control, "inpag")
+  .ctl$muModel <- "irls"
+  .ctl
 }
 #' @rdname getValidNlmixrControl
 #' @export
 getValidNlmixrCtl.mnpb <- function(control) {
-  .ctl <- .npValidCtl(control, "mnpb"); .ctl$muModel <- "lin"; .ctl
+  .ctl <- .npValidCtl(control, "mnpb")
+  .ctl$muModel <- "lin"
+  .ctl
 }
 #' @rdname getValidNlmixrControl
 #' @export
 getValidNlmixrCtl.inpb <- function(control) {
-  .ctl <- .npValidCtl(control, "inpb"); .ctl$muModel <- "irls"; .ctl
+  .ctl <- .npValidCtl(control, "inpb")
+  .ctl$muModel <- "irls"
+  .ctl
 }
 
 #' @rdname nmObjGetControl

@@ -12,6 +12,8 @@
 ^tools$
 ^.augment$
 ^CLAUDE.md$
+^\.lintr$
+^air\.toml$
 ^\.habit-hooks$
 ^bench$
 ^.antigravity$

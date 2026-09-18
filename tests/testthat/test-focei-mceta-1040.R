@@ -35,20 +35,31 @@ nmTest({
       .ev <- rxode2::et(.ev, seq(0.5, 96, length.out = 12))
       .ev <- rxode2::et(.ev, id = 1:60)
       .d <- suppressWarnings(suppressMessages(
-        as.data.frame(rxode2::rxSolve(.mcetaMod, .ev, addDosing = TRUE))))
+        as.data.frame(rxode2::rxSolve(.mcetaMod, .ev, addDosing = TRUE))
+      ))
     })
-    .dat <- data.frame(ID = .d$id, TIME = .d$time, DV = .d$sim, EVID = .d$evid,
-                       AMT = ifelse(is.na(.d$amt), 0, .d$amt))
+    .dat <- data.frame(ID = .d$id, TIME = .d$time, DV = .d$sim, EVID = .d$evid, AMT = ifelse(is.na(.d$amt), 0, .d$amt))
     .dat$DV[.dat$EVID != 0] <- NA
     .dat
   }
 
   .mcetaFit <- function(dat, mceta, maxOuter = 0L, ...) {
     suppressWarnings(suppressMessages(
-      nlmixr2(.mcetaMod, dat, "focei",
-              foceiControl(print = 0L, covMethod = "", maxOuterIterations = maxOuter,
-                           maxInnerIterations = 5000L, calcTables = FALSE,
-                           mceta = mceta, ...))))
+      nlmixr2(
+        .mcetaMod,
+        dat,
+        "focei",
+        foceiControl(
+          print = 0L,
+          covMethod = "",
+          maxOuterIterations = maxOuter,
+          maxInnerIterations = 5000L,
+          calcTables = FALSE,
+          mceta = mceta,
+          ...
+        )
+      )
+    ))
   }
 
   test_that("mceta > 0 explores its draws and cannot land worse than mceta=0", {
@@ -122,13 +133,18 @@ nmTest({
     .warn <- character(0)
     .m5 <- withCallingHandlers(
       suppressMessages(
-        nlmixr2(.muMod, nlmixr2data::theo_sd, "focei",
-                foceiControl(print = 0L, covMethod = "", calcTables = FALSE,
-                             mceta = 5L))),
+        nlmixr2(
+          .muMod,
+          nlmixr2data::theo_sd,
+          "focei",
+          foceiControl(print = 0L, covMethod = "", calcTables = FALSE, mceta = 5L)
+        )
+      ),
       warning = function(w) {
         .warn <<- c(.warn, conditionMessage(w))
         invokeRestart("muffleWarning")
-      })
+      }
+    )
     # The setting survived, and the draws were explored.
     expect_true(is.integer(.m5$env$nMcetaStart))
     expect_gt(.m5$env$nMcetaStart[["sample"]], 0L)

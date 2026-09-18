@@ -30,29 +30,41 @@ nmTest({
   .mkDat <- function(seed = 7L, N = 24L) {
     .testSeed(seed)
     .t <- c(0.5, 1, 2, 4, 6, 8, 12, 24)
-    do.call(rbind, lapply(seq_len(N), function(i) {
-      .e <- data.frame(ID = i, TIME = 0, DV = NA_real_, EVID = 1, AMT = 100)
-      .b <- exp(log(3) + stats::rnorm(1, 0, 0.3))
-      .ka <- exp(0.4); .cl <- exp(-0.9)
-      .cen <- 100 * .ka / (.ka - .cl) * (exp(-.cl * .t) - exp(-.ka * .t))
-      .o <- data.frame(ID = i, TIME = .t,
-                       DV = .b * .cen + stats::rnorm(length(.t), 0, 1.2),
-                       EVID = 0, AMT = 0)
-      rbind(.e, .o)
-    }))
+    do.call(
+      rbind,
+      lapply(seq_len(N), function(i) {
+        .e <- data.frame(ID = i, TIME = 0, DV = NA_real_, EVID = 1, AMT = 100)
+        .b <- exp(log(3) + stats::rnorm(1, 0, 0.3))
+        .ka <- exp(0.4)
+        .cl <- exp(-0.9)
+        .cen <- 100 * .ka / (.ka - .cl) * (exp(-.cl * .t) - exp(-.ka * .t))
+        .o <- data.frame(ID = i, TIME = .t, DV = .b * .cen + stats::rnorm(length(.t), 0, 1.2), EVID = 0, AMT = 0)
+        rbind(.e, .o)
+      })
+    )
   }
 
   .ctl <- function(...) {
-    vaeControl(print = 0L, calcTables = FALSE, returnVae = TRUE,
-               covariateSelection = FALSE, seed = 3L,
-               itersBurnIn = 12L, iters = 34L, klWarmup = 6L, gammaIter = 24L, ...)
+    vaeControl(
+      print = 0L,
+      calcTables = FALSE,
+      returnVae = TRUE,
+      covariateSelection = FALSE,
+      seed = 3L,
+      itersBurnIn = 12L,
+      iters = 34L,
+      klWarmup = 6L,
+      gammaIter = 24L,
+      ...
+    )
   }
 
   test_that("nonMuTheta='grad' takes the gradient path on an ll() model", {
     skip_on_cran()
     .dat <- .mkDat()
     .r <- suppressWarnings(suppressMessages(
-      nlmixr2(.llMod(), .dat, est = "vae", control = .ctl(nonMuTheta = "grad"))))
+      nlmixr2(.llMod(), .dat, est = "vae", control = .ctl(nonMuTheta = "grad"))
+    ))
     ## the mechanism assertion: without the scope widen this is 0 gradient calls
     ## and the fit silently runs bobyqa instead
     expect_true(.r$nRegGrad > 0L)
@@ -63,15 +75,16 @@ nmTest({
     skip_on_cran()
     .dat <- .mkDat()
     .g <- suppressWarnings(suppressMessages(
-      nlmixr2(.llMod(), .dat, est = "vae", control = .ctl(nonMuTheta = "grad"))))
+      nlmixr2(.llMod(), .dat, est = "vae", control = .ctl(nonMuTheta = "grad"))
+    ))
     .b <- suppressWarnings(suppressMessages(
-      nlmixr2(.llMod(), .dat, est = "vae", control = .ctl(nonMuTheta = "regress"))))
+      nlmixr2(.llMod(), .dat, est = "vae", control = .ctl(nonMuTheta = "regress"))
+    ))
     ## the two M-steps target different functionals (the gradient differentiates
     ## the marginal Laplace objective, bobyqa optimizes the joint at frozen etas),
     ## so this is an agreement band, not an identity
     for (.n in names(.g$regressTheta)) {
-      expect_equal(unname(.g$regressTheta[[.n]]), unname(.b$regressTheta[[.n]]),
-                   tolerance = 0.25)
+      expect_equal(unname(.g$regressTheta[[.n]]), unname(.b$regressTheta[[.n]]), tolerance = 0.25)
     }
     expect_equal(unname(.g$zPop), unname(.b$zPop), tolerance = 0.25)
   })
@@ -80,15 +93,14 @@ nmTest({
     skip_on_cran()
     .dat <- .mkDat()
     .r <- suppressWarnings(suppressMessages(
-      nlmixr2(.llMod(), .dat, est = "vae",
-              control = .ctl(nonMuTheta = "regress", residOptimize = "twoStage"))))
+      nlmixr2(.llMod(), .dat, est = "vae", control = .ctl(nonMuTheta = "regress", residOptimize = "twoStage"))
+    ))
     ## the mechanism assertion: stage 2 was entered.  Before the eligibility
     ## generalization an ll() model had NO stage-2 parameter, so this was 0 and
     ## "twoStage" was indistinguishable from the joint "optimize" solve.
     expect_true(.r$nStage2 > 0L)
     ## and it actually moved lsd off its ini() value, toward the simulated 1.2
-    expect_false(isTRUE(all.equal(unname(.r$regressTheta[["lsd"]]), log(1.2),
-                                  tolerance = 1e-8)))
+    expect_false(isTRUE(all.equal(unname(.r$regressTheta[["lsd"]]), log(1.2), tolerance = 1e-8)))
     expect_lt(abs(.r$regressTheta[["lsd"]] - log(1.2)), 0.6)
     ## the structural thetas stayed in stage 1 and are still sane
     expect_true(all(is.finite(.r$regressTheta[c("lka", "lcl")])))
@@ -109,11 +121,15 @@ nmTest({
     }
     .ui <- rxode2::assertRxUi(.gMod())
     ## tv is structural (feeds d/dt through v) and add.sd is the error param
-    expect_equal(.vaeRegressStage2(.ui, c("tv", "add.sd"), c(-1L, 0L)),
-                 c(0L, 1L))
+    expect_equal(.vaeRegressStage2(.ui, c("tv", "add.sd"), c(-1L, 0L)), c(0L, 1L))
     .r <- suppressWarnings(suppressMessages(
-      nlmixr2(.gMod(), nlmixr2data::theo_sd, est = "vae",
-              control = .ctl(nonMuTheta = "regress", residOptimize = "twoStage"))))
+      nlmixr2(
+        .gMod(),
+        nlmixr2data::theo_sd,
+        est = "vae",
+        control = .ctl(nonMuTheta = "regress", residOptimize = "twoStage")
+      )
+    ))
     expect_true(.r$nStage2 > 0L)
     expect_true(is.finite(.r$a[["add.sd"]]))
   })

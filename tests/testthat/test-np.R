@@ -1,7 +1,5 @@
 nmTest({
-
   test_that("Test naive pooled", {
-
     one.cmt <- function() {
       ini({
         ## You may label each parameter with a comment
@@ -21,8 +19,8 @@ nmTest({
       })
     }
 
-    expect_error(.nlmixr(one.cmt, nlmixr2data::theo_sd, "foce", list(print=0)), NA)
-    expect_error(.nlmixr(one.cmt, nlmixr2data::theo_sd, "focei", list(print=0)), NA)
+    expect_error(.nlmixr(one.cmt, nlmixr2data::theo_sd, "foce", list(print = 0)), NA)
+    expect_error(.nlmixr(one.cmt, nlmixr2data::theo_sd, "focei", list(print = 0)), NA)
 
     one.cmt <- function() {
       ini({
@@ -46,11 +44,11 @@ nmTest({
       })
     }
 
-    expect_error(.nlmixr(one.cmt, nlmixr2data::theo_sd, "foce", list(print=0)), NA)
+    expect_error(.nlmixr(one.cmt, nlmixr2data::theo_sd, "foce", list(print = 0)), NA)
 
-    expect_error(.nlmixr(one.cmt, nlmixr2data::theo_sd, "focei", list(print=0)), NA)
+    expect_error(.nlmixr(one.cmt, nlmixr2data::theo_sd, "focei", list(print = 0)), NA)
     expect_error(
-      .nlmixr(one.cmt, nlmixr2data::theo_sd, "saem", list(print=0)),
+      .nlmixr(one.cmt, nlmixr2data::theo_sd, "saem", list(print = 0)),
       regexp = "needs to be a mixed effect model for the estimation routine 'saem'",
       fixed = TRUE
     )
@@ -77,13 +75,12 @@ nmTest({
       })
     }
 
-    expect_error(.nlmixr(one.cmt, nlmixr2data::theo_sd, "foce", list(print=0)), NA)
-    expect_error(.nlmixr(one.cmt, nlmixr2data::theo_sd, "focei", list(print=0)), NA)
+    expect_error(.nlmixr(one.cmt, nlmixr2data::theo_sd, "foce", list(print = 0)), NA)
+    expect_error(.nlmixr(one.cmt, nlmixr2data::theo_sd, "focei", list(print = 0)), NA)
     expect_error(.nlmixr(one.cmt, nlmixr2data::theo_sd, "saem", control = saemControlFast), NA)
   })
 
   test_that("parameters are updated in fit object", {
-
     one.cmt <- function() {
       ini({
         ## You may label each parameter with a comment
@@ -103,13 +100,10 @@ nmTest({
       })
     }
 
-    fit <- suppressMessages(suppressWarnings(.nlmixr(one.cmt, nlmixr2data::theo_sd, "focei",
-                                                     list(print=0))))
+    fit <- suppressMessages(suppressWarnings(.nlmixr(one.cmt, nlmixr2data::theo_sd, "focei", list(print = 0))))
 
     f1 <- suppressMessages(one.cmt())
 
     expect_false(isTRUE(all.equal(f1$iniDf$est, fit$iniDf$est)))
-
   })
-
 })

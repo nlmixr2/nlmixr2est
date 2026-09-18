@@ -14,24 +14,38 @@
 #' @return TRUE when the value is finite and within the declared bounds
 #' @noRd
 .vaeIcAdjInBounds <- function(ui, thName, value) {
-  if (!is.finite(value)) return(FALSE)
+  if (!is.finite(value)) {
+    return(FALSE)
+  }
   .idf <- tryCatch(ui$iniDf, error = function(e) NULL)
-  if (is.null(.idf)) return(TRUE)
+  if (is.null(.idf)) {
+    return(TRUE)
+  }
   .i <- match(thName, .idf$name)
-  if (is.na(.i)) return(TRUE)
+  if (is.na(.i)) {
+    return(TRUE)
+  }
   .lo <- if (is.null(.idf$lower)) -Inf else .idf$lower[.i]
   .hi <- if (is.null(.idf$upper)) Inf else .idf$upper[.i]
-  if (is.na(.lo)) .lo <- -Inf
-  if (is.na(.hi)) .hi <- Inf
+  if (is.na(.lo)) {
+    .lo <- -Inf
+  }
+  if (is.na(.hi)) {
+    .hi <- Inf
+  }
   value > .lo && value < .hi
 }
 
 #' Make a generated coefficient name unique against those already emitted
 #' @noRd
 .vaeUniqueName <- function(nm, used) {
-  if (!(nm %in% used)) return(nm)
+  if (!(nm %in% used)) {
+    return(nm)
+  }
   .i <- 2L
-  while (paste0(nm, .i) %in% used) .i <- .i + 1L
+  while (paste0(nm, .i) %in% used) {
+    .i <- .i + 1L
+  }
   paste0(nm, .i)
 }
 
@@ -52,30 +66,43 @@
 .vaeInjectCov <- function(line, thName, etaName, termsTxt) {
   .repl <- str2lang(paste0(thName, " + ", termsTxt))
   .done <- FALSE
-  .isAdd <- function(e) is.call(e) && is.name(e[[1L]]) &&
-    as.character(e[[1L]]) %in% c("+", "-")
+  .isAdd <- function(e) is.call(e) && is.name(e[[1L]]) && as.character(e[[1L]]) %in% c("+", "-")
   ## names reachable through a flattened +/- chain
   .addVars <- function(e) {
-    if (is.name(e)) return(as.character(e))
-    if (.isAdd(e)) return(unlist(lapply(as.list(e)[-1L], .addVars), use.names = FALSE))
+    if (is.name(e)) {
+      return(as.character(e))
+    }
+    if (.isAdd(e)) {
+      return(unlist(lapply(as.list(e)[-1L], .addVars), use.names = FALSE))
+    }
     character(0)
   }
   .sub <- function(x) {
-    if (.done) return(x)
+    if (.done) {
+      return(x)
+    }
     if (is.name(x) && identical(as.character(x), thName)) {
       .done <<- TRUE
       return(.repl)
     }
-    if (.isAdd(x)) for (.i in seq_along(x)[-1L]) x[[.i]] <- .sub(x[[.i]])
+    if (.isAdd(x)) {
+      for (.i in seq_along(x)[-1L]) {
+        x[[.i]] <- .sub(x[[.i]])
+      }
+    }
     x
   }
   .rec <- function(e) {
-    if (.done || !is.call(e)) return(e)
+    if (.done || !is.call(e)) {
+      return(e)
+    }
     if (.isAdd(e)) {
       .v <- .addVars(e)
       if (thName %in% .v && etaName %in% .v) return(.sub(e))
     }
-    for (.i in seq_along(e)[-1L]) e[[.i]] <- .rec(e[[.i]])
+    for (.i in seq_along(e)[-1L]) {
+      e[[.i]] <- .rec(e[[.i]])
+    }
     e
   }
   .out <- .rec(line)
@@ -95,12 +122,15 @@
 #' @noRd
 .vaeSelectedShape <- function(prep, parAliases, j) {
   .own <- prep$covShape[j]
-  if (identical(.own, "cat") || .own %in% .vaeHockeyArms ||
-        is.null(prep$shapeRules)) return(.own)
+  if (identical(.own, "cat") || .own %in% .vaeHockeyArms || is.null(prep$shapeRules)) {
+    return(.own)
+  }
   .ok <- .vaeShapesFor(prep$shapeRules, parAliases, prep$covRaw[j])
   ## never write a shape that is not expressible at this center
   .ok <- .ok[.vaeShapeUsable(.ok, prep$covPop[j])]
-  if (length(.ok) == 0L) return(.own)
+  if (length(.ok) == 0L) {
+    return(.own)
+  }
   .m <- .ok[.vaeShapeFamily(.ok) == prep$covFamily[j]]
   ## the covAllow shape mask makes an empty match unreachable in a real fit;
   ## the column's own shape is a valid parameterization of the same family
@@ -123,9 +153,13 @@
 #' @author Matthew L. Fidler
 .vaeSetIniMixProb <- function(ui2, ui, fit, setIni) {
   .nm <- tryCatch(ui$mixProbs, error = function(e) character(0))
-  if (is.null(.nm) || length(.nm) == 0L) return(ui2)
+  if (is.null(.nm) || length(.nm) == 0L) {
+    return(ui2)
+  }
   .p <- fit$mixProb
-  if (is.null(.p) || length(.p) != length(.nm) + 1L || !all(is.finite(.p))) return(ui2)
+  if (is.null(.p) || length(.p) != length(.nm) + 1L || !all(is.finite(.p))) {
+    return(ui2)
+  }
   .p <- pmin(pmax(.p, 1e-6), 1 - 1e-6)
   .p <- .p / sum(.p)
   for (.k in seq_along(.nm)) {
@@ -143,7 +177,7 @@
 .vaeUpdateModel <- function(ui, fit) {
   prep <- fit$prep
   .map <- .foceiEtaThetaMap(ui)
-  thetaNames <- .map$thetaForEta        # mu-referenced theta per eta (e.g. lka)
+  thetaNames <- .map$thetaForEta # mu-referenced theta per eta (e.g. lka)
   covNames <- fit$covNames
   ui2 <- ui
   betaVals <- list()
@@ -156,13 +190,19 @@
     ## a free/fixed eta (thetaForEta == NA: literalFix-ed or non-mu-referenced)
     ## has no structural theta to attach a covariate to and is excluded from
     ## covariate selection -- skip it (its structure is already in the model)
-    if (is.na(thetaNames[k])) next
+    if (is.na(thetaNames[k])) {
+      next
+    }
     sel <- if (is.null(fit$selected)) integer(0) else which(fit$selected[k, ])
-    if (length(sel) == 0L) next
+    if (length(sel) == 0L) {
+      next
+    }
     thName <- thetaNames[k]
     .lines <- ui2$lstExpr
     .idx <- which(vapply(.lines, function(e) thName %in% all.vars(e), logical(1)))
-    if (length(.idx) == 0L) next
+    if (length(.idx) == 0L) {
+      next
+    }
     .idx <- .idx[1]
     terms <- character(0)
     ## names this parameter answers to in a shapes= rule
@@ -182,8 +222,10 @@
       ## CENTERED shape instead: same fit, no intercept correction needed.
       ## (a hockey arm never gets here: both arms vanish at the knot, so their
       ## interceptAdj is 0 and there is nothing to push out of bounds)
-      if (.r$interceptAdj != 0 &&
-            !.vaeIcAdjInBounds(ui, thName, fit$zPop[k] + icAdj[k] + .r$interceptAdj)) {
+      if (
+        .r$interceptAdj != 0 &&
+          !.vaeIcAdjInBounds(ui, thName, fit$zPop[k] + icAdj[k] + .r$interceptAdj)
+      ) {
         .shp <- if (identical(prep$covFamily[j], "log")) "power" else "lin"
         .r <- .vaeShapeBeta(.shp, .ctr, fit$beta[k, j])
       }
@@ -228,9 +270,7 @@
     if (is.null(.new)) {
       ## no mu-referenced occurrence found (an unusual line shape); fall back to
       ## the FIRST textual occurrence rather than every one of them
-      .new <- str2lang(sub(paste0("\\b", thName, "\\b"),
-                           paste0(thName, " + ", .termTxt),
-                           deparse1(.lines[[.idx]])))
+      .new <- str2lang(sub(paste0("\\b", thName, "\\b"), paste0(thName, " + ", .termTxt), deparse1(.lines[[.idx]])))
     }
     ui2 <- do.call(rxode2::model, list(ui2, .new))
   }
@@ -241,12 +281,13 @@
     ## a free/fixed eta has no structural theta (thetaForEta == NA) -- its
     ## population location is already a literal in the model, so only set omega
     if (!is.na(thetaNames[k])) {
-      ui2 <- .setIni(ui2, paste0(thetaNames[k], " <- ",
-                                 signif(fit$zPop[k] + icAdj[k], 12)))
+      ui2 <- .setIni(ui2, paste0(thetaNames[k], " <- ", signif(fit$zPop[k] + icAdj[k], 12)))
     }
   }
   ui2 <- .omegaWriteIni(ui2, .omegaFitMat(fit, fit$prep$etaNames))
-  for (bn in names(betaVals)) ui2 <- .setIni(ui2, paste0(bn, " <- ", signif(betaVals[[bn]], 12)))
+  for (bn in names(betaVals)) {
+    ui2 <- .setIni(ui2, paste0(bn, " <- ", signif(betaVals[[bn]], 12)))
+  }
   .errRow <- ui$iniDf[!is.na(ui$iniDf$err) & !is.na(ui$iniDf$ntheta), , drop = FALSE]
   for (en in .errRow$name) {
     .v <- if (!is.null(names(fit$a)) && en %in% names(fit$a)) fit$a[[en]] else fit$a[1]
@@ -254,8 +295,7 @@
   }
   ## 3. non-mu thetas estimated by the bobyqa regression (nonMuTheta="regress"):
   ## these have no eta, so write each regressed value straight into its ini() est.
-  if (!is.null(fit$regressTheta) && length(fit$regressTheta) > 0L &&
-      !is.null(names(fit$regressTheta))) {
+  if (!is.null(fit$regressTheta) && length(fit$regressTheta) > 0L && !is.null(names(fit$regressTheta))) {
     for (rn in names(fit$regressTheta)) {
       .rv <- fit$regressTheta[[rn]]
       if (is.finite(.rv)) ui2 <- .setIni(ui2, paste0(rn, " <- ", signif(.rv, 12)))
@@ -289,7 +329,7 @@
 .vaeUpdateModelPinned <- function(ui, fit) {
   prep <- fit$prep
   pairs <- prep$pinPairs
-  thetaNames <- .foceiEtaThetaMap(ui)$thetaForEta   # mu-referenced theta per eta
+  thetaNames <- .foceiEtaThetaMap(ui)$thetaForEta # mu-referenced theta per eta
   covNames <- fit$covNames
   ui2 <- ui
   .setIni <- function(u, expr) do.call(rxode2::ini, list(u, str2lang(expr)))
@@ -326,8 +366,7 @@
 
   ## 4. out-of-pool declared covariates + non-mu thetas estimated by the regress
   ## M-step (written straight into their ini() est)
-  if (!is.null(fit$regressTheta) && length(fit$regressTheta) > 0L &&
-        !is.null(names(fit$regressTheta))) {
+  if (!is.null(fit$regressTheta) && length(fit$regressTheta) > 0L && !is.null(names(fit$regressTheta))) {
     for (rn in names(fit$regressTheta)) {
       .rv <- fit$regressTheta[[rn]]
       if (is.finite(.rv)) ui2 <- .setIni(ui2, paste0(rn, " <- ", signif(.rv, 12)))
@@ -350,28 +389,34 @@
   .lik <- .control$likelihood
   .interaction <- if (.lik %in% c("foce", "focep")) 0L else 1L
   .foce <- if (identical(.lik, "focep")) "foce+" else "nonmem"
-  .fc <- foceiControl(rxControl = .control$rxControl,
-                      maxOuterIterations = 0L, maxInnerIterations = 0L,
-                      covMethod = .control$covMethod,
-                      etaMat = env$etaMat,
-                      interaction = .interaction, foce = .foce,
-                      sumProd = .control$sumProd,
-                      optExpression = .control$optExpression,
-                      literalFix = .control$literalFix,
-                      literalFixRes = .control$literalFixRes,
-                      addProp = .control$addProp,
-                      calcTables = .control$calcTables,
-                      compress = .control$compress,
-                      ci = .control$ci,
-                      sigdigTable = .control$sigdigTable,
-                      stickyRecalcN = .control$stickyRecalcN,
-                      maxOdeRecalc = .control$maxOdeRecalc,
-                      odeRecalcFactor = .control$odeRecalcFactor,
-                      indTolRelax = .control$indTolRelax,
-                      eventSens = .control$eventSens,
-                      fast = FALSE, # no outer optimizer -- skip the outer gradient model
-                      print = 0L)
-  if (assign) env$control <- .fc
+  .fc <- foceiControl(
+    rxControl = .control$rxControl,
+    maxOuterIterations = 0L,
+    maxInnerIterations = 0L,
+    covMethod = .control$covMethod,
+    etaMat = env$etaMat,
+    interaction = .interaction,
+    foce = .foce,
+    sumProd = .control$sumProd,
+    optExpression = .control$optExpression,
+    literalFix = .control$literalFix,
+    literalFixRes = .control$literalFixRes,
+    addProp = .control$addProp,
+    calcTables = .control$calcTables,
+    compress = .control$compress,
+    ci = .control$ci,
+    sigdigTable = .control$sigdigTable,
+    stickyRecalcN = .control$stickyRecalcN,
+    maxOdeRecalc = .control$maxOdeRecalc,
+    odeRecalcFactor = .control$odeRecalcFactor,
+    indTolRelax = .control$indTolRelax,
+    eventSens = .control$eventSens,
+    fast = FALSE, # no outer optimizer -- skip the outer gradient model
+    print = 0L
+  )
+  if (assign) {
+    env$control <- .fc
+  }
   .fc
 }
 
@@ -434,23 +479,32 @@
   .ret$est <- "vae"
   .ret$adjObf <- .control$adjObf
   ## the VAE training artifacts + the ORIGINAL model for $uiIni/$iniDf0
-  .ret$vae <- list(elboTrace = fit$elboTrace, beta = fit$beta, selected = fit$selected,
-                   covNames = fit$covNames, zPop = fit$zPop, omega = fit$omega,
-                   omegaMat = fit$omegaMat, a = fit$a,
-                   covSelectMethodUsed = fit$covSelectMethodUsed,
-                   covNearTie = fit$covNearTie,
-                   nCovHysteresis = fit$nCovHysteresis,
-                   nPhiPair = fit$nPhiPair,
-                   nPhiTest = fit$nPhiTest,
-                   nPhiMove = fit$nPhiMove,
-                   nPhiSkipBig = fit$nPhiSkipBig,
-                   nPhiSkipDiag = fit$nPhiSkipDiag,
-                   nPhiClamp = fit$nPhiClamp,
-                   omOff = fit$omOff,
-                   phiPairOn = fit$phiPairOn,
-                   seed = .control$seed)
+  .ret$vae <- list(
+    elboTrace = fit$elboTrace,
+    beta = fit$beta,
+    selected = fit$selected,
+    covNames = fit$covNames,
+    zPop = fit$zPop,
+    omega = fit$omega,
+    omegaMat = fit$omegaMat,
+    a = fit$a,
+    covSelectMethodUsed = fit$covSelectMethodUsed,
+    covNearTie = fit$covNearTie,
+    nCovHysteresis = fit$nCovHysteresis,
+    nPhiPair = fit$nPhiPair,
+    nPhiTest = fit$nPhiTest,
+    nPhiMove = fit$nPhiMove,
+    nPhiSkipBig = fit$nPhiSkipBig,
+    nPhiSkipDiag = fit$nPhiSkipDiag,
+    nPhiClamp = fit$nPhiClamp,
+    omOff = fit$omOff,
+    phiPairOn = fit$phiPairOn,
+    seed = .control$seed
+  )
   ## the VAE optimization walk (standard parHistData -> $parHist accessor)
-  if (!is.null(fit$parHist)) .ret$parHistData <- fit$parHist
+  if (!is.null(fit$parHist)) {
+    .ret$parHistData <- fit$parHist
+  }
   nmObjHandleControlObject(.control, .ret) # stores $vaeControl for nmObjGetControl.vae
   .vaeControlToFoceiControl(.ret)
   ## ---- foreign-method output contract -------------------------------------
@@ -496,9 +550,17 @@
   ##      the FOCEi inner pass at the VAE estimates, which is how the VAE reports
   ##      its objective today.  Setting them here would change every fit.
   ## 6. remaining metadata ($method/$extra/$est set above)
-  if (!exists("message", envir = .ret, inherits = FALSE)) .ret$message <- ""
-  .fit <- nlmixr2CreateOutputFromUi(.ui2, data = env$data, control = .ret$control,
-                                    table = env$table, env = .ret, est = "vae")
+  if (!exists("message", envir = .ret, inherits = FALSE)) {
+    .ret$message <- ""
+  }
+  .fit <- nlmixr2CreateOutputFromUi(
+    .ui2,
+    data = env$data,
+    control = .ret$control,
+    table = env$table,
+    env = .ret,
+    est = "vae"
+  )
   ## mu2/mu3/mu4 covariate rewriting: restore the original algebraic covariate
   ## expression (nlmixrMuDerCov# -> e.g. wt.cl*(WT/70)) in the reported model and
   ## drop the derived data columns.  VAE assembles its output outside the focei

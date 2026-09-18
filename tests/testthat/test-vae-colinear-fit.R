@@ -5,7 +5,6 @@
 ## pair of tests here drives the gate open and shut.  Fit-based: .slowBatches.
 
 nmTest({
-
   ## theo_sd plus a near-duplicate of WT.  Both are subject-constant, so both
   ## survive the time-varying screen and reach the search; they correlate well
   ## past the default 0.9 cut, so they land in one cluster.
@@ -13,8 +12,7 @@ nmTest({
     d <- nlmixr2data::theo_sd
     .id <- unique(d$ID)
     .wt <- vapply(.id, function(i) d$WT[d$ID == i][1], numeric(1))
-    .lbm <- rxode2::rxWithSeed(seed,
-                               .wt * 0.8 + stats::rnorm(length(.wt), sd = 0.4))
+    .lbm <- rxode2::rxWithSeed(seed, .wt * 0.8 + stats::rnorm(length(.wt), sd = 0.4))
     d$LBM <- .lbm[match(d$ID, .id)]
     list(data = d, cor = abs(stats::cor(.wt, .lbm)))
   }
@@ -35,11 +33,19 @@ nmTest({
   }
 
   .runVae <- function(d, cut) {
-    ctl <- vaeControl(itersBurnIn = 40L, klWarmup = 20L, gammaIter = 60L,
-                      iters = 90L, hiddenDim = 15L, seed = 1L,
-                      covariateSelection = TRUE, print = 0L,
-                      shapes = "power", covCenterType = "mean",
-                      covSelectColinearCut = cut)
+    ctl <- vaeControl(
+      itersBurnIn = 40L,
+      klWarmup = 20L,
+      gammaIter = 60L,
+      iters = 90L,
+      hiddenDim = 15L,
+      seed = 1L,
+      covariateSelection = TRUE,
+      print = 0L,
+      shapes = "power",
+      covCenterType = "mean",
+      covSelectColinearCut = cut
+    )
     ui <- rxode2::assertRxUi(.theo)
     prep <- .vaeDataPrep(ui, d, ctl)
     innerEnv <- .vaeInnerSetup(ui, d, matrix(0, prep$N, prep$zDim), ctl)
@@ -103,13 +109,17 @@ nmTest({
     v <- 31 * exp(z[, 2])
     ka <- 1.5 * exp(stats::rnorm(nid, 0, 0.3))
     tms <- c(0.25, 0.5, 1, 2, 4, 6, 8, 12, 24)
-    do.call(rbind, lapply(seq_len(nid), function(i) {
-      ke <- cl[i] / v[i]
-      f <- 320 / v[i] * ka[i] / (ka[i] - ke) * (exp(-ke * tms) - exp(-ka[i] * tms))
-      rbind(data.frame(ID = i, TIME = 0, AMT = 320, EVID = 1, DV = 0, WT = wt[i]),
-            data.frame(ID = i, TIME = tms, AMT = 0, EVID = 0,
-                       DV = f + stats::rnorm(length(tms), 0, 0.25), WT = wt[i]))
-    }))
+    do.call(
+      rbind,
+      lapply(seq_len(nid), function(i) {
+        ke <- cl[i] / v[i]
+        f <- 320 / v[i] * ka[i] / (ka[i] - ke) * (exp(-ke * tms) - exp(-ka[i] * tms))
+        rbind(
+          data.frame(ID = i, TIME = 0, AMT = 320, EVID = 1, DV = 0, WT = wt[i]),
+          data.frame(ID = i, TIME = tms, AMT = 0, EVID = 0, DV = f + stats::rnorm(length(tms), 0, 0.25), WT = wt[i])
+        )
+      })
+    )
   }
 
   .phiBlock <- function() {
@@ -138,14 +148,14 @@ nmTest({
   }
 
   .phiCtl <- function(...) {
-    vaeControl(iters = 60L, itersBurnIn = 15L, calcTables = FALSE,
-               covSelectPhiJoin = 0.5, covSelectPhiLeave = 0.4, ...)
+    vaeControl(iters = 60L, itersBurnIn = 15L, calcTables = FALSE, covSelectPhiJoin = 0.5, covSelectPhiLeave = 0.4, ...)
   }
 
   test_that("a correlated omega lets the cross-parameter refinement run", {
     skip_on_cran()
     f <- suppressMessages(suppressWarnings(
-      nlmixr2(.phiBlock, .phiData(), est = "vae", control = .phiCtl())))
+      nlmixr2(.phiBlock, .phiData(), est = "vae", control = .phiCtl())
+    ))
     ## the gate opened, because the model declares the correlation
     expect_true(f$vae$omOff)
     ## groups formed and moves were evaluated -- "the mechanism ran"
@@ -158,7 +168,8 @@ nmTest({
   test_that("a diagonal omega detects the groups but skips the refinement", {
     skip_on_cran()
     f <- suppressMessages(suppressWarnings(
-      nlmixr2(.phiDiag, .phiData(), est = "vae", control = .phiCtl())))
+      nlmixr2(.phiDiag, .phiData(), est = "vae", control = .phiCtl())
+    ))
     expect_false(f$vae$omOff)
     ## the dims ARE correlated and that is reported...
     expect_gt(f$vae$nPhiPair, 0L)
@@ -181,8 +192,8 @@ nmTest({
     d <- .phiData(seed = 31L)
     for (src in c("suffStat", "mu", "resid")) {
       f <- suppressMessages(suppressWarnings(
-        nlmixr2(.phiBlock, d, est = "vae",
-                control = .phiCtl(covSelectPhiCor = src))))
+        nlmixr2(.phiBlock, d, est = "vae", control = .phiCtl(covSelectPhiCor = src))
+      ))
       ## the branch ran and produced a grouping
       expect_gt(f$vae$nPhiPair, 0L, label = src)
       expect_gt(f$vae$nPhiTest, 0L, label = src)
@@ -199,15 +210,23 @@ nmTest({
     d <- .phiData(seed = 31L)
     .pairs <- function(lv) {
       f <- suppressMessages(suppressWarnings(
-        nlmixr2(.phiBlock, d, est = "vae",
-                control = vaeControl(iters = 80L, itersBurnIn = 15L,
-                                     calcTables = FALSE,
-                                     covSelectPhiCor = "mu",
-                                     covSelectPhiJoin = 0.78,
-                                     covSelectPhiLeave = lv))))
+        nlmixr2(
+          .phiBlock,
+          d,
+          est = "vae",
+          control = vaeControl(
+            iters = 80L,
+            itersBurnIn = 15L,
+            calcTables = FALSE,
+            covSelectPhiCor = "mu",
+            covSelectPhiJoin = 0.78,
+            covSelectPhiLeave = lv
+          )
+        )
+      ))
       list(n = f$vae$nPhiPair, on = f$vae$phiPairOn)
     }
-    none <- .pairs(0.78)     # no band: leave == join
+    none <- .pairs(0.78) # no band: leave == join
     wide <- .pairs(0.50)
     expect_gte(wide$n, none$n)
     ## the adjacency is surfaced, square, and symmetric -- a pair is a pair
@@ -244,7 +263,8 @@ nmTest({
       })
     }
     f <- suppressMessages(suppressWarnings(
-      nlmixr2(.bounded, .phiData(seed = 31L), est = "vae", control = .phiCtl())))
+      nlmixr2(.bounded, .phiData(seed = 31L), est = "vae", control = .phiCtl())
+    ))
     ## the refinement ran AND took the held-intercept branch
     expect_gt(f$vae$nPhiTest, 0L)
     expect_gt(f$vae$nPhiClamp, 0L)
@@ -275,13 +295,21 @@ nmTest({
     d <- .phiData(seed = 31L)
     ## a low join threshold so all three dims land in one component
     f <- suppressMessages(suppressWarnings(
-      nlmixr2(.three, d, est = "vae",
-              ## must run past klWarmup (50) or the refinement never gates on
-              control = vaeControl(iters = 60L, itersBurnIn = 15L,
-                                   calcTables = FALSE,
-                                   covSelectPhiJoin = 0.2,
-                                   covSelectPhiLeave = 0.1,
-                                   covSelectPhiMaxDim = 2L))))
+      nlmixr2(
+        .three,
+        d,
+        est = "vae",
+        ## must run past klWarmup (50) or the refinement never gates on
+        control = vaeControl(
+          iters = 60L,
+          itersBurnIn = 15L,
+          calcTables = FALSE,
+          covSelectPhiJoin = 0.2,
+          covSelectPhiLeave = 0.1,
+          covSelectPhiMaxDim = 2L
+        )
+      )
+    ))
     ## the group formed...
     expect_gt(f$vae$nPhiPair, 0L)
     ## ...was refused for being too large...

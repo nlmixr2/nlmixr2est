@@ -16,7 +16,8 @@ nmTest({
     ui <- rxode2::assertRxUi(theo)
     ctl <- vaeControl()
     N <- length(unique(nlmixr2data::theo_sd$ID))
-    .testSeed(1); etaMat <- matrix(rnorm(N * 3, 0, 0.1), N, 3)
+    .testSeed(1)
+    etaMat <- matrix(rnorm(N * 3, 0, 0.1), N, 3)
 
     .vaeInnerSetup(ui, nlmixr2data::theo_sd, etaMat, ctl)
     on.exit(.vaeInnerFree(), add = TRUE)
@@ -30,16 +31,15 @@ nmTest({
 
   test_that("vae likelihood choices map to the right FOCEi inner control", {
     ## focei -> interaction; foce -> NONMEM FOCE; focep -> FOCE+ (R at live eta)
-    expect_identical(formals(vaeControl)$likelihood,
-                     quote(c("focei", "foce", "focep", "laplace")))
+    expect_identical(formals(vaeControl)$likelihood, quote(c("focei", "foce", "focep", "laplace")))
     fi <- .vaeInnerFoceiControl(vaeControl(likelihood = "focei"))
     fe <- .vaeInnerFoceiControl(vaeControl(likelihood = "foce"))
     fp <- .vaeInnerFoceiControl(vaeControl(likelihood = "focep"))
     expect_equal(fi$interaction, 1L)
     expect_equal(fe$interaction, 0L)
     expect_equal(fp$interaction, 0L)
-    expect_equal(fe$foceType, 0L)   # NONMEM FOCE
-    expect_equal(fp$foceType, 1L)   # FOCE+
+    expect_equal(fe$foceType, 0L) # NONMEM FOCE
+    expect_equal(fp$foceType, 1L) # FOCE+
   })
 
   test_that("vaeInnerUpdatePar_ fast path matches the full re-setup path", {
@@ -61,7 +61,8 @@ nmTest({
     ui <- rxode2::assertRxUi(theo)
     ctl <- vaeControl()
     N <- length(unique(nlmixr2data::theo_sd$ID))
-    .testSeed(3); etaMat <- matrix(rnorm(N * 3, 0, 0.1), N, 3)
+    .testSeed(3)
+    etaMat <- matrix(rnorm(N * 3, 0, 0.1), N, 3)
     prep <- .vaeDataPrep(ui, nlmixr2data::theo_sd)
     env <- .vaeInnerSetup(ui, nlmixr2data::theo_sd, etaMat, ctl)
     on.exit(.vaeInnerFree(), add = TRUE)
@@ -105,7 +106,8 @@ nmTest({
     ui <- rxode2::assertRxUi(theoCor)
     ctl <- vaeControl()
     N <- length(unique(nlmixr2data::theo_sd$ID))
-    .testSeed(3); etaMat <- matrix(rnorm(N * 3, 0, 0.1), N, 3)
+    .testSeed(3)
+    etaMat <- matrix(rnorm(N * 3, 0, 0.1), N, 3)
     prep <- .vaeDataPrep(ui, nlmixr2data::theo_sd)
     expect_true(.omegaHasOffDiag(prep$omegaMat))
     env <- .vaeInnerSetup(ui, nlmixr2data::theo_sd, etaMat, ctl)
@@ -132,8 +134,7 @@ nmTest({
       expect_lt(max(abs(rFast$lp - rRef$lp)), 1e-2)
     }
     ## a wrongly sized omega is rejected, not read out of bounds
-    expect_error(vaeInnerUpdatePar_(as.numeric(prep$th), matrix(1, 1, 1)),
-                 "expected")
+    expect_error(vaeInnerUpdatePar_(as.numeric(prep$th), matrix(1, 1, 1)), "expected")
   })
 
   test_that("vae inner driver selects mixture components per id", {
@@ -148,7 +149,8 @@ nmTest({
     ui <- rxode2::assertRxUi(mixmod)
     expect_equal(ui$saemNMix, 2L)
     ctl <- vaeControl()
-    N <- length(unique(nlmixr2data::theo_sd$ID)); nMix <- ui$saemNMix
+    N <- length(unique(nlmixr2data::theo_sd$ID))
+    nMix <- ui$saemNMix
     etaSetup <- matrix(0, N, 3)
 
     .vaeInnerSetup(ui, nlmixr2data::theo_sd, etaSetup, ctl)
@@ -157,7 +159,8 @@ nmTest({
     etaEval <- do.call(rbind, rep(list(etaSetup), nMix))
     r <- .vaeInnerEval(etaEval, ctl)
     expect_equal(length(r$obj), N * nMix)
-    o1 <- r$obj[1:N]; o2 <- r$obj[(N + 1):(2 * N)]
+    o1 <- r$obj[1:N]
+    o2 <- r$obj[(N + 1):(2 * N)]
     ## the two components give distinct per-subject objectives (mixture selection);
     ## the very slow component (ke=0.04) at eta=0 can occasionally fail to solve, so
     ## assert on the subjects that solved rather than requiring every one
@@ -184,17 +187,25 @@ nmTest({
     nPer <- 20L
     ev <- rxode2::et(amt = 320, cmt = "depot") |> rxode2::et(seq(0.5, 24, length.out = 8))
     mkGroup <- function(ke, ids) {
-      d <- rxode2::rxSolve(sim, rxode2::et(ev, id = ids),
-                           params = c(lka = log(1.5), lV = log(32), KE = ke),
-                           omega = lotri::lotri(eta.ka ~ 0.04, eta.ke ~ 0.02, eta.V ~ 0.02))
+      d <- rxode2::rxSolve(
+        sim,
+        rxode2::et(ev, id = ids),
+        params = c(lka = log(1.5), lV = log(32), KE = ke),
+        omega = lotri::lotri(eta.ka ~ 0.04, eta.ke ~ 0.02, eta.V ~ 0.02)
+      )
       d <- as.data.frame(d)[, c("id", "time", "cp")]
-      names(d) <- c("ID", "TIME", "DV"); d$ID <- d$ID + (ids[1] - 1)
-      d$DV <- d$DV + stats::rnorm(nrow(d), 0, 0.25); d
+      names(d) <- c("ID", "TIME", "DV")
+      d$ID <- d$ID + (ids[1] - 1)
+      d$DV <- d$DV + stats::rnorm(nrow(d), 0, 0.25)
+      d
     }
     dat <- rbind(mkGroup(0.15, 1:nPer), mkGroup(0.04, (nPer + 1):(2 * nPer)))
     dose <- data.frame(ID = unique(dat$ID), TIME = 0, DV = 0, EVID = 1, AMT = 320, CMT = 1)
-    dat$EVID <- 0; dat$AMT <- 0; dat$CMT <- 2
-    dat <- rbind(dose, dat); dat <- dat[order(dat$ID, dat$TIME, -dat$EVID), ]
+    dat$EVID <- 0
+    dat$AMT <- 0
+    dat$CMT <- 2
+    dat <- rbind(dose, dat)
+    dat <- dat[order(dat$ID, dat$TIME, -dat$EVID), ]
     trueGrp <- ifelse(unique(dat$ID) <= nPer, 1L, 2L)
 
     mixmod <- function() {
@@ -206,8 +217,15 @@ nmTest({
         cp <- central / V; cp ~ add(add.err) })
     }
     ui <- rxode2::assertRxUi(mixmod)
-    ctl <- vaeControl(itersBurnIn = 40L, iters = 100L, klWarmup = 30L, gammaIter = 60L,
-                      nGradStep = 4L, covariateSelection = FALSE, seed = 1L)
+    ctl <- vaeControl(
+      itersBurnIn = 40L,
+      iters = 100L,
+      klWarmup = 30L,
+      gammaIter = 60L,
+      nGradStep = 4L,
+      covariateSelection = FALSE,
+      seed = 1L
+    )
     prep <- .vaeDataPrep(ui, dat)
     nMix <- as.integer(ui$saemNMix)
     ## prep$th holds the mixture slots on the MLOGIT scale (the scale the inner
@@ -219,7 +237,7 @@ nmTest({
     fit <- .vaeTrain(prep, innerEnv, ctl, nMix, mixProb)
 
     expect_true(all(is.finite(fit$zPop)) && is.finite(fit$a) && fit$a > 0)
-    expect_equal(fit$zPop[2], 0)                        # mixture eta stays centered at 0
+    expect_equal(fit$zPop[2], 0) # mixture eta stays centered at 0
     ## component labels are arbitrary; agreement is max(match, 1-match)
     agree <- mean(fit$mixnum == trueGrp)
     expect_gt(max(agree, 1 - agree), 0.9)
@@ -253,7 +271,9 @@ nmTest({
     # The analytic gradient is right either way -- it agrees to 6e-8 here.
     ctl <- vaeControl(sigdig = 6)
     prep <- .vaeDataPrep(ui, nlmixr2data::theo_sd)
-    N <- prep$N; zDim <- prep$zDim; hDim <- 12L
+    N <- prep$N
+    zDim <- prep$zDim
+    hDim <- 12L
     innerEnv <- .vaeInnerSetup(ui, nlmixr2data::theo_sd, matrix(0, N, zDim), ctl)
     on.exit(.vaeInnerFree(), add = TRUE)
     .testSeed(1)
@@ -264,23 +284,30 @@ nmTest({
     st <- .vaeElboStepInner(params, prep, innerEnv, prep$zPop, prep$omega, prep$a, 1, eps, ctl)
 
     expect_true(is.finite(st$loss) && is.finite(st$pxz) && is.finite(st$DKL))
-    expect_equal(st$loss, st$pxz + st$DKL)              # alphaKL = 1
+    expect_equal(st$loss, st$pxz + st$DKL) # alphaKL = 1
     expect_equal(dim(st$mu), c(N, zDim))
     expect_equal(dim(st$z), c(N, zDim))
     expect_equal(dim(st$L), c(zDim, zDim, N))
     expect_setequal(names(st$grads), c("Wih", "Whh", "bih", "bhh", "fcW", "fcB"))
     expect_length(st$preds, N)
-    expect_true(all(st$mixnum == 1L))                  # single component
+    expect_true(all(st$mixnum == 1L)) # single component
 
     ## finite-difference check of dLoss/d(fcB) (a small, well-conditioned block)
-    Lf <- function(p) .vaeElboStepInner(p, prep, innerEnv, prep$zPop, prep$omega,
-                                        prep$a, 1, eps, ctl, withGrad = FALSE)$loss
+    Lf <- function(p) {
+      .vaeElboStepInner(p, prep, innerEnv, prep$zPop, prep$omega, prep$a, 1, eps, ctl, withGrad = FALSE)$loss
+    }
     h <- 1e-5
-    fd <- vapply(seq_along(params$fcB), function(j) {
-      pp <- params; pp$fcB[j] <- pp$fcB[j] + h
-      pm <- params; pm$fcB[j] <- pm$fcB[j] - h
-      (Lf(pp) - Lf(pm)) / (2 * h)
-    }, numeric(1))
+    fd <- vapply(
+      seq_along(params$fcB),
+      function(j) {
+        pp <- params
+        pp$fcB[j] <- pp$fcB[j] + h
+        pm <- params
+        pm$fcB[j] <- pm$fcB[j] - h
+        (Lf(pp) - Lf(pm)) / (2 * h)
+      },
+      numeric(1)
+    )
     expect_lt(max(abs(fd - st$grads$fcB)) / max(abs(st$grads$fcB)), 1e-3)
   })
 
@@ -303,7 +330,8 @@ nmTest({
     ui <- rxode2::assertRxUi(mixmod)
     ctl <- vaeControl(itersBurnIn = 2L, iters = 2L, covariateSelection = FALSE, seed = 1L)
     prep <- .vaeDataPrep(ui, nlmixr2data::theo_sd)
-    N <- prep$N; zDim <- prep$zDim
+    N <- prep$N
+    zDim <- prep$zDim
     nMix <- as.integer(ui$saemNMix)
     mixProb <- .getMixFromLog(prep$th, ui$thetaMixIndex)
     expect_equal(mixProb, c(0.7, 0.3))
@@ -313,20 +341,35 @@ nmTest({
     .testSeed(7)
     ## the encoder is conditioned on the component, so the head carries nMix
     ## extra one-hot inputs alongside the covariates
-    params <- .vaeEncoderInitParams(zDim, 12L, ncol(prep$covIn) + nMix, prep$zPop,
-                                    rep(0.1, zDim))
+    params <- .vaeEncoderInitParams(zDim, 12L, ncol(prep$covIn) + nMix, prep$zPop, rep(0.1, zDim))
     eps <- matrix(rnorm(N * zDim), N, zDim)
-    st <- .vaeElboStepInner(params, prep, innerEnv, prep$zPop, prep$omega, prep$a,
-                            1, eps, ctl, nMix, mixProb, withGrad = FALSE)
+    st <- .vaeElboStepInner(
+      params,
+      prep,
+      innerEnv,
+      prep$zPop,
+      prep$omega,
+      prep$a,
+      1,
+      eps,
+      ctl,
+      nMix,
+      mixProb,
+      withGrad = FALSE
+    )
 
     ## pxz = jointTot - sum(pzI); rebuild pzI from the returned z to recover the
     ## mixture term the step actually computed
     eta <- sweep(st$z, 2, prep$zPop, "-")
-    .om <- if (is.matrix(prep$omega)) prep$omega else
+    .om <- if (is.matrix(prep$omega)) {
+      prep$omega
+    } else {
       diag(as.numeric(prep$omega), nrow = length(prep$omega))
-    pzI <- 0.5 * (rowSums((eta %*% solve(.om)) * eta) +
-                    as.numeric(determinant(.om, logarithm = TRUE)$modulus) +
-                    zDim * log(2 * pi))
+    }
+    pzI <- 0.5 *
+      (rowSums((eta %*% solve(.om)) * eta) +
+        as.numeric(determinant(.om, logarithm = TRUE)$modulus) +
+        zDim * log(2 * pi))
     .jointTot <- st$pxz + sum(pzI)
 
     ## the same quantity, recomputed in R from the raw per-component objectives
@@ -358,14 +401,28 @@ nmTest({
     ## the dmexpit Jacobian.  Check it against finite differences of the term it
     ## is the gradient of.
     .stepAt <- function(prp, alpha = 0) {
-      .vaeElboStepInner(params, prp, innerEnv, prp$zPop, prp$omega, prp$a,
-                        alpha, eps, ctl, nMix, mixProb, withGrad = TRUE)
+      .vaeElboStepInner(
+        params,
+        prp,
+        innerEnv,
+        prp$zPop,
+        prp$omega,
+        prp$a,
+        alpha,
+        eps,
+        ctl,
+        nMix,
+        mixProb,
+        withGrad = TRUE
+      )
     }
     .g <- .stepAt(prep)
     expect_length(.g$gMixTheta, nMix - 1L)
     .h <- 1e-5
-    .pp <- prep; .pp$th[ui$thetaMixIndex] <- prep$th[ui$thetaMixIndex] + .h
-    .pm <- prep; .pm$th[ui$thetaMixIndex] <- prep$th[ui$thetaMixIndex] - .h
+    .pp <- prep
+    .pp$th[ui$thetaMixIndex] <- prep$th[ui$thetaMixIndex] + .h
+    .pm <- prep
+    .pm$th[ui$thetaMixIndex] <- prep$th[ui$thetaMixIndex] - .h
     .fd <- (.stepAt(.pp)$pxz - .stepAt(.pm)$pxz) / (2 * .h)
     expect_equal(as.numeric(.g$gMixTheta), .fd, tolerance = 1e-4)
     ## and the proportions the step used are the ones the inner problem holds,
@@ -379,18 +436,48 @@ nmTest({
     ## prior correction and the KL are applied at the right rows and scaled the
     ## right way.
     .lossAt <- function(pp) {
-      .vaeElboStepInner(pp, prep, innerEnv, prep$zPop, prep$omega, prep$a,
-                        1, eps, ctl, nMix, mixProb, withGrad = FALSE)$loss
+      .vaeElboStepInner(
+        pp,
+        prep,
+        innerEnv,
+        prep$zPop,
+        prep$omega,
+        prep$a,
+        1,
+        eps,
+        ctl,
+        nMix,
+        mixProb,
+        withGrad = FALSE
+      )$loss
     }
-    .withG <- .vaeElboStepInner(params, prep, innerEnv, prep$zPop, prep$omega,
-                                prep$a, 1, eps, ctl, nMix, mixProb, withGrad = TRUE)
+    .withG <- .vaeElboStepInner(
+      params,
+      prep,
+      innerEnv,
+      prep$zPop,
+      prep$omega,
+      prep$a,
+      1,
+      eps,
+      ctl,
+      nMix,
+      mixProb,
+      withGrad = TRUE
+    )
     .hh <- 1e-6
     .anaB <- as.numeric(.withG$grads$fcB)
-    .fdB <- vapply(seq_along(.anaB), function(j) {
-      .pp <- params; .pp$fcB[j] <- params$fcB[j] + .hh
-      .pm <- params; .pm$fcB[j] <- params$fcB[j] - .hh
-      (.lossAt(.pp) - .lossAt(.pm)) / (2 * .hh)
-    }, numeric(1))
+    .fdB <- vapply(
+      seq_along(.anaB),
+      function(j) {
+        .pp <- params
+        .pp$fcB[j] <- params$fcB[j] + .hh
+        .pm <- params
+        .pm$fcB[j] <- params$fcB[j] - .hh
+        (.lossAt(.pp) - .lossAt(.pm)) / (2 * .hh)
+      },
+      numeric(1)
+    )
     expect_equal(.anaB, .fdB, tolerance = 1e-3)
 
     ## and it is NOT the square-root marginalization the code used to compute
@@ -415,20 +502,29 @@ nmTest({
         cp <- central / V })
     }
     .testSeed(42)
-    nFast <- 30L; nSlow <- 10L
+    nFast <- 30L
+    nSlow <- 10L
     ev <- rxode2::et(amt = 320, cmt = "depot") |> rxode2::et(seq(0.5, 24, length.out = 8))
     mkGroup <- function(ke, ids) {
-      d <- rxode2::rxSolve(sim, rxode2::et(ev, id = ids),
-                           params = c(lka = log(1.5), lV = log(32), KE = ke),
-                           omega = lotri::lotri(eta.ka ~ 0.04, eta.ke ~ 0.02, eta.V ~ 0.02))
+      d <- rxode2::rxSolve(
+        sim,
+        rxode2::et(ev, id = ids),
+        params = c(lka = log(1.5), lV = log(32), KE = ke),
+        omega = lotri::lotri(eta.ka ~ 0.04, eta.ke ~ 0.02, eta.V ~ 0.02)
+      )
       d <- as.data.frame(d)[, c("id", "time", "cp")]
-      names(d) <- c("ID", "TIME", "DV"); d$ID <- d$ID + (ids[1] - 1)
-      d$DV <- d$DV + stats::rnorm(nrow(d), 0, 0.25); d
+      names(d) <- c("ID", "TIME", "DV")
+      d$ID <- d$ID + (ids[1] - 1)
+      d$DV <- d$DV + stats::rnorm(nrow(d), 0, 0.25)
+      d
     }
     dat <- rbind(mkGroup(0.15, 1:nFast), mkGroup(0.04, (nFast + 1):(nFast + nSlow)))
     dose <- data.frame(ID = unique(dat$ID), TIME = 0, DV = 0, EVID = 1, AMT = 320, CMT = 1)
-    dat$EVID <- 0; dat$AMT <- 0; dat$CMT <- 2
-    dat <- rbind(dose, dat); dat <- dat[order(dat$ID, dat$TIME, -dat$EVID), ]
+    dat$EVID <- 0
+    dat$AMT <- 0
+    dat$CMT <- 2
+    dat <- rbind(dose, dat)
+    dat <- dat[order(dat$ID, dat$TIME, -dat$EVID), ]
     trueGrp <- ifelse(unique(dat$ID) <= nFast, 1L, 2L)
 
     mixmod <- function() {
@@ -441,8 +537,15 @@ nmTest({
         cp <- central / V; cp ~ add(add.err) })
     }
     ui <- rxode2::assertRxUi(mixmod)
-    ctl <- vaeControl(itersBurnIn = 40L, iters = 100L, klWarmup = 30L, gammaIter = 60L,
-                      nGradStep = 4L, covariateSelection = FALSE, seed = 1L)
+    ctl <- vaeControl(
+      itersBurnIn = 40L,
+      iters = 100L,
+      klWarmup = 30L,
+      gammaIter = 60L,
+      nGradStep = 4L,
+      covariateSelection = FALSE,
+      seed = 1L
+    )
     prep <- .vaeDataPrep(ui, dat)
     nMix <- as.integer(ui$saemNMix)
     mixProb <- .getMixFromLog(prep$th, ui$thetaMixIndex)
@@ -460,7 +563,7 @@ nmTest({
     ## it MOVED off its start, and toward the truth
     expect_false(isTRUE(all.equal(as.numeric(fit$mixProb), c(0.5, 0.5))))
     .agree <- mean(fit$mixnum == trueGrp)
-    .p1 <- if (.agree >= 0.5) fit$mixProb[1] else fit$mixProb[2]   # allow label swap
+    .p1 <- if (.agree >= 0.5) fit$mixProb[1] else fit$mixProb[2] # allow label swap
     expect_equal(.p1, nFast / (nFast + nSlow), tolerance = 0.1)
     expect_gt(max(.agree, 1 - .agree), 0.9)
 
@@ -476,8 +579,16 @@ nmTest({
         cp <- central / V; cp ~ add(add.err) })
     }
     .uiF <- rxode2::assertRxUi(mixFixed)
-    .ctlF <- vaeControl(itersBurnIn = 5L, iters = 10L, klWarmup = 3L, gammaIter = 6L,
-                        nGradStep = 2L, covariateSelection = FALSE, seed = 1L, print = 0L)
+    .ctlF <- vaeControl(
+      itersBurnIn = 5L,
+      iters = 10L,
+      klWarmup = 3L,
+      gammaIter = 6L,
+      nGradStep = 2L,
+      covariateSelection = FALSE,
+      seed = 1L,
+      print = 0L
+    )
     .prepF <- .vaeDataPrep(.uiF, dat)
     .mpF <- .getMixFromLog(.prepF$th, .uiF$thetaMixIndex)
     .envF <- .vaeInnerSetup(.uiF, dat, matrix(0, .prepF$N, .prepF$zDim), .ctlF)
@@ -504,7 +615,8 @@ nmTest({
     ui <- rxode2::assertRxUi(mixmod3)
     ctl <- vaeControl(itersBurnIn = 2L, iters = 2L, covariateSelection = FALSE, seed = 1L)
     prep <- .vaeDataPrep(ui, nlmixr2data::theo_sd)
-    N <- prep$N; zDim <- prep$zDim
+    N <- prep$N
+    zDim <- prep$zDim
     nMix <- as.integer(ui$saemNMix)
     expect_equal(nMix, 3L)
     mixProb <- .getMixFromLog(prep$th, ui$thetaMixIndex)
@@ -513,29 +625,36 @@ nmTest({
     innerEnv <- .vaeInnerSetup(ui, nlmixr2data::theo_sd, matrix(0, N, zDim), ctl)
     on.exit(.vaeInnerFree(), add = TRUE)
     .testSeed(11)
-    params <- .vaeEncoderInitParams(zDim, 12L, ncol(prep$covIn) + nMix, prep$zPop,
-                                    rep(0.1, zDim))
+    params <- .vaeEncoderInitParams(zDim, 12L, ncol(prep$covIn) + nMix, prep$zPop, rep(0.1, zDim))
     eps <- matrix(rnorm(N * zDim), N, zDim)
     .stepAt <- function(prp) {
-      .vaeElboStepInner(params, prp, innerEnv, prp$zPop, prp$omega, prp$a,
-                        0, eps, ctl, nMix, mixProb, withGrad = TRUE)
+      .vaeElboStepInner(params, prp, innerEnv, prp$zPop, prp$omega, prp$a, 0, eps, ctl, nMix, mixProb, withGrad = TRUE)
     }
     .g <- .stepAt(prep)
     expect_length(.g$gMixTheta, nMix - 1L)
 
     .idx <- ui$thetaMixIndex
     .h <- 1e-5
-    .fd <- vapply(seq_along(.idx), function(j) {
-      .pp <- prep; .pp$th[.idx[j]] <- prep$th[.idx[j]] + .h
-      .pm <- prep; .pm$th[.idx[j]] <- prep$th[.idx[j]] - .h
-      (.stepAt(.pp)$pxz - .stepAt(.pm)$pxz) / (2 * .h)
-    }, numeric(1))
+    .fd <- vapply(
+      seq_along(.idx),
+      function(j) {
+        .pp <- prep
+        .pp$th[.idx[j]] <- prep$th[.idx[j]] + .h
+        .pm <- prep
+        .pm$th[.idx[j]] <- prep$th[.idx[j]] - .h
+        (.stepAt(.pp)$pxz - .stepAt(.pm)$pxz) / (2 * .h)
+      },
+      numeric(1)
+    )
     expect_equal(as.numeric(.g$gMixTheta), .fd, tolerance = 1e-4)
 
     ## the gradient is N*(pi_l - mean responsibility), with no Jacobian involved
-    expect_equal(as.numeric(.g$gMixTheta),
-                 N * (as.numeric(.g$mixProb)[seq_along(.idx)] -
-                        as.numeric(.g$mixW)[seq_along(.idx)]),
-                 tolerance = 1e-8)
+    expect_equal(
+      as.numeric(.g$gMixTheta),
+      N *
+        (as.numeric(.g$mixProb)[seq_along(.idx)] -
+          as.numeric(.g$mixW)[seq_along(.idx)]),
+      tolerance = 1e-8
+    )
   })
 })

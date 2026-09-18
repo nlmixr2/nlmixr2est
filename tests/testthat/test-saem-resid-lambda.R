@@ -1,5 +1,4 @@
 nmTest({
-
   ## B2 regression: SAEM lambda (Box-Cox) combined error models under-sized xmin, overflowing the Nelder-Mead buffer.
 
   .ctl <- saemControl(nBurn = 20, nEm = 20, print = 0L, nmc = 2)
@@ -39,17 +38,28 @@ nmTest({
 
   # 1-cmt IV bolus observed on a boxCox(lam) scale with additive error sd
   .bcAddData <- function(n, lam, sd) {
-    .dose <- 320; .v <- 70; .times <- c(0.5, 1, 2, 4, 7, 12, 24)
+    .dose <- 320
+    .v <- 70
+    .times <- c(0.5, 1, 2, 4, 7, 12, 24)
     .bcF <- function(y, l) (y^l - 1) / l
     .bcI <- function(x, l) (l * x + 1)^(1 / l)
     .eta <- rnorm(n, 0, sqrt(0.09))
-    do.call(rbind, lapply(seq_len(n), function(i) {
-      .f <- .dose / .v * exp(-exp(log(4) + .eta[i]) / .v * .times)
-      rbind(data.frame(ID = i, TIME = 0, DV = NA_real_, AMT = .dose, EVID = 1),
-            data.frame(ID = i, TIME = .times,
-                       DV = .bcI(.bcF(.f, lam) + rnorm(length(.times), 0, sd), lam),
-                       AMT = 0, EVID = 0))
-    }))
+    do.call(
+      rbind,
+      lapply(seq_len(n), function(i) {
+        .f <- .dose / .v * exp(-exp(log(4) + .eta[i]) / .v * .times)
+        rbind(
+          data.frame(ID = i, TIME = 0, DV = NA_real_, AMT = .dose, EVID = 1),
+          data.frame(
+            ID = i,
+            TIME = .times,
+            DV = .bcI(.bcF(.f, lam) + rnorm(length(.times), 0, sd), lam),
+            AMT = 0,
+            EVID = 0
+          )
+        )
+      })
+    )
   }
 
   # #914: a fixed boxCox lambda never reached the transform (saem.cpp's `lambda`
@@ -65,8 +75,7 @@ nmTest({
       ini({ tcl <- log(4); eta.cl ~ 0.09; add.sd <- 0.15; lambda <- fixed(0.5) })
       model({ cl <- exp(tcl + eta.cl); v <- 70; linCmt() ~ add(add.sd) + boxCox(lambda) })
     }
-    fit <- .nlmixr(f, .d, est = "saem",
-                   control = saemControl(nBurn = 100, nEm = 100, print = 0L, nmc = 2))
+    fit <- .nlmixr(f, .d, est = "saem", control = saemControl(nBurn = 100, nEm = 100, print = 0L, nmc = 2))
     # the fixed lambda must reach transMat, not stay at the identity default
     expect_equal(unname(fit$saem$transMat[1, 1]), 0.5)
     expect_lt(abs(fit$theta[["tcl"]] - log(4)), 0.3)
@@ -91,8 +100,7 @@ nmTest({
         linCmt() ~ add(add.sd) + boxCox(lambda)
       })
     }
-    fit <- .nlmixr(f, .d, est = "saem",
-                   control = saemControl(nBurn = 100, nEm = 100, print = 0L, nmc = 2))
+    fit <- .nlmixr(f, .d, est = "saem", control = saemControl(nBurn = 100, nEm = 100, print = 0L, nmc = 2))
     .lam <- unname(fit$parFixedDf["lambda", "Estimate"])
     expect_lt(abs(.lam - 0.5), 0.25)
     # the kernel transformed with the lambda it reports
@@ -105,24 +113,31 @@ nmTest({
   # g = 10 + bres*|ft| instead of g = bres*|ft|.
   test_that("SAEM prop + boxCox (rmPropLam) with a fixed lambda recovers truth", {
     set.seed(915)
-    .dose <- 320; .v <- 70; .times <- c(0.5, 1, 2, 4, 7, 12, 24)
+    .dose <- 320
+    .v <- 70
+    .times <- c(0.5, 1, 2, 4, 7, 12, 24)
     .bcF <- function(y, l) (y^l - 1) / l
     .bcI <- function(x, l) (l * x + 1)^(1 / l)
-    .n <- 20; .lam <- 0.5
+    .n <- 20
+    .lam <- 0.5
     .eta <- rnorm(.n, 0, sqrt(0.09))
-    .d <- do.call(rbind, lapply(seq_len(.n), function(i) {
-      .f <- .dose / .v * exp(-exp(log(4) + .eta[i]) / .v * .times)
-      .ft <- .bcF(.f, .lam)
-      .yt <- .ft + 0.2 * abs(.ft) * rnorm(length(.times))
-      rbind(data.frame(ID = i, TIME = 0, DV = NA_real_, AMT = .dose, EVID = 1),
-            data.frame(ID = i, TIME = .times, DV = .bcI(.yt, .lam), AMT = 0, EVID = 0))
-    }))
+    .d <- do.call(
+      rbind,
+      lapply(seq_len(.n), function(i) {
+        .f <- .dose / .v * exp(-exp(log(4) + .eta[i]) / .v * .times)
+        .ft <- .bcF(.f, .lam)
+        .yt <- .ft + 0.2 * abs(.ft) * rnorm(length(.times))
+        rbind(
+          data.frame(ID = i, TIME = 0, DV = NA_real_, AMT = .dose, EVID = 1),
+          data.frame(ID = i, TIME = .times, DV = .bcI(.yt, .lam), AMT = 0, EVID = 0)
+        )
+      })
+    )
     f <- function() {
       ini({ tcl <- log(4); eta.cl ~ 0.09; prop.sd <- 0.2; lambda <- fixed(0.5) })
       model({ cl <- exp(tcl + eta.cl); v <- 70; linCmt() ~ prop(prop.sd) + boxCox(lambda) })
     }
-    fit <- .nlmixr(f, .d, est = "saem",
-                   control = saemControl(nBurn = 100, nEm = 100, print = 0L, nmc = 2))
+    fit <- .nlmixr(f, .d, est = "saem", control = saemControl(nBurn = 100, nEm = 100, print = 0L, nmc = 2))
     expect_equal(unname(fit$saem$transMat[1, 1]), 0.5)
     expect_lt(abs(fit$theta[["tcl"]] - log(4)), 0.5)
     expect_lt(fit$parFixedDf["prop.sd", "Estimate"], 0.5)
@@ -134,15 +149,21 @@ nmTest({
   # ares/bres zeroing table), found while fixing #914.
   test_that("SAEM pow (rmPow) recovers truth", {
     set.seed(3)
-    .dose <- 320; .v <- 70; .times <- c(0.5, 1, 2, 4, 7, 12, 24)
+    .dose <- 320
+    .v <- 70
+    .times <- c(0.5, 1, 2, 4, 7, 12, 24)
     .n <- 30
     .eta <- rnorm(.n, 0, sqrt(0.09))
-    .d <- do.call(rbind, lapply(seq_len(.n), function(i) {
-      .f <- .dose / .v * exp(-exp(log(4) + .eta[i]) / .v * .times)
-      rbind(data.frame(ID = i, TIME = 0, DV = NA_real_, AMT = .dose, EVID = 1),
-            data.frame(ID = i, TIME = .times, DV = .f * (1 + rnorm(length(.times), 0, 0.2)),
-                       AMT = 0, EVID = 0))
-    }))
+    .d <- do.call(
+      rbind,
+      lapply(seq_len(.n), function(i) {
+        .f <- .dose / .v * exp(-exp(log(4) + .eta[i]) / .v * .times)
+        rbind(
+          data.frame(ID = i, TIME = 0, DV = NA_real_, AMT = .dose, EVID = 1),
+          data.frame(ID = i, TIME = .times, DV = .f * (1 + rnorm(length(.times), 0, 0.2)), AMT = 0, EVID = 0)
+        )
+      })
+    )
     f <- function() {
       ini({ tcl <- log(4); eta.cl ~ 0.09; prop.sd <- 0.2; pw <- fixed(1) })
       model({ cl <- exp(tcl + eta.cl); v <- 70; linCmt() ~ pow(prop.sd, pw) })
@@ -160,5 +181,4 @@ nmTest({
   # with OpenMP thread count, unrelated to this fix). See
   # test-saem-addprop-estep.R's saemFormGTest() tests for the deterministic
   # regression coverage instead.
-
 })

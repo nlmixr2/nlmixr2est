@@ -6,10 +6,13 @@ nmTest({
   # exponential time-to-event data with a subject random effect on the mean
   .mkTte <- function(seed = 1L, n = 150L, meanT = 40) {
     .testSeed(seed)
-    do.call(rbind, lapply(seq_len(n), function(i) {
-      lami <- meanT * exp(rnorm(1, 0, sqrt(0.15)))
-      data.frame(ID = i, TIME = lami * -log(runif(1)), DV = 1, EVID = 0, CMT = 1)
-    }))
+    do.call(
+      rbind,
+      lapply(seq_len(n), function(i) {
+        lami <- meanT * exp(rnorm(1, 0, sqrt(0.15)))
+        data.frame(ID = i, TIME = lami * -log(runif(1)), DV = 1, EVID = 0, CMT = 1)
+      })
+    )
   }
 
   expTte <- function() {
@@ -22,9 +25,12 @@ nmTest({
 
   test_that("saem fits a general log-likelihood (exponential TTE) endpoint", {
     .d <- .mkTte(1L)
-    .f <- suppressMessages(nlmixr2(expTte, .d, est = "saem",
-      control = saemControl(nBurn = 150, nEm = 80, nmc = 3, seed = 1, print = 0L,
-                            calcTables = FALSE)))
+    .f <- suppressMessages(nlmixr2(
+      expTte,
+      .d,
+      est = "saem",
+      control = saemControl(nBurn = 150, nEm = 80, nmc = 3, seed = 1, print = 0L, calcTables = FALSE)
+    ))
     # recovers the population mean (true 40) from a poor start (25)
     expect_equal(exp(fixef(.f)[["tlam"]]), 40, tolerance = 0.2)
     # a random-effect variance was estimated
@@ -62,10 +68,9 @@ nmTest({
         ll(err) ~ -lsd - 0.5 * log(2 * pi) - 0.5 * ((DV - cp) / sd)^2
       })
     }
-    ctl <- saemControl(nBurn = 300, nEm = 400, seed = 42L, print = 0L,
-                       covMethod = "linFim", calcTables = FALSE)
+    ctl <- saemControl(nBurn = 300, nEm = 400, seed = 42L, print = 0L, covMethod = "linFim", calcTables = FALSE)
     fA <- .nlmixr(mAdd, theo_sd, est = "saem", control = ctl)
-    fL <- .nlmixr(mLl,  theo_sd, est = "saem", control = ctl)
+    fL <- .nlmixr(mLl, theo_sd, est = "saem", control = ctl)
 
     # the ll() fit really did take the general-likelihood path
     expect_equal(fL$ui$saemResMod, 0L)
@@ -83,8 +88,7 @@ nmTest({
     # ran from 4.0 to 80.5; the residual spread is the two fits' own difference.
     .k <- intersect(rownames(fL$cov), rownames(fA$cov))
     expect_true(all(c("tka", "tcl", "tv", "om.eta.ka", "om.eta.cl", "om.eta.v") %in% .k))
-    expect_equal(unname(sqrt(diag(fL$cov))[.k]), unname(sqrt(diag(fA$cov))[.k]),
-                 tolerance = 0.05)
+    expect_equal(unname(sqrt(diag(fL$cov))[.k]), unname(sqrt(diag(fA$cov))[.k]), tolerance = 0.05)
   })
 
   test_that("saemControl(phi1Hessian=TRUE) fits end-to-end on an ODE model (#Phase4)", {
@@ -112,8 +116,16 @@ nmTest({
       })
     }
     .n0 <- saemPhi1RefineN_()
-    ctl <- saemControl(nBurn = 40, nEm = 40, nmc = 3, seed = 42L, print = 0L,
-                       covMethod = "", calcTables = FALSE, phi1Hessian = TRUE)
+    ctl <- saemControl(
+      nBurn = 40,
+      nEm = 40,
+      nmc = 3,
+      seed = 42L,
+      print = 0L,
+      covMethod = "",
+      calcTables = FALSE,
+      phi1Hessian = TRUE
+    )
     f <- suppressWarnings(.nlmixr(mLl2, theo_sd, est = "saem", control = ctl))
     expect_true(is.finite(f$objf))
     expect_equal(unname(fixef(f)[["tka"]]), 0.45, tolerance = 0.2)
@@ -155,18 +167,19 @@ nmTest({
         ll(err) ~ -lsd - 0.5 * log(2 * pi) - 0.5 * ((DV - cp) / sd)^2
       })
     }
-    ctl <- saemControl(nBurn = 300, nEm = 400, seed = 42L, print = 0L,
-                       covMethod = "", calcTables = FALSE)
+    ctl <- saemControl(nBurn = 300, nEm = 400, seed = 42L, print = 0L, covMethod = "", calcTables = FALSE)
     fA <- .nlmixr(mAdd, theo_sd, est = "saem", control = ctl)
-    fL <- .nlmixr(mLl,  theo_sd, est = "saem", control = ctl)
+    fL <- .nlmixr(mLl, theo_sd, est = "saem", control = ctl)
 
     # this twin really does decline the new phi1 step (confirms the premise
     # of this test, not just its conclusion)
     expect_false(isTRUE(fL$ui$saemPhi1Inner$ok))
 
-    expect_equal(unname(fixef(fL)[c("tka", "tcl", "tv", "tka.wt")]),
-                 unname(fixef(fA)[c("tka", "tcl", "tv", "tka.wt")]),
-                 tolerance = 0.05)
+    expect_equal(
+      unname(fixef(fL)[c("tka", "tcl", "tv", "tka.wt")]),
+      unname(fixef(fA)[c("tka", "tcl", "tv", "tka.wt")]),
+      tolerance = 0.05
+    )
     expect_equal(unname(diag(fL$omega)), unname(diag(fA$omega)), tolerance = 0.1)
     expect_equal(fL$objf, fA$objf, tolerance = 0.02)
   })
@@ -187,19 +200,36 @@ nmTest({
     }
     simUi <- rxode2::rxUiDecompress(rxode2::rxode2(simMod))
     ev <- rxode2::et(amt = 320, time = 0) |> rxode2::et(seq(0.5, 24, by = 2))
-    sim <- rxode2::rxSolve(simUi, ev, params = c(tka = 0.45, tcl = 1, tv = 3.45), nSub = nSub,
-                            omega = lotri::lotri(eta.ka ~ 0.1, eta.cl ~ 0.1, eta.v ~ 0.05))
-    df <- as.data.frame(sim); names(df)[names(df) == "sim.id"] <- "id"
-    d1 <- data.frame(id = df$id, time = df$time, amt = NA_real_, evid = 0,
-                      dv = pmax(df$cp + rnorm(nrow(df), 0, 0.3), 0.01), cmt = "cp")
-    d2 <- data.frame(id = df$id, time = df$time, amt = NA_real_, evid = 0,
-                      dv = pmax(df$cp * 1.3 + rnorm(nrow(df), 0, 0.4), 0.01), cmt = "cp2")
-    dose <- data.frame(id = sort(unique(df$id)), time = 0, amt = 320, evid = 101,
-                        dv = NA_real_, cmt = "depot")
-    dat <- rbind(dose, d1, d2); dat[order(dat$id, dat$time), ]
+    sim <- rxode2::rxSolve(
+      simUi,
+      ev,
+      params = c(tka = 0.45, tcl = 1, tv = 3.45),
+      nSub = nSub,
+      omega = lotri::lotri(eta.ka ~ 0.1, eta.cl ~ 0.1, eta.v ~ 0.05)
+    )
+    df <- as.data.frame(sim)
+    names(df)[names(df) == "sim.id"] <- "id"
+    d1 <- data.frame(
+      id = df$id,
+      time = df$time,
+      amt = NA_real_,
+      evid = 0,
+      dv = pmax(df$cp + rnorm(nrow(df), 0, 0.3), 0.01),
+      cmt = "cp"
+    )
+    d2 <- data.frame(
+      id = df$id,
+      time = df$time,
+      amt = NA_real_,
+      evid = 0,
+      dv = pmax(df$cp * 1.3 + rnorm(nrow(df), 0, 0.4), 0.01),
+      cmt = "cp2"
+    )
+    dose <- data.frame(id = sort(unique(df$id)), time = 0, amt = 320, evid = 101, dv = NA_real_, cmt = "depot")
+    dat <- rbind(dose, d1, d2)
+    dat[order(dat$id, dat$time), ]
   }
-  .twoEpCtl <- saemControl(nBurn = 100, nEm = 100, nmc = 3, seed = 42, print = 0L,
-                           covMethod = "", calcTables = FALSE)
+  .twoEpCtl <- saemControl(nBurn = 100, nEm = 100, nmc = 3, seed = 42, print = 0L, covMethod = "", calcTables = FALSE)
   .twoEpGauss <- function() {
     ini({ tka <- 0.45; tcl <- 1; tv <- 3.45
           add.pk1 <- 0.3; add.pk2 <- 0.4
@@ -233,16 +263,14 @@ nmTest({
               ll(cp2) ~ -0.5 * log(2 * pi) - lsd2 - 0.5 * ((DV - cp2) / sd2)^2 })
     }
     fA <- .nlmixr(.twoEpGauss, dat, est = "saem", control = .twoEpCtl)
-    fL <- .nlmixr(pkLl,        dat, est = "saem", control = .twoEpCtl)
+    fL <- .nlmixr(pkLl, dat, est = "saem", control = .twoEpCtl)
 
     # the ll() twin really did take the general (distribution=4) path, over
     # every endpoint -- confirms the premise, not just the conclusion
     expect_true(.saemGeneralLik(fL$ui))
     expect_equal(length(fL$ui$predDf$cond), 2L)
 
-    expect_equal(unname(fixef(fL)[c("tka", "tcl", "tv")]),
-                 unname(fixef(fA)[c("tka", "tcl", "tv")]),
-                 tolerance = 0.02)
+    expect_equal(unname(fixef(fL)[c("tka", "tcl", "tv")]), unname(fixef(fA)[c("tka", "tcl", "tv")]), tolerance = 0.02)
   })
 
   test_that("a mixed norm+ll() multi-endpoint twin agrees with its Gaussian equivalent", {
@@ -271,7 +299,7 @@ nmTest({
               ll(cp2) ~ -0.5 * log(2 * pi) - lsd2 - 0.5 * ((DV - cp2) / sd2)^2 })
     }
     fA <- .nlmixr(.twoEpGauss, dat, est = "saem", control = .twoEpCtl)
-    fM <- .nlmixr(pkMix,       dat, est = "saem", control = .twoEpCtl)
+    fM <- .nlmixr(pkMix, dat, est = "saem", control = .twoEpCtl)
 
     # the mixed fit really did take the general (distribution=4) path, and
     # its "norm" condition's residual bookkeeping was correctly suppressed
@@ -279,9 +307,7 @@ nmTest({
     expect_true(.saemGeneralLik(fM$ui))
     expect_equal(unname(fM$ui$saemResMod), c(0L, 0L))
 
-    expect_equal(unname(fixef(fM)[c("tka", "tcl", "tv")]),
-                 unname(fixef(fA)[c("tka", "tcl", "tv")]),
-                 tolerance = 0.02)
+    expect_equal(unname(fixef(fM)[c("tka", "tcl", "tv")]), unname(fixef(fA)[c("tka", "tcl", "tv")]), tolerance = 0.02)
   })
 
   test_that("a general log-likelihood endpoint uses distribution=4 (no residual)", {

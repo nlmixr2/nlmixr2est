@@ -36,13 +36,17 @@ cp = central/v")
   set.seed(17)
   etaTrue <- rnorm(6, 0, 0.3)
   dv <- unlist(lapply(1:6, function(i) {
-    rxode2::rxSolve(m,
+    rxode2::rxSolve(
+      m,
       params = c(
-        tcl = log(2), tv = log(20),
+        tcl = log(2),
+        tv = log(20),
         eta_cl = etaTrue[i]
       ),
-      events = dat[dat$id == i, ], returnType = "data.frame",
-      covsInterpolation = "nocb", useLinCmt = FALSE
+      events = dat[dat$id == i, ],
+      returnType = "data.frame",
+      covsInterpolation = "nocb",
+      useLinCmt = FALSE
     )$cp
   }))
   obs <- dat$evid == 0
@@ -51,10 +55,7 @@ cp = central/v")
   dat$dv[obs] <- dv + rnorm(sum(obs), 0, 0.3)
   fit <- function(ui, carry, maxOut = 0L) {
     suppressWarnings(suppressMessages(
-      nlmixr2est::nlmixr2(ui, dat,
-        est = "focei",
-        control = .carryFitCtl(carry, maxOut)
-      )
+      nlmixr2est::nlmixr2(ui, dat, est = "focei", control = .carryFitCtl(carry, maxOut))
     ))
   }
   # posthoc (fixed thetas): the pure inner-problem comparison
@@ -81,7 +82,9 @@ test_that("carry gradient matches FD across compartment configs; naive fails all
   skip_if_not(.rxFoceiLinCmtCarryCapable())
   mkEv <- function(dur = 0) {
     ev <- .carryEv()
-    if (dur > 0) ev$rate <- ifelse(ev$evid == 1, ev$amt / dur, 0)
+    if (dur > 0) {
+      ev$rate <- ifelse(ev$evid == 1, ev$amt / dur, 0)
+    }
     ev
   }
   runCfg <- function(mod, pars, ev) {
@@ -113,8 +116,9 @@ test_that("carry gradient matches FD across compartment configs; naive fails all
     expect_gt(relN, 1e-3)
   }
   # 2-cmt IV (m=2 row stride)
-  runCfg(function() {
-    ini({
+  runCfg(
+    function() {
+      ini({
       tcl <- log(2)
       tv <- log(20)
       tq <- log(1)
@@ -122,7 +126,7 @@ test_that("carry gradient matches FD across compartment configs; naive fails all
       eta.cl ~ 0.1
       add.sd <- 0.5
     })
-    model({
+      model({
       cl <- exp(tcl) * (wt / 70)^0.75 * exp(eta.cl)
       v <- exp(tv)
       q <- exp(tq)
@@ -130,41 +134,59 @@ test_that("carry gradient matches FD across compartment configs; naive fails all
       cp <- linCmt()
       cp ~ add(add.sd)
     })
-  }, c(
-    `THETA[1]` = log(2), `THETA[2]` = log(20), `THETA[3]` = log(1),
-    `THETA[4]` = log(30), `THETA[5]` = 0.5, `ETA[1]` = 0.3
-  ), mkEv())
+    },
+    c(
+      `THETA[1]` = log(2),
+      `THETA[2]` = log(20),
+      `THETA[3]` = log(1),
+      `THETA[4]` = log(30),
+      `THETA[5]` = 0.5,
+      `ETA[1]` = 0.3
+    ),
+    mkEv()
+  )
   # 1-cmt oral, eta+covariate on ka (slot 7, depot row)
-  runCfg(function() {
-    ini({
+  runCfg(
+    function() {
+      ini({
       tcl <- log(2)
       tv <- log(20)
       tka <- log(1.2)
       eta.ka ~ 0.1
       add.sd <- 0.5
     })
-    model({
+      model({
       cl <- exp(tcl)
       v <- exp(tv)
       ka <- exp(tka) * (wt / 70)^0.5 * exp(eta.ka)
       cp <- linCmt()
       cp ~ add(add.sd)
     })
-  }, c(
-    `THETA[1]` = log(2), `THETA[2]` = log(20), `THETA[3]` = log(1.2),
-    `THETA[4]` = 0.5, `ETA[1]` = 0.3
-  ), mkEv())
+    },
+    c(
+      `THETA[1]` = log(2),
+      `THETA[2]` = log(20),
+      `THETA[3]` = log(1.2),
+      `THETA[4]` = 0.5,
+      `ETA[1]` = 0.3
+    ),
+    mkEv()
+  )
   # 1-cmt IV infusion (rate history through the carry advance)
   runCfg(
     .carryModCov,
     c(
-      `THETA[1]` = log(2), `THETA[2]` = log(20), `THETA[3]` = 0.5,
+      `THETA[1]` = log(2),
+      `THETA[2]` = log(20),
+      `THETA[3]` = 0.5,
       `ETA[1]` = 0.3
-    ), mkEv(dur = 2)
+    ),
+    mkEv(dur = 2)
   )
   # 2-cmt oral (m=3)
-  runCfg(function() {
-    ini({
+  runCfg(
+    function() {
+      ini({
       tcl <- log(2)
       tv <- log(20)
       tq <- log(1)
@@ -173,7 +195,7 @@ test_that("carry gradient matches FD across compartment configs; naive fails all
       eta.cl ~ 0.1
       add.sd <- 0.5
     })
-    model({
+      model({
       cl <- exp(tcl) * (wt / 70)^0.75 * exp(eta.cl)
       v <- exp(tv)
       q <- exp(tq)
@@ -182,9 +204,16 @@ test_that("carry gradient matches FD across compartment configs; naive fails all
       cp <- linCmt()
       cp ~ add(add.sd)
     })
-  }, c(
-    `THETA[1]` = log(2), `THETA[2]` = log(20), `THETA[3]` = log(1),
-    `THETA[4]` = log(30), `THETA[5]` = log(1.2), `THETA[6]` = 0.5,
-    `ETA[1]` = 0.3
-  ), mkEv())
+    },
+    c(
+      `THETA[1]` = log(2),
+      `THETA[2]` = log(20),
+      `THETA[3]` = log(1),
+      `THETA[4]` = log(30),
+      `THETA[5]` = log(1.2),
+      `THETA[6]` = 0.5,
+      `ETA[1]` = 0.3
+    ),
+    mkEv()
+  )
 })

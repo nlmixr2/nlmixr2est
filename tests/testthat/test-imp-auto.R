@@ -18,7 +18,6 @@
 # with "target" as the default the df/AUTO tail machinery is a secondary safety
 # net rather than the primary remedy.
 nmTest({
-
   # One eta on theophylline has NO tail failure (max k-hat about -1.8, nothing
   # above 0.7), so it cannot exercise AUTO's k-hat path at all.  What drives tail
   # failure is the number of ETAs, not the amount of data: identical data and
@@ -59,19 +58,23 @@ nmTest({
   # the resulting heavy tail is structural -- no proposal shape repairs it.
   .sparseData <- local({
     set.seed(42)
-    do.call(rbind, lapply(split(nlmixr2data::theo_sd, nlmixr2data::theo_sd$ID),
-                          function(d) {
-      .dose <- d[d$EVID != 0, , drop = FALSE]
-      .obs <- d[d$EVID == 0, , drop = FALSE]
-      rbind(.dose, .obs[sort(sample(seq_len(nrow(.obs)), 2L)), , drop = FALSE])
-    }))
+    do.call(
+      rbind,
+      lapply(split(nlmixr2data::theo_sd, nlmixr2data::theo_sd$ID), function(d) {
+        .dose <- d[d$EVID != 0, , drop = FALSE]
+        .obs <- d[d$EVID == 0, , drop = FALSE]
+        rbind(.dose, .obs[sort(sample(seq_len(nrow(.obs)), 2L)), , drop = FALSE])
+      })
+    )
   })
-  .fitAuto <- function(auto, nIter = 12L, model = .pk, data = nlmixr2data::theo_sd,
-                       est = "impmap", ...) {
+  .fitAuto <- function(auto, nIter = 12L, model = .pk, data = nlmixr2data::theo_sd, est = "impmap", ...) {
     .ctlFun <- if (est == "imp") impControl else impmapControl
-    suppressWarnings(nlmixr2(model, data, est,
-                             .ctlFun(print = 0L, nIter = nIter, isample = 300L,
-                                     covMethod = "", auto = auto, ..., gammaRule = "floor")))
+    suppressWarnings(nlmixr2(
+      model,
+      data,
+      est,
+      .ctlFun(print = 0L, nIter = nIter, isample = 300L, covMethod = "", auto = auto, ..., gammaRule = "floor")
+    ))
   }
 
   test_that("auto control round-trips and defaults off", {
@@ -117,8 +120,7 @@ nmTest({
     # surfaced it.  If this fails, the fixture no longer exercises AUTO and needs
     # re-selecting -- see plans/imp-auto-reinstrument.md -- rather than the
     # assertion being loosened.
-    expect_gt(sum(.k0 > 0.7), 0L,
-              label = "stressed-fixture subjects with k-hat > 0.7 (AUTO premise)")
+    expect_gt(sum(.k0 > 0.7), 0L, label = "stressed-fixture subjects with k-hat > 0.7 (AUTO premise)")
     .on <- .fitAuto(TRUE, model = .pk3)
     # some subjects got a t proposal, but NOT all of them
     expect_gt(sum(.on$env$impDfInd > 0), 0L)
@@ -154,9 +156,9 @@ nmTest({
     skip_on_cran()
     .off <- .fitAuto(FALSE, model = .pkHealthy, est = "imp")
     .on <- .fitAuto(TRUE, model = .pkHealthy, est = "imp")
-    expect_equal(sum(.off$env$impPsisK > 0.7), 0L)      # premise: converged fit healthy
-    expect_gt(sum(.on$env$impDfInd == 0), 0L)           # escalation stays selective
-    expect_equal(.on$objf, .off$objf, tolerance = 0.5)  # and does not move the answer
+    expect_equal(sum(.off$env$impPsisK > 0.7), 0L) # premise: converged fit healthy
+    expect_gt(sum(.on$env$impDfInd == 0), 0L) # escalation stays selective
+    expect_equal(.on$objf, .off$objf, tolerance = 0.5) # and does not move the answer
   })
 
   test_that("auto repairs the genuine tail failure the rx->ndiff fix revealed on .pk", {
@@ -170,8 +172,7 @@ nmTest({
     skip_on_cran()
     .off <- .fitAuto(FALSE)
     .k0 <- .off$env$impPsisK
-    expect_gt(sum(.k0 > 0.7), 0L,
-              label = "pk subjects with k-hat > 0.7 (rx->ndiff-fix premise)")
+    expect_gt(sum(.k0 > 0.7), 0L, label = "pk subjects with k-hat > 0.7 (rx->ndiff-fix premise)")
     .on <- .fitAuto(TRUE)
     expect_gt(sum(.on$env$impDfInd > 0), 0L)
     expect_gt(sum(.on$env$impDfInd == 0), 0L)
@@ -189,10 +190,9 @@ nmTest({
     # must not assign a t proposal.
     skip_on_cran()
     .gated <- .fitAuto(TRUE, model = .pk3, data = .sparseData)
-    .nonmem <- .fitAuto(TRUE, model = .pk3, data = .sparseData,
-                        autoNonmemSparse = TRUE)
+    .nonmem <- .fitAuto(TRUE, model = .pk3, data = .sparseData, autoNonmemSparse = TRUE)
     # premise: every subject really is sparse in this fixture
-    expect_true(all(.nonmem$env$impDfInd > 0))          # tutorial rule: everyone
+    expect_true(all(.nonmem$env$impDfInd > 0)) # tutorial rule: everyone
     # gated: escalation is driven by k-hat, so it must not be universal-by-fiat
     expect_lt(sum(.gated$env$impDfInd > 0), sum(.nonmem$env$impDfInd > 0))
   })
@@ -200,15 +200,16 @@ nmTest({
   test_that("autoDfPatience controls withdrawal and round-trips", {
     expect_equal(impmapControl()$autoDfPatience, 2L)
     expect_equal(impmapControl(autoDfPatience = 0L, gammaRule = "floor")$autoDfPatience, 0L)
-    expect_equal(do.call(impmapControl,
-                         impmapControl(autoDfPatience = 3L, gammaRule = "floor"))$autoDfPatience, 3L)
+    expect_equal(do.call(impmapControl, impmapControl(autoDfPatience = 3L, gammaRule = "floor"))$autoDfPatience, 3L)
     expect_error(impmapControl(autoDfPatience = -1L, gammaRule = "floor"))
     expect_error(impmapControl(autoDfPatience = "two", gammaRule = "floor"))
     expect_false(impmapControl()$autoNonmemSparse)
     expect_true(impmapControl(autoNonmemSparse = TRUE, gammaRule = "floor")$autoNonmemSparse)
     expect_error(impmapControl(autoNonmemSparse = "yes", gammaRule = "floor"))
-    expect_true(all(c("autoNonmemSparse", "autoDfPatience") %in%
-                      .impmapIsControlNames))
+    expect_true(all(
+      c("autoNonmemSparse", "autoDfPatience") %in%
+        .impmapIsControlNames
+    ))
   })
 
   test_that("autoDfPatience = 0 keeps an escalation that patience would withdraw", {
@@ -226,19 +227,26 @@ nmTest({
     # "or data are categorical" -> nonzero DF and IACCEPT ~ 0.2, for every
     # subject, regardless of how much data each has.
     skip_on_cran()
-    .testSeed(202); rxode2::rxSetSeed(202)
-    .d <- do.call(rbind, lapply(1:20, function(id) {
-      .el <- stats::rnorm(1, 0, 0.7)
-      data.frame(id = id, time = 1:10, dv = stats::rpois(10, exp(1 + .el)), evid = 0)
-    }))
+    .testSeed(202)
+    rxode2::rxSetSeed(202)
+    .d <- do.call(
+      rbind,
+      lapply(1:20, function(id) {
+        .el <- stats::rnorm(1, 0, 0.7)
+        data.frame(id = id, time = 1:10, dv = stats::rpois(10, exp(1 + .el)), evid = 0)
+      })
+    )
     .m <- function() {
       ini({tl <- 1; eta.l ~ 0.7})
       model({lam <- exp(tl + eta.l); dv ~ pois(lam)})
     }
-    .f <- suppressWarnings(nlmixr2(.m, .d, "impmap",
-                                   impmapControl(print = 0L, nIter = 8L, isample = 300L,
-                                                 covMethod = "", auto = TRUE, gammaRule = "floor")))
-    expect_true(all(.f$env$impDfInd > 0))          # every subject gets a t proposal
+    .f <- suppressWarnings(nlmixr2(
+      .m,
+      .d,
+      "impmap",
+      impmapControl(print = 0L, nIter = 8L, isample = 300L, covMethod = "", auto = TRUE, gammaRule = "floor")
+    ))
+    expect_true(all(.f$env$impDfInd > 0)) # every subject gets a t proposal
     # iaccept is NOT dropped to 0.2 up front any more.  Lowering it forces gamma
     # wide, and widening a Gaussian was measured not to fix tails while costing
     # a lot of ESS -- on this very fixture (k-hat already -1.33, i.e. no failure
@@ -251,10 +259,20 @@ nmTest({
     # and withdrawal is permanent, so a drop to Gaussian could not be undone --
     # the df floor is what prevents it.  Exercised at patience 1 to make
     # withdrawal as eager as it can be.
-    .fp <- suppressWarnings(nlmixr2(.m, .d, "impmap",
-                                    impmapControl(print = 0L, nIter = 8L, isample = 300L,
-                                                  covMethod = "", auto = TRUE,
-                                                  autoDfPatience = 1L, gammaRule = "floor")))
+    .fp <- suppressWarnings(nlmixr2(
+      .m,
+      .d,
+      "impmap",
+      impmapControl(
+        print = 0L,
+        nIter = 8L,
+        isample = 300L,
+        covMethod = "",
+        auto = TRUE,
+        autoDfPatience = 1L,
+        gammaRule = "floor"
+      )
+    ))
     expect_true(all(.fp$env$impDfInd > 0))
   })
 
@@ -264,7 +282,6 @@ nmTest({
     .n <- length(.on$env$impNsampleInd)
     # load-balancing, not a cost increase: the total stays near isample*nsub
     expect_lt(abs(sum(.on$env$impNsampleInd) - 300 * .n), 0.25 * 300 * .n)
-    expect_true(all(.on$env$impNsampleInd >= 25))   # floor keeps PSIS usable
+    expect_true(all(.on$env$impNsampleInd >= 25)) # floor keeps PSIS usable
   })
-
 })

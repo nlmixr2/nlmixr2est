@@ -4,7 +4,6 @@ nmTest({
   dat <- Wang2007
   dat$DV <- dat$Y # Add the required DV data item
 
-
   f <- function() {
     ini({
       tvK <- 0.5 # Typical Value of K
@@ -50,22 +49,18 @@ nmTest({
     # reported the previous fit's censoring.  This showed up as test-focei-cens.R
     # passing alone but failing after test-focei-cens-t*.R in the same session.
     .fCens <- suppressMessages(suppressWarnings(nlmixr(f, dat2, "posthoc")))
-    expect_equal(sub(" \\((laplace|gauss)\\)$", "",
-                     as.character(.fCens$censInformation)), "M2 censoring")
+    expect_equal(sub(" \\((laplace|gauss)\\)$", "", as.character(.fCens$censInformation)), "M2 censoring")
     .fAfter <- suppressMessages(suppressWarnings(nlmixr(f, dat, "posthoc")))
     ct(.fAfter, "No censoring")
   })
 
   test_that("censInformation notes the censored 2nd-derivative type (laplace/gauss)", {
-    fg <- suppressWarnings(suppressMessages(nlmixr(f, dat2, "posthoc")))  # gauss is the default
+    fg <- suppressWarnings(suppressMessages(nlmixr(f, dat2, "posthoc"))) # gauss is the default
     fl <- suppressWarnings(suppressMessages(nlmixr(f, dat2, "posthoc", control = list(censOption = "laplace"))))
     expect_match(as.character(fg$censInformation), "\\(gauss\\)$")
     expect_match(as.character(fl$censInformation), "\\(laplace\\)$")
-    expect_equal(as.character(f.focei$censInformation), "No censoring")   # no suffix when uncensored
+    expect_equal(as.character(f.focei$censInformation), "No censoring") # no suffix when uncensored
   })
-
-
-
 
   test_that("censoring changes results - focei", {
     f.focei2 <- suppressWarnings(suppressMessages(nlmixr(f, dat2, "posthoc")))
@@ -95,20 +90,16 @@ nmTest({
     f.foceiL <- suppressMessages(suppressWarnings(nlmixr(f, datL, "focei")))
     f.saemL <- suppressMessages(suppressWarnings(nlmixr(f, datL, "saem")))
     ct(f.saemL, "M3 censoring")
-    expect_equal(as.numeric(f.saemL$theta[["tvK"]]), as.numeric(f.foceiL$theta[["tvK"]]),
-                 tolerance = 0.1)
-    expect_equal(as.numeric(f.saemL$theta[["prop.sd"]]), as.numeric(f.foceiL$theta[["prop.sd"]]),
-                 tolerance = 0.15)
+    expect_equal(as.numeric(f.saemL$theta[["tvK"]]), as.numeric(f.foceiL$theta[["tvK"]]), tolerance = 0.1)
+    expect_equal(as.numeric(f.saemL$theta[["prop.sd"]]), as.numeric(f.foceiL$theta[["prop.sd"]]), tolerance = 0.15)
 
     datL4 <- datL
     datL4$limit <- 0
     f.foceiL4 <- suppressMessages(suppressWarnings(nlmixr(f, datL4, "focei")))
     f.saemL4 <- suppressMessages(suppressWarnings(nlmixr(f, datL4, "saem")))
     ct(f.saemL4, "M2 and M4 censoring")
-    expect_equal(as.numeric(f.saemL4$theta[["tvK"]]), as.numeric(f.foceiL4$theta[["tvK"]]),
-                 tolerance = 0.1)
-    expect_equal(as.numeric(f.saemL4$theta[["prop.sd"]]), as.numeric(f.foceiL4$theta[["prop.sd"]]),
-                 tolerance = 0.15)
+    expect_equal(as.numeric(f.saemL4$theta[["tvK"]]), as.numeric(f.foceiL4$theta[["tvK"]]), tolerance = 0.1)
+    expect_equal(as.numeric(f.saemL4$theta[["prop.sd"]]), as.numeric(f.foceiL4$theta[["prop.sd"]]), tolerance = 0.15)
   })
 
   test_that("saem mixture model with censored data fits (#916 coverage)", {
@@ -139,23 +130,23 @@ nmTest({
     }
 
     f.mix <- suppressMessages(suppressWarnings(
-      nlmixr(fMix, datL, "saem",
-             control = saemControl(nBurn = 10, nEm = 10, calcTables = FALSE, print = 0))
+      nlmixr(fMix, datL, "saem", control = saemControl(nBurn = 10, nEm = 10, calcTables = FALSE, print = 0))
     ))
     expect_true(is.finite(f.mix$objf))
     expect_true(all(is.finite(unlist(f.mix$theta))))
-    expect_true(all(as.numeric(f.mix$theta[c("tvK1", "tvK2")]) > 0.05 &
-                       as.numeric(f.mix$theta[c("tvK1", "tvK2")]) < 3))
-    expect_true(as.numeric(f.mix$theta[["prop.sd"]]) > 0.01 &&
-                  as.numeric(f.mix$theta[["prop.sd"]]) < 2)
+    expect_true(all(
+      as.numeric(f.mix$theta[c("tvK1", "tvK2")]) > 0.05 &
+        as.numeric(f.mix$theta[c("tvK1", "tvK2")]) < 3
+    ))
+    expect_true(
+      as.numeric(f.mix$theta[["prop.sd"]]) > 0.01 &&
+        as.numeric(f.mix$theta[["prop.sd"]]) < 2
+    )
   })
 
-
   test_that("Limit affects values", {
-
     f.focei3 <- suppressMessages(suppressWarnings(nlmixr(f, dat3, "posthoc")))
     ct(f.focei3, "M2 censoring")
-
 
     f.focei4 <- suppressMessages(suppressWarnings(nlmixr(f, dat4, "posthoc")))
 
@@ -170,7 +161,6 @@ nmTest({
     expect_false(isTRUE(all.equal(f.foce2$objf, f.foce3$objf)))
 
     ct(f.foce3, "M2 censoring")
-
   })
 
   test_that("M3/M4 -- Missing, assume LLOQ=3 at t=1.5", {
@@ -191,8 +181,8 @@ nmTest({
     datL2o3$limit <- NA
     datL2o3$limit[1] <- 0
 
-    assign("curdat", datL2o3, env=globalenv())
-    assign("f", f, env=globalenv())
+    assign("curdat", datL2o3, env = globalenv())
+    assign("f", f, env = globalenv())
 
     f.foceiL2o3 <- suppressMessages(suppressWarnings(nlmixr(f, datL2o3, "posthoc")))
     ct(f.foceiL2o3, "M2 and M3 censoring")
@@ -200,7 +190,6 @@ nmTest({
     f.foceiL <- suppressMessages(suppressWarnings(nlmixr(f, datL, "posthoc")))
     expect_false(isTRUE(all.equal(f.focei$objf, f.foceiL$objf)))
     ct(f.foceiL, "M3 censoring")
-
 
     f.foceiL4 <- suppressMessages(suppressWarnings(nlmixr(f, datL4, "posthoc")))
     expect_false(isTRUE(all.equal(f.focei$objf, f.foceiL4$objf)))
@@ -255,7 +244,6 @@ nmTest({
     expect_false(isTRUE(all.equal(f.foce$objf, f.foceL$objf)))
     ct(f.foceiL4, "M2 and M4 censoring")
 
-
     f.foceL4 <- suppressMessages(suppressWarnings(nlmixr(f, datL4, "posthoc", control = list(interaction = FALSE))))
     expect_false(isTRUE(all.equal(f.foce$objf, f.foceL4$objf)))
     expect_false(isTRUE(all.equal(f.foceL$objf, f.foceL4$objf)))
@@ -268,7 +256,6 @@ nmTest({
     f.foceL4u <- suppressMessages(suppressWarnings(nlmixr(f, datL4, "posthoc", control = list(interaction = FALSE))))
 
     expect_equal(names(f.foceL4u), names(f.foceL4))
-
   })
 
   test_that("ar() + M3 censoring scores the AR(1) conditional distribution (#918)", {
@@ -319,13 +306,15 @@ nmTest({
       })
     }
     .ev <- rxode2::et(rxode2::et(amt = 100), c(0.5, 1.5, 2.5, 3.5))
-    .sim <- rxode2::rxWithSeed(2026, rxode2::rxSolve(.m, .ev, nSub = 8,
-                                     returnType = "data.frame", addDosing = TRUE))
+    .sim <- rxode2::rxWithSeed(2026, rxode2::rxSolve(.m, .ev, nSub = 8, returnType = "data.frame", addDosing = TRUE))
     .idc <- if ("sim.id" %in% names(.sim)) "sim.id" else "id"
-    datAr <- data.frame(ID = .sim[[.idc]], TIME = .sim$time,
-                       EVID = ifelse(is.na(.sim$evid), 0, .sim$evid),
-                       AMT = ifelse(is.na(.sim$amt), 0, .sim$amt),
-                       DV = ifelse(is.na(.sim$evid) | .sim$evid == 0, .sim$sim, NA))
+    datAr <- data.frame(
+      ID = .sim[[.idc]],
+      TIME = .sim$time,
+      EVID = ifelse(is.na(.sim$evid), 0, .sim$evid),
+      AMT = ifelse(is.na(.sim$amt), 0, .sim$amt),
+      DV = ifelse(is.na(.sim$evid) | .sim$evid == 0, .sim$sim, NA)
+    )
     datAr$EVID[datAr$AMT > 0] <- 1
 
     .obs <- which(datAr$EVID == 0)
@@ -349,11 +338,9 @@ nmTest({
       })
     }
     f.saemAr <- suppressWarnings(suppressMessages(
-      nlmixr(.mFix, datAr, "saem",
-             control = saemControl(nBurn = 50, nEm = 0, print = 0, seed = 42))
+      nlmixr(.mFix, datAr, "saem", control = saemControl(nBurn = 50, nEm = 0, print = 0, seed = 42))
     ))
     ct(f.saemAr, "M3 censoring")
     expect_equal(f.saemAr$objf, -4.6970347829, tolerance = 1e-4)
   })
-
 })

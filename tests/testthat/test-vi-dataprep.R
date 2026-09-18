@@ -15,9 +15,9 @@ test_that("all-mu-referenced model has an empty theta-sensitivity set", {
   ui <- rxode2::rxode2(allMu)
   cls <- .adviClassifyPars(ui)
   expect_length(cls$etaNames, 3L)
-  expect_true(all(!is.na(cls$muRefThetaIdx)))   # every eta mu-references a theta
-  expect_length(cls$struct, 0L)                 # no non-mu structural thetas
-  expect_length(cls$sigma, 1L)                  # add.sd is a sigma theta
+  expect_true(all(!is.na(cls$muRefThetaIdx))) # every eta mu-references a theta
+  expect_length(cls$struct, 0L) # no non-mu structural thetas
+  expect_length(cls$sigma, 1L) # add.sd is a sigma theta
   expect_setequal(cls$thetaSensIdx, cls$sigma)
 
   prep <- .adviDataPrep(ui, nlmixr2data::theo_sd)

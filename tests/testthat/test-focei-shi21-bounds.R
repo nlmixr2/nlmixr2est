@@ -33,9 +33,13 @@ nmTest({
     # gradient-based outer optimizer so the bounds are actually exercised
     run <- function(...) {
       f <- suppressWarnings(suppressMessages(
-        nlmixr2(ode.cmt, theo_sd, "focei",
-                foceiControl(print = 0L, covMethod = "", calcTables = FALSE,
-                             outerOpt = "nlminb", shi21maxOuter = 20L, ...))))
+        nlmixr2(
+          ode.cmt,
+          theo_sd,
+          "focei",
+          foceiControl(print = 0L, covMethod = "", calcTables = FALSE, outerOpt = "nlminb", shi21maxOuter = 20L, ...)
+        )
+      ))
       unname(f$parFixedDf$Estimate)
     }
     wide <- run(shi21hMax = 2.0, shi21hMin = 1e-4)

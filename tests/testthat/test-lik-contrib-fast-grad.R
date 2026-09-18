@@ -15,12 +15,14 @@ test_that("fast=TRUE declines the analytic gradient for a theta-dependent contri
 
   .old <- rxode2::getRxThreads()
   on.exit(rxode2::setRxThreads(.old), add = TRUE)
-  rxode2::setRxThreads(1L)   # test contributor uses global accumulators
+  rxode2::setRxThreads(1L) # test contributor uses global accumulators
 
-  d <- data.frame(ID = rep(1:3, each = 3),
-                  TIME = rep(c(0.5, 1, 2), 3),
-                  DV = c(1.4, 1.5, 1.3, 1.7, 1.2, 1.6, 1.1, 1.9, 1.5),
-                  EVID = 0L)
+  d <- data.frame(
+    ID = rep(1:3, each = 3),
+    TIME = rep(c(0.5, 1, 2), 3),
+    DV = c(1.4, 1.5, 1.3, 1.7, 1.2, 1.6, 1.1, 1.9, 1.5),
+    EVID = 0L
+  )
 
   mod <- function() {
     ini({
@@ -39,9 +41,12 @@ test_that("fast=TRUE declines the analytic gradient for a theta-dependent contri
     on.exit(.Call("_nlmixr2est_removeTestContrib", PACKAGE = "nlmixr2est"), add = TRUE)
     .Call("_nlmixr2est_setTestContribAddLLf", cc, PACKAGE = "nlmixr2est")
     .Call("_nlmixr2est_setTestContribAddDEta", dEta, PACKAGE = "nlmixr2est")
-    suppressWarnings(.nlmixr(mod, d, est = "focei",
-                             control = foceiControl(print = 0L, fast = fast,
-                                                    calcTables = FALSE)))
+    suppressWarnings(.nlmixr(
+      mod,
+      d,
+      est = "focei",
+      control = foceiControl(print = 0L, fast = fast, calcTables = FALSE)
+    ))
   }
 
   ## observer only (c = 0): the contributor writes nothing back, so the analytic
@@ -50,8 +55,7 @@ test_that("fast=TRUE declines the analytic gradient for a theta-dependent contri
   .obsF <- .run(FALSE, 0)
   expect_gt(as.integer(.obsT$env$nAnalyticGradDirect), 0L)
   expect_equal(as.integer(.obsT$env$nFDGradFast), 0L)
-  expect_equal(unname(fixef(.obsT)["level"]), unname(fixef(.obsF)["level"]),
-               tolerance = 1e-3)
+  expect_equal(unname(fixef(.obsT)["level"]), unname(fixef(.obsF)["level"]), tolerance = 1e-3)
 
   ## theta-dependent contribution: the analytic gradient must decline
   .cT <- .run(TRUE, -0.5)
@@ -61,8 +65,7 @@ test_that("fast=TRUE declines the analytic gradient for a theta-dependent contri
 
   ## ...and having declined, fast= now selects the gradient and nothing else:
   ## before the fix the two arms differed by 5.5e-02 in `level` and 0.88 in objf
-  expect_equal(unname(fixef(.cT)["level"]), unname(fixef(.cF)["level"]),
-               tolerance = 1e-4)
+  expect_equal(unname(fixef(.cT)["level"]), unname(fixef(.cF)["level"]), tolerance = 1e-4)
   expect_equal(.cT$objf, .cF$objf, tolerance = 1e-5)
 
   ## the contribution really did move the optimum (so the comparison is not vacuous)

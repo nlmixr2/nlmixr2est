@@ -39,8 +39,7 @@ test_that("saemControl(nonMuTheta='regress') recovers no-eta thetas and engages 
   .dat <- .dat[order(.dat$ID, .dat$TIME, -.dat$EVID), ]
 
   .ctl <- function(mode) {
-    saemControl(nBurn = 200, nEm = 150, print = 0, calcTables = FALSE,
-                nonMuTheta = mode)
+    saemControl(nBurn = 200, nEm = 150, print = 0, calcTables = FALSE, nonMuTheta = mode)
   }
   .fitEta <- suppressWarnings(nlmixr2(.mod, .dat, est = "saem", control = .ctl("eta")))
   .fitReg <- suppressWarnings(nlmixr2(.mod, .dat, est = "saem", control = .ctl("regress")))
@@ -58,12 +57,11 @@ test_that("saemControl(nonMuTheta='regress') recovers no-eta thetas and engages 
 
   # the no-eta thetas are recovered well under regress (the target of the option)
   expect_lt(abs(.eReg[["tka"]] - .truth[["tka"]]), 0.15)
-  expect_lt(abs(.eReg[["tv"]]  - .truth[["tv"]]),  0.20)
+  expect_lt(abs(.eReg[["tv"]] - .truth[["tv"]]), 0.20)
   expect_lt(abs(.eReg[["pow"]] - .truth[["pow"]]), 0.20)
 
   # and regress recovers the absorption theta at least as well as the phi0 path
-  expect_lte(abs(.eReg[["tka"]] - .truth[["tka"]]),
-             abs(.eEta[["tka"]] - .truth[["tka"]]) + 0.05)
+  expect_lte(abs(.eReg[["tka"]] - .truth[["tka"]]), abs(.eEta[["tka"]] - .truth[["tka"]]) + 0.05)
 })
 
 test_that("the non-mu theta refinement back-solve is per phi0 column (no singular solve)", {
@@ -95,10 +93,15 @@ test_that("the non-mu theta refinement back-solve is per phi0 column (no singula
   # niter_phi0 is half of nBurn+nEm, so this runs 10 refined iterations.
   .msg <- capture.output(
     .fit <- suppressWarnings(
-      nlmixr2(.mod, nlmixr2data::theo_sd, est = "saem",
-              control = saemControl(nBurn = 10, nEm = 10, print = 0,
-                                    calcTables = FALSE, covMethod = ""))),
-    type = "message")
+      nlmixr2(
+        .mod,
+        nlmixr2data::theo_sd,
+        est = "saem",
+        control = saemControl(nBurn = 10, nEm = 10, print = 0, calcTables = FALSE, covMethod = "")
+      )
+    ),
+    type = "message"
+  )
 
   expect_false(any(grepl("singular", .msg, fixed = TRUE)))
   expect_true(all(is.finite(fixef(.fit))))
@@ -127,17 +130,27 @@ test_that("the multivariate nonMuThetaOpt= optimizers refine the non-mu thetas",
   }
 
   .ctl <- function(...) {
-    saemControl(nBurn = 100, nEm = 100, print = 0, calcTables = FALSE,
-                covMethod = "", seed = 1042, ...)
+    saemControl(nBurn = 100, nEm = 100, print = 0, calcTables = FALSE, covMethod = "", seed = 1042, ...)
   }
-  .fitNm  <- suppressWarnings(nlmixr2(.mod, nlmixr2data::theo_sd, est = "saem",
-                                      control = .ctl(nonMuThetaOpt = "nelderMead")))
-  .fitNu  <- suppressWarnings(nlmixr2(.mod, nlmixr2data::theo_sd, est = "saem",
-                                      control = .ctl(nonMuThetaOpt = "newuoa")))
-  .fitOpt <- suppressWarnings(nlmixr2(.mod, nlmixr2data::theo_sd, est = "saem",
-                                      control = .ctl(nonMuThetaOpt = "optimize")))
-  .fitEta <- suppressWarnings(nlmixr2(.mod, nlmixr2data::theo_sd, est = "saem",
-                                      control = .ctl(nonMuTheta = "eta")))
+  .fitNm <- suppressWarnings(nlmixr2(
+    .mod,
+    nlmixr2data::theo_sd,
+    est = "saem",
+    control = .ctl(nonMuThetaOpt = "nelderMead")
+  ))
+  .fitNu <- suppressWarnings(nlmixr2(
+    .mod,
+    nlmixr2data::theo_sd,
+    est = "saem",
+    control = .ctl(nonMuThetaOpt = "newuoa")
+  ))
+  .fitOpt <- suppressWarnings(nlmixr2(
+    .mod,
+    nlmixr2data::theo_sd,
+    est = "saem",
+    control = .ctl(nonMuThetaOpt = "optimize")
+  ))
+  .fitEta <- suppressWarnings(nlmixr2(.mod, nlmixr2data::theo_sd, est = "saem", control = .ctl(nonMuTheta = "eta")))
 
   for (.f in list(.fitNm, .fitNu)) {
     expect_true(all(is.finite(fixef(.f))))
@@ -146,7 +159,7 @@ test_that("the multivariate nonMuThetaOpt= optimizers refine the non-mu thetas",
     expect_false(isTRUE(all.equal(fixef(.f), fixef(.fitEta), tolerance = 1e-8)))
     # but it refines to the same place as the coordinate-descent default
     expect_equal(fixef(.f)[["tka"]], fixef(.fitOpt)[["tka"]], tolerance = 0.1)
-    expect_equal(fixef(.f)[["tv"]],  fixef(.fitOpt)[["tv"]],  tolerance = 0.1)
+    expect_equal(fixef(.f)[["tv"]], fixef(.fitOpt)[["tv"]], tolerance = 0.1)
   }
   # nelder-mead and newuoa are distinct optimizers under the same budget
   expect_false(isTRUE(all.equal(fixef(.fitNm), fixef(.fitNu), tolerance = 1e-8)))

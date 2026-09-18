@@ -1,5 +1,4 @@
 nmTest({
-
   ## FOCEi's mixture-proportion gradient is analytic: mixGrad() (src/inner.cpp)
   ## short-circuits the finite difference in numericGrad(), so a wrong value is
   ## invisible under the default derivative-free outer optimizer (bobyqa) and
@@ -29,18 +28,16 @@ nmTest({
     })
     .ev <- rxode2::et(amt = 320, cmt = "depot")
     .ev <- rxode2::et(.ev, c(0.25, 0.5, 1, 2, 4, 8, 12, 24))
-    .obs <- do.call(rbind, lapply(seq_len(nSub), function(i) {
-      .s <- rxode2::rxSolve(.sim, params = c(CLI = clTrue[.grp[i]]), .ev,
-                            returnType = "data.frame")
-      data.frame(ID = i, TIME = .s$time,
-                 DV = .s$cp + stats::rnorm(nrow(.s), 0, 0.05),
-                 AMT = 0, EVID = 0)
-    }))
-    .dose <- data.frame(ID = seq_len(nSub), TIME = 0, DV = NA_real_,
-                        AMT = 320, EVID = 1)
+    .obs <- do.call(
+      rbind,
+      lapply(seq_len(nSub), function(i) {
+        .s <- rxode2::rxSolve(.sim, params = c(CLI = clTrue[.grp[i]]), .ev, returnType = "data.frame")
+        data.frame(ID = i, TIME = .s$time, DV = .s$cp + stats::rnorm(nrow(.s), 0, 0.05), AMT = 0, EVID = 0)
+      })
+    )
+    .dose <- data.frame(ID = seq_len(nSub), TIME = 0, DV = NA_real_, AMT = 320, EVID = 1)
     .d <- rbind(.dose, .obs)
-    list(data = .d[order(.d$ID, .d$TIME, -.d$EVID), ],
-         emp = as.numeric(table(.grp)) / nSub)
+    list(data = .d[order(.d$ID, .d$TIME, -.d$EVID), ], emp = as.numeric(table(.grp)) / nSub)
   }
 
   ## Everything but the mixture proportions and one component's typical value
@@ -50,12 +47,17 @@ nmTest({
   ## with npars == 1 the outer optimization never reaches numericGrad(), so
   ## mixGrad() would not run at all and the test would be vacuous.
   .ctlGrad <- function() {
-    foceiControl(print = 0, outerOpt = "lbfgsb3c", maxOuterIterations = 300L,
-                 maxInnerIterations = 100L, covMethod = "", calcTables = FALSE)
+    foceiControl(
+      print = 0,
+      outerOpt = "lbfgsb3c",
+      maxOuterIterations = 300L,
+      maxInnerIterations = 100L,
+      covMethod = "",
+      calcTables = FALSE
+    )
   }
   .ctlNone <- function() {
-    foceiControl(print = 0, maxOuterIterations = 0L,
-                 maxInnerIterations = 100L, covMethod = "", calcTables = FALSE)
+    foceiControl(print = 0, maxOuterIterations = 0L, maxInnerIterations = 100L, covMethod = "", calcTables = FALSE)
   }
 
   .checkMixGrad <- function(mod, dat, emp) {
@@ -121,5 +123,4 @@ nmTest({
     }
     .checkMixGrad(.mod, .dat, .dat$emp)
   })
-
 })

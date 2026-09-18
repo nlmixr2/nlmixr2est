@@ -1,6 +1,5 @@
 nmTest({
   test_that("between session saem ll works", {
-
     src <-
       deparse(quote({
         library(nlmixr2est) #nolint
@@ -33,7 +32,7 @@ nmTest({
       .cmd <- file.path(R.home("bin"), "R")
       .args <- c("CMD", "BATCH", "000.R")
       .out <- sys::exec_internal(cmd = .cmd, args = .args, error = FALSE)
-      message(paste(readLines(paste0("000.Rout")), collapse="\n"))
+      message(paste(readLines(paste0("000.Rout")), collapse = "\n"))
       readRDS("fit.rds")
     })
 

@@ -7,14 +7,17 @@
   .nm <- c("tka", "om.eta.ka")
   dimnames(Rinv) <- list(.nm, .nm)
   .e$.fdFullCov <- Rinv
-  if (!is.null(S)) { dimnames(S) <- list(.nm, .nm); .e$.fdFullS <- S }
+  if (!is.null(S)) {
+    dimnames(S) <- list(.nm, .nm)
+    .e$.fdFullS <- S
+  }
   .e$covMethod <- covMethod
   .e
 }
 
 # well-conditioned PD pieces
 .Rinv <- matrix(c(4, 1, 1, 3), 2)
-.S    <- matrix(c(2, 0.5, 0.5, 1), 2)
+.S <- matrix(c(2, 0.5, 0.5, 1), 2)
 .sandwich <- .Rinv %*% .S %*% .Rinv
 
 test_that("covMethod='r,s' installs the true full sandwich Rinv %*% S %*% Rinv", {
@@ -43,7 +46,7 @@ test_that("covMethod='s' installs solve(Sfull)", {
 })
 
 test_that("covMethod='r' installs Rinv and does not touch covS/covRS", {
-  .e <- .mkFdEnv("r", .Rinv)          # no S stashed
+  .e <- .mkFdEnv("r", .Rinv) # no S stashed
   .foceiInstallFdFullCov(.e)
   expect_equal(unname(.e$cov), unname(.Rinv))
   expect_equal(unname(.e$covR), unname(.Rinv))
@@ -60,7 +63,7 @@ test_that("non-FD covMethod (analytic/failed/boundary/empty) is a no-op", {
 })
 
 test_that("s/r,s with a missing or non-finite Sfull is a no-op", {
-  .e <- .mkFdEnv("r,s", .Rinv)        # no .fdFullS
+  .e <- .mkFdEnv("r,s", .Rinv) # no .fdFullS
   .foceiInstallFdFullCov(.e)
   expect_false(exists("cov", envir = .e, inherits = FALSE))
   .Sbad <- matrix(c(1, NA, NA, 1), 2)
@@ -70,7 +73,7 @@ test_that("s/r,s with a missing or non-finite Sfull is a no-op", {
 })
 
 test_that("PD guard rejects an indefinite assembled cov", {
-  .Rbad <- matrix(c(1, 0, 0, -2), 2)  # negative variance -> not PD
+  .Rbad <- matrix(c(1, 0, 0, -2), 2) # negative variance -> not PD
   .e <- .mkFdEnv("r", .Rbad)
   .foceiInstallFdFullCov(.e)
   expect_false(exists("cov", envir = .e, inherits = FALSE))
@@ -89,7 +92,7 @@ test_that("covariance scope names round-trip", {
   expect_identical(.covFullName("s"), "s (full)")
   expect_identical(.covFullName("r,s"), "r,s (full)")
   expect_identical(.covFullName("analytic"), "analytic (full)")
-  expect_identical(.covFullName("s (full)"), "s (full)")       # idempotent
+  expect_identical(.covFullName("s (full)"), "s (full)") # idempotent
   expect_identical(.covBaseName("r,s (full)"), "r,s")
   expect_identical(.covBaseName("r,s"), "r,s")
   expect_true(.covIsFull("analytic (full)"))
@@ -127,8 +130,7 @@ test_that("the native theta-only covariance is cached under its own type", {
   # covMethod="s" writes only e$cov in C++ (no e$covS), so the installed native
   # covariance is the only copy of the theta-only shape -- cache it before the swap
   .e <- .mkFdEnv("s", .Rinv, .S)
-  .native <- matrix(c(0.25, 0.01, 0.01, 0.16), 2, dimnames = list(c("tka", "om.eta.ka"),
-                                                                  c("tka", "om.eta.ka")))
+  .native <- matrix(c(0.25, 0.01, 0.01, 0.16), 2, dimnames = list(c("tka", "om.eta.ka"), c("tka", "om.eta.ka")))
   .e$cov <- .native
   expect_true(.foceiInstallFdFullCov(.e))
   expect_identical(.e$covMethod, "s (full)")

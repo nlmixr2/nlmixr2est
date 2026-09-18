@@ -18,8 +18,7 @@ nmTest({
         effect ~ dpois(lamba)
       })
     }
-    d <- data.frame(ID = c(1, 1, 2, 2), TIME = c(0, 1, 0, 1),
-                    DV = c(1, 2, 1, 3), EVID = 0)
+    d <- data.frame(ID = c(1, 1, 2, 2), TIME = c(0, 1, 0, 1), DV = c(1, 2, 1, 3), EVID = 0)
     .e <- expect_error(
       .nlmixr(mod, d, est = "focei", control = foceiControl(print = 0)),
       "none of the model predictions depend on a random effect"

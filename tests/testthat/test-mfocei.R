@@ -24,9 +24,12 @@ nmTest({
     # base method computed with the SAME frozen algorithm at a given theta/eta point
     .baseFrozen <- function(mfun, baseEst, baseCtl, ui, eta, cm) {
       .em <- as.matrix(eta[, setdiff(names(eta), "ID"), drop = FALSE])
-      .nlmixr(rxode2::rxUiDecompress(ui), theo_sd2, baseEst,
-              baseCtl(print = 0, covMethod = cm, maxOuterIterations = 0L,
-                      maxInnerIterations = 0L, etaMat = .em))
+      .nlmixr(
+        rxode2::rxUiDecompress(ui),
+        theo_sd2,
+        baseEst,
+        baseCtl(print = 0, covMethod = cm, maxOuterIterations = 0L, maxInnerIterations = 0L, etaMat = .em)
+      )
     }
 
     .chk <- function(mfun, muEst, baseEst, muCtl, baseCtl) {
@@ -42,7 +45,8 @@ nmTest({
       expect_true(is.finite(.fM$objDf[["Condition#(Cor)"]][1]))
       # (a) equals the base method computed the SAME (frozen) way at the mu point
       .fF <- .baseFrozen(mfun, baseEst, baseCtl, .fM$ui, .fM$eta, "analytic")
-      .sM <- sqrt(diag(.fM$cov)); .sF <- sqrt(diag(.fF$cov))
+      .sM <- sqrt(diag(.fM$cov))
+      .sF <- sqrt(diag(.fF$cov))
       .cmn <- intersect(names(.sM), names(.sF))
       expect_equal(unname(.sM[.cmn]), unname(.sF[.cmn]), tolerance = 1e-2)
       # (b) well-identified: also equals a normal base fit (converges to the same point)
@@ -52,11 +56,11 @@ nmTest({
     }
 
     for (.mod in list(odeNC, matNC)) {
-      .chk(.mod, "mfocei",   "focei", mfoceiControl,   foceiControl)
+      .chk(.mod, "mfocei", "focei", mfoceiControl, foceiControl)
       .chk(.mod, "ifocei", "focei", ifoceiControl, foceiControl)
-      .chk(.mod, "mfoce",    "foce",  mfoceControl,    foceControl)
-      .chk(.mod, "ifoce",  "foce",  ifoceControl,  foceControl)
-      .chk(.mod, "mfocep",   "focep", mfocepControl,   focepControl)
+      .chk(.mod, "mfoce", "foce", mfoceControl, foceControl)
+      .chk(.mod, "ifoce", "foce", ifoceControl, foceControl)
+      .chk(.mod, "mfocep", "focep", mfocepControl, focepControl)
       .chk(.mod, "ifocep", "focep", ifocepControl, focepControl)
     }
   })
@@ -83,7 +87,8 @@ nmTest({
       expect_equal(.covBaseName(.fM$covMethod), "analytic")
       expect_false(is.na(suppressWarnings(as.numeric(.fM$parFixed["allo.cl", "SE"]))))
       expect_false(is.na(suppressWarnings(as.numeric(.fM$parFixed["tcl", "SE"]))))
-      .sM <- sqrt(diag(.fM$cov)); .sB <- sqrt(diag(.fB$cov))
+      .sM <- sqrt(diag(.fM$cov))
+      .sB <- sqrt(diag(.fB$cov))
       .th <- c("tka", "tcl", "tv", "add.sd")
       expect_equal(unname(.sM[.th]), unname(.sB[.th]), tolerance = 0.1)
     }
@@ -164,8 +169,7 @@ nmTest({
     expect_true(all(is.finite(.u$tcl)))
     expect_true(all(is.finite(.u$allo.cl)))
     expect_equal(unname(.u$tcl[nrow(.u)]), unname(.thMu["tcl"]), tolerance = 0.05)
-    expect_equal(unname(.u$allo.cl[nrow(.u)]), unname(.thMu["allo.cl"]),
-                 tolerance = 0.05)
+    expect_equal(unname(.u$allo.cl[nrow(.u)]), unname(.thMu["allo.cl"]), tolerance = 0.05)
   })
 
   test_that("mfocei respects a user-fixed covariate coefficient", {
@@ -238,10 +242,13 @@ nmTest({
     expect_true(unname(fitBounded$theta["allo.cl"]) >= 0)
     expect_true(unname(fitBounded$theta["allo.cl"]) <= 2)
     # regression-updated (profiled out of the outer set)
-    expect_true("allo.cl" %in%
-                  nlmixr2est:::.foceiMuSkipThetaNames(
-                    fitBounded$ui,
-                    fitBounded$ui$iniDf$name[!is.na(fitBounded$ui$iniDf$ntheta)]))
+    expect_true(
+      "allo.cl" %in%
+        .foceiMuSkipThetaNames(
+          fitBounded$ui,
+          fitBounded$ui$iniDf$name[!is.na(fitBounded$ui$iniDf$ntheta)]
+        )
+    )
   })
 
   test_that("mfocei mu-references a whole group when a sibling covariate is bounded", {
@@ -316,11 +323,17 @@ nmTest({
       })
     }
 
-    out <- withr::with_options(list(width = 200), capture.output({
-      nlmixr2est::nlmixr(mod, theo_sd2, "mfocei",
-                          mfoceiControl(print = 1, maxOuterIterations = 2,
-                                        outerOpt = "nlminb"))
-    }))
+    out <- withr::with_options(
+      list(width = 200),
+      capture.output({
+        nlmixr2est::nlmixr(
+          mod,
+          theo_sd2,
+          "mfocei",
+          mfoceiControl(print = 1, maxOuterIterations = 2, outerOpt = "nlminb")
+        )
+      })
+    )
 
     # the old bolt-on "|   mu|" row is gone
     expect_false(any(grepl("^\\|   mu\\|", out)))
@@ -330,18 +343,18 @@ nmTest({
     # their natural positions among the other parameters
     hdr <- grep("^\\|    #\\|", out, value = TRUE)[1]
     expect_false(is.na(hdr))
-    .pos <- vapply(c("tka", "tcl", "tv", "allo\\.cl", "add\\.sd"),
-                   function(nm) as.numeric(regexpr(paste0("\\b", nm, "\\b"), hdr)),
-                   numeric(1))
+    .pos <- vapply(
+      c("tka", "tcl", "tv", "allo\\.cl", "add\\.sd"),
+      function(nm) as.numeric(regexpr(paste0("\\b", nm, "\\b"), hdr)),
+      numeric(1)
+    )
     expect_true(all(.pos > 0))
     expect_true(all(diff(.pos) > 0))
     # gradient rows: one blank cell per regression-updated theta
     # (tka/tcl/tv/allo.cl), real numbers for the optimizer-owned columns
     gradRows <- grep("^\\|    [GFCMSA]\\|", out, value = TRUE)
     expect_true(length(gradRows) > 0)
-    .blanks <- vapply(gradRows,
-                      function(r) sum(gregexpr(" {11}\\|", r)[[1]] > 0),
-                      numeric(1))
+    .blanks <- vapply(gradRows, function(r) sum(gregexpr(" {11}\\|", r)[[1]] > 0), numeric(1))
     expect_true(all(.blanks == 4))
     expect_true(any(grepl("[-0-9]\\.[0-9]", gradRows)))
   })
@@ -368,10 +381,12 @@ nmTest({
         cp ~ add(add.sd)
       })
     }
-    .f <- .nlmixr(mod, nlmixr2data::theo_sd, "focei",
-                  foceiControl(muModel = "lin", print = 0,
-                               maxOuterIterations = 0L, covMethod = "",
-                               calcTables = FALSE))
+    .f <- .nlmixr(
+      mod,
+      nlmixr2data::theo_sd,
+      "focei",
+      foceiControl(muModel = "lin", print = 0, maxOuterIterations = 0L, covMethod = "", calcTables = FALSE)
+    )
     expect_true(inherits(.f, "nlmixr2FitCore"))
     expect_true(all(is.finite(.f$theta)))
   })

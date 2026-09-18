@@ -32,15 +32,25 @@
 .updateParFixedBackTransformFixed <- function(ui, name, value) {
   .iniDf <- ui$iniDf
   .w <- which(.iniDf$name == name)
-  if (length(.w) == 1L && !is.na(.iniDf$backTransform[.w])) return(value)
-  if (name %in% ui$muRefExtra$parameter) return(value)
-  if (name %in% ui$muRefCovariateDataFrame$covariateParameter) return(value)
+  if (length(.w) == 1L && !is.na(.iniDf$backTransform[.w])) {
+    return(value)
+  }
+  if (name %in% ui$muRefExtra$parameter) {
+    return(value)
+  }
+  if (name %in% ui$muRefCovariateDataFrame$covariateParameter) {
+    return(value)
+  }
   .m <- ui$muRefCurEval
   .w <- which(.m$parameter == name)
   if (length(.w) == 1L) {
     .ce <- .m$curEval[.w]
-    if (isTRUE(.ce == "exp")) return(exp(value))
-    if (isTRUE(.ce == "expit")) return(rxode2::expit(value, .m$low[.w], .m$hi[.w]))
+    if (isTRUE(.ce == "exp")) {
+      return(exp(value))
+    }
+    if (isTRUE(.ce == "expit")) {
+      return(rxode2::expit(value, .m$low[.w], .m$hi[.w]))
+    }
     if (isTRUE(.ce == "probitInv")) return(rxode2::probitInv(value, .m$low[.w], .m$hi[.w]))
   }
   value
@@ -70,13 +80,19 @@
 #' @author Matthew L. Fidler
 #' @noRd
 .updateParFixedApplyManualBacktransformationsI <- function(theta, popDf, btFun, ci, btEnv) {
-  .qn <- qnorm(1.0-(1-ci)/2)
+  .qn <- qnorm(1.0 - (1 - ci) / 2)
   .bfun <- NULL
   if (!is.na(btFun)) {
-    .bfun <- try(get(btFun, envir = btEnv, mode="function"), silent=TRUE)
+    .bfun <- try(get(btFun, envir = btEnv, mode = "function"), silent = TRUE)
     if (inherits(.bfun, "try-error")) {
-      warning("unknown function '", btFun, "' for manual backtransform, revert to nlmixr2 back-transformation detection for, '", theta, "'",
-              call.=FALSE)
+      warning(
+        "unknown function '",
+        btFun,
+        "' for manual backtransform, revert to nlmixr2 back-transformation detection for, '",
+        theta,
+        "'",
+        call. = FALSE
+      )
       .bfun <- NULL
     }
   }
@@ -105,7 +121,7 @@
   if (nrow(popDf) == 0) {
     return(popDf)
   }
-  btFun =
+  btFun <-
     stats::setNames(
       iniDf$backTransform[!is.na(iniDf$ntheta)],
       iniDf$name[!is.na(iniDf$ntheta)]
@@ -128,9 +144,11 @@
 #' This gets the CV/SD for a single ETA
 #'
 #' @param .eta Eta Name
-#' @param .env Environment where the indicators of `.sdOnly`, `.cvOnly` are stored so the column name can be changed to match the data
+#' @param .env Environment where the indicators of `.sdOnly`, `.cvOnly` are stored so the column
+#'   name can be changed to match the data
 #' @param .ome Omega fixed vector
-#' @param .muRefCurEval The current mu ref evaluation.  This determines if the ETA is logit normal and %CV should be calculated.
+#' @param .muRefCurEval The current mu ref evaluation.  This determines if the ETA is logit normal
+#'   and %CV should be calculated.
 #' @param .sigdig is the number of significant digits used in the evaluation
 #' @return Data frame row with ch= the character representation and v is the vector representation of the CV or sd
 #' @author Matthew L. Fidler and Bill Denney
@@ -151,11 +169,11 @@
   .v <- .ome[.eta, .eta]
   .w <- which(.muRefCurEval$parameter == .eta)
   if (length(.w) == 1L && .muRefCurEval$curEval[.w] == "exp") {
-    assign(".sdOnly", FALSE, envir=.env)
+    assign(".sdOnly", FALSE, envir = .env)
     .valNumber <- sqrt(exp(.v) - 1) * 100
     .valCharPrep <- .valNumber
   } else {
-    assign(".cvOnly", FALSE, envir=.env)
+    assign(".cvOnly", FALSE, envir = .env)
     .valNumber <- sqrt(.v)
     .valCharPrep <- sqrt(.v)
   }
@@ -169,7 +187,9 @@
   .valChar <-
     formatC(
       signif(.valCharPrep, digits = .sigdig),
-      digits = .sigdig, format = "fg", flag = "#"
+      digits = .sigdig,
+      format = "fg",
+      flag = "#"
     )
   data.frame(
     ch = paste0(.charPrefix, .valChar, .charSuffix),
@@ -185,7 +205,8 @@
 #' @param .sigdig Number of significant digits for the character representation
 #' @param .muRefDataFrame `.ui$muRefDataFrame`
 #' @param .muRefCurEval `.ui$muRefCurEval`
-#' @returns A list with `popDf` (BSV column and non-mu-referenced ETA rows appended) and `bsvFixedNames` (row names whose BSV is fixed)
+#' @returns A list with `popDf` (BSV column and non-mu-referenced ETA rows appended) and
+#'   `bsvFixedNames` (row names whose BSV is fixed)
 #' @author Matthew L. Fidler
 #' @noRd
 .updateParFixedAddBsv <- function(popDf, iniDf, omega, .sigdig, .muRefDataFrame, .muRefCurEval) {
@@ -193,7 +214,7 @@
   .omegaFix <- .omegaFix[is.na(.omegaFix$ntheta), ]
   .omegaFix <- setNames(.omegaFix$fix, paste(.omegaFix$name))
 
-  .env <- new.env(parent=emptyenv())
+  .env <- new.env(parent = emptyenv())
   .env$.cvOnly <- TRUE
   .env$.sdOnly <- TRUE
   .env$.muRefVars <- NULL
@@ -204,7 +225,7 @@
       return(data.frame(ch = " ", v = NA_real_))
     }
     .eta <- .muRefDataFrame$eta[.w]
-    assign(".muRefVars", c(.env$.muRefVars, .eta), envir=.env)
+    assign(".muRefVars", c(.env$.muRefVars, .eta), envir = .env)
     if (.eta %in% names(.omegaFix) && isTRUE(.omegaFix[[.eta]])) {
       .env$.bsvFixedNames <- c(.env$.bsvFixedNames, x)
     }
@@ -214,7 +235,9 @@
   .nonMuRef <- setdiff(dimnames(omega)[[1]], .env$.muRefVars)
   popDf2 <- data.frame()
   if (length(.nonMuRef) > 0) {
-    popDf2 <- as.data.frame(lapply(names(popDf), function(x) { rep(NA_real_, length(.nonMuRef))}))
+    popDf2 <- as.data.frame(lapply(names(popDf), function(x) {
+      rep(NA_real_, length(.nonMuRef))
+    }))
     names(popDf2) <- names(popDf)
     row.names(popDf2) <- .nonMuRef
   }
@@ -301,7 +324,7 @@
         ret[[colNumBt]],
         sprintf("%s (%s, %s)", ret[[colNumBt]], ret$`CI Lower`, ret$`CI Upper`)
       )
-    names(ret)[colNumBt] <- sprintf("Back-transformed(%g%%CI)", 100*ci)
+    names(ret)[colNumBt] <- sprintf("Back-transformed(%g%%CI)", 100 * ci)
     ret$`CI Lower` <- NULL
     ret$`CI Upper` <- NULL
   }
@@ -347,10 +370,11 @@
 #' @return invisibly, called for side effects on `env`
 #' @noRd
 .updateParFixedRefreshSeFromCov <- function(env, cov, onlyMissing = FALSE) {
-  if (!exists("parFixedDf", envir = env, inherits = FALSE)) return(invisible())
+  if (!exists("parFixedDf", envir = env, inherits = FALSE)) {
+    return(invisible())
+  }
   .pf <- env$parFixedDf
-  if (!is.matrix(cov) || is.null(rownames(cov)) ||
-        !is.data.frame(.pf) || !("SE" %in% names(.pf))) {
+  if (!is.matrix(cov) || is.null(rownames(cov)) || !is.data.frame(.pf) || !("SE" %in% names(.pf))) {
     return(invisible())
   }
   .se <- sqrt(diag(cov))
@@ -358,13 +382,16 @@
   # ui.  The ui's control slot can still hold the default when the fit ran with
   # e.g. saemControl(ci=0.8), and reading only the ui both relabels the column
   # 95% and recomputes the CIs below at the wrong level.
-  .ci <- tryCatch({
-    .v <- env$control[["ci"]]
-    if (!(length(.v) == 1L && is.numeric(.v) && is.finite(.v))) {
-      .v <- suppressWarnings(as.numeric(rxode2::rxGetControl(env$ui, "ci", 0.95)))
-    }
-    if (length(.v) == 1L && is.numeric(.v) && is.finite(.v)) .v else 0.95
-  }, error = function(e) 0.95)
+  .ci <- tryCatch(
+    {
+      .v <- env$control[["ci"]]
+      if (!(length(.v) == 1L && is.numeric(.v) && is.finite(.v))) {
+        .v <- suppressWarnings(as.numeric(rxode2::rxGetControl(env$ui, "ci", 0.95)))
+      }
+      if (length(.v) == 1L && is.numeric(.v) && is.finite(.v)) .v else 0.95
+    },
+    error = function(e) 0.95
+  )
   .qn <- stats::qnorm(1 - (1 - .ci) / 2)
   .changed <- FALSE
   for (.n in intersect(rownames(.pf), names(.se))) {
@@ -384,8 +411,7 @@
       # probitInv) reproduces the stored back-transformed value; rows with a
       # manual backTransform keep their existing CI
       .btf <- function(.v) {
-        tryCatch(.updateParFixedBackTransformFixed(env$ui, .n, .v),
-                 error = function(e) .v)
+        tryCatch(.updateParFixedBackTransformFixed(env$ui, .n, .v), error = function(e) .v)
       }
       if (isTRUE(all.equal(unname(.pf[.n, "Back-transformed"]), unname(.btf(.e))))) {
         .pf[.n, "CI Lower"] <- .btf(.e - .qn * .s)
@@ -394,13 +420,17 @@
     }
     .changed <- TRUE
   }
-  if (!.changed) return(invisible())
+  if (!.changed) {
+    return(invisible())
+  }
   .pf <- .mixParFixedCi(env$ui, .pf, .ci)
   env$parFixedDf <- .pf
   # regenerate the formatted table; the FIXED / fix(...) decorations are
   # re-derived from the existing formatted table (the numeric one lacks them)
-  if (exists("parFixed", envir = env, inherits = FALSE) &&
-        is.data.frame(env$parFixed)) {
+  if (
+    exists("parFixed", envir = env, inherits = FALSE) &&
+      is.data.frame(env$parFixed)
+  ) {
     .old <- env$parFixed
     .fixedNames <- rownames(.old)[which(.old[["SE"]] == "FIXED")]
     .bsvCol <- which(startsWith(names(.old), "BSV("))
@@ -409,17 +439,24 @@
     } else {
       character()
     }
-    .digits <- tryCatch({
-      .v <- env$control[["sigdigTable"]]
-      if (length(.v) == 1L && is.finite(.v)) {
-        .v
-      } else {
-        rxode2::rxGetControl(env$ui, "sigdigTable", 3L)
-      }
-    }, error = function(e) 3L)
-    .new <- .updateParFixedApplySig(.pf, digits = .digits, ci = .ci,
-                                    fixedNames = .fixedNames,
-                                    bsvFixedNames = .bsvFixedNames)
+    .digits <- tryCatch(
+      {
+        .v <- env$control[["sigdigTable"]]
+        if (length(.v) == 1L && is.finite(.v)) {
+          .v
+        } else {
+          rxode2::rxGetControl(env$ui, "sigdigTable", 3L)
+        }
+      },
+      error = function(e) 3L
+    )
+    .new <- .updateParFixedApplySig(
+      .pf,
+      digits = .digits,
+      ci = .ci,
+      fixedNames = .fixedNames,
+      bsvFixedNames = .bsvFixedNames
+    )
     class(.new) <- class(.old)
     env$parFixed <- .new
   }
@@ -449,9 +486,14 @@
         Estimate = unname(.theta[.fixedNames]),
         SE = NA_real_,
         `%RSE` = NA_real_,
-        `Back-transformed` = vapply(.fixedNames, function(.n) {
-          .updateParFixedBackTransformFixed(.ui, .n, unname(.theta[.n]))
-        }, numeric(1), USE.NAMES = FALSE),
+        `Back-transformed` = vapply(
+          .fixedNames,
+          function(.n) {
+            .updateParFixedBackTransformFixed(.ui, .n, unname(.theta[.n]))
+          },
+          numeric(1),
+          USE.NAMES = FALSE
+        ),
         `CI Lower` = NA_real_,
         `CI Upper` = NA_real_,
         row.names = .fixedNames,
@@ -476,9 +518,13 @@
   # .ret$control first, since .ui may be the pre-fix uiUnfix model (no control)
   .parFixedNum <- function(.nm, .default) {
     .v <- .ret$control[[.nm]]
-    if (length(.v) == 1L && is.finite(.v)) return(.v)
+    if (length(.v) == 1L && is.finite(.v)) {
+      return(.v)
+    }
     .v <- rxode2::rxGetControl(.ret$ui, .nm, .default)
-    if (length(.v) == 1L && is.finite(.v)) return(.v)
+    if (length(.v) == 1L && is.finite(.v)) {
+      return(.v)
+    }
     .default
   }
   .parFixedCi <- .parFixedNum("ci", 0.95)
@@ -496,9 +542,12 @@
   .bsv <- list(popDf = popDf, bsvFixedNames = character())
   if (!is.null(.ret$omega)) {
     .bsv <- .updateParFixedAddBsv(
-      popDf, iniDf = .ui$iniDf, omega = .ret$omega,
+      popDf,
+      iniDf = .ui$iniDf,
+      omega = .ret$omega,
       .sigdig = .parFixedDigits,
-      .muRefDataFrame = .ui$muRefDataFrame, .muRefCurEval = .ui$muRefCurEval
+      .muRefDataFrame = .ui$muRefDataFrame,
+      .muRefCurEval = .ui$muRefCurEval
     )
     popDf <- .bsv$popDf
     popDf <- .updateParFixedAddShrinkage(popDf, shrink = .ret$shrink, ui = .ui)
@@ -542,7 +591,9 @@
         # a control restored from an older fit can be missing either field; a
         # non-finite value would reach `if (.nnodes == 1)` as NA
         .keep <- function(x) length(x) == 1L && is.numeric(x) && is.finite(x)
-        if (.keep(.ctl$nnodesGq)) .nnodes <- .ctl$nnodesGq
+        if (.keep(.ctl$nnodesGq)) {
+          .nnodes <- .ctl$nnodesGq
+        }
         if (.keep(.ctl$nsdGq)) .nsd <- .ctl$nsdGq
       }
       if (.nnodes == 1) {
@@ -559,30 +610,30 @@
 }
 
 .nmObjBackward <- c(
-  "value"="objf",
-  "obf"="objf",
-  "ofv"="objf",
-  "par.hist"="parHist",
-  "par.hist.stacked"="parHistStacked",
-  "omega.R"="omegaR",
-  "par.fixed"="parFixed",
-  "eta"="ranef",
-  "theta"="fixef",
-  "varFix"="cov",
-  "thetaMat"="cov",
-  "model.name"="modelName",
-  "dataName"="data.name",
-  "saem.cfg"="saemCfg",
-  "objf"="objective",
-  "OBJF"="objective",
-  "theta"="fixef",
-  "etaR"="phiR",
-  "etaH"="phiH",
-  "etaC"="phiC",
-  "etaSE"="phiSE",
-  "etaRSE"="phiRSE",
-  "etaCI"="phiCI",
-  "uiIni"="iniUi"
+  "value" = "objf",
+  "obf" = "objf",
+  "ofv" = "objf",
+  "par.hist" = "parHist",
+  "par.hist.stacked" = "parHistStacked",
+  "omega.R" = "omegaR",
+  "par.fixed" = "parFixed",
+  "eta" = "ranef",
+  "theta" = "fixef",
+  "varFix" = "cov",
+  "thetaMat" = "cov",
+  "model.name" = "modelName",
+  "dataName" = "data.name",
+  "saem.cfg" = "saemCfg",
+  "objf" = "objective",
+  "OBJF" = "objective",
+  "theta" = "fixef",
+  "etaR" = "phiR",
+  "etaH" = "phiH",
+  "etaC" = "phiC",
+  "etaSE" = "phiSE",
+  "etaRSE" = "phiRSE",
+  "etaCI" = "phiCI",
+  "uiIni" = "iniUi"
 )
 
 #' @export
@@ -590,7 +641,9 @@
   rxode2::.udfEnvSet(parent.frame(1))
   .env <- obj
   .arg <- .nmObjBackward[arg]
-  if (is.na(.arg)) .arg <- arg
+  if (is.na(.arg)) {
+    .arg <- arg
+  }
   .lst <- list(obj, exact)
   class(.lst) <- c(.arg, "nmObjGet")
   nmObjGet(.lst)
@@ -626,7 +679,8 @@ VarCorr.nlmixr2FitCore <- function(x, sigma = NULL, ...) {
   if (is.null(.ret)) {
     .var <- diag(x$omega)
     .ret <- data.frame(
-      Variance = .var, StdDev = sqrt(.var),
+      Variance = .var,
+      StdDev = sqrt(.var),
       row.names = names(.var)
     )
     .ret <- .ret[!is.na(.ret[, 1]), ]
@@ -655,14 +709,28 @@ VarCorr.nlmixr2FitCoreSilent <- VarCorr.nlmixr2FitCore
 str.nlmixr2FitData <- function(object, ...) {
   NextMethod(object)
   .s <- .nmObjGetSupportedDollars()
-  cat(paste(strtrim(paste(vapply(names(.s), function(x){
-    .nchar <- nchar(x)
-    if (.nchar >= 10) {
-      paste0(" $ ", x, ": ")
-    } else {
-      paste0(" $ ",x, paste(rep(" ", 10 - .nchar), collapse=""), ": ")
-    }
-  }, character(1), USE.NAMES=FALSE), .s), 128), collapse="\n"))
+  cat(paste(
+    strtrim(
+      paste(
+        vapply(
+          names(.s),
+          function(x) {
+            .nchar <- nchar(x)
+            if (.nchar >= 10) {
+              paste0(" $ ", x, ": ")
+            } else {
+              paste0(" $ ", x, paste(rep(" ", 10 - .nchar), collapse = ""), ": ")
+            }
+          },
+          character(1),
+          USE.NAMES = FALSE
+        ),
+        .s
+      ),
+      128
+    ),
+    collapse = "\n"
+  ))
   cat("\n")
   invisible()
 }
@@ -723,7 +791,9 @@ ofv <- function(x, type, ...) {
 
 #' @export
 ofv.nlmixr2FitData <- function(x, type, ...) {
-  if (!missing(type)) setOfv(x, type)
+  if (!missing(type)) {
+    setOfv(x, type)
+  }
   x$ofv
 }
 
@@ -734,13 +804,15 @@ logLik.nlmixr2FitData <- function(object, ...) {
   if (!is.null(.lst$type)) {
     .new <- setOfv(object, .lst$type)
     .parent <- globalenv()
-    .bound <- do.call("c", lapply(ls(.parent, all.names = TRUE),
-      function(.cur) {
-       if (.cur == .objName && identical(.parent[[.cur]]$env, object$env)) {
-         return(.cur)
-       }
-       NULL
-      }))
+    .bound <- do.call(
+      "c",
+      lapply(ls(.parent, all.names = TRUE), function(.cur) {
+        if (.cur == .objName && identical(.parent[[.cur]]$env, object$env)) {
+          return(.cur)
+        }
+        NULL
+      })
+    )
     if (length(.bound) == 1) {
       if (exists(.bound, envir = .parent)) {
         assign(.bound, .new, envir = .parent)
@@ -809,7 +881,7 @@ vcov.nlmixr2FitCoreSilent <- vcov.nlmixr2FitCore
   # Update initial estimates to match current initial estimates
   .ui <- x$ui
   .iniDf <- .ui$iniDf
-  assign("iniDf0", nlmixr2global$nlmixr2EstEnv$iniDf0, envir=x)
+  assign("iniDf0", nlmixr2global$nlmixr2EstEnv$iniDf0, envir = x)
   # `fullTheta` is on the ESTIMATION scale; a mixture probability is therefore
   # still mlogit there and has to be brought back below.  `fixef` and `theta`
   # were already back-transformed by .aaaPostEstimationMixBacktransform().
@@ -823,7 +895,9 @@ vcov.nlmixr2FitCoreSilent <- vcov.nlmixr2FitCore
   }
   if (is.null(names(.thetas))) {
     .thetaNames <- .iniDf$name[which(!is.na(.iniDf$ntheta))]
-    if (length(.thetaNames) > length(.thetas)) stop("corrupted rxode2 ui", call.=FALSE)
+    if (length(.thetaNames) > length(.thetas)) {
+      stop("corrupted rxode2 ui", call. = FALSE)
+    }
     .thetas <- .thetas[seq_along(.thetaNames)]
     names(.thetas) <- .thetaNames
   }
@@ -848,11 +922,11 @@ vcov.nlmixr2FitCoreSilent <- vcov.nlmixr2FitCore
   .omega <- x$omega
   if (is.null(.omega)) {
     .ui <- rxode2::rxUiDecompress(.ui)
-    assign("iniDf", .iniDf, envir=.ui)
+    assign("iniDf", .iniDf, envir = .ui)
     .ui <- rxode2::rxUiCompress(.ui)
-    assign("ui", .ui, envir=x)
+    assign("ui", .ui, envir = x)
   } else {
-    .fixComps <- .iniDf[is.na(.iniDf$ntheta),]
+    .fixComps <- .iniDf[is.na(.iniDf$ntheta), ]
     .fixComps <- setNames(.fixComps$fix, .fixComps$name)
     .lotri <- lotri::as.lotri(.iniDf)
     attr(.omega, "lotriEst") <- attr(.lotri, "lotriEst")
@@ -875,13 +949,13 @@ vcov.nlmixr2FitCoreSilent <- vcov.nlmixr2FitCore
     .iniDf <- rbind(.iniDf1, .iniDf2)
     .iniDf <- .iniDf[, .names]
     for (.n in names(.fixComps)) {
-      .w  <- which(.iniDf$name == .n)
+      .w <- which(.iniDf$name == .n)
       if (length(.w) == 1L) .iniDf[.w, "fix"] <- .fixComps[.n]
     }
     .ui <- rxode2::rxUiDecompress(.ui)
-    assign("iniDf", .iniDf, envir=.ui)
+    assign("iniDf", .iniDf, envir = .ui)
     .ui <- rxode2::rxUiCompress(.ui)
-    assign("ui", .ui, envir=x)
+    assign("ui", .ui, envir = x)
   }
 }
 

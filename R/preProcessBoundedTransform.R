@@ -38,18 +38,28 @@
     .est <- .thetaDf$est[i]
 
     # Skip fixed params
-    if (.thetaDf$fix[i]) next
+    if (.thetaDf$fix[i]) {
+      next
+    }
     # Skip residual error params (have non-NA err column), EXCEPT the
     # autoregressive correlation ar() when the OUTER optimizer estimates it
     # (nlm/focei): it has finite [0,1) bounds and needs the expit transform to
     # stay in range.  saem estimates ar() in the M-step (not the outer
     # optimizer), so leave it untransformed there.
-    if (!is.na(.thetaDf$err[i]) &&
-          !(identical(.thetaDf$err[i], "ar") && !(est %in% c("saem")))) next
+    if (
+      !is.na(.thetaDf$err[i]) &&
+        !(identical(.thetaDf$err[i], "ar") && !(est %in% "saem"))
+    ) {
+      next
+    }
     # Skip synthetic IOV helper thetas; their dedicated back-transform/finalize
     # path is handled in R/iov.R and should not be rewrapped here.
-    if (!is.na(.thetaDf$backTransform[i]) &&
-          grepl("^nlmixr2iov", .thetaDf$backTransform[i])) next
+    if (
+      !is.na(.thetaDf$backTransform[i]) &&
+        grepl("^nlmixr2iov", .thetaDf$backTransform[i])
+    ) {
+      next
+    }
 
     .hasLo <- is.finite(.lo)
     .hasHi <- is.finite(.hi)
@@ -68,7 +78,9 @@
       )
     } else if (.hasLo && !.hasHi) {
       .val <- .est - .lo
-      if (.val <= 0) .val <- 1e-6
+      if (.val <= 0) {
+        .val <- 1e-6
+      }
       .transforms[[length(.transforms) + 1]] <- list(
         name = .name,
         internalName = paste0("rxBoundedTr.", .name),
@@ -80,7 +92,9 @@
       )
     } else if (!.hasLo && .hasHi) {
       .val <- .hi - .est
-      if (.val <= 0) .val <- 1e-6
+      if (.val <= 0) {
+        .val <- 1e-6
+      }
       .transforms[[length(.transforms) + 1]] <- list(
         name = .name,
         internalName = paste0("rxBoundedTr.", .name),
@@ -105,19 +119,30 @@
   .lostMuRef <- FALSE
   for (.tr in transforms) {
     .wOld <- which(.oldCe$parameter == .tr$name)
-    if (length(.wOld) != 1L) next
+    if (length(.wOld) != 1L) {
+      next
+    }
     .oldEval <- .oldCe$curEval[.wOld]
-    if (!.isCurEvalEncodedFunction(.oldEval) || nchar(.oldEval) == 0L) next
+    if (!.isCurEvalEncodedFunction(.oldEval) || nchar(.oldEval) == 0L) {
+      next
+    }
     .wNew <- which(.newCe$parameter == .tr$internalName)
-    if (length(.wNew) == 1L &&
-          .isCurEvalEncodedFunction(.newCe$curEval[.wNew]) &&
-          nchar(.newCe$curEval[.wNew]) > 0L) {
+    if (
+      length(.wNew) == 1L &&
+        .isCurEvalEncodedFunction(.newCe$curEval[.wNew]) &&
+        nchar(.newCe$curEval[.wNew]) > 0L
+    ) {
       next
     }
     .lostMuRef <- TRUE
-    warning(" mu-reference transform (", .oldEval,
-            ") for `", .tr$name, "` lost since bounded (and performance degraded)",
-            call. = FALSE)
+    warning(
+      " mu-reference transform (",
+      .oldEval,
+      ") for `",
+      .tr$name,
+      "` lost since bounded (and performance degraded)",
+      call. = FALSE
+    )
   }
   nlmixr2global$transformMu <- .lostMuRef
   invisible(NULL)
@@ -143,11 +168,13 @@
 #'   filter out
 #' @return boolean: TRUE if the message is a synthetic IOV mu warning
 #'   that should be filtered out, FALSE otherwise
- #' @noRd
+#' @noRd
 #' @author Matthew L. Fidler
 .isSyntheticIovMuWarning <- function(msg, iovEtaNames) {
   .prefix <- "some etas defaulted to non-mu referenced, possible parsing error:"
-  if (!startsWith(msg, .prefix)) return(FALSE)
+  if (!startsWith(msg, .prefix)) {
+    return(FALSE)
+  }
   .line <- strsplit(msg, "\n", fixed = TRUE)[[1]][1]
   .etas <- trimws(strsplit(sub(.prefix, "", .line, fixed = TRUE), ",", fixed = TRUE)[[1]])
   length(.etas) > 0L && all(.etas %in% iovEtaNames)
@@ -161,9 +188,13 @@
 #' @noRd
 #' @author Matthew L. Fidler
 .filterSyntheticIovMuWarnings <- function(warnings, ui) {
-  if (length(warnings) == 0L) return(warnings)
+  if (length(warnings) == 0L) {
+    return(warnings)
+  }
   .iovEtaNames <- .getSyntheticIovEtaNames(ui)
-  if (length(.iovEtaNames) == 0L) return(warnings)
+  if (length(.iovEtaNames) == 0L) {
+    return(warnings)
+  }
   warnings[!vapply(warnings, .isSyntheticIovMuWarning, logical(1), iovEtaNames = .iovEtaNames)]
 }
 #' Decompress model functions
@@ -196,13 +227,11 @@
 #' @noRd
 #' @author Hajar Besbassi
 .buildTransformExpr <- function(tr) {
-  switch(tr$type,
-    "logit" = str2lang(paste0(tr$name, " <- expit(", tr$internalName,
-                              ", ", tr$lower, ", ", tr$upper, ")")),
-    "lower_exp" = str2lang(paste0(tr$name, " <- ", tr$lower,
-                                  " + exp(", tr$internalName, ")")),
-    "upper_exp" = str2lang(paste0(tr$name, " <- ", tr$upper,
-                                  " - exp(", tr$internalName, ")"))
+  switch(
+    tr$type,
+    "logit" = str2lang(paste0(tr$name, " <- expit(", tr$internalName, ", ", tr$lower, ", ", tr$upper, ")")),
+    "lower_exp" = str2lang(paste0(tr$name, " <- ", tr$lower, " + exp(", tr$internalName, ")")),
+    "upper_exp" = str2lang(paste0(tr$name, " <- ", tr$upper, " - exp(", tr$internalName, ")"))
   )
 }
 
@@ -232,7 +261,9 @@
   # Build new ini block: rename params, change bounds, set backTransform
   .iniDf <- ui$iniDf
   .env <- nlmixr2global$nlmixrEvalEnv$envir
-  if (is.null(.env)) .env <- globalenv() # fallback
+  if (is.null(.env)) {
+    .env <- globalenv()
+  } # fallback
   for (.tr in transforms) {
     .w <- which(.iniDf$name == .tr$name)
     if (length(.w) == 1L) {
@@ -256,9 +287,7 @@
   .newLstExpr <- c(.transformExprs, .lstExpr)
 
   # Reconstruct the model
-  .modelStr <- paste0("model({",
-    paste(vapply(.newLstExpr, deparse1, character(1)), collapse = "\n"),
-    "})")
+  .modelStr <- paste0("model({", paste(vapply(.newLstExpr, deparse1, character(1)), collapse = "\n"), "})")
   .model <- str2lang(.modelStr)
 
   .ini <- as.expression(lotri::as.lotri(.iniDf))
@@ -305,13 +334,19 @@
 #' @author Hajar Besbassi
 .isUnboundedMethod <- function(est, control = NULL) {
   # Allow user to disable bounded-parameter transforms via control option
-  if (!is.null(control) && isFALSE(control$boundedTransform)) return(FALSE)
+  if (!is.null(control) && isFALSE(control$boundedTransform)) {
+    return(FALSE)
+  }
   .v <- as.character(utils::methods("nlmixr2Est"))
   .method <- paste0("nlmixr2Est.", est)
   if (.method %in% .v) {
     .unbounded <- attr(utils::getS3method("nlmixr2Est", est), "unbounded")
-    if (is.null(.unbounded)) return(FALSE)
-    if (is.function(.unbounded)) return(isTRUE(.unbounded(control)))
+    if (is.null(.unbounded)) {
+      return(FALSE)
+    }
+    if (is.function(.unbounded)) {
+      return(isTRUE(.unbounded(control)))
+    }
     return(isTRUE(.unbounded))
   }
   FALSE
@@ -334,14 +369,17 @@
 #' @author Hajar Besbassi
 .preProcessBoundedTransform <- function(ui, est, data, control) {
   nlmixr2global$preProcessBoundedTransform <- FALSE
-  nlmixr2global$postEstimationBoundedTransform  <- FALSE
+  nlmixr2global$postEstimationBoundedTransform <- FALSE
   nlmixr2global$transformMu <- FALSE
 
-  if (!.isUnboundedMethod(est, control)) return(NULL)
-
+  if (!.isUnboundedMethod(est, control)) {
+    return(NULL)
+  }
 
   .transforms <- .getBoundedParams(ui, est, control)
-  if (length(.transforms) == 0L) return(NULL)
+  if (length(.transforms) == 0L) {
+    return(NULL)
+  }
 
   nlmixr2global$preProcessBoundedTransform <- TRUE
 
@@ -364,12 +402,17 @@
 #' @author Hajar Besbassi
 #' @noRd
 .backTransformParHist <- function(parHist, transforms) {
-  if (is.null(parHist) || length(transforms) == 0) return(parHist)
+  if (is.null(parHist) || length(transforms) == 0) {
+    return(parHist)
+  }
   for (.tr in transforms) {
     .col <- .tr$internalName
-    if (!.col %in% names(parHist)) next
+    if (!.col %in% names(parHist)) {
+      next
+    }
     .vals <- parHist[[.col]]
-    parHist[[.col]] <- switch(.tr$type,
+    parHist[[.col]] <- switch(
+      .tr$type,
       "logit" = rxode2::expit(.vals, .tr$lower, .tr$upper),
       "lower_exp" = .tr$lower + exp(.vals),
       "upper_exp" = .tr$upper - exp(.vals),
@@ -394,15 +437,18 @@
     .thetaNames <- if (exists("thetaNames", envir = env)) env$thetaNames else rownames(.thetaDf)
     for (.tr in transforms) {
       .w <- which(.thetaNames == .tr$internalName)
-      if (length(.w) != 1L) next
+      if (length(.w) != 1L) {
+        next
+      }
       .val <- .thetaDf$theta[.w]
       # Back-transform the estimate
-      .thetaDf$theta[.w] <- switch(.tr$type,
-                                   "logit" = rxode2::expit(.val, .tr$lower, .tr$upper),
-                                   "lower_exp" = .tr$lower + exp(.val),
-                                   "upper_exp" = .tr$upper - exp(.val),
-                                   .val
-                                   )
+      .thetaDf$theta[.w] <- switch(
+        .tr$type,
+        "logit" = rxode2::expit(.val, .tr$lower, .tr$upper),
+        "lower_exp" = .tr$lower + exp(.val),
+        "upper_exp" = .tr$upper - exp(.val),
+        .val
+      )
       # Restore original bounds
       .thetaDf$lower[.w] <- .tr$lower
       .thetaDf$upper[.w] <- .tr$upper
@@ -425,12 +471,16 @@
   # For logit: d(expit)/d(logit) = (natVal - lo) * (hi - natVal) / (hi - lo)
   # For lower_exp: d(lo + exp(x))/dx = natVal - lo
   # For upper_exp: d(hi - exp(x))/dx = -(hi - natVal) [negative sign preserved]
-  if (is.null(natVal) || !is.finite(natVal)) return(1.0)
-  switch(tr$type,
-         "logit" = (natVal - tr$lower) * (tr$upper - natVal) / (tr$upper - tr$lower),
-         "lower_exp" = natVal - tr$lower,
-         "upper_exp" = -(tr$upper - natVal),
-         1.0)
+  if (is.null(natVal) || !is.finite(natVal)) {
+    return(1.0)
+  }
+  switch(
+    tr$type,
+    "logit" = (natVal - tr$lower) * (tr$upper - natVal) / (tr$upper - tr$lower),
+    "lower_exp" = natVal - tr$lower,
+    "upper_exp" = -(tr$upper - natVal),
+    1.0
+  )
 }
 
 #' Apply a full bounded-transform Jacobian to a named covariance matrix
@@ -452,13 +502,19 @@
 #' @noRd
 #' @author Matthew L. Fidler
 .boundedTransformCovJacobian <- function(cov, transforms, natVals) {
-  if (is.null(cov) || !is.matrix(cov)) return(cov)
+  if (is.null(cov) || !is.matrix(cov)) {
+    return(cov)
+  }
   .rn <- rownames(cov)
-  if (is.null(.rn)) return(cov)
+  if (is.null(.rn)) {
+    return(cov)
+  }
   .jdiag <- rep(1.0, nrow(cov))
   for (.tr in transforms) {
     .w <- which(.rn == .tr$internalName)
-    if (length(.w) != 1L) next
+    if (length(.w) != 1L) {
+      next
+    }
     .jdiag[.w] <- .boundedTransformDeriv(.tr, natVals[[.tr$name]])
     .rn[.w] <- .tr$name
   }
@@ -488,8 +544,10 @@
   # full theta+Omega covariances).  Apply the full Jacobian by name -- robust to
   # the residual/Omega rows the positional skipCov map does not line up with, and
   # it renames the internal rxBoundedTr.* dimnames back to the original names.
-  if (!is.null(.rn) &&
-        any(vapply(transforms, function(.tr) .tr$internalName %in% .rn, logical(1)))) {
+  if (
+    !is.null(.rn) &&
+      any(vapply(transforms, function(.tr) .tr$internalName %in% .rn, logical(1)))
+  ) {
     env$cov <- .boundedTransformCovJacobian(env$cov, transforms, .natVals)
     return(invisible())
   }
@@ -498,7 +556,9 @@
   .jdiag <- rep(1.0, nrow(.thetaDf))
   for (.tr in transforms) {
     .w <- which(env$thetaNames == .tr$name)
-    if (length(.w) != 1L) next
+    if (length(.w) != 1L) {
+      next
+    }
     .jdiag[.w] <- .boundedTransformDeriv(.tr, .thetaDf$theta[.w])
   }
   # Apply Jacobian: Cov_natural = J * Cov_internal * J'
@@ -535,41 +595,51 @@
   .pseudoNames <- vapply(transforms[.pseudo], function(tr) tr$name, character(1))
   .trLhs <- c(.trLhs, lapply(paste0("rx.l.", .pseudoNames), str2lang))
 
-  .keep <- which(vapply(ui$lstExpr,
-                        function(expr) {
-                          if (is.call(expr) && length(expr) >= 3 &&
-                                identical(expr[[1]], quote(`<-`))) {
-                            .lhs <- expr[[2]]
-                            if (any(vapply(seq_along(.trLhs),
-                                           function(i) {
-                                             identical(.lhs, .trLhs[[i]])
-                                           }, logical(1), USE.NAMES = FALSE))) {
-                              return(FALSE) # Remove this expression
-                            }
-                          }
-                          TRUE
-                        }, logical(1), USE.NAMES = FALSE))
-  .lstExpr <- lapply(.keep,
-                     function(i) {
-                       ui$lstExpr[[i]]
-                     })
+  .keep <- which(vapply(
+    ui$lstExpr,
+    function(expr) {
+      if (is.call(expr) && length(expr) >= 3 && identical(expr[[1]], quote(`<-`))) {
+        .lhs <- expr[[2]]
+        if (
+          any(vapply(
+            seq_along(.trLhs),
+            function(i) {
+              identical(.lhs, .trLhs[[i]])
+            },
+            logical(1),
+            USE.NAMES = FALSE
+          ))
+        ) {
+          return(FALSE) # Remove this expression
+        }
+      }
+      TRUE
+    },
+    logical(1),
+    USE.NAMES = FALSE
+  ))
+  .lstExpr <- lapply(.keep, function(i) {
+    ui$lstExpr[[i]]
+  })
 
   .model <- rxode2::as.model(.lstExpr)
-
 
   # now restore the iniDf
   .iniDf <- ui$iniDf
   for (.tr in transforms) {
     .w <- which(.iniDf$name == .tr$internalName)
-    if (length(.w) != 1L) next
+    if (length(.w) != 1L) {
+      next
+    }
     .val <- .iniDf$est[.w]
     # Back-transform the estimate
-    .iniDf$est[.w] <- switch(.tr$type,
-                             "logit" = rxode2::expit(.val, .tr$lower, .tr$upper),
-                             "lower_exp" = .tr$lower + exp(.val),
-                             "upper_exp" = .tr$upper - exp(.val),
-                             .val
-                             )
+    .iniDf$est[.w] <- switch(
+      .tr$type,
+      "logit" = rxode2::expit(.val, .tr$lower, .tr$upper),
+      "lower_exp" = .tr$lower + exp(.val),
+      "upper_exp" = .tr$upper - exp(.val),
+      .val
+    )
     # Restore original bounds
     .iniDf$lower[.w] <- .tr$lower
     .iniDf$upper[.w] <- .tr$upper
@@ -588,15 +658,14 @@
 
   .ini <- as.expression(lotri::as.lotri(.iniDf))
   .ini[[1]] <- quote(`ini`)
-  if (exists("boundedTransforms", envir=ui$meta, inherits=FALSE)) {
-    rm("boundedTransforms", envir=ui$meta)
+  if (exists("boundedTransforms", envir = ui$meta, inherits = FALSE)) {
+    rm("boundedTransforms", envir = ui$meta)
   }
   .newUi <- .getUiFunFromIniAndModel(ui, .ini, .model)
   .newUi <- .newUi()
   assign("ui", .newUi, envir = env)
   if (nlmixr2global$transformMu) {
-    warning("to keep mu-referencing remove bounds or use control=list(boundedTransform=FALSE)",
-            call. = FALSE)
+    warning("to keep mu-referencing remove bounds or use control=list(boundedTransform=FALSE)", call. = FALSE)
   }
 }
 
@@ -617,14 +686,21 @@
 #' @noRd
 #' @author Hajar Besbassi & Matt Fidler
 .postEstimationBoundedTransform <- function(env) {
-  on.exit({
-    nlmixr2global$transformMu <- FALSE
-  }, add = TRUE)
+  on.exit(
+    {
+      nlmixr2global$transformMu <- FALSE
+    },
+    add = TRUE
+  )
   .ui <- env$ui
-  if (is.null(.ui)) return(invisible(NULL))
+  if (is.null(.ui)) {
+    return(invisible(NULL))
+  }
 
   .transforms <- .ui$boundedTransforms
-  if (is.null(.transforms) || length(.transforms) == 0) return(invisible(NULL))
+  if (is.null(.transforms) || length(.transforms) == 0) {
+    return(invisible(NULL))
+  }
 
   nlmixr2global$postEstimationBoundedTransform <- TRUE
 
@@ -642,9 +718,7 @@
     .full <- get(".saemFullCov", envir = env)
     if (is.matrix(.full)) {
       .natVals <- stats::setNames(env$theta$theta, env$thetaNames)
-      assign(".saemFullCov",
-             .boundedTransformCovJacobian(.full, .transforms, .natVals),
-             envir = env)
+      assign(".saemFullCov", .boundedTransformCovJacobian(.full, .transforms, .natVals), envir = env)
     }
   }
 
@@ -656,25 +730,28 @@
 
   .newUi <- env$ui
   .xform <- .iterPrintXParFromUi(.newUi)
-  env$logThetasF       <- .xform$logNthetas
-  env$logitThetasF     <- .xform$logitNthetas
-  env$logitThetasLowF  <- .xform$logitNthetasLow
-  env$logitThetasHiF   <- .xform$logitNthetasHi
-  env$probitThetasF    <- .xform$probitNthetas
+  env$logThetasF <- .xform$logNthetas
+  env$logitThetasF <- .xform$logitNthetas
+  env$logitThetasLowF <- .xform$logitNthetasLow
+  env$logitThetasHiF <- .xform$logitNthetasHi
+  env$probitThetasF <- .xform$probitNthetas
   env$probitThetasLowF <- .xform$probitNthetasLow
-  env$probitThetasHiF  <- .xform$probitNthetasHi
+  env$probitThetasHiF <- .xform$probitNthetasHi
 
   invisible(NULL)
 }
 #' Add internal ability to see if the bounded transform hooks ran (for testing purposes, so it isn't exported)
 #'
-#' @return a named list with two logical elements: \code{pre} is \code{TRUE} if the pre-processing hook ran and injected transforms, and \code{post} is \code{TRUE} if the post-estimation hook ran and applied back-transforms. Both are \code{FALSE} if the hooks were not triggered (e.g., because the method is bounded-native or there are no bounded parameters).
+#' @return a named list with two logical elements: \code{pre} is \code{TRUE} if the
+#'   pre-processing hook ran and injected transforms, and \code{post} is \code{TRUE} if the
+#'   post-estimation hook ran and applied back-transforms. Both are \code{FALSE} if the hooks
+#'   were not triggered (e.g., because the method is bounded-native or there are no bounded
+#'   parameters).
 #' @keywords internal
 #' @noRd
 #' @author Matthew L. Fidler
 .testBoundedTransform <- function() {
-  c(pre=nlmixr2global$preProcessBoundedTransform,
-    post=nlmixr2global$postEstimationBoundedTransform)
+  c(pre = nlmixr2global$preProcessBoundedTransform, post = nlmixr2global$postEstimationBoundedTransform)
 }
 
 # -----------------------------------------------------------------------

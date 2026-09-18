@@ -98,28 +98,46 @@ nmTest({
       names(sc) <- ui$iniDf$name[!is.na(ui$iniDf$ntheta) & !ui$iniDf$fix]
       unname(sc["p"])
     }
-    mGamma <- function(){ ini({tcl<- -1;p<-0.7;add.sd<-0.3;eta.cl~0.1}); model({cl<-exp(tcl+eta.cl); tr<-gamma(p); v<-3.45; ka<-1; linCmt()~add(add.sd)}) }
-    mFact  <- function(){ ini({tcl<- -1;p<-0.7;add.sd<-0.3;eta.cl~0.1}); model({cl<-exp(tcl+eta.cl); tr<-factorial(p); v<-3.45; ka<-1; linCmt()~add(add.sd)}) }
-    mLog   <- function(){ ini({tcl<- -1;p<-0.7;add.sd<-0.3;eta.cl~0.1}); model({cl<-exp(tcl+eta.cl); tr<-log(p); v<-3.45; ka<-1; linCmt()~add(add.sd)}) }
-    mExpit <- function(){ ini({tcl<- -1;p<-0.7;add.sd<-0.3;eta.cl~0.1}); model({cl<-exp(tcl+eta.cl); tr<-expit(p); v<-3.45; ka<-1; linCmt()~add(add.sd)}) }
-    mProbit<- function(){ ini({tcl<- -1;p<-0.7;add.sd<-0.3;eta.cl~0.1}); model({cl<-exp(tcl+eta.cl); tr<-probit(p,0,1); v<-3.45; ka<-1; linCmt()~add(add.sd)}) }
-    mPInv  <- function(){ ini({tcl<- -1;p<-0.7;add.sd<-0.3;eta.cl~0.1}); model({cl<-exp(tcl+eta.cl); tr<-probitInv(p,0,1); v<-3.45; ka<-1; linCmt()~add(add.sd)}) }
+    mGamma <- function() {
+      ini({tcl<- -1;p<-0.7;add.sd<-0.3;eta.cl~0.1})
+      model({cl<-exp(tcl+eta.cl); tr<-gamma(p); v<-3.45; ka<-1; linCmt()~add(add.sd)})
+    }
+    mFact <- function() {
+      ini({tcl<- -1;p<-0.7;add.sd<-0.3;eta.cl~0.1})
+      model({cl<-exp(tcl+eta.cl); tr<-factorial(p); v<-3.45; ka<-1; linCmt()~add(add.sd)})
+    }
+    mLog <- function() {
+      ini({tcl<- -1;p<-0.7;add.sd<-0.3;eta.cl~0.1})
+      model({cl<-exp(tcl+eta.cl); tr<-log(p); v<-3.45; ka<-1; linCmt()~add(add.sd)})
+    }
+    mExpit <- function() {
+      ini({tcl<- -1;p<-0.7;add.sd<-0.3;eta.cl~0.1})
+      model({cl<-exp(tcl+eta.cl); tr<-expit(p); v<-3.45; ka<-1; linCmt()~add(add.sd)})
+    }
+    mProbit <- function() {
+      ini({tcl<- -1;p<-0.7;add.sd<-0.3;eta.cl~0.1})
+      model({cl<-exp(tcl+eta.cl); tr<-probit(p,0,1); v<-3.45; ka<-1; linCmt()~add(add.sd)})
+    }
+    mPInv <- function() {
+      ini({tcl<- -1;p<-0.7;add.sd<-0.3;eta.cl~0.1})
+      model({cl<-exp(tcl+eta.cl); tr<-probitInv(p,0,1); v<-3.45; ka<-1; linCmt()~add(add.sd)})
+    }
     tol <- 1e-4
     # gamma() (curEval "lgammafn"): 1/digamma(init) -- was mis-keyed to the linear default
-    expect_equal(scP(mGamma, 3), 1 / digamma(3), tolerance = tol)        # 1.0837, digamma>0
-    expect_equal(scP(mGamma, 1), 1, tolerance = tol)                     # digamma<0 (wrong sign) -> |init|
-    expect_equal(scP(mGamma, 1.4616), 1.4616, tolerance = 1e-3)          # digamma~0 (pole) -> |init|
+    expect_equal(scP(mGamma, 3), 1 / digamma(3), tolerance = tol) # 1.0837, digamma>0
+    expect_equal(scP(mGamma, 1), 1, tolerance = tol) # digamma<0 (wrong sign) -> |init|
+    expect_equal(scP(mGamma, 1.4616), 1.4616, tolerance = 1e-3) # digamma~0 (pole) -> |init|
     # factorial(): 1/digamma(init+1)
-    expect_equal(scP(mFact, 3), 1 / digamma(4), tolerance = tol)         # 0.7961, digamma>0
-    expect_equal(scP(mFact, 0.2), 0.2, tolerance = tol)                  # digamma(x+1)<0 -> |init|
+    expect_equal(scP(mFact, 3), 1 / digamma(4), tolerance = tol) # 0.7961, digamma>0
+    expect_equal(scP(mFact, 0.2), 0.2, tolerance = tol) # digamma(x+1)<0 -> |init|
     # log(): log(|init|)*|init| in band; = 0 at init 1 -> |init|
-    expect_equal(scP(mLog, 5), log(5) * 5, tolerance = tol)              # 8.047
-    expect_equal(scP(mLog, 1), 1, tolerance = tol)                       # singular -> |init|=1
+    expect_equal(scP(mLog, 5), log(5) * 5, tolerance = tol) # 8.047
+    expect_equal(scP(mLog, 1), 1, tolerance = tol) # singular -> |init|=1
     # bounded transforms: formula in band; out of band -> |init|
     expect_equal(scP(mProbit, 0.7), 0.169736, tolerance = tol)
     expect_equal(scP(mPInv, 0.7), 2.42763, tolerance = tol)
-    expect_equal(scP(mPInv, 3), 3, tolerance = tol)                      # out of band -> |init|
+    expect_equal(scP(mPInv, 3), 3, tolerance = tol) # out of band -> |init|
     expect_equal(scP(mExpit, 0.5), 2.64872, tolerance = tol)
-    expect_equal(scP(mExpit, 5), 5, tolerance = tol)                     # >100 -> |init|
+    expect_equal(scP(mExpit, 5), 5, tolerance = tol) # >100 -> |init|
   })
 })

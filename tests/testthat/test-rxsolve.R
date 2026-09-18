@@ -52,7 +52,6 @@ nmTest({
       })
     }
 
-
     expect_error(.nlmixr(one.cmt, nlmixr2data::theo_sd, "matt"))
   })
 

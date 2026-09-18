@@ -13,19 +13,21 @@ nmTest({
     set.seed(seed)
     wt <- round(stats::runif(nid, 40, 140), 1)
     ctr <- stats::median(wt)
-    lka <- log(1.5) + slopeLow * (wt < ctr) * (wt - ctr) +
-      slopeHi * (wt >= ctr) * (wt - ctr)
+    lka <- log(1.5) + slopeLow * (wt < ctr) * (wt - ctr) + slopeHi * (wt >= ctr) * (wt - ctr)
     ka <- exp(lka + stats::rnorm(nid, 0, 0.15))
-    ke <- 0.09; v <- 32
+    ke <- 0.09
+    v <- 32
     tms <- c(0.25, 0.5, 1, 2, 4, 6, 8, 12, 24)
-    d <- do.call(rbind, lapply(seq_len(nid), function(i) {
-      cp <- 320 / v * ka[i] / (ka[i] - ke) * (exp(-ke * tms) - exp(-ka[i] * tms))
-      rbind(data.frame(ID = i, TIME = 0, DV = NA_real_, AMT = 320, EVID = 1,
-                       WT = wt[i]),
-            data.frame(ID = i, TIME = tms,
-                       DV = cp + stats::rnorm(length(tms), 0, 0.25),
-                       AMT = 0, EVID = 0, WT = wt[i]))
-    }))
+    d <- do.call(
+      rbind,
+      lapply(seq_len(nid), function(i) {
+        cp <- 320 / v * ka[i] / (ka[i] - ke) * (exp(-ke * tms) - exp(-ka[i] * tms))
+        rbind(
+          data.frame(ID = i, TIME = 0, DV = NA_real_, AMT = 320, EVID = 1, WT = wt[i]),
+          data.frame(ID = i, TIME = tms, DV = cp + stats::rnorm(length(tms), 0, 0.25), AMT = 0, EVID = 0, WT = wt[i])
+        )
+      })
+    )
     list(data = d, knot = ctr)
   }
 
@@ -39,8 +41,7 @@ nmTest({
   }
 
   .hockeyCtl <- function() {
-    vaeControl(itersBurnIn = 60L, klWarmup = 30L, gammaIter = 100L, iters = 130L,
-               seed = 1L, print = 0L, covMethod = "")
+    vaeControl(itersBurnIn = 60L, klWarmup = 30L, gammaIter = 100L, iters = 130L, seed = 1L, print = 0L, covMethod = "")
   }
 
   ## train once and hand back everything the assertions need
@@ -58,7 +59,8 @@ nmTest({
     skip_on_cran()
     sim <- .hockeyData(slopeLow = -0.010, slopeHi = 0.020)
     r <- suppressWarnings(.runHockey(sim))
-    prep <- r$prep; fit <- r$fit
+    prep <- r$prep
+    fit <- r$fit
 
     ## the search picks the hockey BLOCK -- both arms, never one, and never the
     ## tie-equivalent `lin + one arm`
@@ -70,7 +72,8 @@ nmTest({
     ## the coefficients are named for the arms and recover the simulated slopes
     lo <- ini2$est[ini2$name == "beta.lka.WT.hockey.low"]
     hi <- ini2$est[ini2$name == "beta.lka.WT.hockey.hi"]
-    expect_length(lo, 1L); expect_length(hi, 1L)
+    expect_length(lo, 1L)
+    expect_length(hi, 1L)
     expect_equal(lo, -0.010, tolerance = 0.3)
     expect_equal(hi, 0.020, tolerance = 0.3)
 
@@ -83,8 +86,7 @@ nmTest({
     expect_match(txt, paste0("WT < ", signif(sim$knot, 12)), fixed = TRUE)
     expect_match(txt, paste0("WT >= ", signif(sim$knot, 12)), fixed = TRUE)
     expect_match(txt, "eta.ka", fixed = TRUE)
-    expect_equal(ui2$muRefCurEval$curEval[ui2$muRefCurEval$parameter == "lka"],
-                 "exp")
+    expect_equal(ui2$muRefCurEval$curEval[ui2$muRefCurEval$parameter == "lka"], "exp")
 
     ## ROUND TRIP -- the strongest check there is.  Evaluating the WRITTEN model
     ## on the data must reproduce the M-step's own population prediction for
@@ -92,8 +94,7 @@ nmTest({
     tv <- ini2$est[ini2$name == "lka"]
     pred <- rep(tv, prep$N)
     for (j in which(fit$selected[1, ])) {
-      .nm <- paste0("beta.lka.", prep$covRaw[j], ".",
-                    .vaeShapeCoefTag(prep$covShape[j]))
+      .nm <- paste0("beta.lka.", prep$covRaw[j], ".", .vaeShapeCoefTag(prep$covShape[j]))
       pred <- pred + ini2$est[ini2$name == .nm] * prep$covMat[, j]
     }
     expect_equal(pred, unname(fit$zPopMat[, 1]), tolerance = 1e-10)

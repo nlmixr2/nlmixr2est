@@ -58,70 +58,77 @@
 #'
 #' fit2$bobyqa
 #' }
-bobyqaControl <- function(npt=NULL,
-                          rhobeg=NULL,
-                          rhoend=NULL,
-                          iprint=0L,
-                          maxfun=100000L,
-                          returnBobyqa=FALSE,
-                          stickyRecalcN=4,
-                          maxOdeRecalc=5,
-                          odeRecalcFactor=10^(0.5),
-                          indTolRelax=TRUE,
+bobyqaControl <- function(
+  npt = NULL,
+  rhobeg = NULL,
+  rhoend = NULL,
+  iprint = 0L,
+  maxfun = 100000L,
+  returnBobyqa = FALSE,
+  stickyRecalcN = 4,
+  maxOdeRecalc = 5,
+  odeRecalcFactor = 10^(0.5),
+  indTolRelax = TRUE,
 
-                          useColor = NULL,
-                          printNcol = NULL, #
-                          print = 1L, #
+  useColor = NULL,
+  printNcol = NULL, #
+  print = 1L, #
 
-                          normType = c("rescale2", "mean", "rescale", "std", "len", "constant"), #
-                          scaleType = c("nlmixr2", "norm", "mult", "multAdd"), #
-                          scaleCmax = 1e5, #
-                          scaleCmin = 1e-5, #
-                          scaleC=NULL,
-                          scaleTo=1.0,
+  normType = c("rescale2", "mean", "rescale", "std", "len", "constant"), #
+  scaleType = c("nlmixr2", "norm", "mult", "multAdd"), #
+  scaleCmax = 1e5, #
+  scaleCmin = 1e-5, #
+  scaleC = NULL,
+  scaleTo = 1.0,
 
-                          rxControl=NULL,
-                          optExpression=TRUE, sumProd=FALSE,
-                          literalFix=TRUE,
-                          literalFixRes=TRUE,
-                          addProp = c("combined2", "combined1"),
-                          calcTables=TRUE, compress=FALSE,
-                          covMethod=c("r", ""),
-                          adjObf=TRUE, ci=0.95, sigdig=3, sigdigTable=NULL,
-                          eventSens=c("jump", "fd"), ...) {
-
-  checkmate::assertIntegerish(npt, null.ok=TRUE, any.missing=FALSE, lower=2, len=1)
+  rxControl = NULL,
+  optExpression = TRUE,
+  sumProd = FALSE,
+  literalFix = TRUE,
+  literalFixRes = TRUE,
+  addProp = c("combined2", "combined1"),
+  calcTables = TRUE,
+  compress = FALSE,
+  covMethod = c("r", ""),
+  adjObf = TRUE,
+  ci = 0.95,
+  sigdig = 3,
+  sigdigTable = NULL,
+  eventSens = c("jump", "fd"),
+  ...
+) {
+  checkmate::assertIntegerish(npt, null.ok = TRUE, any.missing = FALSE, lower = 2, len = 1)
   # bobyqa final trust-region radius from sigdig (FOCEi mechanism, matches
   # foceiControl rhoend); a user value wins, sigdig=NULL leaves the minqa default
-  if (is.null(rhoend) && !is.null(sigdig)) rhoend <- .sigdigOptTol(sigdig)
-  checkmate::assertNumeric(rhobeg, null.ok=TRUE, any.missing=FALSE, lower=0, len=1)
-  checkmate::assertNumeric(rhoend, null.ok=TRUE, any.missing=FALSE, lower=0, len=1)
-  checkmate::assertIntegerish(iprint, any.missing=FALSE, lower=0, len=1)
-  checkmate::assertIntegerish(maxfun, any.missing=FALSE, lower=10, len=1)
+  if (is.null(rhoend) && !is.null(sigdig)) {
+    rhoend <- .sigdigOptTol(sigdig)
+  }
+  checkmate::assertNumeric(rhobeg, null.ok = TRUE, any.missing = FALSE, lower = 0, len = 1)
+  checkmate::assertNumeric(rhoend, null.ok = TRUE, any.missing = FALSE, lower = 0, len = 1)
+  checkmate::assertIntegerish(iprint, any.missing = FALSE, lower = 0, len = 1)
+  checkmate::assertIntegerish(maxfun, any.missing = FALSE, lower = 10, len = 1)
 
-  checkmate::assertLogical(optExpression, len=1, any.missing=FALSE)
-  checkmate::assertLogical(literalFix, len=1, any.missing=FALSE)
-  checkmate::assertLogical(literalFixRes, len=1, any.missing=FALSE)
-  checkmate::assertLogical(sumProd, len=1, any.missing=FALSE)
-  checkmate::assertLogical(returnBobyqa, len=1, any.missing=FALSE)
-  checkmate::assertLogical(calcTables, len=1, any.missing=FALSE)
-  checkmate::assertLogical(compress, len=1, any.missing=TRUE)
-  checkmate::assertLogical(adjObf, len=1, any.missing=TRUE)
+  checkmate::assertLogical(optExpression, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(literalFix, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(literalFixRes, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(sumProd, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(returnBobyqa, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(calcTables, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(compress, len = 1, any.missing = TRUE)
+  checkmate::assertLogical(adjObf, len = 1, any.missing = TRUE)
   eventSens <- match.arg(eventSens)
 
   .xtra <- list(...)
   .bad <- names(.xtra)
   .bad <- .bad[!(.bad %in% c("genRxControl", "iterPrintControl"))]
   if (length(.bad) > 0) {
-    stop("unused argument: ", paste
-    (paste0("'", .bad, "'", sep=""), collapse=", "),
-    call.=FALSE)
+    stop("unused argument: ", paste(paste0("'", .bad, "'", sep = ""), collapse = ", "), call. = FALSE)
   }
 
-  checkmate::assertIntegerish(stickyRecalcN, any.missing=FALSE, lower=0, len=1)
-  checkmate::assertIntegerish(maxOdeRecalc, any.missing=FALSE, len=1)
-  checkmate::assertNumeric(odeRecalcFactor, len=1, lower=1, any.missing=FALSE)
-  checkmate::assertLogical(indTolRelax, any.missing=FALSE, len=1)
+  checkmate::assertIntegerish(stickyRecalcN, any.missing = FALSE, lower = 0, len = 1)
+  checkmate::assertIntegerish(maxOdeRecalc, any.missing = FALSE, len = 1)
+  checkmate::assertNumeric(odeRecalcFactor, len = 1, lower = 1, any.missing = FALSE)
+  checkmate::assertLogical(indTolRelax, any.missing = FALSE, len = 1)
 
   .genRxControl <- FALSE
   if (!is.null(.xtra$genRxControl)) {
@@ -129,19 +136,18 @@ bobyqaControl <- function(npt=NULL,
   }
   if (is.null(rxControl)) {
     if (!is.null(sigdig)) {
-      rxControl <- .rxControlScaleSigdig(rxode2::rxControl(sigdig=sigdig), sigdig)
+      rxControl <- .rxControlScaleSigdig(rxode2::rxControl(sigdig = sigdig), sigdig)
     } else {
-      rxControl <- rxode2::rxControl(atol=1e-4, rtol=1e-4)
+      rxControl <- rxode2::rxControl(atol = 1e-4, rtol = 1e-4)
     }
     .genRxControl <- TRUE
-  } else if (inherits(rxControl, "rxControl")) {
-  } else if (is.list(rxControl)) {
+  } else if (inherits(rxControl, "rxControl")) {} else if (is.list(rxControl)) {
     rxControl <- .rxControlScaleSigdig(do.call(rxode2::rxControl, rxControl), sigdig, skip = names(rxControl))
   } else {
-    stop("solving options 'rxControl' needs to be generated from 'rxode2::rxControl'", call=FALSE)
+    stop("solving options 'rxControl' needs to be generated from 'rxode2::rxControl'", call = FALSE)
   }
   if (!is.null(sigdig)) {
-    checkmate::assertNumeric(sigdig, lower=1, finite=TRUE, any.missing=TRUE, len=1)
+    checkmate::assertNumeric(sigdig, lower = 1, finite = TRUE, any.missing = TRUE, len = 1)
     if (is.null(sigdigTable)) {
       sigdigTable <- round(sigdig)
     }
@@ -149,13 +155,15 @@ bobyqaControl <- function(npt=NULL,
   if (is.null(sigdigTable)) {
     sigdigTable <- 3
   }
-  checkmate::assertIntegerish(sigdigTable, lower=1, len=1, any.missing=FALSE)
+  checkmate::assertIntegerish(sigdigTable, lower = 1, len = 1, any.missing = FALSE)
 
-  .iterPrintControl <- .absorbIterPrintControl(print = print,
-                                               printNcol = printNcol,
-                                               useColor = useColor,
-                                               iterPrintControl = .xtra$iterPrintControl)
-  if (checkmate::testIntegerish(scaleType, len=1, lower=1, upper=4, any.missing=FALSE)) {
+  .iterPrintControl <- .absorbIterPrintControl(
+    print = print,
+    printNcol = printNcol,
+    useColor = useColor,
+    iterPrintControl = .xtra$iterPrintControl
+  )
+  if (checkmate::testIntegerish(scaleType, len = 1, lower = 1, upper = 4, any.missing = FALSE)) {
     scaleType <- as.integer(scaleType)
   } else {
     .scaleTypeIdx <- c("norm" = 1L, "nlmixr2" = 2L, "mult" = 3L, "multAdd" = 4L)
@@ -163,51 +171,55 @@ bobyqaControl <- function(npt=NULL,
   }
 
   .normTypeIdx <- c("rescale2" = 1L, "rescale" = 2L, "mean" = 3L, "std" = 4L, "len" = 5L, "constant" = 6L)
-  if (checkmate::testIntegerish(normType, len=1, lower=1, upper=6, any.missing=FALSE)) {
+  if (checkmate::testIntegerish(normType, len = 1, lower = 1, upper = 6, any.missing = FALSE)) {
     normType <- as.integer(normType)
   } else {
     normType <- setNames(.normTypeIdx[match.arg(normType)], NULL)
   }
-  checkmate::assertNumeric(scaleCmax, lower=0, any.missing=FALSE, len=1)
-  checkmate::assertNumeric(scaleCmin, lower=0, any.missing=FALSE, len=1)
+  checkmate::assertNumeric(scaleCmax, lower = 0, any.missing = FALSE, len = 1)
+  checkmate::assertNumeric(scaleCmin, lower = 0, any.missing = FALSE, len = 1)
   if (!is.null(scaleC)) {
-    checkmate::assertNumeric(scaleC, lower=0, any.missing=FALSE)
+    checkmate::assertNumeric(scaleC, lower = 0, any.missing = FALSE)
   }
-  checkmate::assertNumeric(scaleTo, len=1, lower=0, any.missing=FALSE)
+  checkmate::assertNumeric(scaleTo, len = 1, lower = 0, any.missing = FALSE)
 
-  .ret <- list(npt=npt,
-               rhobeg=rhobeg,
-               rhoend=rhoend,
-               iprint=iprint,
-               maxfun=maxfun,
-               covMethod=match.arg(covMethod),
-               optExpression=optExpression,
-               literalFix=literalFix,
-               literalFixRes=literalFixRes,
-               sumProd=sumProd,
-               rxControl=rxControl,
-               returnBobyqa=returnBobyqa,
+  .ret <- list(
+    npt = npt,
+    rhobeg = rhobeg,
+    rhoend = rhoend,
+    iprint = iprint,
+    maxfun = maxfun,
+    covMethod = match.arg(covMethod),
+    optExpression = optExpression,
+    literalFix = literalFix,
+    literalFixRes = literalFixRes,
+    sumProd = sumProd,
+    rxControl = rxControl,
+    returnBobyqa = returnBobyqa,
 
-               stickyRecalcN=as.integer(stickyRecalcN),
-               maxOdeRecalc=as.integer(maxOdeRecalc),
-               odeRecalcFactor=odeRecalcFactor,
-               indTolRelax=indTolRelax,
+    stickyRecalcN = as.integer(stickyRecalcN),
+    maxOdeRecalc = as.integer(maxOdeRecalc),
+    odeRecalcFactor = odeRecalcFactor,
+    indTolRelax = indTolRelax,
 
-               iterPrintControl = .iterPrintControl,
-               scaleType=scaleType,
-               normType=normType,
+    iterPrintControl = .iterPrintControl,
+    scaleType = scaleType,
+    normType = normType,
 
-               scaleCmax=scaleCmax,
-               scaleCmin=scaleCmin,
-               scaleC=scaleC,
-               scaleTo=scaleTo,
+    scaleCmax = scaleCmax,
+    scaleCmin = scaleCmin,
+    scaleC = scaleC,
+    scaleTo = scaleTo,
 
-               addProp=match.arg(addProp),
-               calcTables=calcTables,
-               compress=compress,
-               ci=ci, sigdig=sigdig, sigdigTable=sigdigTable,
-               eventSens=eventSens,
-               genRxControl=.genRxControl)
+    addProp = match.arg(addProp),
+    calcTables = calcTables,
+    compress = compress,
+    ci = ci,
+    sigdig = sigdig,
+    sigdigTable = sigdigTable,
+    eventSens = eventSens,
+    genRxControl = .genRxControl
+  )
   class(.ret) <- "bobyqaControl"
   .ret
 }
@@ -233,7 +245,7 @@ rxUiDeparse.bobyqaControl <- function(object, var) {
 #' @rdname nmObjHandleControlObject
 #' @export
 nmObjHandleControlObject.bobyqaControl <- function(control, env) {
-  assign("bobyqaControl", control, envir=env)
+  assign("bobyqaControl", control, envir = env)
 }
 
 #' @rdname nmObjGetControl
@@ -248,15 +260,19 @@ nmObjGetControl.bobyqa <- function(x, ...) {
     .control <- get("control", .env, inherits = FALSE)
     if (inherits(.control, "bobyqaControl")) return(.control)
   }
-  stop("cannot find bobyqa related control object", call.=FALSE)
+  stop("cannot find bobyqa related control object", call. = FALSE)
 }
 
 #' @rdname getValidNlmixrControl
 #' @export
 getValidNlmixrCtl.bobyqa <- function(control) {
   .ctl <- control[[1]]
-  if (is.null(.ctl)) .ctl <- bobyqaControl()
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) .ctl <- do.call("bobyqaControl", .ctl)
+  if (is.null(.ctl)) {
+    .ctl <- bobyqaControl()
+  }
+  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
+    .ctl <- do.call("bobyqaControl", .ctl)
+  }
   if (!inherits(.ctl, "bobyqaControl")) {
     .minfo("invalid control for `est=\"bobyqa\"`, using default")
     .ctl <- bobyqaControl()
@@ -266,28 +282,32 @@ getValidNlmixrCtl.bobyqa <- function(control) {
   .ctl
 }
 
-.bobyqaControlToFoceiControl <- function(env, assign=TRUE) {
+.bobyqaControlToFoceiControl <- function(env, assign = TRUE) {
   .bobyqaControl <- env$bobyqaControl
   .ui <- env$ui
-  .foceiControl <- foceiControl(rxControl=env$bobyqaControl$rxControl,
-                                maxOuterIterations=0L,
-                                maxInnerIterations=0L,
-                                covMethod=0L,
-                                sumProd=.bobyqaControl$sumProd,
-                                optExpression=.bobyqaControl$optExpression,
-                                literalFix=.bobyqaControl$literalFix,
-                                literalFixRes=.bobyqaControl$literalFixRes,
-                                scaleTo=0,
-                                calcTables=.bobyqaControl$calcTables,
-                                addProp=.bobyqaControl$addProp,
-                                #skipCov=.ui$foceiSkipCov,
-                                interaction=0L,
-                                compress=.bobyqaControl$compress,
-                                ci=.bobyqaControl$ci,
-                                sigdigTable=.bobyqaControl$sigdigTable,
-                                indTolRelax=.bobyqaControl$indTolRelax,
-                                eventSens=.bobyqaControl$eventSens)
-  if (assign) env$control <- .foceiControl
+  .foceiControl <- foceiControl(
+    rxControl = env$bobyqaControl$rxControl,
+    maxOuterIterations = 0L,
+    maxInnerIterations = 0L,
+    covMethod = 0L,
+    sumProd = .bobyqaControl$sumProd,
+    optExpression = .bobyqaControl$optExpression,
+    literalFix = .bobyqaControl$literalFix,
+    literalFixRes = .bobyqaControl$literalFixRes,
+    scaleTo = 0,
+    calcTables = .bobyqaControl$calcTables,
+    addProp = .bobyqaControl$addProp,
+    #skipCov=.ui$foceiSkipCov,
+    interaction = 0L,
+    compress = .bobyqaControl$compress,
+    ci = .bobyqaControl$ci,
+    sigdigTable = .bobyqaControl$sigdigTable,
+    indTolRelax = .bobyqaControl$indTolRelax,
+    eventSens = .bobyqaControl$eventSens
+  )
+  if (assign) {
+    env$control <- .foceiControl
+  }
   .foceiControl
 }
 
@@ -296,27 +316,38 @@ getValidNlmixrCtl.bobyqa <- function(control) {
   rxode2::rxReq("minqa")
   .ctl <- ui$control
   .keep <- c("npt", "rhobeg", "rhoend", "iprint", "maxfun")
-  .keep <- .keep[vapply(.keep, function(opt) {
-    !is.null(.ctl[[opt]])
-  }, logical(1), USE.NAMES = FALSE)]
+  .keep <- .keep[vapply(
+    .keep,
+    function(opt) {
+      !is.null(.ctl[[opt]])
+    },
+    logical(1),
+    USE.NAMES = FALSE
+  )]
 
-  .oCtl <- setNames(lapply(.keep, function(x) {.ctl[[x]]}), .keep)
+  .oCtl <- setNames(
+    lapply(.keep, function(x) {
+      .ctl[[x]]
+    }),
+    .keep
+  )
   class(.ctl) <- NULL
   .p <- setNames(ui$nlmParIni, ui$nlmParName)
-  .mi <-  ui$nlmRxModel
-  .env <- .nlmSetupEnv(.p, ui, dataSav, .mi, .ctl,
-                       lower=ui$optimParLower, upper=ui$optimParUpper)
-  on.exit({.nlmFreeEnv()})
+  .mi <- ui$nlmRxModel
+  .env <- .nlmSetupEnv(.p, ui, dataSav, .mi, .ctl, lower = ui$optimParLower, upper = ui$optimParUpper)
+  on.exit({
+    .nlmFreeEnv()
+  })
   # support gradient
   .ret <- bquote(minqa::bobyqa(
-    par=.(.env$par.ini),
-    fn=.(nlmixr2est::.nlmixrOptimFunC),
-    lower=.(.env$lower),
-    upper=.(.env$upper),
-    control=.(.oCtl)))
+    par = .(.env$par.ini),
+    fn = .(nlmixr2est::.nlmixrOptimFunC),
+    lower = .(.env$lower),
+    upper = .(.env$upper),
+    control = .(.oCtl)
+  ))
   .ret <- eval(.ret)
-  .nlmFinalizeList(.env, .ret, par="par", printLine=TRUE,
-                   hessianCov=TRUE)
+  .nlmFinalizeList(.env, .ret, par = "par", printLine = TRUE, hessianCov = TRUE)
 }
 
 #' Get the full theta for nlm methods
@@ -328,34 +359,49 @@ getValidNlmixrCtl.bobyqa <- function(control) {
 #' @noRd
 .bobyqaGetTheta <- function(nlm, ui) {
   .iniDf <- ui$iniDf
-  setNames(vapply(seq_along(.iniDf$name),
-                  function(i) {
-                    if (.iniDf$fix[i]) {
-                      .iniDf$est[i]
-                    } else {
-                      nlm$par[.iniDf$name[i]]
-                    }
-                  }, double(1), USE.NAMES=FALSE),
-           .iniDf$name)
+  setNames(
+    vapply(
+      seq_along(.iniDf$name),
+      function(i) {
+        if (.iniDf$fix[i]) {
+          .iniDf$est[i]
+        } else {
+          nlm$par[.iniDf$name[i]]
+        }
+      },
+      double(1),
+      USE.NAMES = FALSE
+    ),
+    .iniDf$name
+  )
 }
 
 .bobyqaFamilyFit <- function(env, ...) {
   .nlmFamilyFitGeneric(
-    env, "bobyqa", .bobyqaFitModel, .bobyqaGetTheta,
+    env,
+    "bobyqa",
+    .bobyqaFitModel,
+    .bobyqaGetTheta,
     objective = function(.fit) 2 * as.numeric(.fit$fval),
     controlToFocei = .bobyqaControlToFoceiControl,
-    returnFlag = "returnBobyqa")
+    returnFlag = "returnBobyqa"
+  )
 }
 
 #' @rdname nlmixr2Est
 #' @export
 nlmixr2Est.bobyqa <- function(env, ...) {
   .ui <- env$ui
-  rxode2::assertRxUiPopulationOnly(.ui, " for the estimation routine 'bobyqa', try 'focei'", .var.name=.ui$modelName)
-  rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'bobyqa'", .var.name=.ui$modelName)
+  rxode2::assertRxUiPopulationOnly(.ui, " for the estimation routine 'bobyqa', try 'focei'", .var.name = .ui$modelName)
+  rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'bobyqa'", .var.name = .ui$modelName)
   .bobyqaFamilyControl(env, ...)
-  on.exit({if (exists("control", envir=.ui)) rm("control", envir=.ui)}, add=TRUE)
-  .bobyqaFamilyFit(env,  ...)
+  on.exit(
+    {
+      if (exists("control", envir = .ui)) rm("control", envir = .ui)
+    },
+    add = TRUE
+  )
+  .bobyqaFamilyFit(env, ...)
 }
 attr(nlmixr2Est.bobyqa, "covPresent") <- TRUE
 attr(nlmixr2Est.bobyqa, "unbounded") <- FALSE

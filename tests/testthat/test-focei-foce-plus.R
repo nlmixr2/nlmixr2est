@@ -24,11 +24,16 @@ nmTest({
 
   test_that("foce=\"foce+\" runs and differs from \"nonmem\" for proportional error", {
     fn <- suppressWarnings(suppressMessages(
-      nlmixr(one.cmt, d, "foce",
-             foceiControl(print = 0L, calcTables = FALSE, outerOpt = "nlminb", covMethod = ""))))
+      nlmixr(one.cmt, d, "foce", foceiControl(print = 0L, calcTables = FALSE, outerOpt = "nlminb", covMethod = ""))
+    ))
     fp <- suppressWarnings(suppressMessages(
-      nlmixr(one.cmt, d, "foce",
-             foceiControl(print = 0L, calcTables = FALSE, outerOpt = "nlminb", covMethod = "", foce = "foce+"))))
+      nlmixr(
+        one.cmt,
+        d,
+        "foce",
+        foceiControl(print = 0L, calcTables = FALSE, outerOpt = "nlminb", covMethod = "", foce = "foce+")
+      )
+    ))
     expect_true(is.finite(fn$objective))
     expect_true(is.finite(fp$objective))
     expect_false(isTRUE(all.equal(fn$objective, fp$objective, tolerance = 1e-4)))
@@ -36,25 +41,56 @@ nmTest({
 
   test_that("foce=\"foce+\" equals \"nonmem\" at matched additive parameters", {
     fn <- suppressWarnings(suppressMessages(
-      nlmixr(add.cmt, d, "foce",
-             foceiControl(print = 0L, calcTables = FALSE, maxOuterIterations = 0L,
-                          innerOpt = "n1qn1", epsilon = 1e-10, maxInnerIterations = 1000L, covMethod = ""))))
+      nlmixr(
+        add.cmt,
+        d,
+        "foce",
+        foceiControl(
+          print = 0L,
+          calcTables = FALSE,
+          maxOuterIterations = 0L,
+          innerOpt = "n1qn1",
+          epsilon = 1e-10,
+          maxInnerIterations = 1000L,
+          covMethod = ""
+        )
+      )
+    ))
     fp <- suppressWarnings(suppressMessages(
-      nlmixr(add.cmt, d, "foce",
-             foceiControl(print = 0L, calcTables = FALSE, maxOuterIterations = 0L,
-                          innerOpt = "n1qn1", epsilon = 1e-10, maxInnerIterations = 1000L, covMethod = "", foce = "foce+"))))
+      nlmixr(
+        add.cmt,
+        d,
+        "foce",
+        foceiControl(
+          print = 0L,
+          calcTables = FALSE,
+          maxOuterIterations = 0L,
+          innerOpt = "n1qn1",
+          epsilon = 1e-10,
+          maxInnerIterations = 1000L,
+          covMethod = "",
+          foce = "foce+"
+        )
+      )
+    ))
     expect_equal(fn$objective, fp$objective, tolerance = 1e-4)
   })
 
   test_that("focep/mfocep/ifocep equal foce with foce=\"foce+\"", {
     # Compare aliases against a live reference from this implementation.
-    ref <- list(objective = suppressWarnings(suppressMessages(
-      nlmixr(one.cmt, d, "foce",
-             foceiControl(print = 0L, calcTables = FALSE, outerOpt = "nlminb",
-                          covMethod = "", foce = "foce+"))))$objective)
+    ref <- list(
+      objective = suppressWarnings(suppressMessages(
+        nlmixr(
+          one.cmt,
+          d,
+          "foce",
+          foceiControl(print = 0L, calcTables = FALSE, outerOpt = "nlminb", covMethod = "", foce = "foce+")
+        )
+      ))$objective
+    )
     fit <- suppressWarnings(suppressMessages(
-      nlmixr(one.cmt, d, "focep",
-             foceiControl(print = 0L, calcTables = FALSE, outerOpt = "nlminb", covMethod = ""))))
+      nlmixr(one.cmt, d, "focep", foceiControl(print = 0L, calcTables = FALSE, outerOpt = "nlminb", covMethod = ""))
+    ))
     expect_true(is.finite(fit$objective))
     expect_equal(fit$objective, ref$objective, tolerance = 1e-3)
     # The mu-profiled variants are NOT expected to match the plain fit here: the foce+
@@ -72,11 +108,21 @@ nmTest({
     # objective is the same either way here because innerOpt="auto" resolves to "trust",
     # which supplies its own exact Hessian and ignores warm= entirely.
     fM <- suppressWarnings(suppressMessages(
-      nlmixr(one.cmt, d, "mfocep",
-             foceiControl(print = 0L, calcTables = FALSE, outerOpt = "nlminb", covMethod = "", warm = "none"))))
+      nlmixr(
+        one.cmt,
+        d,
+        "mfocep",
+        foceiControl(print = 0L, calcTables = FALSE, outerOpt = "nlminb", covMethod = "", warm = "none")
+      )
+    ))
     fI <- suppressWarnings(suppressMessages(
-      nlmixr(one.cmt, d, "ifocep",
-             foceiControl(print = 0L, calcTables = FALSE, outerOpt = "nlminb", covMethod = "", warm = "none"))))
+      nlmixr(
+        one.cmt,
+        d,
+        "ifocep",
+        foceiControl(print = 0L, calcTables = FALSE, outerOpt = "nlminb", covMethod = "", warm = "none")
+      )
+    ))
     expect_true(is.finite(fM$objective))
     expect_true(is.finite(fI$objective))
     expect_equal(fM$objective, fI$objective, tolerance = 1e-2)
@@ -108,7 +154,8 @@ nmTest({
         cp ~ add(add.sd) })
     }
     fit <- suppressWarnings(suppressMessages(
-      nlmixr(.m, d, "focep", focepControl(print = 0L, calcTables = FALSE, covMethod = ""))))
+      nlmixr(.m, d, "focep", focepControl(print = 0L, calcTables = FALSE, covMethod = ""))
+    ))
     # The stall cost 4.8 objective units: bobyqa stopped at 121.560 with the omegas
     # barely off their starting values, against 116.80 here and 116.82 for est="foce".
     expect_lt(fit$objf, 118)

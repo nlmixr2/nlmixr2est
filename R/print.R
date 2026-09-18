@@ -1,5 +1,13 @@
 .h2 <- function(x) {
-  cli::cli_text(crayon::bold(paste0(cli::symbol$line, cli::symbol$line, " ", x, " ", cli::symbol$line, cli::symbol$line)))
+  cli::cli_text(crayon::bold(paste0(
+    cli::symbol$line,
+    cli::symbol$line,
+    " ",
+    x,
+    " ",
+    cli::symbol$line,
+    cli::symbol$line
+  )))
 }
 
 .getR <- function(x, sd = FALSE) {
@@ -10,10 +18,12 @@
   .lt <- lower.tri(.rs)
   .dn1 <- dimnames(x)[[2]]
   .nms <- apply(
-    which(.lt, arr.ind = TRUE), 1,
+    which(.lt, arr.ind = TRUE),
+    1,
     function(x) {
       sprintf(
-        "cor%s%s", getOption("broom.mixed.sep1", "__"),
+        "cor%s%s",
+        getOption("broom.mixed.sep1", "__"),
         paste(.dn1[x], collapse = getOption("broom.mixed.sep2", "."))
       )
     }
@@ -94,7 +104,9 @@
   }
   .cls <- c(
     paste0(bound, access, ": ", gsub(" +", " ", name)),
-    "paged_df", "data.frame")
+    "paged_df",
+    "data.frame"
+  )
   class(.df) <- .cls
   return(length(utils::capture.output(print(.df))) == 0)
 }
@@ -123,7 +135,10 @@ print.nlmixr2LstSilent <- function(x, ...) {
 print.nlmixr2Gill83 <- function(x, ...) {
   cat(sprintf(
     "Gill83 Derivative/Forward Difference\n  (rtol=%s; K=%s, step=%s, ftol=%s)\n\n",
-    x$gillRtol, x$gillK, x$gillStep, x$gillFtol
+    x$gillRtol,
+    x$gillK,
+    x$gillStep,
+    x$gillFtol
   ))
   NextMethod(x)
 }
@@ -131,12 +146,15 @@ print.nlmixr2Gill83 <- function(x, ...) {
 ##' @export
 print.nlmixr2FitCore <- function(x, ...) {
   .parent <- parent.frame(2)
-  .bound <- do.call("c", lapply(ls(.parent), function(.cur) {
-    if (identical(.parent[[.cur]], x)) {
-      return(.cur)
-    }
-    return(NULL)
-  }))
+  .bound <- do.call(
+    "c",
+    lapply(ls(.parent), function(.cur) {
+      if (identical(.parent[[.cur]], x)) {
+        return(.cur)
+      }
+      return(NULL)
+    })
+  )
   if (length(.bound) == 0) {
     .bound <- ""
   } else if (length(.bound) >= 2) {
@@ -147,12 +165,15 @@ print.nlmixr2FitCore <- function(x, ...) {
     .bound <- .bound[1]
   } else if (.bound == "x") {
     .parent <- globalenv()
-    .bound2 <- do.call("c", lapply(ls(.parent), function(.cur) {
-      if (identical(.parent[[.cur]], x)) {
-        return(.cur)
-      }
-      return(NULL)
-    }))
+    .bound2 <- do.call(
+      "c",
+      lapply(ls(.parent), function(.cur) {
+        if (identical(.parent[[.cur]], x)) {
+          return(.cur)
+        }
+        return(NULL)
+      })
+    )
     if (length(.bound2) > 0) {
       .bound <- .bound2[order(sapply(.bound2, nchar))]
       .bound <- .bound[1]
@@ -162,7 +183,9 @@ print.nlmixr2FitCore <- function(x, ...) {
   if (!is.na(get("objective", x$env, inherits = FALSE))) {
     .nb <- .pagedPrint(x$objDf, "Objective", .bound)
   }
-  if (.nb) .nb <- .pagedPrint(x$time, "Time (sec)", .bound)
+  if (.nb) {
+    .nb <- .pagedPrint(x$time, "Time (sec)", .bound)
+  }
   if (.nb) {
     .pagedPrint(x$parFixedDf, "Pop. Pars", .bound)
     .omega <- x$omega
@@ -180,15 +203,20 @@ print.nlmixr2FitCore <- function(x, ...) {
     .width <- getOption("width")
     .parent <- parent.frame(2)
 
-    cat(cli::cli_format_method({
-      .h2(paste0(
-        crayon::bold$blue("nlmix"),
-        crayon::bold$red(paste0("r", ifelse(use.utf(), "\u00B2", "2"))), " ",
-        crayon::bold(ifelse(any(x$ui$predDf$distribution != "norm"), "log-likelihood ", "")),
-        crayon::bold$yellow(x$method),
-        x$extra, x$posthoc
-      ))
-    }), sep = "\n")
+    cat(
+      cli::cli_format_method({
+        .h2(paste0(
+          crayon::bold$blue("nlmix"),
+          crayon::bold$red(paste0("r", ifelse(use.utf(), "\u00B2", "2"))),
+          " ",
+          crayon::bold(ifelse(any(x$ui$predDf$distribution != "norm"), "log-likelihood ", "")),
+          crayon::bold$yellow(x$method),
+          x$extra,
+          x$posthoc
+        ))
+      }),
+      sep = "\n"
+    )
     cat("\n")
     if (length(.bound) == 0) {
       .bound <- ""
@@ -200,27 +228,36 @@ print.nlmixr2FitCore <- function(x, ...) {
       .bound <- .bound[1]
     } else if (.bound == "x") {
       .parent <- globalenv()
-      .bound2 <- do.call("c", lapply(ls(.parent), function(.cur) {
-        if (identical(.parent[[.cur]], x)) {
-          return(.cur)
-        }
-        return(NULL)
-      }))
+      .bound2 <- do.call(
+        "c",
+        lapply(ls(.parent), function(.cur) {
+          if (identical(.parent[[.cur]], x)) {
+            return(.cur)
+          }
+          return(NULL)
+        })
+      )
       if (length(.bound2) > 0) {
         .bound <- .bound2[order(sapply(.bound2, nchar))]
         .bound <- .bound[1]
       }
     }
     if (is.na(get("objective", x$env, inherits = FALSE))) {
-      cat(sprintf(
-        " Gaussian/Laplacian Likelihoods: AIC(%s) or %s etc.",
-        crayon::yellow(.bound),
-        paste0(crayon::yellow(.bound), crayon::bold$blue("$objf"))
-      ), "\n")
-      cat(sprintf(
-        " FOCEi CWRES & Likelihoods: addCwres(%s)",
-        crayon::yellow(.bound)
-      ), "\n")
+      cat(
+        sprintf(
+          " Gaussian/Laplacian Likelihoods: AIC(%s) or %s etc.",
+          crayon::yellow(.bound),
+          paste0(crayon::yellow(.bound), crayon::bold$blue("$objf"))
+        ),
+        "\n"
+      )
+      cat(
+        sprintf(
+          " FOCEi CWRES & Likelihoods: addCwres(%s)",
+          crayon::yellow(.bound)
+        ),
+        "\n"
+      )
     } else {
       print(x$objDf)
     }
@@ -240,13 +277,9 @@ print.nlmixr2FitCore <- function(x, ...) {
     if (2 * .boundChar + 54 < .width) {
       .fmt3(.populationParameters, .bound, c("parFixed", "parFixedDf"))
     } else if (.boundChar + 54 < .width) {
-      .fmt3(.populationParameters, .bound, c("parFixed", "parFixedDf"),
-        on = c(TRUE, FALSE)
-      )
+      .fmt3(.populationParameters, .bound, c("parFixed", "parFixedDf"), on = c(TRUE, FALSE))
     } else {
-      .fmt3(.populationParameters, .bound, c("parFixed", "parFixedDf"),
-        on = c(FALSE, FALSE)
-      )
+      .fmt3(.populationParameters, .bound, c("parFixed", "parFixedDf"), on = c(FALSE, FALSE))
     }
     cat("\n")
     .file <- raw(0L)
@@ -267,16 +300,27 @@ print.nlmixr2FitCore <- function(x, ...) {
     cat(paste(.pf, collapse = "\n"), "\n")
     ## Correlations
     .covMethod <- x$covMethod
-    if (!checkmate::testCharacter(.covMethod, len=1)) .covMethod <- ""
+    if (!checkmate::testCharacter(.covMethod, len = 1)) {
+      .covMethod <- ""
+    }
     if (.covMethod != "") {
       cat(paste0(
-        "  Covariance Type (", crayon::yellow(.bound), crayon::bold$blue("$covMethod"), "): ",
-        crayon::bold(x$covMethod), "\n"
+        "  Covariance Type (",
+        crayon::yellow(.bound),
+        crayon::bold$blue("$covMethod"),
+        "): ",
+        crayon::bold(x$covMethod),
+        "\n"
       ))
     }
-    if (exists("covList", x$env, inherits = FALSE) &&
-          length(x$env$covList) > 0L) {
-      cat("    other calculated covs (", crayon::bold$blue("setCov()"), "): ",
+    if (
+      exists("covList", x$env, inherits = FALSE) &&
+        length(x$env$covList) > 0L
+    ) {
+      cat(
+        "    other calculated covs (",
+        crayon::bold$blue("setCov()"),
+        "): ",
         paste(crayon::bold(names(x$env$covList)), collapse = "; "),
         "\n",
         sep = ""
@@ -290,7 +334,12 @@ print.nlmixr2FitCore <- function(x, ...) {
     .tmp <- .getR(.cor)
     if (length(.tmp) > 0) {
       if (any(abs(.tmp) >= getOption("nlmixr2.strong.corr", 0.7))) {
-        cat(paste0("  Some strong fixed parameter correlations exist (", crayon::yellow(.bound), crayon::bold$blue("$cor"), ") :\n"))
+        cat(paste0(
+          "  Some strong fixed parameter correlations exist (",
+          crayon::yellow(.bound),
+          crayon::bold$blue("$cor"),
+          ") :\n"
+        ))
         .getCorPrint(.cor)
       } else {
         cat(paste0("  Fixed parameter correlations in ", crayon::yellow(.bound), crayon::bold$blue("$cor"), "\n"))
@@ -314,11 +363,28 @@ print.nlmixr2FitCore <- function(x, ...) {
           .getCorPrint(.omegaR)
         }
         if (.boundChar * 2 + 70 < .width && !.noEta) {
-          cat(paste0("  Full BSV covariance (", crayon::yellow(.bound), crayon::bold$blue("$omega"), ") or correlation (", crayon::yellow(.bound), crayon::bold$blue("$omegaR"), "; diagonals=SDs)"), "\n")
+          cat(
+            paste0(
+              "  Full BSV covariance (",
+              crayon::yellow(.bound),
+              crayon::bold$blue("$omega"),
+              ") or correlation (",
+              crayon::yellow(.bound),
+              crayon::bold$blue("$omegaR"),
+              "; diagonals=SDs)"
+            ),
+            "\n"
+          )
         } else if (!.noEta) {
           if (.boundChar + 43 < .width) {
             cat(paste0("  Full BSV covariance (", crayon::yellow(.bound), crayon::bold$blue("$omega"), ")"), "\n")
-            cat(paste0("    or correlation (", crayon::yellow(.bound), crayon::bold$blue("$omegaR"), "; diagonals=SDs)", "\n"))
+            cat(paste0(
+              "    or correlation (",
+              crayon::yellow(.bound),
+              crayon::bold$blue("$omegaR"),
+              "; diagonals=SDs)",
+              "\n"
+            ))
           } else {
             cat(paste0("  Full BSV covariance (", crayon::bold$blue("$omega"), ")\n"))
             cat(paste0("    or correlation (", crayon::bold$blue("$omegaR"), "; diagonals=SDs)\n"))
@@ -326,41 +392,55 @@ print.nlmixr2FitCore <- function(x, ...) {
         }
       }
       if (.boundChar + 74 < .width && !.noEta) {
-        cat(paste0(
-          "  Distribution stats (mean/skewness/kurtosis/p-value) available in ",
-          crayon::yellow(.bound), crayon::bold$blue("$shrink")
-        ), "\n")
+        cat(
+          paste0(
+            "  Distribution stats (mean/skewness/kurtosis/p-value) available in ",
+            crayon::yellow(.bound),
+            crayon::bold$blue("$shrink")
+          ),
+          "\n"
+        )
       } else if (!.noEta) {
-        cat(paste0(
-          "  Distribution stats (mean/skewness/kurtosis/p-value) available in ",
-          crayon::bold$blue("$shrink")
-        ), "\n")
+        cat(
+          paste0(
+            "  Distribution stats (mean/skewness/kurtosis/p-value) available in ",
+            crayon::bold$blue("$shrink")
+          ),
+          "\n"
+        )
       }
     }
 
     if (length(x$runInfo) > 0) {
-      cat(paste0("  Information about run found (", crayon::yellow(.bound),
-                 crayon::bold$blue("$runInfo"), "):\n"))
+      cat(paste0("  Information about run found (", crayon::yellow(.bound), crayon::bold$blue("$runInfo"), "):\n"))
       lapply(x$runInfo, function(msg) {
-        cat("  ", cli::cli_format_method({
-          cli::cli_li(msg)
-        }), "\n")
+        cat(
+          "  ",
+          cli::cli_format_method({
+            cli::cli_li(msg)
+          }),
+          "\n"
+        )
       })
     }
     cat(paste0(
-      "  Censoring (", crayon::yellow(.bound), crayon::bold$blue("$censInformation"), "): ",
-      as.character(x$censInformation), "\n"
+      "  Censoring (",
+      crayon::yellow(.bound),
+      crayon::bold$blue("$censInformation"),
+      "): ",
+      as.character(x$censInformation),
+      "\n"
     ))
     .msg <- x$message
     if (length(.msg) >= 1L) {
       if (length(.msg) == 1L && x$message == "") {
         .msg <- NULL
       } else {
-        .msg <- suppressWarnings(try(gsub("^ *", "", .msg), silent=TRUE))
+        .msg <- suppressWarnings(try(gsub("^ *", "", .msg), silent = TRUE))
         if (inherits(.msg, "try-error")) {
           .msg <- "    $message cannot be displayed, examine manually"
         } else {
-          .msg <- paste(paste0("    ", .msg), collapse="\n")
+          .msg <- paste(paste0("    ", .msg), collapse = "\n")
         }
       }
     }
@@ -377,19 +457,27 @@ print.nlmixr2FitCore <- function(x, ...) {
     }
     if (rxode2::rxIs(x, "nlmixr2FitData")) {
       .dfName <- "data.frame"
-      if (rxode2::rxIs(x, "tbl")) .dfName <- "tibble"
-      if (rxode2::rxIs(x, "data.table")) .dfName <- "data.table"
+      if (rxode2::rxIs(x, "tbl")) {
+        .dfName <- "tibble"
+      }
+      if (rxode2::rxIs(x, "data.table")) {
+        .dfName <- "data.table"
+      }
       cat("\n")
-      cat(cli::cli_format_method({
-        .h2(paste0(
-          crayon::bold("Fit Data"),
-          " (object",
-          ifelse(.bound == "", "", " "),
-          crayon::yellow(.bound),
-          " is a modified ",
-          crayon::blue(.dfName), "):"
-        ))
-      }), sep = "\n")
+      cat(
+        cli::cli_format_method({
+          .h2(paste0(
+            crayon::bold("Fit Data"),
+            " (object",
+            ifelse(.bound == "", "", " "),
+            crayon::yellow(.bound),
+            " is a modified ",
+            crayon::blue(.dfName),
+            "):"
+          ))
+        }),
+        sep = "\n"
+      )
       if (rxode2::rxIs(x, "tbl") || rxode2::rxIs(x, "data.table")) {
         .oldOpts <- options("tibble.print_max", "tibble.print_min")
         on.exit(options(
@@ -414,12 +502,15 @@ print.nlmixr2FitCore <- function(x, ...) {
 
 .notesFit <- function(x) {
   .parent <- globalenv()
-  .bound2 <- do.call("c", lapply(ls(.parent), function(.cur) {
-    if (identical(.parent[[.cur]], x)) {
-      return(.cur)
-    }
-    return(NULL)
-  }))
+  .bound2 <- do.call(
+    "c",
+    lapply(ls(.parent), function(.cur) {
+      if (identical(.parent[[.cur]], x)) {
+        return(.cur)
+      }
+      return(NULL)
+    })
+  )
   if (length(.bound2) > 0) {
     .bound <- .bound2[order(sapply(.bound2, nchar))]
     .bound <- .bound[1]
@@ -428,10 +519,15 @@ print.nlmixr2FitCore <- function(x, ...) {
   }
   .c <- NULL
   if (x$covMethod != "") {
-    .c <- c(.c, paste0(
-      "  Covariance Type (", .bound, "$covMethod): ",
-      x$covMethod
-    ))
+    .c <- c(
+      .c,
+      paste0(
+        "  Covariance Type (",
+        .bound,
+        "$covMethod): ",
+        x$covMethod
+      )
+    )
   }
   if (is.na(get("objective", x$env, inherits = FALSE))) {
     .c <- c(
@@ -439,7 +535,9 @@ print.nlmixr2FitCore <- function(x, ...) {
       "Missing Objective function; Can add by:",
       sprintf(
         " Gaussian/Laplacian Likelihoods: AIC(%s) or %s etc.",
-        .bound, .bound, "$objf"
+        .bound,
+        .bound,
+        "$objf"
       ),
       sprintf(
         " FOCEi CWRES & Likelihoods: addCwres(%s)",
@@ -447,12 +545,15 @@ print.nlmixr2FitCore <- function(x, ...) {
       )
     )
   }
-  .c <- c(.c, paste0(
-    "  Censoring: ",
-    as.character(x$censInformation)))
+  .c <- c(
+    .c,
+    paste0(
+      "  Censoring: ",
+      as.character(x$censInformation)
+    )
+  )
   if (length(x$runInfo) > 0) {
-    .c <- c(.c, paste0("  Information about run found in (", .bound, "$runInfo):"),
-            paste0("    ", x$runInfo))
+    .c <- c(.c, paste0("  Information about run found in (", .bound, "$runInfo):"), paste0("    ", x$runInfo))
   }
   .msg <- x$message
   if (length(.msg) >= 1L) {
@@ -460,17 +561,19 @@ print.nlmixr2FitCore <- function(x, ...) {
       .msg <- NULL
     } else {
       .msg <- gsub("^ *", "", .msg)
-      .msg <- paste(paste0("    ", .msg), collapse="\n")
+      .msg <- paste(paste0("    ", .msg), collapse = "\n")
     }
   }
   if (length(.msg) > 0L) {
     .c <- c(
-      .c, paste0("  Minimization message (", .bound, "$message): "),
+      .c,
+      paste0("  Minimization message (", .bound, "$message): "),
       paste0("    ", x$message)
     )
     if (.msg == "false convergence (8)") {
       .c <- c(
-        .c, "  In an ODE system, false convergence may mean \"useless\" evaluations were performed.",
+        .c,
+        "  In an ODE system, false convergence may mean \"useless\" evaluations were performed.",
         "  See https://tinyurl.com/yyrrwkce",
         "  It could also mean the convergence is poor, check results before accepting fit",
         "  You may also try a good derivative free optimization:",
@@ -482,15 +585,20 @@ print.nlmixr2FitCore <- function(x, ...) {
 }
 
 
-.fmt3 <- function(name, bound, access, extra = "",
-                  on = c(TRUE, TRUE)) {
+.fmt3 <- function(name, bound, access, extra = "", on = c(TRUE, TRUE)) {
   if (length(access) == 1) {
     on <- on[1]
   }
-  cat(cli::cli_format_method({
-    .h2(paste0(
-      crayon::bold(name), " (", extra,
-      paste(crayon::bold$blue(paste0(ifelse(on, crayon::yellow(bound), ""), "$", access)), collapse = " or "), "):"
-    ))
-   }), sep = "\n")
+  cat(
+    cli::cli_format_method({
+      .h2(paste0(
+        crayon::bold(name),
+        " (",
+        extra,
+        paste(crayon::bold$blue(paste0(ifelse(on, crayon::yellow(bound), ""), "$", access)), collapse = " or "),
+        "):"
+      ))
+    }),
+    sep = "\n"
+  )
 }

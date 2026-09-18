@@ -64,22 +64,42 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
 .slowBatches <- list(
   # batch 1
   c(
-    "focei-wang2007-boxcox", "focei-wang2007-combined", "vpcSim",
-    "qrpem-slow", "focei-foce-plus", "imp-proposal-slow"
+    "focei-wang2007-boxcox",
+    "focei-wang2007-combined",
+    "vpcSim",
+    "qrpem-slow",
+    "focei-foce-plus",
+    "imp-proposal-slow"
   ),
   # batch 2
   c(
-    "focei-wang2007-lognormal", "cov-analytic", "focei-wang2007-power",
-    "cov-condition", "agq-cov", "cov-decouple-saimp", "cov-scope-swap"
+    "focei-wang2007-lognormal",
+    "cov-analytic",
+    "focei-wang2007-power",
+    "cov-condition",
+    "agq-cov",
+    "cov-decouple-saimp",
+    "cov-scope-swap"
   ),
   # batch 3
   c(
-    "focei-wang2007-boxcox-half", "nlm-cens", "focei-cens-t-fit", "mtime-fit",
-    "issue-429", "issue-470",
-    "focei-wang2007-bounded", "saem-loglik", "mu-timevarying", "saem-nearpd",
-    "saem-nonmutheta", "focei-theta-reset-bounds",
-    "saem-cov-analytic", "focei-shi21-bounds", "splitbolus-interp",
-    "optexpression-saem-nlme", "saem-cov-multi-endpoint-904",
+    "focei-wang2007-boxcox-half",
+    "nlm-cens",
+    "focei-cens-t-fit",
+    "mtime-fit",
+    "issue-429",
+    "issue-470",
+    "focei-wang2007-bounded",
+    "saem-loglik",
+    "mu-timevarying",
+    "saem-nearpd",
+    "saem-nonmutheta",
+    "focei-theta-reset-bounds",
+    "saem-cov-analytic",
+    "focei-shi21-bounds",
+    "splitbolus-interp",
+    "optexpression-saem-nlme",
+    "saem-cov-multi-endpoint-904",
     "saem-modeled-resid-fit"
   ),
 
@@ -93,54 +113,113 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
   # x 6 fits (ODE and solved-form) and dominates whatever batch it lands in.
   # batch 4
   c(
-    "impmap", "imp-prior", "matexp", "mfocei", "focei-wang2007-yeojohnson",
-    "nlme", "focei-fast-grad", "lincmt-ode-fit", "focei-lincmt-carry-fit",
-    "focei-lincmt-carry-fit-fallback", "focei-lincmt-carry-jump-fit",
+    "impmap",
+    "imp-prior",
+    "matexp",
+    "mfocei",
+    "focei-wang2007-yeojohnson",
+    "nlme",
+    "focei-fast-grad",
+    "lincmt-ode-fit",
+    "focei-lincmt-carry-fit",
+    "focei-lincmt-carry-fit-fallback",
+    "focei-lincmt-carry-jump-fit",
     "focei-lincmt-carry-ll-fit",
     "focei-lincmt-carry-theta-fit"
   ),
   # batch 5
   c(
-    "focei-wang2007-boxcox-lnorm", "nlme-cov", "agq-fast-grad",
-    "focei-ll-fast-grad-fit", "focei-fast-methods-fit", "odeswap-fit",
-    "focei-factr-fit", "focei-reproducible", "focei-hessian-etastep",
-    "focei-outer-hessian-fit", "focei-outer-hessian-nlminb-fit", "focei-outer-hessian-family",
+    "focei-wang2007-boxcox-lnorm",
+    "nlme-cov",
+    "agq-fast-grad",
+    "focei-ll-fast-grad-fit",
+    "focei-fast-methods-fit",
+    "odeswap-fit",
+    "focei-factr-fit",
+    "focei-reproducible",
+    "focei-hessian-etastep",
+    "focei-outer-hessian-fit",
+    "focei-outer-hessian-nlminb-fit",
+    "focei-outer-hessian-family",
     "focei-outer-hessian-censor"
   ),
   # batch 6
   c(
-    "focei-llik", "iov", "iov-zero-eta", "saem-mix", "saem-mix-regress",
-    "posthoc", "ar-est", "mu-family", "uninformative-etas-revisit",
-    "saem-iov-twolevel-fit", "iov-loglik-1000"
+    "focei-llik",
+    "iov",
+    "iov-zero-eta",
+    "saem-mix",
+    "saem-mix-regress",
+    "posthoc",
+    "ar-est",
+    "mu-family",
+    "uninformative-etas-revisit",
+    "saem-iov-twolevel-fit",
+    "iov-loglik-1000"
   ),
   # batch 7
   c(
-    "mu-plain-fit", "vae-fit", "focei-wang2007-basic", "vae-neonatal",
-    "vae-errmodel", "table-cmt", "vae-covariate-selection"
+    "mu-plain-fit",
+    "vae-fit",
+    "focei-wang2007-basic",
+    "vae-neonatal",
+    "vae-errmodel",
+    "table-cmt",
+    "vae-covariate-selection"
   ),
   # batch 8 -- heaviest remaining files on the single-worker CI runner
   # (VAE internals + a few slow structural tests), moved out of the essential
   # push/PR subset to trim its wall time / reclamation exposure.
   c(
-    "vae-encoder", "vae-train", "vae-decoder", "vae-elbo", "vae-inner",
-    "vae-fixbounds", "vae-parhist", "vae-iov", "vae-grad-fit", "vae-ll-grad-fit",
-    "vae-l0learn-fit", "vae-hockey-fit", "vae-colinear-fit", "split", "unary-mu",
-    "timing", "bounded-transform"
+    "vae-encoder",
+    "vae-train",
+    "vae-decoder",
+    "vae-elbo",
+    "vae-inner",
+    "vae-fixbounds",
+    "vae-parhist",
+    "vae-iov",
+    "vae-grad-fit",
+    "vae-ll-grad-fit",
+    "vae-l0learn-fit",
+    "vae-hockey-fit",
+    "vae-colinear-fit",
+    "split",
+    "unary-mu",
+    "timing",
+    "bounded-transform"
   ),
   # batch 9 -- emvi/fbvi (variational inference) multi-iteration fits, plus the
   # cross-method omega off-diagonal fit checks (vae/emvi/npag/npb)
   c(
-    "vi-repro", "vi-focei-agreement", "vi-neonatal", "vi-fullrank",
-    "vi-fullbayes", "vi-stan", "omega-offdiag", "augpred", "vae-residopt"
+    "vi-repro",
+    "vi-focei-agreement",
+    "vi-neonatal",
+    "vi-fullrank",
+    "vi-fullbayes",
+    "vi-stan",
+    "omega-offdiag",
+    "augpred",
+    "vae-residopt"
   ),
   # batch 10 -- nonparametric (npag/npb) fit-based validation.  These set up the
   # FOCEi inner problem and run full NPAG cycles / independent solves, so they are
   # much slower than the essential npag unit tests (dispatch/ipm/grid, which stay
   # in the push/PR subset) and run weekly only.
   c(
-    "npag-psi", "npag-cycle", "npag-fit", "npb-fit", "npag-bimodal", "npag-fixed",
-    "npag-error-models", "npag-mixture", "npag-general-lik", "npag-muexpand",
-    "npag-golden", "lik-contrib-methods", "npag-npb-cens-978"
+    "npag-psi",
+    "npag-cycle",
+    "npag-fit",
+    "npb-fit",
+    "npag-bimodal",
+    "npag-fixed",
+    "npag-error-models",
+    "npag-mixture",
+    "npag-general-lik",
+    "npag-muexpand",
+    "npag-golden",
+    "lik-contrib-methods",
+    "npag-npb-cens-978"
   )
 )
 .slowAll <- unlist(.slowBatches)
@@ -154,7 +233,8 @@ if (nzchar(.batch)) {
   if (is.na(.b) || .b < 1L || .b > length(.slowBatches)) {
     stop(sprintf(
       "NLMIXR2EST_TEST_BATCH=%s out of range (1..%d)",
-      .batch, length(.slowBatches)
+      .batch,
+      length(.slowBatches)
     ))
   }
   .files <- .slowBatches[[.b]]
@@ -182,10 +262,15 @@ if (nzchar(.batch)) {
     }
     # Deal the files out round-robin over a SORTED list so the split is stable
     # across jobs and platforms, and every file lands in exactly one shard.
-    .all <- sort(sub("^test-", "", sub(
-      "\\.R$", "",
-      basename(Sys.glob(file.path("testthat", "test-*.R")))
-    )))
+    .all <- sort(sub(
+      "^test-",
+      "",
+      sub(
+        "\\.R$",
+        "",
+        basename(Sys.glob(file.path("testthat", "test-*.R")))
+      )
+    ))
     .ess <- setdiff(.all, .slowAll)
     # An empty list would make every shard match nothing and report a green run
     # having tested nothing at all -- fail loudly instead.

@@ -1,5 +1,4 @@
 nmTest({
-
   # Shared model with one bounded parameter (td1 in [0, 1]).
   .logitModel <- function() {
     ini({
@@ -43,8 +42,7 @@ nmTest({
     })
   }
 
-  saemControlFast <- saemControl(print = 0, nBurn = 5, nEm = 5, nmc = 1,
-                                  nu = c(2, 2, 2))
+  saemControlFast <- saemControl(print = 0, nBurn = 5, nEm = 5, nmc = 1, nu = c(2, 2, 2))
 
   test_that("SAEM with logit-bounded param keeps estimate within bounds (#496)", {
     fit <- suppressMessages(suppressWarnings(
@@ -55,7 +53,7 @@ nmTest({
     expect_false(any(grepl("^rxBoundedTr\\.", names(fit$theta))))
     td1Val <- fit$theta["td1"]
     expect_true(td1Val >= 0 && td1Val <= 1)
-    expect_equal(.testBoundedTransform(), c(pre=TRUE, post=TRUE))
+    expect_equal(.testBoundedTransform(), c(pre = TRUE, post = TRUE))
   })
 
   test_that("SAEM with lower-bound-only param (tlag >= 0) works", {
@@ -66,7 +64,7 @@ nmTest({
     expect_false(any(grepl("^rxBoundedTr\\.", names(fit$theta))))
     tlagVal <- fit$theta["tlag"]
     expect_true(tlagVal >= 0)
-    expect_equal(.testBoundedTransform(), c(pre=TRUE, post=TRUE))
+    expect_equal(.testBoundedTransform(), c(pre = TRUE, post = TRUE))
   })
 
   test_that("unbounded params are not transformed (regression)", {
@@ -92,7 +90,7 @@ nmTest({
     ))
     expect_false(any(grepl("^rxBoundedTr\\.", names(fit$theta))))
     expect_true(all(c("tka", "tcl", "tv") %in% names(fit$theta)))
-    expect_equal(.testBoundedTransform(), c(pre=FALSE, post=FALSE))
+    expect_equal(.testBoundedTransform(), c(pre = FALSE, post = FALSE))
   })
 
   test_that("fit$ui is restored to original model after SAEM", {
@@ -108,21 +106,23 @@ nmTest({
     .td1 <- .thetaRows[.thetaRows$name == "td1", ]
     expect_equal(.td1$lower, 0)
     expect_equal(.td1$upper, 1)
-    expect_equal(.testBoundedTransform(), c(pre=TRUE, post=TRUE))
+    expect_equal(.testBoundedTransform(), c(pre = TRUE, post = TRUE))
   })
 
   test_that("control$boundedTransform = FALSE disables the transform", {
     fit <- suppressMessages(suppressWarnings(
-      nlmixr(.logitModel, theo_sd, est = "saem",
-             control = saemControl(print = 0, nBurn = 5, nEm = 5,
-                                    nmc = 1, nu = c(2, 2, 2),
-                                    boundedTransform = FALSE))
+      nlmixr(
+        .logitModel,
+        theo_sd,
+        est = "saem",
+        control = saemControl(print = 0, nBurn = 5, nEm = 5, nmc = 1, nu = c(2, 2, 2), boundedTransform = FALSE)
+      )
     ))
     # Without the transform, td1 should still be named td1
     # (no rewriting happened) but may go out of bounds
     expect_true("td1" %in% names(fit$theta))
     expect_false(any(grepl("^rxBoundedTr\\.", names(fit$theta))))
-    expect_equal(.testBoundedTransform(), c(pre=FALSE, post=FALSE))
+    expect_equal(.testBoundedTransform(), c(pre = FALSE, post = FALSE))
   })
 
   test_that("fixed params are not transformed", {
@@ -151,10 +151,10 @@ nmTest({
     ))
     expect_true("td1" %in% names(fit$theta))
     expect_equal(setNames(fit$theta["td1"], NULL), 0.5)
-    expect_equal(.testBoundedTransform(), c(pre=FALSE, post=FALSE))
+    expect_equal(.testBoundedTransform(), c(pre = FALSE, post = FALSE))
   })
 
-  foceiControlFast <- foceiControl(print = 0, maxOuterIterations = 0L, outerOpt="uobyqa")
+  foceiControlFast <- foceiControl(print = 0, maxOuterIterations = 0L, outerOpt = "uobyqa")
 
   test_that("FOCEI with logit-bounded param keeps estimate within bounds", {
     fit <- suppressMessages(suppressWarnings(
@@ -164,19 +164,21 @@ nmTest({
     expect_false(any(grepl("^rxBoundedTr\\.", names(fit$theta))))
     td1Val <- fit$theta["td1"]
     expect_true(td1Val >= 0 && td1Val <= 1)
-    expect_equal(.testBoundedTransform(), c(pre=TRUE, post=TRUE))
+    expect_equal(.testBoundedTransform(), c(pre = TRUE, post = TRUE))
   })
 
   test_that("FOCEI with boundedTransform = FALSE disables the transform", {
     fit <- suppressMessages(suppressWarnings(
-      nlmixr(.logitModel, theo_sd, est = "focei",
-             control = foceiControl(print = 0, maxOuterIterations = 0L,
-                                    outerOpt="uobyqa",
-                                    boundedTransform = FALSE))
+      nlmixr(
+        .logitModel,
+        theo_sd,
+        est = "focei",
+        control = foceiControl(print = 0, maxOuterIterations = 0L, outerOpt = "uobyqa", boundedTransform = FALSE)
+      )
     ))
     expect_true("td1" %in% names(fit$theta))
     expect_false(any(grepl("^rxBoundedTr\\.", names(fit$theta))))
-    expect_equal(.testBoundedTransform(), c(pre=FALSE, post=FALSE))
+    expect_equal(.testBoundedTransform(), c(pre = FALSE, post = FALSE))
   })
 
   test_that("SAEM bounded-param covariance is renamed and Jacobian-corrected (#cov)", {
@@ -187,24 +189,23 @@ nmTest({
       model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl)
         v <- exp(tv + eta.v); linCmt() ~ add(add.sd) })
     }
-    .ctl <- function(bt) saemControl(print = 0, nBurn = 200, nEm = 100, seed = 42,
-                                     boundedTransform = bt)
+    .ctl <- function(bt) saemControl(print = 0, nBurn = 200, nEm = 100, seed = 42, boundedTransform = bt)
     .testSeed(42)
     fitF <- suppressMessages(suppressWarnings(
-      nlmixr(.boundedModel, theo_sd, est = "saem", control = .ctl(FALSE))))
+      nlmixr(.boundedModel, theo_sd, est = "saem", control = .ctl(FALSE))
+    ))
     .testSeed(42)
     fitT <- suppressMessages(suppressWarnings(
-      nlmixr(.boundedModel, theo_sd, est = "saem", control = .ctl(TRUE))))
+      nlmixr(.boundedModel, theo_sd, est = "saem", control = .ctl(TRUE))
+    ))
     # names: the internal rxBoundedTr.* name must not leak into $cov
     expect_false(any(grepl("^rxBoundedTr\\.", rownames(fitT$cov))))
     expect_true("tcl" %in% rownames(fitT$cov))
     # the reported SE must be self-consistent with the (renamed) covariance
-    expect_equal(unname(fitT$parFixedDf["tcl", "SE"]),
-                 sqrt(diag(fitT$cov))[["tcl"]], tolerance = 1e-6)
+    expect_equal(unname(fitT$parFixedDf["tcl", "SE"]), sqrt(diag(fitT$cov))[["tcl"]], tolerance = 1e-6)
     # Jacobian-corrected: the natural-scale SE agrees with the untransformed fit
     # (would be off by ~1/|d(hi-exp(x))/dx| ~ 3.5x without the Jacobian)
-    expect_equal(unname(fitT$parFixedDf["tcl", "SE"]),
-                 unname(fitF$parFixedDf["tcl", "SE"]), tolerance = 0.2)
+    expect_equal(unname(fitT$parFixedDf["tcl", "SE"]), unname(fitF$parFixedDf["tcl", "SE"]), tolerance = 0.2)
     expect_equal(.testBoundedTransform(), c(pre = TRUE, post = TRUE))
   })
 
@@ -274,11 +275,10 @@ nmTest({
 
     expect_error(suppressMessages(.plainExpitModel()), NA)
     expect_s3_class(suppressMessages(.plainExpitModel()), "rxUi")
-    expect_false(nlmixr2est:::nlmixr2global$transformMu)
+    expect_false(nlmixr2global$transformMu)
   })
 
   test_that("iov + bounded transformation doesn't break", {
-
     theo_iov <- nlmixr2data::theo_md
     theo_iov$occ <- 1
     theo_iov$occ[theo_iov$TIME >= 144] <- 2
@@ -302,12 +302,10 @@ nmTest({
       })
     }
 
-    expect_error(.nlmixr(one.cmt.iov, theo_iov, est="saem", control = saemControlFast), NA)
-
+    expect_error(.nlmixr(one.cmt.iov, theo_iov, est = "saem", control = saemControlFast), NA)
   })
 
   test_that("bounded + iov + mu2", {
-
     # mu2-referencing
     theo_iov <- nlmixr2data::theo_md
     theo_iov$occ <- 1
@@ -337,11 +335,10 @@ nmTest({
       })
     }
 
-    fit <- nlmixr(one.cmt.iov.mu2, theo_iov, est="saem", control = saemControlFast)
+    fit <- nlmixr(one.cmt.iov.mu2, theo_iov, est = "saem", control = saemControlFast)
     expect_true(inherits(fit, "nlmixr2FitCore"))
     expect_false(any(grepl("performance degraded", fit$runInfo, fixed = TRUE)))
     expect_false(any(grepl("rx.iov.cl.2", fit$runInfo, fixed = TRUE)))
-
 
     one.cmt.iov.mu2 <- function() {
       ini({
@@ -366,12 +363,9 @@ nmTest({
       })
     }
 
-    fit <- nlmixr(one.cmt.iov.mu2, theo_iov, est="saem", control = saemControlFast)
+    fit <- nlmixr(one.cmt.iov.mu2, theo_iov, est = "saem", control = saemControlFast)
     expect_true(inherits(fit, "nlmixr2FitCore"))
     expect_false(any(grepl("performance degraded", fit$runInfo, fixed = TRUE)))
     expect_false(any(grepl("rx.iov.cl.2", fit$runInfo, fixed = TRUE)))
-
-
   })
-
 })

@@ -26,14 +26,17 @@ suppressMessages(devtools::load_all(".", helpers = FALSE, quiet = TRUE))
 
 ## MUST match the control in test-qrpem-slow.R exactly.
 .f <- suppressWarnings(
-  nlmixr2(.oneCmt, nlmixr2data::theo_sd, "impmap",
-          impmapControl(print = 0L, nIter = 5L, isample = 100L, auto = FALSE,
-                        sigdig = 4, gammaRule = "floor")))
+  nlmixr2(
+    .oneCmt,
+    nlmixr2data::theo_sd,
+    "impmap",
+    impmapControl(print = 0L, nIter = 5L, isample = 100L, auto = FALSE, sigdig = 4, gammaRule = "floor")
+  )
+)
 
-saveRDS(list(fixef = fixef(.f),
-             omega = .f$omega,
-             obj = .f$env$impObj,
-             samples1 = .f$env$impSamples[[1]]),
-        file.path("tests", "testthat", "baselines", "qrpem-baseline-ref.rds"))
+saveRDS(
+  list(fixef = fixef(.f), omega = .f$omega, obj = .f$env$impObj, samples1 = .f$env$impSamples[[1]]),
+  file.path("tests", "testthat", "baselines", "qrpem-baseline-ref.rds")
+)
 cat("wrote tests/testthat/baselines/qrpem-baseline-ref.rds\n")
 print(fixef(.f))

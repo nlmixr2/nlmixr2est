@@ -19,12 +19,8 @@
 #' @examples
 #'
 #' focepControl()
-focepControl <- function(sigdig=3,
-                         ...,
-                         interaction=FALSE,
-                         foce="foce+") {
-  .control <- foceiControl(sigdig=sigdig, ...,
-                           interaction=FALSE, foce="foce+")
+focepControl <- function(sigdig = 3, ..., interaction = FALSE, foce = "foce+") {
+  .control <- foceiControl(sigdig = sigdig, ..., interaction = FALSE, foce = "foce+")
   class(.control) <- "focepControl"
   .control
 }
@@ -33,7 +29,7 @@ focepControl <- function(sigdig=3,
 #' @rdname nmObjHandleControlObject
 #' @export
 nmObjHandleControlObject.focepControl <- function(control, env) {
-  assign("focepControl", control, envir=env)
+  assign("focepControl", control, envir = env)
 }
 
 #' @rdname getValidNlmixrControl
@@ -41,12 +37,17 @@ nmObjHandleControlObject.focepControl <- function(control, env) {
 getValidNlmixrCtl.focep <- function(control) {
   .ctl <- control[[1]]
   .cls <- class(control)[1]
-  if (is.null(.ctl)) .ctl <- focepControl()
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list"))
+  if (is.null(.ctl)) {
+    .ctl <- focepControl()
+  }
+  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
     .ctl <- do.call("focepControl", .ctl)
-  if (inherits(.ctl, "foceiControl") ||
-        inherits(.ctl, "foControl") ||
-        inherits(.ctl, "foiControl")) {
+  }
+  if (
+    inherits(.ctl, "foceiControl") ||
+      inherits(.ctl, "foControl") ||
+      inherits(.ctl, "foiControl")
+  ) {
     .minfo(paste0("converting ", class(.ctl)[1], " to focepControl"))
     class(.ctl) <- NULL
     .ctl <- do.call(focepControl, .ctl)
@@ -71,22 +72,26 @@ nmObjGetControl.focep <- function(x, ...) {
     .control <- get("control", .env, inherits = FALSE)
     if (inherits(.control, "focepControl")) return(.control)
   }
-  stop("cannot find focep related control object", call.=FALSE)
+  stop("cannot find focep related control object", call. = FALSE)
 }
 
-.focepControlToFoceiControl <- function(env, assign=TRUE) {
+.focepControlToFoceiControl <- function(env, assign = TRUE) {
   .focepControl <- env$focepControl
   .ui <- env$ui
   .n <- names(.focepControl)
-  .foceiControl <- setNames(lapply(.n,
-                                   function(n) {
-                                     if (n == "interaction") {
-                                       return(.focepControl$interaction)
-                                     }
-                                     .focepControl[[n]]
-                                   }), .n)
+  .foceiControl <- setNames(
+    lapply(.n, function(n) {
+      if (n == "interaction") {
+        return(.focepControl$interaction)
+      }
+      .focepControl[[n]]
+    }),
+    .n
+  )
   class(.foceiControl) <- "foceiControl"
-  if (assign) env$control <- .foceiControl
+  if (assign) {
+    env$control <- .foceiControl
+  }
   .foceiControl
 }
 
@@ -94,27 +99,26 @@ nmObjGetControl.focep <- function(x, ...) {
 #' @export
 nmObjGetFoceiControl.focep <- function(x, ...) {
   .env <- x[[1]]
-  .focepControlToFoceiControl(.env, assign=FALSE)
+  .focepControlToFoceiControl(.env, assign = FALSE)
 }
 
 #'@rdname nlmixr2Est
 #'@export
 nlmixr2Est.focep <- function(env, ...) {
   .ui <- env$ui
-  rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'focep'",
-                             .var.name=.ui$modelName)
+  rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'focep'", .var.name = .ui$modelName)
   .control <- env$control
-  .foceiFamilyControl(env, ..., type="focepControl")
+  .foceiFamilyControl(env, ..., type = "focepControl")
   .focepControlToFoceiControl(env)
   on.exit({
-    if (exists("control", envir=.ui)) {
-      rm("control", envir=.ui)
+    if (exists("control", envir = .ui)) {
+      rm("control", envir = .ui)
     }
   })
   env$focepControl <- .control
   env$est <- "focep"
   .ui <- env$ui
-  .foceiFamilyReturn(env, .ui, ..., est="focep")
+  .foceiFamilyReturn(env, .ui, ..., est = "focep")
 }
 attr(nlmixr2Est.focep, "nlmixr2Priors") <- "general"
 attr(nlmixr2Est.focep, "iov") <- TRUE

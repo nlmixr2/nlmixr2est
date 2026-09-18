@@ -99,6 +99,14 @@ scale unless it carries \code{attr(, "mixRotated")} set to \code{TRUE}.  A
 method that cannot compute the covariance should \code{stop()}.
 \code{setCovAllMethods()} lists the available methods.
 
+A method's options are recorded under the key \code{\link{setCovOptions}()}
+gives its control, by default the control itself.  A covariance that depends
+on other state on the fit -- one seeded from another covariance, say -- adds
+a \code{setCovOptions()} method for its control class that puts that state
+in the key.  A package can also let an already-computed result be installed
+with \code{setCov(fit) <- result} by adding a \code{\link{setCovValue}()}
+method for the result's class.
+
 Each covariance remembers the options it was computed with (in
 \code{fit$env$covOptions}).  A covariance already on the fit is reinstalled
 from \code{fit$covList} only when the requested options -- the supplied

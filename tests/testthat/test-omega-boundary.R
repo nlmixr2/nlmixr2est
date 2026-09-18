@@ -1,6 +1,6 @@
 nmTest({
   test_that("omega boundary", {
-    one.compartment.IV.MM.model <- function(){
+    one.compartment.IV.MM.model <- function() {
       ini({
         lVM <- 7; label("log Vmax (mg/hr)")
         lKM <- 5.7; label("log KM (mg/L)")
@@ -25,10 +25,10 @@ nmTest({
 
     datr <- nlmixr2data::Infusion_1CPTMM
 
-    dataX<-datr[datr$SD==0, ]
+    dataX <- datr[datr$SD == 0, ]
 
     expect_s3_class(
-      .nlmixr(one.compartment.IV.MM.model,dataX,est="focei", control=list(print=0)),
+      .nlmixr(one.compartment.IV.MM.model, dataX, est = "focei", control = list(print = 0)),
       "nlmixr2FitCore"
     )
   })

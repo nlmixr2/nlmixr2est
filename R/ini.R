@@ -2,8 +2,7 @@
 ini.nlmixr2FitCore <- function(x, ..., envir = parent.frame()) {
   .nlmixr2savePipe(x)
   .ret <- rxode2::.copyUi(x$ui)
-  .iniLines <- rxode2::.quoteCallInfoLines(match.call(expand.dots = TRUE)[-(1:2)],
-                                           envir = envir)
+  .iniLines <- rxode2::.quoteCallInfoLines(match.call(expand.dots = TRUE)[-(1:2)], envir = envir)
   lapply(.iniLines, function(line) {
     rxode2::.iniHandleLine(line, .ret, envir = envir)
   })

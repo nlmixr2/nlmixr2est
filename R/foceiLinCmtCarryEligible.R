@@ -42,9 +42,7 @@
 #' Free symbol names of a symengine expression (empty on error/constant)
 #' @noRd
 .rxFoceiCarryFreeSyms <- function(expr) {
-  tryCatch(vapply(symengine::free_symbols(expr), as.character, character(1)),
-    error = function(e) character(0)
-  )
+  tryCatch(vapply(symengine::free_symbols(expr), as.character, character(1)), error = function(e) character(0))
 }
 
 #' Is a symengine expression identically zero?
@@ -71,17 +69,22 @@
 #'   `fCov` (F references a covariate), `fCmt`, `lagD` (d(lag)/d(eta) text
 #'   or `NA`), `lagCmt`; zero rows when nothing is eligible
 #' @noRd
-.rxFoceiLinCmtCarryEligible <- function(x, s, etaVars, data = NULL,
-                                        interpolation = c("locf", "nocb", "midpoint", "linear"),
-                                        render = TRUE) {
+.rxFoceiLinCmtCarryEligible <- function(
+  x,
+  s,
+  etaVars,
+  data = NULL,
+  interpolation = c("locf", "nocb", "midpoint", "linear"),
+  render = TRUE
+) {
   interpolation <- match.arg(interpolation)
   .ui <- x[[1]]
-  .empty <- .rxFoceiCarryEmpty() # nolint: object_usage_linter.
+  .empty <- .rxFoceiCarryEmpty()
   .allCovs <- .ui$allCovs
   if (length(.allCovs) == 0L) {
     return(.empty)
   }
-  .predArgs <- .rxFoceiCarryPredArgs(.ui, s) # nolint: object_usage_linter.
+  .predArgs <- .rxFoceiCarryPredArgs(.ui, s)
   if (is.null(.predArgs)) {
     return(.empty)
   }
@@ -90,12 +93,20 @@
   # per-slot free symbols (slots 9-15 of the linCmtB call are p1..ka)
   .slotExpr <- lapply(1:7, function(k) .predArgs[[k + 8L]])
   .slotFree <- lapply(.slotExpr, .rxFoceiCarryFreeSyms)
-  .mods <- .rxFoceiCarryEventMods(.ui, s, etaVars) # nolint: object_usage_linter.
+  .mods <- .rxFoceiCarryEventMods(.ui, s, etaVars)
   .ret <- .empty
   for (.e in seq_along(etaVars)) {
     .row <- .rxFoceiCarryEligibleEta(
-      .e, etaVars, .etaDf, .allCovs, .slotExpr,
-      .slotFree, .mods, data, interpolation, render
+      .e,
+      etaVars,
+      .etaDf,
+      .allCovs,
+      .slotExpr,
+      .slotFree,
+      .mods,
+      data,
+      interpolation,
+      render
     )
     if (!is.null(.row)) .ret <- rbind(.ret, .row)
   }
@@ -143,7 +154,10 @@
     return(NULL)
   }
   list(
-    k = .inSlot, g = .d, expr = .expr, shape = .shape,
+    k = .inSlot,
+    g = .d,
+    expr = .expr,
+    shape = .shape,
     covs = intersect(.free, allCovs)
   )
 }
@@ -172,13 +186,23 @@
 
 #' One eligibility row for eta `e`, or NULL
 #' @noRd
-.rxFoceiCarryEligibleEta <- function(e, etaVars, etaDf, allCovs, slotExpr,
-                                     slotFree, mods, data, interpolation, render) {
+.rxFoceiCarryEligibleEta <- function(
+  e,
+  etaVars,
+  etaDf,
+  allCovs,
+  slotExpr,
+  slotFree,
+  mods,
+  data,
+  interpolation,
+  render
+) {
   .eta <- etaVars[e]
   if (!.rxFoceiCarryEtaIdOnly(e, etaDf)) {
     return(NULL)
   }
-  .jump <- .rxFoceiCarryEtaJump(.eta, mods, allCovs) # nolint: object_usage_linter.
+  .jump <- .rxFoceiCarryEtaJump(.eta, mods, allCovs)
   if (!isTRUE(.jump$ok)) {
     return(NULL)
   }
@@ -191,17 +215,25 @@
   if (length(.why) == 0L) {
     return(NULL)
   }
-  .varying <- .rxFoceiCarryVarying(.why, data) # nolint: object_usage_linter.
+  .varying <- .rxFoceiCarryVarying(.why, data)
   if (identical(interpolation, "linear") && isTRUE(.varying)) {
-    stop("time-varying covariate '", paste(.why, collapse = "', '"),
+    stop(
+      "time-varying covariate '",
+      paste(.why, collapse = "', '"),
       "' on a linCmt() parameter needs 'locf', 'nocb' or 'midpoint' ",
       "interpolation; 'linear' cannot be represented by the linCmt() solution",
       call. = FALSE
     )
   }
   .rxFoceiCarryPairRow(
-    .eta, etaDf$name[which(etaDf$neta1 == e)], # nolint: object_usage_linter.
-    if (.hasSlot) .slot else NULL, .jump, mods, .why, .varying, render
+    .eta,
+    etaDf$name[which(etaDf$neta1 == e)],
+    if (.hasSlot) .slot else NULL,
+    .jump,
+    mods,
+    .why,
+    .varying,
+    render
   )
 }
 
@@ -214,7 +246,7 @@
   if (isTRUE(jump$fCov)) {
     .why <- c(.why, intersect(.rxFoceiCarryFreeSyms(mods$f$sym), allCovs))
   }
-  if (!is.null(jump$lagD) && .rxFoceiCarryKernelHasCov(slotFree, allCovs)) { # nolint: object_usage_linter.
+  if (!is.null(jump$lagD) && .rxFoceiCarryKernelHasCov(slotFree, allCovs)) {
     .why <- c(.why, unlist(lapply(slotFree, intersect, allCovs)))
   }
   unique(.why)

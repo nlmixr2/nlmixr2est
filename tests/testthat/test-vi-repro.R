@@ -10,8 +10,11 @@ nmTest({
       d/dt(depot) <- -ka*depot; d/dt(center) <- ka*depot - cl/v*center
       cp <- center/v; cp ~ add(add.sd) })
   }
-  runAdvi <- function(ctl) suppressMessages(suppressWarnings(
-    nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "emvi", control = ctl)))
+  runAdvi <- function(ctl) {
+    suppressMessages(suppressWarnings(
+      nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "emvi", control = ctl)
+    ))
+  }
 
   test_that("iters=100 is a bit-for-bit prefix of iters=200", {
     r100 <- runAdvi(emviControl(iters = 100L, seed = 3L, print = 0L, returnVi = TRUE))
@@ -29,8 +32,7 @@ nmTest({
     ## resume via a cold set-up.  The continued trajectory tracks the fresh one to
     ## solver-tolerance precision.
     r100 <- runAdvi(emviControl(iters = 100L, seed = 3L, print = 0L, returnVi = TRUE))
-    rResume <- runAdvi(emviControl(iters = 100L, seed = 3L, print = 0L,
-                                   returnVi = TRUE, resume = r100))
+    rResume <- runAdvi(emviControl(iters = 100L, seed = 3L, print = 0L, returnVi = TRUE, resume = r100))
     rFresh <- runAdvi(emviControl(iters = 200L, seed = 3L, print = 0L, returnVi = TRUE))
     expect_equal(rResume$it0, 200L)
     expect_equal(rResume$theta, rFresh$theta, tolerance = 5e-2)
@@ -40,11 +42,10 @@ nmTest({
   })
 
   test_that("results are independent of the thread count", {
-    c1 <- emviControl(iters = 60L, seed = 5L, print = 0L, returnVi = TRUE,
-                      rxControl = rxode2::rxControl(cores = 1L))
-    c4 <- emviControl(iters = 60L, seed = 5L, print = 0L, returnVi = TRUE,
-                      rxControl = rxode2::rxControl(cores = 4L))
-    r1 <- runAdvi(c1); r4 <- runAdvi(c4)
+    c1 <- emviControl(iters = 60L, seed = 5L, print = 0L, returnVi = TRUE, rxControl = rxode2::rxControl(cores = 1L))
+    c4 <- emviControl(iters = 60L, seed = 5L, print = 0L, returnVi = TRUE, rxControl = rxode2::rxControl(cores = 4L))
+    r1 <- runAdvi(c1)
+    r4 <- runAdvi(c4)
     expect_identical(r1$theta, r4$theta)
     expect_identical(r1$elbo, r4$elbo)
     expect_identical(r1$mu, r4$mu)

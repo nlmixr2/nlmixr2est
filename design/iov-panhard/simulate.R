@@ -77,7 +77,8 @@ panhardSim <- function(n, seed, truth = panhardTruth) {
         DV = c(NA_real_, .dv),
         AMT = c(truth$dose, rep(NA_real_, .j)),
         EVID = c(4L, rep(0L, .j)),
-        occ = .occ)
+        occ = .occ
+      )
     }
   }
   .d <- do.call(rbind, .out)

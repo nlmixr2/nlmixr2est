@@ -13,35 +13,58 @@
   .lik <- control$likelihood
   .interaction <- if (.lik %in% c("foce", "focep")) 0L else 1L
   .foce <- if (identical(.lik, "focep")) "foce+" else "nonmem"
-  foceiControl(rxControl = control$rxControl, maxOuterIterations = 0L,
-               maxInnerIterations = 0L, covMethod = "", interaction = .interaction,
-               foce = .foce,
-               sumProd = control$sumProd, optExpression = control$optExpression,
-               literalFix = control$literalFix, literalFixRes = control$literalFixRes,
-               addProp = control$addProp, calcTables = FALSE, compress = FALSE,
-               eventSens = control$eventSens, indTolRelax = control$indTolRelax,
-               maxOdeRecalc = control$maxOdeRecalc, odeRecalcFactor = control$odeRecalcFactor,
-               stickyRecalcN = control$stickyRecalcN,
-               # the analytic outer solve's own loosening: est="vae" reuses the
-               # SAME inner call to choose the likelihood, so it gets the same
-               # generalization and the same knobs rather than a parallel set
-               outerMaxOdeRecalc = control$outerMaxOdeRecalc,
-               outerOdeRecalcFactor = control$outerOdeRecalcFactor,
-               outerStickyRecalcN = control$outerStickyRecalcN,
-               # the per-subject FD step of the outer gradient's fallback: est="vae"
-               # reaches the same code through foceiGradPooledDirect_, so it gets the
-               # same knob rather than a parallel one
-               fdIndividualStep = if (is.null(control$fdIndividualStep)) TRUE
-                                  else isTRUE(control$fdIndividualStep),
-               fdOutlierZ = if (is.null(control$fdOutlierZ)) 3.5
-                            else as.double(control$fdOutlierZ),
-               fdOutlierScale = if (is.null(control$fdOutlierScale)) TRUE
-                                else isTRUE(control$fdOutlierScale),
-               fdRefine = if (is.null(control$fdRefine)) "chartrand"
-                          else as.character(control$fdRefine),
-               fdChartrandAll = isTRUE(control$fdChartrandAll),
-               fdOutlierAny = isTRUE(control$fdOutlierAny),
-               print = 0L)
+  foceiControl(
+    rxControl = control$rxControl,
+    maxOuterIterations = 0L,
+    maxInnerIterations = 0L,
+    covMethod = "",
+    interaction = .interaction,
+    foce = .foce,
+    sumProd = control$sumProd,
+    optExpression = control$optExpression,
+    literalFix = control$literalFix,
+    literalFixRes = control$literalFixRes,
+    addProp = control$addProp,
+    calcTables = FALSE,
+    compress = FALSE,
+    eventSens = control$eventSens,
+    indTolRelax = control$indTolRelax,
+    maxOdeRecalc = control$maxOdeRecalc,
+    odeRecalcFactor = control$odeRecalcFactor,
+    stickyRecalcN = control$stickyRecalcN,
+    # the analytic outer solve's own loosening: est="vae" reuses the
+    # SAME inner call to choose the likelihood, so it gets the same
+    # generalization and the same knobs rather than a parallel set
+    outerMaxOdeRecalc = control$outerMaxOdeRecalc,
+    outerOdeRecalcFactor = control$outerOdeRecalcFactor,
+    outerStickyRecalcN = control$outerStickyRecalcN,
+    # the per-subject FD step of the outer gradient's fallback: est="vae"
+    # reaches the same code through foceiGradPooledDirect_, so it gets the
+    # same knob rather than a parallel one
+    fdIndividualStep = if (is.null(control$fdIndividualStep)) {
+      TRUE
+    } else {
+      isTRUE(control$fdIndividualStep)
+    },
+    fdOutlierZ = if (is.null(control$fdOutlierZ)) {
+      3.5
+    } else {
+      as.double(control$fdOutlierZ)
+    },
+    fdOutlierScale = if (is.null(control$fdOutlierScale)) {
+      TRUE
+    } else {
+      isTRUE(control$fdOutlierScale)
+    },
+    fdRefine = if (is.null(control$fdRefine)) {
+      "chartrand"
+    } else {
+      as.character(control$fdRefine)
+    },
+    fdChartrandAll = isTRUE(control$fdChartrandAll),
+    fdOutlierAny = isTRUE(control$fdOutlierAny),
+    print = 0L
+  )
 }
 
 #' Set up the FOCEi inner problem for `ui` at its current ini() estimates.
@@ -64,17 +87,27 @@
   ## fit-flow-derived control fields
   .env$control$est <- est
   .env$control$printTop <- FALSE
-  if (is.null(.env$control$nF)) .env$control$nF <- 0L
+  if (is.null(.env$control$nF)) {
+    .env$control$nF <- 0L
+  }
   .env$control$needOptimHess <- isTRUE(any(.ui$predDfFocei$distribution != "norm"))
   ## A non-Gaussian endpoint has no eta-epsilon interaction term to carry: rx_pred_
   ## IS the log-density.  The focei flow pairs needOptimHess with interaction=0 for
   ## that reason (.foceiFitInternal); this entry must do the same, or the inner
   ## problem is set up for the FOCEi (f,R) kernel while the objective runs the
   ## exact-Hessian one.
-  if (isTRUE(.env$control$needOptimHess)) .env$control$interaction <- 0L
+  if (isTRUE(.env$control$needOptimHess)) {
+    .env$control$interaction <- 0L
+  }
   ## AGQ off
-  .env$aqn <- 0L; .env$qx <- double(0); .env$qw <- double(0); .env$qfirst <- FALSE
-  .env$nAGQ <- 0L; .env$aqLow <- -Inf; .env$aqHi <- Inf; .env$nEstOmega <- 0L
+  .env$aqn <- 0L
+  .env$qx <- double(0)
+  .env$qw <- double(0)
+  .env$qfirst <- FALSE
+  .env$nAGQ <- 0L
+  .env$aqLow <- -Inf
+  .env$aqHi <- Inf
+  .env$nEstOmega <- 0L
   .env$etaMat <- etaMat
   ## "sqrt"-xform rxInv on the model's DECLARED omega structure (diagonal plus
   ## any correlated blocks): the per-step C++ fast path (vaeInnerUpdatePar_)
@@ -125,10 +158,13 @@
 #' (rows = ids: nSub, or nSub*nMix for mixtures) through the parallel C++ driver.
 #' @noRd
 .vaeInnerEval <- function(etaMat, control, grad = FALSE, preds = FALSE) {
-  .cores <- tryCatch({
-    .c <- control$rxControl$cores
-    if (is.null(.c) || is.na(.c) || .c < 1L) as.integer(rxode2::getRxThreads()) else as.integer(.c)
-  }, error = function(e) 1L)
+  .cores <- tryCatch(
+    {
+      .c <- control$rxControl$cores
+      if (is.null(.c) || is.na(.c) || .c < 1L) as.integer(rxode2::getRxThreads()) else as.integer(.c)
+    },
+    error = function(e) 1L
+  )
   vaeInnerLik(as.matrix(etaMat), .cores, isTRUE(grad), isTRUE(preds))
 }
 
@@ -146,12 +182,13 @@
   env$thetaIni <- setNames(as.numeric(theta), paste0("THETA[", seq_along(theta), "]"))
   .om <- if (is.matrix(omega)) omega else diag(omega, length(omega))
   .nm <- env$etaNames
-  if (!is.null(.nm) && length(.nm) == nrow(.om)) dimnames(.om) <- list(.nm, .nm)
+  if (!is.null(.nm) && length(.nm) == nrow(.om)) {
+    dimnames(.om) <- list(.nm, .nm)
+  }
   ## Reported once at setup, and this runs every VI step -- so no message, and
   ## no fallback either: only the block-zero fill (a 1e-10 correlation) may run
   ## here, a genuinely bad omega still errors rather than silently flooring.
-  .sic <- .foceiSymInvCholCreate(.om, diagXform, NULL, warn = FALSE,
-                                 fallback = FALSE)
+  .sic <- .foceiSymInvCholCreate(.om, diagXform, NULL, warn = FALSE, fallback = FALSE)
   .om <- .sic$mat
   env$rxInv <- .sic$rxInv
   .selMat <- upper.tri(.om, diag = TRUE) & .om != 0
@@ -171,15 +208,38 @@
 #' (`.vaeInnerSetup`); `innerEnv` is accepted for signature compatibility but the
 #' C++ core reads the active op_focei allocation that setup created.
 #' @noRd
-.vaeElboStepInner <- function(params, prep, innerEnv, zPop, omega, a, alphaKL, eps,
-                              control, nMix = 1L, mixProb = 1, withGrad = TRUE) {
-  .cores <- tryCatch({
-    .c <- control$rxControl$cores
-    if (is.null(.c) || is.na(.c) || .c < 1L) as.integer(rxode2::getRxThreads()) else as.integer(.c)
-  }, error = function(e) 1L)
-  vaeElboStepCpp_(params, prep, zPop,
-                  if (is.matrix(omega)) omega else as.numeric(omega),
-                  as.numeric(a),
-                  as.numeric(alphaKL), as.matrix(eps), as.integer(nMix),
-                  as.numeric(mixProb), .cores, isTRUE(withGrad))
+.vaeElboStepInner <- function(
+  params,
+  prep,
+  innerEnv,
+  zPop,
+  omega,
+  a,
+  alphaKL,
+  eps,
+  control,
+  nMix = 1L,
+  mixProb = 1,
+  withGrad = TRUE
+) {
+  .cores <- tryCatch(
+    {
+      .c <- control$rxControl$cores
+      if (is.null(.c) || is.na(.c) || .c < 1L) as.integer(rxode2::getRxThreads()) else as.integer(.c)
+    },
+    error = function(e) 1L
+  )
+  vaeElboStepCpp_(
+    params,
+    prep,
+    zPop,
+    if (is.matrix(omega)) omega else as.numeric(omega),
+    as.numeric(a),
+    as.numeric(alphaKL),
+    as.matrix(eps),
+    as.integer(nMix),
+    as.numeric(mixProb),
+    .cores,
+    isTRUE(withGrad)
+  )
 }

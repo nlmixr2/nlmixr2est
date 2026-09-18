@@ -8,8 +8,7 @@
 nmTest({
   test_that("lbfgsFactr is two orders tighter than the other sigdig tolerances", {
     .ctl <- foceiControl()
-    expect_equal(.ctl$lbfgsFactr,
-                 10^(-.ctl$sigdig - 2) / .Machine$double.eps)
+    expect_equal(.ctl$lbfgsFactr, 10^(-.ctl$sigdig - 2) / .Machine$double.eps)
     # the other sigdig-derived optimizer tolerances are NOT shifted -- nlminb's
     # in particular, where tightening measured no benefit
     expect_equal(.ctl$rel.tol, 10^(-.ctl$sigdig))
@@ -17,8 +16,7 @@ nmTest({
     expect_equal(.ctl$rhoend, 10^(-.ctl$sigdig))
 
     # and it tracks sigdig
-    expect_equal(foceiControl(sigdig = 5)$lbfgsFactr,
-                 1e-7 / .Machine$double.eps)
+    expect_equal(foceiControl(sigdig = 5)$lbfgsFactr, 1e-7 / .Machine$double.eps)
 
     # an explicit value still wins
     expect_equal(foceiControl(lbfgsFactr = 1e7)$lbfgsFactr, 1e7)

@@ -59,19 +59,23 @@ nmTest({
       model({ bio <- tbio + eta.bio; bio ~ prop(pdadd.sd) })
     }
 
-    .testSeed(2); rxode2::rxSetSeed(2)
+    .testSeed(2)
+    rxode2::rxSetSeed(2)
     .N <- 30
-    .ev <- rxode2::et(amt = 100, cmt = "depot", id = 1:.N)
+    .ev <- rxode2::et(amt = 100, cmt = "depot", id = seq_len(.N))
     .ev <- rxode2::et(.ev, seq(0.5, 24, by = 3), cmt = "cp")
     .ev <- rxode2::et(.ev, seq(0.5, 24, by = 3), cmt = "bio")
     .d <- as.data.frame(rxode2::rxSolve(twoEp, .ev, addDosing = TRUE))
     .dose <- .d[.d$evid != 0, c("id", "time", "CMT", "amt", "evid")]
     .dose$dv <- NA_real_
     .obs <- .d[.d$evid == 0, c("id", "time", "CMT", "sim")]
-    .obs$amt <- 0; .obs$evid <- 0
+    .obs$amt <- 0
+    .obs$evid <- 0
     names(.obs)[names(.obs) == "sim"] <- "dv"
-    .dat <- rbind(.dose[, c("id", "time", "dv", "CMT", "amt", "evid")],
-                  .obs[, c("id", "time", "dv", "CMT", "amt", "evid")])
+    .dat <- rbind(
+      .dose[, c("id", "time", "dv", "CMT", "amt", "evid")],
+      .obs[, c("id", "time", "dv", "CMT", "amt", "evid")]
+    )
     .dat <- .dat[order(.dat$id, .dat$time, -.dat$evid), ]
 
     # dosing + cp observations are exactly the rows the cp-only model sees -- "the
@@ -79,11 +83,10 @@ nmTest({
     .datCp <- .dat[.dat$CMT %in% c(1L, 3L), ]
     .datBio <- .dat[.dat$CMT == 4L, ]
 
-    .ctl <- saemControl(nBurn = 150, nEm = 200, print = 0, seed = 1L,
-                        calcTables = FALSE, covMethod = "linFim")
+    .ctl <- saemControl(nBurn = 150, nEm = 200, print = 0, seed = 1L, calcTables = FALSE, covMethod = "linFim")
     .fJoint <- .nlmixr(twoEp, .dat, est = "saem", control = .ctl)
-    .fCp    <- .nlmixr(cpOnly, .datCp, est = "saem", control = .ctl)
-    .fBio   <- .nlmixr(bioOnly, .datBio, est = "saem", control = .ctl)
+    .fCp <- .nlmixr(cpOnly, .datCp, est = "saem", control = .ctl)
+    .fBio <- .nlmixr(bioOnly, .datBio, est = "saem", control = .ctl)
 
     .getVarCov <- function(f) {
       .s <- f$saem
@@ -91,8 +94,8 @@ nmTest({
       attr(suppressWarnings(calc.COV(.s)), "varCov")
     }
     .vcJoint <- .getVarCov(.fJoint)
-    .vcCp    <- .getVarCov(.fCp)
-    .vcBio   <- .getVarCov(.fBio)
+    .vcCp <- .getVarCov(.fCp)
+    .vcBio <- .getVarCov(.fBio)
 
     expect_true(all(c("add.sd", "pdadd.sd") %in% rownames(.vcJoint)))
     expect_true(all(is.finite(diag(.vcJoint))))
@@ -105,9 +108,7 @@ nmTest({
     # the RATIO to 1 so the check is genuinely relative (expect_equal(x, y, tolerance=)
     # falls back to an absolute difference once both values are small, which would
     # make a tolerance chosen for O(1) numbers pass almost regardless of x vs y).
-    expect_equal(sqrt(.vcJoint["add.sd", "add.sd"]) / sqrt(.vcCp["add.sd", "add.sd"]),
-                 1, tolerance = 0.15)
-    expect_equal(sqrt(.vcJoint["pdadd.sd", "pdadd.sd"]) / sqrt(.vcBio["pdadd.sd", "pdadd.sd"]),
-                 1, tolerance = 0.15)
+    expect_equal(sqrt(.vcJoint["add.sd", "add.sd"]) / sqrt(.vcCp["add.sd", "add.sd"]), 1, tolerance = 0.15)
+    expect_equal(sqrt(.vcJoint["pdadd.sd", "pdadd.sd"]) / sqrt(.vcBio["pdadd.sd", "pdadd.sd"]), 1, tolerance = 0.15)
   })
 })

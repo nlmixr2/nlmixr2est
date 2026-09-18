@@ -1,5 +1,4 @@
 nmTest({
-
   # A model whose only random effect is fixed to zero collapses to a
   # fixed-effect / single-subject ("N of 1") model once the zero eta is dropped
   # (see issue #493).
@@ -21,8 +20,9 @@ nmTest({
 
   test_that("methods that require random effects give an actionable error", {
     for (.est in c("fo", "foi", "saem")) {
-      .err <- tryCatch(.nlmixr(one.cmt, nlmixr2data::theo_sd, .est, list(print = 0)),
-                       error = function(e) conditionMessage(e))
+      .err <- tryCatch(.nlmixr(one.cmt, nlmixr2data::theo_sd, .est, list(print = 0)), error = function(e) {
+        conditionMessage(e)
+      })
       # keeps the original model name (not the internal '.mod') ...
       expect_true(grepl("'one.cmt'", .err, fixed = TRUE))
       # ... and points to methods that can fit a no-random-effect model
@@ -33,8 +33,7 @@ nmTest({
 
   test_that("focei / foce fit a single-subject model", {
     for (.est in c("focei", "foce")) {
-      .fit <- .nlmixr(one.cmt, nlmixr2data::theo_sd, .est,
-                      list(print = 0, calcTables = FALSE, maxOuterIterations = 0))
+      .fit <- .nlmixr(one.cmt, nlmixr2data::theo_sd, .est, list(print = 0, calcTables = FALSE, maxOuterIterations = 0))
       expect_s3_class(.fit, "nlmixr2FitCore")
     }
   })
@@ -45,5 +44,4 @@ nmTest({
       expect_s3_class(.fit, "nlmixr2FitCore")
     }
   })
-
 })

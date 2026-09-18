@@ -44,33 +44,37 @@
 #'
 #' }
 #' @export
-addNpde <- function(object, updateObject = TRUE,
-                    table = tableControl(), ...,
-                    envir=parent.frame(1)) {
+addNpde <- function(object, updateObject = TRUE, table = tableControl(), ..., envir = parent.frame(1)) {
   nlmixr2global$finalUiCompressed <- FALSE
   on.exit(nlmixr2global$finalUiCompressed <- TRUE)
   assertNlmixrFitData(object)
   if (any(names(object) == "NPDE")) {
-    warning("already contains NPDE", call.=FALSE)
+    warning("already contains NPDE", call. = FALSE)
     return(object)
   }
-  checkmate::assertLogical(updateObject, len=1, any.missing=FALSE)
-  nlmixrWithTiming("NPDE", {
-    .objName <- as.character(substitute(object))
-    if (missing(table)) table <- object$table
-    .malert("Add NPDE")
-    if(missing(table)) {
-      table <- object$table
-    }
-    table$npde <- TRUE
-    .fitEnv <- object$env
-    .npde <- .calcNpde(object, dv=object$DV, table=table)
-    .fit <- nlmixrClone(object)
-    .new <- nlmixrCbind(.fit, .npde[[2]])
-    if (updateObject) {
-      nlmixrUpdateObject(.new, .objName, envir, .fitEnv)
-    }
-    .msuccess("done")
-    .new
-  }, object$env)
+  checkmate::assertLogical(updateObject, len = 1, any.missing = FALSE)
+  nlmixrWithTiming(
+    "NPDE",
+    {
+      .objName <- as.character(substitute(object))
+      if (missing(table)) {
+        table <- object$table
+      }
+      .malert("Add NPDE")
+      if (missing(table)) {
+        table <- object$table
+      }
+      table$npde <- TRUE
+      .fitEnv <- object$env
+      .npde <- .calcNpde(object, dv = object$DV, table = table)
+      .fit <- nlmixrClone(object)
+      .new <- nlmixrCbind(.fit, .npde[[2]])
+      if (updateObject) {
+        nlmixrUpdateObject(.new, .objName, envir, .fitEnv)
+      }
+      .msuccess("done")
+      .new
+    },
+    object$env
+  )
 }

@@ -20,19 +20,19 @@ nmTest({
   .d <- nlmixr2data::theo_sd
 
   .isPdFinite <- function(m) {
-    is.matrix(m) && all(is.finite(m)) && all(diag(m) > 0) &&
+    is.matrix(m) &&
+      all(is.finite(m)) &&
+      all(diag(m) > 0) &&
       min(eigen(m, symmetric = TRUE, only.values = TRUE)$values) > 0
   }
 
   test_that("focei covMethod='sa'/'imp' installs the decoupled covariance", {
-    .fs <- suppressWarnings(nlmixr2(.lc, .d, est = "focei",
-                                    control = foceiControl(print = 0L, covMethod = "sa")))
+    .fs <- suppressWarnings(nlmixr2(.lc, .d, est = "focei", control = foceiControl(print = 0L, covMethod = "sa")))
     expect_equal(.fs$covMethod, "sa")
     expect_true(.isPdFinite(.fs$cov))
     expect_true(all(is.finite(.fs$parFixedDf[["SE"]])))
 
-    .fi <- suppressWarnings(nlmixr2(.lc, .d, est = "focei",
-                                    control = foceiControl(print = 0L, covMethod = "imp")))
+    .fi <- suppressWarnings(nlmixr2(.lc, .d, est = "focei", control = foceiControl(print = 0L, covMethod = "imp")))
     expect_equal(.fi$covMethod, "imp")
     expect_true(.isPdFinite(.fi$cov))
   })
@@ -40,17 +40,14 @@ nmTest({
   # the formatted $parFixed must track the installed cov (issue #816: only
   # $parFixedDf was refreshed, leaving the displayed SE stale)
   .expectParFixedTracksCov <- function(.f, .n = "add.sd") {
-    expect_equal(unname(.f$parFixedDf[.n, "SE"]),
-                 unname(sqrt(diag(.f$cov))[.n]))
+    expect_equal(unname(.f$parFixedDf[.n, "SE"]), unname(sqrt(diag(.f$cov))[.n]))
     .seNum <- suppressWarnings(as.numeric(.f$parFixed[.n, "SE"]))
     expect_true(is.finite(.seNum))
-    expect_equal(.seNum, signif(unname(.f$parFixedDf[.n, "SE"]), 3),
-                 tolerance = 1e-2)
+    expect_equal(.seNum, signif(unname(.f$parFixedDf[.n, "SE"]), 3), tolerance = 1e-2)
   }
 
   test_that("setCov() switches any completed fit to sa/imp", {
-    .f <- suppressWarnings(nlmixr2(.lc, .d, est = "focei",
-                                   control = foceiControl(print = 0L)))
+    .f <- suppressWarnings(nlmixr2(.lc, .d, est = "focei", control = foceiControl(print = 0L)))
     expect_equal(.f$covMethod, "r,s (full)")
     .cov0 <- .f$cov
     suppressMessages(setCov(.f, "sa"))
@@ -70,16 +67,18 @@ nmTest({
   })
 
   test_that("saem accepts the foreign imp covariance", {
-    .f <- suppressWarnings(nlmixr2(.lc, .d, est = "saem",
-                                   control = saemControl(print = 0L, nBurn = 100, nEm = 100,
-                                                         covMethod = "imp")))
+    .f <- suppressWarnings(nlmixr2(
+      .lc,
+      .d,
+      est = "saem",
+      control = saemControl(print = 0L, nBurn = 100, nEm = 100, covMethod = "imp")
+    ))
     expect_equal(.f$covMethod, "imp")
     expect_true(.isPdFinite(.f$cov))
   })
 
   test_that("impmap accepts the foreign sa covariance", {
-    .f <- suppressWarnings(nlmixr2(.lc, .d, est = "impmap",
-                                   control = impmapControl(print = 0L, covMethod = "sa")))
+    .f <- suppressWarnings(nlmixr2(.lc, .d, est = "impmap", control = impmapControl(print = 0L, covMethod = "sa")))
     expect_equal(.f$covMethod, "sa")
     expect_true(.isPdFinite(.f$cov))
   })

@@ -29,8 +29,7 @@ nmTest({
     })
   }
   .ctl <- function(...) {
-    impmapControl(print = 0L, nIter = 3L, isample = 200L, covMethod = "",
-                  calcTables = FALSE, ...)
+    impmapControl(print = 0L, nIter = 3L, isample = 200L, covMethod = "", calcTables = FALSE, ...)
   }
 
   test_that("a completed fit's own control survives re-validation", {
@@ -48,8 +47,7 @@ nmTest({
     for (.nm in .impmapIdxMapNames) {
       expect_identical(.c1[[.nm]], .c0[[.nm]])
     }
-    expect_identical(do.call(impmapControl, .c1)[[.impmapIdxMapNames[1]]],
-                     .c0[[.impmapIdxMapNames[1]]])
+    expect_identical(do.call(impmapControl, .c1)[[.impmapIdxMapNames[1]]], .c0[[.impmapIdxMapNames[1]]])
     # and they are still stripped when down-converting to a plain foceiControl
     expect_true(all(.impmapIdxMapNames %in% .impmapIsControlNames))
   })
@@ -57,9 +55,8 @@ nmTest({
   test_that("every imp-family fit can be re-fit from the fit object", {
     .dat <- nlmixr2data::theo_sd
     .f <- suppressWarnings(suppressMessages(
-      nlmixr2(.one, .dat, "imp", impControl(print = 0L, nIter = 3L,
-                                            isample = 200L, covMethod = "",
-                                            calcTables = FALSE))))
+      nlmixr2(.one, .dat, "imp", impControl(print = 0L, nIter = 3L, isample = 200L, covMethod = "", calcTables = FALSE))
+    ))
     for (.e in c("imp", "impmap", "qrpem")) {
       .r <- suppressWarnings(suppressMessages(nlmixr2(.f, est = .e)))
       expect_true(is.finite(.r$objf))
@@ -70,9 +67,8 @@ nmTest({
   test_that("est wins over a mapIter inherited from an imp fit", {
     .dat <- nlmixr2data::theo_sd
     .fi <- suppressWarnings(suppressMessages(
-      nlmixr2(.one, .dat, "imp", impControl(print = 0L, nIter = 3L,
-                                            isample = 200L, covMethod = "",
-                                            calcTables = FALSE))))
+      nlmixr2(.one, .dat, "imp", impControl(print = 0L, nIter = 3L, isample = 200L, covMethod = "", calcTables = FALSE))
+    ))
     expect_identical(.fi$env$impMapIter, 0L)
     # re-fitting as impmap must NOT inherit "never re-center"
     .r <- suppressWarnings(suppressMessages(nlmixr2(.fi, est = "impmap")))
@@ -87,9 +83,8 @@ nmTest({
   test_that("est wins over qr/sir inherited from a qrpem fit, both ways", {
     .dat <- nlmixr2data::theo_sd
     .fi <- suppressWarnings(suppressMessages(
-      nlmixr2(.one, .dat, "imp", impControl(print = 0L, nIter = 2L,
-                                            isample = 150L, covMethod = "",
-                                            calcTables = FALSE))))
+      nlmixr2(.one, .dat, "imp", impControl(print = 0L, nIter = 2L, isample = 150L, covMethod = "", calcTables = FALSE))
+    ))
     expect_false(.fi$env$impQr)
     # est="qrpem" IS impmapControl(qr=TRUE, sir=TRUE).  Re-fitting an imp fit
     # as qrpem must not draw plain Monte-Carlo samples and call it QRPEM.
@@ -99,9 +94,13 @@ nmTest({
 
     # and the other direction: qrpem's qr/sir must not leak into imp/impmap
     .fq <- suppressWarnings(suppressMessages(
-      nlmixr2(.one, .dat, "qrpem", qrpemControl(print = 0L, nIter = 2L,
-                                                isample = 150L, covMethod = "",
-                                                calcTables = FALSE))))
+      nlmixr2(
+        .one,
+        .dat,
+        "qrpem",
+        qrpemControl(print = 0L, nIter = 2L, isample = 150L, covMethod = "", calcTables = FALSE)
+      )
+    ))
     expect_true(.fq$env$impQr)
     .ri <- suppressWarnings(suppressMessages(nlmixr2(.fq, est = "imp")))
     expect_false(.ri$env$impQr)

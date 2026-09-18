@@ -7,13 +7,24 @@
 #' A foceiControl carrying the npag/npb inner likelihood + solving options.
 #' @noRd
 .npInnerFoceiControl <- function(control) {
-  foceiControl(rxControl = control$rxControl, maxOuterIterations = 0L,
-               maxInnerIterations = 0L, covMethod = "", interaction = 1L,
-               sumProd = control$sumProd, optExpression = control$optExpression,
-               literalFix = control$literalFix, literalFixRes = control$literalFixRes,
-               addProp = control$addProp, calcTables = FALSE, compress = FALSE,
-               maxOdeRecalc = control$maxOdeRecalc, odeRecalcFactor = control$odeRecalcFactor,
-               stickyRecalcN = control$stickyRecalcN, print = 0L)
+  foceiControl(
+    rxControl = control$rxControl,
+    maxOuterIterations = 0L,
+    maxInnerIterations = 0L,
+    covMethod = "",
+    interaction = 1L,
+    sumProd = control$sumProd,
+    optExpression = control$optExpression,
+    literalFix = control$literalFix,
+    literalFixRes = control$literalFixRes,
+    addProp = control$addProp,
+    calcTables = FALSE,
+    compress = FALSE,
+    maxOdeRecalc = control$maxOdeRecalc,
+    odeRecalcFactor = control$odeRecalcFactor,
+    stickyRecalcN = control$stickyRecalcN,
+    print = 0L
+  )
 }
 
 #' Set up the FOCEi inner problem for the nonparametric engines.
@@ -36,10 +47,18 @@
   .foceiPreProcessData(data, .env, .ui, .fc$rxControl)
   .env$control$est <- "focei"
   .env$control$printTop <- FALSE
-  if (is.null(.env$control$nF)) .env$control$nF <- 0L
+  if (is.null(.env$control$nF)) {
+    .env$control$nF <- 0L
+  }
   .env$control$needOptimHess <- isTRUE(any(.ui$predDfFocei$distribution != "norm"))
-  .env$aqn <- 0L; .env$qx <- double(0); .env$qw <- double(0); .env$qfirst <- FALSE
-  .env$nAGQ <- 0L; .env$aqLow <- -Inf; .env$aqHi <- Inf; .env$nEstOmega <- 0L
+  .env$aqn <- 0L
+  .env$qx <- double(0)
+  .env$qw <- double(0)
+  .env$qfirst <- FALSE
+  .env$nAGQ <- 0L
+  .env$aqLow <- -Inf
+  .env$aqHi <- Inf
+  .env$nEstOmega <- 0L
   .env$etaMat <- etaMat
   vaeInnerSetup_(.env)
   .env
@@ -56,9 +75,12 @@
 #' @return numeric matrix psi (subjects x support points)
 #' @noRd
 .npInnerPsi <- function(etaPoints, control) {
-  .cores <- tryCatch({
-    .c <- control$rxControl$cores
-    if (is.null(.c) || is.na(.c) || .c < 1L) as.integer(rxode2::getRxThreads()) else as.integer(.c)
-  }, error = function(e) 1L)
+  .cores <- tryCatch(
+    {
+      .c <- control$rxControl$cores
+      if (is.null(.c) || is.na(.c) || .c < 1L) as.integer(rxode2::getRxThreads()) else as.integer(.c)
+    },
+    error = function(e) 1L
+  )
   npBuildPsi(as.matrix(etaPoints), .cores)
 }

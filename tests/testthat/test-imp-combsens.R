@@ -24,7 +24,6 @@
 # just that results look plausible -- a wrong wiring could still converge to
 # something.
 nmTest({
-
   .harvestN <- function() .odeSwapInfo()$impThetaSensHarvestN
 
   # tv is a non-mu STRUCTURAL theta (an ODE-state sensitivity, not just an
@@ -50,7 +49,8 @@ nmTest({
     .n0 <- .harvestN()
     rxode2::rxSetSeed(42)
     .f <- suppressWarnings(
-      nlmixr2(.mod, .d, "imp", impControl(print = 0L, nIter = 5L, isample = 50L)))
+      nlmixr2(.mod, .d, "imp", impControl(print = 0L, nIter = 5L, isample = 50L))
+    )
     expect_true(inherits(.f, "nlmixr2FitCore"))
     # fused build requested by default -> the harvest mechanism ran
     expect_true(.harvestN() > .n0)
@@ -64,8 +64,8 @@ nmTest({
     .n0 <- .harvestN()
     rxode2::rxSetSeed(42)
     .fh <- suppressWarnings(
-      nlmixr2(.mod, .d, "imp",
-              impControl(print = 0L, nIter = 30L, isample = 300L)))
+      nlmixr2(.mod, .d, "imp", impControl(print = 0L, nIter = 30L, isample = 300L))
+    )
     expect_true(inherits(.fh, "nlmixr2FitCore"))
     # the mechanism actually ran (not just "results look fine")
     expect_true(.harvestN() > .n0)
@@ -88,9 +88,8 @@ nmTest({
     .n1 <- .harvestN()
     rxode2::rxSetSeed(42)
     .fs <- suppressWarnings(
-      nlmixr2(.mod, .d, "imp",
-              impControl(print = 0L, nIter = 30L, isample = 300L,
-                        sir = TRUE, sirSample = 300L)))
+      nlmixr2(.mod, .d, "imp", impControl(print = 0L, nIter = 30L, isample = 300L, sir = TRUE, sirSample = 300L))
+    )
     expect_true(inherits(.fs, "nlmixr2FitCore"))
     # the fallback path harvested nothing new
     expect_equal(.harvestN(), .n1)
@@ -102,8 +101,8 @@ nmTest({
     .n0 <- .harvestN()
     rxode2::rxSetSeed(42)
     .fh <- suppressWarnings(
-      nlmixr2(.mod, .d, "impmap",
-              impmapControl(print = 0L, nIter = 10L, isample = 50L)))
+      nlmixr2(.mod, .d, "impmap", impmapControl(print = 0L, nIter = 10L, isample = 50L))
+    )
     expect_true(inherits(.fh, "nlmixr2FitCore"))
     expect_true(.harvestN() > .n0)
   })
@@ -113,8 +112,8 @@ nmTest({
     .n0 <- .harvestN()
     rxode2::rxSetSeed(42)
     .f <- suppressWarnings(
-      nlmixr2(.mod, .d, "imp",
-              impControl(print = 0L, nIter = 5L, isample = 50L, combSens = FALSE)))
+      nlmixr2(.mod, .d, "imp", impControl(print = 0L, nIter = 5L, isample = 50L, combSens = FALSE))
+    )
     expect_true(inherits(.f, "nlmixr2FitCore"))
     # opted out of the fused build -> nothing harvested
     expect_equal(.harvestN(), .n0)
@@ -141,8 +140,8 @@ nmTest({
     .n0 <- .harvestN()
     rxode2::rxSetSeed(42)
     .f <- suppressWarnings(
-      nlmixr2(mmu, .d, "imp",
-              impControl(print = 0L, nIter = 5L, isample = 50L)))
+      nlmixr2(mmu, .d, "imp", impControl(print = 0L, nIter = 5L, isample = 50L))
+    )
     expect_true(inherits(.f, "nlmixr2FitCore"))
     expect_equal(.harvestN(), .n0)
   })
@@ -156,17 +155,24 @@ nmTest({
     # term), so d(f)/d(theta) actually differs across the two mixture
     # components' branches, not just a shared constant.
     .mkg <- function(cl0, ids) {
-      ka <- 1.5; v <- 8
-      do.call(rbind, lapply(ids, function(id) {
-        cli <- cl0 * exp(stats::rnorm(1, 0, 0.2))
-        tt <- c(0.5, 2, 6, 12)
-        cp <- (100 * ka / (v * (ka - cli / v))) * (exp(-cli / v * tt) - exp(-ka * tt))
-        cp <- pmax(cp, 1e-3) * exp(stats::rnorm(length(tt), 0, 0.1))
-        rbind(data.frame(id = id, time = 0, dv = NA_real_, amt = 100, evid = 1, cmt = "depot"),
-              data.frame(id = id, time = tt, dv = cp, amt = 0, evid = 0, cmt = "cen"))
-      }))
+      ka <- 1.5
+      v <- 8
+      do.call(
+        rbind,
+        lapply(ids, function(id) {
+          cli <- cl0 * exp(stats::rnorm(1, 0, 0.2))
+          tt <- c(0.5, 2, 6, 12)
+          cp <- (100 * ka / (v * (ka - cli / v))) * (exp(-cli / v * tt) - exp(-ka * tt))
+          cp <- pmax(cp, 1e-3) * exp(stats::rnorm(length(tt), 0, 0.1))
+          rbind(
+            data.frame(id = id, time = 0, dv = NA_real_, amt = 100, evid = 1, cmt = "depot"),
+            data.frame(id = id, time = tt, dv = cp, amt = 0, evid = 0, cmt = "cen")
+          )
+        })
+      )
     }
-    .testSeed(11); rxode2::rxSetSeed(11)
+    .testSeed(11)
+    rxode2::rxSetSeed(11)
     .d <- rbind(.mkg(3.0, 1:6), .mkg(9.0, 7:12))
     .d <- .d[order(.d$id, .d$time, -.d$evid), ]
     mmix <- function() {
@@ -189,16 +195,16 @@ nmTest({
     .n0 <- .harvestN()
     rxode2::rxSetSeed(42)
     .fh <- suppressWarnings(
-      nlmixr2(mmix, .d, "impmap",
-              impmapControl(print = 0L, nIter = 8L, isample = 40L)))
+      nlmixr2(mmix, .d, "impmap", impmapControl(print = 0L, nIter = 8L, isample = 40L))
+    )
     expect_true(inherits(.fh, "nlmixr2FitCore"))
     expect_true(all(is.finite(fixef(.fh))))
     expect_true(.harvestN() > .n0)
 
     rxode2::rxSetSeed(42)
     .fs <- suppressWarnings(
-      nlmixr2(mmix, .d, "impmap",
-              impmapControl(print = 0L, nIter = 8L, isample = 40L, combSens = FALSE)))
+      nlmixr2(mmix, .d, "impmap", impmapControl(print = 0L, nIter = 8L, isample = 40L, combSens = FALSE))
+    )
     expect_true(inherits(.fs, "nlmixr2FitCore"))
     # A misaligned i+j*nsub mapping would scramble which component's samples
     # feed which component's Newton step -- the two components' clearances
@@ -207,8 +213,11 @@ nmTest({
     # bit-identical (the two builds' ODE integrator paths differ slightly);
     # a loose tolerance is enough to catch a scrambled mapping, which would
     # miss by an order of magnitude or swap the two components.
-    expect_equal(unname(fixef(.fh)[c("tcl1", "tcl2", "p1")]),
-                unname(fixef(.fs)[c("tcl1", "tcl2", "p1")]), tolerance = 0.15)
+    expect_equal(
+      unname(fixef(.fh)[c("tcl1", "tcl2", "p1")]),
+      unname(fixef(.fs)[c("tcl1", "tcl2", "p1")]),
+      tolerance = 0.15
+    )
   })
 
   test_that("odeSwapSolveInd restores rx->ndiff per peer (linCmtB Jacobian-cache fix)", {
@@ -237,13 +246,22 @@ nmTest({
     .d <- nlmixr2data::theo_sd
     run1 <- function(combSens) {
       rxode2::rxSetSeed(1)
-      f <- suppressWarnings(nlmixr2(.pk, .d, "impmap",
-                    impmapControl(print = 0L, nIter = 12L, isample = 300L,
-                                  covMethod = "", auto = FALSE, gammaRule = "floor",
-                                  combSens = combSens)))
+      f <- suppressWarnings(nlmixr2(
+        .pk,
+        .d,
+        "impmap",
+        impmapControl(
+          print = 0L,
+          nIter = 12L,
+          isample = 300L,
+          covMethod = "",
+          auto = FALSE,
+          gammaRule = "floor",
+          combSens = combSens
+        )
+      ))
       k <- f$env$impPsisK
-      list(objf = as.numeric(f$objf), maxK = max(k, na.rm = TRUE),
-           nAbove = sum(k > 0.7, na.rm = TRUE))
+      list(objf = as.numeric(f$objf), maxK = max(k, na.rm = TRUE), nAbove = sum(k > 0.7, na.rm = TRUE))
     }
     rF <- run1(FALSE)
     rT <- run1(TRUE)
@@ -264,5 +282,4 @@ nmTest({
     expect_true(nrow(.pred) == 1L && isTRUE(.pred$ndiffSet))
     expect_false(isTRUE(.pred$ndiff == .inner$ndiff))
   })
-
 })

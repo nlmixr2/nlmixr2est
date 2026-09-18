@@ -19,7 +19,8 @@
 suppressMessages({
   devtools::load_all(
     "/home/bill/github/nlmixr2/_worktrees-parfocei/nlmixr2est",
-    quiet = TRUE, helpers = FALSE
+    quiet = TRUE,
+    helpers = FALSE
   )
 })
 
@@ -49,9 +50,12 @@ mod_fbio <- function() {
 
 cat("=== cores=1 (works) ===\n")
 fit1 <- nlmixr2(
-  mod_fbio, nlmixr2data::theo_sd, est = "focei",
+  mod_fbio,
+  nlmixr2data::theo_sd,
+  est = "focei",
   control = foceiControl(
-    print = 0, covMethod = "",
+    print = 0,
+    covMethod = "",
     rxControl = rxode2::rxControl(cores = 1L)
   )
 )
@@ -59,9 +63,12 @@ cat("cores=1 OK, obj =", fit1$objective, "\n")
 
 cat("=== cores=2 (crashes) ===\n")
 fit2 <- nlmixr2(
-  mod_fbio, nlmixr2data::theo_sd, est = "focei",
+  mod_fbio,
+  nlmixr2data::theo_sd,
+  est = "focei",
   control = foceiControl(
-    print = 0, covMethod = "",
+    print = 0,
+    covMethod = "",
     rxControl = rxode2::rxControl(cores = 2L)
   )
 )

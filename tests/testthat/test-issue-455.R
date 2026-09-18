@@ -14,9 +14,10 @@ nmTest({
     # post-etTrans layout: ID, TIME, EVID, ... ; evid=3 marks the reset.  Two
     # arms share clock times 0..12; the second arm is introduced by a reset.
     dat <- data.frame(
-      ID   = rep(1L, 15),
-      TIME = c(0, 0.25, 0.5, 1, 2, 5, 12,   0,   0, 0.25, 0.5, 1, 2, 5, 12),
-      EVID = c(101, 0, 0, 0, 0, 0, 0,       3, 201,    0,   0, 0, 0, 0, 0))
+      ID = rep(1L, 15),
+      TIME = c(0, 0.25, 0.5, 1, 2, 5, 12, 0, 0, 0.25, 0.5, 1, 2, 5, 12),
+      EVID = c(101, 0, 0, 0, 0, 0, 0, 3, 201, 0, 0, 0, 0, 0, 0)
+    )
     out <- .nm$.saemMonotonicResetTime(dat)
     # first episode is untouched
     expect_equal(out$TIME[1:7], dat$TIME[1:7])
@@ -29,22 +30,19 @@ nmTest({
 
   test_that(".saemMonotonicResetTime is a no-op for monotonic data", {
     # single-episode, monotonically increasing time -- unchanged
-    dat1 <- data.frame(ID = rep(1L, 7),
-                       TIME = c(0, 0.25, 0.5, 1, 2, 5, 12),
-                       EVID = c(101, 0, 0, 0, 0, 0, 0))
+    dat1 <- data.frame(ID = rep(1L, 7), TIME = c(0, 0.25, 0.5, 1, 2, 5, 12), EVID = c(101, 0, 0, 0, 0, 0, 0))
     expect_equal(.nm$.saemMonotonicResetTime(dat1)$TIME, dat1$TIME)
     # a reset whose time is already monotonically later must not be shifted
-    dat2 <- data.frame(ID = rep(1L, 4),
-                       TIME = c(0, 12, 100, 112),
-                       EVID = c(101, 0, 3, 0))
+    dat2 <- data.frame(ID = rep(1L, 4), TIME = c(0, 12, 100, 112), EVID = c(101, 0, 3, 0))
     expect_equal(.nm$.saemMonotonicResetTime(dat2)$TIME, dat2$TIME)
   })
 
   test_that(".saemMonotonicResetTime offsets each subject independently", {
     dat <- data.frame(
-      ID   = c(1L, 1L, 1L, 1L, 2L, 2L, 2L, 2L),
-      TIME = c(0, 12, 0, 12,  0, 12, 0, 12),
-      EVID = c(101, 0, 3, 0, 101, 0, 3, 0))
+      ID = c(1L, 1L, 1L, 1L, 2L, 2L, 2L, 2L),
+      TIME = c(0, 12, 0, 12, 0, 12, 0, 12),
+      EVID = c(101, 0, 3, 0, 101, 0, 3, 0)
+    )
     out <- .nm$.saemMonotonicResetTime(dat)
     # each subject resets its own offset; times increase within each subject
     expect_true(all(diff(out$TIME[out$ID == 1L]) >= 0))
@@ -84,9 +82,9 @@ nmTest({
       b$AMT <- ifelse(b$time == 0, 1000, NA)
       b$CMT <- 1 + is.na(b$AMT)
       b$DV <- NA
-      b$evid <- ifelse(b$time == 0, 4, 0)  # depot arm
+      b$evid <- ifelse(b$time == 0, 4, 0) # depot arm
       b2 <- b
-      b2$CMT <- 2                          # IV arm, same clock times, own reset
+      b2$CMT <- 2 # IV arm, same clock times, own reset
       rbind(b, b2)
     }
     template <- do.call(rbind, lapply(seq_len(nID), mk))
@@ -95,9 +93,12 @@ nmTest({
     dat <- template
     dat$DV[is.na(dat$AMT)] <- sim$sim
 
-    fit <- nlmixr2(combined, dat, "saem",
-                   control = saemControl(covMethod = "", print = 0,
-                                         nBurn = 100, nEm = 100, seed = 1))
+    fit <- nlmixr2(
+      combined,
+      dat,
+      "saem",
+      control = saemControl(covMethod = "", print = 0, nBurn = 100, nEm = 100, seed = 1)
+    )
     .f <- as.numeric(exp(fit$theta["flogit"]) / (1 + exp(fit$theta["flogit"])))
     # Before the fix SAEM collapsed both arms: add.sd inflated to ~0.78 and f
     # pushed to ~0.98 with a near-constant PRED.  With episodes kept separate the

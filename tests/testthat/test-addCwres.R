@@ -19,7 +19,7 @@ nmTest({
     }
 
     suppressMessages(
-      fitNoEta <-.nlmixr(one.compartment, theo_sd, est="focei", control = list(print=0))
+      fitNoEta <- .nlmixr(one.compartment, theo_sd, est = "focei", control = list(print = 0))
     )
     expect_true(inherits(fitNoEta$parHistData, "data.frame"))
     expect_error(
@@ -59,8 +59,7 @@ nmTest({
 
   test_that(".foceiObjfWithoutCwres() flags the fits addCwres() cannot fix later", {
     .objDf <- function(rn, objf) {
-      .d <- data.frame(OBJF = objf, AIC = objf, BIC = objf,
-                       "Log-likelihood" = -objf / 2, check.names = FALSE)
+      .d <- data.frame(OBJF = objf, AIC = objf, BIC = objf, "Log-likelihood" = -objf / 2, check.names = FALSE)
       row.names(.d) <- rn
       .d
     }
@@ -97,9 +96,13 @@ nmTest({
         cp ~ add(add.sd)
       })
     }
-    fit <- .nlmixr(one.compartment, theo_sd, est = "focei",
-                   control = foceiControlFast,
-                   table = tableControl(cwres = FALSE))
+    fit <- .nlmixr(
+      one.compartment,
+      theo_sd,
+      est = "focei",
+      control = foceiControlFast,
+      table = tableControl(cwres = FALSE)
+    )
     # the fit reports the very objective function addCwres() adds, and has no CWRES
     expect_true("FOCEi" %in% rownames(fit$objDf))
     expect_false("CWRES" %in% names(fit))
@@ -136,8 +139,7 @@ nmTest({
         cp ~ add(add.sd)
       })
     }
-    fit <- .nlmixr(one.compartment, theo_sd, est = "saem",
-                   control = saemControlFast)
+    fit <- .nlmixr(one.compartment, theo_sd, est = "saem", control = saemControlFast)
     expect_false("CWRES" %in% names(fit))
 
     suppressMessages(setOfv(fit, "focei"))

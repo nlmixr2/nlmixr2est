@@ -46,72 +46,79 @@
 #' # The nlm control has been modified slightly to include
 #' # extra components and name the parameters
 #' }
-uobyqaControl <- function(npt=NULL,
-                          rhobeg=NULL,
-                          rhoend=NULL,
-                          iprint=0L,
-                          maxfun=100000L,
-                          returnUobyqa=FALSE,
-                          stickyRecalcN=4,
-                          maxOdeRecalc=5,
-                          odeRecalcFactor=10^(0.5),
-                          indTolRelax=TRUE,
+uobyqaControl <- function(
+  npt = NULL,
+  rhobeg = NULL,
+  rhoend = NULL,
+  iprint = 0L,
+  maxfun = 100000L,
+  returnUobyqa = FALSE,
+  stickyRecalcN = 4,
+  maxOdeRecalc = 5,
+  odeRecalcFactor = 10^(0.5),
+  indTolRelax = TRUE,
 
-                          useColor = NULL,
-                          printNcol = NULL, #
-                          print = 1L, #
+  useColor = NULL,
+  printNcol = NULL, #
+  print = 1L, #
 
-                          normType = c("rescale2", "mean", "rescale", "std", "len", "constant"), #
-                          scaleType = c("nlmixr2", "norm", "mult", "multAdd"), #
-                          scaleCmax = 1e5, #
-                          scaleCmin = 1e-5, #
-                          scaleC=NULL,
-                          scaleTo=1.0,
+  normType = c("rescale2", "mean", "rescale", "std", "len", "constant"), #
+  scaleType = c("nlmixr2", "norm", "mult", "multAdd"), #
+  scaleCmax = 1e5, #
+  scaleCmin = 1e-5, #
+  scaleC = NULL,
+  scaleTo = 1.0,
 
-                          rxControl=NULL,
-                          optExpression=TRUE, sumProd=FALSE,
-                          literalFix=TRUE,
-                          literalFixRes=TRUE,
-                          addProp = c("combined2", "combined1"),
-                          calcTables=TRUE, compress=FALSE,
-                          covMethod=c("r", ""),
-                          adjObf=TRUE, ci=0.95, sigdig=3, sigdigTable=NULL,
-                          boundedTransform=TRUE,
-                          eventSens=c("jump", "fd"), ...) {
-
-  checkmate::assertIntegerish(npt, null.ok=TRUE, any.missing=FALSE, lower=2, len=1)
+  rxControl = NULL,
+  optExpression = TRUE,
+  sumProd = FALSE,
+  literalFix = TRUE,
+  literalFixRes = TRUE,
+  addProp = c("combined2", "combined1"),
+  calcTables = TRUE,
+  compress = FALSE,
+  covMethod = c("r", ""),
+  adjObf = TRUE,
+  ci = 0.95,
+  sigdig = 3,
+  sigdigTable = NULL,
+  boundedTransform = TRUE,
+  eventSens = c("jump", "fd"),
+  ...
+) {
+  checkmate::assertIntegerish(npt, null.ok = TRUE, any.missing = FALSE, lower = 2, len = 1)
   # bobyqa final trust-region radius from sigdig (FOCEi mechanism, matches
   # foceiControl rhoend); a user value wins, sigdig=NULL leaves the minqa default
-  if (is.null(rhoend) && !is.null(sigdig)) rhoend <- .sigdigOptTol(sigdig)
-  checkmate::assertNumeric(rhobeg, null.ok=TRUE, any.missing=FALSE, lower=0, len=1)
-  checkmate::assertNumeric(rhoend, null.ok=TRUE, any.missing=FALSE, lower=0, len=1)
-  checkmate::assertIntegerish(iprint, any.missing=FALSE, lower=0, len=1)
-  checkmate::assertIntegerish(maxfun, any.missing=FALSE, lower=10, len=1)
+  if (is.null(rhoend) && !is.null(sigdig)) {
+    rhoend <- .sigdigOptTol(sigdig)
+  }
+  checkmate::assertNumeric(rhobeg, null.ok = TRUE, any.missing = FALSE, lower = 0, len = 1)
+  checkmate::assertNumeric(rhoend, null.ok = TRUE, any.missing = FALSE, lower = 0, len = 1)
+  checkmate::assertIntegerish(iprint, any.missing = FALSE, lower = 0, len = 1)
+  checkmate::assertIntegerish(maxfun, any.missing = FALSE, lower = 10, len = 1)
 
-  checkmate::assertLogical(optExpression, len=1, any.missing=FALSE)
-  checkmate::assertLogical(literalFix, len=1, any.missing=FALSE)
-  checkmate::assertLogical(literalFixRes, len=1, any.missing=FALSE)
-  checkmate::assertLogical(sumProd, len=1, any.missing=FALSE)
-  checkmate::assertLogical(returnUobyqa, len=1, any.missing=FALSE)
-  checkmate::assertLogical(calcTables, len=1, any.missing=FALSE)
-  checkmate::assertLogical(compress, len=1, any.missing=TRUE)
-  checkmate::assertLogical(adjObf, len=1, any.missing=TRUE)
-  checkmate::assertLogical(boundedTransform, len=1, any.missing=FALSE)
+  checkmate::assertLogical(optExpression, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(literalFix, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(literalFixRes, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(sumProd, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(returnUobyqa, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(calcTables, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(compress, len = 1, any.missing = TRUE)
+  checkmate::assertLogical(adjObf, len = 1, any.missing = TRUE)
+  checkmate::assertLogical(boundedTransform, len = 1, any.missing = FALSE)
   eventSens <- match.arg(eventSens)
 
   .xtra <- list(...)
   .bad <- names(.xtra)
   .bad <- .bad[!(.bad %in% c("genRxControl", "iterPrintControl"))]
   if (length(.bad) > 0) {
-    stop("unused argument: ", paste
-    (paste0("'", .bad, "'", sep=""), collapse=", "),
-    call.=FALSE)
+    stop("unused argument: ", paste(paste0("'", .bad, "'", sep = ""), collapse = ", "), call. = FALSE)
   }
 
-  checkmate::assertIntegerish(stickyRecalcN, any.missing=FALSE, lower=0, len=1)
-  checkmate::assertIntegerish(maxOdeRecalc, any.missing=FALSE, len=1)
-  checkmate::assertNumeric(odeRecalcFactor, len=1, lower=1, any.missing=FALSE)
-  checkmate::assertLogical(indTolRelax, any.missing=FALSE, len=1)
+  checkmate::assertIntegerish(stickyRecalcN, any.missing = FALSE, lower = 0, len = 1)
+  checkmate::assertIntegerish(maxOdeRecalc, any.missing = FALSE, len = 1)
+  checkmate::assertNumeric(odeRecalcFactor, len = 1, lower = 1, any.missing = FALSE)
+  checkmate::assertLogical(indTolRelax, any.missing = FALSE, len = 1)
 
   .genRxControl <- FALSE
   if (!is.null(.xtra$genRxControl)) {
@@ -119,19 +126,18 @@ uobyqaControl <- function(npt=NULL,
   }
   if (is.null(rxControl)) {
     if (!is.null(sigdig)) {
-      rxControl <- .rxControlScaleSigdig(rxode2::rxControl(sigdig=sigdig), sigdig)
+      rxControl <- .rxControlScaleSigdig(rxode2::rxControl(sigdig = sigdig), sigdig)
     } else {
-      rxControl <- rxode2::rxControl(atol=1e-4, rtol=1e-4)
+      rxControl <- rxode2::rxControl(atol = 1e-4, rtol = 1e-4)
     }
     .genRxControl <- TRUE
-  } else if (inherits(rxControl, "rxControl")) {
-  } else if (is.list(rxControl)) {
+  } else if (inherits(rxControl, "rxControl")) {} else if (is.list(rxControl)) {
     rxControl <- .rxControlScaleSigdig(do.call(rxode2::rxControl, rxControl), sigdig, skip = names(rxControl))
   } else {
-    stop("solving options 'rxControl' needs to be generated from 'rxode2::rxControl'", call=FALSE)
+    stop("solving options 'rxControl' needs to be generated from 'rxode2::rxControl'", call = FALSE)
   }
   if (!is.null(sigdig)) {
-    checkmate::assertNumeric(sigdig, lower=1, finite=TRUE, any.missing=TRUE, len=1)
+    checkmate::assertNumeric(sigdig, lower = 1, finite = TRUE, any.missing = TRUE, len = 1)
     if (is.null(sigdigTable)) {
       sigdigTable <- round(sigdig)
     }
@@ -139,13 +145,15 @@ uobyqaControl <- function(npt=NULL,
   if (is.null(sigdigTable)) {
     sigdigTable <- 3
   }
-  checkmate::assertIntegerish(sigdigTable, lower=1, len=1, any.missing=FALSE)
+  checkmate::assertIntegerish(sigdigTable, lower = 1, len = 1, any.missing = FALSE)
 
-  .iterPrintControl <- .absorbIterPrintControl(print = print,
-                                               printNcol = printNcol,
-                                               useColor = useColor,
-                                               iterPrintControl = .xtra$iterPrintControl)
-  if (checkmate::testIntegerish(scaleType, len=1, lower=1, upper=4, any.missing=FALSE)) {
+  .iterPrintControl <- .absorbIterPrintControl(
+    print = print,
+    printNcol = printNcol,
+    useColor = useColor,
+    iterPrintControl = .xtra$iterPrintControl
+  )
+  if (checkmate::testIntegerish(scaleType, len = 1, lower = 1, upper = 4, any.missing = FALSE)) {
     scaleType <- as.integer(scaleType)
   } else {
     .scaleTypeIdx <- c("norm" = 1L, "nlmixr2" = 2L, "mult" = 3L, "multAdd" = 4L)
@@ -153,52 +161,56 @@ uobyqaControl <- function(npt=NULL,
   }
 
   .normTypeIdx <- c("rescale2" = 1L, "rescale" = 2L, "mean" = 3L, "std" = 4L, "len" = 5L, "constant" = 6L)
-  if (checkmate::testIntegerish(normType, len=1, lower=1, upper=6, any.missing=FALSE)) {
+  if (checkmate::testIntegerish(normType, len = 1, lower = 1, upper = 6, any.missing = FALSE)) {
     normType <- as.integer(normType)
   } else {
     normType <- setNames(.normTypeIdx[match.arg(normType)], NULL)
   }
-  checkmate::assertNumeric(scaleCmax, lower=0, any.missing=FALSE, len=1)
-  checkmate::assertNumeric(scaleCmin, lower=0, any.missing=FALSE, len=1)
+  checkmate::assertNumeric(scaleCmax, lower = 0, any.missing = FALSE, len = 1)
+  checkmate::assertNumeric(scaleCmin, lower = 0, any.missing = FALSE, len = 1)
   if (!is.null(scaleC)) {
-    checkmate::assertNumeric(scaleC, lower=0, any.missing=FALSE)
+    checkmate::assertNumeric(scaleC, lower = 0, any.missing = FALSE)
   }
-  checkmate::assertNumeric(scaleTo, len=1, lower=0, any.missing=FALSE)
+  checkmate::assertNumeric(scaleTo, len = 1, lower = 0, any.missing = FALSE)
 
-  .ret <- list(npt=npt,
-               rhobeg=rhobeg,
-               rhoend=rhoend,
-               iprint=iprint,
-               maxfun=maxfun,
-               covMethod=match.arg(covMethod),
-               optExpression=optExpression,
-               literalFix=literalFix,
-               literalFixRes=literalFixRes,
-               sumProd=sumProd,
-               rxControl=rxControl,
-               returnUobyqa=returnUobyqa,
+  .ret <- list(
+    npt = npt,
+    rhobeg = rhobeg,
+    rhoend = rhoend,
+    iprint = iprint,
+    maxfun = maxfun,
+    covMethod = match.arg(covMethod),
+    optExpression = optExpression,
+    literalFix = literalFix,
+    literalFixRes = literalFixRes,
+    sumProd = sumProd,
+    rxControl = rxControl,
+    returnUobyqa = returnUobyqa,
 
-               stickyRecalcN=as.integer(stickyRecalcN),
-               maxOdeRecalc=as.integer(maxOdeRecalc),
-               odeRecalcFactor=odeRecalcFactor,
-               indTolRelax=indTolRelax,
+    stickyRecalcN = as.integer(stickyRecalcN),
+    maxOdeRecalc = as.integer(maxOdeRecalc),
+    odeRecalcFactor = odeRecalcFactor,
+    indTolRelax = indTolRelax,
 
-               iterPrintControl = .iterPrintControl,
-               scaleType=scaleType,
-               normType=normType,
+    iterPrintControl = .iterPrintControl,
+    scaleType = scaleType,
+    normType = normType,
 
-               scaleCmax=scaleCmax,
-               scaleCmin=scaleCmin,
-               scaleC=scaleC,
-               scaleTo=scaleTo,
+    scaleCmax = scaleCmax,
+    scaleCmin = scaleCmin,
+    scaleC = scaleC,
+    scaleTo = scaleTo,
 
-               addProp=match.arg(addProp),
-               calcTables=calcTables,
-               compress=compress,
-               ci=ci, sigdig=sigdig, sigdigTable=sigdigTable,
-               genRxControl=.genRxControl,
-               boundedTransform=boundedTransform,
-               eventSens=eventSens)
+    addProp = match.arg(addProp),
+    calcTables = calcTables,
+    compress = compress,
+    ci = ci,
+    sigdig = sigdig,
+    sigdigTable = sigdigTable,
+    genRxControl = .genRxControl,
+    boundedTransform = boundedTransform,
+    eventSens = eventSens
+  )
   class(.ret) <- "uobyqaControl"
   .ret
 }
@@ -224,7 +236,7 @@ rxUiDeparse.uobyqaControl <- function(object, var) {
 #' @rdname nmObjHandleControlObject
 #' @export
 nmObjHandleControlObject.uobyqaControl <- function(control, env) {
-  assign("uobyqaControl", control, envir=env)
+  assign("uobyqaControl", control, envir = env)
 }
 
 #' @rdname nmObjGetControl
@@ -239,15 +251,19 @@ nmObjGetControl.uobyqa <- function(x, ...) {
     .control <- get("control", .env, inherits = FALSE)
     if (inherits(.control, "uobyqaControl")) return(.control)
   }
-  stop("cannot find uobyqa related control object", call.=FALSE)
+  stop("cannot find uobyqa related control object", call. = FALSE)
 }
 
 #' @rdname getValidNlmixrControl
 #' @export
 getValidNlmixrCtl.uobyqa <- function(control) {
   .ctl <- control[[1]]
-  if (is.null(.ctl)) .ctl <- uobyqaControl()
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) .ctl <- do.call("uobyqaControl", .ctl)
+  if (is.null(.ctl)) {
+    .ctl <- uobyqaControl()
+  }
+  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
+    .ctl <- do.call("uobyqaControl", .ctl)
+  }
   if (!inherits(.ctl, "uobyqaControl")) {
     .minfo("invalid control for `est=\"uobyqa\"`, using default")
     .ctl <- uobyqaControl()
@@ -257,28 +273,32 @@ getValidNlmixrCtl.uobyqa <- function(control) {
   .ctl
 }
 
-.uobyqaControlToFoceiControl <- function(env, assign=TRUE) {
+.uobyqaControlToFoceiControl <- function(env, assign = TRUE) {
   .uobyqaControl <- env$uobyqaControl
   .ui <- env$ui
-  .foceiControl <- foceiControl(rxControl=env$uobyqaControl$rxControl,
-                                maxOuterIterations=0L,
-                                maxInnerIterations=0L,
-                                covMethod=0L,
-                                sumProd=.uobyqaControl$sumProd,
-                                optExpression=.uobyqaControl$optExpression,
-                                literalFix=.uobyqaControl$literalFix,
-                                literalFixRes=.uobyqaControl$literalFixRes,
-                                scaleTo=0,
-                                calcTables=.uobyqaControl$calcTables,
-                                addProp=.uobyqaControl$addProp,
-                                #skipCov=.ui$foceiSkipCov,
-                                interaction=0L,
-                                compress=.uobyqaControl$compress,
-                                ci=.uobyqaControl$ci,
-                                sigdigTable=.uobyqaControl$sigdigTable,
-                                indTolRelax=.uobyqaControl$indTolRelax,
-                                eventSens=.uobyqaControl$eventSens)
-  if (assign) env$control <- .foceiControl
+  .foceiControl <- foceiControl(
+    rxControl = env$uobyqaControl$rxControl,
+    maxOuterIterations = 0L,
+    maxInnerIterations = 0L,
+    covMethod = 0L,
+    sumProd = .uobyqaControl$sumProd,
+    optExpression = .uobyqaControl$optExpression,
+    literalFix = .uobyqaControl$literalFix,
+    literalFixRes = .uobyqaControl$literalFixRes,
+    scaleTo = 0,
+    calcTables = .uobyqaControl$calcTables,
+    addProp = .uobyqaControl$addProp,
+    #skipCov=.ui$foceiSkipCov,
+    interaction = 0L,
+    compress = .uobyqaControl$compress,
+    ci = .uobyqaControl$ci,
+    sigdigTable = .uobyqaControl$sigdigTable,
+    indTolRelax = .uobyqaControl$indTolRelax,
+    eventSens = .uobyqaControl$eventSens
+  )
+  if (assign) {
+    env$control <- .foceiControl
+  }
   .foceiControl
 }
 
@@ -287,27 +307,36 @@ getValidNlmixrCtl.uobyqa <- function(control) {
   rxode2::rxReq("minqa")
   .ctl <- ui$control
   .keep <- c("npt", "rhobeg", "rhoend", "iprint", "maxfun")
-  .keep <- .keep[vapply(.keep, function(opt) {
-    !is.null(.ctl[[opt]])
-  }, logical(1), USE.NAMES = FALSE)]
+  .keep <- .keep[vapply(
+    .keep,
+    function(opt) {
+      !is.null(.ctl[[opt]])
+    },
+    logical(1),
+    USE.NAMES = FALSE
+  )]
 
-  .oCtl <- setNames(lapply(.keep, function(x) {.ctl[[x]]}), .keep)
+  .oCtl <- setNames(
+    lapply(.keep, function(x) {
+      .ctl[[x]]
+    }),
+    .keep
+  )
   class(.ctl) <- NULL
   .p <- setNames(ui$nlmParIni, ui$nlmParName)
-  .mi <-  ui$nlmRxModel
-  .env <- .nlmSetupEnv(.p, ui, dataSav, .mi, .ctl,
-                       lower=ui$optimParLower, upper=ui$optimParUpper)
+  .mi <- ui$nlmRxModel
+  .env <- .nlmSetupEnv(.p, ui, dataSav, .mi, .ctl, lower = ui$optimParLower, upper = ui$optimParUpper)
   on.exit({
     .nlmFreeEnv()
   })
   # support gradient
   .ret <- bquote(minqa::uobyqa(
-    par=.(.env$par.ini),
-    fn=.(nlmixr2est::.nlmixrOptimFunC),
-    control=.(.oCtl)))
+    par = .(.env$par.ini),
+    fn = .(nlmixr2est::.nlmixrOptimFunC),
+    control = .(.oCtl)
+  ))
   .ret <- eval(.ret)
-  .nlmFinalizeList(.env, .ret, par="par", printLine=TRUE,
-                   hessianCov=TRUE)
+  .nlmFinalizeList(.env, .ret, par = "par", printLine = TRUE, hessianCov = TRUE)
 }
 
 #' Get the full theta for nlm methods
@@ -319,20 +348,29 @@ getValidNlmixrCtl.uobyqa <- function(control) {
 #' @noRd
 .uobyqaGetTheta <- function(nlm, ui) {
   .iniDf <- ui$iniDf
-  setNames(vapply(seq_along(.iniDf$name),
-                  function(i) {
-                    if (.iniDf$fix[i]) {
-                      .iniDf$est[i]
-                    } else {
-                      nlm$par[.iniDf$name[i]]
-                    }
-                  }, double(1), USE.NAMES=FALSE),
-           .iniDf$name)
+  setNames(
+    vapply(
+      seq_along(.iniDf$name),
+      function(i) {
+        if (.iniDf$fix[i]) {
+          .iniDf$est[i]
+        } else {
+          nlm$par[.iniDf$name[i]]
+        }
+      },
+      double(1),
+      USE.NAMES = FALSE
+    ),
+    .iniDf$name
+  )
 }
 
 .uobyqaFamilyFit <- function(env, ...) {
   .nlmFamilyFitGeneric(
-    env, "uobyqa", .uobyqaFitModel, .uobyqaGetTheta,
+    env,
+    "uobyqa",
+    .uobyqaFitModel,
+    .uobyqaGetTheta,
     objective = function(.fit) 2 * as.numeric(.fit$fval),
     controlToFocei = .uobyqaControlToFoceiControl,
     returnFlag = "returnUobyqa",
@@ -344,23 +382,27 @@ getValidNlmixrCtl.uobyqa <- function(control) {
       .ret$cov <- .ret$uobyqa$cov
       .ret$covMethod <- .ret$uobyqa$covMethod
       .ret
-    })
+    }
+  )
 }
 
 #' @rdname nlmixr2Est
 #' @export
 nlmixr2Est.uobyqa <- function(env, ...) {
   .ui <- env$ui
-  rxode2::assertRxUiPopulationOnly(.ui, " for the estimation routine 'uobyqa', try 'focei'", .var.name=.ui$modelName)
-  rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'uobyqa'", .var.name=.ui$modelName)
-  rxode2::warnRxBounded(.ui, " which are ignored in 'uobyqa'", .var.name=.ui$modelName)
+  rxode2::assertRxUiPopulationOnly(.ui, " for the estimation routine 'uobyqa', try 'focei'", .var.name = .ui$modelName)
+  rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'uobyqa'", .var.name = .ui$modelName)
+  rxode2::warnRxBounded(.ui, " which are ignored in 'uobyqa'", .var.name = .ui$modelName)
   .uobyqaFamilyControl(env, ...)
-  on.exit({
-    if (exists("control", envir=.ui)) {
-      rm("control", envir=.ui)
-    }
-  }, add=TRUE)
-  .uobyqaFamilyFit(env,  ...)
+  on.exit(
+    {
+      if (exists("control", envir = .ui)) {
+        rm("control", envir = .ui)
+      }
+    },
+    add = TRUE
+  )
+  .uobyqaFamilyFit(env, ...)
 }
 attr(nlmixr2Est.uobyqa, "covPresent") <- TRUE
 attr(nlmixr2Est.uobyqa, "unbounded") <- TRUE

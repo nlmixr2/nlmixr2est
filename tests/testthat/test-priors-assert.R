@@ -1,31 +1,33 @@
 nmTest({
-
   ## A prior an estimation method cannot use must be refused rather than
   ## quietly dropped, otherwise the fit does something other than what
   ## the model says with nothing to tell the user.
 
   .hasPriors <- function() {
     ## the `prior` column arrived with a newer lotri
-    "prior" %in% names(rxode2::.rxBlankIni("empty")) ||
-      exists("lotriPriorDists", envir=asNamespace("lotri"), inherits=FALSE)
+    "prior" %in%
+      names(rxode2::.rxBlankIni("empty")) ||
+      exists("lotriPriorDists", envir = asNamespace("lotri"), inherits = FALSE)
   }
 
   .hasRxAsserts <- function() {
-    exists("assertRxUiNormalPriors", envir=asNamespace("rxode2"), inherits=FALSE)
+    exists("assertRxUiNormalPriors", envir = asNamespace("rxode2"), inherits = FALSE)
   }
 
-  .mod <- function(prior=NULL) {
-    .ini <- c("tka <- 0.45", "tcl <- 1", "tv <- 3.45", "eta.ka ~ 0.6",
-              "add.sd <- 0.7", prior)
-    .txt <- paste0("function() {\n ini({\n", paste(.ini, collapse="\n"),
-                   "\n})\n model({\n ka <- exp(tka + eta.ka)\n cl <- exp(tcl)\n",
-                   " v <- exp(tv)\n linCmt() ~ add(add.sd)\n})\n}")
+  .mod <- function(prior = NULL) {
+    .ini <- c("tka <- 0.45", "tcl <- 1", "tv <- 3.45", "eta.ka ~ 0.6", "add.sd <- 0.7", prior)
+    .txt <- paste0(
+      "function() {\n ini({\n",
+      paste(.ini, collapse = "\n"),
+      "\n})\n model({\n ka <- exp(tka + eta.ka)\n cl <- exp(tcl)\n",
+      " v <- exp(tv)\n linCmt() ~ add(add.sd)\n})\n}"
+    )
     eval(str2lang(.txt))()
   }
 
   .env <- function(cls, ui) {
-    .e <- new.env(parent=emptyenv())
-    assign("ui", ui, envir=.e)
+    .e <- new.env(parent = emptyenv())
+    assign("ui", ui, envir = .e)
     class(.e) <- c(cls, "nlmixr2Est")
     .e
   }
@@ -49,10 +51,8 @@ nmTest({
   test_that("an unknown support level is an error", {
     nlmixr2Est.fakeBadLevel <- function(env, ...) TRUE
     attr(nlmixr2Est.fakeBadLevel, "nlmixr2Priors") <- "sometimes"
-    registerS3method("nlmixr2Est", "fakeBadLevel", nlmixr2Est.fakeBadLevel,
-                     envir=globalenv())
-    expect_error(.nlmixr2PriorSupport(.env("fakeBadLevel", NULL)),
-                 "nlmixr2Priors")
+    registerS3method("nlmixr2Est", "fakeBadLevel", nlmixr2Est.fakeBadLevel, envir = globalenv())
+    expect_error(.nlmixr2PriorSupport(.env("fakeBadLevel", NULL)), "nlmixr2Priors")
   })
 
   test_that("a model without priors is accepted by every method", {
@@ -82,8 +82,12 @@ nmTest({
   test_that("focei's family accepts a prior on omega too (#931)", {
     skip_if_not(.hasPriors())
     expect_error(.nlmixr2AssertPriors(.env("focei", .mod("om.eta.ka ~ 0.01"))), NA)
-    expect_error(.nlmixr2AssertPriors(
-      .env("focei", .mod("prior(eta.ka) ~ invWishart(2)"))), NA)
+    expect_error(
+      .nlmixr2AssertPriors(
+        .env("focei", .mod("prior(eta.ka) ~ invWishart(2)"))
+      ),
+      NA
+    )
   })
 
   test_that("a method that declares support is not blocked", {
@@ -92,7 +96,7 @@ nmTest({
 
     nlmixr2Est.fakeAll <- function(env, ...) TRUE
     attr(nlmixr2Est.fakeAll, "nlmixr2Priors") <- "all"
-    registerS3method("nlmixr2Est", "fakeAll", nlmixr2Est.fakeAll, envir=globalenv())
+    registerS3method("nlmixr2Est", "fakeAll", nlmixr2Est.fakeAll, envir = globalenv())
 
     expect_equal(.nlmixr2PriorSupport(.env("fakeAll", .ui)), "all")
     expect_error(.nlmixr2AssertPriors(.env("fakeAll", .ui)), NA)
@@ -104,19 +108,28 @@ nmTest({
 
     nlmixr2Est.fakeTnpri <- function(env, ...) TRUE
     attr(nlmixr2Est.fakeTnpri, "nlmixr2Priors") <- "tnpri"
-    registerS3method("nlmixr2Est", "fakeTnpri", nlmixr2Est.fakeTnpri,
-                     envir=globalenv())
+    registerS3method("nlmixr2Est", "fakeTnpri", nlmixr2Est.fakeTnpri, envir = globalenv())
 
-    expect_error(.nlmixr2AssertPriors(
-      .env("fakeTnpri", .mod("prior(tka) ~ dnorm(0, 10)"))), NA)
+    expect_error(
+      .nlmixr2AssertPriors(
+        .env("fakeTnpri", .mod("prior(tka) ~ dnorm(0, 10)"))
+      ),
+      NA
+    )
     ## a normal prior directly on omega is exactly what tnpri is for
+    expect_error(
+      .nlmixr2AssertPriors(
+        .env("fakeTnpri", .mod("om.eta.ka ~ 0.01"))
+      ),
+      NA
+    )
     expect_error(.nlmixr2AssertPriors(
-      .env("fakeTnpri", .mod("om.eta.ka ~ 0.01"))), NA)
-    expect_error(.nlmixr2AssertPriors(
-      .env("fakeTnpri", .mod("prior(tka) ~ dgamma(2, 1)"))))
+      .env("fakeTnpri", .mod("prior(tka) ~ dgamma(2, 1)"))
+    ))
     ## nwpri's own mechanism (omega degrees of freedom) is refused
     expect_error(.nlmixr2AssertPriors(
-      .env("fakeTnpri", .mod("prior(eta.ka) ~ invWishart(2)"))))
+      .env("fakeTnpri", .mod("prior(eta.ka) ~ invWishart(2)"))
+    ))
   })
 
   test_that("an nwpri method takes omega degrees of freedom", {
@@ -125,15 +138,19 @@ nmTest({
 
     nlmixr2Est.fakeNwpri <- function(env, ...) TRUE
     attr(nlmixr2Est.fakeNwpri, "nlmixr2Priors") <- "nwpri"
-    registerS3method("nlmixr2Est", "fakeNwpri", nlmixr2Est.fakeNwpri,
-                     envir=globalenv())
+    registerS3method("nlmixr2Est", "fakeNwpri", nlmixr2Est.fakeNwpri, envir = globalenv())
 
     ## degrees of freedom on the omega are what NWPRI needs
-    expect_error(.nlmixr2AssertPriors(
-      .env("fakeNwpri", .mod("prior(eta.ka) ~ invWishart(2)"))), NA)
+    expect_error(
+      .nlmixr2AssertPriors(
+        .env("fakeNwpri", .mod("prior(eta.ka) ~ invWishart(2)"))
+      ),
+      NA
+    )
     ## a normal prior on the omega values is TNPRI, which it does not do
     expect_error(.nlmixr2AssertPriors(
-      .env("fakeNwpri", .mod("om.eta.ka ~ 0.01"))))
+      .env("fakeNwpri", .mod("om.eta.ka ~ 0.01"))
+    ))
   })
 
   test_that("a theta-only method takes a theta prior but not one on omega", {
@@ -141,19 +158,34 @@ nmTest({
 
     nlmixr2Est.fakeTheta <- function(env, ...) TRUE
     attr(nlmixr2Est.fakeTheta, "nlmixr2Priors") <- "theta"
-    registerS3method("nlmixr2Est", "fakeTheta", nlmixr2Est.fakeTheta,
-                     envir=globalenv())
+    registerS3method("nlmixr2Est", "fakeTheta", nlmixr2Est.fakeTheta, envir = globalenv())
 
     ## a Cauchy is fine too -- "theta" restricts WHERE the prior can sit
     ## (never on omega), not the distribution family
-    expect_error(.nlmixr2AssertPriors(
-      .env("fakeTheta", .mod("prior(tka) ~ dnorm(0, 10)"))), NA)
-    expect_error(.nlmixr2AssertPriors(
-      .env("fakeTheta", .mod("prior(tka) ~ dcauchy(0, 5)"))), NA)
-    expect_error(.nlmixr2AssertPriors(
-      .env("fakeTheta", .mod("om.eta.ka ~ 0.01"))), "omega")
-    expect_error(.nlmixr2AssertPriors(
-      .env("fakeTheta", .mod("prior(eta.ka) ~ invWishart(2)"))), "omega")
+    expect_error(
+      .nlmixr2AssertPriors(
+        .env("fakeTheta", .mod("prior(tka) ~ dnorm(0, 10)"))
+      ),
+      NA
+    )
+    expect_error(
+      .nlmixr2AssertPriors(
+        .env("fakeTheta", .mod("prior(tka) ~ dcauchy(0, 5)"))
+      ),
+      NA
+    )
+    expect_error(
+      .nlmixr2AssertPriors(
+        .env("fakeTheta", .mod("om.eta.ka ~ 0.01"))
+      ),
+      "omega"
+    )
+    expect_error(
+      .nlmixr2AssertPriors(
+        .env("fakeTheta", .mod("prior(eta.ka) ~ invWishart(2)"))
+      ),
+      "omega"
+    )
   })
 
   test_that("a general method takes anything the kernel supports", {
@@ -161,15 +193,26 @@ nmTest({
 
     nlmixr2Est.fakeGeneral <- function(env, ...) TRUE
     attr(nlmixr2Est.fakeGeneral, "nlmixr2Priors") <- "general"
-    registerS3method("nlmixr2Est", "fakeGeneral", nlmixr2Est.fakeGeneral,
-                     envir=globalenv())
+    registerS3method("nlmixr2Est", "fakeGeneral", nlmixr2Est.fakeGeneral, envir = globalenv())
 
-    expect_error(.nlmixr2AssertPriors(
-      .env("fakeGeneral", .mod("prior(tka) ~ dcauchy(0, 5)"))), NA)
-    expect_error(.nlmixr2AssertPriors(
-      .env("fakeGeneral", .mod("om.eta.ka ~ 0.01"))), NA)
-    expect_error(.nlmixr2AssertPriors(
-      .env("fakeGeneral", .mod("prior(eta.ka) ~ invWishart(2)"))), NA)
+    expect_error(
+      .nlmixr2AssertPriors(
+        .env("fakeGeneral", .mod("prior(tka) ~ dcauchy(0, 5)"))
+      ),
+      NA
+    )
+    expect_error(
+      .nlmixr2AssertPriors(
+        .env("fakeGeneral", .mod("om.eta.ka ~ 0.01"))
+      ),
+      NA
+    )
+    expect_error(
+      .nlmixr2AssertPriors(
+        .env("fakeGeneral", .mod("prior(eta.ka) ~ invWishart(2)"))
+      ),
+      NA
+    )
   })
 
   test_that(".nlmixr2PriorMethod() reads the omega convention off the ini() syntax", {
@@ -192,10 +235,9 @@ nmTest({
 
   test_that(".nlmixr2BuildPriorSpec() returns a usable external pointer", {
     skip_if_not(.hasPriors())
-    skip_if_not(exists("rxPriorBuildSpec", envir=asNamespace("rxode2"), inherits=FALSE))
+    skip_if_not(exists("rxPriorBuildSpec", envir = asNamespace("rxode2"), inherits = FALSE))
 
     .spec <- .nlmixr2BuildPriorSpec(.mod("prior(tka) ~ dnorm(0, 10)"))
     expect_true(is(.spec, "externalptr"))
   })
-
 })

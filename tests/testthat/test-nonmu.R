@@ -1,6 +1,5 @@
 nmTest({
   test_that("non-mu simple test", {
-
     # Data' purpose illustrates the error and my data set
     df <- data.frame(
       ID = c(rep(1, 6), rep(2, 6)),
@@ -27,7 +26,7 @@ nmTest({
       })
     }
 
-    fit <-.nlmixr(fun, df, list(print=0), est="posthoc")
+    fit <- .nlmixr(fun, df, list(print = 0), est = "posthoc")
 
     expect_error(fit$dataMergeInner, NA)
     expect_error(fit$fitMergeInner, NA)
@@ -40,36 +39,39 @@ nmTest({
     expect_true(all(names(fit$etaSE) == c("ID", "se(eta.Vc)")))
 
     expect_true(all(names(fit$etaRSE) == c("ID", "rse(eta.Vc)%")))
-
   })
 
   test_that("another merge issue", {
     dat <- xgxr::case1_pkpd |>
-      dplyr::rename(DV=LIDV) |>
+      dplyr::rename(DV = LIDV) |>
       dplyr::filter(CMT %in% 1:2) |>
       dplyr::filter(TRTACT != "Placebo")
 
     doses <- unique(dat$DOSE)
     nid <- 3 # 7 ids per dose group
-    dat2 <- do.call("rbind",
-                    lapply(doses, function(x) {
-                      ids <- dat |>
-                        dplyr::filter(DOSE == x) |>
-                        dplyr::reframe(ids=unique(ID)) |>
-                        dplyr::pull()
-                      ids <- ids[seq(1, nid)]
-                      dat |>
-                        dplyr::filter(ID %in% ids)
-                    }))
+    dat2 <- do.call(
+      "rbind",
+      lapply(doses, function(x) {
+        ids <- dat |>
+          dplyr::filter(DOSE == x) |>
+          dplyr::reframe(ids = unique(ID)) |>
+          dplyr::pull()
+        ids <- ids[seq_len(nid)]
+        dat |>
+          dplyr::filter(ID %in% ids)
+      })
+    )
 
     # Use centralized model from helper-models.R
     cmt2 <- two.compartment
 
     cmt2fit.logn <-
       .nlmixr(
-        cmt2, dat2, "posthoc",
-        control=list(print=0),
-        table=tableControl(cwres=TRUE, npde=TRUE)
+        cmt2,
+        dat2,
+        "posthoc",
+        control = list(print = 0),
+        table = tableControl(cwres = TRUE, npde = TRUE)
       )
 
     expect_error(cmt2fit.logn$dataMergeLeft, NA)
@@ -79,13 +81,12 @@ nmTest({
     # Now force an error
 
     .llikObs <- c(cmt2fit.logn$env$llikObs, 10)
-    assign("llikObs", .llikObs, envir=cmt2fit.logn$env)
+    assign("llikObs", .llikObs, envir = cmt2fit.logn$env)
 
     expect_warning(cmt2fit.logn$dataMergeLeft)
     expect_warning(cmt2fit.logn$fitMergeLeft)
 
     .dat <- suppressWarnings(cmt2fit.logn$dataMergeLeft)
     expect_false(any(names(.dat) == "nlmixrLlikObs"))
-
   })
 })

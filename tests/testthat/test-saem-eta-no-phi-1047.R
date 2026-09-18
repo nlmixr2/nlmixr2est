@@ -67,7 +67,7 @@ nmTest({
 
     # the check is wired into the estimation method, so it fires before any
     # iteration rather than after the whole run
-    .env <- new.env(parent=emptyenv())
+    .env <- new.env(parent = emptyenv())
     .env$ui <- .ui
     expect_error(nlmixr2Est.saem(.env), "eta.occ")
   })
@@ -216,8 +216,7 @@ nmTest({
   test_that("the #1047 model is refused before it fits, and its working twin is not", {
     skip_on_cran()
     skip_if_not_installed("nlmixr2data")
-    .ctl <- saemControl(nBurn = 5, nEm = 5, print = 0, calcTables = FALSE,
-                        covMethod = "")
+    .ctl <- saemControl(nBurn = 5, nEm = 5, print = 0, calcTables = FALSE, covMethod = "")
     # saemEtaNames() collapses the two onto one slot, so the kernel only ever
     # knew about the second -- the first was never sampled
     .ui <- rxode2::rxUiDecompress(rxode2::rxode2(.mixOnePhiMod))
@@ -225,7 +224,8 @@ nmTest({
     expect_equal(.ui$saemEtaNames, "eta.cl2")
     expect_error(
       suppressMessages(nlmixr2(.mixOnePhiMod, nlmixr2data::theo_sd, "saem", .ctl)),
-      "eta.cl1, eta.cl2")
+      "eta.cl1, eta.cl2"
+    )
 
     .ui2 <- rxode2::rxUiDecompress(rxode2::rxode2(.mixSplitMod))
     expect_equal(.ui2$saemEtaTrans, c(2L, 3L))
@@ -237,9 +237,9 @@ nmTest({
   test_that(".getSaemOmega() reports the mismatch instead of running off the end", {
     # Gamma2_phi1 one column short of the UI's etas: the backstop for a
     # disagreement the up-front check did not catch.
-    .env <- new.env(parent=emptyenv())
+    .env <- new.env(parent = emptyenv())
     .env$ui <- rxode2::rxUiDecompress(rxode2::rxode2(.muMod))
-    .env$saem <- list(Gamma2_phi1=matrix(0.6, 1, 1))
+    .env$saem <- list(Gamma2_phi1 = matrix(0.6, 1, 1))
     expect_error(.getSaemOmega(.env), "eta.cl")
     expect_error(.getSaemOmega(.env), "no variance")
 

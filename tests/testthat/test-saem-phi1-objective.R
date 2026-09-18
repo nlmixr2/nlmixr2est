@@ -39,8 +39,7 @@ nmTest({
   test_that("foceiLikInnerObjective_ requires a loaded system", {
     # unload defensively in case a prior test in this session left one loaded
     suppressWarnings(try(foceiLikUnload(), silent = TRUE))
-    expect_error(foceiLikInnerObjective_(c(0.45, 1, 3.45)),
-                "no general likelihood system loaded")
+    expect_error(foceiLikInnerObjective_(c(0.45, 1, 3.45)), "no general likelihood system loaded")
   })
 
   test_that("foceiLikInnerObjective_ is well-behaved across several thetas (#Phase3)", {

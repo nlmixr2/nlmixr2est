@@ -1,7 +1,7 @@
 # This acts like the global environment for nlmixr2est
 nlmixr2global <- new.env(parent = emptyenv())
 
-.nlmixr2globalReset <- function(ini=FALSE) {
+.nlmixr2globalReset <- function(ini = FALSE) {
   nlmixr2global$finalUiCompressed <- TRUE # is the final UI compressed?
   nlmixr2global$rxPredLlik <- FALSE # is this a log-likelihood?
   nlmixr2global$nlmeFitDataAll <- NULL # data for nlme fit
@@ -22,17 +22,17 @@ nlmixr2global <- new.env(parent = emptyenv())
 
   nlmixr2global$lastPredSimulationInfo <- NULL # to get observation dataset with pred attached for pred_corr
 
-  nlmixr2global$nlmixrEvalEnv <- new.env(parent=emptyenv()) # evaluate environment for udf
+  nlmixr2global$nlmixrEvalEnv <- new.env(parent = emptyenv()) # evaluate environment for udf
 
-  nlmixr2global$nlmEnv <- new.env(parent=emptyenv()) # nlmEnv data etc for nlm related methods
+  nlmixr2global$nlmEnv <- new.env(parent = emptyenv()) # nlmEnv data etc for nlm related methods
 
-  nlmixr2global$nlmixr2EstEnv <- new.env(parent=emptyenv())
+  nlmixr2global$nlmixr2EstEnv <- new.env(parent = emptyenv())
   nlmixr2global$nlmixr2EstEnv$uiUnfix <- NULL
   nlmixr2global$nlmixr2EstEnv$nlmixrPureInputUi <- NULL
   nlmixr2global$nlmixr2EstEnv$vaeNonMuEtas <- character(0)
   nlmixr2global$nlmixr2EstEnv$saemPseudoTransforms <- NULL
 
-  nlmixr2global$nlsEnv <- new.env(parent=emptyenv())
+  nlmixr2global$nlsEnv <- new.env(parent = emptyenv())
 
   nlmixr2global$etaMat <- NULL # eta matrix for foceiControl
 

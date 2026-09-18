@@ -20,9 +20,13 @@
   }
   for (.key in .keys) {
     .pos <- match(col, .map[[.key]])
-    if (is.na(.pos)) next
+    if (is.na(.pos)) {
+      next
+    }
     .tag <- if (.pos == 1L) .key else paste0(.key, .pos)
-    if (.tag == "binom") return(list(range = NULL, skip = TRUE))
+    if (.tag == "binom") {
+      return(list(range = NULL, skip = TRUE))
+    }
     return(list(range = .ranges[[.tag]], skip = FALSE))
   }
   list(range = NULL, skip = FALSE)
@@ -42,9 +46,13 @@
   .cur <- v
   for (.k in seq_len(50L)) {
     .w <- which(!is.na(lhs) & lhs == .cur & seq_along(lhs) < idx)
-    if (length(.w) == 0L) return(.cur)
+    if (length(.w) == 0L) {
+      return(.cur)
+    }
     .rhs <- trimws(sub(";[ \t]*$", "", sub("^[^<=~]*(<-|=|~)", "", lines[max(.w)])))
-    if (!grepl("^[A-Za-z._][A-Za-z0-9._]*$", .rhs)) return(NA_character_)
+    if (!grepl("^[A-Za-z._][A-Za-z0-9._]*$", .rhs)) {
+      return(NA_character_)
+    }
     .cur <- .rhs
   }
   NA_character_
@@ -59,7 +67,9 @@
 #' @return updated candidate list
 #' @noRd
 .saemAddArgRange <- function(cand, alias, pred1, col) {
-  if (is.na(alias)) return(cand)
+  if (is.na(alias)) {
+    return(cand)
+  }
   .r <- .saemPredArgRange(pred1, col)
   if (.r$skip) {
     cand$skip <- c(cand$skip, alias)
@@ -82,14 +92,19 @@
   .pred <- ui$predDf
   .iniDf <- ui$iniDf
   .idx <- .pred$line[i]
-  .ret <- list(resid = character(0), skip = character(0), argRange = list(),
-               predDeps = .rxMtimeDeps(lines, lhs, .idx, paste(.pred$var[i])))
+  .ret <- list(
+    resid = character(0),
+    skip = character(0),
+    argRange = list(),
+    predDeps = .rxMtimeDeps(lines, lhs, .idx, paste(.pred$var[i]))
+  )
   for (.c in intersect(c("a", "b", "c", "d", "e", "f", "lambda"), names(.pred))) {
     .v <- .pred[[.c]][i]
-    if (is.na(.v)) next
+    if (is.na(.v)) {
+      next
+    }
     .ret$resid <- c(.ret$resid, .rxMtimeDeps(lines, lhs, .idx, .v))
-    .ret <- .saemAddArgRange(.ret, .saemAliasTheta(lines, lhs, .idx, .v),
-                             .pred[i, , drop = FALSE], .c)
+    .ret <- .saemAddArgRange(.ret, .saemAliasTheta(lines, lhs, .idx, .v), .pred[i, , drop = FALSE], .c)
   }
   .err <- which(!is.na(.iniDf$err) & .iniDf$condition == .pred$cond[i])
   .bad <- grepl("^ar$|^binom$", .iniDf$err[.err])
@@ -110,11 +125,12 @@
   # an error model `cp ~ add(a)` is not an assignment to cp; treating it as one
   # pulls one endpoint's residual thetas into a later endpoint's prediction
   .lhs[.pred$line] <- NA_character_
-  .all <- list(resid = character(0), predDeps = character(0), skip = character(0),
-               argRange = list(), ll = character(0))
+  .all <- list(resid = character(0), predDeps = character(0), skip = character(0), argRange = list(), ll = character(0))
   for (i in seq_along(.pred$cond)) {
     .dist <- paste(.pred$distribution[i])
-    if (.dist == "ordinal") next
+    if (.dist == "ordinal") {
+      next
+    }
     if (.dist == "LL") {
       # ll() has no separate prediction, and a linCmt()/ODE state hides the
       # assignments behind it, so every theta in the model informs it
@@ -143,7 +159,9 @@
 #' @noRd
 .saemPseudoEtaThetas <- function(ui) {
   .empty <- data.frame(theta = character(0), lower = numeric(0), upper = numeric(0))
-  if (!.saemGeneralLik(ui)) return(.empty)
+  if (!.saemGeneralLik(ui)) {
+    return(.empty)
+  }
   .cand <- .saemLikelihoodCandidates(ui)
   .iniDf <- ui$iniDf
   .est <- .iniDf$name[!is.na(.iniDf$ntheta) & !.iniDf$fix]
@@ -151,9 +169,10 @@
   .cov <- ui$muRefCovariateDataFrame
   .covOnEta <- .cov$covariateParameter[.cov$theta %in% ui$muRefDataFrame$theta]
   .keep <- c(setdiff(.cand$resid, .cand$predDeps), .cand$ll)
-  .thetas <- setdiff(intersect(unique(.keep), .est),
-                     c(ui$muRefDataFrame$theta, .covOnEta, .cand$skip))
-  if (length(.thetas) == 0L) return(.empty)
+  .thetas <- setdiff(intersect(unique(.keep), .est), c(ui$muRefDataFrame$theta, .covOnEta, .cand$skip))
+  if (length(.thetas) == 0L) {
+    return(.empty)
+  }
   .w <- match(.thetas, .iniDf$name)
   .ret <- data.frame(theta = .thetas, lower = .iniDf$lower[.w], upper = .iniDf$upper[.w])
   for (.k in which(.thetas %in% names(.cand$argRange))) {

@@ -22,8 +22,12 @@ nmTest({
 
   # Shared base fit (with default calcTables so the result is nlmixr2FitData).
   # NPDE is not requested here so addNpde tests can add it themselves.
-  fit <- .nlmixr(one.compartment, nlmixr2data::theo_sd, est = "focei",
-                 control = foceiControl(print = 0, covMethod = ""))
+  fit <- .nlmixr(
+    one.compartment,
+    nlmixr2data::theo_sd,
+    est = "focei",
+    control = foceiControl(print = 0, covMethod = "")
+  )
 
   test_that("tolFactor output: fit$env$tolFactor is a named numeric vector with one entry per subject >= 1", {
     tf <- fit$env$tolFactor
@@ -50,9 +54,13 @@ nmTest({
   })
 
   test_that("tolFactor output is used when npde is requested at fit time via tableControl", {
-    fitNpde <- .nlmixr(one.compartment, nlmixr2data::theo_sd, est = "focei",
-                       control = foceiControl(print = 0, covMethod = ""),
-                       table = tableControl(npde = TRUE, nsim = 50, seed = 42))
+    fitNpde <- .nlmixr(
+      one.compartment,
+      nlmixr2data::theo_sd,
+      est = "focei",
+      control = foceiControl(print = 0, covMethod = ""),
+      table = tableControl(npde = TRUE, nsim = 50, seed = 42)
+    )
     expect_true("NPDE" %in% names(fitNpde))
     expect_true(all(is.finite(fitNpde$NPDE)))
     tf <- fitNpde$env$tolFactor
@@ -62,9 +70,12 @@ nmTest({
   })
 
   test_that("tolFactor input: rxControl(tolFactor=5) is stored in the fit and used by the ODE solver", {
-    fit5 <- .nlmixr(one.compartment, nlmixr2data::theo_sd, est = "focei",
-                    control = foceiControl(print = 0, covMethod = "",
-                                          rxControl = rxode2::rxControl(tolFactor = 5)))
+    fit5 <- .nlmixr(
+      one.compartment,
+      nlmixr2data::theo_sd,
+      est = "focei",
+      control = foceiControl(print = 0, covMethod = "", rxControl = rxode2::rxControl(tolFactor = 5))
+    )
     expect_s3_class(fit5, "nlmixr2FitData")
 
     # The input tolFactor is preserved in the stored rxControl and therefore

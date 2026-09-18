@@ -52,10 +52,20 @@ nmTest({
   ## At sigdig >= 4 twoStage wins by ~2e-3, about 2000x the 1e-6 bound.
   .fit <- function(mod, ro) {
     suppressMessages(suppressWarnings(nlmixr2(
-      mod, nlmixr2data::theo_sd, est = "vae",
-      control = vaeControl(print = 0L, calcTables = FALSE, residOptimize = ro,
-                           sigdig = 4, itersBurnIn = 40L, iters = 80L,
-                           klWarmup = 30L, gammaIter = 60L))))
+      mod,
+      nlmixr2data::theo_sd,
+      est = "vae",
+      control = vaeControl(
+        print = 0L,
+        calcTables = FALSE,
+        residOptimize = ro,
+        sigdig = 4,
+        itersBurnIn = 40L,
+        iters = 80L,
+        klWarmup = 30L,
+        gammaIter = 60L
+      )
+    )))
   }
 
   test_that("residOptimize defaults to twoStage", {
@@ -121,7 +131,7 @@ nmTest({
     skip_on_cran()
     m <- .fit(.bcMod(), "moment")
     o <- .fit(.bcMod(), "twoStage")
-    expect_equal(m$theta[["lam"]], 1, tolerance = 1e-8)   # frozen without the optimizer
+    expect_equal(m$theta[["lam"]], 1, tolerance = 1e-8) # frozen without the optimizer
     expect_gt(abs(o$theta[["lam"]] - 1), 1e-3)
     expect_gte(o$theta[["lam"]], -2)
     expect_lte(o$theta[["lam"]], 2)
@@ -140,7 +150,7 @@ nmTest({
     p <- .vaeDataPrep(rxode2::assertRxUi(.bcMod()), nlmixr2data::theo_sd, vaeControl())
     lo <- p$regressLower[match("add.err", p$regressNames)]
     expect_gt(lo, 0)
-    expect_lt(lo, 0.01)   # far below any plausible estimate
+    expect_lt(lo, 0.01) # far below any plausible estimate
   })
 
   test_that("a yeoJohnson lambda is estimated and improves the fit", {
@@ -163,12 +173,13 @@ nmTest({
   ## ini(), none of them rests on a bound, and (where a closed form exists) the
   ## optimizer reproduces it.  See helper-vae-resid.R for why.
   .sweep <- list(
-    list(nm = "add",        mod = NULL, pars = "add.err",              closed = "add.err"),
-    list(nm = "combined",   mod = NULL, pars = c("add.err","prop.err"), closed = NULL),
-    list(nm = "pow",        mod = NULL, pars = c("prop.err","pw"),      closed = NULL),
-    list(nm = "lnorm",      mod = NULL, pars = "add.err",               closed = NULL),
-    list(nm = "boxCox",     mod = NULL, pars = c("add.err","lam"),      closed = NULL),
-    list(nm = "yeoJohnson", mod = NULL, pars = c("add.err","lam"),      closed = NULL))
+    list(nm = "add", mod = NULL, pars = "add.err", closed = "add.err"),
+    list(nm = "combined", mod = NULL, pars = c("add.err", "prop.err"), closed = NULL),
+    list(nm = "pow", mod = NULL, pars = c("prop.err", "pw"), closed = NULL),
+    list(nm = "lnorm", mod = NULL, pars = "add.err", closed = NULL),
+    list(nm = "boxCox", mod = NULL, pars = c("add.err", "lam"), closed = NULL),
+    list(nm = "yeoJohnson", mod = NULL, pars = c("add.err", "lam"), closed = NULL)
+  )
   .sweep[[1]]$mod <- .addOnlyMod <- function() {
     ini({ lka <- 0.45; lcl <- 1; lv <- 3.45; eta.ka ~ 0.6; eta.cl ~ 0.3; add.err <- 0.7 })
     model({ ka <- exp(lka + eta.ka); cl <- exp(lcl + eta.cl); v <- exp(lv)
@@ -196,7 +207,9 @@ nmTest({
         ## 2. none of them is resting on a bound (the zero-collapse signature)
         expectResidInterior(o, prep)
         ## 3. where a closed form exists, the optimizer must reproduce it
-        if (!is.null(cs$closed)) expectMatchesClosedForm(o, m, cs$closed)
+        if (!is.null(cs$closed)) {
+          expectMatchesClosedForm(o, m, cs$closed)
+        }
         ## 4. and only then, the objective comparison
         expect_lte(o$objf, m$objf + 1e-6)
       })
