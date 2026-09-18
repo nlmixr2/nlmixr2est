@@ -76,7 +76,7 @@ nmTest({
     .Zw <- impQrPoints_(64L, 2L, c(0.999999, 0.5))
     expect_true(all(is.finite(.Zw)))
     # bad input
-    expect_error(impQrPoints_(256L, 2L, c(0.5)))
+    expect_error(impQrPoints_(256L, 2L, 0.5))
     expect_error(impQrPoints_(0L, 2L, NULL))
   })
 
