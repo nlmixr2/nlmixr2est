@@ -329,10 +329,10 @@ print(fit2)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>            setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.656142 0.6257815  8.408e-06      0.044       0.008 0.023    0.001
-#>              other
-#> elapsed 0.08906809
+#>            setup optimize covariance preprocess postprocess table compress
+#> elapsed 0.769376 0.777155  8.095e-06      0.057        0.01  0.03    0.002
+#>             other
+#> elapsed 0.1034608
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

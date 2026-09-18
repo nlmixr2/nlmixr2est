@@ -278,8 +278,9 @@ ilaplaceControl()
 #>     ...) 
 #> {
 #>     .ctl <- .controlMaxfun(control)
-#>     if (is.null(.ctl$npt)) 
+#>     if (is.null(.ctl$npt)) {
 #>         .ctl$npt <- length(par) * 2 + 1
+#>     }
 #>     .ctl$iprint <- 0L
 #>     .ctl <- .ctl[names(.ctl) %in% c("npt", "rhobeg", "rhoend", 
 #>         "iprint", "maxfun")]
@@ -293,7 +294,7 @@ ilaplaceControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x557d805166a0>
+#> <bytecode: 0x56373189d3f8>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg

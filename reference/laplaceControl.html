@@ -326,8 +326,9 @@ numerically calculated Hessian matrix. This is done with adding
 <span class="r-out co"><span class="r-pr">#&gt;</span>     ...) </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> {</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>     .ctl &lt;- .controlMaxfun(control)</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>     if (is.null(.ctl$npt)) </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>     if (is.null(.ctl$npt)) {</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>         .ctl$npt &lt;- length(par) * 2 + 1</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>     }</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>     .ctl$iprint &lt;- 0L</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>     .ctl &lt;- .ctl[names(.ctl) %in% c("npt", "rhobeg", "rhoend", </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>         "iprint", "maxfun")]</span>
@@ -341,7 +342,7 @@ numerically calculated Hessian matrix. This is done with adding
 <span class="r-out co"><span class="r-pr">#&gt;</span>     .ret$value &lt;- .ret$fval</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>     .ret</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> }</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;bytecode: 0x557d805166a0&gt;</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;bytecode: 0x56373189d3f8&gt;</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> &lt;environment: namespace:nlmixr2est&gt;</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $rhobeg</span>
