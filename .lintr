@@ -25,8 +25,9 @@ linters: linters_with_defaults(
   )
 exclusions: c(
     list(
-      # Generated (Rcpp, inst/tools/workaround.R).
+      # Generated (Rcpp, R/build.R, inst/tools/workaround.R).
       "R/RcppExports.R",
+      "R/agqGen.R",
       "R/nlmixr2_md5.R",
       "inst",
       "vignettes",
