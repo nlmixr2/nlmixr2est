@@ -169,7 +169,7 @@ foceiControl(
   zeroGradRunReset = TRUE,
   zeroGradBobyqa = TRUE,
   mceta = -2L,
-  warm = c("calc", "save"),
+  warm = c("calc", "save", "none"),
   nAGQ = 0,
   agqLow = -Inf,
   agqHi = Inf,
@@ -1143,8 +1143,11 @@ pinned to the central evaluation's mode.}
 `"calc"` (default) warm-starts each inner problem with the eta
 Hessian calculated at the starting eta and the current theta;
 since theta moves between outer evaluations it is always
-recalculated, never reused from an earlier round.  `"save"` uses
-the classic self-initialized Hessian.}
+recalculated, never reused from an earlier round.  `"save"`
+restarts from the curvature n1qn1 built during the subject's
+previous inner solve.  `"none"` lets n1qn1 initialize its own
+diagonal Hessian.  Ignored by `innerOpt = "trust"`, which always
+supplies its own exact Hessian.}
 
 \item{nAGQ}{Number of Gauss-Hermite adaptive quadrature points. `0`
 disables AGQ; `1` is equivalent to Laplace. Cost grows quickly with
