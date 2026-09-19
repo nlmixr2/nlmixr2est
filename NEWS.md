@@ -1795,7 +1795,17 @@
   `theta + mean(eta)`, the temporary eta is removed from the fit, and
   `$runInfo` lists the thetas that received one.  These parameters were
   previously left near their initial values.
-  
+- `outerOpt="trust"` now holds a parameter on its bound when the model's step
+  keeps leaving the box through it, and releases it when the gradient at a
+  converged point pulls it back inside; `$optReturn$activeBounds` lists the
+  parameters held at the end.  `RcppTrust` is unbounded and a trial outside
+  the box was only rejected, so on an active bound every Newton step left the
+  box, every iteration was region-limited, and the run converged linearly
+  onto the bound -- where `outerTrustFterm` could be met with a large
+  gradient.  Two of nine perturbed-start fits measured stopped 154 and 141
+  objective units above the optimum `outerOpt="nlminb"` and `"lbfgsb3c"`
+  reach (an omega variance on its `diagOmegaBoundLower` floor); both now
+  reach it, the other seven are unchanged.
 - Added optional full conditional inner curvature for fast Gaussian FOCEI via
   `innerHessian="conditional"`, used by inner trust and n1qn1's `warm="calc"`
   seed. The FOCEI marginal objective was unchanged.
