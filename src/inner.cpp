@@ -727,6 +727,12 @@ struct focei_options {
   double scaleObjectiveTo;
   int initObj;
   double initObjective;
+  // Signed objective at the starting theta (natural scale, before any
+  // scaleObjective rescaling) and at the reported final theta, as re-evaluated by
+  // foceiOuterFinal(); compared by foceiFinalOfvWorse() to refuse a silently bad
+  // fit (issue 1114).  NA until set.
+  double initOfv = NA_REAL;
+  double finalOfv = NA_REAL;
   // Confidence Interval
   double ci;
   double sigdig;
@@ -6625,6 +6631,27 @@ static void priorGradHessFor(const std::vector<int> &idx, arma::vec &grad, arma:
   Hp = 0.5 * (Hp + Hp.t());
 }
 
+// Is the final (re-evaluated) objective `finalOfv` worse than the starting
+// objective `initOfv`?  True when the final value is not finite, or exceeds the
+// initial one by more than 1% of its magnitude (with an absolute floor of 0.1
+// objective units so an initial objective near 0 still has a band).  The band
+// absorbs the small drift a final re-evaluation carries (its inner solve runs at
+// the covariance-step tolerances), while any real optimizer or inner-problem
+// failure is orders of magnitude outside it.  A non-finite initOfv cannot happen
+// after foceiOfv0()'s initial-evaluation stop()s, so it is treated as "not worse"
+// rather than raising a second, less specific condition.
+static inline bool foceiFinalOfvWorse(double initOfv, double finalOfv) {
+  if (!R_FINITE(initOfv)) return false;
+  if (!R_FINITE(finalOfv)) return true;
+  double band = max2(0.01 * std::fabs(initOfv), 0.1);
+  return finalOfv > initOfv + band;
+}
+
+//[[Rcpp::export(".foceiFinalOfvWorse")]]
+bool foceiFinalOfvWorseR(double initOfv, double finalOfv) {
+  return foceiFinalOfvWorse(initOfv, finalOfv);
+}
+
 static inline double foceiOfv0(double *theta){
   if (op_focei.objfRecalN != 0 && !op_focei.calcGrad) {
     op_focei.stickyRecalcN1++;
@@ -6680,6 +6707,7 @@ static inline double foceiOfv0(double *theta){
   if (!op_focei.initObj){
     op_focei.initObj=1;
     op_focei.initObjective=std::fabs(ret);
+    op_focei.initOfv = ret;
     if (std::isnan(ret)){
       stop(_("NaN while evaluating initial objective function"));
     } else if (std::isinf(ret)) {
@@ -9580,6 +9608,8 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.fallbackFD = as<int>(foceiO["fallbackFD"]);
   op_focei.smatPer = as<double>(foceiO["smatPer"]);
   op_focei.initObj=0;
+  op_focei.initOfv = NA_REAL;
+  op_focei.finalOfv = NA_REAL;
   op_focei.lastOfv=std::numeric_limits<double>::max();
   for (unsigned int k = op_focei.npars; k--;){
     j=op_focei.fixedTrans[k];
@@ -9799,6 +9829,10 @@ void foceiOuterFinal(double *x, Environment e){
   _finalObfCalc = true;
   double fmin = foceiOfv0(x);
   _finalObfCalc = false;
+  // Natural-scale final objective for the worse-than-initial guard; the same
+  // un-scaling nlmixr2EnvSetup() applies before reporting.
+  op_focei.finalOfv = op_focei.scaleObjective ?
+    fmin * op_focei.initObjective / op_focei.scaleObjectiveTo : fmin;
   NumericVector theta(op_focei.ntheta);
   std::copy(&op_focei.fullTheta[0],  &op_focei.fullTheta[0] + op_focei.ntheta,
             theta.begin());
@@ -14592,6 +14626,17 @@ Environment foceiFitCpp_(Environment e){
       npbOuter(e);
     } else {
       foceiOuter(e);
+      if (op_focei.maxOuterIterations > 0 && op_focei.initObj &&
+          foceiFinalOfvWorse(op_focei.initOfv, op_focei.finalOfv)) {
+        // The outer optimizer can only return a point it evaluated, and every
+        // optimizer here keeps its best, so the reported objective should never be
+        // worse than the starting one.  When it is, the fit is not trustworthy:
+        // either the optimizer failed outright or the inner (eta) problem did not
+        // converge when the final estimates were re-evaluated.  Issue 1114 returned
+        // ~2e244 against a starting 824 with every theta untouched and no message.
+        warning(_("the final objective function (%g) is worse than the initial objective function (%g); the estimates are not reliable.\nThe outer optimizer did not improve on the initial estimates or the inner (eta) optimization did not converge at the final estimates; check the initial estimates and the scaling (foceiControl(scaleType=, normType=))"),
+                op_focei.finalOfv, op_focei.initOfv);
+      }
     }
     if (op_focei.didHessianReset==1){
       warning(_("Hessian reset during optimization; (can control by foceiControl(resetHessianAndEta=.))"));

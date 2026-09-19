@@ -107,6 +107,10 @@ likInner <- function(eta, id = 1L) {
     .Call(`_nlmixr2est_nHessianQNGet`)
 }
 
+.foceiFinalOfvWorse <- function(initOfv, finalOfv) {
+    .Call(`_nlmixr2est_foceiFinalOfvWorseR`, initOfv, finalOfv)
+}
+
 foceiLik <- function(theta) {
     .Call(`_nlmixr2est_foceiLik`, theta)
 }
