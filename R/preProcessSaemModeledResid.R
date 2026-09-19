@@ -21,8 +21,7 @@
   .modeled <- vapply(
     seq_along(.pred$cond),
     function(i) {
-      .pred$distribution[i] %in% dist &&
-        any(!is.na(unlist(.pred[i, .cols, drop = TRUE])))
+      .pred$distribution[i] %in% dist && any(!is.na(unlist(.pred[i, .cols, drop = TRUE])))
     },
     logical(1),
     USE.NAMES = FALSE
@@ -46,8 +45,7 @@
   .etas <- .iniDf$name[!is.na(.iniDf$neta1) & .iniDf$neta1 == .iniDf$neta2]
   .rhs <- list()
   for (.e in ui$lstExpr) {
-    if (is.call(.e) && (identical(.e[[1]], as.name("<-")) || identical(.e[[1]], as.name("="))) &&
-          is.name(.e[[2]])) {
+    if (is.call(.e) && (identical(.e[[1]], as.name("<-")) || identical(.e[[1]], as.name("="))) && is.name(.e[[2]])) {
       .n <- as.character(.e[[2]])
       .rhs[[.n]] <- c(.rhs[[.n]], all.vars(.e[[3]]))
     }
@@ -128,8 +126,7 @@
   if (length(.etaConds) > 0L && .saemModeledResidHasEta(.orig, .etaConds)) {
     .ctl <- .saemAutoNu(control)
     if (!is.null(.ctl)) {
-      warning("residual error depends on an eta; MCMC nu raised to ",
-              deparse1(.ctl$mcmc$nu), call. = FALSE)
+      warning("residual error depends on an eta; MCMC nu raised to ", deparse1(.ctl$mcmc$nu), call. = FALSE)
     }
   }
   .spec <- .saemPseudoEtaThetas(ui)

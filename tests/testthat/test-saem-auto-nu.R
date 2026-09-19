@@ -1,13 +1,15 @@
 test_that("a residual error model is traced back to its etas", {
   .ui <- function(extraIni, lines) {
-    eval(parse(text = sprintf(
-      "function() {
+    eval(parse(
+      text = sprintf(
+        "function() {
         ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- 0.5; eta.ka ~ 0.2; %s })
         model({ ka <- exp(tka + eta.ka); cl <- exp(tcl); v <- exp(tv); cp <- linCmt(); %s })
       }",
-      extraIni,
-      lines
-    )))()
+        extraIni,
+        lines
+      )
+    ))()
   }
   .has <- function(ui) .saemModeledResidHasEta(ui, .saemModeledResidualCond(ui))
 
