@@ -17,3 +17,21 @@ OBJECTS = $(SOURCES_CPP:.cpp=.o) $(SOURCES_C:.c=.o)
 
 all: $(SHLIB)
 $(SHLIB): $(OBJECTS)
+
+# Rebuild every object when any header changes.  Without this the objects have
+# no header dependencies at all, so editing a shared header leaves stale objects
+# linking against the previous signature -- which fails at LOAD time with an
+# undefined symbol, or silently keeps running the OLD code, long after a build
+# that reported success.
+#
+# MUST come after `all:` -- the first target in a makefile is the default goal,
+# so putting this above it makes the first OBJECT the default and every build
+# silently compiles that one file and stops, producing no shared object at all.
+#
+# -I../inst/include is on the compile line above and sources do include from
+# there (nlmixr2est.h, nlmixr2estLikContrib.h, lin_cmt.hpp), so those headers
+# need covering too, or the same stale-object failure stays open for exactly
+# the headers that cross the package boundary.
+HEADERS = $(wildcard *.h) $(wildcard *.hpp) \
+          $(wildcard ../inst/include/*.h) $(wildcard ../inst/include/*.hpp)
+$(OBJECTS): $(HEADERS)
