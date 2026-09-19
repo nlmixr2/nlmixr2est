@@ -318,6 +318,14 @@
   the one-compartment ODE): 116.807191 against `outerOpt="nlminb"`'s 116.808709,
   at comparable cost once the model cache is warm.
 
+- `outerOpt="trust"` evaluates the outer gradient and Hessian only at points
+  the trust region can accept.  `RcppTrust` reads the curvature at accepted
+  points only, and it accepts only a trial below the incumbent, so a trial
+  that is no improvement now gets its value alone; the incumbent is tracked by
+  replaying trust's own acceptance test.  Same optima, 1.1x-2.6x faster with
+  the analytical Hessian on the models measured (most on perturbed starts,
+  where up to two thirds of the Hessian evaluations were discarded).
+
 - Added `est="flaplace"`, `"mflaplace"`, `"iflaplace"`, `"fagq"`, `"mfagq"` and
   `"ifagq"` -- the Laplace and adaptive-quadrature methods (plus their
   mu-referenced `"lin"`/`"irls"` variants) run with the full conditional

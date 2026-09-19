@@ -531,17 +531,44 @@ is.latex <- function() {
 #' @param lower,upper box the outer problem optimizes in
 #' @return function(x) returning `list(value=, gradient=, hessian=)`
 #' @noRd
-.trustOuterObjfun <- function(fn, gr, curvature, lower, upper) {
+.trustOuterObjfun <- function(fn, gr, curvature, lower, upper, region = NULL) {
   .n <- length(lower)
   .reject <- list(value = Inf, gradient = rep(0.0, .n), hessian = diag(.n))
+  # RcppTrust reads the gradient and Hessian only at points it accepts, and it can
+  # only accept a trial whose value is below the incumbent's (rho >= 1/4, or the
+  # termination branch with ftry < f).  A trial that is no improvement therefore gets
+  # its value only -- the analytic Hessian is the expensive part of an iteration and
+  # would be discarded.  The incumbent is tracked by replaying trust's own acceptance
+  # test (same preddiff, rho, fterm/mterm; no parscale, minimize = TRUE); where the
+  # replay could disagree it errs toward "rejected", which only costs an evaluation.
+  .fterm <- if (is.null(region$fterm)) 0 else region$fterm
+  .mterm <- if (is.null(region$mterm)) 0 else region$mterm
+  .inc <- NULL   # list(x, value, gradient, hessian) at the incumbent
   function(x) {
     if (any(x < lower) || any(x > upper)) return(.reject)
     .v <- fn(x)
     if (!is.finite(.v)) return(.reject)
+    if (!is.null(.inc)) {
+      if (isTRUE(all(x == .inc$x))) {        # a (re)start at the incumbent: already known
+        return(list(value = .inc$value, gradient = .inc$gradient, hessian = .inc$hessian))
+      }
+      if (.v >= .inc$value) {                # cannot be accepted: value only
+        return(list(value = .v, gradient = .inc$gradient, hessian = .inc$hessian))
+      }
+    }
     .g <- gr(x)
     if (length(.g) != .n || !all(is.finite(.g))) return(.reject)
     .h <- curvature$hessian(x, .g)
     if (is.null(.h) || !all(is.finite(.h))) return(.reject)
+    .accepted <- is.null(.inc)
+    if (!.accepted) {
+      .p <- x - .inc$x
+      .pred <- sum(.p * (.inc$gradient + drop(.inc$hessian %*% .p) / 2))
+      .term <- abs(.v - .inc$value) < .fterm || abs(.pred) < .mterm
+      .accepted <- if (.term) .v < .inc$value else
+        is.finite(.pred) && .pred != 0 && (.v - .inc$value) / .pred > 0.25
+    }
+    if (.accepted) .inc <<- list(x = x, value = .v, gradient = .g, hessian = .h)
     list(value = .v, gradient = .g, hessian = .h)
   }
 }
@@ -560,9 +587,10 @@ is.latex <- function() {
   .relStep <- control$outerTrustRelStep
   if (is.null(.relStep)) .relStep <- 1e-3
   .curvature <- .trustOuterCurvature(control, fn, gr, .relStep, .lower, .upper)
+  .region <- .trustOuterRegion(par, control)
   .ret <- .trustOuterRun(
-    .trustOuterObjfun(fn, gr, .curvature, .lower, .upper), par,
-    .trustOuterRegion(par, control),
+    .trustOuterObjfun(fn, gr, .curvature, .lower, .upper, .region), par,
+    .region,
     .trustOuterCount(control$maxOuterIterations, 1L),
     .trustOuterCount(control$outerTrustRestarts, 0L)
   )
