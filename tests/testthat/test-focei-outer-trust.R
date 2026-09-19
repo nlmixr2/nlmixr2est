@@ -189,16 +189,39 @@ test_that("the trust driver hands its control through to the region and curvatur
   expect_equal(.ret$restarts, 0L)
   expect_lt(.ret$newtonDecrement, .control$outerTrustFterm)
 
-  # the box is enforced by rejecting the point, not by projecting the step
+  # An active bound: the unconstrained minimum (0, 0) is outside the box, so
+  # every Newton step leaves it.  Rejecting those trials alone converges only
+  # linearly onto the bound; the coordinates are held on it instead and the
+  # bounded minimum (1, 1) is reached exactly, with the gradient still pointing
+  # out (a KKT point, not a stationary one).
+  .n <- 0L
   .ret <- .trustOuter(
     c(3, 2),
-    fn = function(x) x[1]^2 + 4 * x[2]^2,
+    fn = function(x) {
+      .n <<- .n + 1L
+      x[1]^2 + 4 * x[2]^2
+    },
     gr = function(x) c(2 * x[1], 8 * x[2]),
     lower = c(1, 1),
     upper = c(Inf, Inf),
     control = .control
   )
-  expect_true(all(.ret$x >= c(1, 1)))
+  expect_equal(.ret$x, c(1, 1))
+  expect_equal(.ret$convergence, 0L)
+  expect_identical(.ret$activeBounds, 1:2)
+  expect_equal(.ret$gradient, c(2, 8))
+  expect_lt(.n, 15L)
+  # a bound the minimum does not sit on is held and then released
+  .ret <- .trustOuter(
+    c(3, 2),
+    fn = function(x) (x[1] - 2)^2 + 4 * x[2]^2,
+    gr = function(x) c(2 * (x[1] - 2), 8 * x[2]),
+    lower = c(1, 1),
+    upper = c(Inf, Inf),
+    control = .control
+  )
+  expect_equal(.ret$x, c(2, 1), tolerance = 1e-6)
+  expect_identical(.ret$activeBounds, 2L)
 })
 
 test_that("outerOpt='trust' fits and consumes the analytic outer Hessian", {
@@ -236,4 +259,34 @@ test_that("outerOpt='trust' fits and consumes the analytic outer Hessian", {
   )
   expect_equal(fitA$objf, fitN$objf, tolerance = 1e-3)
   expect_equal(unname(fixef(fitA)), unname(fixef(fitN)), tolerance = 1e-2)
+})
+
+test_that("outerOpt='trust' holds a coordinate on an active bound and converges", {
+  skip_on_cran()
+  # An upper bound below the unconstrained optimum: every Newton step from
+  # inside the box points out through it.  Rejecting those trials only shrinks
+  # the region, which converges linearly onto the bound and can stop there
+  # with a large gradient.  The driver holds the coordinate on the bound
+  # instead and finishes the others; the bounded optimum is the one L-BFGS-B
+  # finds.
+  model <- function() {
+    ini({ tka <- c(-Inf, 0.1, 0.3); tcl <- 1; tv <- 3.45
+          eta.cl ~ 0.3; add.sd <- 0.7 })
+    model({ ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+            d/dt(depot) <- -ka * depot
+            d/dt(center) <- ka * depot - cl / v * center
+            cp <- center / v
+            cp ~ add(add.sd) })
+  }
+  d <- nlmixr2data::theo_sd
+  ctl <- function(...) {
+    foceiControl(print = 0L, calcTables = FALSE, covMethod = "", fast = TRUE, ...)
+  }
+  fitT <- .nlmixr(model, d, "focei", ctl(outerOpt = "trust"))
+  fitL <- .nlmixr(model, d, "focei", ctl(outerOpt = "lbfgsb3c"))
+  expect_equal(unname(fixef(fitT)["tka"]), 0.3, tolerance = 1e-4)
+  expect_identical(fitT$env$optReturn$activeBounds, 1L)
+  expect_true(fitT$env$optReturn$converged)
+  expect_equal(fitT$objf, fitL$objf, tolerance = 1e-3)
+  expect_equal(unname(fixef(fitT)), unname(fixef(fitL)), tolerance = 1e-2)
 })

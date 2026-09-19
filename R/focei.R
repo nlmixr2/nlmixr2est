@@ -467,14 +467,17 @@ is.latex <- function() {
 #' @param region `.trustOuterRegion()` output
 #' @param iterlim TOTAL iteration budget, across restarts
 #' @param restarts maximum number of re-entries
+#' @param state `.trustOuterState()` output, shared with `objfun`
 #' @return the `RcppTrust::trust()` result, with `iterations` totalled and
-#'   `restarts`, `newtonDecrement` and `underConverged` added
+#'   `restarts`, `newtonDecrement`, `underConverged`, `activeBounds` and
+#'   `activeChanges` added
 #' @noRd
-.trustOuterRun <- function(objfun, par, region, iterlim, restarts) {
+.trustOuterRun <- function(objfun, par, region, iterlim, restarts, state) {
   .x <- par
   .left <- iterlim
   .used <- 0L
   .nRestart <- 0L
+  .maxActive <- 2L * length(par) + 2L
   repeat {
     .ret <- RcppTrust::trust(
       objfun,
@@ -489,7 +492,49 @@ is.latex <- function() {
     )
     .used <- .used + .ret$iterations
     .left <- .left - .ret$iterations
-    .decr <- .trustOuterDecrement(.ret)
+    if (state$snapPending) {
+      # re-enter from the incumbent with the marked coordinates on their bounds
+      state$snapPending <- FALSE
+      state$activeChanges <- state$activeChanges + 1L
+      if (state$activeChanges > .maxActive || .left < 1L) {
+        .ret$converged <- FALSE
+        .decr <- NA_real_
+        .under <- TRUE
+        break
+      }
+      .x <- state$inc$x
+      .x[state$held] <- state$heldAt[state$held]
+      state$inc <- NULL
+      next
+    }
+    .inc <- state$inc
+    .arg <- .ret$argument
+    .arg[state$held] <- state$heldAt[state$held]
+    .atInc <- !is.null(.inc) && isTRUE(all(.arg == .inc$x))
+    if (.atInc && isTRUE(.ret$converged)) {
+      .inward <- state$held &
+        ifelse(state$heldAt == state$lower, .inc$gradient < 0, .inc$gradient > 0)
+      if (any(.inward)) {
+        # a held coordinate wants back in: same point, wider model
+        state$held[.inward] <- FALSE
+        .m <- .trustOuterMask(.inc$gradient, .inc$hessian, state$held)
+        state$inc$gm <- .m$gradient
+        state$inc$hm <- .m$hessian
+        state$activeChanges <- state$activeChanges + 1L
+        if (state$activeChanges <= .maxActive && .left >= 1L) {
+          .x <- .inc$x
+          next
+        }
+      }
+    }
+    if (.atInc) {
+      .ret$argument <- .arg
+      .ret$gradient <- .inc$gradient
+      .ret$hessian <- .inc$hessian
+      .decr <- .trustOuterDecrement(list(gradient = .inc$gm, hessian = .inc$hm))
+    } else {
+      .decr <- .trustOuterDecrement(.ret)
+    }
     .under <- is.na(.decr) || .decr > region$fterm
     .again <- .under &&
       isTRUE(.ret$converged) &&
@@ -506,6 +551,8 @@ is.latex <- function() {
   .ret$restarts <- .nRestart
   .ret$newtonDecrement <- .decr
   .ret$underConverged <- .under
+  .ret$activeBounds <- which(state$held)
+  .ret$activeChanges <- state$activeChanges
   .ret
 }
 
@@ -578,18 +625,65 @@ is.latex <- function() {
   .state
 }
 
+#' Mask the gradient and Hessian for the coordinates held on a bound
+#'
+#' A zero gradient and a decoupled unit diagonal make the model's step in a
+#' held coordinate exactly zero, so trust never moves it.
+#' @param g,h the gradient and Hessian at a point
+#' @param held logical, which coordinates are held
+#' @return list of `gradient`, `hessian`
+#' @noRd
+.trustOuterMask <- function(g, h, held) {
+  if (any(held)) {
+    g[held] <- 0
+    h[held, ] <- 0
+    h[, held] <- 0
+    .w <- which(held)
+    h[cbind(.w, .w)] <- 1
+  }
+  list(gradient = g, hessian = h)
+}
+
+#' The shared state of one `outerOpt="trust"` run
+#'
+#' `inc` is the incumbent (`x`, `value`, unmasked `gradient`/`hessian` and the
+#' masked `gm`/`hm` trust was given); `held`/`heldAt` the coordinates on a
+#' bound; `snapPending` asks the run loop to re-enter with a new hold.
+#' @param lower,upper box the outer problem optimizes in
+#' @return an environment
+#' @noRd
+.trustOuterState <- function(lower, upper) {
+  .s <- new.env(parent = emptyenv())
+  .s$lower <- lower
+  .s$upper <- upper
+  .s$inc <- NULL
+  .s$held <- rep(FALSE, length(lower))
+  .s$heldAt <- rep(NA_real_, length(lower))
+  .s$infeasibleRun <- 0L
+  .s$snapPending <- FALSE
+  .s$activeChanges <- 0L
+  .s
+}
+
 #' The value/gradient/Hessian function `RcppTrust::trust()` calls
 #'
 #' `trust` is unbounded, so a point outside the box -- or one the inner problem
-#' could not evaluate -- is reported as an infinite objective: the region
-#' shrinks rather than the step being projected, and the analytic Hessian
-#' (which refuses an out-of-bounds theta) is never asked for one.
+#' could not evaluate -- is reported as an infinite objective and the region
+#' shrinks.  On an active bound that alone converges only linearly (every step
+#' points outside, so every iteration is region-limited) and can satisfy
+#' `fterm` on the bound with a large gradient.  So once the model's step has
+#' left the box through a coordinate twice from the same incumbent, that
+#' coordinate is held on its bound (its model masked so the step in it is
+#' zero) and the run re-enters on the free ones; `.trustOuterRun()` releases
+#' it when the gradient at a converged point pulls it back inside.
 #' @param fn,gr outer objective and gradient
 #' @param curvature `.trustOuterCurvature()` output
 #' @param lower,upper box the outer problem optimizes in
+#' @param region `.trustOuterRegion()` output
+#' @param state `.trustOuterState()` output
 #' @return function(x) returning `list(value=, gradient=, hessian=)`
 #' @noRd
-.trustOuterObjfun <- function(fn, gr, curvature, lower, upper, region = NULL) {
+.trustOuterObjfun <- function(fn, gr, curvature, lower, upper, region, state) {
   .n <- length(lower)
   .reject <- list(value = Inf, gradient = rep(0.0, .n), hessian = diag(.n))
   # RcppTrust reads the gradient and Hessian only at points it accepts, and it can
@@ -601,24 +695,39 @@ is.latex <- function() {
   # replay could disagree it errs toward "rejected", which only costs an evaluation.
   .fterm <- if (is.null(region$fterm)) 0 else region$fterm
   .mterm <- if (is.null(region$mterm)) 0 else region$mterm
-  .inc <- NULL # list(x, value, gradient, hessian) at the incumbent
   function(x) {
-    if (any(x < lower) || any(x > upper)) {
+    if (state$snapPending) {
+      # trust catches this and returns; the run loop re-enters from the incumbent
+      stop(structure(
+        class = c("trustOuterSnap", "error", "condition"),
+        list(message = "trust outer: coordinate held on a bound", call = NULL)
+      ))
+    }
+    .out <- !state$held & (x < lower | x > upper)
+    if (any(.out)) {
+      if (!is.null(state$inc)) {
+        state$infeasibleRun <- state$infeasibleRun + 1L
+        if (state$infeasibleRun >= 2L) {
+          state$held[.out] <- TRUE
+          state$heldAt[.out] <- ifelse(x[.out] < lower[.out], lower[.out], upper[.out])
+          state$snapPending <- TRUE
+        }
+      }
       return(.reject)
+    }
+    x[state$held] <- state$heldAt[state$held]
+    .inc <- state$inc
+    if (!is.null(.inc) && isTRUE(all(x == .inc$x))) {
+      # a (re)start at the incumbent: already known
+      return(list(value = .inc$value, gradient = .inc$gm, hessian = .inc$hm))
     }
     .v <- fn(x)
     if (!is.finite(.v)) {
       return(.reject)
     }
-    if (!is.null(.inc)) {
-      if (isTRUE(all(x == .inc$x))) {
-        # a (re)start at the incumbent: already known
-        return(list(value = .inc$value, gradient = .inc$gradient, hessian = .inc$hessian))
-      }
-      if (.v >= .inc$value) {
-        # cannot be accepted: value only
-        return(list(value = .v, gradient = .inc$gradient, hessian = .inc$hessian))
-      }
+    if (!is.null(.inc) && .v >= .inc$value) {
+      # cannot be accepted: value only
+      return(list(value = .v, gradient = .inc$gm, hessian = .inc$hm))
     }
     .g <- gr(x)
     if (length(.g) != .n || !all(is.finite(.g))) {
@@ -628,10 +737,11 @@ is.latex <- function() {
     if (is.null(.h) || !all(is.finite(.h))) {
       return(.reject)
     }
+    .m <- .trustOuterMask(.g, .h, state$held)
     .accepted <- is.null(.inc)
     if (!.accepted) {
       .p <- x - .inc$x
-      .pred <- sum(.p * (.inc$gradient + drop(.inc$hessian %*% .p) / 2))
+      .pred <- sum(.p * (.inc$gm + drop(.inc$hm %*% .p) / 2))
       .term <- abs(.v - .inc$value) < .fterm || abs(.pred) < .mterm
       .accepted <- if (.term) {
         .v < .inc$value
@@ -640,9 +750,17 @@ is.latex <- function() {
       }
     }
     if (.accepted) {
-      .inc <<- list(x = x, value = .v, gradient = .g, hessian = .h)
+      state$inc <- list(
+        x = x,
+        value = .v,
+        gradient = .g,
+        hessian = .h,
+        gm = .m$gradient,
+        hm = .m$hessian
+      )
+      state$infeasibleRun <- 0L
     }
-    list(value = .v, gradient = .g, hessian = .h)
+    list(value = .v, gradient = .m$gradient, hessian = .m$hessian)
   }
 }
 
@@ -663,12 +781,14 @@ is.latex <- function() {
   }
   .curvature <- .trustOuterCurvature(control, fn, gr, .relStep, .lower, .upper)
   .region <- .trustOuterRegion(par, control)
+  .state <- .trustOuterState(.lower, .upper)
   .ret <- .trustOuterRun(
-    .trustOuterObjfun(fn, gr, .curvature, .lower, .upper, .region),
+    .trustOuterObjfun(fn, gr, .curvature, .lower, .upper, .region, .state),
     par,
     .region,
     .trustOuterCount(control$maxOuterIterations, 1L),
-    .trustOuterCount(control$outerTrustRestarts, 0L)
+    .trustOuterCount(control$outerTrustRestarts, 0L),
+    .state
   )
   if (isTRUE(.ret$converged) && .ret$underConverged) {
     warning("outer trust stopped short of a stationary point", call. = FALSE)

@@ -104,6 +104,17 @@
   inner driver all took the same route (#1079, rxode2#1365).  A covariance
   declared at `0` in a two-eta block is unchanged: it leaves the two etas
   uncorrelated, as it always has.
+- `outerOpt="trust"` now holds a parameter on its bound when the model's step
+  keeps leaving the box through it, and releases it when the gradient at a
+  converged point pulls it back inside; `$optReturn$activeBounds` lists the
+  parameters held at the end.  `RcppTrust` is unbounded and a trial outside
+  the box was only rejected, so on an active bound every Newton step left the
+  box, every iteration was region-limited, and the run converged linearly
+  onto the bound -- where `outerTrustFterm` could be met with a large
+  gradient.  Two of nine perturbed-start fits measured stopped 154 and 141
+  objective units above the optimum `outerOpt="nlminb"` and `"lbfgsb3c"`
+  reach (an omega variance on its `diagOmegaBoundLower` floor); both now
+  reach it, the other seven are unchanged.
 - `foceiControl(warm="save")` now restarts the n1qn1 inner problem from the
   curvature the subject's previous inner solve left, as it was always meant
   to.  It reconstructed that Hessian from a buffer it had just zeroed, so
