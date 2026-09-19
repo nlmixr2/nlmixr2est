@@ -15,7 +15,8 @@
 ## Changed defaults
 
 - `est="saem"` now uses `nu=c(4,4,4)` when `nu` is not set and a residual error
-  component depends on an eta (for example `a <- add.sd * exp(eta.sd)`).  At the
+  component depends on an eta (for example `a <- add.sd * exp(eta.sd)` with
+  `cp ~ add(a)` or `cp ~ add(a) + dnorm()`).  At the
   default `c(2,2,2)` those chains mixed too slowly and the fit stopped short of
   the optimum; an explicit `saemControl(nu=)` is used as given.
 

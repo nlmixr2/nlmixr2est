@@ -5,9 +5,10 @@
 #' columns; a plain theta leaves them `NA`.
 #'
 #' @param ui rxode2 ui
+#' @param dist endpoint distributions to consider
 #' @return character vector of endpoint conditions
 #' @noRd
-.saemModeledResidualCond <- function(ui) {
+.saemModeledResidualCond <- function(ui, dist = "norm") {
   .pred <- ui$predDf
   if (is.null(.pred) || length(.pred$cond) == 0L) {
     return(character(0))
@@ -20,7 +21,7 @@
   .modeled <- vapply(
     seq_along(.pred$cond),
     function(i) {
-      .pred$distribution[i] == "norm" &&
+      .pred$distribution[i] %in% dist &&
         any(!is.na(unlist(.pred[i, .cols, drop = TRUE])))
     },
     logical(1),
@@ -121,9 +122,22 @@
     ui <- eval(bquote(rxode2::model(ui, .(.new))))
     warning(sprintf("modeled residual error for '%s'; fit as dnorm() likelihood", .cond), call. = FALSE)
   }
+  # an explicit + dnorm() is the same likelihood, so it gets the same nu
+  .ctl <- NULL
+  .etaConds <- .saemModeledResidualCond(.orig, c("norm", "dnorm"))
+  if (length(.etaConds) > 0L && .saemModeledResidHasEta(.orig, .etaConds)) {
+    .ctl <- .saemAutoNu(control)
+    if (!is.null(.ctl)) {
+      warning("residual error depends on an eta; MCMC nu raised to ",
+              deparse1(.ctl$mcmc$nu), call. = FALSE)
+    }
+  }
   .spec <- .saemPseudoEtaThetas(ui)
   if (length(.conds) == 0L && nrow(.spec) == 0L) {
-    return(NULL)
+    if (is.null(.ctl)) {
+      return(NULL)
+    }
+    return(list(control = .ctl))
   }
   if (nrow(.spec) > 0L) {
     ui <- .saemAddPseudoEtas(ui, .spec)
@@ -137,13 +151,8 @@
     nlmixr2global$nlmixr2EstEnv$nlmixrPureInputUi <- rxode2::rxUiDecompress(.orig)
   }
   .ret <- list(ui = ui)
-  if (length(.conds) > 0L && .saemModeledResidHasEta(.orig, .conds)) {
-    .ctl <- .saemAutoNu(control)
-    if (!is.null(.ctl)) {
-      .ret$control <- .ctl
-      warning("residual error depends on an eta; MCMC nu raised to ",
-              deparse1(.ctl$mcmc$nu), call. = FALSE)
-    }
+  if (!is.null(.ctl)) {
+    .ret$control <- .ctl
   }
   .ret
 }

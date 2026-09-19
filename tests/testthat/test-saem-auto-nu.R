@@ -14,6 +14,9 @@ test_that("a residual error model is traced back to its etas", {
   expect_true(.has(.ui("eta.sd ~ 0.1", "a <- add.sd * exp(eta.sd); cp ~ add(a)")))
   # through intermediate variables
   expect_true(.has(.ui("eta.sd ~ 0.1", "l <- log(add.sd) + eta.sd; a <- exp(l); cp ~ add(a)")))
+  # an explicit + dnorm() is the same likelihood
+  .ui2 <- .ui("eta.sd ~ 0.1", "a <- add.sd * exp(eta.sd); cp ~ add(a) + dnorm()")
+  expect_true(.saemModeledResidHasEta(.ui2, .saemModeledResidualCond(.ui2, c("norm", "dnorm"))))
   # a covariate alone does not slow the chains
   expect_false(.has(.ui("wt.sd <- 0.01", "a <- add.sd + wt.sd * WT; cp ~ add(a)")))
 })

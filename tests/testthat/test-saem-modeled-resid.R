@@ -55,7 +55,17 @@ nmTest({
     on.exit(nlmixr2global$nlmixr2EstEnv$nlmixrPureInputUi <- NULL, add = TRUE)
     .ui <- .modeledResidUi("cp ~ add(a)", "a <- add.sd * exp(eta.sd)")
     expect_null(.preProcessSaemModeledResid(.ui, "focei", NULL, NULL))
-    expect_warning(.new <- .preProcessSaemModeledResid(.ui, "saem", NULL, NULL)$ui, "modeled residual error for 'cp'")
+    expect_warning(
+      expect_warning(
+        expect_warning(
+          .new <- .preProcessSaemModeledResid(.ui, "saem", NULL, NULL)$ui,
+          "modeled residual error for 'cp'"
+        ),
+        "temporary eta for eta-less likelihood theta"
+      ),
+      "MCMC nu raised to c(4, 4, 4)",
+      fixed = TRUE
+    )
     expect_equal(as.character(.new$predDf$distribution), "dnorm")
     expect_equal(.new$saemResMod, 0L)
     expect_true("a <- add.sd * exp(eta.sd)" %in% .lines(.new))
