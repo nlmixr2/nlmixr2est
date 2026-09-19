@@ -12903,6 +12903,18 @@ void foceiFinalizeTables(Environment e){
       e["method"] = "FOCE";
     }
   }
+  // Which mceta candidate each inner solve started from.  Not gated on `fast`
+  // (mceta>=1 is independent of the analytic gradient) and deliberately OUTSIDE
+  // the `extra` block below: est="imp"/"impmap" takes that block's isImpmap
+  // branch, which appends nothing, so every counter written inside its `else`
+  // is invisible to the EM estimators.  This one has to be readable there --
+  // imp reaches the same inner MAP, so it is the only evidence that raising
+  // mceta did anything for an imp fit rather than being silently ignored.
+  if (op_focei.mceta >= 1) {
+    e["nMcetaStart"] = IntegerVector::create(
+      _["zero"] = op_focei.nMcetaZero.load(std::memory_order_relaxed),
+      _["sample"] = op_focei.nMcetaSample.load(std::memory_order_relaxed));
+  }
   if (!e.exists("extra")){
     if (op_focei.isImpmap) {
       // The EM drives itself (no outer optimizer, no gradients, and the mu
@@ -13036,13 +13048,6 @@ void foceiFinalizeTables(Environment e){
           // Subjects whose whole cascade -- first solve, radius escalation and
           // all four nudges -- ended without a converged attempt.
           _["failed"] = op_focei.nTrustFail.load(std::memory_order_relaxed));
-      }
-      if (op_focei.mceta >= 1) {
-        // Which mceta candidate each inner solve started from.  Not gated on
-        // `fast`: mceta>=1 is independent of the analytic gradient.
-        e["nMcetaStart"] = IntegerVector::create(
-          _["zero"] = op_focei.nMcetaZero.load(std::memory_order_relaxed),
-          _["sample"] = op_focei.nMcetaSample.load(std::memory_order_relaxed));
       }
       if (op_focei.muModel == 1) {
         _details += "; mu: lin";
