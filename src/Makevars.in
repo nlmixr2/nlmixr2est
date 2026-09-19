@@ -32,6 +32,17 @@ $(SHLIB): $(OBJECTS)
 # there (nlmixr2est.h, nlmixr2estLikContrib.h, lin_cmt.hpp), so those headers
 # need covering too, or the same stale-object failure stays open for exactly
 # the headers that cross the package boundary.
-HEADERS = $(wildcard *.h) $(wildcard *.hpp) \
-          $(wildcard ../inst/include/*.h) $(wildcard ../inst/include/*.hpp)
+HEADERS = armahead.h censEst.h censResid.h cwres.h evaluate.h foceiGrad.h \
+          imp.h impQrng.h inner.h ires.h likContribUtil.h logSumExp.h \
+          nearPD.h nmMcmcRng.h nmParallel.h nmParallelCore.h nmSeqSeed.h \
+          np.h npCommon.h npde.h odeSwap.h res.h rxProtect.h rxomp.h scale.h \
+          shi21.h shrink.h solveWarnHelper.h truncNorm.h \
+          trustHessianUpdate.h utilc.h vaeEncoder.h \
+          ../inst/include/lin_cmt.hpp ../inst/include/nlmixr2est.h \
+          ../inst/include/nlmixr2estFoceiPtr.h \
+          ../inst/include/nlmixr2estLikContrib.h \
+          ../inst/include/nlmixr2estLikContribPtr.h \
+          ../inst/include/nlmixr2estNlmPtr.h \
+          ../inst/include/nlmixr2est_RcppExports.h \
+          ../inst/include/nlmixr2est_types.h
 $(OBJECTS): $(HEADERS)
