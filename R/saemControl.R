@@ -18,7 +18,8 @@
 #'     numbers of transitions of the three different kernels used in
 #'     the Hasting-Metropolis algorithm.  The default value is \code{c(2,2,2)},
 #'     representing 40 for each transition initially (each value is
-#'     multiplied by 20).
+#'     multiplied by 20).  When unset, a residual error model that depends on
+#'     an eta uses \code{c(4,4,4)}, since its chains mix more slowly.
 #'
 #'     The first value represents the initial number of multi-variate
 #'     Gibbs samples are taken from a normal distribution.
@@ -431,6 +432,8 @@ saemControl <- function(
   censOption = c("gauss", "laplace"),
   ...
 ) {
+  # a modeled residual error with an eta raises an unset nu (see .saemAutoNu)
+  .nuAuto <- missing(nu)
   .xtra <- list(...)
   .bad <- names(.xtra)
   .bad <- .bad[!(.bad %in% c("genRxControl", "mcmc", "DEBUG", "iterPrintControl"))]
@@ -456,6 +459,7 @@ saemControl <- function(
     ## 12)) reached .configsaem as c(2, 2, 2) and fitted identically to the
     ## default.
     nu <- .xtra$mcmc$nu
+    .nuAuto <- isTRUE(.xtra$mcmc$nuAuto)
   }
   checkmate::assertIntegerish(nBurn, any.missing = FALSE, len = 1, lower = 0)
   checkmate::assertIntegerish(nEm, any.missing = FALSE, len = 1, lower = 0)
@@ -586,7 +590,7 @@ saemControl <- function(
     censOption <- setNames(c("gauss" = 0L, "laplace" = 1L)[match.arg(censOption)], NULL)
   }
   .ret <- list(
-    mcmc = list(niter = c(nBurn, nEm), nmc = nmc, nu = nu),
+    mcmc = list(niter = c(nBurn, nEm), nmc = nmc, nu = nu, nuAuto = .nuAuto),
     rxControl = rxControl,
     seed = seed,
     censOption = censOption,

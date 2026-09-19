@@ -14,6 +14,11 @@
 
 ## Changed defaults
 
+- `est="saem"` now uses `nu=c(4,4,4)` when `nu` is not set and a residual error
+  component depends on an eta (for example `a <- add.sd * exp(eta.sd)`).  At the
+  default `c(2,2,2)` those chains mixed too slowly and the fit stopped short of
+  the optimum; an explicit `saemControl(nu=)` is used as given.
+
 - `est="saem"` now refines a population theta that carries no random effect with
   `newuoa` over all such thetas at once, under a budget of 25 objective
   evaluations per iteration (`saemControl(nonMuThetaOpt="newuoa",
