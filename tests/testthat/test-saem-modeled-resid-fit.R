@@ -29,9 +29,9 @@ nmTest({
     )))
     expect_true(any(grepl("temporary eta for eta-less likelihood theta", fit$runInfo, fixed = TRUE)))
   }
-  .fitBoth <- function(mFit, d) {
+  .fitBoth <- function(mFit, d, nu = c(2, 2, 2)) {
     list(
-      saem = .nlmixr(mFit, d, est = "saem", control = saemControl(seed = 42L, print = 0L, covMethod = "")),
+      saem = .nlmixr(mFit, d, est = "saem", control = saemControl(seed = 42L, print = 0L, covMethod = "", nu = nu)),
       focei = .nlmixr(mFit, d, est = "focei", control = foceiControl(print = 0L, covMethod = ""))
     )
   }
@@ -52,7 +52,9 @@ nmTest({
   test_that("saem recovers an eta on the additive residual SD", {
     mTrue <- .base("add.sd <- 0.5; eta.sd ~ 0.2", "a <- add.sd * exp(eta.sd); cp ~ add(a)")
     .d <- .simModeledResid(mTrue)
-    .f <- .fitBoth(do.call(rxode2::ini, c(list(mTrue), .starts, list(add.sd = 1, eta.sd = 0.1))), .d)
+    # an eta on the residual SD mixes slowly: at the default nu=2 most seeds stop
+    # short of the optimum, at nu=4 every seed tried reaches it
+    .f <- .fitBoth(do.call(rxode2::ini, c(list(mTrue), .starts, list(add.sd = 1, eta.sd = 0.1))), .d, nu = c(4, 4, 4))
     .noTemporaryEta(.f$saem)
     expect_equal(
       unname(fixef(.f$saem)[c("tka", "tcl", "tv")]),
