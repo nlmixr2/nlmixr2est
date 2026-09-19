@@ -19,6 +19,7 @@
 #include <boost/math/distributions/chi_squared.hpp>
 #include <boost/math/distributions/gamma.hpp>
 #include <ctime>
+#include <atomic>
 #include "nmMcmcRng.h"
 #include "nmParallel.h"
 #include "impQrng.h"
@@ -29,6 +30,28 @@
 #ifdef _OPENMP
 #include <omp.h>
 #endif
+
+// Largest per-component structural-theta Newton step the M-step will take in one
+// EM iteration, relative to that theta's own magnitude (floored at 1 so a theta
+// sitting near zero still gets a usable absolute allowance).
+#define IMP_MSTEP_TRUST 0.5
+
+// Loose sanity bound on an UNDAMPED step, relative to each theta's own
+// magnitude.  A well-conditioned Hessian is allowed a large move -- that is
+// ordinary optimizer progress -- so this sits far above anything a healthy
+// M-step proposes and only catches a step that is plainly not a step.
+#define IMP_MSTEP_SANE 20.0
+
+// Counts of M-step Newton steps that needed Levenberg-Marquardt damping, and of
+// iterations whose structural thetas could not be updated at all.  Reported once
+// at the end of the fit: a run that damps constantly has an ill-conditioned
+// theta-sensitivity Hessian and its structural estimates deserve a second look.
+//
+// NOT inside the _OPENMP guard: the M-step reads them unconditionally, and a
+// toolchain without OpenMP (macOS clang) then fails to compile with "use of
+// undeclared identifier 'nMStepDamped'".  Only <omp.h> belongs in the guard.
+static std::atomic<int> nMStepDamped(0);
+static std::atomic<int> nMStepSkipped(0);
 
 using namespace Rcpp;
 
@@ -563,14 +586,20 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
   std::vector<double> logDetH(nExp, 0.0);
   std::vector<arma::mat> cholL(nExp);
   std::vector<char> haveL(nExp, 0);
+  // Subjects whose MAP Hessian gave no proposal and fell back to the population
+  // Omega.  Atomic because the fill loop below is parallel over subjects.
+  std::atomic<int> nOmegaFallback(0);
   // est="imp": no MAP search.  The proposal is centered at each subject's running
   // conditional mean (the current eta) with covariance gamma * V_i, where V_i is
   // that subject's conditional variance from the PREVIOUS E-step (passed in via
   // condVar, before it is overwritten below).  On the first iteration -- or a
   // pseudo-subject / degenerate V_i -- fall back to the population Omega, which is
   // over-dispersed and always available.
+  // Needed by BOTH branches: est="imp" centers on it when a subject has no
+  // usable conditional variance yet, and est="impmap" falls back to it when the
+  // MAP Hessian will not give a proposal (see the impmap branch below).
   arma::mat impOmega;
-  if (isImp) impGetOmega(impOmega);
+  impGetOmega(impOmega);
   bool doParProp = (cores > 1);
   nmForEachSubject(rx, nExp, cores, doParProp, [&](int id) {
     double gammaId = gammaVec[id];
@@ -598,7 +627,8 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
       arma::mat H(neta, neta, arma::fill::zeros);
       impGetMode(id, mode);
       modes[id] = mode;
-      if (impGetHessianNdiffSafe(id, H)) {
+      bool gotH = impGetHessianNdiffSafe(id, H);
+      if (gotH) {
         arma::mat Sigma;
         double ldv, lds;
         if (arma::inv_sympd(Sigma, H) && arma::log_det(ldv, lds, H) && lds > 0) {
@@ -609,8 +639,42 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
           if (arma::chol(L, Sigma, "lower")) { cholL[id] = L; haveL[id] = 1; }
         }
       }
+      if (!haveL[id]) {
+        // The MAP Hessian did not yield a proposal for this subject.  The
+        // Hessian is the curvature AT the mode, so it is only guaranteed
+        // positive definite at a converged one -- and the inner solve is not
+        // required to have converged (a pass that exhausted maxInnerIterations
+        // still returns a finite objective and can be the eta reported).  At
+        // such a point inv_sympd()/chol() legitimately fail.
+        //
+        // Dropping the subject here is the wrong answer to that: it silently
+        // removes an individual from the E-step, and if it happens widely the
+        // whole fit collapses to the failure objective with nothing said.
+        // est="imp" already meets its own version of this by centering on the
+        // population Omega, which is over-dispersed and always available; do
+        // the same.  An over-dispersed proposal costs effective sample size --
+        // the importance weights correct for it -- where a missing subject
+        // costs correctness.
+        arma::mat Hi;
+        double ldv, lds;
+        if (arma::inv_sympd(Hi, impOmega) && arma::log_det(ldv, lds, Hi) && lds > 0) {
+          arma::mat L;
+          if (arma::chol(L, gammaId * impOmega, "lower")) {
+            Hs[id] = Hi; logDetH[id] = ldv; cholL[id] = L; haveL[id] = 1;
+            nOmegaFallback.fetch_add(1, std::memory_order_relaxed);
+          }
+        }
+      }
     }
   });
+  // Say so.  A proposal built on the population Omega rather than on the
+  // subject's own curvature is a weaker proposal, and the reason it happened
+  // (an unconverged MAP) is worth knowing about; silently substituting it is
+  // how a fit ends up quietly worse than it looks.
+  if (nOmegaFallback.load(std::memory_order_relaxed) > 0) {
+    RSprintf("impmap: %d of %d subject proposals fell back to the population omega (MAP Hessian not usable)\n",
+             nOmegaFallback.load(std::memory_order_relaxed), nExp);
+  }
 
   // Per-expanded-subject E-step results (combined per base subject below).
   arma::mat cmExp(nExp, neta, arma::fill::zeros);
@@ -1526,6 +1590,8 @@ void impOuter(Environment e) {
   std::vector<arma::vec> parHist;
   bool converged = false;
   int iterRun = 0;
+  nMStepDamped = 0;
+  nMStepSkipped = 0;
 
   // Iteration print + parameter-history capture (shared scale.h machinery).
   impIterPrintStart();
@@ -1893,8 +1959,92 @@ void impOuter(Environment e) {
       // MAP correction: fold in the ini({}) prior's score/curvature for these
       // thetas, if any (no-op otherwise) -- see impPriorStructThetaCorrect().
       impPriorStructThetaCorrect(nsub, g, H);
+      // The Newton step on the non-mu structural thetas is only as trustworthy
+      // as the IS-weighted Gauss-Newton Hessian behind it.  When the importance
+      // weights degenerate -- a badly covered subject, or a MAP that moved
+      // because mceta= changed which mode the inner search starts from -- H goes
+      // near-singular.  arma::solve still SUCCEEDS on such an H and still returns
+      // a FINITE step; it is just astronomically large, so a bare
+      // `solve() && is_finite()` guard lets one EM iteration throw the whole
+      // parameter vector off the map.  Measured on Bauer's gamma model at
+      // mceta=10: a single iteration moved log(relative variance) from -2.46 to
+      // +60.3 (a relative variance of 1.6e26) and the run reported a garbage
+      // objective, while the same fit at mceta=0 was fine.
+      //
+      // So the step is damped rather than merely finite-checked:
+      //   * Levenberg-Marquardt on the diagonal, escalated until the step lands
+      //     inside the trust region.  H is Gauss-Newton, hence positive
+      //     semi-definite, so adding lambda*diag-scale only ever improves its
+      //     conditioning and rotates the step toward a scaled gradient step.
+      //   * The trust region is relative to each theta's own magnitude (floored
+      //     at 1) so it means the same thing for a theta of 0.1 and one of 1e5.
+      // The undamped Newton step is taken whenever the Hessian behind it is
+      // actually trustworthy, so a healthy iteration is bit-identical to the
+      // unguarded code.  "Trustworthy" is measured directly, by conditioning --
+      // NOT by how big the step is, since a large step off a well-determined
+      // Hessian is a legitimate move and damping it would slow every ordinary
+      // fit.  The sanity bound alongside it is deliberately loose: it exists to
+      // catch a step no honest M-step would ever propose, not to shape normal
+      // ones.
       arma::vec step;
-      if (arma::solve(step, H, g) && step.is_finite()) impUpdateStructThetas(step);
+      bool stepOk = false;
+      double lambda = 0.0;
+      double rc = 0.0;
+      if (H.is_finite()) rc = arma::rcond(H);
+      bool wellCond = R_finite(rc) && rc > 1e-10;
+      if (wellCond && arma::solve(step, H, g) && step.is_finite() &&
+          impStructStepRel(step) <= IMP_MSTEP_SANE) {
+        impUpdateStructThetas(step);
+      } else {
+        // Not trustworthy.  arma::solve() SUCCEEDS on a near-singular H and
+        // still returns a FINITE step -- just an astronomically large one -- so
+        // "solved and finite" is not a guard, and one such step throws the
+        // whole parameter vector off the map (measured on Bauer's gamma model:
+        // one iteration took a log relative variance from -2.46 to +60.3).
+        //
+        // Levenberg-Marquardt instead, escalated until the step lands inside a
+        // trust region relative to each theta's own magnitude.  H is
+        // Gauss-Newton and hence positive semi-definite, so the damping only
+        // improves its conditioning and rotates the step toward a scaled
+        // gradient step.
+        double hscale = H.is_finite() ? arma::abs(H.diag()).max() : 0.0;
+        if (!R_finite(hscale) || hscale <= 0.0) hscale = 1.0;
+        // Start AT lambda = 1e-8, not at 0.  Reaching here means H already
+        // failed the conditioning test, so an undamped try is not a cheap first
+        // guess: arma::solve() answers a singular system with an APPROXIMATE
+        // solution (and prints "system is singular; rcond: ...; attempting
+        // approx solution" to the user's console), and that approximate step is
+        // then accepted whenever it happens to land inside the trust region.
+        // The trust region bounds a step's SIZE; it says nothing about whether
+        // the Hessian behind it determined its direction.
+        lambda = 1e-8;
+        for (int tryK = 0; tryK < 12; ++tryK) {
+          arma::mat Hd = H;
+          Hd.diag() += lambda * hscale;
+          arma::vec cand;
+          // no_approx: a singular system must FAIL so the ridge escalates,
+          // rather than silently returning a least-squares answer.
+          if (arma::solve(cand, Hd, g, arma::solve_opts::no_approx) &&
+              cand.is_finite() &&
+              impStructStepRel(cand) <= IMP_MSTEP_TRUST) {
+            step = cand;
+            stepOk = true;
+            break;
+          }
+          lambda *= 100.0;
+        }
+        if (stepOk) {
+          nMStepDamped++;
+          impUpdateStructThetas(step);
+        } else {
+          // Even heavily damped the step will not come inside the trust region
+          // (or will not solve at all).  Leaving the thetas alone is the safe
+          // move -- this iteration's E-step simply does not inform them -- and
+          // it is reported rather than silent, since a run that spends every
+          // iteration here is not estimating those thetas at all.
+          nMStepSkipped++;
+        }
+      }
     }
 
     // Mixture: mean-posterior EM update of the $MIX proportions (the stable M-step
@@ -2251,6 +2401,24 @@ void impOuter(Environment e) {
   e["impNburn"]    = nBurn;
   e["impBurnFreezeOmega"] = burnFreezeOmega;
   e["impIter"]     = eOnly ? 0 : iterRun;
+  e["impMStepDamped"]  = nMStepDamped.load(std::memory_order_relaxed);
+  e["impMStepSkipped"] = nMStepSkipped.load(std::memory_order_relaxed);
+  {
+    // An M-step that needed damping (or had to be skipped) on most iterations
+    // means the theta-sensitivity Hessian is ill-conditioned under the current
+    // importance weights, and the structural thetas are being driven by a
+    // regularized step rather than a Newton step.  That is far better than the
+    // blow-up it replaces, but it is not something to leave unsaid.
+    int nd = nMStepDamped.load(std::memory_order_relaxed);
+    int ns = nMStepSkipped.load(std::memory_order_relaxed);
+    if (ns > 0) {
+      RSprintf("imp: %d of %d M-step iterations could not update the structural thetas (ill-conditioned theta Hessian)\n",
+               ns, iterRun);
+    } else if (nd > 0 && iterRun > 0 && nd * 2 > iterRun) {
+      RSprintf("imp: %d of %d M-step Newton steps needed damping (ill-conditioned theta Hessian)\n",
+               nd, iterRun);
+    }
+  }
   e["impConverged"] = converged;
   e["impObjTrace"] = wrap(objTrace);
   e["impGammaTrace"] = wrap(gammaTrace);
