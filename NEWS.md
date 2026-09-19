@@ -212,6 +212,20 @@
   random effects, instead of fitting the model without them and then failing
   with "subscript out of bounds" while assembling the reported omega at the end
   of the run (#1047).
+- The analytic outer gradient takes Omega^-1 and its estimation-scale
+  derivatives from the native Cholesky map the objective already maintains
+  (verified against the R handle on first use, which stays the fallback), so
+  a gradient evaluation no longer calls the `rxSymInvChol` closure.
+
+- Swapping a peer model into the shared FOCEi solve pool (the augmented
+  outer-gradient model for every analytic gradient, the outer Hessian's probes,
+  the AGQ node model) installs its event-sensitivity shape from the registry
+  with a C call.  Only the first swap of a model goes through R
+  (`rxEventSensLoadModel()`); the shape it installed is read back and reused.
+  Before, every swap re-derived it in R, which kept every batch boundary on
+  the R side of the derivative passes.
+  `.odeSwapInfo()` reports `esInstallC`/`esInstallR`.
+
 - A model containing `mtime()` can be fit again, with every estimation method.
   `etTrans()` materializes the modeled times as `EVID` 10-99 records (`TIME=0`,
   `AMT=NA`) and `$dataSav` persisted them, so re-translating it for each

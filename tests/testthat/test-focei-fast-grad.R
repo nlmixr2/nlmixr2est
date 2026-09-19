@@ -346,6 +346,18 @@ nmTest({
     expect_gt(sum(.gt == "Analytic Gradient"), 0)
     expect_equal(sum(.gt %in% c("Gill83 Gradient", "Mixed Gradient", "Forward Difference", "Central Difference")), 0)
     expect_match(fF$extra, "grad: analytic")
+    # ... with the omega derivatives from the native Cholesky map, verified against
+    # the rxSymInvChol handle on first use (-1 would be the handle fallback)
+    expect_identical(fF$env$omegaGradFast, 1L)
+    # the rxSymInvChol handle fallback: still analytic, same fit
+    fH <- withr::with_envvar(
+      c(NLMIXR2_NO_FAST_OMEGA = "1"),
+      suppressMessages(nlmixr2(.fast_one_cmt, d, "focei", foceiControl(print = 0L, covMethod = "", fast = TRUE)))
+    )
+    expect_false(identical(fH$env$omegaGradFast, 1L))
+    expect_gt(sum(fH$parHistData$type == "Analytic Gradient"), 0)
+    expect_equal(fH$objf, fF$objf, tolerance = 1e-4)
+    expect_equal(unname(fixef(fH)), unname(fixef(fF)), tolerance = 1e-3)
   })
 
   test_that("modeled dosing parameters (f/lag) use jump sensitivities and match FD", {
