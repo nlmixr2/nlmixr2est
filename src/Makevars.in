@@ -17,3 +17,32 @@ OBJECTS = $(SOURCES_CPP:.cpp=.o) $(SOURCES_C:.c=.o)
 
 all: $(SHLIB)
 $(SHLIB): $(OBJECTS)
+
+# Rebuild every object when any header changes.  Without this the objects have
+# no header dependencies at all, so editing a shared header leaves stale objects
+# linking against the previous signature -- which fails at LOAD time with an
+# undefined symbol, or silently keeps running the OLD code, long after a build
+# that reported success.
+#
+# MUST come after `all:` -- the first target in a makefile is the default goal,
+# so putting this above it makes the first OBJECT the default and every build
+# silently compiles that one file and stops, producing no shared object at all.
+#
+# -I../inst/include is on the compile line above and sources do include from
+# there (nlmixr2est.h, nlmixr2estLikContrib.h, lin_cmt.hpp), so those headers
+# need covering too, or the same stale-object failure stays open for exactly
+# the headers that cross the package boundary.
+HEADERS = armahead.h censEst.h censResid.h cwres.h evaluate.h foceiGrad.h \
+          imp.h impQrng.h inner.h ires.h likContribUtil.h logSumExp.h \
+          nearPD.h nmMcmcRng.h nmParallel.h nmParallelCore.h nmSeqSeed.h \
+          np.h npCommon.h npde.h odeSwap.h res.h rxProtect.h rxomp.h scale.h \
+          shi21.h shrink.h solveWarnHelper.h truncNorm.h \
+          trustHessianUpdate.h utilc.h vaeEncoder.h \
+          ../inst/include/lin_cmt.hpp ../inst/include/nlmixr2est.h \
+          ../inst/include/nlmixr2estFoceiPtr.h \
+          ../inst/include/nlmixr2estLikContrib.h \
+          ../inst/include/nlmixr2estLikContribPtr.h \
+          ../inst/include/nlmixr2estNlmPtr.h \
+          ../inst/include/nlmixr2est_RcppExports.h \
+          ../inst/include/nlmixr2est_types.h
+$(OBJECTS): $(HEADERS)
