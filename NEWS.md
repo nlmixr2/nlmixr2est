@@ -93,6 +93,15 @@
 
 ## Bug fixes
 
+- `foceiControl(fast=TRUE)` (the `foceif`/`*f` family) no longer refuses to fit
+  a model whose compartment has a constant initial condition (`center(0) <-
+  0.03`), which failed with `The following parameter(s) are required for
+  solving: .l`.  Such an initial condition reaches the augmented sensitivity
+  model as a plain number rather than a symbolic expression, and differentiating
+  one raised an error that was then swallowed and written into the model as the
+  literal symbol `.l` (#1115).  A model whose initial condition depends on an
+  ESTIMATED parameter is a separate defect and is still open on that issue.
+
 - An omega block declaring one of its covariances at exactly `0` (for example
   `eta.ka + eta.cl + eta.v ~ c(0.1, 0.01, 0.1, 0, 0.01, 0.1)`) no longer aborts
   the fit with `theta has to have N elements`.  The block's cholesky factor is
