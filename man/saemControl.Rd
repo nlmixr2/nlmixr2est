@@ -87,7 +87,8 @@ computation.  In Monolix this is equivalent to \code{L}.}
     numbers of transitions of the three different kernels used in
     the Hasting-Metropolis algorithm.  The default value is \code{c(2,2,2)},
     representing 40 for each transition initially (each value is
-    multiplied by 20).
+    multiplied by 20).  When unset, a residual error model that depends on
+    an eta uses \code{c(4,4,4)}, since its chains mix more slowly.
 
     The first value represents the initial number of multi-variate
     Gibbs samples are taken from a normal distribution.
@@ -222,9 +223,11 @@ of iterations is itmax*number of parameters}
 
 \item{type}{indicates the type of optimization for the residuals; Can be one of c("nelder-mead", "newuoa")}
 
-\item{powRange}{This indicates the range that powers can take for residual errors;  By default this is 10 indicating the range is c(-10, 10)}
+\item{powRange}{This indicates the range that powers can take for residual errors;
+By default this is 10 indicating the range is c(-10, 10)}
 
-\item{lambdaRange}{This indicates the range that Box-Cox and Yeo-Johnson parameters are constrained to be;  The default is 3 indicating the range c(-3,3)}
+\item{lambdaRange}{This indicates the range that Box-Cox and Yeo-Johnson parameters are
+constrained to be;  The default is 3 indicating the range c(-3,3)}
 
 \item{odeRecalcFactor}{The ODE recalculation factor when ODE
 solving goes bad, this is the factor the rtol/atol is reduced}

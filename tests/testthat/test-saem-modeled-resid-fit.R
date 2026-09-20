@@ -54,6 +54,9 @@ nmTest({
     .d <- .simModeledResid(mTrue)
     .f <- .fitBoth(do.call(rxode2::ini, c(list(mTrue), .starts, list(add.sd = 1, eta.sd = 0.1))), .d)
     .noTemporaryEta(.f$saem)
+    # an eta in the residual error mixes slowly, so the unset nu was raised
+    expect_true(any(grepl("MCMC nu raised to c(4, 4, 4)", .f$saem$runInfo, fixed = TRUE)))
+    expect_equal(.f$saem$saemControl$mcmc$nu, c(4, 4, 4))
     expect_equal(
       unname(fixef(.f$saem)[c("tka", "tcl", "tv")]),
       unname(fixef(.f$focei)[c("tka", "tcl", "tv")]),
