@@ -306,6 +306,28 @@ test_that("the outer gradient and Hessian are skipped on a trial that cannot be 
   expect_lt(.gr, .fn)
   expect_identical(.hess, .gr)
   expect_identical(.hess, .ret$hessianEvaluations)
+  # The skip hands trust the INCUMBENT's curvature for a point that is not the
+  # incumbent, which is only sound while the incumbent tracked here is the one
+  # trust accepted.  If it ever drifted, the curvature reported at the end would
+  # belong to some other point -- so check the reported triple is self
+  # consistent, which is the symptom that would reach a fit.
+  expect_equal(
+    .ret$gradient,
+    c(
+      -400 * .ret$x[1] * (.ret$x[2] - .ret$x[1]^2) - 2 * (1 - .ret$x[1]),
+      200 * (.ret$x[2] - .ret$x[1]^2)
+    ),
+    tolerance = 1e-8
+  )
+  expect_equal(
+    .ret$hessian,
+    matrix(
+      c(1200 * .ret$x[1]^2 - 400 * .ret$x[2] + 2, -400 * .ret$x[1], -400 * .ret$x[1], 200),
+      2,
+      2
+    ),
+    tolerance = 1e-8
+  )
 })
 
 test_that("a hold cut short by the iteration budget still returns a point in the box", {

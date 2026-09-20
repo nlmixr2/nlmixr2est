@@ -775,7 +775,13 @@ is.latex <- function() {
       .accepted <- if (.term) {
         .v < .inc$value
       } else {
-        is.finite(.pred) && .pred != 0 && (.v - .inc$value) / .pred > 0.25
+        # `.pred` is rebuilt from `x - .inc$x`, not the step trust actually
+        # took, so it can differ from trust's own `preddiff` in the last bits --
+        # and near convergence the cancellation in that subtraction makes the
+        # difference relative, not absolute.  Stay clear of 1/4 by more than
+        # that (trust takes `>=`), so the incumbent here can never lead trust's
+        # own: it may only lag, which just costs an evaluation.
+        is.finite(.pred) && .pred != 0 && (.v - .inc$value) / .pred > 0.25 * (1 + 1e-6)
       }
     }
     if (.accepted) {
