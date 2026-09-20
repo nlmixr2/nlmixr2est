@@ -479,16 +479,26 @@ is.latex <- function() {
   .nRestart <- 0L
   .maxActive <- 2L * length(par) + 2L
   repeat {
-    .ret <- RcppTrust::trust(
-      objfun,
-      parinit = .x,
-      rinit = region$rinit,
-      rmax = region$rmax,
-      iterlim = .left,
-      fterm = region$fterm,
-      mterm = region$mterm,
-      minimize = TRUE,
-      blather = FALSE
+    .ret <- withCallingHandlers(
+      RcppTrust::trust(
+        objfun,
+        parinit = .x,
+        rinit = region$rinit,
+        rmax = region$rmax,
+        iterlim = .left,
+        fterm = region$fterm,
+        mterm = region$mterm,
+        minimize = TRUE,
+        blather = FALSE
+      ),
+      # a hold is signalled by a condition raised from objfun, which trust
+      # reports as an error in the call; that is control flow, not a run note
+      warning = function(w) {
+        if (state$snapPending &&
+              grepl("call to objfun", conditionMessage(w), fixed = TRUE)) {
+          invokeRestart("muffleWarning")
+        }
+      }
     )
     .used <- .used + .ret$iterations
     .left <- .left - .ret$iterations
@@ -497,6 +507,16 @@ is.latex <- function() {
       state$snapPending <- FALSE
       state$activeChanges <- state$activeChanges + 1L
       if (state$activeChanges > .maxActive || .left < 1L) {
+        # the hold is not applied, and trust's argument here is the trial that
+        # left the box -- give back the incumbent, the best feasible point
+        state$held[state$snapNew] <- FALSE
+        state$heldAt[state$snapNew] <- NA_real_
+        if (!is.null(state$inc)) {
+          .ret$argument <- state$inc$x
+          .ret$value <- state$inc$value
+          .ret$gradient <- state$inc$gradient
+          .ret$hessian <- state$inc$hessian
+        }
         .ret$converged <- FALSE
         .decr <- NA_real_
         .under <- TRUE
@@ -648,7 +668,8 @@ is.latex <- function() {
 #'
 #' `inc` is the incumbent (`x`, `value`, unmasked `gradient`/`hessian` and the
 #' masked `gm`/`hm` trust was given); `held`/`heldAt` the coordinates on a
-#' bound; `snapPending` asks the run loop to re-enter with a new hold.
+#' bound; `snapPending` asks the run loop to re-enter with a new hold, and
+#' `snapNew` marks the coordinates that hold covers.
 #' @param lower,upper box the outer problem optimizes in
 #' @return an environment
 #' @noRd
@@ -661,6 +682,7 @@ is.latex <- function() {
   .s$heldAt <- rep(NA_real_, length(lower))
   .s$infeasibleRun <- 0L
   .s$snapPending <- FALSE
+  .s$snapNew <- rep(FALSE, length(lower))
   .s$activeChanges <- 0L
   .s
 }
@@ -710,6 +732,7 @@ is.latex <- function() {
         if (state$infeasibleRun >= 2L) {
           state$held[.out] <- TRUE
           state$heldAt[.out] <- ifelse(x[.out] < lower[.out], lower[.out], upper[.out])
+          state$snapNew <- .out
           state$snapPending <- TRUE
         }
       }

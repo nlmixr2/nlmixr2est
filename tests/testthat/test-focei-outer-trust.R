@@ -224,6 +224,43 @@ test_that("the trust driver hands its control through to the region and curvatur
   expect_identical(.ret$activeBounds, 2L)
 })
 
+test_that("a hold cut short by the iteration budget still returns a point in the box", {
+  # The hold is signalled by a condition raised from objfun, so trust returns
+  # through its error path, where `argument` is the trial that left the box and
+  # not a point it ever accepted.  Taking that as the answer put a parameter
+  # outside its bound; the incumbent is given back instead.  Every budget is
+  # swept because which one stops mid-hold is not obvious from the outside.
+  .control <- list(
+    fast = TRUE, sigdig = 3, outerTrustRestarts = 0L,
+    outerTrustFterm = 1e-11, outerTrustMterm = 1e-11,
+    hessian = function(x, relStep) diag(c(2, 8))
+  )
+  .lower <- c(1, 1)
+  .warn <- character()
+  for (.it in seq_len(20)) {
+    .control$maxOuterIterations <- .it
+    .ret <- withCallingHandlers(
+      .trustOuter(
+        c(3, 2),
+        fn = function(x) x[1]^2 + 4 * x[2]^2,
+        gr = function(x) c(2 * x[1], 8 * x[2]),
+        lower = .lower,
+        upper = c(Inf, Inf),
+        control = .control
+      ),
+      warning = function(w) {
+        .warn <<- c(.warn, conditionMessage(w))
+        invokeRestart("muffleWarning")
+      }
+    )
+    expect_true(all(.ret$x >= .lower),
+                info = paste("maxOuterIterations =", .it))
+  }
+  # RcppTrust reports the condition as "error in first/last call to objfun";
+  # that is this driver's own control flow and must not reach the fit's runInfo
+  expect_false(any(grepl("call to objfun", .warn, fixed = TRUE)))
+})
+
 test_that("outerOpt='trust' fits and consumes the analytic outer Hessian", {
   skip_on_cran()
   model <- function() {
