@@ -781,7 +781,10 @@ is.latex <- function() {
       .accepted <- if (.term) {
         .v < .inc$value
       } else {
-        is.finite(.pred) && .pred != 0 && (.v - .inc$value) / .pred > 0.25
+        # `>=`, not `>`: trust rejects on `rho < 0.25`, so at exactly 1/4 it
+        # accepts.  Replaying that as `>` disagrees there by construction, and
+        # a disagreement is what puts this incumbent out of step with trust's.
+        is.finite(.pred) && .pred != 0 && (.v - .inc$value) / .pred >= 0.25
       }
     }
     if (.accepted) {
