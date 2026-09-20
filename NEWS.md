@@ -111,10 +111,12 @@
   the box was only rejected, so on an active bound every Newton step left the
   box, every iteration was region-limited, and the run converged linearly
   onto the bound -- where `outerTrustFterm` could be met with a large
-  gradient.  Two of nine perturbed-start fits measured stopped 154 and 141
-  objective units above the optimum `outerOpt="nlminb"` and `"lbfgsb3c"`
-  reach (an omega variance on its `diagOmegaBoundLower` floor); both now
-  reach it, the other seven are unchanged.
+  gradient.  What this hit was every start with a bound active, not an
+  occasional one: over nine perturbed starts on `theo_sd`, every fit whose
+  `eta.cl` variance landed on its `diagOmegaBoundLower` floor stopped 12 to
+  596 objective units above the optimum `outerOpt="nlminb"` and `"lbfgsb3c"`
+  reach -- and reported convergence there -- while every fit whose variance
+  stayed inside the box was unaffected.  All of them now reach it.
 - `foceiControl(warm="save")` now restarts the n1qn1 inner problem from the
   curvature the subject's previous inner solve left, as it was always meant
   to.  It reconstructed that Hessian from a buffer it had just zeroed, so
