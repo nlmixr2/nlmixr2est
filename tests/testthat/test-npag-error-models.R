@@ -198,6 +198,14 @@ nmTest({
     ## multi-endpoint model still maps every observation to its own endpoint.  eff
     ## is cp scaled by 0.1 with the DV scaled to match, so the two additive SDs
     ## come out in the same 10:1 ratio, and nothing is reported as unmatched.
+    ##
+    ## The per-observation endpoint map behind the per-endpoint moments is built
+    ## after the first solve, in the inner model's compartment basis (issue 1118):
+    ## built at control-parsing time it came back empty with no warning, and numbered
+    ## in the ui's basis it matched nothing, so the moment warm start never ran and
+    ## the residual search started each cycle from wherever the last one ended --
+    ## 2.6% off the ratio in the final cycle.  Warm-started at the two moments the
+    ## search stays within its stopping radius (rhoend 1e-4) of the exact ratio.
     .d <- nlmixr2data::theo_sd
     .obs <- .d[.d$EVID == 0, ]
     .obs$CMT <- "cp"
