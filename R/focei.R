@@ -494,8 +494,10 @@ is.latex <- function() {
       # a hold is signalled by a condition raised from objfun, which trust
       # reports as an error in the call; that is control flow, not a run note
       warning = function(w) {
-        if (state$snapPending &&
-              grepl("call to objfun", conditionMessage(w), fixed = TRUE)) {
+        if (
+          state$snapPending &&
+            grepl("call to objfun", conditionMessage(w), fixed = TRUE)
+        ) {
           invokeRestart("muffleWarning")
         }
       }

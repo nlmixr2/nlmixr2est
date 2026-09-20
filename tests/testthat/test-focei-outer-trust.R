@@ -235,13 +235,17 @@ test_that("a bound the minimum does not sit on is held and then released", {
   # answer: `activeChanges` is 2 (one hold, one release) and nothing stays held.
   # Without the release this stalls on the bound with x2 == 0.
   .control <- list(
-    fast = TRUE, sigdig = 3, maxOuterIterations = 200L,
-    outerTrustHessian = "analytic", outerTrustRinit = 0.4,
-    outerTrustRmax = 3.2, outerTrustRestarts = 2L,
-    outerTrustFterm = 1e-11, outerTrustMterm = 1e-11,
+    fast = TRUE,
+    sigdig = 3,
+    maxOuterIterations = 200L,
+    outerTrustHessian = "analytic",
+    outerTrustRinit = 0.4,
+    outerTrustRmax = 3.2,
+    outerTrustRestarts = 2L,
+    outerTrustFterm = 1e-11,
+    outerTrustMterm = 1e-11,
     hessian = function(x, relStep) {
-      matrix(c(1200 * x[1]^2 - 400 * x[2] + 2, -400 * x[1],
-               -400 * x[1], 200), 2, 2)
+      matrix(c(1200 * x[1]^2 - 400 * x[2] + 2, -400 * x[1], -400 * x[1], 200), 2, 2)
     }
   )
   .ret <- .trustOuter(
@@ -269,14 +273,18 @@ test_that("the outer gradient and Hessian are skipped on a trial that cannot be 
   .gr <- 0L
   .hess <- 0L
   .control <- list(
-    fast = TRUE, sigdig = 3, maxOuterIterations = 100L,
-    outerTrustHessian = "analytic", outerTrustRinit = 0.4,
-    outerTrustRmax = 3.2, outerTrustRestarts = 0L,
-    outerTrustFterm = 1e-11, outerTrustMterm = 1e-11,
+    fast = TRUE,
+    sigdig = 3,
+    maxOuterIterations = 100L,
+    outerTrustHessian = "analytic",
+    outerTrustRinit = 0.4,
+    outerTrustRmax = 3.2,
+    outerTrustRestarts = 0L,
+    outerTrustFterm = 1e-11,
+    outerTrustMterm = 1e-11,
     hessian = function(x, relStep) {
       .hess <<- .hess + 1L
-      matrix(c(1200 * x[1]^2 - 400 * x[2] + 2, -400 * x[1],
-               -400 * x[1], 200), 2, 2)
+      matrix(c(1200 * x[1]^2 - 400 * x[2] + 2, -400 * x[1], -400 * x[1], 200), 2, 2)
     }
   )
   .ret <- .trustOuter(
@@ -307,8 +315,11 @@ test_that("a hold cut short by the iteration budget still returns a point in the
   # outside its bound; the incumbent is given back instead.  Every budget is
   # swept because which one stops mid-hold is not obvious from the outside.
   .control <- list(
-    fast = TRUE, sigdig = 3, outerTrustRestarts = 0L,
-    outerTrustFterm = 1e-11, outerTrustMterm = 1e-11,
+    fast = TRUE,
+    sigdig = 3,
+    outerTrustRestarts = 0L,
+    outerTrustFterm = 1e-11,
+    outerTrustMterm = 1e-11,
     hessian = function(x, relStep) diag(c(2, 8))
   )
   .lower <- c(1, 1)
@@ -329,8 +340,7 @@ test_that("a hold cut short by the iteration budget still returns a point in the
         invokeRestart("muffleWarning")
       }
     )
-    expect_true(all(.ret$x >= .lower),
-                info = paste("maxOuterIterations =", .it))
+    expect_true(all(.ret$x >= .lower), info = paste("maxOuterIterations =", .it))
   }
   # RcppTrust reports the condition as "error in first/last call to objfun";
   # that is this driver's own control flow and must not reach the fit's runInfo
