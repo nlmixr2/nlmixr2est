@@ -409,7 +409,9 @@ is.latex <- function() {
 #' `trust_solve_c()` calls the objective at every TRIAL point, accepted or not,
 #' so the secant pair is consecutive CALLS -- the same convention
 #' `nlmTrustObjfun()` uses for the analogous outer problem (`src/nlm.cpp`).
-#' The update is `trustHessianUpdate()`'s (`src/trustHessianUpdate.h`).
+#' Lazy curvature narrows the calls that ask for curvature to the trials that
+#' improve on the incumbent, so in that mode the pair is consecutive improving
+#' points.  The update is `trustHessianUpdate()`'s (`src/trustHessianUpdate.h`).
 #' @param state environment holding the estimate `b` and the previous call's
 #'   `xPrev` and `gPrev`, which this updates
 #' @param x,g the point and its gradient
@@ -693,9 +695,9 @@ is.latex <- function() {
 #' cannot answer.  Support for the analytic Hessian is a property of the model,
 #' not of the point, so one refusal switches the run for good rather than paying
 #' the failed probe again every iteration.
-#' The BFGS update runs on every call whatever source serves it, so its secant
-#' pairs stay consecutive and the fallback starts from a matrix that already
-#' knows the problem rather than the identity.
+#' The BFGS update runs on every call that reaches here whatever source serves
+#' it, so the fallback starts from a matrix that already knows the problem
+#' rather than the identity.
 #' @param control the foceiControl list, with the `hessian` and `outerRecord`
 #'   entries the C++ driver adds
 #' @param fn,gr outer objective and gradient
@@ -800,9 +802,13 @@ is.latex <- function() {
   # only accept a trial whose value is below the incumbent's (rho >= 1/4, or the
   # termination branch with ftry < f).  A trial that is no improvement therefore gets
   # its value only -- the analytic Hessian is the expensive part of an iteration and
-  # would be discarded.  The incumbent is tracked by replaying trust's own acceptance
-  # test (same preddiff, rho, fterm/mterm; no parscale, minimize = TRUE); where the
-  # replay could disagree it errs toward "rejected", which only costs an evaluation.
+  # would be discarded.  One below the incumbent is still evaluated in full: it is
+  # the ones trust CAN accept that are cheap to get wrong.  The incumbent is tracked
+  # by replaying trust's own acceptance test (same preddiff, fterm/mterm; no
+  # parscale, minimize = TRUE), strictly at `rho > 1/4` where trust takes `>=`:
+  # a replay that errs toward "rejected" leaves the incumbent ABOVE trust's own
+  # value, which only makes the shortcut harder to reach, so it costs an evaluation
+  # rather than handing trust curvature from the wrong point.
   .fterm <- if (is.null(region$fterm)) 0 else region$fterm
   .mterm <- if (is.null(region$mterm)) 0 else region$mterm
   function(x) {
