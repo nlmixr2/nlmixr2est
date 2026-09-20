@@ -68,9 +68,9 @@ this is \code{atol = 1e-6}, \code{rtol = 1e-3}.}
   tails are too light still gives weights with infinite variance, which
   `fit$env$impPsisK` will show.  See `df` for the shape-based remedy.}
 
-\item{nIter}{Maximum number of importance-sampling EM iterations.  \code{0}
+\item{nIter}{Maximum number of importance-sampling EM iterations.  `0`
 evaluates at the supplied parameters: one E-step with no M-step (like
-NONMEM \code{EONLY=1}); \code{nBurn} is ignored.}
+NONMEM `EONLY=1`); `nBurn` is ignored.}
 
 \item{mapIter}{MAP-assist period, in EM iterations.  `1` (default)
   re-centers the proposal at each subject's MAP mode every iteration; `k > 1`

@@ -57,8 +57,9 @@ test_that("saemControl(nonMuTheta='regress') recovers no-eta thetas and engages 
 
   # the no-eta thetas are recovered well under regress (the target of the option)
   expect_lt(abs(.eReg[["tka"]] - .truth[["tka"]]), 0.15)
-  expect_lt(abs(.eReg[["tv"]] - .truth[["tv"]]), 0.20)
-  expect_lt(abs(.eReg[["pow"]] - .truth[["pow"]]), 0.20)
+  # v = exp(tv) * (1 + pow) identifies only tv + log(1 + pow), not each alone
+  .logV <- function(e) e[["tv"]] + log(1 + e[["pow"]])
+  expect_lt(abs(.logV(.eReg) - .logV(.truth)), 0.10)
 
   # and regress recovers the absorption theta at least as well as the phi0 path
   expect_lte(abs(.eReg[["tka"]] - .truth[["tka"]]), abs(.eEta[["tka"]] - .truth[["tka"]]) + 0.05)
