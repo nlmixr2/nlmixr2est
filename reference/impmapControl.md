@@ -86,9 +86,9 @@ impmapControl(
 
 - nIter:
 
-  Maximum number of importance-sampling EM iterations. `0` evaluates at
-  the supplied parameters: one E-step with no M-step (like NONMEM
-  `EONLY=1`); `nBurn` is ignored.
+  Maximum number of importance-sampling EM iterations. \`0\` evaluates
+  at the supplied parameters: one E-step with no M-step (like NONMEM
+  \`EONLY=1\`); \`nBurn\` is ignored.
 
 - mapIter:
 
@@ -916,7 +916,7 @@ impmapControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x55b760706518>
+#> <bytecode: 0x564ac87c24d0>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg

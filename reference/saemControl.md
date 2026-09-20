@@ -100,7 +100,8 @@ saemControl(
   transitions of the three different kernels used in the
   Hasting-Metropolis algorithm. The default value is `c(2,2,2)`,
   representing 40 for each transition initially (each value is
-  multiplied by 20).
+  multiplied by 20). When unset, a residual error model that depends on
+  an eta uses `c(4,4,4)`, since its chains mix more slowly.
 
   The first value represents the initial number of multi-variate Gibbs
   samples are taken from a normal distribution.

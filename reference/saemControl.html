@@ -138,7 +138,8 @@ computation.  In Monolix this is equivalent to <code>L</code>.</p></dd>
     numbers of transitions of the three different kernels used in
     the Hasting-Metropolis algorithm.  The default value is <code>c(2,2,2)</code>,
     representing 40 for each transition initially (each value is
-    multiplied by 20).</p>
+    multiplied by 20).  When unset, a residual error model that depends on
+    an eta uses <code>c(4,4,4)</code>, since its chains mix more slowly.</p>
 <p>The first value represents the initial number of multi-variate
     Gibbs samples are taken from a normal distribution.</p>
 <p>The second value represents the number of uni-variate, or multi-
@@ -298,11 +299,13 @@ of iterations is itmax*number of parameters</p></dd>
 
 
 <dt id="arg-powrange">powRange<a class="anchor" aria-label="anchor" href="#arg-powrange"></a></dt>
-<dd><p>This indicates the range that powers can take for residual errors;  By default this is 10 indicating the range is c(-10, 10)</p></dd>
+<dd><p>This indicates the range that powers can take for residual errors;
+By default this is 10 indicating the range is c(-10, 10)</p></dd>
 
 
 <dt id="arg-lambdarange">lambdaRange<a class="anchor" aria-label="anchor" href="#arg-lambdarange"></a></dt>
-<dd><p>This indicates the range that Box-Cox and Yeo-Johnson parameters are constrained to be;  The default is 3 indicating the range c(-3,3)</p></dd>
+<dd><p>This indicates the range that Box-Cox and Yeo-Johnson parameters are
+constrained to be;  The default is 3 indicating the range c(-3,3)</p></dd>
 
 
 <dt id="arg-oderecalcfactor">odeRecalcFactor<a class="anchor" aria-label="anchor" href="#arg-oderecalcfactor"></a></dt>

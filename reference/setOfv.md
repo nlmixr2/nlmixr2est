@@ -19,8 +19,8 @@ getOfvType(x)
 - type:
 
   Type of objective function to use for AIC, BIC, and \$objective.
-  `"imp"` and `"impmap"` add an importance-sampling objective from an
-  E-step-only run (`nIter=0`) at the fit's estimates.
+  \`"imp"\` and \`"impmap"\` add an importance-sampling objective from
+  an E-step-only run (\`nIter=0\`) at the fit's estimates.
 
 ## Value
 
