@@ -189,16 +189,222 @@ test_that("the trust driver hands its control through to the region and curvatur
   expect_equal(.ret$restarts, 0L)
   expect_lt(.ret$newtonDecrement, .control$outerTrustFterm)
 
-  # the box is enforced by rejecting the point, not by projecting the step
+  # An active bound: the unconstrained minimum (0, 0) is outside the box, so
+  # every Newton step leaves it.  Rejecting those trials alone converges only
+  # linearly onto the bound; the coordinates are held on it instead and the
+  # bounded minimum (1, 1) is reached exactly, with the gradient still pointing
+  # out (a KKT point, not a stationary one).
+  .n <- 0L
   .ret <- .trustOuter(
     c(3, 2),
-    fn = function(x) x[1]^2 + 4 * x[2]^2,
+    fn = function(x) {
+      .n <<- .n + 1L
+      x[1]^2 + 4 * x[2]^2
+    },
     gr = function(x) c(2 * x[1], 8 * x[2]),
     lower = c(1, 1),
     upper = c(Inf, Inf),
     control = .control
   )
-  expect_true(all(.ret$x >= c(1, 1)))
+  expect_equal(.ret$x, c(1, 1))
+  expect_equal(.ret$convergence, 0L)
+  expect_identical(.ret$activeBounds, 1:2)
+  expect_equal(.ret$gradient, c(2, 8))
+  expect_lt(.n, 15L)
+  # only x2's bound is active here: the Newton direction is toward (2, 0), so
+  # x1 walks 3 -> 2 and never reaches its own bound.  `activeChanges` counts the
+  # hold, and nothing is released -- the release itself is covered below.
+  .ret <- .trustOuter(
+    c(3, 2),
+    fn = function(x) (x[1] - 2)^2 + 4 * x[2]^2,
+    gr = function(x) c(2 * (x[1] - 2), 8 * x[2]),
+    lower = c(1, 1),
+    upper = c(Inf, Inf),
+    control = .control
+  )
+  expect_equal(.ret$x, c(2, 1), tolerance = 1e-6)
+  expect_identical(.ret$activeBounds, 2L)
+  expect_identical(.ret$activeChanges, 1L)
+})
+
+test_that("a bound the minimum does not sit on is held and then released", {
+  # Rosenbrock from (-1.2, 1) with x2 >= 0: the first steps run down the valley
+  # and leave the box through x2, which is held on 0.  With x1 free the gradient
+  # at the converged point points back up, so the hold is released and the true
+  # interior minimum (1, 1) is reached.  Asserting the mechanism, not just the
+  # answer: `activeChanges` is 2 (one hold, one release) and nothing stays held.
+  # Without the release this stalls on the bound with x2 == 0.
+  .control <- list(
+    fast = TRUE,
+    sigdig = 3,
+    maxOuterIterations = 200L,
+    outerTrustHessian = "analytic",
+    outerTrustRinit = 0.4,
+    outerTrustRmax = 3.2,
+    outerTrustRestarts = 2L,
+    outerTrustFterm = 1e-11,
+    outerTrustMterm = 1e-11,
+    hessian = function(x, relStep) {
+      matrix(c(1200 * x[1]^2 - 400 * x[2] + 2, -400 * x[1], -400 * x[1], 200), 2, 2)
+    }
+  )
+  .ret <- .trustOuter(
+    c(-1.2, 1),
+    fn = function(x) 100 * (x[2] - x[1]^2)^2 + (1 - x[1])^2,
+    gr = function(x) {
+      c(-400 * x[1] * (x[2] - x[1]^2) - 2 * (1 - x[1]), 200 * (x[2] - x[1]^2))
+    },
+    lower = c(-Inf, 0),
+    upper = c(Inf, Inf),
+    control = .control
+  )
+  expect_equal(.ret$x, c(1, 1), tolerance = 1e-5)
+  expect_equal(.ret$convergence, 0L)
+  expect_identical(.ret$activeBounds, integer(0))
+  expect_identical(.ret$activeChanges, 2L)
+})
+
+test_that("the outer gradient and Hessian are skipped on a trial that cannot be accepted", {
+  # The saving is the whole point of the lazy path, and no assertion on the
+  # answer can see it: a build that evaluated gr() and the Hessian at every
+  # trial would return exactly the same optimum.  So count the callbacks --
+  # a trial worse than the incumbent must cost one fn() and nothing else.
+  .fn <- 0L
+  .gr <- 0L
+  .hess <- 0L
+  .control <- list(
+    fast = TRUE,
+    sigdig = 3,
+    maxOuterIterations = 100L,
+    outerTrustHessian = "analytic",
+    outerTrustRinit = 0.4,
+    outerTrustRmax = 3.2,
+    outerTrustRestarts = 0L,
+    outerTrustFterm = 1e-11,
+    outerTrustMterm = 1e-11,
+    hessian = function(x, relStep) {
+      .hess <<- .hess + 1L
+      matrix(c(1200 * x[1]^2 - 400 * x[2] + 2, -400 * x[1], -400 * x[1], 200), 2, 2)
+    }
+  )
+  .ret <- .trustOuter(
+    c(-1.2, 1),
+    fn = function(x) {
+      .fn <<- .fn + 1L
+      100 * (x[2] - x[1]^2)^2 + (1 - x[1])^2
+    },
+    gr = function(x) {
+      .gr <<- .gr + 1L
+      c(-400 * x[1] * (x[2] - x[1]^2) - 2 * (1 - x[1]), 200 * (x[2] - x[1]^2))
+    },
+    lower = c(-Inf, -Inf),
+    upper = c(Inf, Inf),
+    control = .control
+  )
+  expect_equal(.ret$x, c(1, 1), tolerance = 1e-5)
+  # Rosenbrock from this start is rejection-heavy, so the skip has to bite
+  expect_lt(.gr, .fn)
+  expect_identical(.hess, .gr)
+  expect_identical(.hess, .ret$hessianEvaluations)
+  # The skip hands trust the INCUMBENT's curvature for a point that is not the
+  # incumbent, which is only sound while the incumbent tracked here is the one
+  # trust accepted.  If it ever drifted, the curvature reported at the end would
+  # belong to some other point -- so check the reported triple is self
+  # consistent, which is the symptom that would reach a fit.
+  expect_equal(
+    .ret$gradient,
+    c(
+      -400 * .ret$x[1] * (.ret$x[2] - .ret$x[1]^2) - 2 * (1 - .ret$x[1]),
+      200 * (.ret$x[2] - .ret$x[1]^2)
+    ),
+    tolerance = 1e-8
+  )
+  expect_equal(
+    .ret$hessian,
+    matrix(
+      c(1200 * .ret$x[1]^2 - 400 * .ret$x[2] + 2, -400 * .ret$x[1], -400 * .ret$x[1], 200),
+      2,
+      2
+    ),
+    tolerance = 1e-8
+  )
+})
+
+test_that("a run that ends away from the incumbent refuses to vouch for its curvature", {
+  # The value-only shortcut answers a trial with the INCUMBENT's gradient and
+  # Hessian, which is only sound while that incumbent is the point trust
+  # accepted.  The two agree by construction (trust accepts at rho >= 1/4, the
+  # replay at rho > 1/4) and no randomized run has separated them -- but if
+  # they ever did separate, the curvature reported at the end would belong to
+  # another point.  Poison the incumbent to stand in for that: a value below
+  # anything reachable makes the shortcut fire on every trial, so trust ends
+  # somewhere the incumbent does not name.
+  .region <- .trustOuterRegion(c(1, 1), list(outerTrustFterm = 1e-11, outerTrustMterm = 1e-11))
+  .state <- .trustOuterState(c(-Inf, -Inf), c(Inf, Inf))
+  .curvature <- list(calls = 0L, fallback = FALSE, hessian = function(x, g) diag(c(2, 8)))
+  .objfun <- .trustOuterObjfun(
+    function(x) x[1]^2 + 4 * x[2]^2,
+    function(x) c(2 * x[1], 8 * x[2]),
+    .curvature,
+    c(-Inf, -Inf),
+    c(Inf, Inf),
+    .region,
+    .state
+  )
+  .state$inc <- list(
+    x = c(99, 99),
+    value = -1e300,
+    gradient = c(0, 0),
+    hessian = diag(2),
+    gm = c(0, 0),
+    hm = diag(2)
+  )
+  .ret <- .trustOuterRun(.objfun, c(3, 2), .region, 50L, 0L, .state)
+  # no decrement is read out of curvature that cannot be vouched for, and the
+  # incumbent is dropped so a re-entry would rebuild it from trust's own point
+  expect_true(is.na(.ret$newtonDecrement))
+  expect_true(.ret$underConverged)
+  expect_null(.state$inc)
+  expect_match(.trustOuterMessage(.ret), "stationary")
+})
+
+test_that("a hold cut short by the iteration budget still returns a point in the box", {
+  # The hold is signalled by a condition raised from objfun, so trust returns
+  # through its error path, where `argument` is the trial that left the box and
+  # not a point it ever accepted.  Taking that as the answer put a parameter
+  # outside its bound; the incumbent is given back instead.  Every budget is
+  # swept because which one stops mid-hold is not obvious from the outside.
+  .control <- list(
+    fast = TRUE,
+    sigdig = 3,
+    outerTrustRestarts = 0L,
+    outerTrustFterm = 1e-11,
+    outerTrustMterm = 1e-11,
+    hessian = function(x, relStep) diag(c(2, 8))
+  )
+  .lower <- c(1, 1)
+  .warn <- character()
+  for (.it in seq_len(20)) {
+    .control$maxOuterIterations <- .it
+    .ret <- withCallingHandlers(
+      .trustOuter(
+        c(3, 2),
+        fn = function(x) x[1]^2 + 4 * x[2]^2,
+        gr = function(x) c(2 * x[1], 8 * x[2]),
+        lower = .lower,
+        upper = c(Inf, Inf),
+        control = .control
+      ),
+      warning = function(w) {
+        .warn <<- c(.warn, conditionMessage(w))
+        invokeRestart("muffleWarning")
+      }
+    )
+    expect_true(all(.ret$x >= .lower), info = paste("maxOuterIterations =", .it))
+  }
+  # RcppTrust reports the condition as "error in first/last call to objfun";
+  # that is this driver's own control flow and must not reach the fit's runInfo
+  expect_false(any(grepl("call to objfun", .warn, fixed = TRUE)))
 })
 
 test_that("outerOpt='trust' fits and consumes the analytic outer Hessian", {
@@ -236,4 +442,67 @@ test_that("outerOpt='trust' fits and consumes the analytic outer Hessian", {
   )
   expect_equal(fitA$objf, fitN$objf, tolerance = 1e-3)
   expect_equal(unname(fixef(fitA)), unname(fixef(fitN)), tolerance = 1e-2)
+})
+
+test_that("outerOpt='trust' holds a coordinate on an active bound and converges", {
+  skip_on_cran()
+  # An upper bound below the unconstrained optimum: every Newton step from
+  # inside the box points out through it.  Rejecting those trials only shrinks
+  # the region, which converges linearly onto the bound and can stop there
+  # with a large gradient.  The driver holds the coordinate on the bound
+  # instead and finishes the others; the bounded optimum is the one L-BFGS-B
+  # finds.
+  model <- function() {
+    ini({ tka <- c(-Inf, 0.1, 0.3); tcl <- 1; tv <- 3.45
+          eta.cl ~ 0.3; add.sd <- 0.7 })
+    model({ ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+            d/dt(depot) <- -ka * depot
+            d/dt(center) <- ka * depot - cl / v * center
+            cp <- center / v
+            cp ~ add(add.sd) })
+  }
+  d <- nlmixr2data::theo_sd
+  ctl <- function(...) {
+    foceiControl(print = 0L, calcTables = FALSE, covMethod = "", fast = TRUE, ...)
+  }
+  fitT <- .nlmixr(model, d, "focei", ctl(outerOpt = "trust"))
+  fitL <- .nlmixr(model, d, "focei", ctl(outerOpt = "lbfgsb3c"))
+  expect_equal(unname(fixef(fitT)["tka"]), 0.3, tolerance = 1e-4)
+  expect_identical(fitT$env$optReturn$activeBounds, 1L)
+  expect_true(fitT$env$optReturn$converged)
+  expect_equal(fitT$objf, fitL$objf, tolerance = 1e-3)
+  expect_equal(unname(fixef(fitT)), unname(fixef(fitL)), tolerance = 1e-2)
+})
+
+test_that("outerOpt='trust' reaches the optimum from a start that floors an omega", {
+  skip_on_cran()
+  # The bound that actually bit in practice is not a theta ceiling but the
+  # omega floor: `diagOmegaBoundLower` puts a diagonal omega's lower bound at
+  # its own initial estimate over 100, so a start 100x above the optimum makes
+  # that bound active.  Starting `eta.cl` at 60 floors it at 0.6, where the
+  # unconstrained optimum (about 0.11) is well outside -- every Newton step
+  # leaves the box through it.  Before the hold this stopped 155 objective
+  # units above where `outerOpt="lbfgsb3c"` and `"nlminb"` land.
+  model <- function() {
+    ini({ tka <- -1.5; tcl <- 1.8; tv <- 4.2
+          eta.cl ~ 60; add.sd <- 2.5 })
+    model({ ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+            d/dt(depot) <- -ka * depot
+            d/dt(center) <- ka * depot - cl / v * center
+            cp <- center / v
+            cp ~ add(add.sd) })
+  }
+  d <- nlmixr2data::theo_sd
+  ctl <- function(...) {
+    foceiControl(print = 0L, calcTables = FALSE, covMethod = "", fast = TRUE, ...)
+  }
+  fitT <- .nlmixr(model, d, "focei", ctl(outerOpt = "trust"))
+  fitL <- .nlmixr(model, d, "focei", ctl(outerOpt = "lbfgsb3c"))
+  expect_equal(fitT$objf, fitL$objf, tolerance = 1e-3)
+  expect_equal(unname(fixef(fitT)), unname(fixef(fitL)), tolerance = 1e-2)
+  # the omega really is the parameter sitting on its floor, and the driver
+  # says so: parameter 5 is the omega, after the four thetas
+  expect_equal(unname(fitT$omega[1, 1]), 0.6, tolerance = 1e-5)
+  expect_identical(fitT$env$optReturn$activeBounds, 5L)
+  expect_true(fitT$env$optReturn$converged)
 })
