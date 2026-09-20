@@ -7705,6 +7705,17 @@ void numericGrad(double *theta, double *g){
     }
     op_focei.curGill=1;
     op_focei.slow = finalSlow;
+    // gill83() sets calcGrad=1 for its own objective evaluations; clear it like the
+    // shi21 and forward/central branches do.  Left set, every objective-only
+    // evaluation until the next gradient -- the optimizer's line search after
+    // the FIRST gradient, which is always this branch, and the final
+    // re-evaluation when the optimizer never reaches a second gradient -- ran
+    // as a gradient leg: innerOpt1() skipped the standardized-eta reset and the
+    // mceta start search, and foceiOfv0() skipped the ODE-tolerance retry and
+    // the lastOfv/checkTheta bookkeeping.  A trial step that blew the etas up
+    // then had no way back (issue 1114: the fit reported ~2e244 at the untouched
+    // initial estimates).
+    op_focei.calcGrad=0;
   } else {
     if(op_focei.slow){
       op_focei.t0 = clock();
@@ -9826,6 +9837,11 @@ void foceiOuterFinal(double *x, Environment e){
   op_focei.outerFdStepPerNsub=0;
   op_focei.optimHessType = op_focei.optimHessCovType;
   op_focei.shi21maxInner = op_focei.shi21maxInnerCov;
+  // The reported objective is an objective evaluation, never a gradient leg,
+  // whatever state the optimizer's last call left behind: with calcGrad set,
+  // innerOpt1() would keep a warm-start eta it should have reset and foceiOfv0()
+  // would skip its ODE-tolerance retry (issue 1114).
+  op_focei.calcGrad = 0;
   _finalObfCalc = true;
   double fmin = foceiOfv0(x);
   _finalObfCalc = false;

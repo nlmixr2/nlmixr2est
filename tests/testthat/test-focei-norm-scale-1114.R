@@ -4,12 +4,19 @@
 #
 # Mechanism: "norm" scaling maps every parameter through one affine transform
 # whose constant is the range of the internal parameter vector, and the omega
-# enters that vector as omega^(-1/4) (sqrt of chol(omega^-1)) = 25 here, so a
-# unit step in the scaled space moved `slope` from 0.0035 to 12.6.  The ~1e283
-# objective at that trial point left the warm-started etas where the inner
-# optimizer of 7.0.3 could not recover, so every later evaluation -- including
-# the final re-evaluation at the untouched initial theta -- stayed near 1e250,
-# nlminb reported "false convergence (8)", and the fit reported that value.
+# enters that vector as omega^(-1/4) (sqrt of chol(omega^-1)) = 25 here, so
+# nlminb's first trial step of about one unit in the scaled space moved `slope`
+# from 0.0035 to 12.6 and the objective there was ~4e283.  That alone is
+# recoverable; what made it fatal is that the Gill branch of numericGrad() left
+# op_focei.calcGrad = 1 behind, so every objective-only evaluation between the
+# first gradient (always Gill) and the second ran as a gradient leg: the inner
+# solve skipped its standardized-eta reset, so the etas blown up by that trial
+# step were carried into every later line-search evaluation -- and into the
+# final re-evaluation at the untouched initial theta, because nlminb never
+# reached a second gradient ("false convergence (8)").  innerOpt = "trust"
+# (the default since 7.1.0) happens to recover from such a start on its own,
+# which is the only reason the reprex passed on main; innerOpt = "n1qn1" still
+# failed until the flag was cleared.
 #
 # 144 study-level rows from 12 studies (values perturbed).  DV is a percent
 # change, COVARIATE another percent change, SE the row's standard error.
@@ -137,16 +144,46 @@ nmTest({
     # ... and the objective improved on the initial 824.37
     expect_true(is.finite(fitNorm$objf))
     expect_lt(fitNorm$objf, 824.37)
-    expect_lt(abs(fitNorm$objf - 813.66), 1)
-    # Every estimated parameter moved off its initial estimate
+    expect_lt(abs(fitNorm$objf - 814.05), 1.5)
+    expect_equal(fitNorm$optReturn$convergence, 0L)
+    expect_equal(fitNorm$optReturn$objective, fitNorm$objf, tolerance = 1e-3)
+    # Every estimated parameter moved off its initial estimate.  emax_scale
+    # and let50 trade off along a flat ridge (the default scaling settles at
+    # emax_scale 5.0, this path at ~7), so only the better-determined two are
+    # pinned by value.
     .theta <- fitNorm$theta
     expect_false(isTRUE(all.equal(unname(.theta[["slope"]]), 0.0035)))
     expect_false(isTRUE(all.equal(unname(.theta[["emax_scale"]]), 5)))
     expect_false(isTRUE(all.equal(unname(.theta[["let50"]]), log(47))))
     expect_false(isTRUE(all.equal(unname(.theta[["add.sd"]]), 0.9)))
-    expect_equal(unname(.theta[["let50"]]), 3.9245, tolerance = 0.02)
-    expect_equal(unname(.theta[["add.sd"]]), 0.9366, tolerance = 0.02)
-    expect_false(grepl("false convergence", fitNorm$message))
+    expect_equal(unname(.theta[["let50"]]), 4.004, tolerance = 0.05)
+    expect_equal(unname(.theta[["add.sd"]]), 0.9325, tolerance = 0.05)
+  })
+
+  test_that("issue 1114: the same fit under innerOpt='n1qn1' recovers", {
+    # Without the calcGrad fix this is the exact failure of the issue on main:
+    # objf ~2e244, every theta at its initial estimate, "false convergence (8)".
+    .r <- .fitCollectWarnings(
+      .m1114, .d1114, est = "focei",
+      control = foceiControl(print = 0, scaleType = "norm", outerOpt = "nlminb",
+                             innerOpt = "n1qn1")
+    )
+    fitN1 <- .r$fit
+    expect_false(any(grepl(.worseRegex, .r$w)))
+    expect_true(is.finite(fitN1$objf))
+    expect_lt(fitN1$objf, 824.37)
+    expect_lt(abs(fitN1$objf - 822.87), 1)
+    # nlminb still ends on "false convergence (8)" for this badly scaled
+    # problem, but honestly: its own best objective is the one the fit reports,
+    # and the parameters have moved.
+    expect_equal(fitN1$optReturn$objective, fitN1$objf, tolerance = 1e-3)
+    .theta <- fitN1$theta
+    expect_false(isTRUE(all.equal(unname(.theta[["slope"]]), 0.0035)))
+    expect_false(isTRUE(all.equal(unname(.theta[["emax_scale"]]), 5)))
+    expect_false(isTRUE(all.equal(unname(.theta[["let50"]]), log(47))))
+    expect_false(isTRUE(all.equal(unname(.theta[["add.sd"]]), 0.9)))
+    expect_equal(unname(.theta[["let50"]]), 3.913, tolerance = 0.05)
+    expect_equal(unname(.theta[["add.sd"]]), 0.9079, tolerance = 0.05)
   })
 
   test_that("issue 1114: the default scaling path is unchanged", {

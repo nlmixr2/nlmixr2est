@@ -93,21 +93,34 @@
 
 ## Bug fixes
 
+- FOCEi's Gill gradient left the internal "this is a gradient leg" flag set,
+  so every objective-only evaluation between the first gradient (always Gill)
+  and the second ran as a gradient leg: the inner (eta) solve skipped its
+  standardized-eta reset and mceta start search, and the objective skipped
+  its ODE-tolerance retry and its `lastOfv` bookkeeping.  An outer trial step
+  that blew the etas up then had no way back, and when the optimizer never
+  reached a second gradient the final re-evaluation inherited the flag too.
+  Issue 1114 is that path: `scaleType = "norm"` with a between-study variance
+  starting at `2.5e-6` normalizes every parameter by the range of the
+  internal vector, which the omega's `omega^(-1/4)` value of 25 dominates, so
+  nlminb's first trial step moved `slope` from 0.0035 to 12.6 (objective
+  ~4e283), the etas of that step were carried into every later evaluation,
+  nlminb reported "false convergence (8)", and the fit returned ~2e244 with
+  every parameter at its initial estimate and no diagnostic.  The flag is now
+  cleared like the other gradient branches do, and the final re-evaluation
+  clears it explicitly.  `innerOpt = "trust"` (the default since 7.1.0)
+  recovers from such a start on its own, which masked the fault on the
+  development branch; `innerOpt = "n1qn1"` reproduced it until this fix.
+
 - A FOCEi fit now warns when the objective function it reports at the final
   estimates is worse than the one at the initial estimates (by more than 1%,
   or not finite): the outer optimizer failed to improve on the starting point,
   or the inner (eta) problem did not converge when the final estimates were
-  re-evaluated, and the estimates are not reliable.  Issue 1114 reported a
-  `scaleType = "norm"`, `outerOpt = "nlminb"` fit whose between-study
-  variance started at `2.5e-6`; the first trial step moved `slope` from 0.0035
-  to 12.6 (the normalization constant is the range of the parameters, and the
-  omega's internal `omega^(-1/4)` value of 25 dominates it), the resulting
-  ~1e283 objective left the warm-started etas where the inner optimizer of
-  that release could not recover, and the fit returned an objective of ~2e244
-  with every parameter at its initial estimate and no diagnostic.  The inner
-  optimizer on the development branch already recovers, so that fit now
-  converges; the new warning is the gate against returning such a result
-  silently again, and the reprex is pinned as a regression test.
+  re-evaluated, and the estimates are not reliable.  Like the other FOCEi run
+  notes the warning is collected on the fit's `$runInfo`.  This is the gate
+  against a result like issue 1114's being returned silently again; the
+  reprex (its data and model) is pinned as a regression test under both inner
+  optimizers, next to the default-scaling fit.
 
 - An omega block declaring one of its covariances at exactly `0` (for example
   `eta.ka + eta.cl + eta.v ~ c(0.1, 0.01, 0.1, 0, 0.01, 0.1)`) no longer aborts
