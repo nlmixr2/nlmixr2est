@@ -403,3 +403,36 @@ test_that("outerOpt='trust' holds a coordinate on an active bound and converges"
   expect_equal(fitT$objf, fitL$objf, tolerance = 1e-3)
   expect_equal(unname(fixef(fitT)), unname(fixef(fitL)), tolerance = 1e-2)
 })
+
+test_that("outerOpt='trust' reaches the optimum from a start that floors an omega", {
+  skip_on_cran()
+  # The bound that actually bit in practice is not a theta ceiling but the
+  # omega floor: `diagOmegaBoundLower` puts a diagonal omega's lower bound at
+  # its own initial estimate over 100, so a start 100x above the optimum makes
+  # that bound active.  Starting `eta.cl` at 60 floors it at 0.6, where the
+  # unconstrained optimum (about 0.11) is well outside -- every Newton step
+  # leaves the box through it.  Before the hold this stopped 155 objective
+  # units above where `outerOpt="lbfgsb3c"` and `"nlminb"` land.
+  model <- function() {
+    ini({ tka <- -1.5; tcl <- 1.8; tv <- 4.2
+          eta.cl ~ 60; add.sd <- 2.5 })
+    model({ ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+            d/dt(depot) <- -ka * depot
+            d/dt(center) <- ka * depot - cl / v * center
+            cp <- center / v
+            cp ~ add(add.sd) })
+  }
+  d <- nlmixr2data::theo_sd
+  ctl <- function(...) {
+    foceiControl(print = 0L, calcTables = FALSE, covMethod = "", fast = TRUE, ...)
+  }
+  fitT <- .nlmixr(model, d, "focei", ctl(outerOpt = "trust"))
+  fitL <- .nlmixr(model, d, "focei", ctl(outerOpt = "lbfgsb3c"))
+  expect_equal(fitT$objf, fitL$objf, tolerance = 1e-3)
+  expect_equal(unname(fixef(fitT)), unname(fixef(fitL)), tolerance = 1e-2)
+  # the omega really is the parameter sitting on its floor, and the driver
+  # says so: parameter 5 is the omega, after the four thetas
+  expect_equal(unname(fitT$omega[1, 1]), 0.6, tolerance = 1e-5)
+  expect_identical(fitT$env$optReturn$activeBounds, 5L)
+  expect_true(fitT$env$optReturn$converged)
+})
