@@ -551,6 +551,10 @@ is.latex <- function() {
     }
     if (.atInc) {
       .ret$argument <- .arg
+      # `value` is rescued alongside the curvature because trust's error return
+      # carries neither: focei recomputes the objective itself, but `optReturn`
+      # should not report a gradient for a point whose value it dropped
+      .ret$value <- .inc$value
       .ret$gradient <- .inc$gradient
       .ret$hessian <- .inc$hessian
       .decr <- .trustOuterDecrement(list(gradient = .inc$gm, hessian = .inc$hm))
