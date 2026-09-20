@@ -193,7 +193,9 @@ nmTest({
     )
     fitDefault <- .r$fit
     expect_false(any(grepl(.worseRegex, .r$w)))
-    expect_equal(fitDefault$objf, 822.9683, tolerance = 1e-4)
+    # 822.9683 before the calcGrad fix; the eta reset now also runs in the
+    # line-search evaluations, which moves this fit by 0.035.
+    expect_equal(fitDefault$objf, 823.0037, tolerance = 1e-5)
     .theta <- fitDefault$theta
     expect_equal(unname(.theta[["slope"]]), 0.003713, tolerance = 0.01)
     expect_equal(unname(.theta[["emax_scale"]]), 4.995, tolerance = 0.01)
@@ -241,6 +243,23 @@ nmTest({
     )
     expect_false(any(grepl(.worseRegex, .r0$w)))
     expect_equal(.r0$fit$objf, 824.37, tolerance = 1e-3)
+  })
+
+  test_that("no fit leaves the gradient-leg flag set (issue 1114 and its covariance sibling)", {
+    # op_focei.calcGrad marks an objective evaluation as a gradient leg.  The Gill
+    # gradient left it set (issue 1114), and so did a covariance step whose
+    # covMethod has no S matrix ("r"): foceiCalcR inherited the flag from the
+    # step-size search and nothing cleared it on exit.  Every covariance route,
+    # and no covariance at all, must hand the flag back cleared.
+    for (.cov in c("r,s", "r", "s", "")) {
+      .fit <- suppressWarnings(suppressMessages(nlmixr(
+        .m1114, .d1114, est = "focei",
+        control = foceiControl(print = 0, outerOpt = "nlminb", covMethod = .cov,
+                               calcTables = FALSE)
+      )))
+      expect_true(is.finite(.fit$objf))
+      expect_equal(.foceiCalcGrad(), 0L, info = paste0("covMethod = '", .cov, "'"))
+    }
   })
 
   test_that(".foceiFinalOfvWorse: band of 1% with a 0.1 floor, non-finite final", {

@@ -6652,6 +6652,14 @@ bool foceiFinalOfvWorseR(double initOfv, double finalOfv) {
   return foceiFinalOfvWorse(initOfv, finalOfv);
 }
 
+// The "this evaluation is a gradient leg" flag, for tests: it must be 0 whenever no
+// gradient or covariance computation is in progress, in particular after a fit
+// returns (issue 1114 and its covariance-step sibling both left it set).
+//[[Rcpp::export(".foceiCalcGrad")]]
+int foceiCalcGradGet() {
+  return op_focei.calcGrad;
+}
+
 static inline double foceiOfv0(double *theta){
   if (op_focei.objfRecalN != 0 && !op_focei.calcGrad) {
     op_focei.stickyRecalcN1++;
@@ -11497,7 +11505,9 @@ int foceiS(double *theta, Environment e, bool &hasZero){
     op_focei.cur++;
     op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
   }
-  op_focei.calcGrad=0;
+  // Put back what the caller had (the covariance step owns the flag for its
+  // whole duration) rather than forcing 0 in the middle of that step.
+  op_focei.calcGrad=oldCalcGrad;
   // Now calculate S matrix
   arma::mat m1(1, op_focei.npars), S(op_focei.npars, op_focei.npars, fill::zeros), s1(1, op_focei.npars,fill::ones);
   for (gid = getRxNsub(rx); gid--;){
@@ -11560,6 +11570,18 @@ NumericMatrix foceiCalcCov(Environment e){
   // needs them for the whole cov step (incl. foceiCalcR below), so release only on
   // exit.  RAII covers every early return, the catch, and the covMethod=="" no-op.
   struct CovSolveArgsRelease { ~CovSolveArgsRelease() { releaseCovSolveArgs_(); } } _covSolveArgsRelease;
+  // Every objective evaluation in the covariance step is a derivative leg (the
+  // step-size searches, foceiCalcR's Hessian stencil, foceiS), so own calcGrad
+  // for the whole step and put the previous value back on every exit.  Before
+  // this the R-matrix legs ran with the flag only when the step-size search
+  // happened to set it (gillKcov != 0 or shi21maxOuter != 0), and a covMethod
+  // without an S matrix left the flag set past the end of the fit -- the same
+  // set-and-never-cleared shape as the Gill gradient in issue 1114.
+  struct CovCalcGradGuard {
+    int saved;
+    CovCalcGradGuard() : saved(op_focei.calcGrad) { op_focei.calcGrad = 1; }
+    ~CovCalcGradGuard() { op_focei.calcGrad = saved; }
+  } _covCalcGradGuard;
   try {
     if (op_focei.covMethod) {
       // Mu-referenced-FOCEI-family (muModel = lin/irls): the covariance must be

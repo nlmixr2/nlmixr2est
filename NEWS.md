@@ -111,6 +111,11 @@
   clears it explicitly.  `innerOpt = "trust"` (the default since 7.1.0)
   recovers from such a start on its own, which masked the fault on the
   development branch; `innerOpt = "n1qn1"` reproduced it until this fix.
+  The covariance step had the same shape: its R-matrix Hessian legs only ran
+  as gradient legs when the step-size search (`gillKcov`, `shi21maxOuter`)
+  happened to set the flag, and a `covMethod` without an S matrix left it set
+  after the fit.  The covariance step now owns the flag for its whole
+  duration and restores it on every exit.
 
 - A FOCEi fit now warns when the objective function it reports at the final
   estimates is worse than the one at the initial estimates (by more than 1%,
