@@ -368,7 +368,7 @@
   at comparable cost once the model cache is warm.
 
 - `outerOpt="trust"` evaluates the outer gradient and Hessian only at points
-  the trust region can accept.  `RcppTrust` reads the curvature at accepted
+  the trust region could accept.  `RcppTrust` reads the curvature at accepted
   points only, and it accepts only a trial below the incumbent, so a trial
   that is no improvement now gets its value alone; the incumbent is tracked by
   replaying trust's own acceptance test.  Same optima, 1.1x-2.6x faster with

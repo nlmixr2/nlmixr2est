@@ -211,7 +211,9 @@ test_that("the trust driver hands its control through to the region and curvatur
   expect_identical(.ret$activeBounds, 1:2)
   expect_equal(.ret$gradient, c(2, 8))
   expect_lt(.n, 15L)
-  # a bound the minimum does not sit on is held and then released
+  # only x2's bound is active here: the Newton direction is toward (2, 0), so
+  # x1 walks 3 -> 2 and never reaches its own bound.  `activeChanges` counts the
+  # hold, and nothing is released -- the release itself is covered below.
   .ret <- .trustOuter(
     c(3, 2),
     fn = function(x) (x[1] - 2)^2 + 4 * x[2]^2,
@@ -222,6 +224,80 @@ test_that("the trust driver hands its control through to the region and curvatur
   )
   expect_equal(.ret$x, c(2, 1), tolerance = 1e-6)
   expect_identical(.ret$activeBounds, 2L)
+  expect_identical(.ret$activeChanges, 1L)
+})
+
+test_that("a bound the minimum does not sit on is held and then released", {
+  # Rosenbrock from (-1.2, 1) with x2 >= 0: the first steps run down the valley
+  # and leave the box through x2, which is held on 0.  With x1 free the gradient
+  # at the converged point points back up, so the hold is released and the true
+  # interior minimum (1, 1) is reached.  Asserting the mechanism, not just the
+  # answer: `activeChanges` is 2 (one hold, one release) and nothing stays held.
+  # Without the release this stalls on the bound with x2 == 0.
+  .control <- list(
+    fast = TRUE, sigdig = 3, maxOuterIterations = 200L,
+    outerTrustHessian = "analytic", outerTrustRinit = 0.4,
+    outerTrustRmax = 3.2, outerTrustRestarts = 2L,
+    outerTrustFterm = 1e-11, outerTrustMterm = 1e-11,
+    hessian = function(x, relStep) {
+      matrix(c(1200 * x[1]^2 - 400 * x[2] + 2, -400 * x[1],
+               -400 * x[1], 200), 2, 2)
+    }
+  )
+  .ret <- .trustOuter(
+    c(-1.2, 1),
+    fn = function(x) 100 * (x[2] - x[1]^2)^2 + (1 - x[1])^2,
+    gr = function(x) {
+      c(-400 * x[1] * (x[2] - x[1]^2) - 2 * (1 - x[1]), 200 * (x[2] - x[1]^2))
+    },
+    lower = c(-Inf, 0),
+    upper = c(Inf, Inf),
+    control = .control
+  )
+  expect_equal(.ret$x, c(1, 1), tolerance = 1e-5)
+  expect_equal(.ret$convergence, 0L)
+  expect_identical(.ret$activeBounds, integer(0))
+  expect_identical(.ret$activeChanges, 2L)
+})
+
+test_that("the outer gradient and Hessian are skipped on a trial that cannot be accepted", {
+  # The saving is the whole point of the lazy path, and no assertion on the
+  # answer can see it: a build that evaluated gr() and the Hessian at every
+  # trial would return exactly the same optimum.  So count the callbacks --
+  # a trial worse than the incumbent must cost one fn() and nothing else.
+  .fn <- 0L
+  .gr <- 0L
+  .hess <- 0L
+  .control <- list(
+    fast = TRUE, sigdig = 3, maxOuterIterations = 100L,
+    outerTrustHessian = "analytic", outerTrustRinit = 0.4,
+    outerTrustRmax = 3.2, outerTrustRestarts = 0L,
+    outerTrustFterm = 1e-11, outerTrustMterm = 1e-11,
+    hessian = function(x, relStep) {
+      .hess <<- .hess + 1L
+      matrix(c(1200 * x[1]^2 - 400 * x[2] + 2, -400 * x[1],
+               -400 * x[1], 200), 2, 2)
+    }
+  )
+  .ret <- .trustOuter(
+    c(-1.2, 1),
+    fn = function(x) {
+      .fn <<- .fn + 1L
+      100 * (x[2] - x[1]^2)^2 + (1 - x[1])^2
+    },
+    gr = function(x) {
+      .gr <<- .gr + 1L
+      c(-400 * x[1] * (x[2] - x[1]^2) - 2 * (1 - x[1]), 200 * (x[2] - x[1]^2))
+    },
+    lower = c(-Inf, -Inf),
+    upper = c(Inf, Inf),
+    control = .control
+  )
+  expect_equal(.ret$x, c(1, 1), tolerance = 1e-5)
+  # Rosenbrock from this start is rejection-heavy, so the skip has to bite
+  expect_lt(.gr, .fn)
+  expect_identical(.hess, .gr)
+  expect_identical(.hess, .ret$hessianEvaluations)
 })
 
 test_that("a hold cut short by the iteration budget still returns a point in the box", {
