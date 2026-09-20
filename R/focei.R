@@ -555,7 +555,13 @@ is.latex <- function() {
       .ret$hessian <- .inc$hessian
       .decr <- .trustOuterDecrement(list(gradient = .inc$gm, hessian = .inc$hm))
     } else {
-      .decr <- .trustOuterDecrement(.ret)
+      # trust ended at a point this incumbent does not name, so the two are out
+      # of step and the value-only shortcut may have answered a trial from a
+      # point trust never accepted: the curvature it reports cannot be vouched
+      # for.  Drop the incumbent so a re-entry rebuilds it from trust's own
+      # point, and refuse to read a Newton decrement out of it.
+      state$inc <- NULL
+      .decr <- NA_real_
     }
     .under <- is.na(.decr) || .decr > region$fterm
     .again <- .under &&
@@ -775,13 +781,7 @@ is.latex <- function() {
       .accepted <- if (.term) {
         .v < .inc$value
       } else {
-        # `.pred` is rebuilt from `x - .inc$x`, not the step trust actually
-        # took, so it can differ from trust's own `preddiff` in the last bits --
-        # and near convergence the cancellation in that subtraction makes the
-        # difference relative, not absolute.  Stay clear of 1/4 by more than
-        # that (trust takes `>=`), so the incumbent here can never lead trust's
-        # own: it may only lag, which just costs an evaluation.
-        is.finite(.pred) && .pred != 0 && (.v - .inc$value) / .pred > 0.25 * (1 + 1e-6)
+        is.finite(.pred) && .pred != 0 && (.v - .inc$value) / .pred > 0.25
       }
     }
     if (.accepted) {

@@ -330,6 +330,44 @@ test_that("the outer gradient and Hessian are skipped on a trial that cannot be 
   )
 })
 
+test_that("a run that ends away from the incumbent refuses to vouch for its curvature", {
+  # The value-only shortcut answers a trial with the INCUMBENT's gradient and
+  # Hessian, which is only sound while that incumbent is the point trust
+  # accepted.  The two agree by construction (trust accepts at rho >= 1/4, the
+  # replay at rho > 1/4) and no randomized run has separated them -- but if
+  # they ever did separate, the curvature reported at the end would belong to
+  # another point.  Poison the incumbent to stand in for that: a value below
+  # anything reachable makes the shortcut fire on every trial, so trust ends
+  # somewhere the incumbent does not name.
+  .region <- .trustOuterRegion(c(1, 1), list(outerTrustFterm = 1e-11, outerTrustMterm = 1e-11))
+  .state <- .trustOuterState(c(-Inf, -Inf), c(Inf, Inf))
+  .curvature <- list(calls = 0L, fallback = FALSE, hessian = function(x, g) diag(c(2, 8)))
+  .objfun <- .trustOuterObjfun(
+    function(x) x[1]^2 + 4 * x[2]^2,
+    function(x) c(2 * x[1], 8 * x[2]),
+    .curvature,
+    c(-Inf, -Inf),
+    c(Inf, Inf),
+    .region,
+    .state
+  )
+  .state$inc <- list(
+    x = c(99, 99),
+    value = -1e300,
+    gradient = c(0, 0),
+    hessian = diag(2),
+    gm = c(0, 0),
+    hm = diag(2)
+  )
+  .ret <- .trustOuterRun(.objfun, c(3, 2), .region, 50L, 0L, .state)
+  # no decrement is read out of curvature that cannot be vouched for, and the
+  # incumbent is dropped so a re-entry would rebuild it from trust's own point
+  expect_true(is.na(.ret$newtonDecrement))
+  expect_true(.ret$underConverged)
+  expect_null(.state$inc)
+  expect_match(.trustOuterMessage(.ret), "stationary")
+})
+
 test_that("a hold cut short by the iteration budget still returns a point in the box", {
   # The hold is signalled by a condition raised from objfun, so trust returns
   # through its error path, where `argument` is the trial that left the box and
