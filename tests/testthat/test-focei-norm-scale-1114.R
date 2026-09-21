@@ -20,6 +20,7 @@
 #
 # 144 study-level rows from 12 studies (values perturbed).  DV is a percent
 # change, COVARIATE another percent change, SE the row's standard error.
+# fmt: skip
 .d1114 <- structure(list(ID = c(1L, 1L, 1L, 1L, 1L, 1L, 1L, 1L, 1L, 1L,
 1L, 1L, 1L, 1L, 1L, 1L, 1L, 1L, 2L, 2L, 2L, 2L, 2L, 2L, 2L, 2L,
 2L, 2L, 2L, 2L, 2L, 2L, 3L, 3L, 3L, 3L, 3L, 3L, 3L, 3L, 3L, 3L,
@@ -135,7 +136,9 @@
 nmTest({
   test_that("issue 1114: scaleType='norm' with a 2.5e-6 starting omega fits", {
     .r <- .fitCollectWarnings(
-      .m1114, .d1114, est = "focei",
+      .m1114,
+      .d1114,
+      est = "focei",
       control = foceiControl(print = 0, scaleType = "norm", outerOpt = "nlminb")
     )
     fitNorm <- .r$fit
@@ -164,9 +167,10 @@ nmTest({
     # Without the calcGrad fix this is the exact failure of the issue on main:
     # objf ~2e244, every theta at its initial estimate, "false convergence (8)".
     .r <- .fitCollectWarnings(
-      .m1114, .d1114, est = "focei",
-      control = foceiControl(print = 0, scaleType = "norm", outerOpt = "nlminb",
-                             innerOpt = "n1qn1")
+      .m1114,
+      .d1114,
+      est = "focei",
+      control = foceiControl(print = 0, scaleType = "norm", outerOpt = "nlminb", innerOpt = "n1qn1")
     )
     fitN1 <- .r$fit
     expect_false(any(grepl(.worseRegex, .r$w)))
@@ -188,7 +192,9 @@ nmTest({
 
   test_that("issue 1114: the default scaling path is unchanged", {
     .r <- .fitCollectWarnings(
-      .m1114, .d1114, est = "focei",
+      .m1114,
+      .d1114,
+      est = "focei",
       control = foceiControl(print = 0, outerOpt = "nlminb")
     )
     fitDefault <- .r$fit
@@ -214,13 +220,13 @@ nmTest({
       .x[1] <- par[1] + 2
       .seen$f0 <- fn(par)
       .seen$f1 <- fn(.x)
-      list(x = .x, par = .x, objective = .seen$f1, convergence = 1L,
-           message = "deliberately worse point")
+      list(x = .x, par = .x, objective = .seen$f1, convergence = 1L, message = "deliberately worse point")
     }
     .r <- .fitCollectWarnings(
-      .m1114, .d1114, est = "focei",
-      control = foceiControl(print = 0, outerOpt = .badOuter, covMethod = "",
-                             calcTables = FALSE)
+      .m1114,
+      .d1114,
+      est = "focei",
+      control = foceiControl(print = 0, outerOpt = .badOuter, covMethod = "", calcTables = FALSE)
     )
     expect_gt(.seen$f1, .seen$f0)
     expect_equal(sum(grepl(.worseRegex, .r$w)), 1L)
@@ -233,13 +239,13 @@ nmTest({
     # Negative control: the same custom optimizer returning its starting point
     # is a legitimate (if useless) run and must not warn.
     .sameOuter <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
-      list(x = par, par = par, objective = fn(par), convergence = 0L,
-           message = "returned the starting point")
+      list(x = par, par = par, objective = fn(par), convergence = 0L, message = "returned the starting point")
     }
     .r0 <- .fitCollectWarnings(
-      .m1114, .d1114, est = "focei",
-      control = foceiControl(print = 0, outerOpt = .sameOuter, covMethod = "",
-                             calcTables = FALSE)
+      .m1114,
+      .d1114,
+      est = "focei",
+      control = foceiControl(print = 0, outerOpt = .sameOuter, covMethod = "", calcTables = FALSE)
     )
     expect_false(any(grepl(.worseRegex, .r0$w)))
     expect_equal(.r0$fit$objf, 824.37, tolerance = 1e-3)
@@ -253,9 +259,10 @@ nmTest({
     # and no covariance at all, must hand the flag back cleared.
     for (.cov in c("r,s", "r", "s", "")) {
       .fit <- suppressWarnings(suppressMessages(nlmixr(
-        .m1114, .d1114, est = "focei",
-        control = foceiControl(print = 0, outerOpt = "nlminb", covMethod = .cov,
-                               calcTables = FALSE)
+        .m1114,
+        .d1114,
+        est = "focei",
+        control = foceiControl(print = 0, outerOpt = "nlminb", covMethod = .cov, calcTables = FALSE)
       )))
       expect_true(is.finite(.fit$objf))
       expect_equal(.foceiCalcGrad(), 0L, info = paste0("covMethod = '", .cov, "'"))
