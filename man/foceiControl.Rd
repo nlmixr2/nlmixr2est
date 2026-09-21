@@ -30,7 +30,7 @@ foceiControl(
   covSolveTol = NULL,
   covFull = TRUE,
   fast = FALSE,
-  priorMethod = c("auto", "general", "nwpri", "tnpri"),
+  priorMethod = c("auto", "general", "nwpri", "tnpri", "none"),
   fdOutlierZ = 3.5,
   fdOutlierScale = TRUE,
   fdRefine = c("chartrand", "lanczos", "richardson"),
@@ -357,7 +357,15 @@ that convention regardless of what auto-detection would have picked,
 and errors before any estimation starts if the model's priors are not
 representable under it (e.g. \code{priorMethod="tnpri"} on a model
 with an \code{invWishart()} prior).  Ignored when the model has no
-prior at all.}
+prior at all.
+
+\code{"none"} builds no prior specification: the \code{ini({})}
+priors stay on the model but are not evaluated, so the objective is
+the plain (unpenalized) likelihood.  It exists for callers that
+handled the priors somewhere else and only finalize through this
+control -- a sampler that already drew from the posterior, say --
+where building a specification would at best be unused and at worst
+refuse a prior this kernel cannot evaluate but the caller could.}
 
 \item{fdOutlierZ}{Cut of the Iglewicz-Hoaglin modified z-score that decides
 whether a finite-differenced subject's slope is an outlier against the exact

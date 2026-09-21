@@ -1,3 +1,17 @@
+# nlmixr2est (development version)
+
+## New features
+
+- `foceiControl(priorMethod = "none")` builds no prior specification: the
+  `ini({})` priors stay on the model but are not evaluated, so the objective is
+  the plain likelihood.  It is for callers that handled the priors elsewhere and
+  only finalize through the FOCEi family's control -- 'nlmixr2bayes' finalizes a
+  Stan posterior this way.  Before this, finalizing such a fit built a FOCEi
+  prior specification it never used, and that build refused any prior the
+  shared kernel cannot evaluate (`dbeta()`, `dgamma()`, `dlnorm()`, `dexp()`,
+  `dunif()`, `dweibull()`, `dlogis()`), failing a fit whose sampler had already
+  handled those priors correctly.
+
 # nlmixr2est 7.1.0
 
 ## Breaking changes
