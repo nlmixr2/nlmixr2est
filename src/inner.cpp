@@ -727,6 +727,12 @@ struct focei_options {
   double scaleObjectiveTo;
   int initObj;
   double initObjective;
+  // Signed objective at the starting theta (natural scale, before any
+  // scaleObjective rescaling) and at the reported final theta, as re-evaluated by
+  // foceiOuterFinal(); compared by foceiFinalOfvWorse() to refuse a silently bad
+  // fit (issue 1114).  NA until set.
+  double initOfv = NA_REAL;
+  double finalOfv = NA_REAL;
   // Confidence Interval
   double ci;
   double sigdig;
@@ -6625,6 +6631,35 @@ static void priorGradHessFor(const std::vector<int> &idx, arma::vec &grad, arma:
   Hp = 0.5 * (Hp + Hp.t());
 }
 
+// Is the final (re-evaluated) objective `finalOfv` worse than the starting
+// objective `initOfv`?  True when the final value is not finite, or exceeds the
+// initial one by more than 1% of its magnitude (with an absolute floor of 0.1
+// objective units so an initial objective near 0 still has a band).  The band
+// absorbs the small drift a final re-evaluation carries (its inner solve runs at
+// the covariance-step tolerances), while any real optimizer or inner-problem
+// failure is orders of magnitude outside it.  A non-finite initOfv cannot happen
+// after foceiOfv0()'s initial-evaluation stop()s, so it is treated as "not worse"
+// rather than raising a second, less specific condition.
+static inline bool foceiFinalOfvWorse(double initOfv, double finalOfv) {
+  if (!R_FINITE(initOfv)) return false;
+  if (!R_FINITE(finalOfv)) return true;
+  double band = max2(0.01 * std::fabs(initOfv), 0.1);
+  return finalOfv > initOfv + band;
+}
+
+//[[Rcpp::export(".foceiFinalOfvWorse")]]
+bool foceiFinalOfvWorseR(double initOfv, double finalOfv) {
+  return foceiFinalOfvWorse(initOfv, finalOfv);
+}
+
+// The "this evaluation is a gradient leg" flag, for tests: it must be 0 whenever no
+// gradient or covariance computation is in progress, in particular after a fit
+// returns (issue 1114 and its covariance-step sibling both left it set).
+//[[Rcpp::export(".foceiCalcGrad")]]
+int foceiCalcGradGet() {
+  return op_focei.calcGrad;
+}
+
 static inline double foceiOfv0(double *theta){
   if (op_focei.objfRecalN != 0 && !op_focei.calcGrad) {
     op_focei.stickyRecalcN1++;
@@ -6680,6 +6715,7 @@ static inline double foceiOfv0(double *theta){
   if (!op_focei.initObj){
     op_focei.initObj=1;
     op_focei.initObjective=std::fabs(ret);
+    op_focei.initOfv = ret;
     if (std::isnan(ret)){
       stop(_("NaN while evaluating initial objective function"));
     } else if (std::isinf(ret)) {
@@ -7677,6 +7713,17 @@ void numericGrad(double *theta, double *g){
     }
     op_focei.curGill=1;
     op_focei.slow = finalSlow;
+    // gill83() sets calcGrad=1 for its own objective evaluations; clear it like the
+    // shi21 and forward/central branches do.  Left set, every objective-only
+    // evaluation until the next gradient -- the optimizer's line search after
+    // the FIRST gradient, which is always this branch, and the final
+    // re-evaluation when the optimizer never reaches a second gradient -- ran
+    // as a gradient leg: innerOpt1() skipped the standardized-eta reset and the
+    // mceta start search, and foceiOfv0() skipped the ODE-tolerance retry and
+    // the lastOfv/checkTheta bookkeeping.  A trial step that blew the etas up
+    // then had no way back (issue 1114: the fit reported ~2e244 at the untouched
+    // initial estimates).
+    op_focei.calcGrad=0;
   } else {
     if(op_focei.slow){
       op_focei.t0 = clock();
@@ -9580,6 +9627,8 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.fallbackFD = as<int>(foceiO["fallbackFD"]);
   op_focei.smatPer = as<double>(foceiO["smatPer"]);
   op_focei.initObj=0;
+  op_focei.initOfv = NA_REAL;
+  op_focei.finalOfv = NA_REAL;
   op_focei.lastOfv=std::numeric_limits<double>::max();
   for (unsigned int k = op_focei.npars; k--;){
     j=op_focei.fixedTrans[k];
@@ -9796,9 +9845,18 @@ void foceiOuterFinal(double *x, Environment e){
   op_focei.outerFdStepPerNsub=0;
   op_focei.optimHessType = op_focei.optimHessCovType;
   op_focei.shi21maxInner = op_focei.shi21maxInnerCov;
+  // The reported objective is an objective evaluation, never a gradient leg,
+  // whatever state the optimizer's last call left behind: with calcGrad set,
+  // innerOpt1() would keep a warm-start eta it should have reset and foceiOfv0()
+  // would skip its ODE-tolerance retry (issue 1114).
+  op_focei.calcGrad = 0;
   _finalObfCalc = true;
   double fmin = foceiOfv0(x);
   _finalObfCalc = false;
+  // Natural-scale final objective for the worse-than-initial guard; the same
+  // un-scaling nlmixr2EnvSetup() applies before reporting.
+  op_focei.finalOfv = op_focei.scaleObjective ?
+    fmin * op_focei.initObjective / op_focei.scaleObjectiveTo : fmin;
   NumericVector theta(op_focei.ntheta);
   std::copy(&op_focei.fullTheta[0],  &op_focei.fullTheta[0] + op_focei.ntheta,
             theta.begin());
@@ -11447,7 +11505,9 @@ int foceiS(double *theta, Environment e, bool &hasZero){
     op_focei.cur++;
     op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
   }
-  op_focei.calcGrad=0;
+  // Put back what the caller had (the covariance step owns the flag for its
+  // whole duration) rather than forcing 0 in the middle of that step.
+  op_focei.calcGrad=oldCalcGrad;
   // Now calculate S matrix
   arma::mat m1(1, op_focei.npars), S(op_focei.npars, op_focei.npars, fill::zeros), s1(1, op_focei.npars,fill::ones);
   for (gid = getRxNsub(rx); gid--;){
@@ -11510,6 +11570,18 @@ NumericMatrix foceiCalcCov(Environment e){
   // needs them for the whole cov step (incl. foceiCalcR below), so release only on
   // exit.  RAII covers every early return, the catch, and the covMethod=="" no-op.
   struct CovSolveArgsRelease { ~CovSolveArgsRelease() { releaseCovSolveArgs_(); } } _covSolveArgsRelease;
+  // Every objective evaluation in the covariance step is a derivative leg (the
+  // step-size searches, foceiCalcR's Hessian stencil, foceiS), so own calcGrad
+  // for the whole step and put the previous value back on every exit.  Before
+  // this the R-matrix legs ran with the flag only when the step-size search
+  // happened to set it (gillKcov != 0 or shi21maxOuter != 0), and a covMethod
+  // without an S matrix left the flag set past the end of the fit -- the same
+  // set-and-never-cleared shape as the Gill gradient in issue 1114.
+  struct CovCalcGradGuard {
+    int saved;
+    CovCalcGradGuard() : saved(op_focei.calcGrad) { op_focei.calcGrad = 1; }
+    ~CovCalcGradGuard() { op_focei.calcGrad = saved; }
+  } _covCalcGradGuard;
   try {
     if (op_focei.covMethod) {
       // Mu-referenced-FOCEI-family (muModel = lin/irls): the covariance must be
@@ -14592,6 +14664,17 @@ Environment foceiFitCpp_(Environment e){
       npbOuter(e);
     } else {
       foceiOuter(e);
+      if (op_focei.maxOuterIterations > 0 && op_focei.initObj &&
+          foceiFinalOfvWorse(op_focei.initOfv, op_focei.finalOfv)) {
+        // The outer optimizer can only return a point it evaluated, and every
+        // optimizer here keeps its best, so the reported objective should never be
+        // worse than the starting one.  When it is, the fit is not trustworthy:
+        // either the optimizer failed outright or the inner (eta) problem did not
+        // converge when the final estimates were re-evaluated.  Issue 1114 returned
+        // ~2e244 against a starting 824 with every theta untouched and no message.
+        warning(_("the final objective function (%g) is worse than the initial objective function (%g); the estimates are not reliable.\nThe outer optimizer did not improve on the initial estimates or the inner (eta) optimization did not converge at the final estimates; check the initial estimates and the scaling (foceiControl(scaleType=, normType=))"),
+                op_focei.finalOfv, op_focei.initOfv);
+      }
     }
     if (op_focei.didHessianReset==1){
       warning(_("Hessian reset during optimization; (can control by foceiControl(resetHessianAndEta=.))"));

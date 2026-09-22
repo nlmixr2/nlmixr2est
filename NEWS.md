@@ -753,6 +753,39 @@
 
 ## Bug fixes
 
+- FOCEi's Gill gradient left the internal "this is a gradient leg" flag set,
+  so every objective-only evaluation between the first gradient (always Gill)
+  and the second ran as a gradient leg: the inner (eta) solve skipped its
+  standardized-eta reset and mceta start search, and the objective skipped
+  its ODE-tolerance retry and its `lastOfv` bookkeeping.  An outer trial step
+  that blew the etas up then had no way back, and when the optimizer never
+  reached a second gradient the final re-evaluation inherited the flag too.
+  Issue 1114 is that path: `scaleType = "norm"` with a between-study variance
+  starting at `2.5e-6` normalizes every parameter by the range of the
+  internal vector, which the omega's `omega^(-1/4)` value of 25 dominates, so
+  nlminb's first trial step moved `slope` from 0.0035 to 12.6 (objective
+  ~4e283), the etas of that step were carried into every later evaluation,
+  nlminb reported "false convergence (8)", and the fit returned ~2e244 with
+  every parameter at its initial estimate and no diagnostic.  The flag is now
+  cleared like the other gradient branches do, and the final re-evaluation
+  clears it explicitly.  `innerOpt = "trust"` (the default since 7.1.0)
+  recovers from such a start on its own, which masked the fault on the
+  development branch; `innerOpt = "n1qn1"` reproduced it until this fix.
+  The covariance step had the same shape: its R-matrix Hessian legs only ran
+  as gradient legs when the step-size search (`gillKcov`, `shi21maxOuter`)
+  happened to set the flag, and a `covMethod` without an S matrix left it set
+  after the fit.  The covariance step now owns the flag for its whole
+  duration and restores it on every exit.
+
+- A FOCEi fit now warns when the objective function it reports at the final
+  estimates is worse than the one at the initial estimates (by more than 1%,
+  or not finite): the outer optimizer failed to improve on the starting point,
+  or the inner (eta) problem did not converge when the final estimates were
+  re-evaluated, and the estimates are not reliable.  Like the other FOCEi run
+  notes the warning is collected on the fit's `$runInfo`.  This is the gate
+  against a result like issue 1114's being returned silently again; the
+  reprex (its data and model) is pinned as a regression test under both inner
+  optimizers, next to the default-scaling fit.
 - `est = "npag"` / `est = "npb"`: the per-observation endpoint map behind the
   residual step's per-endpoint moments never worked.  It was built while
   parsing the control list, before the first solve, when rxode2's sorted
