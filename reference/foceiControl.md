@@ -31,7 +31,7 @@ foceiControl(
   covSolveTol = NULL,
   covFull = TRUE,
   fast = FALSE,
-  priorMethod = c("auto", "general", "nwpri", "tnpri"),
+  priorMethod = c("auto", "general", "nwpri", "tnpri", "none"),
   fdOutlierZ = 3.5,
   fdOutlierScale = TRUE,
   fdRefine = c("chartrand", "lanczos", "richardson"),
@@ -405,6 +405,14 @@ foceiControl(
   estimation starts if the model's priors are not representable under it
   (e.g. `priorMethod="tnpri"` on a model with an `invWishart()` prior).
   Ignored when the model has no prior at all.
+
+  `"none"` builds no prior specification: the `ini({})` priors stay on
+  the model but are not evaluated, so the objective is the plain
+  (unpenalized) likelihood. It exists for callers that handled the
+  priors somewhere else and only finalize through this control – a
+  sampler that already drew from the posterior, say – where building a
+  specification would at best be unused and at worst refuse a prior this
+  kernel cannot evaluate but the caller could.
 
 - fdOutlierZ:
 

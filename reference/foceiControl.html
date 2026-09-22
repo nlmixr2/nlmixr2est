@@ -32,7 +32,7 @@
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
       <img src="../logo.png" class="logo" alt=""><h1>Control Options for FOCEi</h1>
-      <small class="dont-index">Source: <a href="https://github.com/nlmixr2/nlmixr2est/blob/v7.1.0/R/foceiControl.R" class="external-link"><code>R/foceiControl.R</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/nlmixr2/nlmixr2est/blob/main/R/foceiControl.R" class="external-link"><code>R/foceiControl.R</code></a></small>
       <div class="d-none name"><code>foceiControl.Rd</code></div>
     </div>
 
@@ -68,7 +68,7 @@
 <span>  covSolveTol <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  covFull <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  fast <span class="op">=</span> <span class="cn">FALSE</span>,</span>
-<span>  priorMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"general"</span>, <span class="st">"nwpri"</span>, <span class="st">"tnpri"</span><span class="op">)</span>,</span>
+<span>  priorMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"general"</span>, <span class="st">"nwpri"</span>, <span class="st">"tnpri"</span>, <span class="st">"none"</span><span class="op">)</span>,</span>
 <span>  fdOutlierZ <span class="op">=</span> <span class="fl">3.5</span>,</span>
 <span>  fdOutlierScale <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  fdRefine <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"chartrand"</span>, <span class="st">"lanczos"</span>, <span class="st">"richardson"</span><span class="op">)</span>,</span>
@@ -450,7 +450,14 @@ that convention regardless of what auto-detection would have picked,
 and errors before any estimation starts if the model's priors are not
 representable under it (e.g. <code>priorMethod="tnpri"</code> on a model
 with an <code>invWishart()</code> prior).  Ignored when the model has no
-prior at all.</p></dd>
+prior at all.</p>
+<p><code>"none"</code> builds no prior specification: the <code>ini({})</code>
+priors stay on the model but are not evaluated, so the objective is
+the plain (unpenalized) likelihood.  It exists for callers that
+handled the priors somewhere else and only finalize through this
+control – a sampler that already drew from the posterior, say –
+where building a specification would at best be unused and at worst
+refuse a prior this kernel cannot evaluate but the caller could.</p></dd>
 
 
 <dt id="arg-fdoutlierz">fdOutlierZ<a class="anchor" aria-label="anchor" href="#arg-fdoutlierz"></a></dt>

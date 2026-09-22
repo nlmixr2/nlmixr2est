@@ -32,9 +32,17 @@
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
       <img src="../logo.png" class="logo" alt=""><h1>Changelog</h1>
-      <small>Source: <a href="https://github.com/nlmixr2/nlmixr2est/blob/v7.1.0/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
+      <small>Source: <a href="https://github.com/nlmixr2/nlmixr2est/blob/main/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
     </div>
 
+    <div class="section level2">
+<h2 class="pkg-version" data-toc-text="development version" id="nlmixr2est-development-version">nlmixr2est (development version)<a class="anchor" aria-label="anchor" href="#nlmixr2est-development-version"></a></h2>
+<div class="section level3">
+<h3 id="new-features-development-version">New features<a class="anchor" aria-label="anchor" href="#new-features-development-version"></a></h3>
+<ul><li>
+<code>foceiControl(priorMethod = "none")</code> builds no prior specification: the <code>ini({})</code> priors stay on the model but are not evaluated, so the objective is the plain likelihood. It is for callers that handled the priors elsewhere and only finalize through the FOCEi family’s control – ‘nlmixr2bayes’ finalizes a Stan posterior this way. Before this, finalizing such a fit built a FOCEi prior specification it never used, and that build refused any prior the shared kernel cannot evaluate (<code><a href="https://rdrr.io/r/stats/Beta.html" class="external-link">dbeta()</a></code>, <code><a href="https://rdrr.io/r/stats/GammaDist.html" class="external-link">dgamma()</a></code>, <code><a href="https://rdrr.io/r/stats/Lognormal.html" class="external-link">dlnorm()</a></code>, <code><a href="https://rdrr.io/r/stats/Exponential.html" class="external-link">dexp()</a></code>, <code><a href="https://rdrr.io/r/stats/Uniform.html" class="external-link">dunif()</a></code>, <code><a href="https://rdrr.io/r/stats/Weibull.html" class="external-link">dweibull()</a></code>, <code><a href="https://rdrr.io/r/stats/Logistic.html" class="external-link">dlogis()</a></code>), failing a fit whose sampler had already handled those priors correctly.</li>
+</ul></div>
+</div>
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="7.1.0" id="nlmixr2est-710">nlmixr2est 7.1.0<a class="anchor" aria-label="anchor" href="#nlmixr2est-710"></a></h2><p class="text-muted">CRAN release: 2026-09-20</p>
 <div class="section level3">
