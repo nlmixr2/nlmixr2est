@@ -161,6 +161,30 @@ nmTest({
     )
   })
 
+  test_that("foceiControl(priorMethod=\"none\") evaluates the likelihood without the priors", {
+    skip_on_cran()
+    .fit <- function(mod, ...) {
+      suppressWarnings(suppressMessages(
+        nlmixr2(
+          mod,
+          nlmixr2data::theo_sd,
+          est = "focei",
+          control = foceiControl(maxOuterIterations = 0L, print = 0L, ...)
+        )
+      ))
+    }
+    .noPrior <- .fit(.oneCmt)
+    .none <- .fit(.oneCmtPrior, priorMethod = "none")
+    .auto <- .fit(.oneCmtPrior)
+    # "none" is exactly the model without its prior ...
+    expect_equal(.none$objective, .noPrior$objective)
+    # ... while the default still evaluates it, so the comparison above is
+    # not passing merely because the prior contributes nothing here
+    expect_false(isTRUE(all.equal(.auto$objective, .none$objective)))
+    # and the prior itself stays on the model; only its evaluation is skipped
+    expect_true("tcl" %in% rxode2::rxUiPriors(.none$ui)$name)
+  })
+
   test_that("FOCEi's family accepts a prior that touches omega (#931)", {
     skip_on_cran()
     .fit <- suppressWarnings(suppressMessages(
