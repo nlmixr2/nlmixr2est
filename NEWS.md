@@ -1,3 +1,17 @@
+# nlmixr2est (development version)
+
+## New features
+
+- `foceiControl(priorMethod = "none")` builds no prior specification: the
+  `ini({})` priors stay on the model but are not evaluated, so the objective is
+  the plain likelihood.  It is for callers that handled the priors elsewhere and
+  only finalize through the FOCEi family's control -- 'nlmixr2bayes' finalizes a
+  Stan posterior this way.  Before this, finalizing such a fit built a FOCEi
+  prior specification it never used, and that build refused any prior the
+  shared kernel cannot evaluate (`dbeta()`, `dgamma()`, `dlnorm()`, `dexp()`,
+  `dunif()`, `dweibull()`, `dlogis()`), failing a fit whose sampler had already
+  handled those priors correctly.
+
 # nlmixr2est 7.1.0
 
 ## Breaking changes
@@ -772,6 +786,22 @@
   against a result like issue 1114's being returned silently again; the
   reprex (its data and model) is pinned as a regression test under both inner
   optimizers, next to the default-scaling fit.
+- `est = "npag"` / `est = "npb"`: the per-observation endpoint map behind the
+  residual step's per-endpoint moments never worked.  It was built while
+  parsing the control list, before the first solve, when rxode2's sorted
+  event index is still empty, so every row read as a dose and the map came
+  back empty without a warning; and its endpoint compartments were the ui's
+  `predDf$cmt` numbers, while the CMT covariate is numbered in the inner
+  model's basis (the user's states plus the eta sensitivities, then the
+  endpoint pseudo-compartments), so even a populated map matched nothing.
+  The per-endpoint moment warm start, its closed-form fast path for a lone
+  additive/proportional scale, and the endpoint bucketing (#856) were
+  therefore silently disabled for every fit.  The map is now built after the
+  first solve, in the inner model's basis, and an empty map warns.  With the
+  residual search warm-started at the moments each cycle, two endpoints that
+  are exact scaled copies of each other keep their fixed ratio to the
+  optimizer's stopping radius (they came out 2.6% apart before, issue 1118),
+  and theophylline's `add.sd` lands at the FOCEi value (0.784 vs 0.784).
 
 ### Estimation
 

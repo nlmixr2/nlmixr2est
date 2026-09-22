@@ -19573,6 +19573,10 @@ arma::ivec npBuildObsEndpoint(const std::vector<int>& endpointCmt) {
   int nUnmatched = 0;
   for (int i = 0; i < nsub; ++i) {
     rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(i));
+    // Read the covariate in the INNER model's basis, the one endpointCmt is numbered
+    // in: a larger pooled peer re-bases endpoint rows, and the raw value is then the
+    // pool's (grabRFmatFromInner reads under the same scope).
+    OdeSwapCmtScope _cmtScope(odeSlotInner, op, ind);
     int n = getIndNallTimes(ind);
     for (int j = 0; j < n; ++j) {
       int kk = getIndIx(ind, j);
@@ -19585,6 +19589,13 @@ arma::ivec npBuildObsEndpoint(const std::vector<int>& endpointCmt) {
   if (nUnmatched > 0) {
     Rf_warning("%d obs. match no endpoint, dropped from the residual warm start",
                nUnmatched);
+  }
+  // No observation row at all is not a legitimate outcome for a model with
+  // endpoints: it means the sorted event index was not populated yet (this was
+  // called before the first solve) and every row read as a dose.  Say so, since
+  // the silent form of this disabled the moment warm start for every fit (1118).
+  if (out.empty() && !endpointCmt.empty()) {
+    Rf_warning("residual endpoint map is empty (built before the first solve?); the per-endpoint moment warm start is skipped");
   }
   arma::ivec ret((arma::uword)out.size());
   for (size_t k = 0; k < out.size(); ++k) ret[k] = out[k];

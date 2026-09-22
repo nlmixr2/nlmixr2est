@@ -128,6 +128,7 @@ void npbOuter(Environment e) {
   std::vector<int> regressIdx;
   std::vector<double> regressLower, regressUpper;
   arma::ivec obsEndpoint;
+  std::vector<int> endpointCmt;   // obsEndpoint is built from this after the first solve
   bool residFreeze = true;
   double npbResidRhoend = 1e-4; // bounded-bobyqa final trust-region radius (residual step)
   if (control.containsElementNamed("npResidRhoend"))
@@ -158,8 +159,7 @@ void npbOuter(Environment e) {
   }
   if (control.containsElementNamed("npEndpointCmt")) {
     IntegerVector ec = control["npEndpointCmt"];
-    std::vector<int> endpointCmt(ec.begin(), ec.end());
-    obsEndpoint = npBuildObsEndpoint(endpointCmt);
+    endpointCmt.assign(ec.begin(), ec.end());
   }
   if (control.containsElementNamed("npRegressIdx")) {
     IntegerVector gi = control["npRegressIdx"];
@@ -340,6 +340,9 @@ void npbOuter(Environment e) {
         (it % residEvery == 0)) {
       arma::mat rsup; arma::vec rwt;
       npbCompactSupport(phi, w, rsup, rwt);
+      // built here, after the solves have filled rxode2's sorted event index (see
+      // npagRunCycle for why building it at control-parsing time gave an empty map)
+      if (obsEndpoint.is_empty() && !endpointCmt.empty()) obsEndpoint = npBuildObsEndpoint(endpointCmt);
       npOptimizeResid(rsup, rwt, optIdx, optKind, cores, optLo, optHi, residFreeze,
                       obsEndpoint, optEnd, optProp, useRegress, npbResidRhoend);
     }
@@ -367,6 +370,7 @@ void npbOuter(Environment e) {
   if (hasResidOpt && residMode == 2) {
     arma::mat rsup; arma::vec rwt;
     npbCompactSupport(phiLast, wLast, rsup, rwt);
+    if (obsEndpoint.is_empty() && !endpointCmt.empty()) obsEndpoint = npBuildObsEndpoint(endpointCmt);
     npOptimizeResid(rsup, rwt, optIdx, optKind, cores, optLo, optHi, residFreeze,
                     obsEndpoint, optEnd, optProp, useRegress, npbResidRhoend);
   }

@@ -332,15 +332,16 @@
 #' @param ui rxode2 ui
 #' @param method one of `"auto"` (default -- see `.nlmixr2PriorMethod()`
 #'   for how the omega convention is read off the model), `"general"`,
-#'   `"nwpri"`, `"tnpri"`.  Typically `foceiControl(priorMethod=)`, passed
-#'   straight through by the caller.
+#'   `"nwpri"`, `"tnpri"`, or `"none"` (build nothing; see
+#'   `foceiControl(priorMethod=)`).  Typically `foceiControl(priorMethod=)`,
+#'   passed straight through by the caller.
 #' @return an R external pointer (`rx_prior_spec_t*`) for
 #'   `foceiControl(priorSpec=)` to carry into `op_focei`, or `NULL`
 #' @noRd
 #' @author Matthew L. Fidler
-.nlmixr2BuildPriorSpec <- function(ui, method = c("auto", "general", "nwpri", "tnpri")) {
+.nlmixr2BuildPriorSpec <- function(ui, method = c("auto", "general", "nwpri", "tnpri", "none")) {
   method <- match.arg(method)
-  if (length(rxode2::rxUiPriors(ui)$name) == 0L) {
+  if (identical(method, "none") || length(rxode2::rxUiPriors(ui)$name) == 0L) {
     return(NULL)
   }
   .build <- .nlmixr2RxAssert("rxPriorBuildSpec")
