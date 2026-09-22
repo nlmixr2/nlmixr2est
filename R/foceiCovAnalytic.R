@@ -9,16 +9,6 @@
 # e.g. a covariate coefficient).  A mu-referenced theta reuses its eta's
 # direction, so a fully mu-referenced model has ndir == neta.
 
-#' Install the stashed analytic covariance as `fit$cov` (the native path fills
-#' only the theta block).  No-op on the FD fallback (which foceiCalcR already
-#' warned about).  `covFull=TRUE` (default) installs the full theta+sigma+Omega
-#' matrix as `covMethod="analytic (full)"`; `covFull=FALSE` installs the
-#' structural-theta submatrix (NONMEM-matched theta cov, backwards-compatible
-#' shape) as `covMethod="analytic"` -- the assembly is always full, so the theta
-#' SEs agree.  Both shapes are cached, so `setCov()` swaps between them without
-#' reassembling.
-#' @param .ret focei fit environment
-#' @noRd
 #' Structural + residual theta names of an analytic covariance
 #'
 #' Prefers the enumeration the assembly recorded (`.analyticThetaNames`); falls
@@ -69,6 +59,16 @@
   cov[.th, .th, drop = FALSE]
 }
 
+#' Install the stashed analytic covariance as `fit$cov` (the native path fills
+#' only the theta block).  No-op on the FD fallback (which foceiCalcR already
+#' warned about).  `covFull=TRUE` (default) installs the full theta+sigma+Omega
+#' matrix as `covMethod="analytic (full)"`; `covFull=FALSE` installs the
+#' structural-theta submatrix (NONMEM-matched theta cov, backwards-compatible
+#' shape) as `covMethod="analytic"` -- the assembly is always full, so the theta
+#' SEs agree.  Both shapes are cached, so `setCov()` swaps between them without
+#' reassembling.
+#' @param .ret focei fit environment
+#' @noRd
 .foceiInstallAnalyticCov <- function(.ret) {
   # only covMethod="r" installs the analytic R^-1; "r,s"/"s" keep the native
   # sandwich / S-matrix cov (which the analytic R already fed via covR).

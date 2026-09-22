@@ -557,6 +557,28 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// foceiFinalOfvWorseR
+bool foceiFinalOfvWorseR(double initOfv, double finalOfv);
+RcppExport SEXP _nlmixr2est_foceiFinalOfvWorseR(SEXP initOfvSEXP, SEXP finalOfvSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< double >::type initOfv(initOfvSEXP);
+    Rcpp::traits::input_parameter< double >::type finalOfv(finalOfvSEXP);
+    rcpp_result_gen = Rcpp::wrap(foceiFinalOfvWorseR(initOfv, finalOfv));
+    return rcpp_result_gen;
+END_RCPP
+}
+// foceiCalcGradGet
+int foceiCalcGradGet();
+RcppExport SEXP _nlmixr2est_foceiCalcGradGet() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(foceiCalcGradGet());
+    return rcpp_result_gen;
+END_RCPP
+}
 // foceiLik
 double foceiLik(NumericVector theta);
 RcppExport SEXP _nlmixr2est_foceiLik(SEXP thetaSEXP) {

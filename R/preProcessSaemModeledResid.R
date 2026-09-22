@@ -5,9 +5,10 @@
 #' columns; a plain theta leaves them `NA`.
 #'
 #' @param ui rxode2 ui
+#' @param dist endpoint distributions to consider
 #' @return character vector of endpoint conditions
 #' @noRd
-.saemModeledResidualCond <- function(ui) {
+.saemModeledResidualCond <- function(ui, dist = "norm") {
   .pred <- ui$predDf
   if (is.null(.pred) || length(.pred$cond) == 0L) {
     return(character(0))
@@ -20,13 +21,60 @@
   .modeled <- vapply(
     seq_along(.pred$cond),
     function(i) {
-      .pred$distribution[i] == "norm" &&
-        any(!is.na(unlist(.pred[i, .cols, drop = TRUE])))
+      .pred$distribution[i] %in% dist && any(!is.na(unlist(.pred[i, .cols, drop = TRUE])))
     },
     logical(1),
     USE.NAMES = FALSE
   )
   as.character(.pred$cond[.modeled])
+}
+
+#' Whether a modeled residual error component depends on an eta
+#'
+#' Follows the model's assignments back from each error argument variable.
+#'
+#' @param ui rxode2 ui
+#' @param conds endpoint conditions from `.saemModeledResidualCond()`
+#' @return logical
+#' @noRd
+.saemModeledResidHasEta <- function(ui, conds) {
+  .pred <- ui$predDf
+  .cols <- intersect(c("a", "b", "c", "d", "e", "lambda"), names(.pred))
+  .vars <- unique(stats::na.omit(unlist(.pred[.pred$cond %in% conds, .cols, drop = FALSE])))
+  .iniDf <- ui$iniDf
+  .etas <- .iniDf$name[!is.na(.iniDf$neta1) & .iniDf$neta1 == .iniDf$neta2]
+  .rhs <- list()
+  for (.e in ui$lstExpr) {
+    if (is.call(.e) && (identical(.e[[1]], as.name("<-")) || identical(.e[[1]], as.name("="))) && is.name(.e[[2]])) {
+      .n <- as.character(.e[[2]])
+      .rhs[[.n]] <- c(.rhs[[.n]], all.vars(.e[[3]]))
+    }
+  }
+  .seen <- character(0)
+  while (length(.vars) > 0L) {
+    if (any(.vars %in% .etas)) {
+      return(TRUE)
+    }
+    .seen <- c(.seen, .vars)
+    .vars <- setdiff(unique(unlist(.rhs[intersect(.vars, names(.rhs))])), .seen)
+  }
+  FALSE
+}
+
+#' Raise an unset saem `nu` for a residual error with an eta
+#'
+#' @param control saem control as passed to the hook (may be `NULL`)
+#' @return the updated control, or `NULL` when `nu` was set explicitly
+#' @noRd
+.saemAutoNu <- function(control) {
+  if (is.null(control)) {
+    control <- saemControl()
+  }
+  if (!inherits(control, "saemControl") || !isTRUE(control$mcmc$nuAuto)) {
+    return(NULL)
+  }
+  control$mcmc$nu <- pmax(control$mcmc$nu, 4)
+  control
 }
 
 #' Append `+ dnorm()` to an error line, before any `| condition`
@@ -55,8 +103,9 @@
 #' @param ui rxode2 ui
 #' @param est estimation method
 #' @param data dataset (unused)
-#' @param control control (unused)
-#' @return list with the rewritten ui, or `NULL` when nothing changes
+#' @param control saem control; an unset `nu` is raised when the residual
+#'   error depends on an eta (`.saemAutoNu()`)
+#' @return list with the rewritten ui (and control), or `NULL` when nothing changes
 #' @noRd
 .preProcessSaemModeledResid <- function(ui, est, data, control) {
   nlmixr2global$nlmixr2EstEnv$saemPseudoTransforms <- NULL
@@ -71,9 +120,21 @@
     ui <- eval(bquote(rxode2::model(ui, .(.new))))
     warning(sprintf("modeled residual error for '%s'; fit as dnorm() likelihood", .cond), call. = FALSE)
   }
+  # an explicit + dnorm() is the same likelihood, so it gets the same nu
+  .ctl <- NULL
+  .etaConds <- .saemModeledResidualCond(.orig, c("norm", "dnorm"))
+  if (length(.etaConds) > 0L && .saemModeledResidHasEta(.orig, .etaConds)) {
+    .ctl <- .saemAutoNu(control)
+    if (!is.null(.ctl)) {
+      warning("residual error depends on an eta; MCMC nu raised to ", deparse1(.ctl$mcmc$nu), call. = FALSE)
+    }
+  }
   .spec <- .saemPseudoEtaThetas(ui)
   if (length(.conds) == 0L && nrow(.spec) == 0L) {
-    return(NULL)
+    if (is.null(.ctl)) {
+      return(NULL)
+    }
+    return(list(control = .ctl))
   }
   if (nrow(.spec) > 0L) {
     ui <- .saemAddPseudoEtas(ui, .spec)
@@ -86,7 +147,11 @@
   if (is.null(nlmixr2global$nlmixr2EstEnv$nlmixrPureInputUi)) {
     nlmixr2global$nlmixr2EstEnv$nlmixrPureInputUi <- rxode2::rxUiDecompress(.orig)
   }
-  list(ui = ui)
+  .ret <- list(ui = ui)
+  if (!is.null(.ctl)) {
+    .ret$control <- .ctl
+  }
+  .ret
 }
 
 preProcessHooksAdd(".preProcessSaemModeledResid", .preProcessSaemModeledResid)

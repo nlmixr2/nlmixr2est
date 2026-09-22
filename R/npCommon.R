@@ -310,8 +310,28 @@
   .control$npResidOptProp <- as.integer(startsWith(.optType, "prop"))
   # per-endpoint compartment (predDf order) so the C++ side can map each observation's
   # cmt (rxode2 getIndCmt, the CMT time-varying covariate) to its endpoint index for the
-  # per-endpoint moment warm start.  cmt values are distinct, not necessarily sequential.
-  .control$npEndpointCmt <- tryCatch(as.integer(ui$predDf$cmt), error = function(e) integer(0))
+  # per-endpoint moment warm start.  The covariate is numbered in the INNER model's
+  # basis -- its states (the user's plus the eta sensitivities) followed by the
+  # endpoint pseudo-compartments -- not in the ui's `predDf$cmt` basis, which counts
+  # only the user's states; matched against the ui numbers every observation of a
+  # multi-endpoint model read as "no endpoint" (issue 1118).  The endpoint names are
+  # the inner model's stateExtra, in predDf order.  The compiled inner model is
+  # cached on disk (rxUiGet.foceiModel), so this does not build it twice.
+  .control$npEndpointCmt <- tryCatch(
+    {
+      .inner <- rxode2::rxModelVars(ui$foceiModel$inner)
+      .basis <- c(.inner$state, .inner$stateExtra)
+      .cmt <- match(as.character(ui$predDf$cond), .basis)
+      if (anyNA(.cmt)) {
+        .cmt <- match(as.character(ui$predDf$var), .basis)
+      }
+      if (anyNA(.cmt)) {
+        stop("endpoint not found in the inner model's compartments")
+      }
+      as.integer(.cmt)
+    },
+    error = function(e) integer(0)
+  )
   # ini-block bounds of the residual-opt params (for the bounded bobyqa step),
   # intersected with the parameter's natural range: an SD (kind 1) is >= 0 and the
   # continuous-AR correlation (kind 2) is in (0, 1).

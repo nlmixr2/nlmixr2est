@@ -272,6 +272,7 @@ struct npagCtl {
   std::vector<int> residOptEnd;   // per-idx 0-based endpoint (-1 if not a variance scale)
   std::vector<int> residOptProp;  // per-idx 1 if proportional, else 0 (moment warm start)
   arma::ivec obsEndpoint;         // per-observation endpoint (subject-major getIndIx order)
+  std::vector<int> endpointCmt;   // per-endpoint cmt (inner-model basis, predDf order)
   std::vector<int> regressIdx;    // fullTheta indices of structural regressor thetas
   std::vector<double> regressLower;
   std::vector<double> regressUpper;
@@ -325,6 +326,7 @@ struct npagResult {
 static npagResult npagRunCycle(const arma::vec& lower, const arma::vec& upper,
                                const npagCtl& ctl) {
   arma::mat theta = npSobolGrid(ctl.points, lower, upper);
+  arma::ivec obsEndpoint = ctl.obsEndpoint;
   double eps = ctl.epsInit, f0 = -1e30, f1 = 0.0, lastObj = -1e30, objf = R_NegInf;
   // gamma is held at 1: the per-cycle warm-start folds its multiplier straight
   // into the variance-scale thetas, so the main/condensation Psi builds and the
@@ -393,6 +395,9 @@ static npagResult npagRunCycle(const arma::vec& lower, const arma::vec& upper,
           "model and the observations near a zero prediction.");
       }
     }
+    if (cycle == 1 && obsEndpoint.is_empty() && !ctl.endpointCmt.empty()) {
+      obsEndpoint = npBuildObsEndpoint(ctl.endpointCmt);
+    }
     lam = npBurke(psi, &obj0);
     // condensation: weight threshold, then QR rank-revealing
     arma::uvec wk = npCondenseWeights(lam, ctl.ratio);
@@ -438,7 +443,7 @@ static npagResult npagRunCycle(const arma::vec& lower, const arma::vec& upper,
     // coordinate ascent), then re-solves the weights at the new thetas.
     if (ctl.residMode == 1 && doResidOpt) {
       npOptimizeResid(theta, lam, optIdx, optKind, ctl.cores, optLo, optHi,
-                      ctl.residFreeze, ctl.obsEndpoint, optEnd, optProp, useRegress, ctl.residRhoend);
+                      ctl.residFreeze, obsEndpoint, optEnd, optProp, useRegress, ctl.residRhoend);
       double off = 0.0, b = 0.0;
       npBuildPsiCoreScaled(theta, ctl.cores, 1.0, psi, &off);
       lam = npBurke(psi, &b); objf = b + off;
@@ -487,7 +492,7 @@ static npagResult npagRunCycle(const arma::vec& lower, const arma::vec& upper,
   // "final" mode: optimize the residual + regressor thetas once at the converged support.
   if (ctl.residMode == 2 && doResidOpt) {
     npOptimizeResid(theta, lam, optIdx, optKind, ctl.cores, optLo, optHi,
-                    ctl.residFreeze, ctl.obsEndpoint, optEnd, optProp, useRegress, ctl.residRhoend);
+                    ctl.residFreeze, obsEndpoint, optEnd, optProp, useRegress, ctl.residRhoend);
     double off = 0.0, b = 0.0;
     npBuildPsiCoreScaled(theta, ctl.cores, 1.0, psi, &off);
     lam = npBurke(psi, &b); objf = b + off;
@@ -596,8 +601,7 @@ void npagOuter(Environment e) {
   // residual from its own moment.  npEndpointCmt gives the per-endpoint cmt (predDf order).
   if (control.containsElementNamed("npEndpointCmt")) {
     IntegerVector ec = control["npEndpointCmt"];
-    std::vector<int> endpointCmt(ec.begin(), ec.end());
-    ctl.obsEndpoint = npBuildObsEndpoint(endpointCmt);
+    ctl.endpointCmt.assign(ec.begin(), ec.end());
   }
   if (control.containsElementNamed("npRegressIdx")) {
     IntegerVector gi = control["npRegressIdx"];

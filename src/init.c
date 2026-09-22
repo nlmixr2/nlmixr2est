@@ -207,6 +207,8 @@ SEXP _nlmixr2est_iniLbfgsb3ptr(SEXP ptr);
 SEXP _nlmixr2est_iniRcppTrustPtrs(SEXP ptr);
 SEXP _nlmixr2est_nTrustInnerGet(void);
 SEXP _nlmixr2est_nHessianQNGet(void);
+SEXP _nlmixr2est_foceiFinalOfvWorseR(SEXP, SEXP);
+SEXP _nlmixr2est_foceiCalcGradGet(void);
 
 SEXP _rxode2version4(SEXP);
 SEXP _nlmixr2est_rxode2stateOde(SEXP);
@@ -306,6 +308,8 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_iniRcppTrustPtrs", (DL_FUNC) &_nlmixr2est_iniRcppTrustPtrs, 1},
   {"_nlmixr2est_nTrustInnerGet", (DL_FUNC) &_nlmixr2est_nTrustInnerGet, 0},
   {"_nlmixr2est_nHessianQNGet", (DL_FUNC) &_nlmixr2est_nHessianQNGet, 0},
+  {"_nlmixr2est_foceiFinalOfvWorseR", (DL_FUNC) &_nlmixr2est_foceiFinalOfvWorseR, 2},
+  {"_nlmixr2est_foceiCalcGradGet", (DL_FUNC) &_nlmixr2est_foceiCalcGradGet, 0},
   {"_nlmixr2est_iniRxodePtrs", (DL_FUNC) &_nlmixr2est_iniRxodePtrs, 1},
   {"_nlmixr2est_iniLotriPtr", (DL_FUNC) &_nlmixr2est_iniLotriPtr, 1},
   {"_nlmixr2est_uninformativeEta", (DL_FUNC) &_nlmixr2est_uninformativeEta, 1},
