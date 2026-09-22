@@ -2030,9 +2030,21 @@
       # (matching the inner ODE model's d(R)/d(eta)); the assembly then treats the
       # transformed prediction f and the variance R as independent solved quantities.
       .rvar <- tryCatch(get("rx_r_", .s), error = function(e) NULL)
-      .Dn <- function(.e, .v) symengine::D(.e, symengine::S(.v))
+      # `symengine::S()` on the differentiand, not just the variable: a state
+      # whose initial condition is a plain constant (`center(0) <- 0.03`) comes
+      # back from the pruned env as an R numeric, and `D()` refuses one.  That
+      # refusal used to be swallowed by `.toRx()` below and emitted as the
+      # literal symbol `.l` into the model text (#1115).  `S()` is idempotent on
+      # a Basic, so this is a no-op for every expression that already worked.
+      .Dn <- function(.e, .v) symengine::D(symengine::S(.e), symengine::S(.v))
       .sn1 <- function(.j, ...) symengine::S(paste0("rx__sens_", .j, "_BY_", paste(c(...), collapse = "_BY_"), "__"))
-      .toRx <- function(.l) rxode2::rxFromSE(.l)
+      # `rxFromSE()` is non-standard-evaluating: handed an argument whose promise
+      # errors, it deparses the symbol instead of raising, which silently writes
+      # `.l` into the model.  Force it here so a failure upstream is loud.
+      .toRx <- function(.l) {
+        force(.l)
+        rxode2::rxFromSE(.l)
+      }
       # state-sensitivity chains only for model directions .mfDirs (a sigma or covariate-reuse
       # direction contributes no integrated state chain -- sigma has d(state)/dsigma=0, and a
       # covariate direction's columns are emitted by scaling below, not via .g1/.g2).

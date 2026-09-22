@@ -1983,3 +1983,43 @@ nmTest({
     expect_equal(unname(.rT$se[.n]), unname(.rF$se[.n]), tolerance = 1e-8)
   })
 })
+
+test_that("a constant compartment initial condition does not leak a symbol into the augmented model", {
+  # `rx_<state>_ini_0__` comes back from the pruned env as a plain R numeric when
+  # the initial condition is a constant, and `symengine::D()` refuses one.  That
+  # refusal used to be swallowed by `rxFromSE()`, which is non-standard
+  # evaluating and deparsed its own argument name, so the augmented model was
+  # emitted with `rx__sens_<state>_BY_<dir>__(0)=.l` and the fit died with
+  # "parameter(s) are required for solving: .l" (#1115).
+  .model <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      eta.cl ~ 0.3
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka)
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv)
+      center(0) <- 0.03
+      d / dt(depot) <- -ka * depot
+      d / dt(center) <- ka * depot - cl / v * center
+      cp <- center / v
+      cp ~ add(add.sd)
+    })
+  }
+  .ui <- nlmixr2(.model)
+  .am <- suppressMessages(suppressWarnings(
+    .foceiAnalyticAugModelDirs(.ui, .foceiOuterDirs(.ui)$dirs)
+  ))
+  .lines <- strsplit(rxode2::rxNorm(.am$augMod), "\n")[[1]]
+  .ic <- grep("\\(0\\)[ ]*=", .lines, value = TRUE)
+  # the base state keeps its constant, and no sensitivity compartment is given
+  # an initial condition built out of an R symbol
+  expect_true(any(grepl("^center\\(0\\)=0.03", .ic)))
+  expect_false(any(grepl("=\\s*\\.[A-Za-z]", .lines)))
+  # every parameter the augmented model needs is a real model parameter
+  expect_false(any(grepl("^\\.", rxode2::rxModelVars(.am$augMod)$params)))
+})

@@ -11,6 +11,45 @@
   shared kernel cannot evaluate (`dbeta()`, `dgamma()`, `dlnorm()`, `dexp()`,
   `dunif()`, `dweibull()`, `dlogis()`), failing a fit whose sampler had already
   handled those priors correctly.
+  
+## Bug Fixes
+
+- `foceiControl(fast=TRUE)` (the `foceif`/`*f` family) no longer refuses to fit
+  a model whose compartment has a constant initial condition (`center(0) <-
+  0.03`), which failed with `The following parameter(s) are required for
+  solving: .l`.  Such an initial condition reaches the augmented sensitivity
+  model as a plain number rather than a symbolic expression, and differentiating
+  one raised an error that was then swallowed and written into the model as the
+  literal symbol `.l` (#1115).  A model whose initial condition depends on an
+  ESTIMATED parameter is a separate defect and is still open on that issue.
+
+- An omega block declaring one of its covariances at exactly `0` (for example
+  `eta.ka + eta.cl + eta.v ~ c(0.1, 0.01, 0.1, 0, 0.01, 0.1)`) no longer aborts
+  the fit with `theta has to have N elements`.  The block's cholesky factor is
+  dense, so that `0` cannot be held; it is now estimated from ~0, as a `0`
+  element of a NONMEM `$OMEGA BLOCK` is, and `$runInfo` names the random
+  effects involved.  The same applies to a correlated pair that is not adjacent
+  in eta order (`eta.a` with `eta.c`, `eta.b` between them), which used to be
+  refused as well.  The FOCEi family, `est="vae"` and the general-likelihood
+  inner driver all took the same route (#1079, rxode2#1365).  A covariance
+  declared at `0` in a two-eta block is unchanged: it leaves the two etas
+  uncorrelated, as it always has.
+- `foceiControl(warm="save")` now restarts the n1qn1 inner problem from the
+  curvature the subject's previous inner solve left, as it was always meant
+  to.  It reconstructed that Hessian from a buffer it had just zeroed, so
+  n1qn1 was handed an all-zero factorization and self-initialized on every
+  inner solve -- the option reused nothing since FOCEi was first imported
+  (#1043).  A single-eta model was additionally unseedable because the
+  one-by-one case multiplied the factorization back out as a zero matrix.
+  With `mceta` sampling the `eta=0` floor pass now gets that same seed rather
+  than self-initializing, so it stays the run `mceta=0` would have made.  The
+  previous self-initialized behavior is available as the new
+  `foceiControl(warm="none")`, and `warm="save"` reuse is reported in the fit's
+  `$nWarmSave`.
+  
+- Added a native analytical outer Hessian for fast Gaussian FOCE/FOCE+/FOCEI/AGQ fits, using
+  the existing sensitivity pool. Fast `nlminb` fits used it automatically.
+
 
 # nlmixr2est 7.1.0
 
@@ -140,11 +179,7 @@
   `theta + mean(eta)`, the temporary eta is removed from the fit, and
   `$runInfo` lists the thetas that received one.  These parameters were
   previously left near their initial values.
-
-
-- Added a native analytical outer Hessian for fast Gaussian FOCE/FOCE+/FOCEI/AGQ fits, using
-  the existing sensitivity pool. Fast `nlminb` fits used it automatically.
-
+  
 - Added optional full conditional inner curvature for fast Gaussian FOCEI via
   `innerHessian="conditional"`, used by inner trust and n1qn1's `warm="calc"`
   seed. The FOCEI marginal objective was unchanged.
