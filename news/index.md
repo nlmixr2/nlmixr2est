@@ -20,6 +20,53 @@
   [`dlogis()`](https://rdrr.io/r/stats/Logistic.html)), failing a fit
   whose sampler had already handled those priors correctly.
 
+### Bug Fixes
+
+- `foceiControl(fast=TRUE)` (the `foceif`/`*f` family) no longer refuses
+  to fit a model whose compartment has a constant initial condition
+  (`center(0) <- 0.03`), which failed with
+  `The following parameter(s) are required for solving: .l`. Such an
+  initial condition reaches the augmented sensitivity model as a plain
+  number rather than a symbolic expression, and differentiating one
+  raised an error that was then swallowed and written into the model as
+  the literal symbol `.l`
+  ([\#1115](https://github.com/nlmixr2/nlmixr2est/issues/1115)). A model
+  whose initial condition depends on an ESTIMATED parameter is a
+  separate defect and is still open on that issue.
+
+- An omega block declaring one of its covariances at exactly `0` (for
+  example `eta.ka + eta.cl + eta.v ~ c(0.1, 0.01, 0.1, 0, 0.01, 0.1)`)
+  no longer aborts the fit with `theta has to have N elements`. The
+  block’s cholesky factor is dense, so that `0` cannot be held; it is
+  now estimated from ~0, as a `0` element of a NONMEM `$OMEGA BLOCK` is,
+  and `$runInfo` names the random effects involved. The same applies to
+  a correlated pair that is not adjacent in eta order (`eta.a` with
+  `eta.c`, `eta.b` between them), which used to be refused as well. The
+  FOCEi family, `est="vae"` and the general-likelihood inner driver all
+  took the same route
+  ([\#1079](https://github.com/nlmixr2/nlmixr2est/issues/1079),
+  rxode2#1365). A covariance declared at `0` in a two-eta block is
+  unchanged: it leaves the two etas uncorrelated, as it always has.
+
+- `foceiControl(warm="save")` now restarts the n1qn1 inner problem from
+  the curvature the subject’s previous inner solve left, as it was
+  always meant to. It reconstructed that Hessian from a buffer it had
+  just zeroed, so n1qn1 was handed an all-zero factorization and
+  self-initialized on every inner solve – the option reused nothing
+  since FOCEi was first imported
+  ([\#1043](https://github.com/nlmixr2/nlmixr2est/issues/1043)). A
+  single-eta model was additionally unseedable because the one-by-one
+  case multiplied the factorization back out as a zero matrix. With
+  `mceta` sampling the `eta=0` floor pass now gets that same seed rather
+  than self-initializing, so it stays the run `mceta=0` would have made.
+  The previous self-initialized behavior is available as the new
+  `foceiControl(warm="none")`, and `warm="save"` reuse is reported in
+  the fit’s `$nWarmSave`.
+
+- Added a native analytical outer Hessian for fast Gaussian
+  FOCE/FOCE+/FOCEI/AGQ fits, using the existing sensitivity pool. Fast
+  `nlminb` fits used it automatically.
+
 ## nlmixr2est 7.1.0
 
 CRAN release: 2026-09-20
@@ -188,10 +235,6 @@ CRAN release: 2026-09-20
   back-transformed `theta + mean(eta)`, the temporary eta is removed
   from the fit, and `$runInfo` lists the thetas that received one. These
   parameters were previously left near their initial values.
-
-- Added a native analytical outer Hessian for fast Gaussian
-  FOCE/FOCE+/FOCEI/AGQ fits, using the existing sensitivity pool. Fast
-  `nlminb` fits used it automatically.
 
 - Added optional full conditional inner curvature for fast Gaussian
   FOCEI via `innerHessian="conditional"`, used by inner trust and
@@ -892,6 +935,63 @@ CRAN release: 2026-09-20
   `distribution()`-family limitation remains.
 
 ### Bug fixes
+
+- FOCEi’s Gill gradient left the internal “this is a gradient leg” flag
+  set, so every objective-only evaluation between the first gradient
+  (always Gill) and the second ran as a gradient leg: the inner (eta)
+  solve skipped its standardized-eta reset and mceta start search, and
+  the objective skipped its ODE-tolerance retry and its `lastOfv`
+  bookkeeping. An outer trial step that blew the etas up then had no way
+  back, and when the optimizer never reached a second gradient the final
+  re-evaluation inherited the flag too. Issue 1114 is that path:
+  `scaleType = "norm"` with a between-study variance starting at
+  `2.5e-6` normalizes every parameter by the range of the internal
+  vector, which the omega’s `omega^(-1/4)` value of 25 dominates, so
+  nlminb’s first trial step moved `slope` from 0.0035 to 12.6 (objective
+  ~4e283), the etas of that step were carried into every later
+  evaluation, nlminb reported “false convergence (8)”, and the fit
+  returned ~2e244 with every parameter at its initial estimate and no
+  diagnostic. The flag is now cleared like the other gradient branches
+  do, and the final re-evaluation clears it explicitly.
+  `innerOpt = "trust"` (the default since 7.1.0) recovers from such a
+  start on its own, which masked the fault on the development branch;
+  `innerOpt = "n1qn1"` reproduced it until this fix. The covariance step
+  had the same shape: its R-matrix Hessian legs only ran as gradient
+  legs when the step-size search (`gillKcov`, `shi21maxOuter`) happened
+  to set the flag, and a `covMethod` without an S matrix left it set
+  after the fit. The covariance step now owns the flag for its whole
+  duration and restores it on every exit.
+
+- A FOCEi fit now warns when the objective function it reports at the
+  final estimates is worse than the one at the initial estimates (by
+  more than 1%, or not finite): the outer optimizer failed to improve on
+  the starting point, or the inner (eta) problem did not converge when
+  the final estimates were re-evaluated, and the estimates are not
+  reliable. Like the other FOCEi run notes the warning is collected on
+  the fit’s `$runInfo`. This is the gate against a result like issue
+  1114’s being returned silently again; the reprex (its data and model)
+  is pinned as a regression test under both inner optimizers, next to
+  the default-scaling fit.
+
+- `est = "npag"` / `est = "npb"`: the per-observation endpoint map
+  behind the residual step’s per-endpoint moments never worked. It was
+  built while parsing the control list, before the first solve, when
+  rxode2’s sorted event index is still empty, so every row read as a
+  dose and the map came back empty without a warning; and its endpoint
+  compartments were the ui’s `predDf$cmt` numbers, while the CMT
+  covariate is numbered in the inner model’s basis (the user’s states
+  plus the eta sensitivities, then the endpoint pseudo-compartments), so
+  even a populated map matched nothing. The per-endpoint moment warm
+  start, its closed-form fast path for a lone additive/proportional
+  scale, and the endpoint bucketing
+  ([\#856](https://github.com/nlmixr2/nlmixr2est/issues/856)) were
+  therefore silently disabled for every fit. The map is now built after
+  the first solve, in the inner model’s basis, and an empty map warns.
+  With the residual search warm-started at the moments each cycle, two
+  endpoints that are exact scaled copies of each other keep their fixed
+  ratio to the optimizer’s stopping radius (they came out 2.6% apart
+  before, issue 1118), and theophylline’s `add.sd` lands at the FOCEi
+  value (0.784 vs 0.784).
 
 #### Estimation
 
