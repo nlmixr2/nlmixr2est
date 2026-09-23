@@ -645,6 +645,23 @@ nmTest({
       "focei",
       control = foceiControl(print = 0, maxOuterIterations = 0, covMethod = "")
     )))
+    # an rxode2 that overruns on an iCov mixest still gives a table, and says so
+    .solve <- .foceiSolveWithId
+    local_mocked_bindings(.foceiSolveWithId = function(..., iCov = NULL) {
+      if (!is.null(iCov)) {
+        stop("attempt to set index 2/2 in SET_VECTOR_ELT", call. = FALSE)
+      }
+      .solve(..., iCov = iCov)
+    })
+    .fit <- suppressWarnings(nlmixr2(
+      mixWt,
+      nlmixr2data::theo_sd,
+      "focei",
+      control = foceiControl(print = 0, maxOuterIterations = 0, covMethod = "")
+    ))
+    expect_true(any(grepl("mixture not passed to table", .fit$runInfo)))
+    expect_false(any(grepl("error calculating tables", .fit$runInfo)))
+    expect_true("cl" %in% names(.fit))
   })
 
   test_that("saem's uninformative-eta solve reads mixest in a mixture model", {
@@ -669,7 +686,7 @@ nmTest({
       }
       ui <- rxode2::rxode2(f)
       if (useMixest) {
-        ui <- rxode2::model(ui, v <- exp(tv + eta.v) * (1 + 0.5 * (mixest == 2)) * WT / 70)
+        ui <- rxode2::model(ui, v <- exp(tv + eta.v) * (1 + 0.5 * (mixest == 2)) * WT / 70 * mixnum / 2)
       }
       ui
     }
