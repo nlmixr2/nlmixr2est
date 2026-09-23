@@ -259,6 +259,11 @@ attr(rxUiGet.transUE, "rstudio") <- c(eta.ka = "tka")
             }
             return(expr)
           }
+        } else if (identical(expr, quote(mixest))) {
+          # the pruned model is not a mixture, so read the assignment directly
+          quote(mymixest)
+        } else if (identical(expr, quote(mixnum))) {
+          as.double(.nMix)
         } else {
           return(expr)
         }

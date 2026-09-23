@@ -646,4 +646,51 @@ nmTest({
       control = foceiControl(print = 0, maxOuterIterations = 0, covMethod = "")
     )))
   })
+
+  test_that("saem's uninformative-eta solve reads mixest in a mixture model", {
+    .mk <- function(useMixest) {
+      f <- function() {
+        ini({
+          tka <- 0.45
+          tcl1 <- log(2.7)
+          tcl2 <- log(0.5)
+          p1 <- 0.3
+          tv <- 3.45
+          eta.cl ~ 0.3
+          eta.v ~ 0.1
+          add.sd <- 0.7
+        })
+        model({
+          ka <- exp(tka)
+          cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl))
+          v <- exp(tv + eta.v) * mix(1, p1, 1.5) * WT / 70
+          linCmt() ~ add(add.sd)
+        })
+      }
+      ui <- rxode2::rxode2(f)
+      if (useMixest) {
+        ui <- rxode2::model(ui, v <- exp(tv + eta.v) * (1 + 0.5 * (mixest == 2)) * WT / 70)
+      }
+      ui
+    }
+    .cap <- new.env(parent = emptyenv())
+    trace(
+      rxode2::rxSolve,
+      # the tracer runs in rxSolve's frame, so embed the capture environment
+      exit = bquote({
+        .v <- returnValue()
+        if (is.data.frame(.v) && all(c("sim.id", "rx_pred_") %in% names(.v))) {
+          assign("val", as.data.frame(.v)$rx_pred_, envir = .(.cap))
+        }
+      }),
+      print = FALSE,
+      where = asNamespace("rxode2")
+    )
+    withr::defer(suppressMessages(untrace(rxode2::rxSolve, where = asNamespace("rxode2"))))
+    suppressMessages(.uninformativeEtas(.mk(FALSE), data = nlmixr2data::theo_sd, model = NULL))
+    .mix <- .cap$val
+    suppressMessages(.uninformativeEtas(.mk(TRUE), data = nlmixr2data::theo_sd, model = NULL))
+    expect_false(is.null(.mix))
+    expect_equal(.cap$val, .mix)
+  })
 })
