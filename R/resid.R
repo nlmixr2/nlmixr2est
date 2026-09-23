@@ -136,15 +136,11 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   }
   if (is.environment(.env) && exists("mixIcov", envir = .env, inherits = FALSE)) {
     .iCov <- get("mixIcov", envir = .env, inherits = FALSE)
-    # ID has to match the type of the data's ID column.  It is built as an
-    # integer, but output creation re-levels every ID column in the fit
-    # environment to a factor afterwards, so coerce at the point of use.
+    # ID is the subject index fit$dataSav is solved with.  Output creation may
+    # already have re-leveled it to a factor labeled with the original IDs, so
+    # take the factor's codes (the index), never its labels.
     if (!is.null(.iCov) && !is.null(.iCov$ID)) {
-      .iCov$ID <- if (is.factor(.iCov$ID)) {
-        as.integer(as.character(.iCov$ID))
-      } else {
-        as.integer(.iCov$ID)
-      }
+      .iCov$ID <- as.integer(.iCov$ID)
       if (anyNA(.iCov$ID)) .iCov <- NULL
     }
   }
@@ -810,7 +806,36 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
     .ret <- .ret[, -.dups]
   }
   .ret[[1]] <- .addLevels(fit, .ret[[1]])
+  .ret[[1]] <- .addMixestColumn(fit, .ret[[1]])
   .ret
+}
+
+#' Add the fitted mixture component per subject as a `mixest` column
+#'
+#' @param fit nlmixr2 fit environment
+#' @param df output table with an `ID` column
+#' @return `df`, with `mixest` added when the fit is a mixture fit
+#' @noRd
+.addMixestColumn <- function(fit, df) {
+  .env <- fit
+  if (!is.environment(.env) && is.environment(fit$env)) {
+    .env <- fit$env
+  }
+  if (
+    !is.environment(.env) ||
+      !exists("mixNum", envir = .env, inherits = FALSE) ||
+      is.null(df$ID) ||
+      "mixest" %in% names(df)
+  ) {
+    return(df)
+  }
+  .mn <- get("mixNum", envir = .env, inherits = FALSE)
+  if (!is.data.frame(.mn) || is.null(.mn$ID) || is.null(.mn$mixnum)) {
+    return(df)
+  }
+  # both IDs are the solve's subject index here (a factor's codes, if releveled)
+  df$mixest <- as.integer(.mn$mixnum)[match(as.integer(df$ID), as.integer(.mn$ID))]
+  df
 }
 
 #' Re-insert subjects dropped during preprocessing into an output table

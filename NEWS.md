@@ -2,6 +2,9 @@
 
 ## New features
 
+- The table of a mixture fit now has a `mixest` column: each subject's fitted
+  mixture component (as in `$mixNum`).
+
 - `foceiControl(priorMethod = "none")` builds no prior specification: the
   `ini({})` priors stay on the model but are not evaluated, so the objective is
   the plain likelihood.  It is for callers that handled the priors elsewhere and
@@ -20,6 +23,10 @@
   but silently dropped its table step (`$runInfo`: "error calculating tables");
   that half is fixed in rxode2, and with an older rxode2 the table is now
   produced without the fitted component assignment, and a warning saying so.
+
+- An `est="saem"` mixture fit whose subject IDs were not 1..N in data order
+  solved its table without the fitted components (character IDs) or lost the
+  table entirely (numeric IDs).
 
 - `foceiControl(fast=TRUE)` (the `foceif`/`*f` family) no longer refuses to fit
   a model whose compartment has a constant initial condition (`center(0) <-

@@ -629,16 +629,28 @@ nmTest({
       expect_false(any(grepl("table", fit$runInfo)))
       .d <- as.data.frame(fit)
       .want <- setNames(as.integer(fit$mixNum$mixnum), as.character(fit$mixNum$ID))
-      expect_equal(as.integer(.d$selected), unname(.want[as.character(.d$ID)]))
-      expect_equal(.d$cl[.d$selected == 1], .d$clLow[.d$selected == 1])
-      expect_equal(.d$cl[.d$selected == 2], .d$clHigh[.d$selected == 2])
+      # the table carries the fitted component, and solved with it
+      expect_equal(.d$mixest, unname(.want[as.character(.d$ID)]))
+      expect_equal(as.integer(.d$selected), .d$mixest)
+      expect_equal(.d$cl[.d$mixest == 1], .d$clLow[.d$mixest == 1])
+      expect_equal(.d$cl[.d$mixest == 2], .d$clHigh[.d$mixest == 2])
     }
-    .check(suppressWarnings(nlmixr2(
-      mixWt,
-      nlmixr2data::theo_sd,
-      "saem",
-      control = saemControl(print = 0, nBurn = 5, nEm = 5, covMethod = 0L, calcTables = TRUE)
-    )))
+    .saem <- function(data) {
+      suppressWarnings(nlmixr2(
+        mixWt,
+        data,
+        "saem",
+        control = saemControl(print = 0, nBurn = 5, nEm = 5, covMethod = 0L, calcTables = TRUE)
+      ))
+    }
+    .check(.saem(nlmixr2data::theo_sd))
+    # saem relabels its IDs before the table step; IDs other than 1..N in order
+    # used to lose the mixture there (character) or the whole table (numeric)
+    .d <- nlmixr2data::theo_sd
+    .d$ID <- paste0("S", sprintf("%02d", 13L - .d$ID))
+    .check(.saem(.d))
+    .d$ID <- 2013L - nlmixr2data::theo_sd$ID
+    .check(.saem(.d))
     .check(suppressWarnings(nlmixr2(
       mixWt,
       nlmixr2data::theo_sd,
