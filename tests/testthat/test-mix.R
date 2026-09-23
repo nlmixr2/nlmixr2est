@@ -599,4 +599,51 @@ nmTest({
     expect_equal(.outside$saemOmegaShareSubpop[.outside$saemEtaNames == "eta.cl1"], 0L)
     expect_equal(.outside$saemOmegaShareSubpop[.outside$saemEtaNames == "eta.cl2"], 2L)
   })
+
+  test_that("a mixture model can reference a data covariate", {
+    # the mixest column made etTrans() reject any other covariate, so saem
+    # failed at setup and every other method lost its table step
+    mixWt <- function() {
+      ini({
+        tka <- 0.45
+        tcl1 <- log(2.7)
+        tcl2 <- log(0.5)
+        p1 <- 0.3
+        tv <- 3.45
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka)
+        clLow <- exp(tcl1 + eta.cl)
+        clHigh <- exp(tcl2 + eta.cl)
+        cl <- mix(clLow, p1, clHigh)
+        v <- exp(tv + eta.v) * WT / 70
+        linCmt() ~ add(add.sd)
+        selected <- mixest
+      })
+    }
+    .check <- function(fit) {
+      expect_s3_class(fit, "nlmixr2FitData")
+      expect_false(any(grepl("table", fit$runInfo)))
+      .d <- as.data.frame(fit)
+      .want <- setNames(as.integer(fit$mixNum$mixnum), as.character(fit$mixNum$ID))
+      expect_equal(as.integer(.d$selected), unname(.want[as.character(.d$ID)]))
+      expect_equal(.d$cl[.d$selected == 1], .d$clLow[.d$selected == 1])
+      expect_equal(.d$cl[.d$selected == 2], .d$clHigh[.d$selected == 2])
+    }
+    .check(suppressWarnings(nlmixr2(
+      mixWt,
+      nlmixr2data::theo_sd,
+      "saem",
+      control = saemControl(print = 0, nBurn = 5, nEm = 5, covMethod = 0L, calcTables = TRUE)
+    )))
+    .check(suppressWarnings(nlmixr2(
+      mixWt,
+      nlmixr2data::theo_sd,
+      "focei",
+      control = foceiControl(print = 0, maxOuterIterations = 0, covMethod = "")
+    )))
+  })
 })

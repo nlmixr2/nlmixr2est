@@ -14,6 +14,13 @@
   
 ## Bug Fixes
 
+- A `mix()` model that also uses a data covariate (for example `WT`) now fits
+  with `est="saem"`, which stopped with `mixest is time-varying but must be
+  constant within an individual`.  Every other mixture-capable method fitted
+  but silently dropped its table step (`$runInfo`: "error calculating tables");
+  that half is fixed in rxode2, and with an older rxode2 the table is now
+  produced without the fitted component assignment, and a warning saying so.
+
 - `foceiControl(fast=TRUE)` (the `foceif`/`*f` family) no longer refuses to fit
   a model whose compartment has a constant initial condition (`center(0) <-
   0.03`), which failed with `The following parameter(s) are required for

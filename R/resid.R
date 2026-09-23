@@ -203,7 +203,9 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
             addCov = addCov
           ),
           error = function(e) {
-            if (grepl("iCov|mixest|mixunif|time.varying", conditionMessage(e), ignore.case = TRUE)) {
+            # SET_VECTOR_ELT: older rxode2 overran its covariate list when an iCov
+            # mixest came with any other covariate
+            if (grepl("iCov|mixest|mixunif|time.varying|SET_VECTOR_ELT", conditionMessage(e), ignore.case = TRUE)) {
               .iCovOK <<- FALSE
               warning("mixture not passed to table; mixest/mixnum read 0", call. = FALSE)
               .foceiSolveWithId(
