@@ -14,6 +14,14 @@
   
 ## Bug Fixes
 
+- The table of a fit whose `rxControl(method=)` is one of rxode2's newer ODE
+  methods (`"cvode"`, `"lsode"`, `"bdf"`, `"dop5"`, ...) is calculated again.
+  The post-fit solve turned the fit's integer method code back into a name
+  with a copy of only the first four methods, so any newer code was a
+  `malformed factor` error; the name now comes from rxode2's own table
+  (`rxode2::odeMethodToInt(NULL)`).  Fits read back from external programs
+  ('babelmixr2' with Monolix) lost their table this way without an error.
+
 - `foceiControl(fast=TRUE)` (the `foceif`/`*f` family) no longer refuses to fit
   a model whose compartment has a constant initial condition (`center(0) <-
   0.03`), which failed with `The following parameter(s) are required for
