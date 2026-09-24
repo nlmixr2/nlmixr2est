@@ -63,9 +63,12 @@ test_that("a fit solved with a newer rxode2 ODE method still gets its table", {
     })
   }
   .fit <- suppressMessages(suppressWarnings(
-    nlmixr2(one.cmt, nlmixr2data::theo_sd, "focei",
-            foceiControl(maxOuterIterations = 0, print = 0,
-                         rxControl = rxode2::rxControl(method = "cvode")))
+    nlmixr2(
+      one.cmt,
+      nlmixr2data::theo_sd,
+      "focei",
+      foceiControl(maxOuterIterations = 0, print = 0, rxControl = rxode2::rxControl(method = "cvode"))
+    )
   ))
   expect_equal(.residOdeMethodName(.fit$methodOde), "cvode")
   # addTable() recalculates the table with the fit's own ODE method
