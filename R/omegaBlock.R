@@ -115,25 +115,21 @@
   .comp
 }
 
-#' Zeros `rxSymInvCholCreate()` cannot hold at zero.
+#' Zeros inside an irreducible omega block, which the cholesky
+#' parameterization estimates rather than holds at zero.
 #'
-#' It counts its parameters from omega's zero pattern but fills them from each
-#' block's cholesky factor, and it takes a block to be the whole index SPAN of
-#' a correlated group.  So the patterns it accepts are exactly those whose
-#' connected components are contiguous index ranges, each one dense
-#' (rxode2#1365); anything else makes the two counts disagree and the theta
-#' setter refuses the matrix with "theta has to have N elements".
-#'
-#' Measured over every 4x4 pattern: "components are contiguous and dense"
-#' matches which matrices the call accepts 64/64, where "dense components"
-#' alone misses 7 of them.
+#' `rxSymInvCholCreate()` splits omega into contiguous blocks and parameterizes
+#' every cell of a block that cannot be split further.  rxode2 >= rxode2#1391
+#' does that itself; older versions refuse these patterns with "theta has to
+#' have N elements" (rxode2#1365), so `.omegaFillBlockZeros()` fills them first.
+#' Either way these cells become estimated covariances.
 #'
 #' Closing each component up to its span can merge components (spans overlap),
 #' so grow the pattern to a fixed point.
 #'
 #' @param mat symmetric matrix
-#' @return two-column (row, col) matrix of upper-triangle positions that have
-#'   to become nonzero, empty when the pattern is already acceptable
+#' @return two-column (row, col) matrix of upper-triangle zero positions that
+#'   are parameterized, empty when there are none
 #' @noRd
 .omegaBlockZeros <- function(mat) {
   .adj <- mat != 0
@@ -152,6 +148,22 @@
     .adj <- .new
   }
   which(upper.tri(mat) & .adj & mat == 0, arr.ind = TRUE)
+}
+
+#' Omega-block parameter positions in `rxSymInvCholCreate()` order.
+#'
+#' Column-major upper triangle restricted to the nonzero structure plus the
+#' block-internal zeros, so it matches the inverse whether or not those zeros
+#' were filled first.
+#'
+#' @param mat symmetric matrix
+#' @return 0-based two-column (row, col) position matrix
+#' @noRd
+.omegaCholSel <- function(mat) {
+  .sel <- upper.tri(mat, diag = TRUE) & mat != 0
+  .sel[.omegaBlockZeros(mat)] <- TRUE
+  diag(.sel) <- TRUE
+  which(.sel, arr.ind = TRUE) - 1L
 }
 
 #' Fill the block-internal zeros of `mat` with a negligible covariance.

@@ -114,16 +114,12 @@
   ## packs chol(Omega^-1) onto the omega block of the reduced par vector, using
   ## the 0-based position list stashed here (column-major upper-tri restricted
   ## to the structure -- rxSymInvCholCreate's parameter order)
-  ## same repair ladder as focei: a 0 sitting inside a correlated block is not
-  ## representable here, so it is filled and estimated instead of aborting the
-  ## run with "theta has to have N elements" (#1079)
+  ## same repair ladder as focei: a 0 sitting inside a correlated block is
+  ## estimated, filled first on an rxode2 that refuses it (#1079, #1128)
   ## `.ui$foceiOptEnv` above already reported any repair
   .sic <- .foceiSymInvCholCreate(.ui$omega, "sqrt", NULL, warn = FALSE)
-  .om <- .sic$mat
   .env$rxInv <- .sic$rxInv
-  .selMat <- upper.tri(.om, diag = TRUE) & .om != 0
-  diag(.selMat) <- TRUE
-  .env$vaeOmegaSel <- which(.selMat, arr.ind = TRUE) - 1L
+  .env$vaeOmegaSel <- .omegaCholSel(.sic$mat)
   ## nonMuTheta="grad": the augmented outer-gradient model is solved in the SHARED
   ## pool, so it must SIZE that pool -- it is the larger structure (26 states / 29
   ## lhs vs 6 / 6 on a one-compartment fit).  The inner MAP then runs under
@@ -189,11 +185,8 @@
   ## no fallback either: only the block-zero fill (a 1e-10 correlation) may run
   ## here, a genuinely bad omega still errors rather than silently flooring.
   .sic <- .foceiSymInvCholCreate(.om, diagXform, NULL, warn = FALSE, fallback = FALSE)
-  .om <- .sic$mat
   env$rxInv <- .sic$rxInv
-  .selMat <- upper.tri(.om, diag = TRUE) & .om != 0
-  diag(.selMat) <- TRUE
-  env$vaeOmegaSel <- which(.selMat, arr.ind = TRUE) - 1L
+  env$vaeOmegaSel <- .omegaCholSel(.sic$mat)
   env$etaMat <- etaMat
   vaeInnerSetup_(env)
   invisible(env)

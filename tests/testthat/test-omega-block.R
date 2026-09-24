@@ -97,7 +97,7 @@ nmTest({
     expect_equal(.omegaBlockIds(.c), c(1L, 1L, 1L))
   })
 
-  test_that(".omegaBlockZeros names the zeros rxSymInvCholCreate cannot hold", {
+  test_that(".omegaBlockZeros names the zeros rxSymInvCholCreate estimates", {
     ## acceptable patterns have none
     expect_equal(nrow(.omegaBlockZeros(diag(3))), 0L)
     .two <- matrix(0, 4, 4)
@@ -108,22 +108,33 @@ nmTest({
     ## the rxode2#1365 matrix: (2,3) is zero INSIDE the 1-2-3 block
     .bad <- matrix(c(1, .1, .1, .1, 1, 0, .1, 0, 1), 3, 3)
     expect_equal(unname(.omegaBlockZeros(.bad)), matrix(c(2L, 3L), 1, 2))
-    ## and that is exactly the matrix rxSymInvCholCreate refuses
-    expect_error(rxode2::rxSymInvCholCreate(mat = .bad, diag.xform = "sqrt"))
+    ## rxSymInvCholCreate refuses it before rxode2#1391, estimates it after
+    .holds <- .rxSymInvCholHoldsBlockZeros()
+    if (.holds) {
+      expect_equal(length(rxode2::rxSymInvCholCreate(mat = .bad, diag.xform = "sqrt")$theta), 6L)
+    } else {
+      expect_error(rxode2::rxSymInvCholCreate(mat = .bad, diag.xform = "sqrt"))
+    }
     ## a NON-CONTIGUOUS component is refused too, even though every component
     ## is dense: eta1 correlates with eta3 and eta2 sits between them.  The
     ## whole 1..3 span has to be filled, not just the component.
     .gap <- matrix(c(1, 0, .5, 0, 1, 0, .5, 0, 1), 3, 3)
-    expect_error(rxode2::rxSymInvCholCreate(mat = .gap, diag.xform = "sqrt"))
+    if (.holds) {
+      expect_equal(length(rxode2::rxSymInvCholCreate(mat = .gap, diag.xform = "sqrt")$theta), 6L)
+    } else {
+      expect_error(rxode2::rxSymInvCholCreate(mat = .gap, diag.xform = "sqrt"))
+    }
     expect_equal(nrow(.omegaBlockZeros(.gap)), 2L)
   })
 
   test_that(".omegaBlockZeros matches rxSymInvCholCreate on EVERY 4x4 pattern", {
-    ## The predicate is the whole fix: it decides whether an omega needs
-    ## repairing before the call, so it must agree with the call itself rather
-    ## than with a plausible story about it.  Enumerate every off-diagonal
-    ## zero pattern on 4 etas and check both directions, plus that the repair
-    ## turns each refused matrix into an accepted one.
+    ## The predicate decides the note and the vae position list, so it must
+    ## agree with the call itself rather than with a plausible story about it.
+    ## Enumerate every off-diagonal zero pattern on 4 etas: before rxode2#1391
+    ## the call accepts exactly the patterns with no block zeros and the fill
+    ## repairs the rest; after it every pattern is accepted.  Either way the
+    ## parameter count is .omegaCholSel()'s.
+    .holds <- .rxSymInvCholHoldsBlockZeros()
     .pairs <- which(upper.tri(diag(4)), arr.ind = TRUE)
     .nAccept <- 0L
     .nRefuse <- 0L
@@ -135,23 +146,27 @@ nmTest({
         .j <- .pairs[.k, 2]
         .m[.i, .j] <- .m[.j, .i] <- 0.15
       }
-      .ok <- !inherits(try(rxode2::rxSymInvCholCreate(mat = .m, diag.xform = "sqrt"), silent = TRUE), "try-error")
-      expect_equal(nrow(.omegaBlockZeros(.m)) == 0L, .ok, info = paste("pattern", .b))
+      .r <- try(rxode2::rxSymInvCholCreate(mat = .m, diag.xform = "sqrt"), silent = TRUE)
+      .ok <- !inherits(.r, "try-error")
+      if (!.holds) {
+        expect_equal(nrow(.omegaBlockZeros(.m)) == 0L, .ok, info = paste("pattern", .b))
+      }
       if (.ok) {
         .nAccept <- .nAccept + 1L
       } else {
         .nRefuse <- .nRefuse + 1L
         .f <- .omegaFillBlockZeros(.m)
         expect_false(is.null(.f), info = paste("pattern", .b))
-        expect_false(
-          inherits(try(rxode2::rxSymInvCholCreate(mat = .f, diag.xform = "sqrt"), silent = TRUE), "try-error"),
-          info = paste("pattern", .b)
-        )
+        .r <- try(rxode2::rxSymInvCholCreate(mat = .f, diag.xform = "sqrt"), silent = TRUE)
+        expect_false(inherits(.r, "try-error"), info = paste("pattern", .b))
+      }
+      if (!inherits(.r, "try-error")) {
+        expect_equal(length(.r$theta), nrow(.omegaCholSel(.m)), info = paste("pattern", .b))
       }
     }
     ## the sweep really covered both outcomes
-    expect_equal(.nAccept, 8L)
-    expect_equal(.nRefuse, 56L)
+    expect_equal(.nAccept, if (.holds) 64L else 8L)
+    expect_equal(.nRefuse, if (.holds) 0L else 56L)
   })
 
   test_that(".omegaFillBlockZeros makes the pattern acceptable", {

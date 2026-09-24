@@ -1,7 +1,9 @@
-## #1079 / rxode2#1365: rxSymInvCholCreate() refuses a POSITIVE-DEFINITE omega
-## whose zero pattern is not block-decomposable, so the old chol() guard let it
-## through and the setup died with "theta has to have N elements".  Cheap (one
-## small fit), so this stays in the essential push/PR subset.
+## #1079 / rxode2#1365: rxSymInvCholCreate() before rxode2#1391 refuses a
+## POSITIVE-DEFINITE omega whose zero pattern is not block-decomposable, so the
+## old chol() guard let it through and the setup died with "theta has to have N
+## elements".  Newer rxode2 estimates that zero itself (#1128); both must give
+## the same parameterization.  Cheap (one small fit), so this stays in the
+## essential push/PR subset.
 
 nmTest({
   .blockZeroMod <- function() {
@@ -29,18 +31,27 @@ nmTest({
     .om <- .ui$omega
     expect_true(all(eigen(.om)$values > 0))
     expect_equal(nrow(.omegaBlockZeros(.om)), 1L)
-    ## the raw call is what used to abort the fit
-    expect_error(rxode2::rxSymInvCholCreate(mat = .om, diag.xform = "sqrt"), "theta has to have")
+    ## the raw call is what used to abort the fit; rxode2#1391 estimates the zero
+    if (.rxSymInvCholHoldsBlockZeros()) {
+      expect_equal(length(rxode2::rxSymInvCholCreate(mat = .om, diag.xform = "sqrt")$theta), 6L)
+    } else {
+      expect_error(rxode2::rxSymInvCholCreate(mat = .om, diag.xform = "sqrt"), "theta has to have")
+    }
   })
 
-  test_that(".foceiSymInvCholCreate fills a block-internal zero", {
+  test_that(".foceiSymInvCholCreate estimates a block-internal zero", {
     .ui <- rxode2::rxUiDecompress(rxode2::rxode2(.blockZeroMod))
     .om <- .ui$omega
     expect_warning(.r <- .foceiSymInvCholCreate(.om, "sqrt", NULL), "omega block zero cov is estimated")
-    ## the mechanism: the returned matrix is the FILLED one and the inverse
-    ## carries the full dense-block parameter count (3 diag + 3 off-diag)
+    ## the inverse carries the full dense-block parameter count (3 diag + 3
+    ## off-diag): filled first on an older rxode2, as declared on a newer one
     expect_equal(length(.r$rxInv$theta), 6L)
-    expect_equal(nrow(.omegaBlockZeros(.r$mat)), 0L)
+    if (.rxSymInvCholHoldsBlockZeros()) {
+      expect_equal(.r$mat, .om)
+    } else {
+      expect_equal(nrow(.omegaBlockZeros(.r$mat)), 0L)
+    }
+    expect_equal(nrow(.omegaCholSel(.r$mat)), 6L)
     ## it names which random effects were involved
     .w <- tryCatch(.foceiSymInvCholCreate(.om, "sqrt", NULL), warning = function(w) conditionMessage(w))
     expect_true(grepl("eta.ka", .w, fixed = TRUE))
@@ -102,14 +113,16 @@ nmTest({
     expect_equal(dim(.fit$omega), c(3L, 3L))
   })
 
-  test_that("a non-contiguous correlated block is filled, not flattened", {
+  test_that("a non-contiguous correlated block is estimated, not flattened", {
     ## eta1 correlates with eta3 and eta2 sits between them: every component is
     ## dense, so a component-only rule calls this fine -- but the call refuses
     ## it, and the repair ladder would then have dropped the 0.5 covariance for
     ## a floored diagonal.
     .nm <- c("eta.a", "eta.b", "eta.c")
     .om <- matrix(c(0.1, 0, 0.05, 0, 0.1, 0, 0.05, 0, 0.1), 3, 3, dimnames = list(.nm, .nm))
-    expect_error(rxode2::rxSymInvCholCreate(mat = .om, diag.xform = "sqrt"))
+    if (!.rxSymInvCholHoldsBlockZeros()) {
+      expect_error(rxode2::rxSymInvCholCreate(mat = .om, diag.xform = "sqrt"))
+    }
     expect_warning(.r <- .foceiSymInvCholCreate(.om, "sqrt", NULL), "omega block zero cov is estimated")
     ## the covariance SURVIVED -- this is the check a floored-diagonal fallback
     ## would fail
@@ -130,11 +143,11 @@ nmTest({
     expect_equal(length(.r$rxInv$theta), 2L)
   })
 
-  test_that("the vae omega position list follows the FILLED omega (#1079)", {
+  test_that("the vae omega position list follows the parameterized omega (#1079, #1128)", {
     ## vaeOmegaSel is the 0-based position list the C++ fast path packs
     ## chol(Omega^-1) into, and it has to match rxSymInvCholCreate's parameter
-    ## order.  Building it from the unrepaired omega would give 5 positions for
-    ## a 6-parameter inverse.
+    ## order.  Building it from the declared nonzeros alone would give 5
+    ## positions for a 6-parameter inverse, filled or not.
     .theoZ <- function() {
       ini({
         lka <- log(1.8)
@@ -156,14 +169,17 @@ nmTest({
       })
     }
     .ui <- rxode2::assertRxUi(.theoZ)
-    ## the declared omega really needs the repair
+    ## the declared omega really has a block-internal zero
     expect_equal(nrow(.omegaBlockZeros(.ui$omega)), 1L)
     .ctl <- vaeControl()
     .n <- length(unique(nlmixr2data::theo_sd$ID))
     set.seed(3)
     .etaMat <- matrix(rnorm(.n * 3, 0, 0.1), .n, 3)
     .prep <- .vaeDataPrep(.ui, nlmixr2data::theo_sd)
-    .env <- .vaeInnerSetup(.ui, nlmixr2data::theo_sd, .etaMat, .ctl)
+    expect_warning(
+      .env <- .vaeInnerSetup(.ui, nlmixr2data::theo_sd, .etaMat, .ctl),
+      "omega block zero cov is estimated"
+    )
     on.exit(.vaeInnerFree(), add = TRUE)
     expect_equal(nrow(.env$vaeOmegaSel), length(.env$rxInv$theta))
     expect_equal(length(.env$rxInv$theta), 6L)

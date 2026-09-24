@@ -3673,18 +3673,31 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
 #'
 #' A covariance of exactly 0 INSIDE a correlated block cannot be held at 0 by
 #' this parameterization, so it becomes a free parameter starting at ~0 -- the
-#' same semantics as a 0 element of a NONMEM $OMEGA BLOCK.  Then `same()`
-#' sharing, which can itself be what the call refuses.  Then the floored
-#' diagonal, which is always acceptable.
+#' same semantics as a 0 element of a NONMEM $OMEGA BLOCK.  rxode2 >=
+#' rxode2#1391 does this on the unfilled omega; older versions need the fill.
+#' Then `same()` sharing, which can itself be what the call refuses.  Then the
+#' floored diagonal, which is always acceptable.
 #'
 #' @inheritParams .foceiSymInvCholCreate
 #' @return list of `list(mat, same, msg)`; a NULL `mat` is a rung that does not
 #'   apply
 #' @noRd
 .foceiSymInvCholRungs <- function(om, same, fallback) {
-  .ret <- list(list(mat = om, same = same, msg = NULL))
+  .zeroMsg <- function(zeros) {
+    if (nrow(zeros) > 0L) {
+      paste0("omega block zero cov is estimated: ", .omegaBlockZeroNames(om, zeros))
+    }
+  }
+  .zeros <- .omegaBlockZeros(om)
+  .msgAll <- .zeroMsg(.zeros)
+  # a same() repeat mirrors its master, so only the master's zeros are estimated
+  .msg <- if (isTRUE(any(same > 0L))) {
+    .zeroMsg(.zeros[same[.zeros[, 1L]] == 0L & same[.zeros[, 2L]] == 0L, , drop = FALSE])
+  } else {
+    .msgAll
+  }
+  .ret <- list(list(mat = om, same = same, msg = .msg))
   .fill <- .omegaFillBlockZeros(om)
-  .msg <- paste0("omega block zero cov is estimated: ", .omegaBlockZeroNames(om, .omegaBlockZeros(om)))
   # dropping the sharing changes what is ESTIMATED (the repeated blocks stop
   # mirroring their master), so it is always said out loud
   .dropped <- if (isTRUE(any(same > 0L))) {
@@ -3697,8 +3710,8 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
   c(
     .ret,
     list(
-      list(mat = .fill, same = NULL, msg = c(.msg, .dropped)),
-      list(mat = om, same = NULL, msg = .dropped),
+      list(mat = .fill, same = NULL, msg = c(.msgAll, .dropped)),
+      list(mat = om, same = NULL, msg = c(.msgAll, .dropped)),
       list(
         mat = .foceiFlooredDiagOmega(om),
         same = NULL,
@@ -3710,12 +3723,11 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
 
 #' Build the sym-inv-chol env, repairing the omega when the call refuses it
 #'
-#' `rxSymInvCholCreate()` needs more than positive-definiteness: every
-#' correlated block of the omega's zero pattern has to be dense, or its
-#' parameter count disagrees with the (dense) cholesky factor it fills from and
-#' the theta setter aborts with "theta has to have N elements" (rxode2#1365).
-#' That is not something `chol()` can predict, so try the call and fall back
-#' through the repairs rather than guessing which one is needed.
+#' Before rxode2#1391, `rxSymInvCholCreate()` needed more than
+#' positive-definiteness: a zero inside a correlated block aborted it with
+#' "theta has to have N elements" (rxode2#1365).  That is not something `chol()`
+#' can predict, so try the call and fall back through the repairs rather than
+#' guessing which one is needed.
 #'
 #' @param om omega matrix
 #' @param diagXform `diagXform` control value
