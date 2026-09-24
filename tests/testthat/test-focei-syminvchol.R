@@ -29,8 +29,8 @@ nmTest({
     .om <- .ui$omega
     expect_true(all(eigen(.om)$values > 0))
     expect_equal(nrow(.omegaBlockZeros(.om)), 1L)
-    ## the raw call is what used to abort the fit
-    expect_error(rxode2::rxSymInvCholCreate(mat = .om, diag.xform = "sqrt"), "theta has to have")
+    ## the raw call cannot parameterize the zero as a zero (it used to abort the fit)
+    expect_true(.rxInvPatternMismatch(.om))
   })
 
   test_that(".foceiSymInvCholCreate fills a block-internal zero", {
@@ -104,12 +104,12 @@ nmTest({
 
   test_that("a non-contiguous correlated block is filled, not flattened", {
     ## eta1 correlates with eta3 and eta2 sits between them: every component is
-    ## dense, so a component-only rule calls this fine -- but the call refuses
-    ## it, and the repair ladder would then have dropped the 0.5 covariance for
-    ## a floored diagonal.
+    ## dense, so a component-only rule calls this fine -- but the call cannot
+    ## hold its zeros, and the repair ladder would then have dropped the 0.5
+    ## covariance for a floored diagonal.
     .nm <- c("eta.a", "eta.b", "eta.c")
     .om <- matrix(c(0.1, 0, 0.05, 0, 0.1, 0, 0.05, 0, 0.1), 3, 3, dimnames = list(.nm, .nm))
-    expect_error(rxode2::rxSymInvCholCreate(mat = .om, diag.xform = "sqrt"))
+    expect_true(.rxInvPatternMismatch(.om))
     expect_warning(.r <- .foceiSymInvCholCreate(.om, "sqrt", NULL), "omega block zero cov is estimated")
     ## the covariance SURVIVED -- this is the check a floored-diagonal fallback
     ## would fail
@@ -163,7 +163,10 @@ nmTest({
     set.seed(3)
     .etaMat <- matrix(rnorm(.n * 3, 0, 0.1), .n, 3)
     .prep <- .vaeDataPrep(.ui, nlmixr2data::theo_sd)
-    .env <- .vaeInnerSetup(.ui, nlmixr2data::theo_sd, .etaMat, .ctl)
+    expect_warning(
+      .env <- .vaeInnerSetup(.ui, nlmixr2data::theo_sd, .etaMat, .ctl),
+      "omega block zero cov is estimated"
+    )
     on.exit(.vaeInnerFree(), add = TRUE)
     expect_equal(nrow(.env$vaeOmegaSel), length(.env$rxInv$theta))
     expect_equal(length(.env$rxInv$theta), 6L)
