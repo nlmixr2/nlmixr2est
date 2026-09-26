@@ -81,13 +81,23 @@
 
 #' The states a model defines with `d/dt()`, in the order they appear
 #'
+#' Looks inside `if`/`else` and `{}` blocks too, where a `d/dt()` may sit.
+#'
 #' @param lst a ui's `lstExpr`
 #' @return character vector of state names
 #' @noRd
 #' @author Matthew L. Fidler
 .linCmtOdeDdtStates <- function(lst) {
-  .isDdt <- vapply(lst, .linCmtOdeIsDdt, logical(1))
-  vapply(lst[.isDdt], function(e) as.character(e[[2]][[3]][[2]]), character(1))
+  .walk <- function(e) {
+    if (.linCmtOdeIsDdt(e)) {
+      return(as.character(e[[2]][[3]][[2]]))
+    }
+    if (is.call(e)) {
+      return(unlist(lapply(as.list(e)[-1L], .walk)))
+    }
+    character(0)
+  }
+  unique(as.character(unlist(lapply(lst, .walk))))
 }
 
 #' Is this model line a `d/dt(state)` assignment?

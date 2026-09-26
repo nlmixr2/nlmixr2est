@@ -179,6 +179,49 @@ nmTest({
     .r <- .translate(.ui)
     expect_equal(.r$state, c("depot", "central", "eff", "ce", "peripheral1"))
     .sameCmtNumbers(.ui, .r)
+    # a three-compartment oral linCmt(): both peripherals go last
+    .oral3 <- function() {
+      ini({
+        tka <- 0.5; tcl <- 1; tv <- 3.5; tq <- 0; tvp <- 4; tq2 <- -1; tvp2 <- 5; tke0 <- 0
+        eta.ka ~ 0.2
+        p <- 0.1
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl); v <- exp(tv); q <- exp(tq); vp <- exp(tvp)
+        q2 <- exp(tq2); vp2 <- exp(tvp2); ke0 <- exp(tke0)
+        d/dt(eff) <- -ke0 * eff
+        C2 <- linCmt()
+        d/dt(ce) <- ke0 * (C2 - ce) + eff
+        ce ~ add(p)
+      })
+    }
+    .ui <- rxode2::rxode2(.oral3)
+    .r <- .translate(.ui)
+    expect_equal(.r$state, c("depot", "central", "eff", "ce", "peripheral1", "peripheral2"))
+    .sameCmtNumbers(.ui, .r)
+    # the model's only ODE inside an if () block is still an ODE of the model
+    .ifOde <- function() {
+      ini({
+        tka <- 0.5; tcl <- 1; tv <- 3.5; tke0 <- 0
+        eta.ka ~ 0.2
+        p <- 0.1
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl); v <- exp(tv); ke0 <- exp(tke0)
+        C2 <- linCmt()
+        if (t > -1) {
+          d/dt(ce) <- ke0 * (C2 - ce)
+        } else {
+          d/dt(ce) <- 0
+        }
+        ce ~ add(p)
+      })
+    }
+    .ui <- rxode2::rxode2(.ifOde)
+    expect_true(.uiIsMixedLinCmtOde(.ui))
+    .r <- .translate(.ui)
+    expect_equal(.r$state, c("depot", "central", "ce"))
+    .sameCmtNumbers(.ui, .r)
     # the model's own cmt() declaration does not move linCmt()'s numbers
     .ownCmt <- function() {
       ini({
