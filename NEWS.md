@@ -28,6 +28,12 @@
   solved its table without the fitted components (character IDs) or lost the
   table entirely (numeric IDs).
 
+- With rxode2 after rxode2#1365, `est="vae"` again fits an omega block
+  declaring a covariance of exactly `0`; it stopped with `omega position list
+  (5) != omegan (6)`.  That rxode2 accepts such an omega unfilled but still
+  estimates the zero, so the block's zeros are now filled before the call
+  rather than only when rxode2 refused it (#1079).
+
 - `foceiControl(fast=TRUE)` (the `foceif`/`*f` family) no longer refuses to fit
   a model whose compartment has a constant initial condition (`center(0) <-
   0.03`), which failed with `The following parameter(s) are required for
