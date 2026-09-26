@@ -53,7 +53,9 @@ nmTest({
       .s <- as.data.frame(rxode2::rxSolve(m, rxode2::et(amt = 100, cmt = cmt) |> rxode2::et(c(0.5, 2)), omega = NA))
       unlist(.s[, c("C2", .linCmtOdeDdtStates(orig$lstExpr))])
     }
-    for (.k in seq_along(orig$state)) {
+    # every compartment of the translation, peripherals included (orig$state
+    # does not list those)
+    for (.k in seq_along(translated$state)) {
       expect_equal(.sig(translated, .k), .sig(orig, .k), tolerance = 1e-5, info = paste("cmt", .k))
     }
   }
@@ -141,6 +143,25 @@ nmTest({
     .ui <- rxode2::rxode2(.before)
     .r <- .translate(.ui)
     expect_equal(.r$state, c("depot", "central", "eff", "ce"))
+    .sameCmtNumbers(.ui, .r)
+    # a one-compartment IV linCmt()
+    .iv1 <- function() {
+      ini({
+        tcl <- 1; tv <- 3.5; tke0 <- 0
+        eta.cl ~ 0.2
+        p <- 0.1
+      })
+      model({
+        cl <- exp(tcl + eta.cl); v <- exp(tv); ke0 <- exp(tke0)
+        d/dt(eff) <- -ke0 * eff
+        C2 <- linCmt()
+        d/dt(ce) <- ke0 * (C2 - ce) + eff
+        ce ~ add(p)
+      })
+    }
+    .ui <- rxode2::rxode2(.iv1)
+    .r <- .translate(.ui)
+    expect_equal(.r$state, c("central", "eff", "ce"))
     .sameCmtNumbers(.ui, .r)
     # a two-compartment IV linCmt(): its peripheral compartment goes last
     .iv2 <- function() {
