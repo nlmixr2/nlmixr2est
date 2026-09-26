@@ -160,6 +160,25 @@ nmTest({
     .r <- .translate(.ui)
     expect_equal(.r$state, c("central", "eff", "peripheral1"))
     .sameCmtNumbers(.ui, .r)
+    # a two-compartment oral linCmt() with an ODE declared before it
+    .oral2 <- function() {
+      ini({
+        tka <- 0.5; tcl <- 1; tv <- 3.5; tq <- 0; tvp <- 4; tke0 <- 0
+        eta.ka ~ 0.2
+        p <- 0.1
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl); v <- exp(tv); q <- exp(tq); vp <- exp(tvp); ke0 <- exp(tke0)
+        d/dt(eff) <- -ke0 * eff
+        C2 <- linCmt()
+        d/dt(ce) <- ke0 * (C2 - ce) + eff
+        ce ~ add(p)
+      })
+    }
+    .ui <- rxode2::rxode2(.oral2)
+    .r <- .translate(.ui)
+    expect_equal(.r$state, c("depot", "central", "eff", "ce", "peripheral1"))
+    .sameCmtNumbers(.ui, .r)
     # an IV linCmt() next to the model's own ODE named depot: that depot is not
     # linCmt()'s, so it keeps its place after central
     .ivDepot <- function() {
