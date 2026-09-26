@@ -119,42 +119,25 @@
   c(.ord, setdiff(odeState, .ord))
 }
 
-#' Reorder the `d/dt()` lines of a linToOde() model to a target state order
+#' Number a linToOde() model's compartments in a target order
 #'
-#' rxode2 numbers compartments by the order the `d/dt()` lines appear, and an
-#' older `linToOde()` emitted the linear compartments where `linCmt()` was
-#' called, which renumbers the compartments a numeric `cmt` in the data refers
-#' to when an ODE is declared before `linCmt()`.
+#' An older `linToOde()` numbered the compartments by where the `d/dt()` lines
+#' fell, which renumbers what a numeric `cmt` in the data refers to when an ODE
+#' is declared before `linCmt()`.  Leading `cmt()` declarations fix the numbers
+#' (as a newer `linToOde()` emits) without moving any line of the model.
 #'
 #' @param ui the `linToOde()` translated ui
 #' @param state the state order to restore (`.linCmtOdeCmtOrder()`)
-#' @return ui with the `d/dt()` lines reordered, or `ui` when already in order
+#' @return ui numbered in `state` order, or `ui` when already in order
 #' @noRd
 #' @author Matthew L. Fidler
 .linCmtOdeRestoreStateOrder <- function(ui, state) {
-  if (identical(ui$state, state)) {
+  if (identical(ui$state, state) || !setequal(ui$state, state)) {
     return(ui)
   }
   ui <- rxode2::rxUiDecompress(ui)
-  .lst <- ui$lstExpr
-  .isDdt <- vapply(.lst, .linCmtOdeIsDdt, logical(1))
-  if (!any(.isDdt)) {
-    return(ui)
-  }
-  .ddtState <- .linCmtOdeDdtStates(.lst)
-  if (!setequal(.ddtState, state)) {
-    return(ui)
-  }
-  # Gather the d/dt() lines, in the target order, at the last d/dt() position.
-  # They cannot simply be permuted among the slots they already occupy: the
-  # `linCmt()` output assignment (e.g. C2 <- central/v) sits between them, and a
-  # d/dt() moved ahead of it would read C2 before it is defined.  Every d/dt()
-  # RHS only needs the assignments that already preceded the last d/dt().
-  .idx <- which(.isDdt)
-  .at <- max(.idx)
-  .ddt <- .lst[.idx][order(match(.ddtState, state))]
-  .lst <- append(.lst[-.idx], .ddt, after = sum(!.isDdt[seq_len(.at)]))
-  .rebuildRxUiFromLstExpr(ui, .lst)
+  .decl <- lapply(state, function(.s) as.call(list(quote(cmt), as.name(.s))))
+  .rebuildRxUiFromLstExpr(ui, c(.decl, ui$lstExpr))
 }
 
 #' Rebuild an rxUi from a modified lstExpr

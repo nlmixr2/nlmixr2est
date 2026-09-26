@@ -179,6 +179,26 @@ nmTest({
     .r <- .translate(.ui)
     expect_equal(.r$state, c("depot", "central", "eff", "ce", "peripheral1"))
     .sameCmtNumbers(.ui, .r)
+    # the model's own cmt() declaration does not move linCmt()'s numbers
+    .ownCmt <- function() {
+      ini({
+        tka <- 0.5; tcl <- 1; tv <- 3.5; tke0 <- 0
+        eta.ka ~ 0.2
+        p <- 0.1
+      })
+      model({
+        cmt(eff)
+        ka <- exp(tka + eta.ka); cl <- exp(tcl); v <- exp(tv); ke0 <- exp(tke0)
+        d/dt(eff) <- -ke0 * eff
+        C2 <- linCmt()
+        d/dt(ce) <- ke0 * (C2 - ce) + eff
+        ce ~ add(p)
+      })
+    }
+    .ui <- rxode2::rxode2(.ownCmt)
+    .r <- .translate(.ui)
+    expect_equal(.r$state, c("depot", "central", "eff", "ce"))
+    .sameCmtNumbers(.ui, .r)
     # an IV linCmt() next to the model's own ODE named depot: that depot is not
     # linCmt()'s, so it keeps its place after central
     .ivDepot <- function() {
@@ -199,6 +219,48 @@ nmTest({
     .r <- .translate(.ui)
     expect_equal(.r$state, c("central", "depot", "ce"))
     .sameCmtNumbers(.ui, .r)
+  })
+
+  test_that("renumbering a translation declares cmt() and moves no model line", {
+    # what an older linToOde() produced for an ODE declared before linCmt():
+    # eff numbered first.  A variable reassigned between two d/dt() lines has
+    # to keep being read where it was, so no line may move.
+    .old <- function() {
+      ini({
+        tka <- 0.5; tcl <- 1; tv <- 3.5; tke0 <- 0
+        eta.ka ~ 0.2
+        p <- 0.1
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl); v <- exp(tv); ke0 <- exp(tke0)
+        r <- 1
+        d/dt(eff) <- -ke0 * eff * r
+        d/dt(depot) <- -ka * depot
+        d/dt(central) <- ka * depot - cl / v * central
+        C2 <- central / v
+        r <- 2
+        d/dt(ce) <- ke0 * (C2 - ce) * r
+        ce ~ add(p)
+      })
+    }
+    .ui <- rxode2::rxode2(.old)
+    expect_equal(.ui$state, c("eff", "depot", "central", "ce"))
+    .target <- c("depot", "central", "eff", "ce")
+    .r <- .linCmtOdeRestoreStateOrder(.ui, .target)
+    expect_equal(.r$state, .target)
+    # the model lines are untouched, only cmt() declarations lead
+    .n <- length(.target)
+    expect_equal(.r$lstExpr[-seq_len(.n)], .ui$lstExpr)
+    expect_equal(vapply(.r$lstExpr[seq_len(.n)], deparse1, ""), paste0("cmt(", .target, ")"))
+    # and a dose to each compartment by name solves exactly as before
+    for (.c in .target) {
+      .ev <- rxode2::et(amt = 100, cmt = .c) |> rxode2::et(c(0.5, 2))
+      .a <- as.data.frame(rxode2::rxSolve(.ui, .ev, omega = NA))
+      .b <- as.data.frame(rxode2::rxSolve(.r, .ev, omega = NA))
+      expect_equal(.b[, c("C2", "eff", "ce")], .a[, c("C2", "eff", "ce")], info = .c)
+    }
+    # already in order: returned as is
+    expect_identical(.linCmtOdeRestoreStateOrder(.r, .target), .r)
   })
 
   test_that("the translated model keeps the linCmt() output defined before it is used", {
