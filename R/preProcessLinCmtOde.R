@@ -1,8 +1,3 @@
-#' Compartments that `linCmt()` owns
-#'
-#' @noRd
-.linCmtOdeStates <- c("depot", "central", "peripheral1", "peripheral2")
-
 #' Estimation methods that add sensitivity compartments to the solved model
 #'
 #' The FOCEi family (the callers of `.foceiFamilyControl()`) gains
@@ -81,14 +76,36 @@
   if (is.null(ui$mvL)) {
     return(FALSE)
   }
-  length(setdiff(ui$state, .linCmtOdeStates)) > 0L
+  length(.linCmtOdeDdtStates(ui$lstExpr)) > 0L
+}
+
+#' The states a model defines with `d/dt()`, in the order they appear
+#'
+#' @param lst a ui's `lstExpr`
+#' @return character vector of state names
+#' @noRd
+#' @author Matthew L. Fidler
+.linCmtOdeDdtStates <- function(lst) {
+  .isDdt <- vapply(lst, .linCmtOdeIsDdt, logical(1))
+  vapply(lst[.isDdt], function(e) as.character(e[[2]][[3]][[2]]), character(1))
+}
+
+#' Is this model line a `d/dt(state)` assignment?
+#' @noRd
+.linCmtOdeIsDdt <- function(e) {
+  is.call(e) &&
+    length(e) >= 2L &&
+    is.call(e[[2]]) &&
+    identical(e[[2]][[1]], quote(`/`)) &&
+    identical(e[[2]][[2]], quote(d))
 }
 
 #' The compartment numbering a numeric `cmt` uses in a mixed `linCmt()` model
 #'
-#' The `linCmt()` compartments come first (depot, central), then the other
-#' states in `ui$state` order; `ui$state` itself lists the `linCmt()` ones last.
-#' Peripheral compartments `linToOde()` adds go after all of those.
+#' The `linCmt()` depot and central come first, then the model's own ODE
+#' states in `ui$state` order, then any peripheral compartments.  The `linCmt()`
+#' compartments are the states `linToOde()` added, not whatever is named
+#' `depot`: an IV `linCmt()` can sit next to an ODE of that name.
 #'
 #' @param ui the original mixed `linCmt()`/ODE ui
 #' @param odeState the `linToOde()` translation's states
@@ -96,7 +113,9 @@
 #' @noRd
 #' @author Matthew L. Fidler
 .linCmtOdeCmtOrder <- function(ui, odeState) {
-  .ord <- c(intersect(.linCmtOdeStates, ui$state), setdiff(ui$state, .linCmtOdeStates))
+  .ode <- .linCmtOdeDdtStates(ui$lstExpr)
+  .first <- intersect(c("depot", "central"), setdiff(odeState, .ode))
+  .ord <- c(.first, intersect(ui$state, .ode))
   c(.ord, setdiff(odeState, .ord))
 }
 
@@ -118,21 +137,11 @@
   }
   ui <- rxode2::rxUiDecompress(ui)
   .lst <- ui$lstExpr
-  .isDdt <- vapply(
-    .lst,
-    function(e) {
-      is.call(e) &&
-        length(e) >= 2L &&
-        is.call(e[[2]]) &&
-        identical(e[[2]][[1]], quote(`/`)) &&
-        identical(e[[2]][[2]], quote(d))
-    },
-    logical(1)
-  )
+  .isDdt <- vapply(.lst, .linCmtOdeIsDdt, logical(1))
   if (!any(.isDdt)) {
     return(ui)
   }
-  .ddtState <- vapply(.lst[.isDdt], function(e) as.character(e[[2]][[3]][[2]]), character(1))
+  .ddtState <- .linCmtOdeDdtStates(.lst)
   if (!setequal(.ddtState, state)) {
     return(ui)
   }

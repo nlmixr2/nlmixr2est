@@ -51,7 +51,7 @@ nmTest({
   .sameCmtNumbers <- function(orig, translated) {
     .sig <- function(m, cmt) {
       .s <- as.data.frame(rxode2::rxSolve(m, rxode2::et(amt = 100, cmt = cmt) |> rxode2::et(c(0.5, 2)), omega = NA))
-      unlist(.s[, c("C2", setdiff(orig$state, .linCmtOdeStates))])
+      unlist(.s[, c("C2", .linCmtOdeDdtStates(orig$lstExpr))])
     }
     for (.k in seq_along(orig$state)) {
       expect_equal(.sig(translated, .k), .sig(orig, .k), tolerance = 1e-5, info = paste("cmt", .k))
@@ -109,7 +109,21 @@ nmTest({
     .sameCmtNumbers(.ui, .r)
   })
 
-  test_that("an ODE declared before linCmt() keeps its compartment number", {
+  test_that("the compartment numbers survive for other linCmt() shapes", {
+    .translate <- function(ui) {
+      .w <- NULL
+      .r <- withCallingHandlers(
+        .preProcessLinCmtOde(ui, "focei", NULL, NULL)$ui,
+        warning = function(w) {
+          .w <<- c(.w, conditionMessage(w))
+          invokeRestart("muffleWarning")
+        }
+      )
+      # the numbering was kept, so nothing may claim it was renumbered
+      expect_false(any(grepl("renumbered from", .w)))
+      .r
+    }
+    # an ODE declared before linCmt()
     .before <- function() {
       ini({
         tka <- 0.5; tcl <- 1; tv <- 3.5; tke0 <- 0
@@ -125,18 +139,47 @@ nmTest({
       })
     }
     .ui <- rxode2::rxode2(.before)
-    .w <- NULL
-    .r <- withCallingHandlers(
-      .preProcessLinCmtOde(.ui, "focei", NULL, NULL)$ui,
-      warning = function(w) {
-        .w <<- c(.w, conditionMessage(w))
-        invokeRestart("muffleWarning")
-      }
-    )
+    .r <- .translate(.ui)
     expect_equal(.r$state, c("depot", "central", "eff", "ce"))
     .sameCmtNumbers(.ui, .r)
-    # the numbering was kept, so nothing may claim it was renumbered
-    expect_false(any(grepl("renumbered from", .w)))
+    # a two-compartment IV linCmt(): its peripheral compartment goes last
+    .iv2 <- function() {
+      ini({
+        tcl <- 1; tv <- 3.5; tq <- 0; tvp <- 4; tke0 <- 0
+        eta.cl ~ 0.2
+        p <- 0.1
+      })
+      model({
+        cl <- exp(tcl + eta.cl); v <- exp(tv); q <- exp(tq); vp <- exp(tvp); ke0 <- exp(tke0)
+        C2 <- linCmt()
+        d/dt(eff) <- ke0 * (C2 - eff)
+        eff ~ add(p)
+      })
+    }
+    .ui <- rxode2::rxode2(.iv2)
+    .r <- .translate(.ui)
+    expect_equal(.r$state, c("central", "eff", "peripheral1"))
+    .sameCmtNumbers(.ui, .r)
+    # an IV linCmt() next to the model's own ODE named depot: that depot is not
+    # linCmt()'s, so it keeps its place after central
+    .ivDepot <- function() {
+      ini({
+        tcl <- 1; tv <- 3.5; tke0 <- 0
+        eta.cl ~ 0.2
+        p <- 0.1
+      })
+      model({
+        cl <- exp(tcl + eta.cl); v <- exp(tv); ke0 <- exp(tke0)
+        d/dt(depot) <- -ke0 * depot
+        C2 <- linCmt()
+        d/dt(ce) <- ke0 * (C2 - ce) + depot
+        ce ~ add(p)
+      })
+    }
+    .ui <- rxode2::rxode2(.ivDepot)
+    .r <- .translate(.ui)
+    expect_equal(.r$state, c("central", "depot", "ce"))
+    .sameCmtNumbers(.ui, .r)
   })
 
   test_that("the translated model keeps the linCmt() output defined before it is used", {
