@@ -201,12 +201,14 @@ attr(rxUiGet.transUE, "rstudio") <- c(eta.ka = "tka")
     ui <- rxode2::assertRxUi(ui)
     if (length(ui$mixProbs) > 0) {
       .nMix <- length(ui$mixProbs) + 1L
+      # a plain covariate for the pruned solve; a `mixest` column is not
+      # needed, and older rxode2 rejects one next to any other covariate
       if ("ID" %in% names(data)) {
         .ids <- unique(data$ID)
         .meMap <- setNames((seq_along(.ids) - 1L) %% .nMix + 1L, .ids)
-        data$mixest <- .meMap[as.character(data$ID)]
+        data$mymixest <- .meMap[as.character(data$ID)]
       } else {
-        data$mixest <- 1L
+        data$mymixest <- 1L
       }
     }
     .trans <- rxUiGet.transUE(list(ui))
@@ -228,8 +230,6 @@ attr(rxUiGet.transUE, "rstudio") <- c(eta.ka = "tka")
     .lst <- attr(class(.trans), ".rxode2.lst")
 
     if (length(ui$mixProbs) > 0) {
-      data$mymixest <- data$mixest
-
       # Build pruned model and replace mix() with mymixest expression
       .prunedStr <- paste(c(.foceiPrune(list(ui)), "tad=tad()", "dosenum=dosenum()", ""), collapse = "\n")
       parsed <- as.list(parse(text = .prunedStr))
@@ -259,6 +259,11 @@ attr(rxUiGet.transUE, "rstudio") <- c(eta.ka = "tka")
             }
             return(expr)
           }
+        } else if (identical(expr, quote(mixest))) {
+          # the pruned model is not a mixture, so read the assignment directly
+          quote(mymixest)
+        } else if (identical(expr, quote(mixnum))) {
+          as.double(.nMix)
         } else {
           return(expr)
         }

@@ -599,4 +599,127 @@ nmTest({
     expect_equal(.outside$saemOmegaShareSubpop[.outside$saemEtaNames == "eta.cl1"], 0L)
     expect_equal(.outside$saemOmegaShareSubpop[.outside$saemEtaNames == "eta.cl2"], 2L)
   })
+
+  test_that("a mixture model can reference a data covariate", {
+    # the mixest column made etTrans() reject any other covariate, so saem
+    # failed at setup and every other method lost its table step
+    mixWt <- function() {
+      ini({
+        tka <- 0.45
+        tcl1 <- log(2.7)
+        tcl2 <- log(0.5)
+        p1 <- 0.3
+        tv <- 3.45
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka)
+        clLow <- exp(tcl1 + eta.cl)
+        clHigh <- exp(tcl2 + eta.cl)
+        cl <- mix(clLow, p1, clHigh)
+        v <- exp(tv + eta.v) * WT / 70
+        linCmt() ~ add(add.sd)
+        selected <- mixest
+      })
+    }
+    .check <- function(fit) {
+      expect_s3_class(fit, "nlmixr2FitData")
+      expect_false(any(grepl("table", fit$runInfo)))
+      .d <- as.data.frame(fit)
+      .want <- setNames(as.integer(fit$mixNum$mixnum), as.character(fit$mixNum$ID))
+      # the table carries the fitted component, and solved with it
+      expect_equal(.d$mixest, unname(.want[as.character(.d$ID)]))
+      expect_equal(as.integer(.d$selected), .d$mixest)
+      expect_equal(.d$cl[.d$mixest == 1], .d$clLow[.d$mixest == 1])
+      expect_equal(.d$cl[.d$mixest == 2], .d$clHigh[.d$mixest == 2])
+    }
+    .saem <- function(data) {
+      suppressWarnings(nlmixr2(
+        mixWt,
+        data,
+        "saem",
+        control = saemControl(print = 0, nBurn = 5, nEm = 5, covMethod = 0L, calcTables = TRUE)
+      ))
+    }
+    .check(.saem(nlmixr2data::theo_sd))
+    # saem relabels its IDs before the table step; IDs other than 1..N in order
+    # used to lose the mixture there (character) or the whole table (numeric)
+    .d <- nlmixr2data::theo_sd
+    .d$ID <- paste0("S", sprintf("%02d", 13L - .d$ID))
+    .check(.saem(.d))
+    .d$ID <- 2013L - nlmixr2data::theo_sd$ID
+    .check(.saem(.d))
+    .check(suppressWarnings(nlmixr2(
+      mixWt,
+      nlmixr2data::theo_sd,
+      "focei",
+      control = foceiControl(print = 0, maxOuterIterations = 0, covMethod = "")
+    )))
+    # an rxode2 that overruns on an iCov mixest still gives a table, and says so
+    .solve <- .foceiSolveWithId
+    local_mocked_bindings(.foceiSolveWithId = function(..., iCov = NULL) {
+      if (!is.null(iCov)) {
+        stop("attempt to set index 2/2 in SET_VECTOR_ELT", call. = FALSE)
+      }
+      .solve(..., iCov = iCov)
+    })
+    .fit <- suppressWarnings(nlmixr2(
+      mixWt,
+      nlmixr2data::theo_sd,
+      "focei",
+      control = foceiControl(print = 0, maxOuterIterations = 0, covMethod = "")
+    ))
+    expect_true(any(grepl("mixture not passed to table", .fit$runInfo)))
+    expect_false(any(grepl("error calculating tables", .fit$runInfo)))
+    expect_true("cl" %in% names(.fit))
+  })
+
+  test_that("saem's uninformative-eta solve reads mixest in a mixture model", {
+    .mk <- function(useMixest) {
+      f <- function() {
+        ini({
+          tka <- 0.45
+          tcl1 <- log(2.7)
+          tcl2 <- log(0.5)
+          p1 <- 0.3
+          tv <- 3.45
+          eta.cl ~ 0.3
+          eta.v ~ 0.1
+          add.sd <- 0.7
+        })
+        model({
+          ka <- exp(tka)
+          cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl))
+          v <- exp(tv + eta.v) * mix(1, p1, 1.5) * WT / 70
+          linCmt() ~ add(add.sd)
+        })
+      }
+      ui <- rxode2::rxode2(f)
+      if (useMixest) {
+        ui <- rxode2::model(ui, v <- exp(tv + eta.v) * (1 + 0.5 * (mixest == 2)) * WT / 70 * mixnum / 2)
+      }
+      ui
+    }
+    .cap <- new.env(parent = emptyenv())
+    trace(
+      rxode2::rxSolve,
+      # the tracer runs in rxSolve's frame, so embed the capture environment
+      exit = bquote({
+        .v <- returnValue()
+        if (is.data.frame(.v) && all(c("sim.id", "rx_pred_") %in% names(.v))) {
+          assign("val", as.data.frame(.v)$rx_pred_, envir = .(.cap))
+        }
+      }),
+      print = FALSE,
+      where = asNamespace("rxode2")
+    )
+    withr::defer(suppressMessages(untrace(rxode2::rxSolve, where = asNamespace("rxode2"))))
+    suppressMessages(.uninformativeEtas(.mk(FALSE), data = nlmixr2data::theo_sd, model = NULL))
+    .mix <- .cap$val
+    suppressMessages(.uninformativeEtas(.mk(TRUE), data = nlmixr2data::theo_sd, model = NULL))
+    expect_false(is.null(.mix))
+    expect_equal(.cap$val, .mix)
+  })
 })

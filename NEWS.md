@@ -2,6 +2,9 @@
 
 ## New features
 
+- The table of a mixture fit now has a `mixest` column: each subject's fitted
+  mixture component (as in `$mixNum`).
+
 - `foceiControl(priorMethod = "none")` builds no prior specification: the
   `ini({})` priors stay on the model but are not evaluated, so the objective is
   the plain likelihood.  It is for callers that handled the priors elsewhere and
@@ -13,6 +16,24 @@
   handled those priors correctly.
   
 ## Bug Fixes
+
+- A model mixing `linCmt()` with ODEs, fitted with a method that solves it as
+  ODEs (the FOCEi and nlm families), no longer renumbers its compartments: a
+  numeric `cmt` in the data doses the same compartment as with the `linCmt()`
+  model (depot and central first, then the ODE states).  Every compartment
+  shifted by one before, silently; with a newer rxode2 the fit instead warned
+  that the compartments were renumbered when they were not.
+
+- A `mix()` model that also uses a data covariate (for example `WT`) now fits
+  with `est="saem"`, which stopped with `mixest is time-varying but must be
+  constant within an individual`.  Every other mixture-capable method fitted
+  but silently dropped its table step (`$runInfo`: "error calculating tables");
+  that half is fixed in rxode2, and with an older rxode2 the table is now
+  produced without the fitted component assignment, and a warning saying so.
+
+- An `est="saem"` mixture fit whose subject IDs were not 1..N in data order
+  solved its table without the fitted components (character IDs) or lost the
+  table entirely (numeric IDs).
 
 - With rxode2 after rxode2#1365, `est="vae"` again fits an omega block
   declaring a covariance of exactly `0`; it stopped with `omega position list
