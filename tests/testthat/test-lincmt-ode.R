@@ -47,6 +47,17 @@ nmTest({
     })
   }
 
+  # dose each numeric cmt in both models: the same compartment must receive it
+  .sameCmtNumbers <- function(orig, translated) {
+    .sig <- function(m, cmt) {
+      .s <- as.data.frame(rxode2::rxSolve(m, rxode2::et(amt = 100, cmt = cmt) |> rxode2::et(c(0.5, 2)), omega = NA))
+      unlist(.s[, c("C2", setdiff(orig$state, .linCmtOdeStates))])
+    }
+    for (.k in seq_along(orig$state)) {
+      expect_equal(.sig(translated, .k), .sig(orig, .k), tolerance = 1e-5, info = paste("cmt", .k))
+    }
+  }
+
   test_that("mixed linCmt()/ODE models are detected", {
     expect_true(.uiIsMixedLinCmtOde(.mixed()))
     # a linCmt() model with no other ODE keeps the analytic solution
@@ -92,10 +103,40 @@ nmTest({
       },
       logical(1)
     )))
-    # the data's numeric cmt must keep meaning the same compartment; linToOde()
-    # on its own would return depot,central,ce
-    expect_equal(.r$state, .ui$state)
-    expect_equal(.r$state, c("ce", "depot", "central"))
+    # the data's numeric cmt must keep meaning the same compartment: linCmt()'s
+    # depot/central are numbered first, then the ODE states
+    expect_equal(.r$state, c("depot", "central", "ce"))
+    .sameCmtNumbers(.ui, .r)
+  })
+
+  test_that("an ODE declared before linCmt() keeps its compartment number", {
+    .before <- function() {
+      ini({
+        tka <- 0.5; tcl <- 1; tv <- 3.5; tke0 <- 0
+        eta.ka ~ 0.2
+        p <- 0.1
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl); v <- exp(tv); ke0 <- exp(tke0)
+        d/dt(eff) <- -ke0 * eff
+        C2 <- linCmt()
+        d/dt(ce) <- ke0 * (C2 - ce) + eff
+        ce ~ add(p)
+      })
+    }
+    .ui <- rxode2::rxode2(.before)
+    .w <- NULL
+    .r <- withCallingHandlers(
+      .preProcessLinCmtOde(.ui, "focei", NULL, NULL)$ui,
+      warning = function(w) {
+        .w <<- c(.w, conditionMessage(w))
+        invokeRestart("muffleWarning")
+      }
+    )
+    expect_equal(.r$state, c("depot", "central", "eff", "ce"))
+    .sameCmtNumbers(.ui, .r)
+    # the numbering was kept, so nothing may claim it was renumbered
+    expect_false(any(grepl("renumbered from", .w)))
   })
 
   test_that("the translated model keeps the linCmt() output defined before it is used", {

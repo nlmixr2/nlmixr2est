@@ -17,6 +17,13 @@
   
 ## Bug Fixes
 
+- A model mixing `linCmt()` with ODEs, fitted with a method that solves it as
+  ODEs (the FOCEi and nlm families), no longer renumbers its compartments: a
+  numeric `cmt` in the data doses the same compartment as with the `linCmt()`
+  model (depot and central first, then the ODE states).  Every compartment
+  shifted by one before, silently; with a newer rxode2 the fit instead warned
+  that the compartments were renumbered when they were not.
+
 - A `mix()` model that also uses a data covariate (for example `WT`) now fits
   with `est="saem"`, which stopped with `mixest is time-varying but must be
   constant within an individual`.  Every other mixture-capable method fitted

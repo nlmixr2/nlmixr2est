@@ -84,16 +84,31 @@
   length(setdiff(ui$state, .linCmtOdeStates)) > 0L
 }
 
+#' The compartment numbering a numeric `cmt` uses in a mixed `linCmt()` model
+#'
+#' The `linCmt()` compartments come first (depot, central), then the other
+#' states in `ui$state` order; `ui$state` itself lists the `linCmt()` ones last.
+#' Peripheral compartments `linToOde()` adds go after all of those.
+#'
+#' @param ui the original mixed `linCmt()`/ODE ui
+#' @param odeState the `linToOde()` translation's states
+#' @return state names in compartment-number order
+#' @noRd
+#' @author Matthew L. Fidler
+.linCmtOdeCmtOrder <- function(ui, odeState) {
+  .ord <- c(intersect(.linCmtOdeStates, ui$state), setdiff(ui$state, .linCmtOdeStates))
+  c(.ord, setdiff(odeState, .ord))
+}
+
 #' Reorder the `d/dt()` lines of a linToOde() model to a target state order
 #'
-#' rxode2 numbers compartments by the order the `d/dt()` lines appear, and
-#' `linToOde()` emits the linear compartments where `linCmt()` was called.  In
-#' the original model the `linCmt()` compartments are appended last instead, so
-#' without this the translation would silently renumber the compartments a
-#' numeric `cmt` in the data refers to.
+#' rxode2 numbers compartments by the order the `d/dt()` lines appear, and an
+#' older `linToOde()` emitted the linear compartments where `linCmt()` was
+#' called, which renumbers the compartments a numeric `cmt` in the data refers
+#' to when an ODE is declared before `linCmt()`.
 #'
 #' @param ui the `linToOde()` translated ui
-#' @param state the state order to restore (the original `linCmt()` model's)
+#' @param state the state order to restore (`.linCmtOdeCmtOrder()`)
 #' @return ui with the `d/dt()` lines reordered, or `ui` when already in order
 #' @noRd
 #' @author Matthew L. Fidler
@@ -189,11 +204,11 @@
   if (!.uiIsMixedLinCmtOde(ui)) {
     return(NULL)
   }
-  .state <- ui$state
   .ui <- try(rxode2::linToOde(ui), silent = TRUE)
   if (inherits(.ui, "try-error")) {
     return(NULL)
   }
+  .state <- .linCmtOdeCmtOrder(ui, .ui$state)
   # The model no longer mixes solved and ODE compartments, which is what was
   # asked for; say so rather than quietly changing how the model is solved.
   warning(
