@@ -3682,7 +3682,6 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
 #'   apply
 #' @noRd
 .foceiSymInvCholRungs <- function(om, same, fallback) {
-  .ret <- list(list(mat = om, same = same, msg = NULL))
   .fill <- .omegaFillBlockZeros(om)
   .msg <- paste0("omega block zero cov is estimated: ", .omegaBlockZeroNames(om, .omegaBlockZeros(om)))
   # dropping the sharing changes what is ESTIMATED (the repeated blocks stop
@@ -3690,7 +3689,18 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
   .dropped <- if (isTRUE(any(same > 0L))) {
     "omega same() sharing dropped to build the inverse"
   }
-  .ret <- c(.ret, list(list(mat = .fill, same = same, msg = .msg)))
+  .asIs <- list(mat = om, same = same, msg = NULL)
+  .filled <- list(mat = .fill, same = same, msg = .msg)
+  # rxode2 >= #1365 accepts the unfilled omega but still makes the zero a free
+  # cell, so fill first or the returned mat disagrees with the inverse's theta.
+  # With same(), only the master blocks are parameterized: a zero confined to a
+  # repeat block needs no fill.
+  .z <- .omegaBlockZeros(om)
+  if (isTRUE(any(same > 0L))) {
+    .rep <- which(same > 0L)
+    .z <- .z[!(.z[, 1L] %in% .rep & .z[, 2L] %in% .rep), , drop = FALSE]
+  }
+  .ret <- if (nrow(.z) > 0L) list(.filled, .asIs) else list(.asIs, .filled)
   if (!fallback) {
     return(.ret)
   }
