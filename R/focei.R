@@ -2228,6 +2228,38 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
 #' ordinary Gaussian / non-fast inner model is unchanged).  Used by both the FOCEi
 #' (interaction=1) and FOCE (interaction=0 -- the `ll()`/generalized path) inner builders.
 #' @noRd
+#' Turn off `fast` after the control was built
+#'
+#' A defaulted outer optimizer was picked for `fast=TRUE` (`lbfgsb3c`); with
+#' finite-difference gradients it stalls, so re-default it to `bobyqa` as
+#' `foceiControl(fast=FALSE)` would.  An explicit `outerOpt` is kept.
+#' @param control focei control list
+#' @return control with `fast = FALSE`
+#' @noRd
+.foceiDowngradeFast <- function(control) {
+  control$fast <- FALSE
+  if (isTRUE(control$outerOptDefault) && identical(control$outerOptTxt, "lbfgsb3c")) {
+    rxode2::rxReq("minqa")
+    control$outerOpt <- -1L
+    control$outerOptFun <- .bobyqa
+    control$outerOptTxt <- "bobyqa"
+  }
+  control
+}
+
+#' Does the model use `linCmt()` anywhere?
+#'
+#' `predDf$linCmt` is only `TRUE` when the endpoint itself is `linCmt()`; a
+#' `cp <- linCmt()` feeding another endpoint (e.g. `ll()`) needs rxode2's flag.
+#' @param ui rxode2 ui
+#' @return logical
+#' @noRd
+.foceiUsesLinCmt <- function(ui) {
+  if (isTRUE(any(ui$predDf$linCmt))) return(TRUE)
+  .flg <- tryCatch(rxode2::rxModelVars(ui)$flags[["linCmtFlg"]], error = function(e) 0L)
+  isTRUE(.flg != 0L)
+}
+
 .foceiMaybeAddHdEta2 <- function(x, .s) {
   .conditional <- identical(rxode2::rxGetControl(x[[1]], "innerHessian", "focei"), "conditional") ||
     identical(rxode2::rxGetControl(x[[1]], "detHessian", "focei"), "conditional")
@@ -2240,12 +2272,20 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
     }
     return(.s)
   }
+  # linCmt() has no 2nd-order sensitivities; rxode2 >= 5.1.8 no longer errors
+  # building them, it silently drops those terms (#1103).
+  .linCmt <- .foceiUsesLinCmt(x[[1]])
   if (.conditional) {
     if (.foceiLLGradInScope(x[[1]])) {
       stop("Conditional inner Hessian requires Gaussian endpoints", call. = FALSE)
     }
+    if (.linCmt) {
+      stop("full conditional Hessian does not support linCmt(); use laplace or agq",
+           call. = FALSE)
+    }
     return(.foceiAddHdEta2(.s, conditional = TRUE))
   }
+  if (.linCmt) return(.s)
   if (
     isTRUE(as.logical(rxode2::rxGetControl(x[[1]], "fast", FALSE))) &&
       .foceiLLGradInScope(x[[1]])
@@ -4991,8 +5031,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     # fd2 dH/dtheta) -- keep fast=TRUE for models in that scope.  Only downgrade the
     # out-of-scope cases (censoring, nAGQ>1, IOV), where the augmented `..outer` model
     # cannot supply the gradient and the fit uses finite
-    # differences.  (linCmt() passes the scope gate but its unsupported 2nd-order
-    # expansion makes it fall back to finite differences at build time.)
+    # differences.  (linCmt() models are downgraded below.)
     # Censoring is one of the out-of-scope cases, but `.foceiLLGradInScope()`
     # only sees the model.  A censored row's contribution is REPLACED by
     # doCensT1()/doCensNormal1() (#992), so neither the augmented outer-gradient
@@ -5006,7 +5045,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
           .nlmixrDataHasCens(env$data))
     ) {
       .minfo("log-likelihood endpoint: the analytic 'fast' gradient does not apply -- using fast = FALSE")
-      .control$fast <- FALSE
+      .control <- .foceiDowngradeFast(.control)
     }
   }
   # Mixture models are out of the fast path until the outer gradient has a proper
@@ -5021,14 +5060,14 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       isTRUE(tryCatch(length(.ui$thetaMixIndex) > 0L, error = function(e) FALSE))
   ) {
     .minfo("mixture model: the analytic 'fast' gradient does not apply yet -- using fast = FALSE")
-    .control$fast <- FALSE
+    .control <- .foceiDowngradeFast(.control)
   }
   # linCmt() has no symbolic state sensitivities, so the augmented `..outer` model
   # cannot be built -- downgrade fast once here (plain focei gradient) instead of
   # re-attempting the symengine build on every outer-gradient call.
-  if (isTRUE(.control$fast) && isTRUE(any(.ui$predDfFocei$linCmt))) {
+  if (isTRUE(.control$fast) && .foceiUsesLinCmt(.ui)) {
     .minfo("linCmt() model: the analytic 'fast' gradient does not apply -- using fast = FALSE")
-    .control$fast <- FALSE
+    .control <- .foceiDowngradeFast(.control)
   }
   # matExp() models: the inner model now solves natively via rxode2's
   # matrix-exponential driver (#860, .sensMatExpNative()), which forces the
@@ -5055,7 +5094,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
           !isTRUE(if (is.null(.control$interaction)) TRUE else .control$interaction))
       if (!.isForcingFlattened) {
         .minfo("matExp() model: the analytic 'fast' gradient does not apply -- using fast = FALSE")
-        .control$fast <- FALSE
+        .control <- .foceiDowngradeFast(.control)
       }
     }
   }
