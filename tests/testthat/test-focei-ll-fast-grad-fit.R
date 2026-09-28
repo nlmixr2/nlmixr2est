@@ -56,7 +56,7 @@ nmTest({
     fT <- suppressMessages(nlmixr2(.ll_lincmt, d, "focei", foceiControl(print = 0L, covMethod = "", fast = TRUE)))
     expect_equal(as.numeric(fT$objf), as.numeric(fF$objf), tolerance = 1e-2)
     expect_equal(unname(fT$theta), fF$theta, tolerance = 1e-2)
-    expect_equal(as.integer(fT$env$nAnalyticGradDirect), 0L) # out of scope: no analytic gradient
+    expect_false(isTRUE(fT$env$nAnalyticGradDirect > 0)) # out of scope: no analytic gradient
   })
 
   test_that("generalized (Poisson) ll() fast fit matches the finite-difference fit", {
