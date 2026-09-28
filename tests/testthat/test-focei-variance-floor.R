@@ -42,4 +42,50 @@ nmTest({
     # and the unfloored side matches the closed form
     expect_equal(above, objR(etaCross + 1e-4), tolerance = 1e-4)
   })
+
+  # The fast=TRUE analytic outer gradient must differentiate the SAME floored
+  # objective: it used to differentiate log(R_raw) at a floored observation, and one
+  # such subject stopped a Michaelis-Menten fit 63 OFV short of the optimum (#1132).
+  test_that("fast=TRUE analytic gradient matches central differences at a floored R", {
+    skip_on_cran()
+    m <- function() {
+      ini({
+        lf <- 0
+        lk <- log(0.2)
+        eta.f ~ 0.1
+        eta.k ~ 0.1
+        prop.sd <- 0.1
+      })
+      model({
+        ipred <- exp(lf + eta.f) * exp(-exp(lk + eta.k) * TIME)
+        ipred ~ prop(prop.sd)
+      })
+    }
+    .testSeed(1132)
+    obsT <- c(1, 2, 4, 8, 24, 48)
+    d <- do.call(rbind, lapply(1:8, function(i) {
+      data.frame(ID = i, TIME = obsT, AMT = 0, EVID = 0,
+                 DV = exp(-0.2 * obsT) * exp(rnorm(1, 0, 0.3)) * (1 + 0.1 * rnorm(6)))
+    }))
+    ctl <- function(fast) {
+      foceiControl(print = 0L, covMethod = "", fast = fast, sigdig = 4,
+                   maxOuterIterations = 0L, maxInnerIterations = 500L)
+    }
+    fit <- suppressMessages(suppressWarnings(nlmixr2(m, d, "focei", ctl(TRUE))))
+    # the design must actually exercise the floor
+    expect_true(any((0.1 * fit$IPRED)^2 < sqrt(.Machine$double.eps)))
+    g <- .foceiGradDirect(fit)
+    expect_false(is.null(g))
+    expect_gt(fit$env$nAnalyticGradDirect, 0)
+    base <- fixef(fit)
+    ofvAt <- function(nm, val) {
+      ui2 <- do.call(rxode2::ini, c(list(fit$finalUi), setNames(list(val), nm)))
+      suppressMessages(suppressWarnings(nlmixr2(ui2, d, "focei", ctl(FALSE))))$objf
+    }
+    fd <- vapply(names(base), function(nm) {
+      h <- 1e-4 * max(abs(base[[nm]]), 0.05)
+      (ofvAt(nm, base[nm] + h) - ofvAt(nm, base[nm] - h)) / (2 * h)
+    }, numeric(1))
+    expect_equal(unname(g[names(base)]), unname(fd), tolerance = 0.02)
+  })
 })
