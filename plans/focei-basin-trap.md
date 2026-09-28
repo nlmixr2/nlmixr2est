@@ -76,20 +76,27 @@ flip-flop designs).  If one exists:
 
 Only if Phase 2 is justified.
 
-### Phase 4 -- `fast=TRUE` ends at a wrong point (835.94 vs 772.99)
+### Phase 4 -- `fast=TRUE` ended at a wrong point (DONE)
 
-KM 4.9, omega^2 VMAX .18.  Its cold re-solve agrees and a restart does not
-move, so it is an OUTER stop (analytic-gradient optimizer), not a basin trap.
-Diagnose separately: check `parHistData`, the stopping rule, and the gradient
-vs central differences at the stopped point.
+Before: 835.94 (KM 4.9, omega^2 VMAX .18); cold re-solve agreed, restart did
+not move.  The analytic gradient was wrong, not stalled: at the TRUE optimum
+(772.955) it read lvmax +877 / lkm -755 against near-zero central differences.
+It was not inner convergence (`trustFterm=1e-12`, `innerOpt="n1qn1"` left it
+unchanged), the endpoint form, or the ODE tolerance.  Per subject it was ONE
+subject: subject 5's last obs (DV .001 clip, IPRED 8.5e-4, R 7.6e-9 < floor)
+carried the whole error.  `outerSolveFill` read the raw R and its derivatives
+while the objective floors R.
 
-First lead (from review of the Phase 1 commit): the analytic outer gradient
-never floors or declines on a small R.  `gradPooledStack` copies the raw `E.R`,
-and `gradPooledCore` has no `R <= sqrt(eps)` gate; only the analytic Hessian
-paths decline.  Where the objective's R is floored (flat), the gradient still
-differentiates log(R_raw).  Candidate fix: decline to FD when any `E.R` is at or
-below the floor, the same way the Hessian expansion does.  Before the fix it
-was worse: the objective used r=1 there.
+Fix: `outerSolveFill` applies the same floor (a shared `foceiRFloor`) and zeros
+`aR`/`AR`/`Rsig`/`RsigDir`/`Rsig2` for that row, which is the derivative of the
+floored objective.  The same fill feeds the FOCE inner Newton, the LL gradient,
+the analytic outer Hessian (still declines at `R <= floor`) and the analytic
+covariance through R.  After: the `fast=TRUE` fit reaches 772.87 in 8.3 s
+(restart diff -0.04).  The test fails on the Phase-1-only build (analytic -200 /
+1888 / -254 vs CD -9 / -0.5 / 86).
+
+Open: `.foceiAnalyticSolveAllFD3` (covariance FD helper) builds its own R
+without the floor; only matters for floored rows in `covMethod="analytic"`.
 
 Known Phase 1 residual: `rp=0` where floored drops the 0.5*c^2 term from log|H|,
 so log|H| still steps by about 0.02 at the threshold (log(214/210) in the test).
