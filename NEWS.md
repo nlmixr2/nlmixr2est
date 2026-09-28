@@ -20,7 +20,9 @@
 - The FOCEi-family objective no longer jumps where a residual variance crosses
   `sqrt(.Machine$double.eps)`: such a variance is now floored instead of being
   replaced by 1, which added about +16 per observation.  Proportional-error fits
-  with predictions below ~1e-3 could converge to a wrong optimum (#1132).
+  with predictions below ~1e-3 could converge to a wrong optimum.  The
+  `foceiControl(fast=TRUE)` analytic outer gradient now applies the same floor;
+  it had differentiated the raw variance, which stopped fits short (#1132).
 
 - A model mixing `linCmt()` with ODEs, fitted with a method that solves it as
   ODEs (the FOCEi and nlm families), no longer renumbers its compartments: a
