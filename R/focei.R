@@ -2221,13 +2221,6 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
   .s
 }
 
-#' Add the second-order eta expansion ([.foceiAddHdEta2]) to an inner-model symengine env
-#' when the fit is a `fast=TRUE` log-likelihood / generalized endpoint, so the inner model
-#' carries `d2(logLik)/deta2` (`rx__d2pred_i_j__`) and `calcEtaHessian` assembles the exact
-#' inner Hessian analytically instead of a Shi21 finite difference.  No-op otherwise (the
-#' ordinary Gaussian / non-fast inner model is unchanged).  Used by both the FOCEi
-#' (interaction=1) and FOCE (interaction=0 -- the `ll()`/generalized path) inner builders.
-#' @noRd
 #' Turn off `fast` after the control was built
 #'
 #' A defaulted outer optimizer was picked for `fast=TRUE` (`lbfgsb3c`); with
@@ -2260,32 +2253,38 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
   isTRUE(.flg != 0L)
 }
 
+#' Add the second-order eta expansion ([.foceiAddHdEta2]) to an inner-model symengine env
+#' when the fit is a `fast=TRUE` log-likelihood / generalized endpoint, so the inner model
+#' carries `d2(logLik)/deta2` (`rx__d2pred_i_j__`) and `calcEtaHessian` assembles the exact
+#' inner Hessian analytically instead of a Shi21 finite difference.  No-op otherwise (the
+#' ordinary Gaussian / non-fast inner model is unchanged).  Used by both the FOCEi
+#' (interaction=1) and FOCE (interaction=0 -- the `ll()`/generalized path) inner builders.
+#' @noRd
 .foceiMaybeAddHdEta2 <- function(x, .s) {
   .conditional <- identical(rxode2::rxGetControl(x[[1]], "innerHessian", "focei"), "conditional") ||
     identical(rxode2::rxGetControl(x[[1]], "detHessian", "focei"), "conditional")
-  # linCmt() sensitivity carry (3b.3): no second-order carry exists, so a
-  # model with a carry-eligible pair keeps the Shi21 finite-difference
-  # inner Hessian (which differentiates the carry-corrected gradient).
+  # linCmt() has no 2nd-order sensitivities; rxode2 >= 5.1.8 no longer errors
+  # building them, it silently drops those terms (#1103).  The sensitivity carry
+  # (3b.3) is linCmt()-only, so this also keeps its Shi21 FD inner Hessian.
+  if (.foceiUsesLinCmt(x[[1]])) {
+    if (.conditional) {
+      stop("full conditional Hessian does not support linCmt(); use laplace or agq",
+           call. = FALSE)
+    }
+    return(.s)
+  }
   if (!is.null(.s$..linCmtCarryPairs)) {
     if (.conditional) {
       stop("Conditional inner Hessian does not support this sensitivity carry", call. = FALSE)
     }
     return(.s)
   }
-  # linCmt() has no 2nd-order sensitivities; rxode2 >= 5.1.8 no longer errors
-  # building them, it silently drops those terms (#1103).
-  .linCmt <- .foceiUsesLinCmt(x[[1]])
   if (.conditional) {
     if (.foceiLLGradInScope(x[[1]])) {
       stop("Conditional inner Hessian requires Gaussian endpoints", call. = FALSE)
     }
-    if (.linCmt) {
-      stop("full conditional Hessian does not support linCmt(); use laplace or agq",
-           call. = FALSE)
-    }
     return(.foceiAddHdEta2(.s, conditional = TRUE))
   }
-  if (.linCmt) return(.s)
   if (
     isTRUE(as.logical(rxode2::rxGetControl(x[[1]], "fast", FALSE))) &&
       .foceiLLGradInScope(x[[1]])

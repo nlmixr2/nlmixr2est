@@ -42,12 +42,34 @@ nmTest({
     fF <- suppressMessages(suppressWarnings(
       nlmixr2(.linLhs, d, "focei", foceiControl(print = 0L, covMethod = "analytic"))))
     # the analytic covariance declines to the FD route instead of using wrong 2nd derivatives
-    expect_false(grepl("analytic", fF$covMethod))
+    expect_equal(fF$covMethod, "r,s (full)")
     fT <- suppressMessages(suppressWarnings(
       nlmixr2(.linLhs, d, "focei", foceiControl(print = 0L, covMethod = "", fast = TRUE))))
-    expect_false(isTRUE(fT$env$nAnalyticGradDirect > 0))
+    expect_false(fT$control$fast)
     # the downgrade re-defaults the outer optimizer too (lbfgsb3c stalled at 133.57)
+    expect_equal(fT$control$outerOptTxt, "bobyqa")
     expect_equal(fT$objf, fF$objf, tolerance = 1e-4)
+
+    # ground truth: the ODE twin's covariance, same estimator, at the same estimates
+    .ode <- function() {
+      ini({ tka <- log(1.5); tcl <- log(2.7); tv <- log(31.5)
+            eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1; add.sd <- 0.7 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+              d/dt(depot) <- -ka * depot
+              d/dt(center) <- ka * depot - cl / v * center
+              cp <- center / v
+              cp ~ add(add.sd) })
+    }
+    ui <- rxode2::rxode2(.ode)
+    iniDf <- ui$iniDf
+    iniDf$est <- fF$finalUi$iniDf$est[match(iniDf$name, fF$finalUi$iniDf$name)]
+    ui$iniDf <- iniDf
+    tight <- rxode2::rxControl(atol = 1e-10, rtol = 1e-10, atolSens = 1e-10, rtolSens = 1e-10)
+    fO <- suppressMessages(suppressWarnings(nlmixr2(ui, d, "focei", foceiControl(
+      print = 0L, covMethod = "r,s", maxOuterIterations = 0L, rxControl = tight))))
+    expect_equal(fO$covMethod, "r,s (full)")
+    # the old linCmt() analytic SE was up to 37% off; the fallback matches the twin
+    expect_equal(sqrt(diag(fF$cov)), sqrt(diag(fO$cov)), tolerance = 0.02)
   })
 
   test_that("full conditional Hessian refuses linCmt() with a clear error", {
