@@ -1498,7 +1498,7 @@
   if (.foceiAnalyticIsMixture(ui)) {
     return(NULL)
   } # mixtures: weighted sum, no treatment yet
-  if (isTRUE(any(ui$predDf$linCmt))) {
+  if (.foceiUsesLinCmt(ui)) {
     return(NULL)
   } # linCmt(): no symbolic state sensitivities
   if (!.analyticGradAllowsBoundedTr(ui, caller)) {
@@ -1782,7 +1782,7 @@
   if (.foceiAnalyticIsMixture(ui)) {
     return(NULL)
   } # mixtures: weighted sum, no treatment yet
-  if (isTRUE(any(ui$predDf$linCmt))) {
+  if (.foceiUsesLinCmt(ui)) {
     return(NULL)
   } # linCmt(): no symbolic state sensitivities
   if (!.analyticGradAllowsBoundedTr(ui, caller)) {
@@ -1848,13 +1848,9 @@
       if (all(as.character(.pd$distribution) %in% c("norm", "dnorm"))) {
         return(FALSE)
       } # Gaussian -> (f,R) path
-      # loadPruneSens clears predDfFocei$linCmt for a promoted solved-form linCmt(), so it
-      # passes this coarse scope gate.  Its 1st-order eta sensitivity converts (rxode2
-      # linCmtB), but the 2nd-order does NOT (rxFromSE cannot emit the nested linCmtB
-      # derivative), so .foceiAddHdEta2 fails and the fit falls back to the finite-difference
-      # Hessian/gradient at build time (see .foceiMaybeAddHdEta2).  A residual TRUE here marks
-      # a case the promotion cannot cover -- out of scope like the Gaussian path.
-      if (isTRUE(any(ui$predDfFocei$linCmt))) {
+      # linCmt() anywhere (not only as the endpoint): no 2nd-order sensitivities, and
+      # rxode2 >= 5.1.8 drops those terms silently instead of failing the build (#1103).
+      if (.foceiUsesLinCmt(ui)) {
         return(FALSE)
       }
       if (!.analyticGradAllowsBoundedTr(ui, caller)) {
