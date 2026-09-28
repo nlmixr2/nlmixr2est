@@ -17,6 +17,11 @@
   
 ## Bug Fixes
 
+- The FOCEi-family objective no longer jumps where a residual variance crosses
+  `sqrt(.Machine$double.eps)`: such a variance is now floored instead of being
+  replaced by 1, which added about +16 per observation.  Proportional-error fits
+  with predictions below ~1e-3 could converge to a wrong optimum (#1132).
+
 - A model mixing `linCmt()` with ODEs, fitted with a method that solves it as
   ODEs (the FOCEi and nlm families), no longer renumbers its compartments: a
   numeric `cmt` in the data doses the same compartment as with the `linCmt()`
