@@ -82,3 +82,15 @@ KM 4.9, omega^2 VMAX .18.  Its cold re-solve agrees and a restart does not
 move, so it is an OUTER stop (analytic-gradient optimizer), not a basin trap.
 Diagnose separately: check `parHistData`, the stopping rule, and the gradient
 vs central differences at the stopped point.
+
+First lead (from review of the Phase 1 commit): the analytic outer gradient
+never floors or declines on a small R.  `gradPooledStack` copies the raw `E.R`,
+and `gradPooledCore` has no `R <= sqrt(eps)` gate; only the analytic Hessian
+paths decline.  Where the objective's R is floored (flat), the gradient still
+differentiates log(R_raw).  Candidate fix: decline to FD when any `E.R` is at or
+below the floor, the same way the Hessian expansion does.  Before the fix it
+was worse: the objective used r=1 there.
+
+Known Phase 1 residual: `rp=0` where floored drops the 0.5*c^2 term from log|H|,
+so log|H| still steps by about 0.02 at the threshold (log(214/210) in the test).
+This is the price of a gradient consistent with a flat R.
