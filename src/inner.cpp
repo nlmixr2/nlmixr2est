@@ -3620,22 +3620,18 @@ bool calcEtaHessian(double *eta, int likId, int id,
     // where every calcEtaHessian() call for a subject happens inside that
     // same reset-per-attempt loop, this is a non-issue.
     bool hessianQNEligible = (op_focei.hessianMethod != trustHessFd) && (op_focei.innerOpt == 3);
-    bool useQN = hessianQNEligible && fInd->etaHasPrevQN;
-    bool seedQN = hessianQNEligible && !fInd->etaHasPrevQN;
-
-    if (useQN) {
-      arma::mat Hqn(fInd->etaHessQN, op_focei.neta, op_focei.neta, false, true);
-      arma::vec etaPrev(fInd->etaPrevQN, op_focei.neta, false, true);
-      arma::vec gradPrev(fInd->etaGradPrevQN, op_focei.neta, false, true);
-      arma::vec etaV(eta, op_focei.neta);
-      arma::vec s = etaV - etaPrev;
-      arma::vec y = gr0 - gradPrev;
-      trustHessianUpdate(op_focei.hessianMethod, Hqn, s, y);
-      etaPrev = etaV;
-      gradPrev = gr0;
-      H = Hqn;
+    if (hessianQNEligible && fInd->etaHasPrevQN) {
       op_focei.nHessianQN.fetch_add(1, std::memory_order_relaxed);
-    } else {
+    }
+    arma::mat Hqn(fInd->etaHessQN, op_focei.neta, op_focei.neta, false, true);
+    arma::vec etaPrev(fInd->etaPrevQN, op_focei.neta, false, true);
+    arma::vec gradPrev(fInd->etaGradPrevQN, op_focei.neta, false, true);
+    // x is eta itself, not a copy: the finite differences perturb it in place.
+    arma::vec x(eta, op_focei.neta, false, true);
+    // Note that since the gradient includes omegaInv*etam,
+    // op_focei.omegaInv(k, l) shouldn't be added.
+    H = trustHessian(hessianQNEligible ? op_focei.hessianMethod : trustHessFd,
+                     fInd->etaHasPrevQN, Hqn, etaPrev, gradPrev, x, gr0, [&]() {
       // Floor the Shi (2021) step search relative to each eta's own scale.
       // shi21's `ef` should be the noise floor of what it differences, but
       // hessEpsInner supplies only atolSens -- the gradient comes out of a solve
@@ -3658,7 +3654,6 @@ bool calcEtaHessian(double *eta, int likId, int id,
       bool haveOmegaDiag =
         (omegaInvCur.n_rows == (arma::uword)op_focei.neta &&
          omegaInvCur.n_cols == (arma::uword)op_focei.neta);
-
       arma::vec hMin(op_focei.neta);
       for (k = op_focei.neta; k--;) {
         hMin[k] = op_focei.shi21hMin;
@@ -3671,27 +3666,13 @@ bool calcEtaHessian(double *eta, int likId, int id,
         }
         if (hMin[k] > op_focei.shi21hMax) hMin[k] = op_focei.shi21hMax;
       }
-      // optimHessType: 3 = forward, 1 = central.  x is eta itself, not a copy.
-      arma::vec x(eta, op_focei.neta, false, true);
-      H = shi21Hessian(getGradForOptimHess, x, gr0, id,
-                       op_focei.optimHessType == 3 ? shi21HessForward :
-                       (op_focei.optimHessType == 1 ? shi21HessCentral : 0),
-                       fInd->etahh, op_focei.hessEpsInner, op_focei.shi21maxInner,
-                       op_focei.shi21hMax, hMin.memptr());
-    }
-    // symmetrize
-    H = 0.5*(H + H.t());
-    // Note that since the gradient includes omegaInv*etam,
-    // op_focei.omegaInv(k, l) shouldn't be added.
-    if (seedQN) {
-      arma::mat Hqn(fInd->etaHessQN, op_focei.neta, op_focei.neta, false, true);
-      arma::vec etaPrev(fInd->etaPrevQN, op_focei.neta, false, true);
-      arma::vec gradPrev(fInd->etaGradPrevQN, op_focei.neta, false, true);
-      Hqn = H;
-      etaPrev = arma::vec(eta, op_focei.neta);
-      gradPrev = gr0;
-      fInd->etaHasPrevQN = 1;
-    }
+      // optimHessType: 3 = forward, 1 = central.
+      return shi21Hessian(getGradForOptimHess, x, gr0, id,
+                          op_focei.optimHessType == 3 ? shi21HessForward :
+                          (op_focei.optimHessType == 1 ? shi21HessCentral : 0),
+                          fInd->etahh, op_focei.hessEpsInner, op_focei.shi21maxInner,
+                          op_focei.shi21hMax, hMin.memptr());
+    });
   } else if (op_focei.interaction) {
     int nO = getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind);
     arma::mat a(fInd->a, nO, op_focei.neta, false, true);

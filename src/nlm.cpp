@@ -85,13 +85,13 @@ struct nlmOptions {
   int trustHessMethod=1;
   // Running quasi-Newton Hessian state for trustHessMethod 2/3/4 -- the
   // previous outer call's theta/gradient and the Hessian estimate carried
-  // forward between calls. Reset (trustHasPrev=false) at the top of every
+  // forward between calls. Reset (trustHasPrev=0) at the top of every
   // nlmTrustFit() call, not just once at model load, since it is only valid
   // within a single trust_solve_c() run.
   arma::mat trustHessQN;
   arma::vec trustThetaPrev;
   arma::vec trustGradPrev;
-  bool trustHasPrev=false;
+  int trustHasPrev=0;
   int hasFR=0; // 1 if predOnly model has rx_pred_f_ (lhs[1]) and rx_r_ (lhs[2])
   // Index of rx_pred_ in each model's lhs.  The gradient (thetaGrad) model emits
   // the intermediate parameter assignments (eg ka/cl/v needed by the sensitivity
@@ -200,7 +200,7 @@ RObject nlmSetup(Environment e) {
   nlmOp.saveType = 0;
   nlmOp.naGrad.store(0, std::memory_order_relaxed);
   nlmOp.nTrustOuter.store(0, std::memory_order_relaxed);
-  nlmOp.trustHasPrev = false;
+  nlmOp.trustHasPrev = 0;
   nlmOp.maxOdeRecalc = as<int>(control["maxOdeRecalc"]);
   nlmOp.odeRecalcFactor = as<double>(control["odeRecalcFactor"]);
 
@@ -967,45 +967,32 @@ extern "C" int nlmTrustObjfun(int n, const double *par, double *value,
     }
     double ll = cs[0];
     arma::vec gr0 = cs(span(1, nlmOp.ntheta));
-    arma::mat H;
-    if (nlmOp.trustHessMethod == trustHessFd) {
-      // nlmCalcHessian() searches each theta's FD step only while
-      // nlmOp.thetahh[k] is 0, then reuses it: nlm (solveType="hessian") and
-      // nlminb call it at every Hessian request and keep the steps from their
-      // first call for the whole fit.  trust calls this every outer iteration
-      // as theta moves, so a step size calibrated at iteration 1 can become
-      // stale (or, per this method's own benchmark history, simply unstable
-      // near a bounded/transformed parameter regardless of caching) once theta
-      // has moved away from where it was derived -- force a fresh derivation
-      // every call.
+    // nlmCalcHessian() searches each theta's FD step only while
+    // nlmOp.thetahh[k] is 0, then reuses it: nlm (solveType="hessian") and
+    // nlminb call it at every Hessian request and keep the steps from their
+    // first call for the whole fit.  trust calls this every outer iteration
+    // as theta moves, so a step size calibrated at iteration 1 can become
+    // stale (or, per this method's own benchmark history, simply unstable
+    // near a bounded/transformed parameter regardless of caching) once theta
+    // has moved away from where it was derived -- every FD Hessian it asks
+    // for (each call under "fd", the quasi-Newton seed otherwise) is
+    // searched afresh.
+    //
+    // The quasi-Newton methods update on every call: trust_solve_c() calls
+    // this once per TRIAL point every outer iteration, whether or not that
+    // trial is later accepted (verified directly in RcppTrust's
+    // trust_core_run()) -- the secant equation y ~= H*s holds for any two
+    // evaluated points regardless of trust's accept/reject bookkeeping, so
+    // updating on every call is standard practice; the skip guards inside
+    // trustHessianUpdate() protect against an unreliable (e.g.
+    // reject-then-shrink, near-zero-step) secant pair corrupting the running
+    // estimate.
+    arma::mat H = trustHessian(nlmOp.trustHessMethod, nlmOp.trustHasPrev,
+                               nlmOp.trustHessQN, nlmOp.trustThetaPrev,
+                               nlmOp.trustGradPrev, theta, gr0, [&]() {
       std::fill(nlmOp.thetahh, nlmOp.thetahh + nlmOp.ntheta, 0.0);
-      H = nlmCalcHessian(gr0, theta);
-    } else if (!nlmOp.trustHasPrev) {
-      // Seed the quasi-Newton methods with one FD Hessian, its steps searched
-      // at this theta; every later call only updates it.
-      std::fill(nlmOp.thetahh, nlmOp.thetahh + nlmOp.ntheta, 0.0);
-      H = nlmCalcHessian(gr0, theta);
-      nlmOp.trustHessQN = H;
-      nlmOp.trustThetaPrev = theta;
-      nlmOp.trustGradPrev = gr0;
-      nlmOp.trustHasPrev = true;
-    } else {
-      // trust_solve_c() calls this once per TRIAL point every outer
-      // iteration, whether or not that trial is later accepted (verified
-      // directly in RcppTrust's trust_core_run()) -- the secant equation
-      // y ~= H*s holds for any two evaluated points regardless of trust's
-      // accept/reject bookkeeping, so updating on every call is standard
-      // practice; the skip guards inside trustHessianUpdate() protect
-      // against an unreliable (e.g. reject-then-shrink, near-zero-step)
-      // secant pair corrupting the running estimate.
-      arma::vec s = theta - nlmOp.trustThetaPrev;
-      arma::vec y = gr0 - nlmOp.trustGradPrev;
-      trustHessianUpdate(nlmOp.trustHessMethod, nlmOp.trustHessQN, s, y);
-      nlmOp.trustThetaPrev = theta;
-      nlmOp.trustGradPrev = gr0;
-      H = nlmOp.trustHessQN;
-    }
-    H = 0.5 * (H + H.t());
+      return nlmCalcHessian(gr0, theta);
+    });
     if (!H.is_finite()) {
       *value = std::numeric_limits<double>::infinity();
       return 1;
@@ -1043,7 +1030,7 @@ List nlmTrustFit(arma::vec &theta, List control) {
   // (see nlmOptions' comment) -- reset here, not just at model load.
   nlmOp.trustHessMethod = control.containsElementNamed("hessianMethod") ?
     as<int>(control["hessianMethod"]) : trustHessFd;
-  nlmOp.trustHasPrev = false;
+  nlmOp.trustHasPrev = 0;
   nlmOp.trustHessQN.reset();
   nlmOp.trustThetaPrev.reset();
   nlmOp.trustGradPrev.reset();
