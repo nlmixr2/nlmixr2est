@@ -63,7 +63,7 @@
   if (is.null(maximum)) {
     maximum <- .range[2]
   }
-  .fs <- c(locf = 0, nocb = 1, midpoint = 0.5, linear = 0)
+  .fs <- c(locf = 0, nocb = 1, midpoint = 0, linear = 0)
   .base <- expand.grid(
     TIME = seq(minimum, maximum, length.out = length.out),
     EVID = 2,
@@ -83,9 +83,19 @@
           setNames(
             data.frame(lapply(.covs, function(cov) {
               suppressWarnings({
+                .x <- .cur$TIME
+                .y <- .cur[[cov]]
+                if (.covsi == "midpoint" && length(.x) > 1L) {
+                  # rxode2 steps to the next value at the midpoint, it does
+                  # not average the two
+                  .o <- order(.x)
+                  .x <- .x[.o]
+                  .y <- .y[.o]
+                  .x <- c(.x[1], (.x[-1] + .x[-length(.x)]) / 2)
+                }
                 .fun <- stats::approxfun(
-                  .cur$TIME,
-                  .cur[[cov]],
+                  .x,
+                  .y,
                   method = ifelse(.covsi == "linear", "linear", "constant"),
                   rule = 2,
                   f = .fs[.covsi]

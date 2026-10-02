@@ -108,7 +108,7 @@ vpcSim <- function(
   # simulate with the fit's covariate interpolation unless overridden (#1137)
   .covsi <- .residCovsInterpolation(object)
   for (.n in names(.covsi)) {
-    if (is.null(.si[[.n]]) && !is.null(.covsi[[.n]])) {
+    if (!(.n %in% names(.si)) && !is.null(.covsi[[.n]])) {
       .si[[.n]] <- .covsi[[.n]]
     }
   }

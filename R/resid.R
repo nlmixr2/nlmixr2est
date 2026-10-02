@@ -116,7 +116,9 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
 #' @author Matthew L. Fidler
 #' @noRd
 .residCovsInterpolation <- function(fit) {
-  .rxControl <- fit$foceiControl$rxControl
+  # the estimation control's own rxControl; $foceiControl can rewrite a
+  # non-focei fit's control
+  .rxControl <- fit$rxControl
   list(
     covsInterpolation = .rxControl$covsInterpolation,
     naInterpolation = .rxControl$naInterpolation
