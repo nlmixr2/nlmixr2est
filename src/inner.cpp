@@ -8683,6 +8683,21 @@ struct CovSolveTolGuard {
   }
 };
 
+// The per-observation log-likelihoods the fit reports (addLlikObs) are those of the
+// final objective at the estimates; every covariance leg rewrites them.
+struct CovLlikObsGuard {
+  std::vector<double> sav;
+  CovLlikObsGuard() {
+    rx = getRxSolve_();
+    if (op_focei.llikObsFull != NULL) {
+      sav.assign(op_focei.llikObsFull, op_focei.llikObsFull + getRxNall(rx));
+    }
+  }
+  ~CovLlikObsGuard() {
+    if (op_focei.llikObsFull != NULL) std::copy(sav.begin(), sav.end(), op_focei.llikObsFull);
+  }
+};
+
 // [[Rcpp::export]]
 NumericVector foceiSetup_(const RObject &obj,
                           const RObject &data,
@@ -14573,6 +14588,7 @@ Environment foceiFitCpp_(Environment e){
   {
     // covSolveTol tightens the finite-difference cov solves (R/S + full-cov FD)
     CovSolveTolGuard _covTolGuard(e);
+    CovLlikObsGuard _llikObsGuard;
     foceiCalcCov(e);
     // covType="fd" + covFull=TRUE: the full theta+sigma+Omega FD covariance (installed by
     // .foceiInstallFdFullCov).  Also runs when covType="analytic" DECLINED (analytic out of

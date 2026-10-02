@@ -199,4 +199,45 @@ nmTest({
     expect_equal(.rs$env$.fdFullCov, .s$env$.fdFullCov, tolerance = 1e-6)
     expect_equal(.rs$env$.fdFullS, .s$env$.fdFullS, tolerance = 1e-6)
   })
+
+  test_that("llikObs is that of the estimates, not of the last covariance leg", {
+    one.cmt <- function() {
+      ini({
+        tka <- log(1.5); tcl <- log(2.7); tv <- log(31.5)
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .ctl <- list(focei = foceiControl, laplace = laplaceControl)
+    for (.est in names(.ctl)) {
+      .def <- .nlmixr(one.cmt, theo_sd, .est, .ctl[[.est]](print = 0, maxOuterIterations = 0L))
+      .none <- .nlmixr(
+        one.cmt,
+        theo_sd,
+        .est,
+        .ctl[[.est]](print = 0, maxOuterIterations = 0L, covMethod = "")
+      )
+      expect_false(is.null(.def$cov))
+      expect_identical(.def$llikObs, .none$llikObs, label = .est)
+    }
+    # with no etas the objective is -2 * the sum of llikObs, and the covariance
+    # step is the R matrix alone
+    noEta <- function() {
+      ini({
+        tka <- 0.45; tcl <- 1; tv <- 3.45
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka); cl <- exp(tcl); v <- exp(tv)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .pop <- .nlmixr(noEta, theo_sd, "focei", foceiControl(print = 0, maxOuterIterations = 0L))
+    expect_false(is.null(.pop$cov))
+    expect_equal(-2 * sum(.pop$llikObs, na.rm = TRUE), .pop$objf)
+  })
 })

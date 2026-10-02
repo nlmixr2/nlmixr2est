@@ -124,6 +124,11 @@
   (`"r,s"`) standard errors, most for the first estimated parameter; the
   sandwich SE of `tka` for `theo_sd` with a one-compartment model went from
   0.43 to 0.15.
+- A FOCEi-family fit's per-observation log-likelihoods (`$llikObs`, the
+  `nlmixrLlikObs` column) are those of the final objective at the estimates
+  again.  The covariance step rewrote them on every finite-difference leg, so
+  with any covariance method they came from its last leg, away from the
+  estimates.  This affected `focei`, `laplace`, `agq` and population-only fits.
 - The `grad()` function from `nlmixr2GradFun()` no longer leaves the point at
   `x - h` when a forward difference is not finite and it falls back to a
   backward one.  That point was the caller's own vector, which was also the
