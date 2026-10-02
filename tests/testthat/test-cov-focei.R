@@ -148,4 +148,32 @@ nmTest({
     fit <- .nlmixr(one.compartment, theo_sd, est = "focei", control = foceiControl(print = 0, maxOuterIterations = 0L))
     expect_s3_class(fit, "nlmixr2FitCore")
   })
+
+  test_that("shi21maxOuter chooses the covariance steps instead of the Gill search", {
+    one.cmt <- function() {
+      ini({
+        tka <- log(1.5); tcl <- log(2.7); tv <- log(31.5)
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .ctl <- foceiControl(
+      print = 0,
+      maxOuterIterations = 0L,
+      covFull = FALSE,
+      shi21maxOuter = 8L
+    )
+    # The Gill search (or, with gillKcov = 0, the fixed hessEps step) used to
+    # run after the Shi21 search and overwrite its steps, so gillKcov decided
+    # the covariance; now it is never consulted.
+    .f10 <- .nlmixr(one.cmt, theo_sd, "focei", .ctl)
+    .ctl$gillKcov <- 0L
+    .f0 <- .nlmixr(one.cmt, theo_sd, "focei", .ctl)
+    expect_true(all(.f10$scaleInfo[["Covariance Gradient"]] == "Not Assessed"))
+    expect_identical(.f10$cov, .f0$cov)
+  })
 })

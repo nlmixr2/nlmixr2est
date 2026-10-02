@@ -11677,17 +11677,19 @@ NumericMatrix foceiCalcCov(Environment e){
             hessEps = op_focei.hessEps;
           }
           if (op_focei.shi21maxOuter != 0) {
-            op_focei.calcGrad=1;
-            h = op_focei.aEps[cpar];
-            op_focei.aEpsC[cpar] = shi21Central(shi21fnF, armaTheta, h,
-                                                f0, grf, 0, cpar,
-                                                op_focei.hessEpsInner, //double ef = 7e-7,
-                                                1.5,  //double rl = 1.5,
-                                                4.0,  //double ru = 6.0);;
-                                                3.0, // nu
-                                                op_focei.shi21maxOuter,  //maxiter=15
-                                                op_focei.shi21hMax, op_focei.shi21hMin);
-          } if (op_focei.gillKcov != 0){
+            // start from shi21Central's own default step: aEps holds the
+            // estimation's step for a different (scaled, unreduced) parameter
+            h = 0;
+            hf = hphif = shi21Central(shi21fnF, armaTheta, h,
+                                      f0, grf, 0, cpar,
+                                      op_focei.hessEpsInner, //double ef = 7e-7,
+                                      1.5,  //double rl = 1.5,
+                                      4.0,  //double ru = 6.0);;
+                                      3.0, // nu
+                                      op_focei.shi21maxOuter,  //maxiter=15
+                                      op_focei.shi21hMax, op_focei.shi21hMin);
+            updateTheta(&theta[0]); // its probes are copies, but fullTheta holds the last
+          } else if (gillKcov != 0){
             op_focei.gillRetC[cpar] = gill83(&hf, &hphif, &op_focei.gillDf[cpar], &op_focei.gillDf2[cpar], &op_focei.gillErr[cpar],
                                              &theta[0], cpar, hessEps, gillKcov, gillStepCov,
                                              gillFtolCov, -1, gill83fnG, 1, op_focei.lastOfv);
