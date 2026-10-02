@@ -55,3 +55,19 @@ test_that("nlmixr2Gill83() and nlmixr2Hess() use the gill* arguments", {
   expect_equal(as.character(g0$info), "Constant Grad")
   expect_error(nlmixr2Gill83(sin, 1, gillK = -1L), "gillK")
 })
+
+test_that("nlmixr2GradFun() gradients leave the point alone", {
+  gf <- nlmixr2GradFun(
+    function(x) if (x[1] > 1) NA_real_ else sum(x^2) + 1,
+    print = 0
+  )
+  x <- c(1, 1)
+  gf$eval(x)
+  gf$grad(x) # the first gradient is the Gill search
+  # x[1]'s forward leg is NA, so it takes the backward difference
+  g1 <- gf$grad(x)
+  g2 <- gf$grad(x)
+  expect_identical(x, c(1, 1))
+  expect_identical(g1, g2)
+  expect_equal(g1[2], 2, tolerance = 1e-3)
+})

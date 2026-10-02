@@ -6920,6 +6920,14 @@ Function doCall = baseEnv["do.call"];
 Function gillRfn_ = baseEnv["invisible"];
 int gillPar = 0;
 double gillLong = false;
+// what(x) by do.call on a copy of x, so the objective never holds a vector the
+// caller goes on to perturb (or the caller's own vector).
+static double nlmixr2RObjAt(Function what, SEXP envir, NumericVector x) {
+  List par(1);
+  par[0] = clone(x);
+  return as<double>(doCall(_["what"] = what, _["args"]=par, _["envir"]=envir));
+}
+
 double gillRfn(double *theta){
   List par(1);
   NumericVector par0(gillThetaN);
@@ -10466,14 +10474,12 @@ double nlmixr2Eval_(NumericVector theta, std::string md5){
   if (lEW.size() != theta.size()) stop("invalid theta size");
   Function cFun = as<Function>(gradInfo[EF]);
   Environment cEnvir = as<Environment>(gradInfo[EE]);
-  List par(1);
-  par[0] = theta;
-  double f0 = as<double>(doCall(_["what"] = cFun, _["args"]=par, _["envir"]=cEnvir));
+  double f0 = nlmixr2RObjAt(cFun, cEnvir, theta);
   std::string f0s = md5 + ".fc";
   std::string f0t = md5 + ".ft";
   std::string cns = md5 + ".n";
   gradInfo[f0s] = f0;
-  gradInfo[f0t] = theta;
+  gradInfo[f0t] = clone(theta); // the key must not alias the caller's vector
   int cn = gradInfo[cns]; cn++;
   gradInfo[cns] = cn;
   bool useColor = as<bool>(gradInfo["useColor"]);
@@ -10780,8 +10786,6 @@ NumericVector nlmixr2Grad_(NumericVector theta, std::string md5){
   NumericVector rEps = as<NumericVector>(Lgill["rEps"]);
   NumericVector g(theta.size());
   double f0, delta, cur;
-  List par(1);
-  par[0] = theta;
   std::string f0s = md5 + ".fc";
   std::string f0t = md5 + ".ft";
   bool reEval = true;
@@ -10806,25 +10810,25 @@ NumericVector nlmixr2Grad_(NumericVector theta, std::string md5){
     }
   }
   if (reEval){
-    f0 = as<double>(doCall(_["what"] = cFun, _["args"]=par, _["envir"]=cEnvir));
+    f0 = nlmixr2RObjAt(cFun, cEnvir, theta);
   }
   niterGrad.push_back(niter.back());
   vGrad.push_back(NA_REAL); // Gradient doesn't record objf
-  // Forward differences; a non-finite forward leg switches to a backward one.
+  // Forward differences on a copy (theta is the caller's own vector); a non-finite
+  // forward leg switches to a backward one.
+  NumericVector th = clone(theta);
   bool isMixed=false;
-  for (int i = theta.size(); i--;){
-    cur = theta[i];
-    delta = (std::fabs(theta[i])*rEps[i] + aEps[i]);
-    theta[i] = cur + delta;
-    par[0] = theta;
-    g[i] = (as<double>(doCall(_["what"] = cFun, _["args"]=par, _["envir"]=cEnvir))-f0)/delta;
-    theta[i] = cur;
+  for (int i = th.size(); i--;){
+    cur = th[i];
+    delta = (std::fabs(cur)*rEps[i] + aEps[i]);
+    th[i] = cur + delta;
+    g[i] = (nlmixr2RObjAt(cFun, cEnvir, th)-f0)/delta;
     if (!R_FINITE(g[i])){
-      theta[i] = cur - delta;
-      par[0] = theta;
-      g[i] = (f0-as<double>(doCall(_["what"] = cFun, _["args"]=par, _["envir"]=cEnvir)))/(delta);
+      th[i] = cur - delta;
+      g[i] = (f0-nlmixr2RObjAt(cFun, cEnvir, th))/(delta);
       isMixed=true;
     }
+    th[i] = cur;
   }
   for (int i = 0; i < theta.size(); i++){
     vGrad.push_back(g[i]);
