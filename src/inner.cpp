@@ -10466,14 +10466,12 @@ double nlmixr2Eval_(NumericVector theta, std::string md5){
   if (lEW.size() != theta.size()) stop("invalid theta size");
   Function cFun = as<Function>(gradInfo[EF]);
   Environment cEnvir = as<Environment>(gradInfo[EE]);
-  double f0;
   List par(1);
   par[0] = theta;
-  f0 = as<double>(doCall(_["what"] = cFun, _["args"]=par, _["envir"]=cEnvir));
+  double f0 = as<double>(doCall(_["what"] = cFun, _["args"]=par, _["envir"]=cEnvir));
   std::string f0s = md5 + ".fc";
   std::string f0t = md5 + ".ft";
   std::string cns = md5 + ".n";
-  f0 = as<double>(doCall(_["what"] = cFun, _["args"]=par, _["envir"]=cEnvir));
   gradInfo[f0s] = f0;
   gradInfo[f0t] = theta;
   int cn = gradInfo[cns]; cn++;
@@ -10780,12 +10778,8 @@ NumericVector nlmixr2Grad_(NumericVector theta, std::string md5){
   }
   NumericVector aEps = as<NumericVector>(Lgill["aEps"]);
   NumericVector rEps = as<NumericVector>(Lgill["rEps"]);
-  NumericVector aEpsC = as<NumericVector>(Lgill["aEpsC"]);
-  NumericVector rEpsC = as<NumericVector>(Lgill["rEpsC"]);
   NumericVector g(theta.size());
-  double f0, delta, cur, tmp=0, tmp0;
-  bool doForward=true;
-  // FIXME
+  double f0, delta, cur;
   List par(1);
   par[0] = theta;
   std::string f0s = md5 + ".fc";
@@ -10816,63 +10810,26 @@ NumericVector nlmixr2Grad_(NumericVector theta, std::string md5){
   }
   niterGrad.push_back(niter.back());
   vGrad.push_back(NA_REAL); // Gradient doesn't record objf
+  // Forward differences; a non-finite forward leg switches to a backward one.
   bool isMixed=false;
   for (int i = theta.size(); i--;){
     cur = theta[i];
-    if (doForward){
-      delta = (std::fabs(theta[i])*rEps[i] + aEps[i]);
-      theta[i] = cur + delta;
-      par[0] = theta;
-      tmp = as<double>(doCall(_["what"] = cFun, _["args"]=par, _["envir"]=cEnvir));
-      g[i] = (tmp-f0)/delta;
-      theta[i] = cur;
-    } else {
-      delta = (std::fabs(theta[i])*rEpsC[i] + aEpsC[i]);
-      theta[i] = cur + delta;
-      par[0] = theta;
-      tmp0 = as<double>(doCall(_["what"] = cFun, _["args"]=par, _["envir"]=cEnvir));
+    delta = (std::fabs(theta[i])*rEps[i] + aEps[i]);
+    theta[i] = cur + delta;
+    par[0] = theta;
+    g[i] = (as<double>(doCall(_["what"] = cFun, _["args"]=par, _["envir"]=cEnvir))-f0)/delta;
+    theta[i] = cur;
+    if (!R_FINITE(g[i])){
       theta[i] = cur - delta;
       par[0] = theta;
-      tmp = as<double>(doCall(_["what"] = cFun, _["args"]=par, _["envir"]=cEnvir));
-      g[i] = (tmp0-tmp)/(2*delta);
-      theta[i] = cur;
-    }
-
-    // Check for bad grad
-    if (std::isnan(g[i]) ||  ISNA(g[i]) || !R_FINITE(g[i])){
-      if (doForward){
-        // Switch to Backward difference method
-        // op_focei.mixDeriv=1;
-        theta[i] = cur - delta;
-        par[0] = theta;
-        tmp0 = as<double>(doCall(_["what"] = cFun, _["args"]=par, _["envir"]=cEnvir));
-        g[i] = (f0-tmp0)/(delta);
-        isMixed=true;
-      } else {
-        // We are using the central difference AND there is an NA in one of the terms
-        // g[cpar] = (tmp0-tmp)/(2*delta);
-        // op_focei.mixDeriv=1;
-        isMixed=true;
-        if (std::isnan(tmp0) || ISNA(tmp0) || !R_FINITE(tmp0)){
-          // Backward
-          g[i] = (f0-tmp)/delta;
-        } else {
-          // Forward
-          g[i] = (tmp0-f0)/delta;
-        }
-      }
+      g[i] = (f0-as<double>(doCall(_["what"] = cFun, _["args"]=par, _["envir"]=cEnvir)))/(delta);
+      isMixed=true;
     }
   }
   for (int i = 0; i < theta.size(); i++){
     vGrad.push_back(g[i]);
   }
-  if (isMixed){
-    gradType.push_back(2);
-  } else if (doForward) {
-    gradType.push_back(3);
-  } else {
-    gradType.push_back(4);
-  }
+  gradType.push_back(isMixed ? 2 : 3);
   nlmixr2GradPrint(g, gradType.back(), niter.back(), useColor,
                    printNcol, printN, isRstudio);
   return g;
