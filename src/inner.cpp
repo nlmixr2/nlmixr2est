@@ -6923,9 +6923,9 @@ Function gillRfn_ = baseEnv["invisible"];
 int gillPar = 0;
 // what(x) by do.call on a copy of x, so the objective never holds a vector the
 // caller goes on to perturb (or the caller's own vector).
-static double nlmixr2RObjAt(Function what, SEXP envir, NumericVector x) {
+static double nlmixr2RObjAt(Function what, SEXP envir, const double *x, int n) {
   List par(1);
-  par[0] = clone(x);
+  par[0] = NumericVector(x, x + n);
   return as<double>(doCall(_["what"] = what, _["args"]=par, _["envir"]=envir));
 }
 
@@ -7210,6 +7210,122 @@ static inline void gill83Eps(double hf, double hphif, double err, bool optGillF,
   *aEps = *rEps = hf*err;
   *aEpsC = *rEpsC = (optGillF ? hf : hphif)*err;
 }
+
+// The objective a finite-difference Hessian differences: f(x) at the full
+// parameter vector x, and restore(x0), which re-installs the base point after
+// the last probe (nothing to do for an objective without state).
+struct FdHessObj {
+  virtual double f(double *x) = 0;
+  virtual void restore(double *x0) {}
+  virtual ~FdHessObj() {}
+};
+
+// 5-point central second difference along i about x (f0 = f(x)) at step h,
+// times fac; NA_REAL at the first non-finite probe when naStop.
+static double fdHessDiag(FdHessObj &obj, double *x, int i, double f0, double h,
+                         double fac, bool naStop) {
+  static const double off[4] = {2, 1, -1, -2};
+  double fv[4], xi = x[i];
+  for (int k = 0; k < 4; ++k) {
+    x[i] = xi + off[k]*h;
+    fv[k] = obj.f(x);
+    if (naStop && !R_FINITE(fv[k])) {
+      x[i] = xi;
+      return NA_REAL;
+    }
+  }
+  x[i] = xi;
+  return fac*(-fv[0] + 16*fv[1] - 30*f0 + 16*fv[2] - fv[3])/(12*h*h);
+}
+
+// 4-point mixed second difference along i and j at steps hi and hj, times fac.
+static double fdHessOff(FdHessObj &obj, double *x, int i, int j, double hi, double hj,
+                        double fac, bool naStop) {
+  static const double si[4] = {1, 1, -1, -1}, sj[4] = {1, -1, 1, -1};
+  double fv[4], xi = x[i], xj = x[j];
+  for (int k = 0; k < 4; ++k) {
+    x[i] = xi + si[k]*hi;
+    x[j] = xj + sj[k]*hj;
+    fv[k] = obj.f(x);
+    if (naStop && !R_FINITE(fv[k])) {
+      x[i] = xi;
+      x[j] = xj;
+      return NA_REAL;
+    }
+  }
+  x[i] = xi;
+  x[j] = xj;
+  return fac*(fv[0] - fv[1] - fv[2] + fv[3])/(4*hi*hj);
+}
+
+// 3-point diagonal with the step doubled until the second difference settles
+// (below that it is round-off dominated); the step it settles on goes to *h.
+static double fdHessDiagDoubling(FdHessObj &obj, double *x, int i, double f0, double fac,
+                                 double *h) {
+  double xi = x[i], base = std::max(std::fabs(xi), 1e-3);
+  double d2prev = NA_REAL, hi = base * 5e-4, d2Use = NA_REAL;
+  *h = base * 1.6e-2;
+  for (int s = 0; s < 6; ++s) {
+    x[i] = xi + hi;
+    double fp = obj.f(x);
+    x[i] = xi - hi;
+    double fm = obj.f(x);
+    if (R_FINITE(fp) && R_FINITE(fm)) {
+      double d2 = (fp - 2*f0 + fm) / (hi*hi);
+      *h = hi; d2Use = d2;
+      if (R_FINITE(d2prev) && std::fabs(d2 - d2prev) <= 0.01 * std::fabs(d2)) break;
+      d2prev = d2;
+    }
+    hi *= 2.0;
+  }
+  x[i] = xi;
+  return fac*d2Use;
+}
+
+// Central finite-difference Hessian of obj about x (f0 = f(x)), times fac (1/2
+// turns the Hessian of -2LL into R): 5-point diagonal and 4-point off-diagonal
+// stencils at the steps h, taken i = n-1..0, each diagonal followed by its
+// off-diagonals j < i.  naStop gives up (false) at the first non-finite probe.
+// fallback (the full FD): a coordinate whose step or 5-point diagonal is not
+// finite takes the step-doubling diagonal and its step instead, so all the
+// diagonals are settled first.  On every exit x is as it was and obj.restore(x)
+// has re-installed it.
+static bool fdHessian(FdHessObj &obj, double *x, int n, double f0, double *h,
+                      arma::mat &H, double fac, bool naStop, bool fallback) {
+  H.zeros(n, n);
+  bool ok = true;
+  for (int i = 0; fallback && ok && i < n; ++i) {
+    double d = R_FINITE(h[i]) ? fdHessDiag(obj, x, i, f0, h[i], fac, true) : NA_REAL;
+    if (!R_FINITE(d)) d = fdHessDiagDoubling(obj, x, i, f0, fac, &h[i]);
+    H(i, i) = d;
+    ok = R_FINITE(d);
+  }
+  naStop = naStop || fallback;
+  for (int i = n; ok && i--;) {
+    if (!fallback) {
+      H(i, i) = fdHessDiag(obj, x, i, f0, h[i], fac, naStop);
+      ok = !naStop || R_FINITE(H(i, i));
+    }
+    for (int j = i; ok && j--;) {
+      H(i, j) = H(j, i) = fdHessOff(obj, x, i, j, h[i], h[j], fac, naStop);
+      ok = !naStop || R_FINITE(H(i, j));
+    }
+  }
+  obj.restore(x);
+  return ok;
+}
+
+// The FOCEi objective at theta for the covariance step's R matrix.
+struct FoceiHessObj : FdHessObj {
+  double f(double *x) {
+    updateTheta(x);
+    double ret = foceiOfv0(x);
+    op_focei.cur++;
+    op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
+    return ret;
+  }
+  void restore(double *x0) { updateTheta(x0); }
+};
 
 // Calculate the mixture parameter gradient
 //
@@ -10451,7 +10567,7 @@ double nlmixr2Eval_(NumericVector theta, std::string md5){
   if (lEW.size() != theta.size()) stop("invalid theta size");
   Function cFun = as<Function>(gradInfo[EF]);
   Environment cEnvir = as<Environment>(gradInfo[EE]);
-  double f0 = nlmixr2RObjAt(cFun, cEnvir, theta);
+  double f0 = nlmixr2RObjAt(cFun, cEnvir, theta.begin(), theta.size());
   std::string f0s = md5 + ".fc";
   std::string f0t = md5 + ".ft";
   std::string cns = md5 + ".n";
@@ -10787,7 +10903,7 @@ NumericVector nlmixr2Grad_(NumericVector theta, std::string md5){
     }
   }
   if (reEval){
-    f0 = nlmixr2RObjAt(cFun, cEnvir, theta);
+    f0 = nlmixr2RObjAt(cFun, cEnvir, theta.begin(), theta.size());
   }
   niterGrad.push_back(niter.back());
   vGrad.push_back(NA_REAL); // Gradient doesn't record objf
@@ -10799,10 +10915,10 @@ NumericVector nlmixr2Grad_(NumericVector theta, std::string md5){
     cur = th[i];
     delta = (std::fabs(cur)*rEps[i] + aEps[i]);
     th[i] = cur + delta;
-    g[i] = (nlmixr2RObjAt(cFun, cEnvir, th)-f0)/delta;
+    g[i] = (nlmixr2RObjAt(cFun, cEnvir, th.begin(), th.size())-f0)/delta;
     if (!R_FINITE(g[i])){
       th[i] = cur - delta;
-      g[i] = (f0-nlmixr2RObjAt(cFun, cEnvir, th))/(delta);
+      g[i] = (f0-nlmixr2RObjAt(cFun, cEnvir, th.begin(), th.size()))/(delta);
       isMixed=true;
     }
     th[i] = cur;
@@ -10855,90 +10971,37 @@ RObject nlmixr2ParHist_(std::string md5){
   return gradInfo["parHistData"];
 }
 
+// An R closure (by do.call), with nlmixr2Hess's progress bar.
+struct RHessObj : FdHessObj {
+  Function fn;
+  SEXP envir;
+  int n, cur = 0, curTick = 0, totTick;
+  clock_t t0 = clock();
+  RHessObj(Function fn, SEXP envir, int n) : fn(fn), envir(envir), n(n), totTick(4*n + 2*n*(n-1)) {}
+  double f(double *x) {
+    double ret = nlmixr2RObjAt(fn, envir, x, n);
+    curTick = par_progress(++cur, totTick, curTick, 1, t0, 0);
+    return ret;
+  }
+};
+
 //[[Rcpp::export]]
 RObject nlmixr2Hess_(RObject thetaT, RObject fT, RObject e,
                      RObject gillInfoT){
-  List par(1);
-  // a copy, perturbed in place below; each call gets its own copy of that
   NumericVector theta = clone(as<NumericVector>(thetaT));
-  Function f = as<Function>(fT);
   List gillInfo = as<List>(gillInfoT);
-  arma::mat H(theta.size(), theta.size(), fill::zeros);
-  double epsI, epsJ;
   NumericVector rEpsC = as<NumericVector>(gillInfo["rEpsC"]);
   NumericVector aEpsC = as<NumericVector>(gillInfo["aEpsC"]);
   NumericVector nF = as<NumericVector>(gillInfo["f"]);
-  double lastOfv=nF[0];
   int n = theta.size();
-  double f1,f2,f3,f4;
-  double ti, tj;
-  int i, j;
-  int totTick= 4*n +2*n*(n-1);
-  int cur = 0, curTick=0;
-  clock_t t0=clock();
-  for (i=n; i--;){
-    epsI = (std::fabs(theta[i])*rEpsC[i] + aEpsC[i]);
-    ti = theta[i];
-    theta[i] = ti + 2*epsI;
-    par[0]=clone(theta);
-    f1 = as<double>(doCall(_["what"] = f, _["args"]=par, _["envir"]=e));
-    cur++;
-    curTick = par_progress(cur, totTick, curTick, 1, t0, 0);
-    theta[i] = ti + epsI;
-    par[0]=clone(theta);
-    f2 = as<double>(doCall(_["what"] = f, _["args"]=par, _["envir"]=e));
-    cur++;
-    curTick = par_progress(cur, totTick, curTick, 1, t0, 0);
-    theta[i] = ti - epsI;
-    par[0]=clone(theta);
-    f3 = as<double>(doCall(_["what"] = f, _["args"]=par, _["envir"]=e));
-    cur++;
-    curTick = par_progress(cur, totTick, curTick, 1, t0, 0);
-    theta[i] = ti - 2*epsI;
-    par[0]=clone(theta);
-    f4 = as<double>(doCall(_["what"] = f, _["args"]=par, _["envir"]=e));
-    cur++;
-    curTick = par_progress(cur, totTick, curTick, 1, t0, 0);
-    theta[i] = ti;
-    H(i,i)=(-f1+16*f2-30*lastOfv+16*f3-f4)/(12*epsI*epsI);
-    for (j = i; j--;){
-      epsJ = (std::fabs(theta[j])*rEpsC[j] + aEpsC[j]);
-      // eps = sqrt(epsI*epsJ);// 0.5*epsI+0.5*epsJ;
-      // epsI = eps;
-      // epsJ = eps;
-      tj = theta[j];
-      theta[i] = ti + epsI;
-      theta[j] = tj + epsJ;
-      par[0]=clone(theta);
-      f1 = as<double>(doCall(_["what"] = f, _["args"]=par, _["envir"]=e));
-      cur++;
-      curTick = par_progress(cur, totTick, curTick, 1, t0, 0);
-      theta[i] = ti + epsI;
-      theta[j] = tj - epsJ;
-      par[0]=clone(theta);
-      f2 = as<double>(doCall(_["what"] = f, _["args"]=par, _["envir"]=e));
-      cur++;
-      curTick = par_progress(cur, totTick, curTick, 1, t0, 0);
-      theta[i] = ti - epsI;
-      theta[j] = tj + epsJ;
-      par[0]=clone(theta);
-      f3 = as<double>(doCall(_["what"] = f, _["args"]=par, _["envir"]=e));
-      cur++;
-      curTick = par_progress(cur, totTick, curTick, 1, t0, 0);
-      theta[i] = ti - epsI;
-      theta[j] = tj - epsJ;
-      par[0]=clone(theta);
-      f4 = as<double>(doCall(_["what"] = f, _["args"]=par, _["envir"]=e));
-      cur++;
-      curTick = par_progress(cur, totTick, curTick, 1, t0, 0);
-      H(i,j)= (f1-f2-f3+f4)/(4*epsI*epsJ);
-      H(j,i) = H(i,j);
-      theta[i] = ti;
-      theta[j] = tj;
-    }
-  }
-  par_progress(totTick, totTick, cur, 1, t0, 0);
-  if (isRstudio){
+  std::vector<double> h(n);
+  for (int i = n; i--;) h[i] = std::fabs(theta[i])*rEpsC[i] + aEpsC[i];
+  RHessObj obj(as<Function>(fT), e, n);
+  arma::mat H;
+  // the objective is -LL, so the Hessian is used as it is
+  fdHessian(obj, theta.begin(), n, nF[0], h.data(), H, 1.0, false, false);
+  par_progress(obj.totTick, obj.totTick, obj.cur, 1, obj.t0, 0);
+  if (isRstudio()){
     RSprintf("\n");
   } else {
     RSprintf("\r                                                                                \r");
@@ -11027,148 +11090,27 @@ int foceiCalcR(Environment e){
       if (op_focei.covMethod == 2) op_focei.covMethod = 1;
     }
   }
-  arma::mat H(op_focei.npars, op_focei.npars);
-  arma::vec theta(op_focei.npars);
-  unsigned int i, j, k;
-  for (k = op_focei.npars; k--;){
-    j=op_focei.fixedTrans[k];
-    theta[k] = op_focei.fullTheta[j];
+  if (op_focei.derivMethod == 0) stop("Not implemented for finite differences.");
+  // Hessian of -2LL about the base point at the steps |theta|*rEpsC + aEpsC; the
+  // objective is unscaled for the whole covariance step.
+  arma::vec theta(op_focei.npars), h(op_focei.npars);
+  for (unsigned int k = op_focei.npars; k--;){
+    theta[k] = op_focei.fullTheta[op_focei.fixedTrans[k]];
+    h[k] = std::fabs(theta[k])*op_focei.rEpsC[k] + op_focei.aEpsC[k];
   }
-
-  // arma::vec df1(op_focei.npars);
-  // arma::vec df2(op_focei.npars);
-  double epsI, epsJ;
-
-  bool doForward=false;
-  if (op_focei.derivMethod == 0){
-    doForward=true;
-  }
-  double f1,f2,f3,f4;
-  double ti, tj;
-  if (doForward){
-    stop("Not implemented for finite differences.");
-  } else {
-    //https://pdfs.semanticscholar.org/presentation/e7d5/aff49eb17fd155e75725c295859d983cfda4.pdf
-    // https://v8doc.sas.com/sashtml/ormp/chap5/sect28.htm
-    double fnscale = 1.0;
-    if (op_focei.scaleObjective == 2){
-      fnscale = op_focei.initObjective / op_focei.scaleObjectiveTo;
-    }
-    double parScaleI=1.0, parScaleJ=1.0;
-    for (i=op_focei.npars; i--;){
-      epsI = (std::fabs(theta[i])*op_focei.rEpsC[i] + op_focei.aEpsC[i]);
-      // > (45/12)^(1/5)
-      // [1] 1.302585542348676073132
-      // based on central error to stencil error which is closer to optimal for this difference
-      // epsI = pow(epsI, 3.0/5.0)*1.302585542348676073132;
-      ti = theta[i];
-      theta[i] = ti + 2*epsI;
-      updateTheta(theta.begin());
-      f1 = foceiOfv0(theta.begin());
-      if (ISNA(f1)) return 0;
-      op_focei.cur++;
-      op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
-      theta[i] = ti + epsI;
-      updateTheta(theta.begin());
-      f2 = foceiOfv0(theta.begin());
-      if (ISNA(f2)) return 0;
-      op_focei.cur++;
-      op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
-      theta[i] = ti - epsI;
-      updateTheta(theta.begin());
-      f3 = foceiOfv0(theta.begin());
-      if (ISNA(f3)) return 0;
-      op_focei.cur++;
-      op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
-      theta[i] = ti - 2*epsI;
-      updateTheta(theta.begin());
-      f4 = foceiOfv0(theta.begin());
-      if (ISNA(f4)) return 0;
-      op_focei.cur++;
-      op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
-      theta[i] = ti;
-      // RSprintf("-- i:%d, i: %d\n", i, i);
-      // print(NumericVector::create(f1,f2,f3,f4,op_focei.lastOfv));
-      H(i,i)=fnscale*(-f1+16*f2-30*op_focei.lastOfv+16*f3-f4)/(12*epsI*epsI*parScaleI*parScaleI);
-      for (j = i; j--;){
-        epsJ = (std::fabs(theta[j])*op_focei.rEpsC[j] + op_focei.aEpsC[j]);
-        epsI = (std::fabs(theta[i])*op_focei.rEpsC[i] + op_focei.aEpsC[i]);
-        // eps = sqrt(epsI*epsJ);// 0.5*epsI+0.5*epsJ;
-        // epsI = eps;
-        // epsJ = eps;
-        tj = theta[j];
-        theta[i] = ti + epsI;
-        theta[j] = tj + epsJ;
-        updateTheta(theta.begin());
-        f1 = foceiOfv0(theta.begin());
-        if (ISNA(f1)) return 0;
-        op_focei.cur++;
-        op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
-        theta[i] = ti + epsI;
-        theta[j] = tj - epsJ;
-        updateTheta(theta.begin());
-        f2 = foceiOfv0(theta.begin());
-        if (ISNA(f2)) return 0;
-        op_focei.cur++;
-        op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
-        theta[i] = ti - epsI;
-        theta[j] = tj + epsJ;
-        updateTheta(theta.begin());
-        f3 = foceiOfv0(theta.begin());
-        if (ISNA(f3)) return 0;
-        op_focei.cur++;
-        op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
-        theta[i] = ti - epsI;
-        theta[j] = tj - epsJ;
-        updateTheta(theta.begin());
-        f4 = foceiOfv0(theta.begin());
-        if (ISNA(f4)) return 0;
-        op_focei.cur++;
-        op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
-        // RSprintf("-- i:%d, j: %d\n", i, j);
-        // print(NumericVector::create(f1,f2,f3,f4));
-        H(i,j)= fnscale*(f1-f2-f3+f4)/(4*epsI*epsJ*parScaleI*parScaleJ);
-        H(j,i) = H(i,j);
-        theta[i] = ti;
-        theta[j] = tj;
-      }
-    }
-    // the last leg left fullTheta at theta0 - 2*eps0; the stages after this one
-    // read their base point from it
-    updateTheta(theta.begin());
-  }
+  FoceiHessObj obj;
+  arma::mat H;
   // R matrix = Hessian/2
-  H = H*0.5;
   // https://github.com/cran/nmw/blob/59478fcc91f368bb3bbc23e55d8d1d5d53726a4b/R/CovStep.R
-  // H = 0.25*H + 0.25*H.t();
-  if (e.exists("R.1")){
-    // This is the 2nd attempt
-    arma::mat H2 = 0.5*H + 0.5*as<arma::mat>(e["R.1"]);
-    arma::mat cholR;
-    arma::mat RE;
-    bool rpd = cholSE0(cholR, RE, H2, op_focei.cholSEtol);
-    if (rpd){
-      e["R.pd"] =  rpd;
-      e["R.E"] =  wrap(RE);
-      e["cholR"] = wrap(cholR);
-    } else {
-      e["R.pd2"] = false;
-      e["R.2"] = H2;
-      e["R.E2"] = wrap(RE);
-      e["cholR2"] = wrap(cholR);
-      e["R.pd"] = cholSE0(cholR, RE, H, op_focei.cholSEtol);
-      e["R.E"] =  wrap(RE);
-      e["cholR"] = wrap(cholR);
-    }
-  } else {
-    e["R.0"] = H;
-    arma::mat cholR;
-    arma::mat RE;
-    bool rpd = cholSE0(cholR, RE, H, op_focei.cholSEtol);
-    e["R.pd"] =  wrap(rpd);
-    e["R.E"] =  wrap(RE);
-    e["cholR"] = wrap(cholR);
-  }
+  if (!fdHessian(obj, theta.memptr(), op_focei.npars, op_focei.lastOfv, h.memptr(), H,
+                 0.5, true, false)) return 0;
+  e["R.0"] = H;
+  arma::mat cholR;
+  arma::mat RE;
+  bool rpd = cholSE0(cholR, RE, H, op_focei.cholSEtol);
+  e["R.pd"] =  wrap(rpd);
+  e["R.E"] =  wrap(RE);
+  e["cholR"] = wrap(cholR);
   return 1;
 }
 
@@ -12110,7 +12052,7 @@ static bool foceiFdSetOmega(const arma::mat &Om) {
 
 // objective at a full natural parameter vector x (thetas on fullTheta, Omega on the
 // variance-covariance scale); NA_REAL if the perturbed Omega is not PD.
-static double foceiFdObjAt(const FdFullCtx &c, const std::vector<double> &x) {
+static double foceiFdObjAt(const FdFullCtx &c, const double *x) {
   for (int i = 0; i < c.nth; ++i) op_focei.fullTheta[c.thPos[i]] = x[i];
   arma::mat Om = c.Om0;
   for (int q = 0; q < c.nom; ++q) {
@@ -12124,9 +12066,7 @@ static double foceiFdObjAt(const FdFullCtx &c, const std::vector<double> &x) {
 // perturbed natural parameter vector.  Same role as gill83fnF for the theta gradient.
 static const FdFullCtx *g_fdGillCtx = nullptr;
 static void foceiFdGill83fn(double *fp, double *theta, int, int) {
-  const FdFullCtx &c = *g_fdGillCtx;
-  std::vector<double> x(theta, theta + c.nth + c.nom);
-  *fp = foceiFdObjAt(c, x);
+  *fp = foceiFdObjAt(*g_fdGillCtx, theta);
 }
 
 // Per-parameter finite-difference step for coordinate i via the Gill-Murray-Saunders-
@@ -12144,74 +12084,13 @@ static double foceiFdGillStep(const FdFullCtx &c, int i, const std::vector<doubl
   return (gret == 1 && R_FINITE(hphif) && hphif > 0) ? hphif : NA_REAL;
 }
 
-// 5-point central diagonal 2nd-difference at step `e` (the foceiCalcR stencil).
-static double foceiFdDiag5(const FdFullCtx &c, int i, const std::vector<double> &x0, double f0, double e) {
-  std::vector<double> xp2=x0,xp1=x0,xm1=x0,xm2=x0;
-  xp2[i]+=2*e; xp1[i]+=e; xm1[i]-=e; xm2[i]-=2*e;
-  double f1=foceiFdObjAt(c,xp2), f2=foceiFdObjAt(c,xp1), f3=foceiFdObjAt(c,xm1), f4=foceiFdObjAt(c,xm2);
-  if (!R_FINITE(f1)||!R_FINITE(f2)||!R_FINITE(f3)||!R_FINITE(f4)) return NA_REAL;
-  return (-f1 + 16*f2 - 30*f0 + 16*f3 - f4) / (12*e*e);
-}
-
-// Gill-style adaptive diagonal 2nd-difference for coordinate i: grow the step until the
-// 2nd-difference stabilizes (below that it is round-off dominated, which makes the
-// off-diagonal Hessian -- and the covariance -- indefinite).  Returns it (or NA_REAL);
-// writes the accepted step to *hOut for reuse on the off-diagonals.
-static double foceiFdDiag(const FdFullCtx &c, int i, const std::vector<double> &x0,
-                          double f0, double *hOut) {
-  double base = std::max(std::fabs(x0[i]), 1e-3);
-  double d2prev = NA_REAL, hi = base * 5e-4, d2Use = NA_REAL;
-  *hOut = base * 1.6e-2;
-  for (int s = 0; s < 6; ++s) {
-    std::vector<double> xp = x0, xm = x0; xp[i] += hi; xm[i] -= hi;
-    double fp = foceiFdObjAt(c, xp), fm = foceiFdObjAt(c, xm);
-    if (R_FINITE(fp) && R_FINITE(fm)) {
-      double d2 = (fp - 2*f0 + fm) / (hi*hi);
-      *hOut = hi; d2Use = d2;
-      if (R_FINITE(d2prev) && std::fabs(d2 - d2prev) <= 0.01 * std::fabs(d2)) break;
-      d2prev = d2;
-    }
-    hi *= 2.0;
-  }
-  return d2Use;
-}
-
-// off-diagonal (i,j) 4-point mixed 2nd-difference with the accepted per-parameter steps h.
-static double foceiFdOffDiag(const FdFullCtx &c, int i, int j, const std::vector<double> &x0,
-                             const std::vector<double> &h) {
-  std::vector<double> xpp=x0,xpm=x0,xmp=x0,xmm=x0;
-  xpp[i]+=h[i]; xpp[j]+=h[j]; xpm[i]+=h[i]; xpm[j]-=h[j];
-  xmp[i]-=h[i]; xmp[j]+=h[j]; xmm[i]-=h[i]; xmm[j]-=h[j];
-  double a=foceiFdObjAt(c,xpp), b=foceiFdObjAt(c,xpm), cc=foceiFdObjAt(c,xmp), d=foceiFdObjAt(c,xmm);
-  if (!R_FINITE(a)||!R_FINITE(b)||!R_FINITE(cc)||!R_FINITE(d)) return NA_REAL;
-  return (a - b - cc + d) / (4*h[i]*h[j]);
-}
-
-// full natural-scale FD Hessian at x0 (f0=obj(x0)), mirroring foceiCalcR: a Gill-optimal
-// per-parameter step (gill83) with the 5-point diagonal and 4-point off-diagonal stencils.
-// If gill83 fails for a coordinate, fall back to the step-doubling diagonal.  Returns false
-// on any non-finite probe.  Writes the accepted per-parameter steps to `h` (reused by the
-// full-S cross-product below so R and S difference on the same steps).
-static bool foceiFdHessian(const FdFullCtx &c, const std::vector<double> &x0, double f0,
-                           arma::mat &H, std::vector<double> &h) {
-  int np = c.nth + c.nom;
-  H.zeros(np, np);
-  if (!R_FINITE(f0)) return false;
-  h.assign(np, 0.0);
-  for (int i = 0; i < np; ++i) {
-    double e = foceiFdGillStep(c, i, x0, f0);
-    double d2 = R_FINITE(e) ? foceiFdDiag5(c, i, x0, f0, e) : NA_REAL;
-    if (R_FINITE(d2)) { h[i] = e; H(i, i) = d2; }
-    else              { H(i, i) = foceiFdDiag(c, i, x0, f0, &h[i]); }   // step-doubling fallback
-    if (!R_FINITE(H(i, i))) return false;
-  }
-  for (int i = 0; i < np - 1; ++i) for (int j = i+1; j < np; ++j) {
-    double v = foceiFdOffDiag(c, i, j, x0, h);
-    if (!R_FINITE(v)) return false;
-    H(i, j) = H(j, i) = v;
-  }
-  return true;
-}
+// The full FD's objective for fdHessian; foceiCalcRFdFull's FdFullStateGuard
+// re-installs the base point.
+struct FdFullHessObj : FdHessObj {
+  const FdFullCtx &c;
+  explicit FdFullHessObj(const FdFullCtx &c) : c(c) {}
+  double f(double *x) { return foceiFdObjAt(c, x); }
+};
 
 // per-subject -2LL contributions after a foceiFdObjAt probe -- the quantity foceiS
 // differences (native: likSav[gid] = -2*fInd->lik[0]).  For a mixture the contribution is
@@ -12233,7 +12112,7 @@ static bool foceiFdLikById(arma::vec &out) {
 
 // full natural-scale cross-product (OPG) S = 0.25 * sum_i g_i g_i^T, with per-subject
 // central-difference gradients g_i over the SAME parameters and accepted steps `h` as
-// foceiFdHessian.  Matches the native foceiS convention (S = 0.25*sum, paired with
+// the full Hessian.  Matches the native foceiS convention (S = 0.25*sum, paired with
 // R = 0.5*Hessian), so Rinv * S * Rinv reproduces the native sandwich scale over the full
 // theta+sigma+Omega parameter set.  Returns false on any non-finite probe or if the
 // per-subject contributions are unavailable (foceiFdLikById), keeping the native cov.
@@ -12245,8 +12124,8 @@ static bool foceiFdSFull(const FdFullCtx &c, const std::vector<double> &x0,
   for (int j = 0; j < np; ++j) {
     std::vector<double> xp = x0, xm = x0;
     xp[j] += h[j]; xm[j] -= h[j];
-    if (!R_FINITE(foceiFdObjAt(c, xp)) || !foceiFdLikById(lp)) return false;
-    if (!R_FINITE(foceiFdObjAt(c, xm)) || !foceiFdLikById(lm)) return false;
+    if (!R_FINITE(foceiFdObjAt(c, xp.data())) || !foceiFdLikById(lp)) return false;
+    if (!R_FINITE(foceiFdObjAt(c, xm.data())) || !foceiFdLikById(lm)) return false;
     if (G.n_rows == 0) G.zeros(lp.n_elem, np);
     if (lp.n_elem != G.n_rows || lm.n_elem != G.n_rows) return false;
     G.col(j) = (lp - lm) / (2.0 * h[j]);
@@ -12302,8 +12181,8 @@ struct FdFullStateGuard {
   }
 };
 
-// Orchestrator: assemble the FD Hessian around the fit, restore live state, install the
-// natural cov solve(0.5*H) in e[".fdFullCov"] (installed as fit$cov by .foceiInstallFdFullCov).
+// Orchestrator: assemble R = H/2 around the fit, restore live state, install the
+// natural cov solve(R) in e[".fdFullCov"] (installed as fit$cov by .foceiInstallFdFullCov).
 void foceiCalcRFdFull(Environment e) {
   if (op_focei.neta <= 0) return;
   FdFullCtx c; CharacterVector nm;
@@ -12316,9 +12195,15 @@ void foceiCalcRFdFull(Environment e) {
   for (int q = 0; q < c.nom; ++q) x0[c.nth + q] = c.Om0(c.omA[q]-1, c.omB[q]-1);
 
   FdFullStateGuard _restore;
+  // the Gill-optimal step per coordinate, then R = H/2 by the shared stencil; a
+  // coordinate whose search fails takes the step-doubling diagonal and its step
+  double f0 = foceiFdObjAt(c, x0.data());
+  bool ok = R_FINITE(f0);
+  std::vector<double> h(np, NA_REAL);
+  for (int i = 0; ok && i < np; ++i) h[i] = foceiFdGillStep(c, i, x0, f0);
+  FdFullHessObj obj(c);
   arma::mat H;
-  std::vector<double> h;
-  bool ok = foceiFdHessian(c, x0, foceiFdObjAt(c, x0), H, h);
+  ok = ok && fdHessian(obj, x0.data(), np, f0, h.data(), H, 0.5, true, true);
   // only the S-using cov methods need the OPG cross-product ("r,s" sandwich or "s"); this is
   // the final selection after foceiCalcCov's heuristic, matching what e["covMethod"] reports.
   bool needS = (op_focei.covMethod == 1 || op_focei.covMethod == 3);
@@ -12327,7 +12212,7 @@ void foceiCalcRFdFull(Environment e) {
   if (!ok) return;
 
   arma::mat cov;
-  if (!arma::inv_sympd(cov, 0.5 * H) && !arma::inv(cov, 0.5 * H)) return;   // cov = 2 H^{-1} = Rinv
+  if (!arma::inv_sympd(cov, H) && !arma::inv(cov, H)) return;   // cov = Rinv
   NumericMatrix covR = wrap(cov);
   covR.attr("dimnames") = List::create(nm, nm);
   e[".fdFullCov"] = covR;                       // Rinv_full (feeds "r" and the sandwich)
