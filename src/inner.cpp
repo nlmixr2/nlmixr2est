@@ -1932,6 +1932,17 @@ static void foceiOmegaFromTheta(const double *omBlock) {
   }
 }
 
+// Push op_focei.fullTheta into every subject's solve parameters (no R calls).
+static inline void foceiPushFullTheta() {
+  rx = getRxSolve_();
+  for (int id = getRxNsub(rx); id--;){
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
+    for (unsigned int j = op_focei.ntheta; j--;){
+      setIndParPtr(ind, op_focei.thetaTrans[j], op_focei.fullTheta[j]);
+    }
+  }
+}
+
 void updateTheta(double *theta){
   // Theta is the acutal theta
   unsigned int j, k;
@@ -1945,15 +1956,7 @@ void updateTheta(double *theta){
       op_focei.fullTheta[j] = unscalePar(theta, k);
     }
   }
-  // Update theta parameters in each individual
-  rx = getRxSolve_();
-  // Update theta parameters
-  for (int id = getRxNsub(rx); id--;){
-    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
-    for (j = op_focei.ntheta; j--;){
-      setIndParPtr(ind, op_focei.thetaTrans[j], op_focei.fullTheta[j]);
-    }
-  }
+  foceiPushFullTheta();
   // Update the mixture probabilities
   if (op_focei.mixIdxN != 0) {
     NumericVector curTheta(op_focei.ntheta);
@@ -12273,6 +12276,32 @@ static bool foceiFdParams(Environment e, FdFullCtx &c, CharacterVector &nm) {
   return (c.nth + c.nom) > 0;
 }
 
+// Everything foceiCalcRFdFull's probes change, put back on every exit (the caller
+// swallows its exceptions): the natural thetas, the Omega state they set directly,
+// covFdDirect, and what updateTheta pushed -- each subject's parameters and the
+// mixture proportions.  No R calls, so it is safe in a destructor.
+struct FdFullStateGuard {
+  std::vector<double> fth, mixProb;
+  arma::mat omegaInv, cholOmegaInv;
+  double logDet;
+  FdFullStateGuard() : fth(op_focei.fullTheta, op_focei.fullTheta + op_focei.ntheta),
+                       omegaInv(op_focei.omegaInv), cholOmegaInv(op_focei.cholOmegaInv),
+                       logDet(op_focei.logDetOmegaInv5) {
+    if (op_focei.mixIdxN != 0) {
+      mixProb.assign(op_focei.mixProb, op_focei.mixProb + op_focei.mixIdxN + 1);
+    }
+    op_focei.covFdDirect = 1;
+  }
+  ~FdFullStateGuard() {
+    std::copy(fth.begin(), fth.end(), op_focei.fullTheta);
+    std::copy(mixProb.begin(), mixProb.end(), op_focei.mixProb);
+    op_focei.omegaInv = omegaInv; op_focei.cholOmegaInv = cholOmegaInv;
+    op_focei.logDetOmegaInv5 = logDet;
+    op_focei.covFdDirect = 0;
+    foceiPushFullTheta();
+  }
+};
+
 // Orchestrator: assemble the FD Hessian around the fit, restore live state, install the
 // natural cov solve(0.5*H) in e[".fdFullCov"] (installed as fit$cov by .foceiInstallFdFullCov).
 void foceiCalcRFdFull(Environment e) {
@@ -12282,16 +12311,11 @@ void foceiCalcRFdFull(Environment e) {
   c.Om0 = as<arma::mat>(getOmega());
   int np = c.nth + c.nom;
 
-  // save live state (restored on exit)
-  arma::mat omegaInv0 = op_focei.omegaInv, cholOmegaInv0 = op_focei.cholOmegaInv;
-  double logDet0 = op_focei.logDetOmegaInv5;
-  std::vector<double> fth0(op_focei.ntheta);
-  std::copy(&op_focei.fullTheta[0], &op_focei.fullTheta[0] + op_focei.ntheta, fth0.begin());
   std::vector<double> x0(np);
   for (int i = 0; i < c.nth; ++i) x0[i] = op_focei.fullTheta[c.thPos[i]];
   for (int q = 0; q < c.nom; ++q) x0[c.nth + q] = c.Om0(c.omA[q]-1, c.omB[q]-1);
 
-  op_focei.covFdDirect = 1;
+  FdFullStateGuard _restore;
   arma::mat H;
   std::vector<double> h;
   bool ok = foceiFdHessian(c, x0, foceiFdObjAt(c, x0), H, h);
@@ -12300,11 +12324,6 @@ void foceiCalcRFdFull(Environment e) {
   bool needS = (op_focei.covMethod == 1 || op_focei.covMethod == 3);
   arma::mat S;
   bool okS = ok && needS && foceiFdSFull(c, x0, h, S);
-
-  // restore live state
-  std::copy(fth0.begin(), fth0.end(), &op_focei.fullTheta[0]);
-  op_focei.omegaInv = omegaInv0; op_focei.cholOmegaInv = cholOmegaInv0; op_focei.logDetOmegaInv5 = logDet0;
-  op_focei.covFdDirect = 0;
   if (!ok) return;
 
   arma::mat cov;
