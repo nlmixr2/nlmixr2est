@@ -30,9 +30,12 @@ nmTest({
     .ev <- .covsIntData
     names(.ev) <- tolower(names(.ev))
     names(.ev)[names(.ev) == "crcl"] <- "CRCL"
-    .s <- suppressWarnings(rxode2::rxSolve(fit$ui$simulationModel,
-      params = .p, events = .ev,
-      covsInterpolation = covsInterpolation, returnType = "data.frame"
+    .s <- suppressWarnings(rxode2::rxSolve(
+      fit$ui$simulationModel,
+      params = .p,
+      events = .ev,
+      covsInterpolation = covsInterpolation,
+      returnType = "data.frame"
     ))
     .fd <- as.data.frame(fit)
     .m <- merge(
@@ -44,13 +47,18 @@ nmTest({
 
   test_that("the fit's table uses rxControl(covsInterpolation=) (#1137)", {
     for (.ci in c("locf", "nocb", "midpoint")) {
-      .fit <- .nlmixr(.covsIntModel, .covsIntData, "focei",
+      .fit <- .nlmixr(
+        .covsIntModel,
+        .covsIntData,
+        "focei",
         foceiControl(
           rxControl = rxode2::rxControl(covsInterpolation = .ci),
-          maxOuterIterations = 0L, print = 0
+          maxOuterIterations = 0L,
+          print = 0
         )
       )
-      expect_equal(.residCovsInterpolation(.fit)$covsInterpolation,
+      expect_equal(
+        .residCovsInterpolation(.fit)$covsInterpolation,
         rxode2::rxControl(covsInterpolation = .ci)$covsInterpolation,
         ignore_attr = TRUE
       )
