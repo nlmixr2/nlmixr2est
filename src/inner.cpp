@@ -11130,6 +11130,9 @@ int foceiCalcR(Environment e){
         theta[j] = tj;
       }
     }
+    // the last leg left fullTheta at theta0 - 2*eps0; the stages after this one
+    // read their base point from it
+    updateTheta(theta.begin());
   }
   // R matrix = Hessian/2
   H = H*0.5;
@@ -11448,6 +11451,7 @@ int foceiS(double *theta, Environment e, bool &hasZero){
     op_focei.cur++;
     op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
   }
+  updateTheta(theta); // the last leg left fullTheta at theta - delta
   // Put back what the caller had (the covariance step owns the flag for its
   // whole duration) rather than forcing 0 in the middle of that step.
   op_focei.calcGrad=oldCalcGrad;
@@ -11811,12 +11815,6 @@ NumericMatrix foceiCalcCov(Environment e){
         std::string sstr="s";
         bool sHasZero = false;
         if (op_focei.covMethod == 1 || op_focei.covMethod == 3) {
-          arma::vec theta(op_focei.npars);
-          unsigned int j, k;
-          for (k = op_focei.npars; k--;){
-            j=op_focei.fixedTrans[k];
-            theta[k] = op_focei.fullTheta[j];
-          }
           if (!e.exists("cholS")){
             foceiS(&theta[0], e, sHasZero);
           } else {

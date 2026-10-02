@@ -116,6 +116,14 @@
   overwrote its steps, so the search only cost time, and with `gillKcov = 0`
   its last probe became the centre of the R matrix.  Standard errors of fits
   with a nonzero `shi21maxOuter` change accordingly.
+- Every stage of the FOCEi-family covariance step is now taken about the
+  estimates.  The last leg of the R matrix left the parameters at
+  `theta0 - 2*eps` (`theta0` the first estimated parameter), the S matrix was
+  centred there, its own last leg moved them again, and the full covariance
+  (`covFull = TRUE`) took that as its centre.  This changes the default
+  (`"r,s"`) standard errors, most for the first estimated parameter; the
+  sandwich SE of `tka` for `theo_sd` with a one-compartment model went from
+  0.43 to 0.15.
 - The `grad()` function from `nlmixr2GradFun()` no longer leaves the point at
   `x - h` when a forward difference is not finite and it falls back to a
   backward one.  That point was the caller's own vector, which was also the

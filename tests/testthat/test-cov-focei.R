@@ -176,4 +176,27 @@ nmTest({
     expect_true(all(.f10$scaleInfo[["Covariance Gradient"]] == "Not Assessed"))
     expect_identical(.f10$cov, .f0$cov)
   })
+
+  test_that("every covariance stage is taken about the estimates", {
+    one.cmt <- function() {
+      ini({
+        tka <- log(1.5); tcl <- log(2.7); tv <- log(31.5)
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    # "s" runs S and the full FD straight after the step search.  "r,s" runs
+    # the R stencil first, whose last leg used to leave theta at
+    # theta0 - 2*eps0, where S then took its centre, and whose own last leg
+    # moved it again before the full FD read it.
+    .rs <- .nlmixr(one.cmt, theo_sd, "focei", foceiControl(print = 0))
+    .s <- .nlmixr(one.cmt, theo_sd, "focei", foceiControl(print = 0, covMethod = "s"))
+    expect_equal(.rs$env$S0, .s$env$S0, tolerance = 1e-6)
+    expect_equal(.rs$env$.fdFullCov, .s$env$.fdFullCov, tolerance = 1e-6)
+    expect_equal(.rs$env$.fdFullS, .s$env$.fdFullS, tolerance = 1e-6)
+  })
 })
