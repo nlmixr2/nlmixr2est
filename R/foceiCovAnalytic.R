@@ -72,43 +72,35 @@
 .foceiInstallAnalyticCov <- function(.ret) {
   # only covMethod="r" installs the analytic R^-1; "r,s"/"s" keep the native
   # sandwich / S-matrix cov (which the analytic R already fed via covR).
-  if (!identical(as.integer(rxode2::rxGetControl(.ret$ui, "covMethod", 2L)), 2L)) {
-    return(invisible())
-  }
-  if (!exists(".analyticCov", envir = .ret, inherits = FALSE)) {
+  if (
+    .covMethodFromSlot(rxode2::rxGetControl(.ret$ui, "covMethod", 2L)) != "r" ||
+      !exists(".analyticCov", envir = .ret, inherits = FALSE)
+  ) {
     return(invisible())
   }
   .covF <- get(".analyticCov", envir = .ret)
-  if (!is.matrix(.covF) || !all(is.finite(.covF))) {
-    return(invisible())
-  }
-  .full <- isTRUE(rxode2::rxGetControl(.ret$ui, "covFull", TRUE))
   .covT <- .covAnalyticScope(.ret, .covF, FALSE)
-  if (is.null(.covT)) {
-    .full <- TRUE
-  } # no theta block -> only one shape
-  .cov <- if (.full) .covF else .covT
+  .full <- is.null(.covT) || isTRUE(rxode2::rxGetControl(.ret$ui, "covFull", TRUE))
+  .label <- if (.full) .covFullName("analytic") else "analytic"
   # PD guard: an indefinite (near-boundary) inverse installs negative variances ->
-  # NaN SEs.  Reject and keep the native/FD cov rather than a plausible-looking wrong one.
-  # Judge the FULL matrix even when installing the theta block -- a submatrix of the
-  # inverse of an indefinite information can look positive definite on its own (#1055).
-  .ev <- suppressWarnings(eigen(.covF, symmetric = TRUE, only.values = TRUE)$values)
-  if (any(diag(.covF) <= 0) || !all(is.finite(.ev)) || min(.ev) <= 0) {
-    warning("analytic covariance is not positive definite; keeping the finite-difference covariance", call. = FALSE)
+  # NaN SEs.  Judge the FULL matrix even when installing the theta block -- a submatrix
+  # of the inverse of an indefinite information can look positive definite on its own
+  # (#1055).
+  .g <- .covGuard(.covF)
+  if (!.g$ok) {
+    # what stays is the native step's inverse of this information's theta block, an
+    # R-matrix covariance whose R came from the analytic assembly -- not an FD one
+    if (identical(.covFdType(.ret$covMethod), "r")) {
+      .ret$covMethod <- paste0(.ret$covMethod, " (analytic)")
+    }
+    .covRejectWarn(.ret, .label, .g$reason)
     return(invisible())
   }
-  .ret$cov <- .cov # analytic-tier cov already carries dimnames
-  # report the analytic observed information (not "r"), naming the installed shape
-  .ret$covMethod <- if (.full) .covFullName("analytic") else "analytic"
+  .covInstall(.ret, if (.full) .covF else .covT, .label, stash = FALSE, refresh = "none")
   # both shapes are in hand; cache the one not installed so setCov() can swap to it
   .covCacheAdd(.ret, "analytic", .covT)
   .covCacheAdd(.ret, .covFullName("analytic"), .covF)
   .covCacheDrop(.ret, .ret$covMethod)
-  # covFull=TRUE swaps in a larger matrix than C++ foceiFinalizeTables saw, so its
-  # condition numbers (computed from the theta-only native cov) are stale -- recompute.
-  if (.full) {
-    .foceiCovCondition(.ret, .cov, .ev)
-  }
   invisible()
 }
 
@@ -4683,14 +4675,13 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
   # `pd` is the caller's install gate: an observed information with a negative eigenvalue
   # (the outer optimizer stopped at a point that is not a local minimum) inverts to
   # negative variances and NaN SEs.  Report it rather than making each caller re-decide.
-  .ev <- suppressWarnings(eigen(cov, symmetric = TRUE, only.values = TRUE)$values)
   list(
     cov = cov,
     se = setNames(suppressWarnings(sqrt(diag(cov))), nm), # NaN flags non-PD
     R = R,
     params = nm,
     method = "analytic",
-    pd = all(is.finite(.ev)) && all(diag(cov) > 0) && min(.ev) > 0
+    pd = .covGuard(cov)$ok
   )
 }
 
@@ -4709,40 +4700,31 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
 #' @return list(cov, se, R, params, method, pd) or `NULL`
 #' @noRd
 foceiCovAnalytic <- function(fit) {
-  .env <- fit
-  if (rxode2::rxIs(fit, "nlmixr2FitData")) {
-    .env <- fit$env
-  }
-  # PD guard, as in .foceiInstallAnalyticCov and .covInstallResult: an indefinite
-  # observed information inverts to negative variances and NaN SEs, so installing it
-  # would replace a usable covariance with an unusable one.
-  .notPd <- function(.r) !is.null(.r) && is.matrix(.r$cov) && !isTRUE(.r$pd)
-  if (exists(".covAnalytic", envir = .env, inherits = FALSE)) {
-    .cached <- get(".covAnalytic", envir = .env)
-    # only warn here -- do NOT re-install, so a covariance the caller replaced since
-    # (setCov(), a refit) is left as they set it
-    if (.notPd(.cached)) {
-      warning("analytic covariance is not positive definite; fit$cov unchanged", call. = FALSE)
-    }
-    return(.cached)
-  }
+  .env <- .setCovEnv(fit)
+  .cached <- exists(".covAnalytic", envir = .env, inherits = FALSE)
   # Match the live covType="analytic" hook (.foceiCalcRanalytic), which wraps the whole assembly
   # in tryCatch and returns NULL on any error -> FD fallback.  A direct foceiCovAnalytic()/
   # getVarCov() call must fall back just as gracefully (e.g. a pure-proportional FOCE fit whose
   # near-zero-prediction branch can hit an NA), never throw.
-  .ret <- tryCatch(.foceiCovAnalyticCalc(fit), error = .foceiAnalyticErrWarn(2L))
-  assign(".covAnalytic", .ret, envir = .env) # cache (incl. NULL) -- do not recompute
-  if (.notPd(.ret)) {
-    warning("analytic covariance is not positive definite; fit$cov unchanged", call. = FALSE)
-  } else if (!is.null(.ret) && is.matrix(.ret$cov)) {
-    .full <- isTRUE(tryCatch(rxode2::rxGetControl(.env$ui, "covFull", TRUE), error = function(e) TRUE))
-    .covT <- .covAnalyticScope(.env, .ret$cov, FALSE)
-    if (is.null(.covT)) {
-      .full <- TRUE
-    }
-    .env$cov <- if (.full) .ret$cov else .covT # install so getVarCov()/$cov reuse it
-    # report the analytic observed information, naming the installed shape
-    .env$covMethod <- if (.full) .covFullName("analytic") else "analytic"
+  .ret <- if (.cached) {
+    get(".covAnalytic", envir = .env)
+  } else {
+    tryCatch(.foceiCovAnalyticCalc(fit), error = .foceiAnalyticErrWarn(2L))
+  }
+  if (!.cached) {
+    assign(".covAnalytic", .ret, envir = .env) # cache (incl. NULL) -- do not recompute
+  }
+  if (is.null(.ret) || !is.matrix(.ret$cov)) {
+    return(.ret)
+  }
+  .covT <- .covAnalyticScope(.env, .ret$cov, FALSE)
+  .full <- is.null(.covT) || isTRUE(tryCatch(rxode2::rxGetControl(.env$ui, "covFull", TRUE), error = function(e) TRUE))
+  .label <- if (.full) .covFullName("analytic") else "analytic"
+  # PD guard on the FULL matrix, as in .foceiInstallAnalyticCov.  A cached result is never
+  # re-installed, so a covariance the caller replaced since (setCov(), a refit) stays.
+  if (!isTRUE(.ret$pd)) {
+    .covRejectWarn(.env, .label, "is not positive definite")
+  } else if (!.cached && .covInstall(.env, if (.full) .ret$cov else .covT, .label)) {
     .covCacheAdd(.env, "analytic", .covT) # the other shape stays swappable
     .covCacheAdd(.env, .covFullName("analytic"), .ret$cov)
     .covCacheDrop(.env, .env$covMethod)

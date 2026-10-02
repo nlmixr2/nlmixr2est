@@ -112,6 +112,21 @@
   fallback (or no covariance) under the requested name.  `setCov(fit, "sa")`
   whose nested SAEM falls back to `"linFim"` no longer replaces the
   covariance before reporting the error.
+- The full finite-difference covariance (`foceiControl(covFull = TRUE)`, the
+  default) is no longer installed when the full R matrix is not positive
+  definite: the `"r,s (full)"` sandwich built from it still looked positive
+  definite.  The fit keeps the native theta-only covariance, with a warning,
+  and the indefinite R is no longer stored as `$covR` or cached as
+  `"r (full)"`.  A default `focei` fit of the ODE one-compartment model of
+  `theo_sd` was such a case.
+- When the analytic covariance (`covMethod = "analytic"`) is not positive
+  definite, the theta block the native step installed from it is labelled
+  `"r (analytic)"` (it was `"r"`), and the warning no longer calls it a
+  finite-difference covariance.
+- The condition numbers, `$eigenCov` and `$fullCor` now describe the full
+  covariance once it is installed (`covFull = TRUE`, the analytic
+  covariance); `foceiCovAnalytic()` also refreshes the parameter-table SEs and
+  keeps the covariance it replaced in `$covList`.
 
 
 # nlmixr2est 7.1.0
