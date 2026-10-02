@@ -63,7 +63,7 @@
   if (is.null(maximum)) {
     maximum <- .range[2]
   }
-  .fs <- c(locf = 0, nocb = 1, midpoint = 0.5, linear = 0)
+  .fs <- c(locf = 0, nocb = 1, midpoint = 0, linear = 0)
   .base <- expand.grid(
     TIME = seq(minimum, maximum, length.out = length.out),
     EVID = 2,
@@ -83,9 +83,19 @@
           setNames(
             data.frame(lapply(.covs, function(cov) {
               suppressWarnings({
+                .x <- .cur$TIME
+                .y <- .cur[[cov]]
+                if (.covsi == "midpoint" && length(.x) > 1L) {
+                  # rxode2 steps to the next value at the midpoint, it does
+                  # not average the two
+                  .o <- order(.x)
+                  .x <- .x[.o]
+                  .y <- .y[.o]
+                  .x <- c(.x[1], (.x[-1] + .x[-length(.x)]) / 2)
+                }
                 .fun <- stats::approxfun(
-                  .cur$TIME,
-                  .cur[[cov]],
+                  .x,
+                  .y,
                   method = ifelse(.covsi == "linear", "linear", "constant"),
                   rule = 2,
                   f = .fs[.covsi]
@@ -147,9 +157,29 @@
   .params
 }
 
+#' Name of the covariate interpolation a fit was estimated with
+#'
+#' @param fit nlmixr2 fit
+#' @return interpolation name; `"locf"` when the fit did not set one
+#' @noRd
+.augPredCovsInterpolation <- function(fit) {
+  .codes <- c(linear = 0L, locf = 1L, nocb = 2L, midpoint = 3L)
+  .ci <- .residCovsInterpolation(fit)$covsInterpolation
+  if (is.character(.ci) && length(.ci) == 1L && .ci %in% names(.codes)) {
+    return(.ci)
+  }
+  .name <- names(.codes)[match(as.integer(.ci), .codes)]
+  if (length(.name) != 1L || is.na(.name)) {
+    return("locf")
+  }
+  .name
+}
+
 #' Augmented Prediction for nlmixr2 fit
 #'
 #' @param fit Nlmixr2 fit object
+#' @param covsInterpolation covariate interpolation; by default the one
+#'   the fit was estimated with
 #' @inheritParams nlme::augPred
 #' @inheritParams rxode2::rxSolve
 #' @return Stacked data.frame with observations, individual/population predictions.
@@ -163,6 +193,11 @@ nlmixr2AugPredSolve <- function(
   length.out = 51L,
   ...
 ) {
+  if (missing(covsInterpolation)) {
+    covsInterpolation <- .augPredCovsInterpolation(fit)
+  }
+  covsInterpolation <- match.arg(covsInterpolation)
+  .naInterpolation <- .residCovsInterpolation(fit)$naInterpolation
   .si <- fit$simInfo
   .env <- new.env(parent = emptyenv())
   .env$ui <- fit$ui
@@ -187,6 +222,8 @@ nlmixr2AugPredSolve <- function(
     .params,
     .events,
     keepInterpolation = "na",
+    covsInterpolation = covsInterpolation,
+    naInterpolation = .naInterpolation,
     tolFactor = .tolFactor,
     keep = c("DV", "CMT"),
     returnType = "data.frame"
@@ -203,6 +240,8 @@ nlmixr2AugPredSolve <- function(
       object = .rx,
       params = .params,
       events = .events,
+      covsInterpolation = covsInterpolation,
+      naInterpolation = .naInterpolation,
       tolFactor = .tolFactor,
       returnType = "data.frame"
     )
