@@ -912,76 +912,11 @@ NumericVector solveGradNls(arma::vec &theta, int returnType) {
   return NumericVector::create();
 }
 
+// optimHessType: 1 = forward, 2 = central (shi21Hessian's own codes).  No hMax/hMin,
+// so a searched step is bounded by the shi21 defaults.
 arma::mat nlmCalcHessian(arma::vec &gr0, arma::vec &theta) {
-  int id = 0; // dummy id
-  mat H(nlmOp.ntheta, nlmOp.ntheta);
-  H.zeros();
-  arma::vec grPH(nlmOp.ntheta);
-  arma::vec grMH(nlmOp.ntheta);
-  double h;
-  double *thetahh = nlmOp.thetahh;
-  for (int k = nlmOp.ntheta; k--;) {
-    h = thetahh[k];
-    if (nlmOp.optimHessType == 1 && h <= 0) {
-      arma::vec t = theta;
-      thetahh[k] = shi21Forward(nlmSolveGrad1, theta, h,
-                                gr0, grPH, id, k,
-                                nlmOp.hessErr, //double ef = 7e-7,
-                                1.5,  //double rl = 1.5,
-                                6.0,  //double ru = 6.0);;
-                                nlmOp.shi21maxHess);  //maxiter=15
-      H.col(k) = grPH;
-      continue;
-    }
-    if (nlmOp.optimHessType == 2 && h <= 0) {
-      // Central
-      arma::vec t = theta;
-      thetahh[k] = shi21Central(nlmSolveGrad1, t, h,
-                                gr0, grPH, id, k,
-                                nlmOp.hessErr, // ef,
-                                1.5,//double rl = 1.5,
-                                4.5,//double ru = 4.5,
-                                3.0,//double nu = 8.0);
-                                nlmOp.shi21maxHess); // maxiter
-      H.col(k) = grPH;
-      continue;
-    }
-    // x + h
-    theta[k] += h;
-    grPH = nlmSolveGrad1(theta, id);
-    bool forwardFinite =  grPH.is_finite();
-    if (nlmOp.optimHessType == 1 && forwardFinite) { // forward
-      H.col(k) = (grPH-gr0)/h;
-      theta[k] -= h;
-      continue;
-    }
-    // x - h
-    theta[k] -= 2*h;
-    grMH = nlmSolveGrad1(theta, 0);
-    bool backwardFinite = grMH.is_finite();
-    if (nlmOp.optimHessType == 2 &&
-        forwardFinite && backwardFinite) {
-      // central
-      theta[k] += h;
-      H.col(k) = (grPH-grMH)/(2.0*h);
-      continue;
-    }
-    if (forwardFinite && !backwardFinite) {
-      // forward difference
-      H.col(k) = (grPH-gr0)/h;
-      theta[k] += h;
-      continue;
-    }
-    if (!forwardFinite && backwardFinite) {
-      // backward difference
-      H.col(k) = (gr0-grMH)/h;
-      theta[k] += h;
-      continue;
-    }
-  }
-  // symmetrize
-  H = 0.5*(H + H.t());
-  return H;
+  return shi21Hessian(nlmSolveGrad1, theta, gr0, 0, nlmOp.optimHessType,
+                      nlmOp.thetahh, nlmOp.hessErr, nlmOp.shi21maxHess);
 }
 
 //[[Rcpp::export]]

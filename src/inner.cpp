@@ -3637,9 +3637,6 @@ bool calcEtaHessian(double *eta, int likId, int id,
       H = Hqn;
       op_focei.nHessianQN.fetch_add(1, std::memory_order_relaxed);
     } else {
-      arma::vec grPH(op_focei.neta, fill::zeros);
-      arma::vec grMH(op_focei.neta, fill::zeros);
-
       // Floor the Shi (2021) step search relative to each eta's own scale.
       // shi21's `ef` should be the noise floor of what it differences, but
       // hessEpsInner supplies only atolSens -- the gradient comes out of a solve
@@ -3663,86 +3660,25 @@ bool calcEtaHessian(double *eta, int likId, int id,
         (omegaInvCur.n_rows == (arma::uword)op_focei.neta &&
          omegaInvCur.n_cols == (arma::uword)op_focei.neta);
 
-      double h = 0;
-
+      arma::vec hMin(op_focei.neta);
       for (k = op_focei.neta; k--;) {
-        h = fInd->etahh[k];
-        double hMinK = op_focei.shi21hMin;
+        hMin[k] = op_focei.shi21hMin;
         if (haveOmegaDiag) {
           double v = omegaInvCur(k, k);
           if (R_finite(v) && v > 0.0) {
             double f = op_focei.hessEtaStepMin / std::sqrt(v);
-            if (f > hMinK) hMinK = f;
+            if (f > hMin[k]) hMin[k] = f;
           }
         }
-        if (hMinK > op_focei.shi21hMax) hMinK = op_focei.shi21hMax;
-        if (op_focei.optimHessType == 3 && h <= 0) {
-          arma::vec t(eta, op_focei.neta);
-          fInd->etahh[k] = shi21Forward(getGradForOptimHess, t, h,
-                                        gr0, grPH, id, k,
-                                        op_focei.hessEpsInner, //double ef = 7e-7,
-                                        1.5,  //double rl = 1.5,
-                                        6.0,  //double ru = 6.0);;
-                                        op_focei.shi21maxInner,  //maxiter=15
-                                        op_focei.shi21hMax, hMinK);
-          H.col(k) = grPH;
-          continue;
-        }
-        if (op_focei.optimHessType == 1 && h <= 0) {
-          // Central
-          arma::vec t(eta, op_focei.neta);
-          fInd->etahh[k] = shi21Central(getGradForOptimHess, t, h,
-                                        gr0, grPH, id, k,
-                                        op_focei.hessEpsInner, // ef,
-                                        1.5,//double rl = 1.5,
-                                        4.5,//double ru = 4.5,
-                                        3.0,//double nu = 8.0);
-                                        op_focei.shi21maxInner, // maxiter
-                                        op_focei.shi21hMax, hMinK);
-          H.col(k) = grPH;
-          continue;
-        }
-        // x + h
-        eta[k] += h;
-        lpInner(eta, &grPH[0], id);
-        bool forwardFinite =  grPH.is_finite();
-        if (op_focei.optimHessType == 3 && forwardFinite) { // forward
-          H.col(k) = (grPH-gr0)/h;
-          eta[k] -= h;
-          continue;
-        }
-
-        // x - h
-        eta[k] -= 2*h;
-        lpInner(eta, &grMH[0], id);
-        bool backwardFinite = grMH.is_finite();
-        if (op_focei.optimHessType == 1 &&
-            forwardFinite && backwardFinite) {
-          // central
-          eta[k] += h;
-          H.col(k) = (grPH-grMH)/(2.0*h);
-          continue;
-        }
-        if (forwardFinite && !backwardFinite) {
-          // forward difference
-          H.col(k) = (grPH-gr0)/h;
-          eta[k] += h;
-          continue;
-        }
-        if (!forwardFinite && backwardFinite) {
-          // backward difference
-          H.col(k) = (gr0-grMH)/h;
-          eta[k] += h;
-          continue;
-        }
-        // Both forward and backward evaluations were non-finite: H.col(k) is
-        // left at its zero-initialized default (no usable column), but eta[k]
-        // is currently x-h (from the "x - h" step above) and was never
-        // restored by any of the branches above -- do so here, or it stays
-        // permanently shifted for the rest of the fit (eta is the caller's
-        // persistent per-subject buffer, not a local copy).
-        eta[k] += h;
+        if (hMin[k] > op_focei.shi21hMax) hMin[k] = op_focei.shi21hMax;
       }
+      // optimHessType: 3 = forward, 1 = central.  x is eta itself, not a copy.
+      arma::vec x(eta, op_focei.neta, false, true);
+      H = shi21Hessian(getGradForOptimHess, x, gr0, id,
+                       op_focei.optimHessType == 3 ? shi21HessForward :
+                       (op_focei.optimHessType == 1 ? shi21HessCentral : 0),
+                       fInd->etahh, op_focei.hessEpsInner, op_focei.shi21maxInner,
+                       op_focei.shi21hMax, hMin.memptr());
     }
     // symmetrize
     H = 0.5*(H + H.t());
