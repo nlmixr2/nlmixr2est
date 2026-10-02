@@ -125,9 +125,9 @@
   sandwich SE of `tka` for `theo_sd` with a one-compartment model went from
   0.43 to 0.15.
 - A FOCEi-family fit's per-observation log-likelihoods (`$llikObs`, the
-  `nlmixrLlikObs` column) are those of the final objective at the estimates
-  again.  The covariance step rewrote them on every finite-difference leg, so
-  with any covariance method they came from its last leg, away from the
+  `nlmixrLlikObs` column) are now those of the final objective at the
+  estimates.  The covariance step rewrote them on every finite-difference leg,
+  so with any covariance method they came from its last leg, away from the
   estimates.  This affected `focei`, `laplace`, `agq` and population-only fits.
 - The covariance of a FOCEi-family fit with a single estimated parameter no
   longer installs `1/(cholSEtol*|R|)` labelled `"r"` when the R matrix is not
