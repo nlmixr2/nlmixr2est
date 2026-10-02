@@ -129,6 +129,11 @@
   again.  The covariance step rewrote them on every finite-difference leg, so
   with any covariance method they came from its last leg, away from the
   estimates.  This affected `focei`, `laplace`, `agq` and population-only fits.
+- The covariance of a FOCEi-family fit with a single estimated parameter no
+  longer installs `1/(cholSEtol*|R|)` labelled `"r"` when the R matrix is not
+  positive (`R <= 0`): it is now repaired, or not used, like a larger R.  A
+  requested `"s"` covariance whose S matrix cannot be repaired is reported as
+  `"failed"` instead of `"s"` with no covariance.
 - The `grad()` function from `nlmixr2GradFun()` no longer leaves the point at
   `x - h` when a forward difference is not finite and it falls back to a
   backward one.  That point was the caller's own vector, which was also the

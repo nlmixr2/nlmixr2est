@@ -11041,10 +11041,11 @@ static void foceiCovChol(Environment e, const arma::mat &M, const std::string &X
 // not positive definite it is repaired: cholSE0's modified factor if every added
 // diagonal is within cholAccept (label "r+"/"s+"), else chol(sqrtm(M0 %*% M0))
 // ("|r|"/"|s|", suggested by https://www.tandfonline.com/doi/pdf/10.1198/106186005X78800),
-// which replaces e["chol<X>"].
+// which replaces e["chol<X>"].  cholSE0 calls every 1x1 matrix positive definite, so
+// a 1x1 M0 is checked by its value.
 static bool foceiCovUsable(Environment e, const std::string &X, const arma::mat &M0,
                            std::string &lab, bool &checkSandwich) {
-  if (as<bool>(e[X + ".pd"])) return true;
+  if (as<bool>(e[X + ".pd"]) && (M0.n_elem != 1 || M0(0, 0) > 0)) return true;
   std::string x(1, (char)std::tolower(X[0]));
   if (!arma::any(as<arma::vec>(e[X + ".E"]) > op_focei.cholAccept)) {
     lab = x + "+";
@@ -11782,7 +11783,9 @@ NumericMatrix foceiCalcCov(Environment e){
                 e["cov"] = as<NumericMatrix>(e["covR"]);
                 op_focei.covMethod = 2;
               } else {
+                // nothing else to use: fail, rather than label it "s" with no cov
                 warning(_("cannot calculate covariance"));
+                op_focei.covMethod = 0;
               }
               op_focei.cur += op_focei.npars*2;
               op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);

@@ -240,4 +240,46 @@ nmTest({
     expect_false(is.null(.pop$cov))
     expect_equal(-2 * sum(.pop$llikObs, na.rm = TRUE), .pop$objf)
   })
+
+  test_that("a non-positive-definite R or S is never installed as it is", {
+    # one estimated parameter at a point where the objective is concave: R < 0,
+    # which cholSE0 (like for every 1x1 matrix) called positive definite, so
+    # 1/(cholSEtol*|R|) was installed as "r"
+    d <- data.frame(ID = rep(1:2, each = 3), TIME = rep(1:3, 2), DV = 5)
+    peak <- function() {
+      ini({
+        ta <- 3
+        add.sd <- fix(1)
+      })
+      model({
+        cp <- 10 * exp(-(ta - 3)^2)
+        cp ~ add(add.sd)
+      })
+    }
+    .f1 <- .nlmixr(peak, d, "focei", foceiControl(print = 0, maxOuterIterations = 0L))
+    expect_lt(.f1$env$R.0[1, 1], 0)
+    expect_equal(.f1$covMethod, "|r|")
+    expect_equal(.f1$cov[1, 1], 1 / abs(.f1$env$R.0[1, 1]))
+    # one subject: S is rank one and cannot be repaired; it was labelled "s"
+    # with no covariance
+    one.cmt <- function() {
+      ini({
+        tka <- log(1.5); tcl <- log(2.7); tv <- log(31.5)
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .f2 <- .nlmixr(
+      one.cmt,
+      theo_sd[theo_sd$ID == 1, ],
+      "focei",
+      foceiControl(print = 0, maxOuterIterations = 0L, covMethod = "s", cholAccept = 0)
+    )
+    expect_true(!is.null(.f2$cov) || identical(.f2$covMethod, "failed"))
+    expect_equal(.f2$covMethod, "failed")
+  })
 })
