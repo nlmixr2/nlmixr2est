@@ -91,4 +91,33 @@ nmTest({
       expect_equal(.vEvents$ipred, .vDefault$ipred)
     }
   })
+  test_that("the fit's table uses rxControl(naInterpolation=) (#1137)", {
+    # naInterpolation fills NA covariates under linear/midpoint interpolation;
+    # the table's covariate column shows which side it filled from
+    .d <- .covsIntData
+    .d$CRCL[.d$TIME > 0 & .d$TIME < 10] <- NA
+    .tableCrcl <- function(naInterpolation) {
+      .fit <- .nlmixr(
+        .covsIntModel,
+        .d,
+        "focei",
+        foceiControl(
+          rxControl = rxode2::rxControl(
+            covsInterpolation = "linear",
+            naInterpolation = naInterpolation
+          ),
+          maxOuterIterations = 0L,
+          print = 0
+        )
+      )
+      .fd <- as.data.frame(.fit)
+      .fd$CRCL[.fd$ID == .fd$ID[1] & .fd$TIME > 0 & .fd$TIME < 10]
+    }
+    .nocb <- .tableCrcl("nocb")
+    .locf <- .tableCrcl("locf")
+    .first <- .covsIntData[.covsIntData$ID == .covsIntData$ID[1], ]
+    expect_true(length(.nocb) > 0)
+    expect_true(all(.locf == .first$CRCL[.first$TIME == 0][1]))
+    expect_true(all(.nocb == .first$CRCL[.first$TIME >= 10][1]))
+  })
 })
