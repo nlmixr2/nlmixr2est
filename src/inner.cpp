@@ -10358,8 +10358,10 @@ List nlmixr2Gill83_(Function what, NumericVector args, Environment envir,
   gillRfn_=what;
   gillThetaN=args.size();
   gillRfnE_=envir;
-  double *theta;
-  theta = &args[0];
+  // search a copy: args is the caller's own vector (no copy on the way in), and an
+  // error part-way through a search would leave it at the probe
+  std::vector<double> x(args.begin(), args.end());
+  double *theta = x.data();
   NumericVector hfN(args.size());
   NumericVector hphifN(args.size());
   NumericVector gillDfN(args.size());
@@ -10918,7 +10920,8 @@ RObject nlmixr2ParHist_(std::string md5){
 RObject nlmixr2Hess_(RObject thetaT, RObject fT, RObject e,
                      RObject gillInfoT){
   List par(1);
-  NumericVector theta = as<NumericVector>(thetaT);
+  // a copy, perturbed in place below; each call gets its own copy of that
+  NumericVector theta = clone(as<NumericVector>(thetaT));
   Function f = as<Function>(fT);
   List gillInfo = as<List>(gillInfoT);
   arma::mat H(theta.size(), theta.size(), fill::zeros);
@@ -10938,22 +10941,22 @@ RObject nlmixr2Hess_(RObject thetaT, RObject fT, RObject e,
     epsI = (std::fabs(theta[i])*rEpsC[i] + aEpsC[i]);
     ti = theta[i];
     theta[i] = ti + 2*epsI;
-    par[0]=theta;
+    par[0]=clone(theta);
     f1 = as<double>(doCall(_["what"] = f, _["args"]=par, _["envir"]=e));
     cur++;
     curTick = par_progress(cur, totTick, curTick, 1, t0, 0);
     theta[i] = ti + epsI;
-    par[0]=theta;
+    par[0]=clone(theta);
     f2 = as<double>(doCall(_["what"] = f, _["args"]=par, _["envir"]=e));
     cur++;
     curTick = par_progress(cur, totTick, curTick, 1, t0, 0);
     theta[i] = ti - epsI;
-    par[0]=theta;
+    par[0]=clone(theta);
     f3 = as<double>(doCall(_["what"] = f, _["args"]=par, _["envir"]=e));
     cur++;
     curTick = par_progress(cur, totTick, curTick, 1, t0, 0);
     theta[i] = ti - 2*epsI;
-    par[0]=theta;
+    par[0]=clone(theta);
     f4 = as<double>(doCall(_["what"] = f, _["args"]=par, _["envir"]=e));
     cur++;
     curTick = par_progress(cur, totTick, curTick, 1, t0, 0);
@@ -10967,25 +10970,25 @@ RObject nlmixr2Hess_(RObject thetaT, RObject fT, RObject e,
       tj = theta[j];
       theta[i] = ti + epsI;
       theta[j] = tj + epsJ;
-      par[0]=theta;
+      par[0]=clone(theta);
       f1 = as<double>(doCall(_["what"] = f, _["args"]=par, _["envir"]=e));
       cur++;
       curTick = par_progress(cur, totTick, curTick, 1, t0, 0);
       theta[i] = ti + epsI;
       theta[j] = tj - epsJ;
-      par[0]=theta;
+      par[0]=clone(theta);
       f2 = as<double>(doCall(_["what"] = f, _["args"]=par, _["envir"]=e));
       cur++;
       curTick = par_progress(cur, totTick, curTick, 1, t0, 0);
       theta[i] = ti - epsI;
       theta[j] = tj + epsJ;
-      par[0]=theta;
+      par[0]=clone(theta);
       f3 = as<double>(doCall(_["what"] = f, _["args"]=par, _["envir"]=e));
       cur++;
       curTick = par_progress(cur, totTick, curTick, 1, t0, 0);
       theta[i] = ti - epsI;
       theta[j] = tj - epsJ;
-      par[0]=theta;
+      par[0]=clone(theta);
       f4 = as<double>(doCall(_["what"] = f, _["args"]=par, _["envir"]=e));
       cur++;
       curTick = par_progress(cur, totTick, curTick, 1, t0, 0);

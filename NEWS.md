@@ -101,6 +101,10 @@
   the outer optimizer's own iterate on the first gradient (`outerOpt="nlminb"`,
   `"L-BFGS-B"`, `"lbfgsb3c"`), the base point of the covariance step, and the
   base point of the parameters `nlmixr2Gill83()` searched after it.
+- `nlmixr2Gill83()` and `nlmixr2Hess()` no longer modify the caller's
+  parameter vector in place: an error part-way through left it at a probe, and
+  `nlmixr2Hess()` handed the objective that same vector on every call, so a
+  value the objective kept changed under it.
 
 
 # nlmixr2est 7.1.0
