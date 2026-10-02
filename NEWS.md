@@ -22,6 +22,11 @@
   model with a different history: its estimates were biased, and the
   residuals it minimized did not match the fit's own table.
 
+- `est="nls"` with `nlsControl(solveType="fun")` fits a model that uses
+  `lag()` of a calculated variable.  It stopped with `The following
+  parameter(s) are required for solving`, because its model did not define
+  that variable.
+
 - A fit's `IPRED`/`PRED` table, `vpcSim()` (and so `npde`) and `augPred()`
   now interpolate time-varying covariates with the fit's
   `rxControl(covsInterpolation=)` and `naInterpolation=` instead of always

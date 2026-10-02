@@ -494,9 +494,9 @@ attr(rxUiGet.nlmModel0, "rstudio") <- quote(rxModelVar({}))
 #'   They define the `k_*` rate constants of a flattened matExp() model and the
 #'   variables referenced by `lag()`.  nls needs neither: it never flattens a
 #'   matExp() model, and a variable referenced by `lag()` has no symbolic
-#'   sensitivity, so it cannot enter the residual Jacobian.
-#' - `lagDefs`: nlm's objective-only model defines the variables referenced
-#'   by `lag()`; nls's does not.
+#'   sensitivity, so it cannot enter the residual Jacobian.  (The
+#'   objective-only model of both defines such a variable, see
+#'   `.nlmFamilyRxModel()`.)
 #'
 #' @param type `"nlm"` or `"nls"`
 #' @return list of the settings for `type`
@@ -512,8 +512,7 @@ attr(rxUiGet.nlmModel0, "rstudio") <- quote(rxModelVar({}))
       params = rxUiGet.nlmParams,
       matExpForcing = FALSE,
       censFR = TRUE,
-      lhs = TRUE,
-      lagDefs = TRUE
+      lhs = TRUE
     ),
     nls = list(
       model = "nls model",
@@ -523,8 +522,7 @@ attr(rxUiGet.nlmModel0, "rstudio") <- quote(rxModelVar({}))
       params = rxUiGet.nlsParams,
       matExpForcing = TRUE,
       censFR = FALSE,
-      lhs = FALSE,
-      lagDefs = FALSE
+      lhs = FALSE
     )
   )
 }
@@ -697,7 +695,7 @@ rxUiGet.nlmRxModel <- function(x, ...) {
   # not part of rx_pred_ itself; include their definitions so the history
   # reference resolves in the compiled model
   .lagDefs <- character(0)
-  if (.spec$lagDefs && !is.null(.s$..laggedVars) && length(.s$..laggedVars) > 0L && !is.null(.s$..lhs)) {
+  if (!is.null(.s$..laggedVars) && length(.s$..laggedVars) > 0L && !is.null(.s$..lhs)) {
     .pat <- paste0("^(", paste0(.s$..laggedVars, collapse = "|"), ")=")
     .lagDefs <- .s$..lhs[grepl(.pat, .s$..lhs)]
   }

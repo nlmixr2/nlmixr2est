@@ -161,4 +161,51 @@ nmTest({
       expect_equal(.fit$theta[c("tk", "ta")], .nlm$theta[c("tk", "ta")], tolerance = 1e-3)
     }
   })
+
+  test_that("nls solveType='fun' fits a model that uses lag()", {
+    lagMod <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1.0
+        tv <- 3.45
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl)
+        v <- exp(tv)
+        d/dt(depot) <- -ka * depot
+        d/dt(central) <- ka * depot - cl / v * central
+        c0 <- central / v
+        cp <- 0.5 * c0 + 0.5 * lag(c0)
+        cp ~ add(add.sd)
+      })
+    }
+    # the objective-only model defines the lag()-referenced c0
+    .lines <- strsplit(rxode2::rxNorm(suppressMessages(rxode2::rxode2(lagMod)$nlsRxModel)$predOnly), "\n")[[1]]
+    expect_equal(grep("^c0=", .lines, value = TRUE), "c0=exp(-THETA[3])*central;")
+
+    .m <- rxode2::rxode2(
+      "ka=exp(tka)\ncl=exp(tcl)\nv=exp(tv)\nd/dt(depot)=-ka*depot\nd/dt(central)=ka*depot-cl/v*central\nc0=central/v\ncp=0.5*c0+0.5*lag(c0)\n"
+    )
+    .ev <- rxode2::et(amt = 320, cmt = "depot") |> rxode2::et(seq(0.5, 24, by = 1.5))
+    .s <- rxode2::rxSolve(.m, .ev, params = c(tka = 0.6, tcl = 1.1, tv = 3.6), returnType = "data.frame")
+    .dat <- rxode2::rxWithSeed(1234, {
+      .d <- rbind(
+        data.frame(ID = 1:4, TIME = 0, DV = NA, AMT = 320, EVID = 1),
+        data.frame(
+          ID = rep(1:4, each = nrow(.s)),
+          TIME = rep(.s$time, 4),
+          DV = rep(.s$cp, 4) + stats::rnorm(4 * nrow(.s), 0, 0.3),
+          AMT = 0,
+          EVID = 0
+        )
+      )
+      .d[order(.d$ID, .d$TIME, -.d$EVID), ]
+    })
+    .fit <- .nlmixr(lagMod, .dat, est = "nls", control = nlsControl(print = 0L, solveType = "fun"))
+    # the residuals nls minimized are those of the model at its estimates
+    .ref <- rxode2::rxSolve(.m, .dat, params = .fit$theta[c("tka", "tcl", "tv")], returnType = "data.frame")
+    expect_equal(unname(.fit$nls$fvec), .dat$DV[.dat$EVID == 0] - .ref$cp, tolerance = 1e-5)
+  })
 })
