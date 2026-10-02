@@ -68,11 +68,11 @@
 
 #' Install the C++ FD-full covariance as `fit$cov` (and `fit$covR/covS/covRS`) when
 #' `covFull = TRUE`, routing on the requested covMethod: "r,s" -> the sandwich
-#' `Rinv %*% S %*% Rinv`, "s" -> `solve(S)`, "r" -> `Rinv`.  Only the shapes
-#' `.foceiFdFullShapes()` finds usable are stored or cached.  The native cov is
+#' `Rinv %*% S %*% Rinv`, "s" -> `solve(S)`, "r" -> `Rinv`.  The native cov is
 #' kept -- with a warning when the requested shape is not usable, silently when
-#' covMethod is not an FD method or the pieces were not computed.  FD counterpart
-#' to [.foceiInstallAnalyticCov].
+#' covMethod is not an FD method or the pieces were not computed.  Every usable
+#' shape, native or full, is cached for `setCov()`; an unusable one is neither
+#' stored nor cached.  FD counterpart to [.foceiInstallAnalyticCov].
 #' @param .ret focei fit environment
 #' @return invisibly TRUE when the full covariance was installed
 #' @noRd
@@ -94,44 +94,44 @@
     return(invisible(FALSE))
   } # analytic / failed / "" / boundary, or no S computed -> keep native
   .full <- .foceiFdFullShapes(get(".fdFullCov", envir = .ret), .S)
-  if (!.full[[.type]]$ok) {
-    .covRejectWarn(.ret, .covFullName(.type), .full[[.type]]$reason)
-    return(invisible(FALSE))
-  }
-  # The theta-only covariance the native step produced -- and the r/s/sandwich pieces
-  # behind it -- are about to be replaced.  Cache them first so setCov() can swap back
-  # to the theta-only shape without recomputing anything (they are already in hand).
+  # the native theta-only pieces, cached so setCov() can swap to that shape without
+  # recomputing anything (they are already in hand)
   .nat <- stats::setNames(mget(c("covR", "covS", "covRS"), envir = .ret, ifnotfound = list(NULL)), c("r", "s", "r,s"))
-  # covMethod="s"/"r" write only e["cov"] -- the chosen covariance is not always
-  # mirrored into covR/covS/covRS -- so cache the installed native under its own type too
-  .envType <- .covFdType(.env)
-  if (nzchar(.envType) && is.null(.nat[[.envType]])) {
-    .nat[[.envType]] <- .ret$cov
+  .installed <- .full[[.type]]$ok
+  if (.installed) {
+    # covMethod="s"/"r" write only e["cov"] -- the chosen covariance is not always
+    # mirrored into covR/covS/covRS -- so cache the native about to be replaced too
+    .envType <- .covFdType(.env)
+    if (nzchar(.envType) && is.null(.nat[[.envType]])) {
+      .nat[[.envType]] <- .ret$cov
+    }
+    # Keep the reported covMethod consistent with what was installed: routing on the
+    # requested control can install a sandwich where the env still says "s".  Only
+    # rewrite the TYPE when it differs, so the env's "r+"/"|r|" decorations survive when
+    # they agree; either way the name carries the " (full)" scope suffix.
+    .covInstall(
+      .ret,
+      .full[[.type]]$cov,
+      .covFullName(if (identical(.type, .envType)) .env else .type),
+      stash = FALSE,
+      refresh = "none"
+    )
+    for (.n in names(.full)) {
+      if (.full[[.n]]$ok) assign(c(r = "covR", s = "covS", "r,s" = "covRS")[[.n]], .full[[.n]]$cov, envir = .ret)
+    }
+  } else {
+    .covRejectWarn(.ret, .covFullName(.type), .full[[.type]]$reason)
   }
-  # Keep the reported covMethod consistent with what was installed: routing on the
-  # requested control can install a sandwich where the env still says "s".  Only rewrite
-  # the TYPE when it differs, so the env's "r+"/"|r|" decorations survive when they
-  # agree; either way the name carries the " (full)" scope suffix.
-  .covInstall(
-    .ret,
-    .full[[.type]]$cov,
-    .covFullName(if (identical(.type, .envType)) .env else .type),
-    stash = FALSE,
-    refresh = "none"
-  )
   for (.n in names(.nat)) {
     if (.covGuard(.nat[[.n]])$ok) .covCacheAdd(.ret, .n, .nat[[.n]])
   }
   for (.n in names(.full)) {
-    if (.full[[.n]]$ok) {
-      assign(c(r = "covR", s = "covS", "r,s" = "covRS")[[.n]], .full[[.n]]$cov, envir = .ret)
-      .covCacheAdd(.ret, .covFullName(.n), .full[[.n]]$cov)
-    }
+    if (.full[[.n]]$ok) .covCacheAdd(.ret, .covFullName(.n), .full[[.n]]$cov)
   }
   .covCacheDrop(.ret, .ret$covMethod)
   .covCacheDrop(.ret, .covFullName(.type))
   # Report the swap: the SEs the C++ step derived from the native theta-only
   # covariance describe a matrix that is no longer $cov, so the caller must
   # refresh the parameter table.
-  invisible(TRUE)
+  invisible(.installed)
 }

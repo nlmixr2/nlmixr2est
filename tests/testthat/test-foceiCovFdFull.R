@@ -50,7 +50,9 @@ test_that("an indefinite full R is not installed inside a positive-definite sand
   expect_identical(.e$covMethod, "r,s")
   expect_equal(.e$cov, matrix(0.25, 1, 1, dimnames = list("tka", "tka")))
   expect_equal(.e$covR, matrix(0.2, 1, 1, dimnames = list("tka", "tka")))
-  expect_false(exists("covList", envir = .e, inherits = FALSE))
+  # the usable shapes stay swappable: the native R and the full S
+  expect_identical(sort(names(.e$covList)), c("r", "s (full)"))
+  expect_equal(unname(.e$covList[["s (full)"]]), unname(solve(.fdS)))
 })
 
 test_that("an indefinite full R stays out of covR and covList when another shape installs", {
