@@ -33,8 +33,9 @@ double shi21Central(shi21fn_type f, arma::vec &t, double &h,
 // other one-sided difference, and when both are it stays 0.
 //
 // type is shi21HessForward or shi21HessCentral; any other value returns zeros without
-// evaluating grad.  x is perturbed in place and put back on every path.  Any other
-// state grad writes is left at its last evaluation: restoring that is the caller's job.
+// evaluating grad.  x is perturbed in place and put back exactly on every path.  Any
+// other state grad writes is left at its last evaluation: restoring that is the
+// caller's job.
 #define shi21HessForward 1
 #define shi21HessCentral 2
 arma::mat shi21Hessian(shi21fn_type grad, arma::vec &x, arma::vec &gr0, int id,

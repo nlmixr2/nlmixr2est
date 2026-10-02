@@ -289,25 +289,25 @@ arma::mat shi21Hessian(shi21fn_type grad, arma::vec &x, arma::vec &gr0, int id,
       H.col(k) = grPH;
       continue;
     }
+    double xk = x[k];
     x[k] += h;
     grPH = grad(x, id);
     bool forwardFinite = grPH.is_finite();
     if (type == shi21HessForward && forwardFinite) {
       H.col(k) = (grPH - gr0)/h;
-      x[k] -= h;
-      continue;
+    } else {
+      x[k] -= 2*h;
+      grMH = grad(x, id);
+      bool backwardFinite = grMH.is_finite();
+      if (type == shi21HessCentral && forwardFinite && backwardFinite) {
+        H.col(k) = (grPH - grMH)/(2.0*h);
+      } else if (forwardFinite && !backwardFinite) {
+        H.col(k) = (grPH - gr0)/h;
+      } else if (!forwardFinite && backwardFinite) {
+        H.col(k) = (gr0 - grMH)/h;
+      }
     }
-    x[k] -= 2*h;
-    grMH = grad(x, id);
-    bool backwardFinite = grMH.is_finite();
-    if (type == shi21HessCentral && forwardFinite && backwardFinite) {
-      H.col(k) = (grPH - grMH)/(2.0*h);
-    } else if (forwardFinite && !backwardFinite) {
-      H.col(k) = (grPH - gr0)/h;
-    } else if (!forwardFinite && backwardFinite) {
-      H.col(k) = (gr0 - grMH)/h;
-    }
-    x[k] += h;
+    x[k] = xk;
   }
   return 0.5*(H + H.t());
 }

@@ -47,7 +47,7 @@ nmTest({
       # E0 - h.
       x0 <- x + 0
       r <- nlmSolveGradHess(x)
-      expect_equal(x, x0, tolerance = 1e-12)
+      expect_identical(x, x0)
       .h <- attr(r, "hessian")
       # E0's column has no usable difference; the others do
       expect_identical(.h[1, 1], 0)
