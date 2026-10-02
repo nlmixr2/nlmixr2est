@@ -135,6 +135,10 @@
   covariance can be computed at all; both were silent.  `covMethod =
   "analytic"` falling back to `"linFim"` is now a warning, kept in
   `$runInfo`, rather than a message.
+- The printed parameter table of a full-Bayes `fbvi`/`emvi` fit now shows the
+  standard errors of the variational covariance (only `$parFixedDf` had
+  them), its confidence interval uses the fit's `ci`, and the condition
+  numbers describe that covariance.
 
 
 # nlmixr2est 7.1.0
