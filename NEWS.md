@@ -17,6 +17,11 @@
   
 ## Bug Fixes
 
+- A fit's `IPRED`/`PRED` table, `vpcSim()` (and so `npde`) and `augPred()`
+  now interpolate time-varying covariates with the fit's
+  `rxControl(covsInterpolation=)` and `naInterpolation=` instead of always
+  using `"locf"`; a `"nocb"` fit (the default for NONMEM-imported models)
+  had individual predictions that did not match its own model (#1137).
 - The table of a fit whose `rxControl(method=)` is one of rxode2's newer ODE
   methods (`"cvode"`, `"lsode"`, `"bdf"`, `"dop5"`, ...) is calculated again.
   The post-fit solve turned the fit's integer method code back into a name
