@@ -25,6 +25,22 @@
 
 ### Bug Fixes
 
+- A fit’s `IPRED`/`PRED` table,
+  [`vpcSim()`](https://nlmixr2.github.io/nlmixr2est/reference/vpcSim.md)
+  (and so `npde`) and
+  [`augPred()`](https://rdrr.io/pkg/nlme/man/augPred.html) now
+  interpolate time-varying covariates with the fit’s
+  `rxControl(covsInterpolation=)` and `naInterpolation=` instead of
+  always using `"locf"`; a `"nocb"` fit (the default for NONMEM-imported
+  models) had individual predictions that did not match its own model
+  ([\#1137](https://github.com/nlmixr2/nlmixr2est/issues/1137)).
+
+- `vpcSim(fit, events = ...)` (or any other setting the fit’s simulation
+  information already holds) replaces that setting instead of failing
+  with `formal argument matched by multiple actual arguments`.
+
+- `vpcSim(fit, n = 1)` no longer fails with `object '.sim2' not found`.
+
 - The table of a fit whose `rxControl(method=)` is one of rxode2’s newer
   ODE methods (`"cvode"`, `"lsode"`, `"bdf"`, `"dop5"`, …) is calculated
   again. The post-fit solve turned the fit’s integer method code back
