@@ -7151,6 +7151,7 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
     return 2;
   }
  FD6: // Check unsatisfactory cases
+  int ret;
   if (hs < 0){
     // F nearly constant.
     // Use sqrt(h0) as a last ditch effort.
@@ -7163,28 +7164,31 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
     // *df = 0.0; // Doesn't move.
     *hphif=_safe_sqrt(h0);
     // warning("The surface around the initial estimate is nearly constant in one parameter grad=0.  Consider a different starting point.");
-    gill83tickStep(k, K, foceiGill);
-    return 3;
-  }
-  if (Ch > 0.1){ // Odd or nearly linear.
+    ret = 3;
+  } else if (Ch > 0.1){ // Odd or nearly linear.
     *hf = h0;
     *df = phic;
     *df2 = 0;
     *ef = 2*epsA/(*hf);
     *hphif=hphi;
     // warning("The surface odd or nearly linear for one parameter; Check your function.");
-    gill83tickStep(k, K, foceiGill);
-    return 4;
+    ret = 4;
+  } else {
+    // f'' is increasing rapidly as h decreases
+    *hf = h0;
+    *df = phic;
+    *df2 = phi;
+    *hphif=hphi;
+    *ef = (*hf)*fabs(phi)/2+2*epsA/(*hf);
+    // warning("The surface around the initial estimate is highly irregular in at least one parameter.  Consider a different starting point.");
+    ret = 5;
   }
-  // f'' is increasing rapidly as h decreases
-  *hf = h0;
-  *df = phic;
-  *df2 = phi;
-  *hphif=hphi;
-  *ef = (*hf)*fabs(phi)/2+2*epsA/(*hf);
-  // warning("The surface around the initial estimate is highly irregular in at least one parameter.  Consider a different starting point.");
+  // Restore theta as FD5 does: the last leg left it at x+hf or x-hk, and theta is
+  // often the caller's live iterate or the base point of the next search.
+  theta[cpar] = x;
+  if (foceiGill == 1) updateTheta(theta);
   gill83tickStep(k, K, foceiGill);
-  return 5;
+  return ret;
 }
 
 // Calculate the mixture parameter gradient

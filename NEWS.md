@@ -93,6 +93,15 @@
 - Added a native analytical outer Hessian for fast Gaussian FOCE/FOCE+/FOCEI/AGQ fits, using
   the existing sensitivity pool. Fast `nlminb` fits used it automatically.
 
+### Covariance and finite differences
+
+- The Gill (1983) step-size search no longer leaves a parameter at its last
+  probe when it ends without an accepted interval (`$scaleInfo` reports
+  "Constant Grad", "Odd/Linear Grad" or "Grad changes quickly").  That moved
+  the outer optimizer's own iterate on the first gradient (`outerOpt="nlminb"`,
+  `"L-BFGS-B"`, `"lbfgsb3c"`), the base point of the covariance step, and the
+  base point of the parameters `nlmixr2Gill83()` searched after it.
+
 
 # nlmixr2est 7.1.0
 
