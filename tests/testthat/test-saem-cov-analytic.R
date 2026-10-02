@@ -57,12 +57,11 @@ nmTest({
 
   test_that("out-of-scope model (linCmt) with covMethod='analytic' falls back to linFim", {
     skip_on_cran()
-    expect_message(
-      fit <<- suppressWarnings(
-        nlmixr2(linMod, nlmixr2data::theo_sd, est = "saem", control = ctl(covMethod = "analytic"))
-      ),
-      "linearized FIM"
-    )
+    fit <- suppressMessages(suppressWarnings(
+      nlmixr2(linMod, nlmixr2data::theo_sd, est = "saem", control = ctl(covMethod = "analytic"))
+    ))
+    # a warning, so it is kept in $runInfo
+    expect_true("\"analytic\" covariance could not be computed; kept \"linFim\"" %in% fit$runInfo)
     expect_identical(fit$covMethod, "linFim")
     expect_true(all(is.finite(fit$parFixedDf$SE)))
   })

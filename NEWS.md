@@ -127,6 +127,14 @@
   covariance once it is installed (`covFull = TRUE`, the analytic
   covariance); `foceiCovAnalytic()` also refreshes the parameter-table SEs and
   keeps the covariance it replaced in `$covList`.
+- A SAEM full covariance (theta + residual + Omega) corrected by `sqrtm()`
+  keeps its `"|linFim|"` label (it was relabelled `"linFim"`), and the
+  condition numbers are refreshed when it is installed.
+  `saemControl(covMethod = "linFim")` now warns when the linearization cannot
+  be used and the SAEM information matrix is inverted instead, and when no
+  covariance can be computed at all; both were silent.  `covMethod =
+  "analytic"` falling back to `"linFim"` is now a warning, kept in
+  `$runInfo`, rather than a message.
 
 
 # nlmixr2est 7.1.0
