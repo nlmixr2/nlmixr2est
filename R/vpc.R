@@ -105,6 +105,13 @@ vpcSim <- function(
   .si <- .si[-.w]
   .si$nsim <- n
   .si <- c(.si, list(...))
+  # simulate with the fit's covariate interpolation unless overridden (#1137)
+  .covsi <- .residCovsInterpolation(object)
+  for (.n in names(.covsi)) {
+    if (is.null(.si[[.n]]) && !is.null(.covsi[[.n]])) {
+      .si[[.n]] <- .covsi[[.n]]
+    }
+  }
   .pt <- proc.time()
   .si$keep <- unique(c(keep, "nlmixrRowNums"))
   .data <- .si$events

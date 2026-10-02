@@ -147,9 +147,29 @@
   .params
 }
 
+#' Name of the covariate interpolation a fit was estimated with
+#'
+#' @param fit nlmixr2 fit
+#' @return interpolation name; `"locf"` when the fit did not set one
+#' @noRd
+.augPredCovsInterpolation <- function(fit) {
+  .codes <- c(linear = 0L, locf = 1L, nocb = 2L, midpoint = 3L)
+  .ci <- .residCovsInterpolation(fit)$covsInterpolation
+  if (is.character(.ci) && length(.ci) == 1L && .ci %in% names(.codes)) {
+    return(.ci)
+  }
+  .name <- names(.codes)[match(as.integer(.ci), .codes)]
+  if (length(.name) != 1L || is.na(.name)) {
+    return("locf")
+  }
+  .name
+}
+
 #' Augmented Prediction for nlmixr2 fit
 #'
 #' @param fit Nlmixr2 fit object
+#' @param covsInterpolation covariate interpolation; by default the one
+#'   the fit was estimated with
 #' @inheritParams nlme::augPred
 #' @inheritParams rxode2::rxSolve
 #' @return Stacked data.frame with observations, individual/population predictions.
@@ -163,6 +183,11 @@ nlmixr2AugPredSolve <- function(
   length.out = 51L,
   ...
 ) {
+  if (missing(covsInterpolation)) {
+    covsInterpolation <- .augPredCovsInterpolation(fit)
+  }
+  covsInterpolation <- match.arg(covsInterpolation)
+  .naInterpolation <- .residCovsInterpolation(fit)$naInterpolation
   .si <- fit$simInfo
   .env <- new.env(parent = emptyenv())
   .env$ui <- fit$ui
@@ -187,6 +212,8 @@ nlmixr2AugPredSolve <- function(
     .params,
     .events,
     keepInterpolation = "na",
+    covsInterpolation = covsInterpolation,
+    naInterpolation = .naInterpolation,
     tolFactor = .tolFactor,
     keep = c("DV", "CMT"),
     returnType = "data.frame"
@@ -203,6 +230,8 @@ nlmixr2AugPredSolve <- function(
       object = .rx,
       params = .params,
       events = .events,
+      covsInterpolation = covsInterpolation,
+      naInterpolation = .naInterpolation,
       tolFactor = .tolFactor,
       returnType = "data.frame"
     )
