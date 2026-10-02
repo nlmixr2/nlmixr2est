@@ -125,9 +125,6 @@ SEXP _nlmixr2est_saemGainFrozenSkipN_(void);
 SEXP _nlmixr2est_saemSeedLayoutTest_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_saemFormGTest(SEXP, SEXP, SEXP, SEXP, SEXP);
 
-                              SEXP);
-
-
 SEXP _nlmixr2est_uninformativeEta(SEXP);
 
 static const R_CMethodDef CEntries[] = {
