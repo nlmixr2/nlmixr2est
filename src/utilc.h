@@ -5,7 +5,6 @@
 extern "C" {
 #endif
 
-  void setSilentErr(int silent);
   SEXP _nlmixr2est_setSilentErr(SEXP in);
   void RSprintf(const char *format, ...);
   SEXP _nlmixr2est_powerL(SEXP xS, SEXP lambdaS, SEXP yjS, SEXP lowS, SEXP hiS);

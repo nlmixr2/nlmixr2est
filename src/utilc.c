@@ -17,9 +17,6 @@
 #include "rxProtect.h"
 
 int _setSilentErr=0;
-extern void setSilentErr(int silent){
-  _setSilentErr = silent;
-}
 
 SEXP _nlmixr2est_setSilentErr(SEXP in) {
   rxProtectGuard;

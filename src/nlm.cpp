@@ -390,14 +390,6 @@ NumericVector nlmUnscalePar(NumericVector p) {
   return ret;
 }
 
-// Shared with inner.cpp: scan ind->solve for NaN/Inf over the span this
-// subject's solve actually wrote, instead of the shared op->badSolve flag which
-// another thread can flip mid-loop.
-static inline bool nlmIndHasBadSolve(rx_solving_options *op,
-                                     rx_solving_options_ind *ind) {
-  return odeSwapIndBadSolve(op, ind);
-}
-
 // nlm latches a different "reduced tolerance" flag per solve kind, and (unlike
 // FOCEi) never un-sticks a subject that recovered -- see OdeRetryOpts.
 struct NlmRetryHooks {

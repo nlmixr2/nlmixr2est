@@ -5218,51 +5218,6 @@ static inline int innerOpt1(int id, int likId) {
 
 void parHistData(Environment e, bool focei);
 
-void foceiPrintInfo() {
-  arma::Row<int> etaTrans(op_focei.etaTrans, op_focei.neta);
-  arma::Row<int> nbdInner(op_focei.nbdInner, op_focei.neta);
-  arma::Row<int> xPar(op_focei.xPar, op_focei.ntheta + op_focei.omegan);
-  arma::Row<int> thetaTrans(op_focei.thetaTrans, op_focei.ntheta + op_focei.omegan);
-  arma::Row<int> fixedTrans(op_focei.fixedTrans, op_focei.ntheta + op_focei.omegan);
-  arma::Row<int> etaFD(op_focei.etaFD, op_focei.neta);
-
-  arma::rowvec fullTheta(op_focei.fullTheta, op_focei.ntheta+op_focei.omegan);
-  arma::rowvec theta(op_focei.theta, op_focei.ntheta+op_focei.omegan);
-  arma::rowvec initPar(op_focei.initPar, op_focei.ntheta+op_focei.omegan);
-  arma::rowvec scaleC(op_focei.scaleC, op_focei.ntheta+op_focei.omegan);
-
-  REprintf("etaTrans\n");
-  print(wrap(etaTrans));
-
-  REprintf("nbdInner\n");
-  print(wrap(nbdInner));
-
-  REprintf("xPar\n");
-  print(wrap(xPar));
-
-  REprintf("thetaTrans\n");
-  print(wrap(thetaTrans));
-
-  REprintf("fixedTrans\n");
-  print(wrap(fixedTrans));
-
-  REprintf("etaFD\n");
-  print(wrap(etaFD));
-
-  REprintf("fullTheta\n");
-  print(wrap(fullTheta));
-
-  REprintf("theta\n");
-  print(wrap(theta));
-
-  REprintf("initPar\n");
-  print(wrap(initPar));
-
-  REprintf("scaleC\n");
-  print(wrap(scaleC));
-}
-
-
 static inline void thetaReset00(NumericVector &thetaIni, NumericVector &omegaTheta, arma::mat &etaMat) {
   Function loadNamespace("loadNamespace", R_BaseNamespace);
   Environment nlmixr2 = loadNamespace("nlmixr2est");
@@ -5303,7 +5258,6 @@ static inline void thetaReset00(NumericVector &thetaIni, NumericVector &omegaThe
   thetaReset["aEpsC"] = aEpsC;
   thetaReset["c1"] = op_focei.c1;
   thetaReset["c2"] = op_focei.c2;
-  //foceiPrintInfo();
   parHistData(thetaReset, true);
   saveIntoEnvironment(thetaReset);
 }
@@ -6853,11 +6807,6 @@ SEXP foceiEtas(Environment e, bool bestMixEst=false) {
   return(wrap(ret));
 }
 
-
-// R style optimfn
-extern "C" double outerLikOpim(int n, double *par, void *ex){
-  return(foceiOfv0(par));
-}
 
 // Gill 1983 Chat
 static inline double Chat(double phi, double h, double epsA){
@@ -13302,15 +13251,6 @@ void impSetMixThetas(const arma::vec& theta) {
   std::copy(mj.begin(), mj.end(), &op_focei.mixProbGrad[0]);
 }
 
-// fullTheta indices of the estimated (non-fixed) thetas, in free-parameter order.
-void impGetEstThetaIdx(std::vector<int>& idx) {
-  idx.clear();
-  for (unsigned int k = 0; k < op_focei.npars; ++k) {
-    int j = op_focei.fixedTrans[k];
-    if (j >= 0 && j < (int)op_focei.ntheta) idx.push_back(j);
-  }
-}
-
 // fullTheta index of every free (estimated) parameter, in the optimizer's
 // free-parameter (fixedTrans) order -- the order the fit's covariance uses.
 // idx[k] < ntheta is a theta; idx[k] >= ntheta is the Omega parameter idx-ntheta.
@@ -13348,9 +13288,6 @@ void impSetThetaAll(int idx, double val) {
 void impForceResolve(int id) { inds_focei[id].setup = 0; }
 
 // ---- Omega block of the MC covariance ----
-
-// Number of parameterized Omega free parameters (fullTheta[ntheta .. +omegan-1]).
-int impOmegaN() { return (int)op_focei.omegan; }
 
 double impGetOmegaThetaVal(int m) { return op_focei.fullTheta[op_focei.ntheta + m]; }
 
@@ -13625,11 +13562,6 @@ void impGetMode(int id, arma::vec& mode) {
   focei_ind *fInd = &(inds_focei[id]);
   mode.set_size(op_focei.neta);
   std::copy(&fInd->eta[0], &fInd->eta[0] + op_focei.neta, mode.begin());
-}
-
-double impGetIndLik(int id) {
-  focei_ind *fInd = &(inds_focei[id]);
-  return fInd->lik[0];
 }
 
 bool impGetHessian(int id, arma::mat& H) {
@@ -19523,16 +19455,6 @@ void npBuildPsiCoreScaled(const arma::mat& etaPoints, int cores, double gamma,
   }
 }
 
-// ---------------------------------------------------------------------------
-// Residual-only re-evaluation cache (ODE-freeze).  During residual-parameter
-// optimization the ODE states are invariant (residual params only affect the
-// output f/r, not d/dt), so npFreezeBuild solves each (support point, subject)
-// once and caches the ind->solve trajectory; npFreezePsiScaled then rebuilds Psi
-// from the cached states through likInner0's freezeOde path -- calc_lhs recomputes
-// f/r with the current residual params, skipping the (costly) integration.
-static std::vector<std::vector<double> > gFreezeCache;  // [(k*nsub+base)*nMix + m] -> solve buffer
-static int gFreezeNsub = 0, gFreezeNpoint = 0, gFreezeNmix = 1;
-
 // log( sum_m mixProb(m) * exp(ll[m]) ); ll[] are the per-component conditional
 // log-likelihoods for one subject.  Identity for a single component.
 double impMixLogSumExp(const std::vector<double>& ll) {
@@ -19542,84 +19464,9 @@ double impMixLogSumExp(const std::vector<double>& ll) {
   return R_FINITE(r) ? r : R_NegInf;
 }
 
-static double npMixLogSumExp(const std::vector<double>& ll) {
-  return impMixLogSumExp(ll);
-}
-
 static int npIndSolveSize(rx_solving_options* op, rx_solving_options_ind* ind) {
   return (getOpNeq(op) + getOpNlin(op)) * getIndNallTimes(ind);
 }
-
-void npFreezeBuild(const arma::mat& etaPoints, int cores) {
-  rx = getRxSolve_();
-  rx_solving_options *op = getSolvingOptions(rx);
-  cores = min2(cores, getOpCores(op));
-  int nsub = (int)getRxNsub(rx);
-  int nMix = impNmix();
-  int nPoint = (int)etaPoints.n_rows;
-  int neta = (int)etaPoints.n_cols;
-  gFreezeNsub = nsub; gFreezeNpoint = nPoint; gFreezeNmix = nMix;
-  gFreezeCache.assign((size_t)nPoint * nsub * nMix, std::vector<double>());
-  op_focei.freezeOde = false;   // normal solves fill the cache
-  const bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
-  if (doParallel) { sortIds(rx, 2); _innerParallel.store(1, std::memory_order_release); }
-  for (int k = 0; k < nPoint; ++k) {
-    std::vector<double> eta(neta);
-    for (int j = 0; j < neta; ++j) eta[j] = etaPoints(k, j);
-    nmForEachSubject(rx, nsub, cores, doParallel, [&](int base) {
-      // each mixture component's solve shares the physical subject's buffer, so
-      // solve + cache them serially per subject (parallel over subjects).
-      for (int m = 0; m < nMix; ++m) {
-        int id = base + m * nsub;
-        npEvalCondLik(&eta[0], id);   // normal solve, fills ind->solve
-        rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
-        double *s = getIndSolve(ind);
-        gFreezeCache[((size_t)k * nsub + base) * nMix + m].assign(s, s + npIndSolveSize(op, ind));
-      }
-    });
-  }
-  if (doParallel) { _innerParallel.store(0, std::memory_order_release); sortIds(rx, 0); }
-}
-
-// Frozen counterpart of npBuildPsiCoreScaled at gamma == 1: restore each subject's
-// cached states, then re-evaluate the conditional likelihood without solving.
-void npFreezePsiScaled(const arma::mat& etaPoints, int cores, arma::mat& psi, double* offset) {
-  rx = getRxSolve_();
-  rx_solving_options *op = getSolvingOptions(rx);
-  cores = min2(cores, getOpCores(op));
-  int nsub = (int)getRxNsub(rx);
-  int nPoint = (int)etaPoints.n_rows;
-  int neta = (int)etaPoints.n_cols;
-  arma::mat lp(nsub, nPoint);
-  op_focei.freezeOde = true;    // reuse cached states; recompute f/r only
-  const bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
-  if (doParallel) { sortIds(rx, 2); _innerParallel.store(1, std::memory_order_release); }
-  for (int k = 0; k < nPoint; ++k) {
-    std::vector<double> eta(neta);
-    for (int j = 0; j < neta; ++j) eta[j] = etaPoints(k, j);
-    nmForEachSubject(rx, nsub, cores, doParallel, [&](int base) {
-      std::vector<double> llm(gFreezeNmix);
-      for (int m = 0; m < gFreezeNmix; ++m) {
-        int id = base + m * nsub;
-        rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
-        const std::vector<double>& c = gFreezeCache[((size_t)k * nsub + base) * gFreezeNmix + m];
-        double *s = getIndSolve(ind);
-        std::copy(c.begin(), c.end(), s);            // restore cached states
-        llm[m] = npEvalCondLik(&eta[0], id);         // frozen: no integration
-      }
-      lp(base, k) = npMixLogSumExp(llm);             // mixture-marginalized
-    });
-  }
-  if (doParallel) { _innerParallel.store(0, std::memory_order_release); sortIds(rx, 0); }
-  op_focei.freezeOde = false;
-  arma::vec m = (nPoint > 0) ? arma::max(lp, 1) : arma::vec(nsub, arma::fill::zeros);
-  if (offset != nullptr) *offset = arma::accu(m);
-  psi.set_size(nsub, nPoint);
-  for (int k = 0; k < nPoint; ++k)
-    for (int i = 0; i < nsub; ++i) psi(i, k) = std::exp(lp(i, k) - m[i]);
-}
-
-void npFreezeClear() { gFreezeCache.clear(); gFreezeNsub = 0; gFreezeNpoint = 0; gFreezeNmix = 1; }
 
 //' Build the nonparametric Psi (conditional-likelihood) matrix
 //'
@@ -21488,23 +21335,6 @@ static bool foceiCondBatchParallel(int &cores, rx_solving_options *op) {
   if (cores < 1) cores = 1;
   cores = min2(cores, getOpCores(op));
   return (cores > 1) && solveMethodThreadSafe(op);
-}
-
-// Per-thread rxode2 slot id around a subject's solve inside an external
-// OpenMP team (the cross-DLL libgomp fix, see innerOpt).
-static inline void foceiCondEnterThread(bool doParallel) {
-#ifdef _OPENMP
-  if (doParallel) setRxThreadId(omp_get_thread_num());
-#else
-  (void)doParallel;
-#endif
-}
-static inline void foceiCondLeaveThread(bool doParallel) {
-#ifdef _OPENMP
-  if (doParallel) setRxThreadId(-1);
-#else
-  (void)doParallel;
-#endif
 }
 
 // History-independence for one subject: defeat the eta memo and reset the

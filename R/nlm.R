@@ -1033,7 +1033,7 @@ nlmObjectiveSetup <- function(ui, data, control = NULL, gradient = FALSE, scale 
     .ctl$solveType <- 2L
   }
   if (identical(scale, "natural")) {
-    ## identity scale (scaleNone: scaleTypeNone + normTypeConstant), so the
+    ## identity scale (scaleTypeNone + normTypeConstant), so the
     ## evaluated theta IS the model's theta -- what a sampler needs
     .ctl$scaleType <- 5L
     .ctl$normType <- 6L
