@@ -104,14 +104,14 @@ vpcSim <- function(
   .w <- which(names(.si) == "rx")
   .si <- .si[-.w]
   .si$nsim <- n
-  .si <- c(.si, list(...))
-  # simulate with the fit's covariate interpolation unless overridden (#1137)
+  # the fit's covariate interpolation (#1137), then `...` replaces any
+  # setting by name instead of passing it twice
   .covsi <- .residCovsInterpolation(object)
-  for (.n in names(.covsi)) {
-    if (!(.n %in% names(.si)) && !is.null(.covsi[[.n]])) {
-      .si[[.n]] <- .covsi[[.n]]
-    }
-  }
+  .si <- c(.si, .covsi[!vapply(.covsi, is.null, logical(1))])
+  .dots <- list(...)
+  .named <- if (is.null(names(.dots))) logical(length(.dots)) else nzchar(names(.dots))
+  .si[names(.dots)[.named]] <- .dots[.named]
+  .si <- c(.si, .dots[!.named])
   .pt <- proc.time()
   .si$keep <- unique(c(keep, "nlmixrRowNums"))
   .data <- .si$events

@@ -86,6 +86,9 @@ nmTest({
       .vOther <- vpcSim(.fit, n = 2, seed = 42, covsInterpolation = .other)
       expect_equal(.vDefault$ipred, .vSame$ipred)
       expect_false(isTRUE(all.equal(.vDefault$ipred, .vOther$ipred)))
+      # a setting simInfo already holds is replaced, not passed twice
+      .vEvents <- vpcSim(.fit, n = 2, seed = 42, events = .fit$origData)
+      expect_equal(.vEvents$ipred, .vDefault$ipred)
     }
   })
 })
