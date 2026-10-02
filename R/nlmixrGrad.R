@@ -98,15 +98,20 @@ nlmixr2Gill83 <- function(
   if (missing(which)) {
     which <- rep(TRUE, length(args))
   }
+  # the same checks foceiControl() makes on these options
+  checkmate::assertNumeric(gillRtol, lower = 0, len = 1, any.missing = FALSE, finite = TRUE)
+  checkmate::assertIntegerish(gillK, lower = 0, len = 1, any.missing = FALSE)
+  checkmate::assertNumeric(gillStep, lower = 0, len = 1, any.missing = FALSE)
+  checkmate::assertNumeric(gillFtol, lower = 0, len = 1, any.missing = FALSE)
   nlmixr2Gill83_(
     what,
     args,
     envir,
     which,
-    gillRtol = sqrt(.Machine$double.eps),
-    gillK = 10L,
-    gillStep = 2,
-    gillFtol = 0
+    gillRtol = gillRtol,
+    gillK = gillK,
+    gillStep = gillStep,
+    gillFtol = gillFtol
   )
 }
 

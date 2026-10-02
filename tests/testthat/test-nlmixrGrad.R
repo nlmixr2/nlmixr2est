@@ -32,3 +32,26 @@ test_that("nlmixr2Gill83() and nlmixr2Hess() never modify the caller's vector", 
   expect_equal(h, diag(2, 2), tolerance = 1e-6)
   expect_identical(sum(vapply(acc$x, identical, logical(1), p0)), 1L)
 })
+
+test_that("nlmixr2Gill83() and nlmixr2Hess() use the gill* arguments", {
+  g <- nlmixr2Gill83(
+    sin,
+    1,
+    gillRtol = 1e-6,
+    gillK = 4L,
+    gillStep = 3,
+    gillFtol = 1e-3
+  )
+  expect_equal(g$gillRtol, 1e-6)
+  expect_equal(g$gillK, 4L)
+  expect_equal(g$gillStep, 3)
+  expect_equal(g$gillFtol, 1e-3)
+  # an accepted interval is 2*sqrt(|f|*gillRtol/|f''|)
+  expect_equal(as.character(g$info), "Good")
+  expect_equal(g$hf, 2 * sqrt(abs(sin(1)) * 1e-6 / abs(g$df2)))
+  expect_false(identical(nlmixr2Hess(1, sin, gillRtol = 1e-4), nlmixr2Hess(1, sin)))
+  # gillK = 0 takes a single step instead of searching without end
+  g0 <- nlmixr2Gill83(function(x) 1 + 1e-9 * x^2, 2, gillK = 0L)
+  expect_equal(as.character(g0$info), "Constant Grad")
+  expect_error(nlmixr2Gill83(sin, 1, gillK = -1L), "gillK")
+})

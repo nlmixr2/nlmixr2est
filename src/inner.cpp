@@ -7065,7 +7065,8 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
     lastht  = lasth;
     phict=phic;
   }
-  if (k == K) goto FD6;
+  // >=, not ==: k is incremented before this test, so K = 0 would never stop
+  if (k >= K) goto FD6;
   goto FD3;
  FD4: // Decrease h
   k++;
@@ -7112,7 +7113,7 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
     lastht  = lasth;
     phict=phic;
   }
-  if (k == K) goto FD6;
+  if (k >= K) goto FD6;
   goto FD4;
  FD5: // Compute the estimate of the optimal interval
   *df2 = phi;
