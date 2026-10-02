@@ -25,6 +25,7 @@
 - `vpcSim(fit, events = ...)` (or any other setting the fit's simulation
   information already holds) replaces that setting instead of failing with
   `formal argument matched by multiple actual arguments`.
+- `vpcSim(fit, n = 1)` no longer fails with `object '.sim2' not found`.
 - The table of a fit whose `rxControl(method=)` is one of rxode2's newer ODE
   methods (`"cvode"`, `"lsode"`, `"bdf"`, `"dop5"`, ...) is calculated again.
   The post-fit solve turned the fit's integer method code back into a name

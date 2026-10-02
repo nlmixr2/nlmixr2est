@@ -142,7 +142,7 @@ vpcSim <- function(
   .si$returnType <- "data.frame.TBS"
   .sim <- do.call(rxode2::rxSolve, .si)
   if (!("sim.id" %in% names(.sim))) {
-    .sim2$sim.id <- 1
+    .sim$sim.id <- 1
   }
   # now look for how many have missing values
   .w <- which(is.na(.sim$ipred))

@@ -96,8 +96,8 @@ nmTest({
     # the table's covariate column shows which side it filled from
     .d <- .covsIntData
     .d$CRCL[.d$TIME > 0 & .d$TIME < 10] <- NA
-    .tableCrcl <- function(naInterpolation) {
-      .fit <- .nlmixr(
+    .naFit <- function(naInterpolation) {
+      .nlmixr(
         .covsIntModel,
         .d,
         "focei",
@@ -110,14 +110,27 @@ nmTest({
           print = 0
         )
       )
-      .fd <- as.data.frame(.fit)
-      .fd$CRCL[.fd$ID == .fd$ID[1] & .fd$TIME > 0 & .fd$TIME < 10]
     }
-    .nocb <- .tableCrcl("nocb")
-    .locf <- .tableCrcl("locf")
+    # CRCL of the first subject's rows inside the NA window
+    .window <- function(df, id, time) {
+      df$CRCL[id == id[1] & time > 0 & time < 10]
+    }
+    .fitNocb <- .naFit("nocb")
+    .fdNocb <- as.data.frame(.fitNocb)
+    .fdLocf <- as.data.frame(.naFit("locf"))
+    .nocb <- .window(.fdNocb, .fdNocb$ID, .fdNocb$TIME)
+    .locf <- .window(.fdLocf, .fdLocf$ID, .fdLocf$TIME)
     .first <- .covsIntData[.covsIntData$ID == .covsIntData$ID[1], ]
+    .before <- .first$CRCL[.first$TIME == 0][1]
+    .after <- .first$CRCL[.first$TIME >= 10][1]
     expect_true(length(.nocb) > 0)
-    expect_true(all(.locf == .first$CRCL[.first$TIME == 0][1]))
-    expect_true(all(.nocb == .first$CRCL[.first$TIME >= 10][1]))
+    expect_true(all(.locf == .before))
+    expect_true(all(.nocb == .after))
+
+    # vpcSim() fills them the same way unless overridden
+    .v <- vpcSim(.fitNocb, n = 1, seed = 42)
+    .vLocf <- vpcSim(.fitNocb, n = 1, seed = 42, naInterpolation = "locf")
+    expect_true(all(.window(.v, .v$id, .v$time) == .after))
+    expect_true(all(.window(.vLocf, .vLocf$id, .vLocf$time) == .before))
   })
 })
