@@ -22,9 +22,14 @@ nmTest({
     etaCross <- log(fCross / 0.0012)
 
     objAt <- function(eta) {
-      ctl <- foceiControl(print = 0, covMethod = "", calcTables = FALSE,
-                          maxOuterIterations = 0, maxInnerIterations = 0,
-                          etaMat = matrix(eta, 1))
+      ctl <- foceiControl(
+        print = 0,
+        covMethod = "",
+        calcTables = FALSE,
+        maxOuterIterations = 0,
+        maxInnerIterations = 0,
+        etaMat = matrix(eta, 1)
+      )
       suppressWarnings(nlmixr2(m, d, "focei", ctl))$objf
     }
     # R-side FOCEi objective: df/deta = f, dR/deta = 2R
