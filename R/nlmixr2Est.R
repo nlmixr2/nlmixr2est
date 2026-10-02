@@ -434,7 +434,10 @@ nlmixr2Est0 <- function(env, ...) {
         .rEnv <- if (is.environment(.ret)) .ret else tryCatch(.ret$env, error = function(e) NULL)
         if (is.environment(.rEnv)) {
           .r <- tryCatch(.covRecompute(.ret, .def), error = function(e) NULL)
-          if (isTRUE(try(.covInstallResult(.rEnv, .r), silent = TRUE))) {
+          # warns when nothing was installed or the nested fit fell back to
+          # another covariance
+          try(.covInstallResult(.rEnv, .r, warn = TRUE, what = .def), silent = TRUE)
+          if (identical(.rEnv$covMethod, .def)) {
             .covOptionsSet(.rEnv, .def, .covOptionsDefault(.rEnv, .def))
           }
         }

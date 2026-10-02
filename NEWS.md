@@ -93,6 +93,26 @@
 - Added a native analytical outer Hessian for fast Gaussian FOCE/FOCE+/FOCEI/AGQ fits, using
   the existing sensitivity pool. Fast `nlminb` fits used it automatically.
 
+### Covariance
+
+- A covariance computed after the fit is now installed only when it is
+  finite, symmetric and positive definite; otherwise the fit keeps the
+  covariance it had and a warning names the method and the reason.  This
+  covers the post-fit recompute of the `mfocei`/`ifocei`-style, imp, np and
+  nlme families (whose failures were silent, and whose nested warnings are
+  suppressed), the deferred `covMethod = "sa"`/`"imp"` (silent when it failed,
+  silent when it fell back to another covariance), `setCov()` (a covariance
+  cached under the requested name was reinstalled even when not positive
+  definite) and `getVarCov(force = TRUE)`.
+- `setCov(fit, "r,s")` (and `"r"`, `"s"`, `" (full)"`) keeps the label its
+  refit computed, so a corrected result reads `"|r|,s"` rather than `"r,s"`.
+  A refit that falls back to another covariance (`"r"` for `"r,s"`, the
+  theta-only shape for a full one, or none at all, as on a mu-referenced fit)
+  is an error and leaves the covariance unchanged; it used to install the
+  fallback (or no covariance) under the requested name.  `setCov(fit, "sa")`
+  whose nested SAEM falls back to `"linFim"` no longer replaces the
+  covariance before reporting the error.
+
 
 # nlmixr2est 7.1.0
 
