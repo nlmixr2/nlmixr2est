@@ -1,7 +1,7 @@
 nmTest({
   # #1132: a residual variance below sqrt(eps) used to be REPLACED by 1, putting a
   # ~+16 cliff per observation in the FOCEi objective where a proportional-error
-  # prediction crossed ~1.2e-3.  It is now floored, so the objective is continuous.
+  # prediction crossed ~1.2e-3.  It is now floored, leaving only a small log|H| step.
   test_that("focei objective is continuous where the variance crosses sqrt(eps)", {
     m <- function() {
       ini({
@@ -40,11 +40,21 @@ nmTest({
       sum(log(r) + (d$DV - f)^2 / r) + eta^2 / omega + log(omega) + log(h)
     }
 
+    # floored side: R is held at sqrt(eps), so dR/deta = 0
+    objFloor <- function(eta) {
+      f <- 0.0012 * exp(eta)
+      r <- sqrt(.Machine$double.eps)
+      h <- 1 / omega + nrow(d) * f^2 / r
+      sum(log(r) + (d$DV - f)^2 / r) + eta^2 / omega + log(omega) + log(h)
+    }
+
     below <- objAt(etaCross - 1e-4)
     above <- objAt(etaCross + 1e-4)
-    # differential pair straddling the threshold: the old code jumped ~32 here
+    # differential pair straddling the threshold: the old code jumped ~32 here;
+    # only the small log|H| step from dropping dR/deta remains
     expect_lt(abs(above - below), 0.05)
-    # and the unfloored side matches the closed form
+    # each side matches its closed form
     expect_equal(above, objR(etaCross + 1e-4), tolerance = 1e-4)
+    expect_equal(below, objFloor(etaCross - 1e-4), tolerance = 1e-4)
   })
 })
