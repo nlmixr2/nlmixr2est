@@ -497,8 +497,6 @@ attr(rxUiGet.nlmModel0, "rstudio") <- quote(rxModelVar({}))
 #'   sensitivity, so it cannot enter the residual Jacobian.
 #' - `lagDefs`: nlm's objective-only model defines the variables referenced
 #'   by `lag()`; nls's does not.
-#' - `past`: nlm emits the `past()` pre-history of a `delay()` model; nls does
-#'   not.
 #'
 #' @param type `"nlm"` or `"nls"`
 #' @return list of the settings for `type`
@@ -515,8 +513,7 @@ attr(rxUiGet.nlmModel0, "rstudio") <- quote(rxModelVar({}))
       matExpForcing = FALSE,
       censFR = TRUE,
       lhs = TRUE,
-      lagDefs = TRUE,
-      past = TRUE
+      lagDefs = TRUE
     ),
     nls = list(
       model = "nls model",
@@ -527,8 +524,7 @@ attr(rxUiGet.nlmModel0, "rstudio") <- quote(rxModelVar({}))
       matExpForcing = TRUE,
       censFR = FALSE,
       lhs = FALSE,
-      lagDefs = FALSE,
-      past = FALSE
+      lagDefs = FALSE
     )
   )
 }
@@ -713,7 +709,7 @@ rxUiGet.nlmRxModel <- function(x, ...) {
       .ddt,
       .lagDefs,
       ## DDE non-constant delay() pre-history (base past(state,tau)<-expr)
-      if (.spec$past) rxode2::.rxPastBaseLinesFromEnv(.s),
+      rxode2::.rxPastBaseLinesFromEnv(.s),
       .prd,
       .fr$f_line,
       .fr$r_line,
@@ -918,7 +914,7 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
       .sens,
       ## DDE non-constant delay() pre-history: base past(state,tau)<-expr + the
       ## per-sensitivity-compartment histories (analytic gradient/Jacobian).
-      if (.spec$past) .s$..pastLines,
+      .s$..pastLines,
       .yj,
       .lambda,
       .hi,
@@ -948,7 +944,7 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
       .ddt,
       ## DDE non-constant delay() pre-history (base past(state,tau)<-expr; the
       ## pred-only model has no sensitivity compartments)
-      if (.spec$past) .s$..pastBaseLines,
+      .s$..pastBaseLines,
       .yj,
       .lambda,
       .hi,

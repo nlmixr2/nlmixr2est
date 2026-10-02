@@ -17,6 +17,11 @@
   
 ## Bug Fixes
 
+- `est="nls"` fits a delay differential equation model with its `past()`
+  pre-history.  The nls models dropped the `past()` lines, so nls fitted a
+  model with a different history: its estimates were biased, and the
+  residuals it minimized did not match the fit's own table.
+
 - A fit's `IPRED`/`PRED` table, `vpcSim()` (and so `npde`) and `augPred()`
   now interpolate time-varying covariates with the fit's
   `rxControl(covsInterpolation=)` and `naInterpolation=` instead of always

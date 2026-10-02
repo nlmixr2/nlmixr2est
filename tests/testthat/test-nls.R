@@ -106,4 +106,59 @@ nmTest({
 
     expect_true(inherits(fit1, "nlmixr2.nls"))
   })
+
+  test_that("nls fits a delay() model with its past() pre-history", {
+    # y' = -k*delay(y, 1), with the history y = a before time 0
+    dde <- function() {
+      ini({
+        tk <- log(0.3)
+        ta <- log(2)
+        add.sd <- 0.05
+      })
+      model({
+        k <- exp(tk)
+        a <- exp(ta)
+        y(0) <- a
+        d/dt(y) <- -k * delay(y, 1)
+        past(y, 1) <- a
+        y ~ add(add.sd)
+      })
+    }
+    ui <- rxode2::rxode2(dde)
+    .past <- "^(past\\([^)]*\\))=.*$"
+    .lines <- strsplit(rxode2::rxNorm(suppressMessages(ui$nlsRxModel)$predOnly), "\n")[[1]]
+    expect_equal(sub(.past, "\\1", grep(.past, .lines, value = TRUE)), "past(y,1)")
+    .sens <- suppressMessages(ui$nlsSensModel)
+    .lines <- strsplit(rxode2::rxNorm(.sens$predOnly), "\n")[[1]]
+    expect_equal(sub(.past, "\\1", grep(.past, .lines, value = TRUE)), "past(y,1)")
+    # the history depends on ta (THETA[2]) only, so only its sensitivity has one
+    .lines <- strsplit(rxode2::rxNorm(.sens$thetaGrad), "\n")[[1]]
+    expect_equal(
+      sub(.past, "\\1", grep(.past, .lines, value = TRUE)),
+      c("past(y,1)", "past(rx__sens_y_BY_THETA_2___,1)")
+    )
+
+    .dat <- rxode2::rxWithSeed(42, {
+      .s <- rxode2::rxSolve(
+        rxode2::rxode2("k=0.3\na=2\ny(0)<-a\nd/dt(y)<- -k*delay(y,1)\npast(y,1)<-a\n"),
+        rxode2::et(seq(0.5, 5, by = 0.5)),
+        atol = 1e-9,
+        rtol = 1e-9
+      )
+      data.frame(
+        ID = rep(1:4, each = nrow(.s)),
+        TIME = rep(.s$time, 4),
+        DV = rep(.s$y, 4) + stats::rnorm(4 * nrow(.s), 0, 0.05)
+      )
+    })
+    .nlm <- .nlmixr(dde, .dat, est = "nlm", control = nlmControl(print = 0L, calcTables = FALSE))
+    for (.st in c("grad", "fun")) {
+      .fit <- .nlmixr(dde, .dat, est = "nls", control = nlsControl(print = 0L, solveType = .st))
+      # the residuals nls minimized are those of the fitted model (its table);
+      # without the past() lines they were those of another history
+      expect_equal(unname(.fit$nls$fvec), .fit$IRES, tolerance = 1e-4)
+      # least squares and the nlm maximum likelihood share the optimum
+      expect_equal(.fit$theta[c("tk", "ta")], .nlm$theta[c("tk", "ta")], tolerance = 1e-3)
+    }
+  })
 })
