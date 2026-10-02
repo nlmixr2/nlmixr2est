@@ -139,6 +139,15 @@
   standard errors of the variational covariance (only `$parFixedDf` had
   them), its confidence interval uses the fit's `ci`, and the condition
   numbers describe that covariance.
+- The nlm-family covariance (`bobyqa`, `uobyqa`, `newuoa`, `optim`, `nlminb`,
+  `nlm`, `n1qn1`, `lbfgsb3c`, `trust`, `nls` with `"LM"`) now repairs a
+  Hessian that is not positive definite as intended, as `"|r|"`
+  (`sqrtm(R %*% R)`) or, failing that, `"r+"` (the nearest positive-definite
+  matrix), with a warning in `$runInfo`.  It used to invert every Hessian
+  after an unreported Schnabel-Eskow perturbation and label it `"r"`, which
+  gave several parameters of the derivative-free fits of `theo_sd` the same
+  standard error.  A non-finite Hessian, or the zero one of a failed `trust`
+  solve, gives `covMethod = "failed"` with a warning instead of a covariance.
 
 
 # nlmixr2est 7.1.0

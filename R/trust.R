@@ -504,7 +504,8 @@ getValidNlmixrCtl.trust <- function(control) {
   .ret <- list(
     par = setNames(.tres$par, NULL),
     fval = .tres$value,
-    hessian = matrix(.tres$hessian, nrow = length(.p), ncol = length(.p)),
+    # a solver error leaves the Hessian zero-filled, not computed
+    hessian = matrix(if (isTRUE(.tres$error < 0)) NA_real_ else .tres$hessian, nrow = length(.p), ncol = length(.p)),
     convergence = if (isTRUE(.tres$converged)) 0L else 1L,
     iterations = .tres$iterations,
     message = if (isTRUE(.tres$converged)) "converged" else "did not fully converge"
