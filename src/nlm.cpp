@@ -969,21 +969,20 @@ extern "C" int nlmTrustObjfun(int n, const double *par, double *value,
     arma::vec gr0 = cs(span(1, nlmOp.ntheta));
     arma::mat H;
     if (nlmOp.trustHessMethod == trustHessFd) {
-      // nlmCalcHessian() caches its per-theta FD step size (nlmOp.thetahh[k])
-      // and only re-derives it via shi21Forward/shi21Central when h<=0. Every
-      // OTHER caller invokes this at most once per fit (post-fit covariance),
-      // so that cache is valid for the theta it was calibrated at. trust calls
-      // this every outer iteration as theta moves, so a step size calibrated
-      // at iteration 1 can become stale (or, per this method's own benchmark
-      // history, simply unstable near a bounded/transformed parameter
-      // regardless of caching) once theta has moved away from where it was
-      // derived -- force a fresh derivation every call.
+      // nlmCalcHessian() searches each theta's FD step only while
+      // nlmOp.thetahh[k] is 0, then reuses it: nlm (solveType="hessian") and
+      // nlminb call it at every Hessian request and keep the steps from their
+      // first call for the whole fit.  trust calls this every outer iteration
+      // as theta moves, so a step size calibrated at iteration 1 can become
+      // stale (or, per this method's own benchmark history, simply unstable
+      // near a bounded/transformed parameter regardless of caching) once theta
+      // has moved away from where it was derived -- force a fresh derivation
+      // every call.
       std::fill(nlmOp.thetahh, nlmOp.thetahh + nlmOp.ntheta, 0.0);
       H = nlmCalcHessian(gr0, theta);
     } else if (!nlmOp.trustHasPrev) {
-      // Seed the quasi-Newton methods with one FD Hessian, matching how
-      // every other nlmCalcHessian() consumer uses it (a one-time, not
-      // per-iteration, cost).
+      // Seed the quasi-Newton methods with one FD Hessian, its steps searched
+      // at this theta; every later call only updates it.
       std::fill(nlmOp.thetahh, nlmOp.thetahh + nlmOp.ntheta, 0.0);
       H = nlmCalcHessian(gr0, theta);
       nlmOp.trustHessQN = H;

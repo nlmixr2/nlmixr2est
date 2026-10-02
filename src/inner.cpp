@@ -3602,9 +3602,8 @@ bool calcEtaHessian(double *eta, int likId, int id,
     // hessianMethod= (default "sr1", trustHessianUpdate.h): a non-fd method
     // builds this inner Hessian from consecutive Newton-step (eta, gradient)
     // pairs instead of a fresh finite difference every call. The FIRST call
-    // for this subject still seeds from one FD pass below (matching every
-    // other calcEtaHessian() consumer's one-time, not-per-iteration, cost);
-    // every later call updates the running fInd->etaHessQN instead.
+    // for this subject still seeds from one FD pass below; every later call
+    // updates the running fInd->etaHessQN instead.
     //
     // Gated on innerOpt=="trust" (3) in addition to hessianMethod!=fd:
     // calcEtaHessian() is also called from warmZm() (n1qn1's own Hessian
