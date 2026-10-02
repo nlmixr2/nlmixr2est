@@ -212,24 +212,6 @@
   )
 }
 
-#' Per-observation d log|dy'/dDV| / dlambda -- the transform Jacobian's
-#' lambda-derivative, the extra term the OFV gradient's lambda column carries
-#' (-2 * sum over obs); it cancels in the observed-information covariance.
-#' @noRd
-.foceiAnalyticJacLambda <- function(dv, trans) {
-  if (is.null(trans)) {
-    return(rep(0, length(dv)))
-  }
-  .Call(
-    `_nlmixr2est_powerDL`,
-    as.double(dv),
-    as.double(trans$lambda),
-    as.integer(trans$yj),
-    as.double(trans$low),
-    as.double(trans$hi)
-  )
-}
-
 #' Count literal occurrences of each of `.names` on the model-expression RHS.
 #'
 #' Shared by the eta-occurrence guard (a random effect reused across parameters breaks

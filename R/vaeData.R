@@ -604,42 +604,6 @@ vaeCovariates <- function(
   )
 }
 
-#' Detect a clean `log(cov/center)` form for `cov` inside an expression.
-#'
-#' Walks the parse tree; returns the divisor `center` when `cov` occurs as
-#' `log(cov)` (center 1) or `log(cov/<numeric literal>)`.  Any other form
-#' (raw `cov`, `log(cov/expr)`, `log(a*cov)`) yields `inLog=FALSE` or a `NA`
-#' center so the caller can fall back to the in-place regress M-step.
-#' @noRd
-.vaeLogCenter <- function(e, cov) {
-  if (is.call(e)) {
-    if (identical(e[[1L]], as.name("log")) && length(e) == 2L && cov %in% all.vars(e[[2L]])) {
-      .a <- e[[2L]]
-      if (is.name(.a) && identical(as.character(.a), cov)) {
-        return(list(inLog = TRUE, center = 1))
-      }
-      if (
-        is.call(.a) &&
-          identical(.a[[1L]], as.name("/")) &&
-          length(.a) == 3L &&
-          is.name(.a[[2L]]) &&
-          identical(as.character(.a[[2L]]), cov) &&
-          is.numeric(.a[[3L]]) &&
-          length(.a[[3L]]) == 1L &&
-          is.finite(.a[[3L]])
-      ) {
-        return(list(inLog = TRUE, center = as.numeric(.a[[3L]])))
-      }
-      return(list(inLog = TRUE, center = NA_real_))
-    }
-    for (.i in seq_along(e)[-1L]) {
-      .r <- .vaeLogCenter(e[[.i]], cov)
-      if (isTRUE(.r$inLog)) return(.r)
-    }
-  }
-  list(inLog = FALSE, center = NA_real_)
-}
-
 #' Covariate that a coefficient multiplies, within an expression.
 #'
 #' Disambiguates which data covariate `coef` pairs with when a model line carries

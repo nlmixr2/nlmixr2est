@@ -10,20 +10,6 @@
 # direction set and error machinery from foceiCovAnalytic.R without the 3rd-order
 # (Ath) tier.
 
-.foceiOuterFdForFlagged <- function(ids1, analyticRef = matrix(numeric(0), 0, 0)) {
-  if (length(ids1) == 0L) {
-    return(NULL)
-  }
-  .g <- tryCatch(foceiOuterFdInd_(as.integer(ids1 - 1L), as.matrix(analyticRef)), error = function(e) NULL)
-  if (is.null(.g) || !is.matrix(.g) || nrow(.g) != length(ids1)) {
-    return(NULL)
-  }
-  if (!all(is.finite(.g))) {
-    return(NULL)
-  } # a subject that could not be re-optimized
-  .g
-}
-
 #' Per-FIT constants for the all-C++ analytic outer gradient.
 #'
 #' Everything the gradient needs that does NOT change between outer iterations: the
@@ -176,35 +162,6 @@
     },
     error = function(e) NULL
   )
-}
-
-#' The FIT's own ODE tolerances, for solving the analytic gradient.
-#'
-#' There is deliberately no separate "analytic gradient" tolerance: the gradient has to
-#' be the gradient of the objective the optimizer is minimizing, so the augmented model
-#' is solved at the tolerance that objective is solved at.  Tightening it here makes the
-#' gradient describe a different objective -- and the finite-difference references these
-#' gradients are checked against are themselves objective differences at the fit's
-#' tolerance.  [.foceiAnalyticSolveTol()] remains correct for the COVARIANCE path, where
-#' `covSolveTol` is a documented user control.
-#' @return `c(atol, rtol)`, or NULL when the fit's values cannot be read
-#' @noRd
-.foceiGradSolveTol <- function(ui) {
-  .rc <- tryCatch(ui$control$rxControl, error = function(e) NULL)
-  if (is.null(.rc)) {
-    return(NULL)
-  }
-  .a <- suppressWarnings(as.numeric(.rc$atol)[1])
-  .r <- suppressWarnings(as.numeric(.rc$rtol)[1])
-  if (!is.finite(.a) || !is.finite(.r) || .a <= 0 || .r <= 0) {
-    return(NULL)
-  }
-  c(.a, .r)
-}
-
-.foceiGradSolveTolOr <- function(ui) {
-  .t <- .foceiGradSolveTol(ui)
-  if (is.null(.t)) .foceiAnalyticSolveTol(ui) else .t
 }
 
 #' Subjects whose augmented solve failed, for the Phase 8D2 per-individual FD.

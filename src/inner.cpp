@@ -21884,9 +21884,7 @@ IntegerVector foceiLikThetaSensIdxC_() {
 
 
 // ---------------------------------------------------------------------------
-// VAE training loop (est="vae"), fully in C++.  This is a straight port of the
-// former R orchestration (.vaeTrain / .vaeElboStepInner / .vaeMStep* /
-// .vaeUpdateErr / .vaeAdamStep in R/vaeFit.R + R/vaeInner.R): burn-in
+// VAE training loop (est="vae"), fully in C++: burn-in
 // (encoder-only, tiny KL) -> main EM (KL anneal + closed-form M-step, optional
 // BICc-ELBO covariate selection) -> EMA smoothing.  The heavy pieces it calls
 // are already C++: the LSTM encoder fwd/bwd (vaeEncoderFwdBwdCore), the parallel

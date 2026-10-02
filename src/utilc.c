@@ -197,7 +197,7 @@ SEXP _nlmixr2est_powerL(SEXP xS, SEXP lambdaS, SEXP yjS, SEXP lowS, SEXP hiS) {
 }
 
 // Shared arg-extraction + per-obs apply for the transform derivative wrappers
-// (dy'/dlambda, d2y'/dlambda2, d log|J|/dlambda).  Same (x,lambda,yj,low,hi)
+// (dy'/dlambda, d2y'/dlambda2).  Same (x,lambda,yj,low,hi)
 // contract as _nlmixr2est_powerD; returns a length-`len` vector of fn() per obs.
 static SEXP _nlmixr2estPowerApply(SEXP xS, SEXP lambdaS, SEXP yjS, SEXP lowS, SEXP hiS,
                                   double (*fn)(double, double, int, double, double)) {
@@ -231,10 +231,6 @@ SEXP _nlmixr2est_powerDLambda(SEXP xS, SEXP lambdaS, SEXP yjS, SEXP lowS, SEXP h
 // d2y'/dlambda2, per observation
 SEXP _nlmixr2est_powerDLambda2(SEXP xS, SEXP lambdaS, SEXP yjS, SEXP lowS, SEXP hiS) {
   return _nlmixr2estPowerApply(xS, lambdaS, yjS, lowS, hiS, _powerDLambda2);
-}
-// d log|dy'/dDV| / dlambda (Jacobian lambda-derivative), per observation
-SEXP _nlmixr2est_powerDL(SEXP xS, SEXP lambdaS, SEXP yjS, SEXP lowS, SEXP hiS) {
-  return _nlmixr2estPowerApply(xS, lambdaS, yjS, lowS, hiS, _powerDL);
 }
 
 SEXP getDfSubsetVars(SEXP ipred, SEXP lhs) {
