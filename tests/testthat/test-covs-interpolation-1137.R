@@ -43,7 +43,7 @@ nmTest({
   }
 
   test_that("the fit's table uses rxControl(covsInterpolation=) (#1137)", {
-    for (.ci in c("locf", "nocb")) {
+    for (.ci in c("locf", "nocb", "midpoint")) {
       .fit <- .nlmixr(.covsIntModel, .covsIntData, "focei",
         foceiControl(
           rxControl = rxode2::rxControl(covsInterpolation = .ci),
@@ -54,7 +54,7 @@ nmTest({
         rxode2::rxControl(covsInterpolation = .ci)$covsInterpolation,
         ignore_attr = TRUE
       )
-      .other <- setdiff(c("locf", "nocb"), .ci)
+      .other <- if (.ci == "locf") "nocb" else "locf"
       .m <- .covsIntSolve(.fit, .ci)
       .mOther <- .covsIntSolve(.fit, .other)
       # matches the requested interpolation, not the other one
@@ -69,7 +69,8 @@ nmTest({
         data.frame(id = as.integer(.ap$id), time = .ap$time, ap = .ap$values)
       )
       expect_true(nrow(.ma) > 0)
-      expect_equal(.ma$ap, .ma$IPRED, tolerance = 1e-4)
+      # augPred's added grid rows move the midpoints, so midpoint is close only
+      expect_equal(.ma$ap, .ma$IPRED, tolerance = if (.ci == "midpoint") 1e-3 else 1e-4)
 
       # vpcSim() (and so npde) simulates with it unless overridden
       .vDefault <- vpcSim(.fit, n = 2, seed = 42)
