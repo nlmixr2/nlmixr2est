@@ -6,6 +6,11 @@ test_that("a Gill83 search that ends without an accepted interval restores theta
   g <- nlmixr2Gill83(f, c(1, 2))
   expect_equal(as.character(g$info), c("Good", "Constant Grad"))
   expect_equal(g$df[1], 2e4, tolerance = 1e-7)
+  # with the last parameter left out, the base objective was never evaluated
+  g <- nlmixr2Gill83(f, c(1, 2), which = c(TRUE, FALSE))
+  expect_equal(as.character(g$info), c("Good", "Not Assessed"))
+  expect_equal(g$f[1], 1)
+  expect_equal(g$df[1], 2e4, tolerance = 1e-7)
 })
 
 test_that("nlmixr2Gill83() and nlmixr2Hess() never modify the caller's vector", {

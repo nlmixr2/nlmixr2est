@@ -108,6 +108,8 @@
 - `nlmixr2Gill83()` (and so `nlmixr2Hess(...)`) now uses its `gillRtol`,
   `gillK`, `gillStep` and `gillFtol` arguments; the defaults were always used.
   With `gillK = 0` the Gill search takes one step instead of never ending.
+- `nlmixr2Gill83(which=)` that leaves out the last parameter no longer
+  searches the others about an objective value that was never computed.
 - The `grad()` function from `nlmixr2GradFun()` no longer leaves the point at
   `x - h` when a forward difference is not finite and it falls back to a
   backward one.  That point was the caller's own vector, which was also the

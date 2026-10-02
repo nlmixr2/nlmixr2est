@@ -10368,12 +10368,16 @@ List nlmixr2Gill83_(Function what, NumericVector args, Environment envir,
   NumericVector rEpsC(args.size());
   IntegerVector retN(args.size());
   NumericVector fN(args.size());
-  double f0;
+  // f at the base point, taken once at the first searched parameter (it was never
+  // set when `which` excluded the last one)
+  double f0 = NA_REAL;
+  bool haveF0 = false;
   for (int i = args.size(); i--;){
     if (which[i]){
       gillPar=i;
-      if (i == args.size()-1){
+      if (!haveF0){
         f0 = gillRfn(theta);
+        haveF0 = true;
       }
       fN[i] = f0;
       retN[i] = gill83(&hfN[i], &hphifN[i], &gillDfN[i], &gillDf2N[i], &gillErrN[i],
