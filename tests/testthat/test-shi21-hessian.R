@@ -55,4 +55,54 @@ nmTest({
       expect_true(all(.h[-1, -1] != 0))
     })
   })
+
+  test_that("a non-normal-endpoint FOCEi fit reports llikObs at its final ETAs", {
+    skip_on_cran()
+    # A dnorm() endpoint sets needOptimHess: the inner Hessian is a finite
+    # difference of the eta gradient, and every leg re-solves the subject,
+    # which rewrites its per-observation log-likelihoods.  They were reported
+    # from the last leg (an eta shifted by up to 3 steps) instead of the ETAs.
+    .one.cmt <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- log(2.7)
+        tv <- 3.45
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        cp <- linCmt()
+        cp ~ add(add.sd) + dnorm()
+      })
+    }
+    .check <- function(control) {
+      .fit <- suppressMessages(suppressWarnings(
+        nlmixr2(.one.cmt, nlmixr2data::theo_sd, "focei", control = control)
+      ))
+      .ll <- .fit$llikObs
+      .ll <- .ll[!is.na(.ll)] # dose records
+      # the table's IPRED is solved at the fit's ETAs
+      expect_equal(
+        .ll,
+        dnorm(.fit$DV, .fit$IPRED, .fit$theta[["add.sd"]], log = TRUE),
+        tolerance = 1e-10
+      )
+    }
+    # central and forward differences (the final objective re-searches the
+    # steps), and the trust inner optimizer
+    .check(foceiControl(print = 0L, covMethod = "", maxOuterIterations = 0L))
+    .check(foceiControl(
+      print = 0L, covMethod = "", maxOuterIterations = 0L,
+      optimHessCovType = "forward"
+    ))
+    .check(foceiControl(
+      print = 0L, covMethod = "", maxOuterIterations = 0L,
+      innerOpt = "trust", hessianMethod = "fd"
+    ))
+  })
 })

@@ -89,6 +89,14 @@
   previous self-initialized behavior is available as the new
   `foceiControl(warm="none")`, and `warm="save"` reuse is reported in the fit's
   `$nWarmSave`.
+
+- The per-observation log-likelihoods (`$llikObs`, and `nlmixrLlikObs` in the
+  merged data) of a fit with a non-normal endpoint (`dnorm()`, `ll()`,
+  `dpois()` and the like, with the default `fast=FALSE`) are now those at the
+  reported ETAs.  They came from the last evaluation of the finite-difference
+  inner Hessian, at an ETA moved by up to three steps (off by up to 0.93 per
+  observation on `theo_sd`).  A FOCEi covariance step still leaves them at its
+  own last evaluation.
   
 - Added a native analytical outer Hessian for fast Gaussian FOCE/FOCE+/FOCEI/AGQ fits, using
   the existing sensitivity pool. Fast `nlminb` fits used it automatically.

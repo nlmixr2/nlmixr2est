@@ -3666,12 +3666,27 @@ bool calcEtaHessian(double *eta, int likId, int id,
         }
         if (hMin[k] > op_focei.shi21hMax) hMin[k] = op_focei.shi21hMax;
       }
+      // Every leg re-solves the subject, rewriting what likInner0() leaves for
+      // readers that do not call it again: llikObs (reported with the fit), and
+      // tbsLik and nObs (read by LikInner2() right after and by imp's AUTO
+      // setup; they do not depend on eta, but a leg that fails part-way leaves
+      // them partial).  Put back the caller's values at eta.  The rest stays at
+      // the last leg, which oldEta still records, so the next likInner0() call
+      // re-solves.
+      std::vector<double> llikObs(fInd->llikObs, fInd->llikObs + getIndNallTimes(ind));
+      double tbsLik = fInd->tbsLik;
+      int nObs = fInd->nObs;
       // optimHessType: 3 = forward, 1 = central.
-      return shi21Hessian(getGradForOptimHess, x, gr0, id,
-                          op_focei.optimHessType == 3 ? shi21HessForward :
-                          (op_focei.optimHessType == 1 ? shi21HessCentral : 0),
-                          fInd->etahh, op_focei.hessEpsInner, op_focei.shi21maxInner,
-                          op_focei.shi21hMax, hMin.memptr());
+      arma::mat Hfd = shi21Hessian(getGradForOptimHess, x, gr0, id,
+                                   op_focei.optimHessType == 3 ? shi21HessForward :
+                                   (op_focei.optimHessType == 1 ? shi21HessCentral : 0),
+                                   fInd->etahh, op_focei.hessEpsInner,
+                                   op_focei.shi21maxInner, op_focei.shi21hMax,
+                                   hMin.memptr());
+      std::copy(llikObs.begin(), llikObs.end(), fInd->llikObs);
+      fInd->tbsLik = tbsLik;
+      fInd->nObs = nObs;
+      return Hfd;
     });
   } else if (op_focei.interaction) {
     int nO = getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind);
