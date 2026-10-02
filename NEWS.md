@@ -90,11 +90,19 @@
   `foceiControl(warm="none")`, and `warm="save"` reuse is reported in the fit's
   `$nWarmSave`.
 
+- The finite-difference Hessian of `est="nlm"` (`solveType="hessian"`),
+  `est="nlminb"` and `est="trust"` no longer moves the parameters it is
+  computed at.  When the gradient could not be evaluated on either side of a
+  parameter, that parameter was left shifted by the step: `nlminb` went on
+  from the shifted point, and the iteration history, the saved objective and
+  `trust`'s quasi-Newton update recorded it in place of the point evaluated.
+  The other parameters could move by rounding.
+
 - The per-observation log-likelihoods (`$llikObs`, and `nlmixrLlikObs` in the
   merged data) of a fit with a non-normal endpoint (`dnorm()`, `ll()`,
   `dpois()` and the like, with the default `fast=FALSE`) are now those at the
   reported ETAs.  They came from the last evaluation of the finite-difference
-  inner Hessian, at an ETA moved by up to three steps (off by up to 0.93 per
+  inner Hessian, at an ETA moved by a few steps (off by up to 0.93 per
   observation on `theo_sd`).  A FOCEi covariance step still leaves them at its
   own last evaluation.
   

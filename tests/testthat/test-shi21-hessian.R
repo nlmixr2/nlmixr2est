@@ -36,15 +36,11 @@ nmTest({
     # shi21maxHess = 1: the first call's one-iteration step search finds no
     # finite E0 leg and keeps its starting step (2.6e-2 on the scaled theta),
     # so the second call differences E0 at that step, outside the window.
-    .ctl <- nlmControl(
-      print = 0L, solveType = "hessian", optimHessType = "central",
-      shi21maxHess = 1L, calcTables = FALSE
-    )
+    .ctl <- nlmControl(print = 0L, solveType = "hessian", optimHessType = "central", shi21maxHess = 1L)
     .withNlmProblem(.mod, .d, .ctl, function(x) {
       nlmSolveGradHess(x)
       # nlmSolveGradHess() works on R's own vector, which for nlminb is the
-      # optimizer's iterate.  The second call used to return with E0 moved to
-      # E0 - h.
+      # optimizer's iterate: the Hessian has to leave it exactly as it was.
       x0 <- x + 0
       r <- nlmSolveGradHess(x)
       expect_identical(x, x0)
@@ -60,8 +56,8 @@ nmTest({
     skip_on_cran()
     # A dnorm() endpoint sets needOptimHess: the inner Hessian is a finite
     # difference of the eta gradient, and every leg re-solves the subject,
-    # which rewrites its per-observation log-likelihoods.  They were reported
-    # from the last leg (an eta shifted by up to 3 steps) instead of the ETAs.
+    # rewriting its per-observation log-likelihoods.  The fit still has to
+    # report them at its ETAs, not at the last leg.
     .one.cmt <- function() {
       ini({
         tka <- 0.45
@@ -96,13 +92,7 @@ nmTest({
     # central and forward differences (the final objective re-searches the
     # steps), and the trust inner optimizer
     .check(foceiControl(print = 0L, covMethod = "", maxOuterIterations = 0L))
-    .check(foceiControl(
-      print = 0L, covMethod = "", maxOuterIterations = 0L,
-      optimHessCovType = "forward"
-    ))
-    .check(foceiControl(
-      print = 0L, covMethod = "", maxOuterIterations = 0L,
-      innerOpt = "trust", hessianMethod = "fd"
-    ))
+    .check(foceiControl(print = 0L, covMethod = "", maxOuterIterations = 0L, optimHessCovType = "forward"))
+    .check(foceiControl(print = 0L, covMethod = "", maxOuterIterations = 0L, innerOpt = "trust", hessianMethod = "fd"))
   })
 })
