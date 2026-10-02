@@ -81,7 +81,7 @@ f <- try(nlmixr2(one.cmt, theo_sd, "saem"))
 #> ✔ done
 #> ℹ calculate uninformed etas
 #> ℹ done
-#> rxode2 5.1.8 using 2 threads (see ?getRxThreads)
+#> rxode2 5.1.9 using 2 threads (see ?getRxThreads)
 #>   no cache: create with `rxCreateCache()`
 #> 
 #> Attaching package: ‘rxode2’
@@ -105,7 +105,7 @@ f <- try(nlmixr2(one.cmt, theo_sd, "saem"))
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 6584
-#> → compress parHistData in nlmixr2 object, save 8616
+#> → compress parHistData in nlmixr2 object, save 8608
 #> → compress phiM in nlmixr2 object, save 439912
 
 print(f)
@@ -116,10 +116,10 @@ print(f)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.9057703 2.5016e-05 0.02002842      0.088     0.917 4.113        0.92
+#>             setup   optimize covariance preprocess configure saem postprocess
+#> elapsed 0.8443968 3.1053e-05 0.02600939      0.085     0.875 4.31       0.881
 #>         table compress     other
-#> elapsed 0.058    0.132 0.3731762
+#> elapsed 0.069    0.159 0.3795627
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -184,10 +184,10 @@ if (!inherits(f, "try-error")) {
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.9057703 2.5016e-05 0.02002842      0.088     0.917 4.113        0.92
+#>             setup   optimize covariance preprocess configure saem postprocess
+#> elapsed 0.8443968 3.1053e-05 0.02600939      0.085     0.875 4.31       0.881
 #>         table compress     other
-#> elapsed 0.058    0.132 0.3731762
+#> elapsed 0.069    0.159 0.3795627
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
