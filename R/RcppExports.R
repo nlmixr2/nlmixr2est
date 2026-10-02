@@ -92,10 +92,6 @@ foceiGradPooledSetupLoad_ <- function(st) {
     .Call(`_nlmixr2est_foceiGradPooledSetupLoad_`, st)
 }
 
-foceiSetup_ <- function(obj, data, theta, mixIdx, thetaFixed = NULL, skipCov = NULL, rxInv = NULL, lower = NULL, upper = NULL, etaMat = NULL, control = NULL) {
-    .Call(`_nlmixr2est_foceiSetup_`, obj, data, theta, mixIdx, thetaFixed, skipCov, rxInv, lower, upper, etaMat, control)
-}
-
 foceiOuterF <- function(theta) {
     .Call(`_nlmixr2est_foceiOuterF`, theta)
 }
@@ -185,35 +181,6 @@ vaeInnerLik <- function(etaMat, cores, grad = FALSE, preds = FALSE) {
     .Call(`_nlmixr2est_vaeInnerLik`, etaMat, cores, grad, preds)
 }
 
-#' Per-individual d(llik)/d(theta) for subjects whose augmented solve failed.
-#'
-#' Phase 8D2.  This is a SEPARATE phase and cannot be folded into the augmented solve
-#' loop: that loop runs inside OdeSwapEsBatch(odeSlotOuter), i.e. under the outer
-#' model's event-sensitivity shape, while this needs the INNER problem.  The shape is a
-#' process global that only changes at a batch boundary, so the two cannot interleave.
-#' The caller passes the subjects flagged by vaeOuterSolve_ (its "ok" attribute).
-#'
-#' Shaped like the non-fast path's numericGrad(): a sequential loop over the parameters the
-#' optimizer moves, ONE shi CENTRAL step per parameter searched on the SUMMED -2LL over the
-#' flagged subjects, then explicit +-h legs, with every likelihood evaluation parallel over
-#' subjects.  Each evaluation re-optimizes the subject through innerOpt1(), so what is
-#' differenced is a PROFILE likelihood.  Per-subject slopes are still produced by the legs, so
-#' the across-subject outlier pass and its TV refinement still work; only the step is pooled.
-#'
-#' Omega directions are covered too, in the trailing omegan columns, by the same arrangement --
-#' see the fdOmegaBuild note above for the extra constraint there (the perturbed Omega needs an
-#' R call, so it is built once per evaluation outside the parallel region).
-#' @param ids0 0-based subject ids to difference
-#' @param analyticRef per-subject analytic slopes for the subjects that DID solve, used as
-#'   the reference distribution of the outlier pass; may be a 0 x 0 matrix
-#' @return nid x (ntheta + omegan) matrix of d(llik_i)/d(par), full-theta indexing (theta
-#'   block then omega block), natural parameter scale.  NA where a subject could not be
-#'   re-optimized even at a perturbed parameter
-#' @noRd
-foceiOuterFdInd_ <- function(ids0, analyticRef) {
-    .Call(`_nlmixr2est_foceiOuterFdInd_`, ids0, analyticRef)
-}
-
 vaeOuterSolve_ <- function(thVals, ebes, cols, cores, tol = NA_real_) {
     .Call(`_nlmixr2est_vaeOuterSolve_`, thVals, ebes, cols, cores, tol)
 }
@@ -260,18 +227,6 @@ npBuildPsi <- function(etaPoints, cores) {
     .Call(`_nlmixr2est_npBuildPsi`, etaPoints, cores)
 }
 
-vaeIterPrintStart_ <- function(initPar, names, iterPrintControl, xform = NULL) {
-    .Call(`_nlmixr2est_vaeIterPrintStart_`, initPar, names, iterPrintControl, xform)
-}
-
-vaeIterPrintRow_ <- function(x, f, phase = "") {
-    .Call(`_nlmixr2est_vaeIterPrintRow_`, x, f, phase)
-}
-
-vaeIterPrintGet_ <- function(printLine = TRUE) {
-    .Call(`_nlmixr2est_vaeIterPrintGet_`, printLine)
-}
-
 adviThetaSensInfo_ <- function() {
     .Call(`_nlmixr2est_adviThetaSensInfo_`)
 }
@@ -280,20 +235,8 @@ adviElboGrad_ <- function(mu, omega, theta, logPopOmega, eps, muRefThetaIdx) {
     .Call(`_nlmixr2est_adviElboGrad_`, mu, omega, theta, logPopOmega, eps, muRefThetaIdx)
 }
 
-adviLoop_ <- function(mu0, omega0, theta0, logPopOmega0, muRefThetaIdx, thetaMuRefEta, thetaFix, omegaFix, iters, seed, etaScale, tau, alpha, nMc, it0, sMu0, sOmega0, sTheta0, sLpo0, cores, divergeStop, parNames, iterPrintControl, xform, ipPhase, ipStart, ipEnd) {
-    .Call(`_nlmixr2est_adviLoop_`, mu0, omega0, theta0, logPopOmega0, muRefThetaIdx, thetaMuRefEta, thetaFix, omegaFix, iters, seed, etaScale, tau, alpha, nMc, it0, sMu0, sOmega0, sTheta0, sLpo0, cores, divergeStop, parNames, iterPrintControl, xform, ipPhase, ipStart, ipEnd)
-}
-
 adviElboGradFR_ <- function(mu, Lpack, theta, logPopOmega, eps, muRefThetaIdx) {
     .Call(`_nlmixr2est_adviElboGradFR_`, mu, Lpack, theta, logPopOmega, eps, muRefThetaIdx)
-}
-
-adviLoopFR_ <- function(mu0, Lpack0, theta0, logPopOmega0, muRefThetaIdx, thetaMuRefEta, thetaFix, omegaFix, iters, seed, etaScale, tau, alpha, nMc, it0, sMu0, sL0, sTheta0, sLpo0, cores, divergeStop, parNames, iterPrintControl, xform, ipPhase, ipStart, ipEnd) {
-    .Call(`_nlmixr2est_adviLoopFR_`, mu0, Lpack0, theta0, logPopOmega0, muRefThetaIdx, thetaMuRefEta, thetaFix, omegaFix, iters, seed, etaScale, tau, alpha, nMc, it0, sMu0, sL0, sTheta0, sLpo0, cores, divergeStop, parNames, iterPrintControl, xform, ipPhase, ipStart, ipEnd)
-}
-
-adviLoopFB_ <- function(mu0, scale0, theta0, logPopOmega0, mPop0, LpopPack0, phiThetaIdx, phiOmIdx, phiMuRef, muRefThetaIdx, fr, iters, seed, etaScale, tau, alpha, nMc, it0, sMu0, sScale0, smPop0, sLpop0, cores, divergeStop, parNames, iterPrintControl, xform, ipPhase, ipStart, ipEnd) {
-    .Call(`_nlmixr2est_adviLoopFB_`, mu0, scale0, theta0, logPopOmega0, mPop0, LpopPack0, phiThetaIdx, phiOmIdx, phiMuRef, muRefThetaIdx, fr, iters, seed, etaScale, tau, alpha, nMc, it0, sMu0, sScale0, smPop0, sLpop0, cores, divergeStop, parNames, iterPrintControl, xform, ipPhase, ipStart, ipEnd)
 }
 
 adviOptimize_ <- function(args) {

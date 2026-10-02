@@ -8488,7 +8488,6 @@ struct CovSolveTolGuard {
   }
 };
 
-// [[Rcpp::export]]
 NumericVector foceiSetup_(const RObject &obj,
                           const RObject &data,
                           NumericVector theta,
@@ -16142,32 +16141,30 @@ struct FdIndPoint {
   bool doOmega = true;                        // false -> skip the omega phase entirely
 };
 
-//' Per-individual d(llik)/d(theta) for subjects whose augmented solve failed.
-//'
-//' Phase 8D2.  This is a SEPARATE phase and cannot be folded into the augmented solve
-//' loop: that loop runs inside OdeSwapEsBatch(odeSlotOuter), i.e. under the outer
-//' model's event-sensitivity shape, while this needs the INNER problem.  The shape is a
-//' process global that only changes at a batch boundary, so the two cannot interleave.
-//' The caller passes the subjects flagged by vaeOuterSolve_ (its "ok" attribute).
-//'
-//' Shaped like the non-fast path's numericGrad(): a sequential loop over the parameters the
-//' optimizer moves, ONE shi CENTRAL step per parameter searched on the SUMMED -2LL over the
-//' flagged subjects, then explicit +-h legs, with every likelihood evaluation parallel over
-//' subjects.  Each evaluation re-optimizes the subject through innerOpt1(), so what is
-//' differenced is a PROFILE likelihood.  Per-subject slopes are still produced by the legs, so
-//' the across-subject outlier pass and its TV refinement still work; only the step is pooled.
-//'
-//' Omega directions are covered too, in the trailing omegan columns, by the same arrangement --
-//' see the fdOmegaBuild note above for the extra constraint there (the perturbed Omega needs an
-//' R call, so it is built once per evaluation outside the parallel region).
-//' @param ids0 0-based subject ids to difference
-//' @param analyticRef per-subject analytic slopes for the subjects that DID solve, used as
-//'   the reference distribution of the outlier pass; may be a 0 x 0 matrix
-//' @return nid x (ntheta + omegan) matrix of d(llik_i)/d(par), full-theta indexing (theta
-//'   block then omega block), natural parameter scale.  NA where a subject could not be
-//'   re-optimized even at a perturbed parameter
-//' @noRd
-//[[Rcpp::export]]
+// Per-individual d(llik)/d(theta) for subjects whose augmented solve failed.
+//
+// Phase 8D2.  This is a SEPARATE phase and cannot be folded into the augmented solve
+// loop: that loop runs inside OdeSwapEsBatch(odeSlotOuter), i.e. under the outer
+// model's event-sensitivity shape, while this needs the INNER problem.  The shape is a
+// process global that only changes at a batch boundary, so the two cannot interleave.
+// The caller passes the subjects flagged by vaeOuterSolve_ (its "ok" attribute).
+//
+// Shaped like the non-fast path's numericGrad(): a sequential loop over the parameters the
+// optimizer moves, ONE shi CENTRAL step per parameter searched on the SUMMED -2LL over the
+// flagged subjects, then explicit +-h legs, with every likelihood evaluation parallel over
+// subjects.  Each evaluation re-optimizes the subject through innerOpt1(), so what is
+// differenced is a PROFILE likelihood.  Per-subject slopes are still produced by the legs, so
+// the across-subject outlier pass and its TV refinement still work; only the step is pooled.
+//
+// Omega directions are covered too, in the trailing omegan columns, by the same arrangement --
+// see the fdOmegaBuild note above for the extra constraint there (the perturbed Omega needs an
+// R call, so it is built once per evaluation outside the parallel region).
+// @param ids0 0-based subject ids to difference
+// @param analyticRef per-subject analytic slopes for the subjects that DID solve, used as
+//   the reference distribution of the outlier pass; may be a 0 x 0 matrix
+// @return nid x (ntheta + omegan) matrix of d(llik_i)/d(par), full-theta indexing (theta
+//   block then omega block), natural parameter scale.  NA where a subject could not be
+//   re-optimized even at a perturbed parameter
 NumericMatrix foceiOuterFdInd_(IntegerVector ids0, NumericMatrix analyticRef) {
   FdIndPoint _pt;                       // all defaults: the inner problem's own point
   return foceiOuterFdIndCore(ids0, analyticRef, _pt);
@@ -16419,8 +16416,7 @@ static NumericMatrix foceiOuterFdIndCore(IntegerVector ids0, NumericMatrix analy
   //                             cache and the bound test -- so a plateau can be swept
   //   NLMIXR2EST_OUTER_FD_SPAN  override the TV refinement's interval half-width
   //
-  // The settled steps come back as the "h" attribute of the returned matrix (see the end),
-  // which needs no arity change and so no src/init.c edit.
+  // The settled steps come back as the "h" attribute of the returned matrix (see the end).
   double _fdForceH = 0.0, _fdSpanOverride = 0.0;
   {
     const char *e_ = getenv("NLMIXR2EST_OUTER_FD_H");
@@ -19535,7 +19531,6 @@ static std::vector<double> _vaeIpScaleC;
 static std::vector<int> _vaeIpXPar;
 static std::string _vaeIpPhase;
 
-//[[Rcpp::export]]
 RObject vaeIterPrintStart_(NumericVector initPar, CharacterVector names,
                            List iterPrintControl, RObject xform = R_NilValue) {
   int np = initPar.size();
@@ -19567,7 +19562,6 @@ RObject vaeIterPrintStart_(NumericVector initPar, CharacterVector names,
   return R_NilValue;
 }
 
-//[[Rcpp::export]]
 RObject vaeIterPrintRow_(NumericVector x, double f, std::string phase = "") {
   _vaeIpPhase = phase;
   _vaeScale.phaseLabel = _vaeIpPhase.empty() ? NULL : _vaeIpPhase.c_str();
@@ -19575,7 +19569,6 @@ RObject vaeIterPrintRow_(NumericVector x, double f, std::string phase = "") {
   return R_NilValue;
 }
 
-//[[Rcpp::export]]
 RObject vaeIterPrintGet_(bool printLine = true) {
   _vaeScale.save = 0;
   _vaeScale.every = 0;
@@ -19660,7 +19653,7 @@ struct adviStatics {
   arma::umat omFixM;
 // saem's perNoCor rule: hold correlations at zero for the first _advi.nbCorrel
 // iterations so the variances settle first.  A file static rather than a loop
-// argument so the three adviLoop* .Call arities (and src/init.c) are untouched.
+// argument so the three adviLoop* signatures stay unchanged.
   int nbCorrel = 0;
 // ELBO convergence check (adviControl(tol=)); same file-static reasoning.
 // _advi.temper is set while a tempering warm-up is active -- a tempered ELBO is
@@ -20086,7 +20079,6 @@ List adviElboGrad_(NumericMatrix mu, NumericMatrix omega, NumericVector theta,
 // rho = etaScale * i^(-1/2+eps) / (tau + sqrt(s)).  Fixed thetas / omega diagonal
 // entries are held.  `it0` and the passed-in s-accumulators support warm resume
 // (continue a finished fit): global iteration index = it0 + local.
-//[[Rcpp::export]]
 List adviLoop_(NumericMatrix mu0, NumericMatrix omega0, NumericVector theta0,
                NumericVector logPopOmega0, IntegerVector muRefThetaIdx,
                IntegerVector thetaMuRefEta,
@@ -20370,7 +20362,6 @@ List adviElboGradFR_(NumericMatrix mu, NumericMatrix Lpack, NumericVector theta,
                       _["gTheta"] = gTheta, _["gPopLogOmega"] = gPopLogOmega);
 }
 
-//[[Rcpp::export]]
 List adviLoopFR_(NumericMatrix mu0, NumericMatrix Lpack0, NumericVector theta0,
                  NumericVector logPopOmega0, IntegerVector muRefThetaIdx,
                  IntegerVector thetaMuRefEta,
@@ -20532,7 +20523,6 @@ List adviLoopFR_(NumericMatrix mu0, NumericMatrix Lpack0, NumericVector theta0,
 // (the other is -1); phiMuRef[j] is the 0-based eta a mu-ref-theta phi recenters.
 // ===========================================================================
 
-//[[Rcpp::export]]
 List adviLoopFB_(NumericMatrix mu0, NumericMatrix scale0, NumericVector theta0,
                  NumericVector logPopOmega0, NumericVector mPop0, NumericVector LpopPack0,
                  IntegerVector phiThetaIdx, IntegerVector phiOmIdx, IntegerVector phiMuRef,

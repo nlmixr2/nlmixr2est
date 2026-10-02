@@ -70,18 +70,11 @@ extern SEXP _nlmixr2est_adviElboGrad_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_adviThetaSensInfo_(void);
 extern SEXP _nlmixr2est_odeSwapInfo_(void);
 extern SEXP _nlmixr2est_odeSwapEsNoteInstalled_(SEXP);
-extern SEXP _nlmixr2est_foceiOuterFdInd_(SEXP, SEXP);
 extern SEXP _nlmixr2est_odeSwapPlanFor_(SEXP, SEXP);
 extern SEXP _nlmixr2est_odeSwapParLayoutFor_(SEXP, SEXP);
 extern SEXP _nlmixr2est_odeSwapRetryTest_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
-extern SEXP _nlmixr2est_adviLoop_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_adviElboGradFR_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
-extern SEXP _nlmixr2est_adviLoopFR_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
-extern SEXP _nlmixr2est_adviLoopFB_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_adviOptimize_(SEXP);
-extern SEXP _nlmixr2est_vaeIterPrintStart_(SEXP, SEXP, SEXP, SEXP);
-extern SEXP _nlmixr2est_vaeIterPrintRow_(SEXP, SEXP, SEXP);
-extern SEXP _nlmixr2est_vaeIterPrintGet_(SEXP);
 
 SEXP _nlmixr2est_foceiInnerLp(SEXP, SEXP);
 SEXP _nlmixr2est_foceiSubjectRFR_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
@@ -90,10 +83,6 @@ SEXP _nlmixr2est_foceiRAllFoceFR_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP
 SEXP _nlmixr2est_likInner(SEXP, SEXP);
 SEXP _nlmixr2est_cholSE_(SEXP, SEXP);
 SEXP _nlmixr2est_shi21CentralWrap(SEXP, SEXP, SEXP, SEXP, SEXP);
-
-SEXP _nlmixr2est_foceiSetup_(SEXP, SEXP, SEXP, SEXP, SEXP,
-                             SEXP, SEXP, SEXP, SEXP, SEXP,
-                             SEXP);
 
 SEXP _nlmixr2est_foceiOuterF(SEXP);
 SEXP _nlmixr2est_foceiOuterG(SEXP);
@@ -266,18 +255,11 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_adviThetaSensInfo_", (DL_FUNC) &_nlmixr2est_adviThetaSensInfo_, 0},
   {"_nlmixr2est_odeSwapInfo_", (DL_FUNC) &_nlmixr2est_odeSwapInfo_, 0},
   {"_nlmixr2est_odeSwapEsNoteInstalled_", (DL_FUNC) &_nlmixr2est_odeSwapEsNoteInstalled_, 1},
-  {"_nlmixr2est_foceiOuterFdInd_", (DL_FUNC) &_nlmixr2est_foceiOuterFdInd_, 2},
   {"_nlmixr2est_odeSwapPlanFor_", (DL_FUNC) &_nlmixr2est_odeSwapPlanFor_, 2},
   {"_nlmixr2est_odeSwapParLayoutFor_", (DL_FUNC) &_nlmixr2est_odeSwapParLayoutFor_, 2},
   {"_nlmixr2est_odeSwapRetryTest_", (DL_FUNC) &_nlmixr2est_odeSwapRetryTest_, 7},
-  {"_nlmixr2est_adviLoop_", (DL_FUNC) &_nlmixr2est_adviLoop_, 27},
   {"_nlmixr2est_adviElboGradFR_", (DL_FUNC) &_nlmixr2est_adviElboGradFR_, 6},
-  {"_nlmixr2est_adviLoopFR_", (DL_FUNC) &_nlmixr2est_adviLoopFR_, 27},
-  {"_nlmixr2est_adviLoopFB_", (DL_FUNC) &_nlmixr2est_adviLoopFB_, 30},
   {"_nlmixr2est_adviOptimize_", (DL_FUNC) &_nlmixr2est_adviOptimize_, 1},
-  {"_nlmixr2est_vaeIterPrintStart_", (DL_FUNC) &_nlmixr2est_vaeIterPrintStart_, 4},
-  {"_nlmixr2est_vaeIterPrintRow_", (DL_FUNC) &_nlmixr2est_vaeIterPrintRow_, 3},
-  {"_nlmixr2est_vaeIterPrintGet_", (DL_FUNC) &_nlmixr2est_vaeIterPrintGet_, 1},
   {"_nlmixr2est_rxode2stateOde", (DL_FUNC) &_nlmixr2est_rxode2stateOde, 1},
   {"_nlmixr2est_iniLbfgsb3ptr", (DL_FUNC) &_nlmixr2est_iniLbfgsb3ptr, 1},
   {"_nlmixr2est_iniN1qn1cPtrs", (DL_FUNC) &_nlmixr2est_iniN1qn1cPtrs, 1},
@@ -324,7 +306,6 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_cholSE_", (DL_FUNC) &_nlmixr2est_cholSE_, 2},
   {"_nlmixr2est_shi21CentralWrap", (DL_FUNC) &_nlmixr2est_shi21CentralWrap, 5},
   {"_nlmixr2est_likInner", (DL_FUNC) &_nlmixr2est_likInner, 2},
-  {"_nlmixr2est_foceiSetup_", (DL_FUNC) &_nlmixr2est_foceiSetup_, 11},
   {"_nlmixr2est_foceiOuterF", (DL_FUNC) &_nlmixr2est_foceiOuterF, 1},
   {"_nlmixr2est_foceiOuterG", (DL_FUNC) &_nlmixr2est_foceiOuterG, 1},
   {"_nlmixr2est_foceiOuterH", (DL_FUNC) &_nlmixr2est_foceiOuterH, 2},
