@@ -55,10 +55,6 @@ foceiIndEventCounts_ <- function() {
     .Call(`_nlmixr2est_foceiIndEventCounts_`)
 }
 
-freeFocei <- function() {
-    invisible(.Call(`_nlmixr2est_freeFocei`))
-}
-
 foceiInnerLp <- function(eta, id = 1L) {
     .Call(`_nlmixr2est_foceiInnerLp`, eta, id)
 }
@@ -81,14 +77,6 @@ likInner <- function(eta, id = 1L) {
 
 .foceiCalcGrad <- function() {
     .Call(`_nlmixr2est_foceiCalcGradGet`)
-}
-
-foceiLik <- function(theta) {
-    .Call(`_nlmixr2est_foceiLik`, theta)
-}
-
-foceiOfv <- function(theta) {
-    .Call(`_nlmixr2est_foceiOfv`, theta)
 }
 
 #' Install the pooled analytic-gradient setup for a non-focei caller
@@ -580,10 +568,6 @@ nlmGetParHist <- function(p = TRUE) {
     .Call(`_nlmixr2est_nlmGetParHist`, p)
 }
 
-nlmAdjustHessian <- function(Hin, theta) {
-    .Call(`_nlmixr2est_nlmAdjustHessian`, Hin, theta)
-}
-
 nlmAdjustCov <- function(CovIn, theta) {
     .Call(`_nlmixr2est_nlmAdjustCov`, CovIn, theta)
 }
@@ -704,10 +688,6 @@ odeSwapEsNoteInstalled_ <- function(slot) {
 
 odeSwapInfo_ <- function() {
     .Call(`_nlmixr2est_odeSwapInfo_`)
-}
-
-augPredTrans <- function(pred, ipred, lambda, yjIn, low, hi) {
-    .Call(`_nlmixr2est_augPredTrans`, pred, ipred, lambda, yjIn, low, hi)
 }
 
 #' Get the ODE states of a model (rxode2 v3/v4 compatible)

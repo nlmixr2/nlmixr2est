@@ -1390,20 +1390,6 @@ RObject nlmGetParHist(bool p=true) {
 
 
 //[[Rcpp::export]]
-RObject nlmAdjustHessian(RObject Hin, arma::vec theta) {
-  if (!nlmOp.loaded) stop("'nlm' problem not loaded");
-  arma::mat J(nlmOp.ntheta, nlmOp.ntheta);
-  arma::mat H = as<arma::mat>(Hin);
-  for (int i = 0; i < nlmOp.ntheta; ++i) {
-    J(i, i) =1.0/scaleAdjustGradScale(&(nlmOp.scale), 1.0, &theta[0], i);
-  }
-  H = J * H * J;
-  RObject ret = wrap(H);
-  ret.attr("dimnames") = Hin.attr("dimnames");
-  return ret;
-}
-
-//[[Rcpp::export]]
 RObject nlmAdjustCov(RObject CovIn, arma::vec theta) {
   if (!nlmOp.loaded) stop("'nlm' problem not loaded");
   arma::mat J(nlmOp.ntheta, nlmOp.ntheta);

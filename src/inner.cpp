@@ -1492,14 +1492,6 @@ extern "C" void rxOptionsFreeFocei() {
   niterGrad.clear();
 }
 
-//[[Rcpp::export]]
-void freeFocei(){
-  rxOptionsFreeFocei();
-  // Drop the peer-solver registry too: its entry points point into the fit's
-  // compiled model DLLs, so it must not outlive the fit.
-  odeSwapClearAll();
-}
-
 
 rxSolveF rxInner;
 rxSolveF rxPred;
@@ -6747,16 +6739,6 @@ static inline double foceiOfv0(double *theta){
   }
   nnOuterStep(ret);
   return ret;
-}
-
-//[[Rcpp::export]]
-double foceiLik(NumericVector theta){
-  return foceiLik0(&theta[0]);
-}
-
-//[[Rcpp::export]]
-double foceiOfv(NumericVector theta){
-  return foceiOfv0(&theta[0]);
 }
 
 void foceiPhiOne(Environment e, List &retC, List &retH, int mixest) {

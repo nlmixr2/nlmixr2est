@@ -254,15 +254,6 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-// freeFocei
-void freeFocei();
-RcppExport SEXP _nlmixr2est_freeFocei() {
-BEGIN_RCPP
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    freeFocei();
-    return R_NilValue;
-END_RCPP
-}
 // foceiInnerLp
 NumericVector foceiInnerLp(NumericVector eta, int id);
 RcppExport SEXP _nlmixr2est_foceiInnerLp(SEXP etaSEXP, SEXP idSEXP) {
@@ -326,28 +317,6 @@ BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     rcpp_result_gen = Rcpp::wrap(foceiCalcGradGet());
-    return rcpp_result_gen;
-END_RCPP
-}
-// foceiLik
-double foceiLik(NumericVector theta);
-RcppExport SEXP _nlmixr2est_foceiLik(SEXP thetaSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< NumericVector >::type theta(thetaSEXP);
-    rcpp_result_gen = Rcpp::wrap(foceiLik(theta));
-    return rcpp_result_gen;
-END_RCPP
-}
-// foceiOfv
-double foceiOfv(NumericVector theta);
-RcppExport SEXP _nlmixr2est_foceiOfv(SEXP thetaSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< NumericVector >::type theta(thetaSEXP);
-    rcpp_result_gen = Rcpp::wrap(foceiOfv(theta));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -1466,18 +1435,6 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-// nlmAdjustHessian
-RObject nlmAdjustHessian(RObject Hin, arma::vec theta);
-RcppExport SEXP _nlmixr2est_nlmAdjustHessian(SEXP HinSEXP, SEXP thetaSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< RObject >::type Hin(HinSEXP);
-    Rcpp::traits::input_parameter< arma::vec >::type theta(thetaSEXP);
-    rcpp_result_gen = Rcpp::wrap(nlmAdjustHessian(Hin, theta));
-    return rcpp_result_gen;
-END_RCPP
-}
 // nlmAdjustCov
 RObject nlmAdjustCov(RObject CovIn, arma::vec theta);
 RcppExport SEXP _nlmixr2est_nlmAdjustCov(SEXP CovInSEXP, SEXP thetaSEXP) {
@@ -1637,22 +1594,6 @@ BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     rcpp_result_gen = Rcpp::wrap(odeSwapInfo_());
-    return rcpp_result_gen;
-END_RCPP
-}
-// augPredTrans
-RObject augPredTrans(NumericVector& pred, NumericVector& ipred, NumericVector& lambda, RObject& yjIn, NumericVector& low, NumericVector& hi);
-RcppExport SEXP _nlmixr2est_augPredTrans(SEXP predSEXP, SEXP ipredSEXP, SEXP lambdaSEXP, SEXP yjInSEXP, SEXP lowSEXP, SEXP hiSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< NumericVector& >::type pred(predSEXP);
-    Rcpp::traits::input_parameter< NumericVector& >::type ipred(ipredSEXP);
-    Rcpp::traits::input_parameter< NumericVector& >::type lambda(lambdaSEXP);
-    Rcpp::traits::input_parameter< RObject& >::type yjIn(yjInSEXP);
-    Rcpp::traits::input_parameter< NumericVector& >::type low(lowSEXP);
-    Rcpp::traits::input_parameter< NumericVector& >::type hi(hiSEXP);
-    rcpp_result_gen = Rcpp::wrap(augPredTrans(pred, ipred, lambda, yjIn, low, hi));
     return rcpp_result_gen;
 END_RCPP
 }
