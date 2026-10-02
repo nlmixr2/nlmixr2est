@@ -11027,6 +11027,53 @@ RObject nlmixr2Hess_(RObject thetaT, RObject fT, RObject e,
 ////////////////////////////////////////////////////////////////////////////////
 // Covariance functions
 
+// cholSE0 of the R (X = "R") or S ("S") matrix M, stored for foceiCovUsable() as
+// e["<X>.pd"], e["<X>.E"] and e["chol<X>"].
+static void foceiCovChol(Environment e, const arma::mat &M, const std::string &X) {
+  arma::mat ch, E;
+  bool pd = cholSE0(ch, E, M, op_focei.cholSEtol);
+  e[X + ".pd"] = wrap(pd);
+  e[X + ".E"] = wrap(E);
+  e["chol" + X] = wrap(ch);
+}
+
+// Whether the R (X = "R") or S ("S") matrix M0 can be used.  When cholSE0 found it
+// not positive definite it is repaired: cholSE0's modified factor if every added
+// diagonal is within cholAccept (label "r+"/"s+"), else chol(sqrtm(M0 %*% M0))
+// ("|r|"/"|s|", suggested by https://www.tandfonline.com/doi/pdf/10.1198/106186005X78800),
+// which replaces e["chol<X>"].
+static bool foceiCovUsable(Environment e, const std::string &X, const arma::mat &M0,
+                           std::string &lab, bool &checkSandwich) {
+  if (as<bool>(e[X + ".pd"])) return true;
+  std::string x(1, (char)std::tolower(X[0]));
+  if (!arma::any(as<arma::vec>(e[X + ".E"]) > op_focei.cholAccept)) {
+    lab = x + "+";
+    checkSandwich = true;
+    return true;
+  }
+  arma::cx_mat H1;
+  arma::mat ch;
+  if (!arma::sqrtmat(H1, M0*M0) || arma::any(arma::any(arma::imag(H1), 0)) ||
+      !arma::chol(ch, arma::real(H1))) return false;
+  e["chol" + X] = wrap(ch);
+  lab = "|" + x + "|";
+  checkSandwich = true;
+  return true;
+}
+
+// X^{-1} from X = U'U (U upper triangular), through the pseudo-inverse of U, with a
+// warning naming `what`, when U is singular (then true).
+static bool foceiCholInv(const arma::mat &U, arma::mat &Xinv, const char *what) {
+  arma::mat Ui;
+  bool singular = !arma::inv(Ui, arma::trimatu(U));
+  if (singular) {
+    warning(_("%s matrix seems singular; Using pseudo-inverse"), what);
+    Ui = arma::pinv(arma::trimatu(U));
+  }
+  Xinv = Ui * Ui.t();
+  return singular;
+}
+
 // R-callable bridge to shi21Central (analytic-cov 3rd-order tensor): `f` returns
 // the vector to difference (NULL/short -> NaN, which shi21Central tolerates).
 // Serial use only (single static holder); the covariance step is not parallel.
@@ -11067,11 +11114,7 @@ int foceiCalcR(Environment e){
       if (!Rf_isNull(res)) {
         arma::mat H0 = as<arma::mat>(res);
         e["R.0"] = wrap(H0);
-        arma::mat cholR0, RE0;
-        bool rpd0 = cholSE0(cholR0, RE0, H0, op_focei.cholSEtol);
-        e["R.pd"] = wrap(rpd0);
-        e["R.E"]  = wrap(RE0);
-        e["cholR"] = wrap(cholR0);
+        foceiCovChol(e, H0, "R");
         // the augmented sensitivity solves replaced the fit's global solve; restore it
         // so foceiFinalizeTables (llikObs, tolFactor) reads the fit, not the last
         // subject.  If the restore fails the global solve is unusable -> abort the cov
@@ -11120,12 +11163,7 @@ int foceiCalcR(Environment e){
   if (!fdHessian(obj, theta.memptr(), op_focei.npars, op_focei.lastOfv, h.memptr(), H,
                  0.5, true, false)) return 0;
   e["R.0"] = H;
-  arma::mat cholR;
-  arma::mat RE;
-  bool rpd = cholSE0(cholR, RE, H, op_focei.cholSEtol);
-  e["R.pd"] =  wrap(rpd);
-  e["R.E"] =  wrap(RE);
-  e["cholR"] = wrap(cholR);
+  foceiCovChol(e, H, "R");
   return 1;
 }
 
@@ -11432,11 +11470,7 @@ int foceiS(double *theta, Environment e, bool &hasZero){
   if (sInfoPer < op_focei.smatPer) {
     return 0;
   }
-  arma::mat cholS;
-  arma::mat SE;
-  e["S.pd"] =  cholSE0(cholS, SE, S, op_focei.cholSEtol);
-  e["S.E"] =  wrap(SE);
-  e["cholS"] = wrap(cholS);
+  foceiCovChol(e, S, "S");
   return 1;
 }
 //' Return the square root of general square matrix A
@@ -11669,10 +11703,9 @@ NumericMatrix foceiCalcCov(Environment e){
 
         bool isPd;
         std::string rstr = "r";
-        bool checkSandwich = false, checkSandwich2 = false;
+        bool checkSandwich = false;
         if (op_focei.covMethod == 1 || op_focei.covMethod == 2) {
           // R matrix based covariance
-          arma::mat cholR;
           if (!e.exists("cholR")){
             foceiCalcR(e);
             // covType="analytic" signals an unrecoverable abort (the fit's global
@@ -11690,41 +11723,7 @@ NumericMatrix foceiCalcCov(Environment e){
             op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
           }
           if (e.exists("cholR")) {
-            isPd = as<bool>(e["R.pd"]);
-            if (!isPd){
-              isPd = true;
-              arma::vec E = as<arma::vec>(e["R.E"]);
-              for (int j = E.size(); j--;){
-                if (E[j] > op_focei.cholAccept){
-                  isPd=false;
-                  break;
-                }
-              }
-              if (isPd){
-                rstr = "r+";
-                checkSandwich = true;
-              }
-            }
-            if (!isPd){
-              // Suggted by https://www.tandfonline.com/doi/pdf/10.1198/106186005X78800
-              mat H0 = as<arma::mat>(e["R.0"]);
-              H0 = H0*H0;
-              cx_mat H1;
-              bool success = sqrtmat(H1,H0);
-              if (success){
-                mat im = arma::imag(H1);
-                mat re = arma::real(H1);
-                if (!arma::any(arma::any(im,0))){
-                  success= chol(H0, re);
-                  if (success){
-                    e["cholR"] = wrap(H0);
-                    rstr = "|r|";
-                    checkSandwich = true;
-                    isPd = true;
-                  }
-                }
-              }
-            }
+            isPd = foceiCovUsable(e, "R", as<arma::mat>(e["R.0"]), rstr, checkSandwich);
             op_focei.cur += op_focei.npars*2;
             op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
             if (!isPd){
@@ -11734,16 +11733,10 @@ NumericMatrix foceiCalcCov(Environment e){
               op_focei.cur += op_focei.npars*2;
               op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
             } else {
-              cholR = as<arma::mat>(e["cholR"]);
+              arma::mat cholR = as<arma::mat>(e["cholR"]);
               e["R"] = wrap(trans(cholR) * cholR);
               if (!e.exists("Rinv")){
-                bool success  = inv(Rinv, trimatu(cholR));
-                if (!success){
-                  warning(_("Hessian (R) matrix seems singular; Using pseudo-inverse"));
-                  Rinv = pinv(trimatu(cholR));
-                  checkSandwich = true;
-                }
-                Rinv = Rinv * Rinv.t();
+                if (foceiCholInv(cholR, Rinv, "Hessian (R)")) checkSandwich = true;
                 e["Rinv"] = wrap(Rinv);
               } else {
                 Rinv = as<arma::mat>(e["Rinv"]);
@@ -11782,41 +11775,7 @@ NumericMatrix foceiCalcCov(Environment e){
             op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
           }
           if (e.exists("cholS")) {
-            isPd = as<bool>(e["S.pd"]);
-            if (!isPd){
-              isPd=true;
-              arma::vec E = as<arma::vec>(e["S.E"]);
-              for (int j = E.size(); j--;){
-                if (E[j] > op_focei.cholAccept){
-                  isPd=false;
-                  break;
-                }
-              }
-              if (isPd){
-                sstr="s+";
-                checkSandwich = true;
-              }
-            }
-            if (!isPd){
-              // Suggted by https://www.tandfonline.com/doi/pdf/10.1198/106186005X78800
-              mat H0 = as<arma::mat>(e["S0"]);
-              H0 = H0*H0;
-              cx_mat H1;
-              bool success = sqrtmat(H1,H0);
-              if (success){
-                mat im = arma::imag(H1);
-                mat re = arma::real(H1);
-                if (!arma::any(arma::any(im,0))){
-                  success= chol(H0,re);
-                  if (success){
-                    e["cholS"] = wrap(H0);
-                    sstr = "|s|";
-                    checkSandwich = true;
-                    isPd = true;
-                  }
-                }
-              }
-            }
+            isPd = foceiCovUsable(e, "S", as<arma::mat>(e["S0"]), sstr, checkSandwich);
             if (!isPd){
               warning(_("S matrix non-positive definite"));
               if (op_focei.covMethod == 1){
@@ -11836,31 +11795,21 @@ NumericMatrix foceiCalcCov(Environment e){
                 S = trans(cholS) * cholS;
                 e["S"] = wrap(S);
               }
+              // Issue #666: the S-matrix (OPG/cross-product) covariance is
+              // Sinv = S^{-1}.  This was 4*Sinv, which made every covMethod="s"
+              // SE 2x too large.  Confirmed against the empirical sampling
+              // covariance of a known data-generating model: r, the sandwich,
+              // and S^{-1} all match the true Cov(theta_hat), while 4*S^{-1}
+              // is ~2x.  covS also feeds the selection heuristic below, so it
+              // is fixed at source alongside covR.
+              arma::mat Sinv;
+              foceiCholInv(cholS, Sinv, "S");
               if (op_focei.covMethod == 1){
                 e["covRS"] = Rinv * S *Rinv;
                 arma::mat covRS = as<arma::mat>(e["covRS"]);
-                mat Sinv;
-                bool success;
-                success = inv(Sinv, trimatu(cholS));
-                if (!success){
-                  warning(_("S matrix seems singular; Using pseudo-inverse"));
-                  Sinv = pinv(trimatu(cholS));
-                }
-                Sinv = Sinv * Sinv.t();
-                // Issue #666: the S-matrix (OPG/cross-product) covariance is
-                // Sinv = S^{-1}.  This was 4*Sinv, which made every covMethod="s"
-                // SE 2x too large.  Confirmed against the empirical sampling
-                // covariance of a known data-generating model: r, the sandwich,
-                // and S^{-1} all match the true Cov(theta_hat), while 4*S^{-1}
-                // is ~2x.  covS also feeds the selection heuristic below, so it
-                // is fixed at source alongside covR.
                 e["covS"]= Sinv;
-                if (!checkSandwich) {
-                  bool covRSsmall = arma::any(abs(covRS.diag()) < op_focei.covSmall);
-                  if (covRSsmall) {
-                    checkSandwich2 = true;
-                  }
-                }
+                bool covRSsmall = arma::any(abs(covRS.diag()) < op_focei.covSmall);
+                bool checkSandwich2 = !checkSandwich && covRSsmall;
                 if (checkSandwich || checkSandwich2){
                   if (!checkSandwich2 && rstr == "r"){
                     // Use covR
@@ -11878,7 +11827,6 @@ NumericMatrix foceiCalcCov(Environment e){
                     // covR/covS scale, so compare in that scale (covR*2, covS*4) to keep
                     // the estimator choice invariant to the rescale; the *installed*
                     // covR/covS/covRS (below) stay on the corrected #666 scale.
-                    bool covRSsmall = arma::any(abs(covRS.diag()) < op_focei.covSmall);
                     double covRSd= sum(covRS.diag());
                     arma::mat covR = as<arma::mat>(e["covR"]);
                     bool covRsmall = arma::any(abs(2.0*covR.diag()) < op_focei.covSmall);
@@ -11915,14 +11863,6 @@ NumericMatrix foceiCalcCov(Environment e){
                   e["cov"] = covRS;
                 }
               } else {
-                mat Sinv;
-                bool success;
-                success = inv(Sinv, trimatu(cholS));
-                if (!success){
-                  warning(_("S matrix seems singular; Using pseudo-inverse"));
-                  Sinv = pinv(trimatu(cholS));
-                }
-                Sinv = Sinv * Sinv.t();
                 op_focei.cur++;
                 op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
                 e["cov"]= Sinv;   // issue #666: S-matrix covariance is S^{-1}, not 4*S^{-1}
@@ -11961,8 +11901,9 @@ NumericMatrix foceiCalcCov(Environment e){
           if (sHasZero) {
             warning(_("S matrix had problems solving for some subject and parameters"));
           }
-          if (op_focei.covMethod == 1){
-            bool doWarn=false;
+          bool doWarn=false;
+          if (op_focei.covMethod != 3){
+            // the R matrix is part of the covariance
             if (rstr == "|r|"){
               warning(_("R matrix non-positive definite but corrected by R = sqrtm(R%%*%%R)"));
               doWarn=true;
@@ -11970,6 +11911,8 @@ NumericMatrix foceiCalcCov(Environment e){
               warning(_("R matrix non-positive definite but corrected (because of cholAccept)"));
               doWarn=true;
             }
+          }
+          if (op_focei.covMethod == 1){
             if (sstr == "|s|"){
               warning(_("S matrix non-positive definite but corrected by S = sqrtm(S%%*%%S)"));
               doWarn=true;
@@ -11983,11 +11926,6 @@ NumericMatrix foceiCalcCov(Environment e){
             rstr =  rstr + "," + sstr;
             e["covMethod"] = wrap(rstr);
           } else if (op_focei.covMethod == 2){
-            if (rstr == "|r|"){
-              warning(_("R matrix non-positive definite but corrected by R = sqrtm(R%%*%%R)"));
-            } else if (rstr == "r+"){
-              warning(_("R matrix non-positive definite but corrected (because of cholAccept)"));
-            }
             e["covMethod"] = wrap(rstr);
             if (origCov != 2){
               if (checkSandwich){
@@ -11997,9 +11935,6 @@ NumericMatrix foceiCalcCov(Environment e){
               }
             }
           } else if (op_focei.covMethod == 3){
-            if (sHasZero) {
-              warning(_("S matrix had problems solving for some subject and parameters"));
-            }
             e["covMethod"] = wrap(sstr);
             if (origCov != 2){
               if (checkSandwich){
