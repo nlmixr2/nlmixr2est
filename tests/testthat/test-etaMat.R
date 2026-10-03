@@ -73,56 +73,32 @@ nmTest({
     ## $iov reports the occasion etas times their standard deviation; the
     ## expanded model's occasion etas have unit variance
     .iovMod <- function() {
-      ini({
-        tka <- 0.45
-        tcl <- 1
-        tv <- 3.45
-        eta.ka ~ 0.6
-        eta.cl ~ 0.3
-        eta.v ~ 0.1
-        iov.cl ~ 0.04 | occ
-        add.sd <- 0.7
-      })
-      model({
-        ka <- exp(tka + eta.ka)
-        cl <- exp(tcl + eta.cl + iov.cl)
-        v <- exp(tv + eta.v)
-        linCmt() ~ add(add.sd)
-      })
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- 0.7
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1; iov.cl ~ 0.04 | occ })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl + iov.cl); v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd) })
     }
     .d <- nlmixr2data::theo_md
     .d$occ <- 1L + (.d$TIME >= 144)
     f <- .nlmixr(.iovMod, .d, "focei", foceiControl(print = 0L, maxOuterIterations = 0L, covMethod = ""))
     expect_equal(colnames(f$etaMat), c("eta.ka", "eta.cl", "eta.v", "rx.iov.cl.1", "rx.iov.cl.2"))
     ## held fixed, the fit's own etas reproduce its objective
-    f2 <- .nlmixr(
-      f$ui,
-      .d,
-      "focei",
-      foceiControl(print = 0L, maxOuterIterations = 0L, maxInnerIterations = 0L, covMethod = "", etaMat = f$etaMat)
+    .ctl <- foceiControl(
+      print = 0L,
+      maxOuterIterations = 0L,
+      maxInnerIterations = 0L,
+      covMethod = "",
+      etaMat = f$etaMat
     )
-    expect_equal(f2$objf, f$objf, tolerance = 1e-8)
+    expect_equal(.nlmixr(f$ui, .d, "focei", .ctl)$objf, f$objf, tolerance = 1e-8)
   })
 
   test_that(".foceiGradDirect() refits with an etaMat of etas only", {
     .mixMod <- function() {
-      ini({
-        tka <- 0.45
-        tcl1 <- log(c(0, 2.7, 100))
-        tcl2 <- log(c(0, 0.1, 120))
-        tv <- 3.45
-        p1 <- 0.3
-        eta.ka ~ 0.6
-        eta.cl ~ 0.3
-        eta.v ~ 0.1
-        add.sd <- 0.7
-      })
-      model({
-        ka <- exp(tka + eta.ka)
-        cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl))
-        v <- exp(tv + eta.v)
-        linCmt() ~ add(add.sd)
-      })
+      ini({ tka <- 0.45; tcl1 <- log(c(0, 2.7, 100)); tcl2 <- log(c(0, 0.1, 120)); tv <- 3.45; p1 <- 0.3
+        add.sd <- 0.7; eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1 })
+      model({ ka <- exp(tka + eta.ka); cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl)); v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd) })
     }
     f <- .nlmixr(
       .mixMod,
