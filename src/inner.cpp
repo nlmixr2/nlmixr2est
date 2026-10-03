@@ -10208,9 +10208,8 @@ List nlmixr2Gill83_(Function what, NumericVector args, Environment envir,
   NumericVector rEpsC(args.size());
   IntegerVector retN(args.size());
   NumericVector fN(args.size());
-  // f at the base point, taken once at the first searched parameter (it was never
-  // set when `which` excluded the last one); reported on every row, NA when no
-  // parameter is searched
+  // f at the base point, taken once at the first searched parameter and reported
+  // on every row; NA when no parameter is searched
   double f0 = NA_REAL;
   bool haveF0 = false;
   for (int i = args.size(); i--;){

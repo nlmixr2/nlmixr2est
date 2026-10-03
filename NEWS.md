@@ -373,13 +373,13 @@
   in the `f` column of every row; it was 0 on the rows `which` left out.
 
 - The fit table of a model that uses `lag()` (or `lead()`, `diff()`, ...) of a
-  calculated variable now has the right `PRED`, `IPRED` and residuals, for
-  every estimation method.  The table read the prediction from the column
-  after `time`, which for such a model is the lagged variable (it is output
-  ahead of the prediction), and the residual variance from the column after
-  that: `IPRED` was the variable itself (for `cp <- 0.5 * c0 + 0.5 *
-  lag(c0)`, `IPRED` was `c0`).  The prediction, its variance and the
-  simulations `npde` uses are now found by name.
+  calculated variable now has the right `PRED`, `IPRED` and residuals (checked
+  for `nlm` and a zero-iteration `focei` fit).  The table read the prediction
+  from the column after `time`, which for such a model is the lagged variable
+  (it is output ahead of the prediction), and the residual variance from the
+  column after that: `IPRED` was the variable itself (for `cp <- 0.5 * c0 +
+  0.5 * lag(c0)`, `IPRED` was `c0`).  The table step now finds the prediction
+  and its variance by name, and stops naming a column it cannot find.
 
 - The nlm-family gradient (`nlm`, `nlminb`, `optim`, `n1qn1`, `lbfgsb3c`,
   `trust`, `nls`) of a model that uses `lag()` (or another history function)
@@ -410,7 +410,14 @@
   as those of `nlm` did: the optimizer's own, `trust`'s unverified stationary
   point, and the solver reports (NaN gradients resolved by finite
   differences, NaN solves replaced by 0, loosened ODE tolerances).  They
-  were dropped.
+  were dropped.  For packages that call `.nlmFamilyFitGeneric()`:
+  `emitFitWarnings` now defaults to `TRUE` (`FALSE` drops them as before), and
+  `.nlmFinalizeList()` raises the covariance step's report as a warning
+  instead of returning it as `$covWarning`.
+
+- The internal, exported `.nlmixrNlsFun()` is removed: it solved a model
+  that nothing set up any more.  `est = "nls"` calls `.nlmixrNlsFunValGrad()`,
+  `.nlmixrNlsFunVal()` and `.nlmixrNlsFunGrad()`.
 
 
 # nlmixr2est 7.1.0
