@@ -230,6 +230,24 @@
   (`hessEpsLlik`, `gillKcovLlik`, `gillStepCovLlik`, `gillFtolCovLlik`,
   `rmatNormLlik`, `smatNormLlik`) no longer sets the option of the same name
   without `Llik` to its value as well.
+- The finite-difference covariance of the FOCEi family (`covMethod = "r,s"`,
+  `"r"`, `"s"` and their `covFull` shapes) now differentiates the marginal
+  objective the same way in every leg: each leg optimizes the ETAs again,
+  starting from the ETAs the fit converged to.  The legs used to start from
+  wherever the previous leg had left them, and the full (`covFull = TRUE`)
+  stage restarted every probe at ETA = 0, so the result depended on the order
+  the legs ran in.  The centre of the R matrix's stencil is now evaluated the
+  same way as the legs.  It was the final objective, whose ETAs another
+  procedure had optimized (with `covSolveTol`, at another ODE tolerance too),
+  and that offset pulled every diagonal of R down: on `theo_sd` at the initial
+  estimates all of them were negative.  With tight covariance solves and inner
+  problem (`covSolveTol = 1e-9`, `trustFterm = trustMterm = 1e-8`) the
+  finite-difference R now matches the analytic observed information within
+  1% on `theo_sd`; the theta-only `"r"` standard error of `tka` was 0.11
+  there, against 0.19.  At the default tolerances (ODE `rtol = 1e-3`) the
+  finite-difference covariance of an ODE model like this one is dominated by
+  numerical noise, before and after this change, so its default standard
+  errors move by about as much as that noise.
 
 ### Covariance
 

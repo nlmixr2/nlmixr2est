@@ -223,35 +223,49 @@ nmTest({
     expect_equal(.seNum, signif(unname(fit$parFixedDf["add.sd", "SE"]), 3), tolerance = 1e-2)
   })
 
-  test_that("finite-difference covMethod='r,s' covFull=TRUE needs a positive-definite full R", {
+  test_that("finite-difference covMethod='r,s' covFull=TRUE installs the true full FD sandwich", {
     skip_on_cran()
     skip_if_not_installed("nlmixr2data")
-    # the full theta+sigma+Omega pieces span the SAME parameter set as the analytic engine
-    # (structural + residual thetas plus the Omega variance-covariance elements; Omega
-    # perturbed on the variance scale, no Jacobian); the sandwich they assemble into is
-    # tested on hand-made pieces in test-cov-fdfull-install.R
+    # the full theta+sigma+Omega covariance over the SAME parameter set as the analytic engine
+    # (structural + residual thetas plus the Omega variance-covariance elements; Omega perturbed
+    # on the variance scale, no Jacobian), assembled as a TRUE sandwich solve(Rfull) %*% Sfull
+    # %*% solve(Rfull) -- not merely the Hessian inverse.  The covariance solves are tight
+    # (covSolveTol): at the fit's own rtol = 1e-4 the finite differences are noise-dominated
+    # and whether the full R comes out positive definite is luck.  The sandwich made from an
+    # indefinite R is refused; that is tested on hand-made pieces in
+    # test-cov-fdfull-install.R.
+    fa <- suppressMessages(nlmixr(
+      .cov_one_cmt,
+      nlmixr2data::theo_sd,
+      "focei",
+      foceiControl(sigdig = 4, print = 0L, covMethod = "analytic", covFull = TRUE)
+    ))
     ff <- suppressMessages(nlmixr(
       .cov_one_cmt,
       nlmixr2data::theo_sd,
       "focei",
-      foceiControl(sigdig = 4, print = 0L, covMethod = "r,s", covFull = TRUE)
+      foceiControl(sigdig = 4, print = 0L, covMethod = "r,s", covFull = TRUE, covSolveTol = 1e-9)
     ))
     .nm <- c("tka", "tcl", "tv", "add.sd", "om.eta.ka", "om.eta.cl", "om.eta.v")
+    # full theta+sigma+Omega cov, and covR/covS/covRS carry the same full shape
+    expect_identical(ff$covMethod, "r,s (full)")
+    expect_setequal(rownames(ff$cov), .nm)
+    expect_setequal(rownames(ff$covRS), .nm)
+    expect_setequal(rownames(ff$covR), .nm)
+    expect_setequal(rownames(ff$covS), .nm)
+    .seF <- sqrt(diag(ff$cov))
+    expect_true(all(is.finite(.seF)) && all(.seF > 0))
+    # it is the sandwich Rinv %*% S %*% Rinv, not the Hessian inverse .fdFullCov
     .Rinv <- get(".fdFullCov", ff$env)
     .S <- get(".fdFullS", ff$env)
-    expect_setequal(rownames(.Rinv), .nm)
-    # At this stopping point the full R is not positive definite (the theta-only one is):
-    # its sandwich Rinv S Rinv is positive definite only because S is, so it is not a
-    # covariance.  The native theta-only sandwich is kept, and the usable full S stays
-    # swappable.
-    expect_lt(min(eigen(.Rinv, symmetric = TRUE, only.values = TRUE)$values), 0)
-    expect_identical(ff$covMethod, "r,s")
-    expect_setequal(rownames(ff$cov), .nm[1:4])
-    expect_setequal(rownames(ff$covR), .nm[1:4])
-    expect_setequal(rownames(ff$covRS), .nm[1:4])
-    expect_true("\"r,s (full)\" covariance needs a positive-definite R; kept \"r,s\"" %in% ff$runInfo)
-    expect_false("r (full)" %in% names(ff$env$covList))
-    expect_equal(unname(ff$env$covList[["s (full)"]]), unname(solve(.S)), tolerance = 1e-6)
+    expect_gt(min(eigen(.Rinv, symmetric = TRUE, only.values = TRUE)$values), 0)
+    expect_equal(unname(unclass(ff$cov)), unname(.Rinv %*% .S %*% .Rinv), tolerance = 1e-6)
+    expect_false(isTRUE(all.equal(unclass(ff$cov), unclass(.Rinv), check.attributes = FALSE)))
+    # the structural theta SEs stay in the analytic ballpark (sandwich != observed information,
+    # so not identical, but the same order of magnitude on this model)
+    .thF <- sqrt(diag(ff$cov))[c("tka", "tcl", "tv")]
+    .thA <- sqrt(diag(fa$cov))[c("tka", "tcl", "tv")]
+    expect_equal(unname(.thF), unname(.thA), tolerance = 0.25)
   })
 
   test_that("finite-difference covMethod='s' covFull=TRUE installs solve(Sfull)", {
@@ -303,12 +317,13 @@ nmTest({
     d <- nlmixr2data::theo_sd
     d$CENS <- ifelse(d$DV < 2 & d$EVID == 0, 1L, 0L)
     d$DV[d$CENS == 1] <- 2
-    # out of scope -> foceiCalcR warns (visibly) and uses the finite-difference cov
+    # out of scope -> foceiCalcR warns (visibly) and uses the finite-difference cov, with
+    # its solves tight (covSolveTol) so that the full R is a reliable positive definite
     fit <- suppressWarnings(suppressMessages(nlmixr(
       cm,
       d,
       "focei",
-      foceiControl(sigdig = 4, print = 0L, covMethod = "analytic", censOption = "laplace")
+      foceiControl(sigdig = 4, print = 0L, covMethod = "analytic", censOption = "laplace", covSolveTol = 1e-9)
     )))
     expect_true(is.matrix(fit$cov))
     # analytic bowed out (laplace determinant is out of scope) -> the finite-difference
@@ -415,12 +430,13 @@ nmTest({
     expect_identical(.covBaseName(fFp$covMethod), "analytic")
     expect_true(any(grepl("^om\\.", rownames(fFp$cov))))
     # the laplace censored determinant is out of analytic scope -> the finite-difference
-    # sandwich; with covFull=TRUE (default) that fallback carries the full cov (om. rows)
+    # sandwich; with covFull=TRUE (default) that fallback carries the full cov (om. rows).
+    # Its solves are tight (covSolveTol), as in the fallback test above.
     fL <- suppressWarnings(suppressMessages(nlmixr(
       cm,
       dM3,
       "focei",
-      foceiControl(sigdig = 4, print = 0L, covMethod = "analytic", censOption = "laplace")
+      foceiControl(sigdig = 4, print = 0L, covMethod = "analytic", censOption = "laplace", covSolveTol = 1e-9)
     )))
     expect_false(identical(.covBaseName(fL$covMethod), "analytic"))
     expect_true(any(grepl("^om\\.", rownames(fL$cov))))

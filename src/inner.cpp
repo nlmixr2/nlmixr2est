@@ -1805,7 +1805,15 @@ static inline void foceiPushFullTheta() {
   }
 }
 
+// True while the covariance step owns the start of every inner problem (CovEtaStart,
+// below): innerOpt1() then starts from the eta it finds, with no start search or reset.
+static bool _covEtaStartOn = false;
+static void covEtaStartPin();
+
 void updateTheta(double *theta){
+  // Covariance step: every move of theta starts each subject's inner problem afresh from
+  // the fit's ETAs (a no-op otherwise)
+  covEtaStartPin();
   // Theta is the acutal theta
   unsigned int j, k;
   // covFdDirect: the FD-full covariance has already written the natural-scale
@@ -3988,7 +3996,11 @@ static inline int innerOpt1(int id, int likId) {
   // Use eta
   // Convert Zm to Hessian, if applicable.
   mat etaMat(fop->neta, 1, fill::zeros);
-  if (op_focei.mceta == -2 || op_focei.mceta == -1) {
+  if (_covEtaStartOn) {
+    // A covariance leg: start where CovEtaStart put the eta (the fit's EBE, or the reset
+    // point of an innerOptId() retry).  The searches and resets below would start the legs
+    // of one difference from different points.
+  } else if (op_focei.mceta == -2 || op_focei.mceta == -1) {
     // Almquist Eq-48 warm-start: extrapolate the next starting eta from the last
     // analytic gradient's EBE sensitivity, eta^0 = eta*_s + (d eta*/d theta)
     // (theta_now - theta_grad) (scaled space).  Only when the analytic gradient
@@ -4076,7 +4088,7 @@ static inline int innerOpt1(int id, int likId) {
       op_focei.nMcetaZero.fetch_add(1, std::memory_order_relaxed);
     }
   }
-  if (!op_focei.calcGrad) {
+  if (!op_focei.calcGrad && !_covEtaStartOn) {
     if (op_focei.resetEtaSize <= 0) {
       if (op_focei.resetHessianAndEta){
         fInd->mode = 1;
@@ -8416,6 +8428,95 @@ struct CovLlikObsGuard {
   }
 };
 
+// Where every finite-difference leg of the covariance step starts its inner problems.
+//
+// Each leg -- the step search, the R stencil, the S legs and the full FD -- differences the
+// MARGINAL objective, so every probe re-optimizes each subject's ETAs at its own theta.  A
+// probe starts from the ETAs the fit converged to at the estimates (eta-hat): not from
+// eta = 0 and not from wherever the previous probe left them, which would make a
+// difference depend on the order the probes ran in.  The centre value f0 is taken the same
+// way (settle()), so the centre and a probe differ through theta alone.  An f0 whose ETAs
+// were converged less far than the probes' biases every 5-point diagonal by -2.5*delta/h^2.
+//
+// Lives for the covariance block of foceiFitCpp_ (the native step and the full FD):
+//   * the constructor saves every pseudo-subject's inner state and the destructor puts it
+//     back, so nothing a leg leaves behind reaches the fit;
+//   * settle(), called by foceiCalcCov at the estimates, takes eta-hat and arms the pin;
+//   * pin(), called by updateTheta(), puts eta-hat back before every probe.  innerOptId()'s
+//     retries within one probe do not move theta, so they keep their own restart points.
+// A fit that evaluates its ETAs without optimizing them (maxInnerIterations = 0) keeps them
+// fixed in the legs too, as its control says.
+struct CovEtaStart;
+static CovEtaStart *_covEtaStart = NULL;
+struct CovEtaStart {
+  std::vector< std::unique_ptr<FdInnerStateGuard> > entry;
+  std::vector<double> eta, zm;
+  std::vector<int> mode;
+  std::vector<unsigned int> uzm;
+  int nId = 0;
+  CovEtaStart() {
+    _covEtaStart = this;
+    rx = getRxSolve_();
+    if (op_focei.neta <= 0 || rx == NULL || inds_focei == NULL || getRxNsub(rx) <= 0) return;
+    nId = foceiIndSetupN(rx);   // a mixture has one inner problem per subject and component
+    entry.reserve((size_t)nId);
+    for (int id = 0; id < nId; ++id) {
+      entry.push_back(std::unique_ptr<FdInnerStateGuard>(new FdInnerStateGuard(id)));
+    }
+  }
+  ~CovEtaStart() {
+    _covEtaStartOn = false;
+    _covEtaStart = NULL;
+    // `entry` restores each subject's inner state as it is destroyed
+  }
+  // f0: the objective at theta (the estimates) by the legs' procedure, from eta-hat
+  double settle(double *theta) {
+    if (nId > 0) {
+      int ne = op_focei.neta, nz = (int)op_focei.nzm;
+      eta.assign((size_t)nId * ne, 0.0);
+      zm.assign((size_t)nId * nz, 0.0);
+      mode.assign((size_t)nId, 1);
+      uzm.assign((size_t)nId, 1);
+      for (int id = 0; id < nId; ++id) {
+        focei_ind *fInd = &(inds_focei[id]);
+        std::copy(fInd->eta, fInd->eta + ne, &eta[(size_t)id * ne]);
+        if (nz > 0 && fInd->zm != NULL) std::copy(fInd->zm, fInd->zm + nz, &zm[(size_t)id * nz]);
+        mode[id] = fInd->mode;
+        uzm[id] = fInd->uzm;
+      }
+      _covEtaStartOn = true;
+    }
+    updateTheta(theta);
+    return foceiOfv0(theta);
+  }
+  void pin() {
+    int ne = op_focei.neta, nz = (int)op_focei.nzm;
+    for (int id = 0; id < nId; ++id) {
+      focei_ind *fInd = &(inds_focei[id]);
+      std::copy(&eta[(size_t)id * ne], &eta[(size_t)id * ne] + ne, fInd->eta);
+      if (nz > 0 && fInd->zm != NULL) std::copy(&zm[(size_t)id * nz], &zm[(size_t)id * nz] + nz, fInd->zm);
+      fInd->mode = mode[id];
+      fInd->uzm = uzm[id];
+      // theta moved, so likInner0() must not answer from the previous probe's cache
+      if (fInd->oldEta != NULL) std::fill_n(fInd->oldEta, ne, NA_REAL);
+    }
+  }
+private:
+  CovEtaStart(const CovEtaStart &);
+  CovEtaStart &operator=(const CovEtaStart &);
+};
+
+static void covEtaStartPin() {
+  if (_covEtaStartOn && _covEtaStart != NULL) _covEtaStart->pin();
+}
+
+// The centre value of the covariance step's stencils (see CovEtaStart::settle())
+static double covEtaStartF0(double *theta) {
+  if (_covEtaStart != NULL) return _covEtaStart->settle(theta);
+  updateTheta(theta);
+  return foceiOfv0(theta);
+}
+
 NumericVector foceiSetup_(const RObject &obj,
                           const RObject &data,
                           NumericVector theta,
@@ -11198,8 +11299,6 @@ NumericMatrix foceiCalcCov(Environment e){
         fInd->doChol=!(op_focei.cholSECov);
         fInd->doFD = 0;
       }
-      op_focei.resetEtaSize = std::numeric_limits<double>::infinity(); // Dont reset ETAs
-      op_focei.resetEtaSize=0; // Always reset ETAs.
       if (!e.exists("fullTheta")) {
         stop("focei environment requires 'fullTheta'");
       }
@@ -11254,6 +11353,10 @@ NumericMatrix foceiCalcCov(Environment e){
           theta[k] = op_focei.fullTheta[j];
         }
         std::copy(&theta[0], &theta[0] + op_focei.npars, &op_focei.theta[0]);
+        // The centre value of the step search and the R stencil: the objective at the
+        // estimates by the legs' own inner procedure and start (CovEtaStart), not the final
+        // objective, whose ETAs were optimized by a different procedure.
+        op_focei.lastOfv = covEtaStartF0(theta.memptr());
         int gillKcov;
         double gillStepCov;
         double gillFtolCov;
@@ -14025,6 +14128,8 @@ Environment foceiFitCpp_(Environment e){
     // covSolveTol tightens the finite-difference cov solves (R/S + full-cov FD)
     CovSolveTolGuard _covTolGuard(e);
     CovLlikObsGuard _llikObsGuard;
+    // every leg below starts its inner problems from the fit's ETAs
+    CovEtaStart _etaStart;
     foceiCalcCov(e);
     // covType="fd" + covFull=TRUE: the full theta+sigma+Omega FD covariance (installed by
     // .foceiInstallFdFullCov).  Also runs when covType="analytic" DECLINED (analytic out of

@@ -285,4 +285,58 @@ nmTest({
     expect_true(!is.null(.f2$cov) || identical(.f2$covMethod, "failed"))
     expect_equal(.f2$covMethod, "failed")
   })
+
+  # theo_sd one-compartment ODE model, with the covariance solves (covSolveTol) and the
+  # inner problem (trustFterm/trustMterm) tight: the marginal objective is then smooth to
+  # ~1e-6 along a finite-difference step.  At the default tolerances (ODE rtol = 1e-3) its
+  # noise is ~1e-3, as large as what a step changes it by, and no finite-difference
+  # Hessian can be checked against anything.
+  .quietOneCmt <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      eta.ka ~ 0.6
+      eta.cl ~ 0.3
+      eta.v ~ 0.1
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv + eta.v)
+      d / dt(depot) <- -ka * depot
+      d / dt(center) <- ka * depot - cl / v * center
+      cp <- center / v
+      cp ~ add(add.sd)
+    })
+  }
+  .quietCtl <- function(...) {
+    foceiControl(print = 0, covSolveTol = 1e-9, trustFterm = 1e-8, trustMterm = 1e-8, ...)
+  }
+
+  test_that("the finite-difference R matrix is the Hessian of the marginal objective", {
+    skip_on_cran()
+    # Every leg optimizes the ETAs again, starting from the ones the fit converged to, and
+    # the centre of the stencil is the objective evaluated the same way, so R must be the
+    # analytic observed information.  The same finite differences move by up to 4% when
+    # the step is made 4 times larger or the tolerances 100 times tighter; 5% is the bound.
+    # The centre used to be the final objective, whose ETAs another procedure optimized at
+    # the fit's own ODE tolerance: here every diagonal of R came out negative.
+    # at the initial estimates
+    .an0 <- .nlmixr(.quietOneCmt, theo_sd, "focei", .quietCtl(maxOuterIterations = 0L, covMethod = "analytic"))
+    .r0 <- .nlmixr(.quietOneCmt, theo_sd, "focei", .quietCtl(maxOuterIterations = 0L, covMethod = "r", covFull = FALSE))
+    .th <- c("tka", "tcl", "tv", "add.sd")
+    # Omega is held at its value in R: the theta block of the information
+    .info <- solve(.an0$cov)[.th, .th]
+    expect_identical(.r0$covMethod, "r")
+    expect_lt(max(abs(diag(.r0$env$R.0) / diag(.info) - 1)), 0.05)
+    # the full (covFull) stage is the same derivative over theta, sigma and Omega; at the
+    # estimates, where it is positive definite
+    .an <- .nlmixr(.quietOneCmt, theo_sd, "focei", .quietCtl(covMethod = "analytic"))
+    .rf <- .nlmixr(.quietOneCmt, theo_sd, "focei", .quietCtl(covMethod = "r"))
+    expect_identical(.rf$covMethod, "r (full)")
+    .nm <- rownames(.an$cov)
+    expect_lt(max(abs(sqrt(diag(.rf$cov))[.nm] / sqrt(diag(.an$cov)) - 1)), 0.05)
+  })
 })
