@@ -4,12 +4,88 @@
 # MCMC/SAMBA-style callers that need individual log-likelihoods, evaluated in
 # parallel per id, outside a full fit.  Only one system can be loaded at a time.
 
+#' `foceiControl()` for an inner problem evaluated at supplied etas
+#'
+#' No outer step, inner optimization (`maxInnerIterations = 0`), covariance or
+#' table runs: vae, emvi/fbvi, the npag/npb harness and `foceiLikLoad()` only
+#' evaluate the inner likelihood.
+#' @param control source of the shared solving options (a method control)
+#' @param ... other `foceiControl()` settings of the method
+#' @param likelihood inner likelihood (see `.foceiLikelihoodArgs()`)
+#' @return `foceiControl()` object
+#' @noRd
+.foceiInnerControl <- function(control, ..., likelihood = "focei") {
+  .lik <- .foceiLikelihoodArgs(likelihood)
+  foceiControl(
+    rxControl = control$rxControl,
+    maxOuterIterations = 0L,
+    maxInnerIterations = 0L,
+    covMethod = "",
+    interaction = .lik$interaction,
+    foce = .lik$foce,
+    sumProd = control$sumProd,
+    optExpression = control$optExpression,
+    literalFix = control$literalFix,
+    addProp = control$addProp,
+    calcTables = FALSE,
+    compress = FALSE,
+    maxOdeRecalc = control$maxOdeRecalc,
+    odeRecalcFactor = control$odeRecalcFactor,
+    print = 0L,
+    ...
+  )
+}
+
+#' Set up the FOCEi inner problem for an engine that drives it directly
+#'
+#' Builds the optimization env of `ui` under `control`, processes the data,
+#' turns quadrature off and installs `etaMat`; the caller adds its own fields
+#' and calls the C++ setup (`vaeInnerSetup_()` or `foceiLikLoad_()`).
+#' `needOptimHess` follows the endpoints; only vae also forces
+#' `interaction = 0` with it, as the focei flow does (`.vaeInnerSetup()`).  The
+#' conditional log-density vi and np evaluate is the same either way, and
+#' `foceiLikLoad()` reports `interaction` to its C callers.
+#' @param ui decompressed rxode2 ui; its control is replaced
+#' @param data estimation data
+#' @param control inner `foceiControl()`
+#' @param est inner engine marker
+#' @param etaMat starting etas [nsub, neta]
+#' @param extra control fields the C++ setup reads, set before and after the
+#'   model build
+#' @return the setup env
+#' @noRd
+.foceiInnerEnv <- function(ui, data, control, est, etaMat = NULL, extra = list()) {
+  control$est <- est
+  control[names(extra)] <- extra
+  ui$control <- control
+  .env <- ui$foceiOptEnv
+  .env$ui <- ui
+  .env$est <- est
+  .env$table <- NULL
+  .foceiPreProcessData(data, .env, ui, control$rxControl)
+  .env$control$est <- est
+  .env$control[names(extra)] <- extra
+  .env$control$printTop <- FALSE
+  if (is.null(.env$control$nF)) {
+    .env$control$nF <- 0L
+  }
+  .env$control$needOptimHess <- isTRUE(any(ui$predDfFocei$distribution != "norm"))
+  .env$aqn <- 0L
+  .env$qx <- double(0)
+  .env$qw <- double(0)
+  .env$qfirst <- FALSE
+  .env$nAGQ <- 0L
+  .env$aqLow <- -Inf
+  .env$aqHi <- Inf
+  .env$nEstOmega <- 0L
+  .env$etaMat <- etaMat
+  .env
+}
+
 #' A foceiControl carrying the requested inner likelihood + solving options.
 #'
-#' Mirrors `.adviInnerFoceiControl`: focei -> interaction=1; focep -> foce+
-#' (interaction=0, residual variance at the live conditional eta); foce ->
-#' nonmem (interaction=0, R frozen at eta=0).  `maxInnerIterations=0` means the
-#' inner is evaluated at the supplied etas, never re-optimized.
+#' focei -> interaction=1; focep -> foce+ (interaction=0, residual variance at
+#' the live conditional eta); foce -> nonmem (interaction=0, R frozen at eta=0).
 #' @noRd
 .foceiLikControl <- function(
   likelihood,
@@ -27,26 +103,19 @@
   fallbackFD = FALSE,
   iovXform = "sd"
 ) {
-  .interaction <- if (likelihood %in% c("foce", "focep")) 0L else 1L
-  .foce <- if (identical(likelihood, "focep")) "foce+" else "nonmem"
-  foceiControl(
-    rxControl = rxControl,
-    maxOuterIterations = 0L,
-    maxInnerIterations = 0L,
-    covMethod = "",
-    interaction = .interaction,
-    foce = .foce,
-    sumProd = sumProd,
-    optExpression = optExpression,
-    literalFix = literalFix,
-    addProp = addProp,
-    calcTables = FALSE,
-    compress = FALSE,
+  .foceiInnerControl(
+    list(
+      rxControl = rxControl,
+      sumProd = sumProd,
+      optExpression = optExpression,
+      literalFix = literalFix,
+      addProp = addProp,
+      maxOdeRecalc = maxOdeRecalc,
+      odeRecalcFactor = odeRecalcFactor
+    ),
+    likelihood = likelihood,
     eventSens = eventSens,
     indTolRelax = indTolRelax,
-    maxOdeRecalc = maxOdeRecalc,
-    odeRecalcFactor = odeRecalcFactor,
-    print = 0L,
     scaleType = scaleType,
     scaleTo = scaleTo,
     fallbackFD = fallbackFD,
@@ -211,52 +280,18 @@ foceiLikLoad <- function(
   # .foceiOptEnvLik build the model and foceiSetup_/vaeInnerSetup_ wire its
   # lhs offsets; impThetaSensIdx (0-based) names the estimated non-mu thetas
   # that get sensitivity columns -- exactly the .adviInnerSetup arrangement.
+  # combSens (#958): the INNER model carries the theta columns, so one solve
+  # serves value + d/d(eta) + d/d(theta); it implies a theta-sensitivity request.
   .thetaSensIdx <- integer(0)
-  if (isTRUE(thetaSens)) {
-    .thetaSensIdx <- as.integer(.impmapEstTheta(.ui)$all)
-    .control$thetaSensLoad <- TRUE
-    .control$impThetaSensIdx <- .thetaSensIdx - 1L
-  }
-  # combined eta+theta sensitivity build (#958): the INNER model carries the
-  # theta columns, so one solve serves value + d/d(eta) + d/d(theta); implies
-  # a theta-sensitivity request
-  if (isTRUE(combSens)) {
-    if (!isTRUE(thetaSens)) {
-      .thetaSensIdx <- as.integer(.impmapEstTheta(.ui)$all)
-      .control$thetaSensLoad <- TRUE
-      .control$impThetaSensIdx <- .thetaSensIdx - 1L
-    }
-    .control$combSens <- TRUE
-  }
-  # vi-style inner setup on the hooked ui
-  .ui$control <- .control
-  .env <- .ui$foceiOptEnv
-  .env$ui <- .ui
-  .env$est <- "focei"
-  .env$table <- NULL
-  .foceiPreProcessData(.data, .env, .ui, .control$rxControl)
-  .env$control$est <- "focei"
+  .extra <- list()
   if (isTRUE(thetaSens) || isTRUE(combSens)) {
-    # foceiSetup_ reads thetaSensLoad/impThetaSensIdx from e$control (foceiO);
-    # make sure both are present there (not only on the pre-build .control) so
-    # op_focei wires the offsets -- same defensive re-set as .adviInnerSetup.
-    .env$control$thetaSensLoad <- TRUE
-    .env$control$impThetaSensIdx <- .thetaSensIdx - 1L
-    if (isTRUE(combSens)) .env$control$combSens <- TRUE
+    .thetaSensIdx <- as.integer(.impmapEstTheta(.ui)$all)
+    .extra <- list(thetaSensLoad = TRUE, impThetaSensIdx = .thetaSensIdx - 1L)
   }
-  .env$control$printTop <- FALSE
-  if (is.null(.env$control$nF)) {
-    .env$control$nF <- 0L
+  if (isTRUE(combSens)) {
+    .extra$combSens <- TRUE
   }
-  .env$control$needOptimHess <- isTRUE(any(.ui$predDfFocei$distribution != "norm"))
-  .env$aqn <- 0L
-  .env$qx <- double(0)
-  .env$qw <- double(0)
-  .env$qfirst <- FALSE
-  .env$nAGQ <- 0L
-  .env$aqLow <- -Inf
-  .env$aqHi <- Inf
-  .env$nEstOmega <- 0L
+  .env <- .foceiInnerEnv(.ui, .data, .control, "focei", extra = .extra)
   .neta <- length(.env$etaNames)
   .nid <- length(.env$idLvl)
   .env$etaMat <- matrix(0, .nid, .neta)

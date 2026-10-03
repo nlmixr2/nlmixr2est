@@ -5675,6 +5675,54 @@ nlmixr2Est.output <- function(env, ...) {
 # only break assembling a finished fit from a prior-carrying model (#938).
 attr(nlmixr2Est.output, "nlmixr2Priors") <- "all"
 
+#' `interaction` and `foce` settings for an inner likelihood name
+#'
+#' `"focei"` (and `"laplace"`) keep the eta-epsilon interaction; `"foce"` is
+#' NONMEM FOCE (R frozen at eta = 0); `"focep"` is FOCE+ (R at the live eta).
+#' @param likelihood `"focei"`, `"foce"`, `"focep"` or `"laplace"`
+#' @return list(interaction, foce) of `foceiControl()` settings
+#' @noRd
+.foceiLikelihoodArgs <- function(likelihood) {
+  list(
+    interaction = if (likelihood %in% c("foce", "focep")) 0L else 1L,
+    foce = if (identical(likelihood, "focep")) "foce+" else "nonmem"
+  )
+}
+
+#' `foceiControl()` that finalizes a fit at the method's own ETAs
+#'
+#' saem, nlme, vae, emvi and fbvi estimate the ETAs themselves; the output pass
+#' (`nlmixr2CreateOutputFromUi()`) then evaluates them as `etaMat` with no outer
+#' or inner optimization.
+#' @param control the method's control, source of the solving and table options
+#' @param etaMat the method's ETAs, one row per subject
+#' @param ... other `foceiControl()` settings of the method
+#' @param covMethod covariance the output pass computes (`0L`: none)
+#' @param likelihood inner likelihood (see `.foceiLikelihoodArgs()`)
+#' @return `foceiControl()` object
+#' @noRd
+.foceiOwnEtaControl <- function(control, etaMat, ..., covMethod = 0L, likelihood = "focei") {
+  .lik <- .foceiLikelihoodArgs(likelihood)
+  foceiControl(
+    rxControl = control$rxControl,
+    maxOuterIterations = 0L,
+    maxInnerIterations = 0L,
+    covMethod = covMethod,
+    etaMat = etaMat,
+    interaction = .lik$interaction,
+    foce = .lik$foce,
+    sumProd = control$sumProd,
+    optExpression = control$optExpression,
+    addProp = control$addProp,
+    calcTables = control$calcTables,
+    compress = control$compress,
+    ci = control$ci,
+    sigdigTable = control$sigdigTable,
+    eventSens = control$eventSens,
+    ...
+  )
+}
+
 #' Create nlmixr output from the UI
 #'
 #'

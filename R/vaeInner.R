@@ -10,27 +10,12 @@
 #' live conditional eta); laplace -> the Laplace method.
 #' @noRd
 .vaeInnerFoceiControl <- function(control) {
-  .lik <- control$likelihood
-  .interaction <- if (.lik %in% c("foce", "focep")) 0L else 1L
-  .foce <- if (identical(.lik, "focep")) "foce+" else "nonmem"
-  foceiControl(
-    rxControl = control$rxControl,
-    maxOuterIterations = 0L,
-    maxInnerIterations = 0L,
-    covMethod = "",
-    interaction = .interaction,
-    foce = .foce,
-    sumProd = control$sumProd,
-    optExpression = control$optExpression,
-    literalFix = control$literalFix,
+  .foceiInnerControl(
+    control,
+    likelihood = control$likelihood,
     literalFixRes = control$literalFixRes,
-    addProp = control$addProp,
-    calcTables = FALSE,
-    compress = FALSE,
     eventSens = control$eventSens,
     indTolRelax = control$indTolRelax,
-    maxOdeRecalc = control$maxOdeRecalc,
-    odeRecalcFactor = control$odeRecalcFactor,
     stickyRecalcN = control$stickyRecalcN,
     # the analytic outer solve's own loosening: est="vae" reuses the
     # SAME inner call to choose the likelihood, so it gets the same
@@ -62,35 +47,18 @@
       as.character(control$fdRefine)
     },
     fdChartrandAll = isTRUE(control$fdChartrandAll),
-    fdOutlierAny = isTRUE(control$fdOutlierAny),
-    print = 0L
+    fdOutlierAny = isTRUE(control$fdOutlierAny)
   )
 }
 
-#' Set up the FOCEi inner problem for `ui` at its current ini() estimates.
-#' Builds the focei opt env (which enriches the control with the model-derived
-#' neta/ntheta/foceiMuGroup*/... values), augments the fit-flow-derived fields
-#' (needOptimHess from the endpoint distribution, est, nF, printTop, AGQ off),
-#' preprocesses the data, and calls the C++ vaeInnerSetup_ (foceiSetup_ +
-#' updateTheta). Returns the setup env (keep it alive until vaeInnerFree()).
+#' Set up the FOCEi inner problem for `ui` at its current ini() estimates
+#' (`.foceiInnerEnv()`), plus the VAE's own omega packing and, for
+#' nonMuTheta="grad", the augmented outer model; then the C++ vaeInnerSetup_
+#' (foceiSetup_ + updateTheta).  Keep the env alive until vaeInnerFree().
 #' @noRd
 .vaeInnerSetup <- function(ui, data, etaMat, control, est = "focei") {
-  .ui <- rxode2::rxUiDecompress(ui)
-  .fc <- .vaeInnerFoceiControl(control)
-  .fc$est <- est
-  .ui$control <- .fc
-  .env <- .ui$foceiOptEnv
-  .env$ui <- .ui
-  .env$est <- est
-  .env$table <- NULL
-  .foceiPreProcessData(data, .env, .ui, .fc$rxControl)
-  ## fit-flow-derived control fields
-  .env$control$est <- est
-  .env$control$printTop <- FALSE
-  if (is.null(.env$control$nF)) {
-    .env$control$nF <- 0L
-  }
-  .env$control$needOptimHess <- isTRUE(any(.ui$predDfFocei$distribution != "norm"))
+  .env <- .foceiInnerEnv(rxode2::rxUiDecompress(ui), data, .vaeInnerFoceiControl(control), est, etaMat)
+  .ui <- .env$ui
   ## A non-Gaussian endpoint has no eta-epsilon interaction term to carry: rx_pred_
   ## IS the log-density.  The focei flow pairs needOptimHess with interaction=0 for
   ## that reason (.foceiFitInternal); this entry must do the same, or the inner
@@ -99,16 +67,6 @@
   if (isTRUE(.env$control$needOptimHess)) {
     .env$control$interaction <- 0L
   }
-  ## AGQ off
-  .env$aqn <- 0L
-  .env$qx <- double(0)
-  .env$qw <- double(0)
-  .env$qfirst <- FALSE
-  .env$nAGQ <- 0L
-  .env$aqLow <- -Inf
-  .env$aqHi <- Inf
-  .env$nEstOmega <- 0L
-  .env$etaMat <- etaMat
   ## "sqrt"-xform rxInv on the model's DECLARED omega structure (diagonal plus
   ## any correlated blocks): the per-step C++ fast path (vaeInnerUpdatePar_)
   ## packs chol(Omega^-1) onto the omega block of the reduced par vector, using
@@ -117,7 +75,7 @@
   ## same repair ladder as focei: a 0 sitting inside a correlated block is not
   ## representable here, so it is filled and estimated instead of aborting the
   ## run with "theta has to have N elements" (#1079)
-  ## `.ui$foceiOptEnv` above already reported any repair
+  ## the foceiOptEnv build already reported any repair
   .sic <- .foceiSymInvCholCreate(.ui$omega, "sqrt", NULL, warn = FALSE)
   .om <- .sic$mat
   .env$rxInv <- .sic$rxInv
