@@ -8,7 +8,9 @@
 #'
 #' @param covMethod Method for calculating the covariance.  \code{"r"} (the
 #'   default) uses nlmixr2's \code{nlmixr2Hess()} Hessian; \code{"n1qn1"} uses
-#'   the optimizer's own Hessian; \code{""} skips the covariance step.
+#'   the optimizer's own Hessian, the quasi-Newton approximation n1qn1 built
+#'   along its path (\code{H}), not a finite-difference Hessian at the
+#'   estimates; \code{""} skips the covariance step.
 #'
 #' @param returnN1qn1 return the n1qn1 output instead of the nlmixr2
 #'   fit
@@ -268,6 +270,10 @@ getValidNlmixrCtl.n1qn1 <- function(control) .getValidCtl(control, "n1qn1Control
     imp = .(.ctl$imp)
   ))
   .ret <- eval(.ret)
+  if (.ctl$covMethod == "n1qn1") {
+    # n1qn1's quasi-Newton Hessian, on the scale it estimated
+    .ret$hessian <- .ret$H
+  }
   .nlmFinalizeList(.env, .ret, par = "par", printLine = TRUE, hessianCov = TRUE)
 }
 .n1qn1FamilyFit <- function(env, ...) {

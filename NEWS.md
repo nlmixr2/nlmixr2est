@@ -334,6 +334,21 @@
   (`optimHessType`), or the objective undefined (`solveType`).  A
   hand-built control with such a code now stops the nlm problem setup.
 
+- `nlminbControl(covMethod = "nlminb")` and `n1qn1Control(covMethod =
+  "n1qn1")` now use the optimizer's own Hessian, as documented, instead of
+  recomputing `nlmixr2Hess()` under another label: for `nlminb` the
+  finite-difference Hessian of the analytic gradient its Hessian function
+  computes, at the final estimates (on `theo_sd` it matches a central
+  difference of the gradient to 5e-5); for `n1qn1` the quasi-Newton matrix
+  `H` it built along its path, a secant approximation (its standard errors
+  were 0.83-0.99 of the finite-difference ones on the test models).  The
+  label stays `"r (nlminb)"`/`"r (n1qn1)"`, and a matrix that is not
+  positive definite is repaired with a warning as for `"r"`.
+  `nlminbControl()`'s default is now `"r"`, as documented; it was `"nlminb"`
+  with `solveType = "hessian"` or `"grad"`, which computed the same
+  `nlmixr2Hess()` covariance as `"r"`, so default fits are unchanged except
+  for the label (`"r"` instead of `"r (nlminb)"`).
+
 - A covariance labelled `"r+"` (or `"|r|"`) now comes from the same repair of
   the R matrix whichever method computed it, nlm family or FOCEi family (see
   the nlm-family covariance entry under Covariance).  The nlm family used

@@ -240,7 +240,10 @@ will calculate tables. By default this is \code{TRUE}}
 
 \item{covMethod}{Method for calculating the covariance.  \code{"r"} (the
 default) uses nlmixr2's \code{nlmixr2Hess()} Hessian; \code{"nlminb"} uses
-the optimizer's own Hessian; \code{""} skips the covariance step.}
+the Hessian nlminb's own Hessian function computes (a finite difference of
+the analytic gradient), at the final estimates; it needs
+\code{solveType = "hessian"} or \code{"grad"}.  \code{""} skips the
+covariance step.}
 
 \item{adjObf}{is a boolean to indicate if the objective function
 should be adjusted to be closer to NONMEM's default objective
