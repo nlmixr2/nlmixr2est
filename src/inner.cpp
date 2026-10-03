@@ -8418,6 +8418,10 @@ extern "C" void outerGradNumOptim(int n, double *par, double *gr, void *ex);
 // Stash foceiSetup_'s rxSolve_ setup args so foceiCalcR can re-run them and restore
 // the fit solve before the finite-difference Hessian.
 static SEXP covSolveArgs_ = R_NilValue;
+// TRUE from the start of restoreFitSolve_()'s rebuild until it succeeds: the global
+// solve is then whatever a failed or interrupted rxSolve_ left, so the covariance
+// step's guards do not write their saved tolerances back into it.
+static bool covFitSolveLost_ = false;
 static void storeCovSolveArgs_(SEXP obj, SEXP rxControl, SEXP params, SEXP data) {
   List L = List::create(obj, rxControl, params, data);
   if (covSolveArgs_ != R_NilValue) R_ReleaseObject(covSolveArgs_);
@@ -8459,7 +8463,9 @@ static bool restoreFitSolve_() {
     // restores the solve in the middle of.  Carry the live tolerance across the rebuild.
     double liveAtol = NA_REAL, liveRtol = NA_REAL;
     rxGetSolveAtolRtol(&liveAtol, &liveRtol);
+    covFitSolveLost_ = true;
     rxode2::rxSolve_(obj, rxControl, R_NilValue, R_NilValue, params, data, R_NilValue, 1);
+    covFitSolveLost_ = false;
     rx = getRxSolve_();
     // Straight off the fit's own rxControl, so this is the most authoritative reading of
     // the fit tolerance there is -- better than any guard's capture of whatever was live.
@@ -8547,7 +8553,7 @@ struct CovSolveTolGuard {
     active = true;
   }
   ~CovSolveTolGuard() {
-    if (active) rxSetSolveAtolRtol(savAtol, savRtol);
+    if (active && !covFitSolveLost_) rxSetSolveAtolRtol(savAtol, savRtol);
   }
 };
 
@@ -8555,16 +8561,20 @@ struct CovSolveTolGuard {
 // (e["tolFactor"]) and its tables solve with it.  The covariance step changes it --
 // covSolveTol and the analytic covariance's rebuild of the solve set every subject's to 1
 // (rxSetSolveAtolRtol), and its finite-difference legs loosen it on hard solves -- so it
-// is put back on the way out.
+// is put back on the way out, unless the fit's solve could not be rebuilt
+// (covFitSolveLost_) or has no subjects.
 struct CovTolFactorGuard {
   std::vector<double> tf;
   CovTolFactorGuard() {
+    covFitSolveLost_ = false;
     rx = getRxSolve_();
     tf.resize((size_t)getRxNsub(rx));
     for (size_t i = 0; i < tf.size(); ++i) tf[i] = getIndTolFactor(getSolvingOptionsInd(rx, (int)i));
   }
   ~CovTolFactorGuard() {
+    if (covFitSolveLost_) return;
     rx = getRxSolve_();
+    if (rx == NULL || rx->subjects == NULL) return;
     size_t n = std::min(tf.size(), (size_t)getRxNsub(rx));
     for (size_t i = 0; i < n; ++i) setIndTolFactor(getSolvingOptionsInd(rx, (int)i), tf[i]);
   }
