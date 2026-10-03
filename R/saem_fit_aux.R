@@ -956,6 +956,8 @@ calc.COV <- function(fit0) {
     ) {
       .omPairs <- matrix(.col[.op], ncol = 2L)
       .omNames <- .foceiOmegaCovNames(.op, .etaN)
+    } else if (ncol(omega) > 0L && (is.null(.op) || nrow(.op) > 0L)) {
+      .saemOmegaRowsWarn()
     }
     .ri <- .idf[!is.na(.idf$err) & !.idf$fix, , drop = FALSE]
     if (nrow(.ri) > 0L) {

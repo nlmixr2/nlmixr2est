@@ -303,7 +303,9 @@
   a random effect that is not mu-referenced (`cl <- exp(tcl) * (1 + eta.cl)`)
   is such a model whatever the declaration order, and with it a theta without a
   random effect made `"sa"`/`"fim"` fall back to `"linFim"`; they are now
-  computed.
+  computed.  When the random effects cannot be matched one to one to SAEM's
+  variance parameters, the Omega rows are left out with a warning; they were
+  left out silently.
 - The per-observation log-likelihoods of an `imp`, `impmap` or `qrpem` fit
   (`$llikObs`, the `nlmixrLlikObs` column) with the default `covMethod = "imp"`
   are those at the estimates.  They were those of the last importance sample

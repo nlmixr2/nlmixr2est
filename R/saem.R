@@ -947,6 +947,21 @@
   }
   list(tn = .pars, fx = .fixed, phi0 = character(0))
 }
+#' Warn that a SAEM covariance leaves out its Omega rows
+#'
+#' Used when the etas cannot be matched one to one to the kernel's phi1
+#' columns (for example a mixture that splits an eta, or occasion etas), so the
+#' Omega rows of the Fisher information cannot be named.  They are left out of
+#' the covariance rather than reported as `NA`, which would reject the whole
+#' matrix.
+#' @return invisibly `NULL`
+#' @noRd
+.saemOmegaRowsWarn <- function() {
+  warning(
+    "saem covariance: the etas could not be matched to the SAEM Omega columns; Omega rows left out",
+    call. = FALSE
+  )
+}
 #' The `Gamma2_phi1` column of each eta
 #'
 #' The kernel's phi1 columns follow the model-order parameters that carry an
@@ -1067,6 +1082,8 @@
     .idx <- c(.idx, .nth + .col)
     .nm <- c(.nm, paste0("om.", .etaN))
     .jac <- c(.jac, .omVar[.col])
+  } else if (.nEta > 0L) {
+    .saemOmegaRowsWarn()
   }
   # per-endpoint additive residual: src/saem.cpp lays out one log-sigma2 slot per
   # endpoint (in .predDf$cond order, matching resMat's rows) as the LAST nendpnt

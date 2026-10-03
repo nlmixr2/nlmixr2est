@@ -513,6 +513,30 @@ nmTest({
     }
   })
 
+  test_that("fim/sa/linFim warn when the Omega rows cannot be matched to their etas", {
+    # an eta-to-phi1-column map that is not one column per eta (a mixture that
+    # splits an eta, occasion etas) leaves the Omega rows out, with a warning
+    .m <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- 0.7
+            eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+              linCmt() ~ add(add.sd) })
+    }
+    local_mocked_bindings(.saemEtaPhi1Col = function(ui, nphi1) NULL)
+    for (.cm in c("fim", "sa", "linFim")) {
+      ctl <- saemControl(nBurn = 150, nEm = 200, print = 0, seed = 1L, covMethod = .cm, calcTables = FALSE)
+      f <- .nlmixr(.m, theo_sd, est = "saem", control = ctl)
+      expect_true(
+        any(
+          f$runInfo == "saem covariance: the etas could not be matched to the SAEM Omega columns; Omega rows left out"
+        ),
+        info = .cm
+      )
+      expect_identical(f$covMethod, .cm)
+      expect_identical(rownames(f$cov), c("tka", "tcl", "tv", "add.sd"), info = .cm)
+    }
+  })
+
   test_that("covMethod='r,s' installs the inverse of Ha's theta block, by kernel row (#906)", {
     # saemControl(covMethod = "r,s"/"r"/"s") inverts the theta block of the
     # estimation-phase information Ha, laid out [phi1 mu][phi0 mu] with a row
