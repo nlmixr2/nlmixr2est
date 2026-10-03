@@ -11109,7 +11109,6 @@ void setupAq0_(Environment e) {
 }
 
 
-//[[Rcpp::export]]
 NumericMatrix foceiCalcCov(Environment e){
   std::string boundStr = "";
   CharacterVector thetaNames=as<CharacterVector>(e["thetaNames"]);

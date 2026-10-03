@@ -151,10 +151,6 @@ sqrtm <- function(m) {
     .Call(`_nlmixr2est_sqrtm`, m)
 }
 
-foceiCalcCov <- function(e) {
-    .Call(`_nlmixr2est_foceiCalcCov`, e)
-}
-
 #' Fit/Evaluate FOCEi
 #'
 #' This shouldn't be called directly.

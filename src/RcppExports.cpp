@@ -470,17 +470,6 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-// foceiCalcCov
-NumericMatrix foceiCalcCov(Environment e);
-RcppExport SEXP _nlmixr2est_foceiCalcCov(SEXP eSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< Environment >::type e(eSEXP);
-    rcpp_result_gen = Rcpp::wrap(foceiCalcCov(e));
-    return rcpp_result_gen;
-END_RCPP
-}
 // foceiFitCpp_
 Environment foceiFitCpp_(Environment e);
 RcppExport SEXP _nlmixr2est_foceiFitCpp_(SEXP eSEXP) {
