@@ -31,6 +31,7 @@
 
 struct nlmOptions {
   unsigned int ntheta=0;
+  unsigned int nsub=0;
   int *thetaFD=NULL; // theta needs finite difference?
   int *nobs = NULL;
   int *idS  = NULL;
@@ -226,6 +227,7 @@ RObject nlmSetup(Environment e) {
                    R_NilValue, // inits
                    1);//const int setupOnly = 0
   rx = getRxSolve_();
+  nlmOp.nsub = (unsigned int)getRxNsub(rx);
   // Size the per-subject inner-retry counter now that `rx` is valid.
   nlmOp.stickyRecalcN2Per.assign((size_t)getRxNsub(rx), 0);
 
@@ -633,6 +635,9 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
       break;
     }
   }
+  // This subject's own FD steps: each is searched at the subject's first FD
+  // request and read back only by this subject, so the steps do not depend on
+  // the order (or the thread) the subjects are solved in.
   double *thetahf = nlmOp.thetahf + id*nlmOp.ntheta;
 
   arma::vec f0 = ret.col(0);
@@ -675,24 +680,24 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
     }
     // already calculated optimum thetahf, now do the differences
     hTheta = curTheta;
-    hTheta[ii] += nlmOp.thetahf[ii];
+    hTheta[ii] += thetahf[ii];
     grPH = nlmSolveFid(hTheta, id);
     bool useForward = false;
     if (nlmOp.eventType == 1) {
       // if this isn't true try backward
       if (grPH.is_finite()) {
         useForward = true;
-        ret.col(ii+1) = calcGradForward(f0, grPH,  nlmOp.thetahf[ii]);
+        ret.col(ii+1) = calcGradForward(f0, grPH,  thetahf[ii]);
         continue;
       }
     }
     if (!useForward) {
       // stencil or central
       hTheta = curTheta;
-      hTheta[ii] -= nlmOp.thetahf[ii];
+      hTheta[ii] -= thetahf[ii];
       grMH = nlmSolveFid(hTheta, id);
       // central
-      ret.col(ii+1) = calcGradCentral(grMH, f0, grPH,  nlmOp.thetahf[ii]);
+      ret.col(ii+1) = calcGradCentral(grMH, f0, grPH,  thetahf[ii]);
     }
   }
   // restore save (may not be needed)
@@ -771,6 +776,15 @@ RObject nlmerSolveGrad(arma::mat &thetaMat, bool record=false) {
   return wrap(ret);
 }
 
+// The FD steps (per subject in thetahf, for the Hessian in thetahh) and the cached
+// solve are in the scaled parameters, so a new scale invalidates them: forget them
+// and let the next request search the steps again.
+static inline void nlmResetScaled() {
+  std::fill_n(nlmOp.thetahf, (size_t)nlmOp.ntheta*nlmOp.nsub, 0.0);
+  if (nlmOp.thetahh != NULL) std::fill_n(nlmOp.thetahh, nlmOp.ntheta, 0.0);
+  nlmOp.saveType = 0;
+}
+
 //[[Rcpp::export]]
 RObject nlmSetScaleC(NumericVector scaleC) {
   if (!nlmOp.loaded) stop("'nlm' problem not loaded");
@@ -779,6 +793,7 @@ RObject nlmSetScaleC(NumericVector scaleC) {
     stop("scaleC size mismatch");
   }
   std::copy(scaleC.begin(), scaleC.end(), nlmOp.scaleC);
+  nlmResetScaled();
   return R_NilValue;
 }
 
@@ -797,6 +812,8 @@ NumericVector nlmGetScaleC(arma::vec &theta, double to) {
     scaleC[i] = fabs(to/cs(i+1));
   }
   std::copy(scaleC.begin(), scaleC.end(), nlmOp.scaleC);
+  // the steps this gradient searched are for C = 1
+  nlmResetScaled();
   return scaleC;
 }
 

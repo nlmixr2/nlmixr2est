@@ -292,6 +292,19 @@
   standard error.  A non-finite Hessian, or the zero one of a failed `trust`
   solve, gives `covMethod = "failed"` with a warning instead of a covariance.
 
+### nlm family
+
+- The gradient of the nlm-family methods (`nlm`, `nlminb`, `optim`, `n1qn1`,
+  `lbfgsb3c`, `trust`, `nls`) finite-differences each subject with that
+  subject's own step where it needs one (censored observations, or the dosing
+  parameters under `eventSens = "fd"`).  Every subject used the first
+  subject's step, which is 0 when the first subject needs none: with
+  M3/M4-censored data in which only later subjects are censored every
+  gradient was NaN, `nlminb` stopped with `NA/NaN gradient evaluation` and
+  `nlm` returned its initial estimates.  The steps are also searched again
+  once the parameter scaling is set, instead of being kept from the trial
+  gradient that sets it.
+
 
 # nlmixr2est 7.1.0
 
