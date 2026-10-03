@@ -103,7 +103,7 @@ nlmixr2Gill83 <- function(
   # the same checks foceiControl() makes on these options
   checkmate::assertNumeric(gillRtol, lower = 0, len = 1, any.missing = FALSE, finite = TRUE)
   checkmate::assertIntegerish(gillK, lower = 0, len = 1, any.missing = FALSE)
-  checkmate::assertNumeric(gillStep, lower = 0, len = 1, any.missing = FALSE)
+  checkmate::assertNumeric(gillStep, lower = 1, len = 1, any.missing = FALSE, finite = TRUE)
   checkmate::assertNumeric(gillFtol, lower = 0, len = 1, any.missing = FALSE)
   nlmixr2Gill83_(
     what,

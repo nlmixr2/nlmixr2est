@@ -1476,8 +1476,9 @@ foceiControl <- function(
   checkmate::assertIntegerish(gillK, lower = 0, len = 1, any.missing = FALSE)
   .covFdOptionsAssert(hessEps, gillKcov, gillStepCov, gillFtolCov, covGillF, covSmall, rmatNorm, smatNorm)
   checkmate::assertIntegerish(gillKcovLlik, lower = 0, len = 1, any.missing = FALSE)
-  checkmate::assertNumeric(gillStep, lower = 0, len = 1, any.missing = FALSE)
-  checkmate::assertNumeric(gillStepCovLlik, lower = 0, len = 1, any.missing = FALSE)
+  # the Gill search multiplies its step by these factors to grow it and divides to shrink it
+  checkmate::assertNumeric(gillStep, lower = 1, len = 1, any.missing = FALSE, finite = TRUE)
+  checkmate::assertNumeric(gillStepCovLlik, lower = 1, len = 1, any.missing = FALSE, finite = TRUE)
   checkmate::assertNumeric(gillFtol, lower = 0, len = 1, any.missing = FALSE)
   checkmate::assertNumeric(gillFtolCovLlik, lower = 0, len = 1, any.missing = FALSE)
   checkmate::assertNumeric(gillRtol, lower = 0, len = 1, any.missing = FALSE, finite = TRUE)

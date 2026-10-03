@@ -191,6 +191,14 @@
   `covMethod = "sa"`, and a vector `seed` stopped the fit with
   `'.Random.seed' has wrong length`.
 
+- `foceiControl(gillStep=)` and `foceiControl(gillStepCovLlik=)` must now be
+  at least 1, as `gillStepCov` already had to be, and all three must be
+  finite (`rsControl(gillStepCov=)` too); `nlmixr2Gill83(gillStep=)` makes
+  the same check.  The Gill step search grows its step by multiplying by
+  this factor and shrinks it by dividing, so a factor below 1 ran the search
+  backwards: on `exp(3 * x)` at `x = 1`, `nlmixr2Gill83(gillStep = 0.1)`
+  gave a derivative 1% off, against 0.01% with the default.
+
 ### Covariance and finite differences
 
 - The Gill (1983) step-size search no longer leaves a parameter at its last
