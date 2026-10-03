@@ -97,14 +97,6 @@ struct scaling {
 #define iterTypeSens 8
 };
 
-static inline void scaleNone(scaling *scale) {
-  scale->scaleType= scaleTypeNone;
-  scale->normType=normTypeConstant;
-  scale->scaleTo = 0.0;
-  scale->every = 0;
-  scale->save = 0;
-}
-
 // Sets scale/print fields not coming from the R-side xform sub-list; the six
 // transform pointers are NULL-initialized here and wired by scaleAttachXform
 // (or directly by callers with their own buffers, e.g. focei) after return.

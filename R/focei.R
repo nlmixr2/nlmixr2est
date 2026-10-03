@@ -161,48 +161,6 @@ is.latex <- function() {
   .bobyqa(.par, fn, lower = .lo, upper = .hi, control = control)
 }
 
-#' Get the maxit control
-#'
-#' @param control control to update based on foceiControl()
-#' @return control with maxfun updated based on maxOuterIterations
-#' @noRd
-#' @author Matthew L. Fidler
-.controlMaxit <- function(control) {
-  if (!is.null(control$maxOuterIterations)) {
-    control$maxit <- control$maxOuterIterations
-  }
-  control
-}
-
-.lbfgsb3c <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
-  control <- .controlMaxit(control)
-  .w <- which(names(control) %in% c("trace", "factr", "pgtol", "abstol", "reltol", "lmm", "maxit", "iprint"))
-  .control <- control[.w]
-  .ret <- lbfgsb3c::lbfgsb3c(par = as.vector(par), fn = fn, gr = gr, lower = lower, upper = upper, control = .control)
-  .ret$x <- .ret$par
-  .ret
-}
-
-
-.lbfgsbO <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
-  control <- .controlMaxit(control)
-  .control <- control[names(control) %in% c("trace", "factr", "pgtol", "abstol", "reltol", "lmm", "maxit", "iprint")]
-  .w <- which(sapply(.control, is.null))
-  .control <- .control[-.w]
-  .ret <- optim(
-    par = par,
-    fn = fn,
-    gr = gr,
-    method = "L-BFGS-B",
-    lower = lower,
-    upper = upper,
-    control = .control,
-    hessian = FALSE
-  )
-  .ret$x <- .ret$par
-  .ret
-}
-
 .optimize <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
   # focei assumes par is the initial estimate (ignored in Brent's method)
   # fn  is the function to calculate the objective function
@@ -689,32 +647,6 @@ is.latex <- function() {
     x0 = par,
     eval_f = fn,
     eval_grad_f = gr,
-    lb = lower,
-    ub = upper,
-    opts = .ctl
-  )
-  .ret$par <- .ret$solution
-  .ret$x <- .ret$solution
-  .ret$convergence <- .ret$status
-  .ret$value <- .ret$objective
-  .ret
-}
-
-.bobyqaNLopt <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
-  .ctl <- list(
-    algorithm = "NLOPT_LN_BOBYQA",
-    xtol_rel = control$reltol,
-    xtol_abs = rep_len(control$abstol, length(par)),
-    ftol_abs = control$abstol,
-    ftol_rel = control$reltol,
-    print_level = 0,
-    check_derivatives = FALSE,
-    check_derivatives_print = FALSE,
-    maxeval = control$maxOuterIterations
-  )
-  .ret <- nloptr::nloptr(
-    x0 = par,
-    eval_f = fn,
     lb = lower,
     ub = upper,
     opts = .ctl

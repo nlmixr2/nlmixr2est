@@ -2,7 +2,8 @@
 ## training drives the FOCEi inner likelihood (likInner0 / foceiInnerLp), every
 ## error structure and endpoint distribution the inner problem supports works
 ## through the same interface; only the closed-form error-param M-step is
-## error-type specific (.vaeUpdateErr: additive / proportional / combined).
+## error-type specific (vaeUpdateErr in src/inner.cpp: additive / proportional /
+## combined).
 
 nmTest({
   .vaeErrData <- function(seed = 7, N = 30L) {
