@@ -3970,7 +3970,7 @@ extern "C" double innerOptimF(int n, double *x, void *ex){
   focei_ind *fInd = &(inds_focei[*id]);
   if (fInd->badSolve == 1) return NA_REAL;
   double f = likInner0(x, *id);
-  if (ISNA(f)) {
+  if (ISNAN(f)) {
     fInd->badSolve = 1;
   }
   fInd->nInnerF++;
@@ -3996,7 +3996,7 @@ void innerCost(int *ind, int *n, double *x, double *f, double *g, int *ti, float
     // Function
     // Make sure ID remains installed
     *f = likInner0(x, *id);
-    if (ISNA(*f))  {
+    if (ISNAN(*f))  {
       fInd->badSolve=1;
     }
     fInd->nInnerF++;
@@ -4049,9 +4049,9 @@ static inline int innerEval(int id){
   focei_ind *fInd = &(inds_focei[id]);
   // Use eta
   double lik0 = likInner0(fInd->eta, id);
-  if (ISNA(lik0)) return 0;
+  if (ISNAN(lik0)) return 0;
   lik0 = LikInner2(fInd->eta, 0, id);
-  if (ISNA(lik0)) return 0;
+  if (ISNAN(lik0)) return 0;
   return 1;
 }
 
@@ -4060,9 +4060,9 @@ static inline int innerOpt1(int id, int likId) {
   focei_options *fop = &op_focei;
   if (op_focei.neta == 0) {
     double lik = likInner0(NULL, id);
-    if (ISNA(lik)) return 0;
+    if (ISNAN(lik)) return 0;
     lik = LikInner2(NULL, 0, id);
-    if (ISNA(lik)) return 0;
+    if (ISNAN(lik)) return 0;
     return 1;
   }
   fInd->nInnerF=0;
@@ -4373,7 +4373,7 @@ static inline int innerOpt1(int id, int likId) {
            fInd->var, &epsilon,
            &mode, &maxInnerIterations, &nsim,
            &imp, fInd->zm, &izs, &rzs, &dzs, &id);
-    if (ISNA(f)) {
+    if (ISNAN(f)) {
       if (haveBest) { restoreBest(); break; }
       // No usable result in THIS pass; an earlier one may still have a
       // candidate, and the selection below will take it.
@@ -4423,7 +4423,7 @@ static inline int innerOpt1(int id, int likId) {
                &mode, &maxInnerIterations, &nsim,
                &imp, fInd->zm,
                &izs, &rzs, &dzs, &id);
-        if (ISNA(f)) {
+        if (ISNAN(f)) {
           if (!haveBest) {
             // Nothing usable in THIS pass.  haveBest is pass-local, so that is
             // not "nothing usable for this subject": an earlier starting point
@@ -4461,7 +4461,7 @@ static inline int innerOpt1(int id, int likId) {
                  fInd->var, &epsilon,
                  &mode, &maxInnerIterations, &nsim,
                  &imp, fInd->zm, &izs, &rzs, &dzs, &id);
-          if (ISNA(f)) {
+          if (ISNAN(f)) {
             if (!haveBest) {
               // Nothing usable in THIS pass.  haveBest is pass-local, so that is
               // not "nothing usable for this subject": an earlier starting point
@@ -4495,7 +4495,7 @@ static inline int innerOpt1(int id, int likId) {
                    fInd->var, &epsilon,
                    &mode, &maxInnerIterations, &nsim,
                    &imp, fInd->zm, &izs, &rzs, &dzs, &id);
-            if (ISNA(f)) {
+            if (ISNAN(f)) {
               if (!haveBest) {
                 // Nothing usable in THIS pass.  haveBest is pass-local, so that is
                 // not "nothing usable for this subject": an earlier starting point
@@ -4529,7 +4529,7 @@ static inline int innerOpt1(int id, int likId) {
                      fInd->var, &epsilon,
                      &mode, &maxInnerIterations, &nsim,
                      &imp, fInd->zm, &izs, &rzs, &dzs, &id);
-              if (ISNA(f)) {
+              if (ISNAN(f)) {
                 if (!haveBest) {
                   // Nothing usable in THIS pass.  haveBest is pass-local, so that is
                   // not "nothing usable for this subject": an earlier starting point
@@ -4561,7 +4561,7 @@ static inline int innerOpt1(int id, int likId) {
                        &mode, &maxInnerIterations, &nsim,
                        &imp, fInd->zm,
                        &izs, &rzs, &dzs, &id);
-                if (ISNA(f)) {
+                if (ISNAN(f)) {
                   if (!haveBest) {
                     // Nothing usable in THIS pass.  haveBest is pass-local, so that is
                     // not "nothing usable for this subject": an earlier starting point
@@ -4938,7 +4938,7 @@ static inline int innerOpt1(int id, int likId) {
              op_focei.pgtol, &fncount, &grcount,
              op_focei.maxInnerIterations, msg, 0, -1,
              op_focei.abstol, op_focei.reltol, fInd->g);
-    if (ISNA(f)) {
+    if (ISNAN(f)) {
       if (haveBest) { restoreBest(); break; }
       // No usable result in THIS pass; an earlier one may still have a
       // candidate, and the selection below will take it.
@@ -5123,7 +5123,7 @@ static inline int innerOpt1(int id, int likId) {
     fInd->doChol = 0;
     double lik = LikInner2(fInd->eta, likId, id);
     fInd->doChol = doCholSave;
-    if (ISNA(lik)) return 0;
+    if (ISNAN(lik)) return 0;
   }
   return 1;
 }
@@ -13170,7 +13170,7 @@ bool impGetHessian(int id, arma::mat& H) {
   int neta = op_focei.neta;
   // Establish the inner solve at this subject's mode before the FD Hessian.
   double f = likInner0(fInd->eta, id);
-  if (ISNA(f)) {
+  if (ISNAN(f)) {
     // The MAP already evaluated this mode, so an NA here means the cached solve
     // state is stale (e.g. left by a prior fit of a different-sized model).
     // Force a fresh solve and retry at the same mode before giving up.
@@ -13178,7 +13178,7 @@ bool impGetHessian(int id, arma::mat& H) {
     setIndSolve(getSolvingOptionsInd(rx, getRxId(id)), -1);
     resetOpBadSolve(getSolvingOptions(rx));
     f = likInner0(fInd->eta, id);
-    if (ISNA(f)) return false;
+    if (ISNAN(f)) return false;
   }
   rx = getRxSolve_();
   rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
