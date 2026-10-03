@@ -387,6 +387,42 @@ nmTest({
     expect_equal(unname(as.matrix(fit$eta[, .eta])), unname(as.matrix(.re)))
   })
 
+  test_that("the default nlme covariance is nlme's full fixed-effect covariance (issue 1140)", {
+    one.compartment <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd)
+      })
+    }
+    fit <- .nlmixr(one.compartment, theo_sd, "nlme", control = nlmeControl(verbose = FALSE, returnObject = TRUE))
+    expect_identical(fit$covMethod, "nlme")
+    .th <- c("tka", "tcl", "tv")
+    # the SEs are the ones summary() prints (ML: sigma adjusted to REML-like)
+    .se <- summary(fit$nlme)$tTable[.th, "Std.Error"]
+    expect_equal(sqrt(diag(fit$cov)), .se)
+    expect_equal(fit$parFixedDf[.th, "SE"], .se)
+    # and the correlations are nlme's; they used to be dropped
+    expect_equal(stats::cov2cor(fit$cov), stats::cov2cor(vcov(fit$nlme)))
+    expect_true(all(fit$cov[upper.tri(fit$cov)] != 0))
+    # ML: vcov() is the same matrix before nlme's sigma adjustment
+    .dims <- fit$nlme$dims
+    expect_equal(fit$cov, vcov(fit$nlme) * .dims$N / (.dims$N - length(.th)))
+  })
+
   test_that(".nlmeGetOmega returns nlme's matrix in the ui's eta order (issue 1140)", {
     # 4 etas: VarCorr()'s printed correlations used to be copied into the
     # wrong cells from the 4th eta on

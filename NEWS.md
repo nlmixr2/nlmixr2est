@@ -302,6 +302,10 @@
   gave several parameters of the derivative-free fits of `theo_sd` the same
   standard error.  A non-finite Hessian, or the zero one of a failed `trust`
   solve, gives `covMethod = "failed"` with a warning instead of a covariance.
+- The covariance of an `est = "nlme"` fit (`nlmeControl(covMethod = "nlme")`,
+  the default) now holds nlme's correlations of the fixed effects
+  (`vcov(fit$nlme)`); it was diagonal.  It is scaled to the standard errors
+  `summary(fit$nlme)` prints, so those are unchanged.
 
 
 # nlmixr2est 7.1.0
