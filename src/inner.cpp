@@ -8384,32 +8384,91 @@ struct OdeFitTolGuard {
   ~OdeFitTolGuard() { if (active) rxSetSolveAtolRtol(savAtol, savRtol); }
 };
 
-// RAII: tighten the ODE solve tolerances to covSolveTol for the covariance-step
-// finite-difference solves, restoring the fit's tolerances on exit.  No-op unless the
-// user set foceiControl(covSolveTol=); the analytic R-matrix applies covSolveTol on its
-// own augmented solves (.foceiAnalyticSolveTol).
+// Tolerances of the covariance step's finite-difference probes.  Each probe differences
+// marginal objectives that differ in their last few digits, so the solves and the inner
+// problems behind them run tighter than the estimation's: each tolerance is the fit's
+// times covProbeTolFactor, capped at covProbeOdeTolMax (ODE atol/rtol) or
+// covProbeInnerTolMax (the trust-region inner tolerances).  At the default sigdig = 3
+// that is rtol 1e-7, atol 1e-9 and trustFterm = trustMterm 1e-9; a fit that tightens its
+// own tolerances tightens these with them.
+static const double covProbeTolFactor = 1e-3;
+static const double covProbeOdeTolMax = 1e-7;
+static const double covProbeInnerTolMax = 1e-9;
+
+static inline double covProbeTol(double fitTol, double tolMax) {
+  return std::min(fitTol * covProbeTolFactor, tolMax);
+}
+
+// A positive number the control holds under `name`, else NA (NULL, absent, or not one)
+static double covControlTol(Environment e, const char* name) {
+  if (!e.exists("control")) return NA_REAL;
+  List ctl = as<List>(e["control"]);
+  if (!ctl.containsElementNamed(name)) return NA_REAL;
+  RObject v = ctl[name];
+  if (v.isNULL() || Rf_length(v) != 1) return NA_REAL;
+  double tol = as<double>(v);
+  return (R_FINITE(tol) && tol > 0) ? tol : NA_REAL;
+}
+
+// RAII: the ODE tolerances of the covariance step's solves (the finite-difference
+// probes, their stencil centre and the ETA warm-up of a refit), restored on exit.
+// foceiControl(covSolveTol=) sets atol and rtol to that number; NULL derives each from
+// the fit's (covProbeTol).  The analytic R-matrix applies its own tolerance to its
+// augmented solves (.foceiAnalyticSolveTol).  A fit without a covariance step is
+// untouched.
 struct CovSolveTolGuard {
   bool active = false;
   double savAtol = NA_REAL, savRtol = NA_REAL;
   CovSolveTolGuard(Environment e) {
-    if (!e.exists("control")) return;
-    List ctl = as<List>(e["control"]);
-    if (!ctl.containsElementNamed("covSolveTol")) return;
-    RObject cst = ctl["covSolveTol"];
-    if (cst.isNULL() || Rf_length(cst) < 1) return;
-    double tol = as<double>(cst);
-    if (!R_FINITE(tol) || tol <= 0) return;
+    if (op_focei.covMethod == 0) return;
     rxGetSolveAtolRtol(&savAtol, &savRtol);
     if (!R_FINITE(savAtol) || !R_FINITE(savRtol)) return;   // no live solve to retune
     // This guard wraps the WHOLE covariance step, so on a fit that never ran an analytic
     // gradient it is the first to touch the tolerances -- record the fit's before
-    // tightening, or vaeOuterSolve_ inside it captures covSolveTol as the fit's.
+    // tightening, or vaeOuterSolve_ inside it captures the probe tolerance as the fit's.
     foceiNoteFitTol(savAtol, savRtol);
-    rxSetSolveAtolRtol(tol, tol);
+    double tol = covControlTol(e, "covSolveTol");
+    if (R_FINITE(tol)) {
+      rxSetSolveAtolRtol(tol, tol);
+    } else {
+      double fitAtol = R_FINITE(op_focei.fitAtol) ? op_focei.fitAtol : savAtol;
+      double fitRtol = R_FINITE(op_focei.fitRtol) ? op_focei.fitRtol : savRtol;
+      rxSetSolveAtolRtol(covProbeTol(fitAtol, covProbeOdeTolMax),
+                         covProbeTol(fitRtol, covProbeOdeTolMax));
+    }
     active = true;
   }
   ~CovSolveTolGuard() {
     if (active) rxSetSolveAtolRtol(savAtol, savRtol);
+  }
+};
+
+// RAII: the trust-region inner tolerances (trustFterm, trustMterm) of the covariance
+// step's inner problems, restored on exit.  The internal control element covInnerTol
+// sets both; NULL derives each from the fit's (covProbeTol).  A fit without a
+// covariance step is untouched.
+struct CovInnerTolGuard {
+  bool active = false;
+  double savFterm = NA_REAL, savMterm = NA_REAL;
+  explicit CovInnerTolGuard(Environment e) {
+    if (op_focei.covMethod == 0) return;
+    savFterm = op_focei.trustFterm;
+    savMterm = op_focei.trustMterm;
+    double tol = covControlTol(e, "covInnerTol");
+    if (R_FINITE(tol)) {
+      op_focei.trustFterm = tol;
+      op_focei.trustMterm = tol;
+    } else {
+      op_focei.trustFterm = covProbeTol(savFterm, covProbeInnerTolMax);
+      op_focei.trustMterm = covProbeTol(savMterm, covProbeInnerTolMax);
+    }
+    active = true;
+  }
+  ~CovInnerTolGuard() {
+    if (active) {
+      op_focei.trustFterm = savFterm;
+      op_focei.trustMterm = savMterm;
+    }
   }
 };
 
@@ -14164,8 +14223,9 @@ Environment foceiFitCpp_(Environment e){
   e["gillRet"] = gillRet;
   wallT0 = focei_wall_clock::now();
   {
-    // covSolveTol tightens the finite-difference cov solves (R/S + full-cov FD)
+    // the covariance step's solves and inner problems run at the probe tolerances
     CovSolveTolGuard _covTolGuard(e);
+    CovInnerTolGuard _covInnerTolGuard(e);
     CovLlikObsGuard _llikObsGuard;
     // every leg below starts its inner problems from the fit's ETAs
     CovEtaStart _etaStart(e);

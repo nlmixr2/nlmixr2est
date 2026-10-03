@@ -303,9 +303,17 @@ are computed post-fit at the converged estimates by the decoupled
 recompute engine.}
 
 \item{covSolveTol}{absolute/relative ODE tolerance for the covariance solves --
-the augmented-sensitivity solves behind \code{covMethod="analytic"} and the
-perturbed solves behind the finite-difference methods.  \code{NULL} (default)
-derives a tight tolerance from \code{sigdig}; supply a number to override it.}
+the perturbed solves behind the finite-difference methods (every probe and
+the stencil centre it is compared against) and the augmented-sensitivity
+solves behind \code{covMethod="analytic"}.  \code{NULL} (default) derives
+them from the fit's own tolerances: the finite-difference solves use
+\code{atol} and \code{rtol} each times 1e-3, capped at 1e-7 (at the default
+\code{sigdig = 3}, \code{rtol = 1e-7} and \code{atol = 1e-9}), and the
+analytic augmented solves use \code{min(1e-8, 10^-(sigdig + 6))}.  The
+inner problems of the finite-difference probes are tightened the same way:
+\code{trustFterm} and \code{trustMterm} each times 1e-3, capped at 1e-9.
+A number sets \code{atol = rtol = covSolveTol} for both kinds of solve.
+Estimation itself always runs at the fit's tolerances.}
 
 \item{covFull}{shape of \code{fit$cov}.  \code{TRUE} (default) installs the
 full theta + residual sigma + Omega covariance (assembled analytically for

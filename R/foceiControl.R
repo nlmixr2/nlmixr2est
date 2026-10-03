@@ -73,6 +73,10 @@
   # (maxInnerIterations = 0): set by the refits that hold the ETAs
   # only to report them (.covInnerIterations(), R/cov.R)
   "covMaxInnerIterations",
+  # trust-region inner tolerance (trustFterm and trustMterm) of the
+  # covariance step's inner problems; NULL derives each from the
+  # fit's (the probe-tolerance rule, src/inner.cpp CovInnerTolGuard)
+  "covInnerTol",
   # subject-constant covariates stashed by .foceiFamilyReturn
   # for the analytic covariate-coefficient reuse; internal so
   # a built control round-trips (e.g. posthoc re-validation).
@@ -152,9 +156,17 @@
 #'     recompute engine.
 #'
 #' @param covSolveTol absolute/relative ODE tolerance for the covariance solves --
-#'     the augmented-sensitivity solves behind \code{covMethod="analytic"} and the
-#'     perturbed solves behind the finite-difference methods.  \code{NULL} (default)
-#'     derives a tight tolerance from \code{sigdig}; supply a number to override it.
+#'     the perturbed solves behind the finite-difference methods (every probe and
+#'     the stencil centre it is compared against) and the augmented-sensitivity
+#'     solves behind \code{covMethod="analytic"}.  \code{NULL} (default) derives
+#'     them from the fit's own tolerances: the finite-difference solves use
+#'     \code{atol} and \code{rtol} each times 1e-3, capped at 1e-7 (at the default
+#'     \code{sigdig = 3}, \code{rtol = 1e-7} and \code{atol = 1e-9}), and the
+#'     analytic augmented solves use \code{min(1e-8, 10^-(sigdig + 6))}.  The
+#'     inner problems of the finite-difference probes are tightened the same way:
+#'     \code{trustFterm} and \code{trustMterm} each times 1e-3, capped at 1e-9.
+#'     A number sets \code{atol = rtol = covSolveTol} for both kinds of solve.
+#'     Estimation itself always runs at the fit's tolerances.
 #'
 #' @param covFull shape of \code{fit$cov}.  \code{TRUE} (default) installs the
 #'     full theta + residual sigma + Omega covariance (assembled analytically for
@@ -2150,6 +2162,13 @@ foceiControl <- function(
   if (!is.null(.xtra$covMaxInnerIterations)) {
     checkmate::assertCount(.xtra$covMaxInnerIterations, positive = TRUE)
     .ret$covMaxInnerIterations <- as.integer(.xtra$covMaxInnerIterations)
+  }
+  if (!is.null(.xtra$covInnerTol)) {
+    checkmate::assertNumber(.xtra$covInnerTol, lower = 0, finite = TRUE)
+    if (.xtra$covInnerTol <= 0) {
+      stop("'covInnerTol' must be > 0", call. = FALSE)
+    }
+    .ret$covInnerTol <- as.double(.xtra$covInnerTol)
   }
   if (length(etaMat) == 1L && is.na(etaMat)) {
     .ret$etaMat <- NA
