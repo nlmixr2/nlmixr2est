@@ -176,6 +176,14 @@
   nlme's own, which prints no correlations for a blocked structure; `$omega`
   has them.
 
+- A fit whose omega estimate is not positive definite (a variance collapsed to
+  0 or a correlation of 1, as a degenerate `saem`, `nlme`, `vae` or `vi` fit
+  can end with) now reports that estimate in `$omega` and in its `ini()`.
+  Both held the nearest positive-definite matrix the table step needs instead
+  (on a saem fit with a correlation of 1, variances of 0.21 and 0.050 for an
+  estimate of 0.081 and 0.019).  The repair is now a warning: `omega is not
+  positive definite; used its nearest positive-definite matrix for tables`.
+
 ### Covariance and finite differences
 
 - The Gill (1983) step-size search no longer leaves a parameter at its last

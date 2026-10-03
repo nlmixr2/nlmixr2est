@@ -3590,6 +3590,8 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
     dimnames(.r) <- dimnames(om)
     if (any(.bad)) {
       warning("non-finite omega values zeroed for tables", call. = FALSE)
+    } else if (inherits(try(chol(.om), silent = TRUE), "try-error")) {
+      warning("omega is not positive definite; used its nearest positive-definite matrix for tables", call. = FALSE)
     }
     return(.r)
   }
@@ -3782,6 +3784,11 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
     # post-fit diagnostics still run; the reported fit omega is left unchanged.
     .repaired <- inherits(try(chol(.om0), silent = TRUE), "try-error")
     if (.repaired) {
+      if (rxode2::rxGetControl(ui, "maxOuterIterations", 1L) == 0L) {
+        # no outer step moves omega, so the fit reports this estimate, not the
+        # repair the C++ side would read back (.foceiFamilyReturn())
+        env$omegaUnrepaired <- .om0
+      }
       .om0 <- .foceiRepairOmega(.om0)
     }
     # `same()` blocks share one set of cholesky parameters with the block
@@ -5387,6 +5394,14 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     }
     ui <- rxode2::rxUiCompress(ui)
     .ret$ui <- ui
+    # the C++ side reported the repaired omega the evaluation needed; the fit
+    # reports the estimate (.foceiOptEnvSetupBounds())
+    if (exists("omegaUnrepaired", envir = .ret, inherits = FALSE)) {
+      .om <- .ret$omegaUnrepaired
+      dimnames(.om) <- dimnames(.ret$omega)
+      .ret$omega <- .om
+      rm("omegaUnrepaired", envir = .ret)
+    }
     .foceiSetupParHistData(.ret)
     # For mixture models: fix ranef (remove MIXEST), build mixList and mixNum
     .mixFix(.ret, ui)
