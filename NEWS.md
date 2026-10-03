@@ -184,6 +184,11 @@
   gradient; a FOCEi fit of such a model runs without the interaction and was
   not affected.
 
+- The per-observation log-likelihoods of an `agq` fit (`$llikObs`, the
+  `nlmixrLlikObs` column) are now those at each subject's ETAs.  Every
+  quadrature node re-evaluated the subject at another ETA, so they came from
+  the last node (up to 2.5 away on `theo_sd`).
+
 ### Covariance and finite differences
 
 - The Gill (1983) step-size search no longer leaves a parameter at its last

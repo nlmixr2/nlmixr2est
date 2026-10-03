@@ -3462,6 +3462,29 @@ static bool calcModelEtaHessian(double *eta, int id, focei_ind *fInd,
   return !conditional || result.isFinite();
 }
 
+// What likInner0() leaves for readers that do not call it again: the subject's
+// per-observation log-likelihoods (reported with the fit as llikObs), and tbsLik and nObs
+// (read by LikInner2() right after, and by imp's AUTO setup; they do not depend on eta,
+// but an evaluation that fails part-way leaves them partial).  Saved after the evaluation
+// at the subject's eta and put back once the evaluations at other etas are done -- the
+// finite-difference legs of the inner Hessian, the adaptive quadrature nodes.  The rest of
+// likInner0()'s state stays at the last of those evaluations, which oldEta records, so
+// the next likInner0() call at the subject's eta solves again.
+struct LikInner0OutputGuard {
+  focei_ind *fInd;
+  std::vector<double> llikObs;
+  double tbsLik;
+  int nObs;
+  LikInner0OutputGuard(focei_ind *fInd, rx_solving_options_ind *ind) :
+    fInd(fInd), llikObs(fInd->llikObs, fInd->llikObs + getIndNallTimes(ind)),
+    tbsLik(fInd->tbsLik), nObs(fInd->nObs) {}
+  ~LikInner0OutputGuard() {
+    std::copy(llikObs.begin(), llikObs.end(), fInd->llikObs);
+    fInd->tbsLik = tbsLik;
+    fInd->nObs = nObs;
+  }
+};
+
 bool calcEtaHessian(double *eta, int likId, int id,
                     focei_ind *fInd,
                     rx_solving_options_ind *ind,
@@ -3552,27 +3575,16 @@ bool calcEtaHessian(double *eta, int likId, int id,
         }
         if (hMin[k] > op_focei.shi21hMax) hMin[k] = op_focei.shi21hMax;
       }
-      // Every leg re-solves the subject, rewriting what likInner0() leaves for
-      // readers that do not call it again: llikObs (reported with the fit), and
-      // tbsLik and nObs (read by LikInner2() right after and by imp's AUTO
-      // setup; they do not depend on eta, but a leg that fails part-way leaves
-      // them partial).  Put back the caller's values at eta.  The rest stays at
-      // the last leg, which oldEta still records, so the next likInner0() call
-      // re-solves.
-      std::vector<double> llikObs(fInd->llikObs, fInd->llikObs + getIndNallTimes(ind));
-      double tbsLik = fInd->tbsLik;
-      int nObs = fInd->nObs;
+      // Every leg re-solves the subject; put back what the caller's evaluation at
+      // eta left.
+      LikInner0OutputGuard _outputs(fInd, ind);
       // optimHessType: 3 = forward, 1 = central.
-      arma::mat Hfd = shi21Hessian(getGradForOptimHess, x, gr0, id,
-                                   op_focei.optimHessType == 3 ? shi21HessForward :
-                                   (op_focei.optimHessType == 1 ? shi21HessCentral : 0),
-                                   fInd->etahh, op_focei.hessEpsInner,
-                                   op_focei.shi21maxInner, op_focei.shi21hMax,
-                                   hMin.memptr());
-      std::copy(llikObs.begin(), llikObs.end(), fInd->llikObs);
-      fInd->tbsLik = tbsLik;
-      fInd->nObs = nObs;
-      return Hfd;
+      return shi21Hessian(getGradForOptimHess, x, gr0, id,
+                          op_focei.optimHessType == 3 ? shi21HessForward :
+                          (op_focei.optimHessType == 1 ? shi21HessCentral : 0),
+                          fInd->etahh, op_focei.hessEpsInner,
+                          op_focei.shi21maxInner, op_focei.shi21hMax,
+                          hMin.memptr());
     });
   } else if (op_focei.interaction) {
     int nO = getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind);
@@ -3812,6 +3824,9 @@ double LikInner2(double *eta, int likId, int id) {
           }
         }
         arma::vec etahat(eta, op_focei.neta);
+        // Every node re-solves the subject; put back what the evaluation at the mode
+        // (above) left, or the fit reports the last node's llikObs.
+        LikInner0OutputGuard _outputs(fInd, ind);
         for (; curi < _aqn; curi++) {
           // Get the x and w for the current iteration
           arma::vec x = aqx.row(curi).t();

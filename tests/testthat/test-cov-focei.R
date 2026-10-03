@@ -244,6 +244,34 @@ nmTest({
     expect_equal(-2 * sum(.pop$llikObs, na.rm = TRUE), .pop$objf)
   })
 
+  test_that("an agq fit reports llikObs at its ETAs, not at the last quadrature node", {
+    # Every quadrature node re-solves the subject at another eta, rewriting its
+    # per-observation log-likelihoods; the fit has to report them at the mode,
+    # where the table's IPRED is solved.  No covariance step, so nothing else
+    # moves them.
+    one.cmt <- function() {
+      ini({
+        tka <- log(1.5); tcl <- log(2.7); tv <- log(31.5)
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .fit <- .nlmixr(one.cmt, theo_sd, "agq", agqControl(print = 0, maxOuterIterations = 0L, covMethod = ""))
+    expect_equal(.fit$control$nAGQ, 2L)
+    .ll <- .fit$llikObs
+    .ll <- .ll[!is.na(.ll)] # dose records
+    # llikObs of a Gaussian row omits the 2*pi constant of dnorm()
+    expect_equal(
+      .ll,
+      dnorm(.fit$DV, .fit$IPRED, .fit$theta[["add.sd"]], log = TRUE) + 0.5 * log(2 * pi),
+      tolerance = 1e-10
+    )
+  })
+
   test_that("a non-positive-definite R or S is never installed as it is", {
     # one estimated parameter at a point where the objective is concave: R < 0,
     # which cholSE0 (like for every 1x1 matrix) called positive definite, so
