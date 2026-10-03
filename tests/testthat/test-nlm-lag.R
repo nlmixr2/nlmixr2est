@@ -104,6 +104,16 @@ nmTest({
     expect_identical(.nlmFamilyLagDefs(.s), "c0=exp(-THETA[3])*central")
   })
 
+  test_that("the predictions of a lagged model depend on the thetas it uses (issue 1140)", {
+    # the derivatives through c0 are 0, so the build counts the thetas the
+    # predictions, ODEs and calculated variables use: THETA[1-3] enter the ODEs
+    # and c0, THETA[4] the error model
+    .s <- suppressMessages(rxode2::rxode2(.lagMod)$nlmEnv)
+    expect_identical(.nlmFamilyThetaUsed(.s), rep(TRUE, 4))
+    .s$..maxTheta <- 5L
+    expect_identical(.nlmFamilyThetaUsed(.s), c(rep(TRUE, 4), FALSE))
+  })
+
   test_that("the table step stops when the solve has no prediction column (issue 1140)", {
     # columns are found by name, never guessed by position
     .df <- list(ID = 1L, time = 0, c0 = 1, rx_r_ = 1, rxLambda = 1, rxYj = 2, rxLow = 0, rxHi = 1)

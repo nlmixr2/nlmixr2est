@@ -606,6 +606,25 @@ attr(rxUiGet.nlmParams, "rstudio") <- "params()"
   s$..lhs[sub("=.*$", "", s$..lhs) %in% s$..laggedVars]
 }
 
+#' Which THETAs an nlm-family model uses
+#'
+#' With a lagged calculated variable the symbolic derivatives cannot tell
+#' whether the predictions depend on a theta (they are 0 through the variable);
+#' the thetas are finite-differenced, so a prediction depends on every theta the
+#' prediction, the ODEs or the calculated variables use.
+#' @param s symengine environment
+#' @return logical vector, one element per THETA
+#' @noRd
+.nlmFamilyThetaUsed <- function(s) {
+  .prd <- get("rx_pred_", envir = s)
+  .txt <- c(rxode2::rxFromSE(.prd), s$..ddt, s$..lhs)
+  vapply(
+    seq_len(s$..maxTheta),
+    function(k) any(grepl(paste0("THETA[", k, "]"), .txt, fixed = TRUE)),
+    logical(1)
+  )
+}
+
 #' @export
 rxUiGet.nlmRxModel <- function(x, ...) {
   .nlmFamilyRxModel(x, "nlm", ...)
@@ -748,13 +767,17 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
   .thetaVars <- paste0("THETA_", seq_len(.s$..maxTheta), "_")
   .carry <- .rxCarryThetaPairsForBuild(x, .s, .thetaVars)
   .ret <- apply(.grd, 1, .nlmFamilyHdThetaLine, .s = .s, .carry = .carry, .predMinusDv = .predMinusDv, .zero = .zero)
-  # with a lagged calculated variable the zeros are expected: the thetas are
-  # finite-differenced (.nlmFamilyEnv())
-  .lagged <- length(.nlmFamilyLagDefs(.s)) > 0L
-  if (.zero$all && !.lagged) {
+  if (length(.nlmFamilyLagDefs(.s)) > 0L) {
+    # the derivatives through a lagged variable are 0: the thetas are
+    # finite-differenced (.nlmFamilyEnv()), so judge by the thetas the model uses
+    .used <- .nlmFamilyThetaUsed(.s)
+    .zero$all <- !any(.used)
+    .zero$any <- !all(.used)
+  }
+  if (.zero$all) {
     stop("none of the predictions depend on 'THETA'", call. = FALSE)
   }
-  if (.zero$any && !.lagged) {
+  if (.zero$any) {
     warning("some of the predictions do not depend on 'THETA'", call. = FALSE)
   }
   .s$..HdTheta <- .ret
