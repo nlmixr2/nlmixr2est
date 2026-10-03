@@ -1324,8 +1324,13 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   if (!is.matrix(cov) || nrow(cov) != .n || ncol(cov) != .n) {
     return("could not be computed")
   }
-  # the estimated Omega elements, each row c(a, b) with a >= b
-  .pairs <- .foceiOmegaPairs(omega, iniDf)
+  # the estimated Omega elements, each row c(a, b) with a >= b; none when
+  # there is no Omega
+  .pairs <- if (is.matrix(omega) && nrow(omega) > 0L) {
+    .foceiOmegaPairs(omega, iniDf)
+  } else {
+    matrix(integer(0), 0L, 2L)
+  }
   if (nrow(.pairs) != .nOm) {
     return("could not be mapped to the Omega variances and covariances")
   }

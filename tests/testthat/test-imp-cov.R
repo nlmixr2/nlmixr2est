@@ -49,6 +49,26 @@ test_that(".impCovNatural() maps chol(Omega^-1) rows to the Omega elements by th
   )
 })
 
+test_that(".impCovNatural() maps a covariance with no estimated Omega element", {
+  .v <- matrix(c(0.04, 0.01, 0.01, 0.09), 2)
+  .ini <- data.frame(name = c("tka", "tcl"), ntheta = 1:2, neta1 = NA_integer_, neta2 = NA_integer_, fix = FALSE)
+  for (.om in list(NULL, matrix(0, 0, 0))) {
+    .r <- .impCovNatural(.v, 1:2, list(), .om, c("tka", "tcl"), character(0), .ini)
+    expect_identical(.r$cov, matrix(.v, 2, dimnames = list(c("tka", "tcl"), c("tka", "tcl"))))
+    expect_identical(unname(.r$jacobian), diag(2))
+  }
+  # every Omega element fixed: only the thetas are mapped
+  .iniFix <- rbind(.ini, data.frame(name = "eta.ka", ntheta = NA_integer_, neta1 = 1L, neta2 = 1L, fix = TRUE))
+  .r <- .impCovNatural(.v, 1:2, list(), matrix(0.4), c("tka", "tcl"), "eta.ka", .iniFix)
+  expect_identical(.r$cov, matrix(.v, 2, dimnames = list(c("tka", "tcl"), c("tka", "tcl"))))
+  # Omega elements the count does not cover are still refused
+  .ini1 <- replace(.iniFix, "fix", FALSE)
+  expect_identical(
+    .impCovNatural(.v, 1:2, list(), matrix(0.4), c("tka", "tcl"), "eta.ka", .ini1),
+    "could not be mapped to the Omega variances and covariances"
+  )
+})
+
 # A mock fit environment for .impCovInstall(): two thetas and a 3 x 3 Omega
 # with one off-diagonal element, so six estimated parameters
 .impMockEnv <- function() {
