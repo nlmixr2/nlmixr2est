@@ -340,6 +340,15 @@
   for a quadratic).  `nlmixr2Gill83()` now reports the objective at `args`
   in the `f` column of every row; it was 0 on the rows `which` left out.
 
+- The fit table of a model that uses `lag()` (or `lead()`, `diff()`, ...) of a
+  calculated variable now has the right `PRED`, `IPRED` and residuals, for
+  every estimation method.  The table read the prediction from the column
+  after `time`, which for such a model is the lagged variable (it is output
+  ahead of the prediction), and the residual variance from the column after
+  that: `IPRED` was the variable itself (for `cp <- 0.5 * c0 + 0.5 *
+  lag(c0)`, `IPRED` was `c0`).  The prediction, its variance and the
+  simulations `npde` uses are now found by name.
+
 
 # nlmixr2est 7.1.0
 

@@ -43,7 +43,9 @@ extern "C" SEXP _nlmixr2est_cwresCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
   int ncalc = Rf_length(ipredL[0]);
   List etasDf = as<List>(etasDfSEXP);
   int nid = Rf_length(etasDf[0]);
-  int npred = getPredIndex(ipredL);
+  int nidCol = getPredIndex(ipredL);
+  // the eta sensitivities of rx_pred_ follow it, then rx_r_
+  int npred = getDfColIndex(ipredL, "rx_pred_", nidCol);
 
   arma::vec ipredt(REAL(ipredL[npred]), ncalc, false, true);
   arma::vec ipred(ipredt.size());
@@ -81,8 +83,9 @@ extern "C" SEXP _nlmixr2est_cwresCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
   arma::mat omegaMat = as<arma::mat>(omegaMatSEXP);
   unsigned int neta = omegaMat.n_rows;
 
-  arma::vec rpv(REAL(predL[npred+1+neta]), ncalc, false, true);
-  arma::vec riv(REAL(ipredL[npred+1+neta]), ncalc, false, true);
+  int nr = getDfColIndex(ipredL, "rx_r_", npred + 1 + neta);
+  arma::vec rpv(REAL(predL[nr]), ncalc, false, true);
+  arma::vec riv(REAL(ipredL[nr]), ncalc, false, true);
 
   bool doSim = true;
   List opt = as<List>(cwresOpt);
@@ -294,7 +297,7 @@ extern "C" SEXP _nlmixr2est_cwresCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
   retC = dfCbindList(wrap(retC));
   List ret(4);
   ret[0] = wrap(dv);
-  ret[1] = getDfIdentifierCols(ebeL, npred, stateSXP, IDlabelSEXP);
+  ret[1] = getDfIdentifierCols(ebeL, nidCol, stateSXP, IDlabelSEXP);
   ret[2] = retC;
   ret[3] = etaLst;
   return wrap(ret);

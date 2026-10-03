@@ -341,7 +341,7 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
   }
 
   List npdeSimL = as<List>(npdeSim);
-  int nsim = getPredIndex(npdeSimL);
+  int nsim = getDfColIndex(npdeSimL, "sim", getPredIndex(npdeSimL));
 
   int dvLen = Rf_length(dvIn);
   arma::vec dv  = arma::vec(REAL(dvIn), dvLen, false, true);
