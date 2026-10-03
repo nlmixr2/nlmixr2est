@@ -59,10 +59,15 @@ nmTest({
     expect_equal(.usedScaleC(.f, names(.want)), .want, tolerance = 1e-6)
   })
 
+  .agqObjf <- function(scaleC) {
+    .ctl <- agqControl(print = 0, maxOuterIterations = 0L, covMethod = "", calcTables = FALSE, scaleC = scaleC)
+    suppressMessages(suppressWarnings(nlmixr(.mod, theo_sd, "agq", control = .ctl)))$objf
+  }
+
   test_that("a scaleC longer than the parameter vector is only read up to it", {
     skip_on_cran()
-    # the extra values were copied past the end of the buffer (a crash)
-    .f <- suppressMessages(suppressWarnings(nlmixr(.mod, theo_sd, "focei", control = .ctl(scaleC = rep(2, 2000)))))
-    expect_equal(.f$scaleInfo$scaleC, rep(2, 7))
+    # the values past the parameters were copied over the AGQ nodes that follow
+    # the scaleC block (and a long enough vector past the buffer, a crash)
+    expect_identical(.agqObjf(rep(2, 10)), .agqObjf(rep(2, 7)))
   })
 })
