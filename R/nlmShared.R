@@ -226,7 +226,9 @@
       .r <- .r / (lst$deviance / (length(lst$fvec) - length(lst$par)))
     }
     .rc <- .nlmCovFromHessian(.r)
-    .ret$covWarning <- .rc$warning
+    if (!is.null(.rc$warning)) {
+      warning(.rc$warning, call. = FALSE)
+    }
     if (is.null(.rc$r)) {
       .ret$covMethod <- "failed"
     } else {
@@ -579,8 +581,10 @@
 #' @param returnFlag rxode2 control flag name that short-circuits and returns the
 #'   raw optimizer result (e.g. `"returnNlm"`)
 #' @param message `function(fit)` returning the `$message` (default `fit$message`)
-#' @param emitFitWarnings when TRUE, re-emit the warnings collected from
-#'   `fitModel` via `warning()` (nlm does this; the others do not)
+#' @param emitFitWarnings when TRUE (the default), re-emit the warnings
+#'   collected from `fitModel` (the optimizer, the covariance step and
+#'   `nlmWarnings()`) via `warning()`, so they reach the fit's `$runInfo`;
+#'   `FALSE` drops them
 #' @param extra `$extra` print string, or a `function(control)` returning it
 #' @param adjustOutput when TRUE, run `.nlmFamilyAdjustOutput()`
 #' @param objective optional `function(fit)` returning the raw objective, or
@@ -602,7 +606,7 @@
   returnFlag,
   objective = NULL,
   message = function(fit) fit$message,
-  emitFitWarnings = FALSE,
+  emitFitWarnings = TRUE,
   extra = "",
   adjustOutput = TRUE,
   postSetup = NULL
@@ -623,11 +627,6 @@
     .collectWarn(fitModel(.ui, .ret$dataSav), lst = TRUE)
   })
   .ret[[method]] <- .fit[[1]]
-  # the covariance step's report is not one of the optimizer warnings dropped below
-  if (is.character(.fit[[1]]$covWarning)) {
-    warning(.fit[[1]]$covWarning, call. = FALSE)
-    .ret[[method]]$covWarning <- NULL
-  }
   if (!is.null(postSetup)) {
     .ret <- postSetup(.ret, .ui, .fit)
   }

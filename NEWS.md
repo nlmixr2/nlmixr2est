@@ -370,6 +370,13 @@
   residuals as standard normal: 249.71 instead of 216.15 for the
   one-compartment additive model of `theo_sd`.
 
+- The warnings of an `nlminb`, `optim`, `bobyqa`, `newuoa`, `uobyqa`,
+  `n1qn1`, `lbfgsb3c`, `trust` or `nls` run now reach the fit's `$runInfo`,
+  as those of `nlm` did: the optimizer's own, `trust`'s unverified stationary
+  point, and the solver reports (NaN gradients resolved by finite
+  differences, NaN solves replaced by 0, loosened ODE tolerances).  They
+  were dropped.
+
 
 # nlmixr2est 7.1.0
 

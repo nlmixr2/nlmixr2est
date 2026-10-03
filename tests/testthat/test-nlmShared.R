@@ -85,6 +85,21 @@ nmTest({
     expect_null(.fit$env$bobyqa$covWarning)
   })
 
+  test_that("the warnings of every nlm-family run reach $runInfo (issue 1140)", {
+    # censored observations are finite-differenced, which nlmWarnings()
+    # reports; only est = "nlm" passed the warnings of its run on
+    .d <- nlmixr2data::theo_sd
+    .d$CENS <- ifelse(.d$DV < 2 & .d$EVID == 0, 1L, 0L)
+    .d$DV[.d$CENS == 1] <- 2
+    for (.est in c("nlm", "nlminb", "n1qn1")) {
+      .fit <- .nlmixr(.pk, .d, est = .est, control = list(print = 0L))
+      expect_true(
+        "NaN symbolic gradients were resolved with finite differences" %in% .fit$runInfo,
+        info = .est
+      )
+    }
+  })
+
   test_that("the covariance is mapped to the natural scale by the diagonal scaling Jacobian (issue 1140)", {
     # scaleType = "mult" estimates x = u * scaleTo / init, so du/dx = init / scaleTo
     # and the covariance of u is J Cov(x) J with J = diag(init / scaleTo)

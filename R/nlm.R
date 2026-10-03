@@ -1164,7 +1164,6 @@ nlmObjectiveSetup <- function(ui, data, control = NULL, gradient = FALSE, scale 
     objective = "minimum",
     controlToFocei = .nlmControlToFoceiControl,
     returnFlag = "returnNlm",
-    emitFitWarnings = TRUE,
     message = function(.fit) {
       if (.fit$code == 1) {
         "relative gradient is close to zero, current iterate is probably solution"
