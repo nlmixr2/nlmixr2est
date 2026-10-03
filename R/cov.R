@@ -370,7 +370,7 @@
   }
   .nlmixr2CovConditionUpdate(env)
   if (warn && .covIsName(what) && !.covSameName(.covBaseName(what), .covBaseName(label))) {
-    warning(sprintf("\"%s\" covariance could not be computed; installed \"%s\"", what, label), call. = FALSE)
+    warning(sprintf("\"%s\" covariance installed instead of the requested \"%s\"", label, what), call. = FALSE)
   }
   invisible(TRUE)
 }

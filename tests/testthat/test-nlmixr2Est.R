@@ -46,7 +46,7 @@ nmTest({
     })
     expect_warning(
       .fit <- .fitDeferred("sa"),
-      "\"sa\" covariance could not be computed; installed \"linFim\"",
+      "\"linFim\" covariance installed instead of the requested \"sa\"",
       fixed = TRUE
     )
     expect_identical(.fit$covMethod, "linFim")

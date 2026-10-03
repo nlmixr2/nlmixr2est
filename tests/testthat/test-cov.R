@@ -106,7 +106,7 @@ test_that(".covInstall() says when what it installed is not what was asked for",
   .e <- .fakeFitEnv()
   expect_warning(
     .covInstall(.e, .pdCov(), "linFim", what = "sa"),
-    "\"sa\" covariance could not be computed; installed \"linFim\"",
+    "\"linFim\" covariance installed instead of the requested \"sa\"",
     fixed = TRUE
   )
   expect_identical(.e$covMethod, "linFim")
