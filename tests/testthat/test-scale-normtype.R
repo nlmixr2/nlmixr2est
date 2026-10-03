@@ -25,8 +25,8 @@ nmTest({
 
   # Loads an nlm problem for .mod under `ctl` and returns its starting
   # parameters; the caller frees it with .nlmFreeEnv().
-  .loadMod <- function(ctl) {
-    .ui <- rxode2::rxode2(.mod)
+  .loadMod <- function(ctl, model = .mod) {
+    .ui <- rxode2::rxode2(model)
     .ret <- new.env(parent = emptyenv())
     .foceiPreProcessData(nlmixr2data::theo_sd, .ret, .ui, ctl$rxControl)
     .p <- setNames(.ui$nlmParIni, .ui$nlmParName)
@@ -61,6 +61,36 @@ nmTest({
     .r <- .scaledParFor("len")
     .want <- .r$par / sqrt(sum(.r$par^2))
     expect_equal(unname(.r$scaled), unname(.want), tolerance = 1e-8)
+  })
+
+  # every theta at the same value v, scaled by scaleType = "norm": x = (p - c1)/c2
+  .unscaledOnes <- function(v) {
+    on.exit(.nlmFreeEnv())
+    .m <- rxode2::ini(.mod, tka = v, tcl = v, tv = v, add.sd = v)
+    .ctl <- nlmControl(print = 0, scaleType = "norm", calcTables = FALSE, iterlim = 1)
+    .acc <- new.env(parent = emptyenv())
+    .acc$warn <- character(0)
+    .p <- withCallingHandlers(.loadMod(.ctl, .m), warning = function(w) {
+      .acc$warn <- c(.acc$warn, conditionMessage(w))
+      invokeRestart("muffleWarning")
+    })
+    list(p = .p, ones = nlmUnscalePar(rep(1, 4)), warn = .acc$warn)
+  }
+
+  test_that("equal initial estimates are normalized to unit length", {
+    skip_on_cran()
+    .r <- .unscaledOnes(0.7)
+    expect_identical(.r$warn, "all parameters are the same value, switch to length normType")
+    # c1 = 0, c2 = sqrt(4 * 0.49) = 1.4
+    expect_equal(unname(.r$ones), rep(1.4, 4), tolerance = 1e-12)
+  })
+
+  test_that("all-zero initial estimates are not normalized", {
+    skip_on_cran()
+    .r <- .unscaledOnes(0)
+    expect_identical(.r$warn, "all parameters are zero, cannot scale, run unscaled")
+    # c1 = 0, c2 = 1
+    expect_equal(unname(.r$ones), rep(1, 4))
   })
 
   test_that("scaleType='mult' scales and unscales only for a positive scaleTo", {
