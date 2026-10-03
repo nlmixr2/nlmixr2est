@@ -1491,8 +1491,6 @@
 #' @noRd
 .saemControlToFoceiControl <- function(env, assign = TRUE) {
   .saemControl <- env$saemControl
-  .ui <- env$ui
-  .rxControl <- env$saemControl$rxControl
   # For mixture models the env$.etaMat is the replicated (N*nMix)-row matrix
   # used internally during SAEM.  For the FOCEi post-processing step we need
   # exactly N rows (one per subject).  env$.etaMatBase always holds the
@@ -1502,26 +1500,14 @@
   } else {
     env$.etaMat
   }
-  .foceiControl <- foceiControl(
-    maxOuterIterations = 0L,
-    maxInnerIterations = 0L,
-    covMethod = 0L,
-    etaMat = .etaForFocei,
-    sumProd = .saemControl$sumProd,
-    optExpression = .saemControl$optExpression,
+  .foceiControl <- .foceiOwnEtaControl(
+    .saemControl,
+    .etaForFocei,
     scaleTo = 0,
-    calcTables = .saemControl$calcTables,
-    addProp = .saemControl$addProp,
-    skipCov = .ui$foceiSkipCov,
-    interaction = 1L,
-    compress = .saemControl$compress,
-    ci = .saemControl$ci,
-    sigdigTable = .saemControl$sigdigTable,
+    skipCov = env$ui$foceiSkipCov,
     indTolRelax = .saemControl$indTolRelax,
-    rxControl = .rxControl,
     resetThetaP = 0,
     resetThetaFinalP = 0,
-    eventSens = .saemControl$eventSens,
     est = "saem"
   )
   if (exists(".etaMat", envir = env, inherits = FALSE)) {

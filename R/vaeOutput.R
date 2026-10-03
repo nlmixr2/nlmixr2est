@@ -386,31 +386,17 @@
 #' @noRd
 .vaeControlToFoceiControl <- function(env, assign = TRUE) {
   .control <- env$vaeControl
-  .lik <- .control$likelihood
-  .interaction <- if (.lik %in% c("foce", "focep")) 0L else 1L
-  .foce <- if (identical(.lik, "focep")) "foce+" else "nonmem"
-  .fc <- foceiControl(
-    rxControl = .control$rxControl,
-    maxOuterIterations = 0L,
-    maxInnerIterations = 0L,
+  .fc <- .foceiOwnEtaControl(
+    .control,
+    env$etaMat,
     covMethod = .control$covMethod,
-    etaMat = env$etaMat,
-    interaction = .interaction,
-    foce = .foce,
-    sumProd = .control$sumProd,
-    optExpression = .control$optExpression,
+    likelihood = .control$likelihood,
     literalFix = .control$literalFix,
     literalFixRes = .control$literalFixRes,
-    addProp = .control$addProp,
-    calcTables = .control$calcTables,
-    compress = .control$compress,
-    ci = .control$ci,
-    sigdigTable = .control$sigdigTable,
     stickyRecalcN = .control$stickyRecalcN,
     maxOdeRecalc = .control$maxOdeRecalc,
     odeRecalcFactor = .control$odeRecalcFactor,
     indTolRelax = .control$indTolRelax,
-    eventSens = .control$eventSens,
     fast = FALSE, # no outer optimizer -- skip the outer gradient model
     print = 0L
   )

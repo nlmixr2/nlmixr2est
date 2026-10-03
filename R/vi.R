@@ -230,11 +230,10 @@
     .est <- if (isTRUE(res$pointEstimate)) "emvi" else "fbvi"
   }
   .prep <- res$prep
-  .rxControl <- .control$rxControl
 
   .ret <- new.env(parent = emptyenv())
   .ret$table <- env$table
-  .foceiPreProcessData(env$data, .ret, .ui, .rxControl)
+  .foceiPreProcessData(env$data, .ret, .ui, .control$rxControl)
 
   ## seed the ui iniDf with the variational estimates so the eval reports them
   .uiD <- rxode2::rxUiDecompress(.ui)
@@ -276,32 +275,18 @@
   } else {
     .control$covMethod
   }
-  .lik <- .control$likelihood
-  .interaction <- if (.lik %in% c("foce", "focep")) 0L else 1L
-  .foce <- if (identical(.lik, "focep")) "foce+" else "nonmem"
-  .fc <- foceiControl(
-    rxControl = .rxControl,
-    maxOuterIterations = 0L,
-    maxInnerIterations = 0L,
+  .fc <- .foceiOwnEtaControl(
+    .control,
+    .eb,
     covMethod = .covM,
-    etaMat = .eb,
+    likelihood = .control$likelihood,
     scaleTo = 0,
-    interaction = .interaction,
-    foce = .foce,
-    sumProd = .control$sumProd,
-    optExpression = .control$optExpression,
     literalFix = .control$literalFix,
     literalFixRes = .control$literalFixRes,
-    addProp = .control$addProp,
-    calcTables = .control$calcTables,
-    compress = .control$compress,
-    ci = .control$ci,
-    sigdigTable = .control$sigdigTable,
     stickyRecalcN = .control$stickyRecalcN,
     maxOdeRecalc = .control$maxOdeRecalc,
     odeRecalcFactor = .control$odeRecalcFactor,
     indTolRelax = .control$indTolRelax,
-    eventSens = .control$eventSens,
     fast = FALSE,
     print = 0L
   )

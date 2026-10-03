@@ -542,27 +542,15 @@ nmObjGetControl.nlme <- function(x, ...) {
 
 .nlmeControlToFoceiControl <- function(env, assign = TRUE, covMethod = 0L) {
   .nlmeControl <- env$nlmeControl
-  .ui <- env$ui
-  .foceiControl <- foceiControl(
-    rxControl = env$nlmeControl$rxControl,
-    maxOuterIterations = 0L,
-    maxInnerIterations = 0L,
+  .foceiControl <- .foceiOwnEtaControl(
+    .nlmeControl,
+    env$etaMat,
     covMethod = covMethod,
-    etaMat = env$etaMat,
-    sumProd = .nlmeControl$sumProd,
-    optExpression = .nlmeControl$optExpression,
     literalFix = .nlmeControl$literalFix,
     literalFixRes = FALSE,
     scaleTo = 0,
-    calcTables = .nlmeControl$calcTables,
-    addProp = .nlmeControl$addProp,
-    skipCov = .ui$foceiSkipCov,
-    interaction = 1L,
-    compress = .nlmeControl$compress,
-    ci = .nlmeControl$ci,
-    sigdigTable = .nlmeControl$sigdigTable,
-    indTolRelax = TRUE,
-    eventSens = .nlmeControl$eventSens
+    skipCov = env$ui$foceiSkipCov,
+    indTolRelax = TRUE
   )
   if (assign) {
     env$control <- .foceiControl
