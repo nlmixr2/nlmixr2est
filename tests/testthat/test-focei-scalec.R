@@ -58,4 +58,11 @@ nmTest({
     .want <- c(tcl = 1, tv = 1, add.sd = 0.35, .omegaC)
     expect_equal(.usedScaleC(.f, names(.want)), .want, tolerance = 1e-6)
   })
+
+  test_that("a scaleC longer than the parameter vector is only read up to it", {
+    skip_on_cran()
+    # the extra values were copied past the end of the buffer (a crash)
+    .f <- suppressMessages(suppressWarnings(nlmixr(.mod, theo_sd, "focei", control = .ctl(scaleC = rep(2, 2000)))))
+    expect_equal(.f$scaleInfo$scaleC, rep(2, 7))
+  })
 })
