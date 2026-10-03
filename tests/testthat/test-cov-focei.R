@@ -388,4 +388,53 @@ nmTest({
     .v <- suppressMessages(suppressWarnings(nlme::getVarCov(.fixed, force = TRUE)))
     expect_equal(sqrt(diag(.v)), sqrt(diag(.opt$cov)), tolerance = 1e-6)
   })
+
+  test_that("at the default tolerances the finite-difference R is the analytic information", {
+    skip_on_cran()
+    # The probes run at the fit's tolerances times 1e-3 (ODE rtol 1e-7, atol 1e-9, inner
+    # 1e-9 at sigdig 3).  At the fit's own (rtol 1e-3, inner 1e-5) the theta-only "r" SE of
+    # tka was 0.47 against an analytic 0.19, numerical noise; now every SE is within 4%.
+    .an <- .nlmixr(.quietOneCmt, theo_sd, "focei", foceiControl(print = 0, covMethod = "analytic"))
+    .r <- .nlmixr(.quietOneCmt, theo_sd, "focei", foceiControl(print = 0, covMethod = "r", covFull = FALSE))
+    expect_identical(.r$covMethod, "r")
+    .th <- c("tka", "tcl", "tv", "add.sd")
+    # Omega is held at its value in a theta-only R: the theta block of the information
+    .seCond <- sqrt(diag(solve(solve(.an$cov)[.th, .th])))
+    expect_lt(max(abs(sqrt(diag(.r$cov))[.th] / .seCond - 1)), 0.05)
+  })
+
+  test_that("the covariance step runs at its probe tolerances and leaves estimation as it was", {
+    skip_on_cran()
+    # Estimation, its objective, ETAs and tables are those of the fit's own tolerances:
+    # the covariance step that follows tightens its solves and inner problems only for
+    # itself.
+    .none <- .nlmixr(.quietOneCmt, theo_sd, "focei", foceiControl(print = 0, covMethod = ""))
+    .cov <- .nlmixr(.quietOneCmt, theo_sd, "focei", foceiControl(print = 0))
+    expect_identical(.cov$objf, .none$objf)
+    expect_identical(.cov$theta, .none$theta)
+    expect_identical(.cov$omega, .none$omega)
+    expect_identical(.cov$etaMat, .none$etaMat)
+    expect_identical(as.data.frame(.cov)$IPRED, as.data.frame(.none)$IPRED)
+    expect_identical(as.data.frame(.cov)$CWRES, as.data.frame(.none)$CWRES)
+    # NULL covSolveTol is the fit's atol and rtol times 1e-3, capped at 1e-7: a fit at
+    # atol = rtol = 1e-4 gets 1e-7 for both, as covSolveTol = 1e-7 sets them
+    .ctl <- function(...) {
+      foceiControl(
+        print = 0,
+        maxOuterIterations = 0L,
+        covMethod = "r",
+        covFull = FALSE,
+        rxControl = rxode2::rxControl(atol = 1e-4, rtol = 1e-4),
+        ...
+      )
+    }
+    .rule <- .nlmixr(.quietOneCmt, theo_sd, "focei", .ctl())
+    expect_identical(.rule$cov, .nlmixr(.quietOneCmt, theo_sd, "focei", .ctl(covSolveTol = 1e-7))$cov)
+    # the inner tolerance is the fit's trustFterm/trustMterm (1e-5 at sigdig 3) times
+    # 1e-3, capped at 1e-9
+    expect_identical(.rule$cov, .nlmixr(.quietOneCmt, theo_sd, "focei", .ctl(covInnerTol = 1e-9))$cov)
+    # and each setting is used: another value gives another matrix
+    expect_false(identical(.rule$cov, .nlmixr(.quietOneCmt, theo_sd, "focei", .ctl(covSolveTol = 1e-6))$cov))
+    expect_false(identical(.rule$cov, .nlmixr(.quietOneCmt, theo_sd, "focei", .ctl(covInnerTol = 1e-7))$cov))
+  })
 })

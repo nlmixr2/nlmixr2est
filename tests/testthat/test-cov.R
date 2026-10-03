@@ -128,6 +128,19 @@ test_that("covMaxInnerIterations survives a foceiControl() round trip", {
   expect_error(foceiControl(covMaxInnerIterations = 1.5), "covMaxInnerIterations")
 })
 
+test_that("covInnerTol survives a foceiControl() round trip", {
+  # the covariance step's inner tolerance; NULL is the probe-tolerance rule
+  expect_null(foceiControl()$covInnerTol)
+  .ctl <- foceiControl()
+  .ctl$covInnerTol <- 1e-11
+  expect_identical(getValidNlmixrCtl.focei(list(.ctl))$covInnerTol, 1e-11)
+  expect_identical(foceiControl(covInnerTol = 1e-10)$covInnerTol, 1e-10)
+  expect_error(foceiControl(covInnerTol = 0), "covInnerTol")
+  expect_error(foceiControl(covInnerTol = -1e-9), "covInnerTol")
+  expect_error(foceiControl(covInnerTol = "a"), "covInnerTol")
+  expect_error(foceiControl(covInnerTol = c(1e-9, 1e-9)), "covInnerTol")
+})
+
 test_that(".covInstall() installs, stashes the replaced covariance and refreshes its diagnostics", {
   .e <- .fakeFitEnv()
   .new <- .pdCov() * 4
@@ -405,27 +418,35 @@ nmTest({
   }
 
   test_that("a finite-difference setCov() is the covariance of the fit's marginal likelihood", {
+    # setCov() reproduces the covariance a fit with that covMethod computes while it is
+    # estimated: the estimates are the same (the covariance step does not change them),
+    # and both start every leg from the fit's ETAs optimized again at the covariance
+    # step's tolerances.  It held the ETAs fixed with interaction = 0, and its SEs were 2
+    # to 25 times too small.
     .none <- suppressWarnings(nlmixr2(
       .oneCmt,
       nlmixr2data::theo_sd,
       est = "focei",
       control = foceiControl(print = 0, covMethod = "", calcTables = FALSE)
     ))
-    .th <- c("tka", "tcl", "tv", "add.sd")
-    for (.m in c("r", "s", "r,s", "r (full)")) {
+    for (.m in c("r", "s", "r,s", "r (full)", "r,s (full)")) {
       .full <- .covIsFull(.m)
-      .ref <- .zeroOuterRef(.none, .covBaseName(.m), .full)
-      expect_identical(.ref$covMethod, .m)
-      suppressMessages(suppressWarnings(setCov(.none, .m)))
-      expect_identical(.none$covMethod, .m)
-      expect_setequal(names(.seOf(.none)), names(.seOf(.ref)))
-      expect_lt(.maxRel(.seOf(.none)[.th], .seOf(.ref)), if (.full) 1e-3 else 1e-4, label = .m)
-      if (.full) {
-        .om <- setdiff(names(.seOf(.ref)), .th)
-        expect_lt(.maxRel(.seOf(.none)[.om], .seOf(.ref)), 1e-2, label = .m)
-      }
+      .native <- suppressWarnings(nlmixr2(
+        .oneCmt,
+        nlmixr2data::theo_sd,
+        est = "focei",
+        control = foceiControl(print = 0, covMethod = .covBaseName(.m), covFull = .full, calcTables = FALSE)
+      ))
+      expect_identical(.native$objf, .none$objf)
+      expect_identical(.native$covMethod, .m)
+      .fit <- .none
+      suppressMessages(suppressWarnings(setCov(.fit, .m)))
+      expect_identical(.fit$covMethod, .m)
+      expect_setequal(names(.seOf(.fit)), names(.seOf(.native)))
+      # measured: at most 9e-6 (theta-only) and 3e-4 (full) apart
+      expect_lt(.maxRel(.seOf(.fit), .seOf(.native)), if (.full) 1e-3 else 1e-4, label = .m)
     }
-    # getVarCov(force = TRUE) recomputes the same way
+    # getVarCov(force = TRUE) recomputes the fit's own covariance
     .fit <- suppressWarnings(nlmixr2(
       .oneCmt,
       nlmixr2data::theo_sd,
@@ -433,34 +454,46 @@ nmTest({
       control = foceiControl(print = 0, covMethod = "r", covFull = FALSE, calcTables = FALSE)
     ))
     .v <- suppressMessages(suppressWarnings(nlme::getVarCov(.fit, force = TRUE)))
-    expect_lt(.maxRel(sqrt(diag(.v)), .seOf(.zeroOuterRef(.fit, "r"))), 1e-4)
+    expect_lt(.maxRel(sqrt(diag(.v)), .seOf(.fit)), 1e-6)
   })
 
   test_that("setCov() differentiates the likelihood the fit used: interaction is kept", {
     # with a proportional error the interaction changes the objective; setCov() used to
     # differentiate the FOCE one (interaction = 0) of a FOCEI fit
-    .none <- suppressWarnings(nlmixr2(
-      .ceOneCmt,
-      nlmixr2data::theo_sd,
-      est = "focei",
-      control = foceiControl(print = 0, covMethod = "", calcTables = FALSE)
-    ))
-    .focei <- .zeroOuterRef(.none, "r")
+    .ctl <- function(...) foceiControl(print = 0, calcTables = FALSE, covFull = FALSE, ...)
+    .none <- suppressWarnings(nlmixr2(.ceOneCmt, nlmixr2data::theo_sd, est = "focei", control = .ctl(covMethod = "")))
+    .focei <- suppressWarnings(nlmixr2(.ceOneCmt, nlmixr2data::theo_sd, est = "focei", control = .ctl(covMethod = "r")))
     .foce <- .zeroOuterRef(.none, "r", interaction = FALSE)
-    # the two likelihoods give tka SEs 30% apart here
-    expect_gt(abs(.seOf(.foce)[["tka"]] / .seOf(.focei)[["tka"]] - 1), 0.2)
+    # the two likelihoods give add.sd SEs 34% apart here
+    expect_gt(.seOf(.foce)[["add.sd"]] / .seOf(.focei)[["add.sd"]], 1.2)
     suppressMessages(suppressWarnings(setCov(.none, "r")))
     expect_identical(.none$covMethod, "r")
-    expect_lt(.maxRel(.seOf(.none), .seOf(.focei)), 1e-4)
+    # measured: 2e-11 apart
+    expect_lt(.maxRel(.seOf(.none), .seOf(.focei)), 1e-6)
   })
 
   test_that("the post-fit mu recompute differentiates the marginal likelihood", {
     .ctl <- foceiControl(print = 0, calcTables = FALSE)
     .mf <- suppressWarnings(nlmixr2(.oneCmt, nlmixr2data::theo_sd, est = "mfocei", control = .ctl))
     expect_identical(.mf$covMethod, "r,s (full)")
-    .ref <- .zeroOuterRef(.mf, "r,s", covFull = TRUE)
+    # the recompute is a FOCEi refit of the full model at the fit's estimates that reports
+    # the fit's ETAs (maxInnerIterations = 0) and gives its covariance legs an inner budget
+    .refCtl <- foceiControl(
+      print = 0,
+      calcTables = FALSE,
+      maxOuterIterations = 0L,
+      maxInnerIterations = 0L,
+      covMaxInnerIterations = 1000L,
+      etaMat = .mf$etaMat
+    )
+    .ref <- suppressWarnings(nlmixr2(.mf$finalUi, nlmixr2data::theo_sd, est = "focei", control = .refCtl))
+    expect_identical(.ref$covMethod, "r,s (full)")
     expect_setequal(names(.seOf(.mf)), names(.seOf(.ref)))
     expect_lt(.maxRel(.seOf(.mf), .seOf(.ref)), 1e-6)
+    # a FOCEi fit with no outer iterations that optimizes the ETAs itself first starts the
+    # covariance legs from slightly different ETAs: the same covariance up to the
+    # finite-difference noise at the covariance step's tolerances (measured 0.2%)
+    expect_lt(.maxRel(.seOf(.mf), .seOf(.zeroOuterRef(.mf, "r,s", covFull = TRUE))), 0.01)
     # an "analytic" request outside the analytic scope (linCmt) falls back to the
     # finite-difference sandwich, which is marginal too, and says so
     .an <- foceiControl(print = 0, calcTables = FALSE, covMethod = "analytic")

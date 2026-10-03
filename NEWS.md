@@ -290,6 +290,21 @@
   covariance, as asked, and now warns that this covariance is conditional on
   those ETAs and that `setCov()` computes the covariance of the marginal
   likelihood.
+- The finite-difference covariance of the FOCEi family (and `setCov()`,
+  `getVarCov(force = TRUE)`, the post-fit recomputes and the vae/emvi/fbvi
+  covariance) now solves its probes, and the centre they are compared with,
+  at tolerances derived from the fit's: each ODE tolerance times 1e-3, capped
+  at 1e-7, and the inner `trustFterm`/`trustMterm` times 1e-3, capped at 1e-9
+  (at the default `sigdig = 3`: `rtol = 1e-7`, `atol = 1e-9`, inner 1e-9).
+  `covSolveTol = NULL` used to leave them at the estimation's tolerances
+  (`rtol = 1e-3`, inner 1e-5), where the probes differenced numerical noise:
+  on `theo_sd` the theta-only `"r"` standard error of `tka` was 0.47 against
+  an analytic 0.19 and is now 0.190; every structural standard error of the
+  theta-only `"r"` covariance (native, `setCov()` and the `mfocei` recompute)
+  is within 4% of the analytic one.  A number for `covSolveTol` still sets the
+  ODE tolerance.  Estimation is unchanged (the objective, estimates, ETAs and
+  tables are identical); the covariance step takes 2 to 3 times longer on
+  `theo_sd` and 5 to 8 times longer on the warfarin example model.
 
 ### Covariance
 
