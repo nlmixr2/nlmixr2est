@@ -170,6 +170,23 @@ nmTest({
     expect_match(.f$covMethod, "\"tcl\"")
   })
 
+  test_that("a posthoc covariance step checks the bounds as they are", {
+    skip_on_cran()
+    # tcl starts (and, without outer iterations, stays) next to its lower
+    # bound.  The covariance step took the bounds, never scaled in a posthoc
+    # fit, through the unscaling and compared tcl with a lower bound of 2.77.
+    .m <- .mod |> rxode2::ini(tcl = c(1.0999, 1.1, 5))
+    .f <- suppressMessages(suppressWarnings(nlmixr(
+      .m,
+      theo_sd,
+      "focei",
+      control = foceiControl(print = 0, calcTables = FALSE, maxOuterIterations = 0L)
+    )))
+    expect_equal(fixef(.f)[["tcl"]], 1.1)
+    expect_match(.f$covMethod, "^Boundary issue")
+    expect_match(.f$covMethod, "\"tcl\"")
+  })
+
   .agqObjf <- function(scaleC) {
     .ctl <- agqControl(print = 0, maxOuterIterations = 0L, covMethod = "", calcTables = FALSE, scaleC = scaleC)
     suppressMessages(suppressWarnings(nlmixr(.mod, theo_sd, "agq", control = .ctl)))$objf

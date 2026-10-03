@@ -509,6 +509,9 @@ struct focei_options {
   double scaleCmin;
   double scaleCmax;
   int scaleCdefault = scaleCdefaultUnit; // an NA scaleC defaults to 1/|init|, 1 at init 0
+  // lower/upper are on the optimizer's scale: foceiOuter() scales them only when
+  // it optimizes, and foceiCalcCov() unscales them only when they are
+  bool boundsScaled = false;
   double c1;
   double c2;
   double scaleTo;
@@ -9469,6 +9472,7 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.initOfv = NA_REAL;
   op_focei.finalOfv = NA_REAL;
   op_focei.lastOfv=std::numeric_limits<double>::max();
+  op_focei.boundsScaled = false;
   for (unsigned int k = op_focei.npars; k--;){
     j=op_focei.fixedTrans[k];
     ret[k] = op_focei.fullTheta[j];
@@ -9971,6 +9975,7 @@ Environment foceiOuter(Environment e){
         op_focei.upper[k]=scaleScalePar(&op_focei, op_focei.upper,k);
       }
     }
+    op_focei.boundsScaled = true;
 
     // Enable the analytic outer gradient only for the duration of the outer
     // optimizer's gradient callbacks; foceiS's own numericGrad use runs later
@@ -11049,13 +11054,17 @@ NumericMatrix foceiCalcCov(Environment e){
       bool checkUpperBound=false;
       rx = getRxSolve_();
       if (op_focei.neta == 0) op_focei.covMethod = 2; // Always use hessian for NLS
-      for (unsigned int k = op_focei.npars; k--;){
-        if (R_FINITE(op_focei.lower[k])){
-          op_focei.lower[k]=scaleUnscalePar(&op_focei, op_focei.lower,k);
+      // the boundary check below needs the bounds on the parameters' own scale
+      if (op_focei.boundsScaled) {
+        for (unsigned int k = op_focei.npars; k--;){
+          if (R_FINITE(op_focei.lower[k])){
+            op_focei.lower[k]=scaleUnscalePar(&op_focei, op_focei.lower,k);
+          }
+          if (R_FINITE(op_focei.upper[k])) {
+            op_focei.upper[k]=scaleUnscalePar(&op_focei, op_focei.upper,k);
+          }
         }
-        if (R_FINITE(op_focei.upper[k])) {
-          op_focei.upper[k]=scaleUnscalePar(&op_focei, op_focei.upper,k);
-        }
+        op_focei.boundsScaled = false;
       }
       if (op_focei.boundTol > 0){
         // Subtract nEstOmega so that Omega boundaries are not counted.

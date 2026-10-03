@@ -236,6 +236,13 @@
   happens for a repeated Gill search (`repeatGillMax`), on the restart after a
   theta reset and with a custom outer optimizer.
 
+- The covariance step of a FOCEi-family fit without outer iterations
+  (`maxOuterIterations = 0`, which includes the second pass of `fo` and
+  `foi`) checks the estimates against their own bounds.  It took bounds that
+  were never put on the optimizer's scale back from that scale, so it missed
+  an estimate on its bound (a `tcl` of 1.1 with a lower bound of 1.0999 was
+  compared with 2.77) and could flag one far from it.
+
 ### Covariance and finite differences
 
 - The Gill (1983) step-size search no longer leaves a parameter at its last
