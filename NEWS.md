@@ -185,6 +185,12 @@
   and `ifocepControl()` as the call that rebuilds them, as it already did for
   the other focei-family controls; it returned `NULL` for these.
 
+- `saemControl()` now checks `nSaCov` as `saControl()` does (a whole number
+  of at least 1) and requires a single `seed`.  A zero, negative or missing
+  `nSaCov` was accepted and skipped the covariance phase of
+  `covMethod = "sa"`, and a vector `seed` stopped the fit with
+  `'.Random.seed' has wrong length`.
+
 ### Covariance and finite differences
 
 - The Gill (1983) step-size search no longer leaves a parameter at its last

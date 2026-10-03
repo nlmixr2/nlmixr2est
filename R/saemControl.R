@@ -443,7 +443,8 @@ saemControl <- function(
 
   iovXform <- match.arg(iovXform)
   iovMethod <- match.arg(iovMethod)
-  checkmate::assertIntegerish(seed, any.missing = FALSE, min.len = 1)
+  checkmate::assertIntegerish(seed, any.missing = FALSE, len = 1)
+  checkmate::assertIntegerish(nSaCov, lower = 1, len = 1, any.missing = FALSE)
   if (!is.null(.xtra$mcmc)) {
     #mcmc = list(niter = c(nBurn, nEm), nmc = nmc, nu = nu),
     checkmate::assertIntegerish(.xtra$mcmc$niter, len = 2, lower = 0, any.missing = FALSE, .var.name = "mcmc$niter")
