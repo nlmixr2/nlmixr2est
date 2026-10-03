@@ -152,7 +152,9 @@ nmTest({
 
   test_that("the covariance is mapped to the natural scale by the diagonal scaling Jacobian (issue 1140)", {
     # scaleType = "mult" estimates x = u * scaleTo / init, so du/dx = init / scaleTo
-    # and the covariance of u is J Cov(x) J with J = diag(init / scaleTo)
+    # and the covariance of u is J Cov(x) J with J = diag(init / scaleTo).  A
+    # characterization test: J's zero off-diagonal is explicit, and Armadillo
+    # (>= 10.5) also zero-fills, so it cannot tell the two apart.
     .x <- nlmObjectiveSetup(
       .pk,
       nlmixr2data::theo_sd,
