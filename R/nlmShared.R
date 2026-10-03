@@ -204,8 +204,9 @@
     .ctl$covMethod <- "r"
   }
   if (inherits(lst, "nls")) {
-    .cov <- summary(lst)$cov.unscaled
-    .ret$cov <- .Call(`_nlmixr2est_nlmAdjustCov`, .cov, .parScaled)
+    # sigma^2 (J'J)^-1, the residual variance times summary()$cov.unscaled
+    .ret$cov.scaled <- stats::vcov(lst)
+    .ret$cov <- .Call(`_nlmixr2est_nlmAdjustCov`, .ret$cov.scaled, .parScaled)
   } else if (hessianCov && .ctl$covMethod != "") {
     .malert("calculating covariance")
     if (!any(names(.ret) == "hessian")) {
@@ -219,6 +220,11 @@
     # the Hessian is already the Fisher information (unlike the FOCEI R matrix,
     # which halves a -2*LL Hessian to get there).  Do not rescale here.
     .r <- .ret$hessian
+    if (inherits(lst, "nls.lm")) {
+      # minpack.lm's hessian is J'J of the residuals; the information is
+      # J'J / sigma^2, sigma^2 = RSS / (n - p) as in its vcov.nls.lm()
+      .r <- .r / (lst$deviance / (length(lst$fvec) - length(lst$par)))
+    }
     .rc <- .nlmCovFromHessian(.r)
     .ret$covWarning <- .rc$warning
     if (is.null(.rc$r)) {

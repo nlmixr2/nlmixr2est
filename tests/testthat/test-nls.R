@@ -157,6 +157,33 @@ nmTest({
     expect_true(inherits(fit1, "nlmixr2.nls"))
   })
 
+  test_that("the nls covariance is the least-squares one, sigma^2 (J'J)^-1 (issue 1140)", {
+    .treated <- Puromycin[Puromycin$state == "treated", ]
+    names(.treated) <- gsub("rate", "DV", gsub("conc", "time", names(.treated)))
+    .treated$ID <- 1
+    .mm <- function() {
+      ini({
+        Vm <- 200
+        K <- 0.1
+        add.sd <- 10
+      })
+      model({
+        pred <- (Vm * time) / (K + time)
+        pred ~ add(add.sd)
+      })
+    }
+    .ref <- stats::nls(DV ~ Vm * time / (K + time), data = .treated, start = list(Vm = 200, K = 0.1))
+    for (.alg in c("LM", "default")) {
+      .fit <- .nlmixr(.mm, .treated, est = "nls", control = nlsControl(print = 0L, algorithm = .alg))
+      # vcov() of the nls (or nls.lm) fit, on the parameters it estimated; the
+      # residual variance was left out (cov.unscaled, the inverse of J'J)
+      expect_equal(unname(.fit$nls$cov.scaled), unname(stats::vcov(.fit$nls)), tolerance = 1e-8, info = .alg)
+      # the standard errors of stats::nls() on the natural parameters
+      expect_equal(unname(.fit$theta[c("Vm", "K")]), unname(coef(.ref)), tolerance = 1e-5, info = .alg)
+      expect_equal(unname(sqrt(diag(.fit$cov))), unname(sqrt(diag(stats::vcov(.ref)))), tolerance = 1e-4, info = .alg)
+    }
+  })
+
   test_that("nls fits a delay() model with its past() pre-history", {
     # y' = -k*delay(y, 1), with the history y = a before time 0
     dde <- function() {

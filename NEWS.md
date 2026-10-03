@@ -358,6 +358,12 @@
   default `solveType = "grad"`) stopped with `none of the predictions
   depend on 'THETA'`.
 
+- The covariance of an `est = "nls"` fit is now the least-squares one,
+  `sigma^2 (J'J)^-1` (what `vcov()` of the underlying `nls` or `nls.lm`
+  fit gives).  It left out the residual variance `sigma^2`, so every
+  standard error was divided by the residual standard deviation: 0.635
+  instead of 6.95 for `Vm` of the `Puromycin` Michaelis-Menten model.
+
 
 # nlmixr2est 7.1.0
 
