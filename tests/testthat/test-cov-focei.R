@@ -149,7 +149,7 @@ nmTest({
     expect_s3_class(fit, "nlmixr2FitCore")
   })
 
-  test_that("shi21maxOuter chooses the covariance steps instead of the Gill search", {
+  test_that("shi21maxOuter runs no step search of its own in the covariance step", {
     one.cmt <- function() {
       ini({
         tka <- log(1.5); tcl <- log(2.7); tv <- log(31.5)
@@ -161,20 +161,23 @@ nmTest({
         linCmt() ~ add(add.sd)
       })
     }
+    # innerOpt = "trust" counts every inner solve, so nTrustInner counts the
+    # objective evaluations of the whole fit
     .ctl <- foceiControl(
       print = 0,
       maxOuterIterations = 0L,
       covFull = FALSE,
-      shi21maxOuter = 8L
+      innerOpt = "trust"
     )
-    # The Gill search (or, with gillKcov = 0, the fixed hessEps step) used to
-    # run after the Shi21 search and overwrite its steps, so gillKcov decided
-    # the covariance; now it is never consulted.
-    .f10 <- .nlmixr(one.cmt, theo_sd, "focei", .ctl)
-    .ctl$gillKcov <- 0L
-    .f0 <- .nlmixr(one.cmt, theo_sd, "focei", .ctl)
-    expect_true(all(.f10$scaleInfo[["Covariance Gradient"]] == "Not Assessed"))
-    expect_identical(.f10$cov, .f0$cov)
+    .gill <- .nlmixr(one.cmt, theo_sd, "focei", .ctl)
+    .ctl$shi21maxOuter <- 8L
+    .shi <- .nlmixr(one.cmt, theo_sd, "focei", .ctl)
+    # The covariance steps are Gill's either way.  A Shi21 search used to run
+    # first, be overwritten, and leave the inner problem where its last probe
+    # put it.
+    expect_identical(.shi$nTrustInner, .gill$nTrustInner)
+    expect_identical(.shi$scaleInfo, .gill$scaleInfo)
+    expect_identical(.shi$cov, .gill$cov)
   })
 
   test_that("every covariance stage is taken about the estimates", {

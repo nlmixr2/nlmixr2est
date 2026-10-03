@@ -110,12 +110,13 @@
   With `gillK = 0` the Gill search takes one step instead of never ending.
 - `nlmixr2Gill83(which=)` that leaves out the last parameter no longer
   searches the others about an objective value that was never computed.
-- `foceiControl(shi21maxOuter=)` now chooses the covariance step's
-  finite-difference steps, as documented.  The Gill search (or, with
-  `gillKcov = 0`, the fixed `hessEps` step) ran after the Shi21 search and
-  overwrote its steps, so the search only cost time, and with `gillKcov = 0`
-  its last probe became the centre of the R matrix.  Standard errors of fits
-  with a nonzero `shi21maxOuter` change accordingly.
+- `foceiControl(shi21maxOuter=)` no longer runs an unused Shi21 step search in
+  the covariance step: the covariance steps come from the Gill search (or the
+  fixed `hessEps` step with `gillKcov = 0`), as they always did, because they
+  overwrote the Shi21 result.  The search only cost time, and with
+  `gillKcov = 0` its last probe became the centre of the R matrix.  For a
+  non-normal endpoint `gillKcovLlik = 0`, not `gillKcov = 0`, now selects the
+  fixed step.
 - Every stage of the FOCEi-family covariance step is now taken about the
   estimates.  The last leg of the R matrix left the parameters at
   `theta0 - 2*eps` (`theta0` the first estimated parameter), the S matrix was
