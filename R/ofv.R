@@ -71,32 +71,40 @@
       .newFit <- .nlmixr2PriorGateBypass(
         nlmixr2(fit, nlme::getData(fit), .type, control = .ctl)
       )
-      .newEnv <- .newFit$env
-      .env <- fit$env
-      .df <- attr(get("logLik", .env), "df")
-      .nobs <- .env$nobs
       # impObj omits the normal constant, like an adjusted objective
-      .objf <- .newEnv$impObj
-      .m2ll <- .objf + .nobs * log(2 * pi)
-      .adj <- .env$adjObf # saem stores it on the env, the focei family on the control
-      if (is.null(.adj)) {
-        .adj <- fit$foceiControl$adjObf
-      }
-      if (isFALSE(.adj)) {
-        .objf <- .m2ll
-      }
-      .tmp <- data.frame(
-        OBJF = .objf,
-        AIC = .m2ll + 2 * .df,
-        BIC = .m2ll + log(.nobs) * .df,
-        "Log-likelihood" = -.m2ll / 2,
-        check.names = FALSE
-      )
-      nlmixrAddObjectiveFunctionDataFrame(fit, .tmp, .rn)
-      invisible(fit)
+      .objf <- .newFit$env$impObj
+      .setOfvRow(fit, .rn, .objf + fit$env$nobs * log(2 * pi), .objf)
     },
     envir = fit
   )
+}
+
+#' Add an objective function row computed from a -2 log-likelihood
+#'
+#' AIC and BIC use the fit's `df` and `nobs`.  OBJF omits the normal constant
+#' unless `adjObf` (on the fit environment, else its control) is `FALSE`.
+#' @param fit nlmixr2 fit
+#' @param type objective function type (the row name)
+#' @param m2ll -2 log-likelihood, with the normal constant
+#' @param adjObjf the objective without the normal constant
+#' @return fit, invisibly
+#' @noRd
+.setOfvRow <- function(fit, type, m2ll, adjObjf = m2ll - fit$env$nobs * log(2 * pi)) {
+  .env <- fit$env
+  .df <- attr(get("logLik", .env), "df")
+  .adj <- .env$adjObf
+  if (is.null(.adj)) {
+    .adj <- fit$control$adjObf
+  }
+  .tmp <- data.frame(
+    OBJF = if (isFALSE(.adj)) m2ll else adjObjf,
+    AIC = m2ll + 2 * .df,
+    BIC = m2ll + log(.env$nobs) * .df,
+    "Log-likelihood" = -m2ll / 2,
+    check.names = FALSE
+  )
+  nlmixrAddObjectiveFunctionDataFrame(fit, .tmp, type)
+  invisible(fit)
 }
 
 ##' Set/get Objective function type for a nlmixr2 object
@@ -164,32 +172,11 @@ setOfv <- function(x, type) {
   nlmixrWithTiming(
     paste0(type, "Lik"),
     {
-      .env <- x$env
-      .reg <- rex::rex(start, "laplace", capture(.regNum), end)
-      .regG <- rex::rex(start, "gauss", capture(.regNum), "_", capture(.regNum), end)
-      if (regexpr(.reg, type, perl = TRUE) != -1) {
-        .nnode <- 1
-        .nsd <- as.numeric(sub(.reg, "\\1", type, perl = TRUE))
-      } else if (regexpr(.regG, type, perl = TRUE) != -1) {
-        .nnode <- as.numeric(sub(.regG, "\\1", type, perl = TRUE))
-        .nsd <- as.numeric(sub(.regG, "\\2", type, perl = TRUE))
-      } else {
+      .q <- .saemParseLikName(type)
+      if (is.null(.q)) {
         stop("cannot switch objective function to '", type, "' type", call. = FALSE)
       }
-      .saemObf <- calc.2LL(x$saem, nnodes.gq = .nnode, nsd.gq = .nsd, x$phiM)
-      .llik <- -.saemObf / 2
-      .nobs <- .env$nobs
-      attr(.llik, "df") <- attr(get("logLik", .env), "df")
-      .objf <- ifelse(.env$adjObf, .saemObf - .nobs * log(2 * pi), .saemObf)
-      .tmp <- data.frame(
-        OBJF = .objf,
-        AIC = .saemObf + 2 * attr(get("logLik", .env), "df"),
-        BIC = .saemObf + log(.env$nobs) * attr(get("logLik", .env), "df"),
-        "Log-likelihood" = as.numeric(.llik),
-        check.names = FALSE
-      )
-      nlmixrAddObjectiveFunctionDataFrame(x, .tmp, type)
-      return(invisible(x))
+      .setOfvRow(x, type, calc.2LL(x$saem, nnodes.gq = .q[1], nsd.gq = .q[2], x$phiM))
     },
     envir = x
   )

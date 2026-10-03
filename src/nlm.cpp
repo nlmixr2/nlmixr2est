@@ -292,9 +292,9 @@ RObject nlmSetup(Environment e) {
     nlmOp.scaleC  = nlmOp.initPar   + ntheta; // [ntheta]
 #undef ntheta
 #undef nsub
-
-    std::fill_n(nlmOp.thetaSave, nlmOp.ntheta, R_PosInf); // not likely to be equal
   }
+  // An empty cache: no theta, not even an all-zero one, equals +Inf.
+  if (nlmOp.thetaSave != NULL) std::fill_n(nlmOp.thetaSave, nlmOp.ntheta, R_PosInf);
 
   std::copy(&p[0], &p[0] + nlmOp.ntheta, nlmOp.initPar);
 
@@ -447,6 +447,49 @@ static inline void saveTheta(arma::vec &theta) {
   thetaSave = theta;
 }
 
+// optimFunC(), nlminbFunC() and solveGradNls() share one cache: valSave/grSave/hSave hold
+// the solve at thetaSave up to level saveType (solveType_pred < solveType_grad <
+// solveType_hess); nls keeps every observation's residual and gradient row.
+static inline bool nlmSaved(arma::vec &theta, int level) {
+  return nlmOp.saveType >= level && isThetaSame(theta);
+}
+
+// Censoring of observation kk, read for a censorable endpoint: normal/dnorm, or
+// t()/cauchy() when the model emits rx_nu_ (nuOffset >= 0, see #979).
+struct NlmCensObs {
+  int dist = 0, cens = 0;
+  double dv = 0.0, limit = R_NegInf;
+  bool on = false; // a censored (M2/M3/M4) observation
+  // -LL of the censored observation; val is its uncensored -LL, f/r its rx_pred_f_/rx_r_.
+  double negLL(double val, double f, double r, const double *lhs, int nuOffset) const {
+    if (dist == rxDistributionT || dist == rxDistributionCauchy) {
+      // cauchy is Student-t with nu=1 (#979); .fixCensRNuLine (R/focei.R)
+      // already emits rx_nu_ ~ 1 for cauchy, so this always reads a real nu.
+      return -doCensT1((double)cens, dv, limit, -val, f, r, lhs[nuOffset]);
+    }
+    return -doCensNormal1((double)cens, dv, limit, -val, f, r, 0);
+  }
+};
+
+static inline NlmCensObs nlmCensObs(rx_solving_options_ind *ind, int kk, int nuOffset) {
+  NlmCensObs c;
+  if (!nlmOp.hasFR || !(hasRxCens(rx) || hasRxLimit(rx))) return c;
+  int yj = getIndYj(ind), yj0 = 0;
+  _splitYj(&yj, &c.dist, &yj0);
+  if (c.dist != rxDistributionNorm && c.dist != rxDistributionDnorm &&
+      !((c.dist == rxDistributionT || c.dist == rxDistributionCauchy) && nuOffset >= 0)) {
+    return c;
+  }
+  if (hasRxCens(rx)) c.cens = getIndCens(ind, kk);
+  c.dv = getIndDv(ind, kk);
+  if (hasRxLimit(rx)) {
+    c.limit = getIndLimit(ind, kk);
+    if (ISNA(c.limit)) c.limit = R_NegInf;
+  }
+  c.on = (c.cens != 0) || (R_FINITE(c.limit) && !ISNA(c.limit));
+  return c;
+}
+
 // Solve prediction
 void nlmSolveFid(double *retD, int nobs, arma::vec &theta, int id) {
   arma::vec ret(retD, nobs, false, true);
@@ -486,36 +529,8 @@ void nlmSolveFid(double *retD, int nobs, arma::vec &theta, int id) {
         lhs[po] = 0.0;
       }
       double val = lhs[po];
-      if (nlmOp.hasFR && (hasRxCens(rx) || hasRxLimit(rx))) {
-        int yj = getIndYj(ind), dist = 0, yj0 = 0;
-        _splitYj(&yj, &dist, &yj0);
-        if (dist == rxDistributionDnorm || dist == rxDistributionNorm ||
-            ((dist == rxDistributionT || dist == rxDistributionCauchy) &&
-             nlmOp.predNuOffset >= 0)) {
-          int censi = 0;
-          if (hasRxCens(rx)) censi = getIndCens(ind, kk);
-          double dvi = getIndDv(ind, kk);
-          double limiti = R_NegInf;
-          if (hasRxLimit(rx)) {
-            limiti = getIndLimit(ind, kk);
-            if (ISNA(limiti)) limiti = R_NegInf;
-          }
-          if (censi != 0 || (R_FINITE(limiti) && !ISNA(limiti))) {
-            double f = lhs[po + 1]; // rx_pred_f_
-            double r = lhs[po + 2]; // rx_r_
-            double ll;
-            if (dist == rxDistributionT || dist == rxDistributionCauchy) {
-              // cauchy is Student-t with nu=1 (#979); .fixCensRNuLine (R/focei.R)
-              // already emits rx_nu_ ~ 1 for cauchy, so this always reads a real nu.
-              double nu = lhs[nlmOp.predNuOffset];
-              ll = doCensT1((double)censi, dvi, limiti, -val, f, r, nu);
-            } else {
-              ll = doCensNormal1((double)censi, dvi, limiti, -val, f, r, 0);
-            }
-            val = -ll;
-          }
-        }
-      }
+      NlmCensObs censObs = nlmCensObs(ind, kk, nlmOp.predNuOffset);
+      if (censObs.on) val = censObs.negLL(val, lhs[po + 1], lhs[po + 2], lhs, nlmOp.predNuOffset);
       ret(k) = val;
       if (_hasContrib) {
         int yjC = getIndYj(ind), distC = 0, yj0C = 0;
@@ -528,11 +543,7 @@ void nlmSolveFid(double *retD, int nobs, arma::vec &theta, int id) {
         // matching likInner0's non-normal branch.
         if (nlmOp.hasFR && (distC == rxDistributionNorm || distC == rxDistributionDnorm)) {
           fO = lhs[po + 1]; rO = lhs[po + 2];
-          int censi = 0;
-          if (hasRxCens(rx)) censi = getIndCens(ind, kk);
-          double limiti = R_NegInf;
-          if (hasRxLimit(rx)) { limiti = getIndLimit(ind, kk); if (ISNA(limiti)) limiti = R_NegInf; }
-          nlmixrLikContribGaussCotan((double)censi, dvi, limiti, fO, rO, &dLLdf, &dLLdr);
+          nlmixrLikContribGaussCotan((double)censObs.cens, dvi, censObs.limit, fO, rO, &dLLdf, &dLLdr);
         }
         double _llAdd = nlmixrLikContribObs1(id, k, 0, fO, dvi, rO, dLLdf, dLLdr, NULL, NULL);
         ret(k) -= _llAdd;  // objective is -LL; a contributor LL lowers it
@@ -590,37 +601,8 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
       continue;
     } else if (getIndEvid(ind, kk) == 0) {
       rxInner.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
-      // Save outer kk (time index) for censoring data access before inner kk loop shadows it
-      int kkOuter = kk;
-      // Determine censoring status for this observation (normal/dnorm and,
-      // via doCensT1(), t()/cauchy() -- see #979)
-      bool hasCensObs = false;
-      bool isTDist = false;
-      int censi = 0;
-      double dvi = 0.0, limiti = R_NegInf;
-      if (nlmOp.hasFR && (hasRxCens(rx) || hasRxLimit(rx))) {
-        int yj = getIndYj(ind), dist = 0, yj0 = 0;
-        _splitYj(&yj, &dist, &yj0);
-        if (dist == rxDistributionNorm || dist == rxDistributionDnorm) {
-          if (hasRxCens(rx)) censi = getIndCens(ind, kkOuter);
-          dvi = getIndDv(ind, kkOuter);
-          if (hasRxLimit(rx)) {
-            limiti = getIndLimit(ind, kkOuter);
-            if (ISNA(limiti)) limiti = R_NegInf;
-          }
-          hasCensObs = (censi != 0) || (R_FINITE(limiti) && !ISNA(limiti));
-        } else if ((dist == rxDistributionT || dist == rxDistributionCauchy) &&
-                   nlmOp.gradNuOffset >= 0) {
-          if (hasRxCens(rx)) censi = getIndCens(ind, kkOuter);
-          dvi = getIndDv(ind, kkOuter);
-          if (hasRxLimit(rx)) {
-            limiti = getIndLimit(ind, kkOuter);
-            if (ISNA(limiti)) limiti = R_NegInf;
-          }
-          hasCensObs = (censi != 0) || (R_FINITE(limiti) && !ISNA(limiti));
-          isTDist = true;
-        }
-      }
+      // read before the loop below shadows kk
+      NlmCensObs censObs = nlmCensObs(ind, kk, nlmOp.gradNuOffset);
       // rx_pred_ is at lhs[gradOffset]; the ntheta sensitivity columns follow
       // contiguously, then rx_pred_f_ and rx_r_.  ret column 0 is the objective
       // and columns 1..ntheta are the theta gradients (offset only the lhs read).
@@ -632,22 +614,13 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
         }
         if (kk == 0) {
           double val = lhs[go];
-          if (hasCensObs) {
+          if (censObs.on) {
             double f = lhs[go + nlmOp.ntheta + 1]; // rx_pred_f_
             double r = lhs[go + nlmOp.ntheta + 2]; // rx_r_
-            if (!ISNA(f) && !ISNA(r)) {
-              double ll;
-              if (isTDist) {
-                double nu = lhs[nlmOp.gradNuOffset];
-                ll = doCensT1((double)censi, dvi, limiti, -val, f, r, nu);
-              } else {
-                ll = doCensNormal1((double)censi, dvi, limiti, -val, f, r, 0);
-              }
-              val = -ll;
-            }
+            if (!ISNA(f) && !ISNA(r)) val = censObs.negLL(val, f, r, lhs, nlmOp.gradNuOffset);
           }
           ret(k, 0) = val;
-        } else if (hasCensObs) {
+        } else if (censObs.on) {
           ret(k, kk) = R_NaN; // force finite differences for censored observations
         } else {
           ret(k, kk) = scaleAdjustGradScale(&(nlmOp.scale), lhs[go + kk], &theta[0], kk-1);
@@ -864,18 +837,18 @@ NumericVector solveGradNls(arma::vec &theta, int returnType) {
   if (nlmOp.solveType != solveType_nls) {
     stop(_("incorrect solve type"));
   }
-  if (!isThetaSame(theta)) {
+  if (!nlmSaved(theta, solveType_grad)) {
     arma::mat ret0(nlmOp.valSave, nlmOp.nobsTot, nlmOp.ntheta+1, false, true);
     ret0 = nlmSolveGrad(theta);
     if (ret0.has_nan()) {
       nlmOp.naZero.store(1, std::memory_order_relaxed);
       ret0.replace(datum::nan, 0);
     }
-    double llik;
     arma::vec resid =ret0.col(0);
     resid = resid % resid;
     double rss = arma::sum(resid);
     scalePrintFun(&(nlmOp.scale), &theta[0], rss);
+    nlmOp.saveType = solveType_grad;
     saveTheta(theta);
   }
   if (returnType == 1) {
@@ -1109,6 +1082,17 @@ RObject nlmSolveSwitch(arma::vec &theta) {
 }
 
 
+// The objective and gradient at theta (column sums of nlmSolveGrad) into valSave/grSave,
+// unless the cache holds them already; true when it solved.
+static inline bool nlmSolveGradSaved(arma::vec &theta) {
+  if (nlmSaved(theta, solveType_grad)) return false;
+  arma::vec saveVec(nlmOp.valSave, nlmOp.ntheta + 1, false, true);
+  saveVec = (arma::sum(nlmSolveGrad(theta), 0)).t();
+  nlmOp.saveType = solveType_grad;
+  saveTheta(theta);
+  return true;
+}
+
 //[[Rcpp::export]]
 NumericVector optimFunC(arma::vec &theta, bool grad=false) {
   if (!nlmOp.loaded) stop("'optim' problem not loaded");
@@ -1119,98 +1103,38 @@ NumericVector optimFunC(arma::vec &theta, bool grad=false) {
     scalePrintFun(&(nlmOp.scale), &theta[0], ret[0]);
     return ret;
   }
-  if (isThetaSame(theta)) {
-    if (grad) {
-      NumericVector ret(nlmOp.ntheta);
-      std::copy(nlmOp.grSave, nlmOp.grSave + nlmOp.ntheta, ret.begin());
-      return ret;
-    }
-    NumericVector ret(1);
-    ret[0] = nlmOp.valSave[0];
-    return ret;
-  }
-  arma::mat ret0 = nlmSolveGrad(theta);
-  arma::vec saveVec(nlmOp.valSave, nlmOp.ntheta + 1, false, true);
-  saveVec = (arma::sum(ret0, 0)).t();
-  saveTheta(theta);
-  if (grad) {
-    NumericVector ret(nlmOp.ntheta);
-    std::copy(nlmOp.grSave, nlmOp.grSave + nlmOp.ntheta, ret.begin());
+  if (nlmSolveGradSaved(theta)) {
     scalePrintFun(&(nlmOp.scale), &theta[0], nlmOp.valSave[0]);
     scalePrintGrad(&(nlmOp.scale), nlmOp.grSave, iterTypeSens);
-    return ret;
   }
-  NumericVector ret(1);
-  ret[0] = nlmOp.valSave[0];
-  scalePrintFun(&(nlmOp.scale), &theta[0], ret[0]);
-  scalePrintGrad(&(nlmOp.scale), nlmOp.grSave, iterTypeSens);
-  return ret;
+  if (grad) return NumericVector(nlmOp.grSave, nlmOp.grSave + nlmOp.ntheta);
+  return NumericVector::create(nlmOp.valSave[0]);
 }
 
 //[[Rcpp::export]]
 NumericVector nlminbFunC(arma::vec &theta, int type) {
   if (!nlmOp.loaded) stop("'nlminb' problem not loaded");
-  // restore saved values
-  bool isSame = isThetaSame(theta);
-  if (isSame) {
-    switch (type) {
-    case solveType_pred:
-      if (nlmOp.saveType >= solveType_pred) {
-        NumericVector ret(1);
-        ret[0] = nlmOp.valSave[0];
-        return ret;
-      }
-      break;
-    case solveType_grad:
-      if (nlmOp.saveType >= solveType_grad) {
-        NumericVector ret(nlmOp.ntheta);
-        std::copy(nlmOp.grSave, nlmOp.grSave + nlmOp.ntheta, ret.begin());
-        return ret;
-      }
-      break;
-    case solveType_hess:
-      if (nlmOp.saveType == solveType_hess) {
-        NumericVector ret(nlmOp.ntheta*nlmOp.ntheta);
-        std::copy(nlmOp.hSave, nlmOp.hSave + nlmOp.ntheta * nlmOp.ntheta, ret.begin());
-        ret.attr("dim") = IntegerVector::create(nlmOp.ntheta, nlmOp.ntheta);
-        return ret;
-      }
-      break;
-    }
-  }
-  // calculate saved values
   switch (type) {
-  case solveType_pred: {
-    NumericVector ret(1);
-    nlmOp.valSave[0] = ret[0] = nlmSolveR(theta);
-    nlmOp.saveType = solveType_pred;
-    saveTheta(theta);
-    scalePrintFun(&(nlmOp.scale), &theta[0], ret[0]);
-    return ret;
-  }
-    break;
-  case solveType_grad: {
+  case solveType_pred:
+    if (!nlmSaved(theta, solveType_pred)) {
+      nlmOp.valSave[0] = nlmSolveR(theta);
+      nlmOp.saveType = solveType_pred;
+      saveTheta(theta);
+      scalePrintFun(&(nlmOp.scale), &theta[0], nlmOp.valSave[0]);
+    }
+    return NumericVector::create(nlmOp.valSave[0]);
+  case solveType_grad:
     // You have to solve the full system for the grad anyway
-    arma::mat ret0 = nlmSolveGrad(theta);
-    arma::vec saveVec(nlmOp.valSave, nlmOp.ntheta + 1, false, true);
-    saveVec = (arma::sum(ret0, 0)).t();
-    nlmOp.saveType = solveType_grad;
-    saveTheta(theta);
-    NumericVector ret(nlmOp.ntheta);
-    std::copy(nlmOp.grSave, nlmOp.grSave + nlmOp.ntheta, ret.begin());
-    scalePrintGrad(&(nlmOp.scale), &ret[0], iterTypeSens);
-    return ret;
-  }
-    break;
+    if (nlmSolveGradSaved(theta)) scalePrintGrad(&(nlmOp.scale), nlmOp.grSave, iterTypeSens);
+    return NumericVector(nlmOp.grSave, nlmOp.grSave + nlmOp.ntheta);
   case solveType_hess: {
-    if (isSame && nlmOp.saveType == solveType_grad) {
+    if (nlmSaved(theta, solveType_grad) && nlmOp.saveType == solveType_grad) {
       // Just add hessian
-      arma::vec gr0(nlmOp.ntheta);
-      std::copy(nlmOp.grSave, nlmOp.grSave + nlmOp.ntheta, gr0.begin());
+      arma::vec gr0(nlmOp.grSave, nlmOp.ntheta);
       mat H = nlmCalcHessian(gr0, theta);
       std::copy(H.begin(), H.end(), nlmOp.hSave);
       nlmOp.saveType = solveType_hess;
-    } else {
+    } else if (!nlmSaved(theta, solveType_hess)) {
       // Calculate everything
       NumericVector attrRet = as<NumericVector>(nlmSolveGradHess(theta));
       saveTheta(theta);
@@ -1221,12 +1145,10 @@ NumericVector nlminbFunC(arma::vec &theta, int type) {
       NumericVector hess = as<NumericVector>(attrRet.attr("hessian"));
       std::copy(hess.begin(), hess.end(), nlmOp.hSave);
     }
-    NumericVector ret(nlmOp.ntheta*nlmOp.ntheta);
-    std::copy(nlmOp.hSave, nlmOp.hSave + nlmOp.ntheta * nlmOp.ntheta, ret.begin());
+    NumericVector ret(nlmOp.hSave, nlmOp.hSave + nlmOp.ntheta * nlmOp.ntheta);
     ret.attr("dim") = IntegerVector::create(nlmOp.ntheta, nlmOp.ntheta);
     return ret;
   }
-    break;
   }
   stop("Couldn't find solution type: %d", type);
   return NumericVector::create(NA_REAL);
@@ -1296,7 +1218,7 @@ RObject nlmGetParHist(bool p=true) {
   nlmOp.scale.save = 0;
   nlmOp.scale.every = 0;
   if (p) {
-    scalePrintLine(&(nlmOp.scale), min2(nlmOp.scale.npars, nlmOp.scale.ncol));
+    scalePrintLine(nlmOp.scale.showOfv, min2(nlmOp.scale.npars, nlmOp.scale.ncol));
   }
   return scaleParHisDf(&(nlmOp.scale));
 }
