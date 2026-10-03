@@ -119,6 +119,60 @@
 - Added a native analytical outer Hessian for fast Gaussian FOCE/FOCE+/FOCEI/AGQ fits, using
   the existing sensitivity pool. Fast `nlminb` fits used it automatically.
 
+### Covariance and finite differences
+
+- The Gill (1983) step-size search no longer leaves a parameter at its last
+  probe when it ends without an accepted interval (`$scaleInfo` reports
+  "Constant Grad", "Odd/Linear Grad" or "Grad changes quickly").  That moved
+  the outer optimizer's own iterate on the first gradient (`outerOpt="nlminb"`,
+  `"L-BFGS-B"`, `"lbfgsb3c"`), the base point of the covariance step, and the
+  base point of the parameters `nlmixr2Gill83()` searched after it.
+- `nlmixr2Gill83()` and `nlmixr2Hess()` no longer modify the caller's
+  parameter vector in place: an error part-way through left it at a probe, and
+  `nlmixr2Hess()` handed the objective that same vector on every call, so a
+  value the objective kept changed under it.
+- `nlmixr2Gill83()` (and so `nlmixr2Hess(...)`) now uses its `gillRtol`,
+  `gillK`, `gillStep` and `gillFtol` arguments; the defaults were always used.
+  As documented, `gillK = 0` now determines no step size: the search is
+  skipped and the interval it would start from is reported as "Not Assessed";
+  `nlmixr2Hess()` and the first `nlmixr2GradFun()` gradient difference with
+  that interval.  `gillK = 0` used to lift the search's iteration limit
+  instead, which could leave it running indefinitely; with
+  `foceiControl(gillK = 0)` the full (`covFull`) covariance now takes its
+  step-doubling steps.
+- `nlmixr2Gill83(which=)` that leaves out the last parameter no longer
+  searches the others about an objective value that was never computed.
+- `foceiControl(shi21maxOuter=)` no longer runs an unused Shi21 step search in
+  the covariance step: the covariance steps come from the Gill search (or the
+  fixed `hessEps` step with `gillKcov = 0`), as they always did, because they
+  overwrote the Shi21 result.  The search only cost time, and with
+  `gillKcov = 0` its last probe became the centre of the R matrix.  For a
+  non-normal endpoint `gillKcovLlik = 0`, not `gillKcov = 0`, now selects the
+  fixed step.
+- Every stage of the FOCEi-family covariance step is now taken about the
+  estimates.  The last leg of the R matrix left the parameters at
+  `theta0 - 2*eps` (`theta0` the first estimated parameter), the S matrix was
+  centred there, its own last leg moved them again, and the full covariance
+  (`covFull = TRUE`) took that as its centre.  This changes the default
+  (`"r,s"`) standard errors, most for the first estimated parameter; the
+  sandwich SE of `tka` for `theo_sd` with a one-compartment model went from
+  0.43 to 0.15.
+- A FOCEi-family fit's per-observation log-likelihoods (`$llikObs`, the
+  `nlmixrLlikObs` column) are now those of the final objective at the
+  estimates.  The covariance step rewrote them on every finite-difference leg,
+  so with any covariance method they came from its last leg, away from the
+  estimates.  This affected `focei`, `laplace`, `agq` and population-only fits.
+- The covariance of a FOCEi-family fit with a single estimated parameter no
+  longer installs `1/(cholSEtol*|R|)` labelled `"r"` when the R matrix is not
+  positive (`R <= 0`): it is now repaired, or not used, like a larger R.  A
+  requested `"s"` covariance whose S matrix cannot be repaired is reported as
+  `"failed"` instead of `"s"` with no covariance.
+- The `grad()` function from `nlmixr2GradFun()` no longer leaves the point at
+  `x - h` when a forward difference is not finite and it falls back to a
+  backward one.  That point was the caller's own vector, which was also the
+  key of the cached objective value, so the next gradient reused the objective
+  of the original point at the moved one.
+
 
 # nlmixr2est 7.1.0
 

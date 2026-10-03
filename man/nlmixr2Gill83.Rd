@@ -67,7 +67,9 @@ A data frame with the following columns:
 
 The \code{info} returns one of the following:
 
-- "Not Assessed" Gradient wasn't assessed
+- "Not Assessed" Gradient wasn't assessed: the parameter is left out
+by \code{which}, or \code{gillK = 0}, which determines no interval and
+reports the one the search starts from as \code{hf}
 
 - "Good Success" in Estimating optimal forward difference interval
 
