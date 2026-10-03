@@ -87,5 +87,27 @@ static inline void trustHessianUpdate(int method, arma::mat &H,
   }
 }
 
+// The Hessian hessianMethod= asks for at the point x with gradient g.  trustHessFd
+// returns fd(), a finite-difference Hessian, every call.  The quasi-Newton methods
+// seed Hqn from the first fd() and afterwards update it from the secant pair
+// (x - xPrev, g - gPrev); hasPrev, Hqn, xPrev and gPrev carry that state between
+// calls.  fd() must return a symmetric matrix.  x is read after fd() returns.
+template <typename FdHessian>
+static inline arma::mat trustHessian(int method, int &hasPrev, arma::mat &Hqn,
+                                     arma::vec &xPrev, arma::vec &gPrev,
+                                     const arma::vec &x, const arma::vec &g,
+                                     FdHessian fd) {
+  if (method == trustHessFd) return fd();
+  if (hasPrev) {
+    trustHessianUpdate(method, Hqn, x - xPrev, g - gPrev);
+  } else {
+    Hqn = fd();
+    hasPrev = 1;
+  }
+  xPrev = x;
+  gPrev = g;
+  return 0.5*(Hqn + Hqn.t());
+}
+
 #endif
 #endif

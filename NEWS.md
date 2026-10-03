@@ -99,6 +99,22 @@
   previous self-initialized behavior is available as the new
   `foceiControl(warm="none")`, and `warm="save"` reuse is reported in the fit's
   `$nWarmSave`.
+
+- The finite-difference Hessian of `est="nlm"` (`solveType="hessian"`),
+  `est="nlminb"` and `est="trust"` no longer moves the parameters it is
+  computed at.  When the gradient could not be evaluated on either side of a
+  parameter, that parameter was left shifted by the step in the vector the
+  optimizer passed in (for `nlminb`, its current iterate), and the iteration
+  history, the saved objective and `trust`'s quasi-Newton update recorded the
+  shifted point in place of the one evaluated.  The other parameters could
+  move by rounding.
+
+- The per-observation log-likelihoods (`$llikObs`, and `nlmixrLlikObs` in the
+  merged data) of a fit with a non-normal endpoint (`dnorm()`, `ll()`,
+  `dpois()` and the like, with the default `fast=FALSE`) are now those at the
+  reported ETAs.  They came from the last evaluation of the finite-difference
+  inner Hessian, at an ETA moved by a few steps (off by up to 0.93 per
+  observation on `theo_sd`).
   
 - Added a native analytical outer Hessian for fast Gaussian FOCE/FOCE+/FOCEI/AGQ fits, using
   the existing sensitivity pool. Fast `nlminb` fits used it automatically.
