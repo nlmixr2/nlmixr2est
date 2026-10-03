@@ -24,10 +24,16 @@ rsControl <- function(
   checkmate::assertIntegerish(gillKcov, lower = 0, len = 1, any.missing = FALSE, null.ok = TRUE)
   checkmate::assertNumeric(gillStepCov, lower = 1, len = 1, any.missing = FALSE, null.ok = TRUE)
   checkmate::assertNumeric(gillFtolCov, lower = 0, len = 1, any.missing = FALSE, null.ok = TRUE)
-  checkmate::assertLogical(covGillF, len = 1, any.missing = FALSE, null.ok = TRUE)
-  checkmate::assertNumeric(covSmall, lower = 0, len = 1, any.missing = FALSE, null.ok = TRUE)
-  checkmate::assertLogical(rmatNorm, len = 1, any.missing = FALSE, null.ok = TRUE)
-  checkmate::assertLogical(smatNorm, len = 1, any.missing = FALSE, null.ok = TRUE)
+  if (!checkmate::testIntegerish(covGillF, lower = 0, upper = 1, any.missing = FALSE, len = 1, null.ok = TRUE)) {
+    checkmate::assertLogical(covGillF, len = 1, any.missing = FALSE)
+  }
+  checkmate::assertNumeric(covSmall, lower = 0, len = 1, any.missing = FALSE, finite = TRUE, null.ok = TRUE)
+  if (!checkmate::testIntegerish(rmatNorm, lower = 0, upper = 1, any.missing = FALSE, len = 1, null.ok = TRUE)) {
+    checkmate::assertLogical(rmatNorm, len = 1, any.missing = FALSE)
+  }
+  if (!checkmate::testIntegerish(smatNorm, lower = 0, upper = 1, any.missing = FALSE, len = 1, null.ok = TRUE)) {
+    checkmate::assertLogical(smatNorm, len = 1, any.missing = FALSE)
+  }
   .ret <- list(
     hessEps = hessEps,
     gillKcov = gillKcov,

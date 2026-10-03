@@ -1477,7 +1477,8 @@ foceiControl <- function(
   checkmate::assertIntegerish(gillKcov, lower = 0, len = 1, any.missing = FALSE)
   checkmate::assertIntegerish(gillKcovLlik, lower = 0, len = 1, any.missing = FALSE)
   checkmate::assertNumeric(gillStep, lower = 0, len = 1, any.missing = FALSE)
-  checkmate::assertNumeric(gillStepCov, lower = 0, len = 1, any.missing = FALSE)
+  # the Gill search multiplies its step by gillStepCov to grow it and divides to shrink it
+  checkmate::assertNumeric(gillStepCov, lower = 1, len = 1, any.missing = FALSE)
   checkmate::assertNumeric(gillStepCovLlik, lower = 0, len = 1, any.missing = FALSE)
   checkmate::assertNumeric(gillFtol, lower = 0, len = 1, any.missing = FALSE)
   checkmate::assertNumeric(gillFtolCov, lower = 0, len = 1, any.missing = FALSE)
@@ -1916,7 +1917,7 @@ foceiControl <- function(
   muModelClampRetries <- as.integer(muModelClampRetries)
 
   checkmate::assertNumeric(stateTrim, lower = 0, len = 1, any.missing = FALSE)
-  checkmate::assertNumeric(covSmall, lower = 0, any.missing = FALSE, finite = TRUE)
+  checkmate::assertNumeric(covSmall, lower = 0, len = 1, any.missing = FALSE, finite = TRUE)
   checkmate::assertLogical(adjLik, any.missing = FALSE, len = 1)
   checkmate::assertNumeric(gradTrim, any.missing = FALSE, len = 1)
   checkmate::assertIntegerish(maxOdeRecalc, any.missing = FALSE, len = 1)

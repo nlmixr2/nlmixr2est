@@ -185,6 +185,14 @@
   backward one.  That point was the caller's own vector, which was also the
   key of the cached objective value, so the next gradient reused the objective
   of the original point at the moved one.
+- `foceiControl()` and `rsControl()` now check the finite-difference
+  covariance options the same way.  `gillStepCov` must be at least 1 in both:
+  the Gill search grows its step by this factor and shrinks it by dividing,
+  so `foceiControl()`'s smaller values reversed the search (and 0 gave a zero
+  step).  `covSmall` must be one finite number in both (`rsControl()`
+  accepted `Inf`, `foceiControl()` a vector).  `rsControl()` takes the 0/1
+  flags `covGillF`, `rmatNorm` and `smatNorm` as integers too, like
+  `foceiControl()`.
 
 ### Covariance
 
