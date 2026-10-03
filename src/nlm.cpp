@@ -292,9 +292,9 @@ RObject nlmSetup(Environment e) {
     nlmOp.scaleC  = nlmOp.initPar   + ntheta; // [ntheta]
 #undef ntheta
 #undef nsub
-
-    std::fill_n(nlmOp.thetaSave, nlmOp.ntheta, R_PosInf); // not likely to be equal
   }
+  // An empty cache: no theta, not even an all-zero one, equals +Inf.
+  if (nlmOp.thetaSave != NULL) std::fill_n(nlmOp.thetaSave, nlmOp.ntheta, R_PosInf);
 
   std::copy(&p[0], &p[0] + nlmOp.ntheta, nlmOp.initPar);
 
