@@ -463,6 +463,50 @@ nmTest({
     expect_equal(fFim$covMethod, "linFim")
   })
 
+  test_that("covMethod='r,s' installs the inverse of Ha's theta block, by kernel row (#906)", {
+    # saemControl(covMethod = "r,s"/"r"/"s") inverts the theta block of the
+    # estimation-phase information Ha, laid out [phi1 mu][phi0 mu] with a row
+    # for a fixed theta too.  It used to take Ha[1:nth, 1:nth] under model-order,
+    # fixed-filtered names (tv got tcl's row; tcl got tv's when tka had no eta)
+    # and install it with no label.
+    fixedM <- function() {
+      ini({ tka <- 0.45; tcl <- fix(1); tv <- 3.45; add.sd <- 0.7
+            eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+              linCmt() ~ add(add.sd) })
+    }
+    phi0M <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- 0.7
+            eta.cl ~ 0.3; eta.v ~ 0.1 })
+      model({ ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+              linCmt() ~ add(add.sd) })
+    }
+    ctl <- saemControl(nBurn = 150, nEm = 200, print = 0, seed = 1L, covMethod = "r,s", calcTables = FALSE)
+    for (.mod in list(list(fn = fixedM, kept = c("tka", "tv")), list(fn = phi0M, kept = c("tcl", "tv")))) {
+      f <- .nlmixr(.mod$fn, theo_sd, est = "saem", control = ctl)
+      expect_identical(f$covMethod, "inv(Ha[theta])")
+      .cfg <- attr(f$saem, "saem.cfg")
+      .raw <- f$ui$saemParamsToEstimate[c(.cfg$i1, .cfg$i0) + 1L] # Ha's structural rows
+      .rows <- match(.mod$kept, .raw)
+      .ref <- solve(f$saem$Ha[.rows, .rows])
+      dimnames(.ref) <- list(.mod$kept, .mod$kept)
+      expect_setequal(rownames(f$cov), .mod$kept)
+      for (.a in .mod$kept) {
+        for (.b in .mod$kept) {
+          expect_equal(f$cov[.a, .b], .ref[.a, .b], info = paste(.a, .b))
+        }
+      }
+    }
+    # the phi0 theta (tka) has no Ha row of its own: no standard error, and it says so
+    expect_true(is.na(f$parFixedDf["tka", "SE"]))
+    expect_true(is.finite(f$parFixedDf["tcl", "SE"]))
+    expect_true(any(grepl(
+      "\"inv(Ha[theta])\" covariance has no row for the non-mu-referenced theta(s) tka",
+      f$runInfo,
+      fixed = TRUE
+    )))
+  })
+
   test_that("multi-endpoint fim/sa: one residual FIM slot per endpoint (#893)", {
     # Before the fix, src/saem.cpp had exactly ONE log-sigma2 slot no matter how
     # many endpoints the model declared, so a multi-endpoint fit's residual score

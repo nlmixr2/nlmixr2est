@@ -77,11 +77,18 @@
 #'  modeled components (\code{a <- add.sd*exp(eta.sd); cp ~ add(a)}), which saem
 #'  fits as \code{cp ~ add(a) + dnorm()}.
 #'
-#'  "\code{r,s}" Uses the sandwich matrix to calculate the covariance, that is: \eqn{R^-1 \times S \times R^-1}
-#'
-#'  "\code{r}" Uses the Hessian matrix to calculate the covariance as \eqn{2\times R^-1}
-#'
-#'  "\code{s}" Uses the crossproduct matrix to calculate the covariance as \eqn{4\times S^-1}
+#'  "\code{r,s}", "\code{r}" and "\code{s}" compute no R or S matrix in
+#'  \code{saem}: all three invert the structural-theta block of the
+#'  estimation-phase information matrix (\code{fit$saem$Ha}, the matrix
+#'  \code{fim} inverts in full).  The result covers the estimated mu-referenced
+#'  thetas only, conditional on the \code{Omega} and residual parameters; a
+#'  theta without a random effect has no row in it and gets no standard error.
+#'  It is installed as \code{fit$covMethod == "inv(Ha[theta])"}, or
+#'  \code{"inv(|Ha[theta]|)"} when the block was not positive definite and was
+#'  replaced by \code{sqrtm(Ha \%*\% Ha)}.  For the finite-difference R and S
+#'  covariances at the SAEM estimates use \code{setCov(fit, "r,s")}.  An integer
+#'  \code{covMethod} is a \code{foceiControl()} slot: \code{0} is no covariance,
+#'  \code{1}, \code{2} and \code{3} are \code{"r,s"}, \code{"r"} and \code{"s"}.
 #'
 #'  "" Does not calculate the covariance step.
 #'
@@ -565,18 +572,12 @@ saemControl <- function(
   # "imp" is foreign to the SAEM kernel; skip the native cov and recompute the
   # importance-sampling covariance post-fit at the converged estimates.  The
   # covMethodDeferred formal carries a round-tripped request (default NA).
-  if (identical(covMethod, "")) {
-    ## "" requests no covariance; match.arg() cannot select it because
-    ## pmatch("") matches nothing, so handle it explicitly.
+  # An integer is a foceiControl() slot (a round-tripped control carries one):
+  # 0 is no covariance, 1/2/3 are "r,s"/"r"/"s".
+  .covMethod <- .covMethodArg(covMethod, match.arg(covMethod))
+  if (identical(.covMethod, "imp")) {
+    covMethodDeferred <- "imp"
     .covMethod <- ""
-  } else if (checkmate::testIntegerish(covMethod, lower = 0, len = 1, any.missing = FALSE)) {
-    .covMethod <- covMethod
-  } else {
-    .covMethod <- match.arg(covMethod)
-    if (identical(.covMethod, "imp")) {
-      covMethodDeferred <- "imp"
-      .covMethod <- ""
-    }
   }
 
   checkmate::assertLogical(covFull, len = 1, any.missing = FALSE)

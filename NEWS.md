@@ -278,6 +278,22 @@
   covariance can be computed at all; both were silent.  `covMethod =
   "analytic"` falling back to `"linFim"` is now a warning, kept in
   `$runInfo`, rather than a message.
+- `saemControl(covMethod = "r,s")` (and `"r"`, `"s"`) computes no R or S
+  matrix: it inverts the theta block of SAEM's estimation-phase information
+  `$saem$Ha`.  That covariance is now installed as `"inv(Ha[theta])"`
+  (`"inv(|Ha[theta]|)"` when `sqrtm()` repaired the block) instead of with no
+  label, and its rows follow the order the SAEM kernel lays them out in.  With
+  a `fix()`ed theta, or with a theta without a random effect ahead of one with
+  a random effect, the standard errors went to the wrong parameters (#906): on
+  `theo_sd` with `tcl` fixed, `tv` got the standard error of `tcl`.  A theta
+  without a random effect has no information of its own in that block, so it
+  now gets no standard error, with a warning, instead of a near-zero one.  The
+  same matrix is what an unusable `covMethod = "linFim"` falls back to; it
+  carries the same label there and no longer borrows the linearized FIM's
+  variance block.  Every SAEM covariance is now checked (finite, symmetric,
+  positive definite on its identified rows) before it is installed, and an
+  integer `covMethod` is read as a `foceiControl()` slot, so `covMethod = 0L`
+  computes no covariance (it inverted `Ha`).
 - The printed parameter table of a full-Bayes `fbvi`/`emvi` fit now shows the
   standard errors of the variational covariance (only `$parFixedDf` had
   them), its confidence interval uses the fit's `ci`, and the condition

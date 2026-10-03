@@ -267,11 +267,18 @@ wrapping. `NULL` (default) uses `floor((getOption("width") - 23) / 12)`.}
  modeled components (\code{a <- add.sd*exp(eta.sd); cp ~ add(a)}), which saem
  fits as \code{cp ~ add(a) + dnorm()}.
 
- "\code{r,s}" Uses the sandwich matrix to calculate the covariance, that is: \eqn{R^-1 \times S \times R^-1}
-
- "\code{r}" Uses the Hessian matrix to calculate the covariance as \eqn{2\times R^-1}
-
- "\code{s}" Uses the crossproduct matrix to calculate the covariance as \eqn{4\times S^-1}
+ "\code{r,s}", "\code{r}" and "\code{s}" compute no R or S matrix in
+ \code{saem}: all three invert the structural-theta block of the
+ estimation-phase information matrix (\code{fit$saem$Ha}, the matrix
+ \code{fim} inverts in full).  The result covers the estimated mu-referenced
+ thetas only, conditional on the \code{Omega} and residual parameters; a
+ theta without a random effect has no row in it and gets no standard error.
+ It is installed as \code{fit$covMethod == "inv(Ha[theta])"}, or
+ \code{"inv(|Ha[theta]|)"} when the block was not positive definite and was
+ replaced by \code{sqrtm(Ha \%*\% Ha)}.  For the finite-difference R and S
+ covariances at the SAEM estimates use \code{setCov(fit, "r,s")}.  An integer
+ \code{covMethod} is a \code{foceiControl()} slot: \code{0} is no covariance,
+ \code{1}, \code{2} and \code{3} are \code{"r,s"}, \code{"r"} and \code{"s"}.
 
  "" Does not calculate the covariance step.}
 

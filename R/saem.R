@@ -877,6 +877,38 @@
       logical(1)
     ))
 }
+#' Row layout of the structural-theta block of a SAEM information matrix
+#'
+#' `src/saem.cpp` orders the leading block of `Ha`/`HaSa` `[phi1 mu][phi0 mu]`
+#' (mu-referenced thetas first, then thetas with no eta), not
+#' `saemParamsToEstimate` order, and keeps a row for every `fix()`ed theta.
+#' The order comes from `saem.cfg$i1`/`i0`.  Without them (an old cached fit
+#' that predates saving them, or a mu-referenced covariate that interleaves
+#' coefficient names with the plain thetas) the rows follow
+#' `saemParamsToEstimate` only when there is no phi0 theta; otherwise there is
+#' no safe way to tell which rows are phi0, and reporting from model order is
+#' exactly the mislabeling of #906.
+#' @param env saem fit environment
+#' @return list(tn = parameter names in row order, fx = their fixed flags, phi0
+#'   = the phi0 theta names), or `NULL` when the order cannot be verified
+#' @noRd
+.saemFimThetaLayout <- function(env) {
+  .ui <- env$ui
+  .pars <- .ui$saemParamsToEstimate
+  .fixed <- .ui$saemFixed
+  .saemCfg <- attr(env$saem, "saem.cfg")
+  .i1 <- .saemCfg$i1
+  .i0 <- .saemCfg$i0 # 0-based model-order phi indices
+  .nStruct <- length(.i1) + length(.i0)
+  if (!is.null(.i1) && .nStruct > 0L && .nStruct == (length(.pars) - length(.ui$nonMuEtas))) {
+    .ord <- c(.i1, .i0) + 1L
+    return(list(tn = .pars[.ord], fx = .fixed[.ord], phi0 = .pars[.i0 + 1L]))
+  }
+  if (isTRUE(.saemCfg$nphi0 > 0L)) {
+    return(NULL)
+  }
+  list(tn = .pars, fx = .fixed, phi0 = character(0))
+}
 #' Invert a SAEM Fisher Information Matrix into a reported-scale covariance
 #'
 #' Shared by `covMethod="sa"` (converged FIM `saem$HaSa`) and `covMethod="fim"`
@@ -905,32 +937,13 @@
     return(NULL)
   }
   .np <- nrow(.H) # original nb_param layout; every position below is keyed to this
-  .pars <- .ui$saemParamsToEstimate
-  .fixed <- .ui$saemFixed
-  .saemCfg <- attr(.saem, "saem.cfg")
-  .i1 <- .saemCfg$i1
-  .i0 <- .saemCfg$i0 # 0-based model-order phi indices
-  .nStruct <- length(.i1) + length(.i0)
-  .ordered <- !is.null(.i1) && .nStruct > 0L && .nStruct == (length(.pars) - length(.ui$nonMuEtas))
-  if (.ordered) {
-    .ord <- c(.i1, .i0) + 1L
-    .tn <- .pars[.ord]
-    .fx <- .fixed[.ord]
-    .phi0Nm <- .pars[.i0 + 1L]
-  } else if (isTRUE(.saemCfg$nphi0 > 0L)) {
-    # Without a verified i1/i0 partition (an old cached fit that predates
-    # saving them, or a mu-ref covariate that makes saemParamsToEstimate
-    # interleave covariate coefficients so it no longer lines up 1:1 with the
-    # phi block) there is no safe way to tell which FIM rows are phi0 --
-    # reporting from raw model order risks exactly the silent mislabeling
-    # this function exists to fix (#906).  Only safe to proceed unordered
-    # when there is no phi0 row to get wrong.
+  .lay <- .saemFimThetaLayout(env)
+  if (is.null(.lay)) {
     return(NULL)
-  } else {
-    .tn <- .pars
-    .fx <- .fixed
-    .phi0Nm <- character(0)
   }
+  .tn <- .lay$tn
+  .fx <- .lay$fx
+  .phi0Nm <- .lay$phi0
   .nth <- length(.tn)
   if (.nth == 0L || .np < .nth) {
     return(NULL)
@@ -1263,7 +1276,14 @@
       }
       # off-diagonal Omega / proportional-combined residuals are not reliably in the
       # analytic FIM; splice those from linFim's variance block (blocB).
-      if (!is.null(.cov)) .cov <- .saemSpliceLinFimVar(.cov, env)
+      if (!is.null(.cov)) {
+        .cov <- .saemSpliceLinFimVar(.cov, env)
+      }
+      # the splices add blocks .saemFimToCov never checked
+      if (!is.null(.cov)) {
+        .g <- .saemCovGuard(.cov)
+        .cov <- if (.g$ok) .g$cov else NULL
+      }
     })
     if (!is.null(.cov)) {
       # the kernel's Fisher information (and so .saemFimToCov's row order) is
@@ -1290,90 +1310,187 @@
     rxode2::rxAssignControlValue(.ui, "covMethod", "linFim")
   }
   nlmixrWithTiming("covariance", {
-    .saem <- env$saem
-    attr(.saem, "env") <- env
     .covMethod <- rxode2::rxGetControl(.ui, "covMethod", "linFim")
-    .linFim <- .covMethod == "linFim"
+    .linFim <- identical(.covMethod, "linFim")
     .tn <- .ui$saemParamsToEstimate[!.ui$saemFixed]
-    .nth <- length(.tn)
-    if (.covMethod == "") {
+    if (identical(.covMethod, "")) {
       # no covariance requested
-    } else if (.linFim && .nth == 0) {
+    } else if (.linFim && length(.tn) == 0) {
       warning("no population parameters in the model, no covariance matrix calculated", call. = FALSE)
       env$cov <- NULL
       env$covMethod <- "none"
     } else {
-      .fim <- .saem$Ha[1:.nth, 1:.nth, drop = FALSE]
-      .covm <- .fim
-      .rep <- NULL
-      if (.linFim) {
-        ## the FIM linearization (calc.COV) can be ill-conditioned / non-symmetric
-        ## (e.g. some delay differential equation models); fail silently and fall
-        ## back to the SAEM information matrix rather than aborting the whole fit.
-        .covm <- try(calc.COV(.saem), silent = TRUE)
-        if (inherits(.covm, "try-error")) {
-          warning("SAEM covariance by linearization failed; using the SAEM information matrix", call. = FALSE)
-        } else if (dim(.covm)[1] == .nth) {
-          # .covm may have NA rows/columns for ill-identified parameters;
-          # validate only the well-identified submatrix (.nlmixr2RobustCov()).
-          .rep <- .saemCovRepair(.covm, partial = TRUE)
-          if (is.null(.rep)) {
-            .covm <- .fim
-          }
-        }
+      # "r,s"/"r"/"s" (saemControl() turns an integer slot into these) and an
+      # unusable linearized FIM take the inverse of Ha's theta block
+      .r <- if (.linFim) .saemLinFimCov(env, .tn) else NULL
+      if (is.null(.r)) {
+        .r <- .saemHaThetaCov(env)
       }
-      # an unusable linFim, and every non-"linFim" covMethod (0L/"r"/"s"/"r,s"),
-      # inverts the SAEM information matrix instead
-      .calcCov <- !is.null(.rep)
-      if (!.calcCov) {
-        .rep <- .saemCovRepair(.fim)
-      }
-      if (is.null(.rep)) {
-        warning("FIM non-positive definite and cannot be used to calculate the covariance", call. = FALSE)
+      if (is.character(.r)) {
+        .covRejectWarn(env, .saemHaThetaName, .r)
       } else {
-        .cov <- if (.calcCov) .rep$mat else rxode2::rxInv(.rep$mat)
-        attr(.cov, "dimnames") <- list(.tn, .tn)
-        .idf <- .ui$iniDf
-        .ini <- paste(.idf$name[is.na(.idf$err) & !is.na(.idf$ntheta) & !.idf$fix])
-        .ini <- .ini[!(.ini %in% .ui$mixProbs)]
-        env$cov <- .cov[.ini, .ini, drop = FALSE] # structural-theta block
-        if (.calcCov) {
-          env$covMethod <- if (.rep$sqrtm) "|linFim|" else "linFim"
-        } else if (.rep$sqrtm) {
-          env$covMethod <- "|fim|"
-        }
-        # covFull: assemble the full theta + residual + Omega block-diagonal cov
-        # (calc.COV attaches the variance block as "varCov").  The shared output
-        # finalization expects a theta-dimensioned cov, so stash the full matrix and
-        # install it AFTER the fit is built (.saemInstallFullCov), mirroring focei;
-        # the label it was computed under goes with it.
-        .vc <- attr(.covm, "varCov")
-        if (isTRUE(rxode2::rxGetControl(.ui, "covFull", TRUE)) && is.matrix(.vc) && all(is.finite(.vc))) {
-          .vn <- colnames(.vc)
-          .fn <- c(.ini, .vn)
-          .full <- matrix(0, length(.fn), length(.fn), dimnames = list(.fn, .fn))
-          .full[.ini, .ini] <- env$cov
-          .full[.vn, .vn] <- .vc
-          # two-level IOV: the K per-occasion columns are ONE variance, so they
-          # appear K times here under their internal `om.rx.<iov>.<k>` names.
-          # Contract them (no-op when the fit did not take that path).
-          .full <- .saemIovCollapseCov(.full, .uiIovEnv$iovTwoLevel)
-          assign(".saemFullCov", .full, envir = env)
-          assign(".saemCovMethod", env$covMethod, envir = env)
-        }
-        if (.linFim && !.calcCov && !inherits(.covm, "try-error")) {
-          warning("linearization of FIM could not be used to calculate covariance", call. = FALSE)
-        }
-        if (.rep$sqrtm) {
-          .m <- if (.calcCov) "linFim" else "fim"
-          warning(
-            sprintf("covariance matrix non-positive definite, corrected by sqrtm(%s %%*%% %s)", .m, .m),
-            call. = FALSE
-          )
-        }
+        .saemInstallThetaCov(env, .r)
       }
     }
   })
+}
+
+# saemControl(covMethod = "r,s"/"r"/"s") computes no R or S matrix: it inverts
+# the theta block of the estimation-phase information Ha (.saemHaThetaCov), so
+# that covariance carries its own name, never an FD one.  "|.|" marks the block
+# repaired by sqrtm(Ha %*% Ha) before inverting, as "|r|" does for R.
+.saemHaThetaName <- "inv(Ha[theta])"
+.saemHaThetaRepairedName <- "inv(|Ha[theta]|)"
+
+#' Check the identified block of a SAEM covariance
+#'
+#' A linearized FIM marks a parameter it cannot identify with an `NA` row and
+#' column (`.nlmixr2RobustCov()`), which the output keeps as a missing
+#' standard error; every other entry must pass `.covGuard()`.
+#' @param cov candidate covariance matrix
+#' @return list(ok, cov = `cov` with its identified block symmetrized, reason)
+#' @noRd
+.saemCovGuard <- function(cov) {
+  if (!is.matrix(cov) || nrow(cov) != ncol(cov)) {
+    return(list(ok = FALSE, cov = NULL, reason = "could not be computed"))
+  }
+  .id <- which(!is.na(diag(cov)))
+  .g <- .covGuard(cov[.id, .id, drop = FALSE])
+  if (.g$ok) {
+    cov[.id, .id] <- .g$cov
+  }
+  list(ok = .g$ok, cov = cov, reason = .g$reason)
+}
+
+#' The SAEM linearized-FIM covariance (`calc.COV()`), if it is usable
+#'
+#' Warns when it is not, in which case the caller falls back to
+#' `.saemHaThetaCov()`.
+#' @param env saem fit environment
+#' @param tn the free parameters `calc.COV()` returns rows for
+#' @return list(cov, label, varCov = calc.COV's variance block), or `NULL`
+#' @noRd
+.saemLinFimCov <- function(env, tn) {
+  .saem <- env$saem
+  attr(.saem, "env") <- env
+  ## the FIM linearization (calc.COV) can be ill-conditioned / non-symmetric
+  ## (e.g. some delay differential equation models); fall back to the SAEM
+  ## information matrix rather than aborting the whole fit.
+  .covm <- try(calc.COV(.saem), silent = TRUE)
+  if (inherits(.covm, "try-error")) {
+    warning("SAEM covariance by linearization failed; using the SAEM information matrix", call. = FALSE)
+    return(NULL)
+  }
+  # .covm may have NA rows/columns for ill-identified parameters; validate only
+  # the well-identified submatrix (.nlmixr2RobustCov()).
+  .rep <- if (identical(dim(.covm), rep(length(tn), 2L))) .saemCovRepair(.covm, partial = TRUE) else NULL
+  .g <- if (!is.null(.rep)) .saemCovGuard(.rep$mat) else NULL
+  if (!isTRUE(.g$ok)) {
+    warning("linearization of FIM could not be used to calculate covariance", call. = FALSE)
+    return(NULL)
+  }
+  .cov <- .g$cov
+  dimnames(.cov) <- list(tn, tn)
+  list(cov = .cov, label = if (.rep$sqrtm) "|linFim|" else "linFim", varCov = attr(.covm, "varCov"))
+}
+
+#' Covariance from the theta block of SAEM's estimation-phase information `Ha`
+#'
+#' The inverse of the rows of `Ha` that belong to the free mu-referenced
+#' thetas, labelled by their kernel row order (`.saemFimThetaLayout()`).  It
+#' leaves out their cross-information with the Omega and residual parameters,
+#' so it is the covariance conditional on those; it is neither an R nor an S
+#' matrix.  A phi0 theta's row holds the pseudo-information `1/gamma2_phi0`
+#' that the M-step drives toward infinity (#906), so a phi0 theta is left out
+#' and has no standard error.
+#' @param env saem fit environment
+#' @return list(cov, label, phi0 = the free phi0 thetas left out), or a
+#'   `.covGuard()`-style reason when there is no usable covariance
+#' @noRd
+.saemHaThetaCov <- function(env) {
+  .lay <- .saemFimThetaLayout(env)
+  .H <- env$saem$Ha
+  if (is.null(.lay) || !is.matrix(.H) || nrow(.H) < length(.lay$tn)) {
+    return("could not be computed (the information rows cannot be matched to the thetas)")
+  }
+  .keep <- which(!.lay$fx & !(.lay$tn %in% .lay$phi0))
+  if (length(.keep) == 0L) {
+    return("could not be computed (no mu-referenced theta is estimated)")
+  }
+  .h <- .H[.keep, .keep, drop = FALSE]
+  .rep <- .saemCovRepair(.h)
+  if (is.null(.rep)) {
+    return(.covGuard(.h)$reason)
+  }
+  .cov <- tryCatch(solve(.rep$mat), error = function(e) NULL)
+  .g <- .covGuard(.cov)
+  if (!.g$ok) {
+    return(.g$reason)
+  }
+  .tn <- .lay$tn[.keep]
+  .cov <- .g$cov
+  dimnames(.cov) <- list(.tn, .tn)
+  list(
+    cov = .cov,
+    label = if (.rep$sqrtm) .saemHaThetaRepairedName else .saemHaThetaName,
+    phi0 = .lay$tn[!.lay$fx & .lay$tn %in% .lay$phi0]
+  )
+}
+
+#' Install a theta-shaped SAEM covariance for the output finalization
+#'
+#' Installs the structural-theta block as `env$cov` under `r$label`; a linFim
+#' result with a finite variance block also stashes the full theta + residual +
+#' Omega matrix for `.saemInstallFullCov()`.
+#' @param env saem fit environment
+#' @param r a `.saemLinFimCov()` or `.saemHaThetaCov()` result
+#' @return nothing, called for side effects
+#' @noRd
+.saemInstallThetaCov <- function(env, r) {
+  .ui <- env$ui
+  .idf <- .ui$iniDf
+  .ini <- paste(.idf$name[is.na(.idf$err) & !is.na(.idf$ntheta) & !.idf$fix])
+  .ini <- .ini[!(.ini %in% .ui$mixProbs) & .ini %in% rownames(r$cov)]
+  env$cov <- r$cov[.ini, .ini, drop = FALSE] # structural-theta block
+  env$covMethod <- r$label
+  # covFull: assemble the full theta + residual + Omega block-diagonal cov
+  # (calc.COV attaches the variance block as "varCov").  The shared output
+  # finalization expects a theta-dimensioned cov, so stash the full matrix and
+  # install it AFTER the fit is built (.saemInstallFullCov), mirroring focei;
+  # the label it was computed under goes with it.  Only linFim has one: the
+  # Ha theta block is never paired with linFim's variance block.
+  .vc <- r$varCov
+  if (isTRUE(rxode2::rxGetControl(.ui, "covFull", TRUE)) && is.matrix(.vc) && all(is.finite(.vc))) {
+    .vn <- colnames(.vc)
+    .fn <- c(.ini, .vn)
+    .full <- matrix(0, length(.fn), length(.fn), dimnames = list(.fn, .fn))
+    .full[.ini, .ini] <- env$cov
+    .full[.vn, .vn] <- .vc
+    # two-level IOV: the K per-occasion columns are ONE variance, so they
+    # appear K times here under their internal `om.rx.<iov>.<k>` names.
+    # Contract them (no-op when the fit did not take that path).
+    .full <- .saemIovCollapseCov(.full, .uiIovEnv$iovTwoLevel)
+    assign(".saemFullCov", .full, envir = env)
+    assign(".saemCovMethod", r$label, envir = env)
+  }
+  if (length(r$phi0) > 0L) {
+    warning(
+      sprintf(
+        "\"%s\" covariance has no row for the non-mu-referenced theta(s) %s; they have no standard error",
+        r$label,
+        paste(r$phi0, collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+  if (r$label %in% c("|linFim|", .saemHaThetaRepairedName)) {
+    .m <- if (identical(r$label, "|linFim|")) "linFim" else "Ha[theta]"
+    warning(
+      sprintf("covariance matrix non-positive definite, corrected by sqrtm(%s %%*%% %s)", .m, .m),
+      call. = FALSE
+    )
+  }
+  invisible()
 }
 
 #' Factor a SAEM covariance or information matrix, repairing one that is not
@@ -1597,8 +1714,8 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   if (!is.environment(.env) || !exists(".saemFullCov", envir = .env, inherits = FALSE)) {
     return(invisible())
   }
-  # the shared finalization can leave a stale label (e.g. "failed") on the fit, and
-  # resets the control covMethod, so use the label recorded with the stash
+  # the label recorded with the stash; the control covMethod is reset during
+  # finalization
   .m <- get0(".saemCovMethod", envir = .env, inherits = FALSE)
   if (!.covIsName(.m)) {
     .m <- "linFim"
@@ -1753,26 +1870,6 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
     # covFull/sa: swap in the stashed full theta+residual+Omega covariance now that
     # the theta-dimensioned fit table has been built.
     .saemInstallFullCov(.ret)
-    # The shared output finalization can leave a stale "failed" covMethod label even
-    # when the SAEM covariance actually succeeded (a valid finite PD $cov exists);
-    # restore the intended method in that case.
-    .rEnv <- if (rxode2::rxIs(.ret, "nlmixr2FitData")) .ret$env else .ret
-    if (
-      is.environment(.rEnv) &&
-        identical(.rEnv$covMethod, "failed") &&
-        is.matrix(.rEnv$cov) &&
-        all(is.finite(.rEnv$cov)) &&
-        all(diag(.rEnv$cov) > 0)
-    ) {
-      # the control covMethod is reset to its default during finalization, so prefer the
-      # label recorded by .saemCalcCov (.saemCovMethod) when present.
-      .cm <- if (exists(".saemCovMethod", envir = .rEnv, inherits = FALSE)) {
-        get(".saemCovMethod", envir = .rEnv)
-      } else {
-        tryCatch(rxode2::rxGetControl(.ui, "covMethod", "linFim"), error = function(e) "linFim")
-      }
-      .rEnv$covMethod <- if (.cm %in% c("linFim", "fim", "sa")) .cm else "linFim"
-    }
     # covMethod="analytic": now that the linFim fallback is installed and the fit
     # table is built, attempt the FOCEI analytic covariance at the converged
     # estimates (keeps linFim on any failure).
