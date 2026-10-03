@@ -447,6 +447,13 @@ static inline void saveTheta(arma::vec &theta) {
   thetaSave = theta;
 }
 
+// optimFunC() and nlminbFunC() share one cache: valSave/grSave/hSave hold the solve at
+// thetaSave up to level saveType (solveType_pred < solveType_grad < solveType_hess).
+// solveGradNls() keys its own per-observation buffers on thetaSave alone.
+static inline bool nlmSaved(arma::vec &theta, int level) {
+  return nlmOp.saveType >= level && isThetaSame(theta);
+}
+
 // Censoring of observation kk, read for a censorable endpoint: normal/dnorm, or
 // t()/cauchy() when the model emits rx_nu_ (nuOffset >= 0, see #979).
 struct NlmCensObs {
@@ -1075,6 +1082,17 @@ RObject nlmSolveSwitch(arma::vec &theta) {
 }
 
 
+// The objective and gradient at theta (column sums of nlmSolveGrad) into valSave/grSave,
+// unless the cache holds them already; true when it solved.
+static inline bool nlmSolveGradSaved(arma::vec &theta) {
+  if (nlmSaved(theta, solveType_grad)) return false;
+  arma::vec saveVec(nlmOp.valSave, nlmOp.ntheta + 1, false, true);
+  saveVec = (arma::sum(nlmSolveGrad(theta), 0)).t();
+  nlmOp.saveType = solveType_grad;
+  saveTheta(theta);
+  return true;
+}
+
 //[[Rcpp::export]]
 NumericVector optimFunC(arma::vec &theta, bool grad=false) {
   if (!nlmOp.loaded) stop("'optim' problem not loaded");
@@ -1085,98 +1103,38 @@ NumericVector optimFunC(arma::vec &theta, bool grad=false) {
     scalePrintFun(&(nlmOp.scale), &theta[0], ret[0]);
     return ret;
   }
-  if (isThetaSame(theta)) {
-    if (grad) {
-      NumericVector ret(nlmOp.ntheta);
-      std::copy(nlmOp.grSave, nlmOp.grSave + nlmOp.ntheta, ret.begin());
-      return ret;
-    }
-    NumericVector ret(1);
-    ret[0] = nlmOp.valSave[0];
-    return ret;
-  }
-  arma::mat ret0 = nlmSolveGrad(theta);
-  arma::vec saveVec(nlmOp.valSave, nlmOp.ntheta + 1, false, true);
-  saveVec = (arma::sum(ret0, 0)).t();
-  saveTheta(theta);
-  if (grad) {
-    NumericVector ret(nlmOp.ntheta);
-    std::copy(nlmOp.grSave, nlmOp.grSave + nlmOp.ntheta, ret.begin());
+  if (nlmSolveGradSaved(theta)) {
     scalePrintFun(&(nlmOp.scale), &theta[0], nlmOp.valSave[0]);
     scalePrintGrad(&(nlmOp.scale), nlmOp.grSave, iterTypeSens);
-    return ret;
   }
-  NumericVector ret(1);
-  ret[0] = nlmOp.valSave[0];
-  scalePrintFun(&(nlmOp.scale), &theta[0], ret[0]);
-  scalePrintGrad(&(nlmOp.scale), nlmOp.grSave, iterTypeSens);
-  return ret;
+  if (grad) return NumericVector(nlmOp.grSave, nlmOp.grSave + nlmOp.ntheta);
+  return NumericVector::create(nlmOp.valSave[0]);
 }
 
 //[[Rcpp::export]]
 NumericVector nlminbFunC(arma::vec &theta, int type) {
   if (!nlmOp.loaded) stop("'nlminb' problem not loaded");
-  // restore saved values
-  bool isSame = isThetaSame(theta);
-  if (isSame) {
-    switch (type) {
-    case solveType_pred:
-      if (nlmOp.saveType >= solveType_pred) {
-        NumericVector ret(1);
-        ret[0] = nlmOp.valSave[0];
-        return ret;
-      }
-      break;
-    case solveType_grad:
-      if (nlmOp.saveType >= solveType_grad) {
-        NumericVector ret(nlmOp.ntheta);
-        std::copy(nlmOp.grSave, nlmOp.grSave + nlmOp.ntheta, ret.begin());
-        return ret;
-      }
-      break;
-    case solveType_hess:
-      if (nlmOp.saveType == solveType_hess) {
-        NumericVector ret(nlmOp.ntheta*nlmOp.ntheta);
-        std::copy(nlmOp.hSave, nlmOp.hSave + nlmOp.ntheta * nlmOp.ntheta, ret.begin());
-        ret.attr("dim") = IntegerVector::create(nlmOp.ntheta, nlmOp.ntheta);
-        return ret;
-      }
-      break;
-    }
-  }
-  // calculate saved values
   switch (type) {
-  case solveType_pred: {
-    NumericVector ret(1);
-    nlmOp.valSave[0] = ret[0] = nlmSolveR(theta);
-    nlmOp.saveType = solveType_pred;
-    saveTheta(theta);
-    scalePrintFun(&(nlmOp.scale), &theta[0], ret[0]);
-    return ret;
-  }
-    break;
-  case solveType_grad: {
+  case solveType_pred:
+    if (!nlmSaved(theta, solveType_pred)) {
+      nlmOp.valSave[0] = nlmSolveR(theta);
+      nlmOp.saveType = solveType_pred;
+      saveTheta(theta);
+      scalePrintFun(&(nlmOp.scale), &theta[0], nlmOp.valSave[0]);
+    }
+    return NumericVector::create(nlmOp.valSave[0]);
+  case solveType_grad:
     // You have to solve the full system for the grad anyway
-    arma::mat ret0 = nlmSolveGrad(theta);
-    arma::vec saveVec(nlmOp.valSave, nlmOp.ntheta + 1, false, true);
-    saveVec = (arma::sum(ret0, 0)).t();
-    nlmOp.saveType = solveType_grad;
-    saveTheta(theta);
-    NumericVector ret(nlmOp.ntheta);
-    std::copy(nlmOp.grSave, nlmOp.grSave + nlmOp.ntheta, ret.begin());
-    scalePrintGrad(&(nlmOp.scale), &ret[0], iterTypeSens);
-    return ret;
-  }
-    break;
+    if (nlmSolveGradSaved(theta)) scalePrintGrad(&(nlmOp.scale), nlmOp.grSave, iterTypeSens);
+    return NumericVector(nlmOp.grSave, nlmOp.grSave + nlmOp.ntheta);
   case solveType_hess: {
-    if (isSame && nlmOp.saveType == solveType_grad) {
+    if (nlmSaved(theta, solveType_grad) && nlmOp.saveType == solveType_grad) {
       // Just add hessian
-      arma::vec gr0(nlmOp.ntheta);
-      std::copy(nlmOp.grSave, nlmOp.grSave + nlmOp.ntheta, gr0.begin());
+      arma::vec gr0(nlmOp.grSave, nlmOp.ntheta);
       mat H = nlmCalcHessian(gr0, theta);
       std::copy(H.begin(), H.end(), nlmOp.hSave);
       nlmOp.saveType = solveType_hess;
-    } else {
+    } else if (!nlmSaved(theta, solveType_hess)) {
       // Calculate everything
       NumericVector attrRet = as<NumericVector>(nlmSolveGradHess(theta));
       saveTheta(theta);
@@ -1187,12 +1145,10 @@ NumericVector nlminbFunC(arma::vec &theta, int type) {
       NumericVector hess = as<NumericVector>(attrRet.attr("hessian"));
       std::copy(hess.begin(), hess.end(), nlmOp.hSave);
     }
-    NumericVector ret(nlmOp.ntheta*nlmOp.ntheta);
-    std::copy(nlmOp.hSave, nlmOp.hSave + nlmOp.ntheta * nlmOp.ntheta, ret.begin());
+    NumericVector ret(nlmOp.hSave, nlmOp.hSave + nlmOp.ntheta * nlmOp.ntheta);
     ret.attr("dim") = IntegerVector::create(nlmOp.ntheta, nlmOp.ntheta);
     return ret;
   }
-    break;
   }
   stop("Couldn't find solution type: %d", type);
   return NumericVector::create(NA_REAL);
