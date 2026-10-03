@@ -171,6 +171,14 @@
   method name nor a number (`NULL`, `NA`, `TRUE`, a vector).  It was stored
   as given.
 
+- `est = "foce"`, `"focep"`, `"laplace"` and `"agq"` given a `foControl()` or
+  `foiControl()` now convert it; they stopped with `unused argument:
+  'posthoc'`.  These four methods now convert another method's control the
+  way the mu-referenced methods do, keeping only the settings its caller
+  changed, so that method's own settings no longer replace theirs: `est =
+  "agq"` given a `foceControl()` ran FOCE (`nAGQ = 0`, no interaction), and
+  `est = "laplace"` given an `agqControl()` ran a two-node quadrature.
+
 ### Covariance and finite differences
 
 - The Gill (1983) step-size search no longer leaves a parameter at its last

@@ -27,7 +27,12 @@ nmObjHandleControlObject.foceControl <- function(control, env) assign("foceContr
 #' @rdname getValidNlmixrControl
 #' @export
 getValidNlmixrCtl.foce <- function(control) {
-  .getValidCtl(control, "foceControl", convert = c("foceiControl", "foControl", "foiControl"))
+  .getValidCtl(
+    control,
+    "foceControl",
+    convert = c("foceiControl", "foControl", "foiControl"),
+    convertFun = .foceiFamilyControlAs
+  )
 }
 
 #' @rdname nmObjGetControl
