@@ -514,6 +514,11 @@ nmTest({
       expect_identical(.fit$covMethod, .ref$covMethod, label = .est)
       expect_setequal(names(.seOf(.fit)), names(.seOf(.ref)))
       expect_lt(.maxRel(.seOf(.fit), .seOf(.ref)), 1e-6, label = .est)
+      # the method's own parameter table is kept, its SEs taken from the installed matrix
+      .pf <- .fit$parFixedDf
+      .th <- c("tka", "tcl", "tv", "add.sd")
+      expect_setequal(rownames(.pf), .th)
+      expect_equal(.pf[.th, "SE"], unname(.seOf(.fit)[.th]), tolerance = 1e-12, label = .est)
     }
   })
 })

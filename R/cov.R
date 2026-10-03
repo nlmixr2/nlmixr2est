@@ -701,7 +701,10 @@
 #' method's `likelihood` (`control` carries its `interaction`), re-optimizing
 #' the ETAs from the method's at every finite-difference leg.  A recompute that
 #' fails, or gives a matrix `.covGuard()` rejects, installs nothing, with a
-#' warning.
+#' warning.  The method's own parameter tables are kept (the refit's are built
+#' for a FOCEi fit of the same model and drop, for example, a fixed residual
+#' parameter of a vae fit with covariate selection) and their SEs refreshed
+#' from the installed matrix.
 #' @param fit completed fit (object or its env)
 #' @param control the method's `foceiControl()`, with the covariance request
 #' @return invisibly `TRUE` if installed
@@ -712,8 +715,14 @@
   if (is.null(.r) || !is.environment(.env)) {
     return(invisible(FALSE))
   }
-  .covInstall(.env, .r$cov, .r$covMethod, what = .r$what, extras = .r$extras, refresh = "none")
+  .extras <- .r$extras[setdiff(names(.r$extras), .covOwnTables)]
+  .covInstall(.env, .r$cov, .r$covMethod, what = .r$what, extras = .extras, refresh = "all")
 }
+
+#' Parameter tables a fit that estimates its own ETAs keeps when its FOCEi
+#' covariance is installed (`.foceiInstallOwnEtaCov()`)
+#' @noRd
+.covOwnTables <- c("popDf", "popDfSig", "parFixedDf", "parFixed", "se")
 
 #' Install the full-model mu covariance onto a completed mu/irls fit (post-fit).
 #'
