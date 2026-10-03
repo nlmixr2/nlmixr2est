@@ -508,10 +508,10 @@ struct focei_options {
   int normType;
   double scaleCmin;
   double scaleCmax;
-  double scaleRangeLow;  // foceiControl(scaleCband): below this a theta scaleC falls back to |init|
-  double scaleRangeHigh; // above this a theta scaleC falls back to |init|
-  int nScaleCband = 0;   // the band guard covers optimizer slots i < nScaleCband
   int scaleCdefault = scaleCdefaultUnit; // an NA scaleC defaults to 1/|init|, 1 at init 0
+  // lower/upper are on the optimizer's scale: foceiOuter() scales them only when
+  // it optimizes, and foceiCalcCov() unscales them only when they are
+  bool boundsScaled = false;
   double c1;
   double c2;
   double scaleTo;
@@ -5076,7 +5076,11 @@ static inline bool isFixedTheta(int m) {
   return true; // here the parameter is fixed
 }
 
-static inline bool thetaReset0(bool forceReset = false) {
+// trig: the etas whose drift fired the reset (NULL for a forced reset).  The
+// reset goes ahead only if it moves the theta of one of them: shifting only the
+// others leaves the drift that fired it (its theta pinned at a bound), and the
+// next check fires the reset again.
+static inline bool thetaReset0(bool forceReset = false, const std::vector<bool> *trig = NULL) {
   if (op_focei.isSaem) return false;
   NumericVector thetaIni(op_focei.ntheta);
   NumericVector thetaUp(op_focei.ntheta);
@@ -5087,18 +5091,16 @@ static inline bool thetaReset0(bool forceReset = false) {
   // matching eta re-centering must use the applied shift, not etaM (issue #454).
   NumericVector appliedShift(op_focei.muRefN, 0.0);
   bool doAdjust = false;
-  for (int ii = (int)op_focei.ntheta; ii--;) {
-    thetaIni[ii] = scaleUnscalePar(&op_focei, op_focei.fullTheta, ii);
-    if (R_FINITE(op_focei.lower[ii])) {
-      thetaDown[ii] = scaleUnscalePar(&op_focei, op_focei.lower, ii);
-    } else {
-      thetaDown[ii] = R_NegInf;
-    }
-    if (R_FINITE(op_focei.upper[ii])) {
-      thetaUp[ii]= scaleUnscalePar(&op_focei, op_focei.upper, ii);
-    } else {
-      thetaUp[ii] = std::numeric_limits<double>::infinity();
-    }
+  // fullTheta holds the thetas on their own scale; the bounds are kept by
+  // optimizer index on the optimizer's scale
+  std::copy(&op_focei.fullTheta[0], &op_focei.fullTheta[0] + op_focei.ntheta, thetaIni.begin());
+  std::fill(thetaDown.begin(), thetaDown.end(), R_NegInf);
+  std::fill(thetaUp.begin(), thetaUp.end(), R_PosInf);
+  for (unsigned int k = op_focei.npars; k--;) {
+    int j = op_focei.fixedTrans[k];
+    if (j >= (int)op_focei.ntheta) continue;
+    if (R_FINITE(op_focei.lower[k])) thetaDown[j] = scaleUnscalePar(&op_focei, op_focei.lower, k);
+    if (R_FINITE(op_focei.upper[k])) thetaUp[j] = scaleUnscalePar(&op_focei, op_focei.upper, k);
   }
   double ref=0;
   int ij = 0;
@@ -5130,7 +5132,7 @@ static inline bool thetaReset0(bool forceReset = false) {
             appliedShift[ii] = shift;
             thetaIni[ij] = ref;
             adjustEta[ii] = true;
-            doAdjust = true;
+            if (trig == NULL || (ii < trig->size() && (*trig)[ii])) doAdjust = true;
           } else {
             // Already pinned at the bound: leave it be so a parameter that
             // wants to move past its bound does not force an endless reset.
@@ -5223,19 +5225,17 @@ void thetaReset(double size, double n){
   // the 1/sqrt(etaS) scaling (etaS is the Welford sum of squares, not
   // the variance).
   mat etaRes = std::sqrt(n) * (op_focei.eta1SDmean % op_focei.etaM); //op_focei.cholOmegaInv * etaMat;
-  double res=0;
+  std::vector<bool> trig(etaRes.n_rows, false);
+  bool fire = false;
   for (unsigned int j = etaRes.n_rows; j--;) {
     if (isMuRefCovProtected(j)) continue; // mu-ref-covariate etas never trigger a theta reset
-    res = etaRes(j, 0);
-    res = res < 0 ? -res : res;
-    if (res >= size) { // Says reset;
-      if (thetaReset0()) {
-        if (op_focei.didEtaReset==1) {
-          warning(_("mu-referenced Thetas were reset during optimization; (Can control by foceiControl(resetThetaP=.,resetThetaCheckPer=.,resetThetaFinalP=.))"));
-        }
-        stop("theta reset");
-      }
+    if (std::fabs(etaRes(j, 0)) >= size) trig[j] = fire = true;
+  }
+  if (fire && thetaReset0(false, &trig)) {
+    if (op_focei.didEtaReset==1) {
+      warning(_("mu-referenced Thetas were reset during optimization; (Can control by foceiControl(resetThetaP=.,resetThetaCheckPer=.,resetThetaFinalP=.))"));
     }
+    stop("theta reset");
   }
 }
 
@@ -7526,13 +7526,32 @@ void numericGrad(double *theta, double *g){
         continue;
       } else {
         err = 1/(std::fabs(theta[cpar])+1);
-        // a zero derivative is searched again with scaleC set to scaleC0, then 1/scaleC0
-        for (int r = 0; r < 3; ++r) {
+        // A zero derivative is searched again with scaleC set to scaleC0, then
+        // 1/scaleC0.  Only scaleType "nlmixr2" reads scaleC, and only at the
+        // scale's anchor (the scaled initial estimate) is the parameter left
+        // where it is when scaleC changes.  Anywhere else the new scale would
+        // move it under the optimizer, and the search would difference about
+        // lastOfv, the objective at the old point.
+        // When neither retry finds a slope, the parameter keeps its own scaleC and
+        // the first search's results.
+        int nSearch = (op_focei.scaleType == scaleTypeNlmixr2 &&
+                       theta[cpar] == scaleScalePar(&op_focei, op_focei.initPar, cpar)) ? 3 : 1;
+        double scaleC1 = op_focei.scaleC[cpar], hf1 = 0, hphif1 = 0, df21 = 0, ef1 = 0;
+        int ret1 = 0;
+        for (int r = 0; r < nSearch; ++r) {
           if (r > 0) op_focei.scaleC[cpar] = (r == 1) ? op_focei.scaleC0 : 1/op_focei.scaleC0;
           op_focei.gillRet[cpar] = gill83(&hf, &hphif, &op_focei.gillDf[cpar], &op_focei.gillDf2[cpar], &op_focei.gillErr[cpar],
                                           theta, cpar, op_focei.gillRtol, op_focei.gillK, op_focei.gillStep, op_focei.gillFtol,
                                           -1, gill83fnG, 1, op_focei.lastOfv);
           if (op_focei.gillDf[cpar] != 0) break;
+          if (r == 0) {
+            ret1 = op_focei.gillRet[cpar]; hf1 = hf; hphif1 = hphif;
+            df21 = op_focei.gillDf2[cpar]; ef1 = op_focei.gillErr[cpar];
+          } else if (r == nSearch - 1) {
+            op_focei.scaleC[cpar] = scaleC1;
+            op_focei.gillRet[cpar] = ret1; hf = hf1; hphif = hphif1;
+            op_focei.gillDf2[cpar] = df21; op_focei.gillErr[cpar] = ef1;
+          }
         }
         gill83Eps(hf, hphif, err, op_focei.optGillF, &op_focei.aEps[cpar], &op_focei.rEps[cpar],
                   &op_focei.aEpsC[cpar], &op_focei.rEpsC[cpar]);
@@ -7963,11 +7982,6 @@ static inline void foceiSetupTheta_(List mvi,
       }
     }
   }
-  // The band guard covers the estimated thetas, which lead the optimizer order;
-  // omega scalings keep their own formula.
-  op_focei.nScaleCband = 0;
-  while (op_focei.nScaleCband < k && op_focei.fixedTrans[op_focei.nScaleCband] < thetan)
-    op_focei.nScaleCband++;
   // Printed-column map: optimizer columns in fixedTrans order interleaved with
   // the regression-updated mu thetas at their natural fullTheta positions
   // (user-fixed thetas get no column either way, matching plain focei).
@@ -9196,7 +9210,7 @@ NumericVector foceiSetup_(const RObject &obj,
 
   op_focei.muRef   = op_focei.nbd + op_focei.npars; //[op_focei.muRefN]
   if (op_focei.muRefN) {
-    std::copy(&op_focei.muRef[0], &op_focei.muRef[0]+op_focei.muRefN, muRef.begin());
+    std::copy(muRef.begin(), muRef.end(), &op_focei.muRef[0]);
   }
 
   op_focei.muRefEtaCovSkipReset = op_focei.muRef + op_focei.muRefN; //[op_focei.muRefN]
@@ -9440,14 +9454,6 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.scaleC0=as<double>(foceiO["scaleC0"]);
   op_focei.scaleCmin=as<double>(foceiO["scaleCmin"]);
   op_focei.scaleCmax=as<double>(foceiO["scaleCmax"]);
-  if (foceiO.containsElementNamed("scaleCband")) {
-    NumericVector scb = as<NumericVector>(foceiO["scaleCband"]);
-    op_focei.scaleRangeLow = scb[0];
-    op_focei.scaleRangeHigh = scb[1];
-  } else {
-    op_focei.scaleRangeLow = 0.1;
-    op_focei.scaleRangeHigh = 10.0;
-  }
   op_focei.abstol=as<double>(foceiO["abstol"]);
   op_focei.reltol=as<double>(foceiO["reltol"]);
   op_focei.smatNorm=as<int>(foceiO["smatNorm"]);
@@ -9481,6 +9487,7 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.initOfv = NA_REAL;
   op_focei.finalOfv = NA_REAL;
   op_focei.lastOfv=std::numeric_limits<double>::max();
+  op_focei.boundsScaled = false;
   for (unsigned int k = op_focei.npars; k--;){
     j=op_focei.fixedTrans[k];
     ret[k] = op_focei.fullTheta[j];
@@ -9497,115 +9504,18 @@ NumericVector foceiSetup_(const RObject &obj,
       op_focei.upper[k] -= 2*(op_focei.upper[k]*op_focei.rEps[k] - op_focei.aEps[k]);
       // Upper bound only = 3
       // Upper and lower bound = 2
-      op_focei.nbd[k]= 3 - op_focei.nbd[j];
+      op_focei.nbd[k]= 3 - op_focei.nbd[k];
     } else {
       op_focei.upper[k] = std::numeric_limits<double>::infinity();//std::numeric_limits<double>::max();
     }
   }
-  double mn = (op_focei.npars > 0) ? op_focei.initPar[op_focei.npars-1] : 0.0;
-  double mx = mn, mean=0, oN=0, oM=0, s=0;
-  double len=0;
-  unsigned int k;
   if (op_focei.nF2 > 0 && foceiO.containsElementNamed("c1") && foceiO.containsElementNamed("c2")){
+    // a theta-reset restart keeps the first attempt's normalization
     op_focei.c1 = foceiO["c1"];
     op_focei.c2 = foceiO["c2"];
   } else {
-    switch (op_focei.normType){
-    case 1:
-      // OptdesX
-      // http://apmonitor.com/me575/uploads/Main/optimization_book.pdf
-      for (k = op_focei.npars-1; k--;){
-        mn = min2(op_focei.initPar[k],mn);
-        mx = max2(op_focei.initPar[k],mx);
-      }
-      if (mx == mn) {
-        warning(_("all parameters are the same value, switch to length normType"));
-        for (unsigned int k = op_focei.npars-1; k--;){
-          len += op_focei.initPar[k]*op_focei.initPar[k];
-        }
-        op_focei.c1 = 0;
-        op_focei.c2 = _safe_sqrt(len);
-        op_focei.normType = 5;
-      } else {
-        op_focei.c1 = (mx+mn)/2;
-        op_focei.c2 = (mx-mn)/2;
-      }
-      break;
-    case 2: // Rescaling (min-max normalization)
-      for (k = op_focei.npars-1; k--;){
-        mn = min2(op_focei.initPar[k],mn);
-        mx = max2(op_focei.initPar[k],mx);
-      }
-      if (mx == mn) {
-        warning(_("all parameters are the same value, switch to length normType"));
-        for (unsigned int k = op_focei.npars-1; k--;){
-          len += op_focei.initPar[k]*op_focei.initPar[k];
-        }
-        op_focei.c1 = 0;
-        op_focei.c2 = _safe_sqrt(len);
-        op_focei.normType = 5;
-      } else {
-        op_focei.c1 = mn;
-        op_focei.c2 = (mx-mn);
-      }
-      break;
-    case 3: // Mean normalization
-      for (k = op_focei.npars-1; k--;){
-        mn = min2(op_focei.initPar[k],mn);
-        mx = max2(op_focei.initPar[k],mx);
-        oN++;
-        mean += (op_focei.initPar[k]-mean)/oN;
-      }
-      if (mx == mn) {
-        warning(_("all parameters are the same value, switch to length normType"));
-        for (unsigned int k = op_focei.npars-1; k--;){
-          len += op_focei.initPar[k]*op_focei.initPar[k];
-        }
-        op_focei.c1 = 0;
-        op_focei.c2 = _safe_sqrt(len);
-        op_focei.normType = 5;
-      } else {
-        op_focei.c1 = mean;
-        op_focei.c2 = (mx-mn);
-      }
-      break;
-    case 4: // Standardization
-      for (k = op_focei.npars-1; k--;){
-        mn = min2(op_focei.initPar[k],mn);
-        mx = max2(op_focei.initPar[k],mx);
-        oM= mean;
-        oN++;
-        mean += (op_focei.initPar[k]-mean)/oN;
-        s += (op_focei.initPar[k]-mean)*(op_focei.initPar[k]-oM);
-      }
-      if (mx == mn) {
-        warning("all parameters are the same value, switch to length norm type");
-        for (unsigned int k = op_focei.npars-1; k--;){
-          len += op_focei.initPar[k]*op_focei.initPar[k];
-        }
-        op_focei.c1 = 0;
-        op_focei.c2 = _safe_sqrt(len);
-        op_focei.normType = 5;
-      } else {
-        op_focei.c1 = mean;
-        op_focei.c2 = _safe_sqrt(s/(oN-1));
-      }
-      break;
-    case 5: // Normalize to length.
-      for (unsigned int k = op_focei.npars-1; k--;){
-        len += op_focei.initPar[k]*op_focei.initPar[k];
-      }
-      op_focei.c1 = 0;
-      op_focei.c2 = _safe_sqrt(len);
-      break;
-    case 6:
-      // No Normalization
-      op_focei.c1 = 0;
-      op_focei.c2 = 1;
-      break;
-    default:
-      stop("unrecognized normalization (normType=%d)",op_focei.normType);
-    }
+    scaleNormalize(op_focei.initPar, (int)op_focei.npars, &op_focei.normType,
+                   &op_focei.c1, &op_focei.c2);
   }
   return ret;
 }
@@ -9932,15 +9842,26 @@ NumericVector foceiOuterG(NumericVector &theta){
   return gr;
 }
 
+// The outer optimizer's starting point: each parameter's current value on the
+// optimizer's scale.  That is initPar, except on the restart after a theta reset,
+// which keeps the first attempt's scaling and starts from the reset's values.
+static inline void foceiOuterStart(double *x) {
+  std::vector<double> cur(op_focei.npars);
+  for (unsigned int k = op_focei.npars; k--;) {
+    cur[k] = op_focei.fullTheta[op_focei.fixedTrans[k]];
+  }
+  for (unsigned int k = op_focei.npars; k--;) {
+    x[k] = scaleScalePar(&op_focei, cur.data(), k);
+  }
+}
+
 void foceiLbfgsb3(Environment e){
   void *ex = NULL;
   double Fmin;
   int fail, fncount=0, grcount=0;
   NumericVector x(op_focei.npars);
   NumericVector g(op_focei.npars);
-  for (unsigned int k = op_focei.npars; k--;){
-    x[k]=scaleScalePar(&op_focei, op_focei.initPar, k);
-  }
+  foceiOuterStart(x.begin());
   char msg[100];
   std::fill_n(msg, 100, 0);
   lbfgsb3C(op_focei.npars, op_focei.lmm, x.begin(), op_focei.lower,
@@ -9964,9 +9885,7 @@ void foceiLbfgsb(Environment e){
   double Fmin;
   int fail, fncount=0, grcount=0;
   NumericVector x(op_focei.npars);
-  for (unsigned int k = op_focei.npars; k--;){
-    x[k]=scaleScalePar(&op_focei, op_focei.initPar, k);
-  }
+  foceiOuterStart(x.begin());
   char msg[100];
   lbfgsbRX(op_focei.npars, op_focei.lmm, x.begin(), op_focei.lower,
            op_focei.upper, op_focei.nbd, &Fmin, foceiOfvOptim,
@@ -9986,9 +9905,7 @@ void foceiCustomFun(Environment e){
   NumericVector x(op_focei.npars);
   NumericVector lower(op_focei.npars);
   NumericVector upper(op_focei.npars);
-  for (unsigned int k = op_focei.npars; k--;){
-    x[k]=scaleScalePar(&op_focei, op_focei.initPar, k);
-  }
+  foceiOuterStart(x.begin());
   std::copy(&op_focei.upper[0], &op_focei.upper[0]+op_focei.npars, &upper[0]);
   std::copy(&op_focei.lower[0], &op_focei.lower[0]+op_focei.npars, &lower[0]);
   Function loadNamespace("loadNamespace", R_BaseNamespace);
@@ -10073,6 +9990,7 @@ Environment foceiOuter(Environment e){
         op_focei.upper[k]=scaleScalePar(&op_focei, op_focei.upper,k);
       }
     }
+    op_focei.boundsScaled = true;
 
     // Enable the analytic outer gradient only for the duration of the outer
     // optimizer's gradient callbacks; foceiS's own numericGrad use runs later
@@ -10096,9 +10014,7 @@ Environment foceiOuter(Environment e){
     op_foceiUseAnalyticGrad = false;
   } else {
     NumericVector x(op_focei.npars);
-    for (unsigned int k = op_focei.npars; k--;){
-      x[k]=scaleScalePar(&op_focei, op_focei.initPar, k);
-    }
+    foceiOuterStart(x.begin());
     // fast=TRUE with no outer iterations (a posthoc fit): evaluate the analytic gradient
     // ONCE at the reported estimates and stash it.  Without this there is no way to get
     // the gradient the fit's own machinery produces at a known point -- the outer
@@ -11153,13 +11069,17 @@ NumericMatrix foceiCalcCov(Environment e){
       bool checkUpperBound=false;
       rx = getRxSolve_();
       if (op_focei.neta == 0) op_focei.covMethod = 2; // Always use hessian for NLS
-      for (unsigned int k = op_focei.npars; k--;){
-        if (R_FINITE(op_focei.lower[k])){
-          op_focei.lower[k]=scaleUnscalePar(&op_focei, op_focei.lower,k);
+      // the boundary check below needs the bounds on the parameters' own scale
+      if (op_focei.boundsScaled) {
+        for (unsigned int k = op_focei.npars; k--;){
+          if (R_FINITE(op_focei.lower[k])){
+            op_focei.lower[k]=scaleUnscalePar(&op_focei, op_focei.lower,k);
+          }
+          if (R_FINITE(op_focei.upper[k])) {
+            op_focei.upper[k]=scaleUnscalePar(&op_focei, op_focei.upper,k);
+          }
         }
-        if (R_FINITE(op_focei.upper[k])) {
-          op_focei.upper[k]=scaleUnscalePar(&op_focei, op_focei.upper,k);
-        }
+        op_focei.boundsScaled = false;
       }
       if (op_focei.boundTol > 0){
         // Subtract nEstOmega so that Omega boundaries are not counted.
@@ -13917,7 +13837,7 @@ Environment foceiFitCpp_(Environment e){
     int j = op_focei.fixedTrans[k];
     op_focei.xPar[k] = 0;
     op_focei.probitIdxArr[k] = 0;
-    if ((int)op_focei.ntheta < j){
+    if (j >= (int)op_focei.ntheta){
       op_focei.xPar[k] = xType[j-op_focei.ntheta];
     } else {
       if (j < thetaXPar.size())       op_focei.xPar[k]         = thetaXPar[j];
@@ -14014,7 +13934,10 @@ Environment foceiFitCpp_(Environment e){
   e["scaleC"] = scaleSave;
   parHistData(e, true); // Need to calculate before the parameter translations are mangled
   thetaResetObj(e);
-  IntegerVector gillRet(op_focei.ntheta+op_focei.omegan);
+  // The first gradient's step searches, which numericGrad() keeps by optimizer
+  // index, listed by parameter; a parameter the optimizer does not move was not
+  // assessed (level 1, "Not Assessed").
+  IntegerVector gillRet(op_focei.ntheta+op_focei.omegan, 1);
   NumericVector gillAEps(op_focei.ntheta+op_focei.omegan,NA_REAL);
   NumericVector gillREps(op_focei.ntheta+op_focei.omegan,NA_REAL);
   NumericVector gillAEpsC(op_focei.ntheta+op_focei.omegan,NA_REAL);
@@ -14022,14 +13945,14 @@ Environment foceiFitCpp_(Environment e){
   NumericVector gillCAEpsC(op_focei.ntheta+op_focei.omegan,NA_REAL);
   NumericVector gillCREpsC(op_focei.ntheta+op_focei.omegan,NA_REAL);
   bool warnGill = false;
-  int j = op_focei.npars;
-  for (int i = op_focei.ntheta+op_focei.omegan; i--;){
-    gillRet[i] = op_focei.gillRet[i]+1;
+  for (unsigned int k = op_focei.npars; k--;){
+    int i = op_focei.fixedTrans[k];
+    gillRet[i] = op_focei.gillRet[k]+1;
     if (gillRet[i] != 1) {
-      gillAEps[i] = op_focei.aEps[--j];
-      gillREps[i] = op_focei.rEps[j];
-      gillAEpsC[i] = op_focei.aEpsC[j];
-      gillREpsC[i] = op_focei.rEpsC[j];
+      gillAEps[i] = op_focei.aEps[k];
+      gillREps[i] = op_focei.rEps[k];
+      gillAEpsC[i] = op_focei.aEpsC[k];
+      gillREpsC[i] = op_focei.rEpsC[k];
     }
     if (gillRet[i] >= 3) warnGill=true;
   }
@@ -14068,15 +13991,18 @@ Environment foceiFitCpp_(Environment e){
   if (op_focei.nnOuterSkipped) {
     warning(_("outer network step skipped (mixture or numeric-difference solve)"));
   }
-  IntegerVector gillRetC(op_focei.ntheta+op_focei.omegan);
+  // The covariance step's searches, listed by parameter: foceiCalcCov() keeps
+  // them by the index of its own parameter set (the thetas, by default), which
+  // fixedTrans maps once it has run
+  IntegerVector gillRetC(op_focei.ntheta+op_focei.omegan, 1);
   bool warnGillC = false;
-  j = op_focei.npars;
-  for (int i = op_focei.ntheta+op_focei.omegan; i--;){
-    gillRetC[i] = op_focei.gillRetC[i]+1;
+  for (unsigned int k = op_focei.npars; k--;){
+    int i = op_focei.fixedTrans[k];
+    gillRetC[i] = op_focei.gillRetC[k]+1;
     if (gillRetC[i] >= 3) warnGillC=true;
     if (gillRetC[i] != 1) {
-      gillCAEpsC[i] = op_focei.aEpsC[--j];
-      gillCREpsC[i] = op_focei.rEpsC[j];
+      gillCAEpsC[i] = op_focei.aEpsC[k];
+      gillCREpsC[i] = op_focei.rEpsC[k];
     }
   }
   gillRetC.attr("levels") = gillLvl;
@@ -24550,14 +24476,9 @@ void saveIntoEnvironment(Environment e) {
   // nAGQ^neta*neta*2 doubles into R to write back what is already correct.
   arma::vec fullTheta(op_focei.fullTheta, op_focei.nFullThetaSave);
   e[".fullTheta"] = fullTheta;
-  // no eta
-  if (op_focei.neta == 0) {
-    arma::vec gthetaGrad(op_focei.fullTheta, op_focei.nFullThetaSave);
-    e[".gthetaGrad"] = gthetaGrad;
-  } else {
-    arma::vec etaUpper(op_focei.etaUpper, op_focei.etaBufferN);
-    e[".etaUpper"] = etaUpper;
-  }
+  // a theta reset needs etas (thetaReset0()), so there is always an eta buffer
+  arma::vec etaUpper(op_focei.etaUpper, op_focei.etaBufferN);
+  e[".etaUpper"] = etaUpper;
   arma::Col<int> gillRet(op_focei.gillRet, op_focei.nGillRet);
   e[".gillRet"] = gillRet;
   arma::vec gillDf(op_focei.gillDf, op_focei.nGillDf);
@@ -24574,29 +24495,33 @@ static inline void foceiCheckRestoreN(size_t saved, size_t expected, const char 
   }
 }
 
+// The restart after a theta reset keeps the first attempt's scaling (initPar,
+// scaleC), step searches and per-subject warm-start state, but starts where the
+// reset left off: foceiSetup_() has just installed the reset's thetas, omega and
+// etas (thetaIni, rxInv$theta and etaMat from R) and the bounds on their own
+// scale, which foceiOuter() scales.  So fullTheta|theta, the per-subject etas and
+// the bounds are not restored.
 void restoreFromEnvironment(Environment e) {
   arma::Col<int> etaTrans = e[".etaTrans"];
   foceiCheckRestoreN(etaTrans.n_elem, op_focei.nEtaTrans, "eta translation");
   std::copy(etaTrans.begin(), etaTrans.end(), op_focei.etaTrans);
   arma::vec fullTheta = e[".fullTheta"];
   foceiCheckRestoreN(fullTheta.n_elem, op_focei.nFullThetaSave, "theta");
-  std::copy(fullTheta.begin(), fullTheta.end(), op_focei.fullTheta);
-  // no eta
-  if (op_focei.neta == 0) {
-    arma::vec gthetaGrad = e[".gthetaGrad"];
-    foceiCheckRestoreN(gthetaGrad.n_elem, op_focei.nFullThetaSave, "theta gradient");
-    std::copy(gthetaGrad.begin(), gthetaGrad.end(), op_focei.fullTheta);
-  } else {
-    arma::vec etaUpper = e[".etaUpper"];
-    foceiCheckRestoreN(etaUpper.n_elem, op_focei.etaBufferN, "eta buffer");
-    std::copy(etaUpper.begin(), etaUpper.end(), op_focei.etaUpper);
-  }
+  size_t scaleOff = op_focei.initPar - op_focei.fullTheta;
+  std::copy(fullTheta.begin() + scaleOff, fullTheta.end(), op_focei.initPar);
+  arma::vec etaUpper = e[".etaUpper"];
+  foceiCheckRestoreN(etaUpper.n_elem, op_focei.etaBufferN, "eta buffer");
+  size_t etaOff = op_focei.geta - op_focei.etaUpper, etaEnd = etaOff + op_focei.gEtaGTransN;
+  std::copy(etaUpper.begin(), etaUpper.begin() + etaOff, op_focei.etaUpper);
+  std::copy(etaUpper.begin() + etaEnd, etaUpper.end(), op_focei.etaUpper + etaEnd);
   arma::Col<int> gillRet = e[".gillRet"];
   foceiCheckRestoreN(gillRet.n_elem, op_focei.nGillRet, "gill return code buffer");
   std::copy(gillRet.begin(), gillRet.end(), op_focei.gillRet);
   arma::vec gillDf = e[".gillDf"];
   foceiCheckRestoreN(gillDf.n_elem, op_focei.nGillDf, "gill forward difference buffer");
-  std::copy(gillDf.begin(), gillDf.end(), op_focei.gillDf);
+  size_t boundOff = op_focei.lower - op_focei.gillDf, boundEnd = boundOff + 2*(size_t)op_focei.npars;
+  std::copy(gillDf.begin(), gillDf.begin() + boundOff, op_focei.gillDf);
+  std::copy(gillDf.begin() + boundEnd, gillDf.end(), op_focei.gillDf + boundEnd);
 }
 
 struct FoceiHessianCall {

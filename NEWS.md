@@ -165,6 +165,101 @@
   differing number of rows`.  Both now read the fit's own control (`$control`);
   the imp objective read `$foceiControl`, which never holds `adjObf`.
 
+### Parameter scaling
+
+- `ui$scaleCtheta` (and `ui$scaleCnls`) now give one scaling constant per
+  estimated theta.  For a model with random effects the values were followed
+  by an `NA` for each of them, and a `foceiControl(scaleC=)` longer than the
+  thetas was returned whole.
+
+- The FOCEi family now scales each `theta` by the constant R chooses for it
+  (the one `ui$scaleCtheta` shows and the nlm family uses): a transformed
+  parameter's constant inside that transform's own band (21.3 for
+  `expit(tcl, 1, 100)` at `tcl = 3`), `0.5*|est|` for a residual-error
+  parameter, or the value given in `foceiControl(scaleC=)`.  FOCEi guarded
+  every theta's constant to `scaleCband` a second time and replaced any of
+  these outside the band by `|init|` (a `prop.sd` of `0.1` was scaled by `0.1`,
+  not `0.05`), which also turned both zero-gradient retries with `scaleC0`
+  into `|init|`.  Fits with such parameters take a different path: the
+  warfarin model with proportional and additive error now ends at an
+  objective of 223.25 instead of 223.58.
+
+- `foceiControl(normType = "mean")`, `"std"` and `"len"` now take the mean,
+  standard deviation and length over every FOCEi parameter; they left out the
+  last one (the last omega parameter), as the nlm family did before #995.
+  FOCEi now uses the nlm family's normalization, so initial estimates that are
+  all zero run without normalization instead of with a scale of about `1e-8`.
+
+- `$scaleInfo` of a FOCEi-family fit lists each parameter's own first-gradient
+  step search ("Initial Gradient" and the forward and central steps) when a
+  fixed theta (`literalFix = FALSE`) or a regression-updated theta (`mfocei`
+  and the other mu-referenced variants) comes before it.  Each row showed the
+  search of the next parameter the optimizer moves, and the last row none.
+
+- `$scaleInfo` lists the covariance step's search of each parameter
+  ("Covariance Gradient" and its steps) in that parameter's row.  The rows were
+  read by the index of the covariance step's own parameters, so a fixed theta
+  (`literalFix = FALSE`) before the others shifted every later theta's search
+  up one row.
+
+- With `foceiControl(diagXform = "log")` or `"identity"` the FOCEi outer
+  problem scales the first omega parameter like the other diagonals (`1/2`, or
+  `1/(2|init|)`); it took the default of a linear theta, `1/|init|`.
+
+- A FOCEi theta reset (`foceiControl(resetThetaP=)`, `resetThetaFinalP=`, and
+  the reset after a zero gradient) now restarts the fit from the values it
+  reset to, with each eta's drift moved into the theta that eta belongs to.
+  The reset took the current thetas through the parameter scaling a second
+  time (with another parameter's constants), moved every eta's drift into the
+  first theta, and a restart after the first evaluation went back to the
+  initial estimates and the etas from before the reset, with its bounds
+  scaled twice.  A model whose etas drift at the initial estimates was driven
+  to an objective of 4.5e231 with `resetThetaP = 0.2`; it now reaches 160.8,
+  and a final reset (`resetThetaFinalP`) that stopped with "Starting values
+  violate bounds" now restarts.  Because a reset now takes effect, a fit whose
+  drift it cannot absorb -- a mu-referenced theta held at a bound that the
+  outer optimizer keeps probing away from -- stops with "Maximum number of
+  theta resets (10) exceeded" instead of ending at estimates the resets had
+  scrambled.
+
+- A theta reset no longer fires when every eta whose drift triggers it belongs
+  to a theta already pinned at its bound.  It went ahead whenever another eta
+  could take any shift, however small, so the restart's first evaluation
+  fired it again at the same point until the restart limit.
+
+- When a fixed theta (`literalFix = FALSE`) or a regression-updated theta
+  comes before others, each FOCEi parameter now gets its own bound code for
+  the L-BFGS-B outer optimizers (`outerOpt = "lbfgsb3c"`, `"L-BFGS-B"`) and
+  for the covariance step's boundary check.  A parameter with an upper bound
+  took its code from the parameter after it, and the last one from an
+  unrelated buffer: omega parameters lost their lower bound, and a theta
+  estimated on its lower bound got a covariance (`"r,s (full)"`) instead of
+  the boundary message.
+
+- The FOCEi outer gradient searches a zero derivative again with
+  `foceiControl(scaleC0=)` only for `scaleType = "nlmixr2"` (the only scaling
+  that uses the constant) and only at the parameter's starting value.  At any
+  other point the new constant moved the parameter under the outer optimizer
+  and the search differenced about the objective of the old point; that
+  happens for a repeated Gill search (`repeatGillMax`), on the restart after a
+  theta reset and with a custom outer optimizer.  When neither retry finds a
+  slope, the parameter keeps its own scaling constant; it kept `1/scaleC0`
+  (`1e-5` by default) for the rest of the fit, which left it all but unable to
+  move.
+
+- The covariance step of a FOCEi-family fit without outer iterations
+  (`maxOuterIterations = 0`, which includes the second pass of `fo` and
+  `foi`) checks the estimates against their own bounds.  It took bounds that
+  were never put on the optimizer's scale back from that scale, so it missed
+  an estimate on its bound (a `tcl` of 1.1 with a lower bound of 1.0999 was
+  compared with 2.77) and could flag one far from it.
+
+- `foceiControl()` (and the FOCEi-family controls built on it) now requires
+  `scaleCmin`, `scaleCmax`, `scaleC` and `scaleC0` to be finite and above 0,
+  with `scaleCmin < scaleCmax`.  `scaleCmin = 0` let a `scaleC` of 0 through,
+  which stopped the fit with `missing value where TRUE/FALSE needed`, and
+  `scaleCmax = Inf` let an infinite one through.
+
 ### Covariance and finite differences
 
 - The Gill (1983) step-size search no longer leaves a parameter at its last

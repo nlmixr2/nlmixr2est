@@ -3891,7 +3891,7 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
   if (.len > .lenC) {
     .scaleC <- c(.scaleC, rep(NA_real_, .len - .lenC))
   } else if (.len < .lenC) {
-    .scaleC <- .scaleC[seq_len(.lenC)]
+    .scaleC <- .scaleC[seq_len(.len)]
     warning(
       "'scaleC' control option has more options than estimated population parameters, please check",
       call. = FALSE
@@ -4050,8 +4050,9 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
   }
   # Any estimated theta still without a scaleC is a linear (additive / unbounded)
   # parameter: derivative-based 1/|init|, guarded to scaleCband so an extreme init
-  # falls back to native |init| (matches the C++ scaleGetScaleC default).  Zero-init
-  # params (nudged off 0 elsewhere) fall back to unit scaling.
+  # falls back to native |init|.  Zero-init params (nudged off 0 elsewhere) fall
+  # back to unit scaling.  This is the only guard: FOCEi's C++ side uses every
+  # value given here as it is.
   .thetaIni <- ui$iniDf[!is.na(ui$iniDf$ntheta), , drop = FALSE]
   for (.k in seq_len(nrow(.thetaIni))) {
     .nt <- .thetaIni$ntheta[.k]
@@ -4064,23 +4065,35 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
   env$scaleC <- .scaleC
 }
 
+#' The FOCEi scaleC of the estimated thetas, in theta order
+#'
+#' @param ui rxode2 UI
+#' @param nls when `TRUE`, leave out the residual-error parameters, which are
+#'   not nls parameters
+#' @return one scaleC per estimated theta that is kept
+#' @noRd
+.uiScaleCtheta <- function(ui, nls = FALSE) {
+  .th <- ui$iniDf[!is.na(ui$iniDf$ntheta), , drop = FALSE]
+  .th <- .th[order(.th$ntheta), , drop = FALSE]
+  .env <- new.env(parent = emptyenv())
+  .env$lower <- .th$lower
+  .foceiOptEnvSetupScaleC(ui, .env)
+  .keep <- !.th$fix
+  if (nls) {
+    .keep <- .keep & !(.th$err %in% c("add", "prop", "pow", "ar"))
+  }
+  .env$scaleC[.th$ntheta[.keep]]
+}
+
 #' @export
 rxUiGet.scaleCtheta <- function(x, ...) {
-  .ui <- x[[1]]
-  .env <- new.env(parent = emptyenv())
-  .env$lower <- .ui$iniDf[!is.na(.ui$iniDf$ntheta), "lower"]
-  .foceiOptEnvSetupScaleC(.ui, .env)
-  .env$scaleC[!.ui$iniDf$fix]
+  .uiScaleCtheta(x[[1]])
 }
 attr(rxUiGet.scaleCtheta, "rstudio") <- c(1.0, NA_real_)
 
 #' @export
 rxUiGet.scaleCnls <- function(x, ...) {
-  .ui <- x[[1]]
-  .env <- new.env(parent = emptyenv())
-  .env$lower <- .ui$iniDf[!is.na(.ui$iniDf$ntheta), "lower"]
-  .foceiOptEnvSetupScaleC(.ui, .env)
-  .env$scaleC[!.ui$iniDf$fix & !(.ui$iniDf$err %in% c("add", "prop", "pow", "ar"))]
+  .uiScaleCtheta(x[[1]], nls = TRUE)
 }
 attr(rxUiGet.scaleCnls, "rstudio") <- c(1.0, NA_real_)
 

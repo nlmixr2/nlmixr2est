@@ -795,14 +795,16 @@
 #' @param scaleCmin Minimum value of the scaleC to prevent underflow.
 #'
 #' @param scaleCband Length-2 increasing pair `c(low, high)` (default
-#'   `c(0.1, 10)`).  Each `theta`'s derivative-based scaling constant
-#'   (`1/|init|` for a linear parameter, or the transform-specific
-#'   formula) is kept when it lands inside this band, and otherwise
-#'   replaced by the parameter's native magnitude `|init|`.  This catches
-#'   the singular cases -- `1/|init|` blowing up for a small covariate
-#'   initial estimate, `log()` at init `1`, `logit` at the interval
-#'   midpoint, `factorial`/`gamma` at a digamma zero -- while leaving the
-#'   well-scaled common case (and its results) untouched.
+#'   `c(0.1, 10)`).  The derivative-based scaling constant of a linear
+#'   `theta` (`1/|init|`), or of a transformed one whose transform has no
+#'   band of its own, is kept when it lands inside this band, and otherwise
+#'   replaced by the parameter's native magnitude `|init|`, so a small
+#'   initial estimate (a covariate coefficient, say) does not get a huge
+#'   constant.  Transformed thetas are guarded to bands of their own
+#'   transform, which catch `log()` at init `1`, `logit` at the interval
+#'   midpoint and `factorial`/`gamma` at a digamma zero.  The constants of
+#'   residual-error parameters and those given in `scaleC` are used as
+#'   they are.
 #'
 #' @param normType Parameter normalization/scaling used to get scaled
 #'     initial values for \code{scaleType}, of the form
@@ -1428,16 +1430,27 @@ foceiControl <- function(
   )
   checkmate::assertNumeric(scaleTo, len = 1, lower = 0, any.missing = FALSE)
   checkmate::assertNumeric(scaleObjective, len = 1, lower = 0, any.missing = FALSE)
-  checkmate::assertNumeric(scaleCmax, lower = 0, any.missing = FALSE, len = 1)
-  checkmate::assertNumeric(scaleCmin, lower = 0, any.missing = FALSE, len = 1)
+  # every scaling constant divides the optimizer's coordinates, so it must be a
+  # finite number above 0
+  checkmate::assertNumber(scaleCmax, finite = TRUE)
+  checkmate::assertNumber(scaleCmin, finite = TRUE)
+  if (scaleCmin <= 0 || scaleCmax <= scaleCmin) {
+    stop("'scaleCmin' and 'scaleCmax' must satisfy 0 < scaleCmin < scaleCmax", call. = FALSE)
+  }
   checkmate::assertNumeric(scaleCband, lower = 0, finite = TRUE, any.missing = FALSE, len = 2)
   if (scaleCband[1] >= scaleCband[2]) {
     stop("'scaleCband' must be an increasing pair (low, high)", call. = FALSE)
   }
   if (!is.null(scaleC)) {
-    checkmate::assertNumeric(scaleC, lower = 0, any.missing = FALSE)
+    checkmate::assertNumeric(scaleC, finite = TRUE, any.missing = FALSE)
+    if (any(scaleC <= 0)) {
+      stop("'scaleC' must be above 0", call. = FALSE)
+    }
   }
-  checkmate::assertNumeric(scaleC0, lower = 0, any.missing = FALSE, len = 1)
+  checkmate::assertNumber(scaleC0, finite = TRUE)
+  if (scaleC0 <= 0) {
+    stop("'scaleC0' must be above 0", call. = FALSE)
+  }
   checkmate::assertNumeric(derivEps, lower = 0, len = 2, any.missing = FALSE)
   checkmate::assertNumeric(derivSwitchTol, lower = 0, len = 1, any.missing = FALSE)
   if (checkmate::testIntegerish(covTryHarder, lower = 0, upper = 1, any.missing = FALSE, len = 1)) {
