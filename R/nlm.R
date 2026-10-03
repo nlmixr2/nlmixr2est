@@ -590,6 +590,23 @@ attr(rxUiGet.nlmParams, "rstudio") <- "params()"
   .eventTheta
 }
 
+#' The definitions of the calculated variables a history function refers to
+#'
+#' `lag()` (and `lead()`, `diff()`, ...) needs such a variable as a real lhs, so
+#' symengine binds it to a bare symbol: its symbolic derivatives are 0, and a
+#' gradient model built from them is wrong for every theta the variable
+#' depends on (`.nlmFamilyEnv()` finite-differences the thetas instead).
+#' @param s symengine environment
+#' @return the `var=expr` lines of `s$..lhs` that define them
+#' @noRd
+.nlmFamilyLagDefs <- function(s) {
+  if (is.null(s$..laggedVars) || length(s$..laggedVars) == 0L || is.null(s$..lhs)) {
+    return(character(0))
+  }
+  .pat <- paste0("^(", paste0(s$..laggedVars, collapse = "|"), ")=")
+  s$..lhs[grepl(.pat, s$..lhs)]
+}
+
 #' @export
 rxUiGet.nlmRxModel <- function(x, ...) {
   .nlmFamilyRxModel(x, "nlm", ...)
@@ -624,11 +641,7 @@ rxUiGet.nlmRxModel <- function(x, ...) {
   # variables referenced by lag()/history functions (eg the AR(1) residual) are
   # not part of rx_pred_ itself; include their definitions so the history
   # reference resolves in the compiled model
-  .lagDefs <- character(0)
-  if (!is.null(.s$..laggedVars) && length(.s$..laggedVars) > 0L && !is.null(.s$..lhs)) {
-    .pat <- paste0("^(", paste0(.s$..laggedVars, collapse = "|"), ")=")
-    .lagDefs <- .s$..lhs[grepl(.pat, .s$..lhs)]
-  }
+  .lagDefs <- .nlmFamilyLagDefs(.s)
   # rx_pred_f_/rx_r_/rx_nu_ outputs for censoring support
   .fr <- if (.spec$censFR) .nlmGetFRLines(.s) else list()
   .ret <- paste(
@@ -736,10 +749,13 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
   .thetaVars <- paste0("THETA_", seq_len(.s$..maxTheta), "_")
   .carry <- .rxCarryThetaPairsForBuild(x, .s, .thetaVars)
   .ret <- apply(.grd, 1, .nlmFamilyHdThetaLine, .s = .s, .carry = .carry, .predMinusDv = .predMinusDv, .zero = .zero)
-  if (.zero$all) {
+  # with a lagged calculated variable the zeros are expected: the thetas are
+  # finite-differenced (.nlmFamilyEnv())
+  .lagged <- length(.nlmFamilyLagDefs(.s)) > 0L
+  if (.zero$all && !.lagged) {
     stop("none of the predictions depend on 'THETA'", call. = FALSE)
   }
-  if (.zero$any) {
+  if (.zero$any && !.lagged) {
     warning("some of the predictions do not depend on 'THETA'", call. = FALSE)
   }
   .s$..HdTheta <- .ret
@@ -817,7 +833,8 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
   if (is.null(.ddt)) {
     .ddt <- character(0)
   }
-  .lhs <- character(0)
+  # nls keeps only the definitions a history function needs
+  .lhs <- .nlmFamilyLagDefs(.s)
   if (.spec$lhs) {
     .lhs <- .s$..lhs
     if (is.null(.lhs)) {
@@ -935,6 +952,11 @@ attr(rxUiGet.nlmEnv, "rstudio") <- emptyenv()
   ## is then taken by finite differences.  Under eventSens="jump" none are
   ## flagged: rxode2 injects the jump sensitivities analytically.
   .s$.eventTheta <- .nlmFamilyEventTheta(.s, !identical(rxode2::rxGetControl(x[[1]], "eventSens", "jump"), "jump"))
+  ## A lagged calculated variable has no symbolic sensitivity: finite-difference
+  ## every theta
+  if (length(.nlmFamilyLagDefs(.s)) > 0L) {
+    .s$.eventTheta[] <- 1L
+  }
   .s
 }
 

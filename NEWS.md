@@ -349,6 +349,15 @@
   lag(c0)`, `IPRED` was `c0`).  The prediction, its variance and the
   simulations `npde` uses are now found by name.
 
+- The nlm-family gradient (`nlm`, `nlminb`, `optim`, `n1qn1`, `lbfgsb3c`,
+  `trust`, `nls`) of a model that uses `lag()` (or another history function)
+  of a calculated variable is now taken by finite differences.  Such a
+  variable has no symbolic sensitivity, so its analytic gradient was 0 for
+  every structural parameter: `nlm`, `nlminb`, `n1qn1`, `lbfgsb3c` and
+  `optim` returned the initial structural estimates, and `nls` (with its
+  default `solveType = "grad"`) stopped with `none of the predictions
+  depend on 'THETA'`.
+
 
 # nlmixr2est 7.1.0
 

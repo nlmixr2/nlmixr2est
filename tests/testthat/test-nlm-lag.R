@@ -62,6 +62,40 @@ nmTest({
     })
   }
 
+  test_that("the nlm family finite-differences the gradient of a lagged calculated variable (issue 1140)", {
+    skip_on_cran()
+    # c0 is a bare symbol to symengine, so the analytic gradient of every
+    # structural theta was exactly 0 (against 9.6, -190, -215)
+    .x <- suppressMessages(nlmObjectiveSetup(
+      .lagMod,
+      .lagDat,
+      control = nlmControl(print = 0L),
+      gradient = TRUE,
+      scale = "natural"
+    ))
+    .g <- nlmLikEvalC_(.x)$grad
+    .fd <- vapply(
+      seq_along(.x),
+      function(i) {
+        .e <- replace(numeric(length(.x)), i, 1e-5)
+        (nlmSolveR(.x + .e) - nlmSolveR(.x - .e)) / 2e-5
+      },
+      numeric(1)
+    )
+    .nlmFreeEnv()
+    expect_equal(.g, .fd, tolerance = 1e-2)
+    # so the gradient methods stayed at the initial structural estimates
+    # (0.45, 1, 3.45); least squares (nls) has the same optimum
+    .nls <- .nlmixr(.lagMod, .lagDat, est = "nls", control = nlsControl(print = 0L, solveType = "fun"))
+    .nlm <- .nlmixr(.lagMod, .lagDat, est = "nlm", control = nlmControl(print = 0L))
+    expect_equal(unname(.nlm$theta[1:3]), unname(.nls$theta[1:3]), tolerance = 1e-3)
+    .n1qn1 <- .nlmixr(.lagMod, .lagDat, est = "n1qn1", control = n1qn1Control(print = 0L))
+    expect_equal(unname(.n1qn1$theta[1:3]), unname(.nls$theta[1:3]), tolerance = 2e-2)
+    # nls with its gradient stopped with "none of the predictions depend on 'THETA'"
+    .nlsGrad <- .nlmixr(.lagMod, .lagDat, est = "nls", control = nlsControl(print = 0L))
+    expect_equal(.nlsGrad$theta, .nls$theta, tolerance = 1e-4)
+  })
+
   test_that("the fit table predicts with lag() of a calculated variable (issue 1140)", {
     skip_on_cran()
     # The tables took the prediction to be the column after time, which is c0
