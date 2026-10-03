@@ -13894,7 +13894,6 @@ Environment foceiFitCpp_(Environment e){
   NumericVector gillCAEpsC(op_focei.ntheta+op_focei.omegan,NA_REAL);
   NumericVector gillCREpsC(op_focei.ntheta+op_focei.omegan,NA_REAL);
   bool warnGill = false;
-  int j = op_focei.npars;
   for (unsigned int k = op_focei.npars; k--;){
     int i = op_focei.fixedTrans[k];
     gillRet[i] = op_focei.gillRet[k]+1;
@@ -13941,15 +13940,18 @@ Environment foceiFitCpp_(Environment e){
   if (op_focei.nnOuterSkipped) {
     warning(_("outer network step skipped (mixture or numeric-difference solve)"));
   }
-  IntegerVector gillRetC(op_focei.ntheta+op_focei.omegan);
+  // The covariance step's searches, listed by parameter: foceiCalcCov() keeps
+  // them by the index of its own parameter set (the thetas, by default), which
+  // fixedTrans maps once it has run
+  IntegerVector gillRetC(op_focei.ntheta+op_focei.omegan, 1);
   bool warnGillC = false;
-  j = op_focei.npars;
-  for (int i = op_focei.ntheta+op_focei.omegan; i--;){
-    gillRetC[i] = op_focei.gillRetC[i]+1;
+  for (unsigned int k = op_focei.npars; k--;){
+    int i = op_focei.fixedTrans[k];
+    gillRetC[i] = op_focei.gillRetC[k]+1;
     if (gillRetC[i] >= 3) warnGillC=true;
     if (gillRetC[i] != 1) {
-      gillCAEpsC[i] = op_focei.aEpsC[--j];
-      gillCREpsC[i] = op_focei.rEpsC[j];
+      gillCAEpsC[i] = op_focei.aEpsC[k];
+      gillCREpsC[i] = op_focei.rEpsC[k];
     }
   }
   gillRetC.attr("levels") = gillLvl;

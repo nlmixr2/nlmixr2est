@@ -197,6 +197,12 @@
   and the other mu-referenced variants) comes before it.  Each row showed the
   search of the next parameter the optimizer moves, and the last row none.
 
+- `$scaleInfo` lists the covariance step's search of each parameter
+  ("Covariance Gradient" and its steps) in that parameter's row.  The rows were
+  read by the index of the covariance step's own parameters, so a fixed theta
+  (`literalFix = FALSE`) before the others shifted every later theta's search
+  up one row.
+
 ### Covariance and finite differences
 
 - The Gill (1983) step-size search no longer leaves a parameter at its last

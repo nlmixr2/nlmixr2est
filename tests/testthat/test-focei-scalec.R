@@ -173,4 +173,18 @@ nmTest({
     expect_equal(as.character(.a[["Initial Gradient"]][-1]), as.character(.b[["Initial Gradient"]]))
     expect_equal(.a[-1, .cols[-1]], .b[, .cols[-1]], ignore_attr = TRUE, tolerance = 1e-10)
   })
+
+  test_that("$scaleInfo reports each parameter's own covariance step search", {
+    skip_on_cran()
+    .cols <- c("Covariance Gradient", "Covariance aEps", "Covariance rEps")
+    # the covariance step at the initial estimates differences the thetas only
+    .a <- .scaleInfoFixed(FALSE, maxOuterIterations = 0L)
+    .b <- .scaleInfoFixed(TRUE, maxOuterIterations = 0L)
+    # the fixed tka has no search; every other theta's row is its own
+    expect_equal(as.character(.a[["Covariance Gradient"]][1]), "Not Assessed")
+    expect_true(all(is.na(unlist(.a[1, .cols[-1]]))))
+    expect_true(all(as.character(.b[["Covariance Gradient"]][1:3]) != "Not Assessed"))
+    expect_equal(as.character(.a[["Covariance Gradient"]][-1]), as.character(.b[["Covariance Gradient"]]))
+    expect_equal(.a[-1, .cols[-1]], .b[, .cols[-1]], ignore_attr = TRUE, tolerance = 1e-10)
+  })
 })
