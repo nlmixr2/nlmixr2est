@@ -1,9 +1,7 @@
 nmTest({
   test_that("nlm-family controls take only the codes there are (issue 1140)", {
     # eventType/optimHessType 1 = forward, 2 = central; solveType 1 = fun,
-    # 2 = grad, 3 = hessian (optim: no hessian).  3-6 were accepted and gave an
-    # uninitialized (eventType) or zero (optimHessType) gradient column, or no
-    # objective at all (solveType).
+    # 2 = grad, 3 = hessian (optim: no hessian); there is no solve for any other
     for (.f in c("nlmControl", "nlminbControl")) {
       .ctl <- get(.f)
       expect_identical(.ctl()$eventType, 2L, info = .f)

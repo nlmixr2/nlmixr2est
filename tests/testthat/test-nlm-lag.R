@@ -64,8 +64,8 @@ nmTest({
 
   test_that("the nlm family finite-differences the gradient of a lagged calculated variable (issue 1140)", {
     skip_on_cran()
-    # c0 is a bare symbol to symengine, so the analytic gradient of every
-    # structural theta was exactly 0 (against 9.6, -190, -215)
+    # c0 is a bare symbol to symengine, so its symbolic sensitivity is 0: the
+    # gradient comes from finite differences
     .x <- suppressMessages(nlmObjectiveSetup(
       .lagMod,
       .lagDat,
@@ -84,22 +84,21 @@ nmTest({
     )
     .nlmFreeEnv()
     expect_equal(.g, .fd, tolerance = 1e-2)
-    # so the gradient methods stayed at the initial structural estimates
-    # (0.45, 1, 3.45); least squares (nls) has the same optimum
+    # the gradient methods reach the optimum least squares (nls) finds
     .nls <- .nlmixr(.lagMod, .lagDat, est = "nls", control = nlsControl(print = 0L, solveType = "fun"))
     .nlm <- .nlmixr(.lagMod, .lagDat, est = "nlm", control = nlmControl(print = 0L))
     expect_equal(unname(.nlm$theta[1:3]), unname(.nls$theta[1:3]), tolerance = 1e-3)
     .n1qn1 <- .nlmixr(.lagMod, .lagDat, est = "n1qn1", control = n1qn1Control(print = 0L))
     expect_equal(unname(.n1qn1$theta[1:3]), unname(.nls$theta[1:3]), tolerance = 2e-2)
-    # nls with its gradient stopped with "none of the predictions depend on 'THETA'"
+    # nls fits it with its own gradient too
     .nlsGrad <- .nlmixr(.lagMod, .lagDat, est = "nls", control = nlsControl(print = 0L))
     expect_equal(.nlsGrad$theta, .nls$theta, tolerance = 1e-4)
   })
 
   test_that("the fit table predicts with lag() of a calculated variable (issue 1140)", {
     skip_on_cran()
-    # The tables took the prediction to be the column after time, which is c0
-    # here: IPRED was c0, and the residual variance the column after it.
+    # c0 is output ahead of the prediction: the table finds rx_pred_ and rx_r_
+    # by name
     .fit <- .nlmixr(.lagMod, .lagDat, est = "nlm", control = nlmControl(print = 0L, solveType = "fun"))
     expect_equal(.fit$IPRED, .fit$cp, tolerance = 1e-12)
     expect_equal(.fit$IWRES, (.fit$DV - .fit$cp) / .fit$theta[["add.sd"]], tolerance = 1e-12)

@@ -58,14 +58,13 @@ nmTest({
 
   test_that("a step search whose outer probe is not finite keeps the difference at its step (issue 1140)", {
     skip_on_cran()
-    # central: f(x +- h0) are finite and f(x + 3 h0) is not.  The difference
-    # was divided by the shrunken step 2 h0 / 3, 1.5 times too large.
+    # central: f(x +- h0) are finite and f(x + 3 h0) is not, so the gradient
+    # is the central difference at h0 (the search then shrinks the step)
     .r <- .shiFirstGrad(0.9 + 0.05, "central")
     expect_false(is.finite(.r[["outer"]]))
     expect_equal(.r[["grad"]], .r[["diff"]], tolerance = 1e-6)
-    # forward: f(x + h0) is finite and f(x + 4 h0) is not.  The step grew to
-    # 3.5 h0, and the difference at h0 was divided by it (0.28 of the
-    # derivative).  Now it is the forward difference at h0, 1.5% off.
+    # forward: f(x + h0) is finite and f(x + 4 h0) is not, so the gradient is
+    # the forward difference at h0, within 1.5% of the derivative
     .r <- .shiFirstGrad(0.9 + 0.006, "forward")
     expect_false(is.finite(.r[["outer"]]))
     expect_equal(.r[["grad"]], .r[["fine"]], tolerance = 0.02)
@@ -76,8 +75,8 @@ nmTest({
   test_that("the step shi21Central() returns is the one its gradient differences (issue 1140)", {
     # x^2 at 1, finite only on [1, 1.01]: the first probe (1 + h0, h0 = 0.03)
     # fails, the search shrinks to h0 / 6 and takes a forward difference there
-    # (the backward probe fails), and every later backward probe fails too.
-    # The step returned was h0, at which the function is not finite.
+    # (the backward probe fails), and every later backward probe fails too, so
+    # that is the difference and the step it returns
     .f <- function(x) if (x < 1 || x > 1.01) NA_real_ else x^2
     .r <- shi21CentralWrap(.f, 1, 1, 1L, 0.03^3 / 3)
     expect_equal(.r$h, 0.005, tolerance = 1e-12)

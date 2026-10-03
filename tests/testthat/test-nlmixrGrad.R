@@ -126,8 +126,7 @@ test_that("nlmixr2Hess() differences the parameters `which` leaves out of the se
   h <- matrix(c(2, 1, 1, 6), 2)
   p <- c(0.5, 1)
   expect_equal(nlmixr2Hess(p, f), h, tolerance = 1e-6)
-  # with the first parameter left out its row and column were NA, and the
-  # second's diagonal took f(p) as 0 (2.5e8)
+  # a parameter left out of the search is still differenced, about f(p)
   expect_equal(nlmixr2Hess(p, f, which = c(FALSE, TRUE)), h, tolerance = 1e-6)
   expect_equal(nlmixr2Hess(p, f, which = c(TRUE, FALSE)), h, tolerance = 1e-6)
   expect_equal(nlmixr2Hess(p, f, which = c(FALSE, FALSE)), h, tolerance = 1e-6)

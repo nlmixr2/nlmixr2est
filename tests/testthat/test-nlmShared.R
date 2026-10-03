@@ -46,7 +46,7 @@ test_that("a Hessian that cannot be repaired gives no covariance", {
 })
 
 test_that("every nlm-family control takes covMethod = \"\" (issue 1140)", {
-  # match.arg() cannot match "": every one of them stopped
+  # "" skips the covariance step; match.arg() cannot match it
   for (.f in c(
     "nlmControl",
     "nlminbControl",
@@ -123,7 +123,7 @@ nmTest({
 
   test_that("the warnings of every nlm-family run reach $runInfo (issue 1140)", {
     # censored observations are finite-differenced, which nlmWarnings()
-    # reports; only est = "nlm" passed the warnings of its run on
+    # reports during the run
     .d <- nlmixr2data::theo_sd
     .d$CENS <- ifelse(.d$DV < 2 & .d$EVID == 0, 1L, 0L)
     .d$DV[.d$CENS == 1] <- 2

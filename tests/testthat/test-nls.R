@@ -22,7 +22,7 @@ nmTest({
     )
     .f <- .ui$nlsParNameFun
     expect_identical(names(formals(.f)), c("tka", "tv"))
-    # it gave THETA[2] tcl's 1 and THETA[3] tv, numbering every theta
+    # its arguments are those thetas, in that order
     expect_identical(.f(0.1, 3), c(`THETA[1]` = 0.1, `THETA[2]` = 3))
   })
 
@@ -175,14 +175,14 @@ nmTest({
     .ref <- stats::nls(DV ~ Vm * time / (K + time), data = .treated, start = list(Vm = 200, K = 0.1))
     for (.alg in c("LM", "default")) {
       .fit <- .nlmixr(.mm, .treated, est = "nls", control = nlsControl(print = 0L, algorithm = .alg))
-      # vcov() of the nls (or nls.lm) fit, on the parameters it estimated; the
-      # residual variance was left out (cov.unscaled, the inverse of J'J)
+      # vcov() of the nls (or nls.lm) fit, on the parameters it estimated,
+      # sigma^2 (J'J)^-1 with sigma^2 = RSS / (n - p)
       expect_equal(unname(.fit$nls$cov.scaled), unname(stats::vcov(.fit$nls)), tolerance = 1e-8, info = .alg)
       # the standard errors of stats::nls() on the natural parameters
       expect_equal(unname(.fit$theta[c("Vm", "K")]), unname(coef(.ref)), tolerance = 1e-5, info = .alg)
       expect_equal(unname(sqrt(diag(.fit$cov))), unname(sqrt(diag(stats::vcov(.ref)))), tolerance = 1e-4, info = .alg)
-      # -2 log-likelihood at the ML residual variance (the objective leaves
-      # out n log(2 pi)); "LM" took the residuals as standard normal (sigma = 1)
+      # -2 log-likelihood at the ML residual variance RSS / n (the objective
+      # leaves out n log(2 pi)), whichever algorithm
       expect_equal(
         .fit$objective + nrow(.treated) * log(2 * pi),
         -2 * as.numeric(stats::logLik(.ref)),

@@ -266,9 +266,8 @@ nmTest({
   test_that("each subject finite-differences with its own step (issue 1140)", {
     skip_on_cran()
     # M3 below 0.5: every subject but the first has a censored observation, so
-    # all of them finite-difference every theta.  The steps were read from the
-    # first subject's slot, which it never fills (h = 0): every gradient after
-    # the first was NaN, and nlminb stopped with "NA/NaN gradient evaluation".
+    # those finite-difference every theta, with steps of their own, while the
+    # first needs none
     .d <- .dat
     .d$CENS <- ifelse(.d$DV < 0.5 & .d$EVID == 0, 1L, 0L)
     .d$DV[.d$CENS == 1] <- 0.5
