@@ -119,6 +119,12 @@
 - Added a native analytical outer Hessian for fast Gaussian FOCE/FOCE+/FOCEI/AGQ fits, using
   the existing sensitivity pool. Fast `nlminb` fits used it automatically.
 
+- `setOfv(fit, "laplace<n>")` and `setOfv(fit, "gauss<n>_<sd>")` on a saem fit
+  whose environment holds no `adjObf` now take it from the fit's control, as
+  `setOfv(fit, "imp")` does, instead of stopping with `arguments imply
+  differing number of rows`.  Both now read the fit's own control (`$control`);
+  the imp objective read `$foceiControl`, which never holds `adjObf`.
+
 ### Covariance and finite differences
 
 - The Gill (1983) step-size search no longer leaves a parameter at its last

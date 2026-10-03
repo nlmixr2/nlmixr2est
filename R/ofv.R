@@ -78,9 +78,9 @@
       # impObj omits the normal constant, like an adjusted objective
       .objf <- .newEnv$impObj
       .m2ll <- .objf + .nobs * log(2 * pi)
-      .adj <- .env$adjObf # saem stores it on the env, the focei family on the control
+      .adj <- .env$adjObf
       if (is.null(.adj)) {
-        .adj <- fit$foceiControl$adjObf
+        .adj <- fit$control$adjObf
       }
       if (isFALSE(.adj)) {
         .objf <- .m2ll
@@ -180,7 +180,11 @@ setOfv <- function(x, type) {
       .llik <- -.saemObf / 2
       .nobs <- .env$nobs
       attr(.llik, "df") <- attr(get("logLik", .env), "df")
-      .objf <- ifelse(.env$adjObf, .saemObf - .nobs * log(2 * pi), .saemObf)
+      .adj <- .env$adjObf
+      if (is.null(.adj)) {
+        .adj <- x$control$adjObf
+      }
+      .objf <- if (isFALSE(.adj)) .saemObf else .saemObf - .nobs * log(2 * pi)
       .tmp <- data.frame(
         OBJF = .objf,
         AIC = .saemObf + 2 * attr(get("logLik", .env), "df"),
