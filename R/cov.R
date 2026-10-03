@@ -584,7 +584,21 @@
   if (identical(tryCatch(fit$covMethod, error = function(e) NULL), "imp")) {
     return(NULL)
   }
-  .control <- tryCatch(fit$foceiControl, error = function(e) NULL)
+  .foceiRecomputeCov(fit, .baseEst, tryCatch(fit$foceiControl, error = function(e) NULL))
+}
+
+#' Recompute a fit's FOCEi covariance at its converged estimates
+#'
+#' The work behind `.foceiRecomputeMuCov()`, also used by the methods that
+#' estimate their own ETAs (`.foceiInstallOwnEtaCov()`).
+#' @param fit completed nlmixr2 fit (object or its env)
+#' @param baseEst FOCEI-family est the recompute runs
+#' @param control `foceiControl()` with the covariance request, or `NULL`
+#' @return as `.foceiRecomputeMuCov()`
+#' @noRd
+.foceiRecomputeCov <- function(fit, baseEst, control) {
+  .baseEst <- baseEst
+  .control <- control
   if (is.null(.control)) {
     return(NULL)
   }
@@ -676,6 +690,29 @@
     if (exists(.n, envir = .env2, inherits = FALSE)) .extras[[.n]] <- get(.n, envir = .env2)
   }
   list(cov = .fit2$cov, covMethod = .fit2$covMethod, extras = .extras, what = .what)
+}
+
+#' Install the FOCEi covariance a method that estimates its own ETAs asked for
+#'
+#' vae, emvi and fbvi finalize their fits with an output pass that evaluates
+#' the FOCE objective at their ETAs.  The covariance they report is computed
+#' afterwards, at their estimates, by the post-fit recompute
+#' (`.foceiRecomputeCov()`): it differentiates the marginal likelihood of the
+#' method's `likelihood` (`control` carries its `interaction`), re-optimizing
+#' the ETAs from the method's at every finite-difference leg.  A recompute that
+#' fails, or gives a matrix `.covGuard()` rejects, installs nothing, with a
+#' warning.
+#' @param fit completed fit (object or its env)
+#' @param control the method's `foceiControl()`, with the covariance request
+#' @return invisibly `TRUE` if installed
+#' @noRd
+.foceiInstallOwnEtaCov <- function(fit, control) {
+  .env <- .setCovEnv(fit)
+  .r <- tryCatch(.foceiRecomputeCov(fit, "focei", control), error = function(e) list())
+  if (is.null(.r) || !is.environment(.env)) {
+    return(invisible(FALSE))
+  }
+  .covInstall(.env, .r$cov, .r$covMethod, what = .r$what, extras = .r$extras, refresh = "none")
 }
 
 #' Install the full-model mu covariance onto a completed mu/irls fit (post-fit).

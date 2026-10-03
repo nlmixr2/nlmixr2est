@@ -266,6 +266,16 @@
   covariance that is out of its scope (a `linCmt()` model, for example)
   falls back to this finite-difference `"r,s"`, so the fallback is the
   marginal covariance too; a warning names the covariance installed instead.
+- vae, emvi and fbvi now compute their FOCEi covariance (`covMethod = "r,s"`,
+  `"r"`, `"s"` or `"analytic"`, and emvi's default `"vi"`) after their output
+  step, at their estimates: the covariance of the marginal likelihood of their
+  `likelihood` (FOCEI by default), with the ETAs optimized again, from the
+  method's own, in every finite-difference leg.  It was computed in the output
+  step with the encoder or variational means held fixed and `interaction = 0`,
+  and on `theo_sd` the structural standard errors came out 3 to 9 times too
+  small.  The reported objective is unchanged (the output step's FOCE
+  objective at the method's ETAs).  `fit$foceiControl` of a vae, emvi or fbvi
+  fit now carries its likelihood.
 
 ### Covariance
 

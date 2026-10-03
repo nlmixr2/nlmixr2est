@@ -472,4 +472,48 @@ nmTest({
     expect_identical(.mfa$covMethod, "r,s (full)")
     expect_lt(.maxRel(.seOf(.mfa), .seOf(.ref)), 1e-6)
   })
+
+  test_that("vae and emvi report the covariance of their likelihood's marginal at their estimates", {
+    skip_on_cran()
+    # Their output step evaluates the FOCE objective at their own ETAs; the covariance
+    # comes after it, with the interaction of their `likelihood` (FOCEI) and the ETAs
+    # optimized from theirs at every finite-difference leg.  It held the encoder or
+    # variational means fixed, with interaction = 0.
+    .refOf <- function(fit) {
+      .ctl <- fit$foceiControl
+      .ctl$maxInnerIterations <- 1000L
+      .ctl$etaMat <- fit$etaMat
+      .ctl$calcTables <- FALSE
+      suppressMessages(suppressWarnings(nlmixr2(fit$finalUi, nlmixr2data::theo_sd, est = "focei", control = .ctl)))
+    }
+    .fits <- list(
+      vae = vaeControl(
+        itersBurnIn = 8L,
+        iters = 16L,
+        klWarmup = 4L,
+        gammaIter = 12L,
+        covariateSelection = FALSE,
+        print = 0L,
+        covMethod = "r",
+        seed = 1L
+      ),
+      emvi = emviControl(iters = 60L, print = 0L, covMethod = "r", seed = 7L)
+    )
+    for (.est in names(.fits)) {
+      .fit <- suppressMessages(suppressWarnings(nlmixr2(
+        .oneCmt,
+        nlmixr2data::theo_sd,
+        est = .est,
+        control = .fits[[.est]]
+      )))
+      # the fit's FOCEi control carries its likelihood's interaction; the output step's
+      # control (in finalUi) evaluated FOCE
+      expect_identical(.fit$foceiControl$interaction, 1L, label = .est)
+      .ref <- .refOf(.fit)
+      expect_identical(.covFdType(.fit$covMethod), "r", label = .est)
+      expect_identical(.fit$covMethod, .ref$covMethod, label = .est)
+      expect_setequal(names(.seOf(.fit)), names(.seOf(.ref)))
+      expect_lt(.maxRel(.seOf(.fit), .seOf(.ref)), 1e-6, label = .est)
+    }
+  })
 })
