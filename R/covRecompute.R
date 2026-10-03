@@ -171,64 +171,30 @@
   NULL
 }
 
-#' Install a recompute result (list(cov, covMethod)) onto a fit env.
+#' Install a recompute result (list(cov, covMethod, mixRotated)) onto a fit env.
 #'
-#' PD-guards the incoming covariance (a non-finite / non-PD matrix is NOT
-#' installed -- the existing covariance is kept, never silently downgraded),
-#' keeps the prior covariance recoverable via `covList`/`setCov()`, and refreshes
-#' SE/%RSE/CI on the fit's OWN parameter table from the new covariance (the base
-#' fit's point estimates are preserved).  Mirrors `.saemInstallAnalyticCov()`.
+#' Installs through `.covInstall()`: a matrix `.covGuard()` rejects is NOT
+#' installed (the existing covariance is kept, never silently downgraded), the
+#' prior covariance stays recoverable via `covList`/`setCov()`, and SE/%RSE/CI
+#' are refreshed on the fit's OWN parameter table (its point estimates are kept).
 #' @param env fit environment
 #' @param r recompute result from `.covRecompute()` (or NULL)
+#' @param warn warn when nothing usable was installed (see `.covInstall()`)
+#' @param what requested covariance-method name, for the warnings
 #' @return invisibly TRUE if a new covariance was installed
 #' @noRd
-.covInstallResult <- function(env, r) {
-  if (is.null(r) || is.null(r$cov) || !is.matrix(r$cov)) {
-    return(invisible(FALSE))
-  }
-  .cov <- 0.5 * (r$cov + t(r$cov)) # exact symmetry
+.covInstallResult <- function(env, r, warn = FALSE, what = r$covMethod) {
+  .cov <- r$cov
   # A covariance computed directly (analytic) is on the mlogit estimation scale
   # and needs the mixture block rotated onto the probability scale; one that came
   # back from a re-fit (sa/imp, via .covRecompute) was already rotated there.
-  # Key the rotation on the THETA slot, like every other consumer -- ui$mixProbs
-  # is in mix()-call order and would scramble the rows.
   if (!isTRUE(r$mixRotated)) {
-    .mix <- .mixEnvPieces(env)
-    if (!is.null(.mix)) {
-      .cov <- tryCatch(.mixCovToProbScale(.cov, .mix$names, .mix$p), error = function(e) .cov)
-    }
+    .cov <- .covToReportedScale(env, .cov)
   }
-  .ev <- suppressWarnings(eigen(.cov, symmetric = TRUE, only.values = TRUE)$values)
-  if (any(!is.finite(diag(.cov))) || any(diag(.cov) <= 0) || !all(is.finite(.ev)) || min(.ev) <= 0) {
-    return(invisible(FALSE)) # keep the existing cov
-  }
-  # keep the prior covariance recoverable via setCov()
-  if (exists("cov", envir = env, inherits = FALSE) && is.matrix(env$cov)) {
-    .stash <- list(env$cov)
-    names(.stash) <- as.character(
-      if (exists("covMethod", envir = env, inherits = FALSE)) {
-        env$covMethod
-      } else {
-        "prev"
-      }
-    )
-    .cl <- if (exists("covList", envir = env, inherits = FALSE)) env$covList else NULL
-    if (is.null(.cl[[names(.stash)]]) && !identical(names(.stash), r$covMethod)) {
-      .cl <- c(.cl, .stash)
-    }
-    assign("covList", .cl, envir = env)
-  }
-  assign("cov", .cov, envir = env)
-  assign("covMethod", r$covMethod, envir = env)
   # An engine whose covariance carries no mixture rows at all (saem) needs the
   # (7.51) block appended again -- the recomputed matrix REPLACED the one that
   # had it, so without this a setCov() drops the proportion back to SE = NA.
-  .mixCovAppendBlock(env)
-  .cov <- tryCatch(get("cov", envir = env, inherits = FALSE), error = function(e) .cov)
-  # refresh SE/%RSE/CI on the fit's own parameter table from the new covariance
-  .updateParFixedRefreshSeFromCov(env, .cov)
-  .nlmixr2CovConditionUpdate(env)
-  invisible(TRUE)
+  .covInstall(env, .cov, r$covMethod, what = what, warn = warn, mixAppend = TRUE)
 }
 
 #' Read the deferred foreign-covariance request ("sa"/"imp") stashed on a fit's
