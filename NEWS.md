@@ -175,7 +175,9 @@
   evaluation's or a partly summed one, so the finite-difference inner Hessian
   of a non-normal endpoint takes its one-sided difference when a leg fails,
   and its step search rejects the failed probe, instead of differencing that
-  value.
+  value.  The `n1qn1` inner optimizer is not handed a gradient at a point
+  whose evaluation failed (it keeps the one it has), and every inner
+  optimizer counts a `NaN` objective as a failed evaluation, as it did `NA`.
 
 - The ETA gradient of a non-normal (log-likelihood) endpoint evaluated with
   the eta-epsilon interaction no longer adds `sqrt(.Machine$double.eps)` for
