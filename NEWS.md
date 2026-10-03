@@ -127,6 +127,10 @@
   `$scaleInfo` listed the constants out of place; it now shows `NA` for the
   parameters the optimizer does not move.
 
+- A `foceiControl(scaleC=)` vector longer than the parameters no longer
+  crashes the fit: the values past them were written beyond the end of the
+  scaling buffer, and are now ignored (after the existing warning).
+
 ### Covariance and finite differences
 
 - The Gill (1983) step-size search no longer leaves a parameter at its last
