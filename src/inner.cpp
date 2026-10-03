@@ -2858,18 +2858,29 @@ double likInner0(double *eta, int id) {
         arma::vec f0 = rf0mat.col(0);
         arma::vec r0 = rf0mat.col(1);
         arma::vec curEta = getCurEta(id);
-        if (!predSolve) {
-          // The legs below solve the pred model (shi21EtaF/R), so their base point is
-          // the pred model at this eta too.  rf0mat is the inner model's solve, which
-          // passed the bad-solve check above; it stays the base point where the pred
-          // model's solve at this eta is not finite.
-          arma::vec p0 = shi21EtaF(curEta, id);
-          if (p0.is_finite()) f0 = p0;
-          if (op_focei.interaction == 1) {
-            p0 = shi21EtaR(curEta, id);
+        // The legs below solve the pred model (shi21EtaF/R), so their base point is
+        // the pred model at this eta too.  rf0mat is the inner model's solve, which
+        // passed the bad-solve check above; it stays the base point where the pred
+        // model's solve at this eta is not finite.  The base point is solved only
+        // when a step calibration, a forward difference or a one-sided fallback
+        // reads it; a central difference from both legs does not.
+        bool f0Pred = predSolve, r0Pred = predSolve;
+        auto baseF = [&]() -> arma::vec & {
+          if (!f0Pred) {
+            f0Pred = true;
+            arma::vec p0 = shi21EtaF(curEta, id);
+            if (p0.is_finite()) f0 = p0;
+          }
+          return f0;
+        };
+        auto baseR = [&]() -> arma::vec & {
+          if (!r0Pred) {
+            r0Pred = true;
+            arma::vec p0 = shi21EtaR(curEta, id);
             if (p0.is_finite()) r0 = p0;
           }
-        }
+          return r0;
+        };
         arma::vec hEta(curEta.size());
         arma::vec grETA(fInd->nObs);
 
@@ -2884,7 +2895,7 @@ double likInner0(double *eta, int id) {
               switch(op_focei.eventType) {
               case 2: // central
                 fInd->etahf[ii] = shi21Central(shi21EtaF, curEta, h,
-                                               f0, grETA, id, ii,
+                                               baseF(), grETA, id, ii,
                                                op_focei.hessEpsInner, // ef,
                                                1.5,//double rl = 1.5,
                                                4.5,//double ru = 4.5,
@@ -2894,7 +2905,7 @@ double likInner0(double *eta, int id) {
                 break;
               case 3: // forward
                 fInd->etahf[ii] = shi21Forward(shi21EtaF, curEta, h,
-                                               f0, grETA, id, ii,
+                                               baseF(), grETA, id, ii,
                                                op_focei.hessEpsInner, // ef,
                                                1.5,  //double rl = 1.5,
                                                6.0,  //double ru = 6.0);;
@@ -2906,7 +2917,7 @@ double likInner0(double *eta, int id) {
                 switch(op_focei.eventType) {
                 case 2: //central
                   fInd->etahr[ii] = shi21Central(shi21EtaR, curEta, h,
-                                                 r0, grETA, id, ii,
+                                                 baseR(), grETA, id, ii,
                                                  op_focei.hessEpsInner, // ef,
                                                  1.5,//double rl = 1.5,
                                                  4.5,//double ru = 4.5,
@@ -2916,7 +2927,7 @@ double likInner0(double *eta, int id) {
                   break;
                 case 3: // forward
                   fInd->etahr[ii] = shi21Forward(shi21EtaR, curEta, h,
-                                                 r0, grETA, id, ii,
+                                                 baseR(), grETA, id, ii,
                                                  op_focei.hessEpsInner, // ef,
                                                  1.5,  //double rl = 1.5,
                                                  6.0,  //double ru = 6.0);;
@@ -2936,7 +2947,7 @@ double likInner0(double *eta, int id) {
                 // if this isn't true try backward
                 if (grPH.is_finite()) {
                   useForward = true;
-                  etaGradF.col(ii) = calcGradForward(f0, grPH,  fInd->etahf[ii]);
+                  etaGradF.col(ii) = calcGradForward(baseF(), grPH,  fInd->etahf[ii]);
                 }
               }
               if (!useForward) {
@@ -2945,7 +2956,9 @@ double likInner0(double *eta, int id) {
                 hEta[ii] -= fInd->etahf[ii];
                 grMH = shi21EtaF(hEta, id);
                 // central
-                etaGradF.col(ii) = calcGradCentral(grMH, f0, grPH,  fInd->etahf[ii]);
+                etaGradF.col(ii) = (grMH.is_finite() && grPH.is_finite()) ?
+                  arma::vec((grPH - grMH)/(2.0*fInd->etahf[ii])) :
+                  calcGradCentral(grMH, baseF(), grPH,  fInd->etahf[ii]);
               }
               if (op_focei.interaction == 1) {
                 // etaGradR
@@ -2956,14 +2969,16 @@ double likInner0(double *eta, int id) {
                 if (op_focei.eventType == 3) {
                   if (grPH.is_finite()) {
                     useForward = true;
-                    etaGradR.col(ii) = calcGradForward(r0, grPH,  fInd->etahr[ii]);
+                    etaGradR.col(ii) = calcGradForward(baseR(), grPH,  fInd->etahr[ii]);
                   }
                 }
                 if (!useForward) {
                   hEta = curEta;
                   hEta[ii] -= fInd->etahr[ii];
                   grMH = shi21EtaR(hEta, id);
-                  etaGradR.col(ii) = calcGradCentral(grMH, r0, grPH,  fInd->etahr[ii]);
+                  etaGradR.col(ii) = (grMH.is_finite() && grPH.is_finite()) ?
+                    arma::vec((grPH - grMH)/(2.0*fInd->etahr[ii])) :
+                    calcGradCentral(grMH, baseR(), grPH,  fInd->etahr[ii]);
                 }
               }
             }
