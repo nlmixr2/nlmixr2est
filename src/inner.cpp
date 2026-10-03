@@ -7531,14 +7531,26 @@ void numericGrad(double *theta, double *g){
         // where it is when scaleC changes.  Anywhere else the new scale would
         // move it under the optimizer, and the search would difference about
         // lastOfv, the objective at the old point.
+        // When neither retry finds a slope, the parameter keeps its own scaleC and
+        // the first search's results.
         int nSearch = (op_focei.scaleType == scaleTypeNlmixr2 &&
                        theta[cpar] == scaleScalePar(&op_focei, op_focei.initPar, cpar)) ? 3 : 1;
+        double scaleC1 = op_focei.scaleC[cpar], hf1 = 0, hphif1 = 0, df21 = 0, ef1 = 0;
+        int ret1 = 0;
         for (int r = 0; r < nSearch; ++r) {
           if (r > 0) op_focei.scaleC[cpar] = (r == 1) ? op_focei.scaleC0 : 1/op_focei.scaleC0;
           op_focei.gillRet[cpar] = gill83(&hf, &hphif, &op_focei.gillDf[cpar], &op_focei.gillDf2[cpar], &op_focei.gillErr[cpar],
                                           theta, cpar, op_focei.gillRtol, op_focei.gillK, op_focei.gillStep, op_focei.gillFtol,
                                           -1, gill83fnG, 1, op_focei.lastOfv);
           if (op_focei.gillDf[cpar] != 0) break;
+          if (r == 0) {
+            ret1 = op_focei.gillRet[cpar]; hf1 = hf; hphif1 = hphif;
+            df21 = op_focei.gillDf2[cpar]; ef1 = op_focei.gillErr[cpar];
+          } else if (r == nSearch - 1) {
+            op_focei.scaleC[cpar] = scaleC1;
+            op_focei.gillRet[cpar] = ret1; hf = hf1; hphif = hphif1;
+            op_focei.gillDf2[cpar] = df21; op_focei.gillErr[cpar] = ef1;
+          }
         }
         gill83Eps(hf, hphif, err, op_focei.optGillF, &op_focei.aEps[cpar], &op_focei.rEps[cpar],
                   &op_focei.aEpsC[cpar], &op_focei.rEpsC[cpar]);
