@@ -591,14 +591,7 @@
       # Re-run under the fit's OWN est, not est="none": the gradient SHAPE is the
       # estimation method (FOCE freezes the residual variance, AGQ adds quadrature), and
       # est="none" would silently evaluate every fit as plain FOCEI.
-      .ui <- fit$ui
-      .th <- tryCatch(fit$theta, error = function(.) NULL)
-      if (!is.null(.th)) {
-        # pin the final thetas on the ui
-        .w <- match(names(.th), .ui$iniDf$name)
-        .ok <- !is.na(.w)
-        .ui$iniDf$est[.w[.ok]] <- as.numeric(.th)[.ok]
-      }
+      .ui <- .uiPinTheta(fit$ui, fit)
       .eta <- tryCatch(fit$eta, error = function(.) NULL)
       if (!is.null(.eta)) {
         # ...and the final etas

@@ -6,26 +6,42 @@
 # with zero estimation iterations, mirroring the pin-and-refit pattern in
 # .foceiRecomputeMuCov() (R/cov.R).
 
+#' Private decompressed copy of a fit's ui, so a nested re-fit cannot modify it
+#' @param fit completed nlmixr2 fit (object or its env)
+#' @return the copy, or `NULL` when it cannot be made
+#' @noRd
+.fitUiCopy <- function(fit) {
+  tryCatch(rxode2::rxUiDecompress(unserialize(serialize(fit$ui, NULL))), error = function(e) NULL)
+}
+
+#' Pin a completed fit's converged thetas into `ui$iniDf$est`
+#' @param ui rxode2 ui to pin
+#' @param fit completed nlmixr2 fit
+#' @return the pinned `ui`
+#' @noRd
+.uiPinTheta <- function(ui, fit) {
+  .th <- tryCatch(fit$theta, error = function(e) NULL)
+  if (!is.null(.th)) {
+    .w <- match(names(.th), ui$iniDf$name)
+    .ok <- !is.na(.w)
+    ui$iniDf$est[.w[.ok]] <- as.numeric(.th)[.ok]
+  }
+  ui
+}
+
 #' Build the pinned-UI + data + etaMat needed to recompute a covariance at a
 #' completed fit's converged estimates.
 #'
 #' The completed fit's `ui` already carries the converged theta AND omega in
 #' `iniDf$est` (installed by `.nlmixr2FitUpdateParams()`); the theta is re-pinned
-#' defensively.  A deep copy is returned so the nested re-fit cannot mutate this
-#' fit's UI.
+#' defensively.
 #' @param fit completed nlmixr2 fit
 #' @return list(ui, data, etaMat) or NULL on failure
 #' @noRd
 .covPinnedRefitArgs <- function(fit) {
-  .ui <- tryCatch(rxode2::rxUiDecompress(unserialize(serialize(fit$ui, NULL))), error = function(e) NULL)
+  .ui <- .fitUiCopy(fit)
   if (is.null(.ui)) {
     return(NULL)
-  }
-  .th <- tryCatch(fit$theta, error = function(e) NULL)
-  if (!is.null(.th)) {
-    .w <- match(names(.th), .ui$iniDf$name)
-    .ok <- !is.na(.w)
-    .ui$iniDf$est[.w[.ok]] <- as.numeric(.th)[.ok]
   }
   .eta <- tryCatch(fit$eta, error = function(e) NULL)
   .etaMat <- NULL
@@ -35,7 +51,7 @@
       .etaMat <- as.matrix(.eta)
     }
   }
-  list(ui = .ui, data = getData(fit), etaMat = .etaMat)
+  list(ui = .uiPinTheta(.ui, fit), data = getData(fit), etaMat = .etaMat)
 }
 
 #' Run a native engine (saem/imp) at the pinned converged estimates and harvest
