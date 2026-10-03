@@ -331,6 +331,11 @@
   happening "during the optimization".  A zero in the covariance step's
   pooled gradient (the S matrix's fallback score) no longer reports "zero
   gradient replaced with small number": nothing is replaced there.
+- An R matrix that is zero (an objective flat in every estimated parameter)
+  is no longer "corrected" as `"r+"`: the modified Cholesky factor has no
+  scale to correct such a matrix within, and a one-parameter fit installed
+  `1/cholSEtol` (165140) as its variance.  It is now not usable, like any R
+  the repairs cannot fix.
 - The `foceiControl(covSolveTol=)` documentation now says what the default
   does: with `NULL` the finite-difference covariance solves run at the fit's
   own ODE tolerances, and only the analytic covariance derives a tighter one

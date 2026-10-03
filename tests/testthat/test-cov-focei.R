@@ -355,6 +355,28 @@ nmTest({
     expect_true(any(startsWith(.f$runInfo, "\"r,s (full)\" covariance ")))
   })
 
+  test_that("an all-zero R is not corrected into a covariance", {
+    # the objective does not move with tz at all (its covariate is 0), so R = 0;
+    # cholSE0 adds cholSEtol to a zero 1x1 with nothing to scale it by, which
+    # passed as a small "r+" correction and installed 1/cholSEtol
+    d <- data.frame(ID = rep(1:2, each = 3), TIME = rep(1:3, 2), DV = 5, Z = 0)
+    flat <- function() {
+      ini({
+        ta <- fix(5)
+        tz <- 0.5
+        add.sd <- fix(1)
+      })
+      model({
+        cp <- ta + tz * Z
+        cp ~ add(add.sd)
+      })
+    }
+    .f <- .nlmixr(flat, d, "focei", foceiControl(print = 0, maxOuterIterations = 0L))
+    expect_equal(.f$env$R.0[1, 1], 0)
+    expect_equal(.f$covMethod, "failed")
+    expect_null(.f$cov)
+  })
+
   test_that("a non-positive-definite R or S is never installed as it is", {
     # one estimated parameter at a point where the objective is concave: R < 0,
     # which cholSE0 (like for every 1x1 matrix) called positive definite, so

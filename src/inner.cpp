@@ -10822,7 +10822,14 @@ static bool foceiCovUsable(Environment e, const std::string &X, const arma::mat 
                            std::string &lab, bool &checkSandwich) {
   if (as<bool>(e[X + ".pd"]) && (M0.n_elem != 1 || M0(0, 0) > 0)) return true;
   std::string x(1, (char)std::tolower(X[0]));
-  if (!arma::any(as<arma::vec>(e[X + ".E"]) > op_focei.cholAccept)) {
+  // cholSE0 scales what it adds by the largest diagonal of M0, so a matrix with no
+  // positive diagonal (an all-zero R: the objective does not move with any parameter)
+  // gets nothing it could be corrected within -- zeros, NaNs from dividing by a zero
+  // pivot, or tol*I for a 1x1 -- and is not a small correction of anything.
+  arma::vec E = as<arma::vec>(e[X + ".E"]);
+  if (M0.n_elem > 0 && M0.diag().max() > 0 && E.is_finite() &&
+      as<arma::mat>(e["chol" + X]).is_finite() &&
+      !arma::any(E > op_focei.cholAccept)) {
     lab = x + "+";
     checkSandwich = true;
     return true;
