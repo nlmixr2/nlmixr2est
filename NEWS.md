@@ -217,6 +217,12 @@
   leaving the objective type and the fit header naming the previous one.  An
   objective a saem fit cannot describe now stops before anything changes.
 
+- The warnings of the steps that run after a fit is finalized -- the post-fit
+  covariance recompute of the mu-referenced (`mfocei`-style), imp, np and
+  nlme families and the deferred `covMethod = "sa"`/`"imp"` covariance -- are
+  now kept in the fit's `$runInfo` with the other warnings of the run.  They
+  were raised by `nlmixr2()` itself instead, and `$runInfo` did not have them.
+
 ### Covariance and finite differences
 
 - The Gill (1983) step-size search no longer leaves a parameter at its last
