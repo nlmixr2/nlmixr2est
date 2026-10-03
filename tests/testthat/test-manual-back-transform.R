@@ -150,4 +150,56 @@ nmTest({
       NA
     )
   })
+
+  test_that("a refreshed covariance refreshes a manually back-transformed CI (issue 1140)", {
+    t100 <- function(x) {
+      x * 100
+    }
+    one.cmt <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1; backTransform("t100")
+        tv <- 3.45; backTransform("none")
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    fit <- suppressWarnings(suppressMessages(nlmixr(one.cmt, theo_sd, est = "saem", control = saemControlFast)))
+    .th <- c("tka", "tcl", "tv")
+    .se0 <- fit$parFixedDf[.th, "SE"]
+    expect_true(all(is.finite(.se0)))
+    # install a covariance with twice the standard errors
+    .cov <- diag((2 * .se0)^2)
+    dimnames(.cov) <- list(.th, .th)
+    .updateParFixedRefreshSeFromCov(fit$env, .cov)
+    .pf <- fit$parFixedDf
+    .e <- .pf[.th, "Estimate"]
+    .s <- .pf[.th, "SE"]
+    expect_equal(.s, 2 * .se0)
+    qn <- qnorm(0.975)
+    # backTransform("t100"): the interval is t100() of the new one
+    expect_equal(.pf["tcl", "CI Lower"], t100(.e[[2]] - qn * .s[[2]]))
+    expect_equal(.pf["tcl", "CI Upper"], t100(.e[[2]] + qn * .s[[2]]))
+    expect_equal(
+      fit$parFixed["tcl", "Back-transformed(95%CI)"],
+      sprintf(
+        "%s (%s, %s)",
+        formatMinWidth(t100(.e[[2]])),
+        formatMinWidth(t100(.e[[2]] - qn * .s[[2]])),
+        formatMinWidth(t100(.e[[2]] + qn * .s[[2]]))
+      )
+    )
+    # backTransform("none") names no function: the default exp() stays
+    expect_equal(.pf["tv", "CI Lower"], exp(.e[[3]] - qn * .s[[3]]))
+    expect_equal(.pf["tv", "CI Upper"], exp(.e[[3]] + qn * .s[[3]]))
+    expect_equal(.pf["tka", "CI Upper"], exp(.e[[1]] + qn * .s[[1]]))
+  })
 })

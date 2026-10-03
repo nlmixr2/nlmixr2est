@@ -341,6 +341,13 @@
   scale, the one installed as `$cov`; they were taken before those rows were
   rotated from the mlogit scale (23088 instead of 1332 on a two-component
   model).
+- When a covariance replaces another after the parameter table is built (the
+  full covariance with `covFull = TRUE`, `setCov()`, `foceiCovAnalytic()`,
+  the deferred and post-fit recomputes), the confidence interval of a
+  parameter with a `backTransform()` function is now recomputed with that
+  function; it kept the interval of the previous covariance beside the new
+  standard error.  A `backTransform()` that names no function keeps the
+  default back-transformation, as it does when the fit is built.
 
 
 # nlmixr2est 7.1.0

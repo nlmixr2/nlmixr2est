@@ -13,6 +13,16 @@
   if (length(.w) == 1L && !is.na(.iniDf$backTransform[.w])) {
     return(value)
   }
+  .updateParFixedBackTransformDefault(ui, name, value)
+}
+
+#' The default back-transform of a theta (exp/expit/probitInv from its
+#' mu-referenced `curEval`), whatever its `backTransform()` says
+#'
+#' @inheritParams .updateParFixedBackTransformFixed
+#' @return `value` back-transformed
+#' @noRd
+.updateParFixedBackTransformDefault <- function(ui, name, value) {
   if (name %in% ui$muRefExtra$parameter) {
     return(value)
   }
@@ -333,6 +343,42 @@
   ret
 }
 
+#' The back-transform a parameter-table row was reported with, applied to `x`
+#'
+#' Tries the function a `backTransform()` in `ini()` names (looked up where
+#' `.updateParFixed()` looks it up), then the default rule, then the identity;
+#' the first that maps the estimate to the row's back-transformed value is the
+#' row's.
+#'
+#' @param ui the fit's ui
+#' @param name row (theta) name
+#' @param x values to back-transform, the estimate first
+#' @param bt the row's back-transformed estimate
+#' @return `x` back-transformed, or `NULL` when no rule reproduces `bt`
+#' @noRd
+.updateParFixedBackTransformRow <- function(ui, name, x, bt) {
+  .bt <- unname(bt)
+  .fun <- ui$iniDf$backTransform[ui$iniDf$name == name]
+  if (length(.fun) == 1L && !is.na(.fun)) {
+    .fun <- tryCatch(
+      get(.fun, envir = nlmixr2global$nlmixrEvalEnv$envir, mode = "function"),
+      error = function(e) NULL
+    )
+    .y <- if (is.function(.fun)) tryCatch(.fun(x), error = function(e) NULL)
+    if (length(.y) == length(x) && isTRUE(all.equal(.y[1], .bt))) {
+      return(.y)
+    }
+  }
+  .y <- tryCatch(.updateParFixedBackTransformDefault(ui, name, x), error = function(e) x)
+  if (isTRUE(all.equal(.y[1], .bt))) {
+    return(.y)
+  }
+  if (isTRUE(all.equal(unname(x[1]), .bt))) {
+    return(x)
+  }
+  NULL
+}
+
 #' Refresh a fit's parameter-table SEs from an installed covariance
 #'
 #' Updates the numeric `$parFixedDf` and regenerates the formatted `$parFixed`
@@ -388,18 +434,30 @@
       .pf[.n, "%RSE"] <- if (is.finite(.e) && .e != 0) abs(.s / .e) * 100 else NA_real_
     }
     if (all(c("CI Lower", "CI Upper", "Back-transformed") %in% names(.pf))) {
-      # recompute the CI when the default back-transform (identity/exp/expit/
-      # probitInv) reproduces the stored back-transformed value; rows with a
-      # manual backTransform keep their existing CI
-      .btf <- function(.v) {
-        if (ciIdentity) {
-          return(.v)
+      .x <- c(.e, .e - .qn * .s, .e + .qn * .s)
+      .bt <- .pf[.n, "Back-transformed"]
+      if (ciIdentity) {
+        # only rows reported untransformed get the identity interval; the
+        # others keep theirs
+        .y <- if (isTRUE(all.equal(unname(.bt), unname(.e)))) .x
+      } else {
+        .y <- .updateParFixedBackTransformRow(env$ui, .n, .x, .bt)
+        if (is.null(.y)) {
+          # an interval of the previous covariance is not kept beside the new SE
+          if (!is.na(.pf[.n, "CI Lower"])) {
+            warning(
+              "the confidence interval of '",
+              .n,
+              "' was dropped: its back-transform could not be reproduced",
+              call. = FALSE
+            )
+          }
+          .y <- rep(NA_real_, 3L)
         }
-        tryCatch(.updateParFixedBackTransformFixed(env$ui, .n, .v), error = function(e) .v)
       }
-      if (isTRUE(all.equal(unname(.pf[.n, "Back-transformed"]), unname(.btf(.e))))) {
-        .pf[.n, "CI Lower"] <- .btf(.e - .qn * .s)
-        .pf[.n, "CI Upper"] <- .btf(.e + .qn * .s)
+      if (!is.null(.y)) {
+        .pf[.n, "CI Lower"] <- .y[2]
+        .pf[.n, "CI Upper"] <- .y[3]
       }
     }
     .changed <- TRUE
