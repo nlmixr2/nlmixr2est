@@ -231,4 +231,42 @@ nmTest({
     f <- suppressMessages(ehc())
     expect_error(f$foceiModel, NA)
   })
+
+  test_that("a failed inner evaluation is neither a gradient nor a cached value", {
+    skip_on_cran()
+    # sqrt(1 - eta.v) makes every prediction NaN for eta.v > 1, so likInner0()
+    # fails in its observation loop, after it has reset llik and lp
+    failMod <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl)
+        v <- exp(tv)
+        cp <- linCmt()
+        cpo <- cp * exp(eta.v) * sqrt(1 - eta.v)
+        cpo ~ add(add.sd)
+      })
+    }
+    .ui <- rxode2::assertRxUi(failMod)
+    .n <- length(unique(nlmixr2data::theo_sd$ID))
+    .vaeInnerSetup(.ui, nlmixr2data::theo_sd, matrix(0, .n, 1), vaeControl())
+    on.exit(.vaeInnerFree(), add = TRUE)
+    .good <- likInner(0.2, 1L)
+    .gGood <- foceiInnerLp(0.2, 1L)
+    expect_true(is.finite(.good))
+    expect_true(is.finite(.gGood))
+    expect_true(is.na(likInner(1.5, 1L)))
+    # the failed evaluation has no gradient; its partial lp is not one
+    expect_true(is.na(foceiInnerLp(1.5, 1L)))
+    # and a later call at the last eta that succeeded solves again instead of
+    # returning what the failed call left behind
+    expect_identical(likInner(0.2, 1L), .good)
+    expect_identical(foceiInnerLp(0.2, 1L), .gGood)
+  })
 })

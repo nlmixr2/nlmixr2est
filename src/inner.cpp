@@ -2657,6 +2657,17 @@ static inline double focei_tCensDll(bool lhsOk, int dist, int cens, double dv,
   return dCensNormal1((double)cens, dv, limit, dll, fT, r, df, dr);
 }
 
+// A failed likInner0() call.  likInner0() answers a call whose eta equals oldEta from
+// what the last call left (llik, lp, llikObs, tbsLik, nObs and ind->solve) without
+// solving.  By the time it fails it has overwritten ind->solve, and a failure part-way
+// through the observations has also overwritten llik, lp, llikObs, tbsLik and nObs with
+// partial values, while oldEta still names the last eta that succeeded.  Drop the cache
+// so a later call at that eta solves again instead of returning this call's leftovers.
+static inline double likInner0Fail(focei_ind *fInd) {
+  fInd->setup = 0;
+  return NA_REAL;
+}
+
 double likInner0(double *eta, int id) {
   rx = getRxSolve_();
   rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
@@ -2761,8 +2772,7 @@ double likInner0(double *eta, int id) {
     bool isBadSolve = odeSwapIndBadSolveSlot(op, ind,
                                              predSolve ? odeSlotPred : odeSlotInner);
     if (isBadSolve){
-      return NA_REAL;
-      //throw std::runtime_error("bad solve");
+      return likInner0Fail(fInd);
     } else {
       // Update eta.
       arma::mat lp(fInd->lp, op_focei.neta, 1, false, true);
@@ -2995,8 +3005,7 @@ double likInner0(double *eta, int id) {
           f = lhs[op_focei.predOffset]; // TBS is performed in the rxode2 rx_pred_ statement. This allows derivatives of TBS to be propagated
           dv = tbs(dv0);
           if (ISNA(f) || std::isnan(f) || std::isinf(f)) {
-            return NA_REAL;
-            //throw std::runtime_error("bad solve");
+            return likInner0Fail(fInd);
           }
           // npag/npb: a transform-both-sides (log/boxCox) endpoint whose
           // UNtransformed prediction is non-positive is a domain error (e.g. an
@@ -3053,8 +3062,7 @@ double likInner0(double *eta, int id) {
           fInd->tbsLik+=tbsJac;
           // fInd->err(k, 0) = lhs[0] - getIndDv(ind, k); // pred-dv
           if (ISNA(lhs[op_focei.predOffset + op_focei.neta + 1])){
-            return NA_REAL;
-            //throw std::runtime_error("bad solve");
+            return likInner0Fail(fInd);
           }
           if (dist == rxDistributionNorm) {
             r = lhs[op_focei.predOffset + op_focei.neta + 1];
@@ -3297,9 +3305,17 @@ double likInner0(double *eta, int id) {
   return fInd->llik;
 }
 
+// The eta gradient at eta, or NA in every component when likInner0() fails there.  A
+// failed call leaves lp at the previous evaluation's value (a failed solve) or part-way
+// accumulated (a non-finite prediction), and handing that back as a finite gradient made
+// a failed finite-difference leg of the inner Hessian, and a failed Shi21 probe, look
+// like a good one.
 double *lpInner(double *eta, double *g, int id){
   focei_ind *fInd = &(inds_focei[id]);
-  likInner0(eta, id);
+  if (ISNAN(likInner0(eta, id))) {
+    std::fill_n(&g[0], op_focei.neta, NA_REAL);
+    return &g[0];
+  }
   std::copy(&fInd->lp[0], &fInd->lp[0] + op_focei.neta,
             &g[0]);
   return &g[0];
@@ -3898,9 +3914,9 @@ void innerCost(int *ind, int *n, double *x, double *f, double *g, int *ti, float
     // RSprintf(" (nG: %d)\n", fInd->nInnerG);
     // }
   }
-  if (*ind==3 || *ind==4) {
-    // Gradient
-
+  // Gradient, unless the objective at this x just failed: then n1qn1 keeps the gradient
+  // it has, as it does on every later call once badSolve is set (see the top).
+  if ((*ind==3 || *ind==4) && fInd->badSolve != 1) {
     lpInner(x, g, *id);
     fInd->nInnerG++;
   }
@@ -14508,7 +14524,11 @@ static void vaeInnerLikCore(const arma::mat& etaMat, int cores, bool grad, bool 
       if (grad) {
         std::vector<double> g(neta);
         lpInner(&eta[0], &g[0], id);
-        for (int j = 0; j < neta; ++j) lp(id, j) = g[j];
+        // A subject whose solve failed has no gradient (lpInner gives NA); its objective
+        // below is NA too and is what reports the failure.  A zero row keeps the mixture
+        // marginal's responsibility-weighted rows finite, where a failed component has
+        // responsibility 0 and 0 * NA would poison the encoder gradient.
+        for (int j = 0; j < neta; ++j) lp(id, j) = ISNAN(g[j]) ? 0.0 : g[j];
       }
       if (adjOuter) {
         double v = LikInner2(&eta[0], 0, id);

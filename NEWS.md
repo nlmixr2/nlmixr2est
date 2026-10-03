@@ -165,6 +165,18 @@
   differing number of rows`.  Both now read the fit's own control (`$control`);
   the imp objective read `$foceiControl`, which never holds `adjObf`.
 
+- A failed evaluation of a subject's inner (ETA) problem -- an ODE solve that
+  fails, or a prediction that is not finite -- no longer leaves values that a
+  later evaluation returns.  The inner problem keeps its last evaluation and
+  answers a repeat at the same ETAs from it; after a failure, a repeat at the
+  last ETAs that succeeded returned what the failed evaluation had left (an
+  objective of 0 when the failure came in the observations).  The ETA
+  gradient of a failed evaluation is now `NA` rather than the previous
+  evaluation's or a partly summed one, so the finite-difference inner Hessian
+  of a non-normal endpoint takes its one-sided difference when a leg fails,
+  and its step search rejects the failed probe, instead of differencing that
+  value.
+
 ### Covariance and finite differences
 
 - The Gill (1983) step-size search no longer leaves a parameter at its last
