@@ -288,19 +288,9 @@ trustControl <- function(
     useColor = useColor,
     iterPrintControl = .xtra$iterPrintControl
   )
-  if (checkmate::testIntegerish(scaleType, len = 1, lower = 1, upper = 4, any.missing = FALSE)) {
-    scaleType <- as.integer(scaleType)
-  } else {
-    .scaleTypeIdx <- c("norm" = 1L, "nlmixr2" = 2L, "mult" = 3L, "multAdd" = 4L)
-    scaleType <- setNames(.scaleTypeIdx[match.arg(scaleType)], NULL)
-  }
+  scaleType <- .ctlIdx(scaleType, .scaleTypeIdx, match.arg(scaleType))
 
-  .normTypeIdx <- c("rescale2" = 1L, "rescale" = 2L, "mean" = 3L, "std" = 4L, "len" = 5L, "constant" = 6L)
-  if (checkmate::testIntegerish(normType, len = 1, lower = 1, upper = 6, any.missing = FALSE)) {
-    normType <- as.integer(normType)
-  } else {
-    normType <- setNames(.normTypeIdx[match.arg(normType)], NULL)
-  }
+  normType <- .ctlIdx(normType, .normTypeIdx, match.arg(normType))
   checkmate::assertNumeric(scaleCmax, lower = 0, any.missing = FALSE, len = 1)
   checkmate::assertNumeric(scaleCmin, lower = 0, any.missing = FALSE, len = 1)
   if (!is.null(scaleC)) {
@@ -358,11 +348,7 @@ trustControl <- function(
 }
 
 #' @export
-rxUiDeparse.trustControl <- function(object, var) {
-  .default <- trustControl()
-  .w <- .deparseDifferent(.default, object, "genRxControl")
-  .deparseFinal(.default, object, .w, var)
-}
+rxUiDeparse.trustControl <- function(object, var) .deparseControl(object, var, trustControl())
 
 #' Get the trust family control
 #'
@@ -377,69 +363,18 @@ rxUiDeparse.trustControl <- function(object, var) {
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.trustControl <- function(control, env) {
-  assign("trustControl", control, envir = env)
-}
+nmObjHandleControlObject.trustControl <- function(control, env) assign("trustControl", control, envir = env)
 
 #' @rdname nmObjGetControl
 #' @export
-nmObjGetControl.trust <- function(x, ...) {
-  .env <- x[[1]]
-  if (exists("trustControl", .env, inherits = FALSE)) {
-    .control <- get("trustControl", .env, inherits = FALSE)
-    if (inherits(.control, "trustControl")) return(.control)
-  }
-  if (exists("control", .env, inherits = FALSE)) {
-    .control <- get("control", .env, inherits = FALSE)
-    if (inherits(.control, "trustControl")) return(.control)
-  }
-  stop("cannot find trust related control object", call. = FALSE)
-}
+nmObjGetControl.trust <- function(x, ...) .nmObjGetControlByClass(x, "trustControl")
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.trust <- function(control) {
-  .ctl <- control[[1]]
-  if (is.null(.ctl)) {
-    .ctl <- trustControl()
-  }
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
-    .ctl <- do.call("trustControl", .ctl)
-  }
-  if (!inherits(.ctl, "trustControl")) {
-    .minfo("invalid control for `est=\"trust\"`, using default")
-    .ctl <- trustControl()
-  } else {
-    .ctl <- do.call(trustControl, .ctl)
-  }
-  .ctl
-}
+getValidNlmixrCtl.trust <- function(control) .getValidCtl(control, "trustControl", "trust")
 
 .trustControlToFoceiControl <- function(env, assign = TRUE) {
-  .trustControl <- env$trustControl
-  .foceiControl <- foceiControl(
-    rxControl = .trustControl$rxControl,
-    maxOuterIterations = 0L,
-    maxInnerIterations = 0L,
-    covMethod = 0L,
-    sumProd = .trustControl$sumProd,
-    optExpression = .trustControl$optExpression,
-    literalFix = .trustControl$literalFix,
-    literalFixRes = .trustControl$literalFixRes,
-    scaleTo = 0,
-    calcTables = .trustControl$calcTables,
-    addProp = .trustControl$addProp,
-    interaction = 0L,
-    compress = .trustControl$compress,
-    ci = .trustControl$ci,
-    sigdigTable = .trustControl$sigdigTable,
-    indTolRelax = .trustControl$indTolRelax,
-    eventSens = .trustControl$eventSens
-  )
-  if (assign) {
-    env$control <- .foceiControl
-  }
-  .foceiControl
+  .nlmFamilyControlToFoceiControl(env, "trustControl", assign)
 }
 
 #' Warn when a trust result's Newton decrement contradicts trust_solve_c()'s
@@ -513,39 +448,13 @@ getValidNlmixrCtl.trust <- function(control) {
   .nlmFinalizeList(.env, .ret, par = "par", printLine = TRUE, hessianCov = TRUE)
 }
 
-#' Get the full theta for the trust method
-#'
-#' @param nlm enhanced trust return
-#' @param ui ui object
-#' @return named theta matrix
-#' @author Matthew L. Fidler
-#' @noRd
-.trustGetTheta <- function(nlm, ui) {
-  .iniDf <- ui$iniDf
-  setNames(
-    vapply(
-      seq_along(.iniDf$name),
-      function(i) {
-        if (.iniDf$fix[i]) {
-          .iniDf$est[i]
-        } else {
-          nlm$par[.iniDf$name[i]]
-        }
-      },
-      double(1),
-      USE.NAMES = FALSE
-    ),
-    .iniDf$name
-  )
-}
-
 .trustFamilyFit <- function(env, ...) {
   .nlmFamilyFitGeneric(
     env,
     "trust",
     .trustFitModel,
-    .trustGetTheta,
-    objective = function(.fit) 2 * as.numeric(.fit$fval),
+    "par",
+    objective = "fval",
     controlToFocei = .trustControlToFoceiControl,
     returnFlag = "returnTrust"
   )

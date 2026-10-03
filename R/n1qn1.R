@@ -157,19 +157,9 @@ n1qn1Control <- function(
     useColor = useColor,
     iterPrintControl = .xtra$iterPrintControl
   )
-  if (checkmate::testIntegerish(scaleType, len = 1, lower = 1, upper = 4, any.missing = FALSE)) {
-    scaleType <- as.integer(scaleType)
-  } else {
-    .scaleTypeIdx <- c("norm" = 1L, "nlmixr2" = 2L, "mult" = 3L, "multAdd" = 4L)
-    scaleType <- setNames(.scaleTypeIdx[match.arg(scaleType)], NULL)
-  }
+  scaleType <- .ctlIdx(scaleType, .scaleTypeIdx, match.arg(scaleType))
 
-  .normTypeIdx <- c("rescale2" = 1L, "rescale" = 2L, "mean" = 3L, "std" = 4L, "len" = 5L, "constant" = 6L)
-  if (checkmate::testIntegerish(normType, len = 1, lower = 1, upper = 6, any.missing = FALSE)) {
-    normType <- as.integer(normType)
-  } else {
-    normType <- setNames(.normTypeIdx[match.arg(normType)], NULL)
-  }
+  normType <- .ctlIdx(normType, .normTypeIdx, match.arg(normType))
   checkmate::assertNumeric(scaleCmax, lower = 0, any.missing = FALSE, len = 1)
   checkmate::assertNumeric(scaleCmin, lower = 0, any.missing = FALSE, len = 1)
   if (!is.null(scaleC)) {
@@ -223,11 +213,7 @@ n1qn1Control <- function(
 }
 
 #' @export
-rxUiDeparse.n1qn1Control <- function(object, var) {
-  .default <- n1qn1Control()
-  .w <- .deparseDifferent(.default, object, "genRxControl")
-  .deparseFinal(.default, object, .w, var)
-}
+rxUiDeparse.n1qn1Control <- function(object, var) .deparseControl(object, var, n1qn1Control())
 
 
 #' Get the n1qn1 family control
@@ -243,72 +229,18 @@ rxUiDeparse.n1qn1Control <- function(object, var) {
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.n1qn1Control <- function(control, env) {
-  assign("n1qn1Control", control, envir = env)
-}
+nmObjHandleControlObject.n1qn1Control <- function(control, env) assign("n1qn1Control", control, envir = env)
 
 #' @rdname nmObjGetControl
 #' @export
-nmObjGetControl.n1qn1 <- function(x, ...) {
-  .env <- x[[1]]
-  if (exists("n1qn1Control", .env, inherits = FALSE)) {
-    .control <- get("n1qn1Control", .env, inherits = FALSE)
-    if (inherits(.control, "n1qn1Control")) return(.control)
-  }
-  if (exists("control", .env, inherits = FALSE)) {
-    .control <- get("control", .env, inherits = FALSE)
-    if (inherits(.control, "n1qn1Control")) return(.control)
-  }
-  stop("cannot find n1qn1 related control object", call. = FALSE)
-}
+nmObjGetControl.n1qn1 <- function(x, ...) .nmObjGetControlByClass(x, "n1qn1Control")
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.n1qn1 <- function(control) {
-  .ctl <- control[[1]]
-  if (is.null(.ctl)) {
-    .ctl <- n1qn1Control()
-  }
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
-    .ctl <- do.call("n1qn1Control", .ctl)
-  }
-  if (!inherits(.ctl, "n1qn1Control")) {
-    .minfo("invalid control for `est=\"n1qn1\"`, using default")
-    .ctl <- n1qn1Control()
-  } else {
-    .ctl <- do.call(n1qn1Control, .ctl)
-  }
-  .ctl
-}
+getValidNlmixrCtl.n1qn1 <- function(control) .getValidCtl(control, "n1qn1Control", "n1qn1")
 
 .n1qn1ControlToFoceiControl <- function(env, assign = TRUE) {
-  .n1qn1Control <- env$n1qn1Control
-  .ui <- env$ui
-  .foceiControl <- foceiControl(
-    rxControl = env$n1qn1Control$rxControl,
-    maxOuterIterations = 0L,
-    maxInnerIterations = 0L,
-    covMethod = 0L,
-    sumProd = .n1qn1Control$sumProd,
-    optExpression = .n1qn1Control$optExpression,
-    literalFix = .n1qn1Control$literalFix,
-    literalFixRes = .n1qn1Control$literalFixRes,
-    scaleTo = 0,
-    calcTables = .n1qn1Control$calcTables,
-    addProp = .n1qn1Control$addProp,
-    #skipCov=.ui$foceiSkipCov,
-    interaction = 0L,
-    compress = .n1qn1Control$compress,
-    ci = .n1qn1Control$ci,
-    sigdigTable = .n1qn1Control$sigdigTable,
-    indTolRelax = .n1qn1Control$indTolRelax,
-    eventSens = .n1qn1Control$eventSens,
-    sensMethod = .n1qn1Control$sensMethod
-  )
-  if (assign) {
-    env$control <- .foceiControl
-  }
-  .foceiControl
+  .nlmFamilyControlToFoceiControl(env, "n1qn1Control", assign)
 }
 
 .n1qn1FitModel <- function(ui, dataSav) {
@@ -338,39 +270,13 @@ getValidNlmixrCtl.n1qn1 <- function(control) {
   .ret <- eval(.ret)
   .nlmFinalizeList(.env, .ret, par = "par", printLine = TRUE, hessianCov = TRUE)
 }
-#' Get the full theta for nlm methods
-#'
-#' @param optim enhanced nlm return
-#' @param ui ui object
-#' @return named theta matrix
-#' @author Matthew L. Fidler
-#' @noRd
-.n1qn1GetTheta <- function(nlm, ui) {
-  .iniDf <- ui$iniDf
-  setNames(
-    vapply(
-      seq_along(.iniDf$name),
-      function(i) {
-        if (.iniDf$fix[i]) {
-          .iniDf$est[i]
-        } else {
-          nlm$par[.iniDf$name[i]]
-        }
-      },
-      double(1),
-      USE.NAMES = FALSE
-    ),
-    .iniDf$name
-  )
-}
-
 .n1qn1FamilyFit <- function(env, ...) {
   .nlmFamilyFitGeneric(
     env,
     "n1qn1",
     .n1qn1FitModel,
-    .n1qn1GetTheta,
-    objective = function(.fit) 2 * as.numeric(.fit$value),
+    "par",
+    objective = "value",
     controlToFocei = .n1qn1ControlToFoceiControl,
     returnFlag = "returnN1qn1"
   )

@@ -179,19 +179,9 @@ lbfgsb3cControl <- function(
     useColor = useColor,
     iterPrintControl = .xtra$iterPrintControl
   )
-  if (checkmate::testIntegerish(scaleType, len = 1, lower = 1, upper = 4, any.missing = FALSE)) {
-    scaleType <- as.integer(scaleType)
-  } else {
-    .scaleTypeIdx <- c("norm" = 1L, "nlmixr2" = 2L, "mult" = 3L, "multAdd" = 4L)
-    scaleType <- setNames(.scaleTypeIdx[match.arg(scaleType)], NULL)
-  }
+  scaleType <- .ctlIdx(scaleType, .scaleTypeIdx, match.arg(scaleType))
 
-  .normTypeIdx <- c("rescale2" = 1L, "rescale" = 2L, "mean" = 3L, "std" = 4L, "len" = 5L, "constant" = 6L)
-  if (checkmate::testIntegerish(normType, len = 1, lower = 1, upper = 6, any.missing = FALSE)) {
-    normType <- as.integer(normType)
-  } else {
-    normType <- setNames(.normTypeIdx[match.arg(normType)], NULL)
-  }
+  normType <- .ctlIdx(normType, .normTypeIdx, match.arg(normType))
   checkmate::assertNumeric(scaleCmax, lower = 0, any.missing = FALSE, len = 1)
   checkmate::assertNumeric(scaleCmin, lower = 0, any.missing = FALSE, len = 1)
   if (!is.null(scaleC)) {
@@ -246,11 +236,7 @@ lbfgsb3cControl <- function(
 }
 
 #' @export
-rxUiDeparse.lbfgsb3cControl <- function(object, var) {
-  .default <- lbfgsb3cControl()
-  .w <- .deparseDifferent(.default, object, "genRxControl")
-  .deparseFinal(.default, object, .w, var)
-}
+rxUiDeparse.lbfgsb3cControl <- function(object, var) .deparseControl(object, var, lbfgsb3cControl())
 
 #' Get the lbfgsb3c family control
 #'
@@ -265,72 +251,18 @@ rxUiDeparse.lbfgsb3cControl <- function(object, var) {
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.lbfgsb3cControl <- function(control, env) {
-  assign("lbfgsb3cControl", control, envir = env)
-}
+nmObjHandleControlObject.lbfgsb3cControl <- function(control, env) assign("lbfgsb3cControl", control, envir = env)
 
 #' @rdname nmObjGetControl
 #' @export
-nmObjGetControl.lbfgsb3c <- function(x, ...) {
-  .env <- x[[1]]
-  if (exists("lbfgsb3cControl", .env, inherits = FALSE)) {
-    .control <- get("lbfgsb3cControl", .env, inherits = FALSE)
-    if (inherits(.control, "lbfgsb3cControl")) return(.control)
-  }
-  if (exists("control", .env, inherits = FALSE)) {
-    .control <- get("control", .env, inherits = FALSE)
-    if (inherits(.control, "lbfgsb3cControl")) return(.control)
-  }
-  stop("cannot find lbfgsb3c related control object", call. = FALSE)
-}
+nmObjGetControl.lbfgsb3c <- function(x, ...) .nmObjGetControlByClass(x, "lbfgsb3cControl")
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.lbfgsb3c <- function(control) {
-  .ctl <- control[[1]]
-  if (is.null(.ctl)) {
-    .ctl <- lbfgsb3cControl()
-  }
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
-    .ctl <- do.call("lbfgsb3cControl", .ctl)
-  }
-  if (!inherits(.ctl, "lbfgsb3cControl")) {
-    .minfo("invalid control for `est=\"lbfgsb3c\"`, using default")
-    .ctl <- lbfgsb3cControl()
-  } else {
-    .ctl <- do.call(lbfgsb3cControl, .ctl)
-  }
-  .ctl
-}
+getValidNlmixrCtl.lbfgsb3c <- function(control) .getValidCtl(control, "lbfgsb3cControl", "lbfgsb3c")
 
 .lbfgsb3cControlToFoceiControl <- function(env, assign = TRUE) {
-  .lbfgsb3cControl <- env$lbfgsb3cControl
-  .ui <- env$ui
-  .foceiControl <- foceiControl(
-    rxControl = env$lbfgsb3cControl$rxControl,
-    maxOuterIterations = 0L,
-    maxInnerIterations = 0L,
-    covMethod = 0L,
-    sumProd = .lbfgsb3cControl$sumProd,
-    optExpression = .lbfgsb3cControl$optExpression,
-    literalFix = .lbfgsb3cControl$literalFix,
-    literalFixRes = .lbfgsb3cControl$literalFixRes,
-    scaleTo = 0,
-    calcTables = .lbfgsb3cControl$calcTables,
-    addProp = .lbfgsb3cControl$addProp,
-    #skipCov=.ui$foceiSkipCov,
-    interaction = 0L,
-    compress = .lbfgsb3cControl$compress,
-    ci = .lbfgsb3cControl$ci,
-    sigdigTable = .lbfgsb3cControl$sigdigTable,
-    indTolRelax = .lbfgsb3cControl$indTolRelax,
-    eventSens = .lbfgsb3cControl$eventSens,
-    sensMethod = .lbfgsb3cControl$sensMethod
-  )
-  if (assign) {
-    env$control <- .foceiControl
-  }
-  .foceiControl
+  .nlmFamilyControlToFoceiControl(env, "lbfgsb3cControl", assign)
 }
 
 .lbfgsb3cFitModel <- function(ui, dataSav) {
@@ -373,39 +305,13 @@ getValidNlmixrCtl.lbfgsb3c <- function(control) {
   .ret <- eval(.ret)
   .nlmFinalizeList(.env, .ret, par = "par", printLine = TRUE, hessianCov = TRUE)
 }
-#' Get the full theta for nlm methods
-#'
-#' @param optim enhanced nlm return
-#' @param ui ui object
-#' @return named theta matrix
-#' @author Matthew L. Fidler
-#' @noRd
-.lbfgsb3cGetTheta <- function(nlm, ui) {
-  .iniDf <- ui$iniDf
-  setNames(
-    vapply(
-      seq_along(.iniDf$name),
-      function(i) {
-        if (.iniDf$fix[i]) {
-          .iniDf$est[i]
-        } else {
-          nlm$par[.iniDf$name[i]]
-        }
-      },
-      double(1),
-      USE.NAMES = FALSE
-    ),
-    .iniDf$name
-  )
-}
-
 .lbfgsb3cFamilyFit <- function(env, ...) {
   .nlmFamilyFitGeneric(
     env,
     "lbfgsb3c",
     .lbfgsb3cFitModel,
-    .lbfgsb3cGetTheta,
-    objective = function(.fit) 2 * as.numeric(.fit$value),
+    "par",
+    objective = "value",
     controlToFocei = .lbfgsb3cControlToFoceiControl,
     returnFlag = "returnLbfgsb3c"
   )
