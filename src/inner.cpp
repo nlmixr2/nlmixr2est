@@ -2572,6 +2572,24 @@ static void getPopR(int id, arma::vec &rPop) {
   }
 }
 
+static int npIndSolveSize(rx_solving_options* op, rx_solving_options_ind* ind);  // fwd
+
+// getPopR() for likInner0().  getPopR() solves at eta = 0 into ind->solve, which the
+// inner solve that follows replaces -- except under freezeOde, where likInner0() does not
+// solve and reads the states the caller pinned there (vae's two-stage residual step):
+// keep those across the eta = 0 solve.
+static void getPopRKeepFrozen(int id, rx_solving_options_ind *ind, rx_solving_options *op,
+                              arma::vec &rPop) {
+  if (!op_focei.freezeOde) {
+    getPopR(id, rPop);
+    return;
+  }
+  double *sv = getIndSolve(ind);
+  std::vector<double> frozen(sv, sv + npIndSolveSize(op, ind));
+  getPopR(id, rPop);
+  std::copy(frozen.begin(), frozen.end(), getIndSolve(ind));
+}
+
 // One external per-observation contribution for likInner0: build the cotangents,
 // cycle the registry, and fold the result into the subject's llik / llikObs / lp.
 // `a` is the base d(f)/d(eta) matrix and `llikObsK` points at this record's
@@ -2740,13 +2758,13 @@ double likInner0(double *eta, int id) {
       if (id >= 0 && id < (int)_foceRPopGen.size()) {
         if (_foceRPopGen[id] != _foceRPopCurGen ||
             !foceRPopTheta(ind, _foceRPopTheta[id], false)) {
-          getPopR(id, _foceRPopCache[id]);
+          getPopRKeepFrozen(id, ind, op, _foceRPopCache[id]);
           _foceRPopGen[id] = _foceRPopCurGen;
           foceRPopTheta(ind, _foceRPopTheta[id], true);
         }
         rPopVec = _foceRPopCache[id];
       } else {
-        getPopR(id, rPopVec); // cache not sized (defensive); recompute directly
+        getPopRKeepFrozen(id, ind, op, rPopVec); // cache not sized (defensive); recompute directly
       }
     }
     // Reset the sticky-recalc counter only if this subject hasn't exhausted its
@@ -18447,7 +18465,6 @@ double npMixCondLik(double *eta, int base, int nsub, int nMix);   // fwd (define
 // optimizer; consumed by npResidELS/npMixCondLik when op_focei.freezeOde is set.
 static std::vector<std::vector<double>> gNpResidCache;
 static int gNpResidNmix = 1;
-static int npIndSolveSize(rx_solving_options* op, rx_solving_options_ind* ind);  // fwd
 
 void npResidFreezeBuild(const arma::mat& postEta) {
   rx = getRxSolve_();

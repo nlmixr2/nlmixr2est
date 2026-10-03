@@ -200,6 +200,14 @@
   objective at its own estimates, and a full fit stopped at an objective 1.0
   above the one it now reaches.
 
+- `est = "vae"` with `likelihood = "foce"` and the default
+  `residOptimize = "twoStage"` now estimates the residual parameters at the
+  ETAs it fixed for them.  That stage pins the ODE states and recomputes only
+  the residual variance, but the `eta = 0` solve FOCE takes its variance from
+  was written over the pinned states, so the population prediction stood in
+  for every individual one: a proportional error came out 0.377 where FOCE+
+  gives 0.193 (now 0.182).
+
 - Values the FOCEi family reads as those of the current parameters are now
   taken there, not at the last finite-difference leg that ran before them.
   The gradient of a mixture proportion (gradient-based outer optimizers) and
