@@ -312,6 +312,10 @@
   happening "during the optimization".  A zero in the covariance step's
   pooled gradient (the S matrix's fallback score) no longer reports "zero
   gradient replaced with small number": nothing is replaced there.
+- The `foceiControl(covSolveTol=)` documentation now says what the default
+  does: with `NULL` the finite-difference covariance solves run at the fit's
+  own ODE tolerances, and only the analytic covariance derives a tighter one
+  from `sigdig`.  It said both did.
 
 ### Covariance
 

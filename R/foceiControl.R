@@ -149,8 +149,11 @@
 #'
 #' @param covSolveTol absolute/relative ODE tolerance for the covariance solves --
 #'     the augmented-sensitivity solves behind \code{covMethod="analytic"} and the
-#'     perturbed solves behind the finite-difference methods.  \code{NULL} (default)
-#'     derives a tight tolerance from \code{sigdig}; supply a number to override it.
+#'     perturbed solves behind the finite-difference methods.  With \code{NULL}
+#'     (default) the finite-difference solves run at the fit's own ODE tolerances,
+#'     and only the analytic solves use a tolerance derived from \code{sigdig}
+#'     (\code{10^-(sigdig + 6)}, kept within 1e-14 to 1e-8; 1e-9 at the default
+#'     \code{sigdig = 3}).  A number sets the tolerance of both.
 #'
 #' @param covFull shape of \code{fit$cov}.  \code{TRUE} (default) installs the
 #'     full theta + residual sigma + Omega covariance (assembled analytically for
