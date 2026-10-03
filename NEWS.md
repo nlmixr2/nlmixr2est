@@ -119,6 +119,19 @@
 - Added a native analytical outer Hessian for fast Gaussian FOCE/FOCE+/FOCEI/AGQ fits, using
   the existing sensitivity pool. Fast `nlminb` fits used it automatically.
 
+- The FOCEi-family outer optimizer now scales each parameter by its own
+  scaling constant when a fixed theta (with `literalFix = FALSE`) or a
+  regression-updated theta (`mfocei`, `ifocei` and the other mu-referenced
+  variants) comes before it.  Each later parameter took the constant of
+  another, `foceiControl(scaleCband=)` also guarded some omega parameters, and
+  `$scaleInfo` listed the constants out of place; it now shows `NA` for the
+  parameters the optimizer does not move.
+
+- The values of a `foceiControl(scaleC=)` vector longer than the parameters
+  are now ignored past them (after the existing warning).  They were written
+  over the adaptive quadrature nodes, changing an `agq` objective, and a long
+  enough vector past the end of the buffer, crashing the fit.
+
 ### Covariance and finite differences
 
 - The Gill (1983) step-size search no longer leaves a parameter at its last

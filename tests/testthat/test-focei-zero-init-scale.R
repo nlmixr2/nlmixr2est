@@ -5,7 +5,7 @@
 # initialized at 0 this is 1/0 = Inf, which clamps to scaleCmax and makes the
 # parameter effectively unoptimizable -- a tiny step in the scaled space becomes
 # an enormous step in the parameter, the line search rejects it, and the value
-# stays frozen at ~0.  getScaleC() now falls back to unit scaling when initPar
+# stays frozen at ~0.  scaleGetScaleC() now falls back to unit scaling when initPar
 # is 0 so the parameter is estimated normally.
 #
 # Pinned to innerOpt="n1qn1": under innerOpt="trust" this specific fixture's
