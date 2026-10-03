@@ -188,8 +188,7 @@
   standard deviation and length over every FOCEi parameter; they left out the
   last one (the last omega parameter), as the nlm family did before #995.
   FOCEi now uses the nlm family's normalization, so initial estimates that are
-  all equal switch to `"len"` there too, and all-zero ones to no
-  normalization, instead of a scale of about `1e-8`.
+  all zero run without normalization instead of with a scale of about `1e-8`.
 
 - `$scaleInfo` of a FOCEi-family fit lists each parameter's own first-gradient
   step search ("Initial Gradient" and the forward and central steps) when a
