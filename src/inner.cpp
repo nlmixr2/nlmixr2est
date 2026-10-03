@@ -12867,11 +12867,30 @@ void impReMap() {
   innerOpt();
 }
 
+// impSetOmega()'s floor changes the reported omega (and the fit's ini()), so
+// say which variances it replaced; `idx` holds 0-based eta positions.
+void impWarnOmegaFloor(Environment e, const std::vector<int>& idx) {
+  if (idx.empty()) return;
+  CharacterVector etaNames;
+  if (e.exists("etaNames")) etaNames = as<CharacterVector>(e["etaNames"]);
+  std::string nm;
+  for (size_t k = 0; k < idx.size(); ++k) {
+    if (k > 0) nm += ", ";
+    if (idx[k] >= 0 && idx[k] < etaNames.size()) {
+      nm += as<std::string>(etaNames[idx[k]]);
+    } else {
+      nm += "eta" + std::to_string(idx[k] + 1);
+    }
+  }
+  Rcpp::warning("omega variance below 1e-6 reported as 1e-6: " + nm);
+}
+
 // Install a new Omega: rebuild the rxSymInvChol environment (reusing the rxode2
 // matrix->parameterization machinery), refresh the cached inverse/Cholesky/log-
 // determinant, and copy the new Omega thetas into fullTheta so the next MAP and
-// the output see them.
-void impSetOmega(const arma::mat& Omega, const std::string& diagXform) {
+// the output see them.  Returns the etas (0-based) whose variance it raised to
+// the floor.
+std::vector<int> impSetOmega(const arma::mat& Omega, const std::string& diagXform) {
   foceiOmegaFastReset(); // the _rxInv env is replaced; the map may change
   foceiOmegaTailMemoClear();
   Environment rxode2ns = Environment::namespace_env("rxode2");
@@ -12882,7 +12901,13 @@ void impSetOmega(const arma::mat& Omega, const std::string& diagXform) {
   // rxSymInvCholCreate error "initial 'omega' matrix inverse is non-positive
   // definite".  Symmetrize and floor the diagonal so the inverse is well-defined.
   arma::mat Om = 0.5 * (Omega + Omega.t());
-  for (unsigned int d = 0; d < Om.n_rows; ++d) if (Om(d, d) < 1e-6) Om(d, d) = 1e-6;
+  std::vector<int> floored;
+  for (unsigned int d = 0; d < Om.n_rows; ++d) {
+    if (Om(d, d) < 1e-6) {
+      Om(d, d) = 1e-6;
+      floored.push_back((int)d);
+    }
+  }
   _rxInv = as<List>(f(Rcpp::Named("mat") = wrap(Om),
                       Rcpp::Named("diag.xform") = diagXform));
   if (op_focei.fo == 1) {
@@ -12896,6 +12921,7 @@ void impSetOmega(const arma::mat& Omega, const std::string& diagXform) {
   std::copy(omegaTheta.begin(),
             omegaTheta.begin() + op_focei.omegan,
             &op_focei.fullTheta[0] + op_focei.ntheta);
+  return floored;
 }
 
 // Sync the optimizer's reference point (initPar) to the current natural

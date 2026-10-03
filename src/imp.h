@@ -63,7 +63,9 @@ bool impIsImp();                                   // est="imp": no MAP search, 
 double impUpdateMuThetas();                        // mu-referenced covariate regression (updateMuGroups)
 void impMuInterceptStep();                         // simple mu intercept EM update (no covariates)
 void impReMap();                                   // re-optimize all conditional modes (innerOpt)
-void impSetOmega(const arma::mat& Omega, const std::string& diagXform); // install new Omega
+// install new Omega; returns the etas whose variance it floored at 1e-6
+std::vector<int> impSetOmega(const arma::mat& Omega, const std::string& diagXform);
+void impWarnOmegaFloor(Rcpp::Environment e, const std::vector<int>& idx); // warn, naming them
 void impSyncInitParToFullTheta();                  // sync optimizer reference to converged fullTheta
 void impGetEstPar(arma::vec& par);                 // current estimated free-parameter vector (EM convergence)
 

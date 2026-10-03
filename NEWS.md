@@ -206,6 +206,14 @@
   inter-occasion variability (`'list' object cannot be coerced to type
   'double'`): the occasion etas get rows of their own.
 
+- The importance-sampling (`imp`, `impmap`, `qrpem`) and nonparametric
+  (`npag`, `npb`) fits now warn when an omega variance below 1e-6 is raised
+  to 1e-6, the floor their omega inverse needs: `omega variance below 1e-6
+  reported as 1e-6: eta.ka`.  The floored value is what `$omega` and the
+  fit's `ini()` report, so a support dimension that collapsed, or a variance
+  fixed below 1e-6, changed with no message (`npagOmega` keeps the support's
+  own covariance).
+
 ### Covariance and finite differences
 
 - The Gill (1983) step-size search no longer leaves a parameter at its last

@@ -1573,6 +1573,7 @@ void impOuter(Environment e) {
   arma::mat Om0;
   impGetOmega(Om0);
   arma::mat omMask = arma::conv_to<arma::mat>::from(Om0 != 0.0);
+  std::vector<int> omFloored; // etas the installed omega has at the 1e-6 floor
   // Eta indices whose Omega diagonal is fix()ed: their rows/columns are held at
   // the starting Omega through every EM update.
   std::vector<int> omFixedEta;
@@ -2094,7 +2095,7 @@ void impOuter(Environment e) {
     // impSetOmega rebuilds from it -- omegaInv, cholOmegaInv, logDetOmegaInv5,
     // the Omega thetas in fullTheta) stays at its starting value.  The thetas
     // still move; the whole M-step above ran.
-    if (!(burnIter && burnFreezeOmega)) impSetOmega(Omega, diagXform);
+    if (!(burnIter && burnFreezeOmega)) omFloored = impSetOmega(Omega, diagXform);
 
     // Record the current estimates for the parameter-stability half of the test.
     arma::vec parNow; impGetEstPar(parNow);
@@ -2324,6 +2325,8 @@ void impOuter(Environment e) {
   // (re-adjusting it as if it were an unadjusted -2LL), which would publish the
   // initial-parameter objective instead of the converged FOCEi evaluation.
   if (e.exists("objective")) e.remove("objective");
+  // the omega the last M-step installed is the one reported
+  impWarnOmegaFloor(e, omFloored);
   impSyncInitParToFullTheta();
   impMapPass(e);
 
