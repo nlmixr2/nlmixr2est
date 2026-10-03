@@ -104,8 +104,7 @@
   `dpois()` and the like, with the default `fast=FALSE`) are now those at the
   reported ETAs.  They came from the last evaluation of the finite-difference
   inner Hessian, at an ETA moved by a few steps (off by up to 0.93 per
-  observation on `theo_sd`).  A FOCEi covariance step still leaves them at its
-  own last evaluation.
+  observation on `theo_sd`).
   
 - Added a native analytical outer Hessian for fast Gaussian FOCE/FOCE+/FOCEI/AGQ fits, using
   the existing sensitivity pool. Fast `nlminb` fits used it automatically.
