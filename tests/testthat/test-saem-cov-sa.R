@@ -463,6 +463,56 @@ nmTest({
     expect_equal(fFim$covMethod, "linFim")
   })
 
+  test_that("fim/sa/linFim Omega rows belong to the eta of their phi1 column", {
+    # The kernel's phi1 columns follow the thetas (ka, cl, v) whatever order the
+    # etas are declared in, so declaring them v, cl, ka fits the same model, bit
+    # for bit.  The Omega rows were named in declaration order: om.eta.v got
+    # eta.ka's log-variance information (and linFim's dV/dOmega_ka).
+    refM <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- 0.7
+            eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+              linCmt() ~ add(add.sd) })
+    }
+    swapM <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- 0.7
+            eta.v ~ 0.1; eta.cl ~ 0.3; eta.ka ~ 0.6 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+              linCmt() ~ add(add.sd) })
+    }
+    # A non-mu-referenced eta's pseudo-theta is the last phi1 column (and tcl,
+    # with no eta of its own, a phi0 theta), so declaring eta.v before eta.cl
+    # matches the kernel's order.  fim also used to refuse this model: its row
+    # layout check did not count the pseudo-theta's phi1 column.
+    nonMuM <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- 0.7
+            eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl) * (1 + eta.cl); v <- exp(tv + eta.v)
+              linCmt() ~ add(add.sd) })
+    }
+    nonMuRefM <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- 0.7
+            eta.ka ~ 0.6; eta.v ~ 0.1; eta.cl ~ 0.3 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl) * (1 + eta.cl); v <- exp(tv + eta.v)
+              linCmt() ~ add(add.sd) })
+    }
+    .eta <- c("eta.ka", "eta.cl", "eta.v")
+    for (.m in list(list(ref = refM, alt = swapM), list(ref = nonMuRefM, alt = nonMuM))) {
+      for (.cm in c("fim", "linFim")) {
+        ctl <- saemControl(nBurn = 150, nEm = 200, print = 0, seed = 1L, covMethod = .cm, calcTables = FALSE)
+        fR <- .nlmixr(.m$ref, theo_sd, est = "saem", control = ctl)
+        fS <- .nlmixr(.m$alt, theo_sd, est = "saem", control = ctl)
+        expect_identical(fR$covMethod, .cm)
+        expect_identical(fS$covMethod, .cm)
+        expect_equal(fS$omega[.eta, .eta], fR$omega[.eta, .eta])
+        .nm <- rownames(fR$cov)
+        expect_true(all(paste0("om.", .eta) %in% .nm))
+        expect_setequal(rownames(fS$cov), .nm)
+        expect_equal(fS$cov[.nm, .nm], fR$cov, info = .cm)
+      }
+    }
+  })
+
   test_that("covMethod='r,s' installs the inverse of Ha's theta block, by kernel row (#906)", {
     # saemControl(covMethod = "r,s"/"r"/"s") inverts the theta block of the
     # estimation-phase information Ha, laid out [phi1 mu][phi0 mu] with a row

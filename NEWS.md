@@ -294,6 +294,16 @@
   positive definite on its identified rows) before it is installed, and an
   integer `covMethod` is read as a `foceiControl()` slot, so `covMethod = 0L`
   computes no covariance (it inverted `Ha`).
+- The Omega rows of the SAEM covariances (`"sa"`, `"fim"`, `"linFim"`, and the
+  linearized variance block spliced into `"sa"`/`"fim"`) now belong to the
+  random effects they are named after.  They were named in the order the etas
+  are declared in `ini()`, but SAEM orders its variance parameters by the
+  thetas the etas belong to, so declaring `eta.v` before `eta.ka` reported the
+  standard error of the variance of `eta.ka` as that of `eta.v`.  A model with
+  a random effect that is not mu-referenced (`cl <- exp(tcl) * (1 + eta.cl)`)
+  is such a model whatever the declaration order, and with it a theta without a
+  random effect made `"sa"`/`"fim"` fall back to `"linFim"`; they are now
+  computed.
 - The printed parameter table of a full-Bayes `fbvi`/`emvi` fit now shows the
   standard errors of the variational covariance (only `$parFixedDf` had
   them), its confidence interval uses the fit's `ci`, and the condition

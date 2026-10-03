@@ -881,9 +881,11 @@
 #'
 #' `src/saem.cpp` orders the leading block of `Ha`/`HaSa` `[phi1 mu][phi0 mu]`
 #' (mu-referenced thetas first, then thetas with no eta), not
-#' `saemParamsToEstimate` order, and keeps a row for every `fix()`ed theta.
-#' The order comes from `saem.cfg$i1`/`i0`.  Without them (an old cached fit
-#' that predates saving them, or a mu-referenced covariate that interleaves
+#' `saemParamsToEstimate` order, and keeps a row for every `fix()`ed theta and
+#' for the (fixed) pseudo-theta a non-mu-referenced eta gets at the end of
+#' `saemParamsToEstimate`, which is a phi1 column like any other.  The order
+#' comes from `saem.cfg$i1`/`i0`.  Without them (an old cached fit that
+#' predates saving them, or a mu-referenced covariate that interleaves
 #' coefficient names with the plain thetas) the rows follow
 #' `saemParamsToEstimate` only when there is no phi0 theta; otherwise there is
 #' no safe way to tell which rows are phi0, and reporting from model order is
@@ -900,7 +902,7 @@
   .i1 <- .saemCfg$i1
   .i0 <- .saemCfg$i0 # 0-based model-order phi indices
   .nStruct <- length(.i1) + length(.i0)
-  if (!is.null(.i1) && .nStruct > 0L && .nStruct == (length(.pars) - length(.ui$nonMuEtas))) {
+  if (!is.null(.i1) && .nStruct > 0L && .nStruct == length(.pars)) {
     .ord <- c(.i1, .i0) + 1L
     return(list(tn = .pars[.ord], fx = .fixed[.ord], phi0 = .pars[.i0 + 1L]))
   }
@@ -908,6 +910,24 @@
     return(NULL)
   }
   list(tn = .pars, fx = .fixed, phi0 = character(0))
+}
+#' The `Gamma2_phi1` column of each eta
+#'
+#' The kernel's phi1 columns follow the model-order parameters that carry an
+#' eta, which need not be the order the etas were declared in;
+#' `ui$saemOmegaTrans` maps each eta to its column, as `.getSaemOmega()` uses it
+#' to report Omega.
+#' @param ui rxode2 ui
+#' @param nphi1 number of phi1 columns (`ncol(Gamma2_phi1)`)
+#' @return integer column of each eta, in eta order, or `NULL` when the map is
+#'   not one column per eta
+#' @noRd
+.saemEtaPhi1Col <- function(ui, nphi1) {
+  .t <- tryCatch(as.integer(ui$saemOmegaTrans), error = function(e) NULL)
+  if (length(.t) == 0L || length(.t) != nphi1 || anyNA(.t) || !identical(sort(.t), seq_len(nphi1))) {
+    return(NULL)
+  }
+  .t
 }
 #' Invert a SAEM Fisher Information Matrix into a reported-scale covariance
 #'
@@ -1002,12 +1022,15 @@
   .idx <- match(.ini, .tn)
   .nm <- .ini
   .jac <- rep(1, length(.ini))
-  # diagonal Omega block: log-variance -> variance, d(var)/d(log var) = var
+  # diagonal Omega block: log-variance -> variance, d(var)/d(log var) = var.  The
+  # log-variance rows follow the phi1 columns, not the order the etas were declared
+  # in, so each eta takes the row of its own column.
   .omVar <- tryCatch(diag(as.matrix(.saem$Gamma2_phi1)), error = function(e) NULL)
-  if (.nEta > 0L && !is.null(.omVar) && length(.omVar) >= .nEta && .np >= .nth + .nEta) {
-    .idx <- c(.idx, .nth + seq_len(.nEta))
+  .col <- .saemEtaPhi1Col(.ui, length(.omVar))
+  if (.nEta > 0L && length(.col) == .nEta && .np >= .nth + length(.omVar)) {
+    .idx <- c(.idx, .nth + .col)
     .nm <- c(.nm, paste0("om.", .etaN))
-    .jac <- c(.jac, .omVar[seq_len(.nEta)])
+    .jac <- c(.jac, .omVar[.col])
   }
   # per-endpoint additive residual: src/saem.cpp lays out one log-sigma2 slot per
   # endpoint (in .predDf$cond order, matching resMat's rows) as the LAST nendpnt
