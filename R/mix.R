@@ -872,6 +872,7 @@
   .nm <- c(rownames(.cov), .mp)
   dimnames(.out) <- list(.nm, .nm)
   assign("cov", .out, envir = env)
+  .nlmixr2CovConditionUpdate(env)
   .updateParFixedRefreshSeFromCov(env, .out, onlyMissing = TRUE)
   .mixWarnBoundary(.pi)
   invisible(NULL)

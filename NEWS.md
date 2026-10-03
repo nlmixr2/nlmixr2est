@@ -355,7 +355,8 @@
   describe its covariance with the mixture proportions on the probability
   scale, the one installed as `$cov`; they were taken before those rows were
   rotated from the mlogit scale (23088 instead of 1332 on a two-component
-  model).
+  model), or, for `saem`, before the proportions' block was appended (86
+  instead of 544 on a split-eta model).
 - When a covariance replaces another after the parameter table is built (the
   full covariance with `covFull = TRUE`, `setCov()`, `foceiCovAnalytic()`,
   the deferred and post-fit recomputes), the confidence interval of a

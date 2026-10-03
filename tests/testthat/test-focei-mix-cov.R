@@ -443,6 +443,17 @@ nmTest({
     expect_equal(unname(.e$cov[1:2, 3]), c(0, 0))
   })
 
+  test_that("the appended block refreshes the condition numbers (issue 1140)", {
+    .e <- .mkMixEnv(c(rep(1, 45), rep(0, 55)), 0.45, 100L)
+    .e$conditionNumberCov <- 1
+    .mixCovAppendBlock(.e)
+    expect_equal(dim(.e$cov), c(3L, 3L))
+    .ev <- abs(eigen(.e$cov, symmetric = TRUE, only.values = TRUE)$values)
+    expect_equal(.e$conditionNumberCov, max(.ev) / min(.ev))
+    .evr <- abs(eigen(stats::cov2cor(.e$cov), symmetric = TRUE, only.values = TRUE)$values)
+    expect_equal(.e$conditionNumberCor, max(.evr) / min(.evr))
+  })
+
   test_that("the appended block is refused when the fit is not at the EM fixed point", {
     ## p != mean_i r_i: an information matrix reports the precision of an MLE,
     ## and this is not one.  saem lands here (nlmixr2est#1058), and reporting a
