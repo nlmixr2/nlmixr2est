@@ -563,6 +563,8 @@
     }
     assign("covList", .cl, envir = env)
   }
+  # the condition numbers were taken from the mlogit-scale matrix
+  .nlmixr2CovConditionUpdate(env)
   .mixRefreshSeFromCov(env, .mp, .mix$idx)
   .mixWarnBoundary(.mix$pi)
   invisible(NULL)

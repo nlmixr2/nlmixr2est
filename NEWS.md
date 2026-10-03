@@ -336,6 +336,11 @@
   the default) now holds nlme's correlations of the fixed effects
   (`vcov(fit$nlme)`); it was diagonal.  It is scaled to the standard errors
   `summary(fit$nlme)` prints, so those are unchanged.
+- The condition numbers, `$eigenCov` and `$fullCor` of a mixture fit now
+  describe its covariance with the mixture proportions on the probability
+  scale, the one installed as `$cov`; they were taken before those rows were
+  rotated from the mlogit scale (23088 instead of 1332 on a two-component
+  model).
 
 
 # nlmixr2est 7.1.0

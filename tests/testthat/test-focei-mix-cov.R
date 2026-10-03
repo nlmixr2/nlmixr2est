@@ -317,6 +317,31 @@ nmTest({
     expect_equal(unname(.se1), unname(.se0), tolerance = 1e-10)
   })
 
+  test_that("a mixture fit's condition numbers describe its probability-scale covariance (issue 1140)", {
+    .dat <- .mixCovData()
+    .f <- suppressWarnings(nlmixr2(
+      .mixCovMod,
+      .dat$data,
+      "focei",
+      foceiControl(
+        print = 0,
+        outerOpt = "lbfgsb3c",
+        maxOuterIterations = 200L,
+        maxInnerIterations = 100L,
+        covMethod = "r,s",
+        calcTables = FALSE
+      )
+    ))
+    .cov <- .f$cov
+    expect_true("p1" %in% rownames(.cov))
+    .ev <- abs(eigen(.cov, symmetric = TRUE, only.values = TRUE)$values)
+    .evr <- abs(eigen(stats::cov2cor(.cov), symmetric = TRUE, only.values = TRUE)$values)
+    expect_equal(.f$env$conditionNumberCov, max(.ev) / min(.ev))
+    expect_equal(.f$env$conditionNumberCor, max(.evr) / min(.evr))
+    expect_equal(sort(abs(.f$env$eigenCov)), sort(.ev))
+    expect_equal(.f$objDf[["Condition#(Cov)"]][1], max(.ev) / min(.ev))
+  })
+
   test_that("the S matrix is no longer singular for a mixture model", {
     .dat <- .mixCovData()
     .f <- suppressWarnings(nlmixr2(
