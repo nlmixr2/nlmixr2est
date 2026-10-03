@@ -92,6 +92,10 @@ foceiGradPooledSetupLoad_ <- function(st) {
     .Call(`_nlmixr2est_foceiGradPooledSetupLoad_`, st)
 }
 
+.foceiOuterRecord <- function(record) {
+    .Call(`_nlmixr2est_foceiOuterRecord_`, record)
+}
+
 foceiOuterF <- function(theta) {
     .Call(`_nlmixr2est_foceiOuterF`, theta)
 }

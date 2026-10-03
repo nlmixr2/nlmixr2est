@@ -470,6 +470,10 @@ struct focei_options {
   int nF;
   int nF2;
   int nG;
+  // Whether foceiOfvOptim()/outerGradNumOptim() record (parHistData) and print the
+  // evaluation; off while a curvature supplier probes points the outer optimizer did not
+  // ask for (.foceiOuterRecord).
+  bool recordOuter = true;
   int derivMethod;
   int covDerivMethod;
   int covMethod;
@@ -9873,7 +9877,9 @@ void foceiOuterFinal(double *x, Environment e){
 // Outer l-BFGS-b from R
 extern "C" double foceiOfvOptim(int n, double *x, void *ex){
   double ret = foceiOfv0(x);
-  niter.push_back(op_focei.nF2+(++op_focei.nF));
+  ++op_focei.nF;
+  if (!op_focei.recordOuter) return ret;
+  niter.push_back(op_focei.nF2+op_focei.nF);
   // The mu-family records/prints nparsPrint columns: optimizer values
   // interleaved with the current regression-updated mu thetas (raw estimation
   // scale, fresh from the foceiOfv0 inner/updateMuGroups cycle above);
@@ -9956,6 +9962,16 @@ extern "C" double foceiOfvOptim(int n, double *x, void *ex){
   return ret;
 }
 
+// Turn recording of the outer evaluations (parHistData, the iteration print) on or off;
+// returns the previous setting.  The evaluations still count.  .trustOuterFd switches it
+// off for its finite-difference probes, which the outer optimizer did not ask for.
+//[[Rcpp::export(".foceiOuterRecord")]]
+bool foceiOuterRecord_(bool record) {
+  bool was = op_focei.recordOuter;
+  op_focei.recordOuter = record;
+  return was;
+}
+
 //[[Rcpp::export]]
 double foceiOuterF(NumericVector &theta){
   int n = theta.size();
@@ -9967,39 +9983,44 @@ extern "C" void outerGradNumOptim(int n, double *par, double *gr, void *ex){
   numericGrad(par, gr);
   op_focei.nG++;
   int finalize=0, i = 0;
-  niterGrad.push_back(niter.back());
+  int gType;
   if (op_focei.curAnalytic){
     // Most-degraded wins: Chartrand implies the FD fallback ran, which implies the
     // analytic solve did not cover every subject.
-    if (op_focei.curAnalyticChartrand) gradType.push_back(12);
-    else if (op_focei.curAnalyticFd) gradType.push_back(11);
-    else if (op_focei.curAnalyticRelax.load(std::memory_order_relaxed)) gradType.push_back(10);
-    else gradType.push_back(9);
+    if (op_focei.curAnalyticChartrand) gType = 12;
+    else if (op_focei.curAnalyticFd) gType = 11;
+    else if (op_focei.curAnalyticRelax.load(std::memory_order_relaxed)) gType = 10;
+    else gType = 9;
   } else if (op_focei.derivMethod == 0){
     if (op_focei.curGill == 1){
-      gradType.push_back(1);
+      gType = 1;
     } else if (op_focei.curGill == 2){
-      gradType.push_back(5);
+      gType = 5;
     } else if (op_focei.mixDeriv){
-      gradType.push_back(2);
+      gType = 2;
     } else{
-      gradType.push_back(3);
+      gType = 3;
     }
   } else {
-    gradType.push_back(4);
+    gType = 4;
   }
   // gradType convention: 1=Gill, 2=Mixed, 3=Forward, 4=Central, 5=Shi21,
   // 8=nlm forward sensitivity, 9=analytic outer gradient (fast=TRUE).
-  double *grp = gr;
-  if (muPrintActive()) {
-    _printGr.resize(op_focei.nparsPrint);
-    for (unsigned int p = 0; p < op_focei.nparsPrint; p++) {
-      int ko = _printOptIdx[p];
-      _printGr[p] = (ko >= 0) ? gr[ko] : R_NaN;
+  const bool record = op_focei.recordOuter;
+  if (record) {
+    niterGrad.push_back(niter.back());
+    gradType.push_back(gType);
+    double *grp = gr;
+    if (muPrintActive()) {
+      _printGr.resize(op_focei.nparsPrint);
+      for (unsigned int p = 0; p < op_focei.nparsPrint; p++) {
+        int ko = _printOptIdx[p];
+        _printGr[p] = (ko >= 0) ? gr[ko] : R_NaN;
+      }
+      grp = _printGr.data();
     }
-    grp = _printGr.data();
+    scalePrintGrad(&op_focei.scale, grp, gType);
   }
-  scalePrintGrad(&op_focei.scale, grp, gradType.back());
   for (i = 0; i < n; i++){
     if (gr[i] == 0){
       if (op_focei.nF+op_focei.nF2 == 1) {
@@ -10029,6 +10050,7 @@ extern "C" void outerGradNumOptim(int n, double *par, double *gr, void *ex){
   }
   // Record after the zero-gradient fix-ups so the history holds the values the
   // optimizer sees; mu columns record NaN (regression-updated, no gradient).
+  if (!record) return;
   vGrad.push_back(NA_REAL); // Gradient doesn't record objf
   if (muPrintActive()) {
     for (unsigned int p = 0; p < op_focei.nparsPrint; p++) {
@@ -10116,6 +10138,7 @@ void foceiCustomFun(Environment e){
   Function g = as<Function>(nlmixr2["foceiOuterG"]);
   List ctl = clone(as<List>(e["control"]));
   ctl["hessian"] = nlmixr2["foceiOuterH"];
+  ctl["outerRecord"] = nlmixr2[".foceiOuterRecord"];
   Function opt = as<Function>(ctl["outerOptFun"]);
   //.bobyqa <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...)
   List ret = as<List>(opt(_["par"]=x, _["fn"]=f, _["gr"]=g, _["lower"]=lower,
@@ -10144,6 +10167,7 @@ Environment foceiOuter(Environment e){
   } activeScope;
   op_focei.nF=0;
   op_focei.nG=0;
+  op_focei.recordOuter = true;
   op_focei.curAnalytic=0;
   op_focei.nAnalyticGrad=0;
   op_focei.nAnalyticGradDirect=0;

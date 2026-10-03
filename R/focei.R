@@ -322,14 +322,24 @@ is.latex <- function() {
 #' stale conditional mode.  Measured on `theo_sd`, the two differ by ~9e-4 on
 #' gradient components of order 200 -- which a 1e-3 difference step turns into
 #' an O(1) error in the Hessian entries.
+#'
+#' The probes are not points the optimizer asked for, so `record(FALSE)` keeps
+#' them (and the re-settle) out of the parameter history and the iteration
+#' print while they run.
 #' @param fn,gr outer objective and gradient
 #' @param relStep relative difference step
 #' @param lower,upper box the outer problem optimizes in
+#' @param record `.foceiOuterRecord()`, or `NULL` when nothing records `fn` and
+#'   `gr` calls
 #' @return function(x, gradient) returning a symmetric Hessian, or `NULL`
 #' @noRd
-.trustOuterFd <- function(fn, gr, relStep, lower, upper) {
+.trustOuterFd <- function(fn, gr, relStep, lower, upper, record = NULL) {
   .n <- length(lower)
   function(x, g0) {
+    if (is.function(record)) {
+      .was <- record(FALSE)
+      on.exit(record(.was), add = TRUE)
+    }
     .h <- matrix(0.0, .n, .n)
     for (.j in seq_len(.n)) {
       .step <- relStep * max(abs(x[.j]), 1.0)
@@ -497,7 +507,8 @@ is.latex <- function() {
 #' The BFGS update runs on every call whatever source serves it, so its secant
 #' pairs stay consecutive and the fallback starts from a matrix that already
 #' knows the problem rather than the identity.
-#' @param control the foceiControl list
+#' @param control the foceiControl list, with the `hessian` and `outerRecord`
+#'   entries the C++ driver adds
 #' @param fn,gr outer objective and gradient
 #' @param relStep relative step, for both the analytic entry and the difference
 #' @param lower,upper box the outer problem optimizes in
@@ -505,7 +516,7 @@ is.latex <- function() {
 #'   current `method` and the BFGS state
 #' @noRd
 .trustOuterCurvature <- function(control, fn, gr, relStep, lower, upper) {
-  .fd <- .trustOuterFd(fn, gr, relStep, lower, upper)
+  .fd <- .trustOuterFd(fn, gr, relStep, lower, upper, control$outerRecord)
   .state <- new.env(parent = emptyenv())
   .state$method <- .trustOuterMethod(control)
   .state$b <- diag(length(lower))

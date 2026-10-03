@@ -212,6 +212,13 @@
   gradient, which made S 100 to 1000 times too large on `theo_sd`; it now
   agrees with the central-difference S to the truncation error.
 
+- `outerOpt = "trust"` with `outerTrustHessian = "fd"` no longer records its
+  finite-difference probes in the parameter history (`$parHistData`) or
+  prints them as iterations.  On `theo_sd` with four parameters, 1169
+  objective rows were recorded for the 167 evaluations the optimizer asked
+  for.  The `iter` column still counts every objective evaluation, so it
+  skips the probes.
+
 ### Covariance and finite differences
 
 - The Gill (1983) step-size search no longer leaves a parameter at its last
