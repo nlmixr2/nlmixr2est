@@ -12674,6 +12674,21 @@ void impSetOmegaThetaAll(int m, double val) {
   op_focei.logDetOmegaInv5 = getOmegaDet();
 }
 
+// d(Omega)/d(p_m) for every Omega parameter p_m = fullTheta[ntheta + m] at the
+// current estimate.  The parameters are the entries of chol(Omega^-1) (diagXform
+// on the diagonal) of the _rxInv handle the inner problem uses, which also gives
+// d(Omega^-1)/d(p_m); with A = Omega^-1, dOmega = -Omega dA Omega.
+List impOmegaParDeriv() {
+  foceiOmegaEnvSyncFromTail();
+  arma::mat Om = getOmegaMat();
+  List dA = getDOmegaInvL();
+  List ret(dA.size());
+  for (int m = 0; m < dA.size(); ++m) {
+    ret[m] = wrap(arma::mat(-Om * as<arma::mat>(dA[m]) * Om));
+  }
+  return ret;
+}
+
 // M-step helpers (EM loop lives in impOuter, src/imp.cpp).
 
 // Overwrite subject id's eta (used to seed updateMuGroups with the conditional mean).

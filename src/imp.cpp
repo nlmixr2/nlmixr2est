@@ -1274,9 +1274,9 @@ static void impComputeCov(Environment e, const arma::vec& gammaVec,
   }
   arma::vec se(np);
   for (int j = 0; j < np; ++j) se[j] = (cov(j, j) > 0) ? std::sqrt(cov(j, j)) : NA_REAL;
-  // Full covariance in free-parameter order (matches the fit's covariance layout).
-  e["impCov"] = wrap(cov);
-  e["impSe"] = wrap(se);
+  // Full covariance in the free-parameter (estimation) order: the thetas, then the
+  // Omega parameters, which are entries of chol(Omega^-1).
+  e["impCovInternal"] = wrap(cov);
   e["impCovThetaN"] = nTh;
   IntegerVector thIdxR(nTh);
   { int t = 0; for (int j = 0; j < np; ++j) if (pl[j] < ntheta) thIdxR[t++] = pl[j] + 1; }
@@ -1285,12 +1285,23 @@ static void impComputeCov(Environment e, const arma::vec& gammaVec,
     e["impCovTheta"] = wrap(arma::mat(cov.submat(0, 0, nTh - 1, nTh - 1)));
     e["impSeTheta"] = wrap(arma::vec(se.subvec(0, nTh - 1)));
   }
-  // Publish as the fit's covariance so the standard SE / CI / correlation table
-  // machinery (foceiFinalizeTables) picks it up.
-  if (cov.is_finite()) {
-    e["cov"] = wrap(cov);
-    e["covMethod"] = CharacterVector::create("imp");
+  // .impCovInstall() (R/impmap.R) maps the Omega rows to the variances and
+  // covariances they are reported as, checks the result and publishes it as the
+  // fit's covariance, before foceiFinalizeTables builds the SE / CI / correlation
+  // tables from it.  It needs d(Omega)/d(p) of each Omega parameter in the
+  // covariance, and the parameter values (to say which parameterization that is).
+  List dOm = impOmegaParDeriv();
+  List dOmCov(np - nTh);
+  NumericVector omPar(np - nTh);
+  for (int j = nTh; j < np; ++j) {
+    dOmCov[j - nTh] = dOm[pl[j] - ntheta];
+    omPar[j - nTh] = par0[j];
   }
+  arma::mat Om;
+  impGetOmega(Om);
+  Environment nlmixr2 = Environment::namespace_env("nlmixr2est");
+  Function covInstall = nlmixr2[".impCovInstall"];
+  covInstall(e, wrap(cov), thIdxR, dOmCov, wrap(Om), omPar);
 }
 
 void impOuter(Environment e) {

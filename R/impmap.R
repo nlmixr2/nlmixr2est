@@ -501,11 +501,17 @@
 #'   streams; results are reproducible and independent of the thread count.
 #' @param covMethod Covariance method.  `"imp"` (default) computes the
 #'   Monte-Carlo importance-sampling observed-information covariance for the
-#'   estimated thetas and Omega parameters (a finite-difference Hessian of the
-#'   importance-sampling objective over fixed common-random-number samples),
-#'   stashed as `$impCov` / `$impSe` and installed as the fit covariance; the
-#'   theta standard errors match the Hessian-based FOCEI covariance, though the
-#'   variance of a tightly-determined random effect (an Omega diagonal) can be
+#'   estimated thetas and Omega elements: a finite-difference Hessian of the
+#'   importance-sampling objective over fixed common-random-number samples,
+#'   taken in the parameterization the fit estimates Omega in (the entries of
+#'   `chol(Omega^-1)`) and mapped to the Omega variances and covariances by the
+#'   delta method.  It is stashed as `$impCov` / `$impSe` (`$impCovInternal` in
+#'   the estimation parameterization, `$impCovJacobian` the map) and installed
+#'   as the fit covariance when it is positive definite; otherwise a warning
+#'   says why, and the FOCEI `"analytic"` covariance at the estimates is
+#'   installed in its place, with a warning naming it.  The theta standard
+#'   errors match the Hessian-based FOCEI covariance, though the variance of a
+#'   tightly-determined random effect (an Omega diagonal) can be
 #'   over-estimated because the fixed samples barely span its prior variation.
 #'   `"analytic"`, `"r,s"`, `"r"`, `"s"` instead compute the FOCEI covariance
 #'   post-fit at the converged estimates (see [foceiControl()]); `""` skips the
@@ -1115,10 +1121,6 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   # C++ kernel (impOuter) selects the proposal accordingly.
   .est <- if (exists("est", envir = env)) get("est", envir = env) else "impmap"
   .fit <- rxode2::rxWithSeed(.impSeed, rxseed = .impSeed, code = .foceiFamilyReturn(env, ui, ..., est = .est))
-  # The MC covariance (impCov=TRUE) is published with theta row/column names but
-  # the Omega parameters come out unnamed on this path; fill them in (defensively,
-  # only when the counts line up) so vcov()/$cov and the correlation are labelled.
-  .impmapNameCov(.fit, ui)
   .impRestoreCovMethod(.fit, .covMethodUser)
   # Capture THIS fit's pooled-solve layout before anything else runs.  The odeSwap
   # registry is process-global and describes the most recent registration, so the
@@ -1285,40 +1287,86 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   invisible(fit)
 }
 
-#' Fill the Omega row/column names on the impmap covariance
-#' @param fit impmap fit
-#' @param ui rxode2 ui
-#' @return Nothing, called for side effects
+#' The importance-sampling covariance on the reported scale
+#'
+#' `impComputeCov()` (src/imp.cpp) inverts the information of the free
+#' parameters in their estimation order: the thetas, then the Omega
+#' parameters, which are the entries of `chol(Omega^-1)` with a transformed
+#' diagonal (`diagXform`).  The Omega rows are reported as the variances and
+#' covariances `om.<eta>`/`cov.<eta>.<eta>`, so the delta method maps them
+#' there: the covariance is `J V J'`, where `J` is the identity on the thetas
+#' and holds `d(Omega_ab)/d(p_m)` on the Omega parameters.  With
+#' `A = Omega^-1`, `d(Omega)/d(p_m) = -Omega (dA/dp_m) Omega`, and `dA/dp_m`
+#' comes from the parameterization the fit used (`impOmegaParDeriv()`).
+#' @param cov covariance of the free parameters in their estimation order
+#' @param thetaIdx theta numbers (indices into `thetaNames`) of its first rows
+#' @param dOm list of `d(Omega)/d(p_m)`, one per remaining row
+#' @param omega Omega at the estimates
+#' @param thetaNames,etaNames the fit's theta and eta names
+#' @param iniDf the model's `iniDf`, for the estimated Omega elements
+#' @return list(cov = named covariance, jacobian = `J`), or a `.covGuard()`-style
+#'   reason when the rows cannot be mapped
 #' @noRd
-.impmapNameCov <- function(fit, ui) {
-  .fenv <- tryCatch(fit$env, error = function(e) NULL)
-  if (is.null(.fenv) || is.null(.fenv$cov) || !is.matrix(.fenv$cov)) {
-    return(invisible())
+.impCovNatural <- function(cov, thetaIdx, dOm, omega, thetaNames, etaNames, iniDf) {
+  .nTh <- length(thetaIdx)
+  .nOm <- length(dOm)
+  .n <- .nTh + .nOm
+  if (!is.matrix(cov) || nrow(cov) != .n || ncol(cov) != .n) {
+    return("could not be computed")
   }
-  tryCatch(
-    {
-      .dn <- dimnames(.fenv$cov)[[1]]
-      if (is.null(.dn)) {
-        return(invisible())
-      }
-      .empty <- which(is.na(.dn) | .dn == "")
-      if (length(.empty) == 0L) {
-        return(invisible())
-      }
-      .etaN <- .foceiEtaThetaMap(ui)$etaNames
-      .op <- .foceiOmegaPairs(.fenv$omega, ui$iniDf)
-      .omN <- .foceiOmegaCovNames(.op, .etaN)
-      if (length(.omN) == length(.empty)) {
-        .dn[.empty] <- .omN
-        dimnames(.fenv$cov) <- list(.dn, .dn)
-        if (!is.null(.fenv$fullCor) && is.matrix(.fenv$fullCor)) {
-          dimnames(.fenv$fullCor) <- list(.dn, .dn)
-        }
-      }
-    },
-    error = function(e) NULL
+  # the estimated Omega elements, each row c(a, b) with a >= b
+  .pairs <- .foceiOmegaPairs(omega, iniDf)
+  if (nrow(.pairs) != .nOm) {
+    return("could not be mapped to the Omega variances and covariances")
+  }
+  .j <- matrix(0, .n, .n)
+  .j[cbind(seq_len(.nTh), seq_len(.nTh))] <- 1
+  for (.m in seq_len(.nOm)) {
+    .j[.nTh + seq_len(.nOm), .nTh + .m] <- as.matrix(dOm[[.m]])[.pairs]
+  }
+  .nm <- c(thetaNames[thetaIdx], .foceiOmegaCovNames(.pairs, etaNames))
+  .cov <- .j %*% cov %*% t(.j)
+  dimnames(.cov) <- list(.nm, .nm)
+  rownames(.j) <- .nm
+  list(cov = .cov, jacobian = .j)
+}
+
+#' Install the importance-sampling covariance on the reported scale
+#'
+#' Called from `impComputeCov()` (src/imp.cpp) before the fit tables are built,
+#' so the standard errors and condition numbers come from what it installs.
+#' Maps the matrix with `.impCovNatural()`, keeps it (and the Jacobian, and the
+#' Omega parameter values it was taken at) as `$impCov`, `$impSe`,
+#' `$impCovJacobian` and `$impCovOmegaPar`, and installs it as `"imp"` when it
+#' passes `.covGuard()`.  Otherwise nothing is installed and a warning says
+#' why.
+#' @param env fit environment
+#' @param cov,thetaIdx,dOm,omega see `.impCovNatural()`
+#' @param omegaPar values of the Omega parameters in `cov`
+#' @return invisibly `TRUE` when installed
+#' @noRd
+.impCovInstall <- function(env, cov, thetaIdx, dOm, omega, omegaPar) {
+  .r <- tryCatch(
+    .impCovNatural(cov, thetaIdx, dOm, omega, env$thetaNames, env$etaNames, env$ui$iniDf),
+    error = function(e) "could not be mapped to the Omega variances and covariances"
   )
-  invisible()
+  if (is.character(.r)) {
+    .covRejectWarn(env, "imp", .r)
+    return(invisible(FALSE))
+  }
+  env$impCov <- .r$cov
+  .v <- diag(.r$cov)
+  env$impSe <- ifelse(is.finite(.v) & .v > 0, sqrt(pmax(.v, 0)), NA_real_)
+  env$impCovJacobian <- .r$jacobian
+  env$impCovOmegaPar <- omegaPar
+  .g <- .covGuard(.r$cov)
+  if (!.g$ok) {
+    .covRejectWarn(env, "imp", .g$reason)
+    return(invisible(FALSE))
+  }
+  env$cov <- .g$cov
+  env$covMethod <- "imp"
+  invisible(TRUE)
 }
 
 #' @rdname nlmixr2Est

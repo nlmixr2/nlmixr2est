@@ -310,6 +310,20 @@
   of the last finite-difference evaluation of the covariance step: on
   `theo_sd` they differed from the same fit without a covariance step by up
   to 7.6 (`impmap`) and 8.1 (`imp`) log-likelihood units.
+- The `imp`/`impmap`/`qrpem` covariance (`covMethod = "imp"`, the default)
+  reports its Omega rows as the variances and covariances they are named
+  after (`om.<eta>`, `cov.<eta>.<eta>`).  They held the parameters the fit
+  estimates Omega in (the entries of `chol(Omega^-1)`, a square-root
+  diagonal by default) and are now mapped by the delta method: on `theo_sd`
+  the `impmap` standard errors of the Omega variances go from 0.153, 0.240,
+  0.393 (`eta.ka`, `eta.cl`, `eta.v`) to 0.196, 0.036, 0.010, in line with
+  the other methods.  `$impCov`/`$impSe` hold the mapped matrix,
+  `$impCovInternal` the one in the estimation parameterization and
+  `$impCovJacobian` the map.  The matrix is installed only when it is
+  positive definite: `est = "imp"` on `theo_sd` installed one with a negative
+  variance (`tka`, standard error `NaN`).  When it is not installed a warning
+  says why, and the FOCEi `"analytic"` covariance that takes its place warns
+  that it was installed instead of `"imp"`; that substitution was silent.
 - The printed parameter table of a full-Bayes `fbvi`/`emvi` fit now shows the
   standard errors of the variational covariance (only `$parFixedDf` had
   them), its confidence interval uses the fit's `ci`, and the condition

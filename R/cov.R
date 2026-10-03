@@ -570,6 +570,12 @@
     return(NULL)
   }
   .what <- .covMethodFromSlot(.cm, .control$covType)
+  # covMethod = "imp" on the imp family carries the "analytic" slot: an
+  # importance-sampling covariance impComputeCov() could not install is replaced
+  # by this one, which then says so
+  if (isTRUE(tryCatch(fit$control$impCov, error = function(e) FALSE))) {
+    .what <- "imp"
+  }
   .ui <- .fitUiCopy(fit)
   if (is.null(.ui)) {
     return(list(what = .what))
