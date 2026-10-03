@@ -890,29 +890,34 @@ static inline void scalePrintGrad(scaling *scale, double *gr, int type) {
   }
 }
 
-static inline RObject scaleParHisDf(scaling *scale) {
-  if (scale->iterType.size() == 0)  return R_NilValue;
-  CharacterVector dfNames(3+scale->thetaNames.size());
+// The parameter-history data frame (iter, type, objf, then one column per name) of the
+// iteration records -- niter/iterType/vPar for the parameter rows, niterGrad/gradType/
+// vGrad for the gradient rows -- which it then clears.  focei's parHistData()
+// (src/inner.cpp) keeps its own records and print-map names.
+static inline List scaleParHisList(CharacterVector names,
+                                   std::vector<int> &niter, std::vector<int> &iterType,
+                                   std::vector<double> &vPar, std::vector<int> &niterGrad,
+                                   std::vector<int> &gradType, std::vector<double> &vGrad) {
+  int i, n = names.size();
+  CharacterVector dfNames(3+n);
   dfNames[0] = "iter";
   dfNames[1] = "type";
   dfNames[2] = "objf";
-  int i;
-  for (i = 0; i < scale->thetaNames.size(); i++){
-    dfNames[i+3] = scale->thetaNames[i];
+  for (i = 0; i < n; i++){
+    dfNames[i+3] = names[i];
   }
-  List ret(3+scale->thetaNames.size());
-  int sz = scale->niter.size()+scale->niterGrad.size();
+  List ret(3+n);
+  int sz = niter.size()+niterGrad.size();
   std::vector<int> iter;
   iter.reserve(sz);
-  iter.insert(iter.end(), scale->niter.begin(), scale->niter.end());
-  iter.insert(iter.end(), scale->niterGrad.begin(), scale->niterGrad.end());
+  iter.insert(iter.end(), niter.begin(), niter.end());
+  iter.insert(iter.end(), niterGrad.begin(), niterGrad.end());
   ret[0] = iter;
-  IntegerVector tmp;
-  tmp = IntegerVector(sz);
   std::vector<int> typ;
   typ.reserve(sz);
-  typ.insert(typ.end(), scale->iterType.begin(), scale->iterType.end());
-  typ.insert(typ.end(), scale->gradType.begin(), scale->gradType.end());
+  typ.insert(typ.end(), iterType.begin(), iterType.end());
+  typ.insert(typ.end(), gradType.begin(), gradType.end());
+  IntegerVector tmp;
   tmp = typ;
   tmp.attr("levels") = CharacterVector::create("Gill83 Gradient", "Mixed Gradient",
                                                "Forward Difference", "Central Difference",
@@ -923,12 +928,12 @@ static inline RObject scaleParHisDf(scaling *scale) {
                                                "Analytic Gradient (Chartrand)");
   tmp.attr("class") = "factor";
   ret[1] = tmp;
-  arma::mat cPar(scale->vPar.size()/scale->iterType.size(), scale->iterType.size());
-  std::copy(scale->vPar.begin(), scale->vPar.end(), cPar.begin());
+  arma::mat cPar(vPar.size()/iterType.size(), iterType.size());
+  std::copy(vPar.begin(), vPar.end(), cPar.begin());
   arma::mat vals;
-  if (scale->vGrad.size() > 0){
-    arma::mat cGrad(scale->vGrad.size()/scale->gradType.size(), scale->gradType.size());
-    std::copy(scale->vGrad.begin(), scale->vGrad.end(), cGrad.begin());
+  if (vGrad.size() > 0){
+    arma::mat cGrad(vGrad.size()/gradType.size(), gradType.size());
+    std::copy(vGrad.begin(), vGrad.end(), cGrad.begin());
     cPar = cPar.t();
     cGrad = cGrad.t();
     vals = arma::join_cols(cPar, cGrad);
@@ -936,17 +941,23 @@ static inline RObject scaleParHisDf(scaling *scale) {
     cPar = cPar.t();
     vals = cPar;
   }
-  for (i = 0; i < scale->thetaNames.size()+1; i++){
+  for (i = 0; i < min2(n+1, (int)vals.n_cols); i++){
     ret[i+2]= vals.col(i);
   }
-  scale->vGrad.clear();
-  scale->vPar.clear();
-  scale->iterType.clear();
-  scale->gradType.clear();
-  scale->niter.clear();
-  scale->niterGrad.clear();
+  vGrad.clear();
+  vPar.clear();
+  iterType.clear();
+  gradType.clear();
+  niter.clear();
+  niterGrad.clear();
   ret.attr("names")=dfNames;
   ret.attr("class") = "data.frame";
   ret.attr("row.names")=IntegerVector::create(NA_INTEGER, -sz);
   return ret;
+}
+
+static inline RObject scaleParHisDf(scaling *scale) {
+  if (scale->iterType.size() == 0)  return R_NilValue;
+  return scaleParHisList(scale->thetaNames, scale->niter, scale->iterType, scale->vPar,
+                         scale->niterGrad, scale->gradType, scale->vGrad);
 }

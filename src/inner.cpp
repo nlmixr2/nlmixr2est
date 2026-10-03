@@ -12031,102 +12031,28 @@ void addLlikObs(Environment e) {
 void parHistData(Environment e, bool focei){
   if (!e.exists("method") && iterType.size() > 0) {
     CharacterVector thetaNames=as<CharacterVector>(e["thetaNames"]);
-    CharacterVector dfNames;
-    if (focei){
-      CharacterVector dfNames2(3+op_focei.nparsPrint);
-      dfNames = dfNames2;
-    } else {
-      CharacterVector dfNames2(3+thetaNames.size());
-      dfNames = dfNames2;
-    }
-    dfNames[0] = "iter";
-    dfNames[1] = "type";
-    dfNames[2] = "objf";
-    int i, j, k=1;
+    CharacterVector names = thetaNames;
     if (focei){
       // print-map order: optimizer columns plus regression-updated mu thetas
       // at their natural positions (identity over fixedTrans when muModel off)
-      for (i = 0; i < (int)op_focei.nparsPrint; i++){
-        j=_printFullIdx[i];
+      names = CharacterVector(op_focei.nparsPrint);
+      int k = 1;
+      for (int i = 0; i < (int)op_focei.nparsPrint; i++){
+        int j=_printFullIdx[i];
         if (j < thetaNames.size()){
-          dfNames[i+3] = thetaNames[j];
+          names[i] = thetaNames[j];
         } else {
-          dfNames[i+3] = "o" + std::to_string(k++);
+          names[i] = "o" + std::to_string(k++);
         }
       }
-    } else {
-      for (i = 0; i < thetaNames.size(); i++){
-        dfNames[i+3] = thetaNames[i];
-      }
     }
-    // iter type parameters
-    List ret;
-    if (focei){
-      ret = List(3+op_focei.nparsPrint);
-    } else {
-      ret = List(3+thetaNames.size());
-    }
-    int sz = niter.size()+niterGrad.size();
-    IntegerVector tmp;
-    std::vector<int> iter;
-    iter.reserve(sz);
-    iter.insert(iter.end(), niter.begin(), niter.end());
-    iter.insert(iter.end(), niterGrad.begin(), niterGrad.end());
-    ret[0] = iter;
-    tmp = IntegerVector(sz);
-    std::vector<int> typ;
-    typ.reserve(sz);
-    typ.insert(typ.end(), iterType.begin(), iterType.end());
-    typ.insert(typ.end(), gradType.begin(), gradType.end());
-    tmp = typ;
-    tmp.attr("levels") = CharacterVector::create("Gill83 Gradient", "Mixed Gradient",
-                                                 "Forward Difference", "Central Difference",
-                                                 "Scaled", "Unscaled", "Back-Transformed",
-                                                 "Forward Sensitivity", "Analytic Gradient",
-                                                 "Analytic Gradient (relaxed)",
-                                                 "Analytic Gradient (finite difference)",
-                                                 "Analytic Gradient (Chartrand)");
-    tmp.attr("class") = "factor";
-    ret[1] = tmp;
-    arma::mat cPar(vPar.size()/iterType.size(), iterType.size());
-    std::copy(vPar.begin(), vPar.end(), cPar.begin());
-    arma::mat vals;
-    if (vGrad.size() > 0){
-      arma::mat cGrad(vGrad.size()/gradType.size(), gradType.size());
-      std::copy(vGrad.begin(), vGrad.end(), cGrad.begin());
-      cPar = cPar.t();
-      cGrad = cGrad.t();
-      vals = arma::join_cols(cPar, cGrad);
-    } else {
-      cPar = cPar.t();
-      vals = cPar;
-    }
-    if (focei){
-      for (i = 0; i < min2(op_focei.nparsPrint+1, vals.n_cols); i++){
-        ret[i+2]= vals.col(i);
-      }
-    } else {
-      for (i = 0; i < thetaNames.size()+1; i++){
-        ret[i+2]= vals.col(i);
-      }
-    }
-    vGrad.clear();
-    vPar.clear();
-    iterType.clear();
-    gradType.clear();
-    niter.clear();
-    niterGrad.clear();
-    ret.attr("names")=dfNames;
-    ret.attr("class") = "data.frame";
-    ret.attr("row.names")=IntegerVector::create(NA_INTEGER, -sz);
+    List ret = scaleParHisList(names, niter, iterType, vPar, niterGrad, gradType, vGrad);
     Function loadNamespace("loadNamespace", R_BaseNamespace);
     Environment nlmixr2 = loadNamespace("nlmixr2est");
     Environment thetaReset = nlmixr2[".thetaReset"];
     if (thetaReset.exists("parHistData")) {
       // rbind  data.
       if (TYPEOF(thetaReset["parHistData"]) == VECSXP) {
-        Function loadNamespace("loadNamespace", R_BaseNamespace);
-        Environment nlmixr2 = loadNamespace("nlmixr2est");
         Function rbind = nlmixr2[".rbindParHistory"];
         ret = rbind(thetaReset["parHistData"], ret);
       }
