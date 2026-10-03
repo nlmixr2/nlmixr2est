@@ -206,6 +206,11 @@
   residual parameters into the model even with `literalFix = FALSE`, the
   saem default, so those refits used a model the fit had not.
 
+- `sqrtm()` of a matrix that is not finite is now an error.  It returned an
+  empty `0 x 0` matrix for most such matrices (a `NaN` or `Inf` off the
+  diagonal), reported "imaginary" components for a `NaN` diagonal, and gave an
+  infinite root for an infinite diagonal.
+
 ### Covariance and finite differences
 
 - The Gill (1983) step-size search no longer leaves a parameter at its last

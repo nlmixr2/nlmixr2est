@@ -10,7 +10,8 @@ sqrtm(m)
 \item{m}{Matrix to take the square root of.}
 }
 \value{
-A square root general square matrix of m
+A square root general square matrix of m.  A matrix that is not
+finite is an error.
 }
 \description{
 Return the square root of general square matrix A

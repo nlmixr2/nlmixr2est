@@ -1380,8 +1380,8 @@
 #' positive definite
 #'
 #' `chol()`, else the repair `sqrtm(x %*% t(x))`.  Neither counts unless it is
-#' finite: `chol()` hands back NaN for a NaN input, and `sqrtm()` an empty
-#' matrix for a non-finite one, instead of an error.
+#' finite: `chol()` hands back NaN for a NaN input, instead of an error.  The
+#' repair is only tried for a finite matrix, which is all `sqrtm()` accepts.
 #' @param x square matrix
 #' @param partial factor only its identified (finite-diagonal) submatrix, see
 #'   `.nlmixr2CholPartial()`
@@ -1393,8 +1393,11 @@
   if (!inherits(.ch, "try-error") && all(is.finite(.ch))) {
     return(list(mat = x, sqrtm = FALSE))
   }
+  if (!all(is.finite(x))) {
+    return(NULL)
+  }
   .s <- try(sqrtm(x %*% t(x)), silent = FALSE)
-  if (inherits(.s, "try-error") || !identical(dim(.s), dim(x)) || !all(is.finite(.s))) {
+  if (inherits(.s, "try-error") || !all(is.finite(.s))) {
     return(NULL)
   }
   list(mat = .s, sqrtm = TRUE)
