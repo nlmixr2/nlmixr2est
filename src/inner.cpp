@@ -11846,9 +11846,22 @@ void foceiCalcRFdFull(Environment e) {
   FdFullHessObj obj(c);
   arma::mat H;
   ok = ok && fdHessian(obj, x0.data(), np, f0, h.data(), H, 0.5, true, true);
-  // only the S-using cov methods need the OPG cross-product ("r,s" sandwich or "s"); this is
-  // the final selection after foceiCalcCov's heuristic, matching what e["covMethod"] reports.
-  bool needS = (op_focei.covMethod == 1 || op_focei.covMethod == 3);
+  // Only the S-using shapes need the OPG cross-product ("r,s" sandwich or "s").  Which
+  // shape .foceiInstallFdFullCov installs is the one REQUESTED (the control's covMethod
+  // slot: 1 "r,s", 2 "r", 3 "s"; with covType = "analytic" it follows the native step),
+  // so S is needed when the request uses it even if the native step fell back to "r" --
+  // the requested "r,s (full)" otherwise found no S and silently kept the theta-only
+  // covariance -- as well as when the native step's final choice uses it.
+  int req = 0;
+  if (e.exists("control")) {
+    List ctl = as<List>(e["control"]);
+    std::string covType = ctl.containsElementNamed("covType") ?
+      as<std::string>(ctl["covType"]) : "fd";
+    if (covType != "analytic" && ctl.containsElementNamed("covMethod")) {
+      req = as<int>(ctl["covMethod"]);
+    }
+  }
+  bool needS = (op_focei.covMethod == 1 || op_focei.covMethod == 3 || req == 1 || req == 3);
   arma::mat S;
   bool okS = ok && needS && foceiFdSFull(c, x0, h, S);
   if (!ok) return;

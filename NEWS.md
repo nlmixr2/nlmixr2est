@@ -281,6 +281,11 @@
   `"r,s"` covariances: it chooses the differences of the S matrix's
   per-subject scores, and the R matrix keeps its central stencil.  The
   documentation said it applied to the Hessian as well.
+- A requested `"r,s"` (or `"s"`) full covariance (`covFull = TRUE`) is now
+  computed when the theta-only step falls back to the R matrix.  The full S
+  was computed only for the theta-only step's final choice, so the requested
+  shape found no S and the fit kept the theta-only covariance without saying
+  why; it is now checked like any full shape, and installed or reported.
 
 ### Covariance
 

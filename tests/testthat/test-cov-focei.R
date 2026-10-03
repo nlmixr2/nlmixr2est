@@ -327,6 +327,34 @@ nmTest({
     expect_equal(unname(.r$cov), unname(.central$covR))
   })
 
+  test_that("a requested full sandwich gets its S when the native step falls back to R", {
+    # One subject: the theta-only S is rank one, so the native "r,s" falls back to
+    # the R matrix.  The full covariance then computed no S, and the requested
+    # "r,s (full)" was dropped without a word; it is now computed, checked, and
+    # the reason it is not installed is reported.
+    one.cmt <- function() {
+      ini({
+        tka <- log(1.5); tcl <- log(2.7); tv <- log(31.5)
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .f <- .nlmixr(
+      one.cmt,
+      theo_sd[theo_sd$ID == 1, ],
+      "focei",
+      foceiControl(print = 0, maxOuterIterations = 0L, cholAccept = 0)
+    )
+    expect_equal(.covFdType(.f$covMethod), "r")
+    expect_false(.covIsFull(.f$covMethod))
+    expect_true(is.matrix(.f$env$.fdFullS))
+    expect_true(any(startsWith(.f$runInfo, "\"r,s (full)\" covariance ")))
+  })
+
   test_that("a non-positive-definite R or S is never installed as it is", {
     # one estimated parameter at a point where the objective is concave: R < 0,
     # which cholSE0 (like for every 1x1 matrix) called positive definite, so
