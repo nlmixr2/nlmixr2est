@@ -68,6 +68,25 @@ test_that("a control given a foceiControl() covMethod slot keeps the covariance 
   expect_error(nlmeControl(covMethod = 4L), "foceiControl() slot", fixed = TRUE)
 })
 
+test_that("a covariance refit sets each option under its own name only", {
+  .obj <- new.env(parent = emptyenv())
+  .obj$foceiControl <- foceiControl()
+  local_mocked_bindings(
+    getData = function(object) NULL,
+    nlmixr2CreateOutputFromUi = function(ui, data, control, ...) control
+  )
+  # hessEps, rmatNorm and gillStepCov are prefixes of the log-likelihood options
+  .ctl <- .setCovRefit(.obj, hessEpsLlik = 1e-3, rmatNormLlik = 0L, gillStepCovLlik = 3)
+  expect_identical(
+    .ctl[c("hessEpsLlik", "rmatNormLlik", "gillStepCovLlik")],
+    list(hessEpsLlik = 1e-3, rmatNormLlik = 0L, gillStepCovLlik = 3)
+  )
+  expect_identical(
+    .ctl[c("hessEps", "rmatNorm", "gillStepCov")],
+    .obj$foceiControl[c("hessEps", "rmatNorm", "gillStepCov")]
+  )
+})
+
 test_that(".covInstall() installs, stashes the replaced covariance and refreshes its diagnostics", {
   .e <- .fakeFitEnv()
   .new <- .pdCov() * 4

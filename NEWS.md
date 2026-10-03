@@ -193,6 +193,10 @@
   accepted `Inf`, `foceiControl()` a vector).  `rsControl()` takes the 0/1
   flags `covGillF`, `rmatNorm` and `smatNorm` as integers too, like
   `foceiControl()`.
+- `getVarCov(fit, force = TRUE, ...)` given a log-likelihood option
+  (`hessEpsLlik`, `gillKcovLlik`, `gillStepCovLlik`, `gillFtolCovLlik`,
+  `rmatNormLlik`, `smatNormLlik`) no longer sets the option of the same name
+  without `Llik` to its value as well.
 
 ### Covariance
 

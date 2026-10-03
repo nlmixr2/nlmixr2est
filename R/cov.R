@@ -497,39 +497,6 @@
   } else if (.control$covMethod == 0L) {
     .control$covMethod <- 1L
   }
-  ## covDerivMethod=c("central", "forward"),
-  if (!is.null(.lst$hessEps)) {
-    .control$hessEps <- .lst$hessEps
-    .lst$hessEps <- NULL
-  }
-  if (!is.null(.lst$gillKcov)) {
-    .control$gillKcov <- .lst$gillKcov
-    .lst$gillKcov <- NULL
-  }
-  if (!is.null(.lst$gillStepCov)) {
-    .control$gillStepCov <- .lst$gillStepCov
-    .lst$gillStepCov <- NULL
-  }
-  if (!is.null(.lst$gillFtolCov)) {
-    .control$gillFtolCov <- .lst$gillFtolCov
-    .lst$gillFtolCov <- NULL
-  }
-  if (!is.null(.lst$rmatNorm)) {
-    .control$rmatNorm <- .lst$rmatNorm
-    .lst$rmatNorm <- NULL
-  }
-  if (!is.null(.lst$smatNorm)) {
-    .control$smatNorm <- .lst$smatNorm
-    .lst$smatNorm <- NULL
-  }
-  if (!is.null(.lst$covGillF)) {
-    .control$covGillF <- .lst$covGillF
-    .lst$covGillF <- NULL
-  }
-  if (!is.null(.lst$covSmall)) {
-    .control$covSmall <- .lst$covSmall
-    .lst$covSmall <- NULL
-  }
   .dat <- getData(obj)
   .ui <- obj$ui
   .mat <- obj$etaMat # as.matrix(nlme::random.effects(obj)[, -1])
