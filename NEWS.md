@@ -17,6 +17,13 @@
   
 ## Bug Fixes
 
+- `$etaMat` of a fit with inter-occasion variability now holds the occasion
+  ETAs as the model estimated them; it held them multiplied by the occasion
+  standard deviation (the scale of `$iov`).  `setOfv()`, `addCwres()`,
+  `setCov()` and fits started from `etaMat = fit` evaluated the occasion
+  effects at those values: `setOfv(fit, "foce")` on an additive-error
+  `theo_md` model gave 482.5 for a fit whose objective was 458.3.
+
 - `est="nls"` fits a delay differential equation model with its `past()`
   pre-history.  The nls models dropped the `past()` lines, so nls fitted a
   model with a different history: its estimates were biased, and the

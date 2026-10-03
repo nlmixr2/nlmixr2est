@@ -68,4 +68,39 @@ nmTest({
     .eta3 <- data.frame(ID = 1:2, eta.mixup = c(0.1, 0.2))
     expect_equal(colnames(.nmDropNonEtaCols(.eta3)), "eta.mixup")
   })
+
+  test_that("etaMat holds the occasion etas on the model's scale", {
+    ## $iov reports the occasion etas times their standard deviation; the
+    ## expanded model's occasion etas have unit variance
+    .iovMod <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+        iov.cl ~ 0.04 | occ
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl + iov.cl)
+        v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .d <- nlmixr2data::theo_md
+    .d$occ <- 1L + (.d$TIME >= 144)
+    f <- .nlmixr(.iovMod, .d, "focei", foceiControl(print = 0L, maxOuterIterations = 0L, covMethod = ""))
+    expect_equal(colnames(f$etaMat), c("eta.ka", "eta.cl", "eta.v", "rx.iov.cl.1", "rx.iov.cl.2"))
+    ## held fixed, the fit's own etas reproduce its objective
+    f2 <- .nlmixr(
+      f$ui,
+      .d,
+      "focei",
+      foceiControl(print = 0L, maxOuterIterations = 0L, maxInnerIterations = 0L, covMethod = "", etaMat = f$etaMat)
+    )
+    expect_equal(f2$objf, f$objf, tolerance = 1e-8)
+  })
 })
