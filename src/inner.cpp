@@ -11924,7 +11924,12 @@ void foceiCalcRFdFull(Environment e) {
     std::string covType = ctl.containsElementNamed("covType") ?
       as<std::string>(ctl["covType"]) : "fd";
     if (covType != "analytic" && ctl.containsElementNamed("covMethod")) {
-      req = as<int>(ctl["covMethod"]);
+      // a slot number; anything else would throw here, and the caller swallows the
+      // exception and with it the whole full covariance
+      RObject cm = ctl["covMethod"];
+      if ((TYPEOF(cm) == INTSXP || TYPEOF(cm) == REALSXP) && Rf_length(cm) == 1) {
+        req = as<int>(cm);
+      }
     }
   }
   bool needS = (op_focei.covMethod == 1 || op_focei.covMethod == 3 || req == 1 || req == 3);
