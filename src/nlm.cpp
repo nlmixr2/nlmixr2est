@@ -447,9 +447,9 @@ static inline void saveTheta(arma::vec &theta) {
   thetaSave = theta;
 }
 
-// optimFunC() and nlminbFunC() share one cache: valSave/grSave/hSave hold the solve at
-// thetaSave up to level saveType (solveType_pred < solveType_grad < solveType_hess).
-// solveGradNls() keys its own per-observation buffers on thetaSave alone.
+// optimFunC(), nlminbFunC() and solveGradNls() share one cache: valSave/grSave/hSave hold
+// the solve at thetaSave up to level saveType (solveType_pred < solveType_grad <
+// solveType_hess); nls keeps every observation's residual and gradient row.
 static inline bool nlmSaved(arma::vec &theta, int level) {
   return nlmOp.saveType >= level && isThetaSame(theta);
 }
@@ -837,18 +837,18 @@ NumericVector solveGradNls(arma::vec &theta, int returnType) {
   if (nlmOp.solveType != solveType_nls) {
     stop(_("incorrect solve type"));
   }
-  if (!isThetaSame(theta)) {
+  if (!nlmSaved(theta, solveType_grad)) {
     arma::mat ret0(nlmOp.valSave, nlmOp.nobsTot, nlmOp.ntheta+1, false, true);
     ret0 = nlmSolveGrad(theta);
     if (ret0.has_nan()) {
       nlmOp.naZero.store(1, std::memory_order_relaxed);
       ret0.replace(datum::nan, 0);
     }
-    double llik;
     arma::vec resid =ret0.col(0);
     resid = resid % resid;
     double rss = arma::sum(resid);
     scalePrintFun(&(nlmOp.scale), &theta[0], rss);
+    nlmOp.saveType = solveType_grad;
     saveTheta(theta);
   }
   if (returnType == 1) {
