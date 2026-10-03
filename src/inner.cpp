@@ -8445,7 +8445,10 @@ struct CovLlikObsGuard {
 //   * pin(), called by updateTheta(), puts eta-hat back before every probe.  innerOptId()'s
 //     retries within one probe do not move theta, so they keep their own restart points.
 // A fit that evaluates its ETAs without optimizing them (maxInnerIterations = 0) keeps them
-// fixed in the legs too, as its control says.
+// fixed in the legs too, as its control says.  A refit that holds the ETAs only to report
+// them asks for marginal legs with the control element covMaxInnerIterations
+// (.covInnerIterations(), R/cov.R): the legs get that inner budget, and the supplied ETAs
+// are first optimized at the estimates, by the final-objective procedure, to give eta-hat.
 struct CovEtaStart;
 static CovEtaStart *_covEtaStart = NULL;
 struct CovEtaStart {
@@ -8453,8 +8456,9 @@ struct CovEtaStart {
   std::vector<double> eta, zm;
   std::vector<int> mode;
   std::vector<unsigned int> uzm;
-  int nId = 0;
-  CovEtaStart() {
+  int nId = 0, savedMaxInner;
+  bool raised = false;
+  explicit CovEtaStart(Environment e) : savedMaxInner(op_focei.maxInnerIterations) {
     _covEtaStart = this;
     rx = getRxSolve_();
     if (op_focei.neta <= 0 || rx == NULL || inds_focei == NULL || getRxNsub(rx) <= 0) return;
@@ -8463,15 +8467,50 @@ struct CovEtaStart {
     for (int id = 0; id < nId; ++id) {
       entry.push_back(std::unique_ptr<FdInnerStateGuard>(new FdInnerStateGuard(id)));
     }
+    int cap = 0;
+    if (e.exists("control")) {
+      List ctl = as<List>(e["control"]);
+      if (ctl.containsElementNamed("covMaxInnerIterations") &&
+          !Rf_isNull(ctl["covMaxInnerIterations"])) {
+        cap = as<int>(ctl["covMaxInnerIterations"]);
+      }
+    }
+    if (op_focei.maxInnerIterations <= 0 && cap > 0) {
+      op_focei.maxInnerIterations = cap;
+      raised = true;
+    }
   }
   ~CovEtaStart() {
     _covEtaStartOn = false;
     _covEtaStart = NULL;
+    if (raised) op_focei.maxInnerIterations = savedMaxInner;
     // `entry` restores each subject's inner state as it is destroyed
   }
   // f0: the objective at theta (the estimates) by the legs' procedure, from eta-hat
   double settle(double *theta) {
     if (nId > 0) {
+      if (raised) {
+        // The ETAs were evaluated at the estimates, not optimized: optimize them first, by
+        // the procedure foceiOuterFinal() takes a fit's final objective with (its eta
+        // searches and resets included, and the eta step caches cleared), so eta-hat is the
+        // ETAs a FOCEi fit with no outer iterations would report at these estimates.
+        struct FinalObjGuard {
+          int calcGrad;
+          FinalObjGuard() : calcGrad(op_focei.calcGrad) {
+            op_focei.calcGrad = 0;
+            _finalObfCalc = true;
+          }
+          ~FinalObjGuard() {
+            _finalObfCalc = false;
+            op_focei.calcGrad = calcGrad;
+          }
+        } _finalObj;
+        std::fill_n(op_focei.getahh, op_focei.gEtaGTransN, 0.0);
+        std::fill_n(op_focei.getahf, op_focei.gEtaGTransN, 0.0);
+        std::fill_n(op_focei.getahr, op_focei.gEtaGTransN, 0.0);
+        updateTheta(theta);
+        foceiOfv0(theta);
+      }
       int ne = op_focei.neta, nz = (int)op_focei.nzm;
       eta.assign((size_t)nId * ne, 0.0);
       zm.assign((size_t)nId * nz, 0.0);
@@ -14129,7 +14168,7 @@ Environment foceiFitCpp_(Environment e){
     CovSolveTolGuard _covTolGuard(e);
     CovLlikObsGuard _llikObsGuard;
     // every leg below starts its inner problems from the fit's ETAs
-    CovEtaStart _etaStart;
+    CovEtaStart _etaStart(e);
     foceiCalcCov(e);
     // covType="fd" + covFull=TRUE: the full theta+sigma+Omega FD covariance (installed by
     // .foceiInstallFdFullCov).  Also runs when covType="analytic" DECLINED (analytic out of

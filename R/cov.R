@@ -453,9 +453,31 @@
   return(.env$cov)
 }
 
+#' Inner-iteration budget of a refit's covariance legs
+#'
+#' A refit at a fit's estimates evaluates the fit's ETAs without optimizing them
+#' (`maxInnerIterations = 0`), so that it reports them; its finite-difference
+#' covariance legs still re-optimize the ETAs at every probe (the control
+#' element `covMaxInnerIterations`, read by the C++ covariance step).  They get
+#' the fit's own budget, or `foceiControl()`'s default when the fit has none
+#' (saem, nlme, vae and vi evaluate their ETAs).
+#' @param control the fit's `foceiControl()`
+#' @return integer budget
+#' @noRd
+.covInnerIterations <- function(control) {
+  .n <- control$maxInnerIterations
+  if (checkmate::testNumber(.n, lower = 1, finite = TRUE)) {
+    return(as.integer(.n))
+  }
+  as.integer(formals(foceiControl)$maxInnerIterations)
+}
+
 #' Refit at the converged estimates with a covariance request
 #'
 #' A zero-iteration `est = "none"` output pass; nothing is installed on `obj`.
+#' The refit evaluates the fit's ETAs, but its covariance differentiates the
+#' fit's marginal likelihood: every finite-difference leg re-optimizes the ETAs
+#' from the fit's (`.covInnerIterations()`), with the fit's `interaction`.
 #' @param obj nlmixr2 fit
 #' @param ... `foceiControl()` settings (see `.setCov()`)
 #' @return the refit
@@ -464,6 +486,7 @@
   .env <- .setCovEnv(obj)
   .control <- .env$foceiControl
   .lst <- list(...)
+  .control$covMaxInnerIterations <- .covInnerIterations(.control)
   .control$maxInnerIterations <- 0L
   .control$maxOuterIterations <- 0L
   .control$boundTol <- 0 # turn off boundary
@@ -690,14 +713,23 @@
 #'
 #' Switches a completed fit's covariance to \code{method}.  A previously
 #' computed covariance is re-installed from the cache; otherwise it is
-#' recomputed at the converged estimates: \code{"r,s"}/\code{"r"}/\code{"s"} and
-#' \code{"analytic"} on a zero-iteration FOCEI model, and \code{"sa"} (SAEM
-#' Louis FIM) / \code{"imp"} (importance-sampling Monte-Carlo) via the decoupled
-#' recompute engine (the latter two require a mixed-effects fit).  When
-#' a covariance cannot be computed it is left unchanged (it is never silently
-#' downgraded to \code{"r,s"}).
+#' recomputed at the converged estimates: \code{"r,s"}/\code{"r"}/\code{"s"} by
+#' the finite-difference covariance step of the FOCEI family, \code{"analytic"}
+#' as the analytic observed information at the fit's estimates and ETAs, and
+#' \code{"sa"} (SAEM Louis FIM) / \code{"imp"} (importance-sampling Monte-Carlo)
+#' via the decoupled recompute engine (the latter two require a mixed-effects
+#' fit).  When a covariance cannot be computed it is left unchanged (it is never
+#' silently downgraded to \code{"r,s"}).
 #'
 #' @details
+#'
+#' The finite-difference covariances differentiate the fit's marginal
+#' likelihood, in the fit's own approximation (its \code{interaction}): at every
+#' finite-difference step the ETAs are optimized again, starting from the fit's
+#' ETAs.  So \code{setCov(fit, "r,s")} reproduces the \code{"r,s"} covariance a
+#' FOCEI-family fit computes during estimation, and on a fit of another method
+#' (saem, nlme, vae, emvi, fbvi) it is that covariance at the method's
+#' estimates.
 #'
 #' Every focei covariance comes in two shapes (see \code{covFull} in
 #' \code{\link{foceiControl}()}), and both are named: \code{"r,s"}, \code{"r"},

@@ -68,6 +68,11 @@
   # foreign covariance ("sa"/"imp") deferred to a post-fit
   # recompute; internal so a built control round-trips.
   "covMethodDeferred",
+  # inner-iteration budget of the covariance step's finite-difference
+  # legs when the fit itself does not optimize its ETAs
+  # (maxInnerIterations = 0): set by the refits that hold the ETAs
+  # only to report them (.covInnerIterations(), R/cov.R)
+  "covMaxInnerIterations",
   # subject-constant covariates stashed by .foceiFamilyReturn
   # for the analytic covariate-coefficient reuse; internal so
   # a built control round-trips (e.g. posthoc re-validation).
@@ -2141,6 +2146,10 @@ foceiControl <- function(
   )
   if (!is.null(.xtra$est)) {
     .ret$est <- .xtra$est
+  }
+  if (!is.null(.xtra$covMaxInnerIterations)) {
+    checkmate::assertCount(.xtra$covMaxInnerIterations, positive = TRUE)
+    .ret$covMaxInnerIterations <- as.integer(.xtra$covMaxInnerIterations)
   }
   if (length(etaMat) == 1L && is.na(etaMat)) {
     .ret$etaMat <- NA

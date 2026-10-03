@@ -248,6 +248,16 @@
   finite-difference covariance of an ODE model like this one is dominated by
   numerical noise, before and after this change, so its default standard
   errors move by about as much as that noise.
+- `setCov(fit, "r,s")`, `"r"`, `"s"` (and their `" (full)"` shapes) and
+  `getVarCov(fit, force = TRUE)` now compute the covariance of the fit's
+  marginal likelihood, as the estimation-time covariance of the same name
+  does: every finite-difference leg optimizes the ETAs again, starting from
+  the fit's, with the fit's own `interaction`.  The result is the covariance
+  of a FOCEi fit with no outer iterations started from the fit's ETAs; on a
+  saem or nlme fit that likelihood is FOCEI.  They held the ETAs fixed and
+  used `interaction = 0` (FOCE), and on `theo_sd` the structural standard
+  errors came out 2 to 25 times too small (`setCov(fit, "r,s")` gave `tka`
+  0.0076 where the analytic covariance gives 0.19).
 
 ### Covariance
 

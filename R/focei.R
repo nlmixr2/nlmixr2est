@@ -5655,7 +5655,13 @@ nlmixr2Est.output <- function(env, ...) {
   }
 
   .foceiFamilyControl(env, ...)
-  rxode2::rxAssignControlValue(.ui, "interaction", 0L)
+  # The pass evaluates the FOCE objective at the ETAs it is given.  A covariance
+  # refit (setCov(), getVarCov()) differentiates the fit's own likelihood
+  # instead, so it keeps the control's interaction; it is the caller that asks
+  # for marginal covariance legs (covMaxInnerIterations, see .setCovRefit()).
+  if (is.null(rxode2::rxGetControl(.ui, "covMaxInnerIterations", NULL))) {
+    rxode2::rxAssignControlValue(.ui, "interaction", 0L)
+  }
   rxode2::rxAssignControlValue(.ui, "maxOuterIterations", 0L)
   rxode2::rxAssignControlValue(.ui, "maxInnerIterations", 0L)
   on.exit({

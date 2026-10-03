@@ -87,6 +87,47 @@ test_that("a covariance refit sets each option under its own name only", {
   )
 })
 
+test_that(".covInnerIterations() gives a refit's covariance legs the fit's inner budget", {
+  expect_identical(.covInnerIterations(foceiControl(maxInnerIterations = 250L)), 250L)
+  # a fit with no budget of its own (saem, nlme, vae and vi evaluate their ETAs) gets
+  # foceiControl()'s default
+  .def <- 1000L
+  expect_identical(as.integer(formals(foceiControl)$maxInnerIterations), .def)
+  expect_identical(.covInnerIterations(foceiControl(maxInnerIterations = 0L)), .def)
+  expect_identical(.covInnerIterations(list()), .def)
+  expect_identical(.covInnerIterations(list(maxInnerIterations = NA_integer_)), .def)
+  expect_identical(.covInnerIterations(list(maxInnerIterations = -3L)), .def)
+  expect_identical(.covInnerIterations(list(maxInnerIterations = Inf)), .def)
+  expect_identical(.covInnerIterations(list(maxInnerIterations = c(5L, 6L))), .def)
+})
+
+test_that("a covariance refit reports the fit's ETAs but differentiates its marginal likelihood", {
+  .obj <- new.env(parent = emptyenv())
+  .obj$foceiControl <- foceiControl(maxInnerIterations = 250L, interaction = TRUE)
+  local_mocked_bindings(
+    getData = function(object) NULL,
+    nlmixr2CreateOutputFromUi = function(ui, data, control, ...) control
+  )
+  .ctl <- .setCovRefit(.obj, covMethod = "r")
+  # the refit evaluates the fit's ETAs; its covariance legs optimize them with the fit's
+  # budget, and with the fit's interaction
+  expect_identical(.ctl$maxInnerIterations, 0L)
+  expect_identical(.ctl$covMaxInnerIterations, 250L)
+  expect_identical(.ctl$interaction, 1L)
+})
+
+test_that("covMaxInnerIterations survives a foceiControl() round trip", {
+  # nlmixr2() rebuilds a control it is given (getValidNlmixrCtl()), and the post-fit
+  # recompute hands its control to nlmixr2()
+  .ctl <- foceiControl()
+  expect_null(.ctl$covMaxInnerIterations)
+  .ctl$covMaxInnerIterations <- 300L
+  expect_identical(getValidNlmixrCtl.focei(list(.ctl))$covMaxInnerIterations, 300L)
+  expect_identical(foceiControl(covMaxInnerIterations = 7)$covMaxInnerIterations, 7L)
+  expect_error(foceiControl(covMaxInnerIterations = 0L), "covMaxInnerIterations")
+  expect_error(foceiControl(covMaxInnerIterations = 1.5), "covMaxInnerIterations")
+})
+
 test_that(".covInstall() installs, stashes the replaced covariance and refreshes its diagnostics", {
   .e <- .fakeFitEnv()
   .new <- .pdCov() * 4
@@ -314,5 +355,102 @@ nmTest({
     )
     expect_equal(.v, .cov0)
     expect_identical(.fit$covMethod, .m0)
+  })
+
+  # The routes that compute a FOCEi covariance at a finished fit's estimates --
+  # setCov(), getVarCov(force = TRUE), the post-fit recompute and the vae/vi
+  # hand-off -- report the fit's ETAs but differentiate its marginal likelihood: they
+  # give the estimation-time covariance of a FOCEi fit with no outer iterations
+  # started from the fit's ETAs.  The full nlmixr2() refits (the recompute, vae/vi)
+  # reproduce it exactly; setCov()'s lighter refit to within the inner problem's
+  # tolerance (theta SEs within 1e-5 relative, Omega SEs within 2e-3 of the full
+  # shape).  They used to hold the ETAs fixed (and setCov() dropped the
+  # interaction), which made the theta SEs several times too small.
+  .zeroOuterRef <- function(fit, covMethod, covFull = FALSE, interaction = TRUE) {
+    suppressWarnings(nlmixr2(
+      fit$finalUi,
+      nlmixr2data::theo_sd,
+      est = "focei",
+      control = foceiControl(
+        print = 0,
+        calcTables = FALSE,
+        maxOuterIterations = 0L,
+        maxInnerIterations = 1000L,
+        etaMat = fit$etaMat,
+        covMethod = covMethod,
+        covFull = covFull,
+        interaction = interaction
+      )
+    ))
+  }
+  .seOf <- function(fit) sqrt(diag(fit$cov))
+  .maxRel <- function(a, b) max(abs(a / b[names(a)] - 1))
+  .ceOneCmt <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1.0
+      tv <- 3.45
+      add.sd <- 0.3
+      prop.sd <- 0.1
+      eta.ka ~ 0.6
+      eta.cl ~ 0.3
+      eta.v ~ 0.1
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv + eta.v)
+      linCmt() ~ add(add.sd) + prop(prop.sd)
+    })
+  }
+
+  test_that("a finite-difference setCov() is the covariance of the fit's marginal likelihood", {
+    .none <- suppressWarnings(nlmixr2(
+      .oneCmt,
+      nlmixr2data::theo_sd,
+      est = "focei",
+      control = foceiControl(print = 0, covMethod = "", calcTables = FALSE)
+    ))
+    .th <- c("tka", "tcl", "tv", "add.sd")
+    for (.m in c("r", "s", "r,s", "r (full)")) {
+      .full <- .covIsFull(.m)
+      .ref <- .zeroOuterRef(.none, .covBaseName(.m), .full)
+      expect_identical(.ref$covMethod, .m)
+      suppressMessages(suppressWarnings(setCov(.none, .m)))
+      expect_identical(.none$covMethod, .m)
+      expect_setequal(names(.seOf(.none)), names(.seOf(.ref)))
+      expect_lt(.maxRel(.seOf(.none)[.th], .seOf(.ref)), if (.full) 1e-3 else 1e-4, label = .m)
+      if (.full) {
+        .om <- setdiff(names(.seOf(.ref)), .th)
+        expect_lt(.maxRel(.seOf(.none)[.om], .seOf(.ref)), 1e-2, label = .m)
+      }
+    }
+    # getVarCov(force = TRUE) recomputes the same way
+    .fit <- suppressWarnings(nlmixr2(
+      .oneCmt,
+      nlmixr2data::theo_sd,
+      est = "focei",
+      control = foceiControl(print = 0, covMethod = "r", covFull = FALSE, calcTables = FALSE)
+    ))
+    .v <- suppressMessages(suppressWarnings(nlme::getVarCov(.fit, force = TRUE)))
+    expect_lt(.maxRel(sqrt(diag(.v)), .seOf(.zeroOuterRef(.fit, "r"))), 1e-4)
+  })
+
+  test_that("setCov() differentiates the likelihood the fit used: interaction is kept", {
+    # with a proportional error the interaction changes the objective; setCov() used to
+    # differentiate the FOCE one (interaction = 0) of a FOCEI fit
+    .none <- suppressWarnings(nlmixr2(
+      .ceOneCmt,
+      nlmixr2data::theo_sd,
+      est = "focei",
+      control = foceiControl(print = 0, covMethod = "", calcTables = FALSE)
+    ))
+    .focei <- .zeroOuterRef(.none, "r")
+    .foce <- .zeroOuterRef(.none, "r", interaction = FALSE)
+    # the two likelihoods give tka SEs 30% apart here
+    expect_gt(abs(.seOf(.foce)[["tka"]] / .seOf(.focei)[["tka"]] - 1), 0.2)
+    suppressMessages(suppressWarnings(setCov(.none, "r")))
+    expect_identical(.none$covMethod, "r")
+    expect_lt(.maxRel(.seOf(.none), .seOf(.focei)), 1e-4)
   })
 })
