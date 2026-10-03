@@ -1,24 +1,3 @@
-#' Push the nlmixr timing stack for a nested nlmixr call
-#'
-#' @return Nothing, called for side effects
-#' @author Matthew L. Fidler
-#' @noRd
-.pushNlmixr2timing <- function() {
-  nlmixr2global$timingStackNlmixr <-
-    c(
-      nlmixr2global$timingStackNlmixr,
-      list(list(
-        nlmixr2global$nlmixr2Time,
-        nlmixr2global$currentTimingEnvironment,
-        nlmixr2global$extraTimingTable,
-        nlmixr2global$timingStack
-      ))
-    )
-  nlmixr2global$nlmixr2Time <- NULL
-  nlmixr2global$currentTimingEnvironment <- NULL
-  nlmixr2global$extraTimingTable <- NULL
-  nlmixr2global$timingStack <- NULL
-}
 #' Pop the full nlmixr timing stack (if needed)
 #'
 #' @return Nothing, called for side effects
