@@ -65,7 +65,7 @@ test_that("a linFim covariance that cannot be used is reported, and the informat
   expect_identical(.w, "linearization of FIM could not be used to calculate covariance")
   expect_equal(unname(.e$cov), unname(solve(.saemHa)))
   expect_identical(dimnames(.e$cov), list(.saemTheta, .saemTheta))
-  expect_identical(.e$covMethod, "inv(Ha[theta])")
+  expect_identical(.e$covMethod, "Ha")
   expect_false(exists(".saemFullCov", envir = .e, inherits = FALSE))
 })
 
@@ -76,7 +76,7 @@ test_that("a linFim covariance that is not symmetric is not installed", {
   local_mocked_bindings(calc.COV = function(x) .lin)
   .w <- suppressMessages(capture_warnings(.saemCalcCov(.e)))
   expect_identical(.w, "linearization of FIM could not be used to calculate covariance")
-  expect_identical(.e$covMethod, "inv(Ha[theta])")
+  expect_identical(.e$covMethod, "Ha")
   expect_equal(unname(.e$cov), unname(solve(.saemHa)))
 })
 
@@ -87,7 +87,7 @@ test_that("a linFim covariance of the wrong size does not lend its variance bloc
   local_mocked_bindings(calc.COV = function(x) .lin)
   .w <- suppressMessages(capture_warnings(.saemCalcCov(.e)))
   expect_identical(.w, "linearization of FIM could not be used to calculate covariance")
-  expect_identical(.e$covMethod, "inv(Ha[theta])")
+  expect_identical(.e$covMethod, "Ha")
   expect_equal(unname(.e$cov), unname(solve(.saemHa)))
   expect_false(exists(".saemFullCov", envir = .e, inherits = FALSE))
   expect_false(exists(".saemCovMethod", envir = .e, inherits = FALSE))
@@ -101,7 +101,7 @@ test_that("an unusable information matrix is reported instead of silently leavin
     .w,
     c(
       "SAEM covariance by linearization failed; using the SAEM information matrix",
-      "\"inv(Ha[theta])\" covariance is not finite; none installed"
+      "\"Ha\" covariance is not finite; none installed"
     )
   )
   expect_false(exists("cov", envir = .e, inherits = FALSE))
@@ -114,7 +114,7 @@ test_that("covMethod r,s/r/s install the inverse of Ha's theta block under its o
     expect_silent(.saemCalcCov(.e))
     expect_equal(.e$cov, solve(.saemHa), ignore_attr = TRUE)
     expect_identical(dimnames(.e$cov), list(.saemTheta, .saemTheta))
-    expect_identical(.e$covMethod, "inv(Ha[theta])")
+    expect_identical(.e$covMethod, "Ha")
   }
 })
 
@@ -123,10 +123,10 @@ test_that("an indefinite Ha theta block is repaired by sqrtm and labelled so", {
   .e <- .saemCovEnv(Ha = .bad, covMethod = "r,s")
   expect_warning(
     .saemCalcCov(.e),
-    "covariance matrix non-positive definite, corrected by sqrtm(Ha[theta] %*% Ha[theta])",
+    "covariance matrix non-positive definite, corrected by sqrtm(Ha %*% Ha)",
     fixed = TRUE
   )
-  expect_identical(.e$covMethod, "inv(|Ha[theta]|)")
+  expect_identical(.e$covMethod, "|Ha|")
   expect_equal(unname(.e$cov), unname(solve(sqrtm(.bad %*% .bad))))
 })
 
@@ -168,7 +168,7 @@ test_that("the Ha theta block drops a non-mu-referenced theta and reports it", {
   )
   expect_warning(
     .saemCalcCov(.e),
-    "\"inv(Ha[theta])\" covariance has no row for the non-mu-referenced theta(s) tka; they have no standard error",
+    "\"Ha\" covariance has no row for the non-mu-referenced theta(s) tka; they have no standard error",
     fixed = TRUE
   )
   .ref <- solve(.saemHaKernel[1:2, 1:2])
@@ -176,7 +176,7 @@ test_that("the Ha theta block drops a non-mu-referenced theta and reports it", {
   expect_equal(.e$cov["tcl", "tcl"], .ref[1, 1])
   expect_equal(.e$cov["tcl", "tv"], .ref[1, 2])
   expect_equal(.e$cov["tv", "tv"], .ref[2, 2])
-  expect_identical(.e$covMethod, "inv(Ha[theta])")
+  expect_identical(.e$covMethod, "Ha")
 })
 
 test_that("a Ha theta block whose rows cannot be ordered is not installed", {
@@ -191,7 +191,7 @@ test_that("a Ha theta block whose rows cannot be ordered is not installed", {
   expect_warning(
     .saemCalcCov(.e),
     paste0(
-      "\"inv(Ha[theta])\" covariance could not be computed (the information rows cannot be ",
+      "\"Ha\" covariance could not be computed (the information rows cannot be ",
       "matched to the thetas); none installed"
     ),
     fixed = TRUE

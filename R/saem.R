@@ -1398,8 +1398,8 @@
 # the theta block of the estimation-phase information Ha (.saemHaThetaCov), so
 # that covariance carries its own name, never an FD one.  "|.|" marks the block
 # repaired by sqrtm(Ha %*% Ha) before inverting, as "|r|" does for R.
-.saemHaThetaName <- "inv(Ha[theta])"
-.saemHaThetaRepairedName <- "inv(|Ha[theta]|)"
+.saemHaThetaName <- "Ha"
+.saemHaThetaRepairedName <- "|Ha|"
 
 #' Check the identified block of a SAEM covariance
 #'
@@ -1543,7 +1543,7 @@
     )
   }
   if (r$label %in% c("|linFim|", .saemHaThetaRepairedName)) {
-    .m <- if (identical(r$label, "|linFim|")) "linFim" else "Ha[theta]"
+    .m <- if (identical(r$label, "|linFim|")) "linFim" else "Ha"
     warning(
       sprintf("covariance matrix non-positive definite, corrected by sqrtm(%s %%*%% %s)", .m, .m),
       call. = FALSE

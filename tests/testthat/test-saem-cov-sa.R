@@ -534,7 +534,7 @@ nmTest({
     ctl <- saemControl(nBurn = 150, nEm = 200, print = 0, seed = 1L, covMethod = "r,s", calcTables = FALSE)
     for (.mod in list(list(fn = fixedM, kept = c("tka", "tv")), list(fn = phi0M, kept = c("tcl", "tv")))) {
       f <- .nlmixr(.mod$fn, theo_sd, est = "saem", control = ctl)
-      expect_identical(f$covMethod, "inv(Ha[theta])")
+      expect_identical(f$covMethod, "Ha")
       .cfg <- attr(f$saem, "saem.cfg")
       .raw <- f$ui$saemParamsToEstimate[c(.cfg$i1, .cfg$i0) + 1L] # Ha's structural rows
       .rows <- match(.mod$kept, .raw)
@@ -551,7 +551,7 @@ nmTest({
     expect_true(is.na(f$parFixedDf["tka", "SE"]))
     expect_true(is.finite(f$parFixedDf["tcl", "SE"]))
     expect_true(any(grepl(
-      "\"inv(Ha[theta])\" covariance has no row for the non-mu-referenced theta(s) tka",
+      "\"Ha\" covariance has no row for the non-mu-referenced theta(s) tka",
       f$runInfo,
       fixed = TRUE
     )))

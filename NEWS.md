@@ -280,8 +280,8 @@
   `$runInfo`, rather than a message.
 - `saemControl(covMethod = "r,s")` (and `"r"`, `"s"`) computes no R or S
   matrix: it inverts the theta block of SAEM's estimation-phase information
-  `$saem$Ha`.  That covariance is now installed as `"inv(Ha[theta])"`
-  (`"inv(|Ha[theta]|)"` when `sqrtm()` repaired the block) instead of with no
+  `$saem$Ha`.  That covariance is now installed as `"Ha"`
+  (`"|Ha|"` when `sqrtm()` repaired the block) instead of with no
   label, and its rows follow the order the SAEM kernel lays them out in.  With
   a `fix()`ed theta, or with a theta without a random effect ahead of one with
   a random effect, the standard errors went to the wrong parameters (#906): on

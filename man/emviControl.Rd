@@ -273,8 +273,8 @@ wrapping. `NULL` (default) uses `floor((getOption("width") - 23) / 12)`.}
  \code{fim} inverts in full).  The result covers the estimated mu-referenced
  thetas only, conditional on the \code{Omega} and residual parameters; a
  theta without a random effect has no row in it and gets no standard error.
- It is installed as \code{fit$covMethod == "inv(Ha[theta])"}, or
- \code{"inv(|Ha[theta]|)"} when the block was not positive definite and was
+ It is installed as \code{fit$covMethod == "Ha"}, or
+ \code{"|Ha|"} when the block was not positive definite and was
  replaced by \code{sqrtm(Ha \%*\% Ha)}.  For the finite-difference R and S
  covariances at the SAEM estimates use \code{setCov(fit, "r,s")}.  An integer
  \code{covMethod} is a \code{foceiControl()} slot: \code{0} is no covariance,
