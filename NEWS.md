@@ -316,6 +316,13 @@
   columns of the nlm family and the FOCEi family's finite-difference
   gradients and Hessians.
 
+- The finite-difference gradient columns of the nlm family now difference the
+  prediction model against its own value at the estimate.  The base point
+  came from the sensitivity model, a solve of a different ODE system, so a
+  forward difference (the default of `n1qn1`, `lbfgsb3c` and `trust`) also
+  divided the difference between the two solves by the step: 0.3% of the
+  gradient on `theo_sd`.
+
 
 # nlmixr2est 7.1.0
 

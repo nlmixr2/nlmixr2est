@@ -69,6 +69,8 @@ nmTest({
     .r <- .shiFirstGrad(0.9 + 0.006, "forward")
     expect_false(is.finite(.r[["outer"]]))
     expect_equal(.r[["grad"]], .r[["fine"]], tolerance = 0.02)
+    # f(x) is the pred model's too, the model f(x + h0) is solved with
+    expect_equal(.r[["grad"]], .r[["diff"]], tolerance = 1e-6)
   })
 
   test_that("the step shi21Central() returns is the one its gradient differences (issue 1140)", {

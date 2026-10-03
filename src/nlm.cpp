@@ -640,7 +640,12 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
   // the order (or the thread) the subjects are solved in.
   double *thetahf = nlmOp.thetahf + id*nlmOp.ntheta;
 
-  arma::vec f0 = ret.col(0);
+  // The differences are of the pred model (nlmSolveFid), so their base point is
+  // the pred model's objective at theta, solved when the first column needs it.
+  // Column 0 is the sensitivity model's, a solve of a different ODE system that
+  // differs from it by the solver error, which a forward difference divides by h.
+  arma::vec f0;
+  bool haveF0 = false;
   arma::vec grTheta(nlmOp.nobs[id]);
   arma::vec grPH(nlmOp.nobs[id]);
   arma::vec grMH(nlmOp.nobs[id]);
@@ -653,6 +658,10 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
         continue;
       }
       nlmOp.naGrad.store(1, std::memory_order_relaxed);
+    }
+    if (!haveF0) {
+      f0 = nlmSolveFid(curTheta, id);
+      haveF0 = true;
     }
     if (thetahf[ii] == 0.0) {
       double h = 0;
