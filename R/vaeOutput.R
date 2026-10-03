@@ -512,18 +512,7 @@
   if (!exists("fullTheta", envir = .ret, inherits = FALSE)) {
     .ret$fullTheta <- setNames(.idf2$est[is.na(.idf2$neta1)], .idf2$name[is.na(.idf2$neta1)])
   }
-  ## 2. etaObf -- ID + one column per UI eta + OBJI, in eta order
-  if (!exists("etaObf", envir = .ret, inherits = FALSE)) {
-    .ids <- unique(.ret$dataSav$ID)
-    .em <- .etaMat[, intersect(.etaU, colnames(.etaMat)), drop = FALSE]
-    if (nrow(.em) == length(.ids)) {
-      .eo <- as.data.frame(.em)
-      .eo$ID <- .ids
-      .eo <- .eo[, c("ID", colnames(.em)), drop = FALSE]
-      .eo$OBJI <- NA_real_
-      .ret$etaObf <- .eo
-    }
-  }
+  ## 2. etaObf is not supplied: the FOCEi pass writes it from the inner problem
   ## 3. omega -- dimnamed by the UI eta names, from the updated iniDf: the VAE
   ##    estimates the full modeled block (diagonal + declared off-diagonals);
   ##    an occasion eta keeps whatever the model fixed it at

@@ -217,9 +217,6 @@
   ## variational posterior means as the FOCEi inner EBE start [nsub, neta]
   .eb <- res$mu
   colnames(.eb) <- .prep$etaNames
-  .ret$.etaMat <- .eb
-  .ret$.etaMatBase <- .eb
-  .ret$etaObf <- data.frame(ID = seq_len(nrow(.eb)), stats::setNames(as.data.frame(.eb), .prep$etaNames), OBJI = NA)
   .ret$omega <- .omM
   .ret$ui <- .ui2
   .ret$fullTheta <- stats::setNames(res$theta, names(.prep$th))
