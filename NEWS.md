@@ -276,6 +276,14 @@
   small.  The reported objective is unchanged (the output step's FOCE
   objective at the method's ETAs).  `fit$foceiControl` of a vae, emvi or fbvi
   fit now carries its likelihood.
+- `covMethod = "analytic"` on a saem fit, and `setCov(fit, "analytic")` on
+  saem, nlme, vae, emvi and fbvi fits, now assemble the observed information
+  with the `interaction` of the method's likelihood (FOCEI unless its
+  `likelihood` says otherwise).  They took `interaction = 0` from the control
+  of the output step that finalizes those fits, so the FOCE formulas were
+  used; with a proportional residual error the standard errors differ (the
+  `add.sd` standard error of a combined-error `theo_sd` saem fit was 46%
+  larger).
 
 ### Covariance
 

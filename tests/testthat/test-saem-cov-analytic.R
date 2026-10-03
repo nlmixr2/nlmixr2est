@@ -66,6 +66,62 @@ nmTest({
     expect_true(all(is.finite(fit$parFixedDf$SE)))
   })
 
+  test_that("SAEM covMethod='analytic' uses the FOCEI formulas of SAEM's likelihood", {
+    skip_on_cran()
+    # with a proportional error the interaction changes the observed information; the
+    # output step that finalizes a saem fit evaluates FOCE at SAEM's ETAs, and the
+    # analytic covariance used to take that interaction = 0 from fit$finalUi
+    ceMod <- function() {
+      ini({
+        tka <- 0.45; tcl <- 1; tv <- 3.45
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        add.sd <- 0.3; prop.sd <- 0.1
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd) + prop(prop.sd)
+      })
+    }
+    fit <- suppressMessages(suppressWarnings(
+      nlmixr2(ceMod, nlmixr2data::theo_sd, est = "saem", control = ctl(covMethod = "analytic"))
+    ))
+    expect_identical(.covBaseName(fit$covMethod), "analytic")
+    expect_identical(rxode2::rxGetControl(fit$finalUi, "interaction", NA), 0L)
+    expect_identical(.foceiFitInteraction(fit, fit$finalUi), 1L)
+    # the analytic covariance a FOCEI (and a FOCE) fit assembles at SAEM's estimates and ETAs
+    .ref <- function(interaction) {
+      suppressMessages(suppressWarnings(nlmixr2(
+        fit$finalUi,
+        nlmixr2data::theo_sd,
+        est = "focei",
+        control = foceiControl(
+          print = 0,
+          maxOuterIterations = 0L,
+          maxInnerIterations = 0L,
+          etaMat = fit$etaMat,
+          covMethod = "analytic",
+          interaction = interaction
+        )
+      )))
+    }
+    .se <- function(f) sqrt(diag(f$cov))
+    .focei <- .ref(TRUE)
+    .foce <- .ref(FALSE)
+    expect_equal(.se(fit), .se(.focei), tolerance = 1e-6)
+    # the add.sd SE is 45% larger with the FOCE formulas here
+    expect_gt(.se(.foce)[["add.sd"]] / .se(.focei)[["add.sd"]], 1.2)
+    # setCov(fit, "analytic") assembles the same on a fit that has no analytic covariance yet
+    fit2 <- suppressMessages(suppressWarnings(
+      nlmixr2(ceMod, nlmixr2data::theo_sd, est = "saem", control = ctl(covMethod = "linFim"))
+    ))
+    suppressMessages(suppressWarnings(setCov(fit2, "analytic")))
+    expect_identical(fit2$covMethod, "analytic")
+    expect_equal(.se(fit2), .se(.focei)[names(.se(fit2))], tolerance = 1e-6)
+  })
+
   test_that("saem default covMethod is the stochastic-approximation FIM", {
     skip_on_cran()
     expect_identical(saemControl()$covMethod, "sa")
