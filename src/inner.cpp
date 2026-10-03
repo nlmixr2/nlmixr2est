@@ -2860,11 +2860,15 @@ double likInner0(double *eta, int id) {
         arma::vec curEta = getCurEta(id);
         if (!predSolve) {
           // The legs below solve the pred model (shi21EtaF/R), so their base point is
-          // the pred model at this eta too.  rf0mat is the inner model's: a solve of a
-          // different ODE system, off by the solver error, which a forward difference
-          // (and every one-sided fallback) divides by h.
-          f0 = shi21EtaF(curEta, id);
-          if (op_focei.interaction == 1) r0 = shi21EtaR(curEta, id);
+          // the pred model at this eta too.  rf0mat is the inner model's solve, which
+          // passed the bad-solve check above; it stays the base point where the pred
+          // model's solve at this eta is not finite.
+          arma::vec p0 = shi21EtaF(curEta, id);
+          if (p0.is_finite()) f0 = p0;
+          if (op_focei.interaction == 1) {
+            p0 = shi21EtaR(curEta, id);
+            if (p0.is_finite()) r0 = p0;
+          }
         }
         arma::vec hEta(curEta.size());
         arma::vec grETA(fInd->nObs);
