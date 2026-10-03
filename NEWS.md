@@ -203,6 +203,10 @@
   (`literalFix = FALSE`) before the others shifted every later theta's search
   up one row.
 
+- With `foceiControl(diagXform = "log")` or `"identity"` the FOCEi outer
+  problem scales the first omega parameter like the other diagonals (`1/2`, or
+  `1/(2|init|)`); it took the default of a linear theta, `1/|init|`.
+
 ### Covariance and finite differences
 
 - The Gill (1983) step-size search no longer leaves a parameter at its last

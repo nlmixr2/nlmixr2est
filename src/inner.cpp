@@ -13786,7 +13786,7 @@ Environment foceiFitCpp_(Environment e){
     int j = op_focei.fixedTrans[k];
     op_focei.xPar[k] = 0;
     op_focei.probitIdxArr[k] = 0;
-    if ((int)op_focei.ntheta < j){
+    if (j >= (int)op_focei.ntheta){
       op_focei.xPar[k] = xType[j-op_focei.ntheta];
     } else {
       if (j < thetaXPar.size())       op_focei.xPar[k]         = thetaXPar[j];

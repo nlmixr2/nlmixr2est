@@ -187,4 +187,18 @@ nmTest({
     expect_equal(as.character(.a[["Covariance Gradient"]][-1]), as.character(.b[["Covariance Gradient"]]))
     expect_equal(.a[-1, .cols[-1]], .b[, .cols[-1]], ignore_attr = TRUE, tolerance = 1e-10)
   })
+
+  test_that("the first omega parameter is scaled by its diagXform", {
+    skip_on_cran()
+    .om <- c("o1", "o2", "o3")
+    # "log": each diagonal of chol(omega^-1) is exp(x), scaled by 1/2
+    .f <- suppressMessages(suppressWarnings(nlmixr(.mod, theo_sd, "focei", control = .ctl(diagXform = "log"))))
+    expect_equal(.usedScaleC(.f, .om), c(o1 = 0.5, o2 = 0.5, o3 = 0.5), tolerance = 1e-6)
+    expect_equal(.f$scaleInfo$scaleC[5:7], rep(0.5, 3))
+    # "identity": the diagonal 1/sqrt(omega) itself, scaled by 1/(2|init|)
+    .f <- suppressMessages(suppressWarnings(nlmixr(.mod, theo_sd, "focei", control = .ctl(diagXform = "identity"))))
+    .want <- setNames(sqrt(c(0.6, 0.3, 0.1)) / 2, .om)
+    expect_equal(.usedScaleC(.f, .om), .want, tolerance = 1e-6)
+    expect_equal(.f$scaleInfo$scaleC[5:7], unname(.want), tolerance = 1e-12)
+  })
 })
