@@ -78,8 +78,8 @@ nmTest({
     skip_on_cran()
     .want <- setNames(rxode2::rxode2(.modR)$scaleCtheta, c("tka", "tcl", "tv", "prop.sd"))
     expect_equal(unname(.want), c(1, 21.309126, 1, 0.05), tolerance = 1e-6)
-    # FOCEi guarded tcl and prop.sd to scaleCband a second time, in C++, and
-    # scaled them by |init|: 3 and 0.1
+    # FOCEi scales them by these values, not by the |init| (3 and 0.1) a
+    # second guard to scaleCband would give
     .f <- suppressMessages(suppressWarnings(nlmixr(.modR, theo_sd, "focei", control = .ctl())))
     expect_equal(.usedScaleC(.f, names(.want)), .want, tolerance = 1e-6)
     expect_equal(.f$scaleInfo$scaleC[1:4], unname(.want), tolerance = 1e-6)
@@ -87,7 +87,7 @@ nmTest({
 
   test_that("FOCEi scales a theta by the scaleC the user gives it", {
     skip_on_cran()
-    # add.sd's 0.02 was replaced by |init| = 0.7
+    # add.sd is scaled by the given 0.02, outside scaleCband
     .f <- suppressMessages(suppressWarnings(nlmixr(.mod, theo_sd, "focei", control = .ctl(scaleC = c(1, 1, 1, 0.02)))))
     .want <- c(tka = 1, tcl = 1, tv = 1, add.sd = 0.02)
     expect_equal(.usedScaleC(.f, names(.want)), .want, tolerance = 1e-6)
@@ -173,8 +173,8 @@ nmTest({
   test_that("a posthoc covariance step checks the bounds as they are", {
     skip_on_cran()
     # tcl starts (and, without outer iterations, stays) next to its lower
-    # bound.  The covariance step took the bounds, never scaled in a posthoc
-    # fit, through the unscaling and compared tcl with a lower bound of 2.77.
+    # bound.  A posthoc fit never scales its bounds, so the covariance step
+    # compares tcl with them as they are.
     .m <- .mod |> rxode2::ini(tcl = c(1.0999, 1.1, 5))
     .f <- suppressMessages(suppressWarnings(nlmixr(
       .m,
@@ -200,8 +200,8 @@ nmTest({
   })
 
   test_that("foceiControl() takes only finite scaling constants above 0", {
-    # a scaling constant divides the optimizer's coordinates: scaleCmin = 0 let
-    # a scaleC of 0 through (a NaN start), and scaleCmax = Inf an infinite one
+    # a scaling constant divides the optimizer's coordinates, so 0 and Inf are
+    # refused, as is a clamp range that would let them through
     expect_error(foceiControl(scaleCmin = 0), "0 < scaleCmin < scaleCmax")
     expect_error(foceiControl(scaleCmin = 1e3, scaleCmax = 10), "0 < scaleCmin < scaleCmax")
     expect_error(foceiControl(scaleCmax = Inf), "finite")
@@ -214,9 +214,9 @@ nmTest({
 
   test_that("ui$scaleCtheta has one value per estimated theta", {
     .ui <- rxode2::rxUiDecompress(rxode2::rxode2(.mod))
-    # it was followed by an NA for each eta row of iniDf
+    # one value per theta, none for the eta rows of iniDf
     expect_identical(.ui$scaleCtheta, c(1, 1, 1, 0.35))
-    # and a longer foceiControl(scaleC=) was returned whole
+    # a longer foceiControl(scaleC=) is cut to the thetas
     assign("control", foceiControl(scaleC = rep(2, 10)), envir = .ui)
     expect_warning(.sc <- .ui$scaleCtheta, "more options than estimated")
     expect_identical(.sc, rep(2, 4))
