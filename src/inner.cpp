@@ -3257,8 +3257,8 @@ double likInner0(double *eta, int id) {
                 }
                 // The FOCEi (f, R) kernel keeps an exactly-zero d(f)/d(eta) and d(R)/d(eta)
                 // off zero.  A log-density row has no (f, R): fpm IS d(log-density)/d(eta)
-                // and is summed into lp as it stands, so flooring it there added
-                // sqrt(DBL_EPSILON) to the eta gradient for every row the eta does not reach.
+                // and is summed into lp as it stands, so a row the eta does not reach
+                // adds exactly 0 to the eta gradient.
                 if (dist == rxDistributionNorm) {
                   if (fpm == 0.0) {
                     a(k, i) = fpm = sqrt(DBL_EPSILON);
@@ -3404,9 +3404,8 @@ double likInner0(double *eta, int id) {
 
 // The eta gradient at eta, or NA in every component when likInner0() fails there.  A
 // failed call leaves lp at the previous evaluation's value (a failed solve) or part-way
-// accumulated (a non-finite prediction), and handing that back as a finite gradient made
-// a failed finite-difference leg of the inner Hessian, and a failed Shi21 probe, look
-// like a good one.
+// accumulated (a non-finite prediction), so lp is not a gradient then; the NA marks a
+// failed finite-difference leg of the inner Hessian, or a failed Shi21 probe, as failed.
 double *lpInner(double *eta, double *g, int id){
   focei_ind *fInd = &(inds_focei[id]);
   if (ISNAN(likInner0(eta, id))) {
@@ -10864,8 +10863,10 @@ static void foceiCovChol(Environment e, const arma::mat &M, const std::string &X
 // not positive definite it is repaired: cholSE0's modified factor if every added
 // diagonal is within cholAccept (label "r+"/"s+"), else chol(sqrtm(M0 %*% M0))
 // ("|r|"/"|s|", suggested by https://www.tandfonline.com/doi/pdf/10.1198/106186005X78800),
-// which replaces e["chol<X>"].  cholSE0 calls every 1x1 matrix positive definite, so
-// a 1x1 M0 is checked by its value.
+// which replaces e["chol<X>"].  The "r+"/"s+" rung also needs a positive largest
+// diagonal, a finite E and a finite factor, so an all-zero matrix falls to the sqrtm
+// rung (which rejects it).  cholSE0 calls every 1x1 matrix positive definite, so a 1x1
+// M0 is checked by its value.
 static bool foceiCovUsable(Environment e, const std::string &X, const arma::mat &M0,
                            std::string &lab, bool &checkSandwich) {
   if (as<bool>(e[X + ".pd"]) && (M0.n_elem != 1 || M0(0, 0) > 0)) return true;
@@ -11134,8 +11135,8 @@ int foceiS(double *theta, Environment e, bool &hasZero){
     }
   }
   // likSav and the mixture responsibilities below are the subjects' values at the BASE
-  // theta.  Whatever ran last -- the R matrix stencil, the step search -- left those of
-  // its last leg, so evaluate at theta first when they are read.
+  // theta, which foceiLik0At() evaluates unless theta was the last point evaluated (the
+  // R matrix stencil and the step search end on a perturbed leg).
   if (doForward || op_focei.mixIdxN != 0) foceiLik0At(theta);
   if (doForward){
     // Fill in lik0.  For a mixture the subject's contribution is the MARGINAL
@@ -11186,9 +11187,9 @@ int foceiS(double *theta, Environment e, bool &hasZero){
   }
   // The pooled gradient, a subject's fallback score below.  After the base values
   // above: its finite-difference legs move them.  A zero component is a value here, not
-  // the outer optimizer's reset request that numericGrad() flags it as: left set, the
-  // flag reported "zero gradient replaced with small number" for the fit, and the next
-  // innerOpt() (a full-covariance probe) reset the thetas.
+  // the outer optimizer's reset request that numericGrad() flags it as, so zeroGrad is
+  // put back as it was: it drives the "zero gradient replaced with small number" report
+  // and the theta reset in the next innerOpt().
   arma::vec gfull(npars);
   {
     ScopedRestore<bool> zeroGrad(op_focei.zeroGrad);
@@ -11979,9 +11980,9 @@ void foceiCalcRFdFull(Environment e) {
   // Only the S-using shapes need the OPG cross-product ("r,s" sandwich or "s").  Which
   // shape .foceiInstallFdFullCov installs is the one REQUESTED (the control's covMethod
   // slot: 1 "r,s", 2 "r", 3 "s"; with covType = "analytic" it follows the native step),
-  // so S is needed when the request uses it even if the native step fell back to "r" --
-  // the requested "r,s (full)" otherwise found no S and silently kept the theta-only
-  // covariance -- as well as when the native step's final choice uses it.
+  // so S is needed when the request uses it even if the native step fell back to "r"
+  // (the requested "r,s (full)" needs S to be installed), as well as when the native
+  // step's final choice uses it.
   int req = 0;
   if (e.exists("control")) {
     List ctl = as<List>(e["control"]);
