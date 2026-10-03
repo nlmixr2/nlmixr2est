@@ -238,6 +238,14 @@
   analytic outer gradient and `covMethod = "analytic"` now decline such
   models.
 
+- An ETA finite-differenced through the prediction model (`eventSens = "fd"`,
+  a dosing parameter or the lagged variables above) is now differenced
+  against the prediction model's own value at the ETA.  The base point came
+  from the sensitivity model, a solve of another ODE system, so a forward
+  difference (`eventType = "forward"`) divided the difference between the two
+  solves by the step: at `atol = rtol = 1e-3` a gradient of 33.8 came out
+  11.6.
+
 ### Covariance and finite differences
 
 - The Gill (1983) step-size search no longer leaves a parameter at its last

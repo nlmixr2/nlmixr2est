@@ -318,6 +318,56 @@ nmTest({
     expect_equal(.g[1:2, 1], .fd, tolerance = 1e-7)
   })
 
+  test_that("a finite-differenced ETA is differenced against the prediction model", {
+    skip_on_cran()
+    # eventSens = "fd" finite-differences an ETA in a dosing parameter by
+    # solving the prediction model at eta +/- h.  The base point was the
+    # sensitivity model's: another ODE system, off by the solver error, which a
+    # forward difference divides by h.  At a loose tolerance that put the
+    # forward eta.f gradient of subject 1 at 11.6 against 33.8 central.
+    fMod <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        add.sd <- 0.7
+        eta.f ~ 0.1
+        eta.cl ~ 0.1
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv)
+        d/dt(depot) <- -ka * depot
+        f(depot) <- exp(eta.f)
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd)
+      })
+    }
+    .ui <- rxode2::rxUiDecompress(rxode2::assertRxUi(fMod))
+    .lp <- function(eventType) {
+      .ctl <- .foceiInnerControl(
+        list(
+          rxControl = rxode2::rxControl(atol = 1e-3, rtol = 1e-3),
+          sumProd = FALSE,
+          optExpression = TRUE,
+          literalFix = FALSE,
+          addProp = "combined2",
+          maxOdeRecalc = 5L,
+          odeRecalcFactor = 10^0.5
+        ),
+        eventSens = "fd",
+        eventType = eventType
+      )
+      .env <- .foceiInnerEnv(.ui, nlmixr2data::theo_sd, .ctl, "focei", matrix(0, 12, 2))
+      foceiLikLoad_(.env)
+      on.exit(foceiLikUnload_(), add = TRUE)
+      vapply(1:3, function(i) foceiInnerLp(c(0.2, -0.1), i)[1], numeric(1))
+    }
+    expect_equal(.lp("forward"), .lp("central"), tolerance = 0.02)
+  })
+
   test_that("an ETA reaching the prediction through lag() is finite-differenced", {
     skip_on_cran()
     # c0 is a bare symbol to symengine (lag() needs it as a real lhs), so the

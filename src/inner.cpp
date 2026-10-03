@@ -2858,6 +2858,14 @@ double likInner0(double *eta, int id) {
         arma::vec f0 = rf0mat.col(0);
         arma::vec r0 = rf0mat.col(1);
         arma::vec curEta = getCurEta(id);
+        if (!predSolve) {
+          // The legs below solve the pred model (shi21EtaF/R), so their base point is
+          // the pred model at this eta too.  rf0mat is the inner model's: a solve of a
+          // different ODE system, off by the solver error, which a forward difference
+          // (and every one-sided fallback) divides by h.
+          f0 = shi21EtaF(curEta, id);
+          if (op_focei.interaction == 1) r0 = shi21EtaR(curEta, id);
+        }
         arma::vec hEta(curEta.size());
         arma::vec grETA(fInd->nObs);
 
