@@ -214,6 +214,13 @@
   fixed below 1e-6, changed with no message (`npagOmega` keeps the support's
   own covariance).
 
+- `$etaMat` of a `saem` fit with `saemControl(iovMethod = "twoLevel")` or
+  `"collapsed"` now holds the occasion ETAs the way a FOCEi-family refit
+  expands them, with unit variance; it held the occasion deviations
+  themselves.  `setOfv()`, `addCwres()`, `setCov()` and fits started from
+  `etaMat = fit` evaluated the occasion effects 12 (`"twoLevel"`) and 18
+  (`"collapsed"`) times too small on `theo_md`.
+
 ### Covariance and finite differences
 
 - The Gill (1983) step-size search no longer leaves a parameter at its last
