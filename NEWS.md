@@ -332,6 +332,14 @@
   (`optimHessType`), or the objective undefined (`solveType`).  A
   hand-built control with such a code now stops the nlm problem setup.
 
+- `nlmixr2Hess(par, fn, which = )` now returns the whole Hessian: a parameter
+  that `which` leaves out of the step search is differenced with the
+  interval the search would start from (what `gillK = 0` gives).  Its row and
+  column were `NA`, and when the first parameter was left out every
+  diagonal was taken about `f = 0` instead of `fn(par)` (2.5e8 instead of 6
+  for a quadratic).  `nlmixr2Gill83()` now reports the objective at `args`
+  in the `f` column of every row; it was 0 on the rows `which` left out.
+
 
 # nlmixr2est 7.1.0
 
