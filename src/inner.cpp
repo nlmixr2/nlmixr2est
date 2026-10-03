@@ -9478,7 +9478,7 @@ NumericVector foceiSetup_(const RObject &obj,
       op_focei.upper[k] -= 2*(op_focei.upper[k]*op_focei.rEps[k] - op_focei.aEps[k]);
       // Upper bound only = 3
       // Upper and lower bound = 2
-      op_focei.nbd[k]= 3 - op_focei.nbd[j];
+      op_focei.nbd[k]= 3 - op_focei.nbd[k];
     } else {
       op_focei.upper[k] = std::numeric_limits<double>::infinity();//std::numeric_limits<double>::max();
     }

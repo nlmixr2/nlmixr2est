@@ -130,6 +130,44 @@ nmTest({
     expect_equal(.usedScaleC(.f, names(.want)), .want, tolerance = 1e-6)
   })
 
+  test_that("a fixed theta does not shift the bound codes of the parameters after it", {
+    skip_on_cran()
+    # tcl's lower bound is above its estimate, so the fit ends on it and the
+    # covariance step must report the boundary.  tcl's bound code (lower and
+    # upper) is its own, not that of tv after it (none), which would leave only
+    # its upper bound checked.  add.sd comes before tcl so that its own
+    # lower-bound check does not carry over to tcl.
+    .m <- function() {
+      ini({
+        tka <- fix(0.45)
+        add.sd <- 0.7
+        tcl <- c(1.1, 1.2, 5)
+        tv <- 3.45
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        d / dt(depot) <- -ka * depot
+        d / dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd)
+      })
+    }
+    .f <- suppressMessages(suppressWarnings(nlmixr(
+      .m,
+      theo_sd,
+      "focei",
+      control = foceiControl(print = 0, calcTables = FALSE, literalFix = FALSE)
+    )))
+    expect_equal(fixef(.f)[["tcl"]], 1.1, tolerance = 1e-4)
+    expect_match(.f$covMethod, "^Boundary issue")
+    expect_match(.f$covMethod, "\"tcl\"")
+  })
+
   .agqObjf <- function(scaleC) {
     .ctl <- agqControl(print = 0, maxOuterIterations = 0L, covMethod = "", calcTables = FALSE, scaleC = scaleC)
     suppressMessages(suppressWarnings(nlmixr(.mod, theo_sd, "agq", control = .ctl)))$objf

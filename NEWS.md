@@ -219,6 +219,15 @@
   and a final reset (`resetThetaFinalP`) that stopped with "Starting values
   violate bounds" now restarts.
 
+- When a fixed theta (`literalFix = FALSE`) or a regression-updated theta
+  comes before others, each FOCEi parameter now gets its own bound code for
+  the L-BFGS-B outer optimizers (`outerOpt = "lbfgsb3c"`, `"L-BFGS-B"`) and
+  for the covariance step's boundary check.  A parameter with an upper bound
+  took its code from the parameter after it, and the last one from an
+  unrelated buffer: omega parameters lost their lower bound, and a theta
+  estimated on its lower bound got a covariance (`"r,s (full)"`) instead of
+  the boundary message.
+
 ### Covariance and finite differences
 
 - The Gill (1983) step-size search no longer leaves a parameter at its last
