@@ -47,25 +47,27 @@ void calculateDfFull(arma::Col<int>& ID, arma::mat &etas,
 }
 
 // The number of identifier columns (ID, time, ...) of a solved data frame: the
-// columns up to and including time; -1 when it has no time.
+// columns up to and including time.
 int getPredIndex(List &ipredL) {
   CharacterVector names= ipredL.attr("names");
   for (int i = 0; i < names.size(); ++i) {
     if (names[i] == "time") return (i+1);
   }
+  stop(_("'time' not found in the solved data.frame"));
   return -1;
 }
 
-// The index of the column `name` of a solved data frame, def when it has none.
-// The prediction (rx_pred_), its variance (rx_r_) and a simulation (sim) are
-// found by name: the variables lag() refers to are output ahead of rx_pred_, so
-// it is not always the column after time.
-int getDfColIndex(List &df, const char *name, int def) {
+// The index of the column `name` of a solved data frame.  The prediction
+// (rx_pred_), its variance (rx_r_) and a simulation (sim) are found by name: the
+// variables lag() refers to are output ahead of rx_pred_, so it is not always
+// the column after time.
+int getDfColIndex(List &df, const char *name) {
   CharacterVector names = df.attr("names");
   for (int i = 0; i < names.size(); ++i) {
     if (names[i] == name) return i;
   }
-  return def;
+  stop(_("'%s' not found in the solved data.frame"), name);
+  return -1;
 }
 
 void getLimitFromInput(SEXP limitIn, int& ncalc, arma::vec& limit, int &hasLimit) {
@@ -212,22 +214,19 @@ extern "C" SEXP _nlmixr2est_resCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
   List etasDf = as<List>(etasDfSEXP);
   int nid = Rf_length(etasDf[0]);
   int nidCol = getPredIndex(ipredL);
-  if (nidCol == -1) {
-    stop(_("malformed dataframes, no time present in ipred data.frame"));
-  }
-  int npred = getDfColIndex(ipredL, "rx_pred_", nidCol);
-  int nr = getDfColIndex(ipredL, "rx_r_", npred + 1);
+  int npred = getDfColIndex(ipredL, "rx_pred_");
+  int nr = getDfColIndex(ipredL, "rx_r_");
 
   arma::vec ipredt(REAL(ipredL[npred]), ncalc, false, true);
   arma::vec ipred(ipredt.size());
 
-  arma::vec predt(REAL(predL[npred]), ncalc, false, true);
+  arma::vec predt(REAL(predL[getDfColIndex(predL, "rx_pred_")]), ncalc, false, true);
   arma::vec pred(predt.size());
 
   arma::vec dv(REAL(dvIn), ncalc, false, true);
   arma::vec dvt(ncalc);
 
-  arma::vec rpv(REAL(predL[nr]), ncalc, false, true);
+  arma::vec rpv(REAL(predL[getDfColIndex(predL, "rx_r_")]), ncalc, false, true);
   arma::vec riv(REAL(ipredL[nr]), ncalc, false, true);
 
 

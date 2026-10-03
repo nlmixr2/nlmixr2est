@@ -95,6 +95,18 @@ nmTest({
     expect_equal(.nlsGrad$theta, .nls$theta, tolerance = 1e-4)
   })
 
+  test_that("the table step stops when the solve has no prediction column (issue 1140)", {
+    # columns are found by name, never guessed by position
+    .df <- list(ID = 1L, time = 0, c0 = 1, rx_r_ = 1, rxLambda = 1, rxYj = 2, rxLow = 0, rxHi = 1)
+    .ires <- function(df) {
+      .Call(`_nlmixr2est_iresCalc`, df, 1, 0L, NULL, NULL, character(0), character(0), character(0), NULL, list())
+    }
+    expect_error(.ires(.df), "'rx_pred_' not found in the solved data.frame")
+    expect_error(.ires(.df[names(.df) != "time"]), "'time' not found in the solved data.frame")
+    .df$rx_pred_ <- 1
+    expect_error(.ires(.df[names(.df) != "rx_r_"]), "'rx_r_' not found in the solved data.frame")
+  })
+
   test_that("the fit table predicts with lag() of a calculated variable (issue 1140)", {
     skip_on_cran()
     # c0 is output ahead of the prediction: the table finds rx_pred_ and rx_r_

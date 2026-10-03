@@ -45,12 +45,13 @@ extern "C" SEXP _nlmixr2est_cwresCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
   int nid = Rf_length(etasDf[0]);
   int nidCol = getPredIndex(ipredL);
   // the eta sensitivities of rx_pred_ follow it, then rx_r_
-  int npred = getDfColIndex(ipredL, "rx_pred_", nidCol);
+  int npred = getDfColIndex(ipredL, "rx_pred_");
+  int npredP = getDfColIndex(predL, "rx_pred_");
 
   arma::vec ipredt(REAL(ipredL[npred]), ncalc, false, true);
   arma::vec ipred(ipredt.size());
 
-  arma::vec predt(REAL(predL[npred]), ncalc, false, true);
+  arma::vec predt(REAL(predL[npredP]), ncalc, false, true);
   arma::vec pred(predt.size());
 
   arma::vec dv(REAL(dvIn), ncalc, false, true);
@@ -83,9 +84,8 @@ extern "C" SEXP _nlmixr2est_cwresCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
   arma::mat omegaMat = as<arma::mat>(omegaMatSEXP);
   unsigned int neta = omegaMat.n_rows;
 
-  int nr = getDfColIndex(ipredL, "rx_r_", npred + 1 + neta);
-  arma::vec rpv(REAL(predL[nr]), ncalc, false, true);
-  arma::vec riv(REAL(ipredL[nr]), ncalc, false, true);
+  arma::vec rpv(REAL(predL[getDfColIndex(predL, "rx_r_")]), ncalc, false, true);
+  arma::vec riv(REAL(ipredL[getDfColIndex(ipredL, "rx_r_")]), ncalc, false, true);
 
   bool doSim = true;
   List opt = as<List>(cwresOpt);
@@ -123,7 +123,7 @@ extern "C" SEXP _nlmixr2est_cwresCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
   CharacterVector etaN1 = etasDf.names();
   CharacterVector etaN2(neta);
   for (unsigned int j = neta; j--;) {
-    fppm.col(j) = arma::vec(REAL(predL[j + 1 + npred]), ncalc, false, true);
+    fppm.col(j) = arma::vec(REAL(predL[j + 1 + npredP]), ncalc, false, true);
     fpim.col(j) = arma::vec(REAL(ipredL[j + 1 + npred]), ncalc, false, true);
     etas.col(j) = arma::vec(REAL(etasDf[j+1]), nid, false, true);
     etaN2[j] = etaN1[j+1];
