@@ -718,7 +718,10 @@ attr(rxUiGet.nlsFormula, "rstudio") <- quote(~ nlmixr2est::.nlmixrNlsFunValGrad(
     .ret <- eval(.ret)
     .ret <- .nlmFinalizeList(.env, .ret, par = "par", printLine = TRUE, hessianCov = TRUE)
     .ret$sd <- sd(.ret$fvec)
-    .ret$logLik <- sum(stats::dnorm(.ret$fvec, log = TRUE))
+    # the normal log-likelihood at the maximum-likelihood residual variance
+    # RSS / n, as logLik() of a stats::nls() fit
+    .n <- length(.ret$fvec)
+    .ret$logLik <- -.n / 2 * (log(2 * pi) + 1 - log(.n) + log(sum(.ret$fvec^2)))
   } else {
     nlmixr2global$nlsEnv$dataNls <- dataSav[dataSav$EVID == 0, ]
     .nls.control <- stats::nls.control(

@@ -181,6 +181,14 @@ nmTest({
       # the standard errors of stats::nls() on the natural parameters
       expect_equal(unname(.fit$theta[c("Vm", "K")]), unname(coef(.ref)), tolerance = 1e-5, info = .alg)
       expect_equal(unname(sqrt(diag(.fit$cov))), unname(sqrt(diag(stats::vcov(.ref)))), tolerance = 1e-4, info = .alg)
+      # -2 log-likelihood at the ML residual variance (the objective leaves
+      # out n log(2 pi)); "LM" took the residuals as standard normal (sigma = 1)
+      expect_equal(
+        .fit$objective + nrow(.treated) * log(2 * pi),
+        -2 * as.numeric(stats::logLik(.ref)),
+        tolerance = 1e-6,
+        info = .alg
+      )
     }
   })
 

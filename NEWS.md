@@ -364,6 +364,12 @@
   standard error was divided by the residual standard deviation: 0.635
   instead of 6.95 for `Vm` of the `Puromycin` Michaelis-Menten model.
 
+- The objective of an `est = "nls"` fit with the default `algorithm = "LM"`
+  is now the -2 log-likelihood at the maximum-likelihood residual variance,
+  as with the other algorithms (`logLik()` of the `nls` fit).  It took the
+  residuals as standard normal: 249.71 instead of 216.15 for the
+  one-compartment additive model of `theo_sd`.
+
 
 # nlmixr2est 7.1.0
 
