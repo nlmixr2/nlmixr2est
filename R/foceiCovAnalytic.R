@@ -997,6 +997,10 @@
       if (isTRUE(any(ui$predDf$linCmt))) {
         return(.foceiAnalyticFallback("a linCmt() model"))
       }
+      # nor has a calculated variable a history function refers to
+      if (length(.foceiLaggedCalcVars(ui)) > 0L) {
+        return(.foceiAnalyticFallback("lag() of a calculated variable"))
+      }
       if (.foceiCholSECovActive(ui)) {
         return(.foceiAnalyticFallback(.foceiCholSECovReason))
       }
@@ -3794,6 +3798,10 @@
   # linCmt() has no symbolic state sensitivities for the augmented model
   if (isTRUE(any(ui$predDf$linCmt))) {
     return(.foceiAnalyticFallback("a linCmt() model"))
+  }
+  # nor has a calculated variable a history function refers to
+  if (length(.foceiLaggedCalcVars(ui)) > 0L) {
+    return(.foceiAnalyticFallback("lag() of a calculated variable"))
   }
   if (.foceiCholSECovActive(ui)) {
     return(.foceiAnalyticFallback(.foceiCholSECovReason))

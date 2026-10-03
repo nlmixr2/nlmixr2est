@@ -227,6 +227,17 @@
   for.  The `iter` column still counts every objective evaluation, so it
   skips the probes.
 
+- FOCEi-family fits of a model with `lag()` (or `lead()`, `diff()`, ...) of a
+  calculated variable now finite-difference its ETAs through the prediction
+  model.  The symbolic sensitivities treat such a variable as a constant, so
+  an ETA reaching the prediction only through it had no data gradient: the
+  inner problem held it at 0 (`theo_sd` with `cl` in `c0 <- central/v` and
+  `cp` from `lag(c0)`: every `eta.cl` 0, omega 0.45, objective 192.2; now
+  184.9 with omega 0.063), `fast = TRUE` fits stopped with "required for
+  solving: c0", and a model whose only ETA entered that way was refused.  The
+  analytic outer gradient and `covMethod = "analytic"` now decline such
+  models.
+
 ### Covariance and finite differences
 
 - The Gill (1983) step-size search no longer leaves a parameter at its last

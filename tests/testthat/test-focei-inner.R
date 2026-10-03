@@ -317,4 +317,59 @@ nmTest({
     )
     expect_equal(.g[1:2, 1], .fd, tolerance = 1e-7)
   })
+
+  test_that("an ETA reaching the prediction through lag() is finite-differenced", {
+    skip_on_cran()
+    # c0 is a bare symbol to symengine (lag() needs it as a real lhs), so the
+    # symbolic d(cp)/d(eta.cl) was 0: the inner gradient held only the prior
+    # term, and the inner problem pulled eta.cl to 0 whatever the data
+    lagMod <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        add.sd <- 0.7
+        eta.cl ~ 0.1
+        eta.f ~ 0.1
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv)
+        d/dt(depot) <- -ka * depot
+        d/dt(central) <- ka * depot - cl / v * central
+        c0 <- central / v
+        cp <- (0.5 * c0 + 0.5 * lag(c0)) * exp(eta.f)
+        cp ~ add(add.sd)
+      })
+    }
+    .ui <- rxode2::assertRxUi(lagMod)
+    .n <- length(unique(nlmixr2data::theo_sd$ID))
+    suppressWarnings(.vaeInnerSetup(.ui, nlmixr2data::theo_sd, matrix(0, .n, 2), vaeControl()))
+    on.exit(.vaeInnerFree(), add = TRUE)
+    .eta <- c(0.15, -0.1)
+    .g <- foceiInnerLp(.eta, 1L)
+    .fd <- vapply(
+      1:2,
+      function(k) {
+        .h <- replace(numeric(2), k, 1e-4)
+        (likInner(.eta + .h, 1L) - likInner(.eta - .h, 1L)) / 2e-4
+      },
+      numeric(1)
+    )
+    expect_equal(.g, .fd, tolerance = 1e-3)
+    # fits move eta.cl off 0, and fast = TRUE declines the analytic gradient
+    # (whose augmented model could not be solved: "required for solving: c0")
+    # for finite differences
+    for (.fast in c(FALSE, TRUE)) {
+      .fit <- .nlmixr(
+        lagMod,
+        nlmixr2data::theo_sd,
+        "focei",
+        foceiControl(print = 0L, fast = .fast, maxOuterIterations = 2L, covMethod = "", calcTables = FALSE)
+      )
+      expect_true(is.finite(.fit$objf))
+      expect_gt(stats::sd(.fit$eta$eta.cl), 0.01)
+    }
+  })
 })

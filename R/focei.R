@@ -2053,6 +2053,12 @@ rxUiGet.foceiHdEta <- function(x, ...) {
     rxode2::rxTick()
     .ret
   })
+  # with a lagged calculated variable the zeros are expected: the ETAs are
+  # finite-differenced (.innerInternal())
+  if (length(.foceiLaggedCalcVars(x[[1]])) > 0L) {
+    .all.zero <- FALSE
+    .any.zero <- FALSE
+  }
   if (.all.zero) {
     rxode2::rxProgressStop()
     .progressStopped <- TRUE
@@ -2860,6 +2866,58 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
   }
 }
 
+#' Names a history function (lag(), lead(), diff(), ...) takes as its variable
+#'
+#' Only the right-hand side of an assignment is searched, so the dosing
+#' `lag(cmt) <-` is not one.
+#' @param e a model expression
+#' @return character vector of names
+#' @noRd
+.foceiHistFnArgs <- function(e) {
+  if (!is.call(e)) {
+    return(character(0))
+  }
+  .f <- e[[1]]
+  if (is.name(.f) && as.character(.f) %in% c("<-", "=", "~")) {
+    return(.foceiHistFnArgs(e[[3]]))
+  }
+  .ret <- character(0)
+  if (
+    is.name(.f) &&
+      as.character(.f) %in% c("lag", "lead", "diff", "first", "last", "lag0", "lead0", "diff0") &&
+      length(e) >= 2L &&
+      is.name(e[[2]])
+  ) {
+    .ret <- as.character(e[[2]])
+  }
+  for (.i in seq_along(e)[-1]) {
+    .ret <- c(.ret, .foceiHistFnArgs(e[[.i]]))
+  }
+  unique(.ret)
+}
+
+#' Calculated variables of the model a history function refers to
+#'
+#' A variable that `lag()` (`lead()`, `diff()`, ...) refers to has to stay a
+#' real lhs, so rxode2's symengine load binds it to a bare symbol: its symbolic
+#' eta and theta sensitivities are 0, and every derivative taken through it --
+#' the inner (ETA) gradient and Hessian, the analytic outer gradient, the
+#' analytic covariance -- misses its dependence.  The inner problem
+#' finite-differences the ETAs of such a model instead, and the analytic paths
+#' decline it.  The AR(1) residual's own lagged quantities are generated, not
+#' model variables, and have their exact correction (`.rxFoceiArEtaCorrect()`).
+#' @param ui rxode2 ui
+#' @return the variables, `character(0)` for none
+#' @noRd
+.foceiLaggedCalcVars <- function(ui) {
+  .lhs <- ui$mv0$lhs
+  if (length(.lhs) == 0L) {
+    return(character(0))
+  }
+  .args <- unique(unlist(lapply(ui$lstExpr, .foceiHistFnArgs)))
+  intersect(.args, .lhs)
+}
+
 .innerInternal <- function(ui, s) {
   ## Interpolation is carried into the generated models, splitBolus() is not:
   ## these models solve the pre-split $dataSav (see .foceiPreProcessData()).
@@ -2968,6 +3026,13 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
   if (identical(.eventSens, "jump")) {
     .eventEta[] <- 0L
     .eventTheta[] <- 0L
+  }
+  ## A lagged calculated variable has no symbolic sensitivity: finite-difference
+  ## every ETA (and theta) through the prediction model, as for a dosing parameter
+  ## under eventSens = "fd"
+  if (length(.foceiLaggedCalcVars(ui)) > 0L) {
+    .eventEta[] <- 1L
+    .eventTheta[] <- 1L
   }
   pred.opt <- NULL
   ## Build the inner (sensitivity) model with the requested event-sensitivity
@@ -3314,7 +3379,9 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
   ## sensitivity model in "fd" mode -- silently zeroing the dosing-parameter
   ## sensitivities.  Version 2: .foceiModelCacheDeflate() stores eventSens.
   ## Version 3: the bundle gained eventEtaAll (#1016), which a v2 entry lacks.
-  .cacheFormat <- 3L
+  ## Version 4: a model with lag() of a calculated variable finite-differences its
+  ## ETAs (eventEta) and has no augmented outer model; a v3 entry has neither.
+  .cacheFormat <- 4L
   .conditional <- rxode2::rxGetControl(.ui, "innerHessian", "focei") == "conditional" ||
     rxode2::rxGetControl(.ui, "detHessian", "focei") == "conditional"
   digest::digest(c(

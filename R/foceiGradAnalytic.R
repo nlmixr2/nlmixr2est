@@ -434,6 +434,9 @@
   if (isTRUE(any(ui$predDf$linCmt))) {
     return(NULL)
   } # linCmt(): no symbolic state sensitivities
+  if (length(.foceiLaggedCalcVars(ui)) > 0L) {
+    return(NULL)
+  } # lag() of a calculated variable: no symbolic sensitivity through it
   if (!.analyticGradAllowsBoundedTr(ui, caller)) {
     return(NULL)
   }
@@ -710,6 +713,9 @@
   if (isTRUE(any(ui$predDf$linCmt))) {
     return(NULL)
   } # linCmt(): no symbolic state sensitivities
+  if (length(.foceiLaggedCalcVars(ui)) > 0L) {
+    return(NULL)
+  } # lag() of a calculated variable: no symbolic sensitivity through it
   if (!.analyticGradAllowsBoundedTr(ui, caller)) {
     return(NULL)
   }
