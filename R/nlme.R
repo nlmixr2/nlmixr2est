@@ -115,12 +115,7 @@ nlmixr2NlmeControl <- function(
   method <- match.arg(method)
   addProp <- match.arg(addProp)
   eventSens <- match.arg(eventSens)
-  if (checkmate::testIntegerish(covMethod, len = 1, any.missing = FALSE)) {
-    # integer round-trip: 0L means no covariance ("nlme"/"" keep nlme's own)
-    covMethod <- if (identical(as.integer(covMethod), 0L)) "" else "analytic"
-  } else {
-    covMethod <- .covMethodArg(covMethod, match.arg(covMethod))
-  }
+  covMethod <- .covMethodArg(covMethod, match.arg(covMethod))
 
   # 'print' is the common nlmixr control alias; nlme prints through 'verbose',
   # so map it (print=0 means quiet) and let an explicit 'verbose' stand when

@@ -258,13 +258,24 @@
 
 #' A control's covMethod argument as one of its names
 #'
-#' `""` (no covariance) is tested first, because `match.arg()` cannot match it.
+#' An integer is a `foceiControl()` slot, as a round-tripped control carries it,
+#' and is decoded with `.covMethodFromSlot()`.  `""` (no covariance) is tested
+#' next, because `match.arg()` cannot match it.
 #' @param covMethod the argument as given
 #' @param choice `match.arg(covMethod)` in the calling control; it is a promise,
-#'   forced only when `covMethod` is not `""`
+#'   forced only when `covMethod` is a name other than `""`
 #' @return the name, or `""`
 #' @noRd
 .covMethodArg <- function(covMethod, choice) {
+  if (checkmate::testIntegerish(covMethod, len = 1, any.missing = FALSE)) {
+    if (!(covMethod %in% c(0L, .covMethodSlot))) {
+      stop(
+        "an integer 'covMethod' is a foceiControl() slot: 0 (none), 1 (\"r,s\"), 2 (\"r\") or 3 (\"s\")",
+        call. = FALSE
+      )
+    }
+    return(.covMethodFromSlot(covMethod))
+  }
   if (identical(covMethod, "")) {
     return("")
   }

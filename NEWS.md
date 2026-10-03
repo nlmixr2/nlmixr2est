@@ -27,6 +27,12 @@
   parameter(s) are required for solving`, because its model did not define
   that variable.
 
+- `nlmeControl()` reads an integer `covMethod` as the `foceiControl()` slot
+  it is: `1`, `2` and `3` keep `"r,s"`, `"r"` and `"s"`, where every
+  non-zero integer became `"analytic"`; any other integer is an error.
+  `vaeControl()` and `emviControl()` now accept the same slots instead of
+  failing.
+
 - A fit's `IPRED`/`PRED` table, `vpcSim()` (and so `npde`) and `augPred()`
   now interpolate time-varying covariates with the fit's
   `rxControl(covsInterpolation=)` and `naInterpolation=` instead of always
