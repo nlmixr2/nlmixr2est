@@ -466,8 +466,7 @@ nmTest({
   test_that("fim/sa/linFim Omega rows belong to the eta of their phi1 column", {
     # The kernel's phi1 columns follow the thetas (ka, cl, v) whatever order the
     # etas are declared in, so declaring them v, cl, ka fits the same model, bit
-    # for bit.  The Omega rows were named in declaration order: om.eta.v got
-    # eta.ka's log-variance information (and linFim's dV/dOmega_ka).
+    # for bit, and each om.<eta> row must be the same.
     refM <- function() {
       ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- 0.7
             eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1 })
@@ -490,8 +489,8 @@ nmTest({
     }
     # A non-mu-referenced eta's pseudo-theta is the last phi1 column (and tcl,
     # with no eta of its own, a phi0 theta), so declaring eta.v before eta.cl
-    # matches the kernel's order.  fim also used to refuse this model: its row
-    # layout check did not count the pseudo-theta's phi1 column.
+    # matches the kernel's order.  fim's row layout counts the pseudo-theta's
+    # phi1 column.
     nonMuM <- function() {
       ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- 0.7
             eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1 })
@@ -600,9 +599,8 @@ nmTest({
   test_that("covMethod='r,s' installs the inverse of Ha's theta block, by kernel row (#906)", {
     # saemControl(covMethod = "r,s"/"r"/"s") inverts the theta block of the
     # estimation-phase information Ha, laid out [phi1 mu][phi0 mu] with a row
-    # for a fixed theta too.  It used to take Ha[1:nth, 1:nth] under model-order,
-    # fixed-filtered names (tv got tcl's row; tcl got tv's when tka had no eta)
-    # and install it with no label.
+    # for a fixed theta too, so each theta takes its own kernel row (not the
+    # model-order, fixed-filtered position) and the matrix is labelled "Ha".
     fixedM <- function() {
       ini({ tka <- 0.45; tcl <- fix(1); tv <- 3.45; add.sd <- 0.7
             eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1 })

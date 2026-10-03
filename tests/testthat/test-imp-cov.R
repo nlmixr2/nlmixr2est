@@ -93,6 +93,11 @@ test_that(".impCovNatural() maps only the estimated thetas and Omega elements", 
   expect_equal(unname(.r$cov), .j %*% .v %*% t(.j))
 })
 
+# A short imp/impmap control for the fits below
+.impCovCtl <- function(covMethod) {
+  impmapControl(print = 0L, nIter = 5L, isample = 100L, covMethod = covMethod, calcTables = FALSE)
+}
+
 # A mock fit environment for .impCovInstall(): two thetas and a 3 x 3 Omega
 # with one off-diagonal element, so six estimated parameters
 .impMockEnv <- function() {
@@ -204,11 +209,8 @@ nmTest({
     # impComputeCov() scores every subject at its fixed importance samples, at
     # perturbed parameters, after the final MAP pass set llikObs at the estimates
     for (.est in c("impmap", "imp")) {
-      .ctl <- function(covMethod) {
-        impmapControl(print = 0L, nIter = 5L, isample = 100L, covMethod = covMethod, calcTables = FALSE)
-      }
-      .imp <- .nlmixr(.impCovModel, theo_sd, .est, .ctl("imp"))
-      .none <- .nlmixr(.impCovModel, theo_sd, .est, .ctl(""))
+      .imp <- .nlmixr(.impCovModel, theo_sd, .est, .impCovCtl("imp"))
+      .none <- .nlmixr(.impCovModel, theo_sd, .est, .impCovCtl(""))
       expect_true(is.environment(.imp$env) && exists("impCovThetaN", envir = .imp$env))
       expect_identical(.imp$llikObs, .none$llikObs, label = .est)
     }
@@ -216,8 +218,8 @@ nmTest({
 
   test_that("the imp covariance reports Omega on the variance-covariance scale", {
     # The finite-difference Hessian is taken over the parameters impmap estimates
-    # Omega in (chol(Omega^-1), sqrt diagonal); those rows were installed as they
-    # were, under om.<eta>/cov.<eta>.<eta> names.
+    # Omega in (chol(Omega^-1), sqrt diagonal); its om.<eta>/cov.<eta>.<eta> rows
+    # are mapped to the Omega elements they are named after.
     blk <- function() {
       ini({
         tka <- 0.45

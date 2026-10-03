@@ -924,8 +924,8 @@
 #' predates saving them, or a mu-referenced covariate that interleaves
 #' coefficient names with the plain thetas) the rows follow
 #' `saemParamsToEstimate` only when there is no phi0 theta; otherwise there is
-#' no safe way to tell which rows are phi0, and reporting from model order is
-#' exactly the mislabeling of #906.
+#' no safe way to tell which rows are phi0, and reading them in model order
+#' would give one parameter's information to another.
 #' @param env saem fit environment
 #' @return list(tn = parameter names in row order, fx = their fixed flags, phi0
 #'   = the phi0 theta names), or `NULL` when the order cannot be verified
@@ -1928,6 +1928,9 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
     if (!is.null(.ret$saem$tolFactor)) {
       .ret$tolFactor <- .ret$saem$tolFactor
     }
+    # the hold flag of a covariance recompute (.covEngineControl) applies to
+    # this run only
+    .control$saemHoldPar <- NULL
     .ret$control <- .control
     nmObjHandleControlObject(.ret$control, .ret)
     .getSaemTheta(.ret)

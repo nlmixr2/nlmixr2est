@@ -1282,7 +1282,9 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
 #' The estimation pass forces covMethod=0L (the in-fit C++ step would bail on
 #' muModel="lin"), and that runtime control is what gets stored on the fit env;
 #' the post-fit recompute (.foceiRecomputeMuCov) reads the covMethod from there,
-#' so put the requested choice back.
+#' so put the requested choice back.  The internal `impFrozen` flag of a
+#' covariance recompute (`.covEngineControl()`) is dropped from it, so a
+#' stored control never carries it into another fit.
 #' @noRd
 .impRestoreCovMethod <- function(fit, covMethod) {
   .fenv <- tryCatch(fit$env, error = function(e) NULL)
@@ -1292,6 +1294,7 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   ) {
     .ic <- get("impmapControl", envir = .fenv)
     .ic$covMethod <- covMethod
+    .ic$impFrozen <- NULL
     assign("impmapControl", .ic, envir = .fenv)
   }
   invisible(fit)
