@@ -560,7 +560,7 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
                      int iter, double negHalfLogDetOmega, bool isImp,
                      arma::mat& condMean, std::vector<arma::mat>& condVar,
                      arma::vec& Li, arma::vec& Neff, arma::vec& Xi,
-                     arma::vec& XiExpOut, arma::vec& KhatExpOut,
+                     arma::vec& NeffExpOut, arma::vec& XiExpOut, arma::vec& KhatExpOut,
                      std::vector<arma::mat>& outS, std::vector<arma::vec>& outZk,
                      arma::mat& aMat, Environment* eStash,
                      uint32_t qrPinSeed, bool harvestSens,
@@ -984,7 +984,10 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
 
   // Per-EXPANDED-subject xi, which is what the individual-gamma controller
   // drives (one gamma_i per expanded subject).  `Xi` above is the
-  // responsibility-combined per-base-subject value used for reporting.
+  // responsibility-combined per-base-subject value used for reporting.  The
+  // same holds for the effective sample size: AUTO reallocates samples per
+  // expanded subject, so it needs NeffExp, not the per-base-subject `Neff`.
+  NeffExpOut = NeffExp;
   XiExpOut = XiExp;
   KhatExpOut = KhatExp;
 
@@ -1330,7 +1333,7 @@ void impOuter(Environment e) {
   std::vector<arma::mat> condVar;
   std::vector<arma::mat> sampS;
   std::vector<arma::vec> sampZk;
-  arma::vec Li, Neff, Xi, XiExp, KhatExp;
+  arma::vec Li, Neff, Xi, NeffExp, XiExp, KhatExp;
   arma::mat aMat;                 // posterior mixture responsibilities (nsub x Nmix)
   int Nmix = impNmix();
   int nExp = nsub * Nmix;         // expanded pseudo-subjects for the mixture E/M-step
@@ -1616,7 +1619,7 @@ void impOuter(Environment e) {
     gammaUsed = gammaVec;
     gammaScalarUsed = gamma;
     impEStep(nsub, neta, isampleVec, gammaVec, props, cores, iter, impLogDetOmegaInv5(), isImp,
-             condMean, condVar, Li, Neff, Xi, XiExp, KhatExp, sampS, sampZk, aMat, &e, qrPinSeed,
+             condMean, condVar, Li, Neff, Xi, NeffExp, XiExp, KhatExp, sampS, sampZk, aMat, &e, qrPinSeed,
              harvestSens, outSens);
     obj = 0.0;
     for (int id = 0; id < nsub; ++id) if (R_finite(Li[id])) obj += 2.0 * Li[id];
@@ -1816,7 +1819,9 @@ void impOuter(Environment e) {
     if (autoOn && nExp > 1) {
       arma::vec need(nExp, arma::fill::ones);
       for (int id = 0; id < nExp; ++id) {
-        double fr = R_finite(Neff[id]) ? Neff[id] / (double)isampleUsed[id] : 1.0;
+        // NeffExp, not Neff: id runs over the EXPANDED subjects, and Neff has
+        // one (responsibility-combined) entry per base subject.
+        double fr = R_finite(NeffExp[id]) ? NeffExp[id] / (double)isampleUsed[id] : 1.0;
         if (!(fr > 0.0) || !R_finite(fr)) fr = 1.0;
         // Only deviate from uniform where the effective-sample fraction is
         // genuinely deficient.  Reallocating on small differences just adds

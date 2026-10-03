@@ -24,6 +24,13 @@
   crash later (for example with `malloc(): unsorted double linked list
   corrupted`).  The window is small, so this was rare and intermittent.
 
+- `est = "imp"`, `"impmap"` and `"qrpem"` fits of a mixture model with
+  `auto = TRUE` (the default) now reallocate the importance samples by each
+  mixture component's own effective sample size.  The reallocation read the
+  per-subject effective sample sizes with the index of the expanded
+  (subject x component) list, past the end of them, so the sample counts of
+  every component after the first came from unrelated memory.
+
 - `$etaMat` of a fit with inter-occasion variability now holds the occasion
   ETAs as the model estimated them; it held them multiplied by the occasion
   standard deviation (the scale of `$iov`).  `setOfv()`, `addCwres()`,
