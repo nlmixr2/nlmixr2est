@@ -202,4 +202,47 @@ nmTest({
     expect_equal(.pf["tv", "CI Upper"], exp(.e[[3]] + qn * .s[[3]]))
     expect_equal(.pf["tka", "CI Upper"], exp(.e[[1]] + qn * .s[[1]]))
   })
+
+  test_that("a refreshed covariance refreshes the CI of a theta with an extra mu term (issue 1140)", {
+    # tv is mu-referenced inside exp() with an extra constant: the parameter
+    # table back-transforms it with exp(), the literal-fix rule leaves it alone
+    one.cmt <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 1.45
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v + 2)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    fit <- suppressWarnings(suppressMessages(nlmixr(
+      one.cmt,
+      theo_sd,
+      est = "focei",
+      control = foceiControl(print = 0, maxOuterIterations = 0, covMethod = "r", covFull = FALSE, calcTables = FALSE)
+    )))
+    .th <- c("tka", "tcl", "tv")
+    .se0 <- fit$parFixedDf[.th, "SE"]
+    expect_true(all(is.finite(.se0)))
+    .i <- match("tv", rownames(fit$parFixedDf))
+    expect_equal(unname(fit$parFixedDf[["Back-transformed"]][.i]), exp(unname(fit$parFixedDf[["Estimate"]][.i])))
+    .cov <- diag((2 * .se0)^2)
+    dimnames(.cov) <- list(.th, .th)
+    expect_no_warning(.updateParFixedRefreshSeFromCov(fit$env, .cov))
+    .pf <- fit$parFixedDf
+    qn <- qnorm(0.975)
+    .e <- unname(.pf[["Estimate"]][.i])
+    .s <- unname(.pf[["SE"]][.i])
+    expect_equal(.s, 2 * unname(.se0[[3]]))
+    expect_equal(unname(.pf[["CI Lower"]][.i]), exp(.e - qn * .s))
+    expect_equal(unname(.pf[["CI Upper"]][.i]), exp(.e + qn * .s))
+  })
 })

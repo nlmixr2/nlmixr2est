@@ -13,22 +13,23 @@
   if (length(.w) == 1L && !is.na(.iniDf$backTransform[.w])) {
     return(value)
   }
-  .updateParFixedBackTransformDefault(ui, name, value)
-}
-
-#' The default back-transform of a theta (exp/expit/probitInv from its
-#' mu-referenced `curEval`), whatever its `backTransform()` says
-#'
-#' @inheritParams .updateParFixedBackTransformFixed
-#' @return `value` back-transformed
-#' @noRd
-.updateParFixedBackTransformDefault <- function(ui, name, value) {
   if (name %in% ui$muRefExtra$parameter) {
     return(value)
   }
   if (name %in% ui$muRefCovariateDataFrame$covariateParameter) {
     return(value)
   }
+  .updateParFixedBackTransformDefault(ui, name, value)
+}
+
+#' The back-transform of a theta from its mu-referenced `curEval`
+#' (exp/expit/probitInv), the rule the C++ parameter table applies to every
+#' estimated theta (`.iterPrintXParFromUi()`)
+#'
+#' @inheritParams .updateParFixedBackTransformFixed
+#' @return `value` back-transformed
+#' @noRd
+.updateParFixedBackTransformDefault <- function(ui, name, value) {
   .m <- ui$muRefCurEval
   .w <- which(.m$parameter == name)
   if (length(.w) == 1L) {
@@ -346,9 +347,9 @@
 #' The back-transform a parameter-table row was reported with, applied to `x`
 #'
 #' Tries the function a `backTransform()` in `ini()` names (looked up where
-#' `.updateParFixed()` looks it up), then the default rule, then the identity;
-#' the first that maps the estimate to the row's back-transformed value is the
-#' row's.
+#' `.updateParFixed()` looks it up), then the rule for a literally-fixed theta,
+#' then the `curEval` rule of the C++ table, then the identity; the first that
+#' maps the estimate to the row's back-transformed value is the row's.
 #'
 #' @param ui the fit's ui
 #' @param name row (theta) name
@@ -357,6 +358,8 @@
 #' @return `x` back-transformed, or `NULL` when no rule reproduces `bt`
 #' @noRd
 .updateParFixedBackTransformRow <- function(ui, name, x, bt) {
+  # the table's columns carry the row names, which all.equal() would compare
+  x <- unname(x)
   .bt <- unname(bt)
   .fun <- ui$iniDf$backTransform[ui$iniDf$name == name]
   if (length(.fun) == 1L && !is.na(.fun)) {
@@ -364,16 +367,20 @@
       get(.fun, envir = nlmixr2global$nlmixrEvalEnv$envir, mode = "function"),
       error = function(e) NULL
     )
-    .y <- if (is.function(.fun)) tryCatch(.fun(x), error = function(e) NULL)
+    .y <- if (is.function(.fun)) tryCatch(unname(.fun(x)), error = function(e) NULL)
     if (length(.y) == length(x) && isTRUE(all.equal(.y[1], .bt))) {
       return(.y)
     }
+  }
+  .y <- tryCatch(.updateParFixedBackTransformFixed(ui, name, x), error = function(e) x)
+  if (isTRUE(all.equal(.y[1], .bt))) {
+    return(.y)
   }
   .y <- tryCatch(.updateParFixedBackTransformDefault(ui, name, x), error = function(e) x)
   if (isTRUE(all.equal(.y[1], .bt))) {
     return(.y)
   }
-  if (isTRUE(all.equal(unname(x[1]), .bt))) {
+  if (isTRUE(all.equal(x[1], .bt))) {
     return(x)
   }
   NULL
