@@ -211,6 +211,12 @@
   diagonal), reported "imaginary" components for a `NaN` diagonal, and gave an
   infinite root for an infinite diagonal.
 
+- `setOfv(fit, "imp")` (and `"impmap"`) on a saem fit now switches the fit to
+  the importance-sampling objective.  It stopped with `unknown error` after
+  the objective, log-likelihood, AIC and BIC had already been switched,
+  leaving the objective type and the fit header naming the previous one.  An
+  objective a saem fit cannot describe now stops before anything changes.
+
 ### Covariance and finite differences
 
 - The Gill (1983) step-size search no longer leaves a parameter at its last

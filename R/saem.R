@@ -1550,6 +1550,45 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   .saemControlToFoceiControl(.env, assign = FALSE)
 }
 
+#' The fit-header text that names a saem fit's objective function
+#'
+#' @param type objective function type: a row name of the fit's `$objDf`
+#' @return the text; a type it cannot describe is an error
+#' @noRd
+.saemExtraText <- function(type) {
+  .t <- tolower(type)
+  if (.t == "focei") {
+    return(crayon::silver$italic("OBJF by FOCEi approximation"))
+  }
+  if (.t == "foce") {
+    return(crayon::silver$italic("OBJF by FOCE approximation"))
+  }
+  if (.t == "fo") {
+    return(crayon::silver$italic("OBJF by FO approximation"))
+  }
+  if (.t == "imp") {
+    return(crayon::silver$italic("OBJF by importance sampling (IMP)"))
+  }
+  if (.t == "impmap") {
+    return(crayon::silver$italic("OBJF by importance sampling (IMPMAP)"))
+  }
+  if (type == "") {
+    return(crayon::silver$italic("OBJF not calculated"))
+  }
+  .q <- .saemParseLikName(type)
+  if (is.null(.q)) {
+    stop("the saem fit has no description of objective function '", type, "'", call. = FALSE)
+  }
+  crayon::silver$italic(sprintf(
+    "OBJF by %s",
+    paste0(
+      ifelse(.q[1] == 1, "Laplacian (n.sd=", sprintf("Gaussian Quadrature (n.nodes=%s, n.sd=", .q[1])),
+      .q[2],
+      ")"
+    )
+  ))
+}
+
 #' Set the extra text for saem
 #'
 #' @param .env saem environment
@@ -1561,33 +1600,7 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   if (inherits(.env, "nlmixr2FitData")) {
     .env <- .env$env
   }
-  .txt <- ""
-  if (tolower(type) == "focei") {
-    .txt <- paste0(.txt, crayon::silver$italic("OBJF by FOCEi approximation"))
-  } else if (tolower(type) == "foce") {
-    .txt <- paste0(.txt, crayon::silver$italic("OBJF by FOCE approximation"))
-  } else if (tolower(type) == "fo") {
-    .txt <- paste0(.txt, crayon::silver$italic("OBJF by FO approximation"))
-  } else if (type == "") {
-    .txt <- paste0(.txt, crayon::silver$italic("OBJF not calculated"))
-  } else {
-    .q <- .saemParseLikName(type)
-    if (is.null(.q)) {
-      stop("unknown error")
-    }
-    .txt <- paste0(
-      .txt,
-      crayon::silver$italic(sprintf(
-        "OBJF by %s",
-        paste0(
-          ifelse(.q[1] == 1, "Laplacian (n.sd=", sprintf("Gaussian Quadrature (n.nodes=%s, n.sd=", .q[1])),
-          .q[2],
-          ")"
-        )
-      ))
-    )
-  }
-  .env$extra <- .txt
+  .env$extra <- .saemExtraText(type)
   invisible()
 }
 
