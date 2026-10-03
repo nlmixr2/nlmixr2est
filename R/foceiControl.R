@@ -1606,11 +1606,13 @@ foceiControl <- function(
   # "sa"/"imp" are foreign to the focei kernel; skip the in-kernel cov step and
   # recompute them post-fit at the converged estimates (see .covRecompute).
   covMethodDeferred <- NA_character_
-  if (checkmate::testIntegerish(covMethod, len = 1, lower = 0L, upper = 3L, any.missing = FALSE)) {
-    covMethod <- as.integer(covMethod)
+  if (checkmate::testIntegerish(covMethod, len = 1, any.missing = FALSE)) {
+    covMethod <- .covMethodSlotArg(covMethod)
     .ct <- list(...)$covType
     if (!is.null(.ct)) covType <- match.arg(.ct, c("analytic", "fd"))
-  } else if (rxode2::rxIs(covMethod, "character")) {
+  } else if (!rxode2::rxIs(covMethod, "character")) {
+    stop("'covMethod' must be a covariance method name or a foceiControl() slot (0 to 3)", call. = FALSE)
+  } else {
     covMethod <- .covMethodArg(covMethod, match.arg(covMethod))
     if (covMethod %in% c("sa", "imp")) {
       covMethodDeferred <- covMethod

@@ -165,6 +165,12 @@
   differing number of rows`.  Both now read the fit's own control (`$control`);
   the imp objective read `$foceiControl`, which never holds `adjObf`.
 
+- `foceiControl(covMethod=)` (and the controls built on it, such as
+  `foceControl()` and `impmapControl()`) is now an error for a number that is
+  not a covariance slot (`0` to `3`) and for anything that is neither a
+  method name nor a number (`NULL`, `NA`, `TRUE`, a vector).  It was stored
+  as given.
+
 ### Covariance and finite differences
 
 - The Gill (1983) step-size search no longer leaves a parameter at its last

@@ -68,6 +68,27 @@ test_that("a control given a foceiControl() covMethod slot keeps the covariance 
   expect_error(nlmeControl(covMethod = 4L), "foceiControl() slot", fixed = TRUE)
 })
 
+test_that("foceiControl() keeps a covMethod slot and rejects anything that is neither a slot nor a name", {
+  for (.s in 0:3) {
+    expect_identical(foceiControl(covMethod = .s)$covMethod, .s)
+  }
+  expect_identical(foceiControl(covMethod = 3)$covMethod, 3L)
+  .slotMsg <- "an integer 'covMethod' is a foceiControl() slot: 0 (none), 1 (\"r,s\"), 2 (\"r\") or 3 (\"s\")"
+  expect_error(foceiControl(covMethod = 7), .slotMsg, fixed = TRUE)
+  expect_error(foceiControl(covMethod = -1L), .slotMsg, fixed = TRUE)
+  # the controls that hand their slot to foceiControl()
+  expect_error(foceControl(covMethod = 7), .slotMsg, fixed = TRUE)
+  expect_error(impmapControl(covMethod = 7), .slotMsg, fixed = TRUE)
+  .typeMsg <- "'covMethod' must be a covariance method name or a foceiControl() slot (0 to 3)"
+  expect_error(foceiControl(covMethod = NULL), .typeMsg, fixed = TRUE)
+  expect_error(foceiControl(covMethod = 1.5), .typeMsg, fixed = TRUE)
+  expect_error(foceiControl(covMethod = NA), .typeMsg, fixed = TRUE)
+  expect_error(foceiControl(covMethod = NA_integer_), .typeMsg, fixed = TRUE)
+  expect_error(foceiControl(covMethod = TRUE), .typeMsg, fixed = TRUE)
+  expect_error(foceiControl(covMethod = c(1L, 2L)), .typeMsg, fixed = TRUE)
+  expect_error(foceiControl(covMethod = list()), .typeMsg, fixed = TRUE)
+})
+
 test_that("a covariance refit sets each option under its own name only", {
   .obj <- new.env(parent = emptyenv())
   .obj$foceiControl <- foceiControl()
