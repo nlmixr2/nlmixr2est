@@ -615,12 +615,7 @@ vaeControl <- function(
   checkmate::assertLogical(indTolRelax, len = 1, any.missing = FALSE)
   likelihood <- match.arg(likelihood)
   objf <- match.arg(objf)
-  # match.arg cannot match ""; treat it (skip covariance) like foceiControl does
-  if (length(covMethod) == 1L && covMethod == "") {
-    covMethod <- ""
-  } else {
-    covMethod <- match.arg(covMethod)
-  }
+  covMethod <- .covMethodArg(covMethod, match.arg(covMethod))
   addProp <- match.arg(addProp)
   eventSens <- match.arg(eventSens)
 

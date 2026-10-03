@@ -708,11 +708,7 @@ impmapControl <- function(
   names(.impIdxMaps) <- .impmapIdxMapNames
   .dots[.impmapIdxMapNames] <- NULL
   if (is.character(covMethod)) {
-    if (length(covMethod) == 1L && !nzchar(covMethod)) {
-      covMethod <- ""
-    } else {
-      covMethod <- match.arg(covMethod)
-    }
+    covMethod <- .covMethodArg(covMethod, match.arg(covMethod))
     .impCov <- identical(covMethod, "imp")
     .foceiCovMethod <- if (.impCov) "analytic" else covMethod
   } else {

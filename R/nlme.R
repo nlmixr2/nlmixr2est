@@ -118,10 +118,8 @@ nlmixr2NlmeControl <- function(
   if (checkmate::testIntegerish(covMethod, len = 1, any.missing = FALSE)) {
     # integer round-trip: 0L means no covariance ("nlme"/"" keep nlme's own)
     covMethod <- if (identical(as.integer(covMethod), 0L)) "" else "analytic"
-  } else if (length(covMethod) == 1L && !nzchar(covMethod)) {
-    covMethod <- ""
   } else {
-    covMethod <- match.arg(covMethod)
+    covMethod <- .covMethodArg(covMethod, match.arg(covMethod))
   }
 
   # 'print' is the common nlmixr control alias; nlme prints through 'verbose',

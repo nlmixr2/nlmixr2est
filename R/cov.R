@@ -256,6 +256,21 @@
   if (.n == "r" && identical(covType, "analytic")) "analytic" else .n
 }
 
+#' A control's covMethod argument as one of its names
+#'
+#' `""` (no covariance) is tested first, because `match.arg()` cannot match it.
+#' @param covMethod the argument as given
+#' @param choice `match.arg(covMethod)` in the calling control; it is a promise,
+#'   forced only when `covMethod` is not `""`
+#' @return the name, or `""`
+#' @noRd
+.covMethodArg <- function(covMethod, choice) {
+  if (identical(covMethod, "")) {
+    return("")
+  }
+  choice
+}
+
 #' Check a covariance before it is installed or kept
 #'
 #' Symmetrizes first, then requires a finite, square matrix that is symmetric

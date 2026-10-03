@@ -1623,21 +1623,15 @@ foceiControl <- function(
     .ct <- list(...)$covType
     if (!is.null(.ct)) covType <- match.arg(.ct, c("analytic", "fd"))
   } else if (rxode2::rxIs(covMethod, "character")) {
-    if (all(covMethod == "")) {
-      covMethod <- 0L
-    } else {
-      covMethod <- match.arg(covMethod)
-      if (covMethod %in% c("sa", "imp")) {
-        covMethodDeferred <- covMethod
-        covMethod <- 0L
-      } else if (identical(covMethod, "analytic")) {
-        covType <- "analytic"
-        covMethod <- 2L
-      } else {
-        .covMethodIdx <- c("r,s" = 1L, "r" = 2L, "s" = 3L)
-        covMethod <- setNames(.covMethodIdx[covMethod], NULL)
-      }
+    covMethod <- .covMethodArg(covMethod, match.arg(covMethod))
+    if (covMethod %in% c("sa", "imp")) {
+      covMethodDeferred <- covMethod
+    } else if (covMethod == "analytic") {
+      covType <- "analytic"
+      covMethod <- "r"
     }
+    # "" and the deferred "sa"/"imp" run no covariance step in the kernel
+    covMethod <- if (covMethod %in% names(.covMethodSlot)) .covMethodSlot[[covMethod]] else 0L
   }
   # round-tripped controls carry the deferred request as a ... field
   if (is.na(covMethodDeferred) && !is.null(list(...)$covMethodDeferred)) {
@@ -2182,6 +2176,21 @@ foceiControl <- function(
   .ret
 }
 
+#' covMethod of a `foceiControl()` as the name that rebuilds it
+#'
+#' covMethod folds the analytic-vs-finite-difference R-matrix choice (carried by
+#' the derived internal covType) into a single name; covType is never deparsed
+#' on its own.
+#' @param o the control
+#' @return "analytic", "r,s", "r", "s", or "" for no covariance
+#' @noRd
+.foceiControlCovMethodName <- function(o) {
+  if (identical(o$covType, "analytic")) {
+    return("analytic")
+  }
+  .covMethodFromSlot(as.integer(o$covMethod))
+}
+
 .rxUiDeparseFoceiControl <- function(object, var, type = "foceiControl") {
   .ret <- eval(str2lang(paste0(type, "()")))
   .outerOpt <- character(0)
@@ -2191,21 +2200,9 @@ foceiControl <- function(
     .outerOpt <- paste0("outerOpt = ", deparse1(object$outerOptTxt))
   }
   .w <- .deparseDifferent(.ret, object, .foceiControlInternal)
-  # covMethod folds the analytic-vs-finite-difference R-matrix choice (carried by the
-  # derived internal covType) into a single token; covType is never deparsed on its own.
-  .covMethodStr <- function(o) {
-    if (identical(o$covType, "analytic")) {
-      return("analytic")
-    }
-    if (identical(as.integer(o$covMethod), 0L)) {
-      return("")
-    }
-    .idx <- c("r,s" = 1L, "r" = 2L, "s" = 3L)
-    names(.idx)[match(as.integer(o$covMethod), .idx)]
-  }
   .covTok <- character(0)
-  if (!identical(.covMethodStr(object), .covMethodStr(.ret))) {
-    .covTok <- paste0("covMethod = ", deparse1(.covMethodStr(object)))
+  if (!identical(.foceiControlCovMethodName(object), .foceiControlCovMethodName(.ret))) {
+    .covTok <- paste0("covMethod = ", deparse1(.foceiControlCovMethodName(object)))
   }
   if (length(.w) == 0 && length(.outerOpt) == 0 && length(.covTok) == 0) {
     return(str2lang(paste0(var, " <- ", type, "()")))
@@ -2245,13 +2242,6 @@ foceiControl <- function(
         } else if (x %in% c("derivMethod", "covDerivMethod")) {
           .methodIdx <- c("forward" = 0L, "central" = 1L, "switch" = 3L)
           paste0(x, " = ", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
-        } else if (x == "covMethod") {
-          if (object[[x]] == 0L) {
-            paste0(x, " = \"\"")
-          } else {
-            .covMethodIdx <- c("r,s" = 1L, "r" = 2L, "s" = 3L)
-            paste0(x, " = ", deparse1(names(.covMethodIdx[which(object[[x]] == .covMethodIdx)])))
-          }
         } else {
           paste0(x, " = ", deparse1(object[[x]]))
         }
