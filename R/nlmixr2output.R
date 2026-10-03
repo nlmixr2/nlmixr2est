@@ -902,7 +902,7 @@ vcov.nlmixr2FitCoreSilent <- vcov.nlmixr2FitCore
   for (.n in names(.thetas)) {
     .iniDf$est[.iniDf$name == .n] <- .thetas[.n]
   }
-  # nlme estimates the full covariance matrix; expand omega initial estimates to match if needed.
+  # the omega rows are rebuilt from the estimated matrix
   .omega <- x$omega
   if (is.null(.omega)) {
     .ui <- rxode2::rxUiDecompress(.ui)

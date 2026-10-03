@@ -448,7 +448,8 @@ nlmeControl <- nlmixr2NlmeControl
   .etaMat <- .etaMat[order(as.numeric(row.names(.etaMat))), , drop = FALSE]
   names(.etaMat) <- .nlmeGetNonMuRefNames(names(.etaMat), ui)
   row.names(.etaMat) <- NULL
-  as.matrix(.etaMat)
+  # nlme orders the columns by omega block; the fit maps them by position
+  as.matrix(.etaMat[, dimnames(ui$omega)[[1]], drop = FALSE])
 }
 
 #' Get the covariance from nlme
@@ -470,42 +471,22 @@ nlmeControl <- nlmixr2NlmeControl
 
 #' Get the omega matrix from nlme
 #'
+#' nlme keeps the random-effect covariance relative to the residual variance,
+#' so the estimate is `sigma^2` times its `pdMat`, the same matrix `VarCorr()`
+#' prints (without its rounding).  Its structure is the one `ini()` declares
+#' (`rxUiGet.nlmePdOmega()`).
+#'
 #' @param nlme nlme object
 #' @param ui rxode2 object
-#' @return Named omega matrix
+#' @return omega matrix, named and ordered as `ui$omega`
 #' @author Matthew L. Fidler
 #' @noRd
 .nlmeGetOmega <- function(nlme, ui) {
-  .omega <- ui$omega
-  diag(.omega) <- 0
-  .vc <- nlme::VarCorr(nlme)
-  .var <- as.matrix(.vc[, "Variance", drop = FALSE])
-  .rn <- rownames(.var)
-  .name <- .nlmeGetNonMuRefNames(.rn, ui)
-  .var <- setNames(suppressWarnings(as.numeric(.var)), .name)
-  .var <- .var[names(.var) != "Residual"]
-  if (length(.var) == 1) {
-    .ome <- matrix(.var, 1, 1)
-  } else {
-    .ome <- diag(.var)
-  }
-  .name <- names(.var)
+  .ome <- nlme::pdMatrix(nlme$modelStruct$reStruct[[1]]) * nlme$sigma^2
+  .name <- .nlmeGetNonMuRefNames(rownames(.ome), ui)
   dimnames(.ome) <- list(.name, .name)
-  if (all(.omega == 0)) {
-    return(.ome)
-  }
-  .cor2 <- as.data.frame(.vc[-length(.rn), -(1:2), drop = FALSE])
-  .cor2$extra <- ""
-  names(.cor2) <- rownames(.cor2)
-  .cor2 <- as.matrix(.cor2)
-  diag(.cor2) <- "1"
-  .cor2[upper.tri(.cor2)] <- .cor2[lower.tri(.cor2)]
-  .cor2 <- matrix(suppressMessages(as.numeric(.cor2)), nrow(.cor2), ncol(.cor2), dimnames = dimnames(.ome))
-  diag(.ome) <- sqrt(diag(.ome))
-  .ome <- .ome %*% .cor2 %*% .ome
-  .ome <- as.matrix(Matrix::nearPD(ui$omega)$mat)
-  dimnames(.ome) <- list(.name, .name)
-  .ome
+  .eta <- dimnames(ui$omega)[[1]]
+  .ome[.eta, .eta, drop = FALSE]
 }
 
 #' @rdname nmObjHandleControlObject

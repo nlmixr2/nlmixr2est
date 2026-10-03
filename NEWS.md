@@ -165,6 +165,17 @@
   differing number of rows`.  Both now read the fit's own control (`$control`);
   the imp objective read `$foceiControl`, which never holds `adjObf`.
 
+- `est = "nlme"` with a covariance in `ini()` now reports nlme's estimate of
+  omega in `$omega` and in the fit's `ini()`, and so to every step that starts
+  from the fit (`setCov()`, `setOfv()`, `addCwres()`, simulation, the
+  `covMethod = "analytic"`, `"r,s"`, `"sa"` and `"imp"` recomputes, refits);
+  it reported the initial omega.  nlme now estimates only the covariances
+  `ini()` declares (a `pdBlocked` structure): it estimated a full covariance
+  matrix over every eta, with the warning `nlme will estimate a full omega
+  matrix if any covariances are estimated`.  `VarCorr()` of such a fit is
+  nlme's own, which prints no correlations for a blocked structure; `$omega`
+  has them.
+
 ### Covariance and finite differences
 
 - The Gill (1983) step-size search no longer leaves a parameter at its last

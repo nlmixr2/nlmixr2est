@@ -344,4 +344,83 @@ nmTest({
     )
     expect_true(!all(ranef(fit_nlme)[[1]] == 0))
   })
+
+  test_that("a block omega reports nlme's estimate of the declared covariances (issue 1140)", {
+    one.compartment <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        eta.ka ~ 0.6
+        eta.cl + eta.v ~ c(0.3, 0.001, 0.1)
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd)
+      })
+    }
+    fit <- .nlmixr(one.compartment, theo_sd, "nlme", control = nlmeControl(verbose = FALSE, returnObject = TRUE))
+    # nlme fits the declared structure: eta.ka alone, eta.cl and eta.v as a block
+    .re <- fit$nlme$modelStruct$reStruct[[1]]
+    expect_s3_class(.re, "pdBlocked")
+    .eta <- c("eta.ka", "eta.cl", "eta.v")
+    .est <- nlme::pdMatrix(.re)[.eta, .eta] * fit$nlme$sigma^2
+    expect_equal(fit$omega, .est)
+    expect_equal(fit$omega["eta.ka", c("eta.cl", "eta.v")], c(eta.cl = 0, eta.v = 0))
+    # the estimate, not the ini() block
+    expect_true(abs(fit$omega["eta.cl", "eta.v"] - 0.001) > 1e-3)
+    expect_equal(diag(fit$omega), diag(.est))
+    # refits, setCov() and setOfv() start from the fit's ui
+    expect_equal(fit$ui$omega, fit$omega)
+    .vc <- VarCorr(fit)
+    expect_equal(as.numeric(.vc[.eta, "Variance"]), unname(diag(fit$omega)), tolerance = 1e-6)
+    # ranef columns follow the ui's eta order
+    expect_equal(names(fit$eta), c("ID", .eta))
+    .re <- nlme::ranef(fit$nlme)
+    .re <- .re[order(as.numeric(rownames(.re))), .eta]
+    expect_equal(unname(as.matrix(fit$eta[, .eta])), unname(as.matrix(.re)))
+  })
+
+  test_that(".nlmeGetOmega returns nlme's matrix in the ui's eta order (issue 1140)", {
+    # 4 etas: VarCorr()'s printed correlations used to be copied into the
+    # wrong cells from the 4th eta on
+    .eta <- c("eta.a", "eta.b", "eta.c", "eta.d")
+    .cor <- matrix(
+      c(
+        1,
+        0.1,
+        0.2,
+        0.3,
+        0.1,
+        1,
+        0.4,
+        0.5,
+        0.2,
+        0.4,
+        1,
+        0.6,
+        0.3,
+        0.5,
+        0.6,
+        1
+      ),
+      4,
+      4
+    )
+    .sd <- c(0.5, 0.4, 0.3, 0.2)
+    .m <- diag(.sd) %*% .cor %*% diag(.sd)
+    dimnames(.m) <- list(.eta, .eta)
+    # nlme holds the matrix relative to sigma^2, in its own (block) order
+    .ord <- c("eta.b", "eta.a", "eta.d", "eta.c")
+    .pd <- nlme::pdSymm(value = .m[.ord, .ord] / 0.25, form = eta.b + eta.a + eta.d + eta.c ~ 1)
+    .fake <- list(modelStruct = list(reStruct = nlme::reStruct(list(ID = .pd))), sigma = 0.5)
+    .ui <- list(omega = .m, muRefDataFrame = data.frame(theta = character(0), eta = character(0)))
+    expect_equal(.nlmeGetOmega(.fake, .ui), .m)
+  })
 })
