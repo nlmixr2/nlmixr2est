@@ -405,15 +405,18 @@
 
 #' Warn that a covariance was installed in its sqrtm-repaired form
 #'
-#' Says so only for the `|x|` repair of a non-FD covariance; the FD decorations
-#' (`"|r|,s"`, `"r+"`) are reported by the native step that made them.
+#' Says so only for the `|x|` repair of a non-FD covariance, and only when the
+#' request was not already for the repaired one (a stashed `"|linFim|"` whose
+#' repair was reported when it was computed); the FD decorations (`"|r|,s"`,
+#' `"r+"`) are reported by the native step that made them.
 #' @param what covariance-method name requested
 #' @param label covariance-method name installed
 #' @return invisibly `NULL`
 #' @noRd
 .covRepairWarn <- function(what, label) {
   .w <- .covUnrepaired(label)
-  if (!identical(.w, label) && !nzchar(.covFdType(label))) {
+  .wb <- .covBaseName(what)
+  if (!identical(.w, label) && !nzchar(.covFdType(label)) && identical(.wb, .covUnrepaired(.wb))) {
     warning(
       sprintf(
         "\"%s\" covariance not positive definite, corrected by sqrtm(%s %%*%% %s) and installed as \"%s\"",

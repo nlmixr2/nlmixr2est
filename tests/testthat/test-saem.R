@@ -232,7 +232,8 @@ test_that("saemControl() reads an integer covMethod as a foceiControl() slot", {
 
 test_that("the full SAEM covariance installs under the label it was computed with", {
   .e <- .saemFullEnv(.saemFull)
-  .saemInstallFullCov(.e)
+  # the sqrtm repair was reported when the matrix was computed
+  expect_no_warning(.saemInstallFullCov(.e))
   expect_identical(.e$covMethod, "|linFim|")
   expect_equal(.e$cov, .saemFull)
   # only the SE the theta-only table lacked is filled
