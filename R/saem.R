@@ -1566,9 +1566,6 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   if (inherits(.env, "nlmixr2FitData")) {
     .env <- .env$env
   }
-  .ui <- .env$ui
-  .txt <- gsub("rxode2 +", "", .ui$modelDesc)
-  #.txt <- paste0("(", crayon::italic(ifelse(is.null(.uif$nmodel$lin.solved), ifelse(.uif$predSys, "PRED", "ODE"), "Solved")), "); ") # nolint: line_length_linter.
   .txt <- ""
   if (tolower(type) == "focei") {
     .txt <- paste0(.txt, crayon::silver$italic("OBJF by FOCEi approximation"))
@@ -1588,7 +1585,7 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
       crayon::silver$italic(sprintf(
         "OBJF by %s",
         paste0(
-          ifelse(.q[1] == 1, "Lapalcian (n.sd=", sprintf("Gaussian Quadrature (n.nodes=%s, n.sd=", .q[1])),
+          ifelse(.q[1] == 1, "Laplacian (n.sd=", sprintf("Gaussian Quadrature (n.nodes=%s, n.sd=", .q[1])),
           .q[2],
           ")"
         )
