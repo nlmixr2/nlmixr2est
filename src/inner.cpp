@@ -13883,7 +13883,10 @@ Environment foceiFitCpp_(Environment e){
   e["scaleC"] = scaleSave;
   parHistData(e, true); // Need to calculate before the parameter translations are mangled
   thetaResetObj(e);
-  IntegerVector gillRet(op_focei.ntheta+op_focei.omegan);
+  // The first gradient's step searches, which numericGrad() keeps by optimizer
+  // index, listed by parameter; a parameter the optimizer does not move was not
+  // assessed (level 1, "Not Assessed").
+  IntegerVector gillRet(op_focei.ntheta+op_focei.omegan, 1);
   NumericVector gillAEps(op_focei.ntheta+op_focei.omegan,NA_REAL);
   NumericVector gillREps(op_focei.ntheta+op_focei.omegan,NA_REAL);
   NumericVector gillAEpsC(op_focei.ntheta+op_focei.omegan,NA_REAL);
@@ -13892,13 +13895,14 @@ Environment foceiFitCpp_(Environment e){
   NumericVector gillCREpsC(op_focei.ntheta+op_focei.omegan,NA_REAL);
   bool warnGill = false;
   int j = op_focei.npars;
-  for (int i = op_focei.ntheta+op_focei.omegan; i--;){
-    gillRet[i] = op_focei.gillRet[i]+1;
+  for (unsigned int k = op_focei.npars; k--;){
+    int i = op_focei.fixedTrans[k];
+    gillRet[i] = op_focei.gillRet[k]+1;
     if (gillRet[i] != 1) {
-      gillAEps[i] = op_focei.aEps[--j];
-      gillREps[i] = op_focei.rEps[j];
-      gillAEpsC[i] = op_focei.aEpsC[j];
-      gillREpsC[i] = op_focei.rEpsC[j];
+      gillAEps[i] = op_focei.aEps[k];
+      gillREps[i] = op_focei.rEps[k];
+      gillAEpsC[i] = op_focei.aEpsC[k];
+      gillREpsC[i] = op_focei.rEpsC[k];
     }
     if (gillRet[i] >= 3) warnGill=true;
   }

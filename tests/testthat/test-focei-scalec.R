@@ -151,4 +151,26 @@ nmTest({
     expect_warning(.sc <- .ui$scaleCtheta, "more options than estimated")
     expect_identical(.sc, rep(2, 4))
   })
+
+  # With literalFix = TRUE a fixed tka leaves the model, so the optimizer moves
+  # the same parameters as with literalFix = FALSE, where tka keeps its row of
+  # $scaleInfo (and of the parameter vectors behind it)
+  .scaleInfoFixed <- function(literalFix, ...) {
+    .m <- .mod |> rxode2::ini(tka = fix(0.45))
+    .ctlS <- foceiControl(print = 0, calcTables = FALSE, literalFix = literalFix, ...)
+    suppressMessages(suppressWarnings(nlmixr(.m, theo_sd, "focei", control = .ctlS)))$scaleInfo
+  }
+
+  test_that("$scaleInfo reports each parameter's own initial gradient search", {
+    skip_on_cran()
+    .cols <- c("Initial Gradient", "Forward aEps", "Forward rEps", "Central aEps", "Central rEps")
+    .a <- .scaleInfoFixed(FALSE, maxOuterIterations = 1L, covMethod = "", outerOpt = "nlminb")
+    .b <- .scaleInfoFixed(TRUE, maxOuterIterations = 1L, covMethod = "", outerOpt = "nlminb")
+    # the fixed tka has no search; every other row is its own parameter's
+    expect_equal(as.character(.a[["Initial Gradient"]][1]), "Not Assessed")
+    expect_true(all(is.na(unlist(.a[1, .cols[-1]]))))
+    expect_true(all(as.character(.b[["Initial Gradient"]]) != "Not Assessed"))
+    expect_equal(as.character(.a[["Initial Gradient"]][-1]), as.character(.b[["Initial Gradient"]]))
+    expect_equal(.a[-1, .cols[-1]], .b[, .cols[-1]], ignore_attr = TRUE, tolerance = 1e-10)
+  })
 })
