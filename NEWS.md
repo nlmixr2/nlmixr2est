@@ -179,6 +179,12 @@
   "agq"` given a `foceControl()` ran FOCE (`nAGQ = 0`, no interaction), and
   `est = "laplace"` given an `agqControl()` ran a two-node quadrature.
 
+- `rxUiDeparse()` now writes `foceControl()`, `focepControl()`,
+  `foControl()`, `foiControl()`, `posthocControl()`, `mfoceiControl()`,
+  `ifoceiControl()`, `mfoceControl()`, `ifoceControl()`, `mfocepControl()`
+  and `ifocepControl()` as the call that rebuilds them, as it already did for
+  the other focei-family controls; it returned `NULL` for these.
+
 ### Covariance and finite differences
 
 - The Gill (1983) step-size search no longer leaves a parameter at its last

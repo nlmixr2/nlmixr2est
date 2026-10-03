@@ -110,3 +110,6 @@ nlmixr2Est.foi <- function(env, ...) {
 attr(nlmixr2Est.foi, "nlmixr2Priors") <- "general"
 attr(nlmixr2Est.foi, "covPresent") <- TRUE
 attr(nlmixr2Est.foi, "unbounded") <- .foUnbounded
+
+#' @export
+rxUiDeparse.foiControl <- function(object, var) .rxUiDeparseFoceiControl(object, var, type = "foiControl")

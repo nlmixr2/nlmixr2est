@@ -147,3 +147,29 @@ nmTest({
     )
   })
 })
+
+test_that("every focei-family control deparses as a call that rebuilds it", {
+  # each control with settings of its own; fo/foi carry the posthoc field the
+  # others do not have
+  .cases <- list(
+    foceControl = list(maxOuterIterations = 7L, covMethod = "s"),
+    focepControl = list(maxOuterIterations = 7L, covMethod = "s"),
+    foControl = list(maxOuterIterations = 7L, posthoc = FALSE),
+    foiControl = list(maxOuterIterations = 7L, posthoc = FALSE),
+    posthocControl = list(covMethod = "r"),
+    mfoceiControl = list(maxOuterIterations = 7L, covMethod = "s"),
+    ifoceiControl = list(maxOuterIterations = 7L, covMethod = "s"),
+    mfoceControl = list(maxOuterIterations = 7L, covMethod = "s"),
+    ifoceControl = list(maxOuterIterations = 7L, covMethod = "s"),
+    mfocepControl = list(maxOuterIterations = 7L, covMethod = "s"),
+    ifocepControl = list(maxOuterIterations = 7L, covMethod = "s")
+  )
+  for (.cls in names(.cases)) {
+    expect_equal(rxUiDeparse(do.call(.cls, list()), "ctl"), str2lang(paste0("ctl <- ", .cls, "()")), info = .cls)
+    .ctl <- do.call(.cls, .cases[[.cls]])
+    .args <- vapply(names(.cases[[.cls]]), function(n) paste0(n, " = ", deparse1(.cases[[.cls]][[n]])), character(1))
+    .call <- rxUiDeparse(.ctl, "ctl")
+    expect_equal(.call, str2lang(paste0("ctl <- ", .cls, "(", paste(.args, collapse = ", "), ")")), info = .cls)
+    expect_identical(eval(.call[[3]]), .ctl, info = .cls)
+  }
+})

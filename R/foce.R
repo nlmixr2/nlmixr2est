@@ -67,3 +67,6 @@ attr(nlmixr2Est.foce, "nlmixr2Priors") <- "general"
 attr(nlmixr2Est.foce, "iov") <- TRUE
 attr(nlmixr2Est.foce, "covPresent") <- TRUE
 attr(nlmixr2Est.foce, "unbounded") <- .foUnbounded
+
+#' @export
+rxUiDeparse.foceControl <- function(object, var) .rxUiDeparseFoceiControl(object, var, type = "foceControl")
