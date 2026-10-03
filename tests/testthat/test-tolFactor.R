@@ -100,4 +100,56 @@ nmTest({
     )
     expect_true(all(is.finite(fit5N$NPDE)))
   })
+
+  test_that("the covariance step leaves the fit's tolFactor and its warnings alone", {
+    # A covariate coefficient whose covariate is 0 everywhere: the objective is
+    # flat in tz, so the covariance step's search for its step size probes far
+    # enough to need looser tolerances.  The estimation (no outer iterations)
+    # never does.
+    flat <- function() {
+      ini({
+        tka <- log(1.5)
+        tcl <- log(2.7)
+        tv <- log(31.5)
+        tz <- 0.1
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl + tz * Z)
+        v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    d <- nlmixr2data::theo_sd
+    d$Z <- 0
+    .ctl <- function(...) foceiControl(print = 0, maxOuterIterations = 0L, calcTables = FALSE, ...)
+    .none <- .nlmixr(flat, d, "focei", .ctl(covMethod = ""))
+    .rs <- .nlmixr(flat, d, "focei", .ctl())
+    expect_false(any(grepl("tolerances", .none$runInfo, fixed = TRUE)))
+    # the fit's own (and its tables') tolFactor; the covariance step's loosening
+    # was reported as every subject's (316)
+    expect_equal(.rs$env$tolFactor, .none$env$tolFactor)
+    # and the loosening is the covariance step's, not the optimization's
+    expect_true(any(grepl("during the covariance step", .rs$runInfo, fixed = TRUE)))
+    expect_false(any(grepl("during the optimization", .rs$runInfo, fixed = TRUE)))
+    # with the ETAs held, the pooled gradient the S matrix falls back on is
+    # exactly 0 in tz; that is a value there, not a zero the optimizer had replaced
+    .held <- .nlmixr(flat, d, "focei", .ctl(maxInnerIterations = 0L))
+    expect_false(any(grepl("zero gradient", .held$runInfo, fixed = TRUE)))
+
+    # covSolveTol resets every subject's factor to 1 for the covariance solves;
+    # a subject the estimation loosened (maxsteps = 80 is too few for one of them
+    # at the fit's tolerance) kept 1 afterwards
+    .ctl80 <- function(...) {
+      .ctl(rxControl = rxode2::rxControl(maxsteps = 80L), ...)
+    }
+    .none80 <- .nlmixr(one.compartment, nlmixr2data::theo_sd, "focei", .ctl80(covMethod = ""))
+    expect_true(any(.none80$env$tolFactor > 1))
+    .tol80 <- .nlmixr(one.compartment, nlmixr2data::theo_sd, "focei", .ctl80(covSolveTol = 1e-6))
+    expect_equal(.tol80$env$tolFactor, .none80$env$tolFactor)
+  })
 })

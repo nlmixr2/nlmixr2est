@@ -286,6 +286,17 @@
   was computed only for the theta-only step's final choice, so the requested
   shape found no S and the fit kept the theta-only covariance without saying
   why; it is now checked like any full shape, and installed or reported.
+- A FOCEi-family fit's per-subject ODE tolerance factors (`$tolFactor`, which
+  its tables solve with) are now those the estimation left.  The covariance
+  step changed them: `covSolveTol` and the analytic covariance set every
+  subject's factor to 1, and its finite-difference legs loosened them on hard
+  solves (to 316 for every subject of a `theo_sd` fit with a flat
+  parameter, whose estimation loosened none).
+- Warnings about difficult ODE solves in the covariance step now say so:
+  loosened tolerances and approximated sensitivities were reported as
+  happening "during the optimization".  A zero in the covariance step's
+  pooled gradient (the S matrix's fallback score) no longer reports "zero
+  gradient replaced with small number": nothing is replaced there.
 
 ### Covariance
 

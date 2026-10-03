@@ -8502,6 +8502,25 @@ struct CovSolveTolGuard {
   }
 };
 
+// Every subject's ODE tolerance factor as the estimation left it: the fit reports it
+// (e["tolFactor"]) and its tables solve with it.  The covariance step changes it --
+// covSolveTol and the analytic covariance's rebuild of the solve set every subject's to 1
+// (rxSetSolveAtolRtol), and its finite-difference legs loosen it on hard solves -- so it
+// is put back on the way out.
+struct CovTolFactorGuard {
+  std::vector<double> tf;
+  CovTolFactorGuard() {
+    rx = getRxSolve_();
+    tf.resize((size_t)getRxNsub(rx));
+    for (size_t i = 0; i < tf.size(); ++i) tf[i] = getIndTolFactor(getSolvingOptionsInd(rx, (int)i));
+  }
+  ~CovTolFactorGuard() {
+    rx = getRxSolve_();
+    size_t n = std::min(tf.size(), (size_t)getRxNsub(rx));
+    for (size_t i = 0; i < n; ++i) setIndTolFactor(getSolvingOptionsInd(rx, (int)i), tf[i]);
+  }
+};
+
 // The per-observation log-likelihoods the fit reports (addLlikObs) are those of the
 // final objective at the estimates; every covariance leg rewrites them.
 struct CovLlikObsGuard {
@@ -11061,9 +11080,14 @@ int foceiS(double *theta, Environment e, bool &hasZero){
     }
   }
   // The pooled gradient, a subject's fallback score below.  After the base values
-  // above: its finite-difference legs move them.
+  // above: its finite-difference legs move them.  A zero component is a value here, not
+  // the outer optimizer's reset request that numericGrad() flags it as: left set, the
+  // flag reported "zero gradient replaced with small number" for the fit, and the next
+  // innerOpt() (a full-covariance probe) reset the thetas.
   arma::vec gfull(npars);
+  const bool zeroGrad = op_focei.zeroGrad;
   numericGrad(theta, gfull.memptr());
+  op_focei.zeroGrad = zeroGrad;
   op_focei.calcGrad=1;
   double sInfoPer = npars * getRxNsub(rx);
   for (cpar = npars; cpar--;){
@@ -14139,7 +14163,16 @@ Environment foceiFitCpp_(Environment e){
   gillRet.attr("class") = "factor";
   e["gillRet"] = gillRet;
   wallT0 = focei_wall_clock::now();
+  // What the estimation left in the flags its warnings report.  The covariance step's legs
+  // can set them too; those are reported as the covariance step's below.
+  const bool estPredSolve = op_focei.didPredSolve.load(std::memory_order_relaxed);
+  const int estReducedTol = op_focei.reducedTol.load(std::memory_order_relaxed);
+  const int estStickyTol = op_focei.stickyTol.load(std::memory_order_relaxed);
+  const int estOuterReducedTol = op_focei.outerReducedTol.load(std::memory_order_relaxed);
+  const int estOuterStickyTol = op_focei.outerStickyTol.load(std::memory_order_relaxed);
   {
+    // Constructed first so it restores last, after _covTolGuard has reset the factors.
+    CovTolFactorGuard _tolFactorGuard;
     // covSolveTol tightens the finite-difference cov solves (R/S + full-cov FD)
     CovSolveTolGuard _covTolGuard(e);
     CovLlikObsGuard _llikObsGuard;
@@ -14162,8 +14195,16 @@ Environment foceiFitCpp_(Environment e){
       }
     }
   }
-  if (op_focei.didPredSolve) {
+  if (estPredSolve) {
     warning(_("numerical difficulties solving forward sensitivity inner problem, tried approximating with more inaccurate numeric differences"));
+  } else if (op_focei.didPredSolve) {
+    warning(_("numerical difficulties solving forward sensitivity inner problem in the covariance step, tried approximating with more inaccurate numeric differences"));
+  }
+  if (!estReducedTol && op_focei.reducedTol) {
+    warning(_("tolerances (atol/rtol) were increased for some difficult ODE solving during the covariance step"));
+  }
+  if (!estOuterReducedTol && op_focei.outerReducedTol.load(std::memory_order_relaxed)) {
+    warning(_("analytic covariance: tolerances increased for some subjects"));
   }
   if (op_focei.nnOuterSkipped) {
     warning(_("outer network step skipped (mixture or numeric-difference solve)"));
@@ -14213,15 +14254,15 @@ Environment foceiFitCpp_(Environment e){
   } else if (warnGillC){
     warning(_("gradient problems with covariance; see $scaleInfo"));
   }
-  if (op_focei.reducedTol){
-    if (op_focei.stickyTol){
+  if (estReducedTol){
+    if (estStickyTol){
       warning(_("tolerances (atol/rtol) were increased (after %d bad solves) for some difficult ODE solving during the optimization.\ncan control with foceiControl(stickyRecalcN=)\nconsider increasing sigdig/atol/rtol changing initial estimates or changing the structural model"), op_focei.stickyRecalcN);
     } else {
       warning(_("tolerances (atol/rtol) were temporarily increased for some difficult ODE solving during the optimization.\nconsider increasing sigdig/atol/rtol changing initial estimates or changing the structural model"));
     }
   }
-  if (op_focei.outerReducedTol.load(std::memory_order_relaxed)){
-    if (op_focei.outerStickyTol.load(std::memory_order_relaxed)){
+  if (estOuterReducedTol){
+    if (estOuterStickyTol){
       warning(_("analytic gradient: tolerances increased for some subjects (foceiControl(outerStickyRecalcN=))"));
     } else {
       warning(_("analytic gradient: tolerances temporarily increased for some subjects"));
