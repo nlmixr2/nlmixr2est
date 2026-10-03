@@ -69,6 +69,30 @@ test_that(".impCovNatural() maps a covariance with no estimated Omega element", 
   )
 })
 
+test_that(".impCovNatural() maps only the estimated thetas and Omega elements", {
+  # tcl and eta.cl fixed: the covariance has rows for tka, tv and the Omega
+  # parameters of eta.ka and eta.v.  With a diagonal Omega and a square-root
+  # diagonal, Omega_ii = 1 / p_i^2, so d(Omega_ii)/d(p_i) = -2 / p_i^3.
+  .eta <- c("eta.ka", "eta.cl", "eta.v")
+  .ini <- data.frame(
+    name = c("tka", "tcl", "tv", .eta),
+    ntheta = c(1L, 2L, 3L, NA, NA, NA),
+    neta1 = c(NA, NA, NA, 1L, 2L, 3L),
+    neta2 = c(NA, NA, NA, 1L, 2L, 3L),
+    fix = c(FALSE, TRUE, FALSE, FALSE, TRUE, FALSE)
+  )
+  .om <- diag(c(0.4, 0.07, 0.02))
+  .p <- 1 / sqrt(c(0.4, 0.02))
+  .dOm <- list(diag(c(-2 / .p[1]^3, 0, 0)), diag(c(0, 0, -2 / .p[2]^3)))
+  .v <- crossprod(matrix(c(3, 1, 0.2, 0.5, 0.1, 0.3, 1, 2, 0.4, 0.2, 0.1, 0.6, 1, 0.3, 0.2, 0.7), 4, 4)) + diag(4)
+  .r <- .impCovNatural(.v, c(1L, 3L), .dOm, .om, c("tka", "tcl", "tv"), .eta, .ini)
+  .nm <- c("tka", "tv", "om.eta.ka", "om.eta.v")
+  expect_identical(dimnames(.r$cov), list(.nm, .nm))
+  .j <- diag(c(1, 1, -2 / .p^3))
+  expect_identical(unname(.r$jacobian), .j)
+  expect_equal(unname(.r$cov), .j %*% .v %*% t(.j))
+})
+
 # A mock fit environment for .impCovInstall(): two thetas and a 3 x 3 Omega
 # with one off-diagonal element, so six estimated parameters
 .impMockEnv <- function() {

@@ -480,6 +480,14 @@ nmTest({
       model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
               linCmt() ~ add(add.sd) })
     }
+    # a 3-cycle of the declaration order (the swap above is its own inverse,
+    # so it cannot tell a map from its inverse)
+    cycleM <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- 0.7
+            eta.cl ~ 0.3; eta.v ~ 0.1; eta.ka ~ 0.6 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+              linCmt() ~ add(add.sd) })
+    }
     # A non-mu-referenced eta's pseudo-theta is the last phi1 column (and tcl,
     # with no eta of its own, a phi0 theta), so declaring eta.v before eta.cl
     # matches the kernel's order.  fim also used to refuse this model: its row
@@ -497,18 +505,32 @@ nmTest({
               linCmt() ~ add(add.sd) })
     }
     .eta <- c("eta.ka", "eta.cl", "eta.v")
-    for (.m in list(list(ref = refM, alt = swapM), list(ref = nonMuRefM, alt = nonMuM))) {
+    for (.m in list(list(ref = refM, alt = list(swapM, cycleM)), list(ref = nonMuRefM, alt = list(nonMuM)))) {
       for (.cm in c("fim", "linFim")) {
         ctl <- saemControl(nBurn = 150, nEm = 200, print = 0, seed = 1L, covMethod = .cm, calcTables = FALSE)
         fR <- .nlmixr(.m$ref, theo_sd, est = "saem", control = ctl)
-        fS <- .nlmixr(.m$alt, theo_sd, est = "saem", control = ctl)
         expect_identical(fR$covMethod, .cm)
-        expect_identical(fS$covMethod, .cm)
-        expect_equal(fS$omega[.eta, .eta], fR$omega[.eta, .eta])
         .nm <- rownames(fR$cov)
         expect_true(all(paste0("om.", .eta) %in% .nm))
-        expect_setequal(rownames(fS$cov), .nm)
-        expect_equal(fS$cov[.nm, .nm], fR$cov, info = .cm)
+        if (identical(.m$ref, refM) && identical(.cm, "fim")) {
+          # the phi1 columns are ka, cl, v; with every theta estimated and
+          # mu-referenced nothing is dropped, so om.eta.v is the delta method on
+          # row 3 + 3 of solve(Ha): d(var)/d(log var) = var
+          .g <- fR$saem$Gamma2_phi1
+          expect_equal(
+            sqrt(fR$cov["om.eta.v", "om.eta.v"]),
+            .g[3, 3] * sqrt(solve(fR$saem$Ha)[6, 6]),
+            tolerance = 1e-10
+          )
+          expect_equal(fR$omega["eta.v", "eta.v"], .g[3, 3], tolerance = 1e-10)
+        }
+        for (.alt in .m$alt) {
+          fS <- .nlmixr(.alt, theo_sd, est = "saem", control = ctl)
+          expect_identical(fS$covMethod, .cm)
+          expect_equal(fS$omega[.eta, .eta], fR$omega[.eta, .eta])
+          expect_setequal(rownames(fS$cov), .nm)
+          expect_equal(fS$cov[.nm, .nm], fR$cov, info = .cm)
+        }
       }
     }
   })

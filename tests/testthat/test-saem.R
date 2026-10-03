@@ -158,6 +158,35 @@ test_that("the Ha theta block skips a fixed theta's row and names rows in kernel
   expect_equal(.e$cov["tv", "tv"], .ref[2, 2])
 })
 
+test_that("a Ha theta block with one estimated theta is its 1 x 1 inverse", {
+  .e <- .saemCovEnv(
+    Ha = .saemHaKernel,
+    covMethod = "r,s",
+    theta = c("tka", "tcl", "tv"),
+    fixed = c(TRUE, FALSE, TRUE),
+    cfg = list(i1 = 0:2, i0 = integer(0), nphi1 = 3L, nphi0 = 0L)
+  )
+  expect_silent(.saemCalcCov(.e))
+  expect_identical(.e$cov, matrix(1 / 30, 1, 1, dimnames = list("tcl", "tcl")))
+  expect_identical(.e$covMethod, "Ha")
+})
+
+test_that("a Ha theta block with every theta fixed installs nothing and says so", {
+  .e <- .saemCovEnv(
+    Ha = .saemHaKernel,
+    covMethod = "r,s",
+    theta = c("tka", "tcl", "tv"),
+    fixed = c(TRUE, TRUE, TRUE),
+    cfg = list(i1 = 0:2, i0 = integer(0), nphi1 = 3L, nphi0 = 0L)
+  )
+  expect_identical(
+    capture_warnings(.saemCalcCov(.e)),
+    "\"Ha\" covariance could not be computed (no mu-referenced theta is estimated); none installed"
+  )
+  expect_false(exists("cov", envir = .e, inherits = FALSE))
+  expect_false(exists("covMethod", envir = .e, inherits = FALSE))
+})
+
 test_that("the Ha theta block drops a non-mu-referenced theta and reports it", {
   # tka has no eta (phi0), so the kernel order is [phi1 mu][phi0 mu] = tcl, tv, tka
   .e <- .saemCovEnv(
