@@ -1,4 +1,31 @@
 nmTest({
+  test_that("ui$nlsParNameFun numbers the THETAs as the nls model does (issue 1140)", {
+    .mod <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- fix(1)
+        tv <- 3.45
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl)
+        v <- exp(tv)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .ui <- rxode2::rxode2(.mod)
+    # the nls model estimates tka and tv as THETA[1] and THETA[2]
+    expect_identical(
+      vapply(.uiGetNlsTheta(.ui), deparse1, character(1)),
+      c("tka <- THETA[1]", "tcl <- 1", "tv <- THETA[2]")
+    )
+    .f <- .ui$nlsParNameFun
+    expect_identical(names(formals(.f)), c("tka", "tv"))
+    # it gave THETA[2] tcl's 1 and THETA[3] tv, numbering every theta
+    expect_identical(.f(0.1, 3), c(`THETA[1]` = 0.1, `THETA[2]` = 3))
+  })
+
   test_that("nls solves its first evaluation at an all-zero start", {
     one.cmt0 <- function() {
       ini({

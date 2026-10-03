@@ -611,12 +611,10 @@ attr(rxUiGet.nlsParUpper, "rstudio") <- c(`ka` = 1000)
 
 #' @export
 rxUiGet.nlsParNameFun <- function(x, ...) {
-  .iniDf <- x[[1]]$iniDf
-  # every THETA, with the residual-error and fixed ones at their estimates
-  .values <- .iniDf$name
-  .w <- .iniDf$err %in% c("add", "prop", "pow") | .iniDf$fix
-  .values[.w] <- paste(.iniDf$est[.w])
-  .nlmFamilyParNameFun(.nlsFormulaArgs(x)[-1], .values)
+  # THETA[k] is the k-th estimated theta that is not a residual error, as in
+  # the nls model (.uiGetNlsTheta(), rxUiGet.nlsParams)
+  .args <- .nlsFormulaArgs(x)[-1]
+  .nlmFamilyParNameFun(.args, .args)
 }
 attr(rxUiGet.nlsParNameFun, "rstudio") <- function() {}
 
