@@ -284,9 +284,11 @@
   numbers describe that covariance.
 - The nlm-family covariance (`bobyqa`, `uobyqa`, `newuoa`, `optim`, `nlminb`,
   `nlm`, `n1qn1`, `lbfgsb3c`, `trust`, `nls` with `"LM"`) now repairs a
-  Hessian that is not positive definite as intended, as `"|r|"`
-  (`sqrtm(R %*% R)`) or, failing that, `"r+"` (the nearest positive-definite
-  matrix), with a warning in `$runInfo`.  It used to invert every Hessian
+  Hessian that is not positive definite as the FOCEi covariance step repairs
+  its R matrix, under the same labels: `"r+"` (the Schnabel-Eskow modified
+  Cholesky factor, when every diagonal it adds is within `foceiControl()`'s
+  default `cholAccept`) or, failing that, `"|r|"` (`sqrtm(R %*% R)`), with a
+  warning in `$runInfo`.  It used to invert every Hessian
   after an unreported Schnabel-Eskow perturbation and label it `"r"`, which
   gave several parameters of the derivative-free fits of `theo_sd` the same
   standard error.  A non-finite Hessian, or the zero one of a failed `trust`
@@ -331,6 +333,13 @@
   gradient column uninitialized (`eventType`), a Hessian at zero
   (`optimHessType`), or the objective undefined (`solveType`).  A
   hand-built control with such a code now stops the nlm problem setup.
+
+- A covariance labelled `"r+"` (or `"|r|"`) now comes from the same repair of
+  the R matrix whichever method computed it, nlm family or FOCEi family (see
+  the nlm-family covariance entry under Covariance).  The nlm family used
+  `"r+"` for the nearest positive-definite matrix (`nmNearPD()`), a repair
+  the FOCEi family does not make; it now fails where the FOCEi R matrix
+  repairs do.
 
 - Every nlm-family control (`nlmControl()`, `nlminbControl()`,
   `optimControl()`, `bobyqaControl()`, `newuoaControl()`, `uobyqaControl()`,

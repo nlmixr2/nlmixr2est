@@ -250,11 +250,15 @@
 #' The information matrix an nlm-family covariance is inverted from
 #'
 #' A positive-definite Hessian is used as is.  One that is not is repaired as
-#' `sqrtm(R %*% R)` ("|r|") or, when that is not positive definite either, as
-#' the nearest positive-definite matrix ("r+").
+#' the FOCEi covariance step repairs its R matrix (`foceiCovUsable()`,
+#' src/inner.cpp), under the same labels: Schnabel-Eskow's modified Cholesky
+#' factor of `R + E` when every diagonal `E` adds is within `foceiControl()`'s
+#' default `cholAccept` ("r+"), else `sqrtm(R %*% R)` ("|r|").  When neither
+#' works there is no covariance.
 #' @param hess Hessian of the -LL objective (the R matrix)
-#' @return list(r = the matrix to invert, `NULL` when none is usable; type =
-#'   "r", "|r|", "r+" or "failed"; warning = what was done, `NULL` for "r")
+#' @return list(r = the matrix whose `cholSE()` factor is inverted, `NULL` when
+#'   none is usable; type = "r", "r+", "|r|" or "failed"; warning = what was
+#'   done, `NULL` for "r")
 #' @noRd
 .nlmCovFromHessian <- function(hess) {
   .g <- .covGuard(hess)
@@ -263,17 +267,25 @@
   }
   .r <- NULL
   if (!is.null(.g$cov)) {
-    .r <- tryCatch(sqrtm(.g$cov %*% .g$cov), error = function(e) NULL)
-    .type <- "|r|"
-    if (!.covGuard(.r)$ok) {
-      .r <- tryCatch(nmNearPD(.g$cov), error = function(e) NULL)
-      .type <- "r+"
+    # cholSE() factors R + E, E the diagonal it adds, scaled by the largest
+    # diagonal of R: a Hessian without a positive one (the zero Hessian of a
+    # failed trust solve) has no scale to correct within
+    .u <- cholSE(.g$cov)
+    .e <- diag(crossprod(.u)) - diag(.g$cov)
+    if (
+      max(diag(.g$cov)) > 0 &&
+        all(is.finite(.e)) &&
+        all(.e <= eval(formals(foceiControl)$cholAccept)) &&
+        .covGuard(crossprod(.u))$ok
+    ) {
+      return(list(r = .g$cov, type = "r+", warning = sprintf("R matrix %s; corrected as \"r+\"", .g$reason)))
     }
+    .r <- tryCatch(sqrtm(.g$cov %*% .g$cov), error = function(e) NULL)
   }
   if (!.covGuard(.r)$ok) {
     return(list(type = "failed", warning = sprintf("R matrix %s; covariance step failed", .g$reason)))
   }
-  list(r = .r, type = .type, warning = sprintf("R matrix %s; corrected as \"%s\"", .g$reason, .type))
+  list(r = .r, type = "|r|", warning = sprintf("R matrix %s; corrected as \"|r|\"", .g$reason))
 }
 
 #' Adjust nlm and family output environment

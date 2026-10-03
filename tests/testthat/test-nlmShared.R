@@ -8,20 +8,28 @@ test_that("a positive-definite Hessian is inverted as is", {
   expect_null(.r$warning)
 })
 
-test_that("an indefinite Hessian is repaired as |r|, else as the nearest positive-definite matrix", {
+test_that("a Hessian that is not positive definite is repaired as FOCEi repairs R, under its labels (issue 1140)", {
+  # nearly positive definite: Schnabel-Eskow's modified Cholesky adds at most
+  # cholAccept (2.2e-5 here) to the diagonal, "r+" as in foceiCovUsable()
+  .h <- diag(c(2, 1, -1e-5))
+  .r <- .nlmCovFromHessian(.h)
+  expect_identical(.r$type, "r+")
+  expect_identical(.r$r, .h)
+  expect_identical(.r$warning, "R matrix is not positive definite; corrected as \"r+\"")
+  .u <- cholSE(.r$r)
+  expect_true(all(diag(crossprod(.u)) - diag(.h) <= foceiControl()$cholAccept))
+  # otherwise sqrtm(R %*% R), "|r|"
   .h <- matrix(c(1, 2, 2, 1), 2) # eigenvalues 3, -1
   .r <- .nlmCovFromHessian(.h)
   expect_identical(.r$type, "|r|")
   expect_equal(.r$r, sqrtm(.h %*% .h))
   expect_equal(eigen(.r$r, symmetric = TRUE, only.values = TRUE)$values, c(3, 1))
   expect_identical(.r$warning, "R matrix is not positive definite; corrected as \"|r|\"")
-  # a singular |R| cannot be inverted either
-  .h <- diag(c(2, 0, -1))
-  .r <- .nlmCovFromHessian(.h)
-  expect_identical(.r$type, "r+")
-  expect_true(min(eigen(.r$r, symmetric = TRUE, only.values = TRUE)$values) > 0)
-  expect_equal(.r$r, nmNearPD(.h))
-  expect_identical(.r$warning, "R matrix is not positive definite; corrected as \"r+\"")
+  # a singular |R| cannot be inverted either; FOCEi has no other repair
+  .r <- .nlmCovFromHessian(diag(c(2, 0, -1)))
+  expect_identical(.r$type, "failed")
+  expect_null(.r$r)
+  expect_identical(.r$warning, "R matrix is not positive definite; covariance step failed")
 })
 
 test_that("a Hessian that cannot be repaired gives no covariance", {
