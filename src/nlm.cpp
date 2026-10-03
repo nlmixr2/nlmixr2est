@@ -655,9 +655,11 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
   double *thetahf = nlmOp.thetahf + id*nlmOp.ntheta;
 
   // The differences are of the pred model (nlmSolveFid), so their base point is
-  // the pred model's objective at theta, solved when the first column needs it.
-  // Column 0 is the sensitivity model's, a solve of a different ODE system that
-  // differs from it by the solver error, which a forward difference divides by h.
+  // the pred model's objective at theta, solved the first time a step search, a
+  // forward difference or a one-sided fallback needs it (a central difference
+  // does not).  Column 0 is the sensitivity model's, a solve of a different ODE
+  // system that differs from it by the solver error, which a forward difference
+  // divides by h.
   arma::vec f0;
   bool haveF0 = false;
   arma::vec grTheta(nlmOp.nobs[id]);
@@ -666,6 +668,12 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
 
   arma::vec hTheta(nlmOp.ntheta);
   arma::vec curTheta = theta;
+  auto needF0 = [&]() {
+    if (!haveF0) {
+      f0 = nlmSolveFid(curTheta, id);
+      haveF0 = true;
+    }
+  };
   for (int ii = 0; ii < nlmOp.ntheta; ++ii) {
     if (nlmOp.thetaFD[ii] == 0) {
       if (!ret.col(ii+1).has_nan()) {
@@ -673,11 +681,8 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
       }
       nlmOp.naGrad.store(1, std::memory_order_relaxed);
     }
-    if (!haveF0) {
-      f0 = nlmSolveFid(curTheta, id);
-      haveF0 = true;
-    }
     if (thetahf[ii] == 0.0) {
+      needF0();
       double h = 0;
       switch(nlmOp.eventType) {
       case 2: // central
@@ -710,6 +715,7 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
       // if this isn't true try backward
       if (grPH.is_finite()) {
         useForward = true;
+        needF0();
         ret.col(ii+1) = calcGradForward(f0, grPH,  thetahf[ii]);
         continue;
       }
@@ -719,7 +725,8 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
       hTheta = curTheta;
       hTheta[ii] -= thetahf[ii];
       grMH = nlmSolveFid(hTheta, id);
-      // central
+      // central, or one-sided from f0 when a leg is not finite
+      if (!grPH.is_finite() || !grMH.is_finite()) needF0();
       ret.col(ii+1) = calcGradCentral(grMH, f0, grPH,  thetahf[ii]);
     }
   }
