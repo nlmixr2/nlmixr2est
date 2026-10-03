@@ -84,4 +84,19 @@ nmTest({
     expect_true("R matrix is not positive definite; corrected as \"|r|\"" %in% .fit$runInfo)
     expect_null(.fit$env$bobyqa$covWarning)
   })
+
+  test_that("the covariance is mapped to the natural scale by the diagonal scaling Jacobian (issue 1140)", {
+    # scaleType = "mult" estimates x = u * scaleTo / init, so du/dx = init / scaleTo
+    # and the covariance of u is J Cov(x) J with J = diag(init / scaleTo)
+    .x <- nlmObjectiveSetup(
+      .pk,
+      nlmixr2data::theo_sd,
+      control = nlmControl(print = 0L, scaleType = "mult", scaleTo = 2)
+    )
+    on.exit(.nlmFreeEnv())
+    .init <- c(0.45, 1, 3.45, 0.7)
+    .n <- c("tka", "tcl", "tv", "add.sd")
+    .cov <- matrix(c(4, 1, 0.5, 0.2, 1, 3, 0.1, 0.3, 0.5, 0.1, 2, 0.4, 0.2, 0.3, 0.4, 1), 4, dimnames = list(.n, .n))
+    expect_equal(.nlmAdjustCov(.cov, .x), .cov * tcrossprod(.init / 2), tolerance = 1e-14)
+  })
 })

@@ -1253,7 +1253,8 @@ RObject nlmGetParHist(bool p=true) {
 //[[Rcpp::export]]
 RObject nlmAdjustCov(RObject CovIn, arma::vec theta) {
   if (!nlmOp.loaded) stop("'nlm' problem not loaded");
-  arma::mat J(nlmOp.ntheta, nlmOp.ntheta);
+  // J = d(natural)/d(scaled) is diagonal: every scaling is per parameter
+  arma::mat J(nlmOp.ntheta, nlmOp.ntheta, arma::fill::zeros);
   arma::mat Cov = as<arma::mat>(CovIn);
   for (int i = 0; i < nlmOp.ntheta; ++i) {
     J(i, i) = scaleAdjustGradScale(&(nlmOp.scale), 1.0, i);
