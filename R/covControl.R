@@ -20,20 +20,7 @@ rsControl <- function(
   rmatNorm = NULL,
   smatNorm = NULL
 ) {
-  checkmate::assertNumeric(hessEps, lower = 0, len = 1, any.missing = FALSE, null.ok = TRUE)
-  checkmate::assertIntegerish(gillKcov, lower = 0, len = 1, any.missing = FALSE, null.ok = TRUE)
-  checkmate::assertNumeric(gillStepCov, lower = 1, len = 1, any.missing = FALSE, null.ok = TRUE)
-  checkmate::assertNumeric(gillFtolCov, lower = 0, len = 1, any.missing = FALSE, null.ok = TRUE)
-  if (!checkmate::testIntegerish(covGillF, lower = 0, upper = 1, any.missing = FALSE, len = 1, null.ok = TRUE)) {
-    checkmate::assertLogical(covGillF, len = 1, any.missing = FALSE)
-  }
-  checkmate::assertNumeric(covSmall, lower = 0, len = 1, any.missing = FALSE, finite = TRUE, null.ok = TRUE)
-  if (!checkmate::testIntegerish(rmatNorm, lower = 0, upper = 1, any.missing = FALSE, len = 1, null.ok = TRUE)) {
-    checkmate::assertLogical(rmatNorm, len = 1, any.missing = FALSE)
-  }
-  if (!checkmate::testIntegerish(smatNorm, lower = 0, upper = 1, any.missing = FALSE, len = 1, null.ok = TRUE)) {
-    checkmate::assertLogical(smatNorm, len = 1, any.missing = FALSE)
-  }
+  .covFdOptionsAssert(hessEps, gillKcov, gillStepCov, gillFtolCov, covGillF, covSmall, rmatNorm, smatNorm, TRUE)
   .ret <- list(
     hessEps = hessEps,
     gillKcov = gillKcov,
@@ -50,6 +37,45 @@ rsControl <- function(
   .ret <- .ret[!vapply(.ret, is.null, logical(1))]
   class(.ret) <- "rsControl"
   .ret
+}
+
+#' Check the finite-difference covariance options
+#'
+#' The one check of the options `foceiControl()` sets for the fit and
+#' `rsControl()` changes for `setCov()`.
+#' @param hessEps,gillKcov,gillStepCov,gillFtolCov,covGillF,covSmall,rmatNorm,smatNorm
+#'   the options; see `foceiControl()`
+#' @param null.ok `TRUE` accepts `NULL` (an `rsControl()` option that keeps the
+#'   fit's value)
+#' @return invisibly `TRUE`; an invalid option is an error
+#' @noRd
+.covFdOptionsAssert <- function(
+  hessEps,
+  gillKcov,
+  gillStepCov,
+  gillFtolCov,
+  covGillF,
+  covSmall,
+  rmatNorm,
+  smatNorm,
+  null.ok = FALSE
+) {
+  checkmate::assertNumeric(hessEps, lower = 0, len = 1, any.missing = FALSE, null.ok = null.ok)
+  checkmate::assertIntegerish(gillKcov, lower = 0, len = 1, any.missing = FALSE, null.ok = null.ok)
+  # the Gill search multiplies its step by gillStepCov to grow it and divides to shrink it
+  checkmate::assertNumeric(gillStepCov, lower = 1, len = 1, any.missing = FALSE, null.ok = null.ok)
+  checkmate::assertNumeric(gillFtolCov, lower = 0, len = 1, any.missing = FALSE, null.ok = null.ok)
+  checkmate::assertNumeric(covSmall, lower = 0, len = 1, any.missing = FALSE, finite = TRUE, null.ok = null.ok)
+  # the flags are logical or 0/1
+  .flags <- list(covGillF = covGillF, rmatNorm = rmatNorm, smatNorm = smatNorm)
+  for (.n in names(.flags)) {
+    if (
+      !checkmate::testIntegerish(.flags[[.n]], lower = 0, upper = 1, any.missing = FALSE, len = 1, null.ok = null.ok)
+    ) {
+      checkmate::assertLogical(.flags[[.n]], len = 1, any.missing = FALSE, .var.name = .n)
+    }
+  }
+  invisible(TRUE)
 }
 
 #' Options for the SAEM stochastic-approximation covariance in setCov()

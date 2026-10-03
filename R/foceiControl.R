@@ -1474,36 +1474,24 @@ foceiControl <- function(
   checkmate::assertNumeric(reltol, lower = 0, len = 1, any.missing = FALSE, finite = TRUE)
 
   checkmate::assertIntegerish(gillK, lower = 0, len = 1, any.missing = FALSE)
-  checkmate::assertIntegerish(gillKcov, lower = 0, len = 1, any.missing = FALSE)
+  .covFdOptionsAssert(hessEps, gillKcov, gillStepCov, gillFtolCov, covGillF, covSmall, rmatNorm, smatNorm)
   checkmate::assertIntegerish(gillKcovLlik, lower = 0, len = 1, any.missing = FALSE)
   checkmate::assertNumeric(gillStep, lower = 0, len = 1, any.missing = FALSE)
-  # the Gill search multiplies its step by gillStepCov to grow it and divides to shrink it
-  checkmate::assertNumeric(gillStepCov, lower = 1, len = 1, any.missing = FALSE)
   checkmate::assertNumeric(gillStepCovLlik, lower = 0, len = 1, any.missing = FALSE)
   checkmate::assertNumeric(gillFtol, lower = 0, len = 1, any.missing = FALSE)
-  checkmate::assertNumeric(gillFtolCov, lower = 0, len = 1, any.missing = FALSE)
   checkmate::assertNumeric(gillFtolCovLlik, lower = 0, len = 1, any.missing = FALSE)
   checkmate::assertNumeric(gillRtol, lower = 0, len = 1, any.missing = FALSE, finite = TRUE)
   # gillRtolCov is calculated in the `inner.cpp`
-  if (!checkmate::testIntegerish(rmatNorm, lower = 0, upper = 1, any.missing = FALSE, len = 1)) {
-    checkmate::assertLogical(rmatNorm, any.missing = FALSE, len = 1)
-  }
   rmatNorm <- as.integer(rmatNorm)
   if (!checkmate::testIntegerish(rmatNormLlik, lower = 0, upper = 1, any.missing = FALSE, len = 1)) {
     checkmate::assertLogical(rmatNormLlik, any.missing = FALSE, len = 1)
   }
   rmatNormLlik <- as.integer(rmatNormLlik)
-  if (!checkmate::testIntegerish(smatNorm, lower = 0, upper = 1, any.missing = FALSE, len = 1)) {
-    checkmate::assertLogical(smatNorm, any.missing = FALSE, len = 1)
-  }
   smatNorm <- as.integer(smatNorm)
   if (!checkmate::testIntegerish(smatNormLlik, lower = 0, upper = 1, any.missing = FALSE, len = 1)) {
     checkmate::assertLogical(smatNormLlik, any.missing = FALSE, len = 1)
   }
   smatNormLlik <- as.integer(smatNormLlik)
-  if (!checkmate::testIntegerish(covGillF, lower = 0, upper = 1, any.missing = FALSE, len = 1)) {
-    checkmate::assertLogical(covGillF, any.missing = FALSE, len = 1)
-  }
   covGillF <- as.integer(covGillF)
   if (!checkmate::testIntegerish(optGillF, lower = 0, upper = 1, any.missing = FALSE, len = 1)) {
     checkmate::assertLogical(optGillF, any.missing = FALSE, len = 1)
@@ -1518,7 +1506,6 @@ foceiControl <- function(
     foceEbeTol <- 1e-9
   }
   checkmate::assertNumeric(foceEbeTol, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
-  checkmate::assertNumeric(hessEps, lower = 0, any.missing = FALSE, len = 1)
   checkmate::assertNumeric(hessEpsLlik, lower = 0, any.missing = FALSE, len = 1)
   checkmate::assertNumeric(centralDerivEps, lower = 0, any.missing = FALSE, len = 2)
 
@@ -1917,7 +1904,6 @@ foceiControl <- function(
   muModelClampRetries <- as.integer(muModelClampRetries)
 
   checkmate::assertNumeric(stateTrim, lower = 0, len = 1, any.missing = FALSE)
-  checkmate::assertNumeric(covSmall, lower = 0, len = 1, any.missing = FALSE, finite = TRUE)
   checkmate::assertLogical(adjLik, any.missing = FALSE, len = 1)
   checkmate::assertNumeric(gradTrim, any.missing = FALSE, len = 1)
   checkmate::assertIntegerish(maxOdeRecalc, any.missing = FALSE, len = 1)
