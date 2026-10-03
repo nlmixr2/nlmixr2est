@@ -189,6 +189,17 @@
   quadrature node re-evaluated the subject at another ETA, so they came from
   the last node (up to 2.5 away on `theo_sd`).
 
+- `mfoce` and `ifoce` (and their `f` variants) now evaluate the FOCE objective
+  with the residual variance of the current thetas.  FOCE ("nonmem") freezes
+  the variance at each subject's `eta = 0` prediction and keeps it until the
+  thetas change, but the regression of the mu-referenced thetas inside an
+  evaluation changed them without renewing it, so the later
+  {re-optimize ETAs, regress} cycles used the variance of the thetas the
+  evaluation started from.  On `theo_sd` with a proportional error, a
+  zero-iteration `mfoce` fit reported an objective 15.5 below the FOCE
+  objective at its own estimates, and a full fit stopped at an objective 1.0
+  above the one it now reaches.
+
 ### Covariance and finite differences
 
 - The Gill (1983) step-size search no longer leaves a parameter at its last

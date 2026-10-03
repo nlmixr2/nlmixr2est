@@ -238,4 +238,51 @@ nmTest({
     expect_equal(unname(fitLin$theta["allo.cl"]), .refAllo, tolerance = 0.3)
     expect_equal(unname(fitIrls$theta["allo.cl"]), .refAllo, tolerance = 0.3)
   })
+
+  test_that("mfoce's objective is the FOCE objective at its estimates", {
+    # FOCE ("nonmem") freezes the residual variance at the eta = 0 prediction and
+    # keeps it per subject.  The mu-referenced regression moves the thetas between
+    # the inner optimizations of one evaluation without updateTheta(), so the
+    # later cycles used the variance of the thetas the evaluation started from:
+    # with maxOuterIterations = 0 the objective came out 15.5 below the FOCE
+    # objective at the estimates the fit reported.  A proportional error makes
+    # the variance depend on the regressed thetas.
+    mProp <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        prop.sd <- 0.1
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ prop(prop.sd)
+      })
+    }
+    .f <- .nlmixr(
+      mProp,
+      theo_sd,
+      "mfoce",
+      mfoceControl(print = 0L, covMethod = "", calcTables = FALSE, maxOuterIterations = 0L)
+    )
+    # the regression moved the mu-referenced thetas off their initial values
+    expect_gt(abs(.f$theta[["tka"]] - 0.45), 0.05)
+    .p <- .nlmixr(
+      .f$finalUi,
+      theo_sd,
+      "foce",
+      foceControl(print = 0L, covMethod = "", calcTables = FALSE, maxOuterIterations = 0L, etaMat = .f)
+    )
+    # what is left is the last regression step, taken after the last inner
+    # optimization
+    expect_lt(abs(.f$objf - .p$objf), 1e-2)
+  })
 })

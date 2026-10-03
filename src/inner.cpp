@@ -1397,14 +1397,34 @@ static inline int foceiIndSetupN(rx_solve* rxl) {
   return (nIndsFocei < cur) ? nIndsFocei : cur;
 }
 
-// FOCE eta=0 population-R cache.  rPop depends only on theta, so it is constant
-// across the whole inner optimization and only needs recomputing when theta
-// changes.  Keyed by subject id (getRxNsubAndMix).  The generation counter is
-// bumped in updateTheta() (single-threaded, before the parallel inner region)
-// and only read inside that region, so no locking is needed.
+// FOCE eta=0 population-R cache.  rPop depends only on the subject's thetas, so it is
+// constant across the whole inner optimization and only needs recomputing when they
+// change.  Keyed by subject id (getRxNsubAndMix).  An entry is recomputed when
+// updateTheta() has bumped the generation counter since it was filled, and also when the
+// thetas in the subject's par_ptr differ from the ones it was filled at
+// (_foceRPopTheta): the mu-referenced regression in innerOpt() (updateMuGroups) and the
+// per-subject finite differences (shi21LikTheta) move them without updateTheta().  The
+// counter is bumped single-threaded, before the parallel inner region, and each
+// subject's entry is touched only by the thread solving that subject, so no locking is
+// needed.
 static std::vector<arma::vec> _foceRPopCache;
 static std::vector<long> _foceRPopGen;
+static std::vector<std::vector<double> > _foceRPopTheta;
 static long _foceRPopCurGen = 0;
+
+// Whether the thetas in a subject's par_ptr are the ones its cached eta=0 R was
+// computed at; with `save`, record them instead.
+static inline bool foceRPopTheta(rx_solving_options_ind *ind, std::vector<double> &key,
+                                 bool save) {
+  if (save) key.resize(op_focei.ntheta);
+  else if (key.size() != op_focei.ntheta) return false;
+  for (unsigned int t = 0; t < op_focei.ntheta; ++t) {
+    double v = getIndParPtr(ind, op_focei.thetaTrans[t]);
+    if (save) key[t] = v;
+    else if (key[t] != v) return false;
+  }
+  return true;
+}
 
 // Parameter table
 std::vector<int> niter;
@@ -1861,7 +1881,7 @@ void updateTheta(double *theta){
     std::copy(&theta[0], &theta[0] + op_focei.npars, &op_focei.theta[0]);
   }
   // Theta moved -> invalidate the FOCE eta=0 population-R cache (rPop is a
-  // function of theta only).  Bumped even for FOCEI (cache simply unused there).
+  // function of the thetas only).  Bumped even for FOCEI (cache simply unused there).
   _foceRPopCurGen++;
 }
 
@@ -2705,18 +2725,20 @@ double likInner0(double *eta, int id) {
       setIndParPtr(ind, op_focei.etaTrans[j], eta[j]);
     }
     // FOCE: capture eta=0 population R before the inner solve overwrites
-    // ind->solve.  rPop is a function of theta only, so it is cached across inner
-    // iterations and recomputed only when updateTheta() bumps the generation
-    // counter -- keeping FOCE at one solve per inner iteration (like FOCEI) plus
-    // one eta=0 solve per subject per outer iteration, not two solves every time.
+    // ind->solve.  rPop is a function of the thetas only, so it is cached across
+    // inner iterations and recomputed only when they may have moved (see
+    // _foceRPopCache) -- keeping FOCE at one solve per inner iteration (like FOCEI)
+    // plus one eta=0 solve per subject per outer iteration, not two solves every time.
     // Only "nonmem" FOCE freezes R at the eta=0 population value; "foce+"
     // (foceType==1) keeps the live conditional R and needs no eta=0 solve.
     if (op_focei.interaction == 0 && op_focei.neta > 0 && op_focei.fo == 0 &&
         op_focei.foceType == 0) {
       if (id >= 0 && id < (int)_foceRPopGen.size()) {
-        if (_foceRPopGen[id] != _foceRPopCurGen) {
+        if (_foceRPopGen[id] != _foceRPopCurGen ||
+            !foceRPopTheta(ind, _foceRPopTheta[id], false)) {
           getPopR(id, _foceRPopCache[id]);
           _foceRPopGen[id] = _foceRPopCurGen;
+          foceRPopTheta(ind, _foceRPopTheta[id], true);
         }
         rPopVec = _foceRPopCache[id];
       } else {
@@ -8095,6 +8117,7 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
   // here); gen = -1 forces a compute on each subject's first inner call.
   _foceRPopCache.assign(getRxNsubAndMix(rx), arma::vec());
   _foceRPopGen.assign(getRxNsubAndMix(rx), -1L);
+  _foceRPopTheta.assign(getRxNsubAndMix(rx), std::vector<double>());
   _foceRPopCurGen = 0;
   RObject etaMat0s = transpose(etaMat0);
   double *etaMat0d = REAL(etaMat0s);
