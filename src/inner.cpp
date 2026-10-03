@@ -8503,11 +8503,12 @@ struct CovLlikObsGuard {
 //   * settle(), called by foceiCalcCov at the estimates, takes eta-hat and arms the pin;
 //   * pin(), called by updateTheta(), puts eta-hat back before every probe.  innerOptId()'s
 //     retries within one probe do not move theta, so they keep their own restart points.
-// A fit that evaluates its ETAs without optimizing them (maxInnerIterations = 0) keeps them
-// fixed in the legs too, as its control says.  A refit that holds the ETAs only to report
-// them asks for marginal legs with the control element covMaxInnerIterations
-// (.covInnerIterations(), R/cov.R): the legs get that inner budget, and the supplied ETAs
-// are first optimized at the estimates, by the final-objective procedure, to give eta-hat.
+// eta-hat is the fit's ETAs optimized again at the estimates at the covariance step's
+// tolerances, by the final-objective procedure (settle()).  A fit that evaluates its ETAs
+// without optimizing them (maxInnerIterations = 0) keeps them fixed in the legs too, as its
+// control says.  A refit that holds the ETAs only to report them asks for marginal legs
+// with the control element covMaxInnerIterations (.covInnerIterations(), R/cov.R): the
+// legs get that inner budget, and its supplied ETAs give eta-hat the same way.
 struct CovEtaStart;
 static CovEtaStart *_covEtaStart = NULL;
 struct CovEtaStart {
@@ -8548,11 +8549,13 @@ struct CovEtaStart {
   // f0: the objective at theta (the estimates) by the legs' procedure, from eta-hat
   double settle(double *theta) {
     if (nId > 0) {
-      if (raised) {
-        // The ETAs were evaluated at the estimates, not optimized: optimize them first, by
+      if (op_focei.maxInnerIterations > 0) {
+        // eta-hat is the mode of the objective the legs evaluate, at the covariance step's
+        // tolerances (CovSolveTolGuard, CovInnerTolGuard): optimize the ETAs the fit
+        // reports (or, for a refit that held them, was given) again at the estimates, by
         // the procedure foceiOuterFinal() takes a fit's final objective with (its eta
-        // searches and resets included, and the eta step caches cleared), so eta-hat is the
-        // ETAs a FOCEi fit with no outer iterations would report at these estimates.
+        // searches and resets included, and the eta step caches cleared).  A native fit
+        // and a refit started from its ETAs then start their legs from the same eta-hat.
         struct FinalObjGuard {
           int calcGrad;
           FinalObjGuard() : calcGrad(op_focei.calcGrad) {
