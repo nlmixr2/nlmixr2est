@@ -332,6 +332,12 @@
   (`optimHessType`), or the objective undefined (`solveType`).  A
   hand-built control with such a code now stops the nlm problem setup.
 
+- Every nlm-family control (`nlmControl()`, `nlminbControl()`,
+  `optimControl()`, `bobyqaControl()`, `newuoaControl()`, `uobyqaControl()`,
+  `n1qn1Control()`, `lbfgsb3cControl()`, `trustControl()`) now accepts its
+  documented `covMethod = ""`, which skips the covariance step.  It stopped
+  with `'arg' should be one of ...`, because `match.arg()` cannot match `""`.
+
 - `nlmixr2Hess(par, fn, which = )` now returns the whole Hessian: a parameter
   that `which` leaves out of the step search is differenced with the
   interval the search would start from (what `gillK = 0` gives).  Its row and

@@ -198,7 +198,7 @@ lbfgsb3cControl <- function(
     reltol = reltol,
     lmm = lmm,
 
-    covMethod = match.arg(covMethod),
+    covMethod = .nlmCtlCovMethod(covMethod, match.arg(covMethod)),
     optExpression = optExpression,
     literalFix = literalFix,
     literalFixRes = literalFixRes,

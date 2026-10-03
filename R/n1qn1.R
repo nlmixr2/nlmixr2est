@@ -174,7 +174,7 @@ n1qn1Control <- function(
     nsim = nsim,
     imp = imp,
     print.functions = print.functions,
-    covMethod = match.arg(covMethod),
+    covMethod = .nlmCtlCovMethod(covMethod, match.arg(covMethod)),
     optExpression = optExpression,
     literalFix = literalFix,
     literalFixRes = literalFixRes,

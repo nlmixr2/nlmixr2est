@@ -37,6 +37,28 @@ test_that("a Hessian that cannot be repaired gives no covariance", {
   expect_identical(.r$warning, "R matrix is not positive definite; covariance step failed")
 })
 
+test_that("every nlm-family control takes covMethod = \"\" (issue 1140)", {
+  # match.arg() cannot match "": every one of them stopped
+  for (.f in c(
+    "nlmControl",
+    "nlminbControl",
+    "optimControl",
+    "bobyqaControl",
+    "newuoaControl",
+    "uobyqaControl",
+    "n1qn1Control",
+    "lbfgsb3cControl",
+    "trustControl"
+  )) {
+    expect_identical(get(.f)(covMethod = "")$covMethod, "", info = .f)
+    expect_identical(get(.f)(covMethod = "r")$covMethod, "r", info = .f)
+  }
+  expect_identical(nlmControl()$covMethod, "nlm")
+  expect_identical(nlmControl(solveType = "fun")$covMethod, "r")
+  expect_identical(bobyqaControl()$covMethod, "r")
+  expect_error(nlmControl(covMethod = "s"))
+})
+
 # sensMethod of the foceiControl an nlm-family control finalizes with
 .nlmFinalSensMethod <- function(m, ...) {
   .env <- new.env(parent = emptyenv())
@@ -83,6 +105,12 @@ nmTest({
     expect_equal(unname(.fit$env$bobyqa$cov.scaled), unname(solve(sqrtm(.h %*% .h))), tolerance = 1e-8)
     expect_true("R matrix is not positive definite; corrected as \"|r|\"" %in% .fit$runInfo)
     expect_null(.fit$env$bobyqa$covWarning)
+  })
+
+  test_that("an nlm-family fit with covMethod = \"\" computes no covariance (issue 1140)", {
+    .fit <- .nlmixr(.pk, nlmixr2data::theo_sd, est = "n1qn1", control = n1qn1Control(print = 0L, covMethod = ""))
+    expect_null(.fit$cov)
+    expect_null(.fit$env$n1qn1$r)
   })
 
   test_that("the warnings of every nlm-family run reach $runInfo (issue 1140)", {

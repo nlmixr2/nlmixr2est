@@ -223,7 +223,7 @@ optimControl <- function(
   if (missing(covMethod) && any(solveType == 2:3) && method %in% c("BFGS", "CG", "L-BFGS-B")) {
     covMethod <- "optim"
   } else {
-    covMethod <- match.arg(covMethod)
+    covMethod <- .nlmCtlCovMethod(covMethod, match.arg(covMethod))
   }
 
   eventType <- .nlmCtlCode(eventType, c("central" = 2L, "forward" = 1L), "eventType")

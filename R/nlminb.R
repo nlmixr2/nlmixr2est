@@ -163,7 +163,7 @@ nlminbControl <- function(
   if (missing(covMethod) && any(solveType == 2:3)) {
     covMethod <- "nlminb"
   } else {
-    covMethod <- match.arg(covMethod)
+    covMethod <- .nlmCtlCovMethod(covMethod, match.arg(covMethod))
   }
   if (covMethod == "nlminb" && !any(solveType == 2:3)) {
     warning(

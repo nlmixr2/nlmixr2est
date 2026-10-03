@@ -479,6 +479,19 @@
   as.integer(value)
 }
 
+#' The covMethod of an nlm-family control
+#'
+#' `""` (no covariance step) is one of the choices, which `match.arg()` cannot
+#' match.
+#' @param covMethod the argument as given
+#' @param choice `match.arg(covMethod)` in the calling control; it is a promise,
+#'   forced only when `covMethod` is not `""`
+#' @return the name, or `""`
+#' @noRd
+.nlmCtlCovMethod <- function(covMethod, choice) {
+  if (identical(covMethod, "")) "" else choice
+}
+
 #' Shared control setup for the nlm-family estimation methods
 #'
 #' @param env dispatch environment (provides `ui` and `control`)
