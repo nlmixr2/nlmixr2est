@@ -184,6 +184,13 @@
   estimate of 0.081 and 0.019).  The repair is now a warning: `omega is not
   positive definite; used its nearest positive-definite matrix for tables`.
 
+- A FOCEi-family fit with `outerOpt = "uobyqa"` or `"newuoa"` (also the imp
+  and np families that use them) and a bounded theta now writes that theta's
+  estimate into the fit's `ini()` on its own scale; it wrote the internal
+  (logit or log) value, so `ini(fit)`, `setCov()`, `setOfv()`, `addCwres()`,
+  simulation and refits used it as the estimate (a `td1` in `[0, 1]` held at
+  0.5 read 0).  `$theta` was right.
+
 ### Covariance and finite differences
 
 - The Gill (1983) step-size search no longer leaves a parameter at its last

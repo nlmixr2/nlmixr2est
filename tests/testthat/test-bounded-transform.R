@@ -167,6 +167,25 @@ nmTest({
     expect_equal(.testBoundedTransform(), c(pre = TRUE, post = TRUE))
   })
 
+  test_that("uobyqa/newuoa write the natural-scale bounded theta into the fit's ui (issue 1140)", {
+    for (.opt in c("uobyqa", "newuoa")) {
+      fit <- suppressMessages(suppressWarnings(
+        nlmixr(
+          .logitModel,
+          theo_sd,
+          est = "focei",
+          control = foceiControl(print = 0, maxOuterIterations = 0L, outerOpt = .opt)
+        )
+      ))
+      expect_equal(.testBoundedTransform(), c(pre = TRUE, post = TRUE))
+      .ini <- fit$ui$iniDf
+      # held at its ini() value 0.5, which is 0 on the internal logit scale
+      expect_equal(.ini$est[.ini$name == "td1"], 0.5)
+      expect_equal(.ini$est[.ini$name == "td1"], unname(fit$theta["td1"]))
+      expect_equal(c(.ini$lower[.ini$name == "td1"], .ini$upper[.ini$name == "td1"]), c(0, 1))
+    }
+  })
+
   test_that("FOCEI with boundedTransform = FALSE disables the transform", {
     fit <- suppressMessages(suppressWarnings(
       nlmixr(
