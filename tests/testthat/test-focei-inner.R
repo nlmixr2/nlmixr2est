@@ -269,4 +269,52 @@ nmTest({
     expect_identical(likInner(0.2, 1L), .good)
     expect_identical(foceiInnerLp(0.2, 1L), .gGood)
   })
+
+  test_that("a log-density row the eta does not reach adds nothing to the eta gradient", {
+    skip_on_cran()
+    # eta.l reaches lam only through X, and X is 0 on every row of subject 3, so
+    # that subject's log-density does not depend on eta.l at all.  foceiLik keeps
+    # the eta-epsilon interaction branch for a non-normal endpoint.
+    pois <- function() {
+      ini({
+        tl <- 1
+        eta.l ~ 0.1
+      })
+      model({
+        lam <- exp(tl + eta.l * X)
+        y ~ pois(lam)
+      })
+    }
+    .testSeed(42)
+    .d <- do.call(
+      rbind,
+      lapply(1:3, function(id) {
+        .t <- c(1, 2, 3, 5, 6, 8)
+        .x <- if (id == 3L) rep(0, 6L) else as.numeric(.t > 4)
+        data.frame(ID = id, TIME = .t, DV = stats::rpois(6L, exp(1 + 0.3 * .x)), AMT = 0, EVID = 0, X = .x)
+      })
+    )
+    .h <- suppressWarnings(foceiLikLoad(pois, .d, "focei"))
+    on.exit(foceiLikUnload(), add = TRUE)
+    expect_equal(foceiLikSetThetaC_(.h$initPar), 0L)
+    .eta <- matrix(c(0.1, -0.2, 0.3), .h$nid, .h$neta)
+    .g <- foceiLikCondGrad_(.eta, 1L)$grad
+    # each of its six rows added sqrt(DBL_EPSILON) when a zero derivative was
+    # floored there
+    expect_identical(.g[3, 1], 0)
+    expect_identical(foceiInnerLp(0, 3L), 0)
+    # the subjects the eta does reach still get the derivative of their value
+    .fd <- vapply(
+      1:2,
+      function(i) {
+        .up <- .eta
+        .up[i, 1] <- .up[i, 1] + 1e-5
+        .dn <- .eta
+        .dn[i, 1] <- .dn[i, 1] - 1e-5
+        (foceiLikCondGrad_(.up, 1L)$value[i] - foceiLikCondGrad_(.dn, 1L)$value[i]) / 2e-5
+      },
+      numeric(1)
+    )
+    expect_equal(.g[1:2, 1], .fd, tolerance = 1e-7)
+  })
 })

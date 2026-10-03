@@ -177,6 +177,13 @@
   and its step search rejects the failed probe, instead of differencing that
   value.
 
+- The ETA gradient of a non-normal (log-likelihood) endpoint evaluated with
+  the eta-epsilon interaction no longer adds `sqrt(.Machine$double.eps)` for
+  every observation the ETA does not affect.  `est = "vi"` and the
+  conditional likelihood of `foceiLikRun()` and its C interface used that
+  gradient; a FOCEi fit of such a model runs without the interaction and was
+  not affected.
+
 ### Covariance and finite differences
 
 - The Gill (1983) step-size search no longer leaves a parameter at its last

@@ -3164,11 +3164,17 @@ double likInner0(double *eta, int id) {
                   fpm = a(k, i) = lhs[op_focei.predOffset + i + 1]; // Almquist uses different a (see eq #15)
                   rp  = (dist == rxDistributionNorm)*lhs[op_focei.predOffset + i + op_focei.neta + 2];
                 }
-                if (fpm == 0.0) {
-                  a(k, i) = fpm = sqrt(DBL_EPSILON);
-                }
-                if (rp == 0.0) {
-                  rp = sqrt(DBL_EPSILON);
+                // The FOCEi (f, R) kernel keeps an exactly-zero d(f)/d(eta) and d(R)/d(eta)
+                // off zero.  A log-density row has no (f, R): fpm IS d(log-density)/d(eta)
+                // and is summed into lp as it stands, so flooring it there added
+                // sqrt(DBL_EPSILON) to the eta gradient for every row the eta does not reach.
+                if (dist == rxDistributionNorm) {
+                  if (fpm == 0.0) {
+                    a(k, i) = fpm = sqrt(DBL_EPSILON);
+                  }
+                  if (rp == 0.0) {
+                    rp = sqrt(DBL_EPSILON);
+                  }
                 }
                 c(k, i) = rp/_safe_zero(r);
                 //lp is eq 12 in Almquist 2015
