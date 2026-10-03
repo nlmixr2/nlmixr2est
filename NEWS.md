@@ -107,7 +107,13 @@
   value the objective kept changed under it.
 - `nlmixr2Gill83()` (and so `nlmixr2Hess(...)`) now uses its `gillRtol`,
   `gillK`, `gillStep` and `gillFtol` arguments; the defaults were always used.
-  With `gillK = 0` the Gill search takes one step instead of never ending.
+  As documented, `gillK = 0` now determines no step size: the search is
+  skipped and the interval it would start from is reported as "Not Assessed";
+  `nlmixr2Hess()` and the first `nlmixr2GradFun()` gradient difference with
+  that interval.  `gillK = 0` used to lift the search's iteration limit
+  instead, which could leave it running indefinitely; with
+  `foceiControl(gillK = 0)` the full (`covFull`) covariance now takes its
+  step-doubling steps.
 - `nlmixr2Gill83(which=)` that leaves out the last parameter no longer
   searches the others about an objective value that was never computed.
 - `foceiControl(shi21maxOuter=)` no longer runs an unused Shi21 step search in

@@ -55,10 +55,32 @@ test_that("nlmixr2Gill83() and nlmixr2Hess() use the gill* arguments", {
   expect_equal(as.character(g$info), "Good")
   expect_equal(g$hf, 2 * sqrt(abs(sin(1)) * 1e-6 / abs(g$df2)))
   expect_false(identical(nlmixr2Hess(1, sin, gillRtol = 1e-4), nlmixr2Hess(1, sin)))
-  # gillK = 0 takes a single step instead of searching without end
-  g0 <- nlmixr2Gill83(function(x) 1 + 1e-9 * x^2, 2, gillK = 0L)
-  expect_equal(as.character(g0$info), "Constant Grad")
   expect_error(nlmixr2Gill83(sin, 1, gillK = -1L), "gillK")
+})
+
+test_that("gillK = 0 determines no step size", {
+  # the search would start from gillStep * 2 * (1 + |x|) * sqrt(epsA / (1 + |f|)),
+  # epsA = |f| * gillRtol; that is what is reported, unsearched
+  .f <- sin(1)
+  .epsA <- abs(.f) * sqrt(.Machine$double.eps)
+  .h0 <- 2 * (2 * (1 + 1) * sqrt(.epsA / (1 + abs(.f))))
+  g <- nlmixr2Gill83(sin, 1, gillK = 0L)
+  expect_identical(as.character(g$info), "Not Assessed")
+  expect_identical(g$hf, .h0)
+  expect_identical(g$hphi, .h0)
+  expect_true(is.na(g$df) && is.na(g$df2) && is.na(g$err))
+  # a function flat in x is not searched either
+  g <- nlmixr2Gill83(function(x) 1 + 1e-9 * x^2, 2, gillK = 0L)
+  expect_identical(as.character(g$info), "Not Assessed")
+  # nlmixr2Hess differences with that interval: |x| * rEpsC + aEpsC = .h0
+  .h <- 1 * (.h0 * 0.5) + .h0 * 0.5
+  .H <- (-sin(1 + 2 * .h) + 16 * sin(1 + .h) - 30 * .f + 16 * sin(1 - .h) - sin(1 - 2 * .h)) /
+    (12 * .h * .h)
+  expect_equal(nlmixr2Hess(1, sin, gillK = 0L), matrix(.H))
+  # and so does the first nlmixr2GradFun gradient, a forward difference
+  gf <- nlmixr2GradFun(sin, gillK = 0L, print = 0)
+  gf$eval(1)
+  expect_equal(gf$grad(1), (sin(1 + .h) - .f) / .h)
 })
 
 test_that("nlmixr2GradFun() gradients leave the point alone", {

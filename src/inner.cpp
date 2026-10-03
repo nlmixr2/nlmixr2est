@@ -7000,6 +7000,13 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
   // FD1: // Initialization
   hbar = 2*(1+std::fabs(x))*_safe_sqrt(epsA/(1+std::fabs(f)));
   h0 = gillStep*hbar;
+  if (K <= 0) {
+    // no optimal interval is determined: report the one the search would start
+    // from, not assessed (no derivative estimate)
+    *hf = *hphif = h0;
+    *df = *df2 = *ef = NA_REAL;
+    return 0;
+  }
   lasth=h0;
   theta[cpar] = x + h0;
   gill83fn(&fp, theta, cid, foceiGill);
@@ -10876,19 +10883,23 @@ NumericVector nlmixr2Grad_(NumericVector theta, std::string md5){
                            gradInfo[EK], gradInfo[Estep],
                            gradInfo[EFtol]);
     gradInfo[Egill]=Lgill;
-    niterGrad.push_back(niter.back());
-    gradType.push_back(1);
-    vGrad.push_back(NA_REAL); // Gradient doesn't record objf
-    NumericVector gr = as<NumericVector>(Lgill["df"]);
-    for (int i = 0; i < gr.size(); i++){
-      if (gr[i] == 0){
-        stop("On initial gradient evaluation, one or more parameters have a zero gradient\nChange model, try different initial estimates or try derivative free optimization)");
+    // the first gradient is the Gill search's own; gillK = 0 runs no search and so
+    // gives no derivative, and differences with its starting interval below
+    if (as<int>(gradInfo[EK]) != 0) {
+      niterGrad.push_back(niter.back());
+      gradType.push_back(1);
+      vGrad.push_back(NA_REAL); // Gradient doesn't record objf
+      NumericVector gr = as<NumericVector>(Lgill["df"]);
+      for (int i = 0; i < gr.size(); i++){
+        if (gr[i] == 0){
+          stop("On initial gradient evaluation, one or more parameters have a zero gradient\nChange model, try different initial estimates or try derivative free optimization)");
+        }
+        vGrad.push_back(gr[i]);
       }
-      vGrad.push_back(gr[i]);
+      nlmixr2GradPrint(gr, gradType.back(), niter.back(), useColor,
+                       printNcol, printN, isRstudio);
+      return gr;
     }
-    nlmixr2GradPrint(gr, gradType.back(), niter.back(), useColor,
-                     printNcol, printN, isRstudio);
-    return gr;
   }
   NumericVector aEps = as<NumericVector>(Lgill["aEps"]);
   NumericVector rEps = as<NumericVector>(Lgill["rEps"]);
