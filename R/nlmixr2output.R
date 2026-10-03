@@ -345,9 +345,12 @@
 #' @param onlyMissing when `TRUE` update only rows whose SE is missing or
 #'   non-finite (used when `cov` adds rows -- e.g. residual thetas -- to a
 #'   table whose structural SEs are already correct)
+#' @param ciIdentity when `TRUE` the CI is `Estimate +/- z SE`, set only on rows
+#'   whose back-transformed value is the estimate (the variational covariance's
+#'   rule); otherwise it is back-transformed like the estimate
 #' @return invisibly, called for side effects on `env`
 #' @noRd
-.updateParFixedRefreshSeFromCov <- function(env, cov, onlyMissing = FALSE) {
+.updateParFixedRefreshSeFromCov <- function(env, cov, onlyMissing = FALSE, ciIdentity = FALSE) {
   if (!exists("parFixedDf", envir = env, inherits = FALSE)) {
     return(invisible())
   }
@@ -389,6 +392,9 @@
       # probitInv) reproduces the stored back-transformed value; rows with a
       # manual backTransform keep their existing CI
       .btf <- function(.v) {
+        if (ciIdentity) {
+          return(.v)
+        }
         tryCatch(.updateParFixedBackTransformFixed(env$ui, .n, .v), error = function(e) .v)
       }
       if (isTRUE(all.equal(unname(.pf[.n, "Back-transformed"]), unname(.btf(.e))))) {

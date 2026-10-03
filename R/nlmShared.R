@@ -240,57 +240,24 @@
       .ret$hessian <- .hess
     }
     dimnames(.ret$hessian) <- list(.name, .name)
-    .hess <- .ret$hessian
-    if (any(is.na(.hess))) {
+    # r matrix: nlm-family objectives (`.nlmixrNlmFunC`/optim's `fn`) are
+    # built as a plain -1*LL, not the -2*LL scale FOCEI/SAEM/etc use -- so
+    # the Hessian is already the Fisher information (unlike the FOCEI R matrix,
+    # which halves a -2*LL Hessian to get there).  Do not rescale here.
+    .r <- .ret$hessian
+    .rc <- .nlmCovFromHessian(.r)
+    .ret$covWarning <- .rc$warning
+    if (is.null(.rc$r)) {
       .ret$covMethod <- "failed"
     } else {
-      # r matrix: nlm-family objectives (`.nlmixrNlmFunC`/optim's `fn`) are
-      # built as a plain -1*LL, not the -2*LL scale FOCEI/SAEM/etc use -- so
-      # .hess is already the Fisher information (unlike the FOCEI R matrix,
-      # which halves a -2*LL Hessian to get there).  Do not rescale here.
-      .r <- .hess
-      .ch <- try(cholSE(.r), silent = TRUE)
-      .covType <- "r"
-      if (inherits(.ch, "try-error")) {
-        .r2 <- .r %*% .r
-        .r2 <- try(sqrtm(.r2), silent = TRUE)
-        .covType <- "|r|"
-        if (!inherits(.r2, "try-error")) {
-          .ch <- try(cholSE(.r), silent = TRUE)
-          if (inherits(.ch, "try-error")) {
-            .r2 <- .ch # switch to nearPD
-          }
-        }
-        if (inherits(.r2, "try-error")) {
-          .covType <- "r+"
-          .r2 <- try(nmNearPD(.r), silent = TRUE)
-          if (!inherits(.r2, "try-error")) {
-            .ch <- try(cholSE(.r), silent = TRUE)
-          }
-        } else {
-          .ch <- try(cholSE(.r), silent = TRUE)
-        }
-      }
-      if (!inherits(.ch, "try-error")) {
-        .rinv <- rxode2::rxInv(.ch)
-        .rinv <- .rinv %*% t(.rinv)
-        .cov <- .rinv
-        dimnames(.cov) <- list(.name, .name)
-        dimnames(.rinv) <- list(.name, .name)
-        .ret$covMethod <- .covType
-        if (.ctl$covMethod != "r") {
-          .ret$covMethod <- paste0(.covType, " (", .ctl$covMethod, ")")
-        } else {
-          .ret$covMethod <- .covType
-        }
-        .ret$cov.scaled <- .cov
-        .ret$cov <- .Call(`_nlmixr2est_nlmAdjustCov`, .ret$cov.scaled, .parScaled)
-      } else {
-        .ret$covMethod <- "failed"
-      }
-      dimnames(.r) <- list(.name, .name)
-      .ret$r <- .r
+      .rinv <- rxode2::rxInv(cholSE(.rc$r))
+      .cov <- .rinv %*% t(.rinv)
+      dimnames(.cov) <- list(.name, .name)
+      .ret$covMethod <- if (.ctl$covMethod != "r") paste0(.rc$type, " (", .ctl$covMethod, ")") else .rc$type
+      .ret$cov.scaled <- .cov
+      .ret$cov <- .Call(`_nlmixr2est_nlmAdjustCov`, .ret$cov.scaled, .parScaled)
     }
+    .ret$r <- .r
     .msuccess("done")
   }
   .ret$censInformation <- .Call(`_nlmixr2est_nlmCensInfo`)
@@ -298,6 +265,35 @@
   .nlmFreeEnv()
   .ret
 }
+#' The information matrix an nlm-family covariance is inverted from
+#'
+#' A positive-definite Hessian is used as is.  One that is not is repaired as
+#' `sqrtm(R %*% R)` ("|r|") or, when that is not positive definite either, as
+#' the nearest positive-definite matrix ("r+").
+#' @param hess Hessian of the -LL objective (the R matrix)
+#' @return list(r = the matrix to invert, `NULL` when none is usable; type =
+#'   "r", "|r|", "r+" or "failed"; warning = what was done, `NULL` for "r")
+#' @noRd
+.nlmCovFromHessian <- function(hess) {
+  .g <- .covGuard(hess)
+  if (.g$ok) {
+    return(list(r = hess, type = "r"))
+  }
+  .r <- NULL
+  if (!is.null(.g$cov)) {
+    .r <- tryCatch(sqrtm(.g$cov %*% .g$cov), error = function(e) NULL)
+    .type <- "|r|"
+    if (!.covGuard(.r)$ok) {
+      .r <- tryCatch(nmNearPD(.g$cov), error = function(e) NULL)
+      .type <- "r+"
+    }
+  }
+  if (!.covGuard(.r)$ok) {
+    return(list(type = "failed", warning = sprintf("R matrix %s; covariance step failed", .g$reason)))
+  }
+  list(r = .r, type = .type, warning = sprintf("R matrix %s; corrected as \"%s\"", .g$reason, .type))
+}
+
 #' Adjust nlm and family output environment
 #'
 #' Will take information like `$censInformation`, `$parHistData`,
@@ -552,6 +548,11 @@
     .collectWarn(fitModel(.ui, .ret$dataSav), lst = TRUE)
   })
   .ret[[method]] <- .fit[[1]]
+  # the covariance step's report is not one of the optimizer warnings dropped below
+  if (is.character(.fit[[1]]$covWarning)) {
+    warning(.fit[[1]]$covWarning, call. = FALSE)
+    .ret[[method]]$covWarning <- NULL
+  }
   if (!is.null(postSetup)) {
     .ret <- postSetup(.ret, .ui, .fit)
   }
