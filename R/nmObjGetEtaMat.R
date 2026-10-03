@@ -24,10 +24,19 @@ nmObjGet.etaMat <- function(x, ...) {
   if (is.null(.ui$eta)) {
     return(NULL)
   }
+  .eta <- as.matrix(.nmDropNonEtaCols(.ui$eta))
   if (is.null(.ui$iov)) {
-    as.matrix(.nmDropNonEtaCols(.ui$eta))
+    .eta
   } else {
-    .eta <- as.matrix(.nmDropNonEtaCols(.ui$eta))
+    # $eta leaves the occasion etas out and $iov rescales them to the natural
+    # scale; etaObf has every eta of the expanded model, on the model's scale
+    .eo <- .ui$etaObf
+    if (is.data.frame(.eo)) {
+      .eo <- as.matrix(.nmDropNonEtaCols(.eo[, names(.eo) != "OBJI", drop = FALSE]))
+      if (ncol(.eo) > ncol(.eta) && all(colnames(.eta) %in% colnames(.eo))) {
+        return(.eo)
+      }
+    }
     .n <- names(.ui$iov)
     as.matrix(do.call(
       `cbind`,

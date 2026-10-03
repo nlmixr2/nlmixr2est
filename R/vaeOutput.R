@@ -386,31 +386,17 @@
 #' @noRd
 .vaeControlToFoceiControl <- function(env, assign = TRUE) {
   .control <- env$vaeControl
-  .lik <- .control$likelihood
-  .interaction <- if (.lik %in% c("foce", "focep")) 0L else 1L
-  .foce <- if (identical(.lik, "focep")) "foce+" else "nonmem"
-  .fc <- foceiControl(
-    rxControl = .control$rxControl,
-    maxOuterIterations = 0L,
-    maxInnerIterations = 0L,
+  .fc <- .foceiOwnEtaControl(
+    .control,
+    env$etaMat,
     covMethod = .control$covMethod,
-    etaMat = env$etaMat,
-    interaction = .interaction,
-    foce = .foce,
-    sumProd = .control$sumProd,
-    optExpression = .control$optExpression,
+    likelihood = .control$likelihood,
     literalFix = .control$literalFix,
     literalFixRes = .control$literalFixRes,
-    addProp = .control$addProp,
-    calcTables = .control$calcTables,
-    compress = .control$compress,
-    ci = .control$ci,
-    sigdigTable = .control$sigdigTable,
     stickyRecalcN = .control$stickyRecalcN,
     maxOdeRecalc = .control$maxOdeRecalc,
     odeRecalcFactor = .control$odeRecalcFactor,
     indTolRelax = .control$indTolRelax,
-    eventSens = .control$eventSens,
     fast = FALSE, # no outer optimizer -- skip the outer gradient model
     print = 0L
   )
@@ -526,18 +512,7 @@
   if (!exists("fullTheta", envir = .ret, inherits = FALSE)) {
     .ret$fullTheta <- setNames(.idf2$est[is.na(.idf2$neta1)], .idf2$name[is.na(.idf2$neta1)])
   }
-  ## 2. etaObf -- ID + one column per UI eta + OBJI, in eta order
-  if (!exists("etaObf", envir = .ret, inherits = FALSE)) {
-    .ids <- unique(.ret$dataSav$ID)
-    .em <- .etaMat[, intersect(.etaU, colnames(.etaMat)), drop = FALSE]
-    if (nrow(.em) == length(.ids)) {
-      .eo <- as.data.frame(.em)
-      .eo$ID <- .ids
-      .eo <- .eo[, c("ID", colnames(.em)), drop = FALSE]
-      .eo$OBJI <- NA_real_
-      .ret$etaObf <- .eo
-    }
-  }
+  ## 2. etaObf is not supplied: the FOCEi pass writes it from the inner problem
   ## 3. omega -- dimnamed by the UI eta names, from the updated iniDf: the VAE
   ##    estimates the full modeled block (diagonal + declared off-diagonals);
   ##    an occasion eta keeps whatever the model fixed it at

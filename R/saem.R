@@ -1491,8 +1491,6 @@
 #' @noRd
 .saemControlToFoceiControl <- function(env, assign = TRUE) {
   .saemControl <- env$saemControl
-  .ui <- env$ui
-  .rxControl <- env$saemControl$rxControl
   # For mixture models the env$.etaMat is the replicated (N*nMix)-row matrix
   # used internally during SAEM.  For the FOCEi post-processing step we need
   # exactly N rows (one per subject).  env$.etaMatBase always holds the
@@ -1502,26 +1500,14 @@
   } else {
     env$.etaMat
   }
-  .foceiControl <- foceiControl(
-    maxOuterIterations = 0L,
-    maxInnerIterations = 0L,
-    covMethod = 0L,
-    etaMat = .etaForFocei,
-    sumProd = .saemControl$sumProd,
-    optExpression = .saemControl$optExpression,
+  .foceiControl <- .foceiOwnEtaControl(
+    .saemControl,
+    .etaForFocei,
     scaleTo = 0,
-    calcTables = .saemControl$calcTables,
-    addProp = .saemControl$addProp,
-    skipCov = .ui$foceiSkipCov,
-    interaction = 1L,
-    compress = .saemControl$compress,
-    ci = .saemControl$ci,
-    sigdigTable = .saemControl$sigdigTable,
+    skipCov = env$ui$foceiSkipCov,
     indTolRelax = .saemControl$indTolRelax,
-    rxControl = .rxControl,
     resetThetaP = 0,
     resetThetaFinalP = 0,
-    eventSens = .saemControl$eventSens,
     est = "saem"
   )
   if (exists(".etaMat", envir = env, inherits = FALSE)) {
@@ -1713,10 +1699,6 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
 .saemFamilyFit <- function(env, ...) {
   .ui <- env$ui
   .control <- .ui$control
-  # the fast (f-SAEM) kernel sets up a FOCEi inner problem whose foceiControl
-  # (covMethod="") clobbers the shared ui control covMethod during .saemFitModel;
-  # capture the intended covMethod up front and restore it before .saemCalcCov
-  .covMethodSaem <- .control$covMethod
   .data <- env$data
   .ret <- new.env(parent = emptyenv())
   .ret$table <- env$table
@@ -1734,10 +1716,6 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   .nlmixrSetMuRefTimeVarying(.ui, .tv)
   on.exit(.nlmixrRmMuRefTimeVarying(.ui), add = TRUE)
   .ret$ui <- .ui
-  # restore the covMethod the fast kernel may have overwritten (see above)
-  if (!is.null(.covMethodSaem)) {
-    rxode2::rxAssignControlValue(.ui, "covMethod", .covMethodSaem)
-  }
   .saemCalcCov(.ret)
   .ret <- nlmixrWithTiming("postprocess", {
     if (!is.null(.ret$saem$tolFactor)) {

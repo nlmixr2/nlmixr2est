@@ -1212,8 +1212,7 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   if (!is.environment(.env)) {
     return(invisible(FALSE))
   }
-  # deep-copy the UI: the nested re-fit must not mutate THIS fit's UI
-  .ui <- tryCatch(rxode2::rxUiDecompress(unserialize(serialize(fit$ui, NULL))), error = function(e) NULL)
+  .ui <- .fitUiCopy(fit)
   if (is.null(.ui)) {
     return(invisible(FALSE))
   }

@@ -17,6 +17,13 @@
   
 ## Bug Fixes
 
+- `$etaMat` of a fit with inter-occasion variability now holds the occasion
+  ETAs as the model estimated them; it held them multiplied by the occasion
+  standard deviation (the scale of `$iov`).  `setOfv()`, `addCwres()`,
+  `setCov()` and fits started from `etaMat = fit` evaluated the occasion
+  effects at those values: `setOfv(fit, "foce")` on an additive-error
+  `theo_md` model gave 482.5 for a fit whose objective was 458.3.
+
 - `est="nls"` fits a delay differential equation model with its `past()`
   pre-history.  The nls models dropped the `past()` lines, so nls fitted a
   model with a different history: its estimates were biased, and the
@@ -175,6 +182,11 @@
 
 ### Covariance
 
+- The post-fit covariance of a model with inter-occasion variability is now
+  computed: the recompute of the `mfocei`-style families (and of imp/np with
+  a requested covariance) and `setCov(fit, "imp")` (or a deferred
+  `covMethod = "imp"`) refit without the occasion ETAs, the refit stopped,
+  and no covariance was installed.
 - A covariance computed after the fit is now installed only when it is
   finite, symmetric and positive definite; otherwise the fit keeps the
   covariance it had and a warning names the method and the reason.  This
