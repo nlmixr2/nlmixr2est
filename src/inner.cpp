@@ -1042,6 +1042,7 @@ struct focei_options {
   double impCtol = -1.0;     // windowed-convergence tolerance on the objective (<0: derive from sigdig)
   int impNconvWindow = 10;   // trailing-iteration window for the convergence check
   bool impCov = false;       // experimental: compute the MC observed-information theta covariance
+  bool impFrozen = false;    // E-steps only: the parameters stay where they were supplied
   bool impQr = false;        // quasi-random (Sobol) importance samples (QRPEM)
   bool impQrShift = true;    // Cranley-Patterson random shift of the Sobol points
   bool impQrRefresh = true;  // redraw the shift each iteration (false: one shift/subject)
@@ -8401,20 +8402,18 @@ struct CovSolveTolGuard {
   }
 };
 
-// The per-observation log-likelihoods the fit reports (addLlikObs) are those of the
-// final objective at the estimates; every covariance leg rewrites them.
-struct CovLlikObsGuard {
-  std::vector<double> sav;
-  CovLlikObsGuard() {
-    rx = getRxSolve_();
-    if (op_focei.llikObsFull != NULL) {
-      sav.assign(op_focei.llikObsFull, op_focei.llikObsFull + getRxNall(rx));
-    }
+// CovLlikObsGuard (declared in imp.h, which the importance-sampling covariance
+// shares): the per-observation log-likelihoods the fit reports (addLlikObs) are
+// those of the final objective at the estimates; every covariance leg rewrites them.
+CovLlikObsGuard::CovLlikObsGuard() {
+  rx = getRxSolve_();
+  if (op_focei.llikObsFull != NULL) {
+    sav.assign(op_focei.llikObsFull, op_focei.llikObsFull + getRxNall(rx));
   }
-  ~CovLlikObsGuard() {
-    if (op_focei.llikObsFull != NULL) std::copy(sav.begin(), sav.end(), op_focei.llikObsFull);
-  }
-};
+}
+CovLlikObsGuard::~CovLlikObsGuard() {
+  if (op_focei.llikObsFull != NULL) std::copy(sav.begin(), sav.end(), op_focei.llikObsFull);
+}
 
 NumericVector foceiSetup_(const RObject &obj,
                           const RObject &data,
@@ -8529,6 +8528,8 @@ NumericVector foceiSetup_(const RObject &obj,
       op_focei.impCtol = as<double>(foceiO["ctol"]);
     if (foceiO.containsElementNamed("nConvWindow")) op_focei.impNconvWindow = as<int>(foceiO["nConvWindow"]);
     if (foceiO.containsElementNamed("impCov")) op_focei.impCov = as<bool>(foceiO["impCov"]);
+    // set on every imp fit, so a frozen recompute does not carry over to the next one
+    op_focei.impFrozen = foceiO.containsElementNamed("impFrozen") && as<bool>(foceiO["impFrozen"]);
     if (foceiO.containsElementNamed("qr")) op_focei.impQr = as<bool>(foceiO["qr"]);
     if (foceiO.containsElementNamed("qrShift")) op_focei.impQrShift = as<bool>(foceiO["qrShift"]);
     if (foceiO.containsElementNamed("qrRefresh")) op_focei.impQrRefresh = as<bool>(foceiO["qrRefresh"]);
@@ -12559,6 +12560,8 @@ int impNtheta() { return (int)op_focei.ntheta; }
 
 bool impCovEnabled() { return op_focei.impCov; }
 
+bool impFrozen() { return op_focei.impFrozen; }
+
 // ---- quasi-random (QRPEM) + SIR controls -----------------------------------
 bool impQrEnabled() { return op_focei.impQr; }
 bool impQrShiftEnabled() { return op_focei.impQrShift; }
@@ -12674,6 +12677,21 @@ void impSetOmegaThetaAll(int m, double val) {
   op_focei.omegaInv = getOmegaInv();
   op_focei.cholOmegaInv = getCholOmegaInv();
   op_focei.logDetOmegaInv5 = getOmegaDet();
+}
+
+// d(Omega)/d(p_m) for every Omega parameter p_m = fullTheta[ntheta + m] at the
+// current estimate.  The parameters are the entries of chol(Omega^-1) (diagXform
+// on the diagonal) of the _rxInv handle the inner problem uses, which also gives
+// d(Omega^-1)/d(p_m); with A = Omega^-1, dOmega = -Omega dA Omega.
+List impOmegaParDeriv() {
+  foceiOmegaEnvSyncFromTail();
+  arma::mat Om = getOmegaMat();
+  List dA = getDOmegaInvL();
+  List ret(dA.size());
+  for (int m = 0; m < dA.size(); ++m) {
+    ret[m] = wrap(arma::mat(-Om * as<arma::mat>(dA[m]) * Om));
+  }
+  return ret;
 }
 
 // M-step helpers (EM loop lives in impOuter, src/imp.cpp).

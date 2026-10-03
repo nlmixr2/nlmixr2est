@@ -177,6 +177,7 @@ double impMixLogSumExp(const std::vector<double>& ll);  // log(sum_m p_m exp(ll[
 // ---- Monte-Carlo covariance support (implemented in inner.cpp) ----
 int impNtheta();                                   // number of thetas
 bool impCovEnabled();                              // whether impCov=TRUE was requested
+bool impFrozen();                                  // E-steps only, at the supplied parameters
 
 // ---- quasi-random (QRPEM) + SIR controls (from impmapControl) ----
 bool impQrEnabled();                               // qr=TRUE: Sobol importance samples
@@ -194,6 +195,19 @@ void impSetThetaAll(int idx, double val);          // set fullTheta[idx] on ever
 void impForceResolve(int id);                      // force likInner0 to re-solve subject id
 double impGetOmegaThetaVal(int m);                 // current value of Omega free parameter m
 void impSetOmegaThetaAll(int m, double val);       // set Omega free param m + rebuild omegaInv/logdet
+// d(Omega)/d(p_m) for every Omega parameter p_m = fullTheta[ntheta + m] at the
+// current estimate (element m of the list is an neta x neta matrix), from the
+// chol(Omega^-1) parameterization the inner problem uses.
+Rcpp::List impOmegaParDeriv();
+
+// The per-observation log-likelihoods the fit reports (addLlikObs) are those of the
+// final objective at the estimates, and every covariance evaluation rewrites them:
+// saved on construction, put back on destruction.
+struct CovLlikObsGuard {
+  std::vector<double> sav;
+  CovLlikObsGuard();
+  ~CovLlikObsGuard();
+};
 
 // Clear the persistent inner neqOverride (multi-endpoint pool) at fit end so it
 // does not leak into a subsequent fit sharing the global solve context.

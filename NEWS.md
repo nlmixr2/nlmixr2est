@@ -278,6 +278,69 @@
   covariance can be computed at all; both were silent.  `covMethod =
   "analytic"` falling back to `"linFim"` is now a warning, kept in
   `$runInfo`, rather than a message.
+- `saemControl(covMethod = "r,s")` (and `"r"`, `"s"`) computes no R or S
+  matrix: it inverts the theta block of SAEM's estimation-phase information
+  `$saem$Ha`.  That covariance is now installed as `"Ha"`
+  (`"|Ha|"` when `sqrtm()` repaired the block) instead of with no
+  label, and its rows follow the order the SAEM kernel lays them out in.  With
+  a `fix()`ed theta, or with a theta without a random effect ahead of one with
+  a random effect, the standard errors went to the wrong parameters (#906): on
+  `theo_sd` with `tcl` fixed, `tv` got the standard error of `tcl`.  A theta
+  without a random effect has no information of its own in that block, so it
+  now gets no standard error, with a warning, instead of a near-zero one.  The
+  same matrix is what an unusable `covMethod = "linFim"` falls back to; it
+  carries the same label there and no longer borrows the linearized FIM's
+  variance block.  Every SAEM covariance is now checked (finite, symmetric,
+  positive definite on its identified rows) before it is installed, and an
+  integer `covMethod` is read as a `foceiControl()` slot, so `covMethod = 0L`
+  computes no covariance (it inverted `Ha`).
+- The Omega rows of the SAEM covariances (`"sa"`, `"fim"`, `"linFim"`, and the
+  linearized variance block spliced into `"sa"`/`"fim"`) now belong to the
+  random effects they are named after.  They were named in the order the etas
+  are declared in `ini()`, but SAEM orders its variance parameters by the
+  thetas the etas belong to, so declaring `eta.v` before `eta.ka` reported the
+  standard error of the variance of `eta.ka` as that of `eta.v`.  A model with
+  a random effect that is not mu-referenced (`cl <- exp(tcl) * (1 + eta.cl)`)
+  is such a model whatever the declaration order, and with it a theta without a
+  random effect made `"sa"`/`"fim"` fall back to `"linFim"`; they are now
+  computed.  When the random effects cannot be matched one to one to SAEM's
+  variance parameters, the Omega rows are left out with a warning; they were
+  left out silently.
+- When a SAEM `"sa"` or `"fim"` covariance falls back to `"linFim"`, the
+  message says why (for example `the covariance is not positive definite` or
+  `the information matrix is singular`).
+- The per-observation log-likelihoods of an `imp`, `impmap` or `qrpem` fit
+  (`$llikObs`, the `nlmixrLlikObs` column) with the default `covMethod = "imp"`
+  are those at the estimates.  They were those of the last importance sample
+  of the last finite-difference evaluation of the covariance step: on
+  `theo_sd` they differed from the same fit without a covariance step by up
+  to 7.6 (`impmap`) and 8.1 (`imp`) log-likelihood units.
+- The `imp`/`impmap`/`qrpem` covariance (`covMethod = "imp"`, the default)
+  reports its Omega rows as the variances and covariances they are named
+  after (`om.<eta>`, `cov.<eta>.<eta>`).  They held the parameters the fit
+  estimates Omega in (the entries of `chol(Omega^-1)`, a square-root
+  diagonal by default) and are now mapped by the delta method: on `theo_sd`
+  the `impmap` standard errors of the Omega variances go from 0.153, 0.240,
+  0.393 (`eta.ka`, `eta.cl`, `eta.v`) to 0.196, 0.036, 0.010, in line with
+  the other methods.  `$impCov`/`$impSe` hold the mapped matrix,
+  `$impCovInternal` the one in the estimation parameterization and
+  `$impCovJacobian` the map.  The matrix is installed as `"imp"` only when
+  it is positive definite: `est = "imp"` on `theo_sd` installed one with a
+  negative variance for the `tka` estimate (standard error `NaN`).  An
+  information matrix that is not positive definite is now repaired as the
+  FOCEi `"|r|"` covariance is, by `sqrtm(info %*% info)`, and installed as
+  `"|imp|"` with a warning; when even that fails, a warning says why and no
+  covariance is installed.
+- `setCov(fit, "sa")`, `setCov(fit, "imp")`, a deferred `covMethod = "sa"` or
+  `"imp"` and the default `npag`/`npb` covariance now compute the covariance
+  at the fit's estimates, as `saControl()`/`impCovControl()` say.  The SAEM
+  run re-estimated every parameter during its `nBurn`/`nEm` warm-up and the
+  importance-sampling run took a full EM step (`impCovControl(nIter = 1)`),
+  so the covariance was that of nearby estimates: on `theo_sd`, `tka` 0.466
+  became 0.463 (SAEM, 40 warm-up iterations) and 0.455 (three EM steps).
+  The SAEM warm-up now holds every population parameter (mixture proportions
+  excepted) and only equilibrates the chains; the importance-sampling
+  iterations are E-steps only.
 - The printed parameter table of a full-Bayes `fbvi`/`emvi` fit now shows the
   standard errors of the variational covariance (only `$parFixedDf` had
   them), its confidence interval uses the fit's `ci`, and the condition
