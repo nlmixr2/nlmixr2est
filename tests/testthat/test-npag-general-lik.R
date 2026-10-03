@@ -56,15 +56,21 @@ nmTest({
   ##
   ## The reference is the model's own GAUSSIAN TWIN, not a checked-in constant.  An
   ## ll() written as the exact normal log-density is the same likelihood as the
-  ## equivalent add() endpoint, and likInner0 stores the full density for ll() rows
-  ## while the Gaussian path omits the 0.5*log(2*pi) term -- so the two
-  ## log-likelihoods differ by nObs*0.5*log(2*pi), plus whatever the two fits'
-  ## residual estimates are worth.  That last part is NOT zero: the residual step
-  ## scores an ordinary err-tagged parameter by extended least squares and a
-  ## general-likelihood one by the user's log-density, so the endpoint written
-  ## differently in the two models lands somewhere different in each (see the
-  ## comment on pdadd.sd below).  The endpoint written IDENTICALLY in both is the
-  ## part that is self-validating.
+  ## equivalent add() endpoint, and with a general-likelihood endpoint every row's
+  ## density is stored in full while the Gaussian path omits the 0.5*log(2*pi) term
+  ## -- so at the SAME parameters, support points and weights the two
+  ## log-likelihoods differ by exactly nObs*0.5*log(2*pi).  That is what the test
+  ## checks, through the npag inner harness (.npInnerSetup/.npInnerPsi).
+  ##
+  ## Two FITS of the twins are not a reference: they need not land on the same
+  ## parameters.  The twin's pdadd.sd is a residual scale (warm-started from the
+  ## per-endpoint moment, bounded below by 0) while the ll() model's is a
+  ## structural regressor (no warm start, bracketed around its start), so the
+  ## alternating residual step and adaptive grid follow different paths from the
+  ## first cycle on.  Measured at points = 24: after 3 cycles the fits' add.sd were
+  ## 1.79 and 1.91 and their log-likelihoods differed by 180.1 instead of 176.4;
+  ## after 10 cycles add.sd was 1.18 and 1.60 and the difference 202.3.  At the
+  ## same parameters the difference is 176.4362 to 3e-14.
   .npMkPkPd <- function(pdLine) {
     .b <- quote({ ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv)
       ec50 <- exp(tec50); kout <- exp(tkout); e0 <- exp(te0)
@@ -104,6 +110,15 @@ nmTest({
     )
     .dat[order(.dat$id, .dat$time, -.dat$evid), ]
   }
+  # The nonparametric log-likelihood of model `mod` at thetas `theta`, support points
+  # `support` (eta space) and weights `weights`, through the npag inner harness
+  .npTwinLogLik <- function(mod, theta, support, weights, dat, ctl) {
+    .theta <- as.list(theta)
+    .ui <- rxode2::ini(rxode2::assertRxUi(mod), .theta)
+    .npInnerSetup(.ui, dat, matrix(0, length(unique(dat$id)), ncol(support)), ctl)
+    on.exit(.npInnerFree())
+    sum(log(.npInnerPsi(support, ctl) %*% weights))
+  }
 
   test_that("est='npag' scores a general likelihood alongside a second endpoint (#850)", {
     skip_if_not(rxode2hasLlik(), "rxode2 build has no llik support")
@@ -113,23 +128,20 @@ nmTest({
                              0.5 * ((DV - effect) / pdadd.sd)^2))
     .dat <- .npPkPdData(.gauss)
     .nObs <- sum(.dat$evid == 0)
-    .ctl <- function() npagControl(points = 24L, cycles = 3L, seed = 1L, print = 0L)
+    .ctl <- npagControl(points = 24L, cycles = 3L, seed = 1L, print = 0L)
     rxode2::rxSetSeed(42)
-    .fg <- suppressWarnings(nlmixr2(.gauss, .dat, "npag", .ctl()))
-    rxode2::rxSetSeed(42)
-    .fl <- suppressWarnings(nlmixr2(.ll, .dat, "npag", .ctl()))
-    .lg <- as.numeric(.fg$env$npagLogLik)
+    .fl <- suppressWarnings(nlmixr2(.ll, .dat, "npag", .ctl))
     .ll2 <- as.numeric(.fl$env$npagLogLik)
     # every scale stays in its domain -- this is what actually went wrong, and the
     # bound below is only well defined once it holds
+    expect_true(all(is.finite(fixef(.fl)[c("add.sd", "pdadd.sd")])))
     expect_gt(unname(fixef(.fl)["pdadd.sd"]), 0)
     expect_gt(unname(fixef(.fl)["add.sd"]), 0)
     # A per-observation normal log-density cannot exceed -log(sd) - 0.5*log(2*pi), so the
     # total cannot exceed the sum of those maxima.  Take the sd's from the FIT, not from
-    # the simulation: the fit chooses its own, and pdadd.sd lands near 0.76 against the
-    # simulated 2 -- a bound built on the simulation values would be one this fit is
-    # entitled to beat, and would fail for a legitimate reason.  At the fitted sd's this
-    # is a theorem.  The defect cleared even the looser bound by more than 2000.
+    # the simulation: the fit chooses its own, and a bound built on the simulation values
+    # would be one this fit is entitled to beat.  At the fitted sd's this is a theorem.
+    # The defect cleared even the looser bound by more than 2000.
     .nPk <- sum(.dat$evid == 0 & .dat$cmt == 2)
     .nPd <- sum(.dat$evid == 0 & .dat$cmt == 3)
     expect_equal(.nPk + .nPd, .nObs)
@@ -139,32 +151,21 @@ nmTest({
       .nPk * log(unname(fixef(.fl)["add.sd"])) -
       .nPd * log(unname(fixef(.fl)["pdadd.sd"]))
     expect_lt(.ll2, .maxLL)
-    # The twin's objectives differ by the 2*pi term the Gaussian path omits, plus
-    # whatever the two fits' differing residual estimates are worth -- see below.
-    # This is a RELATIVE tolerance on a number near 176, so it allows a few units.
-    expect_equal(.lg - .ll2, .nObs * 0.5 * log(2 * pi), tolerance = 0.02)
-    # add.sd is the PK endpoint, written `cp ~ add(add.sd)` in BOTH models, so both
-    # fits score it the same way and it agrees tightly (measured 0.6359 vs 0.6352).
-    expect_equal(unname(fixef(.fl)["add.sd"]), unname(fixef(.fg)["add.sd"]), tolerance = 0.05)
-    # pdadd.sd is NOT required to agree, and asserting that it did was wrong.
-    # The residual step optimizes an err-tagged parameter against the
-    # extended-least-squares objective at the posterior-mean etas (npCommon.R);
-    # a general-likelihood endpoint has no ELS form, so it is scored by the
-    # user's log-density instead.  The two endpoints are therefore scored by
-    # DIFFERENT objectives by construction, and only the endpoint that is
-    # spelled identically in both models (add.sd, above) has to match.
-    #
-    # Measured at points=24/cycles=3: 0.9267 (Gaussian) vs 0.7343 (ll), and the
-    # objective is not flat between them -- refitting with pdadd.sd FIXED gives
-    # -49.89, -45.65 and -57.54 at 0.9267, 0.80 and 0.7343 -- so this is a real
-    # difference in where the two objectives put the optimum, not noise and not
-    # a tolerance that needs widening.  Whether ELS is accurate enough for a
-    # multi-endpoint residual step is a separate question about npag's design;
-    # it is not something this test can pin as an equality.
-    expect_true(is.finite(unname(fixef(.fl)["pdadd.sd"])))
-    expect_gt(unname(fixef(.fl)["pdadd.sd"]), 0)
-    expect_true(is.finite(unname(fixef(.fg)["pdadd.sd"])))
-    expect_gt(unname(fixef(.fg)["pdadd.sd"]), 0)
+    # The twin: at the same thetas, support points and weights (the fit's, here) the
+    # ll() model and its Gaussian twin are the same likelihood, apart from the
+    # 0.5*log(2*pi) per observation the Gaussian path leaves out.
+    .twin <- vapply(
+      list(gauss = .gauss, ll = .ll),
+      .npTwinLogLik,
+      numeric(1),
+      theta = fixef(.fl),
+      support = .fl$env$npagSupport,
+      weights = .fl$env$npagWeights,
+      dat = .dat,
+      ctl = .ctl
+    )
+    expect_true(all(is.finite(.twin)))
+    expect_equal(.twin[["gauss"]] - .twin[["ll"]], .nObs * 0.5 * log(2 * pi), tolerance = 1e-10)
   })
 
   test_that("an ini() lower bound constrains a parameter inside ll() (#850)", {
