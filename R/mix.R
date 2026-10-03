@@ -215,6 +215,27 @@
   invisible(NULL)
 }
 
+#' Replace a split-eta group's columns by its root eta
+#'
+#' Each subject's root eta is the eta of its best component.  The root takes
+#' the first member's column, so the columns keep the ui's eta order.
+#'
+#' @param x data frame or matrix of etas; its rows cycle through the subjects
+#'   (a mixture's `.etaMat` repeats them once per component)
+#' @param grp the group's eta names, in component order
+#' @param rootName name of the root eta
+#' @param bestMix best component of each subject
+#' @return `x` with the `grp` columns replaced by `rootName`
+#' @noRd
+.saemMixRootEta <- function(x, grp, rootName, bestMix) {
+  .rows <- seq_len(nrow(x))
+  .sub <- (.rows - 1L) %% length(bestMix) + 1L
+  .cols <- match(grp, colnames(x))
+  x[, .cols[1]] <- as.matrix(x[, .cols, drop = FALSE])[cbind(.rows, bestMix[.sub])]
+  colnames(x)[.cols[1]] <- rootName
+  x[, -.cols[-1], drop = FALSE]
+}
+
 #' Process mixture model information after a SAEM fit
 #'
 #' SAEM analogue of `.mixFix()`: builds `mixList` (per-mixture ID/ETA/
@@ -294,68 +315,24 @@
   }
 
   .omega <- env$omega
-  .fixef <- env$fixef
-  .muRef <- ui$muRefDataFrame
 
   if (length(.etaGroups) > 0L) {
     for (.grp in .etaGroups) {
       .rootName <- gsub("[0-9]+$", "", .grp[1])
-
-      .sig02 <- .omega[.grp[1], .grp[1]]
-      .thetas <- vapply(
-        .grp,
-        function(e) {
-          .t <- .muRef$theta[.muRef$eta == e]
-          if (length(.t) == 1L) .t else NA_character_
-        },
-        character(1)
-      )
-
-      .mus <- .fixef[.thetas]
-      .mus[is.na(.mus)] <- 0.0
-
-      .wGroup <- .mixProbabilities
-      .meanMu <- sum(.wGroup * .mus)
-      .overallVar <- .sig02
-
+      # the members share one reported variance (saem's Gamma2_phi1Report), so
+      # the root eta takes the first member's row and column
       .wIdx <- which(colnames(.omega) == .grp[1])
       if (length(.wIdx) == 1L) {
         colnames(.omega)[.wIdx] <- rownames(.omega)[.wIdx] <- .rootName
-        .omega[.rootName, .rootName] <- .overallVar
       }
-
       .toRemove <- .grp[-1]
       .omega <- .omega[!(rownames(.omega) %in% .toRemove), !(colnames(.omega) %in% .toRemove), drop = FALSE]
-
-      .etaObf[[.rootName]] <- vapply(
-        seq_len(nrow(.etaObf)),
-        function(i) {
-          .etaObf[i, .grp[.bestMix[i]]]
-        },
-        numeric(1)
-      )
-      .etaObf <- .etaObf[, !(names(.etaObf) %in% .grp), drop = FALSE]
-
-      .updateMat <- function(mat) {
-        .dfMat <- as.data.frame(mat)
-        .N <- nrow(.dfMat)
-        .newCol <- vapply(
-          seq_len(.N),
-          function(i) {
-            .subjIdx <- ((i - 1) %% .nSub) + 1
-            .dfMat[i, .grp[.bestMix[.subjIdx]]]
-          },
-          numeric(1)
-        )
-        .dfMat[[.rootName]] <- .newCol
-        .dfMat <- .dfMat[, !(names(.dfMat) %in% .grp), drop = FALSE]
-        as.matrix(.dfMat)
-      }
+      .etaObf <- .saemMixRootEta(.etaObf, .grp, .rootName, .bestMix)
       if (exists(".etaMatBase", envir = env, inherits = FALSE) && !is.null(env$.etaMatBase)) {
-        env$.etaMatBase <- .updateMat(env$.etaMatBase)
+        env$.etaMatBase <- .saemMixRootEta(env$.etaMatBase, .grp, .rootName, .bestMix)
       }
       if (exists(".etaMat", envir = env, inherits = FALSE) && !is.null(env$.etaMat)) {
-        env$.etaMat <- .updateMat(env$.etaMat)
+        env$.etaMat <- .saemMixRootEta(env$.etaMat, .grp, .rootName, .bestMix)
       }
     }
     .funLines <- deparse(as.function(ui))
@@ -376,9 +353,17 @@
       assign("boundedTransforms", get("boundedTransforms", envir = ui$meta), envir = .uiNew$meta)
     }
     env$ui <- .uiNew
-    env$omega <- .omega
+    # the output pass maps eta columns by position, so they follow the new ui
+    .etaNames <- dimnames(.uiNew$omega)[[1]]
+    env$omega <- .omega[.etaNames, .etaNames, drop = FALSE]
+    .etaObf <- .etaObf[, c("ID", .etaNames, "OBJI"), drop = FALSE]
     env$etaObf <- .etaObf
-    .etaNames <- names(.etaObf)[!(names(.etaObf) %in% c("ID", "OBJI"))]
+    if (!is.null(env$.etaMatBase)) {
+      env$.etaMatBase <- env$.etaMatBase[, .etaNames, drop = FALSE]
+    }
+    if (!is.null(env$.etaMat)) {
+      env$.etaMat <- env$.etaMat[, .etaNames, drop = FALSE]
+    }
   }
 
   # Create mixList: one data frame per mixture component

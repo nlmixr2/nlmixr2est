@@ -336,6 +336,23 @@ nmTest({
     expect_true(!"eta.cl1" %in% rownames(fit_saem_split$omega))
     expect_true("eta.cl" %in% names(fit_saem_split$ranef))
     expect_true(!"eta.cl1" %in% names(fit_saem_split$ranef))
+    # (issue 1140) each eta column holds that eta: the root eta.cl used to be
+    # appended after OBJI, so the fit dropped it as OBJI and shifted the names
+    # (eta.cl held eta.v, eta.v held the missing OBJI)
+    .mix1 <- fit_saem_split$env$mixList$mix1
+    expect_false(anyNA(fit_saem_split$ranef$eta.v))
+    expect_equal(fit_saem_split$ranef$eta.v, .mix1$eta.v)
+    expect_equal(fit_saem_split$ranef$eta.cl, .mix1$eta.cl)
+    expect_equal(fit_saem_split$ui$iniDf$name[!is.na(fit_saem_split$ui$iniDf$neta1)], c("eta.cl", "eta.v"))
+    # the root eta's variance is the components' variances weighted by their
+    # responsibilities; the spread of tcl1/tcl2 is not added to it
+    .ui0 <- rxode2::rxode2(twoPopSplit)
+    .tr <- setNames(.ui0$saemOmegaTrans, dimnames(.ui0$omega)[[1]])
+    .s0 <- fit_saem_split$env$saem0
+    .w <- colSums(.s0$mixWeights)
+    .g <- diag(.s0$Gamma2_phi1)[.tr[c("eta.cl1", "eta.cl2")]]
+    expect_equal(fit_saem_split$omega["eta.cl", "eta.cl"], sum(.w * .g) / sum(.w))
+    expect_equal(fit_saem_split$omega["eta.v", "eta.v"], diag(.s0$Gamma2_phi1)[[.tr[["eta.v"]]]])
 
     # Test SAEM mixture model with 3 split ETAs and covariance calculation
     threePopSplit <- function() {
@@ -377,6 +394,8 @@ nmTest({
     expect_true(!"eta.cl1" %in% rownames(fit_saem_split3$omega))
     expect_true("eta.cl" %in% names(fit_saem_split3$ranef))
     expect_true(!"eta.cl1" %in% names(fit_saem_split3$ranef))
+    expect_equal(fit_saem_split3$ranef$eta.v, fit_saem_split3$env$mixList$mix1$eta.v)
+    expect_equal(fit_saem_split3$ranef$eta.cl, fit_saem_split3$env$mixList$mix1$eta.cl)
 
     # Test SAEM mixture model with split ETAs and bounded parameters
     # to verify that back-transformations are correctly applied (not NaN)

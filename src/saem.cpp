@@ -3519,8 +3519,12 @@ public:
       // again; restore the constraint after it
       poolOmegaGroups(Gamma2_phi1);
       // Split-ETA components sharing an omegaShare group are pooled into a single BSV term
-      // (law of total variance) for *reporting only*, into Gamma2_phi1Report; the live
-      // Gamma2_phi1 feeding IGamma2_phi1/D1Gamma21 stays untouched so tcl1/tcl2 stay uncoupled.
+      // for *reporting only*, into Gamma2_phi1Report; the live Gamma2_phi1 feeding
+      // IGamma2_phi1/D1Gamma21 stays untouched so tcl1/tcl2 stay uncoupled.  The reported
+      // model keeps the components' own thetas inside mix() and gives them one eta, so its
+      // variance is the within-component one: the responsibility-weighted mean of the
+      // components' variances.  The spread of the component means is not added; the
+      // component thetas already carry it.
       Gamma2_phi1Report = Gamma2_phi1;
       if (nMix > 1 && omegaShare.n_elem == (unsigned int)nphi1) {
         unsigned int max_group = 0;
@@ -3530,9 +3534,6 @@ public:
         for (unsigned int g = 1; g <= max_group; ++g) {
           double sum_weighted_var = 0.0;
           double sum_weights = 0.0;
-          int count = 0;
-          std::vector<double> weights;
-          std::vector<double> means;
           std::vector<unsigned int> indices;
           for (unsigned int i = 0; i < omegaShare.n_elem; ++i) {
             if (omegaShare(i) == g) {
@@ -3543,34 +3544,15 @@ public:
                   w = arma::sum(mixWeights.col(subpop - 1));
                 }
               }
-              weights.push_back(w);
-              double mu = 0.0;
-              if (mprior_phi1.n_rows > 0) {
-                mu = arma::mean(mprior_phi1.col(i));
-              }
-              means.push_back(mu);
               indices.push_back(i);
               sum_weighted_var += w * Gamma2_phi1(i, i);
               sum_weights += w;
-              count++;
             }
           }
-          if (count > 1 && sum_weights > 0.0) {
+          if (indices.size() > 1 && sum_weights > 0.0) {
             double mean_of_vars = sum_weighted_var / sum_weights;
-            double mu_total = 0.0;
-            for (size_t k = 0; k < weights.size(); ++k) {
-              mu_total += weights[k] * means[k];
-            }
-            mu_total /= sum_weights;
-            double var_of_means = 0.0;
-            for (size_t k = 0; k < weights.size(); ++k) {
-              double diff = means[k] - mu_total;
-              var_of_means += weights[k] * diff * diff;
-            }
-            var_of_means /= sum_weights;
-            double total_var = mean_of_vars + var_of_means;
             for (unsigned int i : indices) {
-              Gamma2_phi1Report(i, i) = total_var;
+              Gamma2_phi1Report(i, i) = mean_of_vars;
             }
           }
         }

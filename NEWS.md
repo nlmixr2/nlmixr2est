@@ -190,6 +190,16 @@
   `setCov()`, `setOfv()`, `addCwres()`, simulation and refits used it as the
   estimate (a `td1` in `[0, 1]` held at 0.5 read 0).  `$theta` was right.
 
+- A `saem` mixture whose components use different etas
+  (`mix(exp(tcl1 + eta.cl1), p1, exp(tcl2 + eta.cl2))`) now reports each eta
+  under its own name.  The merged eta (`eta.cl`) was put after the objective
+  column, so `$ranef`/`$eta` showed `eta.v`'s values as `eta.cl` and `NA` as
+  `eta.v`, and the tables, the shrinkage and the etas handed to `setOfv()`,
+  `setCov()` and refits used the wrong columns.  The merged eta's variance is
+  now the components' variances weighted by their responsibilities; it also
+  added the spread of the component means, which `tcl1` and `tcl2` already
+  carry (0.49 instead of 0.31 in a 30-subject example).
+
 ### Covariance and finite differences
 
 - The Gill (1983) step-size search no longer leaves a parameter at its last
