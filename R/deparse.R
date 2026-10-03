@@ -5,14 +5,12 @@
     paste0("rxControl = ", deparse1(.rx))
   } else if (x == "scaleType") {
     if (is.integer(value)) {
-      .scaleTypeIdx <- c("norm" = 1L, "nlmixr2" = 2L, "mult" = 3L, "multAdd" = 4L)
       paste0("scaleType =", deparse1(names(.scaleTypeIdx[which(value == .scaleTypeIdx)])))
     } else {
       paste0("scaleType =", deparse1(value))
     }
   } else if (x == "normType") {
     if (is.integer(value)) {
-      .normTypeIdx <- c("rescale2" = 1L, "rescale" = 2L, "mean" = 3L, "std" = 4L, "len" = 5L, "constant" = 6L)
       paste0("normType =", deparse1(names(.normTypeIdx[which(value == .normTypeIdx)])))
     } else {
       paste0("normType =", deparse1(value))

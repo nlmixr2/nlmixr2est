@@ -187,6 +187,25 @@ getValidNlmixrCtl.default <- function(control) {
   return(list(ctl = .out, rest = .in))
 }
 
+# integer codes of the scaleType and normType options, which C++ reads
+.scaleTypeIdx <- c("norm" = 1L, "nlmixr2" = 2L, "mult" = 3L, "multAdd" = 4L)
+.normTypeIdx <- c("rescale2" = 1L, "rescale" = 2L, "mean" = 3L, "std" = 4L, "len" = 5L, "constant" = 6L)
+
+#' Integer code of a control option given as a code or a name
+#'
+#' @param value the option as given
+#' @param idx the name -> code map
+#' @param choice `match.arg()` of the option in the calling control; it is a
+#'   promise, forced only when `value` is not a code
+#' @return the integer code
+#' @noRd
+.ctlIdx <- function(value, idx, choice) {
+  if (checkmate::testIntegerish(value, len = 1, lower = 1, upper = length(idx), any.missing = FALSE)) {
+    return(as.integer(value))
+  }
+  idx[[choice]]
+}
+
 #' Optimizer convergence tolerance derived from `sigdig`
 #'
 #' `10^(-sigdig)` -- the same exponent `sigdig` sets for the ODE `rtol`, so the
