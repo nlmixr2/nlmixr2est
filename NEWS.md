@@ -324,6 +324,16 @@
   variance (`tka`, standard error `NaN`).  When it is not installed a warning
   says why, and the FOCEi `"analytic"` covariance that takes its place warns
   that it was installed instead of `"imp"`; that substitution was silent.
+- `setCov(fit, "sa")`, `setCov(fit, "imp")`, a deferred `covMethod = "sa"` or
+  `"imp"` and the default `npag`/`npb` covariance now compute the covariance
+  at the fit's estimates, as `saControl()`/`impCovControl()` say.  The SAEM
+  run re-estimated every parameter during its `nBurn`/`nEm` warm-up and the
+  importance-sampling run took a full EM step (`impCovControl(nIter = 1)`),
+  so the covariance was that of nearby estimates: on `theo_sd`, `tka` 0.466
+  became 0.463 (SAEM, 40 warm-up iterations) and 0.455 (three EM steps).
+  The SAEM warm-up now holds every population parameter (mixture proportions
+  excepted) and only equilibrates the chains; the importance-sampling
+  iterations are E-steps only.
 - The printed parameter table of a full-Bayes `fbvi`/`emvi` fit now shows the
   standard errors of the variational covariance (only `$parFixedDf` had
   them), its confidence interval uses the fit's `ci`, and the condition

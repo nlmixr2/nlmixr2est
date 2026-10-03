@@ -77,6 +77,30 @@ nmTest({
     expect_true(.isPdFinite(.f$cov))
   })
 
+  test_that("the sa and imp recomputes run at the fit's estimates without moving them", {
+    # The "sa" engine ran nBurn + nEm SAEM iterations and the "imp" engine one full
+    # EM step from the pinned estimates, and each computed its covariance wherever
+    # that ended (theo_sd, imp: tka 0.474 -> 0.462).
+    .f <- suppressWarnings(nlmixr2(.lc, .d, est = "focei", control = foceiControl(print = 0L, covMethod = "")))
+    .a <- .covPinnedRefitArgs(.f)
+    .eta <- c("eta.ka", "eta.cl", "eta.v")
+    .sa <- suppressWarnings(suppressMessages(nlmixr2(
+      .a$ui,
+      .a$data,
+      est = "saem",
+      control = .covEngineControl("sa", saControl(nBurn = 20L, nEm = 20L, nSaCov = 50L))
+    )))
+    expect_identical(.sa$covMethod, "sa")
+    expect_equal(.sa$theta[names(.f$theta)], .f$theta, tolerance = 1e-10)
+    expect_equal(.sa$omega[.eta, .eta], .f$omega[.eta, .eta], tolerance = 1e-10)
+    .ctl <- .covEngineControl("imp", impCovControl(nIter = 3L, isample = 100L))
+    .ctl$etaMat <- .a$etaMat
+    .imp <- suppressWarnings(suppressMessages(nlmixr2(.a$ui, .a$data, est = "imp", control = .ctl)))
+    expect_true(is.matrix(.imp$env$impCovInternal))
+    expect_equal(.imp$theta[names(.f$theta)], .f$theta, tolerance = 1e-10)
+    expect_equal(.imp$omega[.eta, .eta], .f$omega[.eta, .eta], tolerance = 1e-10)
+  })
+
   test_that("impmap accepts the foreign sa covariance", {
     .f <- suppressWarnings(nlmixr2(.lc, .d, est = "impmap", control = impmapControl(print = 0L, covMethod = "sa")))
     expect_equal(.f$covMethod, "sa")

@@ -36,6 +36,7 @@
   "nConvWindow",
   "impSeed",
   "impCov",
+  "impFrozen",
   "proposal",
   "propMixScale",
   "propMixWeight",
@@ -689,6 +690,10 @@ impmapControl <- function(
   .dots <- list(...)
   .impCov <- isTRUE(.dots$impCov) # may already be set on a round-tripped control
   .dots$impCov <- NULL # internal field; do not forward to foceiControl
+  # internal: the "imp" covariance recompute at a fit's estimates runs E-steps
+  # only, holding the parameters (.covEngineControl)
+  .impFrozen <- isTRUE(.dots$impFrozen)
+  .dots$impFrozen <- NULL
   # gammaMethodUser is stamped on the RUNTIME control by .impmapFamilyFit (it
   # records what the user asked for before "auto" was resolved).  A control that
   # has been round-tripped therefore carries it; keep it, but do not forward it
@@ -724,6 +729,9 @@ impmapControl <- function(
   }
   .control <- do.call(foceiControl, c(list(sigdig = sigdig), .dots, list(covMethod = .foceiCovMethod, muModel = "lin")))
   .control$impCov <- .impCov
+  if (.impFrozen) {
+    .control$impFrozen <- TRUE
+  }
   if (!is.null(.autoNonNormal)) {
     .control$autoNonNormal <- .autoNonNormal
   }

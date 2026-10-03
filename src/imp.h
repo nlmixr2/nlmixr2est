@@ -177,6 +177,7 @@ double impMixLogSumExp(const std::vector<double>& ll);  // log(sum_m p_m exp(ll[
 // ---- Monte-Carlo covariance support (implemented in inner.cpp) ----
 int impNtheta();                                   // number of thetas
 bool impCovEnabled();                              // whether impCov=TRUE was requested
+bool impFrozen();                                  // E-steps only, at the supplied parameters
 
 // ---- quasi-random (QRPEM) + SIR controls (from impmapControl) ----
 bool impQrEnabled();                               // qr=TRUE: Sobol importance samples

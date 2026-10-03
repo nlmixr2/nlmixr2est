@@ -1338,7 +1338,12 @@ void impOuter(Environment e) {
   // nIter = 0 is an E-step-only evaluation at the supplied parameters (NONMEM
   // EONLY=1): one E-step, no M-step, and no burn-in (it would move the parameters).
   const bool eOnly = (nIter <= 0);
-  if (eOnly) nBurn = 0;
+  // A frozen run (the post-fit "imp" covariance at a fit's estimates) keeps the
+  // parameters where they were supplied for all nIter iterations: E-steps only,
+  // with the proposal controllers adapting between them, no M-step, no burn-in
+  // and no convergence test.
+  const bool frozen = impFrozen();
+  if (eOnly || frozen) nBurn = 0;
   const int nIterTotal = eOnly ? 1 : nBurn + nIter;
 
   arma::mat condMean;
@@ -1875,7 +1880,7 @@ void impOuter(Environment e) {
     // -- done before the mu updates (which shift thetas/etas) so it sees the
     // E-step parameters, and before impSetEta since impThetaScore's re-solves
     // overwrite the etas.  Skipped if the Hessian is not usable (thetas unchanged).
-    if (nSens > 0) {
+    if (nSens > 0 && !frozen) {
       arma::vec g(nSens, arma::fill::zeros);
       arma::mat H(nSens, nSens, arma::fill::zeros);
       // Batched gradient pass over the theta-sensitivity model (impThetaScore
@@ -2062,7 +2067,7 @@ void impOuter(Environment e) {
     // absolute $MIX thetas via the multinomial logit theta_m = log(a_m / a_Nm),
     // floored away from 0 so a transiently-empty component can recover.  Uses
     // impmap's own responsibilities a_ij, separate from FOCEI's Laplace mixProb.
-    if (Nmix > 1) {
+    if (Nmix > 1 && !frozen) {
       arma::vec aStar(Nmix, arma::fill::zeros);
       for (int i = 0; i < nsub; ++i)
         for (int j = 0; j < Nmix; ++j) aStar[j] += aMat(i, j);
@@ -2075,41 +2080,43 @@ void impOuter(Environment e) {
       if (thetaM.is_finite()) impSetMixThetas(thetaM);
     }
 
-    // Seed each subject's eta with its conditional mean, then update the mu-
-    // referenced population parameters -- covariate groups by regression
-    // (updateMuGroups) and simple intercepts by the mean-shift (impMuInterceptStep)
-    // -- both of which recenter the etas to mean-zero residuals.  Omega is then the
-    // average recentered conditional moment, masked to the estimated structure.
-    for (int id = 0; id < nsub; ++id) {
-      arma::vec cm = condMean.row(id).t();
-      impSetEta(id, cm);
-    }
-    impUpdateMuThetas();
-    impMuInterceptStep();
+    if (!frozen) {
+      // Seed each subject's eta with its conditional mean, then update the mu-
+      // referenced population parameters -- covariate groups by regression
+      // (updateMuGroups) and simple intercepts by the mean-shift (impMuInterceptStep)
+      // -- both of which recenter the etas to mean-zero residuals.  Omega is then the
+      // average recentered conditional moment, masked to the estimated structure.
+      for (int id = 0; id < nsub; ++id) {
+        arma::vec cm = condMean.row(id).t();
+        impSetEta(id, cm);
+      }
+      impUpdateMuThetas();
+      impMuInterceptStep();
 
-    arma::mat Omega(neta, neta, arma::fill::zeros);
-    for (int id = 0; id < nsub; ++id) {
-      impGetEta(id, r);
-      Omega += r * r.t() + condVar[id];
+      arma::mat Omega(neta, neta, arma::fill::zeros);
+      for (int id = 0; id < nsub; ++id) {
+        impGetEta(id, r);
+        Omega += r * r.t() + condVar[id];
+      }
+      Omega /= (double)nsub;
+      // MAP correction: fold in the ini({}) prior's omega term(s), if any (no-op
+      // otherwise) -- see impPriorOmegaCorrect().  Runs BEFORE the structure
+      // mask/fixed-restore below, since a generic (non-invWishart) term's
+      // correction can otherwise leak weight outside the declared structure or
+      // a fix()ed row.
+      impPriorOmegaCorrect(Omega, nsub);
+      Omega %= omMask;
+      // Restore fix()ed Omega rows/columns to their starting values.
+      for (size_t k = 0; k < omFixedEta.size(); ++k) {
+        int fi = omFixedEta[k];
+        if (fi >= 0 && fi < neta) { Omega.row(fi) = Om0.row(fi); Omega.col(fi) = Om0.col(fi); }
+      }
+      // burnFreezeOmega: install nothing, so Omega (and every quantity
+      // impSetOmega rebuilds from it -- omegaInv, cholOmegaInv, logDetOmegaInv5,
+      // the Omega thetas in fullTheta) stays at its starting value.  The thetas
+      // still move; the whole M-step above ran.
+      if (!(burnIter && burnFreezeOmega)) impSetOmega(Omega, diagXform);
     }
-    Omega /= (double)nsub;
-    // MAP correction: fold in the ini({}) prior's omega term(s), if any (no-op
-    // otherwise) -- see impPriorOmegaCorrect().  Runs BEFORE the structure
-    // mask/fixed-restore below, since a generic (non-invWishart) term's
-    // correction can otherwise leak weight outside the declared structure or
-    // a fix()ed row.
-    impPriorOmegaCorrect(Omega, nsub);
-    Omega %= omMask;
-    // Restore fix()ed Omega rows/columns to their starting values.
-    for (size_t k = 0; k < omFixedEta.size(); ++k) {
-      int fi = omFixedEta[k];
-      if (fi >= 0 && fi < neta) { Omega.row(fi) = Om0.row(fi); Omega.col(fi) = Om0.col(fi); }
-    }
-    // burnFreezeOmega: install nothing, so Omega (and every quantity
-    // impSetOmega rebuilds from it -- omegaInv, cholOmegaInv, logDetOmegaInv5,
-    // the Omega thetas in fullTheta) stays at its starting value.  The thetas
-    // still move; the whole M-step above ran.
-    if (!(burnIter && burnFreezeOmega)) impSetOmega(Omega, diagXform);
 
     // Record the current estimates for the parameter-stability half of the test.
     arma::vec parNow; impGetEstPar(parNow);
@@ -2134,7 +2141,7 @@ void impOuter(Environment e) {
     //      that no M-step was allowed to produce.  objTrace gets exactly one
     //      push per iteration, so at nBurn = 0 this is identical to the size
     //      test it sits beside and the default path is unchanged.
-    if (nConvWindow > 0 && R_finite(obj) &&
+    if (!frozen && nConvWindow > 0 && R_finite(obj) &&
         iter >= nBurn + nConvWindow &&
         (int)objTrace.size() >= nConvWindow + 1) {
       int n = (int)objTrace.size();

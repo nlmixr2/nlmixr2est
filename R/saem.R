@@ -394,6 +394,9 @@
         .cfg$phi0Lower <- ifelse(is.na(.lo), -Inf, .lo)
         .cfg$phi0Upper <- ifelse(is.na(.hi), Inf, .hi)
       }
+      if (isTRUE(rxode2::rxGetControl(ui, "saemHoldPar", FALSE))) {
+        .cfg <- .saemHoldCfg(.cfg)
+      }
       .saemCheckCfg(.cfg)
       .cfg
     })
@@ -403,6 +406,39 @@
     .saemRes
   })
 }
+
+#' Hold every population parameter of a SAEM run where it was supplied
+#'
+#' For the `"sa"` covariance at another fit's estimates (`.covRecomputeSa()`):
+#' the MCMC chains equilibrate and the covariance phase accumulates the Louis
+#' information at those estimates, not at a re-estimate.  It uses the kernel's
+#' own `fix()` handling without marking anything fixed in the model, so the
+#' covariance still has a row for every parameter:
+#' * thetas (and covariate coefficients) are put back after every M-step;
+#' * Omega (with its covariances) and the residual parameters are put back
+#'   from the second iteration on, `perFixOmega`/`perFixResid` being 0, and
+#'   the correlations are not zeroed at the start;
+#' * the residual parameters do not start from the observed moments.
+#'
+#' Mixture proportions are not held.
+#' @param cfg `.configsaem()` configuration
+#' @return `cfg`
+#' @noRd
+.saemHoldCfg <- function(cfg) {
+  cfg$fixed.i1 <- seq_len(cfg$nlambda1) - 1L
+  cfg$fixed.i0 <- seq_len(cfg$nlambda0) - 1L
+  cfg$Gamma2_phi1fixed <- 1L
+  cfg$Gamma2_phi1fixedIx <- matrix(as.integer(cfg$covstruct1 != 0), nrow(cfg$covstruct1))
+  # par_hist keeps recording the residuals the model estimates
+  cfg$resKeep <- which(cfg$resFixed == 0L) - 1L
+  cfg$resFixed <- rep(1L, length(cfg$resFixed))
+  cfg$nb_fixOmega <- 0L
+  cfg$nb_fixResid <- 0L
+  cfg$nb_correl <- 0L
+  cfg$residWarmStart <- 0L
+  cfg
+}
+
 #' Get the saem control statement and install it into the ui
 #'
 #' @param env Environment with ui in it

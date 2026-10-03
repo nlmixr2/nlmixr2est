@@ -443,7 +443,7 @@ saemControl <- function(
   .nuAuto <- missing(nu)
   .xtra <- list(...)
   .bad <- names(.xtra)
-  .bad <- .bad[!(.bad %in% c("genRxControl", "mcmc", "DEBUG", "iterPrintControl"))]
+  .bad <- .bad[!(.bad %in% c("genRxControl", "mcmc", "DEBUG", "iterPrintControl", "saemHoldPar"))]
   if (length(.bad) > 0) {
     stop("unused argument: ", paste(paste0("'", .bad, "'", sep = ""), collapse = ", "), call. = FALSE)
   }
@@ -649,6 +649,11 @@ saemControl <- function(
     phi1Hessian = isTRUE(phi1Hessian),
     residWarmStart = residWarmStart
   )
+  # internal: the "sa" covariance recompute at a fit's estimates holds every
+  # population parameter where it was supplied (.covEngineControl, .saemHoldCfg)
+  if (isTRUE(.xtra$saemHoldPar)) {
+    .ret$saemHoldPar <- TRUE
+  }
   class(.ret) <- "saemControl"
   .ret
 }
