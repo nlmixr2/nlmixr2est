@@ -272,6 +272,32 @@ nmTest({
     )
   })
 
+  test_that("forward-difference S scores are taken from the estimates", {
+    # covDerivMethod = "forward" differences each subject's -2LL from its value at
+    # the estimates.  That value was read after the pooled gradient's own
+    # forward legs, so it was the last leg's, and every score carried that leg's
+    # shift: S came out 100 to 1000 times the central-difference S.
+    one.cmt <- function() {
+      ini({
+        tka <- log(1.5); tcl <- log(2.7); tv <- log(31.5)
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .ctl <- function(...) {
+      foceiControl(print = 0, maxOuterIterations = 0L, covMethod = "s", covFull = FALSE, ...)
+    }
+    .central <- .nlmixr(one.cmt, theo_sd, "focei", .ctl())
+    .forward <- .nlmixr(one.cmt, theo_sd, "focei", .ctl(covDerivMethod = "forward"))
+    expect_equal(.forward$covMethod, "s")
+    # forward differences agree with central ones to their truncation error
+    expect_equal(diag(.forward$env$S0), diag(.central$env$S0), tolerance = 0.25)
+  })
+
   test_that("a non-positive-definite R or S is never installed as it is", {
     # one estimated parameter at a point where the objective is concave: R < 0,
     # which cholSE0 (like for every 1x1 matrix) called positive definite, so

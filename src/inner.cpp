@@ -5756,7 +5756,13 @@ static void fillEtaRestartSamples(rx_solve *rx) {
   }
 }
 
+// The (optimizer-coordinate) theta of the last foceiLik0() evaluation: each subject's
+// lik[0] and mixture responsibilities are that evaluation's.  Emptied by innerOpt(),
+// which rewrites lik[0], and refilled by foceiLik0() after it.
+static std::vector<double> _foceiLik0Theta;
+
 void innerOpt() {
+  _foceiLik0Theta.clear();
   rx = getRxSolve_();
   rx_solving_options *op = getSolvingOptions(rx);
   int cores = getOpCores(op);
@@ -6040,6 +6046,7 @@ static inline double foceiLik0(double *theta) {
     // All etas = -42;  Unlikely if normal
     std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, -42.0);
   }
+  _foceiLik0Theta.assign(theta, theta + op_focei.npars);
   return lik;
 }
 
@@ -7124,6 +7131,23 @@ struct FoceiHessObj : FdHessObj {
   void restore(double *x0) { updateTheta(x0); }
 };
 
+// Leave each subject's lik[0] and mixture responsibilities at theta: evaluate the
+// objective there, as a derivative leg, unless the last evaluation already was at theta.
+// A finite-difference leg evaluates at a perturbed theta and leaves its own, and what
+// reads them as the base point's (mixGrad, foceiS) would otherwise mix the two points.
+static void foceiLik0At(double *theta) {
+  if (_foceiLik0Theta.size() == (size_t)op_focei.npars &&
+      std::equal(theta, theta + op_focei.npars, _foceiLik0Theta.begin())) return;
+  int calcGrad = op_focei.calcGrad;
+  op_focei.calcGrad = 1;
+  foceiOfv0(theta);
+  op_focei.calcGrad = calcGrad;
+}
+
+static inline bool foceiIsMixPar(int cpar) {
+  return op_focei.mixTrans != NULL && op_focei.mixTrans[cpar] != -1;
+}
+
 // Calculate the mixture parameter gradient
 //
 // This notes that the mixture gradient does not need to be numerically, but
@@ -7184,6 +7208,22 @@ int mixGrad(double *g, int cpar) {
     return 1;
   }
   return 0;
+}
+
+// Every mixture proportion's gradient (mixGrad), from the responsibilities at theta.
+// Taken before the finite-difference legs of the other parameters, which leave the
+// responsibilities of the last leg.
+static void numericGradMix(double *theta, double *g) {
+  bool any = false;
+  for (int cpar = (int)op_focei.npars; cpar--;) {
+    if (foceiIsMixPar(cpar)) {
+      any = true;
+      break;
+    }
+  }
+  if (!any) return;
+  foceiLik0At(theta);
+  for (int cpar = (int)op_focei.npars; cpar--;) mixGrad(g, cpar);
 }
 
 
@@ -7513,6 +7553,7 @@ void numericGrad(double *theta, double *g){
     return;
   }
   if (op_foceiUseAnalyticGrad) op_focei.nFDGradFast++;
+  numericGradMix(theta, g);
   if (op_focei.shi21maxOuter != 0 && op_focei.nF == 1) {
     clock_t t = clock() - op_focei.t0;
     int finalSlow = (op_focei.scale.every == 1) &&
@@ -7535,7 +7576,7 @@ void numericGrad(double *theta, double *g){
     std::copy(theta, theta+op_focei.npars, armaTheta.begin());
     double h = 0;
     for (int cpar = (int)op_focei.npars; cpar--;) {
-      if (mixGrad(g, cpar) == 1) {
+      if (foceiIsMixPar(cpar)) {
         continue;
       } else {
         op_focei.calcGrad=1;
@@ -7580,7 +7621,7 @@ void numericGrad(double *theta, double *g){
       }
     }
     for (int cpar = (int)op_focei.npars; cpar--;) {
-      if (mixGrad(g, cpar) == 1) {
+      if (foceiIsMixPar(cpar)) {
         continue;
       } else {
         err = 1/(std::fabs(theta[cpar])+1);
@@ -7661,7 +7702,7 @@ void numericGrad(double *theta, double *g){
       haveF=true;
     }
     for (cpar = npars; cpar--;) {
-      if (mixGrad(g, cpar) == 1) {
+      if (foceiIsMixPar(cpar)) {
         continue;
       } else {
         if (doForward){
@@ -10950,10 +10991,6 @@ static void foceiSMixCentral(int cpar, double delta, const arma::vec &gfull,
 int foceiS(double *theta, Environment e, bool &hasZero){
   int npars = op_focei.npars;
   int oldCalcGrad = op_focei.calcGrad;
-  op_focei.calcGrad = 1;
-  arma::vec gfull(npars);
-  numericGrad(theta, gfull.memptr());
-  op_focei.calcGrad = oldCalcGrad;
   hasZero = false;
   rx = getRxSolve_();
   op_focei.calcGrad=1;
@@ -10971,16 +11008,20 @@ int foceiS(double *theta, Environment e, bool &hasZero){
         break;
       }
     }
-    if (doForward){
-      // Fill in lik0.  For a mixture the subject's contribution is the MARGINAL
-      // over components, not component 0's -- see foceiMixObjSlot().
-      for (gid = getRxNsub(rx); gid--;){
-        if (op_focei.mixIdxN != 0) {
-          op_focei.likSav[gid] = foceiMixObjSlot(gid, 0);
-        } else {
-          fInd = &(inds_focei[gid]);
-          op_focei.likSav[gid] = -2*fInd->lik[0];
-        }
+  }
+  // likSav and the mixture responsibilities below are the subjects' values at the BASE
+  // theta.  Whatever ran last -- the R matrix stencil, the step search -- left those of
+  // its last leg, so evaluate at theta first when they are read.
+  if (doForward || op_focei.mixIdxN != 0) foceiLik0At(theta);
+  if (doForward){
+    // Fill in lik0.  For a mixture the subject's contribution is the MARGINAL
+    // over components, not component 0's -- see foceiMixObjSlot().
+    for (gid = getRxNsub(rx); gid--;){
+      if (op_focei.mixIdxN != 0) {
+        op_focei.likSav[gid] = foceiMixObjSlot(gid, 0);
+      } else {
+        fInd = &(inds_focei[gid]);
+        op_focei.likSav[gid] = -2*fInd->lik[0];
       }
     }
   }
@@ -10993,7 +11034,7 @@ int foceiS(double *theta, Environment e, bool &hasZero){
   // here from the per-component lik[0] rather than read from fInd->mixProb when
   // it is needed: the loop below perturbs theta, and neither innerOpt1() nor
   // updateTheta() refreshes the responsibilities, so a later read would be at
-  // the wrong point.  Same base-theta assumption likSav above already makes.
+  // the wrong point.
   int nMixS = (int)op_focei.mixIdxN + 1;
   std::vector<double> mixR, mixP;
   // Which subjects' FORWARD (slot 2) leg converged for the current cpar.  Held
@@ -11019,6 +11060,11 @@ int foceiS(double *theta, Environment e, bool &hasZero){
       }
     }
   }
+  // The pooled gradient, a subject's fallback score below.  After the base values
+  // above: its finite-difference legs move them.
+  arma::vec gfull(npars);
+  numericGrad(theta, gfull.memptr());
+  op_focei.calcGrad=1;
   double sInfoPer = npars * getRxNsub(rx);
   for (cpar = npars; cpar--;){
     // A mixture proportion's per-subject score is known in closed form, so the

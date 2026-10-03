@@ -200,6 +200,18 @@
   objective at its own estimates, and a full fit stopped at an objective 1.0
   above the one it now reaches.
 
+- Values the FOCEi family reads as those of the current parameters are now
+  taken there, not at the last finite-difference leg that ran before them.
+  The gradient of a mixture proportion (gradient-based outer optimizers) and
+  the proportion's rows of the S matrix use the subjects' responsibilities,
+  which every leg rewrites: the gradient of the same proportion at the same
+  point depended on where it was declared in `ini()`, and the S matrix entry
+  was off by 3e-5 (relative) on a two-component example with overlapping
+  components.  With `covDerivMethod = "forward"`, each subject's S-matrix
+  score was differenced from its value at the last leg of the pooled
+  gradient, which made S 100 to 1000 times too large on `theo_sd`; it now
+  agrees with the central-difference S to the truncation error.
+
 ### Covariance and finite differences
 
 - The Gill (1983) step-size search no longer leaves a parameter at its last

@@ -15,7 +15,7 @@ nmTest({
   ## values at all.  At nMix == 2 the old value is exactly the right one divided
   ## by -2 (the diagonal-only chain reduces to the correct expression there).
 
-  .simMixData <- function(clTrue, pTrue, nSub, seed = 42L) {
+  .simMixData <- function(clTrue, pTrue, nSub, seed = 42L, sd = 0.05) {
     set.seed(seed)
     .grp <- sample.int(length(clTrue), nSub, TRUE, prob = pTrue)
     .sim <- rxode2::rxode2({
@@ -32,7 +32,7 @@ nmTest({
       rbind,
       lapply(seq_len(nSub), function(i) {
         .s <- rxode2::rxSolve(.sim, params = c(CLI = clTrue[.grp[i]]), .ev, returnType = "data.frame")
-        data.frame(ID = i, TIME = .s$time, DV = .s$cp + stats::rnorm(nrow(.s), 0, 0.05), AMT = 0, EVID = 0)
+        data.frame(ID = i, TIME = .s$time, DV = .s$cp + stats::rnorm(nrow(.s), 0, sd), AMT = 0, EVID = 0)
       })
     )
     .dose <- data.frame(ID = seq_len(nSub), TIME = 0, DV = NA_real_, AMT = 320, EVID = 1)
@@ -122,5 +122,70 @@ nmTest({
       })
     }
     .checkMixGrad(.mod, .dat, .dat$emp)
+  })
+
+  test_that("the proportion's gradient is taken at the point, wherever it is declared", {
+    ## mixGrad() reads the subjects' responsibilities, which every objective
+    ## evaluation rewrites.  numericGrad() visits the parameters from the last to
+    ## the first, so a proportion declared before add.sd was read after add.sd's
+    ## finite-difference legs, at their perturbed point.  With overlapping
+    ## components the responsibilities move with add.sd, and the gradient of the
+    ## same proportion at the same point depended on the ini() order.
+    .dat <- .simMixData(c(1.0, 1.6), c(0.45, 0.55), 60L, seed = 1001L, sd = 0.6)
+    .first <- function() {
+      ini({
+        tka <- fix(log(1.1))
+        tcl1 <- fix(log(1.0))
+        tcl2 <- fix(log(1.6))
+        tv <- fix(log(20))
+        p1 <- 0.45
+        eta.cl ~ fix(0.01)
+        add.sd <- 0.6
+      })
+      model({
+        ka <- exp(tka)
+        cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl))
+        v <- exp(tv)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .last <- function() {
+      ini({
+        add.sd <- 0.6
+        tka <- fix(log(1.1))
+        tcl1 <- fix(log(1.0))
+        tcl2 <- fix(log(1.6))
+        tv <- fix(log(20))
+        p1 <- 0.45
+        eta.cl ~ fix(0.01)
+      })
+      model({
+        ka <- exp(tka)
+        cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl))
+        v <- exp(tv)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    ## an outer optimizer that takes one gradient at the start and stops there
+    .seen <- new.env(parent = emptyenv())
+    .oneGradient <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
+      fn(par)
+      .seen$g <- gr(par)
+      list(x = par, par = par, convergence = 0L, message = "one gradient")
+    }
+    .ctl <- foceiControl(
+      print = 0,
+      outerOpt = .oneGradient,
+      maxInnerIterations = 100L,
+      covMethod = "",
+      calcTables = FALSE
+    )
+    .fF <- suppressWarnings(nlmixr2(.first, .dat$data, "focei", .ctl))
+    .gFirst <- .seen$g
+    .fL <- suppressWarnings(nlmixr2(.last, .dat$data, "focei", .ctl))
+    .gLast <- .seen$g
+    ## (p1, add.sd) and (add.sd, p1): the same two components
+    expect_equal(.gFirst[1], .gLast[2], tolerance = 1e-10)
+    expect_equal(.gFirst[2], .gLast[1], tolerance = 1e-10)
   })
 })
