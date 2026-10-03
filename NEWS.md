@@ -223,6 +223,15 @@
   now kept in the fit's `$runInfo` with the other warnings of the run.  They
   were raised by `nlmixr2()` itself instead, and `$runInfo` did not have them.
 
+- Refitting a fit whose fixed thetas stay in the model (`literalFix = FALSE`,
+  the saem default) with `nlmixr2(fit, ...)`, and so `setOfv(fit, "focei")`
+  and `addCwres()` on such a saem fit, no longer stops with `arguments imply
+  differing number of rows: 0, 1`; neither does `setCov()` or
+  `getVarCov(force = TRUE)` after `augPred()` or `vpcSim()` on such a fit.
+  The simulation these run first substituted the fixed thetas into its model
+  and left the unsubstituted model recorded for the next estimation, whose
+  parameter table then looked for fixed thetas that were not substituted.
+
 ### Covariance and finite differences
 
 - The Gill (1983) step-size search no longer leaves a parameter at its last
