@@ -38,11 +38,12 @@ nmTest({
     # so the second call differences E0 at that step, outside the window.
     .ctl <- nlmControl(print = 0L, solveType = "hessian", optimHessType = "central", shi21maxHess = 1L)
     .withNlmProblem(.mod, .d, .ctl, function(x) {
-      nlmSolveGradHess(x)
-      # nlmSolveGradHess() works on R's own vector, which for nlminb is the
-      # optimizer's iterate: the Hessian has to leave it exactly as it was.
+      .nlmixrNlmFunC(x)
+      # The objective with solveType = "hessian" works on R's own vector, which
+      # for nlm and nlminb is the optimizer's iterate: the Hessian has to leave
+      # it exactly as it was.
       x0 <- x + 0
-      r <- nlmSolveGradHess(x)
+      r <- .nlmixrNlmFunC(x)
       expect_identical(x, x0)
       .h <- attr(r, "hessian")
       # E0's column has no usable difference; the others do

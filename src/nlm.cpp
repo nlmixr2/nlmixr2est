@@ -828,7 +828,6 @@ NumericVector nlmGetScaleC(arma::vec &theta, double to) {
 
 
 
-//[[Rcpp::export]]
 RObject nlmSolveGradR(arma::vec &theta) {
   if (!nlmOp.loaded) stop("'nlm' problem not loaded");
   if (nlmOp.solveType == solveType_pred) stop("incorrect solve type");
@@ -910,7 +909,6 @@ arma::mat nlmCalcHessian(arma::vec &gr0, arma::vec &theta) {
                       nlmOp.thetahh, nlmOp.hessErr, nlmOp.shi21maxHess);
 }
 
-//[[Rcpp::export]]
 RObject nlmSolveGradHess(arma::vec &theta) {
   if (!nlmOp.loaded) stop("'nlm' problem not loaded");
   if (nlmOp.solveType == solveType_pred) stop("incorrect solve type");
