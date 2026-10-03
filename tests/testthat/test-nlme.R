@@ -423,6 +423,65 @@ nmTest({
     expect_equal(fit$cov, vcov(fit$nlme) * .dims$N / (.dims$N - length(.th)))
   })
 
+  test_that("the residual parameters reproduce nlme's residual sd for every error model (issue 1140)", {
+    # both error components matter: additive 0.3, proportional 0.1
+    dat <- rxode2::rxWithSeed(1140, {
+      .t <- c(0.5, 1, 2, 4, 6, 8)
+      .d <- expand.grid(TIME = .t, ID = 1:20)
+      .ke <- 0.3 * exp(rnorm(20, 0, 0.2))
+      .ipre <- 10 * exp(-.ke[.d$ID] * .d$TIME)
+      .d$DV <- .ipre + rnorm(nrow(.d), 0, sqrt(0.3^2 + (0.1 * .ipre)^2))
+      .d[, c("ID", "TIME", "DV")]
+    })
+    base <- function() {
+      ini({
+        tke <- 0.3
+        eta.ke ~ 0.04
+        add.sd <- 0.3
+        prop.sd <- 0.1
+        pw <- 1
+      })
+      model({
+        ke <- tke * exp(eta.ke)
+        ipre <- 10 * exp(-ke * t)
+        ipre ~ add(add.sd) + pow(prop.sd, pw)
+      })
+    }
+    .cases <- list(
+      add = list(quote(ipre ~ add(add.sd)), "combined2"),
+      prop = list(quote(ipre ~ prop(prop.sd)), "combined2"),
+      pow = list(quote(ipre ~ pow(prop.sd, pw)), "combined2"),
+      combined1 = list(quote(ipre ~ add(add.sd) + prop(prop.sd)), "combined1"),
+      combined2 = list(quote(ipre ~ add(add.sd) + prop(prop.sd)), "combined2"),
+      combined1pow = list(quote(ipre ~ add(add.sd) + pow(prop.sd, pw)), "combined1")
+    )
+    for (.n in names(.cases)) {
+      .m <- suppressMessages(eval(bquote(rxode2::model(base, .(.cases[[.n]][[1]])))))
+      fit <- .nlmixr(
+        .m,
+        dat,
+        "nlme",
+        control = nlmeControl(verbose = FALSE, returnObject = TRUE, addProp = .cases[[.n]][[2]])
+      )
+      .nl <- fit$nlme
+      .vs <- .nl$modelStruct$varStruct
+      .th <- fit$theta
+      # nlme's own residual sd of every observation (in its own row order)
+      .sdNlme <- if (is.null(.vs)) .nl$sigma else unname(.nl$sigma / nlme::varWeights(.vs))
+      .f <- if (is.null(.vs)) NULL else abs(attr(.vs, "covariate"))
+      .sd <- unname(switch(
+        .n,
+        add = .th[["add.sd"]],
+        prop = .th[["prop.sd"]] * .f,
+        pow = .th[["prop.sd"]] * .f^.th[["pw"]],
+        combined1 = .th[["add.sd"]] + .th[["prop.sd"]] * .f,
+        combined2 = sqrt(.th[["add.sd"]]^2 + (.th[["prop.sd"]] * .f)^2),
+        combined1pow = .th[["add.sd"]] + .th[["prop.sd"]] * .f^.th[["pw"]]
+      ))
+      expect_equal(.sd, .sdNlme, tolerance = 1e-6, info = .n)
+    }
+  })
+
   test_that(".nlmeGetOmega returns nlme's matrix in the ui's eta order (issue 1140)", {
     # 4 etas: VarCorr()'s printed correlations used to be copied into the
     # wrong cells from the 4th eta on

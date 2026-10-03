@@ -380,31 +380,29 @@ nlmeControl <- nlmixr2NlmeControl
   if (.addProp == "default") {
     .addProp <- rxode2::rxGetControl(ui, "addProp", "combined2")
   }
+  # nlme's residual sd is sigma times its variance function, so each
+  # coefficient of that function is scaled by sigma
+  .nlmePars <- coef(nlme$modelStruct$varStruct, unconstrained = FALSE)
+  .w <- which(ui$iniDf$err == "add")
+  .add <- setNames(nlme$sigma * .nlmePars[["const"]], ui$iniDf$name[.w])
   if (.addProp == "combined1") {
+    # varConstPower: sd = sigma * (const + |f|^power)
     if (.errType == "add + prop") {
-      .nlmePars <- coef(nlme$modelStruct$varStruct)
-      .w <- which(ui$iniDf$err == "add")
-      .add <- setNames(exp(.nlmePars["const"]), ui$iniDf$name[.w])
       .w <- which(ui$iniDf$err == "prop")
       .prop <- setNames(nlme$sigma, ui$iniDf$name[.w])
       c(.f, .add, .prop)
     } else {
-      .nlmePars <- coef(nlme$modelStruct$varStruct)
-      .w <- which(ui$iniDf$err == "add")
-      .add <- setNames(exp(.nlmePars["const"]), ui$iniDf$name[.w])
       .w <- which(ui$iniDf$err == "pow")
       .prop <- setNames(nlme$sigma, ui$iniDf$name[.w])
       .w <- which(ui$iniDf$err == "pow2")
-      .pow <- setNames(.nlmePars["power"], ui$iniDf$name[.w])
+      .pow <- setNames(.nlmePars[["power"]], ui$iniDf$name[.w])
       c(.f, .add, .prop, .pow)
     }
   } else {
+    # varConstProp: sd = sigma * sqrt(const^2 + (prop * f)^2)
     if (.errType == "add + prop") {
-      .nlmePars <- coef(nlme$modelStruct$varStruct)
-      .w <- which(ui$iniDf$err == "add")
-      .add <- setNames(exp(.nlmePars["const"]), ui$iniDf$name[.w])
       .w <- which(ui$iniDf$err == "prop")
-      .prop <- setNames(.nlmePars["prop"], ui$iniDf$name[.w])
+      .prop <- setNames(nlme$sigma * .nlmePars[["prop"]], ui$iniDf$name[.w])
       c(.f, .add, .prop)
     } else {
       stop("add+prop combined2 does not support nlme power currently", call. = FALSE)

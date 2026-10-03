@@ -221,6 +221,15 @@
   `etaMat = fit` evaluated the occasion effects 12 (`"twoLevel"`) and 18
   (`"collapsed"`) times too small on `theo_md`.
 
+- `est = "nlme"` with a combined additive and proportional error now reports
+  the residual parameters of nlme's own error model.  nlme's residual
+  standard deviation is `sigma` times its variance function, and the
+  additive coefficient (both coefficients with `addProp = "combined2"`) was
+  reported without that factor: on a simulated data set with additive 0.3
+  and proportional 0.1, the `combined2` parameters gave residual standard
+  deviations near 121 for nlme's 0.3 to 1.  The residual parameters, and
+  every refit that starts from them, now reproduce nlme's.
+
 ### Covariance and finite differences
 
 - The Gill (1983) step-size search no longer leaves a parameter at its last
