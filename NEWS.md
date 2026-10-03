@@ -287,8 +287,10 @@
   Hessian that is not positive definite as the FOCEi covariance step repairs
   its R matrix, under the same labels: `"r+"` (the Schnabel-Eskow modified
   Cholesky factor, when every diagonal it adds is within `foceiControl()`'s
-  default `cholAccept`) or, failing that, `"|r|"` (`sqrtm(R %*% R)`), with a
-  warning in `$runInfo`.  It used to invert every Hessian
+  default `cholAccept`; this includes a positive-definite but nearly singular
+  Hessian) or, failing that, `"|r|"` (`sqrtm(R %*% R)`), with a warning in
+  `$runInfo`.  `"r"` means the Hessian was factored as it is.  It used to
+  invert every Hessian
   after an unreported Schnabel-Eskow perturbation and label it `"r"`, which
   gave several parameters of the derivative-free fits of `theo_sd` the same
   standard error.  A non-finite Hessian, or the zero one of a failed `trust`

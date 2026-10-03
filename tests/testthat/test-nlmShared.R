@@ -6,6 +6,20 @@ test_that("a positive-definite Hessian is inverted as is", {
   expect_identical(.r$type, "r")
   expect_identical(.r$r, .h)
   expect_null(.r$warning)
+  # the factor inverted is the Hessian's own: nothing added
+  expect_equal(crossprod(.r$u), .h, tolerance = 1e-14)
+})
+
+test_that("a positive-definite but nearly singular Hessian is repaired as \"r+\", with a warning (issue 1140)", {
+  # eigenvalues 2 - 1e-7 and 1e-7: positive definite, but Schnabel-Eskow's
+  # modified Cholesky adds to the diagonal (as FOCEi's cholSE0 does, "r+")
+  .h <- matrix(c(1, 1 - 1e-7, 1 - 1e-7, 1), 2)
+  expect_gt(min(eigen(.h, symmetric = TRUE, only.values = TRUE)$values), 0)
+  .r <- .nlmCovFromHessian(.h)
+  expect_identical(.r$type, "r+")
+  expect_identical(.r$warning, "R matrix is nearly singular; corrected as \"r+\"")
+  .e <- diag(crossprod(.r$u)) - diag(.h)
+  expect_true(all(.e > 0) && all(.e <= foceiControl()$cholAccept))
 })
 
 test_that("a Hessian that is not positive definite is repaired as FOCEi repairs R, under its labels (issue 1140)", {
@@ -16,14 +30,14 @@ test_that("a Hessian that is not positive definite is repaired as FOCEi repairs 
   expect_identical(.r$type, "r+")
   expect_identical(.r$r, .h)
   expect_identical(.r$warning, "R matrix is not positive definite; corrected as \"r+\"")
-  .u <- cholSE(.r$r)
-  expect_true(all(diag(crossprod(.u)) - diag(.h) <= foceiControl()$cholAccept))
+  expect_true(all(diag(crossprod(.r$u)) - diag(.h) <= foceiControl()$cholAccept))
   # otherwise sqrtm(R %*% R), "|r|"
   .h <- matrix(c(1, 2, 2, 1), 2) # eigenvalues 3, -1
   .r <- .nlmCovFromHessian(.h)
   expect_identical(.r$type, "|r|")
   expect_equal(.r$r, sqrtm(.h %*% .h))
   expect_equal(eigen(.r$r, symmetric = TRUE, only.values = TRUE)$values, c(3, 1))
+  expect_equal(crossprod(.r$u), .r$r, tolerance = 1e-12)
   expect_identical(.r$warning, "R matrix is not positive definite; corrected as \"|r|\"")
   # a singular |R| cannot be inverted either; FOCEi has no other repair
   .r <- .nlmCovFromHessian(diag(c(2, 0, -1)))

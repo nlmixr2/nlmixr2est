@@ -5,6 +5,10 @@ cholSE_ <- function(A, tol) {
     .Call(`_nlmixr2est_cholSE_`, A, tol)
 }
 
+cholSEpd_ <- function(A, tol) {
+    .Call(`_nlmixr2est_cholSEpd_`, A, tol)
+}
+
 #' Expand Gradient for nlme
 #'
 #' @param state is the state to expand

@@ -27,6 +27,18 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// cholSEpd_
+List cholSEpd_(NumericMatrix A, double tol);
+RcppExport SEXP _nlmixr2est_cholSEpd_(SEXP ASEXP, SEXP tolSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type A(ASEXP);
+    Rcpp::traits::input_parameter< double >::type tol(tolSEXP);
+    rcpp_result_gen = Rcpp::wrap(cholSEpd_(A, tol));
+    return rcpp_result_gen;
+END_RCPP
+}
 // nlmixrExpandFdParNlme_
 List nlmixrExpandFdParNlme_(CharacterVector state, CharacterVector vars);
 static SEXP _nlmixr2est_nlmixrExpandFdParNlme__try(SEXP stateSEXP, SEXP varsSEXP) {

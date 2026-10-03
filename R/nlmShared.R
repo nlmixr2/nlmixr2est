@@ -232,7 +232,7 @@
     if (is.null(.rc$r)) {
       .ret$covMethod <- "failed"
     } else {
-      .rinv <- rxode2::rxInv(cholSE(.rc$r))
+      .rinv <- rxode2::rxInv(.rc$u)
       .cov <- .rinv %*% t(.rinv)
       dimnames(.cov) <- list(.name, .name)
       .ret$covMethod <- if (.ctl$covMethod != "r") paste0(.rc$type, " (", .ctl$covMethod, ")") else .rc$type
@@ -249,43 +249,41 @@
 }
 #' The information matrix an nlm-family covariance is inverted from
 #'
-#' A positive-definite Hessian is used as is.  One that is not is repaired as
-#' the FOCEi covariance step repairs its R matrix (`foceiCovUsable()`,
-#' src/inner.cpp), under the same labels: Schnabel-Eskow's modified Cholesky
-#' factor of `R + E` when every diagonal `E` adds is within `foceiControl()`'s
-#' default `cholAccept` ("r+"), else `sqrtm(R %*% R)` ("|r|").  When neither
-#' works there is no covariance.
+#' The Hessian is factored and, when needed, repaired as the FOCEi covariance
+#' step does its R matrix (`foceiCovUsable()`, src/inner.cpp), under the same
+#' labels.  Schnabel-Eskow's modified Cholesky factorization (`cholSE0()`)
+#' factors `R + E`: "r" when it adds nothing; "r+" when every diagonal `E` it
+#' adds is within `foceiControl()`'s default `cholAccept` (a positive-definite
+#' but nearly singular R gets one too); else `sqrtm(R %*% R)` ("|r|") when its
+#' Cholesky factorization works.  Otherwise there is no covariance.
 #' @param hess Hessian of the -LL objective (the R matrix)
-#' @return list(r = the matrix whose `cholSE()` factor is inverted, `NULL` when
-#'   none is usable; type = "r", "r+", "|r|" or "failed"; warning = what was
-#'   done, `NULL` for "r")
+#' @return list(r = the (repaired) R matrix and u = its upper Cholesky factor,
+#'   both `NULL` when none is usable; type = "r", "r+", "|r|" or "failed";
+#'   warning = what was done, `NULL` for "r")
 #' @noRd
 .nlmCovFromHessian <- function(hess) {
   .g <- .covGuard(hess)
-  if (.g$ok) {
-    return(list(r = hess, type = "r"))
-  }
-  .r <- NULL
-  if (!is.null(.g$cov)) {
-    # cholSE() factors R + E, E the diagonal it adds, scaled by the largest
-    # diagonal of R: a Hessian without a positive one (the zero Hessian of a
-    # failed trust solve) has no scale to correct within
-    .u <- cholSE(.g$cov)
-    .e <- diag(crossprod(.u)) - diag(.g$cov)
-    if (
-      max(diag(.g$cov)) > 0 &&
-        all(is.finite(.e)) &&
-        all(.e <= eval(formals(foceiControl)$cholAccept)) &&
-        .covGuard(crossprod(.u))$ok
-    ) {
-      return(list(r = .g$cov, type = "r+", warning = sprintf("R matrix %s; corrected as \"r+\"", .g$reason)))
-    }
-    .r <- tryCatch(sqrtm(.g$cov %*% .g$cov), error = function(e) NULL)
-  }
-  if (!.covGuard(.r)$ok) {
+  if (is.null(.g$cov)) {
     return(list(type = "failed", warning = sprintf("R matrix %s; covariance step failed", .g$reason)))
   }
-  list(r = .r, type = "|r|", warning = sprintf("R matrix %s; corrected as \"|r|\"", .g$reason))
+  .r <- .g$cov
+  .c <- cholSEpd_(.r, (.Machine$double.eps)^(1 / 3))
+  # cholSE0() calls every 1x1 matrix positive definite
+  if (.c$pd && (nrow(.r) > 1L || .r[1, 1] > 0)) {
+    return(list(r = hess, u = .c$U, type = "r"))
+  }
+  .reason <- if (.g$ok) "is nearly singular" else .g$reason
+  # E is scaled by the largest diagonal of R: a Hessian without a positive one
+  # (the zero Hessian of a failed trust solve) has no scale to correct within
+  if (max(diag(.r)) > 0 && all(is.finite(.c$E)) && all(.c$E <= formals(foceiControl)$cholAccept)) {
+    return(list(r = .r, u = .c$U, type = "r+", warning = sprintf("R matrix %s; corrected as \"r+\"", .reason)))
+  }
+  .abs <- tryCatch(sqrtm(.r %*% .r), error = function(e) NULL)
+  .u <- if (is.null(.abs) || !all(is.finite(.abs))) NULL else tryCatch(chol(.abs), error = function(e) NULL)
+  if (is.null(.u)) {
+    return(list(type = "failed", warning = sprintf("R matrix %s; covariance step failed", .reason)))
+  }
+  list(r = .abs, u = .u, type = "|r|", warning = sprintf("R matrix %s; corrected as \"|r|\"", .reason))
 }
 
 #' Adjust nlm and family output environment
