@@ -316,30 +316,19 @@ nmObjGetControl.nls <- function(x, ...) .nmObjGetControlByClass(x, "nlsControl")
 getValidNlmixrCtl.nls <- function(control) .getValidCtl(control, "nlsControl", "nls")
 
 
-#' A surrogate function for nls to call for ode solving
+#' The residuals and their Jacobian for nls
+#'
+#' The right-hand side of the \code{stats::nls()} formula
+#' (\code{ui$nlsFormula}).
 #'
 #' @param DV dependent variable
-#' @param ... Other parameters fed to prediction function
-#' @return Predictions
+#' @param ... The estimated parameters (scaled)
+#' @return The residuals of the loaded nls problem, with their Jacobian as
+#'   the \code{"gradient"} attribute
 #' @details
 #' This is an internal function and should not be called directly.
 #' @author Matthew L. Fidler
 #' @keywords internal
-#' @export
-.nlmixrNlsFun <- function(DV, ...) {
-  do.call(
-    rxode2::rxSolve,
-    c(
-      list(
-        object = nlmixr2global$nlsEnv$model,
-        params = nlmixr2global$nlsEnv$parFun(...),
-        events = nlmixr2global$nlsEnv$data
-      ),
-      nlmixr2global$nlsEnv$rxControl
-    )
-  )$rx_pred_
-}
-#' @rdname dot-nlmixrNlsFun
 #' @export
 .nlmixrNlsFunValGrad <- function(DV, ...) {
   .Call(`_nlmixr2est_solveGradNls`, c(...), 1L)
