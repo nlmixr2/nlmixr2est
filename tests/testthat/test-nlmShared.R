@@ -37,6 +37,24 @@ test_that("a Hessian that cannot be repaired gives no covariance", {
   expect_identical(.r$warning, "R matrix is not positive definite; covariance step failed")
 })
 
+# sensMethod of the foceiControl an nlm-family control finalizes with
+.nlmFinalSensMethod <- function(m, ...) {
+  .env <- new.env(parent = emptyenv())
+  assign(paste0(m, "Control"), do.call(paste0(m, "Control"), list(...)), envir = .env)
+  get(paste0(".", m, "ControlToFoceiControl"))(.env, assign = FALSE)$sensMethod
+}
+
+test_that("the finalization foceiControl keeps the sensMethod of every nlm-family control", {
+  for (.m in c("nlm", "nlminb", "optim", "lbfgsb3c", "n1qn1")) {
+    expect_identical(.nlmFinalSensMethod(.m, sensMethod = "forward"), "forward", info = .m)
+    expect_identical(.nlmFinalSensMethod(.m), "default", info = .m)
+  }
+  # controls without a sensMethod finalize with the foceiControl() default
+  for (.m in c("bobyqa", "newuoa", "uobyqa", "trust", "nls")) {
+    expect_identical(.nlmFinalSensMethod(.m), "default", info = .m)
+  }
+})
+
 nmTest({
   .pk <- function() {
     ini({

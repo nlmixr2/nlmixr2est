@@ -239,14 +239,6 @@ nlmControl <- function(
   ## a control so an explicit sensMethod="forward" keeps working.
   sensMethod <- match.arg(sensMethod)
 
-  ## eventSens: "jump" routes dosing-parameter (alag/F/rate/dur) sensitivities
-  ## through rxode2's analytic event jumps; "fd" uses the legacy path that misses them.
-  eventSens <- match.arg(eventSens)
-
-  ## sensMethod: forward (variational) ODE parameter sensitivities.  Retained as
-  ## a control so an explicit sensMethod="forward" keeps working.
-  sensMethod <- match.arg(sensMethod)
-
   .iterPrintControl <- .absorbIterPrintControl(
     print = print,
     printNcol = printNcol,
@@ -1245,7 +1237,8 @@ nlmObjectiveSetup <- function(ui, data, control = NULL, gradient = FALSE, scale 
     ci = .nlmControl$ci,
     sigdigTable = .nlmControl$sigdigTable,
     indTolRelax = .nlmControl$indTolRelax,
-    eventSens = .nlmControl$eventSens
+    eventSens = .nlmControl$eventSens,
+    sensMethod = .nlmControl$sensMethod
   )
   if (assign) {
     env$control <- .foceiControl
