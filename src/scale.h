@@ -376,7 +376,7 @@ static inline double scaleAdjustGradScale(S *scale, double grad, int i) {
     return grad*C;
     break;
   case scaleTypeMult: // simple multiplicative scaling
-    if (scale->scaleTo != 0){
+    if (scale->scaleTo > 0){
       return grad*scale->initPar[i]/scaleTo;
     } else {
       return grad;
@@ -418,7 +418,7 @@ static inline double scaleUnscalePar(S *scale, double *x, int i){
     return (x[i]-scaleTo)*C + scale->initPar[i];
     break;
   case scaleTypeMult: // simple multiplicative scaling
-    if (scale->scaleTo != 0){
+    if (scale->scaleTo > 0){
       return x[i]*scale->initPar[i]/scaleTo;
     } else {
       return x[i];
