@@ -242,6 +242,12 @@
   an estimate on its bound (a `tcl` of 1.1 with a lower bound of 1.0999 was
   compared with 2.77) and could flag one far from it.
 
+- `foceiControl()` (and the FOCEi-family controls built on it) now requires
+  `scaleCmin`, `scaleCmax`, `scaleC` and `scaleC0` to be finite and above 0,
+  with `scaleCmin < scaleCmax`.  `scaleCmin = 0` let a `scaleC` of 0 through,
+  which stopped the fit with `missing value where TRUE/FALSE needed`, and
+  `scaleCmax = Inf` let an infinite one through.
+
 ### Covariance and finite differences
 
 - The Gill (1983) step-size search no longer leaves a parameter at its last

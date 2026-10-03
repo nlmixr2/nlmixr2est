@@ -199,6 +199,19 @@ nmTest({
     expect_identical(.agqObjf(rep(2, 10)), .agqObjf(rep(2, 7)))
   })
 
+  test_that("foceiControl() takes only finite scaling constants above 0", {
+    # a scaling constant divides the optimizer's coordinates: scaleCmin = 0 let
+    # a scaleC of 0 through (a NaN start), and scaleCmax = Inf an infinite one
+    expect_error(foceiControl(scaleCmin = 0), "0 < scaleCmin < scaleCmax")
+    expect_error(foceiControl(scaleCmin = 1e3, scaleCmax = 10), "0 < scaleCmin < scaleCmax")
+    expect_error(foceiControl(scaleCmax = Inf), "finite")
+    expect_error(foceiControl(scaleC = c(1, 0)), "'scaleC' must be above 0")
+    expect_error(foceiControl(scaleC = c(1, Inf)), "finite")
+    expect_error(foceiControl(scaleC0 = 0), "'scaleC0' must be above 0")
+    expect_error(foceiControl(scaleC0 = Inf), "finite")
+    expect_s3_class(foceiControl(scaleC = c(1, 0.5), scaleC0 = 10, scaleCmin = 1e-6, scaleCmax = 1e6), "foceiControl")
+  })
+
   test_that("ui$scaleCtheta has one value per estimated theta", {
     .ui <- rxode2::rxUiDecompress(rxode2::rxode2(.mod))
     # it was followed by an NA for each eta row of iniDf
