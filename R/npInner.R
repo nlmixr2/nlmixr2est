@@ -2,30 +2,7 @@
 # problem once (via vaeInnerSetup_) so the conditional-likelihood primitive
 # (npEvalCondLik) and the Psi builder (npBuildPsi) can be evaluated per support
 # point, reusing the ODE solve, residual-error models, transform-both-sides and
-# censoring unchanged.  Mirrors .adviInnerSetup (the vi engine's inner setup).
-
-#' A foceiControl carrying the npag/npb inner likelihood + solving options.
-#' @noRd
-.npInnerFoceiControl <- function(control) {
-  foceiControl(
-    rxControl = control$rxControl,
-    maxOuterIterations = 0L,
-    maxInnerIterations = 0L,
-    covMethod = "",
-    interaction = 1L,
-    sumProd = control$sumProd,
-    optExpression = control$optExpression,
-    literalFix = control$literalFix,
-    literalFixRes = control$literalFixRes,
-    addProp = control$addProp,
-    calcTables = FALSE,
-    compress = FALSE,
-    maxOdeRecalc = control$maxOdeRecalc,
-    odeRecalcFactor = control$odeRecalcFactor,
-    stickyRecalcN = control$stickyRecalcN,
-    print = 0L
-  )
-}
+# censoring unchanged (.foceiInnerEnv, shared with the vi and vae engines).
 
 #' Set up the FOCEi inner problem for the nonparametric engines.
 #' @param ui rxode2 ui object (already bounded-transformed by the dispatch hook)
@@ -36,30 +13,9 @@
 #' @noRd
 .npInnerSetup <- function(ui, data, etaMat, control) {
   .ui <- rxode2::rxUiDecompress(ui)
-  .fc <- .npInnerFoceiControl(control)
+  .fc <- .foceiInnerControl(control, literalFixRes = control$literalFixRes, stickyRecalcN = control$stickyRecalcN)
   .fc$rxControl <- .npSafeLogDomain(.fc$rxControl, .ui)
-  .fc$est <- "focei"
-  .ui$control <- .fc
-  .env <- .ui$foceiOptEnv
-  .env$ui <- .ui
-  .env$est <- "focei"
-  .env$table <- NULL
-  .foceiPreProcessData(data, .env, .ui, .fc$rxControl)
-  .env$control$est <- "focei"
-  .env$control$printTop <- FALSE
-  if (is.null(.env$control$nF)) {
-    .env$control$nF <- 0L
-  }
-  .env$control$needOptimHess <- isTRUE(any(.ui$predDfFocei$distribution != "norm"))
-  .env$aqn <- 0L
-  .env$qx <- double(0)
-  .env$qw <- double(0)
-  .env$qfirst <- FALSE
-  .env$nAGQ <- 0L
-  .env$aqLow <- -Inf
-  .env$aqHi <- Inf
-  .env$nEstOmega <- 0L
-  .env$etaMat <- etaMat
+  .env <- .foceiInnerEnv(.ui, data, .fc, "focei", etaMat)
   vaeInnerSetup_(.env)
   .env
 }
