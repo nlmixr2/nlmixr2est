@@ -103,4 +103,40 @@ nmTest({
     )
     expect_equal(f2$objf, f$objf, tolerance = 1e-8)
   })
+
+  test_that(".foceiGradDirect() refits with an etaMat of etas only", {
+    .mixMod <- function() {
+      ini({
+        tka <- 0.45
+        tcl1 <- log(c(0, 2.7, 100))
+        tcl2 <- log(c(0, 0.1, 120))
+        tv <- 3.45
+        p1 <- 0.3
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl))
+        v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    f <- .nlmixr(
+      .mixMod,
+      nlmixr2data::theo_sd,
+      "focei",
+      foceiControl(print = 0L, maxOuterIterations = 0L, covMethod = "")
+    )
+    expect_true("mixnum" %in% names(f$eta))
+    .acc <- new.env(parent = emptyenv())
+    local_mocked_bindings(nlmixr2 = function(object, data, est, control, ...) {
+      .acc$etaMat <- control$etaMat
+      NULL
+    })
+    .foceiGradDirect(f)
+    expect_equal(colnames(.acc$etaMat), c("eta.ka", "eta.cl", "eta.v"))
+  })
 })

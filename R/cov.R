@@ -601,9 +601,9 @@
   .control$skipCov <- NULL # recompute skipCov for the full model (keep mu thetas)
   # explicitly pin the final thetas (on the UI) and the final etas (etaMat)
   .ui <- .uiPinTheta(.ui, fit)
-  .eta <- tryCatch(fit$eta, error = function(e) NULL)
-  if (!is.null(.eta)) {
-    .control$etaMat <- as.matrix(.nmDropNonEtaCols(.eta))
+  .etaMat <- .fitEtaMat(fit)
+  if (!is.null(.etaMat)) {
+    .control$etaMat <- .etaMat
   }
   # the nested re-fit resets mu-referencing global state (.muRefTrans$cur); save + restore.
   .savedMuRef <- .muRefTrans$cur

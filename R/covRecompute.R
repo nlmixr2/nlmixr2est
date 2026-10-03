@@ -29,6 +29,15 @@
   ui
 }
 
+#' A completed fit's etas as an etaMat (`$etaMat`), `NULL` when it has none
+#' @param fit completed nlmixr2 fit
+#' @return numeric matrix or `NULL`
+#' @noRd
+.fitEtaMat <- function(fit) {
+  .m <- tryCatch(fit$etaMat, error = function(e) NULL)
+  if (is.null(.m) || ncol(.m) == 0L) NULL else .m
+}
+
 #' Build the pinned-UI + data + etaMat needed to recompute a covariance at a
 #' completed fit's converged estimates.
 #'
@@ -43,15 +52,7 @@
   if (is.null(.ui)) {
     return(NULL)
   }
-  .eta <- tryCatch(fit$eta, error = function(e) NULL)
-  .etaMat <- NULL
-  if (!is.null(.eta)) {
-    .eta <- .nmDropNonEtaCols(.eta)
-    if (ncol(.eta) > 0L) {
-      .etaMat <- as.matrix(.eta)
-    }
-  }
-  list(ui = .uiPinTheta(.ui, fit), data = getData(fit), etaMat = .etaMat)
+  list(ui = .uiPinTheta(.ui, fit), data = getData(fit), etaMat = .fitEtaMat(fit))
 }
 
 #' Run a native engine (saem/imp) at the pinned converged estimates and harvest

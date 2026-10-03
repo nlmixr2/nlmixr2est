@@ -118,3 +118,39 @@ test_that("a correlated occasion block fits under a full Laplace/AGQ delegate", 
     expect_equal(.blk$est[match(c("iov.cl", "(iov.cl,iov.v)", "iov.v"), .blk$name)], c(0.1, 0.03, 0.2), info = .est)
   }
 })
+
+# The post-fit covariance of an m*/i* fit is recomputed on the base model at the
+# fit's etas; without the occasion etas that refit stopped on the etaMat column
+# count, and no covariance was installed.
+test_that("an IOV mfocei fit gets its recomputed covariance", {
+  skip_on_cran()
+
+  one.cmt <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      eta.ka ~ 0.6
+      eta.cl ~ 0.3
+      eta.v ~ 0.1
+      iov.cl ~ 0.04 | occ
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl + iov.cl)
+      v <- exp(tv + eta.v)
+      linCmt() ~ add(add.sd)
+    })
+  }
+
+  theoIov <- nlmixr2data::theo_md
+  theoIov$occ <- 1L + (theoIov$TIME >= 144)
+
+  .fit <- suppressMessages(suppressWarnings(
+    nlmixr2(one.cmt, theoIov, est = "mfocei", control = list(print = 0L, maxOuterIterations = 0L, calcTables = FALSE))
+  ))
+  expect_true(is.matrix(.fit$cov))
+  expect_equal(rownames(.fit$cov), c("tka", "tcl", "tv", "add.sd"))
+  expect_true(all(is.finite(.fit$cov)))
+})

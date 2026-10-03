@@ -182,6 +182,11 @@
 
 ### Covariance
 
+- The post-fit covariance of a model with inter-occasion variability is now
+  computed: the recompute of the `mfocei`-style families (and of imp/np with
+  a requested covariance) and `setCov(fit, "imp")` (or a deferred
+  `covMethod = "imp"`) refit without the occasion ETAs, the refit stopped,
+  and no covariance was installed.
 - A covariance computed after the fit is now installed only when it is
   finite, symmetric and positive definite; otherwise the fit keeps the
   covariance it had and a warning names the method and the reason.  This

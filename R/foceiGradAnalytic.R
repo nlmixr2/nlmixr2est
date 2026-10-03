@@ -592,10 +592,9 @@
       # estimation method (FOCE freezes the residual variance, AGQ adds quadrature), and
       # est="none" would silently evaluate every fit as plain FOCEI.
       .ui <- .uiPinTheta(fit$ui, fit)
-      .eta <- tryCatch(fit$eta, error = function(.) NULL)
-      if (!is.null(.eta)) {
-        # ...and the final etas
-        .control$etaMat <- as.matrix(.eta[, setdiff(names(.eta), "ID"), drop = FALSE])
+      .etaMat <- .fitEtaMat(fit)
+      if (!is.null(.etaMat)) {
+        .control$etaMat <- .etaMat
       }
       # the nested re-fit resets mu-referencing global state (.muRefTrans$cur); restore it
       .savedMuRef <- .muRefTrans$cur
