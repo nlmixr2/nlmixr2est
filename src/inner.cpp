@@ -1953,6 +1953,18 @@ private:
   OmegaScope &operator=(const OmegaScope &);
 };
 
+// Puts a variable back to the value it held at construction on every exit path,
+// including an Rcpp exception or a user interrupt.
+template <typename T> struct ScopedRestore {
+  T &ref;
+  T saved;
+  explicit ScopedRestore(T &r) : ref(r), saved(r) {}
+  ~ScopedRestore() { ref = saved; }
+private:
+  ScopedRestore(const ScopedRestore &);
+  ScopedRestore &operator=(const ScopedRestore &);
+};
+
 struct EtaRestoreGuard {
   rx_solving_options_ind *ind;
   arma::vec saved;
@@ -2577,17 +2589,25 @@ static int npIndSolveSize(rx_solving_options* op, rx_solving_options_ind* ind); 
 // getPopR() for likInner0().  getPopR() solves at eta = 0 into ind->solve, which the
 // inner solve that follows replaces -- except under freezeOde, where likInner0() does not
 // solve and reads the states the caller pinned there (vae's two-stage residual step):
-// keep those across the eta = 0 solve.
+// keep those across the eta = 0 solve, on every exit path.
+struct FrozenSolveRestore {
+  rx_solving_options_ind *ind;
+  std::vector<double> frozen;
+  FrozenSolveRestore(rx_solving_options_ind *i, rx_solving_options *op) : ind(i) {
+    double *sv = getIndSolve(ind);
+    frozen.assign(sv, sv + npIndSolveSize(op, ind));
+  }
+  ~FrozenSolveRestore() { std::copy(frozen.begin(), frozen.end(), getIndSolve(ind)); }
+};
+
 static void getPopRKeepFrozen(int id, rx_solving_options_ind *ind, rx_solving_options *op,
                               arma::vec &rPop) {
   if (!op_focei.freezeOde) {
     getPopR(id, rPop);
     return;
   }
-  double *sv = getIndSolve(ind);
-  std::vector<double> frozen(sv, sv + npIndSolveSize(op, ind));
+  FrozenSolveRestore keep(ind, op);
   getPopR(id, rPop);
-  std::copy(frozen.begin(), frozen.end(), getIndSolve(ind));
 }
 
 // One external per-observation contribution for likInner0: build the cotangents,
@@ -7187,10 +7207,9 @@ struct FoceiHessObj : FdHessObj {
 static void foceiLik0At(double *theta) {
   if (_foceiLik0Theta.size() == (size_t)op_focei.npars &&
       std::equal(theta, theta + op_focei.npars, _foceiLik0Theta.begin())) return;
-  int calcGrad = op_focei.calcGrad;
+  ScopedRestore<int> calcGrad(op_focei.calcGrad);
   op_focei.calcGrad = 1;
   foceiOfv0(theta);
-  op_focei.calcGrad = calcGrad;
 }
 
 static inline bool foceiIsMixPar(int cpar) {
@@ -11171,9 +11190,10 @@ int foceiS(double *theta, Environment e, bool &hasZero){
   // flag reported "zero gradient replaced with small number" for the fit, and the next
   // innerOpt() (a full-covariance probe) reset the thetas.
   arma::vec gfull(npars);
-  const bool zeroGrad = op_focei.zeroGrad;
-  numericGrad(theta, gfull.memptr());
-  op_focei.zeroGrad = zeroGrad;
+  {
+    ScopedRestore<bool> zeroGrad(op_focei.zeroGrad);
+    numericGrad(theta, gfull.memptr());
+  }
   op_focei.calcGrad=1;
   double sInfoPer = npars * getRxNsub(rx);
   for (cpar = npars; cpar--;){
