@@ -33,5 +33,7 @@ nmTest({
     # adjObf = FALSE: OBJF keeps the normal constant, so it is -2 * log-likelihood
     expect_equal(.row$OBJF, -2 * .row[["Log-likelihood"]])
     expect_equal(fit$objf, .row$OBJF)
+    # a name that is neither "laplace<nsd>" nor "gauss<nnodes>_<nsd>"
+    expect_error(setOfv(fit, "gauss3"), "cannot switch objective function to 'gauss3' type")
   })
 })
