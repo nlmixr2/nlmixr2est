@@ -135,12 +135,7 @@ nlsControl <- function(
   checkmate::assertNumeric(shiErr, lower = 0, any.missing = FALSE, len = 1)
   checkmate::assertIntegerish(shi21maxFD, lower = 1, any.missing = FALSE, len = 1)
 
-  .eventTypeIdx <- c("central" = 2L, "forward" = 1L)
-  if (checkmate::testIntegerish(eventType, len = 1, lower = 1, upper = 6, any.missing = FALSE)) {
-    eventType <- as.integer(eventType)
-  } else {
-    eventType <- setNames(.eventTypeIdx[match.arg(eventType)], NULL)
-  }
+  eventType <- .nlmCtlCode(eventType, c("central" = 2L, "forward" = 1L), "eventType")
 
   solveType <- match.arg(solveType)
 

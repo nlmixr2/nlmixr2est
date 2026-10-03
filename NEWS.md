@@ -323,6 +323,15 @@
   divided the difference between the two solves by the step: 0.3% of the
   gradient on `theo_sd`.
 
+- `nlmControl()`, `nlminbControl()`, `optimControl()` and `nlsControl()` now
+  reject an integer `eventType`, `optimHessType` or `solveType` that is not
+  one of their codes (`eventType`/`optimHessType`: 1 forward, 2 central;
+  `solveType`: 1 `"fun"`, 2 `"grad"`, 3 `"hessian"`, and no `"hessian"` for
+  `optim`).  The codes 3-6 were accepted: they left a finite-difference
+  gradient column uninitialized (`eventType`), a Hessian at zero
+  (`optimHessType`), or the objective undefined (`solveType`).  A
+  hand-built control with such a code now stops the nlm problem setup.
+
 
 # nlmixr2est 7.1.0
 

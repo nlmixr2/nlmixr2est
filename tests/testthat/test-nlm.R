@@ -1,4 +1,62 @@
 nmTest({
+  test_that("nlm-family controls take only the codes there are (issue 1140)", {
+    # eventType/optimHessType 1 = forward, 2 = central; solveType 1 = fun,
+    # 2 = grad, 3 = hessian (optim: no hessian).  3-6 were accepted and gave an
+    # uninitialized (eventType) or zero (optimHessType) gradient column, or no
+    # objective at all (solveType).
+    for (.f in c("nlmControl", "nlminbControl")) {
+      .ctl <- get(.f)
+      expect_identical(.ctl()$eventType, 2L, info = .f)
+      expect_identical(.ctl(eventType = "forward")$eventType, 1L, info = .f)
+      expect_identical(.ctl(eventType = 1)$eventType, 1L, info = .f)
+      expect_identical(.ctl()$optimHessType, 2L, info = .f)
+      expect_identical(.ctl(optimHessType = "forward")$optimHessType, 1L, info = .f)
+      expect_identical(.ctl(optimHessType = 2L)$optimHessType, 2L, info = .f)
+      expect_identical(.ctl(solveType = 2)$solveType, 2L, info = .f)
+      expect_identical(.ctl(solveType = "fun")$solveType, 1L, info = .f)
+      for (.v in 3:6) {
+        expect_error(.ctl(eventType = .v), "'eventType' must be one of", info = .f)
+        expect_error(.ctl(optimHessType = .v), "'optimHessType' must be one of", info = .f)
+      }
+      expect_error(.ctl(solveType = 4), "'solveType' must be one of", info = .f)
+      expect_error(.ctl(eventType = 1.5), "'eventType' must be one of", info = .f)
+      expect_error(.ctl(eventType = NA_real_), "'eventType' must be one of", info = .f)
+    }
+    expect_identical(optimControl(solveType = 1)$solveType, 1L)
+    expect_identical(optimControl()$solveType, 2L)
+    expect_error(optimControl(solveType = 3), "'solveType' must be one of")
+    expect_error(optimControl(eventType = 3), "'eventType' must be one of")
+    expect_identical(optimControl(eventType = 1)$eventType, 1L)
+    expect_error(nlsControl(eventType = 0), "'eventType' must be one of")
+    expect_identical(nlsControl(eventType = "forward")$eventType, 1L)
+    expect_error(nlmControl(eventType = "sideways"))
+  })
+
+  test_that("the nlm problem refuses codes it has no solve for (issue 1140)", {
+    .mod <- function() {
+      ini({
+        E0 <- 0.5
+        Em <- 0.5
+      })
+      model({
+        v <- E0 + Em * time
+        ll(bin) ~ DV * v - log(1 + exp(v))
+      })
+    }
+    .d <- data.frame(ID = 1L, TIME = 1:10, AMT = 0, EVID = 0L, DV = rep(0:1, 5))
+    # a control built by hand (as external engines do) skips the R checks
+    for (.opt in c("eventType", "optimHessType", "solveType")) {
+      .ctl <- nlmControl(print = 0L)
+      .ctl[[.opt]] <- 5L
+      expect_error(
+        suppressMessages(nlmObjectiveSetup(.mod, .d, control = .ctl, gradient = .opt != "solveType")),
+        .opt,
+        info = .opt
+      )
+      .nlmFreeEnv()
+    }
+  })
+
   test_that("nlm models convert strings to numbers", {
     mod <- function() {
       ini({

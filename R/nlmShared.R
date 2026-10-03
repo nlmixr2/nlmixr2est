@@ -446,6 +446,31 @@
   invisible(ui)
 }
 
+#' Integer code of an nlm-family control option given as a name or a code
+#'
+#' @param value the option as given: one of the names of `idx` (matched as
+#'   `match.arg()` does, the first being the default) or one of its codes
+#' @param idx the name -> code map, its names in the order of the option's
+#'   choices
+#' @param name the option's name, for the error
+#' @return the integer code
+#' @noRd
+.nlmCtlCode <- function(value, idx, name) {
+  if (!is.numeric(value)) {
+    return(setNames(idx[match.arg(value, names(idx))], NULL))
+  }
+  if (length(value) != 1L || is.na(value) || !(value %in% idx)) {
+    stop(
+      "'",
+      name,
+      "' must be one of ",
+      paste0(sprintf("\"%s\" (%d)", names(idx), idx), collapse = ", "),
+      call. = FALSE
+    )
+  }
+  as.integer(value)
+}
+
 #' Shared control setup for the nlm-family estimation methods
 #'
 #' @param env dispatch environment (provides `ui` and `control`)

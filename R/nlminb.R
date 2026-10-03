@@ -158,12 +158,7 @@ nlminbControl <- function(
   checkmate::assertLogical(compress, len = 1, any.missing = TRUE)
   checkmate::assertLogical(adjObf, len = 1, any.missing = TRUE)
 
-  .solveTypeIdx <- c("hessian" = 3L, "grad" = 2L, "fun" = 1L)
-  if (checkmate::testIntegerish(solveType, len = 1, lower = 1, upper = 6, any.missing = FALSE)) {
-    solveType <- as.integer(solveType)
-  } else {
-    solveType <- setNames(.solveTypeIdx[match.arg(solveType)], NULL)
-  }
+  solveType <- .nlmCtlCode(solveType, c("hessian" = 3L, "grad" = 2L, "fun" = 1L), "solveType")
 
   if (missing(covMethod) && any(solveType == 2:3)) {
     covMethod <- "nlminb"
@@ -178,19 +173,8 @@ nlminbControl <- function(
     covMethod <- "r"
   }
 
-  .eventTypeIdx <- c("central" = 2L, "forward" = 1L)
-  if (checkmate::testIntegerish(eventType, len = 1, lower = 1, upper = 6, any.missing = FALSE)) {
-    eventType <- as.integer(eventType)
-  } else {
-    eventType <- setNames(.eventTypeIdx[match.arg(eventType)], NULL)
-  }
-
-  .optimHessTypeIdx <- c("central" = 2L, "forward" = 1L)
-  if (checkmate::testIntegerish(optimHessType, len = 1, lower = 1, upper = 6, any.missing = FALSE)) {
-    optimHessType <- as.integer(optimHessType)
-  } else {
-    optimHessType <- setNames(.optimHessTypeIdx[match.arg(optimHessType)], NULL)
-  }
+  eventType <- .nlmCtlCode(eventType, c("central" = 2L, "forward" = 1L), "eventType")
+  optimHessType <- .nlmCtlCode(optimHessType, c("central" = 2L, "forward" = 1L), "optimHessType")
 
   checkmate::assertNumeric(shiErr, lower = 0, any.missing = FALSE, len = 1)
   checkmate::assertNumeric(hessErr, lower = 0, any.missing = FALSE, len = 1)

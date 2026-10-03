@@ -162,6 +162,13 @@ RObject nlmSetup(Environment e) {
   resetCensFlag();
 
   nlmOp.solveType = as<int>(control["solveType"]);
+  // the codes the solves below handle: an other would fall through every switch
+  // (no objective, or a gradient column left uninitialized)
+  if (nlmOp.solveType != solveType_pred && nlmOp.solveType != solveType_grad &&
+      nlmOp.solveType != solveType_hess && nlmOp.solveType != solveType_nls &&
+      nlmOp.solveType != solveType_nls_pred) {
+    stop(_("unknown nlm 'solveType' code %d"), nlmOp.solveType);
+  }
   RObject model;
   nlmOp.gradOffset = 0;
   if (e.exists("thetaGrad")) {
@@ -212,6 +219,13 @@ RObject nlmSetup(Environment e) {
   nlmOp.optimHessType = control["optimHessType"];
   nlmOp.shi21maxHess = control["shi21maxHess"];
   nlmOp.hessErr = control["hessErr"];
+  // 1 = forward, 2 = central are the only differences there are
+  if (nlmOp.eventType != 1 && nlmOp.eventType != 2) {
+    stop(_("'eventType' must be 1 (forward) or 2 (central), not %d"), nlmOp.eventType);
+  }
+  if (nlmOp.optimHessType != 1 && nlmOp.optimHessType != 2) {
+    stop(_("'optimHessType' must be 1 (forward) or 2 (central), not %d"), nlmOp.optimHessType);
+  }
 
 
   // Size the pool for the largest registered model rather than assuming it is
