@@ -258,6 +258,14 @@
   used `interaction = 0` (FOCE), and on `theo_sd` the structural standard
   errors came out 2 to 25 times too small (`setCov(fit, "r,s")` gave `tka`
   0.0076 where the analytic covariance gives 0.19).
+- The post-fit covariance of the `mfocei`/`ifocei`-style families, and of
+  nlme, imp/impmap/qrpem and np fits that request `covMethod = "r,s"`, `"r"`
+  or `"s"`, now optimizes the ETAs again in every finite-difference leg.  It
+  held them at the fit's ETAs, and on `theo_sd` the structural standard
+  errors came out 4 to 12 times too small.  A requested `"analytic"`
+  covariance that is out of its scope (a `linCmt()` model, for example)
+  falls back to this finite-difference `"r,s"`, so the fallback is the
+  marginal covariance too; a warning names the covariance installed instead.
 
 ### Covariance
 

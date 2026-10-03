@@ -453,4 +453,23 @@ nmTest({
     expect_identical(.none$covMethod, "r")
     expect_lt(.maxRel(.seOf(.none), .seOf(.focei)), 1e-4)
   })
+
+  test_that("the post-fit mu recompute differentiates the marginal likelihood", {
+    .ctl <- foceiControl(print = 0, calcTables = FALSE)
+    .mf <- suppressWarnings(nlmixr2(.oneCmt, nlmixr2data::theo_sd, est = "mfocei", control = .ctl))
+    expect_identical(.mf$covMethod, "r,s (full)")
+    .ref <- .zeroOuterRef(.mf, "r,s", covFull = TRUE)
+    expect_setequal(names(.seOf(.mf)), names(.seOf(.ref)))
+    expect_lt(.maxRel(.seOf(.mf), .seOf(.ref)), 1e-6)
+    # an "analytic" request outside the analytic scope (linCmt) falls back to the
+    # finite-difference sandwich, which is marginal too, and says so
+    .an <- foceiControl(print = 0, calcTables = FALSE, covMethod = "analytic")
+    expect_warning(
+      .mfa <- nlmixr2(.oneCmt, nlmixr2data::theo_sd, est = "mfocei", control = .an),
+      "\"r,s (full)\" covariance installed instead of the requested \"analytic\"",
+      fixed = TRUE
+    )
+    expect_identical(.mfa$covMethod, "r,s (full)")
+    expect_lt(.maxRel(.seOf(.mfa), .seOf(.ref)), 1e-6)
+  })
 })

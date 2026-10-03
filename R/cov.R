@@ -604,13 +604,16 @@
   for (.mn in grep("^foceiMu", names(.control), value = TRUE)) {
     .control[[.mn]] <- NULL
   }
-  # The covariance must be evaluated AT the mu fit's converged point -- NOT re-optimized to
-  # a (possibly better) nearby point.  So freeze BOTH problems: maxOuterIterations=0 (final
-  # thetas) AND maxInnerIterations=0 (final etas held at etaMat).  Runs through the FULL
-  # nlmixr2() path (the leaner nlmixr2CreateOutputFromUi posthoc cov is not faithful); must
-  # run on the COMPLETED fit (post mu-finalization) or it corrupts the mu-covariate rewrite.
+  # The covariance is evaluated AT the fit's converged point: maxOuterIterations=0 keeps the
+  # final thetas, and maxInnerIterations=0 reports the final etas (etaMat) as they are.  Its
+  # finite-difference legs still differentiate the marginal likelihood, re-optimizing the
+  # etas from etaMat at every probe (covMaxInnerIterations, see .covInnerIterations()).
+  # Runs through the FULL nlmixr2() path (the leaner nlmixr2CreateOutputFromUi posthoc cov is
+  # not faithful); must run on the COMPLETED fit (post mu-finalization) or it corrupts the
+  # mu-covariate rewrite.
   .control$est <- .baseEst
   .control$maxOuterIterations <- 0L
+  .control$covMaxInnerIterations <- .covInnerIterations(.control)
   .control$maxInnerIterations <- 0L
   .control$boundTol <- 0
   .control$calcTables <- FALSE
