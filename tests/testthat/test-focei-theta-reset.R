@@ -211,13 +211,47 @@ nmTest({
         calcTables = FALSE
       )
     )))
-    if (is.null(.thetaReset$nF)) {
-      skip("no theta reset was triggered here, so the restart was never reached")
-    }
+    # the drift at the end of this optimization is far past the threshold
+    expect_false(is.null(.thetaReset$nF))
     expect_gt(.thetaReset$nF, 0)
     .un <- .f$parHistData[.f$parHistData$type == "Unscaled", ]
     .first <- unlist(.un[.un$iter == .thetaReset$nF + 1, c("tka", "tcl", "tv", "add.sd", "o1", "o2")])
     expect_equal(unname(.first), c(.thetaReset$thetaIni, .thetaReset$omegaTheta), tolerance = 1e-10)
+    expect_true(is.finite(.f$objf))
+  })
+
+  test_that("the restart after a theta reset scales the bounds once, as the first attempt did", {
+    skip_on_cran()
+    # An outer optimizer that records the bounds it is given and evaluates its
+    # start once.  The restart keeps the first attempt's scaling, so it must be
+    # given the same scaled bounds.
+    .acc <- new.env(parent = emptyenv())
+    .acc$calls <- list()
+    .opt <- function(par, fn, gr, lower, upper, control, ...) {
+      .acc$calls[[length(.acc$calls) + 1L]] <- list(par = par, lower = lower, upper = upper)
+      .v <- fn(par)
+      list(x = par, value = .v, convergence = 0L, message = "")
+    }
+    .f <- suppressMessages(suppressWarnings(nlmixr(
+      .driftingModel(),
+      nlmixr2data::theo_sd,
+      est = "focei",
+      control = foceiControl(
+        resetThetaFinalP = 0.2,
+        print = 0,
+        covMethod = "",
+        calcTables = FALSE,
+        outerOpt = .opt
+      )
+    )))
+    expect_gte(length(.acc$calls), 2L)
+    .first <- .acc$calls[[1]]
+    for (.c in .acc$calls[-1]) {
+      expect_identical(.c$lower, .first$lower)
+      expect_identical(.c$upper, .first$upper)
+    }
+    # the restart starts elsewhere: from the reset's values
+    expect_false(isTRUE(all.equal(.acc$calls[[2]]$par, .first$par)))
     expect_true(is.finite(.f$objf))
   })
 })
