@@ -203,10 +203,35 @@
   if (!any(names(.ctl) == "covMethod")) {
     .ctl$covMethod <- "r"
   }
-  if (inherits(lst, "nls")) {
+  # the residual degrees of freedom of a least-squares (nls) fit, NA otherwise
+  .rdf <- if (inherits(lst, "nls")) {
+    length(stats::residuals(lst)) - length(.parScaled)
+  } else if (inherits(lst, "nls.lm")) {
+    length(lst$fvec) - length(lst$par)
+  } else {
+    NA_integer_
+  }
+  if (!is.na(.rdf) && .rdf <= 0 && (inherits(lst, "nls") || (hessianCov && .ctl$covMethod != ""))) {
+    # sigma^2 = RSS / (n - p) does not exist
+    warning(
+      sprintf(
+        "nls has %d residual degrees of freedom, no residual variance; covariance step failed",
+        as.integer(.rdf)
+      ),
+      call. = FALSE
+    )
+    .ret$covMethod <- "failed"
+  } else if (inherits(lst, "nls")) {
     # sigma^2 (J'J)^-1, the residual variance times summary()$cov.unscaled
-    .ret$cov.scaled <- stats::vcov(lst)
-    .ret$cov <- .Call(`_nlmixr2est_nlmAdjustCov`, .ret$cov.scaled, .parScaled)
+    .g <- .covGuard(stats::vcov(lst))
+    if (.g$ok) {
+      .ret$cov.scaled <- .g$cov
+      .ret$cov <- .Call(`_nlmixr2est_nlmAdjustCov`, .ret$cov.scaled, .parScaled)
+      .ret$covMethod <- "nls"
+    } else {
+      warning(sprintf("nls covariance %s; covariance step failed", .g$reason), call. = FALSE)
+      .ret$covMethod <- "failed"
+    }
   } else if (hessianCov && .ctl$covMethod != "") {
     .malert("calculating covariance")
     if (!any(names(.ret) == "hessian")) {

@@ -192,6 +192,33 @@ nmTest({
     }
   })
 
+  test_that("nls has no covariance without residual degrees of freedom (issue 1140)", {
+    .treated <- Puromycin[Puromycin$state == "treated", ][c(1, 7), ]
+    names(.treated) <- gsub("rate", "DV", gsub("conc", "time", names(.treated)))
+    .treated$ID <- 1
+    .mm <- function() {
+      ini({
+        Vm <- 200
+        K <- 0.1
+        add.sd <- 10
+      })
+      model({
+        pred <- (Vm * time) / (K + time)
+        pred ~ add(add.sd)
+      })
+    }
+    # two observations, two parameters: sigma^2 = RSS / (n - p) does not exist
+    for (.alg in c("LM", "port")) {
+      .fit <- .nlmixr(.mm, .treated, est = "nls", control = nlsControl(print = 0L, algorithm = .alg))
+      expect_identical(.fit$covMethod, "failed", info = .alg)
+      expect_null(.fit$cov, info = .alg)
+      expect_true(
+        "nls has 0 residual degrees of freedom, no residual variance; covariance step failed" %in% .fit$runInfo,
+        info = .alg
+      )
+    }
+  })
+
   test_that("nls fits a delay() model with its past() pre-history", {
     # y' = -k*delay(y, 1), with the history y = a before time 0
     dde <- function() {

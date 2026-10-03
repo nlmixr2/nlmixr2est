@@ -394,7 +394,10 @@
   `sigma^2 (J'J)^-1` (what `vcov()` of the underlying `nls` or `nls.lm`
   fit gives).  It left out the residual variance `sigma^2`, so every
   standard error was divided by the residual standard deviation: 0.635
-  instead of 6.95 for `Vm` of the `Puromycin` Michaelis-Menten model.
+  instead of 6.95 for `Vm` of the `Puromycin` Michaelis-Menten model.  The
+  covariance is checked like the other nlm-family ones, and a fit with no
+  residual degrees of freedom (no more observations than parameters) gets
+  `covMethod = "failed"` with a warning.
 
 - The objective of an `est = "nls"` fit with the default `algorithm = "LM"`
   is now the -2 log-likelihood at the maximum-likelihood residual variance,
