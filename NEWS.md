@@ -216,7 +216,16 @@
   scaled twice.  A model whose etas drift at the initial estimates was driven
   to an objective of 4.5e231 with `resetThetaP = 0.2`; it now reaches 160.8,
   and a final reset (`resetThetaFinalP`) that stopped with "Starting values
-  violate bounds" now restarts.
+  violate bounds" now restarts.  Because a reset now takes effect, a fit whose
+  drift it cannot absorb -- a mu-referenced theta held at a bound that the
+  outer optimizer keeps probing away from -- stops with "Maximum number of
+  theta resets (10) exceeded" instead of ending at estimates the resets had
+  scrambled.
+
+- A theta reset no longer fires when every eta whose drift triggers it belongs
+  to a theta already pinned at its bound.  It went ahead whenever another eta
+  could take any shift, however small, so the restart's first evaluation
+  fired it again at the same point until the restart limit.
 
 - When a fixed theta (`literalFix = FALSE`) or a regression-updated theta
   comes before others, each FOCEi parameter now gets its own bound code for
@@ -233,7 +242,10 @@
   other point the new constant moved the parameter under the outer optimizer
   and the search differenced about the objective of the old point; that
   happens for a repeated Gill search (`repeatGillMax`), on the restart after a
-  theta reset and with a custom outer optimizer.
+  theta reset and with a custom outer optimizer.  When neither retry finds a
+  slope, the parameter keeps its own scaling constant; it kept `1/scaleC0`
+  (`1e-5` by default) for the rest of the fit, which left it all but unable to
+  move.
 
 - The covariance step of a FOCEi-family fit without outer iterations
   (`maxOuterIterations = 0`, which includes the second pass of `fo` and
