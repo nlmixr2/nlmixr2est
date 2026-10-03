@@ -3606,7 +3606,7 @@ bool calcEtaHessian(double *eta, int likId, int id,
   if (conditional && forOptimization && op_focei.innerOpt == 3) return H.is_finite();
   if (!H.is_sympd()) {
     arma::mat H2;
-    if (nmNearPD(H2, H)) {
+    if (nmNearPDKeepDiag(H2, H)) {
       H=H2;
     }
   }

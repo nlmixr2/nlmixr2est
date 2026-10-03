@@ -4700,7 +4700,7 @@ private:
     mat out;
     if (inv_sympd(out, G)) return out;
     mat pd;
-    if (nmNearPD(pd, G)) {
+    if (nmNearPDKeepDiag(pd, G)) {
       G = pd;
       if (!_nearPdWarned) {
         Rcpp::warning(std::string("SAEM: ") + what +
