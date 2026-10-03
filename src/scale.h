@@ -22,6 +22,12 @@
 #define normTypeLen      5
 #define normTypeConstant 6
 
+// The rule scaleGetScaleC() fills an NA scaleC entry by: 1/|init| (1/(2|init|)
+// for the chol(Omega^-1) codes 4 and 5), with |init| floored at scaleCmin
+// (Floor) or with unit scaling when init is 0 (Unit, focei).
+#define scaleCdefaultFloor 0
+#define scaleCdefaultUnit  1
+
 struct scaling {
   int npars; // number of parameters
   int scaleType; // scaling type
@@ -31,6 +37,13 @@ struct scaling {
   double c2; // internal scaling constant
   double scaleCmin; // Cmin scaling constant
   double scaleCmax; // Cmax scaling constant
+  // scaleC settings, which focei_options (src/inner.cpp) declares under the same
+  // names: the NA default rule, and the band guard (foceiControl(scaleCband)),
+  // which applies to parameters i < nScaleCband (0 = off).
+  int scaleCdefault = scaleCdefaultFloor;
+  int nScaleCband = 0;
+  double scaleRangeLow = 0.0;
+  double scaleRangeHigh = 0.0;
   // Iteration-print formatting, populated via scaleApplyIterPrintControl();
   // field names mirror iterPrintControl()'s R argument names.
   int useColor;
@@ -141,6 +154,8 @@ static inline void scaleSetup(scaling *scale,
   scale->scaleCmin = scaleCmin;
   scale->scaleCmax = scaleCmax;
   scale->scaleTo = scaleTo;
+  scale->scaleCdefault = scaleCdefaultFloor;
+  scale->nScaleCband = 0;
 
   scale->vGrad.clear();
   scale->vPar.clear();
@@ -302,34 +317,54 @@ static inline void scaleSetup(scaling *scale,
   }
 }
 
+// The functions below take a scaling or a focei_options (src/inner.cpp; the
+// FOCEi outer optimizer passes op_focei), which share the fields they read.
 
-static inline double scaleGetScaleC(scaling *scale, int i){
+// The default scaleC for an NA entry whose 1/|init| denominator is d.
+template <typename S>
+static inline double scaleDefaultC(S *scale, double d) {
+  if (scale->scaleCdefault == scaleCdefaultUnit) return (d == 0.0) ? 1.0 : 1.0/d;
+  return 1.0/max2(d, scale->scaleCmin);
+}
+
+// The scaling constant of parameter i, clamped to [scaleCmin, scaleCmax].  An NA
+// entry is filled in place from xPar and scaleCdefault.  With the band guard on, a
+// positive entry outside [scaleRangeLow, scaleRangeHigh] is replaced in place by
+// the native magnitude |init| (NONMEM7 Appendix K, eq 15.2; 1 when init is 0).
+template <typename S>
+static inline double scaleGetScaleC(S *scale, int i){
   if (ISNA(scale->scaleC[i]) || isnan(scale->scaleC[i])) {
+    double aInit = fabs(scale->initPar[i]);
     switch (scale->xPar[i]){
     case 1: // log
       scale->scaleC[i]=1.0;
-      break;
-    case 2: // diag^2
-      scale->scaleC[i]=1.0/max2(fabs(scale->initPar[i]), scale->scaleCmin);
       break;
     case 3: // exp(diag)
       scale->scaleC[i] = 1.0/2.0;
       break;
     case 4: // Identity diagonal chol(Omega ^-1)
     case 5: // off diagonal chol(Omega^-1)
-      scale->scaleC[i] = 1.0/max2(2.0*fabs(scale->initPar[i]), scale->scaleCmin);
+      scale->scaleC[i] = scaleDefaultC(scale, 2.0*aInit);
       break;
-    default:
-      scale->scaleC[i]= 1.0/max2(fabs(scale->initPar[i]), scale->scaleCmin);
+    default: // diag^2 (2) and linear / additive thetas
+      scale->scaleC[i] = scaleDefaultC(scale, aInit);
       break;
     }
+  }
+  // a 0 entry is unloaded, not a value to rescue: it is left to the clamp
+  if (i < scale->nScaleCband && scale->scaleC[i] > 0.0 &&
+      (scale->scaleC[i] < scale->scaleRangeLow ||
+       scale->scaleC[i] > scale->scaleRangeHigh)) {
+    double aInit = fabs(scale->initPar[i]);
+    scale->scaleC[i] = (aInit == 0.0) ? 1.0 : aInit;
   }
   return min2(max2(scale->scaleC[i], scale->scaleCmin), scale->scaleCmax);
 }
 
-static inline double scaleAdjustGradScale(scaling *scale, double grad, double *x, int i) {
-  // Here we have f(unscalePar(x)) hence the derivative is df/du*du/dx
-  // (by chain rule); df/du is provided by the routine, du/dx is provided here
+// grad*du/dx for u = scaleUnscalePar(x)_i: a derivative by the natural parameter
+// taken to the optimizer's scale.  With grad = 1 it is the Jacobian du/dx.
+template <typename S>
+static inline double scaleAdjustGradScale(S *scale, double grad, int i) {
   double scaleTo = scale->scaleTo, C=scaleGetScaleC(scale, i);
   switch(scale->scaleType) {
   case scaleTypeNorm: // normalized
@@ -337,7 +372,7 @@ static inline double scaleAdjustGradScale(scaling *scale, double grad, double *x
     return grad*scale->c2;
     break;
   case scaleTypeNlmixr2: // log vs linear scales and/or ranges
-    // here du/dx = C*x[i]
+    // here du/dx = C
     return grad*C;
     break;
   case scaleTypeMult: // simple multiplicative scaling
@@ -367,7 +402,8 @@ static inline double scaleAdjustGradScale(scaling *scale, double grad, double *x
   return 0;
 }
 
-static inline double scaleUnscalePar(scaling *scale, double *x, int i){
+template <typename S>
+static inline double scaleUnscalePar(S *scale, double *x, int i){
   double scaleTo = scale->scaleTo, C=scaleGetScaleC(scale, i);
   switch(scale->scaleType) {
   case scaleTypeNorm: // normalized
@@ -411,13 +447,14 @@ static inline double scaleUnscalePar(scaling *scale, double *x, int i){
   return 0;
 }
 
-static inline double scaleScalePar(scaling *scale, double *x, int i){
+template <typename S>
+static inline double scaleScalePar(S *scale, double *x, int i){
   double scaleTo = scale->scaleTo, C=scaleGetScaleC(scale, i);
   switch(scale->scaleType) {
   case scaleTypeNorm:
     return (x[i]-scale->c1)/scale->c2;
   case scaleTypeNlmixr2:
-    if (scale->normType <= 5){
+    if (scale->normType != normTypeConstant){
       scaleTo = (scale->initPar[i]-scale->c1)/scale->c2;
     } else if (scaleTo == 0){
       scaleTo=scale->initPar[i];

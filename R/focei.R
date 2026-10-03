@@ -4053,7 +4053,7 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
   }
   # Any estimated theta still without a scaleC is a linear (additive / unbounded)
   # parameter: derivative-based 1/|init|, guarded to scaleCband so an extreme init
-  # falls back to native |init| (matches the C++ getScaleC default).  Zero-init
+  # falls back to native |init| (matches the C++ scaleGetScaleC default).  Zero-init
   # params (nudged off 0 elsewhere) fall back to unit scaling.
   .thetaIni <- ui$iniDf[!is.na(ui$iniDf$ntheta), , drop = FALSE]
   for (.k in seq_len(nrow(.thetaIni))) {
