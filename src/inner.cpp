@@ -9749,17 +9749,6 @@ void foceiOuterFinal(double *x, Environment e){
   nlmixr2EnvSetup(e, fmin);
 }
 
-static inline void foceiPrintLine(int ncol){
-  RSprintf("|-----+---------------+");
-  for (int i = 0; i < ncol; i++){
-    if (i == ncol-1)
-      RSprintf("-----------|");
-    else
-      RSprintf("-----------+");
-  }
-  RSprintf("\n");
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 // Outer l-BFGS-b from R
 extern "C" double foceiOfvOptim(int n, double *x, void *ex){
@@ -10320,7 +10309,7 @@ double nlmixr2Eval_(NumericVector theta, std::string md5){
     niter.clear();
     niterGrad.clear();
     if (printN != 0){
-      foceiPrintLine(min2(n, printNcol));
+      scalePrintLine(1, min2(n, printNcol));
       if (gradInfo.exists("thetaNames")){
         CharacterVector tn;
         tn = gradInfo["thetaNames"];
@@ -10345,28 +10334,9 @@ double nlmixr2Eval_(NumericVector theta, std::string md5){
       for (i = 0; i < n; i++){
         tmpS = thetaNames[i];
         RSprintf("%#10s |", tmpS.c_str());
-        if ((i + 1) != n && (i + 1) % printNcol == 0){
-          if (useColor && printNcol + i  >= n){
-            RSprintf("\n\033[4m|.....................|");
-          } else {
-            RSprintf("\n|.....................|");
-          }
-          finalize=1;
-        }
+        finalize |= scalePrintWrap(1, i, n, printNcol, useColor && printNcol + i >= n);
       }
-      if (finalize){
-        while(true){
-          if ((i++) % printNcol == 0){
-            if (useColor) RSprintf("\033[0m");
-            RSprintf("\n");
-            break;
-          } else {
-            RSprintf("...........|");
-          }
-        }
-      } else {
-        RSprintf("\n");
-      }
+      scalePrintRowEnd(finalize, i, printNcol, useColor);
     }
   }
   bool doUnscaled = false;
@@ -10397,28 +10367,9 @@ double nlmixr2Eval_(NumericVector theta, std::string md5){
       RSprintf("|%5d|%#14.8g |", cn, f0);
     for (i = 0; i < n; i++){
       RSprintf("%#10.4g |", theta[i]);
-      if ((i + 1) != n && (i + 1) % printNcol == 0){
-        if (useColor && printNcol + i  > n){
-          RSprintf("\n\033[4m|.....................|");
-        } else {
-          RSprintf("\n|.....................|");
-        }
-        finalize=1;
-      }
+      finalize |= scalePrintWrap(1, i, n, printNcol, useColor && printNcol + i > n);
     }
-    if (finalize){
-      while(true){
-        if ((i++) % printNcol == 0){
-          if (useColor) RSprintf("\033[0m");
-          RSprintf("\n");
-          break;
-        } else {
-          RSprintf("...........|");
-        }
-      }
-    } else {
-      RSprintf("\n");
-    }
+    scalePrintRowEnd(finalize, i, printNcol, useColor);
   }
   if (doUnscaled){
     iterType.push_back(6);
@@ -10430,34 +10381,12 @@ double nlmixr2Eval_(NumericVector theta, std::string md5){
       vPar.push_back(thetaU[i]);
     }
     if (printN != 0 && cn % printN == 0){
-      if (useColor && isRstudio)
-        RSprintf("|    U|%#14.8g |", f0);
-      else
-        RSprintf("|    U|%#14.8g |", f0);
+      RSprintf("|    U|%#14.8g |", f0);
       for (i = 0; i < n; i++){
         RSprintf("%#10.4g |", thetaU[i]);
-        if ((i + 1) != n && (i + 1) % printNcol == 0){
-          if (useColor && printNcol + i  > n){
-            RSprintf("\n\033[4m|.....................|");
-          } else {
-            RSprintf("\n|.....................|");
-          }
-          finalize=1;
-        }
+        finalize |= scalePrintWrap(1, i, n, printNcol, useColor && printNcol + i > n);
       }
-      if (finalize){
-        while(true){
-          if ((i++) % printNcol == 0){
-            if (useColor) RSprintf("\033[0m");
-            RSprintf("\n");
-            break;
-          } else {
-            RSprintf("...........|");
-          }
-        }
-      } else {
-        RSprintf("\n");
-      }
+      scalePrintRowEnd(finalize, i, printNcol, useColor);
     }
   }
   return f0;
@@ -10467,36 +10396,10 @@ void nlmixr2GradPrint(NumericVector gr, int gradType, int cn, bool useColor,
                       int printNcol, int printN, bool isRstudio){
   int n = gr.size(), finalize=0, i;
   if (printN != 0 && cn % printN == 0){
-    if (useColor && printNcol >= n){
-      switch(gradType){
-      case 1:
-        RSprintf("|\033[4m    G|    Gill Diff. |");
-        break;
-      case 2:
-        RSprintf("|\033[4m    M|   Mixed Diff. |");
-        break;
-      case 3:
-        RSprintf("|\033[4m    F| Forward Diff. |");
-        break;
-      case 4:
-        RSprintf("|\033[4m    C| Central Diff. |");
-        break;
-      }
-    } else {
-      switch(gradType){
-      case 1:
-        RSprintf("|    G|    Gill Diff. |");
-        break;
-      case 2:
-        RSprintf("|    M|   Mixed Diff. |");
-        break;
-      case 3:
-        RSprintf("|    F| Forward Diff. |");
-        break;
-      case 4:
-        RSprintf("|    C| Central Diff. |");
-        break;
-      }
+    static const char *label[] = {"    G|    Gill Diff. |", "    M|   Mixed Diff. |",
+                                  "    F| Forward Diff. |", "    C| Central Diff. |"};
+    if (gradType >= 1 && gradType <= 4) {
+      RSprintf("|%s%s", (useColor && printNcol >= n) ? "\033[4m" : "", label[gradType - 1]);
     }
     for (i = 0; i < n; i++){
       RSprintf("%#10.4g ", gr[i]);
@@ -10504,30 +10407,11 @@ void nlmixr2GradPrint(NumericVector gr, int gradType, int cn, bool useColor,
         RSprintf("\033[0m");
       }
       RSprintf("|");
-      if ((i + 1) != n && (i + 1) % printNcol == 0){
-        if (useColor && printNcol + i  >= n){
-          RSprintf("\n\033[4m|.....................|");
-        } else {
-          RSprintf("\n|.....................|");
-        }
-        finalize=1;
-      }
+      finalize |= scalePrintWrap(1, i, n, printNcol, useColor && printNcol + i >= n);
     }
-    if (finalize){
-      while(true){
-        if ((i++) % printNcol == 0){
-          if (useColor) RSprintf("\033[0m");
-          RSprintf("\n");
-          break;
-        } else {
-          RSprintf("...........|");
-        }
-      }
-    } else {
-      RSprintf("\n");
-    }
+    scalePrintRowEnd(finalize, i, printNcol, useColor);
     if (!useColor){
-      foceiPrintLine(min2(n, printNcol));
+      scalePrintLine(1, min2(n, printNcol));
     }
   }
 }
@@ -11888,102 +11772,28 @@ void addLlikObs(Environment e) {
 void parHistData(Environment e, bool focei){
   if (!e.exists("method") && iterType.size() > 0) {
     CharacterVector thetaNames=as<CharacterVector>(e["thetaNames"]);
-    CharacterVector dfNames;
-    if (focei){
-      CharacterVector dfNames2(3+op_focei.nparsPrint);
-      dfNames = dfNames2;
-    } else {
-      CharacterVector dfNames2(3+thetaNames.size());
-      dfNames = dfNames2;
-    }
-    dfNames[0] = "iter";
-    dfNames[1] = "type";
-    dfNames[2] = "objf";
-    int i, j, k=1;
+    CharacterVector names = thetaNames;
     if (focei){
       // print-map order: optimizer columns plus regression-updated mu thetas
       // at their natural positions (identity over fixedTrans when muModel off)
-      for (i = 0; i < (int)op_focei.nparsPrint; i++){
-        j=_printFullIdx[i];
+      names = CharacterVector(op_focei.nparsPrint);
+      int k = 1;
+      for (int i = 0; i < (int)op_focei.nparsPrint; i++){
+        int j=_printFullIdx[i];
         if (j < thetaNames.size()){
-          dfNames[i+3] = thetaNames[j];
+          names[i] = thetaNames[j];
         } else {
-          dfNames[i+3] = "o" + std::to_string(k++);
+          names[i] = "o" + std::to_string(k++);
         }
       }
-    } else {
-      for (i = 0; i < thetaNames.size(); i++){
-        dfNames[i+3] = thetaNames[i];
-      }
     }
-    // iter type parameters
-    List ret;
-    if (focei){
-      ret = List(3+op_focei.nparsPrint);
-    } else {
-      ret = List(3+thetaNames.size());
-    }
-    int sz = niter.size()+niterGrad.size();
-    IntegerVector tmp;
-    std::vector<int> iter;
-    iter.reserve(sz);
-    iter.insert(iter.end(), niter.begin(), niter.end());
-    iter.insert(iter.end(), niterGrad.begin(), niterGrad.end());
-    ret[0] = iter;
-    tmp = IntegerVector(sz);
-    std::vector<int> typ;
-    typ.reserve(sz);
-    typ.insert(typ.end(), iterType.begin(), iterType.end());
-    typ.insert(typ.end(), gradType.begin(), gradType.end());
-    tmp = typ;
-    tmp.attr("levels") = CharacterVector::create("Gill83 Gradient", "Mixed Gradient",
-                                                 "Forward Difference", "Central Difference",
-                                                 "Scaled", "Unscaled", "Back-Transformed",
-                                                 "Forward Sensitivity", "Analytic Gradient",
-                                                 "Analytic Gradient (relaxed)",
-                                                 "Analytic Gradient (finite difference)",
-                                                 "Analytic Gradient (Chartrand)");
-    tmp.attr("class") = "factor";
-    ret[1] = tmp;
-    arma::mat cPar(vPar.size()/iterType.size(), iterType.size());
-    std::copy(vPar.begin(), vPar.end(), cPar.begin());
-    arma::mat vals;
-    if (vGrad.size() > 0){
-      arma::mat cGrad(vGrad.size()/gradType.size(), gradType.size());
-      std::copy(vGrad.begin(), vGrad.end(), cGrad.begin());
-      cPar = cPar.t();
-      cGrad = cGrad.t();
-      vals = arma::join_cols(cPar, cGrad);
-    } else {
-      cPar = cPar.t();
-      vals = cPar;
-    }
-    if (focei){
-      for (i = 0; i < min2(op_focei.nparsPrint+1, vals.n_cols); i++){
-        ret[i+2]= vals.col(i);
-      }
-    } else {
-      for (i = 0; i < thetaNames.size()+1; i++){
-        ret[i+2]= vals.col(i);
-      }
-    }
-    vGrad.clear();
-    vPar.clear();
-    iterType.clear();
-    gradType.clear();
-    niter.clear();
-    niterGrad.clear();
-    ret.attr("names")=dfNames;
-    ret.attr("class") = "data.frame";
-    ret.attr("row.names")=IntegerVector::create(NA_INTEGER, -sz);
+    List ret = scaleParHisList(names, niter, iterType, vPar, niterGrad, gradType, vGrad);
     Function loadNamespace("loadNamespace", R_BaseNamespace);
     Environment nlmixr2 = loadNamespace("nlmixr2est");
     Environment thetaReset = nlmixr2[".thetaReset"];
     if (thetaReset.exists("parHistData")) {
       // rbind  data.
       if (TYPEOF(thetaReset["parHistData"]) == VECSXP) {
-        Function loadNamespace("loadNamespace", R_BaseNamespace);
-        Environment nlmixr2 = loadNamespace("nlmixr2est");
         Function rbind = nlmixr2[".rbindParHistory"];
         ret = rbind(thetaReset["parHistData"], ret);
       }
@@ -13010,7 +12820,7 @@ void impIterPrintRow(arma::vec& par, double obj) {
 // scaleParHisDf clears the accumulators.
 void impIterPrintGet(Environment e) {
   scaling *s = &op_focei.scale;
-  if (s->every != 0) scalePrintLine(s, min2((int)s->npars, s->ncol));
+  if (s->every != 0) scalePrintLine(s->showOfv, min2((int)s->npars, s->ncol));
   RObject ph = scaleParHisDf(s);
   if (!ph.isNULL()) e["parHistData"] = ph;
 }
@@ -19137,7 +18947,7 @@ RObject vaeIterPrintRow_(NumericVector x, double f, std::string phase = "") {
 RObject vaeIterPrintGet_(bool printLine = true) {
   _vaeScale.save = 0;
   _vaeScale.every = 0;
-  if (printLine) scalePrintLine(&_vaeScale, min2(_vaeScale.npars, _vaeScale.ncol));
+  if (printLine) scalePrintLine(_vaeScale.showOfv, min2(_vaeScale.npars, _vaeScale.ncol));
   return scaleParHisDf(&_vaeScale);
 }
 
@@ -21178,7 +20988,7 @@ RObject foceiLikIterPrintEnd_() {
   if (!_foceiLikIterOn) return R_NilValue;
   scaling *s = &_foceiLikIterScale;
   s->save = 0;
-  if (_foceiLikIterEvery != 0) scalePrintLine(s, min2((int)s->npars, s->ncol));
+  if (_foceiLikIterEvery != 0) scalePrintLine(s->showOfv, min2((int)s->npars, s->ncol));
   RObject ph = scaleParHisDf(s);
   _foceiLikIterOn = false;
   _foceiLikIterEvery = 0;

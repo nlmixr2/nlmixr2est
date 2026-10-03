@@ -16,13 +16,31 @@
 #include "censEst.h"   // censNormalPartials: exact censored rho(f,R) partials (M2/M3/M4)
 using namespace arma;
 
+// Exact score partials rf..rRR of every censored (M2/M3/M4) obs -- censv[o]!=0 or a finite
+// limv[o] -- then fn(o, cp) with all of its order-3 censNormalPartials cp[0..8].
+template <typename F>
+static inline void censObsPartials(const arma::ivec& censv, const arma::vec& limv,
+                                   const arma::vec& fv, const arma::vec& yv, const arma::vec& Rv, int nobs,
+                                   arma::vec& rf, arma::vec& rR, arma::vec& rff, arma::vec& rfR, arma::vec& rRR,
+                                   F fn) {
+  if ((int)censv.n_elem != nobs) return;
+  for (int o = 0; o < nobs; o++) {
+    double lim = limv.n_elem == (unsigned) nobs ? limv[o] : R_NegInf;
+    if (censv[o] == 0 && !(R_FINITE(lim) && !ISNA(lim))) continue;
+    double cp[9] = {0.0};
+    censNormalPartials((double)censv[o], yv[o], lim, fv[o], Rv[o], 3, cp);
+    rf[o] = cp[0];  rR[o] = cp[1];  rff[o] = cp[2];  rfR[o] = cp[3];  rRR[o] = cp[4];
+    fn(o, cp);
+  }
+}
+
 // Fill the per-observation determinant coefficients dff/dfr/drr (2nd order) and their
 // (f,R) partials p_fff/p_ffR/p_frf/p_fRR/p_RRR (3rd order), plus override the score/realized-H
 // partials rf/rR/rff/rfR/rRR for censored observations.  Normal obs keep the Gaussian
 // expected-info determinant (dff=1/R, dfr=0, drr=0.5/R^2; p_ffR=-1/R^2, p_RRR=-1/R^3,
 // rest 0).  Censored obs always get the censored realized 2nd derivs (rf..rRR); the
 // determinant coeffs follow only under censOption "laplace" (1) -- "gauss" (0) keeps the
-// Gaussian determinant.  censv[o]!=0 or a finite limv[o] marks a censored (M2/M3/M4) obs.
+// Gaussian determinant.
 //
 // p_frf = d(dfr)/df is carried separately from p_ffR = d(dff)/dR.  The two agree only when
 // (dff,dfr,drr) are second partials of a potential, which the censored laplace determinant is
@@ -36,27 +54,17 @@ static inline void censGradCoefs(const arma::ivec& censv, const arma::vec& limv,
                                  arma::vec& dff, arma::vec& dfr, arma::vec& drr,
                                  arma::vec& pfff, arma::vec& pffR, arma::vec& pfRR, arma::vec& pRRR,
                                  arma::vec& pfrf) {
-  const bool hasCens = ((int)censv.n_elem == nobs);
   // normal defaults for the determinant coeffs
   dff = 1.0 / Rv;  dfr = arma::zeros<arma::vec>(nobs);  drr = 0.5 / square(Rv);
   pfff = arma::zeros<arma::vec>(nobs);  pffR = -1.0 / square(Rv);
   pfRR = arma::zeros<arma::vec>(nobs);  pRRR = -1.0 / pow(Rv, 3);
   pfrf = arma::zeros<arma::vec>(nobs);   // dfr == 0 in f and R, so d(dfr)/df = 0 (not p_ffR)
-  if (!hasCens) return;
-  for (int o = 0; o < nobs; o++) {
-    double lim = limv.n_elem == (unsigned) nobs ? limv[o] : R_NegInf;
-    int cens = censv[o];
-    bool isCens = (cens != 0) || (R_FINITE(lim) && !ISNA(lim));
-    if (!isCens) continue;
-    double cp[9]; for (int i = 0; i < 9; i++) cp[i] = 0.0;
-    censNormalPartials((double)cens, yv[o], lim, fv[o], Rv[o], 3, cp);
-    rf[o] = cp[0];  rR[o] = cp[1];  rff[o] = cp[2];  rfR[o] = cp[3];  rRR[o] = cp[4];  // always
-    if (censOpt == 1) {   // laplace: exact censored determinant
-      dff[o] = cp[2];  dfr[o] = cp[3];  drr[o] = cp[4];
-      pfff[o] = cp[5]; pffR[o] = cp[6]; pfRR[o] = cp[7]; pRRR[o] = cp[8];
-      pfrf[o] = cp[6];   // censored determinant is integrable, so d(dfr)/df = p_ffR
-    }
-  }
+  censObsPartials(censv, limv, fv, yv, Rv, nobs, rf, rR, rff, rfR, rRR, [&](int o, const double *cp) {
+    if (censOpt != 1) return;   // laplace: exact censored determinant
+    dff[o] = cp[2];  dfr[o] = cp[3];  drr[o] = cp[4];
+    pfff[o] = cp[5]; pffR[o] = cp[6]; pfRR[o] = cp[7]; pRRR[o] = cp[8];
+    pfrf[o] = cp[6];   // censored determinant is integrable, so d(dfr)/df = p_ffR
+  });
 }
 
 // Overwrite the per-obs rho SCORE partials (1st..3rd order) with the exact censored
@@ -64,24 +72,15 @@ static inline void censGradCoefs(const arma::ivec& censv, const arma::vec& limv,
 // the (f,R) covariance score terms (Gdd/N/Tn -> the true inner Hessian and its parameter
 // chain).  The Laplace-determinant block (Ht/dHtD/d2HtDD) stays Gauss-Newton, matching the
 // default censOption="gauss" fit; a laplace-censored cov (censored determinant) bows out to
-// FD in R.  censv[o]!=0 or a finite limv[o] marks a censored obs.  rfff is Gaussian-zero.
+// FD in R.  rfff is Gaussian-zero.
 static inline void censScoreCoefs(const arma::ivec& censv, const arma::vec& limv,
                                   const arma::vec& fv, const arma::vec& yv, const arma::vec& Rv, int nobs,
                                   arma::vec& rf, arma::vec& rR, arma::vec& rff, arma::vec& rfR, arma::vec& rRR,
                                   arma::vec& rffR, arma::vec& rfRR, arma::vec& rRRR, arma::vec& rfff) {
-  const bool hasCens = ((int)censv.n_elem == nobs);
   rfff = arma::zeros<arma::vec>(nobs);            // Gaussian rho has rho_fff = 0
-  if (!hasCens) return;
-  for (int o = 0; o < nobs; o++) {
-    double lim = limv.n_elem == (unsigned) nobs ? limv[o] : R_NegInf;
-    int cens = censv[o];
-    bool isCens = (cens != 0) || (R_FINITE(lim) && !ISNA(lim));
-    if (!isCens) continue;
-    double cp[9]; for (int i = 0; i < 9; i++) cp[i] = 0.0;
-    censNormalPartials((double)cens, yv[o], lim, fv[o], Rv[o], 3, cp);
-    rf[o] = cp[0]; rR[o] = cp[1]; rff[o] = cp[2]; rfR[o] = cp[3]; rRR[o] = cp[4];
+  censObsPartials(censv, limv, fv, yv, Rv, nobs, rf, rR, rff, rfR, rRR, [&](int o, const double *cp) {
     rfff[o] = cp[5]; rffR[o] = cp[6]; rfRR[o] = cp[7]; rRRR[o] = cp[8];
-  }
+  });
 }
 
 // (f,R) FOCEI per-subject outer gradient.

@@ -22,6 +22,13 @@
   model with a different history: its estimates were biased, and the
   residuals it minimized did not match the fit's own table.
 
+- `est="nls"` started from parameters that are all zero (all-zero initial
+  estimates with `nlsControl(scaleTo = 0)`) now solves the model for its first
+  evaluation.  It answered that evaluation from an empty cache, all zero
+  residuals and Jacobian, and stopped with `incorrect number of dimensions`
+  (`singular gradient matrix at initial parameter estimates` with
+  `algorithm = "default"`).
+
 - `est="nls"` with `nlsControl(solveType="fun")` fits a model that uses
   `lag()` of a calculated variable.  It stopped with `The following
   parameter(s) are required for solving`, because its model did not define
@@ -131,6 +138,12 @@
   are now ignored past them (after the existing warning).  They were written
   over the adaptive quadrature nodes, changing an `agq` objective, and a long
   enough vector past the end of the buffer, crashing the fit.
+
+- `setOfv(fit, "laplace<n>")` and `setOfv(fit, "gauss<n>_<sd>")` on a saem fit
+  whose environment holds no `adjObf` now take it from the fit's control, as
+  `setOfv(fit, "imp")` does, instead of stopping with `arguments imply
+  differing number of rows`.  Both now read the fit's own control (`$control`);
+  the imp objective read `$foceiControl`, which never holds `adjObf`.
 
 ### Covariance and finite differences
 

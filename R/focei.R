@@ -263,52 +263,48 @@ is.latex <- function() {
   .ret
 }
 
-#' Damped-BFGS curvature for the outer trust region
+#' Damped-BFGS update of the outer trust region's curvature
 #'
-#' Returns the updater.  `trust_solve_c()` calls the objective at every TRIAL
-#' point, accepted or not, so the secant pair is consecutive CALLS -- the same
-#' convention `nlmTrustObjfun()` uses for the analogous outer problem
-#' (`src/nlm.cpp`).
-#' @param n number of parameters
-#' @return function(x, gradient) returning the current Hessian estimate
+#' `trust_solve_c()` calls the objective at every TRIAL point, accepted or not,
+#' so the secant pair is consecutive CALLS -- the same convention
+#' `nlmTrustObjfun()` uses for the analogous outer problem (`src/nlm.cpp`).
+#' It does not call `trustHessianUpdate()` (src/trustHessianUpdate.h): that
+#' rounds differently (it differs bitwise from this on most updates), which
+#' would move the iterates of every `outerOpt="trust"` fit.
+#' @param state environment holding the estimate `b` and the previous call's
+#'   `xPrev` and `gPrev`, which this updates
+#' @param x,g the point and its gradient
+#' @return the current Hessian estimate
 #' @noRd
-.trustOuterBfgs <- function(n) {
-  .b <- diag(n)
-  .xPrev <- NULL
-  .gPrev <- NULL
-  function(x, g) {
-    if (!is.null(.xPrev)) {
-      .s <- x - .xPrev
-      .y <- g - .gPrev
-      .bs <- drop(.b %*% .s)
-      .sBs <- sum(.s * .bs)
-      .sy <- sum(.s * .y)
-      if (is.finite(.sBs) && .sBs > 0 && all(is.finite(.y))) {
-        # Damped BFGS (Nocedal & Wright, Numerical Optimization 2nd ed,
-        # Procedure 18.2): keeps the update positive definite when the outer
-        # objective's curvature along s is not.
-        .r <- if (.sy >= 0.2 * .sBs) {
-          .y
-        } else {
-          .th <- 0.8 * .sBs / (.sBs - .sy)
-          .th * .y + (1 - .th) * .bs
-        }
-        .sr <- sum(.s * .r)
-        # Same near-zero-denominator skip as trustHessianUpdate() (src/
-        # trustHessianUpdate.h): a reject-then-shrink step gives a secant pair
-        # whose rank-2 correction is enormous and meaningless.
-        if (
-          is.finite(.sr) &&
-            .sr > 1e-10 * sqrt(sum(.s^2)) * sqrt(sum(.r^2))
-        ) {
-          .b <<- .b - outer(.bs, .bs) / .sBs + outer(.r, .r) / .sr
-        }
+.trustOuterBfgs <- function(state, x, g) {
+  if (!is.null(state$xPrev)) {
+    .s <- x - state$xPrev
+    .y <- g - state$gPrev
+    .bs <- drop(state$b %*% .s)
+    .sBs <- sum(.s * .bs)
+    .sy <- sum(.s * .y)
+    if (is.finite(.sBs) && .sBs > 0 && all(is.finite(.y))) {
+      # Damped BFGS (Nocedal & Wright, Numerical Optimization 2nd ed,
+      # Procedure 18.2): keeps the update positive definite when the outer
+      # objective's curvature along s is not.
+      .r <- if (.sy >= 0.2 * .sBs) {
+        .y
+      } else {
+        .th <- 0.8 * .sBs / (.sBs - .sy)
+        .th * .y + (1 - .th) * .bs
+      }
+      .sr <- sum(.s * .r)
+      # Same near-zero-denominator skip as trustHessianUpdate(): a
+      # reject-then-shrink step gives a secant pair whose rank-2 correction is
+      # enormous and meaningless.
+      if (is.finite(.sr) && .sr > 1e-10 * sqrt(sum(.s^2)) * sqrt(sum(.r^2))) {
+        state$b <- state$b - outer(.bs, .bs) / .sBs + outer(.r, .r) / .sr
       }
     }
-    .xPrev <<- x
-    .gPrev <<- g
-    .b
   }
+  state$xPrev <- x
+  state$gPrev <- g
+  state$b
 }
 
 #' Finite-difference curvature for the outer trust region
@@ -505,27 +501,28 @@ is.latex <- function() {
 #' @param fn,gr outer objective and gradient
 #' @param relStep relative step, for both the analytic entry and the difference
 #' @param lower,upper box the outer problem optimizes in
-#' @return environment with `hessian(x, gradient)`, `calls` and `fallback`
+#' @return environment with `hessian(x, gradient)`, `calls`, `fallback`, the
+#'   current `method` and the BFGS state
 #' @noRd
 .trustOuterCurvature <- function(control, fn, gr, relStep, lower, upper) {
-  .method <- .trustOuterMethod(control)
-  .bfgs <- .trustOuterBfgs(length(lower))
   .fd <- .trustOuterFd(fn, gr, relStep, lower, upper)
   .state <- new.env(parent = emptyenv())
+  .state$method <- .trustOuterMethod(control)
+  .state$b <- diag(length(lower))
   .state$calls <- 0L
   .state$fallback <- FALSE
   .state$hessian <- function(x, g) {
-    .qn <- .bfgs(x, g)
+    .qn <- .trustOuterBfgs(.state, x, g)
     .h <- NULL
-    if (.method == "analytic") {
+    if (.state$method == "analytic") {
       .state$calls <- .state$calls + 1L
       .h <- tryCatch(control$hessian(x, relStep = relStep), error = function(e) {
         .state$fallback <- TRUE
-        .method <<- "bfgs"
+        .state$method <- "bfgs"
         warning("analytic outer Hessian unavailable; trust continues with BFGS", call. = FALSE)
         NULL
       })
-    } else if (.method == "fd") {
+    } else if (.state$method == "fd") {
       .h <- .fd(x, g)
     }
     if (is.null(.h)) {
