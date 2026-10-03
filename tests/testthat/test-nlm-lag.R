@@ -95,6 +95,15 @@ nmTest({
     expect_equal(.nlsGrad$theta, .nls$theta, tolerance = 1e-4)
   })
 
+  test_that("the lagged definitions are matched by name (issue 1140)", {
+    .s <- new.env(parent = emptyenv())
+    .s$..laggedVars <- "c.0"
+    .s$..lhs <- c("cx0=1", "c.0=2*central")
+    expect_identical(.nlmFamilyLagDefs(.s), "c.0=2*central")
+    .s <- suppressMessages(rxode2::rxode2(.lagMod)$nlmEnv)
+    expect_identical(.nlmFamilyLagDefs(.s), "c0=exp(-THETA[3])*central")
+  })
+
   test_that("the table step stops when the solve has no prediction column (issue 1140)", {
     # columns are found by name, never guessed by position
     .df <- list(ID = 1L, time = 0, c0 = 1, rx_r_ = 1, rxLambda = 1, rxYj = 2, rxLow = 0, rxHi = 1)

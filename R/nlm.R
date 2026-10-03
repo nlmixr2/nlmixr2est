@@ -603,8 +603,7 @@ attr(rxUiGet.nlmParams, "rstudio") <- "params()"
   if (is.null(s$..laggedVars) || length(s$..laggedVars) == 0L || is.null(s$..lhs)) {
     return(character(0))
   }
-  .pat <- paste0("^(", paste0(s$..laggedVars, collapse = "|"), ")=")
-  s$..lhs[grepl(.pat, s$..lhs)]
+  s$..lhs[sub("=.*$", "", s$..lhs) %in% s$..laggedVars]
 }
 
 #' @export
