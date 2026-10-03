@@ -231,4 +231,21 @@ nmTest({
     expect_silent(.trustWarnUnderConverged(list(underConverged = FALSE)))
     expect_silent(.trustWarnUnderConverged(list()))
   })
+
+  test_that("a trust solver error installs no covariance", {
+    skip_on_cran()
+    # a failed solve hands back a zero-filled Hessian, which used to be
+    # regularized by cholSE() into a covariance labelled "r"
+    .solve <- nlmTrustFit
+    local_mocked_bindings(nlmTrustFit = function(theta, control) {
+      .r <- .solve(theta, control)
+      .r$error <- -1L
+      .r$hessian[] <- 0
+      .r
+    })
+    .fT <- .nlmixr(.oneCmt, nlmixr2data::theo_sd, est = "trust", control = trustControl(print = 0L, calcTables = FALSE))
+    expect_identical(.fT$covMethod, "failed")
+    expect_null(.fT$cov)
+    expect_true("R matrix is not finite; covariance step failed" %in% .fT$runInfo)
+  })
 })

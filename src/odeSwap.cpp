@@ -365,8 +365,6 @@ void odeSwapClearAll() {
 
 bool odeSwapLoaded(int slot) { return odeSlotOk(slot) && _odeReg[slot].loaded; }
 int  odeSwapNSens(int slot)  { return odeSwapLoaded(slot) ? _odeReg[slot].nSens : 0; }
-int  odeSwapCmtPar(int slot) { return odeSwapLoaded(slot) ? _odeReg[slot].cmtPar : -1; }
-int  odeSwapNdiff(int slot)  { return odeSwapLoaded(slot) ? _odeReg[slot].ndiff : 0; }
 
 // True if ANY registered slot declared an ndiff (i.e. this fit has a linCmt()
 // peer whose cached Jacobian depends on rx->ndiff).  Used to gate the extra
@@ -503,8 +501,6 @@ OdeSwapCmtScope::~OdeSwapCmtScope() {
 
 int  odeSwapNeq(int slot)    { return odeSwapLoaded(slot) ? _odeReg[slot].neq  : 0; }
 int  odeSwapNlhs(int slot)   { return odeSwapLoaded(slot) ? _odeReg[slot].nlhs : 0; }
-int  odeSwapNpars(int slot)  { return odeSwapLoaded(slot) ? _odeReg[slot].npars : 0; }
-const char *odeSwapName(int slot) { return odeSwapLoaded(slot) ? _odeReg[slot].name : NULL; }
 
 // `THETA[k]`/`ETA[k]` and `THETA_k_`/`ETA_k_` name the SAME par_ptr position.  The
 // inner/pred/hess2 models carry rxode2's bracketed spelling; the augmented models are
@@ -943,11 +939,6 @@ void odeSwapPinAll(int slot) {
   odeSwapPinWalk(odeSwapNeq(slot));
   _odePinnedSlot = slot;
   _odePinnedN.fetch_add(1, std::memory_order_relaxed);
-}
-
-void odeSwapRepin() {
-  if (_odePinnedSlot < 0) return;
-  odeSwapPinWalk(odeSwapNeq(_odePinnedSlot));
 }
 
 void odeSwapUnpinAll() {

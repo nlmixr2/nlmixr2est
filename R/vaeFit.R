@@ -26,18 +26,6 @@
   )
 }
 
-#' Clamp a parameter vector to [lower, upper] (elementwise; NULL bounds = no-op).
-#' @noRd
-.vaeClamp <- function(v, lower, upper) {
-  if (!is.null(lower)) {
-    v <- pmax(v, lower)
-  }
-  if (!is.null(upper)) {
-    v <- pmin(v, upper)
-  }
-  v
-}
-
 #' Assemble the full theta vector from current z_pop (structural) + a (residual)
 #' @noRd
 .vaeBuildTh <- function(prep, zPop, a) {
@@ -92,55 +80,6 @@
     10^(0.5),
     TRUE
   )
-}
-
-#' Closed-form error-parameter M-step for additive / proportional / combined
-#' residual models, robust to non-finite predictions (dropped, not poisoning the
-#' estimate). Returns the error-param vector in `prep$errThetaIdx` order.
-#'  add:      R = a^2               -> a = sqrt(mean(res^2))
-#'  prop:     R = (b*f)^2           -> b = sqrt(mean((res/f)^2))
-#'  combined: R = a^2 + (b*f)^2     -> nnls of res^2 on [1, f^2]
-#' Other error types keep their current value (the inner likelihood still uses
-#' them correctly; only their closed-form update is unavailable).
-#' @noRd
-.vaeUpdateErr <- function(preds, prep, a) {
-  if (length(a) == 0L) {
-    return(a)
-  }
-  res <- numeric(0)
-  f <- numeric(0)
-  for (i in seq_len(prep$N)) {
-    r <- prep$subj[[i]]$y - preds[[i]]
-    ff <- preds[[i]]
-    ok <- is.finite(r) & is.finite(ff)
-    res <- c(res, r[ok])
-    f <- c(f, ff[ok])
-  }
-  if (length(res) == 0L) {
-    return(a)
-  }
-  types <- prep$errType
-  hasAdd <- which(types == "add")
-  hasProp <- which(types == "prop")
-  aNew <- a
-  if (length(hasAdd) && length(hasProp)) {
-    ## combined: res^2 ~ a^2 + b^2 f^2 (non-negative least squares, 2 columns)
-    X <- cbind(1, f^2)
-    cf <- tryCatch(stats::lm.fit(X, res^2)$coefficients, error = function(e) c(NA, NA))
-    v0 <- max(cf[1], .Machine$double.eps)
-    v1 <- max(cf[2], .Machine$double.eps)
-    if (is.finite(v0)) {
-      aNew[hasAdd[1]] <- sqrt(v0)
-    }
-    if (is.finite(v1)) aNew[hasProp[1]] <- sqrt(v1)
-  } else if (length(hasAdd)) {
-    aNew[hasAdd[1]] <- sqrt(mean(res^2))
-  } else if (length(hasProp)) {
-    ok <- abs(f) > 1e-8
-    if (any(ok)) aNew[hasProp[1]] <- sqrt(mean((res[ok] / f[ok])^2))
-  }
-  aNew[!is.finite(aNew)] <- a[!is.finite(aNew)]
-  .vaeClamp(aNew, prep$errLower, prep$errUpper)
 }
 
 #' Tracked population parameters (structural typical values, omega diagonal,

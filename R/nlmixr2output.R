@@ -1,25 +1,3 @@
-.getBackTransformationFunction <- function(par, ui) {
-  # This has a specified back-transformation
-  .w <- which(ui$iniDf$name == par)
-  if (length(.w) == 1L) {
-    .b <- ui$iniDf$backTransform
-    if (!is.na(.b)) {
-      return(.b)
-    }
-  }
-  # Extra mu-ref info (e.g. exp(tv + eta.v + 2)) means no default back-transformation
-  .w <- which(ui$muRefExtra$parameter == par)
-  if (length(.w) == 1L) {
-    return("")
-  }
-  # Covariates should be reported without back-transformation
-  .w <- which(ui$muRefCovariateDataFrame$covariateParameter == par)
-  if (length(.w) == 1L) {
-    return("")
-  }
-  NULL
-}
-
 #' Back-transform a literally-fixed theta value for the $parFixed table
 #'
 #' Literally-fixed thetas are re-inserted into $popDf after the C++/inner step,
@@ -367,9 +345,12 @@
 #' @param onlyMissing when `TRUE` update only rows whose SE is missing or
 #'   non-finite (used when `cov` adds rows -- e.g. residual thetas -- to a
 #'   table whose structural SEs are already correct)
+#' @param ciIdentity when `TRUE` the CI is `Estimate +/- z SE`, set only on rows
+#'   whose back-transformed value is the estimate (the variational covariance's
+#'   rule); otherwise it is back-transformed like the estimate
 #' @return invisibly, called for side effects on `env`
 #' @noRd
-.updateParFixedRefreshSeFromCov <- function(env, cov, onlyMissing = FALSE) {
+.updateParFixedRefreshSeFromCov <- function(env, cov, onlyMissing = FALSE, ciIdentity = FALSE) {
   if (!exists("parFixedDf", envir = env, inherits = FALSE)) {
     return(invisible())
   }
@@ -411,6 +392,9 @@
       # probitInv) reproduces the stored back-transformed value; rows with a
       # manual backTransform keep their existing CI
       .btf <- function(.v) {
+        if (ciIdentity) {
+          return(.v)
+        }
         tryCatch(.updateParFixedBackTransformFixed(env$ui, .n, .v), error = function(e) .v)
       }
       if (isTRUE(all.equal(unname(.pf[.n, "Back-transformed"]), unname(.btf(.e))))) {
