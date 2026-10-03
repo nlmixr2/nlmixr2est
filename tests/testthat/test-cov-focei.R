@@ -148,4 +148,141 @@ nmTest({
     fit <- .nlmixr(one.compartment, theo_sd, est = "focei", control = foceiControl(print = 0, maxOuterIterations = 0L))
     expect_s3_class(fit, "nlmixr2FitCore")
   })
+
+  test_that("shi21maxOuter runs no step search of its own in the covariance step", {
+    one.cmt <- function() {
+      ini({
+        tka <- log(1.5); tcl <- log(2.7); tv <- log(31.5)
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    # innerOpt = "trust" counts every inner solve, so nTrustInner counts the
+    # objective evaluations of the whole fit
+    .ctl <- foceiControl(
+      print = 0,
+      maxOuterIterations = 0L,
+      covFull = FALSE,
+      innerOpt = "trust"
+    )
+    .gill <- .nlmixr(one.cmt, theo_sd, "focei", .ctl)
+    .ctl$shi21maxOuter <- 8L
+    .shi <- .nlmixr(one.cmt, theo_sd, "focei", .ctl)
+    # The covariance steps are Gill's either way.  A Shi21 search used to run
+    # first, be overwritten, and leave the inner problem where its last probe
+    # put it.
+    expect_identical(.shi$nTrustInner, .gill$nTrustInner)
+    expect_identical(.shi$scaleInfo, .gill$scaleInfo)
+    expect_identical(.shi$cov, .gill$cov)
+  })
+
+  test_that("every covariance stage is taken about the estimates", {
+    one.cmt <- function() {
+      ini({
+        tka <- log(1.5); tcl <- log(2.7); tv <- log(31.5)
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    # "s" runs S and the full FD straight after the step search.  "r,s" runs
+    # the R stencil first, whose last leg used to leave theta at
+    # theta0 - 2*eps0, where S then took its centre, and whose own last leg
+    # moved it again before the full FD read it.
+    .rs <- .nlmixr(one.cmt, theo_sd, "focei", foceiControl(print = 0))
+    .s <- .nlmixr(one.cmt, theo_sd, "focei", foceiControl(print = 0, covMethod = "s"))
+    expect_equal(.rs$env$S0, .s$env$S0, tolerance = 1e-6)
+    expect_equal(.rs$env$.fdFullCov, .s$env$.fdFullCov, tolerance = 1e-6)
+    expect_equal(.rs$env$.fdFullS, .s$env$.fdFullS, tolerance = 1e-6)
+  })
+
+  test_that("llikObs is that of the estimates, not of the last covariance leg", {
+    one.cmt <- function() {
+      ini({
+        tka <- log(1.5); tcl <- log(2.7); tv <- log(31.5)
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .ctl <- list(focei = foceiControl, laplace = laplaceControl)
+    for (.est in names(.ctl)) {
+      .def <- .nlmixr(one.cmt, theo_sd, .est, .ctl[[.est]](print = 0, maxOuterIterations = 0L))
+      .none <- .nlmixr(
+        one.cmt,
+        theo_sd,
+        .est,
+        .ctl[[.est]](print = 0, maxOuterIterations = 0L, covMethod = "")
+      )
+      expect_false(is.null(.def$cov))
+      expect_identical(.def$llikObs, .none$llikObs, label = .est)
+    }
+    # with no etas the objective is -2 * the sum of llikObs, and the covariance
+    # step is the R matrix alone
+    noEta <- function() {
+      ini({
+        tka <- 0.45; tcl <- 1; tv <- 3.45
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka); cl <- exp(tcl); v <- exp(tv)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .pop <- .nlmixr(noEta, theo_sd, "focei", foceiControl(print = 0, maxOuterIterations = 0L))
+    expect_false(is.null(.pop$cov))
+    expect_equal(-2 * sum(.pop$llikObs, na.rm = TRUE), .pop$objf)
+  })
+
+  test_that("a non-positive-definite R or S is never installed as it is", {
+    # one estimated parameter at a point where the objective is concave: R < 0,
+    # which cholSE0 (like for every 1x1 matrix) called positive definite, so
+    # 1/(cholSEtol*|R|) was installed as "r"
+    d <- data.frame(ID = rep(1:2, each = 3), TIME = rep(1:3, 2), DV = 5)
+    peak <- function() {
+      ini({
+        ta <- 3
+        add.sd <- fix(1)
+      })
+      model({
+        cp <- 10 * exp(-(ta - 3)^2)
+        cp ~ add(add.sd)
+      })
+    }
+    .f1 <- .nlmixr(peak, d, "focei", foceiControl(print = 0, maxOuterIterations = 0L))
+    expect_lt(.f1$env$R.0[1, 1], 0)
+    expect_equal(.f1$covMethod, "|r|")
+    expect_equal(.f1$cov[1, 1], 1 / abs(.f1$env$R.0[1, 1]))
+    # one subject: S is rank one and cannot be repaired; it was labelled "s"
+    # with no covariance
+    one.cmt <- function() {
+      ini({
+        tka <- log(1.5); tcl <- log(2.7); tv <- log(31.5)
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .f2 <- .nlmixr(
+      one.cmt,
+      theo_sd[theo_sd$ID == 1, ],
+      "focei",
+      foceiControl(print = 0, maxOuterIterations = 0L, covMethod = "s", cholAccept = 0)
+    )
+    expect_true(!is.null(.f2$cov) || identical(.f2$covMethod, "failed"))
+    expect_equal(.f2$covMethod, "failed")
+  })
 })
