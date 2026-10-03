@@ -498,21 +498,34 @@ static inline void scaleAttachXform(scaling *scale,
   scale->probitThetaHi  = scale->probitHiStorage .empty() ? NULL : scale->probitHiStorage .data();
 }
 
-// Wrap-continuation marker for rows with more parameter columns than fit in
-// `ncol`; its width matches the label prefix so wrapped columns line up.
-// `colored` selects the ANSI-underlined variant used with `useColor`.
-static inline const char *scaleWrapMarker(scaling *scale, int colored) {
-  if (colored) {
-    return scale->showOfv ? "\n\033[4m|.....................|"
-                          : "\n\033[4m|.....|";
+// The iteration table's row primitives, shared with nlmixr2GradFun's table
+// (src/inner.cpp).  showOfv = 0 drops the Function-Val column.
+
+// After cell i of an n-cell row, wraps every ncol cells onto a continuation line whose
+// marker width matches the label prefix, so wrapped columns line up; `underline`
+// selects the ANSI-underlined marker.  Returns 1 when it wrapped.
+static inline int scalePrintWrap(int showOfv, int i, int n, int ncol, int underline) {
+  if ((i + 1) == n || (i + 1) % ncol != 0) return 0;
+  if (underline) {
+    RSprintf("%s", showOfv ? "\n\033[4m|.....................|" : "\n\033[4m|.....|");
+  } else {
+    RSprintf("%s", showOfv ? "\n|.....................|" : "\n|.....|");
   }
-  return scale->showOfv ? "\n|.....................|" : "\n|.....|";
+  return 1;
 }
 
-// Separator line under the column header / between iteration blocks; skips
-// the Function-Val segment when showOfv is 0 to match the header/rows.
-static inline void scalePrintLine(scaling *scale, int ncol) {
-  if (scale->showOfv) {
+// Ends a row whose last cell was i-1; a wrapped row first pads its last line to ncol cells.
+static inline void scalePrintRowEnd(int wrapped, int i, int ncol, int useColor) {
+  if (wrapped) {
+    while ((i++) % ncol != 0) RSprintf("...........|");
+    if (useColor) RSprintf("\033[0m");
+  }
+  RSprintf("\n");
+}
+
+// Separator line under the column header / between iteration blocks.
+static inline void scalePrintLine(int showOfv, int ncol) {
+  if (showOfv) {
     RSprintf("|-----+---------------+");
   } else {
     RSprintf("|-----+");
@@ -567,32 +580,16 @@ static inline void scalePrintHeader(scaling *scale, int withKey = 1) {
     for (i = 0; i < n; i++){
       tmpS = scale->thetaNames[i];
       RSprintf("%#10s |", tmpS.c_str());
-      if ((i + 1) != n && (i + 1) % scale->ncol == 0){
-        if (scale->useColor && scale->ncol + i  >= n){
-          RSprintf("%s", scaleWrapMarker(scale, 1));
-          underlineUsed = 1;
-        } else {
-          RSprintf("%s", scaleWrapMarker(scale, 0));
-        }
-        finalize=1;
+      int underline = scale->useColor && scale->ncol + i >= n;
+      if (scalePrintWrap(scale->showOfv, i, n, scale->ncol, underline)) {
+        finalize = 1;
+        if (underline) underlineUsed = 1;
       }
     }
-    if (finalize){
-      while(true){
-        if ((i++) % scale->ncol == 0){
-          if (scale->useColor) RSprintf("\033[0m");
-          RSprintf("\n");
-          break;
-        } else {
-          RSprintf("...........|");
-        }
-      }
-    } else {
-      RSprintf("\n");
-    }
+    scalePrintRowEnd(finalize, i, scale->ncol, scale->useColor);
     // Skip the separator if the last continuation row's underline already acts as one.
     if (!underlineUsed) {
-      scalePrintLine(scale, min2(scale->npars, scale->ncol));
+      scalePrintLine(scale->showOfv, min2(scale->npars, scale->ncol));
     }
   }
 }
@@ -693,54 +690,19 @@ static inline void scalePrintFun(scaling *scale, double *x, double f) {
     }
     for (i = 0; i < scale->npars; i++){
       RSprintf("%#10.4g |", x[i]);
-      if ((i + 1) != scale->npars && (i + 1) % scale->ncol == 0){
-        if (scale->useColor && scale->ncol + i  > scale->npars){
-          RSprintf("%s", scaleWrapMarker(scale, 1));
-        } else {
-          RSprintf("%s", scaleWrapMarker(scale, 0));
-        }
-        finalize=1;
-      }
+      finalize |= scalePrintWrap(scale->showOfv, i, scale->npars, scale->ncol,
+                                 scale->useColor && scale->ncol + i > scale->npars);
     }
-    if (finalize){
-      while(true){
-        if ((i++) % scale->ncol == 0){
-          if (scale->useColor) RSprintf("\033[0m");
-          RSprintf("\n");
-          break;
-        } else {
-          RSprintf("...........|");
-        }
-      }
-    } else {
-      RSprintf("\n");
-    }
+    scalePrintRowEnd(finalize, i, scale->ncol, scale->useColor);
     if (!scale->simple && !skipU) {
       if (scale->showOfv) RSprintf("|    U|               |");
       else                RSprintf("|    U|");
       for (i = 0; i < scale->npars; i++){
         RSprintf("%#10.4g |", scaleNoGrad(scale, i) ? x[i] : scaleUnscalePar(scale, x, i));
-        if ((i + 1) != scale->npars && (i + 1) % scale->ncol == 0){
-          if (scale->useColor && scale->ncol + i  > scale->npars){
-            RSprintf("%s", scaleWrapMarker(scale, 1));
-          } else {
-            RSprintf("%s", scaleWrapMarker(scale, 0));
-          }
-        }
+        scalePrintWrap(scale->showOfv, i, scale->npars, scale->ncol,
+                       scale->useColor && scale->ncol + i > scale->npars);
       }
-      if (finalize){
-        while(true){
-          if ((i++) % scale->ncol == 0){
-            if (scale->useColor) RSprintf("\033[0m");
-            RSprintf("\n");
-            break;
-          } else {
-            RSprintf("...........|");
-          }
-        }
-      } else {
-        RSprintf("\n");
-      }
+      scalePrintRowEnd(finalize, i, scale->ncol, scale->useColor);
     }
     if (!scale->simple && !skipX) {
       if (scale->showOfv) {
@@ -772,27 +734,10 @@ static inline void scalePrintFun(scaling *scale, double *x, double f) {
                                     scale->xPar[i], probitCode,
                                     scale->logitThetaLow, scale->logitThetaHi,
                                     scale->probitThetaLow, scale->probitThetaHi));
-        if ((i + 1) != scale->npars && (i + 1) % scale->ncol == 0){
-          if (scale->useColor && scale->ncol + i >= scale->npars){
-            RSprintf("%s", scaleWrapMarker(scale, 1));
-          } else {
-            RSprintf("%s", scaleWrapMarker(scale, 0));
-          }
-        }
+        scalePrintWrap(scale->showOfv, i, scale->npars, scale->ncol,
+                       scale->useColor && scale->ncol + i >= scale->npars);
       }
-      if (finalize){
-        while(true){
-          if ((i++) % scale->ncol == 0){
-            if (scale->useColor) RSprintf("\033[0m");
-            RSprintf("\n");
-            break;
-          } else {
-            RSprintf("...........|");
-          }
-        }
-      } else {
-        RSprintf("\n");
-      }
+      scalePrintRowEnd(finalize, i, scale->ncol, scale->useColor);
     }
   }
   // Flush accumulated rxode2 solve warnings here so every estimator routed through
@@ -856,30 +801,12 @@ static inline void scalePrintGrad(scaling *scale, double *gr, int type) {
         RSprintf("\033[0m");
       }
       RSprintf("|");
-      if ((i + 1) != scale->npars && (i + 1) % scale->ncol == 0){
-        if (scale->useColor && scale->ncol + i >= scale->npars){
-          RSprintf("%s", scaleWrapMarker(scale, 1));
-        } else {
-          RSprintf("%s", scaleWrapMarker(scale, 0));
-        }
-        finalize=1;
-      }
+      finalize |= scalePrintWrap(scale->showOfv, i, scale->npars, scale->ncol,
+                                 scale->useColor && scale->ncol + i >= scale->npars);
     }
-    if (finalize){
-      while(true){
-        if ((i++) % scale->ncol == 0){
-          if (scale->useColor) RSprintf("\033[0m");
-          RSprintf("\n");
-          break;
-        } else {
-          RSprintf("...........|");
-        }
-      }
-    } else {
-      RSprintf("\n");
-    }
+    scalePrintRowEnd(finalize, i, scale->ncol, scale->useColor);
     if (!scale->useColor){
-      scalePrintLine(scale, min2(scale->npars, scale->ncol));
+      scalePrintLine(scale->showOfv, min2(scale->npars, scale->ncol));
     }
   }
   if (scale->save) {

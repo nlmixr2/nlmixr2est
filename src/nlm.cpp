@@ -1218,7 +1218,7 @@ RObject nlmGetParHist(bool p=true) {
   nlmOp.scale.save = 0;
   nlmOp.scale.every = 0;
   if (p) {
-    scalePrintLine(&(nlmOp.scale), min2(nlmOp.scale.npars, nlmOp.scale.ncol));
+    scalePrintLine(nlmOp.scale.showOfv, min2(nlmOp.scale.npars, nlmOp.scale.ncol));
   }
   return scaleParHisDf(&(nlmOp.scale));
 }
