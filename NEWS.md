@@ -199,6 +199,13 @@
   backwards: on `exp(3 * x)` at `x = 1`, `nlmixr2Gill83(gillStep = 0.1)`
   gave a derivative 1% off, against 0.01% with the default.
 
+- The FOCEi control of a saem fit (`fit$foceiControl`, which `setOfv()`,
+  `addCwres()` and `getVarCov(fit, force = TRUE)` refit with) now follows
+  `saemControl(literalFix=)` and keeps fixed residual parameters in the
+  model, as the saem fit itself did.  It substituted fixed thetas and fixed
+  residual parameters into the model even with `literalFix = FALSE`, the
+  saem default, so those refits used a model the fit had not.
+
 ### Covariance and finite differences
 
 - The Gill (1983) step-size search no longer leaves a parameter at its last

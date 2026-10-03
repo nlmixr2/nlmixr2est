@@ -1512,11 +1512,17 @@
   } else {
     env$.etaMat
   }
+  # saem substitutes fixed thetas as saemControl(literalFix=) says (a control
+  # saved before that option existed has none, and saem did not substitute
+  # them then) and never substitutes fixed residual parameters
+  # (saemControl() has no literalFixRes)
   .foceiControl <- .foceiOwnEtaControl(
     .saemControl,
     .etaForFocei,
     scaleTo = 0,
     skipCov = env$ui$foceiSkipCov,
+    literalFix = isTRUE(.saemControl$literalFix),
+    literalFixRes = FALSE,
     indTolRelax = .saemControl$indTolRelax,
     resetThetaP = 0,
     resetThetaFinalP = 0,
