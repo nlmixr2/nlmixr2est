@@ -41,11 +41,10 @@
 #' Builds the optimization env of `ui` under `control`, processes the data,
 #' turns quadrature off and installs `etaMat`; the caller adds its own fields
 #' and calls the C++ setup (`vaeInnerSetup_()` or `foceiLikLoad_()`).
-#' `needOptimHess` follows the endpoints, but only vae also forces
-#' `interaction = 0` with it (`.vaeInnerSetup()`, for its analytic outer
-#' gradient): the conditional density and its eta-gradient that vi and np
-#' evaluate are the same either way, and `foceiLikLoad()` reports `interaction`
-#' to its C callers.
+#' `needOptimHess` follows the endpoints; only vae also forces
+#' `interaction = 0` with it, as the focei flow does (`.vaeInnerSetup()`).  The
+#' conditional log-density vi and np evaluate is the same either way, and
+#' `foceiLikLoad()` reports `interaction` to its C callers.
 #' @param ui decompressed rxode2 ui; its control is replaced
 #' @param data estimation data
 #' @param control inner `foceiControl()`
