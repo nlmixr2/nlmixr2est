@@ -75,4 +75,68 @@ nmTest({
     expect_identical(nlmUnscalePar(.p), .p)
     expect_identical(.nlmAdjustCov(diag(4), .p), diag(4))
   })
+
+  # FOCEi's outer problem normalizes its parameters (the thetas, then the omega
+  # parameters) by the same rule: the mean, sd or length covers every one of
+  # them, the last omega parameter included
+  .modEta <- function() {
+    ini({
+      tka <- 0.5
+      tcl <- 1.2
+      tv <- 3.0
+      eta.ka ~ 0.6
+      eta.cl ~ 0.3
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv)
+      d / dt(depot) <- -ka * depot
+      d / dt(central) <- ka * depot - cl / v * central
+      cp <- central / v
+      cp ~ add(add.sd)
+    })
+  }
+
+  # FOCEi's starting parameters and their scaled values, from the first
+  # evaluation of the fit's parameter history
+  .foceiScaledFor <- function(normType) {
+    .f <- suppressMessages(suppressWarnings(nlmixr(
+      .modEta,
+      nlmixr2data::theo_sd,
+      "focei",
+      control = foceiControl(
+        print = 0,
+        maxOuterIterations = 1L,
+        covMethod = "",
+        calcTables = FALSE,
+        outerOpt = "lbfgsb3c",
+        normType = normType
+      )
+    )))
+    .ph <- .f$parHistData
+    .p <- setdiff(names(.ph), c("iter", "type", "objf"))
+    list(
+      par = unlist(.ph[.ph$type == "Unscaled", .p][1, ]),
+      scaled = unlist(.ph[.ph$type == "Scaled", .p][1, ])
+    )
+  }
+
+  # scaled = (par - c1) / c2 for each normalization
+  .normWant <- list(
+    rescale2 = function(p) (p - (max(p) + min(p)) / 2) / ((max(p) - min(p)) / 2),
+    rescale = function(p) (p - min(p)) / (max(p) - min(p)),
+    mean = function(p) (p - mean(p)) / (max(p) - min(p)),
+    std = function(p) (p - mean(p)) / sd(p),
+    len = function(p) p / sqrt(sum(p^2))
+  )
+
+  test_that("FOCEi normalizes over every parameter for each normType", {
+    skip_on_cran()
+    for (.nt in names(.normWant)) {
+      .r <- .foceiScaledFor(.nt)
+      expect_equal(unname(.r$scaled), unname(.normWant[[.nt]](.r$par)), tolerance = 1e-8, label = .nt)
+    }
+  })
 })

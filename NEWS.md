@@ -184,6 +184,13 @@
   warfarin model with proportional and additive error now ends at an
   objective of 223.25 instead of 223.58.
 
+- `foceiControl(normType = "mean")`, `"std"` and `"len"` now take the mean,
+  standard deviation and length over every FOCEi parameter; they left out the
+  last one (the last omega parameter), as the nlm family did before #995.
+  FOCEi now uses the nlm family's normalization, so initial estimates that are
+  all equal switch to `"len"` there too, and all-zero ones to no
+  normalization, instead of a scale of about `1e-8`.
+
 ### Covariance and finite differences
 
 - The Gill (1983) step-size search no longer leaves a parameter at its last
