@@ -2179,16 +2179,22 @@ foceiControl <- function(
 #' covMethod of a `foceiControl()` as the name that rebuilds it
 #'
 #' covMethod folds the analytic-vs-finite-difference R-matrix choice (carried by
-#' the derived internal covType) into a single name; covType is never deparsed
-#' on its own.
+#' the derived internal covType) and a deferred "sa"/"imp" request (carried by
+#' covMethodDeferred, with slot 0) into a single name; neither internal field is
+#' deparsed on its own.
 #' @param o the control
-#' @return "analytic", "r,s", "r", "s", or "" for no covariance
+#' @return "sa", "imp", "analytic", "r,s", "r", "s", or "" for no covariance
 #' @noRd
 .foceiControlCovMethodName <- function(o) {
-  if (identical(o$covType, "analytic")) {
+  .deferred <- o$covMethodDeferred
+  if (length(.deferred) == 1L && !is.na(.deferred)) {
+    return(.deferred)
+  }
+  .slot <- as.integer(o$covMethod)
+  if (!identical(.slot, 0L) && identical(o$covType, "analytic")) {
     return("analytic")
   }
-  .covMethodFromSlot(as.integer(o$covMethod))
+  .covMethodFromSlot(.slot)
 }
 
 .rxUiDeparseFoceiControl <- function(object, var, type = "foceiControl") {

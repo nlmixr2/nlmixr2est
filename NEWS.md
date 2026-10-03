@@ -33,6 +33,13 @@
   `vaeControl()` and `emviControl()` now accept the same slots instead of
   failing.
 
+- `rxUiDeparse()` of a `foceiControl()` (and of the focei-family controls
+  deparsed the same way) writes `covMethod = "sa"` or `"imp"` for a deferred
+  covariance; it wrote `covMethod = ""`, so the control it rebuilt computed
+  no covariance.  A control whose covariance step is off is written as
+  `covMethod = ""` even when its `covType` is `"analytic"`, where it was
+  written as `covMethod = "analytic"`.
+
 - A fit's `IPRED`/`PRED` table, `vpcSim()` (and so `npde`) and `augPred()`
   now interpolate time-varying covariates with the fit's
   `rxControl(covsInterpolation=)` and `naInterpolation=` instead of always
