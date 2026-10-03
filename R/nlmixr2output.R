@@ -656,19 +656,40 @@
 }
 
 
+#' Variances, standard deviations and correlations of a fit's omega
+#'
+#' @param omega omega matrix, or the per-level list of an IOV fit
+#' @return data.frame with `Variance` and `StdDev` per eta.  When the omega has
+#'   a covariance it also has one column per eta (but the last), named by the
+#'   eta, holding its correlation with the eta of each later row (the lower
+#'   triangle, as `nlme::VarCorr()` prints it); the other cells are `NA`.
+#' @noRd
+.varCorrOmega <- function(omega) {
+  if (is.list(omega)) {
+    omega <- lotri::lotriMat(omega)
+  }
+  .var <- diag(omega)
+  .ret <- data.frame(
+    Variance = .var,
+    StdDev = sqrt(.var),
+    row.names = dimnames(omega)[[1]]
+  )
+  .off <- omega
+  diag(.off) <- 0
+  if (any(.off != 0, na.rm = TRUE)) {
+    .cor <- suppressWarnings(stats::cov2cor(omega))
+    .cor[upper.tri(.cor, diag = TRUE)] <- NA_real_
+    .ret <- cbind(.ret, as.data.frame(.cor[, -ncol(.cor), drop = FALSE]))
+  }
+  .ret[!is.na(.ret[, 1]), , drop = FALSE]
+}
+
 #' @importFrom nlme VarCorr
 #' @export
 VarCorr.nlmixr2FitCore <- function(x, sigma = NULL, ...) {
   .ret <- x$nlme
   if (is.null(.ret)) {
-    .var <- diag(x$omega)
-    .ret <- data.frame(
-      Variance = .var,
-      StdDev = sqrt(.var),
-      row.names = names(.var)
-    )
-    .ret <- .ret[!is.na(.ret[, 1]), ]
-    .ret
+    .varCorrOmega(x$omega)
   } else {
     VarCorr(.ret, ...)
   }

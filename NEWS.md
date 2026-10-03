@@ -200,6 +200,12 @@
   added the spread of the component means, which `tcl1` and `tcl2` already
   carry (0.49 instead of 0.31 in a 30-subject example).
 
+- `VarCorr()` of a fit by any method but `nlme` now reports the omega
+  correlations (one column per eta, the lower triangle); it reported only
+  the variances and standard deviations.  It no longer fails for a fit with
+  inter-occasion variability (`'list' object cannot be coerced to type
+  'double'`): the occasion etas get rows of their own.
+
 ### Covariance and finite differences
 
 - The Gill (1983) step-size search no longer leaves a parameter at its last
