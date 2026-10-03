@@ -83,32 +83,6 @@ nmObjGetControl.foi <- function(x, ...) {
 }
 
 
-.foiControlToFoceiControl <- function(env, assign = TRUE) {
-  .foiControl <- env$foiControl
-  .ui <- env$ui
-  .n <- names(.foiControl)
-  .w <- which(.n == "posthoc")
-  .n <- .n[-.w]
-  .foceiControl <- setNames(
-    lapply(.n, function(n) {
-      if (
-        n == "maxInnerIterations" &&
-          !.foiControl$posthoc
-      ) {
-        return(0L)
-      }
-      .foiControl[[n]]
-    }),
-    .n
-  )
-  class(.foceiControl) <- "foceiControl"
-  if (assign) {
-    env$control <- .foceiControl
-  }
-  .foceiControl
-}
-
-
 #'@rdname nlmixr2Est
 #'@export
 nlmixr2Est.foi <- function(env, ...) {
@@ -141,7 +115,7 @@ nlmixr2Est.foi <- function(env, ...) {
   ## Now the posthoc/table step
   env$foiControl <- .control
   .foceiFamilyControl(env, ..., type = "foiControl")
-  .foiControlToFoceiControl(env)
+  .foceiFamilyControlToFoceiControl(env, "foiControl")
   .ui$control <- env$control
   rxode2::rxAssignControlValue(.ui, "interaction", 1L)
   rxode2::rxAssignControlValue(.ui, "covMethod", .control$covMethod)

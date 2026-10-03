@@ -71,30 +71,10 @@ nmObjGetControl.mfocep <- function(x, ...) {
   stop("cannot find mfocep related control object", call. = FALSE)
 }
 
-.mfocepControlToFoceiControl <- function(env, assign = TRUE) {
-  .mfocepControl <- env$mfocepControl
-  .n <- names(.mfocepControl)
-  .foceiControl <- setNames(
-    lapply(.n, function(n) {
-      if (n == "interaction") {
-        return(.mfocepControl$interaction)
-      }
-      .mfocepControl[[n]]
-    }),
-    .n
-  )
-  class(.foceiControl) <- "foceiControl"
-  if (assign) {
-    env$control <- .foceiControl
-  }
-  .foceiControl
-}
-
 #' @rdname nmObjGetFoceiControl
 #' @export
 nmObjGetFoceiControl.mfocep <- function(x, ...) {
-  .env <- x[[1]]
-  .mfocepControlToFoceiControl(.env, assign = FALSE)
+  .foceiFamilyControlToFoceiControl(x[[1]], "mfocepControl", assign = FALSE)
 }
 
 #'@rdname nlmixr2Est
@@ -104,7 +84,7 @@ nlmixr2Est.mfocep <- function(env, ...) {
   rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'mfocep'", .var.name = .ui$modelName)
   .control <- env$control
   .foceiFamilyControl(env, ..., type = "mfocepControl")
-  .mfocepControlToFoceiControl(env)
+  .foceiFamilyControlToFoceiControl(env, "mfocepControl")
   on.exit({
     if (exists("control", envir = .ui)) {
       rm("control", envir = .ui)

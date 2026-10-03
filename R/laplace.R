@@ -139,31 +139,10 @@ nmObjGetControl.laplace <- function(x, ...) {
   stop("cannot find laplace related control object", call. = FALSE)
 }
 
-.laplaceControlToFoceiControl <- function(env, assign = TRUE) {
-  .laplaceControl <- env$laplaceControl
-  .ui <- env$ui
-  .n <- names(.laplaceControl)
-  .foceiControl <- setNames(
-    lapply(.n, function(n) {
-      if (n == "interaction") {
-        return(.laplaceControl$interaction)
-      }
-      .laplaceControl[[n]]
-    }),
-    .n
-  )
-  class(.foceiControl) <- "foceiControl"
-  if (assign) {
-    env$control <- .foceiControl
-  }
-  .foceiControl
-}
-
 #' @rdname nmObjGetFoceiControl
 #' @export
 nmObjGetFoceiControl.laplace <- function(x, ...) {
-  .env <- x[[1]]
-  .laplaceControlToFoceiControl(.env, assign = FALSE)
+  .foceiFamilyControlToFoceiControl(x[[1]], "laplaceControl", assign = FALSE)
 }
 
 #'@rdname nlmixr2Est
@@ -173,7 +152,7 @@ nlmixr2Est.laplace <- function(env, ...) {
   rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'laplace'", .var.name = .ui$modelName)
   .control <- env$control
   .foceiFamilyControl(env, ..., type = "laplaceControl")
-  .laplaceControlToFoceiControl(env)
+  .foceiFamilyControlToFoceiControl(env, "laplaceControl")
   on.exit({
     if (exists("control", envir = .ui)) {
       rm("control", envir = .ui)

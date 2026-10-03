@@ -82,22 +82,10 @@ nmObjGetControl.mfocei <- function(x, ...) {
   stop("cannot find mfocei related control object", call. = FALSE)
 }
 
-.mfoceiControlToFoceiControl <- function(env, assign = TRUE) {
-  .mfoceiControl <- env$mfoceiControl
-  .n <- names(.mfoceiControl)
-  .foceiControl <- setNames(lapply(.n, function(n) .mfoceiControl[[n]]), .n)
-  class(.foceiControl) <- "foceiControl"
-  if (assign) {
-    env$control <- .foceiControl
-  }
-  .foceiControl
-}
-
 #' @rdname nmObjGetFoceiControl
 #' @export
 nmObjGetFoceiControl.mfocei <- function(x, ...) {
-  .env <- x[[1]]
-  .mfoceiControlToFoceiControl(.env, assign = FALSE)
+  .foceiFamilyControlToFoceiControl(x[[1]], "mfoceiControl", assign = FALSE)
 }
 
 #' Control options for the ifocei estimation method
@@ -167,22 +155,10 @@ nmObjGetControl.ifocei <- function(x, ...) {
   stop("cannot find ifocei related control object", call. = FALSE)
 }
 
-.ifoceiControlToFoceiControl <- function(env, assign = TRUE) {
-  .ifoceiControl <- env$ifoceiControl
-  .n <- names(.ifoceiControl)
-  .foceiControl <- setNames(lapply(.n, function(n) .ifoceiControl[[n]]), .n)
-  class(.foceiControl) <- "foceiControl"
-  if (assign) {
-    env$control <- .foceiControl
-  }
-  .foceiControl
-}
-
 #' @rdname nmObjGetFoceiControl
 #' @export
 nmObjGetFoceiControl.ifocei <- function(x, ...) {
-  .env <- x[[1]]
-  .ifoceiControlToFoceiControl(.env, assign = FALSE)
+  .foceiFamilyControlToFoceiControl(x[[1]], "ifoceiControl", assign = FALSE)
 }
 
 #' Control options for the mfoce estimation method
@@ -254,30 +230,10 @@ nmObjGetControl.mfoce <- function(x, ...) {
   stop("cannot find mfoce related control object", call. = FALSE)
 }
 
-.mfoceControlToFoceiControl <- function(env, assign = TRUE) {
-  .mfoceControl <- env$mfoceControl
-  .n <- names(.mfoceControl)
-  .foceiControl <- setNames(
-    lapply(.n, function(n) {
-      if (n == "interaction") {
-        return(.mfoceControl$interaction)
-      }
-      .mfoceControl[[n]]
-    }),
-    .n
-  )
-  class(.foceiControl) <- "foceiControl"
-  if (assign) {
-    env$control <- .foceiControl
-  }
-  .foceiControl
-}
-
 #' @rdname nmObjGetFoceiControl
 #' @export
 nmObjGetFoceiControl.mfoce <- function(x, ...) {
-  .env <- x[[1]]
-  .mfoceControlToFoceiControl(.env, assign = FALSE)
+  .foceiFamilyControlToFoceiControl(x[[1]], "mfoceControl", assign = FALSE)
 }
 
 #' Control options for the ifoce estimation method
@@ -349,30 +305,10 @@ nmObjGetControl.ifoce <- function(x, ...) {
   stop("cannot find ifoce related control object", call. = FALSE)
 }
 
-.ifoceControlToFoceiControl <- function(env, assign = TRUE) {
-  .ifoceControl <- env$ifoceControl
-  .n <- names(.ifoceControl)
-  .foceiControl <- setNames(
-    lapply(.n, function(n) {
-      if (n == "interaction") {
-        return(.ifoceControl$interaction)
-      }
-      .ifoceControl[[n]]
-    }),
-    .n
-  )
-  class(.foceiControl) <- "foceiControl"
-  if (assign) {
-    env$control <- .foceiControl
-  }
-  .foceiControl
-}
-
 #' @rdname nmObjGetFoceiControl
 #' @export
 nmObjGetFoceiControl.ifoce <- function(x, ...) {
-  .env <- x[[1]]
-  .ifoceControlToFoceiControl(.env, assign = FALSE)
+  .foceiFamilyControlToFoceiControl(x[[1]], "ifoceControl", assign = FALSE)
 }
 
 #' Control options for the magq estimation method
@@ -457,30 +393,10 @@ nmObjGetControl.magq <- function(x, ...) {
   stop("cannot find magq related control object", call. = FALSE)
 }
 
-.magqControlToFoceiControl <- function(env, assign = TRUE) {
-  .magqControl <- env$magqControl
-  .n <- names(.magqControl)
-  .foceiControl <- setNames(
-    lapply(.n, function(n) {
-      if (n == "interaction") {
-        return(.magqControl$interaction)
-      }
-      .magqControl[[n]]
-    }),
-    .n
-  )
-  class(.foceiControl) <- "foceiControl"
-  if (assign) {
-    env$control <- .foceiControl
-  }
-  .foceiControl
-}
-
 #' @rdname nmObjGetFoceiControl
 #' @export
 nmObjGetFoceiControl.magq <- function(x, ...) {
-  .env <- x[[1]]
-  .magqControlToFoceiControl(.env, assign = FALSE)
+  .foceiFamilyControlToFoceiControl(x[[1]], "magqControl", assign = FALSE)
 }
 
 #' Control options for the iagq estimation method
@@ -565,30 +481,10 @@ nmObjGetControl.iagq <- function(x, ...) {
   stop("cannot find iagq related control object", call. = FALSE)
 }
 
-.iagqControlToFoceiControl <- function(env, assign = TRUE) {
-  .iagqControl <- env$iagqControl
-  .n <- names(.iagqControl)
-  .foceiControl <- setNames(
-    lapply(.n, function(n) {
-      if (n == "interaction") {
-        return(.iagqControl$interaction)
-      }
-      .iagqControl[[n]]
-    }),
-    .n
-  )
-  class(.foceiControl) <- "foceiControl"
-  if (assign) {
-    env$control <- .foceiControl
-  }
-  .foceiControl
-}
-
 #' @rdname nmObjGetFoceiControl
 #' @export
 nmObjGetFoceiControl.iagq <- function(x, ...) {
-  .env <- x[[1]]
-  .iagqControlToFoceiControl(.env, assign = FALSE)
+  .foceiFamilyControlToFoceiControl(x[[1]], "iagqControl", assign = FALSE)
 }
 
 #' Control options for the mlaplace estimation method
@@ -657,22 +553,10 @@ nmObjGetControl.mlaplace <- function(x, ...) {
   stop("cannot find mlaplace related control object", call. = FALSE)
 }
 
-.mlaplaceControlToFoceiControl <- function(env, assign = TRUE) {
-  .mlaplaceControl <- env$mlaplaceControl
-  .n <- names(.mlaplaceControl)
-  .foceiControl <- setNames(lapply(.n, function(n) .mlaplaceControl[[n]]), .n)
-  class(.foceiControl) <- "foceiControl"
-  if (assign) {
-    env$control <- .foceiControl
-  }
-  .foceiControl
-}
-
 #' @rdname nmObjGetFoceiControl
 #' @export
 nmObjGetFoceiControl.mlaplace <- function(x, ...) {
-  .env <- x[[1]]
-  .mlaplaceControlToFoceiControl(.env, assign = FALSE)
+  .foceiFamilyControlToFoceiControl(x[[1]], "mlaplaceControl", assign = FALSE)
 }
 
 #' Control options for the ilaplace estimation method
@@ -741,22 +625,10 @@ nmObjGetControl.ilaplace <- function(x, ...) {
   stop("cannot find ilaplace related control object", call. = FALSE)
 }
 
-.ilaplaceControlToFoceiControl <- function(env, assign = TRUE) {
-  .ilaplaceControl <- env$ilaplaceControl
-  .n <- names(.ilaplaceControl)
-  .foceiControl <- setNames(lapply(.n, function(n) .ilaplaceControl[[n]]), .n)
-  class(.foceiControl) <- "foceiControl"
-  if (assign) {
-    env$control <- .foceiControl
-  }
-  .foceiControl
-}
-
 #' @rdname nmObjGetFoceiControl
 #' @export
 nmObjGetFoceiControl.ilaplace <- function(x, ...) {
-  .env <- x[[1]]
-  .ilaplaceControlToFoceiControl(.env, assign = FALSE)
+  .foceiFamilyControlToFoceiControl(x[[1]], "ilaplaceControl", assign = FALSE)
 }
 
 #' focei-family controls that can be converted to one another
@@ -828,4 +700,32 @@ nmObjGetFoceiControl.ilaplace <- function(x, ...) {
     logical(1)
   )
   do.call(target, .ctl[.keep])
+}
+
+#' The foceiControl that runs a focei-family method
+#'
+#' Every control of the family is a `foceiControl()` that carries its method's
+#' settings under its own class, so the translation keeps each field and
+#' relabels the class.  The `posthoc` field of fo/foi is not a `foceiControl()`
+#' field: it is dropped, and `posthoc = FALSE` turns the inner problem off
+#' (`maxInnerIterations = 0`).
+#' @param env fit environment holding the method's control
+#' @param ctl name of the control in `env` (e.g. `"foceControl"`)
+#' @param assign when `TRUE`, also store the result as `env$control`
+#' @param set named list of fields whose values are replaced
+#' @return the `foceiControl` object
+#' @noRd
+.foceiFamilyControlToFoceiControl <- function(env, ctl, assign = TRUE, set = list()) {
+  .ctl <- env[[ctl]]
+  if (isFALSE(.ctl$posthoc)) {
+    set$maxInnerIterations <- 0L
+  }
+  .n <- names(.ctl)
+  .n <- .n[.n != "posthoc"]
+  .ret <- setNames(lapply(.n, function(n) if (n %in% names(set)) set[[n]] else .ctl[[n]]), .n)
+  class(.ret) <- "foceiControl"
+  if (assign) {
+    env$control <- .ret
+  }
+  .ret
 }

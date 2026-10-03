@@ -217,31 +217,10 @@ nmObjGetControl.agq <- function(x, ...) {
   stop("cannot find agq related control object", call. = FALSE)
 }
 
-.agqControlToFoceiControl <- function(env, assign = TRUE) {
-  .agqControl <- env$agqControl
-  .ui <- env$ui
-  .n <- names(.agqControl)
-  .foceiControl <- setNames(
-    lapply(.n, function(n) {
-      if (n == "interaction") {
-        return(.agqControl$interaction)
-      }
-      .agqControl[[n]]
-    }),
-    .n
-  )
-  class(.foceiControl) <- "foceiControl"
-  if (assign) {
-    env$control <- .foceiControl
-  }
-  .foceiControl
-}
-
 #' @rdname nmObjGetFoceiControl
 #' @export
 nmObjGetFoceiControl.agq <- function(x, ...) {
-  .env <- x[[1]]
-  .agqControlToFoceiControl(.env, assign = FALSE)
+  .foceiFamilyControlToFoceiControl(x[[1]], "agqControl", assign = FALSE)
 }
 
 #'@rdname nlmixr2Est
@@ -251,7 +230,7 @@ nlmixr2Est.agq <- function(env, ...) {
   rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'agq'", .var.name = .ui$modelName)
   .control <- env$control
   .foceiFamilyControl(env, ..., type = "agqControl")
-  .agqControlToFoceiControl(env)
+  .foceiFamilyControlToFoceiControl(env, "agqControl")
   on.exit({
     if (exists("control", envir = .ui)) {
       rm("control", envir = .ui)
