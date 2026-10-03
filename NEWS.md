@@ -172,6 +172,18 @@
   by an `NA` for each of them, and a `foceiControl(scaleC=)` longer than the
   thetas was returned whole.
 
+- The FOCEi family now scales each `theta` by the constant R chooses for it
+  (the one `ui$scaleCtheta` shows and the nlm family uses): a transformed
+  parameter's constant inside that transform's own band (21.3 for
+  `expit(tcl, 1, 100)` at `tcl = 3`), `0.5*|est|` for a residual-error
+  parameter, or the value given in `foceiControl(scaleC=)`.  FOCEi guarded
+  every theta's constant to `scaleCband` a second time and replaced any of
+  these outside the band by `|init|` (a `prop.sd` of `0.1` was scaled by `0.1`,
+  not `0.05`), which also turned both zero-gradient retries with `scaleC0`
+  into `|init|`.  Fits with such parameters take a different path: the
+  warfarin model with proportional and additive error now ends at an
+  objective of 223.25 instead of 223.58.
+
 ### Covariance and finite differences
 
 - The Gill (1983) step-size search no longer leaves a parameter at its last

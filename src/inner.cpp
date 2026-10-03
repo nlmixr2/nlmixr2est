@@ -508,9 +508,6 @@ struct focei_options {
   int normType;
   double scaleCmin;
   double scaleCmax;
-  double scaleRangeLow;  // foceiControl(scaleCband): below this a theta scaleC falls back to |init|
-  double scaleRangeHigh; // above this a theta scaleC falls back to |init|
-  int nScaleCband = 0;   // the band guard covers optimizer slots i < nScaleCband
   int scaleCdefault = scaleCdefaultUnit; // an NA scaleC defaults to 1/|init|, 1 at init 0
   double c1;
   double c2;
@@ -7962,11 +7959,6 @@ static inline void foceiSetupTheta_(List mvi,
       }
     }
   }
-  // The band guard covers the estimated thetas, which lead the optimizer order;
-  // omega scalings keep their own formula.
-  op_focei.nScaleCband = 0;
-  while (op_focei.nScaleCband < k && op_focei.fixedTrans[op_focei.nScaleCband] < thetan)
-    op_focei.nScaleCband++;
   // Printed-column map: optimizer columns in fixedTrans order interleaved with
   // the regression-updated mu thetas at their natural fullTheta positions
   // (user-fixed thetas get no column either way, matching plain focei).
@@ -9439,14 +9431,6 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.scaleC0=as<double>(foceiO["scaleC0"]);
   op_focei.scaleCmin=as<double>(foceiO["scaleCmin"]);
   op_focei.scaleCmax=as<double>(foceiO["scaleCmax"]);
-  if (foceiO.containsElementNamed("scaleCband")) {
-    NumericVector scb = as<NumericVector>(foceiO["scaleCband"]);
-    op_focei.scaleRangeLow = scb[0];
-    op_focei.scaleRangeHigh = scb[1];
-  } else {
-    op_focei.scaleRangeLow = 0.1;
-    op_focei.scaleRangeHigh = 10.0;
-  }
   op_focei.abstol=as<double>(foceiO["abstol"]);
   op_focei.reltol=as<double>(foceiO["reltol"]);
   op_focei.smatNorm=as<int>(foceiO["smatNorm"]);

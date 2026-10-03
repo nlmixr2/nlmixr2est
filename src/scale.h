@@ -37,13 +37,9 @@ struct scaling {
   double c2; // internal scaling constant
   double scaleCmin; // Cmin scaling constant
   double scaleCmax; // Cmax scaling constant
-  // scaleC settings, which focei_options (src/inner.cpp) declares under the same
-  // names: the NA default rule, and the band guard (foceiControl(scaleCband)),
-  // which applies to parameters i < nScaleCband (0 = off).
+  // the NA scaleC default rule, which focei_options (src/inner.cpp) declares
+  // under the same name
   int scaleCdefault = scaleCdefaultFloor;
-  int nScaleCband = 0;
-  double scaleRangeLow = 0.0;
-  double scaleRangeHigh = 0.0;
   // Iteration-print formatting, populated via scaleApplyIterPrintControl();
   // field names mirror iterPrintControl()'s R argument names.
   int useColor;
@@ -155,7 +151,6 @@ static inline void scaleSetup(scaling *scale,
   scale->scaleCmax = scaleCmax;
   scale->scaleTo = scaleTo;
   scale->scaleCdefault = scaleCdefaultFloor;
-  scale->nScaleCband = 0;
 
   scale->vGrad.clear();
   scale->vPar.clear();
@@ -328,9 +323,9 @@ static inline double scaleDefaultC(S *scale, double d) {
 }
 
 // The scaling constant of parameter i, clamped to [scaleCmin, scaleCmax].  An NA
-// entry is filled in place from xPar and scaleCdefault.  With the band guard on, a
-// positive entry outside [scaleRangeLow, scaleRangeHigh] is replaced in place by
-// the native magnitude |init| (NONMEM7 Appendix K, eq 15.2; 1 when init is 0).
+// entry is filled in place from xPar and scaleCdefault.  Any other entry is used
+// as given: R chose it (and guarded it to its band, .guardScaleC()), the user did
+// (foceiControl(scaleC=)), or the zero-gradient retry did (scaleC0).
 template <typename S>
 static inline double scaleGetScaleC(S *scale, int i){
   if (ISNA(scale->scaleC[i]) || isnan(scale->scaleC[i])) {
@@ -350,13 +345,6 @@ static inline double scaleGetScaleC(S *scale, int i){
       scale->scaleC[i] = scaleDefaultC(scale, aInit);
       break;
     }
-  }
-  // a 0 entry is unloaded, not a value to rescue: it is left to the clamp
-  if (i < scale->nScaleCband && scale->scaleC[i] > 0.0 &&
-      (scale->scaleC[i] < scale->scaleRangeLow ||
-       scale->scaleC[i] > scale->scaleRangeHigh)) {
-    double aInit = fabs(scale->initPar[i]);
-    scale->scaleC[i] = (aInit == 0.0) ? 1.0 : aInit;
   }
   return min2(max2(scale->scaleC[i], scale->scaleCmin), scale->scaleCmax);
 }

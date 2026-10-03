@@ -43,12 +43,83 @@ nmTest({
 
   test_that("mfocei scales each parameter by its own scaleC", {
     skip_on_cran()
-    # the band misses add.sd's 0.35 and two of the omegas' values: only the
-    # theta is guarded (to |init|), the omegas keep theirs
+    # the band misses add.sd's 0.35 and two of the omegas' values, and guards
+    # none of them: scaleCband applies to linear thetas, in R
     .f <- suppressMessages(suppressWarnings(nlmixr(.mod, theo_sd, "mfocei", control = .ctl(scaleCband = c(0.8, 10)))))
-    .want <- c(add.sd = 0.7, .omegaC)
+    .want <- c(add.sd = 0.35, .omegaC)
     expect_equal(.usedScaleC(.f, names(.want)), .want, tolerance = 1e-6)
     expect_equal(.f$scaleInfo$scaleC, c(NA, NA, NA, unname(.want)), tolerance = 1e-6)
+  })
+
+  # tcl lies inside expit(., 1, 100) and prop.sd is a residual error; R gives
+  # them 21.3 (inside expit's own band) and 0.5 * 0.1, both outside scaleCband
+  .modR <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 3
+      tv <- 3.45
+      eta.ka ~ 0.6
+      eta.cl ~ 0.3
+      eta.v ~ 0.1
+      prop.sd <- 0.1
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- expit(tcl + eta.cl, 1, 100) / 30
+      v <- exp(tv + eta.v)
+      d / dt(depot) <- -ka * depot
+      d / dt(center) <- ka * depot - cl / v * center
+      cp <- center / v
+      cp ~ prop(prop.sd)
+    })
+  }
+
+  test_that("FOCEi scales each theta by the scaleC R gives it", {
+    skip_on_cran()
+    .want <- setNames(rxode2::rxode2(.modR)$scaleCtheta, c("tka", "tcl", "tv", "prop.sd"))
+    expect_equal(unname(.want), c(1, 21.309126, 1, 0.05), tolerance = 1e-6)
+    # FOCEi guarded tcl and prop.sd to scaleCband a second time, in C++, and
+    # scaled them by |init|: 3 and 0.1
+    .f <- suppressMessages(suppressWarnings(nlmixr(.modR, theo_sd, "focei", control = .ctl())))
+    expect_equal(.usedScaleC(.f, names(.want)), .want, tolerance = 1e-6)
+    expect_equal(.f$scaleInfo$scaleC[1:4], unname(.want), tolerance = 1e-6)
+  })
+
+  test_that("FOCEi scales a theta by the scaleC the user gives it", {
+    skip_on_cran()
+    # add.sd's 0.02 was replaced by |init| = 0.7
+    .f <- suppressMessages(suppressWarnings(nlmixr(.mod, theo_sd, "focei", control = .ctl(scaleC = c(1, 1, 1, 0.02)))))
+    .want <- c(tka = 1, tcl = 1, tv = 1, add.sd = 0.02)
+    expect_equal(.usedScaleC(.f, names(.want)), .want, tolerance = 1e-6)
+  })
+
+  test_that("a zero gradient is searched again with scaleC0, then 1/scaleC0", {
+    skip_on_cran()
+    # beta multiplies a covariate that is 0 throughout, so no step finds a
+    # slope and both searches run; the second one's scale stays.  scaleCband
+    # turned both into |init| = 0.5
+    .modZ <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        beta <- 0.5
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl + beta * ZERO)
+        v <- exp(tv)
+        d / dt(depot) <- -ka * depot
+        d / dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd)
+      })
+    }
+    .d <- theo_sd
+    .d$ZERO <- 0
+    .f <- suppressMessages(suppressWarnings(nlmixr(.modZ, .d, "focei", control = .ctl(scaleC0 = 1000))))
+    expect_equal(.f$scaleInfo$scaleC[4], 1e-3)
   })
 
   test_that("a fixed theta does not shift the scaleC of the parameters after it", {

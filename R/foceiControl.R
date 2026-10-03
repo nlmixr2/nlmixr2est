@@ -795,14 +795,16 @@
 #' @param scaleCmin Minimum value of the scaleC to prevent underflow.
 #'
 #' @param scaleCband Length-2 increasing pair `c(low, high)` (default
-#'   `c(0.1, 10)`).  Each `theta`'s derivative-based scaling constant
-#'   (`1/|init|` for a linear parameter, or the transform-specific
-#'   formula) is kept when it lands inside this band, and otherwise
-#'   replaced by the parameter's native magnitude `|init|`.  This catches
-#'   the singular cases -- `1/|init|` blowing up for a small covariate
-#'   initial estimate, `log()` at init `1`, `logit` at the interval
-#'   midpoint, `factorial`/`gamma` at a digamma zero -- while leaving the
-#'   well-scaled common case (and its results) untouched.
+#'   `c(0.1, 10)`).  The derivative-based scaling constant of a linear
+#'   `theta` (`1/|init|`), or of a transformed one whose transform has no
+#'   band of its own, is kept when it lands inside this band, and otherwise
+#'   replaced by the parameter's native magnitude `|init|`, so a small
+#'   initial estimate (a covariate coefficient, say) does not get a huge
+#'   constant.  Transformed thetas are guarded to bands of their own
+#'   transform, which catch `log()` at init `1`, `logit` at the interval
+#'   midpoint and `factorial`/`gamma` at a digamma zero.  The constants of
+#'   residual-error parameters and those given in `scaleC` are used as
+#'   they are.
 #'
 #' @param normType Parameter normalization/scaling used to get scaled
 #'     initial values for \code{scaleType}, of the form
