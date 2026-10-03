@@ -277,6 +277,10 @@
   (`hessEpsLlik`, `gillKcovLlik`, `gillStepCovLlik`, `gillFtolCovLlik`,
   `rmatNormLlik`, `smatNormLlik`) no longer sets the option of the same name
   without `Llik` to its value as well.
+- `foceiControl(covDerivMethod = "forward")` no longer fails the `"r"` and
+  `"r,s"` covariances: it chooses the differences of the S matrix's
+  per-subject scores, and the R matrix keeps its central stencil.  The
+  documentation said it applied to the Hessian as well.
 
 ### Covariance
 

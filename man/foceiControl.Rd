@@ -277,9 +277,10 @@ central when \code{abs(delta(OFV)) <= derivSwitchTol}.}
 \item{derivSwitchTol}{The tolerance to switch forward to central
 differences.}
 
-\item{covDerivMethod}{indicates the method for calculating the
-derivatives while calculating the covariance components
-(Hessian and S).}
+\item{covDerivMethod}{the finite differences of the per-subject scores
+of the S matrix: \code{"central"} (the default) or
+\code{"forward"}.  The R matrix (Hessian) and the full covariance
+(\code{covFull}) always use central differences.}
 
 \item{covMethod}{Method for calculating the covariance.  \code{"r,s"} (the
 default) is the sandwich estimator (see below).  \code{"analytic"}

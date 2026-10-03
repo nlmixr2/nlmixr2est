@@ -121,9 +121,10 @@
 #' @param derivSwitchTol The tolerance to switch forward to central
 #'     differences.
 #'
-#' @param covDerivMethod indicates the method for calculating the
-#'     derivatives while calculating the covariance components
-#'     (Hessian and S).
+#' @param covDerivMethod the finite differences of the per-subject scores
+#'     of the S matrix: \code{"central"} (the default) or
+#'     \code{"forward"}.  The R matrix (Hessian) and the full covariance
+#'     (\code{covFull}) always use central differences.
 #'
 #' @param covMethod Method for calculating the covariance.  \code{"r,s"} (the
 #'     default) is the sandwich estimator (see below).  \code{"analytic"}

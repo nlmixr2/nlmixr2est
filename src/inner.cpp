@@ -10855,8 +10855,8 @@ int foceiCalcR(Environment e){
       if (op_focei.covMethod == 2) op_focei.covMethod = 1;
     }
   }
-  if (op_focei.derivMethod == 0) stop("Not implemented for finite differences.");
-  // Hessian of -2LL about the base point at the steps |theta|*rEpsC + aEpsC; the
+  // Hessian of -2LL about the base point at the steps |theta|*rEpsC + aEpsC, always by
+  // the central stencil (covDerivMethod chooses the S matrix's differences); the
   // objective is unscaled for the whole covariance step.
   arma::vec theta(op_focei.npars), h(op_focei.npars);
   for (unsigned int k = op_focei.npars; k--;){

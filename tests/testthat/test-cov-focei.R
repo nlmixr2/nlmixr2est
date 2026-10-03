@@ -298,6 +298,35 @@ nmTest({
     expect_equal(diag(.forward$env$S0), diag(.central$env$S0), tolerance = 0.25)
   })
 
+  test_that("covDerivMethod = \"forward\" keeps the R matrix", {
+    # the R matrix is always the central stencil; foceiCalcR() stopped on a
+    # forward derivative method instead, so "r" and "r,s" failed
+    one.cmt <- function() {
+      ini({
+        tka <- log(1.5); tcl <- log(2.7); tv <- log(31.5)
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .ctl <- function(...) {
+      foceiControl(print = 0, maxOuterIterations = 0L, covFull = FALSE, ...)
+    }
+    .central <- .nlmixr(one.cmt, theo_sd, "focei", .ctl())
+    .forward <- .nlmixr(one.cmt, theo_sd, "focei", .ctl(covDerivMethod = "forward"))
+    expect_equal(.central$covMethod, "r,s")
+    expect_equal(.forward$covMethod, "r,s")
+    expect_identical(.forward$env$R.0, .central$env$R.0)
+    # the sandwich differs only through the forward-difference S
+    expect_equal(sqrt(diag(.forward$cov)), sqrt(diag(.central$cov)), tolerance = 0.2)
+    .r <- .nlmixr(one.cmt, theo_sd, "focei", .ctl(covMethod = "r", covDerivMethod = "forward"))
+    expect_equal(.r$covMethod, "r")
+    expect_equal(unname(.r$cov), unname(.central$covR))
+  })
+
   test_that("a non-positive-definite R or S is never installed as it is", {
     # one estimated parameter at a point where the objective is concave: R < 0,
     # which cholSE0 (like for every 1x1 matrix) called positive definite, so
