@@ -86,17 +86,21 @@ double shi21Forward(shi21fn_type f, arma::vec &t, double &h,
                  finiteF1, finiteF4);
     if (rcur == -1) {
       if (!finiteF1) {
-        // hnew = t + 2.5*hold
         h = 0.5*h;
         continue;
       }
-      h = 3.5*h;
+      // f(t+h) is finite and f(t+4h) is not: without a difference from an
+      // earlier step, keep the forward difference at h, then shrink so the outer
+      // probe lands at 2h (hnew*4 = hold*2)
       if (!calcGrad) {
+        calcGrad = true;
         lasth = h;
         gr = (f1-f0)/h;
       }
+      h = 0.5*h;
       continue;
     } else {
+      calcGrad = true;
       lasth = h;
       gr = (f1-f0)/h;
     }
@@ -213,18 +217,20 @@ double shi21Central(shi21fn_type f, arma::vec &t, double &h,
           // forward difference
           calcGrad = true;
           gr = (fp1-f0)/h;
+          hlast = h;
         }
         h = h*0.5/3.0;
         continue;
       }
-      // hnew*3 = hold*2
-      h = h*2.0/3.0;
+      // f(t+-h) are finite and f(t+-3h) are not: without a difference from an
+      // earlier step, keep the central difference at h, then shrink so the outer
+      // probes land at 2h (hnew*3 = hold*2)
       if (!calcGrad) {
-        // central difference
         calcGrad = true;
         gr = (fp1-fm1)/(2*h);
         hlast = h;
       }
+      h = h*2.0/3.0;
       continue;
     } else {
       calcGrad = true;

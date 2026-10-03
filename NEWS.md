@@ -305,6 +305,17 @@
   once the parameter scaling is set, instead of being kept from the trial
   gradient that sets it.
 
+- The Shi (2021) finite-difference step search no longer returns a wrong
+  derivative or step after a probe whose objective is not finite.  When the
+  outer central probe (`x + 3h`) failed, the central difference at `h` was
+  divided by the shrunken step and came out 1.5 times too large; when the
+  outer forward probe (`x + 4h`) failed, the step grew 3.5 times (into the
+  region that failed) and the forward difference at `h` was divided by it;
+  and a forward difference taken after a failed backward probe was returned
+  with an earlier step.  This search gives the finite-difference gradient
+  columns of the nlm family and the FOCEi family's finite-difference
+  gradients and Hessians.
+
 
 # nlmixr2est 7.1.0
 
