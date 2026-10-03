@@ -7939,7 +7939,6 @@ static inline void foceiSetupTheta_(List mvi,
   }
   op_focei.ntheta = (unsigned int)thetan;
   op_focei.omegan = (unsigned int)omegan;
-  op_focei.nScaleCband = thetan; // thetas only; omega scalings keep their own formula
   int k = 0;
   for (j = 0; j < thetan+omegan; j++){
     if (isMuGroupSkip(j)) continue;
@@ -7963,6 +7962,11 @@ static inline void foceiSetupTheta_(List mvi,
       }
     }
   }
+  // The band guard covers the estimated thetas, which lead the optimizer order;
+  // omega scalings keep their own formula.
+  op_focei.nScaleCband = 0;
+  while (op_focei.nScaleCband < k && op_focei.fixedTrans[op_focei.nScaleCband] < thetan)
+    op_focei.nScaleCband++;
   // Printed-column map: optimizer columns in fixedTrans order interleaved with
   // the regression-updated mu thetas at their natural fullTheta positions
   // (user-fixed thetas get no column either way, matching plain focei).
@@ -14059,10 +14063,14 @@ Environment foceiFitCpp_(Environment e){
     }
   }
   IntegerVector xType = e["xType"];
+  // R gives scaleC by parameter; the optimizer reads it by optimizer index
   std::fill_n(&op_focei.scaleC[0], op_focei.ntheta+op_focei.omegan, NA_REAL);
   if (e.exists("scaleC")){
-    arma::vec scaleC = as<arma::vec>(e["scaleC"]);
-    std::copy(scaleC.begin(), scaleC.end(), &op_focei.scaleC[0]);
+    NumericVector scaleC = as<NumericVector>(e["scaleC"]);
+    for (unsigned int k = op_focei.npars; k--;){
+      int j = op_focei.fixedTrans[k];
+      if (j < scaleC.size()) op_focei.scaleC[k] = scaleC[j];
+    }
   }
   // Theta transforms (ntheta-indexed, from R's .iterPrintXParFromUi xform list,
   // length ntheta_total); re-indexed below via fixedTrans into the npars-sized
@@ -14170,9 +14178,10 @@ Environment foceiFitCpp_(Environment e){
     }
   }
   e["optimTime"] = foceiElapsedSeconds(wallT0);
-  NumericVector scaleSave(op_focei.ntheta+op_focei.omegan);
-  for (unsigned int i =op_focei.ntheta+op_focei.omegan;i--;){
-    scaleSave[i] = scaleGetScaleC(&op_focei, i);
+  // by parameter again; a parameter the optimizer does not move has none
+  NumericVector scaleSave(op_focei.ntheta+op_focei.omegan, NA_REAL);
+  for (unsigned int k = op_focei.npars; k--;){
+    scaleSave[op_focei.fixedTrans[k]] = scaleGetScaleC(&op_focei, k);
   }
   e["scaleC"] = scaleSave;
   parHistData(e, true); // Need to calculate before the parameter translations are mangled
