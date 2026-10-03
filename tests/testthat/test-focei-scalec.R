@@ -70,4 +70,14 @@ nmTest({
     # the scaleC block (and a long enough vector past the buffer, a crash)
     expect_identical(.agqObjf(rep(2, 10)), .agqObjf(rep(2, 7)))
   })
+
+  test_that("ui$scaleCtheta has one value per estimated theta", {
+    .ui <- rxode2::rxUiDecompress(rxode2::rxode2(.mod))
+    # it was followed by an NA for each eta row of iniDf
+    expect_identical(.ui$scaleCtheta, c(1, 1, 1, 0.35))
+    # and a longer foceiControl(scaleC=) was returned whole
+    assign("control", foceiControl(scaleC = rep(2, 10)), envir = .ui)
+    expect_warning(.sc <- .ui$scaleCtheta, "more options than estimated")
+    expect_identical(.sc, rep(2, 4))
+  })
 })

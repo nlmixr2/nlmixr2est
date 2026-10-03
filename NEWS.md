@@ -165,6 +165,13 @@
   differing number of rows`.  Both now read the fit's own control (`$control`);
   the imp objective read `$foceiControl`, which never holds `adjObf`.
 
+### Parameter scaling
+
+- `ui$scaleCtheta` (and `ui$scaleCnls`) now give one scaling constant per
+  estimated theta.  For a model with random effects the values were followed
+  by an `NA` for each of them, and a `foceiControl(scaleC=)` longer than the
+  thetas was returned whole.
+
 ### Covariance and finite differences
 
 - The Gill (1983) step-size search no longer leaves a parameter at its last
