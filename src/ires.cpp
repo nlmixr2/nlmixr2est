@@ -125,10 +125,8 @@ BEGIN_RCPP
   retDF.names() = nm;
   retDF.attr("row.names") = IntegerVector::create(NA_INTEGER,-ncalc);
   retDF.attr("class") = "data.frame";
-  List retC = List::create(retDF, R_NilValue,
-			   getDfSubsetVars(ipredL, stateSXP),
-			   getDfSubsetVars(ipredL, relevantLHSSEXP),
-			   getDfSubsetVars(ipredL, covSXP));
+  List retC = dfTableParts(retDF, R_NilValue, ipredL, ipredL,
+			   stateSXP, relevantLHSSEXP, covSXP);
   dfSetStateLhsOps(retC, opt);
   retC = dfCbindList(wrap(retC));
   List ret(3);

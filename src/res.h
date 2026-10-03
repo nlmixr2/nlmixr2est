@@ -16,6 +16,9 @@ List getDfIdentifierCols(List &ipred, int &npred, SEXP cmtNames, SEXP IDlabel);
 
 void dfSetStateLhsOps(List& in, List& opt);
 
+List dfTableParts(SEXP resid, SEXP etas, SEXP stateFrom, SEXP lhsFrom,
+                  SEXP stateSXP, SEXP lhsSXP, SEXP covSXP);
+
 extern "C" {
 #endif
   SEXP _nlmixr2est_resCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,

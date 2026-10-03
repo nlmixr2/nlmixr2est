@@ -17,6 +17,13 @@
   
 ## Bug Fixes
 
+- The table step of a fit ("Calculating residuals/tables") now protects the
+  state, `lhs` and covariate columns it adds to the table from R's garbage
+  collector.  A collection that landed in a window of a few allocations
+  dropped those columns from the table, or corrupted R's heap so that R could
+  crash later (for example with `malloc(): unsorted double linked list
+  corrupted`).  The window is small, so this was rare and intermittent.
+
 - `$etaMat` of a fit with inter-occasion variability now holds the occasion
   ETAs as the model estimated them; it held them multiplied by the occasion
   standard deviation (the scale of `$iov`).  `setOfv()`, `addCwres()`,
