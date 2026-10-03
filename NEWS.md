@@ -207,6 +207,18 @@
   problem scales the first omega parameter like the other diagonals (`1/2`, or
   `1/(2|init|)`); it took the default of a linear theta, `1/|init|`.
 
+- A FOCEi theta reset (`foceiControl(resetThetaP=)`, `resetThetaFinalP=`, and
+  the reset after a zero gradient) now restarts the fit from the values it
+  reset to, with each eta's drift moved into the theta that eta belongs to.
+  The reset took the current thetas through the parameter scaling a second
+  time (with another parameter's constants), moved every eta's drift into the
+  first theta, and a restart after the first evaluation went back to the
+  initial estimates and the etas from before the reset, with its bounds
+  scaled twice.  A model whose etas drift at the initial estimates was driven
+  to an objective of 4.5e231 with `resetThetaP = 0.2`; it now reaches 160.8,
+  and a final reset (`resetThetaFinalP`) that stopped with "Starting values
+  violate bounds" now restarts.
+
 ### Covariance and finite differences
 
 - The Gill (1983) step-size search no longer leaves a parameter at its last
