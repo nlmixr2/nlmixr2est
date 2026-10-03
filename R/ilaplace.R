@@ -27,6 +27,4 @@ attr(nlmixr2Est.ilaplace, "mu") <- function(control) {
 }
 
 #' @export
-rxUiDeparse.ilaplaceControl <- function(object, var) {
-  .rxUiDeparseFoceiControl(object, var, type = "ilaplaceControl")
-}
+rxUiDeparse.ilaplaceControl <- function(object, var) .rxUiDeparseFoceiControl(object, var, type = "ilaplaceControl")

@@ -216,11 +216,7 @@ uobyqaControl <- function(
 }
 
 #' @export
-rxUiDeparse.uobyqaControl <- function(object, var) {
-  .default <- uobyqaControl()
-  .w <- .deparseDifferent(.default, object, "genRxControl")
-  .deparseFinal(.default, object, .w, var)
-}
+rxUiDeparse.uobyqaControl <- function(object, var) .deparseControl(object, var, uobyqaControl())
 
 #' Get the uobyqa family control
 #'
@@ -235,43 +231,15 @@ rxUiDeparse.uobyqaControl <- function(object, var) {
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.uobyqaControl <- function(control, env) {
-  assign("uobyqaControl", control, envir = env)
-}
+nmObjHandleControlObject.uobyqaControl <- function(control, env) assign("uobyqaControl", control, envir = env)
 
 #' @rdname nmObjGetControl
 #' @export
-nmObjGetControl.uobyqa <- function(x, ...) {
-  .env <- x[[1]]
-  if (exists("uobyqaControl", .env, inherits = FALSE)) {
-    .control <- get("uobyqaControl", .env, inherits = FALSE)
-    if (inherits(.control, "uobyqaControl")) return(.control)
-  }
-  if (exists("control", .env, inherits = FALSE)) {
-    .control <- get("control", .env, inherits = FALSE)
-    if (inherits(.control, "uobyqaControl")) return(.control)
-  }
-  stop("cannot find uobyqa related control object", call. = FALSE)
-}
+nmObjGetControl.uobyqa <- function(x, ...) .nmObjGetControlByClass(x, "uobyqaControl")
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.uobyqa <- function(control) {
-  .ctl <- control[[1]]
-  if (is.null(.ctl)) {
-    .ctl <- uobyqaControl()
-  }
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
-    .ctl <- do.call("uobyqaControl", .ctl)
-  }
-  if (!inherits(.ctl, "uobyqaControl")) {
-    .minfo("invalid control for `est=\"uobyqa\"`, using default")
-    .ctl <- uobyqaControl()
-  } else {
-    .ctl <- do.call(uobyqaControl, .ctl)
-  }
-  .ctl
-}
+getValidNlmixrCtl.uobyqa <- function(control) .getValidCtl(control, "uobyqaControl", "uobyqa")
 
 .uobyqaControlToFoceiControl <- function(env, assign = TRUE) {
   .nlmFamilyControlToFoceiControl(env, "uobyqaControl", assign)

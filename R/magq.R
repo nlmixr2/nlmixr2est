@@ -27,6 +27,4 @@ attr(nlmixr2Est.magq, "mu") <- function(control) {
 }
 
 #' @export
-rxUiDeparse.magqControl <- function(object, var) {
-  .rxUiDeparseFoceiControl(object, var, type = "magqControl")
-}
+rxUiDeparse.magqControl <- function(object, var) .rxUiDeparseFoceiControl(object, var, type = "magqControl")

@@ -676,7 +676,5 @@ saemControl <- function(
 
 #' @export
 rxUiDeparse.saemControl <- function(object, var) {
-  .default <- saemControl()
-  .w <- .deparseDifferent(.default, object, c("genRxControl", "DEBUG"))
-  .deparseFinal(.default, object, .w, var, fun = .saemDeparseExtra)
+  .deparseControl(object, var, saemControl(), c("genRxControl", "DEBUG"), fun = .saemDeparseExtra)
 }

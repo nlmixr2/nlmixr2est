@@ -28,58 +28,24 @@ foControl <- function(sigdig = 3, ..., posthoc = TRUE, interaction = NULL, fo = 
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.foControl <- function(control, env) {
-  assign("foControl", control, envir = env)
-}
+nmObjHandleControlObject.foControl <- function(control, env) assign("foControl", control, envir = env)
 
 #' @rdname getValidNlmixrControl
 #' @export
 getValidNlmixrCtl.fo <- function(control) {
-  .ctl <- control[[1]]
-  .cls <- class(control)[1]
-  if (is.null(.ctl)) {
-    .ctl <- foControl()
-  }
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
-    .ctl <- do.call("foControl", .ctl)
-  }
-  if (
-    inherits(.ctl, "foceiControl") ||
-      inherits(.ctl, "foceControl") ||
-      inherits(.ctl, "foiControl")
-  ) {
-    .minfo(paste0("converting ", class(.ctl)[1], " to foControl"))
-    class(.ctl) <- NULL
-    .ctl <- do.call(foControl, .ctl)
-  } else if (inherits(.ctl, "foceControl")) {
-    .minfo(paste0("converting foceControl to foControl"))
-    class(.ctl) <- NULL
-    .ctl <- do.call(foControl, .ctl)
-  } else if (!inherits(.ctl, "foControl")) {
-    .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
-    .ctl <- foControl()
-  } else {
-    .ctl <- do.call(foControl, .ctl)
-  }
-  .ctl
+  .getValidCtl(control, "foControl", convert = c("foceiControl", "foceControl", "foiControl"))
 }
 
 
 #' @rdname nmObjGetControl
 #' @export
 nmObjGetControl.fo <- function(x, ...) {
-  .env <- x[[1]]
-  for (.name in c("foControl", "control", "foiControl", "foceControl", "foceiControl", "foceiControl0")) {
-    if (exists(.name, .env, inherits = FALSE)) {
-      .control <- get(.name, .env, inherits = FALSE)
-      if (inherits(.control, "foControl")) {
-        return(.control)
-      }
-      .ret <- try(suppressMessages(getValidNlmixrCtl.fo(list(.control))), silent = TRUE)
-      if (inherits(.ret, "foControl")) return(.ret)
-    }
-  }
-  stop("cannot find fo related control object", call. = FALSE)
+  .nmObjGetControlByClass(
+    x,
+    "foControl",
+    others = c("foiControl", "foceControl", "foceiControl", "foceiControl0"),
+    convert = getValidNlmixrCtl.fo
+  )
 }
 
 

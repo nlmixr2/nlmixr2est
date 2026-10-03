@@ -223,11 +223,7 @@ n1qn1Control <- function(
 }
 
 #' @export
-rxUiDeparse.n1qn1Control <- function(object, var) {
-  .default <- n1qn1Control()
-  .w <- .deparseDifferent(.default, object, "genRxControl")
-  .deparseFinal(.default, object, .w, var)
-}
+rxUiDeparse.n1qn1Control <- function(object, var) .deparseControl(object, var, n1qn1Control())
 
 
 #' Get the n1qn1 family control
@@ -243,43 +239,15 @@ rxUiDeparse.n1qn1Control <- function(object, var) {
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.n1qn1Control <- function(control, env) {
-  assign("n1qn1Control", control, envir = env)
-}
+nmObjHandleControlObject.n1qn1Control <- function(control, env) assign("n1qn1Control", control, envir = env)
 
 #' @rdname nmObjGetControl
 #' @export
-nmObjGetControl.n1qn1 <- function(x, ...) {
-  .env <- x[[1]]
-  if (exists("n1qn1Control", .env, inherits = FALSE)) {
-    .control <- get("n1qn1Control", .env, inherits = FALSE)
-    if (inherits(.control, "n1qn1Control")) return(.control)
-  }
-  if (exists("control", .env, inherits = FALSE)) {
-    .control <- get("control", .env, inherits = FALSE)
-    if (inherits(.control, "n1qn1Control")) return(.control)
-  }
-  stop("cannot find n1qn1 related control object", call. = FALSE)
-}
+nmObjGetControl.n1qn1 <- function(x, ...) .nmObjGetControlByClass(x, "n1qn1Control")
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.n1qn1 <- function(control) {
-  .ctl <- control[[1]]
-  if (is.null(.ctl)) {
-    .ctl <- n1qn1Control()
-  }
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
-    .ctl <- do.call("n1qn1Control", .ctl)
-  }
-  if (!inherits(.ctl, "n1qn1Control")) {
-    .minfo("invalid control for `est=\"n1qn1\"`, using default")
-    .ctl <- n1qn1Control()
-  } else {
-    .ctl <- do.call(n1qn1Control, .ctl)
-  }
-  .ctl
-}
+getValidNlmixrCtl.n1qn1 <- function(control) .getValidCtl(control, "n1qn1Control", "n1qn1")
 
 .n1qn1ControlToFoceiControl <- function(env, assign = TRUE) {
   .nlmFamilyControlToFoceiControl(env, "n1qn1Control", assign)

@@ -28,52 +28,17 @@ focepControl <- function(sigdig = 3, ..., interaction = FALSE, foce = "foce+") {
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.focepControl <- function(control, env) {
-  assign("focepControl", control, envir = env)
-}
+nmObjHandleControlObject.focepControl <- function(control, env) assign("focepControl", control, envir = env)
 
 #' @rdname getValidNlmixrControl
 #' @export
 getValidNlmixrCtl.focep <- function(control) {
-  .ctl <- control[[1]]
-  .cls <- class(control)[1]
-  if (is.null(.ctl)) {
-    .ctl <- focepControl()
-  }
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
-    .ctl <- do.call("focepControl", .ctl)
-  }
-  if (
-    inherits(.ctl, "foceiControl") ||
-      inherits(.ctl, "foControl") ||
-      inherits(.ctl, "foiControl")
-  ) {
-    .minfo(paste0("converting ", class(.ctl)[1], " to focepControl"))
-    class(.ctl) <- NULL
-    .ctl <- do.call(focepControl, .ctl)
-  } else if (!inherits(.ctl, "focepControl")) {
-    .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
-    .ctl <- focepControl()
-  } else {
-    .ctl <- do.call(focepControl, .ctl)
-  }
-  .ctl
+  .getValidCtl(control, "focepControl", convert = c("foceiControl", "foControl", "foiControl"))
 }
 
 #' @rdname nmObjGetControl
 #' @export
-nmObjGetControl.focep <- function(x, ...) {
-  .env <- x[[1]]
-  if (exists("focepControl", .env, inherits = FALSE)) {
-    .control <- get("focepControl", .env, inherits = FALSE)
-    if (inherits(.control, "focepControl")) return(.control)
-  }
-  if (exists("control", .env, inherits = FALSE)) {
-    .control <- get("control", .env, inherits = FALSE)
-    if (inherits(.control, "focepControl")) return(.control)
-  }
-  stop("cannot find focep related control object", call. = FALSE)
-}
+nmObjGetControl.focep <- function(x, ...) .nmObjGetControlByClass(x, "focepControl")
 
 #' @rdname nmObjGetFoceiControl
 #' @export

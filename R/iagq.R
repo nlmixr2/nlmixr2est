@@ -27,6 +27,4 @@ attr(nlmixr2Est.iagq, "mu") <- function(control) {
 }
 
 #' @export
-rxUiDeparse.iagqControl <- function(object, var) {
-  .rxUiDeparseFoceiControl(object, var, type = "iagqControl")
-}
+rxUiDeparse.iagqControl <- function(object, var) .rxUiDeparseFoceiControl(object, var, type = "iagqControl")

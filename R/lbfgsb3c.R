@@ -246,11 +246,7 @@ lbfgsb3cControl <- function(
 }
 
 #' @export
-rxUiDeparse.lbfgsb3cControl <- function(object, var) {
-  .default <- lbfgsb3cControl()
-  .w <- .deparseDifferent(.default, object, "genRxControl")
-  .deparseFinal(.default, object, .w, var)
-}
+rxUiDeparse.lbfgsb3cControl <- function(object, var) .deparseControl(object, var, lbfgsb3cControl())
 
 #' Get the lbfgsb3c family control
 #'
@@ -265,43 +261,15 @@ rxUiDeparse.lbfgsb3cControl <- function(object, var) {
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.lbfgsb3cControl <- function(control, env) {
-  assign("lbfgsb3cControl", control, envir = env)
-}
+nmObjHandleControlObject.lbfgsb3cControl <- function(control, env) assign("lbfgsb3cControl", control, envir = env)
 
 #' @rdname nmObjGetControl
 #' @export
-nmObjGetControl.lbfgsb3c <- function(x, ...) {
-  .env <- x[[1]]
-  if (exists("lbfgsb3cControl", .env, inherits = FALSE)) {
-    .control <- get("lbfgsb3cControl", .env, inherits = FALSE)
-    if (inherits(.control, "lbfgsb3cControl")) return(.control)
-  }
-  if (exists("control", .env, inherits = FALSE)) {
-    .control <- get("control", .env, inherits = FALSE)
-    if (inherits(.control, "lbfgsb3cControl")) return(.control)
-  }
-  stop("cannot find lbfgsb3c related control object", call. = FALSE)
-}
+nmObjGetControl.lbfgsb3c <- function(x, ...) .nmObjGetControlByClass(x, "lbfgsb3cControl")
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.lbfgsb3c <- function(control) {
-  .ctl <- control[[1]]
-  if (is.null(.ctl)) {
-    .ctl <- lbfgsb3cControl()
-  }
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
-    .ctl <- do.call("lbfgsb3cControl", .ctl)
-  }
-  if (!inherits(.ctl, "lbfgsb3cControl")) {
-    .minfo("invalid control for `est=\"lbfgsb3c\"`, using default")
-    .ctl <- lbfgsb3cControl()
-  } else {
-    .ctl <- do.call(lbfgsb3cControl, .ctl)
-  }
-  .ctl
-}
+getValidNlmixrCtl.lbfgsb3c <- function(control) .getValidCtl(control, "lbfgsb3cControl", "lbfgsb3c")
 
 .lbfgsb3cControlToFoceiControl <- function(env, assign = TRUE) {
   .nlmFamilyControlToFoceiControl(env, "lbfgsb3cControl", assign)

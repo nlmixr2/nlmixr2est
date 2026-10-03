@@ -772,32 +772,12 @@ impmapControl <- function(
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.impmapControl <- function(control, env) {
-  assign("impmapControl", control, envir = env)
-}
+nmObjHandleControlObject.impmapControl <- function(control, env) assign("impmapControl", control, envir = env)
 
 #' @rdname getValidNlmixrControl
 #' @export
 getValidNlmixrCtl.impmap <- function(control) {
-  .ctl <- control[[1]]
-  .cls <- class(control)[1]
-  if (is.null(.ctl)) {
-    .ctl <- impmapControl()
-  }
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
-    .ctl <- do.call("impmapControl", .ctl)
-  }
-  if (inherits(.ctl, "foceiControl")) {
-    .minfo(paste0("converting ", class(.ctl)[1], " to impmapControl"))
-    class(.ctl) <- NULL
-    .ctl <- do.call(impmapControl, .ctl)
-  } else if (!inherits(.ctl, "impmapControl")) {
-    .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
-    .ctl <- impmapControl()
-  } else {
-    .ctl <- do.call(impmapControl, .ctl)
-  }
-  .impmapEstWins(.ctl, .cls)
+  .impmapEstWins(.getValidCtl(control, "impmapControl", convert = "foceiControl"), class(control)[1])
 }
 
 #' `est` wins over the values another method's `est` stamped on its control.
@@ -872,18 +852,7 @@ getValidNlmixrCtl.impmap <- function(control) {
 
 #' @rdname nmObjGetControl
 #' @export
-nmObjGetControl.impmap <- function(x, ...) {
-  .env <- x[[1]]
-  if (exists("impmapControl", .env, inherits = FALSE)) {
-    .control <- get("impmapControl", .env, inherits = FALSE)
-    if (inherits(.control, "impmapControl")) return(.control)
-  }
-  if (exists("control", .env, inherits = FALSE)) {
-    .control <- get("control", .env, inherits = FALSE)
-    if (inherits(.control, "impmapControl")) return(.control)
-  }
-  stop("cannot find impmap related control object", call. = FALSE)
-}
+nmObjGetControl.impmap <- function(x, ...) .nmObjGetControlByClass(x, "impmapControl")
 
 .impmapControlToFoceiControl <- function(env, assign = TRUE) {
   .impmapControl <- env$impmapControl

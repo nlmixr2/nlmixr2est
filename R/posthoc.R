@@ -23,44 +23,15 @@ posthocControl <- function(sigdig = 3, ..., interaction = FALSE, maxOuterIterati
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.posthocControl <- function(control, env) {
-  assign("posthocControl", control, envir = env)
-}
+nmObjHandleControlObject.posthocControl <- function(control, env) assign("posthocControl", control, envir = env)
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.posthoc <- function(control) {
-  .ctl <- control[[1]]
-  .cls <- class(control)[1]
-  if (is.null(.ctl)) {
-    .ctl <- posthocControl()
-  }
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
-    .ctl <- do.call("posthocControl", .ctl)
-  }
-  if (!inherits(.ctl, "posthocControl")) {
-    .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
-    .ctl <- posthocControl()
-  } else {
-    .ctl <- do.call(posthocControl, .ctl)
-  }
-  .ctl
-}
+getValidNlmixrCtl.posthoc <- function(control) .getValidCtl(control, "posthocControl")
 
 #' @rdname nmObjGetControl
 #' @export
-nmObjGetControl.posthoc <- function(x, ...) {
-  .env <- x[[1]]
-  if (exists("posthocControl", .env, inherits = FALSE)) {
-    .control <- get("posthocControl", .env, inherits = FALSE)
-    if (inherits(.control, "posthocControl")) return(.control)
-  }
-  if (exists("control", .env, inherits = FALSE)) {
-    .control <- get("control", .env, inherits = FALSE)
-    if (inherits(.control, "posthocControl")) return(.control)
-  }
-  stop("cannot find posthoc related control object", call. = FALSE)
-}
+nmObjGetControl.posthoc <- function(x, ...) .nmObjGetControlByClass(x, "posthocControl")
 
 #' @rdname nmObjGetFoceiControl
 #' @export

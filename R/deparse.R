@@ -132,3 +132,18 @@
   )
   str2lang(paste(var, " <- ", .cls, "(", paste(.retD, collapse = ","), ")"))
 }
+
+#' Deparse a control as a call to its constructor
+#'
+#' The body of the `rxUiDeparse()` methods of the estimation controls: the call
+#' sets only what differs from the constructor's default.
+#' @param object the control
+#' @param var name the call is assigned to
+#' @param default the control the constructor builds by default
+#' @param internal names that are never deparsed
+#' @param fun see [.deparseFinal()]
+#' @return the language object `var <- <constructor>(...)`
+#' @noRd
+.deparseControl <- function(object, var, default, internal = "genRxControl", fun = NULL) {
+  .deparseFinal(default, object, .deparseDifferent(default, object, internal), var, fun = fun)
+}

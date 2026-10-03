@@ -2274,6 +2274,4 @@ foceiControl <- function(
 }
 
 #' @export
-rxUiDeparse.foceiControl <- function(object, var) {
-  .rxUiDeparseFoceiControl(object, var, type = "foceiControl")
-}
+rxUiDeparse.foceiControl <- function(object, var) .rxUiDeparseFoceiControl(object, var, type = "foceiControl")

@@ -225,11 +225,7 @@ bobyqaControl <- function(
 }
 
 #' @export
-rxUiDeparse.bobyqaControl <- function(object, var) {
-  .default <- bobyqaControl()
-  .w <- .deparseDifferent(.default, object, "genRxControl")
-  .deparseFinal(.default, object, .w, var)
-}
+rxUiDeparse.bobyqaControl <- function(object, var) .deparseControl(object, var, bobyqaControl())
 
 #' Get the bobyqa family control
 #'
@@ -244,43 +240,15 @@ rxUiDeparse.bobyqaControl <- function(object, var) {
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.bobyqaControl <- function(control, env) {
-  assign("bobyqaControl", control, envir = env)
-}
+nmObjHandleControlObject.bobyqaControl <- function(control, env) assign("bobyqaControl", control, envir = env)
 
 #' @rdname nmObjGetControl
 #' @export
-nmObjGetControl.bobyqa <- function(x, ...) {
-  .env <- x[[1]]
-  if (exists("bobyqaControl", .env, inherits = FALSE)) {
-    .control <- get("bobyqaControl", .env, inherits = FALSE)
-    if (inherits(.control, "bobyqaControl")) return(.control)
-  }
-  if (exists("control", .env, inherits = FALSE)) {
-    .control <- get("control", .env, inherits = FALSE)
-    if (inherits(.control, "bobyqaControl")) return(.control)
-  }
-  stop("cannot find bobyqa related control object", call. = FALSE)
-}
+nmObjGetControl.bobyqa <- function(x, ...) .nmObjGetControlByClass(x, "bobyqaControl")
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.bobyqa <- function(control) {
-  .ctl <- control[[1]]
-  if (is.null(.ctl)) {
-    .ctl <- bobyqaControl()
-  }
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
-    .ctl <- do.call("bobyqaControl", .ctl)
-  }
-  if (!inherits(.ctl, "bobyqaControl")) {
-    .minfo("invalid control for `est=\"bobyqa\"`, using default")
-    .ctl <- bobyqaControl()
-  } else {
-    .ctl <- do.call(bobyqaControl, .ctl)
-  }
-  .ctl
-}
+getValidNlmixrCtl.bobyqa <- function(control) .getValidCtl(control, "bobyqaControl", "bobyqa")
 
 .bobyqaControlToFoceiControl <- function(env, assign = TRUE) {
   .nlmFamilyControlToFoceiControl(env, "bobyqaControl", assign)

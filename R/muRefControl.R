@@ -40,47 +40,15 @@ mfoceiControl <- function(sigdig = 3, ..., muModel = c("lin", "irls", "none")) {
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.mfoceiControl <- function(control, env) {
-  assign("mfoceiControl", control, envir = env)
-}
+nmObjHandleControlObject.mfoceiControl <- function(control, env) assign("mfoceiControl", control, envir = env)
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.mfocei <- function(control) {
-  .ctl <- control[[1]]
-  .cls <- class(control)[1]
-  if (is.null(.ctl)) {
-    .ctl <- mfoceiControl()
-  }
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
-    .ctl <- do.call("mfoceiControl", .ctl)
-  }
-  if (inherits(.ctl, "mfoceiControl")) {
-    .ctl <- do.call(mfoceiControl, unclass(.ctl))
-  } else if (inherits(.ctl, .foceiFamilyControlConvertible)) {
-    .minfo(paste0("converting ", class(.ctl)[1], " to mfoceiControl"))
-    .ctl <- .foceiFamilyControlAs(.ctl, "mfoceiControl")
-  } else {
-    .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
-    .ctl <- mfoceiControl()
-  }
-  .ctl
-}
+getValidNlmixrCtl.mfocei <- function(control) .foceiFamilyValidCtl(control, "mfoceiControl")
 
 #' @rdname nmObjGetControl
 #' @export
-nmObjGetControl.mfocei <- function(x, ...) {
-  .env <- x[[1]]
-  if (exists("mfoceiControl", .env, inherits = FALSE)) {
-    .control <- get("mfoceiControl", .env, inherits = FALSE)
-    if (inherits(.control, "mfoceiControl")) return(.control)
-  }
-  if (exists("control", .env, inherits = FALSE)) {
-    .control <- get("control", .env, inherits = FALSE)
-    if (inherits(.control, "mfoceiControl")) return(.control)
-  }
-  stop("cannot find mfocei related control object", call. = FALSE)
-}
+nmObjGetControl.mfocei <- function(x, ...) .nmObjGetControlByClass(x, "mfoceiControl")
 
 #' @rdname nmObjGetFoceiControl
 #' @export
@@ -113,47 +81,15 @@ ifoceiControl <- function(sigdig = 3, ..., muModel = c("irls", "lin", "none")) {
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.ifoceiControl <- function(control, env) {
-  assign("ifoceiControl", control, envir = env)
-}
+nmObjHandleControlObject.ifoceiControl <- function(control, env) assign("ifoceiControl", control, envir = env)
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.ifocei <- function(control) {
-  .ctl <- control[[1]]
-  .cls <- class(control)[1]
-  if (is.null(.ctl)) {
-    .ctl <- ifoceiControl()
-  }
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
-    .ctl <- do.call("ifoceiControl", .ctl)
-  }
-  if (inherits(.ctl, "ifoceiControl")) {
-    .ctl <- do.call(ifoceiControl, unclass(.ctl))
-  } else if (inherits(.ctl, .foceiFamilyControlConvertible)) {
-    .minfo(paste0("converting ", class(.ctl)[1], " to ifoceiControl"))
-    .ctl <- .foceiFamilyControlAs(.ctl, "ifoceiControl")
-  } else {
-    .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
-    .ctl <- ifoceiControl()
-  }
-  .ctl
-}
+getValidNlmixrCtl.ifocei <- function(control) .foceiFamilyValidCtl(control, "ifoceiControl")
 
 #' @rdname nmObjGetControl
 #' @export
-nmObjGetControl.ifocei <- function(x, ...) {
-  .env <- x[[1]]
-  if (exists("ifoceiControl", .env, inherits = FALSE)) {
-    .control <- get("ifoceiControl", .env, inherits = FALSE)
-    if (inherits(.control, "ifoceiControl")) return(.control)
-  }
-  if (exists("control", .env, inherits = FALSE)) {
-    .control <- get("control", .env, inherits = FALSE)
-    if (inherits(.control, "ifoceiControl")) return(.control)
-  }
-  stop("cannot find ifocei related control object", call. = FALSE)
-}
+nmObjGetControl.ifocei <- function(x, ...) .nmObjGetControlByClass(x, "ifoceiControl")
 
 #' @rdname nmObjGetFoceiControl
 #' @export
@@ -188,47 +124,15 @@ mfoceControl <- function(sigdig = 3, ..., interaction = FALSE, muModel = c("lin"
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.mfoceControl <- function(control, env) {
-  assign("mfoceControl", control, envir = env)
-}
+nmObjHandleControlObject.mfoceControl <- function(control, env) assign("mfoceControl", control, envir = env)
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.mfoce <- function(control) {
-  .ctl <- control[[1]]
-  .cls <- class(control)[1]
-  if (is.null(.ctl)) {
-    .ctl <- mfoceControl()
-  }
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
-    .ctl <- do.call("mfoceControl", .ctl)
-  }
-  if (inherits(.ctl, "mfoceControl")) {
-    .ctl <- do.call(mfoceControl, unclass(.ctl))
-  } else if (inherits(.ctl, .foceiFamilyControlConvertible)) {
-    .minfo(paste0("converting ", class(.ctl)[1], " to mfoceControl"))
-    .ctl <- .foceiFamilyControlAs(.ctl, "mfoceControl")
-  } else {
-    .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
-    .ctl <- mfoceControl()
-  }
-  .ctl
-}
+getValidNlmixrCtl.mfoce <- function(control) .foceiFamilyValidCtl(control, "mfoceControl")
 
 #' @rdname nmObjGetControl
 #' @export
-nmObjGetControl.mfoce <- function(x, ...) {
-  .env <- x[[1]]
-  if (exists("mfoceControl", .env, inherits = FALSE)) {
-    .control <- get("mfoceControl", .env, inherits = FALSE)
-    if (inherits(.control, "mfoceControl")) return(.control)
-  }
-  if (exists("control", .env, inherits = FALSE)) {
-    .control <- get("control", .env, inherits = FALSE)
-    if (inherits(.control, "mfoceControl")) return(.control)
-  }
-  stop("cannot find mfoce related control object", call. = FALSE)
-}
+nmObjGetControl.mfoce <- function(x, ...) .nmObjGetControlByClass(x, "mfoceControl")
 
 #' @rdname nmObjGetFoceiControl
 #' @export
@@ -263,47 +167,15 @@ ifoceControl <- function(sigdig = 3, ..., interaction = FALSE, muModel = c("irls
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.ifoceControl <- function(control, env) {
-  assign("ifoceControl", control, envir = env)
-}
+nmObjHandleControlObject.ifoceControl <- function(control, env) assign("ifoceControl", control, envir = env)
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.ifoce <- function(control) {
-  .ctl <- control[[1]]
-  .cls <- class(control)[1]
-  if (is.null(.ctl)) {
-    .ctl <- ifoceControl()
-  }
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
-    .ctl <- do.call("ifoceControl", .ctl)
-  }
-  if (inherits(.ctl, "ifoceControl")) {
-    .ctl <- do.call(ifoceControl, unclass(.ctl))
-  } else if (inherits(.ctl, .foceiFamilyControlConvertible)) {
-    .minfo(paste0("converting ", class(.ctl)[1], " to ifoceControl"))
-    .ctl <- .foceiFamilyControlAs(.ctl, "ifoceControl")
-  } else {
-    .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
-    .ctl <- ifoceControl()
-  }
-  .ctl
-}
+getValidNlmixrCtl.ifoce <- function(control) .foceiFamilyValidCtl(control, "ifoceControl")
 
 #' @rdname nmObjGetControl
 #' @export
-nmObjGetControl.ifoce <- function(x, ...) {
-  .env <- x[[1]]
-  if (exists("ifoceControl", .env, inherits = FALSE)) {
-    .control <- get("ifoceControl", .env, inherits = FALSE)
-    if (inherits(.control, "ifoceControl")) return(.control)
-  }
-  if (exists("control", .env, inherits = FALSE)) {
-    .control <- get("control", .env, inherits = FALSE)
-    if (inherits(.control, "ifoceControl")) return(.control)
-  }
-  stop("cannot find ifoce related control object", call. = FALSE)
-}
+nmObjGetControl.ifoce <- function(x, ...) .nmObjGetControlByClass(x, "ifoceControl")
 
 #' @rdname nmObjGetFoceiControl
 #' @export
@@ -351,47 +223,15 @@ magqControl <- function(
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.magqControl <- function(control, env) {
-  assign("magqControl", control, envir = env)
-}
+nmObjHandleControlObject.magqControl <- function(control, env) assign("magqControl", control, envir = env)
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.magq <- function(control) {
-  .ctl <- control[[1]]
-  .cls <- class(control)[1]
-  if (is.null(.ctl)) {
-    .ctl <- magqControl()
-  }
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
-    .ctl <- do.call("magqControl", .ctl)
-  }
-  if (inherits(.ctl, "magqControl")) {
-    .ctl <- do.call(magqControl, unclass(.ctl))
-  } else if (inherits(.ctl, .foceiFamilyControlConvertible)) {
-    .minfo(paste0("converting ", class(.ctl)[1], " to magqControl"))
-    .ctl <- .foceiFamilyControlAs(.ctl, "magqControl")
-  } else {
-    .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
-    .ctl <- magqControl()
-  }
-  .ctl
-}
+getValidNlmixrCtl.magq <- function(control) .foceiFamilyValidCtl(control, "magqControl")
 
 #' @rdname nmObjGetControl
 #' @export
-nmObjGetControl.magq <- function(x, ...) {
-  .env <- x[[1]]
-  if (exists("magqControl", .env, inherits = FALSE)) {
-    .control <- get("magqControl", .env, inherits = FALSE)
-    if (inherits(.control, "magqControl")) return(.control)
-  }
-  if (exists("control", .env, inherits = FALSE)) {
-    .control <- get("control", .env, inherits = FALSE)
-    if (inherits(.control, "magqControl")) return(.control)
-  }
-  stop("cannot find magq related control object", call. = FALSE)
-}
+nmObjGetControl.magq <- function(x, ...) .nmObjGetControlByClass(x, "magqControl")
 
 #' @rdname nmObjGetFoceiControl
 #' @export
@@ -439,47 +279,15 @@ iagqControl <- function(
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.iagqControl <- function(control, env) {
-  assign("iagqControl", control, envir = env)
-}
+nmObjHandleControlObject.iagqControl <- function(control, env) assign("iagqControl", control, envir = env)
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.iagq <- function(control) {
-  .ctl <- control[[1]]
-  .cls <- class(control)[1]
-  if (is.null(.ctl)) {
-    .ctl <- iagqControl()
-  }
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
-    .ctl <- do.call("iagqControl", .ctl)
-  }
-  if (inherits(.ctl, "iagqControl")) {
-    .ctl <- do.call(iagqControl, unclass(.ctl))
-  } else if (inherits(.ctl, .foceiFamilyControlConvertible)) {
-    .minfo(paste0("converting ", class(.ctl)[1], " to iagqControl"))
-    .ctl <- .foceiFamilyControlAs(.ctl, "iagqControl")
-  } else {
-    .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
-    .ctl <- iagqControl()
-  }
-  .ctl
-}
+getValidNlmixrCtl.iagq <- function(control) .foceiFamilyValidCtl(control, "iagqControl")
 
 #' @rdname nmObjGetControl
 #' @export
-nmObjGetControl.iagq <- function(x, ...) {
-  .env <- x[[1]]
-  if (exists("iagqControl", .env, inherits = FALSE)) {
-    .control <- get("iagqControl", .env, inherits = FALSE)
-    if (inherits(.control, "iagqControl")) return(.control)
-  }
-  if (exists("control", .env, inherits = FALSE)) {
-    .control <- get("control", .env, inherits = FALSE)
-    if (inherits(.control, "iagqControl")) return(.control)
-  }
-  stop("cannot find iagq related control object", call. = FALSE)
-}
+nmObjGetControl.iagq <- function(x, ...) .nmObjGetControlByClass(x, "iagqControl")
 
 #' @rdname nmObjGetFoceiControl
 #' @export
@@ -511,47 +319,15 @@ mlaplaceControl <- function(sigdig = 3, ..., nAGQ = 1, muModel = c("lin", "irls"
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.mlaplaceControl <- function(control, env) {
-  assign("mlaplaceControl", control, envir = env)
-}
+nmObjHandleControlObject.mlaplaceControl <- function(control, env) assign("mlaplaceControl", control, envir = env)
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.mlaplace <- function(control) {
-  .ctl <- control[[1]]
-  .cls <- class(control)[1]
-  if (is.null(.ctl)) {
-    .ctl <- mlaplaceControl()
-  }
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
-    .ctl <- do.call("mlaplaceControl", .ctl)
-  }
-  if (inherits(.ctl, "mlaplaceControl")) {
-    .ctl <- do.call(mlaplaceControl, unclass(.ctl))
-  } else if (inherits(.ctl, .foceiFamilyControlConvertible)) {
-    .minfo(paste0("converting ", class(.ctl)[1], " to mlaplaceControl"))
-    .ctl <- .foceiFamilyControlAs(.ctl, "mlaplaceControl")
-  } else {
-    .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
-    .ctl <- mlaplaceControl()
-  }
-  .ctl
-}
+getValidNlmixrCtl.mlaplace <- function(control) .foceiFamilyValidCtl(control, "mlaplaceControl")
 
 #' @rdname nmObjGetControl
 #' @export
-nmObjGetControl.mlaplace <- function(x, ...) {
-  .env <- x[[1]]
-  if (exists("mlaplaceControl", .env, inherits = FALSE)) {
-    .control <- get("mlaplaceControl", .env, inherits = FALSE)
-    if (inherits(.control, "mlaplaceControl")) return(.control)
-  }
-  if (exists("control", .env, inherits = FALSE)) {
-    .control <- get("control", .env, inherits = FALSE)
-    if (inherits(.control, "mlaplaceControl")) return(.control)
-  }
-  stop("cannot find mlaplace related control object", call. = FALSE)
-}
+nmObjGetControl.mlaplace <- function(x, ...) .nmObjGetControlByClass(x, "mlaplaceControl")
 
 #' @rdname nmObjGetFoceiControl
 #' @export
@@ -583,47 +359,15 @@ ilaplaceControl <- function(sigdig = 3, ..., nAGQ = 1, muModel = c("irls", "lin"
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.ilaplaceControl <- function(control, env) {
-  assign("ilaplaceControl", control, envir = env)
-}
+nmObjHandleControlObject.ilaplaceControl <- function(control, env) assign("ilaplaceControl", control, envir = env)
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.ilaplace <- function(control) {
-  .ctl <- control[[1]]
-  .cls <- class(control)[1]
-  if (is.null(.ctl)) {
-    .ctl <- ilaplaceControl()
-  }
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
-    .ctl <- do.call("ilaplaceControl", .ctl)
-  }
-  if (inherits(.ctl, "ilaplaceControl")) {
-    .ctl <- do.call(ilaplaceControl, unclass(.ctl))
-  } else if (inherits(.ctl, .foceiFamilyControlConvertible)) {
-    .minfo(paste0("converting ", class(.ctl)[1], " to ilaplaceControl"))
-    .ctl <- .foceiFamilyControlAs(.ctl, "ilaplaceControl")
-  } else {
-    .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
-    .ctl <- ilaplaceControl()
-  }
-  .ctl
-}
+getValidNlmixrCtl.ilaplace <- function(control) .foceiFamilyValidCtl(control, "ilaplaceControl")
 
 #' @rdname nmObjGetControl
 #' @export
-nmObjGetControl.ilaplace <- function(x, ...) {
-  .env <- x[[1]]
-  if (exists("ilaplaceControl", .env, inherits = FALSE)) {
-    .control <- get("ilaplaceControl", .env, inherits = FALSE)
-    if (inherits(.control, "ilaplaceControl")) return(.control)
-  }
-  if (exists("control", .env, inherits = FALSE)) {
-    .control <- get("control", .env, inherits = FALSE)
-    if (inherits(.control, "ilaplaceControl")) return(.control)
-  }
-  stop("cannot find ilaplace related control object", call. = FALSE)
-}
+nmObjGetControl.ilaplace <- function(x, ...) .nmObjGetControlByClass(x, "ilaplaceControl")
 
 #' @rdname nmObjGetFoceiControl
 #' @export
@@ -655,6 +399,15 @@ nmObjGetFoceiControl.ilaplace <- function(x, ...) {
     "mlaplaceControl",
     "ilaplaceControl"
   )
+
+#' `getValidNlmixrCtl()` of a mu-referenced focei-family method
+#' @param control the list `getValidNlmixrControl()` dispatches on
+#' @param ctl name of the method's control constructor
+#' @return the validated control
+#' @noRd
+.foceiFamilyValidCtl <- function(control, ctl) {
+  .getValidCtl(control, ctl, convert = .foceiFamilyControlConvertible, convertFun = .foceiFamilyControlAs)
+}
 
 #' Convert one focei-family control into another, keeping only what the caller set
 #'

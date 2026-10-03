@@ -358,11 +358,7 @@ trustControl <- function(
 }
 
 #' @export
-rxUiDeparse.trustControl <- function(object, var) {
-  .default <- trustControl()
-  .w <- .deparseDifferent(.default, object, "genRxControl")
-  .deparseFinal(.default, object, .w, var)
-}
+rxUiDeparse.trustControl <- function(object, var) .deparseControl(object, var, trustControl())
 
 #' Get the trust family control
 #'
@@ -377,43 +373,15 @@ rxUiDeparse.trustControl <- function(object, var) {
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.trustControl <- function(control, env) {
-  assign("trustControl", control, envir = env)
-}
+nmObjHandleControlObject.trustControl <- function(control, env) assign("trustControl", control, envir = env)
 
 #' @rdname nmObjGetControl
 #' @export
-nmObjGetControl.trust <- function(x, ...) {
-  .env <- x[[1]]
-  if (exists("trustControl", .env, inherits = FALSE)) {
-    .control <- get("trustControl", .env, inherits = FALSE)
-    if (inherits(.control, "trustControl")) return(.control)
-  }
-  if (exists("control", .env, inherits = FALSE)) {
-    .control <- get("control", .env, inherits = FALSE)
-    if (inherits(.control, "trustControl")) return(.control)
-  }
-  stop("cannot find trust related control object", call. = FALSE)
-}
+nmObjGetControl.trust <- function(x, ...) .nmObjGetControlByClass(x, "trustControl")
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.trust <- function(control) {
-  .ctl <- control[[1]]
-  if (is.null(.ctl)) {
-    .ctl <- trustControl()
-  }
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
-    .ctl <- do.call("trustControl", .ctl)
-  }
-  if (!inherits(.ctl, "trustControl")) {
-    .minfo("invalid control for `est=\"trust\"`, using default")
-    .ctl <- trustControl()
-  } else {
-    .ctl <- do.call(trustControl, .ctl)
-  }
-  .ctl
-}
+getValidNlmixrCtl.trust <- function(control) .getValidCtl(control, "trustControl", "trust")
 
 .trustControlToFoceiControl <- function(env, assign = TRUE) {
   .nlmFamilyControlToFoceiControl(env, "trustControl", assign)

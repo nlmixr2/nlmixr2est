@@ -363,11 +363,7 @@ optimControl <- function(
 }
 
 #' @export
-rxUiDeparse.optimControl <- function(object, var) {
-  .default <- optimControl()
-  .w <- .deparseDifferent(.default, object, "genRxControl")
-  .deparseFinal(.default, object, .w, var)
-}
+rxUiDeparse.optimControl <- function(object, var) .deparseControl(object, var, optimControl())
 
 #' A surrogate function for optim to call for ode solving
 #'
@@ -408,43 +404,15 @@ rxUiDeparse.optimControl <- function(object, var) {
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.optimControl <- function(control, env) {
-  assign("optimControl", control, envir = env)
-}
+nmObjHandleControlObject.optimControl <- function(control, env) assign("optimControl", control, envir = env)
 
 #' @rdname nmObjGetControl
 #' @export
-nmObjGetControl.optim <- function(x, ...) {
-  .env <- x[[1]]
-  if (exists("optimControl", .env, inherits = FALSE)) {
-    .control <- get("optimControl", .env, inherits = FALSE)
-    if (inherits(.control, "optimControl")) return(.control)
-  }
-  if (exists("control", .env, inherits = FALSE)) {
-    .control <- get("control", .env, inherits = FALSE)
-    if (inherits(.control, "optimControl")) return(.control)
-  }
-  stop("cannot find optim related control object", call. = FALSE)
-}
+nmObjGetControl.optim <- function(x, ...) .nmObjGetControlByClass(x, "optimControl")
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.optim <- function(control) {
-  .ctl <- control[[1]]
-  if (is.null(.ctl)) {
-    .ctl <- optimControl()
-  }
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
-    .ctl <- do.call("optimControl", .ctl)
-  }
-  if (!inherits(.ctl, "optimControl")) {
-    .minfo("invalid control for `est=\"optim\"`, using default")
-    .ctl <- optimControl()
-  } else {
-    .ctl <- do.call(optimControl, .ctl)
-  }
-  .ctl
-}
+getValidNlmixrCtl.optim <- function(control) .getValidCtl(control, "optimControl", "optim")
 
 #' @export
 rxUiGet.optimParLower <- function(x, ...) {

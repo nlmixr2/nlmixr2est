@@ -29,47 +29,15 @@ ifocepControl <- function(sigdig = 3, ..., interaction = FALSE, muModel = c("irl
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.ifocepControl <- function(control, env) {
-  assign("ifocepControl", control, envir = env)
-}
+nmObjHandleControlObject.ifocepControl <- function(control, env) assign("ifocepControl", control, envir = env)
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.ifocep <- function(control) {
-  .ctl <- control[[1]]
-  .cls <- class(control)[1]
-  if (is.null(.ctl)) {
-    .ctl <- ifocepControl()
-  }
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
-    .ctl <- do.call("ifocepControl", .ctl)
-  }
-  if (inherits(.ctl, "ifocepControl")) {
-    .ctl <- do.call(ifocepControl, unclass(.ctl))
-  } else if (inherits(.ctl, .foceiFamilyControlConvertible)) {
-    .minfo(paste0("converting ", class(.ctl)[1], " to ifocepControl"))
-    .ctl <- .foceiFamilyControlAs(.ctl, "ifocepControl")
-  } else {
-    .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
-    .ctl <- ifocepControl()
-  }
-  .ctl
-}
+getValidNlmixrCtl.ifocep <- function(control) .foceiFamilyValidCtl(control, "ifocepControl")
 
 #' @rdname nmObjGetControl
 #' @export
-nmObjGetControl.ifocep <- function(x, ...) {
-  .env <- x[[1]]
-  if (exists("ifocepControl", .env, inherits = FALSE)) {
-    .control <- get("ifocepControl", .env, inherits = FALSE)
-    if (inherits(.control, "ifocepControl")) return(.control)
-  }
-  if (exists("control", .env, inherits = FALSE)) {
-    .control <- get("control", .env, inherits = FALSE)
-    if (inherits(.control, "ifocepControl")) return(.control)
-  }
-  stop("cannot find ifocep related control object", call. = FALSE)
-}
+nmObjGetControl.ifocep <- function(x, ...) .nmObjGetControlByClass(x, "ifocepControl")
 
 #' @rdname nmObjGetFoceiControl
 #' @export

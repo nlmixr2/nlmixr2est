@@ -217,11 +217,7 @@ newuoaControl <- function(
 }
 
 #' @export
-rxUiDeparse.newuoaControl <- function(object, var) {
-  .default <- newuoaControl()
-  .w <- .deparseDifferent(.default, object, "genRxControl")
-  .deparseFinal(.default, object, .w, var)
-}
+rxUiDeparse.newuoaControl <- function(object, var) .deparseControl(object, var, newuoaControl())
 
 #' Get the newuoa family control
 #'
@@ -236,43 +232,15 @@ rxUiDeparse.newuoaControl <- function(object, var) {
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.newuoaControl <- function(control, env) {
-  assign("newuoaControl", control, envir = env)
-}
+nmObjHandleControlObject.newuoaControl <- function(control, env) assign("newuoaControl", control, envir = env)
 
 #' @rdname nmObjGetControl
 #' @export
-nmObjGetControl.newuoa <- function(x, ...) {
-  .env <- x[[1]]
-  if (exists("newuoaControl", .env, inherits = FALSE)) {
-    .control <- get("newuoaControl", .env, inherits = FALSE)
-    if (inherits(.control, "newuoaControl")) return(.control)
-  }
-  if (exists("control", .env, inherits = FALSE)) {
-    .control <- get("control", .env, inherits = FALSE)
-    if (inherits(.control, "newuoaControl")) return(.control)
-  }
-  stop("cannot find newuoa related control object", call. = FALSE)
-}
+nmObjGetControl.newuoa <- function(x, ...) .nmObjGetControlByClass(x, "newuoaControl")
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.newuoa <- function(control) {
-  .ctl <- control[[1]]
-  if (is.null(.ctl)) {
-    .ctl <- newuoaControl()
-  }
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
-    .ctl <- do.call("newuoaControl", .ctl)
-  }
-  if (!inherits(.ctl, "newuoaControl")) {
-    .minfo("invalid control for `est=\"newuoa\"`, using default")
-    .ctl <- newuoaControl()
-  } else {
-    .ctl <- do.call(newuoaControl, .ctl)
-  }
-  .ctl
-}
+getValidNlmixrCtl.newuoa <- function(control) .getValidCtl(control, "newuoaControl", "newuoa")
 
 .newuoaControlToFoceiControl <- function(env, assign = TRUE) {
   .nlmFamilyControlToFoceiControl(env, "newuoaControl", assign)

@@ -320,11 +320,7 @@ nlmControl <- function(
 }
 
 #' @export
-rxUiDeparse.nlmControl <- function(object, var) {
-  .default <- nlmControl()
-  .w <- .deparseDifferent(.default, object, "genRxControl")
-  .deparseFinal(.default, object, .w, var)
-}
+rxUiDeparse.nlmControl <- function(object, var) .deparseControl(object, var, nlmControl())
 
 
 #' Get the nlm family control
@@ -341,47 +337,15 @@ rxUiDeparse.nlmControl <- function(object, var) {
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.nlmControl <- function(control, env) {
-  assign("nlmControl", control, envir = env)
-}
+nmObjHandleControlObject.nlmControl <- function(control, env) assign("nlmControl", control, envir = env)
 
 #' @rdname nmObjGetControl
 #' @export
-nmObjGetControl.nlm <- function(x, ...) {
-  .env <- x[[1]]
-  if (exists("nlmControl", .env, inherits = FALSE)) {
-    .control <- get("nlmControl", .env, inherits = FALSE)
-    if (inherits(.control, "nlmControl")) {
-      return(.control)
-    }
-  }
-  if (exists("control", .env, inherits = FALSE)) {
-    .control <- get("control", .env, inherits = FALSE)
-    if (inherits(.control, "nlmControl")) {
-      return(.control)
-    }
-  }
-  stop("cannot find nlm related control object", call. = FALSE)
-}
+nmObjGetControl.nlm <- function(x, ...) .nmObjGetControlByClass(x, "nlmControl")
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.nlm <- function(control) {
-  .ctl <- control[[1]]
-  if (is.null(.ctl)) {
-    .ctl <- nlmControl()
-  }
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
-    .ctl <- do.call("nlmControl", .ctl)
-  }
-  if (!inherits(.ctl, "nlmControl")) {
-    .minfo("invalid control for `est=\"nlm\"`, using default")
-    .ctl <- nlmControl()
-  } else {
-    .ctl <- do.call(nlmControl, .ctl)
-  }
-  .ctl
-}
+getValidNlmixrCtl.nlm <- function(control) .getValidCtl(control, "nlmControl", "nlm")
 
 #' A surrogate function for nlm to call for ode solving
 #'

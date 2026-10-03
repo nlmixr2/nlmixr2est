@@ -388,17 +388,13 @@ emviControl <- function(
 
 #' @export
 rxUiDeparse.emviControl <- function(object, var) {
-  .default <- emviControl()
   object$resume <- NULL # not deparsable (may be a whole fit)
-  .w <- .deparseDifferent(.default, object, "genRxControl")
-  .deparseFinal(.default, object, .w, var)
+  .deparseControl(object, var, emviControl())
 }
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.emviControl <- function(control, env) {
-  assign("emviControl", control, envir = env)
-}
+nmObjHandleControlObject.emviControl <- function(control, env) assign("emviControl", control, envir = env)
 
 #' Shared control lookup for the two variational methods.
 #' @noRd

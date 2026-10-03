@@ -324,11 +324,7 @@ nlminbControl <- function(
 }
 
 #' @export
-rxUiDeparse.nlminbControl <- function(object, var) {
-  .default <- nlminbControl()
-  .w <- .deparseDifferent(.default, object, "genRxControl")
-  .deparseFinal(.default, object, .w, var)
-}
+rxUiDeparse.nlminbControl <- function(object, var) .deparseControl(object, var, nlminbControl())
 
 #' A surrogate function for nlminb to call for ode solving
 #'
@@ -366,43 +362,15 @@ rxUiDeparse.nlminbControl <- function(object, var) {
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.nlminbControl <- function(control, env) {
-  assign("nlminbControl", control, envir = env)
-}
+nmObjHandleControlObject.nlminbControl <- function(control, env) assign("nlminbControl", control, envir = env)
 
 #' @rdname nmObjGetControl
 #' @export
-nmObjGetControl.nlminb <- function(x, ...) {
-  .env <- x[[1]]
-  if (exists("nlminbControl", .env, inherits = FALSE)) {
-    .control <- get("nlminbControl", .env, inherits = FALSE)
-    if (inherits(.control, "nlminbControl")) return(.control)
-  }
-  if (exists("control", .env, inherits = FALSE)) {
-    .control <- get("control", .env, inherits = FALSE)
-    if (inherits(.control, "nlminbControl")) return(.control)
-  }
-  stop("cannot find nlminb related control object", call. = FALSE)
-}
+nmObjGetControl.nlminb <- function(x, ...) .nmObjGetControlByClass(x, "nlminbControl")
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.nlminb <- function(control) {
-  .ctl <- control[[1]]
-  if (is.null(.ctl)) {
-    .ctl <- nlminbControl()
-  }
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
-    .ctl <- do.call("nlminbControl", .ctl)
-  }
-  if (!inherits(.ctl, "nlminbControl")) {
-    .minfo("invalid control for `est=\"nlminb\"`, using default")
-    .ctl <- nlminbControl()
-  } else {
-    .ctl <- do.call(nlminbControl, .ctl)
-  }
-  .ctl
-}
+getValidNlmixrCtl.nlminb <- function(control) .getValidCtl(control, "nlminbControl", "nlminb")
 
 .nlminbFitModel <- function(ui, dataSav) {
   # Use nlmEnv and function for DRY principle

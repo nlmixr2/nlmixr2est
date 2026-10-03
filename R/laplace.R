@@ -90,54 +90,21 @@ laplaceControl <- function(sigdig = 3, ..., nAGQ = 1) {
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.laplaceControl <- function(control, env) {
-  assign("laplaceControl", control, envir = env)
-}
+nmObjHandleControlObject.laplaceControl <- function(control, env) assign("laplaceControl", control, envir = env)
 
 #' @rdname getValidNlmixrControl
 #' @export
 getValidNlmixrCtl.laplace <- function(control) {
-  .ctl <- control[[1]]
-  .cls <- class(control)[1]
-  if (is.null(.ctl)) {
-    .ctl <- laplaceControl()
-  }
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
-    .ctl <- do.call("laplaceControl", .ctl)
-  }
-  if (
-    inherits(.ctl, "foceiControl") ||
-      inherits(.ctl, "foceControl") ||
-      inherits(.ctl, "agqControl") ||
-      inherits(.ctl, "foControl") ||
-      inherits(.ctl, "foiControl")
-  ) {
-    .minfo(paste0("converting ", class(.ctl)[1], " to laplaceControl"))
-    class(.ctl) <- NULL
-    .ctl <- do.call(laplaceControl, .ctl)
-  } else if (!inherits(.ctl, "laplaceControl")) {
-    .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
-    .ctl <- laplaceControl()
-  } else {
-    .ctl <- do.call(laplaceControl, .ctl)
-  }
-  .ctl
+  .getValidCtl(
+    control,
+    "laplaceControl",
+    convert = c("foceiControl", "foceControl", "agqControl", "foControl", "foiControl")
+  )
 }
 
 #' @rdname nmObjGetControl
 #' @export
-nmObjGetControl.laplace <- function(x, ...) {
-  .env <- x[[1]]
-  if (exists("laplaceControl", .env, inherits = FALSE)) {
-    .control <- get("laplaceControl", .env, inherits = FALSE)
-    if (inherits(.control, "laplaceControl")) return(.control)
-  }
-  if (exists("control", .env, inherits = FALSE)) {
-    .control <- get("control", .env, inherits = FALSE)
-    if (inherits(.control, "laplaceControl")) return(.control)
-  }
-  stop("cannot find laplace related control object", call. = FALSE)
-}
+nmObjGetControl.laplace <- function(x, ...) .nmObjGetControlByClass(x, "laplaceControl")
 
 #' @rdname nmObjGetFoceiControl
 #' @export
@@ -169,6 +136,4 @@ attr(nlmixr2Est.laplace, "covPresent") <- TRUE
 attr(nlmixr2Est.laplace, "unbounded") <- .foUnbounded
 
 #' @export
-rxUiDeparse.laplaceControl <- function(object, var) {
-  .rxUiDeparseFoceiControl(object, var, type = "laplaceControl")
-}
+rxUiDeparse.laplaceControl <- function(object, var) .rxUiDeparseFoceiControl(object, var, type = "laplaceControl")
