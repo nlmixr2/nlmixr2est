@@ -1144,32 +1144,6 @@ nlmObjectiveSetup <- function(ui, data, control = NULL, gradient = FALSE, scale 
   )))
   .nlmFinalizeList(.env, .ret, par = "estimate", printLine = TRUE, hessianCov = TRUE)
 }
-#' Get the full theta for nlm methods
-#'
-#' @param nlm enhanced nlm return
-#' @param ui ui object
-#' @return named theta matrix
-#' @author Matthew L. Fidler
-#' @noRd
-.nlmGetTheta <- function(nlm, ui) {
-  .iniDf <- ui$iniDf
-  setNames(
-    vapply(
-      seq_along(.iniDf$name),
-      function(i) {
-        if (.iniDf$fix[i]) {
-          .iniDf$est[i]
-        } else {
-          nlm$estimate[.iniDf$name[i]]
-        }
-      },
-      double(1),
-      USE.NAMES = FALSE
-    ),
-    .iniDf$name
-  )
-}
-
 .nlmControlToFoceiControl <- function(env, assign = TRUE) {
   .nlmFamilyControlToFoceiControl(env, "nlmControl", assign)
 }
@@ -1180,8 +1154,8 @@ nlmObjectiveSetup <- function(ui, data, control = NULL, gradient = FALSE, scale 
     env,
     "nlm",
     .nlmFitModel,
-    .nlmGetTheta,
-    objective = function(.fit) 2 * as.numeric(.fit$minimum),
+    "estimate",
+    objective = "minimum",
     controlToFocei = .nlmControlToFoceiControl,
     returnFlag = "returnNlm",
     emitFitWarnings = TRUE,

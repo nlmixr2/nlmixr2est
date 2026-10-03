@@ -272,39 +272,13 @@ getValidNlmixrCtl.uobyqa <- function(control) .getValidCtl(control, "uobyqaContr
   .nlmFinalizeList(.env, .ret, par = "par", printLine = TRUE, hessianCov = TRUE)
 }
 
-#' Get the full theta for nlm methods
-#'
-#' @param optim enhanced nlm return
-#' @param ui ui object
-#' @return named theta matrix
-#' @author Matthew L. Fidler
-#' @noRd
-.uobyqaGetTheta <- function(nlm, ui) {
-  .iniDf <- ui$iniDf
-  setNames(
-    vapply(
-      seq_along(.iniDf$name),
-      function(i) {
-        if (.iniDf$fix[i]) {
-          .iniDf$est[i]
-        } else {
-          nlm$par[.iniDf$name[i]]
-        }
-      },
-      double(1),
-      USE.NAMES = FALSE
-    ),
-    .iniDf$name
-  )
-}
-
 .uobyqaFamilyFit <- function(env, ...) {
   .nlmFamilyFitGeneric(
     env,
     "uobyqa",
     .uobyqaFitModel,
-    .uobyqaGetTheta,
-    objective = function(.fit) 2 * as.numeric(.fit$fval),
+    "par",
+    objective = "fval",
     controlToFocei = .uobyqaControlToFoceiControl,
     returnFlag = "returnUobyqa",
     # uobyqa manages its own cov/parHistData instead of .nlmFamilyAdjustOutput

@@ -270,39 +270,13 @@ getValidNlmixrCtl.n1qn1 <- function(control) .getValidCtl(control, "n1qn1Control
   .ret <- eval(.ret)
   .nlmFinalizeList(.env, .ret, par = "par", printLine = TRUE, hessianCov = TRUE)
 }
-#' Get the full theta for nlm methods
-#'
-#' @param optim enhanced nlm return
-#' @param ui ui object
-#' @return named theta matrix
-#' @author Matthew L. Fidler
-#' @noRd
-.n1qn1GetTheta <- function(nlm, ui) {
-  .iniDf <- ui$iniDf
-  setNames(
-    vapply(
-      seq_along(.iniDf$name),
-      function(i) {
-        if (.iniDf$fix[i]) {
-          .iniDf$est[i]
-        } else {
-          nlm$par[.iniDf$name[i]]
-        }
-      },
-      double(1),
-      USE.NAMES = FALSE
-    ),
-    .iniDf$name
-  )
-}
-
 .n1qn1FamilyFit <- function(env, ...) {
   .nlmFamilyFitGeneric(
     env,
     "n1qn1",
     .n1qn1FitModel,
-    .n1qn1GetTheta,
-    objective = function(.fit) 2 * as.numeric(.fit$value),
+    "par",
+    objective = "value",
     controlToFocei = .n1qn1ControlToFoceiControl,
     returnFlag = "returnN1qn1"
   )

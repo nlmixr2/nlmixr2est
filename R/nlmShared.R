@@ -535,13 +535,40 @@
   .ret
 }
 
+#' The full theta vector of an nlm-family fit
+#'
+#' A fixed theta keeps its `ini()` value; an estimated one comes from the
+#' optimizer's estimates, which are named by theta.
+#' @param fit the optimizer result, as `.nlmFinalizeList()` returns it
+#' @param ui rxode2 ui
+#' @param par name of the estimates in `fit`
+#' @return the thetas named and ordered as `ui$iniDf`
+#' @noRd
+.nlmFamilyGetTheta <- function(fit, ui, par) {
+  .iniDf <- ui$iniDf
+  .est <- fit[[par]]
+  setNames(
+    vapply(
+      seq_along(.iniDf$name),
+      function(i) {
+        if (.iniDf$fix[i]) .iniDf$est[i] else .est[.iniDf$name[i]]
+      },
+      double(1),
+      USE.NAMES = FALSE
+    ),
+    .iniDf$name
+  )
+}
+
 #' Shared fit driver for the nlm-family estimation methods
 #'
 #' @param env dispatch environment (provides `ui`, `control`, `data`, `table`)
 #' @param method estimation-method string; also the slot the raw fit is stored
 #'   under (e.g. `"nlm"` -> `.ret[["nlm"]]`)
 #' @param fitModel `function(ui, dataSav)` running the optimizer
-#' @param getTheta `function(fit, ui)` returning the full theta vector
+#' @param getTheta `function(fit, ui)` returning the full theta vector, or the
+#'   name of the optimizer's estimates in the fit (e.g. `"par"`), which
+#'   `.nlmFamilyGetTheta()` completes with the fixed thetas
 #' @param controlToFocei `function(env)` translating the control to a
 #'   focei-style control for output assembly
 #' @param returnFlag rxode2 control flag name that short-circuits and returns the
@@ -551,7 +578,8 @@
 #'   `fitModel` via `warning()` (nlm does this; the others do not)
 #' @param extra `$extra` print string, or a `function(control)` returning it
 #' @param adjustOutput when TRUE, run `.nlmFamilyAdjustOutput()`
-#' @param objective optional `function(fit)` returning the raw objective; when
+#' @param objective optional `function(fit)` returning the raw objective, or
+#'   the name of the fit's minimized -log-likelihood, which is doubled; when
 #'   `NULL` the driver does not set `$objective` (a `postSetup` closure did)
 #' @param postSetup optional `function(ret, ui, fitList)` returning a modified
 #'   `ret`, run right after the raw fit is stored and before
@@ -611,13 +639,19 @@
   .ret$message <- message(.ret[[method]])
   .ret$ui <- .ui
   .ret$adjObf <- rxode2::rxGetControl(.ui, "adjObf", TRUE)
-  .ret$fullTheta <- getTheta(.ret[[method]], .ui)
+  .ret$fullTheta <- if (is.character(getTheta)) {
+    .nlmFamilyGetTheta(.ret[[method]], .ui, getTheta)
+  } else {
+    getTheta(.ret[[method]], .ui)
+  }
   .ret$control <- .control
   .ret$extra <- if (is.function(extra)) extra(.control) else extra
   .nlmixr2FitUpdateParams(.ret)
   nmObjHandleControlObject(.ret$control, .ret)
   .ret$est <- method
-  if (!is.null(objective)) {
+  if (is.character(objective)) {
+    .ret$objective <- 2 * as.numeric(.ret[[method]][[objective]])
+  } else if (!is.null(objective)) {
     .ret$objective <- objective(.ret[[method]])
   }
   # building the EBE model is another symengine model build; time it as "setup"
