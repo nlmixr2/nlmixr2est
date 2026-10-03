@@ -272,6 +272,10 @@ getValidNlmixrCtl.n1qn1 <- function(control) .getValidCtl(control, "n1qn1Control
   .ret <- eval(.ret)
   if (.ctl$covMethod == "n1qn1") {
     # n1qn1's quasi-Newton Hessian, on the scale it estimated
+    .n <- length(.ret$par)
+    if (!is.matrix(.ret$H) || !identical(dim(.ret$H), c(.n, .n))) {
+      stop("n1qn1 returned no ", .n, "x", .n, " Hessian ('H') for covMethod = \"n1qn1\"", call. = FALSE)
+    }
     .ret$hessian <- .ret$H
   }
   .nlmFinalizeList(.env, .ret, par = "par", printLine = TRUE, hessianCov = TRUE)

@@ -32,4 +32,21 @@ nmTest({
     expect_identical(unname(.n$hessian), unname(.n$H))
     expect_equal(unname(.n$cov.scaled), unname(solve(.n$H)), tolerance = 1e-8)
   })
+
+  test_that("covMethod = \"n1qn1\" stops when n1qn1 returns no Hessian (issue 1140)", {
+    skip_on_cran()
+    .n1qn1 <- n1qn1::n1qn1
+    local_mocked_bindings(
+      n1qn1 = function(...) {
+        .r <- .n1qn1(...)
+        .r$H <- NULL
+        .r
+      },
+      .package = "n1qn1"
+    )
+    expect_error(
+      .nlmixr(.pk, nlmixr2data::theo_sd, est = "n1qn1", control = n1qn1Control(print = 0L, covMethod = "n1qn1")),
+      "n1qn1 returned no 4x4 Hessian"
+    )
+  })
 })
