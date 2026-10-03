@@ -304,6 +304,12 @@
   is such a model whatever the declaration order, and with it a theta without a
   random effect made `"sa"`/`"fim"` fall back to `"linFim"`; they are now
   computed.
+- The per-observation log-likelihoods of an `imp`, `impmap` or `qrpem` fit
+  (`$llikObs`, the `nlmixrLlikObs` column) with the default `covMethod = "imp"`
+  are those at the estimates.  They were those of the last importance sample
+  of the last finite-difference evaluation of the covariance step: on
+  `theo_sd` they differed from the same fit without a covariance step by up
+  to 7.6 (`impmap`) and 8.1 (`imp`) log-likelihood units.
 - The printed parameter table of a full-Bayes `fbvi`/`emvi` fit now shows the
   standard errors of the variational covariance (only `$parFixedDf` had
   them), its confidence interval uses the fit's `ci`, and the condition

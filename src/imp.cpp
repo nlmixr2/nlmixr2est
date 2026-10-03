@@ -1066,6 +1066,10 @@ static arma::mat impFdHessian(const arma::vec& par0,
 
 static void impComputeCov(Environment e, const arma::vec& gammaVec,
                           const std::vector<impProp>& props, int covIter) {
+  // The proposal Hessians below and every objective evaluation re-score each
+  // subject away from its mode, at perturbed parameters; the fit reports the
+  // log-likelihoods the final MAP pass left at the estimates.
+  CovLlikObsGuard _llikObsGuard;
   int nsub = impNsub();
   int neta = impNeta();
   int isample = impNsample();

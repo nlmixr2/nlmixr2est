@@ -8401,20 +8401,18 @@ struct CovSolveTolGuard {
   }
 };
 
-// The per-observation log-likelihoods the fit reports (addLlikObs) are those of the
-// final objective at the estimates; every covariance leg rewrites them.
-struct CovLlikObsGuard {
-  std::vector<double> sav;
-  CovLlikObsGuard() {
-    rx = getRxSolve_();
-    if (op_focei.llikObsFull != NULL) {
-      sav.assign(op_focei.llikObsFull, op_focei.llikObsFull + getRxNall(rx));
-    }
+// CovLlikObsGuard (declared in imp.h, which the importance-sampling covariance
+// shares): the per-observation log-likelihoods the fit reports (addLlikObs) are
+// those of the final objective at the estimates; every covariance leg rewrites them.
+CovLlikObsGuard::CovLlikObsGuard() {
+  rx = getRxSolve_();
+  if (op_focei.llikObsFull != NULL) {
+    sav.assign(op_focei.llikObsFull, op_focei.llikObsFull + getRxNall(rx));
   }
-  ~CovLlikObsGuard() {
-    if (op_focei.llikObsFull != NULL) std::copy(sav.begin(), sav.end(), op_focei.llikObsFull);
-  }
-};
+}
+CovLlikObsGuard::~CovLlikObsGuard() {
+  if (op_focei.llikObsFull != NULL) std::copy(sav.begin(), sav.end(), op_focei.llikObsFull);
+}
 
 NumericVector foceiSetup_(const RObject &obj,
                           const RObject &data,
