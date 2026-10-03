@@ -518,7 +518,7 @@ nmTest({
       .pf <- .fit$parFixedDf
       .th <- c("tka", "tcl", "tv", "add.sd")
       expect_setequal(rownames(.pf), .th)
-      expect_equal(.pf[.th, "SE"], unname(.seOf(.fit)[.th]), tolerance = 1e-12, label = .est)
+      expect_equal(unname(.pf[.th, "SE"]), unname(.seOf(.fit)[.th]), tolerance = 1e-12, label = .est)
     }
   })
 })
