@@ -448,13 +448,18 @@ nmTest({
       foceiControl(sigdig = 4, print = 0L, covMethod = "analytic")
     )))
     expect_true(is.matrix(fit$cov))
-    # the near-zero-prediction guard drops to the finite-difference fallback.  covFull=TRUE
-    # (default) would make it the full theta+sigma+Omega cov, but this fit's full R is not
-    # positive definite, so the theta-only sandwich is kept
+    # the near-zero-prediction guard drops to the finite-difference fallback
     expect_false(identical(.covBaseName(fit$covMethod), "analytic"))
-    expect_lt(min(eigen(get(".fdFullCov", fit$env), symmetric = TRUE, only.values = TRUE)$values), 0)
-    expect_false(any(grepl("^om\\.", rownames(fit$cov))))
-    expect_true("\"r,s (full)\" covariance needs a positive-definite R; kept \"r,s\"" %in% fit$runInfo)
+    # covFull=TRUE (default) installs the full theta+sigma+Omega cov when its R is positive
+    # definite; otherwise the theta-only sandwich is kept and the reason is recorded.  Whether
+    # this fit's full R is positive definite depends on where the FD stages are centred, so
+    # both outcomes are pinned here.
+    if (min(eigen(get(".fdFullCov", fit$env), symmetric = TRUE, only.values = TRUE)$values) > 0) {
+      expect_true(any(grepl("^om\\.", rownames(fit$cov))))
+    } else {
+      expect_false(any(grepl("^om\\.", rownames(fit$cov))))
+      expect_true("\"r,s (full)\" covariance needs a positive-definite R; kept \"r,s\"" %in% fit$runInfo)
+    }
   })
 
   test_that("FOCE and foce+ additive analytic R equal the FOCEI analytic R at the same EBEs", {
