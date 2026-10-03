@@ -5075,7 +5075,11 @@ static inline bool isFixedTheta(int m) {
   return true; // here the parameter is fixed
 }
 
-static inline bool thetaReset0(bool forceReset = false) {
+// trig: the etas whose drift fired the reset (NULL for a forced reset).  The
+// reset goes ahead only if it moves the theta of one of them: shifting only the
+// others leaves the drift that fired it (its theta pinned at a bound), and the
+// next check fires the reset again.
+static inline bool thetaReset0(bool forceReset = false, const std::vector<bool> *trig = NULL) {
   if (op_focei.isSaem) return false;
   NumericVector thetaIni(op_focei.ntheta);
   NumericVector thetaUp(op_focei.ntheta);
@@ -5127,7 +5131,7 @@ static inline bool thetaReset0(bool forceReset = false) {
             appliedShift[ii] = shift;
             thetaIni[ij] = ref;
             adjustEta[ii] = true;
-            doAdjust = true;
+            if (trig == NULL || (ii < trig->size() && (*trig)[ii])) doAdjust = true;
           } else {
             // Already pinned at the bound: leave it be so a parameter that
             // wants to move past its bound does not force an endless reset.
@@ -5220,19 +5224,17 @@ void thetaReset(double size, double n){
   // the 1/sqrt(etaS) scaling (etaS is the Welford sum of squares, not
   // the variance).
   mat etaRes = std::sqrt(n) * (op_focei.eta1SDmean % op_focei.etaM); //op_focei.cholOmegaInv * etaMat;
-  double res=0;
+  std::vector<bool> trig(etaRes.n_rows, false);
+  bool fire = false;
   for (unsigned int j = etaRes.n_rows; j--;) {
     if (isMuRefCovProtected(j)) continue; // mu-ref-covariate etas never trigger a theta reset
-    res = etaRes(j, 0);
-    res = res < 0 ? -res : res;
-    if (res >= size) { // Says reset;
-      if (thetaReset0()) {
-        if (op_focei.didEtaReset==1) {
-          warning(_("mu-referenced Thetas were reset during optimization; (Can control by foceiControl(resetThetaP=.,resetThetaCheckPer=.,resetThetaFinalP=.))"));
-        }
-        stop("theta reset");
-      }
+    if (std::fabs(etaRes(j, 0)) >= size) trig[j] = fire = true;
+  }
+  if (fire && thetaReset0(false, &trig)) {
+    if (op_focei.didEtaReset==1) {
+      warning(_("mu-referenced Thetas were reset during optimization; (Can control by foceiControl(resetThetaP=.,resetThetaCheckPer=.,resetThetaFinalP=.))"));
     }
+    stop("theta reset");
   }
 }
 
