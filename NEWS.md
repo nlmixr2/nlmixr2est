@@ -34,6 +34,19 @@
   parameter(s) are required for solving`, because its model did not define
   that variable.
 
+- `nlmeControl()` reads an integer `covMethod` as the `foceiControl()` slot
+  it is: `1`, `2` and `3` keep `"r,s"`, `"r"` and `"s"`, where every
+  non-zero integer became `"analytic"`; any other integer is an error.
+  `vaeControl()` and `emviControl()` now accept the same slots instead of
+  failing.
+
+- `rxUiDeparse()` of a `foceiControl()` (and of the focei-family controls
+  deparsed the same way) writes `covMethod = "sa"` or `"imp"` for a deferred
+  covariance; it wrote `covMethod = ""`, so the control it rebuilt computed
+  no covariance.  A control whose covariance step is off is written as
+  `covMethod = ""` even when its `covType` is `"analytic"`, where it was
+  written as `covMethod = "analytic"`.
+
 - A fit's `IPRED`/`PRED` table, `vpcSim()` (and so `npde`) and `augPred()`
   now interpolate time-varying covariates with the fit's
   `rxControl(covsInterpolation=)` and `naInterpolation=` instead of always
@@ -198,6 +211,18 @@
   backward one.  That point was the caller's own vector, which was also the
   key of the cached objective value, so the next gradient reused the objective
   of the original point at the moved one.
+- `foceiControl()` and `rsControl()` now check the finite-difference
+  covariance options the same way.  `gillStepCov` must be at least 1 in both:
+  the Gill search grows its step by this factor and shrinks it by dividing,
+  so `foceiControl()`'s smaller values reversed the search (and 0 gave a zero
+  step).  `covSmall` must be one finite number in both (`rsControl()`
+  accepted `Inf`, `foceiControl()` a vector).  `rsControl()` takes the 0/1
+  flags `covGillF`, `rmatNorm` and `smatNorm` as integers too, like
+  `foceiControl()`.
+- `getVarCov(fit, force = TRUE, ...)` given a log-likelihood option
+  (`hessEpsLlik`, `gillKcovLlik`, `gillStepCovLlik`, `gillFtolCovLlik`,
+  `rmatNormLlik`, `smatNormLlik`) no longer sets the option of the same name
+  without `Llik` to its value as well.
 
 ### Covariance
 

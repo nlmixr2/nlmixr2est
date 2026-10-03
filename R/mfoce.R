@@ -5,7 +5,7 @@ nlmixr2Est.mfoce <- function(env, ...) {
   rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'mfoce'", .var.name = .ui$modelName)
   .control <- env$control
   .foceiFamilyControl(env, ..., type = "mfoceControl")
-  .mfoceControlToFoceiControl(env)
+  .foceiFamilyControlToFoceiControl(env, "mfoceControl")
   on.exit({
     if (exists("control", envir = .ui)) {
       rm("control", envir = .ui)

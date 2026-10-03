@@ -227,19 +227,9 @@ nlsControl <- function(
     useColor = useColor,
     iterPrintControl = .xtra$iterPrintControl
   )
-  if (checkmate::testIntegerish(scaleType, len = 1, lower = 1, upper = 4, any.missing = FALSE)) {
-    scaleType <- as.integer(scaleType)
-  } else {
-    .scaleTypeIdx <- c("norm" = 1L, "nlmixr2" = 2L, "mult" = 3L, "multAdd" = 4L)
-    scaleType <- setNames(.scaleTypeIdx[match.arg(scaleType)], NULL)
-  }
+  scaleType <- .ctlIdx(scaleType, .scaleTypeIdx, match.arg(scaleType))
 
-  .normTypeIdx <- c("rescale2" = 1L, "rescale" = 2L, "mean" = 3L, "std" = 4L, "len" = 5L, "constant" = 6L)
-  if (checkmate::testIntegerish(normType, len = 1, lower = 1, upper = 6, any.missing = FALSE)) {
-    normType <- as.integer(normType)
-  } else {
-    normType <- setNames(.normTypeIdx[match.arg(normType)], NULL)
-  }
+  normType <- .ctlIdx(normType, .normTypeIdx, match.arg(normType))
   checkmate::assertNumeric(scaleCmax, lower = 0, any.missing = FALSE, len = 1)
   checkmate::assertNumeric(scaleCmin, lower = 0, any.missing = FALSE, len = 1)
   if (!is.null(scaleC)) {
@@ -303,11 +293,7 @@ nlsControl <- function(
 }
 
 #' @export
-rxUiDeparse.nlsControl <- function(object, var) {
-  .default <- nlsControl()
-  .w <- .deparseDifferent(.default, object, "genRxControl")
-  .deparseFinal(.default, object, .w, var)
-}
+rxUiDeparse.nlsControl <- function(object, var) .deparseControl(object, var, nlsControl())
 
 #' Get the nls family control
 #'
@@ -323,48 +309,16 @@ rxUiDeparse.nlsControl <- function(object, var) {
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.nlsControl <- function(control, env) {
-  assign("nlsControl", control, envir = env)
-}
+nmObjHandleControlObject.nlsControl <- function(control, env) assign("nlsControl", control, envir = env)
 
 
 #' @rdname nmObjGetControl
 #' @export
-nmObjGetControl.nls <- function(x, ...) {
-  .env <- x[[1]]
-  if (exists("nlsControl", .env, inherits = FALSE)) {
-    .control <- get("nlsControl", .env, inherits = FALSE)
-    if (inherits(.control, "nlsControl")) {
-      return(.control)
-    }
-  }
-  if (exists("control", .env, inherits = FALSE)) {
-    .control <- get("control", .env, inherits = FALSE)
-    if (inherits(.control, "nlsControl")) {
-      return(.control)
-    }
-  }
-  stop("cannot find nls related control object", call. = FALSE)
-}
+nmObjGetControl.nls <- function(x, ...) .nmObjGetControlByClass(x, "nlsControl")
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.nls <- function(control) {
-  .ctl <- control[[1]]
-  if (is.null(.ctl)) {
-    .ctl <- nlsControl()
-  }
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
-    .ctl <- do.call("nlsControl", .ctl)
-  }
-  if (!inherits(.ctl, "nlsControl")) {
-    .minfo("invalid control for `est=\"nls\"`, using default")
-    .ctl <- nlsControl()
-  } else {
-    .ctl <- do.call(nlsControl, .ctl)
-  }
-  .ctl
-}
+getValidNlmixrCtl.nls <- function(control) .getValidCtl(control, "nlsControl", "nls")
 
 
 #' A surrogate function for nls to call for ode solving
@@ -840,32 +794,7 @@ attr(rxUiGet.nlsFormula, "rstudio") <- quote(~ nlmixr2est::.nlmixrNlsFunValGrad(
 }
 
 .nlsControlToFoceiControl <- function(env, assign = TRUE) {
-  .nlsControl <- env$nlsControl
-  .ui <- env$ui
-  .foceiControl <- foceiControl(
-    rxControl = env$nlsControl$rxControl,
-    maxOuterIterations = 0L,
-    maxInnerIterations = 0L,
-    covMethod = 0L,
-    sumProd = .nlsControl$sumProd,
-    optExpression = .nlsControl$optExpression,
-    literalFix = .nlsControl$literalFix,
-    literalFixRes = FALSE,
-    scaleTo = 0,
-    calcTables = .nlsControl$calcTables,
-    addProp = .nlsControl$addProp,
-    # skipCov=.ui$foceiSkipCov,
-    interaction = 0L,
-    compress = .nlsControl$compress,
-    ci = .nlsControl$ci,
-    sigdigTable = .nlsControl$sigdigTable,
-    indTolRelax = .nlsControl$indTolRelax,
-    eventSens = .nlsControl$eventSens
-  )
-  if (assign) {
-    env$control <- .foceiControl
-  }
-  .foceiControl
+  .nlmFamilyControlToFoceiControl(env, "nlsControl", assign, literalFixRes = FALSE)
 }
 
 .nlsFamilyFit <- function(env, ...) {

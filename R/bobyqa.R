@@ -163,19 +163,9 @@ bobyqaControl <- function(
     useColor = useColor,
     iterPrintControl = .xtra$iterPrintControl
   )
-  if (checkmate::testIntegerish(scaleType, len = 1, lower = 1, upper = 4, any.missing = FALSE)) {
-    scaleType <- as.integer(scaleType)
-  } else {
-    .scaleTypeIdx <- c("norm" = 1L, "nlmixr2" = 2L, "mult" = 3L, "multAdd" = 4L)
-    scaleType <- setNames(.scaleTypeIdx[match.arg(scaleType)], NULL)
-  }
+  scaleType <- .ctlIdx(scaleType, .scaleTypeIdx, match.arg(scaleType))
 
-  .normTypeIdx <- c("rescale2" = 1L, "rescale" = 2L, "mean" = 3L, "std" = 4L, "len" = 5L, "constant" = 6L)
-  if (checkmate::testIntegerish(normType, len = 1, lower = 1, upper = 6, any.missing = FALSE)) {
-    normType <- as.integer(normType)
-  } else {
-    normType <- setNames(.normTypeIdx[match.arg(normType)], NULL)
-  }
+  normType <- .ctlIdx(normType, .normTypeIdx, match.arg(normType))
   checkmate::assertNumeric(scaleCmax, lower = 0, any.missing = FALSE, len = 1)
   checkmate::assertNumeric(scaleCmin, lower = 0, any.missing = FALSE, len = 1)
   if (!is.null(scaleC)) {
@@ -225,11 +215,7 @@ bobyqaControl <- function(
 }
 
 #' @export
-rxUiDeparse.bobyqaControl <- function(object, var) {
-  .default <- bobyqaControl()
-  .w <- .deparseDifferent(.default, object, "genRxControl")
-  .deparseFinal(.default, object, .w, var)
-}
+rxUiDeparse.bobyqaControl <- function(object, var) .deparseControl(object, var, bobyqaControl())
 
 #' Get the bobyqa family control
 #'
@@ -244,71 +230,18 @@ rxUiDeparse.bobyqaControl <- function(object, var) {
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.bobyqaControl <- function(control, env) {
-  assign("bobyqaControl", control, envir = env)
-}
+nmObjHandleControlObject.bobyqaControl <- function(control, env) assign("bobyqaControl", control, envir = env)
 
 #' @rdname nmObjGetControl
 #' @export
-nmObjGetControl.bobyqa <- function(x, ...) {
-  .env <- x[[1]]
-  if (exists("bobyqaControl", .env, inherits = FALSE)) {
-    .control <- get("bobyqaControl", .env, inherits = FALSE)
-    if (inherits(.control, "bobyqaControl")) return(.control)
-  }
-  if (exists("control", .env, inherits = FALSE)) {
-    .control <- get("control", .env, inherits = FALSE)
-    if (inherits(.control, "bobyqaControl")) return(.control)
-  }
-  stop("cannot find bobyqa related control object", call. = FALSE)
-}
+nmObjGetControl.bobyqa <- function(x, ...) .nmObjGetControlByClass(x, "bobyqaControl")
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.bobyqa <- function(control) {
-  .ctl <- control[[1]]
-  if (is.null(.ctl)) {
-    .ctl <- bobyqaControl()
-  }
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
-    .ctl <- do.call("bobyqaControl", .ctl)
-  }
-  if (!inherits(.ctl, "bobyqaControl")) {
-    .minfo("invalid control for `est=\"bobyqa\"`, using default")
-    .ctl <- bobyqaControl()
-  } else {
-    .ctl <- do.call(bobyqaControl, .ctl)
-  }
-  .ctl
-}
+getValidNlmixrCtl.bobyqa <- function(control) .getValidCtl(control, "bobyqaControl", "bobyqa")
 
 .bobyqaControlToFoceiControl <- function(env, assign = TRUE) {
-  .bobyqaControl <- env$bobyqaControl
-  .ui <- env$ui
-  .foceiControl <- foceiControl(
-    rxControl = env$bobyqaControl$rxControl,
-    maxOuterIterations = 0L,
-    maxInnerIterations = 0L,
-    covMethod = 0L,
-    sumProd = .bobyqaControl$sumProd,
-    optExpression = .bobyqaControl$optExpression,
-    literalFix = .bobyqaControl$literalFix,
-    literalFixRes = .bobyqaControl$literalFixRes,
-    scaleTo = 0,
-    calcTables = .bobyqaControl$calcTables,
-    addProp = .bobyqaControl$addProp,
-    #skipCov=.ui$foceiSkipCov,
-    interaction = 0L,
-    compress = .bobyqaControl$compress,
-    ci = .bobyqaControl$ci,
-    sigdigTable = .bobyqaControl$sigdigTable,
-    indTolRelax = .bobyqaControl$indTolRelax,
-    eventSens = .bobyqaControl$eventSens
-  )
-  if (assign) {
-    env$control <- .foceiControl
-  }
-  .foceiControl
+  .nlmFamilyControlToFoceiControl(env, "bobyqaControl", assign)
 }
 
 .bobyqaFitModel <- function(ui, dataSav) {
@@ -350,39 +283,13 @@ getValidNlmixrCtl.bobyqa <- function(control) {
   .nlmFinalizeList(.env, .ret, par = "par", printLine = TRUE, hessianCov = TRUE)
 }
 
-#' Get the full theta for nlm methods
-#'
-#' @param optim enhanced nlm return
-#' @param ui ui object
-#' @return named theta matrix
-#' @author Matthew L. Fidler
-#' @noRd
-.bobyqaGetTheta <- function(nlm, ui) {
-  .iniDf <- ui$iniDf
-  setNames(
-    vapply(
-      seq_along(.iniDf$name),
-      function(i) {
-        if (.iniDf$fix[i]) {
-          .iniDf$est[i]
-        } else {
-          nlm$par[.iniDf$name[i]]
-        }
-      },
-      double(1),
-      USE.NAMES = FALSE
-    ),
-    .iniDf$name
-  )
-}
-
 .bobyqaFamilyFit <- function(env, ...) {
   .nlmFamilyFitGeneric(
     env,
     "bobyqa",
     .bobyqaFitModel,
-    .bobyqaGetTheta,
-    objective = function(.fit) 2 * as.numeric(.fit$fval),
+    "par",
+    objective = "fval",
     controlToFocei = .bobyqaControlToFoceiControl,
     returnFlag = "returnBobyqa"
   )

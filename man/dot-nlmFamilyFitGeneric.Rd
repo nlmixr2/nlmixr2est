@@ -27,7 +27,9 @@ under (e.g. `"nlm"` -> `.ret[["nlm"]]`)}
 
 \item{fitModel}{`function(ui, dataSav)` running the optimizer}
 
-\item{getTheta}{`function(fit, ui)` returning the full theta vector}
+\item{getTheta}{`function(fit, ui)` returning the full theta vector, or the
+name of the optimizer's estimates in the fit (e.g. `"par"`), which
+`.nlmFamilyGetTheta()` completes with the fixed thetas}
 
 \item{controlToFocei}{`function(env)` translating the control to a
 focei-style control for output assembly}
@@ -35,7 +37,8 @@ focei-style control for output assembly}
 \item{returnFlag}{rxode2 control flag name that short-circuits and returns the
 raw optimizer result (e.g. `"returnNlm"`)}
 
-\item{objective}{optional `function(fit)` returning the raw objective; when
+\item{objective}{optional `function(fit)` returning the raw objective, or
+the name of the fit's minimized -log-likelihood, which is doubled; when
 `NULL` the driver does not set `$objective` (a `postSetup` closure did)}
 
 \item{message}{`function(fit)` returning the `$message` (default `fit$message`)}

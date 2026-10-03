@@ -23,73 +23,20 @@ posthocControl <- function(sigdig = 3, ..., interaction = FALSE, maxOuterIterati
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.posthocControl <- function(control, env) {
-  assign("posthocControl", control, envir = env)
-}
+nmObjHandleControlObject.posthocControl <- function(control, env) assign("posthocControl", control, envir = env)
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.posthoc <- function(control) {
-  .ctl <- control[[1]]
-  .cls <- class(control)[1]
-  if (is.null(.ctl)) {
-    .ctl <- posthocControl()
-  }
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
-    .ctl <- do.call("posthocControl", .ctl)
-  }
-  if (!inherits(.ctl, "posthocControl")) {
-    .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
-    .ctl <- posthocControl()
-  } else {
-    .ctl <- do.call(posthocControl, .ctl)
-  }
-  .ctl
-}
+getValidNlmixrCtl.posthoc <- function(control) .getValidCtl(control, "posthocControl")
 
 #' @rdname nmObjGetControl
 #' @export
-nmObjGetControl.posthoc <- function(x, ...) {
-  .env <- x[[1]]
-  if (exists("posthocControl", .env, inherits = FALSE)) {
-    .control <- get("posthocControl", .env, inherits = FALSE)
-    if (inherits(.control, "posthocControl")) return(.control)
-  }
-  if (exists("control", .env, inherits = FALSE)) {
-    .control <- get("control", .env, inherits = FALSE)
-    if (inherits(.control, "posthocControl")) return(.control)
-  }
-  stop("cannot find posthoc related control object", call. = FALSE)
-}
-
-.posthocControlToFoceiControl <- function(env, assign = TRUE) {
-  .posthocControl <- env$posthocControl
-  .ui <- env$ui
-  .n <- names(.posthocControl)
-  .foceiControl <- setNames(
-    lapply(.n, function(n) {
-      if (n == "maxOuterIterations") {
-        return(0L)
-      }
-      if (n == "interaction") {
-        return(.posthocControl$interaction)
-      }
-      .posthocControl[[n]]
-    }),
-    .n
-  )
-  class(.foceiControl) <- "foceiControl"
-  if (assign) {
-    env$control <- .foceiControl
-  }
-  .foceiControl
-}
+nmObjGetControl.posthoc <- function(x, ...) .nmObjGetControlByClass(x, "posthocControl")
 
 #' @rdname nmObjGetFoceiControl
 #' @export
 nmObjGetFoceiControl.posthoc <- function(x, ...) {
-  .env <- x[[1]]
-  .posthocControlToFoceiControl(.env, assign = FALSE)
+  .foceiFamilyControlToFoceiControl(x[[1]], "posthocControl", assign = FALSE, set = list(maxOuterIterations = 0L))
 }
 
 #'@rdname nlmixr2Est
@@ -100,7 +47,7 @@ nlmixr2Est.posthoc <- function(env, ...) {
   .control <- env$control
   env$posthocControl <- .control
   .foceiFamilyControl(env, ..., type = "posthocControl")
-  .posthocControlToFoceiControl(env)
+  .foceiFamilyControlToFoceiControl(env, "posthocControl", set = list(maxOuterIterations = 0L))
   on.exit({
     if (exists("control", envir = .ui)) {
       rm("control", envir = .ui)

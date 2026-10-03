@@ -467,13 +467,82 @@
   assign("control", .control, envir = .ui)
 }
 
+#' The foceiControl that finalizes an nlm-family fit
+#'
+#' The optimizer has already run, so the FOCEi pass only builds the tables: no
+#' outer or inner iterations, no covariance step, no interaction and no
+#' scaling.  The settings that shape the model and the tables come from the
+#' method's control; one it does not have (`sensMethod`, say) keeps the
+#' `foceiControl()` default.
+#' @param env fit environment holding the method's control
+#' @param ctl name of the control in `env` (e.g. `"nlmControl"`)
+#' @param assign when `TRUE`, also store the result as `env$control`
+#' @param literalFixRes `literalFixRes` of the finalization (the control's own
+#'   by default)
+#' @return the `foceiControl()` object
+#' @noRd
+.nlmFamilyControlToFoceiControl <- function(env, ctl, assign = TRUE, literalFixRes = env[[ctl]]$literalFixRes) {
+  .ctl <- env[[ctl]]
+  .ret <- foceiControl(
+    rxControl = .ctl$rxControl,
+    maxOuterIterations = 0L,
+    maxInnerIterations = 0L,
+    covMethod = 0L,
+    sumProd = .ctl$sumProd,
+    optExpression = .ctl$optExpression,
+    literalFix = .ctl$literalFix,
+    literalFixRes = literalFixRes,
+    scaleTo = 0,
+    calcTables = .ctl$calcTables,
+    addProp = .ctl$addProp,
+    interaction = 0L,
+    compress = .ctl$compress,
+    ci = .ctl$ci,
+    sigdigTable = .ctl$sigdigTable,
+    indTolRelax = .ctl$indTolRelax,
+    eventSens = .ctl$eventSens,
+    sensMethod = .ctl$sensMethod
+  )
+  if (assign) {
+    env$control <- .ret
+  }
+  .ret
+}
+
+#' The full theta vector of an nlm-family fit
+#'
+#' A fixed theta keeps its `ini()` value; an estimated one comes from the
+#' optimizer's estimates, which are named by theta.
+#' @param fit the optimizer result, as `.nlmFinalizeList()` returns it
+#' @param ui rxode2 ui
+#' @param par name of the estimates in `fit`
+#' @return the thetas named and ordered as `ui$iniDf`
+#' @noRd
+.nlmFamilyGetTheta <- function(fit, ui, par) {
+  .iniDf <- ui$iniDf
+  .est <- fit[[par]]
+  setNames(
+    vapply(
+      seq_along(.iniDf$name),
+      function(i) {
+        if (.iniDf$fix[i]) .iniDf$est[i] else .est[.iniDf$name[i]]
+      },
+      double(1),
+      USE.NAMES = FALSE
+    ),
+    .iniDf$name
+  )
+}
+
 #' Shared fit driver for the nlm-family estimation methods
 #'
 #' @param env dispatch environment (provides `ui`, `control`, `data`, `table`)
 #' @param method estimation-method string; also the slot the raw fit is stored
 #'   under (e.g. `"nlm"` -> `.ret[["nlm"]]`)
 #' @param fitModel `function(ui, dataSav)` running the optimizer
-#' @param getTheta `function(fit, ui)` returning the full theta vector
+#' @param getTheta `function(fit, ui)` returning the full theta vector, or the
+#'   name of the optimizer's estimates in the fit (e.g. `"par"`), which
+#'   `.nlmFamilyGetTheta()` completes with the fixed thetas
 #' @param controlToFocei `function(env)` translating the control to a
 #'   focei-style control for output assembly
 #' @param returnFlag rxode2 control flag name that short-circuits and returns the
@@ -483,7 +552,8 @@
 #'   `fitModel` via `warning()` (nlm does this; the others do not)
 #' @param extra `$extra` print string, or a `function(control)` returning it
 #' @param adjustOutput when TRUE, run `.nlmFamilyAdjustOutput()`
-#' @param objective optional `function(fit)` returning the raw objective; when
+#' @param objective optional `function(fit)` returning the raw objective, or
+#'   the name of the fit's minimized -log-likelihood, which is doubled; when
 #'   `NULL` the driver does not set `$objective` (a `postSetup` closure did)
 #' @param postSetup optional `function(ret, ui, fitList)` returning a modified
 #'   `ret`, run right after the raw fit is stored and before
@@ -543,13 +613,19 @@
   .ret$message <- message(.ret[[method]])
   .ret$ui <- .ui
   .ret$adjObf <- rxode2::rxGetControl(.ui, "adjObf", TRUE)
-  .ret$fullTheta <- getTheta(.ret[[method]], .ui)
+  .ret$fullTheta <- if (is.character(getTheta)) {
+    .nlmFamilyGetTheta(.ret[[method]], .ui, getTheta)
+  } else {
+    getTheta(.ret[[method]], .ui)
+  }
   .ret$control <- .control
   .ret$extra <- if (is.function(extra)) extra(.control) else extra
   .nlmixr2FitUpdateParams(.ret)
   nmObjHandleControlObject(.ret$control, .ret)
   .ret$est <- method
-  if (!is.null(objective)) {
+  if (is.character(objective)) {
+    .ret$objective <- 2 * as.numeric(.ret[[method]][[objective]])
+  } else if (!is.null(objective)) {
     .ret$objective <- objective(.ret[[method]])
   }
   # building the EBE model is another symengine model build; time it as "setup"
