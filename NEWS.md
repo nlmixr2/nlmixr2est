@@ -319,11 +319,13 @@
   0.393 (`eta.ka`, `eta.cl`, `eta.v`) to 0.196, 0.036, 0.010, in line with
   the other methods.  `$impCov`/`$impSe` hold the mapped matrix,
   `$impCovInternal` the one in the estimation parameterization and
-  `$impCovJacobian` the map.  The matrix is installed only when it is
-  positive definite: `est = "imp"` on `theo_sd` installed one with a negative
-  variance (`tka`, standard error `NaN`).  When it is not installed a warning
-  says why, and the FOCEi `"analytic"` covariance that takes its place warns
-  that it was installed instead of `"imp"`; that substitution was silent.
+  `$impCovJacobian` the map.  The matrix is installed as `"imp"` only when
+  it is positive definite: `est = "imp"` on `theo_sd` installed one with a
+  negative variance for the `tka` estimate (standard error `NaN`).  An
+  information matrix that is not positive definite is now repaired as the
+  FOCEi `"|r|"` covariance is, by `sqrtm(info %*% info)`, and installed as
+  `"|imp|"` with a warning; when even that fails, a warning says why and no
+  covariance is installed.
 - `setCov(fit, "sa")`, `setCov(fit, "imp")`, a deferred `covMethod = "sa"` or
   `"imp"` and the default `npag`/`npb` covariance now compute the covariance
   at the fit's estimates, as `saControl()`/`impCovControl()` say.  The SAEM

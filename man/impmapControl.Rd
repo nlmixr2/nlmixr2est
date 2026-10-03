@@ -470,9 +470,11 @@ taken in the parameterization the fit estimates Omega in (the entries of
 `chol(Omega^-1)`) and mapped to the Omega variances and covariances by the
 delta method.  It is stashed as `$impCov` / `$impSe` (`$impCovInternal` in
 the estimation parameterization, `$impCovJacobian` the map) and installed
-as the fit covariance when it is positive definite; otherwise a warning
-says why, and the FOCEI `"analytic"` covariance at the estimates is
-installed in its place, with a warning naming it.  The theta standard
+as the fit covariance when it is positive definite.  Otherwise the
+information is repaired as the FOCEI `"|r|"` covariance is, by
+`sqrtm(info %*% info)`, and its mapped inverse is installed as `"|imp|"`
+with a warning; when that fails too, a warning says why and no
+covariance is installed.  The theta standard
 errors match the Hessian-based FOCEI covariance, though the variance of a
 tightly-determined random effect (an Omega diagonal) can be
 over-estimated because the fixed samples barely span its prior variation.

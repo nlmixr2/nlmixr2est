@@ -508,9 +508,11 @@
 #'   `chol(Omega^-1)`) and mapped to the Omega variances and covariances by the
 #'   delta method.  It is stashed as `$impCov` / `$impSe` (`$impCovInternal` in
 #'   the estimation parameterization, `$impCovJacobian` the map) and installed
-#'   as the fit covariance when it is positive definite; otherwise a warning
-#'   says why, and the FOCEI `"analytic"` covariance at the estimates is
-#'   installed in its place, with a warning naming it.  The theta standard
+#'   as the fit covariance when it is positive definite.  Otherwise the
+#'   information is repaired as the FOCEI `"|r|"` covariance is, by
+#'   `sqrtm(info %*% info)`, and its mapped inverse is installed as `"|imp|"`
+#'   with a warning; when that fails too, a warning says why and no
+#'   covariance is installed.  The theta standard
 #'   errors match the Hessian-based FOCEI covariance, though the variance of a
 #'   tightly-determined random effect (an Omega diagonal) can be
 #'   over-estimated because the fixed samples barely span its prior variation.
@@ -1312,7 +1314,7 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
 #' @param omega Omega at the estimates
 #' @param thetaNames,etaNames the fit's theta and eta names
 #' @param iniDf the model's `iniDf`, for the estimated Omega elements
-#' @return list(cov = named covariance, jacobian = `J`), or a `.covGuard()`-style
+#' @return list(cov = named covariance, jacobian = `J`), or a string giving the
 #'   reason when the rows cannot be mapped
 #' @noRd
 .impCovNatural <- function(cov, thetaIdx, dOm, omega, thetaNames, etaNames, iniDf) {
@@ -1346,18 +1348,18 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
 #' Maps the matrix with `.impCovNatural()`, keeps it (and the Jacobian, and the
 #' Omega parameter values it was taken at) as `$impCov`, `$impSe`,
 #' `$impCovJacobian` and `$impCovOmegaPar`, and installs it as `"imp"` when it
-#' passes `.covGuard()`.  Otherwise nothing is installed and a warning says
-#' why.
+#' passes `.covGuard()`.  An information matrix that is not positive definite
+#' is repaired the way the FOCEi R matrix is, by `sqrtm(info %*% info)`, and
+#' the inverse is installed as `"|imp|"` with a warning.  When neither can be
+#' installed, a warning says why and none is.
 #' @param env fit environment
 #' @param cov,thetaIdx,dOm,omega see `.impCovNatural()`
 #' @param omegaPar values of the Omega parameters in `cov`
+#' @param info the information matrix `cov` inverts, in the same order
 #' @return invisibly `TRUE` when installed
 #' @noRd
-.impCovInstall <- function(env, cov, thetaIdx, dOm, omega, omegaPar) {
-  .r <- tryCatch(
-    .impCovNatural(cov, thetaIdx, dOm, omega, env$thetaNames, env$etaNames, env$ui$iniDf),
-    error = function(e) "could not be mapped to the Omega variances and covariances"
-  )
+.impCovInstall <- function(env, cov, thetaIdx, dOm, omega, omegaPar, info = NULL) {
+  .r <- .impCovNaturalTry(cov, thetaIdx, dOm, omega, env)
   if (is.character(.r)) {
     .covRejectWarn(env, "imp", .r)
     return(invisible(FALSE))
@@ -1367,14 +1369,55 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   env$impSe <- ifelse(is.finite(.v) & .v > 0, sqrt(pmax(.v, 0)), NA_real_)
   env$impCovJacobian <- .r$jacobian
   env$impCovOmegaPar <- omegaPar
+  .label <- "imp"
   .g <- .covGuard(.r$cov)
   if (!.g$ok) {
-    .covRejectWarn(env, "imp", .g$reason)
-    return(invisible(FALSE))
+    .rep <- .impCovRepair(info)
+    .rn <- if (is.matrix(.rep)) .impCovNaturalTry(.rep, thetaIdx, dOm, omega, env)
+    .gr <- if (is.list(.rn)) .covGuard(.rn$cov)
+    if (!isTRUE(.gr$ok)) {
+      .covRejectWarn(env, "imp", .g$reason)
+      return(invisible(FALSE))
+    }
+    .g <- .gr
+    .label <- "|imp|"
+    .covRepairWarn("imp", .label)
   }
   env$cov <- .g$cov
-  env$covMethod <- "imp"
+  env$covMethod <- .label
   invisible(TRUE)
+}
+
+#' `.impCovNatural()` for a fit environment, an error becoming a reason
+#' @param cov,thetaIdx,dOm,omega see `.impCovNatural()`
+#' @param env fit environment
+#' @return what `.impCovNatural()` returns, or the error as a reason
+#' @noRd
+.impCovNaturalTry <- function(cov, thetaIdx, dOm, omega, env) {
+  tryCatch(
+    .impCovNatural(cov, thetaIdx, dOm, omega, env$thetaNames, env$etaNames, env$ui$iniDf),
+    error = function(e) {
+      paste0("could not be mapped to the Omega variances and covariances (", conditionMessage(e), ")")
+    }
+  )
+}
+
+#' Inverse of the sqrtm-repaired importance-sampling information
+#'
+#' `|info| = sqrtm(info %*% info)` keeps the eigenvectors and takes the absolute
+#' eigenvalues, as the FOCEi `"|r|"` repair does for R.
+#' @param info information matrix (estimation parameterization)
+#' @return the covariance, or `NULL` when there is none
+#' @noRd
+.impCovRepair <- function(info) {
+  if (!is.matrix(info) || nrow(info) == 0L || !all(is.finite(info))) {
+    return(NULL)
+  }
+  .s <- tryCatch(sqrtm(info %*% info), error = function(e) NULL)
+  if (!identical(dim(.s), dim(info)) || !all(is.finite(.s))) {
+    return(NULL)
+  }
+  tryCatch(solve(.s), error = function(e) NULL)
 }
 
 #' @rdname nlmixr2Est

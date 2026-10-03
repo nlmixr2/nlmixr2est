@@ -1289,7 +1289,8 @@ static void impComputeCov(Environment e, const arma::vec& gammaVec,
   // covariances they are reported as, checks the result and publishes it as the
   // fit's covariance, before foceiFinalizeTables builds the SE / CI / correlation
   // tables from it.  It needs d(Omega)/d(p) of each Omega parameter in the
-  // covariance, and the parameter values (to say which parameterization that is).
+  // covariance, the parameter values (to say which parameterization that is),
+  // and the information, to repair one that is not positive definite.
   List dOm = impOmegaParDeriv();
   List dOmCov(np - nTh);
   NumericVector omPar(np - nTh);
@@ -1301,7 +1302,7 @@ static void impComputeCov(Environment e, const arma::vec& gammaVec,
   impGetOmega(Om);
   Environment nlmixr2 = Environment::namespace_env("nlmixr2est");
   Function covInstall = nlmixr2[".impCovInstall"];
-  covInstall(e, wrap(cov), thIdxR, dOmCov, wrap(Om), omPar);
+  covInstall(e, wrap(cov), thIdxR, dOmCov, wrap(Om), omPar, wrap(info));
 }
 
 void impOuter(Environment e) {
