@@ -7520,8 +7520,15 @@ void numericGrad(double *theta, double *g){
         continue;
       } else {
         err = 1/(std::fabs(theta[cpar])+1);
-        // a zero derivative is searched again with scaleC set to scaleC0, then 1/scaleC0
-        for (int r = 0; r < 3; ++r) {
+        // A zero derivative is searched again with scaleC set to scaleC0, then
+        // 1/scaleC0.  Only scaleType "nlmixr2" reads scaleC, and only at the
+        // scale's anchor (the scaled initial estimate) is the parameter left
+        // where it is when scaleC changes.  Anywhere else the new scale would
+        // move it under the optimizer, and the search would difference about
+        // lastOfv, the objective at the old point.
+        int nSearch = (op_focei.scaleType == scaleTypeNlmixr2 &&
+                       theta[cpar] == scaleScalePar(&op_focei, op_focei.initPar, cpar)) ? 3 : 1;
+        for (int r = 0; r < nSearch; ++r) {
           if (r > 0) op_focei.scaleC[cpar] = (r == 1) ? op_focei.scaleC0 : 1/op_focei.scaleC0;
           op_focei.gillRet[cpar] = gill83(&hf, &hphif, &op_focei.gillDf[cpar], &op_focei.gillDf2[cpar], &op_focei.gillErr[cpar],
                                           theta, cpar, op_focei.gillRtol, op_focei.gillK, op_focei.gillStep, op_focei.gillFtol,

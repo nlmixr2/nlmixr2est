@@ -93,32 +93,34 @@ nmTest({
     expect_equal(.usedScaleC(.f, names(.want)), .want, tolerance = 1e-6)
   })
 
+  # beta multiplies a covariate that is 0 throughout, so no step finds a slope
+  # for it (a population model: no etas to re-optimize between the legs)
+  .modZ <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      beta <- 0.5
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka)
+      cl <- exp(tcl + beta * ZERO)
+      v <- exp(tv)
+      d / dt(depot) <- -ka * depot
+      d / dt(center) <- ka * depot - cl / v * center
+      cp <- center / v
+      cp ~ add(add.sd)
+    })
+  }
+  .dZ <- theo_sd
+  .dZ$ZERO <- 0
+
   test_that("a zero gradient is searched again with scaleC0, then 1/scaleC0", {
     skip_on_cran()
-    # beta multiplies a covariate that is 0 throughout, so no step finds a
-    # slope and both searches run; the second one's scale stays.  scaleCband
-    # turned both into |init| = 0.5
-    .modZ <- function() {
-      ini({
-        tka <- 0.45
-        tcl <- 1
-        tv <- 3.45
-        beta <- 0.5
-        add.sd <- 0.7
-      })
-      model({
-        ka <- exp(tka)
-        cl <- exp(tcl + beta * ZERO)
-        v <- exp(tv)
-        d / dt(depot) <- -ka * depot
-        d / dt(center) <- ka * depot - cl / v * center
-        cp <- center / v
-        cp ~ add(add.sd)
-      })
-    }
-    .d <- theo_sd
-    .d$ZERO <- 0
-    .f <- suppressMessages(suppressWarnings(nlmixr(.modZ, .d, "focei", control = .ctl(scaleC0 = 1000))))
+    # both searches run and the second one's scale stays; scaleCband turned
+    # both into |init| = 0.5
+    .f <- suppressMessages(suppressWarnings(nlmixr(.modZ, .dZ, "focei", control = .ctl(scaleC0 = 1000))))
     expect_equal(.f$scaleInfo$scaleC[4], 1e-3)
   })
 
@@ -238,5 +240,38 @@ nmTest({
     .want <- setNames(sqrt(c(0.6, 0.3, 0.1)) / 2, .om)
     expect_equal(.usedScaleC(.f, .om), .want, tolerance = 1e-6)
     expect_equal(.f$scaleInfo$scaleC[5:7], unname(.want), tolerance = 1e-12)
+  })
+
+  test_that("a zero gradient away from the scale's anchor keeps its scale", {
+    skip_on_cran()
+    # An outer optimizer whose first gradient is not at the starting values:
+    # beta has moved by 1 on the optimizer's scale.  A new scaleC there would
+    # move beta under the optimizer (and the search would difference about the
+    # objective at the old point), so the same point must still be beta = 2.5.
+    .opt <- function(par, fn, gr, lower, upper, control, ...) {
+      .p <- par
+      .p[4] <- .p[4] + 1
+      fn(.p)
+      gr(.p)
+      .v <- fn(.p)
+      list(x = .p, value = .v, convergence = 0L, message = "")
+    }
+    .f <- suppressMessages(suppressWarnings(nlmixr(
+      .modZ,
+      .dZ,
+      "focei",
+      control = foceiControl(
+        print = 0,
+        maxOuterIterations = 1L,
+        covMethod = "",
+        calcTables = FALSE,
+        outerOpt = .opt
+      )
+    )))
+    .ph <- .f$parHistData
+    .beta <- .ph$beta[.ph$type == "Unscaled"]
+    expect_length(.beta, 2L)
+    # beta = 0.5 + 1 * its scaleC, 1/0.5
+    expect_equal(.beta, c(2.5, 2.5))
   })
 })

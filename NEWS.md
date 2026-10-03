@@ -228,6 +228,14 @@
   estimated on its lower bound got a covariance (`"r,s (full)"`) instead of
   the boundary message.
 
+- The FOCEi outer gradient searches a zero derivative again with
+  `foceiControl(scaleC0=)` only for `scaleType = "nlmixr2"` (the only scaling
+  that uses the constant) and only at the parameter's starting value.  At any
+  other point the new constant moved the parameter under the outer optimizer
+  and the search differenced about the objective of the old point; that
+  happens for a repeated Gill search (`repeatGillMax`), on the restart after a
+  theta reset and with a custom outer optimizer.
+
 ### Covariance and finite differences
 
 - The Gill (1983) step-size search no longer leaves a parameter at its last
