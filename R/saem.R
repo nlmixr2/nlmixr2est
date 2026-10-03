@@ -986,8 +986,8 @@
 #' (the estimation-phase FIM `saem$Ha`).  Both are the observed information in
 #' (theta, log-Omega-variance, log-sigma2) coordinates; this inverts and maps them
 #' to the reported scale via a delta-method Jacobian.  The result is required to be
-#' positive definite (a noisy/indefinite FIM returns `NULL` so the caller can fall
-#' back to the linearized FIM).
+#' positive definite (a noisy/indefinite FIM gives why it was not, so the caller
+#' can fall back to the linearized FIM).
 #'
 #' The kernel orders the leading structural-theta block `[phi1 mu][phi0 mu]`
 #' (mu-referenced thetas first, then thetas with no eta), not
@@ -1002,23 +1002,28 @@
 #' @return named full covariance matrix `c(theta, om.<eta>, residual)`, or `NULL`
 #' @noRd
 .saemFimToCov <- function(.H, env) {
+  .r <- .saemFimToCovReason(.H, env)
+  if (is.character(.r)) NULL else .r
+}
+#' `.saemFimToCov()`, saying why when there is no covariance
+#' @inheritParams .saemFimToCov
+#' @return the covariance, or a string saying why there is none
+#' @noRd
+.saemFimToCovReason <- function(.H, env) {
   .ui <- env$ui
   .saem <- env$saem
   if (is.null(.H) || !is.matrix(.H) || nrow(.H) == 0L || !all(is.finite(.H)) || all(.H == 0)) {
-    return(NULL)
+    return("no finite information matrix")
   }
   .np <- nrow(.H) # original nb_param layout; every position below is keyed to this
   .lay <- .saemFimThetaLayout(env)
-  if (is.null(.lay)) {
-    return(NULL)
+  .nth <- length(.lay$tn)
+  if (is.null(.lay) || .nth == 0L || .np < .nth) {
+    return("the information rows cannot be matched to the thetas")
   }
   .tn <- .lay$tn
   .fx <- .lay$fx
   .phi0Nm <- .lay$phi0
-  .nth <- length(.tn)
-  if (.nth == 0L || .np < .nth) {
-    return(NULL)
-  }
   # .tn is in the SAME raw row order as .H's leading structural block -- the
   # kernel keeps a row for a fix()ed theta too (nb_param in src/saem.cpp does
   # not subtract fixed thetas), so it stays UNFILTERED here (a fixed-filtered
@@ -1056,11 +1061,11 @@
   .drop <- Reduce(union, list(which(.fx), match(.phi0Nm, .tn), .zeroRows, .saemFimFixedResidSlots(.idf, .predDf, .np)))
   .keep <- if (length(.drop) > 0L) seq_len(.np)[-.drop] else seq_len(.np)
   if (length(.keep) == 0L) {
-    return(NULL)
+    return("no estimated parameter has information")
   }
   .C <- suppressWarnings(tryCatch(solve(.H[.keep, .keep, drop = FALSE]), error = function(e) NULL))
   if (is.null(.C) || !all(is.finite(.C))) {
-    return(NULL)
+    return("the information matrix is singular")
   }
   .orig2sub <- rep(NA_integer_, .np)
   .orig2sub[.keep] <- seq_along(.keep)
@@ -1121,8 +1126,9 @@
   .cov <- outer(.jac, .jac) * .C[.idx, .idx, drop = FALSE] # delta method to reported scale
   dimnames(.cov) <- list(.nm, .nm)
   # require a valid (finite, PD) covariance; otherwise let the caller fall back
-  if (!.covGuard(.cov)$ok) {
-    return(NULL)
+  .g <- .covGuard(.cov)
+  if (!.g$ok) {
+    return(paste("the covariance", .g$reason))
   }
   .cov
 }
@@ -1343,8 +1349,13 @@
     # converged fixed-theta FIM (saem$HaSa), "fim" the estimation-phase FIM (saem$Ha).
     .H <- if (identical(.cm, "sa")) env$saem$HaSa else env$saem$Ha
     .cov <- NULL
+    .why <- "could not be computed"
     nlmixrWithTiming("covariance", {
-      .cov <- .saemFimToCov(.H, env)
+      .cov <- .saemFimToCovReason(.H, env)
+      if (is.character(.cov)) {
+        .why <- sprintf("could not be computed (%s)", .cov)
+        .cov <- NULL
+      }
       # phi0 (non-mu-referenced) thetas were dropped in .saemFimToCov (their mu
       # information is degenerate); splice a real SE in from the linearized FIM.
       if (!is.null(.cov)) {
@@ -1358,6 +1369,7 @@
       # the splices add blocks .saemFimToCov never checked
       if (!is.null(.cov)) {
         .g <- .saemCovGuard(.cov)
+        .why <- sprintf("could not be computed (the covariance with its spliced rows %s)", .g$reason)
         .cov <- if (.g$ok) .g$cov else NULL
       }
     })
@@ -1382,7 +1394,7 @@
       env$covMethod <- .cm
       return(invisible())
     }
-    message(sprintf("covMethod=\"%s\" could not be computed; using the linearized FIM", .cm))
+    message(sprintf("covMethod=\"%s\" %s; using the linearized FIM", .cm, .why))
     rxode2::rxAssignControlValue(.ui, "covMethod", "linFim")
   }
   nlmixrWithTiming("covariance", {

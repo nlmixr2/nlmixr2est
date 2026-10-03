@@ -537,6 +537,44 @@ nmTest({
     }
   })
 
+  test_that("an sa/fim covariance that falls back to the linearized FIM says why", {
+    .m <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- 0.7
+            eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+              linCmt() ~ add(add.sd) })
+    }
+    ctl <- saemControl(nBurn = 150, nEm = 200, print = 0, seed = 1L, covMethod = "fim", calcTables = FALSE)
+    f <- .nlmixr(.m, theo_sd, est = "saem", control = ctl)
+    expect_identical(f$covMethod, "fim")
+    .H <- f$saem$Ha
+    expect_true(is.matrix(.saemFimToCovReason(.H, f$env)))
+    expect_identical(.saemFimToCovReason(-.H, f$env), "the covariance is not positive definite")
+    expect_identical(.saemFimToCovReason(replace(.H, 1L, NA), f$env), "no finite information matrix")
+    expect_identical(.saemFimToCovReason(.H[1:2, 1:2], f$env), "the information rows cannot be matched to the thetas")
+    .sing <- .H
+    .sing[, 2] <- .sing[, 1]
+    .sing[2, ] <- .sing[1, ]
+    expect_identical(.saemFimToCovReason(.sing, f$env), "the information matrix is singular")
+    expect_null(.saemFimToCov(-.H, f$env))
+    # the reason reaches the fallback message
+    local_mocked_bindings(.saemFimToCovReason = function(.H, env) "the covariance is not positive definite")
+    .acc <- new.env(parent = emptyenv())
+    .acc$m <- character(0)
+    f2 <- withCallingHandlers(
+      suppressWarnings(nlmixr(.m, theo_sd, est = "saem", control = ctl)),
+      message = function(m) {
+        .acc$m <- c(.acc$m, conditionMessage(m))
+        invokeRestart("muffleMessage")
+      }
+    )
+    expect_true(any(
+      .acc$m ==
+        "covMethod=\"fim\" could not be computed (the covariance is not positive definite); using the linearized FIM\n"
+    ))
+    expect_identical(f2$covMethod, "linFim")
+  })
+
   test_that("covMethod='r,s' installs the inverse of Ha's theta block, by kernel row (#906)", {
     # saemControl(covMethod = "r,s"/"r"/"s") inverts the theta block of the
     # estimation-phase information Ha, laid out [phi1 mu][phi0 mu] with a row

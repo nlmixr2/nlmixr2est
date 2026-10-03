@@ -306,6 +306,9 @@
   computed.  When the random effects cannot be matched one to one to SAEM's
   variance parameters, the Omega rows are left out with a warning; they were
   left out silently.
+- When a SAEM `"sa"` or `"fim"` covariance falls back to `"linFim"`, the
+  message says why (for example `the covariance is not positive definite` or
+  `the information matrix is singular`).
 - The per-observation log-likelihoods of an `imp`, `impmap` or `qrpem` fit
   (`$llikObs`, the `nlmixrLlikObs` column) with the default `covMethod = "imp"`
   are those at the estimates.  They were those of the last importance sample
