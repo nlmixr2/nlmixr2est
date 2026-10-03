@@ -5420,6 +5420,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     # that are not sqrt(diag(fit$cov)), and a setCov() round trip then silently
     # changes them (nlmixr2extra#125).
     .fdFullInstalled <- .foceiInstallFdFullCov(.ret)
+    .foceiWarnConditionalCov(.ret, .control)
     # both installers replace $cov with a matrix on the mlogit estimation scale;
     # rotate the mixture block before .updateParFixed() derives SEs from it
     .mixInstallProbScaleCov(.ret)
@@ -5610,6 +5611,40 @@ attr(nlmixr2Est.focei, "nlmixr2Priors") <- "general"
 attr(nlmixr2Est.focei, "covPresent") <- TRUE
 attr(nlmixr2Est.focei, "unbounded") <- .foUnbounded
 attr(nlmixr2Est.focei, "iov") <- TRUE
+
+#' Warn that a fit's finite-difference covariance held its ETAs fixed
+#'
+#' With `maxInnerIterations = 0` a fit evaluates the ETAs it is given instead of
+#' optimizing them, and so do the legs of its finite-difference covariance:
+#' they differentiate the objective at those ETAs, a covariance conditional on
+#' them, where the covariance of the marginal likelihood re-optimizes the ETAs
+#' at every leg.  The refits that hold the ETAs only to report them ask for
+#' marginal legs (`covMaxInnerIterations`, `.setCovRefit()`) and are not warned
+#' about.
+#' @param env fit environment, after the covariance is installed
+#' @param control the control the fit ran with
+#' @return invisibly `NULL`
+#' @noRd
+.foceiWarnConditionalCov <- function(env, control) {
+  if (
+    !identical(as.integer(control$maxInnerIterations), 0L) ||
+      !is.null(control$covMaxInnerIterations) ||
+      is.null(env$etaObf) ||
+      !is.matrix(env$cov) ||
+      !nzchar(.covFdType(env$covMethod))
+  ) {
+    return(invisible())
+  }
+  warning(
+    "maxInnerIterations=0: the \"",
+    env$covMethod,
+    "\" covariance holds the ETAs at ",
+    "their supplied values, so it is conditional on them; setCov() computes the ",
+    "covariance of the marginal likelihood",
+    call. = FALSE
+  )
+  invisible()
+}
 
 #' Add objective function line to the return object
 #'

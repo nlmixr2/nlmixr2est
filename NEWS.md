@@ -284,6 +284,12 @@
   used; with a proportional residual error the standard errors differ (the
   `add.sd` standard error of a combined-error `theo_sd` saem fit was 46%
   larger).
+- A FOCEi-family fit with `maxInnerIterations = 0` (for example
+  `posthocControl(maxInnerIterations = 0, etaMat = ...)`, or `fo`/`foi` with
+  `posthoc = FALSE`) still holds its ETAs fixed in its finite-difference
+  covariance, as asked, and now warns that this covariance is conditional on
+  those ETAs and that `setCov()` computes the covariance of the marginal
+  likelihood.
 
 ### Covariance
 

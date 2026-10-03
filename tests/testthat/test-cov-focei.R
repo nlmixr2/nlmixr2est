@@ -339,4 +339,53 @@ nmTest({
     .nm <- rownames(.an$cov)
     expect_lt(max(abs(sqrt(diag(.rf$cov))[.nm] / sqrt(diag(.an$cov)) - 1)), 0.05)
   })
+
+  test_that("a finite-difference covariance of ETAs held fixed says it is conditional on them", {
+    one.cmt <- function() {
+      ini({
+        tka <- log(1.5); tcl <- log(2.7); tv <- log(31.5)
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .eta <- .nlmixr(one.cmt, theo_sd, "focei", foceiControl(print = 0, covMethod = ""))$etaMat
+    .msg <- "covariance holds the ETAs at their supplied values, so it is conditional on them"
+    # maxInnerIterations = 0 evaluates the given ETAs, in the fit and in its covariance
+    .fixed <- .nlmixr(
+      one.cmt,
+      theo_sd,
+      "posthoc",
+      posthocControl(
+        print = 0,
+        maxInnerIterations = 0L,
+        etaMat = .eta,
+        covMethod = "r",
+        covFull = FALSE
+      )
+    )
+    expect_identical(.covFdType(.fixed$covMethod), "r")
+    expect_true(any(grepl(.msg, .fixed$runInfo, fixed = TRUE)))
+    # optimizing them: the covariance of the marginal likelihood, nothing to say
+    .opt <- .nlmixr(
+      one.cmt,
+      theo_sd,
+      "posthoc",
+      posthocControl(
+        print = 0,
+        maxInnerIterations = 1000L,
+        etaMat = .eta,
+        covMethod = "r",
+        covFull = FALSE
+      )
+    )
+    expect_identical(.covFdType(.opt$covMethod), "r")
+    expect_false(any(grepl(.msg, .opt$runInfo, fixed = TRUE)))
+    # recomputing it (getVarCov(force = TRUE), as setCov()) gives the marginal one
+    .v <- suppressMessages(suppressWarnings(nlme::getVarCov(.fixed, force = TRUE)))
+    expect_equal(sqrt(diag(.v)), sqrt(diag(.opt$cov)), tolerance = 1e-6)
+  })
 })
