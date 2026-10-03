@@ -840,32 +840,7 @@ attr(rxUiGet.nlsFormula, "rstudio") <- quote(~ nlmixr2est::.nlmixrNlsFunValGrad(
 }
 
 .nlsControlToFoceiControl <- function(env, assign = TRUE) {
-  .nlsControl <- env$nlsControl
-  .ui <- env$ui
-  .foceiControl <- foceiControl(
-    rxControl = env$nlsControl$rxControl,
-    maxOuterIterations = 0L,
-    maxInnerIterations = 0L,
-    covMethod = 0L,
-    sumProd = .nlsControl$sumProd,
-    optExpression = .nlsControl$optExpression,
-    literalFix = .nlsControl$literalFix,
-    literalFixRes = FALSE,
-    scaleTo = 0,
-    calcTables = .nlsControl$calcTables,
-    addProp = .nlsControl$addProp,
-    # skipCov=.ui$foceiSkipCov,
-    interaction = 0L,
-    compress = .nlsControl$compress,
-    ci = .nlsControl$ci,
-    sigdigTable = .nlsControl$sigdigTable,
-    indTolRelax = .nlsControl$indTolRelax,
-    eventSens = .nlsControl$eventSens
-  )
-  if (assign) {
-    env$control <- .foceiControl
-  }
-  .foceiControl
+  .nlmFamilyControlToFoceiControl(env, "nlsControl", assign, literalFixRes = FALSE)
 }
 
 .nlsFamilyFit <- function(env, ...) {

@@ -275,32 +275,7 @@ getValidNlmixrCtl.newuoa <- function(control) {
 }
 
 .newuoaControlToFoceiControl <- function(env, assign = TRUE) {
-  .newuoaControl <- env$newuoaControl
-  .ui <- env$ui
-  .foceiControl <- foceiControl(
-    rxControl = env$newuoaControl$rxControl,
-    maxOuterIterations = 0L,
-    maxInnerIterations = 0L,
-    covMethod = 0L,
-    sumProd = .newuoaControl$sumProd,
-    optExpression = .newuoaControl$optExpression,
-    literalFix = .newuoaControl$literalFix,
-    literalFixRes = .newuoaControl$literalFixRes,
-    scaleTo = 0,
-    calcTables = .newuoaControl$calcTables,
-    addProp = .newuoaControl$addProp,
-    #skipCov=.ui$foceiSkipCov,
-    interaction = 0L,
-    compress = .newuoaControl$compress,
-    ci = .newuoaControl$ci,
-    sigdigTable = .newuoaControl$sigdigTable,
-    indTolRelax = .newuoaControl$indTolRelax,
-    eventSens = .newuoaControl$eventSens
-  )
-  if (assign) {
-    env$control <- .foceiControl
-  }
-  .foceiControl
+  .nlmFamilyControlToFoceiControl(env, "newuoaControl", assign)
 }
 
 .newuoaFitModel <- function(ui, dataSav) {

@@ -493,6 +493,48 @@
   assign("control", .control, envir = .ui)
 }
 
+#' The foceiControl that finalizes an nlm-family fit
+#'
+#' The optimizer has already run, so the FOCEi pass only builds the tables: no
+#' outer or inner iterations, no covariance step, no interaction and no
+#' scaling.  The settings that shape the model and the tables come from the
+#' method's control; one it does not have (`sensMethod`, say) keeps the
+#' `foceiControl()` default.
+#' @param env fit environment holding the method's control
+#' @param ctl name of the control in `env` (e.g. `"nlmControl"`)
+#' @param assign when `TRUE`, also store the result as `env$control`
+#' @param literalFixRes `literalFixRes` of the finalization (the control's own
+#'   by default)
+#' @return the `foceiControl()` object
+#' @noRd
+.nlmFamilyControlToFoceiControl <- function(env, ctl, assign = TRUE, literalFixRes = env[[ctl]]$literalFixRes) {
+  .ctl <- env[[ctl]]
+  .ret <- foceiControl(
+    rxControl = .ctl$rxControl,
+    maxOuterIterations = 0L,
+    maxInnerIterations = 0L,
+    covMethod = 0L,
+    sumProd = .ctl$sumProd,
+    optExpression = .ctl$optExpression,
+    literalFix = .ctl$literalFix,
+    literalFixRes = literalFixRes,
+    scaleTo = 0,
+    calcTables = .ctl$calcTables,
+    addProp = .ctl$addProp,
+    interaction = 0L,
+    compress = .ctl$compress,
+    ci = .ctl$ci,
+    sigdigTable = .ctl$sigdigTable,
+    indTolRelax = .ctl$indTolRelax,
+    eventSens = .ctl$eventSens,
+    sensMethod = .ctl$sensMethod
+  )
+  if (assign) {
+    env$control <- .ret
+  }
+  .ret
+}
+
 #' Shared fit driver for the nlm-family estimation methods
 #'
 #' @param env dispatch environment (provides `ui`, `control`, `data`, `table`)

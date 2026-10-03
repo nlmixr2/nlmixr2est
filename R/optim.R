@@ -588,33 +588,7 @@ attr(rxUiGet.optimParUpper, "rstudio") <- 0.1
 }
 
 .optimControlToFoceiControl <- function(env, assign = TRUE) {
-  .optimControl <- env$optimControl
-  .ui <- env$ui
-  .foceiControl <- foceiControl(
-    rxControl = env$optimControl$rxControl,
-    maxOuterIterations = 0L,
-    maxInnerIterations = 0L,
-    covMethod = 0L,
-    sumProd = .optimControl$sumProd,
-    optExpression = .optimControl$optExpression,
-    literalFix = .optimControl$literalFix,
-    literalFixRes = .optimControl$literalFixRes,
-    scaleTo = 0,
-    calcTables = .optimControl$calcTables,
-    addProp = .optimControl$addProp,
-    #skipCov=.ui$foceiSkipCov,
-    interaction = 0L,
-    compress = .optimControl$compress,
-    ci = .optimControl$ci,
-    sigdigTable = .optimControl$sigdigTable,
-    indTolRelax = .optimControl$indTolRelax,
-    eventSens = .optimControl$eventSens,
-    sensMethod = .optimControl$sensMethod
-  )
-  if (assign) {
-    env$control <- .foceiControl
-  }
-  .foceiControl
+  .nlmFamilyControlToFoceiControl(env, "optimControl", assign)
 }
 
 .optimFamilyFit <- function(env, ...) {

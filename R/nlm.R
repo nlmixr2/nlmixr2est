@@ -1217,33 +1217,7 @@ nlmObjectiveSetup <- function(ui, data, control = NULL, gradient = FALSE, scale 
 }
 
 .nlmControlToFoceiControl <- function(env, assign = TRUE) {
-  .nlmControl <- env$nlmControl
-  .ui <- env$ui
-  .foceiControl <- foceiControl(
-    rxControl = env$nlmControl$rxControl,
-    maxOuterIterations = 0L,
-    maxInnerIterations = 0L,
-    covMethod = 0L,
-    sumProd = .nlmControl$sumProd,
-    optExpression = .nlmControl$optExpression,
-    literalFix = .nlmControl$literalFix,
-    literalFixRes = .nlmControl$literalFixRes,
-    scaleTo = 0,
-    calcTables = .nlmControl$calcTables,
-    addProp = .nlmControl$addProp,
-    # skipCov=.ui$foceiSkipCov,
-    interaction = 0L,
-    compress = .nlmControl$compress,
-    ci = .nlmControl$ci,
-    sigdigTable = .nlmControl$sigdigTable,
-    indTolRelax = .nlmControl$indTolRelax,
-    eventSens = .nlmControl$eventSens,
-    sensMethod = .nlmControl$sensMethod
-  )
-  if (assign) {
-    env$control <- .foceiControl
-  }
-  .foceiControl
+  .nlmFamilyControlToFoceiControl(env, "nlmControl", assign)
 }
 
 

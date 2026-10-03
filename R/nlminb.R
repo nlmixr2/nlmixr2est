@@ -511,33 +511,7 @@ getValidNlmixrCtl.nlminb <- function(control) {
   )
 }
 .nlminbControlToFoceiControl <- function(env, assign = TRUE) {
-  .nlminbControl <- env$nlminbControl
-  .ui <- env$ui
-  .foceiControl <- foceiControl(
-    rxControl = env$nlminbControl$rxControl,
-    maxOuterIterations = 0L,
-    maxInnerIterations = 0L,
-    covMethod = 0L,
-    sumProd = .nlminbControl$sumProd,
-    optExpression = .nlminbControl$optExpression,
-    literalFix = .nlminbControl$literalFix,
-    literalFixRes = .nlminbControl$literalFixRes,
-    scaleTo = 0,
-    calcTables = .nlminbControl$calcTables,
-    addProp = .nlminbControl$addProp,
-    #skipCov=.ui$foceiSkipCov,
-    interaction = 0L,
-    compress = .nlminbControl$compress,
-    ci = .nlminbControl$ci,
-    sigdigTable = .nlminbControl$sigdigTable,
-    indTolRelax = .nlminbControl$indTolRelax,
-    eventSens = .nlminbControl$eventSens,
-    sensMethod = .nlminbControl$sensMethod
-  )
-  if (assign) {
-    env$control <- .foceiControl
-  }
-  .foceiControl
+  .nlmFamilyControlToFoceiControl(env, "nlminbControl", assign)
 }
 
 .nlminbFamilyFit <- function(env, ...) {

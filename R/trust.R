@@ -416,30 +416,7 @@ getValidNlmixrCtl.trust <- function(control) {
 }
 
 .trustControlToFoceiControl <- function(env, assign = TRUE) {
-  .trustControl <- env$trustControl
-  .foceiControl <- foceiControl(
-    rxControl = .trustControl$rxControl,
-    maxOuterIterations = 0L,
-    maxInnerIterations = 0L,
-    covMethod = 0L,
-    sumProd = .trustControl$sumProd,
-    optExpression = .trustControl$optExpression,
-    literalFix = .trustControl$literalFix,
-    literalFixRes = .trustControl$literalFixRes,
-    scaleTo = 0,
-    calcTables = .trustControl$calcTables,
-    addProp = .trustControl$addProp,
-    interaction = 0L,
-    compress = .trustControl$compress,
-    ci = .trustControl$ci,
-    sigdigTable = .trustControl$sigdigTable,
-    indTolRelax = .trustControl$indTolRelax,
-    eventSens = .trustControl$eventSens
-  )
-  if (assign) {
-    env$control <- .foceiControl
-  }
-  .foceiControl
+  .nlmFamilyControlToFoceiControl(env, "trustControl", assign)
 }
 
 #' Warn when a trust result's Newton decrement contradicts trust_solve_c()'s

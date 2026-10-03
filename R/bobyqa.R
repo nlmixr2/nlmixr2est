@@ -283,32 +283,7 @@ getValidNlmixrCtl.bobyqa <- function(control) {
 }
 
 .bobyqaControlToFoceiControl <- function(env, assign = TRUE) {
-  .bobyqaControl <- env$bobyqaControl
-  .ui <- env$ui
-  .foceiControl <- foceiControl(
-    rxControl = env$bobyqaControl$rxControl,
-    maxOuterIterations = 0L,
-    maxInnerIterations = 0L,
-    covMethod = 0L,
-    sumProd = .bobyqaControl$sumProd,
-    optExpression = .bobyqaControl$optExpression,
-    literalFix = .bobyqaControl$literalFix,
-    literalFixRes = .bobyqaControl$literalFixRes,
-    scaleTo = 0,
-    calcTables = .bobyqaControl$calcTables,
-    addProp = .bobyqaControl$addProp,
-    #skipCov=.ui$foceiSkipCov,
-    interaction = 0L,
-    compress = .bobyqaControl$compress,
-    ci = .bobyqaControl$ci,
-    sigdigTable = .bobyqaControl$sigdigTable,
-    indTolRelax = .bobyqaControl$indTolRelax,
-    eventSens = .bobyqaControl$eventSens
-  )
-  if (assign) {
-    env$control <- .foceiControl
-  }
-  .foceiControl
+  .nlmFamilyControlToFoceiControl(env, "bobyqaControl", assign)
 }
 
 .bobyqaFitModel <- function(ui, dataSav) {
