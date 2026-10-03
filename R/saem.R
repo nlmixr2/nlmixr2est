@@ -1417,6 +1417,18 @@
   }
 }
 
+#' The `c(nnodesGq, nsdGq)` a `.saemGetLikName()` name encodes, or `NULL` for any other name
+#' @noRd
+.saemParseLikName <- function(type) {
+  .regL <- rex::rex(start, "laplace", capture(.regNum), end)
+  .regG <- rex::rex(start, "gauss", capture(.regNum), "_", capture(.regNum), end)
+  if (regexpr(.regL, type, perl = TRUE) != -1) {
+    c(1, as.numeric(sub(.regL, "\\1", type, perl = TRUE)))
+  } else if (regexpr(.regG, type, perl = TRUE) != -1) {
+    as.numeric(c(sub(.regG, "\\1", type, perl = TRUE), sub(.regG, "\\2", type, perl = TRUE)))
+  }
+}
+
 #' Calculate the likelihood and the time
 #'
 #' @param saem saem object
@@ -1567,15 +1579,8 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   } else if (type == "") {
     .txt <- paste0(.txt, crayon::silver$italic("OBJF not calculated"))
   } else {
-    .reg <- rex::rex(start, "laplace", capture(.regNum), end)
-    .regG <- rex::rex(start, "gauss", capture(.regNum), "_", capture(.regNum), end)
-    if (regexpr(.reg, type, perl = TRUE) != -1) {
-      .nnode <- 1
-      .nsd <- as.numeric(sub(.reg, "\\1", type, perl = TRUE))
-    } else if (regexpr(.regG, type, perl = TRUE) != -1) {
-      .nnode <- as.numeric(sub(.regG, "\\1", type, perl = TRUE))
-      .nsd <- as.numeric(sub(.regG, "\\2", type, perl = TRUE))
-    } else {
+    .q <- .saemParseLikName(type)
+    if (is.null(.q)) {
       stop("unknown error")
     }
     .txt <- paste0(
@@ -1583,8 +1588,8 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
       crayon::silver$italic(sprintf(
         "OBJF by %s",
         paste0(
-          ifelse(.nnode == 1, "Lapalcian (n.sd=", sprintf("Gaussian Quadrature (n.nodes=%s, n.sd=", .nnode)),
-          .nsd,
+          ifelse(.q[1] == 1, "Lapalcian (n.sd=", sprintf("Gaussian Quadrature (n.nodes=%s, n.sd=", .q[1])),
+          .q[2],
           ")"
         )
       ))

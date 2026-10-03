@@ -172,18 +172,11 @@ setOfv <- function(x, type) {
   nlmixrWithTiming(
     paste0(type, "Lik"),
     {
-      .reg <- rex::rex(start, "laplace", capture(.regNum), end)
-      .regG <- rex::rex(start, "gauss", capture(.regNum), "_", capture(.regNum), end)
-      if (regexpr(.reg, type, perl = TRUE) != -1) {
-        .nnode <- 1
-        .nsd <- as.numeric(sub(.reg, "\\1", type, perl = TRUE))
-      } else if (regexpr(.regG, type, perl = TRUE) != -1) {
-        .nnode <- as.numeric(sub(.regG, "\\1", type, perl = TRUE))
-        .nsd <- as.numeric(sub(.regG, "\\2", type, perl = TRUE))
-      } else {
+      .q <- .saemParseLikName(type)
+      if (is.null(.q)) {
         stop("cannot switch objective function to '", type, "' type", call. = FALSE)
       }
-      .setOfvRow(x, type, calc.2LL(x$saem, nnodes.gq = .nnode, nsd.gq = .nsd, x$phiM))
+      .setOfvRow(x, type, calc.2LL(x$saem, nnodes.gq = .q[1], nsd.gq = .q[2], x$phiM))
     },
     envir = x
   )
