@@ -127,9 +127,10 @@
   `$scaleInfo` listed the constants out of place; it now shows `NA` for the
   parameters the optimizer does not move.
 
-- A `foceiControl(scaleC=)` vector longer than the parameters no longer
-  crashes the fit: the values past them were written beyond the end of the
-  scaling buffer, and are now ignored (after the existing warning).
+- The values of a `foceiControl(scaleC=)` vector longer than the parameters
+  are now ignored past them (after the existing warning).  They were written
+  over the adaptive quadrature nodes, changing an `agq` objective, and a long
+  enough vector past the end of the buffer, crashing the fit.
 
 ### Covariance and finite differences
 
