@@ -225,10 +225,10 @@ nmTest({
   # With literalFix = TRUE a fixed tka leaves the model, so the optimizer moves
   # the same parameters as with literalFix = FALSE, where tka keeps its row of
   # $scaleInfo (and of the parameter vectors behind it)
-  .scaleInfoFixed <- function(literalFix, ...) {
-    .m <- .mod |> rxode2::ini(tka = fix(0.45))
+  .modFixKa <- .mod |> rxode2::ini(tka = fix(0.45))
+  .scaleInfoFixed <- function(literalFix, ..., model = .modFixKa) {
     .ctlS <- foceiControl(print = 0, calcTables = FALSE, literalFix = literalFix, ...)
-    suppressMessages(suppressWarnings(nlmixr(.m, theo_sd, "focei", control = .ctlS)))$scaleInfo
+    suppressMessages(suppressWarnings(nlmixr(model, theo_sd, "focei", control = .ctlS)))$scaleInfo
   }
 
   test_that("$scaleInfo reports each parameter's own initial gradient search", {
@@ -256,6 +256,45 @@ nmTest({
     expect_true(all(as.character(.b[["Covariance Gradient"]][1:3]) != "Not Assessed"))
     expect_equal(as.character(.a[["Covariance Gradient"]][-1]), as.character(.b[["Covariance Gradient"]]))
     expect_equal(.a[-1, .cols[-1]], .b[, .cols[-1]], ignore_attr = TRUE, tolerance = 1e-10)
+  })
+
+  test_that("$scaleInfo reports each search by parameter with a fixed theta in the middle or last", {
+    skip_on_cran()
+    .cols <- c(
+      "Initial Gradient",
+      "Forward aEps",
+      "Forward rEps",
+      "Central aEps",
+      "Central rEps",
+      "Covariance Gradient",
+      "Covariance aEps",
+      "Covariance rEps"
+    )
+    .codes <- c("Initial Gradient", "Covariance Gradient")
+    for (.fx in c("tv", "add.sd")) {
+      .m <- if (.fx == "tv") .mod |> rxode2::ini(tv = fix(3.45)) else .mod |> rxode2::ini(add.sd = fix(0.7))
+      # one outer iteration and the covariance step at its end, with and
+      # without the fixed theta in the model
+      # (a fixed residual-error theta stays in the model only with literalFixRes = FALSE)
+      .a <- .scaleInfoFixed(FALSE, literalFixRes = FALSE, maxOuterIterations = 1L, outerOpt = "nlminb", model = .m)
+      .b <- .scaleInfoFixed(TRUE, maxOuterIterations = 1L, outerOpt = "nlminb", model = .m)
+      .i <- match(.fx, c("tka", "tcl", "tv", "add.sd"))
+      # a literal add.sd changes the residual arithmetic in the last digits
+      # (steps 4e-6 apart, relatively); one parameter's step is another's
+      # by 8% or more
+      .tol <- if (.fx == "tv") 1e-10 else 1e-4
+      expect_equal(as.character(.a[["Initial Gradient"]][.i]), "Not Assessed", label = .fx)
+      expect_equal(as.character(.a[["Covariance Gradient"]][.i]), "Not Assessed", label = .fx)
+      expect_true(all(is.na(unlist(.a[.i, setdiff(.cols, .codes)]))), label = .fx)
+      expect_equal(lapply(.a[-.i, .codes], as.character), lapply(.b[, .codes], as.character), label = .fx)
+      expect_equal(
+        .a[-.i, setdiff(.cols, .codes)],
+        .b[, setdiff(.cols, .codes)],
+        ignore_attr = TRUE,
+        tolerance = .tol,
+        label = .fx
+      )
+    }
   })
 
   test_that("the first omega parameter is scaled by its diagXform", {
