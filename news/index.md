@@ -25,6 +25,13 @@
 
 ### Bug Fixes
 
+- The FOCEi-family objective no longer jumps where a residual variance
+  crosses `sqrt(.Machine$double.eps)`: such a variance is now floored
+  instead of being replaced by 1, which added about +16 per observation.
+  Proportional-error fits with predictions below ~1e-3 could converge to
+  a wrong optimum
+  ([\#1132](https://github.com/nlmixr2/nlmixr2est/issues/1132)).
+
 - A fit’s `IPRED`/`PRED` table,
   [`vpcSim()`](https://nlmixr2.github.io/nlmixr2est/reference/vpcSim.md)
   (and so `npde`) and
