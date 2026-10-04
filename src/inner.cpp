@@ -4156,8 +4156,10 @@ static inline int innerEval(int id){
 // The trust arm's Newton-decrement gate leaves eta up to sqrt(trustFterm) short of the
 // mode, and the FOCEi log|H| term carries that to the objective to FIRST order, so the
 // outer objective depended on the warm start (#1152).  Finish a converged solve with
-// (approximate-Hessian) Newton steps down to trustFterm, each kept only if it does not
-// ascend.  `step`/`dist` are the Newton step and its parscale length at fInd->x; on
+// Newton steps down to trustFterm, each kept only if it does not ascend.  The gradient is
+// the exact sensitivity but the matrix is Gauss-Newton + Omega^-1, so convergence is
+// linear; past trustFterm the steps chase ODE solve noise and the fit gets worse.
+// `step`/`dist` are the Newton step and its parscale length at fInd->x; on
 // return fInd->x, fInd->g and `f` describe the last accepted point.  True if any step
 // was accepted.
 static bool trustPolishEta(int id, focei_ind *fInd, int npar, const std::vector<double> &parscale,
