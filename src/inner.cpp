@@ -631,6 +631,7 @@ struct focei_options {
   // tolerances -- independently settable, NOT tied to epsilon (which is
   // shared with n1qn1's unrelated "precision of estimate" criterion).
   double trustFterm;
+  int trustPolish = 0;
   double trustMterm;
   std::atomic<int> nTrustInner{0}; // per-fit count of trust_solve_c calls (test evidence)
   std::atomic<int> nTrustRestart{0}; // Omega-draw restarts taken after the nudges
@@ -4949,7 +4950,7 @@ static inline int innerOpt1(int id, int likId) {
               if (conv && pushDist > pushTol) {
                 conv = false;
                 op_focei.nTrustPush.fetch_add(1, std::memory_order_relaxed);
-              } else if (conv && pushDist > 0.0 &&
+              } else if (op_focei.trustPolish && conv && pushDist > 0.0 &&
                          trustPolishEta(id, fInd, npar, parscale, step, pushDist, f)) {
                 keepBest();
               }
@@ -9295,6 +9296,8 @@ NumericVector foceiSetup_(const RObject &obj,
     // epsilon itself is, so no NULL fallback is needed here.
     op_focei.trustFterm = as<double>(foceiO["trustFterm"]);
     op_focei.trustMterm = as<double>(foceiO["trustMterm"]);
+    op_focei.trustPolish = foceiO.containsElementNamed("trustPolish") ?
+      (int)as<bool>(foceiO["trustPolish"]) : 0;
   }
   op_focei.nEtaRestart = foceiO.containsElementNamed("etaRestart") ?
     as<int>(foceiO["etaRestart"]) : 0;

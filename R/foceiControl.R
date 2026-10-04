@@ -616,6 +616,12 @@
 #'     coupling these parameters exist to remove. Has no effect unless
 #'     `innerOpt="trust"`.
 #'
+#' @param trustPolish logical; when `TRUE`, each converged `innerOpt="trust"`
+#'     solve takes up to 4 more Newton steps on the ETAs, down to `trustFterm`.
+#'     This makes the objective less dependent on the warm-start ETAs and can
+#'     help a fit that stops short of its minimum (#1152).  `FALSE` (default)
+#'     keeps the plain trust solve.
+#'
 #' @param innerHessian Inner optimization curvature: `"focei"` (default) or
 #'   `"conditional"`. Full conditional curvature requires fast Gaussian FOCEI.
 #'   Inner trust uses it at each trial; n1qn1 uses it with `warm="calc"`.
@@ -1243,6 +1249,7 @@ foceiControl <- function(
   trustRmax = NULL, # NULL -> derived from trustConf/neta
   trustFterm = NULL, # NULL -> 10^(-sigdig), NOT epsilon
   trustMterm = NULL, # NULL -> 10^(-sigdig), NOT epsilon
+  trustPolish = FALSE,
   ## trust-region OUTER optimizer (outerOpt="trust")
   outerTrustHessian = c("auto", "analytic", "bfgs", "fd"),
   outerTrustRinit = NULL, # NULL -> min(0.95, 0.2*max(abs(par)))
@@ -1811,6 +1818,7 @@ foceiControl <- function(
     stop("'trustFterm' must be > 0", call. = FALSE)
   }
   checkmate::assertNumeric(trustMterm, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
+  checkmate::assertFlag(trustPolish)
   if (trustMterm <= 0) {
     stop("'trustMterm' must be > 0", call. = FALSE)
   }
@@ -2073,6 +2081,7 @@ foceiControl <- function(
     trustRmax = trustRmax,
     trustFterm = trustFterm,
     trustMterm = trustMterm,
+    trustPolish = trustPolish,
     ## trust-region outer optimizer (outerOpt="trust")
     outerTrustHessian = outerTrustHessian,
     outerTrustRinit = outerTrustRinit,

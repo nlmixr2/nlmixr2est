@@ -2,6 +2,15 @@
 
 ## New features
 
+- `foceiControl(trustPolish = TRUE)` finishes each converged
+  `innerOpt="trust"` solve with Newton steps on the ETAs, down to
+  `trustFterm`.  The default trust solve can stop up to `sqrt(trustFterm)`
+  short of the mode, which the FOCEi `log|H|` term turns into objective noise
+  that depends on the previous evaluation's ETAs; on `pheno_sd` that stopped
+  the outer search 0.03 OFV short with inflated full-sandwich SEs (#1152).
+  It is off by default: across a 372-case FOCEi corpus it moved most fits
+  toward their minimum for about 6% more time, but not every fit.
+
 - The table of a mixture fit now has a `mixest` column: each subject's fitted
   mixture component (as in `$mixNum`).
 
@@ -17,13 +26,6 @@
   
 ## Bug Fixes
 
-- FOCEi's default `innerOpt="trust"` inner solve now finishes each
-  converged ETA with Newton steps down to `trustFterm`.  It stopped up to
-  `sqrt(trustFterm)` short of the mode, which the FOCEi `log|H|` term turned
-  into objective noise that depended on the previous evaluation's ETAs.  The
-  outer search could then stop early (`pheno_sd`: 0.03 OFV short, with an
-  indefinite full R and full-sandwich SEs inflated 2-8x); it now reaches the
-  minimum and matches NONMEM's sandwich (#1152).
 - The full (`covFull=TRUE`) finite-difference covariance no longer installs
   a sandwich around an indefinite R matrix, which still looks positive
   definite.  It now uses `s (full)` with a warning, as the theta-only step
