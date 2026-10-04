@@ -104,7 +104,14 @@ vpcSim <- function(
   .w <- which(names(.si) == "rx")
   .si <- .si[-.w]
   .si$nsim <- n
-  .si <- c(.si, list(...))
+  # the fit's covariate interpolation (#1137), then `...` replaces any
+  # setting by name instead of passing it twice
+  .covsi <- .residCovsInterpolation(object)
+  .si <- c(.si, .covsi[!vapply(.covsi, is.null, logical(1))])
+  .dots <- list(...)
+  .named <- if (is.null(names(.dots))) logical(length(.dots)) else nzchar(names(.dots))
+  .si[names(.dots)[.named]] <- .dots[.named]
+  .si <- c(.si, .dots[!.named])
   .pt <- proc.time()
   .si$keep <- unique(c(keep, "nlmixrRowNums"))
   .data <- .si$events
@@ -135,7 +142,7 @@ vpcSim <- function(
   .si$returnType <- "data.frame.TBS"
   .sim <- do.call(rxode2::rxSolve, .si)
   if (!("sim.id" %in% names(.sim))) {
-    .sim2$sim.id <- 1
+    .sim$sim.id <- 1
   }
   # now look for how many have missing values
   .w <- which(is.na(.sim$ipred))

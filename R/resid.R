@@ -62,6 +62,30 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
 }
 
 
+#' Name of the ODE method a fit used
+#'
+#' `rxControl()` stores the method as rxode2's integer code.  Read the name
+#' back from rxode2's own table (`odeMethodToInt(NULL)`) rather than a copy
+#' of it here: a copy of only the first methods (`dop853`, `lsoda`,
+#' `liblsoda`, `indLin`) turned any newer code (`cvode` is 21, `lsode` 106)
+#' into a malformed factor, and the table step of the fit failed.
+#'
+#' @param method `fit$methodOde`, a name or rxode2's integer code
+#' @return the method name
+#' @author Matthew L. Fidler
+#' @noRd
+.residOdeMethodName <- function(method) {
+  if (is.character(method)) {
+    return(method)
+  }
+  .codes <- rxode2::odeMethodToInt(NULL)
+  .name <- names(.codes)[match(as.integer(method), .codes)]
+  if (length(.name) != 1L || is.na(.name)) {
+    stop("unknown rxode2 ODE method code: ", paste(method, collapse = ", "), call. = FALSE)
+  }
+  .name
+}
+
 #' Build the ODE-method fallback list for a post-fit table/residual solve
 #'
 #' @param currentOdeMethod character ODE method the fit itself used
@@ -81,6 +105,23 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   append(
     list(currentOdeMethod),
     as.list(setdiff(allOdeMethods, currentOdeMethod))
+  )
+}
+
+#' Covariate interpolation settings a fit was estimated with
+#'
+#' @param fit focei style fit
+#' @return named list of the fit's `covsInterpolation` and
+#'   `naInterpolation` (rxode2 integer codes; `NULL` when unset)
+#' @author Matthew L. Fidler
+#' @noRd
+.residCovsInterpolation <- function(fit) {
+  # the estimation control's own rxControl; $foceiControl can rewrite a
+  # non-focei fit's control
+  .rxControl <- fit$rxControl
+  list(
+    covsInterpolation = .rxControl$covsInterpolation,
+    naInterpolation = .rxControl$naInterpolation
   )
 }
 
@@ -110,15 +151,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
     stop("cannot solve with `model` NULL", call. = FALSE)
   }
   keep <- unique(c(keep, "nlmixrRowNums"))
-  # Use character method names, not numeric codes, to avoid staying in sync
-  # with rxode2 internals.
-  currentOdeMethod <- fit$methodOde
-  if (!inherits(currentOdeMethod, "character")) {
-    cur <- as.integer(currentOdeMethod) + 1L
-    attr(cur, "levels") <- c("dop853", "lsoda", "liblsoda", "indLin")
-    attr(cur, "class") <- "factor"
-    currentOdeMethod <- as.character(cur)
-  }
+  currentOdeMethod <- .residOdeMethodName(fit$methodOde)
   odeMethods <- .residOdeFallbackMethods(currentOdeMethod)
   failedMethods <- character()
   isFirstFit <- TRUE
@@ -126,6 +159,8 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   maxAtolRtol <- fit$foceiControl$rxControl$maxAtolRtolFactor
   recalcFactor <- fit$foceiControl$odeRecalcFactor
   .tolFactor <- fit$env$tolFactor
+  # the table must interpolate covariates the way the fit did (#1137)
+  .covsi <- .residCovsInterpolation(fit)
   # For mixture models, pass per-subject mixture assignments via iCov so
   # rxode2 sets ind->mixest correctly during the table solve. `fit` is the
   # nlmixr2FitCore environment, accessed directly.
@@ -192,6 +227,8 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
             maxords = fit$maxords,
             method = rxode2::odeMethodToInt(currentOdeMethod),
             tolFactor = .tolFactor,
+            covsInterpolation = .covsi$covsInterpolation,
+            naInterpolation = .covsi$naInterpolation,
             iCov = .iCov,
             keep = keep,
             addDosing = addDosing,
@@ -219,6 +256,8 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
                 maxords = fit$maxords,
                 method = rxode2::odeMethodToInt(currentOdeMethod),
                 tolFactor = .tolFactor,
+                covsInterpolation = .covsi$covsInterpolation,
+                naInterpolation = .covsi$naInterpolation,
                 iCov = NULL,
                 keep = keep,
                 addDosing = addDosing,
@@ -246,6 +285,8 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
           maxords = fit$maxords,
           method = rxode2::odeMethodToInt(currentOdeMethod),
           tolFactor = .tolFactor,
+          covsInterpolation = .covsi$covsInterpolation,
+          naInterpolation = .covsi$naInterpolation,
           iCov = NULL,
           keep = keep,
           addDosing = addDosing,
