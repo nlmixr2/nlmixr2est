@@ -17,6 +17,9 @@
   
 ## Bug Fixes
 
+- All compiled sources, C as well as C++, are now built with `R_NO_REMAP`
+  defined before any R header is included, as 'Writing R Extensions'
+  requires; this addresses the CRAN r-devel clang check failures (#1154).
 - The FOCEi-family objective no longer jumps where a residual variance crosses
   `sqrt(.Machine$double.eps)`: such a variance is now floored instead of being
   replaced by 1, which added about +16 per observation.  Proportional-error fits
