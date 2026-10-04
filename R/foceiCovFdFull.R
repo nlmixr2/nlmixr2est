@@ -122,7 +122,12 @@
   # the TYPE when it differs, so the env's "r+"/"|r|" decorations survive when they
   # agree; either way the name carries the " (full)" scope suffix.
   .ret$covMethod <- .covFullName(if (identical(.type, .envType)) .env else .type)
-  if (.rPd) .ret$covR <- .Rinv
+  if (.rPd) {
+    .ret$covR <- .Rinv
+  } else {
+    # the native theta-only pieces are cached above; do not leave them beside a full cov
+    suppressWarnings(rm(list = c("covR", "covRS"), envir = .ret))
+  }
   if (!is.null(.covS)) {
     dimnames(.covS) <- dimnames(.Rinv)
     .ret$covS <- .covS
