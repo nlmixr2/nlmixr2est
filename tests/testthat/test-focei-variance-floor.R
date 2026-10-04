@@ -200,4 +200,52 @@ nmTest({
     expect_message(r <- foceiCovAnalytic(fit), "floored residual variance")
     expect_null(r)
   })
+
+  # An exact-zero prediction keeps the legacy R = 1; its second derivatives
+  # (2 * sp^2 * a * a') are not zero, so the gradient must drop them as well.
+  test_that("fast=TRUE analytic gradient matches central differences at R = 0", {
+    skip_on_cran()
+    m <- function() {
+      ini({
+        lf <- 0
+        lk <- log(0.2)
+        eta.f ~ 0.1
+        eta.k ~ 0.1
+        prop.sd <- 0.1
+      })
+      model({
+        ipred <- exp(lf + eta.f) * TIME * exp(-exp(lk + eta.k) * TIME)
+        ipred ~ prop(prop.sd)
+      })
+    }
+    .testSeed(1132)
+    obsT <- c(0, 1, 2, 4, 8, 12)
+    d <- do.call(
+      rbind,
+      lapply(1:8, function(i) {
+        data.frame(
+          ID = i,
+          TIME = obsT,
+          AMT = 0,
+          EVID = 0,
+          DV = obsT * exp(-0.2 * obsT) * exp(rnorm(1, 0, 0.3)) * (1 + 0.1 * rnorm(6))
+        )
+      })
+    )
+    fit <- suppressMessages(suppressWarnings(nlmixr2(m, d, "focei", .floorCtl(TRUE))))
+    expect_true(any(fit$IPRED == 0))
+    g <- .foceiGradDirect(fit)
+    expect_false(is.null(g))
+    expect_gt(fit$env$nAnalyticGradDirect, 0)
+    base <- fixef(fit)
+    fd <- vapply(
+      names(base),
+      function(nm) {
+        h <- 1e-4 * max(abs(base[[nm]]), 0.05)
+        (.floorOfv(fit, d, base[nm] + h) - .floorOfv(fit, d, base[nm] - h)) / (2 * h)
+      },
+      numeric(1)
+    )
+    expect_equal(unname(g[names(base)]), unname(fd), tolerance = 0.02)
+  })
 })
