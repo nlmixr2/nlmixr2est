@@ -25,7 +25,9 @@
   it had differentiated the raw variance, which stopped fits short.  The
   analytic covariance (`covMethod="analytic"`) of an additive/proportional fit
   with a floored variance is now assembled from the floored variance too; its
-  observed information was off by up to ~30% (#1132).
+  observed information was off by up to ~30%.  An adaptive Gaussian
+  quadrature fit whose nodes floor the variance uses the finite-difference
+  covariance instead (#1132).
 - A fit's `IPRED`/`PRED` table, `vpcSim()` (and so `npde`) and `augPred()`
   now interpolate time-varying covariates with the fit's
   `rxControl(covsInterpolation=)` and `naInterpolation=` instead of always

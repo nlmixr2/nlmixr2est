@@ -957,11 +957,18 @@
     # AGQ: the quadrature nodes are placed per subject (from that subject's Ht), so they are
     # solved inside the subject assembly via this callback.  Order 2 (`SolveFA`) is enough --
     # the nodes need a/A but never the 3rd-order Ath, which is an eta-hat-only quantity.
+    .nodeFloored <- FALSE
     .sn <- if (is.null(.ag)) {
       NULL
     } else {
       function(etak) {
-        .foceiAnalyticSolveFA(am, c(th, setNames(etak, etav)), s, obs$TIME, tol = solveTol)
+        .Ek <- .foceiAnalyticSolveFA(am, c(th, setNames(etak, etav)), s, obs$TIME, tol = solveTol)
+        # a node can floor R while eta-hat does not; stop and report it like eta-hat
+        if (!is.null(.Ek) && !is.null(ef$rvar) && any(ef$ev(ef$rvar, .Ek$f, NA_real_) < sqrt(.Machine$double.eps))) {
+          .nodeFloored <<- TRUE
+          return(NULL)
+        }
+        .Ek
       }
     }
     Ri <- tryCatch(
@@ -987,6 +994,9 @@
       ),
       error = function(e) NULL
     )
+    if (.nodeFloored) {
+      return(structure(list(), class = "foceiFlooredR"))
+    }
     if (is.null(Ri) || !all(is.finite(Ri))) {
       return(NULL)
     }

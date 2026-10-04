@@ -173,4 +173,31 @@ nmTest({
     }
     expect_equal(unname(r$R[nm, nm]), H / 2, tolerance = 1e-3)
   })
+
+  # AGQ quadrature nodes can floor R where eta-hat does not; the (f,R) assembler has
+  # no nodes, so such a fit falls back to finite differences.
+  test_that("AGQ analytic covariance falls back when only a node floors R", {
+    skip_on_cran()
+    .testSeed(1132)
+    obsT <- c(1, 2, 4, 8, 16, 31)
+    d <- do.call(
+      rbind,
+      lapply(1:8, function(i) {
+        data.frame(
+          ID = i,
+          TIME = obsT,
+          AMT = 0,
+          EVID = 0,
+          DV = exp(-0.2 * obsT) * exp(rnorm(1, 0, 0.3)) * (1 + 0.1 * rnorm(6))
+        )
+      })
+    )
+    fit <- suppressMessages(suppressWarnings(
+      nlmixr2(.floorMod, d, "agq", foceiControl(print = 0L, covMethod = "", nAGQ = 3, maxOuterIterations = 0L))
+    ))
+    # eta-hat stays above the floor, so only the node check can see it
+    expect_true(all((0.1 * fit$IPRED)^2 > sqrt(.Machine$double.eps)))
+    expect_message(r <- foceiCovAnalytic(fit), "floored residual variance")
+    expect_null(r)
+  })
 })
