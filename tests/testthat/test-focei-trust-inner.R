@@ -327,6 +327,7 @@ nmTest({
         "solverFail",
         "newtonGate",
         "warmRetry",
+        "polish",
         "radiusRetry",
         "nudge",
         "omegaRestart",

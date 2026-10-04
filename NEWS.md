@@ -17,6 +17,14 @@
   
 ## Bug Fixes
 
+- FOCEi's default `innerOpt="trust"` inner solve now finishes each
+  converged ETA with Newton steps down to `trustFterm`.  It stopped up to
+  `sqrt(trustFterm)` short of the mode, which the FOCEi `log|H|` term turned
+  into objective noise that depended on the previous evaluation's ETAs.  The
+  outer search could then stop early (`pheno_sd`: 0.03 OFV short, with an
+  indefinite full R and full-sandwich SEs inflated 2-8x); it now reaches the
+  minimum and matches NONMEM's sandwich (#1152).
+
 - A fit's `IPRED`/`PRED` table, `vpcSim()` (and so `npde`) and `augPred()`
   now interpolate time-varying covariates with the fit's
   `rxControl(covsInterpolation=)` and `naInterpolation=` instead of always
