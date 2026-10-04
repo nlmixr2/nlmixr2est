@@ -3193,6 +3193,8 @@ double likInner0(double *eta, int id) {
             return NA_REAL;
             //throw std::runtime_error("bad solve");
           }
+          const double rFloor = sqrt(std::numeric_limits<double>::epsilon());
+          bool rFloored = false;
           if (dist == rxDistributionNorm) {
             r = lhs[op_focei.predOffset + op_focei.neta + 1];
             // "nonmem" FOCE: use the eta=0 population R (FOCEI and "foce+" keep
@@ -3207,8 +3209,14 @@ double likInner0(double *eta, int id) {
             if (op_focei.npResidScale != 1.0) {
               r *= op_focei.npResidScale * op_focei.npResidScale;
             }
-            if (r <= sqrt(std::numeric_limits<double>::epsilon())) {
+            // Floor a tiny variance rather than replacing it: swapping in 1 put a
+            // ~+16 cliff in the objective where a prediction crossed it (#1132).
+            // An exact zero (structural-zero prediction) keeps the legacy r=1.
+            if (r <= 0.0) {
               r = 1.0;
+            } else if (r < rFloor) {
+              r = rFloor;
+              rFloored = true;
             }
           } else {
             r = 1.0;
@@ -3299,6 +3307,7 @@ double likInner0(double *eta, int id) {
                 if (rp == 0.0) {
                   rp = sqrt(DBL_EPSILON);
                 }
+                if (rFloored) rp = 0.0;   // a floored R is flat in eta
                 c(k, i) = rp/_safe_zero(r);
                 //lp is eq 12 in Almquist 2015
                 // .5*apply(eps*fp*B + .5*eps^2*B*c - c, 2, sum) - OMGAinv %*% ETA

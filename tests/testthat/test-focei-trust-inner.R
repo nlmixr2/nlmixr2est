@@ -493,7 +493,7 @@ nmTest({
   test_that("the trust retry cascade's stages are each reachable (#1044)", {
     skip_on_cran()
     .dat <- .gateData()
-    .gateFit <- function(d) {
+    .gateFit <- function(d, ...) {
       suppressWarnings(suppressMessages(
         nlmixr2(
           .gateMod(d),
@@ -505,7 +505,8 @@ nmTest({
             maxOuterIterations = 0L,
             maxInnerIterations = 5000L,
             calcTables = FALSE,
-            innerOpt = "trust"
+            innerOpt = "trust",
+            ...
           )
         )
       ))
@@ -527,9 +528,10 @@ nmTest({
     expect_gt(.c3[["failed"]], 0L)
     expect_true(is.finite(.g3$objf))
 
-    # Displaced further, the Newton step outgrows the radius often enough to
-    # exercise the escalation branch instead.
-    .c4 <- .gateFit(4)$env$nTrustInner
+    # A capped radius makes the Newton step outgrow it, exercising the
+    # escalation branch; the default radius stopped reaching it once a tiny
+    # residual variance was floored instead of replaced by 1 (#1132).
+    .c4 <- .gateFit(4, trustRinit = 0.02, trustRmax = 0.02)$env$nTrustInner
     expect_gt(.c4[["radiusRetry"]], 0L)
   })
 
