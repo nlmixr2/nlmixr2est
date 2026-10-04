@@ -108,6 +108,23 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   )
 }
 
+#' Covariate interpolation settings a fit was estimated with
+#'
+#' @param fit focei style fit
+#' @return named list of the fit's `covsInterpolation` and
+#'   `naInterpolation` (rxode2 integer codes; `NULL` when unset)
+#' @author Matthew L. Fidler
+#' @noRd
+.residCovsInterpolation <- function(fit) {
+  # the estimation control's own rxControl; $foceiControl can rewrite a
+  # non-focei fit's control
+  .rxControl <- fit$rxControl
+  list(
+    covsInterpolation = .rxControl$covsInterpolation,
+    naInterpolation = .rxControl$naInterpolation
+  )
+}
+
 #' Solve for pred/ipred types of calculations (including residuals)
 #'
 #' @param fit focei style fit
@@ -142,6 +159,8 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   maxAtolRtol <- fit$foceiControl$rxControl$maxAtolRtolFactor
   recalcFactor <- fit$foceiControl$odeRecalcFactor
   .tolFactor <- fit$env$tolFactor
+  # the table must interpolate covariates the way the fit did (#1137)
+  .covsi <- .residCovsInterpolation(fit)
   # For mixture models, pass per-subject mixture assignments via iCov so
   # rxode2 sets ind->mixest correctly during the table solve. `fit` is the
   # nlmixr2FitCore environment, accessed directly.
@@ -208,6 +227,8 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
             maxords = fit$maxords,
             method = rxode2::odeMethodToInt(currentOdeMethod),
             tolFactor = .tolFactor,
+            covsInterpolation = .covsi$covsInterpolation,
+            naInterpolation = .covsi$naInterpolation,
             iCov = .iCov,
             keep = keep,
             addDosing = addDosing,
@@ -235,6 +256,8 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
                 maxords = fit$maxords,
                 method = rxode2::odeMethodToInt(currentOdeMethod),
                 tolFactor = .tolFactor,
+                covsInterpolation = .covsi$covsInterpolation,
+                naInterpolation = .covsi$naInterpolation,
                 iCov = NULL,
                 keep = keep,
                 addDosing = addDosing,
@@ -262,6 +285,8 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
           maxords = fit$maxords,
           method = rxode2::odeMethodToInt(currentOdeMethod),
           tolFactor = .tolFactor,
+          covsInterpolation = .covsi$covsInterpolation,
+          naInterpolation = .covsi$naInterpolation,
           iCov = NULL,
           keep = keep,
           addDosing = addDosing,
