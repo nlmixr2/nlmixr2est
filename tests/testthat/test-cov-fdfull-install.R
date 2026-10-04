@@ -99,6 +99,10 @@ test_that("an indefinite full R installs s (full), not a PD-looking sandwich (#1
   .e2 <- .mkFdEnv("r,s", .Rbad)
   expect_warning(.foceiInstallFdFullCov(.e2), "kept theta-only")
   expect_false(exists("cov", envir = .e2, inherits = FALSE))
+  # nor with a singular S: the warning must not claim s (full) was installed
+  .e3 <- .mkFdEnv("r,s", .Rbad, matrix(1, 2, 2))
+  expect_warning(.foceiInstallFdFullCov(.e3), "kept theta-only")
+  expect_false(exists("cov", envir = .e3, inherits = FALSE))
 })
 
 test_that("no .fdFullCov stashed is a no-op", {

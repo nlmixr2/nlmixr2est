@@ -78,31 +78,40 @@
   # fall back to S like the native step does
   .rEv <- suppressWarnings(eigen(.Rinv, symmetric = TRUE, only.values = TRUE)$values)
   .rPd <- all(is.finite(.rEv)) && min(.rEv) > 0
-  if (!.rPd && .type != "s") {
-    if (.type == "r" || !is.matrix(.S)) {
+  # warn only once the fallback is known to install; otherwise say the native cov stays
+  .rFallback <- !.rPd && .type != "s"
+  .keep <- function() {
+    if (.rFallback) {
       warning("full R matrix non-positive definite; kept theta-only covariance", call. = FALSE)
-      return(invisible(FALSE))
     }
-    warning("full R matrix non-positive definite; using s (full)", call. = FALSE)
+    invisible(FALSE)
+  }
+  if (.rFallback) {
+    if (.type == "r" || !is.matrix(.S)) {
+      return(.keep())
+    }
     .type <- "s"
   }
   if (.type != "r" && (!is.matrix(.S) || !all(is.finite(.S)))) {
-    return(invisible(FALSE))
+    return(.keep())
   }
   .covS <- if (is.null(.S)) NULL else tryCatch(solve(.S), error = function(e) NULL)
   if (.type != "r" && is.null(.covS)) {
-    return(invisible(FALSE))
+    return(.keep())
   }
   .covRS <- if (is.null(.S) || !.rPd) NULL else .Rinv %*% .S %*% .Rinv
   .cov <- switch(.type, "r" = .Rinv, "s" = .covS, "r,s" = .covRS)
   if (is.null(.cov) || !is.matrix(.cov) || !all(is.finite(.cov))) {
-    return(invisible(FALSE))
+    return(.keep())
   }
   dimnames(.cov) <- dimnames(.Rinv)
   # PD guard: reject an indefinite cov (negative variances -> NaN SEs), keep the native cov.
   .ev <- suppressWarnings(eigen(.cov, symmetric = TRUE, only.values = TRUE)$values)
   if (any(diag(.cov) <= 0) || !all(is.finite(.ev)) || min(.ev) <= 0) {
-    return(invisible(FALSE))
+    return(.keep())
+  }
+  if (.rFallback) {
+    warning("full R matrix non-positive definite; using s (full)", call. = FALSE)
   }
   # The theta-only covariance the native step produced -- and the r/s/sandwich pieces
   # behind it -- are about to be replaced.  Cache them first so setCov() can swap back
