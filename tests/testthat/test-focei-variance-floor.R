@@ -248,4 +248,27 @@ nmTest({
     )
     expect_equal(unname(g[names(base)]), unname(fd), tolerance = 0.02)
   })
+
+  # M3 censoring scores the floored variance through the censored likelihood.
+  test_that("fast=TRUE analytic gradient matches central differences for floored censored rows", {
+    skip_on_cran()
+    d <- .floorData()
+    d$CENS <- ifelse(d$TIME == 48, 1L, 0L)
+    d$DV[d$CENS == 1L] <- 1e-4
+    fit <- suppressMessages(suppressWarnings(nlmixr2(.floorMod, d, "focei", .floorCtl(TRUE))))
+    expect_true(all((0.1 * fit$IPRED[fit$TIME == 48])^2 < sqrt(.Machine$double.eps)))
+    g <- .foceiGradDirect(fit)
+    expect_false(is.null(g))
+    expect_gt(fit$env$nAnalyticGradDirect, 0)
+    base <- fixef(fit)
+    fd <- vapply(
+      names(base),
+      function(nm) {
+        h <- 1e-4 * max(abs(base[[nm]]), 0.05)
+        (.floorOfv(fit, d, base[nm] + h) - .floorOfv(fit, d, base[nm] - h)) / (2 * h)
+      },
+      numeric(1)
+    )
+    expect_equal(unname(g[names(base)]), unname(fd), tolerance = 0.02)
+  })
 })
