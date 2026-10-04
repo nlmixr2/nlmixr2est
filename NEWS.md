@@ -24,6 +24,10 @@
   outer search could then stop early (`pheno_sd`: 0.03 OFV short, with an
   indefinite full R and full-sandwich SEs inflated 2-8x); it now reaches the
   minimum and matches NONMEM's sandwich (#1152).
+- The full (`covFull=TRUE`) finite-difference covariance no longer installs
+  a sandwich around an indefinite R matrix, which still looks positive
+  definite.  It now uses `s (full)` with a warning, as the theta-only step
+  does.
 
 - A fit's `IPRED`/`PRED` table, `vpcSim()` (and so `npde`) and `augPred()`
   now interpolate time-varying covariates with the fit's

@@ -74,6 +74,18 @@
     return(invisible(FALSE))
   }
   .S <- if (exists(".fdFullS", envir = .ret, inherits = FALSE)) get(".fdFullS", envir = .ret) else NULL
+  # An indefinite R is not a minimum, yet Rinv %*% S %*% Rinv still looks PD (#1152);
+  # fall back to S like the native step does
+  .rEv <- suppressWarnings(eigen(.Rinv, symmetric = TRUE, only.values = TRUE)$values)
+  .rPd <- all(is.finite(.rEv)) && min(.rEv) > 0
+  if (!.rPd && .type != "s") {
+    if (.type == "r" || !is.matrix(.S)) {
+      warning("full R matrix non-positive definite; kept theta-only covariance", call. = FALSE)
+      return(invisible(FALSE))
+    }
+    warning("full R matrix non-positive definite; using s (full)", call. = FALSE)
+    .type <- "s"
+  }
   if (.type != "r" && (!is.matrix(.S) || !all(is.finite(.S)))) {
     return(invisible(FALSE))
   }
@@ -81,7 +93,7 @@
   if (.type != "r" && is.null(.covS)) {
     return(invisible(FALSE))
   }
-  .covRS <- if (is.null(.S)) NULL else .Rinv %*% .S %*% .Rinv
+  .covRS <- if (is.null(.S) || !.rPd) NULL else .Rinv %*% .S %*% .Rinv
   .cov <- switch(.type, "r" = .Rinv, "s" = .covS, "r,s" = .covRS)
   if (is.null(.cov) || !is.matrix(.cov) || !all(is.finite(.cov))) {
     return(invisible(FALSE))
@@ -110,7 +122,7 @@
   # the TYPE when it differs, so the env's "r+"/"|r|" decorations survive when they
   # agree; either way the name carries the " (full)" scope suffix.
   .ret$covMethod <- .covFullName(if (identical(.type, .envType)) .env else .type)
-  .ret$covR <- .Rinv
+  if (.rPd) .ret$covR <- .Rinv
   if (!is.null(.covS)) {
     dimnames(.covS) <- dimnames(.Rinv)
     .ret$covS <- .covS
@@ -122,7 +134,7 @@
   for (.n in names(.nat)) {
     .covCacheAdd(.ret, .n, .nat[[.n]])
   }
-  .covCacheAdd(.ret, .covFullName("r"), .Rinv)
+  if (.rPd) .covCacheAdd(.ret, .covFullName("r"), .Rinv)
   .covCacheAdd(.ret, .covFullName("s"), .covS)
   .covCacheAdd(.ret, .covFullName("r,s"), .covRS)
   .covCacheDrop(.ret, .ret$covMethod)
