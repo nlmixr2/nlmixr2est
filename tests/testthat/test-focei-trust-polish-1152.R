@@ -23,7 +23,8 @@ nmTest({
   test_that("default FOCEi reaches the pheno minimum with a sane full sandwich (#1152)", {
     skip_on_cran()
     .fit <- suppressMessages(suppressWarnings(nlmixr2(
-      .pheno, nlmixr2data::pheno_sd,
+      .pheno,
+      nlmixr2data::pheno_sd,
       est = "focei",
       control = foceiControl(print = 0, calcTables = FALSE)
     )))

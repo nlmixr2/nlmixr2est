@@ -4153,6 +4153,48 @@ static inline int innerEval(int id){
   return 1;
 }
 
+// The trust arm's Newton-decrement gate leaves eta up to sqrt(trustFterm) short of the
+// mode, and the FOCEi log|H| term carries that to the objective to FIRST order, so the
+// outer objective depended on the warm start (#1152).  Finish a converged solve with
+// (approximate-Hessian) Newton steps down to trustFterm, each kept only if it does not
+// ascend.  `step`/`dist` are the Newton step and its parscale length at fInd->x; on
+// return fInd->x, fInd->g and `f` describe the last accepted point.  True if any step
+// was accepted.
+static bool trustPolishEta(int id, focei_ind *fInd, int npar, const std::vector<double> &parscale,
+                           arma::vec step, double dist, double &f) {
+  std::vector<double> x0(npar), x1(npar), g1(npar), h1((size_t)npar * npar);
+  bool accepted = false;
+  for (int k = 0; k < 4 && dist > op_focei.trustFterm; k++) {
+    std::copy(fInd->x, fInd->x + npar, x0.begin());
+    for (int i = 0; i < npar; i++) x1[i] = x0[i] + step[i];
+    double f1 = R_PosInf;
+    if (trustInnerObjfun(npar, x1.data(), &f1, g1.data(), h1.data(), (void*)(&id)) != 0 ||
+        !R_FINITE(f1) || f1 > f) {
+      std::copy(x0.begin(), x0.end(), fInd->x);
+      fInd->badSolve = 0;
+      break;
+    }
+    f = f1;
+    std::copy(g1.begin(), g1.end(), fInd->g);
+    accepted = true;
+    op_focei.nTrustPolish.fetch_add(1, std::memory_order_relaxed);
+    arma::mat Hk(h1.data(), npar, npar, false, true);
+    arma::vec gk(g1.data(), npar, false, true);
+    if (!arma::solve(step, Hk, -gk, arma::solve_opts::no_approx) ||
+        arma::dot(gk, step) >= 0) break;
+    double d2 = 0.0;
+    for (int i = 0; i < npar; i++) {
+      double si = step[i] * parscale[i];
+      d2 += si * si;
+    }
+    double distNew = std::sqrt(d2);
+    // a step that stops shrinking is at the solve's noise floor
+    if (!(distNew < 0.5 * dist)) break;
+    dist = distNew;
+  }
+  return accepted;
+}
+
 static inline int innerOpt1(int id, int likId) {
   focei_ind *fInd = &(inds_focei[id]);
   focei_options *fop = &op_focei;
@@ -4896,43 +4938,9 @@ static inline int innerOpt1(int id, int likId) {
               if (conv && pushDist > pushTol) {
                 conv = false;
                 op_focei.nTrustPush.fetch_add(1, std::memory_order_relaxed);
-              } else if (conv && pushDist > 0.0) {
-                // The gate leaves eta up to sqrt(trustFterm) short of the mode, and
-                // the FOCEi log|H| term carries that to the objective to FIRST order,
-                // so the outer objective depended on the warm start (#1152).  Finish
-                // with (approximate-Hessian) Newton steps down to trustFterm, each
-                // kept only if it does not ascend.
-                std::vector<double> x0(npar), x1(npar), g1(npar), h1((size_t)npar * npar);
-                arma::vec stepK = step;
-                double distK = pushDist;
-                for (int _p = 0; _p < 4 && distK > op_focei.trustFterm; _p++) {
-                  std::copy(fInd->x, fInd->x + npar, x0.begin());
-                  for (int i = 0; i < npar; i++) x1[i] = x0[i] + stepK[i];
-                  double f1 = R_PosInf;
-                  if (trustInnerObjfun(npar, x1.data(), &f1, g1.data(), h1.data(), (void*)(&id)) != 0 ||
-                      !R_FINITE(f1) || f1 > f) {
-                    std::copy(x0.begin(), x0.end(), fInd->x);
-                    fInd->badSolve = 0;
-                    break;
-                  }
-                  f = f1;
-                  std::copy(g1.begin(), g1.end(), fInd->g);
-                  keepBest();
-                  op_focei.nTrustPolish.fetch_add(1, std::memory_order_relaxed);
-                  arma::mat Hk(h1.data(), npar, npar, false, true);
-                  arma::vec gk(g1.data(), npar, false, true);
-                  if (!arma::solve(stepK, Hk, -gk, arma::solve_opts::no_approx) ||
-                      arma::dot(gk, stepK) >= 0) break;
-                  double d2k = 0.0;
-                  for (int i = 0; i < npar; i++) {
-                    double si = stepK[i] * parscale[i];
-                    d2k += si * si;
-                  }
-                  double distNew = std::sqrt(d2k);
-                  // a step that stops shrinking is at the solve's noise floor
-                  if (!(distNew < 0.5 * distK)) break;
-                  distK = distNew;
-                }
+              } else if (conv && pushDist > 0.0 &&
+                         trustPolishEta(id, fInd, npar, parscale, step, pushDist, f)) {
+                keepBest();
               }
             }
             // Newton estimate unusable (singular/indefinite H, or not a

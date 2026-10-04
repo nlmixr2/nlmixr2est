@@ -148,7 +148,9 @@
   for (.n in names(.nat)) {
     .covCacheAdd(.ret, .n, .nat[[.n]])
   }
-  if (.rPd) .covCacheAdd(.ret, .covFullName("r"), .Rinv)
+  if (.rPd) {
+    .covCacheAdd(.ret, .covFullName("r"), .Rinv)
+  }
   .covCacheAdd(.ret, .covFullName("s"), .covS)
   .covCacheAdd(.ret, .covFullName("r,s"), .covRS)
   .covCacheDrop(.ret, .ret$covMethod)
