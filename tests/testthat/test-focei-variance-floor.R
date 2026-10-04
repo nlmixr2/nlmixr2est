@@ -58,27 +58,24 @@ nmTest({
     expect_equal(below, objFloor(etaCross - 1e-4), tolerance = 1e-4)
   })
 
-  # The fast=TRUE analytic outer gradient must differentiate the SAME floored
-  # objective: it used to differentiate log(R_raw) at a floored observation, and one
-  # such subject stopped a Michaelis-Menten fit 63 OFV short of the optimum (#1132).
-  test_that("fast=TRUE analytic gradient matches central differences at a floored R", {
-    skip_on_cran()
-    m <- function() {
-      ini({
-        lf <- 0
-        lk <- log(0.2)
-        eta.f ~ 0.1
-        eta.k ~ 0.1
-        prop.sd <- 0.1
-      })
-      model({
-        ipred <- exp(lf + eta.f) * exp(-exp(lk + eta.k) * TIME)
-        ipred ~ prop(prop.sd)
-      })
-    }
+  # A proportional-error design whose late predictions floor the variance.
+  .floorMod <- function() {
+    ini({
+      lf <- 0
+      lk <- log(0.2)
+      eta.f ~ 0.1
+      eta.k ~ 0.1
+      prop.sd <- 0.1
+    })
+    model({
+      ipred <- exp(lf + eta.f) * exp(-exp(lk + eta.k) * TIME)
+      ipred ~ prop(prop.sd)
+    })
+  }
+  .floorData <- function() {
     .testSeed(1132)
     obsT <- c(1, 2, 4, 8, 24, 48)
-    d <- do.call(
+    do.call(
       rbind,
       lapply(1:8, function(i) {
         data.frame(
@@ -90,35 +87,90 @@ nmTest({
         )
       })
     )
-    ctl <- function(fast) {
-      foceiControl(
-        print = 0L,
-        covMethod = "",
-        fast = fast,
-        sigdig = 4,
-        maxOuterIterations = 0L,
-        maxInnerIterations = 500L
-      )
-    }
-    fit <- suppressMessages(suppressWarnings(nlmixr2(m, d, "focei", ctl(TRUE))))
+  }
+  .floorCtl <- function(fast = FALSE, sigdig = 4, maxOuterIterations = 0L) {
+    foceiControl(
+      print = 0L,
+      covMethod = "",
+      fast = fast,
+      sigdig = sigdig,
+      maxOuterIterations = maxOuterIterations,
+      maxInnerIterations = 500L
+    )
+  }
+  # objective at fit's estimates with some thetas moved, ETAs re-optimized
+  .floorOfv <- function(fit, d, v, sigdig = 4) {
+    ui2 <- do.call(rxode2::ini, c(list(fit$finalUi), as.list(v)))
+    suppressMessages(suppressWarnings(nlmixr2(ui2, d, "focei", .floorCtl(sigdig = sigdig))))$objf
+  }
+
+  # The fast=TRUE analytic outer gradient must differentiate the SAME floored
+  # objective: it used to differentiate log(R_raw) at a floored observation, and one
+  # such subject stopped a Michaelis-Menten fit 63 OFV short of the optimum (#1132).
+  test_that("fast=TRUE analytic gradient matches central differences at a floored R", {
+    skip_on_cran()
+    d <- .floorData()
+    fit <- suppressMessages(suppressWarnings(nlmixr2(.floorMod, d, "focei", .floorCtl(TRUE))))
     # the design must actually exercise the floor
     expect_true(any((0.1 * fit$IPRED)^2 < sqrt(.Machine$double.eps)))
     g <- .foceiGradDirect(fit)
     expect_false(is.null(g))
     expect_gt(fit$env$nAnalyticGradDirect, 0)
     base <- fixef(fit)
-    ofvAt <- function(nm, val) {
-      ui2 <- do.call(rxode2::ini, c(list(fit$finalUi), setNames(list(val), nm)))
-      suppressMessages(suppressWarnings(nlmixr2(ui2, d, "focei", ctl(FALSE))))$objf
-    }
     fd <- vapply(
       names(base),
       function(nm) {
         h <- 1e-4 * max(abs(base[[nm]]), 0.05)
-        (ofvAt(nm, base[nm] + h) - ofvAt(nm, base[nm] - h)) / (2 * h)
+        (.floorOfv(fit, d, base[nm] + h) - .floorOfv(fit, d, base[nm] - h)) / (2 * h)
       },
       numeric(1)
     )
     expect_equal(unname(g[names(base)]), unname(fd), tolerance = 0.02)
+  })
+
+  # The add/prop covariance assembler writes R as a function of f and cannot express
+  # the floor; a floored fit is rerouted to the (f,R) assembler, which reads it.  Its
+  # observed information must match the Hessian of the floored objective (it was 28%
+  # off in the theta block before).
+  test_that("analytic covariance matches the objective's Hessian at a floored R", {
+    skip_on_cran()
+    d <- .floorData()
+    fit <- suppressMessages(suppressWarnings(
+      nlmixr2(.floorMod, d, "focei", .floorCtl(sigdig = 6, maxOuterIterations = 1000L))
+    ))
+    base <- fixef(fit)
+    expect_true(any((base[["prop.sd"]] * fit$IPRED)^2 < sqrt(.Machine$double.eps)))
+    nm <- names(base)
+    .rfr <- new.env()
+    .rfr$n <- 0L
+    trace(
+      ".foceiAnalyticAssembleRFR",
+      bquote(assign("n", get("n", envir = .(.rfr)) + 1L, envir = .(.rfr))),
+      print = FALSE,
+      where = environment(.foceiAnalyticAssembleRFR)
+    )
+    on.exit(untrace(".foceiAnalyticAssembleRFR", where = environment(.foceiAnalyticAssembleRFR)), add = TRUE)
+    r <- suppressWarnings(foceiCovAnalytic(fit))
+    expect_gt(.rfr$n, 0L)
+    expect_identical(r$method, "analytic")
+    h <- 2e-3 * pmax(abs(base), 0.05)
+    f0 <- .floorOfv(fit, d, base, sigdig = 6)
+    H <- matrix(0, 3, 3)
+    for (i in 1:3) {
+      for (j in i:3) {
+        at <- function(si, sj) {
+          v <- base
+          v[i] <- v[i] + si * h[i]
+          v[j] <- v[j] + sj * h[j]
+          .floorOfv(fit, d, v, sigdig = 6)
+        }
+        H[i, j] <- H[j, i] <- if (i == j) {
+          (at(1, 0) - 2 * f0 + at(-1, 0)) / h[i]^2
+        } else {
+          (at(1, 1) - at(1, -1) - at(-1, 1) + at(-1, -1)) / (4 * h[i] * h[j])
+        }
+      }
+    }
+    expect_equal(unname(r$R[nm, nm]), H / 2, tolerance = 1e-3)
   })
 })
