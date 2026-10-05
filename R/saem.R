@@ -1554,24 +1554,6 @@
   env$.likTime <- .likTime
 }
 
-#' Get the calculate cwres residual parameter for saem
-#'
-#' @param env saem environment
-#' @return Calculate resid environment
-#' @author Matthew L. Fidler
-#' @noRd
-.saemGetCalcCwres <- function(env) {
-  .table <- env$table
-  .calcResid <- .table$cwres
-  if (is.null(.calcResid)) {
-    .calcResid <- .table$saemCWRES
-  }
-  if (!inherits(.calcResid, "logical")) {
-    return(FALSE)
-  }
-  .calcResid
-}
-
 #' Convert the saem options to focei options
 #' @param env saem environment that has `$saemControl` assigns focei control to `$control`
 #' @return Nothing called for side effects

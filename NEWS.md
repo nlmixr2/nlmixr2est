@@ -30,6 +30,12 @@
   a sandwich around an indefinite R matrix, which still looks positive
   definite.  It now uses `s (full)` with a warning, as the theta-only step
   does.
+- `est="nls"` dropped the `past()` pre-history of a delay differential
+  equation model, biasing its estimates; the history is now kept.
+
+- `est="nls"` with `nlsControl(solveType="fun")` no longer stopped with
+  "required for solving" on a model using `lag()` of a calculated variable.
+
 - A model computing `linCmt()` into a variable (`cp <- linCmt()`) rather than
   as the endpoint is now recognized as a `linCmt()` model.  Under rxode2 5.1.8
   its second-order sensitivities are incomplete, so the default analytic

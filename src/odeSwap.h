@@ -136,10 +136,7 @@ bool odeSwapHasEs(int slot);
 
 int  odeSwapNeq(int slot);       // 0 when unloaded; matches rxode2's op->neq
 int  odeSwapNlhs(int slot);      // 0 when unloaded
-int  odeSwapNpars(int slot);     // 0 when unloaded; the model's own parameter count
 int  odeSwapNSens(int slot);     // length($sens): sensitivity compartments
-int  odeSwapCmtPar(int slot);    // index of "CMT" in $params, -1 when absent
-int  odeSwapNdiff(int slot);     // $flags["ndiff"] (linCmtB Jacobian-cache selector); 0 when unloaded or unset
 bool odeSwapAnyNdiffSet();       // true if any registered slot declared an ndiff (see odeSwap.cpp)
 
 // Endpoint (CMT) rebasing for a pooled solve.
@@ -200,7 +197,6 @@ private:
   void unshift();                                  // restore what shift() overwrote
   std::vector<std::pair<int,int> > _saved;         // (row, pool-basis CMT) shift() wrote
 };
-const char *odeSwapName(int slot);
 SEXP odeSwapModelSEXP(int slot); // R_NilValue when unloaded
 
 // 0-based index of an lhs output in this model, or -1 when absent.  Replaces the
@@ -376,35 +372,6 @@ int odeSwapRetryCore(int &stickyRecalcN2, SolveFn solve, BadFn bad, RelaxFn rela
 // (op_focei's atomic or nlmOp's plain int -- hence the template).  Hooks supplies
 // onRetry() ("tolerances were reduced") and onSticky() ("budget exhausted, the
 // loosening is now permanent").
-// As odeSwapSolveRetry below, but with the failure test supplied by the caller.
-//
-// The augmented outer solve needs this.  rxode2's own test (odeSwapIndBadSolve) asks
-// whether the INTEGRATION failed; a solve can pass it and still have produced non-finite
-// lhs values, and that subject deserves the SAME tolerance relaxation before it is written
-// off to the per-subject finite-difference fallback.  Judging only the integration sent it
-// straight to FD, skipping the rung that was measured to rescue it.
-template <typename SolveFn, typename BadFn, typename Hooks>
-int odeSwapSolveRetryIf(rx_solving_options *op, rx_solving_options_ind *ind,
-                        int &stickyRecalcN2, SolveFn solveFn, BadFn badFn,
-                        const OdeRetryOpts &o, Hooks &h) {
-  return odeSwapRetryCore(
-    stickyRecalcN2,
-    [&]{ solveFn(); },
-    [&]{ return badFn(); },
-    [&](int mode) {
-      if (mode == odeRelaxInd) {
-        setIndTolFactor(ind, getIndTolFactor(ind) * o.odeRecalcFactor);
-      } else {
-        atolRtolFactor_(o.odeRecalcFactor);
-      }
-      setIndSolve(ind, -1);
-      if (o.resetBadSolveEachRetry) resetOpBadSolve(op);
-    },
-    [&]{ return getIndTolFactor(ind); },
-    [&](double x){ setIndTolFactor(ind, x); },
-    o, h);
-}
-
 template <typename SolveFn, typename Hooks>
 int odeSwapSolveRetry(rx_solving_options *op, rx_solving_options_ind *ind,
                       int &stickyRecalcN2, SolveFn solveFn,
@@ -439,7 +406,6 @@ int odeSwapSolveRetry(rx_solving_options *op, rx_solving_options_ind *ind,
 // structure and cannot depend on caller state that may already have been reset.
 void odeSwapPinAll(int slot);
 void odeSwapUnpinAll();     // idempotent; safe after the pool was freed or rebuilt
-void odeSwapRepin();        // re-apply after rxSolve_ rebuilt the solve structure
 bool odeSwapPinned();
 int  odeSwapPinnedSlot();
 
