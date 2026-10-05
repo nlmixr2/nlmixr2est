@@ -127,10 +127,10 @@ print(f)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>            setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.107658 2.7812e-05 0.01900453      0.073     0.211 4.076       0.281
+#>             setup   optimize covariance preprocess configure  saem postprocess
+#> elapsed 0.1006711 2.9044e-05 0.01800434       0.07     0.194 4.031       0.294
 #>         compress     other
-#> elapsed    0.133 0.1723097
+#> elapsed    0.139 0.1842955
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -161,10 +161,10 @@ print(f)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>            setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.107658 2.7812e-05 0.01900453      0.073     0.211 4.076       0.281
+#>             setup   optimize covariance preprocess configure  saem postprocess
+#> elapsed 0.1006711 2.9044e-05 0.01800434       0.07     0.194 4.031       0.294
 #>         compress     other
-#> elapsed    0.133 0.1723097
+#> elapsed    0.139 0.1842955
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
