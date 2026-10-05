@@ -91,6 +91,7 @@ foceiControl(
   trustRmax = NULL,
   trustFterm = NULL,
   trustMterm = NULL,
+  trustPolish = FALSE,
   outerTrustHessian = c("auto", "analytic", "bfgs", "fd"),
   outerTrustRinit = NULL,
   outerTrustRmax = NULL,
@@ -794,6 +795,12 @@ Deliberately NOT derived from `epsilon` (`"n1qn1"`'s own, unrelated
 criterion to a value picked for a different optimizer is exactly the
 coupling these parameters exist to remove. Has no effect unless
 `innerOpt="trust"`.}
+
+\item{trustPolish}{logical; when `TRUE`, each converged `innerOpt="trust"`
+solve takes up to 4 more Newton steps on the ETAs, down to `trustFterm`.
+This makes the objective less dependent on the warm-start ETAs and can
+help a fit that stops short of its minimum (#1152).  `FALSE` (default)
+keeps the plain trust solve.}
 
 \item{outerTrustHessian}{Curvature source for \code{outerOpt="trust"}.
 \code{"auto"} (default) uses the analytical outer Hessian when
