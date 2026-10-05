@@ -34,7 +34,14 @@
   crosses `sqrt(.Machine$double.eps)`: such a variance is now floored
   instead of being replaced by 1, which added about +16 per observation.
   Proportional-error fits with predictions below ~1e-3 could converge to
-  a wrong optimum
+  a wrong optimum. The `foceiControl(fast=TRUE)` analytic outer gradient
+  now applies the same floor; it had differentiated the raw variance,
+  which stopped fits short. The analytic covariance
+  (`covMethod="analytic"`) of an additive/proportional fit with a
+  floored variance is now assembled from the floored variance too; its
+  observed information was off by up to ~30%. An adaptive Gaussian
+  quadrature fit whose nodes floor the variance uses the
+  finite-difference covariance instead
   ([\#1132](https://github.com/nlmixr2/nlmixr2est/issues/1132)).
 
 - A fit’s `IPRED`/`PRED` table,
