@@ -280,14 +280,6 @@
 #' @noRd
 .saemIovIsCmp <- function(o) is.call(o) && identical(o[[1]], quote(`==`))
 
-#' Is this expression one of the model's diagonal etas?
-#'
-#' @param o language object
-#' @param etas names of the model's diagonal etas
-#' @return logical
-#' @noRd
-.saemIovIsEta <- function(o, etas) is.name(o) && as.character(o) %in% etas
-
 #' The eta of an `(occ == level) * eta` term
 #'
 #' @param term language object, one term of a `+` chain

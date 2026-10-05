@@ -17,11 +17,6 @@ double shi21Central(shi21fn_type f, arma::vec &t, double &h,
                     double nu = 8.0,
                     int maxiter=15, double hMax = 0.5, double hMin = 1e-4);
 
-double shi21Stencil(shi21fn_type f, arma::vec &t, double &h,
-                    arma::vec &f0, arma::vec &gr, int id, int idx,
-                    double ef, double rl, double ru, double nu,
-                    int maxiter);
-
 
 // 2/sqrt(3)
 #define nm2divSqrt3 1.154700538379251684162 

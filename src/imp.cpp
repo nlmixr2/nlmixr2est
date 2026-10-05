@@ -157,14 +157,6 @@ static inline double impTScale(double df) {
   return std::sqrt(df / w);
 }
 
-// Same, but from a supplied uniform (quasi-random path).
-static inline double impTScaleU(double u, double df) {
-  if (df <= 0.0) return 1.0;
-  double w = impChisqQuantile(u, df);
-  if (!(w > 0.0) || !R_finite(w)) return 1.0;
-  return std::sqrt(df / w);
-}
-
 // Log of the peak-normalized proposal kernel's RECIPROCAL, i.e. the term that
 // enters the log importance weight q_k.  Gaussian: d'Hd/(2 gamma).
 // t: ((df+p)/2) * log1p(d'Hd/(gamma*df)).  Both are 0 at d = 0.
