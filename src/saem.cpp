@@ -5417,12 +5417,6 @@ arma::uvec _saemPhi1I1;
 
 rx_solve* _rx = NULL;
 
-RObject mat2NumMat(const mat &m) {
-  RObject x = wrap( m.memptr() , m.memptr() + m.n_elem ) ;
-  x.attr( "dim" ) = Dimension( m.n_rows, m.n_cols ) ;
-  return x;
-}
-
 CharacterVector parNames;
 
 // Phase 4 (SAEM general-likelihood theta plan): set every row's THETA[k]/
