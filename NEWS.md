@@ -164,7 +164,8 @@
   condition numbers are refreshed when it is installed.
   `saemControl(covMethod = "linFim")` now warns when the linearization cannot
   be used and the SAEM information matrix is inverted instead, and when no
-  covariance can be computed at all; both were silent.  `covMethod =
+  covariance can be computed at all; both were silent.  That inverted
+  information matrix is now labelled `"fim"`; it had no `covMethod`.  `covMethod =
   "analytic"` falling back to `"linFim"` is now a warning, kept in
   `$runInfo`, rather than a message.
 - The printed parameter table of a full-Bayes `fbvi`/`emvi` fit now shows the
