@@ -3682,8 +3682,8 @@ bool calcEtaHessian(double *eta, int likId, int id,
       // tbsLik and nObs (read by LikInner2() right after and by imp's AUTO
       // setup; they do not depend on eta, but a leg that fails part-way leaves
       // them partial).  Put back the caller's values at eta.  The rest stays at
-      // the last leg, which oldEta still records, so the next likInner0() call
-      // re-solves.
+      // the last leg, so oldEta is reset: a later likInner0() at that leg's eta
+      // must re-solve rather than pair the restored llikObs with it.
       std::vector<double> llikObs(fInd->llikObs, fInd->llikObs + getIndNallTimes(ind));
       double tbsLik = fInd->tbsLik;
       int nObs = fInd->nObs;
@@ -3697,6 +3697,7 @@ bool calcEtaHessian(double *eta, int likId, int id,
       std::copy(llikObs.begin(), llikObs.end(), fInd->llikObs);
       fInd->tbsLik = tbsLik;
       fInd->nObs = nObs;
+      std::fill_n(fInd->oldEta, op_focei.neta, -42.0); // All etas = -42;  Unlikely if normal
       return Hfd;
     });
   } else if (op_focei.interaction) {
