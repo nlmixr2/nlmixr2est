@@ -17,6 +17,18 @@
   
 ## Bug Fixes
 
+- A model computing `linCmt()` into a variable (`cp <- linCmt()`) rather than
+  as the endpoint is now recognized as a `linCmt()` model.  Under rxode2 5.1.8
+  its second-order sensitivities are incomplete, so the default analytic
+  covariance, `fast=TRUE` gradients and the `ll()` exact-Hessian objective were
+  wrong; these now fall back to finite differences, and `est="flaplace"`/`"fagq"`
+  stop with a clear message (#1103).
+
+- When `fast=TRUE` is turned off during setup (`linCmt()`, mixture,
+  out-of-scope `ll()` and some `matExp()` models), a defaulted outer optimizer
+  now also reverts to `bobyqa`; keeping `lbfgsb3c` with finite-difference
+  gradients stalled well short of the optimum.
+
 - All compiled sources, C as well as C++, are now built with `R_NO_REMAP`
   defined before any R header is included, as 'Writing R Extensions'
   requires, so C and C++ sources use the same remapping rules (#1154).

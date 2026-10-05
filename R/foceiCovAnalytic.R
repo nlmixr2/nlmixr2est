@@ -1037,7 +1037,7 @@
         return(.foceiAnalyticFallback("the FO/FOI method"))
       }
       # linCmt() has no symbolic state sensitivities for the augmented model
-      if (isTRUE(any(ui$predDf$linCmt))) {
+      if (.foceiUsesLinCmt(ui)) {
         return(.foceiAnalyticFallback("a linCmt() model"))
       }
       if (.foceiCholSECovActive(ui)) {
@@ -4547,7 +4547,7 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
     return(.foceiAnalyticFallback("the FO/FOI method"))
   }
   # linCmt() has no symbolic state sensitivities for the augmented model
-  if (isTRUE(any(ui$predDf$linCmt))) {
+  if (.foceiUsesLinCmt(ui)) {
     return(.foceiAnalyticFallback("a linCmt() model"))
   }
   if (.foceiCholSECovActive(ui)) {
