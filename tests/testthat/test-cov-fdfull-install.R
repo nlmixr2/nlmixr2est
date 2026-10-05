@@ -75,8 +75,34 @@ test_that("s/r,s with a missing or non-finite Sfull is a no-op", {
 test_that("PD guard rejects an indefinite assembled cov", {
   .Rbad <- matrix(c(1, 0, 0, -2), 2) # negative variance -> not PD
   .e <- .mkFdEnv("r", .Rbad)
-  .foceiInstallFdFullCov(.e)
+  expect_warning(.foceiInstallFdFullCov(.e), "kept theta-only")
   expect_false(exists("cov", envir = .e, inherits = FALSE))
+})
+
+test_that("an indefinite full R installs s (full), not a PD-looking sandwich (#1152)", {
+  # Rinv %*% S %*% Rinv is PD even when Rinv is not, so the cov PD guard alone let an
+  # indefinite R through as a sandwich
+  .Rbad <- matrix(c(4, 3, 3, -1), 2)
+  expect_gt(min(eigen(.Rbad %*% .S %*% .Rbad)$values), 0)
+  .e <- .mkFdEnv("r,s", .Rbad, .S)
+  # native theta-only pieces must not survive beside the full cov
+  .e$covR <- matrix(1)
+  .e$covRS <- matrix(2)
+  expect_warning(.foceiInstallFdFullCov(.e), "using s \\(full\\)")
+  expect_identical(.e$covMethod, "s (full)")
+  expect_equal(unname(.e$cov), unname(solve(.S)))
+  expect_false(exists("covR", envir = .e, inherits = FALSE))
+  expect_false(exists("covRS", envir = .e, inherits = FALSE))
+  expect_false(any(c("r (full)", "r,s (full)") %in% names(.e$covList)))
+  expect_equal(.e$covList[["r"]], matrix(1))
+  # without an S there is nothing to fall back to: keep the native covariance
+  .e2 <- .mkFdEnv("r,s", .Rbad)
+  expect_warning(.foceiInstallFdFullCov(.e2), "kept theta-only")
+  expect_false(exists("cov", envir = .e2, inherits = FALSE))
+  # nor with a singular S: the warning must not claim s (full) was installed
+  .e3 <- .mkFdEnv("r,s", .Rbad, matrix(1, 2, 2))
+  expect_warning(.foceiInstallFdFullCov(.e3), "kept theta-only")
+  expect_false(exists("cov", envir = .e3, inherits = FALSE))
 })
 
 test_that("no .fdFullCov stashed is a no-op", {

@@ -634,6 +634,7 @@ struct focei_options {
   // tolerances -- independently settable, NOT tied to epsilon (which is
   // shared with n1qn1's unrelated "precision of estimate" criterion).
   double trustFterm;
+  int trustPolish = 0;
   double trustMterm;
   std::atomic<int> nTrustInner{0}; // per-fit count of trust_solve_c calls (test evidence)
   std::atomic<int> nTrustRestart{0}; // Omega-draw restarts taken after the nudges
@@ -646,6 +647,7 @@ struct focei_options {
   std::atomic<int> nTrustPush{0};    // converged flag withdrawn by the Newton-decrement gate
   std::atomic<int> nTrustRetry{0};   // radius-escalation retries attempted
   std::atomic<int> nTrustWarm{0};    // same-radius re-solves from the point just found
+  std::atomic<int> nTrustPolish{0};  // accepted Newton polish steps after a converged solve
   std::atomic<int> nTrustNudge{0};   // nudge-cascade attempts
   std::atomic<int> nTrustFail{0};    // inner solves still non-converged after every retry
   // per-fit count of calcEtaHessian() calls that used the hessianMethod=
@@ -4154,6 +4156,50 @@ static inline int innerEval(int id){
   return 1;
 }
 
+// The trust arm's Newton-decrement gate leaves eta up to sqrt(trustFterm) short of the
+// mode, and the FOCEi log|H| term carries that to the objective to FIRST order, so the
+// outer objective depended on the warm start (#1152).  Finish a converged solve with
+// Newton steps down to trustFterm, each kept only if it does not ascend.  The gradient is
+// the exact sensitivity but the matrix is Gauss-Newton + Omega^-1, so convergence is
+// linear; past trustFterm the steps chase ODE solve noise and the fit gets worse.
+// `step`/`dist` are the Newton step and its parscale length at fInd->x; on
+// return fInd->x, fInd->g and `f` describe the last accepted point.  True if any step
+// was accepted.
+static bool trustPolishEta(int id, focei_ind *fInd, int npar, const std::vector<double> &parscale,
+                           arma::vec step, double dist, double &f) {
+  std::vector<double> x0(npar), x1(npar), g1(npar), h1((size_t)npar * npar);
+  bool accepted = false;
+  for (int k = 0; k < 4 && dist > op_focei.trustFterm; k++) {
+    std::copy(fInd->x, fInd->x + npar, x0.begin());
+    for (int i = 0; i < npar; i++) x1[i] = x0[i] + step[i];
+    double f1 = R_PosInf;
+    if (trustInnerObjfun(npar, x1.data(), &f1, g1.data(), h1.data(), (void*)(&id)) != 0 ||
+        !R_FINITE(f1) || f1 > f) {
+      std::copy(x0.begin(), x0.end(), fInd->x);
+      fInd->badSolve = 0;
+      break;
+    }
+    f = f1;
+    std::copy(g1.begin(), g1.end(), fInd->g);
+    accepted = true;
+    op_focei.nTrustPolish.fetch_add(1, std::memory_order_relaxed);
+    arma::mat Hk(h1.data(), npar, npar, false, true);
+    arma::vec gk(g1.data(), npar, false, true);
+    if (!arma::solve(step, Hk, -gk, arma::solve_opts::no_approx) ||
+        arma::dot(gk, step) >= 0) break;
+    double d2 = 0.0;
+    for (int i = 0; i < npar; i++) {
+      double si = step[i] * parscale[i];
+      d2 += si * si;
+    }
+    double distNew = std::sqrt(d2);
+    // a step that stops shrinking is at the solve's noise floor
+    if (!(distNew < 0.5 * dist)) break;
+    dist = distNew;
+  }
+  return accepted;
+}
+
 static inline int innerOpt1(int id, int likId) {
   focei_ind *fInd = &(inds_focei[id]);
   focei_options *fop = &op_focei;
@@ -4897,6 +4943,9 @@ static inline int innerOpt1(int id, int likId) {
               if (conv && pushDist > pushTol) {
                 conv = false;
                 op_focei.nTrustPush.fetch_add(1, std::memory_order_relaxed);
+              } else if (op_focei.trustPolish && conv && pushDist > 0.0 &&
+                         trustPolishEta(id, fInd, npar, parscale, step, pushDist, f)) {
+                keepBest();
               }
             }
             // Newton estimate unusable (singular/indefinite H, or not a
@@ -9171,6 +9220,8 @@ NumericVector foceiSetup_(const RObject &obj,
     // epsilon itself is, so no NULL fallback is needed here.
     op_focei.trustFterm = as<double>(foceiO["trustFterm"]);
     op_focei.trustMterm = as<double>(foceiO["trustMterm"]);
+    op_focei.trustPolish = foceiO.containsElementNamed("trustPolish") ?
+      (int)as<bool>(foceiO["trustPolish"]) : 0;
   }
   op_focei.nEtaRestart = foceiO.containsElementNamed("etaRestart") ?
     as<int>(foceiO["etaRestart"]) : 0;
@@ -9211,6 +9262,7 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.nTrustPush.store(0, std::memory_order_relaxed);
   op_focei.nTrustRetry.store(0, std::memory_order_relaxed);
   op_focei.nTrustWarm.store(0, std::memory_order_relaxed);
+  op_focei.nTrustPolish.store(0, std::memory_order_relaxed);
   op_focei.nTrustNudge.store(0, std::memory_order_relaxed);
   op_focei.nTrustRestart.store(0, std::memory_order_relaxed);
   op_focei.nTrustFail.store(0, std::memory_order_relaxed);
@@ -13049,6 +13101,8 @@ void foceiFinalizeTables(Environment e){
           _["solverFail"] = op_focei.nTrustSolverNoConv.load(std::memory_order_relaxed),
           _["newtonGate"] = op_focei.nTrustPush.load(std::memory_order_relaxed),
           _["warmRetry"] = op_focei.nTrustWarm.load(std::memory_order_relaxed),
+          // Accepted Newton polish steps after a converged solve (#1152).
+          _["polish"] = op_focei.nTrustPolish.load(std::memory_order_relaxed),
           _["radiusRetry"] = op_focei.nTrustRetry.load(std::memory_order_relaxed),
           _["nudge"] = op_focei.nTrustNudge.load(std::memory_order_relaxed),
           // Omega-draw restarts taken after the fixed nudges were spent.
