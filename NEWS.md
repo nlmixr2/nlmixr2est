@@ -17,15 +17,11 @@
   
 ## Bug Fixes
 
-- `est="nls"` fits a delay differential equation model with its `past()`
-  pre-history.  The nls models dropped the `past()` lines, so nls fitted a
-  model with a different history: its estimates were biased, and the
-  residuals it minimized did not match the fit's own table.
+- `est="nls"` dropped the `past()` pre-history of a delay differential
+  equation model, biasing its estimates; the history is now kept.
 
-- `est="nls"` with `nlsControl(solveType="fun")` fits a model that uses
-  `lag()` of a calculated variable.  It stopped with `The following
-  parameter(s) are required for solving`, because its model did not define
-  that variable.
+- `est="nls"` with `nlsControl(solveType="fun")` no longer stopped with
+  "required for solving" on a model using `lag()` of a calculated variable.
 
 - A model computing `linCmt()` into a variable (`cp <- linCmt()`) rather than
   as the endpoint is now recognized as a `linCmt()` model.  Under rxode2 5.1.8

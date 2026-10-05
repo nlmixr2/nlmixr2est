@@ -475,28 +475,16 @@ attr(rxUiGet.nlmModel0, "rstudio") <- quote(rxModelVar({}))
 
 #' What differs between the nlm and nls model builds
 #'
-#' The nlm-family methods (nlm, nlminb, optim, bobyqa, ...) minimize the
-#' population -LL of `rxUiGet.nlmModel0`; nls minimizes the weighted residual
-#' of `rxUiGet.nlsModel0`.  Both models go through the one build stack below
-#' (`.nlmFamilyPrune()` to `.nlmFamilySensModel()`).  Apart from the theta
-#' numbering of the `params()` line and the names in messages, the builds
-#' differ only in:
+#' Both builds share `.nlmFamilyPrune()` to `.nlmFamilySensModel()`; beyond
+#' theta numbering and message names they differ only in:
 #'
-#' - `matExpForcing` (see `.sensEtaOrTheta()`): nlm flattens a matExp() model
-#'   with an `indLin()` forcing term to ODEs.  nls keeps the native
-#'   matrix-exponential sensitivities; its residual Jacobian from them matches
-#'   finite differences.
-#' - `censFR`: nlm emits the `rx_pred_f_`/`rx_r_`/`rx_nu_` outputs that the
-#'   censoring likelihood in src/nlm.cpp reads.  nls refuses censored and
-#'   limit data (`.nlsFitModel()`), and its `rx_pred_` is a residual, not the
-#'   -LL that the censoring likelihood replaces.
-#' - `lhs`: nlm copies the model lhs into its gradient and pred-only models.
-#'   They define the `k_*` rate constants of a flattened matExp() model and the
-#'   variables referenced by `lag()`.  nls needs neither: it never flattens a
-#'   matExp() model, and a variable referenced by `lag()` has no symbolic
-#'   sensitivity, so it cannot enter the residual Jacobian.  (The
-#'   objective-only model of both defines such a variable, see
-#'   `.nlmFamilyRxModel()`.)
+#' - `matExpForcing`: nlm flattens a matExp() model with `indLin()` forcing to
+#'   ODEs; nls keeps the native matExp sensitivities (checked against FD).
+#' - `censFR`: only nlm emits the `rx_pred_f_`/`rx_r_`/`rx_nu_` censoring
+#'   outputs; nls refuses censored data and its `rx_pred_` is a residual.
+#' - `lhs`: only nlm copies the model lhs into its gradient and pred-only
+#'   models (flattened matExp() `k_*` constants, `lag()` variables); nls never
+#'   flattens and a `lag()` variable has no symbolic sensitivity.
 #'
 #' @param type `"nlm"` or `"nls"`
 #' @return list of the settings for `type`
