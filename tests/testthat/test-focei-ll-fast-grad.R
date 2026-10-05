@@ -32,7 +32,7 @@ nmTest({
     is <- function(m) .foceiLLGradInScope(rxode2::rxUiDecompress(rxode2::rxode2(m)))
     expect_true(is(.ll_ode)) # ODE log-likelihood endpoint -> in scope
     expect_false(is(.gauss_ode)) # Gaussian -> the (f,R) analytic path, not the ll path
-    expect_true(is(.ll_lincmt)) # linCmt() passes the coarse gate (falls back to FD at build)
+    expect_false(is(.ll_lincmt)) # linCmt() anywhere is out of scope (#1103)
   })
 
   test_that("the augmented sensitivity model builds for an ODE-free model", {
