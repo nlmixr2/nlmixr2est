@@ -484,7 +484,8 @@ attr(rxUiGet.nlmModel0, "rstudio") <- quote(rxModelVar({}))
 #'   outputs; nls refuses censored data and its `rx_pred_` is a residual.
 #' - `lhs`: only nlm copies the model lhs into its gradient and pred-only
 #'   models (flattened matExp() `k_*` constants, `lag()` variables); nls never
-#'   flattens and a `lag()` variable has no symbolic sensitivity.
+#'   flattens these and a `lag()` variable has no symbolic sensitivity.  The
+#'   objective-only model of both gets them (`.nlmFamilyRxModel()`).
 #'
 #' @param type `"nlm"` or `"nls"`
 #' @return list of the settings for `type`
