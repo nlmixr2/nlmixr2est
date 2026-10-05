@@ -1,25 +1,3 @@
-.getBackTransformationFunction <- function(par, ui) {
-  # This has a specified back-transformation
-  .w <- which(ui$iniDf$name == par)
-  if (length(.w) == 1L) {
-    .b <- ui$iniDf$backTransform
-    if (!is.na(.b)) {
-      return(.b)
-    }
-  }
-  # Extra mu-ref info (e.g. exp(tv + eta.v + 2)) means no default back-transformation
-  .w <- which(ui$muRefExtra$parameter == par)
-  if (length(.w) == 1L) {
-    return("")
-  }
-  # Covariates should be reported without back-transformation
-  .w <- which(ui$muRefCovariateDataFrame$covariateParameter == par)
-  if (length(.w) == 1L) {
-    return("")
-  }
-  NULL
-}
-
 #' Back-transform a literally-fixed theta value for the $parFixed table
 #'
 #' Literally-fixed thetas are re-inserted into $popDf after the C++/inner step,

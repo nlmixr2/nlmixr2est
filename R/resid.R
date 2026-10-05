@@ -605,10 +605,6 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   .ret
 }
 
-.calcRes <- function(..., predOnly = TRUE) {
-  .calcCwres(..., predOnly = predOnly)
-}
-
 .calcNpde <- function(..., npde = TRUE, predOnly = TRUE) {
   .calcCwres(..., npde = npde, predOnly = predOnly)
 }
@@ -684,22 +680,6 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
     .ret <- .ret[, -.dups]
   }
   .addLevels(fit, .ret)
-}
-
-.calcShrinkOnly <- function(fit, thetaEtaParameters = fit$foceiThetaEtaParameters) {
-  .omega <- fit$omega
-  if (exists("etaExpected", envir = fit$env)) {
-    .etas <- fit$env$etaExpected
-    .w <- which(names(.etas) %in% c("mixnum", "MIXEST"))
-    if (length(.w) > 0L) {
-      .etas <- .etas[, -.w, drop = FALSE]
-    }
-    .pars <- .Call(`_nlmixr2est_nlmixr2Parameters`, fit$fixef, .etas)
-    .ret <- .Call(`_nlmixr2est_calcShrinkOnly`, .omega, .pars$eta.lst, length(.etas[, 1]))
-  } else {
-    .ret <- .Call(`_nlmixr2est_calcShrinkOnly`, .omega, thetaEtaParameters$eta.lst, length(fit$eta[, 1]))
-  }
-  .ret[, -dim(.omega)[1] - 1]
 }
 
 #' Add factor levels to data based on fit object
