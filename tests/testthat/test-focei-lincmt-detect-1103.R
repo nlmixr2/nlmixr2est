@@ -40,11 +40,13 @@ nmTest({
     skip_if_not_installed("nlmixr2data")
     d <- nlmixr2data::theo_sd
     fF <- suppressMessages(suppressWarnings(
-      nlmixr2(.linLhs, d, "focei", foceiControl(print = 0L, covMethod = "analytic"))))
+      nlmixr2(.linLhs, d, "focei", foceiControl(print = 0L, covMethod = "analytic"))
+    ))
     # the analytic covariance declines to the FD route instead of using wrong 2nd derivatives
     expect_equal(fF$covMethod, "r,s (full)")
     fT <- suppressMessages(suppressWarnings(
-      nlmixr2(.linLhs, d, "focei", foceiControl(print = 0L, covMethod = "", fast = TRUE))))
+      nlmixr2(.linLhs, d, "focei", foceiControl(print = 0L, covMethod = "", fast = TRUE))
+    ))
     expect_false(fT$control$fast)
     # the downgrade re-defaults the outer optimizer too (lbfgsb3c stalled at 133.57)
     expect_equal(fT$control$outerOptTxt, "bobyqa")
@@ -65,8 +67,17 @@ nmTest({
     iniDf$est <- fF$finalUi$iniDf$est[match(iniDf$name, fF$finalUi$iniDf$name)]
     ui$iniDf <- iniDf
     tight <- rxode2::rxControl(atol = 1e-10, rtol = 1e-10, atolSens = 1e-10, rtolSens = 1e-10)
-    fO <- suppressMessages(suppressWarnings(nlmixr2(ui, d, "focei", foceiControl(
-      print = 0L, covMethod = "r,s", maxOuterIterations = 0L, rxControl = tight))))
+    fO <- suppressMessages(suppressWarnings(nlmixr2(
+      ui,
+      d,
+      "focei",
+      foceiControl(
+        print = 0L,
+        covMethod = "r,s",
+        maxOuterIterations = 0L,
+        rxControl = tight
+      )
+    )))
     expect_equal(fO$covMethod, "r,s (full)")
     # the old linCmt() analytic SE was up to 37% off; the fallback matches the twin
     expect_equal(sqrt(diag(fF$cov)), sqrt(diag(fO$cov)), tolerance = 0.02)

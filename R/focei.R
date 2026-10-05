@@ -2248,7 +2248,9 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
 #' @return logical
 #' @noRd
 .foceiUsesLinCmt <- function(ui) {
-  if (isTRUE(any(ui$predDf$linCmt))) return(TRUE)
+  if (isTRUE(any(ui$predDf$linCmt))) {
+    return(TRUE)
+  }
   .flg <- tryCatch(rxode2::rxModelVars(ui)$flags[["linCmtFlg"]], error = function(e) 0L)
   isTRUE(.flg != 0L)
 }
@@ -2268,8 +2270,7 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
   # (3b.3) is linCmt()-only, so this also keeps its Shi21 FD inner Hessian.
   if (.foceiUsesLinCmt(x[[1]])) {
     if (.conditional) {
-      stop("full conditional Hessian does not support linCmt(); use laplace or agq",
-           call. = FALSE)
+      stop("full conditional Hessian does not support linCmt(); use laplace or agq", call. = FALSE)
     }
     return(.s)
   }
