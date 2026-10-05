@@ -340,9 +340,6 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
     }
   }
 
-  List npdeSimL = as<List>(npdeSim);
-  int nsim = getDfColIndex(npdeSimL, "sim");
-
   int dvLen = Rf_length(dvIn);
   arma::vec dv  = arma::vec(REAL(dvIn), dvLen, false, true);
   //arma::vec npde(REAL(npdeSEXP), dv.size(), false, true);
@@ -353,6 +350,8 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
     // stop() throws, so no manual UNPROTECT is needed here.
     stop("npdeCalc: simulation input has zero rows");
   }
+  List npdeSimL = as<List>(npdeSim);
+  int nsim = getDfColIndex(npdeSimL, "sim");
   arma::Col<int> aSimIdVec(INTEGER(s0), simLen, false, true);
   arma::Col<int> aIdVec(INTEGER(VECTOR_ELT(npdeSim, 1)), simLen, false, true);
   unsigned int nid, K;
