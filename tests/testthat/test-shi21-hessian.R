@@ -52,6 +52,47 @@ nmTest({
     })
   })
 
+  test_that("the Hessian matches the gradient's Jacobian, searched and cached", {
+    skip_on_cran()
+    # Quadratic in the thetas, so the Hessian is constant and any correct
+    # difference of the gradient recovers it to rounding.
+    .mod <- function() {
+      ini({
+        a <- 0.3
+        b <- -0.2
+        c <- 0.7
+      })
+      model({
+        v <- a + b * time
+        ll(bin) ~ DV * v - 2 * (a - 0.5)^2 - a * b - 3 * (b + 1)^2 + b * c + 0.25 * a * c - 0.5 * c^2
+      })
+    }
+    .d <- data.frame(ID = 1L, TIME = seq(0.1, 10, length.out = 20), AMT = 0, EVID = 0L)
+    .d$DV <- as.integer(seq_len(nrow(.d)) %% 2 == 0)
+    for (.type in c("central", "forward")) {
+      .ctl <- nlmControl(print = 0L, solveType = "hessian", optimHessType = .type)
+      .withNlmProblem(.mod, .d, .ctl, function(x) {
+        .gr <- function(p) attr(nlmSolveGradR(p), "gradient")
+        .h <- 1e-3
+        .oracle <- vapply(
+          seq_along(x),
+          function(k) {
+            .e <- replace(numeric(length(x)), k, .h)
+            (.gr(x + .e) - .gr(x - .e)) / (2 * .h)
+          },
+          numeric(length(x))
+        )
+        # cross terms are nonzero, so a swapped column or row would show
+        expect_true(all(.oracle[upper.tri(.oracle)] != 0))
+        # first call searches the steps, second reuses them
+        for (.i in 1:2) {
+          .hess <- attr(nlmSolveGradHess(x + 0), "hessian")
+          expect_equal(.hess, .oracle, tolerance = 1e-6, info = paste(.type, .i))
+        }
+      })
+    }
+  })
+
   test_that("a non-normal-endpoint FOCEi fit reports llikObs at its final ETAs", {
     skip_on_cran()
     # A dnorm() endpoint sets needOptimHess: the inner Hessian is a finite
