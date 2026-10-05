@@ -8023,7 +8023,6 @@ static inline void foceiSetupTheta_(List mvi,
 }
 
 static inline void foceiSetupNoEta_(){
-
   // Mixtures only work in population only models;
   rx = getRxSolve_();
   foceiCheckIndCounts(rx);
