@@ -2,6 +2,15 @@
 
 ## New features
 
+- `foceiControl(trustPolish = TRUE)` finishes each converged
+  `innerOpt="trust"` solve with Newton steps on the ETAs, down to
+  `trustFterm`.  The default trust solve can stop up to `sqrt(trustFterm)`
+  short of the mode, which the FOCEi `log|H|` term turns into objective noise
+  that depends on the previous evaluation's ETAs; on `pheno_sd` that stopped
+  the outer search 0.03 OFV short with inflated full-sandwich SEs (#1152).
+  It is off by default: across a 372-case FOCEi corpus it moved most fits
+  toward their minimum for about 6% more time, but not every fit.
+
 - The table of a mixture fit now has a `mixest` column: each subject's fitted
   mixture component (as in `$mixNum`).
 
@@ -147,8 +156,9 @@
 - The full finite-difference covariance (`foceiControl(covFull = TRUE)`, the
   default) is no longer installed when the full R matrix is not positive
   definite: the `"r,s (full)"` sandwich built from it still looked positive
-  definite.  The fit keeps the native theta-only covariance, with a warning,
-  and the indefinite R is no longer stored as `$covR` or cached as
+  definite.  A requested `"r,s"` uses `"s (full)"` instead, with a warning, as
+  the theta-only step does (#1152); otherwise the fit keeps the native
+  theta-only covariance, with a warning.  Either way the indefinite R is no longer stored as `$covR` or cached as
   `"r (full)"`.  A default `focei` fit of the ODE one-compartment model of
   `theo_sd` was such a case.
 - When the analytic covariance (`covMethod = "analytic"`) is not positive
