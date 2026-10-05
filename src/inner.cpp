@@ -264,6 +264,9 @@ void restoreFromEnvironment(Environment e);
 
 #define min2( a , b )  ( (a) < (b) ? (a) : (b) )
 #define max2( a , b )  ( (a) > (b) ? (a) : (b) )
+// What oldEta is reset to so the next likInner0() re-solves: NaN never compares
+// equal to an eta (the old -42 sentinel only made a match unlikely).
+#define INNER_ETA_RESET_TO NA_REAL
 // The per-model ind_solve() macros are gone: every solve now goes through
 // odeSwapSolveInd(slot, rxId), which takes the entry points from the slot registry
 // instead of naming a global rxSolveF struct.  One solve entry, so a model that is
@@ -2529,9 +2532,9 @@ static thread_local std::vector<double> _fdRefEta;
 //   * likInner0() decides whether to recompute by comparing the trial eta against oldEta,
 //     and NEITHER THETA NOR OMEGA IS PART OF THAT CHECK.  Pinning the reference eta makes a
 //     match the common case, so without this the previous perturbation's likelihood is
-//     returned and the difference is silently zero.  NA_REAL rather than the -42 sentinel
-//     used elsewhere: any comparison against NaN is unequal, so the recompute is forced
-//     exactly rather than merely made unlikely.  The caller's FdInnerStateGuard restores
+//     returned and the difference is silently zero.  NA_REAL, not INNER_ETA_RESET_TO:
+//     any comparison against NaN is unequal, so the recompute is forced exactly even if
+//     that define goes back to a finite sentinel.  The caller's FdInnerStateGuard restores
 //     oldEta.
 static inline void fdPinRefEtaForce(focei_ind *fInd, rx_solving_options_ind *ind,
                                     const std::vector<double> &refEta) {
@@ -3688,7 +3691,7 @@ bool calcEtaHessian(double *eta, int likId, int id,
       std::copy(llikObs.begin(), llikObs.end(), fInd->llikObs);
       fInd->tbsLik = tbsLik;
       fInd->nObs = nObs;
-      std::fill_n(fInd->oldEta, op_focei.neta, -42.0); // All etas = -42;  Unlikely if normal
+      std::fill_n(fInd->oldEta, op_focei.neta, INNER_ETA_RESET_TO);
       return Hfd;
     });
   } else if (op_focei.interaction) {
@@ -5903,7 +5906,7 @@ void innerOpt() {
   // freezeOde: evaluate each subject's density at its (restored) base EBE with a
   // single innerEval -- no eta re-optimization -- reusing the frozen ODE states.
   if (op_focei.maxInnerIterations <= 0 || op_focei.freezeOde){
-    std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, -42.0); // All etas = -42;  Unlikely if normal
+    std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, INNER_ETA_RESET_TO);
     for (int id = 0; id < getRxNsubAndMix(rx); id++){
       focei_ind *indF = &(inds_focei[id]);
       indF->doChol = 1;
@@ -6117,8 +6120,8 @@ static inline double foceiLik0(double *theta) {
   }
   // Now reset the saved ETAs
   if (op_focei.neta !=0) {
-    // All etas = -42;  Unlikely if normal
-    std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, -42.0);
+   
+    std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, INNER_ETA_RESET_TO);
   }
   return lik;
 }
@@ -8176,7 +8179,7 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
 
   // Prefill to 0.1 or 10%
   std::fill_n(&op_focei.gVar[0], op_focei.gEtaGTransN, 0.1);
-  std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, -42.0); // All etas = -42;  Unlikely if normal
+  std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, INNER_ETA_RESET_TO);
 
 
   // The offset accumulators are size_t, not unsigned int: iVid advances by
@@ -9976,7 +9979,7 @@ void foceiLbfgsb3(Environment e){
            op_focei.abstol, op_focei.reltol, g.begin());
   // Recalculate OFV in case the last calculated OFV isn't at the minimum....
   // Otherwise ETAs may be off
-  std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, -42.0); // All etas = -42;  Unlikely if normal
+  std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, INNER_ETA_RESET_TO);
   // Finalize environment
   foceiOuterFinal(x.begin(), e);
   e["convergence"] = fail;
@@ -10000,7 +10003,7 @@ void foceiLbfgsb(Environment e){
            op_focei.maxOuterIterations, msg, 0, op_focei.maxOuterIterations+1);
   // Recalculate OFV in case the last calculated OFV isn't at the minimum....
   // Otherwise ETAs may be off
-  std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, -42.0); // All etas = -42;  Unlikely if normal
+  std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, INNER_ETA_RESET_TO);
   // Finalize environment
   foceiOuterFinal(x.begin(), e);
   e["convergence"] = fail;
@@ -10029,7 +10032,7 @@ void foceiCustomFun(Environment e){
   x = ret["x"];
   // Recalculate OFV in case the last calculated OFV isn't at the minimum....
   // Otherwise ETAs may be off
-  if (op_focei.neta != 0) std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, -42.0); // All etas = -42;  Unlikely if normal
+  if (op_focei.neta != 0) std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, INNER_ETA_RESET_TO);
   // Finalize environment
   foceiOuterFinal(x.begin(), e);
   e["convergence"] = ret["convergence"];
@@ -11294,7 +11297,7 @@ int foceiS(double *theta, Environment e, bool &hasZero){
         delta = std::fabs(theta[cpar])*rEpsC + op_focei.aEpsC[cpar];
       }
     }
-    if (op_focei.neta != 0) std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, -42.0); // All etas = -42;  Unlikely if normal
+    if (op_focei.neta != 0) std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, INNER_ETA_RESET_TO);
     cur = theta[cpar];
     theta[cpar] = cur + delta;
     updateTheta(theta);
@@ -11322,7 +11325,7 @@ int foceiS(double *theta, Environment e, bool &hasZero){
       for (int _gid = 0; _gid < _nsub; _gid++) {
         if (!_opt1Res[_gid]) {
           fInd = &(inds_focei[_gid]);
-          if (op_focei.neta != 0) std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, -42.0);
+          if (op_focei.neta != 0) std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, INNER_ETA_RESET_TO);
           theta[cpar] = cur - delta;
           updateTheta(theta);
           if (!innerOpt1(_gid, 2)) {
@@ -11337,7 +11340,7 @@ int foceiS(double *theta, Environment e, bool &hasZero){
       }
     }
     if (!doForward){
-      if (op_focei.neta != 0) std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, -42.0);
+      if (op_focei.neta != 0) std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, INNER_ETA_RESET_TO);
       theta[cpar] = cur - delta;
       updateTheta(theta);
       // Second inner loop: run innerOpt1(gid, 1) over subjects in parallel.
