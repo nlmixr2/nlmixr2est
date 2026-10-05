@@ -17,6 +17,38 @@
   
 ## Bug Fixes
 
+- `est="nls"` dropped the `past()` pre-history of a delay differential
+  equation model, biasing its estimates; the history is now kept.
+
+- `est="nls"` with `nlsControl(solveType="fun")` no longer stopped with
+  "required for solving" on a model using `lag()` of a calculated variable.
+
+- A model computing `linCmt()` into a variable (`cp <- linCmt()`) rather than
+  as the endpoint is now recognized as a `linCmt()` model.  Under rxode2 5.1.8
+  its second-order sensitivities are incomplete, so the default analytic
+  covariance, `fast=TRUE` gradients and the `ll()` exact-Hessian objective were
+  wrong; these now fall back to finite differences, and `est="flaplace"`/`"fagq"`
+  stop with a clear message (#1103).
+
+- When `fast=TRUE` is turned off during setup (`linCmt()`, mixture,
+  out-of-scope `ll()` and some `matExp()` models), a defaulted outer optimizer
+  now also reverts to `bobyqa`; keeping `lbfgsb3c` with finite-difference
+  gradients stalled well short of the optimum.
+
+- All compiled sources, C as well as C++, are now built with `R_NO_REMAP`
+  defined before any R header is included, as 'Writing R Extensions'
+  requires, so C and C++ sources use the same remapping rules (#1154).
+- The FOCEi-family objective no longer jumps where a residual variance crosses
+  `sqrt(.Machine$double.eps)`: such a variance is now floored instead of being
+  replaced by 1, which added about +16 per observation.  Proportional-error fits
+  with predictions below ~1e-3 could converge to a wrong optimum.  The
+  `foceiControl(fast=TRUE)` analytic outer gradient now applies the same floor;
+  it had differentiated the raw variance, which stopped fits short.  The
+  analytic covariance (`covMethod="analytic"`) of an additive/proportional fit
+  with a floored variance is now assembled from the floored variance too; its
+  observed information was off by up to ~30%.  An adaptive Gaussian
+  quadrature fit whose nodes floor the variance uses the finite-difference
+  covariance instead (#1132).
 - A fit's `IPRED`/`PRED` table, `vpcSim()` (and so `npde`) and `augPred()`
   now interpolate time-varying covariates with the fit's
   `rxControl(covsInterpolation=)` and `naInterpolation=` instead of always
