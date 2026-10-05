@@ -1479,9 +1479,29 @@
     if (.hasT) {
       .E$trans <- lapply(.tr, `[`, .keep)
     } # both-sides transform: DV -> tbs(DV) scale
-    Es[[i]] <- .E
+    Es[[i]] <- .foceiFloorRvar(.E)
   }
   Es
+}
+
+#' Floor a tiny residual variance the way the FOCEi objective does (#1132): a floored
+#' (or zero -> 1) R is constant, so its sensitivities are zero too.
+#' @noRd
+.foceiFloorRvar <- function(E) {
+  .fl <- sqrt(.Machine$double.eps)
+  .w <- which(E$R < .fl)
+  if (length(.w) == 0L) {
+    return(E)
+  }
+  E$R[.w] <- ifelse(E$R[.w] <= 0, 1, .fl)
+  E$aR[.w, ] <- 0
+  E$AR[.w, , ] <- 0
+  if (!is.null(E$Rsig)) {
+    E$Rsig[.w, ] <- 0
+    E$RsigDir[.w, , ] <- 0
+    E$Rsig2[.w, , ] <- 0
+  }
+  E
 }
 
 .foceiAnalyticIsMixture <- function(ui) {

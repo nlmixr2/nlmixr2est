@@ -29,6 +29,36 @@
   now also reverts to `bobyqa`; keeping `lbfgsb3c` with finite-difference
   gradients stalled well short of the optimum.
 
+- All compiled sources, C as well as C++, are now built with `R_NO_REMAP`
+  defined before any R header is included, as 'Writing R Extensions'
+  requires, so C and C++ sources use the same remapping rules (#1154).
+- The FOCEi-family objective no longer jumps where a residual variance crosses
+  `sqrt(.Machine$double.eps)`: such a variance is now floored instead of being
+  replaced by 1, which added about +16 per observation.  Proportional-error fits
+  with predictions below ~1e-3 could converge to a wrong optimum.  The
+  `foceiControl(fast=TRUE)` analytic outer gradient now applies the same floor;
+  it had differentiated the raw variance, which stopped fits short.  The
+  analytic covariance (`covMethod="analytic"`) of an additive/proportional fit
+  with a floored variance is now assembled from the floored variance too; its
+  observed information was off by up to ~30%.  An adaptive Gaussian
+  quadrature fit whose nodes floor the variance uses the finite-difference
+  covariance instead (#1132).
+- A fit's `IPRED`/`PRED` table, `vpcSim()` (and so `npde`) and `augPred()`
+  now interpolate time-varying covariates with the fit's
+  `rxControl(covsInterpolation=)` and `naInterpolation=` instead of always
+  using `"locf"`; a `"nocb"` fit (the default for NONMEM-imported models)
+  had individual predictions that did not match its own model (#1137).
+- `vpcSim(fit, events = ...)` (or any other setting the fit's simulation
+  information already holds) replaces that setting instead of failing with
+  `formal argument matched by multiple actual arguments`.
+- `vpcSim(fit, n = 1)` no longer fails with `object '.sim2' not found`.
+- The table of a fit whose `rxControl(method=)` is one of rxode2's newer ODE
+  methods (`"cvode"`, `"lsode"`, `"bdf"`, `"dop5"`, ...) is calculated again.
+  The post-fit solve turned the fit's integer method code back into a name
+  with a copy of only the first four methods, so any newer code was a
+  `malformed factor` error; the name now comes from rxode2's own table
+  (`rxode2::odeMethodToInt(NULL)`).  Fits read back from external programs
+  ('babelmixr2' with Monolix) lost their table this way without an error.
 - A model mixing `linCmt()` with ODEs, fitted with a method that solves it as
   ODEs (the FOCEi and nlm families), no longer renumbers its compartments: a
   numeric `cmt` in the data doses the same compartment as with the `linCmt()`

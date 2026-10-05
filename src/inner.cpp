@@ -295,6 +295,9 @@ void restoreFromEnvironment(Environment e);
 // #define _safe_log(a) log(a)
 #define _safe_zero(a) ((a) == 0 ? DBL_EPSILON : (a))
 //#define _safe_zero(a) (a)
+// Residual-variance floor shared by the objective and the analytic outer gradient
+// (#1132): below it R is constant, so both must treat its derivatives as zero.
+static const double foceiRFloor = std::sqrt(DBL_EPSILON);
 #define _safe_sqrt(a) ((a) <= 0 ? sqrt(DBL_EPSILON) : sqrt(a))
 //#define _safe_sqrt(a) sqrt(a)
 #define _as_dbleps(a) (fabs(a) < sqrt(DBL_EPSILON) ? ((a) < 0 ? -sqrt(DBL_EPSILON)  : sqrt(DBL_EPSILON)) : a)
@@ -3192,6 +3195,7 @@ double likInner0(double *eta, int id) {
             return NA_REAL;
             //throw std::runtime_error("bad solve");
           }
+          bool rFloored = false;
           if (dist == rxDistributionNorm) {
             r = lhs[op_focei.predOffset + op_focei.neta + 1];
             // "nonmem" FOCE: use the eta=0 population R (FOCEI and "foce+" keep
@@ -3206,8 +3210,14 @@ double likInner0(double *eta, int id) {
             if (op_focei.npResidScale != 1.0) {
               r *= op_focei.npResidScale * op_focei.npResidScale;
             }
-            if (r <= sqrt(std::numeric_limits<double>::epsilon())) {
+            // Floor a tiny variance rather than replacing it: swapping in 1 put a
+            // ~+16 cliff in the objective where a prediction crossed it (#1132).
+            // An exact zero (structural-zero prediction) keeps the legacy r=1.
+            if (r <= 0.0) {
               r = 1.0;
+            } else if (r < foceiRFloor) {
+              r = foceiRFloor;
+              rFloored = true;
             }
           } else {
             r = 1.0;
@@ -3298,6 +3308,7 @@ double likInner0(double *eta, int id) {
                 if (rp == 0.0) {
                   rp = sqrt(DBL_EPSILON);
                 }
+                if (rFloored) rp = 0.0;   // a floored R is flat in eta
                 c(k, i) = rp/_safe_zero(r);
                 //lp is eq 12 in Almquist 2015
                 // .5*apply(eps*fp*B + .5*eps^2*B*c - c, 2, sum) - OMGAinv %*% ETA
@@ -17164,6 +17175,21 @@ static void outerSolveFill(int slot, rxSolveF *fns,
         for (int r = 0; r < C.rsig2.size(); ++r) {
           double v = lhs[C.rsig2[r]];
           E.Rsig2(ko, C.sigA[r], C.sigB[r]) = v; E.Rsig2(ko, C.sigB[r], C.sigA[r]) = v;
+        }
+        // Mirror likInner0's floor: a floored (or zero -> 1) R is constant in every
+        // direction, so its derivatives must be zero too (#1132).
+        if (E.R[ko] < foceiRFloor) {
+          E.R[ko] = (E.R[ko] <= 0.0) ? 1.0 : foceiRFloor;
+          E.aR.row(ko).zeros();
+          for (arma::uword i = 0; i < E.AR.n_cols; ++i)
+            for (arma::uword j = 0; j < E.AR.n_slices; ++j) E.AR(ko, i, j) = 0.0;
+          if (nsig > 0) {
+            E.Rsig.row(ko).zeros();
+            for (arma::uword i = 0; i < E.RsigDir.n_cols; ++i)
+              for (arma::uword j = 0; j < E.RsigDir.n_slices; ++j) E.RsigDir(ko, i, j) = 0.0;
+            for (arma::uword i = 0; i < E.Rsig2.n_cols; ++i)
+              for (arma::uword j = 0; j < E.Rsig2.n_slices; ++j) E.Rsig2(ko, i, j) = 0.0;
+          }
         }
       }
       if (hasT) for (int c = 0; c < 4; ++c) E.trans(ko, c) = lhs[C.tr[c]];

@@ -918,6 +918,14 @@
         return(.foceiAnalyticFallback("proportional error near a zero prediction"))
       }
     }
+    # R(f) here cannot express the objective's variance floor (#1132); the (f,R)
+    # assembler reads the floored solve, so the caller reroutes there
+    if (!is.null(ef$rvar)) {
+      .rv <- ef$ev(ef$rvar, if (.needF0) E0$f else E$f, NA_real_)
+      if (any(.rv < sqrt(.Machine$double.eps))) {
+        return(structure(list(), class = "foceiFlooredR"))
+      }
+    }
     E$y <- .foceiAnalyticTbsY(obs$DV, E$trans)
     ehat <- eta0
     if (rescale) {
@@ -949,11 +957,18 @@
     # AGQ: the quadrature nodes are placed per subject (from that subject's Ht), so they are
     # solved inside the subject assembly via this callback.  Order 2 (`SolveFA`) is enough --
     # the nodes need a/A but never the 3rd-order Ath, which is an eta-hat-only quantity.
+    .nodeFloored <- FALSE
     .sn <- if (is.null(.ag)) {
       NULL
     } else {
       function(etak) {
-        .foceiAnalyticSolveFA(am, c(th, setNames(etak, etav)), s, obs$TIME, tol = solveTol)
+        .Ek <- .foceiAnalyticSolveFA(am, c(th, setNames(etak, etav)), s, obs$TIME, tol = solveTol)
+        # a node can floor R while eta-hat does not; stop and report it like eta-hat
+        if (!is.null(.Ek) && !is.null(ef$rvar) && any(ef$ev(ef$rvar, .Ek$f, NA_real_) < sqrt(.Machine$double.eps))) {
+          .nodeFloored <<- TRUE
+          return(NULL)
+        }
+        .Ek
       }
     }
     Ri <- tryCatch(
@@ -979,6 +994,9 @@
       ),
       error = function(e) NULL
     )
+    if (.nodeFloored) {
+      return(structure(list(), class = "foceiFlooredR"))
+    }
     if (is.null(Ri) || !all(is.finite(Ri))) {
       return(NULL)
     }
@@ -1269,7 +1287,7 @@
       # FOCE and IOV keep the symbolic add/prop assembly.
       # censored FOCEI must use the general (f,R) path (the fast add/prop assembler has no
       # censored partials); it also carries any general/estimated-lambda variance.
-      Rfull <- if (length(iovVars) == 0L && (isTRUE(ef$foceiOnly) || .hasCensD)) {
+      .assembleRFR <- function() {
         .foceiAnalyticAssembleRFR(
           ui,
           th,
@@ -1290,6 +1308,9 @@
           foceType = foceType,
           lamDir = .dir$lamDir
         )
+      }
+      Rfull <- if (length(iovVars) == 0L && (isTRUE(ef$foceiOnly) || .hasCensD)) {
+        .assembleRFR()
       } else {
         .foceiAnalyticAssembleR(
           ui,
@@ -1313,6 +1334,12 @@
           interaction = interaction,
           foceType = foceType
         )
+      }
+      if (inherits(Rfull, "foceiFlooredR")) {
+        if (length(iovVars) > 0L || as.integer(rxode2::rxGetControl(ui, "nAGQ", 1L)) > 1L) {
+          return(.foceiAnalyticFallback("a floored residual variance"))
+        }
+        Rfull <- .assembleRFR()
       }
       if (is.null(Rfull)) {
         return(NULL)
@@ -1723,6 +1750,7 @@
     canVanish = canVanish,
     dependsF0 = .dependsF0,
     estLam = .estLam,
+    rvar = Rq,
     ev = function(e, f, y, f0 = f) eval(e, c(list(f = f, y = y, f0 = f0), as.list(val)))
   )
 }
@@ -4489,6 +4517,7 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
     }
     .out$Rsig2 <- .Rs2
   }
+  .out <- .foceiFloorRvar(.out)
   if (isTRUE(aug$hasTrans)) {
     .out$trans <- list(yj = .d$rx_tyj_, lambda = .d$rx_tlambda_, low = .d$rx_tlow_, hi = .d$rx_thi_)
   }
@@ -4629,7 +4658,7 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
   # lambda sits in thStruct as a theta-like direction, so name the sigma block with the
   # lambda-excluded .dir$sgName (matching the live hook's fullNm).  Censored FOCEI also routes
   # here (the fast add/prop assembler has no censored partials).
-  R <- if (isTRUE(ef$foceiOnly) || .hasCens) {
+  .assembleRFR <- function() {
     .foceiAnalyticAssembleRFR(
       ui,
       th,
@@ -4649,6 +4678,9 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
       foceType = foceType,
       lamDir = .dir$lamDir
     )
+  }
+  R <- if (isTRUE(ef$foceiOnly) || .hasCens) {
+    .assembleRFR()
   } else {
     .foceiAnalyticAssembleR(
       ui,
@@ -4669,6 +4701,12 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
       interaction = interaction,
       foceType = foceType
     )
+  }
+  if (inherits(R, "foceiFlooredR")) {
+    if (as.integer(rxode2::rxGetControl(ui, "nAGQ", 1L)) > 1L) {
+      return(.foceiAnalyticFallback("a floored residual variance"))
+    }
+    R <- .assembleRFR()
   }
   if (is.null(R)) {
     return(.foceiAnalyticFallback("an observed information that would not assemble"))
