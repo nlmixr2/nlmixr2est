@@ -129,6 +129,7 @@
 <span>  trustRmax <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  trustFterm <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  trustMterm <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  trustPolish <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  outerTrustHessian <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"analytic"</span>, <span class="st">"bfgs"</span>, <span class="st">"fd"</span><span class="op">)</span>,</span>
 <span>  outerTrustRinit <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  outerTrustRmax <span class="op">=</span> <span class="cn">NULL</span>,</span>
@@ -985,6 +986,14 @@ Deliberately NOT derived from `epsilon` (`"n1qn1"`'s own, unrelated
 criterion to a value picked for a different optimizer is exactly the
 coupling these parameters exist to remove. Has no effect unless
 `innerOpt="trust"`.</p></dd>
+
+
+<dt id="arg-trustpolish">trustPolish<a class="anchor" aria-label="anchor" href="#arg-trustpolish"></a></dt>
+<dd><p>logical; when `TRUE`, each converged `innerOpt="trust"`
+solve takes up to 4 more Newton steps on the ETAs, down to `trustFterm`.
+This makes the objective less dependent on the warm-start ETAs and can
+help a fit that stops short of its minimum (#1152).  `FALSE` (default)
+keeps the plain trust solve.</p></dd>
 
 
 <dt id="arg-outertrusthessian">outerTrustHessian<a class="anchor" aria-label="anchor" href="#arg-outertrusthessian"></a></dt>

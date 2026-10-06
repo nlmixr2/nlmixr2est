@@ -4,6 +4,17 @@
 
 ### New features
 
+- `foceiControl(trustPolish = TRUE)` finishes each converged
+  `innerOpt="trust"` solve with Newton steps on the ETAs, down to
+  `trustFterm`. The default trust solve can stop up to
+  `sqrt(trustFterm)` short of the mode, which the FOCEi `log|H|` term
+  turns into objective noise that depends on the previous evaluation’s
+  ETAs; on `pheno_sd` that stopped the outer search 0.03 OFV short with
+  inflated full-sandwich SEs
+  ([\#1152](https://github.com/nlmixr2/nlmixr2est/issues/1152)). It is
+  off by default: across a 372-case FOCEi corpus it moved most fits
+  toward their minimum for about 6% more time, but not every fit.
+
 - The table of a mixture fit now has a `mixest` column: each subject’s
   fitted mixture component (as in `$mixNum`).
 
@@ -24,6 +35,11 @@
   whose sampler had already handled those priors correctly.
 
 ### Bug Fixes
+
+- The full (`covFull=TRUE`) finite-difference covariance no longer
+  installs a sandwich around an indefinite R matrix, which still looks
+  positive definite. It now uses `s (full)` with a warning, as the
+  theta-only step does.
 
 - `est="nls"` dropped the `past()` pre-history of a delay differential
   equation model, biasing its estimates; the history is now kept.
@@ -158,6 +174,24 @@
   The previous self-initialized behavior is available as the new
   `foceiControl(warm="none")`, and `warm="save"` reuse is reported in
   the fit’s `$nWarmSave`.
+
+- The finite-difference Hessian of `est="nlm"` (`solveType="hessian"`),
+  `est="nlminb"` and `est="trust"` no longer moves the parameters it is
+  computed at. When the gradient could not be evaluated on either side
+  of a parameter, that parameter was left shifted by the step in the
+  vector the optimizer passed in (for `nlminb`, its current iterate),
+  and the iteration history, the saved objective and `trust`’s
+  quasi-Newton update recorded the shifted point in place of the one
+  evaluated. The other parameters could move by rounding.
+
+- The per-observation log-likelihoods (`$llikObs`, and `nlmixrLlikObs`
+  in the merged data) of a fit with a non-normal endpoint
+  ([`dnorm()`](https://rdrr.io/r/stats/Normal.html), `ll()`,
+  [`dpois()`](https://rdrr.io/r/stats/Poisson.html) and the like, with
+  the default `fast=FALSE`) are now those at the reported ETAs. They
+  came from the last evaluation of the finite-difference inner Hessian,
+  at an ETA moved by a few steps (off by up to 0.93 per observation on
+  `theo_sd`).
 
 - Added a native analytical outer Hessian for fast Gaussian
   FOCE/FOCE+/FOCEI/AGQ fits, using the existing sensitivity pool. Fast

@@ -916,7 +916,7 @@ impmapControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x55aef52d7770>
+#> <bytecode: 0x55c9365811d8>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -966,6 +966,9 @@ impmapControl()
 #> 
 #> $trustMterm
 #> [1] 1e-05
+#> 
+#> $trustPolish
+#> [1] FALSE
 #> 
 #> $outerTrustHessian
 #> [1] "auto"

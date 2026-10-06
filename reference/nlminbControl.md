@@ -426,14 +426,14 @@ print(fit2)
 #> ── nlmixr² log-likelihood nlminb ──
 #> 
 #>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -717.6377 1126.239 1140.963      -560.1197        128.9481        37.44158
+#> lPop -717.6377 1126.239 1140.963      -560.1197        128.9481        37.44159
 #> 
 #> ── Time (sec $time): ──
 #> 
 #>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.1283794 0.2724993  5.611e-06      0.045       0.017 0.023    0.011
+#> elapsed 0.1405627 0.2980746   1.01e-05      0.055       0.011 0.025    0.011
 #>              other
-#> elapsed 0.07911565
+#> elapsed 0.08335262
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
@@ -500,9 +500,9 @@ fit2$nlminb
 #> 
 #> $cov.scaled
 #>              E0          Em        E50
-#> E0  0.004496880 0.003656365 0.02771049
-#> Em  0.003656365 0.099310898 0.17053427
-#> E50 0.027710489 0.170534271 0.44344359
+#> E0  0.004496880 0.003656367 0.02771049
+#> Em  0.003656367 0.099310926 0.17053433
+#> E50 0.027710494 0.170534331 0.44344372
 #> 
 #> $r
 #>            E0        Em        E50
