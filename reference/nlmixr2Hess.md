@@ -60,30 +60,153 @@ Matthew Fidler
  func0 <- function(x){ sum(sin(x))  }
  x <- (0:10)*2*pi/10
  nlmixr2Hess(x, func0)
-#>               [,1]        [,2]        [,3]        [,4]        [,5]       [,6]
-#>  [1,] 143438578824           0           0           0           0          0
-#>  [2,]            0 54098751870           0           0           0          0
-#>  [3,]            0           0 28167126506           0           0          0
-#>  [4,]            0           0           0 17234064451           0          0
-#>  [5,]            0           0           0           0 11620957271          0
-#>  [6,]            0           0           0           0           0 8362405349
-#>  [7,]            0           0           0           0           0          0
-#>  [8,]            0           0           0           0           0          0
-#>  [9,]            0           0           0           0           0          0
-#> [10,]            0           0           0           0           0          0
-#> [11,]            0           0           0           0           0          0
-#>               [,7]         [,8]         [,9]        [,10]    [,11]
-#>  [1,]            0            0            0            0     0.00
-#>  [2,]            0            0            0            0     0.00
-#>  [3,]            0            0            0            0     0.00
-#>  [4,]            0            0            0            0     0.00
-#>  [5,]            0            0            0            0     0.00
-#>  [6,]            0            0            0            0     0.00
-#>  [7,] 337177531807            0            0            0     0.00
-#>  [8,]            0 546113920621            0            0     0.00
-#>  [9,]            0            0 545713835656            0     0.00
-#> [10,]            0            0            0 337491323869     0.00
-#> [11,]            0            0            0            0 26296.35
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#> Warning: NaNs produced
+#>              [,1] [,2]          [,3]          [,4] [,5]        [,6] [,7] [,8]
+#>  [1,] 4.15163e-05  NaN  0.000000e+00  0.000000e+00  NaN 0.00000e+00    0  NaN
+#>  [2,]         NaN  NaN           NaN           NaN  NaN         NaN  NaN  NaN
+#>  [3,] 0.00000e+00  NaN  3.551902e+12 -1.727356e-03  NaN 0.00000e+00    0  NaN
+#>  [4,] 0.00000e+00  NaN -1.727356e-03 -2.173232e+12  NaN 0.00000e+00    0  NaN
+#>  [5,]         NaN  NaN           NaN           NaN  NaN         NaN  NaN  NaN
+#>  [6,] 0.00000e+00  NaN  0.000000e+00  0.000000e+00  NaN 2.15145e-06    0  NaN
+#>  [7,] 0.00000e+00  NaN  0.000000e+00  0.000000e+00  NaN 0.00000e+00    0  NaN
+#>  [8,]         NaN  NaN           NaN           NaN  NaN         NaN  NaN  NaN
+#>  [9,] 0.00000e+00  NaN  0.000000e+00  0.000000e+00  NaN 0.00000e+00    0  NaN
+#> [10,] 0.00000e+00  NaN  0.000000e+00  0.000000e+00  NaN 0.00000e+00    0  NaN
+#> [11,] 0.00000e+00  NaN  0.000000e+00  0.000000e+00  NaN 0.00000e+00    0  NaN
+#>               [,9]    [,10]        [,11]
+#>  [1,] 0.0000000000   0.0000 0.000000e+00
+#>  [2,]          NaN      NaN          NaN
+#>  [3,] 0.0000000000   0.0000 0.000000e+00
+#>  [4,] 0.0000000000   0.0000 0.000000e+00
+#>  [5,]          NaN      NaN          NaN
+#>  [6,] 0.0000000000   0.0000 0.000000e+00
+#>  [7,] 0.0000000000   0.0000 0.000000e+00
+#>  [8,]          NaN      NaN          NaN
+#>  [9,] 0.0001769324   0.0000 0.000000e+00
+#> [10,] 0.0000000000 190.1848 0.000000e+00
+#> [11,] 0.0000000000   0.0000 3.478511e-06
 
 fr <- function(x) {   ## Rosenbrock Banana function
     x1 <- x[1]
