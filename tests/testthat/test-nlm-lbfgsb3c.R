@@ -45,7 +45,8 @@ nmTest({
     expect_match(.ret$message, "CONVERGENCE")
     expect_gt(.ret$counts[1], 0L)
     expect_true(is.finite(.ret$value))
-    expect_length(.ret$grad, 3L)
+    expect_named(.ret$grad, c("E0", "Em", "E50"))
+    expect_named(.ret$par, c("E0", "Em", "E50"))
 
     # sigdig=3's factr stops ~1.6 OFV short here; sigdig=6 reaches the n1qn1 optimum
     .fit <- suppressMessages(

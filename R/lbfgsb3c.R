@@ -355,6 +355,7 @@ getValidNlmixrCtl.lbfgsb3c <- function(control) {
   })
   # lbfgsb3c's thread-safe L-BFGS-B, driven from C++ with no R callbacks
   .ret <- nlmLbfgsb3cFit(.env$par.ini, .env$lower, .env$upper, .oCtl)
+  names(.ret$grad) <- .env$thetaNames
   .nlmFinalizeList(.env, .ret, par = "par", printLine = TRUE, hessianCov = TRUE)
 }
 #' Get the full theta for nlm methods
