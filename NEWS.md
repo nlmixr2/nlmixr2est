@@ -44,6 +44,8 @@
   `10^-sigdig / eps`, which tests one step's objective reduction, so a logistic
   Emax fit ended ~1.6 OFV short of the optimum.  It is now
   `10^(-sigdig-2) / eps`, matching `foceiControl(lbfgsFactr=)`.
+  `est = "optim"` with `method = "L-BFGS-B"` stopped short the same way and
+  now uses the same rule.
 
 - `lbfgsb3cControl(maxit=)` was documented but dropped, so `est="lbfgsb3c"`
   always used lbfgsb3c's own limit of 1000 evaluations; it is now honored

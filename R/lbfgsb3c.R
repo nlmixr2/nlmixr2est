@@ -118,7 +118,7 @@ lbfgsb3cControl <- function(
   # factr tests one step's objective reduction, so 10^-sigdig stopped early
   # (~1.6 OFV short at sigdig=3).  A user value wins; sigdig=NULL keeps 1e7.
   if (is.null(factr)) {
-    factr <- if (!is.null(sigdig)) max(.sigdigFactr(sigdig + 2), 10) else 1e7
+    factr <- if (!is.null(sigdig)) .sigdigFactr(sigdig, floor = 10) else 1e7
   }
   checkmate::assertNumeric(factr, len = 1, any.missing = FALSE, lower = 10)
   checkmate::assertNumeric(pgtol, len = 1, any.missing = FALSE, lower = 0)
