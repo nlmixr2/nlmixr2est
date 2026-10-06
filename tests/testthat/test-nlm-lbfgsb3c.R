@@ -60,6 +60,44 @@ nmTest({
     expect_error(nlmLbfgsb3cFit(1, -Inf, Inf, list()), "not loaded")
   })
 
+  test_that("an R error inside the est='lbfgsb3c' objective reaches R intact", {
+    skip_on_cran()
+    # An R user function that fails partway through the optimization: the error
+    # must come back as an R error without unwinding through lbfgsb3Cts.
+    .cnt <- new.env()
+    .cnt$n <- 0L
+    .cnt$limit <- Inf
+    boomUdf <- function(x) {
+      .cnt$n <- .cnt$n + 1L
+      if (.cnt$n > .cnt$limit) {
+        stop("boom from udf")
+      }
+      x
+    }
+    .mod <- function() {
+      ini({
+        E0 <- 0.5
+        Em <- 0.5
+      })
+      model({
+        v <- boomUdf(E0) + Em * time
+        ll(bin) ~ DV * v - log(1 + exp(v))
+      })
+    }
+    .dsn <- .dsnLbfgsb3c()
+    .ctl <- lbfgsb3cControl(print = 0, returnLbfgsb3c = TRUE)
+    .full <- suppressMessages(nlmixr2(.mod, .dsn, est = "lbfgsb3c", .ctl))
+    .nFull <- .cnt$n
+    expect_gt(.full$counts[1], 1L)
+    .cnt$n <- 0L
+    .cnt$limit <- .nFull %/% 2L
+    expect_error(suppressMessages(nlmixr2(.mod, .dsn, est = "lbfgsb3c", .ctl)), "boom from udf")
+    # the held error is cleared: the next fit is unaffected
+    .cnt$limit <- Inf
+    .again <- suppressMessages(nlmixr2(.mod, .dsn, est = "lbfgsb3c", .ctl))
+    expect_identical(.again$value, .full$value)
+  })
+
   test_that("est='lbfgsb3c' honors maxit", {
     skip_on_cran()
     .ret <- suppressWarnings(suppressMessages(
