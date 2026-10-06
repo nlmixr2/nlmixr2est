@@ -5119,8 +5119,7 @@ static inline int innerOpt1(int id, int likId) {
     try {
       bool ok = lbfgsSolve();
       if (ISNAN(f)) {
-        if (haveBest) { restoreBest(); lbfgsExit = 1; }
-        else lbfgsExit = lbfgsFailExit();
+        lbfgsExit = lbfgsFailExit(); // haveBest is pass-local, so still false here
       } else {
         keepBest(); keepCand(ok);
         // Same nudge cascade as n1qn1: retry while the eta did not leave its start.
@@ -5147,7 +5146,8 @@ static inline int innerOpt1(int id, int likId) {
       }
     } catch (...) {
       fInd->badSolve = 1;
-      lbfgsExit = haveBest ? 0 : lbfgsFailExit();
+      if (haveBest) restoreBest();
+      else lbfgsExit = lbfgsFailExit();
     }
     if (lbfgsExit == 1) break;
     if (lbfgsExit == 2) continue;
