@@ -22,6 +22,12 @@ nmTest({
 
   test_that("lbfgsb3cControl() keeps maxit", {
     expect_equal(lbfgsb3cControl()$maxit, 10000L)
+    # factr two orders tighter than sigdig, as foceiControl(lbfgsFactr=)
+    expect_equal(lbfgsb3cControl(sigdig = 3)$factr, 1e-5 / .Machine$double.eps)
+    expect_equal(lbfgsb3cControl(sigdig = 3)$factr, foceiControl(sigdig = 3)$lbfgsFactr)
+    expect_equal(lbfgsb3cControl(sigdig = 14)$factr, 10)
+    expect_equal(lbfgsb3cControl(sigdig = NULL)$factr, 1e7)
+    expect_equal(lbfgsb3cControl(factr = 1e9)$factr, 1e9)
     expect_equal(lbfgsb3cControl(maxit = 20)$maxit, 20L)
     expect_error(lbfgsb3cControl(maxit = 0))
     expect_equal(do.call(lbfgsb3cControl, lbfgsb3cControl(maxit = 7L))$maxit, 7L)
@@ -48,9 +54,9 @@ nmTest({
     expect_named(.ret$grad, c("E0", "Em", "E50"))
     expect_named(.ret$par, c("E0", "Em", "E50"))
 
-    # sigdig=3's factr stops ~1.6 OFV short here; sigdig=6 reaches the n1qn1 optimum
+    # at the default sigdig the fit reaches the n1qn1 optimum
     .fit <- suppressMessages(
-      nlmixr2(.emaxLbfgsb3c, .dsn, est = "lbfgsb3c", lbfgsb3cControl(print = 0, sigdig = 6))
+      nlmixr2(.emaxLbfgsb3c, .dsn, est = "lbfgsb3c", lbfgsb3cControl(print = 0))
     )
     expect_s3_class(.fit, "nlmixr2.lbfgsb3c")
     expect_equal(.fit$objf, .ref$objf, tolerance = 1e-4)

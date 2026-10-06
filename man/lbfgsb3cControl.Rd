@@ -50,8 +50,9 @@ lbfgsb3cControl(
 `print` for the iteration log.  Kept so existing calls still work.}
 
 \item{factr}{Convergence tolerance factor for "L-BFGS-B"; converges when
-the objective reduction is within this factor of machine tolerance
-(default 1e7, i.e. ~1e-8).}
+the objective reduction is within this factor of machine tolerance.
+`NULL` (default) uses `10^(-sigdig-2) / .Machine$double.eps` (at least
+10), two orders tighter than `sigdig`, as `foceiControl(lbfgsFactr=)` does.}
 
 \item{pgtol}{Tolerance on the projected gradient for "L-BFGS-B"; 0
 (default) suppresses the check.}

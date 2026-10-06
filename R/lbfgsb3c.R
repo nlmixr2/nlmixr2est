@@ -17,8 +17,9 @@
 #'   `print` for the iteration log.  Kept so existing calls still work.
 #'
 #' @param factr Convergence tolerance factor for "L-BFGS-B"; converges when
-#'   the objective reduction is within this factor of machine tolerance
-#'   (default 1e7, i.e. ~1e-8).
+#'   the objective reduction is within this factor of machine tolerance.
+#'   `NULL` (default) uses `10^(-sigdig-2) / .Machine$double.eps` (at least
+#'   10), two orders tighter than `sigdig`, as `foceiControl(lbfgsFactr=)` does.
 #'
 #' @param pgtol Tolerance on the projected gradient for "L-BFGS-B"; 0
 #'   (default) suppresses the check.
@@ -113,10 +114,11 @@ lbfgsb3cControl <- function(
   ...
 ) {
   checkmate::assertIntegerish(trace, len = 1, any.missing = FALSE, lower = 0)
-  # L-BFGS-B factr from sigdig (FOCEi mechanism, matches foceiControl lbfgsFactr);
-  # a user value wins, sigdig=NULL keeps the historic default
+  # L-BFGS-B factr from sigdig, two orders tighter like foceiControl(lbfgsFactr=):
+  # factr tests one step's objective reduction, so 10^-sigdig stopped early
+  # (~1.6 OFV short at sigdig=3).  A user value wins; sigdig=NULL keeps 1e7.
   if (is.null(factr)) {
-    factr <- if (!is.null(sigdig)) .sigdigFactr(sigdig) else 1e7
+    factr <- if (!is.null(sigdig)) max(.sigdigFactr(sigdig + 2), 10) else 1e7
   }
   checkmate::assertNumeric(factr, len = 1, any.missing = FALSE, lower = 10)
   checkmate::assertNumeric(pgtol, len = 1, any.missing = FALSE, lower = 0)

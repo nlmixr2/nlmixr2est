@@ -40,13 +40,16 @@ static inline const char *lbfgsbTaskName(int itask) {
 // lbfgsb3c's convergence code for an exit code: 0 converged, 1 maxit,
 // 51 warning, 52 error, NA otherwise.
 static inline int lbfgsbConvergence(int itask) {
-  switch (itask) {
-  case 6: case 7: case 8: case 27: return 0;
-  case 28: return 1;
-  case 23: case 24: case 25: case 26: return 51;
-  case 9: case 10: case 11: case 12: case 13: case 14: case 15: case 16:
-  case 17: case 18: case 19: case 29: return 52;
-  default: return NA_INTEGER;
-  }
+  static const int conv[29] = {
+    -1, -1, -1, -1, -1,  // 1-5
+    0, 0, 0,             // 6-8 CONVERGENCE
+    52, 52, 52, 52, 52, 52, 52, 52, 52, 52, 52, // 9-19 ERROR
+    -1, -1, -1,          // 20-22
+    51, 51, 51, 51,      // 23-26 WARNING
+    0,                   // 27 x tolerance
+    1,                   // 28 maxit
+    52};                 // 29 invalid lmm
+  if (itask < 1 || itask > 29 || conv[itask - 1] < 0) return NA_INTEGER;
+  return conv[itask - 1];
 }
 #endif
