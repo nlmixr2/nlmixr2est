@@ -223,19 +223,13 @@ nmTest({
     expect_equal(.seNum, signif(unname(fit$parFixedDf["add.sd", "SE"]), 3), tolerance = 1e-2)
   })
 
-  test_that("finite-difference covMethod='r,s' covFull=TRUE installs the true full FD sandwich", {
+  test_that("finite-difference covMethod='r,s' covFull=TRUE falls back to s (full) for an indefinite full R", {
     skip_on_cran()
     skip_if_not_installed("nlmixr2data")
-    # the full theta+sigma+Omega covariance over the SAME parameter set as the analytic engine
-    # (structural + residual thetas plus the Omega variance-covariance elements; Omega perturbed
-    # on the variance scale, no Jacobian), assembled as a TRUE sandwich solve(Rfull) %*% Sfull
-    # %*% solve(Rfull) -- not merely the Hessian inverse.
-    fa <- suppressMessages(nlmixr(
-      .cov_one_cmt,
-      nlmixr2data::theo_sd,
-      "focei",
-      foceiControl(sigdig = 4, print = 0L, covMethod = "analytic", covFull = TRUE)
-    ))
+    # the full theta+sigma+Omega pieces span the SAME parameter set as the analytic engine
+    # (structural + residual thetas plus the Omega variance-covariance elements; Omega
+    # perturbed on the variance scale, no Jacobian); the sandwich they assemble into is
+    # tested on hand-made pieces in test-cov-fdfull-install.R
     ff <- suppressMessages(nlmixr(
       .cov_one_cmt,
       nlmixr2data::theo_sd,
@@ -243,23 +237,22 @@ nmTest({
       foceiControl(sigdig = 4, print = 0L, covMethod = "r,s", covFull = TRUE)
     ))
     .nm <- c("tka", "tcl", "tv", "add.sd", "om.eta.ka", "om.eta.cl", "om.eta.v")
-    # full theta+sigma+Omega cov, and covR/covS/covRS carry the same full shape
-    expect_setequal(rownames(ff$cov), .nm)
-    expect_setequal(rownames(ff$covRS), .nm)
-    expect_setequal(rownames(ff$covR), .nm)
-    expect_setequal(rownames(ff$covS), .nm)
-    .seF <- sqrt(diag(ff$cov))
-    expect_true(all(is.finite(.seF)) && all(.seF > 0))
-    # it is the sandwich Rinv %*% S %*% Rinv, not the Hessian inverse .fdFullCov
     .Rinv <- get(".fdFullCov", ff$env)
     .S <- get(".fdFullS", ff$env)
-    expect_equal(unname(unclass(ff$cov)), unname(.Rinv %*% .S %*% .Rinv), tolerance = 1e-6)
-    expect_false(isTRUE(all.equal(unclass(ff$cov), unclass(.Rinv), check.attributes = FALSE)))
-    # the structural theta SEs stay in the analytic ballpark (sandwich != observed information,
-    # so not identical, but the same order of magnitude on this model)
-    .thF <- sqrt(diag(ff$cov))[c("tka", "tcl", "tv")]
-    .thA <- sqrt(diag(fa$cov))[c("tka", "tcl", "tv")]
-    expect_equal(unname(.thF), unname(.thA), tolerance = 0.25)
+    expect_setequal(rownames(.Rinv), .nm)
+    # At this stopping point the full R is not positive definite (the theta-only one is):
+    # its sandwich Rinv S Rinv is positive definite only because S is, so it is not a
+    # covariance.  The full S is installed instead, as the theta-only step does (#1152),
+    # and the native theta-only shapes stay swappable.
+    expect_lt(min(eigen(.Rinv, symmetric = TRUE, only.values = TRUE)$values), 0)
+    expect_identical(ff$covMethod, "s (full)")
+    expect_setequal(rownames(ff$cov), .nm)
+    expect_equal(unname(ff$cov), unname(solve(.S)), tolerance = 1e-6)
+    expect_null(ff$env$covR)
+    expect_null(ff$env$covRS)
+    expect_true("full R matrix non-positive definite; using s (full)" %in% ff$runInfo)
+    expect_false(any(c("r (full)", "r,s (full)") %in% names(ff$env$covList)))
+    expect_setequal(rownames(ff$env$covList[["r,s"]]), .nm[1:4])
   })
 
   test_that("finite-difference covMethod='s' covFull=TRUE installs solve(Sfull)", {
@@ -456,10 +449,22 @@ nmTest({
       foceiControl(sigdig = 4, print = 0L, covMethod = "analytic")
     )))
     expect_true(is.matrix(fit$cov))
-    # the near-zero-prediction guard drops to the finite-difference fallback; covFull=TRUE
-    # (default) makes it the full theta+sigma+Omega cov
+    # the near-zero-prediction guard drops to the finite-difference fallback
     expect_false(identical(.covBaseName(fit$covMethod), "analytic"))
-    expect_true(any(grepl("^om\\.", rownames(fit$cov))))
+    # covFull=TRUE (default) installs the full theta+sigma+Omega sandwich when its R is
+    # positive definite, else the full S (#1152), else keeps the theta-only sandwich and
+    # records why.  Which applies depends on where the FD stages are centred, so every
+    # outcome is pinned here.
+    .sh <- .foceiFdFullShapes(get(".fdFullCov", fit$env), get0(".fdFullS", fit$env))
+    if (.sh$r$ok) {
+      expect_true(any(grepl("^om\\.", rownames(fit$cov))))
+    } else if (.sh$s$ok) {
+      expect_identical(fit$covMethod, "s (full)")
+      expect_true("full R matrix non-positive definite; using s (full)" %in% fit$runInfo)
+    } else {
+      expect_false(any(grepl("^om\\.", rownames(fit$cov))))
+      expect_true("\"r,s (full)\" covariance needs a positive-definite R; kept \"r,s\"" %in% fit$runInfo)
+    }
   })
 
   test_that("FOCE and foce+ additive analytic R equal the FOCEI analytic R at the same EBEs", {
