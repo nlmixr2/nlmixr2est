@@ -622,10 +622,10 @@ struct focei_options {
   // self-init).  See warmZm(), updateZm() and selfInitZm().
   int warm;
 
-  // innerOpt: 1 = n1qn1, 2 = BFGS (thread-safe lbfgsb3Cts, #1160), 3 = trust
+  // innerOpt: 1 = n1qn1, 2 = lbfgsb3c (thread-safe lbfgsb3Cts, #1160), 3 = trust
   // (RcppTrust), 4 = auto (the default; resolved to 1 or 3 in foceiSetup_).
   int innerOpt;
-  // innerOpt="BFGS"'s own L-BFGS-B controls, separate from the outer lmm/factr/...
+  // innerOpt="lbfgsb3c"'s own L-BFGS-B controls, separate from the outer lmm/factr/...
   int innerLmm;
   double innerFactr;
   double innerPgtol;
@@ -5080,7 +5080,7 @@ static inline int innerOpt1(int id, int likId) {
       }
     }
   } else {
-    // innerOpt="BFGS": thread-safe L-BFGS-B (lbfgsb3Cts, #1160).  As in the trust
+    // innerOpt="lbfgsb3c": thread-safe L-BFGS-B (lbfgsb3Cts, #1160).  As in the trust
     // arm, no exception may cross this OpenMP loop body.  The eta bounds are
     // inactive (nbdInner is all 0).
     // Where a failed attempt leaves the starting-point loop, mirroring the n1qn1 arm:
@@ -9179,19 +9179,19 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.innerOpt = foceiO.containsElementNamed("innerOpt") ? as<int>(foceiO["innerOpt"]) : 1;
   if (op_focei.innerOpt == 2) {
     if (lbfgsb3Cts == NULL) {
-      stop(_("innerOpt=\"BFGS\" needs lbfgsb3c >= 2024-3.6 (thread-safe lbfgsb3Cts)"));
+      stop(_("innerOpt=\"lbfgsb3c\" needs lbfgsb3c >= 2024-3.6 (thread-safe lbfgsb3Cts)"));
     }
-    // Fallbacks are foceiControl()'s sigdig=4 defaults.
+    // Fallbacks are foceiControl()'s sigdig=3 defaults.
     op_focei.innerLmm = foceiO.containsElementNamed("innerLbfgsLmm") ?
       as<int>(foceiO["innerLbfgsLmm"]) : 5;
     op_focei.innerFactr = foceiO.containsElementNamed("innerLbfgsFactr") ?
-      as<double>(foceiO["innerLbfgsFactr"]) : 1e-6 / DBL_EPSILON;
+      as<double>(foceiO["innerLbfgsFactr"]) : 1e-5 / DBL_EPSILON;
     op_focei.innerPgtol = foceiO.containsElementNamed("innerLbfgsPgtol") ?
-      as<double>(foceiO["innerLbfgsPgtol"]) : 0.0;
+      as<double>(foceiO["innerLbfgsPgtol"]) : 1e-5;
     op_focei.innerAbstol = foceiO.containsElementNamed("innerLbfgsAbstol") ?
-      as<double>(foceiO["innerLbfgsAbstol"]) : 1e-6;
+      as<double>(foceiO["innerLbfgsAbstol"]) : 1e-5;
     op_focei.innerReltol = foceiO.containsElementNamed("innerLbfgsReltol") ?
-      as<double>(foceiO["innerLbfgsReltol"]) : 1e-6;
+      as<double>(foceiO["innerLbfgsReltol"]) : 1e-5;
   }
   op_focei.trustConf = foceiO.containsElementNamed("trustConf") ? as<double>(foceiO["trustConf"]) : 0.975;
   {

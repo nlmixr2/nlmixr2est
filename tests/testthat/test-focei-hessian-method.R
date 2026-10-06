@@ -236,7 +236,7 @@ nmTest({
     # to be a silent no-op; it is now an error, so the request cannot be lost.
     for (.hm in c("bfgs", "sr1", "bofill")) {
       expect_error(foceiControl(innerOpt = "n1qn1", hessianMethod = .hm), "innerOpt", info = .hm)
-      expect_error(foceiControl(innerOpt = "BFGS", hessianMethod = .hm), "innerOpt", info = .hm)
+      expect_error(foceiControl(innerOpt = "lbfgsb3c", hessianMethod = .hm), "innerOpt", info = .hm)
     }
     # "fd" is what every non-trust inner optimizer already does, so it is not
     # refused; nor is the combination the mechanism actually supports.

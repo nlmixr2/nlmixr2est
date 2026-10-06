@@ -1,7 +1,7 @@
 # innerOpt= levels.  "auto" is resolved in C++ (foceiSetup_) once
 # needOptimHess is known: n1qn1 for a generalized-likelihood endpoint, trust
 # otherwise.  See the innerOpt @param below.
-.innerOptFun <- c("n1qn1" = 1L, "BFGS" = 2L, "trust" = 3L, "auto" = 4L)
+.innerOptFun <- c("n1qn1" = 1L, "lbfgsb3c" = 2L, "trust" = 3L, "auto" = 4L)
 
 # hessianMethod= levels.  Anything but "fd" is only consulted under
 # innerOpt="trust" (hessianQNEligible, src/inner.cpp).
@@ -32,14 +32,14 @@
   length(lbfgsb3c::.lbfgsb3cPtr()) >= 2L
 }
 
-#' Refuse innerOpt="BFGS" when lbfgsb3c is too old to run it thread-safely.
+#' Refuse innerOpt="lbfgsb3c" when lbfgsb3c is too old to run it thread-safely.
 #' @noRd
-.foceiAssertInnerBfgs <- function(innerOpt, have = .lbfgsb3ctsAvailable()) {
+.foceiAssertInnerLbfgsb3c <- function(innerOpt, have = .lbfgsb3ctsAvailable()) {
   if (innerOpt != 2L || have) {
     return(invisible(TRUE))
   }
   stop(
-    "innerOpt=\"BFGS\" needs lbfgsb3c >= 2024-3.6 (thread-safe lbfgsb3Cts)",
+    "innerOpt=\"lbfgsb3c\" needs lbfgsb3c >= 2024-3.6 (thread-safe lbfgsb3Cts)",
     call. = FALSE
   )
 }
@@ -593,10 +593,10 @@
 #'
 #' @param innerOpt optimization method for the inner (per-subject eta)
 #'     problem: `"auto"` (default), `"trust"` (RcppTrust trust-region Newton,
-#'     using an exact Gauss-Newton+Omega^-1 Hessian every iteration) or
+#'     using an exact Gauss-Newton+Omega^-1 Hessian every iteration),
 #'     `"n1qn1"` (quasi-Newton, gets a Hessian only once as a warm-start
-#'     seed) or `"BFGS"` (thread-safe L-BFGS-B from `lbfgsb3c`, controlled by
-#'     the `innerLbfgs*` arguments; `"auto"` never picks it).
+#'     seed) or `"lbfgsb3c"` (thread-safe L-BFGS-B from `lbfgsb3c`, controlled
+#'     by the `innerLbfgs*` arguments; `"auto"` never picks it).
 #'
 #'     `"auto"` picks `"n1qn1"` for a generalized-likelihood endpoint
 #'     (`dnorm()`, `ll()`, `dpois()`, ...) and `"trust"` for everything else.
@@ -635,19 +635,20 @@
 #'     `innerOpt="trust"`.
 #'
 #' @param innerLbfgsLmm number of BFGS updates retained by the
-#'     `innerOpt="BFGS"` L-BFGS-B solve; a whole number of at least 1.
+#'     `innerOpt="lbfgsb3c"` L-BFGS-B solve; a whole number of at least 1.
 #'     Defaults to 5.
 #'
-#' @param innerLbfgsFactr,innerLbfgsPgtol `innerOpt="BFGS"`'s own L-BFGS-B
+#' @param innerLbfgsFactr,innerLbfgsPgtol `innerOpt="lbfgsb3c"`'s own L-BFGS-B
 #'     objective-reduction factor and projected-gradient tolerance, separate
-#'     from the outer `lbfgsFactr`/`lbfgsPgtol`. `innerLbfgsFactr=NULL`
-#'     (default) uses `10^(-sigdig-2) / .Machine$double.eps`, floored at 1;
-#'     `innerLbfgsPgtol` defaults to 0 (check suppressed).
+#'     from the outer `lbfgsFactr`/`lbfgsPgtol`. `NULL` (default) derives them
+#'     from `sigdig`: `innerLbfgsFactr` is `10^(-sigdig-2) /
+#'     .Machine$double.eps` (floored at 1) and `innerLbfgsPgtol` is
+#'     `10^(-sigdig-2)`, the same scale as `trustFterm`.
 #'
-#' @param innerLbfgsAbstol,innerLbfgsReltol `innerOpt="BFGS"`'s absolute and
+#' @param innerLbfgsAbstol,innerLbfgsReltol `innerOpt="lbfgsb3c"`'s absolute and
 #'     relative eta-change tolerances, separate from the outer
 #'     `abstol`/`reltol`. `NULL` (default) uses `10^(-sigdig-2)`. With
-#'     `innerOpt="BFGS"`, `maxInnerIterations` caps the function evaluations
+#'     `innerOpt="lbfgsb3c"`, `maxInnerIterations` caps the function evaluations
 #'     of each solve.
 #'
 #' @param trustPolish logical; when `TRUE`, each converged `innerOpt="trust"`
@@ -1273,7 +1274,7 @@ foceiControl <- function(
     "newuoa",
     "trust"
   ), #
-  innerOpt = c("auto", "trust", "n1qn1", "BFGS"), #
+  innerOpt = c("auto", "trust", "n1qn1", "lbfgsb3c"), #
   innerHessian = c("focei", "conditional"), #
   detHessian = c("focei", "conditional"), #
   hessianMethod = c("fd", "bfgs", "sr1", "bofill"), #
@@ -1284,10 +1285,10 @@ foceiControl <- function(
   trustFterm = NULL, # NULL -> 10^(-sigdig), NOT epsilon
   trustMterm = NULL, # NULL -> 10^(-sigdig), NOT epsilon
   trustPolish = FALSE,
-  ## innerOpt="BFGS" (lbfgsb3c's thread-safe L-BFGS-B)
+  ## innerOpt="lbfgsb3c" (lbfgsb3c's thread-safe L-BFGS-B)
   innerLbfgsLmm = 5L,
   innerLbfgsFactr = NULL, # NULL -> 10^(-sigdig-2)/eps
-  innerLbfgsPgtol = 0,
+  innerLbfgsPgtol = NULL, # NULL -> 10^(-sigdig-2)
   innerLbfgsAbstol = NULL, # NULL -> 10^(-sigdig-2)
   innerLbfgsReltol = NULL, # NULL -> 10^(-sigdig-2)
   ## trust-region OUTER optimizer (outerOpt="trust")
@@ -1436,6 +1437,9 @@ foceiControl <- function(
     }
     if (is.null(innerLbfgsFactr)) {
       innerLbfgsFactr <- max(10^(-sigdig - 2) / .Machine$double.eps, 1)
+    }
+    if (is.null(innerLbfgsPgtol)) {
+      innerLbfgsPgtol <- 10^(-sigdig - 2)
     }
     if (is.null(innerLbfgsAbstol)) {
       innerLbfgsAbstol <- 10^(-sigdig - 2)

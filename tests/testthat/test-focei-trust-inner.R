@@ -2,7 +2,7 @@ nmTest({
   test_that("foceiControl(innerOpt=) trust mapping", {
     expect_equal(foceiControl()$innerOpt, 4L)
     expect_equal(foceiControl(innerOpt = "n1qn1")$innerOpt, 1L)
-    expect_equal(foceiControl(innerOpt = "BFGS")$innerOpt, 2L)
+    expect_equal(foceiControl(innerOpt = "lbfgsb3c")$innerOpt, 2L)
     expect_equal(foceiControl(innerOpt = "trust")$innerOpt, 3L)
     expect_equal(foceiControl(innerOpt = "auto")$innerOpt, 4L)
     expect_equal(foceiControl(innerOpt = 3L)$innerOpt, 3L)
@@ -108,7 +108,7 @@ nmTest({
     expect_equal(as.data.frame(.f1$eta), as.data.frame(.f2$eta), tolerance = 5e-2)
 
     # Positive evidence the trust path actually ran -- not a silent fallback to
-    # n1qn1, the failure mode #927's innerOpt="BFGS" had (numeric agreement alone
+    # n1qn1, the failure mode #927's innerOpt="BFGS" (now "lbfgsb3c") had (numeric agreement alone
     # would not catch that).
     expect_equal(.n1, 0L)
     expect_true(.n2 > 0L)
@@ -140,10 +140,10 @@ nmTest({
     expect_true(is.finite(.fit$objf))
   })
 
-  test_that("innerOpt='BFGS' runs L-BFGS-B, not n1qn1 or trust", {
+  test_that("innerOpt='lbfgsb3c' runs L-BFGS-B, not n1qn1 or trust", {
     skip_on_cran()
     # #1160: innerOpt==2 used to fall back silently to n1qn1 (#927).
-    .fB <- .fitTrustCmp("BFGS")
+    .fB <- .fitTrustCmp("lbfgsb3c")
     expect_equal(.nTrustInner(), 0L)
     expect_gt(.fB$env$nLbfgsInner[["calls"]], 0L)
     expect_true(is.finite(.fB$objf))
