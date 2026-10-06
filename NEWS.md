@@ -217,6 +217,9 @@
   parameter vector in place: an error part-way through left it at a probe, and
   `nlmixr2Hess()` handed the objective that same vector on every call, so a
   value the objective kept changed under it.
+- The step search of `nlmixr2Gill83()`, `nlmixr2Hess()` and the first
+  `nlmixr2GradFun()` gradient now hands the objective the caller's names and
+  other attributes; an objective that indexed by name (`x["a"]`) got `NA`.
 - `nlmixr2Gill83()` (and so `nlmixr2Hess(...)`) now uses its `gillRtol`,
   `gillK`, `gillStep` and `gillFtol` arguments; the defaults were always used.
   As documented, `gillK = 0` now determines no step size: the search is

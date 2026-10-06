@@ -6845,23 +6845,28 @@ extern "C" int nlmixr2FoceiOuterHessian(const double*, int, double, double*);
 Environment baseEnv = Environment::base_env();
 Function doCall = baseEnv["do.call"];
 Function gillRfn_ = baseEnv["invisible"];
+NumericVector gillRlike_; // the caller's parameter vector, for its attributes
 int gillPar = 0;
-// what(x) by do.call on a copy of x carrying the caller's names, so the objective
-// never holds a vector the caller goes on to perturb (or the caller's own vector).
+// x (length n) as a copy of the caller's vector `like` (its names and other
+// attributes), so the objective never holds a vector that is later perturbed.
+static NumericVector nlmixr2RObjArg(SEXP like, const double *x, int n) {
+  NumericVector xc = (!Rf_isNull(like) && Rf_xlength(like) == n) ?
+    NumericVector(clone(like)) : NumericVector(n);
+  std::copy(x, x + n, xc.begin());
+  return xc;
+}
+
+// what(x) by do.call on nlmixr2RObjArg(like, x, n).
 static double nlmixr2RObjAt(Function what, SEXP envir, const double *x, int n,
-                            SEXP names) {
+                            SEXP like) {
   List par(1);
-  NumericVector xc(x, x + n);
-  if (!Rf_isNull(names)) xc.attr("names") = names;
-  par[0] = xc;
+  par[0] = nlmixr2RObjArg(like, x, n);
   return as<double>(doCall(_["what"] = what, _["args"]=par, _["envir"]=envir));
 }
 
 double gillRfn(double *theta){
   List par(1);
-  NumericVector par0(gillThetaN);
-  std::copy(&theta[0], &theta[0]+gillThetaN,par0.begin());
-  par[0] = par0;
+  par[0] = nlmixr2RObjArg(gillRlike_, theta, gillThetaN);
   NumericVector ret = as<NumericVector>(doCall(_["what"] = gillRfn_, _["args"]=par, _["envir"]=gillRfnE_));
   if (ret.size() == 1){
     return(ret[0]);
@@ -10415,6 +10420,7 @@ List nlmixr2Gill83_(Function what, NumericVector args, Environment envir,
   if (args.size()!=which.size()) stop("'args' must have same size as 'which'");
   gillRfn_=what;
   gillThetaN=args.size();
+  gillRlike_=args;
   gillRfnE_=envir;
   // search a copy: args is the caller's own vector (no copy on the way in), and an
   // error part-way through a search would leave it at the probe
@@ -10511,7 +10517,7 @@ double nlmixr2Eval_(NumericVector theta, std::string md5){
   if (lEW.size() != theta.size()) stop("invalid theta size");
   Function cFun = as<Function>(gradInfo[EF]);
   Environment cEnvir = as<Environment>(gradInfo[EE]);
-  double f0 = nlmixr2RObjAt(cFun, cEnvir, theta.begin(), theta.size(), Rf_getAttrib(theta, R_NamesSymbol));
+  double f0 = nlmixr2RObjAt(cFun, cEnvir, theta.begin(), theta.size(), theta);
   std::string f0s = md5 + ".fc";
   std::string f0t = md5 + ".ft";
   std::string cns = md5 + ".n";
@@ -10851,7 +10857,7 @@ NumericVector nlmixr2Grad_(NumericVector theta, std::string md5){
     }
   }
   if (reEval){
-    f0 = nlmixr2RObjAt(cFun, cEnvir, theta.begin(), theta.size(), Rf_getAttrib(theta, R_NamesSymbol));
+    f0 = nlmixr2RObjAt(cFun, cEnvir, theta.begin(), theta.size(), theta);
   }
   niterGrad.push_back(niter.back());
   vGrad.push_back(NA_REAL); // Gradient doesn't record objf
@@ -10863,10 +10869,10 @@ NumericVector nlmixr2Grad_(NumericVector theta, std::string md5){
     cur = th[i];
     delta = (std::fabs(cur)*rEps[i] + aEps[i]);
     th[i] = cur + delta;
-    g[i] = (nlmixr2RObjAt(cFun, cEnvir, th.begin(), th.size(), Rf_getAttrib(theta, R_NamesSymbol))-f0)/delta;
+    g[i] = (nlmixr2RObjAt(cFun, cEnvir, th.begin(), th.size(), theta)-f0)/delta;
     if (!R_FINITE(g[i])){
       th[i] = cur - delta;
-      g[i] = (f0-nlmixr2RObjAt(cFun, cEnvir, th.begin(), th.size(), Rf_getAttrib(theta, R_NamesSymbol)))/(delta);
+      g[i] = (f0-nlmixr2RObjAt(cFun, cEnvir, th.begin(), th.size(), theta))/(delta);
       isMixed=true;
     }
     th[i] = cur;
@@ -10922,12 +10928,12 @@ RObject nlmixr2ParHist_(std::string md5){
 // An R closure (by do.call), with nlmixr2Hess's progress bar.
 struct RHessObj : FdHessObj {
   Function fn;
-  SEXP envir, names;
+  SEXP envir, like;
   int n, cur = 0, curTick = 0, totTick;
   clock_t t0 = clock();
-  RHessObj(Function fn, SEXP envir, SEXP names, int n) : fn(fn), envir(envir), names(names), n(n), totTick(4*n + 2*n*(n-1)) {}
+  RHessObj(Function fn, SEXP envir, SEXP like, int n) : fn(fn), envir(envir), like(like), n(n), totTick(4*n + 2*n*(n-1)) {}
   double f(double *x) {
-    double ret = nlmixr2RObjAt(fn, envir, x, n, names);
+    double ret = nlmixr2RObjAt(fn, envir, x, n, like);
     curTick = par_progress(++cur, totTick, curTick, 1, t0, 0);
     return ret;
   }
@@ -10944,7 +10950,7 @@ RObject nlmixr2Hess_(RObject thetaT, RObject fT, RObject e,
   int n = theta.size();
   std::vector<double> h(n);
   for (int i = n; i--;) h[i] = std::fabs(theta[i])*rEpsC[i] + aEpsC[i];
-  RHessObj obj(as<Function>(fT), e, Rf_getAttrib(theta, R_NamesSymbol), n);
+  RHessObj obj(as<Function>(fT), e, thetaT, n);
   arma::mat H;
   // the objective is -LL, so the Hessian is used as it is
   fdHessian(obj, theta.begin(), n, nF[0], h.data(), H, 1.0, false, false);
