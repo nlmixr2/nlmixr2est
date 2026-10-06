@@ -622,11 +622,18 @@ struct focei_options {
   // self-init).  See warmZm(), updateZm() and selfInitZm().
   int warm;
 
-  // innerOpt: 1 = n1qn1, 2 = BFGS (unimplemented -- see #927, falls back to
-  // n1qn1: lbfgsb3C's C++ wrapper keeps shared mutable Rcpp state, not
-  // reentrant under the per-subject OpenMP loop), 3 = trust (RcppTrust),
-  // 4 = auto (the default; resolved to 1 or 3 in foceiSetup_).
+  // innerOpt: 1 = n1qn1, 2 = BFGS (thread-safe lbfgsb3Cts, #1160), 3 = trust
+  // (RcppTrust), 4 = auto (the default; resolved to 1 or 3 in foceiSetup_).
   int innerOpt;
+  // innerOpt="BFGS"'s own L-BFGS-B controls, separate from the outer lmm/factr/...
+  int innerLmm;
+  double innerFactr;
+  double innerPgtol;
+  double innerAbstol;
+  double innerReltol;
+  std::atomic<int> nLbfgsInner{0};  // lbfgsb3Cts calls (test evidence)
+  std::atomic<int> nLbfgsNoConv{0}; // calls not ending in 6, 7, 8 or 27
+  std::atomic<int> nLbfgsMaxit{0};  // of those, the ones that hit maxit (28)
   double trustConf; // confidence level defining the trust-region radius
   double trustRinit;
   double trustRmax;
@@ -4230,12 +4237,8 @@ static inline int innerOpt1(int id, int likId) {
       fInd->setup = 0;
     }
   }
-  // innerOpt==2 ("BFGS") is intentionally left mapped to n1qn1: lbfgsb3C's C++
-  // wrapper (lbfgsb3x.cpp) writes a file-scope global Rcpp::List on every call,
-  // which is not reentrant under this per-subject OpenMP loop (#927) -- do not
-  // route it there without first fixing that.
   bool trustInner = (op_focei.innerOpt == 3);
-  bool n1qn1Inner = !trustInner;
+  bool n1qn1Inner = !trustInner && op_focei.innerOpt != 2;
   // mceta>=1: true when a sampled eta (not eta=0) was chosen as the starting point.
   bool mcetaSampleStart = false;
   // Use eta
@@ -5077,49 +5080,77 @@ static inline int innerOpt1(int id, int likId) {
       }
     }
   } else {
-    int fail=0, fncount=0, grcount=0;
-    char msg[100];
-    fInd->badSolve = 0;
-    lbfgsb3C(npar, op_focei.lmm, fInd->x, op_focei.etaLower,
-             op_focei.etaUpper, op_focei.nbdInner, &f, innerOptimF, innerOptimG,
-             &fail, (void*)(&id), op_focei.factr,
-             op_focei.pgtol, &fncount, &grcount,
-             op_focei.maxInnerIterations, msg, 0, -1,
-             op_focei.abstol, op_focei.reltol, fInd->g);
-    if (ISNA(f)) {
-      if (haveBest) { restoreBest(); break; }
-      // No usable result in THIS pass; an earlier one may still have a
-      // candidate, and the selection below will take it.
-      if (!candEta.empty()) break;
-      if (_lastStart) return 0;
-      continue;
+    // innerOpt="BFGS": thread-safe L-BFGS-B (lbfgsb3Cts, #1160).  As in the trust
+    // arm, no exception may cross this OpenMP loop body.  The eta bounds are
+    // inactive (nbdInner is all 0).
+    // Where a failed attempt leaves the starting-point loop, mirroring the n1qn1 arm:
+    // 1 = break, 2 = continue, 3 = return 0.
+    int lbfgsExit = 0;
+    auto lbfgsFailExit = [&]() -> int {
+      if (!candEta.empty()) return 1;
+      return _lastStart ? 3 : 2;
+    };
+    // One solve from fInd->x; true when it converged without a bad solve.
+    auto lbfgsSolve = [&]() -> bool {
+      int fail = 0, fncount = 0, grcount = 0;
+      fInd->badSolve = 0;
+      op_focei.nLbfgsInner.fetch_add(1, std::memory_order_relaxed);
+      lbfgsb3Cts(npar, op_focei.innerLmm, fInd->x, op_focei.etaLower,
+                 op_focei.etaUpper, op_focei.nbdInner, &f, innerOptimF, innerOptimG,
+                 &fail, (void*)(&id), op_focei.innerFactr, op_focei.innerPgtol,
+                 &fncount, &grcount, op_focei.maxInnerIterations, NULL, 0, -1,
+                 op_focei.innerAbstol, op_focei.innerReltol, fInd->g);
+      // 6, 7, 8 = CONVERGENCE, 27 = x tolerance; 28 = maxit, 29 = invalid lmm
+      bool conv = (fail == 6 || fail == 7 || fail == 8 || fail == 27);
+      if (!conv) {
+        op_focei.nLbfgsNoConv.fetch_add(1, std::memory_order_relaxed);
+        if (fail == 28) op_focei.nLbfgsMaxit.fetch_add(1, std::memory_order_relaxed);
+      }
+      if (fInd->badSolve == 1) {
+        // A latched NA leaves f from an evaluation that may not be at x; re-check x.
+        fInd->badSolve = 0;
+        f = likInner0(fInd->x, id);
+        fInd->badSolve = ISNAN(f) ? 1 : 0;
+        conv = false;
+      }
+      return conv;
+    };
+    try {
+      bool ok = lbfgsSolve();
+      if (ISNAN(f)) {
+        if (haveBest) { restoreBest(); lbfgsExit = 1; }
+        else lbfgsExit = lbfgsFailExit();
+      } else {
+        keepBest(); keepCand(ok);
+        // Same nudge cascade as n1qn1: retry while the eta did not leave its start.
+        if (fInd->doEtaNudge == 1 && op_focei.etaNudge != 0.0) {
+          const double nudge[4] = {op_focei.etaNudge, -op_focei.etaNudge,
+                                   -op_focei.etaNudge2, op_focei.etaNudge2};
+          double start = 0.0;
+          for (int k = 0; k < 4 && lbfgsExit == 0; k++) {
+            bool stuck = true;
+            for (int i = fop->neta; i--;) {
+              if (fInd->x[i] != start) { stuck = false; break; }
+            }
+            if (!stuck) break;
+            op_focei.didEtaNudge.store(1, std::memory_order_relaxed);
+            std::fill_n(fInd->x, fop->neta, nudge[k]);
+            start = nudge[k];
+            ok = lbfgsSolve();
+            if (ISNAN(f)) {
+              if (!haveBest) lbfgsExit = lbfgsFailExit();
+              else restoreBest();
+            } else { keepBest(); keepCand(ok); }
+          }
+        }
+      }
+    } catch (...) {
+      fInd->badSolve = 1;
+      lbfgsExit = haveBest ? 0 : lbfgsFailExit();
     }
-    keepBest(); keepCand(fInd->badSolve == 0);
-    // if (fail != 6 && fail != 7 && fail != 8 && fail != 27){
-    //   // did not converge
-    //   if (fInd->doEtaNudge == 1 && op_focei.etaNudge != 0.0){
-    //  std::fill_n(fInd->x, fop->neta, op_focei.etaNudge);
-    //  fail=0;
-    //  lbfgsb3C(npar, op_focei.lmm, fInd->x, op_focei.etaLower,
-    //       op_focei.etaUpper, op_focei.nbdInner, &f, innerOptimF, innerOptimG,
-    //       &fail, (void*)(&id), op_focei.factr,
-    //       op_focei.pgtol, &fncount, &grcount,
-    //       op_focei.maxInnerIterations, msg, 0, -1,
-    //       op_focei.abstol, op_focei.reltol, fInd->g);
-    //  if (fail != 6 && fail != 7 && fail != 8 && fail != 27){
-    //    std::fill_n(fInd->x, fop->neta, -op_focei.etaNudge);
-    //    lbfgsb3C(npar, op_focei.lmm, fInd->x, op_focei.etaLower,
-    //       op_focei.etaUpper, op_focei.nbdInner, &f, innerOptimF, innerOptimG,
-    //       &fail, (void*)(&id), op_focei.factr,
-    //       op_focei.pgtol, &fncount, &grcount,
-    //       op_focei.maxInnerIterations, msg, 0, -1,
-    //       op_focei.abstol, op_focei.reltol, fInd->g);
-    //    if (fail != 6 && fail != 7 && fail != 8 && fail != 27){
-    //      std::fill_n(fInd->x, fop->neta, 0);
-    //    }
-    //  }
-    //   }
-    // }
+    if (lbfgsExit == 1) break;
+    if (lbfgsExit == 2) continue;
+    if (lbfgsExit == 3) return 0;
   }
   } // end of the starting-point loop (body deliberately not re-indented)
   // Apply the best candidate the restarts produced.  This is what makes the
@@ -9145,6 +9176,22 @@ NumericVector foceiSetup_(const RObject &obj,
   }
   op_focei.epsilon=as<double>(foceiO["epsilon"]);
   op_focei.innerOpt = foceiO.containsElementNamed("innerOpt") ? as<int>(foceiO["innerOpt"]) : 1;
+  if (op_focei.innerOpt == 2) {
+    if (lbfgsb3Cts == NULL) {
+      stop(_("innerOpt=\"BFGS\" needs lbfgsb3c >= 2024-3.6 (thread-safe lbfgsb3Cts)"));
+    }
+    // Fallbacks are foceiControl()'s sigdig=4 defaults.
+    op_focei.innerLmm = foceiO.containsElementNamed("innerLbfgsLmm") ?
+      as<int>(foceiO["innerLbfgsLmm"]) : 5;
+    op_focei.innerFactr = foceiO.containsElementNamed("innerLbfgsFactr") ?
+      as<double>(foceiO["innerLbfgsFactr"]) : 1e-6 / DBL_EPSILON;
+    op_focei.innerPgtol = foceiO.containsElementNamed("innerLbfgsPgtol") ?
+      as<double>(foceiO["innerLbfgsPgtol"]) : 0.0;
+    op_focei.innerAbstol = foceiO.containsElementNamed("innerLbfgsAbstol") ?
+      as<double>(foceiO["innerLbfgsAbstol"]) : 1e-6;
+    op_focei.innerReltol = foceiO.containsElementNamed("innerLbfgsReltol") ?
+      as<double>(foceiO["innerLbfgsReltol"]) : 1e-6;
+  }
   op_focei.trustConf = foceiO.containsElementNamed("trustConf") ? as<double>(foceiO["trustConf"]) : 0.975;
   {
     // rmax: radius (in sqrt(diag(Omega))-scaled units) of the trustConf-level eta
@@ -9252,6 +9299,9 @@ NumericVector foceiSetup_(const RObject &obj,
                    (uint64_t)getRxNsubAndMix(getRxSolve_()) * (uint64_t)op_focei.nEtaRestart);
   }
   op_focei.nTrustInner.store(0, std::memory_order_relaxed);
+  op_focei.nLbfgsInner.store(0, std::memory_order_relaxed);
+  op_focei.nLbfgsNoConv.store(0, std::memory_order_relaxed);
+  op_focei.nLbfgsMaxit.store(0, std::memory_order_relaxed);
   op_focei.nWarmSaveZm.store(0, std::memory_order_relaxed);
   op_focei.nWarmSaveSelfInit.store(0, std::memory_order_relaxed);
   op_focei.nWarmSaveFloor.store(0, std::memory_order_relaxed);
@@ -13111,6 +13161,12 @@ void foceiFinalizeTables(Environment e){
           // all four nudges -- ended without a converged attempt.
           _["failed"] = op_focei.nTrustFail.load(std::memory_order_relaxed));
       }
+      if (op_focei.innerOpt == 2) {
+        e["nLbfgsInner"] = IntegerVector::create(
+          _["calls"] = op_focei.nLbfgsInner.load(std::memory_order_relaxed),
+          _["notConverged"] = op_focei.nLbfgsNoConv.load(std::memory_order_relaxed),
+          _["maxit"] = op_focei.nLbfgsMaxit.load(std::memory_order_relaxed));
+      }
       if (op_focei.muModel == 1) {
         _details += "; mu: lin";
       } else if (op_focei.muModel == 2) {
@@ -15289,53 +15345,9 @@ static thread_local int _outerRetryScratch = 0;
 // builds an EMPTY LIST, not NULL, so every refusal here looked like a successful
 // but empty solve to .foceiAnalyticSolveAll and silently dropped the gradient to
 // finite differences.
-// Phase 8D2: tighten the INNER optimizer for the duration of a differencing phase.
-//
-// KEPT BUT NOT ARMED.  Tightening every inner tolerance by 1e3 and raising the
-// iteration cap 10x changed the hand-differenced tcl values by NOTHING -- identical to
-// four decimals for every subject.  The inner optimizer was already converged, so the
-// step dependence is not re-optimization noise.  Re-reading that data: most subjects
-// converge monotonically but slowly (id2 marches -3.43/-1.82/-1.36/-1.20/-1.15 toward
-// about -1.13), i.e. a large higher-order term biases the WIDE steps, and only id5 and
-// id12 are genuinely erratic.  So the lever is Richardson extrapolation / smaller steps,
-// not inner convergence.  Left here, unarmed, so the experiment is not repeated.
-//
-// d(-2LL_i)/d(theta) is a PROFILE likelihood derivative: every evaluation re-runs
-// innerOpt1(), which lands on a slightly different eta each time.  For a theta that
-// carries an eta that re-optimization noise swamps the signal -- hand-differencing tcl
-// on theo_sd, 8 of 12 subjects failed to converge across two decades of step size
-// (swings of 2-4 units at h=1e-4), while the 4 whose inner problem converges tightly
-// were stable to 3-4 significant figures.  No step-size heuristic can fix that; the
-// noise floor has to come down instead.
-//
-// Restores every control on exit, including on a throw.
-struct FdInnerTolGuard {
-  double epsilon, factr, pgtol, abstol, reltol;
-  int maxInner;
-  bool armed;
-  explicit FdInnerTolGuard(double k, int iterMult) : armed(true) {
-    epsilon = op_focei.epsilon; factr = op_focei.factr; pgtol = op_focei.pgtol;
-    abstol = op_focei.abstol;   reltol = op_focei.reltol;
-    maxInner = op_focei.maxInnerIterations;
-    if (k > 1.0) {
-      op_focei.epsilon /= k;    // n1qn1
-      op_focei.factr   /= k;    // lbfgsb3C: multiple of machine eps, smaller = tighter
-      op_focei.pgtol   /= k;
-      op_focei.abstol  /= k;
-      op_focei.reltol  /= k;
-    }
-    // A tighter tolerance is useless if the iteration cap stops it first.
-    if (op_focei.maxInnerIterations > 0 && iterMult > 1) {
-      op_focei.maxInnerIterations *= iterMult;
-    }
-  }
-  ~FdInnerTolGuard() {
-    if (!armed) return;
-    op_focei.epsilon = epsilon; op_focei.factr = factr; op_focei.pgtol = pgtol;
-    op_focei.abstol = abstol;   op_focei.reltol = reltol;
-    op_focei.maxInnerIterations = maxInner;
-  }
-};
+// Phase 8D2 tried tightening every inner tolerance by 1e3 (and 10x the iteration cap)
+// during a differencing phase: the hand-differenced tcl values did not change, so the
+// FD step dependence is not inner re-optimization noise.  The guard was removed (#1160).
 
 
 // (fdRichardson and fdLanczos lived here.  Both were stencils tried against this

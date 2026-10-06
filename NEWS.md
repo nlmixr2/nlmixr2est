@@ -2,6 +2,13 @@
 
 ## New features
 
+- `foceiControl(innerOpt = "BFGS")` now runs L-BFGS-B on the per-subject
+  ETA problem, using `lbfgsb3c`'s thread-safe port (`lbfgsb3c >= 2024-3.6`).
+  Before this it silently fell back to `"n1qn1"` (#927, #1160).  Its
+  tolerances are set by the new `innerLbfgsLmm`, `innerLbfgsFactr`,
+  `innerLbfgsPgtol`, `innerLbfgsAbstol` and `innerLbfgsReltol` arguments,
+  separate from the outer L-BFGS-B ones.  `innerOpt = "auto"` never picks it.
+
 - `foceiControl(trustPolish = TRUE)` finishes each converged
   `innerOpt="trust"` solve with Newton steps on the ETAs, down to
   `trustFterm`.  The default trust solve can stop up to `sqrt(trustFterm)`
