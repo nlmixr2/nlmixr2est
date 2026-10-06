@@ -97,14 +97,20 @@ nmTest({
     expect_gt(.fm$env$nLbfgsInner[["calls"]], 0L)
     .ll <- .oneCmtBfgs |> model(linCmt() ~ add(add.sd) + dnorm())
     .fl <- suppressWarnings(suppressMessages(
-      nlmixr2(.ll, nlmixr2data::theo_sd, est = "focei",
-        control = foceiControl(innerOpt = "BFGS", covMethod = "",
-          calcTables = FALSE, print = 0))
+      nlmixr2(
+        .ll,
+        nlmixr2data::theo_sd,
+        est = "focei",
+        control = foceiControl(innerOpt = "BFGS", covMethod = "", calcTables = FALSE, print = 0)
+      )
     ))
     .fn <- suppressWarnings(suppressMessages(
-      nlmixr2(.ll, nlmixr2data::theo_sd, est = "focei",
-        control = foceiControl(innerOpt = "n1qn1", covMethod = "",
-          calcTables = FALSE, print = 0))
+      nlmixr2(
+        .ll,
+        nlmixr2data::theo_sd,
+        est = "focei",
+        control = foceiControl(innerOpt = "n1qn1", covMethod = "", calcTables = FALSE, print = 0)
+      )
     ))
     expect_gt(.fl$env$nLbfgsInner[["calls"]], 0L)
     expect_equal(.fl$objf, .fn$objf, tolerance = 1e-3)
@@ -113,9 +119,12 @@ nmTest({
   test_that("innerOpt='BFGS' works for est='laplace'", {
     skip_on_cran()
     .fl <- suppressWarnings(suppressMessages(
-      nlmixr2(.oneCmtBfgs, nlmixr2data::theo_sd, est = "laplace",
-        control = laplaceControl(innerOpt = "BFGS", covMethod = "",
-          calcTables = FALSE, print = 0))
+      nlmixr2(
+        .oneCmtBfgs,
+        nlmixr2data::theo_sd,
+        est = "laplace",
+        control = laplaceControl(innerOpt = "BFGS", covMethod = "", calcTables = FALSE, print = 0)
+      )
     ))
     expect_true(is.finite(.fl$objf))
     expect_gt(.fl$env$nLbfgsInner[["calls"]], 0L)
