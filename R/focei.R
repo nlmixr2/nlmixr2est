@@ -4944,6 +4944,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     .control$normType <- 6L # "constant"
     .control$outerOptTxt <- "stats::optimize"
   }
+  .foceiAssertInnerLbfgsb3c(.control$innerOpt)
   .optimHess <- any(.ui$predDfFocei$distribution != "norm")
   if (length(.optimHess) != 1) {
     .optimHess <- FALSE
