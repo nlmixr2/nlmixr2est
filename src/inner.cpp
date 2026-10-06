@@ -5,6 +5,7 @@
 #include "armahead.h"
 #include "utilc.h"
 #include <lbfgsb3ptr.h>
+#include "lbfgsbTask.h"
 #include "censEst.h"
 #include "nearPD.h"
 #include "shi21.h"
@@ -10071,21 +10072,23 @@ void foceiLbfgsb3(Environment e){
   for (unsigned int k = op_focei.npars; k--;){
     x[k]=scalePar(op_focei.initPar, k);
   }
-  char msg[100];
-  std::fill_n(msg, 100, 0);
-  lbfgsb3C(op_focei.npars, op_focei.lmm, x.begin(), op_focei.lower,
-           op_focei.upper, op_focei.nbd, &Fmin, foceiOfvOptim,
-           outerGradNumOptim, &fail, ex, op_focei.factr,
-           op_focei.pgtol, &fncount, &grcount,
-           op_focei.maxOuterIterations, msg, 0, -1,
-           op_focei.abstol, op_focei.reltol, g.begin());
+  if (lbfgsb3Cts == NULL) {
+    stop(_("outerOpt=\"lbfgsb3c\" needs lbfgsb3c >= 2024-3.6 (thread-safe lbfgsb3Cts)"));
+  }
+  // The C++ port: same iterates as the Fortran lbfgsb3C, no R printing.
+  lbfgsb3Cts(op_focei.npars, op_focei.lmm, x.begin(), op_focei.lower,
+             op_focei.upper, op_focei.nbd, &Fmin, foceiOfvOptim,
+             outerGradNumOptim, &fail, ex, op_focei.factr,
+             op_focei.pgtol, &fncount, &grcount,
+             op_focei.maxOuterIterations, NULL, 0, -1,
+             op_focei.abstol, op_focei.reltol, g.begin());
   // Recalculate OFV in case the last calculated OFV isn't at the minimum....
   // Otherwise ETAs may be off
   std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, INNER_ETA_RESET_TO);
   // Finalize environment
   foceiOuterFinal(x.begin(), e);
   e["convergence"] = fail;
-  e["message"] = msg;
+  e["message"] = lbfgsbTaskName(fail);
   e["lastGrad"] = g;
 }
 

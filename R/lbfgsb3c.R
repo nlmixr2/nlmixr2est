@@ -13,8 +13,8 @@
 #' @param returnLbfgsb3c return the lbfgsb3c output instead of the nlmixr2
 #'   fit
 #'
-#' @param trace If positive, print tracing information; higher values give
-#'   more detail (see source for "L-BFGS-B" trace levels).
+#' @param trace Ignored: the thread-safe C++ L-BFGS-B prints nothing; use
+#'   `print` for the iteration log.  Kept so existing calls still work.
 #'
 #' @param factr Convergence tolerance factor for "L-BFGS-B"; converges when
 #'   the objective reduction is within this factor of machine tolerance
@@ -31,7 +31,7 @@
 #'
 #' @param lmm Number of BFGS updates retained in "L-BFGS-B" (default 5).
 #'
-#' @param maxit maximum number of iterations.
+#' @param maxit maximum number of objective function evaluations.
 
 #' @return bobqya control structure
 #' @export
@@ -123,6 +123,7 @@ lbfgsb3cControl <- function(
   checkmate::assertNumeric(abstol, len = 1, any.missing = FALSE, lower = 0)
   checkmate::assertNumeric(reltol, len = 1, any.missing = FALSE, lower = 0)
   checkmate::assertIntegerish(lmm, len = 1, any.missing = FALSE, lower = 1)
+  checkmate::assertIntegerish(maxit, len = 1, any.missing = FALSE, lower = 1)
 
   checkmate::assertLogical(optExpression, len = 1, any.missing = FALSE)
   checkmate::assertLogical(literalFix, len = 1, any.missing = FALSE)
@@ -207,6 +208,7 @@ lbfgsb3cControl <- function(
     abstol = abstol,
     reltol = reltol,
     lmm = lmm,
+    maxit = as.integer(maxit),
 
     covMethod = match.arg(covMethod),
     optExpression = optExpression,
@@ -335,42 +337,24 @@ getValidNlmixrCtl.lbfgsb3c <- function(control) {
 
 .lbfgsb3cFitModel <- function(ui, dataSav) {
   # Use nlmEnv and function for DRY principle
-  rxode2::rxReq("lbfgsb3c")
   .ctl <- ui$control
-  .keep <- c("trace", "factr", "pgtol", "abstol", "reltol", "lmm")
-  .keep <- .keep[vapply(
-    .keep,
-    function(opt) {
-      !is.null(.ctl[[opt]])
-    },
-    logical(1),
-    USE.NAMES = FALSE
-  )]
-  .oCtl <- setNames(
-    lapply(.keep, function(x) {
-      .ctl[[x]]
-    }),
-    .keep
-  )
   class(.ctl) <- NULL
-
+  .oCtl <- list(
+    factr = .ctl$factr,
+    pgtol = .ctl$pgtol,
+    abstol = .ctl$abstol,
+    reltol = .ctl$reltol,
+    lmm = as.integer(.ctl$lmm),
+    maxit = as.integer(.ctl$maxit)
+  )
   .p <- setNames(ui$nlmParIni, ui$nlmParName)
   .mi <- ui$nlmSensModel
   .env <- .nlmSetupEnv(.p, ui, dataSav, .mi, .ctl, lower = ui$optimParLower, upper = ui$optimParUpper)
   on.exit({
     .nlmFreeEnv()
   })
-  # support gradient
-  .ret <- bquote(lbfgsb3c::lbfgsb3c(
-    par = .(.env$par.ini),
-    # fn is called every eval too, so use .nlmixrOptimFunC like gr does
-    fn = .(nlmixr2est::.nlmixrOptimFunC),
-    gr = .(nlmixr2est::.nlmixrOptimGradC),
-    control = .(.oCtl),
-    lower = .(.env$lower),
-    upper = .(.env$upper)
-  ))
-  .ret <- eval(.ret)
+  # lbfgsb3c's thread-safe L-BFGS-B, driven from C++ with no R callbacks
+  .ret <- nlmLbfgsb3cFit(.env$par.ini, .env$lower, .env$upper, .oCtl)
   .nlmFinalizeList(.env, .ret, par = "par", printLine = TRUE, hessianCov = TRUE)
 }
 #' Get the full theta for nlm methods

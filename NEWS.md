@@ -10,6 +10,12 @@
   `innerLbfgsReltol` arguments, separate from the outer L-BFGS-B ones; the
   tolerances default from `sigdig`.  `innerOpt = "auto"` never picks it.
 
+- `est = "lbfgsb3c"` now runs lbfgsb3c's thread-safe L-BFGS-B directly from
+  C++ on the nlm-family objective, with no R callback per evaluation, and
+  `foceiControl(outerOpt = "lbfgsb3c")` uses the same port.  Results are
+  unchanged.  The FOCEi fit now reports the L-BFGS-B exit message (it was
+  empty), and `lbfgsb3cControl(trace=)` is ignored.
+
 - `foceiControl(trustPolish = TRUE)` finishes each converged
   `innerOpt="trust"` solve with Newton steps on the ETAs, down to
   `trustFterm`.  The default trust solve can stop up to `sqrt(trustFterm)`
@@ -33,6 +39,10 @@
   handled those priors correctly.
   
 ## Bug Fixes
+
+- `lbfgsb3cControl(maxit=)` was documented but dropped, so `est="lbfgsb3c"`
+  always used lbfgsb3c's own limit of 1000 evaluations; it is now honored
+  (default 10000).
 
 - `est="nls"` dropped the `past()` pre-history of a delay differential
   equation model, biasing its estimates; the history is now kept.
