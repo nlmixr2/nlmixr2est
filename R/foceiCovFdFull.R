@@ -37,12 +37,45 @@
   list(thPos = thPos, omA = as.integer(pairs[, 1]), omB = as.integer(pairs[, 2]), names = c(thNames, omNames))
 }
 
+#' The three FD-full covariances, each checked by `.covGuard()`
+#'
+#' The sandwich is usable only when `Rinv` and `solve(S)` both are: built from
+#' an indefinite `Rinv` it is still positive semi-definite, so it can pass the
+#' check on its own.
+#' @param Rinv full Hessian inverse (`.fdFullCov`)
+#' @param S full score cross-product (`.fdFullS`), or `NULL`
+#' @return named list ("r", "s", "r,s") of `.covGuard()` results, the matrices
+#'   dimnamed like `Rinv`
+#' @noRd
+.foceiFdFullShapes <- function(Rinv, S) {
+  .dn <- dimnames(Rinv)
+  .shapes <- list(
+    r = Rinv,
+    s = if (is.matrix(S)) tryCatch(solve(S), error = function(e) NULL),
+    "r,s" = if (is.matrix(S)) Rinv %*% S %*% Rinv
+  )
+  for (.n in names(.shapes)) {
+    if (is.matrix(.shapes[[.n]])) {
+      dimnames(.shapes[[.n]]) <- .dn
+    }
+    .shapes[[.n]] <- .covGuard(.shapes[[.n]])
+  }
+  if (!.shapes$r$ok || !.shapes$s$ok) {
+    .shapes[["r,s"]] <- list(ok = FALSE, reason = paste0("needs a positive-definite ", if (.shapes$r$ok) "S" else "R"))
+  }
+  .shapes
+}
+
 #' Install the C++ FD-full covariance as `fit$cov` (and `fit$covR/covS/covRS`) when
-#' `covFull = TRUE`, routing on the fit's `covMethod`: "r,s" -> the sandwich
-#' `Rinv %*% S %*% Rinv`, "s" -> `solve(S)`, "r" -> `Rinv`.  No-op (native cov kept)
-#' if the pieces are absent/non-finite, the cov is not positive-definite, or covMethod
-#' is not an FD method.  FD counterpart to [.foceiInstallAnalyticCov].
+#' `covFull = TRUE`, routing on the requested covMethod: "r,s" -> the sandwich
+#' `Rinv %*% S %*% Rinv`, "s" -> `solve(S)`, "r" -> `Rinv`; an "r,s" with an
+#' indefinite `Rinv` installs `solve(S)` with a warning.  The native cov is
+#' kept -- with a warning when the requested shape is not usable, silently when
+#' covMethod is not an FD method or the pieces were not computed.  Every usable
+#' shape, native or full, is cached for `setCov()`; an unusable one is neither
+#' stored nor cached.  FD counterpart to [.foceiInstallAnalyticCov].
 #' @param .ret focei fit environment
+#' @return invisibly TRUE when the full covariance was installed
 #' @noRd
 .foceiInstallFdFullCov <- function(.ret) {
   if (!exists(".fdFullCov", envir = .ret, inherits = FALSE)) {
@@ -52,112 +85,68 @@
   # asked for -- C++ downgrades it to "s" when that step's "r" fails.  The full R/S pieces
   # used below are computed independently of that step, so route on the REQUESTED control;
   # otherwise a requested "r,s" silently installs solve(S) with a usable .Rinv in hand.
-  # foceiControl() stores covMethod as an integer code ("r,s"=1, "r"=2, "s"=3, ""=0) with
-  # covType separating "r" from "analytic", so decode it rather than reading a string.
-  .env <- if (exists("covMethod", envir = .ret, inherits = FALSE)) .ret$covMethod else ""
-  if (length(.env) != 1L || !is.character(.env) || is.na(.env)) {
-    .env <- ""
-  }
-  .cm <- .env
-  .code <- tryCatch(rxode2::rxGetControl(.ret$ui, "covMethod", NA_integer_), error = function(e) NA_integer_)
+  .env <- if (.covIsName(.ret$covMethod)) .ret$covMethod else ""
   .cty <- tryCatch(rxode2::rxGetControl(.ret$ui, "covType", "fd"), error = function(e) "fd")
-  if (is.numeric(.code) && length(.code) == 1L && !is.na(.code) && !identical(.cty, "analytic")) {
-    .req <- switch(as.character(as.integer(.code)), "1" = "r,s", "2" = "r", "3" = "s", "")
-    if (nzchar(.req)) .cm <- .req
-  }
-  .type <- .covFdType(.cm)
+  .req <- tryCatch(rxode2::rxGetControl(.ret$ui, "covMethod", NA_integer_), error = function(e) NA_integer_)
+  .req <- if (identical(.cty, "analytic")) "" else .covMethodFromSlot(.req)
+  .type <- .covFdType(if (nzchar(.req)) .req else .env)
   if (!nzchar(.type)) {
     return(invisible(FALSE))
   } # analytic / failed / "" / boundary -> keep native
-  .Rinv <- get(".fdFullCov", envir = .ret)
-  if (!is.matrix(.Rinv) || !all(is.finite(.Rinv))) {
+  .S <- get0(".fdFullS", envir = .ret, inherits = FALSE)
+  .full <- .foceiFdFullShapes(get(".fdFullCov", envir = .ret), .S)
+  if (.type != "r" && is.null(.S) && .full$r$ok) {
     return(invisible(FALSE))
-  }
-  .S <- if (exists(".fdFullS", envir = .ret, inherits = FALSE)) get(".fdFullS", envir = .ret) else NULL
-  # An indefinite R is not a minimum, yet Rinv %*% S %*% Rinv still looks PD (#1152);
-  # fall back to S like the native step does
-  .rEv <- suppressWarnings(eigen(.Rinv, symmetric = TRUE, only.values = TRUE)$values)
-  .rPd <- all(is.finite(.rEv)) && min(.rEv) > 0
-  # warn only once the fallback is known to install; otherwise say the native cov stays
-  .rFallback <- !.rPd && .type != "s"
-  .keep <- function() {
-    if (.rFallback) {
-      warning("full R matrix non-positive definite; kept theta-only covariance", call. = FALSE)
-    }
-    invisible(FALSE)
-  }
-  if (.rFallback) {
-    if (.type == "r" || !is.matrix(.S)) {
-      return(.keep())
-    }
+  } # no S computed -> keep native
+  # an indefinite R is not a minimum; fall back to S like the native step does (#1152)
+  if (.type == "r,s" && !.full$r$ok && .full$s$ok) {
+    warning("full R matrix non-positive definite; using s (full)", call. = FALSE)
     .type <- "s"
   }
-  if (.type != "r" && (!is.matrix(.S) || !all(is.finite(.S)))) {
-    return(.keep())
-  }
-  .covS <- if (is.null(.S)) NULL else tryCatch(solve(.S), error = function(e) NULL)
-  if (.type != "r" && is.null(.covS)) {
-    return(.keep())
-  }
-  .covRS <- if (is.null(.S) || !.rPd) NULL else .Rinv %*% .S %*% .Rinv
-  .cov <- switch(.type, "r" = .Rinv, "s" = .covS, "r,s" = .covRS)
-  if (is.null(.cov) || !is.matrix(.cov) || !all(is.finite(.cov))) {
-    return(.keep())
-  }
-  dimnames(.cov) <- dimnames(.Rinv)
-  # PD guard: reject an indefinite cov (negative variances -> NaN SEs), keep the native cov.
-  .ev <- suppressWarnings(eigen(.cov, symmetric = TRUE, only.values = TRUE)$values)
-  if (any(diag(.cov) <= 0) || !all(is.finite(.ev)) || min(.ev) <= 0) {
-    return(.keep())
-  }
-  if (.rFallback) {
-    warning("full R matrix non-positive definite; using s (full)", call. = FALSE)
-  }
-  # The theta-only covariance the native step produced -- and the r/s/sandwich pieces
-  # behind it -- are about to be replaced.  Cache them first so setCov() can swap back
-  # to the theta-only shape without recomputing anything (they are already in hand).
-  .nat <- lapply(stats::setNames(c("covR", "covS", "covRS"), c("r", "s", "r,s")), function(.n) {
-    if (exists(.n, envir = .ret, inherits = FALSE)) get(.n, envir = .ret) else NULL
-  })
-  # covMethod="s"/"r" write only e["cov"] -- the chosen covariance is not always
-  # mirrored into covR/covS/covRS -- so cache the installed native under its own type too
-  .envType <- .covFdType(.env)
-  if (nzchar(.envType) && is.null(.nat[[.envType]]) && exists("cov", envir = .ret, inherits = FALSE)) {
-    .nat[[.envType]] <- get("cov", envir = .ret)
-  }
-  .ret$cov <- .cov
-  # Keep the reported covMethod consistent with what was installed: routing on the
-  # requested control can install a sandwich where the env still says "s".  Only rewrite
-  # the TYPE when it differs, so the env's "r+"/"|r|" decorations survive when they
-  # agree; either way the name carries the " (full)" scope suffix.
-  .ret$covMethod <- .covFullName(if (identical(.type, .envType)) .env else .type)
-  if (.rPd) {
-    .ret$covR <- .Rinv
+  # the native theta-only pieces, cached so setCov() can swap to that shape without
+  # recomputing anything (they are already in hand)
+  .nat <- stats::setNames(mget(c("covR", "covS", "covRS"), envir = .ret, ifnotfound = list(NULL)), c("r", "s", "r,s"))
+  .installed <- .full[[.type]]$ok
+  if (.installed) {
+    # covMethod="s"/"r" write only e["cov"] -- the chosen covariance is not always
+    # mirrored into covR/covS/covRS -- so cache the native about to be replaced too
+    .envType <- .covFdType(.env)
+    if (nzchar(.envType) && is.null(.nat[[.envType]])) {
+      .nat[[.envType]] <- .ret$cov
+    }
+    # Keep the reported covMethod consistent with what was installed: routing on the
+    # requested control can install a sandwich where the env still says "s".  Only
+    # rewrite the TYPE when it differs, so the env's "r+"/"|r|" decorations survive when
+    # they agree; either way the name carries the " (full)" scope suffix.
+    .covInstall(
+      .ret,
+      .full[[.type]]$cov,
+      .covFullName(if (identical(.type, .envType)) .env else .type),
+      stash = FALSE,
+      refresh = "none"
+    )
+    for (.n in names(.full)) {
+      .slot <- c(r = "covR", s = "covS", "r,s" = "covRS")[[.n]]
+      if (.full[[.n]]$ok) {
+        assign(.slot, .full[[.n]]$cov, envir = .ret)
+      } else if (.n != "s" && !.full$r$ok && exists(.slot, envir = .ret, inherits = FALSE)) {
+        # the native theta-only piece is cached below; do not leave it beside a full cov
+        rm(list = .slot, envir = .ret)
+      }
+    }
   } else {
-    # the native theta-only pieces are cached above; do not leave them beside a full cov
-    suppressWarnings(rm(list = c("covR", "covRS"), envir = .ret))
-  }
-  if (!is.null(.covS)) {
-    dimnames(.covS) <- dimnames(.Rinv)
-    .ret$covS <- .covS
-  }
-  if (!is.null(.covRS)) {
-    dimnames(.covRS) <- dimnames(.Rinv)
-    .ret$covRS <- .covRS
+    .covRejectWarn(.ret, .covFullName(.type), .full[[.type]]$reason)
   }
   for (.n in names(.nat)) {
-    .covCacheAdd(.ret, .n, .nat[[.n]])
+    if (.covGuard(.nat[[.n]])$ok) .covCacheAdd(.ret, .n, .nat[[.n]])
   }
-  if (.rPd) {
-    .covCacheAdd(.ret, .covFullName("r"), .Rinv)
+  for (.n in names(.full)) {
+    if (.full[[.n]]$ok) .covCacheAdd(.ret, .covFullName(.n), .full[[.n]]$cov)
   }
-  .covCacheAdd(.ret, .covFullName("s"), .covS)
-  .covCacheAdd(.ret, .covFullName("r,s"), .covRS)
   .covCacheDrop(.ret, .ret$covMethod)
   .covCacheDrop(.ret, .covFullName(.type))
-  .foceiCovCondition(.ret, .cov, .ev)
   # Report the swap: the SEs the C++ step derived from the native theta-only
   # covariance describe a matrix that is no longer $cov, so the caller must
   # refresh the parameter table.
-  invisible(TRUE)
+  invisible(.installed)
 }

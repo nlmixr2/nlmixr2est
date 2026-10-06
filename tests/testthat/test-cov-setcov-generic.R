@@ -29,6 +29,16 @@ nmTest({
     ))
   }
 
+  # what a refit that computed the requested covariance returns (the fit's own one)
+  .fakeRefit <- function(obj, covMethod, covFull = FALSE, ...) {
+    list(
+      cov = get("cov", envir = obj$env),
+      covMethod = if (covFull) .covFullName(covMethod) else covMethod,
+      parFixedDf = obj$parFixedDf,
+      parFixed = obj$parFixed
+    )
+  }
+
   .register <- function(name, fn) {
     .ns <- asNamespace("nlmixr2est")
     registerS3method("setCov", name, fn, envir = .ns)
@@ -113,32 +123,33 @@ nmTest({
 
   test_that("rsControl() options reach the finite-difference refit", {
     .fit <- .fitOnce()
-    .seen <- NULL
-    local_mocked_bindings(.setCov = function(obj, ...) {
-      .seen <<- list(...)
-      invisible(NULL)
+    .seen <- new.env(parent = emptyenv())
+    local_mocked_bindings(.setCovRefit = function(obj, ...) {
+      .seen$args <- list(...)
+      .fakeRefit(obj, ...)
     })
     setCov(.fit, "s (full)", control = rsControl(hessEps = 1e-4, covSmall = 1e-6))
-    expect_equal(.seen, list(covMethod = "s", covFull = TRUE, hessEps = 1e-4, covSmall = 1e-6))
+    expect_equal(.seen$args, list(covMethod = "s", covFull = TRUE, hessEps = 1e-4, covSmall = 1e-6))
     expect_identical(.fit$covMethod, "s (full)")
   })
 
   test_that("estimation-time FD covariances match the fit's own options", {
     .fit <- .fitOnce()
     expect_identical(.fit$covMethod, "r,s (full)")
-    .n <- 0L
-    local_mocked_bindings(.setCov = function(obj, ...) {
-      .n <<- .n + 1L
-      invisible(NULL)
+    .refits <- new.env(parent = emptyenv())
+    .refits$n <- 0L
+    local_mocked_bindings(.setCovRefit = function(obj, ...) {
+      .refits$n <- .refits$n + 1L
+      .fakeRefit(obj, ...)
     })
     # the fit's own hessEps is the estimation-time option, so the cache is used
     setCov(.fit, "r,s", control = rsControl(hessEps = .fit$foceiControl$hessEps))
-    expect_equal(.n, 0L)
+    expect_equal(.refits$n, 0L)
     expect_identical(.fit$covMethod, "r,s")
     expect_error(setCov(.fit, "r,s"), "no need to switch")
     # a different option recomputes the cached shape
     setCov(.fit, "r,s (full)", control = rsControl(hessEps = 1e-4))
-    expect_equal(.n, 1L)
+    expect_equal(.refits$n, 1L)
     expect_equal(.fit$env$covOptions[["r,s (full)"]]$hessEps, 1e-4)
   })
 
@@ -154,10 +165,11 @@ nmTest({
     .fit <- .fitOnce()
     expect_true(all(c("r,s (full)", "r,s") %in% names(.fit$env$covOptions)))
     expect_equal(.fit$env$covOptions[["r,s"]]$hessEps, .fit$foceiControl$hessEps)
-    .n <- 0L
-    local_mocked_bindings(.setCov = function(obj, ...) {
-      .n <<- .n + 1L
-      invisible(NULL)
+    .refits <- new.env(parent = emptyenv())
+    .refits$n <- 0L
+    local_mocked_bindings(.setCovRefit = function(obj, ...) {
+      .refits$n <- .refits$n + 1L
+      .fakeRefit(obj, ...)
     })
     # the cached "r,s" was computed with the original hessEps, not the new one
     .env <- .fit$env
@@ -166,7 +178,7 @@ nmTest({
     assign("foceiControl0", .fc, envir = .env)
     expect_equal(.fit$foceiControl$hessEps, 1e-3)
     setCov(.fit, "r,s")
-    expect_equal(.n, 1L)
+    expect_equal(.refits$n, 1L)
     expect_equal(.fit$env$covOptions[["r,s"]]$hessEps, 1e-3)
   })
 
