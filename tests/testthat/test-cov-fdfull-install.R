@@ -64,18 +64,22 @@ test_that("non-FD covMethod (analytic/failed/boundary/empty) is a no-op", {
 
 test_that("s/r,s with a missing or non-finite Sfull is a no-op", {
   .e <- .mkFdEnv("r,s", .Rinv) # no .fdFullS
-  .foceiInstallFdFullCov(.e)
+  expect_silent(.foceiInstallFdFullCov(.e))
   expect_false(exists("cov", envir = .e, inherits = FALSE))
   .Sbad <- matrix(c(1, NA, NA, 1), 2)
   .e2 <- .mkFdEnv("s", .Rinv, .Sbad)
-  .foceiInstallFdFullCov(.e2)
+  expect_warning(.foceiInstallFdFullCov(.e2), "\"s (full)\" covariance is not finite; none installed", fixed = TRUE)
   expect_false(exists("cov", envir = .e2, inherits = FALSE))
 })
 
 test_that("PD guard rejects an indefinite assembled cov", {
   .Rbad <- matrix(c(1, 0, 0, -2), 2) # negative variance -> not PD
   .e <- .mkFdEnv("r", .Rbad)
-  expect_warning(.foceiInstallFdFullCov(.e), "kept theta-only")
+  expect_warning(
+    .foceiInstallFdFullCov(.e),
+    "\"r (full)\" covariance is not positive definite; none installed",
+    fixed = TRUE
+  )
   expect_false(exists("cov", envir = .e, inherits = FALSE))
 })
 
@@ -88,7 +92,7 @@ test_that("an indefinite full R installs s (full), not a PD-looking sandwich (#1
   # native theta-only pieces must not survive beside the full cov
   .e$covR <- matrix(1)
   .e$covRS <- matrix(2)
-  expect_warning(.foceiInstallFdFullCov(.e), "using s \\(full\\)")
+  expect_warning(.foceiInstallFdFullCov(.e), "using s (full)", fixed = TRUE)
   expect_identical(.e$covMethod, "s (full)")
   expect_equal(unname(.e$cov), unname(solve(.S)))
   expect_false(exists("covR", envir = .e, inherits = FALSE))
@@ -97,11 +101,11 @@ test_that("an indefinite full R installs s (full), not a PD-looking sandwich (#1
   expect_equal(.e$covList[["r"]], matrix(1))
   # without an S there is nothing to fall back to: keep the native covariance
   .e2 <- .mkFdEnv("r,s", .Rbad)
-  expect_warning(.foceiInstallFdFullCov(.e2), "kept theta-only")
+  expect_warning(.foceiInstallFdFullCov(.e2), "needs a positive-definite R", fixed = TRUE)
   expect_false(exists("cov", envir = .e2, inherits = FALSE))
   # nor with a singular S: the warning must not claim s (full) was installed
   .e3 <- .mkFdEnv("r,s", .Rbad, matrix(1, 2, 2))
-  expect_warning(.foceiInstallFdFullCov(.e3), "kept theta-only")
+  expect_warning(.foceiInstallFdFullCov(.e3), "needs a positive-definite R", fixed = TRUE)
   expect_false(exists("cov", envir = .e3, inherits = FALSE))
 })
 
