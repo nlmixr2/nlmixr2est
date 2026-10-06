@@ -105,7 +105,7 @@ f <- try(nlmixr2(one.cmt, theo_sd, "saem"))
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 6584
-#> → compress parHistData in nlmixr2 object, save 8608
+#> → compress parHistData in nlmixr2 object, save 8616
 #> → compress phiM in nlmixr2 object, save 439912
 
 print(f)
@@ -117,9 +117,9 @@ print(f)
 #> ── Time (sec $time): ──
 #> 
 #>             setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.8428077 3.1886e-05 0.02700833      0.081     0.868 4.883       0.884
+#> elapsed 0.9229803 2.7571e-05 0.02700744      0.078     0.903 4.114       0.913
 #>         table compress     other
-#> elapsed 0.076    0.145 0.3661521
+#> elapsed 0.082    0.136 0.3819847
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -180,14 +180,14 @@ if (!inherits(f, "try-error")) {
 #> ── nlmixr² SAEM OBJF by FOCEi approximation ──
 #> 
 #>         OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> FOCEi 116.79 373.3897 393.5693      -179.6949        18.79711         1.41818
+#> FOCEi 116.79 373.3897 393.5693      -179.6949        397.0815         1.41818
 #> 
 #> ── Time (sec $time): ──
 #> 
 #>             setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.8428077 3.1886e-05 0.02700833      0.081     0.868 4.883       0.884
+#> elapsed 0.9229803 2.7571e-05 0.02700744      0.078     0.903 4.114       0.913
 #>         table compress     other
-#> elapsed 0.076    0.145 0.3661521
+#> elapsed 0.082    0.136 0.3819847
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 

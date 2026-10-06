@@ -444,29 +444,31 @@ print(fit2)
 #> ── nlmixr² log-likelihood nlm ──
 #> 
 #>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -688.1541 1155.723 1170.446      -574.8615        53327.58        3456.526
+#> lPop -688.1541 1155.723 1170.446      -574.8615        468.8018        19.82225
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.1386233 0.2232768  8.995e-06      0.053       0.008 0.026    0.001
+#>             setup optimize covariance preprocess postprocess table compress
+#> elapsed 0.1293972 0.218061  5.861e-06      0.051       0.008 0.024    0.001
 #>              other
-#> elapsed 0.08709089
+#> elapsed 0.08053596
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
-#>       Est.    SE  %RSE Back-transformed(95%CI)
-#> E0  -0.623 0.290  46.5 -0.623 (-1.19, -0.0549)
-#> Em    8.31  14.7   177      8.31 (-20.5, 37.1)
-#> E50   4.39  6.17   141      4.39 (-7.70, 16.5)
-#> g     2.00 FIXED FIXED                    2.00
+#>       Est.     SE  %RSE Back-transformed(95%CI)
+#> E0  -0.623 0.0947  15.2 -0.623 (-0.809, -0.438)
+#> Em    8.31   1.42  17.1       8.31 (5.52, 11.1)
+#> E50   4.39  0.547  12.5       4.39 (3.31, 5.46)
+#> g     2.00  FIXED FIXED                    2.00
 #>  
-#>   Covariance Type ($covMethod): r (nlm)
+#>   Covariance Type ($covMethod): |r| (nlm)
 #>   Some strong fixed parameter correlations exist ($cor) :
 #>      cor:Em,E0 cor:E50,E0 cor:E50,Em 
-#>     0.942      0.953      0.999  
+#>   -0.0345       0.353      0.820  
 #>  
 #> 
+#>   Information about run found ($runInfo):
+#>    • R matrix is not positive definite; corrected as "|r|" 
 #>   Censoring ($censInformation): No censoring
 #>   Minimization message ($message):  
 #>     relative gradient is close to zero, current iterate is probably solution 
@@ -513,10 +515,10 @@ fit2$nlm
 #> -1.561575  2.903708  5.771867 
 #> 
 #> $cov.scaled
-#>             E0        Em        E50
-#> E0  0.02101264  1.004007   1.704254
-#> Em  1.00400678 54.073156  90.583069
-#> E50 1.70425414 90.583069 152.189235
+#>               E0           Em        E50
+#> E0   0.002241466 -0.001162734 0.01826117
+#> Em  -0.001162734  0.506282950 0.63804578
+#> E50  0.018261172  0.638045783 1.19697191
 #> 
 #> $r
 #>            E0        Em        E50
