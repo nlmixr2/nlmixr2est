@@ -15,13 +15,24 @@ test_that("an indefinite Hessian is repaired as |r|, else as the nearest positiv
   expect_equal(.r$r, sqrtm(.h %*% .h))
   expect_equal(eigen(.r$r, symmetric = TRUE, only.values = TRUE)$values, c(3, 1))
   expect_identical(.r$warning, "R matrix is not positive definite; corrected as \"|r|\"")
-  # a singular |R| cannot be inverted either
-  .h <- diag(c(2, 0, -1))
-  .r <- .nlmCovFromHessian(.h)
-  expect_identical(.r$type, "r+")
-  expect_true(min(eigen(.r$r, symmetric = TRUE, only.values = TRUE)$values) > 0)
-  expect_equal(.r$r, nmNearPD(.h))
-  expect_identical(.r$warning, "R matrix is not positive definite; corrected as \"r+\"")
+})
+
+test_that("a numerically singular Hessian is not repaired", {
+  # |R| and the nearest positive-definite matrix would both invert rounding
+  # noise: nmNearPD() floors the zero eigenvalue to 2e-8 (a variance of 5e7)
+  .sing <- "R matrix is singular; covariance step failed"
+  for (.h in list(
+    diag(c(2, 0, -1)),
+    diag(c(2, -1e-17, 1)), # |R| passes as positive definite
+    tcrossprod(1:4) # rank one; |R| fails and R+ was installed
+  )) {
+    .r <- .nlmCovFromHessian(.h)
+    expect_identical(.r$type, "failed")
+    expect_null(.r$r)
+    expect_identical(.r$warning, .sing)
+  }
+  # a well-conditioned indefinite Hessian is still repaired
+  expect_identical(.nlmCovFromHessian(diag(c(2, -1, 1)))$type, "|r|")
 })
 
 test_that("a Hessian that cannot be repaired gives no covariance", {
@@ -34,7 +45,7 @@ test_that("a Hessian that cannot be repaired gives no covariance", {
   # the zero-filled Hessian of a failed solve
   .r <- .nlmCovFromHessian(matrix(0, 2, 2))
   expect_identical(.r$type, "failed")
-  expect_identical(.r$warning, "R matrix is not positive definite; covariance step failed")
+  expect_identical(.r$warning, "R matrix is singular; covariance step failed")
 })
 
 nmTest({

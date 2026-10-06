@@ -205,8 +205,10 @@
   matrix), with a warning in `$runInfo`.  It used to invert every Hessian
   after an unreported Schnabel-Eskow perturbation and label it `"r"`, which
   gave several parameters of the derivative-free fits of `theo_sd` the same
-  standard error.  A non-finite Hessian, or the zero one of a failed `trust`
-  solve, gives `covMethod = "failed"` with a warning instead of a covariance.
+  standard error.  A non-finite or numerically singular Hessian (including the
+  zero one of a failed `trust` solve) gives `covMethod = "failed"` with a
+  warning instead of a covariance; either repair of a singular one would
+  invert its rounding noise.
 - The Gill (1983) step-size search no longer leaves a parameter at its last
   probe when it ends without an accepted interval (`$scaleInfo` reports
   "Constant Grad", "Odd/Linear Grad" or "Grad changes quickly").  That moved
