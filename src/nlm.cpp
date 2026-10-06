@@ -13,6 +13,7 @@
 #include "../inst/include/nlmixr2estLikContrib.h"
 #include "likContribUtil.h"
 #include <atomic>
+#include <exception>
 #include <limits>
 
 #define _(String) (String)
@@ -1018,28 +1019,29 @@ extern "C" int nlmTrustObjfun(int n, const double *par, double *value,
 }
 
 // est="lbfgsb3c": value and gradient come from one sensitivity solve, cached
-// by theta, so the paired fn/gr calls at a point cost one solve.
-static std::string nlmLbfgsErr;
+// by theta, so the paired fn/gr calls at a point cost one solve.  Any error
+// (including an R longjmp, turned into an exception by unwindProtect) is held
+// and rethrown after lbfgsb3Cts returns, so nothing unwinds through it.
+static std::exception_ptr nlmLbfgsErr = nullptr;
 
 static bool nlmLbfgsFill(int n, double *x) {
-  if (!nlmLbfgsErr.empty()) return false;
+  if (nlmLbfgsErr) return false;
   try {
     arma::vec theta(x, n);
     if (!isThetaSame(theta)) {
-      arma::mat ret0 = nlmSolveGrad(theta);
-      arma::vec saveVec(nlmOp.valSave, nlmOp.ntheta + 1, false, true);
-      saveVec = (arma::sum(ret0, 0)).t();
-      saveTheta(theta);
-      scalePrintFun(&(nlmOp.scale), &theta[0], nlmOp.valSave[0]);
-      scalePrintGrad(&(nlmOp.scale), nlmOp.grSave, iterTypeSens);
+      Rcpp::unwindProtect([&]() -> SEXP {
+        arma::mat ret0 = nlmSolveGrad(theta);
+        arma::vec saveVec(nlmOp.valSave, nlmOp.ntheta + 1, false, true);
+        saveVec = (arma::sum(ret0, 0)).t();
+        saveTheta(theta);
+        scalePrintFun(&(nlmOp.scale), &theta[0], nlmOp.valSave[0]);
+        scalePrintGrad(&(nlmOp.scale), nlmOp.grSave, iterTypeSens);
+        return R_NilValue;
+      });
     }
     return true;
-  } catch (std::exception &ex) {
-    // Rethrown after lbfgsb3Cts returns; never unwind through it.
-    nlmLbfgsErr = ex.what();
-    if (nlmLbfgsErr.empty()) nlmLbfgsErr = "lbfgsb3c objective failed";
   } catch (...) {
-    nlmLbfgsErr = "lbfgsb3c objective failed";
+    nlmLbfgsErr = std::current_exception();
   }
   return false;
 }
@@ -1068,6 +1070,11 @@ List nlmLbfgsb3cFit(arma::vec &theta, NumericVector lower, NumericVector upper,
     stop(_("est=\"lbfgsb3c\" needs lbfgsb3c >= 2024-3.6 (thread-safe lbfgsb3Cts)"));
   }
   int n = (int)theta.n_elem;
+  if (n != (int)nlmOp.ntheta) stop(_("'theta' does not match the loaded problem"));
+  if ((lower.size() != 1 && lower.size() != n) ||
+      (upper.size() != 1 && upper.size() != n)) {
+    stop(_("'lower'/'upper' must have length 1 or length(theta)"));
+  }
   std::vector<double> x(theta.begin(), theta.end()), low(n), up(n), g(n, 0.0);
   std::vector<int> nbd(n);
   for (int i = 0; i < n; ++i) {
@@ -1079,8 +1086,8 @@ List nlmLbfgsb3cFit(arma::vec &theta, NumericVector lower, NumericVector upper,
   }
   // Force a fresh solve at the start rather than reusing another fit's cache.
   std::fill_n(nlmOp.thetaSave, nlmOp.ntheta, NA_REAL);
-  nlmLbfgsErr.clear();
-  double fmin = std::numeric_limits<double>::max();
+  nlmLbfgsErr = nullptr;
+  double fmin = NA_REAL;
   int fail = 0, fncount = 0, grcount = 0;
   lbfgsb3Cts(n, as<int>(control["lmm"]), x.data(), low.data(), up.data(),
              nbd.data(), &fmin, nlmLbfgsF, nlmLbfgsG, &fail, NULL,
@@ -1088,13 +1095,13 @@ List nlmLbfgsb3cFit(arma::vec &theta, NumericVector lower, NumericVector upper,
              &fncount, &grcount, as<int>(control["maxit"]), NULL, 0, -1,
              as<double>(control["abstol"]), as<double>(control["reltol"]),
              g.data());
-  if (!nlmLbfgsErr.empty()) {
-    std::string err = nlmLbfgsErr;
-    nlmLbfgsErr.clear();
-    stop(err);
+  if (nlmLbfgsErr) {
+    std::exception_ptr err = nlmLbfgsErr;
+    nlmLbfgsErr = nullptr;
+    std::rethrow_exception(err);
   }
   return List::create(_["par"] = wrap(x), _["grad"] = wrap(g),
-                      _["value"] = fmin,
+                      _["value"] = fncount > 0 ? fmin : NA_REAL,
                       _["counts"] = IntegerVector::create(fncount, grcount),
                       _["convergence"] = lbfgsbConvergence(fail),
                       _["message"] = lbfgsbTaskName(fail));

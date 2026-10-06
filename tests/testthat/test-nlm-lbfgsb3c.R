@@ -55,6 +55,10 @@ nmTest({
     expect_equal(.fit$objf, .ref$objf, tolerance = 1e-4)
   })
 
+  test_that("nlmLbfgsb3cFit() refuses an unloaded problem", {
+    expect_error(nlmLbfgsb3cFit(1, -Inf, Inf, list()), "not loaded")
+  })
+
   test_that("est='lbfgsb3c' honors maxit", {
     skip_on_cran()
     .ret <- suppressWarnings(suppressMessages(
