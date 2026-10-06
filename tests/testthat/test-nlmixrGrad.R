@@ -98,3 +98,24 @@ test_that("nlmixr2GradFun() gradients leave the point alone", {
   expect_identical(g1, g2)
   expect_equal(g1[2], 2, tolerance = 1e-3)
 })
+
+test_that("the objective sees the caller's names", {
+  seen <- NULL
+  f <- function(x) {
+    seen <<- names(x)
+    unname((x["a"] - 1)^2 + x["b"]^2)
+  }
+  gf <- nlmixr2GradFun(f, print = 0)
+  x <- c(a = 2, b = 1)
+  expect_equal(gf$eval(x), 2)
+  gf$grad(x)
+  g <- gf$grad(x)
+  expect_equal(unname(g), c(2, 2), tolerance = 1e-3)
+  expect_identical(seen, c("a", "b"))
+  seen <- NULL
+  h <- nlmixr2Hess(c(a = 1, b = 0), function(x) {
+    seen <<- c(seen, names(x)[1])
+    sum(x^2)
+  })
+  expect_true("a" %in% seen)
+})
