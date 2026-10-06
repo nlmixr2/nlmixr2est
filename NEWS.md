@@ -185,7 +185,9 @@
   longer installs `1/(cholSEtol*|R|)` labelled `"r"` when the R matrix is not
   positive (`R <= 0`): it is now repaired, or not used, like a larger R.  A
   requested `"s"` covariance whose S matrix cannot be repaired is reported as
-  `"failed"` instead of `"s"` with no covariance.
+  `"failed"` instead of `"s"` with no covariance.  A numerically singular R or
+  S (such as S from a single subject) is no longer "repaired" into `"|r|"` or
+  `"|s|"`, which installed a covariance of rounding noise.
 - The `grad()` function from `nlmixr2GradFun()` no longer leaves the point at
   `x - h` when a forward difference is not finite and it falls back to a
   backward one.  That point was the caller's own vector, which was also the

@@ -11048,6 +11048,12 @@ static bool foceiCovUsable(Environment e, const std::string &X, const arma::mat 
     checkSandwich = true;
     return true;
   }
+  // |M0| has eigenvalues |eig(M0)|; a numerically rank-deficient M0 (S from one
+  // subject) passes chol after sqrtmat, which lifts rounding-level ones to ~sqrt(eps)
+  arma::vec ev;
+  if (!arma::eig_sym(ev, arma::symmatu(M0))) return false;
+  ev = arma::abs(ev);
+  if (ev.min() <= ev.max() * M0.n_rows * arma::datum::eps) return false;
   arma::cx_mat H1;
   arma::mat ch;
   if (!arma::sqrtmat(H1, M0*M0) || arma::any(arma::any(arma::imag(H1), 0)) ||
