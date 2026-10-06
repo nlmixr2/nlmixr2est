@@ -74,9 +74,6 @@ void impMapPass(Rcpp::Environment e);
 // Copy subject `id`'s current MAP mode (eta, length neta) into `mode`.
 void impGetMode(int id, arma::vec& mode);
 
-// Subject `id`'s individual objective contribution at its current mode.
-double impGetIndLik(int id);
-
 // Eta Hessian of the negative inner joint objective at subject `id`'s mode
 // (the FOCEI Laplace information matrix; positive-definite at the mode).
 // Returns false if the solve/Hessian could not be formed.
@@ -191,12 +188,10 @@ void impPropMixGet(std::vector<double>& c, std::vector<double>& w); // mixture s
 bool impSirEnabled();                              // sir=TRUE: SIR-accelerated theta M-step
 int impSirN();                                     // SIR resampled points per subject
 int impBaseSeed();                                 // base seed for the per-(iter,subject) streams
-void impGetEstThetaIdx(std::vector<int>& idx);     // fullTheta indices of the estimated thetas
 void impGetCovParList(std::vector<int>& idx);      // fullTheta index of every free param (fixedTrans order)
 double impGetFullThetaVal(int idx);                // current value of fullTheta[idx]
 void impSetThetaAll(int idx, double val);          // set fullTheta[idx] on every subject (FD perturb)
 void impForceResolve(int id);                      // force likInner0 to re-solve subject id
-int impOmegaN();                                   // number of parameterized Omega free parameters
 double impGetOmegaThetaVal(int m);                 // current value of Omega free parameter m
 void impSetOmegaThetaAll(int m, double val);       // set Omega free param m + rebuild omegaInv/logdet
 

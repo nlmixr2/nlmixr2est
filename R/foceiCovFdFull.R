@@ -74,23 +74,44 @@
     return(invisible(FALSE))
   }
   .S <- if (exists(".fdFullS", envir = .ret, inherits = FALSE)) get(".fdFullS", envir = .ret) else NULL
+  # An indefinite R is not a minimum, yet Rinv %*% S %*% Rinv still looks PD (#1152);
+  # fall back to S like the native step does
+  .rEv <- suppressWarnings(eigen(.Rinv, symmetric = TRUE, only.values = TRUE)$values)
+  .rPd <- all(is.finite(.rEv)) && min(.rEv) > 0
+  # warn only once the fallback is known to install; otherwise say the native cov stays
+  .rFallback <- !.rPd && .type != "s"
+  .keep <- function() {
+    if (.rFallback) {
+      warning("full R matrix non-positive definite; kept theta-only covariance", call. = FALSE)
+    }
+    invisible(FALSE)
+  }
+  if (.rFallback) {
+    if (.type == "r" || !is.matrix(.S)) {
+      return(.keep())
+    }
+    .type <- "s"
+  }
   if (.type != "r" && (!is.matrix(.S) || !all(is.finite(.S)))) {
-    return(invisible(FALSE))
+    return(.keep())
   }
   .covS <- if (is.null(.S)) NULL else tryCatch(solve(.S), error = function(e) NULL)
   if (.type != "r" && is.null(.covS)) {
-    return(invisible(FALSE))
+    return(.keep())
   }
-  .covRS <- if (is.null(.S)) NULL else .Rinv %*% .S %*% .Rinv
+  .covRS <- if (is.null(.S) || !.rPd) NULL else .Rinv %*% .S %*% .Rinv
   .cov <- switch(.type, "r" = .Rinv, "s" = .covS, "r,s" = .covRS)
   if (is.null(.cov) || !is.matrix(.cov) || !all(is.finite(.cov))) {
-    return(invisible(FALSE))
+    return(.keep())
   }
   dimnames(.cov) <- dimnames(.Rinv)
   # PD guard: reject an indefinite cov (negative variances -> NaN SEs), keep the native cov.
   .ev <- suppressWarnings(eigen(.cov, symmetric = TRUE, only.values = TRUE)$values)
   if (any(diag(.cov) <= 0) || !all(is.finite(.ev)) || min(.ev) <= 0) {
-    return(invisible(FALSE))
+    return(.keep())
+  }
+  if (.rFallback) {
+    warning("full R matrix non-positive definite; using s (full)", call. = FALSE)
   }
   # The theta-only covariance the native step produced -- and the r/s/sandwich pieces
   # behind it -- are about to be replaced.  Cache them first so setCov() can swap back
@@ -110,7 +131,12 @@
   # the TYPE when it differs, so the env's "r+"/"|r|" decorations survive when they
   # agree; either way the name carries the " (full)" scope suffix.
   .ret$covMethod <- .covFullName(if (identical(.type, .envType)) .env else .type)
-  .ret$covR <- .Rinv
+  if (.rPd) {
+    .ret$covR <- .Rinv
+  } else {
+    # the native theta-only pieces are cached above; do not leave them beside a full cov
+    suppressWarnings(rm(list = c("covR", "covRS"), envir = .ret))
+  }
   if (!is.null(.covS)) {
     dimnames(.covS) <- dimnames(.Rinv)
     .ret$covS <- .covS
@@ -122,7 +148,9 @@
   for (.n in names(.nat)) {
     .covCacheAdd(.ret, .n, .nat[[.n]])
   }
-  .covCacheAdd(.ret, .covFullName("r"), .Rinv)
+  if (.rPd) {
+    .covCacheAdd(.ret, .covFullName("r"), .Rinv)
+  }
   .covCacheAdd(.ret, .covFullName("s"), .covS)
   .covCacheAdd(.ret, .covFullName("r,s"), .covRS)
   .covCacheDrop(.ret, .ret$covMethod)

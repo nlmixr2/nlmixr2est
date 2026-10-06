@@ -1031,25 +1031,6 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   }
 }
 
-#' Install the impmap control into the ui
-#'
-#' @param env Environment with ui in it
-#' @param ... Other arguments
-#' @return Nothing, called for side effects
-#' @author Matthew L. Fidler
-#' @noRd
-.impmapFamilyControl <- function(env, ...) {
-  .ui <- env$ui
-  .control <- env$control
-  if (is.null(.control)) {
-    .control <- impmapControl()
-  }
-  if (!inherits(.control, "impmapControl")) {
-    .control <- do.call(nlmixr2est::impmapControl, .control)
-  }
-  assign("control", .control, envir = .ui)
-}
-
 #' Fit the impmap family of models
 #'
 #' @param env Environment from nlmixr2Est

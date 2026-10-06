@@ -544,363 +544,56 @@ rxGetDistributionNlsLines.rxUi <- function(line) {
 #' @export
 rxUiGet.nlsModel0 <- function(x, ...) {
   .f <- x[[1]]
-  .ret <- rxode2::rxCombineErrorLines(
+  .nlmFamilyModel0(
     .f,
-    errLines = rxGetDistributionNlsLines(.f),
-    prefixLines = .uiGetNlsTheta(.f),
-    paramsLine = NA, # .uiGetThetaEtaParams(.f),
-    modelVars = TRUE,
-    cmtLines = FALSE,
-    dvidLine = FALSE
+    rxGetDistributionNlsLines(.f),
+    .uiGetNlsTheta(.f),
+    quote(rx_pred_ <- (rx_dv_ - rx_pred_) / sqrt(rx_r_))
   )
-  ## pred <- (Vm * conc)/(K + conc)
-  ## (resp - pred) / sqrt(pred)
-  .ret <- .ret[[-1]]
-  .w <- seq_along(.ret)
-  .w <- .w[-1]
-  as.call(c(
-    list(quote(`rxModelVars`)),
-    as.call(c(
-      list(quote(`{`)),
-      lapply(.w, function(i) {
-        .ret[[i]]
-      }),
-      list(quote(rx_pred_ <- (rx_dv_ - rx_pred_) / sqrt(rx_r_)))
-    ))
-  ))
 }
 attr(rxUiGet.nlsModel0, "rstudio") <- quote(rxModelVars({}))
 
-
-#' Load the nls model into symengine
-#'
-#' @param x rxode2 UI object
-#' @return String for loading into symengine
-#' @author Matthew L. Fidler
-#' @noRd
-.nlsPrune <- function(x) {
-  .x <- x[[1]]
-  .x <- .x$nlsModel0[[-1]]
-  .env <- new.env(parent = emptyenv())
-  .env$.if <- NULL
-  .env$.def1 <- NULL
-  .malert("pruning branches ({.code if}/{.code else}) of nls model...")
-  .ret <- rxode2::.rxPrune(.x, envir = .env, strAssign = rxode2::rxModelVars(x[[1]])$strAssign)
-  .mv <- rxode2::rxModelVars(.ret)
-  ## Need to convert to a function
-  if (rxode2::.rxIsLinCmt() == 1L) {
-    .vars <- c(.mv$params, .mv$lhs, .mv$slhs)
-    .mv <- rxode2::.rxLinCmtGen(length(.mv$state), .vars)
-  }
-  .msuccess("done")
-  rxode2::rxNorm(.mv)
-}
+# The nls models are built by the nlm-family build stack in R/nlm.R;
+# .nlmFamilySpec() lists what differs between the nlm and nls builds.
 
 #' @export
 rxUiGet.loadPruneNls <- function(x, ...) {
-  .loadSymengine(.nlsPrune(x), promoteLinSens = FALSE)
+  .loadSymengine(.nlmFamilyPrune(x, "nls"), promoteLinSens = FALSE)
 }
 attr(rxUiGet.loadPruneNls, "rstudio") <- emptyenv()
 
 #' @export
 rxUiGet.nlsRxModel <- function(x, ...) {
-  .s <- rxUiGet.loadPruneNls(x, ...)
-  # See rxUiGet.nlmRxModel: matExp() models need the LHS (k_from_to definitions)
-  # emitted before the materialized d/dt() lines that reference them.
-  .isMatExp <- isTRUE(.rxInjectMatExpDdt(.s))
-  .prd <- get("rx_pred_", envir = .s)
-  .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.prd))
-  ## .var <- get("rx_r_", envir = .s)
-  ## .var <- paste0("rx_r_=", rxode2::rxFromSE(.var))
-
-  ## .dv <- get("rx_dv_", envir = .s)
-  ## .dv <- paste0("rx_dv_=", rxode2::rxFromSE(.dv))
-  ## .lhs0 <- .s$..lhs0
-  ## if (is.null(.lhs0)) .lhs0 <- ""
-  .ddt <- .s$..ddt
-  if (is.null(.ddt)) {
-    .ddt <- ""
-  }
-  .lhs <- character(0)
-  if (.isMatExp) {
-    .lhs <- .s$..lhs
-    if (is.null(.lhs)) .lhs <- character(0)
-  }
-  .ret <- paste(
-    c(
-      # .s$..stateInfo["state"],
-      # .lhs0,
-      .lhs,
-      .ddt,
-      .prd,
-      # .s$..stateInfo["statef"],
-      # .s$..stateInfo["dvid"],
-      ""
-    ),
-    collapse = "\n"
-  )
-  if (exists("..maxTheta", .s)) {
-    .eventTheta <- rep(0L, .s$..maxTheta)
-  } else {
-    .eventTheta <- integer(0)
-  }
-  for (.v in .s$..eventVars) {
-    .vars <- as.character(get(.v, envir = .s))
-    .vars <- rxode2::rxGetModel(paste0("rx_lhs=", rxode2::rxFromSE(.vars)))$params
-    for (.v2 in .vars) {
-      .reg <- rex::rex(start, "THETA[", capture(any_numbers), "]", end)
-      if (regexpr(.reg, .v2) != -1) {
-        .num <- as.numeric(sub(.reg, "\\1", .v2))
-        .eventTheta[.num] <- 1L
-      }
-    }
-  }
-  .s$.eventTheta <- .eventTheta
-
-  .sumProd <- rxode2::rxGetControl(x[[1]], "sumProd", FALSE)
-  .optExpression <- rxode2::rxGetControl(x[[1]], "optExpression", TRUE)
-  if (.sumProd) {
-    .malert("stabilizing round off errors in nls model...")
-    .ret <- rxode2::rxSumProdModel(.ret)
-    .msuccess("done")
-  }
-  if (.optExpression) {
-    .ret <- rxode2::rxOptExpr(.ret, "nls model", parallel = .optExprCores(x[[1]]))
-    .msuccess("done")
-  }
-
-  .cmt <- rxUiGet.foceiCmtPreModel(x, ...)
-  # mtime() lines are re-emitted here (#919); see .mtimeLinesStr()
-  .cmt <- .addPreModelLines(.cmt, rxUiGet.interpLinesStr(x, ...), .mtimeLinesStr(.s))
-  ## no splitBolus() here -- this model solves the pre-split events, so
-  ## declaring it would split the doses twice (see .foceiPreProcessData())
-  list(
-    predOnly = .nlmixr2estRxode2(
-      paste(
-        c(
-          rxUiGet.nlsParams(x, ...),
-          .cmt,
-          .ret,
-          .foceiToCmtLinesAndDvid(x[[1]])
-        ),
-        collapse = "\n"
-      ),
-      "rxNlsPredOnly"
-    ),
-    eventTheta = .eventTheta
-  )
+  .nlmFamilyRxModel(x, "nls", ...)
 }
 
 #' @export
 rxUiGet.loadPruneNlsSens <- function(x, ...) {
-  .loadSymengine(.nlsPrune(x), promoteLinSens = TRUE)
+  .loadSymengine(.nlmFamilyPrune(x, "nls"), promoteLinSens = TRUE)
 }
 attr(rxUiGet.loadPruneNlsSens, "rstudio") <- emptyenv()
 
 #' @export
 rxUiGet.nlsThetaS <- function(x, ...) {
-  .s <- rxUiGet.loadPruneNlsSens(x, ...)
-  .sensEtaOrTheta(.s, theta = TRUE, rxui = x[[1]])
+  .nlmFamilyThetaS(x, "nls")
 }
 attr(rxUiGet.nlsThetaS, "rstudio") <- emptyenv()
 
 #' @export
 rxUiGet.nlsHdTheta <- function(x, ...) {
-  .s <- rxUiGet.nlsThetaS(x)
-  .stateVars <- rxode2stateOde(.s)
-  .predMinusDv <- rxode2::rxGetControl(x[[1]], "predMinusDv", TRUE)
-  .grd <- rxode2::rxExpandFEta_(
-    .stateVars,
-    .s$..maxTheta,
-    ifelse(.predMinusDv, 1L, 2L),
-    isTheta = TRUE
-  )
-  if (rxode2::.useUtf()) {
-    .malert("calculate \u2202(f)/\u2202(\u03B8)")
-  } else {
-    .malert("calculate d(f)/d(theta)")
-  }
-  rxode2::rxProgress(dim(.grd)[1])
-  on.exit({
-    rxode2::rxProgressAbort()
-  })
-  .any.zero <- FALSE
-  .all.zero <- TRUE
-  # linCmt() sensitivity carry for a theta on a covariate-driven linCmt()
-  # parameter (#1003); see foceiLinCmtCarryTheta.R
-  .thetaVars <- paste0("THETA_", seq_len(.s$..maxTheta), "_")
-  .carry <- .rxCarryThetaPairsForBuild(x, .s, .thetaVars)
-  .ret <- apply(.grd, 1, function(x) {
-    .l <- x["calc"]
-    .l <- eval(parse(text = .l))
-    .ret <- paste0(x["dfe"], "=", rxode2::rxFromSE(.l))
-    if (!is.null(.carry)) {
-      .w <- which(.carry$pairs$eta == sub("^.*_BY_(THETA_[0-9]+)___$", "\\1_", x["dfe"]))
-      if (length(.w) == 1L) {
-        .ret <- .rxCarryThetaEmit(.carry$pairs, .w, .s, x["dfe"], .carry$fp, .predMinusDv)
-      }
-    }
-    .zErr <- suppressWarnings(try(as.numeric(get(x["dfe"], .s)), silent = TRUE))
-    if (identical(.zErr, 0)) {
-      .any.zero <<- TRUE
-    } else if (.all.zero) {
-      .all.zero <<- FALSE
-    }
-    rxode2::rxTick()
-    .ret
-  })
-  if (.all.zero) {
-    stop("none of the predictions depend on 'THETA'", call. = FALSE)
-  }
-  if (.any.zero) {
-    warning("some of the predictions do not depend on 'THETA'", call. = FALSE)
-  }
-  .s$..HdTheta <- .ret
-  .s$..linCmtCarryThetaPairs <- if (is.null(.carry)) NULL else .carry$pairs
-  .s$..pred.minus.dv <- .predMinusDv
-  rxode2::rxProgressStop()
-  .s
+  .nlmFamilyHdTheta(x, "nls")
 }
 attr(rxUiGet.nlsHdTheta, "rstudio") <- emptyenv()
 
-#' Finalize nls rxode2 based on symengine saved info
-#'
-#' @param .s Symengine/rxode2 object
-#' @param interpLines covariate interpolation lines (`locf()`/`nocb()`/...) to
-#'   emit; symengine drops them, so they have to be added back here
-#' @return Nothing
-#' @author Matthew L Fidler
-#' @noRd
-.rxFinalizeNls <- function(.s, sum.prod = FALSE, optExpression = TRUE, cores = 0L, interpLines = "") {
-  interpLines <- interpLines[interpLines != ""]
-  if (isTRUE(.s$..matExpNative)) {
-    # see focei.R's .rxFinalizeInner(): rxSumProdModel()/rxOptExpr() do not
-    # support "indLin(state) <- expr" (Michaelis-Menten forcing)
-    sum.prod <- FALSE
-    optExpression <- FALSE
-  }
-  .prd <- get("rx_pred_", envir = .s)
-  .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.prd))
-  .yj <- paste(get("rx_yj_", envir = .s))
-  .yj <- paste0("rx_yj_~", rxode2::rxFromSE(.yj))
-  .lambda <- paste(get("rx_lambda_", envir = .s))
-  .lambda <- paste0("rx_lambda_~", rxode2::rxFromSE(.lambda))
-  .hi <- paste(get("rx_hi_", envir = .s))
-  .hi <- paste0("rx_hi_~", rxode2::rxFromSE(.hi))
-  .low <- paste(get("rx_low_", envir = .s))
-  .low <- paste0("rx_low_~", rxode2::rxFromSE(.low))
-  .ddt <- .s$..ddt
-  if (is.null(.ddt)) {
-    .ddt <- character(0)
-  }
-  .sens <- .s$..sens
-  if (is.null(.sens)) {
-    .sens <- character(0)
-  }
-  .s$..nlsS <- paste(
-    c(
-      .s$params,
-      .s$..stateInfo["state"],
-      interpLines,
-      .ddt,
-      .sens,
-      .yj,
-      .lambda,
-      .hi,
-      .low,
-      .prd,
-      .s$..HdTheta,
-      .s$..stateInfo["statef"],
-      .s$..stateInfo["dvid"],
-      ""
-    ),
-    collapse = "\n"
-  )
-  .lhs0 <- .s$..lhs0
-  if (is.null(.lhs0)) {
-    .lhs0 <- ""
-  }
-  .s$..pred.nolhs <- paste(
-    c(
-      .s$params,
-      .s$..stateInfo["state"],
-      interpLines,
-      .lhs0,
-      .ddt,
-      .yj,
-      .lambda,
-      .hi,
-      .low,
-      .prd,
-      .s$..stateInfo["statef"],
-      .s$..stateInfo["dvid"],
-      ""
-    ),
-    collapse = "\n"
-  )
-
-  if (sum.prod) {
-    .malert("stabilizing round off errors in nls gradient problem...")
-    .s$..nlsS <- rxode2::rxSumProdModel(.s$..nlsS)
-    .msuccess("done")
-    .malert("stabilizing round off errors in nls pred-only problem...")
-    .s$..pred.nolhs <- rxode2::rxSumProdModel(.s$..pred.nolhs)
-    .msuccess("done")
-  }
-  if (optExpression) {
-    .s$..nlsS <- rxode2::rxOptExpr(.s$..nlsS, "nls gradient", parallel = cores)
-    .s$..pred.nolhs <- rxode2::rxOptExpr(.s$..pred.nolhs, "nls pred-only", parallel = cores)
-  }
-  # mtime() lines go in AFTER the optimization, which cannot parse them (#919)
-  .s$..nlsS <- .addMtimeLines(.s$..nlsS, .s)
-  .s$..pred.nolhs <- .addMtimeLines(.s$..pred.nolhs, .s)
-}
-
 #' @export
 rxUiGet.nlsEnv <- function(x, ...) {
-  .s <- rxUiGet.nlsHdTheta(x, ...)
-  .s$params <- rxUiGet.nlsParams(x, ...)
-  .sumProd <- rxode2::rxGetControl(x[[1]], "sumProd", FALSE)
-  .optExpression <- rxode2::rxGetControl(x[[1]], "optExpression", TRUE)
-  .rxFinalizeNls(.s, .sumProd, .optExpression, .optExprCores(x[[1]]), interpLines = rxUiGet.interpLinesStr(x, ...))
-  .s$..outer <- NULL
-  if (exists("..maxTheta", .s)) {
-    .eventTheta <- rep(0L, .s$..maxTheta)
-  } else {
-    .eventTheta <- integer(0)
-  }
-  ## Under eventSens="jump" dosing-parameter sensitivities are injected
-  ## analytically, so skip the FD override for event params ("fd" keeps it); see nlm's rxUiGet.nlmEnv.
-  .eventSens <- rxode2::rxGetControl(x[[1]], "eventSens", "jump")
-  if (!identical(.eventSens, "jump")) {
-    for (.v in .s$..eventVars) {
-      .vars <- as.character(get(.v, envir = .s))
-      .vars <- rxode2::rxGetModel(paste0("rx_lhs=", rxode2::rxFromSE(.vars)))$params
-      for (.v2 in .vars) {
-        .reg <- rex::rex(start, "THETA[", capture(any_numbers), "]", end)
-        if (regexpr(.reg, .v2) != -1) {
-          .num <- as.numeric(sub(.reg, "\\1", .v2))
-          .eventTheta[.num] <- 1L
-        }
-      }
-    }
-  }
-  .s$.eventTheta <- .eventTheta
-  .s
+  .nlmFamilyEnv(x, "nls", ...)
 }
 attr(rxUiGet.nlsEnv, "rstudio") <- emptyenv()
 
 #' @export
 rxUiGet.nlsSensModel <- function(x, ...) {
-  .s <- rxUiGet.nlsEnv(x, ...)
-  ## "jump" attaches rxode2's analytic event (alag/F/rate/dur) sensitivities to the
-  ## residual-Jacobian model instead of using finite differences.
-  .eventSens <- rxode2::rxGetControl(x[[1]], "eventSens", "jump")
-  list(
-    thetaGrad = .nlmixr2estRxode2(.s$..nlsS, "rxNlsGrad", eventSens = .eventSens),
-    predOnly = .nlmixr2estRxode2(.s$..pred.nolhs, "rxNlsPred"),
-    eventTheta = .s$.eventTheta
-  )
+  .nlmFamilySensModel(x, "nls", ...)
 }
 
 
@@ -980,48 +673,12 @@ attr(rxUiGet.nlsParUpper, "rstudio") <- c(`ka` = 1000)
 
 #' @export
 rxUiGet.nlsParNameFun <- function(x, ...) {
-  .ui <- x[[1]]
-  .iniDf <- .ui$iniDf
-  .args <- vapply(
-    seq_along(.iniDf$ntheta),
-    function(t) {
-      if (.iniDf$err[t] %in% c("add", "prop", "pow")) {
-        ""
-      } else if (.iniDf$fix[t]) {
-        ""
-      } else {
-        .iniDf$name[t]
-      }
-    },
-    character(1),
-    USE.NAMES = FALSE
-  )
-  .args <- .args[.args != ""]
-  eval(str2lang(
-    paste0(
-      "function(",
-      paste(.args, collapse = ", "),
-      ") {c(",
-      paste(
-        vapply(
-          seq_along(.iniDf$ntheta),
-          function(t) {
-            if (.iniDf$err[t] %in% c("add", "prop", "pow")) {
-              paste0("'THETA[", t, "]'=", .iniDf$est[t])
-            } else if (.iniDf$fix[t]) {
-              paste0("'THETA[", t, "]'=", .iniDf$est[t])
-            } else {
-              paste0("'THETA[", t, "]'=", .iniDf$name[t])
-            }
-          },
-          character(1),
-          USE.NAMES = FALSE
-        ),
-        collapse = ","
-      ),
-      ")}"
-    )
-  ))
+  .iniDf <- x[[1]]$iniDf
+  # every THETA, with the residual-error and fixed ones at their estimates
+  .values <- .iniDf$name
+  .w <- .iniDf$err %in% c("add", "prop", "pow") | .iniDf$fix
+  .values[.w] <- paste(.iniDf$est[.w])
+  .nlmFamilyParNameFun(.nlsFormulaArgs(x)[-1], .values)
 }
 attr(rxUiGet.nlsParNameFun, "rstudio") <- function() {}
 
