@@ -78,8 +78,9 @@
 #'
 #' @param factr controls the convergence of the `"L-BFGS-B"` method.
 #'   Convergence occurs when the reduction in the objective is within
-#'   this factor of the machine tolerance. Default is `1e7`, that is a
-#'   tolerance of about `1e-8`.
+#'   this factor of the machine tolerance. `NULL` (default) uses
+#'   `10^(-sigdig-2) / .Machine$double.eps` (at least 1), two orders tighter
+#'   than `sigdig`, as `foceiControl(lbfgsFactr=)` does.
 #'
 #' @param pgtol helps control the convergence of the `"L-BFGS-B"`
 #'   method.  It is a tolerance on the projected gradient in the
@@ -210,6 +211,7 @@ optimControl <- function(
   checkmate::assertLogical(warn.1d.NelderMead, len = 1, any.missing = FALSE)
   checkmate::assertIntegerish(type, len = 1, lower = 1, upper = 3, any.missing = FALSE, null.ok = TRUE)
   checkmate::assertIntegerish(lmm, len = 1, lower = 1, any.missing = FALSE)
+  # two orders tighter than sigdig: 10^-sigdig stopped L-BFGS-B early
   if (is.null(factr)) {
     factr <- if (!is.null(sigdig)) .sigdigFactr(sigdig) else 1e7
   }

@@ -205,11 +205,17 @@ getValidNlmixrCtl.default <- function(control) {
 #' @noRd
 .sigdigOptTol <- function(sigdig) 10^(-sigdig)
 
-#' L-BFGS `factr` derived from `sigdig` (relative-f tolerance `10^-sigdig`)
+#' L-BFGS-B `factr` derived from `sigdig`
+#'
+#' Two orders tighter than `10^-sigdig`, as `foceiControl(lbfgsFactr=)`:
+#' `factr` tests one step's objective reduction, so `10^-sigdig` stops early.
 #' @param sigdig optimization significant digits
-#' @return the `factr` value (`tol / .Machine$double.eps`)
+#' @param floor smallest `factr` returned
+#' @return the `factr` value (`10^(-sigdig-2) / .Machine$double.eps`)
 #' @noRd
-.sigdigFactr <- function(sigdig) 10^(-sigdig) / .Machine$double.eps
+.sigdigFactr <- function(sigdig, floor = 1) {
+  max(10^(-sigdig - 2) / .Machine$double.eps, floor)
+}
 
 #' Scale a tuned default tolerance by `sigdig` around `sigdig = 4`
 #'

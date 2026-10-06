@@ -82,7 +82,7 @@ foceiControl(
   covTryHarder = FALSE,
   outerOpt = c("bobyqa", "nlminb", "lbfgsb3c", "L-BFGS-B", "mma", "lbfgsbLG", "slsqp",
     "uobyqa", "newuoa", "trust"),
-  innerOpt = c("auto", "trust", "n1qn1", "BFGS"),
+  innerOpt = c("auto", "trust", "n1qn1", "lbfgsb3c"),
   innerHessian = c("focei", "conditional"),
   detHessian = c("focei", "conditional"),
   hessianMethod = c("fd", "bfgs", "sr1", "bofill"),
@@ -91,6 +91,12 @@ foceiControl(
   trustRmax = NULL,
   trustFterm = NULL,
   trustMterm = NULL,
+  trustPolish = FALSE,
+  innerLbfgsLmm = 5L,
+  innerLbfgsFactr = NULL,
+  innerLbfgsPgtol = NULL,
+  innerLbfgsAbstol = NULL,
+  innerLbfgsReltol = NULL,
   outerTrustHessian = c("auto", "analytic", "bfgs", "fd"),
   outerTrustRinit = NULL,
   outerTrustRmax = NULL,
@@ -695,10 +701,10 @@ box is reported as an infinite objective and the region shrinks instead.}
 
 \item{innerOpt}{optimization method for the inner (per-subject eta)
     problem: `"auto"` (default), `"trust"` (RcppTrust trust-region Newton,
-    using an exact Gauss-Newton+Omega^-1 Hessian every iteration) or
+    using an exact Gauss-Newton+Omega^-1 Hessian every iteration),
     `"n1qn1"` (quasi-Newton, gets a Hessian only once as a warm-start
-    seed).  `"BFGS"` is accepted but not implemented -- it silently falls
-    back to `"n1qn1"`.
+    seed) or `"lbfgsb3c"` (thread-safe L-BFGS-B from `lbfgsb3c`, controlled
+    by the `innerLbfgs*` arguments; `"auto"` never picks it).
 
     `"auto"` picks `"n1qn1"` for a generalized-likelihood endpoint
     (`dnorm()`, `ll()`, `dpois()`, ...) and `"trust"` for everything else.
@@ -794,6 +800,29 @@ Deliberately NOT derived from `epsilon` (`"n1qn1"`'s own, unrelated
 criterion to a value picked for a different optimizer is exactly the
 coupling these parameters exist to remove. Has no effect unless
 `innerOpt="trust"`.}
+
+\item{trustPolish}{logical; when `TRUE`, each converged `innerOpt="trust"`
+solve takes up to 4 more Newton steps on the ETAs, down to `trustFterm`.
+This makes the objective less dependent on the warm-start ETAs and can
+help a fit that stops short of its minimum (#1152).  `FALSE` (default)
+keeps the plain trust solve.}
+
+\item{innerLbfgsLmm}{number of BFGS updates retained by the
+`innerOpt="lbfgsb3c"` L-BFGS-B solve; a whole number of at least 1.
+Defaults to 5.}
+
+\item{innerLbfgsFactr, innerLbfgsPgtol}{`innerOpt="lbfgsb3c"`'s own L-BFGS-B
+objective-reduction factor and projected-gradient tolerance, separate
+from the outer `lbfgsFactr`/`lbfgsPgtol`. `NULL` (default) derives them
+from `sigdig`: `innerLbfgsFactr` is `10^(-sigdig-2) /
+.Machine$double.eps` (floored at 1) and `innerLbfgsPgtol` is
+`10^(-sigdig-2)`, the same scale as `trustFterm`.}
+
+\item{innerLbfgsAbstol, innerLbfgsReltol}{`innerOpt="lbfgsb3c"`'s absolute and
+relative eta-change tolerances, separate from the outer
+`abstol`/`reltol`. `NULL` (default) uses `10^(-sigdig-2)`. With
+`innerOpt="lbfgsb3c"`, `maxInnerIterations` caps the function evaluations
+of each solve.}
 
 \item{outerTrustHessian}{Curvature source for \code{outerOpt="trust"}.
 \code{"auto"} (default) uses the analytical outer Hessian when
