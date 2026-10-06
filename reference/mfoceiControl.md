@@ -307,7 +307,7 @@ mfoceiControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x55f4bd45e650>
+#> <bytecode: 0x55e0f014ab00>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -360,6 +360,21 @@ mfoceiControl()
 #> 
 #> $trustPolish
 #> [1] FALSE
+#> 
+#> $innerLbfgsLmm
+#> [1] 5
+#> 
+#> $innerLbfgsFactr
+#> [1] 4.5036e+10
+#> 
+#> $innerLbfgsPgtol
+#> [1] 1e-05
+#> 
+#> $innerLbfgsAbstol
+#> [1] 1e-05
+#> 
+#> $innerLbfgsReltol
+#> [1] 1e-05
 #> 
 #> $outerTrustHessian
 #> [1] "auto"

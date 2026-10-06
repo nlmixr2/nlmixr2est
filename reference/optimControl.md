@@ -152,8 +152,9 @@ optimControl(
 
   controls the convergence of the \`"L-BFGS-B"\` method. Convergence
   occurs when the reduction in the objective is within this factor of
-  the machine tolerance. Default is \`1e7\`, that is a tolerance of
-  about \`1e-8\`.
+  the machine tolerance. \`NULL\` (default) uses \`10^(-sigdig-2) /
+  .Machine\$double.eps\` (at least 1), two orders tighter than
+  \`sigdig\`, as \`foceiControl(lbfgsFactr=)\` does.
 
 - pgtol:
 
@@ -471,10 +472,10 @@ fit2
 #> 
 #> ── Time (sec value$time): ──
 #> 
-#>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.1283552 0.1912992  5.801e-06      0.045       0.008 0.038    0.001
+#>             setup optimize covariance preprocess postprocess table compress
+#> elapsed 0.1455519 0.186122  6.663e-06      0.048       0.008 0.026    0.001
 #>              other
-#> elapsed 0.09933987
+#> elapsed 0.09531939
 #> 
 #> ── (value$parFixed or value$parFixedDf): ──
 #> 

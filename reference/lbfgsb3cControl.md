@@ -51,14 +51,16 @@ lbfgsb3cControl(
 
 - trace:
 
-  If positive, print tracing information; higher values give more detail
-  (see source for "L-BFGS-B" trace levels).
+  Ignored: the thread-safe C++ L-BFGS-B prints nothing; use \`print\`
+  for the iteration log. Kept so existing calls still work.
 
 - factr:
 
   Convergence tolerance factor for "L-BFGS-B"; converges when the
-  objective reduction is within this factor of machine tolerance
-  (default 1e7, i.e. ~1e-8).
+  objective reduction is within this factor of machine tolerance.
+  \`NULL\` (default) uses \`10^(-sigdig-2) / .Machine\$double.eps\` (at
+  least 10), two orders tighter than \`sigdig\`, as
+  \`foceiControl(lbfgsFactr=)\` does.
 
 - pgtol:
 
@@ -81,7 +83,7 @@ lbfgsb3cControl(
 
 - maxit:
 
-  maximum number of iterations.
+  maximum number of objective function evaluations.
 
 - returnLbfgsb3c:
 
@@ -348,28 +350,28 @@ fit2 <- nlmixr(mod, dsn, est="lbfgsb3c")
 print(fit2)
 #> ── nlmixr² log-likelihood lbfgsb3c ──
 #> 
-#>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -673.5735 1170.304 1185.027      -582.1518        81.11838        26.43285
+#>          OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
+#> lPop -685.893 1157.984 1172.707       -575.992        2501.262        135.0755
 #> 
 #> ── Time (sec $time): ──
 #> 
 #>             setup optimize covariance preprocess postprocess table compress
-#> elapsed 0.1658698 1.376264  6.833e-06      0.046       0.009 0.028    0.001
+#> elapsed 0.1650696 1.388458  6.161e-06      0.048        0.01  0.03    0.001
 #>              other
-#> elapsed 0.08585961
+#> elapsed 0.08846593
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
 #>       Est.    SE  %RSE Back-transformed(95%CI)
-#> E0  -0.994 0.123  12.4  -0.994 (-1.23, -0.753)
-#> Em    3.99 0.486  12.2       3.99 (3.04, 4.94)
-#> E50   1.95 0.286  14.7       1.95 (1.39, 2.51)
+#> E0  -0.727 0.106  14.6 -0.727 (-0.936, -0.518)
+#> Em    8.48  3.21  37.9       8.48 (2.18, 14.8)
+#> E50   4.28  1.21  28.1       4.28 (1.92, 6.65)
 #> g     2.00 FIXED FIXED                    2.00
 #>  
 #>   Covariance Type ($covMethod): r
 #>   Some strong fixed parameter correlations exist ($cor) :
 #>      cor:Em,E0 cor:E50,E0 cor:E50,Em 
-#>   0.00724       0.538      0.759  
+#>     0.380      0.528      0.969  
 #>  
 #> 
 #>   Censoring ($censInformation): No censoring
@@ -380,9 +382,9 @@ print(fit2)
 #> # A tibble: 1,000 × 5
 #>   ID      TIME    DV  IPRED      v
 #>   <fct>  <dbl> <dbl>  <dbl>  <dbl>
-#> 1 1     0.0343     0 -0.315 -0.993
-#> 2 1     0.0489     1 -1.31  -0.991
-#> 3 1     0.0501     0 -0.316 -0.991
+#> 1 1     0.0343     0 -0.394 -0.726
+#> 2 1     0.0489     1 -1.12  -0.726
+#> 3 1     0.0501     0 -0.395 -0.726
 #> # ℹ 997 more rows
 
 # you can also get the nlm output with fit2$lbfgsb3c
@@ -390,16 +392,17 @@ print(fit2)
 fit2$lbfgsb3c
 #> $par
 #>         E0         Em        E50 
-#> -0.9938709  3.9884802  1.9502842 
+#> -0.7269859  8.4774103  4.2831803 
 #> 
 #> $grad
-#> [1] -3.228326 -1.265349 -3.880640
+#>         E0         Em        E50 
+#>  2.0478673 -0.4247566  0.1303129 
 #> 
 #> $value
-#> [1] 582.1518
+#> [1] 575.992
 #> 
 #> $counts
-#> [1] 8 8
+#> [1] 18 18
 #> 
 #> $convergence
 #> [1] 0
@@ -411,26 +414,26 @@ fit2$lbfgsb3c
 #> [1] 2.0 2.0 0.5
 #> 
 #> $par.scaled
-#>         E0         Em        E50 
-#> -1.7469355  0.7442401  0.9005685 
+#>        E0        Em       E50 
+#> -1.613493  2.988705  5.566361 
 #> 
 #> $hessian
 #>            E0        Em        E50
-#> E0   799.3509 191.08267 -107.88193
-#> Em   191.0827  85.57862  -38.66508
-#> E50 -107.8819 -38.66508   21.77442
+#> E0  804.75124 57.204778 -46.344969
+#> Em   57.20478 10.373528  -7.369607
+#> E50 -46.34497 -7.369607   5.474237
 #> 
 #> $cov.scaled
-#>               E0           Em        E50
-#> E0  0.0037759599 0.0001081024 0.01890005
-#> Em  0.0001081024 0.0591025685 0.10548466
-#> E50 0.0189000471 0.1054846606 0.32687644
+#>              E0         Em        E50
+#> E0  0.002833477 0.03249038 0.06772794
+#> Em  0.032490384 2.58344331 3.75298509
+#> E50 0.067727941 3.75298509 5.80845836
 #> 
 #> $r
 #>            E0        Em        E50
-#> E0   799.3509 191.08267 -107.88193
-#> Em   191.0827  85.57862  -38.66508
-#> E50 -107.8819 -38.66508   21.77442
+#> E0  804.75124 57.204778 -46.344969
+#> Em   57.20478 10.373528  -7.369607
+#> E50 -46.34497 -7.369607   5.474237
 #> 
 
 # The nlm control has been modified slightly to include

@@ -195,8 +195,9 @@ in the `"L-BFGS-B"` method, It defaults to `5`</p></dd>
 <dt id="arg-factr">factr<a class="anchor" aria-label="anchor" href="#arg-factr"></a></dt>
 <dd><p>controls the convergence of the `"L-BFGS-B"` method.
 Convergence occurs when the reduction in the objective is within
-this factor of the machine tolerance. Default is `1e7`, that is a
-tolerance of about `1e-8`.</p></dd>
+this factor of the machine tolerance. `NULL` (default) uses
+`10^(-sigdig-2) / .Machine$double.eps` (at least 1), two orders tighter
+than `sigdig`, as `foceiControl(lbfgsFactr=)` does.</p></dd>
 
 
 <dt id="arg-pgtol">pgtol<a class="anchor" aria-label="anchor" href="#arg-pgtol"></a></dt>
@@ -525,10 +526,10 @@ skips the final back-transform.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Time (sec </span><span style="color: #BBBB00; font-weight: bold;">value</span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>             setup  optimize covariance preprocess postprocess table compress</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.1283552 0.1912992  5.801e-06      0.045       0.008 0.038    0.001</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>             setup optimize covariance preprocess postprocess table compress</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.1455519 0.186122  6.663e-06      0.048       0.008 0.026    0.001</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>              other</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.09933987</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.09531939</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── (</span><span style="color: #BBBB00; font-weight: bold;">value</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #BBBB00; font-weight: bold;">value</span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>

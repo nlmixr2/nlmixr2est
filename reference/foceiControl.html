@@ -120,7 +120,7 @@
 <span>  covTryHarder <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  outerOpt <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"bobyqa"</span>, <span class="st">"nlminb"</span>, <span class="st">"lbfgsb3c"</span>, <span class="st">"L-BFGS-B"</span>, <span class="st">"mma"</span>, <span class="st">"lbfgsbLG"</span>, <span class="st">"slsqp"</span>,</span>
 <span>    <span class="st">"uobyqa"</span>, <span class="st">"newuoa"</span>, <span class="st">"trust"</span><span class="op">)</span>,</span>
-<span>  innerOpt <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"trust"</span>, <span class="st">"n1qn1"</span>, <span class="st">"BFGS"</span><span class="op">)</span>,</span>
+<span>  innerOpt <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"trust"</span>, <span class="st">"n1qn1"</span>, <span class="st">"lbfgsb3c"</span><span class="op">)</span>,</span>
 <span>  innerHessian <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"focei"</span>, <span class="st">"conditional"</span><span class="op">)</span>,</span>
 <span>  detHessian <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"focei"</span>, <span class="st">"conditional"</span><span class="op">)</span>,</span>
 <span>  hessianMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"fd"</span>, <span class="st">"bfgs"</span>, <span class="st">"sr1"</span>, <span class="st">"bofill"</span><span class="op">)</span>,</span>
@@ -130,6 +130,11 @@
 <span>  trustFterm <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  trustMterm <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  trustPolish <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  innerLbfgsLmm <span class="op">=</span> <span class="fl">5L</span>,</span>
+<span>  innerLbfgsFactr <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  innerLbfgsPgtol <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  innerLbfgsAbstol <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  innerLbfgsReltol <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  outerTrustHessian <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"analytic"</span>, <span class="st">"bfgs"</span>, <span class="st">"fd"</span><span class="op">)</span>,</span>
 <span>  outerTrustRinit <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  outerTrustRmax <span class="op">=</span> <span class="cn">NULL</span>,</span>
@@ -875,10 +880,10 @@ box is reported as an infinite objective and the region shrinks instead.</p></dd
 <dt id="arg-inneropt">innerOpt<a class="anchor" aria-label="anchor" href="#arg-inneropt"></a></dt>
 <dd><p>optimization method for the inner (per-subject eta)
     problem: `"auto"` (default), `"trust"` (RcppTrust trust-region Newton,
-    using an exact Gauss-Newton+Omega^-1 Hessian every iteration) or
+    using an exact Gauss-Newton+Omega^-1 Hessian every iteration),
     `"n1qn1"` (quasi-Newton, gets a Hessian only once as a warm-start
-    seed).  `"BFGS"` is accepted but not implemented – it silently falls
-    back to `"n1qn1"`.</p>
+    seed) or `"lbfgsb3c"` (thread-safe L-BFGS-B from `lbfgsb3c`, controlled
+    by the `innerLbfgs*` arguments; `"auto"` never picks it).</p>
 <p>`"auto"` picks `"n1qn1"` for a generalized-likelihood endpoint
     (`dnorm()`, `ll()`, `dpois()`, ...) and `"trust"` for everything else.
     Such an endpoint has no Gauss-Newton shortcut, so the inner eta Hessian
@@ -994,6 +999,29 @@ solve takes up to 4 more Newton steps on the ETAs, down to `trustFterm`.
 This makes the objective less dependent on the warm-start ETAs and can
 help a fit that stops short of its minimum (#1152).  `FALSE` (default)
 keeps the plain trust solve.</p></dd>
+
+
+<dt id="arg-innerlbfgslmm">innerLbfgsLmm<a class="anchor" aria-label="anchor" href="#arg-innerlbfgslmm"></a></dt>
+<dd><p>number of BFGS updates retained by the
+`innerOpt="lbfgsb3c"` L-BFGS-B solve; a whole number of at least 1.
+Defaults to 5.</p></dd>
+
+
+<dt id="arg-innerlbfgsfactr-innerlbfgspgtol">innerLbfgsFactr, innerLbfgsPgtol<a class="anchor" aria-label="anchor" href="#arg-innerlbfgsfactr-innerlbfgspgtol"></a></dt>
+<dd><p>`innerOpt="lbfgsb3c"`'s own L-BFGS-B
+objective-reduction factor and projected-gradient tolerance, separate
+from the outer `lbfgsFactr`/`lbfgsPgtol`. `NULL` (default) derives them
+from `sigdig`: `innerLbfgsFactr` is `10^(-sigdig-2) /
+.Machine$double.eps` (floored at 1) and `innerLbfgsPgtol` is
+`10^(-sigdig-2)`, the same scale as `trustFterm`.</p></dd>
+
+
+<dt id="arg-innerlbfgsabstol-innerlbfgsreltol">innerLbfgsAbstol, innerLbfgsReltol<a class="anchor" aria-label="anchor" href="#arg-innerlbfgsabstol-innerlbfgsreltol"></a></dt>
+<dd><p>`innerOpt="lbfgsb3c"`'s absolute and
+relative eta-change tolerances, separate from the outer
+`abstol`/`reltol`. `NULL` (default) uses `10^(-sigdig-2)`. With
+`innerOpt="lbfgsb3c"`, `maxInnerIterations` caps the function evaluations
+of each solve.</p></dd>
 
 
 <dt id="arg-outertrusthessian">outerTrustHessian<a class="anchor" aria-label="anchor" href="#arg-outertrusthessian"></a></dt>

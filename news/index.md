@@ -4,6 +4,23 @@
 
 ### New features
 
+- `foceiControl(innerOpt = "lbfgsb3c")` runs L-BFGS-B on the per-subject
+  ETA problem, using `lbfgsb3c`’s thread-safe port
+  (`lbfgsb3c >= 2024-3.6`). It replaces `innerOpt = "BFGS"`, which
+  silently fell back to `"n1qn1"`
+  ([\#927](https://github.com/nlmixr2/nlmixr2est/issues/927),
+  [\#1160](https://github.com/nlmixr2/nlmixr2est/issues/1160)). Its
+  tolerances are set by the new `innerLbfgsLmm`, `innerLbfgsFactr`,
+  `innerLbfgsPgtol`, `innerLbfgsAbstol` and `innerLbfgsReltol`
+  arguments, separate from the outer L-BFGS-B ones; the tolerances
+  default from `sigdig`. `innerOpt = "auto"` never picks it.
+
+- `est = "lbfgsb3c"` now runs lbfgsb3c’s thread-safe L-BFGS-B directly
+  from C++ on the nlm-family objective, with no R callback per
+  evaluation, and `foceiControl(outerOpt = "lbfgsb3c")` uses the same
+  port. Results are unchanged. The FOCEi fit now reports the L-BFGS-B
+  exit message (it was empty), and `lbfgsb3cControl(trace=)` is ignored.
+
 - `foceiControl(trustPolish = TRUE)` finishes each converged
   `innerOpt="trust"` solve with Newton steps on the ETAs, down to
   `trustFterm`. The default trust solve can stop up to
@@ -35,6 +52,17 @@
   whose sampler had already handled those priors correctly.
 
 ### Bug Fixes
+
+- `est = "lbfgsb3c"` stopped early at the default `sigdig`: its `factr`
+  was `10^-sigdig / eps`, which tests one step’s objective reduction, so
+  a logistic Emax fit ended ~1.6 OFV short of the optimum. It is now
+  `10^(-sigdig-2) / eps`, matching `foceiControl(lbfgsFactr=)`.
+  `est = "optim"` with `method = "L-BFGS-B"` stopped short the same way
+  and now uses the same rule.
+
+- `lbfgsb3cControl(maxit=)` was documented but dropped, so
+  `est="lbfgsb3c"` always used lbfgsb3c’s own limit of 1000 evaluations;
+  it is now honored (default 10000).
 
 - `est="nls"` dropped the `past()` pre-history of a delay differential
   equation model, biasing its estimates; the history is now kept.
