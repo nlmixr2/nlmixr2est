@@ -5106,8 +5106,9 @@ static inline int innerOpt1(int id, int likId) {
         op_focei.nLbfgsNoConv.fetch_add(1, std::memory_order_relaxed);
         if (fail == 28) op_focei.nLbfgsMaxit.fetch_add(1, std::memory_order_relaxed);
       }
-      if (fInd->badSolve == 1) {
-        // A latched NA leaves f from an evaluation that may not be at x; re-check x.
+      if (!conv || fInd->badSolve == 1) {
+        // A latched NA, or an input error (13/29) that never calls fn, leaves f
+        // from an evaluation that may not be at x; re-evaluate at x.
         fInd->badSolve = 0;
         f = likInner0(fInd->x, id);
         fInd->badSolve = ISNAN(f) ? 1 : 0;
