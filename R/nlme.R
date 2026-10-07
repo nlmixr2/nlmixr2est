@@ -327,6 +327,11 @@ nlmeControl <- nlmixr2NlmeControl
   .weights <- rxode2::rxGetControl(ui, "weights", NULL)
   if (is.null(.weights)) {
     .weights <- ui$nlmeWeights
+    # sigma, const and prop of varConstProp are not separately identifiable;
+    # as nlme recommends, fix sigma at 1 so const and prop are the sds
+    if (inherits(.weights, "varConstProp") && isTRUE(.ctl$sigma == 0)) {
+      .ctl$sigma <- 1
+    }
   } else {
     rxode2::rxAssignControlValue(ui, "returnNlme", TRUE)
   }
@@ -609,6 +614,16 @@ nlmixr2Est.nlme <- function(env, ...) {
   rxode2::assertRxUiSingleEndpoint(.ui, " for the estimation routine 'nlme'", .var.name = .ui$modelName)
   rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'nlme'", .var.name = .ui$modelName)
   rxode2::assertRxUiEstimatedResiduals(.ui, " for the estimation routine 'nlme'", .var.name = .ui$modelName)
+  .fixOme <- .ui$iniDf$name[!is.na(.ui$iniDf$neta1) & .ui$iniDf$fix]
+  if (length(.fixOme) > 0L) {
+    # nlme's pdMat classes have no way to hold one element at its value
+    stop(
+      "fixed omega elements are not supported by est=\"nlme\": ",
+      paste(.fixOme, collapse = ", "),
+      "; use est=\"focei\" or est=\"saem\"",
+      call. = FALSE
+    )
+  }
   .nlmeFamilyControl(env, ...)
   on.exit(
     {

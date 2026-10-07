@@ -383,7 +383,8 @@ nmTest({
     expect_equal(
       fit$omega["eta.cl", "eta.v"],
       .cor["eta.cl", "eta.v"] * .sd[["eta.cl"]] * .sd[["eta.v"]],
-      tolerance = 1e-8
+      # rebuilding a covariance from a correlation and two sds rounds at ~1e-8
+      tolerance = 1e-6
     )
     # refits, setCov() and setOfv() start from the fit's ui
     expect_equal(fit$ui$omega, fit$omega)
@@ -488,6 +489,10 @@ nmTest({
         combined1pow = .th[["add.sd"]] + .th[["prop.sd"]] * .f^.th[["pw"]]
       ))
       expect_equal(.sd, .sdNlme, tolerance = 1e-6, info = .n)
+      if (.n == "combined2") {
+        # sigma is fixed at 1, so const and prop are the sds themselves
+        expect_equal(.nl$sigma, 1)
+      }
     }
   })
 
@@ -564,6 +569,54 @@ nmTest({
     .cls <- vapply(.pd, function(b) class(b)[1], character(1))
     .size <- vapply(.pd, function(b) nrow(as.matrix(b)), integer(1))
     expect_identical(sort(paste(.cls, .size)), c("pdDiag 1", "pdSymm 2", "pdSymm 3"))
+  })
+
+  test_that("one full omega block stays pdSymm and a diagonal omega pdDiag", {
+    .mk <- function(om) {
+      .f <- function() {
+        ini({
+          t1 <- 1
+          t2 <- 1
+          t3 <- 1
+          add.sd <- 1
+        })
+        model({
+          y <- t1 * exp(eta.a) + t2 * exp(eta.b) + t3 * exp(eta.c)
+          y ~ add(add.sd)
+        })
+      }
+      suppressWarnings(rxode2::rxode2(eval(bquote(rxode2::ini(.f, .(om))))))
+    }
+    .full <- .mk(quote(eta.a + eta.b + eta.c ~ c(1, 0.1, 1, 0.1, 0.1, 1)))
+    expect_s3_class(.full$nlmePdOmega, "pdSymm")
+    expect_false(inherits(.full$nlmePdOmega, "pdBlocked"))
+    .diag <- .mk(quote({
+      eta.a ~ 1
+      eta.b ~ 1
+      eta.c ~ 1
+    }))
+    expect_s3_class(.diag$nlmePdOmega, "pdDiag")
+  })
+
+  test_that("nlme refuses a fixed omega element", {
+    .f <- function() {
+      ini({
+        tke <- 0.5
+        eta.ke ~ fix(0.04)
+        add.sd <- 0.1
+      })
+      model({
+        ke <- tke * exp(eta.ke)
+        ipre <- 10 * exp(-ke * t)
+        ipre ~ add(add.sd)
+      })
+    }
+    .d <- Wang2007
+    .d$DV <- .d$Y
+    expect_error(
+      .nlmixr(.f, .d, "nlme", control = nlmeControl(verbose = FALSE)),
+      "fixed omega elements are not supported"
+    )
   })
 
   test_that("the nlme covariance of a single fixed effect is named and nlme's", {

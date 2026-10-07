@@ -316,7 +316,11 @@ rxUiGet.nlmeWeights <- function(x, ...) {
     }
   } else {
     if (.errType == "add + prop") {
-      return(nlme::varConstProp())
+      # sigma is fixed at 1 (.nlmeFitModel()), so start from the ini() sds
+      .iniDf <- .ui$iniDf
+      .add <- .iniDf$est[which(.iniDf$err == "add")]
+      .prop <- .iniDf$est[which(.iniDf$err == "prop")]
+      return(nlme::varConstProp(const = .add, prop = .prop))
     } else {
       stop("add+prop combined2 does not support nlme power currently", call. = FALSE)
     }
