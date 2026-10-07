@@ -39,7 +39,9 @@ Shared fit driver for the nlm-family estimation methods
 
 - getTheta:
 
-  \`function(fit, ui)\` returning the full theta vector
+  \`function(fit, ui)\` returning the full theta vector, or the name of
+  the optimizer's estimates in the fit (e.g. \`"par"\`), which
+  \`.nlmFamilyGetTheta()\` completes with the fixed thetas
 
 - controlToFocei:
 
@@ -53,7 +55,8 @@ Shared fit driver for the nlm-family estimation methods
 
 - objective:
 
-  optional \`function(fit)\` returning the raw objective; when \`NULL\`
+  optional \`function(fit)\` returning the raw objective, or the name of
+  the fit's minimized -log-likelihood, which is doubled; when \`NULL\`
   the driver does not set \`\$objective\` (a \`postSetup\` closure did)
 
 - message:

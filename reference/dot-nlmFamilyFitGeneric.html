@@ -76,7 +76,9 @@ under (e.g. `"nlm"` -&gt; `.ret[["nlm"]]`)</p></dd>
 
 
 <dt id="arg-gettheta">getTheta<a class="anchor" aria-label="anchor" href="#arg-gettheta"></a></dt>
-<dd><p>`function(fit, ui)` returning the full theta vector</p></dd>
+<dd><p>`function(fit, ui)` returning the full theta vector, or the
+name of the optimizer's estimates in the fit (e.g. `"par"`), which
+`.nlmFamilyGetTheta()` completes with the fixed thetas</p></dd>
 
 
 <dt id="arg-controltofocei">controlToFocei<a class="anchor" aria-label="anchor" href="#arg-controltofocei"></a></dt>
@@ -90,7 +92,8 @@ raw optimizer result (e.g. `"returnNlm"`)</p></dd>
 
 
 <dt id="arg-objective">objective<a class="anchor" aria-label="anchor" href="#arg-objective"></a></dt>
-<dd><p>optional `function(fit)` returning the raw objective; when
+<dd><p>optional `function(fit)` returning the raw objective, or
+the name of the fit's minimized -log-likelihood, which is doubled; when
 `NULL` the driver does not set `$objective` (a `postSetup` closure did)</p></dd>
 
 
