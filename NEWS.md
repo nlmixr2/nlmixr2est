@@ -54,6 +54,13 @@
   `est = "optim"` with `method = "L-BFGS-B"` stopped short the same way and
   now uses the same rule.
 
+- `est="nls"` started from parameters that are all zero (all-zero initial
+  estimates with `nlsControl(scaleTo = 0)`) now solves the model for its first
+  evaluation.  It answered that evaluation from an empty cache, all zero
+  residuals and Jacobian, and stopped with `incorrect number of dimensions`
+  (`singular gradient matrix at initial parameter estimates` with
+  `algorithm = "default"`).
+
 - `lbfgsb3cControl(maxit=)` was documented but dropped, so `est="lbfgsb3c"`
   always used lbfgsb3c's own limit of 1000 evaluations; it is now honored
   (default 10000).
@@ -204,6 +211,12 @@
   
 - Added a native analytical outer Hessian for fast Gaussian FOCE/FOCE+/FOCEI/AGQ fits, using
   the existing sensitivity pool. Fast `nlminb` fits used it automatically.
+
+- `setOfv(fit, "laplace<n>")` and `setOfv(fit, "gauss<n>_<sd>")` on a saem fit
+  whose environment holds no `adjObf` now take it from the fit's control, as
+  `setOfv(fit, "imp")` does, instead of stopping with `arguments imply
+  differing number of rows`.  Both now read the fit's own control (`$control`);
+  the imp objective read `$foceiControl`, which never holds `adjObf`.
 
 - The FOCEi-family outer optimizer now scales each parameter by its own
   scaling constant when a fixed theta (with `literalFix = FALSE`) or a
