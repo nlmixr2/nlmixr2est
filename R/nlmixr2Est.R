@@ -456,7 +456,7 @@ nlmixr2Est0 <- function(env, ...) {
   if (!is.na(.def)) {
     .curCov <- tryCatch(ret$cov, error = function(e) NULL)
     .installed <-
-      identical(tryCatch(ret$covMethod, error = function(e) NULL), .def) &&
+      .covSameName(.def, tryCatch(ret$covMethod, error = function(e) NULL)) &&
       is.matrix(.curCov) &&
       all(is.finite(.curCov))
     if (!.installed) {
@@ -466,8 +466,10 @@ nlmixr2Est0 <- function(env, ...) {
         # warns when nothing was installed or the nested fit fell back to
         # another covariance
         try(.covInstallResult(.rEnv, .r, warn = TRUE, what = .def), silent = TRUE)
-        if (identical(.rEnv$covMethod, .def)) {
-          .covOptionsSet(.rEnv, .def, .covOptionsDefault(.rEnv, .def))
+        if (.covSameName(.def, .rEnv$covMethod)) {
+          for (.n in unique(c(.def, .rEnv$covMethod))) {
+            .covOptionsSet(.rEnv, .n, .covOptionsDefault(.rEnv, .def))
+          }
         }
       }
     }

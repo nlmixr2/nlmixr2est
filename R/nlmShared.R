@@ -243,7 +243,8 @@
 #'
 #' A positive-definite Hessian is used as is.  One that is not is repaired as
 #' `sqrtm(R %*% R)` ("|r|") or, when that is not positive definite either, as
-#' the nearest positive-definite matrix ("r+").
+#' the nearest positive-definite matrix ("r+").  A numerically singular one is
+#' not repaired: both repairs would invert its rounding noise.
 #' @param hess Hessian of the -LL objective (the R matrix)
 #' @return list(r = the matrix to invert, `NULL` when none is usable; type =
 #'   "r", "|r|", "r+" or "failed"; warning = what was done, `NULL` for "r")
@@ -255,6 +256,10 @@
   }
   .r <- NULL
   if (!is.null(.g$cov)) {
+    .ev <- abs(.g$ev)
+    if (min(.ev) <= nrow(.g$cov) * .Machine$double.eps * max(.ev)) {
+      return(list(type = "failed", warning = "R matrix is singular; covariance step failed"))
+    }
     .r <- tryCatch(sqrtm(.g$cov %*% .g$cov), error = function(e) NULL)
     .type <- "|r|"
     if (!.covGuard(.r)$ok) {

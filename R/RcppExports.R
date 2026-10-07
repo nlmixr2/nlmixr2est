@@ -457,6 +457,10 @@ nlmSolveGradHess <- function(theta) {
     .Call(`_nlmixr2est_nlmSolveGradHess`, theta)
 }
 
+nlmLbfgsb3cFit <- function(theta, lower, upper, control) {
+    .Call(`_nlmixr2est_nlmLbfgsb3cFit`, theta, lower, upper, control)
+}
+
 nlmTrustFit <- function(theta, control) {
     .Call(`_nlmixr2est_nlmTrustFit`, theta, control)
 }

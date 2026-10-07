@@ -1066,6 +1066,10 @@ static arma::mat impFdHessian(const arma::vec& par0,
 
 static void impComputeCov(Environment e, const arma::vec& gammaVec,
                           const std::vector<impProp>& props, int covIter) {
+  // The proposal Hessians below and every objective evaluation re-score each
+  // subject away from its mode, at perturbed parameters; the fit reports the
+  // log-likelihoods the final MAP pass left at the estimates.
+  CovLlikObsGuard _llikObsGuard;
   int nsub = impNsub();
   int neta = impNeta();
   int isample = impNsample();
@@ -1270,9 +1274,9 @@ static void impComputeCov(Environment e, const arma::vec& gammaVec,
   }
   arma::vec se(np);
   for (int j = 0; j < np; ++j) se[j] = (cov(j, j) > 0) ? std::sqrt(cov(j, j)) : NA_REAL;
-  // Full covariance in free-parameter order (matches the fit's covariance layout).
-  e["impCov"] = wrap(cov);
-  e["impSe"] = wrap(se);
+  // Full covariance in the free-parameter (estimation) order: the thetas, then the
+  // Omega parameters, which are entries of chol(Omega^-1).
+  e["impCovInternal"] = wrap(cov);
   e["impCovThetaN"] = nTh;
   IntegerVector thIdxR(nTh);
   { int t = 0; for (int j = 0; j < np; ++j) if (pl[j] < ntheta) thIdxR[t++] = pl[j] + 1; }
@@ -1281,12 +1285,24 @@ static void impComputeCov(Environment e, const arma::vec& gammaVec,
     e["impCovTheta"] = wrap(arma::mat(cov.submat(0, 0, nTh - 1, nTh - 1)));
     e["impSeTheta"] = wrap(arma::vec(se.subvec(0, nTh - 1)));
   }
-  // Publish as the fit's covariance so the standard SE / CI / correlation table
-  // machinery (foceiFinalizeTables) picks it up.
-  if (cov.is_finite()) {
-    e["cov"] = wrap(cov);
-    e["covMethod"] = CharacterVector::create("imp");
+  // .impCovInstall() (R/impmap.R) maps the Omega rows to the variances and
+  // covariances they are reported as, checks the result and publishes it as the
+  // fit's covariance, before foceiFinalizeTables builds the SE / CI / correlation
+  // tables from it.  It needs d(Omega)/d(p) of each Omega parameter in the
+  // covariance, the parameter values (to say which parameterization that is),
+  // and the information, to repair one that is not positive definite.
+  List dOm = impOmegaParDeriv();
+  List dOmCov(np - nTh);
+  NumericVector omPar(np - nTh);
+  for (int j = nTh; j < np; ++j) {
+    dOmCov[j - nTh] = dOm[pl[j] - ntheta];
+    omPar[j - nTh] = par0[j];
   }
+  arma::mat Om;
+  impGetOmega(Om);
+  Environment nlmixr2 = Environment::namespace_env("nlmixr2est");
+  Function covInstall = nlmixr2[".impCovInstall"];
+  covInstall(e, wrap(cov), thIdxR, dOmCov, wrap(Om), omPar, wrap(info));
 }
 
 void impOuter(Environment e) {
@@ -1323,7 +1339,12 @@ void impOuter(Environment e) {
   // nIter = 0 is an E-step-only evaluation at the supplied parameters (NONMEM
   // EONLY=1): one E-step, no M-step, and no burn-in (it would move the parameters).
   const bool eOnly = (nIter <= 0);
-  if (eOnly) nBurn = 0;
+  // A frozen run (the post-fit "imp" covariance at a fit's estimates) keeps the
+  // parameters where they were supplied for all nIter iterations: E-steps only,
+  // with the proposal controllers adapting between them, no M-step, no burn-in
+  // and no convergence test.
+  const bool frozen = impFrozen();
+  if (eOnly || frozen) nBurn = 0;
   const int nIterTotal = eOnly ? 1 : nBurn + nIter;
 
   arma::mat condMean;
@@ -1860,7 +1881,7 @@ void impOuter(Environment e) {
     // -- done before the mu updates (which shift thetas/etas) so it sees the
     // E-step parameters, and before impSetEta since impThetaScore's re-solves
     // overwrite the etas.  Skipped if the Hessian is not usable (thetas unchanged).
-    if (nSens > 0) {
+    if (nSens > 0 && !frozen) {
       arma::vec g(nSens, arma::fill::zeros);
       arma::mat H(nSens, nSens, arma::fill::zeros);
       // Batched gradient pass over the theta-sensitivity model (impThetaScore
@@ -2047,7 +2068,7 @@ void impOuter(Environment e) {
     // absolute $MIX thetas via the multinomial logit theta_m = log(a_m / a_Nm),
     // floored away from 0 so a transiently-empty component can recover.  Uses
     // impmap's own responsibilities a_ij, separate from FOCEI's Laplace mixProb.
-    if (Nmix > 1) {
+    if (Nmix > 1 && !frozen) {
       arma::vec aStar(Nmix, arma::fill::zeros);
       for (int i = 0; i < nsub; ++i)
         for (int j = 0; j < Nmix; ++j) aStar[j] += aMat(i, j);
@@ -2060,41 +2081,43 @@ void impOuter(Environment e) {
       if (thetaM.is_finite()) impSetMixThetas(thetaM);
     }
 
-    // Seed each subject's eta with its conditional mean, then update the mu-
-    // referenced population parameters -- covariate groups by regression
-    // (updateMuGroups) and simple intercepts by the mean-shift (impMuInterceptStep)
-    // -- both of which recenter the etas to mean-zero residuals.  Omega is then the
-    // average recentered conditional moment, masked to the estimated structure.
-    for (int id = 0; id < nsub; ++id) {
-      arma::vec cm = condMean.row(id).t();
-      impSetEta(id, cm);
-    }
-    impUpdateMuThetas();
-    impMuInterceptStep();
+    if (!frozen) {
+      // Seed each subject's eta with its conditional mean, then update the mu-
+      // referenced population parameters -- covariate groups by regression
+      // (updateMuGroups) and simple intercepts by the mean-shift (impMuInterceptStep)
+      // -- both of which recenter the etas to mean-zero residuals.  Omega is then the
+      // average recentered conditional moment, masked to the estimated structure.
+      for (int id = 0; id < nsub; ++id) {
+        arma::vec cm = condMean.row(id).t();
+        impSetEta(id, cm);
+      }
+      impUpdateMuThetas();
+      impMuInterceptStep();
 
-    arma::mat Omega(neta, neta, arma::fill::zeros);
-    for (int id = 0; id < nsub; ++id) {
-      impGetEta(id, r);
-      Omega += r * r.t() + condVar[id];
+      arma::mat Omega(neta, neta, arma::fill::zeros);
+      for (int id = 0; id < nsub; ++id) {
+        impGetEta(id, r);
+        Omega += r * r.t() + condVar[id];
+      }
+      Omega /= (double)nsub;
+      // MAP correction: fold in the ini({}) prior's omega term(s), if any (no-op
+      // otherwise) -- see impPriorOmegaCorrect().  Runs BEFORE the structure
+      // mask/fixed-restore below, since a generic (non-invWishart) term's
+      // correction can otherwise leak weight outside the declared structure or
+      // a fix()ed row.
+      impPriorOmegaCorrect(Omega, nsub);
+      Omega %= omMask;
+      // Restore fix()ed Omega rows/columns to their starting values.
+      for (size_t k = 0; k < omFixedEta.size(); ++k) {
+        int fi = omFixedEta[k];
+        if (fi >= 0 && fi < neta) { Omega.row(fi) = Om0.row(fi); Omega.col(fi) = Om0.col(fi); }
+      }
+      // burnFreezeOmega: install nothing, so Omega (and every quantity
+      // impSetOmega rebuilds from it -- omegaInv, cholOmegaInv, logDetOmegaInv5,
+      // the Omega thetas in fullTheta) stays at its starting value.  The thetas
+      // still move; the whole M-step above ran.
+      if (!(burnIter && burnFreezeOmega)) impSetOmega(Omega, diagXform);
     }
-    Omega /= (double)nsub;
-    // MAP correction: fold in the ini({}) prior's omega term(s), if any (no-op
-    // otherwise) -- see impPriorOmegaCorrect().  Runs BEFORE the structure
-    // mask/fixed-restore below, since a generic (non-invWishart) term's
-    // correction can otherwise leak weight outside the declared structure or
-    // a fix()ed row.
-    impPriorOmegaCorrect(Omega, nsub);
-    Omega %= omMask;
-    // Restore fix()ed Omega rows/columns to their starting values.
-    for (size_t k = 0; k < omFixedEta.size(); ++k) {
-      int fi = omFixedEta[k];
-      if (fi >= 0 && fi < neta) { Omega.row(fi) = Om0.row(fi); Omega.col(fi) = Om0.col(fi); }
-    }
-    // burnFreezeOmega: install nothing, so Omega (and every quantity
-    // impSetOmega rebuilds from it -- omegaInv, cholOmegaInv, logDetOmegaInv5,
-    // the Omega thetas in fullTheta) stays at its starting value.  The thetas
-    // still move; the whole M-step above ran.
-    if (!(burnIter && burnFreezeOmega)) impSetOmega(Omega, diagXform);
 
     // Record the current estimates for the parameter-stability half of the test.
     arma::vec parNow; impGetEstPar(parNow);
@@ -2119,7 +2142,7 @@ void impOuter(Environment e) {
     //      that no M-step was allowed to produce.  objTrace gets exactly one
     //      push per iteration, so at nBurn = 0 this is identical to the size
     //      test it sits beside and the default path is unchanged.
-    if (nConvWindow > 0 && R_finite(obj) &&
+    if (!frozen && nConvWindow > 0 && R_finite(obj) &&
         iter >= nBurn + nConvWindow &&
         (int)objTrace.size() >= nConvWindow + 1) {
       int n = (int)objTrace.size();
