@@ -482,3 +482,45 @@ test_that("formatMinWidth in parFixed", {
   expect_true(any(startsWith(names(fit$parFixed), "BSV(")))
   expect_true("Shrink(SD)%" %in% names(fit$parFixed))
 })
+
+test_that("the output builder writes a method's estimates into the ui and keeps the original model", {
+  .ui <- rxode2::rxode2(function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      eta.ka ~ 0.6
+      eta.cl ~ 0.3
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl)
+      y <- ka + cl
+      y ~ add(add.sd)
+    })
+  })
+  .om <- matrix(c(0.2, 0.05, 0.05, 0.1), 2, 2, dimnames = list(c("eta.ka", "eta.cl"), c("eta.ka", "eta.cl")))
+  .old <- nlmixr2global$nlmixr2EstEnv$iniDf0
+  .depth <- nlmixr2global$nlmixr2EstEnv$estDepth
+  withr::defer({
+    nlmixr2global$nlmixr2EstEnv$iniDf0 <- .old
+    nlmixr2global$nlmixr2EstEnv$estDepth <- .depth
+  })
+  # called outside an nlmixr2() run: the ui passed in is the original model
+  nlmixr2global$nlmixr2EstEnv$estDepth <- 0L
+  nlmixr2global$nlmixr2EstEnv$iniDf0 <- data.frame(name = "stale")
+  .env <- new.env(parent = emptyenv())
+  .env$fullTheta <- c(tka = 0.5, tcl = 1.2, add.sd = 0.4)
+  .env$omega <- .om
+  .u <- .nlmixr2OutputContract(rxode2::rxUiDecompress(.ui), .env)
+  expect_equal(.u$omega, .om)
+  expect_equal(.u$theta[c("tka", "tcl", "add.sd")], .env$fullTheta)
+  expect_equal(.env$iniDf0$est, .ui$iniDf$est)
+  # a method that already updated its ui is left alone
+  .env2 <- new.env(parent = emptyenv())
+  .env2$iniDf0 <- data.frame(.ui$iniDf)
+  .env2$omega <- .om
+  .u2 <- .nlmixr2OutputContract(rxode2::rxUiDecompress(.ui), .env2)
+  expect_equal(.u2$omega, .ui$omega)
+  expect_equal(nlmixr2global$nlmixr2EstEnv$iniDf0, .env2$iniDf0)
+})

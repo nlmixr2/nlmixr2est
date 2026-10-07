@@ -498,6 +498,10 @@
   .control$boundTol <- 0 # turn off boundary
   .control$calcTables <- FALSE
   .env2 <- new.env(parent = emptyenv())
+  # obj$ui already holds the estimates; keep the fit's own original model
+  if (is.data.frame(obj$iniDf0)) {
+    .env2$iniDf0 <- obj$iniDf0
+  }
   for (.n in names(.lst)) {
     .control[[.n]] <- .lst[[.n]]
   }

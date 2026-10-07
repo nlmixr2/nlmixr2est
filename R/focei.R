@@ -3643,6 +3643,36 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
   .ret
 }
 
+#' A nearly singular omega, corrected when the correction is small
+#'
+#' The rule FOCEi's covariance step uses for "r+": Schnabel-Eskow's modified
+#' Cholesky factorization (`cholSE()`) adds `E` to the diagonal, and the
+#' correction is accepted when every `E` is within `cholAccept`.
+#'
+#' @param om omega matrix that is not positive definite
+#' @param cholAccept largest diagonal correction accepted
+#' @return `om + diag(E)`, or `NULL` when it needs a larger correction
+#' @noRd
+.foceiOmegaNearPd <- function(om, cholAccept) {
+  if (!all(is.finite(om))) {
+    return(NULL)
+  }
+  .u <- tryCatch(cholSE(om), error = function(e) NULL)
+  if (is.null(.u) || !all(is.finite(.u))) {
+    return(NULL)
+  }
+  .e <- diag(crossprod(.u)) - diag(om)
+  if (!all(is.finite(.e)) || any(.e > cholAccept)) {
+    return(NULL)
+  }
+  .ret <- om
+  diag(.ret) <- diag(om) + pmax(.e, 0)
+  if (inherits(try(chol(.ret), silent = TRUE), "try-error")) {
+    return(NULL)
+  }
+  .ret
+}
+
 #' Repair a non-positive-definite omega so post-fit processing can continue
 #'
 #' `nmNearPD()` itself fails (and errors) on the fully degenerate cases -- an
@@ -3860,12 +3890,23 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
     # post-fit diagnostics still run; the reported fit omega is left unchanged.
     .repaired <- inherits(try(chol(.om0), silent = TRUE), "try-error")
     if (.repaired) {
-      if (rxode2::rxGetControl(ui, "maxOuterIterations", 1L) == 0L) {
-        # no outer step moves omega, so the fit reports this estimate, not the
-        # repair the C++ side would read back (.foceiFamilyReturn())
-        env$omegaUnrepaired <- .om0
+      .posthoc <- rxode2::rxGetControl(ui, "maxOuterIterations", 1L) == 0L
+      # a nearly singular ini() omega (a rounded NONMEM import) is corrected and
+      # the correction reported; another method's estimate is reported as is
+      .near <- if (.posthoc && !isTRUE(env$.outputPass)) {
+        .foceiOmegaNearPd(.om0, rxode2::rxGetControl(ui, "cholAccept", 1e-3))
       }
-      .om0 <- .foceiRepairOmega(.om0)
+      if (!is.null(.near)) {
+        warning("omega nearly singular; corrected within cholAccept", call. = FALSE)
+        .om0 <- .near
+      } else {
+        if (.posthoc) {
+          # no outer step moves omega, so the fit reports this estimate, not the
+          # repair the C++ side would read back (.foceiFamilyReturn())
+          env$omegaUnrepaired <- .om0
+        }
+        .om0 <- .foceiRepairOmega(.om0)
+      }
     }
     # `same()` blocks share one set of cholesky parameters with the block
     # they repeat.  A repaired omega is no longer guaranteed to hold
@@ -5828,6 +5869,39 @@ attr(nlmixr2Est.output, "nlmixr2Priors") <- "all"
   )
 }
 
+#' Hold `nlmixr2CreateOutputFromUi()` to its contract
+#'
+#' The fit's `$omega`/`$theta` and its ui carry the method's final estimates
+#' (`env$omega`, `env$fullTheta`), and `$iniDf0` the original model.  A method
+#' that already put its estimates into the ui (`.nlmixr2FitUpdateParams()`)
+#' has set `env$iniDf0`; otherwise the ui passed in is the original model,
+#' unless an `nlmixr2()` run recorded one.  Sets the `iniDf0` the output pass
+#' reads.
+#'
+#' @param ui decompressed ui passed to the builder
+#' @param env the method's environment
+#' @return ui holding the final estimates
+#' @noRd
+.nlmixr2OutputContract <- function(ui, env) {
+  .inRun <- isTRUE(nlmixr2global$nlmixr2EstEnv$estDepth > 0L) &&
+    is.data.frame(nlmixr2global$nlmixr2EstEnv$iniDf0)
+  if (exists("iniDf0", envir = env, inherits = FALSE)) {
+    if (is.data.frame(env$iniDf0)) {
+      nlmixr2global$nlmixr2EstEnv$iniDf0 <- env$iniDf0
+    }
+    return(ui)
+  }
+  if (!.inRun) {
+    nlmixr2global$nlmixr2EstEnv$iniDf0 <- data.frame(ui$iniDf)
+  }
+  if (!exists("omega", envir = env, inherits = FALSE) && !exists("fullTheta", envir = env, inherits = FALSE)) {
+    return(ui)
+  }
+  env$ui <- ui
+  .nlmixr2FitUpdateParams(env)
+  rxode2::rxUiDecompress(env$ui)
+}
+
 #' Create nlmixr output from the UI
 #'
 #'
@@ -5850,7 +5924,9 @@ attr(nlmixr2Est.output, "nlmixr2Priors") <- "all"
 #' - `$objective` objective function value
 #' - `$extra` Extra print information
 #' - `$method` Estimation method (for printing)
-#' - `$omega` Omega matrix
+#' - `$omega` Omega matrix (final estimate); with `$fullTheta` it is written
+#'   into the reported ui, and the ui passed in is kept as `$iniDf0` unless an
+#'   `nlmixr2()` run supplies the original model
 #' - `$theta` Is a theta data frame
 #' - `$model` a list of model information for table generation.  Needs a `predOnly` model
 #' - `$message` Message for display
@@ -5874,6 +5950,12 @@ nlmixr2CreateOutputFromUi <- function(ui, data = NULL, control = NULL, table = N
   }
   ui <- rxode2::rxUiDecompress(ui)
   if (inherits(env, "environment")) {
+    .iniDf00 <- nlmixr2global$nlmixr2EstEnv$iniDf0
+    on.exit(nlmixr2global$nlmixr2EstEnv$iniDf0 <- .iniDf00, add = TRUE)
+    ui <- .nlmixr2OutputContract(ui, env)
+    # the omega it carries is the method's estimate (.foceiOptEnvSetupBounds())
+    env$.outputPass <- TRUE
+    on.exit(if (exists(".outputPass", envir = env, inherits = FALSE)) rm(".outputPass", envir = env), add = TRUE)
     assign("foceiEnv", env, envir = ui)
   }
   if (!inherits(data, "data.frame")) {
