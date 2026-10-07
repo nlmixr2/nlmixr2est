@@ -2262,6 +2262,11 @@ foceiControl <- function(
 #' @return "sa", "imp", "analytic", "r,s", "r", "s", or "" for no covariance
 #' @noRd
 .foceiControlCovMethodName <- function(o) {
+  # an impmapControl() runs the importance-sampling covariance in its kernel
+  # (impCov) and keeps the "analytic" slot for the post-fit step
+  if (isTRUE(o$impCov)) {
+    return("imp")
+  }
   .deferred <- o$covMethodDeferred
   if (length(.deferred) == 1L && !is.na(.deferred)) {
     return(.deferred)
@@ -2273,7 +2278,23 @@ foceiControl <- function(
   .covMethodFromSlot(.slot)
 }
 
-.rxUiDeparseFoceiControl <- function(object, var, type = "foceiControl") {
+#' Deparse a foceiControl-derived control as a call to its constructor
+#'
+#' @param object the control
+#' @param var name the call is assigned to
+#' @param type name of the constructor that builds `object`
+#' @param internal fields that are never deparsed
+#' @param argName named character vector mapping a stored field to the
+#'   constructor argument that sets it, for fields whose name differs
+#' @return the language object `var <- <type>(...)`
+#' @noRd
+.rxUiDeparseFoceiControl <- function(
+  object,
+  var,
+  type = "foceiControl",
+  internal = .foceiControlInternal,
+  argName = character(0)
+) {
   .ret <- eval(str2lang(paste0(type, "()")))
   .outerOpt <- character(0)
   if (object$outerOpt == -1L && object$outerOptTxt == "custom") {
@@ -2281,7 +2302,7 @@ foceiControl <- function(
   } else if (!(object$outerOptTxt %in% c(.ret$outerOptTxt, "stats::optimize"))) {
     .outerOpt <- paste0("outerOpt = ", deparse1(object$outerOptTxt))
   }
-  .w <- .deparseDifferent(.ret, object, .foceiControlInternal)
+  .w <- .deparseDifferent(.ret, object, internal)
   .covTok <- character(0)
   if (!identical(.foceiControlCovMethodName(object), .foceiControlCovMethodName(.ret))) {
     .covTok <- paste0("covMethod = ", deparse1(.foceiControlCovMethodName(object)))
@@ -2325,7 +2346,7 @@ foceiControl <- function(
           .methodIdx <- c("forward" = 0L, "central" = 1L, "switch" = 3L)
           paste0(x, " = ", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
         } else {
-          paste0(x, " = ", deparse1(object[[x]]))
+          paste0(if (x %in% names(argName)) argName[[x]] else x, " = ", deparse1(object[[x]]))
         }
       },
       character(1)

@@ -782,6 +782,32 @@ impmapControl <- function(
   .control
 }
 
+# Fields stamped on an impmapControl() at fit time; none is an argument of its
+# constructor (or of the np*Control() ones), so none is deparsed.
+.impmapDeparseInternal <- c("impCov", "impFrozen", "autoNonNormal", "gammaMethodUser", .impmapIdxMapNames)
+
+#' @export
+rxUiDeparse.impmapControl <- function(object, var) {
+  # npagControl() and npbControl() build on impmapControl() and keep its class;
+  # the `est` they stamp says which constructor rebuilds the object
+  .est <- object$est
+  .type <- "impmapControl"
+  if (is.character(.est) && length(.est) == 1L) {
+    if (grepl("npb$", .est)) {
+      .type <- "npbControl"
+    } else if (grepl("npag$", .est)) {
+      .type <- "npagControl"
+    }
+  }
+  .rxUiDeparseFoceiControl(
+    object,
+    var,
+    type = .type,
+    internal = c(.foceiControlInternal, .impmapDeparseInternal),
+    argName = c(npCores = "cores")
+  )
+}
+
 #' @rdname nmObjHandleControlObject
 #' @export
 nmObjHandleControlObject.impmapControl <- function(control, env) assign("impmapControl", control, envir = env)

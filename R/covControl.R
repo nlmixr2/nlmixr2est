@@ -39,6 +39,14 @@ rsControl <- function(
   .ret
 }
 
+#' @export
+rxUiDeparse.rsControl <- function(object, var) {
+  # rsControl() drops every option left NULL, so its default has no fields;
+  # compare against NULL for each argument instead
+  .n <- names(formals(rsControl))
+  .deparseControl(object, var, stats::setNames(vector("list", length(.n)), .n), internal = character(0))
+}
+
 #' Check the finite-difference covariance options
 #'
 #' The one check of the options `foceiControl()` sets for the fit and
@@ -106,6 +114,9 @@ saControl <- function(nBurn = 100L, nEm = 100L, nSaCov = 500L, seed = 99L) {
   .ret
 }
 
+#' @export
+rxUiDeparse.saControl <- function(object, var) .deparseControl(object, var, saControl(), internal = character(0))
+
 #' Options for the importance-sampling covariance in setCov()
 #'
 #' Used by \code{setCov(fit, "imp")}, which runs frozen importance-sampling EM
@@ -129,6 +140,11 @@ impCovControl <- function(nIter = 1L, isample = 300L, impSeed = 42L) {
   .ret <- list(nIter = as.integer(nIter), isample = as.integer(isample), impSeed = as.integer(impSeed))
   class(.ret) <- "impCovControl"
   .ret
+}
+
+#' @export
+rxUiDeparse.impCovControl <- function(object, var) {
+  .deparseControl(object, var, impCovControl(), internal = character(0))
 }
 
 # storage mode of each rsControl() option, so values from the fit's
