@@ -893,6 +893,7 @@ NumericVector solveGradNls(arma::vec &theta, int returnType) {
 // once theta leaves it the step is searched again, starting from the old step (#1175).
 arma::mat nlmCalcHessian(arma::vec &gr0, arma::vec &theta) {
   if (nlmOp.thetahh == NULL) stop(_("incorrect solve type"));
+  if (theta.n_elem != nlmOp.ntheta) stop(_("'theta' does not match the loaded problem"));
   const double span = (nlmOp.optimHessType == shi21HessForward) ? 4.0 : 3.0;
   std::vector<char> searched(nlmOp.ntheta);
   for (unsigned int k = 0; k < nlmOp.ntheta; ++k) {
