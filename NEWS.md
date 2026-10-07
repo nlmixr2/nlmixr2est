@@ -467,8 +467,8 @@
   Hessian) or, failing that, `"|r|"` (`sqrtm(R %*% R)`), with a warning in
   `$runInfo`.  `"r"` means the Hessian was factored as it is.  It used to
   invert every Hessian after an unreported Schnabel-Eskow perturbation and
-  label it `"r"`, which gave several parameters of the derivative-free fits of `theo_sd` the same
-  standard error.  A non-finite or numerically singular Hessian (including the
+  label it `"r"`, which gave several parameters of the derivative-free fits
+  of `theo_sd` the same standard error.  A non-finite or numerically singular Hessian (including the
   zero one of a failed `trust` solve) gives `covMethod = "failed"` with a
   warning instead of a covariance; either repair of a singular one would
   invert its rounding noise.
