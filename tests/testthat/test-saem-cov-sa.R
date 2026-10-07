@@ -927,4 +927,69 @@ nmTest({
     # to the wrong (or first) one
     expect_equal(.saemResEndpointIdx(c("cp", "bogus"), c("cp", "effect")), c(1L, NA_integer_))
   })
+
+  test_that("the sa covariance phase leaves the conditional means as the estimation left them", {
+    # the phase appends zero gains after the estimation's; a gain schedule longer
+    # than the estimation would keep updating the conditional means into it
+    .m <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .fit <- function(cm) {
+      .nlmixr(
+        .m,
+        nlmixr2data::theo_sd,
+        "saem",
+        saemControl(print = 0, nBurn = 50, nEm = 50, seed = 7, calcTables = FALSE, covMethod = cm)
+      )
+    }
+    .lin <- .fit("linFim")
+    .sa <- .fit("sa")
+    expect_identical(.sa$theta, .lin$theta)
+    expect_identical(.sa$eta, .lin$eta)
+  })
+
+  test_that("a saemFit prints the standard errors of the Ha theta block by name", {
+    # tka has no eta: Ha lays its rows out [tcl tv][tka], not in theta order
+    .m <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .f <- .nlmixr(
+      .m,
+      nlmixr2data::theo_sd,
+      "saem",
+      saemControl(print = 0, nBurn = 30, nEm = 30, seed = 7, calcTables = FALSE, covMethod = "r,s")
+    )
+    expect_identical(.f$covMethod, "Ha")
+    .out <- utils::capture.output(.s <- summary(.f$saem))
+    expect_true(is.na(.s$se[1]))
+    expect_equal(.s$se[2:3], unname(sqrt(diag(.f$cov))[c("tcl", "tv")]), tolerance = 1e-12)
+    expect_identical(utils::capture.output(print(.f$saem)), .out)
+  })
 })
