@@ -183,6 +183,7 @@ NumericMatrix cholSE_(NumericMatrix A, double tol){
 List cholSEpd_(NumericMatrix A, double tol) {
   arma::mat Ao, E;
   bool pd = cholSE0(Ao, E, as<arma::mat>(A), tol);
-  return List::create(_["U"] = wrap(Ao), _["E"] = wrap(arma::vec(arma::vectorise(E))),
+  // the objects themselves: create() wraps each once its result is protected
+  return List::create(_["U"] = Ao, _["E"] = arma::vec(arma::vectorise(E)),
                       _["pd"] = pd);
 }
