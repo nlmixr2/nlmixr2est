@@ -45,9 +45,9 @@
   whose random effect reaches the prediction only that way no longer errors
   with "none of the model predictions depend on a random effect", and one
   where it also enters directly gets the full inner gradient.  An ODE that
-  uses such a variable now compiles.  The analytic `fast=TRUE` gradient and
-  analytic covariance fall back to finite differences for these models
-  (#1176).
+  uses such a variable now compiles, and `lag()` of a variable inside an ODE
+  gives a clear error.  The analytic `fast=TRUE` gradient and analytic
+  covariance fall back to finite differences for these models (#1176).
 
 - `$etaMat` of a fit with inter-occasion variability now holds the occasion
   ETAs as the model estimated them; it held them multiplied by the occasion
