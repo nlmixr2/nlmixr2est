@@ -2328,10 +2328,7 @@ foceiControl <- function(
   if (!identical(covName(object), covName(.ret))) {
     .covTok <- paste0("covMethod = ", deparse1(covName(object)))
   }
-  if (length(.w) == 0 && length(.outerOpt) == 0 && length(.covTok) == 0 && length(extra) == 0) {
-    return(str2lang(paste0(var, " <- ", type, "()")))
-  }
-  .formals <- c(formals(type), formals(foceiControl))
+  .formals <- c(formals(type), formals(impmapControl), formals(foceiControl))
   .n <- names(.ret)[.w]
   .n <- .n[!(.n %in% c("outerOpt", "covMethod"))]
   if (length(.covTok) > 0) {
@@ -2340,53 +2337,48 @@ foceiControl <- function(
   # preserve the formal-argument declaration order (names(.ret)) so the covMethod
   # token lands in its natural position instead of always first
   .n <- .n[order(match(.n, names(.ret)))]
-  .retD <- c(
-    vapply(
-      .n,
-      function(x) {
-        if (x == "covMethod") {
-          return(.covTok)
-        }
-        .val <- .deparseShared(x, object[[x]])
-        if (!is.na(.val)) {
-          return(.val)
-        }
-        if (is.function(fun)) {
-          .val <- fun(x, object[[x]])
-          if (!is.na(.val)) {
-            return(.val)
-          }
-        }
-        # a logical argument some controls keep as 0/1
-        if (is.logical(.formals[[x]]) && is.numeric(object[[x]])) {
-          return(paste0(x, " = ", deparse1(as.logical(object[[x]]))))
-        }
-        if (x == "innerOpt") {
-          paste0("innerOpt = ", deparse1(names(.innerOptFun[which(object[[x]] == .innerOptFun)])))
-        } else if (x == "warm") {
-          .warmIdx <- c("calc" = 1L, "save" = 0L, "none" = 2L)
-          paste0("warm = ", deparse1(names(.warmIdx[which(object[[x]] == .warmIdx)])))
-        } else if (x %in% c("optimHessType", "optimHessCovType")) {
-          .methodIdx <- c("central" = 1L, "forward" = 3L)
-          paste0(x, " = ", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
-        } else if (x == "eventType") {
-          .methodIdx <- c("central" = 2L, "forward" = 3L)
-          paste0(x, " = ", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
-        } else if (x == "hessianMethod") {
-          paste0(x, " = ", deparse1(names(.hessianMethodIdx[which(object[[x]] == .hessianMethodIdx)])))
-        } else if (x %in% c("derivMethod", "covDerivMethod")) {
-          .methodIdx <- c("forward" = 0L, "central" = 1L, "switch" = 3L)
-          paste0(x, " = ", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
-        } else {
-          paste0(x, " = ", .deparseValue(object[[x]]))
-        }
-      },
-      character(1)
-    ),
-    .outerOpt,
-    extra
-  )
-  str2lang(paste(var, " <- ", type, "(", paste(.retD, collapse = ", "), ")"))
+  .tok <- function(x) {
+    if (x == "covMethod") {
+      return(.covTok)
+    }
+    .val <- .deparseShared(x, object[[x]])
+    if (!is.na(.val)) {
+      return(.val)
+    }
+    if (is.function(fun)) {
+      .val <- fun(x, object[[x]])
+      if (!is.na(.val)) {
+        return(.val)
+      }
+    }
+    # a logical argument some controls keep as 0/1
+    if (is.logical(.formals[[x]]) && is.numeric(object[[x]])) {
+      return(paste0(x, " = ", deparse1(as.logical(object[[x]]))))
+    }
+    if (x == "innerOpt") {
+      paste0("innerOpt = ", deparse1(names(.innerOptFun[which(object[[x]] == .innerOptFun)])))
+    } else if (x == "warm") {
+      .warmIdx <- c("calc" = 1L, "save" = 0L, "none" = 2L)
+      paste0("warm = ", deparse1(names(.warmIdx[which(object[[x]] == .warmIdx)])))
+    } else if (x %in% c("optimHessType", "optimHessCovType")) {
+      .methodIdx <- c("central" = 1L, "forward" = 3L)
+      paste0(x, " = ", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
+    } else if (x == "eventType") {
+      .methodIdx <- c("central" = 2L, "forward" = 3L)
+      paste0(x, " = ", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
+    } else if (x == "hessianMethod") {
+      paste0(x, " = ", deparse1(names(.hessianMethodIdx[which(object[[x]] == .hessianMethodIdx)])))
+    } else if (x %in% c("derivMethod", "covDerivMethod")) {
+      .methodIdx <- c("forward" = 0L, "central" = 1L, "switch" = 3L)
+      paste0(x, " = ", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
+    } else {
+      paste0(x, " = ", .deparseValue(object[[x]]))
+    }
+  }
+  .retD <- c(vapply(.n, .tok, character(1)), .outerOpt, extra)
+  .ret <- str2lang(paste(var, " <- ", type, "(", paste(.retD, collapse = ", "), ")"))
+  .allowed <- setdiff(names(.formals), c("...", .foceiControlInternal, internal, "outerOpt", "covMethod", "rxControl"))
+  .deparseFixup(.ret, object, .allowed, .tok)
 }
 
 #' @export

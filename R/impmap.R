@@ -96,7 +96,12 @@
   if (any(diff(propMixScale) <= 0)) {
     stop("'propMixScale' must be strictly increasing", call. = FALSE)
   }
-  list(scale = as.double(propMixScale), weight = as.double(propMixWeight / sum(propMixWeight)))
+  # weights already normalized are kept, so a normalized set rebuilds the same
+  .sum <- sum(propMixWeight)
+  if (abs(.sum - 1) > 4 * .Machine$double.eps) {
+    propMixWeight <- propMixWeight / .sum
+  }
+  list(scale = as.double(propMixScale), weight = as.double(propMixWeight))
 }
 
 #' Control options for the impmap (importance-sampling EM) estimation method

@@ -223,6 +223,46 @@
   str2lang(paste(var, " <- ", .cls, "(", paste(.retD, collapse = ","), ")"))
 }
 
+#' Write out the arguments a deparsed control does not rebuild
+#'
+#' A default that follows another argument (`n1qn1nsim` follows
+#' `maxInnerIterations`) is not seen by comparing with the constructor's own
+#' default; evaluating the call is.  Only constructor arguments are added, and
+#' only while the call still evaluates.
+#' @param ret `var <- ctor(...)` language object
+#' @param object the control
+#' @param allowed names that may be added
+#' @param token function giving the `name = value` string of a name
+#' @return `ret`, with any missing arguments added
+#' @noRd
+.deparseFixup <- function(ret, object, allowed, token) {
+  .eval <- function(r) tryCatch(suppressWarnings(suppressMessages(eval(r[[3]]))), error = function(e) NULL)
+  .r <- .eval(ret)
+  for (.k in 1:3) {
+    if (is.null(.r)) {
+      return(ret)
+    }
+    .d <- intersect(allowed, names(object))
+    .d <- .d[!vapply(.d, function(n) identical(object[[n]], .r[[n]]), logical(1))]
+    if (length(.d) == 0L) {
+      return(ret)
+    }
+    .args <- as.list(str2lang(paste0("f(", paste(vapply(.d, token, character(1)), collapse = ", "), ")")))[-1]
+    .cur <- as.list(ret[[3]])
+    for (.nm in names(.args)) {
+      .cur[[.nm]] <- .args[[.nm]]
+    }
+    .new <- ret
+    .new[[3]] <- as.call(.cur)
+    .r <- .eval(.new)
+    if (is.null(.r)) {
+      return(ret)
+    }
+    ret <- .new
+  }
+  ret
+}
+
 #' Deparse a control as a call to its constructor
 #'
 #' The body of the `rxUiDeparse()` methods of the estimation controls: the call
@@ -250,5 +290,12 @@
     # sigdig recovered for a control that does not keep it goes first
     .ret[[3]] <- as.call(c(as.list(.ret[[3]])[1], list(sigdig = .sig), as.list(.ret[[3]])[-1]))
   }
-  .ret
+  .tok <- function(x) {
+    .val <- .deparseShared(x, object[[x]])
+    if (is.na(.val) && is.function(fun)) {
+      .val <- fun(.default, x, object[[x]])
+    }
+    if (is.na(.val)) paste0(x, " = ", .deparseValue(object[[x]])) else .val
+  }
+  .deparseFixup(.ret, object, setdiff(names(formals(class(default)[1])), c("...", internal, "rxControl")), .tok)
 }
