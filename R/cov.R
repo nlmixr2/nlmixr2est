@@ -276,7 +276,8 @@
     }
     return(.covMethodFromSlot(covMethod))
   }
-  if (identical(covMethod, "")) {
+  # compared by value: a named "" is still "no covariance"
+  if (is.character(covMethod) && length(covMethod) == 1L && !is.na(covMethod) && !nzchar(covMethod)) {
     return("")
   }
   choice
@@ -397,8 +398,38 @@
   .nlmixr2CovConditionUpdate(env)
   if (warn && .covIsName(what) && !.covSameName(.covBaseName(what), .covBaseName(label))) {
     warning(sprintf("\"%s\" covariance installed instead of the requested \"%s\"", label, what), call. = FALSE)
+  } else if (warn && .covIsName(what) && .covIsName(label) && !identical(what, label)) {
+    .covRepairWarn(what, label)
   }
   invisible(TRUE)
+}
+
+#' Warn that a covariance was installed in its sqrtm-repaired form
+#'
+#' Says so only for the `|x|` repair of a non-FD covariance, and only when the
+#' request was not already for the repaired one (a stashed `"|linFim|"` whose
+#' repair was reported when it was computed); the FD decorations (`"|r|,s"`,
+#' `"r+"`) are reported by the native step that made them.
+#' @param what covariance-method name requested
+#' @param label covariance-method name installed
+#' @return invisibly `NULL`
+#' @noRd
+.covRepairWarn <- function(what, label) {
+  .w <- .covUnrepaired(label)
+  .wb <- .covBaseName(what)
+  if (!identical(.w, label) && !nzchar(.covFdType(label)) && identical(.wb, .covUnrepaired(.wb))) {
+    warning(
+      sprintf(
+        "\"%s\" covariance not positive definite, corrected by sqrtm(%s %%*%% %s) and installed as \"%s\"",
+        .w,
+        .w,
+        .w,
+        label
+      ),
+      call. = FALSE
+    )
+  }
+  invisible()
 }
 
 #' Stop a `setCov()` request that could not be computed or installed
@@ -579,9 +610,10 @@
   if (is.null(.baseEst)) {
     return(NULL)
   }
-  # covMethod="imp" installed the Monte-Carlo importance-sampling covariance;
-  # that explicit request wins over the recompute
-  if (identical(tryCatch(fit$covMethod, error = function(e) NULL), "imp")) {
+  # covMethod = "imp" on the imp family: impComputeCov() computes the
+  # importance-sampling covariance, and repairs it when it is not positive
+  # definite; a FOCEi covariance never stands in for it
+  if (isTRUE(fit$control$impCov)) {
     return(NULL)
   }
   .foceiRecomputeCov(fit, .baseEst, tryCatch(fit$foceiControl, error = function(e) NULL))
@@ -746,7 +778,8 @@
 #' Do two covariance-method names refer to the same estimator and shape?
 #'
 #' Ignores the `r+`/`|r|`/`s+`/`|s|` correction decorations the native strings
-#' carry, so `"s"` matches `"|s|"` but not `"s (full)"`.
+#' carry, so `"s"` matches `"|s|"` but not `"s (full)"`, and the `|x|` of any
+#' other estimator repaired by `sqrtm(x %*% x)` (`"|imp|"`, `"|linFim|"`).
 #' @param a,b covariance-method names
 #' @return single logical
 #' @noRd
@@ -755,7 +788,18 @@
     return(TRUE)
   }
   .ta <- .covFdType(a)
-  nzchar(.ta) && identical(.ta, .covFdType(b)) && identical(.covIsFull(a), .covIsFull(b))
+  if (nzchar(.ta)) {
+    return(identical(.ta, .covFdType(b)) && identical(.covIsFull(a), .covIsFull(b)))
+  }
+  .covIsName(a) && .covIsName(b) && identical(.covUnrepaired(a), .covUnrepaired(b))
+}
+
+#' A covariance-method name without its `|x|` sqrtm-repair decoration
+#' @param x covariance-method name
+#' @return `x` with a leading `|name|` reduced to `name`
+#' @noRd
+.covUnrepaired <- function(x) {
+  sub("^\\|([^|]+)\\|", "\\1", x)
 }
 
 #' Set the covariance type based on prior calculated covariances
@@ -1241,11 +1285,13 @@ setCov.imp <- function(fit, method, control = impCovControl(), ...) {
   .covEngineControl(method, control)
   .r <- tryCatch(.covRecompute(fit, method, control), error = function(e) NULL)
   # checked before anything is installed: the nested fit can fall back to
-  # another covariance (an "sa" to "linFim")
-  if (!identical(.r$covMethod, method)) {
+  # another covariance (an "sa" to "linFim"); a repaired one ("|imp|") keeps its
+  # label
+  if (!.covSameName(method, .r$covMethod)) {
     .setCovFail(method, if (.covIsName(.r$covMethod)) sprintf("was \"%s\"", .r$covMethod))
   }
-  .setCovInstall(env, method, structure(.r$cov, mixRotated = isTRUE(.r$mixRotated)))
+  .setCovInstall(env, .r$covMethod, structure(.r$cov, mixRotated = isTRUE(.r$mixRotated)))
+  .covRepairWarn(method, .r$covMethod)
 }
 
 ##' @export

@@ -466,12 +466,16 @@ nmTest({
     expect_true(is.matrix(fit$cov))
     # the near-zero-prediction guard drops to the finite-difference fallback
     expect_false(identical(.covBaseName(fit$covMethod), "analytic"))
-    # covFull=TRUE (default) installs the full theta+sigma+Omega cov when its R is positive
-    # definite; otherwise the theta-only sandwich is kept and the reason is recorded.  Whether
-    # this fit's full R is positive definite depends on where the FD stages are centred, so
-    # both outcomes are pinned here.
-    if (min(eigen(get(".fdFullCov", fit$env), symmetric = TRUE, only.values = TRUE)$values) > 0) {
+    # covFull=TRUE (default) installs the full theta+sigma+Omega sandwich when its R is
+    # positive definite, else the full S (#1152), else keeps the theta-only sandwich and
+    # records why.  Which applies depends on where the FD stages are centred, so every
+    # outcome is pinned here.
+    .sh <- .foceiFdFullShapes(get(".fdFullCov", fit$env), get0(".fdFullS", fit$env))
+    if (.sh$r$ok) {
       expect_true(any(grepl("^om\\.", rownames(fit$cov))))
+    } else if (.sh$s$ok) {
+      expect_identical(fit$covMethod, "s (full)")
+      expect_true("full R matrix non-positive definite; using s (full)" %in% fit$runInfo)
     } else {
       expect_false(any(grepl("^om\\.", rownames(fit$cov))))
       expect_true("\"r,s (full)\" covariance needs a positive-definite R; kept \"r,s\"" %in% fit$runInfo)

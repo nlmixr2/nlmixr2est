@@ -68,6 +68,14 @@ test_that("a control given a foceiControl() covMethod slot keeps the covariance 
   expect_error(nlmeControl(covMethod = 4L), "foceiControl() slot", fixed = TRUE)
 })
 
+test_that("a named \"\" covMethod still turns the covariance off", {
+  expect_identical(nlmeControl(covMethod = c(a = ""))$covMethod, "")
+  expect_identical(vaeControl(covMethod = c(a = ""))$covMethod, "")
+  expect_identical(emviControl(covMethod = c(a = ""))$covMethod, "")
+  expect_identical(foceiControl(covMethod = c(a = ""))$covMethod, 0L)
+  expect_identical(impmapControl(covMethod = c(a = ""))$covMethod, 0L)
+})
+
 test_that("a covariance refit sets each option under its own name only", {
   .obj <- new.env(parent = emptyenv())
   .obj$foceiControl <- foceiControl()

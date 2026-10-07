@@ -13,6 +13,7 @@
 #include "../inst/include/nlmixr2estLikContrib.h"
 #include "likContribUtil.h"
 #include <atomic>
+#include <exception>
 #include <limits>
 
 #define _(String) (String)
@@ -24,6 +25,8 @@
 // same globals (ordinary linker-visible symbols within this one .so).
 #include <RcppTrust.h>
 #include "trustHessianUpdate.h"
+#include <lbfgsb3ptr.h>
+#include "lbfgsbTask.h"
 
 
 // Solves go through odeSwapSolveInd(slot, id) -- see the note in inner.cpp.  nlm's
@@ -986,6 +989,95 @@ extern "C" int nlmTrustObjfun(int n, const double *par, double *value,
   } catch (...) {
     return -4;
   }
+}
+
+// est="lbfgsb3c": value and gradient come from one sensitivity solve, cached
+// by theta, so the paired fn/gr calls at a point cost one solve.  Any error
+// (including an R longjmp, turned into an exception by unwindProtect) is held
+// and rethrown after lbfgsb3Cts returns, so nothing unwinds through it.
+static std::exception_ptr nlmLbfgsErr = nullptr;
+
+static bool nlmLbfgsFill(int n, double *x) {
+  if (nlmLbfgsErr) return false;
+  try {
+    arma::vec theta(x, n);
+    if (!isThetaSame(theta)) {
+      Rcpp::unwindProtect([&]() -> SEXP {
+        arma::mat ret0 = nlmSolveGrad(theta);
+        arma::vec saveVec(nlmOp.valSave, nlmOp.ntheta + 1, false, true);
+        saveVec = (arma::sum(ret0, 0)).t();
+        saveTheta(theta);
+        scalePrintFun(&(nlmOp.scale), &theta[0], nlmOp.valSave[0]);
+        scalePrintGrad(&(nlmOp.scale), nlmOp.grSave, iterTypeSens);
+        return R_NilValue;
+      });
+    }
+    return true;
+  } catch (...) {
+    nlmLbfgsErr = std::current_exception();
+  }
+  return false;
+}
+
+extern "C" double nlmLbfgsF(int n, double *x, void *ex) {
+  (void)ex;
+  if (!nlmLbfgsFill(n, x)) return NA_REAL;
+  return nlmOp.valSave[0];
+}
+
+extern "C" void nlmLbfgsG(int n, double *x, double *g, void *ex) {
+  (void)ex;
+  if (!nlmLbfgsFill(n, x)) {
+    std::fill_n(g, n, NA_REAL);
+    return;
+  }
+  std::copy(nlmOp.grSave, nlmOp.grSave + n, g);
+}
+
+//[[Rcpp::export]]
+List nlmLbfgsb3cFit(arma::vec &theta, NumericVector lower, NumericVector upper,
+                    List control) {
+  if (!nlmOp.loaded) stop("'nlm' problem not loaded");
+  if (nlmOp.solveType != solveType_grad) stop(_("incorrect solve type"));
+  if (lbfgsb3Cts == NULL) {
+    stop(_("est=\"lbfgsb3c\" needs lbfgsb3c >= 2024-3.6 (thread-safe lbfgsb3Cts)"));
+  }
+  int n = (int)theta.n_elem;
+  if (n != (int)nlmOp.ntheta) stop(_("'theta' does not match the loaded problem"));
+  if ((lower.size() != 1 && lower.size() != n) ||
+      (upper.size() != 1 && upper.size() != n)) {
+    stop(_("'lower'/'upper' must have length 1 or length(theta)"));
+  }
+  std::vector<double> x(theta.begin(), theta.end()), low(n), up(n), g(n, 0.0);
+  std::vector<int> nbd(n);
+  for (int i = 0; i < n; ++i) {
+    low[i] = lower.size() == 1 ? lower[0] : lower[i];
+    up[i] = upper.size() == 1 ? upper[0] : upper[i];
+    // 0 unbounded, 1 lower only, 2 both, 3 upper only
+    nbd[i] = R_FINITE(low[i]) ? 1 : 0;
+    if (R_FINITE(up[i])) nbd[i] = 3 - nbd[i];
+  }
+  // Force a fresh solve at the start rather than reusing another fit's cache.
+  std::fill_n(nlmOp.thetaSave, nlmOp.ntheta, NA_REAL);
+  nlmLbfgsErr = nullptr;
+  double fmin = NA_REAL;
+  int fail = 0, fncount = 0, grcount = 0;
+  lbfgsb3Cts(n, as<int>(control["lmm"]), x.data(), low.data(), up.data(),
+             nbd.data(), &fmin, nlmLbfgsF, nlmLbfgsG, &fail, NULL,
+             as<double>(control["factr"]), as<double>(control["pgtol"]),
+             &fncount, &grcount, as<int>(control["maxit"]), NULL, 0, -1,
+             as<double>(control["abstol"]), as<double>(control["reltol"]),
+             g.data());
+  if (nlmLbfgsErr) {
+    std::exception_ptr err = nlmLbfgsErr;
+    nlmLbfgsErr = nullptr;
+    std::rethrow_exception(err);
+  }
+  return List::create(_["par"] = wrap(x), _["grad"] = wrap(g),
+                      _["value"] = fncount > 0 ? fmin : NA_REAL,
+                      _["counts"] = IntegerVector::create(fncount, grcount),
+                      _["convergence"] = lbfgsbConvergence(fail),
+                      _["message"] = lbfgsbTaskName(fail));
 }
 
 //[[Rcpp::export]]

@@ -1,27 +1,13 @@
-#' Pop the full nlmixr timing stack (if needed)
+#' Reset the nlmixr timing state
 #'
 #' @return Nothing, called for side effects
 #' @author Matthew L. Fidler
 #' @noRd
 .popNlmixr2Timing <- function() {
-  .l <- length(nlmixr2global$timingStackNlmixr)
-  if (.l == 0) {
-    nlmixr2global$nlmixr2Time <- NULL
-    nlmixr2global$currentTimingEnvironment <- NULL
-    nlmixr2global$extraTimingTable <- NULL
-    nlmixr2global$timingStack <- NULL
-  } else {
-    .cur <- nlmixr2global$timingStackNlmixr[[.l]]
-    if (.l == 1) {
-      nlmixr2global$timingStackNlmixr <- NULL
-    } else {
-      nlmixr2global$timingStackNlmixr <- nlmixr2global$timingStackNlmixr[[-.l]]
-    }
-    nlmixr2global$nlmixr2Time <- .cur[[1]]
-    nlmixr2global$currentTimingEnvironment <- .cur[[2]]
-    nlmixr2global$extraTimingTable <- .cur[[3]]
-    nlmixr2global$timingStack <- .cur[[4]]
-  }
+  nlmixr2global$nlmixr2Time <- NULL
+  nlmixr2global$currentTimingEnvironment <- NULL
+  nlmixr2global$extraTimingTable <- NULL
+  nlmixr2global$timingStack <- NULL
 }
 
 .finalizeOverallTiming <- function() {
