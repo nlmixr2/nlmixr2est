@@ -148,3 +148,23 @@ test_that("an IOV mfocei fit gets its recomputed covariance", {
   .ref <- suppressMessages(suppressWarnings(nlmixr2(rxode2::rxUiDecompress(.fit$ui), theoIov, "focei", .ctl)))
   expect_equal(.fit$cov, .ref$cov, tolerance = 1e-6)
 })
+
+# setCov(fit, "imp") refits at the fit's etas; it stopped on the same column count
+test_that("setCov(fit, \"imp\") installs a covariance on an IOV fit", {
+  skip_on_cran()
+
+  one.cmt <- function() {
+    ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- 0.7
+      eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1; iov.cl ~ 0.04 | occ })
+    model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl + iov.cl); v <- exp(tv + eta.v)
+      linCmt() ~ add(add.sd) })
+  }
+  theoIov <- nlmixr2data::theo_md
+  theoIov$occ <- 1L + (theoIov$TIME >= 144)
+
+  .ctl <- list(print = 0L, maxOuterIterations = 0L, calcTables = FALSE)
+  .fit <- suppressMessages(suppressWarnings(nlmixr2(one.cmt, theoIov, est = "focei", control = .ctl)))
+  suppressMessages(setCov(.fit, "imp"))
+  expect_equal(.fit$covMethod, "imp")
+  expect_true(is.matrix(.fit$cov))
+})

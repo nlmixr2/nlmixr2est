@@ -114,6 +114,7 @@
   rxode2::.s3register("rxode2::rxUiDeparse", "tableControl")
   rxode2::.s3register("rxode2::rxUiDeparse", "agqControl")
   rxode2::.s3register("rxode2::rxUiDeparse", "laplaceControl")
+  rxode2::.s3register("rxode2::rxUiDeparse", "impmapControl")
   rxode2::.s3register("rxode2::rxUiGet", "foceiOuter")
   rxode2::.s3register("rxode2::rxUiGet", "impmapThetaSens")
   .resetCacheIfNeeded()
