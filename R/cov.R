@@ -571,8 +571,7 @@
     return(NULL)
   }
   .what <- .covMethodFromSlot(.cm, .control$covType)
-  # deep-copy the UI (an environment) so the nested re-fit cannot mutate THIS fit's UI
-  .ui <- tryCatch(rxode2::rxUiDecompress(unserialize(serialize(fit$ui, NULL))), error = function(e) NULL)
+  .ui <- .fitUiCopy(fit)
   if (is.null(.ui)) {
     return(list(what = .what))
   }
@@ -595,15 +594,10 @@
   .control$calcTables <- FALSE
   .control$skipCov <- NULL # recompute skipCov for the full model (keep mu thetas)
   # explicitly pin the final thetas (on the UI) and the final etas (etaMat)
-  .th <- tryCatch(fit$theta, error = function(e) NULL)
-  if (!is.null(.th)) {
-    .w <- match(names(.th), .ui$iniDf$name)
-    .ok <- !is.na(.w)
-    .ui$iniDf$est[.w[.ok]] <- as.numeric(.th)[.ok]
-  }
-  .eta <- tryCatch(fit$eta, error = function(e) NULL)
-  if (!is.null(.eta)) {
-    .control$etaMat <- as.matrix(.nmDropNonEtaCols(.eta))
+  .ui <- .uiPinTheta(.ui, fit)
+  .etaMat <- .fitEtaMat(fit)
+  if (!is.null(.etaMat)) {
+    .control$etaMat <- .etaMat
   }
   # the nested re-fit resets mu-referencing global state (.muRefTrans$cur); save + restore.
   .savedMuRef <- .muRefTrans$cur

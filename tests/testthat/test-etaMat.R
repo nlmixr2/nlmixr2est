@@ -68,4 +68,78 @@ nmTest({
     .eta3 <- data.frame(ID = 1:2, eta.mixup = c(0.1, 0.2))
     expect_equal(colnames(.nmDropNonEtaCols(.eta3)), "eta.mixup")
   })
+
+  test_that("etaMat holds the occasion etas on the model's scale", {
+    ## $iov reports the occasion etas times their standard deviation; the
+    ## expanded model's occasion etas have unit variance
+    .iovMod <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- 0.7
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1; iov.cl ~ 0.04 | occ })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl + iov.cl); v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd) })
+    }
+    .d <- nlmixr2data::theo_md
+    .d$occ <- 1L + (.d$TIME >= 144)
+    f <- .nlmixr(.iovMod, .d, "focei", foceiControl(print = 0L, maxOuterIterations = 0L, covMethod = ""))
+    expect_equal(colnames(f$etaMat), c("eta.ka", "eta.cl", "eta.v", "rx.iov.cl.1", "rx.iov.cl.2"))
+    ## held fixed, the fit's own etas reproduce its objective
+    .ctl <- foceiControl(
+      print = 0L,
+      maxOuterIterations = 0L,
+      maxInnerIterations = 0L,
+      covMethod = "",
+      etaMat = f$etaMat
+    )
+    expect_equal(.nlmixr(f$ui, .d, "focei", .ctl)$objf, f$objf, tolerance = 1e-8)
+    ## imp replaces etaObf with a FOCEi recompute, and SAEM's two-level etas are
+    ## natural-scale; $etaMat follows $eta and $iov for both
+    for (f in list(
+      .nlmixr(.iovMod, .d, "imp", impControl(print = 0L, nIter = 2L, covMethod = "")),
+      .nlmixr(.iovMod, .d, "saem", saemControl(print = 0L, nBurn = 10L, nEm = 10L, covMethod = ""))
+    )) {
+      .sd <- sqrt(f$ui$omega$occ[1, 1])
+      expect_equal(unname(f$etaMat[, 1:3]), unname(as.matrix(f$eta[, -1])))
+      expect_equal(as.vector(t(f$etaMat[, 4:5])) * .sd, f$iov$occ$iov.cl)
+    }
+    ## a correlated block is expanded occasion by occasion, unscaled
+    .corMod <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- 0.7
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1; iov.cl + iov.v ~ c(0.1, 0.03, 0.2) | occ })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl + iov.cl); v <- exp(tv + eta.v + iov.v)
+        linCmt() ~ add(add.sd) })
+    }
+    f <- .nlmixr(.corMod, .d, "focei", foceiControl(print = 0L, maxOuterIterations = 0L, covMethod = ""))
+    expect_equal(colnames(f$etaMat)[4:7], c("rx.iov.cl.1", "rx.iov.v.1", "rx.iov.cl.2", "rx.iov.v.2"))
+    .ctl <- foceiControl(
+      print = 0L,
+      maxOuterIterations = 0L,
+      maxInnerIterations = 0L,
+      covMethod = "",
+      etaMat = f$etaMat
+    )
+    expect_equal(.nlmixr(f$ui, .d, "focei", .ctl)$objf, f$objf, tolerance = 1e-8)
+  })
+
+  test_that(".foceiGradDirect() refits with an etaMat of etas only", {
+    .mixMod <- function() {
+      ini({ tka <- 0.45; tcl1 <- log(c(0, 2.7, 100)); tcl2 <- log(c(0, 0.1, 120)); tv <- 3.45; p1 <- 0.3
+        add.sd <- 0.7; eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1 })
+      model({ ka <- exp(tka + eta.ka); cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl)); v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd) })
+    }
+    f <- .nlmixr(
+      .mixMod,
+      nlmixr2data::theo_sd,
+      "focei",
+      foceiControl(print = 0L, maxOuterIterations = 0L, covMethod = "")
+    )
+    expect_true("mixnum" %in% names(f$eta))
+    .acc <- new.env(parent = emptyenv())
+    local_mocked_bindings(nlmixr2 = function(object, data, est, control, ...) {
+      .acc$etaMat <- control$etaMat
+      NULL
+    })
+    .foceiGradDirect(f)
+    expect_equal(colnames(.acc$etaMat), c("eta.ka", "eta.cl", "eta.v"))
+  })
 })
