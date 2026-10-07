@@ -67,6 +67,6 @@ nmTest({
     # the support covariance keeps the fixed 1e-8; the installed omega is floored
     expect_equal(f$npagOmega[1, 1], 1e-8)
     expect_equal(unname(f$omega["eta.ka", "eta.ka"]), 1e-6)
-    expect_true(any(f$runInfo == "omega variance below 1e-6 reported as 1e-6: eta.ka"))
+    expect_true(any(f$runInfo == "omega variance floored at 1e-6: eta.ka"))
   })
 })

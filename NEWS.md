@@ -261,8 +261,8 @@
   can end with) now reports that estimate in `$omega` and in its `ini()`.
   Both held the nearest positive-definite matrix the table step needs instead
   (on a saem fit with a correlation of 1, variances of 0.21 and 0.050 for an
-  estimate of 0.081 and 0.019).  The repair is now a warning: `omega is not
-  positive definite; used its nearest positive-definite matrix for tables`.
+  estimate of 0.081 and 0.019).  The repair is now a warning: `omega not positive
+  definite; tables use its nearest PD matrix`.
 
 - A FOCEi-family fit with `outerOpt = "uobyqa"` or `"newuoa"` and a bounded
   theta now writes that theta's estimate into the fit's `ini()` on its own
@@ -288,11 +288,15 @@
 
 - The importance-sampling (`imp`, `impmap`, `qrpem`) and nonparametric
   (`npag`, `npb`) fits now warn when an omega variance below 1e-6 is raised
-  to 1e-6, the floor their omega inverse needs: `omega variance below 1e-6
-  reported as 1e-6: eta.ka`.  The floored value is what `$omega` and the
+  to 1e-6, the floor their omega inverse needs: `omega variance floored at 1e-6:
+  eta.ka`.  The floored value is what `$omega` and the
   fit's `ini()` report, so a support dimension that collapsed, or a variance
   fixed below 1e-6, changed with no message (`npagOmega` keeps the support's
   own covariance).
+
+- `$eta`/`$ranef` of a mixture fit with inter-occasion variability now has
+  one `mixnum` column; it had `mixnum.x` and `mixnum.y`, which `$etaMat` then
+  passed on as etas.
 
 - `$etaMat` of a `saem` fit with `saemControl(iovMethod = "twoLevel")` or
   `"collapsed"` now holds the occasion ETAs the way a FOCEi-family refit

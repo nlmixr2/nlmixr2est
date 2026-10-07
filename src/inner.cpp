@@ -12985,16 +12985,19 @@ void impWarnOmegaFloor(Environment e, const std::vector<int>& idx) {
   if (idx.empty()) return;
   CharacterVector etaNames;
   if (e.exists("etaNames")) etaNames = as<CharacterVector>(e["etaNames"]);
-  std::string nm;
+  std::string msg = "omega variance floored at 1e-6: ";
   for (size_t k = 0; k < idx.size(); ++k) {
-    if (k > 0) nm += ", ";
-    if (idx[k] >= 0 && idx[k] < etaNames.size()) {
-      nm += as<std::string>(etaNames[idx[k]]);
-    } else {
-      nm += "eta" + std::to_string(idx[k] + 1);
+    std::string nm = (idx[k] >= 0 && idx[k] < etaNames.size()) ?
+      as<std::string>(etaNames[idx[k]]) : "eta" + std::to_string(idx[k] + 1);
+    if (k > 0) nm = ", " + nm;
+    // keep the warning on one line of $runInfo
+    if (msg.size() + nm.size() > 70) {
+      msg += ", ...";
+      break;
     }
+    msg += nm;
   }
-  Rcpp::warning("omega variance below 1e-6 reported as 1e-6: " + nm);
+  Rcpp::warning(msg);
 }
 
 // Install a new Omega: rebuild the rxSymInvChol environment (reusing the rxode2

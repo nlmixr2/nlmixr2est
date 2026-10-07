@@ -1001,7 +1001,7 @@ nmTest({
     )))
     # the fixed 1e-8 is installed (and reported) as the floor, which is now said
     expect_equal(unname(.f$omega["eta.ka", "eta.ka"]), 1e-6)
-    expect_true(any(.f$runInfo == "omega variance below 1e-6 reported as 1e-6: eta.ka"))
+    expect_true(any(.f$runInfo == "omega variance floored at 1e-6: eta.ka"))
     expect_false(any(grepl("eta.ke", .f$runInfo[grepl("1e-6", .f$runInfo, fixed = TRUE)], fixed = TRUE)))
   })
 })

@@ -3667,7 +3667,7 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
     if (any(.bad)) {
       warning("non-finite omega values zeroed for tables", call. = FALSE)
     } else if (inherits(try(chol(.om), silent = TRUE), "try-error")) {
-      warning("omega is not positive definite; used its nearest positive-definite matrix for tables", call. = FALSE)
+      warning("omega not positive definite; tables use its nearest PD matrix", call. = FALSE)
     }
     return(.r)
   }
