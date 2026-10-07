@@ -584,7 +584,7 @@ test_that("a vae or vi FOCEi covariance that fails leaves the fit without one, w
   )
   expect_warning(
     .r <- .foceiInstallOwnEtaCov(.e, foceiControl()),
-    "the FOCEi covariance could not be computed (no solve); none installed",
+    "FOCEi covariance not computed (no solve)",
     fixed = TRUE
   )
   expect_false(.r)
@@ -595,7 +595,7 @@ test_that("a vae or vi FOCEi covariance that fails leaves the fit without one, w
   )
   expect_warning(
     .r <- .foceiInstallOwnEtaCov(.e, foceiControl()),
-    "the FOCEi covariance could not be installed (no table); none installed",
+    "FOCEi covariance not installed (no table)",
     fixed = TRUE
   )
   expect_false(.r)

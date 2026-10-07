@@ -747,7 +747,7 @@
   .r <- tryCatch(.foceiRecomputeCov(fit, "focei", control), error = function(e) e)
   if (inherits(.r, "error")) {
     warning(
-      sprintf("the FOCEi covariance could not be computed (%s); none installed", conditionMessage(.r)),
+      sprintf("FOCEi covariance not computed (%s)", conditionMessage(.r)),
       call. = FALSE
     )
     return(invisible(FALSE))
@@ -762,7 +762,7 @@
     .covInstall(.env, .r$cov, .r$covMethod, what = .r$what, extras = .extras, refresh = "all"),
     error = function(e) {
       warning(
-        sprintf("the FOCEi covariance could not be installed (%s); none installed", conditionMessage(e)),
+        sprintf("FOCEi covariance not installed (%s)", conditionMessage(e)),
         call. = FALSE
       )
       invisible(FALSE)
