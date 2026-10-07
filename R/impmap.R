@@ -97,7 +97,12 @@
   if (any(diff(propMixScale) <= 0)) {
     stop("'propMixScale' must be strictly increasing", call. = FALSE)
   }
-  list(scale = as.double(propMixScale), weight = as.double(propMixWeight / sum(propMixWeight)))
+  # weights already normalized are kept, so a normalized set rebuilds the same
+  .sum <- sum(propMixWeight)
+  if (abs(.sum - 1) > 4 * .Machine$double.eps) {
+    propMixWeight <- propMixWeight / .sum
+  }
+  list(scale = as.double(propMixScale), weight = as.double(propMixWeight))
 }
 
 #' Control options for the impmap (importance-sampling EM) estimation method
@@ -780,6 +785,64 @@ impmapControl <- function(
   .control$combSens <- combSens
   class(.control) <- "impmapControl"
   .control
+}
+
+#' The constructor an `impmapControl` came from
+#' @param object `impmapControl` object
+#' @return `"npagControl"`, `"npbControl"`, `"impControl"` or `"impmapControl"`
+#' @noRd
+.impmapDeparseType <- function(object) {
+  .est <- if (is.character(object$est)) object$est else ""
+  if (grepl("npag$", .est)) {
+    "npagControl"
+  } else if (grepl("npb$", .est)) {
+    "npbControl"
+  } else if (identical(object$mapIter, 0L)) {
+    "impControl"
+  } else {
+    "impmapControl"
+  }
+}
+
+#' Arguments of the np constructors stored under another name or value
+#' @param name field name
+#' @param value field value
+#' @return the argument string, or `NA` for the default handling
+#' @noRd
+.impmapDeparseExtra <- function(name, value) {
+  if (name == "npCores") {
+    return(paste0("cores = ", if (is.na(value)) "NULL" else deparse1(value)))
+  }
+  if (name == "points" && length(value) == 1L && is.na(value)) {
+    return("points = NULL")
+  }
+  NA_character_
+}
+
+#' @export
+rxUiDeparse.impmapControl <- function(object, var) {
+  # a fit resolves gammaMethod = "auto"; write what was asked for
+  if (!is.null(object$gammaMethodUser)) {
+    object$gammaMethod <- object$gammaMethodUser
+  }
+  # defaults that follow other arguments are compared with what those give
+  .derived <- list(
+    sirSample = max(25L, as.integer(ceiling(max(object$isample) / 10))),
+    nConvWindow = if (identical(object$gammaRule, "target")) 20L else 10L,
+    ctol = NULL
+  )
+  .extra <- unlist(lapply(names(.derived), function(n) {
+    if (!identical(object[[n]], .derived[[n]])) paste0(n, " = ", .deparseValue(object[[n]]))
+  }))
+  .rxUiDeparseFoceiControl(
+    object,
+    var,
+    type = .impmapDeparseType(object),
+    internal = c("impCov", "autoNonNormal", "gammaMethodUser", "npEndpointCmt", .impmapIdxMapNames, names(.derived)),
+    covName = function(x) if (isTRUE(x$impCov)) "imp" else .foceiControlCovMethodName(x),
+    fun = .impmapDeparseExtra,
+    extra = as.character(.extra)
+  )
 }
 
 #' @rdname nmObjHandleControlObject

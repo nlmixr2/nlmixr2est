@@ -59,11 +59,6 @@
   (`singular gradient matrix at initial parameter estimates` with
   `algorithm = "default"`).
 
-- `est="nls"` with `nlsControl(solveType="fun")` fits a model that uses
-  `lag()` of a calculated variable.  It stopped with `The following
-  parameter(s) are required for solving`, because its model did not define
-  that variable.
-
 - `est = "lbfgsb3c"` stopped early at the default `sigdig`: its `factr` was
   `10^-sigdig / eps`, which tests one step's objective reduction, so a logistic
   Emax fit ended ~1.6 OFV short of the optimum.  It is now
@@ -87,6 +82,16 @@
   no covariance.  A control whose covariance step is off is written as
   `covMethod = ""` even when its `covType` is `"analytic"`, where it was
   written as `covMethod = "analytic"`.
+
+- `rxUiDeparse()` of an estimation control evaluates back to the identical
+  control.  A control with a non-default `sigdig` is written as `sigdig = `
+  rather than as every tolerance derived from it (some of them rounded, such
+  as `lbfgsFactr`); `print` is written for the focei family, where it was
+  dropped; and saem's integer `nBurn`/`nEm` stay integer.
+
+- `impControl()`, `impmapControl()`, `npagControl()` and `npbControl()` now
+  have an `rxUiDeparse()` method; a fit with one of these controls deparsed
+  its control as nothing.
 
 - `est="nls"` dropped the `past()` pre-history of a delay differential
   equation model, biasing its estimates; the history is now kept.
@@ -326,10 +331,13 @@
   which stopped the fit with `missing value where TRUE/FALSE needed`, and
   `scaleCmax = Inf` let an infinite one through.
 
-### Covariance and finite differences
-
 ### Covariance
 
+- The post-fit covariance of a model with inter-occasion variability is now
+  computed: the recompute of the `mfocei`-style families (and of imp/np with
+  a requested covariance) and `setCov(fit, "imp")` (or a deferred
+  `covMethod = "imp"`) refit without the occasion ETAs, the refit stopped,
+  and no covariance was installed.
 - A covariance computed after the fit is now installed only when it is
   finite, symmetric and positive definite; otherwise the fit keeps the
   covariance it had and a warning names the method and the reason.  This
@@ -372,6 +380,69 @@
   information matrix is now labelled `"Ha"`; it had no `covMethod`.  `covMethod =
   "analytic"` falling back to `"linFim"` is now a warning, kept in
   `$runInfo`, rather than a message.
+- `saemControl(covMethod = "r,s")` (and `"r"`, `"s"`) computes no R or S
+  matrix: it inverts the theta block of SAEM's estimation-phase information
+  `$saem$Ha`.  That covariance is now installed as `"Ha"`
+  (`"|Ha|"` when `sqrtm()` repaired the block) instead of with no
+  label, and its rows follow the order the SAEM kernel lays them out in.  With
+  a `fix()`ed theta, or with a theta without a random effect ahead of one with
+  a random effect, the standard errors went to the wrong parameters (#906): on
+  `theo_sd` with `tcl` fixed, `tv` got the standard error of `tcl`.  A theta
+  without a random effect has no information of its own in that block, so it
+  now gets no standard error, with a warning, instead of a near-zero one.  The
+  same matrix is what an unusable `covMethod = "linFim"` falls back to; it
+  carries the same label there and no longer borrows the linearized FIM's
+  variance block.  Every SAEM covariance is now checked (finite, symmetric,
+  positive definite on its identified rows) before it is installed, and an
+  integer `covMethod` is read as a `foceiControl()` slot, so `covMethod = 0L`
+  computes no covariance (it inverted `Ha`).
+- The Omega rows of the SAEM covariances (`"sa"`, `"fim"`, `"linFim"`, and the
+  linearized variance block spliced into `"sa"`/`"fim"`) now belong to the
+  random effects they are named after.  They were named in the order the etas
+  are declared in `ini()`, but SAEM orders its variance parameters by the
+  thetas the etas belong to, so declaring `eta.v` before `eta.ka` reported the
+  standard error of the variance of `eta.ka` as that of `eta.v`.  A model with
+  a random effect that is not mu-referenced (`cl <- exp(tcl) * (1 + eta.cl)`)
+  is such a model whatever the declaration order, and with it a theta without a
+  random effect made `"sa"`/`"fim"` fall back to `"linFim"`; they are now
+  computed.  When the random effects cannot be matched one to one to SAEM's
+  variance parameters, the Omega rows are left out with a warning; they were
+  left out silently.
+- When a SAEM `"sa"` or `"fim"` covariance falls back to `"linFim"`, the
+  message says why (for example `the covariance is not positive definite` or
+  `the information matrix is singular`).
+- The per-observation log-likelihoods of an `imp`, `impmap` or `qrpem` fit
+  (`$llikObs`, the `nlmixrLlikObs` column) with the default `covMethod = "imp"`
+  are those at the estimates.  They were those of the last importance sample
+  of the last finite-difference evaluation of the covariance step: on
+  `theo_sd` they differed from the same fit without a covariance step by up
+  to 7.6 (`impmap`) and 8.1 (`imp`) log-likelihood units.
+- The `imp`/`impmap`/`qrpem` covariance (`covMethod = "imp"`, the default)
+  reports its Omega rows as the variances and covariances they are named
+  after (`om.<eta>`, `cov.<eta>.<eta>`).  They held the parameters the fit
+  estimates Omega in (the entries of `chol(Omega^-1)`, a square-root
+  diagonal by default) and are now mapped by the delta method: on `theo_sd`
+  the `impmap` standard errors of the Omega variances go from 0.153, 0.240,
+  0.393 (`eta.ka`, `eta.cl`, `eta.v`) to 0.196, 0.036, 0.010, in line with
+  the other methods.  `$impCov`/`$impSe` hold the mapped matrix,
+  `$impCovInternal` the one in the estimation parameterization and
+  `$impCovJacobian` the map.  The matrix is installed as `"imp"` only when
+  it is positive definite: `est = "imp"` on `theo_sd` installed one with a
+  negative variance for the `tka` estimate (standard error `NaN`).  An
+  information matrix that is not positive definite is now repaired as the
+  FOCEi `"|r|"` covariance is, by `sqrtm(info %*% info)`, and installed as
+  `"|imp|"` with a warning; when even that fails, a warning says why and no
+  covariance is installed.
+- `setCov(fit, "sa")`, `setCov(fit, "imp")`, a deferred `covMethod = "sa"` or
+  `"imp"` and the default `npag`/`npb` covariance now compute the covariance
+  at the fit's estimates, as `saControl()`/`impCovControl()` say.  The SAEM
+  run re-estimated every parameter during its `nBurn`/`nEm` warm-up and the
+  importance-sampling run took a full EM step (`impCovControl(nIter = 1)`),
+  so the covariance was that of nearby estimates: on `theo_sd`, `tka` 0.466
+  became 0.463 (SAEM, 40 warm-up iterations) and 0.455 (three EM steps).
+  The SAEM warm-up now holds every population parameter (mixture proportions
+  excepted) and only equilibrates the chains; the importance-sampling
+  iterations are E-steps only.
 - The printed parameter table of a full-Bayes `fbvi`/`emvi` fit now shows the
   standard errors of the variational covariance (only `$parFixedDf` had
   them), its confidence interval uses the fit's `ci`, and the condition
@@ -455,130 +526,6 @@
   (`hessEpsLlik`, `gillKcovLlik`, `gillStepCovLlik`, `gillFtolCovLlik`,
   `rmatNormLlik`, `smatNormLlik`) no longer sets the option of the same name
   without `Llik` to its value as well.
-
-### Covariance
-
-- The post-fit covariance of a model with inter-occasion variability is now
-  computed: the recompute of the `mfocei`-style families (and of imp/np with
-  a requested covariance) and `setCov(fit, "imp")` (or a deferred
-  `covMethod = "imp"`) refit without the occasion ETAs, the refit stopped,
-  and no covariance was installed.
-- A covariance computed after the fit is now installed only when it is
-  finite, symmetric and positive definite; otherwise the fit keeps the
-  covariance it had and a warning names the method and the reason.  This
-  covers the post-fit recompute of the `mfocei`/`ifocei`-style, imp, np and
-  nlme families (whose failures were silent, and whose nested warnings are
-  suppressed), the deferred `covMethod = "sa"`/`"imp"` (silent when it failed,
-  silent when it fell back to another covariance), `setCov()` (a covariance
-  cached under the requested name was reinstalled even when not positive
-  definite) and `getVarCov(force = TRUE)`.
-- `setCov(fit, "r,s")` (and `"r"`, `"s"`, `" (full)"`) keeps the label its
-  refit computed, so a corrected result reads `"|r|,s"` rather than `"r,s"`.
-  A refit that falls back to another covariance (`"r"` for `"r,s"`, the
-  theta-only shape for a full one, or none at all, as on a mu-referenced fit)
-  is an error and leaves the covariance unchanged; it used to install the
-  fallback (or no covariance) under the requested name.  `setCov(fit, "sa")`
-  whose nested SAEM falls back to `"linFim"` no longer replaces the
-  covariance before reporting the error.
-- The full finite-difference covariance (`foceiControl(covFull = TRUE)`, the
-  default) is no longer installed when the full R matrix is not positive
-  definite: the `"r,s (full)"` sandwich built from it still looked positive
-  definite.  The fit keeps the native theta-only covariance, with a warning,
-  and the indefinite R is no longer stored as `$covR` or cached as
-  `"r (full)"`.  A default `focei` fit of the ODE one-compartment model of
-  `theo_sd` was such a case.
-- When the analytic covariance (`covMethod = "analytic"`) is not positive
-  definite, the theta block the native step installed from it is labelled
-  `"r (analytic)"` (it was `"r"`), and the warning no longer calls it a
-  finite-difference covariance.
-- The condition numbers, `$eigenCov` and `$fullCor` now describe the full
-  covariance once it is installed (`covFull = TRUE`, the analytic
-  covariance); `foceiCovAnalytic()` also refreshes the parameter-table SEs and
-  keeps the covariance it replaced in `$covList`.
-- A SAEM full covariance (theta + residual + Omega) corrected by `sqrtm()`
-  keeps its `"|linFim|"` label (it was relabelled `"linFim"`), and the
-  condition numbers are refreshed when it is installed.
-  `saemControl(covMethod = "linFim")` now warns when the linearization cannot
-  be used and the SAEM information matrix is inverted instead, and when no
-  covariance can be computed at all; both were silent.  `covMethod =
-  "analytic"` falling back to `"linFim"` is now a warning, kept in
-  `$runInfo`, rather than a message.
-- `saemControl(covMethod = "r,s")` (and `"r"`, `"s"`) computes no R or S
-  matrix: it inverts the theta block of SAEM's estimation-phase information
-  `$saem$Ha`.  That covariance is now installed as `"Ha"`
-  (`"|Ha|"` when `sqrtm()` repaired the block) instead of with no
-  label, and its rows follow the order the SAEM kernel lays them out in.  With
-  a `fix()`ed theta, or with a theta without a random effect ahead of one with
-  a random effect, the standard errors went to the wrong parameters (#906): on
-  `theo_sd` with `tcl` fixed, `tv` got the standard error of `tcl`.  A theta
-  without a random effect has no information of its own in that block, so it
-  now gets no standard error, with a warning, instead of a near-zero one.  The
-  same matrix is what an unusable `covMethod = "linFim"` falls back to; it
-  carries the same label there and no longer borrows the linearized FIM's
-  variance block.  Every SAEM covariance is now checked (finite, symmetric,
-  positive definite on its identified rows) before it is installed, and an
-  integer `covMethod` is read as a `foceiControl()` slot, so `covMethod = 0L`
-  computes no covariance (it inverted `Ha`).
-- The Omega rows of the SAEM covariances (`"sa"`, `"fim"`, `"linFim"`, and the
-  linearized variance block spliced into `"sa"`/`"fim"`) now belong to the
-  random effects they are named after.  They were named in the order the etas
-  are declared in `ini()`, but SAEM orders its variance parameters by the
-  thetas the etas belong to, so declaring `eta.v` before `eta.ka` reported the
-  standard error of the variance of `eta.ka` as that of `eta.v`.  A model with
-  a random effect that is not mu-referenced (`cl <- exp(tcl) * (1 + eta.cl)`)
-  is such a model whatever the declaration order, and with it a theta without a
-  random effect made `"sa"`/`"fim"` fall back to `"linFim"`; they are now
-  computed.  When the random effects cannot be matched one to one to SAEM's
-  variance parameters, the Omega rows are left out with a warning; they were
-  left out silently.
-- When a SAEM `"sa"` or `"fim"` covariance falls back to `"linFim"`, the
-  message says why (for example `the covariance is not positive definite` or
-  `the information matrix is singular`).
-- The per-observation log-likelihoods of an `imp`, `impmap` or `qrpem` fit
-  (`$llikObs`, the `nlmixrLlikObs` column) with the default `covMethod = "imp"`
-  are those at the estimates.  They were those of the last importance sample
-  of the last finite-difference evaluation of the covariance step: on
-  `theo_sd` they differed from the same fit without a covariance step by up
-  to 7.6 (`impmap`) and 8.1 (`imp`) log-likelihood units.
-- The `imp`/`impmap`/`qrpem` covariance (`covMethod = "imp"`, the default)
-  reports its Omega rows as the variances and covariances they are named
-  after (`om.<eta>`, `cov.<eta>.<eta>`).  They held the parameters the fit
-  estimates Omega in (the entries of `chol(Omega^-1)`, a square-root
-  diagonal by default) and are now mapped by the delta method: on `theo_sd`
-  the `impmap` standard errors of the Omega variances go from 0.153, 0.240,
-  0.393 (`eta.ka`, `eta.cl`, `eta.v`) to 0.196, 0.036, 0.010, in line with
-  the other methods.  `$impCov`/`$impSe` hold the mapped matrix,
-  `$impCovInternal` the one in the estimation parameterization and
-  `$impCovJacobian` the map.  The matrix is installed as `"imp"` only when
-  it is positive definite: `est = "imp"` on `theo_sd` installed one with a
-  negative variance for the `tka` estimate (standard error `NaN`).  An
-  information matrix that is not positive definite is now repaired as the
-  FOCEi `"|r|"` covariance is, by `sqrtm(info %*% info)`, and installed as
-  `"|imp|"` with a warning; when even that fails, a warning says why and no
-  covariance is installed.
-- `setCov(fit, "sa")`, `setCov(fit, "imp")`, a deferred `covMethod = "sa"` or
-  `"imp"` and the default `npag`/`npb` covariance now compute the covariance
-  at the fit's estimates, as `saControl()`/`impCovControl()` say.  The SAEM
-  run re-estimated every parameter during its `nBurn`/`nEm` warm-up and the
-  importance-sampling run took a full EM step (`impCovControl(nIter = 1)`),
-  so the covariance was that of nearby estimates: on `theo_sd`, `tka` 0.466
-  became 0.463 (SAEM, 40 warm-up iterations) and 0.455 (three EM steps).
-  The SAEM warm-up now holds every population parameter (mixture proportions
-  excepted) and only equilibrates the chains; the importance-sampling
-  iterations are E-steps only.
-- The printed parameter table of a full-Bayes `fbvi`/`emvi` fit now shows the
-  standard errors of the variational covariance (only `$parFixedDf` had
-  them), its confidence interval uses the fit's `ci`, and the condition
-  numbers describe that covariance.
-- The nlm-family covariance (`bobyqa`, `uobyqa`, `newuoa`, `optim`, `nlminb`,
-  `nlm`, `n1qn1`, `lbfgsb3c`, `trust`, `nls` with `"LM"`) now repairs a
-  Hessian that is not positive definite as intended, as `"|r|"`
-  (`sqrtm(R %*% R)`) or, failing that, `"r+"` (the nearest positive-definite
-  matrix), with a warning in `$runInfo`.  It used to invert every Hessian
-  after an unreported Schnabel-Eskow perturbation and label it `"r"`, which
-  gave several parameters of the derivative-free fits of `theo_sd` the same
-  standard error.  A non-finite Hessian, or the zero one of a failed `trust`
-  solve, gives `covMethod = "failed"` with a warning instead of a covariance.
 
 
 # nlmixr2est 7.1.0
