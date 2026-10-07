@@ -167,6 +167,7 @@ nlmixr2GradFun <- function(
   printNcol = floor((getOption("width") - 23) / 12),
   print = 1
 ) {
+  checkmate::assertNumeric(gillStep, lower = 1, len = 1, any.missing = FALSE, finite = TRUE)
   .md5 <- digest::digest(list(what, gillRtol, gillK, gillStep, gillFtol))
   .nlmixr2GradInfo[["printNcol"]] <- printNcol
   .nlmixr2GradInfo[["useColor"]] <- useColor

@@ -1601,8 +1601,8 @@
   if (!all(is.finite(x))) {
     return(NULL)
   }
-  .s <- try(sqrtm(x %*% t(x)), silent = FALSE)
-  if (inherits(.s, "try-error") || !all(is.finite(.s))) {
+  .s <- tryCatch(sqrtm(x %*% t(x)), error = function(e) NULL)
+  if (is.null(.s) || !all(is.finite(.s))) {
     return(NULL)
   }
   list(mat = .s, sqrtm = TRUE)

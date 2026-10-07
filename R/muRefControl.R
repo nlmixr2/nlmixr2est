@@ -424,7 +424,9 @@ nmObjGetFoceiControl.ilaplace <- function(x, ...) {
 #' source method and is dropped so the target's value wins.
 #'
 #' The `posthoc` field of `foControl()`/`foiControl()` is an argument of those two
-#' constructors only, so it is dropped for any other target.
+#' constructors only, so it is dropped for any other target; `posthoc = FALSE`
+#' (no inner problem) is kept as `maxInnerIterations = 0`, as
+#' `.foceiFamilyControlToFoceiControl()` keeps it.
 #' @param ctl control object to convert
 #' @param target name of the target `*Control()` function
 #' @return a control of class `target`
@@ -433,6 +435,9 @@ nmObjGetFoceiControl.ilaplace <- function(x, ...) {
   .cls <- class(ctl)[1]
   .ctl <- unclass(ctl)
   if (!(target %in% c("foControl", "foiControl"))) {
+    if (isFALSE(.ctl$posthoc)) {
+      .ctl$maxInnerIterations <- 0L
+    }
     .ctl$posthoc <- NULL
   }
   if (identical(.cls, target)) {

@@ -59,3 +59,13 @@ nmTest({
     expect_identical(unname(.fit$parFixedDf["tv", "Estimate"]), 3.45)
   })
 })
+
+test_that("a simulation restores every estimation field the reset creates", {
+  # .preProcessHooksRun() saves and restores .nlmixr2EstEnvFields around a
+  # simulation; a field .nlmixr2globalReset() creates without being listed
+  # there would leak from a simulation into the next estimation
+  .b <- deparse(body(.nlmixr2globalReset))
+  .made <- regmatches(.b, regexpr("(?<=nlmixr2EstEnv\\$)[A-Za-z0-9_.]+(?= <-)", .b, perl = TRUE))
+  expect_gt(length(.made), 0L)
+  expect_setequal(.made, .nlmixr2EstEnvFields)
+})

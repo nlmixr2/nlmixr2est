@@ -79,8 +79,10 @@ test_that("foce, focep, laplace and agq convert a family control by what its cal
         )
         expect_s3_class(.ctl, .targets[[.est]], exact = TRUE)
         expect_identical(.ctl$maxOuterIterations, 7L)
-        # posthoc is a field of foControl()/foiControl() only
+        # posthoc is a field of foControl()/foiControl() only; posthoc = FALSE (no
+        # inner problem) arrives as maxInnerIterations = 0
         expect_false("posthoc" %in% names(.ctl))
+        expect_identical(.ctl$maxInnerIterations, if (.posthoc) .default$maxInnerIterations else 0L)
         # the target method's own settings, not FO's
         expect_identical(.ctl[.identity], .default[.identity])
       }

@@ -137,3 +137,11 @@ test_that("the objective sees the caller's names and attributes", {
   expect_equal(gw$grad(xw), c(6, 12), tolerance = 1e-3)
   expect_equal(nlmixr2Hess(xw, fw), diag(c(6, 6)), tolerance = 1e-3)
 })
+
+test_that("nlmixr2GradFun() takes a Gill step factor of at least 1, as foceiControl() does", {
+  f <- function(x) sum(x^2)
+  for (.bad in list(0.5, 0, Inf, NA_real_, c(2, 3))) {
+    expect_error(nlmixr2GradFun(f, gillStep = .bad), "gillStep")
+  }
+  expect_error(nlmixr2GradFun(f, gillStep = 0.5), "Element 1 is not >= 1", fixed = TRUE)
+})
