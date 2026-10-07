@@ -115,8 +115,8 @@ nmTest({
   .npTwinLogLik <- function(mod, theta, support, weights, dat, ctl) {
     .theta <- as.list(theta)
     .ui <- rxode2::ini(rxode2::assertRxUi(mod), .theta)
-    .npInnerSetup(.ui, dat, matrix(0, length(unique(dat$id)), ncol(support)), ctl)
     on.exit(.npInnerFree())
+    .npInnerSetup(.ui, dat, matrix(0, length(unique(dat$id)), ncol(support)), ctl)
     sum(log(.npInnerPsi(support, ctl) %*% weights))
   }
 
@@ -166,6 +166,12 @@ nmTest({
     )
     expect_true(all(is.finite(.twin)))
     expect_equal(.twin[["gauss"]] - .twin[["ll"]], .nObs * 0.5 * log(2 * pi), tolerance = 1e-10)
+    # the Gaussian twin's own fit keeps its residual scales in their domain too
+    rxode2::rxSetSeed(42)
+    .fg <- suppressWarnings(nlmixr2(.gauss, .dat, "npag", .ctl))
+    expect_true(all(is.finite(fixef(.fg)[c("add.sd", "pdadd.sd")])))
+    expect_gt(unname(fixef(.fg)["pdadd.sd"]), 0)
+    expect_gt(unname(fixef(.fg)["add.sd"]), 0)
   })
 
   test_that("an ini() lower bound constrains a parameter inside ll() (#850)", {
