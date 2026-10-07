@@ -506,11 +506,19 @@ nmTest({
     # an "analytic" request outside the analytic scope (linCmt) falls back to the
     # finite-difference sandwich, which is marginal too, and says so
     .an <- foceiControl(print = 0, calcTables = FALSE, covMethod = "analytic")
-    expect_warning(
-      .mfa <- nlmixr2(.oneCmt, nlmixr2data::theo_sd, est = "mfocei", control = .an),
-      "\"r,s (full)\" covariance installed instead of the requested \"analytic\"",
-      fixed = TRUE
+    # the post-fit recompute's warning is reported once: raised, or kept in $runInfo
+    # with the run's other warnings when warnings are collected
+    .acc <- new.env(parent = emptyenv())
+    .acc$w <- character(0)
+    .mfa <- withCallingHandlers(
+      nlmixr2(.oneCmt, nlmixr2data::theo_sd, est = "mfocei", control = .an),
+      warning = function(w) {
+        .acc$w <- c(.acc$w, conditionMessage(w))
+        invokeRestart("muffleWarning")
+      }
     )
+    .msg <- "\"r,s (full)\" covariance installed instead of the requested \"analytic\""
+    expect_identical(sum(grepl(.msg, c(.acc$w, .mfa$runInfo), fixed = TRUE)), 1L)
     expect_identical(.mfa$covMethod, "r,s (full)")
     expect_lt(.maxRel(.seOf(.mfa), .seOf(.ref)), 1e-6)
   })
