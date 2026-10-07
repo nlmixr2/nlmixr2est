@@ -69,8 +69,8 @@ nmTest({
   test_that("SAEM covMethod='analytic' uses the FOCEI formulas of SAEM's likelihood", {
     skip_on_cran()
     # with a proportional error the interaction changes the observed information; the
-    # output step that finalizes a saem fit evaluates FOCE at SAEM's ETAs, and the
-    # analytic covariance used to take that interaction = 0 from fit$finalUi
+    # output step that finalizes a saem fit evaluates FOCE at SAEM's ETAs, so the
+    # analytic covariance must not take that interaction = 0 from fit$finalUi
     ceMod <- function() {
       ini({
         tka <- 0.45; tcl <- 1; tv <- 3.45
