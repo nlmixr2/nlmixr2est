@@ -77,7 +77,7 @@ nmTest({
     expect_identical(fit$env$extra, .extra0)
     expect_identical(fit$objf, fit$objDf[.type0, "OBJF"])
     # an objective the saem fit cannot describe stops before anything is switched
-    .state <- function(f) list(f$ofvType, f$env$extra, f$objf, as.numeric(f$logLik), f$AIC, f$BIC)
+    .state <- function(f) list(f$ofvType, f$env$extra, f$objf, as.numeric(f$logLik), f$AIC, f$BIC, f$objDf)
     .before <- .state(fit)
     .row <- data.frame(OBJF = 1, AIC = 2, BIC = 3, "Log-likelihood" = -0.5, check.names = FALSE)
     expect_error(
@@ -86,5 +86,11 @@ nmTest({
       fixed = TRUE
     )
     expect_identical(.state(fit), .before)
+    # nothing was added, so the same call fails the same way again
+    expect_error(
+      nlmixrAddObjectiveFunctionDataFrame(fit, .row, "custom"),
+      "the saem fit has no description of objective function 'custom'",
+      fixed = TRUE
+    )
   })
 })
