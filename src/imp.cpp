@@ -1305,7 +1305,9 @@ static void impComputeCov(Environment e, const arma::vec& gammaVec,
   impGetOmega(Om);
   Environment nlmixr2 = Environment::namespace_env("nlmixr2est");
   Function covInstall = nlmixr2[".impCovInstall"];
-  covInstall(e, wrap(cov), thIdxR, dOmCov, wrap(Om), omPar, wrap(info));
+  // held first: Function's argument list allocates while it is built
+  RObject covR = wrap(cov), omR = wrap(Om), infoR = wrap(info);
+  covInstall(e, covR, thIdxR, dOmCov, omR, omPar, infoR);
 }
 
 void impOuter(Environment e) {

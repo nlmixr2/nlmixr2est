@@ -12964,7 +12964,9 @@ void impSetOmega(const arma::mat& Omega, const std::string& diagXform) {
   // definite".  Symmetrize and floor the diagonal so the inverse is well-defined.
   arma::mat Om = 0.5 * (Omega + Omega.t());
   for (unsigned int d = 0; d < Om.n_rows; ++d) if (Om(d, d) < 1e-6) Om(d, d) = 1e-6;
-  _rxInv = as<List>(f(Rcpp::Named("mat") = wrap(Om),
+  // held first: Function's argument list allocates while it is built
+  NumericMatrix omR = wrap(Om);
+  _rxInv = as<List>(f(Rcpp::Named("mat") = omR,
                       Rcpp::Named("diag.xform") = diagXform));
   if (op_focei.fo == 1) {
     op_focei.omega = getOmegaMat();
@@ -16629,7 +16631,7 @@ RObject vaeOuterSolve_(NumericVector thVals, NumericMatrix ebes, List cols, int 
     VaeOuterE& E = Es[(size_t)i];
     okv[i] = E.ok ? 1 : 0;
     if (!E.ok) continue;                       // flagged; entry stays R_NilValue
-    List Ei = List::create(_["f"] = wrap(E.f), _["a"] = wrap(E.a), _["A"] = wrap(E.A));
+    List Ei = List::create(_["f"] = E.f, _["a"] = E.a, _["A"] = E.A);
     if (hasR) {
       Ei["R"] = wrap(E.R); Ei["aR"] = wrap(E.aR); Ei["AR"] = wrap(E.AR);
       if (nsig > 0) {
@@ -24178,8 +24180,11 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       try {
         Rcpp::Environment nsG = Rcpp::Environment::namespace_env("nlmixr2est");
         Rcpp::Function gEval = nsG[".vaeGradEval"];
-        grR = gEval(NumericVector(thvG.begin(), thvG.end()), wrap(etaG),
-                    wrap(omFull()));
+        // held first: Function's argument list allocates while it is built
+        NumericVector thR(thvG.begin(), thvG.end());
+        RObject etaR = wrap(etaG);
+        RObject omR = wrap(omFull());
+        grR = gEval(thR, etaR, omR);
       } catch (Rcpp::internal::InterruptedException&) {
         throw;
       } catch (Rcpp::LongjumpException&) {

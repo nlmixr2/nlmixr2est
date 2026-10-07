@@ -1915,12 +1915,14 @@ public:
   List get_resInfo() {
     vec sig2(bres.size());
     std::copy(sigma2, sigma2+bres.size(), &sig2[0]);
-    return List::create(_["sigma2"]  = wrap(sig2),
-			_["ares"]    = wrap(ares),
-			_["bres"]    = wrap(bres),
-			_["cres"]    = wrap(cres),
-			_["lres"]    = wrap(lres),
-			_["res_mod"] = wrap(res_mod));
+    // the vectors go in as themselves: create() wraps each once its result is
+    // protected, where a wrap() argument would sit unprotected meanwhile
+    return List::create(_["sigma2"]  = sig2,
+			_["ares"]    = ares,
+			_["bres"]    = bres,
+			_["cres"]    = cres,
+			_["lres"]    = lres,
+			_["res_mod"] = res_mod);
   }
 
   mat get_mcmcAccTrace()    { return mcmcAccTrace; }
@@ -5887,8 +5889,8 @@ SEXP saem_fit(SEXP xSEXP) {
     Named("HaSa") = saem.get_HaSa(),
     Named("res_info") = saem.get_resInfo(),
     Named("tolFactor") = _saemTf,
-    Named("mixProb") = wrap(saem.get_mixProb()),
-    Named("mixWeights") = wrap(saem.get_mixWeights())
+    Named("mixProb") = saem.get_mixProb(),
+    Named("mixWeights") = saem.get_mixWeights()
   );
   current_saem_state = nullptr;
   out.attr("saem.cfg") = x;
