@@ -200,6 +200,10 @@ nmTest({
       "lag\\(\\) of a calculated variable"
     )
     expect_equal(.fast$objf, .fit$objf, tolerance = 1e-6)
+    # no 2nd-order sensitivities through a lagged variable
+    .ui <- rxode2::rxUiDecompress(rxode2::rxode2(.lagMod))
+    assign("control", list(innerHessian = "conditional"), envir = .ui)
+    expect_error(.ui$foceiEnv, "lag\\(\\) of a variable")
     expect_message(
       nlmixr2(.lagMod, nlmixr2data::theo_sd, est = "focei", control = foceiControl(print = 0, covMethod = "analytic")),
       "lag\\(\\) of a calculated variable"
