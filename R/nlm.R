@@ -239,33 +239,15 @@ nlmControl <- function(
   ## a control so an explicit sensMethod="forward" keeps working.
   sensMethod <- match.arg(sensMethod)
 
-  ## eventSens: "jump" routes dosing-parameter (alag/F/rate/dur) sensitivities
-  ## through rxode2's analytic event jumps; "fd" uses the legacy path that misses them.
-  eventSens <- match.arg(eventSens)
-
-  ## sensMethod: forward (variational) ODE parameter sensitivities.  Retained as
-  ## a control so an explicit sensMethod="forward" keeps working.
-  sensMethod <- match.arg(sensMethod)
-
   .iterPrintControl <- .absorbIterPrintControl(
     print = print,
     printNcol = printNcol,
     useColor = useColor,
     iterPrintControl = .xtra$iterPrintControl
   )
-  if (checkmate::testIntegerish(scaleType, len = 1, lower = 1, upper = 4, any.missing = FALSE)) {
-    scaleType <- as.integer(scaleType)
-  } else {
-    .scaleTypeIdx <- c("norm" = 1L, "nlmixr2" = 2L, "mult" = 3L, "multAdd" = 4L)
-    scaleType <- setNames(.scaleTypeIdx[match.arg(scaleType)], NULL)
-  }
+  scaleType <- .ctlIdx(scaleType, .scaleTypeIdx, match.arg(scaleType))
 
-  .normTypeIdx <- c("rescale2" = 1L, "rescale" = 2L, "mean" = 3L, "std" = 4L, "len" = 5L, "constant" = 6L)
-  if (checkmate::testIntegerish(normType, len = 1, lower = 1, upper = 6, any.missing = FALSE)) {
-    normType <- as.integer(normType)
-  } else {
-    normType <- setNames(.normTypeIdx[match.arg(normType)], NULL)
-  }
+  normType <- .ctlIdx(normType, .normTypeIdx, match.arg(normType))
   checkmate::assertNumeric(scaleCmax, lower = 0, any.missing = FALSE, len = 1)
   checkmate::assertNumeric(scaleCmin, lower = 0, any.missing = FALSE, len = 1)
   if (!is.null(scaleC)) {
@@ -328,11 +310,7 @@ nlmControl <- function(
 }
 
 #' @export
-rxUiDeparse.nlmControl <- function(object, var) {
-  .default <- nlmControl()
-  .w <- .deparseDifferent(.default, object, "genRxControl")
-  .deparseFinal(.default, object, .w, var)
-}
+rxUiDeparse.nlmControl <- function(object, var) .deparseControl(object, var, nlmControl())
 
 
 #' Get the nlm family control
@@ -349,47 +327,15 @@ rxUiDeparse.nlmControl <- function(object, var) {
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.nlmControl <- function(control, env) {
-  assign("nlmControl", control, envir = env)
-}
+nmObjHandleControlObject.nlmControl <- function(control, env) assign("nlmControl", control, envir = env)
 
 #' @rdname nmObjGetControl
 #' @export
-nmObjGetControl.nlm <- function(x, ...) {
-  .env <- x[[1]]
-  if (exists("nlmControl", .env, inherits = FALSE)) {
-    .control <- get("nlmControl", .env, inherits = FALSE)
-    if (inherits(.control, "nlmControl")) {
-      return(.control)
-    }
-  }
-  if (exists("control", .env, inherits = FALSE)) {
-    .control <- get("control", .env, inherits = FALSE)
-    if (inherits(.control, "nlmControl")) {
-      return(.control)
-    }
-  }
-  stop("cannot find nlm related control object", call. = FALSE)
-}
+nmObjGetControl.nlm <- function(x, ...) .nmObjGetControlByClass(x, "nlmControl")
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.nlm <- function(control) {
-  .ctl <- control[[1]]
-  if (is.null(.ctl)) {
-    .ctl <- nlmControl()
-  }
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
-    .ctl <- do.call("nlmControl", .ctl)
-  }
-  if (!inherits(.ctl, "nlmControl")) {
-    .minfo("invalid control for `est=\"nlm\"`, using default")
-    .ctl <- nlmControl()
-  } else {
-    .ctl <- do.call(nlmControl, .ctl)
-  }
-  .ctl
-}
+getValidNlmixrCtl.nlm <- function(control) .getValidCtl(control, "nlmControl", "nlm")
 
 #' A surrogate function for nlm to call for ode solving
 #'
@@ -475,28 +421,17 @@ attr(rxUiGet.nlmModel0, "rstudio") <- quote(rxModelVar({}))
 
 #' What differs between the nlm and nls model builds
 #'
-#' The nlm-family methods (nlm, nlminb, optim, bobyqa, ...) minimize the
-#' population -LL of `rxUiGet.nlmModel0`; nls minimizes the weighted residual
-#' of `rxUiGet.nlsModel0`.  Both models go through the one build stack below
-#' (`.nlmFamilyPrune()` to `.nlmFamilySensModel()`).  Apart from the theta
-#' numbering of the `params()` line and the names in messages, the builds
-#' differ only in:
+#' Both builds share `.nlmFamilyPrune()` to `.nlmFamilySensModel()`; beyond
+#' theta numbering and message names they differ only in:
 #'
-#' - `matExpForcing` (see `.sensEtaOrTheta()`): nlm flattens a matExp() model
-#'   with an `indLin()` forcing term to ODEs.  nls keeps the native
-#'   matrix-exponential sensitivities; its residual Jacobian from them matches
-#'   finite differences.
-#' - `censFR`: nlm emits the `rx_pred_f_`/`rx_r_`/`rx_nu_` outputs that the
-#'   censoring likelihood in src/nlm.cpp reads.  nls refuses censored and
-#'   limit data (`.nlsFitModel()`), and its `rx_pred_` is a residual, not the
-#'   -LL that the censoring likelihood replaces.
-#' - `lhs`: nlm copies the model lhs into its gradient and pred-only models.
-#'   They define the `k_*` rate constants of a flattened matExp() model and the
-#'   variables referenced by `lag()`.  nls needs neither: it never flattens a
-#'   matExp() model, and a variable referenced by `lag()` has no symbolic
-#'   sensitivity, so it cannot enter the residual Jacobian.  (The
-#'   objective-only model of both defines such a variable, see
-#'   `.nlmFamilyRxModel()`.)
+#' - `matExpForcing`: nlm flattens a matExp() model with `indLin()` forcing to
+#'   ODEs; nls keeps the native matExp sensitivities (checked against FD).
+#' - `censFR`: only nlm emits the `rx_pred_f_`/`rx_r_`/`rx_nu_` censoring
+#'   outputs; nls refuses censored data and its `rx_pred_` is a residual.
+#' - `lhs`: only nlm copies the model lhs into its gradient and pred-only
+#'   models (flattened matExp() `k_*` constants, `lag()` variables); nls never
+#'   flattens these and a `lag()` variable has no symbolic sensitivity.  The
+#'   objective-only model of both gets them (`.nlmFamilyRxModel()`).
 #'
 #' @param type `"nlm"` or `"nls"`
 #' @return list of the settings for `type`
@@ -1198,59 +1133,8 @@ nlmObjectiveSetup <- function(ui, data, control = NULL, gradient = FALSE, scale 
   )))
   .nlmFinalizeList(.env, .ret, par = "estimate", printLine = TRUE, hessianCov = TRUE)
 }
-#' Get the full theta for nlm methods
-#'
-#' @param nlm enhanced nlm return
-#' @param ui ui object
-#' @return named theta matrix
-#' @author Matthew L. Fidler
-#' @noRd
-.nlmGetTheta <- function(nlm, ui) {
-  .iniDf <- ui$iniDf
-  setNames(
-    vapply(
-      seq_along(.iniDf$name),
-      function(i) {
-        if (.iniDf$fix[i]) {
-          .iniDf$est[i]
-        } else {
-          nlm$estimate[.iniDf$name[i]]
-        }
-      },
-      double(1),
-      USE.NAMES = FALSE
-    ),
-    .iniDf$name
-  )
-}
-
 .nlmControlToFoceiControl <- function(env, assign = TRUE) {
-  .nlmControl <- env$nlmControl
-  .ui <- env$ui
-  .foceiControl <- foceiControl(
-    rxControl = env$nlmControl$rxControl,
-    maxOuterIterations = 0L,
-    maxInnerIterations = 0L,
-    covMethod = 0L,
-    sumProd = .nlmControl$sumProd,
-    optExpression = .nlmControl$optExpression,
-    literalFix = .nlmControl$literalFix,
-    literalFixRes = .nlmControl$literalFixRes,
-    scaleTo = 0,
-    calcTables = .nlmControl$calcTables,
-    addProp = .nlmControl$addProp,
-    # skipCov=.ui$foceiSkipCov,
-    interaction = 0L,
-    compress = .nlmControl$compress,
-    ci = .nlmControl$ci,
-    sigdigTable = .nlmControl$sigdigTable,
-    indTolRelax = .nlmControl$indTolRelax,
-    eventSens = .nlmControl$eventSens
-  )
-  if (assign) {
-    env$control <- .foceiControl
-  }
-  .foceiControl
+  .nlmFamilyControlToFoceiControl(env, "nlmControl", assign)
 }
 
 
@@ -1259,8 +1143,8 @@ nlmObjectiveSetup <- function(ui, data, control = NULL, gradient = FALSE, scale 
     env,
     "nlm",
     .nlmFitModel,
-    .nlmGetTheta,
-    objective = function(.fit) 2 * as.numeric(.fit$minimum),
+    "estimate",
+    objective = "minimum",
     controlToFocei = .nlmControlToFoceiControl,
     returnFlag = "returnNlm",
     emitFitWarnings = TRUE,

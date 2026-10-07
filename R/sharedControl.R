@@ -25,63 +25,56 @@ getValidNlmixrCtl <- function(control) {
   UseMethod("getValidNlmixrCtl")
 }
 
-#' @rdname getValidNlmixrControl
-#' @export
-getValidNlmixrCtl.focei <- function(control) {
+#' Validate the control of an estimation method
+#'
+#' The body of most `getValidNlmixrCtl()` methods.  `NULL` gives the default
+#' control and a plain list is passed to the constructor.  A control of the
+#' method's own class is rebuilt; one of a `convert` class is converted, by
+#' `convertFun` or else by passing its fields to the constructor; anything
+#' else is replaced by the default, with a message.
+#' @param control the list `getValidNlmixrControl()` dispatches on
+#' @param ctl name of the method's control constructor, which is also the
+#'   class of its control
+#' @param est method named in the message about an invalid control
+#' @param convert classes of the controls that are converted
+#' @param convertFun `function(control, ctl)` converting one, or `NULL`
+#' @return the validated control
+#' @noRd
+.getValidCtl <- function(control, ctl, est = class(control)[1], convert = character(0), convertFun = NULL) {
+  .fun <- get(ctl, mode = "function")
   .ctl <- control[[1]]
-  .cls <- class(control)[1]
   if (is.null(.ctl)) {
-    .ctl <- foceiControl()
+    .ctl <- .fun()
   }
   if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
-    .ctl <- do.call("foceiControl", .ctl)
+    .ctl <- do.call(ctl, .ctl)
   }
-  if (!inherits(.ctl, "foceiControl")) {
-    .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
-    .ctl <- foceiControl()
-  } else {
-    .ctl <- do.call(foceiControl, .ctl)
+  if (inherits(.ctl, ctl)) {
+    return(do.call(.fun, .ctl))
   }
-  .ctl
+  if (inherits(.ctl, convert)) {
+    .minfo(paste0("converting ", class(.ctl)[1], " to ", ctl))
+    if (is.function(convertFun)) {
+      return(convertFun(.ctl, ctl))
+    }
+    class(.ctl) <- NULL
+    return(do.call(.fun, .ctl))
+  }
+  .minfo(paste0("invalid control for `est=\"", est, "\"`, using default"))
+  .fun()
 }
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.nlme <- function(control) {
-  .ctl <- control[[1]]
-  if (is.null(.ctl)) {
-    .ctl <- nlmeControl()
-  }
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
-    .ctl <- do.call("nlmeControl", .ctl)
-  }
-  if (!inherits(.ctl, "nlmeControl")) {
-    .minfo("invalid control for `est=\"nlme\"`, using default")
-    .ctl <- nlmeControl()
-  } else {
-    .ctl <- do.call(nlmeControl, .ctl)
-  }
-  .ctl
-}
+getValidNlmixrCtl.focei <- function(control) .getValidCtl(control, "foceiControl")
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.saem <- function(control) {
-  .ctl <- control[[1]]
-  if (is.null(.ctl)) {
-    .ctl <- saemControl()
-  }
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
-    .ctl <- do.call("saemControl", .ctl)
-  }
-  if (!inherits(.ctl, "saemControl")) {
-    .minfo("invalid control for `est=\"saem\"`, using default")
-    .ctl <- saemControl()
-  } else {
-    .ctl <- do.call(saemControl, .ctl)
-  }
-  .ctl
-}
+getValidNlmixrCtl.nlme <- function(control) .getValidCtl(control, "nlmeControl", "nlme")
+
+#' @rdname getValidNlmixrControl
+#' @export
+getValidNlmixrCtl.saem <- function(control) .getValidCtl(control, "saemControl", "saem")
 
 #' @rdname getValidNlmixrControl
 #' @export
@@ -194,6 +187,25 @@ getValidNlmixrCtl.default <- function(control) {
   return(list(ctl = .out, rest = .in))
 }
 
+# integer codes of the scaleType and normType options, which C++ reads
+.scaleTypeIdx <- c("norm" = 1L, "nlmixr2" = 2L, "mult" = 3L, "multAdd" = 4L)
+.normTypeIdx <- c("rescale2" = 1L, "rescale" = 2L, "mean" = 3L, "std" = 4L, "len" = 5L, "constant" = 6L)
+
+#' Integer code of a control option given as a code or a name
+#'
+#' @param value the option as given
+#' @param idx the name -> code map
+#' @param choice `match.arg()` of the option in the calling control; it is a
+#'   promise, forced only when `value` is not a code
+#' @return the integer code
+#' @noRd
+.ctlIdx <- function(value, idx, choice) {
+  if (checkmate::testIntegerish(value, len = 1, lower = 1, upper = length(idx), any.missing = FALSE)) {
+    return(as.integer(value))
+  }
+  idx[[choice]]
+}
+
 #' Optimizer convergence tolerance derived from `sigdig`
 #'
 #' `10^(-sigdig)` -- the same exponent `sigdig` sets for the ODE `rtol`, so the
@@ -205,11 +217,17 @@ getValidNlmixrCtl.default <- function(control) {
 #' @noRd
 .sigdigOptTol <- function(sigdig) 10^(-sigdig)
 
-#' L-BFGS `factr` derived from `sigdig` (relative-f tolerance `10^-sigdig`)
+#' L-BFGS-B `factr` derived from `sigdig`
+#'
+#' Two orders tighter than `10^-sigdig`, as `foceiControl(lbfgsFactr=)`:
+#' `factr` tests one step's objective reduction, so `10^-sigdig` stops early.
 #' @param sigdig optimization significant digits
-#' @return the `factr` value (`tol / .Machine$double.eps`)
+#' @param floor smallest `factr` returned
+#' @return the `factr` value (`10^(-sigdig-2) / .Machine$double.eps`)
 #' @noRd
-.sigdigFactr <- function(sigdig) 10^(-sigdig) / .Machine$double.eps
+.sigdigFactr <- function(sigdig, floor = 1) {
+  max(10^(-sigdig - 2) / .Machine$double.eps, floor)
+}
 
 #' Scale a tuned default tolerance by `sigdig` around `sigdig = 4`
 #'

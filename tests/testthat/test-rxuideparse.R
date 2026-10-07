@@ -3,7 +3,7 @@ nmTest({
     expect_equal(
       rxUiDeparse.foceiControl(
         foceiControl(
-          innerOpt = "BFGS",
+          innerOpt = "lbfgsb3c",
           scaleType = "norm",
           normType = "std",
           derivMethod = "central",
@@ -18,7 +18,7 @@ nmTest({
       ),
       quote(ctl <- foceiControl(derivMethod = "central", covDerivMethod = "forward",
                                            covMethod = "s", diagXform = "identity", optimHessType = "forward",
-                                           innerOpt = "BFGS", scaleType = "norm", normType = "std",
+                                           innerOpt = "lbfgsb3c", scaleType = "norm", normType = "std",
                                            eventType = "forward", addProp = "combined1"))
     )
 
@@ -35,6 +35,18 @@ nmTest({
     expect_equal(rxUiDeparse.foceiControl(foceiControl(), "ctl"), quote(ctl <- foceiControl()))
 
     expect_warning(rxUiDeparse.foceiControl(foceiControl(outerOpt = optim), "ctl"), "reset")
+  })
+
+  test_that("foceiControl() deparse keeps a deferred covariance and a skipped one", {
+    for (.m in c("sa", "imp")) {
+      .call <- rxUiDeparse.foceiControl(foceiControl(covMethod = .m), "ctl")
+      expect_equal(.call, str2lang(paste0("ctl <- foceiControl(covMethod = \"", .m, "\")")))
+      expect_identical(eval(.call[[3]])$covMethodDeferred, .m)
+    }
+    # an analytic control whose covariance step was turned off (slot 0)
+    .ctl <- foceiControl(covMethod = "analytic")
+    .ctl$covMethod <- 0L
+    expect_equal(rxUiDeparse.foceiControl(.ctl, "ctl"), quote(ctl <- foceiControl(covMethod = "")))
   })
 
   test_that("saemControl() deparse", {

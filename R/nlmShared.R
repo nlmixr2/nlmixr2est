@@ -127,46 +127,20 @@
       error = function(e) FALSE
     ))
   }
-  if (is.null(.ctl$scaleC) && .ctl$scaleType == 2L && .ctl$gradTo > 0) {
-    .tmp <- .Call(`_nlmixr2est_nlmGetScaleC`, par, .ctl$gradTo)
-    if (length(.tmp) == 0L) {
-      .ctl$scaleC <- ui$scaleCtheta
-      .Call(`_nlmixr2est_nlmSetScaleC`, .ctl$scaleC)
-    } else {
-      # nlmGetScaleC()'s derivative-based scaleC[i] = |gradTo/gradient_i(par)|
-      # (src/nlm.cpp) has no guard analogous to FOCEi's own
-      # .foceiOptEnvSetupScaleC()/.guardScaleC(): a genuinely near-zero
-      # starting gradient for ANY parameter (e.g. a bounded/composed-
-      # exponential transform whose sensitivity happens to be tiny at the
-      # model's default starting values, issue #994 -- confirmed there via
-      # every individual observation's raw sensitivity being ~1e-8 to 1e-10,
-      # not a cancellation artifact) makes this formula blow up to whatever
-      # scaleCmax allows (a FAR looser safety net than FOCEi's own [0.1,10]
-      # band), permanently corrupting every later (scaled) gradient/Hessian
-      # entry for that one dimension -- guard each element the same way
-      # FOCEi does, falling back to the transform-aware ui$scaleCtheta
-      # (already the right value for a plain "exp"-family transform, unlike
-      # a generic |init| fallback) when out of band. nlmGetScaleC() also
-      # writes the UNGUARDED .tmp directly into the C++ scaleC buffer as a
-      # side effect (src/nlm.cpp), so the guarded value must be re-pushed via
-      # nlmSetScaleC() to actually take effect.
-      .sc0 <- ui$scaleCtheta
-      .tmp <- vapply(
-        seq_along(.tmp),
-        function(i) {
-          .guardScaleC(.tmp[i], .sc0[i])
-        },
-        numeric(1)
-      )
-      .ctl$scaleC <- .tmp
-      .Call(`_nlmixr2est_nlmSetScaleC`, .ctl$scaleC)
-    }
-  } else if (is.null(.ctl$scaleC)) {
+  if (is.null(.ctl$scaleC)) {
     .ctl$scaleC <- ui$scaleCtheta
-    .Call(`_nlmixr2est_nlmSetScaleC`, .ctl$scaleC)
-  } else if (!is.null(.ctl$scaleC)) {
-    .Call(`_nlmixr2est_nlmSetScaleC`, .ctl$scaleC)
+    if (.ctl$scaleType == 2L && .ctl$gradTo > 0) {
+      # the derivative-based |gradTo/gradient_i(par)| blows up for a near-zero
+      # starting gradient (issue #994), so it gets FOCEi's band guard, falling
+      # back to the transform-aware ui$scaleCtheta
+      .gradScaleC <- .Call(`_nlmixr2est_nlmGetScaleC`, par, .ctl$gradTo)
+      if (length(.gradScaleC) > 0L) {
+        .ctl$scaleC <- mapply(.guardScaleC, .gradScaleC, .ctl$scaleC, USE.NAMES = FALSE)
+      }
+    }
   }
+  # also replaces the unguarded values nlmGetScaleC() leaves in the C++ buffer
+  .Call(`_nlmixr2est_nlmSetScaleC`, .ctl$scaleC)
   .env$scaleC <- .ctl$scaleC
   .p <- .Call(`_nlmixr2est_nlmScalePar`, par)
   .env$par.ini <- .p
@@ -269,7 +243,8 @@
 #'
 #' A positive-definite Hessian is used as is.  One that is not is repaired as
 #' `sqrtm(R %*% R)` ("|r|") or, when that is not positive definite either, as
-#' the nearest positive-definite matrix ("r+").
+#' the nearest positive-definite matrix ("r+").  A numerically singular one is
+#' not repaired: both repairs would invert its rounding noise.
 #' @param hess Hessian of the -LL objective (the R matrix)
 #' @return list(r = the matrix to invert, `NULL` when none is usable; type =
 #'   "r", "|r|", "r+" or "failed"; warning = what was done, `NULL` for "r")
@@ -281,6 +256,10 @@
   }
   .r <- NULL
   if (!is.null(.g$cov)) {
+    .ev <- abs(.g$ev)
+    if (min(.ev) <= nrow(.g$cov) * .Machine$double.eps * max(.ev)) {
+      return(list(type = "failed", warning = "R matrix is singular; covariance step failed"))
+    }
     .r <- tryCatch(sqrtm(.g$cov %*% .g$cov), error = function(e) NULL)
     .type <- "|r|"
     if (!.covGuard(.r)$ok) {
@@ -493,13 +472,82 @@
   assign("control", .control, envir = .ui)
 }
 
+#' The foceiControl that finalizes an nlm-family fit
+#'
+#' The optimizer has already run, so the FOCEi pass only builds the tables: no
+#' outer or inner iterations, no covariance step, no interaction and no
+#' scaling.  The settings that shape the model and the tables come from the
+#' method's control; one it does not have (`sensMethod`, say) keeps the
+#' `foceiControl()` default.
+#' @param env fit environment holding the method's control
+#' @param ctl name of the control in `env` (e.g. `"nlmControl"`)
+#' @param assign when `TRUE`, also store the result as `env$control`
+#' @param literalFixRes `literalFixRes` of the finalization (the control's own
+#'   by default)
+#' @return the `foceiControl()` object
+#' @noRd
+.nlmFamilyControlToFoceiControl <- function(env, ctl, assign = TRUE, literalFixRes = env[[ctl]]$literalFixRes) {
+  .ctl <- env[[ctl]]
+  .ret <- foceiControl(
+    rxControl = .ctl$rxControl,
+    maxOuterIterations = 0L,
+    maxInnerIterations = 0L,
+    covMethod = 0L,
+    sumProd = .ctl$sumProd,
+    optExpression = .ctl$optExpression,
+    literalFix = .ctl$literalFix,
+    literalFixRes = literalFixRes,
+    scaleTo = 0,
+    calcTables = .ctl$calcTables,
+    addProp = .ctl$addProp,
+    interaction = 0L,
+    compress = .ctl$compress,
+    ci = .ctl$ci,
+    sigdigTable = .ctl$sigdigTable,
+    indTolRelax = .ctl$indTolRelax,
+    eventSens = .ctl$eventSens,
+    sensMethod = .ctl$sensMethod
+  )
+  if (assign) {
+    env$control <- .ret
+  }
+  .ret
+}
+
+#' The full theta vector of an nlm-family fit
+#'
+#' A fixed theta keeps its `ini()` value; an estimated one comes from the
+#' optimizer's estimates, which are named by theta.
+#' @param fit the optimizer result, as `.nlmFinalizeList()` returns it
+#' @param ui rxode2 ui
+#' @param par name of the estimates in `fit`
+#' @return the thetas named and ordered as `ui$iniDf`
+#' @noRd
+.nlmFamilyGetTheta <- function(fit, ui, par) {
+  .iniDf <- ui$iniDf
+  .est <- fit[[par]]
+  setNames(
+    vapply(
+      seq_along(.iniDf$name),
+      function(i) {
+        if (.iniDf$fix[i]) .iniDf$est[i] else .est[.iniDf$name[i]]
+      },
+      double(1),
+      USE.NAMES = FALSE
+    ),
+    .iniDf$name
+  )
+}
+
 #' Shared fit driver for the nlm-family estimation methods
 #'
 #' @param env dispatch environment (provides `ui`, `control`, `data`, `table`)
 #' @param method estimation-method string; also the slot the raw fit is stored
 #'   under (e.g. `"nlm"` -> `.ret[["nlm"]]`)
 #' @param fitModel `function(ui, dataSav)` running the optimizer
-#' @param getTheta `function(fit, ui)` returning the full theta vector
+#' @param getTheta `function(fit, ui)` returning the full theta vector, or the
+#'   name of the optimizer's estimates in the fit (e.g. `"par"`), which
+#'   `.nlmFamilyGetTheta()` completes with the fixed thetas
 #' @param controlToFocei `function(env)` translating the control to a
 #'   focei-style control for output assembly
 #' @param returnFlag rxode2 control flag name that short-circuits and returns the
@@ -509,7 +557,8 @@
 #'   `fitModel` via `warning()` (nlm does this; the others do not)
 #' @param extra `$extra` print string, or a `function(control)` returning it
 #' @param adjustOutput when TRUE, run `.nlmFamilyAdjustOutput()`
-#' @param objective optional `function(fit)` returning the raw objective; when
+#' @param objective optional `function(fit)` returning the raw objective, or
+#'   the name of the fit's minimized -log-likelihood, which is doubled; when
 #'   `NULL` the driver does not set `$objective` (a `postSetup` closure did)
 #' @param postSetup optional `function(ret, ui, fitList)` returning a modified
 #'   `ret`, run right after the raw fit is stored and before
@@ -569,13 +618,19 @@
   .ret$message <- message(.ret[[method]])
   .ret$ui <- .ui
   .ret$adjObf <- rxode2::rxGetControl(.ui, "adjObf", TRUE)
-  .ret$fullTheta <- getTheta(.ret[[method]], .ui)
+  .ret$fullTheta <- if (is.character(getTheta)) {
+    .nlmFamilyGetTheta(.ret[[method]], .ui, getTheta)
+  } else {
+    getTheta(.ret[[method]], .ui)
+  }
   .ret$control <- .control
   .ret$extra <- if (is.function(extra)) extra(.control) else extra
   .nlmixr2FitUpdateParams(.ret)
   nmObjHandleControlObject(.ret$control, .ret)
   .ret$est <- method
-  if (!is.null(objective)) {
+  if (is.character(objective)) {
+    .ret$objective <- 2 * as.numeric(.ret[[method]][[objective]])
+  } else if (!is.null(objective)) {
     .ret$objective <- objective(.ret[[method]])
   }
   # building the EBE model is another symengine model build; time it as "setup"

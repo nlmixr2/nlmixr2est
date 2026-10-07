@@ -1,7 +1,7 @@
 # innerOpt= levels.  "auto" is resolved in C++ (foceiSetup_) once
 # needOptimHess is known: n1qn1 for a generalized-likelihood endpoint, trust
 # otherwise.  See the innerOpt @param below.
-.innerOptFun <- c("n1qn1" = 1L, "BFGS" = 2L, "trust" = 3L, "auto" = 4L)
+.innerOptFun <- c("n1qn1" = 1L, "lbfgsb3c" = 2L, "trust" = 3L, "auto" = 4L)
 
 # hessianMethod= levels.  Anything but "fd" is only consulted under
 # innerOpt="trust" (hessianQNEligible, src/inner.cpp).
@@ -22,6 +22,24 @@
     names(.hessianMethodIdx)[hessianMethod],
     "\" requires innerOpt = \"trust\"",
     note,
+    call. = FALSE
+  )
+}
+
+#' Whether the installed lbfgsb3c exports the thread-safe `lbfgsb3Cts`.
+#' @noRd
+.lbfgsb3ctsAvailable <- function() {
+  length(lbfgsb3c::.lbfgsb3cPtr()) >= 2L
+}
+
+#' Refuse innerOpt="lbfgsb3c" when lbfgsb3c is too old to run it thread-safely.
+#' @noRd
+.foceiAssertInnerLbfgsb3c <- function(innerOpt, have = .lbfgsb3ctsAvailable()) {
+  if (innerOpt != 2L || have) {
+    return(invisible(TRUE))
+  }
+  stop(
+    "innerOpt=\"lbfgsb3c\" needs lbfgsb3c >= 2024-3.6 (thread-safe lbfgsb3Cts)",
     call. = FALSE
   )
 }
@@ -575,10 +593,10 @@
 #'
 #' @param innerOpt optimization method for the inner (per-subject eta)
 #'     problem: `"auto"` (default), `"trust"` (RcppTrust trust-region Newton,
-#'     using an exact Gauss-Newton+Omega^-1 Hessian every iteration) or
+#'     using an exact Gauss-Newton+Omega^-1 Hessian every iteration),
 #'     `"n1qn1"` (quasi-Newton, gets a Hessian only once as a warm-start
-#'     seed).  `"BFGS"` is accepted but not implemented -- it silently falls
-#'     back to `"n1qn1"`.
+#'     seed) or `"lbfgsb3c"` (thread-safe L-BFGS-B from `lbfgsb3c`, controlled
+#'     by the `innerLbfgs*` arguments; `"auto"` never picks it).
 #'
 #'     `"auto"` picks `"n1qn1"` for a generalized-likelihood endpoint
 #'     (`dnorm()`, `ll()`, `dpois()`, ...) and `"trust"` for everything else.
@@ -615,6 +633,29 @@
 #'     criterion to a value picked for a different optimizer is exactly the
 #'     coupling these parameters exist to remove. Has no effect unless
 #'     `innerOpt="trust"`.
+#'
+#' @param innerLbfgsLmm number of BFGS updates retained by the
+#'     `innerOpt="lbfgsb3c"` L-BFGS-B solve; a whole number of at least 1.
+#'     Defaults to 5.
+#'
+#' @param innerLbfgsFactr,innerLbfgsPgtol `innerOpt="lbfgsb3c"`'s own L-BFGS-B
+#'     objective-reduction factor and projected-gradient tolerance, separate
+#'     from the outer `lbfgsFactr`/`lbfgsPgtol`. `NULL` (default) derives them
+#'     from `sigdig`: `innerLbfgsFactr` is `10^(-sigdig-2) /
+#'     .Machine$double.eps` (floored at 1) and `innerLbfgsPgtol` is
+#'     `10^(-sigdig-2)`, the same scale as `trustFterm`.
+#'
+#' @param innerLbfgsAbstol,innerLbfgsReltol `innerOpt="lbfgsb3c"`'s absolute and
+#'     relative eta-change tolerances, separate from the outer
+#'     `abstol`/`reltol`. `NULL` (default) uses `10^(-sigdig-2)`. With
+#'     `innerOpt="lbfgsb3c"`, `maxInnerIterations` caps the function evaluations
+#'     of each solve.
+#'
+#' @param trustPolish logical; when `TRUE`, each converged `innerOpt="trust"`
+#'     solve takes up to 4 more Newton steps on the ETAs, down to `trustFterm`.
+#'     This makes the objective less dependent on the warm-start ETAs and can
+#'     help a fit that stops short of its minimum (#1152).  `FALSE` (default)
+#'     keeps the plain trust solve.
 #'
 #' @param innerHessian Inner optimization curvature: `"focei"` (default) or
 #'   `"conditional"`. Full conditional curvature requires fast Gaussian FOCEI.
@@ -1233,7 +1274,7 @@ foceiControl <- function(
     "newuoa",
     "trust"
   ), #
-  innerOpt = c("auto", "trust", "n1qn1", "BFGS"), #
+  innerOpt = c("auto", "trust", "n1qn1", "lbfgsb3c"), #
   innerHessian = c("focei", "conditional"), #
   detHessian = c("focei", "conditional"), #
   hessianMethod = c("fd", "bfgs", "sr1", "bofill"), #
@@ -1243,6 +1284,13 @@ foceiControl <- function(
   trustRmax = NULL, # NULL -> derived from trustConf/neta
   trustFterm = NULL, # NULL -> 10^(-sigdig), NOT epsilon
   trustMterm = NULL, # NULL -> 10^(-sigdig), NOT epsilon
+  trustPolish = FALSE,
+  ## innerOpt="lbfgsb3c" (lbfgsb3c's thread-safe L-BFGS-B)
+  innerLbfgsLmm = 5L,
+  innerLbfgsFactr = NULL, # NULL -> 10^(-sigdig-2)/eps
+  innerLbfgsPgtol = NULL, # NULL -> 10^(-sigdig-2)
+  innerLbfgsAbstol = NULL, # NULL -> 10^(-sigdig-2)
+  innerLbfgsReltol = NULL, # NULL -> 10^(-sigdig-2)
   ## trust-region OUTER optimizer (outerOpt="trust")
   outerTrustHessian = c("auto", "analytic", "bfgs", "fd"),
   outerTrustRinit = NULL, # NULL -> min(0.95, 0.2*max(abs(par)))
@@ -1387,6 +1435,18 @@ foceiControl <- function(
     if (is.null(trustMterm)) {
       trustMterm <- 10^(-sigdig - 2)
     }
+    if (is.null(innerLbfgsFactr)) {
+      innerLbfgsFactr <- max(10^(-sigdig - 2) / .Machine$double.eps, 1)
+    }
+    if (is.null(innerLbfgsPgtol)) {
+      innerLbfgsPgtol <- 10^(-sigdig - 2)
+    }
+    if (is.null(innerLbfgsAbstol)) {
+      innerLbfgsAbstol <- 10^(-sigdig - 2)
+    }
+    if (is.null(innerLbfgsReltol)) {
+      innerLbfgsReltol <- 10^(-sigdig - 2)
+    }
     if (is.null(rel.tol)) {
       rel.tol <- 10^(-sigdig)
     }
@@ -1474,35 +1534,24 @@ foceiControl <- function(
   checkmate::assertNumeric(reltol, lower = 0, len = 1, any.missing = FALSE, finite = TRUE)
 
   checkmate::assertIntegerish(gillK, lower = 0, len = 1, any.missing = FALSE)
-  checkmate::assertIntegerish(gillKcov, lower = 0, len = 1, any.missing = FALSE)
+  .covFdOptionsAssert(hessEps, gillKcov, gillStepCov, gillFtolCov, covGillF, covSmall, rmatNorm, smatNorm)
   checkmate::assertIntegerish(gillKcovLlik, lower = 0, len = 1, any.missing = FALSE)
   checkmate::assertNumeric(gillStep, lower = 0, len = 1, any.missing = FALSE)
-  checkmate::assertNumeric(gillStepCov, lower = 0, len = 1, any.missing = FALSE)
   checkmate::assertNumeric(gillStepCovLlik, lower = 0, len = 1, any.missing = FALSE)
   checkmate::assertNumeric(gillFtol, lower = 0, len = 1, any.missing = FALSE)
-  checkmate::assertNumeric(gillFtolCov, lower = 0, len = 1, any.missing = FALSE)
   checkmate::assertNumeric(gillFtolCovLlik, lower = 0, len = 1, any.missing = FALSE)
   checkmate::assertNumeric(gillRtol, lower = 0, len = 1, any.missing = FALSE, finite = TRUE)
   # gillRtolCov is calculated in the `inner.cpp`
-  if (!checkmate::testIntegerish(rmatNorm, lower = 0, upper = 1, any.missing = FALSE, len = 1)) {
-    checkmate::assertLogical(rmatNorm, any.missing = FALSE, len = 1)
-  }
   rmatNorm <- as.integer(rmatNorm)
   if (!checkmate::testIntegerish(rmatNormLlik, lower = 0, upper = 1, any.missing = FALSE, len = 1)) {
     checkmate::assertLogical(rmatNormLlik, any.missing = FALSE, len = 1)
   }
   rmatNormLlik <- as.integer(rmatNormLlik)
-  if (!checkmate::testIntegerish(smatNorm, lower = 0, upper = 1, any.missing = FALSE, len = 1)) {
-    checkmate::assertLogical(smatNorm, any.missing = FALSE, len = 1)
-  }
   smatNorm <- as.integer(smatNorm)
   if (!checkmate::testIntegerish(smatNormLlik, lower = 0, upper = 1, any.missing = FALSE, len = 1)) {
     checkmate::assertLogical(smatNormLlik, any.missing = FALSE, len = 1)
   }
   smatNormLlik <- as.integer(smatNormLlik)
-  if (!checkmate::testIntegerish(covGillF, lower = 0, upper = 1, any.missing = FALSE, len = 1)) {
-    checkmate::assertLogical(covGillF, any.missing = FALSE, len = 1)
-  }
   covGillF <- as.integer(covGillF)
   if (!checkmate::testIntegerish(optGillF, lower = 0, upper = 1, any.missing = FALSE, len = 1)) {
     checkmate::assertLogical(optGillF, any.missing = FALSE, len = 1)
@@ -1517,7 +1566,6 @@ foceiControl <- function(
     foceEbeTol <- 1e-9
   }
   checkmate::assertNumeric(foceEbeTol, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
-  checkmate::assertNumeric(hessEps, lower = 0, any.missing = FALSE, len = 1)
   checkmate::assertNumeric(hessEpsLlik, lower = 0, any.missing = FALSE, len = 1)
   checkmate::assertNumeric(centralDerivEps, lower = 0, any.missing = FALSE, len = 2)
 
@@ -1560,12 +1608,7 @@ foceiControl <- function(
 
   ## .methodIdx <- c("lsoda"=1L, "dop853"=0L, "liblsoda"=2L);
   ## method <- as.integer(.methodIdx[method]);
-  if (checkmate::testIntegerish(scaleType, len = 1, lower = 1, upper = 4, any.missing = FALSE)) {
-    scaleType <- as.integer(scaleType)
-  } else {
-    .scaleTypeIdx <- c("norm" = 1L, "nlmixr2" = 2L, "mult" = 3L, "multAdd" = 4L)
-    scaleType <- setNames(.scaleTypeIdx[match.arg(scaleType)], NULL)
-  }
+  scaleType <- .ctlIdx(scaleType, .scaleTypeIdx, match.arg(scaleType))
 
   if (checkmate::testIntegerish(optimHessType, len = 1, lower = 1, upper = 3, any.missing = FALSE)) {
     optimHessType <- as.integer(optimHessType)
@@ -1599,12 +1642,7 @@ foceiControl <- function(
   ## sensitivities from rxode2).  "fd" is the backward-compatible default.
   eventSens <- match.arg(eventSens)
 
-  .normTypeIdx <- c("rescale2" = 1L, "rescale" = 2L, "mean" = 3L, "std" = 4L, "len" = 5L, "constant" = 6L)
-  if (checkmate::testIntegerish(normType, len = 1, lower = 1, upper = 6, any.missing = FALSE)) {
-    normType <- as.integer(normType)
-  } else {
-    normType <- setNames(.normTypeIdx[match.arg(normType)], NULL)
-  }
+  normType <- .ctlIdx(normType, .normTypeIdx, match.arg(normType))
   .methodIdx <- c("forward" = 0L, "central" = 1L, "switch" = 3L)
   if (checkmate::testIntegerish(derivMethod, len = 1, lower = 0L, upper = 3L, any.missing = FALSE)) {
     derivMethod <- as.integer(derivMethod)
@@ -1633,21 +1671,15 @@ foceiControl <- function(
     .ct <- list(...)$covType
     if (!is.null(.ct)) covType <- match.arg(.ct, c("analytic", "fd"))
   } else if (rxode2::rxIs(covMethod, "character")) {
-    if (all(covMethod == "")) {
-      covMethod <- 0L
-    } else {
-      covMethod <- match.arg(covMethod)
-      if (covMethod %in% c("sa", "imp")) {
-        covMethodDeferred <- covMethod
-        covMethod <- 0L
-      } else if (identical(covMethod, "analytic")) {
-        covType <- "analytic"
-        covMethod <- 2L
-      } else {
-        .covMethodIdx <- c("r,s" = 1L, "r" = 2L, "s" = 3L)
-        covMethod <- setNames(.covMethodIdx[covMethod], NULL)
-      }
+    covMethod <- .covMethodArg(covMethod, match.arg(covMethod))
+    if (covMethod %in% c("sa", "imp")) {
+      covMethodDeferred <- covMethod
+    } else if (covMethod == "analytic") {
+      covType <- "analytic"
+      covMethod <- "r"
     }
+    # "" and the deferred "sa"/"imp" run no covariance step in the kernel
+    covMethod <- if (covMethod %in% names(.covMethodSlot)) .covMethodSlot[[covMethod]] else 0L
   }
   # round-tripped controls carry the deferred request as a ... field
   if (is.na(covMethodDeferred) && !is.null(list(...)$covMethodDeferred)) {
@@ -1811,6 +1843,13 @@ foceiControl <- function(
     stop("'trustFterm' must be > 0", call. = FALSE)
   }
   checkmate::assertNumeric(trustMterm, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
+  checkmate::assertFlag(trustPolish)
+  checkmate::assertIntegerish(innerLbfgsLmm, lower = 1L, any.missing = FALSE, len = 1)
+  innerLbfgsLmm <- as.integer(innerLbfgsLmm)
+  checkmate::assertNumeric(innerLbfgsFactr, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
+  checkmate::assertNumeric(innerLbfgsPgtol, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
+  checkmate::assertNumeric(innerLbfgsAbstol, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
+  checkmate::assertNumeric(innerLbfgsReltol, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
   if (trustMterm <= 0) {
     stop("'trustMterm' must be > 0", call. = FALSE)
   }
@@ -1932,7 +1971,6 @@ foceiControl <- function(
   muModelClampRetries <- as.integer(muModelClampRetries)
 
   checkmate::assertNumeric(stateTrim, lower = 0, len = 1, any.missing = FALSE)
-  checkmate::assertNumeric(covSmall, lower = 0, any.missing = FALSE, finite = TRUE)
   checkmate::assertLogical(adjLik, any.missing = FALSE, len = 1)
   checkmate::assertNumeric(gradTrim, any.missing = FALSE, len = 1)
   checkmate::assertIntegerish(maxOdeRecalc, any.missing = FALSE, len = 1)
@@ -2073,6 +2111,12 @@ foceiControl <- function(
     trustRmax = trustRmax,
     trustFterm = trustFterm,
     trustMterm = trustMterm,
+    trustPolish = trustPolish,
+    innerLbfgsLmm = innerLbfgsLmm,
+    innerLbfgsFactr = as.double(innerLbfgsFactr),
+    innerLbfgsPgtol = as.double(innerLbfgsPgtol),
+    innerLbfgsAbstol = as.double(innerLbfgsAbstol),
+    innerLbfgsReltol = as.double(innerLbfgsReltol),
     ## trust-region outer optimizer (outerOpt="trust")
     outerTrustHessian = outerTrustHessian,
     outerTrustRinit = outerTrustRinit,
@@ -2192,6 +2236,27 @@ foceiControl <- function(
   .ret
 }
 
+#' covMethod of a `foceiControl()` as the name that rebuilds it
+#'
+#' covMethod folds the analytic-vs-finite-difference R-matrix choice (carried by
+#' the derived internal covType) and a deferred "sa"/"imp" request (carried by
+#' covMethodDeferred, with slot 0) into a single name; neither internal field is
+#' deparsed on its own.
+#' @param o the control
+#' @return "sa", "imp", "analytic", "r,s", "r", "s", or "" for no covariance
+#' @noRd
+.foceiControlCovMethodName <- function(o) {
+  .deferred <- o$covMethodDeferred
+  if (length(.deferred) == 1L && !is.na(.deferred)) {
+    return(.deferred)
+  }
+  .slot <- as.integer(o$covMethod)
+  if (!identical(.slot, 0L) && identical(o$covType, "analytic")) {
+    return("analytic")
+  }
+  .covMethodFromSlot(.slot)
+}
+
 .rxUiDeparseFoceiControl <- function(object, var, type = "foceiControl") {
   .ret <- eval(str2lang(paste0(type, "()")))
   .outerOpt <- character(0)
@@ -2201,21 +2266,9 @@ foceiControl <- function(
     .outerOpt <- paste0("outerOpt = ", deparse1(object$outerOptTxt))
   }
   .w <- .deparseDifferent(.ret, object, .foceiControlInternal)
-  # covMethod folds the analytic-vs-finite-difference R-matrix choice (carried by the
-  # derived internal covType) into a single token; covType is never deparsed on its own.
-  .covMethodStr <- function(o) {
-    if (identical(o$covType, "analytic")) {
-      return("analytic")
-    }
-    if (identical(as.integer(o$covMethod), 0L)) {
-      return("")
-    }
-    .idx <- c("r,s" = 1L, "r" = 2L, "s" = 3L)
-    names(.idx)[match(as.integer(o$covMethod), .idx)]
-  }
   .covTok <- character(0)
-  if (!identical(.covMethodStr(object), .covMethodStr(.ret))) {
-    .covTok <- paste0("covMethod = ", deparse1(.covMethodStr(object)))
+  if (!identical(.foceiControlCovMethodName(object), .foceiControlCovMethodName(.ret))) {
+    .covTok <- paste0("covMethod = ", deparse1(.foceiControlCovMethodName(object)))
   }
   if (length(.w) == 0 && length(.outerOpt) == 0 && length(.covTok) == 0) {
     return(str2lang(paste0(var, " <- ", type, "()")))
@@ -2255,13 +2308,6 @@ foceiControl <- function(
         } else if (x %in% c("derivMethod", "covDerivMethod")) {
           .methodIdx <- c("forward" = 0L, "central" = 1L, "switch" = 3L)
           paste0(x, " = ", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
-        } else if (x == "covMethod") {
-          if (object[[x]] == 0L) {
-            paste0(x, " = \"\"")
-          } else {
-            .covMethodIdx <- c("r,s" = 1L, "r" = 2L, "s" = 3L)
-            paste0(x, " = ", deparse1(names(.covMethodIdx[which(object[[x]] == .covMethodIdx)])))
-          }
         } else {
           paste0(x, " = ", deparse1(object[[x]]))
         }
@@ -2274,6 +2320,4 @@ foceiControl <- function(
 }
 
 #' @export
-rxUiDeparse.foceiControl <- function(object, var) {
-  .rxUiDeparseFoceiControl(object, var, type = "foceiControl")
-}
+rxUiDeparse.foceiControl <- function(object, var) .rxUiDeparseFoceiControl(object, var, type = "foceiControl")

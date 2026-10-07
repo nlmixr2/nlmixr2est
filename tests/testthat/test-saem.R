@@ -57,7 +57,8 @@ test_that("a linFim covariance that cannot be used is reported, and the informat
   expect_identical(.w, "linearization of FIM could not be used to calculate covariance")
   expect_equal(unname(.e$cov), unname(solve(.saemHa)))
   expect_identical(dimnames(.e$cov), list(.saemTheta, .saemTheta))
-  expect_false(exists("covMethod", envir = .e, inherits = FALSE))
+  expect_identical(.e$covMethod, "fim")
+  expect_identical(.e$.saemCovMethod, "fim")
   expect_false(exists(".saemFullCov", envir = .e, inherits = FALSE))
 })
 
@@ -76,11 +77,11 @@ test_that("an unusable information matrix is reported instead of silently leavin
   expect_false(exists("covMethod", envir = .e, inherits = FALSE))
 })
 
-test_that("a non-linFim covMethod inverts the information matrix and sets no label", {
+test_that("a non-linFim covMethod inverts the information matrix and labels it", {
   .e <- .saemCovEnv(covMethod = "r,s")
   expect_silent(.saemCalcCov(.e))
   expect_equal(unname(.e$cov), unname(solve(.saemHa)))
-  expect_false(exists("covMethod", envir = .e, inherits = FALSE))
+  expect_identical(.e$covMethod, "fim")
 })
 
 .saemFullEnv <- function(full, label = "|linFim|") {

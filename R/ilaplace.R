@@ -5,7 +5,7 @@ nlmixr2Est.ilaplace <- function(env, ...) {
   rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'ilaplace'", .var.name = .ui$modelName)
   .control <- env$control
   .foceiFamilyControl(env, ..., type = "ilaplaceControl")
-  .ilaplaceControlToFoceiControl(env)
+  .foceiFamilyControlToFoceiControl(env, "ilaplaceControl")
   on.exit({
     if (exists("control", envir = .ui)) {
       rm("control", envir = .ui)
@@ -27,6 +27,4 @@ attr(nlmixr2Est.ilaplace, "mu") <- function(control) {
 }
 
 #' @export
-rxUiDeparse.ilaplaceControl <- function(object, var) {
-  .rxUiDeparseFoceiControl(object, var, type = "ilaplaceControl")
-}
+rxUiDeparse.ilaplaceControl <- function(object, var) .rxUiDeparseFoceiControl(object, var, type = "ilaplaceControl")

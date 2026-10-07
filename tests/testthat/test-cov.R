@@ -56,6 +56,45 @@ test_that(".covMethodFromSlot() inverts the foceiControl() covMethod slot", {
   }
 })
 
+test_that("a control given a foceiControl() covMethod slot keeps the covariance the slot names", {
+  for (.n in names(.covMethodSlot)) {
+    .slot <- foceiControl(covMethod = .n)$covMethod
+    expect_identical(nlmeControl(covMethod = .slot)$covMethod, .n)
+    expect_identical(vaeControl(covMethod = .slot)$covMethod, .n)
+    expect_identical(emviControl(covMethod = .slot)$covMethod, .n)
+  }
+  expect_identical(nlmeControl(covMethod = 0L)$covMethod, "")
+  expect_identical(vaeControl(covMethod = 0)$covMethod, "")
+  expect_error(nlmeControl(covMethod = 4L), "foceiControl() slot", fixed = TRUE)
+})
+
+test_that("a named \"\" covMethod still turns the covariance off", {
+  expect_identical(nlmeControl(covMethod = c(a = ""))$covMethod, "")
+  expect_identical(vaeControl(covMethod = c(a = ""))$covMethod, "")
+  expect_identical(emviControl(covMethod = c(a = ""))$covMethod, "")
+  expect_identical(foceiControl(covMethod = c(a = ""))$covMethod, 0L)
+  expect_identical(impmapControl(covMethod = c(a = ""))$covMethod, 0L)
+})
+
+test_that("a covariance refit sets each option under its own name only", {
+  .obj <- new.env(parent = emptyenv())
+  .obj$foceiControl <- foceiControl()
+  local_mocked_bindings(
+    getData = function(object) NULL,
+    nlmixr2CreateOutputFromUi = function(ui, data, control, ...) control
+  )
+  # hessEps, rmatNorm and gillStepCov are prefixes of the log-likelihood options
+  .ctl <- .setCovRefit(.obj, hessEpsLlik = 1e-3, rmatNormLlik = 0L, gillStepCovLlik = 3)
+  expect_identical(
+    .ctl[c("hessEpsLlik", "rmatNormLlik", "gillStepCovLlik")],
+    list(hessEpsLlik = 1e-3, rmatNormLlik = 0L, gillStepCovLlik = 3)
+  )
+  expect_identical(
+    .ctl[c("hessEps", "rmatNorm", "gillStepCov")],
+    .obj$foceiControl[c("hessEps", "rmatNorm", "gillStepCov")]
+  )
+})
+
 test_that(".covInstall() installs, stashes the replaced covariance and refreshes its diagnostics", {
   .e <- .fakeFitEnv()
   .new <- .pdCov() * 4
