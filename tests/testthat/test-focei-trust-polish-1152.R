@@ -30,6 +30,25 @@ nmTest({
     expect_true(eval(.dep[[3]])$trustPolish)
   })
 
+  test_that("trustPolish restarts the bobyqa outer search once, within its budget", {
+    .fn <- function(x) sum((x - c(1, 2))^2)
+    .ctl <- list(npt = 5, rhobeg = 0.2, rhoend = 1e-6, iprint = 0L, maxfun = 1000)
+    # a search that stopped short is improved and its evaluations counted
+    .stop <- list(par = c(0.5, 1.5), fval = .fn(c(0.5, 1.5)), feval = 40L, ierr = 0L)
+    .r <- .bobyqaRestart(.fn, c(-5, -5), c(5, 5), .ctl, .stop)
+    expect_lt(.r$fval, 1e-8)
+    expect_gt(.r$feval, 40L)
+    # no restart after a non-normal exit or with no budget left
+    expect_identical(
+      .bobyqaRestart(.fn, c(-5, -5), c(5, 5), .ctl, replace(.stop, "ierr", 1L)),
+      replace(.stop, "ierr", 1L)
+    )
+    expect_identical(.bobyqaRestart(.fn, c(-5, -5), c(5, 5), replace(.ctl, "maxfun", 45), .stop), .stop)
+    # a restart that does not improve keeps the first result
+    .at <- list(par = c(1, 2), fval = 0, feval = 40L, ierr = 0L)
+    expect_identical(.bobyqaRestart(.fn, c(-5, -5), c(5, 5), .ctl, .at)$par, c(1, 2))
+  })
+
   test_that("trustPolish=TRUE reaches the pheno minimum with a sane full sandwich (#1152)", {
     skip_on_cran()
     .fit <- suppressMessages(suppressWarnings(nlmixr2(

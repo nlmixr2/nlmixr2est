@@ -659,20 +659,28 @@ saemControl <- function(
 }
 
 .saemDeparseExtra <- function(default, name, value) {
+  if (name == "DEBUG") {
+    return(paste0("trace=", deparse1(value)))
+  }
   if (name == "mcmc") {
     .ret <- character(0)
     if (!identical(default$mcmc$niter, value$niter)) {
-      if (default$mcmc$niter[1] != value$niter[1]) {
-        .ret <- c(.ret, paste0("nBurn=", value$niter[1]))
+      # both are written when integer, since c(nBurn, nEm) is integer only then
+      .both <- !identical(storage.mode(default$mcmc$niter), storage.mode(value$niter)) ||
+        !is.null(names(value$niter))
+      if (.both || default$mcmc$niter[1] != value$niter[1]) {
+        .ret <- c(.ret, paste0("nBurn=", deparse1(value$niter[1])))
       }
-      if (default$mcmc$niter[2] != value$niter[2]) {
-        .ret <- c(.ret, paste0("nEm=", value$niter[2]))
+      if (.both || default$mcmc$niter[2] != value$niter[2]) {
+        .ret <- c(.ret, paste0("nEm=", deparse1(value$niter[2])))
       }
     }
-    if (default$mcmc$nmc != value$nmc) {
-      .ret <- c(.ret, paste0("nmc=", value$nmc))
+    if (!identical(default$mcmc$nmc, value$nmc)) {
+      .ret <- c(.ret, paste0("nmc=", deparse1(value$nmc)))
     }
-    if (!identical(default$mcmc$nu, value$nu)) {
+    # nu is written only when supplied (nuAuto FALSE), even at its default; an
+    # automatic nu may have been raised by the fit (.saemAutoNu) and is redone
+    if (!isTRUE(value$nuAuto) && (!identical(default$mcmc$nu, value$nu) || isTRUE(default$mcmc$nuAuto))) {
       .ret <- c(.ret, paste0("nu=", deparse1(value$nu)))
     }
     return(paste0(.ret, collapse = ","))
@@ -682,5 +690,10 @@ saemControl <- function(
 
 #' @export
 rxUiDeparse.saemControl <- function(object, var) {
-  .deparseControl(object, var, saemControl(), c("genRxControl", "DEBUG"), fun = .saemDeparseExtra)
+  .ret <- .deparseControl(object, var, saemControl(), "genRxControl", fun = .saemDeparseExtra)
+  # an rxControl generated at a sigdig that could not be recovered
+  if (isTRUE(object$genRxControl) && !is.null(.ret[[3]]$rxControl)) {
+    .ret[[3]]$genRxControl <- TRUE
+  }
+  .ret
 }
