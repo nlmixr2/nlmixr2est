@@ -2669,21 +2669,24 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
     if (!is.null(.carryR)) {
       .p <- sub("^.*_BY_(ETA_[0-9]+)___$", "\\1_", x["dfe"])
       .w <- which(.s$..linCmtCarryPairs$eta == .p)
-      # substitute only when the eta's ONLY route into rx_r_ is through the
-      # prediction (a direct eta dependence, pred held fixed, keeps the
-      # status quo row -- bias to false)
-      if (
+      .carried <- paste0(rxode2::rxFromSE(.carryR), ")*rx__sens_rx_pred__BY_", .p, "__")
+      if (length(.w) == 1L && !is.null(.lag)) {
+        # d(R)/d(pred) * the carried d(pred)/d(eta), plus the rest with pred
+        # held fixed, which a lagged variable can reach (#1176)
+        .rest <- symengine::subs(
+          .lag$dfe(.carrySubR, .p),
+          .carryPh,
+          get("rx_pred_", envir = .s)
+        )
+        .ret <- paste0(x["dfe"], "=(", .carried, "+(", .lag$txt(.rest, .p), ")")
+      } else if (
+        # substitute only when the eta's ONLY route into rx_r_ is through the
+        # prediction (a direct eta dependence, pred held fixed, keeps the
+        # status quo row -- bias to false)
         length(.w) == 1L &&
           paste(symengine::D(.carrySubR, symengine::S(.p))) %in% c("0", "0.0")
       ) {
-        .ret <- paste0(
-          x["dfe"],
-          "=(",
-          rxode2::rxFromSE(.carryR),
-          ")*rx__sens_rx_pred__BY_",
-          .p,
-          "__"
-        )
+        .ret <- paste0(x["dfe"], "=(", .carried)
       }
     }
     rxode2::rxTick()

@@ -220,6 +220,13 @@ nmTest({
     .dat <- within(.lagDat, wt <- WT * (1 + 0.02 * TIME))
     .fd <- .lagFd(.carryMod, .s$..inner, "ETA", 1L, dat = .dat)
     expect_true(all(.fd$err < 1e-6 * pmax(1, .fd$fd)))
+    # a residual variance reaching the eta through the lagged variable too
+    .propMod <- rxode2::model(rxode2::rxode2(.carryMod), cp ~ prop(add.sd * c0))
+    .s <- rxode2::rxode2(.propMod)$foceiEnv
+    expect_false(is.null(.s$..linCmtCarryPairs))
+    .fd <- .lagFd(.propMod, .s$..inner, "ETA", 1L, dat = .dat)
+    expect_true(.fd$fd[.fd$v == "rx_r_"] > 1e-3)
+    expect_true(all(.fd$err < 1e-6 * pmax(1, .fd$fd)))
   })
 
   test_that("the prediction can be a lag() alone", {
