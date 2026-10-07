@@ -11596,7 +11596,7 @@ NumericMatrix foceiCalcCov(Environment e){
         // foceiOfv0() reports a failed evaluation as 5e100; as a stencil centre it
         // would make every R diagonal about -1e100
         if (!R_FINITE(f0) || f0 >= 5e100) {
-          warning(_("covariance step failed: the objective at the estimates could not be evaluated at the covariance tolerances"));
+          warning(_("covariance failed: objective not evaluable at its tolerances"));
           e["covMethod"] = CharacterVector::create("failed");
           NumericMatrix ret;
           return ret;

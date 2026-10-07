@@ -5726,11 +5726,7 @@ attr(nlmixr2Est.focei, "iov") <- TRUE
     return(invisible())
   }
   warning(
-    "maxInnerIterations=0: the \"",
-    env$covMethod,
-    "\" covariance holds the ETAs at ",
-    "their supplied values, so it is conditional on them; setCov() computes the ",
-    "covariance of the marginal likelihood",
+    sprintf("\"%s\" covariance is conditional on the ETAs; setCov() is marginal", env$covMethod),
     call. = FALSE
   )
   invisible()

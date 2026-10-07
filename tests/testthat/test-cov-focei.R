@@ -353,7 +353,7 @@ nmTest({
       })
     }
     .eta <- .nlmixr(one.cmt, theo_sd, "focei", foceiControl(print = 0, covMethod = ""))$etaMat
-    .msg <- "covariance holds the ETAs at their supplied values, so it is conditional on them"
+    .msg <- "covariance is conditional on the ETAs; setCov() is marginal"
     # maxInnerIterations = 0 evaluates the given ETAs, in the fit and in its covariance
     .fixed <- .nlmixr(
       one.cmt,
@@ -392,9 +392,8 @@ nmTest({
   test_that("at the default tolerances the finite-difference R is the analytic information", {
     skip_on_cran()
     # The probes run at the fit's tolerances times 1e-3 (ODE rtol 1e-7, atol 1e-9, inner
-    # 1e-9 at sigdig 3).  At the fit's own (rtol 1e-3, inner 1e-5) the theta-only "r" SE of
-    # at the default tolerances every SE is within 4% of the analytic one (at the fit's own
-    # tolerances the probes difference numerical noise: tka 0.47 against 0.19)
+    # 1e-9 at sigdig 3), where every SE is within 4% of the analytic one; at the fit's own
+    # (rtol 1e-3, inner 1e-5) the probes difference numerical noise
     .an <- .nlmixr(.quietOneCmt, theo_sd, "focei", foceiControl(print = 0, covMethod = "analytic"))
     .r <- .nlmixr(.quietOneCmt, theo_sd, "focei", foceiControl(print = 0, covMethod = "r", covFull = FALSE))
     expect_identical(.r$covMethod, "r")
