@@ -654,8 +654,10 @@
 #' @param trustPolish logical; when `TRUE`, each converged `innerOpt="trust"`
 #'     solve takes up to 4 more Newton steps on the ETAs, down to `trustFterm`.
 #'     This makes the objective less dependent on the warm-start ETAs and can
-#'     help a fit that stops short of its minimum (#1152).  `FALSE` (default)
-#'     keeps the plain trust solve.
+#'     help a fit that stops short of its minimum (#1152).  The `"bobyqa"`
+#'     outer search then also restarts once from where it stops, which costs
+#'     about twice the outer evaluations.  `FALSE` (default) keeps the plain
+#'     trust solve and a single outer search.
 #'
 #' @param innerHessian Inner optimization curvature: `"focei"` (default) or
 #'   `"conditional"`. Full conditional curvature requires fast Gaussian FOCEI.
@@ -2270,22 +2272,78 @@ foceiControl <- function(
   .covMethodFromSlot(.slot)
 }
 
-.rxUiDeparseFoceiControl <- function(object, var, type = "foceiControl") {
-  .ret <- eval(str2lang(paste0(type, "()")))
+#' `resetEtaP`, `resetThetaP` and `resetThetaFinalP` of a control
+#'
+#' They are kept only as the derived `*Size`; the p-value is written when it
+#' rebuilds that size exactly, otherwise the size itself.
+#' @param object control being deparsed
+#' @param default default control it is compared with
+#' @param type constructor name
+#' @return argument strings
+#' @noRd
+.foceiDeparseResetP <- function(object, default, type) {
+  .p <- c(resetEtaSize = "resetEtaP", resetThetaSize = "resetThetaP", resetThetaFinalSize = "resetThetaFinalP")
+  unlist(lapply(names(.p), function(.s) {
+    .v <- object[[.s]]
+    if (is.null(.v) || identical(.v, default[[.s]])) {
+      return(NULL)
+    }
+    .pv <- if (is.infinite(.v)) {
+      0
+    } else if (.v == 0) {
+      1
+    } else {
+      2 * stats::pnorm(-.v)
+    }
+    .re <- tryCatch(do.call(type, stats::setNames(list(.pv), .p[[.s]]))[[.s]], error = function(e) NULL)
+    if (identical(.re, .v)) {
+      paste0(.p[[.s]], " = ", .deparseValue(.pv))
+    } else {
+      paste0(.s, " = ", .deparseValue(.v))
+    }
+  }))
+}
+
+.rxUiDeparseFoceiControl <- function(
+  object,
+  var,
+  type = "foceiControl",
+  internal = character(0),
+  covName = .foceiControlCovMethodName,
+  fun = NULL,
+  extra = character(0)
+) {
+  .ret0 <- eval(str2lang(paste0(type, "()")))
+  .ret <- .deparseSigdigDefault(.ret0, object, type)
   .outerOpt <- character(0)
   if (object$outerOpt == -1L && object$outerOptTxt == "custom") {
     warning("functions for `outerOpt` cannot be deparsed, reset to default", call. = FALSE)
-  } else if (!(object$outerOptTxt %in% c(.ret$outerOptTxt, "stats::optimize"))) {
+  } else if (
+    !isTRUE(object$outerOptDefault) &&
+      object$outerOptTxt != "stats::optimize" &&
+      # an optimizer that was asked for, even the default one
+      (object$outerOptTxt != .ret$outerOptTxt || isTRUE(.ret$outerOptDefault))
+  ) {
     .outerOpt <- paste0("outerOpt = ", deparse1(object$outerOptTxt))
   }
-  .w <- .deparseDifferent(.ret, object, .foceiControlInternal)
+  .w <- .deparseDifferent(.ret, object, c(.foceiControlInternal, internal))
+  if (!identical(object[["sigdig"]], .ret0[["sigdig"]])) {
+    .w <- union(.w, which(names(.ret) == "sigdig"))
+  }
+  # an rxControl that was supplied, even one equal to the generated one
+  if (!identical(object[["genRxControl"]], .ret[["genRxControl"]])) {
+    .w <- union(.w, which(names(.ret) == "rxControl"))
+  }
+  # print is kept only as iterPrintControl, which is otherwise internal
+  if (!identical(object$iterPrintControl, .ret$iterPrintControl)) {
+    .w <- union(.w, which(names(.ret) == "iterPrintControl"))
+  }
+  extra <- c(extra, .foceiDeparseResetP(object, .ret, type))
   .covTok <- character(0)
-  if (!identical(.foceiControlCovMethodName(object), .foceiControlCovMethodName(.ret))) {
-    .covTok <- paste0("covMethod = ", deparse1(.foceiControlCovMethodName(object)))
+  if (!identical(covName(object), covName(.ret))) {
+    .covTok <- paste0("covMethod = ", deparse1(covName(object)))
   }
-  if (length(.w) == 0 && length(.outerOpt) == 0 && length(.covTok) == 0) {
-    return(str2lang(paste0(var, " <- ", type, "()")))
-  }
+  .formals <- c(formals(type), formals(impmapControl), formals(foceiControl))
   .n <- names(.ret)[.w]
   .n <- .n[!(.n %in% c("outerOpt", "covMethod"))]
   if (length(.covTok) > 0) {
@@ -2294,42 +2352,49 @@ foceiControl <- function(
   # preserve the formal-argument declaration order (names(.ret)) so the covMethod
   # token lands in its natural position instead of always first
   .n <- .n[order(match(.n, names(.ret)))]
-  .retD <- c(
-    vapply(
-      .n,
-      function(x) {
-        if (x == "covMethod") {
-          return(.covTok)
-        }
-        .val <- .deparseShared(x, object[[x]])
-        if (!is.na(.val)) {
-          return(.val)
-        }
-        if (x == "innerOpt") {
-          paste0("innerOpt = ", deparse1(names(.innerOptFun[which(object[[x]] == .innerOptFun)])))
-        } else if (x == "warm") {
-          .warmIdx <- c("calc" = 1L, "save" = 0L, "none" = 2L)
-          paste0("warm = ", deparse1(names(.warmIdx[which(object[[x]] == .warmIdx)])))
-        } else if (x %in% c("optimHessType", "optimHessCovType")) {
-          .methodIdx <- c("central" = 1L, "forward" = 3L)
-          paste0(x, " = ", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
-        } else if (x == "eventType") {
-          .methodIdx <- c("central" = 2L, "forward" = 3L)
-          paste0(x, " = ", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
-        } else if (x == "hessianMethod") {
-          paste0(x, " = ", deparse1(names(.hessianMethodIdx[which(object[[x]] == .hessianMethodIdx)])))
-        } else if (x %in% c("derivMethod", "covDerivMethod")) {
-          .methodIdx <- c("forward" = 0L, "central" = 1L, "switch" = 3L)
-          paste0(x, " = ", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
-        } else {
-          paste0(x, " = ", deparse1(object[[x]]))
-        }
-      },
-      character(1)
-    ),
-    .outerOpt
-  )
-  str2lang(paste(var, " <- ", type, "(", paste(.retD, collapse = ", "), ")"))
+  .tok <- function(x) {
+    if (x == "covMethod") {
+      return(.covTok)
+    }
+    .val <- .deparseShared(x, object[[x]])
+    if (!is.na(.val)) {
+      return(.val)
+    }
+    if (is.function(fun)) {
+      .val <- fun(x, object[[x]])
+      if (!is.na(.val)) {
+        return(.val)
+      }
+    }
+    # a logical argument some controls keep as 0/1
+    if (is.logical(.formals[[x]]) && is.numeric(object[[x]])) {
+      return(paste0(x, " = ", deparse1(as.logical(object[[x]]))))
+    }
+    if (x == "innerOpt") {
+      paste0("innerOpt = ", deparse1(names(.innerOptFun[which(object[[x]] == .innerOptFun)])))
+    } else if (x == "warm") {
+      .warmIdx <- c("calc" = 1L, "save" = 0L, "none" = 2L)
+      paste0("warm = ", deparse1(names(.warmIdx[which(object[[x]] == .warmIdx)])))
+    } else if (x %in% c("optimHessType", "optimHessCovType")) {
+      .methodIdx <- c("central" = 1L, "forward" = 3L)
+      paste0(x, " = ", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
+    } else if (x == "eventType") {
+      .methodIdx <- c("central" = 2L, "forward" = 3L)
+      paste0(x, " = ", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
+    } else if (x == "hessianMethod") {
+      paste0(x, " = ", deparse1(names(.hessianMethodIdx[which(object[[x]] == .hessianMethodIdx)])))
+    } else if (x %in% c("derivMethod", "covDerivMethod")) {
+      .methodIdx <- c("forward" = 0L, "central" = 1L, "switch" = 3L)
+      paste0(x, " = ", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
+    } else {
+      paste0(x, " = ", .deparseValue(object[[x]]))
+    }
+  }
+  .retD <- c(vapply(.n, .tok, character(1)), .outerOpt, extra)
+  .retD <- .retD[nzchar(.retD)]
+  .ret <- str2lang(paste(var, " <- ", type, "(", paste(.retD, collapse = ", "), ")"))
+  .allowed <- setdiff(names(.formals), c("...", .foceiControlInternal, internal, "outerOpt", "covMethod", "rxControl"))
+  .deparseFixup(.ret, object, .allowed, .tok)
 }
 
 #' @export

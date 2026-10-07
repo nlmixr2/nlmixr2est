@@ -18,29 +18,33 @@
   eta
 }
 
-#' One occasion variable's etas as the "theta" IOV rewrite expands them
+#' One occasion variable's etas as a refit expands them
 #'
-#' The rewrite gives each occasion parameter one unit-variance eta per
+#' A refit expands an uncorrelated level with one unit-variance eta per
 #' occasion, `rx.<parameter>.<occasion>`, scaled by the parameter's standard
-#' deviation; `$iov` holds the scaled occasion deviations.  The rewrite refuses a
-#' correlated occasion block, so each parameter's own standard deviation is its
-#' whole scale.
+#' deviation; `$iov` holds the scaled occasion deviations.  A correlated block,
+#' or `iovMethod = "omega"`, expands the deviations unscaled.
 #'
 #' @param n occasion variable
 #' @param iov the fit's `$iov`
 #' @param omega the fit's `$omega`, a list by level
+#' @param unscaled `TRUE` when the refit expands the level unscaled
 #' @return data frame, one column per parameter and occasion
 #' @noRd
-.nmIovThetaEtas <- function(n, iov, omega) {
+.nmIovThetaEtas <- function(n, iov, omega, unscaled = FALSE) {
   .dt <- data.table::as.data.table(iov[[n]])
   .frm <- stats::as.formula(paste0("ID ~ ", n))
-  .sd <- sqrt(diag(omega[[n]]))
+  .m <- if (is.list(omega)) omega[[n]] else NULL
+  .scale <- !unscaled && is.matrix(.m) && all(.m[upper.tri(.m)] == 0)
   .ret <- NULL
   for (.nr in names(.dt)[-(1:2)]) {
     .df <- as.data.frame(data.table::dcast(.dt, formula = .frm, value.var = .nr)[, -1])
     names(.df) <- paste0("rx.", .nr, ".", names(.df))
-    # with no occasion variance every eta gives the same (zero) deviation
-    .df <- if (.sd[[.nr]] > 0) .df / .sd[[.nr]] else .df * 0
+    if (.scale && .nr %in% rownames(.m)) {
+      .sd <- sqrt(.m[.nr, .nr])
+      # with no occasion variance every eta gives the same (zero) deviation
+      .df <- if (.sd > 0) .df / .sd else .df * 0
+    }
     .ret <- if (is.null(.ret)) .df else cbind(.ret, .df)
   }
   .ret
@@ -56,19 +60,19 @@ nmObjGet.etaMat <- function(x, ...) {
   if (is.null(.ui$iov)) {
     return(.eta)
   }
-  # $eta leaves the occasion etas out; when the IOV rewrite estimated them,
-  # etaObf has every eta of the expanded model on the model's scale
-  .eo <- .ui$etaObf
-  if (is.null(.ui$iovNative) && is.data.frame(.eo)) {
-    .eo <- as.matrix(.nmDropNonEtaCols(.eo[, names(.eo) != "OBJI", drop = FALSE]))
-    if (ncol(.eo) > ncol(.eta) && all(colnames(.eta) %in% colnames(.eo))) {
-      return(.eo)
-    }
-  }
-  # saem's own IOV handling ("twoLevel", "collapsed") estimates the occasion
-  # deviations directly: give a refit the etas its "theta" rewrite expands to
-  as.matrix(do.call(
+  # $iov holds each occasion eta on the natural scale; rescale it the way a
+  # refit expands the level
+  .om <- tryCatch(.ui$ui$omega, error = function(e) NULL)
+  .omegaMode <- identical(tryCatch(.ui$control$iovMethod, error = function(e) NULL), "omega")
+  .ret <- as.matrix(do.call(
     cbind,
-    c(list(.eta), lapply(names(.ui$iov), .nmIovThetaEtas, iov = .ui$iov, omega = .ui$omega))
+    c(list(.eta), lapply(names(.ui$iov), .nmIovThetaEtas, iov = .ui$iov, omega = .om, unscaled = .omegaMode))
   ))
+  # a correlated occasion block is expanded occasion by occasion; etaObf
+  # carries the expanded model's eta order
+  .eo <- tryCatch(names(.ui$etaObf), error = function(e) NULL)
+  if (all(colnames(.ret) %in% .eo)) {
+    .ret <- .ret[, intersect(.eo, colnames(.ret)), drop = FALSE]
+  }
+  .ret
 }
