@@ -146,4 +146,164 @@ nmTest({
       quote(var <- tableControl(censMethod = "epred"))
     )
   })
+
+  test_that("a deparsed control evaluates back to the identical control", {
+    .ctors <- c(
+      "agqControl",
+      "bobyqaControl",
+      "emviControl",
+      "fbviControl",
+      "foceiControl",
+      "iagqControl",
+      "ilaplaceControl",
+      "laplaceControl",
+      "lbfgsb3cControl",
+      "magqControl",
+      "mlaplaceControl",
+      "n1qn1Control",
+      "newuoaControl",
+      "nlmControl",
+      "nlmeControl",
+      "nlminbControl",
+      "nlsControl",
+      "optimControl",
+      "saemControl",
+      "trustControl",
+      "uobyqaControl",
+      "vaeControl",
+      "impmapControl",
+      "impControl",
+      "npagControl",
+      "npbControl"
+    )
+    for (.c in .ctors) {
+      .f <- get(.c)
+      for (.a in list(list(), list(sigdig = 4), list(print = 0L), list(sigdig = 5, print = 0L))) {
+        .x <- suppressWarnings(do.call(.f, .a))
+        .e <- rxode2::rxUiDeparse(.x, "ctl")
+        expect_identical(eval(.e[[3]]), .x, info = paste(.c, deparse1(.e)))
+      }
+    }
+  })
+
+  test_that("sigdig and print deparse as themselves", {
+    expect_equal(
+      rxUiDeparse.foceiControl(foceiControl(sigdig = 4, print = 0L), "ctl"),
+      quote(ctl <- foceiControl(print = 0L, sigdig = 4))
+    )
+    expect_equal(
+      rxode2::rxUiDeparse(saemControl(sigdig = 4, nBurn = 5L, nEm = 5L), "ctl"),
+      quote(ctl <- saemControl(sigdig = 4, nBurn = 5L, nEm = 5L))
+    )
+    for (.x in list(
+      foceiControl(lbfgsFactr = 1 / 3),
+      saemControl(nu = c(2, 2, 2)),
+      saemControl(nmc = 3L),
+      saemControl(sigdig = 6, sigdigTable = 3),
+      saemControl(sigdig = 4, sigdigTable = 3, tol = 1e-5),
+      saemControl(trace = 1),
+      saemControl(nBurn = c(burn = 200)),
+      foceiControl(outerOpt = "bobyqa"),
+      foceiControl(fast = TRUE),
+      foceiControl(resetEtaP = 0),
+      foceiControl(fdChartrand = FALSE),
+      foceiControl(maxInnerIterations = 100, n1qn1nsim = 10001),
+      optimControl(method = "BFGS", covMethod = "r"),
+      impmapControl(proposal = "mixture", propMixScale = c(1, 4, 9), propMixWeight = c(1, 6, 15)),
+      foceiControl(rxControl = foceiControl()$rxControl),
+      saemControl(rxControl = saemControl()$rxControl),
+      impmapControl(ctol = 0.01),
+      impControl(isample = 500L, sirSample = 30L),
+      impmapControl(gammaRule = "floor", nConvWindow = 20L)
+    )) {
+      .e <- rxode2::rxUiDeparse(.x, "ctl")
+      expect_identical(eval(.e[[3]]), .x, info = deparse1(.e))
+    }
+  })
+
+  test_that("the imp and np controls deparse through their own constructor", {
+    expect_equal(rxode2::rxUiDeparse(impmapControl(), "ctl"), quote(ctl <- impmapControl()))
+    expect_equal(rxode2::rxUiDeparse(impControl(isample = 500L), "ctl"), quote(ctl <- impControl(isample = 500L)))
+    expect_equal(
+      rxode2::rxUiDeparse(npagControl(cycles = 3L, cores = 2L), "ctl"),
+      quote(ctl <- npagControl(cycles = 3L, cores = 2L))
+    )
+    expect_equal(rxode2::rxUiDeparse(npbControl(points = 20L), "ctl"), quote(ctl <- npbControl(points = 20L)))
+    ## a nu the fit raised itself (nuAuto) is redone on a refit, not written
+    .x <- saemControl(print = 100)
+    .x$mcmc$nu <- c(4, 4, 4)
+    expect_equal(rxode2::rxUiDeparse(.x, "ctl"), quote(ctl <- saemControl(print = 100L)))
+    ## a fit resolves gammaMethod = "auto" and keeps the request
+    .x <- impControl()
+    .x$gammaMethod <- "global"
+    .x$gammaMethodUser <- "auto"
+    expect_equal(rxode2::rxUiDeparse(.x, "ctl"), quote(ctl <- impControl()))
+    expect_equal(
+      rxode2::rxUiDeparse(impControl(covMethod = "r,s"), "ctl"),
+      quote(ctl <- impControl(covMethod = "r,s"))
+    )
+  })
+
+  test_that("every scalar constructor argument survives the deparse", {
+    ## each argument set away from its default, one at a time; emviControl's
+    ## resume holds a previous fit and is not deparsed
+    .alt <- function(d) {
+      if (is.null(d)) {
+        return(list(2L, 0.5, 1e-5, TRUE))
+      }
+      if (is.call(d) && identical(d[[1]], as.name("c"))) {
+        .v <- eval(d)
+        return(if (is.character(.v)) as.list(.v[-1]) else list())
+      }
+      if (is.logical(d) && length(d) == 1L && !is.na(d)) {
+        return(list(!d))
+      }
+      if (is.integer(d) && length(d) == 1L) {
+        return(list(d + 1L, 0L))
+      }
+      if (is.numeric(d) && length(d) == 1L && is.finite(d)) {
+        return(list(d * 2 + 0.1, 0, 1 / 3))
+      }
+      list()
+    }
+    for (.c in c(
+      "agqControl",
+      "bobyqaControl",
+      "emviControl",
+      "foceiControl",
+      "laplaceControl",
+      "lbfgsb3cControl",
+      "n1qn1Control",
+      "newuoaControl",
+      "nlmControl",
+      "nlmeControl",
+      "nlminbControl",
+      "nlsControl",
+      "optimControl",
+      "saemControl",
+      "trustControl",
+      "uobyqaControl",
+      "vaeControl",
+      "impmapControl",
+      "npagControl",
+      "npbControl",
+      "tableControl"
+    )) {
+      .f <- get(.c)
+      .fm <- formals(.f)
+      for (.a in setdiff(names(.fm), c("...", "rxControl", "gamma", "df", "print", "sigdig", "resume"))) {
+        for (.v in .alt(.fm[[.a]])) {
+          .x <- tryCatch(
+            suppressWarnings(suppressMessages(do.call(.f, stats::setNames(list(.v), .a)))),
+            error = function(e) NULL
+          )
+          if (is.null(.x)) {
+            next
+          }
+          .e <- rxode2::rxUiDeparse(.x, "ctl")
+          expect_identical(suppressWarnings(eval(.e[[3]])), .x, info = paste(.c, .a, deparse1(.v)))
+        }
+      }
+    }
+  })
 })
