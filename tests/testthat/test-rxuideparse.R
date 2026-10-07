@@ -202,6 +202,7 @@ nmTest({
       saemControl(sigdig = 6, sigdigTable = 3),
       saemControl(sigdig = 4, sigdigTable = 3, tol = 1e-5),
       saemControl(trace = 1),
+      saemControl(nBurn = c(burn = 200)),
       foceiControl(outerOpt = "bobyqa"),
       foceiControl(rxControl = foceiControl()$rxControl),
       saemControl(rxControl = saemControl()$rxControl),

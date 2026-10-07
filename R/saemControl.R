@@ -660,7 +660,8 @@ saemControl <- function(
     .ret <- character(0)
     if (!identical(default$mcmc$niter, value$niter)) {
       # both are written when integer, since c(nBurn, nEm) is integer only then
-      .both <- !identical(storage.mode(default$mcmc$niter), storage.mode(value$niter))
+      .both <- !identical(storage.mode(default$mcmc$niter), storage.mode(value$niter)) ||
+        !is.null(names(value$niter))
       if (.both || default$mcmc$niter[1] != value$niter[1]) {
         .ret <- c(.ret, paste0("nBurn=", deparse1(value$niter[1])))
       }
