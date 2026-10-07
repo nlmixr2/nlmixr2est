@@ -245,8 +245,12 @@ nmTest({
   })
 
   test_that("every scalar constructor argument survives the deparse", {
-    ## each argument set away from its default, one at a time
+    ## each argument set away from its default, one at a time; emviControl's
+    ## resume holds a previous fit and is not deparsed
     .alt <- function(d) {
+      if (is.null(d)) {
+        return(list(2L, 0.5, 1e-5, TRUE))
+      }
       if (is.call(d) && identical(d[[1]], as.name("c"))) {
         .v <- eval(d)
         return(if (is.character(.v)) as.list(.v[-1]) else list())
@@ -287,7 +291,7 @@ nmTest({
     )) {
       .f <- get(.c)
       .fm <- formals(.f)
-      for (.a in setdiff(names(.fm), c("...", "rxControl", "gamma", "df", "print", "sigdig"))) {
+      for (.a in setdiff(names(.fm), c("...", "rxControl", "gamma", "df", "print", "sigdig", "resume"))) {
         for (.v in .alt(.fm[[.a]])) {
           .x <- tryCatch(
             suppressWarnings(suppressMessages(do.call(.f, stats::setNames(list(.v), .a)))),
