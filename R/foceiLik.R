@@ -186,8 +186,8 @@ foceiLikLoad <- function(
   iovXform <- match.arg(iovXform)
   if (identical(scale, "natural")) {
     # identity scale/unscale: scaleType="mult" with scaleTo=0 returns the
-    # parameter unchanged in both directions (see unscalePar()/scalePar(),
-    # src/inner.cpp), so the estimation scale IS the natural scale (#939)
+    # parameter unchanged in both directions (see scaleUnscalePar()/scaleScalePar(),
+    # src/scale.h), so the estimation scale IS the natural scale (#939)
     .control <- .foceiLikControl(likelihood, rxControl, scaleType = "mult", scaleTo = 0, iovXform = iovXform, ...)
   } else {
     .control <- .foceiLikControl(likelihood, rxControl, iovXform = iovXform, ...)

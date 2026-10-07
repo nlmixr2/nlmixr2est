@@ -653,7 +653,7 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
         } else if (hasCensObs) {
           ret(k, kk) = R_NaN; // force finite differences for censored observations
         } else {
-          ret(k, kk) = scaleAdjustGradScale(&(nlmOp.scale), lhs[go + kk], &theta[0], kk-1);
+          ret(k, kk) = scaleAdjustGradScale(&(nlmOp.scale), lhs[go + kk], kk-1);
         }
       }
       k++;
@@ -1400,7 +1400,7 @@ RObject nlmAdjustCov(RObject CovIn, arma::vec theta) {
   arma::mat J(nlmOp.ntheta, nlmOp.ntheta);
   arma::mat Cov = as<arma::mat>(CovIn);
   for (int i = 0; i < nlmOp.ntheta; ++i) {
-    J(i, i) = scaleAdjustGradScale(&(nlmOp.scale), 1.0, &theta[0], i);
+    J(i, i) = scaleAdjustGradScale(&(nlmOp.scale), 1.0, i);
   }
   Cov = J * Cov * J;
   RObject ret = wrap(Cov);

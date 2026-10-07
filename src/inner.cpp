@@ -517,6 +517,8 @@ struct focei_options {
   double scaleCmax;
   double scaleRangeLow;  // foceiControl(scaleCband): below this a theta scaleC falls back to |init|
   double scaleRangeHigh; // above this a theta scaleC falls back to |init|
+  int nScaleCband = 0;   // the band guard covers optimizer slots i < nScaleCband
+  int scaleCdefault = scaleCdefaultUnit; // an NA scaleC defaults to 1/|init|, 1 at init 0
   double c1;
   double c2;
   double scaleTo;
@@ -791,7 +793,7 @@ struct focei_options {
   // silent fallback to R would otherwise be indistinguishable from success.
   int nAnalyticGradDirect = 0;
   // The FIRST direct gradient of the fit, on the NATURAL parameter scale (i.e. before
-  // dUnscaleParDx), together with the theta it was taken at.  Captured so a test can
+  // scaleAdjustGradScale), together with the theta it was taken at.  Captured so a test can
   // read by .foceiGradDirect(), which re-enters estimation at a fit's converged point
   // with maxOuterIterations = 0 and takes the gradient this stashes.
   std::vector<double> firstDirectGrad;
@@ -972,7 +974,7 @@ struct focei_options {
 
   // Almquist Eq-48 warm-start extrapolation (fast=TRUE): per-subject d eta*/d(theta)
   // in the SCALED optimizer parameterization (etaP columns pre-multiplied by
-  // dUnscaleParDx), the scaled theta snapshot at gradient time, and a validity flag.
+  // scaleAdjustGradScale), the scaled theta snapshot at gradient time, and a validity flag.
   double *getaP = NULL;      // [neta * npars * nsub], indexed by id
   double *etaPTheta = NULL;  // [npars] scaled theta at the last analytic-gradient call
   int etaPValid = 0;
@@ -1639,138 +1641,6 @@ void updateZm(focei_ind *indF){
   indF->mode = usable ? 2 : 1;
 }
 
-static inline double getScaleC(int i){
-  if (ISNA(op_focei.scaleC[i])) {
-    double aInit = fabs(op_focei.initPar[i]);
-    switch (op_focei.xPar[i]){
-    case 1: // log
-      op_focei.scaleC[i]=1.0;
-      break;
-    case 2: // diag^2
-      op_focei.scaleC[i]= (aInit == 0.0) ? 1.0 : 1.0/aInit;
-      break;
-    case 3: // exp(diag)
-      op_focei.scaleC[i] = 1.0/2.0;
-      break;
-    case 4: // Identity diagonal chol(Omega ^-1)
-    case 5: // off diagonal chol(Omega^-1)
-      op_focei.scaleC[i] = (aInit == 0.0) ? 1.0 : 1.0/(2.0*aInit);
-      break;
-    default: // linear / additive theta: derivative-based 1/|init|
-      op_focei.scaleC[i]= (aInit == 0.0) ? 1.0 : 1.0/aInit;
-      break;
-    }
-  }
-  // scaleCband (foceiControl(scaleCband=)): a theta whose derivative-based scaling
-  // constant lands outside [scaleRangeLow, scaleRangeHigh] is poorly scaled -- the
-  // 1/|init| default blows up for a small init and collapses for a large one.
-  // Fall back to the parameter's native magnitude |init| (NONMEM7 Appendix K,
-  // eq 15.2; |init| == 0 uses unit scaling).  In-band constants -- the common case
-  // -- are left untouched, so existing results are preserved.  Omega scalings keep
-  // their own formula (not guarded).
-  // Only guard a genuinely-computed derivative constant (> 0): a scaleC of exactly
-  // 0 is an uninitialized/unloaded value, not a singular formula to rescue, so
-  // leave it for the min/max clamp below (writing |init| back would corrupt a
-  // scaleC that a later real load -- or a non-outer method like the VAE inner that
-  // reads op_focei.scaleC directly -- expects untouched).
-  if (i < (int)op_focei.ntheta && op_focei.scaleC[i] > 0.0 &&
-      (op_focei.scaleC[i] < op_focei.scaleRangeLow ||
-       op_focei.scaleC[i] > op_focei.scaleRangeHigh)) {
-    // linear / additive theta: fall back to native |init| at any magnitude (|init|
-    // is the correct scale for a large-init additive theta, issue #641).  The
-    // bounded-transform midpoint fallback lives in the R .guardScaleC path.
-    double aInit = fabs(op_focei.initPar[i]);
-    op_focei.scaleC[i] = (aInit == 0.0) ? 1.0 : aInit;
-  }
-  return min2(max2(op_focei.scaleC[i], op_focei.scaleCmin),op_focei.scaleCmax);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// Likelihood for inner functions
-static inline double unscalePar(double *x, int i) {
-  double scaleTo = op_focei.scaleTo, C=getScaleC(i);
-  switch(op_focei.scaleType){
-  case 1: // normalized
-    return x[i]*op_focei.c2+op_focei.c1;
-    break;
-  case 2: // log vs linear scales and/or ranges
-    if (op_focei.normType <= 5){
-      scaleTo = (op_focei.initPar[i]-op_focei.c1)/op_focei.c2;
-    } else if (scaleTo == 0){
-      scaleTo=op_focei.initPar[i];
-    }
-    return (x[i]-scaleTo)*C + op_focei.initPar[i];
-    break;
-  case 3: // simple multiplicative scaling
-    if (op_focei.scaleTo != 0){
-      return x[i]*op_focei.initPar[i]/scaleTo;
-    } else {
-      return x[i];
-    }
-    break;
-  case 4: // log non-log multiplicative scaling
-    if (op_focei.scaleTo > 0){
-      switch (op_focei.xPar[i]){
-      case 1:
-        return (x[i]-scaleTo) + op_focei.initPar[i];
-      default:
-        return x[i]*op_focei.initPar[i]/scaleTo;
-      }
-    } else {
-      return x[i];
-    }
-  default:
-    if (op_focei.scaleTo > 0){
-      return (x[i]-scaleTo)*1 + op_focei.initPar[i];
-    } else {
-      return x[i];
-    }
-  }
-  return 0;
-}
-
-static inline double scalePar(double *x, int i){
-  double scaleTo = op_focei.scaleTo, C=getScaleC(i);
-  switch(op_focei.scaleType){
-  case 1:
-    return (x[i]-op_focei.c1)/op_focei.c2;
-  case 2:
-    if (op_focei.normType <= 5){
-      scaleTo = (op_focei.initPar[i]-op_focei.c1)/op_focei.c2;
-    } else if (scaleTo == 0){
-      scaleTo=op_focei.initPar[i];
-    }
-    return (x[i]-op_focei.initPar[i])/C + scaleTo;
-    break;
-  case 3: // simple multiplicative scaling
-    if (op_focei.scaleTo > 0){
-      return x[i]/op_focei.initPar[i]*op_focei.scaleTo;
-    } else {
-      return x[i];
-    }
-    break;
-  case 4: // log non-log multiplicative scaling
-    if (op_focei.scaleTo > 0){
-      switch (op_focei.xPar[i]){
-      case 1:
-        return (x[i]-op_focei.initPar[i]) + op_focei.scaleTo;
-      default:
-        return x[i]/op_focei.initPar[i]*op_focei.scaleTo;
-      }
-    } else {
-      return x[i];
-    }
-  default:
-    if (op_focei.scaleTo > 0){
-      return (x[i]-op_focei.initPar[i]) + op_focei.scaleTo;
-    } else {
-      return x[i];
-    }
-  }
-  return 0;
-}
-
-
 // Install the Omega-derived globals from an omega block on the ESTIMATION scale (the
 // parameterization op_focei.fullTheta[ntheta..] carries).  The theta -> Omega map lives in
 // the R-side _rxInv handle, so this cannot run inside a parallel region -- the FD-full
@@ -1961,7 +1831,7 @@ void updateTheta(double *theta){
   if (!op_focei.covFdDirect) {
     for (k = op_focei.npars; k--;){
       j=op_focei.fixedTrans[k];
-      op_focei.fullTheta[j] = unscalePar(theta, k);
+      op_focei.fullTheta[j] = scaleUnscalePar(&op_focei, theta, k);
     }
   }
   foceiPushFullTheta();
@@ -5314,14 +5184,14 @@ static inline bool thetaReset0(bool forceReset = false) {
   NumericVector appliedShift(op_focei.muRefN, 0.0);
   bool doAdjust = false;
   for (int ii = (int)op_focei.ntheta; ii--;) {
-    thetaIni[ii] = unscalePar(op_focei.fullTheta, ii);
+    thetaIni[ii] = scaleUnscalePar(&op_focei, op_focei.fullTheta, ii);
     if (R_FINITE(op_focei.lower[ii])) {
-      thetaDown[ii] = unscalePar(op_focei.lower, ii);
+      thetaDown[ii] = scaleUnscalePar(&op_focei, op_focei.lower, ii);
     } else {
       thetaDown[ii] = R_NegInf;
     }
     if (R_FINITE(op_focei.upper[ii])) {
-      thetaUp[ii]= unscalePar(op_focei.upper, ii);
+      thetaUp[ii]= scaleUnscalePar(&op_focei, op_focei.upper, ii);
     } else {
       thetaUp[ii] = std::numeric_limits<double>::infinity();
     }
@@ -7302,24 +7172,6 @@ struct FoceiHessObj : FdHessObj {
 
 // Calculate the mixture parameter gradient
 //
-// d(unscalePar)/d(x_i): the finite-difference outer gradient is d(OFV)/d(scaled
-// par), so an analytic d(OFV)/d(theta) must be multiplied by this factor to land
-// in the same optimizer scale.  Mirrors the linear coefficient of unscalePar().
-static inline double dUnscaleParDx(int i) {
-  double scaleTo = op_focei.scaleTo, C = getScaleC(i);
-  switch (op_focei.scaleType) {
-  case 1: return op_focei.c2;
-  case 2: return C;
-  case 3: return (op_focei.scaleTo != 0) ? op_focei.initPar[i]/scaleTo : 1.0;
-  case 4:
-    if (op_focei.scaleTo > 0) {
-      return (op_focei.xPar[i] == 1) ? 1.0 : op_focei.initPar[i]/scaleTo;
-    }
-    return 1.0;
-  default: return 1.0;
-  }
-}
-
 // This notes that the mixture gradient does not need to be numerically, but
 // can be calculated directly from the mixture probabilities, the translation from
 // the by the mexpit, and the scaling factors.
@@ -7374,7 +7226,7 @@ int mixGrad(double *g, int cpar) {
     // and into the optimizer's scale, the same chain rule every other analytic
     // gradient applies -- the finite-difference paths get it for free by
     // differencing in the scaled space
-    g[cpar] = gr*dUnscaleParDx(cpar);
+    g[cpar] = gr*scaleAdjustGradScale(&op_focei, 1.0, cpar);
     return 1;
   }
   return 0;
@@ -8215,6 +8067,11 @@ static inline void foceiSetupTheta_(List mvi,
       }
     }
   }
+  // The band guard covers the estimated thetas, which lead the optimizer order;
+  // omega scalings keep their own formula.
+  op_focei.nScaleCband = 0;
+  while (op_focei.nScaleCband < k && op_focei.fixedTrans[op_focei.nScaleCband] < thetan)
+    op_focei.nScaleCband++;
   // Printed-column map: optimizer columns in fixedTrans order interleaved with
   // the regression-updated mu thetas at their natural fullTheta positions
   // (user-fixed thetas get no column either way, matching plain focei).
@@ -10047,7 +9904,7 @@ extern "C" double foceiOfvOptim(int n, double *x, void *ex){
       int ko = _printOptIdx[p];
       if (ko >= 0) {
         _printX[p] = x[ko];
-        getScaleC(ko); // resolve any lazily-cached scaleC before copying
+        scaleGetScaleC(&op_focei, ko); // resolve any lazily-cached scaleC before copying
         _printScaleC[p]  = op_focei.scaleC[ko];
         _printInitPar[p] = op_focei.initPar[ko];
       } else {
@@ -10073,7 +9930,7 @@ extern "C" double foceiOfvOptim(int n, double *x, void *ex){
   }
   for (i = 0; i < np; i++){
     int ko = muPrintActive() ? _printOptIdx[i] : i;
-    vPar.push_back(ko >= 0 ? unscalePar(x, ko) : xp[i]);
+    vPar.push_back(ko >= 0 ? scaleUnscalePar(&op_focei, x, ko) : xp[i]);
   }
   // Back-transformed (7)
   iterType.push_back(7);
@@ -10087,7 +9944,7 @@ extern "C" double foceiOfvOptim(int n, double *x, void *ex){
     int ko = muPrintActive() ? _printOptIdx[i] : i;
     double u; int xc, pc;
     if (ko >= 0) {
-      u = unscalePar(x, ko);
+      u = scaleUnscalePar(&op_focei, x, ko);
       xc = op_focei.xPar[ko];
       // op_focei.probitIdxArr (not scale.probitIdx) -- the scale pointer is
       // in print-map order for the mu family, ko is an optimizer index
@@ -10218,7 +10075,7 @@ void foceiLbfgsb3(Environment e){
   NumericVector x(op_focei.npars);
   NumericVector g(op_focei.npars);
   for (unsigned int k = op_focei.npars; k--;){
-    x[k]=scalePar(op_focei.initPar, k);
+    x[k]=scaleScalePar(&op_focei, op_focei.initPar, k);
   }
   if (lbfgsb3Cts == NULL) {
     stop(_("outerOpt=\"lbfgsb3c\" needs lbfgsb3c >= 2024-3.6 (thread-safe lbfgsb3Cts)"));
@@ -10246,7 +10103,7 @@ void foceiLbfgsb(Environment e){
   int fail, fncount=0, grcount=0;
   NumericVector x(op_focei.npars);
   for (unsigned int k = op_focei.npars; k--;){
-    x[k]=scalePar(op_focei.initPar, k);
+    x[k]=scaleScalePar(&op_focei, op_focei.initPar, k);
   }
   char msg[100];
   lbfgsbRX(op_focei.npars, op_focei.lmm, x.begin(), op_focei.lower,
@@ -10268,7 +10125,7 @@ void foceiCustomFun(Environment e){
   NumericVector lower(op_focei.npars);
   NumericVector upper(op_focei.npars);
   for (unsigned int k = op_focei.npars; k--;){
-    x[k]=scalePar(op_focei.initPar, k);
+    x[k]=scaleScalePar(&op_focei, op_focei.initPar, k);
   }
   std::copy(&op_focei.upper[0], &op_focei.upper[0]+op_focei.npars, &upper[0]);
   std::copy(&op_focei.lower[0], &op_focei.lower[0]+op_focei.npars, &lower[0]);
@@ -10348,10 +10205,10 @@ Environment foceiOuter(Environment e){
   if (op_focei.maxOuterIterations > 0){
     for (unsigned int k = op_focei.npars; k--;){
       if (R_FINITE(op_focei.lower[k])){
-        op_focei.lower[k]=scalePar(op_focei.lower, k);
+        op_focei.lower[k]=scaleScalePar(&op_focei, op_focei.lower, k);
       }
       if (R_FINITE(op_focei.upper[k])) {
-        op_focei.upper[k]=scalePar(op_focei.upper,k);
+        op_focei.upper[k]=scaleScalePar(&op_focei, op_focei.upper,k);
       }
     }
 
@@ -10378,7 +10235,7 @@ Environment foceiOuter(Environment e){
   } else {
     NumericVector x(op_focei.npars);
     for (unsigned int k = op_focei.npars; k--;){
-      x[k]=scalePar(op_focei.initPar, k);
+      x[k]=scaleScalePar(&op_focei, op_focei.initPar, k);
     }
     // fast=TRUE with no outer iterations (a posthoc fit): evaluate the analytic gradient
     // ONCE at the reported estimates and stash it.  Without this there is no way to get
@@ -10394,7 +10251,7 @@ Environment foceiOuter(Environment e){
     // state.  Running it afterwards would hand the tables the augmented solve.
     //
     // This branch sets scaleObjective = 0 and does no parameter scaling, so
-    // dUnscaleParDx is the identity and the stashed gradient is on the NATURAL scale --
+    // scaleAdjustGradScale is the identity and the stashed gradient is on the NATURAL scale --
     // the same scale .foceiGradDirect() reports.
     //
     // The evaluation is DIAGNOSTIC, so it must not move the fit's own state.
@@ -11208,7 +11065,7 @@ static bool foceiSMixScore(int cpar, const std::vector<double> &mixR,
   if (op_focei.mixIdxN == 0 || op_focei.mixTrans == NULL ||
       op_focei.mixTrans[cpar] == -1) return false;
   int mi = op_focei.mixTrans[cpar];
-  double sc = dUnscaleParDx(cpar);
+  double sc = scaleAdjustGradScale(&op_focei, 1.0, cpar);
   for (int gid = 0; gid < (int)getRxNsub(rx); ++gid) {
     double r = mixR[(size_t)gid*nMixS + mi];
     double g = R_FINITE(r) ? -2.0*(r - mixP[(size_t)mi])*sc : 0.0;
@@ -11548,10 +11405,10 @@ NumericMatrix foceiCalcCov(Environment e){
       if (op_focei.neta == 0) op_focei.covMethod = 2; // Always use hessian for NLS
       for (unsigned int k = op_focei.npars; k--;){
         if (R_FINITE(op_focei.lower[k])){
-          op_focei.lower[k]=unscalePar(op_focei.lower,k);
+          op_focei.lower[k]=scaleUnscalePar(&op_focei, op_focei.lower,k);
         }
         if (R_FINITE(op_focei.upper[k])) {
-          op_focei.upper[k]=unscalePar(op_focei.upper,k);
+          op_focei.upper[k]=scaleUnscalePar(&op_focei, op_focei.upper,k);
         }
       }
       if (op_focei.boundTol > 0){
@@ -13397,7 +13254,7 @@ void impMapPass(Environment e) {
   // foceiOuter() takes when maxOuterIterations == 0.
   NumericVector x(op_focei.npars);
   for (unsigned int k = op_focei.npars; k--;) {
-    x[k] = scalePar(op_focei.initPar, k);
+    x[k] = scaleScalePar(&op_focei, op_focei.initPar, k);
   }
   foceiOuterFinal(x.begin(), e);
 }
@@ -14349,10 +14206,14 @@ Environment foceiFitCpp_(Environment e){
     }
   }
   IntegerVector xType = e["xType"];
+  // R gives scaleC by parameter; the optimizer reads it by optimizer index
   std::fill_n(&op_focei.scaleC[0], op_focei.ntheta+op_focei.omegan, NA_REAL);
   if (e.exists("scaleC")){
-    arma::vec scaleC = as<arma::vec>(e["scaleC"]);
-    std::copy(scaleC.begin(), scaleC.end(), &op_focei.scaleC[0]);
+    NumericVector scaleC = as<NumericVector>(e["scaleC"]);
+    for (unsigned int k = op_focei.npars; k--;){
+      int j = op_focei.fixedTrans[k];
+      if (j < scaleC.size()) op_focei.scaleC[k] = scaleC[j];
+    }
   }
   // Theta transforms (ntheta-indexed, from R's .iterPrintXParFromUi xform list,
   // length ntheta_total); re-indexed below via fixedTrans into the npars-sized
@@ -14460,9 +14321,10 @@ Environment foceiFitCpp_(Environment e){
     }
   }
   e["optimTime"] = foceiElapsedSeconds(wallT0);
-  NumericVector scaleSave(op_focei.ntheta+op_focei.omegan);
-  for (unsigned int i =op_focei.ntheta+op_focei.omegan;i--;){
-    scaleSave[i] = getScaleC(i);
+  // by parameter again; a parameter the optimizer does not move has none
+  NumericVector scaleSave(op_focei.ntheta+op_focei.omegan, NA_REAL);
+  for (unsigned int k = op_focei.npars; k--;){
+    scaleSave[op_focei.fixedTrans[k]] = scaleGetScaleC(&op_focei, k);
   }
   e["scaleC"] = scaleSave;
   parHistData(e, true); // Need to calculate before the parameter translations are mangled
@@ -14824,7 +14686,7 @@ RObject vaeInnerSetup_(Environment e) {
 
 // Re-parameterize the already-set-up VAE inner problem at new natural-scale
 // theta/omega values WITHOUT re-running foceiSetup_ -- the per-gradient-step
-// fast path.  Each non-fixed parameter goes through scalePar() into the
+// fast path.  Each non-fixed parameter goes through scaleScalePar() into the
 // reduced par vector and updateTheta() rebuilds fullTheta, the per-id solve
 // parameters and the omega inverse (exactly what focei's outer objective does
 // per evaluation).  The omega block uses the setup's "sqrt"-xform rxInv on the
@@ -17492,7 +17354,7 @@ static bool gradPooledCoreLL(const FoceiGradPooledSetup &G,
 // for failed subjects, the stacking and the per-subject kernel all happen in one region,
 // so R never runs between the solve and the assembly and cannot disturb the shared pool.
 //
-// `g` comes back on the NATURAL parameter scale (the caller applies dUnscaleParDx);
+// `g` comes back on the NATURAL parameter scale (the caller applies scaleAdjustGradScale);
 // `etaP` is written straight into op_focei.getaP by the caller.
 // Which `return false` inside gradPooledCore()/gradPooledCoreLL() last refused the
 // analytic gradient.  These refusals used to be silent, which is how the mu-family
@@ -18417,7 +18279,7 @@ static void gradDirectStoreEtaP(const FoceiGradPooledSetup &G, const arma::cube 
   }
   if (op_focei.etaPTheta == NULL) op_focei.etaPTheta = R_Calloc(npars, double);
   for (int k = 0; k < npars; ++k) {
-    double sc = dUnscaleParDx(k);
+    double sc = scaleAdjustGradScale(&op_focei, 1.0, k);
     int kk = G.gMap[(size_t)k];
     for (int i = 0; i < nsub; ++i)
       for (int j = 0; j < neta; ++j)
@@ -18485,7 +18347,7 @@ static bool analyticOuterGradDirect(double *theta, double *g) {
   arma::vec gp;
   if (!gradDirectGather(G, gv, nKer, npars, gp)) return false;
   if (!gradDirectFinalize(npars, gp, Oi, dOiEst)) return false;
-  for (int i = 0; i < npars; ++i) g[i] = gp[i] * dUnscaleParDx(i);
+  for (int i = 0; i < npars; ++i) g[i] = gp[i] * scaleAdjustGradScale(&op_focei, 1.0, i);
   gradDirectStoreEtaP(G, etaP, theta, nsub, neta, npars, nKer);
   return true;
 }
@@ -25104,7 +24966,7 @@ static void foceiHessianScale(FoceiHessianCall &d, const FoceiGradPooledSetup &g
   double scale = op_focei.scaleObjective == 2 ? op_focei.scaleObjectiveTo/op_focei.initObjective : 1;
   d.hessian.set_size(d.x.n_elem,d.x.n_elem);
   for (unsigned int j = 0; j < d.x.n_elem; ++j) for (unsigned int k = 0; k < d.x.n_elem; ++k)
-    d.hessian(j,k) = 2*scale*information(g.gMap[j],g.gMap[k])*dUnscaleParDx(j)*dUnscaleParDx(k);
+    d.hessian(j,k) = 2*scale*information(g.gMap[j],g.gMap[k])*scaleAdjustGradScale(&op_focei, 1.0, j)*scaleAdjustGradScale(&op_focei, 1.0, k);
   if (d.hessian.is_finite()) d.status = 0;
 }
 
