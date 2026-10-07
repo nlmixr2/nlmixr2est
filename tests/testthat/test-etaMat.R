@@ -162,4 +162,19 @@ nmTest({
     expect_identical(.r$rx.iov.v.1, c(0, 0))
     expect_identical(.r$rx.iov.v.2, c(0, 0))
   })
+
+  test_that("a mixture fit with IOV reports one mixnum column", {
+    .d <- theo_md
+    .d$occ <- ifelse(.d$TIME < 144, 1, 2)
+    .mod <- function() {
+      ini({ tka <- 0.45; tcl1 <- log(2); tcl2 <- log(4); tv <- 3.45; p1 <- 0.5; add.sd <- 0.7
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1; iov.v ~ 0.05 | occ })
+      model({ ka <- exp(tka + eta.ka); cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl))
+        v <- exp(tv + eta.v + iov.v)
+        linCmt() ~ add(add.sd) })
+    }
+    f <- suppressWarnings(.nlmixr(.mod, .d, "focei", foceiControl(print = 0L, maxOuterIterations = 0L, covMethod = "")))
+    expect_equal(names(f$eta), c("ID", "eta.ka", "eta.cl", "eta.v", "mixnum"))
+    expect_equal(colnames(f$etaMat), c("eta.ka", "eta.cl", "eta.v", "rx.iov.v.1", "rx.iov.v.2"))
+  })
 })

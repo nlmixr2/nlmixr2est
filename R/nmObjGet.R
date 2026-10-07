@@ -1287,6 +1287,8 @@ nmObjGet.ranef <- function(x, ...) {
   if (exists("mixNum", envir = .env, inherits = FALSE)) {
     .mn <- get("mixNum", envir = .env, inherits = FALSE)
     if (!is.null(.mn) && "mixnum" %in% names(.mn)) {
+      # an IOV fit stores a ranef that already carries it
+      .ret <- .ret[, names(.ret) != "mixnum", drop = FALSE]
       .ret <- merge(.ret, .mn[, c("ID", "mixnum"), drop = FALSE], by = "ID", all.x = TRUE, sort = FALSE)
     }
   }
