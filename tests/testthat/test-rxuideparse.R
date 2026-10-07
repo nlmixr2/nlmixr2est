@@ -204,6 +204,9 @@ nmTest({
       saemControl(trace = 1),
       saemControl(nBurn = c(burn = 200)),
       foceiControl(outerOpt = "bobyqa"),
+      foceiControl(fast = TRUE),
+      foceiControl(resetEtaP = 0),
+      foceiControl(fdChartrand = FALSE),
       foceiControl(rxControl = foceiControl()$rxControl),
       saemControl(rxControl = saemControl()$rxControl),
       impmapControl(ctol = 0.01),
@@ -232,5 +235,64 @@ nmTest({
       rxode2::rxUiDeparse(impControl(covMethod = "r,s"), "ctl"),
       quote(ctl <- impControl(covMethod = "r,s"))
     )
+  })
+
+  test_that("every scalar constructor argument survives the deparse", {
+    ## each argument set away from its default, one at a time
+    .alt <- function(d) {
+      if (is.call(d) && identical(d[[1]], as.name("c"))) {
+        .v <- eval(d)
+        return(if (is.character(.v)) as.list(.v[-1]) else list())
+      }
+      if (is.logical(d) && length(d) == 1L && !is.na(d)) {
+        return(list(!d))
+      }
+      if (is.integer(d) && length(d) == 1L) {
+        return(list(d + 1L, 0L))
+      }
+      if (is.numeric(d) && length(d) == 1L && is.finite(d)) {
+        return(list(d * 2 + 0.1, 0, 1 / 3))
+      }
+      list()
+    }
+    for (.c in c(
+      "agqControl",
+      "bobyqaControl",
+      "emviControl",
+      "foceiControl",
+      "laplaceControl",
+      "lbfgsb3cControl",
+      "n1qn1Control",
+      "newuoaControl",
+      "nlmControl",
+      "nlmeControl",
+      "nlminbControl",
+      "nlsControl",
+      "optimControl",
+      "saemControl",
+      "trustControl",
+      "uobyqaControl",
+      "vaeControl",
+      "impmapControl",
+      "npagControl",
+      "npbControl",
+      "tableControl"
+    )) {
+      .f <- get(.c)
+      .fm <- formals(.f)
+      for (.a in setdiff(names(.fm), c("...", "rxControl", "gamma", "df", "print", "sigdig"))) {
+        for (.v in .alt(.fm[[.a]])) {
+          .x <- tryCatch(
+            suppressWarnings(suppressMessages(do.call(.f, stats::setNames(list(.v), .a)))),
+            error = function(e) NULL
+          )
+          if (is.null(.x)) {
+            next
+          }
+          .e <- rxode2::rxUiDeparse(.x, "ctl")
+          expect_identical(suppressWarnings(eval(.e[[3]])), .x, info = paste(.c, .a, deparse1(.v)))
+        }
+      }
+    }
   })
 })

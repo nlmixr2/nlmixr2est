@@ -2257,6 +2257,38 @@ foceiControl <- function(
   .covMethodFromSlot(.slot)
 }
 
+#' `resetEtaP`, `resetThetaP` and `resetThetaFinalP` of a control
+#'
+#' They are kept only as the derived `*Size`; the p-value is written when it
+#' rebuilds that size exactly, otherwise the size itself.
+#' @param object control being deparsed
+#' @param default default control it is compared with
+#' @param type constructor name
+#' @return argument strings
+#' @noRd
+.foceiDeparseResetP <- function(object, default, type) {
+  .p <- c(resetEtaSize = "resetEtaP", resetThetaSize = "resetThetaP", resetThetaFinalSize = "resetThetaFinalP")
+  unlist(lapply(names(.p), function(.s) {
+    .v <- object[[.s]]
+    if (is.null(.v) || identical(.v, default[[.s]])) {
+      return(NULL)
+    }
+    .pv <- if (is.infinite(.v)) {
+      0
+    } else if (.v == 0) {
+      1
+    } else {
+      2 * stats::pnorm(-.v)
+    }
+    .re <- tryCatch(do.call(type, stats::setNames(list(.pv), .p[[.s]]))[[.s]], error = function(e) NULL)
+    if (identical(.re, .v)) {
+      paste0(.p[[.s]], " = ", .deparseValue(.pv))
+    } else {
+      paste0(.s, " = ", .deparseValue(.v))
+    }
+  }))
+}
+
 .rxUiDeparseFoceiControl <- function(
   object,
   var,
@@ -2272,9 +2304,10 @@ foceiControl <- function(
   if (object$outerOpt == -1L && object$outerOptTxt == "custom") {
     warning("functions for `outerOpt` cannot be deparsed, reset to default", call. = FALSE)
   } else if (
-    !(object$outerOptTxt %in% c(.ret$outerOptTxt, "stats::optimize")) ||
+    !isTRUE(object$outerOptDefault) &&
+      object$outerOptTxt != "stats::optimize" &&
       # an optimizer that was asked for, even the default one
-      (!identical(object$outerOptDefault, .ret$outerOptDefault) && object$outerOptTxt != "stats::optimize")
+      (object$outerOptTxt != .ret$outerOptTxt || isTRUE(.ret$outerOptDefault))
   ) {
     .outerOpt <- paste0("outerOpt = ", deparse1(object$outerOptTxt))
   }
@@ -2290,6 +2323,7 @@ foceiControl <- function(
   if (!identical(object$iterPrintControl, .ret$iterPrintControl)) {
     .w <- union(.w, which(names(.ret) == "iterPrintControl"))
   }
+  extra <- c(extra, .foceiDeparseResetP(object, .ret, type))
   .covTok <- character(0)
   if (!identical(covName(object), covName(.ret))) {
     .covTok <- paste0("covMethod = ", deparse1(covName(object)))
@@ -2297,6 +2331,7 @@ foceiControl <- function(
   if (length(.w) == 0 && length(.outerOpt) == 0 && length(.covTok) == 0 && length(extra) == 0) {
     return(str2lang(paste0(var, " <- ", type, "()")))
   }
+  .formals <- c(formals(type), formals(foceiControl))
   .n <- names(.ret)[.w]
   .n <- .n[!(.n %in% c("outerOpt", "covMethod"))]
   if (length(.covTok) > 0) {
@@ -2321,6 +2356,10 @@ foceiControl <- function(
           if (!is.na(.val)) {
             return(.val)
           }
+        }
+        # a logical argument some controls keep as 0/1
+        if (is.logical(.formals[[x]]) && is.numeric(object[[x]])) {
+          return(paste0(x, " = ", deparse1(as.logical(object[[x]]))))
         }
         if (x == "innerOpt") {
           paste0("innerOpt = ", deparse1(names(.innerOptFun[which(object[[x]] == .innerOptFun)])))
