@@ -40,7 +40,7 @@ nmObjGet.etaMat <- function(x, ...) {
       sqrt(.m[d, d])
     }
     .n <- names(.ui$iov)
-    as.matrix(do.call(
+    .ret <- as.matrix(do.call(
       `cbind`,
       c(
         list(.eta),
@@ -60,5 +60,12 @@ nmObjGet.etaMat <- function(x, ...) {
         })
       )
     ))
+    # a correlated occasion block is expanded occasion by occasion; etaObf
+    # carries the expanded model's eta order
+    .eo <- tryCatch(names(.ui$etaObf), error = function(e) NULL)
+    if (all(colnames(.ret) %in% .eo)) {
+      .ret <- .ret[, intersect(.eo, colnames(.ret)), drop = FALSE]
+    }
+    .ret
   }
 }

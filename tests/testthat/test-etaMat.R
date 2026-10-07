@@ -101,6 +101,23 @@ nmTest({
       expect_equal(unname(f$etaMat[, 1:3]), unname(as.matrix(f$eta[, -1])))
       expect_equal(as.vector(t(f$etaMat[, 4:5])) * .sd, f$iov$occ$iov.cl)
     }
+    ## a correlated block is expanded occasion by occasion, unscaled
+    .corMod <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- 0.7
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1; iov.cl + iov.v ~ c(0.1, 0.03, 0.2) | occ })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl + iov.cl); v <- exp(tv + eta.v + iov.v)
+        linCmt() ~ add(add.sd) })
+    }
+    f <- .nlmixr(.corMod, .d, "focei", foceiControl(print = 0L, maxOuterIterations = 0L, covMethod = ""))
+    expect_equal(colnames(f$etaMat)[4:7], c("rx.iov.cl.1", "rx.iov.v.1", "rx.iov.cl.2", "rx.iov.v.2"))
+    .ctl <- foceiControl(
+      print = 0L,
+      maxOuterIterations = 0L,
+      maxInnerIterations = 0L,
+      covMethod = "",
+      etaMat = f$etaMat
+    )
+    expect_equal(.nlmixr(f$ui, .d, "focei", .ctl)$objf, f$objf, tolerance = 1e-8)
   })
 
   test_that(".foceiGradDirect() refits with an etaMat of etas only", {
