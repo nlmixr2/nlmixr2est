@@ -36,6 +36,10 @@ test_that("vpcSim() and augPred() work with lag() of a calculated variable (#117
   expect_true(any(grepl("c0 <- central/v", .txt, fixed = TRUE)))
   expect_true(any(grepl("ka ~ exp(tka)", .txt, fixed = TRUE)))
   expect_identical(attr(.sim, "lagged"), "c0")
+  # a lagged parameter is not an lhs turned back on, so is not dropped
+  .ui2 <- rxode2::model(.ui, cp <- (0.5 * c0 + 0.5 * lag(tka)) * exp(eta.f))
+  expect_identical(attr(.getSimModel(.ui2), "lagged"), character(0))
+  expect_true(any(grepl("c0 ~ central/v", deparse(.getSimModel(.ui2)), fixed = TRUE)))
 
   fit <- nlmixr2(
     mod,

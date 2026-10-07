@@ -204,7 +204,7 @@ nlmixr2AugPredSolve <- function(
   .env$data <- fit$origData
   suppressMessages(.preProcessHooksRun(.env, "rxSolve"))
   .rx <- .getSimModel(.env$ui, hideIpred = TRUE)
-  .drop <- attr(.rx, "lagged")
+  .drop <- setdiff(attr(.rx, "lagged"), c("DV", "CMT"))
   if (length(.drop) == 0L) {
     .drop <- NULL
   }
@@ -248,6 +248,7 @@ nlmixr2AugPredSolve <- function(
       covsInterpolation = covsInterpolation,
       naInterpolation = .naInterpolation,
       tolFactor = .tolFactor,
+      drop = .drop,
       returnType = "data.frame"
     )
     .sim$pred <- .sim2$sim
