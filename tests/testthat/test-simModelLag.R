@@ -40,6 +40,12 @@ test_that("vpcSim() and augPred() work with lag() of a calculated variable (#117
   .ui2 <- rxode2::model(.ui, cp <- (0.5 * c0 + 0.5 * lag(tka)) * exp(eta.f))
   expect_identical(attr(.getSimModel(.ui2), "lagged"), character(0))
   expect_true(any(grepl("c0 ~ central/v", deparse(.getSimModel(.ui2)), fixed = TRUE)))
+  # rxode2 allows only lag()/diff() of a calculated variable
+  for (.fn in c("lag", "diff")) {
+    .cp <- str2lang(sprintf("cp <- (0.5 * c0 + 0.5 * %s(c0)) * exp(eta.f)", .fn))
+    .ui3 <- eval(bquote(rxode2::model(.ui, .(.cp))))
+    expect_error(eval(.getSimModel(.ui3)), NA)
+  }
 
   fit <- nlmixr2(
     mod,
