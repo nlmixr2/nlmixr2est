@@ -4702,6 +4702,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     }
   }
   .thetaReset$thetaNames <- .ret$thetaNames
+  .thetaReset$clampedAt <- NULL
   nResets <- 0L
   ## Per-fit constants for the all-C++ analytic outer gradient.  Computed ONCE here and
   ## read by C++ when the outer optimizer starts; after that every gradient evaluation

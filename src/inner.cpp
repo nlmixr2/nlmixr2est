@@ -801,6 +801,7 @@ struct focei_options {
   int firstDirectGradSet = 0;
   int nFDGradFast = 0;      // # FD fallbacks while fast was requested
   int warnedAnalyticFallback = 0; // one-time FD-fallback warning latch
+  int warnedResetNoProgress = 0; // one-time "reset back to its bound" warning latch
   int warnedContribFallback = 0;  // one-time #1051 contributor FD-fallback latch
   double cholSEtol;
   double hessEps;
@@ -5188,6 +5189,17 @@ static inline bool thetaReset0(bool forceReset = false, const std::vector<bool> 
   // matching eta re-centering must use the applied shift, not etaM (issue #454).
   NumericVector appliedShift(op_focei.muRefN, 0.0);
   bool doAdjust = false;
+  Function loadNamespace2("loadNamespace", R_BaseNamespace);
+  Environment nlmixr2b = loadNamespace2("nlmixr2est");
+  Environment thetaResetEnv = nlmixr2b[".thetaReset"];
+  // where an earlier reset of this fit clamped each theta to a bound (NA: not
+  // clamped); a reset that would clamp it there again makes no progress
+  NumericVector clampedAt(op_focei.ntheta, NA_REAL);
+  if (thetaResetEnv.exists("clampedAt") && TYPEOF(thetaResetEnv["clampedAt"]) == REALSXP) {
+    NumericVector ca = thetaResetEnv["clampedAt"];
+    if (ca.size() == (R_xlen_t)op_focei.ntheta) std::copy(ca.begin(), ca.end(), clampedAt.begin());
+  }
+  int noProgress = -1;
   // fullTheta holds the thetas on their own scale; the bounds are kept by
   // optimizer index, on the optimizer's scale only while boundsScaled
   std::copy(&op_focei.fullTheta[0], &op_focei.fullTheta[0] + op_focei.ntheta, thetaIni.begin());
@@ -5229,10 +5241,19 @@ static inline bool thetaReset0(bool forceReset = false, const std::vector<bool> 
             clamped = true;
           }
           double shift = ref - thetaIni[ij];
-          if (!clamped || fabs(shift) > 1e-8 * (1.0 + fabs(thetaIni[ij]))) {
+          bool again = clamped && R_FINITE(clampedAt[ij]) &&
+            fabs(ref - clampedAt[ij]) <= 1e-8 * (1.0 + fabs(ref));
+          if (again) {
+            // An earlier reset already put it at this bound and the drift came
+            // back once the optimizer moved it inward: resetting again only
+            // repeats that reset, so let the optimizer go on.
+            adjustEta[ii] = false;
+            noProgress = ij;
+          } else if (!clamped || fabs(shift) > 1e-8 * (1.0 + fabs(thetaIni[ij]))) {
             appliedShift[ii] = shift;
             thetaIni[ij] = ref;
             adjustEta[ii] = true;
+            clampedAt[ij] = clamped ? ref : NA_REAL;
             if (trig == NULL || (ii < trig->size() && (*trig)[ii])) doAdjust = true;
           } else {
             // Already pinned at the bound: leave it be so a parameter that
@@ -5247,9 +5268,26 @@ static inline bool thetaReset0(bool forceReset = false, const std::vector<bool> 
       adjustEta[ii] = false;
     }
   }
+  CharacterVector thetaNames;
+  bool haveNames = false;
+  if (thetaResetEnv.exists("thetaNames") &&
+      TYPEOF(thetaResetEnv["thetaNames"]) == STRSXP) {
+    thetaNames = as<CharacterVector>(thetaResetEnv["thetaNames"]);
+    haveNames = (thetaNames.size() >= (R_xlen_t)op_focei.ntheta);
+  }
+  if (noProgress >= 0 && !op_focei.warnedResetNoProgress) {
+    op_focei.warnedResetNoProgress = 1;
+    if (haveNames) {
+      std::string nm = as<std::string>(thetaNames[noProgress]);
+      warning(_("theta reset skipped: '%s' would return to its bound"), nm.c_str());
+    } else {
+      warning(_("theta reset skipped: theta %d would return to its bound"), noProgress + 1);
+    }
+  }
   if (!doAdjust && !forceReset) {
     return false;
   }
+  thetaResetEnv["clampedAt"] = clampedAt;
 
   arma::mat etaMat(getRxNsubAndMix(rx), op_focei.neta);
 
@@ -5276,18 +5314,6 @@ static inline bool thetaReset0(bool forceReset = false, const std::vector<bool> 
   // begins out of range; if the bounds are themselves infeasible (lower >=
   // upper) stop with an informative error rather than continue silently.
   bool didClamp = false;
-  CharacterVector thetaNames;
-  bool haveNames = false;
-  {
-    Function loadNamespace2("loadNamespace", R_BaseNamespace);
-    Environment nlmixr2b = loadNamespace2("nlmixr2est");
-    Environment thetaResetEnv = nlmixr2b[".thetaReset"];
-    if (thetaResetEnv.exists("thetaNames") &&
-        TYPEOF(thetaResetEnv["thetaNames"]) == STRSXP) {
-      thetaNames = as<CharacterVector>(thetaResetEnv["thetaNames"]);
-      haveNames = (thetaNames.size() >= (R_xlen_t)op_focei.ntheta);
-    }
-  }
   for (int ii = (int)op_focei.ntheta; ii--;) {
     if (isFixedTheta(ii)) continue;
     if (thetaDown[ii] >= thetaUp[ii]) {
@@ -10112,6 +10138,7 @@ Environment foceiOuter(Environment e){
   op_focei.firstDirectGradSet=0;
   op_focei.nFDGradFast=0;
   op_focei.warnedAnalyticFallback=0;
+  op_focei.warnedResetNoProgress=0;
   op_focei.warnedContribFallback=0;
   if (op_focei.maxOuterIterations > 0){
     for (unsigned int k = op_focei.npars; k--;){

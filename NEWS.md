@@ -287,11 +287,14 @@
   scaled twice.  A model whose etas drift at the initial estimates was driven
   to an objective of 4.5e231 with `resetThetaP = 0.2`; it now reaches 160.8,
   and a final reset (`resetThetaFinalP`) that stopped with "Starting values
-  violate bounds" now restarts.  Because a reset now takes effect, a fit whose
-  drift it cannot absorb -- a mu-referenced theta held at a bound that the
-  outer optimizer keeps probing away from -- stops with "Maximum number of
-  theta resets (10) exceeded" instead of ending at estimates the resets had
-  scrambled.
+  violate bounds" now restarts.
+
+- A theta reset that would put a mu-referenced theta back at the bound an
+  earlier reset of the same fit clamped it to is skipped, with a warning, and
+  the optimization goes on.  Once resets took effect, a theta whose optimum
+  lies past its bound was reset there each time the outer optimizer probed it
+  inward, until the fit stopped with "Maximum number of theta resets (10)
+  exceeded".
 
 - A theta reset no longer fires when every eta whose drift triggers it belongs
   to a theta already pinned at its bound.  It went ahead whenever another eta
