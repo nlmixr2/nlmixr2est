@@ -229,6 +229,10 @@ nmTest({
       quote(ctl <- npagControl(cycles = 3L, cores = 2L))
     )
     expect_equal(rxode2::rxUiDeparse(npbControl(points = 20L), "ctl"), quote(ctl <- npbControl(points = 20L)))
+    ## a nu the fit raised itself (nuAuto) is redone on a refit, not written
+    .x <- saemControl(print = 100)
+    .x$mcmc$nu <- c(4, 4, 4)
+    expect_equal(rxode2::rxUiDeparse(.x, "ctl"), quote(ctl <- saemControl(print = 100L)))
     ## a fit resolves gammaMethod = "auto" and keeps the request
     .x <- impControl()
     .x$gammaMethod <- "global"

@@ -2376,6 +2376,7 @@ foceiControl <- function(
     }
   }
   .retD <- c(vapply(.n, .tok, character(1)), .outerOpt, extra)
+  .retD <- .retD[nzchar(.retD)]
   .ret <- str2lang(paste(var, " <- ", type, "(", paste(.retD, collapse = ", "), ")"))
   .allowed <- setdiff(names(.formals), c("...", .foceiControlInternal, internal, "outerOpt", "covMethod", "rxControl"))
   .deparseFixup(.ret, object, .allowed, .tok)

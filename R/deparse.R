@@ -220,6 +220,8 @@
     character(1),
     USE.NAMES = FALSE
   )
+  # an element that maps to no argument (an automatic saem nu) writes nothing
+  .retD <- .retD[nzchar(.retD)]
   str2lang(paste(var, " <- ", .cls, "(", paste(.retD, collapse = ","), ")"))
 }
 
